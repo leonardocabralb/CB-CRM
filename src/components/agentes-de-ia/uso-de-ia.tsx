@@ -11,7 +11,7 @@
 // ============================================================
 
 import { useCallback, useEffect, useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { RefreshCw } from 'lucide-react';
 
@@ -28,10 +28,20 @@ interface Resposta {
   resumo: ResumoDoUso;
 }
 
+/** A cotação no separador decimal do IDIOMA da instalação ("5,60" / "5.60"); a rota aceita os dois. */
+function formatarCotacao(locale: string, n: number): string {
+  return new Intl.NumberFormat(locale, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+    useGrouping: false,
+  }).format(n);
+}
+
 const MODOS = ['agente', 'agente_teste', 'radar', 'transcricao', 'auto_reply', 'draft'] as const;
 
 export function UsoDeIa({ agenteId }: { agenteId?: string }) {
   const t = useTranslations('IaAgentes');
+  const locale = useLocale();
   const [dados, setDados] = useState<Resposta | null>(null);
   const [falhou, setFalhou] = useState(false);
   const [cotacao, setCotacao] = useState('');
@@ -43,12 +53,12 @@ export function UsoDeIa({ agenteId }: { agenteId?: string }) {
       if (!res.ok) throw new Error(String(res.status));
       const corpo = (await res.json()) as Resposta;
       setDados(corpo);
-      setCotacao(corpo.cotacao === null ? '' : String(corpo.cotacao).replace('.', ','));
+      setCotacao(corpo.cotacao === null ? '' : formatarCotacao(locale, corpo.cotacao));
       setFalhou(false);
     } catch {
       setFalhou(true);
     }
-  }, []);
+  }, [locale]);
 
   useEffect(() => {
     void (async () => {
@@ -93,9 +103,20 @@ export function UsoDeIa({ agenteId }: { agenteId?: string }) {
   const { resumo } = dados;
   const doAgente = agenteId ? resumo.porAgente.find((a) => a.iaAgenteId === agenteId) : undefined;
 
-  const reais = (s: Soma) =>
-    s.reais !== null ? formatCurrency(s.reais) : s.dolar === null ? t('uso.semPreco') : t('uso.semCotacao');
+  // ⚠️ Menos de meio centavo arredondaria para "R$ 0,00" — que afirma ZERO
+  // sobre o caso normal de alguns testes no Playground (revisão da F1b).
+  const reais = (s: Soma) => {
+    if (s.reais === null) return s.dolar === null ? t('uso.semPreco') : t('uso.semCotacao');
+    const valor =
+      s.reais > 0 && s.reais < 0.005
+        ? t('uso.menosDeUmCentavo', { valor: formatCurrency(0.01) })
+        : formatCurrency(s.reais);
+    return s.parcial ? `${valor} ${t('uso.parcial')}` : valor;
+  };
   const tokens = (n: number) => n.toLocaleString(undefined);
+  // No detalhe de um agente, "sem preço" fala só dos modelos DELE — a lista da
+  // conta traria o modelo do Radar para dentro da tela do agente.
+  const semPreco = agenteId ? (doAgente?.semPreco ?? []) : resumo.semPreco;
 
   return (
     <div className="space-y-5">
@@ -145,7 +166,12 @@ export function UsoDeIa({ agenteId }: { agenteId?: string }) {
                 ) : (
                   resumo.porAgente.map((a) => (
                     <tr key={a.iaAgenteId ?? '—'} className="border-b border-border/60">
-                      <td className="py-2 pr-3">{a.nome ?? t('uso.agenteApagado')}</td>
+                      <td className="py-2 pr-3">
+                        {a.nome ?? t('uso.agenteApagado')}
+                        {a.arquivado ? (
+                          <span className="ml-1 text-xs text-muted-foreground">{t('uso.arquivado')}</span>
+                        ) : null}
+                      </td>
                       <td className="py-2 pr-3">
                         {reais(a.producao)}{' '}
                         <span className="text-xs text-muted-foreground">({tokens(a.producao.tokensTotal)})</span>
@@ -176,9 +202,9 @@ export function UsoDeIa({ agenteId }: { agenteId?: string }) {
         </>
       )}
 
-      {resumo.semPreco.length > 0 ? (
+      {semPreco.length > 0 ? (
         <p className="text-xs text-amber-700 dark:text-amber-300">
-          {t('uso.modelosSemPreco', { modelos: resumo.semPreco.join(', ') })}
+          {t('uso.modelosSemPreco', { modelos: semPreco.join(', ') })}
         </p>
       ) : null}
 
@@ -191,7 +217,7 @@ export function UsoDeIa({ agenteId }: { agenteId?: string }) {
               inputMode="decimal"
               className="w-32"
               value={cotacao}
-              placeholder="5,60"
+              placeholder={formatarCotacao(locale, 5.6)}
               onChange={(e) => setCotacao(e.target.value)}
             />
             <Button size="sm" onClick={() => void salvarCotacao()} disabled={salvandoCotacao}>

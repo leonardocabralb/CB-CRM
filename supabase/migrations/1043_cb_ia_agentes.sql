@@ -24,7 +24,10 @@
 --     Leitura só para ADMINISTRADOR (D14, na forma da 1032). Escrita só pela
 --     rota (service role): nenhum GRANT de escrita a `authenticated`.
 --  2. Apagar uma CONEXÃO tira o id dela de `conexoes` de todo agente
---     (gatilho, no molde de `cb_drop_channel_from_automations`, 903).
+--     (gatilho, no molde de `cb_drop_channel_from_automations`, 903), e
+--     ARQUIVAR um agente o tira de `pode_passar_para` dos outros (gatilho,
+--     num UPDATE só: ler e regravar o array pelo app perderia uma edição
+--     concorrente — revisão da F1b).
 --  3. `ai_usage_log`: `ia_agente_id` (SET NULL) + `ia_agente_nome`
 --     (congelado — a regra dos rótulos da 912) e o `mode` ganha `agente` e
 --     `agente_teste` (o Playground, D13). ⚠️ O CHECK ANTES do código: sem ele o
@@ -113,6 +116,33 @@ CREATE TRIGGER cb_channels_tira_dos_agentes_de_ia
 -- Função de gatilho não é RPC: as duas metades do REVOKE (913/915).
 REVOKE EXECUTE ON FUNCTION cb_tira_conexao_dos_agentes_de_ia() FROM PUBLIC, anon, authenticated;
 
+-- Agente ARQUIVADO sai das listas "pode passar para" dos outros da conta.
+-- O UPDATE de dentro não muda `arquivado_em` das outras linhas, então o
+-- gatilho não se repete.
+CREATE OR REPLACE FUNCTION cb_ia_agente_arquivado_sai_das_passagens()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path TO 'public'
+AS $$
+BEGIN
+  IF OLD.arquivado_em IS NULL AND NEW.arquivado_em IS NOT NULL THEN
+    UPDATE cb_ia_agentes
+       SET pode_passar_para = array_remove(pode_passar_para, NEW.id),
+           updated_at = now()
+     WHERE account_id = NEW.account_id
+       AND pode_passar_para @> ARRAY[NEW.id];
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS cb_ia_agentes_arquivado_sai_das_passagens ON cb_ia_agentes;
+CREATE TRIGGER cb_ia_agentes_arquivado_sai_das_passagens
+  AFTER UPDATE OF arquivado_em ON cb_ia_agentes
+  FOR EACH ROW EXECUTE FUNCTION cb_ia_agente_arquivado_sai_das_passagens();
+
+REVOKE EXECUTE ON FUNCTION cb_ia_agente_arquivado_sai_das_passagens() FROM PUBLIC, anon, authenticated;
+
 -- ---------------------------------------------------------------------------
 -- 3) Uso por agente
 -- ---------------------------------------------------------------------------
@@ -152,6 +182,10 @@ UPDATE ai_configs
 -- Uma linha por (dia local, modo, agente, provedor, modelo). O DIA é o do fuso
 -- passado (o da tela), para as barras somarem o total. A rota chama com o
 -- cliente de SERVIÇO depois de conferir que quem pede é admin da conta.
+-- ⚠️ O PostgREST corta a resposta de uma RPC em 1000 linhas também: a rota
+-- PAGINA (range + count) sobre uma ordem TOTAL (as cinco chaves do grupo) —
+-- com a ordem só por dia e modo, a página seguinte poderia repetir ou pular
+-- linhas (revisão da F1b).
 CREATE OR REPLACE FUNCTION public.cb_ia_uso(
   p_account_id uuid,
   p_desde timestamptz,
@@ -188,7 +222,7 @@ AS $$
    WHERE l.account_id = p_account_id
      AND l.created_at >= p_desde
    GROUP BY 1, 2, 3, 5, 6
-   ORDER BY 1, 2;
+   ORDER BY 1, 2, 3, 5, 6;
 $$;
 
 REVOKE EXECUTE ON FUNCTION public.cb_ia_uso(uuid, timestamptz, text) FROM PUBLIC, anon, authenticated;
@@ -227,8 +261,15 @@ BEGIN
     RAISE EXCEPTION '1043: service_role sem EXECUTE em cb_ia_uso';
   END IF;
   IF has_function_privilege('anon', 'public.cb_tira_conexao_dos_agentes_de_ia()', 'EXECUTE')
-     OR has_function_privilege('authenticated', 'public.cb_tira_conexao_dos_agentes_de_ia()', 'EXECUTE') THEN
+     OR has_function_privilege('authenticated', 'public.cb_tira_conexao_dos_agentes_de_ia()', 'EXECUTE')
+     OR has_function_privilege('anon', 'public.cb_ia_agente_arquivado_sai_das_passagens()', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'public.cb_ia_agente_arquivado_sai_das_passagens()', 'EXECUTE') THEN
     RAISE EXCEPTION '1043: função de gatilho exposta como RPC';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger
+                  WHERE tgname = 'cb_ia_agentes_arquivado_sai_das_passagens'
+                    AND tgrelid = 'public.cb_ia_agentes'::regclass) THEN
+    RAISE EXCEPTION '1043: gatilho do arquivamento ausente';
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.check_constraints

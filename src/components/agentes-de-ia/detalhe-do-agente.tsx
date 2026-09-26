@@ -1,6 +1,11 @@
 'use client';
 
 // O detalhe de um agente de IA (F1b, 5.9): Configuração, Playground e Uso.
+//
+// ⚠️ As abas ficam MONTADAS depois da primeira visita (escondidas, não
+// desmontadas): o rascunho da Configuração vive nela, e trocar de aba para
+// testar no Playground apagava, sem aviso, o que tinha sido digitado. A
+// conversa do Playground também sobrevive à troca.
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -25,6 +30,13 @@ type Estado =
 export function DetalheDoAgente({ id }: { id: string }) {
   const t = useTranslations('IaAgentes');
   const [aba, setAba] = useState<Aba>('configuracao');
+  const [visitadas, setVisitadas] = useState<ReadonlySet<Aba>>(() => new Set<Aba>(['configuracao']));
+  const [configuracaoNaoSalva, setConfiguracaoNaoSalva] = useState(false);
+
+  function trocarDeAba(nova: Aba) {
+    setAba(nova);
+    setVisitadas((v) => (v.has(nova) ? v : new Set([...v, nova])));
+  }
   // O estado carrega DE QUEM é (efeito passivo: trocar de agente pela URL não
   // pode mostrar o anterior por um quadro).
   const [estado, setEstado] = useState<{ de: string; e: Estado }>({ de: id, e: { fase: 'carregando' } });
@@ -81,24 +93,35 @@ export function DetalheDoAgente({ id }: { id: string }) {
           <SubAbas
             rotulo={t('detalhe.abas')}
             ativa={aba}
-            aoTrocar={setAba}
+            aoTrocar={trocarDeAba}
             abas={[
               { id: 'configuracao', rotulo: t('detalhe.configuracao') },
               { id: 'playground', rotulo: t('detalhe.playground') },
               { id: 'uso', rotulo: t('detalhe.uso') },
             ]}
           />
-          {aba === 'configuracao' ? (
+          <div hidden={aba !== 'configuracao'}>
             <ConfiguracaoDoAgente
               key={e.agente.id}
               agente={e.agente}
               aoSalvar={(novo) => setEstado({ de: id, e: { fase: 'pronto', agente: novo } })}
+              aoMudarNaoSalvo={setConfiguracaoNaoSalva}
             />
-          ) : aba === 'playground' ? (
-            <PlaygroundDoAgente key={e.agente.id} agente={e.agente} />
-          ) : (
-            <UsoDeIa agenteId={e.agente.id} />
-          )}
+          </div>
+          {visitadas.has('playground') ? (
+            <div hidden={aba !== 'playground'}>
+              <PlaygroundDoAgente
+                key={e.agente.id}
+                agente={e.agente}
+                configuracaoNaoSalva={configuracaoNaoSalva}
+              />
+            </div>
+          ) : null}
+          {visitadas.has('uso') ? (
+            <div hidden={aba !== 'uso'}>
+              <UsoDeIa agenteId={e.agente.id} />
+            </div>
+          ) : null}
         </>
       )}
     </div>

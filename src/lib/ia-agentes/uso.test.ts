@@ -58,6 +58,28 @@ describe('resumirUso', () => {
     expect(r.total.chamadas).toBe(2)
   })
 
+  it('grupo com parte SEM preço é marcado `parcial` (o total em R$ soma só o resto)', () => {
+    const r = resumirUso(
+      [linha({ modo: 'agente' }), linha({ modo: 'agente', modelo: 'modelo-sem-preco' })],
+      5,
+    )
+    expect(r.porAgente[0].producao.parcial).toBe(true)
+    expect(r.porAgente[0].producao.dolar).toBeCloseTo(0.75 + 3.75, 6)
+    expect(r.total.parcial).toBe(true)
+    const inteiro = resumirUso([linha({ modo: 'agente' })], 5)
+    expect(inteiro.porAgente[0].producao.parcial).toBe(false)
+  })
+
+  it('"sem preço" do AGENTE lista só os modelos dele — o do Radar fica na conta (revisão da F1b)', () => {
+    const r = resumirUso(
+      [linha({ modo: 'agente' }), linha({ modo: 'radar', iaAgenteId: null, iaAgenteNome: null, modelo: 'radar-sem-preco' })],
+      5,
+    )
+    expect(r.semPreco).toEqual(['gemini/radar-sem-preco'])
+    expect(r.porAgente[0].semPreco).toEqual([])
+    expect(r.porAgente[0].arquivado).toBe(false)
+  })
+
   it('Radar e transcrição ficam na conta, fora dos agentes', () => {
     const r = resumirUso([linha({ modo: 'radar', iaAgenteId: null, iaAgenteNome: null })], 5)
     expect(r.porAgente).toHaveLength(0)

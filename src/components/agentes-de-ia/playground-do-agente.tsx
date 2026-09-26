@@ -22,7 +22,14 @@ interface Turno {
   tokens?: number;
 }
 
-export function PlaygroundDoAgente({ agente }: { agente: IaAgente }) {
+export function PlaygroundDoAgente({
+  agente,
+  configuracaoNaoSalva,
+}: {
+  agente: IaAgente;
+  /** A aba Configuração tem alteração não salva — o Playground testa o SALVO. */
+  configuracaoNaoSalva: boolean;
+}) {
   const t = useTranslations('IaAgentes');
   const [turnos, setTurnos] = useState<Turno[]>([]);
   const [texto, setTexto] = useState('');
@@ -51,9 +58,10 @@ export function PlaygroundDoAgente({ agente }: { agente: IaAgente }) {
         handoff?: boolean;
         usage?: { totalTokens?: number } | null;
         code?: string;
+        error?: string;
       };
       if (!res.ok) {
-        toast.error(textoDoCodigo(t, corpo.code));
+        toast.error(textoDoCodigo(t, corpo.code, corpo.error));
         setTurnos(turnos);
         setTexto(conteudo);
         return;
@@ -79,6 +87,9 @@ export function PlaygroundDoAgente({ agente }: { agente: IaAgente }) {
   return (
     <div className="space-y-2">
       <p className="text-xs text-muted-foreground">{t('playground.explicacao')}</p>
+      {configuracaoNaoSalva ? (
+        <p className="text-xs text-amber-700 dark:text-amber-300">{t('playground.configNaoSalva')}</p>
+      ) : null}
       <div className="flex h-[60vh] min-h-[420px] flex-col rounded-xl border border-border bg-card">
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <span className="min-w-0 truncate text-sm font-medium text-foreground">
@@ -107,7 +118,9 @@ export function PlaygroundDoAgente({ agente }: { agente: IaAgente }) {
               {x.role === 'assistant' ? <Bot className="mt-1 size-5 shrink-0 text-primary" /> : null}
               <div
                 className={cn(
-                  'max-w-[80%] rounded-2xl px-3.5 py-2 text-sm',
+                  // `min-w-0` + `break-words`: um link longo (o do boleto,
+                  // justo o que o agente de cobrança manda) não vaza da bolha.
+                  'min-w-0 max-w-[80%] break-words rounded-2xl px-3.5 py-2 text-sm',
                   x.role === 'user'
                     ? 'rounded-br-sm bg-primary text-primary-foreground'
                     : 'rounded-bl-sm bg-muted text-foreground'

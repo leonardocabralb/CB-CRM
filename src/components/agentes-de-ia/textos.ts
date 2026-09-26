@@ -19,11 +19,13 @@ export const CODIGOS_CONHECIDOS = [
   'horario_invalido',
   'lista_invalida',
   'conexao_de_outra_conta',
+  'conexao_instagram',
   'agente_de_outra_conta',
   'membro_de_outra_conta',
   'passar_para_si',
   'nao_encontrado',
   'sem_chave',
+  'provedor_sem_chave',
   'chave_ilegivel',
   'sem_mensagens',
   'sem_configuracao',
@@ -32,11 +34,29 @@ export const CODIGOS_CONHECIDOS = [
   'rate_limited',
   'timeout',
   'network_error',
+  'provider_error',
+  'empty_response',
   'banco',
 ] as const;
 
-export function textoDoCodigo(t: ReturnType<typeof useTranslations>, codigo: unknown): string {
-  return typeof codigo === 'string' && (CODIGOS_CONHECIDOS as readonly string[]).includes(codigo)
-    ? t(`erro.${codigo}`)
-    : t('erro.generico');
+/**
+ * `detalhe` é o texto SEGURO que a rota manda junto (`mensagemSeguraDeAiError`
+ * — nunca ecoa a chave). Só o `provider_error` o usa: é ele que diz "modelo não
+ * encontrado" ou "chave recusada" quando o provedor devolve 400/404, e sem ele
+ * a tela diria "tente de novo" para um erro que nunca vai passar.
+ */
+export function textoDoCodigo(
+  t: ReturnType<typeof useTranslations>,
+  codigo: unknown,
+  detalhe?: unknown,
+): string {
+  if (typeof codigo !== 'string' || !(CODIGOS_CONHECIDOS as readonly string[]).includes(codigo)) {
+    return t('erro.generico');
+  }
+  if (codigo === 'provider_error') {
+    return t('erro.provider_error', {
+      detalhe: typeof detalhe === 'string' && detalhe.trim() ? detalhe.trim() : '—',
+    });
+  }
+  return t(`erro.${codigo}`);
 }

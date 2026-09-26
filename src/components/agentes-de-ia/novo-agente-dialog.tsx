@@ -85,7 +85,7 @@ export function NovoAgenteDialog({ aberto, aoFechar }: { aberto: boolean; aoFech
       });
       const corpo = (await res.json().catch(() => ({}))) as { agente?: { id: string }; code?: string };
       if (!res.ok || !corpo.agente) {
-        toast.error(textoDoCodigo(t, corpo.code));
+        toast.error(textoDoCodigo(t, corpo.code, (corpo as { error?: string }).error));
         return;
       }
       aoFechar();
@@ -153,8 +153,11 @@ export function NovoAgenteDialog({ aberto, aoFechar }: { aberto: boolean; aoFech
                   type="button"
                   onClick={() => setProvedor(p)}
                   aria-pressed={provedor === p}
+                  // Sem chave o agente nasceria mudo: o servidor recusa
+                  // (`provedor_sem_chave`) e a tela nem oferece.
+                  disabled={chaves !== null && !chaves[p]}
                   className={cn(
-                    'rounded-md border px-2.5 py-1 text-xs',
+                    'rounded-md border px-2.5 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-50',
                     provedor === p ? 'border-primary bg-primary/5 text-foreground' : 'border-border text-muted-foreground'
                   )}
                 >
@@ -175,7 +178,7 @@ export function NovoAgenteDialog({ aberto, aoFechar }: { aberto: boolean; aoFech
           </Button>
           <Button
             onClick={() => void criar()}
-            disabled={salvando || (!nome.trim() && !nomePadrao)}
+            disabled={salvando || (!nome.trim() && !nomePadrao) || (chaves !== null && !chaves[provedor])}
           >
             {t('novo.criar')}
           </Button>

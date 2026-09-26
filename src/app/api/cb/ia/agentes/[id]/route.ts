@@ -17,7 +17,11 @@ export async function GET(_request: Request, { params }: Contexto) {
     const { id } = await params
     if (!UUID.test(id)) return NextResponse.json({ error: 'nao_encontrado', code: 'nao_encontrado' }, { status: 404 })
     const agente = await obterAgente(ctx.accountId, id)
-    if (!agente) return NextResponse.json({ error: 'nao_encontrado', code: 'nao_encontrado' }, { status: 404 })
+    // Arquivado é "não existe mais" para a tela: aberto pela URL, ele
+    // pareceria vivo e editável, e todo botão responderia 404 (revisão da F1b).
+    if (!agente || agente.arquivadoEm) {
+      return NextResponse.json({ error: 'nao_encontrado', code: 'nao_encontrado' }, { status: 404 })
+    }
     return NextResponse.json({ agente })
   } catch (err) {
     return respostaDoErro(err) ?? toErrorResponse(err)

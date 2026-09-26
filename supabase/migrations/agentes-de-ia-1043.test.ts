@@ -49,5 +49,18 @@ describe('1043 — agentes de IA', () => {
     expect(/REVOKE\s+EXECUTE\s+ON\s+FUNCTION\s+public\.cb_ia_uso\([^)]*\)\s+FROM\s+PUBLIC,\s*anon,\s*authenticated/i.test(semComentarios)).toBe(true);
     expect(/GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+public\.cb_ia_uso\([^)]*\)\s+TO\s+service_role/i.test(semComentarios)).toBe(true);
     expect(/REVOKE\s+EXECUTE\s+ON\s+FUNCTION\s+cb_tira_conexao_dos_agentes_de_ia\(\)\s+FROM\s+PUBLIC,\s*anon,\s*authenticated/i.test(semComentarios)).toBe(true);
+    expect(/REVOKE\s+EXECUTE\s+ON\s+FUNCTION\s+cb_ia_agente_arquivado_sai_das_passagens\(\)\s+FROM\s+PUBLIC,\s*anon,\s*authenticated/i.test(semComentarios)).toBe(true);
+  });
+
+  it('a soma do uso tem ordem TOTAL (as cinco chaves do grupo): a rota pagina sobre ela', () => {
+    const corpo = semComentarios.match(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.cb_ia_uso[\s\S]*?\$\$;/i)?.[0] ?? '';
+    expect(/GROUP\s+BY\s+1,\s*2,\s*3,\s*5,\s*6\s+ORDER\s+BY\s+1,\s*2,\s*3,\s*5,\s*6\s*;/i.test(corpo)).toBe(true);
+  });
+
+  it('arquivar tira o agente das passagens dos outros NO BANCO, num UPDATE só (array_remove)', () => {
+    expect(/AFTER\s+UPDATE\s+OF\s+arquivado_em\s+ON\s+cb_ia_agentes/i.test(semComentarios)).toBe(true);
+    const funcao = semComentarios.match(/FUNCTION\s+cb_ia_agente_arquivado_sai_das_passagens[\s\S]*?\$\$;/i)?.[0] ?? '';
+    expect(/array_remove\s*\(\s*pode_passar_para\s*,\s*NEW\.id\s*\)/i.test(funcao)).toBe(true);
+    expect(/account_id\s*=\s*NEW\.account_id/i.test(funcao)).toBe(true);
   });
 });

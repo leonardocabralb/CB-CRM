@@ -7,6 +7,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { AiPlayground } from '@/components/agents/ai-playground';
 import { AiUsageCard } from '@/components/agents/ai-usage';
 import { AiConfig } from '@/components/settings/ai-config';
+import { RequireRole } from '@/components/auth/require-role';
 import { useAuth } from '@/hooks/use-auth';
 import { canEditSettings } from '@/lib/auth/roles';
 
@@ -20,7 +21,8 @@ type Tab = 'playground' | 'setup' | 'usage';
  */
 export default function AgentsLegadoPage() {
   const t = useTranslations('Agents');
-  const { accountRole } = useAuth();
+  const tIa = useTranslations('IaAgentes');
+  const { accountRole, profileLoading } = useAuth();
   const canViewUsage = accountRole ? canEditSettings(accountRole) : false;
   const [tab, setTab] = useState<Tab>('playground');
   const [decided, setDecided] = useState(false);
@@ -56,6 +58,18 @@ export default function AgentsLegadoPage() {
         {t('description')}
       </p>
 
+      {/* Só administrador (D14): o prompt do assistente e o Playground não
+          saem para quem não é — o mesmo corte da lista de agentes. */}
+      <RequireRole
+        min="admin"
+        fallback={
+          profileLoading ? (
+            <div className="mt-6 h-32 animate-pulse rounded-lg border border-border bg-muted/40" />
+          ) : (
+            <p className="mt-6 text-sm text-muted-foreground">{tIa('somenteAdmin')}</p>
+          )
+        }
+      >
       {decided && (
         <Tabs
           value={tab}
@@ -91,6 +105,7 @@ export default function AgentsLegadoPage() {
           )}
         </Tabs>
       )}
+      </RequireRole>
     </div>
   );
 }

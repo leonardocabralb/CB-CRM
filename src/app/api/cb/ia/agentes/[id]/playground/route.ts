@@ -16,6 +16,8 @@ const MAX_TURNOS = 20
 
 type Contexto = { params: Promise<{ id: string }> }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 /**
  * POST /api/cb/ia/agentes/[id]/playground  `{ messages }`  (admin, D14)
  *
@@ -30,8 +32,13 @@ export async function POST(request: Request, { params }: Contexto) {
     const ctx = await requireRole('admin')
     const limite = checkRateLimit(`cb:ia-playground:${ctx.userId}`, RATE_LIMITS.aiDraft)
     if (!limite.success) return rateLimitResponse(limite)
+    // E o teto da CONTA, como o rascunho: vários administradores testando ao
+    // mesmo tempo gastam a mesma chave.
+    const daConta = checkRateLimit(`cb:ia-playground-conta:${ctx.accountId}`, RATE_LIMITS.aiDraftAccount)
+    if (!daConta.success) return rateLimitResponse(daConta)
 
     const { id } = await params
+    if (!UUID.test(id)) return NextResponse.json({ error: 'nao_encontrado', code: 'nao_encontrado' }, { status: 404 })
     const agente = await obterAgente(ctx.accountId, id)
     if (!agente || agente.arquivadoEm) {
       return NextResponse.json({ error: 'nao_encontrado', code: 'nao_encontrado' }, { status: 404 })

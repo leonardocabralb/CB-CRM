@@ -433,8 +433,11 @@ function Cartao({
                 />
               ) : null}
 
+              {/* O "Assistente da conta" deste cartão é o anterior, que mora em
+                  /agents/legado até a F2: na lista nova, ligar um agente não
+                  liga o rascunho nem a resposta automática. */}
               <Link
-                href="/agents"
+                href="/agents/legado"
                 className={buttonVariants({ variant: 'outline', size: 'sm' })}
               >
                 {t('abrirAgentes')}
@@ -536,9 +539,14 @@ function FormularioDaChave({
 
   // O que deixa de funcionar sem a chave: os módulos que hoje a usam (os
   // marcados `sem_chave` já não a usam).
-  const paraSemChave = cartao.usos
-    .filter((u) => u.indisponivel !== 'sem_chave')
-    .map((u) => t(`modulo.${u.modulo}`));
+  // Os agentes de IA deste provedor também param (o Playground deles, e na F2
+  // a resposta ao cliente).
+  const paraSemChave = [
+    ...cartao.usos
+      .filter((u) => u.indisponivel !== 'sem_chave')
+      .map((u) => t(`modulo.${u.modulo}`)),
+    ...cartao.agentesDeIa.map((a) => t('agenteDeIaNaConfirmacao', { nome: a.nome })),
+  ];
 
   async function salvar() {
     if (!chave.trim()) return;

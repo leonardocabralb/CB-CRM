@@ -10,7 +10,7 @@
 // ligado ainda NÃO responde cliente (F2) — a tela diz isso.
 // ============================================================
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -27,6 +27,7 @@ import { fetchAccountMembersOrNull, memberLabel } from '@/lib/account/members';
 import { AI_PROVIDER_MODELS } from '@/lib/ai/defaults';
 import type { AiProvider } from '@/lib/ai/types';
 import { LIMITES } from '@/lib/ia-agentes/agente';
+import { ehInstagram } from '@/lib/cb-channels/transporte';
 import { cn } from '@/lib/utils';
 import type { AccountMember } from '@/types';
 import {
@@ -38,21 +39,27 @@ import {
   type IaAgente,
 } from './tipos';
 import { textoDoCodigo } from './textos';
+import { alteracoesDoRascunho, lerTeto } from './rascunho';
 
 const DIAS = [1, 2, 3, 4, 5, 6, 0] as const;
 
 export function ConfiguracaoDoAgente({
   agente,
   aoSalvar,
+  aoMudarNaoSalvo,
 }: {
   agente: IaAgente;
   aoSalvar: (novo: IaAgente) => void;
+  /** Avisa o detalhe se há alteração não salva (a aba Playground diz isso). */
+  aoMudarNaoSalvo?: (naoSalvo: boolean) => void;
 }) {
   const t = useTranslations('IaAgentes');
   const router = useRouter();
   const { channels, loading: canaisCarregando } = useChannels();
   const [chaves, setChaves] = useState<ChavesDaConta>(null);
   const [membros, setMembros] = useState<AccountMember[] | null>(null);
+  // `membros` nulo depois da carga = a equipe NÃO carregou (não "sem ninguém").
+  const [equipeLida, setEquipeLida] = useState(false);
   const [outros, setOutros] = useState<IaAgente[] | null>(null);
 
   const [nome, setNome] = useState(agente.nome);
@@ -64,7 +71,9 @@ export function ConfiguracaoDoAgente({
   const [ativo, setAtivo] = useState(agente.ativo);
   const [conexoes, setConexoes] = useState<string[]>(agente.conexoes);
   const [horario, setHorario] = useState<Horario | null>(agente.horario);
-  const [teto, setTeto] = useState(agente.tetoRespostas);
+  // O teto é TEXTO enquanto se digita: corrigido a cada tecla, apagar virava
+  // "1" e digitar "5" dava "15" (revisão da F1b). Lido só para salvar.
+  const [tetoTexto, setTetoTexto] = useState(String(agente.tetoRespostas));
   const [transferirPara, setTransferirPara] = useState<string | null>(agente.transferirPara);
   const [podePassarPara, setPodePassarPara] = useState<string[]>(agente.podePassarPara);
   const [salvando, setSalvando] = useState(false);
@@ -83,6 +92,7 @@ export function ConfiguracaoDoAgente({
       if (!vivo) return;
       setChaves(c);
       setMembros(m);
+      setEquipeLida(true);
       setOutros(lista ? lista.filter((a) => a.id !== agente.id) : null);
     })();
     return () => {
@@ -94,26 +104,49 @@ export function ConfiguracaoDoAgente({
     return lista.includes(id) ? lista.filter((x) => x !== id) : [...lista, id];
   }
 
+  const teto = lerTeto(tetoTexto, LIMITES.tetoMin, LIMITES.tetoMax);
+  // Só o que MUDOU vai no PATCH (e é o que diz "há alteração não salva").
+  const alteracoes = useMemo(
+    () =>
+      alteracoesDoRascunho(agente, {
+        nome,
+        descricao,
+        instrucoes,
+        regras,
+        provedor,
+        modelo,
+        ativo,
+        conexoes,
+        horario,
+        tetoRespostas: teto ?? agente.tetoRespostas,
+        transferirPara,
+        podePassarPara,
+      }),
+    [agente, nome, descricao, instrucoes, regras, provedor, modelo, ativo, conexoes, horario, teto, transferirPara, podePassarPara]
+  );
+  const naoSalvo = Object.keys(alteracoes).length > 0 || teto === null;
+
+  useEffect(() => {
+    aoMudarNaoSalvo?.(naoSalvo);
+  }, [naoSalvo, aoMudarNaoSalvo]);
+
+  // O destino da transferência que não está na equipe: a pessoa saiu (ou a
+  // equipe não carregou). A opção fica visível com o aviso, em vez de o
+  // <select> mostrar "Fila" sobre um valor que não é a fila.
+  const transferenciaForaDaEquipe =
+    transferirPara !== null && membros !== null && !membros.some((m) => m.user_id === transferirPara);
+
+  // Conexões oferecidas: só WhatsApp (no Instagram o agente não responde).
+  const conexoesOferecidas = channels.filter((c) => !ehInstagram(c));
+
   async function salvar() {
+    if (teto === null || Object.keys(alteracoes).length === 0) return;
     setSalvando(true);
     try {
       const res = await fetch(`/api/cb/ia/agentes/${agente.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nome,
-          descricao,
-          instrucoes,
-          regras,
-          provedor,
-          modelo,
-          ativo,
-          conexoes,
-          horario,
-          teto_respostas: teto,
-          transferir_para: transferirPara,
-          pode_passar_para: podePassarPara,
-        }),
+        body: JSON.stringify(alteracoes),
       });
       const corpo = (await res.json().catch(() => ({}))) as { agente?: IaAgente; code?: string };
       if (!res.ok || !corpo.agente) {
@@ -234,13 +267,16 @@ export function ConfiguracaoDoAgente({
               key={p}
               type="button"
               aria-pressed={provedor === p}
+              // Provedor sem chave não se escolhe (o agente nasceria mudo); o
+              // que já está salvo continua clicável, para a tela não travar.
+              disabled={chaves !== null && !chaves[p] && p !== agente.provedor}
               onClick={() => {
                 if (p === provedor) return;
                 setProvedor(p);
                 setModelo(AI_PROVIDER_MODELS[p][0]);
               }}
               className={cn(
-                'rounded-md border px-2.5 py-1 text-xs',
+                'rounded-md border px-2.5 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-50',
                 provedor === p ? 'border-primary bg-primary/5 text-foreground' : 'border-border text-muted-foreground'
               )}
             >
@@ -267,11 +303,14 @@ export function ConfiguracaoDoAgente({
       <section className="space-y-3">
         <h3 className="text-sm font-semibold text-foreground">{t('campo.conexoes')}</h3>
         <p className="text-xs text-muted-foreground">{t('campo.conexoesDica')}</p>
+        {conexoesOferecidas.length < channels.length ? (
+          <p className="text-xs text-muted-foreground">{t('campo.conexoesSoWhatsApp')}</p>
+        ) : null}
         {canaisCarregando ? (
           <div className="h-10 animate-pulse rounded-md bg-muted/40" />
         ) : (
           <div className="grid gap-2 sm:grid-cols-2">
-            {channels.map((c) => (
+            {conexoesOferecidas.map((c) => (
               <label key={c.id} className="flex min-w-0 items-center gap-2 text-sm">
                 <Checkbox
                   checked={conexoes.includes(c.id)}
@@ -348,12 +387,15 @@ export function ConfiguracaoDoAgente({
               min={LIMITES.tetoMin}
               max={LIMITES.tetoMax}
               className="w-24"
-              value={teto}
-              onChange={(e) =>
-                setTeto(Math.min(LIMITES.tetoMax, Math.max(LIMITES.tetoMin, Number(e.target.value) || LIMITES.tetoMin)))
-              }
+              value={tetoTexto}
+              aria-invalid={teto === null}
+              onChange={(e) => setTetoTexto(e.target.value)}
             />
-            <p className="text-xs text-muted-foreground">{t('campo.tetoDica')}</p>
+            {teto === null ? (
+              <p className="text-xs text-red-700 dark:text-red-300">{t('campo.tetoInvalido')}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">{t('campo.tetoDica')}</p>
+            )}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="ag-transf">{t('campo.transferirPara')}</Label>
@@ -364,12 +406,25 @@ export function ConfiguracaoDoAgente({
               onChange={(e) => setTransferirPara(e.target.value || null)}
             >
               <option value="">{t('campo.fila')}</option>
+              {/* O valor guardado que não está na lista aparece como ele é —
+                  sem isto o navegador marcava "Fila" sobre ele. */}
+              {transferirPara !== null && membros === null ? (
+                <option value={transferirPara}>{equipeLida ? '—' : t('campo.membroNaoCarregado')}</option>
+              ) : null}
+              {transferenciaForaDaEquipe ? (
+                <option value={transferirPara ?? ''}>{t('campo.foraDaEquipe')}</option>
+              ) : null}
               {(membros ?? []).map((m) => (
                 <option key={m.user_id} value={m.user_id}>
                   {memberLabel(m)}
                 </option>
               ))}
             </select>
+            {transferenciaForaDaEquipe ? (
+              <p className="text-xs text-amber-700 dark:text-amber-300">{t('campo.foraDaEquipeDica')}</p>
+            ) : equipeLida && membros === null ? (
+              <p className="text-xs text-amber-700 dark:text-amber-300">{t('campo.equipeNaoCarregou')}</p>
+            ) : null}
           </div>
         </div>
         <div className="space-y-2">
@@ -414,7 +469,10 @@ export function ConfiguracaoDoAgente({
             <Trash2 className="size-4" /> {t('config.arquivar')}
           </Button>
         )}
-        <Button onClick={() => void salvar()} disabled={salvando || !nome.trim() || !modelo.trim()}>
+        <Button
+          onClick={() => void salvar()}
+          disabled={salvando || !nome.trim() || !modelo.trim() || teto === null || !naoSalvo}
+        >
           {t('config.salvar')}
         </Button>
       </div>

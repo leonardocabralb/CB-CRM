@@ -8,6 +8,8 @@
 // ============================================================
 
 import { supabaseAdmin } from '@/lib/ai/admin-client'
+import { ehInstagram } from '@/lib/cb-channels/transporte'
+import { lerEstado } from '@/lib/ia-chaves/repo'
 
 import {
   COLUNAS_DO_AGENTE,
@@ -26,6 +28,8 @@ export class ErroDoAgente extends Error {
       | 'agente_de_outra_conta'
       | 'membro_de_outra_conta'
       | 'passar_para_si'
+      | 'provedor_sem_chave'
+      | 'conexao_instagram'
       | 'banco',
     mensagem: string,
   ) {
@@ -64,7 +68,10 @@ export async function obterAgente(accountId: string, id: string): Promise<IaAgen
 /**
  * Confere que os ids da alteração são DESTA conta: conexões, agentes para
  * quem passar e o membro da transferência. Array sem FK e escrita em service
- * role: sem a conferência, um id de outra conta seria gravado.
+ * role: sem a conferência, um id de outra conta seria gravado. E mais duas
+ * regras do plano (5.9): o provedor ESCOLHIDO tem de ter chave (senão o
+ * agente nasce mudo, sem aviso), e conexão do Instagram não entra — lá o robô
+ * não responde (D1 do Instagram).
  */
 async function conferirReferencias(
   accountId: string,
@@ -72,15 +79,29 @@ async function conferirReferencias(
   proprioId: string | null,
 ): Promise<void> {
   const db = supabaseAdmin()
+  if (a.provedor) {
+    let estado: Awaited<ReturnType<typeof lerEstado>>
+    try {
+      estado = await lerEstado(accountId)
+    } catch (err) {
+      throw new ErroDoAgente('banco', err instanceof Error ? err.message : String(err))
+    }
+    if (!estado.some((e) => e.provedor === a.provedor && e.existe)) {
+      throw new ErroDoAgente('provedor_sem_chave', 'o provedor escolhido não tem chave')
+    }
+  }
   if (a.conexoes && a.conexoes.length > 0) {
     const { data, error } = await db
       .from('cb_channels')
-      .select('id')
+      .select('id, kind')
       .eq('account_id', accountId)
       .in('id', a.conexoes)
     if (error) throw new ErroDoAgente('banco', error.message)
     if ((data ?? []).length !== a.conexoes.length) {
       throw new ErroDoAgente('conexao_de_outra_conta', 'conexão que não é desta conta')
+    }
+    if ((data ?? []).some((c) => ehInstagram(c as { kind: string | null }))) {
+      throw new ErroDoAgente('conexao_instagram', 'o agente não atende no Instagram')
     }
   }
   if (a.podePassarPara && a.podePassarPara.length > 0) {
@@ -165,8 +186,9 @@ export async function atualizarAgente(
 }
 
 /**
- * Apagar é ARQUIVAR (o uso antigo mantém o nome). Desliga o agente e o tira
- * das listas "pode passar para" dos outros agentes da conta.
+ * Apagar é ARQUIVAR (o uso antigo mantém o nome). Desliga o agente; quem o
+ * tira das listas "pode passar para" dos outros agentes é um GATILHO da 1043,
+ * num UPDATE só (ler e regravar o array aqui perderia uma edição concorrente).
  */
 export async function arquivarAgente(accountId: string, userId: string, id: string): Promise<void> {
   const db = supabaseAdmin()
@@ -181,23 +203,4 @@ export async function arquivarAgente(accountId: string, userId: string, id: stri
     .maybeSingle()
   if (error) throw new ErroDoAgente('banco', error.message)
   if (!data) throw new ErroDoAgente('nao_encontrado', 'agente não encontrado')
-
-  const { data: outros, error: erroOutros } = await db
-    .from('cb_ia_agentes')
-    .select('id, pode_passar_para')
-    .eq('account_id', accountId)
-    .contains('pode_passar_para', [id])
-  if (erroOutros) {
-    console.error('[ia-agentes] limpeza do "passar para" falhou:', erroOutros.message)
-    return
-  }
-  for (const o of outros ?? []) {
-    const lista = (o.pode_passar_para as string[]).filter((x) => x !== id)
-    const { error: e } = await db
-      .from('cb_ia_agentes')
-      .update({ pode_passar_para: lista, updated_at: agora })
-      .eq('account_id', accountId)
-      .eq('id', o.id as string)
-    if (e) console.error('[ia-agentes] limpeza do "passar para" falhou:', e.message)
-  }
 }

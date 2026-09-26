@@ -36,13 +36,19 @@ export interface Soma {
   dolar: number | null
   /** R$ pela cotação de hoje; `null` sem cotação ou sem preço. */
   reais: number | null
+  /** Parte do grupo usou modelo SEM preço: o custo é só do resto. */
+  parcial: boolean
 }
 
 export interface UsoDoAgente {
   iaAgenteId: string | null
   nome: string | null
+  /** O agente foi arquivado (quem preenche é a rota, com a lista atual). */
+  arquivado: boolean
   producao: Soma
   teste: Soma
+  /** "provedor/modelo" sem preço usados POR ESTE agente — não os da conta. */
+  semPreco: string[]
 }
 
 export interface ResumoDoUso {
@@ -55,7 +61,7 @@ export interface ResumoDoUso {
 }
 
 function vazia(): Soma {
-  return { chamadas: 0, tokensEntrada: 0, tokensSaida: 0, tokensTotal: 0, dolar: null, reais: null }
+  return { chamadas: 0, tokensEntrada: 0, tokensSaida: 0, tokensTotal: 0, dolar: null, reais: null, parcial: false }
 }
 
 function somar(s: Soma, l: LinhaDeUso, dolar: number | null): void {
@@ -64,6 +70,7 @@ function somar(s: Soma, l: LinhaDeUso, dolar: number | null): void {
   s.tokensSaida += l.tokensSaida
   s.tokensTotal += l.tokensTotal
   if (dolar !== null) s.dolar = (s.dolar ?? 0) + dolar
+  else if (l.tokensTotal > 0) s.parcial = true
 }
 
 function comReais(s: Soma, cotacao: number | null): Soma {
@@ -73,7 +80,7 @@ function comReais(s: Soma, cotacao: number | null): Soma {
 export function resumirUso(linhas: LinhaDeUso[], cotacao: number | null): ResumoDoUso {
   const total = vazia()
   const porModo = new Map<string, Soma>()
-  const porAgente = new Map<string, UsoDoAgente>()
+  const porAgente = new Map<string, UsoDoAgente & { semPrecoSet: Set<string> }>()
   const porDia = new Map<string, Soma>()
   const semPreco = new Set<string>()
 
@@ -102,12 +109,16 @@ export function resumirUso(linhas: LinhaDeUso[], cotacao: number | null): Resumo
         porAgente.set(chave, {
           iaAgenteId: l.iaAgenteId,
           nome: l.iaAgenteNome,
+          arquivado: false,
           producao: vazia(),
           teste: vazia(),
+          semPreco: [],
+          semPrecoSet: new Set(),
         })
       }
       const a = porAgente.get(chave)!
       if (!a.nome && l.iaAgenteNome) a.nome = l.iaAgenteNome
+      if (dolar === null && l.tokensTotal > 0) a.semPrecoSet.add(`${l.provedor}/${l.modelo}`)
       somar(l.modo === 'agente' ? a.producao : a.teste, l, dolar)
     }
   }
@@ -115,10 +126,11 @@ export function resumirUso(linhas: LinhaDeUso[], cotacao: number | null): Resumo
   return {
     total: comReais(total, cotacao),
     porModo: Object.fromEntries([...porModo].map(([m, s]) => [m, comReais(s, cotacao)])),
-    porAgente: [...porAgente.values()].map((a) => ({
+    porAgente: [...porAgente.values()].map(({ semPrecoSet, ...a }) => ({
       ...a,
       producao: comReais(a.producao, cotacao),
       teste: comReais(a.teste, cotacao),
+      semPreco: [...semPrecoSet].sort(),
     })),
     porDia: [...porDia]
       .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
