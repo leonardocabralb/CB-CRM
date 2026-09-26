@@ -862,8 +862,11 @@ nome da época em que foram aplicadas.
   conferência reprova. ⚠️ ROLLBACK: depois que houver robô salvo com o nó,
   NÃO voltar a imagem do app para uma anterior a este PR — o motor antigo
   encerra o run como `failed` (`unknown_node_type`) e o editor antigo quebra
-  ao desenhar o nó (`NODE_META` sem a entrada). ⏳ **A APLICAR** — quem
-  aplicar preenche aqui a data, o histórico e a conferência no catálogo.
+  ao desenhar o nó (`NODE_META` sem a entrada). Aplicada em 26/09/2026 pela
+  Management API (histórico `20260926232121`), depois do replay verde do CI e
+  ANTES do merge do PR #314, com autorização do operador; conferida no
+  catálogo (UM CHECK sobre `node_type`, os doze tipos com `move_deal_stage`,
+  zero linhas em `flow_nodes` — a conferência não deixou sobra).
 
 ## Notas do histórico
 
