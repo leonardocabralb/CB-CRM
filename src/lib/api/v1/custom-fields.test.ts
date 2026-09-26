@@ -98,9 +98,48 @@ describe('prepararEscritaPorChave', () => {
     });
   });
 
-  it('"" e null LIMPAM (viram \'\' — o upsert compartilhado deleta)', () => {
-    const r = prepararEscritaPorChave(fields, { utm_source: '', fbclid: null });
-    expect(r).toEqual({ ok: true, porId: { 'id-utm': '', 'id-fb': '' } });
+  it('"" e null NÃO MEXEM no campo — o Make manda null para resposta não dada (26/09/2026)', () => {
+    // Até 26/09 os dois LIMPAVAM, e o Typebot da iMotion, que manda todas as
+    // variáveis a cada passo, apagava as respostas de quem recomeçava.
+    const r = prepararEscritaPorChave(fields, {
+      utm_source: '',
+      fbclid: null,
+      data_da_proposta: '2026-08-30T14:00:00-03:00',
+    });
+    expect(r).toEqual({ ok: true, porId: { 'id-data': '2026-08-30T17:00:00.000Z' } });
+    // Tudo vazio: nada a escrever, e não é erro (a rota responde 200).
+    expect(prepararEscritaPorChave(fields, { utm_source: null, fbclid: '' })).toEqual({
+      ok: true,
+      porId: {},
+    });
+  });
+
+  it('`clear` é a ÚNICA forma de apagar — vira \'\', que o upsert compartilhado deleta', () => {
+    const r = prepararEscritaPorChave(fields, { utm_source: 'facebook' }, [
+      'fbclid',
+      'fbclid',
+      'data_da_proposta',
+    ]);
+    expect(r).toEqual({
+      ok: true,
+      porId: { 'id-utm': 'facebook', 'id-fb': '', 'id-data': '' },
+    });
+  });
+
+  it('`clear` com chave desconhecida ou com a mesma chave escrita em `values` é ERRO', () => {
+    expect(prepararEscritaPorChave(fields, {}, ['utm_sorce'])).toMatchObject({
+      ok: false,
+      desconhecidas: ['utm_sorce'],
+    });
+    // Contradição: gravar e apagar a mesma chave. Nada é escrito.
+    expect(
+      prepararEscritaPorChave(fields, { utm_source: 'facebook' }, ['utm_source'])
+    ).toMatchObject({ ok: false, conflitantes: ['utm_source'] });
+    // Valor VAZIO ao lado do `clear` não é contradição: o vazio não mexe.
+    expect(prepararEscritaPorChave(fields, { utm_source: null }, ['utm_source'])).toEqual({
+      ok: true,
+      porId: { 'id-utm': '' },
+    });
   });
 
   it('chave desconhecida é ERRO com a lista — typo do n8n aparece na 1ª chamada', () => {
@@ -111,6 +150,7 @@ describe('prepararEscritaPorChave', () => {
       invalidas: [],
       datasInvalidas: [],
       longas: [],
+      conflitantes: [],
     });
   });
 
@@ -136,13 +176,11 @@ describe('prepararEscritaPorChave', () => {
       ok: true,
       porId: { 'id-data': '2026-08-30T17:00:00.000Z' },
     });
-    // Limpar não passa pela validação: null/'' seguem limpando campo de data.
-    expect(prepararEscritaPorChave(fields, { data_da_proposta: null })).toEqual(
-      {
-        ok: true,
-        porId: { 'id-data': '' },
-      }
-    );
+    // Apagar não passa pela validação de data.
+    expect(prepararEscritaPorChave(fields, {}, ['data_da_proposta'])).toEqual({
+      ok: true,
+      porId: { 'id-data': '' },
+    });
   });
 
   it('valor acima de MAX_VALOR é erro de tamanho (nada de blob em coluna TEXT)', () => {
@@ -155,10 +193,10 @@ describe('prepararEscritaPorChave', () => {
     });
   });
 
-  it('só espaços também limpa — o trim esvazia antes do teste de vazio', () => {
+  it('só espaços também não mexe — o trim esvazia antes do teste de vazio', () => {
     expect(prepararEscritaPorChave(fields, { utm_source: '   ' })).toEqual({
       ok: true,
-      porId: { 'id-utm': '' },
+      porId: {},
     });
   });
 
@@ -170,6 +208,7 @@ describe('prepararEscritaPorChave', () => {
       invalidas: ['utm_source'],
       datasInvalidas: [],
       longas: [],
+      conflitantes: [],
     });
   });
 });

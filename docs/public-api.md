@@ -297,7 +297,8 @@ there is a `400 bad_request`.
 Create a contact. Scope: `contacts:write`. `phone` is required (read as in
 [Phone numbers](#phone-numbers));
 `name`, `email`, `company`, and `tags` (an array of tag names or tag ids
-from `GET /api/v1/tags`; new names are created) are optional. **Find-or-create
+from `GET /api/v1/tags`; new names are created) are optional. Text is
+trimmed, and an empty `name` falls back to the phone number. **Find-or-create
 by phone:** an existing match returns `200` with the existing contact; a
 new contact returns `201`. The response body is the serialized contact
 (same shape as the list rows above).
@@ -337,7 +338,9 @@ array, is a `400 bad_request` — never silently dropped. `tags: null` means
 ### `GET` / `PATCH /api/v1/contacts/{id}`
 
 Read or update one contact. Scopes: `contacts:read` / `contacts:write`.
-`PATCH` updates only the fields you send (`name`, `email`, `company`);
+`PATCH` updates only the fields you send (`name`, `email`, `company`).
+Text is trimmed; a string that is empty (or only spaces) **leaves the
+field alone**, and `null` clears it;
 pass `tags` (an array of tag names or tag ids from `GET /api/v1/tags`) to
 **replace** the contact's tags — with the same rules as `POST /contacts`
 above: an unknown tag id is a `400 unknown_tag_ids` and nothing is
@@ -473,8 +476,13 @@ you how the dashboard renders it; `datetime` values are ISO-8601 UTC).
 An empty value is always `null` on the wire, no matter which writer
 left it empty.
 
-`PATCH` writes by key. `""`, `null` (or a whitespace-only string)
-**clears** a value. Numbers and booleans are stringified. Values are
+`PATCH` writes by key. `""`, `null` or a whitespace-only string
+**leaves the value alone** — so a flow that sends every variable on
+every step (unanswered ones empty) never wipes an earlier answer; a
+body where every value is empty changes nothing and still answers
+`200`. To **clear** a value, list its key in `clear` (an array of keys);
+a key in `clear` must exist, and the same key with a value in `values`
+AND in `clear` is a `400`. Numbers and booleans are stringified. Values are
 capped at **4000 characters**. `datetime` fields only accept an
 ISO-8601 instant **with an explicit offset** (`2026-08-30T14:00:00-03:00`
 or `…Z`) and are stored normalized to UTC — anything else is a `400`,
@@ -487,9 +495,15 @@ surface on the first call, not months later. Response = the post-write
 `GET` payload (note this means a write-only key sees the catalogue and
 current values in the response of its own writes).
 
-```json
-{ "values": { "utm_source": "facebook", "fbclid": "IwAR…", "utm_term": null } }
+```jsonc
+{
+  "values": { "utm_source": "facebook", "fbclid": "IwAR…", "utm_term": null }, // utm_term: untouched
+  "clear": ["utm_content"]                                                     // optional — deletes it
+}
 ```
+
+> Until 26/09/2026 `""` and `null` in `values` cleared the value. They no
+> longer do: clearing is `clear`, and only `clear`.
 
 ### `GET /api/v1/conversations`
 

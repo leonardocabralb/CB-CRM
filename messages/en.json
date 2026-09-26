@@ -4047,7 +4047,7 @@
         },
         "campo": {
           "titulo": "Fill in a custom field",
-          "texto": "By the field's key; empty or <code>null</code> clears the value. Scope <code>custom_fields:write</code>."
+          "texto": "By the field's key. Empty or <code>null</code> leaves the value alone; to clear it, list the key in <code>clear</code>. Scope <code>custom_fields:write</code>."
         },
         "mensagem": {
           "titulo": "Send a message",

@@ -100,12 +100,21 @@ export async function PATCH(
     // is updated only when its key is PRESENT (so omitted fields are
     // untouched); `null` clears it, a string sets it, and any other
     // type is a 400 rather than a silently-ignored no-op.
+    //
+    // ⚠️ Texto é APARADO, e texto que fica VAZIO não mexe no campo (decisão
+    // do operador, 26/09/2026). O Make monta o corpo como `"{{variável}}"`:
+    // a resposta ainda não dada chegava como `""` e apagava o dado, e o nome
+    // digitado com espaço no fim ("ALINI ") passava por cima do que o
+    // Calendly tinha fixado sem ele. Limpar de propósito continua sendo `null`.
     const updates: Record<string, unknown> = {};
     for (const field of ['name', 'email', 'company'] as const) {
       if (!(field in body)) continue;
       const value = body[field];
-      if (value === null || typeof value === 'string') {
-        updates[field] = value;
+      if (value === null) {
+        updates[field] = null;
+      } else if (typeof value === 'string') {
+        const aparado = value.trim();
+        if (aparado !== '') updates[field] = aparado;
       } else {
         return fail('bad_request', `'${field}' must be a string or null`, 400);
       }
