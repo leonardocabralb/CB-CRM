@@ -61,7 +61,7 @@ vi.mock('@/lib/ai/admin-client', () => ({
     }),
   }),
 }))
-let agentesDaConta: { provedor: string; modelo: string }[] = []
+let agentesDaConta: { provedor: string; modelo: string; ativo: boolean }[] = []
 vi.mock('@/lib/ia-agentes/repo', () => ({
   listarAgentes: vi.fn(async () => agentesDaConta),
 }))
@@ -212,5 +212,24 @@ describe('PUT /api/cb/ia/chaves — as linhas POR CONEXÃO também contam (Codex
     ]
     await PUT(pedido('gemini'))
     expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-a'])
+  })
+})
+
+describe('PUT /api/cb/ia/chaves — agente desligado e o teto de modelos (Codex, #295)', () => {
+  it('agente DESLIGADO não conta', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: null }
+    agentesDaConta = [{ provedor: 'gemini', modelo: 'gemini-desligado', ativo: false }]
+    await PUT(pedido('gemini'))
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-a'])
+  })
+
+  it('confere no máximo 5 modelos; os demais voltam no aviso', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'm1', radar_model: null }
+    agentesDaConta = ['m2', 'm3', 'm4', 'm5', 'm6', 'm7'].map((modelo) => ({ provedor: 'gemini', modelo, ativo: true }))
+    const res = await PUT(pedido('gemini'))
+    const corpo = (await res.json()) as { avisos: string[]; naoConferidos: string[] }
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['m1', 'm2', 'm3', 'm4', 'm5'])
+    expect(corpo.avisos).toContain('modelos_nao_conferidos')
+    expect(corpo.naoConferidos).toEqual(['m6', 'm7'])
   })
 })

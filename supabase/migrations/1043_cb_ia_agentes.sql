@@ -38,6 +38,12 @@
 --     herdava o modelo do assistente, e a tela de Agentes deixa de editá-lo.
 --  6. `cb_ia_uso`: a soma do uso no BANCO (a rota antiga lia linhas e o
 --     PostgREST cortava em 1000 sem avisar).
+--  7. A leitura de `ai_configs` passa a ser só de ADMINISTRADOR (Codex, #295):
+--     a linha guarda o `system_prompt` do assistente legado, e a regra da 0029
+--     deixava qualquer membro lê-lo direto pelo PostgREST — a rota esconder o
+--     campo não fechava nada. Quem não é admin e precisa da configuração (a
+--     faixa de IA da conversa e o rascunho) lê pelo SERVIDOR, com a conta
+--     conferida na sessão.
 --
 -- Aditiva: aplicar ANTES do deploy. Idempotente. `anon` sem nada;
 -- `service_role` com tudo, POR ESCRITO.
@@ -176,6 +182,13 @@ UPDATE ai_configs
    AND model IS NOT NULL
    AND btrim(model) <> '';
 
+-- 7) Só administrador lê a configuração (e o prompt) direto do banco. Na forma
+-- da 1032 (a conta perguntada UMA vez por consulta), com o papel mínimo.
+ALTER POLICY ai_configs_select ON public.ai_configs
+ USING (
+  (account_id = ANY (ARRAY( SELECT public.cb_contas_do_usuario('admin'::public.account_role_enum))))
+ );
+
 -- ---------------------------------------------------------------------------
 -- 6) A soma do uso no banco
 -- ---------------------------------------------------------------------------
@@ -278,6 +291,15 @@ BEGIN
        AND check_clause LIKE '%agente_teste%'
   ) THEN
     RAISE EXCEPTION '1043: o CHECK de mode não aceita agente_teste — o uso do Playground sumiria calado';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+     WHERE schemaname = 'public' AND tablename = 'ai_configs'
+       AND policyname = 'ai_configs_select'
+       AND qual LIKE '%cb_contas_do_usuario(''admin''%'
+  ) THEN
+    RAISE EXCEPTION '1043: ai_configs ainda legível por qualquer membro (o prompt do assistente)';
   END IF;
 
   -- A função de soma é CHAMADA (o corpo só é analisado quando roda): numa

@@ -27,6 +27,14 @@ describe('1043 — agentes de IA', () => {
     expect(/REVOKE\s+ALL\s+ON\s+TABLE\s+cb_ia_agentes\s+FROM\s+PUBLIC,\s*anon,\s*authenticated/i.test(semComentarios)).toBe(true);
   });
 
+  it('ai_configs (o prompt do assistente legado) passa a ser lida só por administrador (Codex, #295)', () => {
+    expect(
+      /ALTER\s+POLICY\s+ai_configs_select\s+ON\s+public\.ai_configs\s+USING\s*\(\s*\(\s*account_id\s*=\s*ANY\s*\(\s*ARRAY\s*\(\s*SELECT\s+public\.cb_contas_do_usuario\s*\(\s*'admin'::public\.account_role_enum\s*\)\s*\)\s*\)\s*\)\s*\)/i.test(
+        semComentarios,
+      ),
+    ).toBe(true);
+  });
+
   it('nome único entre os NÃO arquivados, sem distinguir maiúsculas', () => {
     expect(
       /CREATE\s+UNIQUE\s+INDEX[^;]*ON\s+cb_ia_agentes\s*\(\s*account_id\s*,\s*lower\s*\(\s*btrim\s*\(\s*nome\s*\)\s*\)\s*\)\s*WHERE\s+arquivado_em\s+IS\s+NULL/i.test(

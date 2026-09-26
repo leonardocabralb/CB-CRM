@@ -9,6 +9,7 @@ import { lerChave, lerEstado } from '@/lib/ia-chaves/repo'
 import { validateAiCredentials } from '@/lib/ai/validate'
 import { AiError, mensagemSeguraDeAiError, type AiProvider } from '@/lib/ai/types'
 import { hasMinRole } from '@/lib/auth/roles'
+import { supabaseAdmin } from '@/lib/ai/admin-client'
 import { encrypt } from '@/lib/whatsapp/encryption'
 
 function bad(message: string) {
@@ -29,9 +30,13 @@ function bad(message: string) {
  */
 export async function GET() {
   try {
-    const { supabase, accountId, role } = await getCurrentAccount()
+    const { accountId, role } = await getCurrentAccount()
 
-    const { data, error } = await supabase
+    // ⚠️ Pelo SERVIÇO, com a conta da sessão: desde a 1043 a regra de leitura
+    // de `ai_configs` é só de administrador (o prompt vivia legível pelo
+    // PostgREST), e a faixa de IA da conversa chama esta rota para qualquer
+    // membro. Quem decide o que sai é o papel, logo abaixo.
+    const { data, error } = await supabaseAdmin()
       .from('ai_configs')
       .select(
         'provider, model, radar_model, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id',
