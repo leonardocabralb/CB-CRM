@@ -45,6 +45,8 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
 - **Recuperada sem telefone** (1010): `sem-telefone/` — modo `nova` vai pelo
   caminho normal; `tardia`/`historica` por `tardia.ts`/`historica.ts`.
 - **Grupo**: `src/lib/cb-groups/persist.ts`.
+- **Ligação** (1044): `src/lib/whatsapp/ligacoes/registrar.ts` — a faixa da
+  ligação no fio, sem texto e sem motor; regras próprias em `ligacoes.md`.
 - **Núcleo de envio**: `sendMessageToConversation` (`send-message.ts`) —
   compositor, ficha, agendada e API v1. Broadcast, fluxo, automação e IA NÃO
   passam por ele, e é assim que ficam de fora das regras de "gente".
@@ -62,8 +64,9 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
   INSERT da mensagem**, antes de prévia/canal/entrega. Quem decide "está
   encerrada?" é o BANCO (UPDATE condicional), nunca o status lido no começo da
   requisição — um encerramento no meio deixaria a mensagem nova fora da caixa.
-  Seis chamadores: Meta, `persistInboundMessage`, `persistDeviceMessage`, núcleo
-  de envio, Instagram e `tardia.ts` (só via `entregar.ts`). ⚠️ GRUPO NÃO
+  Sete chamadores: Meta, `persistInboundMessage`, `persistDeviceMessage`, núcleo
+  de envio, Instagram, `tardia.ts` (só via `entregar.ts`) e a ligação
+  (`ligacoes/registrar.ts`). ⚠️ GRUPO NÃO
   REABRE com mensagem no grupo (`persist.ts` não toca `status`). Broadcast,
   fluxo, automação e IA não reabrem (um disparo para 500 encerradas devolveria
   as 500). Pino `reopen.chamadores.test.ts`.
@@ -79,7 +82,8 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
   - `aguardando_desde` NÃO é devolvida na reabertura (acenderia "em atraso"
     sobre cliente já respondido).
 - ⚠️⚠️ **Quem abre negócio: `routeContactToPipeline`** em Meta, `persistInboundMessage`,
-  `persistDeviceMessage`, núcleo de envio e Instagram. No núcleo, via
+  `persistDeviceMessage`, núcleo de envio, Instagram e a ligação (decisão do
+  operador: número novo que liga vira card). No núcleo, via
   `supabaseAdmin()`: sob a RLS do operador um `agent` deixaria de abrir card em
   silêncio. Gatilho por ESTADO ("o contato já tem card?"). Abrir conversa não
   cria negócio (decisão do operador): o card nasce no primeiro envio. ⚠️ O
@@ -90,7 +94,8 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
   vez. Pino `pipeline-routing.chamadores.test.ts` (default-deny).
 - ⚠️⚠️ **`cancelarEsperasPorResposta` ANTES de `dispatchInboundToFlows`**, sem
   olhar `flowConsumed`, SÓ nos dois caminhos de CLIENTE do WhatsApp (Meta e
-  `persistInboundMessage`). Depois do despacho, a mensagem cancelaria a espera
+  `persistInboundMessage`) — e na ligação, perdida ou atendida (o cliente
+  procurou o escritório; ali não há despacho de motor). Depois do despacho, a mensagem cancelaria a espera
   da automação que ela mesma iniciou. Celular, grupo, Instagram e robô ficam
   de fora por decisão ("a mensagem de QUEM para a sequência?"). Pino
   `parar-se-responder.chamadores.test.ts` (ordem + default-deny).
@@ -102,7 +107,7 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
   tardia também (mediriam horas de atraso numa conexão sadia). A escrita é
   cercada no WHERE — só avança, carimbo no futuro recusado; detalhes em
   `canais.md`.
-- **`followConversationChannel`** nos quatro. No celular pareado é o que aponta
+- **`followConversationChannel`** nos quatro, e na ligação. No celular pareado é o que aponta
   a conversa para o número por onde a EQUIPE falou: sem ele o CRM responderia
   pelo canal padrão.
 - ⚠️⚠️ **Nome do perfil do WhatsApp**: o UPDATE que troca o nome leva
@@ -221,10 +226,12 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
   motivo, e recibo posterior não o apaga. Pinos `route.recibo.test.ts` (as duas
   rotas), `recibo-da-meta.test.ts`, `escada-de-status.test.ts`.
 - ⚠️ Recibo de DISPARO só é reconhecido quando o destinatário JÁ tem o wamid.
-  No disparo pela tela, o wamid é gravado quando o lote de 10 volta ao
-  navegador; o recibo que chega antes espera os 7 s como mensagem comum e se
-  perde para a contagem da campanha. A perda é anterior à espera: aumentar a
-  pausa não conserta. Limite conhecido, não tratado.
+  No disparo pela tela, a rota do lote (`api/whatsapp/broadcast`) grava o
+  wamid NA HORA em que a Meta aceita cada envio (`anotarEnvio`); até a revisão
+  do PR #277 ele só chegava quando o lote de 10 voltava ao navegador, e o
+  recibo que chegasse antes se perdia. Para a fração de segundo entre o aceite
+  e a gravação, o recibo que não achou destinatário RECONFERE a cada tentativa
+  da espera de 7 s. `sent` não espera nem reconfere: a linha já nasce `sent`.
 - Consumidor novo de recibo repete escada E espera.
 
 ## Conteúdo e anexo na entrada

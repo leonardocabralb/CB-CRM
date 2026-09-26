@@ -18,8 +18,10 @@
 // fantasmas em 26/07). Daqui só sai telefone que veio de mensagem real.
 //
 // Sem índice em `messages.remote_jid_lid`, de propósito: esta consulta roda
-// só no caso raro (~5 por mês), e não se mexe em índice da tabela mais quente
-// do banco por isso.
+// só no caso raro (~5 por mês de mensagem sem telefone, mais a ligação da
+// 1044 — ~2 por ligação endereçada por LID), e não se mexe em índice da tabela
+// mais quente do banco por isso. Medido em 26/09/2026: 52 ms (varredura de
+// 88 mil linhas).
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -43,6 +45,21 @@ export async function resolverTelefoneDoLid(
   accountId: string,
   lidJid: string
 ): Promise<TelefoneDoLid | null> {
+  const consulta = await consultarTelefoneDoLid(db, accountId, lidJid);
+  return consulta === 'falhou' ? null : consulta;
+}
+
+/**
+ * A mesma pergunta, separando "nunca visto" (`null`) de "a consulta falhou"
+ * (`'falhou'`). Para quem NÃO retém: a ligação (1044) decide uma vez só, e
+ * gravar "sem telefone" sobre um soluço do banco afirmaria que o CRM não
+ * conhece um cliente que ele conhece. NUNCA lança.
+ */
+export async function consultarTelefoneDoLid(
+  db: SupabaseClient,
+  accountId: string,
+  lidJid: string
+): Promise<TelefoneDoLid | null | 'falhou'> {
   try {
     const { data, error } = await db
       .from('messages')
@@ -61,7 +78,7 @@ export async function resolverTelefoneDoLid(
 
     if (error) {
       console.error('[evolution/sem-telefone] resolver o LID falhou:', error.message);
-      return null;
+      return 'falhou';
     }
     // Grupo fica de fora EM JS, e não por filtro no embutido: mensagem de
     // grupo nem grava `remote_jid_lid` (e o `remote_jid` dela é `@g.us`), então
@@ -90,6 +107,6 @@ export async function resolverTelefoneDoLid(
       '[evolution/sem-telefone] resolver o LID falhou:',
       err instanceof Error ? err.message : err
     );
-    return null;
+    return 'falhou';
   }
 }

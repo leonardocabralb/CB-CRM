@@ -67,6 +67,11 @@ describe('DEFAULT-DENY: ninguém mais chama', () => {
   const PERMITIDOS = new Set([
     'app/api/whatsapp/webhook/route.ts',
     'lib/whatsapp/inbound-store.ts',
+    // A LIGAÇÃO do cliente (1044), perdida ou atendida: ele procurou o
+    // escritório. A segunda linha de defesa da retomada (`clienteRespondeuDesde`)
+    // já contaria a perdida — é linha do cliente —, e cancelar na hora é o que
+    // tira a espera da aba Automações em vez de deixá-la "próximo passo em 27 h".
+    'lib/whatsapp/ligacoes/registrar.ts',
   ])
 
   function arquivosDe(dir: string): string[] {
@@ -77,7 +82,7 @@ describe('DEFAULT-DENY: ninguém mais chama', () => {
     })
   }
 
-  it('só os dois caminhos de ingestão do WhatsApp', () => {
+  it('só os dois caminhos de ingestão do WhatsApp e a ligação', () => {
     const chamadores = arquivosDe(src)
       .map((cheio) => path.relative(src, cheio))
       .filter((rel) => rel !== 'lib/automations/parar-se-responder.ts')

@@ -19,13 +19,21 @@
 // pelo @ e comparava o telefone pelo texto cru). Aqui as duas regras
 // difíceis ficam testáveis: o ESCAPE do termo e as grafias do NONO DÍGITO.
 //
-// ⚠️ Uma diferença ASSUMIDA em relação ao `filtrarContatos`: o `ilike` do
+// ⚠️ O termo vai LITERAL, por `ramoContem` (`src/lib/postgrest/literal.ts`):
+// `imatch` com o texto escapado, entre as aspas do PostgREST. Até
+// 26/09/2026 era `ilike` com o escape do LIKE, e o PostgREST troca TODO `*`
+// de um padrão like/ilike por `%`: buscar "L*K*A" (um cliente real) trazia 37
+// fichas. Vírgula e parêntese continuam viajando inteiros dentro das aspas.
+//
+// ⚠️ Uma diferença ASSUMIDA em relação ao `filtrarContatos`: o `imatch` do
 // Postgres é indiferente à CAIXA, não ao ACENTO. Buscar "jose" não acha
 // "José" — o `unaccent` da casa vive no índice de `messages` (929), e
 // `contacts` não tem nada equivalente. É o mesmo comportamento da busca da
 // página de Contatos e do seletor da agenda; unificar isso é migration, não
 // carona daqui.
 // ============================================================
+
+import { ramoContem } from '@/lib/postgrest/literal';
 
 /**
  * Abaixo disto não se consulta. Com 12.980 contatos, uma letra devolve o
@@ -40,37 +48,6 @@ export const MIN_TERMO_DE_BUSCA = 2;
  * o corte silencioso volta, só que em 20 em vez de 1000.
  */
 export const TETO_DE_RESULTADOS = 20;
-
-/**
- * O termo dentro de um `.or()` do PostgREST.
- *
- * ⚠️ São DUAS camadas de escape, nesta ordem, e nenhuma é opcional:
- *
- *  1. o do LIKE (`\`, `%`, `_`) — sem ele, um `%` digitado casa a base
- *     inteira e um `_` casa qualquer caractere;
- *  2. o das aspas do PostgREST (`"` e `\`) — o valor viaja dentro da árvore
- *     do `.or()`, onde vírgula e parênteses são DELIMITADORES. "(27) 9283"
- *     sem aspas vira filtro malformado, o erro é descartado e a tela mente
- *     "nenhum cliente" (foi o que o seletor da agenda documentou ao ser
- *     escrito).
- *
- * A segunda camada dobra as barras que a primeira introduziu, e é isso
- * mesmo: o PostgREST desfaz `\\` em `\` antes de entregar ao `ilike`.
- *
- * ⚠️ A forma foi MEDIDA contra o PostgREST real em 20/09/2026 (anon, que a
- * RLS de `contacts` bloqueia — 200 com `[]`, nenhum dado de cliente lido),
- * e não suposta: o teste unitário só conhece a string que este módulo
- * escreve, e foi assim que o `storage.exists()` enganou esta casa. Oito
- * termos passaram, incluindo `silva, jr`, `(83) 98000-0016`, `50%`, `a_b`,
- * `o"brien` e `costa (filho) & cia`. O CONTROLE fecha a medição: o mesmo
- * `silva, jr` SEM as aspas volta **400 PGRST100 — "failed to parse logic
- * tree"**, que é o modo de falha que o seletor da agenda descreve (o erro
- * era descartado e a tela dizia "nenhum cliente").
- */
-export function paraIlike(valor: string): string {
-  const like = valor.replace(/[\\%_]/g, (c) => `\\${c}`);
-  return `"%${like.replace(/(["\\])/g, '\\$1')}%"`;
-}
 
 /**
  * As grafias do que foi DIGITADO que podem estar gravadas em
@@ -138,7 +115,7 @@ export function ramosDaBuscaDeContato(termo: string): string | null {
   const limpo = termo.trim();
   if (limpo.length < MIN_TERMO_DE_BUSCA) return null;
 
-  const ramos = [`name.ilike.${paraIlike(limpo)}`];
+  const ramos = [ramoContem('name', limpo)];
 
   // O @ conta como nome, como em `casaComContato`: a ficha que só existe no
   // Direct (989) ou que a Meta manda só com o nome de usuário do WhatsApp
@@ -146,8 +123,8 @@ export function ramosDaBuscaDeContato(termo: string): string | null {
   // conhece. O @ digitado é descartado — as colunas guardam sem ele.
   const arroba = limpo.replace(/^@/, '').trim();
   if (arroba) {
-    ramos.push(`wa_username.ilike.${paraIlike(arroba)}`);
-    ramos.push(`instagram_username.ilike.${paraIlike(arroba)}`);
+    ramos.push(ramoContem('wa_username', arroba));
+    ramos.push(ramoContem('instagram_username', arroba));
   }
 
   // ⚠️⚠️ Telefone casa contra `phone_normalized`, NUNCA contra `phone`.
@@ -162,7 +139,7 @@ export function ramosDaBuscaDeContato(termo: string): string | null {
   // (Achado do Codex no PR #231.)
   const digitos = limpo.replace(/\D/g, '');
   for (const grafia of variantesDoTermoTelefonico(digitos)) {
-    ramos.push(`phone_normalized.ilike.${paraIlike(grafia)}`);
+    ramos.push(ramoContem('phone_normalized', grafia));
   }
 
   return ramos.join(',');

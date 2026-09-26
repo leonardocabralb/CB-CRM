@@ -142,6 +142,12 @@ export interface ContactInput {
   company?: string | null;
 }
 
+/** Texto do corpo aparado; vazio (ou só espaços) vira `null`. */
+function aparadoOuNulo(v: string | null | undefined): string | null {
+  const t = v?.trim();
+  return t ? t : null;
+}
+
 /**
  * Find (by fuzzy phone match) or create a contact in `accountId`.
  * Returns the contact id and whether it was created. Reuses the shared
@@ -179,9 +185,12 @@ export async function findOrCreateContact(
       account_id: accountId,
       user_id: auditUserId,
       phone: sanitized,
-      name: input.name ?? sanitized,
-      email: input.email ?? null,
-      company: input.company ?? null,
+      // Aparados, e vazio vira ausente (26/09/2026): o Make manda o corpo
+      // como `"{{variável}}"`, e o nome "" nascia ficha sem nome nenhum — nem
+      // o telefone, que é a reserva — e "Cristiano " nascia com o espaço.
+      name: aparadoOuNulo(input.name) ?? sanitized,
+      email: aparadoOuNulo(input.email),
+      company: aparadoOuNulo(input.company),
     })
     .select('id')
     .single();

@@ -88,6 +88,16 @@ describe("comMensagemNova", () => {
     expect(c).toBe(base);
   });
 
+  it("ligação (1044) não tem texto: a prévia é o marcador que o banco grava, e a lista o traduz", () => {
+    const c = comMensagemNova(
+      base,
+      { created_at: "2026-09-23T18:05:00+00:00", content_text: undefined, content_type: "call" },
+      false,
+    );
+    expect(c.last_message_text).toBe("[call]");
+    expect(c.last_message_at).toBe("2026-09-23T18:05:00+00:00");
+  });
+
   it("a conversa aberta fica com zero não lidas", () => {
     const c = comMensagemNova(base, { created_at: "2026-09-23T18:05:00+00:00", content_text: "Oi" }, true);
     expect(c.unread_count).toBe(0);

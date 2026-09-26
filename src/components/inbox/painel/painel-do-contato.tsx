@@ -73,7 +73,6 @@ import type {
   Conversation,
 } from '@/types';
 import {
-  Mail,
   Copy,
   Check,
   User,
@@ -831,11 +830,12 @@ export function PainelDoContato({
           ? { de: prev.de, mapa: { ...prev.mapa, [fieldId]: valor.trim() } }
           : prev
       );
-      // O campo espelhado (1000): o gatilho já gravou o e-mail da FICHA. A
-      // linha com o envelope, logo acima nesta mesma aba, lê `contact.email`
-      // — sem o aviso à página, a tela mostrava dois e-mails diferentes para
-      // o mesmo cliente até recarregar (revisão do PR #210). A página casa o
-      // patch pelo id, então uma resposta atrasada não suja outro contato.
+      // O campo espelhado (1000): o gatilho já gravou o e-mail da FICHA. O
+      // estado da página guarda `contact.email` para quem mais o lê — sem o
+      // aviso, ele ficava com o e-mail velho até recarregar (revisão do PR
+      // #210; a linha do envelope que o exibia neste painel saiu em
+      // 26/09/2026). A página casa o patch pelo id, então uma resposta
+      // atrasada não suja outro contato.
       if (fieldId === campoDoEmail(customFields)) {
         onContactUpdated?.({
           id: contact.id,
@@ -1282,12 +1282,9 @@ export function PainelDoContato({
           <div className="border-border my-4 border-t" />
 
           <div className="space-y-1">
-            {contact.email && (
-              <div className="text-muted-foreground flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm">
-                <Mail className="h-4 w-4 shrink-0" />
-                <span className="truncate">{contact.email}</span>
-              </div>
-            )}
+            {/* A linha do e-mail morava aqui e SAIU (pedido do operador,
+                2026-09-26): o campo "E-mail" (espelhado, 1000) nos campos
+                personalizados já mostra e edita o mesmo valor — aqui era eco. */}
             {contact.company && (
               <div className="text-muted-foreground flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm">
                 <Building2 className="h-4 w-4 shrink-0" />
@@ -1299,9 +1296,7 @@ export function PainelDoContato({
                 troca o número — aqui era eco. */}
           </div>
 
-          {(contact.email || contact.company) && (
-            <div className="border-border my-4 border-t" />
-          )}
+          {contact.company && <div className="border-border my-4 border-t" />}
 
           {/* Etiquetas — clicar numa aplicada REMOVE; o "+" abre o catálogo
               da conta para aplicar. Criar etiqueta nova fica nas telas de

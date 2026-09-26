@@ -135,6 +135,9 @@ const EXCECOES_DECLARADAS = [
   // fatias de 200 grafias, e cada grafia casa no máximo UMA ficha (o índice
   // exato da 022) — cada resposta fica abaixo do teto de mil por construção.
   faixaDoModulo('fichasDoCsvNaBase'),
+  // A conferência das linhas de UM lote de envio que não gravaram: `.in()`
+  // sobre no máximo os `SEND_BATCH_SIZE` (10) ids daquele lote.
+  faixaDoModulo('situacaoDasLinhas'),
 ];
 
 /** Tabelas cuja leitura cresce com a base — todas passam do teto de 1000. */
