@@ -4040,7 +4040,7 @@
         },
         "campo": {
           "titulo": "Preencher um campo personalizado",
-          "texto": "Pela chave do campo; vazio ou <code>null</code> apaga o valor. Escopo <code>custom_fields:write</code>."
+          "texto": "Pela chave do campo. Vazio ou <code>null</code> não mexe no valor; para apagar, liste a chave em <code>clear</code>. Escopo <code>custom_fields:write</code>."
         },
         "mensagem": {
           "titulo": "Mandar uma mensagem",

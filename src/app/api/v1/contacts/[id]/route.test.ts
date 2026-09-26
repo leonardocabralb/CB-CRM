@@ -237,3 +237,49 @@ describe('`{id}` que não é UUID é 400, nunca o 500 do 22P02', () => {
     expect(helpers.getContactById).toHaveBeenCalledWith(expect.anything(), 'conta-1', ID);
   });
 });
+
+describe('PATCH /api/v1/contacts/{id} — texto aparado, e vazio não apaga (26/09/2026)', () => {
+  // O Make monta o corpo como `"{{variável}}"`: a resposta não dada chega
+  // como "", e o nome digitado com espaço no fim ("ALINI ") passava por cima
+  // do que o Calendly tinha fixado sem ele.
+  function capturarUpdate() {
+    const gravado: Record<string, unknown>[] = [];
+    helpers.from.mockImplementation(() => ({
+      update: (u: Record<string, unknown>) => {
+        gravado.push(u);
+        const cadeia = { eq: () => cadeia, then: (r: (v: unknown) => void) => r({ error: null }) };
+        return cadeia;
+      },
+    }) as never);
+    return gravado;
+  }
+
+  it('apara nome, e-mail e empresa', async () => {
+    const gravado = capturarUpdate();
+    const res = await patch(ID, { name: '  ALINI ', email: ' ana@x.com\n', company: ' ACME ' });
+    expect(res.status).toBe(200);
+    expect(gravado).toHaveLength(1);
+    expect(gravado[0]).toMatchObject({ name: 'ALINI', email: 'ana@x.com', company: 'ACME' });
+  });
+
+  it('texto vazio ou só de espaços NÃO mexe no campo — e sem nada a gravar, não há UPDATE', async () => {
+    const gravado = capturarUpdate();
+    const res = await patch(ID, { name: '', email: '   ' });
+    expect(res.status).toBe(200);
+    expect(gravado).toHaveLength(0);
+  });
+
+  it('vazio ao lado de valor: só o valor é gravado', async () => {
+    const gravado = capturarUpdate();
+    await patch(ID, { name: 'Maria Exemplo', email: '' });
+    expect(gravado).toHaveLength(1);
+    expect(gravado[0]).toHaveProperty('name', 'Maria Exemplo');
+    expect(gravado[0]).not.toHaveProperty('email');
+  });
+
+  it('`null` continua limpando — é o pedido explícito', async () => {
+    const gravado = capturarUpdate();
+    await patch(ID, { email: null });
+    expect(gravado[0]).toHaveProperty('email', null);
+  });
+});
