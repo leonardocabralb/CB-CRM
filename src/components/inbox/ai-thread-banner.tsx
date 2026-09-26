@@ -61,26 +61,51 @@ export function erroDaResposta(status: number, code: unknown): ErroDaFaixa {
 }
 
 /**
- * A pausa que a tela mostra: a do banco, salvo um clique ainda não confirmado
- * pelo realtime NESTA conversa. Derivada no render, nunca guardada por efeito
- * — o efeito passivo mostraria, por um quadro, a pausa da conversa anterior.
- * O clique vale enquanto o banco continuar dizendo o que dizia quando ele foi
- * dado (`base`); qualquer mudança no banco (o realtime confirmando, ou o
- * gatilho da 1044 pausando porque alguém respondeu) passa a mandar.
+ * Um clique na faixa que o realtime ainda não confirmou. `base` é o que o
+ * banco dizia NO CLIQUE; `pausada` é o que o clique pediu — `null` enquanto a
+ * rota não respondeu (a tela mostra o banco).
  */
 export interface CliqueOtimista {
   conversa: string;
   base: boolean;
-  pausada: boolean;
+  pausada: boolean | null;
 }
 
-export function pausadaNaTela(
-  otimista: CliqueOtimista | null,
+/**
+ * O clique ainda vale? Só na conversa em que foi dado e enquanto o banco
+ * disser o que dizia no clique. ⚠️ Deixou de valer, é DESCARTADO de vez (o
+ * componente o apaga no render): o banco que saiu do `base` — o realtime
+ * confirmando, o gatilho da 1044 pausando porque o advogado respondeu, outra
+ * aba retomando — e depois VOLTA ao mesmo valor é o banco mandando, nunca o
+ * clique velho. Comparar só o valor, sem descartar, fazia o clique voltar a
+ * mandar na tela nesse A→B→A: "respondendo automaticamente" numa conversa
+ * pausada, até recarregar. Trocar de conversa também descarta: a faixa não
+ * remonta, e ao voltar o banco daquela conversa pode ter andado e voltado.
+ */
+export function cliqueAindaVale(
+  clique: CliqueOtimista,
   conversationId: string,
   disabled: boolean,
 ): boolean {
-  if (otimista && otimista.conversa === conversationId && otimista.base === disabled) {
-    return otimista.pausada;
+  return clique.conversa === conversationId && clique.base === disabled;
+}
+
+/**
+ * A pausa que a tela mostra: a do banco, salvo um clique que a rota aceitou e
+ * que ainda vale. Derivada no render, nunca guardada por efeito — o efeito
+ * passivo mostraria, por um quadro, a pausa da conversa anterior.
+ */
+export function pausadaNaTela(
+  clique: CliqueOtimista | null,
+  conversationId: string,
+  disabled: boolean,
+): boolean {
+  if (
+    clique &&
+    clique.pausada !== null &&
+    cliqueAindaVale(clique, conversationId, disabled)
+  ) {
+    return clique.pausada;
   }
   return disabled;
 }
@@ -127,8 +152,20 @@ export function AiThreadBanner({
 }: AiThreadBannerProps) {
   const t = useTranslations("Inbox.aiBanner");
   const [busy, setBusy] = useState(false);
-  const [otimista, setOtimista] = useState<CliqueOtimista | null>(null);
-  const paused = pausadaNaTela(otimista, conversationId, disabled);
+  const [clique, setClique] = useState<CliqueOtimista | null>(null);
+  // Descartado DURANTE o render (o padrão "derived state" do react.dev, como
+  // no `media-viewer.tsx`), nunca num efeito: o React Compiler recusa setState
+  // síncrono em efeito, e o efeito passivo pintaria um quadro com o clique
+  // velho. Este render já mostra o banco (`pausadaNaTela` ignora o clique que
+  // não vale), e o React o refaz com `null` antes de pintar.
+  // ⚠️ O lint do compiler NÃO analisa este componente: o `finally` do `toggle`
+  // o faz desistir em silêncio (medido: nem o setState em efeito é acusado
+  // aqui). Lint verde neste arquivo não prova nada — quem prova é o teste da
+  // sequência de renders.
+  if (clique && !cliqueAindaVale(clique, conversationId, disabled)) {
+    setClique(null);
+  }
+  const paused = pausadaNaTela(clique, conversationId, disabled);
 
   // As chaves são LITERAIS (nunca montadas): o portão de i18n do CI só
   // confere chave escrita por extenso.
@@ -156,6 +193,17 @@ export function AiThreadBanner({
 
   const toggle = useCallback(
     async (pausar: boolean) => {
+      // A marca nasce no CLIQUE, com o banco de agora, e não na resposta: se
+      // o banco andar enquanto a rota responde (o realtime chega antes do
+      // HTTP, e o advogado pode responder no meio), o render a descarta, e a
+      // resposta não instala nada. Quem confere é a IDENTIDADE da marca.
+      const marca: CliqueOtimista = {
+        conversa: conversationId,
+        base: disabled,
+        pausada: null,
+      };
+      const soltar = (c: CliqueOtimista | null) => (c === marca ? null : c);
+      setClique(marca);
       setBusy(true);
       try {
         const res = await fetch(`/api/ai/autoreply/${conversationId}`, {
@@ -165,14 +213,16 @@ export function AiThreadBanner({
           body: JSON.stringify({ paused: pausar, assign_to_me: pausar }),
         });
         if (!res.ok) {
+          setClique(soltar);
           const j = await res.json().catch(() => ({}));
           toast.error(textoDoErro(erroDaResposta(res.status, j?.code)));
           return;
         }
-        setOtimista({ conversa: conversationId, base: disabled, pausada: pausar });
+        setClique((c) => (c === marca ? { ...marca, pausada: pausar } : c));
         onChange?.(patchDoClique(pausar, currentUserId));
         toast.success(pausar ? t("tookOver") : t("resumed"));
       } catch {
+        setClique(soltar);
         toast.error(t("networkError"));
       } finally {
         setBusy(false);

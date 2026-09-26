@@ -156,17 +156,28 @@ export async function aoChegarMensagemDoCliente(m: MensagemDoCliente): Promise<v
     if (decisao.via === 'entrada') {
       // O agente de entrada vira o ATIVO da conversa, pela mesma RPC da
       // automação (a D17 decidida no banco, com a conversa travada).
+      // ⚠️ SÓ SE A CONVERSA AINDA NÃO TEM AGENTE (`p_so_se_vazio`): a leitura
+      // acima é uma foto, e entre ela e a atribuição outra frente (a régua do
+      // Asaas, o passo "Atribuir agente" de uma automação) pode ter posto um
+      // especialista. A entrada é o recepcionista de quem ainda não tem
+      // ninguém — passar por cima tiraria a conversa do especialista em
+      // silêncio. A RPC confere na linha TRAVADA e devolve `ocupada` sem
+      // escrever nada; aí a entrada desiste, sem enfileirar (o agente que já
+      // está lá responde às próximas mensagens pela regra do agente ativo).
       const { data, error } = await db.rpc('cb_atribuir_agente_de_ia', {
         p_account_id: m.accountId,
         p_conversation_id: m.conversationId,
         p_ia_agente_id: decisao.agenteId,
         p_canal_id: canalId,
+        p_so_se_vazio: true,
       })
       if (error) {
         console.error('[ia-agentes] atribuir o agente de entrada falhou:', error.message)
         return
       }
       const resultado = (Array.isArray(data) ? data[0] : data) as { resultado?: string } | null
+      // Só `retomada` enfileira. `ocupada` (outra frente atribuiu no meio),
+      // as pausas, `agente_indisponivel` e `sem_conversa`: nada a responder.
       if (resultado?.resultado !== 'retomada') return
     }
 

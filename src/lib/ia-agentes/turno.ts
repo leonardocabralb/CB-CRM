@@ -24,6 +24,15 @@
 //    já está na fila.
 //  - A transferência não passa por cima de pausa que já existe
 //    (`transferirParaGente`): a de gente é a que a automação pode retomar.
+//  - A última palavra antes do envio é do BANCO (`cb_ia_reservar_envio`),
+//    numa escrita só: conversa aberta, sem pausa, mesmo agente, nenhum OUTRO
+//    turno pendente nesta conexão (a mensagem nova que chegou depois da
+//    conferência em JS) e nenhuma saída do robô/automação depois do gatilho.
+//  - A vaga do teto só é DEVOLVIDA quando o envio comprovadamente não saiu
+//    (`nadaSaiu`); o incerto a mantém.
+//  - Evento de funil ainda não drenado cuja etapa tem automação escutando
+//    REAGENDA o turno (a boas-vindas da etapa ainda vai sair), por até
+//    `JANELA_DO_AUDIO_MS` contada do gatilho (`funilAindaVaiFalar`).
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -43,6 +52,7 @@ import { lerChave } from '@/lib/ia-chaves/repo'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { transcreverAudio } from '@/lib/transcricao/transcrever'
 import { recusaComprovada } from '@/lib/automations/retentativa'
+import { etapaTemQuemFale } from '@/lib/automations/engine'
 
 import type { IaAgente } from './agente'
 import { lerConversaDaConexao } from './contexto'
@@ -354,6 +364,65 @@ async function haSaidaDoRoboDepois(
   return (data?.length ?? 0) > 0
 }
 
+/** Teto da leitura dos eventos de funil pendentes do contato. */
+const EVENTOS_PENDENTES_LIDOS = 20
+
+/**
+ * FALA ADIADA DO FUNIL NA RAJADA (E4). "Mover card" e "Criar negócio" (o
+ * roteador de funil inclusive) só gravam um evento em `cb_automation_events`;
+ * a automação de `deal_stage_changed` da etapa de destino — a boas-vindas —
+ * roda DEPOIS, no dreno do cron (até ~15 s). A entrada já conta essa fala
+ * para a mensagem que CRIOU o card (`etapaTemQuemFale`), mas a mensagem
+ * SEGUINTE da mesma rajada abre turno, e a resposta da IA sairia antes da
+ * boas-vindas. Então: há evento de funil deste CONTATO ainda não drenado
+ * (`processado_em` nulo) cuja etapa de destino tem quem escute? O turno
+ * REAGENDA (o mesmo desfecho do áudio), e na volta, drenado o evento, a
+ * saída da automação descarta o turno (`haSaidaDoRoboDepois`, e a reserva).
+ *
+ * ⚠️ Só dentro de `JANELA_DO_AUDIO_MS` contada do `gravada_em` do gatilho:
+ * passada a janela o dreno falhou, e o cliente não pode ficar sem resposta
+ * para sempre — segue (a reserva ainda recusa se a automação tiver falado).
+ * Fora da janela nem lê. Leitura que falha DENTRO dela = reagenda (a mesma
+ * régua de `etapaTemQuemFale`: na dúvida, a automação fala). Sem contato, não
+ * há evento a procurar. `true` = reagendar.
+ */
+async function funilAindaVaiFalar(
+  db: SupabaseClient,
+  turno: LinhaDoTurno,
+  conversa: Conversa,
+  gatilho: Gatilho,
+): Promise<boolean> {
+  if (!conversa.contact_id || !gatilho.gravada_em) return false
+  const gravada = Date.parse(gatilho.gravada_em)
+  if (!Number.isFinite(gravada) || Date.now() - gravada >= JANELA_DO_AUDIO_MS) return false
+  try {
+    const { data, error } = await db
+      .from('cb_automation_events')
+      .select('to_stage_id')
+      .eq('account_id', turno.account_id)
+      .eq('contact_id', conversa.contact_id)
+      .eq('tipo', 'deal_stage_changed')
+      .is('processado_em', null)
+      .limit(EVENTOS_PENDENTES_LIDOS)
+    if (error) {
+      console.error('[ia-agentes] leitura dos eventos de funil pendentes falhou (reagenda):', error.message)
+      return true
+    }
+    const etapas = new Set(
+      ((data ?? []) as Array<{ to_stage_id: string | null }>)
+        .map((e) => e.to_stage_id)
+        .filter((e): e is string => typeof e === 'string'),
+    )
+    for (const etapa of etapas) {
+      if (await etapaTemQuemFale(db, turno.account_id, etapa)) return true
+    }
+    return false
+  } catch (err) {
+    console.error('[ia-agentes] conferir a fala adiada do funil falhou (reagenda):', err)
+    return true
+  }
+}
+
 type Conferencia =
   | { ok: true; conversa: Conversa; agente: IaAgente }
   | { ok: false; desfecho: Desfecho }
@@ -361,8 +430,9 @@ type Conferencia =
 /**
  * A conversa continua sendo deste agente, sem pausa, sem mensagem mais nova,
  * sem resposta de gente nem do robô/automação, e o agente continua ligado e
- * dono da conexão? Roda antes de gerar e de novo antes de enviar (o advogado
- * pode ter respondido pelo celular no meio).
+ * dono da conexão? E nenhuma automação de funil ainda por falar (reagenda)?
+ * Roda antes de gerar e de novo antes de enviar (o advogado pode ter
+ * respondido pelo celular no meio).
  */
 async function conferir(
   db: SupabaseClient,
@@ -410,6 +480,11 @@ async function conferir(
   }
   if (await haSaidaDoRoboDepois(db, turno, gatilho)) {
     return { ok: false, desfecho: { status: 'descartado', erro: 'o robô ou uma automação respondeu' } }
+  }
+  // Depois da saída do robô, de propósito: a automação que JÁ falou descarta
+  // (final); a que ainda vai falar só adia.
+  if (await funilAindaVaiFalar(db, turno, conversa, gatilho)) {
+    return { ok: false, desfecho: { status: 'reagendar' } }
   }
   return { ok: true, conversa, agente }
 }
@@ -493,6 +568,52 @@ export function nadaSaiu(err: unknown, tentou: boolean): boolean {
   if (err instanceof CanalExigidoIndisponivelError) return true
   // A MESMA régua do motor (E4): as duas pontas não podem divergir.
   return recusaComprovada(err)
+}
+
+/** Tentativas da devolução da vaga (a escrita condicional perdeu a corrida). */
+const TENTATIVAS_DA_DEVOLUCAO = 3
+
+/**
+ * Devolve a vaga do teto que `cb_ia_reservar_envio` consumiu, quando o envio
+ * COMPROVADAMENTE não saiu (`nadaSaiu`). Sem isto, falhas repetidas de
+ * entrega (a conexão fora do ar, o número que a Evolution recusa) esgotavam o
+ * teto e transferiam a conversa sem a IA ter respondido nada (Codex, #292).
+ * O envio INCERTO não devolve: pode ter saído.
+ *
+ * ⚠️ O decremento é relativo (`greatest(ai_reply_count - 1, 0)`), mas o
+ * PostgREST não escreve expressão: a forma aqui é compare-and-swap — lê o
+ * contador e grava `lido - 1` SÓ se ele ainda for `lido`. Nunca a escrita
+ * absoluta sem a condição: outro escritor entre a leitura e a escrita (a
+ * atribuição que zera o contador, a reserva de outro turno) seria atropelado
+ * — o contador voltaria a um valor que ninguém escreveu. Perdida a corrida,
+ * relê e tenta de novo. Zero fica zero. Melhor esforço: erro vira log.
+ */
+async function devolverVaga(db: SupabaseClient, turno: LinhaDoTurno): Promise<void> {
+  try {
+    for (let i = 0; i < TENTATIVAS_DA_DEVOLUCAO; i++) {
+      const { data, error } = await db
+        .from('conversations')
+        .select('ai_reply_count')
+        .eq('id', turno.conversation_id)
+        .eq('account_id', turno.account_id)
+        .maybeSingle()
+      if (error) throw new Error(`leitura do contador falhou: ${error.message}`)
+      const lido = (data as { ai_reply_count?: unknown } | null)?.ai_reply_count
+      if (typeof lido !== 'number' || lido <= 0) return
+      const { data: escritas, error: erroEscrita } = await db
+        .from('conversations')
+        .update({ ai_reply_count: lido - 1 })
+        .eq('id', turno.conversation_id)
+        .eq('account_id', turno.account_id)
+        .eq('ai_reply_count', lido)
+        .select('id')
+      if (erroEscrita) throw new Error(`escrita do contador falhou: ${erroEscrita.message}`)
+      if ((escritas?.length ?? 0) > 0) return
+    }
+    console.error('[ia-agentes] devolver a vaga do teto desistiu (o contador não parou):', turno.id)
+  } catch (err) {
+    console.error('[ia-agentes] devolver a vaga do teto falhou:', turno.id, err)
+  }
 }
 
 function configDoAgente(agente: IaAgente, apiKey: string): AiConfig {
@@ -660,16 +781,32 @@ async function conduzir(
   // pausa por gente disputa pela trava da linha. Conferir aqui em JS e só
   // depois consumir a vaga deixava a resposta do advogado gravada no meio
   // passar (Codex, #292). Duas mensagens concorrentes não passam do teto.
+  // E, na mesma escrita: nenhum OUTRO turno pendente desta conversa e desta
+  // conexão (`p_turno_id`, `p_canal_id`) — a mensagem nova do cliente que
+  // chegou depois da última conferência não serializa na linha da conversa,
+  // e o turno pendente dela é a prova de que ela abre turno, pela régua da
+  // entrada — e nenhuma saída do robô/automação por esta conexão gravada
+  // depois do gatilho (`p_gatilho_gravada_em`).
   const { data: reserva, error: erroReserva } = await db.rpc('cb_ia_reservar_envio', {
     p_account_id: turno.account_id,
     p_conversation_id: turno.conversation_id,
     p_ia_agente_id: agente.id,
     p_max: agente.tetoRespostas,
+    p_turno_id: turno.id,
+    p_canal_id: turno.canal_id,
+    p_gatilho_gravada_em: gatilho.gravada_em,
   })
   if (erroReserva) return { status: 'falhou', erro: `reservar a resposta falhou: ${erroReserva.message}` }
   if (reserva === 'pausada') return { status: 'pausado_no_meio', erro: 'pausada antes do envio' }
   if (reserva === 'mudou') return { status: 'descartado', erro: 'a conversa mudou antes do envio' }
-  if (reserva !== 'ok') return { status: 'transferiu', motivo: 'teto' }
+  if (reserva === 'mais_nova') return { status: 'descartado', erro: 'mensagem mais nova do cliente antes do envio' }
+  if (reserva === 'robo_falou') {
+    return { status: 'descartado', erro: 'o robô ou uma automação respondeu antes do envio' }
+  }
+  if (reserva === 'teto') return { status: 'transferiu', motivo: 'teto' }
+  // Resultado que este código não conhece: nada sai, e nada é transferido —
+  // transferir por "teto" um motivo que não é teto pausaria a IA para sempre.
+  if (reserva !== 'ok') return { status: 'falhou', erro: `a reserva devolveu um resultado desconhecido: ${String(reserva)}` }
 
   try {
     const r = await engineSendText({
@@ -696,7 +833,12 @@ async function conduzir(
       return { status: 'respondeu', mensagemEnviadaId: err.providerMessageId, erro: err.message }
     }
     const detalhe = err instanceof Error ? err.message : String(err)
-    if (nadaSaiu(err, andamento.tentouEnviar)) return { status: 'falhou', erro: `envio recusado: ${detalhe}` }
+    if (nadaSaiu(err, andamento.tentouEnviar)) {
+      // Nada saiu: a vaga que a reserva (`ok`, logo acima) consumiu volta.
+      await devolverVaga(db, turno)
+      return { status: 'falhou', erro: `envio recusado: ${detalhe}` }
+    }
+    // Pode ter saído: a vaga fica gasta.
     return { status: 'incerto', erro: `não dá para saber se saiu: ${detalhe}` }
   }
 }

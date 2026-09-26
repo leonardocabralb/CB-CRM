@@ -501,13 +501,39 @@ describe('aoChegarMensagemDoCliente — agente de entrada', () => {
         // conexão: editado no meio, a conversa ficaria com um agente que não
         // responde aqui (regra 4) e a entrada não o substitui (regra 5).
         p_canal_id: CANAL,
+        // Só se a conversa ainda não tem agente (ver o teste da corrida).
+        p_so_se_vazio: true,
       }),
     )
     expect(banco.rpcChamadas[1].args).toEqual(expect.objectContaining({ p_ia_agente_id: ENTRADA }))
     expect(agendarTurno).toHaveBeenCalledTimes(1)
   })
 
-  it.each(['pausada_gente', 'pausada_mantida', 'agente_indisponivel', 'sem_conversa'])(
+  // A leitura da conversa é uma foto: entre ela e a atribuição, a régua do
+  // Asaas (ou um "Atribuir agente" de automação) pode pôr um ESPECIALISTA. A
+  // entrada não passa por cima dele. O dublê imita a RPC da 1044 com o
+  // contrato do `p_so_se_vazio`: com a conversa já tendo agente, devolve
+  // `ocupada` e não escreve nada; sem o parâmetro, sobrescreve (é o
+  // comportamento do passo da automação, que continua valendo para ela).
+  it('outra frente atribuiu um especialista entre a leitura e a atribuição: `ocupada`, o especialista fica e nada é enfileirado', async () => {
+    const ESPECIALISTA = 'ag-especialista'
+    banco.rpcs.cb_atribuir_agente_de_ia = ({ p_conversation_id, p_ia_agente_id, p_so_se_vazio }) => {
+      const c = banco.tabelas.conversations.find((x) => x.id === p_conversation_id)!
+      // A corrida: a régua atribuiu o especialista um instante antes.
+      c.ia_agente_id = ESPECIALISTA
+      if (p_so_se_vazio === true && c.ia_agente_id !== null) {
+        return { data: [{ resultado: 'ocupada', pausada_por: null }], error: null }
+      }
+      c.ia_agente_id = p_ia_agente_id
+      return { data: [{ resultado: 'retomada', pausada_por: null }], error: null }
+    }
+    await aoChegarMensagemDoCliente(msg())
+    expect(banco.tabelas.conversations[0].ia_agente_id).toBe(ESPECIALISTA)
+    expect(nomesDasRpcs()).toEqual(['cb_atribuir_agente_de_ia'])
+    expect(agendarTurno).not.toHaveBeenCalled()
+  })
+
+  it.each(['ocupada', 'pausada_gente', 'pausada_mantida', 'agente_indisponivel', 'sem_conversa'])(
     'a atribuição devolve `%s`: não enfileira',
     async (resultado) => {
       resultadoDaAtribuicao = { data: [{ resultado, pausada_por: null }], error: null }

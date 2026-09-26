@@ -26,6 +26,13 @@ function funcao(nome: string): string {
   return compacto.slice(abre, fecha);
 }
 
+// Do `create or replace function` até o `as $$`: parâmetros e atributos.
+function cabecalho(nome: string): string {
+  const ini = compacto.indexOf(`create or replace function ${nome}`);
+  expect(ini, nome).toBeGreaterThan(-1);
+  return compacto.slice(ini, compacto.indexOf('as $$', ini));
+}
+
 describe('1044 — a fila de turnos', () => {
   it('fechada ao navegador: RLS, nenhuma policy, as duas metades do REVOKE', () => {
     expect(compacto).toContain('alter table cb_ia_turnos enable row level security');
@@ -63,7 +70,7 @@ describe('1044 — a fila de turnos', () => {
     for (const f of [
       'public.cb_ia_enfileirar_turno(uuid, uuid, uuid, uuid, uuid, integer)',
       'public.cb_ia_reivindicar_turno(uuid)',
-      'public.cb_atribuir_agente_de_ia(uuid, uuid, uuid, uuid)',
+      'public.cb_atribuir_agente_de_ia(uuid, uuid, uuid, uuid, boolean)',
     ]) {
       expect(compacto).toContain(`revoke execute on function ${f} from public, anon, authenticated`);
       expect(compacto).toContain(`grant execute on function ${f} to service_role`);
@@ -98,6 +105,33 @@ describe('1044 — a D17 decide no BANCO (E12)', () => {
     expect(corpo).toMatch(/a\.arquivado_em is null and a\.ativo/);
     // E atende a conexão do disparo, quando ela vem (Codex, #292).
     expect(corpo).toContain('p_canal_id is null or p_canal_id = any (a.conexoes)');
+  });
+});
+
+describe('1044 — a ENTRADA só atribui conversa SEM agente (5.3, regra 5; Codex, #292)', () => {
+  it('o 5º parâmetro nasce falso: o passo da automação e a régua seguem trocando o agente', () => {
+    expect(cabecalho('public.cb_atribuir_agente_de_ia')).toContain('p_so_se_vazio boolean default false');
+  });
+
+  it('sem overload: as assinaturas antigas saem antes do CREATE', () => {
+    const drop = compacto.indexOf('drop function if exists public.cb_atribuir_agente_de_ia(uuid, uuid, uuid, uuid);');
+    expect(drop).toBeGreaterThan(-1);
+    expect(drop).toBeLessThan(compacto.indexOf('create or replace function public.cb_atribuir_agente_de_ia'));
+  });
+
+  it('ocupada: pergunta com a conversa TRAVADA e sai antes de qualquer escrita', () => {
+    const corpo = funcao('public.cb_atribuir_agente_de_ia');
+    const trava = corpo.indexOf('for update');
+    const ocupada = corpo.indexOf("if p_so_se_vazio and c.ia_agente_id is not null then return query select 'ocupada'::text, null::text; return;");
+    expect(trava).toBeGreaterThan(-1);
+    expect(ocupada).toBeGreaterThan(trava);
+    expect(ocupada).toBeLessThan(corpo.indexOf('update conversations'));
+  });
+
+  it('a conferência chama a entrada numa conversa com agente e cobra `ocupada`', () => {
+    const conferencia = compacto.slice(compacto.lastIndexOf('do $$'));
+    expect(conferencia).toContain('public.cb_atribuir_agente_de_ia(v_conta_ia, v_conv_ia, v_agente, null, true)');
+    expect(conferencia).toContain("if v_res <> 'ocupada' then");
   });
 });
 
@@ -153,11 +187,16 @@ describe('1044 — as FKs que o Postgres não indexa', () => {
     expect(compacto).toMatch(/cb_ia_turnos_conversa_idx on cb_ia_turnos \(conversation_id\);/);
   });
 
-  it('a conferência cobra os quatro no catálogo', () => {
+  it('a da conexão: índice PARCIAL (apagar a conexão faz o SET NULL de canal_id)', () => {
+    expect(compacto).toMatch(/cb_ia_turnos_canal_idx on cb_ia_turnos \(canal_id\) where canal_id is not null/);
+  });
+
+  it('a conferência cobra os cinco no catálogo', () => {
     for (const i of [
       'cb_ia_turnos_mensagem_gatilho_idx',
       'cb_ia_turnos_mensagem_inicial_idx',
       'cb_ia_turnos_conversa_idx',
+      'cb_ia_turnos_canal_idx',
       'ai_usage_log_turno_idx',
     ]) {
       expect(compacto).toContain(`'public.${i}'`);
@@ -250,7 +289,7 @@ describe('1044 — "respondido" e os gatilhos que a carga da 1033 cala PELO NOME
 
 describe('1044 — a reserva do envio (Codex, #292)', () => {
   it('teto, pausa, mesmo agente e conversa aberta NUMA escrita, com a conta', () => {
-    const corpo = funcao('cb_ia_reservar_envio');
+    const corpo = funcao('public.cb_ia_reservar_envio');
     expect(corpo).toContain('set ai_reply_count = ai_reply_count + 1');
     expect(corpo).toContain('and account_id = p_account_id');
     expect(corpo).toContain('and ia_agente_id = p_ia_agente_id');
@@ -259,13 +298,102 @@ describe('1044 — a reserva do envio (Codex, #292)', () => {
     expect(corpo).toContain('and ai_reply_count < p_max');
   });
 
-  it('só o service_role executa (as duas metades + o GRANT de volta)', () => {
-    expect(compacto).toContain(
-      'revoke execute on function public.cb_ia_reservar_envio(uuid, uuid, uuid, integer) from public, anon, authenticated;',
+  // A escrita condicional: do UPDATE até o `if found then return 'ok'`.
+  const escrita = () => {
+    const corpo = funcao('public.cb_ia_reservar_envio');
+    const ini = corpo.indexOf('update conversations set ai_reply_count = ai_reply_count + 1');
+    expect(ini).toBeGreaterThan(-1);
+    return corpo.slice(ini, corpo.indexOf("if found then return 'ok'", ini));
+  };
+
+  it('na MESMA escrita: nenhum OUTRO turno pendente desta conversa NESTA conexão (5.7)', () => {
+    const e = escrita();
+    expect(e).toContain('not exists ( select 1 from cb_ia_turnos t where t.conversation_id = p_conversation_id');
+    expect(e).toContain('t.canal_id is not distinct from p_canal_id');
+    expect(e).toContain("t.status = 'aguardando'");
+    expect(e).toContain('t.id is distinct from p_turno_id');
+  });
+
+  it('na MESMA escrita: nenhuma saída do robô/automação NESTA conexão gravada depois do gatilho (E10 b)', () => {
+    const e = escrita();
+    expect(e).toContain('not exists ( select 1 from messages m where m.conversation_id = p_conversation_id');
+    expect(e).toContain("m.sender_type = 'bot'");
+    // A resposta do PRÓPRIO agente não conta; a apagada também não.
+    expect(e).toContain('m.ia_agente_id is null');
+    expect(e).toContain('m.deleted_at is null');
+    expect(e).toContain('m.channel_id is not distinct from p_canal_id');
+    // Pela GRAVAÇÃO (relógio do banco), nunca pelo created_at do aparelho.
+    expect(e).toContain('m.gravada_em > p_gatilho_gravada_em');
+    expect(e).not.toContain('m.created_at');
+  });
+
+  it('trava a linha ANTES da escrita (a mesma trava do UPDATE) e classifica na ordem do contrato', () => {
+    const corpo = funcao('public.cb_ia_reservar_envio');
+    const trava = corpo.indexOf('for no key update');
+    expect(trava).toBeGreaterThan(-1);
+    expect(trava).toBeLessThan(corpo.indexOf('update conversations'));
+    const ordem = ['mudou', 'pausada', 'mais_nova', 'robo_falou', 'teto'].map((r) => corpo.indexOf(`return '${r}'`));
+    for (const i of ordem) expect(i).toBeGreaterThan(-1);
+    expect([...ordem].sort((a, b) => a - b)).toEqual(ordem);
+    // `teto` TRANSFERE para gente: só com o contador travado no teto, e a
+    // prova que sumiu entre a escrita e a leitura nunca vira `teto`.
+    expect(corpo).toContain("if c.ai_reply_count >= p_max then return 'teto'");
+    const depoisDoTeto = corpo.slice(corpo.indexOf("return 'teto'") + "return 'teto'".length);
+    expect(depoisDoTeto).not.toContain("'teto'");
+    expect(depoisDoTeto).toContain("return 'mais_nova'");
+  });
+
+  it('sem overload: a assinatura de 4 argumentos sai antes do CREATE', () => {
+    const drop = compacto.indexOf('drop function if exists public.cb_ia_reservar_envio(uuid, uuid, uuid, integer);');
+    expect(drop).toBeGreaterThan(-1);
+    expect(drop).toBeLessThan(compacto.indexOf('create or replace function public.cb_ia_reservar_envio'));
+    expect(cabecalho('public.cb_ia_reservar_envio')).toContain(
+      'p_max integer, p_turno_id uuid, p_canal_id uuid, p_gatilho_gravada_em timestamptz )',
     );
-    expect(compacto).toContain(
-      'grant execute on function public.cb_ia_reservar_envio(uuid, uuid, uuid, integer) to service_role;',
+  });
+
+  it('só o service_role executa (as duas metades + o GRANT de volta), e a conferência a CHAMA', () => {
+    const f = 'public.cb_ia_reservar_envio(uuid, uuid, uuid, integer, uuid, uuid, timestamptz)';
+    expect(compacto).toContain(`revoke execute on function ${f} from public, anon, authenticated;`);
+    expect(compacto).toContain(`grant execute on function ${f} to service_role;`);
+    expect(compacto).toContain(`'${f}'`);
+    const conferencia = compacto.slice(compacto.lastIndexOf('do $$'));
+    const subbloco = conferencia.slice(
+      conferencia.indexOf('set local role service_role'),
+      conferencia.indexOf("exception when sqlstate 'p1044'"),
     );
+    expect(subbloco).toContain(
+      'public.cb_ia_reservar_envio(v_conta_ia, v_conv_ia, v_agente, 2147483647, gen_random_uuid(), null, now())',
+    );
+    expect(subbloco).toContain("if v_res <> 'mais_nova' then");
+  });
+});
+
+describe('1044 — conexão apagada descarta os pendentes dela', () => {
+  it('gatilho BEFORE DELETE em cb_channels: roda antes do SET NULL da FK', () => {
+    expect(compacto).toContain(
+      'create trigger cb_channels_descarta_turnos_de_ia before delete on cb_channels for each row execute function cb_ia_descartar_turnos_da_conexao()',
+    );
+  });
+
+  it('só os `aguardando` daquela conexão viram `descartado`, com o motivo e a hora', () => {
+    const corpo = funcao('cb_ia_descartar_turnos_da_conexao');
+    expect(corpo).toContain("set status = 'descartado'");
+    expect(corpo).toContain("erro = 'conexão apagada'");
+    expect(corpo).toContain('terminado_em = now()');
+    expect(corpo).toContain('where canal_id = old.id');
+    expect(corpo).toContain("and status = 'aguardando'");
+    expect(corpo).toContain('return old');
+  });
+
+  it('SECURITY DEFINER com search_path, e fechada ao navegador (as duas metades)', () => {
+    const cab = cabecalho('cb_ia_descartar_turnos_da_conexao');
+    expect(cab).toContain('security definer');
+    expect(cab).toContain("set search_path to 'public'");
+    expect(compacto).toContain(
+      'revoke execute on function cb_ia_descartar_turnos_da_conexao() from public, anon, authenticated',
+    );
+    expect(compacto).toContain("'public.cb_ia_descartar_turnos_da_conexao()'");
   });
 });
 

@@ -311,12 +311,47 @@ function montarCenario(): void {
     Object.assign(t, { status: 'rodando', rodando_desde: new Date().toISOString() })
     return { data: [{ ...t }], error: null }
   }
-  // A reserva do envio (1044): conversa aberta, sem pausa, mesmo agente e
-  // abaixo do teto, conferidos e consumidos numa escrita só.
-  banco.rpcs.cb_ia_reservar_envio = ({ p_account_id, p_conversation_id, p_ia_agente_id, p_max }) => {
+  // A reserva do envio (1044): conversa aberta, sem pausa, mesmo agente,
+  // nenhum OUTRO turno pendente nesta conversa e conexão, nenhuma saída do
+  // robô/automação por esta conexão depois do gatilho, e abaixo do teto —
+  // conferidos e consumidos numa escrita só. A classificação da recusa segue
+  // a ordem do SQL: mudou, pausada, mais_nova, robo_falou, teto. Conexão e
+  // turno comparam por `IS NOT DISTINCT FROM` (nulo casa com nulo, como no
+  // SQL); gatilho nulo não confere a saída do robô.
+  banco.rpcs.cb_ia_reservar_envio = ({
+    p_account_id,
+    p_conversation_id,
+    p_ia_agente_id,
+    p_max,
+    p_turno_id,
+    p_canal_id,
+    p_gatilho_gravada_em,
+  }) => {
     const c = banco.tabelas.conversations.find((x) => x.id === p_conversation_id && x.account_id === p_account_id)
     if (!c || c.ia_agente_id !== p_ia_agente_id || c.status === 'closed') return { data: 'mudou', error: null }
     if (c.ai_autoreply_disabled) return { data: 'pausada', error: null }
+    const mesmo = (a: unknown, b: unknown) => (a ?? null) === (b ?? null)
+    const outroPendente = banco.tabelas.cb_ia_turnos.some(
+      (t) =>
+        t.conversation_id === p_conversation_id &&
+        mesmo(t.canal_id, p_canal_id) &&
+        t.status === 'aguardando' &&
+        !mesmo(t.id, p_turno_id),
+    )
+    if (outroPendente) return { data: 'mais_nova', error: null }
+    const roboFalou =
+      temValor(p_gatilho_gravada_em) &&
+      banco.tabelas.messages.some(
+        (m) =>
+          m.conversation_id === p_conversation_id &&
+          mesmo(m.channel_id, p_canal_id) &&
+          m.sender_type === 'bot' &&
+          (m.ia_agente_id ?? null) === null &&
+          (m.deleted_at ?? null) === null &&
+          temValor(m.gravada_em) &&
+          comparar(m.gravada_em, p_gatilho_gravada_em) > 0,
+      )
+    if (roboFalou) return { data: 'robo_falou', error: null }
     if ((c.ai_reply_count as number) >= (p_max as number)) return { data: 'teto', error: null }
     c.ai_reply_count = (c.ai_reply_count as number) + 1
     return { data: 'ok', error: null }
@@ -743,6 +778,113 @@ describe('executarTurno — horário, teto e limite', () => {
 })
 
 // ------------------------------------------------------------
+// A reserva do envio: a última palavra é do banco (Codex, #292)
+// ------------------------------------------------------------
+
+describe('executarTurno — a reserva confere turno pendente e saída do robô', () => {
+  /** Roda `antes` logo antes da reserva: depois da última conferência em JS. */
+  function antesDaReserva(antes: () => void): void {
+    const reservaReal = banco.rpcs.cb_ia_reservar_envio
+    banco.rpcs.cb_ia_reservar_envio = (args) => {
+      antes()
+      return reservaReal(args)
+    }
+  }
+
+  it('passa o turno, a conexão e o `gravada_em` do gatilho', async () => {
+    await executarTurno(TURNO)
+    expect(banco.rpcChamadas.find((c) => c.nome === 'cb_ia_reservar_envio')?.args).toEqual({
+      p_account_id: CONTA,
+      p_conversation_id: CONVERSA,
+      p_ia_agente_id: AGENTE,
+      p_max: 10,
+      p_turno_id: TURNO,
+      p_canal_id: CANAL,
+      p_gatilho_gravada_em: banco.tabelas.messages[0].gravada_em,
+    })
+  })
+
+  // A mensagem nova do cliente gravada DEPOIS da última conferência não
+  // serializa na linha da conversa: o turno dela, já na fila, é a prova.
+  it('a mensagem nova do cliente chega entre a última conferência e a reserva: descarta, nada sai, sem gastar vaga', async () => {
+    antesDaReserva(() => {
+      const agora = new Date().toISOString()
+      banco.tabelas.messages.push(mensagem({ id: 'msg-nova', message_id: 'wamid.nova', gravada_em: agora, created_at: agora }))
+      banco.tabelas.cb_ia_turnos.push({
+        ...turno(),
+        id: 'turno-novo',
+        status: 'aguardando',
+        rodando_desde: null,
+        mensagem_gatilho_id: 'msg-nova',
+        mensagem_inicial_id: 'msg-nova',
+        executar_apos: daquiMs(8_000),
+      })
+    })
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({ status: 'descartado', erro: 'mensagem mais nova do cliente antes do envio' })
+    expect(engineSendText).not.toHaveBeenCalled()
+    expect(conversa().ai_reply_count).toBe(0)
+    expect(notas()).toHaveLength(0)
+  })
+
+  it('a automação responde entre a última conferência e a reserva: descarta, nada sai, sem gastar vaga', async () => {
+    antesDaReserva(() => {
+      banco.tabelas.messages.push(
+        mensagem({ id: 'msg-automacao', sender_type: 'bot', gravada_em: new Date().toISOString() }),
+      )
+    })
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({ status: 'descartado', erro: 'o robô ou uma automação respondeu antes do envio' })
+    expect(engineSendText).not.toHaveBeenCalled()
+    expect(conversa().ai_reply_count).toBe(0)
+  })
+
+  it.each<[string, () => void]>([
+    [
+      'turno pendente de OUTRA conexão',
+      () =>
+        banco.tabelas.cb_ia_turnos.push({
+          ...turno(),
+          id: 'turno-b',
+          canal_id: OUTRO_CANAL,
+          status: 'aguardando',
+          rodando_desde: null,
+          executar_apos: daquiMs(8_000),
+        }),
+    ],
+    [
+      'saída do robô por OUTRA conexão',
+      () =>
+        banco.tabelas.messages.push(
+          mensagem({ id: 'msg-b', sender_type: 'bot', channel_id: OUTRO_CANAL, gravada_em: new Date().toISOString() }),
+        ),
+    ],
+    [
+      'saída do PRÓPRIO agente (bot com ia_agente_id)',
+      () =>
+        banco.tabelas.messages.push(
+          mensagem({ id: 'msg-ia', sender_type: 'bot', ia_agente_id: AGENTE, gravada_em: new Date().toISOString() }),
+        ),
+    ],
+  ])('%s não recusa a reserva', async (_rotulo, antes) => {
+    antesDaReserva(antes)
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    expect(engineSendText).toHaveBeenCalledTimes(1)
+  })
+
+  it('resultado que o código não conhece: falhou, nada sai e nada é transferido', async () => {
+    banco.rpcs.cb_ia_reservar_envio = () => ({ data: 'outra_coisa', error: null })
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('falhou')
+    expect(String(turno().erro)).toContain('outra_coisa')
+    expect(engineSendText).not.toHaveBeenCalled()
+    expect(conversa().ai_autoreply_disabled).toBe(false)
+    expect(notas()).toHaveLength(0)
+  })
+})
+
+// ------------------------------------------------------------
 // A transferência para gente
 // ------------------------------------------------------------
 
@@ -997,6 +1139,50 @@ describe('executarTurno — o envio', () => {
     expect(notas()).toHaveLength(0)
   })
 
+  // Nada saiu → a vaga que a reserva consumiu VOLTA; senão falhas repetidas
+  // de entrega esgotavam o teto e transferiam a conversa sem a IA ter
+  // respondido nada (Codex, #292).
+  it.each<[string, () => void]>([
+    ['recusa 4xx da Evolution', () => envioFalhaNoProvedor(new EvolutionApiError('número inválido', 400))],
+    ['recusa 4xx da Meta', () => envioFalhaNoProvedor(new MetaApiError('recusada', { httpStatus: 400 }))],
+    ['conexão exigida indisponível', () => vi.mocked(engineSendText).mockRejectedValue(new CanalExigidoIndisponivelError())],
+    ['erro antes do provedor', () => vi.mocked(engineSendText).mockRejectedValue(new Error('contact not found for this account'))],
+  ])('%s: a vaga do teto volta', async (_rotulo, falhar) => {
+    conversa().ai_reply_count = 3
+    falhar()
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('falhou')
+    // A reserva levou a 4; nada saiu, volta a 3.
+    expect(conversa().ai_reply_count).toBe(3)
+  })
+
+  it('a vaga devolvida nunca passa abaixo de zero (a atribuição zerou o contador no meio do envio)', async () => {
+    vi.mocked(engineSendText).mockImplementation(async (args) => {
+      args.antesDoProvedor?.()
+      conversa().ai_reply_count = 0
+      throw new EvolutionApiError('número inválido', 400)
+    })
+    await executarTurno(TURNO)
+    expect(conversa().ai_reply_count).toBe(0)
+  })
+
+  it('outro escritor muda o contador entre a leitura e a escrita da devolução: relê e devolve UMA vaga do valor novo', async () => {
+    let mexeu = false
+    vi.mocked(engineSendText).mockImplementation(async (args) => {
+      args.antesDoProvedor?.()
+      banco.antes = (tabela, op) => {
+        if (!mexeu && tabela === 'conversations' && op === 'update') {
+          mexeu = true
+          conversa().ai_reply_count = 5
+        }
+      }
+      throw new EvolutionApiError('número inválido', 400)
+    })
+    await executarTurno(TURNO)
+    expect(mexeu).toBe(true)
+    expect(conversa().ai_reply_count).toBe(4)
+  })
+
   it.each([
     ['5xx da Evolution', new EvolutionApiError('bad gateway', 502)],
     ['5xx da Meta', new MetaApiError('internal', { httpStatus: 500 })],
@@ -1009,6 +1195,8 @@ describe('executarTurno — o envio', () => {
     expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'transferencia' })
     expect(notas()).toHaveLength(1)
     expect(String(notas()[0].texto)).toContain('não dá para saber se a última resposta chegou')
+    // Pode ter saído: a vaga fica gasta.
+    expect(conversa().ai_reply_count).toBe(1)
   })
 
   it('incerto com a conversa já pausada por gente: o `incerto` fica (fala do envio), sem trocar a pausa nem anotar', async () => {
@@ -1113,6 +1301,135 @@ describe('executarTurno — o envio', () => {
     })
     await executarTurno(TURNO)
     expect(depoisDoAoSair).toBe('wamid.outro')
+  })
+})
+
+// ------------------------------------------------------------
+// A fala adiada do funil na rajada (E4)
+// ------------------------------------------------------------
+
+// A primeira mensagem criou o card (o roteador grava o evento de funil; a
+// boas-vindas da etapa roda no DRENO, até ~15 s depois). A mensagem seguinte
+// da rajada abre turno, e a IA responderia antes da boas-vindas. O turno
+// reagenda enquanto há evento deste contato ainda não drenado cuja etapa tem
+// quem escute — por até a janela (2 min do gatilho). `etapaTemQuemFale` roda
+// de verdade (o motor) sobre as automações do banco falso.
+describe('executarTurno — a fala adiada do funil (E4)', () => {
+  const ETAPA = 'etapa-lead'
+
+  function automacaoDaEtapa(p: Linha = {}): Linha {
+    return {
+      id: 'auto-boas-vindas',
+      account_id: CONTA,
+      trigger_type: 'deal_stage_changed',
+      trigger_config: { stage_ids: [ETAPA] },
+      is_active: true,
+      ...p,
+    }
+  }
+
+  function evento(p: Linha = {}): Linha {
+    return {
+      id: 'ev-1',
+      account_id: CONTA,
+      tipo: 'deal_stage_changed',
+      contact_id: 'contato-1',
+      deal_id: 'card-1',
+      to_stage_id: ETAPA,
+      processado_em: null,
+      criado_em: haMs(21_000),
+      ...p,
+    }
+  }
+
+  const leuEventos = () => banco.chamadas.some((c) => c.tabela === 'cb_automation_events')
+
+  beforeEach(() => {
+    banco.tabelas.automations = [automacaoDaEtapa()]
+    banco.tabelas.cb_automation_events = [evento()]
+  })
+
+  it.each<[string, Linha]>([
+    ['automação que escuta a etapa', {}],
+    ['automação sem etapas (escuta TODA etapa)', { trigger_config: { stage_ids: [] } }],
+  ])('evento pendente com %s: REAGENDA, sem gerar', async (_rotulo, p) => {
+    banco.tabelas.automations = [automacaoDaEtapa(p)]
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({ status: 'aguardando', rodando_desde: null })
+    expect(Date.parse(turno().executar_apos as string)).toBeGreaterThan(Date.now())
+    expect(after).toHaveBeenCalledTimes(1)
+    expect(generateReply).not.toHaveBeenCalled()
+    expect(engineSendText).not.toHaveBeenCalled()
+    expect(notas()).toHaveLength(0)
+  })
+
+  it.each<[string, () => void]>([
+    ['ninguém escuta a etapa', () => (banco.tabelas.automations = [automacaoDaEtapa({ trigger_config: { stage_ids: ['outra-etapa'] } })])],
+    ['a automação da etapa está DESLIGADA', () => (banco.tabelas.automations = [automacaoDaEtapa({ is_active: false })])],
+    ['a automação da etapa é de OUTRA conta', () => (banco.tabelas.automations = [automacaoDaEtapa({ account_id: 'outra-conta' })])],
+    ['o evento já foi PROCESSADO', () => (banco.tabelas.cb_automation_events = [evento({ processado_em: haMs(2_000) })])],
+    ['o evento é de OUTRO contato', () => (banco.tabelas.cb_automation_events = [evento({ contact_id: 'contato-2' })])],
+    ['o evento é de OUTRA conta', () => (banco.tabelas.cb_automation_events = [evento({ account_id: 'outra-conta' })])],
+    ['o evento é de STATUS, não de etapa', () => (banco.tabelas.cb_automation_events = [evento({ tipo: 'deal_status_changed' })])],
+  ])('%s: segue e responde', async (_rotulo, montar) => {
+    montar()
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    expect(engineSendText).toHaveBeenCalledTimes(1)
+  })
+
+  it('fora da janela (o dreno falhou): segue, e nem lê os eventos', async () => {
+    const velha = haMs(JANELA_DO_AUDIO_MS + 60_000)
+    Object.assign(banco.tabelas.messages[0], { gravada_em: velha, created_at: velha })
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    expect(leuEventos()).toBe(false)
+  })
+
+  it('leitura dos eventos que falha DENTRO da janela: reagenda (na dúvida, a automação fala)', async () => {
+    banco.falhas.push({ tabela: 'cb_automation_events', op: 'select', erro: { message: 'timeout' } })
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('aguardando')
+    expect(generateReply).not.toHaveBeenCalled()
+  })
+
+  it('leitura de quem escuta que falha DENTRO da janela: reagenda', async () => {
+    banco.falhas.push({ tabela: 'automations', op: 'select', erro: { message: 'timeout' } })
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('aguardando')
+    expect(generateReply).not.toHaveBeenCalled()
+  })
+
+  it('conversa sem contato: nem lê os eventos', async () => {
+    conversa().contact_id = null
+    await executarTurno(TURNO)
+    expect(leuEventos()).toBe(false)
+    expect(turno()).toMatchObject({ status: 'descartado', erro: 'conversa sem contato' })
+  })
+
+  it('o evento aparece ENQUANTO o modelo pensa: reagenda antes de enviar, sem gastar vaga', async () => {
+    banco.tabelas.cb_automation_events = []
+    vi.mocked(generateReply).mockImplementation(async () => {
+      banco.tabelas.cb_automation_events.push(evento())
+      return { text: 'Olá!', handoff: false, usage: null }
+    })
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('aguardando')
+    expect(engineSendText).not.toHaveBeenCalled()
+    expect(conversa().ai_reply_count).toBe(0)
+  })
+
+  it('na volta, drenado o evento e dada a boas-vindas: descarta — o cliente não recebe duas respostas', async () => {
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('aguardando')
+    // O dreno roda: o evento é processado e a automação da etapa fala.
+    banco.tabelas.cb_automation_events[0].processado_em = new Date().toISOString()
+    banco.tabelas.messages.push(mensagem({ id: 'msg-boas-vindas', sender_type: 'bot', gravada_em: new Date().toISOString() }))
+    turno().executar_apos = haMs(1_000)
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({ status: 'descartado', erro: 'o robô ou uma automação respondeu' })
+    expect(generateReply).not.toHaveBeenCalled()
+    expect(engineSendText).not.toHaveBeenCalled()
   })
 })
 

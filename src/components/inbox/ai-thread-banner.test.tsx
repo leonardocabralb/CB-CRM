@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { NextIntlClientProvider, type AbstractIntlMessages } from 'next-intl';
 
@@ -9,20 +9,72 @@ import ptBR from '../../../messages/pt-BR.json';
 
 import {
   AiThreadBanner,
+  cliqueAindaVale,
   erroDaResposta,
   patchDoClique,
   pausadaNaTela,
+  type CliqueOtimista,
   type ErroDaFaixa,
 } from './ai-thread-banner';
 
+// ------------------------------------------------------------
+// Estado ENTRE renders, sem DOM. O projeto não tem jsdom, e o
+// `renderToStaticMarkup` esquece o estado a cada chamada — e o defeito do
+// clique otimista só aparece numa SEQUÊNCIA de renders (o banco sai do valor
+// do clique e depois volta). Ligado, este arnês troca o `useState` e o
+// `useCallback` DA FAIXA (só dela: o `next-intl` e o `react-dom` são externos
+// e seguem com o React de verdade) por um armazém por ordem de chamada, que
+// sobrevive aos renders, e guarda os callbacks do último render — é por eles
+// que o teste "clica". Um `setState` no render muda o armazém e o render
+// segue com o valor velho, como o React faria antes de refazer o render.
+// Desligado, delega ao React.
+// ------------------------------------------------------------
+const ganchos = vi.hoisted(() => ({
+  ligado: false,
+  estados: [] as unknown[],
+  proximo: 0,
+  callbacks: [] as unknown[],
+}));
+
+vi.mock('react', async (importOriginal) => {
+  const real = await importOriginal<typeof import('react')>();
+  const useState = (inicial: unknown) => {
+    if (!ganchos.ligado) return real.useState(inicial);
+    const i = ganchos.proximo++;
+    if (!(i in ganchos.estados)) {
+      ganchos.estados[i] = typeof inicial === 'function' ? (inicial as () => unknown)() : inicial;
+    }
+    const definir = (valor: unknown) => {
+      ganchos.estados[i] =
+        typeof valor === 'function' ? (valor as (v: unknown) => unknown)(ganchos.estados[i]) : valor;
+    };
+    return [ganchos.estados[i], definir];
+  };
+  const useCallback = (fn: unknown, deps: unknown[]) => {
+    if (!ganchos.ligado) return real.useCallback(fn as () => void, deps);
+    ganchos.callbacks.push(fn);
+    return fn;
+  };
+  return {
+    ...real,
+    useState: useState as unknown as typeof real.useState,
+    useCallback: useCallback as unknown as typeof real.useCallback,
+  };
+});
+
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+
 // ============================================================
 // A faixa do agente de IA no fio (F2a dos agentes de IA, 5.3/5.4/5.9 e
-// E2/E13 do docs/PLANO-agentes-de-ia.md). Três coisas que já mentiram:
+// E2/E13 do docs/PLANO-agentes-de-ia.md). Quatro coisas que já mentiram:
 //   1. ela se acendia pela configuração LEGADA (`is_active` +
 //      `auto_reply_enabled`), e não pelo agente ativo da CONVERSA;
 //   2. ela se escondia com responsável humano — a atribuição deixou de ser
 //      portão (o responsável não cala o agente ativo);
-//   3. "Retomar" zerava `assigned_agent_id` na tela, e a rota não zera mais.
+//   3. "Retomar" zerava `assigned_agent_id` na tela, e a rota não zera mais;
+//   4. o clique otimista nunca era apagado: o banco confirmava, depois VOLTAVA
+//      ao valor antigo (o gatilho pausou, outra aba retomou), e o clique velho
+//      voltava a mandar na tela até recarregar a página.
 // ============================================================
 
 const pt = ptBR as unknown as AbstractIntlMessages;
@@ -120,25 +172,147 @@ describe('patchDoClique — o que a tela escreve depois do clique', () => {
   });
 });
 
-describe('pausadaNaTela — clique otimista, derivado no render', () => {
+describe('pausadaNaTela / cliqueAindaVale — o clique otimista num render', () => {
+  const retomou: CliqueOtimista = { conversa: 'conv-1', base: true, pausada: false };
+
   it('sem clique, vale o banco', () => {
     expect(pausadaNaTela(null, 'conv-1', true)).toBe(true);
     expect(pausadaNaTela(null, 'conv-1', false)).toBe(false);
   });
 
-  it('o clique vale enquanto o banco ainda diz o que dizia', () => {
-    expect(pausadaNaTela({ conversa: 'conv-1', base: true, pausada: false }, 'conv-1', true)).toBe(false);
+  it('o clique aceito vale enquanto o banco ainda diz o que dizia', () => {
+    expect(cliqueAindaVale(retomou, 'conv-1', true)).toBe(true);
+    expect(pausadaNaTela(retomou, 'conv-1', true)).toBe(false);
+  });
+
+  it('o clique que a rota ainda não respondeu não muda a tela', () => {
+    const pendente: CliqueOtimista = { ...retomou, pausada: null };
+    expect(cliqueAindaVale(pendente, 'conv-1', true)).toBe(true);
+    expect(pausadaNaTela(pendente, 'conv-1', true)).toBe(true);
   });
 
   it('o clique de OUTRA conversa não vale nesta', () => {
-    expect(pausadaNaTela({ conversa: 'conv-1', base: true, pausada: false }, 'conv-2', true)).toBe(true);
+    expect(cliqueAindaVale(retomou, 'conv-2', true)).toBe(false);
+    expect(pausadaNaTela(retomou, 'conv-2', true)).toBe(true);
   });
 
-  it('o banco mudou depois do clique (realtime, ou o gatilho da 1044 pausou): manda o banco', () => {
-    // Retomou (base = pausada), o realtime confirmou e depois o advogado
-    // respondeu pelo celular: o banco voltou a dizer "pausada".
-    expect(pausadaNaTela({ conversa: 'conv-1', base: true, pausada: false }, 'conv-1', false)).toBe(false);
-    expect(pausadaNaTela({ conversa: 'conv-1', base: false, pausada: true }, 'conv-1', true)).toBe(true);
+  it('o banco saiu do valor do clique (realtime, gatilho da 1044, outra aba): o clique deixa de valer', () => {
+    // Num render só, olhando o valor, este é o passo B do A→B→A. O passo de
+    // VOLTA (o banco de novo em A) só se enxerga com o estado entre renders —
+    // é o describe seguinte que o cobre.
+    expect(cliqueAindaVale(retomou, 'conv-1', false)).toBe(false);
+    expect(pausadaNaTela(retomou, 'conv-1', false)).toBe(false);
+    const assumiu: CliqueOtimista = { conversa: 'conv-1', base: false, pausada: true };
+    expect(pausadaNaTela(assumiu, 'conv-1', true)).toBe(true);
+  });
+});
+
+describe('a faixa numa SEQUÊNCIA de renders — o clique velho nunca volta a mandar', () => {
+  type Props = Partial<Parameters<typeof AiThreadBanner>[0]>;
+
+  function renderizar(props: Props) {
+    ganchos.proximo = 0;
+    ganchos.callbacks = [];
+    return desenhar(props);
+  }
+
+  function estado(html: string): 'pausada' | 'respondendo' {
+    const pausada = html.includes(banner.pausedTitle);
+    const respondendo = html.includes(banner.activeText);
+    expect(pausada !== respondendo, 'a faixa desenha exatamente um dos dois').toBe(true);
+    return pausada ? 'pausada' : 'respondendo';
+  }
+
+  /** O "clique" no botão do último render. */
+  function clicar(pausar: boolean): Promise<void> {
+    const assincronos = ganchos.callbacks.filter(
+      (f): f is (p: boolean) => Promise<void> =>
+        typeof f === 'function' && f.constructor.name === 'AsyncFunction',
+    );
+    expect(assincronos, 'a faixa tem UM handler de clique assíncrono').toHaveLength(1);
+    return assincronos[0](pausar);
+  }
+
+  function respostaOk() {
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  }
+
+  beforeEach(() => {
+    ganchos.ligado = true;
+    ganchos.estados = [];
+    vi.stubGlobal('fetch', vi.fn(async () => respostaOk()));
+  });
+
+  afterEach(() => {
+    ganchos.ligado = false;
+    vi.unstubAllGlobals();
+  });
+
+  it('Retomar vale até o realtime confirmar — e a confirmação mantém a tela', async () => {
+    expect(estado(renderizar({ disabled: true }))).toBe('pausada');
+    await clicar(false);
+    expect(estado(renderizar({ disabled: true }))).toBe('respondendo');
+    expect(estado(renderizar({ disabled: false }))).toBe('respondendo');
+  });
+
+  it('⚠️ A→B→A depois do Retomar: o gatilho pausou de novo (advogado respondeu) e a faixa diz PAUSADA', async () => {
+    renderizar({ disabled: true });
+    await clicar(false);
+    expect(estado(renderizar({ disabled: true }))).toBe('respondendo');
+    expect(estado(renderizar({ disabled: false }))).toBe('respondendo'); // realtime confirmou
+    expect(estado(renderizar({ disabled: true }))).toBe('pausada'); // o gatilho da 1044
+    expect(estado(renderizar({ disabled: true }))).toBe('pausada');
+  });
+
+  it('⚠️ A→B→A depois do Assumir: outra aba retomou e a faixa diz RESPONDENDO', async () => {
+    renderizar({ disabled: false });
+    await clicar(true);
+    expect(estado(renderizar({ disabled: false }))).toBe('pausada');
+    expect(estado(renderizar({ disabled: true }))).toBe('pausada'); // realtime confirmou
+    expect(estado(renderizar({ disabled: false }))).toBe('respondendo'); // outra aba retomou
+  });
+
+  it('⚠️ trocar de conversa descarta o clique: na volta, manda o banco daquela conversa', async () => {
+    renderizar({ conversationId: 'conv-1', disabled: true });
+    await clicar(false);
+    expect(estado(renderizar({ conversationId: 'conv-1', disabled: true }))).toBe('respondendo');
+    // Foi para outra conversa, pausada. Enquanto isso, na conv-1, o realtime
+    // confirmou a retomada e o advogado respondeu: pausada de novo — a faixa,
+    // que não remonta, não viu nada disso.
+    expect(estado(renderizar({ conversationId: 'conv-2', disabled: true }))).toBe('pausada');
+    expect(estado(renderizar({ conversationId: 'conv-1', disabled: true }))).toBe('pausada');
+  });
+
+  it('⚠️ o banco anda E volta enquanto a rota responde: a resposta não instala o clique', async () => {
+    let responder: (r: Response) => void = () => {};
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>((r) => (responder = r))),
+    );
+    renderizar({ disabled: true });
+    const clique = clicar(false);
+    // Enquanto a rota não responde, a tela mostra o banco.
+    expect(estado(renderizar({ disabled: true }))).toBe('pausada');
+    // O realtime chega ANTES do HTTP, e o advogado responde logo em seguida.
+    expect(estado(renderizar({ disabled: false }))).toBe('respondendo');
+    expect(estado(renderizar({ disabled: true }))).toBe('pausada');
+    responder(respostaOk());
+    await clique;
+    expect(estado(renderizar({ disabled: true }))).toBe('pausada');
+  });
+
+  it('a rota recusou, ou a rede caiu: a tela fica com o banco', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ code: 'nada_gravado' }), { status: 409 })),
+    );
+    renderizar({ disabled: true });
+    await clicar(false);
+    expect(estado(renderizar({ disabled: true }))).toBe('pausada');
+
+    vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new TypeError('offline'))));
+    await clicar(false);
+    expect(estado(renderizar({ disabled: true }))).toBe('pausada');
   });
 });
 
