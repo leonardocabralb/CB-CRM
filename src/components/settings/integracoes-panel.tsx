@@ -96,7 +96,7 @@ export function IntegracoesPanel() {
   // (fail closed, por desenho). Com a frase "só administradores" ali, todo
   // admin lia uma acusação de não ser admin durante o fetch do perfil — o
   // esqueleto diz a mesma coisa que a tela vai dizer, sem mentir.
-  const { profileLoading } = useAuth();
+  const { profileLoading, accountId } = useAuth();
 
   return (
     <div>
@@ -111,7 +111,12 @@ export function IntegracoesPanel() {
           )
         }
       >
-        <Conteudo />
+        {/* ⚠️ A `key` da CONTA: trocar de conta com a tela montada deixava
+            os cartões (e a guarda de disparo único) da conta anterior, e o
+            "Apagar chave" — cuja rota resolve a conta da sessão — apagaria a
+            chave da conta NOVA com a confirmação mostrando a velha (Codex,
+            #294). Remontar recarrega tudo da conta certa. */}
+        <Conteudo key={accountId ?? 'sem-conta'} />
       </RequireRole>
     </div>
   );
@@ -518,7 +523,10 @@ function FormularioDaChave({
   // O que deixa de funcionar sem a chave: os módulos que hoje a usam (os
   // marcados `sem_chave` já não a usam).
   const paraSemChave = cartao.usos
-    .filter((u) => u.indisponivel !== 'sem_chave')
+    // Só o que RODA hoje: módulo já parado por outro motivo (assistente
+    // desligado, Radar sem conexão, base só por palavras) não "deixa de
+    // funcionar" com a exclusão (Codex, #294).
+    .filter((u) => !u.indisponivel)
     .map((u) => t(`modulo.${u.modulo}`));
 
   async function salvar() {
