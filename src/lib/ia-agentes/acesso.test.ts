@@ -264,7 +264,16 @@ describe('montarRetrato / lerRetrato', () => {
         { id: 't3', documentoId: 'doc-1', content: 'c' },
       ],
     )
-    expect(r).toEqual({ blocos: [{ bloco: 'ficha', texto: 'Customer record: no details on file.' }], documentos: ['doc-1', 'doc-2'] })
+    expect(r).toEqual({
+      blocos: [{ bloco: 'ficha', texto: 'Customer record: no details on file.' }],
+      documentos: ['doc-1', 'doc-2'],
+      // O TEXTO de cada trecho fica, com o documento (Codex, #312).
+      trechos: [
+        { documento: 'doc-1', texto: 'a' },
+        { documento: 'doc-2', texto: 'b' },
+        { documento: 'doc-1', texto: 'c' },
+      ],
+    })
   })
 
   it('o pior caso dos blocos (todos no teto) cabe no teto do retrato', () => {
@@ -276,6 +285,17 @@ describe('montarRetrato / lerRetrato', () => {
     const r = montarRetrato(cheios, trechos)
     expect(JSON.stringify(r).length).toBeLessThanOrEqual(TETO_DO_RETRATO)
     expect(r.blocos.every((b) => b.texto.length === TETO_DO_BLOCO)).toBe(true)
+  })
+
+  it('com os trechos da base também no teto, tudo cabe no teto do retrato', () => {
+    const cheios = (['ficha', 'campos', 'negocio', 'etiquetas', 'cobrancas', 'reuniao'] as const).map((bloco) => ({
+      bloco,
+      texto: 'x'.repeat(TETO_DO_BLOCO),
+    }))
+    const trechos = Array.from({ length: 5 }, (_, i) => ({ id: `t${i}`, documentoId: `doc-${i}`, content: 'y'.repeat(5000) }))
+    const r = montarRetrato(cheios, trechos)
+    expect(JSON.stringify(r).length).toBeLessThanOrEqual(TETO_DO_RETRATO)
+    expect(r.trechos).toHaveLength(5)
   })
 
   it('texto fora do comum (o JSON escapa caractere de controle) é cortado até caber', () => {
@@ -292,7 +312,11 @@ describe('montarRetrato / lerRetrato', () => {
     expect(lerRetrato({ blocos: [{ bloco: 'ficha', texto: 't' }, { bloco: 1 }], documentos: ['d', 2] })).toEqual({
       blocos: [{ bloco: 'ficha', texto: 't' }],
       documentos: ['d'],
+      trechos: [],
     })
+    expect(
+      lerRetrato({ blocos: [], documentos: ['d'], trechos: [{ documento: 'd', texto: 'x' }, { documento: 1 }] }),
+    ).toEqual({ blocos: [], documentos: ['d'], trechos: [{ documento: 'd', texto: 'x' }] })
   })
 })
 
@@ -567,7 +591,7 @@ describe('lerOQueOAgenteVe', () => {
     })
     expect(visto.trechos).toEqual([])
     expect(visto.blocos).toEqual([{ bloco: 'etiquetas', texto: 'Tags: bancário, vip' }])
-    expect(visto.retrato).toEqual({ blocos: [{ bloco: 'etiquetas', texto: 'Tags: bancário, vip' }], documentos: [] })
+    expect(visto.retrato).toEqual({ blocos: [{ bloco: 'etiquetas', texto: 'Tags: bancário, vip' }], documentos: [], trechos: [] })
     expect(lerChaveDeEmbeddings).not.toHaveBeenCalled()
   })
 })

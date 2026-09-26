@@ -1858,7 +1858,7 @@ describe('executarTurno — o que o agente vê (F3)', () => {
     await executarTurno(TURNO)
     expect(turno().status).toBe('respondeu')
     expect(pedido()).not.toContain('What you know about this customer')
-    expect(turno().contexto).toEqual({ blocos: [], documentos: [] })
+    expect(turno().contexto).toEqual({ blocos: [], documentos: [], trechos: [] })
     // Nada marcado = nada lido.
     expect(banco.chamadas.some((c) => ['contacts', 'tags', 'contact_tags', 'cb_asaas_config'].includes(c.tabela))).toBe(false)
   })
@@ -1876,6 +1876,7 @@ describe('executarTurno — o que o agente vê (F3)', () => {
         { bloco: 'etiquetas', texto: 'Tags: bancário' },
       ],
       documentos: [],
+      trechos: [],
     })
   })
 
@@ -1900,7 +1901,11 @@ describe('executarTurno — o que o agente vê (F3)', () => {
     await executarTurno(TURNO)
     expect(turno().status).toBe('respondeu')
     expect(pedido()).toContain('[1] Atendemos das 9h às 18h.')
-    expect(turno().contexto).toEqual({ blocos: [], documentos: ['doc-faq'] })
+    expect(turno().contexto).toEqual({
+      blocos: [],
+      documentos: ['doc-faq'],
+      trechos: [{ documento: 'doc-faq', texto: 'Atendemos das 9h às 18h.' }],
+    })
     // A consulta é a mensagem do cliente.
     expect(banco.rpcChamadas.find((r) => r.nome === 'cb_ia_buscar_conhecimento_fts')?.args.p_query).toBe(
       'Oi, preciso de ajuda',

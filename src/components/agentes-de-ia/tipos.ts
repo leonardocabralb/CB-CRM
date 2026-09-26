@@ -27,6 +27,8 @@ export const CAIXAS_DO_ACESSO = ['ficha', 'negocio', 'etiquetas', 'cobrancas', '
 export interface ContextoDoTurno {
   blocos: Array<{ bloco: string; texto: string }>
   documentos: string[]
+  /** O texto de cada trecho da base como foi ao modelo (vazio nos retratos antigos). */
+  trechos: Array<{ documento: string; texto: string }>
 }
 
 export const PROVEDORES: readonly AiProvider[] = ['gemini', 'openai', 'anthropic']

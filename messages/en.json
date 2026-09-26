@@ -4409,7 +4409,8 @@
         "titulo": "What the agent saw",
         "soAConversa": "Only the conversation: no customer data went into this turn.",
         "base": "{n, plural, =0 {No knowledge-base excerpt} one {Excerpts from # knowledge-base document} other {Excerpts from # knowledge-base documents}}",
-        "documentoApagado": "(deleted document)"
+        "documentoApagado": "(deleted document)",
+        "documento": "(document)"
       },
       "statusDesconhecido": "Other ({status})",
       "status": {

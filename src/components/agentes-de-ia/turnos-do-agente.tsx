@@ -42,9 +42,15 @@ interface Turno {
 /** Parse, nunca `as`: o retrato é jsonb; forma estranha = sem expansão (nunca quebra a lista). */
 function lerContexto(v: unknown): ContextoDoTurno | null {
   if (!v || typeof v !== 'object') return null;
-  const { blocos, documentos } = v as { blocos?: unknown; documentos?: unknown };
+  const { blocos, documentos, trechos } = v as { blocos?: unknown; documentos?: unknown; trechos?: unknown };
   if (!Array.isArray(blocos)) return null;
   return {
+    trechos: Array.isArray(trechos)
+      ? trechos.filter(
+          (x): x is { documento: string; texto: string } =>
+            !!x && typeof x === 'object' && typeof x.documento === 'string' && typeof x.texto === 'string'
+        )
+      : [],
     blocos: blocos.filter(
       (b): b is { bloco: string; texto: string } =>
         !!b && typeof b === 'object' && typeof b.bloco === 'string' && typeof b.texto === 'string'
@@ -66,7 +72,7 @@ export function TurnosDoAgente({ agenteId }: { agenteId: string }) {
   const [turnos, setTurnos] = useState<Turno[] | null>(null);
   const [falhou, setFalhou] = useState(false);
   /** Id → título dos documentos da base; `null` = a leitura falhou (mostra só a conta). */
-  const [titulos, setTitulos] = useState<Map<string, string> | null>(null);
+  const [titulos, setTitulos] = useState<{ mapa: Map<string, string>; completo: boolean } | null>(null);
 
   const carregar = useCallback(async () => {
     try {
@@ -78,7 +84,11 @@ export function TurnosDoAgente({ agenteId }: { agenteId: string }) {
       ]);
       if (!res.ok) throw new Error(String(res.status));
       const corpo = (await res.json()) as { turnos?: Array<Omit<Turno, 'contexto'> & { contexto?: unknown }> };
-      setTitulos(base ? new Map((base.documents ?? []).map((d) => [d.id, d.title])) : null);
+      // ⚠️ "Apagado" só com a lista COMPLETA: no teto de 1.000 linhas do
+      // PostgREST ela pode ter sido cortada, e um documento vivo apareceria
+      // como apagado (Codex, #312).
+      const docs = base?.documents ?? [];
+      setTitulos(base ? { mapa: new Map(docs.map((d) => [d.id, d.title])), completo: docs.length < 1000 } : null);
       setTurnos((corpo.turnos ?? []).map((x) => ({ ...x, contexto: lerContexto(x.contexto) })));
       setFalhou(false);
     } catch {
@@ -149,7 +159,7 @@ function RetratoDoTurno({
   titulos,
 }: {
   contexto: ContextoDoTurno;
-  titulos: Map<string, string> | null;
+  titulos: { mapa: Map<string, string>; completo: boolean } | null;
 }) {
   const t = useTranslations('IaAgentes');
   // Vários trechos podem vir do MESMO documento: o nome aparece uma vez.
@@ -172,11 +182,22 @@ function RetratoDoTurno({
         )}
         <div className="space-y-0.5">
           <p className="font-medium text-foreground">{t('turnos.contexto.base', { n: documentos.length })}</p>
-          {titulos && documentos.length > 0 ? (
-            <ul className="list-inside list-disc text-muted-foreground">
+          {documentos.length > 0 ? (
+            <ul className="space-y-1 text-muted-foreground">
               {documentos.map((id) => (
-                <li key={id} className="truncate">
-                  {titulos.get(id) ?? t('turnos.contexto.documentoApagado')}
+                <li key={id} className="space-y-0.5">
+                  <p className="truncate">
+                    •{' '}
+                    {titulos?.mapa.get(id) ??
+                      (titulos?.completo ? t('turnos.contexto.documentoApagado') : t('turnos.contexto.documento'))}
+                  </p>
+                  {contexto.trechos
+                    .filter((x) => x.documento === id)
+                    .map((x, i) => (
+                      <p key={i} className="ml-3 break-words whitespace-pre-wrap border-l border-border pl-2">
+                        {x.texto}
+                      </p>
+                    ))}
                 </li>
               ))}
             </ul>

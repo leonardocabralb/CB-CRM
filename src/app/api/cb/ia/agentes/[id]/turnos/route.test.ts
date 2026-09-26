@@ -80,7 +80,7 @@ describe('GET /api/cb/ia/agentes/[id]/turnos', () => {
       {
         id: 't2', status: 'passou', criadoEm: '2026-09-26T12:00:00Z', terminadoEm: null, erro: null, conversationId: 'conv-2', contato: '5511888880000',
         // O retrato é LIDO (parse): item fora da forma sai, nunca vai cru à tela.
-        contexto: { blocos: [{ bloco: 'ficha', texto: 'Customer record: no details on file.' }], documentos: ['doc-1'] },
+        contexto: { blocos: [{ bloco: 'ficha', texto: 'Customer record: no details on file.' }], documentos: ['doc-1'], trechos: [] },
       },
       { id: 't1', status: 'falhou', criadoEm: '2026-09-26T11:00:00Z', terminadoEm: '2026-09-26T11:00:05Z', erro: 'sem chave', conversationId: 'conv-1', contato: 'Maria', contexto: null },
     ])

@@ -317,6 +317,12 @@ export interface RetratoDoContexto {
   blocos: Array<{ bloco: string; texto: string }>
   /** Os documentos de onde vieram os trechos da base, sem repetição. */
   documentos: string[]
+  /**
+   * O TEXTO de cada trecho como foi ao modelo, com o documento: editado ou
+   * apagado o documento depois, o retrato ainda explica a resposta (Codex,
+   * #312). Vazio nos retratos gravados antes disto.
+   */
+  trechos: Array<{ documento: string; texto: string }>
 }
 
 /**
@@ -329,9 +335,11 @@ export function montarRetrato(blocos: BlocoVisto[], trechos: TrechoDaBase[]): Re
   const retrato: RetratoDoContexto = {
     blocos: blocos.map((b) => ({ bloco: b.bloco, texto: b.texto })),
     documentos: [...new Set(trechos.map((t) => t.documentoId))],
+    trechos: trechos.map((t) => ({ documento: t.documentoId, texto: limitarBloco(t.content) })),
   }
   while (JSON.stringify(retrato).length > TETO_DO_RETRATO) {
-    const maior = retrato.blocos.reduce<{ bloco: string; texto: string } | null>(
+    // O maior texto, entre blocos E trechos, é cortado pela metade.
+    const maior = [...retrato.blocos, ...retrato.trechos].reduce<{ texto: string } | null>(
       (m, b) => (!m || b.texto.length > m.texto.length ? b : m),
       null,
     )
@@ -355,6 +363,15 @@ export function lerRetrato(v: unknown): RetratoDoContexto | null {
       )
       .map((b) => ({ bloco: b.bloco, texto: b.texto })),
     documentos: r.documentos.filter((d): d is string => typeof d === 'string'),
+    trechos: Array.isArray(r.trechos)
+      ? r.trechos
+          .filter(
+            (x): x is { documento: string; texto: string } =>
+              !!x && typeof x === 'object' && typeof (x as { documento?: unknown }).documento === 'string' &&
+              typeof (x as { texto?: unknown }).texto === 'string',
+          )
+          .map((x) => ({ documento: x.documento, texto: x.texto }))
+      : [],
   }
 }
 
