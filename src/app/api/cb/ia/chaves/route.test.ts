@@ -24,6 +24,8 @@ const validateAiCredentials = vi.fn(async (cfg: { apiKey: string; model: string 
   const codigo = passageira(cfg.apiKey, cfg.model)
   if (codigo) {
     const { AiError } = await import('@/lib/ai/types')
+    // `5xx` imita o provedor fora do ar: `provider_error` com o status dele.
+    if (codigo === '5xx') throw new AiError('503', { code: 'provider_error', upstreamStatus: 503 })
     throw new AiError(codigo, { code: codigo })
   }
   if (!alcanca(cfg.apiKey, cfg.model)) {
@@ -323,5 +325,26 @@ describe('PUT /api/cb/ia/chaves — falha PASSAGEIRA não vira "não alcança o 
     expect(res.status).toBe(400)
     expect(await res.json()).toMatchObject({ code: 'network' })
     expect(gravarChave).not.toHaveBeenCalled()
+  })
+})
+
+describe('PUT /api/cb/ia/chaves — o 5xx do provedor também é passageiro (Codex, #294)', () => {
+  it('um modelo em uso devolve 503 com a nova: nada é gravado', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: 'gemini-b' }
+    chaveAtual = 'sk-atual'
+    passageira = (chave, modelo) => (chave === 'sk-teste' && modelo === 'gemini-b' ? '5xx' : null)
+    const res = await PUT(pedido('gemini'))
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ code: 'provider_error' })
+    expect(gravarChave).not.toHaveBeenCalled()
+  })
+
+  it('o 404 do modelo continua sendo "não alcança" (a regra geral decide)', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: 'gemini-velho' }
+    chaveAtual = 'sk-atual'
+    alcanca = (_chave, modelo) => modelo !== 'gemini-velho'
+    const res = await PUT(pedido('gemini'))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ avisos: ['modelo_em_uso_indisponivel'] })
   })
 })
