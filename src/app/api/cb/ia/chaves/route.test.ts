@@ -48,11 +48,15 @@ vi.mock('@/lib/ai/validate', () => ({
   validateAiCredentials: (cfg: { apiKey: string; model: string }) => validateAiCredentials(cfg),
 }))
 vi.mock('@/lib/ai/embeddings', () => ({ embedTexts: (...a: unknown[]) => embedTexts(...a) }))
+let linhasPorConexao: Record<string, unknown>[] = []
 vi.mock('@/lib/ai/admin-client', () => ({
   supabaseAdmin: () => ({
     from: () => ({
       select: () => ({
-        eq: () => ({ is: () => ({ maybeSingle: async () => ({ data: linhaPadrao, error: null }) }) }),
+        eq: async () => ({
+          data: [...(linhaPadrao ? [{ channel_id: null, ...linhaPadrao }] : []), ...linhasPorConexao],
+          error: null,
+        }),
       }),
     }),
   }),
@@ -80,6 +84,7 @@ beforeEach(() => {
   embedTexts.mockReset()
   validateAiCredentials.mockClear()
   linhaPadrao = null
+  linhasPorConexao = []
   alcanca = () => true
   chaveAtual = null
 })
@@ -160,5 +165,17 @@ describe('PUT /api/cb/ia/chaves — a chave nova é conferida nos modelos EM USO
     embedTexts.mockResolvedValue([[0.1]])
     await PUT(pedido('gemini'))
     expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.7-flash'])
+  })
+})
+
+describe('PUT /api/cb/ia/chaves — as linhas POR CONEXÃO também contam (Codex, #294)', () => {
+  it('confere o modelo do agente de uma conexão do mesmo provedor (e só o model dele)', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: null }
+    linhasPorConexao = [
+      { channel_id: 'canal-1', provider: 'gemini', model: 'gemini-da-conexao', radar_model: 'nao-conta' },
+      { channel_id: 'canal-2', provider: 'openai', model: 'gpt-x', radar_model: null },
+    ]
+    await PUT(pedido('gemini'))
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-a', 'gemini-da-conexao'])
   })
 })
