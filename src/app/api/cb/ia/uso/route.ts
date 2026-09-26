@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 import { supabaseAdmin } from '@/lib/ai/admin-client'
+import { buscarPtax, comIof, IOF_DO_CARTAO } from '@/lib/ia-agentes/cotacao-automatica'
 import { FUSO_DO_ESCRITORIO } from '@/lib/ia-agentes/pedido'
 import { listarAgentes } from '@/lib/ia-agentes/repo'
 import { lerLinhaDeUso, resumirUso, type LinhaDeUso } from '@/lib/ia-agentes/uso'
@@ -53,10 +54,15 @@ async function lerUsoInteiro(
  *
  * O uso de IA da conta, SOMADO NO BANCO (`cb_ia_uso`, 1048): por modo, por
  * agente (produção e teste separados, D13), por dia, e o custo estimado em R$
- * pela cotação da conta (D21). A rota antiga lia linha a linha e o PostgREST
- * cortava em 1000 sem avisar.
+ * pela cotação (D21). A rota antiga lia linha a linha e o PostgREST cortava em
+ * 1000 sem avisar.
  *
- * ⚠️ A cotação NULA não é zero: sem ela o R$ vem nulo, e a tela diz o que falta.
+ * A cotação é a que o administrador informou (`ai_configs.cotacao_dolar`), senão
+ * a AUTOMÁTICA: a PTAX de venda do Banco Central mais o IOF do cartão
+ * (`cotacao-automatica.ts`), sem o spread do banco.
+ *
+ * ⚠️ Sem nenhuma das duas (a PTAX fora do ar e nada informado) o R$ vem nulo,
+ * nunca zero, e a tela diz o que falta.
  */
 export async function GET(request: Request) {
   try {
@@ -100,9 +106,12 @@ export async function GET(request: Request) {
     const linhas = uso.map(lerLinhaDeUso).filter((l): l is LinhaDeUso => l !== null)
     const bruta = (config.data as { cotacao_dolar?: unknown } | null)?.cotacao_dolar
     const cotacao = bruta === null || bruta === undefined ? null : Number(bruta)
-    const cotacaoValida = cotacao !== null && Number.isFinite(cotacao) ? cotacao : null
+    const cotacaoManual = cotacao !== null && Number.isFinite(cotacao) && cotacao > 0 ? cotacao : null
+    // A PTAX só é buscada quando vai ser usada.
+    const ptax = cotacaoManual === null ? await buscarPtax() : null
+    const cotacaoUsada = cotacaoManual ?? (ptax ? comIof(ptax.valor) : null)
 
-    const resumo = resumirUso(linhas, cotacaoValida)
+    const resumo = resumirUso(linhas, cotacaoUsada)
     if (agentes) {
       const atuais = new Map(agentes.map((a) => [a.id, a]))
       for (const a of resumo.porAgente) {
@@ -117,7 +126,10 @@ export async function GET(request: Request) {
     return NextResponse.json({
       dias,
       desde: desde.toISOString(),
-      cotacao: cotacaoValida,
+      cotacao: cotacaoUsada,
+      cotacaoManual,
+      ptax,
+      iof: IOF_DO_CARTAO,
       resumo,
     })
   } catch (err) {
