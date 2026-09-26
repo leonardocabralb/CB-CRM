@@ -785,6 +785,30 @@ nome da época em que foram aplicadas.
   predicado, `anon` sem SELECT, `authenticated` só SELECT, `service_role`
   grava, 0 linhas). O teste de ponta a ponta gravou um número de teste no
   usuário do operador e o apagou em seguida (tabela de volta a 0 linhas).
+- **1047_cb_ia_chaves_por_provedor** — `cb_ia_chaves` (a chave de IA POR
+  PROVEDOR, uma por conta, FECHADA ao navegador), com a cópia das chaves de
+  `ai_configs` (a linha padrão vence; entre conexões, a que responde) e a de
+  embeddings como chave própria da base; `ai_configs.api_key` sem NOT NULL; e
+  o gatilho TEMPORÁRIO `cb_ia_chaves_segue_o_legado` para a janela em que o
+  app anterior ainda gravava a chave em `ai_configs` (a 1048 o apaga).
+  ADITIVA. Era 1042; virou 1047 porque a 1044 e a 1046 entraram antes. Aplicada
+  em 26/09/2026 pela Management API (histórico `20260926130822`), depois do
+  replay verde do CI e antes do merge do PR #294, com autorização do operador;
+  conferida no catálogo (a tabela, RLS sem policy, `anon` e `authenticated`
+  sem nada) e por teste no preview. ⚠️ O ARQUIVO mudou depois de aplicado, só
+  no que depende de linha de CONEXÃO em `ai_configs` (o aviso de chave
+  repetida, a preferência pela conexão que responde, a troca de provedor pelo
+  app anterior): sem efeito na produção, que só tem a linha padrão.
+- **1048_cb_ia_agentes** — `cb_ia_agentes` (leitura só de administrador, na
+  forma da 1032; escrita só pela rota), os gatilhos que tiram a conexão
+  apagada e o agente arquivado das listas, `ai_usage_log.ia_agente_id`/`_nome`
+  e os modos `agente`/`agente_teste`, `ai_configs.cotacao_dolar`, o
+  `radar_model` materializado, `cb_ia_uso` (a soma do uso no banco), a leitura
+  de `ai_configs` só para administrador e o fim do gatilho temporário da 1047.
+  ⚠️ ORDEM: depois da F1a em produção e antes do deploy da F1b (a leitura
+  só-de-admin supõe a faixa de IA e o rascunho lendo pelo serviço). Era 1043.
+  Aplicada em 26/09/2026 pela Management API, depois do deploy do PR #294 e do
+  replay verde do CI, antes do merge do PR #295, com autorização do operador.
 
 ## Notas do histórico
 
