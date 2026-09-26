@@ -37,6 +37,7 @@ import {
   gravarComCanal,
 } from '@/lib/cb-channels/stamp'
 import { registrarEntrega } from '@/lib/cb-channels/atraso-de-entrega'
+import { gravarAnuncioDeOrigem } from '@/lib/contacts/gravar-anuncio-de-origem'
 import { aceitamORecibo } from '@/lib/whatsapp/transport/escada-de-status'
 import {
   aplicarReciboQuandoAMensagemExistir,
@@ -113,6 +114,13 @@ interface WhatsAppMessage {
   button?: { text?: string; payload?: string }
   /** Present when the customer swipe-replies to one of our messages. */
   context?: { id: string }
+  /**
+   * ⚠️ NOSSO: o anúncio Click-to-WhatsApp que trouxe o cliente (id do
+   * anúncio, link, tipo, `ctwa_clid`…), só na primeira mensagem depois do
+   * clique. `unknown` de propósito: quem lê é `lerReferralDaMeta` (PARSE,
+   * nunca `as`), em `src/lib/contacts/anuncio-de-origem.ts`.
+   */
+  referral?: unknown
 }
 
 interface WhatsAppWebhookEntry {
@@ -1171,6 +1179,22 @@ async function processMessage(
   // so the broadcast's `replied_count` advances (via the aggregate
   // trigger installed in migration 003).
   await flagBroadcastReplyIfAny(accountId, contactRecord.id)
+
+  // ⚠️ NOSSO: o anúncio de origem (o `referral` do Click-to-WhatsApp) vai
+  // para os campos de traqueamento da ficha. ANTES do robô, das automações e
+  // do roteador de funil de propósito: a automação que lê
+  // `{{contact.campo.ctwa_clid}}` e o `deal.created` do card que o roteador
+  // abre (o webhook de saída leva os campos) já enxergam a origem. A
+  // reentrega saiu no `return` acima, então roda uma vez por mensagem. Nunca
+  // lança — a mensagem já está gravada. Ver `gravar-anuncio-de-origem.ts`.
+  if (message.referral !== undefined) {
+    await gravarAnuncioDeOrigem({
+      db: supabaseAdmin(),
+      accountId,
+      contactId: contactRecord.id,
+      referral: message.referral,
+    })
+  }
 
   // O cliente respondeu: as esperas marcadas "parar se o cliente responder"
   // deste contato são canceladas. ⚠️ ANTES do despacho de robôs e automações,

@@ -16,13 +16,22 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * tocado.
  *
  * Roda no NAVEGADOR sob RLS (`agent`+ modifica, via posse do contato) — o
- * mesmo regime da tela que já existia. Devolve `null` no sucesso ou a
- * mensagem de erro (quem chama mostra o toast; aqui não há UI).
+ * mesmo regime da tela que já existia — e no servidor com o cliente de
+ * serviço (API v1, anúncio de origem na ingestão da Meta). Devolve `null` no
+ * sucesso ou a mensagem de erro (quem chama mostra o toast; aqui não há UI).
+ *
+ * `manterExistentes`: o campo que JÁ tem linha na ficha não é tocado — nem
+ * para trocar o valor, nem para limpar (vazio é ignorado). Vira INSERT … ON
+ * CONFLICT DO NOTHING, decidido pelo BANCO. É a primeira origem do anúncio
+ * (`gravar-anuncio-de-origem.ts`): ali "a ficha já tem origem?" é respondido
+ * sobre uma leitura, e sem isso o Make da iMotion gravando o mesmo campo pela
+ * API v1 entre a leitura e a escrita seria sobrescrito.
  */
 export async function salvarValoresDoContato(
   supabase: SupabaseClient,
   contactId: string,
   valores: Record<string, string>,
+  opcoes: { manterExistentes?: boolean } = {},
 ): Promise<string | null> {
   const preenchidos = Object.entries(valores)
     .filter(([, v]) => v.trim() !== "")
@@ -31,14 +40,19 @@ export async function salvarValoresDoContato(
       custom_field_id: fieldId,
       value: v.trim(),
     }));
-  const esvaziados = Object.entries(valores)
-    .filter(([, v]) => v.trim() === "")
-    .map(([fieldId]) => fieldId);
+  const esvaziados = opcoes.manterExistentes
+    ? []
+    : Object.entries(valores)
+        .filter(([, v]) => v.trim() === "")
+        .map(([fieldId]) => fieldId);
 
   if (preenchidos.length > 0) {
     const { error } = await supabase
       .from("contact_custom_values")
-      .upsert(preenchidos, { onConflict: "contact_id,custom_field_id" });
+      .upsert(preenchidos, {
+        onConflict: "contact_id,custom_field_id",
+        ...(opcoes.manterExistentes ? { ignoreDuplicates: true } : {}),
+      });
     if (error) return error.message;
   }
 

@@ -8,6 +8,7 @@ const h = vi.hoisted(() => ({
   dispatchInboundToFlows: vi.fn(),
   dispatchInboundToAiReply: vi.fn(),
   dispatchWebhookEvent: vi.fn(),
+  gravarAnuncioDeOrigem: vi.fn(),
   state: {
     // Result the message upsert's .select() resolves to. A genuine insert
     // returns the row; a replayed delivery conflicts and returns [].
@@ -272,12 +273,18 @@ vi.mock('@/lib/cb-channels/resolve-inbound', () => ({
 vi.mock('@/lib/cb-channels/pipeline-routing', () => ({
   routeContactToPipeline: vi.fn(async () => {}),
 }))
+// O anúncio de origem (NOSSO) tem teste próprio; aqui só importa QUANDO e com
+// o QUÊ a rota o chama.
+vi.mock('@/lib/contacts/gravar-anuncio-de-origem', () => ({
+  gravarAnuncioDeOrigem: h.gravarAnuncioDeOrigem,
+}))
 
 vi.mock('@/lib/webhooks/deliver', () => ({
   dispatchWebhookEvent: h.dispatchWebhookEvent,
 }))
 
 import { POST } from './route'
+import { routeContactToPipeline } from '@/lib/cb-channels/pipeline-routing'
 import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
 import { handleTemplateWebhookChange } from '@/lib/whatsapp/template-webhook'
 
@@ -350,6 +357,7 @@ beforeEach(() => {
   h.dispatchInboundToFlows.mockResolvedValue({ consumed: false })
   h.dispatchInboundToAiReply.mockResolvedValue(undefined)
   h.dispatchWebhookEvent.mockResolvedValue(undefined)
+  h.gravarAnuncioDeOrigem.mockResolvedValue({ anuncio: true, plano: null, erros: [] })
   h.runAutomationsForTrigger.mockImplementation(() => {
     h.state.automationStarted++
     return new Promise<void>((resolve) => {
@@ -934,5 +942,55 @@ describe('template-lifecycle webhooks: WABA id is threaded to the handler (#534)
     })
     // A template event must not fall through to the messaging branch.
     expect(h.state.upsertCalls).toHaveLength(0)
+  })
+})
+
+// ⚠️ NOSSO: o anúncio Click-to-WhatsApp (`message.referral`) nos campos de
+// traqueamento da ficha — `src/lib/contacts/gravar-anuncio-de-origem.ts`.
+describe('inbound webhook: anúncio de origem (referral)', () => {
+  const REFERRAL = {
+    source_url: 'https://fb.me/3cr4Wqqkv',
+    source_id: '120226305854810726',
+    source_type: 'ad',
+    ctwa_clid: 'clid-1',
+  }
+
+  it('mensagem com referral: grava na ficha resolvida, na conta da entrada', async () => {
+    await runWebhook({ ...TEXT_MESSAGE, referral: REFERRAL })
+
+    expect(h.gravarAnuncioDeOrigem).toHaveBeenCalledTimes(1)
+    expect(h.gravarAnuncioDeOrigem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: 'acc-1',
+        contactId: 'contact-1',
+        referral: REFERRAL,
+      })
+    )
+  })
+
+  it('grava ANTES do robô, das automações e do roteador de funil', async () => {
+    await runWebhook({ ...TEXT_MESSAGE, referral: REFERRAL })
+
+    const anuncio = h.gravarAnuncioDeOrigem.mock.invocationCallOrder[0]
+    expect(anuncio).toBeLessThan(
+      h.dispatchInboundToFlows.mock.invocationCallOrder[0]
+    )
+    expect(anuncio).toBeLessThan(
+      h.runAutomationsForTrigger.mock.invocationCallOrder[0]
+    )
+    expect(anuncio).toBeLessThan(
+      vi.mocked(routeContactToPipeline).mock.invocationCallOrder[0]
+    )
+  })
+
+  it('mensagem sem referral: não chama nada', async () => {
+    await runWebhook()
+    expect(h.gravarAnuncioDeOrigem).not.toHaveBeenCalled()
+  })
+
+  it('reentrega (a mensagem já existia): não grava de novo', async () => {
+    h.state.messageUpsertResult = []
+    await runWebhook({ ...TEXT_MESSAGE, referral: REFERRAL })
+    expect(h.gravarAnuncioDeOrigem).not.toHaveBeenCalled()
   })
 })
