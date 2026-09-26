@@ -21,9 +21,12 @@ export async function buscarChaves(): Promise<ChavesDaConta> {
   try {
     const res = await fetch('/api/cb/ia/chaves', { cache: 'no-store' })
     if (!res.ok) return null
-    const corpo = (await res.json()) as { chaves?: { provedor: AiProvider; existe: boolean }[] }
+    const corpo = (await res.json()) as {
+      chaves?: { provedor: AiProvider; existe: boolean; soDaBase?: boolean }[]
+    }
     const r: Record<AiProvider, boolean> = { gemini: false, openai: false, anthropic: false }
-    for (const c of corpo.chaves ?? []) if (c.provedor in r) r[c.provedor] = c.existe === true
+    // A chave da OpenAI que é SÓ da base não serve de chave de chat (1042).
+    for (const c of corpo.chaves ?? []) if (c.provedor in r) r[c.provedor] = c.existe === true && c.soDaBase !== true
     return r
   } catch {
     return null

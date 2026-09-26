@@ -4315,6 +4315,7 @@
       "nao_encontrado": "Este agente não existe mais.",
       "sem_chave": "O provedor deste agente não tem chave — cadastre em Configurações → Integrações.",
       "provedor_sem_chave": "Este provedor não tem chave. Cadastre a chave em Configurações → Integrações, ou escolha outro provedor.",
+      "provedor_so_da_base": "A chave da OpenAI desta conta serve só à busca da base de conhecimento. Cadastre uma chave de chat da OpenAI em Configurações → Integrações, ou escolha outro provedor.",
       "chave_ilegivel": "A chave do provedor não pôde ser lida — cadastre-a de novo em Integrações.",
       "sem_mensagens": "Escreva uma mensagem para testar.",
       "sem_configuracao": "Cadastre primeiro a chave de um provedor em Integrações.",

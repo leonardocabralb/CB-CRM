@@ -4322,6 +4322,7 @@
       "nao_encontrado": "This agent no longer exists.",
       "sem_chave": "This agent's provider has no key — add it in Settings → Integrations.",
       "provedor_sem_chave": "This provider has no key. Add the key in Settings → Integrations, or choose another provider.",
+      "provedor_so_da_base": "This account's OpenAI key serves only the knowledge-base search. Add an OpenAI chat key in Settings → Integrations, or choose another provider.",
       "chave_ilegivel": "The provider's key could not be read — add it again in Integrations.",
       "sem_mensagens": "Write a message to test.",
       "sem_configuracao": "Add a provider's key in Integrations first.",

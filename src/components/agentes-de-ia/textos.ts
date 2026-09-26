@@ -26,6 +26,7 @@ export const CODIGOS_CONHECIDOS = [
   'nao_encontrado',
   'sem_chave',
   'provedor_sem_chave',
+  'provedor_so_da_base',
   'chave_ilegivel',
   'sem_mensagens',
   'sem_configuracao',

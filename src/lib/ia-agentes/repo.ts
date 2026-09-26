@@ -29,6 +29,7 @@ export class ErroDoAgente extends Error {
       | 'membro_de_outra_conta'
       | 'passar_para_si'
       | 'provedor_sem_chave'
+      | 'provedor_so_da_base'
       | 'conexao_instagram'
       | 'banco',
     mensagem: string,
@@ -86,8 +87,15 @@ async function conferirReferencias(
     } catch (err) {
       throw new ErroDoAgente('banco', err instanceof Error ? err.message : String(err))
     }
-    if (!estado.some((e) => e.provedor === a.provedor && e.existe)) {
+    const doProvedor = estado.find((e) => e.provedor === a.provedor)
+    if (!doProvedor?.existe) {
       throw new ErroDoAgente('provedor_sem_chave', 'o provedor escolhido não tem chave')
+    }
+    // A chave da OpenAI que nasceu SÓ da base (1042) pode ser restrita aos
+    // embeddings: o agente nasceria mudo, e o Playground falharia em toda
+    // geração. Vale até uma chave de CHAT da OpenAI ser gravada (Codex, #295).
+    if (doProvedor.soDaBase) {
+      throw new ErroDoAgente('provedor_so_da_base', 'a chave da OpenAI é só da base de conhecimento')
     }
   }
   if (a.conexoes && a.conexoes.length > 0) {
