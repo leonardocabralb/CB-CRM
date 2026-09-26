@@ -4,6 +4,7 @@ import { chaveDeTag } from "@/lib/contacts/chave-de-tag";
 import { variantesDoNonoDigito } from "@/lib/contacts/telefone";
 
 import { AsaasError, type ClienteAsaas } from "./cliente";
+import { diasDeAtraso } from "./inadimplencia";
 import { lerCliente, lerCobranca, type ClienteDoAsaas, type CobrancaDoAsaas } from "./leitura";
 
 /**
@@ -130,17 +131,6 @@ export function faixaDeAtraso(dias: number): string {
   if (dias <= 90) return "31 a 90 dias";
   if (dias <= 365) return "91 a 365 dias";
   return "mais de um ano";
-}
-
-/**
- * Dias de calendário entre `AAAA-MM-DD` e hoje, no fuso local.
- * ⚠️ Nunca `new Date("2026-09-01")` — meia-noite UTC retrocede um dia aqui.
- */
-export function diasDeAtraso(vencimento: string, agora: Date): number | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(vencimento)) return null;
-  const dia = new Date(`${vencimento}T00:00:00`);
-  const hoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
-  return Math.round((hoje.getTime() - dia.getTime()) / 86_400_000);
 }
 
 export interface ContatoDoCrm {

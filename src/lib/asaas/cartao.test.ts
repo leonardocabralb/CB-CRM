@@ -86,14 +86,15 @@ describe('codigoConhecido', () => {
 })
 
 describe('diasAte', () => {
-  // ⚠️ O pino é sobre a armadilha da coluna DATE: `new Date("2026-09-13")` é
-  // meia-noite UTC e, no Brasil, cai no dia 12 — a chave pareceria expirar um
-  // dia antes do que expira.
-  it('conta em dias LOCAIS, não em UTC', () => {
-    const agora = new Date(2026, 8, 12, 21, 30) // 12/09/2026, 21:30 local
-    expect(diasAte('2026-09-12', agora)).toBe(0)
-    expect(diasAte('2026-09-13', agora)).toBe(1)
-    expect(diasAte('2026-09-11', agora)).toBe(-1)
+  // ⚠️ Esta conta roda no SERVIDOR (a rota `/api/cb/asaas` monta o cartão), e
+  // o contêiner está em UTC: às 21h30 de Brasília já é o dia seguinte lá, e a
+  // chave pareceria expirar um dia antes do que expira. O "hoje" é o do fuso do
+  // escritório. (E `new Date("2026-09-13")` é meia-noite UTC — no Brasil, dia 12.)
+  it('conta em dias de calendário no fuso do escritório, não no do servidor', () => {
+    const noite = new Date('2026-09-13T00:30:00Z') // 12/09/2026, 21:30 em Brasília
+    expect(diasAte('2026-09-12', noite)).toBe(0)
+    expect(diasAte('2026-09-13', noite)).toBe(1)
+    expect(diasAte('2026-09-11', noite)).toBe(-1)
   })
 
   it('devolve null para data que não é AAAA-MM-DD', () => {
@@ -164,7 +165,7 @@ describe('cartaoDoAsaas', () => {
   })
 
   it('conta os dias até a validade que o operador digitou', () => {
-    const agora = new Date(2026, 8, 12)
+    const agora = new Date('2026-09-12T15:00:00Z') // 12/09/2026, meio-dia em Brasília
     const c = cartaoDoAsaas({ ...base, chave_expira_em: '2026-10-01' }, agora)
     expect(c.diasAteExpirar).toBe(19)
     expect(c.diasAteExpirar!).toBeLessThanOrEqual(AVISAR_EXPIRACAO_EM_DIAS)
