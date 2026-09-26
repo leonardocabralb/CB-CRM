@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import { ehInstagram } from '@/lib/cb-channels/transporte'
+import { canalDaIaNaConversa } from '@/lib/ia-agentes/quem-responde'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 
 type Params = { params: Promise<{ conversationId: string }> }
@@ -79,14 +80,23 @@ export async function POST(request: Request, { params }: Params) {
 
     // O agente não responde no Direct (D1 do Instagram): pausar ou retomar ali
     // seria um botão sem efeito, e "Retomar" afirmaria que a IA voltou a
-    // atender uma conversa em que ela nunca atende. Pergunta à CONEXÃO da
-    // conversa — a do Instagram sempre carrega o `channel_id` (persistir.ts);
-    // sem canal é o legado de WhatsApp. Só `kind`: a linha tem o token.
-    if (conv.channel_id) {
+    // atender uma conversa em que ela nunca atende. Pergunta à MESMA conexão
+    // que a faixa usa (`canalDaIaNaConversa`: a da última mensagem do
+    // cliente, senão a da conversa) — com a fixada, a faixa oferecia o botão
+    // e esta rota o recusava (Codex, #309). Sem canal é o legado de WhatsApp.
+    // Só `kind`: a linha tem o token.
+    let canalId: string | null
+    try {
+      canalId = await canalDaIaNaConversa(supabase, conversationId, conv.channel_id ?? null)
+    } catch (err) {
+      console.error('[ai/autoreply] last customer message lookup error:', err)
+      return NextResponse.json({ error: 'Failed to load conversation' }, { status: 500 })
+    }
+    if (canalId) {
       const { data: canal, error: canalErr } = await supabase
         .from('cb_channels')
         .select('kind')
-        .eq('id', conv.channel_id)
+        .eq('id', canalId)
         .eq('account_id', accountId)
         .maybeSingle()
       // ⚠️ Erro de banco NÃO é "não é Instagram": falha fechada.

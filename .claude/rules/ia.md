@@ -279,8 +279,11 @@ ingestões), `fila.ts`, `turno.ts`, `rede.ts` (no topo de `/api/automations/cron
   (`descartarPendente`); o turno e a reserva descartam com `bot` sem
   `ia_agente_id` depois do gatilho, na MESMA conexão.
 - ⚠️⚠️ **A ingestão só ENFILEIRA** (`cb_ia_enfileirar_turno`: um pendente por
-  conversa E conexão, com agente, card e etapa; a rajada de 8 s o empurra).
-  Executa em `after()` e, como rede, o cron. O turno fica AMARRADO a (agente,
+  conversa E conexão, com agente, card e etapa; a rajada de 8 s o empurra;
+  desde a 1050, a mensagem gravada ANTES da do pendente não troca o gatilho
+  nem o agente/card/etapa — ingestões fora de ordem deixavam o turno na
+  velha, e ele se descartava pela nova). Executa em `after()` e, como rede,
+  o cron. O turno fica AMARRADO a (agente,
   card, etapa): card movido ou etapa com outro agente = descarta, sem
   re-resolver (o alerta de atraso chama a equipe).
 - ⚠️⚠️ **A última palavra é da reserva, `cb_ia_reservar_envio(turno,

@@ -8,12 +8,15 @@
 // UMA busca por página, compartilhada por todas as bolhas (um cache de
 // módulo): um hook com fetch próprio em cada bolha seriam centenas de
 // pedidos por conversa. Um id que a lista não tem (agente criado depois da
-// busca) pede de novo — no máximo uma vez por minuto.
+// busca) pede de novo — no máximo uma vez por minuto. E a lista VENCE em
+// 5 min: renomear o agente com a página aberta deixava o nome antigo em toda
+// bolha para sempre (Codex, #309).
 // ============================================================
 
 import { useEffect, useSyncExternalStore } from 'react';
 
 const REBUSCAR_MS = 60_000;
+const VALIDADE_MS = 5 * 60_000;
 
 let nomes = new Map<string, string>();
 let buscando = false;
@@ -60,7 +63,7 @@ export function useNomeDoAgenteDeIa(id: string | null | undefined): string | nul
     () => null,
   );
   useEffect(() => {
-    if (id && !nomes.has(id)) buscar();
+    if (id && (!nomes.has(id) || Date.now() - buscadoEm > VALIDADE_MS)) buscar();
   }, [id]);
   return nome;
 }

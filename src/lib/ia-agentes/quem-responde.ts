@@ -191,6 +191,46 @@ export interface LeituraDaConversa {
   agente: AgenteDaEtapa | null
 }
 
+/** Quantas mensagens do cliente `canalDaIaNaConversa` olha atrás da última que abre turno. */
+const ULTIMAS_DO_CLIENTE_LIDAS = 10
+
+/**
+ * A conexão que decide a IA numa conversa, para a TELA: a da ÚLTIMA mensagem
+ * do cliente que ABRE turno (`abreTurno`, a régua do motor — figurinha,
+ * localização e toque em botão não mudam quem responde), senão a da conversa.
+ * UMA função para a faixa (`GET /api/cb/ia/conversa/[id]`) e para o
+ * Pausar/Retomar (`POST /api/ai/autoreply/[id]`): com réguas diferentes, a
+ * faixa oferecia o botão e a rota o recusava (Codex, #309). A ordem é a de
+ * gravação (`gravada_em`), a mesma de `haMensagemMaisNova`. LANÇA em erro.
+ */
+export async function canalDaIaNaConversa(
+  db: SupabaseClient,
+  conversationId: string,
+  canalDaConversa: string | null,
+): Promise<string | null> {
+  const { data, error } = await db
+    .from('messages')
+    .select('channel_id, content_type, content_text, media_type')
+    .eq('conversation_id', conversationId)
+    .eq('sender_type', 'customer')
+    .not('channel_id', 'is', null)
+    .in('content_type', [...TIPOS_QUE_ABREM_TURNO])
+    .is('deleted_at', null)
+    .order('gravada_em', { ascending: false, nullsFirst: false })
+    .limit(ULTIMAS_DO_CLIENTE_LIDAS)
+  if (error) throw new Error(`[ia-agentes] leitura da última mensagem do cliente falhou: ${error.message}`)
+  const linhas = (data ?? []) as Array<{
+    channel_id: unknown
+    content_type: string
+    content_text: string | null
+    media_type: string | null
+  }>
+  const ultima = linhas.find(
+    (m) => typeof m.channel_id === 'string' && abreTurno({ tipo: m.content_type, texto: m.content_text, mime: m.media_type }),
+  )
+  return typeof ultima?.channel_id === 'string' ? ultima.channel_id : canalDaConversa
+}
+
 /**
  * Lê a conversa (e a conexão), o card ABERTO mais recente do contato, a
  * linha da etapa dele em `cb_ia_agente_etapas` e o agente. `null` = a

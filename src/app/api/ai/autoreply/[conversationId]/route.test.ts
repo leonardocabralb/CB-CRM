@@ -10,6 +10,9 @@ type Linha = Record<string, unknown> | null
 
 let conversa: Linha
 let canal: Linha
+/** A última mensagem do cliente com conexão (`canalDaIaNaConversa`). */
+let ultimaDoCliente: Linha
+let erroDaUltima: { message: string } | null
 let linhasGravadas: Array<{ id: string }> | null
 let erroDoUpdate: { message: string } | null
 let erroDoCanal: { message: string } | null
@@ -25,7 +28,23 @@ function leitura(tabela: string, resposta: () => { data: Linha; error: unknown }
       filtros.push([coluna, valor])
       return cadeia
     },
+    not: (coluna: string, op: string, valor: unknown) => {
+      filtros.push([`not.${coluna}.${op}`, valor])
+      return cadeia
+    },
+    in: () => cadeia,
+    is: (coluna: string, valor: unknown) => {
+      filtros.push([`is.${coluna}`, valor])
+      return cadeia
+    },
+    order: () => cadeia,
+    limit: () => cadeia,
     maybeSingle: async () => resposta(),
+    // Lista (as últimas mensagens do cliente, `canalDaIaNaConversa`).
+    then: (ok: (r: unknown) => unknown, erro: (e: unknown) => unknown) => {
+      const r = resposta()
+      return Promise.resolve({ data: r.data ? [r.data] : [], error: r.error }).then(ok, erro)
+    },
   }
   return cadeia
 }
@@ -35,6 +54,7 @@ const supabase = {
     select: () => {
       if (tabela === 'conversations') return leitura(tabela, () => ({ data: conversa, error: null }))
       if (tabela === 'cb_channels') return leitura(tabela, () => ({ data: canal, error: erroDoCanal }))
+      if (tabela === 'messages') return leitura(tabela, () => ({ data: ultimaDoCliente, error: erroDaUltima }))
       throw new Error(`leitura inesperada em ${tabela}`)
     },
     update: (payload: Record<string, unknown>) => {
@@ -80,6 +100,8 @@ function chamar(corpo: unknown) {
 beforeEach(() => {
   conversa = { id: 'conv-1', group_id: null, channel_id: 'canal-1' }
   canal = { kind: 'evolution' }
+  ultimaDoCliente = null
+  erroDaUltima = null
   linhasGravadas = [{ id: 'conv-1' }]
   erroDoUpdate = null
   erroDoCanal = null
@@ -168,6 +190,31 @@ describe('POST /api/ai/autoreply — onde a IA não atua', () => {
       ['id', 'canal-1'],
       ['account_id', 'conta-1'],
     ])
+  })
+
+  it('a conexão é a da ÚLTIMA mensagem do cliente, a mesma da faixa (Codex, #309)', async () => {
+    // Fixada no Instagram, mas o cliente escreveu por último no WhatsApp:
+    // é o agente do WhatsApp que a faixa mostra, e o botão tem de valer.
+    conversa = { id: 'conv-1', group_id: null, channel_id: 'canal-instagram' }
+    ultimaDoCliente = { channel_id: 'canal-1', content_type: 'text', content_text: 'oi', media_type: null }
+    const res = await chamar({ paused: true })
+    expect(res.status).toBe(200)
+    const doCanal = leituras.find((l) => l.tabela === 'cb_channels')
+    expect(doCanal?.filtros).toContainEqual(['id', 'canal-1'])
+    const daMensagem = leituras.find((l) => l.tabela === 'messages')
+    expect(daMensagem?.filtros).toEqual([
+      ['conversation_id', 'conv-1'],
+      ['sender_type', 'customer'],
+      ['not.channel_id.is', null],
+      ['is.deleted_at', null],
+    ])
+  })
+
+  it('erro ao ler a última mensagem falha FECHADO (500, nada gravado)', async () => {
+    erroDaUltima = { message: 'timeout' }
+    const res = await chamar({ paused: false })
+    expect(res.status).toBe(500)
+    expect(updates).toHaveLength(0)
   })
 
   it('erro ao ler a conexão falha FECHADO (500, nada gravado)', async () => {

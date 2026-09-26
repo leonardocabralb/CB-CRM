@@ -1,17 +1,21 @@
 import { NextResponse } from 'next/server'
 import { diaNoFuso, FUSO_PADRAO, paraInstante } from '@/lib/agenda/fuso'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
+import { buscarPorChave, PAGINA } from '@/lib/supabase/paginar'
 import { somarDias } from '@/lib/tasks/prazo'
 
-// Rows are aggregated in-process over a bounded window. An active
-// account writes a handful of rows per conversation, so 30 days sits
-// comfortably under this cap; we surface `truncated` when it doesn't so
-// the UI can say "showing a partial window" rather than under-reporting
-// silently.
-const MAX_ROWS = 10_000
+// Rows are aggregated in-process over the whole window.
+//
+// ⚠️ A janela é lida INTEIRA ou a rota falha — nunca um total parcial. O
+// PostgREST corta cada resposta em 1.000 linhas, por mais que se peça: a versão
+// anterior pedia 10.001 de uma vez, somava só as 1.000 mais recentes e o aviso
+// de janela parcial nunca acendia (o cartão mostrava "1000 chamadas" com 1.902
+// no banco). A leitura é POR CHAVE (`buscarPorChave`, até 25 mil linhas), e não
+// por posição, porque a tabela recebe registros enquanto é lida.
 const DEFAULT_WINDOW_DAYS = 30
 
 interface UsageRow {
+  id: string
   created_at: string
   mode: 'auto_reply' | 'draft' | 'radar' | 'transcricao'
   provider: string
@@ -53,30 +57,39 @@ export async function GET(request: Request) {
     // no servidor, e o contêiner está em UTC: os helpers de "dia local" de
     // `lib/dashboard/date-utils` (feitos para o NAVEGADOR) viravam o dia às 21h
     // de Brasília, e o uso da noite caía no dia seguinte.
-    const primeiroDia = somarDias(diaNoFuso(new Date(), FUSO_PADRAO), -(days - 1))
+    const agora = new Date()
+    const primeiroDia = somarDias(diaNoFuso(agora, FUSO_PADRAO), -(days - 1))
     const since = paraInstante(primeiroDia, '00:00', FUSO_PADRAO)
 
-    const { data, error } = await supabase
-      .from('ai_usage_log')
-      .select(
-        'created_at, mode, provider, model, prompt_tokens, completion_tokens, total_tokens',
-      )
-      .eq('account_id', accountId)
-      .gte('created_at', since.toISOString())
-      .order('created_at', { ascending: false })
-      .limit(MAX_ROWS + 1)
+    const leitura = await buscarPorChave<UsageRow>(async (depoisDe) => {
+      let consulta = supabase
+        .from('ai_usage_log')
+        .select(
+          'id, created_at, mode, provider, model, prompt_tokens, completion_tokens, total_tokens',
+        )
+        .eq('account_id', accountId)
+        .gte('created_at', since.toISOString())
+        // Fim fixo no instante do pedido: o registro gravado durante a
+        // leitura fica para o próximo carregamento, e a foto é uma só.
+        .lte('created_at', agora.toISOString())
+      if (depoisDe) consulta = consulta.gt('id', depoisDe)
+      const { data, error } = await consulta.order('id', { ascending: true }).limit(PAGINA)
+      return { data: (data ?? null) as UsageRow[] | null, error }
+    })
 
-    if (error) {
-      console.error('[ai/usage GET] fetch error:', error)
+    if (!leitura.linhas) {
+      console.error(
+        '[ai/usage GET] leitura incompleta:',
+        leitura.motivo,
+        leitura.erro?.message ?? '',
+      )
       return NextResponse.json(
         { error: 'Failed to load usage' },
         { status: 500 },
       )
     }
 
-    const all = (data ?? []) as UsageRow[]
-    const truncated = all.length > MAX_ROWS
-    const rows = truncated ? all.slice(0, MAX_ROWS) : all
+    const rows = leitura.linhas
 
     // Totals.
     let promptTokens = 0
@@ -137,7 +150,9 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       window_days: days,
-      truncated,
+      // A janela vem inteira ou a rota falha: não existe mais janela parcial.
+      // O campo fica porque o cartão (`ai-usage.tsx`) ainda o lê.
+      truncated: false,
       totals: {
         calls: rows.length,
         prompt_tokens: promptTokens,
