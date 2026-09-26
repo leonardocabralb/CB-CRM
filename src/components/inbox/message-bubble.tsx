@@ -33,6 +33,7 @@ import { MessageReactions } from "./message-reactions";
 import { PlayerDeAudio } from "./player-de-audio";
 import { AvisoDeLigacao } from "./aviso-de-ligacao";
 import { InteractivePreview } from "@/components/interactive/interactive-preview";
+import { useNomeDoAgenteDeIa } from "@/components/agentes-de-ia/nomes-dos-agentes";
 import { useTranslations } from "next-intl";
 import type { CorDeCanal } from "@/lib/cb-channels/cores";
 
@@ -631,6 +632,21 @@ function MessageContent({
   }
 }
 
+/** O selo "IA · <nome>" da resposta de um agente de IA. */
+function SeloDoAgenteDeIa({ id }: { id: string }) {
+  const t = useTranslations("Inbox.bubble");
+  const nome = useNomeDoAgenteDeIa(id);
+  return (
+    <span
+      className="inline-flex min-w-0 max-w-[10rem] items-center gap-0.5 rounded-full bg-primary-foreground/20 px-1.5 py-px text-[9px] font-semibold leading-none text-primary-foreground"
+      title={nome ? t("iaAgenteTitle", { nome }) : t("aiBadgeTitle")}
+    >
+      <Sparkles className="h-2.5 w-2.5 shrink-0" />
+      <span className="truncate">{nome ? t("iaAgente", { nome }) : t("aiBadge")}</span>
+    </span>
+  );
+}
+
 export function MessageBubble({
   message,
   reply,
@@ -848,7 +864,12 @@ export function MessageBubble({
               {t("edited")}
             </span>
           )}
-          {message.ai_generated && (
+          {/* Resposta de um AGENTE de IA: "IA · <nome>" (o nome vem da rota
+              de nomes, que qualquer membro lê). Sem o agente (o assistente
+              anterior), ou enquanto o nome não chegou, o selo "IA" de sempre. */}
+          {message.ia_agente_id ? (
+            <SeloDoAgenteDeIa id={message.ia_agente_id} />
+          ) : message.ai_generated ? (
             <span
               className="inline-flex items-center gap-0.5 rounded-full bg-primary-foreground/20 px-1.5 py-px text-[9px] font-semibold uppercase leading-none tracking-wide text-primary-foreground"
               title={t("aiBadgeTitle")}
@@ -856,7 +877,7 @@ export function MessageBubble({
               <Sparkles className="h-2.5 w-2.5" />
               {t("aiBadge")}
             </span>
-          )}
+          ) : null}
           {/* Automação ou fluxo — robô que NÃO é a IA.
               ⚠️ Este era o único caminho de saída sem marca nenhuma. Resposta
               de IA já tinha o selo ✨ e o eco do celular tinha o dele, mas

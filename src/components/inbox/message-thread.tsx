@@ -2368,7 +2368,6 @@ export function MessageThread({
   const messageGroups = groupTimelineByDate(
     intercalar(messages, leadEvents, notas, execucoesDoFio)
   );
-  const assignedAgentId = conversation.assigned_agent_id ?? null;
   const currentStatus = STATUS_OPTIONS.find(
     (s) => s.value === conversation.status
   );
@@ -3060,23 +3059,17 @@ export function MessageThread({
         )}
       </div>
 
-      {/* AI auto-reply banner — take over an active bot, or resume it
-          after a handoff. Renders nothing unless the account has
-          auto-reply configured. */}
+      {/* Faixa do agente de IA (D24–D26): quem responde nesta conversa (o
+          agente da ETAPA do card) e a pausa, com Pausar/Retomar. As colunas
+          da conversa só fazem a faixa perguntar de novo à rota. */}
       {/* IA não atua em grupo (906). O `/api/ai/autoreply` recusa com 400;
           esconder a faixa evita oferecer um controle que só daria erro. */}
       {!ehGrupo && (
       <AiThreadBanner
         conversationId={conversation.id}
+        iaAgenteId={conversation.ia_agente_id ?? null}
         disabled={conversation.ai_autoreply_disabled ?? false}
-        handoffSummary={conversation.ai_handoff_summary}
-        assignedAgentId={assignedAgentId}
-        currentUserId={user?.id}
-        onChange={(patch) => {
-          if ("assigned_agent_id" in patch) {
-            onAssignChange(conversation.id, patch.assigned_agent_id ?? null);
-          }
-        }}
+        pausadaPor={conversation.ia_pausada_por ?? null}
       />
       )}
 

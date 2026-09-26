@@ -364,6 +364,9 @@ Volta para `main` por PR no CB-CRM.
   com `LOCALE_DAS_DATAS` e padrão localizado (`PPP`) (pino
   `idioma-das-datas.chamadores.test.ts`); coluna DATE nunca por
   `new Date()` direto (meia-noite UTC volta um dia no Brasil).
+- O servidor (contêiner e banco) roda em UTC: "hoje", hora e dia no servidor
+  saem de `diaNoFuso`/`paraInstante` (`agenda/fuso.ts`), nunca de getter local
+  nem de `dashboard/date-utils` (do navegador) — erram das 21h à meia-noite.
 - CSV exportado passa por `neutralizarFormula` (`src/lib/csv.ts`): aspas não
   impedem o Excel de avaliar `=…`.
 - Pino estrutural (`*.chamadores.test.ts`, default-deny) que reprova é

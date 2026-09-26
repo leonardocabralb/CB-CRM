@@ -18,6 +18,11 @@ const SALVO: IaAgente = {
   tetoRespostas: 10,
   podePassarPara: ['b', 'c'],
   transferirPara: 'membro-que-saiu',
+  ativadoEm: '2026-09-25T00:00:00Z',
+  etapas: [
+    { stageId: 'e1', pipelineId: 'f1', desde: '2026-09-25T00:00:00Z' },
+    { stageId: 'e2', pipelineId: 'f1', desde: '2026-09-25T00:00:00Z' },
+  ],
   arquivadoEm: null,
   createdAt: '2026-09-25T00:00:00Z',
   updatedAt: '2026-09-25T00:00:00Z',
@@ -37,6 +42,7 @@ function rascunhoDe(a: IaAgente): Rascunho {
     tetoRespostas: a.tetoRespostas,
     transferirPara: a.transferirPara,
     podePassarPara: [...a.podePassarPara],
+    etapas: a.etapas.map((e) => e.stageId),
   }
 }
 
@@ -76,6 +82,14 @@ describe('alteracoesDoRascunho — o Salvar manda só o que mudou', () => {
   it('escolher a fila (nulo) no lugar de quem saiu é mudança, e vai com o nome da rota', () => {
     const r = { ...rascunhoDe(SALVO), transferirPara: null }
     expect(alteracoesDoRascunho(SALVO, r)).toEqual({ transferir_para: null })
+  })
+
+  it('etapas (D24): conjunto — a ordem não conta; marcar ou desmarcar manda a lista INTEIRA', () => {
+    expect(alteracoesDoRascunho(SALVO, { ...rascunhoDe(SALVO), etapas: ['e2', 'e1'] })).toEqual({})
+    expect(alteracoesDoRascunho(SALVO, { ...rascunhoDe(SALVO), etapas: ['e1'] })).toEqual({ etapas: ['e1'] })
+    expect(alteracoesDoRascunho(SALVO, { ...rascunhoDe(SALVO), etapas: ['e1', 'e2', 'e3'] })).toEqual({
+      etapas: ['e1', 'e2', 'e3'],
+    })
   })
 
   it('teto e ativo com os nomes da rota', () => {

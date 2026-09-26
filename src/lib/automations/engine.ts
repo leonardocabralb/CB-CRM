@@ -34,7 +34,19 @@ import type {
 import { supabaseAdmin } from './admin-client';
 import { resolverDestinatario } from './destinatario';
 import { resolveEngineChannelPreferring } from '@/lib/cb-channels/engine-send';
-import { ehGatilhoDaRegua } from '@/lib/asaas/regua';
+import { ehGatilhoDaRegua, PASSOS_QUE_FALAM_COM_O_CONTATO } from '@/lib/asaas/regua';
+
+/**
+ * Os passos que calam o agente de IA quando rodam por causa da mensagem do
+ * cliente (F2 dos agentes, E4): os que falam com o contato, e — por
+ * conservadorismo — os que iniciam um robô ou outra automação, que podem
+ * falar. O "Aguardar" conta à parte (quem espera, fala depois).
+ */
+const PASSOS_QUE_CALAM_O_AGENTE: ReadonlySet<string> = new Set([
+  ...PASSOS_QUE_FALAM_COM_O_CONTATO,
+  'run_flow',
+  'run_automation',
+]);
 import { telefoneDigitado, type MotivoDoTelefone } from '@/lib/contacts/telefone';
 import { nomeParaFixar } from '@/lib/contacts/nome-fixado';
 import { urlDoInbox } from '@/lib/inbox/url';
@@ -76,6 +88,7 @@ import {
   TENTATIVAS_MAX,
   contadorDe,
   decidirRetentativa,
+  recusaComprovada,
   tentativasJaFeitas,
 } from './retentativa';
 import {
@@ -253,6 +266,15 @@ export interface ResultadoDoDisparo {
    * (upstream #589), ou banco fora na conferência. Nenhuma automação rodou.
    */
   erro?: string;
+  /**
+   * NOSSO (F2 dos agentes de IA, E4): alguma automação deste disparo FALOU
+   * (ou vai falar) com o contato — um envio que deu certo, foi reenfileirado
+   * ou falhou sem recusa comprovada (pode ter saído), um "Aguardar", um robô
+   * ou outra automação iniciados. Com
+   * isso o agente de IA fica calado nesta mensagem: o cliente não recebe
+   * duas respostas. Opcional para os fakes antigos continuarem valendo.
+   */
+  falou?: boolean;
 }
 
 const DISPARO_VAZIO: ResultadoDoDisparo = {
@@ -270,11 +292,12 @@ const DISPARO_VAZIO: ResultadoDoDisparo = {
  * Must never throw. All errors are caught and logged; per-automation
  * failures are recorded into automation_logs with status='failed'.
  *
- * Devolve `void` de propósito: os chamadores da ingestão (webhook da Meta,
- * `inbound-store`) aguardam um tipo de gatilho por vez, EM SEQUÊNCIA, e só
- * precisam saber que terminou; mudar o tipo aqui mexeria em arquivos que o
- * merge do upstream reescreve. Quem precisa saber o que aconteceu chama
- * `dispararAutomacoes`.
+ * Devolve `void` de propósito, para quem só precisa saber que terminou (a
+ * rota manual `/api/automations/engine`, as etiquetas de `tag-events.ts` e o
+ * dreno do funil). ⚠️ As INGESTÕES (webhook da Meta, `inbound-store`) NÃO a
+ * chamam mais: usam `dispararAutomacoes`, porque o `falou` do resultado é o
+ * que cala o agente de IA (E4) — e o passo `add_tag` também, pelo mesmo
+ * motivo. Quem precisa saber o que aconteceu chama `dispararAutomacoes`.
  */
 export async function runAutomationsForTrigger(
   input: DispatchInput
@@ -422,7 +445,9 @@ export async function dispararAutomacoes(
         }
       }
       try {
-        const status = await executeAutomation(input, automation);
+        const status = await executeAutomation(input, automation, undefined, () => {
+          r.falou = true;
+        });
         r.executadas += 1;
         if (status === 'failed') r.comFalha += 1;
         else if (status === 'partial') r.emEspera += 1;
@@ -824,7 +849,9 @@ async function executeAutomation(
    * esta automação respondeu a uma mensagem — quando na verdade outra
    * automação a chamou, e a diferença é tudo ao investigar um laço.
    */
-  rotuloDoDisparo?: string
+  rotuloDoDisparo?: string,
+  /** Chamado quando um passo desta execução fala (ou vai falar) com o contato (E4). */
+  aoFalar?: () => void
 ): Promise<AutomationLogStatus> {
   const db = supabaseAdmin();
 
@@ -876,6 +903,7 @@ async function executeAutomation(
       startPosition: 0,
       logId: log.id,
       triggerEvent: rotuloDoDisparo ?? input.triggerType,
+      aoFalar,
     })) ?? 'success';
 
   // Atomic counter update via the SQL function from migration 007.
@@ -925,6 +953,14 @@ interface ExecuteArgs {
    * quando ninguém fez nada além de avaliar condições (achado da revisão).
    */
   acumulador?: { fezTrabalho: boolean; barrouPorCondicao: boolean };
+  /**
+   * NOSSO (F2 dos agentes de IA, E4): avisa quem disparou que esta execução
+   * falou ou vai falar com o contato. Desce pelos ramos com o `...args`, e é
+   * chamado NO MOMENTO (envio que deu certo, foi reenfileirado ou falhou sem
+   * recusa comprovada, "Aguardar", robô ou automação iniciados) — o relato do `acumulador` só sobe no fim do
+   * escopo, e o "Aguardar" e a retentativa saem antes por `return`.
+   */
+  aoFalar?: () => void;
 }
 
 /**
@@ -1086,6 +1122,7 @@ async function executeStepsFrom(
     // `wait` is the suspension point: enqueue and stop processing this
     // scope. The cron endpoint will pick it up later.
     if (step.step_type === 'wait') {
+      args.aoFalar?.();
       const cfg = step.step_config as WaitStepConfig;
       const ms = waitMs(cfg);
       // ⚠️⚠️ ESTACIONA PELA FUNÇÃO `cb_estacionar_espera` (1005), nunca por
@@ -1218,6 +1255,7 @@ async function executeStepsFrom(
         detail,
       });
       fezTrabalho = true;
+      if (PASSOS_QUE_CALAM_O_AGENTE.has(step.step_type)) args.aoFalar?.();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
 
@@ -1291,6 +1329,8 @@ async function executeStepsFrom(
         // sempre — invisível no fio e fora do bloco de correções do Meu dia.
         // Falhando o enfileiramento, o comportamento é o de antes.
         if (!erroDaFila) {
+          // Vai falar daqui a 30 s ou 5 min: o agente não responde por cima.
+          if (PASSOS_QUE_CALAM_O_AGENTE.has(step.step_type)) args.aoFalar?.();
           results.push({
             step_id: step.id,
             step_type: step.step_type,
@@ -1309,6 +1349,12 @@ async function executeStepsFrom(
         );
       }
 
+      // ⚠️ Falha SEM recusa comprovada (tempo esgotado, 5xx, qualquer erro
+      // depois do envio, erro que não veio do provedor) pode ter falado com o
+      // contato — o `entrega_incerta`. O agente não responde por cima (E4).
+      if (PASSOS_QUE_CALAM_O_AGENTE.has(step.step_type) && !recusaComprovada(err)) {
+        args.aoFalar?.();
+      }
       results.push({
         step_id: step.id,
         step_type: step.step_type,
@@ -1507,7 +1553,13 @@ async function runStep(
         return `tag ${cfg.tag_id} added; tag_added dispatch skipped at depth ${depth}`;
       }
 
-      await runAutomationsForTrigger({
+      // `dispararAutomacoes`, e não `runAutomationsForTrigger` (que é `void`):
+      // se a automação de `tag_added` FALOU (ou vai falar) com o contato, a
+      // execução de cima falou junto — é pelo `falou` dela que a ingestão
+      // cala o agente de IA (E4). Descartado, o agente da etapa respondia
+      // uma segunda vez à mesma mensagem. Só a fala aninhada sobe: a que só
+      // etiqueta continua não contando (Codex, #292).
+      const aninhado = await dispararAutomacoes({
         accountId: args.automation.account_id,
         triggerType: 'tag_added',
         contactId: args.contactId,
@@ -1520,6 +1572,7 @@ async function runStep(
           },
         },
       });
+      if (aninhado.falou) args.aoFalar?.();
       return `tag ${cfg.tag_id} added and tag_added dispatched`;
     }
 
@@ -1756,6 +1809,11 @@ async function runStep(
       });
 
       if (!criado.ok) throw new Error(`create_deal falhou: ${criado.message}`);
+      // O card NASCEU na etapa: a automação que escuta a entrada nela fala
+      // depois, no dreno — conta agora (E4, `etapaTemQuemFale`).
+      if (criado.created && args.aoFalar && (await etapaTemQuemFale(db, args.automation.account_id, cfg.stage_id))) {
+        args.aoFalar();
+      }
       // `created: false` (colisão de índice único) não acontece com source
       // 'automation' — o índice da 911 não alcança este insert. Quem barra
       // duplicata aqui é a checagem acima; o ramo fica pelo contrato de
@@ -1778,6 +1836,21 @@ async function runStep(
       if (!ehMover && !cfg.status)
         throw new Error('set_deal_status precisa de status');
 
+
+      // FALA ADIADA (E4): quem escuta a entrada na etapa de destino fala
+      // depois, no dreno. Só vale se o card MUDAR de etapa (sem mudança o
+      // gatilho da 934 não enfileira evento nenhum) — e a RPC não diz se
+      // mudou: a etapa de antes é lida aqui, e só quando alguém escuta a de
+      // destino (o caso comum fica numa consulta só). Leitura que falha =
+      // conta como fala (`undefined` nunca é a etapa de destino).
+      const escutaODestino =
+        ehMover &&
+        !!cfg.stage_id &&
+        !!args.aoFalar &&
+        (await etapaTemQuemFale(db, args.automation.account_id, cfg.stage_id));
+      const etapaAntes = escutaODestino
+        ? await etapaAtualDoCard(db, args.automation.account_id, alvo.id)
+        : undefined;
 
       // ⚠️ O "Mover" NÃO pede status: quem reabre o PERDIDO levado a uma
       // etapa neutra — inclusive a etapa em que ele já está, o card marcado
@@ -1818,6 +1891,7 @@ async function runStep(
       // para o "Aguardar" junto com o resto do contexto.
       if (!args.context.deal_id) args.context.deal_id = alvo.id;
       args.context.deal_status_fixado = (r.status_gravado as DealStatus | null) ?? null;
+      if (escutaODestino && etapaAntes !== cfg.stage_id) args.aoFalar?.();
 
       return ehMover
         ? `negócio movido para ${cfg.stage_id}`
@@ -2004,7 +2078,7 @@ async function runStep(
       // é justamente o dia em que ninguém vai lembrar desta regra.
       const { data: conv, error: convErr } = await db
         .from('conversations')
-        .select('group_id')
+        .select('group_id, ai_autoreply_disabled, ia_pausada_por')
         .eq('id', conversationId)
         .eq('account_id', args.automation.account_id)
         .maybeSingle();
@@ -2014,33 +2088,42 @@ async function runStep(
       if (conv.group_id)
         throw new Error('set_ai não vale em conversa de grupo');
 
-      const update: Record<string, unknown> = {
-        ai_autoreply_disabled: !cfg.enabled,
-      };
-      if (cfg.enabled) {
-        // Espelha a rota manual: devolver o fio ao robô exige soltar QUALQUER
-        // atribuição, não só a de quem clicou — a IA fica muda enquanto houver
-        // humano atribuído, então um responsável esquecido faria "religar" ser
-        // um nada silencioso.
-        update.assigned_agent_id = null;
-        // ⚠️ Zera o teto de respostas da IA nesta conversa, por decisão do
-        // operador (D10). O comentário da rota manual dizia que isso era
-        // "não-automatizável de propósito": o contador é o que impede o robô
-        // de responder para sempre, e a lentidão humana era a proteção.
-        // Automatizado, o teto passa a depender de quem monta a regra — "a
-        // cada mensagem recebida, religar a IA" fura o teto para sempre.
-        update.ai_reply_count = 0;
-        update.ai_handoff_summary = null;
+      // ⚠️ NOSSO (agentes de IA, 1049): a pausa tem MOTIVO. Desligar pausa por
+      // `automacao` (sem pisar num motivo que já estava lá). Ligar desfaz SÓ a
+      // pausa por `automacao`: a de gente, do botão e da transferência foram
+      // decisões de gente sobre aquela conversa e só o "Retomar IA" as desfaz
+      // (D26). Ligar NÃO zera o teto (o teto é contado pelas respostas do
+      // agente desde que o card entrou na etapa ou alguém clicou "Retomar") e
+      // não solta o responsável humano.
+      if (!cfg.enabled) {
+        const { error: upErr } = await db
+          .from('conversations')
+          .update({
+            ai_autoreply_disabled: true,
+            ia_pausada_por: 'automacao',
+            ia_pausada_em: new Date().toISOString(),
+          })
+          .eq('id', conversationId)
+          .eq('account_id', args.automation.account_id)
+          .eq('ai_autoreply_disabled', false);
+        if (upErr) throw new Error(`set_ai falhou: ${upErr.message}`);
+        return 'IA desligada na conversa';
       }
 
+      if (conv.ai_autoreply_disabled !== true) return 'IA já estava ligada';
+      if (conv.ia_pausada_por !== 'automacao') {
+        return `IA segue pausada: a pausa foi de gente (${conv.ia_pausada_por ?? 'botao'})`;
+      }
+      // A condição vai no próprio UPDATE: a foto acima é de instantes atrás.
       const { error: upErr } = await db
         .from('conversations')
-        .update(update)
+        .update({ ai_autoreply_disabled: false, ia_pausada_por: null, ia_pausada_em: null })
         .eq('id', conversationId)
-        .eq('account_id', args.automation.account_id);
+        .eq('account_id', args.automation.account_id)
+        .eq('ai_autoreply_disabled', true)
+        .eq('ia_pausada_por', 'automacao');
       if (upErr) throw new Error(`set_ai falhou: ${upErr.message}`);
-
-      return cfg.enabled ? 'IA ligada na conversa' : 'IA desligada na conversa';
+      return 'IA ligada na conversa';
     }
 
     case 'send_media': {
@@ -2751,6 +2834,54 @@ function stepChannel(
   args: ExecuteArgs
 ): string | null | undefined {
   return cfg?.channel_id ?? args.context.channel_id ?? undefined;
+}
+
+/**
+ * FALA ADIADA DO FUNIL (E4 dos agentes de IA). O "Mover card" e o "Criar
+ * negócio" só gravam um evento em `cb_automation_events`; a automação de
+ * `deal_stage_changed` que escuta a etapa de destino roda DEPOIS, no dreno
+ * (`drain-events.ts`), e pode mandar mensagem ao contato — com o agente já
+ * tendo respondido a mesma mensagem (o turno roda 8 s depois dela). Por isso
+ * o passo conta como fala quando alguma automação LIGADA da conta dispararia
+ * para essa etapa, pela MESMA régua do motor (`triggerMatches`: lista vazia =
+ * qualquer etapa). Sem olhar os passos dela, nem os recortes de canal e de
+ * escopo — o lado conservador, como `run_automation`: o agente cala. Erro de
+ * leitura = fala, pelo mesmo motivo.
+ */
+export async function etapaTemQuemFale(
+  db: ReturnType<typeof supabaseAdmin>,
+  accountId: string,
+  stageId: string
+): Promise<boolean> {
+  const { data, error } = await db
+    .from('automations')
+    .select('id, trigger_type, trigger_config')
+    .eq('account_id', accountId)
+    .eq('trigger_type', 'deal_stage_changed')
+    .eq('is_active', true);
+  if (error) {
+    console.error('[automations] quem escuta a etapa não pôde ser conferido (conta como fala):', error.message);
+    return true;
+  }
+  return ((data ?? []) as Automation[]).some(
+    (a) => a.trigger_type === 'deal_stage_changed' && triggerMatches(a, { to_stage_id: stageId })
+  );
+}
+
+/** A etapa do card agora (`null` = sem etapa). `undefined` = a leitura falhou. */
+async function etapaAtualDoCard(
+  db: ReturnType<typeof supabaseAdmin>,
+  accountId: string,
+  dealId: string
+): Promise<string | null | undefined> {
+  const { data, error } = await db
+    .from('deals')
+    .select('stage_id')
+    .eq('id', dealId)
+    .eq('account_id', accountId)
+    .maybeSingle();
+  if (error) return undefined;
+  return (data?.stage_id as string | null | undefined) ?? null;
 }
 
 /**

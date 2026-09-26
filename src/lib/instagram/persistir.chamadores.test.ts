@@ -20,7 +20,12 @@ describe('Instagram NÃO dispara automação, fluxo nem IA (D1)', () => {
   const MOTORES = [
     { modulo: '@/lib/automations/engine', o_que: 'automações' },
     { modulo: '@/lib/flows/engine', o_que: 'flows' },
-    { modulo: '@/lib/ai/auto-reply', o_que: 'resposta automática de IA' },
+    // O agente de IA (F2, docs/PLANO-agentes-de-ia.md): a porta da ingestão,
+    // a fila e o turno. Até a F2 era a resposta automática (`ai/auto-reply`,
+    // apagada — E2); a regra continua a mesma.
+    { modulo: '@/lib/ia-agentes/entrada', o_que: 'a entrada do agente de IA' },
+    { modulo: '@/lib/ia-agentes/fila', o_que: 'a fila de turnos do agente de IA' },
+    { modulo: '@/lib/ia-agentes/turno', o_que: 'o turno do agente de IA' },
   ];
   for (const { modulo, o_que } of MOTORES) {
     it(`não importa ${o_que} (${modulo})`, () => {
@@ -31,8 +36,13 @@ describe('Instagram NÃO dispara automação, fluxo nem IA (D1)', () => {
   it('não chama nenhum dos despachantes, nem por outro caminho', () => {
     for (const chamada of [
       'runAutomationsForTrigger',
+      'dispararAutomacoes',
       'dispatchInboundToFlows',
-      'dispatchInboundToAiReply',
+      'aoChegarMensagemDoCliente',
+      'enfileirarTurno',
+      'agendarTurno',
+      'executarTurno',
+      'cb_ia_enfileirar_turno',
     ]) {
       expect(fonte).not.toContain(chamada);
     }

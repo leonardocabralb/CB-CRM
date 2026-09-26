@@ -43,6 +43,17 @@
 // para o WhatsApp. Nos dois casos falhar aqui não pode derrubar a gravação
 // da mensagem nem o resto do fan-out — e na saída seria pior, porque o
 // cliente já recebeu e só o operador veria o erro.
+//
+// DEVOLVE A ETAPA EM QUE O CARD NASCEU (nulo = não criou nada: sem funil,
+// card que já existia, corrida perdida, falha). ⚠️ NOSSO (F2 dos agentes de
+// IA, E4): o card novo entra na fila do funil (`deal_stage_changed`), e a
+// automação de boas-vindas que escuta a etapa de entrada roda DEPOIS, no
+// dreno — com o agente de IA já tendo feito a triagem da mesma mensagem:
+// duas respostas ao cliente. As DUAS ingestões de cliente (webhook da Meta e
+// `persistInboundMessage`) somam o retorno ao `automacaoFalou` por
+// `etapaTemQuemFale` (a régua do passo "Criar negócio" do motor). Os outros
+// chamadores ignoram o retorno: na saída de gente não há agente para calar,
+// e o Instagram não tem agente (D1).
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -72,7 +83,7 @@ export interface RouteContactArgs {
  * ainda não estiver lá. Serve tanto para quem escreveu para nós quanto para
  * quem nós abordamos — ver o cabeçalho do módulo.
  */
-export async function routeContactToPipeline(args: RouteContactArgs): Promise<void> {
+export async function routeContactToPipeline(args: RouteContactArgs): Promise<string | null> {
   const { db, accountId, channelId, contactId } = args;
 
   // ---- Guarda 1: sem canal resolvido, não roteia ----
@@ -81,13 +92,13 @@ export async function routeContactToPipeline(args: RouteContactArgs): Promise<vo
   // mensagem cujo canal não resolve dispara as regras de todos os números
   // juntas. Aqui o silêncio é a resposta certa — melhor não criar card do
   // que criar no funil errado.
-  if (!channelId) return;
+  if (!channelId) return null;
 
   // ---- Guarda 2: sem contato, não roteia ----
   // Conversa de GRUPO não tem contato individual, e `deals.contact_id` é
   // NULLABLE desde a migration 004 — ou seja, o banco NÃO barraria um card
   // órfão, que renderizaria em branco no Kanban. A guarda é obrigatória.
-  if (!contactId) return;
+  if (!contactId) return null;
 
   try {
     // ---- Guarda 3: a conexão roteia alguma coisa? ----
@@ -102,7 +113,7 @@ export async function routeContactToPipeline(args: RouteContactArgs): Promise<vo
       .eq('account_id', accountId)
       .maybeSingle();
 
-    if (canalErr || !canal?.default_pipeline_id) return;
+    if (canalErr || !canal?.default_pipeline_id) return null;
 
     const pipelineId = canal.default_pipeline_id as string;
 
@@ -134,9 +145,9 @@ export async function routeContactToPipeline(args: RouteContactArgs): Promise<vo
 
     if (existenteErr) {
       console.warn('[pipeline-routing] checagem de duplicata falhou:', existenteErr.message);
-      return;
+      return null;
     }
-    if (existente) return;
+    if (existente) return null;
 
     // ---- Dono do card ----
     // O dono da CONTA, não quem pareou o QR: `cb_channels.created_by` é
@@ -187,11 +198,20 @@ export async function routeContactToPipeline(args: RouteContactArgs): Promise<vo
         `[pipeline-routing] não foi possível criar o negócio (${resultado.code}):`,
         resultado.message,
       );
+      return null;
     }
+    // `created: false` = a corrida do índice único: o card que venceu já
+    // existia (e a etapa DELE já foi contada por quem o criou). A etapa é a
+    // da LINHA inserida — com `default_stage_id` nulo, `createDeal` resolve a
+    // primeira do funil —, com queda na configurada.
+    if (!resultado.created) return null;
+    const etapa = resultado.deal?.stage_id;
+    return typeof etapa === 'string' && etapa ? etapa : ((canal.default_stage_id as string | null) ?? null);
   } catch (err) {
     console.warn(
       '[pipeline-routing] falha inesperada (ignorada):',
       err instanceof Error ? err.message : err,
     );
+    return null;
   }
 }

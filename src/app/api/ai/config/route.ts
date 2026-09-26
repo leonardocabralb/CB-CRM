@@ -32,13 +32,11 @@ export async function GET() {
   try {
     const { accountId, role } = await getCurrentAccount()
 
-    // ⚠️ Pelo SERVIÇO, com a conta da sessão: a faixa de IA da conversa
-    // chama esta rota para qualquer membro, e quem decide o que sai é o papel,
-    // logo abaixo. A regra de LEITURA de `ai_configs` só vira "só
-    // administrador" na 1048 (a fase seguinte, F1b), aplicada DEPOIS do deploy
-    // desta rota: fechá-la antes quebraria, na janela, a leitura pelo cliente
-    // da sessão que o app anterior faz (config e rascunho). Até a 1048, a
-    // leitura direta pelo PostgREST é a de sempre (0029) — nada piora aqui.
+    // ⚠️ Pelo SERVIÇO, com a conta da sessão: desde a 1048 a regra de leitura
+    // de `ai_configs` é só de administrador (o prompt vivia legível pelo
+    // PostgREST), e esta rota continua aberta a qualquer membro (a faixa de IA
+    // da conversa a chamava até a F2a; hoje lê a conversa). Quem decide o que
+    // sai é o papel, logo abaixo.
     const { data, error } = await supabaseAdmin()
       .from('ai_configs')
       .select(

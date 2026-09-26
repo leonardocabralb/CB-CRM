@@ -39,6 +39,8 @@ describe('a ligação NÃO aciona motor nenhum', () => {
     'dispararAutomacoes',
     'dispatchInboundToFlows',
     'dispatchInboundToAiReply',
+    // O agente de IA (F2a, 1049) entra por aqui nas duas ingestões de cliente.
+    'aoChegarMensagemDoCliente',
     'dispatchWebhookEvent',
     'registrarEntrega',
     'persistInboundMessage',
@@ -66,7 +68,7 @@ describe('a ligação NÃO aciona motor nenhum', () => {
     it(`${arquivo} não cita motor, ingestão de mensagem nem envio`, () => {
       const f = fonte(arquivo);
       for (const nome of PROIBIDOS) expect(f).not.toContain(nome);
-      expect(f).not.toMatch(/from '@\/lib\/(automations\/engine|flows\/|ai\/|webhooks\/deliver)/);
+      expect(f).not.toMatch(/from '@\/lib\/(automations\/engine|flows\/|ai\/|ia-agentes\/|webhooks\/deliver)/);
     });
   }
 });

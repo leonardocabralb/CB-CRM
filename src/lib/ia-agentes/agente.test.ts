@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { colunasDaAlteracao, lerAlteracao, lerHorario, lerLinhaDoAgente } from './agente'
+import {
+  colunasDaAlteracao,
+  lerAlteracao,
+  lerEtapaDoAgente,
+  lerHorario,
+  lerLinhaDoAgente,
+  planoDasEtapas,
+} from './agente'
 
 const ID = '11111111-1111-4111-8111-111111111111'
 
@@ -59,6 +66,13 @@ describe('lerAlteracao', () => {
     expect(lerAlteracao({ horario: null }, false)).toEqual({ ok: true, valor: { horario: null } })
   })
 
+  it('etapas (D24): lista de ids de etapa, sem repetição; o que não é uuid é recusado', () => {
+    expect(lerAlteracao({ etapas: [ID, ID] }, false)).toEqual({ ok: true, valor: { etapas: [ID] } })
+    expect(lerAlteracao({ etapas: [] }, false)).toEqual({ ok: true, valor: { etapas: [] } })
+    expect(lerAlteracao({ etapas: ['lead'] }, false)).toEqual({ ok: false, codigo: 'lista_invalida' })
+    expect(lerAlteracao({ etapas: 'x' }, false)).toEqual({ ok: false, codigo: 'lista_invalida' })
+  })
+
   it('transferir_para vazio = fila', () => {
     expect(lerAlteracao({ transferir_para: '' }, false)).toEqual({ ok: true, valor: { transferirPara: null } })
   })
@@ -104,5 +118,55 @@ describe('colunasDaAlteracao', () => {
       teto_respostas: 5,
       pode_passar_para: [ID],
     })
+  })
+  it('as etapas NÃO viram coluna do agente (moram em cb_ia_agente_etapas)', () => {
+    expect(colunasDaAlteracao({ etapas: [ID], ativo: true })).toEqual({ ativo: true })
+  })
+})
+
+describe('lerLinhaDoAgente — ativado_em (D27)', () => {
+  it('lê o instante em que foi ligado; ausente = nulo', () => {
+    const base = { id: ID, account_id: ID, provedor: 'gemini' }
+    expect(lerLinhaDoAgente({ ...base, ativado_em: '2026-09-26T10:00:00+00:00' })?.ativadoEm).toBe(
+      '2026-09-26T10:00:00+00:00',
+    )
+    expect(lerLinhaDoAgente(base)?.ativadoEm).toBeNull()
+  })
+})
+
+describe('lerEtapaDoAgente', () => {
+  it('lê a etapa com o funil embutido', () => {
+    expect(
+      lerEtapaDoAgente({ stage_id: 'e1', ia_agente_id: 'ag', desde: 'd', pipeline_stages: { pipeline_id: 'f1' } }),
+    ).toEqual({ stageId: 'e1', pipelineId: 'f1', desde: 'd', iaAgenteId: 'ag' })
+  })
+  it('sem o funil (etapa sumida no meio) descarta a linha', () => {
+    expect(lerEtapaDoAgente({ stage_id: 'e1', ia_agente_id: 'ag', desde: 'd', pipeline_stages: null })).toBeNull()
+  })
+})
+
+describe('planoDasEtapas — uma etapa tem no máximo UM agente (D24)', () => {
+  const donos = new Map([
+    ['e1', 'ag-1'],
+    ['e2', 'ag-2'],
+  ])
+
+  it('as que o agente já tem ficam (mantêm o desde); só as novas entram', () => {
+    expect(planoDasEtapas('ag-1', ['e1', 'e3'], donos)).toEqual({ ocupada: null, inserir: ['e3'] })
+  })
+
+  it('etapa de OUTRO agente recusa tudo, dizendo de quem é', () => {
+    expect(planoDasEtapas('ag-1', ['e3', 'e2'], donos)).toEqual({
+      ocupada: { stageId: 'e2', agenteId: 'ag-2' },
+      inserir: [],
+    })
+  })
+
+  it('na criação (sem id ainda), qualquer etapa com dono está ocupada', () => {
+    expect(planoDasEtapas('', ['e1'], donos).ocupada).toEqual({ stageId: 'e1', agenteId: 'ag-1' })
+  })
+
+  it('lista vazia: nada entra (as antigas saem pelo DELETE)', () => {
+    expect(planoDasEtapas('ag-1', [], donos)).toEqual({ ocupada: null, inserir: [] })
   })
 })

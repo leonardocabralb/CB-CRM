@@ -12,7 +12,17 @@ describe('ai-config — conta sem configuração', () => {
   it('zera os campos quando a resposta diz configured: false', () => {
     const ramo = fonte.slice(fonte.indexOf('if (data.configured) {'))
     const senao = ramo.slice(ramo.indexOf('} else {'), ramo.indexOf('} else {') + 700)
-    for (const campo of ['setProvider(', 'setModel(', "setSystemPrompt('')", 'setIsActive(false)', "setHandoffAgentId('')"]) {
+    // Desde a F2a a tela não tem o "Encaminhar para" (`handoff_agent_id` não
+    // vai no corpo), mas ECOA `auto_reply_*` como lidos (`corpoDoSalvamento`):
+    // os dois voltam ao começo junto com o resto.
+    for (const campo of [
+      'setProvider(',
+      'setModel(',
+      "setSystemPrompt('')",
+      'setIsActive(false)',
+      'setAutoReplyEnabled(false)',
+      'setMaxPerConversation(3)',
+    ]) {
       expect(senao, campo).toContain(campo)
     }
   })

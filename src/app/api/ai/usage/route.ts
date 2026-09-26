@@ -1,16 +1,21 @@
 import { NextResponse } from 'next/server'
+import { diaNoFuso, FUSO_PADRAO, paraInstante } from '@/lib/agenda/fuso'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
-import { daysAgoStart, lastNDayKeys, localDayKey } from '@/lib/dashboard/date-utils'
+import { buscarPorChave, PAGINA } from '@/lib/supabase/paginar'
+import { somarDias } from '@/lib/tasks/prazo'
 
-// Rows are aggregated in-process over a bounded window. An active
-// account writes a handful of rows per conversation, so 30 days sits
-// comfortably under this cap; we surface `truncated` when it doesn't so
-// the UI can say "showing a partial window" rather than under-reporting
-// silently.
-const MAX_ROWS = 10_000
+// Rows are aggregated in-process over the whole window.
+//
+// ⚠️ A janela é lida INTEIRA ou a rota falha — nunca um total parcial. O
+// PostgREST corta cada resposta em 1.000 linhas, por mais que se peça: a versão
+// anterior pedia 10.001 de uma vez, somava só as 1.000 mais recentes e o aviso
+// de janela parcial nunca acendia (o cartão mostrava "1000 chamadas" com 1.902
+// no banco). A leitura é POR CHAVE (`buscarPorChave`, até 25 mil linhas), e não
+// por posição, porque a tabela recebe registros enquanto é lida.
 const DEFAULT_WINDOW_DAYS = 30
 
 interface UsageRow {
+  id: string
   created_at: string
   mode: 'auto_reply' | 'draft' | 'radar' | 'transcricao'
   provider: string
@@ -43,35 +48,48 @@ export async function GET(request: Request) {
         ? Math.min(90, Math.floor(rawDays))
         : DEFAULT_WINDOW_DAYS
 
-    // Align the query cutoff to the START of the oldest local day we'll
-    // chart (not a rolling `now - N*24h` instant). Otherwise rows in the
-    // oldest partial day would be counted in the totals but fall outside
-    // every daily bucket, so the chart's bars wouldn't sum to the
-    // headline total. Local-day boundaries match every other dashboard
-    // chart (see lib/dashboard/date-utils).
-    const since = daysAgoStart(days - 1)
+    // Align the query cutoff to the START of the oldest day we'll chart
+    // (not a rolling `now - N*24h` instant). Otherwise rows in the oldest
+    // partial day would be counted in the totals but fall outside every
+    // daily bucket, so the chart's bars wouldn't sum to the headline total.
+    //
+    // ⚠️ O dia é o do FUSO DO ESCRITÓRIO, nunca o do processo. Esta rota roda
+    // no servidor, e o contêiner está em UTC: os helpers de "dia local" de
+    // `lib/dashboard/date-utils` (feitos para o NAVEGADOR) viravam o dia às 21h
+    // de Brasília, e o uso da noite caía no dia seguinte.
+    const agora = new Date()
+    const primeiroDia = somarDias(diaNoFuso(agora, FUSO_PADRAO), -(days - 1))
+    const since = paraInstante(primeiroDia, '00:00', FUSO_PADRAO)
 
-    const { data, error } = await supabase
-      .from('ai_usage_log')
-      .select(
-        'created_at, mode, provider, model, prompt_tokens, completion_tokens, total_tokens',
+    const leitura = await buscarPorChave<UsageRow>(async (depoisDe) => {
+      let consulta = supabase
+        .from('ai_usage_log')
+        .select(
+          'id, created_at, mode, provider, model, prompt_tokens, completion_tokens, total_tokens',
+        )
+        .eq('account_id', accountId)
+        .gte('created_at', since.toISOString())
+        // Fim fixo no instante do pedido: o registro gravado durante a
+        // leitura fica para o próximo carregamento, e a foto é uma só.
+        .lte('created_at', agora.toISOString())
+      if (depoisDe) consulta = consulta.gt('id', depoisDe)
+      const { data, error } = await consulta.order('id', { ascending: true }).limit(PAGINA)
+      return { data: (data ?? null) as UsageRow[] | null, error }
+    })
+
+    if (!leitura.linhas) {
+      console.error(
+        '[ai/usage GET] leitura incompleta:',
+        leitura.motivo,
+        leitura.erro?.message ?? '',
       )
-      .eq('account_id', accountId)
-      .gte('created_at', since.toISOString())
-      .order('created_at', { ascending: false })
-      .limit(MAX_ROWS + 1)
-
-    if (error) {
-      console.error('[ai/usage GET] fetch error:', error)
       return NextResponse.json(
         { error: 'Failed to load usage' },
         { status: 500 },
       )
     }
 
-    const all = (data ?? []) as UsageRow[]
-    const truncated = all.length > MAX_ROWS
-    const rows = truncated ? all.slice(0, MAX_ROWS) : all
+    const rows = leitura.linhas
 
     // Totals.
     let promptTokens = 0
@@ -91,10 +109,11 @@ export async function GET(request: Request) {
     >()
 
     // Zero-filled daily buckets so the chart shows quiet days as gaps,
-    // not missing points. Local-day keys, oldest → newest — the same
-    // helper every other dashboard chart uses, so day boundaries agree.
+    // not missing points. Day keys in the office time zone, oldest → newest
+    // (calendar arithmetic on `YYYY-MM-DD`, never `+ 24h`).
     const daily = new Map<string, { date: string; tokens: number; calls: number }>()
-    for (const key of lastNDayKeys(days)) {
+    for (let i = 0; i < days; i++) {
+      const key = somarDias(primeiroDia, i)
       daily.set(key, { date: key, tokens: 0, calls: 0 })
     }
 
@@ -120,7 +139,7 @@ export async function GET(request: Request) {
       m.tokens += r.total_tokens
       modelMap.set(mk, m)
 
-      const bucket = daily.get(localDayKey(r.created_at))
+      const bucket = daily.get(diaNoFuso(new Date(r.created_at), FUSO_PADRAO))
       if (bucket) {
         bucket.tokens += r.total_tokens
         bucket.calls += 1
@@ -131,7 +150,9 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       window_days: days,
-      truncated,
+      // A janela vem inteira ou a rota falha: não existe mais janela parcial.
+      // O campo fica porque o cartão (`ai-usage.tsx`) ainda o lê.
+      truncated: false,
       totals: {
         calls: rows.length,
         prompt_tokens: promptTokens,

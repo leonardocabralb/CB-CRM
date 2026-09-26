@@ -19,6 +19,8 @@ interface Turno {
   content: string;
   /** Só do agente: ele pediu transferência para gente neste turno. */
   handoff?: boolean;
+  /** Só do agente: ele passaria a conversa para este agente (D25). */
+  passaPara?: string;
   tokens?: number;
 }
 
@@ -56,6 +58,7 @@ export function PlaygroundDoAgente({
       const corpo = (await res.json().catch(() => ({}))) as {
         reply?: string;
         handoff?: boolean;
+        passaPara?: string | null;
         usage?: { totalTokens?: number } | null;
         code?: string;
         error?: string;
@@ -72,6 +75,7 @@ export function PlaygroundDoAgente({
           role: 'assistant',
           content: typeof corpo.reply === 'string' ? corpo.reply : '',
           handoff: corpo.handoff === true,
+          passaPara: typeof corpo.passaPara === 'string' ? corpo.passaPara : undefined,
           tokens: corpo.usage?.totalTokens ?? undefined,
         },
       ]);
@@ -135,6 +139,11 @@ export function PlaygroundDoAgente({
                     )}
                   >
                     <UserCircle2 className="size-3.5" /> {t('playground.transferiria')}
+                  </p>
+                ) : null}
+                {x.role === 'assistant' && x.passaPara ? (
+                  <p className="flex items-center gap-1 text-xs text-primary">
+                    <Bot className="size-3.5" /> {t('playground.passaria', { agente: x.passaPara })}
                   </p>
                 ) : null}
                 {x.role === 'assistant' && x.tokens !== undefined ? (

@@ -415,6 +415,9 @@ export function normalizeUpsert(
     // Preenchido pelo webhook, que tem as credenciais para chamar
     // chat/getBase64FromMediaMessage — ver evolution-media.ts.
     mediaUrl: null,
+    // A figurinha vira `image` (`detectContentType`); a marca separa as duas
+    // para o agente de IA, que não responde figurinha (ver `figurinha`).
+    ...(asRecord(unwrapMessage(item.message)?.stickerMessage) ? { figurinha: true } : {}),
   };
 }
 

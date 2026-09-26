@@ -20,6 +20,8 @@ export interface LogAiUsageArgs {
    *  mantém o nome mesmo que o agente seja renomeado ou arquivado. */
   iaAgenteId?: string | null
   iaAgenteNome?: string | null
+  /** O turno do agente (1049) que fez a chamada. */
+  turnoId?: string | null
 }
 
 /**
@@ -56,6 +58,7 @@ export async function logAiUsage(
       ...(args.iaAgenteId
         ? { ia_agente_id: args.iaAgenteId, ia_agente_nome: args.iaAgenteNome ?? null }
         : {}),
+      ...(args.turnoId ? { turno_id: args.turnoId } : {}),
     })
     if (error) {
       console.error('[ai usage] log insert failed:', error)

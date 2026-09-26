@@ -45,6 +45,18 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
 - **Recuperada sem telefone** (1010): `sem-telefone/` — modo `nova` vai pelo
   caminho normal; `tardia`/`historica` por `tardia.ts`/`historica.ts`.
 - **Grupo**: `src/lib/cb-groups/persist.ts`.
+- **Eco da resposta do agente de IA** (Evolution, F2a): `src/lib/ia-agentes/eco.ts`
+  — o `fromMe` cujo id é o `mensagem_enviada_id` de um turno, ainda sem linha
+  depois da espera do `jaGravada`, é gravado COMO a resposta do agente (`bot`
+  com `ia_agente_id`), nunca como mensagem do celular. É o INSERT do envio por
+  outra mão: nenhum motor, funil, reabertura, `registrarEntrega` nem
+  `cancelarEsperasPorResposta` (pino `eco.test.ts`). Ver `ia.md`.
+- **Agente de IA nas duas ingestões de cliente** (F2a, `ia.md`): o tipo que o
+  webhook da Meta não lê é gravado com `PREFIXO_DE_TIPO_NAO_SUPORTADO`
+  (`quem-responde.ts`), a mesma constante com que `abreTurno` o recusa — nunca
+  o literal. E a etapa que `routeContactToPipeline` devolve (card CRIADO) passa
+  por `etapaTemQuemFale` antes de `aoChegarMensagemDoCliente` (pino
+  `pipeline-routing.chamadores.test.ts`).
 - **Ligação** (1044): `src/lib/whatsapp/ligacoes/registrar.ts` — a faixa da
   ligação no fio, sem texto e sem motor; regras próprias em `ligacoes.md`.
 - **Núcleo de envio**: `sendMessageToConversation` (`send-message.ts`) —
