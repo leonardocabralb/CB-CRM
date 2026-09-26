@@ -79,6 +79,11 @@ describe('1044 — a D17 decide no BANCO (E12)', () => {
     expect(corpo).toContain("interval '24 hours'");
     expect(corpo).not.toContain('assigned_agent_id');
   });
+
+  it('relê o agente na EXECUÇÃO: arquivado ou desligado não é atribuído (Codex, #292)', () => {
+    const corpo = funcao('public.cb_atribuir_agente_de_ia');
+    expect(corpo).toMatch(/a\.arquivado_em is null and a\.ativo/);
+  });
 });
 
 describe('1044 — pausa por gente', () => {

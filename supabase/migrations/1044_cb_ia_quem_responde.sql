@@ -284,7 +284,10 @@ $$;
 --     atribuído e pausado por `gente`.
 --   · senão: retomada.
 -- Nunca toca `assigned_agent_id`. Reatribuir o MESMO agente mantém o `desde`.
--- Zera o contador de respostas.
+-- Zera o contador de respostas. O agente é relido AQUI, na execução: desligado
+-- ou arquivado depois de a automação ser salva = `agente_indisponivel`, nada
+-- gravado (Codex, #292) — senão a conversa ficaria com um agente que não
+-- responde, e a próxima mensagem cairia na entrada.
 CREATE OR REPLACE FUNCTION public.cb_atribuir_agente_de_ia(
   p_account_id      uuid,
   p_conversation_id uuid,
@@ -315,7 +318,8 @@ BEGIN
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM cb_ia_agentes a
-     WHERE a.id = p_ia_agente_id AND a.account_id = p_account_id AND a.arquivado_em IS NULL
+     WHERE a.id = p_ia_agente_id AND a.account_id = p_account_id
+       AND a.arquivado_em IS NULL AND a.ativo
   ) THEN
     RETURN QUERY SELECT 'agente_indisponivel'::text, NULL::text;
     RETURN;

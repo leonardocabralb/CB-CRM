@@ -100,6 +100,17 @@ export class EnviadaSemRegistroError extends Error {
 }
 
 /**
+ * O canal EXIGIDO (`exigirCanal`) não resolveu: NADA saiu. Classe própria
+ * para quem chama distinguir de uma falha no meio do envio (o turno do agente
+ * registra `falhou`, sem transferir — E8).
+ */
+export class CanalExigidoIndisponivelError extends Error {
+  constructor() {
+    super('the required channel could not be resolved; nothing was sent')
+  }
+}
+
+/**
  * D1 do plano do Instagram (docs/PLANO-instagram-direct.md): fluxo, resposta
  * de IA e automação NÃO respondem no Direct na v1. Lança com motivo claro —
  * o run/log registra — em vez de cair no ramo Meta com o token do Instagram.
@@ -173,7 +184,7 @@ export async function engineSendText(
     throw new Error('WhatsApp not configured for this account')
   }
   if (args.exigirCanal && channel.channelId !== (args.preferredChannelId ?? null)) {
-    throw new Error('the required channel could not be resolved; nothing was sent')
+    throw new CanalExigidoIndisponivelError()
   }
 
   exigirWhatsApp(channel)
@@ -265,7 +276,10 @@ export async function engineSendText(
       .select('id')
       .single(),
   )
-  if (gravacao.error) {
+  // 23505 = a linha JÁ EXISTE: o eco da Evolution chegou antes deste INSERT e
+  // a ingestão a gravou (como resposta do agente, quando o id é de um turno —
+  // E5). A mensagem está no fio; não é falha de registro.
+  if (gravacao.error && gravacao.error.code !== '23505') {
     throw new EnviadaSemRegistroError(waMessageId, gravacao.error.message ?? 'erro desconhecido')
   }
 
