@@ -224,16 +224,23 @@ export async function GET(request: Request) {
           // E, na do Gemini, o modelo FIXO da transcrição: ela lê a chave do
           // Gemini qualquer que seja o chat, e o cartão ficaria verde com
           // todo áudio falhando se só aquele modelo saísse do ar (Codex, #294).
+          const daConexao = deConexao.filter((l) => l.provider === e.provedor).map((l) => l.model);
+          // E o de cada agente de IA LIGADO deste provedor (Codex, #295): um
+          // modelo trocado para um aposentado deixaria o cartão verde com o
+          // Playground e a produção falhando.
+          const dosAgentes = agentes.filter((a) => a.ativo && a.provedor === e.provedor).map((a) => a.modelo);
+          // O modelo padrão do provedor só quando NADA deste provedor roda (só
+          // confere a chave): testá-lo ao lado do modelo da conexão acusaria
+          // "falhando" por um modelo que ninguém usa (Codex, #294).
+          const nadaRoda =
+            modeloDoChat === null && modeloDoRadar === null && daConexao.length === 0 && dosAgentes.length === 0;
           const modelos = [
-            // Sem chat nem Radar deste provedor, o padrão dele (confere a chave).
-            modeloDoChat ?? (modeloDoRadar ? null : AI_PROVIDER_DEFAULT_MODEL[e.provedor]),
+            modeloDoChat,
+            nadaRoda ? AI_PROVIDER_DEFAULT_MODEL[e.provedor] : null,
             modeloDoRadar,
             e.provedor === 'gemini' ? MODELO_TRANSCRICAO : null,
-            ...deConexao.filter((l) => l.provider === e.provedor).map((l) => l.model),
-            // E o de cada agente de IA LIGADO deste provedor (Codex, #295): um
-            // modelo trocado para um aposentado deixaria o cartão verde com o
-            // Playground e a produção falhando.
-            ...agentes.filter((a) => a.ativo && a.provedor === e.provedor).map((a) => a.modelo),
+            ...daConexao,
+            ...dosAgentes,
           ]
             .filter((m, i, todos): m is string => typeof m === 'string' && m.trim() !== '' && todos.indexOf(m) === i)
             // Cada ping é uma geração PAGA a cada carga da tela: teto por
