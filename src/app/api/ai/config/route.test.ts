@@ -20,7 +20,7 @@ vi.mock('@/lib/auth/account', () => ({
       },
     },
   })),
-  requireRole: vi.fn(),
+  requireRole: vi.fn(async () => ({ accountId: 'conta-1', userId: 'user-1', supabase: {} })),
   toErrorResponse: vi.fn(() => new Response('erro', { status: 500 })),
 }))
 vi.mock('@/lib/ai/admin-client', () => ({
@@ -48,6 +48,11 @@ vi.mock('@/lib/ai/admin-client', () => ({
     }),
   }),
 }))
+vi.mock('@/lib/rate-limit', () => ({
+  checkRateLimit: () => ({ success: true }),
+  rateLimitResponse: vi.fn(),
+  RATE_LIMITS: { adminAction: {} },
+}))
 vi.mock('@/lib/ia-chaves/repo', () => ({
   lerChave: vi.fn(),
   lerEstado: vi.fn(async () => [
@@ -57,7 +62,7 @@ vi.mock('@/lib/ia-chaves/repo', () => ({
   ]),
 }))
 
-import { GET } from './route'
+import { GET, POST } from './route'
 
 beforeEach(() => {
   papel = 'agent'
@@ -79,6 +84,24 @@ describe('GET /api/ai/config — o prompt só para administrador', () => {
       papel = p
       const corpo = (await (await GET()).json()) as Record<string, unknown>
       expect(corpo.system_prompt, p).toBe('segredo do escritório')
+    }
+  })
+})
+
+describe('POST /api/ai/config — aba aberta do app anterior (Codex, #294)', () => {
+  function pedido(corpo: Record<string, unknown>) {
+    return new Request('http://x/api/ai/config', { method: 'POST', body: JSON.stringify(corpo) })
+  }
+
+  it('chave no corpo = 409 pedindo para recarregar, nunca "salvo"', async () => {
+    for (const corpo of [
+      { provider: 'gemini', model: 'm', api_key: 'sk-nova' },
+      { provider: 'gemini', model: 'm', embeddings_api_key: 'sk-emb' },
+      { provider: 'gemini', model: 'm', embeddings_api_key: null },
+    ]) {
+      const res = await POST(pedido(corpo))
+      expect(res.status).toBe(409)
+      expect(await res.json()).toMatchObject({ code: 'tela_desatualizada' })
     }
   })
 })

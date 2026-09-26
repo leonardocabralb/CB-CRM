@@ -33,9 +33,14 @@
 --     posterior: se o deploy precisar voltar atrás, o app anterior continua
 --     achando a chave onde sempre achou.
 --
--- ⚠️ Aditiva: aplicar ANTES do deploy. Entre aplicar e publicar, NÃO trocar
--- chave pela tela antiga — ela grava em `ai_configs.api_key`, que o app novo
--- não lê.
+--  4. Um gatilho TEMPORÁRIO (`cb_ia_chaves_segue_o_legado`) cobre a janela
+--     entre aplicar e publicar: o app anterior ainda grava a chave em
+--     `ai_configs`, e a cópia do item 2 é um retrato. Sem o gatilho, a chave
+--     trocada nesse intervalo nunca chegaria a `cb_ia_chaves` e o app novo
+--     subiria com a velha (Codex, #294). A 1043, aplicada com a F1a já no
+--     ar, o apaga.
+--
+-- ⚠️ Aditiva: aplicar ANTES do deploy.
 --
 -- Idempotente. `anon` sem nada; `service_role` com tudo, POR ESCRITO (em
 -- banco novo não existe default privilege que o conceda).
@@ -126,6 +131,61 @@ BEGIN
 END $$;
 
 ALTER TABLE ai_configs ALTER COLUMN api_key DROP NOT NULL;
+
+-- ---------------------------------------------------------------------------
+-- 4) A janela entre aplicar e publicar (TEMPORÁRIO — a 1043 apaga)
+-- ---------------------------------------------------------------------------
+-- Só a escrita que vem do NAVEGADOR (a sessão de um usuário pelo PostgREST,
+-- como o app anterior grava): o app novo espelha a chave em `ai_configs` pelo
+-- SERVIÇO, e copiar de volta o espelho dele recriaria a falsa chave "própria"
+-- dos embeddings. SECURITY DEFINER porque `authenticated` não alcança
+-- `cb_ia_chaves` (e não deve).
+CREATE OR REPLACE FUNCTION public.cb_ia_chaves_segue_o_legado()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+BEGIN
+  IF NEW.channel_id IS NOT NULL THEN
+    RETURN NEW;
+  END IF;
+  IF coalesce(nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role', '') <> 'authenticated' THEN
+    RETURN NEW;
+  END IF;
+
+  IF NEW.api_key IS NOT NULL AND NEW.api_key <> ''
+     AND (TG_OP = 'INSERT' OR NEW.api_key IS DISTINCT FROM OLD.api_key) THEN
+    INSERT INTO cb_ia_chaves (account_id, provedor, api_key, created_at, updated_at)
+    VALUES (NEW.account_id, NEW.provider, NEW.api_key, now(), now())
+    ON CONFLICT (account_id, provedor)
+      DO UPDATE SET api_key = EXCLUDED.api_key, serve_embeddings = NULL, updated_at = now();
+  END IF;
+
+  IF TG_OP = 'INSERT' OR NEW.embeddings_api_key IS DISTINCT FROM OLD.embeddings_api_key THEN
+    IF NEW.embeddings_api_key IS NOT NULL AND NEW.embeddings_api_key <> '' THEN
+      -- A regra da cópia (item 2): slot da OpenAI vazio recebe a chave; ocupado,
+      -- ela fica como a própria da base.
+      INSERT INTO cb_ia_chaves (account_id, provedor, api_key, created_at, updated_at)
+      VALUES (NEW.account_id, 'openai', NEW.embeddings_api_key, now(), now())
+      ON CONFLICT (account_id, provedor)
+        DO UPDATE SET embeddings_api_key = EXCLUDED.api_key, updated_at = now();
+    ELSIF TG_OP = 'UPDATE' THEN
+      -- A tela antiga APAGOU a chave própria: a base volta à chave da OpenAI.
+      UPDATE cb_ia_chaves SET embeddings_api_key = NULL, updated_at = now()
+       WHERE account_id = NEW.account_id AND provedor = 'openai';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.cb_ia_chaves_segue_o_legado() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS cb_ia_chaves_segue_o_legado ON ai_configs;
+CREATE TRIGGER cb_ia_chaves_segue_o_legado
+  AFTER INSERT OR UPDATE OF api_key, embeddings_api_key ON ai_configs
+  FOR EACH ROW EXECUTE FUNCTION public.cb_ia_chaves_segue_o_legado();
 
 -- ---------------------------------------------------------------------------
 -- Conferência (roda em banco vazio: só catálogo e privilégios).
