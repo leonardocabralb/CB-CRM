@@ -12,7 +12,13 @@
 --  2. `conversations.ia_agente_id` (o agente ATIVO), `ia_agente_desde`,
 --     `ia_pausada_por` (`gente` | `transferencia` | `botao` | `automacao`) e
 --     `ia_pausada_em`, ao lado de `ai_autoreply_disabled`, que continua sendo
---     o interruptor.
+--     o interruptor. E `ia_atribuicao`, a GERAÇÃO da atribuição (E12): um
+--     gatilho BEFORE UPDATE a avança quando o agente muda (inclusive para
+--     nulo: encerrar e arquivar), quando a pausa é retomada e quando o teto é
+--     zerado — por QUALQUER caminho —, e só ele a escreve. A reserva do envio
+--     exige a mesma geração que o turno leu: é o que invalida o turno velho
+--     quando a conversa é encerrada, reaberta e reatribuída ao mesmo agente
+--     no meio.
 --  3. `messages.ia_agente_id`: quem escreveu, gravado SÓ pelo envio do agente,
 --     no próprio INSERT (o gatilho AFTER INSERT da 972 lê).
 --  4. `cb_ia_turnos`: a fila E a trava. Pendente POR CONEXÃO (Codex, #292) e um
@@ -26,15 +32,22 @@
 --     agente com a regra da D17 DENTRO da transação (E12) — e, para a
 --     ENTRADA, só se a conversa continua sem agente (`p_so_se_vazio`) — e o
 --     "ligar" do `set_ai` com a MESMA regra (E13) — a pergunta das 24 h mora
---     numa função só. Mais os índices das FKs que o Postgres não cria.
+--     numa função só. A reatribuição que não muda nada (o mesmo agente, sem
+--     pausa) não escreve: nem zera o teto nem avança a geração. Mais os
+--     índices das FKs que o Postgres não cria.
 --  6. Gatilho da PAUSA POR GENTE: resposta com `sender_id` ou `from_device`,
 --     sem `ia_agente_id`, gravada de verdade (`gravada_em` preenchida — a carga
 --     da 1033 grava nula e cala os gatilhos antigos pelo NOME, não este)
---     DEPOIS da atribuição (pelo `gravada_em`, nunca pelo relógio do aparelho)
---     e com `created_at` na janela da D17, só em conversa com agente ativo e
---     ainda não pausada, nunca o eco de um turno.
---  7. Encerrar a conversa limpa tudo da IA (E11); arquivar um agente o tira da
---     entrada das conexões e das conversas.
+--     DEPOIS da atribuição — só pelo `gravada_em`, nunca pelo `created_at`,
+--     que no celular é o relógio do APARELHO —, só em conversa com agente
+--     ativo e ainda não pausada, nunca o eco de um turno. Sem janela pelo
+--     `created_at` (Codex, #292): um celular com o relógio mais de um dia
+--     atrasado não pausava, e a IA falaria por cima do advogado. O preço,
+--     aceito: a fala ANTIGA de gente recuperada pela 1010 (gravada agora, com
+--     o carimbo de dias atrás) também pausa — o lado seguro, e raro.
+--  7. Encerrar a conversa limpa tudo da IA (E11) e DESCARTA os turnos
+--     `aguardando` e `rodando` dela; arquivar um agente o tira da entrada das
+--     conexões e das conversas.
 --  8. A resposta do agente conta como "respondido" (D11): o ramo
 --     `sender_type = 'bot' AND ia_agente_id IS NOT NULL` nas TRÊS funções que
 --     decidem a espera (as duas da 972 e `cb_assentar_mensagem_historica`,
@@ -42,8 +55,14 @@
 --     PELO NOME pela carga da 1033, e renomeá-los quebraria a carga aplicada.
 --  9. `claim_ai_reply_slot` fecha (E14): `anon` e `authenticated` a executavam.
 --     E `cb_ia_reservar_envio`: a vaga do teto e a última conferência
---     (aberta, sem pausa, mesmo agente, sem outro turno pendente na conexão,
---     sem saída do robô depois da mensagem do turno) numa escrita só.
+--     (aberta, sem pausa, mesmo agente e mesma geração, o turno ainda
+--     rodando, a mensagem do turno ainda lá sem ter sido apagada nem editada,
+--     sem outro turno pendente na conexão com mensagem MAIS NOVA, sem saída do
+--     robô depois da mensagem do turno) numa escrita só.
+--
+-- Os gatilhos (a geração e sua ORDEM depois do encerramento, a pausa por
+-- gente, o descarte no encerramento) foram provados num Postgres 16
+-- descartável com dados; a conferência do fim cobra a ordem no catálogo.
 --
 -- Aditiva: aplicar ANTES do deploy. Idempotente. `SET LOCAL lock_timeout`:
 -- `conversations` e `messages` são tabelas quentes.
@@ -125,6 +144,68 @@ END $$;
 
 CREATE INDEX IF NOT EXISTS conversations_ia_agente_idx
   ON conversations (ia_agente_id) WHERE ia_agente_id IS NOT NULL;
+
+-- A GERAÇÃO da atribuição (E12). O turno a lê junto com o agente na
+-- conferência antes de gerar, e a reserva do envio exige a mesma: conversa
+-- encerrada, reaberta e reatribuída ao MESMO agente no meio de um turno passa
+-- por "aberta, sem pausa, mesmo agente", e só a geração a denuncia (Codex,
+-- #292). Avança quando:
+--   · o agente muda — `IS DISTINCT FROM`, inclusive para nulo (encerrar e
+--     arquivar zeram) e de volta de nulo;
+--   · a pausa é retomada (`ai_autoreply_disabled` de true para false);
+--   · o teto é zerado (`ai_reply_count` de >0 para 0).
+-- Pausar NÃO avança (a reserva recusa pela pausa). A reatribuição que não
+-- muda nada (o mesmo agente, sem pausa) não toca nenhuma das três colunas, e
+-- por isso não avança: uma automação que atribui o mesmo agente a cada
+-- mensagem descartaria todo turno em curso.
+-- ⚠️ Por QUALQUER caminho — atribuição, botão, `set_ai`, encerramento (que
+-- zera o agente num gatilho BEFORE, com só `status` no SET) —, então o
+-- gatilho NÃO tem lista de colunas: um `BEFORE UPDATE OF` só dispara pelas
+-- colunas do SET e não veria o que outro gatilho BEFORE mudou. O WHEN vê o NEW
+-- já modificado pelos gatilhos BEFORE anteriores, que o Postgres dispara em
+-- ORDEM ALFABÉTICA: o nome tem de vir DEPOIS de todo gatilho BEFORE UPDATE de
+-- `conversations` que mexa nessas colunas (hoje `cb_encerrar_limpa_ia_trigger`
+-- — a conferência do fim cobra isso no catálogo).
+-- ⚠️ Só o banco escreve a geração: um UPDATE que a mande (o navegador tem
+-- UPDATE em `conversations` sob RLS) é desfeito aqui.
+-- ⚠️ A devolução da ÚNICA vaga (`ai_reply_count` de 1 para 0) é, para a
+-- linha, igual a zerar o teto, e também avança a geração. Por isso ela tem de
+-- acontecer com o turno que devolve ainda `rodando` (há um só por conversa, e
+-- o pendente seguinte, reivindicado depois, lê a geração nova): devolvida
+-- depois, o turno seguinte já reivindicado seria recusado como `mudou` —
+-- nenhuma resposta, nunca duas.
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS ia_atribuicao bigint NOT NULL DEFAULT 0;
+
+CREATE OR REPLACE FUNCTION cb_ia_avanca_geracao_da_atribuicao()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path TO 'public'
+AS $$
+BEGIN
+  IF NEW.ia_agente_id IS DISTINCT FROM OLD.ia_agente_id
+     OR (OLD.ai_autoreply_disabled AND NOT NEW.ai_autoreply_disabled)
+     OR (OLD.ai_reply_count > 0 AND NEW.ai_reply_count = 0) THEN
+    NEW.ia_atribuicao := OLD.ia_atribuicao + 1;
+  ELSE
+    NEW.ia_atribuicao := OLD.ia_atribuicao;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS cb_ia_geracao_da_atribuicao_trigger ON conversations;
+CREATE TRIGGER cb_ia_geracao_da_atribuicao_trigger
+  BEFORE UPDATE ON conversations
+  FOR EACH ROW
+  WHEN (
+    NEW.ia_agente_id IS DISTINCT FROM OLD.ia_agente_id
+    OR (OLD.ai_autoreply_disabled AND NOT NEW.ai_autoreply_disabled)
+    OR (OLD.ai_reply_count > 0 AND NEW.ai_reply_count = 0)
+    OR NEW.ia_atribuicao IS DISTINCT FROM OLD.ia_atribuicao
+  )
+  EXECUTE FUNCTION cb_ia_avanca_geracao_da_atribuicao();
+
+REVOKE EXECUTE ON FUNCTION cb_ia_avanca_geracao_da_atribuicao() FROM PUBLIC, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 3) Quem escreveu a mensagem (só o envio do agente grava)
@@ -374,7 +455,11 @@ $$;
 --     atribuído e pausado por `gente`.
 --   · senão: retomada.
 -- Nunca toca `assigned_agent_id`. Reatribuir o MESMO agente mantém o `desde`.
--- Zera o contador de respostas. O agente é relido AQUI, na execução: desligado
+-- Zera o contador de respostas — MENOS na reatribuição que não muda nada (o
+-- mesmo agente, sem pausa e sem resposta de gente em 24 h): essa não escreve
+-- nada, e a geração (E12) não avança. Zerando, uma automação que atribui o
+-- mesmo agente a cada mensagem descartaria todo turno em curso (a geração
+-- avança com o teto zerado). O agente é relido AQUI, na execução: desligado
 -- ou arquivado depois de a automação ser salva = `agente_indisponivel`, nada
 -- gravado (Codex, #292) — senão a conversa ficaria com um agente que não
 -- responde, e a próxima mensagem cairia na entrada. Com `p_canal_id` (a conexão
@@ -457,6 +542,13 @@ BEGIN
            ia_pausada_em = CASE WHEN c.ai_autoreply_disabled AND c.ia_pausada_por = 'gente' THEN coalesce(ia_pausada_em, now()) ELSE now() END
      WHERE id = p_conversation_id;
     RETURN QUERY SELECT 'pausada_gente'::text, 'gente'::text;
+    RETURN;
+  END IF;
+
+  -- Nada muda (o mesmo agente, sem pausa): não escreve — o teto e a geração
+  -- ficam, e o turno em curso segue.
+  IF c.ia_agente_id = p_ia_agente_id AND NOT c.ai_autoreply_disabled THEN
+    RETURN QUERY SELECT 'retomada'::text, NULL::text;
     RETURN;
   END IF;
 
@@ -580,17 +672,17 @@ BEGIN
      AND c.group_id IS NULL
      AND c.ia_agente_id IS NOT NULL
      AND NOT c.ai_autoreply_disabled
-     -- GRAVADA depois da atribuição, pelo relógio do BANCO: o `created_at` da
-     -- mensagem do celular é o relógio do APARELHO, e um aparelho atrasado
+     -- GRAVADA depois da atribuição, SÓ pelo relógio do BANCO. O `created_at`
+     -- da mensagem do celular é o relógio do APARELHO: um aparelho atrasado
      -- poria a resposta do advogado "antes" da atribuição — sem pausa, e o
      -- turno seguinte (que só olha o gravado depois da SUA mensagem) também
-     -- não a veria: a IA falaria por cima do advogado (Codex, #292).
+     -- não a veria: a IA falaria por cima do advogado (Codex, #292). Por isso
+     -- nenhuma janela pelo `created_at`, nem a de 24 h da D17: com ela, um
+     -- celular com o relógio mais de um dia atrasado não pausava (Codex,
+     -- #292). O preço, aceito: a fala ANTIGA de gente recuperada pela 1010
+     -- (gravada agora, com o carimbo de dias atrás) também pausa — o lado
+     -- seguro (a IA para e a equipe assume), e raro.
      AND NEW.gravada_em >= coalesce(c.ia_agente_desde, '-infinity'::timestamptz)
-     -- ...e dentro da janela da D17: a fala ANTIGA recuperada pela 1010 é
-     -- gravada agora com o carimbo de horas atrás. Ela pausa quando a D17 teria
-     -- deixado o agente pausado se já estivesse no banco na atribuição
-     -- (resposta de gente nas 24 h anteriores); mais antiga, não pausa.
-     AND NEW.created_at > coalesce(c.ia_agente_desde, '-infinity'::timestamptz) - interval '24 hours'
      -- Nunca o eco do PRÓPRIO turno (defesa dobrada do E5; a ingestão já o
      -- pula pelo mesmo id).
      AND NOT EXISTS (
@@ -620,14 +712,32 @@ REVOKE EXECUTE ON FUNCTION cb_pausar_ia_por_gente() FROM PUBLIC, anon, authentic
 -- ---------------------------------------------------------------------------
 -- 7) Encerrar limpa a IA; arquivar tira o agente da entrada e das conversas
 -- ---------------------------------------------------------------------------
--- BEFORE e só em NEW: vale sob a RLS do operador (o fio), no motor
--- (`close_conversation`) e no lote (1018/1034), que põem `status` no SET.
--- Só na TRANSIÇÃO para encerrada: a régua cobra conversa JÁ encerrada e
--- atribui o agente nela — o UPDATE seguinte com `status` no SET não pode
--- zerar o que acabou de ser gravado.
+-- BEFORE: vale sob a RLS do operador (o fio), no motor (`close_conversation`)
+-- e no lote (1018/1034), que põem `status` no SET. Só na TRANSIÇÃO para
+-- encerrada: a régua cobra conversa JÁ encerrada e atribui o agente nela — o
+-- UPDATE seguinte com `status` no SET não pode zerar o que acabou de ser
+-- gravado.
+-- Zerar o agente aqui avança a geração (E12): o gatilho dela vem DEPOIS deste
+-- na ordem alfabética, e é isso que o faz ver o agente zerado.
+-- E os turnos da conversa `aguardando` e `rodando` viram `descartado` (E11):
+-- o pendente não tem mais a quem responder, e o que roda não pode enviar para
+-- conversa encerrada (a reserva também o recusaria, pela geração e pelo
+-- `status`). Na MESMA transação do encerramento, com a conversa travada pelo
+-- UPDATE: a reserva do envio trava a mesma linha, então as duas se
+-- serializam. SECURITY DEFINER: quem encerra pode ser o operador sob RLS, e
+-- `cb_ia_turnos` é fechada ao navegador.
+-- ⚠️ INCLUSIVE o `rodando` que já começou a enviar (`enviando_desde`) — o
+-- contrário da entrada (`descartarPendente`, que o poupa para não calar a
+-- transferência do `incerto`). Aqui a transferência não serve a ninguém (a
+-- conversa encerrada fica sem agente) e, com o turno ainda `rodando`, o
+-- recolhedor poderia transferir o atendimento NOVO de uma conversa reaberta
+-- e reatribuída. O preço: o registro pode dizer `descartado` sobre uma
+-- resposta que saiu — o `mensagem_enviada_id` (gravado sem cerca de status)
+-- conta a verdade.
 CREATE OR REPLACE FUNCTION cb_encerrar_limpa_ia()
 RETURNS trigger
 LANGUAGE plpgsql
+SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
 BEGIN
@@ -638,6 +748,14 @@ BEGIN
     NEW.ia_pausada_por := NULL;
     NEW.ia_pausada_em := NULL;
     NEW.ai_reply_count := 0;
+    UPDATE cb_ia_turnos
+       SET status = 'descartado',
+           erro = 'conversa encerrada',
+           terminado_em = now(),
+           updated_at = now()
+     WHERE conversation_id = NEW.id
+       AND account_id = NEW.account_id
+       AND status IN ('aguardando', 'rodando');
   END IF;
   RETURN NEW;
 END;
@@ -823,31 +941,55 @@ REVOKE EXECUTE ON FUNCTION public.claim_ai_reply_slot(uuid, integer) FROM PUBLIC
 GRANT EXECUTE ON FUNCTION public.claim_ai_reply_slot(uuid, integer) TO service_role;
 
 -- A ÚLTIMA palavra antes do envio do turno, na MESMA escrita que consome a
--- vaga do teto: a conversa tem de estar aberta, sem pausa e com o MESMO
--- agente, e ainda (5.7, Codex #292):
---   · sem OUTRO turno pendente desta conversa NESTA conexão: ele é a prova de
---     que chegou mensagem nova do cliente que abre turno, pela MESMA régua da
---     entrada (E9/E10), sem copiá-la para o SQL. A mensagem nova não serializa
---     na linha da conversa (o gatilho da 972 só a escreve sem espera acesa), e
---     sem esta pergunta o turno velho enviaria com o novo já na fila;
+-- vaga do teto (5.7, E10, E12; Codex, #292). A conversa tem de estar:
+--   · aberta, sem pausa, com o MESMO agente e a MESMA geração da atribuição
+--     que o turno leu (`p_ia_atribuicao`; E12): encerrada, reaberta e
+--     reatribuída ao mesmo agente no meio, ela passaria por todo o resto;
+-- e ainda:
+--   · o turno continua `rodando` (`p_turno_id`, desta conversa): outro
+--     caminho pode tê-lo descartado — a mensagem que o robô consumiu ou à qual
+--     uma automação respondeu (E10 a), o encerramento;
+--   · a mensagem que abriu o turno (`p_gatilho_id`) continua nesta conversa,
+--     sem ter sido APAGADA nem EDITADA: conferida só em JS, a edição ou a
+--     exclusão que chega entre a conferência e a reserva passaria. A edição
+--     cifrada da Evolution 2.4 carimba `edited_at` e mantém o texto antigo —
+--     responder seria responder ao que o cliente já corrigiu;
+--   · sem OUTRO turno pendente desta conversa NESTA conexão cuja mensagem é
+--     MAIS NOVA que a do turno (a régua da E10, por `gravada_em`): ele é a
+--     prova de que chegou mensagem nova do cliente que abre turno, pela MESMA
+--     régua da entrada (E9/E10), sem copiá-la para o SQL. A mensagem nova não
+--     serializa na linha da conversa (o gatilho da 972 só a escreve sem espera
+--     acesa), e sem esta pergunta o turno velho enviaria com o novo já na
+--     fila. O pendente cuja mensagem foi APAGADA (ou não existe mais) não
+--     conta, nem o de mensagem mais antiga; sem o `gravada_em` de um dos dois
+--     lados, conta (o lado que recusa);
 --   · sem saída do robô ou de automação (`bot` sem `ia_agente_id`, não
 --     apagada) NESTA conexão gravada depois da mensagem do turno (E10 b):
 --     alguém já respondeu. A resposta do PRÓPRIO agente não conta, nem a de
 --     outra conexão (D4). Gatilho nulo = não confere.
--- A pausa por gente (o gatilho do item 6) escreve a MESMA linha de
--- `conversations`, então as duas se serializam pela trava da linha: a
--- resposta do advogado gravada antes da reserva a recusa; a gravada depois é
--- a simultaneidade que nenhum banco evita — a mensagem da IA já estava
--- autorizada (Codex, #292). O que sobra é a mensagem do cliente gravada e
--- ainda não enfileirada no instante da reserva: aceito (5.7).
+-- `p_ia_atribuicao` nulo não confere a geração, e `p_gatilho_id` nulo não
+-- confere a mensagem: só para teste — o turno passa os dois.
+-- A pausa por gente (o gatilho do item 6) e o encerramento escrevem a MESMA
+-- linha de `conversations`, então se serializam com a reserva pela trava da
+-- linha: a resposta do advogado gravada antes da reserva a recusa; a gravada
+-- depois é a simultaneidade que nenhum banco evita — a mensagem da IA já
+-- estava autorizada (Codex, #292). O mesmo vale para o que NÃO escreve na
+-- conversa (o descarte do turno, a edição da mensagem, o pendente novo): o
+-- que chega durante a própria escrita é "depois" dela. O que sobra é a
+-- mensagem do cliente gravada e ainda não enfileirada no instante da
+-- reserva: aceito (5.7).
 -- A linha é travada ANTES da escrita (FOR NO KEY UPDATE, a mesma trava que o
 -- UPDATE pega — não disputa com a FK de quem insere mensagem ou turno), para
 -- a recusa ser classificada sobre o MESMO estado da escrita: o chamador
 -- TRANSFERE para gente no `teto`, e um `teto` falso seria uma pausa que só
--- gente desfaz. Ordem: `mudou`, `pausada`, `mais_nova`, `robo_falou`,
--- `teto`. Conexão e turno nulos comparam como valor (o lado que recusa).
--- DROP da assinatura antiga antes do CREATE: sem overload.
+-- gente desfaz. Ordem: `mudou`, `descartado`, `editada`, `pausada`,
+-- `mais_nova`, `robo_falou`, `teto`. Conexão e turno nulos comparam como
+-- valor (o lado que recusa).
+-- DROP das assinaturas antigas antes do CREATE: sem overload (e sem DEFAULT
+-- nos parâmetros novos, de propósito: quem chamar com os 7 de antes erra
+-- alto, em vez de reservar sem conferir a geração e a mensagem).
 DROP FUNCTION IF EXISTS public.cb_ia_reservar_envio(uuid, uuid, uuid, integer);
+DROP FUNCTION IF EXISTS public.cb_ia_reservar_envio(uuid, uuid, uuid, integer, uuid, uuid, timestamptz);
 CREATE OR REPLACE FUNCTION public.cb_ia_reservar_envio(
   p_account_id         uuid,
   p_conversation_id    uuid,
@@ -855,7 +997,9 @@ CREATE OR REPLACE FUNCTION public.cb_ia_reservar_envio(
   p_max                integer,
   p_turno_id           uuid,
   p_canal_id           uuid,
-  p_gatilho_gravada_em timestamptz
+  p_gatilho_gravada_em timestamptz,
+  p_ia_atribuicao      bigint,
+  p_gatilho_id         uuid
 )
 RETURNS text
 LANGUAGE plpgsql
@@ -864,15 +1008,12 @@ AS $$
 DECLARE
   c record;
 BEGIN
-  SELECT cv.ia_agente_id, cv.ai_autoreply_disabled, cv.status, cv.ai_reply_count INTO c
+  SELECT cv.ia_agente_id, cv.ai_autoreply_disabled, cv.status, cv.ai_reply_count, cv.ia_atribuicao INTO c
     FROM conversations cv
    WHERE cv.id = p_conversation_id AND cv.account_id = p_account_id
    FOR NO KEY UPDATE;
-  IF NOT FOUND OR c.ia_agente_id IS DISTINCT FROM p_ia_agente_id OR c.status = 'closed' THEN
+  IF NOT FOUND THEN
     RETURN 'mudou';
-  END IF;
-  IF c.ai_autoreply_disabled THEN
-    RETURN 'pausada';
   END IF;
 
   UPDATE conversations
@@ -880,15 +1021,32 @@ BEGIN
    WHERE id = p_conversation_id
      AND account_id = p_account_id
      AND ia_agente_id = p_ia_agente_id
+     AND (p_ia_atribuicao IS NULL OR ia_atribuicao = p_ia_atribuicao)
      AND NOT ai_autoreply_disabled
      AND status <> 'closed'
      AND ai_reply_count < p_max
+     AND EXISTS (
+       SELECT 1 FROM cb_ia_turnos r
+        WHERE r.id = p_turno_id
+          AND r.conversation_id = p_conversation_id
+          AND r.status = 'rodando'
+     )
+     AND (p_gatilho_id IS NULL OR EXISTS (
+       SELECT 1 FROM messages g
+        WHERE g.id = p_gatilho_id
+          AND g.conversation_id = p_conversation_id
+          AND g.deleted_at IS NULL
+          AND g.edited_at IS NULL
+     ))
      AND NOT EXISTS (
        SELECT 1 FROM cb_ia_turnos t
+         JOIN messages n ON n.id = t.mensagem_gatilho_id
         WHERE t.conversation_id = p_conversation_id
           AND t.canal_id IS NOT DISTINCT FROM p_canal_id
           AND t.status = 'aguardando'
           AND t.id IS DISTINCT FROM p_turno_id
+          AND n.deleted_at IS NULL
+          AND (p_gatilho_gravada_em IS NULL OR n.gravada_em IS NULL OR n.gravada_em > p_gatilho_gravada_em)
      )
      AND NOT EXISTS (
        SELECT 1 FROM messages m
@@ -904,12 +1062,42 @@ BEGIN
     RETURN 'ok';
   END IF;
 
+  -- A conversa está travada: agente, geração, pausa, `status` e contador são
+  -- os da escrita. O resto é relido.
+  IF c.ia_agente_id IS DISTINCT FROM p_ia_agente_id
+     OR c.status = 'closed'
+     OR (p_ia_atribuicao IS NOT NULL AND c.ia_atribuicao IS DISTINCT FROM p_ia_atribuicao) THEN
+    RETURN 'mudou';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM cb_ia_turnos r
+     WHERE r.id = p_turno_id
+       AND r.conversation_id = p_conversation_id
+       AND r.status = 'rodando'
+  ) THEN
+    RETURN 'descartado';
+  END IF;
+  IF p_gatilho_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM messages g
+     WHERE g.id = p_gatilho_id
+       AND g.conversation_id = p_conversation_id
+       AND g.deleted_at IS NULL
+       AND g.edited_at IS NULL
+  ) THEN
+    RETURN 'editada';
+  END IF;
+  IF c.ai_autoreply_disabled THEN
+    RETURN 'pausada';
+  END IF;
   IF EXISTS (
     SELECT 1 FROM cb_ia_turnos t
+      JOIN messages n ON n.id = t.mensagem_gatilho_id
      WHERE t.conversation_id = p_conversation_id
        AND t.canal_id IS NOT DISTINCT FROM p_canal_id
        AND t.status = 'aguardando'
        AND t.id IS DISTINCT FROM p_turno_id
+       AND n.deleted_at IS NULL
+       AND (p_gatilho_gravada_em IS NULL OR n.gravada_em IS NULL OR n.gravada_em > p_gatilho_gravada_em)
   ) THEN
     RETURN 'mais_nova';
   END IF;
@@ -936,8 +1124,8 @@ BEGIN
 END;
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.cb_ia_reservar_envio(uuid, uuid, uuid, integer, uuid, uuid, timestamptz) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.cb_ia_reservar_envio(uuid, uuid, uuid, integer, uuid, uuid, timestamptz) TO service_role;
+REVOKE EXECUTE ON FUNCTION public.cb_ia_reservar_envio(uuid, uuid, uuid, integer, uuid, uuid, timestamptz, bigint, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.cb_ia_reservar_envio(uuid, uuid, uuid, integer, uuid, uuid, timestamptz, bigint, uuid) TO service_role;
 
 -- ---------------------------------------------------------------------------
 -- Conferência (roda em banco vazio: catálogo, privilégios e as RPCs CHAMADAS
@@ -945,16 +1133,21 @@ GRANT EXECUTE ON FUNCTION public.cb_ia_reservar_envio(uuid, uuid, uuid, integer,
 -- ---------------------------------------------------------------------------
 DO $$
 DECLARE
-  v_conv    uuid;
-  v_conta   uuid;
-  v_conv_ia  uuid;
-  v_conta_ia uuid;
-  v_agente   uuid;
-  v_t1      uuid;
-  v_t2      uuid;
-  v_quantas integer;
-  v_res     text;
-  f         text;
+  v_conv         uuid;
+  v_conta        uuid;
+  v_conv_ia      uuid;
+  v_conta_ia     uuid;
+  v_agente       uuid;
+  v_msg          uuid;
+  v_msg_gravada  timestamptz;
+  v_rod          uuid;
+  v_ger          bigint;
+  v_t1           uuid;
+  v_t2           uuid;
+  v_quantas      integer;
+  v_res          text;
+  r_antes        record;
+  f              text;
 BEGIN
   FOREACH f IN ARRAY ARRAY[
     'public.cb_ia_enfileirar_turno(uuid, uuid, uuid, uuid, uuid, integer)',
@@ -963,7 +1156,7 @@ BEGIN
     'public.cb_ia_gente_respondeu_em_24h(uuid)',
     'public.cb_retomar_ia_por_automacao(uuid, uuid)',
     'public.claim_ai_reply_slot(uuid, integer)',
-    'public.cb_ia_reservar_envio(uuid, uuid, uuid, integer, uuid, uuid, timestamptz)',
+    'public.cb_ia_reservar_envio(uuid, uuid, uuid, integer, uuid, uuid, timestamptz, bigint, uuid)',
     'public.cb_assentar_mensagem_historica(uuid, timestamptz, boolean, timestamptz, boolean)'
   ] LOOP
     IF has_function_privilege('anon', f, 'EXECUTE') OR has_function_privilege('authenticated', f, 'EXECUTE') THEN
@@ -976,7 +1169,8 @@ BEGIN
   FOREACH f IN ARRAY ARRAY[
     'public.cb_pausar_ia_por_gente()', 'public.cb_encerrar_limpa_ia()', 'public.cb_carimba_entrada_de_ia()',
     'public.cb_marcar_aguardando_resposta()', 'public.cb_mensagem_apagada_recalcula_espera()',
-    'public.cb_ia_agente_arquivado_sai_das_passagens()', 'public.cb_ia_descartar_turnos_da_conexao()'
+    'public.cb_ia_agente_arquivado_sai_das_passagens()', 'public.cb_ia_descartar_turnos_da_conexao()',
+    'public.cb_ia_avanca_geracao_da_atribuicao()'
   ] LOOP
     IF has_function_privilege('anon', f, 'EXECUTE') OR has_function_privilege('authenticated', f, 'EXECUTE') THEN
       RAISE EXCEPTION '1049: função de gatilho % exposta como RPC', f;
@@ -1003,6 +1197,14 @@ BEGIN
   IF v_quantas <> 1 THEN
     RAISE EXCEPTION '1049: esperava UMA cb_assentar_mensagem_historica; há %', v_quantas;
   END IF;
+  -- Sem overload: as assinaturas antigas saíram.
+  FOREACH f IN ARRAY ARRAY['cb_ia_reservar_envio', 'cb_atribuir_agente_de_ia'] LOOP
+    SELECT count(*) INTO v_quantas FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+     WHERE n.nspname = 'public' AND p.proname = f;
+    IF v_quantas <> 1 THEN
+      RAISE EXCEPTION '1049: esperava UMA %; há %', f, v_quantas;
+    END IF;
+  END LOOP;
 
   -- Os gatilhos que a carga da 1033 cala PELO NOME continuam com o nome.
   IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'cb_marcar_aguardando_resposta_trigger'
@@ -1014,14 +1216,56 @@ BEGIN
                     AND tgrelid = 'public.cb_channels'::regclass) THEN
     RAISE EXCEPTION '1049: o gatilho cb_channels_descarta_turnos_de_ia não existe';
   END IF;
+  -- Encerrar escreve em `cb_ia_turnos`, fechada ao navegador: DEFINER.
+  IF NOT (SELECT p.prosecdef FROM pg_proc p WHERE p.oid = 'public.cb_encerrar_limpa_ia()'::regprocedure) THEN
+    RAISE EXCEPTION '1049: cb_encerrar_limpa_ia não é SECURITY DEFINER (encerrar pela tela falharia)';
+  END IF;
+
+  -- A geração (E12): BEFORE UPDATE por linha, SEM lista de colunas (o
+  -- encerramento zera o agente com só `status` no SET)...
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger t
+     WHERE t.tgrelid = 'public.conversations'::regclass
+       AND t.tgname = 'cb_ia_geracao_da_atribuicao_trigger'
+       AND (t.tgtype & 1) = 1 AND (t.tgtype & 2) = 2 AND (t.tgtype & 16) = 16
+       AND coalesce(array_length(t.tgattr::int2[], 1), 0) = 0
+  ) THEN
+    RAISE EXCEPTION '1049: o gatilho da geração não é BEFORE UPDATE por linha sem lista de colunas';
+  END IF;
+  -- ...e DEPOIS, na ordem alfabética em que o Postgres dispara os BEFORE, de
+  -- todo gatilho BEFORE UPDATE de `conversations` que escreva o agente, a
+  -- pausa ou o teto em NEW. Antes deles, o WHEN veria o NEW sem a mudança e a
+  -- geração não avançaria.
+  SELECT string_agg(t.tgname::text, ', ') INTO f
+    FROM pg_trigger t JOIN pg_proc p ON p.oid = t.tgfoid
+   WHERE t.tgrelid = 'public.conversations'::regclass
+     AND NOT t.tgisinternal
+     AND (t.tgtype & 1) = 1 AND (t.tgtype & 2) = 2 AND (t.tgtype & 16) = 16
+     AND t.tgname <> 'cb_ia_geracao_da_atribuicao_trigger'
+     AND p.prosrc ~* 'new\.(ia_agente_id|ai_autoreply_disabled|ai_reply_count)\s*:?='
+     AND t.tgname > 'cb_ia_geracao_da_atribuicao_trigger'::name;
+  IF f IS NOT NULL THEN
+    RAISE EXCEPTION '1049: % mexe(m) no agente, na pausa ou no teto e dispara(m) DEPOIS do gatilho da geração', f;
+  END IF;
 
   -- As RPCs CHAMADAS (o corpo só é analisado quando roda), como service_role.
   SELECT c.id, c.account_id INTO v_conv, v_conta FROM conversations c WHERE c.group_id IS NULL LIMIT 1;
-  -- Uma conversa aberta de uma conta que tem agente: é onde a reserva passa
-  -- pelo corpo inteiro (o turno pendente e a saída do robô).
-  SELECT a.id, c.id, c.account_id INTO v_agente, v_conv_ia, v_conta_ia
-    FROM cb_ia_agentes a JOIN conversations c ON c.account_id = a.account_id
+  -- Uma conversa aberta de uma conta que tem agente, SEM turno vivo (o índice
+  -- de um só `rodando` por conversa) e com uma mensagem viva para servir de
+  -- gatilho: é onde a reserva passa pelo corpo inteiro.
+  SELECT a.id, c.id, c.account_id, m.id, m.gravada_em
+    INTO v_agente, v_conv_ia, v_conta_ia, v_msg, v_msg_gravada
+    FROM cb_ia_agentes a
+    JOIN conversations c ON c.account_id = a.account_id
+    JOIN LATERAL (
+      SELECT m.id, m.gravada_em FROM messages m
+       WHERE m.conversation_id = c.id
+         AND m.deleted_at IS NULL AND m.edited_at IS NULL AND m.gravada_em IS NOT NULL
+       LIMIT 1
+    ) m ON true
    WHERE c.group_id IS NULL AND c.status <> 'closed'
+     AND NOT EXISTS (SELECT 1 FROM cb_ia_turnos t
+                      WHERE t.conversation_id = c.id AND t.status IN ('aguardando', 'rodando'))
    LIMIT 1;
   BEGIN
     SET LOCAL ROLE service_role;
@@ -1034,7 +1278,7 @@ BEGIN
     PERFORM * FROM public.cb_ia_reivindicar_turno(gen_random_uuid());
     -- A reserva numa conversa que não existe (ou sem este agente) não grava.
     v_res := public.cb_ia_reservar_envio(coalesce(v_conta, gen_random_uuid()), coalesce(v_conv, gen_random_uuid()), gen_random_uuid(), 99,
-                                         gen_random_uuid(), NULL, now());
+                                         gen_random_uuid(), NULL, now(), NULL, NULL);
     IF v_res <> 'mudou' THEN
       RAISE EXCEPTION '1049: reserva de envio com agente estranho respondeu %', v_res;
     END IF;
@@ -1064,24 +1308,67 @@ BEGIN
       RAISE NOTICE '1049: banco vazio — a rajada não foi exercitada aqui.';
     END IF;
     IF v_agente IS NOT NULL THEN
+      -- Dar o agente à conversa avança a geração se mudou o agente ou retomou
+      -- a pausa; senão, não.
+      SELECT cv.ia_agente_id, cv.ai_autoreply_disabled, cv.ia_atribuicao INTO r_antes
+        FROM conversations cv WHERE cv.id = v_conv_ia;
       UPDATE conversations SET ia_agente_id = v_agente, ai_autoreply_disabled = false WHERE id = v_conv_ia;
+      SELECT cv.ia_atribuicao INTO v_ger FROM conversations cv WHERE cv.id = v_conv_ia;
+      IF v_ger <> r_antes.ia_atribuicao
+                  + (CASE WHEN r_antes.ia_agente_id IS DISTINCT FROM v_agente OR r_antes.ai_autoreply_disabled THEN 1 ELSE 0 END) THEN
+        RAISE EXCEPTION '1049: a geração foi de % para % ao dar o agente à conversa', r_antes.ia_atribuicao, v_ger;
+      END IF;
+      -- Só o banco escreve a geração.
+      UPDATE conversations SET ia_atribuicao = v_ger + 100 WHERE id = v_conv_ia;
+      IF (SELECT cv.ia_atribuicao FROM conversations cv WHERE cv.id = v_conv_ia) <> v_ger THEN
+        RAISE EXCEPTION '1049: um UPDATE mudou a geração por fora';
+      END IF;
       -- A ENTRADA não sobrescreve a conversa que já tem agente.
       SELECT a.resultado INTO v_res FROM public.cb_atribuir_agente_de_ia(v_conta_ia, v_conv_ia, v_agente, NULL, true) a;
       IF v_res <> 'ocupada' THEN
         RAISE EXCEPTION '1049: a entrada numa conversa com agente respondeu %', v_res;
       END IF;
-      -- Outro turno pendente nesta conexão recusa a reserva; o PRÓPRIO turno não.
-      SELECT t.id INTO v_t1 FROM public.cb_ia_enfileirar_turno(v_conta_ia, v_conv_ia, NULL, v_agente, NULL, 0) t;
-      v_res := public.cb_ia_reservar_envio(v_conta_ia, v_conv_ia, v_agente, 2147483647, gen_random_uuid(), NULL, now());
+      -- O turno em curso e OUTRO pendente nesta conexão (nula), os dois com a
+      -- mesma mensagem por gatilho.
+      INSERT INTO cb_ia_turnos (account_id, conversation_id, ia_agente_id, mensagem_gatilho_id, status, rodando_desde)
+        VALUES (v_conta_ia, v_conv_ia, v_agente, v_msg, 'rodando', now())
+        RETURNING id INTO v_rod;
+      SELECT t.id INTO v_t1 FROM public.cb_ia_enfileirar_turno(v_conta_ia, v_conv_ia, NULL, v_agente, v_msg, 0) t;
+      -- A mensagem do pendente MAIS NOVA que a do turno recusa...
+      v_res := public.cb_ia_reservar_envio(v_conta_ia, v_conv_ia, v_agente, 2147483647, v_rod, NULL,
+                                           v_msg_gravada - interval '1 second', v_ger, v_msg);
       IF v_res <> 'mais_nova' THEN
-        RAISE EXCEPTION '1049: reserva com outro turno pendente respondeu %', v_res;
+        RAISE EXCEPTION '1049: reserva com pendente de mensagem mais nova respondeu %', v_res;
       END IF;
-      v_res := public.cb_ia_reservar_envio(v_conta_ia, v_conv_ia, v_agente, 2147483647, v_t1, NULL, now());
+      -- ...a do mesmo instante, não.
+      v_res := public.cb_ia_reservar_envio(v_conta_ia, v_conv_ia, v_agente, 2147483647, v_rod, NULL,
+                                           v_msg_gravada, v_ger, v_msg);
       IF v_res NOT IN ('ok', 'robo_falou') THEN
-        RAISE EXCEPTION '1049: reserva do próprio turno respondeu %', v_res;
+        RAISE EXCEPTION '1049: reserva do turno em curso respondeu %', v_res;
+      END IF;
+      -- Geração velha: `mudou`.
+      v_res := public.cb_ia_reservar_envio(v_conta_ia, v_conv_ia, v_agente, 2147483647, v_rod, NULL,
+                                           v_msg_gravada, v_ger - 1, v_msg);
+      IF v_res <> 'mudou' THEN
+        RAISE EXCEPTION '1049: reserva com a geração velha respondeu %', v_res;
+      END IF;
+      -- Turno que não está rodando: `descartado`.
+      v_res := public.cb_ia_reservar_envio(v_conta_ia, v_conv_ia, v_agente, 2147483647, v_t1, NULL,
+                                           v_msg_gravada, v_ger, v_msg);
+      IF v_res <> 'descartado' THEN
+        RAISE EXCEPTION '1049: reserva de turno que não roda respondeu %', v_res;
+      END IF;
+      -- Encerrar (só `status` no SET) descarta o pendente e o que roda, e
+      -- avança a geração (o agente zerado pelo gatilho do encerramento).
+      UPDATE conversations SET status = 'closed' WHERE id = v_conv_ia;
+      IF EXISTS (SELECT 1 FROM cb_ia_turnos WHERE id IN (v_rod, v_t1) AND status <> 'descartado') THEN
+        RAISE EXCEPTION '1049: encerrar não descartou os turnos da conversa';
+      END IF;
+      IF (SELECT cv.ia_atribuicao FROM conversations cv WHERE cv.id = v_conv_ia) <> v_ger + 1 THEN
+        RAISE EXCEPTION '1049: encerrar não avançou a geração';
       END IF;
     ELSE
-      RAISE NOTICE '1049: nenhuma conta com agente — a reserva não passou pelo corpo inteiro aqui.';
+      RAISE NOTICE '1049: nenhuma conta com agente e conversa livre — a reserva não passou pelo corpo inteiro aqui.';
     END IF;
     RESET ROLE;
     RAISE EXCEPTION USING ERRCODE = 'P1049';
@@ -1089,5 +1376,5 @@ BEGIN
     NULL;
   END;
 
-  RAISE NOTICE '1049: quem responde — turnos, pausa por gente, entrada da conexão e a resposta do agente como "respondido".';
+  RAISE NOTICE '1049: quem responde — turnos, geração da atribuição, pausa por gente, entrada da conexão e a resposta do agente como "respondido".';
 END $$;

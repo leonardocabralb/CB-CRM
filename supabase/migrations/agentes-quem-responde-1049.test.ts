@@ -100,6 +100,19 @@ describe('1049 — a D17 decide no BANCO (E12)', () => {
     expect(corpo).not.toContain('deleted_at');
   });
 
+  it('a reatribuição que não muda nada (o mesmo agente, sem pausa) não escreve: nem zera o teto nem avança a geração (E12)', () => {
+    const corpo = funcao('public.cb_atribuir_agente_de_ia');
+    const nadaMuda = corpo.indexOf(
+      "if c.ia_agente_id = p_ia_agente_id and not c.ai_autoreply_disabled then return query select 'retomada'::text, null::text; return; end if;",
+    );
+    expect(nadaMuda).toBeGreaterThan(-1);
+    // Depois da pergunta das 24 h (gente respondeu = pausa, mesmo agente)...
+    expect(nadaMuda).toBeGreaterThan(corpo.indexOf("return query select 'pausada_gente'::text"));
+    // ...e antes da ÚNICA escrita que retoma (e zera o teto).
+    const retomada = corpo.lastIndexOf('update conversations');
+    expect(nadaMuda).toBeLessThan(retomada);
+  });
+
   it('relê o agente na EXECUÇÃO: arquivado ou desligado não é atribuído (Codex, #292)', () => {
     const corpo = funcao('public.cb_atribuir_agente_de_ia');
     expect(corpo).toMatch(/a\.arquivado_em is null and a\.ativo/);
@@ -224,13 +237,13 @@ describe('1049 — pausa por gente', () => {
     expect(corpo).toContain("ia_pausada_por = 'gente'");
   });
 
-  it('decide pela GRAVAÇÃO (relógio do banco), com o created_at só na janela da D17 (Codex, #292)', () => {
+  it('decide SÓ pela GRAVAÇÃO (relógio do banco), sem janela nenhuma pelo created_at (Codex, #292)', () => {
     const corpo = funcao('cb_pausar_ia_por_gente');
-    // O relógio do aparelho (created_at) atrasado não pode deixar de pausar.
     expect(corpo).toContain("new.gravada_em >= coalesce(c.ia_agente_desde, '-infinity'::timestamptz)");
-    expect(corpo).not.toContain("new.created_at >= coalesce(c.ia_agente_desde");
-    // A fala recuperada pela 1010 pausa só dentro da janela de 24 h da D17.
-    expect(corpo).toContain("new.created_at > coalesce(c.ia_agente_desde, '-infinity'::timestamptz) - interval '24 hours'");
+    // O relógio do aparelho (created_at): um celular mais de um dia atrasado
+    // não pausava pela janela de 24 h, e a IA falaria por cima do advogado.
+    expect(corpo).not.toContain('new.created_at');
+    expect(corpo).not.toContain('interval');
   });
 });
 
@@ -242,6 +255,27 @@ describe('1049 — encerrar e arquivar', () => {
     for (const c of ['new.ia_agente_id := null', 'new.ai_autoreply_disabled := false', 'new.ia_pausada_por := null', 'new.ai_reply_count := 0']) {
       expect(corpo).toContain(c);
     }
+  });
+
+  it('encerrar DESCARTA os turnos aguardando E rodando da conversa (E11), dentro da transição', () => {
+    const corpo = funcao('cb_encerrar_limpa_ia');
+    const transicao = corpo.slice(corpo.indexOf("if new.status = 'closed'"), corpo.indexOf('end if;'));
+    expect(transicao).toContain(
+      "update cb_ia_turnos set status = 'descartado', erro = 'conversa encerrada', terminado_em = now(), updated_at = now()",
+    );
+    expect(transicao).toContain('where conversation_id = new.id and account_id = new.account_id');
+    expect(transicao).toContain("and status in ('aguardando', 'rodando')");
+    // Inclusive o que já começou a enviar: ao contrário da entrada, aqui a
+    // transferência do `incerto` não serve a ninguém.
+    expect(transicao).not.toContain('enviando_desde');
+  });
+
+  it('o gatilho do encerramento é SECURITY DEFINER: o operador encerra sob RLS e cb_ia_turnos é fechada', () => {
+    const cab = cabecalho('cb_encerrar_limpa_ia');
+    expect(cab).toContain('security definer');
+    expect(cab).toContain("set search_path to 'public'");
+    const conferencia = compacto.slice(compacto.lastIndexOf('do $$'));
+    expect(conferencia).toContain("'public.cb_encerrar_limpa_ia()'::regprocedure");
   });
 
   it('arquivar tira o agente da entrada das conexões e das conversas', () => {
@@ -306,12 +340,35 @@ describe('1049 — a reserva do envio (Codex, #292)', () => {
     return corpo.slice(ini, corpo.indexOf("if found then return 'ok'", ini));
   };
 
-  it('na MESMA escrita: nenhum OUTRO turno pendente desta conversa NESTA conexão (5.7)', () => {
+  it('na MESMA escrita: a MESMA geração da atribuição (E12); nula não confere', () => {
+    expect(escrita()).toContain('and (p_ia_atribuicao is null or ia_atribuicao = p_ia_atribuicao)');
+  });
+
+  it('na MESMA escrita: o turno ainda RODANDO, desta conversa (outro caminho pode tê-lo descartado)', () => {
+    expect(escrita()).toContain(
+      "and exists ( select 1 from cb_ia_turnos r where r.id = p_turno_id and r.conversation_id = p_conversation_id and r.status = 'rodando' )",
+    );
+  });
+
+  it('na MESMA escrita: a mensagem do turno nesta conversa, sem ter sido apagada nem EDITADA; nula não confere', () => {
+    expect(escrita()).toContain(
+      'and (p_gatilho_id is null or exists ( select 1 from messages g where g.id = p_gatilho_id and g.conversation_id = p_conversation_id and g.deleted_at is null and g.edited_at is null ))',
+    );
+  });
+
+  it('na MESMA escrita: nenhum OUTRO turno pendente desta conversa NESTA conexão com mensagem viva e MAIS NOVA (5.7, E10)', () => {
     const e = escrita();
-    expect(e).toContain('not exists ( select 1 from cb_ia_turnos t where t.conversation_id = p_conversation_id');
-    expect(e).toContain('t.canal_id is not distinct from p_canal_id');
-    expect(e).toContain("t.status = 'aguardando'");
-    expect(e).toContain('t.id is distinct from p_turno_id');
+    const pendente = e.slice(e.indexOf('not exists ( select 1 from cb_ia_turnos t'));
+    expect(pendente).toContain('join messages n on n.id = t.mensagem_gatilho_id where t.conversation_id = p_conversation_id');
+    expect(pendente).toContain('t.canal_id is not distinct from p_canal_id');
+    expect(pendente).toContain("t.status = 'aguardando'");
+    expect(pendente).toContain('t.id is distinct from p_turno_id');
+    // A mensagem do pendente apagada não conta; a mais antiga (ou do mesmo
+    // instante) também não; sem o `gravada_em` de um dos lados, conta.
+    expect(pendente).toContain('n.deleted_at is null');
+    expect(pendente).toContain(
+      'and (p_gatilho_gravada_em is null or n.gravada_em is null or n.gravada_em > p_gatilho_gravada_em)',
+    );
   });
 
   it('na MESMA escrita: nenhuma saída do robô/automação NESTA conexão gravada depois do gatilho (E10 b)', () => {
@@ -332,9 +389,14 @@ describe('1049 — a reserva do envio (Codex, #292)', () => {
     const trava = corpo.indexOf('for no key update');
     expect(trava).toBeGreaterThan(-1);
     expect(trava).toBeLessThan(corpo.indexOf('update conversations'));
-    const ordem = ['mudou', 'pausada', 'mais_nova', 'robo_falou', 'teto'].map((r) => corpo.indexOf(`return '${r}'`));
+    const ordem = ['mudou', 'descartado', 'editada', 'pausada', 'mais_nova', 'robo_falou', 'teto'].map((r) =>
+      corpo.indexOf(`return '${r}'`),
+    );
     for (const i of ordem) expect(i).toBeGreaterThan(-1);
     expect([...ordem].sort((a, b) => a - b)).toEqual(ordem);
+    // A classificação do `mudou` inclui a geração (a linha está travada).
+    const classifica = corpo.slice(corpo.indexOf("if found then return 'ok'"));
+    expect(classifica).toContain('(p_ia_atribuicao is not null and c.ia_atribuicao is distinct from p_ia_atribuicao)');
     // `teto` TRANSFERE para gente: só com o contador travado no teto, e a
     // prova que sumiu entre a escrita e a leitura nunca vira `teto`.
     expect(corpo).toContain("if c.ai_reply_count >= p_max then return 'teto'");
@@ -343,17 +405,30 @@ describe('1049 — a reserva do envio (Codex, #292)', () => {
     expect(depoisDoTeto).toContain("return 'mais_nova'");
   });
 
-  it('sem overload: a assinatura de 4 argumentos sai antes do CREATE', () => {
-    const drop = compacto.indexOf('drop function if exists public.cb_ia_reservar_envio(uuid, uuid, uuid, integer);');
-    expect(drop).toBeGreaterThan(-1);
-    expect(drop).toBeLessThan(compacto.indexOf('create or replace function public.cb_ia_reservar_envio'));
-    expect(cabecalho('public.cb_ia_reservar_envio')).toContain(
-      'p_max integer, p_turno_id uuid, p_canal_id uuid, p_gatilho_gravada_em timestamptz )',
+  it('sem overload: as assinaturas de 4 e de 7 argumentos saem antes do CREATE, e a nova não tem DEFAULT', () => {
+    const criar = compacto.indexOf('create or replace function public.cb_ia_reservar_envio');
+    for (const velha of [
+      'drop function if exists public.cb_ia_reservar_envio(uuid, uuid, uuid, integer);',
+      'drop function if exists public.cb_ia_reservar_envio(uuid, uuid, uuid, integer, uuid, uuid, timestamptz);',
+    ]) {
+      const drop = compacto.indexOf(velha);
+      expect(drop, velha).toBeGreaterThan(-1);
+      expect(drop).toBeLessThan(criar);
+    }
+    const cab = cabecalho('public.cb_ia_reservar_envio');
+    expect(cab).toContain(
+      'p_max integer, p_turno_id uuid, p_canal_id uuid, p_gatilho_gravada_em timestamptz, p_ia_atribuicao bigint, p_gatilho_id uuid )',
     );
+    // Sem DEFAULT: quem chamar com os 7 de antes erra alto, em vez de reservar
+    // sem conferir a geração e a mensagem.
+    expect(cab).not.toContain('default');
+    // E a conferência cobra no catálogo que sobrou UMA de cada.
+    const conferencia = compacto.slice(compacto.lastIndexOf('do $$'));
+    expect(conferencia).toContain("foreach f in array array['cb_ia_reservar_envio', 'cb_atribuir_agente_de_ia'] loop");
   });
 
   it('só o service_role executa (as duas metades + o GRANT de volta), e a conferência a CHAMA', () => {
-    const f = 'public.cb_ia_reservar_envio(uuid, uuid, uuid, integer, uuid, uuid, timestamptz)';
+    const f = 'public.cb_ia_reservar_envio(uuid, uuid, uuid, integer, uuid, uuid, timestamptz, bigint, uuid)';
     expect(compacto).toContain(`revoke execute on function ${f} from public, anon, authenticated;`);
     expect(compacto).toContain(`grant execute on function ${f} to service_role;`);
     expect(compacto).toContain(`'${f}'`);
@@ -362,10 +437,75 @@ describe('1049 — a reserva do envio (Codex, #292)', () => {
       conferencia.indexOf('set local role service_role'),
       conferencia.indexOf("exception when sqlstate 'p1049'"),
     );
+    // O pendente de mensagem mais nova recusa; o do mesmo instante, não; a
+    // geração velha é `mudou`; o turno que não roda é `descartado`.
     expect(subbloco).toContain(
-      'public.cb_ia_reservar_envio(v_conta_ia, v_conv_ia, v_agente, 2147483647, gen_random_uuid(), null, now())',
+      "public.cb_ia_reservar_envio(v_conta_ia, v_conv_ia, v_agente, 2147483647, v_rod, null, v_msg_gravada - interval '1 second', v_ger, v_msg)",
     );
     expect(subbloco).toContain("if v_res <> 'mais_nova' then");
+    expect(subbloco).toContain(
+      'public.cb_ia_reservar_envio(v_conta_ia, v_conv_ia, v_agente, 2147483647, v_rod, null, v_msg_gravada, v_ger - 1, v_msg)',
+    );
+    expect(subbloco).toContain("if v_res <> 'mudou' then");
+    expect(subbloco).toContain(
+      'public.cb_ia_reservar_envio(v_conta_ia, v_conv_ia, v_agente, 2147483647, v_t1, null, v_msg_gravada, v_ger, v_msg)',
+    );
+    expect(subbloco).toContain("if v_res <> 'descartado' then");
+    // E o encerramento dentro do subbloco: descarta os turnos e avança a geração.
+    expect(subbloco).toContain("update conversations set status = 'closed' where id = v_conv_ia");
+    expect(subbloco).toContain('<> v_ger + 1');
+  });
+});
+
+describe('1049 — a GERAÇÃO da atribuição (E12)', () => {
+  it('coluna bigint NOT NULL DEFAULT 0 em conversations', () => {
+    expect(compacto).toContain('alter table conversations add column if not exists ia_atribuicao bigint not null default 0');
+  });
+
+  it('avança ao trocar o agente (inclusive para nulo), ao retomar a pausa e ao zerar o teto; senão mantém a de antes', () => {
+    const corpo = funcao('cb_ia_avanca_geracao_da_atribuicao');
+    expect(corpo).toContain(
+      'if new.ia_agente_id is distinct from old.ia_agente_id or (old.ai_autoreply_disabled and not new.ai_autoreply_disabled) or (old.ai_reply_count > 0 and new.ai_reply_count = 0) then new.ia_atribuicao := old.ia_atribuicao + 1;',
+    );
+    // Só o banco escreve a geração: um UPDATE que a mande é desfeito.
+    expect(corpo).toContain('else new.ia_atribuicao := old.ia_atribuicao;');
+  });
+
+  const gatilho = () => {
+    const ini = compacto.indexOf('create trigger cb_ia_geracao_da_atribuicao_trigger');
+    expect(ini).toBeGreaterThan(-1);
+    return compacto.slice(ini, compacto.indexOf('execute function', ini));
+  };
+
+  it('BEFORE UPDATE SEM lista de colunas: o encerramento zera o agente com só `status` no SET', () => {
+    expect(gatilho()).toContain('before update on conversations for each row');
+    expect(gatilho()).not.toContain('update of');
+  });
+
+  it('o WHEN cobre as três mudanças e a escrita da própria geração', () => {
+    const g = gatilho();
+    expect(g).toContain('new.ia_agente_id is distinct from old.ia_agente_id');
+    expect(g).toContain('(old.ai_autoreply_disabled and not new.ai_autoreply_disabled)');
+    expect(g).toContain('(old.ai_reply_count > 0 and new.ai_reply_count = 0)');
+    expect(g).toContain('new.ia_atribuicao is distinct from old.ia_atribuicao');
+  });
+
+  it('dispara DEPOIS do gatilho do encerramento (o Postgres dispara os BEFORE em ordem alfabética do nome)', () => {
+    // Comparação de bytes, como o tipo `name` (collation "C").
+    expect(Buffer.compare(Buffer.from('cb_encerrar_limpa_ia_trigger'), Buffer.from('cb_ia_geracao_da_atribuicao_trigger'))).toBe(-1);
+    // E a conferência cobra no catálogo: nenhum BEFORE UPDATE que escreva o
+    // agente, a pausa ou o teto em NEW vem depois dele.
+    const conferencia = compacto.slice(compacto.lastIndexOf('do $$'));
+    expect(conferencia).toContain("t.tgname > 'cb_ia_geracao_da_atribuicao_trigger'::name");
+    expect(conferencia).toContain("p.prosrc ~* 'new\\.(ia_agente_id|ai_autoreply_disabled|ai_reply_count)\\s*:?='");
+    expect(conferencia).toContain('coalesce(array_length(t.tgattr::int2[], 1), 0) = 0');
+  });
+
+  it('a função do gatilho não é RPC (as duas metades) e a conferência a confere', () => {
+    expect(compacto).toContain(
+      'revoke execute on function cb_ia_avanca_geracao_da_atribuicao() from public, anon, authenticated',
+    );
+    expect(compacto).toContain("'public.cb_ia_avanca_geracao_da_atribuicao()'");
   });
 });
 

@@ -583,6 +583,14 @@ depois de `aee1b01f` (§3.1).
     `whatsapp/config` e `whatsapp/templates/[id]` (pino
     `src/app/api/whatsapp/guarda-de-papel-so-nossa.test.ts`) e o
     `supabase/ci/verify-schema.sql` com as NOSSAS asserções.
+16. Gatilho BEFORE UPDATE do original em `conversations` que escreva
+    `ia_agente_id`, `ai_autoreply_disabled` ou `ai_reply_count` em NEW: o nome
+    tem de ordenar ANTES de `cb_ia_geracao_da_atribuicao_trigger` (1049; o
+    Postgres dispara os BEFORE em ordem alfabética, e `on_`/`set_`/`trg_`
+    vêm depois). Senão a mudança não avança a geração da atribuição, e o turno
+    de IA em curso responde sobre um atendimento que mudou. A conferência da
+    1049 cobra a ordem só quando ELA é aplicada: gatilho de migration
+    posterior passa sem aviso. No porte, renomear o gatilho dele.
 
 ## 7. Arquivos que ficam NOSSOS inteiros
 

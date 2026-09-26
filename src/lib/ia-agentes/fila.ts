@@ -43,6 +43,11 @@ export interface TurnoNaFila {
  * Grava ou empurra o turno pendente (conversa, conexão). Devolve `null` em
  * erro — a mensagem fica sem resposta da IA e o alerta de atraso chama a
  * equipe; nunca lança (a ingestão não pode cair por isto).
+ *
+ * `iaAgenteId` é só o PALPITE de quem enfileira (nulo quando a entrada não
+ * sabe — `ocupada`): o pendente não fixa agente. Quem responde é o agente
+ * ATIVO da conversa na conferência do turno, e o turno grava na linha o que
+ * de fato respondeu (`turno.ts`).
  */
 export async function enfileirarTurno(
   db: SupabaseClient,
@@ -50,7 +55,7 @@ export async function enfileirarTurno(
     accountId: string
     conversationId: string
     canalId: string
-    iaAgenteId: string
+    iaAgenteId: string | null
     mensagemId: string
   },
 ): Promise<TurnoNaFila | null> {
@@ -75,12 +80,22 @@ export async function enfileirarTurno(
 }
 
 /**
- * Descarta o turno PENDENTE (`aguardando`) da conversa nesta conexão. A
- * entrada chama quando o ROBÔ ou uma AUTOMAÇÃO respondeu à mensagem que
- * chegou: o texto de antes, na mesma rajada, não pode ganhar uma segunda
- * resposta do agente 8 s depois (Codex, #292 — o toque em botão). O que já
- * está RODANDO não é tocado aqui: o turno confere a saída do robô antes de
- * gerar e antes de enviar. Nunca lança.
+ * Descarta o turno PENDENTE (`aguardando`) da conversa nesta conexão E o que
+ * já está RODANDO nela sem ter começado a enviar. A entrada chama quando o
+ * ROBÔ ou uma AUTOMAÇÃO respondeu à mensagem que chegou: o texto de antes, na
+ * mesma rajada, não pode ganhar uma segunda resposta do agente 8 s depois
+ * (Codex, #292 — o toque em botão).
+ *
+ * ⚠️ O `rodando` também (Codex, #292): o toque que leva o fluxo direto a um
+ * nó de fim não gera saída do robô, e a conferência do turno (que procura
+ * essa saída) deixaria a resposta velha sair depois de o fluxo tomar a
+ * conversa. A reserva do envio exige o turno ainda `rodando`, então o que
+ * roda não envia — e a escrita final dele, cercada pela posse, não
+ * sobrescreve este `descartado`.
+ * ⚠️ Menos o que já tem `enviando_desde`: o turno carimba a posse DEPOIS da
+ * reserva, então ele já está com o envio autorizado e em voo — marcá-lo
+ * mentiria no registro (e calaria a transferência do `incerto`) sem impedir
+ * nada. Nunca lança.
  */
 export async function descartarPendente(
   db: SupabaseClient,
@@ -99,7 +114,8 @@ export async function descartarPendente(
       .eq('account_id', args.accountId)
       .eq('conversation_id', args.conversationId)
       .eq('canal_id', args.canalId)
-      .eq('status', 'aguardando')
+      .in('status', ['aguardando', 'rodando'])
+      .is('enviando_desde', null)
     if (error) console.error('[ia-agentes] descartar o turno pendente falhou:', error.message)
   } catch (err) {
     console.error('[ia-agentes] descartar o turno pendente falhou:', err)

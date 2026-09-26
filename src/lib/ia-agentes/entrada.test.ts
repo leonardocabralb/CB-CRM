@@ -329,22 +329,49 @@ describe('aoChegarMensagemDoCliente — o robô ou uma automação respondeu', (
     expect(agendarTurno).not.toHaveBeenCalled()
   })
 
-  it('só o PENDENTE desta conversa e desta conexão, e só dela: rodando, outra conexão e outra conta ficam', async () => {
+  it('só desta conversa e desta conexão, e só dela: outra conexão, outra conta e outra conversa ficam', async () => {
     banco.tabelas.cb_ia_turnos.push(
-      pendente({ id: 't-rodando', status: 'rodando' }),
       pendente({ id: 't-outra-conexao', canal_id: 'canal-2' }),
       pendente({ id: 't-outra-conta', account_id: 'outra-conta' }),
       pendente({ id: 't-outra-conversa', conversation_id: 'conv-2' }),
+      pendente({ id: 't-rodando-outra-conexao', canal_id: 'canal-2', status: 'rodando' }),
     )
     await aoChegarMensagemDoCliente(msg({ automacaoFalou: true }))
     const status = Object.fromEntries(banco.tabelas.cb_ia_turnos.map((t) => [t.id, t.status]))
     expect(status).toEqual({
       'turno-pendente': 'descartado',
-      't-rodando': 'rodando',
       't-outra-conexao': 'aguardando',
       't-outra-conta': 'aguardando',
       't-outra-conversa': 'aguardando',
+      't-rodando-outra-conexao': 'rodando',
     })
+  })
+
+  // O turno que RODA também sai (Codex, #292): o toque que leva o fluxo direto
+  // a um nó de fim não gera saída do robô, e a conferência do turno (que
+  // procura essa saída) deixaria a resposta velha sair depois de o fluxo
+  // tomar a conversa. A reserva do envio exige o turno ainda `rodando`.
+  it.each<[string, Partial<MensagemDoCliente>]>([
+    ['o robô consumiu', { roboConsumiu: true }],
+    ['uma automação falou', { automacaoFalou: true }],
+  ])('%s: o turno que RODA nesta conexão (sem ter reservado) também é descartado, com o motivo e a hora', async (_rotulo, p) => {
+    banco.tabelas.cb_ia_turnos = [pendente({ id: 't-rodando', status: 'rodando', rodando_desde: '2026-09-26T12:00:00.000Z', enviando_desde: null })]
+    await aoChegarMensagemDoCliente(msg(p))
+    const rodando = banco.tabelas.cb_ia_turnos[0]
+    expect(rodando).toMatchObject({ status: 'descartado', erro: 'o robô ou uma automação respondeu' })
+    expect(rodando.terminado_em).toEqual(expect.any(String))
+    expect(banco.chamadas).toEqual([expect.objectContaining({ tabela: 'cb_ia_turnos', op: 'update' })])
+  })
+
+  // O turno carimba `enviando_desde` DEPOIS da reserva: com ele, o envio já
+  // está autorizado e em voo. Marcá-lo mentiria no registro (e calaria a
+  // transferência do `incerto`) sem impedir nada.
+  it('o turno que JÁ reservou o envio (`enviando_desde`) não é tocado', async () => {
+    banco.tabelas.cb_ia_turnos = [
+      pendente({ id: 't-enviando', status: 'rodando', rodando_desde: '2026-09-26T12:00:00.000Z', enviando_desde: '2026-09-26T12:00:09.000Z' }),
+    ]
+    await aoChegarMensagemDoCliente(msg({ automacaoFalou: true }))
+    expect(banco.tabelas.cb_ia_turnos[0]).toMatchObject({ status: 'rodando', erro: null, terminado_em: null })
   })
 
   it.each<[string, Partial<MensagemDoCliente>]>([
@@ -515,7 +542,10 @@ describe('aoChegarMensagemDoCliente — agente de entrada', () => {
   // contrato do `p_so_se_vazio`: com a conversa já tendo agente, devolve
   // `ocupada` e não escreve nada; sem o parâmetro, sobrescreve (é o
   // comportamento do passo da automação, que continua valendo para ela).
-  it('outra frente atribuiu um especialista entre a leitura e a atribuição: `ocupada`, o especialista fica e nada é enfileirado', async () => {
+  // ⚠️ `ocupada` ENFILEIRA assim mesmo, sem palpite de agente: o turno não
+  // fixa agente, e a conferência dele decide com o agente ativo (aqui, o
+  // especialista), a pausa e as conexões.
+  it('outra frente atribuiu um especialista entre a leitura e a atribuição: `ocupada`, o especialista fica, e o turno é enfileirado sem agente', async () => {
     const ESPECIALISTA = 'ag-especialista'
     banco.rpcs.cb_atribuir_agente_de_ia = ({ p_conversation_id, p_ia_agente_id, p_so_se_vazio }) => {
       const c = banco.tabelas.conversations.find((x) => x.id === p_conversation_id)!
@@ -529,11 +559,63 @@ describe('aoChegarMensagemDoCliente — agente de entrada', () => {
     }
     await aoChegarMensagemDoCliente(msg())
     expect(banco.tabelas.conversations[0].ia_agente_id).toBe(ESPECIALISTA)
-    expect(nomesDasRpcs()).toEqual(['cb_atribuir_agente_de_ia'])
-    expect(agendarTurno).not.toHaveBeenCalled()
+    expect(nomesDasRpcs()).toEqual(['cb_atribuir_agente_de_ia', 'cb_ia_enfileirar_turno'])
+    expect(banco.rpcChamadas[1].args).toEqual(expect.objectContaining({ p_ia_agente_id: null, p_mensagem_id: 'msg-1' }))
+    expect(agendarTurno).toHaveBeenCalledTimes(1)
   })
 
-  it.each(['ocupada', 'pausada_gente', 'pausada_mantida', 'agente_indisponivel', 'sem_conversa'])(
+  // A RAJADA que chega junta (duas entregas concorrentes da Evolution): as
+  // duas mensagens leem a conversa SEM agente; a 1ª atribui a entrada e
+  // enfileira; a 2ª leva `ocupada`. Desistindo ali, o pendente ficava com a
+  // 1ª mensagem, e o turno dela se descartava por "mensagem mais nova" (E10)
+  // — ninguém respondia. Os dublês imitam a 1049: a atribuição trava a
+  // conversa (`p_so_se_vazio`), e o enfileirar empurra o MESMO pendente da
+  // (conversa, conexão) e troca o gatilho (ON CONFLICT).
+  it('rajada concorrente: a 2ª mensagem (`ocupada`) empurra o pendente, que fica com o gatilho MAIS NOVO', async () => {
+    banco.tabelas.messages.push({ id: 'msg-2', conversation_id: CONVERSA, sender_type: 'customer', sender_id: null, from_device: false })
+    banco.tabelas.cb_ia_turnos = []
+    banco.rpcs.cb_atribuir_agente_de_ia = ({ p_conversation_id, p_ia_agente_id, p_so_se_vazio }) => {
+      const c = banco.tabelas.conversations.find((x) => x.id === p_conversation_id)!
+      if (p_so_se_vazio === true && c.ia_agente_id !== null) {
+        return { data: [{ resultado: 'ocupada', pausada_por: null }], error: null }
+      }
+      c.ia_agente_id = p_ia_agente_id
+      return { data: [{ resultado: 'retomada', pausada_por: null }], error: null }
+    }
+    banco.rpcs.cb_ia_enfileirar_turno = ({ p_conversation_id, p_canal_id, p_ia_agente_id, p_mensagem_id }) => {
+      const turnos = banco.tabelas.cb_ia_turnos
+      const aberto = turnos.find(
+        (t) => t.conversation_id === p_conversation_id && t.canal_id === p_canal_id && t.status === 'aguardando',
+      )
+      if (aberto) {
+        Object.assign(aberto, { mensagem_gatilho_id: p_mensagem_id, ia_agente_id: p_ia_agente_id })
+        return { data: [{ id: aberto.id, executar_apos: '2026-09-26T12:00:16.000Z' }], error: null }
+      }
+      turnos.push({
+        id: 'turno-rajada',
+        conversation_id: p_conversation_id,
+        canal_id: p_canal_id,
+        ia_agente_id: p_ia_agente_id,
+        mensagem_gatilho_id: p_mensagem_id,
+        mensagem_inicial_id: p_mensagem_id,
+        status: 'aguardando',
+      })
+      return { data: [{ id: 'turno-rajada', executar_apos: '2026-09-26T12:00:08.000Z' }], error: null }
+    }
+    await Promise.all([
+      aoChegarMensagemDoCliente(msg({ mensagemId: 'msg-1' })),
+      aoChegarMensagemDoCliente(msg({ mensagemId: 'msg-2', texto: 'e mais uma coisa' })),
+    ])
+    const atribuicoes = banco.rpcChamadas.filter((c) => c.nome === 'cb_atribuir_agente_de_ia')
+    expect(atribuicoes).toHaveLength(2)
+    expect(banco.tabelas.conversations[0].ia_agente_id).toBe(ENTRADA)
+    // Um pendente só, com a ÚLTIMA mensagem da rajada: o turno responde a ela.
+    expect(banco.tabelas.cb_ia_turnos).toHaveLength(1)
+    expect(banco.tabelas.cb_ia_turnos[0]).toMatchObject({ mensagem_gatilho_id: 'msg-2', mensagem_inicial_id: 'msg-1' })
+    expect(agendarTurno).toHaveBeenCalledTimes(2)
+  })
+
+  it.each(['pausada_gente', 'pausada_mantida', 'agente_indisponivel', 'grupo', 'sem_conversa'])(
     'a atribuição devolve `%s`: não enfileira',
     async (resultado) => {
       resultadoDaAtribuicao = { data: [{ resultado, pausada_por: null }], error: null }

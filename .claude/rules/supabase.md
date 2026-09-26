@@ -42,7 +42,10 @@ UPDATE/INSERT/DELETE fora do app, saiba o que ele aciona:
   de `deleted_at` recalcula a espera.
 - **`conversations`**: encerrar limpa a espera; atribuir (`assigned_agent_id`
   novo, não nulo, por outra pessoa ou por SQL) cria aviso no sino do
-  responsável.
+  responsável. ⚠️ Zerar `ia_agente_id` ou `ai_reply_count`, ou despausar
+  (`ai_autoreply_disabled` → false), avança `ia_atribuicao` (1049), e o turno
+  de IA em curso é recusado na reserva (`mudou`). Encerrar — inclusive o lote
+  da 1018/1034 — descarta os turnos de IA da conversa (`cb_ia_turnos`).
 - **DELETE em `cb_channels`** solta os pinos, tira a conexão das automações,
   dobra a janela em `sem_carimbo` e anula `messages.channel_id`; agendada que
   aponta para ela BLOQUEIA (FK RESTRICT da 925 — a rota limpa o acervo antes).

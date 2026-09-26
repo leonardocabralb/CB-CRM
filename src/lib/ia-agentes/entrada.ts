@@ -53,11 +53,11 @@ export async function aoChegarMensagemDoCliente(m: MensagemDoCliente): Promise<v
   if (m.ehGrupo || !m.canalGravado) return
   const canalId = m.canalGravado
   // O robô ou uma automação JÁ respondeu a esta mensagem: ela não abre turno,
-  // e o PENDENTE desta conexão (o texto de antes, na mesma rajada) sai — senão
-  // o cliente que escreve e toca num botão recebe a resposta da automação e,
-  // 8 s depois, a do agente (Codex, #292). Uma escrita só, sem leitura; e só
-  // quando alguém de fato falou: figurinha ou botão SEM automação falando não
-  // cancelam nada.
+  // e o turno desta conexão (o texto de antes, na mesma rajada) sai — o
+  // PENDENTE e o que já RODA sem ter reservado o envio —, senão o cliente que
+  // escreve e toca num botão recebe a resposta da automação e, 8 s depois, a
+  // do agente (Codex, #292). Uma escrita só, sem leitura; e só quando alguém
+  // de fato falou: figurinha ou botão SEM automação falando não cancelam nada.
   if (m.roboConsumiu || m.automacaoFalou) {
     try {
       await descartarPendente(supabaseAdmin(), { accountId: m.accountId, conversationId: m.conversationId, canalId })
@@ -153,6 +153,9 @@ export async function aoChegarMensagemDoCliente(m: MensagemDoCliente): Promise<v
     })
     if (decisao.quem !== 'agente') return
 
+    // O palpite de quem responde, gravado no pendente. Só palpite: o turno
+    // não fixa agente — quem responde é o agente ATIVO na conferência dele.
+    let agenteDoTurno: string | null = decisao.agenteId
     if (decisao.via === 'entrada') {
       // O agente de entrada vira o ATIVO da conversa, pela mesma RPC da
       // automação (a D17 decidida no banco, com a conversa travada).
@@ -162,8 +165,7 @@ export async function aoChegarMensagemDoCliente(m: MensagemDoCliente): Promise<v
       // especialista. A entrada é o recepcionista de quem ainda não tem
       // ninguém — passar por cima tiraria a conversa do especialista em
       // silêncio. A RPC confere na linha TRAVADA e devolve `ocupada` sem
-      // escrever nada; aí a entrada desiste, sem enfileirar (o agente que já
-      // está lá responde às próximas mensagens pela regra do agente ativo).
+      // escrever nada.
       const { data, error } = await db.rpc('cb_atribuir_agente_de_ia', {
         p_account_id: m.accountId,
         p_conversation_id: m.conversationId,
@@ -176,16 +178,25 @@ export async function aoChegarMensagemDoCliente(m: MensagemDoCliente): Promise<v
         return
       }
       const resultado = (Array.isArray(data) ? data[0] : data) as { resultado?: string } | null
-      // Só `retomada` enfileira. `ocupada` (outra frente atribuiu no meio),
-      // as pausas, `agente_indisponivel` e `sem_conversa`: nada a responder.
-      if (resultado?.resultado !== 'retomada') return
+      // ⚠️⚠️ `ocupada` ENFILEIRA assim mesmo (revisão da F2a): a rajada que
+      // chega junta — duas entregas concorrentes da Evolution — tem as duas
+      // mensagens lendo a conversa SEM agente; a 1ª atribui a entrada e
+      // enfileira, a 2ª leva `ocupada`. Desistindo ali, o turno da 1ª se
+      // descartava por "mensagem mais nova" (E10) e ninguém respondia. O
+      // turno não fixa agente: a conferência dele decide com o agente ativo
+      // (a entrada, ou o especialista que outra frente pôs), a pausa e as
+      // conexões — a entrada não sabe qual é, e o palpite vai nulo.
+      // `retomada` enfileira com a entrada. As pausas, `agente_indisponivel`,
+      // `grupo` e `sem_conversa`: nada a responder.
+      if (resultado?.resultado === 'ocupada') agenteDoTurno = null
+      else if (resultado?.resultado !== 'retomada') return
     }
 
     const turno = await enfileirarTurno(db, {
       accountId: m.accountId,
       conversationId: m.conversationId,
       canalId,
-      iaAgenteId: decisao.agenteId,
+      iaAgenteId: agenteDoTurno,
       mensagemId: m.mensagemId,
     })
     if (turno) agendarTurno(turno)
