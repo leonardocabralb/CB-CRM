@@ -89,6 +89,7 @@ import {
   TENTATIVAS_MAX,
   contadorDe,
   decidirRetentativa,
+  recusaComprovada,
   tentativasJaFeitas,
 } from './retentativa';
 import {
@@ -268,8 +269,9 @@ export interface ResultadoDoDisparo {
   erro?: string;
   /**
    * NOSSO (F2 dos agentes de IA, E4): alguma automação deste disparo FALOU
-   * (ou vai falar) com o contato — um envio que deu certo ou foi
-   * reenfileirado, um "Aguardar", um robô ou outra automação iniciados. Com
+   * (ou vai falar) com o contato — um envio que deu certo, foi reenfileirado
+   * ou falhou sem recusa comprovada (pode ter saído), um "Aguardar", um robô
+   * ou outra automação iniciados. Com
    * isso o agente de IA fica calado nesta mensagem: o cliente não recebe
    * duas respostas. Opcional para os fakes antigos continuarem valendo.
    */
@@ -955,8 +957,8 @@ interface ExecuteArgs {
   /**
    * NOSSO (F2 dos agentes de IA, E4): avisa quem disparou que esta execução
    * falou ou vai falar com o contato. Desce pelos ramos com o `...args`, e é
-   * chamado NO MOMENTO (envio que deu certo ou foi reenfileirado, "Aguardar",
-   * robô ou automação iniciados) — o relato do `acumulador` só sobe no fim do
+   * chamado NO MOMENTO (envio que deu certo, foi reenfileirado ou falhou sem
+   * recusa comprovada, "Aguardar", robô ou automação iniciados) — o relato do `acumulador` só sobe no fim do
    * escopo, e o "Aguardar" e a retentativa saem antes por `return`.
    */
   aoFalar?: () => void;
@@ -1348,6 +1350,12 @@ async function executeStepsFrom(
         );
       }
 
+      // ⚠️ Falha SEM recusa comprovada (tempo esgotado, 5xx, qualquer erro
+      // depois do envio, erro que não veio do provedor) pode ter falado com o
+      // contato — o `entrega_incerta`. O agente não responde por cima (E4).
+      if (PASSOS_QUE_CALAM_O_AGENTE.has(step.step_type) && !recusaComprovada(err)) {
+        args.aoFalar?.();
+      }
       results.push({
         step_id: step.id,
         step_type: step.step_type,
@@ -2951,7 +2959,7 @@ function stepChannel(
  * escopo — o lado conservador, como `run_automation`: o agente cala. Erro de
  * leitura = fala, pelo mesmo motivo.
  */
-async function etapaTemQuemFale(
+export async function etapaTemQuemFale(
   db: ReturnType<typeof supabaseAdmin>,
   accountId: string,
   stageId: string

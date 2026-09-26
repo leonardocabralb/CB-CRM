@@ -437,6 +437,7 @@ vi.mock('./admin-client', () => {
 });
 
 import { EvolutionApiError } from '@/lib/whatsapp/transport/evolution-client';
+import { MetaApiError } from '@/lib/whatsapp/meta-api';
 
 vi.mock('./meta-send', () => ({
   engineSendText: vi.fn(async () => ({ whatsapp_message_id: 'm1' })),
@@ -4350,6 +4351,64 @@ describe('mover card / criar negócio: a fala adiada do funil conta (E4)', () =>
     const r = await disparar();
 
     expect(h.state.dealInserts).toHaveLength(1);
+    expect(r.falou).toBeFalsy();
+  });
+});
+
+// ============================================================
+// E4, a falha INCERTA: o envio que estourou sem recusa comprovada (tempo
+// esgotado ou 5xx da Evolution, qualquer erro que não seja 4xx do provedor)
+// pode ter saído — o `entrega_incerta`. Sem contar como fala, o agente de IA
+// respondia de novo à mesma mensagem. Só a recusa comprovada (4xx) não fala.
+// ============================================================
+describe('envio que falhou sem recusa comprovada conta como fala (E4)', () => {
+  beforeEach(() => {
+    vi.mocked(engineSendText).mockReset();
+    h.state.esperasEnfileiradas = [];
+  });
+
+  async function falhaNoEnvio(erro: unknown, context: Record<string, unknown> = {}) {
+    vi.mocked(engineSendText).mockRejectedValueOnce(erro);
+    h.state.owned = { id: 'c1' };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [sendStep({ text: 'oi' })];
+    return dispararAutomacoes({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: { conversation_id: 'conv1', ...context },
+    });
+  }
+
+  it('Evolution 5xx (entrega incerta): falou', async () => {
+    const r = await falhaNoEnvio(new EvolutionApiError('timeout', 504));
+    expect(h.state.esperasEnfileiradas).toHaveLength(0);
+    expect(r.comFalha).toBe(1);
+    expect(r.falou).toBe(true);
+  });
+
+  it('erro da Meta que não é 4xx: falou', async () => {
+    const r = await falhaNoEnvio(new MetaApiError('Service unavailable', { httpStatus: 503 }));
+    expect(r.falou).toBe(true);
+  });
+
+  it('erro que não veio do provedor (pode ter sido depois do envio): falou', async () => {
+    const r = await falhaNoEnvio(new Error('sent but DB insert failed: x'));
+    expect(r.falou).toBe(true);
+  });
+
+  it('recusa COMPROVADA da Meta (4xx): não falou', async () => {
+    const r = await falhaNoEnvio(new MetaApiError('(#131047) Re-engagement message', { httpStatus: 400 }));
+    expect(r.comFalha).toBe(1);
+    expect(r.falou).toBeFalsy();
+  });
+
+  it('recusa COMPROVADA da Evolution no teto de tentativas: não falou', async () => {
+    const r = await falhaNoEnvio(new EvolutionApiError('recusado', 400), {
+      _tentativa: { pos: 0, n: 2 },
+    });
+    expect(h.state.esperasEnfileiradas).toHaveLength(0);
+    expect(r.comFalha).toBe(1);
     expect(r.falou).toBeFalsy();
   });
 });

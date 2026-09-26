@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // ============================================================
 // O TURNO do agente de IA (`turno.ts`, docs/PLANO-agentes-de-ia.md 5.7 e
@@ -1180,6 +1180,65 @@ describe('executarTurno — áudio', () => {
     await executarTurno(TURNO)
     expect(transcreverAudio).not.toHaveBeenCalled()
     expect(turno().status).toBe('respondeu')
+  })
+
+  describe('o prazo acaba DEPOIS da transcrição', () => {
+    // Só o `Date` é falso: o relógio anda 40 s dentro do dublê, como uma
+    // transcrição (download + Gemini) que come o prazo de 45 s do turno.
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date())
+    })
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('a transcrição AVANÇOU nesta rodada: REAGENDA (o turno seguinte começa com prazo cheio)', async () => {
+      gatilhoDeAudio(10_000)
+      vi.mocked(transcreverAudio).mockImplementation(async () => {
+        vi.setSystemTime(Date.now() + 40_000)
+        return { status: 'pronta', transcricao: 'quero falar do contrato' }
+      })
+      await executarTurno(TURNO)
+      expect(turno()).toMatchObject({ status: 'aguardando', rodando_desde: null })
+      expect(generateReply).not.toHaveBeenCalled()
+      expect(notas()).toHaveLength(0)
+    })
+
+    it('⚠️ nada foi transcrito nesta rodada: `falhou` — sem laço de reagendamento', async () => {
+      gatilhoDeAudio(10_000, { transcricao_status: 'pronta', transcricao: 'oi' })
+      vi.mocked(lerChave).mockImplementation(async () => {
+        vi.setSystemTime(Date.now() + 40_000)
+        return { chave: 'chave-gemini', ilegivel: false }
+      })
+      await executarTurno(TURNO)
+      expect(transcreverAudio).not.toHaveBeenCalled()
+      expect(turno()).toMatchObject({ status: 'falhou', erro: 'o prazo do turno acabou antes de gerar' })
+    })
+  })
+
+  it('⚠️ rajada com mais áudios que o teto: o GATILHO (o mais novo) é transcrito', async () => {
+    gatilhoDeAudio(10_000)
+    for (let i = 1; i <= 6; i++) {
+      banco.tabelas.messages.push(
+        mensagem({
+          id: `audio-antigo-${i}`,
+          message_id: `wamid.antigo-${i}`,
+          content_type: 'audio',
+          content_text: null,
+          gravada_em: haMs(10_000 + i * 1_000),
+          created_at: haMs(10_000 + i * 1_000),
+        }),
+      )
+    }
+    turno().mensagem_inicial_id = 'audio-antigo-6'
+    vi.mocked(transcreverAudio).mockResolvedValue({ status: 'pronta', transcricao: 'oi' })
+    await executarTurno(TURNO)
+    const ouvidos = vi.mocked(transcreverAudio).mock.calls.map((c) => c[1].messageId)
+    expect(ouvidos).toHaveLength(5)
+    expect(ouvidos).toContain(GATILHO)
+    // Os mais novos, na ordem em que o cliente falou.
+    expect(ouvidos).toEqual(['audio-antigo-4', 'audio-antigo-3', 'audio-antigo-2', 'audio-antigo-1', GATILHO])
   })
 
   it('reagendar esbarra em outro pendente da conexão (23505): descarta', async () => {

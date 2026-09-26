@@ -42,8 +42,7 @@ import {
 import { lerChave } from '@/lib/ia-chaves/repo'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { transcreverAudio } from '@/lib/transcricao/transcrever'
-import { EvolutionApiError } from '@/lib/whatsapp/transport/evolution-client'
-import { MetaApiError } from '@/lib/whatsapp/meta-api'
+import { recusaComprovada } from '@/lib/automations/retentativa'
 
 import type { IaAgente } from './agente'
 import { lerConversaDaConexao } from './contexto'
@@ -419,15 +418,25 @@ async function conferir(
 // Áudio (E9)
 // ------------------------------------------------------------
 
+/** Quantos áudios da rajada o turno transcreve (os MAIS NOVOS). */
+const AUDIOS_DA_RAJADA = 5
+
 /**
  * Os áudios da RAJADA (da primeira à última mensagem do turno, nesta
  * conexão) precisam estar transcritos antes de gerar: o agente lê a
- * transcrição. `null` = pode seguir.
+ * transcrição. `null` = pode seguir. Marca `andamento.transcreveu` quando
+ * algum áudio passou a ter transcrição NESTA rodada.
+ *
+ * ⚠️ Lidos em ordem DECRESCENTE e invertidos: com mais de
+ * `AUDIOS_DA_RAJADA` áudios na rajada, o teto em ordem crescente deixava de
+ * fora os mais novos — o próprio gatilho inclusive —, e o agente respondia
+ * sem ouvir a última coisa que o cliente disse.
  */
 async function prepararAudios(
   db: SupabaseClient,
   turno: LinhaDoTurno,
   gatilho: Gatilho,
+  andamento: Andamento,
 ): Promise<Desfecho | null> {
   if (!turno.canal_id || !gatilho.gravada_em) return null
   let desde = gatilho.gravada_em
@@ -449,14 +458,17 @@ async function prepararAudios(
     .is('deleted_at', null)
     .gte('gravada_em', desde)
     .lte('gravada_em', gatilho.gravada_em)
-    .order('gravada_em', { ascending: true })
-    .limit(5)
+    .order('gravada_em', { ascending: false })
+    .limit(AUDIOS_DA_RAJADA)
   if (error) throw new Error(`leitura dos áudios falhou: ${error.message}`)
 
-  for (const audio of data ?? []) {
+  for (const audio of [...(data ?? [])].reverse()) {
     if (audio.transcricao_status === 'pronta' && audio.transcricao) continue
     const r = await transcreverAudio(db, { accountId: turno.account_id, messageId: audio.id as string })
-    if (r.status === 'pronta') continue
+    if (r.status === 'pronta') {
+      andamento.transcreveu = true
+      continue
+    }
     if (r.status === 'recusada') return { status: 'transferiu', motivo: 'audio' }
     // `transcrevendo`, ou `falhou` (arquivo ainda baixando, Gemini fora do
     // ar): dentro da janela, reagenda; depois dela, gente ouve.
@@ -479,9 +491,8 @@ async function prepararAudios(
 export function nadaSaiu(err: unknown, tentou: boolean): boolean {
   if (!tentou) return true
   if (err instanceof CanalExigidoIndisponivelError) return true
-  if (err instanceof EvolutionApiError) return err.status >= 400 && err.status < 500
-  if (err instanceof MetaApiError) return err.httpStatus >= 400 && err.httpStatus < 500
-  return false
+  // A MESMA régua do motor (E4): as duas pontas não podem divergir.
+  return recusaComprovada(err)
 }
 
 function configDoAgente(agente: IaAgente, apiKey: string): AiConfig {
@@ -510,6 +521,8 @@ interface Andamento {
   /** A primeira chamada ao provedor de MENSAGEM aconteceu. */
   tentouEnviar: boolean
   enviadaId: string | null
+  /** Algum áudio da rajada foi transcrito NESTA rodada (`prepararAudios`). */
+  transcreveu: boolean
 }
 
 async function conduzir(
@@ -543,7 +556,7 @@ async function conduzir(
   const limite = checkRateLimit(`ai-autoreply:${turno.account_id}`, RATE_LIMITS.aiAutoReplyAccount)
   if (!limite.success) return { status: 'sem_resposta', erro: 'limite de respostas por minuto da conta' }
 
-  const audio = await prepararAudios(db, turno, gatilho)
+  const audio = await prepararAudios(db, turno, gatilho, andamento)
   if (audio) return audio
 
   const conversa = await lerConversaDaConexao(db, {
@@ -563,7 +576,14 @@ async function conduzir(
   if (!apiKey) return { status: 'falhou', erro: `sem chave do provedor ${agente.provedor}` }
 
   const restante = PRAZO_DO_TURNO_MS - (Date.now() - inicio) - RESERVA_DO_ENVIO_MS
-  if (restante < 3_000) return { status: 'falhou', erro: 'o prazo do turno acabou antes de gerar' }
+  if (restante < 3_000) {
+    // A transcrição comeu o prazo: ela é idempotente e já ficou gravada, e o
+    // turno seguinte começa com o prazo cheio. ⚠️ Só quando ela AVANÇOU nesta
+    // rodada — é o que impede o laço: na próxima, os áudios já estão prontos
+    // e nada mais os transcreve; se o prazo acabar de novo, é `falhou`.
+    if (andamento.transcreveu) return { status: 'reagendar' }
+    return { status: 'falhou', erro: 'o prazo do turno acabou antes de gerar' }
+  }
 
   // "Digitando…" só quando vai gerar (só conexão Meta; nunca segura nada).
   void mostrarDigitando(db, {
@@ -788,7 +808,14 @@ export async function executarTurno(turnoId: string): Promise<void> {
   if (!turno) return
 
   const inicio = Date.now()
-  const andamento: Andamento = { agente: null, conversa: null, usage: null, tentouEnviar: false, enviadaId: null }
+  const andamento: Andamento = {
+    agente: null,
+    conversa: null,
+    usage: null,
+    tentouEnviar: false,
+    enviadaId: null,
+    transcreveu: false,
+  }
   let desfecho: Desfecho
   try {
     desfecho = await conduzir(db, turno, inicio, andamento)
