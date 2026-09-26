@@ -5,10 +5,10 @@ import path from 'node:path';
 import {
   contarPublico,
   fetchCustomValueIndex,
-  literalParaRegex,
   motivoDaLeitura,
   type AudienceConfig,
 } from './use-broadcast-sending';
+import { literalParaRegex } from '@/lib/postgrest/literal';
 
 // ============================================================
 // A contagem do público (passo 2 e passo 4 do disparo) é a MESMA resolução
