@@ -60,13 +60,14 @@ decide mais "mesma pessoa".
 - Fundir fichas NÃO é `merge_duplicate_contacts` (apaga tarefas do perdedor e
   agrupa por grafia exata): a receita está em `supabase.md`.
 - ⚠️ **Busca por texto livre casa LITERALMENTE** (`src/lib/postgrest/literal.ts`):
-  a de /contatos e o `?search=` da v1 montam o `.or()` com `ramoContem`
-  (`imatch` com o termo escapado, entre aspas), e o termo da RPC 025 vai por
-  `escaparLike`. Cru, vírgula e parêntese quebravam o `.or()` (400, "falha ao
-  carregar") e `%`, `_` e `*` viravam curingas — o PostgREST troca TODO `*`
-  de um `like`/`ilike` por `%`, sem escape possível. O `paraIlike` dos
-  seletores (`busca-remota.ts`) ainda deixa o `*` virar curinga (limite
-  escrito). Pino `src/lib/postgrest/literal.chamadores.test.ts`.
+  a de /contatos, o `?search=` da v1 e os seletores de cliente
+  (`busca-remota.ts`) montam o `.or()` com `ramoContem` (`imatch` com o termo
+  escapado, entre aspas), e o termo da RPC 025 vai por `escaparLike`. Cru,
+  vírgula e parêntese quebravam o `.or()` (400, "falha ao carregar") e `%`,
+  `_` e `*` viravam curingas — o PostgREST troca TODO `*` de um
+  `like`/`ilike` por `%`, sem escape possível ("L*K*A", um cliente real,
+  trazia 37 fichas). Busca nova usa o mesmo módulo, nunca `ilike` com texto
+  de fora. Pino `src/lib/postgrest/literal.chamadores.test.ts`.
 
 ### Telefone digitado — a nossa régua
 - ⚠️⚠️ **Todo telefone que uma PESSOA ou um INTEGRADOR digita passa por

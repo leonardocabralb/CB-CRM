@@ -3,10 +3,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 // ============================================================
-// Pino: as duas buscas de contato por texto livre (a tela de Contatos e o
-// `?search=` da API v1) passam o termo pelo escape de `literal.ts`.
+// Pino: as buscas por texto livre (a tela de Contatos, o `?search=` da API
+// v1, os seletores de cliente e as duas do tl;dv) passam o termo pelo escape
+// de `literal.ts`.
 //
-// As duas vieram do upstream com o termo cru dentro do `.or()`: vírgula e
+// A da tela e a da API vieram do upstream com o termo cru no `.or()`: vírgula e
 // parêntese quebravam o filtro (400) e `%`, `_` e `*` viravam curingas. Um
 // merge que traga a versão deles de volta não conflita — os arquivos são
 // dele —, e é este teste que avisa.
@@ -34,5 +35,20 @@ describe('buscas de contato por texto livre', () => {
     expect(fonte).toMatch(/ramoContem\('phone', search\)/);
     expect(fonte).not.toMatch(/ilike\.\*\$\{/);
     expect(fonte).not.toMatch(/sanitizeSearch/);
+  });
+
+  it('os seletores de cliente: todo ramo por ramoContem (26/09/2026)', () => {
+    const fonte = ler('src/lib/contacts/busca-remota.ts');
+    expect(fonte.match(/ramoContem\(/g)?.length).toBe(4);
+    expect(fonte).not.toMatch(/ilike/);
+  });
+
+  it('o tl;dv: título por imatch literal e e-mail igual por imatch ancorado', () => {
+    expect(ler('src/hooks/use-reunioes-transcritas.ts')).toMatch(
+      /regexIMatch\('titulo', literalParaRegex\(termo\)\)/,
+    );
+    const tldv = ler('src/lib/tldv/sincronizar.ts');
+    expect(tldv).toContain('entreAspasDoPostgrest(`^${literalParaRegex(email)}$`)');
+    expect(tldv).not.toMatch(/ilike/);
   });
 });
