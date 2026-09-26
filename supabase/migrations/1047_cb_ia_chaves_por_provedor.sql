@@ -225,6 +225,34 @@ BEGIN
     RETURN NEW;
   END IF;
 
+  -- O app anterior TROCOU o provedor da linha padrão (ex.: OpenAI → Gemini):
+  -- no esquema antigo a chave do provedor anterior sumia junto (era uma coluna
+  -- só). A cópia dele em `cb_ia_chaves` sai também — MENOS o que ainda a usa:
+  -- um agente de CONEXÃO ligado do mesmo provedor (a chave vira a dele) ou, na
+  -- OpenAI, a chave PRÓPRIA da base (a linha vira "só da base", a marca de
+  -- origem do item 2). Sem isso a base seguiria usando — e cobrando — a chave
+  -- da OpenAI que a pessoa acabou de trocar (Codex, #295).
+  IF TG_OP = 'UPDATE' AND OLD.provider IS DISTINCT FROM NEW.provider THEN
+    SELECT c.api_key INTO v_da_conexao
+      FROM ai_configs c
+     WHERE c.account_id = OLD.account_id AND c.provider = OLD.provider
+       AND c.channel_id IS NOT NULL AND c.is_active
+       AND c.api_key IS NOT NULL AND c.api_key <> ''
+     ORDER BY c.created_at
+     LIMIT 1;
+    IF v_da_conexao IS NOT NULL THEN
+      UPDATE cb_ia_chaves SET api_key = v_da_conexao, serve_embeddings = NULL, updated_at = now()
+       WHERE account_id = OLD.account_id AND provedor = OLD.provider;
+    ELSIF OLD.provider = 'openai' THEN
+      UPDATE cb_ia_chaves SET api_key = embeddings_api_key, serve_embeddings = NULL, updated_at = now()
+       WHERE account_id = OLD.account_id AND provedor = 'openai' AND embeddings_api_key IS NOT NULL;
+      DELETE FROM cb_ia_chaves
+       WHERE account_id = OLD.account_id AND provedor = 'openai' AND embeddings_api_key IS NULL;
+    ELSE
+      DELETE FROM cb_ia_chaves WHERE account_id = OLD.account_id AND provedor = OLD.provider;
+    END IF;
+  END IF;
+
   IF NEW.api_key IS NOT NULL AND NEW.api_key <> ''
      AND (TG_OP = 'INSERT' OR NEW.api_key IS DISTINCT FROM OLD.api_key) THEN
     INSERT INTO cb_ia_chaves (account_id, provedor, api_key, created_at, updated_at)
@@ -267,7 +295,7 @@ REVOKE EXECUTE ON FUNCTION public.cb_ia_chaves_segue_o_legado() FROM PUBLIC, ano
 
 DROP TRIGGER IF EXISTS cb_ia_chaves_segue_o_legado ON ai_configs;
 CREATE TRIGGER cb_ia_chaves_segue_o_legado
-  AFTER INSERT OR UPDATE OF api_key, embeddings_api_key OR DELETE ON ai_configs
+  AFTER INSERT OR UPDATE OF api_key, embeddings_api_key, provider OR DELETE ON ai_configs
   FOR EACH ROW EXECUTE FUNCTION public.cb_ia_chaves_segue_o_legado();
 
 -- ---------------------------------------------------------------------------
