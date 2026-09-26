@@ -18,7 +18,7 @@ const ordem = vi.hoisted(() => [] as string[]);
 const motor = vi.hoisted(() => ({ dispararAutomacoes: vi.fn() }));
 vi.mock("@/lib/automations/engine", () => motor);
 
-const destino = vi.hoisted(() => ({ resolverDestinatario: vi.fn() }));
+const destino = vi.hoisted(() => ({ resolverDestinatario: vi.fn(), conversaDoContato: vi.fn() }));
 vi.mock("@/lib/automations/destinatario", () => destino);
 
 import { comAvisoDoNome, processarAgendamento } from "./processar";

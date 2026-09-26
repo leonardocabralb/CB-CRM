@@ -15,7 +15,7 @@ const busca = vi.hoisted(() => ({
 }))
 vi.mock('@/lib/contacts/dedupe', () => busca)
 
-import { resolverDestinatario } from './destinatario'
+import { conversaDoContato, resolverDestinatario } from './destinatario'
 
 let conversasExistentes: { id: string }[] = []
 let insercoes: { tabela: string; payload: Record<string, unknown> }[] = []
@@ -70,6 +70,22 @@ describe('resolverDestinatario — a situação da conversa que nasce', () => {
     const r = await resolverDestinatario(db, 'conta-1', '5585999998888', 'Maria', { conversaNovaEncerrada: true })
 
     expect(r).toEqual({ contactId: 'contato-velho', conversationId: 'conversa-ativa', criouContato: false })
+    expect(insercoes).toEqual([])
+  })
+})
+
+describe('conversaDoContato — a ficha que já existe (o agendamento do Calendly)', () => {
+  it('CRÍTICO: ficha sem conversa ganha uma ABERTA, com o dono da conta', async () => {
+    const id = await conversaDoContato(db, 'conta-1', 'contato-da-api')
+
+    expect(id).toBe('conversa-nova')
+    expect(conversaInserida()).toEqual({ account_id: 'conta-1', user_id: 'dono-1', contact_id: 'contato-da-api' })
+  })
+
+  it('conversa que já existe é devolvida, e nada é inserido', async () => {
+    conversasExistentes = [{ id: 'conversa-ativa' }]
+
+    expect(await conversaDoContato(db, 'conta-1', 'contato-da-api')).toBe('conversa-ativa')
     expect(insercoes).toEqual([])
   })
 })

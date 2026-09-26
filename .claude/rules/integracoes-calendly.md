@@ -78,6 +78,12 @@ Decisão do operador (08/09/2026): telefone sem contato não é mais
 - ⚠️ **A conversa nasce ABERTA.** `conversaNovaEncerrada` de
   `resolverDestinatario` é só do webhook de entrada: aqui e no
   `send_to_number` a conversa escondida sumiria, e envio de robô não reabre.
+- ⚠️⚠️ **A ficha que JÁ existia SEM conversa também ganha a conversa aqui**
+  (`conversaDoContato`, `destinatario.ts`). A integração do formulário cria a
+  ficha pela API minutos antes do agendamento, e ficha da API não tem
+  conversa: sem isto o `{{conversation.link}}` do aviso sai vazio e os
+  lembretes (que exigem conversa) falham. Falhar ao criar NÃO segura o aviso:
+  o motivo vai para o detalhe do evento.
 - ⚠️⚠️ **Lead novo não tem card, e `move_deal_stage` LANÇA nesse caso.** A
   automação do Calendly precisa de `create_deal` ANTES (ele desiste em
   silêncio quando já há card), e o aviso ao advogado vem ANTES do
