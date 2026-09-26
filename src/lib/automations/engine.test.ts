@@ -30,6 +30,8 @@ const h = vi.hoisted(() => ({
     rpcMoverRecusa: null as string | null,
     /** O status que `cb_atualizar_negocio` devolve como gravado (o motor o fixa no contexto, 1031). */
     rpcStatusGravado: 'open' as string,
+    /** Campos a mais da conversa lida por id (a pausa da IA que o `set_ai` lê). */
+    conversaLida: {} as Record<string, unknown>,
     /** Preenchido, a LEITURA de `deals` devolve este erro (18/09). */
     erroNoNegocio: null as string | null,
     /**
@@ -75,7 +77,19 @@ const h = vi.hoisted(() => ({
     dealSelects: [] as [string, string, unknown][][],
     dealInserts: [] as Record<string, unknown>[],
     automations: [] as Record<string, unknown>[],
+    /**
+     * Preenchido, a consulta de automações responde PELO GATILHO pedido
+     * (`.eq('trigger_type', …)`) — é como se encena um disparo ANINHADO
+     * (o `tag_added` do passo "Adicionar etiqueta") com outra automação.
+     */
+    automacoesPorGatilho: null as Record<string, Record<string, unknown>[]> | null,
+    /** Preenchido, a consulta de automações DESTE gatilho devolve o erro. */
+    erroPorGatilho: {} as Record<string, string>,
     steps: [] as Record<string, unknown>[],
+    /** Liga o recorte dos passos por `automation_id` (duas automações no mesmo teste). */
+    passosPorAutomacao: false,
+    /** A etiqueta que a conferência de posse de `addContactTagIfAbsent` acha em `tags`. */
+    tagDaConta: null as { id: string } | null,
     fromCalls: [] as string[],
     updateCalls: [] as {
       table: string;
@@ -137,7 +151,7 @@ vi.mock('./admin-client', () => {
       // justamente o que se quer observar (a conversa do disparo vs. todas as
       // do contato).
       if (type === 'update') {
-        state.updateCalls.push({ table, filters: ops.filters });
+        state.updateCalls.push({ table, filters: ops.filters, payload: ops.payload });
         return { data: null, error: null };
       }
       // As duas leituras da Fase 2 do previdenciário, pelo que PEDEM: o
@@ -165,7 +179,7 @@ vi.mock('./admin-client', () => {
         const contato = ops.filters.find(([op, k]) => op === 'eq' && k === 'contact_id');
         const casaConta = !conta || conta[2] === dona;
         const casaContato = !contato || donoContato === undefined || contato[2] === donoContato;
-        return { data: casaConta && casaContato ? { id: porId[2] } : null, error: null };
+        return { data: casaConta && casaContato ? { id: porId[2], ...state.conversaLida } : null, error: null };
       }
       return { data: state.conversasDoContato.length > 0 ? state.conversasDoContato : null, error: null };
     }
@@ -297,8 +311,16 @@ vi.mock('./admin-client', () => {
           error: null,
         };
       }
+      if (state.automacoesPorGatilho) {
+        const gatilho = String(ops.filters.find(([op, k]) => op === 'eq' && k === 'trigger_type')?.[2]);
+        if (state.erroPorGatilho[gatilho]) return { data: null, error: { message: state.erroPorGatilho[gatilho] } };
+        const soLigadas = ops.filters.some(([op, k, v]) => op === 'eq' && k === 'is_active' && v === true);
+        const lista = state.automacoesPorGatilho[gatilho] ?? [];
+        return { data: soLigadas ? lista.filter((a) => a.is_active === true) : lista, error: null };
+      }
       return { data: state.automations, error: null };
     }
+    if (table === 'tags') return { data: state.tagDaConta, error: null };
     if (table === 'automation_logs') {
       if (type === 'insert') {
         state.logInserts.push(ops.payload as Record<string, unknown>);
@@ -349,7 +371,10 @@ vi.mock('./admin-client', () => {
       // sem a coluna (helpers antigos) conta como escopo de fora, posição 0.
       let lista = state.steps;
       for (const [op, k, v] of [...ops.filters, ...(ops.recorte ?? [])]) {
-        if (k === 'automation_id') continue;
+        if (k === 'automation_id') {
+          if (state.passosPorAutomacao && op === 'eq') lista = lista.filter((s) => s[k] === v);
+          continue;
+        }
         if (op === 'is' && v === null)
           lista = lista.filter((s) => s[k] == null);
         else if (op === 'eq') lista = lista.filter((s) => (s[k] ?? null) === v);
@@ -446,6 +471,7 @@ vi.mock('./admin-client', () => {
 });
 
 import { EvolutionApiError } from '@/lib/whatsapp/transport/evolution-client';
+import { MetaApiError } from '@/lib/whatsapp/meta-api';
 
 vi.mock('./meta-send', () => ({
   engineSendText: vi.fn(async () => ({ whatsapp_message_id: 'm1' })),
@@ -502,10 +528,15 @@ beforeEach(() => {
   h.state.depoisDeMover = null;
   h.state.rpcMoverRecusa = null;
   h.state.rpcStatusGravado = 'open';
+  h.state.conversaLida = {};
   h.state.dealSelects = [];
   h.state.dealInserts = [];
   h.state.automations = [];
+  h.state.automacoesPorGatilho = null;
+  h.state.erroPorGatilho = {};
   h.state.steps = [];
+  h.state.passosPorAutomacao = false;
+  h.state.tagDaConta = null;
   h.state.fromCalls = [];
   h.state.updateCalls = [];
   h.state.upsertCalls = [];
@@ -1529,6 +1560,77 @@ describe('assign_conversation — alvo', () => {
     );
     expect(conversas).toHaveLength(1);
     expect(conversas[0].filters.map((f) => f[1])).toContain('contact_id');
+  });
+});
+
+describe('set_ai — a pausa com MOTIVO (1049, D26)', () => {
+  function passoSetAi(enabled: boolean) {
+    return {
+      id: 's1',
+      automation_id: 'a1',
+      step_type: 'set_ai',
+      position: 0,
+      parent_step_id: null,
+      step_config: { enabled },
+    };
+  }
+
+  async function rodar(enabled: boolean) {
+    h.state.owned = { id: 'c1' };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [passoSetAi(enabled)];
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: { conversation_id: 'conv-1' },
+    });
+  }
+
+  function passos() {
+    return h.state.logUpdates.flatMap(
+      (u) => (u.steps_executed as { status: string; detail?: string }[] | undefined) ?? []
+    );
+  }
+
+  const escritasNaConversa = () => h.state.updateCalls.filter((u) => u.table === 'conversations');
+
+  it('desligar grava a pausa por automação, só se ainda não havia pausa', async () => {
+    await rodar(false);
+    const conversas = escritasNaConversa();
+    expect(conversas).toHaveLength(1);
+    expect(conversas[0].payload).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'automacao' });
+    expect(conversas[0].filters).toContainEqual(['eq', 'ai_autoreply_disabled', false]);
+  });
+
+  it('ligar desfaz a pausa por AUTOMAÇÃO, com a condição no próprio UPDATE, e não zera o teto', async () => {
+    h.state.conversaLida = { ai_autoreply_disabled: true, ia_pausada_por: 'automacao' };
+    await rodar(true);
+    const conversas = escritasNaConversa();
+    expect(conversas).toHaveLength(1);
+    expect(conversas[0].payload).toEqual({ ai_autoreply_disabled: false, ia_pausada_por: null, ia_pausada_em: null });
+    expect(conversas[0].filters).toContainEqual(['eq', 'ia_pausada_por', 'automacao']);
+    expect(conversas[0].filters).toContainEqual(['eq', 'ai_autoreply_disabled', true]);
+    expect(passos()).toContainEqual(expect.objectContaining({ status: 'success', detail: 'IA ligada na conversa' }));
+  });
+
+  it.each(['gente', 'botao', 'transferencia'])(
+    'ligar NÃO desfaz a pausa por %s (só o "Retomar IA" desfaz) — e não escreve nada',
+    async (motivo) => {
+      h.state.conversaLida = { ai_autoreply_disabled: true, ia_pausada_por: motivo };
+      await rodar(true);
+      expect(escritasNaConversa()).toHaveLength(0);
+      expect(passos()).toContainEqual(
+        expect.objectContaining({ status: 'success', detail: `IA segue pausada: a pausa foi de gente (${motivo})` })
+      );
+    }
+  );
+
+  it('ligar com a IA já ligada: nada a escrever', async () => {
+    h.state.conversaLida = { ai_autoreply_disabled: false, ia_pausada_por: null };
+    await rodar(true);
+    expect(escritasNaConversa()).toHaveLength(0);
+    expect(passos()).toContainEqual(expect.objectContaining({ status: 'success', detail: 'IA já estava ligada' }));
   });
 });
 
@@ -4604,5 +4706,271 @@ describe('Aguardar até estar dentro do horário (B6a, 26/09/2026)', () => {
       await roda('2026-09-26T01:40:00Z', { modo, janela: '08:00-21:00' });
       expect(h.state.esperasEnfileiradas[0]?.run_at).toBe('2026-09-26T02:40:00.000Z');
     }
+  });
+});
+
+// ============================================================
+// E4 dos agentes de IA: a fala de uma automação ANINHADA por etiqueta sobe.
+// O passo "Adicionar etiqueta" dispara `tag_added` e espera as automações
+// dele; se uma delas falou com o contato, a execução de cima FALOU — senão a
+// ingestão via `falou: false` e o agente da etapa respondia uma segunda vez
+// à mesma mensagem (Codex, #292).
+// ============================================================
+describe('add_tag: a fala da automação de tag_added sobe para quem disparou (E4)', () => {
+  function montar(passoDaFilha: Record<string, unknown>) {
+    const automacao = (id: string, trigger_type: string, trigger_config: Record<string, unknown>) => ({
+      id,
+      account_id: ACCOUNT,
+      user_id: 'u1',
+      name: id,
+      trigger_type,
+      trigger_config,
+      is_active: true,
+    });
+    h.state.owned = { id: 'c1' };
+    h.state.tagDaConta = { id: 'tag-x' };
+    h.state.passosPorAutomacao = true;
+    h.state.automacoesPorGatilho = {
+      new_message_received: [automacao('a-mae', 'new_message_received', {})],
+      tag_added: [automacao('a-filha', 'tag_added', { tag_id: 'tag-x' })],
+    };
+    h.state.steps = [
+      {
+        id: 's-etiqueta',
+        automation_id: 'a-mae',
+        step_type: 'add_tag',
+        position: 0,
+        parent_step_id: null,
+        step_config: { tag_id: 'tag-x' },
+      },
+      { id: 's-filha', automation_id: 'a-filha', position: 0, parent_step_id: null, ...passoDaFilha },
+    ];
+  }
+
+  const disparar = () =>
+    dispararAutomacoes({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: { conversation_id: 'conv-1' },
+    });
+
+  beforeEach(() => {
+    vi.mocked(engineSendText).mockReset();
+    vi.mocked(engineSendText).mockResolvedValue({ whatsapp_message_id: 'm-filha' });
+  });
+
+  it('a automação de tag_added MANDOU mensagem: a de cima conta como tendo falado', async () => {
+    montar({ step_type: 'send_message', step_config: { text: 'Bem-vindo!' } });
+
+    const r = await disparar();
+
+    expect(engineSendText).toHaveBeenCalledTimes(1);
+    expect(r.falou).toBe(true);
+  });
+
+  it('a de tag_added só mexeu em dado (não falou): continua sem fala — etiquetar não cala o agente', async () => {
+    montar({ step_type: 'update_contact_field', step_config: { field: 'company', value: 'x' } });
+
+    const r = await disparar();
+
+    expect(engineSendText).not.toHaveBeenCalled();
+    expect(h.state.updateCalls.filter((c) => c.table === 'contacts')).toHaveLength(1);
+    expect(r.falou).toBeFalsy();
+  });
+
+  it('nenhuma automação escuta a etiqueta: sem fala', async () => {
+    montar({ step_type: 'send_message', step_config: { text: 'Bem-vindo!' } });
+    h.state.automacoesPorGatilho!.tag_added = [];
+
+    const r = await disparar();
+
+    expect(r.falou).toBeFalsy();
+  });
+});
+
+// ============================================================
+// E4, a fala ADIADA do funil: "Mover card" e "Criar negócio" só gravam um
+// evento; a automação de `deal_stage_changed` que escuta a etapa de destino
+// fala DEPOIS, no dreno — e o agente já teria respondido a mesma mensagem. O
+// passo conta como fala quando alguma automação LIGADA dispararia para a
+// etapa (`triggerMatches`), e só se o card mudou ou nasceu.
+// ============================================================
+describe('mover card / criar negócio: a fala adiada do funil conta (E4)', () => {
+  function automacao(id: string, trigger_type: string, trigger_config: Record<string, unknown>, is_active = true) {
+    return { id, account_id: ACCOUNT, user_id: 'u1', name: id, trigger_type, trigger_config, is_active };
+  }
+
+  function montar(passo: Record<string, unknown>, ouvintes: Record<string, unknown>[]) {
+    h.state.owned = { id: 'c1' };
+    h.state.pipeline = { id: 'p1' };
+    h.state.stage = { id: 'etapa-destino' };
+    h.state.passosPorAutomacao = true;
+    h.state.automacoesPorGatilho = {
+      new_message_received: [automacao('a-mae', 'new_message_received', {})],
+      deal_stage_changed: ouvintes,
+    };
+    h.state.steps = [{ id: 's-funil', automation_id: 'a-mae', position: 0, parent_step_id: null, ...passo }];
+  }
+
+  const mover = { step_type: 'move_deal_stage', step_config: { stage_id: 'etapa-destino' } };
+  const criar = { step_type: 'create_deal', step_config: { pipeline_id: 'p1', stage_id: 'etapa-destino', title: 'Novo' } };
+
+  const disparar = () =>
+    dispararAutomacoes({ accountId: ACCOUNT, triggerType: 'new_message_received', contactId: 'c1', context: {} });
+
+  /** O card aberto do contato, na etapa dada (o "Mover" o acha pela busca e relê a etapa por id). */
+  function cardEm(stage_id: string) {
+    h.state.dealPorStatus = { open: { id: 'd-1', stage_id } };
+  }
+
+  it('MOVER: alguém escuta a etapa de destino e o card muda de etapa → fala', async () => {
+    cardEm('etapa-lead');
+    montar(mover, [automacao('a-boas-vindas', 'deal_stage_changed', { stage_ids: ['etapa-destino'] })]);
+
+    const r = await disparar();
+
+    expect(h.state.rpcMover).toHaveLength(1);
+    expect(r.falou).toBe(true);
+  });
+
+  it('MOVER: o card JÁ estava na etapa (sem evento) → não é fala', async () => {
+    cardEm('etapa-destino');
+    montar(mover, [automacao('a-boas-vindas', 'deal_stage_changed', { stage_ids: ['etapa-destino'] })]);
+
+    const r = await disparar();
+
+    expect(h.state.rpcMover).toHaveLength(1);
+    expect(r.falou).toBeFalsy();
+  });
+
+  it('MOVER: ninguém escuta a etapa de destino (só outra etapa) → não é fala, e a etapa de antes nem é lida', async () => {
+    cardEm('etapa-lead');
+    montar(mover, [automacao('a-outra', 'deal_stage_changed', { stage_ids: ['etapa-outra'] })]);
+
+    const r = await disparar();
+
+    expect(r.falou).toBeFalsy();
+    // Só a busca do card aberto (com `status`); a releitura por id não acontece.
+    expect(h.state.dealSelects.every((f) => f.some(([op, k]) => op === 'eq' && k === 'status'))).toBe(true);
+  });
+
+  it('automação DESLIGADA que escuta a etapa não conta', async () => {
+    cardEm('etapa-lead');
+    montar(mover, [automacao('a-desligada', 'deal_stage_changed', { stage_ids: ['etapa-destino'] }, false)]);
+
+    const r = await disparar();
+
+    expect(r.falou).toBeFalsy();
+  });
+
+  it('lista de etapas VAZIA = qualquer etapa (a régua do motor) → fala', async () => {
+    cardEm('etapa-lead');
+    montar(mover, [automacao('a-qualquer', 'deal_stage_changed', { stage_ids: [] })]);
+
+    const r = await disparar();
+
+    expect(r.falou).toBe(true);
+  });
+
+  it('erro ao conferir quem escuta → conta como fala (o agente cala)', async () => {
+    const calado = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      cardEm('etapa-lead');
+      montar(mover, []);
+      h.state.erroPorGatilho = { deal_stage_changed: 'timeout do PostgREST' };
+
+      const r = await disparar();
+
+      expect(r.falou).toBe(true);
+    } finally {
+      calado.mockRestore();
+    }
+  });
+
+  it('CRIAR: o card nasce na etapa que alguém escuta → fala', async () => {
+    montar(criar, [automacao('a-boas-vindas', 'deal_stage_changed', { stage_ids: ['etapa-destino'] })]);
+
+    const r = await disparar();
+
+    expect(h.state.dealInserts).toHaveLength(1);
+    expect(r.falou).toBe(true);
+  });
+
+  it('CRIAR: o contato já tinha card (nada nasceu) → não é fala', async () => {
+    h.state.dealExistente = { id: 'd-antigo' };
+    montar(criar, [automacao('a-boas-vindas', 'deal_stage_changed', { stage_ids: ['etapa-destino'] })]);
+
+    const r = await disparar();
+
+    expect(h.state.dealInserts).toHaveLength(0);
+    expect(r.falou).toBeFalsy();
+  });
+
+  it('CRIAR: ninguém escuta a etapa → não é fala', async () => {
+    montar(criar, []);
+
+    const r = await disparar();
+
+    expect(h.state.dealInserts).toHaveLength(1);
+    expect(r.falou).toBeFalsy();
+  });
+});
+
+// ============================================================
+// E4, a falha INCERTA: o envio que estourou sem recusa comprovada (tempo
+// esgotado ou 5xx da Evolution, qualquer erro que não seja 4xx do provedor)
+// pode ter saído — o `entrega_incerta`. Sem contar como fala, o agente de IA
+// respondia de novo à mesma mensagem. Só a recusa comprovada (4xx) não fala.
+// ============================================================
+describe('envio que falhou sem recusa comprovada conta como fala (E4)', () => {
+  beforeEach(() => {
+    vi.mocked(engineSendText).mockReset();
+    h.state.esperasEnfileiradas = [];
+  });
+
+  async function falhaNoEnvio(erro: unknown, context: Record<string, unknown> = {}) {
+    vi.mocked(engineSendText).mockRejectedValueOnce(erro);
+    h.state.owned = { id: 'c1' };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [sendStep({ text: 'oi' })];
+    return dispararAutomacoes({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: { conversation_id: 'conv1', ...context },
+    });
+  }
+
+  it('Evolution 5xx (entrega incerta): falou', async () => {
+    const r = await falhaNoEnvio(new EvolutionApiError('timeout', 504));
+    expect(h.state.esperasEnfileiradas).toHaveLength(0);
+    expect(r.comFalha).toBe(1);
+    expect(r.falou).toBe(true);
+  });
+
+  it('erro da Meta que não é 4xx: falou', async () => {
+    const r = await falhaNoEnvio(new MetaApiError('Service unavailable', { httpStatus: 503 }));
+    expect(r.falou).toBe(true);
+  });
+
+  it('erro que não veio do provedor (pode ter sido depois do envio): falou', async () => {
+    const r = await falhaNoEnvio(new Error('sent but DB insert failed: x'));
+    expect(r.falou).toBe(true);
+  });
+
+  it('recusa COMPROVADA da Meta (4xx): não falou', async () => {
+    const r = await falhaNoEnvio(new MetaApiError('(#131047) Re-engagement message', { httpStatus: 400 }));
+    expect(r.comFalha).toBe(1);
+    expect(r.falou).toBeFalsy();
+  });
+
+  it('recusa COMPROVADA da Evolution no teto de tentativas: não falou', async () => {
+    const r = await falhaNoEnvio(new EvolutionApiError('recusado', 400), {
+      _tentativa: { pos: 0, n: 2 },
+    });
+    expect(h.state.esperasEnfileiradas).toHaveLength(0);
+    expect(r.comFalha).toBe(1);
+    expect(r.falou).toBeFalsy();
   });
 });

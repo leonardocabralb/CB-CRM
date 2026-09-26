@@ -29,6 +29,9 @@
 // adivinhada.
 // ============================================================
 
+import { EvolutionApiError } from '@/lib/whatsapp/transport/evolution-client';
+import { MetaApiError } from '@/lib/whatsapp/meta-api';
+
 /**
  * ⚠️⚠️ SÓ O TRANSPORTE EVOLUTION RETENTA HOJE, e é uma assimetria
  * conhecida: esta régua só reconhece `EvolutionApiError`. Desde o merge
@@ -170,4 +173,23 @@ export function tentativasJaFeitas(context: unknown, posicao: number): number {
 /** O contador a gravar no contexto ao reenfileirar. */
 export function contadorDe(posicao: number, n: number): ContadorDeTentativas {
   return { pos: posicao, n };
+}
+
+/**
+ * O provedor RECUSOU o pedido (4xx da Evolution ou da Cloud API): processou e
+ * disse não — nada saiu. É a mesma régua do `provedor.recusou` acima, com a
+ * Meta junto (ela não retenta, mas a recusa dela é tão comprovada quanto).
+ *
+ * ⚠️ Serve ao agente de IA (E4): passo que fala com o contato e FALHOU sem
+ * recusa comprovada — tempo esgotado, 5xx, erro depois do envio, erro que não
+ * veio do provedor — pode ter falado, e o agente não responde por cima.
+ */
+export function recusaComprovada(err: unknown): boolean {
+  const status =
+    err instanceof EvolutionApiError
+      ? err.status
+      : err instanceof MetaApiError
+        ? err.httpStatus
+        : null;
+  return status !== null && status >= 400 && status < 500;
 }

@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import type { AutomationStepType } from '@/types'
 import { describe, expect, it } from 'vitest'
 
 import { descreverPasso } from './descrever-passo'
@@ -158,13 +159,18 @@ describe('send_to_number (977)', () => {
 // A trava contra MISSING_MESSAGE.
 // ------------------------------------------------------------
 
-const TIPOS_DE_PASSO = [
-  'send_message', 'send_buttons', 'send_list', 'send_template', 'add_tag',
-  'remove_tag', 'assign_conversation', 'update_contact_field', 'create_deal',
-  'move_deal_stage', 'set_deal_status', 'run_automation', 'stop_automation',
-  'run_flow', 'stop_flow', 'set_ai', 'send_media', 'wait', 'condition',
-  'send_webhook', 'close_conversation', 'send_to_number', 'create_task',
-] as const
+// ⚠️ Um `Record` sobre o TIPO, não uma lista digitada: tipo de passo novo
+// sem entrada aqui não compila — a lista à mão deixava um tipo novo passar
+// verde com o cartão mostrando a chave crua (mapa da F2 dos agentes de IA).
+const TODOS_OS_TIPOS: Record<AutomationStepType, true> = {
+  send_message: true, send_buttons: true, send_list: true, send_template: true, add_tag: true,
+  remove_tag: true, assign_conversation: true, update_contact_field: true, create_deal: true,
+  move_deal_stage: true, set_deal_status: true, run_automation: true, stop_automation: true,
+  run_flow: true, stop_flow: true, set_ai: true, send_media: true,
+  wait: true, condition: true, send_webhook: true, close_conversation: true,
+  send_to_number: true, create_task: true,
+}
+const TIPOS_DE_PASSO = Object.keys(TODOS_OS_TIPOS) as AutomationStepType[]
 
 // Configs que exercitam TODAS as variantes de chave, não só o caminho padrão.
 const VARIANTES: Array<[string, Record<string, unknown>]> = [

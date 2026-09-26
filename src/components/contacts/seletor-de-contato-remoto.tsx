@@ -73,6 +73,7 @@ export function SeletorDeContatoRemoto({
   moreText,
   ariaLabel,
   className,
+  accountId,
 }: {
   /** Id do contato escolhido; `''` = nenhum. */
   value: string;
@@ -91,6 +92,12 @@ export function SeletorDeContatoRemoto({
   ariaLabel?: string;
   /** Ajuste do gatilho ao formulário de quem monta (altura, fundo). */
   className?: string;
+  /**
+   * Recorta busca e rótulo à conta ativa. Sem ele vale a RLS, que para quem
+   * é membro de VÁRIAS contas devolve contatos de todas — quem precisa do
+   * contato DESTA conta (o Playground dos agentes) passa o id.
+   */
+  accountId?: string;
 }) {
   const [aberto, setAberto] = useState(false);
   const [termo, setTermo] = useState('');
@@ -124,10 +131,9 @@ export function SeletorDeContatoRemoto({
     // Espera a digitação parar: sem isto cada tecla vira uma consulta.
     const timer = setTimeout(() => {
       const alvo = termoLimpo;
-      void createClient()
-        .from('contacts')
-        .select(COLUNAS)
-        .or(filtro)
+      let consulta = createClient().from('contacts').select(COLUNAS).or(filtro);
+      if (accountId) consulta = consulta.eq('account_id', accountId);
+      void consulta
         .order('name', { nullsFirst: false })
         .limit(TETO_DE_RESULTADOS)
         .then(({ data, error }) => {
@@ -147,7 +153,7 @@ export function SeletorDeContatoRemoto({
       vivo = false;
       clearTimeout(timer);
     };
-  }, [aberto, filtro, termoLimpo]);
+  }, [aberto, filtro, termoLimpo, accountId]);
 
   // O rótulo do gatilho quando a escolha veio de fora (negócio antigo sendo
   // editado, contato semeado pelo painel do inbox): o contato escolhido
@@ -158,10 +164,9 @@ export function SeletorDeContatoRemoto({
     if (!value) return;
     if (escolhido?.de === value) return;
     let vivo = true;
-    void createClient()
-      .from('contacts')
-      .select(COLUNAS)
-      .eq('id', value)
+    let consulta = createClient().from('contacts').select(COLUNAS).eq('id', value);
+    if (accountId) consulta = consulta.eq('account_id', accountId);
+    void consulta
       .maybeSingle()
       .then(({ data, error }) => {
         if (!vivo) return;
@@ -175,7 +180,7 @@ export function SeletorDeContatoRemoto({
     return () => {
       vivo = false;
     };
-  }, [value, escolhido?.de]);
+  }, [value, escolhido?.de, accountId]);
 
   // ⚠️ Comparado contra o `value` DO RENDER ATUAL, nunca contra o estado
   // sozinho: o efeito acima é passivo, então existe um render com o id novo

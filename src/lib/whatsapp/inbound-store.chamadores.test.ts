@@ -62,3 +62,57 @@ describe('caminho normal de ingestão: só quem está na lista o chama', () => {
     expect(bloco).toMatch(/return\s/);
   });
 });
+
+// ============================================================
+// A PORTA do agente de IA (F2 do docs/PLANO-agentes-de-ia.md, 5.3): só as
+// duas ingestões de mensagem DO CLIENTE no WhatsApp chamam
+// `aoChegarMensagemDoCliente`. Grupo, Instagram, histórica e tardia têm pino
+// próprio (não importam o motor); o celular pareado é conferido aqui, porque
+// mora no MESMO arquivo que a ingestão do cliente — um import não o pegaria.
+// A resposta automática antiga (`ai/auto-reply`) foi apagada (E2): esta é a
+// única entrada.
+// ============================================================
+describe('a entrada do agente de IA: só as duas ingestões do cliente', () => {
+  const PORTA = 'aoChegarMensagemDoCliente';
+  const CHAMADORES_DA_PORTA = [
+    'app/api/whatsapp/webhook/route.ts',
+    'lib/whatsapp/inbound-store.ts',
+  ];
+
+  it('DEFAULT-DENY: o conjunto de chamadores é EXATAMENTE este', () => {
+    const citam = arquivosDeProducao(SRC)
+      .map((arquivo) => path.relative(SRC, arquivo).split(path.sep).join('/'))
+      .filter((rel) => rel !== 'lib/ia-agentes/entrada.ts')
+      .filter((rel) => semComentarios(fs.readFileSync(path.join(SRC, rel), 'utf8')).includes(PORTA))
+      .sort();
+    // Caminho novo que abra turno entra aqui por decisão visível no diff —
+    // "a mensagem de QUEM o agente responde?" é decisão de produto.
+    expect(citam).toEqual([...CHAMADORES_DA_PORTA].sort());
+  });
+
+  for (const arquivo of CHAMADORES_DA_PORTA) {
+    it(`${arquivo}: DEPOIS das automações e do funil, ANTES do message.received`, () => {
+      const f = semComentarios(fs.readFileSync(path.join(SRC, arquivo), 'utf8'));
+      const porta = f.indexOf(`${PORTA}(`);
+      expect(porta).toBeGreaterThan(-1);
+      // E4: o agente precisa do resultado de TODAS as automações da mensagem.
+      expect(porta).toBeGreaterThan(f.lastIndexOf('dispararAutomacoes('));
+      expect(porta).toBeGreaterThan(f.lastIndexOf('routeContactToPipeline('));
+      expect(porta).toBeLessThan(f.indexOf("'message.received'"));
+      // O despacho antigo (`void`) não diria se alguma automação falou.
+      expect(f).not.toContain('runAutomationsForTrigger(');
+    });
+  }
+
+  it('⚠️ o celular pareado (`persistDeviceMessage`) NÃO abre turno', () => {
+    // Mensagem da EQUIPE não é pergunta para o agente — ela o PAUSA (o
+    // gatilho da 1049, no banco).
+    const f = semComentarios(fs.readFileSync(path.join(SRC, 'lib/whatsapp/inbound-store.ts'), 'utf8'));
+    const inicio = f.indexOf('export async function persistDeviceMessage');
+    const fim = f.indexOf('export async function persistInboundMessage');
+    expect(inicio).toBeGreaterThan(-1);
+    expect(fim).toBeGreaterThan(inicio);
+    expect(f.slice(inicio, fim)).not.toContain(PORTA);
+    expect(f.slice(fim)).toContain(`${PORTA}(`);
+  });
+});

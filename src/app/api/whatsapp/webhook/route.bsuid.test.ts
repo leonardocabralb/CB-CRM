@@ -13,9 +13,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 type Linha = Record<string, unknown> & { id: string }
 
 const h = vi.hoisted(() => ({
-  runAutomationsForTrigger: vi.fn(),
+  dispararAutomacoes: vi.fn(),
   dispatchInboundToFlows: vi.fn(),
-  dispatchInboundToAiReply: vi.fn(),
+  aoChegarMensagemDoCliente: vi.fn(),
   dispatchWebhookEvent: vi.fn(),
   findExistingContact: vi.fn(),
   fichaQueVenceu: vi.fn(),
@@ -209,9 +209,9 @@ vi.mock('@/lib/whatsapp/template-webhook', () => ({
   isTemplateWebhookField: () => false,
   handleTemplateWebhookChange: vi.fn(),
 }))
-vi.mock('@/lib/automations/engine', () => ({ runAutomationsForTrigger: h.runAutomationsForTrigger }))
+vi.mock('@/lib/automations/engine', () => ({ dispararAutomacoes: h.dispararAutomacoes }))
 vi.mock('@/lib/flows/engine', () => ({ dispatchInboundToFlows: h.dispatchInboundToFlows }))
-vi.mock('@/lib/ai/auto-reply', () => ({ dispatchInboundToAiReply: h.dispatchInboundToAiReply }))
+vi.mock('@/lib/ia-agentes/entrada', () => ({ aoChegarMensagemDoCliente: h.aoChegarMensagemDoCliente }))
 vi.mock('@/lib/cb-channels/stamp', async () => {
   const real = await vi.importActual<typeof import('@/lib/cb-channels/stamp')>('@/lib/cb-channels/stamp')
   return {
@@ -283,9 +283,9 @@ beforeEach(() => {
     falhou: false,
   }))
   h.dispatchInboundToFlows.mockResolvedValue({ consumed: false })
-  h.dispatchInboundToAiReply.mockResolvedValue(undefined)
+  h.aoChegarMensagemDoCliente.mockResolvedValue(undefined)
   h.dispatchWebhookEvent.mockResolvedValue(undefined)
-  h.runAutomationsForTrigger.mockResolvedValue(undefined)
+  h.dispararAutomacoes.mockResolvedValue({ candidatas: 0, foraDoEscopo: 0, executadas: 0, comFalha: 0, emEspera: 0 })
 })
 
 function ficha(extra: Partial<Linha> & { id: string }): Linha {
@@ -294,8 +294,11 @@ function ficha(extra: Partial<Linha> & { id: string }): Linha {
   return l
 }
 
+// O gatilho vai no `triggerType` do argumento. (A versão anterior comparava
+// o objeto inteiro com o nome e contava sempre zero — o teste que a usa
+// passava sem medir nada.)
 const disparos = (evento: string) =>
-  h.runAutomationsForTrigger.mock.calls.filter((c) => c[0] === evento || c[1] === evento).length
+  h.dispararAutomacoes.mock.calls.filter((c) => (c[0] as { triggerType?: string }).triggerType === evento).length
 
 describe('entrada só-BSUID (a Meta sem telefone)', () => {
   it('conta sem dono resolvível: nada é criado — nunca cai para quem conectou o número', async () => {
@@ -358,7 +361,7 @@ describe('entrada só-BSUID (a Meta sem telefone)', () => {
     await entregar([mensagem({ from_user_id: BSUID })])
     expect(h.state.contatos).toHaveLength(0)
     expect(h.state.upserts).toHaveLength(0)
-    expect(h.runAutomationsForTrigger).not.toHaveBeenCalled()
+    expect(h.dispararAutomacoes).not.toHaveBeenCalled()
     expect(h.dispatchWebhookEvent).not.toHaveBeenCalled()
   })
 
@@ -371,8 +374,8 @@ describe('entrada só-BSUID (a Meta sem telefone)', () => {
     expect(h.state.upserts).toHaveLength(0)
     expect(h.state.conversas).toHaveLength(0)
     expect(h.dispatchInboundToFlows).not.toHaveBeenCalled()
-    expect(h.dispatchInboundToAiReply).not.toHaveBeenCalled()
-    expect(h.runAutomationsForTrigger).not.toHaveBeenCalled()
+    expect(h.aoChegarMensagemDoCliente).not.toHaveBeenCalled()
+    expect(h.dispararAutomacoes).not.toHaveBeenCalled()
     expect(h.dispatchWebhookEvent).not.toHaveBeenCalled()
   })
 

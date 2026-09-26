@@ -7,8 +7,11 @@ import {
   PASSOS_DE_ENVIO,
   TENTATIVAS_MAX,
   decidirRetentativa,
+  recusaComprovada,
   tentativasJaFeitas,
 } from './retentativa';
+import { EvolutionApiError } from '@/lib/whatsapp/transport/evolution-client';
+import { MetaApiError } from '@/lib/whatsapp/meta-api';
 
 const recusou = { recusou: true };
 const incerto = { recusou: false };
@@ -137,5 +140,21 @@ describe('tentativasJaFeitas', () => {
         provedor: recusou,
       })
     ).toEqual({ repetir: true, esperaMs: ESPERAS_MS[0] });
+  });
+});
+
+describe('recusaComprovada (E4 dos agentes)', () => {
+  it('4xx da Evolution e da Meta: o provedor recusou, nada saiu', () => {
+    expect(recusaComprovada(new EvolutionApiError('x', 400))).toBe(true);
+    expect(recusaComprovada(new EvolutionApiError('x', 429))).toBe(true);
+    expect(recusaComprovada(new MetaApiError('x', { httpStatus: 400 }))).toBe(true);
+  });
+
+  it('⚠️ 5xx, tempo esgotado, 200 esquisito e erro que não é do provedor: pode ter saído', () => {
+    expect(recusaComprovada(new EvolutionApiError('x', 504))).toBe(false);
+    expect(recusaComprovada(new MetaApiError('x', { httpStatus: 500 }))).toBe(false);
+    expect(recusaComprovada(new MetaApiError('x', { httpStatus: 200 }))).toBe(false);
+    expect(recusaComprovada(new Error('sent but DB insert failed'))).toBe(false);
+    expect(recusaComprovada('texto')).toBe(false);
   });
 });

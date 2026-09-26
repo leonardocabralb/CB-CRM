@@ -64,7 +64,12 @@ vi.mock('@/lib/cb-channels/engine-send', () => ({
   evolutionTransportFor: vi.fn(() => evolution),
   evolutionRemoteJid: vi.fn((to: string) => `${to}@s.whatsapp.net`),
 }))
-vi.mock('@/lib/cb-channels/stamp', () => ({ stampMessageChannel: vi.fn(async () => {}) }))
+// `gravarComCanal` é o REAL: o INSERT da mensagem do robô passa por ele desde
+// a F2a (o canal vai no próprio INSERT), e ele só chama a gravação recebida.
+vi.mock('@/lib/cb-channels/stamp', async (original) => ({
+  ...(await original<typeof import('@/lib/cb-channels/stamp')>()),
+  stampMessageChannel: vi.fn(async () => {}),
+}))
 vi.mock('@/lib/whatsapp/encryption', () => ({ decrypt: (v: string) => v }))
 vi.mock('@/lib/assinatura/resolver', () => ({ nomeAutomaticoParaAssinar: vi.fn(async () => null) }))
 

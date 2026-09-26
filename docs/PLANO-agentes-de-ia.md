@@ -19,10 +19,9 @@
 | F0 | Medições baratas (links do Asaas, testes que fixam a semântica de hoje) | links medidos (seção 9); testes na F1a | — | — |
 | F1a | Chaves por provedor: Radar, transcrição, embeddings e Integrações leem a chave nova. Conferido em produção | **no ar** (26/09): 1047 aplicada, e2e no preview ok, PR mesclado e publicado | 1047 | #294 |
 | F1b | Agentes (lista e detalhe), Playground e Uso por agente. **Nenhum agente responde ainda** | **no ar** (26/09): 1048 aplicada depois do deploy da F1a, PR mesclado | 1048 | #295 |
-| F2a | O MOTOR de quem responde: agente de entrada, agente ativo, passo "Atribuir agente" (servidor), pausa por gente, fila de turnos, resposta em texto, fim do auto-reply legado. **Inerte ao entrar**: nada liga um agente até a F2b | motor pronto; correções da revisão final e Codex em curso | 1049 | — |
-| F2b | As TELAS: agente de entrada no diálogo da conexão, faixa e bolha do inbox, o passo no construtor, a sub-aba Turnos, textos; o ✨ do rascunho passa ao agente da conversa | a fazer | — | — |
+| F2 | **Desenho simplificado (26/09, D24–D27):** o agente atua nas ETAPAS do funil que o administrador marca; a triagem move o card para a etapa do agente escolhido; gente respondeu → para até "Retomar IA"; só cards que entram na etapa depois de o agente ser ligado. Motor, telas (onde atua, faixa, bolha, sub-aba Turnos) e o fim do auto-reply legado num PR só | 1049 aplicada (26/09, antes do deploy); e2e no preview ok: triagem passou e moveu o card, o destino respondeu por WhatsApp, a resposta da equipe pausou, "Retomar" religou, card antigo não atendido (D27); 1050 (a rajada fica com a mensagem mais nova, Codex) | 1049, 1050 | #309 |
 | Piloto | **Bancário - Comercial** (D22), com dois agentes. ⚠️ Só depois do corte da Kommo (medição de 25/09, seção 9) | aguardando o corte | — | — |
-| F3 | O que cada agente vê (ficha, campos, negócio, cobranças, transcrições) + base de conhecimento por agente (D20) | a fazer | sim | — |
+| F3 | O que cada agente vê (ficha, campos, negócio, etiquetas, cobranças, reunião) + base de conhecimento por agente (D20) | 1052 aplicada (26/09, antes do deploy); e2e no preview ok: o agente de cobrança viu a ficha e as cobranças do contato escolhido e não a base; o de triagem viu só o documento marcado e respondeu por ele ("qual o horário de atendimento de vocês?", que a busca antiga não acharia); uso = banco | 1052 | #312 |
 | F4a | Medição das ferramentas no Gemini + o laço de ferramentas + as de leitura, transferir e passar para outro agente | a fazer | talvez | — |
 | F4b | Ferramentas de escrita (mover etapa, etiquetas, campo, tarefa, executar automação) com origem `ia` na trilha | a fazer | sim | — |
 | F5 | Medição do Calendly + reagendamento pela IA (horários livres e agendamento) | a fazer | talvez | — |
@@ -80,6 +79,16 @@ As respostas às 15 perguntas da análise.
 | D21 (P4) | Custo | Em **R$**: a tabela de preço por modelo fica no código em US$ (com a fonte e a data), e o administrador informa a **cotação do dólar** (R$ por US$, já com o IOF do cartão). Sem cotação ou sem preço do modelo, a tela mostra tokens e diz o que falta. O teto de gasto que pausa o agente fica para depois. |
 | D22 (P5) | Piloto | Conexão **Bancário - Comercial** (Evolution). Os dois agentes do piloto são definidos na F2. |
 | D23 | Regras | **Instruções (o prompt) e regras são configuráveis por agente**, em campos separados: as instruções dizem quem o agente é e o que faz; as regras são uma lista do que ele nunca faz ou sempre faz, e entram no pedido como regras numeradas, depois das instruções. |
+
+**Revisão do operador (26/09/2026)** — o desenho da F2 por CONEXÃO (agente de entrada da conexão, passo "Atribuir agente" nas automações, D16, D17, P8) era complexo demais para o uso real, em que cada agente é montado à mão para um trabalho. Substituído por:
+
+| # | Pergunta | Decisão |
+| --- | --- | --- |
+| D24 | Onde o agente é ativado | **Por ETAPA do funil.** O administrador marca as etapas no agente; card aberto do cliente numa delas = esse agente responde (ligado, não arquivado, e a conexão da mensagem nas `conexoes` dele). **Uma etapa tem no máximo um agente.** Substitui D2, D3 e o passo "Atribuir agente" (D9 continua: o agente só responde mensagem do cliente). |
+| D25 | Triagem | Um agente como os outros, na etapa de entrada do funil. Quando decide, **move o card para a etapa do agente escolhido** (entre os de "pode passar para"), e esse agente responde a mesma mensagem em seguida. Uma passagem por mensagem. |
+| D26 | Gente respondeu | **A IA para naquela conversa até alguém clicar "Retomar IA"** — mudar o card de etapa não retoma (D10, agora pegajosa). |
+| D27 | Cards antigos | **Só cards que ENTRAREM na etapa depois de o agente ser ligado nela.** Card parado na etapa (os da Kommo) não é atendido. Substitui D16, D17 e a P8. |
+| D28 | Ferramentas (26/09/2026) | **Ações JUNTO com a resposta**, não um laço de ferramentas: o agente devolve a resposta ao cliente e as ações que quer fazer (mover o card, etiquetar, preencher campo, criar tarefa, executar automação; na F5, marcar reunião); o servidor confere cada ação contra o que foi liberado NAQUELE agente e executa antes de enviar. Uma chamada ao modelo por resposta, nos três provedores. O que o agente precisa LER (cobranças com o link, horários livres) chega pronto nos blocos de acesso (F3). Substitui o laço de ferramentas da 5.6/5.7 e da F4a. |
 
 ---
 
@@ -167,6 +176,9 @@ Regras que valem para toda tabela nova: `REVOKE ALL … FROM anon`, as duas meta
 
 ### 5.3 Quem responde (a regra, numa função pura `quemResponde`)
 
+> ⚠️ **Substituída em 26/09/2026 pelas D24–D27** (agente por etapa do funil). O texto abaixo é o desenho anterior, mantido como registro das bordas estudadas; o que vale é a F2 da seção 6.
+
+
 Toda mensagem do cliente numa conversa 1:1 de WhatsApp — texto, áudio, imagem, vídeo ou documento (figurinha, localização, texto sem conteúdo e toque em botão, não — E9); grupo e Instagram continuam de fora — passa pela regra no fim da ingestão, depois do robô e das automações:
 
 1. O robô consumiu a mensagem → **ninguém**.
@@ -209,6 +221,8 @@ Cada agente marca o que entra no contexto; **nada marcado = só a conversa** (fe
 ⚠️ Mensagem sem carimbo de conexão (histórico anterior ao multi-canal) **não entra** — atribuí-la a uma conexão seria inventar, a regra de `canais-do-fio.ts`.
 
 ### 5.6 Ferramentas (F4a, F4b, F5; D5–D8)
+
+> ⚠️ **Substituído em parte pela D28 (26/09/2026):** as ações vêm JUNTO com a resposta, numa chamada só, e o que o agente lê vem nos blocos de acesso — não há laço de ferramentas, adaptador por provedor nem `thoughtSignature`. Continuam valendo: ids do servidor, parâmetros travados por agente, a D5 (nada fora do CRM) e a trava de link inventado.
 
 Regras que valem para todas:
 - **Ids vêm do servidor, nunca do modelo.** Conta, contato, conversa, negócio e cobrança saem do contexto do turno; o modelo escolhe só entre opções que o servidor ofereceu (etapas permitidas, etiquetas permitidas…). É a defesa contra o cliente que escreve "marque minha fatura como paga".
@@ -318,6 +332,9 @@ As duas medições caras (ferramentas no Gemini, agendamento no Calendly) foram 
 
 ### F2 — Quem responde, e a resposta em texto
 
+> ⚠️ **Refeita em 26/09/2026 pelas D24–D27.** O desenho vigente: `cb_ia_agente_etapas` (uma etapa, um agente), `deals.etapa_desde` (D27), pausa pegajosa até "Retomar" (D26), passagem da triagem movendo o card (D25). Saem: agente de entrada por conexão, "Atribuir agente", D16/D17/P8, geração da atribuição. O que abaixo não conflita com isso (fila de turnos, E2, E4–E6, E8–E11, E14) continua valendo.
+
+
 **Porta de entrada:** as perguntas P1, P2, P6 e P7 — respondidas em 25/09 (D16–D19).
 
 **Objetivo:** os agentes atendem de verdade, só com texto.
@@ -385,6 +402,16 @@ Um mapa do código em sete frentes (ingestão, envio, banco, fila, telas, automa
 ---
 
 ## 7. Riscos e armadilhas
+
+**Limites conhecidos da F2 (26/09/2026), aceitos por serem raros e do lado seguro ou de janela de milissegundos:**
+
+- Uma resposta de gente gravada entre a reserva do envio e o envio (milissegundos) não impede aquela resposta da IA; a pausa vale dali em diante.
+- Uma automação de "nova mensagem" cujo passo de envio falha ANTES de chamar o provedor conta como "falou" e cala a IA naquela mensagem.
+- Salvar o agente com nome repetido depois de as etapas já terem sido gravadas deixa as etapas novas e recusa o nome; salvar de novo com outro nome resolve.
+- Card movido durante a espera da rajada (8 s): o turno descarta e ninguém responde aquela mensagem.
+- Passagem para uma etapa com automação ligada escutando: a automação fala (a boas-vindas) e o agente de destino responde a partir da próxima mensagem do cliente — a mesma regra da entrada (E4). Automação que escuta a etapa e não manda nada deixa aquela mensagem sem resposta.
+- Resposta pelo número OFICIAL (Meta) que sai e cujo registro no CRM falha (erro do banco no instante seguinte ao envio): o cliente recebe, mas a mensagem não aparece no fio e não conta no teto — a Meta não devolve eco que a recrie. É o comportamento de todo envio do robô (`EnviadaSemRegistroError`); o log registra o id.
+- ⚠️ **Delta da Kommo:** a carga cala os gatilhos de `deals`, e o card que ela CRIA ganha `etapa_desde` = hora da carga — pareceria "entrou agora" para um agente já ligado na etapa (D27). Rodar o delta ANTES de marcar etapas nos agentes, ou logo depois dele: `UPDATE deals SET etapa_desde = created_at WHERE kommo_lead_id IS NOT NULL AND etapa_desde > created_at`.
 
 - **Radar e transcrição dependem da chave de hoje.** A F1a muda de onde ela é lida; um erro ali para a análise de todas as conversas e todo áudio. Por isso a F1a vai sozinha e é conferida em produção.
 - **`logAiUsage` engole erro:** modo novo sem a migration aplicada some do uso sem aviso.

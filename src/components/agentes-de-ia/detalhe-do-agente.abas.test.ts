@@ -14,8 +14,32 @@ describe('detalhe-do-agente — abas', () => {
     expect(playground.slice(0, 120)).toContain('key={`${e.agente.id}:${salvamentos}`}')
   })
 
+  it('salvar o Acesso ou a Base (F3) também zera a conversa do Playground', () => {
+    const acesso = fonte.slice(fonte.indexOf('<AcessoDoAgente'))
+    expect(acesso.slice(0, 200)).toContain('aoSalvar={aoSalvarAgente}')
+    const base = fonte.slice(fonte.indexOf('<BaseDoAgente'))
+    expect(base.slice(0, 200)).toContain('aoSalvar={() => setSalvamentos((n) => n + 1)}')
+  })
+
+  it('Acesso e Base (F3) têm rascunho: montadas depois da 1ª visita, escondidas (não desmontadas)', () => {
+    for (const aba of ['acesso', 'base']) {
+      expect(fonte).toContain(`{visitadas.has('${aba}') ? (`)
+      expect(fonte).toContain(`<div hidden={aba !== '${aba}'}>`)
+    }
+  })
+
+  it('o Playground diz QUAIS abas têm alteração não salva', () => {
+    for (const flag of ['configuracaoNaoSalva', 'acessoNaoSalvo', 'baseNaoSalva']) expect(fonte).toContain(flag)
+    expect(fonte).toContain('naoSalvoEm={naoSalvoEm}')
+  })
+
   it('a aba Uso só existe enquanto está aberta (remonta e busca de novo)', () => {
     expect(fonte).toContain("{aba === 'uso' ? <UsoDeIa")
     expect(fonte).not.toContain("visitadas.has('uso')")
+  })
+
+  it('a aba Turnos também remonta a cada visita (mostra os turnos de agora)', () => {
+    expect(fonte).toContain("{aba === 'turnos' ? <TurnosDoAgente")
+    expect(fonte).not.toContain("visitadas.has('turnos')")
   })
 })

@@ -96,6 +96,24 @@ export interface RadarDaConta {
 const TETO_RESPOSTAS = 1000;
 
 /**
+ * O filtro PostgREST de "resposta que fecha a pendência" — o espelho do ramo
+ * "respondido" do banco (a 972 com o acréscimo da 1049): mensagem da equipe
+ * com `sender_id` OU `from_device`, ou resposta do AGENTE DE IA (`bot` com
+ * `ia_agente_id`, D11 do docs/PLANO-agentes-de-ia.md).
+ *
+ * ⚠️ O `sender_type` mora DENTRO de cada ramo, e não num `.eq` à parte: a
+ * resposta da IA é `bot`, e um `.eq('sender_type', 'agent')` na consulta a
+ * cortaria antes de o `.or` ser avaliado — ampliar só o `.or` não bastaria.
+ * Robô de fluxo e automação também são `bot`, mas sem `ia_agente_id`: ficam
+ * de fora pelo terceiro ramo. A agendada (que sai como `agent` COM
+ * `sender_id`) continua sendo tirada depois, pela proveniência.
+ */
+const RESPOSTA_QUE_FECHA_A_PENDENCIA =
+  'and(sender_type.eq.agent,sender_id.not.is.null),' +
+  'and(sender_type.eq.agent,from_device.is.true),' +
+  'and(sender_type.eq.bot,ia_agente_id.not.is.null)';
+
+/**
  * Quais pendências a equipe JÁ respondeu — a pergunta que o campo
  * gravado não sabe responder.
  *
@@ -106,20 +124,26 @@ const TETO_RESPOSTAS = 1000;
  * cliente que já tinha sido atendido. Uma consulta a `messages` responde
  * isso de graça e na hora.
  *
- * ⚠️ SÓ resposta de GENTE fecha a pendência — mas "gente" NÃO é
- * `sender_id IS NOT NULL`. A resposta dada pelo CELULAR PAREADO
- * (`persistDeviceMessage`) grava `sender_type='agent'` com `from_device`
- * true e `sender_id` NULO: não há usuário do CRM por trás, mas há um
- * advogado digitando. Medido em produção (2026-08-30): 948 mensagens da
- * equipe são `from_device`, contra 8 digitadas dentro do CRM — exigir
- * `sender_id` reconheceria 8 de 978 respostas e o alarme de 24h
+ * ⚠️ Só resposta de GENTE — ou do AGENTE DE IA, ver abaixo — fecha a
+ * pendência. E "gente" NÃO é `sender_id IS NOT NULL`. A resposta dada pelo
+ * CELULAR PAREADO (`persistDeviceMessage`) grava `sender_type='agent'` com
+ * `from_device` true e `sender_id` NULO: não há usuário do CRM por trás,
+ * mas há um advogado digitando. Medido em produção (2026-08-30): 948
+ * mensagens da equipe são `from_device`, contra 8 digitadas dentro do CRM
+ * — exigir `sender_id` reconheceria 8 de 978 respostas e o alarme de 24h
  * sobreviveria ao atendimento em quase todo caso real.
  *
+ * ⚠️ A resposta do AGENTE DE IA também fecha (D11, desde a F2 dos agentes):
+ * o cliente foi respondido, e o alerta de atraso da caixa já a conta assim
+ * (1049). O tempo de resposta DA EQUIPE é outra pergunta, respondida pelo
+ * worker (`calcularMetricas`), onde a IA fica de fora. Ver
+ * `RESPOSTA_QUE_FECHA_A_PENDENCIA`.
+ *
  * O que continua NÃO fechando: broadcast, automação e fluxo (saem sem
- * `sender_id` e sem `from_device`) — e a AGENDADA, que exige tratamento
- * PRÓPRIO: ela SAI com `sender_id` (o `created_by` de quem a criou, dias
- * antes — dispatch → send-message), então a coluna sozinha a confundiria
- * com resposta. A proveniência que a denuncia é
+ * `sender_id`, sem `from_device` e sem `ia_agente_id`) — e a AGENDADA, que
+ * exige tratamento PRÓPRIO: ela SAI com `sender_id` (o `created_by` de quem
+ * a criou, dias antes — dispatch → send-message), então a coluna sozinha a
+ * confundiria com resposta. A proveniência que a denuncia é
  * `cb_scheduled_messages.message_id` (achado do Codex no PR #74). Se
  * qualquer saída automática contasse, um "recebemos seu contato" apagaria
  * da tela justamente o cliente esquecido que o Radar existe para achar.
@@ -152,8 +176,7 @@ async function respostasDepoisDaPendencia(
     .from('messages')
     .select('id, conversation_id, created_at')
     .in('conversation_id', ids)
-    .eq('sender_type', 'agent')
-    .or('sender_id.not.is.null,from_device.is.true')
+    .or(RESPOSTA_QUE_FECHA_A_PENDENCIA)
     .is('deleted_at', null)
     .gte('created_at', desde)
     .order('created_at', { ascending: false })
@@ -233,20 +256,20 @@ async function respostasDepoisDaPendencia(
     (agendadasRes.data ?? []).map((r) => r.message_id as string),
   );
 
-  const ultimaRespostaHumana = new Map<string, number>();
+  const ultimaResposta = new Map<string, number>();
   for (const m of data as { id: string; conversation_id: string; created_at: string }[]) {
     if (deAgendada.has(m.id)) continue;
     const quando = Date.parse(m.created_at);
     if (Number.isNaN(quando)) continue;
-    const atual = ultimaRespostaHumana.get(m.conversation_id);
+    const atual = ultimaResposta.get(m.conversation_id);
     if (atual === undefined || quando > atual) {
-      ultimaRespostaHumana.set(m.conversation_id, quando);
+      ultimaResposta.set(m.conversation_id, quando);
     }
   }
 
   const respondidas = new Set<string>();
   for (const i of comPendencia) {
-    const resposta = ultimaRespostaHumana.get(i.conversation_id);
+    const resposta = ultimaResposta.get(i.conversation_id);
     if (resposta !== undefined && resposta > Date.parse(i.aguardando_desde)) {
       respondidas.add(i.conversation_id);
     }

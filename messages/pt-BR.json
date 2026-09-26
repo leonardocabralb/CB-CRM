@@ -430,6 +430,8 @@
       "unsupported": "[Tipo de mensagem não suportado]",
       "aiBadge": "IA",
       "aiBadgeTitle": "Enviada automaticamente pelo assistente de IA",
+      "iaAgente": "IA · {nome}",
+      "iaAgenteTitle": "Resposta do agente de IA {nome}",
       "viaChannel": "via {label}",
       "fromDevice": "Celular",
       "fromDeviceTitle": "Enviada pelo celular pareado, não pelo CRM",
@@ -697,14 +699,28 @@
       "falhouCarga": "Não consegui ler as execuções."
     },
     "aiBanner": {
-      "pausedTitle": "O assistente de IA está pausado aqui",
-      "activeText": "O assistente de IA está respondendo automaticamente",
-      "takeOver": "Assumir",
+      "atendendo": "IA · {agente} responde nesta conversa",
+      "pausar": "Pausar",
+      "pausada": "IA pausada",
+      "pausadaComMotivo": "IA pausada — {motivo}",
+      "retomarDica": "A IA só volta a responder nesta conversa com este botão.",
+      "pausou": "IA pausada nesta conversa.",
+      "motivo": {
+        "gente": "alguém da equipe respondeu",
+        "botao": "pausada por alguém da equipe",
+        "transferencia": "a IA passou a conversa para uma pessoa",
+        "automacao": "desligada por uma automação"
+      },
       "resume": "Retomar IA",
-      "tookOver": "Você assumiu esta conversa.",
       "resumed": "IA retomada.",
       "updateError": "Não foi possível atualizar o assistente de IA.",
-      "networkError": "Não foi possível conectar ao servidor."
+      "networkError": "Não foi possível conectar ao servidor.",
+      "erroGrupo": "Os agentes de IA não respondem em grupos.",
+      "erroInstagram": "Os agentes de IA não respondem no Instagram.",
+      "erroNadaGravado": "Nada foi alterado — a conversa pode ter mudado. Recarregue e tente de novo.",
+      "erroNaoEncontrada": "Conversa não encontrada.",
+      "erroSemPermissao": "Seu perfil não pode mudar a IA desta conversa.",
+      "erroMuitasTentativas": "Muitas tentativas seguidas. Aguarde um instante e tente de novo."
     },
     "mediaViewer": {
       "open": "Ampliar imagem",
@@ -2092,7 +2108,7 @@
         "aiLabel": "IA nesta conversa",
         "aiOn": "Ligar",
         "aiOff": "Desligar",
-        "aiResetWarning": "Religar também zera o contador de respostas desta conversa e solta quem estiver atribuído. Cuidado ao ligar a partir de um gatilho que dispara a cada mensagem — o teto de respostas por conversa deixa de valer.",
+        "aiResetWarning": "Ligar desfaz só a pausa feita por uma automação. Se alguém da equipe respondeu, ou se a própria IA passou a conversa para uma pessoa, ela continua parada até alguém clicar em \"Retomar IA\" na conversa.",
         "rawIdPlaceholder": "Cole o id",
         "inactiveSuffix": "(desativada)",
         "selfSuffix": "(esta)"
@@ -3654,7 +3670,7 @@
     },
     "aiConfig": {
       "title": "Configuração do agente de IA",
-      "description": "Use sua própria chave da OpenAI, da Anthropic ou do Google (Gemini). Este CRM chama o provedor diretamente com a sua chave — sem cobrança de IA por usuário, e seus dados continuam sendo seus. Isso alimenta as respostas sugeridas por IA na caixa de entrada, o bot de resposta automática, o Playground e o Radar do atendimento.",
+      "description": "Use sua própria chave da OpenAI, da Anthropic ou do Google (Gemini). Este CRM chama o provedor diretamente com a sua chave — sem cobrança de IA por usuário, e seus dados continuam sendo seus. Isso alimenta as respostas sugeridas por IA na caixa de entrada, o Playground e o Radar do atendimento.",
       "adminOnlyConfig": "Apenas administradores e proprietários podem alterar a configuração de IA.",
       "loadFailed": "Falha ao carregar a configuração de IA",
       "providerAndKey": "Provedor e modelo",
@@ -3672,24 +3688,19 @@
       "testRejected": "O provedor rejeitou a requisição.",
       "testNetworkError": "Não foi possível acessar o provedor.",
       "behaviour": "Comportamento",
-      "behaviourDesc": "Informe ao assistente sobre a sua empresa — serviços, tom de voz, o que ele pode e não pode prometer. Esse contexto é usado tanto nos rascunhos quanto nas respostas automáticas.",
+      "behaviourDesc": "Informe ao assistente sobre a sua empresa — serviços, tom de voz, o que ele pode e não pode prometer. Esse contexto é usado nos rascunhos com IA da caixa de entrada e no Playground.",
       "businessContext": "Contexto e instruções da empresa",
       "promptPlaceholder": "ex.: Somos a Acme, uma loja de equipamentos para café. Seja cordial e objetivo. Nunca informe preços ou prazos de entrega — encaminhe para um atendente humano nesses casos.",
       "enableAssistant": "Ativar assistente de IA",
       "enableAssistantDesc": "Controle geral. Ativa o botão “Rascunho com IA” na caixa de entrada.",
-      "autoReply": "Responder automaticamente às mensagens recebidas",
-      "autoReplyDesc": "O bot responde automaticamente às novas mensagens recebidas (apenas quando nenhum fluxo as trata e nenhum atendente está atribuído). Encaminha para um humano quando não consegue ajudar. No número oficial (API da Meta), a mensagem do cliente aparece como lida, com \"digitando…\", enquanto a resposta é preparada — inclusive quando ela acaba passando para uma pessoa.",
-      "maxAutoReplies": "Máximo de respostas automáticas por conversa",
-      "maxAutoRepliesDesc": "Depois desse número de respostas do bot em uma mesma conversa, o bot para de responder.",
-      "handoffTo": "Encaminhar para",
-      "handoffToDesc": "Quando o bot não consegue ajudar — ou atinge o limite de respostas — ele pausa e direciona a conversa para cá, com uma nota curta sobre o que aconteceu.",
-      "handoffQueue": "Fila sem atribuição (qualquer atendente pode assumir)",
+      "autoReplyMoved": "A resposta automática agora é feita pelos agentes de IA — cada um com as suas conexões, instruções e limite de respostas.",
+      "autoReplyMovedLink": "Abrir os agentes de IA",
       "save": "Salvar",
       "missingModel": "Informe o nome do modelo.",
       "missingApiKey": "Cadastre a chave deste provedor em Configurações → Integrações antes de salvar.",
       "saveSuccess": "Assistente de IA salvo.",
       "saveFailed": "Falha ao salvar.",
-      "modelScope": "Vale para o assistente da caixa de entrada, a resposta automática e o Playground — não para o Radar nem para a transcrição, que têm modelo próprio.",
+      "modelScope": "Vale para o assistente da caixa de entrada e o Playground — não para os agentes de IA, o Radar nem a transcrição, que têm modelo próprio.",
       "modelScopeLink": "Ver todos os módulos em Integrações"
     },
     "aiKnowledge": {
@@ -4244,7 +4255,7 @@
     "tentarDeNovo": "Tentar de novo",
     "cancelar": "Cancelar",
     "lista": {
-      "explicacao": "Os agentes ainda não respondem clientes: nesta etapa eles são criados, configurados e testados no Playground.",
+      "explicacao": "Cada agente responde os clientes cujo card está nas etapas do funil marcadas nele. Crie, teste no Playground e acompanhe o uso e os turnos de cada um.",
       "novo": "Novo agente",
       "falhou": "Não foi possível carregar os agentes.",
       "vazia": "Nenhum agente ainda. Crie o primeiro — em branco ou a partir de um modelo.",
@@ -4252,7 +4263,9 @@
       "desligado": "desligado",
       "semConexao": "Nenhuma conexão marcada",
       "conexoes": "Conexões: {conexoes}",
-      "legado": "O assistente único de antes continua disponível até os agentes passarem a responder:",
+      "semEtapa": "Nenhuma etapa marcada — não responde ninguém",
+      "etapas": "{n, plural, one {Atua em # etapa} other {Atua em # etapas}}",
+      "legado": "O assistente anterior segue servindo ao rascunho com IA (✨) da caixa de entrada:",
       "legadoLink": "abrir o assistente anterior"
     },
     "novo": {
@@ -4267,7 +4280,7 @@
       "nome": "Nome",
       "nomeExemplo": "ex.: Triagem",
       "ativo": "Ligado",
-      "ativoDica": "Só passa a valer quando os agentes começarem a responder clientes.",
+      "ativoDica": "Ligado, responde os clientes cujo card está nas etapas marcadas em \"Onde atua\".",
       "descricao": "Descrição",
       "descricaoDica": "Uma frase sobre o que este agente faz. É o que outro agente lê para decidir se passa a conversa para ele.",
       "instrucoes": "Instruções",
@@ -4296,11 +4309,11 @@
       "equipeNaoCarregou": "Não foi possível carregar a equipe. O destino da transferência continua como está até você recarregar a página.",
       "membroNaoCarregado": "(carregando…)",
       "podePassarPara": "Pode passar a conversa para",
-      "podePassarParaDica": "Os outros agentes para quem este pode encaminhar a conversa.",
+      "podePassarParaDica": "Os outros agentes para quem este pode passar a conversa. Ao passar, o card vai para a etapa do agente escolhido, e ele responde em seguida a mesma mensagem do cliente.",
+      "passarSemEtapa": "(sem etapa: a passagem vai para a equipe)",
       "semOutrosAgentes": "Não há outros agentes na conta."
     },
     "config": {
-      "aindaNaoResponde": "Nesta etapa o agente ainda não responde clientes, mesmo ligado. Use o Playground para testar.",
       "modelo": "Provedor e modelo",
       "transferencia": "Limite e transferência",
       "salvar": "Salvar",
@@ -4309,24 +4322,95 @@
       "arquivarConfirma": "Arquivar este agente? Ele sai da lista e é desligado; o uso antigo mantém o nome.",
       "arquivado": "Agente arquivado."
     },
+    "ondeAtua": {
+      "titulo": "Onde atua",
+      "dica": "O agente responde o cliente cujo card ABERTO está numa das etapas marcadas (e numa das conexões acima). Uma etapa tem no máximo um agente.",
+      "soCardsNovos": "Só são atendidos os cards que ENTRAREM na etapa depois de ela ser marcada e de o agente ser ligado — os que já estavam parados lá não recebem resposta.",
+      "funil": "Funil",
+      "funilComMarcadas": "{funil} ({n, plural, one {# etapa marcada} other {# etapas marcadas}})",
+      "ocupada": "IA · {agente}",
+      "nenhuma": "Nenhuma etapa marcada: o agente não responde ninguém.",
+      "falhou": "Não foi possível carregar os funis. Recarregue a página.",
+      "semFunis": "A conta ainda não tem funil. Crie um em Funis para escolher onde o agente atua."
+    },
     "detalhe": {
       "voltar": "Todos os agentes",
       "falhou": "Não foi possível carregar o agente.",
       "sumiu": "Este agente não existe mais (ou foi arquivado).",
       "abas": "Seções do agente",
       "configuracao": "Configuração",
+      "acesso": "Acesso",
+      "base": "Base de conhecimento",
       "playground": "Playground",
-      "uso": "Uso"
+      "uso": "Uso",
+      "turnos": "Turnos"
+    },
+    "acesso": {
+      "explicacao": "O que este agente pode ver do cliente, além da conversa. É dado do cliente enviado ao provedor de IA a cada resposta: marque só o que o trabalho dele pede. Nada marcado, ele vê só a conversa.",
+      "soAConversa": "Nada marcado: hoje este agente vê só a conversa.",
+      "bloco": {
+        "ficha": "Ficha",
+        "campos": "Campos personalizados",
+        "negocio": "Negócio",
+        "etiquetas": "Etiquetas",
+        "cobrancas": "Cobranças",
+        "reuniao": "Reunião"
+      },
+      "blocoDesconhecido": "Outro ({bloco})",
+      "dica": {
+        "ficha": "Nome, telefone, e-mail e empresa do contato.",
+        "negocio": "O card aberto do contato: funil, etapa, valor e há quanto tempo está na etapa.",
+        "etiquetas": "As etiquetas do contato.",
+        "cobrancas": "As parcelas em aberto no Asaas, com vencimento e valor, e se a leitura está atualizada. Só leitura.",
+        "reuniao": "A próxima reunião marcada pelo Calendly e o link para remarcar."
+      },
+      "campos": {
+        "dica": "Marque um a um os campos que o agente pode ler. Campo não marcado não vai para a IA.",
+        "buscar": "Buscar campo…",
+        "falhou": "Não foi possível carregar os campos personalizados.",
+        "nenhum": "Esta conta não tem campos personalizados.",
+        "nenhumNaBusca": "Nenhum campo com esse nome.",
+        "marcados": "{n, plural, =0 {Nenhum marcado} one {# marcado} other {# marcados}}",
+        "limite": "No máximo {max} campos por agente. Desmarque um para marcar outro."
+      },
+      "salvar": "Salvar acesso",
+      "salvo": "Acesso salvo."
+    },
+    "base": {
+      "explicacao": "Os documentos da base de conhecimento que este agente consulta para responder. Documento não marcado, o agente não usa; nenhum marcado, ele responde sem base.",
+      "gerenciar": "Gerenciar documentos",
+      "usar": "Usar neste agente",
+      "falhou": "Não foi possível carregar a base de conhecimento.",
+      "vazia": "A conta ainda não tem documentos na base de conhecimento. Crie-os em Gerenciar documentos.",
+      "atualizado": "Atualizado em {data}",
+      "marcados": "{n, plural, =0 {Nenhum documento marcado: o agente responde sem base.} one {# documento marcado} other {# documentos marcados}}",
+      "salvar": "Salvar base",
+      "salvo": "Base de conhecimento salva.",
+      "teto": "É o máximo por agente ({n} documentos): para marcar outro, desmarque um."
     },
     "playground": {
-      "explicacao": "Converse como se fosse o cliente. Vale o que está SALVO na Configuração, com o mesmo modelo da produção; o gasto conta como teste.",
-      "configNaoSalva": "Há alterações não salvas na Configuração. O Playground testa o que está SALVO.",
+      "explicacao": "Converse como se fosse o cliente. Vale o que está SALVO no agente (Configuração, Acesso e Base de conhecimento), com o mesmo modelo da produção; o gasto conta como teste.",
+      "naoSalvo": "Há alterações não salvas em {abas}. O Playground testa o que está SALVO.",
       "recomecar": "Recomeçar",
       "vazio": "Envie uma mensagem para ver como este agente responderia.",
       "transferiria": "Aqui o agente transferiria para uma pessoa",
+      "passaria": "Aqui o agente passaria a conversa para {agente}, que responderia esta mesma mensagem",
       "tokens": "{n} tokens",
       "pensando": "Pensando…",
-      "placeholder": "Escreva como o cliente escreveria…"
+      "placeholder": "Escreva como o cliente escreveria…",
+      "contato": "Cliente do teste",
+      "contatoDica": "Opcional. Com um cliente escolhido, o agente vê os dados dele que estão marcados em Acesso; sem cliente, só a conversa. Trocar de cliente recomeça a conversa.",
+      "contatoNenhum": "Nenhum (só a conversa)",
+      "contatoBuscar": "Buscar por nome ou telefone…",
+      "contatoAjuda": "Digite ao menos 2 letras para buscar.",
+      "carregandoContatos": "Carregando clientes…",
+      "contatoVazio": "Nenhum cliente encontrado para a busca.",
+      "contatoFalhou": "A busca falhou. Digite de novo para tentar.",
+      "contatoMais": "Mostrando os {count} primeiros. Continue digitando para afinar.",
+      "limparContato": "Tirar o cliente",
+      "viu": "O agente viu: {itens} · {trechos}",
+      "conversa": "a conversa",
+      "trechos": "{n, plural, =0 {nenhum trecho da base} one {# trecho da base} other {# trechos da base}}"
     },
     "uso": {
       "explicacao": "Últimos {dias} dias. Os valores em R$ são uma ESTIMATIVA pelo preço de lista de cada modelo e pela cotação de hoje.",
@@ -4364,6 +4448,33 @@
         "draft": "Rascunho com IA"
       }
     },
+    "turnos": {
+      "explicacao": "As 50 últimas vezes em que este agente foi chamado a responder, as mais novas primeiro.",
+      "vazio": "Este agente ainda não foi chamado a responder.",
+      "falhou": "Não foi possível carregar os turnos.",
+      "semContato": "Contato sem nome",
+      "contexto": {
+        "titulo": "O que o agente viu",
+        "soAConversa": "Só a conversa: nenhum dado do cliente entrou neste turno.",
+        "base": "{n, plural, =0 {Nenhum trecho da base} one {Trechos de # documento da base} other {Trechos de # documentos da base}}",
+        "documentoApagado": "(documento apagado)",
+        "documento": "(documento)"
+      },
+      "statusDesconhecido": "Outro ({status})",
+      "status": {
+        "aguardando": "Aguardando",
+        "rodando": "Respondendo",
+        "respondeu": "Respondeu",
+        "passou": "Passou para outro agente",
+        "transferiu": "Transferiu para a equipe",
+        "sem_resposta": "Sem resposta",
+        "fora_do_horario": "Fora do horário",
+        "pausado_no_meio": "Pausado no meio",
+        "descartado": "Descartado",
+        "falhou": "Falhou",
+        "incerto": "Envio incerto"
+      }
+    },
     "dia": {
       "0": "Dom",
       "1": "Seg",
@@ -4392,6 +4503,8 @@
       "agente_de_outra_conta": "Um dos agentes marcados não existe mais — recarregue a página.",
       "membro_de_outra_conta": "Quem recebe a transferência não é mais da equipe — escolha outra pessoa.",
       "passar_para_si": "O agente não pode passar a conversa para ele mesmo.",
+      "etapa_de_outra_conta": "Uma das etapas não existe mais — recarregue a página.",
+      "etapa_ocupada": "Uma das etapas marcadas já é do agente {agente} — cada etapa tem um agente só.",
       "nao_encontrado": "Este agente não existe mais.",
       "sem_chave": "O provedor deste agente não tem chave — cadastre em Configurações → Integrações.",
       "provedor_sem_chave": "Este provedor não tem chave. Cadastre a chave em Configurações → Integrações, ou escolha outro provedor.",
@@ -4400,6 +4513,8 @@
       "sem_mensagens": "Escreva uma mensagem para testar.",
       "sem_configuracao": "Cadastre primeiro a chave de um provedor em Integrações.",
       "cotacao_invalida": "Informe a cotação como um número, por exemplo 5,60.",
+      "documento_invalido": "Um dos documentos marcados não existe mais na base. Recarregue a página e tente de novo.",
+      "contato_nao_encontrado": "Este cliente não foi encontrado nesta conta. Escolha outro.",
       "invalid_key": "O provedor recusou a chave.",
       "rate_limited": "O provedor pediu para esperar — tente em instantes.",
       "timeout": "O provedor não respondeu a tempo.",
@@ -4427,6 +4542,16 @@
         "instrucoes": "Você atende dúvidas sobre pagamentos: segunda via, link da fatura e datas de vencimento. Informe só o que estiver no sistema e seja objetivo.",
         "regras": "Jamais mude vencimento ou valor, nem dê baixa em pagamento.\nMande a segunda via ou o link que já existe; nunca crie cobrança nova.\nPedido de desconto, parcelamento ou negociação vai para uma pessoa."
       }
+    },
+    "transferencia": {
+      "autor": "IA · {agente}",
+      "nota": {
+        "sentinela": "{agente} passou a conversa para a equipe: o cliente precisa de alguém do escritório.",
+        "teto": "{agente} passou a conversa para a equipe: chegou ao limite de respostas nesta conversa.",
+        "audio": "{agente} passou a conversa para a equipe: não conseguiu ouvir o áudio do cliente.",
+        "incerto": "{agente} passou a conversa para a equipe: não dá para saber se a última resposta chegou ao cliente — confira antes de responder."
+      },
+      "passagem": "{agente} passou a conversa para IA · {destino}, e o card foi para a etapa desse agente."
     }
   },
   "ForgotPasswordPage": {
