@@ -2909,14 +2909,29 @@ export function MessageThread({
                       (destaqueDoPainel?.tipo === "mensagem" &&
                         destaqueDoPainel.id === msg.id);
                     if (msg.content_type === "system" || msg.content_type === "call") {
+                      // A ligação é carimbada com a conexão que tocou, então
+                      // pode ABRIR um trecho de outro número (`aberturasDeCanal`
+                      // a conta): sem o separador aqui, o trecho nasceria mudo
+                      // e as mensagens seguintes por aquele número também não o
+                      // mostrariam. O aviso do grupo nunca abre trecho.
+                      const canalDaFaixa =
+                        channelsById.get(aberturasDeTrecho.get(msg.id) ?? "") ?? null;
+                      const corDaFaixa = corDoCanal(coresDosCanais, canalDaFaixa?.id);
                       return (
-                        <LinhaDoFio
-                          key={msg.id}
-                          id={msg.id}
-                          destacada={destacada}
-                        >
-                          <MessageBubble message={msg} emGrupo={msg.content_type === "system"} />
-                        </LinhaDoFio>
+                        <Fragment key={msg.id}>
+                          {canalDaFaixa && corDaFaixa && (
+                            <SeparadorDeCanal
+                              nome={canalDaFaixa.label}
+                              cor={corDaFaixa}
+                              rotulo={t("channelSectionLabel", {
+                                channel: canalDaFaixa.label,
+                              })}
+                            />
+                          )}
+                          <LinhaDoFio id={msg.id} destacada={destacada}>
+                            <MessageBubble message={msg} emGrupo={msg.content_type === "system"} />
+                          </LinhaDoFio>
+                        </Fragment>
                       );
                     }
                     const parent = msg.reply_to_message_id

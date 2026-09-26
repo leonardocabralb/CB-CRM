@@ -92,7 +92,7 @@ describe('a ligação faz o que o cliente (ou a equipe pelo celular) faria', () 
   });
 
   it('⚠️ o LID nunca vira telefone: só o JID de telefone, o acervo ou o callerPn conferido', () => {
-    expect(f).toContain('resolverTelefoneDoLid(');
+    expect(f).toContain('consultarTelefoneDoLid(');
     expect(f).toContain('telefoneDoCallerPn(');
     expect(f).not.toMatch(/quem_ligou[^;\n]*\.split\('@'\)/);
   });
@@ -126,5 +126,29 @@ describe('na tela, a ligação é faixa — sem ações', () => {
     for (const arquivo of ['components/inbox/conversation-list.tsx', 'components/pipelines/deal-card.tsx']) {
       expect(fonte(arquivo)).toContain('ehPreviaDeLigacao(');
     }
+  });
+});
+
+describe('quem lê content_type trata a ligação', () => {
+  it('Painel e Meu dia não contam a ligação como mensagem (a atendida é `agent`)', () => {
+    const filtro = /\.neq\('content_type', 'call'\)/g;
+    // Enviadas hoje e ontem, a série de conversas e o feed de atividade.
+    expect(fonte('lib/dashboard/queries.ts').match(filtro) ?? []).toHaveLength(4);
+    expect(fonte('hooks/use-area-de-trabalho.ts').match(filtro) ?? []).toHaveLength(1);
+  });
+
+  it('o Radar lê a ligação como linha do transcrito (senão ela viraria "mídia sem texto")', () => {
+    expect(fonte('lib/cb-radar/worker.ts')).toMatch(/content_type === 'call'/);
+  });
+
+  it('o núcleo de envio recusa citar uma ligação (o `call:<id>` não existe no WhatsApp)', () => {
+    const envio = fonte('lib/whatsapp/send-message.ts');
+    expect(envio).toMatch(/\.select\('message_id, conversation_id, remote_jid, from_me, content_type'\)/);
+    expect(envio).toMatch(/parent\.content_type === 'call'\)\s*\{\s*throw new SendMessageError\(/);
+  });
+
+  it('o aviso do navegador da perdida tem corpo (a bolha não tem texto)', () => {
+    expect(fonte('lib/notifications/browser-notify.ts')).toMatch(/case "call":\s*body = labels\.call;/);
+    expect(fonte('hooks/use-browser-notifications.ts')).toContain('call: t("call")');
   });
 });

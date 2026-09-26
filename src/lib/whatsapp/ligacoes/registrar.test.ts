@@ -48,7 +48,7 @@ vi.mock('@/lib/cb-channels/stamp', async (original) => ({
   },
 }));
 vi.mock('@/lib/whatsapp/sem-telefone/resolver-lid', () => ({
-  resolverTelefoneDoLid: (...a: unknown[]) => resolverTelefoneDoLid(...a),
+  consultarTelefoneDoLid: (...a: unknown[]) => resolverTelefoneDoLid(...a),
 }));
 
 const { registrarEventoDeLigacao } = await import('./registrar');
@@ -281,10 +281,10 @@ describe('o que NÃO vira bolha', () => {
 
   it('o callerPn entra quando o acervo não conhece o LID (número que nunca escreveu)', async () => {
     resolverTelefoneDoLid.mockResolvedValue(null);
-    await registrar(evento('offer', { telefoneInformado: '5583977770000@s.whatsapp.net' }));
+    await registrar(evento('offer', { telefoneInformado: '5583977770001@s.whatsapp.net' }));
     await registrar(evento('terminate'));
 
-    expect(resolverDestinatario).toHaveBeenCalledWith(banco.db, CONTA, '5583977770000');
+    expect(resolverDestinatario).toHaveBeenCalledWith(banco.db, CONTA, '5583977770001');
     expect(ligacao()).toMatchObject({ desfecho: 'perdida', detalhe: 'telefone pelo whatsapp' });
   });
 
@@ -295,6 +295,22 @@ describe('o que NÃO vira bolha', () => {
 
     expect(resolverDestinatario).not.toHaveBeenCalled();
     expect(ligacao()).toMatchObject({ desfecho: 'sem_telefone' });
+  });
+
+  it('LID com o `:aparelho` é procurado no acervo pela forma sem aparelho', async () => {
+    await registrar(evento('offer', { de: '123456789012345:7@lid' }));
+    await registrar(evento('terminate'));
+
+    expect(resolverTelefoneDoLid).toHaveBeenCalledWith(banco.db, CONTA, LID);
+    expect(ligacao()).toMatchObject({ desfecho: 'perdida', detalhe: 'telefone pelo acervo' });
+  });
+
+  it('o próprio aparelho com o `:aparelho` também é do_escritorio', async () => {
+    await registrar(evento('offer', { de: '123456789012345:3@lid' }), { ownLid: LID });
+    await registrar(evento('terminate'), { ownLid: LID });
+
+    expect(bolhas()).toHaveLength(0);
+    expect(ligacao()).toMatchObject({ desfecho: 'do_escritorio' });
   });
 
   it('o aparelho da própria conexão como quem ligou: do_escritorio', async () => {
@@ -326,6 +342,33 @@ describe('falhas', () => {
     expect(ligacao()).toMatchObject({ desfecho: 'falhou' });
     expect(String(ligacao()?.detalhe)).toContain('dono da conta');
     expect(ordem).toEqual([]);
+  });
+
+  it('⚠️ o acervo que NÃO RESPONDE não vira "sem telefone": falhou, com o motivo', async () => {
+    resolverTelefoneDoLid.mockResolvedValue('falhou');
+    await registrar(evento('offer'));
+    await registrar(evento('terminate'));
+
+    expect(bolhas()).toHaveLength(0);
+    expect(ligacao()).toMatchObject({ desfecho: 'falhou' });
+    expect(String(ligacao()?.detalhe)).toContain('acervo');
+  });
+
+  it('o acervo não respondeu, mas o callerPn serve: a ligação entra', async () => {
+    resolverTelefoneDoLid.mockResolvedValue('falhou');
+    await registrar(evento('offer', { telefoneInformado: '5583977770001' }));
+    await registrar(evento('terminate'));
+
+    expect(ligacao()).toMatchObject({ desfecho: 'perdida', detalhe: 'telefone pelo whatsapp' });
+  });
+
+  it('dois avisos decidindo AO MESMO TEMPO gravam UMA bolha (a reivindicação é condicional)', async () => {
+    await registrar(evento('offer'), { esperar: async () => {} });
+    await Promise.all([registrar(evento('terminate')), registrar(evento('terminate'))]);
+
+    expect(bolhas()).toHaveLength(1);
+    expect(resolverDestinatario).toHaveBeenCalledTimes(1);
+    expect(banco.rpcs).toHaveLength(1);
   });
 
   it('bolha recusada pelo banco: falhou, e nenhum efeito roda', async () => {

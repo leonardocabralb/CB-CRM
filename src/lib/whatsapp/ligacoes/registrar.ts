@@ -39,7 +39,7 @@ import { followConversationChannel, gravarComCanal } from '@/lib/cb-channels/sta
 import { isUniqueViolation } from '@/lib/contacts/dedupe';
 import { telefoneCanonico } from '@/lib/contacts/telefone';
 import { reopenClosedConversation } from '@/lib/conversations/reopen';
-import { resolverTelefoneDoLid } from '@/lib/whatsapp/sem-telefone/resolver-lid';
+import { consultarTelefoneDoLid } from '@/lib/whatsapp/sem-telefone/resolver-lid';
 
 import {
   FOLGA_DO_DESFECHO_MS,
@@ -49,7 +49,7 @@ import {
 } from './desfecho';
 import type { EventoDeLigacao } from './evento';
 import { PREVIA_DA_LIGACAO } from './previa';
-import { ehLid, telefoneDoCallerPn, telefoneDoJid } from './telefone';
+import { ehLid, lidSemAparelho, telefoneDoCallerPn, telefoneDoJid } from './telefone';
 
 /**
  * Depois do `accept`, espera só o `offer` gravar (os dois podem correr juntos).
@@ -205,21 +205,28 @@ async function decidir(
   if (!desfecho) return;
   // Sem o `offer` não se sabe quem ligou. Se ele ainda chegar, a espera DELE
   // decide; se nunca chegar, não há de quem falar.
-  if (!linha.quem_ligou) return;
+  const quemLigou = lidSemAparelho(linha.quem_ligou);
+  if (!quemLigou) return;
 
-  if (rota.ownLid && linha.quem_ligou === rota.ownLid) {
+  if (rota.ownLid && lidSemAparelho(rota.ownLid) === quemLigou) {
     await fechar(db, linha.id, 'do_escritorio', null, 'o aparelho da própria conexão');
     return;
   }
 
-  const quem = await telefoneDeQuemLigou(db, rota.accountId, linha);
+  const quem = await telefoneDeQuemLigou(db, rota.accountId, quemLigou, linha.telefone_informado);
+  if (quem === 'falhou') {
+    // Um soluço do banco NÃO é "o CRM não conhece este número": a ligação de
+    // um cliente conhecido ficaria registrada como de ninguém.
+    await fechar(db, linha.id, 'falhou', null, 'a consulta ao acervo LID → telefone falhou');
+    return;
+  }
   if (!quem) {
     await fechar(
       db,
       linha.id,
       'sem_telefone',
       null,
-      ehLid(linha.quem_ligou)
+      ehLid(quemLigou)
         ? 'LID sem telefone no acervo e sem callerPn válido'
         : 'endereço de quem ligou não é de telefone',
     );
@@ -254,24 +261,34 @@ async function decidir(
 
 type FonteDoTelefone = 'jid' | 'acervo' | 'whatsapp';
 
-/** As três fontes, na ordem de confiança — ver `telefone.ts`. */
+/**
+ * As três fontes, na ordem de confiança — ver `telefone.ts`. `'falhou'` quando
+ * o acervo não respondeu e o `callerPn` não serve: não dá para afirmar "sem
+ * telefone".
+ */
 async function telefoneDeQuemLigou(
   db: SupabaseClient,
   accountId: string,
-  linha: LinhaDaLigacao,
-): Promise<{ telefone: string; fonte: FonteDoTelefone } | null> {
-  const doJid = telefoneDoJid(linha.quem_ligou);
+  quemLigou: string,
+  telefoneInformado: string | null,
+): Promise<{ telefone: string; fonte: FonteDoTelefone } | null | 'falhou'> {
+  const doJid = telefoneDoJid(quemLigou);
   if (doJid) return { telefone: doJid, fonte: 'jid' };
 
-  if (ehLid(linha.quem_ligou)) {
-    const achado = await resolverTelefoneDoLid(db, accountId, linha.quem_ligou as string);
-    const doAcervo = telefoneDoJid(achado?.telefoneJid);
-    if (doAcervo) return { telefone: doAcervo, fonte: 'acervo' };
+  let acervoFalhou = false;
+  if (ehLid(quemLigou)) {
+    const achado = await consultarTelefoneDoLid(db, accountId, quemLigou);
+    if (achado === 'falhou') {
+      acervoFalhou = true;
+    } else {
+      const doAcervo = telefoneDoJid(achado?.telefoneJid);
+      if (doAcervo) return { telefone: doAcervo, fonte: 'acervo' };
+    }
   }
 
-  const informado = telefoneDoCallerPn(linha.telefone_informado);
+  const informado = telefoneDoCallerPn(telefoneInformado);
   if (informado) return { telefone: informado, fonte: 'whatsapp' };
-  return null;
+  return acervoFalhou ? 'falhou' : null;
 }
 
 /**

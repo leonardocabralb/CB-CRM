@@ -159,6 +159,7 @@ export function useBrowserNotifications(): void {
       document: t("document"),
       location: t("location"),
       template: t("template"),
+      call: t("call"),
     };
     vivoRef.current = {
       ctx: { papel: profile?.account_role ?? null, perfil: perfilDeAcesso },

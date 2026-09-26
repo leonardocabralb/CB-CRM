@@ -84,7 +84,7 @@ describe('1044 — messages aceita a ligação', () => {
     expect(semComentarios).toMatch(/SET LOCAL lock_timeout = '5s'/);
   });
 
-  it('a conferência é SÓ catálogo: depois da ALTER em messages, nenhuma linha é lida nem escrita', () => {
+  it('a conferência é SÓ catálogo: depois da ALTER em messages, nada escreve linha nem consulta tabela de dado', () => {
     // A trava exclusiva de `messages` fica presa até o fim da transação
     // (regra da 1032): escrever ali, ou varrer tabela, segura a ingestão.
     const primeiraAlter = semComentarios.search(/ALTER\s+TABLE\s+messages\b/i);

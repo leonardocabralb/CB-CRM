@@ -55,7 +55,7 @@ tentou ligar, para alguém ver e retornar?"
 | D2 | Ligação atendida no celular também aparece no fio | operador, 25/09 |
 | D3 | Retorno feito pelo celular não apaga o "em atraso" (o CRM não o vê); é aceitável | operador, 25/09 |
 | D4 | A ligação (perdida ou atendida) cancela as esperas "parar se o cliente responder" do contato: o cliente procurou o escritório | implementação — **confirmar** |
-| D5 | Robô, automações, IA e o webhook de saída `message.received` NÃO reagem à ligação (não há texto a responder) | implementação |
+| D5 | Robô, automações, IA e o webhook de saída `message.received` NÃO reagem à ligação (não há texto a responder). ⚠️ O CARD que a ligação abre (D1) segue o caminho de todo card novo: as automações da etapa de entrada e o `deal.created` ao n8n rodam, como na primeira mensagem de um lead. Medido em 26/09/2026: nenhuma automação ativa age nas etapas de entrada das conexões por QR Code; o n8n assina `deal.created` | implementação |
 | D6 | Chamada de grupo é ignorada; ligação de um número do próprio escritório também | implementação |
 | D7 | Quem ligou sem telefone resolvível (LID fora do acervo e sem `callerPn` válido) fica registrado em `cb_ligacoes` como `sem_telefone`, sem aparecer na tela | implementação — v1 |
 | D8 | Os ajustes prontos da Evolution ficam DESLIGADOS: "rejeitar ligação" recusaria também nos celulares; "mensagem ao ligar" sai em toda ligação e o CRM a leria como resposta de gente | estudo |
@@ -171,9 +171,23 @@ tentou ligar, para alguém ver e retornar?"
   "equipe pelo celular".
 - **A API v1** lista a ligação com `content_type: "call"` (documentado em
   `docs/public-api.md`); o webhook de saída não emite nada para ela.
-- **Notificação do navegador** (Fase 8 do plano do upstream, ainda não
-  montada): `shouldNotifyForMessage` dispararia para a perdida com o corpo
-  vazio — quem montar o ouvinte dá a ela um texto.
+- **`callerPn` ambíguo é recusado**: com DDD 31 em diante, 13 dígitos
+  terminados em 0 podem ser o defeito da Baileys sobre um celular antigo (o
+  número de OUTRA pessoa). Se o defeito valer para todo número de 12 dígitos,
+  quem liga de DDD 83 sem estar no acervo fica `sem_telefone`. O valor cru
+  fica em `cb_ligacoes.telefone_informado`: as ligações da Fase 4 mostram o
+  formato real, e a régua se ajusta com esse dado.
+- **`sem_telefone` e `falhou` não aparecem para ninguém** (só em
+  `cb_ligacoes`); nem a ligação cujo fim chega nos ~11 s antes de um deploy
+  (a espera passa da graça do SIGTERM), nem a perdida sem bolha de um
+  processo morto no meio. Recolher isso (varredura no cron, contagem no Meu
+  dia) fica para depois, se o registro mostrar que acontece.
+- **Resposta por TEXTO nos ~11 s entre o fim do toque e a decisão**: a bolha
+  perdida, gravada depois, acende "em atraso" sobre cliente já respondido
+  (a 972 decide pela ordem de inserção). Janela pequena, aceita.
+- **Robô de "primeira mensagem"**: a perdida conta como linha do cliente, e
+  um fluxo com esse gatilho não iniciaria para quem ligou antes de escrever.
+  Medido em 26/09/2026: a conta não tem fluxo nenhum.
 
 ## 7. Registro das fases
 
@@ -188,6 +202,15 @@ tentou ligar, para alguém ver e retornar?"
   (`ligacoes.chamadores.test.ts`, `ligacoes-1044.test.ts` e as allowlists de
   funil, reabertura e esperas). Testes: 18 das regras + 16 da orquestração +
   os estruturais. Regra de área: `.claude/rules/ligacoes.md`.
+- **Revisão independente** (26/09/2026, um revisor sobre o diff): sem P1.
+  Corrigidos: o separador de canal que a ligação abria mudo; a régua do
+  `callerPn` (celular antigo de DDD 31+ com o zero a mais); a nova tentativa
+  sem canal que não reconhecia a FK composta; o acervo que não responde
+  deixou de virar `sem_telefone` (`falhou`, com o motivo); o LID com
+  `:aparelho`; citar uma ligação pela API (400); o aviso do navegador sem
+  corpo (o ouvinte JÁ está montado); regras e docs que contradiziam os pinos;
+  pinos dos filtros do Painel, do Meu dia e do Radar. Registrados como
+  limite: os itens da seção 6.
 - **Fase 3** (26/09/2026): 1044 aplicada (histórico `20260926112303`) e
   conferida no catálogo. Ponta a ponta no preview, com avisos sintéticos no
   webhook LOCAL da Evolution e só o lead de teste: perdida com o telefone

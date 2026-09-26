@@ -4110,7 +4110,8 @@
         "video": "🎬 Video",
         "document": "📄 Document",
         "location": "📍 Location",
-        "template": "📋 Template"
+        "template": "📋 Template",
+        "call": "📞 Missed call"
       }
     }
   },

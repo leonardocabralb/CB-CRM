@@ -450,6 +450,8 @@ upstream sobrescrevê-los:
 | `src/types/index.ts` (ligações, 1044) | `'call'` em `ContentType`, `DetalhesDaLigacao` e `Message.ligacao` |
 | `src/lib/dashboard/queries.ts` (ligações, 1044) | `.neq('content_type', 'call')` nas mensagens enviadas de hoje e de ontem, na série de conversas e no feed de atividade: a ligação ATENDIDA é gravada como `agent` + `from_device` e contaria como mensagem que a equipe enviou. Um merge que traga as consultas cruas infla os números sem erro |
 | `src/components/inbox/message-thread.tsx` e `message-bubble.tsx` (ligações, 1044) | a ligação (`content_type === 'call'`) vira a faixa `<AvisoDeLigacao>` e sai do `MessageActions`, como o aviso de sistema do grupo — sem isso haveria "apagar para todos" numa ligação |
+| `src/lib/whatsapp/send-message.ts` (ligações, 1044) | o `content_type` na busca da mensagem citada e a recusa (400) de citar uma ligação: o `message_id` dela é `call:<id>`, que não existe no WhatsApp |
+| `src/lib/notifications/browser-notify.ts` e `src/hooks/use-browser-notifications.ts` (ligações, 1044) | o rótulo `call` em `NotificationLabels` e o `case "call"` de `buildNotificationContent`: a ligação perdida não tem texto, e sem o rótulo o aviso do navegador sairia com o corpo vazio |
 
 ## 5. Migrations do original: a história das renumerações
 

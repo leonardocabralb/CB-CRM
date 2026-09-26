@@ -4103,7 +4103,8 @@
         "video": "🎬 Vídeo",
         "document": "📄 Documento",
         "location": "📍 Localização",
-        "template": "📋 Modelo"
+        "template": "📋 Modelo",
+        "call": "📞 Ligação perdida"
       }
     }
   },

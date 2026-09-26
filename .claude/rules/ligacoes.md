@@ -51,12 +51,19 @@ obrigações gerais de caminho de entrada estão em `.claude/rules/ingestao.md`.
 
 ## Quem ligou
 
-- Ordem: JID de telefone → acervo (`resolverTelefoneDoLid`, 1010) →
+- Ordem: JID de telefone → acervo (`consultarTelefoneDoLid`, 1010) →
   `callerPn` conferido (`telefoneDoCallerPn`). ⚠️ **O LID jamais vira
   telefone** (a armadilha dos 8 últimos dígitos, `whatsapp-evolution.md`).
-- ⚠️ O `callerPn` brasileiro de 13 dígitos sem o 9 na 5ª posição é
-  RECUSADO, nunca "consertado": é o defeito do zero a mais no fixo (issue #2154
-  da Baileys).
+- ⚠️⚠️ O `callerPn` com o defeito do zero a mais (issue #2154 da Baileys:
+  número de 12 dígitos + 0) é RECUSADO, nunca "consertado". Duas formas: 13
+  dígitos sem o 9 na 5ª posição (fixo) e, com DDD 31 em diante (onde o
+  WhatsApp registra o celular com 12), 13 dígitos terminados em 0 — o celular
+  antigo começando em 9 + 0 é o número válido de OUTRA pessoa.
+- O LID é comparado SEM o `:aparelho` (`lidSemAparelho`), no acervo e contra
+  o `own_lid`.
+- O acervo que NÃO RESPONDE (`consultarTelefoneDoLid` → `'falhou'`) vira
+  `falhou`, nunca `sem_telefone`: seria afirmar que o CRM não conhece um
+  cliente que ele conhece.
 - Sem telefone resolvível → `sem_telefone`, sem bolha (a pessoa não aparece na
   tela: limite da v1). O próprio aparelho (`own_lid`) ou número de uma conexão
   da conta → `do_escritorio`.
@@ -90,6 +97,8 @@ obrigações gerais de caminho de entrada estão em `.claude/rules/ingestao.md`.
 - ⚠️ O webhook de saída NÃO emite nada: nem `message.received`, nem
   `conversation.created` (ele quer dizer só "o cliente abriu a conversa
   ESCREVENDO" — contrato publicado).
+- ⚠️ O CARD que a ligação abre segue o caminho de todo card novo: as
+  automações da etapa de entrada e o `deal.created` rodam (D5 do plano).
 - Ligação que cria a ficha não dispara "Novo contato criado", e a perdida
   antes da 1ª mensagem faz "Primeira mensagem" não disparar para aquela
   conversa (a contagem é por linha do cliente). Limite escrito no plano.
@@ -98,7 +107,10 @@ obrigações gerais de caminho de entrada estão em `.claude/rules/ingestao.md`.
 
 - `message-bubble.tsx` (retorno cedo para `<AvisoDeLigacao>`) e
   `message-thread.tsx` (a ligação sai do `MessageActions`, como o aviso de
-  grupo — senão haveria "apagar para todos" numa ligação).
+  grupo — senão haveria "apagar para todos" numa ligação — e desenha o
+  `SeparadorDeCanal` quando ABRE um trecho de outro número).
+- Núcleo de envio: citar uma ligação é 400 (o `call:<id>` não existe no
+  WhatsApp). Aviso do navegador: a perdida tem rótulo próprio (`labels.call`).
 - A prévia no banco é o marcador `[call]` (`PREVIA_DA_LIGACAO`), o formato de
   todo tipo sem texto; a lista, o card do funil e o tempo real
   (`comMensagemNova`) o trocam por "📞 Ligação" (`ehPreviaDeLigacao`).

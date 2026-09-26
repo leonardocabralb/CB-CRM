@@ -108,6 +108,12 @@ GRANT ALL ON TABLE cb_ligacoes TO service_role;
 
 -- ------------------------------------------------------------
 -- 2) messages.content_type aceita 'call'
+--
+-- ⚠️ O ADD CONSTRAINT validado VARRE `messages` com a trava exclusiva presa
+-- (o DROP a pegou). Aceito pelo tamanho: 88 mil linhas em 26/09/2026,
+-- milissegundos. Numa tabela maior, o caminho é `NOT VALID` aqui e
+-- `VALIDATE CONSTRAINT` numa transação separada (trava que não bloqueia a
+-- escrita).
 -- ------------------------------------------------------------
 ALTER TABLE messages DROP CONSTRAINT IF EXISTS messages_content_type_check;
 ALTER TABLE messages ADD CONSTRAINT messages_content_type_check

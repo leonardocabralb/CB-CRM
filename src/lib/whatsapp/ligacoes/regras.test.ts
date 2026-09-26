@@ -137,8 +137,8 @@ describe('o telefone de quem ligou', () => {
   });
 
   it('callerPn: JID ou só dígitos', () => {
-    expect(telefoneDoCallerPn('5583999990000@s.whatsapp.net')).toBe('5583999990000');
-    expect(telefoneDoCallerPn('5583999990000')).toBe('5583999990000');
+    expect(telefoneDoCallerPn('5583999990001@s.whatsapp.net')).toBe('5583999990001');
+    expect(telefoneDoCallerPn('5583999990001')).toBe('5583999990001');
     expect(telefoneDoCallerPn('558332221234')).toBe('558332221234'); // fixo, 12 dígitos
     expect(telefoneDoCallerPn('14045551234')).toBe('14045551234'); // de fora do Brasil
   });
@@ -146,6 +146,18 @@ describe('o telefone de quem ligou', () => {
   it('⚠️ callerPn com o zero a mais do fixo (issue #2154 da Baileys) é recusado, não "consertado"', () => {
     // 12 dígitos do fixo + o 0 do defeito = 13, sem o 9 do celular.
     expect(telefoneDoCallerPn('5583322212340')).toBeNull();
+  });
+
+  it('⚠️ o defeito sobre um celular de 12 dígitos começando em 9 daria o número de OUTRA pessoa: recusado', () => {
+    // 5583 9988-0000 (celular antigo, 12 dígitos no WhatsApp) + o 0 do defeito
+    // = 5583 99880-0000, um celular válido — de outra pessoa.
+    expect(telefoneDoCallerPn('5583998800000')).toBeNull();
+    // Não termina em 0: não pode ser o defeito.
+    expect(telefoneDoCallerPn('5583998800001')).toBe('5583998800001');
+    // SP/RJ/ES (DDD até 28) registram o celular com 13 dígitos: terminar em 0 é normal.
+    expect(telefoneDoCallerPn('5511998800000')).toBe('5511998800000');
+    expect(telefoneDoCallerPn('5528998800000')).toBe('5528998800000');
+    expect(telefoneDoCallerPn('5531998800000')).toBeNull();
   });
 
   it('callerPn estranho não vira telefone', () => {
