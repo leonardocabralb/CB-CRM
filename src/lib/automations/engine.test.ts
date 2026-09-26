@@ -13,7 +13,7 @@ const h = vi.hoisted(() => ({
       email?: string;
       company?: string;
     } | null,
-    ownedCustomField: null as { id: string } | null,
+    ownedCustomField: null as { id: string; field_type?: string } | null,
     pipeline: null as { id: string } | null,
     stage: null as { id?: string; resultado?: string | null } | null,
     dealExistente: null as { id: string; stage_id?: string } | null,
@@ -113,6 +113,7 @@ vi.mock('./admin-client', () => {
     filters: [string, string, unknown][];
     recorte?: [string, string, unknown][];
     limite?: number;
+    colunas: string;
   }) {
     const { table, type } = ops;
     if (table === 'contacts') {
@@ -158,7 +159,15 @@ vi.mock('./admin-client', () => {
     }
     if (table === 'custom_fields') {
       // account-scoped ownership lookup for a custom field definition
-      return { data: state.ownedCustomField, error: null };
+      // `field_type` só volta quando a consulta o PEDE, como no PostgREST:
+      // tirá-lo do select desliga a forma canônica da data sem erro nenhum.
+      const f = state.ownedCustomField;
+      if (!f) return { data: null, error: null };
+      const pediuTipo = /\bfield_type\b/.test(ops.colunas);
+      return {
+        data: { id: f.id, ...(pediuTipo ? { field_type: f.field_type } : {}) },
+        error: null,
+      };
     }
     if (table === 'contact_custom_values') {
       if (type === 'upsert') {
@@ -340,9 +349,10 @@ vi.mock('./admin-client', () => {
       filters: [] as [string, string, unknown][],
       recorte: [] as [string, string, unknown][],
       limite: 0 as number,
+      colunas: '',
     };
     const b: Record<string, unknown> = {
-      select: () => b,
+      select: (c?: string) => ((ops.colunas = c ?? ''), b),
       insert: (p: unknown) => ((ops.type = 'insert'), (ops.payload = p), b),
       update: (p: unknown) => ((ops.type = 'update'), (ops.payload = p), b),
       delete: () => ((ops.type = 'delete'), b),
@@ -682,6 +692,64 @@ describe('update_contact_field — custom fields', () => {
 
       expect(h.state.updateCalls).toHaveLength(0);
     }
+  });
+
+  // A trava do lembrete (935) é por VALOR: a automação do Calendly gravava
+  // "…:00.000000Z" e a API v1 "…:00.000Z" no MESMO campo, e o lembrete saía
+  // duas vezes. Campo de data grava o instante numa forma só.
+  it('CRÍTICO: campo de DATA grava o instante canônico (…000000Z → …000Z)', async () => {
+    h.state.owned = { id: 'c1' };
+    h.state.ownedCustomField = { id: 'cf1', field_type: 'datetime' };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [customStep('custom:cf1', '{{ vars.agendamento_inicio }}')];
+
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: { vars: { agendamento_inicio: '2026-09-28T17:30:00.000000Z' } },
+    });
+
+    expect(h.state.upsertCalls).toHaveLength(1);
+    expect((h.state.upsertCalls[0].payload as { value: string }).value).toBe(
+      '2026-09-28T17:30:00.000Z'
+    );
+  });
+
+  it('campo de TEXTO com o mesmo valor grava cru', async () => {
+    h.state.owned = { id: 'c1' };
+    h.state.ownedCustomField = { id: 'cf1', field_type: 'text' };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [customStep('custom:cf1', '2026-09-28T17:30:00.000000Z')];
+
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: {},
+    });
+
+    expect((h.state.upsertCalls[0].payload as { value: string }).value).toBe(
+      '2026-09-28T17:30:00.000000Z'
+    );
+  });
+
+  it('campo de DATA sem fuso escrito grava como veio (não escolhe fuso em silêncio)', async () => {
+    h.state.owned = { id: 'c1' };
+    h.state.ownedCustomField = { id: 'cf1', field_type: 'datetime' };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [customStep('custom:cf1', '2026-09-28T17:30:00')];
+
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: {},
+    });
+
+    expect((h.state.upsertCalls[0].payload as { value: string }).value).toBe(
+      '2026-09-28T17:30:00'
+    );
   });
 
   it('refuses to write a custom field from another account', async () => {

@@ -1,5 +1,7 @@
 import type { Automation, DateFieldTriggerConfig } from '@/types'
 import { PAGINA } from '@/lib/supabase/paginar'
+// Função pura (o instante como chave); nada de I/O vem junto.
+import { chaveDaTrava } from '@/lib/calendly/cancelamento'
 import { supabaseAdmin } from './admin-client'
 import { dispararAutomacoes } from './engine'
 import {
@@ -253,7 +255,11 @@ export async function varrerLembretes(): Promise<ResultadoDaVarredura> {
             account_id: bruta.account_id,
             automation_id: bruta.id,
             contact_id: alvo.contact_id,
-            valor: alvo.valor,
+            // ⚠️⚠️ O INSTANTE, não o texto (`chaveDaTrava`): o campo é gravado
+            // pelo Calendly e pela API v1 com ~1 s de diferença, em formatos
+            // diferentes do mesmo horário. Pelo texto, o ciclo que lia entre as
+            // duas escritas travava a 1ª forma e o seguinte disparava de novo.
+            valor: chaveDaTrava(alvo.valor),
             // `motivo` separa esta linha da que o CANCELAMENTO do Calendly
             // pré-arma (1013): lá `disparado_em` estaria preenchido sem
             // envio nenhum.

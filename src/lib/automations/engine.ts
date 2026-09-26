@@ -48,6 +48,7 @@ import {
   FUSO_DO_ESCRITORIO,
   TIPO_DATA,
   formatarParaMensagem,
+  instanteCanonico,
 } from '@/lib/contacts/campo-data';
 import { diaNoFuso, somarDias } from '@/lib/tasks/prazo';
 import {
@@ -1618,13 +1619,20 @@ async function runStep(
         // the field definition belongs to this account before writing.
         const { data: field } = await db
           .from('custom_fields')
-          .select('id')
+          .select('id, field_type')
           .eq('id', customFieldId)
           .eq('account_id', args.automation.account_id)
           .maybeSingle();
         if (!field) {
           return `field ${cfg.field} not writable from automations`;
         }
+        // ⚠️ Campo de DATA grava o instante numa forma só (`instanteCanonico`):
+        // a automação do Calendly manda "…:00.000000Z" e a API v1 "…:00.000Z"
+        // para o mesmo horário, e o texto é chave da trava do lembrete (935).
+        // Sem fuso escrito (ou ilegível), grava como veio — canonizar ali
+        // seria escolher um fuso em silêncio.
+        const gravado =
+          field.field_type === TIPO_DATA ? (instanteCanonico(value) ?? value) : value;
         // Upsert on the table's UNIQUE(contact_id, custom_field_id) so repeated
         // runs overwrite rather than duplicate. Tenancy is enforced above and,
         // for the contact side, by the entry-point ownership guard.
@@ -1632,7 +1640,7 @@ async function runStep(
           {
             contact_id: args.contactId,
             custom_field_id: customFieldId,
-            value,
+            value: gravado,
           },
           { onConflict: 'contact_id,custom_field_id' }
         );
