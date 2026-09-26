@@ -23,7 +23,6 @@ import type {
   AutomationRefStepConfig,
   RunFlowStepConfig,
   SetAiStepConfig,
-  AssignIaAgentStepConfig,
   SendMediaStepConfig,
   SendToNumberStepConfig,
   CalendlyTriggerConfig,
@@ -36,7 +35,6 @@ import { supabaseAdmin } from './admin-client';
 import { resolverDestinatario } from './destinatario';
 import { resolveEngineChannelPreferring } from '@/lib/cb-channels/engine-send';
 import { ehGatilhoDaRegua, PASSOS_QUE_FALAM_COM_O_CONTATO } from '@/lib/asaas/regua';
-import { ehInstagram } from '@/lib/cb-channels/transporte';
 
 /**
  * Os passos que calam o agente de IA quando rodam por causa da mensagem do
@@ -1558,7 +1556,7 @@ async function runStep(
       // `dispararAutomacoes`, e não `runAutomationsForTrigger` (que é `void`):
       // se a automação de `tag_added` FALOU (ou vai falar) com o contato, a
       // execução de cima falou junto — é pelo `falou` dela que a ingestão
-      // cala o agente de IA (E4). Descartado, o agente de entrada respondia
+      // cala o agente de IA (E4). Descartado, o agente da etapa respondia
       // uma segunda vez à mesma mensagem. Só a fala aninhada sobe: a que só
       // etiqueta continua não contando (Codex, #292).
       const aninhado = await dispararAutomacoes({
@@ -2080,7 +2078,7 @@ async function runStep(
       // é justamente o dia em que ninguém vai lembrar desta regra.
       const { data: conv, error: convErr } = await db
         .from('conversations')
-        .select('group_id')
+        .select('group_id, ai_autoreply_disabled, ia_pausada_por')
         .eq('id', conversationId)
         .eq('account_id', args.automation.account_id)
         .maybeSingle();
@@ -2090,18 +2088,13 @@ async function runStep(
       if (conv.group_id)
         throw new Error('set_ai não vale em conversa de grupo');
 
-      // ⚠️ NOSSO (F2 dos agentes de IA, E13): o `set_ai` segue a régua da
-      // pausa com MOTIVO (1049). Desligar pausa por `automacao` (sem pisar
-      // num motivo que já estava lá). Ligar passa pela MESMA regra da
-      // atribuição (D17), decidida no BANCO com a conversa travada
-      // (`cb_retomar_ia_por_automacao`): retoma SÓ a pausa por `gente` ou por
-      // `automacao`, e só se ninguém da equipe respondeu nas últimas 24 h —
-      // sem isso, o advogado respondia pelo celular, uma automação "Ligar IA"
-      // rodava e a IA voltava a falar no meio do atendimento (D10). `botao` e
-      // `transferencia` foram decisões de gente sobre aquela conversa, e
-      // pausa sem motivo (anterior à 1049) conta como `botao`. E NÃO solta
-      // mais o responsável humano: a atribuição deixou de ser portão do
-      // agente (5.3).
+      // ⚠️ NOSSO (agentes de IA, 1049): a pausa tem MOTIVO. Desligar pausa por
+      // `automacao` (sem pisar num motivo que já estava lá). Ligar desfaz SÓ a
+      // pausa por `automacao`: a de gente, do botão e da transferência foram
+      // decisões de gente sobre aquela conversa e só o "Retomar IA" as desfaz
+      // (D26). Ligar NÃO zera o teto (o teto é contado pelas respostas do
+      // agente desde que o card entrou na etapa ou alguém clicou "Retomar") e
+      // não solta o responsável humano.
       if (!cfg.enabled) {
         const { error: upErr } = await db
           .from('conversations')
@@ -2117,103 +2110,20 @@ async function runStep(
         return 'IA desligada na conversa';
       }
 
-      // ⚠️ Ligar (retomando ou já ligada) zera o teto de respostas da IA
-      // nesta conversa, por decisão do operador (D10). Automatizado, o teto
-      // passa a depender de quem monta a regra — "a cada mensagem recebida,
-      // religar a IA" fura o teto para sempre.
-      const { data: resultado, error: rpcErr } = await db.rpc('cb_retomar_ia_por_automacao', {
-        p_account_id: args.automation.account_id,
-        p_conversation_id: conversationId,
-      });
-      if (rpcErr) throw new Error(`set_ai falhou: ${rpcErr.message}`);
-      switch (resultado) {
-        case 'retomada':
-          return 'IA ligada na conversa';
-        case 'ja_ligada':
-          return 'IA já estava ligada; teto de respostas zerado';
-        case 'pausada_gente':
-          return 'IA segue pausada: a equipe respondeu nas últimas 24 h';
-        case 'pausada_mantida':
-          return 'IA segue pausada: a pausa foi de gente (botão ou transferência)';
-        case 'grupo':
-          throw new Error('set_ai não vale em conversa de grupo');
-        case 'sem_conversa':
-          throw new Error('set_ai: conversa não encontrada nesta conta');
-        default:
-          throw new Error(`set_ai: resposta inesperada do banco (${String(resultado)})`);
+      if (conv.ai_autoreply_disabled !== true) return 'IA já estava ligada';
+      if (conv.ia_pausada_por !== 'automacao') {
+        return `IA segue pausada: a pausa foi de gente (${conv.ia_pausada_por ?? 'botao'})`;
       }
-    }
-
-    case 'assign_ia_agent': {
-      // NOSSO (F2 dos agentes de IA, D9/D17/E12): grava o agente ATIVO da
-      // conversa. A regra da pausa (retoma a pausa por gente, salvo resposta
-      // de gente nas últimas 24 h; nunca retoma botão nem transferência)
-      // roda no BANCO, com a conversa travada (`cb_atribuir_agente_de_ia`).
-      // Nunca toca o responsável humano.
-      const cfg = step.step_config as AssignIaAgentStepConfig;
-      if (!cfg?.ia_agente_id) throw new Error('Atribuir agente de IA: nenhum agente escolhido');
-      const conversationId = await resolveConversationId(args);
-      const { data: conv, error: convErr } = await db
+      // A condição vai no próprio UPDATE: a foto acima é de instantes atrás.
+      const { error: upErr } = await db
         .from('conversations')
-        .select('group_id, channel_id')
+        .update({ ai_autoreply_disabled: false, ia_pausada_por: null, ia_pausada_em: null })
         .eq('id', conversationId)
         .eq('account_id', args.automation.account_id)
-        .maybeSingle();
-      if (convErr) throw new Error(`Atribuir agente de IA: leitura da conversa falhou: ${convErr.message}`);
-      if (!conv) throw new Error('Atribuir agente de IA: conversa não encontrada nesta conta');
-      if (conv.group_id) throw new Error('Atribuir agente de IA não vale em conversa de grupo');
-      if (conv.channel_id) {
-        const { data: canal, error: canalErr } = await db
-          .from('cb_channels')
-          .select('kind')
-          .eq('id', conv.channel_id)
-          .eq('account_id', args.automation.account_id)
-          .maybeSingle();
-        if (canalErr) throw new Error(`Atribuir agente de IA: leitura da conexão falhou: ${canalErr.message}`);
-        if (canal && ehInstagram(canal as { kind: string })) {
-          throw new Error('Atribuir agente de IA não vale no Instagram (o agente não responde no Direct)');
-        }
-      }
-      const { data: agente, error: agenteErr } = await db
-        .from('cb_ia_agentes')
-        .select('nome')
-        .eq('id', cfg.ia_agente_id)
-        .eq('account_id', args.automation.account_id)
-        .maybeSingle();
-      if (agenteErr) throw new Error(`Atribuir agente de IA: leitura do agente falhou: ${agenteErr.message}`);
-      if (!agente) throw new Error('Atribuir agente de IA: o agente não existe nesta conta');
-      // A conexão do DISPARO (a da mensagem, ou a do passo de envio da régua),
-      // senão a da conversa: o banco só atribui agente LIGADO, não arquivado e
-      // que ATENDE essa conexão (Codex, #292) — atribuído fora dela, ele não
-      // responderia e a entrada não o substituiria.
-      const canalDoDisparo = args.context.channel_id ?? conv.channel_id ?? null;
-      const { data: linhas, error: rpcErr } = await db.rpc('cb_atribuir_agente_de_ia', {
-        p_account_id: args.automation.account_id,
-        p_conversation_id: conversationId,
-        p_ia_agente_id: cfg.ia_agente_id,
-        p_canal_id: canalDoDisparo,
-      });
-      if (rpcErr) throw new Error(`Atribuir agente de IA falhou: ${rpcErr.message}`);
-      const r = (Array.isArray(linhas) ? linhas[0] : linhas) as
-        | { resultado?: string; pausada_por?: string | null }
-        | null;
-      const nome = agente.nome as string;
-      switch (r?.resultado) {
-        case 'retomada':
-          return `agente de IA "${nome}" atribuído; IA retomada`;
-        case 'pausada_gente':
-          return `agente de IA "${nome}" atribuído; IA segue pausada: a equipe respondeu nas últimas 24 h`;
-        case 'pausada_mantida':
-          return `agente de IA "${nome}" atribuído; IA segue pausada (${r.pausada_por ?? 'botão'})`;
-        case 'grupo':
-          throw new Error('Atribuir agente de IA não vale em conversa de grupo');
-        case 'agente_indisponivel':
-          throw new Error(
-            `Atribuir agente de IA: o agente "${nome}" está desligado, arquivado ou não atende esta conexão`,
-          );
-        default:
-          throw new Error('Atribuir agente de IA: conversa não encontrada nesta conta');
-      }
+        .eq('ai_autoreply_disabled', true)
+        .eq('ia_pausada_por', 'automacao');
+      if (upErr) throw new Error(`set_ai falhou: ${upErr.message}`);
+      return 'IA ligada na conversa';
     }
 
     case 'send_media': {

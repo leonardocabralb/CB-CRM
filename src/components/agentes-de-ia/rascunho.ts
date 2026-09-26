@@ -29,6 +29,8 @@ export interface Rascunho {
   tetoRespostas: number
   transferirPara: string | null
   podePassarPara: string[]
+  /** Ids das etapas em que o agente atua (D24). */
+  etapas: string[]
 }
 
 function regrasLimpas(regras: string[]): string[] {
@@ -67,6 +69,8 @@ export function alteracoesDoRascunho(salvo: IaAgente, r: Rascunho): Record<strin
   if (r.tetoRespostas !== salvo.tetoRespostas) corpo.teto_respostas = r.tetoRespostas
   if (r.transferirPara !== salvo.transferirPara) corpo.transferir_para = r.transferirPara
   if (!mesmoConjunto(r.podePassarPara, salvo.podePassarPara)) corpo.pode_passar_para = r.podePassarPara
+  // As etapas vão INTEIRAS (a rota apaga as que saíram e insere as novas).
+  if (!mesmoConjunto(r.etapas, salvo.etapas.map((e) => e.stageId))) corpo.etapas = r.etapas
   return corpo
 }
 

@@ -1,30 +1,33 @@
 // ============================================================
-// QUEM RESPONDE a mensagem do cliente (docs/PLANO-agentes-de-ia.md, 5.3, e
-// as decisões da execução da F2). PURO, testado — a ingestão lê os fatos e
-// esta função decide; o turno confere tudo de novo antes de gerar.
+// QUEM RESPONDE a mensagem do cliente (docs/PLANO-agentes-de-ia.md, D24–D27).
+// A regra (`quemResponde`) é PURA, testada; `lerQuemAtende` lê os fatos dela
+// do banco (o cliente vem por parâmetro) — a MESMA leitura na entrada
+// (`entrada.ts`) e nas conferências do turno (`turno.ts`).
+//
+// O agente atua por ETAPA do funil (D24): o card ABERTO mais recente do
+// contato está numa etapa com agente (`cb_ia_agente_etapas`, no máximo um
+// por etapa) → esse agente responde, se ligado, não arquivado, dono da
+// conexão da mensagem, e se o card ENTROU na etapa depois de o agente ser
+// ligado nela (D27: `etapa_desde >= greatest(desde, ativado_em)` — o lead
+// antigo parado na etapa não é atendido).
 //
 // A ordem das regras É a regra:
-//   0. fora do alcance (grupo, Instagram, sem conexão, mensagem que não
-//      abre turno — `abreTurno`, inclusive o tipo que a Meta entrega e a
-//      rota não sabe ler) → ninguém;
+//   0. fora do alcance (grupo, Instagram, sem conexão) e mensagem que não
+//      abre turno (`abreTurno`, e o toque em botão) → ninguém;
 //   1. o robô consumiu a mensagem → ninguém;
 //   2. uma automação desta mensagem FALOU (ou vai falar) com o contato
-//      (`ResultadoDoDisparo.falou`, E4) → ninguém: o cliente não recebe
-//      duas respostas;
-//   3. a conversa está pausada → ninguém;
-//   4. há AGENTE ATIVO, ligado, e a conexão da mensagem é dele → ele. O
-//      responsável humano NÃO cala o agente ativo (a atribuição deixou de ser
-//      portão);
-//   5. a conversa NÃO tem agente ativo, a conexão tem AGENTE DE ENTRADA,
-//      ligado e dono da conexão, a conversa NUNCA recebeu resposta de gente
-//      (D16) e o contato foi criado DEPOIS de a entrada ser ligada (P8, E3) →
-//      ele, e ele vira o agente ativo. ⚠️ Com agente ativo que não pode
-//      responder (desligado, ou a mensagem veio por outra conexão), a entrada
-//      NÃO o substitui: desligar o especialista pararia de funcionar como
-//      freio, e o cliente que escreve para outro número trocaria o agente da
-//      conversa inteira sem ninguém decidir (Codex, #292);
-//   6. senão → ninguém.
+//      (`ResultadoDoDisparo.falou`, E4) → ninguém;
+//   3. conversa encerrada, ou pausada (D26: gente respondeu, o botão, a
+//      transferência, uma automação) → ninguém;
+//   4. sem card aberto, etapa sem agente, agente desligado ou arquivado,
+//      agente sem a conexão, card anterior ao agente (D27) → ninguém;
+//   5. senão → o agente da etapa, com o card e a etapa (o turno confere que
+//      continuam os mesmos até o envio).
 // ============================================================
+
+import type { SupabaseClient } from '@supabase/supabase-js'
+
+import { ehInstagram } from '@/lib/cb-channels/transporte'
 
 /** Tipos de mensagem que abrem turno (E9). Localização e toque em botão (`interactive`) não. */
 export const TIPOS_QUE_ABREM_TURNO: ReadonlySet<string> = new Set(['text', 'audio', 'image', 'document', 'video'])
@@ -85,11 +88,25 @@ export function abreTurno(c: ConteudoDaMensagem): boolean {
   return true
 }
 
-export interface AgenteParaDecidir {
+/** O card ABERTO mais recente do contato (`deals`). */
+export interface CardDoContato {
+  id: string
+  stageId: string
+  pipelineId: string
+  /** `deals.etapa_desde`: quando o card entrou na etapa em que está. */
+  etapaDesde: string | null
+}
+
+/** O agente dono da etapa do card, com o `desde` da linha de `cb_ia_agente_etapas`. */
+export interface AgenteDaEtapa {
   id: string
   ativo: boolean
   arquivado: boolean
   conexoes: readonly string[]
+  /** `cb_ia_agentes.ativado_em`: quando foi ligado pela última vez. */
+  ativadoEm: string | null
+  /** `cb_ia_agente_etapas.desde`: quando a etapa passou a ser dele. */
+  desde: string | null
 }
 
 export interface FatosDaMensagem {
@@ -100,49 +117,36 @@ export interface FatosDaMensagem {
   canalId: string | null
   /** O conteúdo gravado — a régua de `abreTurno`. */
   conteudo: ConteudoDaMensagem
-  /** Toque em botão de modelo (Meta): não abre turno (a regra de hoje). */
+  /** Toque em botão de modelo (Meta): não abre turno. */
   ehRespostaDeBotao: boolean
   roboConsumiu: boolean
   automacaoFalou: boolean
+  /** `conversations.status = 'closed'` (uma automação pode ter encerrado na ingestão). */
+  encerrada: boolean
   /** `conversations.ai_autoreply_disabled`. */
   pausada: boolean
-  /** O agente ATIVO da conversa (`conversations.ia_agente_id`), lido. Nulo = nenhum. */
-  agenteAtivo: AgenteParaDecidir | null
-  /** O agente de ENTRADA da conexão e desde quando ela está ligada. */
-  entrada: { agente: AgenteParaDecidir; desde: string | null } | null
-  /** D16: a conversa NUNCA teve mensagem de gente (`sender_id` ou `from_device`), apagada inclusive. */
-  nuncaTeveGente: boolean
-  /** `contacts.created_at` do contato (P8). */
-  contatoCriadoEm: string | null
-  /** `conversations.created_at` da conversa (P8: o contato nasceu COM ela?). */
-  conversaCriadaEm: string | null
+  card: CardDoContato | null
+  /** O agente da etapa do card (nulo = a etapa não tem agente). */
+  agente: AgenteDaEtapa | null
 }
-
-/**
- * P8: o contato "nasceu com a conversa" quando os dois foram criados juntos
- * (a ingestão cria o contato e a conversa na mesma requisição; o formulário e
- * o agendamento também). O contato IMPORTADO — CSV, ficha criada pelo Asaas,
- * API — nasce sem conversa, e a conversa só aparece quando ele escreve: aí a
- * data do contato é a da importação, não a do começo da relação (Codex, #292).
- */
-export const NASCEU_COM_A_CONVERSA_MS = 2 * 60_000
-
-export type QuemResponde =
-  | { quem: 'ninguem'; motivo: MotivoDeNinguem }
-  | { quem: 'agente'; agenteId: string; via: 'ativo' | 'entrada' }
 
 export type MotivoDeNinguem =
   | 'fora_do_alcance'
+  | 'nao_abre_turno'
   | 'robo'
-  | 'automacao'
+  | 'automacao_falou'
+  | 'encerrada'
   | 'pausada'
-  /** Há agente ativo, mas ele não responde aqui (desligado ou fora da conexão). */
-  | 'agente_ativo_indisponivel'
-  | 'sem_agente'
+  | 'sem_card'
+  | 'etapa_sem_agente'
+  | 'agente_desligado'
+  | 'fora_da_conexao'
+  /** D27: o card entrou na etapa ANTES de o agente ser ligado nela. */
+  | 'card_antigo'
 
-function atende(agente: AgenteParaDecidir, canalId: string): boolean {
-  return agente.ativo && !agente.arquivado && agente.conexoes.includes(canalId)
-}
+export type QuemResponde =
+  | { quem: 'ninguem'; motivo: MotivoDeNinguem }
+  | { quem: 'agente'; agenteId: string; dealId: string; stageId: string }
 
 function instante(iso: string | null): number | null {
   if (!iso) return null
@@ -151,42 +155,133 @@ function instante(iso: string | null): number | null {
 }
 
 export function quemResponde(f: FatosDaMensagem): QuemResponde {
-  if (
-    f.ehGrupo ||
-    f.ehInstagram ||
-    !f.canalId ||
-    f.ehRespostaDeBotao ||
-    !abreTurno(f.conteudo)
-  ) {
-    return { quem: 'ninguem', motivo: 'fora_do_alcance' }
-  }
+  if (f.ehGrupo || f.ehInstagram || !f.canalId) return { quem: 'ninguem', motivo: 'fora_do_alcance' }
+  if (f.ehRespostaDeBotao || !abreTurno(f.conteudo)) return { quem: 'ninguem', motivo: 'nao_abre_turno' }
   if (f.roboConsumiu) return { quem: 'ninguem', motivo: 'robo' }
-  if (f.automacaoFalou) return { quem: 'ninguem', motivo: 'automacao' }
+  if (f.automacaoFalou) return { quem: 'ninguem', motivo: 'automacao_falou' }
+  if (f.encerrada) return { quem: 'ninguem', motivo: 'encerrada' }
   if (f.pausada) return { quem: 'ninguem', motivo: 'pausada' }
-
-  if (f.agenteAtivo) {
-    if (atende(f.agenteAtivo, f.canalId)) return { quem: 'agente', agenteId: f.agenteAtivo.id, via: 'ativo' }
-    return { quem: 'ninguem', motivo: 'agente_ativo_indisponivel' }
+  if (!f.card) return { quem: 'ninguem', motivo: 'sem_card' }
+  if (!f.agente) return { quem: 'ninguem', motivo: 'etapa_sem_agente' }
+  if (!f.agente.ativo || f.agente.arquivado) return { quem: 'ninguem', motivo: 'agente_desligado' }
+  if (!f.agente.conexoes.includes(f.canalId)) return { quem: 'ninguem', motivo: 'fora_da_conexao' }
+  // D27. Sem uma das datas (não deveria acontecer: o banco as grava), NÃO
+  // atende — o lado que atende menos gente.
+  const entrou = instante(f.card.etapaDesde)
+  const desde = instante(f.agente.desde)
+  const ligado = instante(f.agente.ativadoEm)
+  if (entrou === null || desde === null || ligado === null || entrou < Math.max(desde, ligado)) {
+    return { quem: 'ninguem', motivo: 'card_antigo' }
   }
+  return { quem: 'agente', agenteId: f.agente.id, dealId: f.card.id, stageId: f.card.stageId }
+}
 
-  if (f.entrada && atende(f.entrada.agente, f.canalId) && f.nuncaTeveGente) {
-    // P8 (E3): só contato criado DEPOIS de a entrada ser ligada E que nasceu
-    // com a própria conversa (o importado, não). Sem o carimbo (não deveria
-    // acontecer: o banco o grava) ou sem uma das datas, NÃO atende — o lado
-    // que atende menos gente.
-    const desde = instante(f.entrada.desde)
-    const criado = instante(f.contatoCriadoEm)
-    const conversa = instante(f.conversaCriadaEm)
-    if (
-      desde !== null &&
-      criado !== null &&
-      conversa !== null &&
-      criado >= desde &&
-      Math.abs(conversa - criado) <= NASCEU_COM_A_CONVERSA_MS
-    ) {
-      return { quem: 'agente', agenteId: f.entrada.agente.id, via: 'entrada' }
-    }
+// ------------------------------------------------------------
+// A leitura dos fatos (I/O, o cliente por parâmetro)
+// ------------------------------------------------------------
+
+/** O que `lerQuemAtende` leu do banco: tudo que `quemResponde` precisa além da mensagem. */
+export interface LeituraDaConversa {
+  contactId: string | null
+  ehGrupo: boolean
+  ehInstagram: boolean
+  encerrada: boolean
+  pausada: boolean
+  card: CardDoContato | null
+  agente: AgenteDaEtapa | null
+}
+
+/**
+ * Lê a conversa (e a conexão), o card ABERTO mais recente do contato, a
+ * linha da etapa dele em `cb_ia_agente_etapas` e o agente. `null` = a
+ * conversa não é desta conta. LANÇA em erro de leitura: na entrada vira log
+ * (ninguém responde), no turno vira `falhou`.
+ *
+ * O caso comum custa pouco: conversa e conexão numa ida; encerrada, pausada,
+ * grupo ou sem contato param aí; sem card, na segunda; etapa sem agente, na
+ * terceira.
+ */
+export async function lerQuemAtende(
+  db: SupabaseClient,
+  args: { accountId: string; conversationId: string; canalId: string },
+): Promise<LeituraDaConversa | null> {
+  const [{ data: conv, error: erroConv }, { data: canal, error: erroCanal }] = await Promise.all([
+    db
+      .from('conversations')
+      .select('id, contact_id, group_id, status, ai_autoreply_disabled')
+      .eq('id', args.conversationId)
+      .eq('account_id', args.accountId)
+      .maybeSingle(),
+    db.from('cb_channels').select('kind').eq('id', args.canalId).eq('account_id', args.accountId).maybeSingle(),
+  ])
+  if (erroConv) throw new Error(`leitura da conversa falhou: ${erroConv.message}`)
+  if (erroCanal) throw new Error(`leitura da conexão falhou: ${erroCanal.message}`)
+  if (!conv) return null
+  const c = conv as {
+    contact_id: string | null
+    group_id: string | null
+    status: string
+    ai_autoreply_disabled: boolean | null
   }
+  const leitura: LeituraDaConversa = {
+    contactId: c.contact_id,
+    ehGrupo: c.group_id !== null,
+    // Conexão apagada (sem linha) fica fora pelo `canalId` nulo da mensagem;
+    // aqui só o Instagram.
+    ehInstagram: canal ? ehInstagram(canal as { kind: string }) : false,
+    encerrada: c.status === 'closed',
+    pausada: c.ai_autoreply_disabled === true,
+    card: null,
+    agente: null,
+  }
+  if (leitura.ehGrupo || leitura.ehInstagram || leitura.encerrada || leitura.pausada || !c.contact_id) return leitura
 
-  return { quem: 'ninguem', motivo: 'sem_agente' }
+  const { data: deal, error: erroDeal } = await db
+    .from('deals')
+    .select('id, stage_id, pipeline_id, etapa_desde')
+    .eq('account_id', args.accountId)
+    .eq('contact_id', c.contact_id)
+    .eq('status', 'open')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (erroDeal) throw new Error(`leitura do card falhou: ${erroDeal.message}`)
+  const d = deal as { id: string; stage_id: string; pipeline_id: string; etapa_desde: string | null } | null
+  if (!d) return leitura
+  leitura.card = { id: d.id, stageId: d.stage_id, pipelineId: d.pipeline_id, etapaDesde: d.etapa_desde }
+
+  const { data: etapa, error: erroEtapa } = await db
+    .from('cb_ia_agente_etapas')
+    .select('ia_agente_id, desde')
+    .eq('stage_id', d.stage_id)
+    .eq('account_id', args.accountId)
+    .maybeSingle()
+  if (erroEtapa) throw new Error(`leitura da etapa falhou: ${erroEtapa.message}`)
+  const e = etapa as { ia_agente_id: string; desde: string | null } | null
+  if (!e) return leitura
+
+  const { data: ag, error: erroAgente } = await db
+    .from('cb_ia_agentes')
+    .select('id, ativo, arquivado_em, conexoes, ativado_em')
+    .eq('id', e.ia_agente_id)
+    .eq('account_id', args.accountId)
+    .maybeSingle()
+  if (erroAgente) throw new Error(`leitura do agente falhou: ${erroAgente.message}`)
+  const a = ag as {
+    id: string
+    ativo: boolean | null
+    arquivado_em: string | null
+    conexoes: unknown
+    ativado_em: string | null
+  } | null
+  if (!a) return leitura
+  leitura.agente = {
+    id: a.id,
+    ativo: a.ativo === true,
+    arquivado: a.arquivado_em !== null,
+    conexoes: Array.isArray(a.conexoes) ? a.conexoes.filter((x): x is string => typeof x === 'string') : [],
+    ativadoEm: a.ativado_em,
+    desde: e.desde,
+  }
+  return leitura
 }

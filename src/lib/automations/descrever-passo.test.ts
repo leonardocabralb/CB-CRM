@@ -151,7 +151,7 @@ const TODOS_OS_TIPOS: Record<AutomationStepType, true> = {
   send_message: true, send_buttons: true, send_list: true, send_template: true, add_tag: true,
   remove_tag: true, assign_conversation: true, update_contact_field: true, create_deal: true,
   move_deal_stage: true, set_deal_status: true, run_automation: true, stop_automation: true,
-  run_flow: true, stop_flow: true, set_ai: true, assign_ia_agent: true, send_media: true,
+  run_flow: true, stop_flow: true, set_ai: true, send_media: true,
   wait: true, condition: true, send_webhook: true, close_conversation: true,
   send_to_number: true, create_task: true,
 }

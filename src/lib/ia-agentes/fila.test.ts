@@ -28,6 +28,8 @@ const ARGS = {
   conversationId: 'conv-1',
   canalId: 'canal-1',
   iaAgenteId: 'ag-1',
+  dealId: 'deal-1',
+  stageId: 'etapa-1',
   mensagemId: 'msg-1',
 }
 
@@ -42,7 +44,7 @@ afterEach(() => {
 })
 
 describe('enfileirarTurno', () => {
-  it('chama a RPC da 1049 com a espera da rajada e devolve o pendente', async () => {
+  it('chama a RPC da 1049 com o agente, o card, a etapa e a espera da rajada, e devolve o pendente', async () => {
     const { db, rpc } = dbCom({ data: [{ id: 'turno-1', executar_apos: '2026-09-26T12:00:08Z' }], error: null })
     const turno = await enfileirarTurno(db, ARGS)
     expect(rpc).toHaveBeenCalledWith('cb_ia_enfileirar_turno', {
@@ -51,9 +53,21 @@ describe('enfileirarTurno', () => {
       p_canal_id: 'canal-1',
       p_ia_agente_id: 'ag-1',
       p_mensagem_id: 'msg-1',
+      p_deal_id: 'deal-1',
+      p_stage_id: 'etapa-1',
+      p_veio_de_passagem: false,
       p_espera_ms: ESPERA_DA_RAJADA_MS,
     })
     expect(turno).toEqual({ id: 'turno-1', executarApos: '2026-09-26T12:00:08Z' })
+  })
+
+  it('o turno da PASSAGEM (D25) vai marcado e sem a espera da rajada', async () => {
+    const { db, rpc } = dbCom({ data: [{ id: 'turno-2', executar_apos: '2026-09-26T12:00:00Z' }], error: null })
+    await enfileirarTurno(db, { ...ARGS, veioDePassagem: true })
+    expect(rpc).toHaveBeenCalledWith(
+      'cb_ia_enfileirar_turno',
+      expect.objectContaining({ p_veio_de_passagem: true, p_espera_ms: 0 }),
+    )
   })
 
   it('aceita a linha solta (não só a lista do RETURNS TABLE)', async () => {

@@ -78,8 +78,8 @@ async function recolherOrfaos(db: SupabaseClient): Promise<void> {
 
     // `incerto` vai para gente — menos quando alguém já pausou a conversa
     // (a equipe respondeu, o botão Pausar): `transferirParaGente` não passa
-    // por cima da pausa (a de gente é a que a automação retoma) e não
-    // escreve nada. O `incerto` fica: ele fala do ENVIO, não da transferência.
+    // por cima da pausa e não escreve nada. O `incerto` fica: ele fala do
+    // ENVIO, não da transferência.
     if (status === 'incerto' && o.ia_agente_id) {
       const agente = await obterAgente(o.account_id, o.ia_agente_id).catch(() => null)
       const { data: conv } = await db
@@ -92,7 +92,6 @@ async function recolherOrfaos(db: SupabaseClient): Promise<void> {
         accountId: o.account_id,
         conversationId: o.conversation_id,
         contactId: (conv as { contact_id?: string | null } | null)?.contact_id ?? null,
-        iaAgenteId: o.ia_agente_id,
         nomeDoAgente: agente?.nome ?? 'IA',
         transferirPara: agente?.transferirPara ?? null,
         motivo: 'incerto',

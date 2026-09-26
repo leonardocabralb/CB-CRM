@@ -14,11 +14,13 @@ export function respostaDoErro(err: unknown): NextResponse | null {
   const status =
     err.codigo === 'nao_encontrado'
       ? 404
-      : err.codigo === 'nome_repetido'
+      : err.codigo === 'nome_repetido' || err.codigo === 'etapa_ocupada'
         ? 409
         : err.codigo === 'banco'
           ? 500
           : 400
   if (status === 500) console.error('[ia-agentes]', err.message)
-  return NextResponse.json({ error: err.codigo, code: err.codigo }, { status })
+  // `etapa_ocupada` leva o nome do agente que já atua na etapa (D24).
+  const extra = err.codigo === 'etapa_ocupada' ? { outroAgente: err.outroAgente ?? null } : {}
+  return NextResponse.json({ error: err.codigo, code: err.codigo, ...extra }, { status })
 }

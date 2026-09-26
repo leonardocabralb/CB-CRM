@@ -3,7 +3,7 @@ import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { MOTIVOS_DE_TRANSFERENCIA, textosDaTransferencia } from './textos-do-servidor'
+import { MOTIVOS_DE_TRANSFERENCIA, textosDaPassagem, textosDaTransferencia } from './textos-do-servidor'
 
 // As chaves da anotação de transferência são MONTADAS (`nota.<motivo>`), e o
 // portão de i18n do CI não alcança chave montada: este teste cobra os dois
@@ -25,6 +25,7 @@ describe('textos da transferência do agente', () => {
       for (const m of MOTIVOS_DE_TRANSFERENCIA) {
         expect(typeof pegar(d, `IaAgentes.transferencia.nota.${m}`), m).toBe('string')
       }
+      expect(typeof pegar(d, 'IaAgentes.transferencia.passagem')).toBe('string')
     })
   }
 
@@ -32,5 +33,12 @@ describe('textos da transferência do agente', () => {
     const { autor, texto } = await textosDaTransferencia('Triagem', 'sentinela')
     expect(autor).toContain('Triagem')
     expect(texto).toContain('Triagem')
+  })
+
+  it('a passagem (D25): autor da triagem e o nome do destino no texto', async () => {
+    const { autor, texto } = await textosDaPassagem('Triagem', 'Cobrança')
+    expect(autor).toContain('Triagem')
+    expect(texto).toContain('Triagem')
+    expect(texto).toContain('Cobrança')
   })
 })

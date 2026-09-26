@@ -1,6 +1,7 @@
 'use client';
 
-// O detalhe de um agente de IA (F1b, 5.9): Configuração, Playground e Uso.
+// O detalhe de um agente de IA (F1b, 5.9): Configuração, Playground, Uso e
+// Turnos (as últimas vezes que ele foi chamado a responder).
 //
 // ⚠️ Configuração e Playground ficam MONTADAS depois da primeira visita
 // (escondidas, não desmontadas): o rascunho da Configuração vive nela, e
@@ -9,7 +10,8 @@
 // um salvamento: a conversa gerada pela configuração anterior, mandada à
 // nova, não testa versão nenhuma do agente (Codex, #295). A aba Uso, sem
 // rascunho, remonta a cada visita: montada, os testes feitos no Playground
-// não apareciam até recarregar a página.
+// não apareciam até recarregar a página. A aba Turnos, pelo mesmo motivo,
+// também remonta a cada visita.
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -20,10 +22,11 @@ import { Button } from '@/components/ui/button';
 import { SubAbas } from '@/components/settings/sub-abas';
 import { ConfiguracaoDoAgente } from './configuracao-do-agente';
 import { PlaygroundDoAgente } from './playground-do-agente';
+import { TurnosDoAgente } from './turnos-do-agente';
 import { UsoDeIa } from './uso-de-ia';
 import type { IaAgente } from './tipos';
 
-type Aba = 'configuracao' | 'playground' | 'uso';
+type Aba = 'configuracao' | 'playground' | 'uso' | 'turnos';
 
 type Estado =
   | { fase: 'carregando' }
@@ -105,6 +108,7 @@ export function DetalheDoAgente({ id }: { id: string }) {
               { id: 'configuracao', rotulo: t('detalhe.configuracao') },
               { id: 'playground', rotulo: t('detalhe.playground') },
               { id: 'uso', rotulo: t('detalhe.uso') },
+              { id: 'turnos', rotulo: t('detalhe.turnos') },
             ]}
           />
           <div hidden={aba !== 'configuracao'}>
@@ -128,6 +132,7 @@ export function DetalheDoAgente({ id }: { id: string }) {
             </div>
           ) : null}
           {aba === 'uso' ? <UsoDeIa key={e.agente.id} agenteId={e.agente.id} /> : null}
+          {aba === 'turnos' ? <TurnosDoAgente key={e.agente.id} agenteId={e.agente.id} /> : null}
         </>
       )}
     </div>

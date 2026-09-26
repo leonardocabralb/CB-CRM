@@ -3059,8 +3059,9 @@ export function MessageThread({
         )}
       </div>
 
-      {/* Faixa do agente de IA da CONVERSA (F2a): acende com
-          `ia_agente_id`, mostra a pausa com o motivo, Assumir/Retomar. */}
+      {/* Faixa do agente de IA (D24–D26): quem responde nesta conversa (o
+          agente da ETAPA do card) e a pausa, com Pausar/Retomar. As colunas
+          da conversa só fazem a faixa perguntar de novo à rota. */}
       {/* IA não atua em grupo (906). O `/api/ai/autoreply` recusa com 400;
           esconder a faixa evita oferecer um controle que só daria erro. */}
       {!ehGrupo && (
@@ -3069,13 +3070,6 @@ export function MessageThread({
         iaAgenteId={conversation.ia_agente_id ?? null}
         disabled={conversation.ai_autoreply_disabled ?? false}
         pausadaPor={conversation.ia_pausada_por ?? null}
-        handoffSummary={conversation.ai_handoff_summary}
-        currentUserId={user?.id}
-        onChange={(patch) => {
-          if ("assigned_agent_id" in patch) {
-            onAssignChange(conversation.id, patch.assigned_agent_id ?? null);
-          }
-        }}
       />
       )}
 

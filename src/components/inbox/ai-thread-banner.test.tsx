@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { NextIntlClientProvider, type AbstractIntlMessages } from 'next-intl';
 
@@ -9,310 +9,145 @@ import ptBR from '../../../messages/pt-BR.json';
 
 import {
   AiThreadBanner,
-  cliqueAindaVale,
   erroDaResposta,
-  patchDoClique,
-  pausadaNaTela,
-  type CliqueOtimista,
+  FaixaDaIa,
+  faixaDaIa,
+  lerEstadoDaIa,
+  MOTIVOS_DA_PAUSA,
+  type EstadoDaIa,
   type ErroDaFaixa,
+  type Faixa,
 } from './ai-thread-banner';
-
-// ------------------------------------------------------------
-// Estado ENTRE renders, sem DOM. O projeto não tem jsdom, e o
-// `renderToStaticMarkup` esquece o estado a cada chamada — e o defeito do
-// clique otimista só aparece numa SEQUÊNCIA de renders (o banco sai do valor
-// do clique e depois volta). Ligado, este arnês troca o `useState` e o
-// `useCallback` DA FAIXA (só dela: o `next-intl` e o `react-dom` são externos
-// e seguem com o React de verdade) por um armazém por ordem de chamada, que
-// sobrevive aos renders, e guarda os callbacks do último render — é por eles
-// que o teste "clica". Um `setState` no render muda o armazém e o render
-// segue com o valor velho, como o React faria antes de refazer o render.
-// Desligado, delega ao React.
-// ------------------------------------------------------------
-const ganchos = vi.hoisted(() => ({
-  ligado: false,
-  estados: [] as unknown[],
-  proximo: 0,
-  callbacks: [] as unknown[],
-}));
-
-vi.mock('react', async (importOriginal) => {
-  const real = await importOriginal<typeof import('react')>();
-  const useState = (inicial: unknown) => {
-    if (!ganchos.ligado) return real.useState(inicial);
-    const i = ganchos.proximo++;
-    if (!(i in ganchos.estados)) {
-      ganchos.estados[i] = typeof inicial === 'function' ? (inicial as () => unknown)() : inicial;
-    }
-    const definir = (valor: unknown) => {
-      ganchos.estados[i] =
-        typeof valor === 'function' ? (valor as (v: unknown) => unknown)(ganchos.estados[i]) : valor;
-    };
-    return [ganchos.estados[i], definir];
-  };
-  const useCallback = (fn: unknown, deps: unknown[]) => {
-    if (!ganchos.ligado) return real.useCallback(fn as () => void, deps);
-    ganchos.callbacks.push(fn);
-    return fn;
-  };
-  return {
-    ...real,
-    useState: useState as unknown as typeof real.useState,
-    useCallback: useCallback as unknown as typeof real.useCallback,
-  };
-});
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 // ============================================================
-// A faixa do agente de IA no fio (F2a dos agentes de IA, 5.3/5.4/5.9 e
-// E2/E13 do docs/PLANO-agentes-de-ia.md). Quatro coisas que já mentiram:
-//   1. ela se acendia pela configuração LEGADA (`is_active` +
-//      `auto_reply_enabled`), e não pelo agente ativo da CONVERSA;
-//   2. ela se escondia com responsável humano — a atribuição deixou de ser
-//      portão (o responsável não cala o agente ativo);
-//   3. "Retomar" zerava `assigned_agent_id` na tela, e a rota não zera mais;
-//   4. o clique otimista nunca era apagado: o banco confirmava, depois VOLTAVA
-//      ao valor antigo (o gatilho pausou, outra aba retomou), e o clique velho
-//      voltava a mandar na tela até recarregar a página.
+// A faixa do agente de IA no fio (D24–D26 do docs/PLANO-agentes-de-ia.md):
+//   - atendendo → "IA · <nome> responde nesta conversa" + Pausar;
+//   - pausada   → "IA pausada — <motivo>" + Retomar IA;
+//   - nada      → não aparece.
+// Quem responde é o agente da ETAPA do card, que só a rota
+// `GET /api/cb/ia/conversa/[id]` sabe; a conversa guarda só a pausa e o
+// último agente que respondeu.
 // ============================================================
 
-const pt = ptBR as unknown as AbstractIntlMessages;
+const banner = ptBR.Inbox.aiBanner;
+const TRIAGEM = { id: 'ag-1', nome: 'Triagem' };
 
-function desenhar(
-  props: Partial<Parameters<typeof AiThreadBanner>[0]> = {},
-  messages: AbstractIntlMessages = pt,
-) {
+function estado(p: Partial<EstadoDaIa> = {}): EstadoDaIa {
+  return { agente: TRIAGEM, pausada: false, pausadaPor: null, ...p };
+}
+
+function desenhar(faixa: Faixa, messages: AbstractIntlMessages = ptBR as unknown as AbstractIntlMessages) {
   return renderToStaticMarkup(
     <NextIntlClientProvider locale="pt-BR" messages={messages} timeZone="America/Sao_Paulo">
-      <AiThreadBanner
-        conversationId="conv-1"
-        iaAgenteId="agente-1"
-        disabled={false}
-        {...props}
-      />
+      <FaixaDaIa faixa={faixa} busy={false} aoPausar={() => {}} aoRetomar={() => {}} />
     </NextIntlClientProvider>,
   );
 }
 
-const banner = ptBR.Inbox.aiBanner;
-
-describe('AiThreadBanner — acende pela conversa', () => {
-  it('sem agente ativo, não desenha nada — nem com a IA pausada', () => {
-    expect(desenhar({ iaAgenteId: null })).toBe('');
-    expect(desenhar({ iaAgenteId: null, disabled: true, pausadaPor: 'botao' })).toBe('');
+describe('faixaDaIa — o que a faixa desenha', () => {
+  it('agente da etapa atende e não há pausa: "atendendo", com o nome', () => {
+    expect(faixaDaIa(estado(), null)).toEqual({ tipo: 'atendendo', agente: 'Triagem' });
   });
 
-  it('com agente ativo e sem pausa: "respondendo" e Assumir, já no primeiro render', () => {
-    const html = desenhar();
-    expect(html).toContain(banner.activeText);
-    expect(html).toContain(banner.takeOver);
+  it('nenhum agente atende e não há pausa: não desenha', () => {
+    expect(faixaDaIa(estado({ agente: null }), 'ag-1')).toBeNull();
+    expect(faixaDaIa(estado({ agente: null }), null)).toBeNull();
+  });
+
+  it('pausada com agente: "pausada", com o motivo', () => {
+    for (const m of MOTIVOS_DA_PAUSA) {
+      expect(faixaDaIa(estado({ pausada: true, pausadaPor: m }), null)).toEqual({ tipo: 'pausada', motivo: m });
+    }
+  });
+
+  it('⚠️ D26: pausada continua aparecendo quando o card saiu da etapa do agente (o último que respondeu basta)', () => {
+    expect(faixaDaIa(estado({ agente: null, pausada: true, pausadaPor: 'gente' }), 'ag-1')).toEqual({
+      tipo: 'pausada',
+      motivo: 'gente',
+    });
+  });
+
+  it('pausa antiga numa conversa que nenhum agente atende nem atendeu: não desenha (Retomar não retomaria nada)', () => {
+    expect(faixaDaIa(estado({ agente: null, pausada: true, pausadaPor: null }), null)).toBeNull();
+  });
+
+  it('motivo desconhecido ou nulo: pausada, sem motivo', () => {
+    expect(faixaDaIa(estado({ pausada: true, pausadaPor: 'outro' }), null)).toEqual({ tipo: 'pausada', motivo: null });
+    expect(faixaDaIa(estado({ pausada: true }), null)).toEqual({ tipo: 'pausada', motivo: null });
+  });
+
+  it('sem resposta da rota (carregando, falhou, outra conversa): não desenha', () => {
+    expect(faixaDaIa(null, 'ag-1')).toBeNull();
+  });
+});
+
+describe('lerEstadoDaIa — o corpo da rota', () => {
+  it('lê o agente, a pausa e o motivo', () => {
+    expect(lerEstadoDaIa({ agente: TRIAGEM, pausada: true, pausadaPor: 'botao', motivo: null })).toEqual({
+      agente: TRIAGEM,
+      pausada: true,
+      pausadaPor: 'botao',
+    });
+  });
+  it('forma estranha: agente nulo, pausa só com o booleano true', () => {
+    expect(lerEstadoDaIa({ agente: { id: 1 }, pausada: 'true' })).toEqual({
+      agente: null,
+      pausada: false,
+      pausadaPor: null,
+    });
+    expect(lerEstadoDaIa(null)).toBeNull();
+  });
+});
+
+describe('FaixaDaIa — o texto, nos dois dicionários', () => {
+  it('atendendo: "IA · Triagem responde nesta conversa" e Pausar', () => {
+    const html = desenhar({ tipo: 'atendendo', agente: 'Triagem' });
+    expect(html).toContain('IA · Triagem responde nesta conversa');
+    expect(html).toContain(banner.pausar);
     expect(html).not.toContain(banner.resume);
   });
 
-  it('com agente ativo e pausada: o título da pausa e Retomar', () => {
-    const html = desenhar({ disabled: true });
-    expect(html).toContain(banner.pausedTitle);
+  it.each(MOTIVOS_DA_PAUSA)('pausada por %s: "IA pausada — <motivo>" e Retomar IA', (motivo) => {
+    const html = desenhar({ tipo: 'pausada', motivo });
+    expect(html).toContain(`IA pausada — ${banner.motivo[motivo]}`);
     expect(html).toContain(banner.resume);
-    expect(html).not.toContain(banner.activeText);
+    expect(html).not.toContain(banner.pausar);
   });
 
-  it.each([
-    ['gente', banner.pausadaPorGente],
-    ['transferencia', banner.pausadaPorTransferencia],
-    ['botao', banner.pausadaPeloBotao],
-    ['automacao', banner.pausadaPorAutomacao],
-  ])('pausa por %s: diz o motivo', (motivo, texto) => {
-    expect(desenhar({ disabled: true, pausadaPor: motivo })).toContain(texto);
+  it('pausada sem motivo: só "IA pausada"', () => {
+    const html = desenhar({ tipo: 'pausada', motivo: null });
+    expect(html).toContain(`>${banner.pausada}<`);
   });
 
-  it('pausa sem motivo (anterior à 1049) ou com motivo desconhecido: só o título', () => {
-    const motivos = [
-      banner.pausadaPorGente,
-      banner.pausadaPorTransferencia,
-      banner.pausadaPeloBotao,
-      banner.pausadaPorAutomacao,
-    ];
-    for (const pausadaPor of [null, 'outro']) {
-      const html = desenhar({ disabled: true, pausadaPor });
-      expect(html).toContain(banner.pausedTitle);
-      for (const m of motivos) expect(html).not.toContain(m);
+  it('nada: não desenha', () => {
+    expect(desenhar(null)).toBe('');
+  });
+
+  it('⚠️ o motivo é chave MONTADA: cada um existe nos DOIS dicionários', () => {
+    for (const dic of [en, ptBR]) {
+      for (const m of MOTIVOS_DA_PAUSA) {
+        expect(typeof dic.Inbox.aiBanner.motivo[m], `Inbox.aiBanner.motivo.${m}`).toBe('string');
+      }
     }
   });
 
   it('desenha em inglês também, sem chave crua', () => {
-    const html = desenhar(
-      { disabled: true, pausadaPor: 'gente' },
-      en as unknown as AbstractIntlMessages,
-    );
-    expect(html).toContain(en.Inbox.aiBanner.pausedTitle);
-    expect(html).toContain(en.Inbox.aiBanner.pausadaPorGente);
+    const html = desenhar({ tipo: 'pausada', motivo: 'gente' }, en as unknown as AbstractIntlMessages);
+    expect(html).toContain(en.Inbox.aiBanner.motivo.gente);
     expect(html).not.toContain('Inbox.aiBanner');
   });
 });
 
-describe('patchDoClique — o que a tela escreve depois do clique', () => {
-  it('⚠️ Retomar NÃO menciona o responsável (a rota não o zera mais, E13)', () => {
-    const patch = patchDoClique(false, 'user-1');
-    expect(patch).toEqual({ ai_autoreply_disabled: false });
-    expect('assigned_agent_id' in patch).toBe(false);
-  });
-
-  it('Assumir pausa e atribui a quem clicou (a rota faz o mesmo com assign_to_me)', () => {
-    expect(patchDoClique(true, 'user-1')).toEqual({
-      ai_autoreply_disabled: true,
-      assigned_agent_id: 'user-1',
-    });
-  });
-
-  it('Assumir sem saber quem clicou só pausa — nunca atribui a ninguém', () => {
-    const patch = patchDoClique(true, null);
-    expect(patch).toEqual({ ai_autoreply_disabled: true });
-    expect('assigned_agent_id' in patch).toBe(false);
-  });
-});
-
-describe('pausadaNaTela / cliqueAindaVale — o clique otimista num render', () => {
-  const retomou: CliqueOtimista = { conversa: 'conv-1', base: true, pausada: false };
-
-  it('sem clique, vale o banco', () => {
-    expect(pausadaNaTela(null, 'conv-1', true)).toBe(true);
-    expect(pausadaNaTela(null, 'conv-1', false)).toBe(false);
-  });
-
-  it('o clique aceito vale enquanto o banco ainda diz o que dizia', () => {
-    expect(cliqueAindaVale(retomou, 'conv-1', true)).toBe(true);
-    expect(pausadaNaTela(retomou, 'conv-1', true)).toBe(false);
-  });
-
-  it('o clique que a rota ainda não respondeu não muda a tela', () => {
-    const pendente: CliqueOtimista = { ...retomou, pausada: null };
-    expect(cliqueAindaVale(pendente, 'conv-1', true)).toBe(true);
-    expect(pausadaNaTela(pendente, 'conv-1', true)).toBe(true);
-  });
-
-  it('o clique de OUTRA conversa não vale nesta', () => {
-    expect(cliqueAindaVale(retomou, 'conv-2', true)).toBe(false);
-    expect(pausadaNaTela(retomou, 'conv-2', true)).toBe(true);
-  });
-
-  it('o banco saiu do valor do clique (realtime, gatilho da 1049, outra aba): o clique deixa de valer', () => {
-    // Num render só, olhando o valor, este é o passo B do A→B→A. O passo de
-    // VOLTA (o banco de novo em A) só se enxerga com o estado entre renders —
-    // é o describe seguinte que o cobre.
-    expect(cliqueAindaVale(retomou, 'conv-1', false)).toBe(false);
-    expect(pausadaNaTela(retomou, 'conv-1', false)).toBe(false);
-    const assumiu: CliqueOtimista = { conversa: 'conv-1', base: false, pausada: true };
-    expect(pausadaNaTela(assumiu, 'conv-1', true)).toBe(true);
-  });
-});
-
-describe('a faixa numa SEQUÊNCIA de renders — o clique velho nunca volta a mandar', () => {
-  type Props = Partial<Parameters<typeof AiThreadBanner>[0]>;
-
-  function renderizar(props: Props) {
-    ganchos.proximo = 0;
-    ganchos.callbacks = [];
-    return desenhar(props);
-  }
-
-  function estado(html: string): 'pausada' | 'respondendo' {
-    const pausada = html.includes(banner.pausedTitle);
-    const respondendo = html.includes(banner.activeText);
-    expect(pausada !== respondendo, 'a faixa desenha exatamente um dos dois').toBe(true);
-    return pausada ? 'pausada' : 'respondendo';
-  }
-
-  /** O "clique" no botão do último render. */
-  function clicar(pausar: boolean): Promise<void> {
-    const assincronos = ganchos.callbacks.filter(
-      (f): f is (p: boolean) => Promise<void> =>
-        typeof f === 'function' && f.constructor.name === 'AsyncFunction',
+describe('AiThreadBanner — antes da resposta da rota não desenha nada', () => {
+  it('primeiro render (a rota ainda não respondeu): vazio — nunca o estado de outra conversa', () => {
+    const html = renderToStaticMarkup(
+      <NextIntlClientProvider locale="pt-BR" messages={ptBR as unknown as AbstractIntlMessages} timeZone="America/Sao_Paulo">
+        <AiThreadBanner conversationId="conv-1" iaAgenteId="ag-1" disabled pausadaPor="gente" />
+      </NextIntlClientProvider>,
     );
-    expect(assincronos, 'a faixa tem UM handler de clique assíncrono').toHaveLength(1);
-    return assincronos[0](pausar);
-  }
-
-  function respostaOk() {
-    return new Response(JSON.stringify({ ok: true }), { status: 200 });
-  }
-
-  beforeEach(() => {
-    ganchos.ligado = true;
-    ganchos.estados = [];
-    vi.stubGlobal('fetch', vi.fn(async () => respostaOk()));
-  });
-
-  afterEach(() => {
-    ganchos.ligado = false;
-    vi.unstubAllGlobals();
-  });
-
-  it('Retomar vale até o realtime confirmar — e a confirmação mantém a tela', async () => {
-    expect(estado(renderizar({ disabled: true }))).toBe('pausada');
-    await clicar(false);
-    expect(estado(renderizar({ disabled: true }))).toBe('respondendo');
-    expect(estado(renderizar({ disabled: false }))).toBe('respondendo');
-  });
-
-  it('⚠️ A→B→A depois do Retomar: o gatilho pausou de novo (advogado respondeu) e a faixa diz PAUSADA', async () => {
-    renderizar({ disabled: true });
-    await clicar(false);
-    expect(estado(renderizar({ disabled: true }))).toBe('respondendo');
-    expect(estado(renderizar({ disabled: false }))).toBe('respondendo'); // realtime confirmou
-    expect(estado(renderizar({ disabled: true }))).toBe('pausada'); // o gatilho da 1049
-    expect(estado(renderizar({ disabled: true }))).toBe('pausada');
-  });
-
-  it('⚠️ A→B→A depois do Assumir: outra aba retomou e a faixa diz RESPONDENDO', async () => {
-    renderizar({ disabled: false });
-    await clicar(true);
-    expect(estado(renderizar({ disabled: false }))).toBe('pausada');
-    expect(estado(renderizar({ disabled: true }))).toBe('pausada'); // realtime confirmou
-    expect(estado(renderizar({ disabled: false }))).toBe('respondendo'); // outra aba retomou
-  });
-
-  it('⚠️ trocar de conversa descarta o clique: na volta, manda o banco daquela conversa', async () => {
-    renderizar({ conversationId: 'conv-1', disabled: true });
-    await clicar(false);
-    expect(estado(renderizar({ conversationId: 'conv-1', disabled: true }))).toBe('respondendo');
-    // Foi para outra conversa, pausada. Enquanto isso, na conv-1, o realtime
-    // confirmou a retomada e o advogado respondeu: pausada de novo — a faixa,
-    // que não remonta, não viu nada disso.
-    expect(estado(renderizar({ conversationId: 'conv-2', disabled: true }))).toBe('pausada');
-    expect(estado(renderizar({ conversationId: 'conv-1', disabled: true }))).toBe('pausada');
-  });
-
-  it('⚠️ o banco anda E volta enquanto a rota responde: a resposta não instala o clique', async () => {
-    let responder: (r: Response) => void = () => {};
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() => new Promise<Response>((r) => (responder = r))),
-    );
-    renderizar({ disabled: true });
-    const clique = clicar(false);
-    // Enquanto a rota não responde, a tela mostra o banco.
-    expect(estado(renderizar({ disabled: true }))).toBe('pausada');
-    // O realtime chega ANTES do HTTP, e o advogado responde logo em seguida.
-    expect(estado(renderizar({ disabled: false }))).toBe('respondendo');
-    expect(estado(renderizar({ disabled: true }))).toBe('pausada');
-    responder(respostaOk());
-    await clique;
-    expect(estado(renderizar({ disabled: true }))).toBe('pausada');
-  });
-
-  it('a rota recusou, ou a rede caiu: a tela fica com o banco', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response(JSON.stringify({ code: 'nada_gravado' }), { status: 409 })),
-    );
-    renderizar({ disabled: true });
-    await clicar(false);
-    expect(estado(renderizar({ disabled: true }))).toBe('pausada');
-
-    vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new TypeError('offline'))));
-    await clicar(false);
-    expect(estado(renderizar({ disabled: true }))).toBe('pausada');
+    expect(html).toBe('');
   });
 });
 
@@ -341,6 +176,9 @@ describe('erroDaResposta — a recusa da rota vira frase do dicionário', () => 
       'erroMuitasTentativas',
       'updateError',
       'networkError',
+      'pausou',
+      'resumed',
+      'retomarDica',
     ] as const;
     for (const dic of [en, ptBR]) {
       for (const c of chaves) {
@@ -356,10 +194,19 @@ describe('pino estrutural do fonte da faixa', () => {
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/\/\/.*$/gm, '');
 
+  it('pergunta à rota da conversa quem responde (o agente é o da ETAPA, D24)', () => {
+    expect(fonte).toContain('/api/cb/ia/conversa/');
+  });
+
   it('não pergunta à configuração legada se a IA está ligada', () => {
     expect(fonte).not.toContain('/api/ai/config');
     expect(fonte).not.toContain('auto_reply_enabled');
     expect(fonte).not.toContain('is_active');
+  });
+
+  it('Pausar não atribui a conversa a ninguém (o "Assumir" saiu)', () => {
+    expect(fonte).toContain('JSON.stringify({ paused: pausar })');
+    expect(fonte).not.toContain('assign_to_me');
   });
 
   it('o toast de erro nunca mostra o `error` cru da rota (inglês)', () => {

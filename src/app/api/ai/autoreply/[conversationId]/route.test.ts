@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// POST /api/ai/autoreply/[conversationId] — o "Pausar/Retomar IA" do fio
-// (5.4 e E13 do docs/PLANO-agentes-de-ia.md). Os pinos: pausar grava o motivo
-// `botao`; retomar limpa os três campos da pausa e NUNCA menciona o
+// POST /api/ai/autoreply/[conversationId] — o "Pausar/Retomar IA" da faixa
+// do fio (D26 do docs/PLANO-agentes-de-ia.md). Os pinos: pausar grava o
+// motivo `botao`; retomar limpa os três campos da pausa, carimba
+// `ia_retomada_em` (o teto volta a contar dali) e NUNCA menciona o
 // responsável humano; 0 linhas no UPDATE é erro; grupo e Instagram recusados.
 
 type Linha = Record<string, unknown> | null
@@ -99,16 +100,17 @@ describe('POST /api/ai/autoreply — pausar', () => {
     expect(typeof u.ia_pausada_em).toBe('string')
     expect(Number.isNaN(Date.parse(u.ia_pausada_em as string))).toBe(false)
     expect('assigned_agent_id' in u).toBe(false)
+    expect('ia_retomada_em' in u).toBe(false)
   })
 
-  it('com assign_to_me, atribui a quem clicou', async () => {
+  it('pausar nunca atribui a conversa (o "Assumir" saiu), nem a pedido', async () => {
     await chamar({ paused: true, assign_to_me: true })
-    expect(updates[0].assigned_agent_id).toBe('user-1')
+    expect('assigned_agent_id' in updates[0]).toBe(false)
   })
 })
 
 describe('POST /api/ai/autoreply — retomar', () => {
-  it('limpa os três campos da pausa e NÃO menciona o responsável humano', async () => {
+  it('limpa os três campos da pausa, carimba ia_retomada_em e NÃO menciona o responsável humano', async () => {
     const res = await chamar({ paused: false, assign_to_me: true })
     expect(res.status).toBe(200)
     expect(updates).toHaveLength(1)
@@ -116,8 +118,11 @@ describe('POST /api/ai/autoreply — retomar', () => {
     expect(u.ai_autoreply_disabled).toBe(false)
     expect(u.ia_pausada_por).toBeNull()
     expect(u.ia_pausada_em).toBeNull()
-    expect(u.ai_reply_count).toBe(0)
-    expect(u.ai_handoff_summary).toBeNull()
+    expect(typeof u.ia_retomada_em).toBe('string')
+    expect(Number.isNaN(Date.parse(u.ia_retomada_em as string))).toBe(false)
+    // O teto conta as mensagens do agente depois de `ia_retomada_em`: o
+    // contador legado não é mais escrito.
+    expect('ai_reply_count' in u).toBe(false)
     // Pino da E13: o upstream zerava `assigned_agent_id` aqui.
     expect('assigned_agent_id' in u).toBe(false)
   })

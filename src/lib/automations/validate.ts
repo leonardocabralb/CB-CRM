@@ -109,13 +109,6 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
         issues.push({ path: `${path}.enabled`, message: 'enabled must be true or false' })
       }
       break
-    case 'assign_ia_agent':
-      // Existência, arquivamento e conexões são estado do DISPARO (a
-      // filosofia do arquivo): o motor confere. Aqui só "escolheu um".
-      if (!nonEmpty(c.ia_agente_id)) {
-        issues.push({ path: `${path}.ia_agente_id`, message: 'AI agent is required' })
-      }
-      break
     case 'send_media': {
       if (!nonEmpty(c.url)) {
         issues.push({ path: `${path}.url`, message: 'a file is required' })
@@ -447,17 +440,6 @@ export function validateTriggerForActivation(
   return issues
 }
 
-/** A automação tem algum "Atribuir agente de IA", em qualquer escopo? (a rota só carrega os agentes quando tem) */
-export function temPassoDeAgenteDeIa(steps: StepLike[]): boolean {
-  return steps.some(
-    (s) =>
-      s.step_type === 'assign_ia_agent' ||
-      (s.step_type === 'condition' &&
-        !!s.branches &&
-        (temPassoDeAgenteDeIa(s.branches.yes ?? []) || temPassoDeAgenteDeIa(s.branches.no ?? []))),
-  )
-}
-
 function nonEmpty(v: unknown): boolean {
   return typeof v === 'string' && v.trim().length > 0
 }
@@ -483,12 +465,6 @@ function nonEmpty(v: unknown): boolean {
 export function validateAsaasReguaForActivation(
   triggerType: AutomationTriggerType | string,
   steps: StepLike[],
-  /**
-   * Os agentes de IA da conta (arquivados inclusive), para o passo "Atribuir
-   * agente de IA" (F2, D19). Ausente = a rota não os carregou porque a
-   * automação não tem o passo.
-   */
-  agentes?: ReadonlyArray<{ id: string; conexoes: readonly string[]; arquivado: boolean }>,
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = []
   if (!ehGatilhoDaRegua(triggerType)) return issues
@@ -505,22 +481,9 @@ export function validateAsaasReguaForActivation(
   // automação só com `send_media` (ou sem envio) ativava e era pulada em
   // todo ciclo como "conexão inválida" (Codex, 3ª rodada do PR #206).
   let temMensagem = false
-  // Os "Atribuir agente de IA" (D19): conferidos DEPOIS da visita, quando a
-  // conexão da régua já é conhecida.
-  const atribuicoes: { path: string; id: unknown }[] = []
   const visitar = (lista: StepLike[], prefixo: string) => {
     lista.forEach((s, i) => {
       const path = `${prefixo}steps[${i}]`
-      if (s.step_type === 'assign_ia_agent') {
-        atribuicoes.push({ path, id: s.step_config?.ia_agente_id })
-        // ⚠️ DEPOIS da mensagem de cobrança: passo que falha QUEBRA a
-        // execução, e um agente arquivado na atribuição antes do envio
-        // mataria a cobrança do dia (a trava fecha `falhou`, sem nova
-        // tentativa).
-        if (!temMensagem) {
-          issues.push({ path: `${path}.step_type`, message: 'assign the AI agent after the collection message, so a failure there never stops the charge' })
-        }
-      }
       if (s.step_type === 'wait') {
         issues.push({ path: `${path}.step_type`, message: 'the Asaas collection sequence cannot wait — each milestone is its own automation' })
       }
@@ -567,19 +530,6 @@ export function validateAsaasReguaForActivation(
   visitar(steps, '')
   if (!temMensagem) {
     issues.push({ path: 'steps', message: 'the Asaas collection sequence needs a text message step (send_message)' })
-  }
-  // ⚠️ O agente atribuído pela régua precisa ATENDER a conexão dela (D19):
-  // sem isso a resposta do devedor não cai nele (o turno confere as
-  // conexões do agente) e, pela D16, iria para a triagem.
-  if (agentes) {
-    for (const a of atribuicoes) {
-      const agente = typeof a.id === 'string' ? agentes.find((x) => x.id === a.id) : undefined
-      if (!agente || agente.arquivado) {
-        issues.push({ path: `${a.path}.ia_agente_id`, message: 'the AI agent no longer exists (archived?)' })
-      } else if (conexao !== null && !agente.conexoes.includes(conexao)) {
-        issues.push({ path: `${a.path}.ia_agente_id`, message: 'the AI agent must answer the connection the Asaas collection sends through' })
-      }
-    }
   }
   return issues
 }

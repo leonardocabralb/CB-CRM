@@ -44,3 +44,17 @@ export async function textosDaTransferencia(
     texto: t(`nota.${motivo}`, { agente }),
   }
 }
+
+/**
+ * O autor ("IA · Triagem") e o texto da anotação da PASSAGEM (D25): a
+ * triagem entregou a conversa a outro agente e o card foi para a etapa dele.
+ * Chave `IaAgentes.transferencia.passagem`, com `{agente}` e `{destino}`.
+ */
+export async function textosDaPassagem(agente: string, destino: string): Promise<{ autor: string; texto: string }> {
+  const { locale, messages } = await dicionario()
+  const t = createTranslator({ locale, messages, namespace: 'IaAgentes.transferencia' }) as unknown as (
+    chave: string,
+    valores: Record<string, string>,
+  ) => string
+  return { autor: t('autor', { agente }), texto: t('passagem', { agente, destino }) }
+}

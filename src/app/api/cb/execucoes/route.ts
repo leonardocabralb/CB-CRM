@@ -51,7 +51,6 @@ async function carregarNomes(
   const etapaIds = new Set<string>()
   const fluxoIds = new Set<string>()
   const autoIds = new Set<string>()
-  const agenteIds = new Set<string>()
 
   for (const p of passos) {
     const cfg = (p.step_config ?? {}) as Record<string, unknown>
@@ -59,10 +58,6 @@ async function carregarNomes(
     if (typeof cfg.stage_id === 'string') etapaIds.add(cfg.stage_id)
     if (typeof cfg.flow_id === 'string') fluxoIds.add(cfg.flow_id)
     if (typeof cfg.automation_id === 'string') autoIds.add(cfg.automation_id)
-    // O agente de IA (F2): só administrador lê `cb_ia_agentes` pelo
-    // navegador, e esta rota é de qualquer membro — o NOME sai daqui, em
-    // service role e cercado pela conta (nunca as instruções).
-    if (typeof cfg.ia_agente_id === 'string') agenteIds.add(cfg.ia_agente_id)
   }
 
   const paraMapa = (
@@ -84,7 +79,7 @@ async function carregarNomes(
   }
 
   const vazio = { data: [], error: null } as const
-  const [tagsRes, etapasRes, fluxosRes, autosRes, agentesRes] = await Promise.all([
+  const [tagsRes, etapasRes, fluxosRes, autosRes] = await Promise.all([
     tagIds.size
       ? db.from('tags').select('id, name').in('id', [...tagIds]).eq('account_id', accountId)
       : Promise.resolve(vazio),
@@ -101,11 +96,6 @@ async function carregarNomes(
     autoIds.size
       ? db.from('automations').select('id, name').in('id', [...autoIds]).eq('account_id', accountId)
       : Promise.resolve(vazio),
-    // Arquivados inclusive: o rótulo não vira "(apagado)". `name:nome` porque
-    // o `paraMapa` lê `name`.
-    agenteIds.size
-      ? db.from('cb_ia_agentes').select('id, name:nome').in('id', [...agenteIds]).eq('account_id', accountId)
-      : Promise.resolve(vazio),
   ])
 
   return {
@@ -113,7 +103,6 @@ async function carregarNomes(
     etapas: paraMapa('pipeline_stages', etapasRes),
     fluxos: paraMapa('flows', fluxosRes),
     automacoes: paraMapa('automations', autosRes),
-    iaAgentes: paraMapa('cb_ia_agentes', agentesRes),
   }
 }
 

@@ -1,16 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // ============================================================
-// A PORTA da ingestão (`entrada.ts`, docs/PLANO-agentes-de-ia.md 5.3/5.7).
+// A PORTA da ingestão (`entrada.ts`, docs/PLANO-agentes-de-ia.md D24–D27).
 // A regra de QUEM responde é pura e tem teste próprio (`quem-responde.test.ts`);
 // aqui se prova o que a porta LÊ e ESCREVE para chegar a ela:
 //  - os portões que não precisam do banco não leem nada;
-//  - o caso comum ("nenhum agente") custa DUAS leituras curtas e mais nada —
-//    é o caminho quente das duas ingestões;
-//  - o agente ATIVO só enfileira; a ENTRADA passa antes pela RPC da atribuição
-//    (a D17 no banco) e só enfileira quando ela diz `retomada`;
-//  - leitura da D16/P8 que falha NÃO vira "nunca teve gente": não atende.
-// A fila (`fila.ts`) roda de verdade sobre a RPC falsa; o disparo é dublê.
+//  - o robô ou uma automação que respondeu descarta o pendente, sem leitura;
+//  - o agente da ETAPA do card aberto enfileira o turno com o agente, o card
+//    e a etapa; sem card, etapa sem agente, card antigo (D27), agente de outra
+//    conexão, pausada: não enfileira;
+//  - leitura que falha não lança e não atende.
+// A fila (`fila.ts`) e a leitura (`lerQuemAtende`) rodam de verdade sobre o
+// banco falso; o disparo é dublê.
 // ============================================================
 
 // ------------------------------------------------------------
@@ -155,51 +156,29 @@ function criarBanco(): Banco {
 let banco = criarBanco()
 
 vi.mock('@/lib/ai/admin-client', () => ({ supabaseAdmin: vi.fn(() => banco) }))
-vi.mock('./repo', () => ({ obterAgente: vi.fn() }))
 vi.mock('./turno', () => ({ agendarTurno: vi.fn() }))
 
 import { supabaseAdmin } from '@/lib/ai/admin-client'
 
-import type { IaAgente } from './agente'
 import { aoChegarMensagemDoCliente, type MensagemDoCliente } from './entrada'
 import { ESPERA_DA_RAJADA_MS } from './fila'
-import { obterAgente } from './repo'
 import { agendarTurno } from './turno'
 
 // ------------------------------------------------------------
-// O cenário
+// O cenário: o card do contato na etapa do agente, que entrou nela DEPOIS de
+// o agente ser ligado (D27)
 // ------------------------------------------------------------
 
 const CONTA = 'conta-1'
 const CONVERSA = 'conv-1'
 const CANAL = 'canal-1'
-const ATIVO = 'ag-ativo'
-const ENTRADA = 'ag-entrada'
+const AGENTE = 'ag-cobranca'
+const ETAPA = 'etapa-cobranca'
+const FUNIL = 'funil-1'
+const CARD = 'deal-1'
 
 const haDias = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString()
-
-function agente(p: Partial<IaAgente> = {}): IaAgente {
-  return {
-    id: ATIVO,
-    accountId: CONTA,
-    nome: 'Cobrança',
-    descricao: '',
-    instrucoes: '',
-    regras: [],
-    provedor: 'gemini',
-    modelo: 'gemini-teste',
-    ativo: true,
-    conexoes: [CANAL],
-    horario: null,
-    tetoRespostas: 10,
-    podePassarPara: [],
-    transferirPara: null,
-    arquivadoEm: null,
-    createdAt: '',
-    updatedAt: '',
-    ...p,
-  }
-}
+const haMin = (m: number) => new Date(Date.now() - m * 60_000).toISOString()
 
 function msg(p: Partial<MensagemDoCliente> = {}): MensagemDoCliente {
   return {
@@ -218,7 +197,19 @@ function msg(p: Partial<MensagemDoCliente> = {}): MensagemDoCliente {
   }
 }
 
-let resultadoDaAtribuicao: Resposta
+function card(p: Linha = {}): Linha {
+  return {
+    id: CARD,
+    account_id: CONTA,
+    contact_id: 'contato-1',
+    status: 'open',
+    pipeline_id: FUNIL,
+    stage_id: ETAPA,
+    etapa_desde: haMin(5),
+    created_at: haDias(3),
+    ...p,
+  }
+}
 
 beforeEach(() => {
   banco = criarBanco()
@@ -226,45 +217,31 @@ beforeEach(() => {
     {
       id: CONVERSA,
       account_id: CONTA,
-      created_at: haDias(0),
       contact_id: 'contato-1',
       group_id: null,
       status: 'open',
-      ia_agente_id: null,
       ai_autoreply_disabled: false,
     },
   ]
-  banco.tabelas.cb_channels = [
-    { id: CANAL, account_id: CONTA, kind: 'evolution', ia_agente_entrada_id: null, ia_agente_entrada_desde: null },
-  ]
-  // Contato criado HOJE: depois de a entrada ser ligada (P8) nos cenários dela.
-  banco.tabelas.contacts = [{ id: 'contato-1', account_id: CONTA, created_at: haDias(0) }]
-  banco.tabelas.messages = [
-    { id: 'msg-1', conversation_id: CONVERSA, sender_type: 'customer', sender_id: null, from_device: false },
+  banco.tabelas.cb_channels = [{ id: CANAL, account_id: CONTA, kind: 'evolution' }]
+  banco.tabelas.deals = [card()]
+  banco.tabelas.cb_ia_agente_etapas = [{ stage_id: ETAPA, account_id: CONTA, ia_agente_id: AGENTE, desde: haDias(1) }]
+  banco.tabelas.cb_ia_agentes = [
+    { id: AGENTE, account_id: CONTA, ativo: true, arquivado_em: null, conexoes: [CANAL], ativado_em: haDias(2) },
   ]
   banco.rpcs.cb_ia_enfileirar_turno = () => ({
     data: [{ id: 'turno-9', executar_apos: '2026-09-26T12:00:08.000Z' }],
     error: null,
   })
-  resultadoDaAtribuicao = { data: [{ resultado: 'retomada', pausada_por: null }], error: null }
-  banco.rpcs.cb_atribuir_agente_de_ia = () => resultadoDaAtribuicao
 
   vi.spyOn(console, 'error').mockImplementation(() => {})
-  vi.mocked(obterAgente)
-    .mockReset()
-    .mockImplementation(async (_conta, id) =>
-      id === ATIVO ? agente() : id === ENTRADA ? agente({ id: ENTRADA, nome: 'Triagem' }) : null,
-    )
   vi.mocked(agendarTurno).mockReset()
   vi.mocked(supabaseAdmin).mockClear()
 })
 
-function ligarEntrada(desdeDias = 1): void {
-  Object.assign(banco.tabelas.cb_channels[0], { ia_agente_entrada_id: ENTRADA, ia_agente_entrada_desde: haDias(desdeDias) })
-}
-
 const nomesDasRpcs = () => banco.rpcChamadas.map((c) => c.nome)
 const enfileirou = () => nomesDasRpcs().includes('cb_ia_enfileirar_turno')
+const tabelasLidas = () => banco.chamadas.map((c) => c.tabela)
 
 // ------------------------------------------------------------
 // Os portões sem banco
@@ -281,8 +258,6 @@ describe('aoChegarMensagemDoCliente — portões que não leem o banco', () => {
     ['figurinha', { tipo: 'image', texto: null, mime: 'image/webp' }],
     ['texto nulo (cartão de contato, enquete, botão)', { tipo: 'text', texto: null }],
     ['texto sem nada visível', { tipo: 'text', texto: ' \uFFFC\n' }],
-    // A Meta: o tipo que o webhook não sabe ler (cartão de contato) é gravado
-    // como `text` com o rótulo — E9, não abre turno.
     ['cartão de contato pela Meta (tipo não suportado)', { tipo: 'text', texto: '[Unsupported message type: contacts]' }],
     ['localização', { tipo: 'location' }],
   ])('%s: nem abre o cliente do banco', async (_rotulo, p) => {
@@ -399,85 +374,118 @@ describe('aoChegarMensagemDoCliente — o robô ou uma automação respondeu', (
 })
 
 // ------------------------------------------------------------
-// O caso comum
+// O agente da ETAPA (D24)
 // ------------------------------------------------------------
 
-describe('aoChegarMensagemDoCliente — nenhum agente', () => {
-  it('duas leituras (conversa e conexão) e mais nada', async () => {
+describe('aoChegarMensagemDoCliente — o agente da etapa do card', () => {
+  it('card na etapa do agente: enfileira com o agente, o CARD e a ETAPA, com a espera da rajada, e agenda o disparo', async () => {
     await aoChegarMensagemDoCliente(msg())
-    expect(banco.chamadas.map((c) => c.tabela).sort()).toEqual(['cb_channels', 'conversations'])
-    expect(banco.rpcChamadas).toHaveLength(0)
-    expect(obterAgente).not.toHaveBeenCalled()
+    expect(banco.rpcChamadas).toEqual([
+      {
+        nome: 'cb_ia_enfileirar_turno',
+        args: {
+          p_account_id: CONTA,
+          p_conversation_id: CONVERSA,
+          p_canal_id: CANAL,
+          p_ia_agente_id: AGENTE,
+          p_mensagem_id: 'msg-1',
+          p_deal_id: CARD,
+          p_stage_id: ETAPA,
+          p_veio_de_passagem: false,
+          p_espera_ms: ESPERA_DA_RAJADA_MS,
+        },
+      },
+    ])
+    expect(agendarTurno).toHaveBeenCalledWith({ id: 'turno-9', executarApos: '2026-09-26T12:00:08.000Z' })
+  })
+
+  it('foto, áudio e documento abrem turno', async () => {
+    for (const p of [
+      { tipo: 'image', texto: null, mime: 'image/jpeg' },
+      { tipo: 'audio', texto: null, mime: 'audio/ogg' },
+      { tipo: 'document', texto: null, mime: 'application/pdf' },
+    ]) {
+      await aoChegarMensagemDoCliente(msg(p))
+    }
+    expect(agendarTurno).toHaveBeenCalledTimes(3)
+  })
+
+  it('D27: card ANTIGO (parado na etapa desde antes de o agente ser ligado nela) não é atendido', async () => {
+    banco.tabelas.deals = [card({ etapa_desde: haDias(30) })]
+    await aoChegarMensagemDoCliente(msg())
+    expect(enfileirou()).toBe(false)
     expect(agendarTurno).not.toHaveBeenCalled()
   })
 
-  it('leitura da conversa ou da conexão que falha: não atende e não lança', async () => {
-    banco.falhas.push({ tabela: 'cb_channels', op: 'select', erro: { message: 'timeout' } })
-    Object.assign(banco.tabelas.conversations[0], { ia_agente_id: ATIVO })
-    await expect(aoChegarMensagemDoCliente(msg())).resolves.toBeUndefined()
-    expect(enfileirou()).toBe(false)
-  })
-
-  it('conexão de outra conta: não atende', async () => {
-    Object.assign(banco.tabelas.conversations[0], { ia_agente_id: ATIVO })
-    banco.tabelas.cb_channels[0].account_id = 'outra-conta'
-    await aoChegarMensagemDoCliente(msg())
-    expect(enfileirou()).toBe(false)
-  })
-})
-
-// ------------------------------------------------------------
-// O agente ativo
-// ------------------------------------------------------------
-
-describe('aoChegarMensagemDoCliente — agente ativo', () => {
-  beforeEach(() => {
-    banco.tabelas.conversations[0].ia_agente_id = ATIVO
-  })
-
-  it('enfileira com a espera da rajada, sem a RPC de atribuição, e agenda o disparo', async () => {
-    await aoChegarMensagemDoCliente(msg())
-    expect(nomesDasRpcs()).toEqual(['cb_ia_enfileirar_turno'])
-    expect(banco.rpcChamadas[0].args).toEqual({
-      p_account_id: CONTA,
-      p_conversation_id: CONVERSA,
-      p_canal_id: CANAL,
-      p_ia_agente_id: ATIVO,
-      p_mensagem_id: 'msg-1',
-      p_espera_ms: ESPERA_DA_RAJADA_MS,
-    })
-    expect(agendarTurno).toHaveBeenCalledWith({ id: 'turno-9', executarApos: '2026-09-26T12:00:08.000Z' })
-    // A D16/P8 é só da entrada: nada de ler mensagens nem contato.
-    expect(banco.chamadas.some((c) => c.tabela === 'messages' || c.tabela === 'contacts')).toBe(false)
-  })
-
-  it.each(['audio', 'image', 'document', 'video'])('%s também abre turno (sem texto)', async (tipo) => {
-    await aoChegarMensagemDoCliente(msg({ tipo, texto: null }))
-    expect(enfileirou()).toBe(true)
-  })
-
-  it('foto (image sem o MIME da figurinha) abre turno', async () => {
-    await aoChegarMensagemDoCliente(msg({ tipo: 'image', texto: null, mime: 'image/jpeg' }))
-    expect(enfileirou()).toBe(true)
-  })
-
-  it('conversa pausada: não enfileira', async () => {
-    banco.tabelas.conversations[0].ai_autoreply_disabled = true
+  it('D27: o agente foi religado DEPOIS de o card entrar na etapa: não atende', async () => {
+    banco.tabelas.cb_ia_agentes[0].ativado_em = haMin(1)
     await aoChegarMensagemDoCliente(msg())
     expect(enfileirou()).toBe(false)
   })
 
-  it('conversa ENCERRADA (uma automação a fechou sem falar): não enfileira', async () => {
-    banco.tabelas.conversations[0].status = 'closed'
+  it('sem card aberto: não enfileira, e para depois do card (sem ler etapa nem agente)', async () => {
+    banco.tabelas.deals = []
     await aoChegarMensagemDoCliente(msg())
     expect(enfileirou()).toBe(false)
-    expect(obterAgente).not.toHaveBeenCalled()
+    expect(tabelasLidas()).toEqual(['conversations', 'cb_channels', 'deals'])
   })
 
-  it('conversa de grupo (lida do banco): não enfileira', async () => {
-    banco.tabelas.conversations[0].group_id = 'grupo-1'
+  it('card GANHO ou PERDIDO na etapa do agente não conta (só o aberto)', async () => {
+    banco.tabelas.deals = [card({ status: 'won' }), card({ id: 'deal-2', status: 'lost' })]
     await aoChegarMensagemDoCliente(msg())
     expect(enfileirou()).toBe(false)
+  })
+
+  it('o card ABERTO MAIS RECENTE decide: o antigo na etapa do agente não conta', async () => {
+    banco.tabelas.deals = [card({ created_at: haDias(10) }), card({ id: 'deal-2', stage_id: 'etapa-sem-agente', created_at: haDias(1) })]
+    await aoChegarMensagemDoCliente(msg())
+    expect(enfileirou()).toBe(false)
+  })
+
+  it('card de OUTRO contato na etapa do agente não conta', async () => {
+    banco.tabelas.deals = [card({ contact_id: 'contato-2' })]
+    await aoChegarMensagemDoCliente(msg())
+    expect(enfileirou()).toBe(false)
+  })
+
+  it('etapa sem agente: não enfileira (e não lê agente nenhum)', async () => {
+    banco.tabelas.cb_ia_agente_etapas = []
+    await aoChegarMensagemDoCliente(msg())
+    expect(enfileirou()).toBe(false)
+    expect(tabelasLidas()).not.toContain('cb_ia_agentes')
+  })
+
+  it('agente de OUTRA conexão: não enfileira', async () => {
+    banco.tabelas.cb_ia_agentes[0].conexoes = ['canal-2']
+    await aoChegarMensagemDoCliente(msg())
+    expect(enfileirou()).toBe(false)
+  })
+
+  it('agente desligado ou arquivado: não enfileira', async () => {
+    banco.tabelas.cb_ia_agentes[0].ativo = false
+    await aoChegarMensagemDoCliente(msg())
+    banco.tabelas.cb_ia_agentes[0].ativo = true
+    banco.tabelas.cb_ia_agentes[0].arquivado_em = haDias(0)
+    await aoChegarMensagemDoCliente(msg())
+    expect(enfileirou()).toBe(false)
+  })
+
+  it('agente de OUTRA conta na linha da etapa: não é lido, não enfileira', async () => {
+    banco.tabelas.cb_ia_agentes[0].account_id = 'outra-conta'
+    await aoChegarMensagemDoCliente(msg())
+    expect(enfileirou()).toBe(false)
+  })
+
+  it.each<[string, Linha]>([
+    ['pausada (gente respondeu, o botão, a transferência)', { ai_autoreply_disabled: true }],
+    ['ENCERRADA (uma automação a fechou sem falar)', { status: 'closed' }],
+    ['de grupo (lida do banco)', { group_id: 'grupo-1' }],
+    ['sem contato', { contact_id: null }],
+  ])('conversa %s: não enfileira, e nem lê o card', async (_rotulo, p) => {
+    Object.assign(banco.tabelas.conversations[0], p)
+    await aoChegarMensagemDoCliente(msg())
+    expect(enfileirou()).toBe(false)
+    expect(tabelasLidas()).not.toContain('deals')
   })
 
   it('conexão do Instagram: não enfileira', async () => {
@@ -486,240 +494,24 @@ describe('aoChegarMensagemDoCliente — agente ativo', () => {
     expect(enfileirou()).toBe(false)
   })
 
-  it('agente ativo DESLIGADO com entrada na conexão: ninguém — a entrada não o substitui', async () => {
-    ligarEntrada()
-    vi.mocked(obterAgente).mockImplementation(async (_c, id) =>
-      id === ATIVO ? agente({ ativo: false }) : id === ENTRADA ? agente({ id: ENTRADA }) : null,
-    )
-    await aoChegarMensagemDoCliente(msg())
-    expect(banco.rpcChamadas).toHaveLength(0)
-    expect(agendarTurno).not.toHaveBeenCalled()
-  })
-
-  it('o agente ativo não cobre a conexão da mensagem: ninguém', async () => {
-    vi.mocked(obterAgente).mockResolvedValue(agente({ conexoes: ['canal-2'] }))
+  it('conversa de outra conta: não enfileira', async () => {
+    banco.tabelas.conversations[0].account_id = 'outra-conta'
     await aoChegarMensagemDoCliente(msg())
     expect(enfileirou()).toBe(false)
   })
 
-  it('a fila recusa (erro da RPC): não agenda nada', async () => {
-    banco.rpcs.cb_ia_enfileirar_turno = () => ({ data: null, error: { message: 'falhou' } })
-    await aoChegarMensagemDoCliente(msg())
-    expect(agendarTurno).not.toHaveBeenCalled()
-  })
-})
-
-// ------------------------------------------------------------
-// O agente de entrada
-// ------------------------------------------------------------
-
-describe('aoChegarMensagemDoCliente — agente de entrada', () => {
-  beforeEach(() => ligarEntrada())
-
-  it('atribui pela RPC (com a conexão) e enfileira quando ela diz `retomada`', async () => {
-    await aoChegarMensagemDoCliente(msg())
-    expect(nomesDasRpcs()).toEqual(['cb_atribuir_agente_de_ia', 'cb_ia_enfileirar_turno'])
-    expect(banco.rpcChamadas[0].args).toEqual(
-      expect.objectContaining({
-        p_account_id: CONTA,
-        p_conversation_id: CONVERSA,
-        p_ia_agente_id: ENTRADA,
-        // A RPC relê o agente na transação e confere que ele ATENDE esta
-        // conexão: editado no meio, a conversa ficaria com um agente que não
-        // responde aqui (regra 4) e a entrada não o substitui (regra 5).
-        p_canal_id: CANAL,
-        // Só se a conversa ainda não tem agente (ver o teste da corrida).
-        p_so_se_vazio: true,
-      }),
-    )
-    expect(banco.rpcChamadas[1].args).toEqual(expect.objectContaining({ p_ia_agente_id: ENTRADA }))
-    expect(agendarTurno).toHaveBeenCalledTimes(1)
-  })
-
-  // A leitura da conversa é uma foto: entre ela e a atribuição, a régua do
-  // Asaas (ou um "Atribuir agente" de automação) pode pôr um ESPECIALISTA. A
-  // entrada não passa por cima dele. O dublê imita a RPC da 1049 com o
-  // contrato do `p_so_se_vazio`: com a conversa já tendo agente, devolve
-  // `ocupada` e não escreve nada; sem o parâmetro, sobrescreve (é o
-  // comportamento do passo da automação, que continua valendo para ela).
-  // ⚠️ `ocupada` ENFILEIRA assim mesmo, sem palpite de agente: o turno não
-  // fixa agente, e a conferência dele decide com o agente ativo (aqui, o
-  // especialista), a pausa e as conexões.
-  it('outra frente atribuiu um especialista entre a leitura e a atribuição: `ocupada`, o especialista fica, e o turno é enfileirado sem agente', async () => {
-    const ESPECIALISTA = 'ag-especialista'
-    banco.rpcs.cb_atribuir_agente_de_ia = ({ p_conversation_id, p_ia_agente_id, p_so_se_vazio }) => {
-      const c = banco.tabelas.conversations.find((x) => x.id === p_conversation_id)!
-      // A corrida: a régua atribuiu o especialista um instante antes.
-      c.ia_agente_id = ESPECIALISTA
-      if (p_so_se_vazio === true && c.ia_agente_id !== null) {
-        return { data: [{ resultado: 'ocupada', pausada_por: null }], error: null }
-      }
-      c.ia_agente_id = p_ia_agente_id
-      return { data: [{ resultado: 'retomada', pausada_por: null }], error: null }
-    }
-    await aoChegarMensagemDoCliente(msg())
-    expect(banco.tabelas.conversations[0].ia_agente_id).toBe(ESPECIALISTA)
-    expect(nomesDasRpcs()).toEqual(['cb_atribuir_agente_de_ia', 'cb_ia_enfileirar_turno'])
-    expect(banco.rpcChamadas[1].args).toEqual(expect.objectContaining({ p_ia_agente_id: null, p_mensagem_id: 'msg-1' }))
-    expect(agendarTurno).toHaveBeenCalledTimes(1)
-  })
-
-  // A RAJADA que chega junta (duas entregas concorrentes da Evolution): as
-  // duas mensagens leem a conversa SEM agente; a 1ª atribui a entrada e
-  // enfileira; a 2ª leva `ocupada`. Desistindo ali, o pendente ficava com a
-  // 1ª mensagem, e o turno dela se descartava por "mensagem mais nova" (E10)
-  // — ninguém respondia. Os dublês imitam a 1049: a atribuição trava a
-  // conversa (`p_so_se_vazio`), e o enfileirar empurra o MESMO pendente da
-  // (conversa, conexão) e troca o gatilho (ON CONFLICT).
-  it('rajada concorrente: a 2ª mensagem (`ocupada`) empurra o pendente, que fica com o gatilho MAIS NOVO', async () => {
-    banco.tabelas.messages.push({ id: 'msg-2', conversation_id: CONVERSA, sender_type: 'customer', sender_id: null, from_device: false })
-    banco.tabelas.cb_ia_turnos = []
-    banco.rpcs.cb_atribuir_agente_de_ia = ({ p_conversation_id, p_ia_agente_id, p_so_se_vazio }) => {
-      const c = banco.tabelas.conversations.find((x) => x.id === p_conversation_id)!
-      if (p_so_se_vazio === true && c.ia_agente_id !== null) {
-        return { data: [{ resultado: 'ocupada', pausada_por: null }], error: null }
-      }
-      c.ia_agente_id = p_ia_agente_id
-      return { data: [{ resultado: 'retomada', pausada_por: null }], error: null }
-    }
-    banco.rpcs.cb_ia_enfileirar_turno = ({ p_conversation_id, p_canal_id, p_ia_agente_id, p_mensagem_id }) => {
-      const turnos = banco.tabelas.cb_ia_turnos
-      const aberto = turnos.find(
-        (t) => t.conversation_id === p_conversation_id && t.canal_id === p_canal_id && t.status === 'aguardando',
-      )
-      if (aberto) {
-        Object.assign(aberto, { mensagem_gatilho_id: p_mensagem_id, ia_agente_id: p_ia_agente_id })
-        return { data: [{ id: aberto.id, executar_apos: '2026-09-26T12:00:16.000Z' }], error: null }
-      }
-      turnos.push({
-        id: 'turno-rajada',
-        conversation_id: p_conversation_id,
-        canal_id: p_canal_id,
-        ia_agente_id: p_ia_agente_id,
-        mensagem_gatilho_id: p_mensagem_id,
-        mensagem_inicial_id: p_mensagem_id,
-        status: 'aguardando',
-      })
-      return { data: [{ id: 'turno-rajada', executar_apos: '2026-09-26T12:00:08.000Z' }], error: null }
-    }
-    await Promise.all([
-      aoChegarMensagemDoCliente(msg({ mensagemId: 'msg-1' })),
-      aoChegarMensagemDoCliente(msg({ mensagemId: 'msg-2', texto: 'e mais uma coisa' })),
-    ])
-    const atribuicoes = banco.rpcChamadas.filter((c) => c.nome === 'cb_atribuir_agente_de_ia')
-    expect(atribuicoes).toHaveLength(2)
-    expect(banco.tabelas.conversations[0].ia_agente_id).toBe(ENTRADA)
-    // Um pendente só, com a ÚLTIMA mensagem da rajada: o turno responde a ela.
-    expect(banco.tabelas.cb_ia_turnos).toHaveLength(1)
-    expect(banco.tabelas.cb_ia_turnos[0]).toMatchObject({ mensagem_gatilho_id: 'msg-2', mensagem_inicial_id: 'msg-1' })
-    expect(agendarTurno).toHaveBeenCalledTimes(2)
-  })
-
-  it.each(['pausada_gente', 'pausada_mantida', 'agente_indisponivel', 'grupo', 'sem_conversa'])(
-    'a atribuição devolve `%s`: não enfileira',
-    async (resultado) => {
-      resultadoDaAtribuicao = { data: [{ resultado, pausada_por: null }], error: null }
-      await aoChegarMensagemDoCliente(msg())
-      expect(nomesDasRpcs()).toEqual(['cb_atribuir_agente_de_ia'])
-      expect(agendarTurno).not.toHaveBeenCalled()
+  it.each(['conversations', 'deals', 'cb_ia_agente_etapas', 'cb_ia_agentes'])(
+    'leitura de %s que falha: não atende e não lança',
+    async (tabela) => {
+      banco.falhas.push({ tabela, op: 'select', erro: { message: 'timeout' } })
+      await expect(aoChegarMensagemDoCliente(msg())).resolves.toBeUndefined()
+      expect(enfileirou()).toBe(false)
     },
   )
 
-  it('erro na atribuição: não enfileira', async () => {
-    resultadoDaAtribuicao = { data: null, error: { message: 'lock timeout' } }
+  it('a fila recusa (erro da RPC): não agenda nada', async () => {
+    banco.rpcs.cb_ia_enfileirar_turno = () => ({ data: null, error: { message: 'lock timeout' } })
     await aoChegarMensagemDoCliente(msg())
-    expect(enfileirou()).toBe(false)
-  })
-
-  it('D16: a conversa já teve resposta de gente pelo celular → não atende', async () => {
-    banco.tabelas.messages.push({
-      id: 'msg-0',
-      conversation_id: CONVERSA,
-      sender_type: 'agent',
-      sender_id: null,
-      from_device: true,
-    })
-    await aoChegarMensagemDoCliente(msg())
-    expect(banco.rpcChamadas).toHaveLength(0)
-  })
-
-  it('D16: resposta de gente pelo CRM (sender_id) → não atende', async () => {
-    banco.tabelas.messages.push({
-      id: 'msg-0',
-      conversation_id: CONVERSA,
-      sender_type: 'agent',
-      sender_id: 'advogado-1',
-      from_device: false,
-    })
-    await aoChegarMensagemDoCliente(msg())
-    expect(banco.rpcChamadas).toHaveLength(0)
-  })
-
-  it('D16: mensagem do robô ou de disparo não conta como gente', async () => {
-    banco.tabelas.messages.push({
-      id: 'msg-0',
-      conversation_id: CONVERSA,
-      sender_type: 'bot',
-      sender_id: null,
-      from_device: false,
-    })
-    await aoChegarMensagemDoCliente(msg())
-    expect(enfileirou()).toBe(true)
-  })
-
-  it('P8: contato criado ANTES de a entrada ser ligada → não atende', async () => {
-    banco.tabelas.contacts[0].created_at = haDias(30)
-    await aoChegarMensagemDoCliente(msg())
-    expect(banco.rpcChamadas).toHaveLength(0)
-  })
-
-  it('P8: contato importado (nasceu 3 dias antes da conversa) → não atende (Codex, #292)', async () => {
-    ligarEntrada(10)
-    banco.tabelas.contacts[0].created_at = haDias(3)
-    await aoChegarMensagemDoCliente(msg())
-    expect(banco.rpcChamadas).toHaveLength(0)
-    // Controle: nascido junto com a conversa, a entrada atende.
-    banco.tabelas.contacts[0].created_at = banco.tabelas.conversations[0].created_at
-    await aoChegarMensagemDoCliente(msg())
-    expect(enfileirou()).toBe(true)
-  })
-
-  it('P8: conversa sem contato → não atende (sem a data, o lado que atende menos)', async () => {
-    banco.tabelas.conversations[0].contact_id = null
-    await aoChegarMensagemDoCliente(msg())
-    expect(banco.rpcChamadas).toHaveLength(0)
-  })
-
-  it.each(['messages', 'contacts'])('leitura de %s que FALHA não vira "nunca teve gente": não atende', async (tabela) => {
-    banco.falhas.push({ tabela, op: 'select', erro: { message: 'timeout' } })
-    await expect(aoChegarMensagemDoCliente(msg())).resolves.toBeUndefined()
-    expect(banco.rpcChamadas).toHaveLength(0)
-    expect(agendarTurno).not.toHaveBeenCalled()
-  })
-
-  it('entrada desligada ou arquivada: não atende', async () => {
-    vi.mocked(obterAgente).mockResolvedValue(agente({ id: ENTRADA, ativo: false }))
-    await aoChegarMensagemDoCliente(msg())
-    expect(banco.rpcChamadas).toHaveLength(0)
-  })
-
-  it('a entrada não cobre a conexão: não atende', async () => {
-    vi.mocked(obterAgente).mockResolvedValue(agente({ id: ENTRADA, conexoes: ['canal-2'] }))
-    await aoChegarMensagemDoCliente(msg())
-    expect(banco.rpcChamadas).toHaveLength(0)
-  })
-
-  it('conversa pausada: não atende (nem pergunta à D16)', async () => {
-    banco.tabelas.conversations[0].ai_autoreply_disabled = true
-    await aoChegarMensagemDoCliente(msg())
-    expect(banco.rpcChamadas).toHaveLength(0)
-  })
-
-  it('o cliente do banco lança: não atende e não lança', async () => {
-    vi.mocked(supabaseAdmin).mockImplementationOnce(() => {
-      throw new Error('sem SUPABASE_SERVICE_ROLE_KEY')
-    })
-    await expect(aoChegarMensagemDoCliente(msg())).resolves.toBeUndefined()
     expect(agendarTurno).not.toHaveBeenCalled()
   })
 })

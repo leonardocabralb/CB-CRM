@@ -8,28 +8,24 @@ type Params = { params: Promise<{ conversationId: string }> }
 /**
  * POST /api/ai/autoreply/[conversationId]  (agent+)
  *
- * O botão "Pausar/Retomar IA" do cabeçalho do fio (5.4 do
- * docs/PLANO-agentes-de-ia.md).
+ * O "Pausar / Retomar IA" da faixa do fio (D26 do docs/PLANO-agentes-de-ia.md).
  *
- * Body: { paused: boolean, assign_to_me?: boolean }
+ * Body: { paused: boolean }
  *   - paused: true  → pausa a IA nesta conversa com o MOTIVO `botao` (1049):
  *                     `ai_autoreply_disabled`, `ia_pausada_por` e
- *                     `ia_pausada_em`. Com `assign_to_me`, também atribui a
- *                     conversa a quem clicou (o "assumir" de antes), o que
- *                     dispara o gatilho `on_conversation_assigned`.
- *   - paused: false → RETOMA: limpa a pausa (os três campos), zera o contador
- *                     de respostas e o resumo da passagem. ⚠️ É a ÚNICA porta
- *                     que desfaz as pausas `botao` e `transferencia` — o passo
- *                     "Atribuir agente" e o `set_ai` das automações não as
- *                     tocam (E12/E13), porque foram decisões de gente.
+ *                     `ia_pausada_em`.
+ *   - paused: false → RETOMA: limpa a pausa (os três campos) e carimba
+ *                     `ia_retomada_em` — é dele (com a entrada do card na
+ *                     etapa) que o teto de respostas volta a contar. ⚠️ É a
+ *                     ÚNICA porta que desfaz as pausas `gente`, `botao` e
+ *                     `transferencia` (D26): mudar o card de etapa não retoma,
+ *                     e o `set_ai` das automações só desfaz a pausa dele.
  *
- * ⚠️⚠️ NOSSO (F2a dos agentes de IA, E13): retomar NÃO solta mais o
- * responsável humano. No upstream o portão do auto-reply era "há alguém
- * atribuído?", e retomar precisava zerar `assigned_agent_id` — senão o robô
- * seguia mudo. Desde a F2 quem decide é a pausa (5.3), e zerar o responsável
- * tiraria a conversa da fila de quem a atende. Um merge que traga a rota crua
- * devolve o `assigned_agent_id = null` sem conflito nenhum — há pino em
- * `route.test.ts`.
+ * ⚠️⚠️ NOSSO: retomar NÃO solta o responsável humano. No upstream o portão do
+ * auto-reply era "há alguém atribuído?", e retomar zerava `assigned_agent_id`;
+ * aqui quem decide é a pausa, e zerar o responsável tiraria a conversa da
+ * fila de quem a atende. Um merge que traga a rota crua devolve o
+ * `assigned_agent_id = null` sem conflito nenhum — há pino em `route.test.ts`.
  *
  * As escritas vão pelo cliente SSR (sob RLS): conversa de outra conta
  * simplesmente não é achada (404).
@@ -52,7 +48,6 @@ export async function POST(request: Request, { params }: Params) {
       )
     }
     const paused = body.paused as boolean
-    const assignToMe = body.assign_to_me === true
 
     // Confirm the conversation is in the caller's account before writing.
     const { data: conv, error: convErr } = await supabase
@@ -110,33 +105,10 @@ export async function POST(request: Request, { params }: Params) {
       }
     }
 
+    const agora = new Date().toISOString()
     const update: Record<string, unknown> = paused
-      ? {
-          ai_autoreply_disabled: true,
-          ia_pausada_por: 'botao',
-          ia_pausada_em: new Date().toISOString(),
-        }
-      : {
-          ai_autoreply_disabled: false,
-          ia_pausada_por: null,
-          ia_pausada_em: null,
-          // Give the bot a fresh reply budget on this thread.
-          //
-          // ⚠️ Isto JÁ NÃO é exclusivo de gente. Até a migration 936 o
-          // comentário aqui dizia que zerar o contador era "deliberadamente
-          // não-automatizável" — a lentidão humana era o que impedia o teto
-          // por conversa de ser furado em escala. O passo `set_ai` das
-          // automações passou a fazer o mesmo, por decisão do operador (D10).
-          //
-          // Quem for mexer no teto precisa saber: ele agora depende de quem
-          // monta a automação. "A cada mensagem recebida, religar a IA" fura o
-          // teto para sempre, e o robô responde sem limite naquela conversa.
-          ai_reply_count: 0,
-          ai_handoff_summary: null,
-        }
-    // Só no PAUSAR, e só a pedido. Retomar nunca menciona a coluna (ver o
-    // cabeçalho).
-    if (paused && assignToMe) update.assigned_agent_id = userId
+      ? { ai_autoreply_disabled: true, ia_pausada_por: 'botao', ia_pausada_em: agora }
+      : { ai_autoreply_disabled: false, ia_pausada_por: null, ia_pausada_em: null, ia_retomada_em: agora }
 
     // ⚠️ Confere as LINHAS: RLS que barra o UPDATE (ou a conversa apagada
     // entre a leitura e a escrita) volta 0 linhas com `error: null`, e a tela

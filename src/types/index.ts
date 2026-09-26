@@ -426,23 +426,28 @@ export interface Conversation {
    * AI auto-reply state for this thread (migration 029 + 033):
    *  - `ai_autoreply_disabled` — the bot is paused here (a human took
    *    over, or the model handed off). Sticky until re-enabled.
-   *  - `ai_reply_count` — how many times the bot has auto-replied,
-   *    checked against the account's per-conversation cap.
-   *  - `ai_handoff_summary` — short internal note the bot wrote when it
-   *    handed off, shown to whoever takes the thread over.
+   *  - `ai_reply_count` / `ai_handoff_summary` — legacy (the old
+   *    auto-reply). Nothing reads or writes them since the 1049: the AI
+   *    agent's cap is counted from its own messages.
+   *  PAUSED = `ai_autoreply_disabled`, with the reason in `ia_pausada_por`.
    */
   ai_autoreply_disabled?: boolean;
   ai_reply_count?: number;
   ai_handoff_summary?: string | null;
   /**
-   * Agentes de IA (migration 1049): o agente ATIVO da conversa (nulo = nenhum;
-   * encerrar zera) e por que a IA está pausada (`gente` | `transferencia` |
-   * `botao` | `automacao`; nulo em pausa anterior ao motivo). Chegam pelo `*`
-   * do `CONVERSATION_SELECT` e pelo realtime; a faixa do fio lê os dois. Fora
-   * da API v1 de propósito: o serializer dela projeta um subconjunto fixo.
+   * Agentes de IA (migration 1049): o ÚLTIMO agente que respondeu nesta
+   * conversa (nulo = nenhum; encerrar zera — é o que arma a pausa por gente,
+   * D26) e por que a IA está pausada (`gente` | `transferencia` | `botao` |
+   * `automacao`; nulo em pausa anterior ao motivo), com quando pausou e quando
+   * alguém clicou "Retomar IA" (o teto conta as respostas desde então). Quem
+   * RESPONDE é o agente da etapa do card (D24), não esta coluna. Chegam pelo
+   * `*` do `CONVERSATION_SELECT` e pelo realtime. Fora da API v1 de propósito:
+   * o serializer dela projeta um subconjunto fixo.
    */
   ia_agente_id?: string | null;
   ia_pausada_por?: string | null;
+  ia_pausada_em?: string | null;
+  ia_retomada_em?: string | null;
   /**
    * Multi-canal (migration 902): por qual número (cb_channels) a conversa
    * responde. `channel_pinned` = o atendente fixou o canal na mão; enquanto
@@ -693,6 +698,13 @@ export interface Message {
    * badge in the inbox. Migration 033.
    */
   ai_generated?: boolean;
+  /**
+   * O agente de IA que escreveu esta resposta (migration 1049; nulo em toda
+   * mensagem que não é de agente). A bolha mostra "IA · <nome>" (o nome vem de
+   * `GET /api/cb/ia/agentes/nomes`), e a 972 conta `bot` COM ele como
+   * "respondido". Gravado SÓ pelo turno (`engineSendText`) e pelo eco (`eco.ts`).
+   */
+  ia_agente_id?: string | null;
   /**
    * O motivo que a Meta deu para a falha (`errors[0]` do recibo `failed`:
    * código, título, `error_data.details`). Migration 1039, gravado pelo
@@ -1131,11 +1143,6 @@ export type AutomationStepType =
   | 'stop_flow'
   /** Liga ou desliga a resposta automática da IA nesta conversa — 936. */
   | 'set_ai'
-  /**
-   * Atribui o agente de IA ATIVO da conversa (F2 dos agentes, D9/D17). A
-   * regra da pausa roda no banco (`cb_atribuir_agente_de_ia`, 1049).
-   */
-  | 'assign_ia_agent'
   /** Envia imagem, vídeo, documento ou áudio (Fase 4). */
   | 'send_media'
   | 'wait'
@@ -1599,27 +1606,16 @@ export interface SendMediaStepConfig {
 /**
  * Config de `set_ai` (migration 936).
  *
- * ⚠️ **Religar zera o contador de respostas da IA** (`ai_reply_count`), por
- * decisão do operador (D10). O comentário da rota manual dizia que isso era
- * "não-automatizável de propósito", porque o contador é o teto que impede o
- * robô de responder para sempre numa conversa — e a ação humana, sendo lenta,
- * era a proteção. Automatizado, o teto passa a depender de quem monta a
- * automação: "a cada mensagem recebida, religar a IA" fura o teto para sempre.
- * A decisão é do operador; o aviso fica aqui e na tela.
- *
- * ⚠️ Com os agentes de IA (F2, E13): desligar pausa por `automacao`; ligar
- * retoma só a pausa por `gente` ou `automacao` e NÃO solta mais o responsável.
- * `agent_id` ficou sem uso: o agente nomeado é o passo `assign_ia_agent`, com
- * a chave `ia_agente_id` — `agent_id` é GENTE em outros configs.
+ * ⚠️ Com os agentes de IA (1049): desligar pausa por `automacao`; ligar
+ * desfaz SÓ a pausa por `automacao` — a de gente, do botão e da transferência
+ * só o "Retomar IA" desfaz (D26). Ligar não zera mais o teto (ele é contado
+ * pelas respostas do agente, 1049) nem solta o responsável.
+ * `agent_id` ficou sem uso (o agente de IA atua por etapa do funil, D24) —
+ * `agent_id` é GENTE em outros configs.
  */
 export interface SetAiStepConfig {
   enabled: boolean;
   agent_id?: string;
-}
-
-/** Passo "Atribuir agente de IA" (F2 dos agentes). A chave é `ia_agente_id`, NUNCA `agent_id` (que é gente). */
-export interface AssignIaAgentStepConfig {
-  ia_agente_id: string;
 }
 
 export type AutomationStepConfig =
@@ -1635,7 +1631,6 @@ export type AutomationStepConfig =
   | AutomationRefStepConfig
   | RunFlowStepConfig
   | SetAiStepConfig
-  | AssignIaAgentStepConfig
   | SendMediaStepConfig
   | WaitStepConfig
   | ConditionStepConfig

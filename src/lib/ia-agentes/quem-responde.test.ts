@@ -10,8 +10,16 @@ import {
 } from './quem-responde'
 
 const CANAL = 'canal-a'
-const TRIAGEM = { id: 'triagem', ativo: true, arquivado: false, conexoes: [CANAL] }
-const COBRANCA = { id: 'cobranca', ativo: true, arquivado: false, conexoes: [CANAL] }
+const LIGADO_EM = '2026-09-25T10:00:00Z'
+const AGENTE = {
+  id: 'cobranca',
+  ativo: true,
+  arquivado: false,
+  conexoes: [CANAL],
+  ativadoEm: LIGADO_EM,
+  desde: '2026-09-25T10:30:00Z',
+}
+const CARD = { id: 'deal-1', stageId: 'etapa-cobranca', pipelineId: 'funil-1', etapaDesde: '2026-09-25T11:00:00Z' }
 
 function fatos(p: Partial<FatosDaMensagem> = {}): FatosDaMensagem {
   return {
@@ -22,93 +30,94 @@ function fatos(p: Partial<FatosDaMensagem> = {}): FatosDaMensagem {
     ehRespostaDeBotao: false,
     roboConsumiu: false,
     automacaoFalou: false,
+    encerrada: false,
     pausada: false,
-    agenteAtivo: null,
-    entrada: { agente: TRIAGEM, desde: '2026-09-25T10:00:00Z' },
-    nuncaTeveGente: true,
-    contatoCriadoEm: '2026-09-25T11:00:00Z',
-    conversaCriadaEm: '2026-09-25T11:00:00.300Z',
+    card: CARD,
+    agente: AGENTE,
     ...p,
   }
 }
 
-describe('quemResponde — a ordem das regras (5.3)', () => {
-  it('contato novo, nunca atendido, na conexão com entrada: a entrada atende', () => {
-    expect(quemResponde(fatos())).toEqual({ quem: 'agente', agenteId: 'triagem', via: 'entrada' })
-  })
-
-  it('o agente ATIVO vence a entrada, e o responsável humano não entra na conta', () => {
-    expect(quemResponde(fatos({ agenteAtivo: COBRANCA, nuncaTeveGente: false }))).toEqual({
+describe('quemResponde — a ordem das regras (D24–D27)', () => {
+  it('card na etapa do agente, que entrou DEPOIS de o agente ser ligado nela: o agente da etapa responde, com o card e a etapa', () => {
+    expect(quemResponde(fatos())).toEqual({
       quem: 'agente',
       agenteId: 'cobranca',
-      via: 'ativo',
+      dealId: 'deal-1',
+      stageId: 'etapa-cobranca',
     })
   })
 
-  it('robô, automação que falou e pausa calam — nesta ordem, antes de qualquer agente', () => {
+  it('D27: card ANTIGO (entrou na etapa antes de a etapa ser do agente) não é atendido', () => {
+    expect(quemResponde(fatos({ card: { ...CARD, etapaDesde: '2026-09-25T10:15:00Z' } }))).toEqual({
+      quem: 'ninguem',
+      motivo: 'card_antigo',
+    })
+  })
+
+  it('D27: agente religado DEPOIS de o card entrar na etapa: o card é antigo para ele', () => {
+    const religado = { ...AGENTE, ativadoEm: '2026-09-25T12:00:00Z' }
+    expect(quemResponde(fatos({ agente: religado }))).toEqual({ quem: 'ninguem', motivo: 'card_antigo' })
+  })
+
+  it('D27: sem uma das datas, NÃO atende (o lado que atende menos gente)', () => {
+    expect(quemResponde(fatos({ card: { ...CARD, etapaDesde: null } })).quem).toBe('ninguem')
+    expect(quemResponde(fatos({ agente: { ...AGENTE, ativadoEm: null } })).quem).toBe('ninguem')
+    expect(quemResponde(fatos({ agente: { ...AGENTE, desde: null } })).quem).toBe('ninguem')
+  })
+
+  it('no mesmo instante vale (maior OU IGUAL)', () => {
+    expect(quemResponde(fatos({ card: { ...CARD, etapaDesde: AGENTE.desde } })).quem).toBe('agente')
+  })
+
+  it('sem card aberto: ninguém', () => {
+    expect(quemResponde(fatos({ card: null }))).toEqual({ quem: 'ninguem', motivo: 'sem_card' })
+  })
+
+  it('etapa sem agente: ninguém', () => {
+    expect(quemResponde(fatos({ agente: null }))).toEqual({ quem: 'ninguem', motivo: 'etapa_sem_agente' })
+  })
+
+  it('agente desligado ou arquivado: ninguém', () => {
+    expect(quemResponde(fatos({ agente: { ...AGENTE, ativo: false } }))).toEqual({
+      quem: 'ninguem',
+      motivo: 'agente_desligado',
+    })
+    expect(quemResponde(fatos({ agente: { ...AGENTE, arquivado: true } }))).toEqual({
+      quem: 'ninguem',
+      motivo: 'agente_desligado',
+    })
+  })
+
+  it('a mensagem veio por uma conexão que NÃO é do agente: ninguém', () => {
+    expect(quemResponde(fatos({ canalId: 'canal-b' }))).toEqual({ quem: 'ninguem', motivo: 'fora_da_conexao' })
+  })
+
+  it('robô, automação que falou, encerrada e pausada calam — nesta ordem, antes do card', () => {
     expect(quemResponde(fatos({ roboConsumiu: true, automacaoFalou: true }))).toEqual({ quem: 'ninguem', motivo: 'robo' })
-    expect(quemResponde(fatos({ automacaoFalou: true, pausada: true }))).toEqual({ quem: 'ninguem', motivo: 'automacao' })
-    expect(quemResponde(fatos({ pausada: true, agenteAtivo: COBRANCA }))).toEqual({ quem: 'ninguem', motivo: 'pausada' })
-  })
-
-  it('D16: conversa que JÁ teve resposta de gente não recebe a entrada', () => {
-    expect(quemResponde(fatos({ nuncaTeveGente: false }))).toEqual({ quem: 'ninguem', motivo: 'sem_agente' })
-  })
-
-  it('P8 (E3): contato criado ANTES de a entrada ser ligada (Kommo, Asaas, CSV) não recebe a entrada', () => {
-    expect(quemResponde(fatos({ contatoCriadoEm: '2026-09-01T00:00:00Z' }))).toEqual({
+    expect(quemResponde(fatos({ automacaoFalou: true, pausada: true }))).toEqual({
       quem: 'ninguem',
-      motivo: 'sem_agente',
+      motivo: 'automacao_falou',
     })
-    // Sem as datas, não atende (o lado que atende menos gente).
-    expect(quemResponde(fatos({ contatoCriadoEm: null })).quem).toBe('ninguem')
-    expect(quemResponde(fatos({ entrada: { agente: TRIAGEM, desde: null } })).quem).toBe('ninguem')
+    expect(quemResponde(fatos({ encerrada: true, pausada: true }))).toEqual({ quem: 'ninguem', motivo: 'encerrada' })
+    expect(quemResponde(fatos({ pausada: true, card: null }))).toEqual({ quem: 'ninguem', motivo: 'pausada' })
   })
 
-  it('P8: contato IMPORTADO depois da entrada (CSV, Asaas) — nasceu sem a conversa — não recebe a entrada (Codex, #292)', () => {
-    // A conversa só apareceu quando ele escreveu, dias depois da importação.
-    expect(quemResponde(fatos({ conversaCriadaEm: '2026-09-28T09:00:00Z' }))).toEqual({
+  it('fora do alcance: grupo, Instagram, sem conexão', () => {
+    expect(quemResponde(fatos({ ehGrupo: true }))).toEqual({ quem: 'ninguem', motivo: 'fora_do_alcance' })
+    expect(quemResponde(fatos({ ehInstagram: true }))).toEqual({ quem: 'ninguem', motivo: 'fora_do_alcance' })
+    expect(quemResponde(fatos({ canalId: null }))).toEqual({ quem: 'ninguem', motivo: 'fora_do_alcance' })
+  })
+
+  it('não abre turno: toque em botão, figurinha e localização', () => {
+    expect(quemResponde(fatos({ ehRespostaDeBotao: true }))).toEqual({ quem: 'ninguem', motivo: 'nao_abre_turno' })
+    expect(
+      quemResponde(fatos({ conteudo: { tipo: 'image', texto: null, mime: MIME_DA_FIGURINHA } })),
+    ).toEqual({ quem: 'ninguem', motivo: 'nao_abre_turno' })
+    expect(quemResponde(fatos({ conteudo: { tipo: 'location', texto: null, mime: null } }))).toEqual({
       quem: 'ninguem',
-      motivo: 'sem_agente',
+      motivo: 'nao_abre_turno',
     })
-    expect(quemResponde(fatos({ conversaCriadaEm: null })).quem).toBe('ninguem')
-    // Nascido junto (a ingestão cria os dois na mesma requisição): atende.
-    expect(quemResponde(fatos({ conversaCriadaEm: '2026-09-25T11:01:30Z' })).quem).toBe('agente')
-  })
-
-  it('o agente ativo desligado, arquivado ou de OUTRA conexão não atende — e a entrada NÃO o substitui (Codex, #292)', () => {
-    for (const a of [
-      { ...COBRANCA, ativo: false },
-      { ...COBRANCA, arquivado: true },
-      { ...COBRANCA, conexoes: ['canal-b'] },
-    ]) {
-      expect(quemResponde(fatos({ agenteAtivo: a }))).toEqual({ quem: 'ninguem', motivo: 'agente_ativo_indisponivel' })
-      expect(quemResponde(fatos({ agenteAtivo: a, entrada: null }))).toEqual({
-        quem: 'ninguem',
-        motivo: 'agente_ativo_indisponivel',
-      })
-    }
-  })
-
-  it('a entrada desligada ou sem a conexão nas dela não atende', () => {
-    expect(quemResponde(fatos({ entrada: { agente: { ...TRIAGEM, ativo: false }, desde: '2026-09-25T10:00:00Z' } })).quem).toBe('ninguem')
-    expect(quemResponde(fatos({ entrada: { agente: { ...TRIAGEM, conexoes: [] }, desde: '2026-09-25T10:00:00Z' } })).quem).toBe('ninguem')
-  })
-
-  it('fora do alcance: grupo, Instagram, sem conexão, toque em botão, figurinha e localização', () => {
-    for (const p of [
-      { ehGrupo: true },
-      { ehInstagram: true },
-      { canalId: null },
-      { ehRespostaDeBotao: true },
-      { conteudo: { tipo: 'image', texto: null, mime: 'image/webp' } },
-      { conteudo: { tipo: 'location', texto: 'Rua X', mime: null } },
-      { conteudo: { tipo: 'text', texto: null, mime: null } },
-      // O cartão de contato pela META: o webhook grava `text` com o rótulo do tipo.
-      { conteudo: { tipo: 'text', texto: '[Unsupported message type: contacts]', mime: null } },
-    ] as Partial<FatosDaMensagem>[]) {
-      expect(quemResponde(fatos(p)), JSON.stringify(p)).toEqual({ quem: 'ninguem', motivo: 'fora_do_alcance' })
-    }
   })
 
   it('áudio, imagem, documento e vídeo abrem turno (E9)', () => {

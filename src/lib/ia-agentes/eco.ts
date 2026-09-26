@@ -9,8 +9,8 @@
 // `cb_ia_turnos.mensagem_enviada_id` ANTES do INSERT da mensagem (`aoSair`, em
 // `engineSendText`), e se o INSERT atrasar mais que a espera de 2 s do
 // `jaGravada` — ou nunca acontecer (o processo morreu entre os dois) —, o eco
-// virava mensagem do CELULAR: `sender_type = 'agent'` com `from_device`, e a
-// conversa passava a "ter tido gente" (D16) para sempre.
+// virava mensagem do CELULAR: `sender_type = 'agent'` com `from_device` — a
+// resposta da IA contada como resposta de gente (Radar, alerta de atraso).
 //
 // Aqui o eco é reconhecido pelo id e gravado COMO A RESPOSTA DO AGENTE — a
 // mesma linha que o envio gravaria. ⚠️ Reconhecer NÃO é descartar (Codex,
@@ -25,8 +25,7 @@
 //
 // ⚠️ A invariante da rota: se algo aqui falhar, vale o caminho de SEMPRE (a
 // mensagem do celular). A pausa não acontece nem assim — o gatilho da 1049
-// ignora a mensagem cujo id é o de um turno (a defesa dobrada do E5); sobra só
-// a D16 contaminada, que é o que valia antes desta peça.
+// ignora a mensagem cujo id é o de um turno (a defesa dobrada do E5).
 //
 // Limite conhecido: a RELIGAÇÃO das retidas sem telefone (`religar.ts`)
 // pergunta "já gravada?" sem esperar e sem o item, então não passa por aqui.

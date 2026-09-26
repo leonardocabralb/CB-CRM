@@ -8,7 +8,7 @@ import { logAiUsage } from '@/lib/ai/usage'
 import { AiError, mensagemSeguraDeAiError, type ChatMessage } from '@/lib/ai/types'
 import { lerChave, lerEstado } from '@/lib/ia-chaves/repo'
 import { obterAgente } from '@/lib/ia-agentes/repo'
-import { montarPedidoDoAgente } from '@/lib/ia-agentes/pedido'
+import { lerPassagem, montarPedidoDoAgente } from '@/lib/ia-agentes/pedido'
 import { respostaDoErro } from '@/lib/ia-agentes/resposta'
 
 // O transcrito testado fica limitado, como a janela real do contexto.
@@ -83,10 +83,19 @@ export async function POST(request: Request, { params }: Contexto) {
       return NextResponse.json({ error: 'sem_chave', code: 'sem_chave' }, { status: 400 })
     }
 
+    // Os agentes para quem este pode PASSAR (D25), como o turno os mostra ao
+    // modelo — menos o recorte pela conexão do turno, que o Playground não tem.
+    // Sem eles, a triagem testada aqui nunca veria o bloco que a produção manda.
+    const lidos = await Promise.all(
+      agente.podePassarPara.map((idDoDestino) => obterAgente(ctx.accountId, idDoDestino).catch(() => null)),
+    )
+    const opcoes = lidos.filter((a): a is NonNullable<typeof a> => !!a && a.ativo && !a.arquivadoEm)
+
     const pedido = montarPedidoDoAgente({
       instrucoes: agente.instrucoes,
       regras: agente.regras,
       agora: new Date(),
+      passagens: opcoes.map((a) => ({ nome: a.nome, descricao: a.descricao })),
     })
     const resultado = await generateReply({
       config: {
@@ -117,9 +126,14 @@ export async function POST(request: Request, { params }: Contexto) {
       iaAgenteNome: agente.nome,
     })
 
+    // A régua do turno: a transferência vence a passagem, o marcador nunca é
+    // mostrado como resposta, e passar para um número que não existe transfere.
+    const n = resultado.handoff ? null : lerPassagem(resultado.text)
+    const destino = n === null ? null : (opcoes[n - 1] ?? null)
     return NextResponse.json({
-      reply: resultado.text,
-      handoff: resultado.handoff,
+      reply: n === null ? resultado.text : '',
+      handoff: resultado.handoff || (n !== null && !destino),
+      passaPara: destino?.nome ?? null,
       usage: resultado.usage,
     })
   } catch (err) {

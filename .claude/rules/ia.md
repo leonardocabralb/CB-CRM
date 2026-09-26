@@ -216,9 +216,9 @@ bolha e ao worker do Radar.
 
 ### Agentes de IA (1048, `src/lib/ia-agentes/`, `/agents`)
 
-Plano vivo: `docs/PLANO-agentes-de-ia.md` (D1–D23, E1–E14). F2a (1049): eles
-RESPONDEM cliente; a resposta automática do assistente anterior saiu (E2), e
-o ✨ do rascunho segue nele.
+Plano vivo: `docs/PLANO-agentes-de-ia.md` (D1–D27, E1–E14). F2 (1049): eles
+RESPONDEM cliente, por etapa do funil; a resposta automática do assistente
+anterior saiu (E2), e o ✨ do rascunho segue nele.
 
 - ⚠️⚠️ **"Agente" no código é PESSOA** (`assigned_agent_id`, o papel `agent`).
   Agente de IA leva `ia_agente` no nome (`cb_ia_agentes`, `ia_agente_id`).
@@ -240,137 +240,123 @@ o ✨ do rascunho segue nele.
   cotação de hoje (`ai_configs.cotacao_dolar`). Modelo fora da tabela é "sem
   preço", NUNCA zero; a saída do Gemini é `max(saída, total − entrada)`.
 
-### Quem responde (F2a, 1049): a regra, a fila e o turno
+### Quem responde (F2, 1049): etapa, fila e turno
 
-`quem-responde.ts` (puro), `entrada.ts` (a porta das DUAS ingestões),
-`fila.ts`, `turno.ts`, `rede.ts` (no topo de `/api/automations/cron`).
+`quem-responde.ts` (puro, e `lerQuemAtende`), `entrada.ts` (a porta das DUAS
+ingestões), `fila.ts`, `turno.ts`, `rede.ts` (no topo de `/api/automations/cron`).
 
-- ⚠️⚠️ **A ingestão só ENFILEIRA** (RPC `cb_ia_enfileirar_turno`, pendente
-  POR CONEXÃO; a rajada de 8 s empurra o mesmo pendente). Executa o disparo
-  em `after()` depois da espera e, como rede, o cron. Nada segura a ingestão
-  (o `message.received` vem atrás).
-- ⚠️⚠️ **A ordem das regras É a regra** (`quemResponde`): robô consumiu →
-  automação FALOU (`ResultadoDoDisparo.falou`, somado em TODOS os gatilhos da
-  mensagem, E4, com o `tag_added` aninhado e a fala ADIADA do funil: card
-  criado ou movido para etapa que automação ligada escuta,
-  `etapaTemQuemFale`) → pausada → agente ATIVO (ligado, não arquivado,
-  dono da conexão) → ENTRADA só SEM agente ativo, sem resposta de gente (D16),
-  contato criado depois de a entrada ligar (P8) E junto com a conversa (±2 min;
-  o importado não). Agente ativo que não responde aqui NÃO é substituído pela
-  entrada — desligar é freio.
-- ⚠️ **O card que o FUNIL cria na ingestão também é fala adiada**:
-  `routeContactToPipeline` devolve a etapa do card que CRIOU (nulo = não
-  criou), e TODA ingestão de cliente a passa por `etapaTemQuemFale` (pino
-  `pipeline-routing.chamadores.test.ts`). ⚠️ Na mensagem SEGUINTE da rajada,
-  `conferir` REAGENDA enquanto o contato tem `deal_stage_changed` não drenado
-  em etapa com quem fale (`funilAindaVaiFalar`, até `JANELA_DO_AUDIO_MS` do
-  gatilho; leitura que falha reagenda). O dreno carimba `processado_em` ANTES
-  de rodar a automação: nesse vão, só a reserva (`robo_falou`) pega.
+- ⚠️⚠️ **O agente atua por ETAPA do funil (D24)**: `cb_ia_agente_etapas`,
+  `stage_id` é a chave primária — uma etapa, UM agente. Só admin lê (forma da
+  1032); só `repo.ts` escreve, conferindo a etapa contra os funis DA CONTA
+  (`pipelines!inner`: `pipeline_stages` não tem `account_id`) e sem regravar as
+  que ficam (o `desde`); etapa de outro = 409 `etapa_ocupada` com o nome.
+  Arquivar o agente APAGA as linhas dele (gatilho).
+- ⚠️⚠️ **Responde o agente da etapa do card ABERTO mais recente do contato**
+  (`created_at desc`), ligado, não arquivado e com a conexão da mensagem.
+  `lerQuemAtende` é a ÚNICA leitura desses fatos (a entrada e as duas
+  conferências do turno); a rota da faixa aplica o mesmo `quemResponde`.
+- ⚠️ **D27: só card que ENTROU na etapa depois de o agente ser ligado nela**
+  (`deals.etapa_desde >= greatest(desde, cb_ia_agentes.ativado_em)`; data
+  ausente = não atende). As duas datas são carimbadas pelo BANCO. ⚠️ A carga
+  da Kommo cala os gatilhos de `deals`: o card que ela MOVE guarda o
+  `etapa_desde` velho, e o que ela CRIA ganha a hora da carga (conta como novo).
+- ⚠️⚠️ **A ordem das regras É a regra** (`quemResponde`): fora do alcance
+  (grupo, Instagram) → não abre turno → robô consumiu → automação FALOU (E4:
+  `ResultadoDoDisparo.falou`, em TODOS os gatilhos da mensagem, com o
+  `tag_added` aninhado e a fala ADIADA do funil — card criado ou movido para
+  etapa que automação ligada escuta, `etapaTemQuemFale`) → encerrada → pausada
+  → sem card → etapa sem agente → desligado → fora da conexão → card antigo.
+- ⚠️ **O card que o FUNIL cria na ingestão também é fala adiada**
+  (`routeContactToPipeline` devolve a etapa; pino
+  `pipeline-routing.chamadores.test.ts`). Na mensagem SEGUINTE da rajada,
+  `conferir` REAGENDA enquanto há `deal_stage_changed` não drenado em etapa
+  com quem fale (`funilAindaVaiFalar`); no vão do dreno, só a reserva pega.
 - ⚠️⚠️ **UMA régua de conteúdo, `abreTurno`, na entrada E no turno** (E9/E10):
-  não abrem turno (nem descartam o em curso) a figurinha (`image` +
-  `image/webp`), localização, botão, texto sem nada visível e o rótulo do
-  tipo que o webhook da Meta não lê — MONTADO com
-  `PREFIXO_DE_TIPO_NAO_SUPORTADO` e recusado pelo COMEÇO (reescrito num lado
-  só, volta a abrir turno).
+  figurinha, localização, botão, texto sem nada visível e o rótulo montado com
+  `PREFIXO_DE_TIPO_NAO_SUPORTADO` (recusado pelo COMEÇO) não abrem turno.
 - ⚠️ **Robô ou automação que respondeu cala o agente**: a entrada descarta o
-  pendente E o `rodando` sem `enviando_desde` da conexão (`descartarPendente`;
-  o que já envia, não), e o turno e a reserva descartam
-  se há `bot` sem `ia_agente_id` gravado depois do gatilho, na MESMA conexão
-  (D4) — senão o botão na rajada daria duas respostas.
-- ⚠️⚠️ **A GERAÇÃO (`conversations.ia_atribuicao`, E12) é escrita SÓ pelo
-  gatilho `cb_ia_geracao_da_atribuicao_trigger`** (BEFORE UPDATE SEM lista de
-  colunas: o encerramento zera o agente num BEFORE com só `status` no SET;
-  valor mandado por fora é desfeito). Avança quando o agente muda (até para
-  nulo), a pausa é retomada e o teto vai de >0 a 0; pausar não, e reatribuir
-  o mesmo agente sem pausa não escreve nada. ⚠️ O nome ordena DEPOIS de todo
-  BEFORE UPDATE de `conversations` que escreva agente, pausa ou teto em NEW
-  (hoje `cb_encerrar_limpa_ia_trigger`; a conferência da 1049 cobra). O
-  pendente NÃO fixa agente nem geração (o `ia_agente_id` dele é sugestão,
-  nulo no `ocupada`): a 1ª conferência os lê da conversa; a 2ª, a reserva,
-  `devolverVaga` e `transferirParaGente` (do turno; o recolhedor não) exigem
-  os mesmos. ⚠️ Aberto: a devolução 1 → 0 fora do `rodando` (ramo `!posse`)
-  e o "ligar" do `set_ai` sem pausa (zera o teto) avançam a geração e
-  descartam o turno em curso — nenhuma resposta, nunca duas.
-- ⚠️⚠️ **A última palavra é da reserva (`cb_ia_reservar_envio`, 9 argumentos
-  SEM DEFAULT, de propósito)**: UMA escrita na linha travada (`FOR NO KEY
-  UPDATE`; a `FOR UPDATE` disputaria com a FK de quem insere mensagem) —
-  teto, pausa, agente e geração, encerrada, o turno ainda `rodando`, o
-  gatilho sem `deleted_at`/`edited_at`, OUTRO pendente da conexão com a
-  mensagem viva e `gravada_em` maior, e saída do robô depois do gatilho.
-  Dono e contato vêm antes; nulo cai no lado que recusa. Recusa nesta ordem:
-  `mudou`, `descartado`, `editada`, `pausada` (`pausado_no_meio`),
-  `mais_nova`, `robo_falou` — todas sem enviar nem transferir — e `teto`,
-  que transfere só com o contador lido sob a trava no teto (prova sumida =
-  `mais_nova`: teto falso é pausa que só gente desfaz); desconhecido =
-  `falhou`.
-- ⚠️⚠️ **O turno NUNCA reenvia.** A posse (`enviando_desde` + o
-  `ia_agente_id` que responde) é carimbada DEPOIS da reserva: `rodando` sem
-  ela = ainda não enviou; posse perdida = nada saiu (`abandonado`). Erro
-  depois da primeira chamada ao provedor (`antesDoProvedor`) que não seja
-  recusa comprovada (4xx) é `incerto` e transfere; o recolhedor (`rede.ts`)
-  decide pelo que o turno carimbou (morto entre reserva e posse = `falhou`,
-  vaga gasta), nunca re-executa. A vaga volta só quando nada saiu
-  (`nadaSaiu`) E na mesma atribuição (`devolverVaga`, compare-and-swap: o
-  PostgREST não escreve `x - 1`); o incerto a mantém.
-- ⚠️ **Encerrar descarta os turnos `aguardando` e `rodando`** da conversa
-  (`cb_encerrar_limpa_ia`, SECURITY DEFINER: o operador encerra sob RLS),
-  inclusive o que já envia — ao contrário de `descartarPendente`: vivo, ele
-  transferiria o atendimento novo da conversa reaberta.
+  pendente e o `rodando` sem `enviando_desde` da conexão
+  (`descartarPendente`); o turno e a reserva descartam com `bot` sem
+  `ia_agente_id` depois do gatilho, na MESMA conexão.
+- ⚠️⚠️ **A ingestão só ENFILEIRA** (`cb_ia_enfileirar_turno`: um pendente por
+  conversa E conexão, com agente, card e etapa; a rajada de 8 s o empurra).
+  Executa em `after()` e, como rede, o cron. O turno fica AMARRADO a (agente,
+  card, etapa): card movido ou etapa com outro agente = descarta, sem
+  re-resolver (o alerta de atraso chama a equipe).
+- ⚠️⚠️ **A última palavra é da reserva, `cb_ia_reservar_envio(turno,
+  rodando_desde)`**: conversa travada (`FOR NO KEY UPDATE`), NÃO escreve nada,
+  devolve `ok` ou o 1º motivo — `descartado`, `encerrada`, `pausada`,
+  `card_mudou`, `card_fechado`, `agente_desligado`, `fora_da_conexao`,
+  `agente_sem_etapa`, `mais_nova`, `robo_falou`, `teto`. `teto` transfere,
+  `pausada` é `pausado_no_meio`, o resto descarta sem transferir (transferir
+  pausaria a IA até alguém clicar). Não reconfere a D27.
+- ⚠️ **O teto é CONTADO nas mensagens do agente** na conversa desde
+  `greatest(etapa_desde, ia_retomada_em)`: mudar de etapa ou "Retomar IA"
+  recomeça. `ai_reply_count` não decide mais nada.
+- ⚠️⚠️ **PASSAGEM (D25)**: o pedido lista, numerados, os agentes de
+  `pode_passar_para` ligados, não arquivados e com a conexão; `[[PASSAR:n]]`
+  vale em QUALQUER ponto do texto (`lerPassagem`) e nunca vai ao cliente; a
+  transferência vence a passagem. Depois da 2ª conferência: etapa do destino
+  no mesmo funil (menor `position`), senão no funil mais antigo; UPDATE
+  CONDICIONAL de `deals` (`pipeline_id` + `stage_id`; a etapa do turno e
+  `open`) e `drenarEventosDeFunil()`; anotação; turno do destino com
+  `veio_de_passagem` sobre a MESMA mensagem, sem espera; este termina `passou`
+  ANTES de o novo ser reivindicado (um `rodando` por conversa). Passagem de
+  passagem, n inválido, destino sem etapa ou UPDATE que não casa = transfere.
+  É um escritor de etapa sem `auth.uid()` (trilha `sistema`, `deal.*` com
+  `system`, a 950 vale). O Playground manda o mesmo bloco (sem o recorte da
+  conexão) e diz para quem passaria.
+- ⚠️⚠️ **O turno NUNCA reenvia.** A posse (`enviando_desde`) é carimbada
+  DEPOIS da reserva: `rodando` sem ela = ainda não enviou; posse perdida =
+  nada saiu (`abandonado`). Erro depois da 1ª chamada ao provedor que não seja
+  recusa comprovada (4xx) = `incerto`, e transfere; o recolhedor decide pelo
+  carimbo e nunca re-executa. Cerca de posse (`rodando` + `rodando_desde`) em
+  TODA escrita no turno, menos o id do provedor (`gravarIdEnviado`): o eco
+  precisa dele mesmo com o turno recolhido.
+- ⚠️⚠️ **PAUSA (D26)**: `ai_autoreply_disabled` + `ia_pausada_por` (`gente` |
+  `botao` | `transferencia` | `automacao`). Só "Retomar IA" (`POST
+  /api/ai/autoreply`: limpa e grava `ia_retomada_em`) a desfaz; mudar de etapa
+  não. A de GENTE é o gatilho da 1049: mensagem de gente (`sender_id` OU
+  `from_device`) sem `ia_agente_id`, com `gravada_em` (a carga fica fora), 1:1,
+  e a conversa com `ia_agente_id`, OU turno vivo, OU o contato com card aberto
+  numa etapa COM agente, OU SEM card aberto (a equipe abriu a conversa: o card
+  nasce DEPOIS da mensagem). Card só em etapa sem agente NÃO pausa: é o SDR
+  fora do território da IA, e mover o card entrega a conversa ao agente
+  (revisão da F2). O eco do turno (`mensagem_enviada_id`) não
+  pausa; a agendada e o eco antes do id pausam (o lado seguro). O turno só LÊ
+  a pausa. `set_ai`: desligar = `automacao` sem pisar noutro motivo; ligar
+  desfaz SÓ `automacao`, sem zerar o teto nem soltar o responsável.
+- ⚠️ **Encerrar limpa agente e pausa, recomeça o teto (`ia_retomada_em =
+  now()`) e descarta os turnos**
+  `aguardando` e `rodando` (`cb_encerrar_limpa_ia`, SECURITY DEFINER: o
+  operador encerra sob RLS), inclusive o que já envia.
 - ⚠️ **Falha de CONFIGURAÇÃO não transfere** (E8): chave, modelo, provedor
-  fora do ar → `falhou`, e o alerta de atraso chama a equipe. Transferem o
-  sentinela, a resposta vazia, o teto, o áudio que não se ouve e o envio
-  incerto — pausa `'transferencia'`, destino só sem responsável (e membro),
-  anotação sem usuário ("IA · <agente>"). ⚠️ NUNCA por cima de pausa que já
-  existe (`transferirParaGente` cerca `ai_autoreply_disabled = false`; zero
-  linhas = sem nota nem atribuição, `pausado_no_meio`): a de gente é a que a
-  automação retoma (D17).
-- ⚠️ **Cerca de posse em TODA escrita no turno** (`status = 'rodando'` e o
-  `rodando_desde` do claim) — MENOS o id do provedor (`gravarIdEnviado`,
-  cercado por turno e id nulo): o eco precisa dele mesmo com o turno
-  recolhido, e ele não mexe no status.
+  fora do ar → `falhou`. Transferem o sentinela, a resposta vazia, o teto, o
+  áudio que não se ouve e o envio incerto — pausa `transferencia`, destino só
+  sem responsável, anotação "IA · <agente>". Nunca por cima de pausa ou de
+  conversa encerrada (zero linhas = sem nota, `pausado_no_meio`).
 - ⚠️ **Só o turno passa `iaAgenteId` ao `engineSendText`** (pino
-  default-deny): a 972 (redefinida na 1049) conta `bot` COM `ia_agente_id`
-  como "respondido" — com ele, fluxo ou automação calariam o alerta de atraso.
-- ⚠️ **O contexto é SÓ da conexão do turno** (D4), sem as apagadas; áudio
-  pela transcrição (reagenda até 2 min de `gravada_em`), mídia como
-  descrição (`contexto.ts`).
-- ⚠️⚠️ **A D17 ("gente respondeu em 24 h?") é UMA função SQL,
-  `cb_ia_gente_respondeu_em_24h`** (nunca copiar; pino na 1049), usada por
-  `cb_atribuir_agente_de_ia` (conversa travada, relê o agente, nunca toca
-  `assigned_agent_id`; a ENTRADA passa `p_so_se_vazio` e no `ocupada` — a
-  rajada concorrente — enfileira sem agente; o passo "Atribuir agente" TROCA)
-  e por `cb_retomar_ia_por_automacao` (o "ligar" do `set_ai`, E13), que
-  retoma só `gente`/`automacao` sem gente em 24 h (`automacao` + gente
-  recente vira `gente`) — `botao`, `transferencia` e pausa sem motivo, nunca;
-  sem pausa, só zera o teto (D10). UPDATE solto no motor põe a IA por cima do
-  advogado; erro ou resposta desconhecida da RPC = falha visível do passo.
-- **Pausa por gente é GATILHO** (1049), SÓ por `gravada_em >=
-  ia_agente_desde`, sem janela pelo `created_at` (o aparelho atrasado não
-  pausava); a fala antiga que a 1010 recupera pausa (o lado
-  seguro). O eco do turno fica fora pelo `mensagem_enviada_id`. O turno relê
-  o gatilho a cada conferência: apagado ou editado (a edição cifrada da 2.4
-  só carimba `edited_at`) descarta. O eco da Evolution que chega antes do
-  INSERT é gravado COMO a resposta do agente por `eco.ts` — 2º escritor de
-  `messages` com `ia_agente_id`; nenhum motor (pino `eco.test.ts`).
-- **FK anulável de `cb_ia_turnos`/`ai_usage_log` ganha índice PARCIAL**
-  (`WHERE col IS NOT NULL`; `conversation_id` cheio): sem ele, apagar
-  mensagem, conversa ou conexão varre a tabela. `messages.ia_agente_id` fica
-  sem índice (decisão do operador).
-- ⚠️ **Apagar conexão DESCARTA os pendentes dela** (BEFORE DELETE
-  `cb_channels_descarta_turnos_de_ia`): senão dois pendentes em conexões
-  apagadas colidem em (conversa, NULL) e o DELETE ABORTA.
-- ⚠️ **A faixa do fio (`ai-thread-banner.tsx`) lê a CONVERSA**
-  (`ia_agente_id` acende, `ai_autoreply_disabled` pausa, `ia_pausada_por`
-  explica), nunca `/api/ai/config`; o responsável humano NÃO a esconde, e só
-  o "Assumir" toca `assigned_agent_id` (`patchDoClique`); erro vira frase
-  (`erroDaResposta`), chaves LITERAIS. ⚠️ O clique otimista é APAGADO no
-  render quando deixa de valer (`cliqueAindaVale`) — senão o banco que
-  confirma e VOLTA (o gatilho pausou) devolve o clique velho. O React
-  Compiler não analisa a faixa (`finally`): a prova é o teste de renders.
+  default-deny): a 972 conta `bot` COM `ia_agente_id` como "respondido".
+  Depois do envio, `conversations.ia_agente_id` = o ÚLTIMO agente que respondeu.
+- ⚠️ **O contexto é SÓ da conexão do turno** (D4); áudio pela transcrição
+  (reagenda até 2 min de `gravada_em`), mídia como descrição (`contexto.ts`).
+  Gatilho apagado ou editado descarta. O eco da Evolution que chega antes do
+  INSERT é gravado COMO a resposta do agente por `eco.ts`, sem motor.
+- **FK anulável de `cb_ia_turnos`/`ai_usage_log` ganha índice PARCIAL**;
+  `messages.ia_agente_id` fica sem índice (decisão do operador). ⚠️ Apagar
+  conexão DESCARTA os pendentes dela (senão dois colidem em (conversa, NULL)).
+- ⚠️ **A faixa do fio pergunta `GET /api/cb/ia/conversa/[id]`** quem responde;
+  as colunas do realtime (pausa, motivo, último agente) só a fazem perguntar de
+  novo. Atendendo = "IA · X" + Pausar; pausada (com agente da etapa ou
+  `ia_agente_id`) = motivo + Retomar; senão, nada. Pausar não toca
+  `assigned_agent_id`. Motivo e status do turno são chaves MONTADAS, cobradas
+  nos dois dicionários (`STATUS_DO_TURNO` lê o CHECK da 1049). A bolha mostra
+  "IA · <nome>" (`nomes-dos-agentes.ts`, cache de módulo; sem nome, "IA").
+  `/api/cb/ia/agentes/nomes` e `/conversa/[id]` são de qualquer membro e
+  devolvem só id e nome.
 - ⚠️ **A tela legada (`ai-config.tsx`) não tem controle de auto-reply**: o
-  corpo (`corpoDoSalvamento`) ECOA `auto_reply_*` como lidos (o POST
-  reescreve a linha) e NÃO manda `handoff_agent_id` (ex-membro travaria o
-  Salvar sem seletor). Pino `ai-config.test.ts`.
+  corpo ECOA `auto_reply_*` e NÃO manda `handoff_agent_id`. Pino
+  `ai-config.test.ts`.
 
 ### Assistente e provedores (`src/lib/ai/`)
 

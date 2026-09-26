@@ -437,6 +437,8 @@
       "unsupported": "[Unsupported message type]",
       "aiBadge": "AI",
       "aiBadgeTitle": "Sent automatically by the AI assistant",
+      "iaAgente": "AI · {nome}",
+      "iaAgenteTitle": "Reply from the AI agent {nome}",
       "viaChannel": "via {label}",
       "fromDevice": "Phone",
       "fromDeviceTitle": "Sent from the paired phone, not from the CRM",
@@ -704,18 +706,22 @@
       "falhouCarga": "Couldn't load the runs."
     },
     "aiBanner": {
-      "pausedTitle": "AI assistant is paused here",
-      "activeText": "AI assistant is replying automatically",
-      "takeOver": "Take over",
+      "atendendo": "AI · {agente} answers in this conversation",
+      "pausar": "Pause",
+      "pausada": "AI paused",
+      "pausadaComMotivo": "AI paused — {motivo}",
+      "retomarDica": "The AI only answers in this conversation again through this button.",
+      "pausou": "AI paused in this conversation.",
+      "motivo": {
+        "gente": "someone on the team replied",
+        "botao": "paused by someone on the team",
+        "transferencia": "the AI handed the conversation to a person",
+        "automacao": "turned off by an automation"
+      },
       "resume": "Resume AI",
-      "tookOver": "You’ve taken over this chat.",
       "resumed": "AI resumed.",
       "updateError": "Couldn’t update the AI assistant.",
       "networkError": "Couldn’t reach the server.",
-      "pausadaPorGente": "Someone on the team replied, so the AI stopped here.",
-      "pausadaPorTransferencia": "The AI handed this chat over to a person.",
-      "pausadaPeloBotao": "Paused by someone on the team.",
-      "pausadaPorAutomacao": "Paused by an automation.",
       "erroGrupo": "AI agents don’t reply in group chats.",
       "erroInstagram": "AI agents don’t reply in Instagram conversations.",
       "erroNadaGravado": "Nothing changed — the conversation may have been updated meanwhile. Reload and try again.",
@@ -1289,7 +1295,6 @@
         "stop_flow": "Stop the bot",
         "set_ai_on": "Turn AI replies on",
         "set_ai_off": "Turn AI replies off",
-        "assign_ia_agent": "Assign AI agent: {alvo}",
         "send_media_image": "Send image",
         "send_media_video": "Send video",
         "send_media_document": "Send document",
@@ -1798,7 +1803,6 @@
         "run_flow": "Run bot",
         "stop_flow": "Stop bot",
         "set_ai": "AI assistant",
-        "assign_ia_agent": "Assign AI agent",
         "send_media": "Send file",
         "send_to_number": "Notify a number",
         "create_task": "Create task"
@@ -2063,7 +2067,7 @@
         "aiLabel": "AI on this conversation",
         "aiOn": "Turn on",
         "aiOff": "Turn off",
-        "aiResetWarning": "Turning it back on also resets this conversation's reply counter and releases whoever is assigned. Beware of turning it on from a trigger that fires on every message — the per-conversation reply cap stops applying.",
+        "aiResetWarning": "Turning it on only undoes a pause made by an automation. If someone on the team replied, or the AI itself handed the conversation to a person, it stays paused until someone clicks \"Resume AI\" in the conversation.",
         "rawIdPlaceholder": "Paste the id",
         "inactiveSuffix": "(off)",
         "selfSuffix": "(this one)"
@@ -4203,7 +4207,7 @@
     "tentarDeNovo": "Try again",
     "cancelar": "Cancel",
     "lista": {
-      "explicacao": "Agents don't answer customers yet: at this stage they are created, configured and tested in the Playground.",
+      "explicacao": "Each agent answers the customers whose deal is in the pipeline stages marked on it. Create, test in the Playground and follow each one's usage and turns.",
       "novo": "New agent",
       "falhou": "Could not load the agents.",
       "vazia": "No agents yet. Create the first one — blank or from a template.",
@@ -4211,7 +4215,9 @@
       "desligado": "off",
       "semConexao": "No connection selected",
       "conexoes": "Connections: {conexoes}",
-      "legado": "The previous single assistant stays available until agents start answering:",
+      "semEtapa": "No stage selected — answers no one",
+      "etapas": "{n, plural, one {Works in # stage} other {Works in # stages}}",
+      "legado": "The previous assistant still powers the AI draft (✨) in the inbox:",
       "legadoLink": "open the previous assistant"
     },
     "novo": {
@@ -4226,7 +4232,7 @@
       "nome": "Name",
       "nomeExemplo": "e.g. Triage",
       "ativo": "On",
-      "ativoDica": "Only takes effect once agents start answering customers.",
+      "ativoDica": "When on, it answers the customers whose deal is in the stages selected under \"Where it works\".",
       "descricao": "Description",
       "descricaoDica": "One sentence about what this agent does. It's what another agent reads to decide whether to hand the conversation over.",
       "instrucoes": "Instructions",
@@ -4255,11 +4261,11 @@
       "equipeNaoCarregou": "The team could not be loaded. The transfer destination stays as it is until you reload the page.",
       "membroNaoCarregado": "(loading…)",
       "podePassarPara": "May hand the conversation to",
-      "podePassarParaDica": "The other agents this one may forward the conversation to.",
+      "podePassarParaDica": "The other agents this one may hand the conversation to. On handover, the deal moves to the chosen agent's stage, and that agent then answers the same customer message.",
+      "passarSemEtapa": "(no stage: the handover goes to the team)",
       "semOutrosAgentes": "There are no other agents in the account."
     },
     "config": {
-      "aindaNaoResponde": "At this stage the agent doesn't answer customers yet, even when on. Use the Playground to test it.",
       "modelo": "Provider and model",
       "transferencia": "Limit and handover",
       "salvar": "Save",
@@ -4268,6 +4274,17 @@
       "arquivarConfirma": "Archive this agent? It leaves the list and is turned off; past usage keeps its name.",
       "arquivado": "Agent archived."
     },
+    "ondeAtua": {
+      "titulo": "Where it works",
+      "dica": "The agent answers the customer whose OPEN deal is in one of the selected stages (and on one of the connections above). A stage has at most one agent.",
+      "soCardsNovos": "Only deals that ENTER the stage after it is selected and after the agent is turned on are answered — deals already sitting there get no reply.",
+      "funil": "Pipeline",
+      "funilComMarcadas": "{funil} ({n, plural, one {# stage selected} other {# stages selected}})",
+      "ocupada": "AI · {agente}",
+      "nenhuma": "No stage selected: the agent answers no one.",
+      "falhou": "Could not load the pipelines. Reload the page.",
+      "semFunis": "This account has no pipeline yet. Create one in Pipelines to choose where the agent works."
+    },
     "detalhe": {
       "voltar": "All agents",
       "falhou": "Could not load the agent.",
@@ -4275,7 +4292,8 @@
       "abas": "Agent sections",
       "configuracao": "Settings",
       "playground": "Playground",
-      "uso": "Usage"
+      "uso": "Usage",
+      "turnos": "Turns"
     },
     "playground": {
       "explicacao": "Chat as if you were the customer. What's SAVED in Settings applies, with the same model as production; the spend counts as testing.",
@@ -4283,6 +4301,7 @@
       "recomecar": "Start over",
       "vazio": "Send a message to see how this agent would answer.",
       "transferiria": "Here the agent would hand over to a person",
+      "passaria": "Here the agent would hand the conversation to {agente}, who would answer this same message",
       "tokens": "{n} tokens",
       "pensando": "Thinking…",
       "placeholder": "Write as the customer would…"
@@ -4319,6 +4338,26 @@
         "draft": "AI draft"
       }
     },
+    "turnos": {
+      "explicacao": "The last 50 times this agent was called to answer, newest first.",
+      "vazio": "This agent has not been called to answer yet.",
+      "falhou": "Could not load the turns.",
+      "semContato": "Unnamed contact",
+      "statusDesconhecido": "Other ({status})",
+      "status": {
+        "aguardando": "Waiting",
+        "rodando": "Answering",
+        "respondeu": "Answered",
+        "passou": "Handed to another agent",
+        "transferiu": "Handed to the team",
+        "sem_resposta": "No answer",
+        "fora_do_horario": "Outside working hours",
+        "pausado_no_meio": "Paused midway",
+        "descartado": "Discarded",
+        "falhou": "Failed",
+        "incerto": "Uncertain delivery"
+      }
+    },
     "dia": {
       "0": "Sun",
       "1": "Mon",
@@ -4347,6 +4386,8 @@
       "agente_de_outra_conta": "One of the selected agents no longer exists — reload the page.",
       "membro_de_outra_conta": "The handover person is no longer on the team — choose someone else.",
       "passar_para_si": "An agent can't hand the conversation to itself.",
+      "etapa_de_outra_conta": "One of the stages no longer exists — reload the page.",
+      "etapa_ocupada": "One of the selected stages already belongs to the agent {agente} — each stage has only one agent.",
       "nao_encontrado": "This agent no longer exists.",
       "sem_chave": "This agent's provider has no key — add it in Settings → Integrations.",
       "provedor_sem_chave": "This provider has no key. Add the key in Settings → Integrations, or choose another provider.",
@@ -4390,7 +4431,8 @@
         "teto": "{agente} handed the conversation to the team: it reached the reply limit for this conversation.",
         "audio": "{agente} handed the conversation to the team: it could not hear the customer's audio.",
         "incerto": "{agente} handed the conversation to the team: there is no way to know whether the last reply reached the customer — check before replying."
-      }
+      },
+      "passagem": "{agente} handed the conversation to AI · {destino}, and the deal moved to that agent's stage."
     }
   },
   "ForgotPasswordPage": {

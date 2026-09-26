@@ -430,6 +430,8 @@
       "unsupported": "[Tipo de mensagem não suportado]",
       "aiBadge": "IA",
       "aiBadgeTitle": "Enviada automaticamente pelo assistente de IA",
+      "iaAgente": "IA · {nome}",
+      "iaAgenteTitle": "Resposta do agente de IA {nome}",
       "viaChannel": "via {label}",
       "fromDevice": "Celular",
       "fromDeviceTitle": "Enviada pelo celular pareado, não pelo CRM",
@@ -697,18 +699,22 @@
       "falhouCarga": "Não consegui ler as execuções."
     },
     "aiBanner": {
-      "pausedTitle": "O assistente de IA está pausado aqui",
-      "activeText": "O assistente de IA está respondendo automaticamente",
-      "takeOver": "Assumir",
+      "atendendo": "IA · {agente} responde nesta conversa",
+      "pausar": "Pausar",
+      "pausada": "IA pausada",
+      "pausadaComMotivo": "IA pausada — {motivo}",
+      "retomarDica": "A IA só volta a responder nesta conversa com este botão.",
+      "pausou": "IA pausada nesta conversa.",
+      "motivo": {
+        "gente": "alguém da equipe respondeu",
+        "botao": "pausada por alguém da equipe",
+        "transferencia": "a IA passou a conversa para uma pessoa",
+        "automacao": "desligada por uma automação"
+      },
       "resume": "Retomar IA",
-      "tookOver": "Você assumiu esta conversa.",
       "resumed": "IA retomada.",
       "updateError": "Não foi possível atualizar o assistente de IA.",
       "networkError": "Não foi possível conectar ao servidor.",
-      "pausadaPorGente": "Alguém da equipe respondeu, e a IA parou aqui.",
-      "pausadaPorTransferencia": "A IA passou esta conversa para uma pessoa.",
-      "pausadaPeloBotao": "Pausada por alguém da equipe.",
-      "pausadaPorAutomacao": "Pausada por uma automação.",
       "erroGrupo": "Os agentes de IA não respondem em grupos.",
       "erroInstagram": "Os agentes de IA não respondem no Instagram.",
       "erroNadaGravado": "Nada foi alterado — a conversa pode ter mudado. Recarregue e tente de novo.",
@@ -1282,7 +1288,6 @@
         "stop_flow": "Parar o robô",
         "set_ai_on": "Ligar a resposta da IA",
         "set_ai_off": "Desligar a resposta da IA",
-        "assign_ia_agent": "Atribuir agente de IA: {alvo}",
         "send_media_image": "Enviar imagem",
         "send_media_video": "Enviar vídeo",
         "send_media_document": "Enviar documento",
@@ -1791,7 +1796,6 @@
         "run_flow": "Acionar robô",
         "stop_flow": "Parar robô",
         "set_ai": "Assistente de IA",
-        "assign_ia_agent": "Atribuir agente de IA",
         "send_media": "Enviar arquivo",
         "send_to_number": "Avisar um número",
         "create_task": "Criar tarefa"
@@ -2056,7 +2060,7 @@
         "aiLabel": "IA nesta conversa",
         "aiOn": "Ligar",
         "aiOff": "Desligar",
-        "aiResetWarning": "Religar também zera o contador de respostas desta conversa e solta quem estiver atribuído. Cuidado ao ligar a partir de um gatilho que dispara a cada mensagem — o teto de respostas por conversa deixa de valer.",
+        "aiResetWarning": "Ligar desfaz só a pausa feita por uma automação. Se alguém da equipe respondeu, ou se a própria IA passou a conversa para uma pessoa, ela continua parada até alguém clicar em \"Retomar IA\" na conversa.",
         "rawIdPlaceholder": "Cole o id",
         "inactiveSuffix": "(desativada)",
         "selfSuffix": "(esta)"
@@ -4196,7 +4200,7 @@
     "tentarDeNovo": "Tentar de novo",
     "cancelar": "Cancelar",
     "lista": {
-      "explicacao": "Os agentes ainda não respondem clientes: nesta etapa eles são criados, configurados e testados no Playground.",
+      "explicacao": "Cada agente responde os clientes cujo card está nas etapas do funil marcadas nele. Crie, teste no Playground e acompanhe o uso e os turnos de cada um.",
       "novo": "Novo agente",
       "falhou": "Não foi possível carregar os agentes.",
       "vazia": "Nenhum agente ainda. Crie o primeiro — em branco ou a partir de um modelo.",
@@ -4204,7 +4208,9 @@
       "desligado": "desligado",
       "semConexao": "Nenhuma conexão marcada",
       "conexoes": "Conexões: {conexoes}",
-      "legado": "O assistente único de antes continua disponível até os agentes passarem a responder:",
+      "semEtapa": "Nenhuma etapa marcada — não responde ninguém",
+      "etapas": "{n, plural, one {Atua em # etapa} other {Atua em # etapas}}",
+      "legado": "O assistente anterior segue servindo ao rascunho com IA (✨) da caixa de entrada:",
       "legadoLink": "abrir o assistente anterior"
     },
     "novo": {
@@ -4219,7 +4225,7 @@
       "nome": "Nome",
       "nomeExemplo": "ex.: Triagem",
       "ativo": "Ligado",
-      "ativoDica": "Só passa a valer quando os agentes começarem a responder clientes.",
+      "ativoDica": "Ligado, responde os clientes cujo card está nas etapas marcadas em \"Onde atua\".",
       "descricao": "Descrição",
       "descricaoDica": "Uma frase sobre o que este agente faz. É o que outro agente lê para decidir se passa a conversa para ele.",
       "instrucoes": "Instruções",
@@ -4248,11 +4254,11 @@
       "equipeNaoCarregou": "Não foi possível carregar a equipe. O destino da transferência continua como está até você recarregar a página.",
       "membroNaoCarregado": "(carregando…)",
       "podePassarPara": "Pode passar a conversa para",
-      "podePassarParaDica": "Os outros agentes para quem este pode encaminhar a conversa.",
+      "podePassarParaDica": "Os outros agentes para quem este pode passar a conversa. Ao passar, o card vai para a etapa do agente escolhido, e ele responde em seguida a mesma mensagem do cliente.",
+      "passarSemEtapa": "(sem etapa: a passagem vai para a equipe)",
       "semOutrosAgentes": "Não há outros agentes na conta."
     },
     "config": {
-      "aindaNaoResponde": "Nesta etapa o agente ainda não responde clientes, mesmo ligado. Use o Playground para testar.",
       "modelo": "Provedor e modelo",
       "transferencia": "Limite e transferência",
       "salvar": "Salvar",
@@ -4261,6 +4267,17 @@
       "arquivarConfirma": "Arquivar este agente? Ele sai da lista e é desligado; o uso antigo mantém o nome.",
       "arquivado": "Agente arquivado."
     },
+    "ondeAtua": {
+      "titulo": "Onde atua",
+      "dica": "O agente responde o cliente cujo card ABERTO está numa das etapas marcadas (e numa das conexões acima). Uma etapa tem no máximo um agente.",
+      "soCardsNovos": "Só são atendidos os cards que ENTRAREM na etapa depois de ela ser marcada e de o agente ser ligado — os que já estavam parados lá não recebem resposta.",
+      "funil": "Funil",
+      "funilComMarcadas": "{funil} ({n, plural, one {# etapa marcada} other {# etapas marcadas}})",
+      "ocupada": "IA · {agente}",
+      "nenhuma": "Nenhuma etapa marcada: o agente não responde ninguém.",
+      "falhou": "Não foi possível carregar os funis. Recarregue a página.",
+      "semFunis": "A conta ainda não tem funil. Crie um em Funis para escolher onde o agente atua."
+    },
     "detalhe": {
       "voltar": "Todos os agentes",
       "falhou": "Não foi possível carregar o agente.",
@@ -4268,7 +4285,8 @@
       "abas": "Seções do agente",
       "configuracao": "Configuração",
       "playground": "Playground",
-      "uso": "Uso"
+      "uso": "Uso",
+      "turnos": "Turnos"
     },
     "playground": {
       "explicacao": "Converse como se fosse o cliente. Vale o que está SALVO na Configuração, com o mesmo modelo da produção; o gasto conta como teste.",
@@ -4276,6 +4294,7 @@
       "recomecar": "Recomeçar",
       "vazio": "Envie uma mensagem para ver como este agente responderia.",
       "transferiria": "Aqui o agente transferiria para uma pessoa",
+      "passaria": "Aqui o agente passaria a conversa para {agente}, que responderia esta mesma mensagem",
       "tokens": "{n} tokens",
       "pensando": "Pensando…",
       "placeholder": "Escreva como o cliente escreveria…"
@@ -4312,6 +4331,26 @@
         "draft": "Rascunho com IA"
       }
     },
+    "turnos": {
+      "explicacao": "As 50 últimas vezes em que este agente foi chamado a responder, as mais novas primeiro.",
+      "vazio": "Este agente ainda não foi chamado a responder.",
+      "falhou": "Não foi possível carregar os turnos.",
+      "semContato": "Contato sem nome",
+      "statusDesconhecido": "Outro ({status})",
+      "status": {
+        "aguardando": "Aguardando",
+        "rodando": "Respondendo",
+        "respondeu": "Respondeu",
+        "passou": "Passou para outro agente",
+        "transferiu": "Transferiu para a equipe",
+        "sem_resposta": "Sem resposta",
+        "fora_do_horario": "Fora do horário",
+        "pausado_no_meio": "Pausado no meio",
+        "descartado": "Descartado",
+        "falhou": "Falhou",
+        "incerto": "Envio incerto"
+      }
+    },
     "dia": {
       "0": "Dom",
       "1": "Seg",
@@ -4340,6 +4379,8 @@
       "agente_de_outra_conta": "Um dos agentes marcados não existe mais — recarregue a página.",
       "membro_de_outra_conta": "Quem recebe a transferência não é mais da equipe — escolha outra pessoa.",
       "passar_para_si": "O agente não pode passar a conversa para ele mesmo.",
+      "etapa_de_outra_conta": "Uma das etapas não existe mais — recarregue a página.",
+      "etapa_ocupada": "Uma das etapas marcadas já é do agente {agente} — cada etapa tem um agente só.",
       "nao_encontrado": "Este agente não existe mais.",
       "sem_chave": "O provedor deste agente não tem chave — cadastre em Configurações → Integrações.",
       "provedor_sem_chave": "Este provedor não tem chave. Cadastre a chave em Configurações → Integrações, ou escolha outro provedor.",
@@ -4383,7 +4424,8 @@
         "teto": "{agente} passou a conversa para a equipe: chegou ao limite de respostas nesta conversa.",
         "audio": "{agente} passou a conversa para a equipe: não conseguiu ouvir o áudio do cliente.",
         "incerto": "{agente} passou a conversa para a equipe: não dá para saber se a última resposta chegou ao cliente — confira antes de responder."
-      }
+      },
+      "passagem": "{agente} passou a conversa para IA · {destino}, e o card foi para a etapa desse agente."
     }
   },
   "ForgotPasswordPage": {

@@ -18,4 +18,9 @@ describe('detalhe-do-agente — abas', () => {
     expect(fonte).toContain("{aba === 'uso' ? <UsoDeIa")
     expect(fonte).not.toContain("visitadas.has('uso')")
   })
+
+  it('a aba Turnos também remonta a cada visita (mostra os turnos de agora)', () => {
+    expect(fonte).toContain("{aba === 'turnos' ? <TurnosDoAgente")
+    expect(fonte).not.toContain("visitadas.has('turnos')")
+  })
 })

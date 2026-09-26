@@ -30,12 +30,8 @@ const h = vi.hoisted(() => ({
     rpcMoverRecusa: null as string | null,
     /** O status que `cb_atualizar_negocio` devolve como gravado (o motor o fixa no contexto, 1031). */
     rpcStatusGravado: 'open' as string,
-    /** As chamadas a `cb_retomar_ia_por_automacao` (o "ligar" do `set_ai`, E13). */
-    rpcRetomar: [] as Record<string, unknown>[],
-    /** O que `cb_retomar_ia_por_automacao` responde. */
-    retomarResposta: 'retomada' as string | null,
-    /** Preenchido, `cb_retomar_ia_por_automacao` devolve este erro. */
-    retomarErro: null as string | null,
+    /** Campos a mais da conversa lida por id (a pausa da IA que o `set_ai` lê). */
+    conversaLida: {} as Record<string, unknown>,
     /** Preenchido, a LEITURA de `deals` devolve este erro (18/09). */
     erroNoNegocio: null as string | null,
     /**
@@ -161,7 +157,7 @@ vi.mock('./admin-client', () => {
         const contato = ops.filters.find(([op, k]) => op === 'eq' && k === 'contact_id');
         const casaConta = !conta || conta[2] === dona;
         const casaContato = !contato || donoContato === undefined || contato[2] === donoContato;
-        return { data: casaConta && casaContato ? { id: porId[2] } : null, error: null };
+        return { data: casaConta && casaContato ? { id: porId[2], ...state.conversaLida } : null, error: null };
       }
       return { data: state.conversasDoContato.length > 0 ? state.conversasDoContato : null, error: null };
     }
@@ -446,13 +442,6 @@ vi.mock('./admin-client', () => {
             error: null,
           });
         }
-        if (nome === 'cb_retomar_ia_por_automacao') {
-          state.rpcRetomar.push(args ?? {});
-          if (state.retomarErro) {
-            return Promise.resolve({ data: null, error: { message: state.retomarErro } });
-          }
-          return Promise.resolve({ data: state.retomarResposta, error: null });
-        }
         return Promise.resolve({ data: null, error: null });
       },
     }),
@@ -517,9 +506,7 @@ beforeEach(() => {
   h.state.depoisDeMover = null;
   h.state.rpcMoverRecusa = null;
   h.state.rpcStatusGravado = 'open';
-  h.state.rpcRetomar = [];
-  h.state.retomarResposta = 'retomada';
-  h.state.retomarErro = null;
+  h.state.conversaLida = {};
   h.state.dealSelects = [];
   h.state.dealInserts = [];
   h.state.automations = [];
@@ -1552,7 +1539,7 @@ describe('assign_conversation — alvo', () => {
   });
 });
 
-describe('set_ai — o "ligar" pela MESMA regra da atribuição (E13)', () => {
+describe('set_ai — a pausa com MOTIVO (1049, D26)', () => {
   function passoSetAi(enabled: boolean) {
     return {
       id: 's1',
@@ -1582,56 +1569,44 @@ describe('set_ai — o "ligar" pela MESMA regra da atribuição (E13)', () => {
     );
   }
 
-  function statusDoLog() {
-    return h.state.logUpdates.filter((u) => 'status' in u).at(-1) as
-      | { status?: string; error_message?: string }
-      | undefined;
-  }
+  const escritasNaConversa = () => h.state.updateCalls.filter((u) => u.table === 'conversations');
 
-  it('ligar chama a RPC com a conta e a conversa, e não escreve na conversa por conta própria', async () => {
-    await rodar(true);
-    expect(h.state.rpcRetomar).toEqual([{ p_account_id: ACCOUNT, p_conversation_id: 'conv-1' }]);
-    // A retomada é do BANCO (a pausa por gente com resposta nas últimas 24 h
-    // fica): nenhum UPDATE solto em `conversations` pelo motor.
-    expect(h.state.updateCalls.filter((u) => u.table === 'conversations')).toHaveLength(0);
-    expect(passos()).toContainEqual(
-      expect.objectContaining({ status: 'success', detail: 'IA ligada na conversa' })
-    );
-  });
-
-  it('a equipe respondeu nas últimas 24 h: o passo registra que a IA SEGUE pausada', async () => {
-    h.state.retomarResposta = 'pausada_gente';
-    await rodar(true);
-    expect(passos()).toContainEqual(
-      expect.objectContaining({
-        status: 'success',
-        detail: 'IA segue pausada: a equipe respondeu nas últimas 24 h',
-      })
-    );
-    expect(h.state.updateCalls.filter((u) => u.table === 'conversations')).toHaveLength(0);
-  });
-
-  it('erro da RPC vira falha VISÍVEL do passo', async () => {
-    h.state.retomarErro = 'function cb_retomar_ia_por_automacao does not exist';
-    await rodar(true);
-    const log = statusDoLog();
-    expect(log?.status).toBe('failed');
-    expect(log?.error_message).toContain('set_ai falhou: function cb_retomar_ia_por_automacao does not exist');
-  });
-
-  it('resposta que o motor não conhece também falha, nunca vira "ligada"', async () => {
-    h.state.retomarResposta = null;
-    await rodar(true);
-    expect(statusDoLog()?.status).toBe('failed');
-    expect(statusDoLog()?.error_message).toContain('resposta inesperada do banco');
-  });
-
-  it('desligar continua gravando a pausa por automação, sem a RPC', async () => {
+  it('desligar grava a pausa por automação, só se ainda não havia pausa', async () => {
     await rodar(false);
-    expect(h.state.rpcRetomar).toHaveLength(0);
-    const conversas = h.state.updateCalls.filter((u) => u.table === 'conversations');
+    const conversas = escritasNaConversa();
     expect(conversas).toHaveLength(1);
     expect(conversas[0].payload).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'automacao' });
+    expect(conversas[0].filters).toContainEqual(['eq', 'ai_autoreply_disabled', false]);
+  });
+
+  it('ligar desfaz a pausa por AUTOMAÇÃO, com a condição no próprio UPDATE, e não zera o teto', async () => {
+    h.state.conversaLida = { ai_autoreply_disabled: true, ia_pausada_por: 'automacao' };
+    await rodar(true);
+    const conversas = escritasNaConversa();
+    expect(conversas).toHaveLength(1);
+    expect(conversas[0].payload).toEqual({ ai_autoreply_disabled: false, ia_pausada_por: null, ia_pausada_em: null });
+    expect(conversas[0].filters).toContainEqual(['eq', 'ia_pausada_por', 'automacao']);
+    expect(conversas[0].filters).toContainEqual(['eq', 'ai_autoreply_disabled', true]);
+    expect(passos()).toContainEqual(expect.objectContaining({ status: 'success', detail: 'IA ligada na conversa' }));
+  });
+
+  it.each(['gente', 'botao', 'transferencia'])(
+    'ligar NÃO desfaz a pausa por %s (só o "Retomar IA" desfaz) — e não escreve nada',
+    async (motivo) => {
+      h.state.conversaLida = { ai_autoreply_disabled: true, ia_pausada_por: motivo };
+      await rodar(true);
+      expect(escritasNaConversa()).toHaveLength(0);
+      expect(passos()).toContainEqual(
+        expect.objectContaining({ status: 'success', detail: `IA segue pausada: a pausa foi de gente (${motivo})` })
+      );
+    }
+  );
+
+  it('ligar com a IA já ligada: nada a escrever', async () => {
+    h.state.conversaLida = { ai_autoreply_disabled: false, ia_pausada_por: null };
+    await rodar(true);
+    expect(escritasNaConversa()).toHaveLength(0);
+    expect(passos()).toContainEqual(expect.objectContaining({ status: 'success', detail: 'IA já estava ligada' }));
   });
 });
 
@@ -4318,7 +4293,7 @@ describe('retomada de automação presa à etapa', () => {
 // E4 dos agentes de IA: a fala de uma automação ANINHADA por etiqueta sobe.
 // O passo "Adicionar etiqueta" dispara `tag_added` e espera as automações
 // dele; se uma delas falou com o contato, a execução de cima FALOU — senão a
-// ingestão via `falou: false` e o agente de entrada respondia uma segunda vez
+// ingestão via `falou: false` e o agente da etapa respondia uma segunda vez
 // à mesma mensagem (Codex, #292).
 // ============================================================
 describe('add_tag: a fala da automação de tag_added sobe para quem disparou (E4)', () => {

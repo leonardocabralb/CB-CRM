@@ -45,14 +45,30 @@ export interface IaAgente {
   podePassarPara: string[]
   /** Membro que recebe a transferência; nulo = fila sem responsável. */
   transferirPara: string | null
+  /** Quando foi LIGADO pela última vez (gatilho da 1049); nulo = nunca. D27. */
+  ativadoEm: string | null
   arquivadoEm: string | null
   createdAt: string
   updatedAt: string
 }
 
+/**
+ * Uma etapa do funil em que o agente atua (D24, `cb_ia_agente_etapas`).
+ * `desde` = quando a etapa foi marcada: só card que ENTROU nela depois disso
+ * (e depois de o agente ser ligado) é atendido (D27).
+ */
+export interface EtapaDoAgente {
+  stageId: string
+  pipelineId: string
+  desde: string
+}
+
+/** O agente como as rotas da tela o devolvem: com as etapas em que atua. */
+export type AgenteComEtapas = IaAgente & { etapas: EtapaDoAgente[] }
+
 /** Colunas lidas: nomeadas, nunca `*` (uma coluna sem GRANT derrubaria a consulta). */
 export const COLUNAS_DO_AGENTE =
-  'id, account_id, nome, descricao, instrucoes, regras, provedor, modelo, ativo, conexoes, horario, teto_respostas, pode_passar_para, transferir_para, arquivado_em, created_at, updated_at'
+  'id, account_id, nome, descricao, instrucoes, regras, provedor, modelo, ativo, conexoes, horario, teto_respostas, pode_passar_para, transferir_para, ativado_em, arquivado_em, created_at, updated_at'
 
 function ehProvedor(v: unknown): v is AiProvider {
   return v === 'openai' || v === 'anthropic' || v === 'gemini'
@@ -96,6 +112,7 @@ export function lerLinhaDoAgente(linha: Record<string, unknown>): IaAgente | nul
     tetoRespostas: typeof linha.teto_respostas === 'number' ? linha.teto_respostas : 10,
     podePassarPara: listaDeTexto(linha.pode_passar_para),
     transferirPara: typeof linha.transferir_para === 'string' ? linha.transferir_para : null,
+    ativadoEm: typeof linha.ativado_em === 'string' ? linha.ativado_em : null,
     arquivadoEm: typeof linha.arquivado_em === 'string' ? linha.arquivado_em : null,
     createdAt: typeof linha.created_at === 'string' ? linha.created_at : '',
     updatedAt: typeof linha.updated_at === 'string' ? linha.updated_at : '',
@@ -116,6 +133,8 @@ export interface AlteracaoDoAgente {
   tetoRespostas?: number
   podePassarPara?: string[]
   transferirPara?: string | null
+  /** Ids das etapas em que atua (D24). Não é coluna do agente: vai para `cb_ia_agente_etapas`. */
+  etapas?: string[]
 }
 
 export type CodigoDeRecusa =
@@ -200,6 +219,11 @@ export function lerAlteracao(corpo: unknown, criacao: boolean): LeituraDaAlterac
     if (!ids) return { ok: false, codigo: 'lista_invalida' }
     v.conexoes = ids
   }
+  if ('etapas' in c) {
+    const ids = lerIds(c.etapas)
+    if (!ids) return { ok: false, codigo: 'lista_invalida' }
+    v.etapas = ids
+  }
   if ('pode_passar_para' in c) {
     const ids = lerIds(c.pode_passar_para)
     if (!ids) return { ok: false, codigo: 'lista_invalida' }
@@ -229,7 +253,7 @@ export function lerAlteracao(corpo: unknown, criacao: boolean): LeituraDaAlterac
   return { ok: true, valor: v }
 }
 
-/** Alteração → colunas do banco (só as presentes). */
+/** Alteração → colunas do banco (só as presentes). As etapas NÃO: são outra tabela. */
 export function colunasDaAlteracao(a: AlteracaoDoAgente): Record<string, unknown> {
   const c: Record<string, unknown> = {}
   if (a.nome !== undefined) c.nome = a.nome
@@ -245,4 +269,35 @@ export function colunasDaAlteracao(a: AlteracaoDoAgente): Record<string, unknown
   if (a.podePassarPara !== undefined) c.pode_passar_para = a.podePassarPara
   if (a.transferirPara !== undefined) c.transferir_para = a.transferirPara
   return c
+}
+
+/** Linha de `cb_ia_agente_etapas` (com `pipeline_stages(pipeline_id)` embutido) → etapa. */
+export function lerEtapaDoAgente(linha: Record<string, unknown>): (EtapaDoAgente & { iaAgenteId: string }) | null {
+  const embutida = linha.pipeline_stages as { pipeline_id?: unknown } | null | undefined
+  if (typeof linha.stage_id !== 'string' || typeof linha.ia_agente_id !== 'string') return null
+  if (typeof embutida?.pipeline_id !== 'string' || typeof linha.desde !== 'string') return null
+  return {
+    stageId: linha.stage_id,
+    pipelineId: embutida.pipeline_id,
+    desde: linha.desde,
+    iaAgenteId: linha.ia_agente_id,
+  }
+}
+
+/**
+ * O que gravar quando a tela manda as etapas do agente (D24): as que ficam
+ * não se tocam (mantêm o `desde`), as novas entram, e a etapa de OUTRO agente
+ * recusa tudo — uma etapa tem no máximo um agente. `donoDe` diz de quem é
+ * cada etapa já marcada na conta.
+ */
+export function planoDasEtapas(
+  agenteId: string,
+  pedidas: string[],
+  donoDe: Map<string, string>,
+): { ocupada: { stageId: string; agenteId: string } | null; inserir: string[] } {
+  for (const s of pedidas) {
+    const dono = donoDe.get(s)
+    if (dono && dono !== agenteId) return { ocupada: { stageId: s, agenteId: dono }, inserir: [] }
+  }
+  return { ocupada: null, inserir: pedidas.filter((s) => donoDe.get(s) !== agenteId) }
 }

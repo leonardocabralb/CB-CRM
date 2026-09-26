@@ -1,5 +1,4 @@
 import type {
-  AssignIaAgentStepConfig,
   AutomationRefStepConfig,
   AutomationStepType,
   CreateDealStepConfig,
@@ -40,8 +39,6 @@ export interface NomesConhecidos {
   fluxos?: Record<string, string>
   automacoes?: Record<string, string>
   canais?: Record<string, string>
-  /** Nomes dos agentes de IA (arquivados inclusive: o rótulo não vira "(apagado)"). */
-  iaAgentes?: Record<string, string>
 }
 
 export interface ResumoDoPasso {
@@ -107,9 +104,6 @@ export function descreverPasso(passo: PassoResumivel, nomes: NomesConhecidos = {
       const s = (cfg as unknown as MoveDealStepConfig).status
       return { chave: `set_deal_status_${s ?? 'open'}`, valores: {}, alvoSumiu: false }
     }
-
-    case 'assign_ia_agent':
-      return porId(nomes.iaAgentes, (cfg as unknown as AssignIaAgentStepConfig).ia_agente_id)
 
     case 'set_ai':
       // Ligar e desligar são ações OPOSTAS. Uma frase só com "alvo: ligado"

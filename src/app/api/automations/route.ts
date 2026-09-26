@@ -7,12 +7,10 @@ import { getTemplate } from '@/lib/automations/templates'
 import { insertSteps, type BuilderStepInput } from '@/lib/automations/steps-tree'
 import {
   validateAsaasReguaForActivation,
-  temPassoDeAgenteDeIa,
   validateStepsForActivation,
   validateChannelScopeForActivation,
   validateTriggerForActivation,
 } from '@/lib/automations/validate'
-import { agentesParaValidar } from '@/lib/ia-agentes/repo'
 import { ehGatilhoDaRegua } from '@/lib/asaas/regua'
 import { normalizarAssinatura } from '@/lib/assinatura/assinatura'
 
@@ -120,10 +118,6 @@ export async function POST(request: Request) {
       ...validateAsaasReguaForActivation(
         effectiveTriggerType,
         (effectiveSteps ?? []) as unknown as { step_type: string; step_config: Record<string, unknown> }[],
-        // Só carrega os agentes se a automação tem o passo (D19).
-        temPassoDeAgenteDeIa((effectiveSteps ?? []) as unknown as { step_type: string; step_config: Record<string, unknown> }[])
-          ? await agentesParaValidar(accountId)
-          : undefined,
       ),
       ...validateChannelScopeForActivation(
         (effectiveSteps ?? []) as unknown as { step_type: string; step_config: Record<string, unknown> }[],

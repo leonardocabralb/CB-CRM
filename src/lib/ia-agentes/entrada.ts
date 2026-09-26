@@ -1,23 +1,21 @@
 // ============================================================
 // A PORTA da ingestão para os agentes de IA (docs/PLANO-agentes-de-ia.md,
-// 5.3 e 5.7). A ingestão chama `aoChegarMensagemDoCliente` DEPOIS do robô e
-// das automações; aqui se leem os fatos, a regra pura (`quemResponde`)
-// decide, e o turno é só ENFILEIRADO — quem executa é o disparo agendado
-// (`turno.ts`) ou a rede do cron.
+// D24–D27). A ingestão chama `aoChegarMensagemDoCliente` DEPOIS do robô e
+// das automações; aqui se leem os fatos (`lerQuemAtende`: a conversa, o card
+// aberto do contato, o agente da etapa dele), a regra pura (`quemResponde`)
+// decide, e o turno é só ENFILEIRADO com o agente, o card e a etapa — quem
+// executa é o disparo agendado (`turno.ts`) ou a rede do cron.
 //
 // ⚠️ Nunca lança e nunca espera o agente: a ingestão ainda tem o webhook de
 // saída `message.received` e os itens seguintes do lote atrás dela.
-// ⚠️ O caso comum é "nenhum agente": duas leituras curtas (conversa e
-// conexão) e volta. Quando o robô ou uma automação respondeu, nenhuma
-// leitura: um UPDATE que descarta o pendente da conexão, e volta.
+// ⚠️ Quando o robô ou uma automação respondeu, nenhuma leitura: um UPDATE
+// que descarta o pendente da conexão, e volta.
 // ============================================================
 
 import { supabaseAdmin } from '@/lib/ai/admin-client'
-import { ehInstagram } from '@/lib/cb-channels/transporte'
 
 import { descartarPendente, enfileirarTurno } from './fila'
-import { abreTurno, quemResponde, type AgenteParaDecidir, type ConteudoDaMensagem } from './quem-responde'
-import { obterAgente } from './repo'
+import { abreTurno, lerQuemAtende, quemResponde, type ConteudoDaMensagem } from './quem-responde'
 import { agendarTurno } from './turno'
 
 export interface MensagemDoCliente {
@@ -45,10 +43,6 @@ export interface MensagemDoCliente {
   automacaoFalou: boolean
 }
 
-function paraDecidir(a: Awaited<ReturnType<typeof obterAgente>>): AgenteParaDecidir | null {
-  return a ? { id: a.id, ativo: a.ativo, arquivado: a.arquivadoEm !== null, conexoes: a.conexoes } : null
-}
-
 export async function aoChegarMensagemDoCliente(m: MensagemDoCliente): Promise<void> {
   if (m.ehGrupo || !m.canalGravado) return
   const canalId = m.canalGravado
@@ -56,8 +50,7 @@ export async function aoChegarMensagemDoCliente(m: MensagemDoCliente): Promise<v
   // e o turno desta conexão (o texto de antes, na mesma rajada) sai — o
   // PENDENTE e o que já RODA sem ter reservado o envio —, senão o cliente que
   // escreve e toca num botão recebe a resposta da automação e, 8 s depois, a
-  // do agente (Codex, #292). Uma escrita só, sem leitura; e só quando alguém
-  // de fato falou: figurinha ou botão SEM automação falando não cancelam nada.
+  // do agente. Uma escrita só, sem leitura.
   if (m.roboConsumiu || m.automacaoFalou) {
     try {
       await descartarPendente(supabaseAdmin(), { accountId: m.accountId, conversationId: m.conversationId, canalId })
@@ -67,136 +60,30 @@ export async function aoChegarMensagemDoCliente(m: MensagemDoCliente): Promise<v
     return
   }
   // Os portões de conteúdo, sem banco. `abreTurno` é a MESMA régua com que o
-  // turno decide se uma mensagem mais nova o descarta (E10): figurinha e
-  // texto sem nada visível (cartão de contato, enquete, botão na Evolution)
-  // não abrem turno.
+  // turno decide se uma mensagem mais nova o descarta (E10).
   const conteudo: ConteudoDaMensagem = { tipo: m.tipo, texto: m.texto, mime: m.mime }
   if (m.ehRespostaDeBotao || !abreTurno(conteudo)) return
   try {
     const db = supabaseAdmin()
-    const [{ data: conv, error: erroConv }, { data: canal, error: erroCanal }] = await Promise.all([
-      db
-        .from('conversations')
-        .select('id, contact_id, group_id, status, ia_agente_id, ai_autoreply_disabled, created_at')
-        .eq('id', m.conversationId)
-        .eq('account_id', m.accountId)
-        .maybeSingle(),
-      db
-        .from('cb_channels')
-        .select('id, kind, ia_agente_entrada_id, ia_agente_entrada_desde')
-        .eq('id', canalId)
-        .eq('account_id', m.accountId)
-        .maybeSingle(),
-    ])
-    if (erroConv || erroCanal) {
-      console.error('[ia-agentes] leitura da conversa/conexão falhou:', erroConv?.message ?? erroCanal?.message)
-      return
-    }
-    if (!conv || !canal) return
-    // Uma automação desta mensagem pode ter ENCERRADO a conversa sem "falar"
-    // (`close_conversation`, depois da reabertura da ingestão): o agente não
-    // responde numa conversa fechada (Codex, #292).
-    if (conv.status === 'closed') return
-    // O caso comum: nenhum agente em lugar nenhum.
-    if (!conv.ia_agente_id && !canal.ia_agente_entrada_id) return
-
-    const agenteAtivo = conv.ia_agente_id ? paraDecidir(await obterAgente(m.accountId, conv.ia_agente_id)) : null
-
-    // A entrada só é candidata sem agente ativo (regra 5): só então valem as
-    // leituras da D16 e da P8.
-    let entrada: { agente: AgenteParaDecidir; desde: string | null } | null = null
-    let nuncaTeveGente = false
-    let contatoCriadoEm: string | null = null
-    if (!conv.ia_agente_id && canal.ia_agente_entrada_id) {
-      const agente = paraDecidir(await obterAgente(m.accountId, canal.ia_agente_entrada_id))
-      if (agente) {
-        entrada = { agente, desde: canal.ia_agente_entrada_desde ?? null }
-        // D16: NENHUMA mensagem de gente na conversa, em qualquer conexão,
-        // apagada inclusive.
-        const [{ data: gente, error: erroGente }, { data: contato, error: erroContato }] = await Promise.all([
-          db
-            .from('messages')
-            .select('id')
-            .eq('conversation_id', m.conversationId)
-            .eq('sender_type', 'agent')
-            .or('sender_id.not.is.null,from_device.is.true')
-            .limit(1),
-          conv.contact_id
-            ? db.from('contacts').select('created_at').eq('id', conv.contact_id).eq('account_id', m.accountId).maybeSingle()
-            : Promise.resolve({ data: null, error: null }),
-        ])
-        // Leitura que falha NÃO vira "nunca teve gente": na dúvida, a entrada
-        // não atende (o lado que atende menos gente).
-        if (erroGente || erroContato) {
-          console.error('[ia-agentes] leitura da D16/P8 falhou:', erroGente?.message ?? erroContato?.message)
-          return
-        }
-        nuncaTeveGente = (gente?.length ?? 0) === 0
-        contatoCriadoEm = (contato as { created_at?: string } | null)?.created_at ?? null
-      }
-    }
-
+    const leitura = await lerQuemAtende(db, { accountId: m.accountId, conversationId: m.conversationId, canalId })
+    if (!leitura) return
     const decisao = quemResponde({
-      ehGrupo: conv.group_id !== null,
-      ehInstagram: ehInstagram({ kind: canal.kind }),
+      ...leitura,
       canalId,
       conteudo,
       ehRespostaDeBotao: m.ehRespostaDeBotao,
-      roboConsumiu: m.roboConsumiu,
-      automacaoFalou: m.automacaoFalou,
-      pausada: conv.ai_autoreply_disabled === true,
-      agenteAtivo,
-      entrada,
-      nuncaTeveGente,
-      contatoCriadoEm,
-      conversaCriadaEm: (conv as { created_at?: string | null }).created_at ?? null,
+      roboConsumiu: false,
+      automacaoFalou: false,
     })
     if (decisao.quem !== 'agente') return
-
-    // O palpite de quem responde, gravado no pendente. Só palpite: o turno
-    // não fixa agente — quem responde é o agente ATIVO na conferência dele.
-    let agenteDoTurno: string | null = decisao.agenteId
-    if (decisao.via === 'entrada') {
-      // O agente de entrada vira o ATIVO da conversa, pela mesma RPC da
-      // automação (a D17 decidida no banco, com a conversa travada).
-      // ⚠️ SÓ SE A CONVERSA AINDA NÃO TEM AGENTE (`p_so_se_vazio`): a leitura
-      // acima é uma foto, e entre ela e a atribuição outra frente (a régua do
-      // Asaas, o passo "Atribuir agente" de uma automação) pode ter posto um
-      // especialista. A entrada é o recepcionista de quem ainda não tem
-      // ninguém — passar por cima tiraria a conversa do especialista em
-      // silêncio. A RPC confere na linha TRAVADA e devolve `ocupada` sem
-      // escrever nada.
-      const { data, error } = await db.rpc('cb_atribuir_agente_de_ia', {
-        p_account_id: m.accountId,
-        p_conversation_id: m.conversationId,
-        p_ia_agente_id: decisao.agenteId,
-        p_canal_id: canalId,
-        p_so_se_vazio: true,
-      })
-      if (error) {
-        console.error('[ia-agentes] atribuir o agente de entrada falhou:', error.message)
-        return
-      }
-      const resultado = (Array.isArray(data) ? data[0] : data) as { resultado?: string } | null
-      // ⚠️⚠️ `ocupada` ENFILEIRA assim mesmo (revisão da F2a): a rajada que
-      // chega junta — duas entregas concorrentes da Evolution — tem as duas
-      // mensagens lendo a conversa SEM agente; a 1ª atribui a entrada e
-      // enfileira, a 2ª leva `ocupada`. Desistindo ali, o turno da 1ª se
-      // descartava por "mensagem mais nova" (E10) e ninguém respondia. O
-      // turno não fixa agente: a conferência dele decide com o agente ativo
-      // (a entrada, ou o especialista que outra frente pôs), a pausa e as
-      // conexões — a entrada não sabe qual é, e o palpite vai nulo.
-      // `retomada` enfileira com a entrada. As pausas, `agente_indisponivel`,
-      // `grupo` e `sem_conversa`: nada a responder.
-      if (resultado?.resultado === 'ocupada') agenteDoTurno = null
-      else if (resultado?.resultado !== 'retomada') return
-    }
 
     const turno = await enfileirarTurno(db, {
       accountId: m.accountId,
       conversationId: m.conversationId,
       canalId,
-      iaAgenteId: agenteDoTurno,
+      iaAgenteId: decisao.agenteId,
+      dealId: decisao.dealId,
+      stageId: decisao.stageId,
       mensagemId: m.mensagemId,
     })
     if (turno) agendarTurno(turno)

@@ -40,14 +40,15 @@ export interface TurnoNaFila {
 }
 
 /**
- * Grava ou empurra o turno pendente (conversa, conexão). Devolve `null` em
- * erro — a mensagem fica sem resposta da IA e o alerta de atraso chama a
- * equipe; nunca lança (a ingestão não pode cair por isto).
+ * Grava ou empurra o turno pendente (conversa, conexão), com o agente da
+ * etapa, o card e a etapa que a entrada leu (D24): o turno responde SÓ se o
+ * card continuar nessa etapa e o agente continuar dono dela até o envio.
+ * Devolve `null` em erro — a mensagem fica sem resposta da IA e o alerta de
+ * atraso chama a equipe; nunca lança (a ingestão não pode cair por isto).
  *
- * `iaAgenteId` é só o PALPITE de quem enfileira (nulo quando a entrada não
- * sabe — `ocupada`): o pendente não fixa agente. Quem responde é o agente
- * ATIVO da conversa na conferência do turno, e o turno grava na linha o que
- * de fato respondeu (`turno.ts`).
+ * `veioDePassagem` (D25): o turno que a triagem abriu para o agente de
+ * destino, sobre a MESMA mensagem, sem a espera da rajada. Ele não passa de
+ * novo (`turno.ts`).
  */
 export async function enfileirarTurno(
   db: SupabaseClient,
@@ -55,8 +56,11 @@ export async function enfileirarTurno(
     accountId: string
     conversationId: string
     canalId: string
-    iaAgenteId: string | null
+    iaAgenteId: string
+    dealId: string
+    stageId: string
     mensagemId: string
+    veioDePassagem?: boolean
   },
 ): Promise<TurnoNaFila | null> {
   const { data, error } = await db.rpc('cb_ia_enfileirar_turno', {
@@ -65,7 +69,10 @@ export async function enfileirarTurno(
     p_canal_id: args.canalId,
     p_ia_agente_id: args.iaAgenteId,
     p_mensagem_id: args.mensagemId,
-    p_espera_ms: ESPERA_DA_RAJADA_MS,
+    p_deal_id: args.dealId,
+    p_stage_id: args.stageId,
+    p_veio_de_passagem: args.veioDePassagem === true,
+    p_espera_ms: args.veioDePassagem ? 0 : ESPERA_DA_RAJADA_MS,
   })
   if (error) {
     console.error('[ia-agentes] enfileirar o turno falhou:', error.message)

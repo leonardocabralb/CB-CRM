@@ -227,7 +227,6 @@ describe('rodarRedeDosTurnos — o órfão', () => {
       accountId: CONTA,
       conversationId: 'conv-1',
       contactId: 'contato-1',
-      iaAgenteId: 'ag-1',
       nomeDoAgente: 'Triagem',
       transferirPara: 'membro-1',
       motivo: 'incerto',
