@@ -1,4 +1,7 @@
-import { telefoneDigitado, type MotivoDoTelefone } from '@/lib/contacts/telefone';
+import {
+  telefoneDigitado,
+  type MotivoDoTelefone,
+} from '@/lib/contacts/telefone';
 
 /**
  * O celular que um MEMBRO da equipe digita para si (a tela de exigência na
@@ -16,9 +19,12 @@ import { telefoneDigitado, type MotivoDoTelefone } from '@/lib/contacts/telefone
  * PRÓPRIO celular hoje escreve o 9, e aceitar a grafia de 8 abriria a porta
  * para o fixo, que tem a mesma forma.
  *
- * ⚠️ Número de fora do Brasil passa como `telefoneDigitado` o lê — com `+`
- * (ou 00) o código do país é o que foi escrito. Sem `+`, 10 ou 11 dígitos
- * são lidos como brasileiros (a régua de sempre); a tela pede o `+`.
+ * ⚠️ Número de fora do Brasil só com `+` (ou 00) escrito — aí o código do
+ * país é o que foi escrito. SEM ele, o resultado tem de ser brasileiro (55):
+ * `telefoneDigitado` devolve como veio todo número sem `+` de 12 a 15
+ * dígitos (e o de 11 sem o 9 na 3ª posição), então um dígito a mais num
+ * celular daqui ("11 91234-56789") passaria como "estrangeiro" e furaria a
+ * exigência do celular (revisão do PR #302).
  *
  * ⚠️ Uma régua só: a tela confere antes de mandar (resposta imediata) e a rota
  * `PUT /api/cb/meu-celular` confere de novo antes de gravar. O CHECK da 1046
@@ -27,8 +33,7 @@ import { telefoneDigitado, type MotivoDoTelefone } from '@/lib/contacts/telefone
 export type MotivoDoCelular = MotivoDoTelefone | 'nao_e_celular';
 
 export type CelularDigitado =
-  | { ok: true; digitos: string }
-  | { ok: false; motivo: MotivoDoCelular };
+  { ok: true; digitos: string } | { ok: false; motivo: MotivoDoCelular };
 
 /** Todos os motivos, para a tela e a rota tratarem cada um (e o teste cobrar as frases). */
 export const MOTIVOS_DO_CELULAR: readonly MotivoDoCelular[] = [
@@ -44,19 +49,32 @@ const DDD_BRASILEIRO = /^55[1-9]{2}/;
 /** 55 + DDD + 9 + 8 dígitos. */
 const CELULAR_BRASILEIRO = /^55[1-9]{2}9\d{8}$/;
 
-export function celularDigitado(texto: string | null | undefined): CelularDigitado {
+export function celularDigitado(
+  texto: string | null | undefined
+): CelularDigitado {
   const r = telefoneDigitado(texto);
   if (!r.ok) return r;
+  // O mesmo "escreveu o DDI?" de `telefoneDigitado`: depois de tirar as marcas
+  // invisíveis que vêm de uma cópia do WhatsApp.
+  const escrito = (texto ?? '').replace(/\p{Cf}/gu, '').trim();
+  const comDdi = escrito.startsWith('+') || escrito.startsWith('00');
+  if (!comDdi && !r.digitos.startsWith('55'))
+    return { ok: false, motivo: 'invalido' };
   if (r.digitos.startsWith('55')) {
     // DDD que não existe ("20", "30"…) é número errado, não "fixo": a frase
     // de "não é celular" mandaria a pessoa procurar o 9 que ela já escreveu.
-    if (!DDD_BRASILEIRO.test(r.digitos)) return { ok: false, motivo: 'invalido' };
-    if (!CELULAR_BRASILEIRO.test(r.digitos)) return { ok: false, motivo: 'nao_e_celular' };
+    if (!DDD_BRASILEIRO.test(r.digitos))
+      return { ok: false, motivo: 'invalido' };
+    if (!CELULAR_BRASILEIRO.test(r.digitos))
+      return { ok: false, motivo: 'nao_e_celular' };
   }
   return r;
 }
 
 /** O código que a rota devolve num 400 é um dos motivos? (A tela traduz só os conhecidos.) */
 export function ehMotivoDoCelular(valor: unknown): valor is MotivoDoCelular {
-  return typeof valor === 'string' && (MOTIVOS_DO_CELULAR as readonly string[]).includes(valor);
+  return (
+    typeof valor === 'string' &&
+    (MOTIVOS_DO_CELULAR as readonly string[]).includes(valor)
+  );
 }

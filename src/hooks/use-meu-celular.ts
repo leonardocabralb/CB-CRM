@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
-import { celularDigitado, ehMotivoDoCelular, type MotivoDoCelular } from '@/lib/account/celular';
+import {
+  celularDigitado,
+  ehMotivoDoCelular,
+  type MotivoDoCelular,
+} from '@/lib/account/celular';
 import { createClient } from '@/lib/supabase/client';
 
 // ============================================================
@@ -22,7 +26,8 @@ import { createClient } from '@/lib/supabase/client';
 // aba, a resposta do anterior vale "carregando", nunca a afirmação dele.
 // ============================================================
 
-export type EstadoDoMeuCelular = 'carregando' | 'tem' | 'falta' | 'desconhecido';
+export type EstadoDoMeuCelular =
+  'carregando' | 'tem' | 'falta' | 'desconhecido';
 
 interface Leitura {
   de: string;
@@ -55,7 +60,10 @@ export function useMeuCelular(userId: string | null): MeuCelular {
         .maybeSingle();
       if (!vivo) return;
       if (error) {
-        console.error('[useMeuCelular] leitura falhou:', { code: error.code, message: error.message });
+        console.error('[useMeuCelular] leitura falhou:', {
+          code: error.code,
+          message: error.message,
+        });
         setLeitura({ de: userId, estado: 'desconhecido', celular: null });
         return;
       }
@@ -74,10 +82,16 @@ export function useMeuCelular(userId: string | null): MeuCelular {
     (celular: string) => {
       if (userId) setLeitura({ de: userId, estado: 'tem', celular });
     },
-    [userId],
+    [userId]
   );
 
-  const recarregar = useCallback(() => setVersao((v) => v + 1), []);
+  // Volta a "carregando" enquanto relê, para o "Tentar de novo" dar retorno.
+  // ⚠️ Só o cartão de Seu perfil chama: na casca, "carregando" é o spinner
+  // no lugar do app inteiro.
+  const recarregar = useCallback(() => {
+    setLeitura(null);
+    setVersao((v) => v + 1);
+  }, []);
 
   const valida = leitura && leitura.de === userId ? leitura : null;
   return {
@@ -97,7 +111,9 @@ export type ResultadoDoSalvar =
  * Confere antes com a MESMA régua da rota, para a resposta ser imediata; o
  * 400 da rota volta com o motivo dela.
  */
-export async function salvarMeuCelular(texto: string): Promise<ResultadoDoSalvar> {
+export async function salvarMeuCelular(
+  texto: string
+): Promise<ResultadoDoSalvar> {
   const local = celularDigitado(texto);
   if (!local.ok) return local;
   try {
@@ -106,9 +122,14 @@ export async function salvarMeuCelular(texto: string): Promise<ResultadoDoSalvar
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ celular: texto }),
     });
-    const json = (await res.json().catch(() => null)) as { celular?: unknown; error?: unknown } | null;
-    if (res.ok && typeof json?.celular === 'string') return { ok: true, celular: json.celular };
-    if (res.status === 400 && ehMotivoDoCelular(json?.error)) return { ok: false, motivo: json.error };
+    const json = (await res.json().catch(() => null)) as {
+      celular?: unknown;
+      error?: unknown;
+    } | null;
+    if (res.ok && typeof json?.celular === 'string')
+      return { ok: true, celular: json.celular };
+    if (res.status === 400 && ehMotivoDoCelular(json?.error))
+      return { ok: false, motivo: json.error };
     return { ok: false, motivo: 'falhou' };
   } catch {
     return { ok: false, motivo: 'falhou' };

@@ -33,7 +33,11 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
   // sessão resolve — em vez de depois dele, e não somar uma espera a toda
   // abertura do CRM.
   const meuCelular = useMeuCelular(user?.id ?? null);
-  const esperandoCelular = accountStatus === 'ready' && meuCelular.estado === 'carregando';
+  // ⚠️ A espera NÃO olha a conta: a leitura é da própria linha (RLS pelo
+  // login) e resolve de um jeito ou de outro. Condicionada à conta, a conta
+  // que resolve DEPOIS (o "Tentar de novo" do alerta, a volta à aba) trocaria
+  // o app aberto pelo spinner (revisão do PR #302).
+  const esperandoCelular = user !== null && meuCelular.estado === 'carregando';
 
   // Sidebar drawer state — only used on mobile. On lg+ the sidebar is
   // always visible and this stays at `false` (ignored by the component).
@@ -101,13 +105,12 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
   if (!user) return null;
 
   // O celular é EXIGIDO (1046): quem não informou vê só o cartão, no lugar do
-  // app inteiro — nem a porta de entrada monta. `falta` é a leitura que
-  // RESPONDEU "não há"; a que falhou (`desconhecido`) deixa passar. As regras
-  // estão no cabeçalho de `exigencia-do-celular.tsx`.
-  if (accountStatus === 'ready' && meuCelular.estado === 'falta') {
-    return <ExigenciaDoCelular aoGravar={meuCelular.gravado} />;
-  }
-
+  // app inteiro — nem a porta de entrada monta. A decisão é tomada UMA vez,
+  // na montagem do envoltório (daí a `key`), com a conta e o celular já
+  // resolvidos; depois ele só fecha. `falta` é a leitura que RESPONDEU "não
+  // há"; a que falhou (`desconhecido`) deixa passar. As regras estão no
+  // cabeçalho de `exigencia-do-celular.tsx`.
+  //
   // ⚠️ TUDO abaixo fica DENTRO da porta de entrada (Meu dia). Enquanto ela
   // está pendente, o layout continua desenhado ATRÁS do cartão (desfocado e
   // inerte — é o fundo que o operador pediu), mas a PÁGINA e o
@@ -117,51 +120,60 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
   // amarra a decisão da porta à pessoa: troca de usuário na mesma aba
   // decide de novo.
   return (
-    <PortaDeEntrada key={user.id} userId={user.id}>
-      {(entradaPendente) => (
-        // ⚠️ `--altura-visivel` é a área acima do teclado do celular
-        // (`useTelaAcimaDoTeclado`), com queda em `100dvh`. Com `h-screen`, o
-        // teclado aberto empurrava a página inteira para cima e o cabeçalho
-        // da conversa sumia (relato do operador no iPhone, 14/09/2026).
-        // ⚠️ E o `top` acompanha o empurrão (`--deslocamento-visivel`): se o
-        // iPhone mantém a área visível deslocada, a casca desce junto e o
-        // topo fica na tela (print do operador, 15/09/2026). `relative` +
-        // `top`, NUNCA `transform`: transform faria todo `fixed` de dentro da
-        // casca se posicionar por ela. Sem a variável, `top` volta a `auto`.
-        <div className="bg-background relative top-[var(--deslocamento-visivel)] flex h-[var(--altura-visivel,100dvh)] overflow-hidden">
-          {/* Reports this tab's online/away presence once we know a user is
+    <ExigenciaDoCelular
+      key={user.id}
+      exigeNaAbertura={
+        accountStatus === 'ready' && meuCelular.estado === 'falta'
+      }
+      falta={meuCelular.estado === 'falta'}
+      aoGravar={meuCelular.gravado}
+    >
+      <PortaDeEntrada key={user.id} userId={user.id}>
+        {(entradaPendente) => (
+          // ⚠️ `--altura-visivel` é a área acima do teclado do celular
+          // (`useTelaAcimaDoTeclado`), com queda em `100dvh`. Com `h-screen`, o
+          // teclado aberto empurrava a página inteira para cima e o cabeçalho
+          // da conversa sumia (relato do operador no iPhone, 14/09/2026).
+          // ⚠️ E o `top` acompanha o empurrão (`--deslocamento-visivel`): se o
+          // iPhone mantém a área visível deslocada, a casca desce junto e o
+          // topo fica na tela (print do operador, 15/09/2026). `relative` +
+          // `top`, NUNCA `transform`: transform faria todo `fixed` de dentro da
+          // casca se posicionar por ela. Sem a variável, `top` volta a `auto`.
+          <div className="bg-background relative top-[var(--deslocamento-visivel)] flex h-[var(--altura-visivel,100dvh)] overflow-hidden">
+            {/* Reports this tab's online/away presence once we know a user is
             signed in. Headless — renders nothing. */}
-          {!entradaPendente && <PresenceHeartbeat />}
-          {/* Notificação do navegador (#516): UMA por aba, e só depois do
+            {!entradaPendente && <PresenceHeartbeat />}
+            {/* Notificação do navegador (#516): UMA por aba, e só depois do
             "Continuar" — como a presença, é efeito que a porta segura. */}
-          {!entradaPendente && <BrowserNotificationsListener />}
-          <Sidebar open={sidebarOpen} onClose={closeSidebar} />
-          <div className="flex flex-1 flex-col overflow-hidden">
-            {/* "Ver como": acima do cabeçalho, em toda página, com a saída —
+            {!entradaPendente && <BrowserNotificationsListener />}
+            <Sidebar open={sidebarOpen} onClose={closeSidebar} />
+            <div className="flex flex-1 flex-col overflow-hidden">
+              {/* "Ver como": acima do cabeçalho, em toda página, com a saída —
               o perfil simulado pode esconder a tela de Perfis. */}
-            <FaixaDeSimulacao />
-            <Header onOpenSidebar={() => setSidebarOpen(true)} />
-            {/* Thinner horizontal padding on mobile so cards have room to breathe. */}
-            <main className="flex-1 overflow-y-auto p-4 sm:p-6">
-              {/* Above every page: writes are being rejected and here's why.
+              <FaixaDeSimulacao />
+              <Header onOpenSidebar={() => setSidebarOpen(true)} />
+              {/* Thinner horizontal padding on mobile so cards have room to breathe. */}
+              <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+                {/* Above every page: writes are being rejected and here's why.
                 Renders nothing unless the account/role failed to resolve. */}
-              <AccountAccessAlert />
-              {/* Guarda de tela dos perfis (Fase 2) — UM ponto para todas as
+                <AccountAccessAlert />
+                {/* Guarda de tela dos perfis (Fase 2) — UM ponto para todas as
                 páginas do dashboard, em vez de uma guarda por page.tsx: rota
                 nova cai aqui de graça, e a regra continua morando só em
                 `podeVerTela`. Caminho fora do catálogo (null) passa — não é
                 uma tela recortável. NUNCA 404: a pessoa precisa entender que
                 a página existe e está fora do perfil dela. */}
-              {entradaPendente || desviarDaAterrissagem ? null : bloqueada ? (
-                <TelaBloqueada />
-              ) : (
-                children
-              )}
-            </main>
+                {entradaPendente || desviarDaAterrissagem ? null : bloqueada ? (
+                  <TelaBloqueada />
+                ) : (
+                  children
+                )}
+              </main>
+            </div>
           </div>
-        </div>
-      )}
-    </PortaDeEntrada>
+        )}
+      </PortaDeEntrada>
+    </ExigenciaDoCelular>
   );
 }
 

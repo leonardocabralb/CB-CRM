@@ -26,7 +26,9 @@ export async function PUT(request: Request) {
   try {
     const ctx = await getCurrentAccount();
 
-    const corpo = (await request.json().catch(() => null)) as { celular?: unknown } | null;
+    const corpo = (await request.json().catch(() => null)) as {
+      celular?: unknown;
+    } | null;
     if (typeof corpo?.celular !== 'string') {
       return NextResponse.json({ error: 'corpo_invalido' }, { status: 400 });
     }
@@ -37,12 +39,19 @@ export async function PUT(request: Request) {
     const { error } = await supabaseAdmin()
       .from('cb_celulares_dos_membros')
       .upsert(
-        { user_id: ctx.userId, celular: r.digitos, atualizado_em: new Date().toISOString() },
-        { onConflict: 'user_id' },
+        {
+          user_id: ctx.userId,
+          celular: r.digitos,
+          atualizado_em: new Date().toISOString(),
+        },
+        { onConflict: 'user_id' }
       );
     if (error) {
       // Só código e mensagem: o `details` do PostgREST traz a linha recusada.
-      console.error('[meu-celular] upsert error:', { code: error.code, message: error.message });
+      console.error('[meu-celular] upsert error:', {
+        code: error.code,
+        message: error.message,
+      });
       return NextResponse.json({ error: 'falhou' }, { status: 500 });
     }
 

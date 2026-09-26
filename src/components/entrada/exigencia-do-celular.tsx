@@ -1,22 +1,26 @@
 'use client';
 
 // ============================================================
-// A tela de exigência do celular (1046): quem ainda não informou o próprio
-// celular vê este cartão NO LUGAR do CRM ao abri-lo, e não passa sem informar.
+// A exigência do celular (1046): quem ainda não informou o próprio celular vê
+// um cartão NO LUGAR do CRM ao abri-lo, e não passa sem informar (ou sai).
 // Pedido do operador (26/09/2026): o número serve para, no futuro, o CRM
-// avisar a pessoa por mensagem particular.
+// avisar a pessoa por mensagem particular. Decisão dele: pedir ao ABRIR o
+// CRM, não só num login novo.
 //
-// Quem decide mostrar é a casca (`dashboard-shell.tsx`), e as regras moram
-// lá, junto do resto da entrada:
-// - ⚠️ só com a leitura RESPONDENDO que não há celular (`falta`). Leitura que
+// As regras:
+// - ⚠️⚠️ **Decidida UMA vez, na montagem deste envoltório, e depois só
+//   FECHA** (celular gravado). A casca só o monta com a conta e o celular já
+//   resolvidos, e a `key` é o usuário. Sem a trava, a conta que resolve
+//   DEPOIS — o "Tentar de novo" do alerta de conta, ou a nova leitura do
+//   perfil quando a pessoa volta à aba — trocaria o app aberto pelo cartão
+//   (revisão do PR #302). É a trava de mão única da porta de entrada.
+// - ⚠️ Só exige com a leitura RESPONDENDO que não há celular (`falta`). A que
 //   falhou (`desconhecido`) deixa passar: trancar o CRM inteiro por um soluço
-//   de rede é a forma da issue #471. A pessoa é pedida na próxima abertura;
-// - só com a conta resolvida (`accountStatus === 'ready'`): sem ela a rota
-//   recusaria a gravação e a pessoa ficaria presa no cartão;
-// - a leitura acontece UMA vez por carga, em paralelo com a do perfil, e o
-//   cartão nunca aparece no meio do uso — só na abertura;
-// - ACIMA da porta de entrada (Meu dia): a porta decide na montagem, e só
-//   monta depois do celular gravado.
+//   de rede é a forma da issue #471. A pessoa é pedida na próxima abertura.
+// - Só com a conta resolvida (`accountStatus === 'ready'`): sem ela a rota
+//   recusaria a gravação e a pessoa ficaria presa no cartão.
+// - ACIMA da porta de entrada (Meu dia): a porta decide na montagem dela, e
+//   só monta depois do celular gravado.
 //
 // ⚠️ Nada do app monta atrás (nem menu, nem página, nem o heartbeat de
 // presença): é o cartão sozinho, no molde da tela de login. Um link
@@ -24,22 +28,30 @@
 // as não lidas daquela conversa.
 // ============================================================
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Loader2, LogOut, Smartphone } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { salvarMeuCelular } from '@/hooks/use-meu-celular';
-import type { MotivoDoCelular } from '@/lib/account/celular';
+import { celularDigitado, type MotivoDoCelular } from '@/lib/account/celular';
 import { sairDesteAparelho } from '@/lib/auth/sair';
 import { createClient } from '@/lib/supabase/client';
 
 /** A frase de cada recusa — a mesma na entrada e em Seu perfil. */
-export function useMensagemDoCelular(): (motivo: MotivoDoCelular | 'falhou') => string {
+export function useMensagemDoCelular(): (
+  motivo: MotivoDoCelular | 'falhou'
+) => string {
   const t = useTranslations('MeuCelular');
   return (motivo) => {
     switch (motivo) {
@@ -57,7 +69,31 @@ export function useMensagemDoCelular(): (motivo: MotivoDoCelular | 'falhou') => 
   };
 }
 
-export function ExigenciaDoCelular({ aoGravar }: { aoGravar: (celular: string) => void }) {
+export function ExigenciaDoCelular({
+  exigeNaAbertura,
+  falta,
+  aoGravar,
+  children,
+}: {
+  /** A conta resolveu e a leitura respondeu que não há celular — no instante da montagem. */
+  exigeNaAbertura: boolean;
+  /** O estado AO VIVO: vira falso quando o celular é gravado, e o cartão fecha. */
+  falta: boolean;
+  aoGravar: (celular: string) => void;
+  children: ReactNode;
+}) {
+  // Capturado na montagem e nunca reavaliado: abre só na abertura, fecha ao
+  // gravar (ver o cabeçalho).
+  const [exigiuNaAbertura] = useState(exigeNaAbertura);
+  if (exigiuNaAbertura && falta) return <CartaoDoCelular aoGravar={aoGravar} />;
+  return <>{children}</>;
+}
+
+function CartaoDoCelular({
+  aoGravar,
+}: {
+  aoGravar: (celular: string) => void;
+}) {
   const t = useTranslations('MeuCelular');
   const tShell = useTranslations('DashboardShell');
   const mensagem = useMensagemDoCelular();
@@ -77,12 +113,23 @@ export function ExigenciaDoCelular({ aoGravar }: { aoGravar: (celular: string) =
   const salvar = async (e: React.FormEvent) => {
     e.preventDefault();
     if (salvando) return;
+    // A régua roda AQUI, antes de qualquer `await`: no iPhone o teclado só
+    // reabre com o foco dado dentro do gesto — depois de um `await`, o
+    // `focus()` marca o campo e o teclado continua fechado.
+    const local = celularDigitado(texto);
+    if (!local.ok) {
+      setErro(mensagem(local.motivo));
+      campoRef.current?.focus();
+      return;
+    }
     setErro(null);
     setSalvando(true);
     const r = await salvarMeuCelular(texto);
     if (!r.ok) {
       setSalvando(false);
       setErro(mensagem(r.motivo));
+      // O campo fica `readOnly` durante o envio, nunca `disabled`: campo
+      // desabilitado não recebe foco, e o foco se perderia aqui.
       campoRef.current?.focus();
       return;
     }
@@ -112,8 +159,12 @@ export function ExigenciaDoCelular({ aoGravar }: { aoGravar: (celular: string) =
           <div className="bg-primary/10 mb-2 flex size-12 items-center justify-center rounded-xl">
             <Smartphone className="text-primary size-6" aria-hidden />
           </div>
-          <CardTitle className="text-foreground text-xl">{t('titulo')}</CardTitle>
-          <CardDescription className="text-muted-foreground">{t('descricao')}</CardDescription>
+          <CardTitle className="text-foreground text-xl">
+            {t('titulo')}
+          </CardTitle>
+          <CardDescription className="text-muted-foreground">
+            {t('descricao')}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={salvar} className="flex flex-col gap-4" noValidate>
@@ -133,16 +184,25 @@ export function ExigenciaDoCelular({ aoGravar }: { aoGravar: (celular: string) =
                   setTexto(e.target.value);
                   if (erro) setErro(null);
                 }}
-                disabled={salvando}
+                readOnly={salvando}
                 aria-invalid={erro !== null}
-                aria-describedby={erro ? 'meu-celular-erro' : 'meu-celular-dica'}
+                aria-describedby={
+                  erro ? 'meu-celular-erro' : 'meu-celular-dica'
+                }
               />
               {erro ? (
-                <p id="meu-celular-erro" role="alert" className="text-destructive text-sm">
+                <p
+                  id="meu-celular-erro"
+                  role="alert"
+                  className="text-destructive text-sm"
+                >
                   {erro}
                 </p>
               ) : (
-                <p id="meu-celular-dica" className="text-muted-foreground text-xs">
+                <p
+                  id="meu-celular-dica"
+                  className="text-muted-foreground text-xs"
+                >
                   {t('dica')}
                 </p>
               )}
@@ -150,7 +210,11 @@ export function ExigenciaDoCelular({ aoGravar }: { aoGravar: (celular: string) =
 
             <p className="text-muted-foreground text-xs">{t('quemVe')}</p>
 
-            <Button type="submit" disabled={salvando || saindo} className="w-full">
+            <Button
+              type="submit"
+              disabled={salvando || saindo}
+              className="w-full"
+            >
               {salvando ? (
                 <>
                   <Loader2 className="size-4 animate-spin" aria-hidden />

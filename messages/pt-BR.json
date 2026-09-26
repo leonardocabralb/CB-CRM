@@ -4893,7 +4893,7 @@
     "salvo": "Celular salvo.",
     "motivoVazio": "Informe o número do seu celular.",
     "motivoCurto": "Faltou o DDD. Escreva o número com o DDD, por exemplo (11) 91234-5678.",
-    "motivoInvalido": "Esse número não parece um telefone. Use só números, espaços, parênteses e hífen, e confira o DDD.",
+    "motivoInvalido": "Esse número não parece um celular. Confira o DDD e os dígitos; número de fora do Brasil começa com + e o código do país.",
     "motivoNaoECelular": "Esse número não é de celular. O celular tem 9 dígitos depois do DDD, começando com 9.",
     "motivoFalhou": "Não foi possível salvar agora. Confira a conexão e tente de novo.",
     "perfilTitulo": "Celular",

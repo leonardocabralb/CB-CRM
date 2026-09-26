@@ -30,7 +30,8 @@ vi.mock('@/lib/auth/account', () => ({
     if (estado.semSessao) throw new Error('sem sessão');
     return { userId: 'u-da-sessao', accountId: 'conta-1', role: 'viewer' };
   },
-  toErrorResponse: () => new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }),
+  toErrorResponse: () =>
+    new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }),
 }));
 
 import { PUT } from './route';
@@ -54,7 +55,10 @@ describe('PUT /api/cb/meu-celular', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ celular: '5511912345678' });
     expect(estado.upserts).toHaveLength(1);
-    expect(estado.upserts[0].linha).toMatchObject({ user_id: 'u-da-sessao', celular: '5511912345678' });
+    expect(estado.upserts[0].linha).toMatchObject({
+      user_id: 'u-da-sessao',
+      celular: '5511912345678',
+    });
     expect(estado.upserts[0].opcoes).toEqual({ onConflict: 'user_id' });
   });
 

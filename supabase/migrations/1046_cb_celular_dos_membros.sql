@@ -26,7 +26,7 @@
 --
 -- ⚠️ ESCRITA SÓ PELO SERVIDOR (`PUT /api/cb/meu-celular`, service role).
 -- `authenticated` só tem SELECT: é a rota que confere o número pela régua do
--- CRM (`src/lib/membros/celular.ts`: o brasileiro ganha o 55 e precisa do 9
+-- CRM (`src/lib/account/celular.ts`: o brasileiro ganha o 55 e precisa do 9
 -- de celular; o de fora vem com `+`). O CHECK daqui é só o piso de forma
 -- (dígitos, sem o 0 na frente, 8 a 15) — a régua inteira mora num lugar só.
 -- Sem policy de DELETE nem grant: o celular é EXIGIDO, e apagá-lo pelo

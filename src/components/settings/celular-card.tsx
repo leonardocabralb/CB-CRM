@@ -6,7 +6,13 @@ import { useTranslations } from 'next-intl';
 import { CircleAlert, Loader2, Smartphone } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useMensagemDoCelular } from '@/components/entrada/exigencia-do-celular';
@@ -38,21 +44,32 @@ export function CelularCard({ className }: { className?: string }) {
       </CardHeader>
       <CardContent>
         {meu.estado === 'carregando' ? (
-          <p className="text-muted-foreground text-sm">{t('perfilCarregando')}</p>
+          <p className="text-muted-foreground text-sm">
+            {t('perfilCarregando')}
+          </p>
         ) : meu.estado === 'desconhecido' ? (
           <div className="flex flex-wrap items-center gap-3">
             <p className="text-destructive flex items-center gap-2 text-sm">
               <CircleAlert className="size-4 shrink-0" aria-hidden />
               {t('perfilFalhouAoCarregar')}
             </p>
-            <Button type="button" variant="outline" size="sm" onClick={meu.recarregar}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={meu.recarregar}
+            >
               {t('perfilTentarDeNovo')}
             </Button>
           </div>
         ) : (
           // A `key` recomeça o rascunho quando o número gravado muda (depois
           // de salvar), sem efeito copiando prop para estado.
-          <FormularioDoCelular key={meu.celular ?? ''} gravado={meu.celular} aoGravar={meu.gravado} />
+          <FormularioDoCelular
+            key={meu.celular ?? ''}
+            gravado={meu.celular}
+            aoGravar={meu.gravado}
+          />
         )}
       </CardContent>
     </Card>
@@ -87,6 +104,9 @@ function FormularioDoCelular({
       return;
     }
     toast.success(t('salvo'));
+    // O mesmo número noutra grafia não muda a `key` do pai: o rascunho passa
+    // a ser a grafia gravada, senão o botão ficaria aceso sobre o salvo.
+    setTexto(formatarTelefone(r.celular));
     aoGravar(r.celular);
   };
 
@@ -107,9 +127,11 @@ function FormularioDoCelular({
             setTexto(e.target.value);
             if (erro) setErro(null);
           }}
-          disabled={salvando}
+          readOnly={salvando}
           aria-invalid={erro !== null}
-          aria-describedby={erro ? 'perfil-celular-erro' : 'perfil-celular-dica'}
+          aria-describedby={
+            erro ? 'perfil-celular-erro' : 'perfil-celular-dica'
+          }
           className="min-w-0 flex-1 basis-56"
         />
         <Button type="submit" disabled={salvando || !mudou}>
@@ -124,7 +146,11 @@ function FormularioDoCelular({
         </Button>
       </div>
       {erro ? (
-        <p id="perfil-celular-erro" role="alert" className="text-destructive text-sm">
+        <p
+          id="perfil-celular-erro"
+          role="alert"
+          className="text-destructive text-sm"
+        >
           {erro}
         </p>
       ) : (

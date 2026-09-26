@@ -116,11 +116,16 @@ login).
   trancar o CRM inteiro por soluço de rede é a forma da issue #471. E só com
   `accountStatus === 'ready'`: sem conta, a rota recusaria e a pessoa ficaria
   presa no cartão.
+- ⚠️⚠️ **Decidida UMA vez, na montagem de `<ExigenciaDoCelular key={user.id}>`,
+  e depois só FECHA** (celular gravado): `exigeNaAbertura` é capturado no
+  `useState`, `falta` é o estado ao vivo. Recalculada a cada render, a conta
+  que resolve DEPOIS (o "Tentar de novo" do alerta, a nova leitura do perfil
+  na volta à aba) trocaria o app aberto pelo cartão.
 - ⚠️ **A leitura sai na casca junto com a do perfil** (`useMeuCelular` no topo)
-  e entra no MESMO spinner (`esperandoCelular`): lida dentro do cartão,
-  somaria uma espera a toda abertura; fora do spinner, o app pintaria e seria
-  trocado pelo cartão com a pessoa já digitando. É uma leitura por carga — o
-  cartão nunca aparece no meio do uso.
+  e entra no MESMO spinner (`esperandoCelular`), que NÃO olha a conta: lida
+  dentro do cartão, somaria uma espera a toda abertura; condicionada à conta,
+  a conta que resolve depois trocaria o app pelo spinner. A casca nunca chama
+  `recarregar` (voltaria a "carregando").
 - ⚠️ **O `.eq('user_id', …)` da leitura é load-bearing**: o administrador lê
   também o celular da equipe, e sem o filtro o `maybeSingle()` estouraria —
   lido como `desconhecido`, o administrador sem celular passaria.
@@ -130,9 +135,13 @@ login).
   lê o próprio e o administrador da conta DELA lê o da equipe, perguntado pelo
   `profiles` atual: quem sai da equipe deixa de ser lido sem escrita nenhuma.
 - ⚠️ **Só a rota grava** (`authenticated` só tem SELECT): a régua mora em TS
-  (`celularDigitado` = `telefoneDigitado` + celular brasileiro com o 9; o de
-  fora, com `+`), a linha é sempre a do login da sessão, e o CHECK do banco é
-  só o piso de forma. Trocar, sim; apagar, não (sem DELETE para ninguém).
+  (`celularDigitado` = `telefoneDigitado` + celular brasileiro com o 9), a
+  linha é sempre a do login da sessão, e o CHECK do banco é só o piso de
+  forma. Trocar, sim; apagar, não (sem DELETE para ninguém).
+- ⚠️ **Sem `+` (ou 00) escrito, o número tem de sair brasileiro (55)**:
+  `telefoneDigitado` devolve como veio o número sem `+` de 12 a 15 dígitos, e
+  um dígito a mais num celular daqui passaria como "estrangeiro", furando a
+  exigência do 9.
 - A rota de membros entrega `celular` SÓ a administradores, como o e-mail, com
   o cliente do CHAMADOR (a RLS é a segunda barreira): AUSENTE = não vê ou a
   leitura falhou; `null` = ainda não informou.
