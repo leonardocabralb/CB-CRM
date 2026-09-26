@@ -10,12 +10,12 @@ tentou ligar, para alguém ver e retornar?"
 | Fase | O quê | Estado |
 | --- | --- | --- |
 | 0 | Estudo de viabilidade (medido em produção) | ✅ 25/09/2026 |
-| 1 | Back-end: assinar `CALL`, `cb_ligacoes`, desfecho, bolha, efeitos | ✅ código e testes (PR em rascunho) |
-| 2 | Tela: faixa no fio, prévia na lista e no card, textos | ✅ código e testes (mesmo PR) |
+| 1 | Back-end: assinar `CALL`, `cb_ligacoes`, desfecho, bolha, efeitos | ✅ no ar (PR #300) |
+| 2 | Tela: faixa no fio, prévia na lista e no card, textos | ✅ no ar (PR #300) |
 | 3 | Aplicar a 1044 → teste ponta a ponta no preview → merge → deploy | ✅ 26/09/2026 (PR #300) |
-| 4 | "Ressincronizar" o Bancário - Comercial → ligações de teste do operador → conferir | ✅ 26/09/2026 — achado de ordem corrigido no PR seguinte |
-| 5 | "Ressincronizar" as outras conexões por QR Code | ⏳ depois da 4 |
-| 6 | Pesquisa: atender e ligar pelo sistema (Wavoip) | ⏳ pedida para o fim |
+| 4 | "Ressincronizar" o Bancário - Comercial → ligações de teste do operador → conferir | ✅ 26/09/2026 — achado de ordem corrigido no PR #304 (no ar) |
+| 5 | "Ressincronizar" as outras conexões por QR Code | ✅ 26/09/2026 |
+| 6 | Pesquisa: atender e ligar pelo sistema (Wavoip) | ✅ 25/09/2026 — resumo na seção 8; sem decisão de seguir |
 
 ## 1. O que foi medido (Fase 0, 25/09/2026, só leitura)
 
@@ -232,6 +232,11 @@ tentou ligar, para alguém ver e retornar?"
   corpo (o ouvinte JÁ está montado); regras e docs que contradiziam os pinos;
   pinos dos filtros do Painel, do Meu dia e do Radar. Registrados como
   limite: os itens da seção 6.
+- **Fase 5** (26/09/2026): com o PR #304 no ar (a bolha na hora real; a
+  ligação não para as sequências), "Ressincronizar" no Bancário - Jurídico,
+  no Trabalhista - Comercial e no Trabalhista - Jurídico, uma de cada vez,
+  conferindo a conexão de cada pedido. As quatro conexões por QR Code recebem
+  o `CALL`.
 - **Fase 4** (26/09/2026): PR #300 mesclado e no ar; "Ressincronizar" só no
   Bancário - Comercial. O operador ligou do celular dele (lead de teste): 4
   ligações chegaram e foram registradas certo — tocou 60 s e caiu (perdida,
@@ -267,3 +272,32 @@ tentou ligar, para alguém ver e retornar?"
   com a conversa aberta (a faixa e a linha da lista mudaram sem recarregar).
   Nenhuma automação, robô, aviso, trilha nem card mexido. Limpo no fim, com a
   conversa devolvida ao retrato (menos `updated_at`).
+
+## 8. Pesquisa: atender e ligar pelo sistema (Wavoip, 25/09/2026)
+
+Pedida pelo operador para o fim do trabalho. Resumo do que foi levantado
+(fontes públicas da Wavoip, da Evolution e da Baileys); nada foi contratado nem
+testado.
+
+- **O que é:** empresa brasileira que vende ligação de voz pelo WhatsApp. A
+  Evolution tem o campo `wavoipToken`: com ele, a instância abre um socket
+  para os servidores da Wavoip, e o atendente atende e liga por um telefone no
+  navegador (webphone embutível, ou SDK). O celular continua tocando; quem
+  atende primeiro fica com a chamada.
+- ⚠️ **Compatibilidade:** a ponte dentro da Evolution é antiga (última
+  mudança para a Baileys rc5), e a ponte atual da Wavoip exige a rc13 com um
+  ajuste que a Evolution não aplica. O provável, na nossa versão, é tocar sem
+  áudio; não há relato público de uso na 2.4.
+- ⚠️ **Confiança:** o servidor da Wavoip passa a poder comandar a sessão do
+  WhatsApp da conexão. O áudio e as gravações passam por eles e ficam guardados
+  por tempo indeterminado, salvo se desligadas.
+- ⚠️ **Privacidade:** a política publicada fala em compartilhar dados com
+  terceiros (OpenAI e Asaas), não diz em que país os dados ficam e não oferece
+  contrato de tratamento de dados.
+- **Banimento:** ligar para quem nunca conversou com o número aumenta o risco.
+- **Preço:** não publicado; planos por chamadas simultâneas; teste grátis.
+- **Alternativa oficial:** a API de ligações da Meta, só para o número oficial
+  (receber é gratuito).
+- **Se for seguir:** teste grátis com um número de TESTE, antes de qualquer
+  contrato; pedir por escrito preço, país dos dados, prazo de guarda e
+  contrato de tratamento de dados.
