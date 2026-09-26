@@ -3230,7 +3230,7 @@
         "modelo_em_uso_indisponivel": "Key saved, but the model in use ({modelos}) did not respond — not even with the previous key. Change the model (the Radar's, on this card, or the assistant's).",
         "transcricao_indisponivel": "Key saved, but the audio transcription model did not respond — not even with the previous key. It is fixed in the system: transcription stays unavailable until the system is updated.",
         "so_da_base": "Key saved only for the knowledge base: it generates embeddings but OpenAI refused text generation (a project key restricted to embeddings). The assistant and the agents do not use it — to use OpenAI in chat, save a key with access to the models.",
-        "modelos_nao_conferidos": "These models in use were not checked against the new key (the limit per save is 5): {modelos}. Test one agent of each in the Playground.",
+        "modelos_nao_conferidos": "These models were not checked against the new key (the limit per save is 5, and disabled agents' models are not checked): {modelos}. Test one agent of each in the Playground.",
         "modulos_nao_criados": "Key saved, but the Radar configuration could not be created — reload the page and check the card."
       },
       "erroDaChave": {
@@ -3610,6 +3610,7 @@
       "keyStatusMissing": "{provider} has no key yet.",
       "keyStatusUnknown": "Could not check the keys right now.",
       "keyManageLink": "Manage keys in Integrations",
+      "keySoDaBase": "This OpenAI key only serves the knowledge base (it generates embeddings, not text) — to turn the assistant on, save a key with access to the models in Settings → Integrations.",
       "keyUnreadable": "This provider's key could not be read — add it again in Settings → Integrations.",
       "testKey": "Test key",
       "testSuccess": "Key works — the provider responded.",

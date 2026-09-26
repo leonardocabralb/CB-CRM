@@ -319,11 +319,18 @@ describe('PUT /api/cb/ia/chaves — a transcrição usa o modelo FIXO com a chav
 })
 
 describe('PUT /api/cb/ia/chaves — agente desligado e o teto de modelos (Codex, #295)', () => {
-  it('agente DESLIGADO não conta', async () => {
+  it('agente DESLIGADO não é conferido, mas volta como não conferido (o Playground dele roda) — Codex, #295', async () => {
     linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: null }
-    agentesDaConta = [{ provedor: 'gemini', modelo: 'gemini-desligado', ativo: false }]
-    await PUT(pedido('gemini'))
+    agentesDaConta = [
+      { provedor: 'gemini', modelo: 'gemini-desligado', ativo: false },
+      { provedor: 'gemini', modelo: 'gemini-a', ativo: false },
+    ]
+    const res = await PUT(pedido('gemini'))
     expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.7-flash', 'gemini-a'])
+    const corpo = (await res.json()) as { avisos: string[]; naoConferidos: string[] }
+    expect(corpo.avisos).toContain('modelos_nao_conferidos')
+    // O modelo que o uso já cobre (gemini-a) não entra.
+    expect(corpo.naoConferidos).toEqual(['gemini-desligado'])
   })
 
   it('confere no máximo 5 modelos; os demais voltam no aviso', async () => {

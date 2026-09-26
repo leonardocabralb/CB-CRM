@@ -53,7 +53,10 @@ export async function GET() {
  * (Codex, #294): passando só no modelo padrão, uma chave sem acesso ao modelo
  * em uso era aceita e o Radar, o rascunho e os agentes quebravam na troca.
  */
-async function modelosEmUso(accountId: string, provedor: AiProvider): Promise<string[]> {
+async function modelosEmUso(
+  accountId: string,
+  provedor: AiProvider,
+): Promise<{ emUso: string[]; dosDesligados: string[] }> {
   // A padrão (assistente e Radar — o Radar a lê desligada ou não) e as de
   // conexão LIGADAS (agente por canal do app anterior): a desligada não roda
   // (`loadAiConfig` devolve null), e conferi-la travaria a troca por um
@@ -121,7 +124,27 @@ async function modelosEmUso(accountId: string, provedor: AiProvider): Promise<st
   for (const m of candidatos) {
     if (typeof m === 'string' && m.trim() && !modelos.includes(m.trim())) modelos.push(m.trim())
   }
-  return modelos
+  return { emUso: modelos, dosDesligados: modelosDosDesligados(agentes, provedor, modelos) }
+}
+
+/**
+ * Os modelos dos agentes DESLIGADOS deste provedor que nada em uso cobre: o
+ * Playground deles roda mesmo desligado (Codex, #295). Não são conferidos —
+ * travariam a troca por um modelo que não atende cliente —, mas a gravação os
+ * DIZ como não conferidos, em vez de relatar sucesso limpo.
+ */
+function modelosDosDesligados(
+  agentes: { provedor: string; ativo: boolean; modelo: string }[],
+  provedor: AiProvider,
+  emUso: string[],
+): string[] {
+  const fora: string[] = []
+  for (const a of agentes) {
+    const m = a.modelo.trim()
+    if (a.provedor !== provedor || a.ativo || !m || emUso.includes(m) || fora.includes(m)) continue
+    fora.push(m)
+  }
+  return fora
 }
 
 /**
@@ -217,7 +240,7 @@ async function validarChaveNova(
   chave: string,
 ): Promise<Veredito> {
   const padrao = AI_PROVIDER_DEFAULT_MODEL[provedor]
-  const emUso = await modelosEmUso(accountId, provedor)
+  const { emUso, dosDesligados } = await modelosEmUso(accountId, provedor)
   // A OpenAI que NENHUM chat nem agente usa pode servir só à base de conhecimento: se ela
   // gera embedding e NÃO gera texto (chave de projeto restrita aos
   // embeddings), está aceita como "só da base" — válida para o único uso dela,
@@ -237,18 +260,18 @@ async function validarChaveNova(
     if (geraEmbedding) {
       try {
         await validateAiCredentials(configDeTeste(provedor, padrao, chave))
-        return { ok: true, modelosIndisponiveis: [], naoConferidos: [], transcricaoIndisponivel: false, soDaBase: false }
+        return { ok: true, modelosIndisponiveis: [], naoConferidos: dosDesligados, transcricaoIndisponivel: false, soDaBase: false }
       } catch (err) {
         // Falha passageira não diz se a chave gera texto: nada é gravado.
         if (falhaPassageira(err)) return { ok: false, erro: err }
-        return { ok: true, modelosIndisponiveis: [], naoConferidos: [], transcricaoIndisponivel: false, soDaBase: true }
+        return { ok: true, modelosIndisponiveis: [], naoConferidos: dosDesligados, transcricaoIndisponivel: false, soDaBase: true }
       }
     }
   }
   // O modelo da transcrição (Gemini) vem PRIMEIRO em `modelosEmUso`: fica
   // sempre dentro do teto.
   const aTestar = emUso.length > 0 ? emUso.slice(0, MAX_MODELOS_CONFERIDOS) : [padrao]
-  const naoConferidos = emUso.slice(MAX_MODELOS_CONFERIDOS)
+  const naoConferidos = [...emUso.slice(MAX_MODELOS_CONFERIDOS), ...dosDesligados]
 
   const erros = await Promise.all(aTestar.map((m) => alcanca(provedor, m, chave)))
   // Chave recusada não melhora com outro modelo.

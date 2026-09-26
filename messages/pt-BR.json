@@ -3223,7 +3223,7 @@
         "modelo_em_uso_indisponivel": "Chave salva, mas o modelo em uso ({modelos}) não respondeu — nem com a chave anterior. Troque o modelo (o do Radar, neste cartão, ou o do assistente).",
         "transcricao_indisponivel": "Chave salva, mas o modelo da transcrição de áudio não respondeu — nem com a chave anterior. Ele é fixo no sistema: a transcrição segue fora do ar até o sistema ser atualizado.",
         "so_da_base": "Chave salva só para a base de conhecimento: ela gera embeddings, mas a OpenAI recusou a geração de texto (chave de projeto restrita aos embeddings). O assistente e os agentes não a usam — para usar a OpenAI no chat, salve uma chave com acesso aos modelos.",
-        "modelos_nao_conferidos": "Estes modelos em uso não foram conferidos com a chave nova (o limite por gravação é de 5): {modelos}. Teste um agente de cada no Playground.",
+        "modelos_nao_conferidos": "Estes modelos não foram conferidos com a chave nova (o limite por gravação é de 5, e os de agentes desligados não são conferidos): {modelos}. Teste um agente de cada no Playground.",
         "modulos_nao_criados": "Chave salva, mas não foi possível criar a configuração do Radar — recarregue a página e confira o cartão."
       },
       "erroDaChave": {
@@ -3603,6 +3603,7 @@
       "keyStatusMissing": "O {provider} ainda não tem chave cadastrada.",
       "keyStatusUnknown": "Não foi possível conferir as chaves agora.",
       "keyManageLink": "Gerenciar as chaves em Integrações",
+      "keySoDaBase": "Esta chave da OpenAI só serve à base de conhecimento (gera embeddings, não texto) — para ligar o assistente, salve uma chave com acesso aos modelos em Configurações → Integrações.",
       "keyUnreadable": "A chave deste provedor não pôde ser lida — cadastre-a de novo em Configurações → Integrações.",
       "testKey": "Testar chave",
       "testSuccess": "A chave funciona — o provedor respondeu.",

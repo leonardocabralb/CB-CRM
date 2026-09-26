@@ -214,6 +214,19 @@ export async function POST(request: Request) {
         )
       }
       apiKeyPlain = lida.chave
+      // A chave da OpenAI marcada SÓ DA BASE (gera embedding, não gera texto)
+      // não liga o assistente: rascunho, Playground e resposta automática
+      // falhariam em toda geração. Ligar só muda o interruptor e pula a
+      // validação paga abaixo, então a marca é conferida aqui (Codex, #295).
+      if (provider === 'openai' && (isActive || autoReplyEnabled)) {
+        const estado = await lerEstado(accountId)
+        if (estado.find((e) => e.provedor === 'openai')?.soDaBase) {
+          return NextResponse.json(
+            { error: 'provedor_so_da_base', code: 'provedor_so_da_base' },
+            { status: 400 },
+          )
+        }
+      }
     } catch (err) {
       console.error('[ai/config POST] leitura da chave falhou:', err)
       return NextResponse.json(
