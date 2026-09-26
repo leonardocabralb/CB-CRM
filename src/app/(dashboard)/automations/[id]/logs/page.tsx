@@ -25,6 +25,67 @@ import { formatRelative } from "@/lib/automations/trigger-meta"
 import { ChannelCell, ChannelScopeBadge } from "@/components/channels/channel-badge"
 import { useChannels } from "@/hooks/use-channels"
 import { nomeDoContato } from "@/lib/contacts/identidade"
+import {
+  idsCitados,
+  textoComNomes,
+  type NomesDoRegistro,
+  type TipoDoAlvo,
+} from "@/lib/automations/registro-legivel"
+
+type ClienteSupabase = ReturnType<typeof createClient>
+
+const SEM_NOMES: NomesDoRegistro = { porId: {}, carregados: new Set() }
+
+/**
+ * Nome de cada id que os registros citam (etapa, etiqueta, membro, campo,
+ * tarefa) — ver `registro-legivel.ts`. Lido sob RLS, como o resto da tela.
+ *
+ * Nunca derruba a tela: catálogo cuja consulta falhou só fica fora de
+ * `carregados`, e aí o id aparece cru, como aparecia antes.
+ */
+async function carregarNomes(
+  supabase: ClienteSupabase,
+  ids: string[],
+): Promise<NomesDoRegistro> {
+  if (ids.length === 0) return SEM_NOMES
+  const [tags, etapas, membros, campos, tarefas] = await Promise.all([
+    supabase.from("tags").select("id, name").in("id", ids),
+    supabase
+      .from("pipeline_stages")
+      .select("id, name, pipeline:pipelines(name)")
+      .in("id", ids),
+    supabase.from("profiles").select("user_id, full_name").in("user_id", ids),
+    supabase.from("custom_fields").select("id, field_name").in("id", ids),
+    supabase.from("cb_tasks").select("id, titulo").in("id", ids),
+  ])
+
+  const porId: Record<string, string> = {}
+  const carregados = new Set<TipoDoAlvo>()
+  const guardar = (
+    tipo: TipoDoAlvo,
+    res: { data: unknown; error: unknown },
+    linha: (r: Record<string, unknown>) => [unknown, unknown],
+  ) => {
+    if (res.error) return
+    carregados.add(tipo)
+    for (const r of (res.data ?? []) as Record<string, unknown>[]) {
+      const [id, nome] = linha(r)
+      if (typeof id === "string" && typeof nome === "string" && nome.trim()) {
+        porId[id.toLowerCase()] = nome.trim()
+      }
+    }
+  }
+  guardar("etiqueta", tags, (r) => [r.id, r.name])
+  guardar("etapa", etapas, (r) => {
+    // Etapa com o funil na frente: "Reunião Agendada" existe em mais de um.
+    const funil = (r.pipeline as { name?: unknown } | null)?.name
+    return [r.id, typeof funil === "string" && funil ? `${funil} › ${r.name}` : r.name]
+  })
+  guardar("membro", membros, (r) => [r.user_id, r.full_name])
+  guardar("campo", campos, (r) => [r.id, r.field_name])
+  guardar("tarefa", tarefas, (r) => [r.id, r.titulo])
+  return { porId, carregados }
+}
 
 export default function AutomationLogsPage({
   params,
@@ -34,12 +95,27 @@ export default function AutomationLogsPage({
   const { id } = use(params)
   const router = useRouter()
   const t = useTranslations("Automations.logs")
+  const tAut = useTranslations("Automations")
 
   const [automation, setAutomation] = useState<Automation | null>(null)
   const [logs, setLogs] = useState<AutomationLog[] | null>(null)
+  const [nomes, setNomes] = useState<NomesDoRegistro>(SEM_NOMES)
   const [error, setError] = useState<string | null>(null)
   const [openLogId, setOpenLogId] = useState<string | null>(null)
   const { channels } = useChannels()
+
+  // Rótulo em português do passo e do gatilho. Chave montada: o `has` faz um
+  // tipo sem tradução cair no nome técnico, que é o que a tela mostrava.
+  const rotuloDoPasso = (tipo: string) => {
+    const chave = `builder.steps.${tipo}` as Parameters<typeof tAut>[0]
+    return tAut.has(chave) ? tAut(chave) : tipo
+  }
+  const rotuloDoGatilho = (evento: string) => {
+    const chave = `builder.triggers.${evento}.label` as Parameters<typeof tAut>[0]
+    return tAut.has(chave) ? tAut(chave) : evento
+  }
+  const orfao = (tipo: TipoDoAlvo) =>
+    t(`orfao.${tipo}` as Parameters<typeof t>[0])
 
   useEffect(() => {
     async function load() {
@@ -60,8 +136,20 @@ export default function AutomationLogsPage({
         ])
         if (autRes.error) throw autRes.error
         if (logRes.error) throw logRes.error
+        const registros = (logRes.data ?? []) as AutomationLog[]
+        // Antes de mostrar a lista, para o id não piscar antes do nome.
+        const nomesCarregados = await carregarNomes(
+          supabase,
+          idsCitados(
+            registros.flatMap((l) => [
+              l.error_message,
+              ...(l.steps_executed ?? []).map((p) => p.detail),
+            ]),
+          ),
+        ).catch(() => SEM_NOMES)
         setAutomation(autRes.data as Automation | null)
-        setLogs((logRes.data ?? []) as AutomationLog[])
+        setNomes(nomesCarregados)
+        setLogs(registros)
       } catch (err) {
         setError(err instanceof Error ? err.message : t("loadError"))
       }
@@ -148,7 +236,7 @@ export default function AutomationLogsPage({
                       {nomeDoContato(log.contact, t("unknownContact"))}
                     </div>
                     <div className="truncate text-xs text-muted-foreground">
-                      {log.trigger_event} · {log.steps_executed?.length ?? 0}{" "}
+                      {rotuloDoGatilho(log.trigger_event)} · {log.steps_executed?.length ?? 0}{" "}
                       {log.steps_executed?.length === 1 ? t("step", { count: 1 }).replace("1 ", "") : t("stepPlural", { count: log.steps_executed?.length ?? 0 }).replace(/^[0-9]+ /, "")}
                     </div>
                   </div>
@@ -165,12 +253,21 @@ export default function AutomationLogsPage({
                   <div className="border-t border-border px-4 py-3">
                     {log.error_message && (
                       <p className="mb-3 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
-                        {log.error_message}
+                        {textoComNomes(log.error_message, nomes, null, orfao)}
                       </p>
                     )}
                     <ul className="space-y-1.5">
                       {(log.steps_executed ?? []).map((r, i) => (
-                        <StepRow key={i} result={r} />
+                        <StepRow
+                          key={i}
+                          result={r}
+                          rotulo={rotuloDoPasso(r.step_type)}
+                          detalhe={
+                            r.detail
+                              ? textoComNomes(r.detail, nomes, r.step_type, orfao)
+                              : null
+                          }
+                        />
                       ))}
                       {(log.steps_executed ?? []).length === 0 && (
                         <li className="text-xs text-muted-foreground">{t("noSteps")}</li>
@@ -234,7 +331,15 @@ function StatusBadge({
   )
 }
 
-function StepRow({ result }: { result: AutomationLogStepResult }) {
+function StepRow({
+  result,
+  rotulo,
+  detalhe,
+}: {
+  result: AutomationLogStepResult
+  rotulo: string
+  detalhe: string | null
+}) {
   const ok = result.status === "success"
   // ⚠️ `skipped` NÃO é falha: é a condição que desviou para um ramo vazio
   // (985) e a espera interrompida porque o cliente respondeu (18/09/2026).
@@ -263,9 +368,13 @@ function StepRow({ result }: { result: AutomationLogStepResult }) {
           <X className="h-3 w-3" />
         )}
       </span>
-      <span className="text-muted-foreground">{result.step_type}</span>
-      {result.detail && (
-        <span className="truncate text-muted-foreground">— {result.detail}</span>
+      <span className="shrink-0 text-muted-foreground" title={result.step_type}>
+        {rotulo}
+      </span>
+      {detalhe && (
+        <span className="min-w-0 truncate text-muted-foreground" title={detalhe}>
+          — {detalhe}
+        </span>
       )}
     </li>
   )

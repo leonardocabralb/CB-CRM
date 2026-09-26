@@ -226,6 +226,10 @@ e no `validate.ts`.
   upstream devolve o bug sem conflito. Pino: `src/lib/pipelines/url.test.ts`.
 - **A tela de registros pinta `skipped` NEUTRO** (`StepRow`, traço cinza):
   "parou porque o cliente respondeu" e condição de ramo vazio não são erro.
+- ⚠️ **A tela de registros troca id por nome NA TELA** (`registro-legivel.ts`),
+  nunca no motor: vale para os registros antigos e mostra o id que o passo
+  USOU. Id sem nome só vira "(etapa apagada)" se aquele catálogo carregou;
+  consulta que falhou deixa o id cru.
 
 ### A visão Automações do funil
 
