@@ -87,6 +87,21 @@ describe('GET /api/cb/integracoes/status — o ping cobre os agentes de conexão
     ])
   })
 
+  it('provedor usado só por uma conexão: o modelo padrão dele não é testado (Codex, #294)', async () => {
+    linhas[0] = { channel_id: null, provider: 'anthropic', model: 'claude-x', radar_model: null, is_active: true }
+    await cartaoGemini()
+    const pingados = validateAiCredentials.mock.calls.filter((c) => c[0].provider === 'gemini').map((c) => c[0].model)
+    expect(pingados.sort()).toEqual(['gemini-da-conexao', 'trans'])
+  })
+
+  it('nada roda deste provedor: o modelo padrão confere a chave', async () => {
+    linhas = [{ channel_id: null, provider: 'anthropic', model: 'claude-x', radar_model: null, is_active: true }]
+    await cartaoGemini()
+    const pingados = validateAiCredentials.mock.calls.filter((c) => c[0].provider === 'gemini').map((c) => c[0].model)
+    expect(pingados).toHaveLength(2) // o padrão do Gemini e a transcrição
+    expect(pingados).toContain('trans')
+  })
+
   it('o modelo fixo da transcrição fora do ar deixa o cartão do Gemini em erro', async () => {
     modelosQueFalham = ['trans']
     expect((await cartaoGemini()).estado).toBe('erro')
