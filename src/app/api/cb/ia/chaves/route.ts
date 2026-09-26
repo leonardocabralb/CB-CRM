@@ -143,7 +143,7 @@ function configDeTeste(provedor: AiProvider, modelo: string, apiKey: string) {
 }
 
 type Veredito =
-  | { ok: true; modelosIndisponiveis: string[]; transcricaoIndisponivel: boolean }
+  | { ok: true; modelosIndisponiveis: string[]; transcricaoIndisponivel: boolean; soDaBase: boolean }
   | { ok: false; erro: unknown; modelo?: string }
 
 /**
@@ -188,18 +188,30 @@ async function validarChaveNova(
   const padrao = AI_PROVIDER_DEFAULT_MODEL[provedor]
   const emUso = await modelosEmUso(accountId, provedor)
   // A OpenAI que NENHUM chat usa pode servir só à base de conhecimento: se ela
-  // gera embedding, está aceita sem pedir o chat — uma chave de projeto
-  // restrita aos embeddings é válida para o único uso dela, e a 1047 e o
-  // cartão já a preservam (Codex, #294). Se não gera, segue a conferência pelo
-  // chat: o administrador pode estar cadastrando a chave justamente para
-  // passar o assistente para a OpenAI (a tela só oferece provedor com chave).
-  // O veredito do embedding é gravado logo abaixo, no PUT.
+  // gera embedding e NÃO gera texto (chave de projeto restrita aos
+  // embeddings), está aceita como "só da base" — válida para o único uso dela,
+  // e marcada, para nenhuma tela a oferecer ao chat, onde toda geração
+  // falharia (Codex, #294 e #295). Se gera as duas coisas, é chave comum. Se
+  // não gera embedding, segue a conferência pelo chat: o administrador pode
+  // estar cadastrando a chave justamente para passar o assistente para a
+  // OpenAI (a tela só oferece provedor com chave).
   if (provedor === 'openai' && emUso.length === 0) {
+    let geraEmbedding = false
     try {
       await embedTexts(chave, ['ping'])
-      return { ok: true, modelosIndisponiveis: [], transcricaoIndisponivel: false }
+      geraEmbedding = true
     } catch {
       // Segue pelo chat.
+    }
+    if (geraEmbedding) {
+      try {
+        await validateAiCredentials(configDeTeste(provedor, padrao, chave))
+        return { ok: true, modelosIndisponiveis: [], transcricaoIndisponivel: false, soDaBase: false }
+      } catch (err) {
+        // Falha passageira não diz se a chave gera texto: nada é gravado.
+        if (falhaPassageira(err)) return { ok: false, erro: err }
+        return { ok: true, modelosIndisponiveis: [], transcricaoIndisponivel: false, soDaBase: true }
+      }
     }
   }
   const aTestar = emUso.length > 0 ? emUso : [padrao]
@@ -213,7 +225,7 @@ async function validarChaveNova(
       recusados.push({ modelo, erro: err })
     }
   }
-  if (recusados.length === 0) return { ok: true, modelosIndisponiveis: [], transcricaoIndisponivel: false }
+  if (recusados.length === 0) return { ok: true, modelosIndisponiveis: [], transcricaoIndisponivel: false, soDaBase: false }
   // Tempo esgotado, rede ou limite NÃO dizem nada sobre o acesso ao modelo:
   // nada é trocado, e o administrador tenta de novo (Codex, #294). Tratada como
   // "não alcança", a chave seria gravada sem ter sido conferida no modelo em uso.
@@ -260,6 +272,7 @@ async function validarChaveNova(
     ok: true,
     modelosIndisponiveis: recusados.filter((r) => r !== transcricao).map((r) => r.modelo),
     transcricaoIndisponivel: transcricao !== undefined,
+    soDaBase: false,
   }
 }
 
@@ -323,8 +336,12 @@ export async function PUT(request: Request) {
     // - `transcricao_indisponivel`: o modelo FIXO da transcrição não respondeu
     //   nem com a chave anterior — não há modelo a trocar; a tela diz que a
     //   transcrição de áudio segue fora do ar.
+    // - `so_da_base`: a chave da OpenAI gera embedding e não gera texto
+    //   (restrita aos embeddings): fica só para a base de conhecimento, e o
+    //   chat não a usa.
     // - `modulos_nao_criados`: ver abaixo.
     const avisos: string[] = []
+    if (veredito.soDaBase) avisos.push('so_da_base')
     if (veredito.modelosIndisponiveis.length > 0) avisos.push('modelo_em_uso_indisponivel')
     if (veredito.transcricaoIndisponivel) avisos.push('transcricao_indisponivel')
     let serveEmbeddings: boolean | null = null
@@ -376,7 +393,7 @@ export async function PUT(request: Request) {
     // DEPOIS da linha padrão: a gravação também atualiza a cópia legada
     // (`ai_configs.api_key`) para uma volta atrás do deploy, e a linha recém-
     // criada precisa existir para receber a cópia.
-    await gravarChave(ctx.accountId, provedor, chave, ctx.userId, serveEmbeddings)
+    await gravarChave(ctx.accountId, provedor, chave, ctx.userId, serveEmbeddings, { soDaBase: veredito.soDaBase })
 
     return NextResponse.json({ ok: true, avisos, modelos: veredito.modelosIndisponiveis })
   } catch (err) {

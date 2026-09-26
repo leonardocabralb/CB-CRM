@@ -556,6 +556,7 @@ function FormularioDaChave({
           a === 'embeddings_nao_conferido' ||
           a === 'modelo_em_uso_indisponivel' ||
           a === 'transcricao_indisponivel' ||
+          a === 'so_da_base' ||
           a === 'modulos_nao_criados'
       );
       const modelos = (dados.modelos ?? []).join(', ');

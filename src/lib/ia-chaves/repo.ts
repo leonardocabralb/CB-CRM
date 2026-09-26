@@ -164,8 +164,15 @@ export async function gravarChave(
   chaveCrua: string,
   userId: string | null,
   serveEmbeddings: boolean | null = null,
+  opcoes: { soDaBase?: boolean } = {},
 ): Promise<void> {
   const agora = new Date().toISOString()
+  // A chave da OpenAI que só gera embedding é gravada com a MARCA de origem
+  // da 1047: o MESMO texto cifrado em `api_key` e em `embeddings_api_key`
+  // (`soDaBase` em `lerEstado`). É o que tira a chave da escolha do chat
+  // (Codex, #295). Um texto cifrado só, usado nas duas colunas.
+  const soDaBase = provedor === 'openai' && opcoes.soDaBase === true
+  const cifradaNova = encrypt(chaveCrua)
   // A chave PRÓPRIA dos embeddings só é própria se for OUTRA chave. A 1047 a
   // copiou comparando os textos CIFRADOS, e a cifra é aleatória (AES-GCM com
   // IV sorteado): a mesma chave digitada nos dois campos virou "própria". Na
@@ -184,11 +191,12 @@ export async function gravarChave(
       {
         account_id: accountId,
         provedor,
-        api_key: encrypt(chaveCrua),
+        api_key: cifradaNova,
         serve_embeddings: provedor === 'openai' ? serveEmbeddings : null,
         // Ausente do objeto = o upsert não toca a coluna (a própria continua).
         ...(provedor === 'openai' && serveEmbeddings === true ? { embeddings_api_key: null } : {}),
         ...semPropriaFalsa,
+        ...(soDaBase ? { embeddings_api_key: cifradaNova } : {}),
         atualizada_por: userId,
         updated_at: agora,
       },

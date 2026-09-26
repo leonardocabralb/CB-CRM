@@ -3226,6 +3226,7 @@
         "embeddings_nao_conferido": "Key saved, but it could not be checked for the knowledge-base search (embeddings). If the search fails, save the key again.",
         "modelo_em_uso_indisponivel": "Key saved, but the model in use ({modelos}) did not respond — not even with the previous key. Change the model (the Radar's, on this card, or the assistant's).",
         "transcricao_indisponivel": "Key saved, but the audio transcription model did not respond — not even with the previous key. It is fixed in the system: transcription stays unavailable until the system is updated.",
+        "so_da_base": "Key saved only for the knowledge base: it generates embeddings but OpenAI refused text generation (a project key restricted to embeddings). The assistant and the agents do not use it — to use OpenAI in chat, save a key with access to the models.",
         "modulos_nao_criados": "Key saved, but the Radar configuration could not be created — reload the page and check the card."
       },
       "erroDaChave": {

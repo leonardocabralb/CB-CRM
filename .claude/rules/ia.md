@@ -232,7 +232,10 @@ Radar.
   ESPELHA (sem isso a volta atrás traria a chave velha, quase sempre revogada
   na troca). A chave nova é conferida em CADA modelo em uso (assistente e
   Radar); recusada num que a atual alcança, nada é trocado
-  (`modelo_em_uso_recusado`).
+  (`modelo_em_uso_recusado`). A da OpenAI que nenhum chat usa e que gera
+  embedding mas não texto grava a MARCA "só da base" (o MESMO texto cifrado
+  em `api_key` e `embeddings_api_key`, `soDaBase`): nenhuma tela a oferece ao
+  chat, onde toda geração falharia.
 - ⚠️ **A linha PADRÃO de `ai_configs` é a configuração dos MÓDULOS** (provedor
   e modelo do Radar) e do assistente legado, para a conta inteira. `montar.ts`
   monta um cartão por provedor a partir da CHAVE (não de um agente) e lê só a
