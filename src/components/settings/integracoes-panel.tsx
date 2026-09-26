@@ -523,10 +523,11 @@ function FormularioDaChave({
   // O que deixa de funcionar sem a chave: os módulos que hoje a usam (os
   // marcados `sem_chave` já não a usam).
   const paraSemChave = cartao.usos
-    // Só o que RODA hoje: módulo já parado por outro motivo (assistente
-    // desligado, Radar sem conexão, base só por palavras) não "deixa de
-    // funcionar" com a exclusão (Codex, #294).
-    .filter((u) => !u.indisponivel)
+    // Só o que RODA hoje: módulo já parado por outro motivo (Radar sem
+    // conexão, base só por palavras) não "deixa de funcionar" com a exclusão
+    // (Codex, #294). MENOS o assistente desligado: o Playground dele roda
+    // assim mesmo, e para com a chave apagada (Codex, #295).
+    .filter((u) => !u.indisponivel || u.indisponivel === 'conversa_desligada')
     .map((u) => t(`modulo.${u.modulo}`));
 
   async function salvar() {
