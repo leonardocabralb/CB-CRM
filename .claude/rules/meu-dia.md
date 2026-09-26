@@ -235,8 +235,10 @@ na casca e o cartão em *Seu perfil*. Pino estrutural:
   já exibida (`avisadas`); o prazo conta da MENSAGEM. ⚠️ Aceito e escrito, porque hoje nenhuma automação
   atribui conversa (medido em 24/09/2026): em "minhas e sem responsável", a
   conversa lida sem dono avisa na hora mesmo que a automação a entregue a
-  outra pessoa em seguida, e a estacionada com dono de outra pessoa não é
-  solta se a conversa ficar SEM dono (o filtro do realtime não casa NULO).
+  outra pessoa em seguida. A estacionada com dono de outra pessoa é solta
+  também quando a conversa fica SEM dono (2º ouvinte, `assigned_agent_id=is.null`,
+  aceito pelo Realtime do projeto — medido em 25/09/2026), menos quando ela foi
+  ENCERRADA: encerrar também zera o responsável (`trocaDeDonoSolta`).
   E com DUAS abas: a vista numa aba não chega à outra (cada aba tem o seu
   ouvinte desde o original, e aviso com a mesma `tag` se substitui) — no
   máximo um aviso redundante, nunca um perdido.

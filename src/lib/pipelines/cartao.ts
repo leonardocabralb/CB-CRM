@@ -98,22 +98,30 @@ export function temConteudo(card: CardDoQuadro): card is DealDoQuadro {
  * Deixar o conteúdo vencer punha a etapa de uma consulta no card e a de outra
  * na coluna, e o formulário, aberto pelo lápis, regravaria a etapa velha ao
  * salvar outro campo (Codex, PR #248).
+ *
+ * ⚠️ `removerAusentes` falso = a resposta só PREENCHE. É o caso da resposta
+ * que cai numa lista que não é a do pedido — outro funil aberto, ou uma
+ * recarga gravada no meio: ali o card que "não voltou" não saiu do funil, só
+ * não estava no funil consultado QUANDO se perguntou. Removê-lo tirava do
+ * funil novo o card que acabou de ser transferido para ele, com a contagem e
+ * a soma da coluna junto (revisão do PR #251).
  */
 export function juntarConteudo(
   cards: CardDoQuadro[],
   pedidos: readonly string[],
   conteudo: ReadonlyMap<string, DealDoQuadro>,
+  removerAusentes = true,
 ): CardDoQuadro[] {
   const pedido = new Set(pedidos);
   let mudou = false;
   const saida: CardDoQuadro[] = [];
   for (const card of cards) {
-    if (temConteudo(card) || !pedido.has(card.id)) {
+    const chegou = conteudo.get(card.id);
+    if (temConteudo(card) || !pedido.has(card.id) || (!chegou && !removerAusentes)) {
       saida.push(card);
       continue;
     }
     mudou = true;
-    const chegou = conteudo.get(card.id);
     if (chegou) saida.push({ ...chegou, ...card });
   }
   return mudou ? saida : cards;

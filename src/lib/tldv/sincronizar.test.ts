@@ -53,12 +53,17 @@ function dubleDoAdmin(estado: Estado, semConfig = false): SupabaseClient {
       if (tabela === "profiles") return { data: estado.equipe.map((email) => ({ email })), error: null };
       if (tabela === "contacts" || tabela === "cb_calendly_eventos") {
         const or = filtros.find((f) => f.op === "or")?.val as string;
-        const emails = [...or.matchAll(/email\.ilike\."([^"]+)"/g)].map((m) => m[1].replace(/\\(.)/g, "$1").toLowerCase());
+        // `email.imatch."<regex>"`: tira as aspas do PostgREST (`\x` → `x`) e
+        // aplica a regex como o `~*` faria.
+        const regexes = [...or.matchAll(/email\.imatch\."((?:[^"\\]|\\.)*)"/g)].map(
+          (m) => new RegExp(m[1].replace(/\\(.)/g, "$1"), "iu"),
+        );
+        const casa = (email: string) => regexes.some((re) => re.test(email));
         if (tabela === "contacts") {
-          return { data: estado.contatos.filter((c) => emails.includes(c.email.toLowerCase())).map((c) => ({ id: c.id })), error: null };
+          return { data: estado.contatos.filter((c) => casa(c.email)).map((c) => ({ id: c.id })), error: null };
         }
         return {
-          data: estado.agendamentos.filter((a) => emails.includes(a.email.toLowerCase())).map((a) => ({ contact_id: a.contact_id })),
+          data: estado.agendamentos.filter((a) => casa(a.email)).map((a) => ({ contact_id: a.contact_id })),
           error: null,
         };
       }
@@ -218,6 +223,28 @@ describe("sincronizarTldv", () => {
     const r = await sincronizarTldv(dubleDoAdmin(estado), "conta", { agora, cliente: () => cliente });
     expect(r.ok && r.vinculadas).toBe(1);
     expect(estado.linhas.get(M1)).toMatchObject({ contact_id: "c-paulo", vinculo_origem: "email" });
+  });
+
+  it("⚠️ e-mail com `*` casa só ele mesmo — no ilike o `*` virava curinga e ligava outro cliente", async () => {
+    const estado = estadoInicial({
+      contatos: [
+        { id: "c-curinga", email: "anaxyzsilva@x.com" }, // o `*` como curinga
+        { id: "c-regex", email: "anasilva@x.com" }, // o `*` como regex crua
+        { id: "c-trecho", email: "ana*silva@x.com.br" }, // sem as âncoras
+      ],
+    });
+    const cliente = clienteFalso({ reunioes: [reuniao(M1, [{ nome: "", email: "ana*silva@x.com" }])] });
+    const r = await sincronizarTldv(dubleDoAdmin(estado), "conta", { agora, cliente: () => cliente });
+    expect(r.ok && r.vinculadas).toBe(0);
+    expect(estado.linhas.get(M1)!.contact_id).toBeNull();
+  });
+
+  it("e-mail com `*` igual ao da ficha (sem olhar a caixa) vincula", async () => {
+    const estado = estadoInicial({ contatos: [{ id: "c-ana", email: "Ana*Silva@X.com" }] });
+    const cliente = clienteFalso({ reunioes: [reuniao(M1, [{ nome: "", email: "ana*silva@x.com" }])] });
+    const r = await sincronizarTldv(dubleDoAdmin(estado), "conta", { agora, cliente: () => cliente });
+    expect(r.ok && r.vinculadas).toBe(1);
+    expect(estado.linhas.get(M1)).toMatchObject({ contact_id: "c-ana", vinculo_origem: "email" });
   });
 
   it("a ficha vence a ponte: com e-mail na ficha, o Calendly nem é consultado", async () => {

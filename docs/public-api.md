@@ -253,8 +253,10 @@ Domain error codes beyond the table above:
 ### `GET /api/v1/contacts`
 
 List contacts, newest first. Scope: `contacts:read`. Paginated (see
-[Pagination](#pagination)). Optional filters: `?search=` (matches name
-or phone) and `?tag=<tagId>`. The `tag` filter takes only a tag **id**
+[Pagination](#pagination)). Optional filters: `?search=` (a
+case-insensitive substring of the name or the phone, matched literally —
+`%`, `_`, `*`, commas and parentheses are plain characters) and
+`?tag=<tagId>`. The `tag` filter takes only a tag **id**
 (from `GET /api/v1/tags`) — unlike the write endpoints below, a tag name
 there is a `400 bad_request`.
 

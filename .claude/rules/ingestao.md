@@ -226,10 +226,12 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
   motivo, e recibo posterior não o apaga. Pinos `route.recibo.test.ts` (as duas
   rotas), `recibo-da-meta.test.ts`, `escada-de-status.test.ts`.
 - ⚠️ Recibo de DISPARO só é reconhecido quando o destinatário JÁ tem o wamid.
-  No disparo pela tela, o wamid é gravado quando o lote de 10 volta ao
-  navegador; o recibo que chega antes espera os 7 s como mensagem comum e se
-  perde para a contagem da campanha. A perda é anterior à espera: aumentar a
-  pausa não conserta. Limite conhecido, não tratado.
+  No disparo pela tela, a rota do lote (`api/whatsapp/broadcast`) grava o
+  wamid NA HORA em que a Meta aceita cada envio (`anotarEnvio`); até a revisão
+  do PR #277 ele só chegava quando o lote de 10 voltava ao navegador, e o
+  recibo que chegasse antes se perdia. Para a fração de segundo entre o aceite
+  e a gravação, o recibo que não achou destinatário RECONFERE a cada tentativa
+  da espera de 7 s. `sent` não espera nem reconfere: a linha já nasce `sent`.
 - Consumidor novo de recibo repete escada E espera.
 
 ## Conteúdo e anexo na entrada
