@@ -76,6 +76,12 @@ export interface AccountMember {
   avatar_url: string | null;
   role: AccountRole;
   joined_at: string;
+  /**
+   * Celular do membro (1046): só dígitos, com o código do país. Vem SÓ para
+   * administradores, como o e-mail. AUSENTE = quem pergunta não vê (ou a
+   * leitura falhou); `null` = o membro ainda não informou.
+   */
+  celular?: string | null;
 }
 
 /**

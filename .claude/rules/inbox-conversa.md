@@ -99,6 +99,11 @@ destaque e ↑/↓ em `message-thread.tsx`.
 - ⚠️ **`messages` nas dependências do efeito que centraliza é load-bearing**:
   no resync o `scrollTop` volta a zero e ninguém re-centralizaria.
 - **A âncora é `messages.id`**, nunca `message_id` (o wamid).
+- ⚠️ **O botão "N mensagens não lidas" conta na ordem do DESENHO**
+  (`contarNovasDoCliente` e a âncora `ultimaMensagemRef` passam por
+  `naOrdemDoFio`): o tempo real acrescenta no fim da lista, e a ligação (1044)
+  entra com carimbo no passado — pela ordem crua ela acendia o botão sobre uma
+  bolha desenhada acima da âncora (Codex, PR #304).
 
 ### Busca DENTRO do fio e "Ver na conversa"
 

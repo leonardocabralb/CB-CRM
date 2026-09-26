@@ -81,6 +81,16 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   WABA, ou se a leitura na Meta falhar, o modelo só aparece pelo
   **Sincronizar**. O modelo apagado pelo CRM não volta quando a Meta avisa a
   exclusão.
+- **Celular de cada membro, exigido ao abrir o CRM.** Quem ainda não
+  informou o próprio celular vê, ao abrir o CRM, um cartão pedindo o número
+  (celular brasileiro com DDD e o 9; de fora do Brasil, começando com `+`) e
+  não usa o sistema sem informar — inclusive quem já estava logado, na
+  próxima vez que abrir. Depois, o número fica em *Configurações → Seu
+  perfil*, para trocar, e aparece em *Membros da equipe* só para os
+  administradores. A API e as integrações não são afetadas.
+  **Migration necessária:**
+  `supabase/migrations/1046_cb_celular_dos_membros.sql`, aplicada **antes**
+  de publicar esta versão: sem ela ninguém é bloqueado, mas nada é pedido.
 
 ### Corrigido
 

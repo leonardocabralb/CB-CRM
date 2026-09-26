@@ -45,6 +45,9 @@ describe('a ligação NÃO aciona motor nenhum', () => {
     'persistDeviceMessage',
     'sendMessageToConversation',
     'engineSendText',
+    // Decisão do operador (26/09/2026): ligação não para a sequência "parar se
+    // o cliente responder" — só mensagem escrita é resposta.
+    'cancelarEsperasPorResposta',
   ];
 
   it('o módulo tem os arquivos esperados', () => {
@@ -85,10 +88,14 @@ describe('a ligação faz o que o cliente (ou a equipe pelo celular) faria', () 
     expect(previa).toBeGreaterThan(reabre);
   });
 
-  it('segue o canal, cancela as esperas e abre o card', () => {
+  it('segue o canal e abre o card (e NÃO cancela as esperas: ligação não é resposta)', () => {
     expect(f).toContain('followConversationChannel(');
-    expect(f).toContain('cancelarEsperasPorResposta(');
     expect(f).toContain('routeContactToPipeline(');
+    // A retomada também ignora a ligação — senão a perdida, linha do cliente,
+    // pararia a sequência quando a espera acordasse.
+    expect(fonte('lib/automations/parar-se-responder.ts')).toMatch(
+      /\.is\('deleted_at', null\)\s*\.neq\('content_type', 'call'\)\s*\.gt\('gravada_em', desde\)/,
+    );
   });
 
   it('⚠️ o LID nunca vira telefone: só o JID de telefone, o acervo ou o callerPn conferido', () => {

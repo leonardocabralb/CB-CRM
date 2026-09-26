@@ -94,8 +94,9 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
   vez. Pino `pipeline-routing.chamadores.test.ts` (default-deny).
 - ⚠️⚠️ **`cancelarEsperasPorResposta` ANTES de `dispatchInboundToFlows`**, sem
   olhar `flowConsumed`, SÓ nos dois caminhos de CLIENTE do WhatsApp (Meta e
-  `persistInboundMessage`) — e na ligação, perdida ou atendida (o cliente
-  procurou o escritório; ali não há despacho de motor). Depois do despacho, a mensagem cancelaria a espera
+  `persistInboundMessage`). ⚠️ A LIGAÇÃO (1044) NÃO cancela (decisão do
+  operador: só mensagem escrita é resposta), e a retomada
+  (`clienteRespondeuDesde`) a ignora. Depois do despacho, a mensagem cancelaria a espera
   da automação que ela mesma iniciou. Celular, grupo, Instagram e robô ficam
   de fora por decisão ("a mensagem de QUEM para a sequência?"). Pino
   `parar-se-responder.chamadores.test.ts` (ordem + default-deny).
