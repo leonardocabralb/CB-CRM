@@ -48,11 +48,15 @@ vi.mock('@/lib/ai/validate', () => ({
   validateAiCredentials: (cfg: { apiKey: string; model: string }) => validateAiCredentials(cfg),
 }))
 vi.mock('@/lib/ai/embeddings', () => ({ embedTexts: (...a: unknown[]) => embedTexts(...a) }))
+let linhasPorConexao: Record<string, unknown>[] = []
 vi.mock('@/lib/ai/admin-client', () => ({
   supabaseAdmin: () => ({
     from: () => ({
       select: () => ({
-        eq: () => ({ is: () => ({ maybeSingle: async () => ({ data: linhaPadrao, error: null }) }) }),
+        eq: async () => ({
+          data: [...(linhaPadrao ? [{ channel_id: null, ...linhaPadrao }] : []), ...linhasPorConexao],
+          error: null,
+        }),
       }),
     }),
   }),
@@ -84,6 +88,7 @@ beforeEach(() => {
   embedTexts.mockReset()
   validateAiCredentials.mockClear()
   linhaPadrao = null
+  linhasPorConexao = []
   alcanca = () => true
   chaveAtual = null
   agentesDaConta = []
@@ -186,5 +191,17 @@ describe('PUT /api/cb/ia/chaves — os modelos dos AGENTES também contam (F1b)'
     alcanca = (chave, modelo) => !(chave === 'sk-teste' && modelo === 'gemini-do-agente')
     const res = await PUT(pedido('gemini'))
     expect(await res.json()).toMatchObject({ code: 'modelo_em_uso_recusado', modelo: 'gemini-do-agente' })
+  })
+})
+
+describe('PUT /api/cb/ia/chaves — as linhas POR CONEXÃO também contam (Codex, #294)', () => {
+  it('confere o modelo do agente de uma conexão do mesmo provedor (e só o model dele)', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: null }
+    linhasPorConexao = [
+      { channel_id: 'canal-1', provider: 'gemini', model: 'gemini-da-conexao', radar_model: 'nao-conta' },
+      { channel_id: 'canal-2', provider: 'openai', model: 'gpt-x', radar_model: null },
+    ]
+    await PUT(pedido('gemini'))
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-a', 'gemini-da-conexao'])
   })
 })

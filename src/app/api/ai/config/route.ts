@@ -8,6 +8,8 @@ import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit
 import { lerChave, lerEstado } from '@/lib/ia-chaves/repo'
 import { validateAiCredentials } from '@/lib/ai/validate'
 import { AiError, mensagemSeguraDeAiError, type AiProvider } from '@/lib/ai/types'
+import { hasMinRole } from '@/lib/auth/roles'
+import { encrypt } from '@/lib/whatsapp/encryption'
 
 function bad(message: string) {
   return NextResponse.json({ error: message }, { status: 400 })
@@ -20,10 +22,14 @@ function bad(message: string) {
  * whether AI is set up. No key is ever returned — only `has_key` (the
  * provider of this config has a key in `cb_ia_chaves`) and `chaves`
  * (which providers have one).
+ *
+ * ⚠️ O `system_prompt` só sai para ADMINISTRADOR (D14 do
+ * docs/PLANO-agentes-de-ia.md: o prompt fica oculto para quem não é — a tela
+ * esconde, e a rota tem de esconder junto; Codex, #295).
  */
 export async function GET() {
   try {
-    const { supabase, accountId } = await getCurrentAccount()
+    const { supabase, accountId, role } = await getCurrentAccount()
 
     const { data, error } = await supabase
       .from('ai_configs')
@@ -79,12 +85,14 @@ export async function GET() {
         chaves: estado.map((e) => ({ provedor: e.provedor, existe: e.existe })),
       })
     }
+    const { system_prompt, ...semPrompt } = data
     return NextResponse.json({
       configured: true,
       has_key: temChave(data.provider as string),
       has_embeddings_key: embeddingsUtilizavel,
       chaves: estado.map((e) => ({ provedor: e.provedor, existe: e.existe })),
-      ...data,
+      ...semPrompt,
+      ...(hasMinRole(role, 'admin') ? { system_prompt } : {}),
     })
   } catch (err) {
     return toErrorResponse(err)
@@ -293,6 +301,10 @@ export async function POST(request: Request) {
     const shared: Record<string, unknown> = {
       provider,
       model,
+      // ⚠️ Na TROCA de provedor, a cópia legada da chave (só para voltar atrás
+      // do deploy, 1042) passa a ser a do provedor NOVO: sem isso a volta
+      // atrás chamaria o provedor novo com a chave do antigo (Codex, #294).
+      ...(providerMudou ? { api_key: encrypt(apiKeyPlain) } : {}),
       system_prompt: systemPrompt,
       is_active: isActive,
       auto_reply_enabled: autoReplyEnabled,

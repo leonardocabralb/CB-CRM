@@ -53,12 +53,13 @@ export async function GET() {
  * em uso era aceita e o Radar, o rascunho e os agentes quebravam na troca.
  */
 async function modelosEmUso(accountId: string, provedor: AiProvider): Promise<string[]> {
+  // TODAS as linhas da conta: a padrão (assistente e Radar) e as de conexão
+  // (agente por canal do app anterior), que também usam a chave do provedor
+  // (Codex, #294).
   const { data, error } = await supabaseAdmin()
     .from('ai_configs')
-    .select('provider, model, radar_model')
+    .select('provider, model, radar_model, channel_id')
     .eq('account_id', accountId)
-    .is('channel_id', null)
-    .maybeSingle()
   if (error) throw new Error(`[ia-chaves] leitura dos modelos em uso falhou: ${error.message}`)
   let agentes: Awaited<ReturnType<typeof listarAgentes>>
   try {
@@ -66,10 +67,12 @@ async function modelosEmUso(accountId: string, provedor: AiProvider): Promise<st
   } catch (err) {
     throw new Error(`[ia-chaves] leitura dos agentes falhou: ${err instanceof Error ? err.message : String(err)}`)
   }
-  const candidatos = [
-    ...(data && data.provider === provedor ? [data.model, data.radar_model] : []),
-    ...agentes.filter((a) => a.provedor === provedor).map((a) => a.modelo),
-  ]
+  const candidatos: unknown[] = []
+  for (const linha of data ?? []) {
+    if (linha.provider !== provedor) continue
+    candidatos.push(...(linha.channel_id === null ? [linha.model, linha.radar_model] : [linha.model]))
+  }
+  candidatos.push(...agentes.filter((a) => a.provedor === provedor).map((a) => a.modelo))
   const modelos: string[] = []
   for (const m of candidatos) {
     if (typeof m === 'string' && m.trim() && !modelos.includes(m.trim())) modelos.push(m.trim())
