@@ -40,6 +40,12 @@
 //  - Evento de funil ainda não drenado cuja etapa tem automação escutando
 //    REAGENDA o turno (a boas-vindas da etapa ainda vai sair), por até
 //    `JANELA_DO_AUDIO_MS` contada do gatilho (`funilAindaVaiFalar`).
+//  - O que o agente VÊ além da conversa (F3): os blocos de acesso marcados e
+//    os trechos da base DELE, lidos UMA vez por turno, antes de gerar
+//    (`lerOQueOAgenteVe`). Bloco que não se lê vai como "unavailable", base
+//    que falha fica vazia — nenhum dos dois derruba o turno. O RETRATO do que
+//    entrou no pedido é gravado em `cb_ia_turnos.contexto` (1052), com a
+//    cerca de posse, antes da geração.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -62,7 +68,9 @@ import { lerChave } from '@/lib/ia-chaves/repo'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { transcreverAudio } from '@/lib/transcricao/transcrever'
 
+import { lerOQueOAgenteVe } from './acesso'
 import type { IaAgente } from './agente'
+import { consultaDaUltimaMensagem } from './conhecimento'
 import { lerConversaDaConexao } from './contexto'
 import {
   agendarDisparo,
@@ -750,6 +758,22 @@ async function conduzir(
 
   const opcoes = await agentesParaPassar(turno, agente)
 
+  // O que o agente vê além da conversa (F3), lido antes de medir o prazo que
+  // sobra para gerar. Nunca lança.
+  const visto = await lerOQueOAgenteVe(db, {
+    accountId: turno.account_id,
+    agente,
+    contactId: primeira.contactId,
+    dealId: turno.deal_id,
+    consulta: consultaDaUltimaMensagem(conversa),
+    agora: new Date(),
+  })
+  // O RETRATO (1052): é o que responde "por que a IA fez isso?" depois que a
+  // ficha, o card ou o documento mudarem. Melhor esforço, com a cerca de
+  // posse — escrita separada do desfecho, para uma falha aqui não prender o
+  // turno em `rodando`.
+  await gravarNoTurno(db, turno, { contexto: visto.retrato })
+
   const restante = PRAZO_DO_TURNO_MS - (Date.now() - inicio) - RESERVA_DO_ENVIO_MS
   if (restante < 3_000) {
     // A transcrição comeu o prazo: ela é idempotente e já ficou gravada, e o
@@ -781,6 +805,8 @@ async function conduzir(
         regras: agente.regras,
         agora: new Date(),
         passagens: opcoes.map((a) => ({ nome: a.nome, descricao: a.descricao })),
+        blocos: visto.blocos,
+        conhecimento: visto.trechos.map((t) => t.content),
       }),
       messages: conversa,
       timeoutMs: restante,

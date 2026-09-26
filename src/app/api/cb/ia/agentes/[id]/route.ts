@@ -15,6 +15,11 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
  * `PATCH` aceita `etapas: string[]` (a lista INTEIRA): etapa de outro funil
  * que não é da conta → 400; etapa de OUTRO agente → 409 `etapa_ocupada` com o
  * nome dele. `DELETE` ARQUIVA (e o gatilho solta as etapas).
+ *
+ * F3: o agente vem com o `acesso` (os blocos que ele vê além da conversa;
+ * `lerAcesso`), e o `PATCH` aceita `acesso` inteiro — `campos` fora da forma
+ * (não uuid, mais de 50) é 400 `lista_invalida`. Os documentos da base são
+ * outra rota (`…/documentos`).
  */
 export async function GET(_request: Request, { params }: Contexto) {
   try {

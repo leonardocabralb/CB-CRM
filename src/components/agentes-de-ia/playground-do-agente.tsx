@@ -2,17 +2,41 @@
 
 // O Playground de UM agente (F1b): o mesmo pedido e o mesmo modelo da
 // produção, sem WhatsApp. O gasto conta como TESTE (D13). Testa o que está
-// SALVO: mudança não salva na Configuração não vale aqui, e a tela diz isso.
+// SALVO: mudança não salva na Configuração, no Acesso ou na Base não vale
+// aqui, e a tela diz isso.
+//
+// F3: um cliente OPCIONAL — com ele, o agente vê os dados desse contato que
+// estão marcados em Acesso; sem ele, só a conversa. Debaixo de cada resposta,
+// o que o agente viu (os blocos e quantos trechos da base), que é o que
+// responde "por que ele sabia disso?". O cliente escolhido mora no DETALHE:
+// o salvamento que zera a conversa (a `key`) não o apaga. Trocar de cliente
+// zera a conversa — a de um, mandada como se fosse do outro, não testa nada.
 
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { Bot, Loader2, RotateCcw, Send, UserCircle2 } from 'lucide-react';
+import { Bot, Eye, Loader2, RotateCcw, Send, UserCircle2, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { SeletorDeContatoRemoto } from '@/components/contacts/seletor-de-contato-remoto';
+import { TETO_DE_RESULTADOS } from '@/lib/contacts/busca-remota';
 import { cn } from '@/lib/utils';
 import type { IaAgente } from './tipos';
-import { textoDoCodigo } from './textos';
+import { rotuloDoBloco, textoDoCodigo } from './textos';
+
+/** O que o agente viu para gerar a resposta (`vistos` da rota). */
+interface Vistos {
+  blocos: string[];
+  documentos: number;
+}
+
+/** Parse, nunca `as`: resposta estranha vira "não se sabe" (nada é mostrado). */
+function lerVistos(v: unknown): Vistos | undefined {
+  if (!v || typeof v !== 'object') return undefined;
+  const { blocos, documentos } = v as { blocos?: unknown; documentos?: unknown };
+  if (!Array.isArray(blocos) || typeof documentos !== 'number') return undefined;
+  return { blocos: blocos.filter((b): b is string => typeof b === 'string'), documentos };
+}
 
 interface Turno {
   role: 'user' | 'assistant';
@@ -22,15 +46,22 @@ interface Turno {
   /** Só do agente: ele passaria a conversa para este agente (D25). */
   passaPara?: string;
   tokens?: number;
+  /** Só do agente: o que ele viu (F3). */
+  vistos?: Vistos;
 }
 
 export function PlaygroundDoAgente({
   agente,
-  configuracaoNaoSalva,
+  naoSalvoEm,
+  contatoId,
+  aoMudarContato,
 }: {
   agente: IaAgente;
-  /** A aba Configuração tem alteração não salva — o Playground testa o SALVO. */
-  configuracaoNaoSalva: boolean;
+  /** Os nomes das abas com alteração não salva — o Playground testa o SALVO. */
+  naoSalvoEm: string[];
+  /** O cliente do teste; `''` = nenhum (só a conversa). */
+  contatoId: string;
+  aoMudarContato: (id: string) => void;
 }) {
   const t = useTranslations('IaAgentes');
   const [turnos, setTurnos] = useState<Turno[]>([]);
@@ -41,6 +72,12 @@ export function PlaygroundDoAgente({
   useEffect(() => {
     rolagemRef.current?.scrollTo({ top: rolagemRef.current.scrollHeight });
   }, [turnos, enviando]);
+
+  function trocarContato(id: string) {
+    if (id === contatoId) return;
+    aoMudarContato(id);
+    setTurnos([]);
+  }
 
   async function enviar() {
     const conteudo = texto.trim();
@@ -53,13 +90,17 @@ export function PlaygroundDoAgente({
       const res = await fetch(`/api/cb/ia/agentes/${agente.id}/playground`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: proximos.map((x) => ({ role: x.role, content: x.content })) }),
+        body: JSON.stringify({
+          messages: proximos.map((x) => ({ role: x.role, content: x.content })),
+          ...(contatoId ? { contactId: contatoId } : {}),
+        }),
       });
       const corpo = (await res.json().catch(() => ({}))) as {
         reply?: string;
         handoff?: boolean;
         passaPara?: string | null;
         usage?: { totalTokens?: number } | null;
+        vistos?: unknown;
         code?: string;
         error?: string;
       };
@@ -77,6 +118,7 @@ export function PlaygroundDoAgente({
           handoff: corpo.handoff === true,
           passaPara: typeof corpo.passaPara === 'string' ? corpo.passaPara : undefined,
           tokens: corpo.usage?.totalTokens ?? undefined,
+          vistos: lerVistos(corpo.vistos),
         },
       ]);
     } catch {
@@ -91,9 +133,44 @@ export function PlaygroundDoAgente({
   return (
     <div className="space-y-2">
       <p className="text-xs text-muted-foreground">{t('playground.explicacao')}</p>
-      {configuracaoNaoSalva ? (
-        <p className="text-xs text-amber-700 dark:text-amber-300">{t('playground.configNaoSalva')}</p>
+      {naoSalvoEm.length > 0 ? (
+        <p className="text-xs text-amber-700 dark:text-amber-300">
+          {t('playground.naoSalvo', { abas: naoSalvoEm.join(', ') })}
+        </p>
       ) : null}
+      <div className="space-y-1">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="shrink-0 text-sm text-foreground">{t('playground.contato')}</span>
+          <div className="min-w-0 flex-1 sm:max-w-xs">
+            <SeletorDeContatoRemoto
+              value={contatoId}
+              onChange={trocarContato}
+              disabled={enviando}
+              placeholder={t('playground.contatoNenhum')}
+              searchPlaceholder={t('playground.contatoBuscar')}
+              hintText={t('playground.contatoAjuda')}
+              loadingText={t('playground.carregandoContatos')}
+              emptyText={t('playground.contatoVazio')}
+              failedText={t('playground.contatoFalhou')}
+              moreText={t('playground.contatoMais', { count: TETO_DE_RESULTADOS })}
+              ariaLabel={t('playground.contato')}
+            />
+          </div>
+          {contatoId ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={enviando}
+              aria-label={t('playground.limparContato')}
+              title={t('playground.limparContato')}
+              onClick={() => trocarContato('')}
+            >
+              <X className="size-4" />
+            </Button>
+          ) : null}
+        </div>
+        <p className="text-xs text-muted-foreground">{t('playground.contatoDica')}</p>
+      </div>
       <div className="flex h-[60vh] min-h-[420px] flex-col rounded-xl border border-border bg-card">
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <span className="min-w-0 truncate text-sm font-medium text-foreground">
@@ -144,6 +221,17 @@ export function PlaygroundDoAgente({
                 {x.role === 'assistant' && x.passaPara ? (
                   <p className="flex items-center gap-1 text-xs text-primary">
                     <Bot className="size-3.5" /> {t('playground.passaria', { agente: x.passaPara })}
+                  </p>
+                ) : null}
+                {x.role === 'assistant' && x.vistos ? (
+                  <p className="mt-1.5 flex items-start gap-1 border-t border-border/50 pt-1.5 text-[11px] text-muted-foreground">
+                    <Eye className="mt-px size-3 shrink-0" />
+                    <span>
+                      {t('playground.viu', {
+                        itens: [t('playground.conversa'), ...x.vistos.blocos.map((b) => rotuloDoBloco(t, b))].join(', '),
+                        trechos: t('playground.trechos', { n: x.vistos.documentos }),
+                      })}
+                    </span>
                   </p>
                 ) : null}
                 {x.role === 'assistant' && x.tokens !== undefined ? (

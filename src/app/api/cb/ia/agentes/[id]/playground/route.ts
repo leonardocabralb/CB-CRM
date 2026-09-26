@@ -7,6 +7,8 @@ import { generateReply } from '@/lib/ai/generate'
 import { logAiUsage } from '@/lib/ai/usage'
 import { AiError, mensagemSeguraDeAiError, type ChatMessage } from '@/lib/ai/types'
 import { lerChave, lerEstado } from '@/lib/ia-chaves/repo'
+import { lerOQueOAgenteVe } from '@/lib/ia-agentes/acesso'
+import { consultaDaUltimaMensagem } from '@/lib/ia-agentes/conhecimento'
 import { obterAgente } from '@/lib/ia-agentes/repo'
 import { lerPassagem, montarPedidoDoAgente } from '@/lib/ia-agentes/pedido'
 import { respostaDoErro } from '@/lib/ia-agentes/resposta'
@@ -19,13 +21,19 @@ type Contexto = { params: Promise<{ id: string }> }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
- * POST /api/cb/ia/agentes/[id]/playground  `{ messages }`  (admin, D14)
+ * POST /api/cb/ia/agentes/[id]/playground  `{ messages, contactId? }`  (admin, D14)
  *
  * Conversa de TESTE com um agente, sem WhatsApp: o mesmo pedido
- * (`montarPedidoDoAgente`: texto-base, data e hora, instruções e regras) e o
- * mesmo provedor/modelo que a produção vai usar. O agente pode estar
- * desligado — é para isso que o Playground existe. O gasto é gravado como
- * `agente_teste` (D13), separado do de produção.
+ * (`montarPedidoDoAgente`: texto-base, data e hora, instruções, regras,
+ * passagens, os blocos de acesso e a base do agente) e o mesmo
+ * provedor/modelo que a produção vai usar. O agente pode estar desligado — é
+ * para isso que o Playground existe. O gasto é gravado como `agente_teste`
+ * (D13), separado do de produção.
+ *
+ * F3: com `contactId` (um contato DESTA conta; fora dela, 404
+ * `contato_nao_encontrado`), os blocos de acesso são os daquele contato — o
+ * negócio é o card ABERTO mais recente dele. A base do agente entra sempre.
+ * A resposta diz o que o agente viu: `vistos: { blocos, documentos }`.
  */
 export async function POST(request: Request, { params }: Contexto) {
   try {
@@ -44,7 +52,7 @@ export async function POST(request: Request, { params }: Contexto) {
       return NextResponse.json({ error: 'nao_encontrado', code: 'nao_encontrado' }, { status: 404 })
     }
 
-    const corpo = (await request.json().catch(() => null)) as { messages?: unknown } | null
+    const corpo = (await request.json().catch(() => null)) as { messages?: unknown; contactId?: unknown } | null
     const brutas = Array.isArray(corpo?.messages) ? corpo.messages : null
     if (!brutas) return NextResponse.json({ error: 'sem_mensagens', code: 'sem_mensagens' }, { status: 400 })
     const mensagens: ChatMessage[] = brutas
@@ -59,6 +67,28 @@ export async function POST(request: Request, { params }: Contexto) {
       .slice(-MAX_TURNOS)
     if (mensagens.length === 0 || mensagens[mensagens.length - 1].role !== 'user') {
       return NextResponse.json({ error: 'sem_mensagens', code: 'sem_mensagens' }, { status: 400 })
+    }
+
+    // O contato do teste (F3): conferido NA CONTA — o cliente de serviço
+    // ignora a RLS, e um id de outra conta mostraria a ficha de outro
+    // escritório ao modelo.
+    let contactId: string | null = null
+    if (corpo?.contactId !== undefined && corpo.contactId !== null && corpo.contactId !== '') {
+      const naoEncontrado = () =>
+        NextResponse.json({ error: 'contato_nao_encontrado', code: 'contato_nao_encontrado' }, { status: 404 })
+      if (typeof corpo.contactId !== 'string' || !UUID.test(corpo.contactId)) return naoEncontrado()
+      const { data: contato, error: erroDoContato } = await supabaseAdmin()
+        .from('contacts')
+        .select('id')
+        .eq('account_id', ctx.accountId)
+        .eq('id', corpo.contactId)
+        .maybeSingle()
+      if (erroDoContato) {
+        console.error('[ia-playground] leitura do contato falhou:', erroDoContato.message)
+        return NextResponse.json({ error: 'banco', code: 'banco' }, { status: 500 })
+      }
+      if (!contato) return naoEncontrado()
+      contactId = corpo.contactId
     }
 
     let chave: string | null
@@ -91,11 +121,24 @@ export async function POST(request: Request, { params }: Contexto) {
     )
     const opcoes = lidos.filter((a): a is NonNullable<typeof a> => !!a && a.ativo && !a.arquivadoEm)
 
+    // O que o agente vê (F3), pela MESMA leitura do turno.
+    const agora = new Date()
+    const visto = await lerOQueOAgenteVe(supabaseAdmin(), {
+      accountId: ctx.accountId,
+      agente,
+      contactId,
+      dealId: null,
+      consulta: consultaDaUltimaMensagem(mensagens),
+      agora,
+    })
+
     const pedido = montarPedidoDoAgente({
       instrucoes: agente.instrucoes,
       regras: agente.regras,
-      agora: new Date(),
+      agora,
       passagens: opcoes.map((a) => ({ nome: a.nome, descricao: a.descricao })),
+      blocos: visto.blocos,
+      conhecimento: visto.trechos.map((t) => t.content),
     })
     const resultado = await generateReply({
       config: {
@@ -135,6 +178,7 @@ export async function POST(request: Request, { params }: Contexto) {
       handoff: resultado.handoff || (n !== null && !destino),
       passaPara: destino?.nome ?? null,
       usage: resultado.usage,
+      vistos: { blocos: visto.blocos.map((b) => b.bloco), documentos: visto.retrato.documentos.length },
     })
   } catch (err) {
     if (err instanceof AiError) {

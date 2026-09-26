@@ -14,7 +14,7 @@
 // ============================================================
 
 import type { AiProvider } from '@/lib/ai/types'
-import type { Horario, IaAgente } from './tipos'
+import { CAIXAS_DO_ACESSO, type AcessoDoAgente, type Horario, type IaAgente } from './tipos'
 
 export interface Rascunho {
   nome: string
@@ -37,7 +37,8 @@ function regrasLimpas(regras: string[]): string[] {
   return regras.map((r) => r.trim()).filter((r) => r.length > 0)
 }
 
-function mesmoConjunto(a: string[], b: string[]): boolean {
+/** Listas de ids que são CONJUNTO (a ordem não conta). */
+export function mesmoConjunto(a: readonly string[], b: readonly string[]): boolean {
   if (a.length !== b.length) return false
   const s = new Set(a)
   return b.every((x) => s.has(x))
@@ -80,4 +81,27 @@ export function lerTeto(texto: string, min: number, max: number): number | null 
   if (!/^\d+$/.test(t)) return null
   const n = Number(t)
   return n >= min && n <= max ? n : null
+}
+
+// ------------------------------------------------------------
+// Acesso (F3, sub-aba Acesso): o que o agente vê do cliente.
+// ------------------------------------------------------------
+
+/** O rascunho do Acesso difere do salvo? Os campos são conjunto. */
+export function acessoMudou(salvo: AcessoDoAgente, r: AcessoDoAgente): boolean {
+  return CAIXAS_DO_ACESSO.some((c) => r[c] !== salvo[c]) || !mesmoConjunto(r.campos, salvo.campos)
+}
+
+/**
+ * O acesso que vai no PATCH: sem os campos que não existem mais no catálogo
+ * (o servidor os ignora na leitura, mas ocupariam vagas do teto).
+ *
+ * ⚠️ Catálogo NÃO carregado (`null`) = vai como está: descartar ali seria
+ * apagar marcação boa por falta de rede. E a poda é só no SALVAR, nunca na
+ * comparação de `acessoMudou` — senão o agente com um campo apagado nasceria
+ * "com alteração não salva" sem ninguém ter mexido.
+ */
+export function acessoParaSalvar(r: AcessoDoAgente, existentes: ReadonlySet<string> | null): AcessoDoAgente {
+  if (existentes === null) return r
+  return { ...r, campos: r.campos.filter((id) => existentes.has(id)) }
 }

@@ -7,17 +7,25 @@
 //
 // ⚠️ Falha de carga diz que falhou — nunca "nenhum turno". O status é chave
 // MONTADA (`rotuloDoStatusDoTurno`), cobrada nos dois dicionários.
+//
+// F3: cada turno com RETRATO (`contexto`) ganha "O que o agente viu", uma
+// expansão com os blocos como foram ao modelo (em inglês, de propósito: é o
+// texto que ele leu) e os documentos da base de onde vieram os trechos. É o
+// que explica a resposta depois que a ficha, o card ou o documento mudarem.
+// Turno anterior ao retrato (contexto nulo) não ganha a expansão. Os nomes
+// dos documentos vêm da base de hoje; a leitura que falha mostra só a conta.
 // ============================================================
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { RefreshCw } from 'lucide-react';
+import { Eye, RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { urlDoInbox } from '@/lib/inbox/url';
 import { cn } from '@/lib/utils';
-import { rotuloDoStatusDoTurno } from './textos';
+import { rotuloDoBloco, rotuloDoStatusDoTurno } from './textos';
+import type { ContextoDoTurno } from './tipos';
 
 interface Turno {
   id: string;
@@ -27,6 +35,22 @@ interface Turno {
   erro: string | null;
   conversationId: string;
   contato: string | null;
+  /** O retrato do turno (F3); nulo nos turnos antigos. */
+  contexto: ContextoDoTurno | null;
+}
+
+/** Parse, nunca `as`: o retrato é jsonb; forma estranha = sem expansão (nunca quebra a lista). */
+function lerContexto(v: unknown): ContextoDoTurno | null {
+  if (!v || typeof v !== 'object') return null;
+  const { blocos, documentos } = v as { blocos?: unknown; documentos?: unknown };
+  if (!Array.isArray(blocos)) return null;
+  return {
+    blocos: blocos.filter(
+      (b): b is { bloco: string; texto: string } =>
+        !!b && typeof b === 'object' && typeof b.bloco === 'string' && typeof b.texto === 'string'
+    ),
+    documentos: Array.isArray(documentos) ? documentos.filter((d): d is string => typeof d === 'string') : [],
+  };
 }
 
 const COR_DO_STATUS: Record<string, string> = {
@@ -41,13 +65,21 @@ export function TurnosDoAgente({ agenteId }: { agenteId: string }) {
   const t = useTranslations('IaAgentes');
   const [turnos, setTurnos] = useState<Turno[] | null>(null);
   const [falhou, setFalhou] = useState(false);
+  /** Id → título dos documentos da base; `null` = a leitura falhou (mostra só a conta). */
+  const [titulos, setTitulos] = useState<Map<string, string> | null>(null);
 
   const carregar = useCallback(async () => {
     try {
-      const res = await fetch(`/api/cb/ia/agentes/${agenteId}/turnos`, { cache: 'no-store' });
+      const [res, base] = await Promise.all([
+        fetch(`/api/cb/ia/agentes/${agenteId}/turnos`, { cache: 'no-store' }),
+        fetch('/api/ai/knowledge', { cache: 'no-store' })
+          .then(async (r) => (r.ok ? ((await r.json()) as { documents?: { id: string; title: string }[] }) : null))
+          .catch(() => null),
+      ]);
       if (!res.ok) throw new Error(String(res.status));
-      const corpo = (await res.json()) as { turnos?: Turno[] };
-      setTurnos(corpo.turnos ?? []);
+      const corpo = (await res.json()) as { turnos?: Array<Omit<Turno, 'contexto'> & { contexto?: unknown }> };
+      setTitulos(base ? new Map((base.documents ?? []).map((d) => [d.id, d.title])) : null);
+      setTurnos((corpo.turnos ?? []).map((x) => ({ ...x, contexto: lerContexto(x.contexto) })));
       setFalhou(false);
     } catch {
       setFalhou(true);
@@ -103,10 +135,54 @@ export function TurnosDoAgente({ agenteId }: { agenteId: string }) {
                   {turno.erro}
                 </p>
               ) : null}
+              {turno.contexto ? <RetratoDoTurno contexto={turno.contexto} titulos={titulos} /> : null}
             </li>
           ))}
         </ul>
       )}
     </div>
+  );
+}
+
+function RetratoDoTurno({
+  contexto,
+  titulos,
+}: {
+  contexto: ContextoDoTurno;
+  titulos: Map<string, string> | null;
+}) {
+  const t = useTranslations('IaAgentes');
+  // Vários trechos podem vir do MESMO documento: o nome aparece uma vez.
+  const documentos = [...new Set(contexto.documentos)];
+  return (
+    <details className="w-full text-xs">
+      <summary className="inline-flex cursor-pointer items-center gap-1 text-muted-foreground hover:text-foreground">
+        <Eye className="size-3.5" /> {t('turnos.contexto.titulo')}
+      </summary>
+      <div className="mt-2 space-y-2 rounded-md border border-border bg-muted/30 p-2">
+        {contexto.blocos.length === 0 ? (
+          <p className="text-muted-foreground">{t('turnos.contexto.soAConversa')}</p>
+        ) : (
+          contexto.blocos.map((b, i) => (
+            <div key={`${b.bloco}:${i}`} className="space-y-0.5">
+              <p className="font-medium text-foreground">{rotuloDoBloco(t, b.bloco)}</p>
+              <p className="break-words whitespace-pre-wrap text-muted-foreground">{b.texto}</p>
+            </div>
+          ))
+        )}
+        <div className="space-y-0.5">
+          <p className="font-medium text-foreground">{t('turnos.contexto.base', { n: documentos.length })}</p>
+          {titulos && documentos.length > 0 ? (
+            <ul className="list-inside list-disc text-muted-foreground">
+              {documentos.map((id) => (
+                <li key={id} className="truncate">
+                  {titulos.get(id) ?? t('turnos.contexto.documentoApagado')}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      </div>
+    </details>
   );
 }
