@@ -4,7 +4,7 @@ import { gzipSync } from 'node:zlib';
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { TetoExcedido, lerComTeto } from './ler-com-teto';
+import { CAPACIDADE_INICIAL, TetoExcedido, lerComTeto } from './ler-com-teto';
 
 /** Uma resposta que entrega o corpo nos pedaços dados. */
 function resposta(pedacos: number[][], declarado?: number): Response {
@@ -31,6 +31,8 @@ describe('lerComTeto', () => {
       const lido = await lerComTeto(resposta(pedacos, 10_000), 1_000_000);
       expect([...lido]).toEqual(pedacos.flat());
       expect(concat).not.toHaveBeenCalled();
+      // Com o declarado honesto, o último buffer tem o tamanho exato.
+      expect(lido.buffer.byteLength).toBe(10_000);
     } finally {
       concat.mockRestore();
     }
@@ -40,6 +42,19 @@ describe('lerComTeto', () => {
     const pedacos = [seq(0, 3000), seq(3000, 3000), seq(6000, 3000)];
     const lido = await lerComTeto(resposta(pedacos, 5000), 1_000_000);
     expect([...lido]).toEqual(pedacos.flat());
+  });
+
+  it('⚠️ declarado perto do teto e corpo pequeno: a reserva segue o que CHEGOU, não o cabeçalho (Codex, PR #299)', async () => {
+    const lido = await lerComTeto(resposta([seq(0, 100)], 50_000_000), 60_000_000);
+    expect([...lido]).toEqual(seq(0, 100));
+    expect(lido.buffer.byteLength).toBeLessThanOrEqual(CAPACIDADE_INICIAL);
+  });
+
+  it('a reserva cresce dobrando e nunca passa do dobro do que chegou', async () => {
+    const pedacos = Array.from({ length: 5 }, (_, i) => seq(i * 100_000, 100_000));
+    const lido = await lerComTeto(resposta(pedacos, 40_000_000), 50_000_000);
+    expect([...lido]).toEqual(pedacos.flat());
+    expect(lido.buffer.byteLength).toBeLessThanOrEqual(2 * lido.length);
   });
 
   it('corpo MENOR que o declarado devolve só o que chegou', async () => {
@@ -96,6 +111,7 @@ describe('lerComTeto contra um servidor HTTP de verdade (fetch do Node)', () => 
           const lido = await lerComTeto(await fetch(url), 10 * 1024 * 1024);
           expect(hash(lido)).toBe(hash(arquivo));
           expect(concat).not.toHaveBeenCalled();
+          expect(lido.buffer.byteLength).toBe(arquivo.length);
         } finally {
           concat.mockRestore();
         }
@@ -131,6 +147,31 @@ describe('lerComTeto contra um servidor HTTP de verdade (fetch do Node)', () => 
       async (url) => {
         const lido = await lerComTeto(await fetch(url), 10 * 1024 * 1024);
         expect(hash(lido)).toBe(hash(arquivo));
+      },
+    );
+  });
+
+  it('⚠️ servidor que anuncia 40 MB e trava depois de 1 KB não faz reservar os 40 MB', async () => {
+    let conexao: import('node:http').ServerResponse | null = null;
+    await servir(
+      (res) => {
+        conexao = res;
+        res.writeHead(200, { 'content-length': String(40 * 1024 * 1024) });
+        res.write(arquivo.subarray(0, 1024));
+      },
+      async (url) => {
+        const alloc = vi.spyOn(Buffer, 'alloc');
+        try {
+          const leitura = lerComTeto(await fetch(url), 50 * 1024 * 1024);
+          leitura.catch(() => {});
+          await new Promise((ok) => setTimeout(ok, 300));
+          const maior = Math.max(0, ...alloc.mock.calls.map(([n]) => Number(n)));
+          expect(maior).toBeLessThanOrEqual(CAPACIDADE_INICIAL);
+          conexao!.destroy();
+          await expect(leitura).rejects.toBeTruthy();
+        } finally {
+          alloc.mockRestore();
+        }
       },
     );
   });
