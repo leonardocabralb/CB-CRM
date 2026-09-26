@@ -97,7 +97,18 @@ export interface FatosDaMensagem {
   nuncaTeveGente: boolean
   /** `contacts.created_at` do contato (P8). */
   contatoCriadoEm: string | null
+  /** `conversations.created_at` da conversa (P8: o contato nasceu COM ela?). */
+  conversaCriadaEm: string | null
 }
+
+/**
+ * P8: o contato "nasceu com a conversa" quando os dois foram criados juntos
+ * (a ingestão cria o contato e a conversa na mesma requisição; o formulário e
+ * o agendamento também). O contato IMPORTADO — CSV, ficha criada pelo Asaas,
+ * API — nasce sem conversa, e a conversa só aparece quando ele escreve: aí a
+ * data do contato é a da importação, não a do começo da relação (Codex, #292).
+ */
+export const NASCEU_COM_A_CONVERSA_MS = 2 * 60_000
 
 export type QuemResponde =
   | { quem: 'ninguem'; motivo: MotivoDeNinguem }
@@ -142,12 +153,20 @@ export function quemResponde(f: FatosDaMensagem): QuemResponde {
   }
 
   if (f.entrada && atende(f.entrada.agente, f.canalId) && f.nuncaTeveGente) {
-    // P8 (E3): só contato criado DEPOIS de a entrada ser ligada. Sem o
-    // carimbo (não deveria acontecer: o banco o grava) ou sem a data do
-    // contato, NÃO atende — o lado que atende menos gente.
+    // P8 (E3): só contato criado DEPOIS de a entrada ser ligada E que nasceu
+    // com a própria conversa (o importado, não). Sem o carimbo (não deveria
+    // acontecer: o banco o grava) ou sem uma das datas, NÃO atende — o lado
+    // que atende menos gente.
     const desde = instante(f.entrada.desde)
     const criado = instante(f.contatoCriadoEm)
-    if (desde !== null && criado !== null && criado >= desde) {
+    const conversa = instante(f.conversaCriadaEm)
+    if (
+      desde !== null &&
+      criado !== null &&
+      conversa !== null &&
+      criado >= desde &&
+      Math.abs(conversa - criado) <= NASCEU_COM_A_CONVERSA_MS
+    ) {
       return { quem: 'agente', agenteId: f.entrada.agente.id, via: 'entrada' }
     }
   }

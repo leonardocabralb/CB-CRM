@@ -314,10 +314,11 @@ automática do assistente anterior (`dispatchInboundToAiReply`) saiu (E2), e o
   automação FALOU (`ResultadoDoDisparo.falou`, somado em TODOS os gatilhos da
   mensagem — E4; somam também a fala do `tag_added` aninhado no `add_tag` e a
   ADIADA do funil: `move_deal_stage`/`create_deal` que muda ou cria o card
-  numa etapa que alguma automação ligada escuta, `etapaTemQuemFale`) → pausada →
+  numa etapa que uma automação ligada escuta, `etapaTemQuemFale`) → pausada →
   agente ATIVO (ligado, não arquivado, dono da conexão) → ENTRADA só SEM
-  agente ativo, conversa sem resposta de gente (D16) e contato criado depois
-  de a entrada ser ligada (P8/E3, `ia_agente_entrada_desde`). Agente ativo que
+  agente ativo, sem resposta de gente (D16), contato criado depois de a
+  entrada ligar (P8) E junto com a conversa (±2 min; o importado não).
+  Agente ativo que
   não responde aqui NÃO é substituído pela entrada — desligar é freio.
 - ⚠️⚠️ **UMA régua de conteúdo, `abreTurno`, na entrada E no turno** (E9/E10):
   figurinha (gravada `image` + `image/webp` — a Evolution o grava já no
@@ -352,13 +353,15 @@ automática do assistente anterior (`dispatchInboundToAiReply`) saiu (E2), e o
   como "respondido" e apaga o alerta de atraso — fluxo ou automação que o
   passassem calariam o alerta de todo cliente esperando.
 - ⚠️ **O contexto é SÓ da conexão do turno** (D4), sem as apagadas; áudio
-  pela transcrição (o turno reagenda até 2 min contados de `gravada_em`),
-  mídia como descrição (`contexto.ts`).
+  pela transcrição (reagenda até 2 min de `gravada_em`), mídia como
+  descrição (`contexto.ts`).
 - ⚠️ **"Atribuir agente" (passo e entrada) decide a D17 NO BANCO**
   (`cb_atribuir_agente_de_ia`, conversa travada), relê o agente (ligado, não
   arquivado, dono da conexão do disparo) e nunca toca `assigned_agent_id`.
-- **Pausa por gente é GATILHO** (1044), com o eco do próprio turno excluído
-  pelo `mensagem_enviada_id`. O eco da Evolution que chega antes do INSERT é
+- **Pausa por gente é GATILHO** (1044), pelo `gravada_em` (não o relógio
+  do aparelho) com o `created_at` na janela de 24 h da D17; o eco do
+  turno fica fora pelo `mensagem_enviada_id`. O turno relê a
+  mensagem-gatilho a cada conferência (apagada: descarta). O eco da Evolution que chega antes do INSERT é
   gravado COMO a resposta do agente por `eco.ts` — o SEGUNDO escritor de
   `messages` com `ia_agente_id`, além do envio; nenhum motor (pino
   `eco.test.ts`).

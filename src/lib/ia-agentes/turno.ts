@@ -381,6 +381,19 @@ async function conferir(
   if (!agente || !agente.ativo || agente.arquivadoEm || !turno.canal_id || !agente.conexoes.includes(turno.canal_id)) {
     return { ok: false, desfecho: { status: 'descartado', erro: 'agente indisponível nesta conexão' } }
   }
+  // O cliente pode ter APAGADO a mensagem durante a espera ou a geração: o
+  // contexto não a mostra mais, e o modelo responderia a um pedido retirado
+  // (Codex, #292). Relida a cada conferência — a leitura do começo é velha na
+  // segunda.
+  const { data: aindaLa, error: erroDoGatilho } = await db
+    .from('messages')
+    .select('deleted_at')
+    .eq('id', gatilho.id)
+    .maybeSingle()
+  if (erroDoGatilho) throw new Error(`releitura da mensagem falhou: ${erroDoGatilho.message}`)
+  if (!aindaLa || (aindaLa as { deleted_at: string | null }).deleted_at) {
+    return { ok: false, desfecho: { status: 'descartado', erro: 'o cliente apagou a mensagem' } }
+  }
   if (await haMensagemMaisNova(db, turno, gatilho)) {
     return { ok: false, desfecho: { status: 'descartado', erro: 'mensagem mais nova do cliente' } }
   }

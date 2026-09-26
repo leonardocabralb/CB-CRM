@@ -107,6 +107,15 @@ describe('1044 — pausa por gente', () => {
     expect(corpo).toContain('t.mensagem_enviada_id = new.message_id');
     expect(corpo).toContain("ia_pausada_por = 'gente'");
   });
+
+  it('decide pela GRAVAÇÃO (relógio do banco), com o created_at só na janela da D17 (Codex, #292)', () => {
+    const corpo = funcao('cb_pausar_ia_por_gente');
+    // O relógio do aparelho (created_at) atrasado não pode deixar de pausar.
+    expect(corpo).toContain("new.gravada_em >= coalesce(c.ia_agente_desde, '-infinity'::timestamptz)");
+    expect(corpo).not.toContain("new.created_at >= coalesce(c.ia_agente_desde");
+    // A fala recuperada pela 1010 pausa só dentro da janela de 24 h da D17.
+    expect(corpo).toContain("new.created_at > coalesce(c.ia_agente_desde, '-infinity'::timestamptz) - interval '24 hours'");
+  });
 });
 
 describe('1044 — encerrar e arquivar', () => {

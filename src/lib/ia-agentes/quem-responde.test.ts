@@ -20,6 +20,7 @@ function fatos(p: Partial<FatosDaMensagem> = {}): FatosDaMensagem {
     entrada: { agente: TRIAGEM, desde: '2026-09-25T10:00:00Z' },
     nuncaTeveGente: true,
     contatoCriadoEm: '2026-09-25T11:00:00Z',
+    conversaCriadaEm: '2026-09-25T11:00:00.300Z',
     ...p,
   }
 }
@@ -55,6 +56,17 @@ describe('quemResponde — a ordem das regras (5.3)', () => {
     // Sem as datas, não atende (o lado que atende menos gente).
     expect(quemResponde(fatos({ contatoCriadoEm: null })).quem).toBe('ninguem')
     expect(quemResponde(fatos({ entrada: { agente: TRIAGEM, desde: null } })).quem).toBe('ninguem')
+  })
+
+  it('P8: contato IMPORTADO depois da entrada (CSV, Asaas) — nasceu sem a conversa — não recebe a entrada (Codex, #292)', () => {
+    // A conversa só apareceu quando ele escreveu, dias depois da importação.
+    expect(quemResponde(fatos({ conversaCriadaEm: '2026-09-28T09:00:00Z' }))).toEqual({
+      quem: 'ninguem',
+      motivo: 'sem_agente',
+    })
+    expect(quemResponde(fatos({ conversaCriadaEm: null })).quem).toBe('ninguem')
+    // Nascido junto (a ingestão cria os dois na mesma requisição): atende.
+    expect(quemResponde(fatos({ conversaCriadaEm: '2026-09-25T11:01:30Z' })).quem).toBe('agente')
   })
 
   it('o agente ativo desligado, arquivado ou de OUTRA conexão não atende — e a entrada NÃO o substitui (Codex, #292)', () => {

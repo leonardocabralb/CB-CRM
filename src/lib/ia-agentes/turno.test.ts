@@ -555,6 +555,16 @@ describe('executarTurno — descarta', () => {
     expect(conversa().ai_reply_count).toBe(0)
   })
 
+  it('o cliente APAGA a mensagem enquanto o modelo pensa: descarta, sem enviar (Codex, #292)', async () => {
+    vi.mocked(generateReply).mockImplementation(async () => {
+      banco.tabelas.messages[0].deleted_at = new Date().toISOString()
+      return { text: 'Olá!', handoff: false, usage: null }
+    })
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({ status: 'descartado', erro: 'o cliente apagou a mensagem' })
+    expect(engineSendText).not.toHaveBeenCalled()
+  })
+
   it('o advogado responde ENQUANTO o modelo pensa: pausado_no_meio, sem enviar', async () => {
     vi.mocked(generateReply).mockImplementation(async () => {
       Object.assign(conversa(), { ai_autoreply_disabled: true, ia_pausada_por: 'gente' })

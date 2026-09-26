@@ -24,8 +24,10 @@
 --     agente com a regra da D17 DENTRO da transação (E12).
 --  6. Gatilho da PAUSA POR GENTE: resposta com `sender_id` ou `from_device`,
 --     sem `ia_agente_id`, gravada de verdade (`gravada_em` preenchida — a carga
---     da 1033 grava nula e cala os gatilhos antigos pelo NOME, não este), só em
---     conversa com agente ativo e ainda não pausada, nunca o eco de um turno.
+--     da 1033 grava nula e cala os gatilhos antigos pelo NOME, não este)
+--     DEPOIS da atribuição (pelo `gravada_em`, nunca pelo relógio do aparelho)
+--     e com `created_at` na janela da D17, só em conversa com agente ativo e
+--     ainda não pausada, nunca o eco de um turno.
 --  7. Encerrar a conversa limpa tudo da IA (E11); arquivar um agente o tira da
 --     entrada das conexões e das conversas.
 --  8. A resposta do agente conta como "respondido" (D11): o ramo
@@ -409,9 +411,17 @@ BEGIN
      AND c.group_id IS NULL
      AND c.ia_agente_id IS NOT NULL
      AND NOT c.ai_autoreply_disabled
-     -- Eco ANTIGO (mensagem recuperada com carimbo anterior à atribuição do
-     -- agente) não cala o agente de agora.
-     AND NEW.created_at >= coalesce(c.ia_agente_desde, '-infinity'::timestamptz)
+     -- GRAVADA depois da atribuição, pelo relógio do BANCO: o `created_at` da
+     -- mensagem do celular é o relógio do APARELHO, e um aparelho atrasado
+     -- poria a resposta do advogado "antes" da atribuição — sem pausa, e o
+     -- turno seguinte (que só olha o gravado depois da SUA mensagem) também
+     -- não a veria: a IA falaria por cima do advogado (Codex, #292).
+     AND NEW.gravada_em >= coalesce(c.ia_agente_desde, '-infinity'::timestamptz)
+     -- ...e dentro da janela da D17: a fala ANTIGA recuperada pela 1010 é
+     -- gravada agora com o carimbo de horas atrás. Ela pausa quando a D17 teria
+     -- deixado o agente pausado se já estivesse no banco na atribuição
+     -- (resposta de gente nas 24 h anteriores); mais antiga, não pausa.
+     AND NEW.created_at > coalesce(c.ia_agente_desde, '-infinity'::timestamptz) - interval '24 hours'
      -- Nunca o eco do PRÓPRIO turno (defesa dobrada do E5; a ingestão já o
      -- pula pelo mesmo id).
      AND NOT EXISTS (

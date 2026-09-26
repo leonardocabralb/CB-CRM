@@ -77,7 +77,7 @@ export async function aoChegarMensagemDoCliente(m: MensagemDoCliente): Promise<v
     const [{ data: conv, error: erroConv }, { data: canal, error: erroCanal }] = await Promise.all([
       db
         .from('conversations')
-        .select('id, contact_id, group_id, status, ia_agente_id, ai_autoreply_disabled')
+        .select('id, contact_id, group_id, status, ia_agente_id, ai_autoreply_disabled, created_at')
         .eq('id', m.conversationId)
         .eq('account_id', m.accountId)
         .maybeSingle(),
@@ -149,6 +149,7 @@ export async function aoChegarMensagemDoCliente(m: MensagemDoCliente): Promise<v
       entrada,
       nuncaTeveGente,
       contatoCriadoEm,
+      conversaCriadaEm: (conv as { created_at?: string | null }).created_at ?? null,
     })
     if (decisao.quem !== 'agente') return
 

@@ -226,6 +226,7 @@ beforeEach(() => {
     {
       id: CONVERSA,
       account_id: CONTA,
+      created_at: haDias(0),
       contact_id: 'contato-1',
       group_id: null,
       status: 'open',
@@ -559,6 +560,17 @@ describe('aoChegarMensagemDoCliente — agente de entrada', () => {
     banco.tabelas.contacts[0].created_at = haDias(30)
     await aoChegarMensagemDoCliente(msg())
     expect(banco.rpcChamadas).toHaveLength(0)
+  })
+
+  it('P8: contato importado (nasceu 3 dias antes da conversa) → não atende (Codex, #292)', async () => {
+    ligarEntrada(10)
+    banco.tabelas.contacts[0].created_at = haDias(3)
+    await aoChegarMensagemDoCliente(msg())
+    expect(banco.rpcChamadas).toHaveLength(0)
+    // Controle: nascido junto com a conversa, a entrada atende.
+    banco.tabelas.contacts[0].created_at = banco.tabelas.conversations[0].created_at
+    await aoChegarMensagemDoCliente(msg())
+    expect(enfileirou()).toBe(true)
   })
 
   it('P8: conversa sem contato → não atende (sem a data, o lado que atende menos)', async () => {
