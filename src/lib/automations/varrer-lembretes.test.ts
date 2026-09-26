@@ -9,8 +9,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // pela API v1 ("…17:30:00.000Z"). A trava é UNIQUE (automação, contato,
 // VALOR) em TEXTO: o ciclo que lia entre as duas escritas travava a 1ª forma,
 // o seguinte lia a 2ª — outra chave — e o cliente recebia o lembrete DUAS
-// vezes. O banco falso abaixo compara o valor como TEXTO, igual ao Postgres:
-// sem `chaveDaTrava` no INSERT, o teste CRÍTICO reprova.
+// vezes. O banco falso abaixo compara o valor como TEXTO, igual ao Postgres.
+// Duas defesas, cada uma com o seu teste: a leitura das travas já gravadas
+// compara pelo INSTANTE (é ela que barra o ciclo seguinte), e o INSERT grava o
+// instante canônico (é ele que serializa dois ciclos concorrentes — o teste
+// "o INSERT leva o valor canônico" e o pino `trava-do-lembrete.chamadores`).
 // ------------------------------------------------------------
 
 const h = vi.hoisted(() => ({
@@ -24,6 +27,8 @@ const h = vi.hoisted(() => ({
   /** Todo INSERT tentado na trava, na ordem. */
   inserts: [] as Record<string, unknown>[],
   rpcs: [] as string[],
+  /** A leitura das travas já gravadas devolve erro. */
+  falhaNaLeituraDasTravas: false,
   proximoId: 1,
   resultado: {
     candidatas: 1,
@@ -59,6 +64,13 @@ vi.mock('./admin-client', () => {
         const id = `trava-${h.proximoId++}`
         h.travas.push({ ...nova, id })
         return { data: { id }, error: null }
+      }
+      if (nome === 'cb_automation_reminders' && tipo === 'select') {
+        if (h.falhaNaLeituraDasTravas) {
+          return { data: null, error: { code: '57014', message: 'timeout' }, count: null }
+        }
+        const lidas = h.travas.filter((t) => filtros.every(([k, v]) => t[k] === v))
+        return { data: lidas, error: null, count: lidas.length }
       }
       if (nome === 'cb_automation_reminders' && tipo === 'delete') {
         h.travas = h.travas.filter((t) => !filtros.every(([k, v]) => t[k] === v))
@@ -135,6 +147,7 @@ beforeEach(() => {
   h.travas = []
   h.inserts = []
   h.rpcs = []
+  h.falhaNaLeituraDasTravas = false
   h.proximoId = 1
   h.resultado = { candidatas: 1, foraDoEscopo: 0, executadas: 1, comFalha: 0, emEspera: 0 }
   disparo.mockClear()
@@ -224,5 +237,47 @@ describe('a trava do lembrete é o INSTANTE, não o texto', () => {
     await ciclo('2026-09-28T17:30:00Z')
     expect(h.rpcs).toEqual(['cb_alvos_de_lembrete_reuniao'])
     expect(h.inserts[0]?.valor).toBe(DA_API)
+  })
+})
+
+describe('a trava gravada PELO TEXTO, antes desta versão, continua valendo (Codex, PR #305)', () => {
+  // A versão anterior gravava o valor como veio do campo. O UNIQUE é de
+  // TEXTO: sem a leitura por instante, a trava antiga não barraria a nova e o
+  // cliente receberia o lembrete de novo — logo depois do deploy, ou durante
+  // ele, com as duas versões vivas.
+  const ANTIGA = { id: 'antiga', automation_id: 'a24', contact_id: 'contato-1', motivo: 'disparo' }
+
+  it('CRÍTICO: trava antiga no formato do Calendly e o campo no MESMO formato: não dispara', async () => {
+    h.travas = [{ ...ANTIGA, valor: DO_CALENDLY }]
+    const r = await ciclo(DO_CALENDLY)
+    expect(r.disparados).toBe(0)
+    expect(r.repetidos).toBe(1)
+    expect(h.inserts).toHaveLength(0)
+    expect(disparo).not.toHaveBeenCalled()
+  })
+
+  it('CRÍTICO: trava antiga no formato do Calendly e o campo já no da API: não dispara', async () => {
+    h.travas = [{ ...ANTIGA, valor: DO_CALENDLY }]
+    expect((await ciclo(DA_API)).repetidos).toBe(1)
+    expect(disparo).not.toHaveBeenCalled()
+  })
+
+  it('trava antiga de OUTRO horário não barra o lembrete do horário novo', async () => {
+    h.travas = [{ ...ANTIGA, valor: '2026-09-21T17:30:00.000000Z' }]
+    expect((await ciclo(DO_CALENDLY)).disparados).toBe(1)
+  })
+
+  it('trava de OUTRA automação não barra esta', async () => {
+    h.travas = [{ ...ANTIGA, automation_id: 'outra', valor: DO_CALENDLY }]
+    expect((await ciclo(DO_CALENDLY)).disparados).toBe(1)
+  })
+
+  it('leitura das travas que falha: falha FECHADA, nada é travado nem enviado', async () => {
+    h.falhaNaLeituraDasTravas = true
+    const r = await ciclo(DO_CALENDLY)
+    expect(r.falhas).toBe(1)
+    expect(r.disparados).toBe(0)
+    expect(h.inserts).toHaveLength(0)
+    expect(disparo).not.toHaveBeenCalled()
   })
 })

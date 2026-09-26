@@ -248,9 +248,15 @@ evento cancelado.
   iMotion pela API v1 ("…17:30:00.000Z"). O UNIQUE é por TEXTO: o ciclo que
   lia entre as duas escritas travava a 1ª forma, o seguinte lia a 2ª e o
   lembrete saía DUAS vezes. Pino default-deny dos escritores:
-  `src/lib/automations/trava-do-lembrete.chamadores.test.ts`. Trava antiga
-  gravada pelo texto não casa com a nova — sem migração, porque as 28
-  existentes eram de reuniões passadas (26/09/2026).
+  `src/lib/automations/trava-do-lembrete.chamadores.test.ts`.
+- ⚠️ **Antes do INSERT, a varredura LÊ as travas da automação para os
+  contatos da janela e compara pelo instante** (as duas pontas por
+  `chaveDaTrava`). É o que faz a trava gravada PELO TEXTO — a da versão
+  anterior, ou a da instância antiga viva durante o deploy `start-first` —
+  continuar barrando o lembrete (Codex, PR #305). Sem migração: o UNIQUE
+  segue de texto, e o INSERT canônico continua sendo a reivindicação entre
+  ciclos desta versão. Estreita, em fatias de contato, e leitura incompleta é
+  falha FECHADA (a automação fica para o ciclo seguinte).
 - ⚠️⚠️ **A trava da 935 é gravada ANTES do disparo (o INSERT é a
   reivindicação), mas o disparo ainda passa por conexão, gatilho e escopo de
   etapa.** Recusado ali, o lembrete nunca mais saía. `travaDeveSerDevolvida`
