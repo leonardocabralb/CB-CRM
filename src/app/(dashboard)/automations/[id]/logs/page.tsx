@@ -71,7 +71,7 @@ async function carregarNomes(
         .in("id", l),
     ),
     emLotes((l) =>
-      supabase.from("profiles").select("user_id, full_name").in("user_id", l),
+      supabase.from("profiles").select("user_id, full_name, email").in("user_id", l),
     ),
     emLotes((l) =>
       supabase.from("custom_fields").select("id, field_name").in("id", l),
@@ -103,7 +103,13 @@ async function carregarNomes(
     const funil = (r.pipeline as { name?: unknown } | null)?.name
     return [r.id, typeof funil === "string" && funil ? `${funil} › ${r.name}` : r.name]
   })
-  guardar("membro", membros, (r) => [r.user_id, r.full_name])
+  // Perfil com o nome em branco (o gatilho da 0017 grava '' quando o cadastro
+  // não trouxe nome) cai no e-mail, como na tela de Membros: descartado, o
+  // membro que continua na conta sairia como "(ex-membro)".
+  guardar("membro", membros, (r) => [
+    r.user_id,
+    (typeof r.full_name === "string" && r.full_name.trim()) || r.email,
+  ])
   guardar("campo", campos, (r) => [r.id, r.field_name])
   guardar("tarefa", tarefas, (r) => [r.id, r.titulo])
   return { porId, carregados }
