@@ -115,7 +115,13 @@ export async function gravarAnuncioDeOrigem(args: {
       );
       if (erro) erros.push(`primeira origem: ${erro}`);
     }
-    // Último clique: por cima do que houver.
+    // Último clique: por cima do que houver. ⚠️ Vence a ESCRITA mais
+    // recente, não o clique mais recente: duas mensagens com `referral` do
+    // mesmo contato processadas em paralelo (dois anúncios clicados no mesmo
+    // instante, ou um webhook atrasado) podem deixar o clique mais velho
+    // gravado. Aceito (Codex, PR #313): a janela é de milissegundos, e fechar
+    // pede gravar cada clique à parte (a tabela de cliques da 7b do plano do
+    // previdenciário), que é onde o evento de conversão vai ler de verdade.
     if (Object.keys(plano.ultimoClique).length > 0) {
       const erro = await salvarValoresDoContato(
         args.db,

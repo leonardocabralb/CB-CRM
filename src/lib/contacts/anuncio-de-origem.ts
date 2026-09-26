@@ -54,6 +54,8 @@
  * pelo `source_id`.
  */
 
+import { CAMPOS_DE_TRAQUEAMENTO } from './campos-de-traqueamento';
+
 /** O que interessa do `referral` da Meta, já conferido. */
 export interface AnuncioDeOrigem {
   /** `source_type` como veio (`ad` ou `post`), ou `null`. */
@@ -86,6 +88,18 @@ export const CHAVES_DA_PRIMEIRA_ORIGEM: ReadonlyArray<string> = [
   'utm_medium',
   'id_do_anuncio',
 ];
+
+/**
+ * Chaves que dizem "esta ficha já tem origem" em QUALQUER categoria: as do
+ * semeador de traqueamento e as da primeira origem. O semeador dá como
+ * existente o campo com a chave certa em qualquer bloco (compara só a
+ * chave), então um `nome_do_anuncio` criado à mão no Geral é traqueamento
+ * de verdade — ignorá-lo misturaria duas origens na ficha (Codex, PR #313).
+ */
+const CHAVES_DE_ORIGEM: ReadonlySet<string> = new Set([
+  ...CAMPOS_DE_TRAQUEAMENTO.map((c) => c.key),
+  ...CHAVES_DA_PRIMEIRA_ORIGEM,
+]);
 
 function texto(v: unknown): string | null {
   if (typeof v !== 'string') return null;
@@ -198,8 +212,8 @@ export interface PlanoDoAnuncio {
  *
  * `campos` é o catálogo da conta; `valores`, o que a ficha já tem (id do
  * campo → texto). "A ficha já tem origem" = algum campo de traqueamento
- * (`categoria = 'tracking'`, ou uma chave da primeira origem criada noutro
- * bloco) preenchido, fora os do último clique — um `ctwa_clid` sozinho não
+ * (`categoria = 'tracking'`, ou uma chave conhecida de traqueamento — a do
+ * semeador ou da primeira origem — criada noutro bloco) preenchido, fora os do último clique — um `ctwa_clid` sozinho não
  * diz de onde o lead veio.
  *
  * O último clique que já está gravado com o mesmo valor sai do plano: gravar
@@ -216,8 +230,7 @@ export function planejarGravacaoDoAnuncio(
 
   const origemJaExistia = campos.some(
     (c) =>
-      (c.categoria === 'tracking' ||
-        CHAVES_DA_PRIMEIRA_ORIGEM.includes(c.field_key)) &&
+      (c.categoria === 'tracking' || CHAVES_DE_ORIGEM.has(c.field_key)) &&
       !CHAVES_DO_ULTIMO_CLIQUE.includes(c.field_key) &&
       preenchido(c.id)
   );

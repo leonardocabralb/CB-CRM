@@ -321,6 +321,32 @@ describe('planejarGravacaoDoAnuncio', () => {
     expect(plano.primeiraOrigem).toEqual({});
   });
 
+  it('chave do semeador (nome_do_anuncio) no bloco Geral também é origem (Codex, PR #313)', () => {
+    const campos: CampoDaConta[] = [
+      { id: 'id-nome_do_anuncio', field_key: 'nome_do_anuncio', categoria: 'geral' },
+      { id: 'id-utm_source', field_key: 'utm_source', categoria: 'tracking' },
+      { id: 'id-ctwa_clid', field_key: 'ctwa_clid', categoria: 'tracking' },
+    ];
+    const plano = planejarGravacaoDoAnuncio(anuncio(), campos, {
+      'id-nome_do_anuncio': 'Anúncio antigo do formulário',
+    });
+    expect(plano.origemJaExistia).toBe(true);
+    expect(plano.primeiraOrigem).toEqual({});
+    expect(plano.ultimoClique).toEqual({ 'id-ctwa_clid': 'clid-novo' });
+  });
+
+  it('campo comum do Geral preenchido NÃO é origem', () => {
+    const campos: CampoDaConta[] = [
+      { id: 'id-profissao', field_key: 'profissao', categoria: 'geral' },
+      { id: 'id-utm_source', field_key: 'utm_source', categoria: 'tracking' },
+    ];
+    const plano = planejarGravacaoDoAnuncio(anuncio(), campos, {
+      'id-profissao': 'Pedreiro',
+    });
+    expect(plano.origemJaExistia).toBe(false);
+    expect(plano.primeiraOrigem).toEqual({ 'id-utm_source': 'facebook' });
+  });
+
   it('campo que não existe na conta fica de fora e é listado — nada é criado', () => {
     const campos: CampoDaConta[] = [
       { id: 'id-utm_source', field_key: 'utm_source', categoria: 'tracking' },
