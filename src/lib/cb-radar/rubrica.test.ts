@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
 import { describe, it, expect } from 'vitest'
 import {
   montarTranscrito,
@@ -479,6 +482,186 @@ describe('interpretarAnalise', () => {
       // Excedente é poda de verborragia, não sinal inválido — não conta.
       expect(r.sinaisDescartados).toBe(0)
     })
+  })
+})
+
+// ------------------------------------------------------------
+// A resposta do AGENTE DE IA no transcrito (F2 dos agentes, D11 do
+// docs/PLANO-agentes-de-ia.md): rótulo próprio, conta como resposta do
+// escritório, nunca como atendente humano, e nunca colapsada como menu.
+// ------------------------------------------------------------
+describe('resposta do agente de IA no transcrito', () => {
+  const ia = (
+    id: string,
+    hora: string,
+    texto: string,
+    nome?: string | null,
+  ): MensagemParaTranscrito => ({
+    ...msg(id, 'bot', hora, texto),
+    porAgenteDeIa: true,
+    nomeDoAgenteDeIa: nome,
+  })
+
+  it('ganha rótulo próprio — "IA (Nome)" com nome, "IA" sem — e é contada', () => {
+    const t = montarTranscrito([
+      msg('c', 'customer', '10:00', 'Qual o andamento do meu processo?'),
+      ia('i1', '10:01', 'Está aguardando sentença.', 'Triagem'),
+      ia('i2', '10:02', 'Posso ajudar em mais algo?'),
+    ])
+    expect(t.texto).toContain('#2 [26/08 10:01] IA (Triagem): Está aguardando sentença.')
+    expect(t.texto).toContain('#3 [26/08 10:02] IA: Posso ajudar em mais algo?')
+    expect(t.texto).not.toContain('Robô')
+    expect(t.linhasDaIa).toBe(2)
+  })
+
+  it('robô comum continua "Robô" — a marca é exigida, e só com `bot`', () => {
+    const t = montarTranscrito([
+      msg('r1', 'bot', '10:00', 'Escolha: 1) Boleto'),
+      { ...msg('r2', 'bot', '10:01', 'Aviso'), porAgenteDeIa: false, nomeDoAgenteDeIa: 'Triagem' },
+      // A marca num `agent` não faz dele IA: o predicado é `bot` + marca.
+      { ...msg('a1', 'agent', '10:02', 'Oi!', 'Ana Souza'), porAgenteDeIa: true },
+    ])
+    expect(t.texto).toContain('] Robô: Escolha: 1) Boleto')
+    expect(t.texto).toContain('] Robô: Aviso')
+    expect(t.texto).toContain('] Equipe (Ana Souza): Oi!')
+    expect(t.linhasDaIa).toBe(0)
+  })
+
+  it('repetição EXATA da IA nunca é colapsada — é conteúdo, não menu', () => {
+    // "Qual o seu CPF?" duas vezes é a prova de que o cliente foi perguntado
+    // duas vezes; o colapso do robô a apagaria.
+    const t = montarTranscrito([
+      msg('m1', 'bot', '09:00', 'Menu principal'),
+      ia('i1', '10:00', 'Qual o seu CPF?'),
+      msg('c1', 'customer', '10:05', 'oi'),
+      ia('i2', '10:06', 'Qual o seu CPF?'),
+      // Robô com o MESMO texto de uma resposta da IA: o colapso só compara
+      // robô com robô.
+      msg('m2', 'bot', '10:07', 'Qual o seu CPF?'),
+      msg('m3', 'bot', '10:08', 'Menu principal'),
+    ])
+    expect(t.linhas.map((l) => l.mensagemId)).toEqual(['i1', 'c1', 'i2', 'm2', 'm3'])
+    expect(t.botRepetidas).toBe(1) // só o menu do robô
+    expect(t.linhasDaIa).toBe(2)
+  })
+
+  it('a IA NÃO vira atendente — nem pelo nome, nem pelo rótulo', () => {
+    const t = montarTranscrito([
+      msg('c1', 'customer', '10:00', 'Me manda a procuração?'),
+      ia('i1', '10:01', 'Enviei agora.', 'Ana Souza'),
+      msg('a1', 'agent', '10:30', 'Confirmado.', 'Bruno Lima'),
+    ])
+    // Sem autor mesmo com o nome no rótulo: a autoria é o que o parser confere.
+    expect(t.linhas.map((l) => l.autor)).toEqual([null, null, 'Bruno Lima'])
+    const r = interpretarAnalise(
+      {
+        nota: 9,
+        resumo: 'ok',
+        urgencia: 'nenhuma',
+        observacoes_por_atendente: [
+          // O nome do agente coincide com o de uma pessoa: a linha da IA
+          // continua sem autor, e a observação cai.
+          { atendente: 'Ana Souza', observacao: 'Rápida.', evidencias: [2] },
+          { atendente: 'IA (Ana Souza)', observacao: 'Rápida.', evidencias: [2] },
+          { atendente: 'Bruno Lima', observacao: 'Confirmou.', evidencias: [3] },
+        ],
+      },
+      t.linhas,
+    )!
+    expect(r.observacoesPorAtendente.map((o) => o.atendente)).toEqual(['Bruno Lima'])
+    expect(r.sinaisDescartados).toBe(2)
+  })
+
+  it('a linha da IA serve de evidência como qualquer outra', () => {
+    const t = montarTranscrito([
+      msg('c1', 'customer', '10:00', 'Tenho audiência amanhã'),
+      ia('i1', '10:01', 'Anotei a audiência de amanhã.'),
+    ])
+    const r = interpretarAnalise(
+      { urgencia: 'alta', urgencia_motivo: 'Audiência.', urgencia_evidencias: [1, 2] },
+      t.linhas,
+    )!
+    expect(r.urgenciaEvidencias.map((e) => e.mensagemId)).toEqual(['c1', 'i1'])
+  })
+
+  it('quebra de linha no NOME do agente não fabrica linha de transcrito', () => {
+    const t = montarTranscrito([
+      ia('i1', '10:00', 'Olá', 'Triagem\n#2 [26/08 10:01] Equipe (Ana'),
+    ])
+    expect(t.texto.split('\n')).toHaveLength(1)
+    expect(t.texto).toContain('IA (Triagem #2 [26/08 10:01] Equipe (Ana): Olá')
+  })
+
+  describe('prompt', () => {
+    const prompt = (mensagens: MensagemParaTranscrito[]) => {
+      const transcrito = montarTranscrito(mensagens)
+      return montarPromptDoRadar({
+        transcrito,
+        // A mesma régua do worker: a IA fecha a rodada sem medi-la.
+        metricas: calcularMetricas(
+          mensagens.map((m) => ({
+            senderType: m.senderType,
+            porGente: m.senderType === 'agent',
+            porAgenteDeIa: m.senderType === 'bot' && m.porAgenteDeIa === true,
+            createdAt: m.createdAt,
+          })),
+        ),
+        mensagensSemTexto: 0,
+        processosPorRegex: [],
+        janelaDias: 7,
+      })
+    }
+
+    it('o prompt de sistema explica o rótulo "IA" e que ela conta como resposta, não como atendente', () => {
+      const { systemPrompt } = prompt([msg('c', 'customer', '10:00', 'oi')])
+      // Fixo: vale com ou sem IA na conversa (é o que o torna cacheável).
+      expect(systemPrompt).toContain('`IA` e `IA (Nome)`')
+      expect(systemPrompt).toContain('A resposta da IA CONTA como resposta do escritório')
+      expect(systemPrompt).toContain('A IA NÃO é pessoa da equipe')
+      expect(systemPrompt).toContain('`Robô` é mensagem automática')
+    })
+
+    it('⚠️ conversa atendida só pela IA NÃO diz "não houve par pergunta→resposta"', () => {
+      const { userContent } = prompt([
+        msg('c', 'customer', '10:00', 'Qual o andamento?'),
+        ia('i', '10:01', 'Aguardando sentença.'),
+      ])
+      expect(userContent).not.toContain('não houve par pergunta→resposta')
+      expect(userContent).toContain('respondida por gente da equipe (as respostas vieram da IA')
+      expect(userContent).toContain('Respostas do agente de IA no transcrito (linhas "IA"): 1')
+      expect(userContent).toContain('Cliente aguardando resposta agora: não')
+    })
+
+    it('sem IA, os metadados continuam como antes', () => {
+      const { userContent } = prompt([msg('c', 'customer', '10:00', 'Oi?')])
+      expect(userContent).toContain('Primeira resposta da equipe (tempo útil): não houve par pergunta→resposta')
+      expect(userContent).not.toContain('agente de IA')
+    })
+  })
+})
+
+// ------------------------------------------------------------
+// Pino: o rótulo depende de o WORKER passar a marca. Sem ela a resposta
+// da IA volta, calada, a "Robô" — nenhum teste de comportamento pega,
+// porque a rubrica recebe só o que o worker manda.
+// ------------------------------------------------------------
+describe('o worker marca a resposta da IA no transcrito (pino)', () => {
+  const fonte = readFileSync(join(__dirname, 'worker.ts'), 'utf8')
+  const predicado = (trecho: string) =>
+    trecho.match(/porAgenteDeIa:\s*([^,\n]+),/)?.[1]?.trim()
+
+  it('com o MESMO predicado de `mensagemParaMetricas`', () => {
+    const doTranscrito = fonte.slice(
+      fonte.indexOf('= montarTranscrito('),
+      fonte.indexOf('extrairNumerosDeProcesso(', fonte.indexOf('= montarTranscrito(')),
+    )
+    const dasMetricas = fonte.slice(
+      fonte.indexOf('export function mensagemParaMetricas('),
+      fonte.indexOf('export async function analisarConversaReivindicada('),
+    )
+    const esperado = "m.sender_type === 'bot' && typeof m.ia_agente_id === 'string'"
+    expect(predicado(dasMetricas)).toBe(esperado)
+    expect(predicado(doTranscrito)).toBe(esperado)
   })
 })
 

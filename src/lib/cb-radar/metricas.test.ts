@@ -24,6 +24,14 @@ const automatica = (
   createdAt: em(hora),
 })
 
+/** Resposta de um agente de IA: `bot` com `ia_agente_id` (D11). */
+const ia = (hora: string): MensagemParaMetricas => ({
+  senderType: 'bot',
+  porGente: false,
+  porAgenteDeIa: true,
+  createdAt: em(hora),
+})
+
 describe('calcularMetricas', () => {
   it('mede pergunta→resposta e conta os lados', () => {
     const r = calcularMetricas([cliente('10:00'), equipe('10:30')])
@@ -102,5 +110,74 @@ describe('calcularMetricas', () => {
     expect(r.aguardandoDesde).toBeNull()
     expect(r.primeiraRespostaSeg).toBe(30 * 60)
     expect(r.msgsEquipe).toBe(2)
+  })
+
+  describe('resposta do AGENTE DE IA (D11): fecha a pendência, não entra no tempo da equipe', () => {
+    it('a IA respondendo fecha a pendência, sem medir tempo de resposta', () => {
+      const r = calcularMetricas([cliente('10:00'), ia('10:00')])
+      expect(r.aguardandoDesde).toBeNull()
+      // A IA responde em segundos: medida, ela diria que o escritório
+      // atende na hora. Rodada que só a IA fechou não é par da equipe.
+      expect(r.primeiraRespostaSeg).toBeNull()
+      expect(r.respostaMedianaSeg).toBeNull()
+      // Volume é volume: a mensagem saiu.
+      expect(r.msgsEquipe).toBe(1)
+    })
+
+    it('a mediana da equipe ignora as rodadas que a IA fechou', () => {
+      const r = calcularMetricas([
+        cliente('09:00'),
+        ia('09:01'), // fechada pela IA — fora da mediana
+        cliente('10:00'),
+        equipe('10:40'), // 40 min de gente
+        cliente('11:00'),
+        ia('11:00'), // fechada pela IA — fora da mediana
+      ])
+      expect(r.respostaMedianaSeg).toBe(40 * 60)
+      expect(r.primeiraRespostaSeg).toBe(40 * 60)
+      expect(r.aguardandoDesde).toBeNull()
+    })
+
+    it('depois da IA, a rodada que a pessoa assume mede desde a fala seguinte do cliente', () => {
+      // O cliente pede um advogado depois da resposta da IA; a transferência
+      // não manda mensagem (E7) e a pessoa responde às 11:00. O tempo da
+      // equipe conta das 10:05, não das 10:00 que a IA já respondeu.
+      const r = calcularMetricas([
+        cliente('10:00'),
+        ia('10:01'),
+        cliente('10:05'),
+        equipe('11:00'),
+      ])
+      expect(r.primeiraRespostaSeg).toBe(55 * 60)
+      expect(r.aguardandoDesde).toBeNull()
+    })
+
+    it('cliente que volta a escrever depois da IA reabre a pendência', () => {
+      const r = calcularMetricas([cliente('10:00'), ia('10:01'), cliente('14:00')])
+      expect(r.aguardandoDesde).toEqual(em('14:00'))
+    })
+
+    it('⚠️ robô SEM `ia_agente_id` (fluxo, automação) continua não fechando', () => {
+      // O mesmo `sender_type = 'bot'` da IA: quem separa os dois é o
+      // `porAgenteDeIa`, que o chamador só liga com a coluna preenchida.
+      const r = calcularMetricas([cliente('10:00'), automatica('10:01', 'bot')])
+      expect(r.aguardandoDesde).toEqual(em('10:00'))
+    })
+
+    it('`porAgenteDeIa` AUSENTE conta como falso — o lado do alarme', () => {
+      const semOCampo: MensagemParaMetricas = {
+        senderType: 'bot',
+        porGente: false,
+        createdAt: em('10:01'),
+      }
+      const r = calcularMetricas([cliente('10:00'), semOCampo])
+      expect(r.aguardandoDesde).toEqual(em('10:00'))
+    })
+
+    it('mensagem da IA sem pendência aberta não mexe em nada', () => {
+      const r = calcularMetricas([ia('09:00'), cliente('10:00'), equipe('10:30')])
+      expect(r.primeiraRespostaSeg).toBe(30 * 60)
+      expect(r.msgsEquipe).toBe(2)
+    })
   })
 })

@@ -2,12 +2,12 @@
 
 // ============================================================
 // Configuração de um agente de IA (F1b, 5.9): nome, descrição, instruções,
-// REGRAS (D23, uma por linha), provedor e modelo (D1), conexões, horário,
-// teto, transferência e para quem pode passar.
+// REGRAS (D23, uma por linha), provedor e modelo (D1), conexões, as ETAPAS
+// do funil em que atua (D24, `onde-atua.tsx`), horário, teto, transferência
+// e para quem pode passar (D25: o card vai para a etapa do escolhido).
 //
 // ⚠️ Conexões: NENHUMA marcada = o agente não atende em conexão nenhuma
-// (nunca "todas": há número de uso pessoal na conta). ⚠️ Nesta fase o agente
-// ligado ainda NÃO responde cliente (F2) — a tela diz isso.
+// (nunca "todas": há número de uso pessoal na conta). Idem as etapas.
 // ============================================================
 
 import { useEffect, useMemo, useState } from 'react';
@@ -40,6 +40,7 @@ import {
 } from './tipos';
 import { textoDoCodigo } from './textos';
 import { alteracoesDoRascunho, lerTeto } from './rascunho';
+import { OndeAtua } from './onde-atua';
 
 const DIAS = [1, 2, 3, 4, 5, 6, 0] as const;
 
@@ -76,6 +77,7 @@ export function ConfiguracaoDoAgente({
   const [tetoTexto, setTetoTexto] = useState(String(agente.tetoRespostas));
   const [transferirPara, setTransferirPara] = useState<string | null>(agente.transferirPara);
   const [podePassarPara, setPodePassarPara] = useState<string[]>(agente.podePassarPara);
+  const [etapas, setEtapas] = useState<string[]>(() => agente.etapas.map((e) => e.stageId));
   const [salvando, setSalvando] = useState(false);
   const [confirmandoArquivar, setConfirmandoArquivar] = useState(false);
 
@@ -121,8 +123,9 @@ export function ConfiguracaoDoAgente({
         tetoRespostas: teto ?? agente.tetoRespostas,
         transferirPara,
         podePassarPara,
+        etapas,
       }),
-    [agente, nome, descricao, instrucoes, regras, provedor, modelo, ativo, conexoes, horario, teto, transferirPara, podePassarPara]
+    [agente, nome, descricao, instrucoes, regras, provedor, modelo, ativo, conexoes, horario, teto, transferirPara, podePassarPara, etapas]
   );
   const naoSalvo = Object.keys(alteracoes).length > 0 || teto === null;
 
@@ -139,6 +142,12 @@ export function ConfiguracaoDoAgente({
   // Conexões oferecidas: só WhatsApp (no Instagram o agente não responde).
   const conexoesOferecidas = channels.filter((c) => !ehInstagram(c));
 
+  // Etapa → nome do OUTRO agente que já atua nela (uma etapa, um agente).
+  const ocupadas = useMemo(
+    () => (outros ? new Map(outros.flatMap((o) => o.etapas.map((e) => [e.stageId, o.nome] as const))) : null),
+    [outros]
+  );
+
   async function salvar() {
     if (teto === null || Object.keys(alteracoes).length === 0) return;
     setSalvando(true);
@@ -148,9 +157,9 @@ export function ConfiguracaoDoAgente({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(alteracoes),
       });
-      const corpo = (await res.json().catch(() => ({}))) as { agente?: IaAgente; code?: string };
+      const corpo = (await res.json().catch(() => ({}))) as { agente?: IaAgente; code?: string; outroAgente?: string };
       if (!res.ok || !corpo.agente) {
-        toast.error(textoDoCodigo(t, corpo.code));
+        toast.error(textoDoCodigo(t, corpo.code, corpo.outroAgente));
         return;
       }
       toast.success(t('config.salvo'));
@@ -182,10 +191,6 @@ export function ConfiguracaoDoAgente({
 
   return (
     <div className="space-y-6">
-      <p className="rounded-md border border-amber-300/60 bg-amber-50/40 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
-        {t('config.aindaNaoResponde')}
-      </p>
-
       <section className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
@@ -324,6 +329,13 @@ export function ConfiguracaoDoAgente({
       </section>
 
       <section className="space-y-3">
+        <h3 className="text-sm font-semibold text-foreground">{t('ondeAtua.titulo')}</h3>
+        <p className="text-xs text-muted-foreground">{t('ondeAtua.dica')}</p>
+        <p className="text-xs text-muted-foreground">{t('ondeAtua.soCardsNovos')}</p>
+        <OndeAtua etapas={etapas} aoMudar={setEtapas} ocupadas={ocupadas} />
+      </section>
+
+      <section className="space-y-3">
         <h3 className="text-sm font-semibold text-foreground">{t('campo.horario')}</h3>
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
@@ -441,6 +453,10 @@ export function ConfiguracaoDoAgente({
                     onCheckedChange={() => setPodePassarPara(alternar(podePassarPara, o.id))}
                   />
                   <span className="min-w-0 truncate">{o.nome}</span>
+                  {/* D25: sem etapa, não há para onde levar o card — a passagem vira transferência. */}
+                  {o.etapas.length === 0 ? (
+                    <span className="shrink-0 text-xs text-amber-700 dark:text-amber-300">{t('campo.passarSemEtapa')}</span>
+                  ) : null}
                 </label>
               ))}
             </div>

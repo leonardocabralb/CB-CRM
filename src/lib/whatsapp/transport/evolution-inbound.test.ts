@@ -238,6 +238,11 @@ describe('normalizeUpsert', () => {
 
   it('figurinha e ver-uma-vez chegam como mídia, não como texto vazio', () => {
     expect(normalizeUpsert(item(FIGURINHA), 'c', 'd', null)!.contentType).toBe('image');
+    // A marca que separa a figurinha de uma foto para o agente de IA
+    // (`abreTurno`): as duas viram `image`.
+    expect(normalizeUpsert(item(FIGURINHA), 'c', 'd', null)!.figurinha).toBe(true);
+    expect(normalizeUpsert(item({ ephemeralMessage: { message: FIGURINHA } }), 'c', 'd', null)!.figurinha).toBe(true);
+    expect(normalizeUpsert(item(IMAGEM), 'c', 'd', null)).not.toHaveProperty('figurinha');
     expect(
       normalizeUpsert(item({ viewOnceMessageV2: { message: AUDIO_PTT } }), 'c', 'd', null)!
         .contentType,

@@ -16,6 +16,8 @@ const h = vi.hoisted(() => ({
   ordem: [] as string[],
   insertErro: null as { code: string; message: string } | null,
   conversaExiste: false,
+  /** As linhas que a ingestão mandou gravar em `messages`. */
+  linhas: [] as Record<string, unknown>[],
 }));
 
 vi.mock('@/lib/contacts/dedupe', () => ({
@@ -38,9 +40,11 @@ vi.mock('@/lib/conversations/reopen', () => ({
   }),
 }));
 vi.mock('@/lib/automations/engine', () => ({
-  runAutomationsForTrigger: vi.fn(async () => {
+  dispararAutomacoes: vi.fn(async () => {
     h.ordem.push('automação');
+    return { candidatas: 0, foraDoEscopo: 0, executadas: 0, comFalha: 0, emEspera: 0 };
   }),
+  etapaTemQuemFale: vi.fn(async () => false),
 }));
 vi.mock('@/lib/automations/parar-se-responder', () => ({
   cancelarEsperasPorResposta: vi.fn(async () => {}),
@@ -51,8 +55,8 @@ vi.mock('@/lib/flows/engine', () => ({
     return { consumed: false };
   }),
 }));
-vi.mock('@/lib/ai/auto-reply', () => ({
-  dispatchInboundToAiReply: vi.fn(async () => {
+vi.mock('@/lib/ia-agentes/entrada', () => ({
+  aoChegarMensagemDoCliente: vi.fn(async () => {
     h.ordem.push('ia');
   }),
 }));
@@ -71,11 +75,24 @@ vi.mock('@/lib/cb-channels/atraso-de-entrega', () => ({
 }));
 
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
-import { runAutomationsForTrigger } from '@/lib/automations/engine';
+import { dispararAutomacoes, etapaTemQuemFale, type ResultadoDoDisparo } from '@/lib/automations/engine';
+import { routeContactToPipeline } from '@/lib/cb-channels/pipeline-routing';
+import { dispatchInboundToFlows } from '@/lib/flows/engine';
+import { aoChegarMensagemDoCliente } from '@/lib/ia-agentes/entrada';
 
 import { persistInboundMessage, type NormalizedInbound } from './inbound-store';
 
 const dispatch = vi.mocked(dispatchWebhookEvent);
+const agente = vi.mocked(aoChegarMensagemDoCliente);
+
+/** Um disparo em que nenhuma automação rodou. */
+const DISPARO: ResultadoDoDisparo = {
+  candidatas: 0,
+  foraDoEscopo: 0,
+  executadas: 0,
+  comFalha: 0,
+  emEspera: 0,
+};
 
 /** Um Supabase de mentira, só com as cadeias que a ingestão usa. */
 function fakeDb() {
@@ -106,9 +123,10 @@ function fakeDb() {
       return {
         // A contagem de mensagens anteriores do cliente.
         select: () => ({ eq: () => ({ eq: async () => ({ count: 0, error: null }) }) }),
-        insert: () => ({
+        insert: (linha: Record<string, unknown>) => ({
           select: () => ({
             single: async () => {
+              h.linhas.push(linha);
               h.ordem.push('grava');
               return h.insertErro
                 ? { data: null, error: h.insertErro }
@@ -151,6 +169,7 @@ beforeEach(() => {
   h.ordem = [];
   h.insertErro = null;
   h.conversaExiste = false;
+  h.linhas = [];
   dispatch.mockResolvedValue('tentado');
 });
 
@@ -243,10 +262,11 @@ describe('persistInboundMessage: conversation.created não segura a gravação',
 describe('persistInboundMessage: as automações rodam EM SEQUÊNCIA (Fase 12)', () => {
   it('um tipo de gatilho só começa quando o anterior TERMINA, na ordem do original (#409)', async () => {
     const passos: string[] = [];
-    vi.mocked(runAutomationsForTrigger).mockImplementation(async ({ triggerType }) => {
+    vi.mocked(dispararAutomacoes).mockImplementation(async ({ triggerType }) => {
       passos.push(`início ${triggerType}`);
       await new Promise((r) => setTimeout(r, 0));
       passos.push(`fim ${triggerType}`);
+      return DISPARO;
     });
     await persistInboundMessage(fakeDb(), MENSAGEM);
     expect(passos).toEqual([
@@ -262,12 +282,227 @@ describe('persistInboundMessage: as automações rodam EM SEQUÊNCIA (Fase 12)',
   it('a falha de um tipo não pula os seguintes', async () => {
     const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
     const tipos: string[] = [];
-    vi.mocked(runAutomationsForTrigger).mockImplementation(async ({ triggerType }) => {
+    vi.mocked(dispararAutomacoes).mockImplementation(async ({ triggerType }) => {
       tipos.push(triggerType);
       if (triggerType === 'first_inbound_message') throw new Error('falhou');
+      return DISPARO;
     });
     await persistInboundMessage(fakeDb(), MENSAGEM);
     expect(tipos).toEqual(['first_inbound_message', 'new_message_received', 'keyword_match']);
     erro.mockRestore();
+  });
+});
+
+// ============================================================
+// O agente de IA (F2 do docs/PLANO-agentes-de-ia.md): a ingestão entrega os
+// FATOS da mensagem à entrada (`aoChegarMensagemDoCliente`), que decide. A
+// resposta automática antiga (`ai/auto-reply`) foi apagada (E2) — o que a
+// substitui é só isto.
+// ============================================================
+describe('persistInboundMessage: os fatos da mensagem vão para o agente de IA', () => {
+  beforeEach(() => {
+    // `clearAllMocks` não desfaz implementação: os testes acima trocam a do
+    // motor (um deles faz o primeiro gatilho lançar).
+    vi.mocked(dispararAutomacoes).mockImplementation(async () => {
+      h.ordem.push('automação');
+      return DISPARO;
+    });
+    vi.mocked(dispatchInboundToFlows).mockImplementation(async () => {
+      h.ordem.push('robô');
+      return { consumed: false } as never;
+    });
+  });
+
+  it('com os ids GRAVADOS, o tipo da linha e nenhum portão aceso', async () => {
+    await persistInboundMessage(fakeDb(), MENSAGEM);
+
+    expect(agente).toHaveBeenCalledTimes(1);
+    expect(agente).toHaveBeenCalledWith({
+      accountId: 'conta-1',
+      conversationId: 'conv-1',
+      canalGravado: 'canal-1',
+      mensagemId: 'msg-1',
+      tipo: 'text',
+      texto: 'oi',
+      mime: null,
+      ehGrupo: false,
+      ehRespostaDeBotao: false,
+      roboConsumiu: false,
+      automacaoFalou: false,
+    });
+    // DEPOIS do robô, das automações e do funil; ANTES do message.received.
+    expect(h.ordem.slice(-2)).toEqual(['funil', 'ia']);
+    expect(eventos().at(-1)).toBe('message.received');
+  });
+
+  it('⚠️ E4: basta UM gatilho da mensagem ter falado — os outros não apagam', async () => {
+    vi.mocked(dispararAutomacoes).mockImplementation(async ({ triggerType }) => ({
+      ...DISPARO,
+      executadas: 1,
+      // A boas-vindas (o PRIMEIRO gatilho) respondeu; os seguintes, não — e
+      // não podem apagar o que ela fez.
+      falou: triggerType === 'first_inbound_message' ? true : undefined,
+    }));
+
+    await persistInboundMessage(fakeDb(), MENSAGEM);
+
+    expect(agente).toHaveBeenCalledWith(expect.objectContaining({ automacaoFalou: true }));
+  });
+
+  it('automação que só etiquetou (rodou sem falar) NÃO cala o agente', async () => {
+    vi.mocked(dispararAutomacoes).mockResolvedValue({ ...DISPARO, candidatas: 1, executadas: 1, falou: false });
+
+    await persistInboundMessage(fakeDb(), MENSAGEM);
+
+    expect(agente).toHaveBeenCalledWith(expect.objectContaining({ automacaoFalou: false }));
+  });
+
+  it('o motor que LANÇA (não deveria) conta como "falou": o cliente não recebe duas respostas', async () => {
+    const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(dispararAutomacoes).mockImplementation(async ({ triggerType }) => {
+      if (triggerType === 'new_message_received') throw new Error('estourou');
+      return DISPARO;
+    });
+
+    await persistInboundMessage(fakeDb(), MENSAGEM);
+
+    expect(agente).toHaveBeenCalledWith(expect.objectContaining({ automacaoFalou: true }));
+    erro.mockRestore();
+  });
+
+  it('o robô consumiu a mensagem: o fato vai junto (quem cala é a entrada)', async () => {
+    vi.mocked(dispatchInboundToFlows).mockResolvedValue({ consumed: true } as never);
+
+    await persistInboundMessage(fakeDb(), MENSAGEM);
+
+    expect(agente).toHaveBeenCalledWith(expect.objectContaining({ roboConsumiu: true }));
+  });
+
+  it('⚠️ E9: áudio SEM texto também chega à entrada (o portão antigo de "texto não vazio" saiu)', async () => {
+    await persistInboundMessage(fakeDb(), { ...MENSAGEM, contentType: 'audio', text: null });
+
+    expect(agente).toHaveBeenCalledWith(expect.objectContaining({ tipo: 'audio', mensagemId: 'msg-1' }));
+  });
+
+  it('⚠️ FIGURINHA: gravada como `image` COM o MIME já no insert — é o que a régua do agente lê (E9/E10)', async () => {
+    await persistInboundMessage(fakeDb(), { ...MENSAGEM, contentType: 'image', text: null, figurinha: true });
+
+    // Sem o MIME no insert, a linha seria igual à de uma foto até o download,
+    // e o turno em curso leria a figurinha como mensagem que abre turno.
+    expect(h.linhas[0]).toMatchObject({ content_type: 'image', media_type: 'image/webp' });
+    expect(agente).toHaveBeenCalledWith(expect.objectContaining({ tipo: 'image', texto: null, mime: 'image/webp' }));
+  });
+
+  it('foto comum: sem MIME no insert (ele vem no download), e a entrada recebe `mime: null`', async () => {
+    await persistInboundMessage(fakeDb(), { ...MENSAGEM, contentType: 'image', text: 'segue' });
+
+    expect(h.linhas[0]).not.toHaveProperty('media_type');
+    expect(agente).toHaveBeenCalledWith(expect.objectContaining({ tipo: 'image', texto: 'segue', mime: null }));
+  });
+
+  it('texto sem conteúdo (cartão de contato, enquete): a entrada recebe o texto GRAVADO, nulo', async () => {
+    await persistInboundMessage(fakeDb(), { ...MENSAGEM, contentType: 'text', text: null });
+
+    expect(agente).toHaveBeenCalledWith(expect.objectContaining({ tipo: 'text', texto: null }));
+  });
+
+  it('a gravação falhou: não há mensagem, não há turno', async () => {
+    h.insertErro = { code: 'XX000', message: 'boom' };
+    const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await persistInboundMessage(fakeDb(), MENSAGEM);
+
+    expect(agente).not.toHaveBeenCalled();
+    erro.mockRestore();
+  });
+
+  // ⚠️ E4: o card que o funil ACABOU de criar entra na fila do funil, e a
+  // automação de boas-vindas da etapa de entrada fala DEPOIS, no dreno — com
+  // o agente já tendo feito a triagem da mesma mensagem. Conta como fala.
+  describe('o card NOVO do funil conta como fala quando a etapa de entrada tem automação', () => {
+    const quemFala = vi.mocked(etapaTemQuemFale);
+    function funilCria(etapa: string | null) {
+      vi.mocked(routeContactToPipeline).mockImplementationOnce(async () => {
+        h.ordem.push('funil');
+        return etapa;
+      });
+    }
+
+    it('card novo numa etapa com automação escutando: o agente cala', async () => {
+      funilCria('etapa-lead');
+      quemFala.mockResolvedValueOnce(true);
+
+      await persistInboundMessage(fakeDb(), MENSAGEM);
+
+      expect(quemFala).toHaveBeenCalledWith(expect.anything(), 'conta-1', 'etapa-lead');
+      expect(agente).toHaveBeenCalledWith(expect.objectContaining({ automacaoFalou: true }));
+    });
+
+    it('card novo numa etapa SEM automação escutando: o agente segue', async () => {
+      funilCria('etapa-lead');
+      quemFala.mockResolvedValueOnce(false);
+
+      await persistInboundMessage(fakeDb(), MENSAGEM);
+
+      expect(quemFala).toHaveBeenCalledTimes(1);
+      expect(agente).toHaveBeenCalledWith(expect.objectContaining({ automacaoFalou: false }));
+    });
+
+    it('contato que JÁ tinha card (o roteador não criou nada): não conta, e nem consulta', async () => {
+      funilCria(null);
+
+      await persistInboundMessage(fakeDb(), MENSAGEM);
+
+      expect(quemFala).not.toHaveBeenCalled();
+      expect(agente).toHaveBeenCalledWith(expect.objectContaining({ automacaoFalou: false }));
+    });
+
+    it('a leitura das automações FALHA: conta como fala (a régua real do motor, sobre o banco que erra)', async () => {
+      funilCria('etapa-lead');
+      const real = await vi.importActual<typeof import('@/lib/automations/engine')>('@/lib/automations/engine');
+      quemFala.mockImplementationOnce(real.etapaTemQuemFale);
+      const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const base = fakeDb() as unknown as { from: (t: string) => unknown };
+      const db = {
+        from: (tabela: string) =>
+          tabela === 'automations'
+            ? {
+                select: () => ({
+                  eq: () => ({ eq: () => ({ eq: async () => ({ data: null, error: { message: 'timeout' } }) }) }),
+                }),
+              }
+            : base.from(tabela),
+      } as never;
+
+      await persistInboundMessage(db, MENSAGEM);
+
+      expect(quemFala).toHaveBeenCalledTimes(1);
+      // Quem respondeu "fala" foi a régua do motor lendo o erro — não a rede
+      // de segurança da ingestão (o `.catch`, que é o caso abaixo).
+      expect(erro).toHaveBeenCalledWith(expect.stringContaining('quem escuta a etapa'), 'timeout');
+      expect(agente).toHaveBeenCalledWith(expect.objectContaining({ automacaoFalou: true }));
+      erro.mockRestore();
+    });
+
+    it('a conferência que LANÇA também conta como fala', async () => {
+      funilCria('etapa-lead');
+      quemFala.mockRejectedValueOnce(new Error('rede caiu'));
+      const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      await persistInboundMessage(fakeDb(), MENSAGEM);
+
+      expect(agente).toHaveBeenCalledWith(expect.objectContaining({ automacaoFalou: true }));
+      erro.mockRestore();
+    });
+
+    it('uma automação da mensagem já falou: a etapa nem é consultada', async () => {
+      funilCria('etapa-lead');
+      vi.mocked(dispararAutomacoes).mockResolvedValue({ ...DISPARO, executadas: 1, falou: true });
+
+      await persistInboundMessage(fakeDb(), MENSAGEM);
+
+      expect(quemFala).not.toHaveBeenCalled();
+      expect(agente).toHaveBeenCalledWith(expect.objectContaining({ automacaoFalou: true }));
+    });
   });
 });

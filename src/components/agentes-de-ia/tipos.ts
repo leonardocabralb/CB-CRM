@@ -1,9 +1,12 @@
 // Formas que as telas dos agentes de IA recebem das rotas (espelho do servidor).
 
 import type { AiProvider } from '@/lib/ai/types'
-import type { Horario, IaAgente } from '@/lib/ia-agentes/agente'
+import type { AgenteComEtapas, EtapaDoAgente, Horario } from '@/lib/ia-agentes/agente'
 
-export type { Horario, IaAgente }
+export type { EtapaDoAgente, Horario }
+
+/** O agente como as rotas o devolvem: com as etapas em que atua (D24). */
+export type IaAgente = AgenteComEtapas
 
 export const PROVEDORES: readonly AiProvider[] = ['gemini', 'openai', 'anthropic']
 

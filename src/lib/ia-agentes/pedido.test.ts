@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { HANDOFF_SENTINEL } from '@/lib/ai/defaults'
-import { montarPedidoDoAgente } from './pedido'
+import { lerPassagem, montarPedidoDoAgente } from './pedido'
 
 const AGORA = new Date('2026-09-25T17:05:00Z')
 
@@ -41,5 +41,42 @@ describe('montarPedidoDoAgente', () => {
     const p = montarPedidoDoAgente({ instrucoes: 'a', regras: ['b'], agora: AGORA, conhecimento: ['T1', 'T2'] })
     expect(p.indexOf('[1] T1')).toBeGreaterThan(p.indexOf('1. b'))
     expect(p).toContain('[2] T2')
+  })
+})
+
+describe('a PASSAGEM (D25)', () => {
+  const agora = new Date('2026-09-25T17:05:00Z')
+
+  it('lista os agentes numerados, com a descrição, e ensina o [[PASSAR:n]]', () => {
+    const p = montarPedidoDoAgente({
+      instrucoes: 'Triagem.',
+      regras: [],
+      agora,
+      passagens: [
+        { nome: 'Cobrança', descricao: 'boletos e segunda via' },
+        { nome: 'Trabalhista', descricao: '' },
+      ],
+    })
+    expect(p).toContain('[[PASSAR:n]]')
+    expect(p).toContain('1. Cobrança — boletos e segunda via')
+    expect(p).toContain('2. Trabalhista')
+    expect(p).not.toContain('2. Trabalhista —')
+  })
+
+  it('sem agentes para passar, o pedido não fala de passagem', () => {
+    expect(montarPedidoDoAgente({ instrucoes: 'x', regras: [], agora })).not.toContain('PASSAR')
+    expect(montarPedidoDoAgente({ instrucoes: 'x', regras: [], agora, passagens: [] })).not.toContain('PASSAR')
+  })
+
+  it('lerPassagem: o marcador exato, com espaço ou caixa diferentes, e no meio do texto', () => {
+    expect(lerPassagem('[[PASSAR:2]]')).toBe(2)
+    expect(lerPassagem('  [[ passar : 1 ]]\n')).toBe(1)
+    expect(lerPassagem('Vou te passar para o setor certo. [[PASSAR:3]]')).toBe(3)
+  })
+
+  it('lerPassagem: texto comum não é passagem', () => {
+    expect(lerPassagem('Posso passar o boleto agora?')).toBeNull()
+    expect(lerPassagem('[[PASSAR:]]')).toBeNull()
+    expect(lerPassagem('[PASSAR:1]')).toBeNull()
   })
 })

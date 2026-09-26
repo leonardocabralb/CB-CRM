@@ -14,10 +14,11 @@ import { fichaQueVenceuPorBsuid } from '@/lib/contacts/bsuid'
 import { reopenClosedConversation } from '@/lib/conversations/reopen'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { routeContactToPipeline } from '@/lib/cb-channels/pipeline-routing'
-import { runAutomationsForTrigger } from '@/lib/automations/engine'
+import { dispararAutomacoes, etapaTemQuemFale } from '@/lib/automations/engine'
 import { cancelarEsperasPorResposta } from '@/lib/automations/parar-se-responder'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
-import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply'
+import { aoChegarMensagemDoCliente } from '@/lib/ia-agentes/entrada'
+import { PREFIXO_DE_TIPO_NAO_SUPORTADO } from '@/lib/ia-agentes/quem-responde'
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver'
 import {
   handleTemplateWebhookChange,
@@ -1278,8 +1279,13 @@ async function processMessage(
   // `after()`, ao mesmo tempo, e a corrida entre elas continua. O `.catch`
   // por tipo mantém: a falha de um não pula os seguintes. O mesmo em
   // `inbound-store.ts`.
+  // ⚠️ NOSSO (F2 dos agentes de IA, E4): `dispararAutomacoes`, e não
+  // `runAutomationsForTrigger` (que é `void`) — o agente de IA só fala se
+  // NENHUMA automação desta mensagem falou (ou vai falar) com o contato,
+  // somados TODOS os gatilhos acima. Gêmeo do `inbound-store.ts`.
+  let automacaoFalou = false
   for (const triggerType of automationTriggers) {
-    await runAutomationsForTrigger({
+    const disparo = await dispararAutomacoes({
       accountId,
       triggerType,
       contactId: contactRecord.id,
@@ -1293,7 +1299,13 @@ async function processMessage(
         // gravado intacto como JSONB em automation_pending_executions.
         channel_id: channelId,
       },
-    }).catch((err) => console.error('[automations] dispatch failed:', err))
+    }).catch((err) => {
+      console.error('[automations] dispatch failed:', err)
+      // O motor não lança; se lançar, não se sabe se algum passo já falou
+      // com o cliente — o agente fica calado (o lado de uma resposta só).
+      return { falou: true }
+    })
+    if (disparo.falou) automacaoFalou = true
   }
 
   // Funil padrão da conexão. Fora do laço de automações de propósito: o
@@ -1302,7 +1314,7 @@ async function processMessage(
   // uma conversa por contato — o cliente que muda de número nunca dispararia.
   // `routeContactToPipeline` nunca lança e sai no primeiro SELECT quando a
   // conexão não tem funil configurado.
-  await routeContactToPipeline({
+  const etapaDoCardNovo = await routeContactToPipeline({
     db: supabaseAdmin(),
     accountId,
     channelId,
@@ -1310,23 +1322,45 @@ async function processMessage(
     contactName: contactRecord.name ?? null,
     conversationId: conversation.id,
   })
-
-  // AI auto-reply. Runs only for plain-text inbound the deterministic
-  // flow runner did NOT consume (flows win over the LLM), and only when
-  // the account has enabled it. Awaited inside `after()` (same reason as
-  // the webhook dispatch below); `dispatchInboundToAiReply` owns its
-  // eligibility gates + try/catch and never throws.
-  if (!flowConsumed && !interactiveReplyId && inboundText.trim()) {
-    await dispatchInboundToAiReply({
-      accountId,
-      conversationId: conversation.id,
-      contactId: contactRecord.id,
-      configOwnerUserId,
-      channelId: channelId,
-      // O "digitando…" marca ESTA mensagem como lida (#527, Fase 9).
-      inboundMessageId: message.id,
+  // ⚠️ NOSSO (E4 dos agentes de IA): o card que o funil ACABOU de criar entra
+  // na fila (`deal_stage_changed`), e a automação de boas-vindas da etapa de
+  // entrada fala DEPOIS, no dreno — com o agente já tendo feito a triagem da
+  // mesma mensagem. Conta como fala, pela régua do passo "Criar negócio" do
+  // motor (erro de leitura = fala). Só com card novo: o contato que já tinha
+  // card não paga consulta nenhuma. Gêmeo do `inbound-store.ts`.
+  if (etapaDoCardNovo && !automacaoFalou) {
+    automacaoFalou = await etapaTemQuemFale(supabaseAdmin(), accountId, etapaDoCardNovo).catch((err) => {
+      console.error('[webhook] quem escuta a etapa do card novo não pôde ser conferido:', err)
+      return true
     })
   }
+
+  // ⚠️ NOSSO: o agente de IA (F2 do docs/PLANO-agentes-de-ia.md, 5.3), no
+  // lugar da resposta automática do upstream — DEPOIS do robô, das
+  // automações e do funil, com os fatos desta mensagem. Quem decide se alguém
+  // responde é a entrada (`quemResponde`), não esta rota: ela só ENFILEIRA o
+  // turno (quem gera e envia roda depois da espera da rajada, num `after()`
+  // próprio ou na rede do cron) e nunca lança. ⚠️ Sem o portão antigo de "texto não vazio": áudio, imagem e
+  // documento também abrem turno (E9). O "digitando…" sai do turno, que lê o
+  // `wamid` desta linha pelo `mensagemId`. O canal é o GRAVADO na linha —
+  // nulo se a conexão foi apagada no meio, e aí não há IA.
+  await aoChegarMensagemDoCliente({
+    accountId,
+    conversationId: conversation.id,
+    canalGravado,
+    mensagemId: insertedRows[0].id,
+    tipo: contentType,
+    // O texto e o MIME como ficaram GRAVADOS (a figurinha é `image` com
+    // `image/webp`): a régua do conteúdo (`abreTurno`) é a mesma do turno.
+    texto: contentText,
+    mime: mediaType ?? null,
+    ehGrupo: false,
+    // Toque em botão (resposta de interativa ou de modelo, #478): não abre
+    // turno — é navegação de menu, não pergunta.
+    ehRespostaDeBotao: interactiveReplyId !== null,
+    roboConsumiu: flowConsumed,
+    automacaoFalou,
+  })
 
   // message.received webhook (public API). Awaited — not fire-and-forget
   // — because we're inside the route's `after()` block, which only keeps
@@ -1570,9 +1604,13 @@ async function parseMessageContent(
     }
 
     default:
+      // ⚠️ NOSSO (F2 dos agentes de IA, E9): o rótulo sai da constante que a
+      // régua do agente RECUSA (`abreTurno`). O texto gravado é o mesmo de
+      // sempre; escrito à mão aqui, o cartão de contato (`contacts`) voltaria
+      // a abrir turno — e a descartar o turno da pergunta de verdade (E10).
       return {
         ...empty,
-        contentText: `[Unsupported message type: ${message.type}]`,
+        contentText: `${PREFIXO_DE_TIPO_NAO_SUPORTADO} ${message.type}]`,
       }
   }
 }

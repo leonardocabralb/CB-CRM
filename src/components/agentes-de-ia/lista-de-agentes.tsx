@@ -3,10 +3,10 @@
 // ============================================================
 // Agentes de IA → a LISTA (F1b do docs/PLANO-agentes-de-ia.md, 5.9).
 //
-// Um cartão por agente: nome, descrição, modelo, conexões e se está ligado.
-// ⚠️ Nesta fase NENHUM agente responde cliente: "ligado" só passa a valer na
-// F2, e o cartão diz isso. ⚠️ Lista vazia só vira "nenhum agente" quando a
-// carga RESPONDEU; falha diz que falhou.
+// Um cartão por agente: nome, descrição, modelo, conexões, quantas etapas do
+// funil ele atende (D24 — sem etapa, não responde ninguém) e se está ligado.
+// ⚠️ Lista vazia só vira "nenhum agente" quando a carga RESPONDEU; falha diz
+// que falhou.
 // ============================================================
 
 import { useCallback, useEffect, useState } from 'react';
@@ -109,6 +109,9 @@ export function ListaDeAgentes() {
                 {a.conexoes.length === 0
                   ? t('lista.semConexao')
                   : t('lista.conexoes', { conexoes: a.conexoes.map(nomeDaConexao).join(', ') })}
+              </p>
+              <p className="mt-1 truncate text-[11px] text-muted-foreground">
+                {a.etapas.length === 0 ? t('lista.semEtapa') : t('lista.etapas', { n: a.etapas.length })}
               </p>
             </Link>
           ))}

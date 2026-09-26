@@ -22,6 +22,8 @@ interface Cfg {
   firstStage?: Linha;
   stage?: Linha;
   insertError?: { code?: string; message: string };
+  /** A linha que o INSERT devolve (o `select('*')` de `createDeal`). Padrão: o payload com id. */
+  inserted?: Linha;
 }
 
 function makeDb(cfg: Cfg): {
@@ -75,9 +77,22 @@ function makeDb(cfg: Cfg): {
         }
         return Promise.resolve({ data: null, error: null });
       },
+      // `createDeal` faz `.insert(...).select('*').maybeSingle()`.
       insert: (payload: Record<string, unknown>) => {
         inserts.push(payload);
-        return Promise.resolve({ data: null, error: cfg.insertError ?? null });
+        return {
+          select: () => ({
+            maybeSingle: () =>
+              Promise.resolve(
+                cfg.insertError
+                  ? { data: null, error: cfg.insertError }
+                  : {
+                      data: cfg.inserted !== undefined ? cfg.inserted : { id: 'negocio-novo', ...payload },
+                      error: null,
+                    },
+              ),
+          }),
+        };
       },
     };
     return chain;
@@ -269,7 +284,7 @@ describe('routeContactToPipeline', () => {
       dealSelectError: { message: 'timeout' },
     });
 
-    await expect(routeContactToPipeline({ db, ...BASE })).resolves.toBeUndefined();
+    await expect(routeContactToPipeline({ db, ...BASE })).resolves.toBeNull();
     expect(inserts).toHaveLength(0);
   });
 
@@ -280,13 +295,76 @@ describe('routeContactToPipeline', () => {
       insertError: { code: '23503', message: 'foreign key violation' },
     });
 
-    await expect(routeContactToPipeline({ db, ...BASE })).resolves.toBeUndefined();
+    await expect(routeContactToPipeline({ db, ...BASE })).resolves.toBeNull();
   });
 
   it('erro ao ler o canal não propaga', async () => {
     const { db, inserts } = makeDb({ channelError: { message: 'conexão caiu' } });
 
-    await expect(routeContactToPipeline({ db, ...BASE })).resolves.toBeUndefined();
+    await expect(routeContactToPipeline({ db, ...BASE })).resolves.toBeNull();
     expect(inserts).toHaveLength(0);
+  });
+});
+
+// ------------------------------------------------------------
+// O RETORNO: a etapa em que o card NASCEU (E4 dos agentes de IA). As duas
+// ingestões de cliente o somam ao `automacaoFalou`: a automação de
+// boas-vindas da etapa de entrada fala DEPOIS, no dreno, e o agente de IA
+// não pode ter feito a triagem da mesma mensagem antes dela.
+// ------------------------------------------------------------
+describe('routeContactToPipeline — devolve a etapa do card que CRIOU', () => {
+  it('card novo: a etapa gravada na linha', async () => {
+    const { db } = makeDb({
+      channel: CANAL_CONFIGURADO,
+      account: { owner_user_id: 'dono-da-conta' },
+      stage: { id: 'etapa-lead' },
+    });
+
+    await expect(routeContactToPipeline({ db, ...BASE })).resolves.toBe('etapa-lead');
+  });
+
+  it('conexão sem etapa configurada: a primeira do funil, que `createDeal` escolheu', async () => {
+    const { db } = makeDb({
+      channel: { ...CANAL_CONFIGURADO, default_stage_id: null },
+      account: { owner_user_id: 'dono-da-conta' },
+      firstStage: { id: 'etapa-zero' },
+    });
+
+    await expect(routeContactToPipeline({ db, ...BASE })).resolves.toBe('etapa-zero');
+  });
+
+  it('o INSERT não devolveu a linha: cai na etapa configurada da conexão', async () => {
+    const { db } = makeDb({
+      channel: CANAL_CONFIGURADO,
+      account: { owner_user_id: 'dono-da-conta' },
+      inserted: null,
+    });
+
+    await expect(routeContactToPipeline({ db, ...BASE })).resolves.toBe('etapa-lead');
+  });
+
+  it('contato que JÁ tinha card: null — nada nasceu, nada a contar', async () => {
+    const { db } = makeDb({ channel: CANAL_CONFIGURADO, existingDeal: { id: 'negocio-antigo' } });
+
+    await expect(routeContactToPipeline({ db, ...BASE })).resolves.toBeNull();
+  });
+
+  it('corrida perdida (23505): o card que venceu já existia — null', async () => {
+    const { db, inserts } = makeDb({
+      channel: CANAL_CONFIGURADO,
+      account: { owner_user_id: 'dono-da-conta' },
+      insertError: { code: '23505', message: 'duplicate key value violates unique constraint' },
+    });
+
+    await expect(routeContactToPipeline({ db, ...BASE })).resolves.toBeNull();
+    expect(inserts).toHaveLength(1);
+  });
+
+  it('sem canal, sem contato ou canal sem funil: null', async () => {
+    const semFunil = makeDb({ channel: { default_pipeline_id: null, default_stage_id: null } });
+    await expect(routeContactToPipeline({ db: semFunil.db, ...BASE })).resolves.toBeNull();
+    const qualquer = makeDb({ channel: CANAL_CONFIGURADO });
+    await expect(routeContactToPipeline({ db: qualquer.db, ...BASE, channelId: null })).resolves.toBeNull();
+    await expect(routeContactToPipeline({ db: qualquer.db, ...BASE, contactId: null })).resolves.toBeNull();
   });
 });

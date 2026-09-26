@@ -28,7 +28,8 @@ UPDATE/INSERT/DELETE fora do app, saiba o que ele aciona:
   Kommo cala — e por isso o delta dela não avisa o n8n).
 - **`deals` BEFORE INSERT/UPDATE OF stage_id** (950/1031): etapa com
   `resultado` grava ganho/perdido; perdido que entra em etapa neutra volta
-  `open`.
+  `open`. E (1049) mudar a etapa carimba `etapa_desde`, a D27 dos agentes de
+  IA: calado na carga, o card fica com a data velha.
 - **`set_updated_at`** (BEFORE UPDATE sem lista de colunas, em deals,
   contacts, conversations e outras) sobrescreve `updated_at` com `now()`: data
   antiga só com o gatilho calado.
@@ -39,10 +40,13 @@ UPDATE/INSERT/DELETE fora do app, saiba o que ele aciona:
   dispara a automação `tag_added`: essa sai do código (`tag-events.ts`).
 - **`messages`** AFTER INSERT → `conversations.aguardando_desde` (972, pela
   ORDEM DE INSERÇÃO) e `janela_meta` (993); `gravada_em` nasce `now()`. UPDATE
-  de `deleted_at` recalcula a espera.
+  de `deleted_at` recalcula a espera. Mensagem de GENTE com `gravada_em`
+  pausa a IA da conversa (1049, `ia_pausada_por = 'gente'`).
 - **`conversations`**: encerrar limpa a espera; atribuir (`assigned_agent_id`
   novo, não nulo, por outra pessoa ou por SQL) cria aviso no sino do
-  responsável.
+  responsável. Encerrar — inclusive o lote da 1018/1034 — limpa agente, pausa
+  e retomada da IA e descarta os turnos dela (`cb_ia_turnos`, 1049).
+  Despausar à mão (`ai_autoreply_disabled` → false) religa a IA na conversa.
 - **DELETE em `cb_channels`** solta os pinos, tira a conexão das automações,
   dobra a janela em `sem_carimbo` e anula `messages.channel_id`; agendada que
   aponta para ela BLOQUEIA (FK RESTRICT da 925 — a rota limpa o acervo antes).

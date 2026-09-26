@@ -1,5 +1,5 @@
 import { timingSafeEqual } from 'node:crypto'
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { resumePendingExecution } from '@/lib/automations/engine'
 import type { AutomationContext } from '@/lib/automations/engine'
@@ -12,6 +12,7 @@ import {
   podarLembretesAntigos,
 } from '@/lib/automations/varrer-lembretes'
 import { reentregarEventosDeFunil } from '@/lib/webhooks/reentregar-eventos-de-funil'
+import { rodarRedeDosTurnos } from '@/lib/ia-agentes/rede'
 
 /**
  * Drain due `automation_pending_executions` rows. Meant to be hit
@@ -38,6 +39,18 @@ export async function GET(request: Request) {
   ) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+
+  // ⚠️ A REDE dos turnos do agente de IA (docs/PLANO-agentes-de-ia.md, 5.7):
+  // recolhe o turno órfão e roda o pendente vencido que o disparo imediato
+  // não rodou. O LUGAR segue o precedente do batimento, abaixo: logo depois
+  // da autenticação, ANTES de qualquer `return` — o caminho comum sai
+  // pelo "não havia execução parada", e a rede ali nunca rodaria. É esta rota,
+  // e não uma nova, porque é a única do laço rápido do agendador (rota nova
+  // no laço exigiria `docker stack deploy` à mão na VPS).
+  // Em `after()` com a promessa já começada: roda junto com o resto do ciclo
+  // e não segura a resposta ao `curl` (o `-m` do agendador é o teto real).
+  // Nunca lança.
+  after(rodarRedeDosTurnos())
 
   // Fila de eventos de funil (933) — a REDE DE SEGURANÇA. O caminho normal é
   // o aviso imediato que quem moveu o card dispara; este ciclo pega o que não

@@ -19,8 +19,8 @@ import { sendTypingIndicator } from '@/lib/whatsapp/meta-api'
 //
 // ⚠️ A Meta NÃO manda o "digitando…" sem marcar a mensagem do cliente como
 // LIDA (tique azul): é um campo do recibo de leitura. O operador sabe e
-// decidiu manter (P6, 24/09/2026). Hoje é inerte: a resposta automática está
-// desligada na produção.
+// decidiu manter (P6, 24/09/2026). Quem o chama é o TURNO do agente de IA
+// (`ia-agentes/turno.ts`, F2a); a resposta automática antiga saiu (E2).
 //
 // Melhor esforço: nunca lança, e segura a resposta no máximo
 // `PRAZO_DO_DIGITANDO_MS` (`concluirDigitando`). A falha vai para o log SEM o
@@ -88,7 +88,7 @@ export async function mostrarDigitando(
     return 'enviado'
   } catch (err) {
     const texto = err instanceof Error ? err.message : String(err)
-    console.warn(`[ai auto-reply] "digitando…" não saiu: ${semTokenDaMeta(texto, token)}`)
+    console.warn(`[ia] "digitando…" não saiu: ${semTokenDaMeta(texto, token)}`)
     return 'falhou'
   }
 }
