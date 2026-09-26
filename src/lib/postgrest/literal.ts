@@ -16,6 +16,12 @@
 // PostgREST desfaz antes de entregar o valor ao operador. São duas camadas,
 // nesta ordem: a da regex e a das aspas — a segunda dobra as barras que a
 // primeira pôs.
+//
+// ⚠️ MEDIDO contra o PostgREST real em 25/09/2026 (tela de Contatos, sessão
+// do operador, só leitura), comparando com a contagem literal do banco: os
+// 12 termos bateram, com e sem etiqueta — "silva, jr", "ria, co", "(83)" e
+// "(escri" sem erro (antes 400), "%" 0 e "_" 43 (antes 5.227), "*" 2 (antes
+// 5.227), "l*k*a" 1 (antes 37), `a"b` e `x\y` sem erro.
 // ============================================================
 
 /**
