@@ -18,7 +18,7 @@ vi.mock("@/lib/contacts/dedupe", () => busca);
 const motor = vi.hoisted(() => ({ dispararAutomacoes: vi.fn() }));
 vi.mock("@/lib/automations/engine", () => motor);
 
-const destino = vi.hoisted(() => ({ resolverDestinatario: vi.fn() }));
+const destino = vi.hoisted(() => ({ resolverDestinatario: vi.fn(), conversaDoContato: vi.fn() }));
 vi.mock("@/lib/automations/destinatario", () => destino);
 
 import { comFichaNova, processarAgendamento } from "./processar";
@@ -46,6 +46,8 @@ const AGENDAMENTO: Agendamento = {
 };
 
 let automacoes: unknown[] = [];
+/** A conversa que a ficha JÁ tem (nulo = ficha sem conversa). */
+let conversaExistente: { id: string; channel_id: string | null } | null = null;
 const admin = {
   from(tabela: string) {
     const b: Record<string, unknown> = {
@@ -56,7 +58,7 @@ const admin = {
       eq: () => b,
       order: () => b,
       limit: () => b,
-      maybeSingle: async () => ({ data: null, error: null }),
+      maybeSingle: async () => ({ data: tabela === "conversations" ? conversaExistente : null, error: null }),
       then: (f: (v: unknown) => unknown) =>
         Promise.resolve({ data: tabela === "automations" ? automacoes : [], error: null }).then(f),
     };
@@ -68,8 +70,10 @@ const ESCUTA = [{ trigger_type: "calendly_booking", trigger_config: {}, is_activ
 
 beforeEach(() => {
   automacoes = ESCUTA;
+  conversaExistente = null;
   busca.findExistingContact.mockReset().mockResolvedValue({ contato: null, falhou: false });
   destino.resolverDestinatario.mockReset().mockResolvedValue({ contactId: "novo-1", conversationId: "conv-nova", criouContato: true });
+  destino.conversaDoContato.mockReset().mockResolvedValue("conv-criada");
   motor.dispararAutomacoes.mockReset().mockResolvedValue({ candidatas: 1, foraDoEscopo: 0, executadas: 1, comFalha: 0, emEspera: 0 });
 });
 
@@ -96,10 +100,15 @@ describe("processarAgendamento — telefone que não é de nenhum contato", () =
 
   it("contato que já existe não passa pela criação", async () => {
     busca.findExistingContact.mockResolvedValue({ contato: { id: "c1", phone: "5519980000004" }, falhou: false });
+    conversaExistente = { id: "conv-1", channel_id: "canal-1" };
     const r = await processarAgendamento(admin, "acct-1", AGENDAMENTO);
     expect(destino.resolverDestinatario).not.toHaveBeenCalled();
+    expect(destino.conversaDoContato).not.toHaveBeenCalled();
     expect(r).toMatchObject({ resultado: "disparado", contactId: "c1" });
     expect(r.detalhe).not.toContain("ficha criada");
+    expect(motor.dispararAutomacoes.mock.calls[0][0]).toMatchObject({
+      context: { conversation_id: "conv-1", channel_id: "canal-1" },
+    });
   });
 
   it("⚠️ falha ao criar vira `sem_contato` (reprocessável), não `falhou`", async () => {
@@ -122,6 +131,52 @@ describe("processarAgendamento — telefone que não é de nenhum contato", () =
     expect(r.resultado).toBe("sem_telefone");
     expect(destino.resolverDestinatario).not.toHaveBeenCalled();
   });
+});
+
+// ============================================================
+// A FICHA QUE JÁ EXISTIA SEM CONVERSA (25/09/2026). A integração do
+// formulário passou a criar a ficha pela API minutos antes do agendamento, e
+// ficha criada pela API não tem conversa: os seis avisos daquele dia saíram
+// com o "Link CRM" vazio, e quatro dos clientes ficaram fora da caixa de
+// entrada.
+// ============================================================
+
+describe("processarAgendamento — ficha que já existia sem conversa", () => {
+  beforeEach(() => {
+    busca.findExistingContact.mockResolvedValue({ contato: { id: "c1", phone: "5519980000004" }, falhou: false });
+  });
+
+  it("CRÍTICO: ganha a conversa, e é ela que vai para a automação (o link do aviso)", async () => {
+    const r = await processarAgendamento(admin, "acct-1", AGENDAMENTO);
+
+    expect(destino.conversaDoContato).toHaveBeenCalledWith(admin, "acct-1", "c1");
+    expect(destino.resolverDestinatario).not.toHaveBeenCalled();
+    expect(motor.dispararAutomacoes.mock.calls[0][0]).toMatchObject({
+      contactId: "c1",
+      context: { conversation_id: "conv-criada", channel_id: null },
+    });
+    expect(r).toMatchObject({ resultado: "disparado", contactId: "c1" });
+    expect(r.detalhe).not.toContain("conversa");
+  });
+
+  it("⚠️ criar a conversa FALHA: o aviso ao advogado sai assim mesmo, e o motivo fica no detalhe", async () => {
+    destino.conversaDoContato.mockRejectedValue(new Error("dono da conta não resolvido"));
+    const r = await processarAgendamento(admin, "acct-1", AGENDAMENTO);
+
+    const disparo = motor.dispararAutomacoes.mock.calls[0][0];
+    expect(disparo.contactId).toBe("c1");
+    expect(disparo.context.conversation_id).toBeUndefined();
+    expect(r.resultado).toBe("disparado");
+    expect(r.detalhe).toContain("a conversa do cliente não foi criada (dono da conta não resolvido)");
+  });
+
+  it("sem automação escutando, também não cria conversa", async () => {
+    automacoes = [];
+    const r = await processarAgendamento(admin, "acct-1", AGENDAMENTO);
+    expect(r.resultado).toBe("sem_automacao");
+    expect(destino.conversaDoContato).not.toHaveBeenCalled();
+  });
+
 });
 
 describe("comFichaNova", () => {
