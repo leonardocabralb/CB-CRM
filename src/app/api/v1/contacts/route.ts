@@ -49,12 +49,17 @@ import {
   TagReferenceError,
 } from '@/lib/api/v1/tags-do-contato';
 import { pareceIdDeEtiqueta } from '@/lib/contacts/id-de-etiqueta';
+import { ramoContem } from '@/lib/postgrest/literal';
 
-// PostgREST filter values are comma/paren-delimited; strip anything
-// that could break the `.or()` grammar before interpolating a search
-// term. Leaves the characters a phone or name legitimately contains.
-function sanitizeSearch(raw: string): string {
-  return raw.replace(/[^\p{L}\p{N} +@.\-_]/gu, '').trim();
+// ⚠️ O termo vai INTEIRO e literal ao `.or()` (`ramoContem`: `imatch` com
+// o texto escapado, entre as aspas do PostgREST). A versão anterior APAGAVA
+// o que não fosse letra, dígito, espaço ou `+@.-_` para o `.or()` não
+// quebrar — "O'Brien" buscava "OBrien" e "(83) 9887" buscava "83 9887" —
+// e ainda deixava o `_` chegar ao `ilike` como curinga. Só o caractere de
+// CONTROLE sai: o NUL derruba a consulta no Postgres (22021) e o integrador
+// leria um 500.
+function lerBusca(raw: string): string {
+  return raw.replace(/\p{Cc}/gu, '').trim();
 }
 
 export async function GET(request: Request) {
@@ -62,7 +67,7 @@ export async function GET(request: Request) {
     const ctx = await requireApiKey(request, 'contacts:read');
     const { limit, cursor } = parseListParams(request);
     const url = new URL(request.url);
-    const search = sanitizeSearch(url.searchParams.get('search') ?? '');
+    const search = lerBusca(url.searchParams.get('search') ?? '');
     const tag = url.searchParams.get('tag')?.trim() || null;
     // ⚠️ O filtro é por ID. Sem esta conferência, um nome (`?tag=Typebot`)
     // chegava cru ao `.eq('tag_filter.tag_id', …)` e o Postgres recusava o
@@ -92,7 +97,7 @@ export async function GET(request: Request) {
       .eq('account_id', ctx.accountId);
 
     if (search) {
-      query = query.or(`name.ilike.*${search}*,phone.ilike.*${search}*`);
+      query = query.or(`${ramoContem('name', search)},${ramoContem('phone', search)}`);
     }
 
     if (tag) {

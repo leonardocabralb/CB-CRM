@@ -314,9 +314,14 @@ async function createMetaChannel(
   const { label, isDefault, phoneNumberId, wabaId, accessToken, verifyToken, pin } =
     args;
 
-  if (!accessToken || !phoneNumberId) {
+  // ⚠️ O WABA ID é obrigatório (revisão do PR #285): é a WABA que se assina
+  // ao app (`subscribed_apps`), e sem a assinatura a Meta não entrega as
+  // mensagens recebidas. Opcional, a conexão nascia "conectada" e muda — o
+  // cliente escrevia e nada chegava, sem erro nenhum na tela. Ele fica na
+  // mesma página da Meta que o Phone Number ID (WhatsApp → API Setup).
+  if (!accessToken || !phoneNumberId || !wabaId) {
     return NextResponse.json(
-      { error: 'Access Token e Phone Number ID são obrigatórios.' },
+      { error: 'Access Token, Phone Number ID e WABA ID são obrigatórios.' },
       { status: 400 },
     );
   }
@@ -332,7 +337,7 @@ async function createMetaChannel(
   if (!isNumericMetaId(phoneNumberId)) {
     return respostaDaFalha(falhaDeIdNaoNumerico('phone_number_id'));
   }
-  if (wabaId && !isNumericMetaId(wabaId)) {
+  if (!isNumericMetaId(wabaId)) {
     return respostaDaFalha(falhaDeIdNaoNumerico('waba_id'));
   }
 

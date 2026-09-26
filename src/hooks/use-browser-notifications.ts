@@ -22,6 +22,7 @@ import {
   esperaAtribuicao,
   lerPreferencia,
   silencioDoAviso,
+  trocaDeDonoSolta,
   type ConversaDoAviso,
   type PreferenciaDeAviso,
 } from "@/lib/notifications/aviso-no-navegador";
@@ -299,6 +300,31 @@ export function useBrowserNotifications(): void {
       }
     };
 
+    // A troca de responsável que pode soltar a mensagem estacionada: a
+    // conversa passou a ser desta pessoa, ou ficou SEM responsável (quem pediu
+    // "minhas e sem responsável") e não foi ENCERRADA — encerrar também zera o
+    // responsável (ver `trocaDeDonoSolta`). A estacionada é decidida DE NOVO,
+    // lendo a conversa como está agora.
+    const aoTrocarDono = (payload: { new: unknown }) => {
+      const nova = payload.new as {
+        id?: string;
+        assigned_agent_id?: string | null;
+        status?: string | null;
+      };
+      const id = nova.id;
+      if (!id) return;
+      const dono = nova.assigned_agent_id ?? null;
+      if (!trocaDeDonoSolta(dono, userId, vivoRef.current.preferencia.quais, nova.status)) return;
+      const agora = Date.now();
+      atribuidasAgora.set(id, agora);
+      const parada = estacionadas.get(id);
+      if (!parada) return;
+      estacionadas.delete(id);
+      if (Date.now() > parada.ate) return;
+      if (getNotificationPermission() !== "granted") return;
+      void avisar(parada.msg, false, parada.ordem);
+    };
+
     const canal = supabase
       .channel("browser-notifications")
       .on(
@@ -329,20 +355,23 @@ export function useBrowserNotifications(): void {
           table: "conversations",
           filter: `assigned_agent_id=eq.${userId}`,
         },
-        (payload) => {
-          // A conversa foi atribuída a esta pessoa: a mensagem estacionada
-          // dela é decidida DE NOVO, lendo a conversa como está agora.
-          const id = (payload.new as { id?: string }).id;
-          if (!id) return;
-          const agora = Date.now();
-          atribuidasAgora.set(id, agora);
-          const parada = estacionadas.get(id);
-          if (!parada) return;
-          estacionadas.delete(id);
-          if (Date.now() > parada.ate) return;
-          if (getNotificationPermission() !== "granted") return;
-          void avisar(parada.msg, false, parada.ordem);
+        aoTrocarDono,
+      )
+      // ⚠️ `is.null` (revisão do PR #289): o filtro de cima só vê a conversa
+      // que passou a ser DESTA pessoa. Medido em 25/09/2026 que o Realtime do
+      // projeto aceita o operador ("Subscribed to PostgreSQL"; um operador
+      // inválido responde "Error parsing `filter` params" e derruba o
+      // postgres_changes do canal inteiro). Recebe todo UPDATE de conversa sem
+      // responsável; `aoTrocarDono` ignora o que não está estacionado.
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "conversations",
+          filter: "assigned_agent_id=is.null",
         },
+        aoTrocarDono,
       )
       .subscribe();
 

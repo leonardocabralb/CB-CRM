@@ -23,7 +23,10 @@ vi.mock('./context', () => ({ buildConversationContext: h.buildConversationConte
 vi.mock('./knowledge', () => ({ retrieveKnowledge: h.retrieveKnowledge }))
 vi.mock('./generate', () => ({ generateReply: h.generateReply }))
 vi.mock('@/lib/flows/meta-send', () => ({ engineSendText: h.engineSendText }))
-vi.mock('./digitando', () => ({ mostrarDigitando: h.mostrarDigitando }))
+vi.mock('./digitando', async (original) => ({
+  ...(await original<typeof import('./digitando')>()),
+  mostrarDigitando: h.mostrarDigitando,
+}))
 vi.mock('./admin-client', () => ({
   supabaseAdmin: () => ({
     from: (table: string) => {
@@ -59,6 +62,7 @@ vi.mock('./admin-client', () => ({
   }),
 }))
 
+import { PRAZO_DO_DIGITANDO_MS } from './digitando'
 import { dispatchInboundToAiReply } from './auto-reply'
 
 const ARGS = {
@@ -235,6 +239,7 @@ describe('dispatchInboundToAiReply — "digitando…" (#527, Fase 9)', () => {
       conversationId: 'conv-1',
       channelId: null,
       inboundMessageId: 'wamid.X',
+      sinal: expect.any(AbortSignal),
     })
     expect(ordem).toEqual(['digitando', 'gerar'])
   })
@@ -253,5 +258,52 @@ describe('dispatchInboundToAiReply — "digitando…" (#527, Fase 9)', () => {
     h.mostrarDigitando.mockResolvedValueOnce('falhou')
     await dispatchInboundToAiReply({ ...ARGS, inboundMessageId: 'wamid.X' })
     expect(h.engineSendText).toHaveBeenCalledTimes(1)
+  })
+
+  it('⚠️ a resposta ESPERA o "digitando…" terminar: ele nunca chega depois dela (revisão do PR #288)', async () => {
+    const ordem: string[] = []
+    let soltar: () => void = () => {}
+    h.mostrarDigitando.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          soltar = () => {
+            ordem.push('digitando terminou')
+            resolve('enviado')
+          }
+        }),
+    )
+    h.engineSendText.mockImplementation(async () => {
+      ordem.push('resposta saiu')
+      return { whatsapp_message_id: 'm1' }
+    })
+
+    const fim = dispatchInboundToAiReply({ ...ARGS, inboundMessageId: 'wamid.X' })
+    for (let i = 0; i < 20; i++) await Promise.resolve()
+    expect(h.engineSendText).not.toHaveBeenCalled()
+
+    soltar()
+    await fim
+    expect(ordem).toEqual(['digitando terminou', 'resposta saiu'])
+  })
+
+  it('"digitando…" que não termina: a resposta sai no prazo, e o pedido é CANCELADO', async () => {
+    vi.useFakeTimers()
+    try {
+      let sinal: AbortSignal | undefined
+      h.mostrarDigitando.mockImplementation((_db: unknown, a: { sinal?: AbortSignal }) => {
+        sinal = a.sinal
+        return new Promise(() => {})
+      })
+
+      const fim = dispatchInboundToAiReply({ ...ARGS, inboundMessageId: 'wamid.X' })
+      await vi.advanceTimersByTimeAsync(PRAZO_DO_DIGITANDO_MS)
+      await fim
+
+      expect(h.engineSendText).toHaveBeenCalledTimes(1)
+      expect(sinal?.aborted).toBe(true)
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
