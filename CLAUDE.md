@@ -487,6 +487,7 @@ O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
 - Celular: no toque o Enter pula linha; o app instalado abre em `/inbox`.
 - "Sair" do menu sai só deste aparelho; 4 h inativo reabre o Meu dia, sem
   senha.
+- Celular do membro: EXIGIDO ao abrir o CRM, não só no login (26/09/2026).
 
 ## 13. Índice das áreas
 

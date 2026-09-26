@@ -10,12 +10,12 @@ tentou ligar, para alguém ver e retornar?"
 | Fase | O quê | Estado |
 | --- | --- | --- |
 | 0 | Estudo de viabilidade (medido em produção) | ✅ 25/09/2026 |
-| 1 | Back-end: assinar `CALL`, `cb_ligacoes`, desfecho, bolha, efeitos | ✅ código e testes (PR em rascunho) |
-| 2 | Tela: faixa no fio, prévia na lista e no card, textos | ✅ código e testes (mesmo PR) |
-| 3 | Aplicar a 1044 → teste ponta a ponta no preview → merge → deploy | ⏳ em andamento (autorizada em 26/09/2026) |
-| 4 | "Ressincronizar" o Bancário - Comercial → ligações de teste do operador → conferir | ⏳ depois do deploy |
-| 5 | "Ressincronizar" as outras conexões por QR Code | ⏳ depois da 4 |
-| 6 | Pesquisa: atender e ligar pelo sistema (Wavoip) | ⏳ pedida para o fim |
+| 1 | Back-end: assinar `CALL`, `cb_ligacoes`, desfecho, bolha, efeitos | ✅ no ar (PR #300) |
+| 2 | Tela: faixa no fio, prévia na lista e no card, textos | ✅ no ar (PR #300) |
+| 3 | Aplicar a 1044 → teste ponta a ponta no preview → merge → deploy | ✅ 26/09/2026 (PR #300) |
+| 4 | "Ressincronizar" o Bancário - Comercial → ligações de teste do operador → conferir | ✅ 26/09/2026 — achado de ordem corrigido no PR #304 (no ar) |
+| 5 | "Ressincronizar" as outras conexões por QR Code | ✅ 26/09/2026 |
+| 6 | Pesquisa: atender e ligar pelo sistema (Wavoip) | ✅ 25/09/2026 — resumo na seção 8; sem decisão de seguir |
 
 ## 1. O que foi medido (Fase 0, 25/09/2026, só leitura)
 
@@ -54,7 +54,7 @@ tentou ligar, para alguém ver e retornar?"
 | D1 | Número que nunca escreveu: a ligação cria ficha, conversa e card no funil | operador, 25/09 |
 | D2 | Ligação atendida no celular também aparece no fio | operador, 25/09 |
 | D3 | Retorno feito pelo celular não apaga o "em atraso" (o CRM não o vê); é aceitável | operador, 25/09 |
-| D4 | A ligação (perdida ou atendida) cancela as esperas "parar se o cliente responder" do contato: o cliente procurou o escritório | implementação — **confirmar** |
+| D4 | A ligação (perdida ou atendida) NÃO para as sequências "parar se o cliente responder": só mensagem escrita é resposta. A retomada da espera (`clienteRespondeuDesde`) também ignora a ligação | operador, 26/09 (revê a implementação do PR #300, que parava) |
 | D5 | Robô, automações, IA e o webhook de saída `message.received` NÃO reagem à ligação (não há texto a responder). ⚠️ O CARD que a ligação abre (D1) segue o caminho de todo card novo: as automações da etapa de entrada e o `deal.created` ao n8n rodam, como na primeira mensagem de um lead. Medido em 26/09/2026: nenhuma automação ativa age nas etapas de entrada das conexões por QR Code; o n8n assina `deal.created` | implementação |
 | D6 | Chamada de grupo é ignorada; ligação de um número do próprio escritório também | implementação |
 | D7 | Quem ligou sem telefone resolvível (LID fora do acervo e sem `callerPn` válido) fica registrado em `cb_ligacoes` como `sem_telefone`, sem aparecer na tela | implementação — v1 |
@@ -84,11 +84,15 @@ tentou ligar, para alguém ver e retornar?"
    grava. Depois: ficha e conversa por `resolverDestinatario` (dono durável da
    conta), a bolha (`content_type = 'call'`, `message_id = 'call:<id>'`,
    detalhes em `messages.ligacao`), reabre a encerrada, sobe a conversa, segue o
-   canal, cancela as esperas e abre o card.
+   canal e abre o card (as esperas "parar se o cliente responder" NÃO param — D4).
    - **perdida**: `sender_type = 'customer'` → não lida (+1, pela RPC atômica
      `bump_conversation_on_inbound`) e o gatilho da 972 acende "em atraso".
    - **atendida**: `sender_type = 'agent'` + `from_device` → sem não lida, e o
      gatilho da 972 apaga "em atraso" (é resposta de gente).
+   - `created_at` é a hora REAL (o fim, ou o `accept`), e não a da decisão.
+     Se já há mensagem depois dela, a bolha é HISTÓRIA: não reabre nem sobe a
+     conversa, e `cb_assentar_mensagem_historica` (1011) acerta a espera e a
+     não lida (achado da Fase 4, abaixo).
 6. Na tela: faixa no meio da conversa ("Ligação de voz perdida · 12:49 · tocou
    40 s"), sem ações; na lista e no card do funil, "📞 Ligação" no lugar do
    marcador `[call]` que o banco guarda.
@@ -182,6 +186,23 @@ tentou ligar, para alguém ver e retornar?"
   (a espera passa da graça do SIGTERM), nem a perdida sem bolha de um
   processo morto no meio. Recolher isso (varredura no cron, contagem no Meu
   dia) fica para depois, se o registro mostrar que acontece.
+- **A escolha "última ou história" não é atômica** (Codex, PR #304): a
+  pergunta "há mensagem depois?" roda antes do insert e de novo logo depois da
+  reabertura, mas uma resposta gravada entre a 2ª pergunta e a escrita na
+  conversa (milissegundos) deixa a perdida somar +1 de não lida e pôr
+  "📞 Ligação" na prévia por cima da resposta. O "em atraso" não é afetado (o
+  gatilho da 972 limpa com a resposta). Fechar pede gravar a bolha DENTRO de
+  uma função no banco, com a conversa travada — migration nova; é a mesma
+  janela que a 1010 aceitou por escrito.
+- **Empate no mesmo SEGUNDO** (o carimbo da ligação e o das mensagens da
+  Evolution têm resolução de segundo): o CRM trata a mensagem do mesmo
+  segundo como "depois" (a ligação vira história, sem subir a conversa nem
+  somar não lida), mas `cb_assentar_mensagem_historica` compara com `>`
+  estrito e pode deixar o "em atraso" aceso sobre uma resposta dada no MESMO
+  segundo em que a ligação terminou. Improvável; fechar pede migration.
+- **Ligação feita pelo escritório não aparece** (medido ao vivo em
+  26/09/2026: o WhatsApp não avisa os aparelhos conectados). Decisão do
+  operador: fica assim.
 - **Resposta por TEXTO nos ~11 s entre o fim do toque e a decisão**: a bolha
   perdida, gravada depois, acende "em atraso" sobre cliente já respondido
   (a 972 decide pela ordem de inserção). Janela pequena, aceita.
@@ -211,6 +232,34 @@ tentou ligar, para alguém ver e retornar?"
   corpo (o ouvinte JÁ está montado); regras e docs que contradiziam os pinos;
   pinos dos filtros do Painel, do Meu dia e do Radar. Registrados como
   limite: os itens da seção 6.
+- **Fase 5** (26/09/2026): com o PR #304 no ar (a bolha na hora real; a
+  ligação não para as sequências), "Ressincronizar" no Bancário - Jurídico,
+  no Trabalhista - Comercial e no Trabalhista - Jurídico, uma de cada vez,
+  conferindo a conexão de cada pedido. As quatro conexões por QR Code recebem
+  o `CALL`.
+- **Fase 4** (26/09/2026): PR #300 mesclado e no ar; "Ressincronizar" só no
+  Bancário - Comercial. O operador ligou do celular dele (lead de teste): 4
+  ligações chegaram e foram registradas certo — tocou 60 s e caiu (perdida,
+  `terminate`), 9 s e recusada (perdida, `reject`), atendida em 5 s, e vídeo
+  de 13 s (perdida). As 4 vieram por LID, resolvidas pelo acervo.
+  ⚠️ **O `callerPn` do celular de 12 dígitos (DDD 83) chegou CERTO**
+  (`558388745316@s.whatsapp.net`, sem o zero a mais): o defeito da issue
+  #2154 não atinge celular. A régua que recusa 13 dígitos terminados em 0 com
+  DDD 31+ ficou (não custa nada a quem o WhatsApp manda certo).
+  ⚠️ **Achado:** a recusada (fim 10:21:54) foi gravada DEPOIS da atendida
+  seguinte (10:22:03) — a perdida espera a folga, a atendida não —, e o fio
+  mostrava a ordem trocada, com o "em atraso" aceso sobre um cliente atendido.
+  Corrigido no PR seguinte: a bolha entra na hora real e, se não for a
+  última, como história.
+  Segunda rodada, com captura AO VIVO do log da Evolution: o "desligar em
+  5 s" chegou (offer → sinalização → terminate) e foi registrado; ele veio com
+  o LID COM o `:aparelho` (`…:4@lid`) — o caso que a revisão apontou, já
+  resolvido por `lidSemAparelho`. ⚠️⚠️ **A ligação FEITA pelo escritório (do
+  celular da conexão para o cliente) não gera NADA na Evolution**: nenhum
+  aviso `CALL`, nenhuma mensagem — o WhatsApp não avisa os aparelhos
+  conectados de uma chamada feita pelo celular principal. Marcar no fio as
+  ligações que o escritório faz exigiria outro caminho (registro manual na
+  conversa, ou ligar pelo próprio CRM); decisão do operador: fica como está.
 - **Fase 3** (26/09/2026): 1044 aplicada (histórico `20260926112303`) e
   conferida no catálogo. Ponta a ponta no preview, com avisos sintéticos no
   webhook LOCAL da Evolution e só o lead de teste: perdida com o telefone
@@ -223,3 +272,32 @@ tentou ligar, para alguém ver e retornar?"
   com a conversa aberta (a faixa e a linha da lista mudaram sem recarregar).
   Nenhuma automação, robô, aviso, trilha nem card mexido. Limpo no fim, com a
   conversa devolvida ao retrato (menos `updated_at`).
+
+## 8. Pesquisa: atender e ligar pelo sistema (Wavoip, 25/09/2026)
+
+Pedida pelo operador para o fim do trabalho. Resumo do que foi levantado
+(fontes públicas da Wavoip, da Evolution e da Baileys); nada foi contratado nem
+testado.
+
+- **O que é:** empresa brasileira que vende ligação de voz pelo WhatsApp. A
+  Evolution tem o campo `wavoipToken`: com ele, a instância abre um socket
+  para os servidores da Wavoip, e o atendente atende e liga por um telefone no
+  navegador (webphone embutível, ou SDK). O celular continua tocando; quem
+  atende primeiro fica com a chamada.
+- ⚠️ **Compatibilidade:** a ponte dentro da Evolution é antiga (última
+  mudança para a Baileys rc5), e a ponte atual da Wavoip exige a rc13 com um
+  ajuste que a Evolution não aplica. O provável, na nossa versão, é tocar sem
+  áudio; não há relato público de uso na 2.4.
+- ⚠️ **Confiança:** o servidor da Wavoip passa a poder comandar a sessão do
+  WhatsApp da conexão. O áudio e as gravações passam por eles e ficam guardados
+  por tempo indeterminado, salvo se desligadas.
+- ⚠️ **Privacidade:** a política publicada fala em compartilhar dados com
+  terceiros (OpenAI e Asaas), não diz em que país os dados ficam e não oferece
+  contrato de tratamento de dados.
+- **Banimento:** ligar para quem nunca conversou com o número aumenta o risco.
+- **Preço:** não publicado; planos por chamadas simultâneas; teste grátis.
+- **Alternativa oficial:** a API de ligações da Meta, só para o número oficial
+  (receber é gratuito).
+- **Se for seguir:** teste grátis com um número de TESTE, antes de qualquer
+  contrato; pedir por escrito preço, país dos dados, prazo de guarda e
+  contrato de tratamento de dados.
