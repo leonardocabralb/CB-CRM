@@ -63,7 +63,10 @@ let visto = {
   trechos: [] as Array<{ id: string; documentoId: string; content: string }>,
   retrato: { blocos: [] as Array<{ bloco: string; texto: string }>, documentos: [] as string[] },
 }
-vi.mock('@/lib/ia-agentes/acesso', () => ({ lerOQueOAgenteVe: vi.fn(async () => visto) }))
+vi.mock('@/lib/ia-agentes/acesso', async (original) => ({
+  ...(await original<typeof import('@/lib/ia-agentes/acesso')>()),
+  lerOQueOAgenteVe: vi.fn(async () => visto),
+}))
 
 let resposta = { text: 'Olá!', handoff: false }
 vi.mock('@/lib/ai/generate', () => ({
@@ -161,7 +164,10 @@ describe('POST /api/cb/ia/agentes/[id]/playground — o que o agente vê (F3)', 
   it('sem contato: a base do agente entra, os blocos não (a leitura recebe contato nulo)', async () => {
     visto = {
       blocos: [],
-      trechos: [{ id: 't1', documentoId: 'doc-1', content: 'Horário: 9h às 18h.' }],
+      trechos: [
+        { id: 't1', documentoId: 'doc-1', content: 'Horário: 9h às 18h.' },
+        { id: 't2', documentoId: 'doc-1', content: 'Sábado: fechado.' },
+      ],
       retrato: { blocos: [], documentos: ['doc-1'] },
     }
     const corpo = await (await enviar()).json()
@@ -170,7 +176,8 @@ describe('POST /api/cb/ia/agentes/[id]/playground — o que o agente vê (F3)', 
     // A consulta à base é a última mensagem do cliente SEM o rótulo da mídia.
     expect(args.consulta).toBe('quero pagar o boleto')
     expect(vi.mocked(generateReply).mock.calls[0][0].systemPrompt).toContain('[1] Horário: 9h às 18h.')
-    expect(corpo.vistos).toEqual({ blocos: [], documentos: 1 })
+    // São os TRECHOS (2), não os documentos (1) — a tela diz "N trechos da base".
+    expect(corpo.vistos).toEqual({ blocos: [], trechos: 2 })
   })
 
   it('com contato da conta: os blocos dele vão ao modelo e voltam em `vistos`', async () => {
@@ -185,7 +192,20 @@ describe('POST /api/cb/ia/agentes/[id]/playground — o que o agente vê (F3)', 
     const pedido = vi.mocked(generateReply).mock.calls[0][0].systemPrompt as string
     expect(pedido).toContain('What you know about this customer')
     expect(pedido).toContain('installment 3/12')
-    expect(corpo.vistos).toEqual({ blocos: ['cobrancas'], documentos: 0 })
+    expect(corpo.vistos).toEqual({ blocos: ['cobrancas'], trechos: 0 })
+  })
+
+  it('bloco que saiu "indisponível" NÃO aparece como visto', async () => {
+    visto = {
+      blocos: [
+        { bloco: 'ficha', texto: 'Customer record:\n- Name: Ana' },
+        { bloco: 'cobrancas', texto: 'Billing (Asaas): unavailable right now.' },
+      ],
+      trechos: [],
+      retrato: { blocos: [], documentos: [] },
+    }
+    const corpo = await (await enviar({ contactId: CONTATO })).json()
+    expect(corpo.vistos).toEqual({ blocos: ['ficha'], trechos: 0 })
   })
 
   it('contato de OUTRA conta (ou que não existe): 404 contato_nao_encontrado, sem gerar', async () => {

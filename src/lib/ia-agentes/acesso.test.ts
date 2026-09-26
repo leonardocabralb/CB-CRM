@@ -166,10 +166,22 @@ describe('montarBlocos', () => {
 
   it('cobranças: as DEVIDAS, com vencimento, valor com juros, dias e o total', () => {
     const t = texto({ cobrancas: { ok: true, valor: cobrancas() } }, TUDO)
-    expect(t).toContain('Billing (Asaas) — overdue installments:')
+    expect(t).toMatch(/^Billing \(Asaas\) — overdue installments \(total R\$\s512,50\):/)
     expect(t).toMatch(/- installment 3\/12 — due 2026-09-16 — R\$\s512,50, 10 days overdue/)
-    expect(t).toMatch(/Total overdue: R\$\s512,50/)
     expect(t).not.toContain('outdated')
+  })
+
+  it('⚠️ cobranças: as RESSALVAS e o total vêm ANTES das parcelas — o teto corta pelo fim', () => {
+    const c = cobrancas({ fresca: false })
+    if (!c.conectado) throw new Error('fixture')
+    const muitas = Array.from({ length: 40 }, (_, i) => parcela({ id: `p${i}`, parcela_numero: i + 1, parcela_total: 40 }))
+    c.resumo = { ...c.resumo, vencidas: muitas, emConferencia: [parcela({ id: 'x' })] }
+    const t = texto({ cobrancas: { ok: true, valor: c } }, TUDO)
+    const linhas = t.split('\n')
+    expect(linhas[0]).toMatch(/overdue installments \(total /)
+    expect(linhas[1]).toBe('Data as of 26 September 2026, may be outdated.')
+    expect(linhas[2]).toContain('being re-checked and may already be paid')
+    expect(t.length).toBeLessThanOrEqual(1600)
   })
 
   it('cobranças: leitura VELHA diz a data e que pode estar desatualizada', () => {

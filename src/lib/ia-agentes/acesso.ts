@@ -219,26 +219,34 @@ function textoDasCobrancas(c: CobrancasLidas, agora: Date, fuso: string): string
     return `${TITULO.cobrancas}: no billing record is linked to this customer.${nota}`
   }
   const { vencidas, emConferencia } = c.resumo
+  // ⚠️ As RESSALVAS vêm primeiro: o teto do bloco corta pelo FIM, e com ~20
+  // parcelas a nota de dado velho, o aviso das parcelas em conferência e o
+  // total sumiam — o modelo veria a dívida sem saber que ela pode estar
+  // velha ou já paga (revisão da F3).
+  const ressalvas: string[] = []
+  if (!c.fresca) ressalvas.push(`Data as of ${atualizado}, may be outdated.`)
+  if (emConferencia.length > 0) {
+    ressalvas.push(
+      `${emConferencia.length} other ${emConferencia.length === 1 ? 'installment is' : 'installments are'} being re-checked ` +
+        'and may already be paid — do not treat them as owed.',
+    )
+  }
   const linhas: string[] = []
   if (vencidas.length === 0) {
-    linhas.push(`${TITULO.cobrancas}: no overdue installments.`)
+    linhas.push(`${TITULO.cobrancas}: no overdue installments.`, ...ressalvas)
   } else {
-    linhas.push(`${TITULO.cobrancas} — overdue installments:`)
+    linhas.push(
+      `${TITULO.cobrancas} — overdue installments (total ${dinheiro(c.resumo.totalAtualizado)}):`,
+      ...ressalvas,
+    )
     for (const p of vencidas) {
       const dias = diasDeAtraso(p.vencimento, agora, fuso)
       const atraso = dias !== null && dias > 0 ? `, ${dias} ${dias === 1 ? 'day' : 'days'} overdue` : ''
       const negativada = classificar(p.status, p.deleted) === 'negativada' ? ' — sent to the credit bureau' : ''
       linhas.push(`- ${rotuloDaParcela(p)} — due ${p.vencimento} — ${dinheiro(valorAtualizado(p))}${atraso}${negativada}`)
     }
-    linhas.push(`Total overdue: ${dinheiro(c.resumo.totalAtualizado)}`)
   }
-  if (emConferencia.length > 0) {
-    linhas.push(
-      `${emConferencia.length} other ${emConferencia.length === 1 ? 'installment is' : 'installments are'} being re-checked ` +
-        'and may already be paid — do not treat them as owed.',
-    )
-  }
-  return linhas.join('\n') + nota
+  return linhas.join('\n')
 }
 
 function textoDaReuniao(r: ReuniaoLida | null, fuso: string): string {
@@ -268,6 +276,11 @@ export function montarBlocos(
     if (texto !== null) blocos.push({ bloco, texto: limitarBloco(texto) })
   }
   return blocos
+}
+
+/** O bloco saiu como "indisponível" (a leitura falhou ou não há resposta): o Playground não diz que o agente o viu. */
+export function blocoIndisponivel(b: Pick<BlocoVisto, 'texto'>): boolean {
+  return b.texto.endsWith(INDISPONIVEL)
 }
 
 function textoDoBloco(bloco: BlocoDoAcesso, dados: DadosDoAcesso, agora: Date, fuso: string): string | null {

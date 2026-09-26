@@ -24,6 +24,9 @@ import { embedTexts, toVectorLiteral } from '@/lib/ai/embeddings'
 import { latestUserMessage } from '@/lib/ai/query'
 import type { ChatMessage } from '@/lib/ai/types'
 
+/** Quanto a busca por sentido pode esperar pelo embedding da pergunta. */
+export const PRAZO_DO_EMBEDDING_MS = 8_000
+
 /** Um trecho recuperado, com o documento de onde veio (é o que o retrato do turno guarda). */
 export interface TrechoDaBase {
   id: string
@@ -97,7 +100,16 @@ export async function retrieveKnowledgeDoAgente(
 
   if (chave) {
     try {
-      const [vetor] = await embedTexts(chave, [query])
+      // ⚠️ Com TETO: o `embedTexts` espera até 30 s, e o turno tem 45 s para
+      // tudo — uma OpenAI lenta faria a base (melhor esforço) tirar a resposta
+      // do cliente (revisão da F3). Passado o teto, segue só por palavras.
+      let desistir: ReturnType<typeof setTimeout> | undefined
+      const vetor = await Promise.race([
+        embedTexts(chave, [query]).then((r) => r[0] ?? null),
+        new Promise<null>((resolver) => {
+          desistir = setTimeout(() => resolver(null), PRAZO_DO_EMBEDDING_MS)
+        }),
+      ]).finally(() => clearTimeout(desistir))
       if (vetor) {
         const { data, error } = await db.rpc('cb_ia_buscar_conhecimento_semantico', {
           p_account_id: accountId,

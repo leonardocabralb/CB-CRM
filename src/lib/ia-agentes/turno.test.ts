@@ -926,6 +926,9 @@ describe('executarTurno — horário, teto e limite', () => {
     expect(turno().status).toBe('sem_resposta')
     expect(generateReply).not.toHaveBeenCalled()
     expect(conversa().ai_autoreply_disabled).toBe(false)
+    // O turno barrado não lê o que o agente vê nem a base (F3), nem grava retrato.
+    expect(banco.chamadas.some((c) => c.tabela === 'cb_ia_agente_documentos')).toBe(false)
+    expect(turno().contexto ?? null).toBeNull()
   })
 })
 

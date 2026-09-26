@@ -7,7 +7,7 @@ import { generateReply } from '@/lib/ai/generate'
 import { logAiUsage } from '@/lib/ai/usage'
 import { AiError, mensagemSeguraDeAiError, type ChatMessage } from '@/lib/ai/types'
 import { lerChave, lerEstado } from '@/lib/ia-chaves/repo'
-import { lerOQueOAgenteVe } from '@/lib/ia-agentes/acesso'
+import { blocoIndisponivel, lerOQueOAgenteVe } from '@/lib/ia-agentes/acesso'
 import { consultaDaUltimaMensagem } from '@/lib/ia-agentes/conhecimento'
 import { obterAgente } from '@/lib/ia-agentes/repo'
 import { lerPassagem, montarPedidoDoAgente } from '@/lib/ia-agentes/pedido'
@@ -33,7 +33,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
  * F3: com `contactId` (um contato DESTA conta; fora dela, 404
  * `contato_nao_encontrado`), os blocos de acesso são os daquele contato — o
  * negócio é o card ABERTO mais recente dele. A base do agente entra sempre.
- * A resposta diz o que o agente viu: `vistos: { blocos, documentos }`.
+ * A resposta diz o que o agente viu: `vistos: { blocos, trechos }` — os
+ * TRECHOS da base, não os documentos (5 trechos de 1 documento são 5).
  */
 export async function POST(request: Request, { params }: Contexto) {
   try {
@@ -178,7 +179,11 @@ export async function POST(request: Request, { params }: Contexto) {
       handoff: resultado.handoff || (n !== null && !destino),
       passaPara: destino?.nome ?? null,
       usage: resultado.usage,
-      vistos: { blocos: visto.blocos.map((b) => b.bloco), documentos: visto.retrato.documentos.length },
+      // Bloco que saiu "indisponível" não foi VISTO (revisão da F3).
+      vistos: {
+        blocos: visto.blocos.filter((b) => !blocoIndisponivel(b)).map((b) => b.bloco),
+        trechos: visto.trechos.length,
+      },
     })
   } catch (err) {
     if (err instanceof AiError) {

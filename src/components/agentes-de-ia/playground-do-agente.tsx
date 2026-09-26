@@ -27,15 +27,16 @@ import { rotuloDoBloco, textoDoCodigo } from './textos';
 /** O que o agente viu para gerar a resposta (`vistos` da rota). */
 interface Vistos {
   blocos: string[];
-  documentos: number;
+  /** Os TRECHOS da base que entraram no pedido (não os documentos). */
+  trechos: number;
 }
 
 /** Parse, nunca `as`: resposta estranha vira "não se sabe" (nada é mostrado). */
 function lerVistos(v: unknown): Vistos | undefined {
   if (!v || typeof v !== 'object') return undefined;
-  const { blocos, documentos } = v as { blocos?: unknown; documentos?: unknown };
-  if (!Array.isArray(blocos) || typeof documentos !== 'number') return undefined;
-  return { blocos: blocos.filter((b): b is string => typeof b === 'string'), documentos };
+  const { blocos, trechos } = v as { blocos?: unknown; trechos?: unknown };
+  if (!Array.isArray(blocos) || typeof trechos !== 'number') return undefined;
+  return { blocos: blocos.filter((b): b is string => typeof b === 'string'), trechos };
 }
 
 interface Turno {
@@ -229,7 +230,7 @@ export function PlaygroundDoAgente({
                     <span>
                       {t('playground.viu', {
                         itens: [t('playground.conversa'), ...x.vistos.blocos.map((b) => rotuloDoBloco(t, b))].join(', '),
-                        trechos: t('playground.trechos', { n: x.vistos.documentos }),
+                        trechos: t('playground.trechos', { n: x.vistos.trechos }),
                       })}
                     </span>
                   </p>

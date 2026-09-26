@@ -32,8 +32,9 @@
 --
 -- ⚠️ ORDEM: aplicar ANTES do deploy da F3. Sem a tabela e as funções, a base
 -- do agente fica vazia (a busca é melhor esforço) e o retrato não é gravado
--- (escrita separada, melhor esforço) — nada quebra, mas a tela de documentos
--- do agente responde 500. Aditiva. Idempotente. `anon` sem nada.
+-- (escrita separada, melhor esforço), mas a tela de documentos do agente E a
+-- sub-aba Turnos (que pede `contexto`) respondem 500. Aditiva. Idempotente.
+-- `anon` sem nada.
 --
 -- ⚠️ A conferência do fim CHAMA as duas funções (o corpo só é analisado
 -- quando roda), num subbloco desfeito por SQLSTATE próprio (`P1052`), como
@@ -134,24 +135,49 @@ CREATE FUNCTION public.cb_ia_buscar_conhecimento_fts(
   p_match_count  integer
 )
 RETURNS TABLE (id uuid, documento_id uuid, content text, score real)
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 SECURITY INVOKER
 SET search_path TO 'public'
 AS $$
-  SELECT c.id,
-         c.document_id AS documento_id,
-         c.content,
-         ts_rank(c.fts, plainto_tsquery('simple', p_query)) AS score
-    FROM ai_knowledge_chunks c
-    JOIN cb_ia_agente_documentos d
-      ON d.documento_id = c.document_id
-     AND d.account_id = c.account_id
-   WHERE c.account_id = p_account_id
-     AND d.ia_agente_id = p_ia_agente_id
-     AND c.fts @@ plainto_tsquery('simple', p_query)
-   ORDER BY score DESC, c.id
-   LIMIT GREATEST(p_match_count, 0);
+#variable_conflict use_column
+DECLARE
+  v_q       tsquery;
+  v_palavra text;
+BEGIN
+  -- ⚠️ Qualquer palavra de 3+ letras da pergunta (OU), ordenado pelo quanto o
+  -- trecho casa — nunca `plainto_tsquery` da mensagem inteira, que exige
+  -- TODAS as palavras: com o dicionário `simple` (a coluna `fts` da 0030 não
+  -- descarta "o", "de", "qual"), "qual o horário de atendimento de vocês?"
+  -- só casaria um trecho com todas elas, e a base quase nunca entrava na
+  -- resposta (revisão da F3). As palavras curtas saem para não casar tudo.
+  FOR v_palavra IN
+    SELECT DISTINCT t.lexeme
+      FROM unnest(to_tsvector('simple', coalesce(p_query, ''))) AS t
+     WHERE char_length(t.lexeme) >= 3
+  LOOP
+    v_q := CASE WHEN v_q IS NULL THEN plainto_tsquery('simple', v_palavra)
+                ELSE v_q || plainto_tsquery('simple', v_palavra) END;
+  END LOOP;
+  -- Sem palavra que sirva, nada. (Agente nulo não casa o JOIN: nada também.)
+  IF v_q IS NULL THEN
+    RETURN;
+  END IF;
+  RETURN QUERY
+    SELECT c.id,
+           c.document_id,
+           c.content,
+           ts_rank(c.fts, v_q)
+      FROM ai_knowledge_chunks c
+      JOIN cb_ia_agente_documentos d
+        ON d.documento_id = c.document_id
+       AND d.account_id = c.account_id
+     WHERE c.account_id = p_account_id
+       AND d.ia_agente_id = p_ia_agente_id
+       AND c.fts @@ v_q
+     ORDER BY 4 DESC, 1
+     LIMIT GREATEST(p_match_count, 0);
+END;
 $$;
 
 REVOKE EXECUTE ON FUNCTION public.cb_ia_buscar_conhecimento_semantico(uuid, uuid, text, integer)
@@ -261,10 +287,11 @@ BEGIN
   -- As funções CHAMADAS, como service_role. O dado sai do banco: um trecho com
   -- palavra (a busca por palavras) e, na mesma conta, um com embedding (a por
   -- sentido — o próprio embedding dele é a consulta, e ele é o mais perto).
-  SELECT c.account_id, c.document_id, c.id, (tsvector_to_array(c.fts))[1]
+  SELECT c.account_id, c.document_id, c.id, w.palavra
     INTO v_conta, v_doc, v_trecho, v_palavra
     FROM ai_knowledge_chunks c
-   WHERE length(c.fts) > 0
+    CROSS JOIN LATERAL (SELECT x AS palavra FROM unnest(tsvector_to_array(c.fts)) AS x
+                         WHERE char_length(x) >= 3 LIMIT 1) w
    LIMIT 1;
   IF v_conta IS NOT NULL THEN
     SELECT c.document_id, c.id, c.embedding::text
@@ -302,6 +329,12 @@ BEGIN
       IF EXISTS (SELECT 1 FROM public.cb_ia_buscar_conhecimento_fts(v_conta, v_agente, v_palavra, 1000) t
                   WHERE t.documento_id <> v_doc) THEN
         RAISE EXCEPTION '1052: a busca por palavras devolveu trecho de documento NÃO marcado';
+      END IF;
+      -- UMA palavra que casa basta (OU), mesmo com outras que não existem.
+      IF NOT EXISTS (SELECT 1 FROM public.cb_ia_buscar_conhecimento_fts(
+                       v_conta, v_agente, 'qual o ' || v_palavra || ' zzqqxxww de vocês', 1000) t
+                      WHERE t.id = v_trecho) THEN
+        RAISE EXCEPTION '1052: a busca por palavras exigiu TODAS as palavras da pergunta';
       END IF;
       IF v_embedding IS NOT NULL THEN
         INSERT INTO cb_ia_agente_documentos (account_id, ia_agente_id, documento_id)

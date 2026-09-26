@@ -72,7 +72,7 @@ describe('1052 — as buscas com o recorte pelo agente (D20)', () => {
     it(`${nome}: SÓ os documentos marcados — JOIN pela conta E pelo agente; nulo = nada`, () => {
       const f = funcao(nome);
       expect(f).toContain('returns table (id uuid, documento_id uuid, content text, score real)');
-      expect(f).toContain('language sql stable security invoker');
+      expect(f).toMatch(/language (sql|plpgsql) stable security invoker/);
       expect(f).toContain("set search_path to 'public'");
       expect(f).toContain('join cb_ia_agente_documentos d on d.documento_id = c.document_id and d.account_id = c.account_id');
       expect(f).toContain('where c.account_id = p_account_id and d.ia_agente_id = p_ia_agente_id');
@@ -101,10 +101,16 @@ describe('1052 — as buscas com o recorte pelo agente (D20)', () => {
     expect(compacto).toContain('grant select on table ai_knowledge_chunks to service_role');
   });
 
-  it('a busca por palavras ordena de forma total e usa o mesmo `simple` da coluna', () => {
+  it('a busca por palavras: QUALQUER palavra de 3+ letras (OU), o mesmo `simple` da coluna, ordem total', () => {
     const f = funcao('cb_ia_buscar_conhecimento_fts');
-    expect(f).toContain("c.fts @@ plainto_tsquery('simple', p_query)");
-    expect(f).toContain('order by score desc, c.id');
+    // ⚠️ `plainto_tsquery` da mensagem inteira exige TODAS as palavras (revisão da F3).
+    expect(f).not.toContain("plainto_tsquery('simple', p_query)");
+    expect(f).toContain("from unnest(to_tsvector('simple', coalesce(p_query, ''))) as t where char_length(t.lexeme) >= 3");
+    expect(f).toContain("else v_q || plainto_tsquery('simple', v_palavra) end");
+    expect(f).toContain('c.fts @@ v_q');
+    // RETURNS TABLE + plpgsql: nomes qualificados e ordem por posição (a colisão 42702 da 1030).
+    expect(f).toContain('#variable_conflict use_column');
+    expect(f).toContain('order by 4 desc, 1');
   });
 
   it('a busca por sentido recebe o embedding como TEXTO e ordena pela distância', () => {

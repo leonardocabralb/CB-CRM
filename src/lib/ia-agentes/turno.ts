@@ -752,6 +752,16 @@ async function conduzir(
 
   const opcoes = await agentesParaPassar(turno, agente)
 
+  // Teto por CONTA sobre a chave compartilhada: uma rajada de 200 clientes ao
+  // mesmo tempo não pode estourar o limite do provedor. Passou → sem resposta
+  // (a mensagem fica na caixa para gente; o alerta de atraso segue valendo).
+  // ⚠️ Conta só quando VAI gerar: o áudio ainda baixando reagenda a cada 10 s,
+  // e contado antes gastava a cota da conta sem gerar nada (Codex, #309). E
+  // ANTES de ler o que o agente vê (F3): o turno barrado não lê dado do
+  // cliente nem paga a busca da base.
+  const limite = checkRateLimit(`ai-autoreply:${turno.account_id}`, RATE_LIMITS.aiAutoReplyAccount)
+  if (!limite.success) return { status: 'sem_resposta', erro: 'limite de respostas por minuto da conta' }
+
   // O que o agente vê além da conversa (F3), lido antes de medir o prazo que
   // sobra para gerar. Nunca lança.
   const visto = await lerOQueOAgenteVe(db, {
@@ -776,14 +786,6 @@ async function conduzir(
     if (andamento.transcreveu) return { status: 'reagendar' }
     return { status: 'falhou', erro: 'o prazo do turno acabou antes de gerar' }
   }
-
-  // Teto por CONTA sobre a chave compartilhada: uma rajada de 200 clientes ao
-  // mesmo tempo não pode estourar o limite do provedor. Passou → sem resposta
-  // (a mensagem fica na caixa para gente; o alerta de atraso segue valendo).
-  // ⚠️ Conta só quando VAI gerar: o áudio ainda baixando reagenda a cada 10 s,
-  // e contado antes gastava a cota da conta sem gerar nada (Codex, #309).
-  const limite = checkRateLimit(`ai-autoreply:${turno.account_id}`, RATE_LIMITS.aiAutoReplyAccount)
-  if (!limite.success) return { status: 'sem_resposta', erro: 'limite de respostas por minuto da conta' }
 
   // "Digitando…" só quando vai gerar (só conexão Meta; nunca lança). Corre em
   // paralelo com a geração, mas a resposta o ESPERA antes de sair
@@ -936,7 +938,14 @@ async function encerrar(
     const executarApos = new Date(Date.now() + REAGENDAR_AUDIO_MS).toISOString()
     const { data, error } = await db
       .from('cb_ia_turnos')
-      .update({ status: 'aguardando', rodando_desde: null, executar_apos: executarApos, updated_at: new Date().toISOString() })
+      .update({
+        status: 'aguardando',
+        rodando_desde: null,
+        executar_apos: executarApos,
+        // O retrato é da rodada que acabou: a próxima grava o seu (revisão da F3).
+        contexto: null,
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', turno.id)
       .eq('status', 'rodando')
       .eq('rodando_desde', turno.rodando_desde)
