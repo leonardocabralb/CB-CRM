@@ -11,6 +11,7 @@ import {
   apagarChave,
   ehProvedor,
   gravarChave,
+  lerChave,
   lerEstado,
 } from '@/lib/ia-chaves/repo'
 
@@ -44,24 +45,108 @@ export async function GET() {
 }
 
 /**
- * Os modelos com que a chave é testada, em ordem: o padrão do provedor e, se
- * for outro, o do assistente da conta. Basta UM responder — o que se testa é
- * a CHAVE. Testar só com o do assistente travava a troca de chave quando o
- * provedor aposentava aquele modelo (a chave nova recusada por "modelo não
- * encontrado", e o modelo não trocável sem uma chave que funcione).
+ * Os modelos que a conta USA com este provedor: o do assistente e o do Radar
+ * (a linha padrão de `ai_configs`, quando o provedor dela é este). A chave
+ * nova é conferida em CADA um (Codex, #294): passando só no modelo padrão, uma
+ * chave sem acesso ao modelo em uso era aceita e o Radar e o rascunho
+ * quebravam na troca.
  */
-async function modelosParaTestar(accountId: string, provedor: AiProvider): Promise<string[]> {
-  const modelos = [AI_PROVIDER_DEFAULT_MODEL[provedor]]
-  const { data } = await supabaseAdmin()
+async function modelosEmUso(accountId: string, provedor: AiProvider): Promise<string[]> {
+  const { data, error } = await supabaseAdmin()
     .from('ai_configs')
-    .select('provider, model')
+    .select('provider, model, radar_model')
     .eq('account_id', accountId)
     .is('channel_id', null)
     .maybeSingle()
-  if (data && data.provider === provedor && typeof data.model === 'string' && data.model) {
-    if (!modelos.includes(data.model)) modelos.push(data.model)
+  if (error) throw new Error(`[ia-chaves] leitura dos modelos em uso falhou: ${error.message}`)
+  if (!data || data.provider !== provedor) return []
+  const modelos: string[] = []
+  for (const m of [data.model, data.radar_model]) {
+    if (typeof m === 'string' && m.trim() && !modelos.includes(m.trim())) modelos.push(m.trim())
   }
   return modelos
+}
+
+function configDeTeste(provedor: AiProvider, modelo: string, apiKey: string) {
+  return {
+    provider: provedor,
+    model: modelo,
+    radarModel: null,
+    apiKey,
+    systemPrompt: null,
+    isActive: true,
+    autoReplyEnabled: false,
+    autoReplyMaxPerConversation: 3,
+    handoffAgentId: null,
+    embeddingsApiKey: null,
+  }
+}
+
+type Veredito =
+  | { ok: true; modelosIndisponiveis: string[] }
+  | { ok: false; erro: unknown; modelo?: string }
+
+/**
+ * A chave nova serve? Conferida em cada modelo EM USO (senão, no padrão do
+ * provedor). Um modelo em uso que ela não alcança:
+ * - a chave ATUAL alcança → recusa (`modelo_em_uso_recusado`): trocar quebraria
+ *   o que funciona hoje, e a chave atual continua valendo;
+ * - nem a atual alcança → o MODELO é que não vale mais (aposentado): aceita, e
+ *   avisa quais trocar. Recusar travaria a troca de chave justamente quando o
+ *   provedor aposenta o modelo (e o modelo não se troca sem chave que funcione).
+ * A chave em si é conferida no modelo padrão do provedor quando todo modelo em
+ * uso falhou: recusada ali, é a chave.
+ */
+async function validarChaveNova(
+  accountId: string,
+  provedor: AiProvider,
+  chave: string,
+): Promise<Veredito> {
+  const padrao = AI_PROVIDER_DEFAULT_MODEL[provedor]
+  const emUso = await modelosEmUso(accountId, provedor)
+  const aTestar = emUso.length > 0 ? emUso : [padrao]
+  const recusados: { modelo: string; erro: unknown }[] = []
+  for (const modelo of aTestar) {
+    try {
+      await validateAiCredentials(configDeTeste(provedor, modelo, chave))
+    } catch (err) {
+      // Chave recusada não melhora com outro modelo.
+      if (err instanceof AiError && err.code === 'invalid_key') return { ok: false, erro: err }
+      recusados.push({ modelo, erro: err })
+    }
+  }
+  if (recusados.length === 0) return { ok: true, modelosIndisponiveis: [] }
+  if (emUso.length === 0) return { ok: false, erro: recusados[0].erro }
+
+  // Nenhum modelo em uso respondeu: a chave alcança ao menos o padrão?
+  if (recusados.length === aTestar.length && !aTestar.includes(padrao)) {
+    try {
+      await validateAiCredentials(configDeTeste(provedor, padrao, chave))
+    } catch (err) {
+      return { ok: false, erro: err }
+    }
+  } else if (recusados.length === aTestar.length) {
+    return { ok: false, erro: recusados[0].erro }
+  }
+
+  // A chave ATUAL alcança o modelo que a nova não alcança?
+  let atual: string | null = null
+  try {
+    atual = (await lerChave(accountId, provedor)).chave
+  } catch {
+    atual = null
+  }
+  if (atual) {
+    for (const r of recusados) {
+      try {
+        await validateAiCredentials(configDeTeste(provedor, r.modelo, atual))
+        return { ok: false, erro: 'modelo_em_uso_recusado', modelo: r.modelo }
+      } catch {
+        // A atual também não alcança: o modelo é que não vale mais.
+      }
+    }
+  }
+  return { ok: true, modelosIndisponiveis: recusados.map((r) => r.modelo) }
 }
 
 export async function PUT(request: Request) {
@@ -84,38 +169,21 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'chave_vazia', code: 'chave_vazia' }, { status: 400 })
     }
 
-    let primeiroErro: unknown = null
-    let validou = false
-    for (const modelo of await modelosParaTestar(ctx.accountId, provedor)) {
-      try {
-        await validateAiCredentials({
-          provider: provedor,
-          model: modelo,
-          radarModel: null,
-          apiKey: chave,
-          systemPrompt: null,
-          isActive: true,
-          autoReplyEnabled: false,
-          autoReplyMaxPerConversation: 3,
-          handoffAgentId: null,
-          embeddingsApiKey: null,
-        })
-        validou = true
-        break
-      } catch (err) {
-        primeiroErro ??= err
-        // Chave recusada não melhora com outro modelo.
-        if (err instanceof AiError && err.code === 'invalid_key') break
-      }
-    }
-    if (!validou) {
-      if (primeiroErro instanceof AiError) {
+    const veredito = await validarChaveNova(ctx.accountId, provedor, chave)
+    if (!veredito.ok) {
+      if (veredito.erro === 'modelo_em_uso_recusado') {
         return NextResponse.json(
-          { error: mensagemSeguraDeAiError(primeiroErro), code: primeiroErro.code },
+          { error: 'modelo_em_uso_recusado', code: 'modelo_em_uso_recusado', modelo: veredito.modelo },
           { status: 400 },
         )
       }
-      console.error('[cb/ia/chaves PUT] validação falhou:', primeiroErro)
+      if (veredito.erro instanceof AiError) {
+        return NextResponse.json(
+          { error: mensagemSeguraDeAiError(veredito.erro), code: veredito.erro.code },
+          { status: 400 },
+        )
+      }
+      console.error('[cb/ia/chaves PUT] validação falhou:', veredito.erro)
       return NextResponse.json(
         { error: 'provider_error', code: 'provider_error' },
         { status: 400 },
@@ -131,8 +199,11 @@ export async function PUT(request: Request) {
     // - `embeddings_nao_conferido`: a conferência não chegou a uma resposta
     //   (rede, limite, erro do provedor). Nada é afirmado: a coluna fica
     //   nula ("serve", como antes) e a tela avisa.
+    // - `modelo_em_uso_indisponivel`: um modelo em uso não respondeu nem com
+    //   a chave anterior (aposentado?) — a tela diz quais trocar.
     // - `modulos_nao_criados`: ver abaixo.
     const avisos: string[] = []
+    if (veredito.modelosIndisponiveis.length > 0) avisos.push('modelo_em_uso_indisponivel')
     let serveEmbeddings: boolean | null = null
     if (provedor === 'openai') {
       try {
@@ -148,8 +219,6 @@ export async function PUT(request: Request) {
         }
       }
     }
-
-    await gravarChave(ctx.accountId, provedor, chave, ctx.userId, serveEmbeddings)
 
     // PRIMEIRA configuração da conta: sem a linha padrão de `ai_configs`, o
     // Radar não teria provedor nem modelo e ficaria em `sem_ia` com a chave
@@ -181,7 +250,12 @@ export async function PUT(request: Request) {
       }
     }
 
-    return NextResponse.json({ ok: true, avisos })
+    // DEPOIS da linha padrão: a gravação também atualiza a cópia legada
+    // (`ai_configs.api_key`) para uma volta atrás do deploy, e a linha recém-
+    // criada precisa existir para receber a cópia.
+    await gravarChave(ctx.accountId, provedor, chave, ctx.userId, serveEmbeddings)
+
+    return NextResponse.json({ ok: true, avisos, modelos: veredito.modelosIndisponiveis })
   } catch (err) {
     if (err instanceof Error && err.message.startsWith('[ia-chaves]')) {
       console.error(err.message)

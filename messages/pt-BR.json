@@ -3209,13 +3209,15 @@
       "avisoDaChave": {
         "embeddings_recusado": "Chave salva: ela gera texto, mas a OpenAI recusou a busca da base de conhecimento (embeddings). A base passa a usar só a busca por palavras — confira as permissões do projeto e salve a chave de novo.",
         "embeddings_nao_conferido": "Chave salva, mas não foi possível conferir se ela serve à busca da base de conhecimento (embeddings). Se a busca falhar, salve a chave de novo.",
+        "modelo_em_uso_indisponivel": "Chave salva, mas o modelo em uso ({modelos}) não respondeu — nem com a chave anterior. Troque o modelo (o do Radar, neste cartão, ou o do assistente).",
         "modulos_nao_criados": "Chave salva, mas não foi possível criar a configuração do Radar — recarregue a página e confira o cartão."
       },
       "erroDaChave": {
         "chave_vazia": "Cole a chave antes de salvar.",
         "sem_chave": "Cadastre a chave deste provedor antes de escolher o modelo.",
         "sem_configuracao": "Cadastre primeiro a chave de um provedor.",
-        "banco": "Não foi possível gravar agora — tente de novo."
+        "banco": "Não foi possível gravar agora — tente de novo.",
+        "modelo_em_uso_recusado": "A chave nova não alcança o modelo {modelo}, que está em uso — e a chave atual alcança. Nada foi trocado: troque o modelo antes, ou use uma chave com acesso a ele."
       }
     },
     "groups": {

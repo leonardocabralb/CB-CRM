@@ -137,6 +137,13 @@ export async function lerEstado(accountId: string): Promise<EstadoDaChave[]> {
  * chave antiga valeria para a nova. Com `true`, a chave PRÓPRIA dos
  * embeddings herdada da 1042 sai: a nova serve às duas coisas, e uma chave
  * velha escondida continuaria sendo usada (e cobrada) sem aparecer na tela.
+ *
+ * ⚠️ E ESPELHA a chave na cópia legada (`ai_configs.api_key` das linhas deste
+ * provedor; na OpenAI que serve aos embeddings, também o `embeddings_api_key`
+ * da linha padrão), que a 1042 manteve para uma volta atrás do deploy: sem o
+ * espelho, o app anterior voltaria com a chave VELHA — quase sempre revogada
+ * na troca (Codex, #294). A cópia sai com a limpeza de uma fase posterior. A
+ * falha do espelho não derruba a gravação (a chave nova já vale): fica no log.
  */
 export async function gravarChave(
   accountId: string,
@@ -164,6 +171,28 @@ export async function gravarChave(
       { onConflict: 'account_id,provedor' },
     )
   if (error) throw new Error(`[ia-chaves] gravação falhou: ${error.message}`)
+
+  const cifrada = encrypt(chaveCrua)
+  const db = supabaseAdmin()
+  const { error: erroLegado } = await db
+    .from('ai_configs')
+    .update({ api_key: cifrada })
+    .eq('account_id', accountId)
+    .eq('provider', provedor)
+  const { error: erroEmbeddings } =
+    provedor === 'openai' && serveEmbeddings === true
+      ? await db
+          .from('ai_configs')
+          .update({ embeddings_api_key: cifrada })
+          .eq('account_id', accountId)
+          .is('channel_id', null)
+      : { error: null }
+  if (erroLegado || erroEmbeddings) {
+    console.error(
+      '[ia-chaves] o espelho na cópia legada falhou (só a volta atrás do deploy depende dele):',
+      erroLegado?.message ?? erroEmbeddings?.message,
+    )
+  }
 }
 
 /** Apaga a chave do provedor. Devolve se havia uma. */
