@@ -147,10 +147,25 @@ SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
 BEGIN
-  IF NEW.channel_id IS NOT NULL THEN
-    RETURN NEW;
-  END IF;
   IF coalesce(nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role', '') <> 'authenticated' THEN
+    RETURN coalesce(NEW, OLD);
+  END IF;
+
+  -- O "Remover" do app anterior apaga a linha padrão e diz ao administrador
+  -- que a chave foi esquecida: a cópia em `cb_ia_chaves` sai junto, senão o
+  -- app novo subiria usando a chave que a pessoa mandou esquecer (Codex, #295).
+  IF TG_OP = 'DELETE' THEN
+    IF OLD.channel_id IS NULL THEN
+      DELETE FROM cb_ia_chaves WHERE account_id = OLD.account_id AND provedor = OLD.provider;
+      IF OLD.embeddings_api_key IS NOT NULL AND OLD.embeddings_api_key <> '' THEN
+        UPDATE cb_ia_chaves SET embeddings_api_key = NULL, updated_at = now()
+         WHERE account_id = OLD.account_id AND provedor = 'openai';
+      END IF;
+    END IF;
+    RETURN OLD;
+  END IF;
+
+  IF NEW.channel_id IS NOT NULL THEN
     RETURN NEW;
   END IF;
 
@@ -184,7 +199,7 @@ REVOKE EXECUTE ON FUNCTION public.cb_ia_chaves_segue_o_legado() FROM PUBLIC, ano
 
 DROP TRIGGER IF EXISTS cb_ia_chaves_segue_o_legado ON ai_configs;
 CREATE TRIGGER cb_ia_chaves_segue_o_legado
-  AFTER INSERT OR UPDATE OF api_key, embeddings_api_key ON ai_configs
+  AFTER INSERT OR UPDATE OF api_key, embeddings_api_key OR DELETE ON ai_configs
   FOR EACH ROW EXECUTE FUNCTION public.cb_ia_chaves_segue_o_legado();
 
 -- ---------------------------------------------------------------------------
