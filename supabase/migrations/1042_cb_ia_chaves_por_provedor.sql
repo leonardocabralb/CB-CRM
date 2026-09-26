@@ -163,6 +163,12 @@ BEGIN
     IF OLD.channel_id IS NULL THEN
       DELETE FROM cb_ia_chaves WHERE account_id = OLD.account_id AND provedor = OLD.provider;
       IF OLD.embeddings_api_key IS NOT NULL AND OLD.embeddings_api_key <> '' THEN
+        -- A linha da OpenAI que nasceu SÓ da chave da base (as duas colunas com
+        -- o MESMO texto cifrado — a marca de origem do item 2) é essa chave
+        -- inteira: sai a linha, senão `api_key` continuaria servindo a base com
+        -- a credencial que a pessoa mandou esquecer (Codex, #295).
+        DELETE FROM cb_ia_chaves
+         WHERE account_id = OLD.account_id AND provedor = 'openai' AND api_key = embeddings_api_key;
         UPDATE cb_ia_chaves SET embeddings_api_key = NULL, updated_at = now()
          WHERE account_id = OLD.account_id AND provedor = 'openai';
       END IF;
@@ -186,12 +192,24 @@ BEGIN
     IF NEW.embeddings_api_key IS NOT NULL AND NEW.embeddings_api_key <> '' THEN
       -- A regra da cópia (item 2): slot da OpenAI vazio recebe a chave; ocupado,
       -- ela fica como a própria da base.
+      -- A linha que nasceu SÓ da chave da base troca as DUAS colunas (a marca
+      -- de origem segue valendo); a linha de uma chave de chat de verdade
+      -- troca só a própria da base.
       INSERT INTO cb_ia_chaves (account_id, provedor, api_key, embeddings_api_key, created_at, updated_at)
       VALUES (NEW.account_id, 'openai', NEW.embeddings_api_key, NEW.embeddings_api_key, now(), now())
       ON CONFLICT (account_id, provedor)
-        DO UPDATE SET embeddings_api_key = EXCLUDED.embeddings_api_key, updated_at = now();
+        DO UPDATE SET
+          api_key = CASE WHEN cb_ia_chaves.api_key = cb_ia_chaves.embeddings_api_key
+                         THEN EXCLUDED.api_key ELSE cb_ia_chaves.api_key END,
+          serve_embeddings = CASE WHEN cb_ia_chaves.api_key = cb_ia_chaves.embeddings_api_key
+                                  THEN NULL ELSE cb_ia_chaves.serve_embeddings END,
+          embeddings_api_key = EXCLUDED.embeddings_api_key,
+          updated_at = now();
     ELSIF TG_OP = 'UPDATE' THEN
-      -- A tela antiga APAGOU a chave própria: a base volta à chave da OpenAI.
+      -- A tela antiga APAGOU a chave própria: a linha que era SÓ dela sai
+      -- (Codex, #295); na outra, a base volta à chave da OpenAI.
+      DELETE FROM cb_ia_chaves
+       WHERE account_id = NEW.account_id AND provedor = 'openai' AND api_key = embeddings_api_key;
       UPDATE cb_ia_chaves SET embeddings_api_key = NULL, updated_at = now()
        WHERE account_id = NEW.account_id AND provedor = 'openai';
     END IF;

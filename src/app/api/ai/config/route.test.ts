@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // GET /api/ai/config — qualquer membro lê (a caixa de entrada precisa saber se
@@ -103,5 +105,19 @@ describe('POST /api/ai/config — aba aberta do app anterior (Codex, #294)', () 
       expect(res.status).toBe(409)
       expect(await res.json()).toMatchObject({ code: 'tela_desatualizada' })
     }
+  })
+})
+
+describe('POST /api/ai/config — a gravação da linha vai pelo serviço (Codex, #294)', () => {
+  it('nenhuma escrita em ai_configs pelo cliente da sessão', () => {
+    const fonte = readFileSync(join(__dirname, 'route.ts'), 'utf8').replace(/\/\/.*$/gm, '')
+    const post = fonte.slice(fonte.indexOf('export async function POST'))
+    // O gatilho da janela (1042) copia a escrita do NAVEGADOR para
+    // cb_ia_chaves; o espelho do app novo não pode passar por ali.
+    expect(post).not.toMatch(/supabase\s*\.from\(\s*'ai_configs'\s*\)\s*\.(update|insert|upsert|delete)\(/)
+    expect(post).not.toMatch(/await\s+supabase\s*\n?\s*\.from\(\s*'ai_configs'\s*\)\s*\n?\s*\.(update|insert|upsert|delete)\(/)
+    expect(post).toMatch(/const\s+db\s*=\s*supabaseAdmin\(\)/)
+    expect(post).toMatch(/db\s*\.from\(\s*'ai_configs'\s*\)\s*\.update\(/)
+    expect(post).toMatch(/db\.from\(\s*'ai_configs'\s*\)\.insert\(/)
   })
 })

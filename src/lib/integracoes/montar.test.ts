@@ -42,7 +42,7 @@ function padrao(parcial: Partial<PadraoParaMontar> = {}): PadraoParaMontar {
 function montar(
   chaves: ChaveParaMontar[],
   linhaPadrao: PadraoParaMontar | null = padrao(),
-  embeddingsTeste: Teste = null,
+  embeddingsTeste: Teste | 'recusada' = null,
   canais: CanalParaMontar[] = CANAIS
 ) {
   return montarCartoes(
@@ -202,6 +202,7 @@ describe('rótulos montados de Integrações', () => {
     'radar_sem_canal',
     'conversa_desligada',
     'sem_chave',
+    'embeddings_recusados',
   ];
   for (const arquivo of ['en.json', 'pt-BR.json']) {
     it(`existem em ${arquivo}`, () => {
@@ -215,10 +216,10 @@ describe('rótulos montados de Integrações', () => {
       for (const m of ['invalid_key', 'rate_limited', 'timeout', 'network', 'provider_error', 'chave_ilegivel', 'leitura_falhou']) {
         expect(integracoes.motivo[m], m).toBeTruthy();
       }
-      for (const a of ['embeddings_recusado', 'embeddings_nao_conferido', 'modelo_em_uso_indisponivel', 'modulos_nao_criados']) {
+      for (const a of ['embeddings_recusado', 'embeddings_nao_conferido', 'modelo_em_uso_indisponivel', 'transcricao_indisponivel', 'modelos_nao_conferidos', 'modulos_nao_criados']) {
         expect(integracoes.avisoDaChave[a], a).toBeTruthy();
       }
-      for (const e of ['chave_vazia', 'sem_chave', 'sem_configuracao', 'banco', 'modelo_em_uso_recusado']) {
+      for (const e of ['chave_vazia', 'sem_chave', 'sem_configuracao', 'banco', 'modelo_em_uso_recusado', 'transcricao_recusada']) {
         expect(integracoes.erroDaChave[e], e).toBeTruthy();
       }
     });
@@ -255,5 +256,23 @@ describe('montarCartoes — assistente POR CONEXÃO herdado (Codex, #294)', () =
       [{ provider: 'openai', model: 'gpt-x', canal: 'Pessoal' }]
     );
     expect(uso(cartoes, 'openai', 'conversa').indisponivel).toBe('sem_chave');
+  });
+});
+
+describe('montarCartoes — chave da OpenAI recusada para a base (Codex, #294)', () => {
+  it('o uso da base fica indisponível e o cartão NÃO fica "falhando"', () => {
+    const cartoes = montar([chave('openai')], padrao({ provider: 'openai', model: 'gpt-x' }), 'recusada');
+    expect(uso(cartoes, 'openai', 'rag').indisponivel).toBe('embeddings_recusados');
+    expect(cartao(cartoes, 'openai').estado).toBe('ok');
+  });
+
+  it('um ping de embeddings que FALHA continua marcando o cartão', () => {
+    const cartoes = montar(
+      [chave('openai')],
+      padrao({ provider: 'openai', model: 'gpt-x' }),
+      { ok: false, motivo: 'invalid_key' }
+    );
+    expect(uso(cartoes, 'openai', 'rag').indisponivel).toBeUndefined();
+    expect(cartao(cartoes, 'openai').estado).toBe('erro');
   });
 });

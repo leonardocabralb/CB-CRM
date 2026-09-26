@@ -342,8 +342,14 @@ export async function POST(request: Request) {
     } else if (providerMudou) {
       shared.radar_model = null
     }
+    // ⚠️ A gravação vai pelo SERVIÇO, com a conta escrita no filtro: o
+    // gatilho da janela da 1042 trata escrita do NAVEGADOR como vinda do app
+    // anterior e copiaria a `api_key` do espelho de volta para `cb_ia_chaves`
+    // com `serve_embeddings` nulo — apagando o "esta chave não serve à base"
+    // já conferido (Codex, #294).
+    const db = supabaseAdmin()
     if (existing) {
-      const { error: upErr } = await supabase
+      const { error: upErr } = await db
         .from('ai_configs')
         .update(shared)
         .eq('account_id', accountId)
@@ -356,7 +362,7 @@ export async function POST(request: Request) {
         )
       }
     } else {
-      const { error: insErr } = await supabase.from('ai_configs').insert({
+      const { error: insErr } = await db.from('ai_configs').insert({
         account_id: accountId,
         created_by: userId,
         ...shared,

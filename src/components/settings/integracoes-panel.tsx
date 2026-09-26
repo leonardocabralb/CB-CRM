@@ -576,6 +576,7 @@ function FormularioDaChave({
           a === 'embeddings_nao_conferido' ||
           a === 'modelo_em_uso_indisponivel' ||
           a === 'modelos_nao_conferidos' ||
+          a === 'transcricao_indisponivel' ||
           a === 'modulos_nao_criados'
       );
       const listaDoAviso = (a: string) =>
@@ -829,6 +830,11 @@ function textoDoErroDaChave(
   // trocado, e a frase diz qual modelo (Codex, #294).
   if (codigo === 'modelo_em_uso_recusado') {
     return t('erroDaChave.modelo_em_uso_recusado', { modelo: modelo || '—' });
+  }
+  // A chave nova não alcança o modelo FIXO da transcrição, e não há chave
+  // atual que o alcance: nada foi gravado (Codex, #294).
+  if (codigo === 'transcricao_recusada') {
+    return t('erroDaChave.transcricao_recusada', { modelo: modelo || '—' });
   }
   const conhecidos = [
     'invalid_key',

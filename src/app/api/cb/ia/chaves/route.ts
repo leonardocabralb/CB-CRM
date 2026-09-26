@@ -104,8 +104,13 @@ function configDeTeste(provedor: AiProvider, modelo: string, apiKey: string) {
 }
 
 type Veredito =
-  | { ok: true; modelosIndisponiveis: string[]; naoConferidos: string[] }
+  | { ok: true; modelosIndisponiveis: string[]; naoConferidos: string[]; transcricaoIndisponivel: boolean }
   | { ok: false; erro: unknown; modelo?: string }
+
+/** Falha passageira: não é resposta sobre a chave nem sobre o modelo. */
+function falhaPassageira(err: unknown): boolean {
+  return err instanceof AiError && ['timeout', 'network_error', 'rate_limited'].includes(err.code)
+}
 
 /**
  * Teto de modelos conferidos numa gravação (Codex, #295): cada um é uma
@@ -135,6 +140,17 @@ async function alcanca(provedor: AiProvider, modelo: string, chave: string): Pro
  *   provedor aposenta o modelo (e o modelo não se troca sem chave que funcione).
  * A chave em si é conferida no modelo padrão do provedor quando todo modelo em
  * uso falhou: recusada ali, é a chave.
+ *
+ * ⚠️ O modelo da TRANSCRIÇÃO (Gemini) não é "trocável": é fixo no código
+ * (`MODELO_TRANSCRICAO`), e nenhuma tela o muda (Codex, #294). Por isso ele
+ * tem régua própria quando a chave nova não o alcança:
+ * - sem chave atual → recusa (`transcricao_recusada`): gravar deixaria a
+ *   transcrição quebrada sem nada que o administrador possa trocar;
+ * - a chave atual alcança → recusa (`modelo_em_uso_recusado`, a regra geral);
+ * - nem a atual alcança → a transcrição JÁ está fora do ar, e recusar só
+ *   travaria a troca da chave (inclusive a de uma chave vazada) sem consertar
+ *   nada: aceita, com aviso próprio (`transcricao_indisponivel`), que não
+ *   manda trocar modelo nenhum.
  */
 async function validarChaveNova(
   accountId: string,
@@ -143,6 +159,8 @@ async function validarChaveNova(
 ): Promise<Veredito> {
   const padrao = AI_PROVIDER_DEFAULT_MODEL[provedor]
   const emUso = await modelosEmUso(accountId, provedor)
+  // O modelo da transcrição (Gemini) vem PRIMEIRO em `modelosEmUso`: fica
+  // sempre dentro do teto.
   const aTestar = emUso.length > 0 ? emUso.slice(0, MAX_MODELOS_CONFERIDOS) : [padrao]
   const naoConferidos = emUso.slice(MAX_MODELOS_CONFERIDOS)
 
@@ -154,7 +172,7 @@ async function validarChaveNova(
     .map((modelo, i) => ({ modelo, erro: erros[i] }))
     .filter((r): r is { modelo: string; erro: unknown } => r.erro !== null)
 
-  if (recusados.length === 0) return { ok: true, modelosIndisponiveis: [], naoConferidos }
+  if (recusados.length === 0) return { ok: true, modelosIndisponiveis: [], naoConferidos, transcricaoIndisponivel: false }
   if (emUso.length === 0) return { ok: false, erro: recusados[0].erro }
 
   // Nenhum modelo em uso respondeu: a chave alcança ao menos o padrão?
@@ -171,13 +189,23 @@ async function validarChaveNova(
   } catch {
     atual = null
   }
+  const transcricao = provedor === 'gemini' ? recusados.find((r) => r.modelo === MODELO_TRANSCRICAO) : undefined
+  if (transcricao && !atual) {
+    if (falhaPassageira(transcricao.erro)) return { ok: false, erro: transcricao.erro }
+    return { ok: false, erro: 'transcricao_recusada', modelo: MODELO_TRANSCRICAO }
+  }
   const chaveAtual = atual
   if (chaveAtual) {
     const comAtual = await Promise.all(recusados.map((r) => alcanca(provedor, r.modelo, chaveAtual)))
     const i = comAtual.findIndex((e) => e === null)
     if (i >= 0) return { ok: false, erro: 'modelo_em_uso_recusado', modelo: recusados[i].modelo }
   }
-  return { ok: true, modelosIndisponiveis: recusados.map((r) => r.modelo), naoConferidos }
+  return {
+    ok: true,
+    modelosIndisponiveis: recusados.filter((r) => r !== transcricao).map((r) => r.modelo),
+    naoConferidos,
+    transcricaoIndisponivel: transcricao !== undefined,
+  }
 }
 
 export async function PUT(request: Request) {
@@ -202,9 +230,9 @@ export async function PUT(request: Request) {
 
     const veredito = await validarChaveNova(ctx.accountId, provedor, chave)
     if (!veredito.ok) {
-      if (veredito.erro === 'modelo_em_uso_recusado') {
+      if (veredito.erro === 'modelo_em_uso_recusado' || veredito.erro === 'transcricao_recusada') {
         return NextResponse.json(
-          { error: 'modelo_em_uso_recusado', code: 'modelo_em_uso_recusado', modelo: veredito.modelo },
+          { error: veredito.erro, code: veredito.erro, modelo: veredito.modelo },
           { status: 400 },
         )
       }
@@ -232,9 +260,13 @@ export async function PUT(request: Request) {
     //   nula ("serve", como antes) e a tela avisa.
     // - `modelo_em_uso_indisponivel`: um modelo em uso não respondeu nem com
     //   a chave anterior (aposentado?) — a tela diz quais trocar.
+    // - `transcricao_indisponivel`: o modelo FIXO da transcrição não respondeu
+    //   nem com a chave anterior — não há modelo a trocar; a tela diz que a
+    //   transcrição de áudio segue fora do ar.
     // - `modulos_nao_criados`: ver abaixo.
     const avisos: string[] = []
     if (veredito.modelosIndisponiveis.length > 0) avisos.push('modelo_em_uso_indisponivel')
+    if (veredito.transcricaoIndisponivel) avisos.push('transcricao_indisponivel')
     if (veredito.naoConferidos.length > 0) avisos.push('modelos_nao_conferidos')
     let serveEmbeddings: boolean | null = null
     if (provedor === 'openai') {
