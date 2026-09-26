@@ -23,6 +23,7 @@ import { ExternalLink, RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
+import { LIMITES } from '@/lib/ia-agentes/agente';
 import { mesmoConjunto } from './rascunho';
 import { textoDoCodigo } from './textos';
 
@@ -81,6 +82,8 @@ export function BaseDoAgente({
   useEffect(() => {
     aoMudarNaoSalvo?.(naoSalvo);
   }, [naoSalvo, aoMudarNaoSalvo]);
+
+  const noTeto = (marcados ?? []).length >= LIMITES.documentos;
 
   function alternar(id: string) {
     setMarcados((m) => (m === null ? m : m.includes(id) ? m.filter((x) => x !== id) : [...m, id]));
@@ -155,6 +158,7 @@ export function BaseDoAgente({
             {t('base.marcados', {
               n: (marcados ?? []).filter((id) => carga.documentos.some((d) => d.id === id)).length,
             })}
+            {noTeto ? ` ${t('base.teto', { n: LIMITES.documentos })}` : null}
           </p>
           <ul className="divide-y divide-border rounded-lg border border-border">
             {carga.documentos.map((d) => (
@@ -171,7 +175,13 @@ export function BaseDoAgente({
                 </div>
                 <label className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
                   {t('base.usar')}
-                  <Switch checked={(marcados ?? []).includes(d.id)} onCheckedChange={() => alternar(d.id)} />
+                  <Switch
+                    checked={(marcados ?? []).includes(d.id)}
+                    // No teto da rota (`LIMITES.documentos`), só desmarca: o
+                    // 201º faria o salvar recusar a lista sem dizer qual tirar.
+                    disabled={noTeto && !(marcados ?? []).includes(d.id)}
+                    onCheckedChange={() => alternar(d.id)}
+                  />
                 </label>
               </li>
             ))}

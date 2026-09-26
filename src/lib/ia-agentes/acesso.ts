@@ -363,7 +363,10 @@ export function lerRetrato(v: unknown): RetratoDoContexto | null {
 // ------------------------------------------------------------
 
 /** Quantos agendamentos futuros ler para achar o primeiro que não foi cancelado. */
-const AGENDAMENTOS_LIDOS = 20
+// Folgado de propósito: cada reagendamento deixa um `invitee.created`
+// cancelado no futuro, e cortar cedo esconderia o agendamento vivo atrás dos
+// cancelados (Codex, #312).
+const AGENDAMENTOS_LIDOS = 100
 /** Teto das etiquetas de um contato. */
 const ETIQUETAS_LIDAS = 200
 

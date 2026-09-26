@@ -4337,7 +4337,8 @@
       "atualizado": "Updated {data}",
       "marcados": "{n, plural, =0 {No document ticked: the agent replies without a knowledge base.} one {# document ticked} other {# documents ticked}}",
       "salvar": "Save knowledge base",
-      "salvo": "Knowledge base saved."
+      "salvo": "Knowledge base saved.",
+      "teto": "That is the maximum per agent ({n} documents): unmark one to mark another."
     },
     "playground": {
       "explicacao": "Chat as if you were the customer. What's SAVED in the agent (Settings, Access and Knowledge base) applies, with the same model as production; the spend counts as testing.",

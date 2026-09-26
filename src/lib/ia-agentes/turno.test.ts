@@ -1926,5 +1926,22 @@ describe('executarTurno — o que o agente vê (F3)', () => {
     await executarTurno(TURNO)
     expect(turno().contexto).toBeUndefined()
     expect(engineSendText).not.toHaveBeenCalled()
+    // Posse perdida = abandona ANTES de gerar: sem gasto no provedor (Codex, #312).
+    expect(generateReply).not.toHaveBeenCalled()
+    expect(turno().status).toBe('incerto')
+  })
+
+  it('ERRO de banco ao gravar o retrato não para o turno (melhor esforço)', async () => {
+    comEtiquetas()
+    let uma = true
+    banco.antes = (tabela, op) => {
+      if (uma && tabela === 'cb_ia_turnos' && op === 'update' && turno().status === 'rodando' && !turno().contexto) {
+        uma = false
+        banco.falhas.push({ tabela: 'cb_ia_turnos', op: 'update', erro: { message: 'timeout' } })
+      }
+    }
+    await executarTurno(TURNO)
+    expect(generateReply).toHaveBeenCalled()
+    expect(turno().status).toBe('respondeu')
   })
 })

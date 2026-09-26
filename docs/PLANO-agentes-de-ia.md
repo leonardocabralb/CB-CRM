@@ -88,6 +88,7 @@ As respostas às 15 perguntas da análise.
 | D25 | Triagem | Um agente como os outros, na etapa de entrada do funil. Quando decide, **move o card para a etapa do agente escolhido** (entre os de "pode passar para"), e esse agente responde a mesma mensagem em seguida. Uma passagem por mensagem. |
 | D26 | Gente respondeu | **A IA para naquela conversa até alguém clicar "Retomar IA"** — mudar o card de etapa não retoma (D10, agora pegajosa). |
 | D27 | Cards antigos | **Só cards que ENTRAREM na etapa depois de o agente ser ligado nela.** Card parado na etapa (os da Kommo) não é atendido. Substitui D16, D17 e a P8. |
+| D28 | Ferramentas (26/09/2026) | **Ações JUNTO com a resposta**, não um laço de ferramentas: o agente devolve a resposta ao cliente e as ações que quer fazer (mover o card, etiquetar, preencher campo, criar tarefa, executar automação; na F5, marcar reunião); o servidor confere cada ação contra o que foi liberado NAQUELE agente e executa antes de enviar. Uma chamada ao modelo por resposta, nos três provedores. O que o agente precisa LER (cobranças com o link, horários livres) chega pronto nos blocos de acesso (F3). Substitui o laço de ferramentas da 5.6/5.7 e da F4a. |
 
 ---
 
@@ -220,6 +221,8 @@ Cada agente marca o que entra no contexto; **nada marcado = só a conversa** (fe
 ⚠️ Mensagem sem carimbo de conexão (histórico anterior ao multi-canal) **não entra** — atribuí-la a uma conexão seria inventar, a regra de `canais-do-fio.ts`.
 
 ### 5.6 Ferramentas (F4a, F4b, F5; D5–D8)
+
+> ⚠️ **Substituído em parte pela D28 (26/09/2026):** as ações vêm JUNTO com a resposta, numa chamada só, e o que o agente lê vem nos blocos de acesso — não há laço de ferramentas, adaptador por provedor nem `thoughtSignature`. Continuam valendo: ids do servidor, parâmetros travados por agente, a D5 (nada fora do CRM) e a trava de link inventado.
 
 Regras que valem para todas:
 - **Ids vêm do servidor, nunca do modelo.** Conta, contato, conversa, negócio e cobrança saem do contexto do turno; o modelo escolhe só entre opções que o servidor ofereceu (etapas permitidas, etiquetas permitidas…). É a defesa contra o cliente que escreve "marque minha fatura como paga".

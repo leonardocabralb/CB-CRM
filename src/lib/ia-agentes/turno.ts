@@ -773,10 +773,19 @@ async function conduzir(
     agora: new Date(),
   })
   // O RETRATO (1052): é o que responde "por que a IA fez isso?" depois que a
-  // ficha, o card ou o documento mudarem. Melhor esforço, com a cerca de
-  // posse — escrita separada do desfecho, para uma falha aqui não prender o
-  // turno em `rodando`.
-  await gravarNoTurno(db, turno, { contexto: visto.retrato })
+  // ficha, o card ou o documento mudarem. Escrita separada do desfecho, com a
+  // cerca de posse: ERRO de banco é melhor esforço (segue), mas ZERO linhas é
+  // posse perdida — o recolhedor tomou o turno enquanto o contexto carregava,
+  // e gerar pagaria o provedor por uma resposta que não sai (Codex, #312).
+  const { data: comRetrato, error: erroRetrato } = await db
+    .from('cb_ia_turnos')
+    .update({ contexto: visto.retrato, updated_at: new Date().toISOString() })
+    .eq('id', turno.id)
+    .eq('status', 'rodando')
+    .eq('rodando_desde', turno.rodando_desde)
+    .select('id')
+  if (erroRetrato) console.error('[ia-agentes] gravar o retrato do turno falhou:', turno.id, erroRetrato.message)
+  else if ((comRetrato?.length ?? 0) === 0) return { status: 'abandonado' }
 
   const restante = PRAZO_DO_TURNO_MS - (Date.now() - inicio) - RESERVA_DO_ENVIO_MS
   if (restante < 3_000) {

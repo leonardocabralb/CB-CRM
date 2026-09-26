@@ -4330,7 +4330,8 @@
       "atualizado": "Atualizado em {data}",
       "marcados": "{n, plural, =0 {Nenhum documento marcado: o agente responde sem base.} one {# documento marcado} other {# documentos marcados}}",
       "salvar": "Salvar base",
-      "salvo": "Base de conhecimento salva."
+      "salvo": "Base de conhecimento salva.",
+      "teto": "É o máximo por agente ({n} documentos): para marcar outro, desmarque um."
     },
     "playground": {
       "explicacao": "Converse como se fosse o cliente. Vale o que está SALVO no agente (Configuração, Acesso e Base de conhecimento), com o mesmo modelo da produção; o gasto conta como teste.",
