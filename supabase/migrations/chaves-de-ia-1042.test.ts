@@ -50,6 +50,9 @@ describe('1042 — chaves de IA por provedor', () => {
     }
     expect(/embeddings_api_key/i.test(insercoes[1])).toBe(true);
     expect(/'openai'/.test(insercoes[1])).toBe(true);
+    // A chave só da base vai para os DOIS campos com o mesmo texto cifrado: é
+    // a marca de origem que a troca respeita (Codex, #294).
+    expect(/c\.embeddings_api_key,\s*c\.embeddings_api_key/i.test(insercoes[1])).toBe(true);
   });
 
   it('serve_embeddings: só a OpenAI tem, e NULO é "não conferida" (a cópia não afirma nada)', () => {

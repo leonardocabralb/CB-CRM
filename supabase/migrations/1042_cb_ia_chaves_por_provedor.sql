@@ -89,9 +89,14 @@ SELECT DISTINCT ON (c.account_id, c.provider)
  ORDER BY c.account_id, c.provider, (c.channel_id IS NULL) DESC, c.created_at
 ON CONFLICT (account_id, provedor) DO NOTHING;
 
--- A de embeddings entra no slot da OpenAI VAZIO como a chave dele.
-INSERT INTO cb_ia_chaves (account_id, provedor, api_key, atualizada_por, created_at, updated_at)
-SELECT c.account_id, 'openai', c.embeddings_api_key, c.created_by, now(), now()
+-- A de embeddings entra no slot da OpenAI VAZIO como a chave dele E como a
+-- chave PRÓPRIA da base, com o MESMO texto cifrado nos dois campos. É a marca
+-- de origem: texto cifrado IDÊNTICO = "esta chave É a da base" (o app a
+-- preserva quando uma chave de chat da OpenAI chegar depois e não servir aos
+-- embeddings — Codex, #294); mesma chave com textos cifrados DIFERENTES é a
+-- duplicata falsa do caso seguinte, que a troca apaga.
+INSERT INTO cb_ia_chaves (account_id, provedor, api_key, embeddings_api_key, atualizada_por, created_at, updated_at)
+SELECT c.account_id, 'openai', c.embeddings_api_key, c.embeddings_api_key, c.created_by, now(), now()
   FROM ai_configs c
  WHERE c.channel_id IS NULL
    AND c.embeddings_api_key IS NOT NULL AND c.embeddings_api_key <> ''
@@ -181,10 +186,10 @@ BEGIN
     IF NEW.embeddings_api_key IS NOT NULL AND NEW.embeddings_api_key <> '' THEN
       -- A regra da cópia (item 2): slot da OpenAI vazio recebe a chave; ocupado,
       -- ela fica como a própria da base.
-      INSERT INTO cb_ia_chaves (account_id, provedor, api_key, created_at, updated_at)
-      VALUES (NEW.account_id, 'openai', NEW.embeddings_api_key, now(), now())
+      INSERT INTO cb_ia_chaves (account_id, provedor, api_key, embeddings_api_key, created_at, updated_at)
+      VALUES (NEW.account_id, 'openai', NEW.embeddings_api_key, NEW.embeddings_api_key, now(), now())
       ON CONFLICT (account_id, provedor)
-        DO UPDATE SET embeddings_api_key = EXCLUDED.api_key, updated_at = now();
+        DO UPDATE SET embeddings_api_key = EXCLUDED.embeddings_api_key, updated_at = now();
     ELSIF TG_OP = 'UPDATE' THEN
       -- A tela antiga APAGOU a chave própria: a base volta à chave da OpenAI.
       UPDATE cb_ia_chaves SET embeddings_api_key = NULL, updated_at = now()

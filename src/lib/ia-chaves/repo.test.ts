@@ -75,6 +75,13 @@ describe('gravarChave — a chave própria falsa dos embeddings sai na troca', (
     expect(legados).not.toContainEqual({ embeddings_api_key: null })
   })
 
+  it('a chave que era SÓ da base (mesmo texto cifrado nos dois campos, a marca da 1042) fica', async () => {
+    linhaOpenai = { api_key: 'cifra:90:sk-da-base', embeddings_api_key: 'cifra:90:sk-da-base' }
+    await gravarChave('conta-1', 'openai', 'sk-de-chat', 'user-1', false)
+    expect(upserts[0]).not.toHaveProperty('embeddings_api_key')
+    expect(legados).not.toContainEqual({ embeddings_api_key: null })
+  })
+
   it('chave que não decifra: na dúvida, não apaga', async () => {
     linhaOpenai = { api_key: 'cifra:90:sk-velha', embeddings_api_key: 'lixo' }
     await gravarChave('conta-1', 'openai', 'sk-nova', 'user-1', false)
