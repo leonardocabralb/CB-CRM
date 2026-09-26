@@ -17,6 +17,7 @@ vi.mock('@/lib/whatsapp/encryption', () => ({
 
 let linhaOpenai: { api_key: string; embeddings_api_key: string | null } | null = null
 const upserts: Record<string, unknown>[] = []
+const legados: Record<string, unknown>[] = []
 
 vi.mock('@/lib/ai/admin-client', () => ({
   supabaseAdmin: () => ({
@@ -40,7 +41,12 @@ vi.mock('@/lib/ai/admin-client', () => ({
       eq.eq = () => eq
       eq.is = async () => fim
       eq.then = (r: (v: unknown) => unknown) => r(fim)
-      return { update: () => eq }
+      return {
+        update: (campos: Record<string, unknown>) => {
+          legados.push(campos)
+          return eq
+        },
+      }
     },
   }),
 }))
@@ -49,6 +55,7 @@ import { gravarChave } from './repo'
 
 beforeEach(() => {
   upserts.length = 0
+  legados.length = 0
   linhaOpenai = null
 })
 
@@ -57,18 +64,41 @@ describe('gravarChave — a chave própria falsa dos embeddings sai na troca', (
     linhaOpenai = { api_key: 'cifra:90:sk-velha', embeddings_api_key: 'cifra:91:sk-velha' }
     await gravarChave('conta-1', 'openai', 'sk-nova', 'user-1', null)
     expect(upserts[0]).toHaveProperty('embeddings_api_key', null)
+    // E a cópia legada sai junto (a volta atrás do deploy não a usaria).
+    expect(legados).toContainEqual({ embeddings_api_key: null })
   })
 
   it('a própria DIFERENTE fica (o upsert não toca a coluna)', async () => {
     linhaOpenai = { api_key: 'cifra:90:sk-velha', embeddings_api_key: 'cifra:91:sk-dos-embeddings' }
     await gravarChave('conta-1', 'openai', 'sk-nova', 'user-1', null)
     expect(upserts[0]).not.toHaveProperty('embeddings_api_key')
+    expect(legados).not.toContainEqual({ embeddings_api_key: null })
+  })
+
+  it('a chave que era SÓ da base (mesmo texto cifrado nos dois campos, a marca da 1042) fica', async () => {
+    linhaOpenai = { api_key: 'cifra:90:sk-da-base', embeddings_api_key: 'cifra:90:sk-da-base' }
+    await gravarChave('conta-1', 'openai', 'sk-de-chat', 'user-1', false)
+    expect(upserts[0]).not.toHaveProperty('embeddings_api_key')
+    expect(legados).not.toContainEqual({ embeddings_api_key: null })
   })
 
   it('chave que não decifra: na dúvida, não apaga', async () => {
     linhaOpenai = { api_key: 'cifra:90:sk-velha', embeddings_api_key: 'lixo' }
     await gravarChave('conta-1', 'openai', 'sk-nova', 'user-1', false)
     expect(upserts[0]).not.toHaveProperty('embeddings_api_key')
+  })
+
+  it('a própria igual à chave NOVA sai — o veredito da gravação passa a valer (Codex, #295)', async () => {
+    linhaOpenai = { api_key: 'cifra:90:sk-a', embeddings_api_key: 'cifra:91:sk-b' }
+    await gravarChave('conta-1', 'openai', 'sk-b', 'user-1', false)
+    expect(upserts[0]).toHaveProperty('embeddings_api_key', null)
+    expect(upserts[0]).toHaveProperty('serve_embeddings', false)
+  })
+
+  it('a chave que era SÓ da base e é a MESMA da nova também sai (a linha passa a ser do chat)', async () => {
+    linhaOpenai = { api_key: 'cifra:90:sk-da-base', embeddings_api_key: 'cifra:90:sk-da-base' }
+    await gravarChave('conta-1', 'openai', 'sk-da-base', 'user-1', false)
+    expect(upserts[0]).toHaveProperty('embeddings_api_key', null)
   })
 
   it('outro provedor não consulta nada da OpenAI', async () => {

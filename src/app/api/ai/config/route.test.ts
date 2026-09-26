@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // GET /api/ai/config — qualquer membro lê (a caixa de entrada precisa saber se
@@ -20,7 +22,7 @@ vi.mock('@/lib/auth/account', () => ({
       },
     },
   })),
-  requireRole: vi.fn(),
+  requireRole: vi.fn(async () => ({ accountId: 'conta-1', userId: 'user-1', supabase: {} })),
   toErrorResponse: vi.fn(() => new Response('erro', { status: 500 })),
 }))
 vi.mock('@/lib/ai/admin-client', () => ({
@@ -48,6 +50,11 @@ vi.mock('@/lib/ai/admin-client', () => ({
     }),
   }),
 }))
+vi.mock('@/lib/rate-limit', () => ({
+  checkRateLimit: () => ({ success: true }),
+  rateLimitResponse: vi.fn(),
+  RATE_LIMITS: { adminAction: {} },
+}))
 vi.mock('@/lib/ia-chaves/repo', () => ({
   lerChave: vi.fn(),
   lerEstado: vi.fn(async () => [
@@ -57,7 +64,7 @@ vi.mock('@/lib/ia-chaves/repo', () => ({
   ]),
 }))
 
-import { GET } from './route'
+import { GET, POST } from './route'
 
 beforeEach(() => {
   papel = 'agent'
@@ -80,5 +87,37 @@ describe('GET /api/ai/config — o prompt só para administrador', () => {
       const corpo = (await (await GET()).json()) as Record<string, unknown>
       expect(corpo.system_prompt, p).toBe('segredo do escritório')
     }
+  })
+})
+
+describe('POST /api/ai/config — aba aberta do app anterior (Codex, #294)', () => {
+  function pedido(corpo: Record<string, unknown>) {
+    return new Request('http://x/api/ai/config', { method: 'POST', body: JSON.stringify(corpo) })
+  }
+
+  it('chave no corpo = 409 pedindo para recarregar, nunca "salvo"', async () => {
+    for (const corpo of [
+      { provider: 'gemini', model: 'm', api_key: 'sk-nova' },
+      { provider: 'gemini', model: 'm', embeddings_api_key: 'sk-emb' },
+      { provider: 'gemini', model: 'm', embeddings_api_key: null },
+    ]) {
+      const res = await POST(pedido(corpo))
+      expect(res.status).toBe(409)
+      expect(await res.json()).toMatchObject({ code: 'tela_desatualizada' })
+    }
+  })
+})
+
+describe('POST /api/ai/config — a gravação da linha vai pelo serviço (Codex, #294)', () => {
+  it('nenhuma escrita em ai_configs pelo cliente da sessão', () => {
+    const fonte = readFileSync(join(__dirname, 'route.ts'), 'utf8').replace(/\/\/.*$/gm, '')
+    const post = fonte.slice(fonte.indexOf('export async function POST'))
+    // O gatilho da janela (1042) copia a escrita do NAVEGADOR para
+    // cb_ia_chaves; o espelho do app novo não pode passar por ali.
+    expect(post).not.toMatch(/supabase\s*\.from\(\s*'ai_configs'\s*\)\s*\.(update|insert|upsert|delete)\(/)
+    expect(post).not.toMatch(/await\s+supabase\s*\n?\s*\.from\(\s*'ai_configs'\s*\)\s*\n?\s*\.(update|insert|upsert|delete)\(/)
+    expect(post).toMatch(/const\s+db\s*=\s*supabaseAdmin\(\)/)
+    expect(post).toMatch(/db\s*\.from\(\s*'ai_configs'\s*\)\s*\.update\(/)
+    expect(post).toMatch(/db\.from\(\s*'ai_configs'\s*\)\.insert\(/)
   })
 })

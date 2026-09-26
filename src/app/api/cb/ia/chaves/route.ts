@@ -7,6 +7,7 @@ import { embedTexts } from '@/lib/ai/embeddings'
 import { AI_PROVIDER_DEFAULT_MODEL } from '@/lib/ai/defaults'
 import { AiError, mensagemSeguraDeAiError, type AiProvider } from '@/lib/ai/types'
 import { supabaseAdmin } from '@/lib/ai/admin-client'
+import { MODELO_TRANSCRICAO } from '@/lib/transcricao/transcrever'
 import {
   apagarChave,
   ehProvedor,
@@ -68,8 +69,17 @@ async function modelosEmUso(accountId: string, provedor: AiProvider): Promise<st
   } catch (err) {
     throw new Error(`[ia-chaves] leitura dos agentes falhou: ${err instanceof Error ? err.message : String(err)}`)
   }
-  const candidatos: unknown[] = []
-  for (const linha of data ?? []) {
+  // A transcrição chama SEMPRE o modelo fixo com a chave do Gemini, qualquer
+  // que seja o provedor dos agentes (Codex, #294): primeiro da lista (e
+  // dentro do teto de modelos conferidos).
+  const candidatos: unknown[] = provedor === 'gemini' ? [MODELO_TRANSCRICAO] : []
+  // A linha PADRÃO (assistente e Radar) antes das de conexão e dos agentes,
+  // pela régua e não pela ordem que o banco devolveu: com teto de modelos
+  // conferidos, os da conta não podem cair para depois dele (Codex, #295).
+  const ordenadas = [...(data ?? [])].sort(
+    (a, b) => (a.channel_id === null ? 0 : 1) - (b.channel_id === null ? 0 : 1),
+  )
+  for (const linha of ordenadas) {
     if (linha.provider !== provedor) continue
     if (linha.channel_id !== null && linha.is_active === false) continue
     candidatos.push(...(linha.channel_id === null ? [linha.model, linha.radar_model] : [linha.model]))
@@ -100,8 +110,20 @@ function configDeTeste(provedor: AiProvider, modelo: string, apiKey: string) {
 }
 
 type Veredito =
-  | { ok: true; modelosIndisponiveis: string[]; naoConferidos: string[] }
+  | { ok: true; modelosIndisponiveis: string[]; naoConferidos: string[]; transcricaoIndisponivel: boolean }
   | { ok: false; erro: unknown; modelo?: string }
+
+/**
+ * Falha passageira: não é resposta sobre a chave nem sobre o modelo — tempo
+ * esgotado, rede, limite, e o 5xx do provedor (Codex, #294: o 5xx chega como
+ * `provider_error`, o mesmo código do modelo inexistente; quem separa é o
+ * status que o provedor devolveu).
+ */
+function falhaPassageira(err: unknown): boolean {
+  if (!(err instanceof AiError)) return false
+  if (['timeout', 'network_error', 'rate_limited'].includes(err.code)) return true
+  return err.code === 'provider_error' && (err.upstreamStatus ?? 0) >= 500
+}
 
 /**
  * Teto de modelos conferidos numa gravação (Codex, #295): cada um é uma
@@ -131,6 +153,17 @@ async function alcanca(provedor: AiProvider, modelo: string, chave: string): Pro
  *   provedor aposenta o modelo (e o modelo não se troca sem chave que funcione).
  * A chave em si é conferida no modelo padrão do provedor quando todo modelo em
  * uso falhou: recusada ali, é a chave.
+ *
+ * ⚠️ O modelo da TRANSCRIÇÃO (Gemini) não é "trocável": é fixo no código
+ * (`MODELO_TRANSCRICAO`), e nenhuma tela o muda (Codex, #294). Por isso ele
+ * tem régua própria quando a chave nova não o alcança:
+ * - sem chave atual → recusa (`transcricao_recusada`): gravar deixaria a
+ *   transcrição quebrada sem nada que o administrador possa trocar;
+ * - a chave atual alcança → recusa (`modelo_em_uso_recusado`, a regra geral);
+ * - nem a atual alcança → a transcrição JÁ está fora do ar, e recusar só
+ *   travaria a troca da chave (inclusive a de uma chave vazada) sem consertar
+ *   nada: aceita, com aviso próprio (`transcricao_indisponivel`), que não
+ *   manda trocar modelo nenhum.
  */
 async function validarChaveNova(
   accountId: string,
@@ -139,6 +172,8 @@ async function validarChaveNova(
 ): Promise<Veredito> {
   const padrao = AI_PROVIDER_DEFAULT_MODEL[provedor]
   const emUso = await modelosEmUso(accountId, provedor)
+  // O modelo da transcrição (Gemini) vem PRIMEIRO em `modelosEmUso`: fica
+  // sempre dentro do teto.
   const aTestar = emUso.length > 0 ? emUso.slice(0, MAX_MODELOS_CONFERIDOS) : [padrao]
   const naoConferidos = emUso.slice(MAX_MODELOS_CONFERIDOS)
 
@@ -150,7 +185,12 @@ async function validarChaveNova(
     .map((modelo, i) => ({ modelo, erro: erros[i] }))
     .filter((r): r is { modelo: string; erro: unknown } => r.erro !== null)
 
-  if (recusados.length === 0) return { ok: true, modelosIndisponiveis: [], naoConferidos }
+  if (recusados.length === 0) return { ok: true, modelosIndisponiveis: [], naoConferidos, transcricaoIndisponivel: false }
+  // Tempo esgotado, rede ou limite NÃO dizem nada sobre o acesso ao modelo:
+  // nada é trocado, e o administrador tenta de novo (Codex, #294). Tratada como
+  // "não alcança", a chave seria gravada sem ter sido conferida no modelo em uso.
+  const passageira = recusados.find((r) => falhaPassageira(r.erro))
+  if (passageira) return { ok: false, erro: passageira.erro }
   if (emUso.length === 0) return { ok: false, erro: recusados[0].erro }
 
   // Nenhum modelo em uso respondeu: a chave alcança ao menos o padrão?
@@ -161,19 +201,32 @@ async function validarChaveNova(
   }
 
   // A chave ATUAL alcança o modelo que a nova não alcança?
-  let atual: string | null = null
+  // Sem conseguir LER a chave atual, não há como decidir: nada é trocado.
+  let atual: string | null
   try {
     atual = (await lerChave(accountId, provedor)).chave
   } catch {
-    atual = null
+    return { ok: false, erro: 'leitura_falhou' }
+  }
+  const transcricao = provedor === 'gemini' ? recusados.find((r) => r.modelo === MODELO_TRANSCRICAO) : undefined
+  if (transcricao && !atual) {
+    return { ok: false, erro: 'transcricao_recusada', modelo: MODELO_TRANSCRICAO }
   }
   const chaveAtual = atual
   if (chaveAtual) {
     const comAtual = await Promise.all(recusados.map((r) => alcanca(provedor, r.modelo, chaveAtual)))
+    // Passageira com a atual: não prova que o modelo saiu do ar.
+    const passageiraComAtual = comAtual.find((e) => falhaPassageira(e))
+    if (passageiraComAtual) return { ok: false, erro: passageiraComAtual }
     const i = comAtual.findIndex((e) => e === null)
     if (i >= 0) return { ok: false, erro: 'modelo_em_uso_recusado', modelo: recusados[i].modelo }
   }
-  return { ok: true, modelosIndisponiveis: recusados.map((r) => r.modelo), naoConferidos }
+  return {
+    ok: true,
+    modelosIndisponiveis: recusados.filter((r) => r !== transcricao).map((r) => r.modelo),
+    naoConferidos,
+    transcricaoIndisponivel: transcricao !== undefined,
+  }
 }
 
 export async function PUT(request: Request) {
@@ -198,15 +251,20 @@ export async function PUT(request: Request) {
 
     const veredito = await validarChaveNova(ctx.accountId, provedor, chave)
     if (!veredito.ok) {
-      if (veredito.erro === 'modelo_em_uso_recusado') {
+      if (veredito.erro === 'modelo_em_uso_recusado' || veredito.erro === 'transcricao_recusada') {
         return NextResponse.json(
-          { error: 'modelo_em_uso_recusado', code: 'modelo_em_uso_recusado', modelo: veredito.modelo },
+          { error: veredito.erro, code: veredito.erro, modelo: veredito.modelo },
           { status: 400 },
         )
       }
+      if (veredito.erro === 'leitura_falhou') {
+        return NextResponse.json({ error: 'leitura_falhou', code: 'leitura_falhou' }, { status: 500 })
+      }
       if (veredito.erro instanceof AiError) {
+        // A tela conhece `network`, não o `network_error` do provedor.
+        const code = veredito.erro.code === 'network_error' ? 'network' : veredito.erro.code
         return NextResponse.json(
-          { error: mensagemSeguraDeAiError(veredito.erro), code: veredito.erro.code },
+          { error: mensagemSeguraDeAiError(veredito.erro), code },
           { status: 400 },
         )
       }
@@ -228,9 +286,13 @@ export async function PUT(request: Request) {
     //   nula ("serve", como antes) e a tela avisa.
     // - `modelo_em_uso_indisponivel`: um modelo em uso não respondeu nem com
     //   a chave anterior (aposentado?) — a tela diz quais trocar.
+    // - `transcricao_indisponivel`: o modelo FIXO da transcrição não respondeu
+    //   nem com a chave anterior — não há modelo a trocar; a tela diz que a
+    //   transcrição de áudio segue fora do ar.
     // - `modulos_nao_criados`: ver abaixo.
     const avisos: string[] = []
     if (veredito.modelosIndisponiveis.length > 0) avisos.push('modelo_em_uso_indisponivel')
+    if (veredito.transcricaoIndisponivel) avisos.push('transcricao_indisponivel')
     if (veredito.naoConferidos.length > 0) avisos.push('modelos_nao_conferidos')
     let serveEmbeddings: boolean | null = null
     if (provedor === 'openai') {

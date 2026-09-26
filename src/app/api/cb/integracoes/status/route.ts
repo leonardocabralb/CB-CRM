@@ -21,6 +21,9 @@ import {
   type Teste,
 } from '@/lib/integracoes/montar';
 
+/** Modelos pingados por provedor numa carga da tela (cada um é uma geração paga). */
+const MAX_MODELOS_PINGADOS = 5;
+
 /**
  * GET /api/cb/integracoes/status  (admin+)
  *
@@ -149,6 +152,13 @@ export async function GET(request: Request) {
       );
     }
 
+    // Os agentes de IA (1043). Leitura que falha só tira a lista do cartão e
+    // os modelos deles do ping (log) — não derruba a tela das chaves.
+    const agentes = await listarAgentes(ctx.accountId).catch((err) => {
+      console.error('[integracoes] leitura dos agentes falhou:', err instanceof Error ? err.message : err);
+      return [] as Awaited<ReturnType<typeof listarAgentes>>;
+    });
+
     // Um ping por chave cadastrada, com o modelo que ela vai rodar: o do
     // assistente quando é o provedor dele, senão o padrão do provedor. Mais o
     // ping dos embeddings com a chave da OpenAI (a busca da base). Tudo em
@@ -169,6 +179,15 @@ export async function GET(request: Request) {
             return { ...base, teste: { ok: false, motivo: 'leitura_falhou' } };
           }
           if (!chave) return { ...base, existe: false, teste: null };
+          // A chave da OpenAI que nasceu SÓ da base (1042) e que nada de chat
+          // usa: não é pingada no modelo de chat — pode ser restrita aos
+          // embeddings, e o cartão diria "falhando" sobre o único uso que ela
+          // tem. Quem diz se ela funciona é o ping dos embeddings (Codex, #294).
+          const usadaNoChat =
+            padrao?.provider === e.provedor ||
+            deConexao.some((l) => l.provider === e.provedor) ||
+            agentes.some((a) => a.ativo && a.provedor === e.provedor);
+          if (e.soDaBase && !usadaNoChat) return { ...base, teste: { ok: true } };
           const apiKey = chave;
           // ⚠️ O ping testa o modelo do CHAT (ou o padrão do provedor) E o de
           // cada agente de CONEXÃO ligado deste provedor: a resposta
@@ -181,7 +200,16 @@ export async function GET(request: Request) {
               ? padrao.model
               : AI_PROVIDER_DEFAULT_MODEL[e.provedor],
             ...deConexao.filter((l) => l.provider === e.provedor).map((l) => l.model),
-          ].filter((m, i, todos) => typeof m === 'string' && m.trim() !== '' && todos.indexOf(m) === i);
+            // E o de cada agente de IA LIGADO deste provedor (Codex, #295): um
+            // modelo trocado para um aposentado deixaria o cartão verde com o
+            // Playground e a produção falhando.
+            ...agentes.filter((a) => a.ativo && a.provedor === e.provedor).map((a) => a.modelo),
+          ]
+            .filter((m, i, todos) => typeof m === 'string' && m.trim() !== '' && todos.indexOf(m) === i)
+            // Cada ping é uma geração PAGA a cada carga da tela: teto por
+            // provedor, a linha do chat primeiro. O agente além do teto se
+            // confere no Playground dele.
+            .slice(0, MAX_MODELOS_PINGADOS);
           const falhas = await Promise.all(
             modelos.map(async (model) => {
               try {
@@ -207,7 +235,7 @@ export async function GET(request: Request) {
           return { ...base, teste: falha ? { ok: false, motivo: falha } : { ok: true } };
         })
       ),
-      (async (): Promise<Teste> => {
+      (async (): Promise<Teste | 'recusada'> => {
         const temOpenai = estado.some((e) => e.provedor === 'openai' && e.existe);
         if (!pingar || !temOpenai) return null;
         try {
@@ -216,7 +244,9 @@ export async function GET(request: Request) {
           // pingada de novo (é a resposta que já se tem).
           const lida = await lerChaveDeEmbeddings(ctx.accountId);
           if (lida.ilegivel) return { ok: false, motivo: 'chave_ilegivel' };
-          if (lida.recusada) return { ok: false, motivo: 'invalid_key' };
+          // Recusada ao gravar: a base usa a busca por palavras e o chat
+          // funciona — o cartão não fica "falhando" por isso (Codex, #294).
+          if (lida.recusada) return 'recusada';
           if (!lida.chave) return null;
           return pingEmbeddings(lida.chave);
         } catch {
@@ -251,21 +281,13 @@ export async function GET(request: Request) {
         model: l.model,
         canal: canais.find((c) => c.id === l.channel_id)?.label ?? l.channel_id,
       })),
-      // Os agentes de IA (1043) de cada provedor. Leitura que falha só tira a
-      // lista do cartão (log) — não derruba a tela das chaves.
-      await listarAgentes(ctx.accountId)
-        .then((lista) =>
-          lista.map((a) => ({
-            nome: a.nome,
-            provedor: a.provedor as ProviderId,
-            modelo: a.modelo,
-            ativo: a.ativo,
-          }))
-        )
-        .catch((err) => {
-          console.error('[integracoes] leitura dos agentes falhou:', err instanceof Error ? err.message : err);
-          return [];
-        })
+      // Os agentes de IA (1043) de cada provedor.
+      agentes.map((a) => ({
+        nome: a.nome,
+        provedor: a.provedor as ProviderId,
+        modelo: a.modelo,
+        ativo: a.ativo,
+      }))
     );
 
     return NextResponse.json({

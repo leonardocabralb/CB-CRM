@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // resposta automática legada chama o modelo da linha dela, e um modelo
 // aposentado ali falharia com o cartão dizendo "funcionando" (Codex, #294).
 
-const validateAiCredentials = vi.fn(async (cfg: { model: string }) => {
+const validateAiCredentials = vi.fn(async (cfg: { model: string; provider?: string }) => {
   if (modelosQueFalham.includes(cfg.model)) {
     const { AiError } = await import('@/lib/ai/types')
     throw new AiError('model not found', { code: 'model_not_found', status: 400 })
@@ -35,7 +35,7 @@ vi.mock('@/lib/cb-channels/repo', () => ({
   listChannels: vi.fn(async () => [{ id: 'canal-1', label: 'Comercial', radar_enabled: true }]),
 }))
 vi.mock('@/lib/ai/validate', () => ({
-  validateAiCredentials: (cfg: { model: string }) => validateAiCredentials(cfg),
+  validateAiCredentials: (cfg: { model: string; provider?: string }) => validateAiCredentials(cfg),
 }))
 vi.mock('@/lib/ai/embeddings', () => ({ embedTexts: vi.fn(), EMBEDDING_MODEL: 'emb' }))
 vi.mock('@/lib/transcricao/transcrever', () => ({ MODELO_TRANSCRICAO: 'trans' }))
@@ -49,9 +49,14 @@ vi.mock('@/lib/ia-chaves/repo', () => ({
   lerChaveDeEmbeddings: vi.fn(),
 }))
 
+let agentesDaConta: { nome: string; provedor: string; modelo: string; ativo: boolean }[] = []
+vi.mock('@/lib/ia-agentes/repo', () => ({ listarAgentes: vi.fn(async () => agentesDaConta) }))
+
 import { GET } from './route'
+import { lerChaveDeEmbeddings, lerEstado } from '@/lib/ia-chaves/repo'
 
 beforeEach(() => {
+  agentesDaConta = []
   validateAiCredentials.mockClear()
   modelosQueFalham = []
   linhas = [
@@ -83,5 +88,81 @@ describe('GET /api/cb/integracoes/status — o ping cobre os agentes de conexão
 
   it('tudo respondendo = ok', async () => {
     expect((await cartaoGemini()).estado).toBe('ok')
+  })
+})
+
+describe('GET /api/cb/integracoes/status — chave da OpenAI recusada para a base (Codex, #294)', () => {
+  it('o cartão da OpenAI fica ok e o uso da base diz que caiu na busca por palavras', async () => {
+    vi.mocked(lerEstado).mockResolvedValueOnce([
+      { provedor: 'gemini', existe: true },
+      { provedor: 'openai', existe: true },
+      { provedor: 'anthropic', existe: false },
+    ] as never)
+    vi.mocked(lerChaveDeEmbeddings).mockResolvedValueOnce({ chave: null, ilegivel: false, recusada: true } as never)
+    const res = await GET(new Request('http://x/api/cb/integracoes/status'))
+    const corpo = (await res.json()) as {
+      cartoes: { id: string; estado: string; usos: { modulo: string; indisponivel?: string }[] }[]
+    }
+    const openai = corpo.cartoes.find((c) => c.id === 'openai')!
+    expect(openai.usos.find((u) => u.modulo === 'rag')?.indisponivel).toBe('embeddings_recusados')
+    expect(openai.estado).not.toBe('erro')
+  })
+})
+
+describe('GET /api/cb/integracoes/status — a chave da OpenAI que é SÓ da base (Codex, #294)', () => {
+  function estadoComOpenai(soDaBase: boolean) {
+    vi.mocked(lerEstado).mockResolvedValueOnce([
+      { provedor: 'gemini', existe: true },
+      { provedor: 'openai', existe: true, soDaBase },
+      { provedor: 'anthropic', existe: false },
+    ] as never)
+    vi.mocked(lerChaveDeEmbeddings).mockResolvedValueOnce({ chave: 'sk-emb', ilegivel: false, recusada: false } as never)
+  }
+
+  it('nada de chat usa a OpenAI: a chave só da base não é pingada no modelo de chat', async () => {
+    estadoComOpenai(true)
+    const res = await GET(new Request('http://x/api/cb/integracoes/status'))
+    expect(res.status).toBe(200)
+    expect(validateAiCredentials.mock.calls.some((c) => c[0].provider === 'openai')).toBe(false)
+  })
+
+  it('uma conexão usa a OpenAI no chat: aí o chat é pingado', async () => {
+    linhas.push({ channel_id: 'canal-9', provider: 'openai', model: 'gpt-conexao', radar_model: null, is_active: true })
+    estadoComOpenai(true)
+    await GET(new Request('http://x/api/cb/integracoes/status'))
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toContain('gpt-conexao')
+  })
+
+  it('a chave de chat de verdade continua pingada no padrão do provedor', async () => {
+    estadoComOpenai(false)
+    await GET(new Request('http://x/api/cb/integracoes/status'))
+    expect(validateAiCredentials.mock.calls.some((c) => c[0].provider === 'openai')).toBe(true)
+  })
+})
+
+describe('GET /api/cb/integracoes/status — os modelos dos agentes de IA ligados (Codex, #295)', () => {
+  it('pinga o modelo do agente LIGADO; o desligado não', async () => {
+    agentesDaConta = [
+      { nome: 'Triagem', provedor: 'gemini', modelo: 'gemini-do-agente', ativo: true },
+      { nome: 'Velho', provedor: 'gemini', modelo: 'gemini-desligado-agente', ativo: false },
+    ]
+    await cartaoGemini()
+    const modelos = validateAiCredentials.mock.calls.map((c) => c[0].model)
+    expect(modelos).toContain('gemini-do-agente')
+    expect(modelos).not.toContain('gemini-desligado-agente')
+  })
+
+  it('o modelo do agente falhando deixa o cartão em erro', async () => {
+    agentesDaConta = [{ nome: 'Triagem', provedor: 'gemini', modelo: 'gemini-aposentado', ativo: true }]
+    modelosQueFalham = ['gemini-aposentado']
+    expect((await cartaoGemini()).estado).toBe('erro')
+  })
+
+  it('no máximo 5 pings por provedor, a linha do chat primeiro', async () => {
+    agentesDaConta = ['a1', 'a2', 'a3', 'a4', 'a5'].map((modelo) => ({ nome: modelo, provedor: 'gemini', modelo, ativo: true }))
+    await cartaoGemini()
+    const modelos = validateAiCredentials.mock.calls.map((c) => c[0].model)
+    expect(modelos).toHaveLength(5)
+    expect(modelos).toContain('gemini-padrao')
   })
 })

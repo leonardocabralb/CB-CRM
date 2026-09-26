@@ -33,9 +33,14 @@
 --     posterior: se o deploy precisar voltar atrás, o app anterior continua
 --     achando a chave onde sempre achou.
 --
--- ⚠️ Aditiva: aplicar ANTES do deploy. Entre aplicar e publicar, NÃO trocar
--- chave pela tela antiga — ela grava em `ai_configs.api_key`, que o app novo
--- não lê.
+--  4. Um gatilho TEMPORÁRIO (`cb_ia_chaves_segue_o_legado`) cobre a janela
+--     entre aplicar e publicar: o app anterior ainda grava a chave em
+--     `ai_configs`, e a cópia do item 2 é um retrato. Sem o gatilho, a chave
+--     trocada nesse intervalo nunca chegaria a `cb_ia_chaves` e o app novo
+--     subiria com a velha (Codex, #294). A 1043, aplicada com a F1a já no
+--     ar, o apaga.
+--
+-- ⚠️ Aditiva: aplicar ANTES do deploy.
 --
 -- Idempotente. `anon` sem nada; `service_role` com tudo, POR ESCRITO (em
 -- banco novo não existe default privilege que o conceda).
@@ -84,9 +89,14 @@ SELECT DISTINCT ON (c.account_id, c.provider)
  ORDER BY c.account_id, c.provider, (c.channel_id IS NULL) DESC, c.created_at
 ON CONFLICT (account_id, provedor) DO NOTHING;
 
--- A de embeddings entra no slot da OpenAI VAZIO como a chave dele.
-INSERT INTO cb_ia_chaves (account_id, provedor, api_key, atualizada_por, created_at, updated_at)
-SELECT c.account_id, 'openai', c.embeddings_api_key, c.created_by, now(), now()
+-- A de embeddings entra no slot da OpenAI VAZIO como a chave dele E como a
+-- chave PRÓPRIA da base, com o MESMO texto cifrado nos dois campos. É a marca
+-- de origem: texto cifrado IDÊNTICO = "esta chave É a da base" (o app a
+-- preserva quando uma chave de chat da OpenAI chegar depois e não servir aos
+-- embeddings — Codex, #294); mesma chave com textos cifrados DIFERENTES é a
+-- duplicata falsa do caso seguinte, que a troca apaga.
+INSERT INTO cb_ia_chaves (account_id, provedor, api_key, embeddings_api_key, atualizada_por, created_at, updated_at)
+SELECT c.account_id, 'openai', c.embeddings_api_key, c.embeddings_api_key, c.created_by, now(), now()
   FROM ai_configs c
  WHERE c.channel_id IS NULL
    AND c.embeddings_api_key IS NOT NULL AND c.embeddings_api_key <> ''
@@ -126,6 +136,112 @@ BEGIN
 END $$;
 
 ALTER TABLE ai_configs ALTER COLUMN api_key DROP NOT NULL;
+
+-- ---------------------------------------------------------------------------
+-- 4) A janela entre aplicar e publicar (TEMPORÁRIO — a 1043 apaga)
+-- ---------------------------------------------------------------------------
+-- Só a escrita que vem do NAVEGADOR (a sessão de um usuário pelo PostgREST,
+-- como o app anterior grava): o app novo espelha a chave em `ai_configs` pelo
+-- SERVIÇO, e copiar de volta o espelho dele recriaria a falsa chave "própria"
+-- dos embeddings. SECURITY DEFINER porque `authenticated` não alcança
+-- `cb_ia_chaves` (e não deve).
+CREATE OR REPLACE FUNCTION public.cb_ia_chaves_segue_o_legado()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_da_conexao text;
+BEGIN
+  IF coalesce(nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role', '') <> 'authenticated' THEN
+    RETURN coalesce(NEW, OLD);
+  END IF;
+
+  -- O "Remover" do app anterior apaga a linha padrão e diz ao administrador
+  -- que a chave foi esquecida: a cópia em `cb_ia_chaves` sai junto, senão o
+  -- app novo subiria usando a chave que a pessoa mandou esquecer (Codex, #295).
+  IF TG_OP = 'DELETE' THEN
+    IF OLD.channel_id IS NULL THEN
+      -- Um agente de CONEXÃO ligado do mesmo provedor continua configurado: a
+      -- chave do provedor passa a ser a DELE (a mesma escolha da cópia do
+      -- item 1), em vez de sumir — sem isso a resposta automática dele pararia
+      -- no deploy (Codex, #294). A da linha apagada sai do mesmo jeito.
+      SELECT c.api_key INTO v_da_conexao
+        FROM ai_configs c
+       WHERE c.account_id = OLD.account_id AND c.provider = OLD.provider
+         AND c.channel_id IS NOT NULL AND c.is_active
+         AND c.api_key IS NOT NULL AND c.api_key <> ''
+       ORDER BY c.created_at
+       LIMIT 1;
+      IF v_da_conexao IS NOT NULL THEN
+        UPDATE cb_ia_chaves SET api_key = v_da_conexao, serve_embeddings = NULL, updated_at = now()
+         WHERE account_id = OLD.account_id AND provedor = OLD.provider;
+      ELSE
+        DELETE FROM cb_ia_chaves WHERE account_id = OLD.account_id AND provedor = OLD.provider;
+      END IF;
+      IF OLD.embeddings_api_key IS NOT NULL AND OLD.embeddings_api_key <> '' THEN
+        -- A linha da OpenAI que nasceu SÓ da chave da base (as duas colunas com
+        -- o MESMO texto cifrado — a marca de origem do item 2) é essa chave
+        -- inteira: sai a linha, senão `api_key` continuaria servindo a base com
+        -- a credencial que a pessoa mandou esquecer (Codex, #295).
+        DELETE FROM cb_ia_chaves
+         WHERE account_id = OLD.account_id AND provedor = 'openai' AND api_key = embeddings_api_key;
+        UPDATE cb_ia_chaves SET embeddings_api_key = NULL, updated_at = now()
+         WHERE account_id = OLD.account_id AND provedor = 'openai';
+      END IF;
+    END IF;
+    RETURN OLD;
+  END IF;
+
+  IF NEW.channel_id IS NOT NULL THEN
+    RETURN NEW;
+  END IF;
+
+  IF NEW.api_key IS NOT NULL AND NEW.api_key <> ''
+     AND (TG_OP = 'INSERT' OR NEW.api_key IS DISTINCT FROM OLD.api_key) THEN
+    INSERT INTO cb_ia_chaves (account_id, provedor, api_key, created_at, updated_at)
+    VALUES (NEW.account_id, NEW.provider, NEW.api_key, now(), now())
+    ON CONFLICT (account_id, provedor)
+      DO UPDATE SET api_key = EXCLUDED.api_key, serve_embeddings = NULL, updated_at = now();
+  END IF;
+
+  IF TG_OP = 'INSERT' OR NEW.embeddings_api_key IS DISTINCT FROM OLD.embeddings_api_key THEN
+    IF NEW.embeddings_api_key IS NOT NULL AND NEW.embeddings_api_key <> '' THEN
+      -- A regra da cópia (item 2): slot da OpenAI vazio recebe a chave; ocupado,
+      -- ela fica como a própria da base.
+      -- A linha que nasceu SÓ da chave da base troca as DUAS colunas (a marca
+      -- de origem segue valendo); a linha de uma chave de chat de verdade
+      -- troca só a própria da base.
+      INSERT INTO cb_ia_chaves (account_id, provedor, api_key, embeddings_api_key, created_at, updated_at)
+      VALUES (NEW.account_id, 'openai', NEW.embeddings_api_key, NEW.embeddings_api_key, now(), now())
+      ON CONFLICT (account_id, provedor)
+        DO UPDATE SET
+          api_key = CASE WHEN cb_ia_chaves.api_key = cb_ia_chaves.embeddings_api_key
+                         THEN EXCLUDED.api_key ELSE cb_ia_chaves.api_key END,
+          serve_embeddings = CASE WHEN cb_ia_chaves.api_key = cb_ia_chaves.embeddings_api_key
+                                  THEN NULL ELSE cb_ia_chaves.serve_embeddings END,
+          embeddings_api_key = EXCLUDED.embeddings_api_key,
+          updated_at = now();
+    ELSIF TG_OP = 'UPDATE' THEN
+      -- A tela antiga APAGOU a chave própria: a linha que era SÓ dela sai
+      -- (Codex, #295); na outra, a base volta à chave da OpenAI.
+      DELETE FROM cb_ia_chaves
+       WHERE account_id = NEW.account_id AND provedor = 'openai' AND api_key = embeddings_api_key;
+      UPDATE cb_ia_chaves SET embeddings_api_key = NULL, updated_at = now()
+       WHERE account_id = NEW.account_id AND provedor = 'openai';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.cb_ia_chaves_segue_o_legado() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS cb_ia_chaves_segue_o_legado ON ai_configs;
+CREATE TRIGGER cb_ia_chaves_segue_o_legado
+  AFTER INSERT OR UPDATE OF api_key, embeddings_api_key OR DELETE ON ai_configs
+  FOR EACH ROW EXECUTE FUNCTION public.cb_ia_chaves_segue_o_legado();
 
 -- ---------------------------------------------------------------------------
 -- Conferência (roda em banco vazio: só catálogo e privilégios).

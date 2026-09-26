@@ -122,6 +122,21 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => null)
     if (!body || typeof body !== 'object') return bad('Invalid request body')
 
+    // ⚠️ Aba ABERTA do app anterior à 1042 manda a chave aqui. Ignorá-la e
+    // responder "salvo" faria a pessoa revogar a chave antiga achando que a
+    // nova ficou (Codex, #294): recusa pedindo para recarregar — a chave agora
+    // se cadastra em Configurações → Integrações.
+    const temChave = (v: unknown) => typeof v === 'string' && v.trim() !== ''
+    if (temChave(body.api_key) || temChave(body.embeddings_api_key) || body.embeddings_api_key === null) {
+      return NextResponse.json(
+        {
+          error: 'Esta página está desatualizada: recarregue e cadastre a chave em Configurações → Integrações.',
+          code: 'tela_desatualizada',
+        },
+        { status: 409 },
+      )
+    }
+
     const provider = body.provider as AiProvider
     if (provider !== 'openai' && provider !== 'anthropic' && provider !== 'gemini') {
       return bad('provider must be "openai", "anthropic" or "gemini"')
@@ -327,8 +342,14 @@ export async function POST(request: Request) {
     } else if (providerMudou) {
       shared.radar_model = null
     }
+    // ⚠️ A gravação vai pelo SERVIÇO, com a conta escrita no filtro: o
+    // gatilho da janela da 1042 trata escrita do NAVEGADOR como vinda do app
+    // anterior e copiaria a `api_key` do espelho de volta para `cb_ia_chaves`
+    // com `serve_embeddings` nulo — apagando o "esta chave não serve à base"
+    // já conferido (Codex, #294).
+    const db = supabaseAdmin()
     if (existing) {
-      const { error: upErr } = await supabase
+      const { error: upErr } = await db
         .from('ai_configs')
         .update(shared)
         .eq('account_id', accountId)
@@ -341,7 +362,7 @@ export async function POST(request: Request) {
         )
       }
     } else {
-      const { error: insErr } = await supabase.from('ai_configs').insert({
+      const { error: insErr } = await db.from('ai_configs').insert({
         account_id: accountId,
         created_by: userId,
         ...shared,

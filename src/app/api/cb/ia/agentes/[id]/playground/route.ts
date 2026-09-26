@@ -6,7 +6,7 @@ import { supabaseAdmin } from '@/lib/ai/admin-client'
 import { generateReply } from '@/lib/ai/generate'
 import { logAiUsage } from '@/lib/ai/usage'
 import { AiError, mensagemSeguraDeAiError, type ChatMessage } from '@/lib/ai/types'
-import { lerChave } from '@/lib/ia-chaves/repo'
+import { lerChave, lerEstado } from '@/lib/ia-chaves/repo'
 import { obterAgente } from '@/lib/ia-agentes/repo'
 import { montarPedidoDoAgente } from '@/lib/ia-agentes/pedido'
 import { respostaDoErro } from '@/lib/ia-agentes/resposta'
@@ -63,6 +63,13 @@ export async function POST(request: Request, { params }: Contexto) {
 
     let chave: string | null
     try {
+      // A chave da OpenAI que é SÓ da base (1042) não serve ao chat (Codex, #295).
+      if (agente.provedor === 'openai') {
+        const estado = await lerEstado(ctx.accountId)
+        if (estado.find((e) => e.provedor === 'openai')?.soDaBase) {
+          return NextResponse.json({ error: 'provedor_so_da_base', code: 'provedor_so_da_base' }, { status: 400 })
+        }
+      }
       const lida = await lerChave(ctx.accountId, agente.provedor)
       if (lida.ilegivel) {
         return NextResponse.json({ error: 'chave_ilegivel', code: 'chave_ilegivel' }, { status: 400 })

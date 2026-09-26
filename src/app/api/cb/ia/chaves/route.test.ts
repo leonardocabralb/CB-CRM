@@ -18,7 +18,16 @@ const embedTexts = vi.fn()
 let linhaPadrao: Record<string, unknown> | null = null
 let alcanca: (chave: string, modelo: string) => boolean = () => true
 let chaveAtual: string | null = null
+// Falha PASSAGEIRA (tempo esgotado, rede, limite) no dublê: o código, ou nulo.
+let passageira: (chave: string, modelo: string) => string | null = () => null
 const validateAiCredentials = vi.fn(async (cfg: { apiKey: string; model: string }) => {
+  const codigo = passageira(cfg.apiKey, cfg.model)
+  if (codigo) {
+    const { AiError } = await import('@/lib/ai/types')
+    // `5xx` imita o provedor fora do ar: `provider_error` com o status dele.
+    if (codigo === '5xx') throw new AiError('503', { code: 'provider_error', upstreamStatus: 503 })
+    throw new AiError(codigo, { code: codigo })
+  }
   if (!alcanca(cfg.apiKey, cfg.model)) {
     const { AiError } = await import('@/lib/ai/types')
     throw new AiError(`model ${cfg.model} not found`, { code: 'provider_error', status: 404 })
@@ -90,6 +99,7 @@ beforeEach(() => {
   linhaPadrao = null
   linhasPorConexao = []
   alcanca = () => true
+  passageira = () => null
   chaveAtual = null
   agentesDaConta = []
 })
@@ -130,7 +140,7 @@ describe('PUT /api/cb/ia/chaves — a chave nova é conferida nos modelos EM USO
     linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: 'gemini-b' }
     const res = await PUT(pedido('gemini'))
     expect(res.status).toBe(200)
-    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-a', 'gemini-b'])
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.7-flash', 'gemini-a', 'gemini-b'])
   })
 
   it('a nova não alcança o modelo em uso e a ATUAL alcança: recusa, e nada é gravado', async () => {
@@ -182,7 +192,7 @@ describe('PUT /api/cb/ia/chaves — os modelos dos AGENTES também contam (F1b)'
       { provedor: 'openai', modelo: 'gpt-x', ativo: true },
     ]
     await PUT(pedido('gemini'))
-    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-a', 'gemini-b'])
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.7-flash', 'gemini-a', 'gemini-b'])
   })
 
   it('a nova não alcança o modelo de um agente que a atual alcança: recusa', async () => {
@@ -202,7 +212,22 @@ describe('PUT /api/cb/ia/chaves — as linhas POR CONEXÃO também contam (Codex
       { channel_id: 'canal-2', provider: 'openai', model: 'gpt-x', radar_model: null },
     ]
     await PUT(pedido('gemini'))
-    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-a', 'gemini-da-conexao'])
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.7-flash', 'gemini-a', 'gemini-da-conexao'])
+  })
+
+  it('a linha PADRÃO vem antes das de conexão, qualquer que seja a ordem do banco (Codex, #295)', async () => {
+    linhaPadrao = null
+    linhasPorConexao = [
+      { channel_id: 'canal-1', provider: 'gemini', model: 'gemini-da-conexao', radar_model: null },
+      { channel_id: null, provider: 'gemini', model: 'gemini-a', radar_model: 'gemini-radar' },
+    ]
+    await PUT(pedido('gemini'))
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual([
+      'gemini-3.7-flash',
+      'gemini-a',
+      'gemini-radar',
+      'gemini-da-conexao',
+    ])
   })
 
   it('a conexão DESLIGADA não conta (não roda); a padrão desligada conta (o Radar a lê)', async () => {
@@ -211,7 +236,53 @@ describe('PUT /api/cb/ia/chaves — as linhas POR CONEXÃO também contam (Codex
       { channel_id: 'canal-1', provider: 'gemini', model: 'gemini-desligado', radar_model: null, is_active: false },
     ]
     await PUT(pedido('gemini'))
-    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-a'])
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.7-flash', 'gemini-a'])
+  })
+})
+
+describe('PUT /api/cb/ia/chaves — a transcrição usa o modelo FIXO com a chave do Gemini (Codex, #294)', () => {
+  it('o modelo da transcrição é conferido mesmo quando o assistente usa outro modelo do Gemini', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'gemini-customizado', radar_model: null }
+    await PUT(pedido('gemini'))
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toContain('gemini-3.7-flash')
+  })
+
+  it('sem chave atual e a nova não alcança a transcrição: recusa (não há modelo a trocar), nada gravado', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: null }
+    chaveAtual = null
+    alcanca = (_chave, modelo) => modelo !== 'gemini-3.7-flash'
+    const res = await PUT(pedido('gemini'))
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ code: 'transcricao_recusada', modelo: 'gemini-3.7-flash' })
+    expect(gravarChave).not.toHaveBeenCalled()
+  })
+
+  it('sem chave atual e a transcrição só deu tempo esgotado: devolve o erro passageiro, não "recusada"', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: null }
+    passageira = (_chave, modelo) => (modelo === 'gemini-3.7-flash' ? 'timeout' : null)
+    const res = await PUT(pedido('gemini'))
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ code: 'timeout' })
+    expect(gravarChave).not.toHaveBeenCalled()
+  })
+
+  it('a atual alcança a transcrição e a nova não: recusa pela regra geral', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: null }
+    chaveAtual = 'sk-atual'
+    alcanca = (chave, modelo) => !(chave === 'sk-teste' && modelo === 'gemini-3.7-flash')
+    const res = await PUT(pedido('gemini'))
+    expect(await res.json()).toMatchObject({ code: 'modelo_em_uso_recusado', modelo: 'gemini-3.7-flash' })
+    expect(gravarChave).not.toHaveBeenCalled()
+  })
+
+  it('nem a atual alcança a transcrição: aceita com aviso PRÓPRIO, sem mandar trocar modelo', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: null }
+    chaveAtual = 'sk-atual'
+    alcanca = (_chave, modelo) => modelo !== 'gemini-3.7-flash'
+    const res = await PUT(pedido('gemini'))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ ok: true, avisos: ['transcricao_indisponivel'], modelos: [] })
+    expect(gravarChave).toHaveBeenCalled()
   })
 })
 
@@ -220,7 +291,7 @@ describe('PUT /api/cb/ia/chaves — agente desligado e o teto de modelos (Codex,
     linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: null }
     agentesDaConta = [{ provedor: 'gemini', modelo: 'gemini-desligado', ativo: false }]
     await PUT(pedido('gemini'))
-    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-a'])
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.7-flash', 'gemini-a'])
   })
 
   it('confere no máximo 5 modelos; os demais voltam no aviso', async () => {
@@ -228,8 +299,52 @@ describe('PUT /api/cb/ia/chaves — agente desligado e o teto de modelos (Codex,
     agentesDaConta = ['m2', 'm3', 'm4', 'm5', 'm6', 'm7'].map((modelo) => ({ provedor: 'gemini', modelo, ativo: true }))
     const res = await PUT(pedido('gemini'))
     const corpo = (await res.json()) as { avisos: string[]; naoConferidos: string[] }
-    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['m1', 'm2', 'm3', 'm4', 'm5'])
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.7-flash', 'm1', 'm2', 'm3', 'm4'])
     expect(corpo.avisos).toContain('modelos_nao_conferidos')
-    expect(corpo.naoConferidos).toEqual(['m6', 'm7'])
+    expect(corpo.naoConferidos).toEqual(['m5', 'm6', 'm7'])
+  })
+})
+
+describe('PUT /api/cb/ia/chaves — falha PASSAGEIRA não vira "não alcança o modelo" (Codex, #294)', () => {
+  it('um modelo em uso dá tempo esgotado com a nova: nada é gravado, volta o erro passageiro', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: 'gemini-b' }
+    chaveAtual = 'sk-atual'
+    passageira = (chave, modelo) => (chave === 'sk-teste' && modelo === 'gemini-b' ? 'timeout' : null)
+    const res = await PUT(pedido('gemini'))
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ code: 'timeout' })
+    expect(gravarChave).not.toHaveBeenCalled()
+  })
+
+  it('a conferência com a ATUAL é passageira: não decide, nada é gravado', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: 'gemini-b' }
+    chaveAtual = 'sk-atual'
+    alcanca = (chave, modelo) => !(chave === 'sk-teste' && modelo === 'gemini-b')
+    passageira = (chave, modelo) => (chave === 'sk-atual' && modelo === 'gemini-b' ? 'network_error' : null)
+    const res = await PUT(pedido('gemini'))
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ code: 'network' })
+    expect(gravarChave).not.toHaveBeenCalled()
+  })
+})
+
+describe('PUT /api/cb/ia/chaves — o 5xx do provedor também é passageiro (Codex, #294)', () => {
+  it('um modelo em uso devolve 503 com a nova: nada é gravado', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: 'gemini-b' }
+    chaveAtual = 'sk-atual'
+    passageira = (chave, modelo) => (chave === 'sk-teste' && modelo === 'gemini-b' ? '5xx' : null)
+    const res = await PUT(pedido('gemini'))
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ code: 'provider_error' })
+    expect(gravarChave).not.toHaveBeenCalled()
+  })
+
+  it('o 404 do modelo continua sendo "não alcança" (a regra geral decide)', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: 'gemini-velho' }
+    chaveAtual = 'sk-atual'
+    alcanca = (_chave, modelo) => modelo !== 'gemini-velho'
+    const res = await PUT(pedido('gemini'))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ avisos: ['modelo_em_uso_indisponivel'] })
   })
 })

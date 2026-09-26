@@ -105,6 +105,9 @@ export function AiConfig() {
       }
     } catch {
       setChaves(null);
+      // Sem a resposta, a base NÃO sabe se a busca por sentido vale: o valor
+      // da carga anterior (outra conta, na troca de conta) mentiria (Codex, #294).
+      setEmbeddingsUtilizavel(null);
       toast.error(t('loadFailed'));
     } finally {
       setLoading(false);

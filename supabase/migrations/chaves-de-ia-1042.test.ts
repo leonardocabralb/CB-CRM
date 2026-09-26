@@ -38,20 +38,30 @@ describe('1042 — chaves de IA por provedor', () => {
   });
 
   it('copia as chaves de hoje sem sobrescrever (reexecução) e a de embeddings só no slot vazio da OpenAI', () => {
-    const insercoes = semComentarios.match(/INSERT\s+INTO\s+cb_ia_chaves[\s\S]*?;/gi) ?? [];
+    // A CÓPIA (fora do gatilho da janela, que sobrescreve de propósito).
+    const semOGatilho = semComentarios.replace(
+      /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.cb_ia_chaves_segue_o_legado[\s\S]*?\$\$;/i,
+      '',
+    );
+    const insercoes = semOGatilho.match(/INSERT\s+INTO\s+cb_ia_chaves[\s\S]*?;/gi) ?? [];
     expect(insercoes).toHaveLength(2);
     for (const i of insercoes) {
       expect(/ON\s+CONFLICT\s*\(\s*account_id\s*,\s*provedor\s*\)\s+DO\s+NOTHING/i.test(i)).toBe(true);
     }
     expect(/embeddings_api_key/i.test(insercoes[1])).toBe(true);
     expect(/'openai'/.test(insercoes[1])).toBe(true);
+    // A chave só da base vai para os DOIS campos com o mesmo texto cifrado: é
+    // a marca de origem que a troca respeita (Codex, #294).
+    expect(/c\.embeddings_api_key,\s*c\.embeddings_api_key/i.test(insercoes[1])).toBe(true);
   });
 
   it('serve_embeddings: só a OpenAI tem, e NULO é "não conferida" (a cópia não afirma nada)', () => {
     expect(/serve_embeddings\s+boolean\s+CHECK\s*\(\s*provedor\s*=\s*'openai'\s+OR\s+serve_embeddings\s+IS\s+NULL\s*\)/i.test(semComentarios)).toBe(true);
-    // A cópia não inventa conferência: nenhum INSERT grava a coluna.
+    // A cópia não inventa conferência: nenhum INSERT grava um veredito (o
+    // gatilho da janela ZERA para "não conferida" quando a chave muda).
     for (const i of semComentarios.match(/INSERT\s+INTO\s+cb_ia_chaves[\s\S]*?;/gi) ?? []) {
-      expect(/serve_embeddings/i.test(i)).toBe(false);
+      expect(/serve_embeddings\s*=\s*(true|false)/i.test(i)).toBe(false);
+      expect(/\(\s*[^)]*\bserve_embeddings\b[^)]*\)\s*VALUES/i.test(i)).toBe(false);
     }
   });
 
@@ -66,5 +76,28 @@ describe('1042 — chaves de IA por provedor', () => {
 
   it('ai_configs.api_key perde o NOT NULL (a linha padrão existe sem chave)', () => {
     expect(/ALTER\s+TABLE\s+ai_configs\s+ALTER\s+COLUMN\s+api_key\s+DROP\s+NOT\s+NULL/i.test(semComentarios)).toBe(true);
+  });
+
+  it('o gatilho da JANELA leva a chave do app anterior para cb_ia_chaves — só a escrita do navegador (Codex, #294)', () => {
+    const fn = semComentarios.match(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.cb_ia_chaves_segue_o_legado[\s\S]*?\$\$;/i)?.[0] ?? '';
+    expect(fn).toMatch(/SECURITY\s+DEFINER/i);
+    expect(fn).toMatch(/SET\s+search_path/i);
+    // O espelho do app novo é gravado pelo serviço: copiá-lo de volta recriaria
+    // a falsa chave própria dos embeddings.
+    expect(fn).toMatch(/request\.jwt\.claims[\s\S]*'role'[\s\S]*'authenticated'/i);
+    expect(fn).toMatch(/NEW\.channel_id\s+IS\s+NOT\s+NULL/i);
+    expect(/REVOKE\s+EXECUTE\s+ON\s+FUNCTION\s+public\.cb_ia_chaves_segue_o_legado\(\)\s+FROM\s+PUBLIC,\s*anon,\s*authenticated/i.test(semComentarios)).toBe(true);
+    expect(/CREATE\s+TRIGGER\s+cb_ia_chaves_segue_o_legado\s+AFTER\s+INSERT\s+OR\s+UPDATE\s+OF\s+api_key,\s*embeddings_api_key\s+OR\s+DELETE\s+ON\s+ai_configs/i.test(semComentarios)).toBe(true);
+    // O "Remover" do app anterior apaga a cópia também (Codex, #295).
+    expect(fn).toMatch(/TG_OP\s*=\s*'DELETE'[\s\S]*DELETE\s+FROM\s+cb_ia_chaves\s+WHERE\s+account_id\s*=\s*OLD\.account_id\s+AND\s+provedor\s*=\s*OLD\.provider/i);
+    // ...menos quando um agente de CONEXÃO ligado do mesmo provedor continua:
+    // a chave passa a ser a dele (Codex, #294).
+    expect(fn).toMatch(/c\.channel_id\s+IS\s+NOT\s+NULL\s+AND\s+c\.is_active[\s\S]*UPDATE\s+cb_ia_chaves\s+SET\s+api_key\s*=\s*v_da_conexao/i)
+    // ...e a linha da OpenAI que era SÓ a chave da base sai inteira — no
+    // Remover e quando a tela antiga apaga a chave própria (Codex, #295).
+    const apagaASoDaBase = fn.match(/DELETE\s+FROM\s+cb_ia_chaves\s+WHERE\s+account_id\s*=\s*(OLD|NEW)\.account_id\s+AND\s+provedor\s*=\s*'openai'\s+AND\s+api_key\s*=\s*embeddings_api_key/gi) ?? [];
+    expect(apagaASoDaBase.map((m) => /OLD\./i.test(m) ? 'OLD' : 'NEW').sort()).toEqual(['NEW', 'OLD']);
+    // A troca da chave da base leva as duas colunas da linha que era só dela.
+    expect(fn).toMatch(/api_key\s*=\s*CASE\s+WHEN\s+cb_ia_chaves\.api_key\s*=\s*cb_ia_chaves\.embeddings_api_key\s+THEN\s+EXCLUDED\.api_key/i);
   });
 });

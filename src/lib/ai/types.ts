@@ -87,11 +87,22 @@ export interface GenerateResult {
 export class AiError extends Error {
   readonly code: string
   readonly status: number
-  constructor(message: string, opts: { code?: string; status?: number } = {}) {
+  /**
+   * O status HTTP que o PROVEDOR devolveu, quando houve resposta. `status` é o
+   * que NÓS respondemos (5xx do provedor e 404 de modelo viram os dois 502 e
+   * `provider_error`); quem precisa separar "o provedor caiu" de "o modelo não
+   * existe" lê este (a troca de chave, Codex #294).
+   */
+  readonly upstreamStatus?: number
+  constructor(
+    message: string,
+    opts: { code?: string; status?: number; upstreamStatus?: number } = {},
+  ) {
     super(message)
     this.name = 'AiError'
     this.code = opts.code ?? 'ai_error'
     this.status = opts.status ?? 502
+    if (opts.upstreamStatus !== undefined) this.upstreamStatus = opts.upstreamStatus
   }
 }
 

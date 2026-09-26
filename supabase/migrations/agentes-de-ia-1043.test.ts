@@ -35,6 +35,11 @@ describe('1043 — agentes de IA', () => {
     ).toBe(true);
   });
 
+  it('apaga o gatilho TEMPORÁRIO da janela da 1042 (a F1a já está no ar)', () => {
+    expect(/DROP\s+TRIGGER\s+IF\s+EXISTS\s+cb_ia_chaves_segue_o_legado\s+ON\s+ai_configs/i.test(semComentarios)).toBe(true);
+    expect(/DROP\s+FUNCTION\s+IF\s+EXISTS\s+public\.cb_ia_chaves_segue_o_legado\(\)/i.test(semComentarios)).toBe(true);
+  });
+
   it('nome único entre os NÃO arquivados, sem distinguir maiúsculas', () => {
     expect(
       /CREATE\s+UNIQUE\s+INDEX[^;]*ON\s+cb_ia_agentes\s*\(\s*account_id\s*,\s*lower\s*\(\s*btrim\s*\(\s*nome\s*\)\s*\)\s*\)\s*WHERE\s+arquivado_em\s+IS\s+NULL/i.test(
