@@ -85,7 +85,7 @@ export async function carregarReuniaoTranscrita(id: string): Promise<ReuniaoTran
 
 /**
  * As reuniões importadas do tl;dv que ainda não têm cliente — para o
- * diálogo "Do tl;dv" da ficha. Busca por nome no banco (ilike), até 30.
+ * diálogo "Do tl;dv" da ficha. Busca por nome no banco (literal, `imatch`), até 30.
  */
 export async function buscarReunioesSemCliente(busca: string): Promise<{ reunioes: ReuniaoTranscrita[]; falhou: boolean }> {
   let consulta = createClient()
