@@ -92,6 +92,7 @@ interface LinhaPadrao {
   model: string;
   radar_model: string | null;
   is_active: boolean;
+  auto_reply_enabled?: boolean | null;
 }
 
 export async function GET(request: Request) {
@@ -128,7 +129,7 @@ export async function GET(request: Request) {
         lerEstado(ctx.accountId),
         ctx.supabase
           .from('ai_configs')
-          .select('channel_id, provider, model, radar_model, is_active')
+          .select('channel_id, provider, model, radar_model, is_active, auto_reply_enabled')
           .eq('account_id', ctx.accountId),
         listChannels(ctx.supabase, ctx.accountId),
       ]);
@@ -136,8 +137,18 @@ export async function GET(request: Request) {
       const linhas = (linhasLidas.data ?? []) as (LinhaPadrao & { channel_id: string | null })[];
       estado = estadoLido;
       padrao = linhas.find((l) => l.channel_id === null) ?? null;
+      // A linha de CONEXÃO só roda na resposta automática do app anterior:
+      // ligada, com a resposta automática ligada nela E na conexão (Codex, #294).
+      const { data: semAutomatica, error: erroSemAutomatica } = await ctx.supabase
+        .from('cb_channels')
+        .select('id')
+        .eq('account_id', ctx.accountId)
+        .eq('ai_autoreply_enabled', false);
+      if (erroSemAutomatica) throw new Error(erroSemAutomatica.message);
+      const desligadas = new Set((semAutomatica ?? []).map((c) => c.id as string));
       deConexao = linhas.filter(
-        (l): l is LinhaPadrao & { channel_id: string } => l.channel_id !== null && l.is_active
+        (l): l is LinhaPadrao & { channel_id: string } =>
+          l.channel_id !== null && l.is_active && l.auto_reply_enabled === true && !desligadas.has(l.channel_id)
       );
       canais = canaisLidos;
     } catch (err) {

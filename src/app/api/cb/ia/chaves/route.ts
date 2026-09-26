@@ -59,9 +59,10 @@ async function modelosEmUso(accountId: string, provedor: AiProvider): Promise<st
   // modelo que nada usa (Codex, #294).
   const { data, error } = await supabaseAdmin()
     .from('ai_configs')
-    .select('provider, model, radar_model, channel_id, is_active')
+    .select('provider, model, radar_model, channel_id, is_active, auto_reply_enabled')
     .eq('account_id', accountId)
   if (error) throw new Error(`[ia-chaves] leitura dos modelos em uso falhou: ${error.message}`)
+  const semRespostaAutomatica = await conexoesSemRespostaAutomatica(accountId)
   // O Radar só roda nas conexões com o interruptor ligado (`radar_enabled`,
   // 941): sem nenhuma, os modelos dele não estão em uso (Codex, #294).
   const { data: comRadar, error: erroRadar } = await supabaseAdmin()
@@ -83,7 +84,15 @@ async function modelosEmUso(accountId: string, provedor: AiProvider): Promise<st
   )
   for (const linha of ordenadas) {
     if (linha.provider !== provedor) continue
-    if (linha.channel_id !== null && linha.is_active === false) continue
+    // A linha de CONEXÃO só roda na resposta automática do app anterior:
+    // ligada, com a resposta automática ligada nela E na conexão (o
+    // `dispatchInboundToAiReply` sai antes nos dois casos; Codex, #294).
+    if (
+      linha.channel_id !== null &&
+      (linha.is_active === false || linha.auto_reply_enabled !== true || semRespostaAutomatica.has(linha.channel_id))
+    ) {
+      continue
+    }
     // Na linha padrão, só o que RODA (Codex, #294): o modelo do assistente
     // quando ele está ligado ou quando o Radar ligado o herda (sem modelo
     // próprio); o do Radar quando o Radar está ligado em alguma conexão. Um
@@ -100,6 +109,22 @@ async function modelosEmUso(accountId: string, provedor: AiProvider): Promise<st
     }
   }
   return modelos
+}
+
+/**
+ * As conexões com a resposta automática DESLIGADA (`cb_channels.ai_autoreply_enabled
+ * = false`; o padrão é ligado): nelas a linha de conexão de `ai_configs` não
+ * roda. Leitura que falha lança — decidir "em uso" sem ela recusaria ou
+ * aceitaria a troca pelo motivo errado.
+ */
+async function conexoesSemRespostaAutomatica(accountId: string): Promise<Set<string>> {
+  const { data, error } = await supabaseAdmin()
+    .from('cb_channels')
+    .select('id')
+    .eq('account_id', accountId)
+    .eq('ai_autoreply_enabled', false)
+  if (error) throw new Error(`[ia-chaves] leitura das conexões falhou: ${error.message}`)
+  return new Set((data ?? []).map((c) => c.id as string))
 }
 
 function configDeTeste(provedor: AiProvider, modelo: string, apiKey: string) {
@@ -162,6 +187,21 @@ async function validarChaveNova(
 ): Promise<Veredito> {
   const padrao = AI_PROVIDER_DEFAULT_MODEL[provedor]
   const emUso = await modelosEmUso(accountId, provedor)
+  // A OpenAI que NENHUM chat usa pode servir só à base de conhecimento: se ela
+  // gera embedding, está aceita sem pedir o chat — uma chave de projeto
+  // restrita aos embeddings é válida para o único uso dela, e a 1047 e o
+  // cartão já a preservam (Codex, #294). Se não gera, segue a conferência pelo
+  // chat: o administrador pode estar cadastrando a chave justamente para
+  // passar o assistente para a OpenAI (a tela só oferece provedor com chave).
+  // O veredito do embedding é gravado logo abaixo, no PUT.
+  if (provedor === 'openai' && emUso.length === 0) {
+    try {
+      await embedTexts(chave, ['ping'])
+      return { ok: true, modelosIndisponiveis: [], transcricaoIndisponivel: false }
+    } catch {
+      // Segue pelo chat.
+    }
+  }
   const aTestar = emUso.length > 0 ? emUso : [padrao]
   const recusados: { modelo: string; erro: unknown }[] = []
   for (const modelo of aTestar) {
