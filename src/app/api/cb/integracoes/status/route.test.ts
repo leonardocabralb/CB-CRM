@@ -83,7 +83,13 @@ describe('GET /api/cb/integracoes/status — o ping cobre os agentes de conexão
     expect(validateAiCredentials.mock.calls.map((c) => c[0].model).sort()).toEqual([
       'gemini-da-conexao',
       'gemini-padrao',
+      'trans',
     ])
+  })
+
+  it('o modelo fixo da transcrição fora do ar deixa o cartão do Gemini em erro', async () => {
+    modelosQueFalham = ['trans']
+    expect((await cartaoGemini()).estado).toBe('erro')
   })
 
   it('o modelo da conexão falhando deixa o cartão em erro', async () => {

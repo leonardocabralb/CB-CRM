@@ -199,6 +199,9 @@ export async function GET(request: Request) {
           // ligado em alguma conexão e o modelo difere do chat: validado no
           // save, ele ainda pode sair do ar depois, e o cartão ficaria verde
           // com toda análise falhando (Codex, #295). Vem logo depois do chat.
+          // E, na do Gemini, o modelo FIXO da transcrição: ela lê a chave do
+          // Gemini qualquer que seja o chat, e o cartão ficaria verde com
+          // todo áudio falhando se só aquele modelo saísse do ar (Codex, #294).
           const radarLigado = canais.some((c) => c.radar_enabled === true);
           const modelos = [
             padrao && padrao.provider === e.provedor
@@ -206,6 +209,7 @@ export async function GET(request: Request) {
               : AI_PROVIDER_DEFAULT_MODEL[e.provedor],
             padrao && padrao.provider === e.provedor && radarLigado ? padrao.radar_model : null,
             ...deConexao.filter((l) => l.provider === e.provedor).map((l) => l.model),
+            e.provedor === 'gemini' ? MODELO_TRANSCRICAO : null,
           ].filter((m, i, todos): m is string => typeof m === 'string' && m.trim() !== '' && todos.indexOf(m) === i);
           const falhas = await Promise.all(
             modelos.map(async (model) => {

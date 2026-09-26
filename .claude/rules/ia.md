@@ -265,7 +265,9 @@ Radar.
 - ⚠️ **O modelo do Radar é validado no SAVE, contra o provedor** — inclusive
   quando só o PROVEDOR muda (senão o Radar falha de madrugada). O ping da aba
   testa o do CHAT e, com o Radar ligado em alguma conexão, o PRÓPRIO do Radar
-  quando difere (pode sair do ar depois do save; Codex, #295).
+  quando difere (pode sair do ar depois do save; Codex, #295), e na chave do
+  Gemini o `MODELO_TRANSCRICAO` fixo (a transcrição usa essa chave qualquer que
+  seja o chat).
 - ⚠️ **`?ping=0` existe porque cada ping é uma geração PAGA**: a tela carrega
   em dois tempos (config na hora, pings depois), o botão repete só os pings, e
   o `useEffect` tem guarda própria (`disparouRef`) contra o StrictMode dobrar
