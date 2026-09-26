@@ -102,13 +102,19 @@ export interface EstadoDaChave {
   serveEmbeddings: boolean | null
   /** Só da OpenAI: há uma chave PRÓPRIA dos embeddings (herdada da 1042). */
   temChaveDeEmbeddings: boolean
+  /**
+   * Só da OpenAI: a linha nasceu SÓ da chave da base (1042 — as duas colunas
+   * com o MESMO texto cifrado). Essa credencial pode ser restrita aos
+   * embeddings: pingá-la no modelo de chat mentiria "falhando" (Codex, #294).
+   */
+  soDaBase: boolean
 }
 
 /** O que a TELA pode saber: se cada provedor tem chave, e desde quando. */
 export async function lerEstado(accountId: string): Promise<EstadoDaChave[]> {
   const { data, error } = await supabaseAdmin()
     .from('cb_ia_chaves')
-    .select('provedor, updated_at, serve_embeddings, embeddings_api_key')
+    .select('provedor, updated_at, serve_embeddings, api_key, embeddings_api_key')
     .eq('account_id', accountId)
   if (error) throw new Error(`[ia-chaves] leitura do estado falhou: ${error.message}`)
   const porProvedor = new Map(
@@ -118,6 +124,12 @@ export async function lerEstado(accountId: string): Promise<EstadoDaChave[]> {
         atualizadaEm: l.updated_at as string,
         serveEmbeddings: typeof l.serve_embeddings === 'boolean' ? l.serve_embeddings : null,
         temChaveDeEmbeddings: typeof l.embeddings_api_key === 'string' && l.embeddings_api_key !== '',
+        // Só compara os TEXTOS CIFRADOS (a marca de origem); nada é decifrado.
+        soDaBase:
+          l.provedor === 'openai' &&
+          typeof l.embeddings_api_key === 'string' &&
+          l.embeddings_api_key !== '' &&
+          l.api_key === l.embeddings_api_key,
       },
     ]),
   )
@@ -127,6 +139,7 @@ export async function lerEstado(accountId: string): Promise<EstadoDaChave[]> {
     atualizadaEm: porProvedor.get(provedor)?.atualizadaEm ?? null,
     serveEmbeddings: porProvedor.get(provedor)?.serveEmbeddings ?? null,
     temChaveDeEmbeddings: porProvedor.get(provedor)?.temChaveDeEmbeddings ?? false,
+    soDaBase: porProvedor.get(provedor)?.soDaBase ?? false,
   }))
 }
 

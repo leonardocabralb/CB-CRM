@@ -168,6 +168,13 @@ export async function GET(request: Request) {
             return { ...base, teste: { ok: false, motivo: 'leitura_falhou' } };
           }
           if (!chave) return { ...base, existe: false, teste: null };
+          // A chave da OpenAI que nasceu SÓ da base (1042) e que nada de chat
+          // usa: não é pingada no modelo de chat — pode ser restrita aos
+          // embeddings, e o cartão diria "falhando" sobre o único uso que ela
+          // tem. Quem diz se ela funciona é o ping dos embeddings (Codex, #294).
+          const usadaNoChat =
+            padrao?.provider === e.provedor || deConexao.some((l) => l.provider === e.provedor);
+          if (e.soDaBase && !usadaNoChat) return { ...base, teste: { ok: true } };
           const apiKey = chave;
           // ⚠️ O ping testa o modelo do CHAT (ou o padrão do provedor) E o de
           // cada agente de CONEXÃO ligado deste provedor: a resposta
