@@ -103,14 +103,21 @@ obrigações gerais de caminho de entrada estão em `.claude/rules/ingestao.md`.
   nome — o aviso não traz o perfil.
 - Depois de gravar, na ordem: reabrir LOGO DEPOIS do insert (`reopen.ts`) →
   subir a conversa → seguir o canal (os três só quando a ligação é a última;
-  a histórica assenta) → cancelar as esperas "parar se o cliente responder" →
-  abrir o card no funil → ligar a bolha à linha.
+  a histórica assenta) → abrir o card no funil → ligar a bolha à linha.
+- ⚠️ "Depois" inclui o MESMO segundo (`gte`, a própria bolha excluída na 2ª
+  conferência): as mensagens da Evolution têm carimbo em segundos.
 
 ## O que NÃO roda — e há pino (`ligacoes.chamadores.test.ts`)
 
 - ⚠️⚠️ Robô, automações, IA, `persistInboundMessage`/`persistDeviceMessage`,
   o núcleo de envio e `registrarEntrega` ficam FORA: a ligação não tem texto a
   responder, e um robô respondendo "não entendi" a uma chamada é o pior caso.
+- ⚠️⚠️ **A ligação NÃO para as sequências "parar se o cliente responder"**
+  (decisão do operador, 26/09/2026: só mensagem escrita é resposta). São DUAS
+  pontas: `cancelarEsperasPorResposta` não é chamada aqui (pino), e
+  `clienteRespondeuDesde` — a segunda linha de defesa, na retomada — filtra
+  `content_type <> 'call'`, senão a perdida (linha do cliente) pararia a
+  sequência quando a espera acordasse.
 - ⚠️ O webhook de saída NÃO emite nada: nem `message.received`, nem
   `conversation.created` (ele quer dizer só "o cliente abriu a conversa
   ESCREVENDO" — contrato publicado).

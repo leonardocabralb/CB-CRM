@@ -54,7 +54,7 @@ tentou ligar, para alguém ver e retornar?"
 | D1 | Número que nunca escreveu: a ligação cria ficha, conversa e card no funil | operador, 25/09 |
 | D2 | Ligação atendida no celular também aparece no fio | operador, 25/09 |
 | D3 | Retorno feito pelo celular não apaga o "em atraso" (o CRM não o vê); é aceitável | operador, 25/09 |
-| D4 | A ligação (perdida ou atendida) cancela as esperas "parar se o cliente responder" do contato: o cliente procurou o escritório | implementação — **confirmar** |
+| D4 | A ligação (perdida ou atendida) NÃO para as sequências "parar se o cliente responder": só mensagem escrita é resposta. A retomada da espera (`clienteRespondeuDesde`) também ignora a ligação | operador, 26/09 (revê a implementação do PR #300, que parava) |
 | D5 | Robô, automações, IA e o webhook de saída `message.received` NÃO reagem à ligação (não há texto a responder). ⚠️ O CARD que a ligação abre (D1) segue o caminho de todo card novo: as automações da etapa de entrada e o `deal.created` ao n8n rodam, como na primeira mensagem de um lead. Medido em 26/09/2026: nenhuma automação ativa age nas etapas de entrada das conexões por QR Code; o n8n assina `deal.created` | implementação |
 | D6 | Chamada de grupo é ignorada; ligação de um número do próprio escritório também | implementação |
 | D7 | Quem ligou sem telefone resolvível (LID fora do acervo e sem `callerPn` válido) fica registrado em `cb_ligacoes` como `sem_telefone`, sem aparecer na tela | implementação — v1 |
@@ -84,7 +84,7 @@ tentou ligar, para alguém ver e retornar?"
    grava. Depois: ficha e conversa por `resolverDestinatario` (dono durável da
    conta), a bolha (`content_type = 'call'`, `message_id = 'call:<id>'`,
    detalhes em `messages.ligacao`), reabre a encerrada, sobe a conversa, segue o
-   canal, cancela as esperas e abre o card.
+   canal e abre o card (as esperas "parar se o cliente responder" NÃO param — D4).
    - **perdida**: `sender_type = 'customer'` → não lida (+1, pela RPC atômica
      `bump_conversation_on_inbound`) e o gatilho da 972 acende "em atraso".
    - **atendida**: `sender_type = 'agent'` + `from_device` → sem não lida, e o
@@ -194,6 +194,15 @@ tentou ligar, para alguém ver e retornar?"
   gatilho da 972 limpa com a resposta). Fechar pede gravar a bolha DENTRO de
   uma função no banco, com a conversa travada — migration nova; é a mesma
   janela que a 1010 aceitou por escrito.
+- **Empate no mesmo SEGUNDO** (o carimbo da ligação e o das mensagens da
+  Evolution têm resolução de segundo): o CRM trata a mensagem do mesmo
+  segundo como "depois" (a ligação vira história, sem subir a conversa nem
+  somar não lida), mas `cb_assentar_mensagem_historica` compara com `>`
+  estrito e pode deixar o "em atraso" aceso sobre uma resposta dada no MESMO
+  segundo em que a ligação terminou. Improvável; fechar pede migration.
+- **Ligação feita pelo escritório não aparece** (medido ao vivo em
+  26/09/2026: o WhatsApp não avisa os aparelhos conectados). Decisão do
+  operador: fica assim.
 - **Resposta por TEXTO nos ~11 s entre o fim do toque e a decisão**: a bolha
   perdida, gravada depois, acende "em atraso" sobre cliente já respondido
   (a 972 decide pela ordem de inserção). Janela pequena, aceita.
@@ -244,8 +253,8 @@ tentou ligar, para alguém ver e retornar?"
   celular da conexão para o cliente) não gera NADA na Evolution**: nenhum
   aviso `CALL`, nenhuma mensagem — o WhatsApp não avisa os aparelhos
   conectados de uma chamada feita pelo celular principal. Marcar no fio as
-  ligações que o escritório faz exige outro caminho (registro manual na
-  conversa, ou ligar pelo próprio CRM); decisão do operador pendente.
+  ligações que o escritório faz exigiria outro caminho (registro manual na
+  conversa, ou ligar pelo próprio CRM); decisão do operador: fica como está.
 - **Fase 3** (26/09/2026): 1044 aplicada (histórico `20260926112303`) e
   conferida no catálogo. Ponta a ponta no preview, com avisos sintéticos no
   webhook LOCAL da Evolution e só o lead de teste: perdida com o telefone

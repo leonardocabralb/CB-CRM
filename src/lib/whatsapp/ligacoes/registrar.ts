@@ -20,13 +20,14 @@
 // (`cb_assentar_mensagem_historica`, a mesma da 1010).
 //
 // Nas duas: a ficha, a conversa e o card no funil nascem se o número nunca
-// escreveu (decisão do operador, 25/09/2026); a conversa segue o número que
-// recebeu a ligação; e as esperas "parar se o cliente responder" do contato
-// são canceladas — o cliente procurou o escritório.
+// escreveu (decisão do operador, 25/09/2026), e a conversa segue o número que
+// recebeu a ligação. ⚠️ As esperas "parar se o cliente responder" NÃO param:
+// só mensagem escrita é resposta (decisão do operador, 26/09/2026), e a
+// retomada (`clienteRespondeuDesde`) também ignora a ligação.
 //
 // ⚠️ O que NÃO roda, de propósito, e há teste estrutural cobrando
-// (`ligacoes.chamadores.test.ts`): robô, automações, IA e o webhook de saída
-// `message.received`. A ligação não tem texto a responder, e um robô que
+// (`ligacoes.chamadores.test.ts`): robô, automações, IA, o cancelamento das
+// esperas e o webhook de saída `message.received`. A ligação não tem texto a responder, e um robô que
 // respondesse "não entendi" a uma chamada é o pior dos mundos.
 //
 // ⚠️ Grupo fica de fora (chamada de grupo não é de um cliente), e a ligação
@@ -39,7 +40,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { resolverDestinatario } from '@/lib/automations/destinatario';
-import { cancelarEsperasPorResposta } from '@/lib/automations/parar-se-responder';
 import { routeContactToPipeline } from '@/lib/cb-channels/pipeline-routing';
 import { followConversationChannel, gravarComCanal } from '@/lib/cb-channels/stamp';
 import { isUniqueViolation } from '@/lib/contacts/dedupe';
@@ -439,7 +439,7 @@ async function gravarNoFio(
     // onde um encerramento posterior seria atropelado. Sem responsável, como a
     // mensagem do cliente e a do celular pareado.
     await reopenClosedConversation(db, { id: destino.conversationId });
-    ehHistorica = await haMensagemDepois(db, destino.conversationId, carimbo);
+    ehHistorica = await haMensagemDepois(db, destino.conversationId, carimbo, mensagem.id as string);
   }
 
   if (ehHistorica) {
@@ -485,10 +485,6 @@ async function gravarNoFio(
     await followConversationChannel(db, destino.conversationId, canal);
   }
 
-  // O cliente procurou o escritório: as sequências marcadas "parar se o
-  // cliente responder" param. Nunca lança.
-  await cancelarEsperasPorResposta({ db, accountId: rota.accountId, contactId: destino.contactId });
-
   // O card no funil padrão da conexão, se o contato ainda não tem (decisão do
   // operador: ligação de número novo também vira card). Nunca lança.
   const { data: contato } = await db
@@ -530,27 +526,38 @@ async function esperaAntes(
   return (data.aguardando_desde as string | null | undefined) ?? null;
 }
 
-/** Já há mensagem na conversa DEPOIS da ligação? Erro responde "não": o caminho de sempre. */
+/**
+ * Já há mensagem na conversa DEPOIS da ligação — ou no MESMO segundo? O
+ * carimbo da ligação e o das mensagens da Evolution têm resolução de
+ * SEGUNDO: com `>` estrito, a resposta dada no segundo em que a ligação
+ * terminou passava despercebida, e a perdida subia a conversa por cima dela
+ * (Codex, PR #304). Empate conta como "depois" — o lado de menos efeito. Na
+ * conferência depois do insert, a própria bolha fica de fora (`excetoId`).
+ * Erro responde "não": o caminho de sempre.
+ */
 async function haMensagemDepois(
   db: SupabaseClient,
   conversationId: string,
   carimboIso: string,
+  excetoId?: string,
 ): Promise<boolean> {
-  const { data, error } = await db
+  let consulta = db
     .from('messages')
     .select('id')
     .eq('conversation_id', conversationId)
     .is('deleted_at', null)
-    .gt('created_at', carimboIso)
-    .limit(1);
+    .gte('created_at', carimboIso);
+  if (excetoId) consulta = consulta.neq('id', excetoId);
+  const { data, error } = await consulta.limit(1);
   if (error) return false;
   return (data ?? []).length > 0;
 }
 
 /**
- * Alguém da EQUIPE respondeu depois da ligação? A régua da 972 e do Radar
- * (`sender_id` OU `from_device`). Erro responde "sim": o único efeito é não
- * somar a não lida — o lado de menos efeito colateral (o mesmo de `historica.ts`).
+ * Alguém da EQUIPE respondeu depois da ligação (ou no mesmo segundo — ver
+ * `haMensagemDepois`)? A régua da 972 e do Radar (`sender_id` OU
+ * `from_device`). Erro responde "sim": o único efeito é não somar a não lida —
+ * o lado de menos efeito colateral (o mesmo de `historica.ts`).
  */
 async function genteRespondeuDepois(
   db: SupabaseClient,
@@ -564,7 +571,7 @@ async function genteRespondeuDepois(
     .eq('sender_type', 'agent')
     .or('sender_id.not.is.null,from_device.is.true')
     .is('deleted_at', null)
-    .gt('created_at', carimboIso)
+    .gte('created_at', carimboIso)
     .limit(1);
   if (error) return true;
   return (data ?? []).length > 0;
