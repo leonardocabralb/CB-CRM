@@ -147,6 +147,11 @@ async function validarChaveNova(
     }
   }
   if (recusados.length === 0) return { ok: true, modelosIndisponiveis: [], transcricaoIndisponivel: false }
+  // Tempo esgotado, rede ou limite NÃO dizem nada sobre o acesso ao modelo:
+  // nada é trocado, e o administrador tenta de novo (Codex, #294). Tratada como
+  // "não alcança", a chave seria gravada sem ter sido conferida no modelo em uso.
+  const passageira = recusados.find((r) => falhaPassageira(r.erro))
+  if (passageira) return { ok: false, erro: passageira.erro }
   if (emUso.length === 0) return { ok: false, erro: recusados[0].erro }
 
   // Nenhum modelo em uso respondeu: a chave alcança ao menos o padrão?
@@ -161,15 +166,15 @@ async function validarChaveNova(
   }
 
   // A chave ATUAL alcança o modelo que a nova não alcança?
-  let atual: string | null = null
+  // Sem conseguir LER a chave atual, não há como decidir: nada é trocado.
+  let atual: string | null
   try {
     atual = (await lerChave(accountId, provedor)).chave
   } catch {
-    atual = null
+    return { ok: false, erro: 'leitura_falhou' }
   }
   const transcricao = provedor === 'gemini' ? recusados.find((r) => r.modelo === MODELO_TRANSCRICAO) : undefined
   if (transcricao && !atual) {
-    if (falhaPassageira(transcricao.erro)) return { ok: false, erro: transcricao.erro }
     return { ok: false, erro: 'transcricao_recusada', modelo: MODELO_TRANSCRICAO }
   }
   if (atual) {
@@ -177,7 +182,9 @@ async function validarChaveNova(
       try {
         await validateAiCredentials(configDeTeste(provedor, r.modelo, atual))
         return { ok: false, erro: 'modelo_em_uso_recusado', modelo: r.modelo }
-      } catch {
+      } catch (err) {
+        // Passageira com a atual: não prova que o modelo saiu do ar.
+        if (falhaPassageira(err)) return { ok: false, erro: err }
         // A atual também não alcança: o modelo é que não vale mais.
       }
     }
@@ -217,9 +224,14 @@ export async function PUT(request: Request) {
           { status: 400 },
         )
       }
+      if (veredito.erro === 'leitura_falhou') {
+        return NextResponse.json({ error: 'leitura_falhou', code: 'leitura_falhou' }, { status: 500 })
+      }
       if (veredito.erro instanceof AiError) {
+        // A tela conhece `network`, não o `network_error` do provedor.
+        const code = veredito.erro.code === 'network_error' ? 'network' : veredito.erro.code
         return NextResponse.json(
-          { error: mensagemSeguraDeAiError(veredito.erro), code: veredito.erro.code },
+          { error: mensagemSeguraDeAiError(veredito.erro), code },
           { status: 400 },
         )
       }
