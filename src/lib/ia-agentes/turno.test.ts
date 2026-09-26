@@ -311,12 +311,15 @@ function montarCenario(): void {
     Object.assign(t, { status: 'rodando', rodando_desde: new Date().toISOString() })
     return { data: [{ ...t }], error: null }
   }
-  // O teto conferido e consumido num UPDATE só.
-  banco.rpcs.claim_ai_reply_slot = ({ conversation_id, max_replies }) => {
-    const c = banco.tabelas.conversations.find((x) => x.id === conversation_id)
-    if (!c || (c.ai_reply_count as number) >= (max_replies as number)) return { data: false, error: null }
+  // A reserva do envio (1044): conversa aberta, sem pausa, mesmo agente e
+  // abaixo do teto, conferidos e consumidos numa escrita só.
+  banco.rpcs.cb_ia_reservar_envio = ({ p_account_id, p_conversation_id, p_ia_agente_id, p_max }) => {
+    const c = banco.tabelas.conversations.find((x) => x.id === p_conversation_id && x.account_id === p_account_id)
+    if (!c || c.ia_agente_id !== p_ia_agente_id || c.status === 'closed') return { data: 'mudou', error: null }
+    if (c.ai_autoreply_disabled) return { data: 'pausada', error: null }
+    if ((c.ai_reply_count as number) >= (p_max as number)) return { data: 'teto', error: null }
     c.ai_reply_count = (c.ai_reply_count as number) + 1
-    return { data: true, error: null }
+    return { data: 'ok', error: null }
   }
 }
 
@@ -700,9 +703,33 @@ describe('executarTurno — horário, teto e limite', () => {
   })
 
   it('o teto estourou entre a leitura e a vaga (corrida): transfere sem enviar', async () => {
-    banco.rpcs.claim_ai_reply_slot = () => ({ data: false, error: null })
+    banco.rpcs.cb_ia_reservar_envio = () => ({ data: 'teto', error: null })
     await executarTurno(TURNO)
     expect(turno()).toMatchObject({ status: 'transferiu', erro: 'teto' })
+    expect(engineSendText).not.toHaveBeenCalled()
+  })
+
+  it('o advogado responde DEPOIS da última conferência e antes da reserva: a reserva recusa, nada sai (Codex, #292)', async () => {
+    const reservaReal = banco.rpcs.cb_ia_reservar_envio
+    banco.rpcs.cb_ia_reservar_envio = (args) => {
+      // A pausa por gente (o gatilho) grava na MESMA linha antes da reserva.
+      Object.assign(conversa(), { ai_autoreply_disabled: true, ia_pausada_por: 'gente' })
+      return reservaReal(args)
+    }
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({ status: 'pausado_no_meio' })
+    expect(engineSendText).not.toHaveBeenCalled()
+    expect(conversa().ai_reply_count).toBe(0)
+  })
+
+  it('a conversa foi encerrada ou trocou de agente logo antes da reserva: descarta, nada sai', async () => {
+    const reservaReal = banco.rpcs.cb_ia_reservar_envio
+    banco.rpcs.cb_ia_reservar_envio = (args) => {
+      Object.assign(conversa(), { status: 'closed' })
+      return reservaReal(args)
+    }
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({ status: 'descartado' })
     expect(engineSendText).not.toHaveBeenCalled()
   })
 
@@ -1031,7 +1058,7 @@ describe('executarTurno — o envio', () => {
     })
     await executarTurno(TURNO)
     expect(engineSendText).not.toHaveBeenCalled()
-    expect(banco.rpcChamadas.some((c) => c.nome === 'claim_ai_reply_slot')).toBe(false)
+    expect(banco.rpcChamadas.some((c) => c.nome === 'cb_ia_reservar_envio')).toBe(false)
     expect(turno()).toMatchObject({ status: 'falhou', erro: 'recolhido', enviando_desde: null })
     expect(notas()).toHaveLength(0)
   })
@@ -1041,7 +1068,7 @@ describe('executarTurno — o envio', () => {
     await executarTurno(TURNO)
     expect(turno()).toMatchObject({ status: 'falhou', erro: 'a conta não tem dono' })
     expect(engineSendText).not.toHaveBeenCalled()
-    expect(banco.rpcChamadas.some((c) => c.nome === 'claim_ai_reply_slot')).toBe(false)
+    expect(banco.rpcChamadas.some((c) => c.nome === 'cb_ia_reservar_envio')).toBe(false)
     expect(conversa().ai_reply_count).toBe(0)
   })
 
@@ -1050,7 +1077,7 @@ describe('executarTurno — o envio', () => {
     await executarTurno(TURNO)
     expect(turno()).toMatchObject({ status: 'descartado', erro: 'conversa sem contato' })
     expect(engineSendText).not.toHaveBeenCalled()
-    expect(banco.rpcChamadas.some((c) => c.nome === 'claim_ai_reply_slot')).toBe(false)
+    expect(banco.rpcChamadas.some((c) => c.nome === 'cb_ia_reservar_envio')).toBe(false)
     expect(conversa().ai_reply_count).toBe(0)
   })
 

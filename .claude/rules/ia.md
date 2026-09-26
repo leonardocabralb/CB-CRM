@@ -326,21 +326,21 @@ automática do assistente anterior (`dispatchInboundToAiReply`) saiu (E2), e o
   isso não descartam o turno em curso. Duas réguas = texto + figurinha sem
   resposta nenhuma.
 - ⚠️ **Robô ou automação que respondeu cala o agente nas duas pontas**: a
-  entrada descarta o PENDENTE da conexão (`descartarPendente`, um UPDATE sem
-  leitura) e o turno descarta se há `bot` sem `ia_agente_id` gravado depois
-  do gatilho, na MESMA conexão (D4) — o toque em botão na rajada daria duas
-  respostas.
+  entrada descarta o PENDENTE da conexão (`descartarPendente`) e o turno
+  descarta se há `bot` sem `ia_agente_id` gravado depois do gatilho, na MESMA
+  conexão (D4) — senão o botão na rajada daria duas respostas.
 - ⚠️⚠️ **O turno NUNCA reenvia.** Erro depois da primeira chamada ao provedor
   (`antesDoProvedor`) que não seja recusa comprovada (4xx) é `incerto` e
   transfere para gente; o recolhedor (`rede.ts`) decide pelo que o turno
   carimbou (`enviando_desde`, `mensagem_enviada_id`), nunca re-executa. Dono e
-  contato são conferidos ANTES da vaga do teto (`claim_ai_reply_slot`).
+  contato vêm ANTES da reserva (`cb_ia_reservar_envio`: teto, pausa, agente
+  e encerrada numa escrita, na linha que a pausa por gente trava).
 - ⚠️ **Falha de CONFIGURAÇÃO não transfere** (E8): chave, modelo, provedor
   fora do ar → `falhou`, e o alerta de atraso chama a equipe. Transferem: o
   sentinela, a resposta vazia, o teto, o áudio que não se ouve e o envio
-  incerto — pausa `'transferencia'`, destino só quando ninguém é responsável
-  (e é membro), e anotação com autor sem usuário ("IA · <agente>", no idioma
-  da instalação). ⚠️ NUNCA por cima de pausa que já existe
+  incerto — pausa `'transferencia'`, destino só sem responsável (e membro),
+  e anotação de autor sem usuário ("IA · <agente>"). ⚠️ NUNCA por cima de
+  pausa que já existe
   (`transferirParaGente` cerca `ai_autoreply_disabled = false`; zero linhas =
   sem nota nem atribuição, turno `pausado_no_meio`): a de gente é a que a
   automação retoma (D17).

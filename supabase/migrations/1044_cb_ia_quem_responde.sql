@@ -36,6 +36,8 @@
 --     vigente na 1011) — só a FUNÇÃO é recriada; os gatilhos da 972 são calados
 --     PELO NOME pela carga da 1033, e renomeá-los quebraria a carga aplicada.
 --  9. `claim_ai_reply_slot` fecha (E14): `anon` e `authenticated` a executavam.
+--     E `cb_ia_reservar_envio`: a vaga do teto e a última conferência
+--     (aberta, sem pausa, mesmo agente) numa escrita só.
 --
 -- Aditiva: aplicar ANTES do deploy. Idempotente. `SET LOCAL lock_timeout`:
 -- `conversations` e `messages` são tabelas quentes.
@@ -653,6 +655,54 @@ grant execute on function public.cb_assentar_mensagem_historica(uuid, timestampt
 REVOKE EXECUTE ON FUNCTION public.claim_ai_reply_slot(uuid, integer) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.claim_ai_reply_slot(uuid, integer) TO service_role;
 
+-- A ÚLTIMA palavra antes do envio do turno, na MESMA escrita que consome a
+-- vaga do teto: a conversa tem de estar aberta, sem pausa e com o MESMO
+-- agente. A pausa por gente (o gatilho do item 6) escreve a MESMA linha de
+-- `conversations`, então as duas se serializam pela trava da linha: a
+-- resposta do advogado gravada antes da reserva a recusa; a gravada depois é
+-- a simultaneidade que nenhum banco evita — a mensagem da IA já estava
+-- autorizada (Codex, #292). Conferir em JS e só depois consumir a vaga
+-- deixava uma janela em que a IA enviava depois da pausa.
+CREATE OR REPLACE FUNCTION cb_ia_reservar_envio(
+  p_account_id      uuid,
+  p_conversation_id uuid,
+  p_ia_agente_id    uuid,
+  p_max             integer
+)
+RETURNS text
+LANGUAGE plpgsql
+SET search_path TO 'public'
+AS $$
+DECLARE
+  c record;
+BEGIN
+  UPDATE conversations
+     SET ai_reply_count = ai_reply_count + 1
+   WHERE id = p_conversation_id
+     AND account_id = p_account_id
+     AND ia_agente_id = p_ia_agente_id
+     AND NOT ai_autoreply_disabled
+     AND status <> 'closed'
+     AND ai_reply_count < p_max;
+  IF FOUND THEN
+    RETURN 'ok';
+  END IF;
+  SELECT cv.ia_agente_id, cv.ai_autoreply_disabled, cv.status INTO c
+    FROM conversations cv
+   WHERE cv.id = p_conversation_id AND cv.account_id = p_account_id;
+  IF NOT FOUND OR c.ia_agente_id IS DISTINCT FROM p_ia_agente_id OR c.status = 'closed' THEN
+    RETURN 'mudou';
+  END IF;
+  IF c.ai_autoreply_disabled THEN
+    RETURN 'pausada';
+  END IF;
+  RETURN 'teto';
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.cb_ia_reservar_envio(uuid, uuid, uuid, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.cb_ia_reservar_envio(uuid, uuid, uuid, integer) TO service_role;
+
 -- ---------------------------------------------------------------------------
 -- Conferência (roda em banco vazio: catálogo, privilégios e as RPCs CHAMADAS
 -- num subbloco desfeito por SQLSTATE próprio)
@@ -672,6 +722,7 @@ BEGIN
     'public.cb_ia_reivindicar_turno(uuid)',
     'public.cb_atribuir_agente_de_ia(uuid, uuid, uuid, uuid)',
     'public.claim_ai_reply_slot(uuid, integer)',
+    'public.cb_ia_reservar_envio(uuid, uuid, uuid, integer)',
     'public.cb_assentar_mensagem_historica(uuid, timestamptz, boolean, timestamptz, boolean)'
   ] LOOP
     IF has_function_privilege('anon', f, 'EXECUTE') OR has_function_privilege('authenticated', f, 'EXECUTE') THEN
@@ -720,6 +771,11 @@ BEGIN
       RAISE EXCEPTION '1044: atribuição de agente inexistente respondeu %', v_res;
     END IF;
     PERFORM * FROM public.cb_ia_reivindicar_turno(gen_random_uuid());
+    -- A reserva numa conversa que não existe (ou sem este agente) não grava.
+    v_res := public.cb_ia_reservar_envio(coalesce(v_conta, gen_random_uuid()), coalesce(v_conv, gen_random_uuid()), gen_random_uuid(), 99);
+    IF v_res <> 'mudou' THEN
+      RAISE EXCEPTION '1044: reserva de envio com agente estranho respondeu %', v_res;
+    END IF;
     IF v_conv IS NOT NULL THEN
       -- A rajada: duas mensagens na mesma conversa e conexão = UM pendente.
       SELECT t.id INTO v_t1 FROM public.cb_ia_enfileirar_turno(v_conta, v_conv, NULL, NULL, NULL, 8000) t;

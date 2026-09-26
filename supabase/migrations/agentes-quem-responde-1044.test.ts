@@ -171,6 +171,27 @@ describe('1044 — "respondido" e os gatilhos que a carga da 1033 cala PELO NOME
   });
 });
 
+describe('1044 — a reserva do envio (Codex, #292)', () => {
+  it('teto, pausa, mesmo agente e conversa aberta NUMA escrita, com a conta', () => {
+    const corpo = funcao('cb_ia_reservar_envio');
+    expect(corpo).toContain('set ai_reply_count = ai_reply_count + 1');
+    expect(corpo).toContain('and account_id = p_account_id');
+    expect(corpo).toContain('and ia_agente_id = p_ia_agente_id');
+    expect(corpo).toContain('and not ai_autoreply_disabled');
+    expect(corpo).toContain("and status <> 'closed'");
+    expect(corpo).toContain('and ai_reply_count < p_max');
+  });
+
+  it('só o service_role executa (as duas metades + o GRANT de volta)', () => {
+    expect(compacto).toContain(
+      'revoke execute on function public.cb_ia_reservar_envio(uuid, uuid, uuid, integer) from public, anon, authenticated;',
+    );
+    expect(compacto).toContain(
+      'grant execute on function public.cb_ia_reservar_envio(uuid, uuid, uuid, integer) to service_role;',
+    );
+  });
+});
+
 describe('1044 — o contador de respostas fecha (E14)', () => {
   it('claim_ai_reply_slot: as duas metades do REVOKE e o GRANT ao service_role', () => {
     expect(compacto).toContain(

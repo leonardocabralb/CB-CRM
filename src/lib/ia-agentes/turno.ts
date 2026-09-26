@@ -635,14 +635,21 @@ async function conduzir(
   })
   if (!posse) return { status: 'abandonado' }
 
-  // O teto é conferido e consumido NUM UPDATE (duas mensagens concorrentes
-  // não passam do teto).
-  const { data: vaga, error: erroVaga } = await db.rpc('claim_ai_reply_slot', {
-    conversation_id: turno.conversation_id,
-    max_replies: agente.tetoRespostas,
+  // A ÚLTIMA palavra, no banco: a vaga do teto só é consumida se a conversa
+  // ainda está aberta, sem pausa e com este agente — na MESMA escrita, que a
+  // pausa por gente disputa pela trava da linha. Conferir aqui em JS e só
+  // depois consumir a vaga deixava a resposta do advogado gravada no meio
+  // passar (Codex, #292). Duas mensagens concorrentes não passam do teto.
+  const { data: reserva, error: erroReserva } = await db.rpc('cb_ia_reservar_envio', {
+    p_account_id: turno.account_id,
+    p_conversation_id: turno.conversation_id,
+    p_ia_agente_id: agente.id,
+    p_max: agente.tetoRespostas,
   })
-  if (erroVaga) return { status: 'falhou', erro: `reservar a resposta falhou: ${erroVaga.message}` }
-  if (vaga !== true) return { status: 'transferiu', motivo: 'teto' }
+  if (erroReserva) return { status: 'falhou', erro: `reservar a resposta falhou: ${erroReserva.message}` }
+  if (reserva === 'pausada') return { status: 'pausado_no_meio', erro: 'pausada antes do envio' }
+  if (reserva === 'mudou') return { status: 'descartado', erro: 'a conversa mudou antes do envio' }
+  if (reserva !== 'ok') return { status: 'transferiu', motivo: 'teto' }
 
   try {
     const r = await engineSendText({
