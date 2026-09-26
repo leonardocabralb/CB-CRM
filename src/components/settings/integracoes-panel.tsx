@@ -38,7 +38,7 @@ import type {
  * "Modelo" servia ao assistente, à resposta automática, ao Playground e
  * ao Radar, e trocar um trocava todos sem avisar.
  *
- * ⚠️ Desde a 1042 a CHAVE é do PROVEDOR, uma por conta (`cb_ia_chaves`,
+ * ⚠️ Desde a 1047 a CHAVE é do PROVEDOR, uma por conta (`cb_ia_chaves`,
  * D1 do docs/PLANO-agentes-de-ia.md), gravada por `/api/cb/ia/chaves`; o
  * modelo do Radar tem rota PRÓPRIA (`PATCH /api/cb/ia/radar`), que só mexe
  * nessa coluna. Nenhum formulário daqui passa mais pelo `POST
@@ -96,7 +96,7 @@ export function IntegracoesPanel() {
   // (fail closed, por desenho). Com a frase "só administradores" ali, todo
   // admin lia uma acusação de não ser admin durante o fetch do perfil — o
   // esqueleto diz a mesma coisa que a tela vai dizer, sem mentir.
-  const { profileLoading } = useAuth();
+  const { profileLoading, accountId } = useAuth();
 
   return (
     <div>
@@ -111,7 +111,12 @@ export function IntegracoesPanel() {
           )
         }
       >
-        <Conteudo />
+        {/* ⚠️ A `key` da CONTA: trocar de conta com a tela montada deixava
+            os cartões (e a guarda de disparo único) da conta anterior, e o
+            "Apagar chave" — cuja rota resolve a conta da sessão — apagaria a
+            chave da conta NOVA com a confirmação mostrando a velha (Codex,
+            #294). Remontar recarrega tudo da conta certa. */}
+        <Conteudo key={accountId ?? 'sem-conta'} />
       </RequireRole>
     </div>
   );
@@ -515,7 +520,7 @@ function Bolinha({ ok }: { ok: boolean | null }) {
 }
 
 /**
- * A chave DESTE provedor (`/api/cb/ia/chaves`, 1042): gravar (ou trocar) e
+ * A chave DESTE provedor (`/api/cb/ia/chaves`, 1047): gravar (ou trocar) e
  * apagar. A chave nunca volta do servidor — o campo só diz se há uma.
  *
  * ⚠️ Apagar pede confirmação e DIZ O QUE PARA, a partir dos usos do próprio
@@ -539,11 +544,14 @@ function FormularioDaChave({
 
   // O que deixa de funcionar sem a chave: os módulos que hoje a usam (os
   // marcados `sem_chave` já não a usam).
-  // Os agentes de IA deste provedor também param (o Playground deles, e na F2
-  // a resposta ao cliente).
+  // Só o que RODA hoje: módulo já parado por outro motivo (Radar sem conexão,
+  // base só por palavras) não "deixa de funcionar" com a exclusão (Codex,
+  // #294). MENOS o assistente desligado e os agentes desligados: o Playground
+  // deles roda assim mesmo, e para com a chave apagada (Codex, #295). Todo
+  // agente deste provedor entra (a lista do cartão já vem sem os arquivados).
   const paraSemChave = [
     ...cartao.usos
-      .filter((u) => u.indisponivel !== 'sem_chave')
+      .filter((u) => !u.indisponivel || u.indisponivel === 'conversa_desligada')
       .map((u) => t(`modulo.${u.modulo}`)),
     ...cartao.agentesDeIa.map((a) => t('agenteDeIaNaConfirmacao', { nome: a.nome })),
   ];
@@ -577,6 +585,7 @@ function FormularioDaChave({
           a === 'modelo_em_uso_indisponivel' ||
           a === 'modelos_nao_conferidos' ||
           a === 'transcricao_indisponivel' ||
+          a === 'so_da_base' ||
           a === 'modulos_nao_criados'
       );
       const listaDoAviso = (a: string) =>

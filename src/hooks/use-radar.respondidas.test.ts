@@ -83,7 +83,7 @@ describe('use-radar: quem fecha a pendência na conferência ao vivo (D11)', () 
     );
   });
 
-  it('`ia_agente_id` só vale no `bot` — o predicado do ramo "respondido" da 1044', () => {
+  it('`ia_agente_id` só vale no `bot` — o predicado do ramo "respondido" da 1049', () => {
     expect(casa(filtro, { ...base, ia_agente_id: 'agente-1' })).toBe(false);
   });
 });

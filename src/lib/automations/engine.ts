@@ -2083,7 +2083,7 @@ async function runStep(
         throw new Error('set_ai não vale em conversa de grupo');
 
       // ⚠️ NOSSO (F2 dos agentes de IA, E13): o `set_ai` segue a régua da
-      // pausa com MOTIVO (1044). Desligar pausa por `automacao` (sem pisar
+      // pausa com MOTIVO (1049). Desligar pausa por `automacao` (sem pisar
       // num motivo que já estava lá). Ligar passa pela MESMA regra da
       // atribuição (D17), decidida no BANCO com a conversa travada
       // (`cb_retomar_ia_por_automacao`): retoma SÓ a pausa por `gente` ou por
@@ -2091,7 +2091,7 @@ async function runStep(
       // sem isso, o advogado respondia pelo celular, uma automação "Ligar IA"
       // rodava e a IA voltava a falar no meio do atendimento (D10). `botao` e
       // `transferencia` foram decisões de gente sobre aquela conversa, e
-      // pausa sem motivo (anterior à 1044) conta como `botao`. E NÃO solta
+      // pausa sem motivo (anterior à 1049) conta como `botao`. E NÃO solta
       // mais o responsável humano: a atribuição deixou de ser portão do
       // agente (5.3).
       if (!cfg.enabled) {

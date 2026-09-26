@@ -1,10 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { resolverDestinatario } from "@/lib/automations/destinatario";
+import { conversaDoContato, resolverDestinatario } from "@/lib/automations/destinatario";
 import { dispararAutomacoes } from "@/lib/automations/engine";
 import { findExistingContact } from "@/lib/contacts/dedupe";
 import { nomeParaFixar } from "@/lib/contacts/nome-fixado";
 
+import { houveCancelamento } from "./cancelamento";
 import type { ResultadoDoEvento } from "./cartao";
 import type { Agendamento } from "./payload";
 import { variaveisDoAgendamento } from "./variaveis";
@@ -66,6 +67,14 @@ export interface ProcessamentoDoAgendamento {
   contactId: string | null;
 }
 
+export interface OpcoesDoProcessamento {
+  /**
+   * A linha do agendamento em `cb_calendly_eventos`. Com ela, o contato vai
+   * para a linha ASSIM QUE é resolvido (`gravarContatoCedo`).
+   */
+  eventoId?: string;
+}
+
 export async function processarAgendamento(
   admin: SupabaseClient,
   accountId: string,
@@ -77,7 +86,32 @@ export async function processarAgendamento(
    * linha não guarda local/cancelar/remarcar/situacao em coluna.
    */
   vars?: Record<string, string>,
+  opcoes: OpcoesDoProcessamento = {},
 ): Promise<ProcessamentoDoAgendamento> {
+  // ⚠️⚠️ A REUNIÃO JÁ FOI CANCELADA? (revisão do PR #235.) O Calendly não
+  // garante a ordem das entregas: o `invitee.canceled` pode ser processado
+  // ANTES do `invitee.created` do mesmo convite. O cancelamento, então, não
+  // acha o agendamento, termina `ignorado` sem contato, e a reentrega é
+  // descartada como duplicata — e o agendamento, chegando depois, avisava o
+  // advogado, movia o card para "Reunião Agendada" e gravava a data de uma
+  // reunião que não vai acontecer, com os lembretes armados.
+  //
+  // Leitura que falha SEGUE (falha aberta), ao contrário do "Processar de
+  // novo" (que recusa): aqui é a primeira vez, e recusar calaria o aviso ao
+  // advogado de um agendamento de verdade por um soluço do banco — o caso
+  // de a reunião já estar cancelada é o raro.
+  const cancelada = await houveCancelamento(admin, accountId, agendamento.inviteeUri);
+  if (cancelada === true) {
+    return {
+      resultado: "ignorado",
+      detalhe: "a reunião foi cancelada no Calendly antes de o agendamento ser processado — nada foi disparado",
+      contactId: null,
+    };
+  }
+  if (cancelada === null) {
+    console.warn("[calendly] não foi possível conferir o cancelamento; o agendamento segue:", agendamento.inviteeUri);
+  }
+
   if (!agendamento.telefone) {
     return { resultado: "sem_telefone", detalhe: "o agendamento não trouxe telefone (SMS ou pergunta do formulário)", contactId: null };
   }
@@ -123,6 +157,7 @@ export async function processarAgendamento(
   // isto depois: com `string | null`, um `dispararAutomacoes` sem contato
   // passaria no compilador e os passos morreriam um a um no motor.
   const contactId: string = resolvido;
+  if (opcoes.eventoId) await gravarContatoCedo(admin, opcoes.eventoId, contactId);
 
   // ⚠️⚠️ A FICHA só é fixada quando alguma automação VAI RODAR — e antes dela,
   // porque a automação fala com o nome do agendamento (`{{contact.name}}`).
@@ -138,7 +173,7 @@ export async function processarAgendamento(
   // fala — é o que o recorte por conexão da automação lê. Ficha recém-criada
   // já devolveu a conversa; a conexão dela é NULA, e `channelInScope` deixa
   // passar nesse caso (a mesma passagem livre do resíduo de ingestão).
-  const { data: conversa } = conversaDaFichaNova
+  const { data: conversaAchada } = conversaDaFichaNova
     ? { data: { id: conversaDaFichaNova, channel_id: null as string | null } }
     : await admin
         .from("conversations")
@@ -148,6 +183,26 @@ export async function processarAgendamento(
         .order("created_at", { ascending: true })
         .limit(1)
         .maybeSingle();
+
+  // ⚠️ A ficha que JÁ existia pode não ter conversa: a integração do
+  // formulário cria a ficha pela API minutos antes do agendamento (desde
+  // 24/09/2026), e criar ficha pela API não cria conversa. Ela ganha a
+  // conversa aqui, como a ficha nova — sem ela o `{{conversation.link}}` do
+  // aviso ao advogado sai vazio, o cliente não aparece na caixa de entrada, e
+  // os lembretes e o No-show, que falam com o cliente, falham por falta de
+  // conversa. Falhar aqui NÃO segura o aviso: a automação roda sem conversa,
+  // como antes, e o motivo fica no detalhe do evento.
+  let conversa = conversaAchada as { id: string; channel_id: string | null } | null;
+  let avisoDaConversa: string | null = null;
+  if (!conversa) {
+    try {
+      conversa = { id: await conversaDoContato(admin, accountId, contactId), channel_id: null };
+    } catch (e) {
+      const motivo = e instanceof Error ? e.message : "erro";
+      console.error("[calendly] não foi possível criar a conversa do cliente:", motivo);
+      avisoDaConversa = `a conversa do cliente não foi criada (${motivo}) — o link da conversa sai vazio`;
+    }
+  }
 
   const r = await dispararAutomacoes({
     accountId,
@@ -173,7 +228,35 @@ export async function processarAgendamento(
   // mesmo UPDATE alcança o card que já existia e o que acabou de nascer.
   // Ficha que não gravou não renomeia o card: os dois contariam nomes diferentes.
   const avisoDoCard = ficha.nome ? await renomearCardAberto(admin, accountId, contactId, ficha.nome) : null;
-  return comAvisoDoNome(comFichaNova(resultadoDoDisparo(r, contactId), fichaNova), ficha.aviso ?? avisoDoCard);
+  const avisos = [ficha.aviso ?? avisoDoCard, avisoDaConversa].filter(Boolean).join(" · ") || null;
+  return comAvisoDoNome(comFichaNova(resultadoDoDisparo(r, contactId), fichaNova), avisos);
+}
+
+/**
+ * O contato vai para a linha do agendamento ASSIM QUE é resolvido, antes das
+ * automações (revisão do PR #235).
+ *
+ * ⚠️⚠️ É o que o cancelamento que chega DURANTE o processamento lê
+ * (`processarCancelamento` espera o contato aparecer nesta linha). Gravado só
+ * no fim, por `gravarResultado`, ele aparecia depois das automações — e,
+ * passado o teto de 4 min, a rota grava `falhou` com o contato NULO enquanto a
+ * automação segue e grava a data: o cancelamento desistia sem contato, e a
+ * varredura de lembretes (que suprime o horário pelo contato da linha do
+ * CANCELAMENTO) mandava os avisos da reunião desmarcada.
+ *
+ * Sem a cerca do cadeado, de propósito: depois do teto, `processando_desde`
+ * já é nulo. A guarda é `contact_id IS NULL` — nunca troca um contato já
+ * gravado. Nunca lança.
+ */
+async function gravarContatoCedo(admin: SupabaseClient, eventoId: string, contactId: string): Promise<void> {
+  const { error } = await admin
+    .from("cb_calendly_eventos")
+    .update({ contact_id: contactId })
+    .eq("id", eventoId)
+    .is("contact_id", null);
+  if (error) {
+    console.warn("[calendly] não foi possível gravar o contato na linha do agendamento:", error.message);
+  }
 }
 
 /**
@@ -281,7 +364,7 @@ async function renomearCardAberto(
   return null;
 }
 
-/** Puro: acrescenta ao detalhe do evento o que não gravou no nome. */
+/** Puro: acrescenta ao detalhe do evento o que não gravou (nome, card, conversa). */
 export function comAvisoDoNome(r: ProcessamentoDoAgendamento, aviso: string | null): ProcessamentoDoAgendamento {
   if (!aviso) return r;
   return { ...r, detalhe: r.detalhe ? `${r.detalhe} · ${aviso}` : aviso };
@@ -369,7 +452,10 @@ export async function gravarResultado(
     .update({
       resultado: r.resultado,
       detalhe: r.detalhe,
-      contact_id: r.contactId,
+      // ⚠️ Contato NULO não apaga o que já está gravado: o fechamento por teto
+      // ou por erro chega sem contato, e o contato gravado cedo
+      // (`gravarContatoCedo`) é o que o cancelamento lê.
+      ...(r.contactId ? { contact_id: r.contactId } : {}),
       processado_em: new Date().toISOString(),
       processando_desde: null,
     })

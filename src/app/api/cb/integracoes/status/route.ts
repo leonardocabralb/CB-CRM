@@ -28,7 +28,7 @@ const MAX_MODELOS_PINGADOS = 5;
  * GET /api/cb/integracoes/status  (admin+)
  *
  * A aba de Integrações num pedido só: a chave de cada provedor de IA da
- * conta (`cb_ia_chaves`, 1042), com um ping REAL em cada uma (o mesmo
+ * conta (`cb_ia_chaves`, 1047), com um ping REAL em cada uma (o mesmo
  * `validateAiCredentials` do botão "Testar chave" — com o modelo que o
  * assistente usa quando é o provedor dele), mais o ping de embeddings com
  * a chave da OpenAI (RAG) e o cartão do Google Agenda.
@@ -96,6 +96,7 @@ interface LinhaPadrao {
   model: string;
   radar_model: string | null;
   is_active: boolean;
+  auto_reply_enabled?: boolean | null;
 }
 
 export async function GET(request: Request) {
@@ -117,7 +118,7 @@ export async function GET(request: Request) {
         );
     if (!limite.success) return rateLimitResponse(limite);
 
-    // ⚠️ Desde a 1042 a chave é do PROVEDOR (`cb_ia_chaves`, fechada ao
+    // ⚠️ Desde a 1047 a chave é do PROVEDOR (`cb_ia_chaves`, fechada ao
     // navegador — lida pelo serviço); a linha PADRÃO de `ai_configs` é a
     // configuração dos módulos (provedor e modelo do Radar) e do assistente
     // legado. As linhas de CONEXÃO (herdadas; não há escritor no app) entram
@@ -132,7 +133,7 @@ export async function GET(request: Request) {
         lerEstado(ctx.accountId),
         ctx.supabase
           .from('ai_configs')
-          .select('channel_id, provider, model, radar_model, is_active')
+          .select('channel_id, provider, model, radar_model, is_active, auto_reply_enabled')
           .eq('account_id', ctx.accountId),
         listChannels(ctx.supabase, ctx.accountId),
       ]);
@@ -140,8 +141,18 @@ export async function GET(request: Request) {
       const linhas = (linhasLidas.data ?? []) as (LinhaPadrao & { channel_id: string | null })[];
       estado = estadoLido;
       padrao = linhas.find((l) => l.channel_id === null) ?? null;
+      // A linha de CONEXÃO só roda na resposta automática do app anterior:
+      // ligada, com a resposta automática ligada nela E na conexão (Codex, #294).
+      const { data: semAutomatica, error: erroSemAutomatica } = await ctx.supabase
+        .from('cb_channels')
+        .select('id')
+        .eq('account_id', ctx.accountId)
+        .eq('ai_autoreply_enabled', false);
+      if (erroSemAutomatica) throw new Error(erroSemAutomatica.message);
+      const desligadas = new Set((semAutomatica ?? []).map((c) => c.id as string));
       deConexao = linhas.filter(
-        (l): l is LinhaPadrao & { channel_id: string } => l.channel_id !== null && l.is_active
+        (l): l is LinhaPadrao & { channel_id: string } =>
+          l.channel_id !== null && l.is_active && l.auto_reply_enabled === true && !desligadas.has(l.channel_id)
       );
       canais = canaisLidos;
     } catch (err) {
@@ -152,7 +163,7 @@ export async function GET(request: Request) {
       );
     }
 
-    // Os agentes de IA (1043). Leitura que falha só tira a lista do cartão e
+    // Os agentes de IA (1048). Leitura que falha só tira a lista do cartão e
     // os modelos deles do ping (log) — não derruba a tela das chaves.
     const agentes = await listarAgentes(ctx.accountId).catch((err) => {
       console.error('[integracoes] leitura dos agentes falhou:', err instanceof Error ? err.message : err);
@@ -179,36 +190,62 @@ export async function GET(request: Request) {
             return { ...base, teste: { ok: false, motivo: 'leitura_falhou' } };
           }
           if (!chave) return { ...base, existe: false, teste: null };
-          // A chave da OpenAI que nasceu SÓ da base (1042) e que nada de chat
+          // A chave da OpenAI que nasceu SÓ da base (1047) e que nada de chat
           // usa: não é pingada no modelo de chat — pode ser restrita aos
           // embeddings, e o cartão diria "falhando" sobre o único uso que ela
           // tem. Quem diz se ela funciona é o ping dos embeddings (Codex, #294).
+          // A linha padrão só conta como uso quando o assistente está LIGADO
+          // ou o Radar roda sobre ela: a chave que nasce só da base cria uma
+          // padrão DESLIGADA, e contá-la pingaria a chave dos embeddings no
+          // chat (Codex, #294).
+          const radarLigado = canais.some((c) => c.radar_enabled === true);
+          const doPadrao = padrao && padrao.provider === e.provedor ? padrao : null;
+          const modeloDoChat = doPadrao?.is_active ? doPadrao.model : null;
+          const modeloDoRadar = doPadrao && radarLigado ? (doPadrao.radar_model ?? doPadrao.model) : null;
           const usadaNoChat =
-            padrao?.provider === e.provedor ||
+            modeloDoChat !== null ||
+            modeloDoRadar !== null ||
             deConexao.some((l) => l.provider === e.provedor) ||
             agentes.some((a) => a.ativo && a.provedor === e.provedor);
-          if (e.soDaBase && !usadaNoChat) return { ...base, teste: { ok: true } };
+          // E a da OpenAI que nada de chat usa, qualquer que seja a origem (a
+          // cópia de uma conexão DESLIGADA também — a 1047 a pega na falta de
+          // outra): o uso dela é a base, e quem responde por ela é o ping dos
+          // embeddings (Codex, #294).
+          if ((e.soDaBase || e.provedor === 'openai') && !usadaNoChat) return { ...base, teste: { ok: true } };
           const apiKey = chave;
           // ⚠️ O ping testa o modelo do CHAT (ou o padrão do provedor) E o de
           // cada agente de CONEXÃO ligado deste provedor: a resposta
           // automática legada chama o modelo da linha dela, e um modelo
           // aposentado ali falharia com o cartão dizendo "funcionando"
-          // (Codex, #294). O do Radar é validado no SAVE — pingá-lo aqui
-          // seria uma segunda chamada paga a cada carga desta tela.
+          // (Codex, #294). E o modelo PRÓPRIO do Radar, quando o Radar está
+          // ligado em alguma conexão e o modelo difere do chat: validado no
+          // save, ele ainda pode sair do ar depois, e o cartão ficaria verde
+          // com toda análise falhando (Codex, #295). Vem logo depois do chat.
+          // E, na do Gemini, o modelo FIXO da transcrição: ela lê a chave do
+          // Gemini qualquer que seja o chat, e o cartão ficaria verde com
+          // todo áudio falhando se só aquele modelo saísse do ar (Codex, #294).
+          const daConexao = deConexao.filter((l) => l.provider === e.provedor).map((l) => l.model);
+          // E o de cada agente de IA LIGADO deste provedor (Codex, #295): um
+          // modelo trocado para um aposentado deixaria o cartão verde com o
+          // Playground e a produção falhando.
+          const dosAgentes = agentes.filter((a) => a.ativo && a.provedor === e.provedor).map((a) => a.modelo);
+          // O modelo padrão do provedor só quando NADA deste provedor roda (só
+          // confere a chave): testá-lo ao lado do modelo da conexão acusaria
+          // "falhando" por um modelo que ninguém usa (Codex, #294).
+          const nadaRoda =
+            modeloDoChat === null && modeloDoRadar === null && daConexao.length === 0 && dosAgentes.length === 0;
           const modelos = [
-            padrao && padrao.provider === e.provedor
-              ? padrao.model
-              : AI_PROVIDER_DEFAULT_MODEL[e.provedor],
-            ...deConexao.filter((l) => l.provider === e.provedor).map((l) => l.model),
-            // E o de cada agente de IA LIGADO deste provedor (Codex, #295): um
-            // modelo trocado para um aposentado deixaria o cartão verde com o
-            // Playground e a produção falhando.
-            ...agentes.filter((a) => a.ativo && a.provedor === e.provedor).map((a) => a.modelo),
+            modeloDoChat,
+            nadaRoda ? AI_PROVIDER_DEFAULT_MODEL[e.provedor] : null,
+            modeloDoRadar,
+            e.provedor === 'gemini' ? MODELO_TRANSCRICAO : null,
+            ...daConexao,
+            ...dosAgentes,
           ]
-            .filter((m, i, todos) => typeof m === 'string' && m.trim() !== '' && todos.indexOf(m) === i)
+            .filter((m, i, todos): m is string => typeof m === 'string' && m.trim() !== '' && todos.indexOf(m) === i)
             // Cada ping é uma geração PAGA a cada carga da tela: teto por
-            // provedor, a linha do chat primeiro. O agente além do teto se
-            // confere no Playground dele.
+            // provedor, o do chat, o do Radar e o da transcrição primeiro. O
+            // agente além do teto se confere no Playground dele.
             .slice(0, MAX_MODELOS_PINGADOS);
           const falhas = await Promise.all(
             modelos.map(async (model) => {
@@ -239,7 +276,7 @@ export async function GET(request: Request) {
         const temOpenai = estado.some((e) => e.provedor === 'openai' && e.existe);
         if (!pingar || !temOpenai) return null;
         try {
-          // A MESMA chave que a base usa: a própria dos embeddings (1042), ou
+          // A MESMA chave que a base usa: a própria dos embeddings (1047), ou
           // a da OpenAI — que, recusada pela OpenAI ao ser gravada, não é
           // pingada de novo (é a resposta que já se tem).
           const lida = await lerChaveDeEmbeddings(ctx.accountId);
@@ -281,7 +318,7 @@ export async function GET(request: Request) {
         model: l.model,
         canal: canais.find((c) => c.id === l.channel_id)?.label ?? l.channel_id,
       })),
-      // Os agentes de IA (1043) de cada provedor.
+      // Os agentes de IA (1048) de cada provedor.
       agentes.map((a) => ({
         nome: a.nome,
         provedor: a.provedor as ProviderId,

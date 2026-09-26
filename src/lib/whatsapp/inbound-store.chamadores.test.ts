@@ -106,7 +106,7 @@ describe('a entrada do agente de IA: só as duas ingestões do cliente', () => {
 
   it('⚠️ o celular pareado (`persistDeviceMessage`) NÃO abre turno', () => {
     // Mensagem da EQUIPE não é pergunta para o agente — ela o PAUSA (o
-    // gatilho da 1044, no banco).
+    // gatilho da 1049, no banco).
     const f = semComentarios(fs.readFileSync(path.join(SRC, 'lib/whatsapp/inbound-store.ts'), 'utf8'));
     const inicio = f.indexOf('export async function persistDeviceMessage');
     const fim = f.indexOf('export async function persistInboundMessage');

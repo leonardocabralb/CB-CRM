@@ -96,6 +96,8 @@ export interface NotificationLabels {
   document: string;
   location: string;
   template: string;
+  /** Ligação perdida (1044): a bolha não tem texto, só o aviso. */
+  call: string;
 }
 
 export const DEFAULT_NOTIFICATION_LABELS: NotificationLabels = {
@@ -106,6 +108,7 @@ export const DEFAULT_NOTIFICATION_LABELS: NotificationLabels = {
   document: "📄 Document",
   location: "📍 Location",
   template: "📋 Template",
+  call: "📞 Missed call",
 };
 
 export interface NotificationContent {
@@ -147,6 +150,11 @@ export function buildNotificationContent(
       body = text ? `${label} · ${text}` : label;
       break;
     }
+    // Ligação (1044): só a PERDIDA chega aqui (a atendida é `agent`), e ela
+    // não tem texto — sem o rótulo, o aviso sairia com o corpo vazio.
+    case "call":
+      body = labels.call;
+      break;
     // "text" and "interactive" (a tapped button/list row) both carry
     // their meaning in content_text.
     default:

@@ -47,9 +47,9 @@ A IA lê as conversas dos últimos 7 dias e grava `cb_conversation_insights`
   as duas a etiqueta cai para o INSTANTE (`semRespostaDesde`); mexer numa
   constante sem esse ramo devolve o cartão MUDO.
 - ⚠️ **A pendência é conferida AO VIVO na tela** (`respostasDepoisDaPendencia`):
-  `aguardando_desde` é o retrato da última análise. Falha
-  para o lado do ALARME (erro mantém o cartão; lista truncada vale — DESC, o
-  teto só omite resposta antiga). Mensagem apagada não conta como resposta.
+  `aguardando_desde` é o retrato da última análise. Falha para o lado do
+  ALARME (erro mantém o cartão; lista truncada vale — DESC, o teto só omite
+  resposta antiga). Mensagem apagada não conta como resposta.
 - ⚠️⚠️ **"Resposta de gente" = `sender_id` preenchido OU `from_device = true`**
   (o celular pareado não tem `sender_id`). Não fecham a pendência: broadcast,
   automação, fluxo e a AGENDADA — que sai COM `sender_id` e é excluída, no
@@ -62,7 +62,7 @@ A IA lê as conversas dos últimos 7 dias e grava `cb_conversation_insights`
   afirmaria "nenhum sinal aberto" sobre conversa que o Radar não leu). O
   resgate filtra `estado = 'aberto'` (pino `use-radar.resgate.test.ts`).
 - ⚠️ **O painel recarrega a cada 2 min com a aba visível** (o tique de 1 min
-  só re-renderiza): é o que descobre que um colega respondeu.
+  só re-renderiza): é o que vê que um colega respondeu.
 - ⚠️ **Insatisfação exige evidência recente — 2 dias de expediente, em TEMPO
   ÚTIL** (`JANELA_INSATISFACAO_UTIL_SEG`; em corridas, a de sexta expirava no
   domingo). Escrita e leitura SE SOMAM (~4 dias úteis). ⚠️ A âncora é o
@@ -81,13 +81,13 @@ A IA lê as conversas dos últimos 7 dias e grava `cb_conversation_insights`
 **O worker e a tabela**
 
 - **NADA dispara sozinho**: o agendador bate em `/api/cb/radar/cron` (laço
-  lento); mudar o `command` do agendador só vale com `docker stack deploy`.
+  lento).
 - ⚠️ **`cb_channels.radar_enabled` nasce FALSE e é `=== true`** — exceção
   DELIBERADA a "escopo vazio = todos" (conversa de cliente vai a provedor
   externo, e há canal pessoal na conta). Não "corrigir".
 - **`authenticated` só tem SELECT** em `cb_conversation_insights`: tratar e
   descartar passam por `PATCH /api/cb/radar/[conversationId]/estado` (UPDATE
-  do navegador volta "0 linhas" com cara de sucesso).
+  do navegador volta 0 linhas).
 - **Sinal sem evidência é DESCARTADO pelo parser** (`interpretarAnalise`,
   `rubrica.ts`; evidência = índice de linha do transcrito → `messages.id`):
   sem isso o painel vira gerador de alarme falso.
@@ -98,7 +98,7 @@ A IA lê as conversas dos últimos 7 dias e grava `cb_conversation_insights`
   é SÓ de renderização** (qualquer membro lê `detalhes.analise`); a barreira
   real é PENDÊNCIA, com a receita, em `docs/PLANO-radar-de-atendimento.md`.
 - **Tempos em segundos ÚTEIS com fuso FIXO -03:00**: só `horario-comercial.ts`
-  muda se o horário de verão voltar; intervalo negativo vira zero lá dentro.
+  muda se o horário de verão voltar; intervalo negativo vira zero lá.
 - ⚠️ **Ciclo de vida do sinal, três regras assimétricas**: `tratado` reabre SÓ
   com mensagem DO CLIENTE posterior ao `estado_em` (UPDATE condicional
   separado); `descartado` NUNCA reabre sozinho; `aberto` fica. ⚠️ Exceção:
@@ -125,7 +125,7 @@ A IA lê as conversas dos últimos 7 dias e grava `cb_conversation_insights`
   (`JANELA_DIAS`, `THROTTLE_MS` em `ordenacao.ts`, client-safe,
   `TETO_MENSAGENS`, `CICLO_MINUTOS`): número no dicionário mente.
 - **`loadAiConfig` do Radar usa `requireActive: false`** (precisa da
-  CREDENCIAL; `is_active` é do assistente) ⚠️ e SEM `channelId` (1042): a
+  CREDENCIAL; `is_active` é do assistente) ⚠️ e SEM `channelId` (1047): a
   configuração do Radar é da conta — pelo canal, um agente de uma conexão
   trocaria a chave e o modelo do Radar ali (pino `chaves.chamadores.test.ts`).
 - **O upsert em `cb_conversation_insights` funciona** porque o UNIQUE de
@@ -149,12 +149,13 @@ bolha e ao worker do Radar.
   `media_url` — janela de 2 min): gravar mataria o botão para sempre.
   `recusada` GRAVADA é só o irreversível da mensagem (URL relativa antiga,
   grande demais, `MAX_TOKENS`, tentativas esgotadas). ⚠️ A chave é a do GEMINI
-  da conta (`lerChave(conta, 'gemini')`, 1042); erro de LEITURA dela é
-  `falhou` sem gravar, nunca "sem chave".
+  da conta (`lerChave(conta, 'gemini')`, 1047), direto — nem agente nem canal
+  (um agente de outro provedor na conexão fazia recusar tudo); erro de
+  LEITURA dela é `falhou` sem gravar, nunca "sem chave".
 - ⚠️ **O modelo é FIXADO em `MODELO_TRANSCRICAO`**, UM para os dois
   chamadores, de propósito: não há "transcrever de novo", quem chega primeiro
   fixa o modelo daquele áudio, nenhuma coluna o registra, e o teto de 3
-  tentativas é compartilhado. Plano B e medições: no comentário da constante.
+  tentativas é compartilhado. Plano B: no comentário da constante.
 - ⚠️ **Não desligar o raciocínio** (`thinkingBudget: 0` piora o erro,
   medido). ⚠️ **Trocar o modelo NÃO refaz o já transcrito** — quem trocar
   decide, na mesma passada, se limpa `transcricao*` do acervo.
@@ -174,7 +175,7 @@ bolha e ao worker do Radar.
 `montar.ts` (puro, testado), `GET /api/cb/integracoes/status` e
 `integracoes-panel.tsx`. O COMPORTAMENTO do agente fica em Agentes de IA.
 
-- ⚠️⚠️ **A CHAVE é do PROVEDOR, uma por conta, em `cb_ia_chaves` (1042)** —
+- ⚠️⚠️ **A CHAVE é do PROVEDOR, uma por conta, em `cb_ia_chaves` (1047)** —
   nunca por conexão (D1). FECHADA ao navegador: só `src/lib/ia-chaves/repo.ts`
   a toca, com o cliente de SERVIÇO (a sessão leria zero linhas); pino
   `chaves.chamadores.test.ts`. A de embeddings é a da OpenAI, MENOS a recusada
@@ -182,7 +183,10 @@ bolha e ao worker do Radar.
   (`cb_ia_chaves.embeddings_api_key`) vence (`lerChaveDeEmbeddings`).
   `ai_configs.api_key`/`embeddings_api_key`: nada as LÊ, `gravarChave` as
   ESPELHA (volta atrás). A chave nova é conferida em CADA modelo em uso;
-  recusada num que a atual alcança, nada troca (`modelo_em_uso_recusado`).
+  recusada num que a atual alcança, nada troca (`modelo_em_uso_recusado`). A
+  da OpenAI que nenhum chat usa e só gera embedding grava a marca "só da
+  base" (`soDaBase`: o mesmo cifrado nas duas colunas) — nenhuma tela a
+  oferece ao chat, onde toda geração falharia.
 - ⚠️ **A linha PADRÃO de `ai_configs` é a configuração dos MÓDULOS** (provedor
   e modelo do Radar) e do assistente legado, para a conta inteira. `montar.ts`
   monta um cartão por provedor a partir da CHAVE e lê só a linha padrão; a
@@ -208,8 +212,9 @@ bolha e ao worker do Radar.
 - ⚠️ **`radar_model` ausente do corpo = "não mexe"** (a convenção de
   `handoff_agent_id`): senão um save vindo de Agentes zeraria o modelo do Radar.
 - ⚠️ **O modelo do Radar é validado no SAVE, contra o provedor** — inclusive
-  quando só o PROVEDOR muda. O ping da aba testa só o modelo do CHAT (pingar o
-  do Radar seria outra chamada paga a cada carga).
+  quando só o PROVEDOR muda. O ping da aba testa o modelo do CHAT, o do Radar
+  quando difere e o Radar está ligado em alguma conexão (pode sair do ar
+  depois do save), e, na chave do Gemini, o `MODELO_TRANSCRICAO`.
 - ⚠️ **`?ping=0` existe porque cada ping é uma geração PAGA**: a tela carrega
   em dois tempos (config, depois pings), o botão repete só os pings, e o
   `useEffect` tem guarda própria (`disparouRef`) contra o StrictMode.
@@ -219,18 +224,17 @@ bolha e ao worker do Radar.
   que diz "modelo não encontrado") — EXCETO `code === 'invalid_key'`, que vira
   texto genérico (nunca tirar a exceção).
 - **Módulo sem uso ativo NÃO some**: aparece com o motivo (o Radar desligado
-  na conexão, por exemplo).
+  na conexão).
 - **Radar exige `radar_enabled === true`; transcrição é Gemini-only; RAG é
   OpenAI-only** (modelo fixo, `vector(1536)`), no cartão da OpenAI mesmo com
   outro provedor.
 - **`AI_PROVIDER_MODELS` é SUGESTÃO (`<datalist>`), nunca allow-list**: o
   servidor grava qualquer texto não vazio — ids de modelo mudam rápido.
-- **Google Agenda é cartão "não conectado" de propósito** (a integração não
-  existe).
+- **Google Agenda é cartão "não conectado" de propósito** (não existe).
 
-### Agentes de IA (1043, `src/lib/ia-agentes/`, `/agents`)
+### Agentes de IA (1048, `src/lib/ia-agentes/`, `/agents`)
 
-Plano vivo: `docs/PLANO-agentes-de-ia.md` (D1–D23, E1–E14). F2a (1044): eles
+Plano vivo: `docs/PLANO-agentes-de-ia.md` (D1–D23, E1–E14). F2a (1049): eles
 RESPONDEM cliente; a resposta automática do assistente anterior saiu (E2), e
 o ✨ do rascunho segue nele.
 
@@ -245,9 +249,7 @@ o ✨ do rascunho segue nele.
 - **Apagar é ARQUIVAR**: o uso antigo guarda o nome CONGELADO
   (`ai_usage_log.ia_agente_nome`); o nome é único só entre os não arquivados.
 - **Instruções e regras (D23) em campos separados**; o pedido ao modelo sai
-  de UMA função pura, que o Playground também usa (`montarPedidoDoAgente`:
-  texto-base em inglês, data e hora no fuso do escritório, instruções, regras
-  numeradas, base de conhecimento).
+  de UMA função pura, a do turno e do Playground (`montarPedidoDoAgente`).
 - **O gasto do Playground é `agente_teste`** (D13), separado de `agente`. A
   soma do uso é no BANCO (`cb_ia_uso`): linha a linha, o PostgREST cortava
   em 1000.
@@ -256,7 +258,7 @@ o ✨ do rascunho segue nele.
   cotação de hoje (`ai_configs.cotacao_dolar`). Modelo fora da tabela é "sem
   preço", NUNCA zero; a saída do Gemini é `max(saída, total − entrada)`.
 
-### Quem responde (F2a, 1044): a regra, a fila e o turno
+### Quem responde (F2a, 1049): a regra, a fila e o turno
 
 `quem-responde.ts` (puro), `entrada.ts` (a porta das DUAS ingestões),
 `fila.ts`, `turno.ts`, `rede.ts` (no topo de `/api/automations/cron`).
@@ -321,7 +323,7 @@ o ✨ do rascunho segue nele.
   (`gravarIdEnviado`, cercado por turno e id nulo): o eco precisa dele mesmo
   com o turno recolhido, e ele não mexe no status.
 - ⚠️ **Só o turno passa `iaAgenteId` ao `engineSendText`** (pino
-  default-deny): a 972 (redefinida na 1044) conta `bot` COM `ia_agente_id`
+  default-deny): a 972 (redefinida na 1049) conta `bot` COM `ia_agente_id`
   como "respondido" — com ele, fluxo ou automação calariam o alerta de
   atraso de todo cliente esperando.
 - ⚠️ **O contexto é SÓ da conexão do turno** (D4), sem as apagadas; áudio
@@ -332,22 +334,21 @@ o ✨ do rascunho segue nele.
   (conversa travada, relê o agente, nunca toca `assigned_agent_id`; a ENTRADA
   passa `p_so_se_vazio` e desiste sem enfileirar no `ocupada`, o passo
   "Atribuir agente" TROCA) e por `cb_retomar_ia_por_automacao` (o "ligar" do
-  `set_ai`, E13). Nunca copiar a consulta (pino na 1044). O "ligar" retoma só
+  `set_ai`, E13). Nunca copiar a consulta (pino na 1049). O "ligar" retoma só
   `gente`/`automacao` sem gente em 24 h (`automacao` + gente recente vira
   `gente`); `botao`, `transferencia` e pausa sem motivo, nunca; sem pausa, só
   zera o teto (D10). UPDATE solto no motor põe a IA por cima do advogado; erro
   ou resposta desconhecida da RPC = falha visível do passo.
-- **Pausa por gente é GATILHO** (1044), pelo `gravada_em` (não o relógio do
+- **Pausa por gente é GATILHO** (1049), pelo `gravada_em` (não o relógio do
   aparelho), com o `created_at` na janela de 24 h da D17; o eco do turno fica
   fora pelo `mensagem_enviada_id`. O turno relê o gatilho a cada conferência
   (apagado: descarta). O eco da Evolution que chega antes do INSERT é gravado
   COMO a resposta do agente por `eco.ts` — 2º escritor de `messages` com
   `ia_agente_id`; nenhum motor (pino `eco.test.ts`).
 - **FK anulável de `cb_ia_turnos`/`ai_usage_log` ganha índice PARCIAL**
-  (`WHERE col IS NOT NULL`) na mesma migration (`mensagem_gatilho_id`,
-  `mensagem_inicial_id`, `turno_id`, `canal_id`; `conversation_id` cheio):
-  sem ele, apagar mensagem, conversa ou conexão varre a tabela. Sem índice,
-  decisão do operador: `messages.ia_agente_id` (travaria as escritas).
+  (`WHERE col IS NOT NULL`; `conversation_id` cheio): sem ele, apagar
+  mensagem, conversa ou conexão varre a tabela. `messages.ia_agente_id` fica
+  sem índice (decisão do operador: travaria as escritas).
 - ⚠️ **Apagar conexão DESCARTA os pendentes dela** (gatilho BEFORE DELETE
   `cb_channels_descarta_turnos_de_ia`, antes do SET NULL): sem ele, dois
   pendentes da conversa em conexões apagadas colidem em (conversa, NULL) e o
@@ -360,8 +361,8 @@ o ✨ do rascunho segue nele.
   no render quando deixa de valer (`cliqueAindaVale`: outra conversa, ou o
   banco fora do `base`) — senão o banco que confirma e VOLTA (o gatilho
   pausou) devolve o clique velho; a marca nasce NO clique, e a resposta só a
-  completa se ainda for a mesma. O lint do React Compiler não analisa a faixa
-  (o `finally` o faz desistir): prova é o teste de sequência de renders.
+  completa se ainda for a mesma. O React Compiler não analisa a faixa (o
+  `finally`): a prova é o teste de sequência de renders.
 - ⚠️ **A tela legada (`ai-config.tsx`) não tem controle de auto-reply**: o
   corpo (`corpoDoSalvamento`) ECOA `auto_reply_*` como lidos (o POST reescreve
   a linha) e NÃO manda `handoff_agent_id` (a rota exige membro atual: um
@@ -370,23 +371,24 @@ o ✨ do rascunho segue nele.
 ### Assistente e provedores (`src/lib/ai/`)
 
 - ⚠️ **O "digitando…" (#527) sai pelo MESMO canal da resposta**
-  (`mostrarDigitando`): a resolução de `engineSendText` com o canal da
-  entrada, só em canal Meta e com id `wamid.` — nunca as credenciais da
-  CONTA, como no original. Melhor esforço, sem `await`: nunca lança nem segura
-  a resposta; log por `semTokenDaMeta`. ⚠️ A Meta marca a mensagem do cliente
-  como LIDA junto (P6). Chamado pelo TURNO, depois das conferências.
+  (`mostrarDigitando`: a resolução de `engineSendText` com o canal da
+  entrada), só em canal Meta com id `wamid.` — nunca as credenciais da CONTA,
+  como no original. Nunca lança; log por `semTokenDaMeta`. ⚠️ A Meta marca a
+  mensagem do cliente como LIDA junto (P6). O TURNO o chama depois das
+  conferências, em paralelo com a geração, o ESPERA (`concluirDigitando`, até
+  2 s) antes da última conferência e o cancela em toda saída sem envio
+  (`finally` de `executarTurno`): solto, chegava à Meta depois da resposta.
+  Pino `digitando.chamadores.test.ts`.
 - **`generateStructured` (`structured.ts`) é separado de `generateReply` DE
   PROPÓSITO**: o turno e o rascunho não herdam regressão da análise.
 - **Gemini é o terceiro provedor** (`structured.ts` e `providers/gemini.ts`
-  são nossos): chave SEMPRE no
-  cabeçalho `x-goog-api-key`, nunca `?key=` (vaza em log de proxy); em
-  produção, chave do tier PAGO (a faixa gratuita pode usar os dados enviados).
+  são nossos): chave SEMPRE no cabeçalho `x-goog-api-key`, nunca `?key=`; em
+  produção, tier PAGO (o gratuito pode usar os dados enviados).
 - **Modo ou provedor novo exige migration no CHECK** de `ai_usage_log`
   (`mode`, `provider`): senão `logAiUsage` engole o erro e o custo some.
-- ⚠️ **`ai_configs` tem índices únicos PARCIAIS (903: global + por canal).**
-  `.upsert(..., { onConflict })` não serve (use lookup + insert/update), e
-  `.maybeSingle()` só por `account_id` estoura quando existir uma segunda
-  linha — escopar o canal, ou `.is('channel_id', null)` para o padrão.
+- ⚠️ **`ai_configs` tem índices únicos PARCIAIS (903: global + por canal)**:
+  sem `onConflict` (lookup + insert/update); `.maybeSingle()` com o canal, ou
+  `.is('channel_id', null)` para o padrão.
 - Agente por canal, interruptor, RAG por canal, `radarModel` em
-  `CONFIG_COLUMNS` e a opção Gemini (`ai-config.tsx`, `/api/ai/config`) são
-  trechos NOSSOS em arquivos do upstream (`docs/MERGE-UPSTREAM.md`).
+  `CONFIG_COLUMNS` e a opção Gemini são trechos NOSSOS em arquivos do
+  upstream (`docs/MERGE-UPSTREAM.md`).

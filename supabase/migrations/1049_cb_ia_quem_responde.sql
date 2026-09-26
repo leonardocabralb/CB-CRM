@@ -1,4 +1,4 @@
--- 1044_cb_ia_quem_responde.sql
+-- 1049_cb_ia_quem_responde.sql
 --
 -- F2a do plano dos agentes de IA (docs/PLANO-agentes-de-ia.md, 5.2–5.7 e as
 -- decisões da execução E1–E14): o banco de QUEM RESPONDE. Nesta fase nenhuma
@@ -367,7 +367,7 @@ $$;
 -- Atribui o agente com a regra da D17, DENTRO da transação e com a conversa
 -- travada (E12): ler "houve resposta de gente nas últimas 24 h?" no app e
 -- gravar depois deixaria a resposta de um advogado no meio sem pausar.
---   · pausa por `botao` ou `transferencia` (ou sem motivo, anterior à 1044):
+--   · pausa por `botao` ou `transferencia` (ou sem motivo, anterior à 1049):
 --     decisão de gente — NUNCA retomada por automação; o agente fica atribuído
 --     e pausado.
 --   · resposta de gente nas últimas 24 h (por `created_at`, apagada inclusive):
@@ -478,7 +478,7 @@ $$;
 -- rodava e a IA voltava a falar no meio do atendimento (D10).
 --   · sem pausa: nada a retomar — "ligar" só zera o teto de respostas (D10,
 --     decisão do operador) → `ja_ligada`.
---   · pausa por `botao` ou `transferencia` (ou sem motivo, anterior à 1044):
+--   · pausa por `botao` ou `transferencia` (ou sem motivo, anterior à 1049):
 --     decisão de gente, NUNCA retomada por automação → `pausada_mantida`,
 --     nada gravado.
 --   · pausa por `gente` ou `automacao` com resposta de gente nas últimas 24 h:
@@ -650,7 +650,7 @@ CREATE TRIGGER cb_encerrar_limpa_ia_trigger
 
 REVOKE EXECUTE ON FUNCTION cb_encerrar_limpa_ia() FROM PUBLIC, anon, authenticated;
 
--- A função da 1043 ganha as duas limpezas novas (o gatilho e o nome ficam).
+-- A função da 1048 ganha as duas limpezas novas (o gatilho e o nome ficam).
 CREATE OR REPLACE FUNCTION cb_ia_agente_arquivado_sai_das_passagens()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -967,10 +967,10 @@ BEGIN
     'public.cb_assentar_mensagem_historica(uuid, timestamptz, boolean, timestamptz, boolean)'
   ] LOOP
     IF has_function_privilege('anon', f, 'EXECUTE') OR has_function_privilege('authenticated', f, 'EXECUTE') THEN
-      RAISE EXCEPTION '1044: % aberta ao navegador', f;
+      RAISE EXCEPTION '1049: % aberta ao navegador', f;
     END IF;
     IF NOT has_function_privilege('service_role', f, 'EXECUTE') THEN
-      RAISE EXCEPTION '1044: service_role sem EXECUTE em %', f;
+      RAISE EXCEPTION '1049: service_role sem EXECUTE em %', f;
     END IF;
   END LOOP;
   FOREACH f IN ARRAY ARRAY[
@@ -979,14 +979,14 @@ BEGIN
     'public.cb_ia_agente_arquivado_sai_das_passagens()', 'public.cb_ia_descartar_turnos_da_conexao()'
   ] LOOP
     IF has_function_privilege('anon', f, 'EXECUTE') OR has_function_privilege('authenticated', f, 'EXECUTE') THEN
-      RAISE EXCEPTION '1044: função de gatilho % exposta como RPC', f;
+      RAISE EXCEPTION '1049: função de gatilho % exposta como RPC', f;
     END IF;
   END LOOP;
 
   IF has_table_privilege('anon', 'public.cb_ia_turnos', 'SELECT')
      OR has_table_privilege('authenticated', 'public.cb_ia_turnos', 'SELECT')
      OR has_table_privilege('authenticated', 'public.cb_ia_turnos', 'INSERT') THEN
-    RAISE EXCEPTION '1044: cb_ia_turnos aberta ao navegador';
+    RAISE EXCEPTION '1049: cb_ia_turnos aberta ao navegador';
   END IF;
 
   FOREACH f IN ARRAY ARRAY[
@@ -994,25 +994,25 @@ BEGIN
     'public.cb_ia_turnos_conversa_idx', 'public.cb_ia_turnos_canal_idx', 'public.ai_usage_log_turno_idx'
   ] LOOP
     IF to_regclass(f) IS NULL THEN
-      RAISE EXCEPTION '1044: índice da FK % não existe', f;
+      RAISE EXCEPTION '1049: índice da FK % não existe', f;
     END IF;
   END LOOP;
 
   SELECT count(*) INTO v_quantas FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
    WHERE n.nspname = 'public' AND p.proname = 'cb_assentar_mensagem_historica';
   IF v_quantas <> 1 THEN
-    RAISE EXCEPTION '1044: esperava UMA cb_assentar_mensagem_historica; há %', v_quantas;
+    RAISE EXCEPTION '1049: esperava UMA cb_assentar_mensagem_historica; há %', v_quantas;
   END IF;
 
   -- Os gatilhos que a carga da 1033 cala PELO NOME continuam com o nome.
   IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'cb_marcar_aguardando_resposta_trigger'
                     AND tgrelid = 'public.messages'::regclass) THEN
-    RAISE EXCEPTION '1044: o gatilho cb_marcar_aguardando_resposta_trigger sumiu';
+    RAISE EXCEPTION '1049: o gatilho cb_marcar_aguardando_resposta_trigger sumiu';
   END IF;
   -- Apagar a conexão descarta os pendentes dela antes do SET NULL da FK.
   IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'cb_channels_descarta_turnos_de_ia'
                     AND tgrelid = 'public.cb_channels'::regclass) THEN
-    RAISE EXCEPTION '1044: o gatilho cb_channels_descarta_turnos_de_ia não existe';
+    RAISE EXCEPTION '1049: o gatilho cb_channels_descarta_turnos_de_ia não existe';
   END IF;
 
   -- As RPCs CHAMADAS (o corpo só é analisado quando roda), como service_role.
@@ -1029,65 +1029,65 @@ BEGIN
     SELECT a.resultado INTO v_res
       FROM public.cb_atribuir_agente_de_ia(coalesce(v_conta, gen_random_uuid()), coalesce(v_conv, gen_random_uuid()), gen_random_uuid()) a;
     IF v_res NOT IN ('sem_conversa', 'agente_indisponivel', 'grupo') THEN
-      RAISE EXCEPTION '1044: atribuição de agente inexistente respondeu %', v_res;
+      RAISE EXCEPTION '1049: atribuição de agente inexistente respondeu %', v_res;
     END IF;
     PERFORM * FROM public.cb_ia_reivindicar_turno(gen_random_uuid());
     -- A reserva numa conversa que não existe (ou sem este agente) não grava.
     v_res := public.cb_ia_reservar_envio(coalesce(v_conta, gen_random_uuid()), coalesce(v_conv, gen_random_uuid()), gen_random_uuid(), 99,
                                          gen_random_uuid(), NULL, now());
     IF v_res <> 'mudou' THEN
-      RAISE EXCEPTION '1044: reserva de envio com agente estranho respondeu %', v_res;
+      RAISE EXCEPTION '1049: reserva de envio com agente estranho respondeu %', v_res;
     END IF;
     -- O "ligar" do `set_ai` numa conversa que não existe responde sem escrever.
     v_res := public.cb_retomar_ia_por_automacao(coalesce(v_conta, gen_random_uuid()), gen_random_uuid());
     IF v_res <> 'sem_conversa' THEN
-      RAISE EXCEPTION '1044: retomada em conversa inexistente respondeu %', v_res;
+      RAISE EXCEPTION '1049: retomada em conversa inexistente respondeu %', v_res;
     END IF;
     IF v_conv IS NOT NULL THEN
       -- ...e numa conversa de verdade passa pelo corpo inteiro (a pergunta das
       -- 24 h inclusive); o que gravar se desfaz com o subbloco.
       v_res := public.cb_retomar_ia_por_automacao(v_conta, v_conv);
       IF v_res NOT IN ('retomada', 'ja_ligada', 'pausada_gente', 'pausada_mantida') THEN
-        RAISE EXCEPTION '1044: retomada numa conversa da conta respondeu %', v_res;
+        RAISE EXCEPTION '1049: retomada numa conversa da conta respondeu %', v_res;
       END IF;
       -- A rajada: duas mensagens na mesma conversa e conexão = UM pendente.
       SELECT t.id INTO v_t1 FROM public.cb_ia_enfileirar_turno(v_conta, v_conv, NULL, NULL, NULL, 8000) t;
       SELECT t.id INTO v_t2 FROM public.cb_ia_enfileirar_turno(v_conta, v_conv, NULL, NULL, NULL, 8000) t;
       IF v_t1 IS DISTINCT FROM v_t2 THEN
-        RAISE EXCEPTION '1044: a rajada abriu dois turnos pendentes';
+        RAISE EXCEPTION '1049: a rajada abriu dois turnos pendentes';
       END IF;
       -- Antes do `executar_apos`, nada é reivindicado.
       IF EXISTS (SELECT 1 FROM public.cb_ia_reivindicar_turno(v_t1)) THEN
-        RAISE EXCEPTION '1044: turno reivindicado antes da espera de rajada';
+        RAISE EXCEPTION '1049: turno reivindicado antes da espera de rajada';
       END IF;
     ELSE
-      RAISE NOTICE '1044: banco vazio — a rajada não foi exercitada aqui.';
+      RAISE NOTICE '1049: banco vazio — a rajada não foi exercitada aqui.';
     END IF;
     IF v_agente IS NOT NULL THEN
       UPDATE conversations SET ia_agente_id = v_agente, ai_autoreply_disabled = false WHERE id = v_conv_ia;
       -- A ENTRADA não sobrescreve a conversa que já tem agente.
       SELECT a.resultado INTO v_res FROM public.cb_atribuir_agente_de_ia(v_conta_ia, v_conv_ia, v_agente, NULL, true) a;
       IF v_res <> 'ocupada' THEN
-        RAISE EXCEPTION '1044: a entrada numa conversa com agente respondeu %', v_res;
+        RAISE EXCEPTION '1049: a entrada numa conversa com agente respondeu %', v_res;
       END IF;
       -- Outro turno pendente nesta conexão recusa a reserva; o PRÓPRIO turno não.
       SELECT t.id INTO v_t1 FROM public.cb_ia_enfileirar_turno(v_conta_ia, v_conv_ia, NULL, v_agente, NULL, 0) t;
       v_res := public.cb_ia_reservar_envio(v_conta_ia, v_conv_ia, v_agente, 2147483647, gen_random_uuid(), NULL, now());
       IF v_res <> 'mais_nova' THEN
-        RAISE EXCEPTION '1044: reserva com outro turno pendente respondeu %', v_res;
+        RAISE EXCEPTION '1049: reserva com outro turno pendente respondeu %', v_res;
       END IF;
       v_res := public.cb_ia_reservar_envio(v_conta_ia, v_conv_ia, v_agente, 2147483647, v_t1, NULL, now());
       IF v_res NOT IN ('ok', 'robo_falou') THEN
-        RAISE EXCEPTION '1044: reserva do próprio turno respondeu %', v_res;
+        RAISE EXCEPTION '1049: reserva do próprio turno respondeu %', v_res;
       END IF;
     ELSE
-      RAISE NOTICE '1044: nenhuma conta com agente — a reserva não passou pelo corpo inteiro aqui.';
+      RAISE NOTICE '1049: nenhuma conta com agente — a reserva não passou pelo corpo inteiro aqui.';
     END IF;
     RESET ROLE;
-    RAISE EXCEPTION USING ERRCODE = 'P1044';
-  EXCEPTION WHEN SQLSTATE 'P1044' THEN
+    RAISE EXCEPTION USING ERRCODE = 'P1049';
+  EXCEPTION WHEN SQLSTATE 'P1049' THEN
     NULL;
   END;
 
-  RAISE NOTICE '1044: quem responde — turnos, pausa por gente, entrada da conexão e a resposta do agente como "respondido".';
+  RAISE NOTICE '1049: quem responde — turnos, pausa por gente, entrada da conexão e a resposta do agente como "respondido".';
 END $$;

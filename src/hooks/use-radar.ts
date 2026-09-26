@@ -97,7 +97,7 @@ const TETO_RESPOSTAS = 1000;
 
 /**
  * O filtro PostgREST de "resposta que fecha a pendência" — o espelho do ramo
- * "respondido" do banco (a 972 com o acréscimo da 1044): mensagem da equipe
+ * "respondido" do banco (a 972 com o acréscimo da 1049): mensagem da equipe
  * com `sender_id` OU `from_device`, ou resposta do AGENTE DE IA (`bot` com
  * `ia_agente_id`, D11 do docs/PLANO-agentes-de-ia.md).
  *
@@ -135,7 +135,7 @@ const RESPOSTA_QUE_FECHA_A_PENDENCIA =
  *
  * ⚠️ A resposta do AGENTE DE IA também fecha (D11, desde a F2 dos agentes):
  * o cliente foi respondido, e o alerta de atraso da caixa já a conta assim
- * (1044). O tempo de resposta DA EQUIPE é outra pergunta, respondida pelo
+ * (1049). O tempo de resposta DA EQUIPE é outra pergunta, respondida pelo
  * worker (`calcularMetricas`), onde a IA fica de fora. Ver
  * `RESPOSTA_QUE_FECHA_A_PENDENCIA`.
  *

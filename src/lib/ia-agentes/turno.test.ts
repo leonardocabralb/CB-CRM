@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 // ============================================================
 // O TURNO do agente de IA (`turno.ts`, docs/PLANO-agentes-de-ia.md 5.7 e
 // E5–E10). O banco é FALSO, em memória, e imita do PostgREST só o que o turno
-// usa (filtros, `update … select`, `maybeSingle`, as RPCs da 1044). Provedor
+// usa (filtros, `update … select`, `maybeSingle`, as RPCs da 1049). Provedor
 // de IA, envio, transcrição e chave são dublês; o resto (contexto, pedido,
 // horário, textos da transferência, `donoDaConta`) roda de verdade.
 //
@@ -160,7 +160,11 @@ let banco = criarBanco()
 vi.mock('@/lib/ai/admin-client', () => ({ supabaseAdmin: () => banco }))
 vi.mock('@/lib/ai/generate', () => ({ generateReply: vi.fn() }))
 vi.mock('@/lib/ai/usage', () => ({ logAiUsage: vi.fn(async () => {}) }))
-vi.mock('@/lib/ai/digitando', () => ({ mostrarDigitando: vi.fn(async () => 'pulado') }))
+// `concluirDigitando` é o de verdade (a espera de no máximo 2 s e o cancelamento).
+vi.mock('@/lib/ai/digitando', async (original) => ({
+  ...(await original<typeof import('@/lib/ai/digitando')>()),
+  mostrarDigitando: vi.fn(async () => 'pulado'),
+}))
 vi.mock('@/lib/ia-chaves/repo', () => ({ lerChave: vi.fn() }))
 vi.mock('@/lib/transcricao/transcrever', () => ({ transcreverAudio: vi.fn() }))
 vi.mock('@/lib/rate-limit', () => ({
@@ -298,7 +302,7 @@ function montarCenario(): void {
       terminado_em: null,
     },
   ]
-  // A 1044: reivindica o pendente VENCIDO, e nunca com outro `rodando` na
+  // A 1049: reivindica o pendente VENCIDO, e nunca com outro `rodando` na
   // conversa (o índice único parcial).
   banco.rpcs.cb_ia_reivindicar_turno = ({ p_turno_id }) => {
     const turnos = banco.tabelas.cb_ia_turnos
@@ -311,7 +315,7 @@ function montarCenario(): void {
     Object.assign(t, { status: 'rodando', rodando_desde: new Date().toISOString() })
     return { data: [{ ...t }], error: null }
   }
-  // A reserva do envio (1044): conversa aberta, sem pausa, mesmo agente,
+  // A reserva do envio (1049): conversa aberta, sem pausa, mesmo agente,
   // nenhum OUTRO turno pendente nesta conversa e conexão, nenhuma saída do
   // robô/automação por esta conexão depois do gatilho, e abaixo do teto —
   // conferidos e consumidos numa escrita só. A classificação da recusa segue
@@ -925,7 +929,7 @@ describe('executarTurno — o sentinela transfere para gente', () => {
 
   it('o advogado respondeu ENQUANTO o modelo pensava e o modelo pediu transferência: a pausa de gente fica', async () => {
     vi.mocked(generateReply).mockImplementation(async () => {
-      // O gatilho da 1044 pausou por gente (a resposta do celular).
+      // O gatilho da 1049 pausou por gente (a resposta do celular).
       Object.assign(conversa(), { ai_autoreply_disabled: true, ia_pausada_por: 'gente', ia_pausada_em: haMs(1_000) })
       return { text: '', handoff: true, usage: null }
     })
@@ -1116,6 +1120,42 @@ describe('executarTurno — o envio', () => {
       banco,
       expect.objectContaining({ channelId: CANAL, inboundMessageId: 'wamid.cliente' }),
     )
+  })
+
+  it('o "digitando…" termina ANTES de a resposta sair, e é cancelado em seguida (revisão do PR #288)', async () => {
+    const ordem: string[] = []
+    let sinal: AbortSignal | undefined
+    vi.mocked(mostrarDigitando).mockImplementationOnce(async (_db, args) => {
+      sinal = args.sinal
+      await new Promise((r) => setTimeout(r, 20))
+      ordem.push('digitando')
+      return 'enviado'
+    })
+    vi.mocked(engineSendText).mockImplementation(async (args) => {
+      ordem.push(sinal?.aborted ? 'envio (digitando cancelado)' : 'envio (digitando em voo)')
+      args.antesDoProvedor?.()
+      await args.aoSair?.('wamid.resposta')
+      return { whatsapp_message_id: 'wamid.resposta' }
+    })
+    await executarTurno(TURNO)
+    expect(ordem).toEqual(['digitando', 'envio (digitando cancelado)'])
+    expect(turno().status).toBe('respondeu')
+  })
+
+  it('saída SEM envio (o sentinela) cancela o "digitando…" ainda em voo', async () => {
+    let sinal: AbortSignal | undefined
+    vi.mocked(mostrarDigitando).mockImplementationOnce(
+      (_db, args) =>
+        new Promise((resolve) => {
+          sinal = args.sinal
+          args.sinal?.addEventListener('abort', () => resolve('pulado'))
+        }),
+    )
+    vi.mocked(generateReply).mockResolvedValueOnce({ text: '', handoff: true, usage: null })
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({ status: 'transferiu', erro: 'sentinela' })
+    expect(engineSendText).not.toHaveBeenCalled()
+    expect(sinal?.aborted).toBe(true)
   })
 
   it('o id do provedor é gravado ANTES de o envio voltar (o eco o consulta, E5)', async () => {

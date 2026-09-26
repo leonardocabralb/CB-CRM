@@ -59,7 +59,7 @@ export async function POST(request: Request) {
       requireActive: false,
     }).catch((err) => {
       // Chave que não decifra sai com o próprio código; falha de LEITURA do
-      // banco é outra coisa, e não pode aparecer como "chave ilegível" (1042).
+      // banco é outra coisa, e não pode aparecer como "chave ilegível" (1047).
       if (err instanceof AiError && err.code === 'key_decrypt_failed') throw err
       console.error('[ai/playground] loadAiConfig error:', err)
       throw new AiError('Could not load the AI configuration.', {

@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
 // docs/PLANO-agentes-de-ia.md, E6 e 5.3):
 //
 // 1. Só o TURNO (`src/lib/ia-agentes/turno.ts`) passa `iaAgenteId` ao
-//    `engineSendText`. ⚠️ O banco CONFIA nesse carimbo: a 1044 conta a
+//    `engineSendText`. ⚠️ O banco CONFIA nesse carimbo: a 1049 conta a
 //    mensagem `bot` COM `ia_agente_id` como "respondido" — o gatilho da 972
 //    apaga o alerta de atraso da conversa e o Radar fecha a pendência. Um
 //    fluxo, uma automação ou a régua do Asaas que o passassem calariam o

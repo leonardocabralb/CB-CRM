@@ -344,7 +344,8 @@ um espelho com pino lendo o SQL. Mudou um lado, muda o outro.
   robô não limpam. Mensagem apagada recalcula — com um defeito conhecido: a
   fórmula não sabe que encerrar limpou a espera.
 - **`cb_assentar_mensagem_historica` (vigente: 1011)**: todo caminho que grava
-  mensagem com `created_at` no passado a chama; ela desfaz só o que ESTA
+  mensagem com `created_at` no passado a chama (a recuperada da 1010 e a
+  ligação da 1044, quando já há mensagem depois dela); ela desfaz só o que ESTA
   mensagem estragou, a partir da espera de ANTES do insert (`p_espera_antes`).
   Não é o recálculo canônico. Pinos em `mensagens-sem-telefone-1010.test.ts`.
 
@@ -361,6 +362,10 @@ um espelho com pino lendo o SQL. Mudou um lado, muda o outro.
 - ⚠️ Fora das duas listas: `cb_mensagens_sem_telefone` não tem `contact_id`.
   O payload da retida (texto do cliente) sobrevive a apagar o contato, até
   num pedido de exclusão (ver `whatsapp-evolution.md`).
+  O mesmo vale para `cb_ligacoes` (1044): sem `contact_id`, ela guarda
+  `telefone` e `quem_ligou` depois de apagar o contato (a bolha vai junto com
+  a conversa; `conversation_id`/`message_id` viram nulos). Pedido de exclusão
+  apaga também as linhas pelo telefone.
 - ⚠️⚠️ `merge_duplicate_contacts` NÃO serve: reaponta só nove tabelas do
   upstream, APAGA as tarefas e lembretes do perdedor pelo CASCADE, roda em
   TODAS as contas e agrupa por grafia exata (não vê as duas grafias do nono

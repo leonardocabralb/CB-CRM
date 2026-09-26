@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { createClient } from '@/lib/supabase/client';
+import { literalParaRegex } from '@/lib/postgrest/literal';
 import type { ReuniaoTranscrita } from '@/types';
 
 /**
@@ -84,7 +85,7 @@ export async function carregarReuniaoTranscrita(id: string): Promise<ReuniaoTran
 
 /**
  * As reuniões importadas do tl;dv que ainda não têm cliente — para o
- * diálogo "Do tl;dv" da ficha. Busca por nome no banco (ilike), até 30.
+ * diálogo "Do tl;dv" da ficha. Busca por nome no banco (literal, `imatch`), até 30.
  */
 export async function buscarReunioesSemCliente(busca: string): Promise<{ reunioes: ReuniaoTranscrita[]; falhou: boolean }> {
   let consulta = createClient()
@@ -96,10 +97,9 @@ export async function buscarReunioesSemCliente(busca: string): Promise<{ reunioe
     .limit(30);
   const termo = busca.trim();
   if (termo.length > 0) {
-    // Escape do LIKE (\ % _) e das aspas do PostgREST, nesta ordem — a mesma
-    // dupla do seletor de cliente da agenda.
-    const like = termo.replace(/[\\%_]/g, (c) => `\\${c}`);
-    consulta = consulta.ilike('titulo', `%${like}%`);
+    // Literal (`imatch` com o termo escapado): no `ilike` o PostgREST troca
+    // todo `*` por `%`, e `%`/`_` digitados viravam curingas.
+    consulta = consulta.regexIMatch('titulo', literalParaRegex(termo));
   }
   const { data, error } = await consulta;
   return { reunioes: error ? [] : ((data ?? []) as unknown as ReuniaoTranscrita[]), falhou: !!error };

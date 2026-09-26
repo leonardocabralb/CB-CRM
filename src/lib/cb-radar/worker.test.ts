@@ -298,7 +298,7 @@ describe('mensagemParaMetricas — quem fecha a pendência (D11)', () => {
     ).toBe(false)
   })
 
-  it('`ia_agente_id` só vale no `bot` — o mesmo predicado do ramo da 1044', () => {
+  it('`ia_agente_id` só vale no `bot` — o mesmo predicado do ramo da 1049', () => {
     const r = mensagemParaMetricas(
       { ...base, sender_type: 'agent', ia_agente_id: 'agente-1' },
       nenhuma,

@@ -68,11 +68,11 @@ export async function POST(request: Request) {
       )
     }
 
-    // Pelo SERVIÇO (a conta vem da sessão): desde a 1043 só administrador lê
+    // Pelo SERVIÇO (a conta vem da sessão): desde a 1048 só administrador lê
     // `ai_configs` direto, e o rascunho é de qualquer atendente.
     const config = await loadAiConfig(supabaseAdmin(), accountId).catch((err) => {
       // Chave que não decifra sai com o próprio código; falha de LEITURA do
-      // banco é outra coisa, e não pode aparecer como "chave ilegível" (1042).
+      // banco é outra coisa, e não pode aparecer como "chave ilegível" (1047).
       if (err instanceof AiError && err.code === 'key_decrypt_failed') throw err
       console.error('[ai/draft] loadAiConfig error:', err)
       throw new AiError('Could not load the AI configuration.', {

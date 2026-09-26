@@ -13,15 +13,22 @@ const validateAiCredentials = vi.fn(async (cfg: { model: string; provider?: stri
 })
 let modelosQueFalham: string[] = []
 let linhas: Record<string, unknown>[] = []
+let semRespostaAutomatica: string[] = []
 
 vi.mock('@/lib/auth/account', () => ({
   requireRole: vi.fn(async () => ({
     accountId: 'conta-1',
     userId: 'user-1',
     supabase: {
-      from: () => ({
-        select: () => ({ eq: async () => ({ data: linhas, error: null }) }),
-      }),
+      from: (tabela: string) =>
+        tabela === 'cb_channels'
+          ? {
+              // As conexões com a resposta automática DESLIGADA.
+              select: () => ({
+                eq: () => ({ eq: async () => ({ data: semRespostaAutomatica.map((id) => ({ id })), error: null }) }),
+              }),
+            }
+          : { select: () => ({ eq: async () => ({ data: linhas, error: null }) }) },
     },
   })),
   toErrorResponse: vi.fn(() => new Response('erro', { status: 500 })),
@@ -54,6 +61,7 @@ vi.mock('@/lib/ia-agentes/repo', () => ({ listarAgentes: vi.fn(async () => agent
 
 import { GET } from './route'
 import { lerChaveDeEmbeddings, lerEstado } from '@/lib/ia-chaves/repo'
+import { listChannels } from '@/lib/cb-channels/repo'
 
 beforeEach(() => {
   agentesDaConta = []
@@ -61,9 +69,10 @@ beforeEach(() => {
   modelosQueFalham = []
   linhas = [
     { channel_id: null, provider: 'gemini', model: 'gemini-padrao', radar_model: null, is_active: true },
-    { channel_id: 'canal-1', provider: 'gemini', model: 'gemini-da-conexao', radar_model: null, is_active: true },
-    { channel_id: 'canal-2', provider: 'gemini', model: 'gemini-desligado', radar_model: null, is_active: false },
+    { channel_id: 'canal-1', provider: 'gemini', model: 'gemini-da-conexao', radar_model: null, is_active: true, auto_reply_enabled: true },
+    { channel_id: 'canal-2', provider: 'gemini', model: 'gemini-desligado', radar_model: null, is_active: false, auto_reply_enabled: true },
   ]
+  semRespostaAutomatica = []
 })
 
 async function cartaoGemini() {
@@ -78,7 +87,28 @@ describe('GET /api/cb/integracoes/status — o ping cobre os agentes de conexão
     expect(validateAiCredentials.mock.calls.map((c) => c[0].model).sort()).toEqual([
       'gemini-da-conexao',
       'gemini-padrao',
+      'trans',
     ])
+  })
+
+  it('provedor usado só por uma conexão: o modelo padrão dele não é testado (Codex, #294)', async () => {
+    linhas[0] = { channel_id: null, provider: 'anthropic', model: 'claude-x', radar_model: null, is_active: true }
+    await cartaoGemini()
+    const pingados = validateAiCredentials.mock.calls.filter((c) => c[0].provider === 'gemini').map((c) => c[0].model)
+    expect(pingados.sort()).toEqual(['gemini-da-conexao', 'trans'])
+  })
+
+  it('nada roda deste provedor: o modelo padrão confere a chave', async () => {
+    linhas = [{ channel_id: null, provider: 'anthropic', model: 'claude-x', radar_model: null, is_active: true }]
+    await cartaoGemini()
+    const pingados = validateAiCredentials.mock.calls.filter((c) => c[0].provider === 'gemini').map((c) => c[0].model)
+    expect(pingados).toHaveLength(2) // o padrão do Gemini e a transcrição
+    expect(pingados).toContain('trans')
+  })
+
+  it('o modelo fixo da transcrição fora do ar deixa o cartão do Gemini em erro', async () => {
+    modelosQueFalham = ['trans']
+    expect((await cartaoGemini()).estado).toBe('erro')
   })
 
   it('o modelo da conexão falhando deixa o cartão em erro', async () => {
@@ -127,16 +157,38 @@ describe('GET /api/cb/integracoes/status — a chave da OpenAI que é SÓ da bas
   })
 
   it('uma conexão usa a OpenAI no chat: aí o chat é pingado', async () => {
-    linhas.push({ channel_id: 'canal-9', provider: 'openai', model: 'gpt-conexao', radar_model: null, is_active: true })
+    linhas.push({ channel_id: 'canal-9', provider: 'openai', model: 'gpt-conexao', radar_model: null, is_active: true, auto_reply_enabled: true })
     estadoComOpenai(true)
     await GET(new Request('http://x/api/cb/integracoes/status'))
     expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toContain('gpt-conexao')
   })
 
-  it('a chave de chat de verdade continua pingada no padrão do provedor', async () => {
+  it('a OpenAI que nada de chat usa não é pingada no chat, mesmo com a chave vinda de uma conexão desligada', async () => {
+    estadoComOpenai(false)
+    await GET(new Request('http://x/api/cb/integracoes/status'))
+    expect(validateAiCredentials.mock.calls.some((c) => c[0].provider === 'openai')).toBe(false)
+  })
+
+  it('a OpenAI usada no chat (linha padrão) é pingada', async () => {
+    linhas = [{ channel_id: null, provider: 'openai', model: 'gpt-x', radar_model: null, is_active: true }]
     estadoComOpenai(false)
     await GET(new Request('http://x/api/cb/integracoes/status'))
     expect(validateAiCredentials.mock.calls.some((c) => c[0].provider === 'openai')).toBe(true)
+  })
+
+  it('a linha padrão DESLIGADA (a que a chave só da base cria) com o Radar desligado não conta como chat', async () => {
+    linhas = [{ channel_id: null, provider: 'openai', model: 'gpt-x', radar_model: null, is_active: false }]
+    vi.mocked(listChannels).mockResolvedValueOnce([{ id: 'canal-1', label: 'Comercial', radar_enabled: false }] as never)
+    estadoComOpenai(false)
+    await GET(new Request('http://x/api/cb/integracoes/status'))
+    expect(validateAiCredentials.mock.calls.some((c) => c[0].provider === 'openai')).toBe(false)
+  })
+
+  it('a linha padrão desligada com o Radar ligado conta: o Radar roda sobre ela', async () => {
+    linhas = [{ channel_id: null, provider: 'openai', model: 'gpt-x', radar_model: null, is_active: false }]
+    estadoComOpenai(false)
+    await GET(new Request('http://x/api/cb/integracoes/status'))
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toContain('gpt-x')
   })
 })
 
@@ -164,5 +216,47 @@ describe('GET /api/cb/integracoes/status — os modelos dos agentes de IA ligado
     const modelos = validateAiCredentials.mock.calls.map((c) => c[0].model)
     expect(modelos).toHaveLength(5)
     expect(modelos).toContain('gemini-padrao')
+  })
+})
+
+describe('GET /api/cb/integracoes/status — o modelo PRÓPRIO do Radar (Codex, #295)', () => {
+  it('Radar ligado numa conexão e modelo próprio diferente do chat: é pingado', async () => {
+    linhas[0] = { channel_id: null, provider: 'gemini', model: 'gemini-padrao', radar_model: 'gemini-radar', is_active: true }
+    await cartaoGemini()
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toContain('gemini-radar')
+  })
+
+  it('Radar desligado em todas as conexões: o modelo dele não é pingado', async () => {
+    linhas[0] = { channel_id: null, provider: 'gemini', model: 'gemini-padrao', radar_model: 'gemini-radar', is_active: true }
+    vi.mocked(listChannels).mockResolvedValueOnce([{ id: 'canal-1', label: 'Comercial', radar_enabled: false }] as never)
+    await cartaoGemini()
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).not.toContain('gemini-radar')
+  })
+
+  it('o modelo do Radar fora do ar deixa o cartão em erro', async () => {
+    linhas[0] = { channel_id: null, provider: 'gemini', model: 'gemini-padrao', radar_model: 'gemini-radar', is_active: true }
+    modelosQueFalham = ['gemini-radar']
+    expect((await cartaoGemini()).estado).toBe('erro')
+  })
+
+  it('com o teto, o do Radar vem antes dos agentes', async () => {
+    linhas[0] = { channel_id: null, provider: 'gemini', model: 'gemini-padrao', radar_model: 'gemini-radar', is_active: true }
+    agentesDaConta = ['a1', 'a2', 'a3', 'a4', 'a5'].map((modelo) => ({ nome: modelo, provedor: 'gemini', modelo, ativo: true }))
+    await cartaoGemini()
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toContain('gemini-radar')
+  })
+})
+
+describe('GET /api/cb/integracoes/status — a linha de conexão só conta com a resposta automática ligada (Codex, #294)', () => {
+  it('resposta automática desligada na LINHA: o modelo dela não é pingado', async () => {
+    linhas[1] = { ...linhas[1], auto_reply_enabled: false }
+    await cartaoGemini()
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).not.toContain('gemini-da-conexao')
+  })
+
+  it('resposta automática desligada na CONEXÃO: o modelo dela não é pingado', async () => {
+    semRespostaAutomatica = ['canal-1']
+    await cartaoGemini()
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).not.toContain('gemini-da-conexao')
   })
 })

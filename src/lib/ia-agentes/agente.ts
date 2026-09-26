@@ -1,5 +1,5 @@
 // ============================================================
-// O agente de IA (1043, docs/PLANO-agentes-de-ia.md, 5.2): a forma, a
+// O agente de IA (1048, docs/PLANO-agentes-de-ia.md, 5.2): a forma, a
 // leitura da linha e a validação do que a tela manda. PURO, testado.
 //
 // ⚠️ "Agente" no resto do código quer dizer PESSOA (`assigned_agent_id`, o
@@ -191,6 +191,9 @@ export function lerAlteracao(corpo: unknown, criacao: boolean): LeituraDaAlterac
     if (!m || m.length > LIMITES.modelo) return { ok: false, codigo: 'modelo_vazio' }
     v.modelo = m
   }
+  // Trocar o provedor exige o modelo junto: o modelo guardado é do provedor
+  // anterior, e toda geração falharia (Codex, #295). A tela manda os dois.
+  if (v.provedor !== undefined && v.modelo === undefined) return { ok: false, codigo: 'modelo_vazio' }
   if ('ativo' in c) v.ativo = c.ativo === true
   if ('conexoes' in c) {
     const ids = lerIds(c.conexoes)

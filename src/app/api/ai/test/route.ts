@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     const rawKey = typeof body.api_key === 'string' ? body.api_key.trim() : ''
     let apiKeyPlain = rawKey
     if (!apiKeyPlain) {
-      // A chave GUARDADA é a do provedor (`cb_ia_chaves`, 1042), lida pelo
+      // A chave GUARDADA é a do provedor (`cb_ia_chaves`, 1047), lida pelo
       // serviço: a tabela é fechada ao navegador.
       let lida: Awaited<ReturnType<typeof lerChave>>
       try {

@@ -19,7 +19,10 @@ type Vista = 'agentes' | 'uso';
  */
 export default function AgentsPage() {
   const t = useTranslations('IaAgentes');
-  const { profileLoading } = useAuth();
+  // A lista e o Uso são DA CONTA: trocar de conta sem recarregar (o perfil
+  // muda no lugar) remonta tudo, senão ficavam os agentes, os custos e a
+  // cotação da anterior — e salvar a cotação a gravaria na nova (Codex, #295).
+  const { profileLoading, accountId } = useAuth();
   const [vista, setVista] = useState<Vista>('agentes');
 
   return (
@@ -40,7 +43,7 @@ export default function AgentsPage() {
           )
         }
       >
-        <div className="mt-6 space-y-4">
+        <div key={accountId ?? 'sem-conta'} className="mt-6 space-y-4">
           <SubAbas
             rotulo={t('abas')}
             ativa={vista}

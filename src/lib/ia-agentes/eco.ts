@@ -24,7 +24,7 @@
 // lendo este fonte em `eco.test.ts` (importações em lista fechada).
 //
 // ⚠️ A invariante da rota: se algo aqui falhar, vale o caminho de SEMPRE (a
-// mensagem do celular). A pausa não acontece nem assim — o gatilho da 1044
+// mensagem do celular). A pausa não acontece nem assim — o gatilho da 1049
 // ignora a mensagem cujo id é o de um turno (a defesa dobrada do E5); sobra só
 // a D16 contaminada, que é o que valia antes desta peça.
 //

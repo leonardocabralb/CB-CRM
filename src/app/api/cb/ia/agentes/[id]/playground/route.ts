@@ -63,7 +63,7 @@ export async function POST(request: Request, { params }: Contexto) {
 
     let chave: string | null
     try {
-      // A chave da OpenAI que é SÓ da base (1042) não serve ao chat (Codex, #295).
+      // A chave da OpenAI que é SÓ da base (1047) não serve ao chat (Codex, #295).
       if (agente.provedor === 'openai') {
         const estado = await lerEstado(ctx.accountId)
         if (estado.find((e) => e.provedor === 'openai')?.soDaBase) {

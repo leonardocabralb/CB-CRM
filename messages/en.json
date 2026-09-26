@@ -461,6 +461,15 @@
       "imageAlt": "Shared image",
       "motivoDaFalha": "Reason given by Meta: {motivo}"
     },
+    "ligacao": {
+      "vozPerdida": "Missed voice call",
+      "videoPerdida": "Missed video call",
+      "vozAtendida": "Voice call answered on the phone",
+      "videoAtendida": "Video call answered on the phone",
+      "tocou": "rang for {segundos}s",
+      "dicaPerdida": "The customer called on WhatsApp and nobody answered. The CRM does not carry call audio: call back from the phone or reply by message.",
+      "previa": "📞 Call"
+    },
     "audioPlayer": {
       "tocar": "Play audio",
       "pausar": "Pause audio",
@@ -2406,6 +2415,7 @@
       "removing": "Removing...",
       "removeBtn": "Remove member",
       "semPerfil": "No profile (full access)",
+      "celularNaoInformado": "Mobile number not provided",
       "perfilChanged": "Profile updated",
       "perfilChangeError": "Could not assign the profile",
       "legendaTitle": "What each profile grants",
@@ -3230,9 +3240,10 @@
         "embeddings_recusado": "Key saved: it generates text, but OpenAI refused the knowledge-base search (embeddings). The knowledge base now uses keyword search only — check the project's permissions and save the key again.",
         "embeddings_nao_conferido": "Key saved, but it could not be checked for the knowledge-base search (embeddings). If the search fails, save the key again.",
         "modelo_em_uso_indisponivel": "Key saved, but the model in use ({modelos}) did not respond — not even with the previous key. Change the model (the Radar's, on this card, or the assistant's).",
-        "modulos_nao_criados": "Key saved, but the Radar configuration could not be created — reload the page and check the card.",
-        "modelos_nao_conferidos": "These models in use were not checked against the new key (the limit per save is 5): {modelos}. Test one agent of each in the Playground.",
-        "transcricao_indisponivel": "Key saved, but the audio transcription model did not respond — not even with the previous key. It is fixed in the system: transcription stays unavailable until the system is updated."
+        "transcricao_indisponivel": "Key saved, but the audio transcription model did not respond — not even with the previous key. It is fixed in the system: transcription stays unavailable until the system is updated.",
+        "so_da_base": "Key saved only for the knowledge base: it generates embeddings but OpenAI refused text generation (a project key restricted to embeddings). The assistant and the agents do not use it — to use OpenAI in chat, save a key with access to the models.",
+        "modelos_nao_conferidos": "These models were not checked against the new key (the limit per save is 5, and disabled agents' models are not checked): {modelos}. Test one agent of each in the Playground.",
+        "modulos_nao_criados": "Key saved, but the Radar configuration could not be created — reload the page and check the card."
       },
       "erroDaChave": {
         "chave_vazia": "Paste the key before saving.",
@@ -3611,6 +3622,7 @@
       "keyStatusMissing": "{provider} has no key yet.",
       "keyStatusUnknown": "Could not check the keys right now.",
       "keyManageLink": "Manage keys in Integrations",
+      "keySoDaBase": "This OpenAI key only serves the knowledge base (it generates embeddings, not text) — to turn the assistant on, save a key with access to the models in Settings → Integrations.",
       "keyUnreadable": "This provider's key could not be read — add it again in Settings → Integrations.",
       "testKey": "Test key",
       "testSuccess": "Key works — the provider responded.",
@@ -4067,7 +4079,7 @@
         },
         "campo": {
           "titulo": "Fill in a custom field",
-          "texto": "By the field's key; empty or <code>null</code> clears the value. Scope <code>custom_fields:write</code>."
+          "texto": "By the field's key. Empty or <code>null</code> leaves the value alone; to clear it, list the key in <code>clear</code>. Scope <code>custom_fields:write</code>."
         },
         "mensagem": {
           "titulo": "Send a message",
@@ -4130,7 +4142,8 @@
         "video": "🎬 Video",
         "document": "📄 Document",
         "location": "📍 Location",
-        "template": "📋 Template"
+        "template": "📋 Template",
+        "call": "📞 Missed call"
       }
     }
   },
@@ -4270,7 +4283,8 @@
     "uso": {
       "explicacao": "Last {dias} days. Amounts in R$ are an ESTIMATE from each model's list price and today's exchange rate.",
       "falhou": "Could not load usage.",
-      "total": "Account total",
+      "total": "Recorded account total",
+      "totalNota": "Counts the recorded generations (agents, assistant, Radar, transcription and drafts). The knowledge-base search (embeddings) and the key checks in Integrations also use your key, but are not included here.",
       "tokensEChamadas": "{tokens} tokens in {chamadas} calls",
       "agente": "Agent",
       "producao": "Customer service",
@@ -5096,6 +5110,29 @@
     "openMyDay": "Open My day",
     "loadingShort": "—",
     "failedShort": "couldn't load"
+  },
+  "MeuCelular": {
+    "titulo": "Enter your mobile number",
+    "descricao": "Before you continue, enter your mobile number, including the area code.",
+    "rotulo": "Mobile number",
+    "placeholder": "(11) 91234-5678",
+    "dica": "Number outside Brazil: start with + and the country code.",
+    "quemVe": "Only you and the account admins can see this number. You can change it later in Settings → Your profile.",
+    "salvarEContinuar": "Save and continue",
+    "salvando": "Saving…",
+    "sair": "Sign out",
+    "salvo": "Mobile number saved.",
+    "motivoVazio": "Enter your mobile number.",
+    "motivoCurto": "The area code is missing. Include it, for example (11) 91234-5678.",
+    "motivoInvalido": "This doesn't look like a mobile number. Check the area code and the digits; a number outside Brazil starts with + and the country code.",
+    "motivoNaoECelular": "This isn't a mobile number. A Brazilian mobile number has 9 digits after the area code, starting with 9.",
+    "motivoFalhou": "Couldn't save right now. Check your connection and try again.",
+    "perfilTitulo": "Mobile number",
+    "perfilDescricao": "Your mobile number, with the area code. Only you and the account admins can see it.",
+    "perfilSalvar": "Save number",
+    "perfilCarregando": "Loading…",
+    "perfilFalhouAoCarregar": "Couldn't load your mobile number.",
+    "perfilTentarDeNovo": "Try again"
   },
   "MeuDia": {
     "loading": "Loading…",

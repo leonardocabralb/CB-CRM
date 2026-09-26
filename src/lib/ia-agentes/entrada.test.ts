@@ -511,7 +511,7 @@ describe('aoChegarMensagemDoCliente — agente de entrada', () => {
 
   // A leitura da conversa é uma foto: entre ela e a atribuição, a régua do
   // Asaas (ou um "Atribuir agente" de automação) pode pôr um ESPECIALISTA. A
-  // entrada não passa por cima dele. O dublê imita a RPC da 1044 com o
+  // entrada não passa por cima dele. O dublê imita a RPC da 1049 com o
   // contrato do `p_so_se_vazio`: com a conversa já tendo agente, devolve
   // `ocupada` e não escreve nada; sem o parâmetro, sobrescreve (é o
   // comportamento do passo da automação, que continua valendo para ela).

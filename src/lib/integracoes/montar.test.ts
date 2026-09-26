@@ -73,7 +73,7 @@ function uso(
   return usos[0];
 }
 
-describe('montarCartoes — chave por PROVEDOR (1042)', () => {
+describe('montarCartoes — chave por PROVEDOR (1047)', () => {
   it('sem chave nenhuma, todos os provedores ficam não configurados', () => {
     const cartoes = montar([], null);
     for (const id of ['gemini', 'openai', 'anthropic', 'google_calendar']) {
@@ -147,7 +147,7 @@ describe('montarCartoes — chave por PROVEDOR (1042)', () => {
   });
 
   it('a transcrição mora no cartão do GEMINI, mesmo com o Radar em outro provedor', () => {
-    // Desde a 1042 a transcrição lê a chave do Gemini direto — não depende
+    // Desde a 1047 a transcrição lê a chave do Gemini direto — não depende
     // do provedor da linha padrão.
     const cartoes = montar(
       [chave('gemini'), chave('openai')],
@@ -216,7 +216,7 @@ describe('rótulos montados de Integrações', () => {
       for (const m of ['invalid_key', 'rate_limited', 'timeout', 'network', 'provider_error', 'chave_ilegivel', 'leitura_falhou']) {
         expect(integracoes.motivo[m], m).toBeTruthy();
       }
-      for (const a of ['embeddings_recusado', 'embeddings_nao_conferido', 'modelo_em_uso_indisponivel', 'transcricao_indisponivel', 'modelos_nao_conferidos', 'modulos_nao_criados']) {
+      for (const a of ['embeddings_recusado', 'embeddings_nao_conferido', 'modelo_em_uso_indisponivel', 'transcricao_indisponivel', 'so_da_base', 'modelos_nao_conferidos', 'modulos_nao_criados']) {
         expect(integracoes.avisoDaChave[a], a).toBeTruthy();
       }
       for (const e of ['chave_vazia', 'sem_chave', 'sem_configuracao', 'banco', 'modelo_em_uso_recusado', 'transcricao_recusada']) {

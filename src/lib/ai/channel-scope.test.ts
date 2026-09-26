@@ -59,7 +59,7 @@ beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
-// A chave vem de `cb_ia_chaves` (1042), pelo provedor da linha.
+// A chave vem de `cb_ia_chaves` (1047), pelo provedor da linha.
 vi.mock('@/lib/ia-chaves/repo', () => ({
   lerChave: vi.fn(async (_conta: string, provedor: string) => ({
     chave: `chave-${provedor}`,

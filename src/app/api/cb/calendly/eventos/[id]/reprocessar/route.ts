@@ -92,7 +92,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
     try {
       const r = await comTetoDeProcessamento(
-        processarAgendamento(admin, ctx.accountId, agendamento, varsDaLinha(linha, agendamento)),
+        processarAgendamento(admin, ctx.accountId, agendamento, varsDaLinha(linha, agendamento), { eventoId: id }),
       );
       if (!r.pronto) {
         // ⚠️ Estourou o teto. Desistimos ANTES do recolhimento, para que

@@ -12,7 +12,7 @@ type Params = { params: Promise<{ conversationId: string }> }
  * docs/PLANO-agentes-de-ia.md).
  *
  * Body: { paused: boolean, assign_to_me?: boolean }
- *   - paused: true  → pausa a IA nesta conversa com o MOTIVO `botao` (1044):
+ *   - paused: true  → pausa a IA nesta conversa com o MOTIVO `botao` (1049):
  *                     `ai_autoreply_disabled`, `ia_pausada_por` e
  *                     `ia_pausada_em`. Com `assign_to_me`, também atribui a
  *                     conversa a quem clicou (o "assumir" de antes), o que

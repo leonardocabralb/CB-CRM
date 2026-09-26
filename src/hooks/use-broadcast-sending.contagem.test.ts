@@ -4,9 +4,11 @@ import path from 'node:path';
 
 import {
   contarPublico,
+  fetchCustomValueIndex,
   motivoDaLeitura,
   type AudienceConfig,
 } from './use-broadcast-sending';
+import { literalParaRegex } from '@/lib/postgrest/literal';
 
 // ============================================================
 // A contagem do público (passo 2 e passo 4 do disparo) é a MESMA resolução
@@ -61,8 +63,29 @@ function bancoFalso(tabelas: Record<string, Linha[]>, opcoes: Opcoes = {}) {
           return consulta;
         },
         ilike(coluna: string, padrao: string) {
-          const agulha = padrao.replace(/%/g, '').toLowerCase();
-          linhas = linhas.filter((l) => String(l[coluna] ?? '').toLowerCase().includes(agulha));
+          // Como o PostgREST: TODO `*` vira `%`, sem escape possível; depois,
+          // o LIKE do Postgres, com `\` de escape. Um falso que só apagasse o
+          // `%` esconderia exatamente o defeito do "contém" (PR #231).
+          const like = padrao.replace(/\*/g, '%');
+          const lit = (c: string) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          let re = '';
+          for (let i = 0; i < like.length; i++) {
+            const c = like[i];
+            if (c === '\\' && i + 1 < like.length) re += lit(like[++i]);
+            else if (c === '%') re += '[\\s\\S]*';
+            else if (c === '_') re += '[\\s\\S]';
+            else re += lit(c);
+          }
+          const rx = new RegExp(`^${re}$`, 'i');
+          linhas = linhas.filter((l) => rx.test(String(l[coluna] ?? '')));
+          return consulta;
+        },
+        regexIMatch(coluna: string, padrao: string) {
+          // `~*` do Postgres; para um literal escapado, o RegExp do JS
+          // (flag `u`: só aceita barra antes de caractere de sintaxe — um
+          // escape a mais estoura aqui em vez de passar calado).
+          const rx = new RegExp(padrao, 'iu');
+          linhas = linhas.filter((l) => rx.test(String(l[coluna] ?? '')));
           return consulta;
         },
         order(coluna: string) {
@@ -337,5 +360,74 @@ describe('o envio e a contagem usam a MESMA base e os MESMOS recortes (pino)', (
       expect(src, tela).not.toMatch(/from\(\s*['"]contact_tags['"]\s*\)/);
       expect(src, tela).not.toMatch(/from\(\s*['"]contact_custom_values['"]\s*\)/);
     }
+  });
+});
+
+describe('"contém" no campo personalizado é LITERAL (revisão do PR #231, P1)', () => {
+  // Seis fichas com um campo "codigo" cheio de caracteres que o LIKE e o
+  // PostgREST tratariam como curinga. Com o `ilike('%valor%')` antigo,
+  // "contém %" e "contém *" alcançavam as seis — o público errado, com a
+  // contagem concordando.
+  const tabelas = () => {
+    const valores = ['100%', '100ABC', 'a*b', 'axb', 'a_b', 'aXb'];
+    return {
+      contacts: valores.map((_, n) => ({ id: id('k', n), phone: `55839${n}` })),
+      contact_tags: [],
+      contact_custom_values: valores.map((value, n) => ({
+        id: id('kv', n),
+        custom_field_id: 'codigo',
+        contact_id: id('k', n),
+        value,
+      })),
+    };
+  };
+  const contem = (value: string): AudienceConfig => ({
+    type: 'custom_field',
+    customField: { fieldId: 'codigo', operator: 'contains', value },
+  });
+
+  it.each([
+    ['100%', 1],
+    ['%', 1],
+    ['*', 1],
+    ['_', 1],
+    ['A*B', 1], // ignora a caixa, como o ilike
+    ['100', 2], // o "contém" comum continua valendo
+    ['\\', 0],
+    ['(', 0],
+  ])('contém %j alcança %i ficha(s)', async (valor, esperado) => {
+    expect(await contarPublico(bancoFalso(tabelas()), contem(valor), CONTA)).toBe(esperado);
+  });
+
+  it('o escape cobre todo metacaractere da expressão regular', () => {
+    const tudo = '\\^$.|?*+()[]{}';
+    expect(new RegExp(`^${literalParaRegex(tudo)}$`, 'u').test(tudo)).toBe(true);
+    // Texto comum passa intacto (acento, hífen, barra, espaço).
+    expect(literalParaRegex('São Paulo - a/b #1')).toBe('São Paulo - a/b #1');
+  });
+});
+
+describe('o índice de valores lê SÓ os campos que o modelo usa (revisão do PR #231)', () => {
+  const tabelas = () => ({
+    contact_custom_values: [
+      { id: 'v1', custom_field_id: 'area', contact_id: 'c1', value: 'Bancário' },
+      { id: 'v2', custom_field_id: 'outro', contact_id: 'c1', value: 'x' },
+      { id: 'v3', custom_field_id: 'area', contact_id: 'c2', value: 'Trabalhista' },
+      { id: 'v4', custom_field_id: 'outro', contact_id: 'c2', value: 'y' },
+    ],
+  });
+
+  it('modelo sem variável de campo personalizado não consulta nada', async () => {
+    let consultas = 0;
+    const banco = bancoFalso(tabelas(), { depoisDe: () => consultas++ });
+    const indice = await fetchCustomValueIndex(banco, ['c1', 'c2'], []);
+    expect(indice.size).toBe(0);
+    expect(consultas).toBe(0);
+  });
+
+  it('com variável de campo, traz só aquele campo', async () => {
+    const indice = await fetchCustomValueIndex(bancoFalso(tabelas()), ['c1', 'c2'], ['area']);
+    expect(indice.get('c1')).toEqual(new Map([['area', 'Bancário']]));
+    expect(indice.get('c2')).toEqual(new Map([['area', 'Trabalhista']]));
   });
 });

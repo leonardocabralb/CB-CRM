@@ -42,7 +42,7 @@ afterEach(() => {
 })
 
 describe('enfileirarTurno', () => {
-  it('chama a RPC da 1044 com a espera da rajada e devolve o pendente', async () => {
+  it('chama a RPC da 1049 com a espera da rajada e devolve o pendente', async () => {
     const { db, rpc } = dbCom({ data: [{ id: 'turno-1', executar_apos: '2026-09-26T12:00:08Z' }], error: null })
     const turno = await enfileirarTurno(db, ARGS)
     expect(rpc).toHaveBeenCalledWith('cb_ia_enfileirar_turno', {

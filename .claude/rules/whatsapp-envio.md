@@ -201,6 +201,11 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
 
 ### Graph API e configuração da conexão
 
+- ⚠️ **O WABA ID é OBRIGATÓRIO na conexão Meta** (`POST /api/cb/channels` e o
+  formulário, 25/09/2026): é a WABA que `provisionMetaChannel` assina ao app,
+  e sem ela a conexão nascia `connected` sem a Meta entregar nada. O teste
+  que fixava "WABA em branco continua opcional" virou o contrário
+  (`route.meta.test.ts`). Revisão do PR #285.
 - ⚠️ `listWabaPhoneNumbers` só segue `paging.next` dentro de
   `https://graph.facebook.com` (`isGraphUrl`: o cursor vem da RESPOSTA e o
   token vai no cabeçalho) e LANÇA quando o teto de páginas acaba com página
@@ -251,6 +256,16 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
   `src/app/api/v1/broadcasts/route.test.ts`.
 - Canal escolhido no passo 1; `channel_id` no corpo da API e na linha de
   `broadcasts`. `marcarDestinatario` confere o update pelo retorno.
+- ⚠️⚠️ **Disparo pela tela: quem grava o envio na linha é a ROTA do lote, na
+  hora** (`anotarEnvio` em `api/whatsapp/broadcast`, com o `recipient_id` que
+  o hook manda; revisão do PR #277). O wamid chegava só quando o lote de 10
+  voltava ao navegador, e o recibo da Meta que viesse antes se perdia. Por
+  isso o navegador (`gravarDesfechoDoLote`) NÃO regrava o que a rota anotou e
+  só mexe em linha `pending`: a linha já pode estar `delivered` pelo recibo,
+  e o `failed` de um lote que caiu no meio apagaria envios que aconteceram. O
+  que não gravou é conferido numa leitura só — continua `pending` = escrita
+  perdida (RLS), já andou = outro escritor. Pinos `route.anotar.test.ts` e
+  `use-broadcast-sending.lote.test.ts`.
 - ⚠️ **CSV do disparo (`upsertCsvContacts`)**: deduplica e casa por PESSOA
   (`chaveDePessoa`), busca as duas grafias do nono dígito em FATIAS e, na
   corrida, relê e insere um a um — casar por grafia, com o índice canônico

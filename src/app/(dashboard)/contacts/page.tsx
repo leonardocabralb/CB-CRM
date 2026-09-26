@@ -58,6 +58,7 @@ import { CustomFieldsManager } from '@/components/contacts/custom-fields-manager
 import { useCan } from '@/hooks/use-can';
 import { useAoVoltarParaOApp } from '@/hooks/use-ao-voltar-para-o-app';
 import { lerExclusao, podeLimparSelecao, selecaoRestante } from '@/lib/contacts/exclusao';
+import { escaparLike, ramoContem } from '@/lib/postgrest/literal';
 import { GatedButton } from '@/components/ui/gated-button';
 import { useTranslations } from 'next-intl';
 import { identidadeDoContato, nomeDoContato } from '@/lib/contacts/identidade';
@@ -183,7 +184,9 @@ export default function ContactsPage() {
       // clause. See migration 025_filter_contacts_by_tags.
       const { data, error } = await supabase.rpc('filter_contacts_by_tags', {
         p_tag_ids: selectedTagIds,
-        p_search: term || null,
+        // A função faz `ILIKE '%' || p_search || '%'` (025): o termo vai com
+        // o escape do LIKE, senão `%` e `_` digitados viram curingas.
+        p_search: term ? escaparLike(term) : null,
         p_limit: PAGE_SIZE,
         p_offset: from,
       });
@@ -204,8 +207,12 @@ export default function ContactsPage() {
         .range(from, to);
 
       if (term) {
-        const like = `%${term}%`;
-        query = query.or(`name.ilike.${like},phone.ilike.${like},email.ilike.${like}`);
+        // ⚠️ Literal (`ramoContem`): cru, a vírgula e o parêntese de
+        // "silva, jr" ou "(83) 9887" quebravam o `.or()` (400, e a tela dizia
+        // "falha ao carregar"), e `%`, `_` e `*` viravam curingas.
+        query = query.or(
+          ['name', 'phone', 'email'].map((coluna) => ramoContem(coluna, term)).join(','),
+        );
       }
 
       const { data, count: exactCount, error } = await query;

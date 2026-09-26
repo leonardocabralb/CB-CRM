@@ -201,6 +201,23 @@ describe('violouFkDoCanal', () => {
     ).toBe(true);
   });
 
+  it('reconhece a FK COMPOSTA de cb_ligacoes (1044), cujo detalhe não é "(channel_id)"', () => {
+    expect(
+      violouFkDoCanal({
+        code: '23503',
+        message: 'insert or update on table "cb_ligacoes" violates foreign key constraint "cb_ligacoes_channel_fkey"',
+        details: 'Key (channel_id, account_id)=(x, y) is not present in table "cb_channels".',
+      }),
+    ).toBe(true);
+    expect(
+      violouFkDoCanal({
+        code: '23503',
+        message: 'insert or update on table "cb_ligacoes" violates foreign key constraint "cb_ligacoes_account_id_fkey"',
+        details: 'Key (account_id)=(y) is not present in table "accounts".',
+      }),
+    ).toBe(false);
+  });
+
   it('outra FK (conversa, citação) NÃO conta — repetir mascararia defeito', () => {
     expect(
       violouFkDoCanal({

@@ -163,6 +163,7 @@ function bancoFalso(opcoes: {
         is: (k: string, v: unknown) => (op.filtros.push(['is', k, v]), b),
         not: (k: string, o: string, v: unknown) => (op.filtros.push(['not', k, o, v]), b),
         gt: (k: string, v: unknown) => (op.filtros.push(['gt', k, v]), b),
+        neq: (k: string, v: unknown) => (op.filtros.push(['neq', k, v]), b),
         limit: () => b,
         maybeSingle: () => Promise.resolve().then(resolver),
         then: (onF: (v: unknown) => unknown, onR?: (e: unknown) => unknown) =>
@@ -395,6 +396,8 @@ describe('clienteRespondeuDesde — a segunda linha de defesa (auditoria pré-Co
       ['in', 'conversation_id', ['conv-1', 'conv-2']],
       ['eq', 'sender_type', 'customer'],
       ['is', 'deleted_at', null],
+      // A ligação (1044) não é resposta (decisão do operador, 26/09/2026).
+      ['neq', 'content_type', 'call'],
       ['gt', 'gravada_em', desde],
     ]);
   });

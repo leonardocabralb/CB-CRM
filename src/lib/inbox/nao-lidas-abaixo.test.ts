@@ -48,6 +48,15 @@ describe('contarNovasDoCliente', () => {
     expect(contarNovasDoCliente(depois, { id: 'temp-1', createdAt: T(4) })).toBe(0);
   });
 
+  it('⚠️ a ligação que entra com carimbo NO PASSADO (acrescentada no fim da lista) não conta como nova (Codex, PR #304)', () => {
+    // O operador rolou para cima com a âncora em 'e' (T5); a perdida tocou em
+    // T4, foi decidida 11 s depois e o tempo real a pôs no FIM da lista.
+    const comLigacao = [...fio, m('ligacao', 'customer', T(4), 'call')];
+    expect(contarNovasDoCliente(comLigacao, { id: 'e', createdAt: T(5) })).toBe(0);
+    // Uma que veio de fato depois da âncora continua contando.
+    expect(contarNovasDoCliente([...comLigacao, m('f', 'customer', T(6))], { id: 'e', createdAt: T(5) })).toBe(1);
+  });
+
   it('sem âncora nenhuma, cala (0) em vez de contar tudo', () => {
     expect(contarNovasDoCliente(fio, { id: null, createdAt: null })).toBe(0);
     expect(contarNovasDoCliente([], { id: 'a', createdAt: T(1) })).toBe(0);

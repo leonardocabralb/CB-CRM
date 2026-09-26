@@ -18,7 +18,7 @@ const ordem = vi.hoisted(() => [] as string[]);
 const motor = vi.hoisted(() => ({ dispararAutomacoes: vi.fn() }));
 vi.mock("@/lib/automations/engine", () => motor);
 
-const destino = vi.hoisted(() => ({ resolverDestinatario: vi.fn() }));
+const destino = vi.hoisted(() => ({ resolverDestinatario: vi.fn(), conversaDoContato: vi.fn() }));
 vi.mock("@/lib/automations/destinatario", () => destino);
 
 import { comAvisoDoNome, processarAgendamento } from "./processar";
@@ -101,7 +101,11 @@ const admin = {
       maybeSingle: async () =>
         tabela === "deals"
           ? { data: erroNaBuscaDoCard ? null : cardAberto, error: erroNaBuscaDoCard }
-          : { data: { id: "conv-1", channel_id: "canal-1" }, error: null },
+          : // Nenhum cancelamento gravado para o convite (ver
+            // `processar.cancelamento.test.ts`).
+            tabela === "cb_calendly_eventos"
+            ? { data: null, error: null }
+            : { data: { id: "conv-1", channel_id: "canal-1" }, error: null },
       then: (f: (v: unknown) => unknown) =>
         Promise.resolve(
           escrita

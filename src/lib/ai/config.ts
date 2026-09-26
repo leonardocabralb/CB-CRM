@@ -20,7 +20,7 @@ interface AiConfigRow {
 // `throw` no erro, então uma coluna ausente derruba rascunho,
 // auto-reply e Radar de uma vez.
 //
-// ⚠️ A CHAVE não é lida daqui desde a 1042: ela mora em `cb_ia_chaves`, uma
+// ⚠️ A CHAVE não é lida daqui desde a 1047: ela mora em `cb_ia_chaves`, uma
 // por PROVEDOR para a conta inteira (D1 do docs/PLANO-agentes-de-ia.md).
 // `ai_configs.api_key` e `embeddings_api_key` ficam só para o app anterior
 // poder voltar atrás; nada novo lê nem grava essas colunas.
@@ -52,7 +52,7 @@ export async function loadAiConfig(
   // quem escreveu no numero do juridico. A 903 trocou o UNIQUE por dois
   // indices parciais: um agente padrao (channel_id NULL) + um por canal.
   // ⚠️ Só o assistente de conversa passa `channelId`. O Radar e a
-  // transcrição NÃO resolvem mais pelo canal (1042): a configuração deles é
+  // transcrição NÃO resolvem mais pelo canal (1047): a configuração deles é
   // do módulo, da conta inteira.
   if (channelId) {
     const { data: doCanal, error: erroCanal } = await db

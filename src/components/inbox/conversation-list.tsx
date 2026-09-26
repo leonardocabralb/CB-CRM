@@ -79,6 +79,7 @@ import { canaisVisiveis, conversaNoEscopo } from "@/lib/perfis/escopo";
 import { canSendMessages, isAccountRole } from "@/lib/auth/roles";
 import { useFavoritas } from "@/hooks/use-favoritas";
 import { ehInstagram } from "@/lib/cb-channels/transporte";
+import { ehPreviaDeLigacao } from "@/lib/whatsapp/ligacoes/previa";
 
 interface ConversationListProps {
   activeConversationId: string | null;
@@ -1171,6 +1172,8 @@ function ConversationItem({
   // As chaves da situação escrita moram no namespace do fio (`statusPending`,
   // `statusClosed`) — é o mesmo texto do menu do cabeçalho, de propósito.
   const tThread = useTranslations("Inbox.messageThread");
+  // A prévia da ligação (1044) é o marcador `[call]` no banco; a frase é daqui.
+  const tLigacao = useTranslations("Inbox.ligacao");
   // O "22h restantes" da ampulheta é o MESMO texto da etiqueta do cabeçalho
   // do fio, de propósito — duas frases para o mesmo relógio divergiriam.
   const tTimer = useTranslations("Inbox.sessionTimer");
@@ -1385,8 +1388,10 @@ function ConversationItem({
               </p>
             ) : (
               <p className="truncate text-xs text-muted-foreground">
-                {stripWhatsAppFormat(conversation.last_message_text) ||
-                  t("noMessagesYet")}
+                {ehPreviaDeLigacao(conversation.last_message_text)
+                  ? tLigacao("previa")
+                  : stripWhatsAppFormat(conversation.last_message_text) ||
+                    t("noMessagesYet")}
               </p>
             )}
             <div className="flex shrink-0 items-center gap-1.5">

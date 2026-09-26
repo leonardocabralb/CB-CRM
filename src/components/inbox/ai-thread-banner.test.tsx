@@ -126,7 +126,7 @@ describe('AiThreadBanner — acende pela conversa', () => {
     expect(desenhar({ disabled: true, pausadaPor: motivo })).toContain(texto);
   });
 
-  it('pausa sem motivo (anterior à 1044) ou com motivo desconhecido: só o título', () => {
+  it('pausa sem motivo (anterior à 1049) ou com motivo desconhecido: só o título', () => {
     const motivos = [
       banner.pausadaPorGente,
       banner.pausadaPorTransferencia,
@@ -196,7 +196,7 @@ describe('pausadaNaTela / cliqueAindaVale — o clique otimista num render', () 
     expect(pausadaNaTela(retomou, 'conv-2', true)).toBe(true);
   });
 
-  it('o banco saiu do valor do clique (realtime, gatilho da 1044, outra aba): o clique deixa de valer', () => {
+  it('o banco saiu do valor do clique (realtime, gatilho da 1049, outra aba): o clique deixa de valer', () => {
     // Num render só, olhando o valor, este é o passo B do A→B→A. O passo de
     // VOLTA (o banco de novo em A) só se enxerga com o estado entre renders —
     // é o describe seguinte que o cobre.
@@ -260,7 +260,7 @@ describe('a faixa numa SEQUÊNCIA de renders — o clique velho nunca volta a ma
     await clicar(false);
     expect(estado(renderizar({ disabled: true }))).toBe('respondendo');
     expect(estado(renderizar({ disabled: false }))).toBe('respondendo'); // realtime confirmou
-    expect(estado(renderizar({ disabled: true }))).toBe('pausada'); // o gatilho da 1044
+    expect(estado(renderizar({ disabled: true }))).toBe('pausada'); // o gatilho da 1049
     expect(estado(renderizar({ disabled: true }))).toBe('pausada');
   });
 

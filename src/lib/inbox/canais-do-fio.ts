@@ -20,6 +20,8 @@
 // cabeçalho.
 // ============================================================
 
+import { naOrdemDoFio } from './ordem-do-fio';
+
 /**
  * O mínimo que este módulo precisa de uma mensagem. Estrutural de
  * propósito: o teste monta o objeto sem arrastar o `Message` inteiro.
@@ -28,6 +30,8 @@ export interface MensagemDoFio {
   id: string;
   sender_type: string;
   channel_id?: string | null;
+  /** Quando presente, a ORDEM das perguntas de trecho sai dele (`naOrdemDoFio`). */
+  created_at?: string | null;
 }
 
 /** Os canais efetivamente carimbados no fio. */
@@ -77,7 +81,7 @@ export function aberturasDeCanal(
   if (!fioMulticanal(messages, ehGrupo)) return aberturas;
 
   let atual: string | null = null;
-  for (const m of messages) {
+  for (const m of naOrdemDoFio(messages)) {
     const canal = m.channel_id ?? null;
     if (!canal) continue;
     if (canal !== atual) {
@@ -95,8 +99,9 @@ export function aberturasDeCanal(
 export function ultimoCanalDoCliente(
   messages: MensagemDoFio[],
 ): string | null {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const m = messages[i];
+  const emOrdem = naOrdemDoFio(messages);
+  for (let i = emOrdem.length - 1; i >= 0; i--) {
+    const m = emOrdem[i];
     if (m.sender_type === 'customer' && m.channel_id) return m.channel_id;
   }
   return null;

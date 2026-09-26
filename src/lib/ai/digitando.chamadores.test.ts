@@ -15,7 +15,8 @@ import path from 'node:path'
 // ingestão) foi apagada (E2). A corrente agora tem três elos, e os três são
 // cobrados aqui: o webhook passa o id da LINHA gravada, o turno relê o
 // `message_id` dela, e o turno o entrega a `mostrarDigitando` com o canal da
-// resposta.
+// resposta. E o turno o ESPERA antes de enviar (`concluirDigitando`) e o
+// cancela em toda saída sem envio (o porte, no turno, da revisão do PR #288).
 // ============================================================
 
 const SRC = path.join(__dirname, '../..')
@@ -39,8 +40,29 @@ describe('quem passa o wamid ao "digitando…"', () => {
     // mensagem num número enquanto a resposta sai por outro (revisão da
     // Fase 9, medido por mutante).
     expect(turno).toMatch(
-      /mostrarDigitando\(db, \{\s*accountId: turno\.account_id,\s*conversationId: turno\.conversation_id,\s*channelId: turno\.canal_id,\s*inboundMessageId: gatilho\.message_id,\s*\}\)/,
+      /mostrarDigitando\(db, \{\s*accountId: turno\.account_id,\s*conversationId: turno\.conversation_id,\s*channelId: turno\.canal_id,\s*inboundMessageId: gatilho\.message_id,\s*sinal: andamento\.cancelarDigitando\.signal,\s*\}\)/,
     )
     expect(turno).toMatch(/preferredChannelId: turno\.canal_id,/)
+  })
+
+  it('a resposta espera o "digitando…" antes de sair, e toda saída sem envio o cancela (revisão do PR #288)', () => {
+    const turno = semComentarios(fs.readFileSync(path.join(SRC, 'lib/ia-agentes/turno.ts'), 'utf8'))
+    // Espera (no máximo 2 s) depois da geração e ANTES da reserva e do envio:
+    // solto (`void mostrarDigitando`), ele podia chegar à Meta depois da
+    // resposta.
+    const gera = turno.indexOf('await generateReply(')
+    const conclui = turno.indexOf('await concluirDigitando(digitando, andamento.cancelarDigitando)')
+    const reserva = turno.indexOf("db.rpc('cb_ia_reservar_envio'")
+    const envia = turno.indexOf('await engineSendText(')
+    expect(gera).toBeGreaterThan(-1)
+    expect(conclui).toBeGreaterThan(gera)
+    expect(reserva).toBeGreaterThan(conclui)
+    expect(envia).toBeGreaterThan(reserva)
+    expect(turno).not.toMatch(/void mostrarDigitando/)
+    // Toda saída do turno (descartou, transferiu, falhou, quebrou) cancela o
+    // pedido em voo — no `finally` de `executarTurno`, em volta de `conduzir`.
+    expect(turno).toMatch(
+      /desfecho = await conduzir\(db, turno, inicio, andamento\)[\s\S]*?\} finally \{\s*andamento\.cancelarDigitando\.abort\(\)\s*\}/,
+    )
   })
 })

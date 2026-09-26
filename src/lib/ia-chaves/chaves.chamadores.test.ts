@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 // ============================================================
-// A chave de IA é do PROVEDOR, uma por conta (1042, D1 do
+// A chave de IA é do PROVEDOR, uma por conta (1047, D1 do
 // docs/PLANO-agentes-de-ia.md). Três pinos:
 // 1. `cb_ia_chaves` só é tocada por `src/lib/ia-chaves/repo.ts`, que usa o
 //    cliente de SERVIÇO. A tabela é fechada ao navegador: uma consulta com o

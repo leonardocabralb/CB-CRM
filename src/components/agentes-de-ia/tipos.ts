@@ -25,7 +25,7 @@ export async function buscarChaves(): Promise<ChavesDaConta> {
       chaves?: { provedor: AiProvider; existe: boolean; soDaBase?: boolean }[]
     }
     const r: Record<AiProvider, boolean> = { gemini: false, openai: false, anthropic: false }
-    // A chave da OpenAI que é SÓ da base não serve de chave de chat (1042).
+    // A chave da OpenAI que é SÓ da base não serve de chave de chat (1047).
     for (const c of corpo.chaves ?? []) if (c.provedor in r) r[c.provedor] = c.existe === true && c.soDaBase !== true
     return r
   } catch {

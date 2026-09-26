@@ -201,11 +201,13 @@ reação também). A conversa que a **equipe** abre não gera o aviso, **nem
 quando o cliente responde depois**: a iniciada pelo celular pareado, pelo app
 do Instagram, pela tela do CRM ("Nova conversa", envio pela ficha) ou por
 `POST /api/v1/messages`. Também não geram as conversas criadas por automação
-e integração (webhook recebido, Calendly, régua do Asaas), por carga de
+e integração (webhook recebido, Calendly, régua do Asaas), por uma
+**ligação** de WhatsApp (o número que liga antes de escrever: a conversa nasce
+da ligação e o aviso não sai, nem quando ele escreve depois), por carga de
 migração, nem as de grupo. Para "lead novo no funil" — inclusive o que a
 equipe abordou primeiro —, assine `deal.created`: a conexão com funil padrão
-abre o card na primeira mensagem, do cliente ou da equipe
-(`source: "channel"`).
+abre o card na primeira mensagem, do cliente ou da equipe, ou na primeira
+ligação (`source: "channel"`).
 
 Os três `deal.*` valem para **todo** jeito de mexer no card: arrastar no
 quadro, formulário, lista, painel da conversa, automações e a API. O aviso

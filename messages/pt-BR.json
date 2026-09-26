@@ -454,6 +454,15 @@
       "imageAlt": "Imagem enviada",
       "motivoDaFalha": "Motivo informado pela Meta: {motivo}"
     },
+    "ligacao": {
+      "vozPerdida": "Ligação de voz perdida",
+      "videoPerdida": "Chamada de vídeo perdida",
+      "vozAtendida": "Ligação de voz atendida no celular",
+      "videoAtendida": "Chamada de vídeo atendida no celular",
+      "tocou": "tocou {segundos} s",
+      "dicaPerdida": "O cliente ligou pelo WhatsApp e ninguém atendeu. O CRM não recebe o áudio da ligação: retorne pelo celular ou responda por mensagem.",
+      "previa": "📞 Ligação"
+    },
     "audioPlayer": {
       "tocar": "Reproduzir áudio",
       "pausar": "Pausar áudio",
@@ -2399,6 +2408,7 @@
       "removing": "Removendo...",
       "removeBtn": "Remover membro",
       "semPerfil": "Sem perfil (acesso total)",
+      "celularNaoInformado": "Celular não informado",
       "perfilChanged": "Perfil atualizado",
       "perfilChangeError": "Não foi possível atribuir o perfil",
       "legendaTitle": "O que cada perfil dá acesso",
@@ -3223,9 +3233,10 @@
         "embeddings_recusado": "Chave salva: ela gera texto, mas a OpenAI recusou a busca da base de conhecimento (embeddings). A base passa a usar só a busca por palavras — confira as permissões do projeto e salve a chave de novo.",
         "embeddings_nao_conferido": "Chave salva, mas não foi possível conferir se ela serve à busca da base de conhecimento (embeddings). Se a busca falhar, salve a chave de novo.",
         "modelo_em_uso_indisponivel": "Chave salva, mas o modelo em uso ({modelos}) não respondeu — nem com a chave anterior. Troque o modelo (o do Radar, neste cartão, ou o do assistente).",
-        "modulos_nao_criados": "Chave salva, mas não foi possível criar a configuração do Radar — recarregue a página e confira o cartão.",
-        "modelos_nao_conferidos": "Estes modelos em uso não foram conferidos com a chave nova (o limite por gravação é de 5): {modelos}. Teste um agente de cada no Playground.",
-        "transcricao_indisponivel": "Chave salva, mas o modelo da transcrição de áudio não respondeu — nem com a chave anterior. Ele é fixo no sistema: a transcrição segue fora do ar até o sistema ser atualizado."
+        "transcricao_indisponivel": "Chave salva, mas o modelo da transcrição de áudio não respondeu — nem com a chave anterior. Ele é fixo no sistema: a transcrição segue fora do ar até o sistema ser atualizado.",
+        "so_da_base": "Chave salva só para a base de conhecimento: ela gera embeddings, mas a OpenAI recusou a geração de texto (chave de projeto restrita aos embeddings). O assistente e os agentes não a usam — para usar a OpenAI no chat, salve uma chave com acesso aos modelos.",
+        "modelos_nao_conferidos": "Estes modelos não foram conferidos com a chave nova (o limite por gravação é de 5, e os de agentes desligados não são conferidos): {modelos}. Teste um agente de cada no Playground.",
+        "modulos_nao_criados": "Chave salva, mas não foi possível criar a configuração do Radar — recarregue a página e confira o cartão."
       },
       "erroDaChave": {
         "chave_vazia": "Cole a chave antes de salvar.",
@@ -3604,6 +3615,7 @@
       "keyStatusMissing": "O {provider} ainda não tem chave cadastrada.",
       "keyStatusUnknown": "Não foi possível conferir as chaves agora.",
       "keyManageLink": "Gerenciar as chaves em Integrações",
+      "keySoDaBase": "Esta chave da OpenAI só serve à base de conhecimento (gera embeddings, não texto) — para ligar o assistente, salve uma chave com acesso aos modelos em Configurações → Integrações.",
       "keyUnreadable": "A chave deste provedor não pôde ser lida — cadastre-a de novo em Configurações → Integrações.",
       "testKey": "Testar chave",
       "testSuccess": "A chave funciona — o provedor respondeu.",
@@ -4060,7 +4072,7 @@
         },
         "campo": {
           "titulo": "Preencher um campo personalizado",
-          "texto": "Pela chave do campo; vazio ou <code>null</code> apaga o valor. Escopo <code>custom_fields:write</code>."
+          "texto": "Pela chave do campo. Vazio ou <code>null</code> não mexe no valor; para apagar, liste a chave em <code>clear</code>. Escopo <code>custom_fields:write</code>."
         },
         "mensagem": {
           "titulo": "Mandar uma mensagem",
@@ -4123,7 +4135,8 @@
         "video": "🎬 Vídeo",
         "document": "📄 Documento",
         "location": "📍 Localização",
-        "template": "📋 Modelo"
+        "template": "📋 Modelo",
+        "call": "📞 Ligação perdida"
       }
     }
   },
@@ -4263,7 +4276,8 @@
     "uso": {
       "explicacao": "Últimos {dias} dias. Os valores em R$ são uma ESTIMATIVA pelo preço de lista de cada modelo e pela cotação de hoje.",
       "falhou": "Não foi possível carregar o uso.",
-      "total": "Total da conta",
+      "total": "Total registrado da conta",
+      "totalNota": "Conta as gerações registradas (agentes, assistente, Radar, transcrição e rascunho). A busca da base de conhecimento (embeddings) e as conferências das chaves em Integrações também usam a sua chave, mas não entram aqui.",
       "tokensEChamadas": "{tokens} tokens em {chamadas} chamadas",
       "agente": "Agente",
       "producao": "Atendimento",
@@ -5096,6 +5110,29 @@
     "openMyDay": "Abrir Meu dia",
     "loadingShort": "—",
     "failedShort": "não carregou"
+  },
+  "MeuCelular": {
+    "titulo": "Informe seu celular",
+    "descricao": "Antes de continuar, informe o número do seu celular, com DDD.",
+    "rotulo": "Celular",
+    "placeholder": "(11) 91234-5678",
+    "dica": "Número de fora do Brasil: comece com + e o código do país.",
+    "quemVe": "O número fica visível só para você e para os administradores da conta. Você pode trocá-lo depois em Configurações → Seu perfil.",
+    "salvarEContinuar": "Salvar e continuar",
+    "salvando": "Salvando…",
+    "sair": "Sair",
+    "salvo": "Celular salvo.",
+    "motivoVazio": "Informe o número do seu celular.",
+    "motivoCurto": "Faltou o DDD. Escreva o número com o DDD, por exemplo (11) 91234-5678.",
+    "motivoInvalido": "Esse número não parece um celular. Confira o DDD e os dígitos; número de fora do Brasil começa com + e o código do país.",
+    "motivoNaoECelular": "Esse número não é de celular. O celular tem 9 dígitos depois do DDD, começando com 9.",
+    "motivoFalhou": "Não foi possível salvar agora. Confira a conexão e tente de novo.",
+    "perfilTitulo": "Celular",
+    "perfilDescricao": "O número do seu celular, com DDD. Fica visível só para você e para os administradores da conta.",
+    "perfilSalvar": "Salvar celular",
+    "perfilCarregando": "Carregando…",
+    "perfilFalhouAoCarregar": "Não foi possível carregar o seu celular.",
+    "perfilTentarDeNovo": "Tentar de novo"
   },
   "MeuDia": {
     "loading": "Carregando…",

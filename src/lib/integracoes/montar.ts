@@ -17,7 +17,7 @@
 // Sem essa etiqueta, o operador lê o modelo do agente e conclui que ele
 // vale para tudo — foi exatamente o engano que originou esta tela.
 //
-// ⚠️ Desde a 1042 a CHAVE é do PROVEDOR, uma por conta (`cb_ia_chaves`,
+// ⚠️ Desde a 1047 a CHAVE é do PROVEDOR, uma por conta (`cb_ia_chaves`,
 // D1 do docs/PLANO-agentes-de-ia.md): o cartão de um provedor existe pela
 // chave dele, não por uma linha de agente. A configuração dos MÓDULOS
 // (provedor e modelo do Radar, e o assistente legado) continua sendo a
@@ -132,7 +132,7 @@ export type EstadoDaIntegracao =
   /** Há credencial, mas o ping ainda não rodou (carga rápida). */
   | 'conferindo';
 
-/** Um agente de IA (1043) que usa a chave deste provedor. */
+/** Um agente de IA (1048) que usa a chave deste provedor. */
 export interface AgenteDeIaNoCartao {
   nome: string;
   provedor: ProviderId;
@@ -148,7 +148,7 @@ export interface CartaoDeIntegracao {
   /** Este provedor é o do Radar (a linha padrão): o cartão edita o modelo dele. */
   ehDoRadar: boolean;
   agentes: AgenteNoCartao[];
-  /** Os agentes de IA (1043) deste provedor, que passam a usar esta chave. */
+  /** Os agentes de IA (1048) deste provedor, que passam a usar esta chave. */
   agentesDeIa: AgenteDeIaNoCartao[];
   /** Onde esta chave é usada, com o modelo de cada módulo. */
   usos: UsoNoCartao[];
@@ -266,7 +266,7 @@ export function montarCartoes(
     }
 
     // ---- Transcrição de áudio ----
-    // Gemini-only, modelo FIXO, e desde a 1042 lê a chave do Gemini
+    // Gemini-only, modelo FIXO, e desde a 1047 lê a chave do Gemini
     // DIRETO — não depende do provedor de agente nenhum. Só no cartão do
     // Gemini.
     if (p === 'gemini') {

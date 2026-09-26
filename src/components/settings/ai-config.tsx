@@ -82,11 +82,15 @@ export function AiConfig() {
   const [provider, setProvider] = useState<AiProvider>('openai');
   const [model, setModel] = useState(AI_PROVIDER_DEFAULT_MODEL.openai);
   // ⚠️ As chaves são do PROVEDOR, uma por conta, e moram em Integrações
-  // (`cb_ia_chaves`, 1042). Aqui só se mostra QUAIS provedores têm chave,
+  // (`cb_ia_chaves`, 1047). Aqui só se mostra QUAIS provedores têm chave,
   // para o seletor dizer se o escolhido vai funcionar.
   // ⚠️ `null` = NÃO SEI (a carga falhou): nunca afirmar "sem chave" sobre uma
   // conta que pode ter a chave cadastrada.
   const [chaves, setChaves] = useState<Record<AiProvider, boolean> | null>(null);
+  // A carga da configuração DESTA conta falhou: o formulário pode estar com os
+  // valores de outra conta (troca de conta com a tela montada), e o Salvar os
+  // gravaria nela (Codex, #294). Fica bloqueado até uma carga dar certo.
+  const [cargaFalhou, setCargaFalhou] = useState(false);
   // A busca por sentido: a chave da OpenAI, MENOS a que a OpenAI recusou
   // para embeddings ao ser gravada. `null` = não sei (a leitura falhou).
   const [embeddingsUtilizavel, setEmbeddingsUtilizavel] = useState<boolean | null>(null);
@@ -111,9 +115,11 @@ export function AiConfig() {
       if (!res.ok) {
         setChaves(null);
         setEmbeddingsUtilizavel(null);
+        setCargaFalhou(true);
         toast.error(t('loadFailed'));
         return;
       }
+      setCargaFalhou(false);
       const lidas: Record<AiProvider, boolean> = { openai: false, anthropic: false, gemini: false };
       for (const c of (data.chaves ?? []) as { provedor: AiProvider; existe: boolean }[]) {
         if (c.provedor in lidas) lidas[c.provedor] = c.existe === true;
@@ -127,12 +133,23 @@ export function AiConfig() {
         setIsActive(data.is_active);
         setAutoReplyEnabled(data.auto_reply_enabled);
         setMaxPerConversation(data.auto_reply_max_per_conversation ?? 3);
+      } else {
+        // Conta SEM configuração (na troca de conta com a tela montada): os
+        // campos voltam ao começo — senão o Salvar gravaria nesta conta o
+        // prompt e as escolhas da anterior (Codex, #294).
+        setProvider('openai');
+        setModel(AI_PROVIDER_DEFAULT_MODEL.openai);
+        setSystemPrompt('');
+        setIsActive(false);
+        setAutoReplyEnabled(false);
+        setMaxPerConversation(3);
       }
     } catch {
       setChaves(null);
       // Sem a resposta, a base NÃO sabe se a busca por sentido vale: o valor
       // da carga anterior (outra conta, na troca de conta) mentiria (Codex, #294).
       setEmbeddingsUtilizavel(null);
+      setCargaFalhou(true);
       toast.error(t('loadFailed'));
     } finally {
       setLoading(false);
@@ -147,7 +164,9 @@ export function AiConfig() {
         ? t('keyUnreadable')
         : codigo === 'invalid_key'
           ? t('testRejected')
-          : padrao;
+          : codigo === 'provedor_so_da_base'
+            ? t('keySoDaBase')
+            : padrao;
 
   useEffect(() => {
     if (!accountId || loadedAccountIdRef.current === accountId) return;
@@ -197,6 +216,10 @@ export function AiConfig() {
   };
 
   const handleSave = async () => {
+    if (cargaFalhou) {
+      toast.error(t('loadFailed'));
+      return;
+    }
     if (!model.trim()) {
       toast.error(t('missingModel'));
       return;
@@ -235,7 +258,7 @@ export function AiConfig() {
     );
   }
 
-  const disabled = !canEdit || saving;
+  const disabled = !canEdit || saving || cargaFalhou;
 
   return (
     <div>
@@ -319,7 +342,7 @@ export function AiConfig() {
               </div>
             </div>
 
-            {/* A chave do provedor escolhido: mora em Integrações (1042). */}
+            {/* A chave do provedor escolhido: mora em Integrações (1047). */}
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border p-3">
               <p className="text-sm text-muted-foreground">
                 {chaves === null

@@ -531,7 +531,7 @@ export async function sendMessageToConversation(
   if (replyToMessageId) {
     const { data: parent, error: parentError } = await db
       .from('messages')
-      .select('message_id, conversation_id, remote_jid, from_me')
+      .select('message_id, conversation_id, remote_jid, from_me, content_type')
       .eq('id', replyToMessageId)
       .eq('conversation_id', conversationId)
       .maybeSingle();
@@ -540,6 +540,16 @@ export async function sendMessageToConversation(
       throw new SendMessageError(
         'bad_request',
         'reply_to_message_id not found in this conversation',
+        400
+      );
+    }
+    // A ligação (1044) não é mensagem do WhatsApp: o `message_id` dela é
+    // `call:<id>`, e citá-lo mandaria ao provedor uma chave que não existe.
+    // A tela não oferece; a API v1 e a agendada chegariam aqui.
+    if (parent.content_type === 'call') {
+      throw new SendMessageError(
+        'bad_request',
+        'reply_to_message_id points to a WhatsApp call, which cannot be quoted',
         400
       );
     }

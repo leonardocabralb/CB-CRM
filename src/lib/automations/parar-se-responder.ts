@@ -284,6 +284,11 @@ export async function clienteRespondeuDesde(args: {
       .in('conversation_id', ids)
       .eq('sender_type', 'customer')
       .is('deleted_at', null)
+      // A ligação (1044) é linha do cliente, mas NÃO é resposta: decisão do
+      // operador (26/09/2026) — só mensagem escrita para a sequência. O
+      // filtro a mais não tira o índice parcial da 1006 (o predicado dele
+      // continua implicado pelos dois filtros acima).
+      .neq('content_type', 'call')
       .gt('gravada_em', desde)
       .limit(1);
     if (error) {

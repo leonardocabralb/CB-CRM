@@ -48,6 +48,11 @@ export const WEBHOOK_EVENTS = [
   // caminho confiável para o nome é a sincronização sob demanda.
   'GROUPS_UPSERT',
   'GROUP_PARTICIPANTS_UPDATE',
+  // Ligações (1044): tocou, atendida num aparelho do escritório, terminou.
+  // Viram a bolha "ligação perdida/atendida" no fio. O mesmo aviso de
+  // reaplicação: só vale para conexão já existente depois de "Ressincronizar".
+  // `CALL` existe no enum da 2.4 (conferido no commit e273b904) e da 2.3.
+  'CALL',
 ];
 
 export function evolutionGlobalConfig(): { baseUrl: string; apikey: string } {

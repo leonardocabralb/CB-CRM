@@ -11,6 +11,7 @@ import { conversaDoCard, type DealDoQuadro } from "@/lib/pipelines/cartao";
 import type { CamposDoCard } from "@/lib/pipelines/campos-do-card";
 import { stripWhatsAppFormat } from "@/lib/inbox/whatsapp-format";
 import { identidadeDoContato, nomeDoContato } from "@/lib/contacts/identidade";
+import { ehPreviaDeLigacao } from "@/lib/whatsapp/ligacoes/previa";
 
 interface DealCardProps {
   deal: DealDoQuadro;
@@ -76,6 +77,8 @@ export const DealCard = memo(function DealCard({
   isOverlay,
 }: DealCardProps) {
   const t = useTranslations("Pipelines.card");
+  // A prévia da ligação (1044) é o marcador `[call]` no banco; a frase é daqui.
+  const tLigacao = useTranslations("Inbox.ligacao");
   const contactLabel = nomeDoContato(deal.contact, t("noContact"));
   const assigneeLabel = deal.assignee?.full_name || null;
 
@@ -99,7 +102,9 @@ export const DealCard = memo(function DealCard({
   // memoiza este componente e recusava preservar o memo manual.
   const ultimaMensagem =
     campos.ultimaMensagem && resumo?.last_message_text
-      ? stripWhatsAppFormat(resumo.last_message_text)
+      ? ehPreviaDeLigacao(resumo.last_message_text)
+        ? tLigacao("previa")
+        : stripWhatsAppFormat(resumo.last_message_text)
       : null;
   const naoLidas = campos.naoLidas ? (resumo?.unread_count ?? 0) : 0;
 

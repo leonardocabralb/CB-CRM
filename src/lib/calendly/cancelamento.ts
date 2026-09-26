@@ -174,9 +174,12 @@ export async function processarCancelamento(
       return { resultado: "falhou", detalhe: `leitura do agendamento original falhou: ${erroOriginal.message}`, contactId: null };
     }
     contactId = (original?.contact_id as string | null) ?? null;
-    if (contactId) break;
     // Só espera enquanto houver por que esperar: linha em processamento (ou
     // ainda sem desfecho). Agendamento já finalizado SEM contato não muda.
+    // ⚠️ Achar o contato NÃO quer dizer que o agendamento terminou: ele vai
+    // para a linha ASSIM QUE é resolvido (`gravarContatoCedo`), antes de a
+    // automação gravar a data. Saindo ali, o desarme ainda não achava a data
+    // na ficha e terminava "nada a desarmar", sem a trava (revisão do PR #235).
     aindaProcessando =
       !!original &&
       (original.processando_desde != null || original.resultado === "recebido");
@@ -260,9 +263,11 @@ export async function processarCancelamento(
 
   if (alvos.length === 0) {
     return ignorado(
-      c.reagendado
-        ? "reagendamento: a ficha já tem o horário novo — nada a desarmar"
-        : "a data na ficha não é mais a da reunião cancelada — nada a desarmar",
+      aindaProcessando
+        ? "o agendamento ainda estava sendo processado e a data não estava na ficha — a varredura de lembretes barra este horário pelo cancelamento"
+        : c.reagendado
+          ? "reagendamento: a ficha já tem o horário novo — nada a desarmar"
+          : "a data na ficha não é mais a da reunião cancelada — nada a desarmar",
       contactId,
     );
   }

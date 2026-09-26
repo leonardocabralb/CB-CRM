@@ -220,6 +220,9 @@ export async function loadMetrics(
           .from('messages')
           .select(`id, ${EMBED_SEM_GRUPO}`, { count: 'exact', head: true })
           .eq('sender_type', 'agent')
+          // A ligação atendida no celular (1044) é linha 'agent', mas não é
+          // mensagem enviada.
+          .neq('content_type', 'call')
           .gte('created_at', todayStart),
       ),
       channelId,
@@ -230,6 +233,9 @@ export async function loadMetrics(
           .from('messages')
           .select(`id, ${EMBED_SEM_GRUPO}`, { count: 'exact', head: true })
           .eq('sender_type', 'agent')
+          // A ligação atendida no celular (1044) é linha 'agent', mas não é
+          // mensagem enviada.
+          .neq('content_type', 'call')
           .gte('created_at', yesterdayStart)
           .lt('created_at', todayStart),
       ),
@@ -298,7 +304,9 @@ export async function loadConversationsSeries(
       db
         .from('messages')
         .select(`created_at, sender_type, ${EMBED_SEM_GRUPO}`)
-        .gte('created_at', start),
+        .gte('created_at', start)
+        // Ligação (1044) não é mensagem trocada.
+        .neq('content_type', 'call'),
     ),
     channelId,
   ).order('created_at', { ascending: true })
@@ -519,7 +527,10 @@ export async function loadActivity(
           .select(
             'id, content_text, sender_type, created_at, conversation_id, conversations!inner(group_id, contact_id, contacts(name, phone, wa_username, instagram_username))',
           )
-          .eq('sender_type', 'customer'),
+          .eq('sender_type', 'customer')
+          // A ligação perdida (1044) não tem texto: no feed seria uma "nova
+          // mensagem" em branco.
+          .neq('content_type', 'call'),
       ),
       channelId,
     )

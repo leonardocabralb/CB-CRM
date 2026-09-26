@@ -56,3 +56,18 @@ describe("gravarResultado — cerca de posse", () => {
     expect(filtros.find(([k]) => k === "processando_desde")).toBeUndefined();
   });
 });
+
+describe("gravarResultado — o contato já gravado não é apagado (revisão do PR #235)", () => {
+  it("resultado SEM contato (teto, erro) não mexe na coluna: o contato gravado cedo é o que o cancelamento lê", async () => {
+    const { admin, payloads } = bancoDeMentira(MEU_CLAIM);
+    await gravarResultado(admin, "evt-1", { resultado: "falhou", detalhe: "passou do tempo", contactId: null }, MEU_CLAIM);
+    expect(payloads[0]).not.toHaveProperty("contact_id");
+    expect(payloads[0]).toMatchObject({ resultado: "falhou", processando_desde: null });
+  });
+
+  it("resultado COM contato continua gravando o contato", async () => {
+    const { admin, payloads } = bancoDeMentira(MEU_CLAIM);
+    await gravarResultado(admin, "evt-1", RESULTADO, MEU_CLAIM);
+    expect(payloads[0]).toMatchObject({ contact_id: "c1" });
+  });
+});

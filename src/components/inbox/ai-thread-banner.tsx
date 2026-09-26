@@ -75,7 +75,7 @@ export interface CliqueOtimista {
  * O clique ainda vale? Só na conversa em que foi dado e enquanto o banco
  * disser o que dizia no clique. ⚠️ Deixou de valer, é DESCARTADO de vez (o
  * componente o apaga no render): o banco que saiu do `base` — o realtime
- * confirmando, o gatilho da 1044 pausando porque o advogado respondeu, outra
+ * confirmando, o gatilho da 1049 pausando porque o advogado respondeu, outra
  * aba retomando — e depois VOLTA ao mesmo valor é o banco mandando, nunca o
  * clique velho. Comparar só o valor, sem descartar, fazia o clique voltar a
  * mandar na tela nesse A→B→A: "respondendo automaticamente" numa conversa
@@ -113,14 +113,14 @@ export function pausadaNaTela(
 interface AiThreadBannerProps {
   conversationId: string;
   /**
-   * `conversations.ia_agente_id` (1044) — o agente de IA ATIVO. É ele que
+   * `conversations.ia_agente_id` (1049) — o agente de IA ATIVO. É ele que
    * acende a faixa: sem agente, a IA não responde nesta conversa (a entrada
    * da conexão, quando atende, grava o agente antes de responder).
    */
   iaAgenteId: string | null;
   /** `conversations.ai_autoreply_disabled` — a IA pausada nesta conversa. */
   disabled: boolean;
-  /** `conversations.ia_pausada_por` (1044) — por que pausou (`gente` |
+  /** `conversations.ia_pausada_por` (1049) — por que pausou (`gente` |
    *  `transferencia` | `botao` | `automacao`; nulo = pausa anterior ao motivo). */
   pausadaPor?: string | null;
   /** `conversations.ai_handoff_summary` — nota do auto-reply anterior. */

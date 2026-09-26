@@ -6,7 +6,7 @@
 // é um disparo no próprio processo depois da espera da rajada e, como rede, o
 // laço rápido do agendador (`/api/automations/cron`, `rede.ts`).
 //
-// ⚠️ Enfileirar e reivindicar são por RPC (1044): "grava ou atualiza o
+// ⚠️ Enfileirar e reivindicar são por RPC (1049): "grava ou atualiza o
 // pendente" sobre índice único PARCIAL não é alvo de upsert do PostgREST, e
 // "não há outro rodando nesta conversa" não cabe num filtro. Descartar o
 // pendente (`descartarPendente`) cabe: é UPDATE com filtros.

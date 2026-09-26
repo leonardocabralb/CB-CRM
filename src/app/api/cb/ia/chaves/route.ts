@@ -18,7 +18,7 @@ import {
 import { listarAgentes } from '@/lib/ia-agentes/repo'
 
 /**
- * Chaves de IA por PROVEDOR (migration 1042, D1 do
+ * Chaves de IA por PROVEDOR (migration 1047, D1 do
  * docs/PLANO-agentes-de-ia.md). Só administrador.
  *
  * - `GET`    → se cada provedor tem chave, e desde quando. Nunca a chave.
@@ -53,14 +53,17 @@ export async function GET() {
  * (Codex, #294): passando só no modelo padrão, uma chave sem acesso ao modelo
  * em uso era aceita e o Radar, o rascunho e os agentes quebravam na troca.
  */
-async function modelosEmUso(accountId: string, provedor: AiProvider): Promise<string[]> {
+async function modelosEmUso(
+  accountId: string,
+  provedor: AiProvider,
+): Promise<{ emUso: string[]; dosDesligados: string[] }> {
   // A padrão (assistente e Radar — o Radar a lê desligada ou não) e as de
   // conexão LIGADAS (agente por canal do app anterior): a desligada não roda
   // (`loadAiConfig` devolve null), e conferi-la travaria a troca por um
   // modelo que nada usa (Codex, #294).
   const { data, error } = await supabaseAdmin()
     .from('ai_configs')
-    .select('provider, model, radar_model, channel_id, is_active')
+    .select('provider, model, radar_model, channel_id, is_active, auto_reply_enabled')
     .eq('account_id', accountId)
   if (error) throw new Error(`[ia-chaves] leitura dos modelos em uso falhou: ${error.message}`)
   let agentes: Awaited<ReturnType<typeof listarAgentes>>
@@ -69,6 +72,17 @@ async function modelosEmUso(accountId: string, provedor: AiProvider): Promise<st
   } catch (err) {
     throw new Error(`[ia-chaves] leitura dos agentes falhou: ${err instanceof Error ? err.message : String(err)}`)
   }
+  const semRespostaAutomatica = await conexoesSemRespostaAutomatica(accountId)
+  // O Radar só roda nas conexões com o interruptor ligado (`radar_enabled`,
+  // 941): sem nenhuma, os modelos dele não estão em uso (Codex, #294).
+  const { data: comRadar, error: erroRadar } = await supabaseAdmin()
+    .from('cb_channels')
+    .select('id')
+    .eq('account_id', accountId)
+    .eq('radar_enabled', true)
+    .limit(1)
+  if (erroRadar) throw new Error(`[ia-chaves] leitura das conexões com Radar falhou: ${erroRadar.message}`)
+  const radarLigado = (comRadar ?? []).length > 0
   // A transcrição chama SEMPRE o modelo fixo com a chave do Gemini, qualquer
   // que seja o provedor dos agentes (Codex, #294): primeiro da lista (e
   // dentro do teto de modelos conferidos).
@@ -81,8 +95,27 @@ async function modelosEmUso(accountId: string, provedor: AiProvider): Promise<st
   )
   for (const linha of ordenadas) {
     if (linha.provider !== provedor) continue
-    if (linha.channel_id !== null && linha.is_active === false) continue
-    candidatos.push(...(linha.channel_id === null ? [linha.model, linha.radar_model] : [linha.model]))
+    // A linha de CONEXÃO só roda na resposta automática do app anterior:
+    // ligada, com a resposta automática ligada nela E na conexão (o
+    // `dispatchInboundToAiReply` sai antes nos dois casos; Codex, #294).
+    if (
+      linha.channel_id !== null &&
+      (linha.is_active === false || linha.auto_reply_enabled !== true || semRespostaAutomatica.has(linha.channel_id))
+    ) {
+      continue
+    }
+    // Na linha padrão, só o que RODA (Codex, #294): o modelo do assistente
+    // quando ele está ligado ou quando o Radar ligado o herda (sem modelo
+    // próprio); o do Radar quando o Radar está ligado em alguma conexão. Um
+    // modelo que nada usa não pode recusar a troca da chave.
+    candidatos.push(
+      ...(linha.channel_id === null
+        ? [
+            linha.is_active !== false || (radarLigado && !linha.radar_model) ? linha.model : null,
+            radarLigado ? linha.radar_model : null,
+          ]
+        : [linha.model]),
+    )
   }
   // Só os agentes LIGADOS: o desligado não roda, e conferi-lo travaria a troca
   // por um modelo que nada usa (a mesma régua da linha de conexão).
@@ -91,7 +124,43 @@ async function modelosEmUso(accountId: string, provedor: AiProvider): Promise<st
   for (const m of candidatos) {
     if (typeof m === 'string' && m.trim() && !modelos.includes(m.trim())) modelos.push(m.trim())
   }
-  return modelos
+  return { emUso: modelos, dosDesligados: modelosDosDesligados(agentes, provedor, modelos) }
+}
+
+/**
+ * Os modelos dos agentes DESLIGADOS deste provedor que nada em uso cobre: o
+ * Playground deles roda mesmo desligado (Codex, #295). Não são conferidos —
+ * travariam a troca por um modelo que não atende cliente —, mas a gravação os
+ * DIZ como não conferidos, em vez de relatar sucesso limpo.
+ */
+function modelosDosDesligados(
+  agentes: { provedor: string; ativo: boolean; modelo: string }[],
+  provedor: AiProvider,
+  emUso: string[],
+): string[] {
+  const fora: string[] = []
+  for (const a of agentes) {
+    const m = a.modelo.trim()
+    if (a.provedor !== provedor || a.ativo || !m || emUso.includes(m) || fora.includes(m)) continue
+    fora.push(m)
+  }
+  return fora
+}
+
+/**
+ * As conexões com a resposta automática DESLIGADA (`cb_channels.ai_autoreply_enabled
+ * = false`; o padrão é ligado): nelas a linha de conexão de `ai_configs` não
+ * roda. Leitura que falha lança — decidir "em uso" sem ela recusaria ou
+ * aceitaria a troca pelo motivo errado.
+ */
+async function conexoesSemRespostaAutomatica(accountId: string): Promise<Set<string>> {
+  const { data, error } = await supabaseAdmin()
+    .from('cb_channels')
+    .select('id')
+    .eq('account_id', accountId)
+    .eq('ai_autoreply_enabled', false)
+  if (error) throw new Error(`[ia-chaves] leitura das conexões falhou: ${error.message}`)
+  return new Set((data ?? []).map((c) => c.id as string))
 }
 
 function configDeTeste(provedor: AiProvider, modelo: string, apiKey: string) {
@@ -110,7 +179,7 @@ function configDeTeste(provedor: AiProvider, modelo: string, apiKey: string) {
 }
 
 type Veredito =
-  | { ok: true; modelosIndisponiveis: string[]; naoConferidos: string[]; transcricaoIndisponivel: boolean }
+  | { ok: true; modelosIndisponiveis: string[]; naoConferidos: string[]; transcricaoIndisponivel: boolean; soDaBase: boolean }
   | { ok: false; erro: unknown; modelo?: string }
 
 /**
@@ -171,11 +240,38 @@ async function validarChaveNova(
   chave: string,
 ): Promise<Veredito> {
   const padrao = AI_PROVIDER_DEFAULT_MODEL[provedor]
-  const emUso = await modelosEmUso(accountId, provedor)
+  const { emUso, dosDesligados } = await modelosEmUso(accountId, provedor)
+  // A OpenAI que NENHUM chat nem agente usa pode servir só à base de conhecimento: se ela
+  // gera embedding e NÃO gera texto (chave de projeto restrita aos
+  // embeddings), está aceita como "só da base" — válida para o único uso dela,
+  // e marcada, para nenhuma tela a oferecer ao chat, onde toda geração
+  // falharia (Codex, #294 e #295). Se gera as duas coisas, é chave comum. Se
+  // não gera embedding, segue a conferência pelo chat: o administrador pode
+  // estar cadastrando a chave justamente para passar o assistente para a
+  // OpenAI (a tela só oferece provedor com chave).
+  if (provedor === 'openai' && emUso.length === 0) {
+    let geraEmbedding = false
+    try {
+      await embedTexts(chave, ['ping'])
+      geraEmbedding = true
+    } catch {
+      // Segue pelo chat.
+    }
+    if (geraEmbedding) {
+      try {
+        await validateAiCredentials(configDeTeste(provedor, padrao, chave))
+        return { ok: true, modelosIndisponiveis: [], naoConferidos: dosDesligados, transcricaoIndisponivel: false, soDaBase: false }
+      } catch (err) {
+        // Falha passageira não diz se a chave gera texto: nada é gravado.
+        if (falhaPassageira(err)) return { ok: false, erro: err }
+        return { ok: true, modelosIndisponiveis: [], naoConferidos: dosDesligados, transcricaoIndisponivel: false, soDaBase: true }
+      }
+    }
+  }
   // O modelo da transcrição (Gemini) vem PRIMEIRO em `modelosEmUso`: fica
   // sempre dentro do teto.
   const aTestar = emUso.length > 0 ? emUso.slice(0, MAX_MODELOS_CONFERIDOS) : [padrao]
-  const naoConferidos = emUso.slice(MAX_MODELOS_CONFERIDOS)
+  const naoConferidos = [...emUso.slice(MAX_MODELOS_CONFERIDOS), ...dosDesligados]
 
   const erros = await Promise.all(aTestar.map((m) => alcanca(provedor, m, chave)))
   // Chave recusada não melhora com outro modelo.
@@ -185,7 +281,7 @@ async function validarChaveNova(
     .map((modelo, i) => ({ modelo, erro: erros[i] }))
     .filter((r): r is { modelo: string; erro: unknown } => r.erro !== null)
 
-  if (recusados.length === 0) return { ok: true, modelosIndisponiveis: [], naoConferidos, transcricaoIndisponivel: false }
+  if (recusados.length === 0) return { ok: true, modelosIndisponiveis: [], naoConferidos, transcricaoIndisponivel: false, soDaBase: false }
   // Tempo esgotado, rede ou limite NÃO dizem nada sobre o acesso ao modelo:
   // nada é trocado, e o administrador tenta de novo (Codex, #294). Tratada como
   // "não alcança", a chave seria gravada sem ter sido conferida no modelo em uso.
@@ -226,6 +322,7 @@ async function validarChaveNova(
     modelosIndisponiveis: recusados.filter((r) => r !== transcricao).map((r) => r.modelo),
     naoConferidos,
     transcricaoIndisponivel: transcricao !== undefined,
+    soDaBase: false,
   }
 }
 
@@ -289,8 +386,12 @@ export async function PUT(request: Request) {
     // - `transcricao_indisponivel`: o modelo FIXO da transcrição não respondeu
     //   nem com a chave anterior — não há modelo a trocar; a tela diz que a
     //   transcrição de áudio segue fora do ar.
+    // - `so_da_base`: a chave da OpenAI gera embedding e não gera texto
+    //   (restrita aos embeddings): fica só para a base de conhecimento, e o
+    //   chat não a usa.
     // - `modulos_nao_criados`: ver abaixo.
     const avisos: string[] = []
+    if (veredito.soDaBase) avisos.push('so_da_base')
     if (veredito.modelosIndisponiveis.length > 0) avisos.push('modelo_em_uso_indisponivel')
     if (veredito.transcricaoIndisponivel) avisos.push('transcricao_indisponivel')
     if (veredito.naoConferidos.length > 0) avisos.push('modelos_nao_conferidos')
@@ -314,7 +415,7 @@ export async function PUT(request: Request) {
     // Radar não teria provedor nem modelo e ficaria em `sem_ia` com a chave
     // cadastrada. Nasce com o provedor desta chave, o modelo padrão dele e o
     // assistente DESLIGADO — o mesmo que salvar a primeira chave em
-    // Integrações fazia antes da 1042. Linha que já existe não é tocada.
+    // Integrações fazia antes da 1047. Linha que já existe não é tocada.
     const { data: padrao, error: erroPadrao } = await ctx.supabase
       .from('ai_configs')
       .select('id')
@@ -343,7 +444,7 @@ export async function PUT(request: Request) {
     // DEPOIS da linha padrão: a gravação também atualiza a cópia legada
     // (`ai_configs.api_key`) para uma volta atrás do deploy, e a linha recém-
     // criada precisa existir para receber a cópia.
-    await gravarChave(ctx.accountId, provedor, chave, ctx.userId, serveEmbeddings)
+    await gravarChave(ctx.accountId, provedor, chave, ctx.userId, serveEmbeddings, { soDaBase: veredito.soDaBase })
 
     return NextResponse.json({
       ok: true,
@@ -370,13 +471,15 @@ export async function DELETE(request: Request) {
     if (!ehProvedor(provedor)) {
       return NextResponse.json({ error: 'provedor_invalido', code: 'provedor_invalido' }, { status: 400 })
     }
-    const apagada = await apagarChave(ctx.accountId, provedor)
-
-    // ⚠️ A cópia LEGADA também sai. A 1042 deixou `ai_configs.api_key` (e
+    // ⚠️ A cópia LEGADA também sai. A 1047 deixou `ai_configs.api_key` (e
     // `embeddings_api_key`) com o texto cifrado de antes, para o app anterior
     // poder voltar atrás — e qualquer membro lê essa coluna pelo PostgREST.
     // Sem limpar, a chave "apagada" continuaria no banco e voltaria a valer
-    // numa reversão do deploy (ou num replay da cópia da 1042).
+    // numa reversão do deploy (ou num replay da cópia da 1047).
+    // ⚠️ A cópia sai ANTES da chave de verdade (Codex, #294): se a limpeza
+    // falha, nada foi apagado e a tela diz "falhou" com a verdade; na ordem
+    // inversa, a chave já tinha saído (e o assistente, o Radar e a transcrição
+    // parado) com a tela dizendo que a exclusão falhou.
     const db = supabaseAdmin()
     const { error: erroLegado } = await db
       .from('ai_configs')
@@ -392,8 +495,9 @@ export async function DELETE(request: Request) {
         '[cb/ia/chaves DELETE] limpeza da cópia legada falhou:',
         erroLegado?.message ?? erroEmbeddings?.message,
       )
-      return NextResponse.json({ error: 'banco', code: 'banco', apagada }, { status: 500 })
+      return NextResponse.json({ error: 'banco', code: 'banco' }, { status: 500 })
     }
+    const apagada = await apagarChave(ctx.accountId, provedor)
     return NextResponse.json({ ok: true, apagada })
   } catch (err) {
     if (err instanceof Error && err.message.startsWith('[ia-chaves]')) {

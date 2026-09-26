@@ -75,7 +75,7 @@ describe('assumirEcoDoTurno', () => {
       ai_generated: true,
       created_at: new Date(AGORA * 1000).toISOString(),
     })
-    // Nunca a marca do celular: é ela que a 1044 lê como "gente respondeu".
+    // Nunca a marca do celular: é ela que a 1049 lê como "gente respondeu".
     expect(linha).not.toHaveProperty('from_device')
     expect(linha).not.toHaveProperty('sender_id')
 

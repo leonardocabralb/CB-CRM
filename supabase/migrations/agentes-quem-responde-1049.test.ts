@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 // ============================================================
-// 1044 — quem responde (F2a dos agentes de IA). Os comportamentos foram
+// 1049 — quem responde (F2a dos agentes de IA). Os comportamentos foram
 // provados num Postgres 16 descartável (rajada por conexão, trava por
 // conversa, pausa por gente, D17, encerramento, arquivamento, banco vazio);
 // estes pinos seguram a FORMA que os sustenta.
@@ -11,7 +11,7 @@ import path from 'node:path';
 // LIMITE DECLARADO: lê o `.sql`.
 // ============================================================
 
-const sql = fs.readFileSync(path.join(__dirname, '1044_cb_ia_quem_responde.sql'), 'utf8');
+const sql = fs.readFileSync(path.join(__dirname, '1049_cb_ia_quem_responde.sql'), 'utf8');
 const semComentarios = sql
   .split('\n')
   .map((linha) => linha.replace(/--.*$/, ''))
@@ -33,7 +33,7 @@ function cabecalho(nome: string): string {
   return compacto.slice(ini, compacto.indexOf('as $$', ini));
 }
 
-describe('1044 — a fila de turnos', () => {
+describe('1049 — a fila de turnos', () => {
   it('fechada ao navegador: RLS, nenhuma policy, as duas metades do REVOKE', () => {
     expect(compacto).toContain('alter table cb_ia_turnos enable row level security');
     expect(compacto).toContain('revoke all on table cb_ia_turnos from public, anon, authenticated');
@@ -78,7 +78,7 @@ describe('1044 — a fila de turnos', () => {
   });
 });
 
-describe('1044 — a D17 decide no BANCO (E12)', () => {
+describe('1049 — a D17 decide no BANCO (E12)', () => {
   it('trava a conversa, nunca retoma botão/transferência (nem pausa sem motivo) e nunca toca o responsável', () => {
     const corpo = funcao('public.cb_atribuir_agente_de_ia');
     expect(corpo).toContain('for update');
@@ -108,7 +108,7 @@ describe('1044 — a D17 decide no BANCO (E12)', () => {
   });
 });
 
-describe('1044 — a ENTRADA só atribui conversa SEM agente (5.3, regra 5; Codex, #292)', () => {
+describe('1049 — a ENTRADA só atribui conversa SEM agente (5.3, regra 5; Codex, #292)', () => {
   it('o 5º parâmetro nasce falso: o passo da automação e a régua seguem trocando o agente', () => {
     expect(cabecalho('public.cb_atribuir_agente_de_ia')).toContain('p_so_se_vazio boolean default false');
   });
@@ -135,7 +135,7 @@ describe('1044 — a ENTRADA só atribui conversa SEM agente (5.3, regra 5; Code
   });
 });
 
-describe('1044 — o "ligar" do set_ai passa pela MESMA regra (E13)', () => {
+describe('1049 — o "ligar" do set_ai passa pela MESMA regra (E13)', () => {
   const corpo = () => funcao('public.cb_retomar_ia_por_automacao');
 
   it('trava a conversa DA CONTA antes de decidir', () => {
@@ -170,12 +170,12 @@ describe('1044 — o "ligar" do set_ai passa pela MESMA regra (E13)', () => {
       expect(compacto).toContain(`'${f}'`);
     }
     const conferencia = compacto.slice(compacto.lastIndexOf('do $$'));
-    const subbloco = conferencia.slice(conferencia.indexOf('set local role service_role'), conferencia.indexOf("exception when sqlstate 'p1044'"));
+    const subbloco = conferencia.slice(conferencia.indexOf('set local role service_role'), conferencia.indexOf("exception when sqlstate 'p1049'"));
     expect(subbloco).toContain('public.cb_retomar_ia_por_automacao(');
   });
 });
 
-describe('1044 — as FKs que o Postgres não indexa', () => {
+describe('1049 — as FKs que o Postgres não indexa', () => {
   it('as duas de mensagem e a do log de uso: índices PARCIAIS; a da conversa: índice cheio', () => {
     expect(compacto).toMatch(
       /cb_ia_turnos_mensagem_gatilho_idx on cb_ia_turnos \(mensagem_gatilho_id\) where mensagem_gatilho_id is not null/,
@@ -204,7 +204,7 @@ describe('1044 — as FKs que o Postgres não indexa', () => {
   });
 });
 
-describe('1044 — pausa por gente', () => {
+describe('1049 — pausa por gente', () => {
   it('o gatilho só dispara em resposta de gente GRAVADA de verdade (a carga da 1033 grava gravada_em nula)', () => {
     const gatilho = compacto.slice(compacto.indexOf('create trigger cb_pausa_ia_por_gente_trigger'));
     const when = gatilho.slice(0, gatilho.indexOf('execute function'));
@@ -234,7 +234,7 @@ describe('1044 — pausa por gente', () => {
   });
 });
 
-describe('1044 — encerrar e arquivar', () => {
+describe('1049 — encerrar e arquivar', () => {
   it('encerrar limpa a IA só na TRANSIÇÃO, num BEFORE UPDATE OF status', () => {
     expect(compacto).toContain('before update of status on conversations');
     const corpo = funcao('cb_encerrar_limpa_ia');
@@ -251,7 +251,7 @@ describe('1044 — encerrar e arquivar', () => {
   });
 });
 
-describe('1044 — FKs compostas e colunas', () => {
+describe('1049 — FKs compostas e colunas', () => {
   it('o agente ativo e a entrada da conexão: FK COMPOSTA com SET NULL por coluna (Codex, #292)', () => {
     expect(compacto).toMatch(
       /foreign key \(ia_agente_entrada_id, account_id\) references cb_ia_agentes \(id, account_id\) on delete set null \(ia_agente_entrada_id\)/,
@@ -266,7 +266,7 @@ describe('1044 — FKs compostas e colunas', () => {
   });
 });
 
-describe('1044 — "respondido" e os gatilhos que a carga da 1033 cala PELO NOME', () => {
+describe('1049 — "respondido" e os gatilhos que a carga da 1033 cala PELO NOME', () => {
   it('só as FUNÇÕES são recriadas: nenhum gatilho da 972 é apagado ou renomeado', () => {
     for (const g of [
       'cb_marcar_aguardando_resposta_trigger',
@@ -287,7 +287,7 @@ describe('1044 — "respondido" e os gatilhos que a carga da 1033 cala PELO NOME
   });
 });
 
-describe('1044 — a reserva do envio (Codex, #292)', () => {
+describe('1049 — a reserva do envio (Codex, #292)', () => {
   it('teto, pausa, mesmo agente e conversa aberta NUMA escrita, com a conta', () => {
     const corpo = funcao('public.cb_ia_reservar_envio');
     expect(corpo).toContain('set ai_reply_count = ai_reply_count + 1');
@@ -360,7 +360,7 @@ describe('1044 — a reserva do envio (Codex, #292)', () => {
     const conferencia = compacto.slice(compacto.lastIndexOf('do $$'));
     const subbloco = conferencia.slice(
       conferencia.indexOf('set local role service_role'),
-      conferencia.indexOf("exception when sqlstate 'p1044'"),
+      conferencia.indexOf("exception when sqlstate 'p1049'"),
     );
     expect(subbloco).toContain(
       'public.cb_ia_reservar_envio(v_conta_ia, v_conv_ia, v_agente, 2147483647, gen_random_uuid(), null, now())',
@@ -369,7 +369,7 @@ describe('1044 — a reserva do envio (Codex, #292)', () => {
   });
 });
 
-describe('1044 — conexão apagada descarta os pendentes dela', () => {
+describe('1049 — conexão apagada descarta os pendentes dela', () => {
   it('gatilho BEFORE DELETE em cb_channels: roda antes do SET NULL da FK', () => {
     expect(compacto).toContain(
       'create trigger cb_channels_descarta_turnos_de_ia before delete on cb_channels for each row execute function cb_ia_descartar_turnos_da_conexao()',
@@ -397,7 +397,7 @@ describe('1044 — conexão apagada descarta os pendentes dela', () => {
   });
 });
 
-describe('1044 — o contador de respostas fecha (E14)', () => {
+describe('1049 — o contador de respostas fecha (E14)', () => {
   it('claim_ai_reply_slot: as duas metades do REVOKE e o GRANT ao service_role', () => {
     expect(compacto).toContain(
       'revoke execute on function public.claim_ai_reply_slot(uuid, integer) from public, anon, authenticated',

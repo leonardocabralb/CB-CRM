@@ -253,8 +253,10 @@ Domain error codes beyond the table above:
 ### `GET /api/v1/contacts`
 
 List contacts, newest first. Scope: `contacts:read`. Paginated (see
-[Pagination](#pagination)). Optional filters: `?search=` (matches name
-or phone) and `?tag=<tagId>`. The `tag` filter takes only a tag **id**
+[Pagination](#pagination)). Optional filters: `?search=` (a
+case-insensitive substring of the name or the phone, matched literally —
+`%`, `_`, `*`, commas and parentheses are plain characters) and
+`?tag=<tagId>`. The `tag` filter takes only a tag **id**
 (from `GET /api/v1/tags`) — unlike the write endpoints below, a tag name
 there is a `400 bad_request`.
 
@@ -295,7 +297,8 @@ there is a `400 bad_request`.
 Create a contact. Scope: `contacts:write`. `phone` is required (read as in
 [Phone numbers](#phone-numbers));
 `name`, `email`, `company`, and `tags` (an array of tag names or tag ids
-from `GET /api/v1/tags`; new names are created) are optional. **Find-or-create
+from `GET /api/v1/tags`; new names are created) are optional. Text is
+trimmed, and an empty `name` falls back to the phone number. **Find-or-create
 by phone:** an existing match returns `200` with the existing contact; a
 new contact returns `201`. The response body is the serialized contact
 (same shape as the list rows above).
@@ -335,7 +338,9 @@ array, is a `400 bad_request` — never silently dropped. `tags: null` means
 ### `GET` / `PATCH /api/v1/contacts/{id}`
 
 Read or update one contact. Scopes: `contacts:read` / `contacts:write`.
-`PATCH` updates only the fields you send (`name`, `email`, `company`);
+`PATCH` updates only the fields you send (`name`, `email`, `company`).
+Text is trimmed; a string that is empty (or only spaces) **leaves the
+field alone**, and `null` clears it;
 pass `tags` (an array of tag names or tag ids from `GET /api/v1/tags`) to
 **replace** the contact's tags — with the same rules as `POST /contacts`
 above: an unknown tag id is a `400 unknown_tag_ids` and nothing is
@@ -471,8 +476,13 @@ you how the dashboard renders it; `datetime` values are ISO-8601 UTC).
 An empty value is always `null` on the wire, no matter which writer
 left it empty.
 
-`PATCH` writes by key. `""`, `null` (or a whitespace-only string)
-**clears** a value. Numbers and booleans are stringified. Values are
+`PATCH` writes by key. `""`, `null` or a whitespace-only string
+**leaves the value alone** — so a flow that sends every variable on
+every step (unanswered ones empty) never wipes an earlier answer; a
+body where every value is empty changes nothing and still answers
+`200`. To **clear** a value, list its key in `clear` (an array of keys);
+a key in `clear` must exist, and the same key with a value in `values`
+AND in `clear` is a `400`. Numbers and booleans are stringified. Values are
 capped at **4000 characters**. `datetime` fields only accept an
 ISO-8601 instant **with an explicit offset** (`2026-08-30T14:00:00-03:00`
 or `…Z`) and are stored normalized to UTC — anything else is a `400`,
@@ -485,9 +495,15 @@ surface on the first call, not months later. Response = the post-write
 `GET` payload (note this means a write-only key sees the catalogue and
 current values in the response of its own writes).
 
-```json
-{ "values": { "utm_source": "facebook", "fbclid": "IwAR…", "utm_term": null } }
+```jsonc
+{
+  "values": { "utm_source": "facebook", "fbclid": "IwAR…", "utm_term": null }, // utm_term: untouched
+  "clear": ["utm_content"]                                                     // optional — deletes it
+}
 ```
+
+> Until 26/09/2026 `""` and `null` in `values` cleared the value. They no
+> longer do: clearing is `clear`, and only `clear`.
 
 ### `GET /api/v1/conversations`
 
@@ -509,6 +525,13 @@ Paginated. Each message includes its `direction` (`inbound` /
 `outbound`), `status` (delivery state), `whatsapp_message_id`, and
 `content_*`. The conversation is verified to belong to your account
 first (`404` otherwise).
+
+**WhatsApp calls** are listed here too (WhatsApp connections by QR code
+only), with `content_type: "call"` and `content_text: null`. A call nobody
+answered is `inbound`; a call answered on one of the office's phones is
+`outbound`. Their `whatsapp_message_id` is `call:<call id>`, not a WhatsApp
+message id — it can't be replied to, reacted to or deleted. The CRM does not
+carry call audio: the row only records that the call happened.
 
 ### `POST /api/v1/broadcasts`
 
@@ -893,11 +916,14 @@ never fires it, **not even when the customer replies later**: one started
 from the paired phone, from the Instagram app, from the CRM ("New
 conversation", sending from a contact's page) or through
 `POST /api/v1/messages`. Nor do conversations created by automations and
-integrations (incoming webhooks, Calendly, the Asaas reminders), by bulk
-data migrations, or group conversations. For "a new lead reached the
+integrations (incoming webhooks, Calendly, the Asaas reminders), by a
+WhatsApp **call** (a number that calls before writing: the conversation is
+born from the call, and the event doesn't fire even when they write later),
+by bulk data migrations, or group conversations. For "a new lead reached the
 funnel" — including the ones your team approached first — listen to
 `deal.created` instead: a number with a default pipeline opens the card on
-the first message in either direction (`source: "channel"`).
+the first message in either direction, or on the first WhatsApp call
+(`source: "channel"`).
 
 Every event carries `channel_id` in `data` — which of your numbers the
 event happened on. Without it, several numbers look like one

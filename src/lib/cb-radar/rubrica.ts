@@ -111,7 +111,7 @@ export interface MensagemParaTranscrito {
   autor?: string | null
   /**
    * Escrita pelo AGENTE DE IA (`sender_type = 'bot' AND ia_agente_id IS NOT
-   * NULL` — o ramo "respondido" da 1044, D11 do docs/PLANO-agentes-de-ia.md).
+   * NULL` — o ramo "respondido" da 1049, D11 do docs/PLANO-agentes-de-ia.md).
    * Só vale junto de `senderType === 'bot'`, e só o booleano `true` liga.
    *
    * ⚠️ AUSENTE = robô comum, de propósito: a linha cai no rótulo "Robô" e no

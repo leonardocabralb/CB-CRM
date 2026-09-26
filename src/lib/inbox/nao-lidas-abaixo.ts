@@ -7,7 +7,14 @@
 // `created_at` dela no `onScroll`). Tudo que veio DEPOIS dela e é do cliente
 // conta; o que nós mesmos mandamos não — o operador sabe o que acabou de
 // enviar, e a bolha otimista já rola sozinha para o fim.
+//
+// ⚠️ "Depois" é na ordem do DESENHO (`naOrdemDoFio`), não na da lista em
+// memória: a ligação (1044) entra com carimbo no passado e o tempo real a
+// acrescenta no fim — contada pela ordem crua, ela acendia o botão sobre uma
+// bolha desenhada ACIMA da âncora (Codex, PR #304).
 // ============================================================
+
+import { naOrdemDoFio } from './ordem-do-fio';
 
 export interface MensagemParaContar {
   id: string;
@@ -45,11 +52,12 @@ export function contarNovasDoCliente(
   mensagens: readonly MensagemParaContar[],
   ancora: AncoraDaLeitura,
 ): number {
-  const i = ancora.id ? mensagens.findIndex((m) => m.id === ancora.id) : -1;
+  const emOrdem = naOrdemDoFio(mensagens);
+  const i = ancora.id ? emOrdem.findIndex((m) => m.id === ancora.id) : -1;
   if (i >= 0) {
     let n = 0;
-    for (let j = i + 1; j < mensagens.length; j++) {
-      if (escritaPeloCliente(mensagens[j])) n++;
+    for (let j = i + 1; j < emOrdem.length; j++) {
+      if (escritaPeloCliente(emOrdem[j])) n++;
     }
     return n;
   }

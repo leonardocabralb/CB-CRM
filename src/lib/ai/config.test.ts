@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-// A chave vem de `cb_ia_chaves` (1042), pelo PROVEDOR da linha — nunca de
+// A chave vem de `cb_ia_chaves` (1047), pelo PROVEDOR da linha — nunca de
 // `ai_configs.api_key`.
 const chaves: Record<string, { chave: string | null; ilegivel: boolean }> = {}
 // A da OpenAI que a OpenAI RECUSOU para embeddings ao ser gravada.
@@ -67,7 +67,7 @@ describe('loadAiConfig requireActive', () => {
   })
 })
 
-describe('loadAiConfig — a chave é a do PROVEDOR (1042)', () => {
+describe('loadAiConfig — a chave é a do PROVEDOR (1047)', () => {
   it('sem chave para o provedor da linha = IA indisponível (null)', async () => {
     delete chaves.openai
     expect(

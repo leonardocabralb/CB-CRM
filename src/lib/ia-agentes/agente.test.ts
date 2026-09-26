@@ -5,6 +5,15 @@ import { colunasDaAlteracao, lerAlteracao, lerHorario, lerLinhaDoAgente } from '
 const ID = '11111111-1111-4111-8111-111111111111'
 
 describe('lerAlteracao', () => {
+  it('na edição, trocar o provedor exige o modelo junto (Codex, #295)', () => {
+    expect(lerAlteracao({ provedor: 'openai' }, false)).toEqual({ ok: false, codigo: 'modelo_vazio' })
+    expect(lerAlteracao({ provedor: 'openai', modelo: 'gpt-x' }, false)).toEqual({
+      ok: true,
+      valor: { provedor: 'openai', modelo: 'gpt-x' },
+    })
+    expect(lerAlteracao({ modelo: 'gpt-y' }, false)).toEqual({ ok: true, valor: { modelo: 'gpt-y' } })
+  })
+
   it('criação exige nome, provedor e modelo', () => {
     expect(lerAlteracao({ provedor: 'gemini', modelo: 'm' }, true)).toEqual({ ok: false, codigo: 'nome_vazio' })
     expect(lerAlteracao({ nome: 'Triagem', modelo: 'm' }, true)).toEqual({ ok: false, codigo: 'provedor_invalido' })

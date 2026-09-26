@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// gravarChave — a chave "própria" dos embeddings que a 1042 copiou comparando
+// gravarChave — a chave "própria" dos embeddings que a 1047 copiou comparando
 // textos CIFRADOS (IV aleatório) pode ser a MESMA do chat. Na troca, ela sai;
 // senão continuaria sendo usada depois de a chave velha ser revogada (Codex,
 // #294). A cifra dos testes imita a real: aleatória, reversível.
@@ -75,7 +75,7 @@ describe('gravarChave — a chave própria falsa dos embeddings sai na troca', (
     expect(legados).not.toContainEqual({ embeddings_api_key: null })
   })
 
-  it('a chave que era SÓ da base (mesmo texto cifrado nos dois campos, a marca da 1042) fica', async () => {
+  it('a chave que era SÓ da base (mesmo texto cifrado nos dois campos, a marca da 1047) fica', async () => {
     linhaOpenai = { api_key: 'cifra:90:sk-da-base', embeddings_api_key: 'cifra:90:sk-da-base' }
     await gravarChave('conta-1', 'openai', 'sk-de-chat', 'user-1', false)
     expect(upserts[0]).not.toHaveProperty('embeddings_api_key')
@@ -104,6 +104,24 @@ describe('gravarChave — a chave própria falsa dos embeddings sai na troca', (
   it('outro provedor não consulta nada da OpenAI', async () => {
     linhaOpenai = { api_key: 'cifra:90:x', embeddings_api_key: 'cifra:91:x' }
     await gravarChave('conta-1', 'gemini', 'g-nova', 'user-1', null)
+    expect(upserts[0]).not.toHaveProperty('embeddings_api_key')
+  })
+})
+
+describe('gravarChave — a chave que só gera embedding leva a MARCA de só da base (Codex, #295)', () => {
+  it('o MESMO texto cifrado nas duas colunas (é o que tira a chave da escolha do chat)', async () => {
+    await gravarChave('conta-1', 'openai', 'sk-restrita', 'user-1', true, { soDaBase: true })
+    expect(upserts[0].api_key).toMatch(/sk-restrita$/)
+    expect(upserts[0].embeddings_api_key).toBe(upserts[0].api_key)
+  })
+
+  it('sem a marca, a chave que serve às duas coisas não fica só da base', async () => {
+    await gravarChave('conta-1', 'openai', 'sk-comum', 'user-1', true, { soDaBase: false })
+    expect(upserts[0]).toHaveProperty('embeddings_api_key', null)
+  })
+
+  it('a marca não vale fora da OpenAI', async () => {
+    await gravarChave('conta-1', 'gemini', 'g-nova', 'user-1', null, { soDaBase: true })
     expect(upserts[0]).not.toHaveProperty('embeddings_api_key')
   })
 })

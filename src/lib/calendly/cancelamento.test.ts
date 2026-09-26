@@ -258,6 +258,36 @@ describe("processarCancelamento — corridas (Codex, PR #235)", () => {
     expect(travas).toHaveLength(1);
   });
 
+  it("CRÍTICO: contato JÁ na linha e o agendamento ainda em processamento: espera terminar e desarma com a data (revisão do PR #235)", async () => {
+    // O contato vai para a linha ANTES das automações (`gravarContatoCedo`).
+    // Saindo ao achá-lo, a data ainda não estava na ficha: "nada a desarmar",
+    // sem a trava.
+    const emProcessamento = { contact_id: "contato-1", resultado: "recebido", processando_desde: "2026-09-21T01:00:00Z" };
+    const { db, travas, leituras } = bancoFalso({
+      leituras: [emProcessamento, emProcessamento, { contact_id: "contato-1", resultado: "disparado", processando_desde: null }],
+      automacoes: [LEMBRETE("a24", "campo-data")],
+      valores: [{ custom_field_id: "campo-data", value: "2026-09-25T17:00:00Z" }],
+    });
+    const r = await processarCancelamento(db, "conta-1", CANCELAMENTO, semDormir);
+    expect(leituras()).toBe(3);
+    expect(r).toMatchObject({ resultado: "cancelado", contactId: "contato-1" });
+    expect(travas).toHaveLength(1);
+  });
+
+  it("teto com o contato já na linha e o processamento ainda no ar: segue COM o contato, e o detalhe diz o porquê", async () => {
+    const { db, travas } = bancoFalso({
+      original: { contact_id: "contato-1", resultado: "recebido", processando_desde: "2026-09-21T01:00:00Z" },
+      automacoes: [LEMBRETE("a24", "campo-data")],
+      valores: [],
+    });
+    const r = await processarCancelamento(db, "conta-1", CANCELAMENTO, { ...semDormir, tetoDeEsperaMs: 10_000 });
+    // O contato vai para a linha do cancelamento: é por ele que a varredura
+    // de lembretes barra o horário quando a data chegar à ficha.
+    expect(r).toMatchObject({ resultado: "ignorado", contactId: "contato-1" });
+    expect(r.detalhe).toContain("ainda estava sendo processado");
+    expect(travas).toHaveLength(0);
+  });
+
   it("agendamento JÁ FINALIZADO sem contato não fica relendo à toa", async () => {
     const { db, leituras } = bancoFalso({
       original: { contact_id: null, resultado: "sem_telefone", processando_desde: null },

@@ -144,3 +144,6 @@ Troca de LENTE no navegador, e só nele (`simulacao.ts`, o override no
   essas três: as outras guardam quem CRIOU, e mover é decisão pendente.
 - `remove_account_member` só realoca o perfil; o que dispara o CASCADE de
   `user_id` é apagar o LOGIN fora do app (painel do Supabase, admin API).
+- O celular de cada membro (1046) aparece na lista de Membros SÓ para
+  administradores, como o e-mail, e com barreira no banco (RLS de
+  `cb_celulares_dos_membros`). As regras estão em `meu-dia.md`.

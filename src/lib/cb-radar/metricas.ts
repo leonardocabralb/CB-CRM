@@ -46,7 +46,7 @@ export interface MensagemParaMetricas {
   porGente: boolean
   /**
    * Resposta de um AGENTE DE IA (`sender_type = 'bot' AND ia_agente_id IS
-   * NOT NULL` — o ramo "respondido" da 1044, D11 do
+   * NOT NULL` — o ramo "respondido" da 1049, D11 do
    * docs/PLANO-agentes-de-ia.md). Fecha a pendência do cliente, como uma
    * resposta de gente, mas NÃO entra no tempo de resposta DA EQUIPE: a IA
    * responde em segundos, e somá-la à mediana diria que o escritório atende

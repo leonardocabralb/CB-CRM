@@ -38,7 +38,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { supabaseAdmin } from '@/lib/ai/admin-client'
-import { mostrarDigitando } from '@/lib/ai/digitando'
+import { concluirDigitando, mostrarDigitando } from '@/lib/ai/digitando'
 import { generateReply } from '@/lib/ai/generate'
 import { AiError, mensagemSeguraDeAiError, type AiConfig, type AiUsage } from '@/lib/ai/types'
 import { logAiUsage } from '@/lib/ai/usage'
@@ -138,7 +138,7 @@ async function gravarNoTurno(
  * posse — cercada só pelo id do turno e por `mensagem_enviada_id` ainda nulo.
  * Se o recolhedor tomou o turno no meio do envio (processo lento), com a
  * cerca o id se perdia: o eco da Evolution não era reconhecido, virava
- * mensagem do celular e o gatilho da 1044 pausava o agente por "gente".
+ * mensagem do celular e o gatilho da 1049 pausava o agente por "gente".
  * Não reescreve `status`: o desfecho que o recolhedor gravou fica (ele leu o
  * id nulo e escreveu `incerto` — a conversa já foi para gente, e nada é
  * reenviado: o recolhedor nunca re-executa, e o turno que perdeu a posse não
@@ -171,7 +171,7 @@ export type ResultadoDaTransferencia = 'transferiu' | 'nada_mudou' | 'falhou'
  * se a conversa já é de outro agente (ou de nenhum), nada muda.
  *
  * ⚠️ E só se a conversa ainda NÃO está pausada. Sem essa cerca, o advogado
- * que responde pelo celular enquanto o modelo pensa (o gatilho da 1044 grava
+ * que responde pelo celular enquanto o modelo pensa (o gatilho da 1049 grava
  * a pausa `'gente'`) tinha a pausa TROCADA por `'transferencia'`: a
  * automação deixava de poder retomar o agente (D17 — `'gente'` retoma,
  * `'transferencia'` não), e sobravam anotação e atribuição sobre conversa que
@@ -297,7 +297,7 @@ async function haMensagemMaisNova(
 
 /**
  * Alguém da EQUIPE respondeu depois da mensagem do cliente (D10)? O gatilho de
- * pausa da 1044 cobre o caso comum, mas não a corrida da ENTRADA: a resposta
+ * pausa da 1049 cobre o caso comum, mas não a corrida da ENTRADA: a resposta
  * do advogado que chega entre a leitura da D16 e a atribuição do agente é
  * gravada sem agente ativo na conversa (o gatilho não tem o que pausar), e a
  * mensagem do celular tem o relógio do aparelho — pode ser anterior ao
@@ -644,6 +644,12 @@ interface Andamento {
   enviadaId: string | null
   /** Algum áudio da rajada foi transcrito NESTA rodada (`prepararAudios`). */
   transcreveu: boolean
+  /**
+   * Cancela o "digitando…" (`mostrarDigitando`). O envio o CONCLUI antes de a
+   * resposta sair (`concluirDigitando`), e `executarTurno` o cancela em TODA
+   * saída — senão o pedido em voo chegava à Meta depois de o turno desistir.
+   */
+  cancelarDigitando: AbortController
 }
 
 async function conduzir(
@@ -706,12 +712,18 @@ async function conduzir(
     return { status: 'falhou', erro: 'o prazo do turno acabou antes de gerar' }
   }
 
-  // "Digitando…" só quando vai gerar (só conexão Meta; nunca segura nada).
-  void mostrarDigitando(db, {
+  // "Digitando…" só quando vai gerar (só conexão Meta; nunca lança). Corre em
+  // paralelo com a geração, mas a resposta o ESPERA antes de sair
+  // (`concluirDigitando`, logo depois da geração) — solto (`void`), o pedido
+  // podia chegar à Meta DEPOIS da resposta (revisão do PR #288). Toda saída
+  // sem envio o cancela (`executarTurno`). ⚠️ A Meta marca a mensagem do
+  // cliente como LIDA junto (P6).
+  const digitando = mostrarDigitando(db, {
     accountId: turno.account_id,
     conversationId: turno.conversation_id,
     channelId: turno.canal_id,
     inboundMessageId: gatilho.message_id,
+    sinal: andamento.cancelarDigitando.signal,
   })
 
   let texto: string
@@ -748,6 +760,13 @@ async function conduzir(
   })
 
   if (handoff || !texto.trim()) return { status: 'transferiu', motivo: 'sentinela' }
+
+  // O "digitando…" termina (ou é cancelado, passados 2 s) ANTES da última
+  // conferência, e não entre a reserva e o envio: a reserva é a última
+  // palavra, e esperar depois dela alargaria a janela em que a resposta do
+  // advogado passaria sem ser vista. Quase sempre já terminou — a geração
+  // leva mais que isso.
+  await concluirDigitando(digitando, andamento.cancelarDigitando)
 
   // De novo, com a resposta pronta: o advogado pode ter respondido, a
   // conversa pode ter sido pausada ou o agente desligado enquanto o modelo
@@ -957,6 +976,7 @@ export async function executarTurno(turnoId: string): Promise<void> {
     tentouEnviar: false,
     enviadaId: null,
     transcreveu: false,
+    cancelarDigitando: new AbortController(),
   }
   let desfecho: Desfecho
   try {
@@ -971,6 +991,11 @@ export async function executarTurno(turnoId: string): Promise<void> {
       : andamento.tentouEnviar
         ? { status: 'incerto', erro: detalhe }
         : { status: 'falhou', erro: detalhe }
+  } finally {
+    // O "digitando…" não sobrevive ao turno: com resposta, o envio já o
+    // concluiu; em toda saída SEM envio (descartou, transferiu, falhou,
+    // reagendou, quebrou) o pedido ainda em voo é cancelado aqui.
+    andamento.cancelarDigitando.abort()
   }
 
   try {

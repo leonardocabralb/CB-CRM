@@ -430,7 +430,7 @@ interface MensagemDaJanela {
   sender_id: string | null
   /** Saiu do celular pareado — gente digitando, sem usuário do CRM atrás. */
   from_device: boolean | null
-  /** O agente de IA que escreveu (1044): preenchido SÓ pelo envio do turno. */
+  /** O agente de IA que escreveu (1049): preenchido SÓ pelo envio do turno. */
   ia_agente_id: string | null
   content_type: string
   content_text: string | null
@@ -458,7 +458,7 @@ interface MensagemDaJanela {
  * ⚠️ A resposta do AGENTE DE IA (D11 do docs/PLANO-agentes-de-ia.md) fecha a
  * pendência mas NÃO é gente: vai em `porAgenteDeIa`, e `calcularMetricas` a
  * deixa fora da mediana da equipe. O predicado é o MESMO do ramo
- * "respondido" da 1044 (`sender_type = 'bot' AND ia_agente_id IS NOT NULL`)
+ * "respondido" da 1049 (`sender_type = 'bot' AND ia_agente_id IS NOT NULL`)
  * — o alerta de atraso da caixa e o Radar concordam sobre quem respondeu.
  * Robô de fluxo e automação também são `bot`, mas sem `ia_agente_id`: não
  * fecham nada. A IA não entra em `deAgendada` (a agendada sai como `agent`).
@@ -632,6 +632,14 @@ export async function analisarConversaReivindicada(
   // (é o contrato que dá à linha o teto maior de caracteres e diz ao
   // modelo e à evidência a origem).
   const textoDe = (m: MensagemDaJanela): string | null => {
+    // Ligação (1044): não tem texto, mas é contato — a perdida é pendência do
+    // cliente, a atendida é a equipe falando com ele. Sem a linha, ela caía em
+    // "áudios/mídias sem texto" e o modelo a lia como anexo que não viu.
+    if (m.content_type === 'call') {
+      return m.sender_type === 'customer'
+        ? '[ligação perdida: ligou pelo WhatsApp e ninguém atendeu]'
+        : '[ligação atendida pelo celular do escritório]'
+    }
     if (m.content_text && m.content_text.trim()) return m.content_text
     const t = transcricoes.get(m.id)
     return t ? `${PREFIXO_AUDIO}${t}` : null
@@ -697,7 +705,7 @@ export async function analisarConversaReivindicada(
   // interruptor do assistente DE CONVERSA (auto-reply/rascunho). Amarrar os
   // dois fazia "desliguei as respostas automáticas" silenciar a análise sem
   // nenhum aviso na tela.
-  // ⚠️ SEM `channelId` desde a 1042 (docs/PLANO-agentes-de-ia.md, 5.10): a
+  // ⚠️ SEM `channelId` desde a 1047 (docs/PLANO-agentes-de-ia.md, 5.10): a
   // configuração do Radar é do módulo, da conta inteira, e a chave é a do
   // PROVEDOR (`cb_ia_chaves`). Resolver pelo canal deixava um agente criado
   // para uma conexão trocar, em silêncio, a chave e o modelo do Radar ali.

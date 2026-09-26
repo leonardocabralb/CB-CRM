@@ -31,6 +31,7 @@ import { FormattedText } from "./formatted-text";
 import { MediaViewer } from "./media-viewer";
 import { MessageReactions } from "./message-reactions";
 import { PlayerDeAudio } from "./player-de-audio";
+import { AvisoDeLigacao } from "./aviso-de-ligacao";
 import { InteractivePreview } from "@/components/interactive/interactive-preview";
 import { useTranslations } from "next-intl";
 import type { CorDeCanal } from "@/lib/cb-channels/cores";
@@ -658,6 +659,12 @@ export function MessageBubble({
         </span>
       </div>
     );
+  }
+
+  // Ligação de WhatsApp (1044): também faixa, e pelo mesmo motivo — perdida ou
+  // atendida no celular, não é mensagem de ninguém.
+  if (message.content_type === "call") {
+    return <AvisoDeLigacao message={message} />;
   }
 
   const isAgent = message.sender_type === "agent" || message.sender_type === "bot";

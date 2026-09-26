@@ -18,6 +18,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { useTranslations } from 'next-intl';
 import { SettingsPanelHead } from './settings-panel-head';
 import { BrowserNotificationsCard } from './browser-notifications-card';
+import { CelularCard } from './celular-card';
 import { podeVerTela } from '@/lib/perfis/visibilidade';
 
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
@@ -354,6 +355,11 @@ export function ProfileForm() {
           </Button>
         </div>
       </form>
+
+      {/* O celular que a entrada do CRM exige (1046). Cartão próprio, com
+          salvar próprio: grava por outra rota, e não pode sair junto do
+          "Salvar alterações" de nome e foto sem dividir os dois erros. */}
+      <CelularCard className="mt-6" />
 
       {/* Notificações do navegador (#516, Fase 8 do plano do merge do
           upstream): o ouvinte está montado na casca, dentro da

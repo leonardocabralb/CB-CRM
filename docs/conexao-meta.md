@@ -13,20 +13,23 @@ Meta recusa a conexão: o que ele quer dizer e o que fazer.
 
 Ao salvar, o CRM fala com a Meta **antes** de gravar qualquer coisa:
 
-1. **Os ids são só dígitos.** Phone Number ID e WABA ID são números de
-   identificação, não o telefone. Colar `+55 51 99999-9999`, um nome ou uma
-   URL é recusado aqui, sem chamar a Meta.
+1. **Os ids são obrigatórios e só dígitos.** Phone Number ID e WABA ID são
+   números de identificação, não o telefone; os dois ficam em *WhatsApp →
+   API Setup*. Colar `+55 51 99999-9999`, um nome ou uma URL é recusado aqui,
+   sem chamar a Meta. O WABA ID é obrigatório porque é a WABA que se assina
+   no app (passo 5): sem ela, a conexão apareceria conectada e não receberia
+   nenhuma mensagem.
 2. **Lê o número** (`GET /{phone-number-id}`) com o token. É aqui que token
    vencido, token sem permissão e Phone Number ID errado aparecem.
-3. **Confere o par WABA/número.** Com o WABA ID preenchido, o número tem de
-   estar entre os que a Meta lista sob aquela WABA. Uma WABA válida, mas de
+3. **Confere o par WABA/número.** O número tem de estar entre os que a Meta
+   lista sob aquela WABA. Uma WABA válida, mas de
    outro número, era aceita e assinada — e o webhook simplesmente nunca
    chegava, dias depois, sem erro nenhum na tela.
 4. **Registra o número** (só com o PIN). Se o registro falhar, a conexão é
    salva assim mesmo, marcada como desconectada, com o motivo na linha
    "Último erro" do cartão: corrija o PIN e adicione a conexão de novo com os
    mesmos dados — o CRM reconhece o número e atualiza a conexão existente.
-5. **Assina a WABA no app** (só com o WABA ID). Sem essa assinatura a Meta
+5. **Assina a WABA no app.** Sem essa assinatura a Meta
    não entrega nenhuma mensagem; por isso, se ela falhar, **nada é gravado**
    e o diálogo diz por quê.
 
