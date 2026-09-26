@@ -127,6 +127,8 @@ export function criarBanco(tabelas: Record<string, Linha[]> = {}): Banco {
       eq: (c: string, v: unknown) => (filtros.push((l) => ler(l, c) === v), q),
       is: (c: string, v: unknown) => (filtros.push((l) => (ler(l, c) ?? null) === v), q),
       gt: (c: string, v: string) => (filtros.push((l) => String(ler(l, c)) > v), q),
+      gte: (c: string, v: string) => (filtros.push((l) => String(ler(l, c)) >= v), q),
+      neq: (c: string, v: unknown) => (filtros.push((l) => ler(l, c) !== v), q),
       like: (c: string, padrao: string) => {
         const sufixo = padrao.replace(/^%/, '');
         filtros.push((l) => String(ler(l, c) ?? '').endsWith(sufixo));

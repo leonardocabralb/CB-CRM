@@ -34,6 +34,9 @@ obrigações gerais de caminho de entrada estão em `.claude/rules/ingestao.md`.
 - Só o `offer` diz quem ligou: no `accept` o `from`/`chatId` é o aparelho do
   escritório.
 - Chamada de GRUPO é ignorada. Número de Meta Cloud API não tem este aviso.
+- ⚠️⚠️ **A ligação FEITA pelo celular do escritório não gera aviso nenhum**
+  (medido ao vivo em 26/09/2026): o WhatsApp só avisa os aparelhos conectados
+  da chamada RECEBIDA. Não há como marcar a feita a partir do `CALL`.
 
 ## O desfecho
 
@@ -77,23 +80,44 @@ obrigações gerais de caminho de entrada estão em `.claude/rules/ingestao.md`.
   `bump_conversation_on_inbound` e o gatilho da 972 acende "em atraso".
   **Atendida** = `'agent'` + `from_device`: sem não lida, e a 972 apaga o "em
   atraso" (é resposta de gente).
-- ⚠️ **`created_at` é a hora da DECISÃO, não a da ligação**: os gatilhos de
-  `messages` decidem pela ordem de inserção, e uma linha "no passado" inserida
-  depois de uma resposta acenderia "em atraso" sobre cliente respondido (a
-  lição da 1010). A hora em que tocou é `ligacao.inicio`, e é ela que a faixa
-  escreve.
+- ⚠️⚠️ **`created_at` é a hora REAL: o fim (perdida) ou o `accept`
+  (atendida), pelo relógio do WhatsApp — nunca a hora da decisão.** A perdida
+  é decidida só depois da folga (~11 s) e a atendida em ~2 s: com a hora da
+  decisão, no teste real de 26/09/2026 a recusada foi gravada DEPOIS da
+  atendida que veio em seguida — fio na ordem trocada e "em atraso" aceso
+  sobre cliente atendido. Se já há mensagem depois da ligação, a bolha é
+  HISTÓRIA: não reabre, não sobe a conversa, não segue o canal, e chama
+  `cb_assentar_mensagem_historica` (1011), que acerta a espera e a não lida
+  pela hora real — o gatilho da 972 decide pela ORDEM DE INSERÇÃO. A espera de
+  antes e o "há mensagem depois?" são lidos ANTES do insert, e a pergunta se
+  REPETE logo depois da reabertura (colada no insert): uma resposta gravada no
+  meio faria a bolha subir a conversa sobre cliente atendido (Codex, PR #304).
+  Não é atômico: sobra a janela entre a 2ª pergunta e a escrita na conversa
+  (limite aceito, no plano). A faixa escreve `ligacao.inicio`.
+- Com a conversa aberta, a bolha "no passado" é acrescentada no FIM da lista
+  em memória (o tempo real não reordena, de propósito): quem pergunta por
+  ORDEM (`aberturasDeCanal`, `ultimoCanalDoCliente`, o contador "N mensagens
+  não lidas" e a âncora dele) passa por `naOrdemDoFio` (`ordem-do-fio.ts`).
 - A ficha e a conversa nascem por `resolverDestinatario` (dono durável) quando
   o número nunca escreveu (decisão do operador), com o telefone no lugar do
   nome — o aviso não traz o perfil.
 - Depois de gravar, na ordem: reabrir LOGO DEPOIS do insert (`reopen.ts`) →
-  subir a conversa → seguir o canal → cancelar as esperas "parar se o cliente
-  responder" → abrir o card no funil → ligar a bolha à linha.
+  subir a conversa → seguir o canal (os três só quando a ligação é a última;
+  a histórica assenta) → abrir o card no funil → ligar a bolha à linha.
+- ⚠️ "Depois" inclui o MESMO segundo (`gte`, a própria bolha excluída na 2ª
+  conferência): as mensagens da Evolution têm carimbo em segundos.
 
 ## O que NÃO roda — e há pino (`ligacoes.chamadores.test.ts`)
 
 - ⚠️⚠️ Robô, automações, IA, `persistInboundMessage`/`persistDeviceMessage`,
   o núcleo de envio e `registrarEntrega` ficam FORA: a ligação não tem texto a
   responder, e um robô respondendo "não entendi" a uma chamada é o pior caso.
+- ⚠️⚠️ **A ligação NÃO para as sequências "parar se o cliente responder"**
+  (decisão do operador, 26/09/2026: só mensagem escrita é resposta). São DUAS
+  pontas: `cancelarEsperasPorResposta` não é chamada aqui (pino), e
+  `clienteRespondeuDesde` — a segunda linha de defesa, na retomada — filtra
+  `content_type <> 'call'`, senão a perdida (linha do cliente) pararia a
+  sequência quando a espera acordasse.
 - ⚠️ O webhook de saída NÃO emite nada: nem `message.received`, nem
   `conversation.created` (ele quer dizer só "o cliente abriu a conversa
   ESCREVENDO" — contrato publicado).
