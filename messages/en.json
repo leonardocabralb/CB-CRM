@@ -461,6 +461,15 @@
       "imageAlt": "Shared image",
       "motivoDaFalha": "Reason given by Meta: {motivo}"
     },
+    "ligacao": {
+      "vozPerdida": "Missed voice call",
+      "videoPerdida": "Missed video call",
+      "vozAtendida": "Voice call answered on the phone",
+      "videoAtendida": "Video call answered on the phone",
+      "tocou": "rang for {segundos}s",
+      "dicaPerdida": "The customer called on WhatsApp and nobody answered. The CRM does not carry call audio: call back from the phone or reply by message.",
+      "previa": "📞 Call"
+    },
     "audioPlayer": {
       "tocar": "Play audio",
       "pausar": "Pause audio",

@@ -24,6 +24,8 @@ export type Linha = Record<string, unknown>;
 const UNIQUES: Record<string, string[]> = {
   messages: ['conversation_id', 'message_id'],
   cb_mensagens_sem_telefone: ['account_id', 'provider_message_id'],
+  // Ligações (1044): também usado por `ligacoes/registrar.test.ts`.
+  cb_ligacoes: ['account_id', 'call_id'],
 };
 
 export interface Banco {

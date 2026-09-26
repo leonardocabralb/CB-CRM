@@ -454,6 +454,15 @@
       "imageAlt": "Imagem enviada",
       "motivoDaFalha": "Motivo informado pela Meta: {motivo}"
     },
+    "ligacao": {
+      "vozPerdida": "Ligação de voz perdida",
+      "videoPerdida": "Chamada de vídeo perdida",
+      "vozAtendida": "Ligação de voz atendida no celular",
+      "videoAtendida": "Chamada de vídeo atendida no celular",
+      "tocou": "tocou {segundos} s",
+      "dicaPerdida": "O cliente ligou pelo WhatsApp e ninguém atendeu. O CRM não recebe o áudio da ligação: retorne pelo celular ou responda por mensagem.",
+      "previa": "📞 Ligação"
+    },
     "audioPlayer": {
       "tocar": "Reproduzir áudio",
       "pausar": "Pausar áudio",

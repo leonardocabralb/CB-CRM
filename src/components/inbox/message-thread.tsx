@@ -2896,24 +2896,26 @@ export function MessageThread({
                       );
                     }
                     const msg = item.mensagem!;
-                    // Aviso do WhatsApp dentro do grupo ("Fulano entrou").
-                    // Mesmo tratamento do evento de lead logo acima: a bolha
-                    // se desenha sozinha como faixa, e NÃO passa pelo
-                    // MessageActions — responder, reagir ou apagar um aviso
-                    // do sistema não quer dizer nada.
+                    // Aviso do WhatsApp dentro do grupo ("Fulano entrou") e
+                    // ligação (1044). Mesmo tratamento do evento de lead logo
+                    // acima: a bolha se desenha sozinha como faixa, e NÃO
+                    // passa pelo MessageActions — responder, reagir ou apagar
+                    // um aviso do sistema não quer dizer nada, e o "apagar
+                    // para todos" de uma ligação atendida tentaria revogar no
+                    // WhatsApp uma mensagem que não existe.
                     const destacada =
                       msg.id === alvoId ||
                       destaqueDaCitacao?.id === msg.id ||
                       (destaqueDoPainel?.tipo === "mensagem" &&
                         destaqueDoPainel.id === msg.id);
-                    if (msg.content_type === "system") {
+                    if (msg.content_type === "system" || msg.content_type === "call") {
                       return (
                         <LinhaDoFio
                           key={msg.id}
                           id={msg.id}
                           destacada={destacada}
                         >
-                          <MessageBubble message={msg} emGrupo />
+                          <MessageBubble message={msg} emGrupo={msg.content_type === "system"} />
                         </LinhaDoFio>
                       );
                     }

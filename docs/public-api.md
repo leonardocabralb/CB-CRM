@@ -510,6 +510,13 @@ Paginated. Each message includes its `direction` (`inbound` /
 `content_*`. The conversation is verified to belong to your account
 first (`404` otherwise).
 
+**WhatsApp calls** are listed here too (WhatsApp connections by QR code
+only), with `content_type: "call"` and `content_text: null`. A call nobody
+answered is `inbound`; a call answered on one of the office's phones is
+`outbound`. Their `whatsapp_message_id` is `call:<call id>`, not a WhatsApp
+message id — it can't be replied to, reacted to or deleted. The CRM does not
+carry call audio: the row only records that the call happened.
+
 ### `POST /api/v1/broadcasts`
 
 Launch a template broadcast to a list of recipients. Scope:
