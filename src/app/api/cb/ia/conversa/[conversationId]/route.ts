@@ -3,7 +3,12 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/ai/admin-client'
 import { getCurrentAccount, toErrorResponse } from '@/lib/auth/account'
 import { ehInstagram } from '@/lib/cb-channels/transporte'
-import { quemResponde, type AgenteDaEtapa, type CardDoContato } from '@/lib/ia-agentes/quem-responde'
+import {
+  canalDaIaNaConversa,
+  quemResponde,
+  type AgenteDaEtapa,
+  type CardDoContato,
+} from '@/lib/ia-agentes/quem-responde'
 
 type Contexto = { params: Promise<{ conversationId: string }> }
 
@@ -66,19 +71,16 @@ export async function GET(_request: Request, { params }: Contexto) {
     const pausada = conv.ai_autoreply_disabled === true
     const pausadaPor = pausada && typeof conv.ia_pausada_por === 'string' ? conv.ia_pausada_por : null
     const ehGrupo = Boolean(conv.group_id)
-    const { data: ultima, error: erroUltima } = await db
-      .from('messages')
-      .select('channel_id')
-      .eq('conversation_id', conversationId)
-      .eq('sender_type', 'customer')
-      .not('channel_id', 'is', null)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    if (erroUltima) return falhou('última mensagem', erroUltima.message)
-    const canalDaUltima = (ultima as { channel_id?: unknown } | null)?.channel_id
-    const canalId =
-      typeof canalDaUltima === 'string' ? canalDaUltima : typeof conv.channel_id === 'string' ? conv.channel_id : null
+    let canalId: string | null
+    try {
+      canalId = await canalDaIaNaConversa(
+        db,
+        conversationId,
+        typeof conv.channel_id === 'string' ? conv.channel_id : null,
+      )
+    } catch (err) {
+      return falhou('última mensagem', err instanceof Error ? err.message : String(err))
+    }
 
     let instagram = false
     if (canalId) {

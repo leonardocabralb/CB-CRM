@@ -192,6 +192,32 @@ export interface LeituraDaConversa {
 }
 
 /**
+ * A conexão que decide a IA numa conversa, para a TELA: a da ÚLTIMA mensagem
+ * do cliente (é por ela que o agente responde, D4), senão a da conversa.
+ * UMA função para a faixa (`GET /api/cb/ia/conversa/[id]`) e para o
+ * Pausar/Retomar (`POST /api/ai/autoreply/[id]`): com réguas diferentes, a
+ * faixa oferecia o botão e a rota o recusava (Codex, #309). LANÇA em erro.
+ */
+export async function canalDaIaNaConversa(
+  db: SupabaseClient,
+  conversationId: string,
+  canalDaConversa: string | null,
+): Promise<string | null> {
+  const { data, error } = await db
+    .from('messages')
+    .select('channel_id')
+    .eq('conversation_id', conversationId)
+    .eq('sender_type', 'customer')
+    .not('channel_id', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw new Error(`[ia-agentes] leitura da última mensagem do cliente falhou: ${error.message}`)
+  const daUltima = (data as { channel_id?: unknown } | null)?.channel_id
+  return typeof daUltima === 'string' ? daUltima : canalDaConversa
+}
+
+/**
  * Lê a conversa (e a conexão), o card ABERTO mais recente do contato, a
  * linha da etapa dele em `cb_ia_agente_etapas` e o agente. `null` = a
  * conversa não é desta conta. LANÇA em erro de leitura: na entrada vira log

@@ -1719,6 +1719,8 @@ describe('executarTurno — áudio', () => {
     expect(after).toHaveBeenCalledTimes(1)
     expect(generateReply).not.toHaveBeenCalled()
     expect(notas()).toHaveLength(0)
+    // Reagendar a cada 10 s não gasta a cota da conta (Codex, #309).
+    expect(checkRateLimit).not.toHaveBeenCalled()
   })
 
   it('`transcrevendo` reagenda mesmo fora da janela', async () => {

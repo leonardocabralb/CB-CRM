@@ -723,12 +723,6 @@ async function conduzir(
 
   if (!dentroDoHorario(agente.horario, new Date())) return { status: 'fora_do_horario' }
 
-  // Teto por CONTA sobre a chave compartilhada: uma rajada de 200 clientes ao
-  // mesmo tempo não pode estourar o limite do provedor. Passou → sem resposta
-  // (a mensagem fica na caixa para gente; o alerta de atraso segue valendo).
-  const limite = checkRateLimit(`ai-autoreply:${turno.account_id}`, RATE_LIMITS.aiAutoReplyAccount)
-  if (!limite.success) return { status: 'sem_resposta', erro: 'limite de respostas por minuto da conta' }
-
   const audio = await prepararAudios(db, turno, gatilho, andamento)
   if (audio) return audio
 
@@ -758,6 +752,14 @@ async function conduzir(
     if (andamento.transcreveu) return { status: 'reagendar' }
     return { status: 'falhou', erro: 'o prazo do turno acabou antes de gerar' }
   }
+
+  // Teto por CONTA sobre a chave compartilhada: uma rajada de 200 clientes ao
+  // mesmo tempo não pode estourar o limite do provedor. Passou → sem resposta
+  // (a mensagem fica na caixa para gente; o alerta de atraso segue valendo).
+  // ⚠️ Conta só quando VAI gerar: o áudio ainda baixando reagenda a cada 10 s,
+  // e contado antes gastava a cota da conta sem gerar nada (Codex, #309).
+  const limite = checkRateLimit(`ai-autoreply:${turno.account_id}`, RATE_LIMITS.aiAutoReplyAccount)
+  if (!limite.success) return { status: 'sem_resposta', erro: 'limite de respostas por minuto da conta' }
 
   // "Digitando…" só quando vai gerar (só conexão Meta; nunca lança). Corre em
   // paralelo com a geração, mas a resposta o ESPERA antes de sair
