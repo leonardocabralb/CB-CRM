@@ -34,7 +34,9 @@ type LinhaDoAgente = {
  *   - `motivo` — por que `agente` é nulo (o `MotivoDeNinguem` do motor).
  *
  * A regra é a do MOTOR (`quemResponde`), com os fatos da CONVERSA — a
- * conexão dela no lugar da da mensagem, e o que depende da mensagem (robô,
+ * conexão da ÚLTIMA mensagem do cliente (o motor decide pela conexão da
+ * mensagem; a da conversa pode estar FIXADA noutro número — Codex, #309),
+ * senão a da conversa; a situação dela; e o que depende da mensagem (robô,
  * automação, conteúdo) e a pausa neutros: a faixa responde "quem atende
  * aqui", não "quem responderia esta mensagem". Cliente de SERVIÇO com a conta
  * da sessão em toda consulta: o agente só dá SELECT ao administrador, e daqui
@@ -55,7 +57,7 @@ export async function GET(_request: Request, { params }: Contexto) {
 
     const { data: conv, error: erroConv } = await db
       .from('conversations')
-      .select('id, contact_id, group_id, channel_id, ai_autoreply_disabled, ia_pausada_por')
+      .select('id, status, contact_id, group_id, channel_id, ai_autoreply_disabled, ia_pausada_por')
       .eq('id', conversationId)
       .eq('account_id', ctx.accountId)
       .maybeSingle()
@@ -63,8 +65,20 @@ export async function GET(_request: Request, { params }: Contexto) {
     if (!conv) return naoEncontrada()
     const pausada = conv.ai_autoreply_disabled === true
     const pausadaPor = pausada && typeof conv.ia_pausada_por === 'string' ? conv.ia_pausada_por : null
-    const canalId = typeof conv.channel_id === 'string' ? conv.channel_id : null
     const ehGrupo = Boolean(conv.group_id)
+    const { data: ultima, error: erroUltima } = await db
+      .from('messages')
+      .select('channel_id')
+      .eq('conversation_id', conversationId)
+      .eq('sender_type', 'customer')
+      .not('channel_id', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (erroUltima) return falhou('última mensagem', erroUltima.message)
+    const canalDaUltima = (ultima as { channel_id?: unknown } | null)?.channel_id
+    const canalId =
+      typeof canalDaUltima === 'string' ? canalDaUltima : typeof conv.channel_id === 'string' ? conv.channel_id : null
 
     let instagram = false
     if (canalId) {
@@ -137,7 +151,7 @@ export async function GET(_request: Request, { params }: Contexto) {
       ehRespostaDeBotao: false,
       roboConsumiu: false,
       automacaoFalou: false,
-      encerrada: false,
+      encerrada: conv.status === 'closed',
       pausada: false,
       card,
       agente,

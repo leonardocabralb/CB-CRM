@@ -150,11 +150,14 @@ describe('atualizarAgente — etapas (D24)', () => {
     expect(escritas()).toHaveLength(0)
   })
 
-  it('a corrida (outro agente marcou entre a conferência e o INSERT) vira etapa_ocupada', async () => {
+  it('a corrida (outro agente marcou entre a conferência e o INSERT) vira etapa_ocupada — e NADA mudou (Codex, #309)', async () => {
     erroDoInsert = { code: '23505', message: 'duplicate key' }
-    await expect(atualizarAgente(CONTA, 'user-1', AG, { etapas: ['e2'] })).rejects.toMatchObject({
-      codigo: 'etapa_ocupada',
-    })
+    await expect(
+      atualizarAgente(CONTA, 'user-1', AG, { etapas: ['e2'], nome: 'Nome novo' }),
+    ).rejects.toMatchObject({ codigo: 'etapa_ocupada' })
+    // O INSERT vem ANTES de tirar as que saíram e antes de gravar o agente.
+    expect(chamadas.some((c) => c.op === 'delete')).toBe(false)
+    expect(chamadas.some((c) => c.tabela === 'cb_ia_agentes' && c.op === 'update')).toBe(false)
   })
 
   it('sem `etapas` no corpo, a tabela de etapas nem é tocada', async () => {

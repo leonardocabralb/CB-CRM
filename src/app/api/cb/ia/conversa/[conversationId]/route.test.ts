@@ -24,7 +24,7 @@ vi.mock('@/lib/ai/admin-client', () => ({
         const c: Consulta = { tabela, filtros: [] }
         consultas.push(c)
         const q: Record<string, unknown> = {}
-        for (const m of ['eq', 'order', 'limit']) {
+        for (const m of ['eq', 'order', 'limit', 'not']) {
           q[m] = (...a: unknown[]) => {
             c.filtros.push([m, ...a])
             return q
@@ -87,7 +87,10 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
     expect(card.filtros).toContainEqual(['eq', 'contact_id', 'ct-1'])
     expect(card.filtros).toContainEqual(['eq', 'status', 'open'])
     expect(card.filtros).toContainEqual(['order', 'created_at', { ascending: false }])
-    for (const c of consultas) expect(c.filtros).toContainEqual(['eq', 'account_id', 'conta-1'])
+    // `messages` não tem conta: é lida pela conversa, já conferida na conta.
+    for (const c of consultas.filter((x) => x.tabela !== 'messages')) {
+      expect(c.filtros).toContainEqual(['eq', 'account_id', 'conta-1'])
+    }
   })
 
   it('⚠️ D27: card que já estava na etapa antes de ela ser marcada — ninguém', async () => {
@@ -122,6 +125,20 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
   it('⚠️ D27: card que entrou na etapa antes de o agente ser LIGADO — ninguém', async () => {
     banco.cb_ia_agentes = { ...(banco.cb_ia_agentes as object), ativado_em: '2026-09-26T00:00:00Z' }
     expect(await (await chamar()).json()).toMatchObject({ agente: null, motivo: 'card_antigo' })
+  })
+
+  it('encerrada: ninguém atende (a faixa não oferece Pausar) — Codex, #309', async () => {
+    banco.conversations = { ...(banco.conversations as object), status: 'closed' }
+    expect(await (await chamar()).json()).toMatchObject({ agente: null, motivo: 'encerrada' })
+  })
+
+  it('a conexão é a da ÚLTIMA mensagem do cliente, não a fixada na conversa — Codex, #309', async () => {
+    banco.conversations = { ...(banco.conversations as object), channel_id: 'canal-2' }
+    banco.messages = { channel_id: 'canal-1' }
+    expect(await (await chamar()).json()).toMatchObject({ agente: { id: 'ag-1', nome: 'Triagem' } })
+    const ultima = consultas.find((c) => c.tabela === 'messages')!
+    expect(ultima.filtros).toContainEqual(['eq', 'conversation_id', CONV])
+    expect(ultima.filtros).toContainEqual(['eq', 'sender_type', 'customer'])
   })
 
   it('conexão da conversa fora das do agente — ninguém', async () => {

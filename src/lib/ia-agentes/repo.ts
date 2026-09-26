@@ -224,20 +224,26 @@ async function conferirEtapas(accountId: string, agenteId: string | null, etapas
   return plano.inserir
 }
 
-/** Grava as etapas do agente: tira as que saíram, insere as novas (as que ficam mantêm o `desde`). */
+/**
+ * Grava as etapas do agente: insere as novas PRIMEIRO e só depois tira as que
+ * saíram (as que ficam mantêm o `desde`). Nessa ordem, a falha que importa —
+ * outro agente marcou a etapa entre a conferência e aqui (23505) — não mexe em
+ * nada (Codex, #309); quem chama grava as etapas ANTES do resto do agente.
+ */
 async function gravarEtapas(accountId: string, agenteId: string, etapas: string[], inserir: string[]) {
   const db = supabaseAdmin()
+  if (inserir.length > 0) {
+    const { error: erroDoInsert } = await db
+      .from('cb_ia_agente_etapas')
+      .insert(inserir.map((stage_id) => ({ stage_id, account_id: accountId, ia_agente_id: agenteId })))
+    // A etapa é a chave: outro agente a marcou entre a conferência e aqui.
+    if (erroDoInsert?.code === '23505') throw new ErroDoAgente('etapa_ocupada', 'a etapa já tem outro agente')
+    if (erroDoInsert) throw new ErroDoAgente('banco', erroDoInsert.message)
+  }
   let apagar = db.from('cb_ia_agente_etapas').delete().eq('account_id', accountId).eq('ia_agente_id', agenteId)
   if (etapas.length > 0) apagar = apagar.not('stage_id', 'in', `(${etapas.join(',')})`)
   const { error } = await apagar
   if (error) throw new ErroDoAgente('banco', error.message)
-  if (inserir.length === 0) return
-  const { error: erroDoInsert } = await db
-    .from('cb_ia_agente_etapas')
-    .insert(inserir.map((stage_id) => ({ stage_id, account_id: accountId, ia_agente_id: agenteId })))
-  // A etapa é a chave: outro agente a marcou entre a conferência e aqui.
-  if (erroDoInsert?.code === '23505') throw new ErroDoAgente('etapa_ocupada', 'a etapa já tem outro agente')
-  if (erroDoInsert) throw new ErroDoAgente('banco', erroDoInsert.message)
 }
 
 function traduzirErroDeEscrita(error: { code?: string; message: string }): never {
@@ -266,7 +272,16 @@ export async function criarAgente(
   if (error) traduzirErroDeEscrita(error)
   const agente = lerLinhaDoAgente(data as Record<string, unknown>)
   if (!agente) throw new ErroDoAgente('banco', 'linha criada ilegível')
-  if (a.etapas && inserirEtapas) await gravarEtapas(accountId, agente.id, a.etapas, inserirEtapas)
+  if (a.etapas && inserirEtapas) {
+    try {
+      await gravarEtapas(accountId, agente.id, a.etapas, inserirEtapas)
+    } catch (err) {
+      // Sem as etapas, o agente recém-criado não fica para trás (Codex, #309):
+      // ele não tem uso nem é citado por ninguém ainda.
+      await supabaseAdmin().from('cb_ia_agentes').delete().eq('account_id', accountId).eq('id', agente.id)
+      throw err
+    }
+  }
   return agente
 }
 
@@ -289,6 +304,9 @@ export async function atualizarAgente(
   }
   await conferirReferencias(accountId, { ...a, provedor: provedorAConferir }, id)
   const inserirEtapas = a.etapas ? await conferirEtapas(accountId, id, a.etapas) : null
+  // As etapas ANTES do resto: a etapa tomada por outro agente recusa o
+  // salvamento sem ter mudado nada do agente (Codex, #309).
+  if (a.etapas && inserirEtapas) await gravarEtapas(accountId, id, a.etapas, inserirEtapas)
   const { data, error } = await supabaseAdmin()
     .from('cb_ia_agentes')
     .update({
@@ -305,7 +323,6 @@ export async function atualizarAgente(
   if (!data) throw new ErroDoAgente('nao_encontrado', 'agente não encontrado')
   const agente = lerLinhaDoAgente(data as Record<string, unknown>)
   if (!agente) throw new ErroDoAgente('banco', 'linha ilegível')
-  if (a.etapas && inserirEtapas) await gravarEtapas(accountId, id, a.etapas, inserirEtapas)
   return agente
 }
 
