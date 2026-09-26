@@ -44,6 +44,10 @@
 --     campo não fechava nada. Quem não é admin e precisa da configuração (a
 --     faixa de IA da conversa e o rascunho) lê pelo SERVIDOR, com a conta
 --     conferida na sessão.
+--  8. Apaga o gatilho TEMPORÁRIO da 1042 (`cb_ia_chaves_segue_o_legado`): ele
+--     cobria a janela em que o app anterior ainda gravava a chave em
+--     `ai_configs`. Com a F1a no ar (a ORDEM abaixo), a chave só se grava em
+--     `cb_ia_chaves`, e o gatilho só atrapalharia.
 --
 -- ⚠️ ORDEM: aplicar DEPOIS de a F1a estar em produção e ANTES do deploy da
 -- F1b. A regra de leitura só-de-admin do item 7 (Codex, #295) supõe que a faixa
@@ -187,6 +191,10 @@ UPDATE ai_configs
    AND model IS NOT NULL
    AND btrim(model) <> '';
 
+-- 8) A janela da 1042 fechou: o gatilho temporário sai.
+DROP TRIGGER IF EXISTS cb_ia_chaves_segue_o_legado ON ai_configs;
+DROP FUNCTION IF EXISTS public.cb_ia_chaves_segue_o_legado();
+
 -- 7) Só administrador lê a configuração (e o prompt) direto do banco. Na forma
 -- da 1032 (a conta perguntada UMA vez por consulta), com o papel mínimo.
 ALTER POLICY ai_configs_select ON public.ai_configs
@@ -305,6 +313,10 @@ BEGIN
        AND qual LIKE '%cb_contas_do_usuario(''admin''%'
   ) THEN
     RAISE EXCEPTION '1043: ai_configs ainda legível por qualquer membro (o prompt do assistente)';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'cb_ia_chaves_segue_o_legado') THEN
+    RAISE EXCEPTION '1043: o gatilho temporário da 1042 continua de pé';
   END IF;
 
   -- A função de soma é CHAMADA (o corpo só é analisado quando roda): numa
