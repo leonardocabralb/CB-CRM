@@ -34,6 +34,9 @@ describe('reabre: os caminhos de mensagem decididos por gente', () => {
     // (1010): quem encerrou o fez sem vê-la. A histórica comum não reabre —
     // ver `sem-telefone/modo.ts`.
     { arquivo: 'lib/whatsapp/sem-telefone/tardia.ts', quem: 'recuperada tardia, ainda a última (Evolution)' },
+    // A ligação (1044): perdida é o cliente procurando o escritório; atendida
+    // é a equipe falando com ele pelo celular — as duas devolvem a encerrada.
+    { arquivo: 'lib/whatsapp/ligacoes/registrar.ts', quem: 'ligação de WhatsApp (perdida ou atendida)' },
   ]
 
   for (const { arquivo, quem } of DEVEM_REABRIR) {

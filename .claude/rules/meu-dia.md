@@ -18,6 +18,10 @@ paths:
   - "src/hooks/use-browser-notifications*"
   - "src/components/settings/browser-notifications-card.tsx"
   - "src/components/settings/profile-form.tsx"
+  - "src/components/settings/celular-card.tsx"
+  - "src/hooks/use-meu-celular*"
+  - "src/app/api/cb/meu-celular/**"
+  - "src/lib/account/celular*"
 ---
 
 # Meu dia — regras
@@ -94,6 +98,53 @@ em `.claude/rules/auth.md`; o recarregar ao voltar para o app, em
   null): no catálogo, nasceria invisível para todo perfil já gravado. Não vira
   tela de chegada (D15). Está em `protectedPaths` e no `pageTitles`; pino
   `src/components/layout/rotulo-do-menu.test.ts` (chave montada).
+
+### O celular do membro é EXIGIDO ao abrir o CRM (1046)
+
+`cb_celulares_dos_membros` (uma linha por login), a régua pura
+`src/lib/account/celular.ts`, a rota `PUT /api/cb/meu-celular` (a única
+escrita), `use-meu-celular.ts`, o cartão `exigencia-do-celular.tsx` e o
+`CelularCard` de Seu perfil. O número serve para o CRM avisar a pessoa por
+mensagem particular (decisão do operador: pedir ao ABRIR o CRM, não só no
+login).
+
+- ⚠️⚠️ **O cartão fica ANTES da `<PortaDeEntrada>`, no lugar do app inteiro**
+  — a exceção escrita ao "nada fora da porta": ele não é pedaço do app (sem
+  menu, página nem heartbeat), então um deep link `/inbox?c=X` não zera não
+  lidas. A porta só monta depois do celular gravado, e decide nessa hora.
+- ⚠️⚠️ **Só `falta` tranca; `desconhecido` (a leitura FALHOU) deixa passar**:
+  trancar o CRM inteiro por soluço de rede é a forma da issue #471. E só com
+  `accountStatus === 'ready'`: sem conta, a rota recusaria e a pessoa ficaria
+  presa no cartão.
+- ⚠️⚠️ **Decidida UMA vez, na montagem de `<ExigenciaDoCelular key={user.id}>`,
+  e depois só FECHA** (celular gravado): `exigeNaAbertura` é capturado no
+  `useState`, `falta` é o estado ao vivo. Recalculada a cada render, a conta
+  que resolve DEPOIS (o "Tentar de novo" do alerta, a nova leitura do perfil
+  na volta à aba) trocaria o app aberto pelo cartão.
+- ⚠️ **A leitura sai na casca junto com a do perfil** (`useMeuCelular` no topo)
+  e entra no MESMO spinner (`esperandoCelular`), que NÃO olha a conta: lida
+  dentro do cartão, somaria uma espera a toda abertura; condicionada à conta,
+  a conta que resolve depois trocaria o app pelo spinner. A casca nunca chama
+  `recarregar` (voltaria a "carregando").
+- ⚠️ **O `.eq('user_id', …)` da leitura é load-bearing**: o administrador lê
+  também o celular da equipe, e sem o filtro o `maybeSingle()` estouraria —
+  lido como `desconhecido`, o administrador sem celular passaria.
+- ⚠️⚠️ **Tabela própria, nunca coluna em `profiles`**: a `profiles_select`
+  deixa todo membro ler o perfil de todos os colegas (quatro telas leem com
+  `select('*')`), e o número iria ao navegador de cada colega. Na 1046 a pessoa
+  lê o próprio e o administrador da conta DELA lê o da equipe, perguntado pelo
+  `profiles` atual: quem sai da equipe deixa de ser lido sem escrita nenhuma.
+- ⚠️ **Só a rota grava** (`authenticated` só tem SELECT): a régua mora em TS
+  (`celularDigitado` = `telefoneDigitado` + celular brasileiro com o 9), a
+  linha é sempre a do login da sessão, e o CHECK do banco é só o piso de
+  forma. Trocar, sim; apagar, não (sem DELETE para ninguém).
+- ⚠️ **Sem `+` (ou 00) escrito, o número tem de sair brasileiro (55)**:
+  `telefoneDigitado` devolve como veio o número sem `+` de 12 a 15 dígitos, e
+  um dígito a mais num celular daqui passaria como "estrangeiro", furando a
+  exigência do 9.
+- A rota de membros entrega `celular` SÓ a administradores, como o e-mail, com
+  o cliente do CHAMADOR (a RLS é a segunda barreira): AUSENTE = não vê ou a
+  leitura falhou; `null` = ainda não informou.
 
 ### A ABA `/meu-dia` é uma ÁREA DE TRABALHO
 
@@ -235,8 +286,10 @@ na casca e o cartão em *Seu perfil*. Pino estrutural:
   já exibida (`avisadas`); o prazo conta da MENSAGEM. ⚠️ Aceito e escrito, porque hoje nenhuma automação
   atribui conversa (medido em 24/09/2026): em "minhas e sem responsável", a
   conversa lida sem dono avisa na hora mesmo que a automação a entregue a
-  outra pessoa em seguida, e a estacionada com dono de outra pessoa não é
-  solta se a conversa ficar SEM dono (o filtro do realtime não casa NULO).
+  outra pessoa em seguida. A estacionada com dono de outra pessoa é solta
+  também quando a conversa fica SEM dono (2º ouvinte, `assigned_agent_id=is.null`,
+  aceito pelo Realtime do projeto — medido em 25/09/2026), menos quando ela foi
+  ENCERRADA: encerrar também zera o responsável (`trocaDeDonoSolta`).
   E com DUAS abas: a vista numa aba não chega à outra (cada aba tem o seu
   ouvinte desde o original, e aviso com a mesma `tag` se substitui) — no
   máximo um aviso redundante, nunca um perdido.

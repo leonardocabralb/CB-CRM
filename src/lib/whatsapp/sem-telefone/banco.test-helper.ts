@@ -24,6 +24,8 @@ export type Linha = Record<string, unknown>;
 const UNIQUES: Record<string, string[]> = {
   messages: ['conversation_id', 'message_id'],
   cb_mensagens_sem_telefone: ['account_id', 'provider_message_id'],
+  // Ligações (1044): também usado por `ligacoes/registrar.test.ts`.
+  cb_ligacoes: ['account_id', 'call_id'],
 };
 
 export interface Banco {
@@ -125,6 +127,8 @@ export function criarBanco(tabelas: Record<string, Linha[]> = {}): Banco {
       eq: (c: string, v: unknown) => (filtros.push((l) => ler(l, c) === v), q),
       is: (c: string, v: unknown) => (filtros.push((l) => (ler(l, c) ?? null) === v), q),
       gt: (c: string, v: string) => (filtros.push((l) => String(ler(l, c)) > v), q),
+      gte: (c: string, v: string) => (filtros.push((l) => String(ler(l, c)) >= v), q),
+      neq: (c: string, v: unknown) => (filtros.push((l) => ler(l, c) !== v), q),
       like: (c: string, padrao: string) => {
         const sufixo = padrao.replace(/^%/, '');
         filtros.push((l) => String(ler(l, c) ?? '').endsWith(sufixo));

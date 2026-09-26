@@ -29,6 +29,7 @@ import {
   Mail,
   MailX,
   Plus,
+  Smartphone,
   Trash2,
   UsersRound,
 } from 'lucide-react';
@@ -74,6 +75,7 @@ import {
   PresenceDot,
 } from '@/components/presence/presence-dot';
 import { createClient } from '@/lib/supabase/client';
+import { formatarTelefone } from '@/lib/contacts/telefone';
 import { PerfilResumo, type PerfilParaResumo } from './perfil-resumo';
 import { InviteMemberDialog } from './invite-member-dialog';
 import { SettingsPanelHead } from './settings-panel-head';
@@ -86,6 +88,8 @@ interface Member {
   avatar_url: string | null;
   role: AccountRole;
   joined_at: string;
+  /** 1046: ausente = quem olha não vê; `null` = o membro ainda não informou. */
+  celular?: string | null;
 }
 
 interface Invitation {
@@ -451,6 +455,23 @@ export function MembersTab() {
                       {member.email && (
                         <p className="truncate text-xs text-muted-foreground">
                           {member.email}
+                        </p>
+                      )}
+                      {/* O celular (1046): a rota só o manda a administradores.
+                          Ausente = não mostra nada; `null` = ainda não informou
+                          (a entrada do CRM vai pedir na próxima abertura). */}
+                      {member.celular !== undefined && (
+                        <p
+                          className={
+                            member.celular
+                              ? 'flex items-center gap-1 truncate text-xs text-muted-foreground'
+                              : 'flex items-center gap-1 truncate text-xs text-amber-700 dark:text-amber-300'
+                          }
+                        >
+                          <Smartphone className="size-3 shrink-0" aria-hidden />
+                          {member.celular
+                            ? formatarTelefone(member.celular)
+                            : t('celularNaoInformado')}
                         </p>
                       )}
                       {(() => {

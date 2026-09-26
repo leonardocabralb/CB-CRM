@@ -121,19 +121,16 @@ describe('POST /api/cb/channels — conexão Meta', () => {
     expect(estado.inserts).toEqual([]);
   });
 
-  it('WABA em branco continua opcional (não é "não numérica")', async () => {
-    provisionar.mockResolvedValue({
-      phoneInfo: { display_phone_number: '+55 51 9999-8229' },
-      registeredAt: null,
-      registrationError: null,
-      registrationFalha: null,
-      registrationSkipped: true,
-      subscribedAppsAt: null,
-    });
-    const res = await POST(pedido({ waba_id: '' }));
-    expect(res.status).toBe(201);
-    expect(provisionar).toHaveBeenCalledWith(expect.objectContaining({ wabaId: null }));
-  });
+  it.each([['em branco', ''], ['ausente', null]])(
+    'WABA %s → 400, sem chamar a Meta nem gravar: sem ela não há assinatura, e a conexão "conectada" não receberia nada (revisão do PR #285)',
+    async (_caso, waba) => {
+      const res = await POST(pedido({ waba_id: waba }));
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toMatch(/WABA ID/);
+      expect(provisionar).not.toHaveBeenCalled();
+      expect(estado.inserts).toEqual([]);
+    },
+  );
 
   it.each([
     ['a Meta tem de mudar algo', 'meta', 502],

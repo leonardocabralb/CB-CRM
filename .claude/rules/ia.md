@@ -16,6 +16,10 @@ paths:
   - "src/components/settings/ai-knowledge.tsx"
   - "src/components/agents/**"
   - "src/app/*/agents/**"
+  - "src/lib/ia-chaves/**"
+  - "src/lib/ia-agentes/**"
+  - "src/components/agentes-de-ia/**"
+  - "src/app/api/cb/ia/**"
 ---
 
 # IA (Radar, transcrição, Integrações, assistente) — regras
@@ -156,7 +160,11 @@ testado) e `worker.ts`, no servidor.
   (client-safe). Número digitado no dicionário mente na primeira mudança.
 - **`loadAiConfig` do Radar usa `requireActive: false`**: o Radar precisa da
   CREDENCIAL; `is_active` é o interruptor do assistente de conversa, e
-  amarrar os dois calava a análise quando o auto-reply era desligado.
+  amarrar os dois calava a análise quando o auto-reply era desligado. ⚠️ E
+  SEM `channelId` (1047): a configuração do Radar é do módulo, da conta
+  inteira — pelo canal, um agente criado para uma conexão trocaria em
+  silêncio a chave e o modelo do Radar ali (pino
+  `src/lib/ia-chaves/chaves.chamadores.test.ts`).
 - **O upsert em `cb_conversation_insights` funciona** porque o UNIQUE de
   `conversation_id` é TOTAL.
 
@@ -175,12 +183,14 @@ bolha e ao worker do Radar.
   10 min recolhida pelo próprio cadeado; escrita final e falha com cerca
   (`transcricao_desde`).
 - ⚠️ **Problema de CONFIGURAÇÃO devolve `recusada` SEM GRAVAR** (sem chave
-  Gemini, provedor ≠ gemini, mensagem apagada, não-áudio, conta errada, áudio
+  Gemini, chave ilegível, mensagem apagada, não-áudio, conta errada, áudio
   recém-chegado ainda sem `media_url` — janela de 2 min): gravar o estado
   terminal mataria o botão para sempre por um problema passageiro. `recusada`
   GRAVADA é só para o irreversível da própria mensagem (URL relativa antiga,
-  áudio grande demais, `MAX_TOKENS`, tentativas esgotadas). A chave é resolvida
-  PELO CANAL da conversa.
+  áudio grande demais, `MAX_TOKENS`, tentativas esgotadas). ⚠️ A chave é a do
+  GEMINI da conta (`lerChave(conta, 'gemini')`, 1047), direto — não depende de
+  agente nem do canal (um agente de outro provedor na conexão fazia recusar
+  tudo). Erro de LEITURA da chave é `falhou` sem gravar, nunca "sem chave".
 - ⚠️ **O modelo é FIXADO em `MODELO_TRANSCRICAO`**, separado do modelo de chat
   e de análise, e é UM para os dois chamadores, de propósito: não existe
   "transcrever de novo", quem chega primeiro fixa o modelo daquele áudio,
@@ -212,12 +222,31 @@ bolha e ao worker do Radar.
 conversa. Nasceu de um engano real: um único campo "Modelo" servia ao chat e ao
 Radar.
 
-- ⚠️ **Configuração POR MÓDULO, uma para a conta inteira** (decisão do
-  operador, 28/08/2026) — nunca chave por conexão. `montar.ts` lê só o agente
-  PADRÃO, e a lista de canais aparece SÓ no Radar (onde é o `radar_enabled`, de
-  privacidade). ⚠️ O backend (`loadAiConfig`) ainda resolve canal → padrão e o
-  schema permite linha por canal, mas não existe escritor de agente por canal:
-  se nascer, `montar.ts` volta a espelhar o backend, senão a tela mente.
+- ⚠️⚠️ **A CHAVE é do PROVEDOR, uma por conta, em `cb_ia_chaves` (1047)** —
+  nunca por conexão (decisão do operador, 28/08/2026, mantida na D1 do
+  `docs/PLANO-agentes-de-ia.md`). A tabela é FECHADA ao navegador (RLS sem
+  policy): só `src/lib/ia-chaves/repo.ts` a toca, com o cliente de SERVIÇO (a
+  sessão do usuário leria zero linhas sem erro — "sem chave" com cara de
+  certo); pino `chaves.chamadores.test.ts`. A de embeddings é a chave da
+  OpenAI da conta, MENOS a que a OpenAI recusou para embeddings ao ser
+  gravada (`serve_embeddings = false`: chave de projeto restrita), e a chave
+  DEDICADA herdada da 1047 (`cb_ia_chaves.embeddings_api_key`) vence —
+  `lerChaveDeEmbeddings`. `ai_configs.api_key`/`embeddings_api_key` ficaram só
+  para o app anterior poder voltar atrás: nada as LÊ, e `gravarChave` as
+  ESPELHA (sem isso a volta atrás traria a chave velha, quase sempre revogada
+  na troca). A chave nova é conferida em CADA modelo em uso (assistente e
+  Radar); recusada num que a atual alcança, nada é trocado
+  (`modelo_em_uso_recusado`). A da OpenAI que nenhum chat usa e que gera
+  embedding mas não texto grava a MARCA "só da base" (o MESMO texto cifrado
+  em `api_key` e `embeddings_api_key`, `soDaBase`): nenhuma tela a oferece ao
+  chat, onde toda geração falharia.
+- ⚠️ **A linha PADRÃO de `ai_configs` é a configuração dos MÓDULOS** (provedor
+  e modelo do Radar) e do assistente legado, para a conta inteira. `montar.ts`
+  monta um cartão por provedor a partir da CHAVE (não de um agente) e lê só a
+  linha padrão; a lista de canais aparece SÓ no Radar (o `radar_enabled`, de
+  privacidade). O `PUT /api/cb/ia/chaves` cria a linha padrão (assistente
+  DESLIGADO) quando a conta ainda não tem: sem ela o Radar ficaria em `sem_ia`
+  com a chave cadastrada.
 - ⚠️ **Só o Radar tem coluna própria (`ai_configs.radar_model`; NULL = herda
   `model`).** Transcrição e RAG têm constante no código (`MODELO_TRANSCRICAO`,
   `EMBEDDING_MODEL`), que entra em `montarCartoes` por PARÂMETRO, importada na
@@ -230,21 +259,27 @@ Radar.
   por `{...config, model}`: o spread não deixa rastro no tipo, e um merge que
   reescreva `structured.ts` devolveria o Radar ao modelo do chat sem quebrar o
   typecheck.
-- ⚠️ **O formulário de Integrações ECOA os campos que não edita**:
-  `POST /api/ai/config` reescreve a linha (`system_prompt` ausente vira NULL,
-  `is_active` ausente vira false) — salvar a chave dali apagaria as instruções
-  da empresa e desligaria o assistente.
+- ⚠️ **`POST /api/ai/config` reescreve a linha** (`system_prompt` ausente vira
+  NULL, `is_active` ausente vira false): por isso Integrações NÃO passa mais
+  por ele — a chave vai por `/api/cb/ia/chaves` e o modelo do Radar por
+  `PATCH /api/cb/ia/radar`, que grava SÓ `radar_model`. Quem voltar a usar o
+  POST de outra tela ecoa os campos que não edita. O POST ignora `api_key` no
+  corpo e recusa com `sem_chave` quando o provedor não tem chave; o `DELETE`
+  dele foi REMOVIDO (apagava, sem aviso, a chave do Radar e da transcrição).
+  Apagar chave é em Integrações, com confirmação que diz o que para.
 - ⚠️ **`radar_model` ausente do corpo = "não mexe"** (a convenção de
   `handoff_agent_id`): senão um save vindo de Agentes zeraria o modelo do Radar.
 - ⚠️ **O modelo do Radar é validado no SAVE, contra o provedor** — inclusive
   quando só o PROVEDOR muda (senão o Radar falha de madrugada). O ping da aba
-  testa só o modelo do CHAT: pingar o do Radar seria outra chamada paga a cada
-  carga.
+  testa o do CHAT e, com o Radar ligado em alguma conexão, o PRÓPRIO do Radar
+  quando difere (pode sair do ar depois do save; Codex, #295), e na chave do
+  Gemini o `MODELO_TRANSCRICAO` fixo (a transcrição usa essa chave qualquer que
+  seja o chat).
 - ⚠️ **`?ping=0` existe porque cada ping é uma geração PAGA**: a tela carrega
   em dois tempos (config na hora, pings depois), o botão repete só os pings, e
   o `useEffect` tem guarda própria (`disparouRef`) contra o StrictMode dobrar
   as chamadas.
-- **Nenhuma chave sai da rota de STATUS, nem mascarada**: a falha volta como
+- **Nenhuma chave sai da rota de STATUS nem da de chaves, nem mascarada**: a falha volta como
   CÓDIGO, nunca como `AiError.message` (a OpenAI ecoa a chave). ⚠️ O SAVE do
   modelo do Radar devolve a mensagem do provedor (é ela que diz "modelo não
   encontrado") — EXCETO com `code === 'invalid_key'`, que vira texto genérico.
@@ -262,16 +297,52 @@ Radar.
   existe (as colunas `google_*` da 945 nascem nulas); quando existir, é este
   cartão que vira o ponto de conexão.
 
+### Agentes de IA (1048, `src/lib/ia-agentes/`, `/agents`)
+
+O plano vivo é `docs/PLANO-agentes-de-ia.md` (decisões D1–D23). Na F1b os
+agentes são criados, testados no Playground e medidos; NENHUM responde
+cliente — quem responde ainda é o assistente anterior (`ai_configs`, tela em
+`/agents/legado`), até a F2.
+
+- ⚠️⚠️ **"Agente" no código é PESSOA** (`assigned_agent_id`, o papel `agent`).
+  Agente de IA leva `ia_agente` no nome (`cb_ia_agentes`, `ia_agente_id`).
+- ⚠️ **`cb_ia_agentes` só dá SELECT ao ADMINISTRADOR** (D14, forma da 1032) e
+  nenhuma escrita ao navegador: `src/lib/ia-agentes/repo.ts` escreve com o
+  cliente de serviço, com a conta em toda consulta e os ids das listas
+  conferidos contra a conta (arrays sem FK). Nome e id para quem não é admin
+  (bolha, faixa, `descreverPasso`) saem por rota, nunca pela tabela.
+- ⚠️ **`conexoes` vazio = NENHUMA conexão**, nunca "todas" (a exceção do
+  `radar_enabled`: dado de cliente indo a provedor externo). Apagar conexão a
+  tira dos agentes por gatilho.
+- **Apagar é ARQUIVAR**: o uso antigo guarda o nome CONGELADO
+  (`ai_usage_log.ia_agente_nome`); o nome é único só entre os não arquivados.
+- **Instruções e regras (D23) em campos separados**; o pedido ao modelo sai
+  de UMA função pura (`montarPedidoDoAgente`): texto-base em inglês (é para o
+  modelo; ele responde no idioma do cliente), data e hora no fuso do
+  escritório, instruções, regras numeradas, base de conhecimento. O
+  Playground usa a mesma montagem — ele testa o que a produção vai mandar.
+- **O gasto do Playground é `agente_teste`** (D13), separado de `agente`. A
+  soma do uso é no BANCO (`cb_ia_uso`): a rota antiga lia linha a linha e o
+  PostgREST cortava em 1000.
+- ⚠️ **Custo em R$ (D21) é ESTIMATIVA**: preço de lista em US$ com VIGÊNCIA
+  por linha (`precos.ts` — mudança de preço entra como linha nova, senão o
+  histórico é recalculado) × a cotação de hoje (`ai_configs.cotacao_dolar`,
+  rota própria). Modelo fora da tabela é "sem preço", NUNCA zero; a saída
+  cobrada do Gemini é `max(saída, total − entrada)` (os pensamentos).
+
 ### Assistente e provedores (`src/lib/ai/`)
 
 - ⚠️ **O "digitando…" (#527) sai pelo MESMO canal da resposta**
   (`mostrarDigitando`, `src/lib/ai/digitando.ts`): a resolução de
   `engineSendText` com o canal da entrada, só em canal Meta e só com id
   `wamid.` (o webhook da Meta o passa; a Evolution não tem o recurso). Nunca as
-  credenciais da CONTA, como no original. Melhor esforço, sem `await`: nunca
-  lança nem segura a resposta, e o log passa por `semTokenDaMeta`. ⚠️ A Meta
-  marca a mensagem do cliente como LIDA junto (decisão do operador, P6).
-  Chamado depois de TODOS os portões, antes de gerar a resposta.
+  credenciais da CONTA, como no original. Melhor esforço: nunca lança, e o log
+  passa por `semTokenDaMeta`. ⚠️ A Meta marca a mensagem do cliente como LIDA
+  junto (decisão do operador, P6). Chamado depois de TODOS os portões, antes
+  de gerar a resposta, e corre em paralelo com a geração — mas a resposta o
+  ESPERA (`concluirDigitando`, no máximo `PRAZO_DO_DIGITANDO_MS` = 2 s) e o
+  cancela logo antes de sair (revisão do PR #288): solto (`void`), o pedido
+  podia chegar à Meta DEPOIS da resposta. Pino `digitando.chamadores.test.ts`.
 - **`generateStructured` (`structured.ts`) é separado de `generateReply` DE
   PROPÓSITO**: o auto-reply e o rascunho não podem herdar regressão do caminho
   de análise. Não fundir.

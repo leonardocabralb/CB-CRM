@@ -30,6 +30,7 @@
 // ============================================================
 
 import type { Conversation, Message } from "@/types";
+import { PREVIA_DA_LIGACAO } from "@/lib/whatsapp/ligacoes/previa";
 
 type Ordenavel = Pick<Conversation, "id" | "last_message_at">;
 
@@ -92,7 +93,11 @@ export function comMensagemNova<C extends Conversation>(
     ...conversa,
     ...(avanca
       ? {
-          last_message_text: mensagem.content_text ?? "",
+          // A ligação (1044) não tem texto: o marcador é o que o banco grava
+          // na prévia, e a lista o troca pela frase.
+          last_message_text:
+            mensagem.content_text ??
+            (mensagem.content_type === "call" ? PREVIA_DA_LIGACAO : ""),
           last_message_at: mensagem.created_at,
         }
       : {}),

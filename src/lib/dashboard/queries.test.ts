@@ -66,6 +66,10 @@ function dubleDeBanco(responder: (c: Consulta) => RespostaCrua) {
           c.filtros[`lt:${coluna}`] = valor;
           return b;
         },
+        neq(coluna: string, valor: unknown) {
+          c.filtros[`neq:${coluna}`] = valor;
+          return b;
+        },
         order(coluna: string) {
           c.ordens.push(coluna);
           return b;

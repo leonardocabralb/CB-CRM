@@ -4,7 +4,8 @@
 // GET   (scope: custom_fields:read)  — catálogo da conta com os valores
 //         deste contato, endereçados por `field_key` (948).
 // PATCH (scope: custom_fields:write) — grava valores por chave.
-//         `""`/null limpam; chave desconhecida é 400 com a lista.
+//         `""`/null NÃO mexem (26/09/2026); apagar é a lista `clear`;
+//         chave desconhecida é 400 com a lista.
 //
 // É a porta que o n8n do gestor usa para preencher o traqueamento
 // (utm_*, fbclid, ctwa_clid…) na entrada do lead e ler tudo de volta na
@@ -129,16 +130,23 @@ export async function PATCH(
 
     const body = (await request.json().catch(() => null)) as {
       values?: unknown;
+      clear?: unknown;
     } | null;
-    if (
-      !body ||
-      typeof body.values !== 'object' ||
-      body.values === null ||
-      Array.isArray(body.values)
-    ) {
+    if (!body || typeof body !== 'object') {
       throw badRequest("'values' must be an object of { field_key: value }");
     }
-    if (Object.keys(body.values).length === 0) {
+    // `values` pode faltar quando a chamada só APAGA (`clear`).
+    const values = body.values ?? (body.clear !== undefined ? {} : undefined);
+    if (typeof values !== 'object' || values === null || Array.isArray(values)) {
+      throw badRequest("'values' must be an object of { field_key: value }");
+    }
+    // ⚠️ `clear` é a ÚNICA forma de apagar valor pela API (26/09/2026):
+    // `""` e `null` em `values` não mexem mais no campo.
+    const clear = body.clear ?? [];
+    if (!Array.isArray(clear) || clear.some((c) => typeof c !== 'string' || c.trim() === '')) {
+      throw badRequest("'clear' must be an array of field keys");
+    }
+    if (Object.keys(values).length === 0 && clear.length === 0) {
       throw badRequest("'values' is empty — nothing to write");
     }
 
@@ -147,7 +155,8 @@ export async function PATCH(
 
     const escrita = prepararEscritaPorChave(
       dados.fields,
-      body.values as Record<string, unknown>
+      values as Record<string, unknown>,
+      (clear as string[]).map((c) => c.trim())
     );
     if (!escrita.ok) {
       // Um corpo com 10k chaves erradas não pode ecoar as 10k na mensagem —
@@ -174,7 +183,22 @@ export async function PATCH(
           `values longer than ${MAX_VALOR} characters: ${resumo(escrita.longas)}`
         );
       }
+      if (escrita.conflitantes.length > 0) {
+        partes.push(
+          `keys both written in 'values' and listed in 'clear': ${resumo(escrita.conflitantes)}`
+        );
+      }
       throw badRequest(partes.join('; '));
+    }
+
+    // Tudo o que veio era vazio: nada a escrever, e isso NÃO é erro — o
+    // cenário do integrador manda o passo sem resposta nova e seguiria
+    // falhando por nada. Responde o estado atual.
+    if (Object.keys(escrita.porId).length === 0) {
+      return ok({
+        contact_id: id,
+        ...serializeCustomFields(dados.fields, dados.values),
+      });
     }
 
     const erro = await salvarValoresDoContato(ctx.supabase, id, escrita.porId);

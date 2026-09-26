@@ -87,23 +87,34 @@ const COM_OFFSET = /(?:Z|[+-]\d{2}:?\d{2})$/i;
  * Regras do contrato:
  * - valor `string` grava (aparado); `number`/`boolean` viram string —
  *   integrador manda `55` ou `true` sem cerimônia, o banco é TEXT mesmo;
- * - `""` e `null` LIMPAM o valor (viram `''`, que o
- *   `salvarValoresDoContato` traduz em DELETE da linha);
+ * - ⚠️⚠️ `""`, texto só de espaços e `null` NÃO MEXEM no campo (decisão do
+ *   operador, 26/09/2026). Até aqui eles LIMPAVAM, e o Typebot da iMotion
+ *   manda TODAS as variáveis a cada passo — o "Create JSON" do Make troca a
+ *   resposta ainda não dada por `null` —, então o lead que recomeçava o
+ *   formulário perdia as respostas que já tinha dado (35 DELETEs num dia,
+ *   medido). Apagar de propósito é a lista `clear`, e só ela;
+ * - `clear` (lista de chaves) APAGA o valor daquelas chaves. A mesma chave
+ *   com valor em `values` E em `clear` é contradição: 400, nada gravado;
  * - campo `datetime` só aceita instante ISO-8601 COM offset, e grava
  *   NORMALIZADO em UTC (a forma que a tela grava e que `cb_para_timestamp`
  *   lê). Sem isso, um `"31/12/2026"` do n8n respondia 200, o input da
  *   ficha nascia vazio e o lembrete da 935 nunca disparava — dado morto
  *   sem erro em lugar nenhum. `select`/`number` continuam texto livre,
  *   como a UI (tolerância documentada);
- * - chave desconhecida é ERRO (400 com a lista), nunca ignorada em
- *   silêncio — um typo de `utm_sorce` no n8n tem de aparecer na primeira
- *   chamada, não meses depois na auditoria;
+ * - chave desconhecida — em `values` ou em `clear` — é ERRO (400 com a
+ *   lista), nunca ignorada em silêncio: um typo de `utm_sorce` no n8n tem
+ *   de aparecer na primeira chamada, não meses depois na auditoria;
  * - objeto/array como valor é erro de tipo; valor acima de `MAX_VALOR` é
  *   erro de tamanho.
+ *
+ * `porId` pode sair VAZIO (tudo que veio era vazio): a rota responde 200
+ * sem escrever — recusar faria o cenário do integrador falhar por mandar
+ * um passo sem resposta nova.
  */
 export function prepararEscritaPorChave(
   fields: Pick<CustomField, 'id' | 'field_key' | 'field_type'>[],
-  values: Record<string, unknown>
+  values: Record<string, unknown>,
+  clear: string[] = []
 ):
   | { ok: true; porId: Record<string, string> }
   | {
@@ -112,6 +123,7 @@ export function prepararEscritaPorChave(
       invalidas: string[];
       datasInvalidas: string[];
       longas: string[];
+      conflitantes: string[];
     } {
   const porChave = new Map(fields.map((f) => [f.field_key, f]));
   const porId: Record<string, string> = {};
@@ -119,6 +131,7 @@ export function prepararEscritaPorChave(
   const invalidas: string[] = [];
   const datasInvalidas: string[] = [];
   const longas: string[] = [];
+  const conflitantes: string[] = [];
 
   for (const [chave, bruto] of Object.entries(values)) {
     const field = porChave.get(chave);
@@ -128,8 +141,7 @@ export function prepararEscritaPorChave(
     }
 
     let texto: string;
-    if (bruto === null || bruto === '') {
-      porId[field.id] = '';
+    if (bruto === null) {
       continue;
     } else if (typeof bruto === 'string') {
       texto = bruto.trim();
@@ -140,11 +152,8 @@ export function prepararEscritaPorChave(
       continue;
     }
 
-    // `"   "` também limpa (o trim acima já a esvaziou) — documentado.
-    if (texto === '') {
-      porId[field.id] = '';
-      continue;
-    }
+    // `""` e `"   "` (o trim acima já a esvaziou) não mexem — documentado.
+    if (texto === '') continue;
     if (texto.length > MAX_VALOR) {
       longas.push(chave);
       continue;
@@ -160,13 +169,28 @@ export function prepararEscritaPorChave(
     porId[field.id] = texto;
   }
 
+  for (const chave of new Set(clear)) {
+    const field = porChave.get(chave);
+    if (!field) {
+      desconhecidas.push(chave);
+      continue;
+    }
+    if (porId[field.id] !== undefined) {
+      conflitantes.push(chave);
+      continue;
+    }
+    // `''` é o que `salvarValoresDoContato` traduz em DELETE da linha.
+    porId[field.id] = '';
+  }
+
   if (
     desconhecidas.length > 0 ||
     invalidas.length > 0 ||
     datasInvalidas.length > 0 ||
-    longas.length > 0
+    longas.length > 0 ||
+    conflitantes.length > 0
   ) {
-    return { ok: false, desconhecidas, invalidas, datasInvalidas, longas };
+    return { ok: false, desconhecidas, invalidas, datasInvalidas, longas, conflitantes };
   }
   return { ok: true, porId };
 }

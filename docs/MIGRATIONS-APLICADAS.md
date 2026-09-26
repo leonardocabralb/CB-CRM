@@ -753,6 +753,62 @@ nome da época em que foram aplicadas.
   merge do PR #291; conferida no catálogo (UM CHECK, as três pernas,
   validado), sem sobra da conferência e com 0 fichas sem telefone. Ensaiada
   antes contra a produção numa transação desfeita (1× e reaplicada).
+- **1044_cb_ligacoes** — `cb_ligacoes` (uma linha por ligação de WhatsApp,
+  conta + `call_id`; FECHADA ao navegador), `'call'` no CHECK de
+  `messages.content_type` e `messages.ligacao jsonb`: a ligação vira faixa no
+  fio (`docs/PLANO-ligacoes-do-whatsapp.md`). ADITIVA — sem ela o INSERT da
+  bolha leva 23514/42703 e a ligação some. 1044, e não 1042: a 1042 e a 1043
+  estavam reservadas pelos PRs #294/#295, abertos e não aplicados. Conferência
+  só de catálogo (exige UM CHECK sobre `content_type`). Testada num Postgres 16
+  descartável (aplica duas vezes; com um segundo CHECK, reprova). Aplicada em
+  26/09/2026 pela Management API (histórico `20260926112303`), depois do
+  replay verde do CI e antes do merge do PR #300; conferida no catálogo (RLS
+  sem policy, `anon`/`authenticated` sem SELECT, UM CHECK com `'call'`, a
+  coluna jsonb, a FK composta com `SET NULL (channel_id)`).
+- **1046_cb_celular_dos_membros** — `cb_celulares_dos_membros` (uma linha por
+  login, CASCADE em `auth.users`): a pessoa lê o próprio celular e os
+  administradores da conta dela leem o da equipe (policy na forma da 1032);
+  `authenticated` só tem SELECT, e quem grava é a rota
+  `PUT /api/cb/meu-celular`. A exigência do celular ao abrir o CRM
+  (`.claude/rules/meu-dia.md`). ADITIVA — sem ela a leitura falha e o cartão
+  não aparece (ninguém é trancado, nada é pedido). 1046, e não 1045: a 1042 e
+  a 1043 estavam nos PRs #294/#295 e havia um `1044_cb_ia_quem_responde` em
+  outra worktree, que vai precisar de número novo. A conferência troca de
+  papel (membro comum lê só o próprio, administrador lê a equipe, outra conta
+  não lê, o navegador não grava) num subbloco desfeito por `P1046`. Testada
+  num Postgres 16 descartável (banco vazio, reaplicação, os cenários de
+  leitura, CHECK, saída da equipe e login apagado; mutação: sem o
+  `GRANT SELECT` em `profiles`, reprova num banco novo). Aplicada em
+  26/09/2026 pela Management API (histórico `20260926125842`), depois do
+  replay verde do CI no commit exato e antes do merge do PR #302, com
+  autorização do operador; conferida no catálogo (RLS, UMA policy com o
+  predicado, `anon` sem SELECT, `authenticated` só SELECT, `service_role`
+  grava, 0 linhas). O teste de ponta a ponta gravou um número de teste no
+  usuário do operador e o apagou em seguida (tabela de volta a 0 linhas).
+- **1047_cb_ia_chaves_por_provedor** — `cb_ia_chaves` (a chave de IA POR
+  PROVEDOR, uma por conta, FECHADA ao navegador), com a cópia das chaves de
+  `ai_configs` (a linha padrão vence; entre conexões, a que responde) e a de
+  embeddings como chave própria da base; `ai_configs.api_key` sem NOT NULL; e
+  o gatilho TEMPORÁRIO `cb_ia_chaves_segue_o_legado` para a janela em que o
+  app anterior ainda gravava a chave em `ai_configs` (a 1048 o apaga).
+  ADITIVA. Era 1042; virou 1047 porque a 1044 e a 1046 entraram antes. Aplicada
+  em 26/09/2026 pela Management API (histórico `20260926130822`), depois do
+  replay verde do CI e antes do merge do PR #294, com autorização do operador;
+  conferida no catálogo (a tabela, RLS sem policy, `anon` e `authenticated`
+  sem nada) e por teste no preview. ⚠️ O ARQUIVO mudou depois de aplicado, só
+  no que depende de linha de CONEXÃO em `ai_configs` (o aviso de chave
+  repetida, a preferência pela conexão que responde, a troca de provedor pelo
+  app anterior): sem efeito na produção, que só tem a linha padrão.
+- **1048_cb_ia_agentes** — `cb_ia_agentes` (leitura só de administrador, na
+  forma da 1032; escrita só pela rota), os gatilhos que tiram a conexão
+  apagada e o agente arquivado das listas, `ai_usage_log.ia_agente_id`/`_nome`
+  e os modos `agente`/`agente_teste`, `ai_configs.cotacao_dolar`, o
+  `radar_model` materializado, `cb_ia_uso` (a soma do uso no banco), a leitura
+  de `ai_configs` só para administrador e o fim do gatilho temporário da 1047.
+  ⚠️ ORDEM: depois da F1a em produção e antes do deploy da F1b (a leitura
+  só-de-admin supõe a faixa de IA e o rascunho lendo pelo serviço). Era 1043.
+  Aplicada em 26/09/2026 pela Management API, depois do deploy do PR #294 e do
+  replay verde do CI, antes do merge do PR #295, com autorização do operador.
 
 ## Notas do histórico
 

@@ -68,12 +68,16 @@ export async function POST(request: Request) {
       )
     }
 
-    const config = await loadAiConfig(supabase, accountId).catch((err) => {
-      // Decrypt failure — surface distinctly from "not configured".
+    // Pelo SERVIÇO (a conta vem da sessão): desde a 1048 só administrador lê
+    // `ai_configs` direto, e o rascunho é de qualquer atendente.
+    const config = await loadAiConfig(supabaseAdmin(), accountId).catch((err) => {
+      // Chave que não decifra sai com o próprio código; falha de LEITURA do
+      // banco é outra coisa, e não pode aparecer como "chave ilegível" (1047).
+      if (err instanceof AiError && err.code === 'key_decrypt_failed') throw err
       console.error('[ai/draft] loadAiConfig error:', err)
-      throw new AiError('Stored API key could not be decrypted.', {
-        code: 'key_decrypt_failed',
-        status: 400,
+      throw new AiError('Could not load the AI configuration.', {
+        code: 'config_read_failed',
+        status: 500,
       })
     })
     if (!config) {

@@ -22,6 +22,13 @@ interface BroadcastResult {
   status: 'sent' | 'failed'
   whatsapp_message_id?: string
   error?: string
+  /** O `recipient_id` que veio no pedido, devolvido para o navegador casar. */
+  recipient_id?: string
+  /**
+   * `true` quando ESTA rota já gravou o envio na linha de
+   * `broadcast_recipients` (ver `anotarEnvio`); o navegador não regrava.
+   */
+  anotado?: boolean
 }
 
 /**
@@ -48,6 +55,11 @@ interface BroadcastResult {
  */
 interface NewRecipient {
   phone: string
+  /**
+   * A linha de `broadcast_recipients` deste envio. Com ela a rota anota o
+   * wamid NA HORA em que a Meta aceita (`anotarEnvio`).
+   */
+  recipient_id?: string
   /** Body variable values, one per {{N}}. Legacy field. */
   params?: string[]
   /**
@@ -59,15 +71,58 @@ interface NewRecipient {
   messageParams?: SendTimeParams
 }
 
+/**
+ * Grava o envio na linha do destinatário logo que a Meta o aceita: `sent`,
+ * a hora e o wamid.
+ *
+ * ⚠️⚠️ Sem isto o wamid só chegava a `broadcast_recipients` quando o lote de
+ * 10 voltava ao navegador (segundos depois do primeiro envio), e o recibo da
+ * Meta que chegasse antes não achava o destinatário: esperava os 7 s da rota
+ * do webhook reconferindo e, passado isso, se perdia — a campanha ficava sem
+ * "entregue"/"lida" para aquele cliente (revisão do PR #277).
+ *
+ * ⚠️ Só sai de `pending`: a linha que já andou (outro passe de envio, o
+ * recibo) não volta a `sent`. `false` (erro, RLS ou 0 linhas) deixa a
+ * gravação para o navegador, como era antes. Nunca lança: a mensagem já
+ * saiu, e um erro aqui não pode virar "falhou" no resultado.
+ */
+async function anotarEnvio(
+  supabase: Awaited<ReturnType<typeof requireRole>>['supabase'],
+  recipientId: string,
+  wamid: string,
+): Promise<boolean> {
+  try {
+    const { data, error } = await supabase
+      .from('broadcast_recipients')
+      .update({
+        status: 'sent',
+        sent_at: new Date().toISOString(),
+        whatsapp_message_id: wamid,
+        error_message: null,
+      })
+      .eq('id', recipientId)
+      .eq('status', 'pending')
+      .select('id')
+    if (error) {
+      console.error('[broadcast] não anotou o envio na linha do destinatário:', error.message)
+      return false
+    }
+    return (data?.length ?? 0) > 0
+  } catch (err) {
+    console.error('[broadcast] não anotou o envio na linha do destinatário:', err)
+    return false
+  }
+}
+
 export async function POST(request: Request) {
   try {
     // Requires the 'agent' role — `canSendMessages` in lib/auth/roles is
     // explicit that running broadcasts is a write operation and that
     // viewers are read-only.
     //
-    // This endpoint writes NOTHING to the database: it reads the config
-    // and template, then calls Meta directly. So unlike the rest of the
-    // app there was no RLS policy backstopping a missing role check —
+    // Esta rota só ESCREVE a linha do destinatário que já existe (o wamid,
+    // `anotarEnvio`, sob a RLS de quem chamou): o envio em si é uma chamada
+    // à Meta, e nenhuma policy seguraria um papel que não pode disparar —
     // resolving `account_id` straight off the profile (which only needs
     // 'viewer') was the ONLY gate, and it let a viewer blast a template
     // to arbitrary phone numbers from the account's WhatsApp number.
@@ -187,6 +242,9 @@ export async function POST(request: Request) {
           phone: recipient.phone,
           status: 'failed',
           error: 'Invalid phone number format',
+          ...(typeof recipient.recipient_id === 'string'
+            ? { recipient_id: recipient.recipient_id }
+            : {}),
         })
         failedCount++
         continue
@@ -226,10 +284,18 @@ export async function POST(request: Request) {
       }
 
       if (sentMessageId) {
+        const recipientId =
+          typeof recipient.recipient_id === 'string' ? recipient.recipient_id : undefined
         results.push({
           phone: recipient.phone,
           status: 'sent',
           whatsapp_message_id: sentMessageId,
+          ...(recipientId
+            ? {
+                recipient_id: recipientId,
+                anotado: await anotarEnvio(supabase, recipientId, sentMessageId),
+              }
+            : {}),
         })
         sentCount++
       } else {
@@ -241,6 +307,9 @@ export async function POST(request: Request) {
           phone: recipient.phone,
           status: 'failed',
           error: lastError || 'Unknown error',
+          ...(typeof recipient.recipient_id === 'string'
+            ? { recipient_id: recipient.recipient_id }
+            : {}),
         })
         failedCount++
       }
