@@ -37,6 +37,7 @@ import {
 } from "@/lib/inbox/salto-no-fio";
 import { Input } from "@/components/ui/input";
 import { contarNovasDoCliente } from "@/lib/inbox/nao-lidas-abaixo";
+import { naOrdemDoFio } from "@/lib/inbox/ordem-do-fio";
 import { entregasNaoConfirmadas } from "@/lib/inbox/entrega-nao-confirmada";
 import { ehUuid } from "@/lib/tasks/validar";
 import {
@@ -545,7 +546,10 @@ export function MessageThread({
   // (ver `contarNovasDoCliente`).
   const ultimaMensagemRef = useRef<{ id: string; createdAt: string | null } | null>(null);
   useEffect(() => {
-    const ultima = messages.length ? messages[messages.length - 1] : null;
+    // A última no DESENHO, não na lista crua: a ligação (1044) entra com
+    // carimbo no passado e o tempo real a acrescenta no fim (`naOrdemDoFio`).
+    const emOrdem = naOrdemDoFio(messages);
+    const ultima = emOrdem.length ? emOrdem[emOrdem.length - 1] : null;
     ultimaMensagemRef.current = ultima
       ? { id: ultima.id, createdAt: ultima.created_at ?? null }
       : null;

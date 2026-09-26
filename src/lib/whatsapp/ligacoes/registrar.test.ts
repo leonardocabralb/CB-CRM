@@ -13,7 +13,6 @@ import type { EventoDeLigacao, SituacaoDaLigacao } from './evento';
 const ordem: string[] = [];
 
 const resolverDestinatario = vi.fn();
-const cancelarEsperasPorResposta = vi.fn();
 const routeContactToPipeline = vi.fn();
 const reopenClosedConversation = vi.fn();
 const followConversationChannel = vi.fn();
@@ -21,12 +20,6 @@ const resolverTelefoneDoLid = vi.fn();
 
 vi.mock('@/lib/automations/destinatario', () => ({
   resolverDestinatario: (...a: unknown[]) => resolverDestinatario(...a),
-}));
-vi.mock('@/lib/automations/parar-se-responder', () => ({
-  cancelarEsperasPorResposta: (...a: unknown[]) => {
-    ordem.push('esperas');
-    return cancelarEsperasPorResposta(...a);
-  },
 }));
 vi.mock('@/lib/cb-channels/pipeline-routing', () => ({
   routeContactToPipeline: (...a: unknown[]) => {
@@ -122,7 +115,7 @@ beforeEach(() => {
     telefoneJid: `${TELEFONE}@s.whatsapp.net`,
     conversationId: 'conversa-1',
   });
-  for (const f of [cancelarEsperasPorResposta, routeContactToPipeline, reopenClosedConversation, followConversationChannel]) {
+  for (const f of [routeContactToPipeline, reopenClosedConversation, followConversationChannel]) {
     f.mockReset().mockResolvedValue(undefined);
   }
 });
@@ -158,11 +151,10 @@ describe('ligação PERDIDA: tocou e ninguém atendeu', () => {
     expect(banco.rpcs).toEqual([
       { nome: 'bump_conversation_on_inbound', args: { p_conversation_id: 'conversa-1', p_last_message_text: '[call]' } },
     ]);
-    // Reabre LOGO DEPOIS de gravar; depois a posição, o canal, as esperas e o funil.
-    expect(ordem).toEqual(['reabre', 'rpc:bump_conversation_on_inbound', 'segue', 'esperas', 'funil']);
+    // Reabre LOGO DEPOIS de gravar; depois a posição, o canal e o funil.
+    expect(ordem).toEqual(['reabre', 'rpc:bump_conversation_on_inbound', 'segue', 'funil']);
     expect(reopenClosedConversation).toHaveBeenCalledWith(banco.db, { id: 'conversa-1' });
     expect(followConversationChannel).toHaveBeenCalledWith(banco.db, 'conversa-1', CANAL);
-    expect(cancelarEsperasPorResposta).toHaveBeenCalledWith({ db: banco.db, accountId: CONTA, contactId: 'contato-1' });
     expect(routeContactToPipeline).toHaveBeenCalledWith({
       db: banco.db,
       accountId: CONTA,
@@ -237,7 +229,7 @@ describe('ligação ATENDIDA no celular do escritório', () => {
       (e) => e.tabela === 'conversations' && (e.payload as Record<string, unknown>).last_message_text === '[call]',
     );
     expect(previa).toBeDefined();
-    expect(ordem).toEqual(['reabre', 'segue', 'esperas', 'funil']);
+    expect(ordem).toEqual(['reabre', 'segue', 'funil']);
   });
 
   it('⚠️ o terminate e o accept do MESMO segundo, em POSTs que se cruzam: vence o atendimento', async () => {
@@ -257,6 +249,151 @@ describe('ligação ATENDIDA no celular do escritório', () => {
     expect(bolhas()).toHaveLength(1);
     expect(bolhas()[0].sender_type).toBe('agent');
     expect(ligacao()?.desfecho).toBe('atendida');
+  });
+});
+
+describe('a bolha entra na hora REAL da ligação (teste real de 26/09/2026)', () => {
+  it('a perdida que é a última da conversa: hora do FIM, e o caminho de sempre', async () => {
+    await registrar(evento('offer'));
+    await registrar(evento('terminate'));
+
+    expect(bolhas()[0].created_at).toBe(new Date(T0 + 40_000).toISOString());
+    expect(ordem).toEqual(['reabre', 'rpc:bump_conversation_on_inbound', 'segue', 'funil']);
+  });
+
+  it('⚠️ a perdida decidida DEPOIS da atendida que veio em seguida entra ANTES dela, como história', async () => {
+    // A ligação seguinte foi atendida no celular 9 s depois do fim desta, e a
+    // bolha dela (decidida em 2 s) já está no fio.
+    banco.tabelas.messages = [
+      {
+        id: 'atendida-seguinte',
+        conversation_id: 'conversa-1',
+        sender_type: 'agent',
+        from_device: true,
+        sender_id: null,
+        deleted_at: null,
+        content_type: 'call',
+        created_at: new Date(T0 + 49_000).toISOString(),
+      },
+    ];
+    (banco.tabelas.conversations ??= []).push({ id: 'conversa-1', aguardando_desde: null });
+    await registrar(evento('offer'));
+    await registrar(evento('terminate'));
+
+    const bolha = bolhas().find((m) => m.message_id === 'call:CALL-1');
+    expect(bolha?.created_at).toBe(new Date(T0 + 40_000).toISOString());
+    // Não reabre, não sobe a conversa, não segue o canal: a última é outra.
+    expect(ordem).toEqual(['rpc:cb_assentar_mensagem_historica', 'funil']);
+    expect(banco.rpcs).toEqual([
+      {
+        nome: 'cb_assentar_mensagem_historica',
+        args: {
+          p_conversation_id: 'conversa-1',
+          p_carimbo: new Date(T0 + 40_000).toISOString(),
+          p_da_equipe: false,
+          p_espera_antes: null,
+          // A equipe atendeu a ligação seguinte: não é não lida.
+          p_conta_nao_lida: false,
+        },
+      },
+    ]);
+    expect(reopenClosedConversation).not.toHaveBeenCalled();
+    expect(followConversationChannel).not.toHaveBeenCalled();
+  });
+
+  it('⚠️ a resposta gravada ENTRE a pergunta e o insert: a 2ª pergunta a vê (Codex, PR #304)', async () => {
+    // A reabertura roda colada no insert; é nela que a resposta "chega".
+    reopenClosedConversation.mockImplementation(async () => {
+      banco.tabelas.messages.push({
+        id: 'resposta-no-meio',
+        conversation_id: 'conversa-1',
+        sender_type: 'agent',
+        from_device: true,
+        sender_id: null,
+        deleted_at: null,
+        content_type: 'text',
+        created_at: new Date(T0 + 45_000).toISOString(),
+      });
+    });
+    await registrar(evento('offer'));
+    await registrar(evento('terminate'));
+
+    expect(ordem).toEqual(['reabre', 'rpc:cb_assentar_mensagem_historica', 'funil']);
+    expect(banco.rpcs[0]).toMatchObject({ args: { p_conta_nao_lida: false } });
+    expect(followConversationChannel).not.toHaveBeenCalled();
+  });
+
+  it('⚠️ resposta no MESMO segundo em que a ligação terminou conta como depois (Codex, PR #304)', async () => {
+    banco.tabelas.messages = [
+      {
+        id: 'resposta-mesmo-segundo',
+        conversation_id: 'conversa-1',
+        sender_type: 'agent',
+        from_device: true,
+        sender_id: null,
+        deleted_at: null,
+        content_type: 'text',
+        created_at: new Date(T0 + 40_000).toISOString(),
+      },
+    ];
+    await registrar(evento('offer'));
+    await registrar(evento('terminate'));
+
+    expect(ordem).toEqual(['rpc:cb_assentar_mensagem_historica', 'funil']);
+    expect(banco.rpcs[0]).toMatchObject({ args: { p_conta_nao_lida: false } });
+  });
+
+  it('a própria bolha (mesmo carimbo) não conta como "mensagem depois" na 2ª conferência', async () => {
+    await registrar(evento('offer'));
+    await registrar(evento('terminate'));
+
+    expect(ordem).toEqual(['reabre', 'rpc:bump_conversation_on_inbound', 'segue', 'funil']);
+  });
+
+  it('a perdida histórica sem resposta de gente depois dela conta como não lida', async () => {
+    banco.tabelas.messages = [
+      {
+        id: 'texto-do-cliente',
+        conversation_id: 'conversa-1',
+        sender_type: 'customer',
+        from_device: false,
+        sender_id: null,
+        deleted_at: null,
+        content_type: 'text',
+        created_at: new Date(T0 + 45_000).toISOString(),
+      },
+    ];
+    await registrar(evento('offer'));
+    await registrar(evento('terminate'));
+
+    expect(banco.rpcs[0]).toMatchObject({
+      nome: 'cb_assentar_mensagem_historica',
+      args: { p_da_equipe: false, p_conta_nao_lida: true },
+    });
+  });
+
+  it('a atendida histórica assenta como resposta da equipe', async () => {
+    banco.tabelas.messages = [
+      {
+        id: 'texto-do-cliente',
+        conversation_id: 'conversa-1',
+        sender_type: 'customer',
+        from_device: false,
+        sender_id: null,
+        deleted_at: null,
+        content_type: 'text',
+        created_at: new Date(T0 + 30_000).toISOString(),
+      },
+    ];
+    await registrar(evento('offer'));
+    await registrar(evento('accept'));
+
+    const bolha = bolhas()[0];
+    expect(bolha.created_at).toBe(new Date(T0 + 21_000).toISOString());
+    expect(banco.rpcs[0]).toMatchObject({
+      nome: 'cb_assentar_mensagem_historica',
+      args: { p_da_equipe: true, p_conta_nao_lida: false },
+    });
   });
 });
 
