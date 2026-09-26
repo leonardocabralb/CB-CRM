@@ -28,7 +28,7 @@ const MAX_MODELOS_PINGADOS = 5;
  * GET /api/cb/integracoes/status  (admin+)
  *
  * A aba de Integrações num pedido só: a chave de cada provedor de IA da
- * conta (`cb_ia_chaves`, 1042), com um ping REAL em cada uma (o mesmo
+ * conta (`cb_ia_chaves`, 1047), com um ping REAL em cada uma (o mesmo
  * `validateAiCredentials` do botão "Testar chave" — com o modelo que o
  * assistente usa quando é o provedor dele), mais o ping de embeddings com
  * a chave da OpenAI (RAG) e o cartão do Google Agenda.
@@ -117,7 +117,7 @@ export async function GET(request: Request) {
         );
     if (!limite.success) return rateLimitResponse(limite);
 
-    // ⚠️ Desde a 1042 a chave é do PROVEDOR (`cb_ia_chaves`, fechada ao
+    // ⚠️ Desde a 1047 a chave é do PROVEDOR (`cb_ia_chaves`, fechada ao
     // navegador — lida pelo serviço); a linha PADRÃO de `ai_configs` é a
     // configuração dos módulos (provedor e modelo do Radar) e do assistente
     // legado. As linhas de CONEXÃO (herdadas; não há escritor no app) entram
@@ -179,7 +179,7 @@ export async function GET(request: Request) {
             return { ...base, teste: { ok: false, motivo: 'leitura_falhou' } };
           }
           if (!chave) return { ...base, existe: false, teste: null };
-          // A chave da OpenAI que nasceu SÓ da base (1042) e que nada de chat
+          // A chave da OpenAI que nasceu SÓ da base (1047) e que nada de chat
           // usa: não é pingada no modelo de chat — pode ser restrita aos
           // embeddings, e o cartão diria "falhando" sobre o único uso que ela
           // tem. Quem diz se ela funciona é o ping dos embeddings (Codex, #294).
@@ -239,7 +239,7 @@ export async function GET(request: Request) {
         const temOpenai = estado.some((e) => e.provedor === 'openai' && e.existe);
         if (!pingar || !temOpenai) return null;
         try {
-          // A MESMA chave que a base usa: a própria dos embeddings (1042), ou
+          // A MESMA chave que a base usa: a própria dos embeddings (1047), ou
           // a da OpenAI — que, recusada pela OpenAI ao ser gravada, não é
           // pingada de novo (é a resposta que já se tem).
           const lida = await lerChaveDeEmbeddings(ctx.accountId);

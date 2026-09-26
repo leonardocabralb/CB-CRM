@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 // ============================================================
-// 1042 — a chave de IA é do PROVEDOR, uma por conta (`cb_ia_chaves`), e a
+// 1047 — a chave de IA é do PROVEDOR, uma por conta (`cb_ia_chaves`), e a
 // tabela é FECHADA ao navegador: a chave cifrada não passa pelo PostgREST
 // com a sessão de ninguém. A conferência DENTRO da migration testa GRANT
 // (não RLS); este teste roda no job `verificar`, que é portão.
@@ -11,13 +11,13 @@ import path from 'node:path';
 // LIMITE DECLARADO: lê o `.sql`.
 // ============================================================
 
-const sql = fs.readFileSync(path.join(__dirname, '1042_cb_ia_chaves_por_provedor.sql'), 'utf8');
+const sql = fs.readFileSync(path.join(__dirname, '1047_cb_ia_chaves_por_provedor.sql'), 'utf8');
 const semComentarios = sql
   .split('\n')
   .map((linha) => linha.replace(/--.*$/, ''))
   .join('\n');
 
-describe('1042 — chaves de IA por provedor', () => {
+describe('1047 — chaves de IA por provedor', () => {
   it('RLS ligada, NENHUMA policy e nada para anon/authenticated', () => {
     expect(/ALTER\s+TABLE\s+cb_ia_chaves\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY/i.test(semComentarios)).toBe(true);
     expect(
@@ -54,6 +54,17 @@ describe('1042 — chaves de IA por provedor', () => {
     // a marca de origem que a troca respeita (Codex, #294).
     expect(/c\.embeddings_api_key,\s*c\.embeddings_api_key/i.test(insercoes[1])).toBe(true);
   });
+
+  it('mais de uma chave do mesmo provedor EM USO vira AVISO, nunca parada (o banco não decifra — Codex, #294)', () => {
+    const aviso = semComentarios.match(/DO\s+\$\$[\s\S]*?HAVING\s+count\(DISTINCT\s+c\.api_key\)\s*>\s*1[\s\S]*?END\s+\$\$;/i)?.[0] ?? ''
+    expect(aviso).toMatch(/c\.channel_id\s+IS\s+NULL\s+OR\s+c\.is_active/i)
+    expect(aviso).toMatch(/RAISE\s+WARNING/i)
+    expect(aviso).not.toMatch(/RAISE\s+EXCEPTION/i)
+  })
+
+  it('entre as linhas de conexão, a LIGADA vence a desligada na cópia (Codex, #294)', () => {
+    expect(semComentarios).toMatch(/ORDER\s+BY\s+c\.account_id,\s*c\.provider,\s*\(c\.channel_id\s+IS\s+NULL\)\s+DESC,\s*c\.is_active\s+DESC,\s*c\.created_at/i)
+  })
 
   it('serve_embeddings: só a OpenAI tem, e NULO é "não conferida" (a cópia não afirma nada)', () => {
     expect(/serve_embeddings\s+boolean\s+CHECK\s*\(\s*provedor\s*=\s*'openai'\s+OR\s+serve_embeddings\s+IS\s+NULL\s*\)/i.test(semComentarios)).toBe(true);

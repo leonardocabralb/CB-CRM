@@ -491,6 +491,9 @@ function traduzirRecusa(mensagem: string): string | null {
   if (mensagem.includes('reply_to_message_id not found')) {
     return 'A mensagem citada não existe mais nesta conversa.';
   }
+  if (mensagem.includes('WhatsApp call, which cannot be quoted')) {
+    return 'A mensagem citada é uma ligação, e ligação não pode ser citada.';
+  }
   return null;
 }
 

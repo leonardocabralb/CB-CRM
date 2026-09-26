@@ -32,10 +32,13 @@ export async function GET() {
   try {
     const { accountId, role } = await getCurrentAccount()
 
-    // ⚠️ Pelo SERVIÇO, com a conta da sessão: desde a 1043 a regra de leitura
-    // de `ai_configs` é só de administrador (o prompt vivia legível pelo
-    // PostgREST), e a faixa de IA da conversa chama esta rota para qualquer
-    // membro. Quem decide o que sai é o papel, logo abaixo.
+    // ⚠️ Pelo SERVIÇO, com a conta da sessão: a faixa de IA da conversa
+    // chama esta rota para qualquer membro, e quem decide o que sai é o papel,
+    // logo abaixo. A regra de LEITURA de `ai_configs` só vira "só
+    // administrador" na 1048 (a fase seguinte, F1b), aplicada DEPOIS do deploy
+    // desta rota: fechá-la antes quebraria, na janela, a leitura pelo cliente
+    // da sessão que o app anterior faz (config e rascunho). Até a 1048, a
+    // leitura direta pelo PostgREST é a de sempre (0029) — nada piora aqui.
     const { data, error } = await supabaseAdmin()
       .from('ai_configs')
       .select(
@@ -57,7 +60,7 @@ export async function GET() {
       )
     }
 
-    // ⚠️ As chaves moram em `cb_ia_chaves` desde a 1042, uma por provedor
+    // ⚠️ As chaves moram em `cb_ia_chaves` desde a 1047, uma por provedor
     // (D1 do docs/PLANO-agentes-de-ia.md), FECHADA ao navegador: o estado é
     // lido pelo serviço, e só os booleanos saem daqui. Falha dessa leitura
     // é 500, nunca "sem chave" (a tela mandaria cadastrar de novo uma chave
@@ -75,7 +78,7 @@ export async function GET() {
     const temChave = (p: string) => estado.some((e) => e.provedor === p && e.existe)
     // A busca por sentido existe com a chave da OpenAI — MENOS a que a
     // OpenAI recusou para embeddings ao ser gravada (chave restrita), a não
-    // ser que haja a chave PRÓPRIA dos embeddings herdada da 1042.
+    // ser que haja a chave PRÓPRIA dos embeddings herdada da 1047.
     const embeddingsUtilizavel = estado.some(
       (e) =>
         e.provedor === 'openai' &&
@@ -110,7 +113,7 @@ export async function GET() {
  * Upsert the account's AI config (behavior of the assistant + the Radar
  * model). Validates the provider/model with the PROVIDER'S key from
  * `cb_ia_chaves` before persisting. Keys themselves are managed in
- * Integrações (`/api/cb/ia/chaves`, 1042); `api_key` here is ignored.
+ * Integrações (`/api/cb/ia/chaves`, 1047); `api_key` here is ignored.
  */
 export async function POST(request: Request) {
   try {
@@ -122,7 +125,7 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => null)
     if (!body || typeof body !== 'object') return bad('Invalid request body')
 
-    // ⚠️ Aba ABERTA do app anterior à 1042 manda a chave aqui. Ignorá-la e
+    // ⚠️ Aba ABERTA do app anterior à 1047 manda a chave aqui. Ignorá-la e
     // responder "salvo" faria a pessoa revogar a chave antiga achando que a
     // nova ficou (Codex, #294): recusa pedindo para recarregar — a chave agora
     // se cadastra em Configurações → Integrações.
@@ -184,7 +187,7 @@ export async function POST(request: Request) {
       handoffAgentId = rawHandoff
     }
 
-    // ⚠️ A CHAVE não passa mais por aqui (1042): ela é do PROVEDOR, uma por
+    // ⚠️ A CHAVE não passa mais por aqui (1047): ela é do PROVEDOR, uma por
     // conta, gravada em Configurações → Integrações (`/api/cb/ia/chaves`).
     // `api_key` e `embeddings_api_key` no corpo são IGNORADOS — um cliente
     // antigo em cache não consegue mais gravar na coluna que ninguém lê.
@@ -322,7 +325,7 @@ export async function POST(request: Request) {
       provider,
       model,
       // ⚠️ Na TROCA de provedor, a cópia legada da chave (só para voltar atrás
-      // do deploy, 1042) passa a ser a do provedor NOVO: sem isso a volta
+      // do deploy, 1047) passa a ser a do provedor NOVO: sem isso a volta
       // atrás chamaria o provedor novo com a chave do antigo (Codex, #294).
       ...(providerMudou ? { api_key: encrypt(apiKeyPlain) } : {}),
       system_prompt: systemPrompt,
@@ -343,7 +346,7 @@ export async function POST(request: Request) {
       shared.radar_model = null
     }
     // ⚠️ A gravação vai pelo SERVIÇO, com a conta escrita no filtro: o
-    // gatilho da janela da 1042 trata escrita do NAVEGADOR como vinda do app
+    // gatilho da janela da 1047 trata escrita do NAVEGADOR como vinda do app
     // anterior e copiaria a `api_key` do espelho de volta para `cb_ia_chaves`
     // com `serve_embeddings` nulo — apagando o "esta chave não serve à base"
     // já conferido (Codex, #294).

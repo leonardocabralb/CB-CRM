@@ -361,6 +361,10 @@ um espelho com pino lendo o SQL. Mudou um lado, muda o outro.
 - ⚠️ Fora das duas listas: `cb_mensagens_sem_telefone` não tem `contact_id`.
   O payload da retida (texto do cliente) sobrevive a apagar o contato, até
   num pedido de exclusão (ver `whatsapp-evolution.md`).
+  O mesmo vale para `cb_ligacoes` (1044): sem `contact_id`, ela guarda
+  `telefone` e `quem_ligou` depois de apagar o contato (a bolha vai junto com
+  a conversa; `conversation_id`/`message_id` viram nulos). Pedido de exclusão
+  apaga também as linhas pelo telefone.
 - ⚠️⚠️ `merge_duplicate_contacts` NÃO serve: reaponta só nove tabelas do
   upstream, APAGA as tarefas e lembretes do perdedor pelo CASCADE, roda em
   TODAS as contas e agrupa por grafia exata (não vê as duas grafias do nono

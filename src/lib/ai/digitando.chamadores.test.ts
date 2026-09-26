@@ -26,8 +26,18 @@ describe('quem passa o wamid ao "digitando…"', () => {
     // mensagem num número enquanto a resposta sai por outro (revisão da
     // Fase 9, medido por mutante).
     expect(auto).toMatch(
-      /mostrarDigitando\(db, \{\s*accountId,\s*conversationId,\s*channelId,\s*inboundMessageId: args\.inboundMessageId,\s*\}\)/,
+      /mostrarDigitando\(db, \{\s*accountId,\s*conversationId,\s*channelId,\s*inboundMessageId: args\.inboundMessageId,\s*sinal: cancelarDigitando\.signal,\s*\}\)/,
     )
     expect(auto).toMatch(/preferredChannelId: channelId,/)
+  })
+
+  it('a resposta espera o "digitando…" (e o cancela) logo antes de sair (revisão do PR #288)', () => {
+    const auto = semComentarios(fs.readFileSync(path.join(SRC, 'lib/ai/auto-reply.ts'), 'utf8'))
+    expect(auto).toMatch(
+      /await concluirDigitando\(digitando, cancelarDigitando\)\s*await engineSendText\(/,
+    )
+    // Solto de novo (`void mostrarDigitando`), ele volta a poder chegar à Meta
+    // depois da resposta.
+    expect(auto).not.toMatch(/void mostrarDigitando/)
   })
 })

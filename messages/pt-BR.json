@@ -454,6 +454,15 @@
       "imageAlt": "Imagem enviada",
       "motivoDaFalha": "Motivo informado pela Meta: {motivo}"
     },
+    "ligacao": {
+      "vozPerdida": "Ligação de voz perdida",
+      "videoPerdida": "Chamada de vídeo perdida",
+      "vozAtendida": "Ligação de voz atendida no celular",
+      "videoAtendida": "Chamada de vídeo atendida no celular",
+      "tocou": "tocou {segundos} s",
+      "dicaPerdida": "O cliente ligou pelo WhatsApp e ninguém atendeu. O CRM não recebe o áudio da ligação: retorne pelo celular ou responda por mensagem.",
+      "previa": "📞 Ligação"
+    },
     "audioPlayer": {
       "tocar": "Reproduzir áudio",
       "pausar": "Pausar áudio",
@@ -4053,7 +4062,7 @@
         },
         "campo": {
           "titulo": "Preencher um campo personalizado",
-          "texto": "Pela chave do campo; vazio ou <code>null</code> apaga o valor. Escopo <code>custom_fields:write</code>."
+          "texto": "Pela chave do campo. Vazio ou <code>null</code> não mexe no valor; para apagar, liste a chave em <code>clear</code>. Escopo <code>custom_fields:write</code>."
         },
         "mensagem": {
           "titulo": "Mandar uma mensagem",
@@ -4116,7 +4125,8 @@
         "video": "🎬 Vídeo",
         "document": "📄 Documento",
         "location": "📍 Localização",
-        "template": "📋 Modelo"
+        "template": "📋 Modelo",
+        "call": "📞 Ligação perdida"
       }
     }
   },

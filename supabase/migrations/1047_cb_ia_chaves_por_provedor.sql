@@ -1,4 +1,4 @@
--- 1042_cb_ia_chaves_por_provedor.sql
+-- 1047_cb_ia_chaves_por_provedor.sql
 --
 -- F1a do plano dos agentes de IA (docs/PLANO-agentes-de-ia.md, D1): a chave
 -- de cada provedor de IA passa a ser UMA POR CONTA, numa tabela própria, e
@@ -37,7 +37,7 @@
 --     entre aplicar e publicar: o app anterior ainda grava a chave em
 --     `ai_configs`, e a cópia do item 2 é um retrato. Sem o gatilho, a chave
 --     trocada nesse intervalo nunca chegaria a `cb_ia_chaves` e o app novo
---     subiria com a velha (Codex, #294). A 1043, aplicada com a F1a já no
+--     subiria com a velha (Codex, #294). A 1048, aplicada com a F1a já no
 --     ar, o apaga.
 --
 -- ⚠️ Aditiva: aplicar ANTES do deploy.
@@ -79,15 +79,42 @@ REVOKE ALL ON TABLE cb_ia_chaves FROM PUBLIC, anon, authenticated;
 GRANT ALL ON TABLE cb_ia_chaves TO service_role;
 
 -- A cópia. A linha padrão (channel_id NULL) vence a de conexão para o mesmo
--- provedor: `ORDER BY` + `DISTINCT ON`, e o `ON CONFLICT DO NOTHING` não
+-- provedor, e entre as de conexão a LIGADA vence a desligada (é a que roda:
+-- a chave velha de uma desligada derrubaria a resposta automática da ligada —
+-- Codex, #294): `ORDER BY` + `DISTINCT ON`, e o `ON CONFLICT DO NOTHING` não
 -- sobrescreve o que já estiver na tabela (reexecução).
 INSERT INTO cb_ia_chaves (account_id, provedor, api_key, atualizada_por, created_at, updated_at)
 SELECT DISTINCT ON (c.account_id, c.provider)
        c.account_id, c.provider, c.api_key, c.created_by, now(), now()
   FROM ai_configs c
  WHERE c.api_key IS NOT NULL AND c.api_key <> ''
- ORDER BY c.account_id, c.provider, (c.channel_id IS NULL) DESC, c.created_at
+ ORDER BY c.account_id, c.provider, (c.channel_id IS NULL) DESC, c.is_active DESC, c.created_at
 ON CONFLICT (account_id, provedor) DO NOTHING;
+
+-- ⚠️ A chave passa a ser UMA por provedor (D1). A conta que tinha, EM USO, mais
+-- de uma chave do mesmo provedor — a padrão e a de uma conexão ligada, ou duas
+-- conexões ligadas — fica com a escolhida acima, e cada caso é AVISADO aqui
+-- para quem aplica conferir em Integrações e gravar a chave certa (Codex,
+-- #294). Não PARA: o banco não decifra a chave (a cifra é do app, com IV
+-- sorteado), então a mesma chave digitada em dois lugares tem textos cifrados
+-- diferentes e é indistinguível de duas chaves — parar travaria a atualização
+-- justamente nesse caso comum. Nada disso é escrito; é só o aviso.
+DO $$
+DECLARE
+  r record;
+BEGIN
+  FOR r IN
+    SELECT c.account_id, c.provider, count(DISTINCT c.api_key) AS textos
+      FROM ai_configs c
+     WHERE c.api_key IS NOT NULL AND c.api_key <> ''
+       AND (c.channel_id IS NULL OR c.is_active)
+     GROUP BY c.account_id, c.provider
+    HAVING count(DISTINCT c.api_key) > 1
+  LOOP
+    RAISE WARNING '1047: a conta % usava % chaves (ou a mesma chave digitada em lugares diferentes) do provedor %; ficou a da linha padrão ou, sem ela, a da conexão ligada mais antiga. Confira em Configurações → Integrações.',
+      r.account_id, r.textos, r.provider;
+  END LOOP;
+END $$;
 
 -- A de embeddings entra no slot da OpenAI VAZIO como a chave dele E como a
 -- chave PRÓPRIA da base, com o MESMO texto cifrado nos dois campos. É a marca
@@ -131,14 +158,14 @@ BEGIN
      AND c.api_key IS NOT NULL
      AND c.embeddings_api_key IS NOT NULL;
   IF n > 0 THEN
-    RAISE NOTICE '1042: % conta(s) tinham chave OpenAI de chat E de embeddings; a de embeddings ficou como a chave própria da base.', n;
+    RAISE NOTICE '1047: % conta(s) tinham chave OpenAI de chat E de embeddings; a de embeddings ficou como a chave própria da base.', n;
   END IF;
 END $$;
 
 ALTER TABLE ai_configs ALTER COLUMN api_key DROP NOT NULL;
 
 -- ---------------------------------------------------------------------------
--- 4) A janela entre aplicar e publicar (TEMPORÁRIO — a 1043 apaga)
+-- 4) A janela entre aplicar e publicar (TEMPORÁRIO — a 1048 apaga)
 -- ---------------------------------------------------------------------------
 -- Só a escrita que vem do NAVEGADOR (a sessão de um usuário pelo PostgREST,
 -- como o app anterior grava): o app novo espelha a chave em `ai_configs` pelo
@@ -251,32 +278,32 @@ DECLARE
   faltando integer;
 BEGIN
   IF to_regclass('public.cb_ia_chaves') IS NULL THEN
-    RAISE EXCEPTION '1042: cb_ia_chaves ausente';
+    RAISE EXCEPTION '1047: cb_ia_chaves ausente';
   END IF;
   IF has_table_privilege('anon', 'public.cb_ia_chaves', 'SELECT')
      OR has_table_privilege('anon', 'public.cb_ia_chaves', 'INSERT') THEN
-    RAISE EXCEPTION '1042: anon alcança cb_ia_chaves';
+    RAISE EXCEPTION '1047: anon alcança cb_ia_chaves';
   END IF;
   IF has_table_privilege('authenticated', 'public.cb_ia_chaves', 'SELECT')
      OR has_table_privilege('authenticated', 'public.cb_ia_chaves', 'INSERT')
      OR has_table_privilege('authenticated', 'public.cb_ia_chaves', 'UPDATE')
      OR has_table_privilege('authenticated', 'public.cb_ia_chaves', 'DELETE') THEN
-    RAISE EXCEPTION '1042: authenticated alcança cb_ia_chaves — a chave só passa pela rota';
+    RAISE EXCEPTION '1047: authenticated alcança cb_ia_chaves — a chave só passa pela rota';
   END IF;
   IF NOT has_table_privilege('service_role', 'public.cb_ia_chaves', 'SELECT')
      OR NOT has_table_privilege('service_role', 'public.cb_ia_chaves', 'INSERT')
      OR NOT has_table_privilege('service_role', 'public.cb_ia_chaves', 'UPDATE')
      OR NOT has_table_privilege('service_role', 'public.cb_ia_chaves', 'DELETE') THEN
-    RAISE EXCEPTION '1042: service_role sem acesso a cb_ia_chaves';
+    RAISE EXCEPTION '1047: service_role sem acesso a cb_ia_chaves';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_attribute
                   WHERE attrelid = 'public.cb_ia_chaves'::regclass
                     AND attname = 'serve_embeddings' AND NOT attisdropped) THEN
-    RAISE EXCEPTION '1042: cb_ia_chaves.serve_embeddings ausente';
+    RAISE EXCEPTION '1047: cb_ia_chaves.serve_embeddings ausente';
   END IF;
   IF (SELECT attnotnull FROM pg_attribute
        WHERE attrelid = 'public.ai_configs'::regclass AND attname = 'api_key') THEN
-    RAISE EXCEPTION '1042: ai_configs.api_key continua NOT NULL';
+    RAISE EXCEPTION '1047: ai_configs.api_key continua NOT NULL';
   END IF;
 
   -- Toda conta que tinha chave de chat tem, agora, a chave do provedor dela.
@@ -290,7 +317,7 @@ BEGIN
         WHERE k.account_id = c.account_id AND k.provedor = c.provider
      );
   IF faltando > 0 THEN
-    RAISE EXCEPTION '1042: % conta(s) com chave em ai_configs sem cópia em cb_ia_chaves', faltando;
+    RAISE EXCEPTION '1047: % conta(s) com chave em ai_configs sem cópia em cb_ia_chaves', faltando;
   END IF;
 
   -- Toda chave de embeddings de antes está em algum lugar da linha da OpenAI.
@@ -304,6 +331,6 @@ BEGIN
           AND (k.api_key = c.embeddings_api_key OR k.embeddings_api_key = c.embeddings_api_key)
      );
   IF faltando > 0 THEN
-    RAISE EXCEPTION '1042: % conta(s) perderam a chave de embeddings na cópia', faltando;
+    RAISE EXCEPTION '1047: % conta(s) perderam a chave de embeddings na cópia', faltando;
   END IF;
 END $$;

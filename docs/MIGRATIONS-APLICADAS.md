@@ -753,6 +753,18 @@ nome da época em que foram aplicadas.
   merge do PR #291; conferida no catálogo (UM CHECK, as três pernas,
   validado), sem sobra da conferência e com 0 fichas sem telefone. Ensaiada
   antes contra a produção numa transação desfeita (1× e reaplicada).
+- **1044_cb_ligacoes** — `cb_ligacoes` (uma linha por ligação de WhatsApp,
+  conta + `call_id`; FECHADA ao navegador), `'call'` no CHECK de
+  `messages.content_type` e `messages.ligacao jsonb`: a ligação vira faixa no
+  fio (`docs/PLANO-ligacoes-do-whatsapp.md`). ADITIVA — sem ela o INSERT da
+  bolha leva 23514/42703 e a ligação some. 1044, e não 1042: a 1042 e a 1043
+  estavam reservadas pelos PRs #294/#295, abertos e não aplicados. Conferência
+  só de catálogo (exige UM CHECK sobre `content_type`). Testada num Postgres 16
+  descartável (aplica duas vezes; com um segundo CHECK, reprova). Aplicada em
+  26/09/2026 pela Management API (histórico `20260926112303`), depois do
+  replay verde do CI e antes do merge do PR #300; conferida no catálogo (RLS
+  sem policy, `anon`/`authenticated` sem SELECT, UM CHECK com `'call'`, a
+  coluna jsonb, a FK composta com `SET NULL (channel_id)`).
 
 ## Notas do histórico
 

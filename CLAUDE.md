@@ -474,7 +474,7 @@ O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
 - Canal: a faixa de divergência só informa, não bloqueia; cor derivada; anel
   no avatar e trilha colorida foram descartados.
 - IA: chave por PROVEDOR, uma para a conta toda — nunca por conexão
-  (28/08/2026; `cb_ia_chaves`, 1042). O modelo é do módulo (Radar) e, com os
+  (28/08/2026; `cb_ia_chaves`, 1047). O modelo é do módulo (Radar) e, com os
   agentes, de cada agente (D1 de `docs/PLANO-agentes-de-ia.md`).
 - Automação presa à etapa: caixa por automação, marcada só nas criadas pela
   grade; as antigas não mudam (18/09/2026).
@@ -503,6 +503,9 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
 - `.claude/rules/whatsapp-evolution.md` — Evolution 2.4/Baileys 7, LID sem
   telefone (retida, tardia, histórica), recibos fora de ordem, edição
   cifrada, link sem prévia, grupos.
+- `.claude/rules/ligacoes.md` — ligação de WhatsApp vira faixa no fio (1044):
+  aviso CALL, desfecho com folga, quem ligou, o que não roda, quem lê
+  `content_type`.
 - `.claude/rules/whatsapp-envio.md` — núcleo de envio, entrega incerta,
   modelos da Meta por WABA, `resolveTemplateRow`, escopo da conversa.
 - `.claude/rules/canais.md` — peças de UI de canal, escopo vazio = todos,

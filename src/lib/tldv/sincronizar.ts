@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { decrypt } from "@/lib/whatsapp/encryption";
+import { entreAspasDoPostgrest, literalParaRegex } from "@/lib/postgrest/literal";
 
 import { criarClienteTldv, TldvError, type ClienteTldv } from "./cliente";
 import { janelaDeSync } from "./janela";
@@ -114,10 +115,14 @@ async function emailsDaEquipe(admin: SupabaseClient, accountId: string): Promise
   return ((data ?? []) as { email: string | null }[]).map((p) => p.email ?? "").filter((e) => e !== "");
 }
 
-/** `foo@bar.com` → `"foo@bar.com"` escapado para o `.or()` do PostgREST (LIKE + aspas). */
-function paraIlike(v: string): string {
-  const like = v.replace(/[\\%_]/g, (c) => `\\${c}`);
-  return `"${like.replace(/(["\\])/g, "\\$1")}"`;
+/**
+ * O ramo "e-mail IGUAL a este, sem olhar a caixa" para o `.or()`: `imatch`
+ * ancorado, com o e-mail escapado. Era `ilike` sem curinga, e o PostgREST
+ * troca todo `*` de um like/ilike por `%` — um `*` no e-mail casaria outros
+ * e-mails e a reunião iria para o cliente errado.
+ */
+function emailIgual(email: string): string {
+  return `email.imatch.${entreAspasDoPostgrest(`^${literalParaRegex(email)}$`)}`;
 }
 
 /**
@@ -137,7 +142,7 @@ async function vincularPorEmail(
 ): Promise<boolean> {
   const emails = emailsDeFora(reuniao, equipe);
   if (emails.length === 0) return false;
-  const porEmail = emails.map((e) => `email.ilike.${paraIlike(e)}`).join(",");
+  const porEmail = emails.map(emailIgual).join(",");
   const { data: achados, error } = await admin.from("contacts").select("id").eq("account_id", accountId).or(porEmail);
   if (error || !achados) return false;
   let candidatos = achados as { id: string }[];

@@ -216,7 +216,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
       // cadeado, para que "cadeado velho" signifique "dono morto" e não
       // "dono lento" — senão outro clique tomaria a linha e dispararia a
       // mesma automação em paralelo (Codex, PR #135).
-      const r = await comTetoDeProcessamento(processarAgendamento(db, accountId, agendamento));
+      const r = await comTetoDeProcessamento(
+        processarAgendamento(db, accountId, agendamento, undefined, { eventoId }),
+      );
       await gravarResultado(
         db,
         eventoId,

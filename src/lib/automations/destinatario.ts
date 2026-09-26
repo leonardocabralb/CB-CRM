@@ -63,19 +63,11 @@ export async function resolverDestinatario(
 
   let contactId: string | null = busca.contato?.id ?? null
   let criouContato = false
-  let donoDaConta: string | null = null
-
-  const resolverDono = async (): Promise<string> => {
-    if (donoDaConta) return donoDaConta
-    const { data, error } = await db.from('accounts').select('owner_user_id').eq('id', accountId).maybeSingle()
-    const dono = typeof data?.owner_user_id === 'string' ? data.owner_user_id : null
-    if (error || !dono) throw new Error('destinatário: dono da conta não resolvido')
-    donoDaConta = dono
-    return dono
-  }
+  let donoResolvido: string | null = null
 
   if (!contactId) {
-    const dono = await resolverDono()
+    const dono = await donoDaConta(db, accountId)
+    donoResolvido = dono
     const { data: criado, error } = await db
       .from('contacts')
       .insert({ account_id: accountId, user_id: dono, phone: digitos, name: nome?.trim() || digitos })
@@ -93,8 +85,33 @@ export async function resolverDestinatario(
     }
   }
   const contatoId: string = contactId
+  const conversationId = await conversaDoContato(db, accountId, contatoId, {
+    conversaNovaEncerrada: opcoes?.conversaNovaEncerrada,
+    dono: donoResolvido,
+  })
+  return { contactId: contatoId, conversationId, criouContato }
+}
 
-  // Uma conversa por (conta, contato) — a mais antiga, como o webhook faz.
+/**
+ * A conversa de um contato que JÁ EXISTE: a que ele tem (uma por conta e
+ * contato, 036 — a mais antiga, como o webhook faz) ou uma nova, com o dono da
+ * conta. Nunca toca na que já existia.
+ *
+ * Além de `resolverDestinatario`, o agendamento do Calendly chama direto para
+ * a ficha que já existia SEM conversa. Desde 24/09/2026 a integração do
+ * formulário cria a ficha pela API minutos antes de o lead agendar, e ficha
+ * criada pela API não tem conversa: sem esta chamada o `{{conversation.link}}`
+ * do aviso ao advogado saía vazio, e os lembretes e o No-show, que falam com o
+ * cliente, falhariam por falta de conversa.
+ *
+ * `dono` evita reler `accounts` quando quem chama acabou de resolvê-lo.
+ */
+export async function conversaDoContato(
+  db: SupabaseClient,
+  accountId: string,
+  contatoId: string,
+  opcoes?: { conversaNovaEncerrada?: boolean; dono?: string | null },
+): Promise<string> {
   const { data: existente, error: erroBusca } = await db
     .from('conversations')
     .select('id')
@@ -103,11 +120,9 @@ export async function resolverDestinatario(
     .order('created_at', { ascending: true })
     .limit(1)
   if (erroBusca) throw new Error(`destinatário: busca da conversa falhou (${erroBusca.message})`)
-  if (existente && existente.length > 0) {
-    return { contactId: contatoId, conversationId: existente[0].id as string, criouContato }
-  }
+  if (existente && existente.length > 0) return existente[0].id as string
 
-  const dono = await resolverDono()
+  const dono = opcoes?.dono ?? (await donoDaConta(db, accountId))
   const { data: nova, error: erroNova } = await db
     .from('conversations')
     .insert({
@@ -127,9 +142,16 @@ export async function resolverDestinatario(
         .eq('contact_id', contatoId)
         .order('created_at', { ascending: true })
         .limit(1)
-      if (raced && raced.length > 0) return { contactId: contatoId, conversationId: raced[0].id as string, criouContato }
+      if (raced && raced.length > 0) return raced[0].id as string
     }
     throw new Error(`destinatário: não foi possível criar a conversa (${erroNova?.message ?? '?'})`)
   }
-  return { contactId: contatoId, conversationId: nova.id as string, criouContato }
+  return nova.id as string
+}
+
+async function donoDaConta(db: SupabaseClient, accountId: string): Promise<string> {
+  const { data, error } = await db.from('accounts').select('owner_user_id').eq('id', accountId).maybeSingle()
+  const dono = typeof data?.owner_user_id === 'string' ? data.owner_user_id : null
+  if (error || !dono) throw new Error('destinatário: dono da conta não resolvido')
+  return dono
 }

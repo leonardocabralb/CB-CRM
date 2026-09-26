@@ -26,14 +26,19 @@ interface ErroDoBanco {
 }
 
 /**
- * O insert estourou a FK de `messages.channel_id` → `cb_channels(id)` (902)?
- * Só ESSA: violação da FK de `conversation_id` ou de `reply_to_message_id`
+ * O insert estourou a FK de `messages.channel_id` → `cb_channels(id)` (902),
+ * ou a composta de `cb_ligacoes` (1044, `Key (channel_id, account_id)`)?
+ * Só ESSAS: violação da FK de `conversation_id` ou de `reply_to_message_id`
  * também é 23503, e repeti-la sem canal mascararia defeito de verdade.
  */
 export function violouFkDoCanal(error: ErroDoBanco | null | undefined): boolean {
   if (!error || error.code !== '23503') return false;
   const texto = `${error.message ?? ''} ${error.details ?? ''}`;
-  return texto.includes('messages_channel_id_fkey') || texto.includes('(channel_id)');
+  return (
+    texto.includes('messages_channel_id_fkey') ||
+    texto.includes('(channel_id)') ||
+    texto.includes('cb_ligacoes_channel_fkey')
+  );
 }
 
 /**

@@ -161,7 +161,7 @@ testado) e `worker.ts`, no servidor.
 - **`loadAiConfig` do Radar usa `requireActive: false`**: o Radar precisa da
   CREDENCIAL; `is_active` é o interruptor do assistente de conversa, e
   amarrar os dois calava a análise quando o auto-reply era desligado. ⚠️ E
-  SEM `channelId` (1042): a configuração do Radar é do módulo, da conta
+  SEM `channelId` (1047): a configuração do Radar é do módulo, da conta
   inteira — pelo canal, um agente criado para uma conexão trocaria em
   silêncio a chave e o modelo do Radar ali (pino
   `src/lib/ia-chaves/chaves.chamadores.test.ts`).
@@ -188,7 +188,7 @@ bolha e ao worker do Radar.
   terminal mataria o botão para sempre por um problema passageiro. `recusada`
   GRAVADA é só para o irreversível da própria mensagem (URL relativa antiga,
   áudio grande demais, `MAX_TOKENS`, tentativas esgotadas). ⚠️ A chave é a do
-  GEMINI da conta (`lerChave(conta, 'gemini')`, 1042), direto — não depende de
+  GEMINI da conta (`lerChave(conta, 'gemini')`, 1047), direto — não depende de
   agente nem do canal (um agente de outro provedor na conexão fazia recusar
   tudo). Erro de LEITURA da chave é `falhou` sem gravar, nunca "sem chave".
 - ⚠️ **O modelo é FIXADO em `MODELO_TRANSCRICAO`**, separado do modelo de chat
@@ -222,7 +222,7 @@ bolha e ao worker do Radar.
 conversa. Nasceu de um engano real: um único campo "Modelo" servia ao chat e ao
 Radar.
 
-- ⚠️⚠️ **A CHAVE é do PROVEDOR, uma por conta, em `cb_ia_chaves` (1042)** —
+- ⚠️⚠️ **A CHAVE é do PROVEDOR, uma por conta, em `cb_ia_chaves` (1047)** —
   nunca por conexão (decisão do operador, 28/08/2026, mantida na D1 do
   `docs/PLANO-agentes-de-ia.md`). A tabela é FECHADA ao navegador (RLS sem
   policy): só `src/lib/ia-chaves/repo.ts` a toca, com o cliente de SERVIÇO (a
@@ -230,7 +230,7 @@ Radar.
   certo); pino `chaves.chamadores.test.ts`. A de embeddings é a chave da
   OpenAI da conta, MENOS a que a OpenAI recusou para embeddings ao ser
   gravada (`serve_embeddings = false`: chave de projeto restrita), e a chave
-  DEDICADA herdada da 1042 (`cb_ia_chaves.embeddings_api_key`) vence —
+  DEDICADA herdada da 1047 (`cb_ia_chaves.embeddings_api_key`) vence —
   `lerChaveDeEmbeddings`. `ai_configs.api_key`/`embeddings_api_key` ficaram só
   para o app anterior poder voltar atrás: nada as LÊ, e `gravarChave` as
   ESPELHA (sem isso a volta atrás traria a chave velha, quase sempre revogada
@@ -331,10 +331,13 @@ cliente — quem responde ainda é o assistente anterior (`ai_configs`, tela em
   (`mostrarDigitando`, `src/lib/ai/digitando.ts`): a resolução de
   `engineSendText` com o canal da entrada, só em canal Meta e só com id
   `wamid.` (o webhook da Meta o passa; a Evolution não tem o recurso). Nunca as
-  credenciais da CONTA, como no original. Melhor esforço, sem `await`: nunca
-  lança nem segura a resposta, e o log passa por `semTokenDaMeta`. ⚠️ A Meta
-  marca a mensagem do cliente como LIDA junto (decisão do operador, P6).
-  Chamado depois de TODOS os portões, antes de gerar a resposta.
+  credenciais da CONTA, como no original. Melhor esforço: nunca lança, e o log
+  passa por `semTokenDaMeta`. ⚠️ A Meta marca a mensagem do cliente como LIDA
+  junto (decisão do operador, P6). Chamado depois de TODOS os portões, antes
+  de gerar a resposta, e corre em paralelo com a geração — mas a resposta o
+  ESPERA (`concluirDigitando`, no máximo `PRAZO_DO_DIGITANDO_MS` = 2 s) e o
+  cancela logo antes de sair (revisão do PR #288): solto (`void`), o pedido
+  podia chegar à Meta DEPOIS da resposta. Pino `digitando.chamadores.test.ts`.
 - **`generateStructured` (`structured.ts`) é separado de `generateReply` DE
   PROPÓSITO**: o auto-reply e o rascunho não podem herdar regressão do caminho
   de análise. Não fundir.

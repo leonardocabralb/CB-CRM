@@ -144,3 +144,43 @@ describe('findOrCreateContact: o telefone passa pela régua', () => {
     expect(inseridos[0]).toMatchObject({ phone: esperado, name: esperado });
   });
 });
+
+describe('findOrCreateContact: nome, e-mail e empresa aparados (26/09/2026)', () => {
+  function dbQueCaptura() {
+    const inseridos: Record<string, unknown>[] = [];
+    const cadeia: Record<string, unknown> = {
+      select: () => cadeia,
+      eq: () => cadeia,
+      order: () => cadeia,
+      like: () => Promise.resolve({ data: [], error: null }),
+      insert: (linha: Record<string, unknown>) => {
+        inseridos.push(linha);
+        return cadeia;
+      },
+      single: () => Promise.resolve({ data: { id: 'novo' }, error: null }),
+    };
+    return { db: { from: () => cadeia } as unknown as SupabaseClient, inseridos };
+  }
+
+  it('apara o que o Make manda com espaço ("Cristiano ")', async () => {
+    const { db, inseridos } = dbQueCaptura();
+    await findOrCreateContact(db, 'acc', 'user', {
+      phone: '81 98874-5316',
+      name: 'Cristiano ',
+      email: ' c@x.com ',
+      company: ' ACME',
+    });
+    expect(inseridos[0]).toMatchObject({ name: 'Cristiano', email: 'c@x.com', company: 'ACME' });
+  });
+
+  it('nome vazio cai no telefone (a reserva), e-mail e empresa vazios viram null', async () => {
+    const { db, inseridos } = dbQueCaptura();
+    await findOrCreateContact(db, 'acc', 'user', {
+      phone: '81 98874-5316',
+      name: '   ',
+      email: '',
+      company: '',
+    });
+    expect(inseridos[0]).toMatchObject({ name: '5581988745316', email: null, company: null });
+  });
+});

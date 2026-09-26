@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// gravarChave — a chave "própria" dos embeddings que a 1042 copiou comparando
+// gravarChave — a chave "própria" dos embeddings que a 1047 copiou comparando
 // textos CIFRADOS (IV aleatório) pode ser a MESMA do chat. Na troca, ela sai;
 // senão continuaria sendo usada depois de a chave velha ser revogada (Codex,
 // #294). A cifra dos testes imita a real: aleatória, reversível.
@@ -75,7 +75,7 @@ describe('gravarChave — a chave própria falsa dos embeddings sai na troca', (
     expect(legados).not.toContainEqual({ embeddings_api_key: null })
   })
 
-  it('a chave que era SÓ da base (mesmo texto cifrado nos dois campos, a marca da 1042) fica', async () => {
+  it('a chave que era SÓ da base (mesmo texto cifrado nos dois campos, a marca da 1047) fica', async () => {
     linhaOpenai = { api_key: 'cifra:90:sk-da-base', embeddings_api_key: 'cifra:90:sk-da-base' }
     await gravarChave('conta-1', 'openai', 'sk-de-chat', 'user-1', false)
     expect(upserts[0]).not.toHaveProperty('embeddings_api_key')

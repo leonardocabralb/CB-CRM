@@ -17,7 +17,7 @@ import { lerChave } from '@/lib/ia-chaves/repo'
  * Aqui só a coluna `radar_model` muda.
  *
  * O modelo é validado contra o provedor da linha, com a chave DELE
- * (`cb_ia_chaves`, 1042), antes de gravar: o Radar só rodaria no próximo
+ * (`cb_ia_chaves`, 1047), antes de gravar: o Radar só rodaria no próximo
  * ciclo do agendador, de madrugada, sem ninguém na tela para ler o erro.
  * `null` (ou vazio) = herda o modelo do assistente.
  */
@@ -56,8 +56,13 @@ export async function PATCH(request: Request) {
       )
     }
     const provedor = padrao.provider as AiProvider
+    // O modelo que o Radar VAI usar: o próprio, ou — em branco — o herdado do
+    // agente de conversa. Limpar o próprio também é conferido: o herdado pode
+    // ter saído do ar (aposentado, ou aceito como "indisponível" numa troca de
+    // chave) enquanto o próprio funciona (Codex, #294).
+    const modeloEfetivo = radarModel ?? (padrao.model as string | null)
 
-    if (radarModel) {
+    if (modeloEfetivo) {
       let chave: string | null
       try {
         const lida = await lerChave(ctx.accountId, provedor)
@@ -75,7 +80,7 @@ export async function PATCH(request: Request) {
       try {
         await validateAiCredentials({
           provider: provedor,
-          model: radarModel,
+          model: modeloEfetivo,
           radarModel: null,
           apiKey: chave,
           systemPrompt: null,
@@ -93,7 +98,7 @@ export async function PATCH(request: Request) {
         // O `motivo` é a mensagem do PROVEDOR (em inglês), já sem eco de chave:
         // é ela que diz "modelo não encontrado". A frase em volta a tela traduz.
         return NextResponse.json(
-          { error: 'radar_model_invalid', code: 'radar_model_invalid', modelo: radarModel, motivo },
+          { error: 'radar_model_invalid', code: 'radar_model_invalid', modelo: modeloEfetivo, motivo },
           { status: 400 },
         )
       }

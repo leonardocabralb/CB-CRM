@@ -15,6 +15,19 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Não publicado]
 
+### Alterado
+
+- **A chave de IA passa a ser do PROVEDOR, uma por conta.** A chave da
+  OpenAI, do Gemini ou da Anthropic é cadastrada uma vez em *Configurações →
+  Integrações* e vale para o assistente, o Radar, a transcrição de áudio e a
+  base de conhecimento. Se a sua instalação tinha agentes por conexão com
+  chaves DIFERENTES do mesmo provedor, fica a da configuração padrão (ou,
+  sem ela, a da conexão ligada mais antiga), e a migration lista cada caso
+  num aviso (`WARNING`): confira em Integrações e grave a chave certa.
+  **Migration necessária:**
+  `supabase/migrations/1047_cb_ia_chaves_por_provedor.sql`, aplicada
+  **antes** de publicar esta versão.
+
 ### Adicionado
 
 - **Vários apps da Meta na mesma instalação.** `META_APP_SECRET` aceita os

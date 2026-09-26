@@ -18,7 +18,7 @@ import {
 import { listarAgentes } from '@/lib/ia-agentes/repo'
 
 /**
- * Chaves de IA por PROVEDOR (migration 1042, D1 do
+ * Chaves de IA por PROVEDOR (migration 1047, D1 do
  * docs/PLANO-agentes-de-ia.md). Só administrador.
  *
  * - `GET`    → se cada provedor tem chave, e desde quando. Nunca a chave.
@@ -314,7 +314,7 @@ export async function PUT(request: Request) {
     // Radar não teria provedor nem modelo e ficaria em `sem_ia` com a chave
     // cadastrada. Nasce com o provedor desta chave, o modelo padrão dele e o
     // assistente DESLIGADO — o mesmo que salvar a primeira chave em
-    // Integrações fazia antes da 1042. Linha que já existe não é tocada.
+    // Integrações fazia antes da 1047. Linha que já existe não é tocada.
     const { data: padrao, error: erroPadrao } = await ctx.supabase
       .from('ai_configs')
       .select('id')
@@ -372,11 +372,11 @@ export async function DELETE(request: Request) {
     }
     const apagada = await apagarChave(ctx.accountId, provedor)
 
-    // ⚠️ A cópia LEGADA também sai. A 1042 deixou `ai_configs.api_key` (e
+    // ⚠️ A cópia LEGADA também sai. A 1047 deixou `ai_configs.api_key` (e
     // `embeddings_api_key`) com o texto cifrado de antes, para o app anterior
     // poder voltar atrás — e qualquer membro lê essa coluna pelo PostgREST.
     // Sem limpar, a chave "apagada" continuaria no banco e voltaria a valer
-    // numa reversão do deploy (ou num replay da cópia da 1042).
+    // numa reversão do deploy (ou num replay da cópia da 1047).
     const db = supabaseAdmin()
     const { error: erroLegado } = await db
       .from('ai_configs')

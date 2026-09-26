@@ -624,20 +624,29 @@ async function handleStatusUpdate(
   //    recibo é de DISPARO — que não grava linha em `messages` e, por isso,
   //    não espera por ela (quando o destinatário já tem o wamid; ver
   //    `pausasDoReciboDaMeta`).
-  const { data: recipient, error: recFetchErr } = await supabaseAdmin()
-    .from('broadcast_recipients')
-    .select('id, status')
-    .eq('whatsapp_message_id', status.id)
-    .maybeSingle()
+  //
+  //    ⚠️ E é conferido DE NOVO a cada tentativa da espera do passo 2
+  //    (revisão do PR #277): no disparo pela TELA o wamid só chega a
+  //    `broadcast_recipients` quando o lote de 10 volta ao navegador, e o
+  //    recibo de entrega ou de falha do primeiro do lote costuma chegar
+  //    antes. Conferido uma vez só, ele se perdia para a contagem da
+  //    campanha. O que chega mais de 7 s antes da gravação ainda se perde.
+  const espelharNoDestinatario = async (): Promise<'achou' | 'nao_achou' | 'erro'> => {
+    const { data: recipient, error: recFetchErr } = await supabaseAdmin()
+      .from('broadcast_recipients')
+      .select('id, status')
+      .eq('whatsapp_message_id', status.id)
+      .maybeSingle()
 
-  if (recFetchErr) {
-    console.error('Error fetching broadcast recipient:', recFetchErr)
-  } else if (
-    recipient &&
+    if (recFetchErr) {
+      console.error('Error fetching broadcast recipient:', recFetchErr)
+      return 'erro'
+    }
+    if (!recipient) return 'nao_achou'
     // Guard transitions — forward-only on the success ladder, and
     // `failed` only from pre-delivered states.
-    isValidStatusTransition(recipient.status, status.status)
-  ) {
+    if (!isValidStatusTransition(recipient.status, status.status)) return 'achou'
+
     // Só aqui: um timestamp ilegível estoura o `toISOString()`, e calculado
     // antes das mensagens ele impediria a gravação delas.
     const tsIso = new Date(parseInt(status.timestamp) * 1000).toISOString()
@@ -660,7 +669,9 @@ async function handleStatusUpdate(
     if (recUpdateErr) {
       console.error('Error updating broadcast recipient status:', recUpdateErr)
     }
+    return 'achou'
   }
+  let destinatario = await espelharNoDestinatario()
 
   // 2) Mirror onto messages (legacy behavior). message_id is NOT unique
   //    (migration 009 — Meta ids repeat across numbers), so this updates
@@ -695,7 +706,13 @@ async function handleStatusUpdate(
     patch.error_title = motivo.titulo
     patch.error_details = motivo.detalhes
   }
+  let tentativas = 0
   const tentar = async (): Promise<Tentativa> => {
+    // A partir da 2ª tentativa, o destinatário que o passo 1 não achou
+    // (ver o comentário de lá).
+    if (tentativas++ > 0 && destinatario !== 'achou') {
+      destinatario = await espelharNoDestinatario()
+    }
     let q = supabaseAdmin()
       .from('messages')
       .update(patch)
@@ -716,6 +733,9 @@ async function handleStatusUpdate(
   const avancou = await aplicarReciboQuandoAMensagemExistir({
     tentar,
     existe: async () => {
+      // O recibo se revelou de DISPARO: a linha que ele esperava não existe
+      // nem vai existir (disparo não grava em `messages`).
+      if (destinatario === 'achou') return true
       let q = supabaseAdmin()
         .from('messages')
         .select('id')
@@ -729,7 +749,7 @@ async function handleStatusUpdate(
       return !error && (data?.length ?? 0) > 0
     },
     esperar: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-    pausas: pausasDoReciboDaMeta(recibo, { deDisparo: Boolean(recipient) }),
+    pausas: pausasDoReciboDaMeta(recibo, { deDisparo: destinatario === 'achou' }),
   })
 
   // 3) Webhook fan-out for messages we store (inbox / API sends).
