@@ -4487,7 +4487,8 @@
         "titulo": "O que o agente viu",
         "soAConversa": "Só a conversa: nenhum dado do cliente entrou neste turno.",
         "base": "{n, plural, =0 {Nenhum trecho da base} one {Trechos de # documento da base} other {Trechos de # documentos da base}}",
-        "documentoApagado": "(documento apagado)"
+        "documentoApagado": "(documento apagado)",
+        "documento": "(documento)"
       },
       "acoes": {
         "titulo": "{n, plural, one {# ação do agente} other {# ações do agente}}",

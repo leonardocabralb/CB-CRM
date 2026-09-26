@@ -330,6 +330,12 @@ export interface RetratoDoContexto {
   blocos: Array<{ bloco: string; texto: string }>
   /** Os documentos de onde vieram os trechos da base, sem repetição. */
   documentos: string[]
+  /**
+   * O TEXTO de cada trecho como foi ao modelo, com o documento: editado ou
+   * apagado o documento depois, o retrato ainda explica a resposta (Codex,
+   * #312). Vazio nos retratos gravados antes disto.
+   */
+  trechos: Array<{ documento: string; texto: string }>
 }
 
 /**
@@ -342,9 +348,11 @@ export function montarRetrato(blocos: BlocoVisto[], trechos: TrechoDaBase[]): Re
   const retrato: RetratoDoContexto = {
     blocos: blocos.map((b) => ({ bloco: b.bloco, texto: b.texto })),
     documentos: [...new Set(trechos.map((t) => t.documentoId))],
+    trechos: trechos.map((t) => ({ documento: t.documentoId, texto: limitarBloco(t.content) })),
   }
   while (JSON.stringify(retrato).length > TETO_DO_RETRATO) {
-    const maior = retrato.blocos.reduce<{ bloco: string; texto: string } | null>(
+    // O maior texto, entre blocos E trechos, é cortado pela metade.
+    const maior = [...retrato.blocos, ...retrato.trechos].reduce<{ texto: string } | null>(
       (m, b) => (!m || b.texto.length > m.texto.length ? b : m),
       null,
     )
@@ -368,6 +376,15 @@ export function lerRetrato(v: unknown): RetratoDoContexto | null {
       )
       .map((b) => ({ bloco: b.bloco, texto: b.texto })),
     documentos: r.documentos.filter((d): d is string => typeof d === 'string'),
+    trechos: Array.isArray(r.trechos)
+      ? r.trechos
+          .filter(
+            (x): x is { documento: string; texto: string } =>
+              !!x && typeof x === 'object' && typeof (x as { documento?: unknown }).documento === 'string' &&
+              typeof (x as { texto?: unknown }).texto === 'string',
+          )
+          .map((x) => ({ documento: x.documento, texto: x.texto }))
+      : [],
   }
 }
 
@@ -382,6 +399,8 @@ export function lerRetrato(v: unknown): RetratoDoContexto | null {
 const AGENDAMENTOS_LIDOS = 100
 /** Teto das etiquetas de um contato. */
 const ETIQUETAS_LIDAS = 200
+/** O último "nome" quando o contato passa do teto: o corte vai escrito. */
+export const ETIQUETAS_CORTADAS = '[… more tags not listed]'
 
 async function lerFicha(db: SupabaseClient, accountId: string, contactId: string): Promise<FichaLida> {
   const { data, error } = await db
@@ -464,9 +483,13 @@ async function lerEtiquetas(db: SupabaseClient, accountId: string, contactId: st
     .from('contact_tags')
     .select('tag_id')
     .eq('contact_id', contactId)
-    .limit(ETIQUETAS_LIDAS)
+    .limit(ETIQUETAS_LIDAS + 1)
   if (error) throw new Error(`etiquetas do contato: ${error.message}`)
-  const ids = ((ligadas ?? []) as { tag_id: string }[]).map((l) => l.tag_id)
+  const todas = ((ligadas ?? []) as { tag_id: string }[]).map((l) => l.tag_id)
+  // Uma a mais que o teto diz se houve corte — e o corte é DECLARADO ao
+  // modelo, senão a lista parcial vira "estas são todas" (Codex, PR #312).
+  const cortadas = todas.length > ETIQUETAS_LIDAS
+  const ids = todas.slice(0, ETIQUETAS_LIDAS)
   if (ids.length === 0) return []
   const { data: tags, error: erroTags } = await db
     .from('tags')
@@ -475,7 +498,8 @@ async function lerEtiquetas(db: SupabaseClient, accountId: string, contactId: st
     .in('id', ids)
     .order('name', { ascending: true })
   if (erroTags) throw new Error(`etiquetas: ${erroTags.message}`)
-  return ((tags ?? []) as { name: string }[]).map((t) => t.name)
+  const nomes = ((tags ?? []) as { name: string }[]).map((t) => t.name)
+  return cortadas ? [...nomes, ETIQUETAS_CORTADAS] : nomes
 }
 
 /** O espelho do Asaas para o contato — a mesma leitura da aba Cobranças. SÓ leitura. */

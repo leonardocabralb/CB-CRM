@@ -24,6 +24,7 @@ import { toast } from 'sonner';
 import { Ban, Bot, Eye, Link2Off, Loader2, RotateCcw, Send, UserCircle2, Wrench, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/hooks/use-auth';
 import { SeletorDeContatoRemoto } from '@/components/contacts/seletor-de-contato-remoto';
 import { TETO_DE_RESULTADOS } from '@/lib/contacts/busca-remota';
 import { cn } from '@/lib/utils';
@@ -81,6 +82,7 @@ export function PlaygroundDoAgente({
   aoMudarContato: (id: string) => void;
 }) {
   const t = useTranslations('IaAgentes');
+  const { accountId } = useAuth();
   const [turnos, setTurnos] = useState<Turno[]>([]);
   const [texto, setTexto] = useState('');
   const [enviando, setEnviando] = useState(false);
@@ -175,6 +177,7 @@ export function PlaygroundDoAgente({
               failedText={t('playground.contatoFalhou')}
               moreText={t('playground.contatoMais', { count: TETO_DE_RESULTADOS })}
               ariaLabel={t('playground.contato')}
+              accountId={accountId ?? undefined}
             />
           </div>
           {contatoId ? (

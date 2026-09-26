@@ -1801,6 +1801,21 @@ describe('executarTurno — áudio', () => {
       expect(turno()).toMatchObject({ status: 'aguardando', rodando_desde: null })
       expect(generateReply).not.toHaveBeenCalled()
       expect(notas()).toHaveLength(0)
+      // A PRÉVIA do prazo vem antes da vaga da conta: reagendar não a gasta (Codex, #312).
+      expect(checkRateLimit).not.toHaveBeenCalled()
+    })
+
+    it('sobra prazo para gerar, mas não para ler o contexto (o embedding): reagenda SEM gastar a vaga', async () => {
+      gatilhoDeAudio(10_000)
+      vi.mocked(transcreverAudio).mockImplementation(async () => {
+        // 45 s − 10 s de reserva = 35 s; sobram ~7 s: dá para gerar, não para o teto do embedding (8 s).
+        vi.setSystemTime(Date.now() + 28_000)
+        return { status: 'pronta', transcricao: 'quero falar do contrato' }
+      })
+      await executarTurno(TURNO)
+      expect(turno()).toMatchObject({ status: 'aguardando', rodando_desde: null })
+      expect(checkRateLimit).not.toHaveBeenCalled()
+      expect(generateReply).not.toHaveBeenCalled()
     })
 
     it('⚠️ nada foi transcrito nesta rodada: `falhou` — sem laço de reagendamento', async () => {
@@ -1870,7 +1885,7 @@ describe('executarTurno — o que o agente vê (F3)', () => {
     await executarTurno(TURNO)
     expect(turno().status).toBe('respondeu')
     expect(pedido()).not.toContain('What you know about this customer')
-    expect(turno().contexto).toEqual({ blocos: [], documentos: [] })
+    expect(turno().contexto).toEqual({ blocos: [], documentos: [], trechos: [] })
     // Nada marcado = nada lido.
     expect(banco.chamadas.some((c) => ['contacts', 'tags', 'contact_tags', 'cb_asaas_config'].includes(c.tabela))).toBe(false)
   })
@@ -1888,6 +1903,7 @@ describe('executarTurno — o que o agente vê (F3)', () => {
         { bloco: 'etiquetas', texto: 'Tags: bancário' },
       ],
       documentos: [],
+      trechos: [],
     })
   })
 
@@ -1912,7 +1928,11 @@ describe('executarTurno — o que o agente vê (F3)', () => {
     await executarTurno(TURNO)
     expect(turno().status).toBe('respondeu')
     expect(pedido()).toContain('[1] Atendemos das 9h às 18h.')
-    expect(turno().contexto).toEqual({ blocos: [], documentos: ['doc-faq'] })
+    expect(turno().contexto).toEqual({
+      blocos: [],
+      documentos: ['doc-faq'],
+      trechos: [{ documento: 'doc-faq', texto: 'Atendemos das 9h às 18h.' }],
+    })
     // A consulta é a mensagem do cliente.
     expect(banco.rpcChamadas.find((r) => r.nome === 'cb_ia_buscar_conhecimento_fts')?.args.p_query).toBe(
       'Oi, preciso de ajuda',

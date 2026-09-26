@@ -45,9 +45,11 @@ estão em `.claude/rules/ia.md`.
   como função e só é lida quando há o que buscar.
 - ⚠️ **Ordem no turno**: o teto por conta (`checkRateLimit`) vem ANTES de
   ler blocos e base — turno barrado não lê dado do cliente nem paga busca.
-- **O retrato** (`cb_ia_turnos.contexto`: blocos renderizados + ids dos
-  documentos) é gravado numa escrita separada, com a cerca de posse, e
-  ZERADO ao reagendar. A sub-aba Turnos o mostra; ⚠️ deploy antes da 1052 =
+- **O retrato** (`cb_ia_turnos.contexto`: blocos renderizados, ids dos
+  documentos e o TEXTO de cada trecho — o documento pode mudar depois) é
+  gravado numa escrita separada, com a cerca de posse (zero linhas = posse
+  perdida: abandona antes de gerar), e ZERADO ao reagendar. "Documento
+  apagado" só com a lista de documentos completa (abaixo de 1.000). A sub-aba Turnos o mostra; ⚠️ deploy antes da 1052 =
   a aba Turnos em 500 (ela pede a coluna).
 - **Playground**: `contactId` opcional (conferido na conta; fora = 404
   `contato_nao_encontrado`) e `vistos: { blocos, trechos }` — TRECHOS, não

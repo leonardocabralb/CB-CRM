@@ -85,7 +85,7 @@ describe('GET /api/cb/ia/agentes/[id]/turnos', () => {
       {
         id: 't2', status: 'passou', criadoEm: '2026-09-26T12:00:00Z', terminadoEm: null, erro: null, conversationId: 'conv-2', contato: '5511888880000',
         // O retrato é LIDO (parse): item fora da forma sai, nunca vai cru à tela.
-        contexto: { blocos: [{ bloco: 'ficha', texto: 'Customer record: no details on file.' }], documentos: ['doc-1'] },
+        contexto: { blocos: [{ bloco: 'ficha', texto: 'Customer record: no details on file.' }], documentos: ['doc-1'], trechos: [] },
         // As ações (F4), também LIDAS: a linha fora da forma sai.
         acoes: [
           { tipo: 'mover_etapa', alvo: { id: 'etapa-1', nome: 'Bancário · Proposta' }, ok: true },
