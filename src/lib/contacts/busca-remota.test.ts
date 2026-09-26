@@ -2,37 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import {
   MIN_TERMO_DE_BUSCA,
-  paraIlike,
   ramosDaBuscaDeContato,
   variantesDoTermoTelefonico,
 } from './busca-remota';
 import { variantesDoNonoDigito } from './telefone';
-
-describe('paraIlike', () => {
-  it('embrulha o termo em aspas e cerca de %', () => {
-    expect(paraIlike('ana')).toBe('"%ana%"');
-  });
-
-  it('escapa o % digitado — sem isso ele casa a base inteira', () => {
-    // Duas camadas: `%` vira `\%` (LIKE) e a barra vira `\\` (aspas do
-    // PostgREST), que o servidor desfaz antes do ilike.
-    expect(paraIlike('50%')).toBe('"%50\\\\%%"');
-  });
-
-  it('escapa o _ digitado — ele casa qualquer caractere', () => {
-    expect(paraIlike('a_b')).toBe('"%a\\\\_b%"');
-  });
-
-  it('escapa a aspa, que fecharia o valor no meio do .or()', () => {
-    expect(paraIlike('a"b')).toBe('"%a\\"b%"');
-  });
-
-  it('deixa a pontuação de telefone passar dentro das aspas', () => {
-    // É o caso que quebrava o seletor da agenda: vírgula e parênteses são
-    // delimitadores do `.or()`, e só as aspas os neutralizam.
-    expect(paraIlike('(27) 9283')).toBe('"%(27) 9283%"');
-  });
-});
 
 describe('variantesDoTermoTelefonico', () => {
   it('não inventa nada para termo sem dígito', () => {
@@ -98,19 +71,20 @@ describe('ramosDaBuscaDeContato', () => {
 
   it('busca por nome e pelo @ do Instagram — a ficha do Direct não tem telefone', () => {
     const ramos = ramosDaBuscaDeContato('ana')!;
-    expect(ramos).toContain('name.ilike."%ana%"');
-    expect(ramos).toContain('instagram_username.ilike."%ana%"');
+    expect(ramos).toContain('name.imatch."ana"');
+    expect(ramos).toContain('instagram_username.imatch."ana"');
   });
 
   it('o @ digitado não entra na comparação — a coluna guarda sem ele', () => {
     const ramos = ramosDaBuscaDeContato('@joana')!;
-    expect(ramos).toContain('instagram_username.ilike."%joana%"');
-    expect(ramos).toContain('wa_username.ilike."%joana%"');
+    expect(ramos).toContain('instagram_username.imatch."joana"');
+    expect(ramos).toContain('wa_username.imatch."joana"');
   });
 
   it('busca pelo @ do WhatsApp — a ficha só-BSUID não tem telefone (Fase 11.4)', () => {
     const ramos = ramosDaBuscaDeContato('ana.silva')!;
-    expect(ramos).toContain('wa_username.ilike."%ana.silva%"');
+    // O ponto do @ é literal: sem o escape, casaria "anaXsilva".
+    expect(ramos).toContain('wa_username.imatch."ana\\\\.silva"');
   });
 
   it('"@" sozinho fica abaixo do piso — não consulta (a agulha do @ seria vazia)', () => {
@@ -120,13 +94,13 @@ describe('ramosDaBuscaDeContato', () => {
 
   it('termo sem dígito não gera ramo de telefone', () => {
     // A agulha vazia: `%%` casaria todo telefone da conta.
-    expect(ramosDaBuscaDeContato('ana')).not.toContain('phone_normalized.ilike');
+    expect(ramosDaBuscaDeContato('ana')).not.toContain('phone_normalized.');
   });
 
   it('telefone mascarado vira dígito, nas duas grafias do nono', () => {
     const ramos = ramosDaBuscaDeContato('(83) 98000-0016')!;
-    expect(ramos).toContain('phone_normalized.ilike."%83980000016%"');
-    expect(ramos).toContain('phone_normalized.ilike."%8380000016%"');
+    expect(ramos).toContain('phone_normalized.imatch."83980000016"');
+    expect(ramos).toContain('phone_normalized.imatch."8380000016"');
   });
 
   it('⚠️ o ramo de telefone é SEMPRE sobre a coluna gerada, nunca sobre `phone`', () => {
@@ -137,9 +111,9 @@ describe('ramosDaBuscaDeContato', () => {
     // assim. `phone_normalized` é coluna gerada e só tem dígitos (022).
     const ramos = ramosDaBuscaDeContato('98000-0016')!;
     for (const ramo of ramos.split(',')) {
-      expect(ramo.startsWith('phone.ilike')).toBe(false);
+      expect(ramo.startsWith('phone.')).toBe(false);
     }
-    expect(ramos).toContain('phone_normalized.ilike');
+    expect(ramos).toContain('phone_normalized.imatch');
   });
 
   it('os ramos são separados por vírgula, como o .or() espera', () => {
@@ -148,7 +122,17 @@ describe('ramosDaBuscaDeContato', () => {
     const ramos = ramosDaBuscaDeContato('silva, jr')!;
     expect(ramos.split('","').length).toBe(1);
     expect(ramos).toBe(
-      'name.ilike."%silva, jr%",wa_username.ilike."%silva, jr%",instagram_username.ilike."%silva, jr%"',
+      'name.imatch."silva, jr",wa_username.imatch."silva, jr",instagram_username.imatch."silva, jr"',
     );
+  });
+
+  it('⚠️ `*`, `%` e `_` são literais — o `*` do ilike virava curinga (26/09/2026)', () => {
+    // "L*K*A" é o nome de um cliente real: pelo ilike ele trazia 37 fichas.
+    // O ramo do NOME conferido inteiro: `toContain` casaria dentro de
+    // `wa_username.imatch…` e deixaria o nome sem escape passar.
+    const nome = (termo: string) => ramosDaBuscaDeContato(termo)!.split(',')[0];
+    expect(nome('l*k*a')).toBe('name.imatch."l\\\\*k\\\\*a"');
+    expect(nome('50%')).toBe('name.imatch."50%"');
+    expect(nome('a_b')).toBe('name.imatch."a_b"');
   });
 });

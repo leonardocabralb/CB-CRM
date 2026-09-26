@@ -60,6 +60,8 @@ import { decrypt } from '@/lib/whatsapp/encryption';
 import { precisaConferirFoto } from '@/lib/contacts/foto-de-perfil';
 import { atualizarFotoDoContato } from '@/lib/whatsapp/foto-do-contato';
 import { ehEvolution } from '@/lib/cb-channels/transporte';
+import { lerEventoDeLigacao } from '@/lib/whatsapp/ligacoes/evento';
+import { registrarEventoDeLigacao } from '@/lib/whatsapp/ligacoes/registrar';
 
 // Inbound processing fans out to flows / automations / AI, so give the
 // after() block headroom beyond the platform default.
@@ -890,6 +892,25 @@ export async function POST(request: Request) {
           }
         }
       });
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  // Ligação (1044). Cada aviso da chamada — tocou, atendida num aparelho do
+  // escritório, terminou — chega num POST próprio, e o registro junta os avisos
+  // pelo `call-id` antes de gravar a bolha no fio. A sinalização da chamada
+  // (`relaylatency` e cia.) não é aviso: `lerEventoDeLigacao` devolve `null` e
+  // nem entra no `after()`. Ver `lib/whatsapp/ligacoes/registrar.ts`.
+  if (event === 'call') {
+    const evento = lerEventoDeLigacao(body.data, Date.now());
+    if (evento) {
+      after(() =>
+        registrarEventoDeLigacao({
+          db: supabaseAdmin(),
+          rota: { accountId: route.accountId, channelId: route.channelId, ownLid: route.ownLid },
+          evento,
+        }),
+      );
     }
     return NextResponse.json({ ok: true });
   }

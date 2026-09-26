@@ -603,6 +603,14 @@ export async function analisarConversaReivindicada(
   // (é o contrato que dá à linha o teto maior de caracteres e diz ao
   // modelo e à evidência a origem).
   const textoDe = (m: MensagemDaJanela): string | null => {
+    // Ligação (1044): não tem texto, mas é contato — a perdida é pendência do
+    // cliente, a atendida é a equipe falando com ele. Sem a linha, ela caía em
+    // "áudios/mídias sem texto" e o modelo a lia como anexo que não viu.
+    if (m.content_type === 'call') {
+      return m.sender_type === 'customer'
+        ? '[ligação perdida: ligou pelo WhatsApp e ninguém atendeu]'
+        : '[ligação atendida pelo celular do escritório]'
+    }
     if (m.content_text && m.content_text.trim()) return m.content_text
     const t = transcricoes.get(m.id)
     return t ? `${PREFIXO_AUDIO}${t}` : null

@@ -10,7 +10,7 @@ vi.mock('@/lib/cb-channels/engine-send', () => ({ resolveEngineChannelPreferring
 vi.mock('@/lib/whatsapp/meta-api', () => ({ sendTypingIndicator: h.enviar }))
 vi.mock('@/lib/whatsapp/encryption', () => ({ decrypt: (x: string) => `claro:${x}` }))
 
-import { mostrarDigitando } from './digitando'
+import { PRAZO_DO_DIGITANDO_MS, concluirDigitando, mostrarDigitando } from './digitando'
 
 const db = {} as SupabaseClient
 const TOKEN = 'EAAtokenMuitoLongoDeVerdade123'
@@ -79,5 +79,51 @@ describe('mostrarDigitando', () => {
     h.resolve.mockRejectedValueOnce(new Error('db fora'))
     await expect(mostrarDigitando(db, ARGS)).resolves.toBe('falhou')
     aviso.mockRestore()
+  })
+
+  it('o sinal de cancelamento chega ao pedido à Meta', async () => {
+    const cancelar = new AbortController()
+    await mostrarDigitando(db, { ...ARGS, sinal: cancelar.signal })
+    expect(h.enviar).toHaveBeenCalledWith(expect.objectContaining({ signal: cancelar.signal }))
+  })
+
+  it('cancelado antes de chegar à Meta (a resposta já saiu): não chama a Meta', async () => {
+    const cancelar = new AbortController()
+    cancelar.abort()
+    expect(await mostrarDigitando(db, { ...ARGS, sinal: cancelar.signal })).toBe('pulado')
+    expect(h.enviar).not.toHaveBeenCalled()
+  })
+})
+
+describe('concluirDigitando — a resposta espera o "digitando…" no máximo o prazo', () => {
+  it('terminou antes: segue na hora, e o sinal fica cancelado (inofensivo)', async () => {
+    vi.useFakeTimers()
+    try {
+      const cancelar = new AbortController()
+      await concluirDigitando(Promise.resolve('enviado'), cancelar)
+      expect(cancelar.signal.aborted).toBe(true)
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('não terminou: segue no prazo e CANCELA o pedido', async () => {
+    vi.useFakeTimers()
+    try {
+      const cancelar = new AbortController()
+      let seguiu = false
+      const fim = concluirDigitando(new Promise(() => {}), cancelar).then(() => {
+        seguiu = true
+      })
+      await vi.advanceTimersByTimeAsync(PRAZO_DO_DIGITANDO_MS - 1)
+      expect(seguiu).toBe(false)
+      await vi.advanceTimersByTimeAsync(1)
+      await fim
+      expect(seguiu).toBe(true)
+      expect(cancelar.signal.aborted).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

@@ -2896,25 +2896,42 @@ export function MessageThread({
                       );
                     }
                     const msg = item.mensagem!;
-                    // Aviso do WhatsApp dentro do grupo ("Fulano entrou").
-                    // Mesmo tratamento do evento de lead logo acima: a bolha
-                    // se desenha sozinha como faixa, e NÃO passa pelo
-                    // MessageActions — responder, reagir ou apagar um aviso
-                    // do sistema não quer dizer nada.
+                    // Aviso do WhatsApp dentro do grupo ("Fulano entrou") e
+                    // ligação (1044). Mesmo tratamento do evento de lead logo
+                    // acima: a bolha se desenha sozinha como faixa, e NÃO
+                    // passa pelo MessageActions — responder, reagir ou apagar
+                    // um aviso do sistema não quer dizer nada, e o "apagar
+                    // para todos" de uma ligação atendida tentaria revogar no
+                    // WhatsApp uma mensagem que não existe.
                     const destacada =
                       msg.id === alvoId ||
                       destaqueDaCitacao?.id === msg.id ||
                       (destaqueDoPainel?.tipo === "mensagem" &&
                         destaqueDoPainel.id === msg.id);
-                    if (msg.content_type === "system") {
+                    if (msg.content_type === "system" || msg.content_type === "call") {
+                      // A ligação é carimbada com a conexão que tocou, então
+                      // pode ABRIR um trecho de outro número (`aberturasDeCanal`
+                      // a conta): sem o separador aqui, o trecho nasceria mudo
+                      // e as mensagens seguintes por aquele número também não o
+                      // mostrariam. O aviso do grupo nunca abre trecho.
+                      const canalDaFaixa =
+                        channelsById.get(aberturasDeTrecho.get(msg.id) ?? "") ?? null;
+                      const corDaFaixa = corDoCanal(coresDosCanais, canalDaFaixa?.id);
                       return (
-                        <LinhaDoFio
-                          key={msg.id}
-                          id={msg.id}
-                          destacada={destacada}
-                        >
-                          <MessageBubble message={msg} emGrupo />
-                        </LinhaDoFio>
+                        <Fragment key={msg.id}>
+                          {canalDaFaixa && corDaFaixa && (
+                            <SeparadorDeCanal
+                              nome={canalDaFaixa.label}
+                              cor={corDaFaixa}
+                              rotulo={t("channelSectionLabel", {
+                                channel: canalDaFaixa.label,
+                              })}
+                            />
+                          )}
+                          <LinhaDoFio id={msg.id} destacada={destacada}>
+                            <MessageBubble message={msg} emGrupo={msg.content_type === "system"} />
+                          </LinhaDoFio>
+                        </Fragment>
                       );
                     }
                     const parent = msg.reply_to_message_id

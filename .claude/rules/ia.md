@@ -294,10 +294,13 @@ Radar.
   (`mostrarDigitando`, `src/lib/ai/digitando.ts`): a resolução de
   `engineSendText` com o canal da entrada, só em canal Meta e só com id
   `wamid.` (o webhook da Meta o passa; a Evolution não tem o recurso). Nunca as
-  credenciais da CONTA, como no original. Melhor esforço, sem `await`: nunca
-  lança nem segura a resposta, e o log passa por `semTokenDaMeta`. ⚠️ A Meta
-  marca a mensagem do cliente como LIDA junto (decisão do operador, P6).
-  Chamado depois de TODOS os portões, antes de gerar a resposta.
+  credenciais da CONTA, como no original. Melhor esforço: nunca lança, e o log
+  passa por `semTokenDaMeta`. ⚠️ A Meta marca a mensagem do cliente como LIDA
+  junto (decisão do operador, P6). Chamado depois de TODOS os portões, antes
+  de gerar a resposta, e corre em paralelo com a geração — mas a resposta o
+  ESPERA (`concluirDigitando`, no máximo `PRAZO_DO_DIGITANDO_MS` = 2 s) e o
+  cancela logo antes de sair (revisão do PR #288): solto (`void`), o pedido
+  podia chegar à Meta DEPOIS da resposta. Pino `digitando.chamadores.test.ts`.
 - **`generateStructured` (`structured.ts`) é separado de `generateReply` DE
   PROPÓSITO**: o auto-reply e o rascunho não podem herdar regressão do caminho
   de análise. Não fundir.

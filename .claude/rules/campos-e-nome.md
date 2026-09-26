@@ -150,6 +150,9 @@ espelhar em código: `contacts.email` e o valor do campo têm escritores demais.
   `onContactUpdated({ id, email })`; na ficha, com cerca do contato à vista
   (`contatoAbertoRef`) — a descarga de desmonte grava A depois de a ficha já
   ter aberto B.
+- **No painel da conversa o e-mail aparece SÓ no campo espelhado** (26/09/2026,
+  pedido do operador): a linha com o envelope, abaixo dos negócios, repetia o
+  mesmo valor e saiu. Não voltar com ela.
 - **Os dois lados guardam o MESMO texto** (o banco apara a linha de origem);
   campo COMUM não é aparado.
 

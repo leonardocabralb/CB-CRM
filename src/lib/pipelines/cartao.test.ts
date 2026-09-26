@@ -229,6 +229,34 @@ describe("juntarConteudo — o conteúdo por id sobre a lista enxuta", () => {
     ]);
     expect(juntarConteudo(lista, ["d1", "d3"], conteudo).map((c) => c.id)).toEqual(["d1", "d2", "d3"]);
   });
+
+  it("⚠️ resposta que cai numa lista que não é a do pedido só PREENCHE: o card transferido para o funil aberto não some dele (revisão do PR #251)", () => {
+    // d1 foi pedido ao funil A e já estava em B quando a consulta rodou; a
+    // tela agora mostra B, com d1 ainda sem conteúdo (fora do "mostrar mais").
+    const lista = [enxuto("d1"), enxuto("d2")];
+    const junto = juntarConteudo(lista, ["d1", "d2"], new Map([["d2", completo("d2")]]), false);
+    expect(junto.map((c) => c.id)).toEqual(["d1", "d2"]);
+    expect(temConteudo(junto[0]!)).toBe(false);
+    expect(temConteudo(junto[1]!)).toBe(true);
+    // Nada a preencher: a MESMA lista (sem render à toa).
+    expect(juntarConteudo(lista, ["d1"], new Map(), false)).toBe(lista);
+  });
+
+  it("a página só remove com a resposta na lista do pedido: o mesmo funil e nenhuma leitura gravada no meio (pino)", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const fonte = fs.readFileSync(
+      path.join(__dirname, "../../app/(dashboard)/pipelines/page.tsx"),
+      "utf8",
+    );
+    const i = fonte.indexOf("const carregarConteudo = useCallback(");
+    const trecho = fonte.slice(i, fonte.indexOf("\n  );\n", i));
+    expect(trecho).toContain("const gravadoNoPedido = ultimoGravadoRef.current;");
+    expect(trecho).toMatch(
+      /funilAbertoRef\.current === funil && ultimoGravadoRef\.current === gravadoNoPedido/,
+    );
+    expect(trecho).toContain("juntarConteudo(prev, novos, recebido, listaDoPedido)");
+  });
 });
 
 describe("manterMovimentosLocais — a recarga que chega depois de um arrasto", () => {
