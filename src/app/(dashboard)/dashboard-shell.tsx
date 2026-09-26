@@ -12,6 +12,8 @@ import { BrowserNotificationsListener } from '@/components/notifications/browser
 import { TelaBloqueada } from '@/components/auth/tela-bloqueada';
 import { FaixaDeSimulacao } from '@/components/auth/faixa-de-simulacao';
 import { PortaDeEntrada } from '@/components/entrada/porta-de-entrada';
+import { ExigenciaDoCelular } from '@/components/entrada/exigencia-do-celular';
+import { useMeuCelular } from '@/hooks/use-meu-celular';
 import { useTelaAcimaDoTeclado } from '@/hooks/use-tela-acima-do-teclado';
 import { ROTA_DA_TELA, TODAS_AS_TELAS } from '@/lib/perfis/catalogo';
 import { podeVerTela, telaDoCaminho } from '@/lib/perfis/visibilidade';
@@ -21,10 +23,17 @@ import { podeVerTela, telaDoCaminho } from '@/lib/perfis/visibilidade';
 // client components can't export Next's metadata object.
 
 function DashboardShellInner({ children }: { children: React.ReactNode }) {
-  const { user, loading, profileLoading, acesso } = useAuth();
+  const { user, loading, profileLoading, acesso, accountStatus } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const t = useTranslations('DashboardShell');
+
+  // O celular do membro (1046). Lido AQUI, e não dentro da tela de
+  // exigência, para a consulta sair junto com a do perfil — assim que a
+  // sessão resolve — em vez de depois dele, e não somar uma espera a toda
+  // abertura do CRM.
+  const meuCelular = useMeuCelular(user?.id ?? null);
+  const esperandoCelular = accountStatus === 'ready' && meuCelular.estado === 'carregando';
 
   // Sidebar drawer state — only used on mobile. On lg+ the sidebar is
   // always visible and this stays at `false` (ignored by the component).
@@ -75,7 +84,10 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
   // ao custo de uma ida ao banco que o dashboard já fazia de qualquer forma.
   // Falha de fetch não trava aqui: o finally do fetchProfile sempre derruba
   // o profileLoading, e aí o acesso nulo = tudo visível (fail-open da 956).
-  if (loading || profileLoading) {
+  // ⚠️ E o celular entra no mesmo spinner: sem isso o app pintaria e seria
+  // trocado pela tela de exigência um instante depois, com a pessoa já
+  // digitando.
+  if (loading || profileLoading || esperandoCelular) {
     return (
       <div className="bg-background flex h-screen items-center justify-center">
         <div className="flex flex-col items-center gap-3">
@@ -87,6 +99,14 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
   }
 
   if (!user) return null;
+
+  // O celular é EXIGIDO (1046): quem não informou vê só o cartão, no lugar do
+  // app inteiro — nem a porta de entrada monta. `falta` é a leitura que
+  // RESPONDEU "não há"; a que falhou (`desconhecido`) deixa passar. As regras
+  // estão no cabeçalho de `exigencia-do-celular.tsx`.
+  if (accountStatus === 'ready' && meuCelular.estado === 'falta') {
+    return <ExigenciaDoCelular aoGravar={meuCelular.gravado} />;
+  }
 
   // ⚠️ TUDO abaixo fica DENTRO da porta de entrada (Meu dia). Enquanto ela
   // está pendente, o layout continua desenhado ATRÁS do cartão (desfocado e

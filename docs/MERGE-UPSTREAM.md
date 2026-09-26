@@ -446,6 +446,10 @@ upstream sobrescrevê-los:
 | `src/lib/storage/upload-media.ts` (Fase 10d) | as duas falhas antes do upload ("Not signed in.", "Could not resolve your account.") lançam `ErroDeUpload` (NOSSO, `erro-de-upload.ts`) com o motivo que a tela traduz; a mensagem em inglês fica na exceção. Pino em `erro-de-upload.test.ts` |
 | `src/components/settings/template-manager.tsx`, `src/components/flows/forms/node-config-form.tsx`, `src/components/automations/automation-builder.tsx` (Fase 10d) | o erro do upload por `mensagemDoUpload(err, tUpload, …)` (era `err.message` cru); no `template-manager`, também o `alt` da amostra do cabeçalho por chave |
 | `src/app/(dashboard)/automations/page.tsx`, `contacts/page.tsx`, `broadcasts/[id]/page.tsx`, `src/components/flows/flow-editor-state.tsx`, `src/components/settings/invite-member-dialog.tsx`, `src/components/contacts/import-modal.tsx` (Fase 10c) | chaves no lugar do inglês fixo (falha de carga, aria-labels, "Funnel", contato desconhecido, falhas do fluxo e do convite, o "(+N more)"). Um merge que traga a versão crua devolve o inglês sem conflito — o pino `textos-portados.test.ts` reprova |
+| `src/app/(dashboard)/dashboard-shell.tsx` (celular dos membros, 1046) | `useMeuCelular(user?.id)` no topo (a leitura sai junto com a do perfil), `esperandoCelular` no spinner e, abaixo do `if (!user) return null`, o desvio para `<ExigenciaDoCelular>` quando a leitura respondeu que falta o celular — ANTES da `<PortaDeEntrada>`. Um merge que traga a casca crua tira a exigência sem conflito nenhum |
+| `src/app/api/account/members/route.ts` e `src/components/settings/members-tab.tsx` (1046) | o `celular` de cada membro, só para administradores, lido com o cliente do CHAMADOR (a RLS da 1046 é a segunda barreira); ausente = não vê, `null` = não informou |
+| `src/components/settings/profile-form.tsx` (1046) | o `<CelularCard>` depois do formulário (grava por rota própria, com salvar próprio) |
+| `src/types/index.ts` (1046) | `AccountMember.celular`, opcional |
 
 ## 5. Migrations do original: a história das renumerações
 
