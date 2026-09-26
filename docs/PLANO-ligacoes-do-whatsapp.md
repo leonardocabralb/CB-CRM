@@ -12,8 +12,8 @@ tentou ligar, para alguém ver e retornar?"
 | 0 | Estudo de viabilidade (medido em produção) | ✅ 25/09/2026 |
 | 1 | Back-end: assinar `CALL`, `cb_ligacoes`, desfecho, bolha, efeitos | ✅ código e testes (PR em rascunho) |
 | 2 | Tela: faixa no fio, prévia na lista e no card, textos | ✅ código e testes (mesmo PR) |
-| 3 | Aplicar a 1044 → teste ponta a ponta no preview → merge → deploy | ⏳ em andamento (autorizada em 26/09/2026) |
-| 4 | "Ressincronizar" o Bancário - Comercial → ligações de teste do operador → conferir | ⏳ depois do deploy |
+| 3 | Aplicar a 1044 → teste ponta a ponta no preview → merge → deploy | ✅ 26/09/2026 (PR #300) |
+| 4 | "Ressincronizar" o Bancário - Comercial → ligações de teste do operador → conferir | ✅ 26/09/2026 — achado de ordem corrigido no PR seguinte |
 | 5 | "Ressincronizar" as outras conexões por QR Code | ⏳ depois da 4 |
 | 6 | Pesquisa: atender e ligar pelo sistema (Wavoip) | ⏳ pedida para o fim |
 
@@ -89,6 +89,10 @@ tentou ligar, para alguém ver e retornar?"
      `bump_conversation_on_inbound`) e o gatilho da 972 acende "em atraso".
    - **atendida**: `sender_type = 'agent'` + `from_device` → sem não lida, e o
      gatilho da 972 apaga "em atraso" (é resposta de gente).
+   - `created_at` é a hora REAL (o fim, ou o `accept`), e não a da decisão.
+     Se já há mensagem depois dela, a bolha é HISTÓRIA: não reabre nem sobe a
+     conversa, e `cb_assentar_mensagem_historica` (1011) acerta a espera e a
+     não lida (achado da Fase 4, abaixo).
 6. Na tela: faixa no meio da conversa ("Ligação de voz perdida · 12:49 · tocou
    40 s"), sem ações; na lista e no card do funil, "📞 Ligação" no lugar do
    marcador `[call]` que o banco guarda.
@@ -211,6 +215,20 @@ tentou ligar, para alguém ver e retornar?"
   corpo (o ouvinte JÁ está montado); regras e docs que contradiziam os pinos;
   pinos dos filtros do Painel, do Meu dia e do Radar. Registrados como
   limite: os itens da seção 6.
+- **Fase 4** (26/09/2026): PR #300 mesclado e no ar; "Ressincronizar" só no
+  Bancário - Comercial. O operador ligou do celular dele (lead de teste): 4
+  ligações chegaram e foram registradas certo — tocou 60 s e caiu (perdida,
+  `terminate`), 9 s e recusada (perdida, `reject`), atendida em 5 s, e vídeo
+  de 13 s (perdida). As 4 vieram por LID, resolvidas pelo acervo.
+  ⚠️ **O `callerPn` do celular de 12 dígitos (DDD 83) chegou CERTO**
+  (`558388745316@s.whatsapp.net`, sem o zero a mais): o defeito da issue
+  #2154 não atinge celular. A régua que recusa 13 dígitos terminados em 0 com
+  DDD 31+ ficou (não custa nada a quem o WhatsApp manda certo).
+  ⚠️ **Achado:** a recusada (fim 10:21:54) foi gravada DEPOIS da atendida
+  seguinte (10:22:03) — a perdida espera a folga, a atendida não —, e o fio
+  mostrava a ordem trocada, com o "em atraso" aceso sobre um cliente atendido.
+  Corrigido no PR seguinte: a bolha entra na hora real e, se não for a
+  última, como história.
 - **Fase 3** (26/09/2026): 1044 aplicada (histórico `20260926112303`) e
   conferida no catálogo. Ponta a ponta no preview, com avisos sintéticos no
   webhook LOCAL da Evolution e só o lead de teste: perdida com o telefone

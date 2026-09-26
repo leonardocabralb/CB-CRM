@@ -260,6 +260,102 @@ describe('ligação ATENDIDA no celular do escritório', () => {
   });
 });
 
+describe('a bolha entra na hora REAL da ligação (teste real de 26/09/2026)', () => {
+  it('a perdida que é a última da conversa: hora do FIM, e o caminho de sempre', async () => {
+    await registrar(evento('offer'));
+    await registrar(evento('terminate'));
+
+    expect(bolhas()[0].created_at).toBe(new Date(T0 + 40_000).toISOString());
+    expect(ordem).toEqual(['reabre', 'rpc:bump_conversation_on_inbound', 'segue', 'esperas', 'funil']);
+  });
+
+  it('⚠️ a perdida decidida DEPOIS da atendida que veio em seguida entra ANTES dela, como história', async () => {
+    // A ligação seguinte foi atendida no celular 9 s depois do fim desta, e a
+    // bolha dela (decidida em 2 s) já está no fio.
+    banco.tabelas.messages = [
+      {
+        id: 'atendida-seguinte',
+        conversation_id: 'conversa-1',
+        sender_type: 'agent',
+        from_device: true,
+        sender_id: null,
+        deleted_at: null,
+        content_type: 'call',
+        created_at: new Date(T0 + 49_000).toISOString(),
+      },
+    ];
+    (banco.tabelas.conversations ??= []).push({ id: 'conversa-1', aguardando_desde: null });
+    await registrar(evento('offer'));
+    await registrar(evento('terminate'));
+
+    const bolha = bolhas().find((m) => m.message_id === 'call:CALL-1');
+    expect(bolha?.created_at).toBe(new Date(T0 + 40_000).toISOString());
+    // Não reabre, não sobe a conversa, não segue o canal: a última é outra.
+    expect(ordem).toEqual(['rpc:cb_assentar_mensagem_historica', 'esperas', 'funil']);
+    expect(banco.rpcs).toEqual([
+      {
+        nome: 'cb_assentar_mensagem_historica',
+        args: {
+          p_conversation_id: 'conversa-1',
+          p_carimbo: new Date(T0 + 40_000).toISOString(),
+          p_da_equipe: false,
+          p_espera_antes: null,
+          // A equipe atendeu a ligação seguinte: não é não lida.
+          p_conta_nao_lida: false,
+        },
+      },
+    ]);
+    expect(reopenClosedConversation).not.toHaveBeenCalled();
+    expect(followConversationChannel).not.toHaveBeenCalled();
+  });
+
+  it('a perdida histórica sem resposta de gente depois dela conta como não lida', async () => {
+    banco.tabelas.messages = [
+      {
+        id: 'texto-do-cliente',
+        conversation_id: 'conversa-1',
+        sender_type: 'customer',
+        from_device: false,
+        sender_id: null,
+        deleted_at: null,
+        content_type: 'text',
+        created_at: new Date(T0 + 45_000).toISOString(),
+      },
+    ];
+    await registrar(evento('offer'));
+    await registrar(evento('terminate'));
+
+    expect(banco.rpcs[0]).toMatchObject({
+      nome: 'cb_assentar_mensagem_historica',
+      args: { p_da_equipe: false, p_conta_nao_lida: true },
+    });
+  });
+
+  it('a atendida histórica assenta como resposta da equipe', async () => {
+    banco.tabelas.messages = [
+      {
+        id: 'texto-do-cliente',
+        conversation_id: 'conversa-1',
+        sender_type: 'customer',
+        from_device: false,
+        sender_id: null,
+        deleted_at: null,
+        content_type: 'text',
+        created_at: new Date(T0 + 30_000).toISOString(),
+      },
+    ];
+    await registrar(evento('offer'));
+    await registrar(evento('accept'));
+
+    const bolha = bolhas()[0];
+    expect(bolha.created_at).toBe(new Date(T0 + 21_000).toISOString());
+    expect(banco.rpcs[0]).toMatchObject({
+      nome: 'cb_assentar_mensagem_historica',
+      args: { p_da_equipe: true, p_conta_nao_lida: false },
+    });
+  });
+});
+
 describe('o que NÃO vira bolha', () => {
   it('chamada de grupo não é gravada em lugar nenhum', async () => {
     await registrar(evento('offer', { grupo: true }));

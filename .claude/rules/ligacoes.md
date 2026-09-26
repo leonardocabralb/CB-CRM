@@ -77,17 +77,24 @@ obrigações gerais de caminho de entrada estão em `.claude/rules/ingestao.md`.
   `bump_conversation_on_inbound` e o gatilho da 972 acende "em atraso".
   **Atendida** = `'agent'` + `from_device`: sem não lida, e a 972 apaga o "em
   atraso" (é resposta de gente).
-- ⚠️ **`created_at` é a hora da DECISÃO, não a da ligação**: os gatilhos de
-  `messages` decidem pela ordem de inserção, e uma linha "no passado" inserida
-  depois de uma resposta acenderia "em atraso" sobre cliente respondido (a
-  lição da 1010). A hora em que tocou é `ligacao.inicio`, e é ela que a faixa
-  escreve.
+- ⚠️⚠️ **`created_at` é a hora REAL: o fim (perdida) ou o `accept`
+  (atendida), pelo relógio do WhatsApp — nunca a hora da decisão.** A perdida
+  é decidida só depois da folga (~11 s) e a atendida em ~2 s: com a hora da
+  decisão, no teste real de 26/09/2026 a recusada foi gravada DEPOIS da
+  atendida que veio em seguida — fio na ordem trocada e "em atraso" aceso
+  sobre cliente atendido. Se já há mensagem depois da ligação, a bolha é
+  HISTÓRIA: não reabre, não sobe a conversa, não segue o canal, e chama
+  `cb_assentar_mensagem_historica` (1011), que acerta a espera e a não lida
+  pela hora real — o gatilho da 972 decide pela ORDEM DE INSERÇÃO. A espera de
+  antes e o "há mensagem depois?" são lidos ANTES do insert, para a reabertura
+  continuar colada nele. A faixa escreve `ligacao.inicio`.
 - A ficha e a conversa nascem por `resolverDestinatario` (dono durável) quando
   o número nunca escreveu (decisão do operador), com o telefone no lugar do
   nome — o aviso não traz o perfil.
 - Depois de gravar, na ordem: reabrir LOGO DEPOIS do insert (`reopen.ts`) →
-  subir a conversa → seguir o canal → cancelar as esperas "parar se o cliente
-  responder" → abrir o card no funil → ligar a bolha à linha.
+  subir a conversa → seguir o canal (os três só quando a ligação é a última;
+  a histórica assenta) → cancelar as esperas "parar se o cliente responder" →
+  abrir o card no funil → ligar a bolha à linha.
 
 ## O que NÃO roda — e há pino (`ligacoes.chamadores.test.ts`)
 
