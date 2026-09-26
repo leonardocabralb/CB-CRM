@@ -20,6 +20,7 @@ vi.mock('@/lib/ia-chaves/repo', () => ({
 import { lerChaveDeEmbeddings } from '@/lib/ia-chaves/repo'
 
 import {
+  ETIQUETAS_CORTADAS,
   lerDadosDoAcesso,
   lerOQueOAgenteVe,
   lerRetrato,
@@ -457,6 +458,17 @@ describe('lerDadosDoAcesso', () => {
     })
     expect(Object.keys(dados)).toEqual(['etiquetas'])
     expect([...new Set(consultas.map((c) => c.tabela))]).toEqual(['contact_tags', 'tags'])
+  })
+
+  it('mais etiquetas que o teto: o corte vai escrito para o modelo (Codex, PR #312)', async () => {
+    const tabelas = tabelasCompletas()
+    tabelas.contact_tags = Array.from({ length: 201 }, (_, i) => ({ contact_id: CONTATO, tag_id: `t${i}` }))
+    tabelas.tags = Array.from({ length: 201 }, (_, i) => ({ id: `t${i}`, account_id: CONTA, name: `e${String(i).padStart(3, '0')}` }))
+    const { db } = criarBanco(tabelas)
+    const dados = await lerDadosDoAcesso(db, { accountId: CONTA, contactId: CONTATO, dealId: null, acesso: { ...FECHADO, etiquetas: true }, agora: AGORA })
+    const lidas = dados.etiquetas?.ok ? dados.etiquetas.valor : []
+    expect(lidas).toHaveLength(201)
+    expect(lidas.at(-1)).toBe(ETIQUETAS_CORTADAS)
   })
 
   it('tudo marcado: cada bloco com a CONTA, e o texto que o modelo vai ler', async () => {
