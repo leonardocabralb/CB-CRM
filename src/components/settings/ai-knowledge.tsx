@@ -32,7 +32,8 @@ export function AiKnowledgeCard({
 }: {
   accountId: string | null;
   canEdit: boolean;
-  hasEmbeddingsKey: boolean;
+  /** `null` = não se sabe (a carga falhou): a frase sobre a busca some. */
+  hasEmbeddingsKey: boolean | null;
 }) {
   const [docs, setDocs] = useState<DocSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -165,7 +166,12 @@ export function AiKnowledgeCard({
         </CardTitle>
         <CardDescription>
           {t('description', {
-            searchType: hasEmbeddingsKey ? t('semanticSearchOn') : t('keywordSearchOn')
+            searchType:
+              hasEmbeddingsKey === null
+                ? ''
+                : hasEmbeddingsKey
+                  ? t('semanticSearchOn')
+                  : t('keywordSearchOn'),
           })}
         </CardDescription>
       </CardHeader>

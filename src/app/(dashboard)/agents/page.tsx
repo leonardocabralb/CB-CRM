@@ -1,90 +1,58 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Bot, Sparkles, Settings2, BarChart3 } from 'lucide-react';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { AiPlayground } from '@/components/agents/ai-playground';
-import { AiUsageCard } from '@/components/agents/ai-usage';
-import { AiConfig } from '@/components/settings/ai-config';
+import { Bot } from 'lucide-react';
+
+import { RequireRole } from '@/components/auth/require-role';
+import { SubAbas } from '@/components/settings/sub-abas';
+import { ListaDeAgentes } from '@/components/agentes-de-ia/lista-de-agentes';
+import { UsoDeIa } from '@/components/agentes-de-ia/uso-de-ia';
 import { useAuth } from '@/hooks/use-auth';
-import { canEditSettings } from '@/lib/auth/roles';
 
-type Tab = 'playground' | 'setup' | 'usage';
+type Vista = 'agentes' | 'uso';
 
+/**
+ * Agentes de IA (F1b do docs/PLANO-agentes-de-ia.md): a LISTA de agentes e o
+ * USO da conta em R$. Só administrador (D14) — as instruções e as regras não
+ * saem para quem não é.
+ */
 export default function AgentsPage() {
-  const t = useTranslations('Agents');
-  const { accountRole } = useAuth();
-  const canViewUsage = accountRole ? canEditSettings(accountRole) : false;
-  const [tab, setTab] = useState<Tab>('playground');
-  const [decided, setDecided] = useState(false);
-
-  // Land first-time users on Setup, returning users on the Playground.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch('/api/ai/config');
-        const data = await res.json().catch(() => ({}));
-        if (!cancelled) setTab(data?.configured ? 'playground' : 'setup');
-      } catch {
-        if (!cancelled) setTab('setup');
-      } finally {
-        if (!cancelled) setDecided(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const t = useTranslations('IaAgentes');
+  const { profileLoading } = useAuth();
+  const [vista, setVista] = useState<Vista>('agentes');
 
   return (
     <div>
       <div className="flex items-center gap-2">
         <Bot className="h-6 w-6 text-primary" />
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">
-          {t('title')}
-        </h1>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">{t('titulo')}</h1>
       </div>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {t('description')}
-      </p>
+      <p className="mt-1 text-sm text-muted-foreground">{t('descricao')}</p>
 
-      {decided && (
-        <Tabs
-          value={tab}
-          onValueChange={(v) => setTab(v as Tab)}
-          className="mt-6"
-        >
-          <TabsList>
-            <TabsTrigger value="playground">
-              <Sparkles className="mr-1.5 h-4 w-4" /> {t('tabPlayground')}
-            </TabsTrigger>
-            <TabsTrigger value="setup">
-              <Settings2 className="mr-1.5 h-4 w-4" /> {t('tabSetup')}
-            </TabsTrigger>
-            {canViewUsage && (
-              <TabsTrigger value="usage">
-                <BarChart3 className="mr-1.5 h-4 w-4" /> {t('tabUsage')}
-              </TabsTrigger>
-            )}
-          </TabsList>
-
-          <TabsContent value="playground" className="mt-4">
-            <AiPlayground onGoToSetup={() => setTab('setup')} />
-          </TabsContent>
-
-          <TabsContent value="setup" className="mt-4">
-            <AiConfig />
-          </TabsContent>
-
-          {canViewUsage && (
-            <TabsContent value="usage" className="mt-4">
-              <AiUsageCard />
-            </TabsContent>
-          )}
-        </Tabs>
-      )}
+      <RequireRole
+        min="admin"
+        fallback={
+          profileLoading ? (
+            <div className="mt-6 h-32 animate-pulse rounded-lg border border-border bg-muted/40" />
+          ) : (
+            <p className="mt-6 text-sm text-muted-foreground">{t('somenteAdmin')}</p>
+          )
+        }
+      >
+        <div className="mt-6 space-y-4">
+          <SubAbas
+            rotulo={t('abas')}
+            ativa={vista}
+            aoTrocar={setVista}
+            abas={[
+              { id: 'agentes', rotulo: t('abaAgentes') },
+              { id: 'uso', rotulo: t('abaUso') },
+            ]}
+          />
+          {vista === 'agentes' ? <ListaDeAgentes /> : <UsoDeIa />}
+        </div>
+      </RequireRole>
     </div>
   );
 }

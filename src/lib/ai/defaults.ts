@@ -35,6 +35,7 @@ export const AI_PROVIDER_MODELS: Record<AiProvider, readonly string[]> = {
   openai: ['gpt-5.4-mini', 'gpt-5.4', 'gpt-5.4-nano'],
   anthropic: [
     'claude-haiku-4-5-20251001',
+    'claude-sonnet-5',
     'claude-sonnet-4-5-20250929',
   ],
   gemini: [

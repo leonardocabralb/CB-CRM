@@ -658,14 +658,17 @@ export async function analisarConversaReivindicada(
     comTexto.map((m) => textoDe(m)).join('\n'),
   )
 
-  // Agente do canal com queda para o padrão da conta — a resolução da
-  // 903, MAS com `requireActive: false`: o Radar precisa da CREDENCIAL;
-  // `is_active` é o interruptor do assistente DE CONVERSA (auto-reply/
-  // rascunho). Amarrar os dois fazia "desliguei as respostas automáticas
-  // deste número" silenciar a análise sem nenhum aviso na tela.
+  // A configuração DO MÓDULO (a linha padrão da conta), com
+  // `requireActive: false`: o Radar precisa da CREDENCIAL; `is_active` é o
+  // interruptor do assistente DE CONVERSA (auto-reply/rascunho). Amarrar os
+  // dois fazia "desliguei as respostas automáticas" silenciar a análise sem
+  // nenhum aviso na tela.
+  // ⚠️ SEM `channelId` desde a 1042 (docs/PLANO-agentes-de-ia.md, 5.10): a
+  // configuração do Radar é do módulo, da conta inteira, e a chave é a do
+  // PROVEDOR (`cb_ia_chaves`). Resolver pelo canal deixava um agente criado
+  // para uma conexão trocar, em silêncio, a chave e o modelo do Radar ali.
   const config = await loadAiConfig(admin, args.accountId, {
     requireActive: false,
-    channelId: args.channelId,
   })
 
   // ⚠️ Janela em que o cliente NÃO falou (broadcast, abordagem ativa da
