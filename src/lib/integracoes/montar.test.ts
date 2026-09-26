@@ -1,9 +1,14 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import {
   montarCartoes,
   type CanalParaMontar,
-  type ConfigParaMontar,
+  type ChaveParaMontar,
+  type PadraoParaMontar,
+  type Teste,
   type UsoNoCartao,
 } from './montar';
 
@@ -17,27 +22,32 @@ const CANAIS: CanalParaMontar[] = [
 const MODELO_TRANSCRICAO = 'modelo-transcricao-teste';
 const MODELO_EMBEDDINGS = 'modelo-embeddings-teste';
 
-function config(parcial: Partial<ConfigParaMontar>): ConfigParaMontar {
+function chave(
+  provedor: ChaveParaMontar['provedor'],
+  teste: Teste = { ok: true }
+): ChaveParaMontar {
+  return { provedor, existe: true, teste };
+}
+
+function padrao(parcial: Partial<PadraoParaMontar> = {}): PadraoParaMontar {
   return {
-    id: 'cfg-1',
-    channelId: null,
     provider: 'gemini',
     model: 'gemini-3.5-flash',
     radarModel: null,
     isActive: true,
-    teste: { ok: true },
-    temEmbeddings: false,
     ...parcial,
   };
 }
 
 function montar(
-  configs: ConfigParaMontar[],
-  embeddingsTeste: Parameters<typeof montarCartoes>[2] = null,
+  chaves: ChaveParaMontar[],
+  linhaPadrao: PadraoParaMontar | null = padrao(),
+  embeddingsTeste: Teste | 'recusada' = null,
   canais: CanalParaMontar[] = CANAIS
 ) {
   return montarCartoes(
-    configs,
+    chaves,
+    linhaPadrao,
     canais,
     embeddingsTeste,
     MODELO_TRANSCRICAO,
@@ -54,48 +64,55 @@ function cartao(cartoes: ReturnType<typeof montarCartoes>, id: string) {
 function uso(
   cartoes: ReturnType<typeof montarCartoes>,
   id: string,
-  modulo: UsoNoCartao['modulo'],
-  modelo?: string
+  modulo: UsoNoCartao['modulo']
 ): UsoNoCartao {
-  const usos = cartao(cartoes, id).usos.filter(
-    (u) => u.modulo === modulo && (modelo === undefined || u.modelo === modelo)
-  );
+  const usos = cartao(cartoes, id).usos.filter((u) => u.modulo === modulo);
   if (usos.length !== 1) {
-    throw new Error(
-      `esperava 1 uso ${modulo}${modelo ? `/${modelo}` : ''} no cartão ${id}, achei ${usos.length}`
-    );
+    throw new Error(`esperava 1 uso ${modulo} no cartão ${id}, achei ${usos.length}`);
   }
   return usos[0];
 }
 
-describe('montarCartoes', () => {
-  it('sem nenhuma config, todos os provedores ficam não configurados e sem usos', () => {
-    const cartoes = montar([]);
+describe('montarCartoes — chave por PROVEDOR (1047)', () => {
+  it('sem chave nenhuma, todos os provedores ficam não configurados', () => {
+    const cartoes = montar([], null);
     for (const id of ['gemini', 'openai', 'anthropic', 'google_calendar']) {
       expect(cartao(cartoes, id).estado).toBe('nao_configurado');
-      expect(cartao(cartoes, id).usos).toEqual([]);
+      expect(cartao(cartoes, id).temChave).toBe(false);
     }
   });
 
+  it('o cartão existe pela CHAVE, não por um agente: OpenAI com chave e sem agente fica "ok"', () => {
+    const cartoes = montar([chave('gemini'), chave('openai')], padrao(), {
+      ok: true,
+    });
+    expect(cartao(cartoes, 'openai')).toMatchObject({
+      estado: 'ok',
+      temChave: true,
+      agentes: [],
+    });
+  });
+
   it('teste pendente vira "conferindo", não "erro" nem "ok"', () => {
-    const cartoes = montar([config({ teste: null })]);
+    const cartoes = montar([chave('gemini', null)]);
     expect(cartao(cartoes, 'gemini').estado).toBe('conferindo');
   });
 
-  it('um agente com falha derruba o cartão do provedor para "erro"', () => {
-    const cartoes = montar([
-      config({ id: 'a', teste: { ok: true } }),
-      config({
-        id: 'b',
-        channelId: 'canal-1',
-        teste: { ok: false, motivo: 'invalid_key' },
-      }),
-    ]);
+  it('ping com falha pinta o cartão de "erro"', () => {
+    const cartoes = montar([chave('gemini', { ok: false, motivo: 'invalid_key' })]);
     expect(cartao(cartoes, 'gemini').estado).toBe('erro');
   });
 
+  it('o Radar e o assistente ficam no cartão do provedor da linha PADRÃO', () => {
+    const cartoes = montar([chave('gemini'), chave('openai')], padrao());
+    expect(cartao(cartoes, 'gemini').ehDoRadar).toBe(true);
+    expect(cartao(cartoes, 'openai').ehDoRadar).toBe(false);
+    expect(cartao(cartoes, 'openai').usos.some((u) => u.modulo === 'radar')).toBe(false);
+    expect(cartao(cartoes, 'gemini').agentes).toHaveLength(1);
+  });
+
   it('o Radar herda o modelo do agente e a origem diz isso', () => {
-    const cartoes = montar([config({ model: 'gemini-3.7-flash' })]);
+    const cartoes = montar([chave('gemini')], padrao({ model: 'gemini-3.7-flash' }));
     const radar = uso(cartoes, 'gemini', 'radar');
     expect(radar).toMatchObject({
       modelo: 'gemini-3.7-flash',
@@ -107,9 +124,10 @@ describe('montarCartoes', () => {
   });
 
   it('radar_model preenchido vira modelo próprio, sem tocar o do assistente', () => {
-    const cartoes = montar([
-      config({ model: 'gemini-3.5-flash', radarModel: 'gemini-3.7-flash' }),
-    ]);
+    const cartoes = montar(
+      [chave('gemini')],
+      padrao({ model: 'gemini-3.5-flash', radarModel: 'gemini-3.7-flash' })
+    );
     expect(uso(cartoes, 'gemini', 'radar')).toMatchObject({
       modelo: 'gemini-3.7-flash',
       origem: 'proprio',
@@ -121,96 +139,140 @@ describe('montarCartoes', () => {
   });
 
   it('Radar sem NENHUM canal ligado continua na lista, marcado', () => {
-    // É o caso que originou a tela: chave cadastrada "para o Radar" e o
-    // Radar desligado em todas as conexões. Sumir com a linha esconderia
-    // exatamente o que o operador precisa descobrir.
     const semRadar = CANAIS.map((c) => ({ ...c, radarEnabled: false }));
-    const cartoes = montar([config({})], null, semRadar);
+    const cartoes = montar([chave('gemini')], padrao(), null, semRadar);
     const radar = uso(cartoes, 'gemini', 'radar');
     expect(radar.indisponivel).toBe('radar_sem_canal');
     expect(radar.canais).toEqual([]);
   });
 
-  it('linha de canal NÃO multiplica módulos: um modelo por módulo, da config padrão', () => {
-    // Decisão de produto (2026-08-28): a configuração é por MÓDULO e vale
-    // para a conta inteira. Mesmo que exista uma linha por canal no banco
-    // (o schema da 903 permite; nenhuma tela cria), o cartão mostra UM
-    // Radar, com o modelo do agente padrão.
-    const cartoes = montar([
-      config({ id: 'padrao', radarModel: 'gemini-3.7-flash' }),
-      config({
-        id: 'c1',
-        channelId: 'canal-1',
-        radarModel: null,
-        model: 'gemini-3.6-flash',
-      }),
-    ]);
-    const radares = cartao(cartoes, 'gemini').usos.filter(
-      (u) => u.modulo === 'radar'
+  it('a transcrição mora no cartão do GEMINI, mesmo com o Radar em outro provedor', () => {
+    // Desde a 1047 a transcrição lê a chave do Gemini direto — não depende
+    // do provedor da linha padrão.
+    const cartoes = montar(
+      [chave('gemini'), chave('openai')],
+      padrao({ provider: 'openai', model: 'gpt-x' })
     );
-    expect(radares).toHaveLength(1);
-    expect(radares[0]).toMatchObject({
-      modelo: 'gemini-3.7-flash',
-      origem: 'proprio',
-      canais: ['Comercial'],
-      canaisDesligados: ['Pessoal'],
-    });
-  });
-
-  it('a transcrição vale para a conta inteira: modelo fixo e SEM lista de canais', () => {
-    const cartoes = montar([
-      config({ id: 'g', provider: 'gemini' }),
-      config({ id: 'o', provider: 'openai', model: 'gpt-x' }),
-    ]);
     expect(uso(cartoes, 'gemini', 'transcricao')).toMatchObject({
       modelo: MODELO_TRANSCRICAO,
       origem: 'fixo',
-      // ⚠️ Vazio de propósito: listar canais aqui sugeriria chave por
-      // conexão, que é exatamente o modelo de produto descartado.
       canais: [],
     });
-    expect(uso(cartoes, 'openai', 'transcricao').indisponivel).toBe(
-      'transcricao_exige_gemini'
+    expect(uso(cartoes, 'gemini', 'transcricao').indisponivel).toBeUndefined();
+    expect(cartao(cartoes, 'openai').usos.some((u) => u.modulo === 'transcricao')).toBe(
+      false
     );
   });
 
+  it('SEM a chave, o módulo continua na lista, marcado "precisa da chave"', () => {
+    // É quando o operador mais precisa descobrir o que a chave destrava.
+    const cartoes = montar([], padrao());
+    expect(uso(cartoes, 'gemini', 'transcricao').indisponivel).toBe('sem_chave');
+    expect(uso(cartoes, 'gemini', 'radar').indisponivel).toBe('sem_chave');
+    expect(uso(cartoes, 'openai', 'rag').indisponivel).toBe('sem_chave');
+  });
+
   it('agente desligado marca o uso de conversa, e só ele', () => {
-    const cartoes = montar([config({ isActive: false })]);
-    expect(uso(cartoes, 'gemini', 'conversa').indisponivel).toBe(
-      'conversa_desligada'
-    );
-    // Radar e transcrição leem a config com requireActive false — o
-    // interruptor não os afeta e a tela não pode dizer o contrário.
+    const cartoes = montar([chave('gemini')], padrao({ isActive: false }));
+    expect(uso(cartoes, 'gemini', 'conversa').indisponivel).toBe('conversa_desligada');
     expect(uso(cartoes, 'gemini', 'radar').indisponivel).toBeUndefined();
     expect(uso(cartoes, 'gemini', 'transcricao').indisponivel).toBeUndefined();
   });
 
-  it('embeddings aparecem SÓ no cartão openai, com modelo fixo, e contam no estado dele', () => {
-    // Chave de embeddings numa config cujo provider de CHAT é gemini:
-    // o RAG é OpenAI-only, então o uso (e a falha) pertence ao cartão
-    // openai — mesmo sem nenhum agente de chat openai.
-    const cartoes = montar(
-      [config({ provider: 'gemini', temEmbeddings: true })],
-      { ok: false, motivo: '401' }
-    );
-    const openai = cartao(cartoes, 'openai');
-    expect(openai.estado).toBe('erro');
+  it('a base de conhecimento fica no cartão da OpenAI e a falha do embeddings conta só nele', () => {
+    const cartoes = montar([chave('gemini'), chave('openai')], padrao(), {
+      ok: false,
+      motivo: 'invalid_key',
+    });
+    expect(cartao(cartoes, 'openai').estado).toBe('erro');
     expect(uso(cartoes, 'openai', 'rag')).toMatchObject({
       modelo: MODELO_EMBEDDINGS,
       origem: 'fixo',
     });
-    expect(cartao(cartoes, 'gemini').usos.some((u) => u.modulo === 'rag')).toBe(
-      false
-    );
-    // O cartão gemini não herda a falha do embeddings.
+    expect(cartao(cartoes, 'gemini').usos.some((u) => u.modulo === 'rag')).toBe(false);
     expect(cartao(cartoes, 'gemini').estado).toBe('ok');
   });
+});
 
-  it('agente de canal carrega o rótulo do canal', () => {
-    const cartoes = montar([config({ channelId: 'canal-1' })]);
-    expect(cartao(cartoes, 'gemini').agentes[0]).toMatchObject({
-      escopo: 'canal',
-      canalLabel: 'Comercial',
+describe('rótulos montados de Integrações', () => {
+  // `modulo.${…}` e `indisponivel.${…}` são chaves MONTADAS no painel:
+  // escapam do portão de i18n do CI. O compilador não cobra o dicionário.
+  const MODULOS: UsoNoCartao['modulo'][] = ['conversa', 'radar', 'transcricao', 'rag'];
+  const INDISPONIVEIS: NonNullable<UsoNoCartao['indisponivel']>[] = [
+    'radar_sem_canal',
+    'conversa_desligada',
+    'sem_chave',
+    'embeddings_recusados',
+  ];
+  for (const arquivo of ['en.json', 'pt-BR.json']) {
+    it(`existem em ${arquivo}`, () => {
+      const dic = JSON.parse(
+        readFileSync(join(process.cwd(), 'messages', arquivo), 'utf8')
+      ) as { Settings: { integracoes: Record<string, Record<string, string>> } };
+      const integracoes = dic.Settings.integracoes;
+      for (const m of MODULOS) expect(integracoes.modulo[m], m).toBeTruthy();
+      for (const i of INDISPONIVEIS) expect(integracoes.indisponivel[i], i).toBeTruthy();
+      // Os códigos que o painel traduz (`motivo.*`, `avisoDaChave.*`, `erroDaChave.*`).
+      for (const m of ['invalid_key', 'rate_limited', 'timeout', 'network', 'provider_error', 'chave_ilegivel', 'leitura_falhou']) {
+        expect(integracoes.motivo[m], m).toBeTruthy();
+      }
+      for (const a of ['embeddings_recusado', 'embeddings_nao_conferido', 'modelo_em_uso_indisponivel', 'transcricao_indisponivel', 'so_da_base', 'modulos_nao_criados']) {
+        expect(integracoes.avisoDaChave[a], a).toBeTruthy();
+      }
+      for (const e of ['chave_vazia', 'sem_chave', 'sem_configuracao', 'banco', 'modelo_em_uso_recusado', 'transcricao_recusada']) {
+        expect(integracoes.erroDaChave[e], e).toBeTruthy();
+      }
     });
+  }
+});
+
+describe('montarCartoes — assistente POR CONEXÃO herdado (Codex, #294)', () => {
+  it('a linha de conexão ligada vira uso da chave DO PROVEDOR DELA, com a conexão', () => {
+    const cartoes = montarCartoes(
+      [chave('gemini'), chave('anthropic')],
+      padrao(),
+      CANAIS,
+      null,
+      MODELO_TRANSCRICAO,
+      MODELO_EMBEDDINGS,
+      [{ provider: 'anthropic', model: 'claude-x', canal: 'Comercial' }]
+    );
+    expect(uso(cartoes, 'anthropic', 'conversa')).toMatchObject({
+      modelo: 'claude-x',
+      origem: 'agente',
+      canais: ['Comercial'],
+    });
+    expect(uso(cartoes, 'anthropic', 'conversa').indisponivel).toBeUndefined();
+  });
+
+  it('sem a chave, o uso aparece marcado sem_chave', () => {
+    const cartoes = montarCartoes(
+      [chave('gemini')],
+      padrao(),
+      CANAIS,
+      null,
+      MODELO_TRANSCRICAO,
+      MODELO_EMBEDDINGS,
+      [{ provider: 'openai', model: 'gpt-x', canal: 'Pessoal' }]
+    );
+    expect(uso(cartoes, 'openai', 'conversa').indisponivel).toBe('sem_chave');
+  });
+});
+
+describe('montarCartoes — chave da OpenAI recusada para a base (Codex, #294)', () => {
+  it('o uso da base fica indisponível e o cartão NÃO fica "falhando"', () => {
+    const cartoes = montar([chave('openai')], padrao({ provider: 'openai', model: 'gpt-x' }), 'recusada');
+    expect(uso(cartoes, 'openai', 'rag').indisponivel).toBe('embeddings_recusados');
+    expect(cartao(cartoes, 'openai').estado).toBe('ok');
+  });
+
+  it('um ping de embeddings que FALHA continua marcando o cartão', () => {
+    const cartoes = montar(
+      [chave('openai')],
+      padrao({ provider: 'openai', model: 'gpt-x' }),
+      { ok: false, motivo: 'invalid_key' }
+    );
+    expect(uso(cartoes, 'openai', 'rag').indisponivel).toBeUndefined();
+    expect(cartao(cartoes, 'openai').estado).toBe('erro');
   });
 });

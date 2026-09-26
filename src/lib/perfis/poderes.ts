@@ -147,7 +147,7 @@ export const ESCRITA_DA_TELA: Record<TelaId, AccountRole> = {
   agendadas: "agent", // /api/cb/scheduled
   automations: "admin", // canManageAutomations + policies da 964
   flows: "admin", // idem
-  agents: "admin", // /api/ai/config
+  agents: "admin", // /api/ai/config, /api/ai/test
   settings: "viewer", // depende da SEÇÃO — ver o mapa abaixo
 };
 
@@ -164,7 +164,7 @@ export const ESCRITA_DA_SECAO: Record<SecaoId, AccountRole> = {
   fields: "admin", // policies `custom_fields_*` / `tags_*` (017) e da 966
   assinatura: "admin", // grava em `accounts`; a tela usa canEditSettings
   members: "admin", // canManageMembers
-  integracoes: "admin", // /api/ai/config, /api/cb/integracoes/status
+  integracoes: "admin", // /api/cb/ia/chaves, /api/cb/ia/radar, /api/cb/integracoes/status
   api: "admin", // /api/account/api-keys
   webhooks: "admin", // requireRole("admin") em todas as rotas /api/cb/webhooks*
   perfis: "admin", // e mais que isso: invisível fora do admin (SECOES_SO_DE_ADMIN)

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
-import { decrypt } from '@/lib/whatsapp/encryption'
+import { lerChave } from '@/lib/ia-chaves/repo'
 import { validateAiCredentials } from '@/lib/ai/validate'
 import { AiError, type AiProvider } from '@/lib/ai/types'
 
@@ -16,7 +16,7 @@ import { AiError, type AiProvider } from '@/lib/ai/types'
  */
 export async function POST(request: Request) {
   try {
-    const { supabase, accountId, userId } = await requireRole('admin')
+    const { accountId, userId } = await requireRole('admin')
 
     const limit = checkRateLimit(`ai-test:${userId}`, RATE_LIMITS.adminAction)
     if (!limit.success) return rateLimitResponse(limit)
@@ -44,27 +44,22 @@ export async function POST(request: Request) {
     const rawKey = typeof body.api_key === 'string' ? body.api_key.trim() : ''
     let apiKeyPlain = rawKey
     if (!apiKeyPlain) {
-      const { data: existing } = await supabase
-        .from('ai_configs')
-        .select('api_key')
-        .eq('account_id', accountId)
-        // Agente padrao da conta — ver a nota em /api/ai/config.
-        .is('channel_id', null)
-        .maybeSingle()
-      if (!existing?.api_key) {
-        return NextResponse.json(
-          { error: 'Enter an API key to test.' },
-          { status: 400 },
-        )
-      }
+      // A chave GUARDADA é a do provedor (`cb_ia_chaves`, 1047), lida pelo
+      // serviço: a tabela é fechada ao navegador.
+      let lida: Awaited<ReturnType<typeof lerChave>>
       try {
-        apiKeyPlain = decrypt(existing.api_key)
-      } catch {
-        return NextResponse.json(
-          { error: 'Stored API key could not be decrypted — re-enter your key.' },
-          { status: 400 },
-        )
+        lida = await lerChave(accountId, provider)
+      } catch (err) {
+        console.error('[ai/test] leitura da chave falhou:', err)
+        return NextResponse.json({ code: 'banco' }, { status: 500 })
       }
+      if (lida.ilegivel) {
+        return NextResponse.json({ code: 'chave_ilegivel' }, { status: 400 })
+      }
+      if (!lida.chave) {
+        return NextResponse.json({ code: 'sem_chave' }, { status: 400 })
+      }
+      apiKeyPlain = lida.chave
     }
 
     try {

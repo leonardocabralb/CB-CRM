@@ -32,7 +32,7 @@
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { loadAiConfig } from '@/lib/ai/config'
+import { lerChave } from '@/lib/ia-chaves/repo'
 import { aiRequestTimeoutMs } from '@/lib/ai/defaults'
 import {
   geminiEndpoint,
@@ -188,20 +188,24 @@ export async function transcreverAudio(
   }
 
   // Chave ANTES do cadeado (ver cabeçalho: sem chave não se grava estado).
-  // ⚠️ Resolvida PELO CANAL da conversa, como a análise do Radar — sem o
-  // canal, conta com padrão OpenAI e agente Gemini no canal recusava tudo,
-  // e o INVERSO mandava o áudio ao Google num canal que o operador apontou
-  // para outro provedor (revisão 2026-08-27). Grupo tem canal nulo e cai
-  // no padrão da conta, como em todo o resto do projeto.
-  const config = await loadAiConfig(admin, args.accountId, {
-    requireActive: false,
-    channelId: msg.conversation?.channel_id ?? null,
-  })
-  if (!config) {
-    return { status: 'recusada', erro: 'sem chave de IA configurada — cadastre uma chave Gemini em Configurações → Assistente de IA' }
+  // ⚠️ A chave do GEMINI da conta, direto (1047, D1 do
+  // docs/PLANO-agentes-de-ia.md): a transcrição só fala com o Gemini e tem
+  // modelo fixo, então não depende do provedor de agente nenhum. Antes ela
+  // era resolvida pelo canal da conversa, e um agente de outro provedor
+  // naquela conexão fazia toda transcrição ser recusada. Erro de LEITURA é
+  // `falhou` sem gravar (passageiro), nunca "sem chave".
+  let chaveGemini: string | null
+  try {
+    const lida = await lerChave(args.accountId, 'gemini')
+    if (lida.ilegivel) {
+      return { status: 'recusada', erro: 'a chave do Gemini não pôde ser lida — cadastre-a de novo em Configurações → Integrações' }
+    }
+    chaveGemini = lida.chave
+  } catch {
+    return { status: 'falhou', erro: 'não foi possível ler a chave do Gemini — tente de novo em instantes' }
   }
-  if (config.provider !== 'gemini') {
-    return { status: 'recusada', erro: 'a transcrição usa o Gemini — o agente da conta está em outro provedor' }
+  if (!chaveGemini) {
+    return { status: 'recusada', erro: 'sem chave do Gemini — cadastre uma em Configurações → Integrações' }
   }
 
   // O CADEADO. Teto de tentativas DENTRO do WHERE (uma retentativa
@@ -294,7 +298,7 @@ export async function transcreverAudio(
         headers: {
           'Content-Type': 'application/json',
           // ⚠️ Header, nunca `?key=` na URL (vaza em log de proxy).
-          'x-goog-api-key': config.apiKey,
+          'x-goog-api-key': chaveGemini,
         },
         body: JSON.stringify({
           contents: [

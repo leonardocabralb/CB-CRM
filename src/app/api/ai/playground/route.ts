@@ -56,10 +56,13 @@ export async function POST(request: Request) {
     const config = await loadAiConfig(supabase, accountId, {
       requireActive: false,
     }).catch((err) => {
+      // Chave que não decifra sai com o próprio código; falha de LEITURA do
+      // banco é outra coisa, e não pode aparecer como "chave ilegível" (1047).
+      if (err instanceof AiError && err.code === 'key_decrypt_failed') throw err
       console.error('[ai/playground] loadAiConfig error:', err)
-      throw new AiError('Stored API key could not be decrypted.', {
-        code: 'key_decrypt_failed',
-        status: 400,
+      throw new AiError('Could not load the AI configuration.', {
+        code: 'config_read_failed',
+        status: 500,
       })
     })
     if (!config) {

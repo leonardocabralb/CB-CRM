@@ -17,12 +17,14 @@
 // Sem essa etiqueta, o operador lê o modelo do agente e conclui que ele
 // vale para tudo — foi exatamente o engano que originou esta tela.
 //
-// ⚠️ Os módulos NÃO resolvem por canal: leem o agente PADRÃO
-// (`channel_id IS NULL`), porque a configuração é POR MÓDULO e vale para
-// a conta inteira — decisão de produto do operador (2026-08-28). A única
-// lista de canais é a do Radar, e ela significa o interruptor
-// `radar_enabled` por conexão, nunca escopo de chave. Ver a nota maior
-// dentro de `montarCartoes`.
+// ⚠️ Desde a 1047 a CHAVE é do PROVEDOR, uma por conta (`cb_ia_chaves`,
+// D1 do docs/PLANO-agentes-de-ia.md): o cartão de um provedor existe pela
+// chave dele, não por uma linha de agente. A configuração dos MÓDULOS
+// (provedor e modelo do Radar, e o assistente legado) continua sendo a
+// linha PADRÃO de `ai_configs`, da conta inteira — decisão de produto do
+// operador (2026-08-28). A única lista de canais é a do Radar, e ela
+// significa o interruptor `radar_enabled` por conexão, nunca escopo de
+// chave.
 // ============================================================
 
 export type ProviderId = 'gemini' | 'openai' | 'anthropic';
@@ -36,17 +38,36 @@ export const PROVIDERS: readonly ProviderId[] = [
 /** Resultado de um ping de credencial. `null` = ainda não testado. */
 export type Teste = { ok: boolean; motivo?: string } | null;
 
-export interface ConfigParaMontar {
-  id: string;
-  /** `null` = agente padrão da conta. */
-  channelId: string | null;
+/** A chave de um provedor: se existe e, quando pingada, o resultado. */
+export interface ChaveParaMontar {
+  provedor: ProviderId;
+  existe: boolean;
+  teste: Teste;
+}
+
+/**
+ * A linha PADRÃO de `ai_configs` — a configuração dos módulos (e do
+ * assistente legado, até a F1b). `null` = a conta ainda não tem.
+ */
+export interface PadraoParaMontar {
   provider: ProviderId;
   model: string;
   /** Migration 946. `null` = o Radar herda `model`. */
   radarModel: string | null;
   isActive: boolean;
-  teste: Teste;
-  temEmbeddings: boolean;
+}
+
+/**
+ * Uma linha de CONEXÃO de `ai_configs` ligada (o agente por canal do app
+ * anterior): sem escritor no app, mas herdada e ainda lida pela resposta
+ * automática legada. Entra como uso da chave do provedor dela — sem isto,
+ * apagar a chave diria que nada para, e pararia a resposta daquela conexão
+ * (Codex, #294).
+ */
+export interface AgenteDeConexaoParaMontar {
+  provider: ProviderId;
+  model: string;
+  canal: string;
 }
 
 export interface CanalParaMontar {
@@ -56,9 +77,7 @@ export interface CanalParaMontar {
 }
 
 export interface AgenteNoCartao {
-  configId: string;
-  escopo: 'padrao' | 'canal';
-  canalLabel: string | null;
+  escopo: 'padrao';
   model: string;
   isActive: boolean;
   teste: Teste;
@@ -79,18 +98,25 @@ export type OrigemDoModelo =
 export type Indisponibilidade =
   /** Nenhum canal com o Radar ligado. */
   | 'radar_sem_canal'
-  /** A transcrição só funciona no Gemini. */
-  | 'transcricao_exige_gemini'
   /** Agente desligado: o assistente e a resposta automática não rodam. */
-  | 'conversa_desligada';
+  | 'conversa_desligada'
+  /** O provedor ainda não tem chave: o módulo PRECISA dela para rodar. */
+  | 'sem_chave'
+  /**
+   * A OpenAI recusou os embeddings a esta chave ao gravá-la
+   * (`serve_embeddings = false`): o chat funciona e a base usa só a busca
+   * por palavras. É o MÓDULO que não roda, não a chave que falha (Codex, #294).
+   */
+  | 'embeddings_recusados';
 
 export interface UsoNoCartao {
   modulo: ModuloId;
   modelo: string;
   origem: OrigemDoModelo;
   /**
-   * SÓ o Radar preenche: conexões com `radar_enabled` ligado. Nos demais
-   * módulos fica vazio — a configuração vale para a conta inteira, e
+   * O Radar preenche com as conexões de `radar_enabled` ligado, e o
+   * assistente POR CONEXÃO (linha de canal herdada) com a conexão dele. Nos
+   * demais módulos fica vazio — a configuração vale para a conta inteira, e
    * listar canais sugeriria chave por conexão (modelo descartado).
    */
   canais: string[];
@@ -109,6 +135,10 @@ export type EstadoDaIntegracao =
 export interface CartaoDeIntegracao {
   id: ProviderId | 'google_calendar';
   estado: EstadoDaIntegracao;
+  /** O provedor tem chave cadastrada (sempre `false` no Google Agenda). */
+  temChave: boolean;
+  /** Este provedor é o do Radar (a linha padrão): o cartão edita o modelo dele. */
+  ehDoRadar: boolean;
   agentes: AgenteNoCartao[];
   /** Onde esta chave é usada, com o modelo de cada módulo. */
   usos: UsoNoCartao[];
@@ -122,8 +152,8 @@ function estadoDe(testes: Teste[]): EstadoDaIntegracao {
 }
 
 /**
- * Monta os cartões da tela a partir das configs (já decifradas e, quando
- * pedido, já testadas) e dos canais da conta.
+ * Monta os cartões da tela a partir das chaves (já pingadas, quando
+ * pedido), da linha padrão e dos canais da conta.
  *
  * `modeloTranscricao` e `modeloEmbeddings` entram por PARÂMETRO, nunca
  * importados aqui: este módulo é puro e testado, e a fonte da verdade
@@ -131,75 +161,82 @@ function estadoDe(testes: Teste[]): EstadoDaIntegracao {
  * (aqui ou no dicionário) faria a tela mentir na primeira troca.
  */
 export function montarCartoes(
-  configs: ConfigParaMontar[],
+  chaves: ChaveParaMontar[],
+  padrao: PadraoParaMontar | null,
   canais: CanalParaMontar[],
-  embeddingsTeste: Teste,
+  /**
+   * O ping da chave que a base usa; `'recusada'` = a OpenAI já recusou os
+   * embeddings a ela (não é pingada de novo, e não conta como falha do cartão).
+   */
+  embeddingsTeste: Teste | 'recusada',
   modeloTranscricao: string,
-  modeloEmbeddings: string
+  modeloEmbeddings: string,
+  agentesDeConexao: AgenteDeConexaoParaMontar[] = []
 ): CartaoDeIntegracao[] {
-  // ⚠️ DECISÃO DE PRODUTO (operador, 2026-08-28): a configuração é POR
-  // MÓDULO, uma para a conta inteira — o modelo e a chave de cada módulo
-  // valem para TODAS as conexões, sempre. Por isso os módulos abaixo leem
-  // só o agente PADRÃO, e a lista de canais aparece apenas no Radar, onde
-  // significa o interruptor `radar_enabled` por conexão (privacidade, 941)
-  // — nunca "esta chave vale neste canal".
-  //
-  // O schema da 903 ainda permite linha de ai_configs por canal e o
-  // backend (`loadAiConfig`) ainda resolveria por ela — mas NÃO EXISTE
-  // escritor de agente por canal no app. Se um dia esse escritor nascer,
-  // esta montagem tem de voltar a espelhar a resolução do backend, senão
-  // a tela mente.
-  const padrao = configs.find((c) => c.channelId === null) ?? null;
-
-  const temEmbeddings = configs.some((c) => c.temEmbeddings);
-
   const cartoes: CartaoDeIntegracao[] = PROVIDERS.map((p) => {
-    const doProvedor = configs.filter((c) => c.provider === p);
+    const chave = chaves.find((c) => c.provedor === p);
+    const temChave = chave?.existe === true;
+    const ehDoPadrao = padrao?.provider === p;
 
-    const agentes = doProvedor.map<AgenteNoCartao>((c) => ({
-      configId: c.id,
-      escopo: c.channelId === null ? 'padrao' : 'canal',
-      canalLabel:
-        c.channelId === null
-          ? null
-          : (canais.find((k) => k.id === c.channelId)?.label ?? null),
-      model: c.model,
-      isActive: c.isActive,
-      teste: c.teste,
-    }));
+    const agentes: AgenteNoCartao[] = ehDoPadrao
+      ? [
+          {
+            escopo: 'padrao',
+            model: padrao.model,
+            isActive: padrao.isActive,
+            teste: temChave ? (chave?.teste ?? null) : null,
+          },
+        ]
+      : [];
 
     const usos: UsoNoCartao[] = [];
+    // Todo módulo aparece mesmo SEM a chave, marcado: é quando o operador
+    // mais precisa descobrir o que a chave destrava.
+    const semChave = temChave ? {} : { indisponivel: 'sem_chave' as const };
 
     // ---- Assistente de conversa (rascunho, auto-resposta, Playground) ----
-    // Um uso por MODELO distinto: duas configs com modelos diferentes são
-    // duas linhas, senão a tela esconderia uma delas.
-    for (const modelo of [...new Set(doProvedor.map((c) => c.model))]) {
-      const doModelo = doProvedor.filter((c) => c.model === modelo);
-      const ligados = doModelo.filter((c) => c.isActive);
+    if (ehDoPadrao) {
+      usos.push({
+        modulo: 'conversa',
+        modelo: padrao.model,
+        origem: 'agente',
+        canais: [],
+        canaisDesligados: [],
+        // O interruptor do agente vale para o assistente e a resposta
+        // automática — e para NADA além disso (o Radar lê a config com
+        // requireActive: false; a transcrição nem lê a config).
+        ...(temChave
+          ? padrao.isActive
+            ? {}
+            : { indisponivel: 'conversa_desligada' as const }
+          : semChave),
+      });
+    }
+
+    // ---- Assistente POR CONEXÃO (linhas de canal herdadas, ligadas) ----
+    // Um uso por modelo, com as conexões que o rodam.
+    const porModelo = new Map<string, string[]>();
+    for (const a of agentesDeConexao) {
+      if (a.provider !== p) continue;
+      porModelo.set(a.model, [...(porModelo.get(a.model) ?? []), a.canal]);
+    }
+    for (const [modelo, conexoes] of porModelo) {
       usos.push({
         modulo: 'conversa',
         modelo,
         origem: 'agente',
-        // ⚠️ Sem lista de canais aqui, de propósito: o escopo de cada
-        // agente já está na seção de agentes acima, e o agente PADRÃO
-        // atende todo canal que não tem agente próprio — enumerar só os
-        // que têm config própria diria o contrário do que acontece.
-        canais: [],
+        canais: conexoes,
         canaisDesligados: [],
-        // O interruptor do agente vale para o assistente e a resposta
-        // automática — e para NADA além disso (Radar e transcrição leem a
-        // config com requireActive: false).
-        ...(ligados.length === 0 ? { indisponivel: 'conversa_desligada' as const } : {}),
+        ...semChave,
       });
     }
 
     // ---- Radar ----
-    // Modelo e chave do agente PADRÃO, para a conta inteira. A lista de
-    // canais aqui é o INTERRUPTOR `radar_enabled` (941 — exceção
-    // deliberada à convenção "vazio = todos", porque o Radar manda
-    // conversa de cliente para um provedor externo): diz ONDE o Radar
-    // analisa, nunca "qual chave vale em qual canal".
-    if (padrao?.provider === p) {
+    // Provedor e modelo da linha PADRÃO, para a conta inteira. A lista de
+    // canais é o INTERRUPTOR `radar_enabled` (941 — exceção deliberada à
+    // convenção "vazio = todos": o Radar manda conversa de cliente para um
+    // provedor externo): diz ONDE o Radar analisa.
+    if (ehDoPadrao) {
       const ligados = canais.filter((k) => k.radarEnabled);
       usos.push({
         modulo: 'radar',
@@ -209,48 +246,57 @@ export function montarCartoes(
         canaisDesligados: canais
           .filter((k) => !k.radarEnabled)
           .map((k) => k.label),
-        ...(ligados.length === 0
-          ? { indisponivel: 'radar_sem_canal' as const }
-          : {}),
+        ...(temChave
+          ? ligados.length === 0
+            ? { indisponivel: 'radar_sem_canal' as const }
+            : {}
+          : semChave),
       });
     }
 
     // ---- Transcrição de áudio ----
-    // Gemini-only, modelo FIXO no código, e SEM lista de canais: vale
-    // para toda conversa da conta. Nos outros provedores aparece marcada
-    // como indisponível — o silêncio faria o operador supor que a chave
-    // da OpenAI transcreve os áudios dele.
-    if (doProvedor.length > 0) {
+    // Gemini-only, modelo FIXO, e desde a 1047 lê a chave do Gemini
+    // DIRETO — não depende do provedor de agente nenhum. Só no cartão do
+    // Gemini.
+    if (p === 'gemini') {
       usos.push({
         modulo: 'transcricao',
-        modelo: p === 'gemini' ? modeloTranscricao : '—',
+        modelo: modeloTranscricao,
         origem: 'fixo',
         canais: [],
         canaisDesligados: [],
-        ...(p === 'gemini'
-          ? {}
-          : { indisponivel: 'transcricao_exige_gemini' as const }),
+        ...semChave,
       });
     }
 
     // ---- Base de conhecimento (RAG) ----
-    // OpenAI-only e modelo fixo: aparece no cartão da OpenAI mesmo quando
-    // o chat da conta é outro provedor, porque é a chave DELA que paga.
-    const rag = p === 'openai' && temEmbeddings;
-    if (rag) {
+    // A chave da OpenAI é a dos embeddings (modelo fixo): aparece no cartão
+    // da OpenAI mesmo quando o chat da conta é outro provedor, porque é a
+    // chave DELA que paga.
+    if (p === 'openai') {
       usos.push({
         modulo: 'rag',
         modelo: modeloEmbeddings,
         origem: 'fixo',
         canais: [],
         canaisDesligados: [],
+        ...(temChave && embeddingsTeste === 'recusada'
+          ? { indisponivel: 'embeddings_recusados' as const }
+          : semChave),
       });
     }
 
-    const testes = doProvedor.map((c) => c.teste);
-    if (rag) testes.push(embeddingsTeste);
+    const testes: Teste[] = temChave ? [chave?.teste ?? null] : [];
+    if (temChave && p === 'openai' && embeddingsTeste !== 'recusada') testes.push(embeddingsTeste);
 
-    return { id: p, estado: estadoDe(testes), agentes, usos };
+    return {
+      id: p,
+      estado: estadoDe(testes),
+      temChave,
+      ehDoRadar: ehDoPadrao,
+      agentes,
+      usos,
+    };
   });
 
   // Google Agenda: a integração ainda não existe no código — o cartão
@@ -259,10 +305,11 @@ export function montarCartoes(
   cartoes.push({
     id: 'google_calendar',
     estado: 'nao_configurado',
+    temChave: false,
+    ehDoRadar: false,
     agentes: [],
     usos: [],
   });
 
   return cartoes;
 }
-
