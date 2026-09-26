@@ -2936,7 +2936,8 @@
       "indisponivel": {
         "radar_sem_canal": "nenhuma conexão está com o Radar ligado",
         "conversa_desligada": "assistente desligado",
-        "sem_chave": "precisa da chave deste provedor"
+        "sem_chave": "precisa da chave deste provedor",
+        "embeddings_recusados": "a OpenAI recusou a busca da base com esta chave — a base usa só a busca por palavras"
       },
       "emCanais": "ligado em {canais}",
       "desligadoEm": "desligado em {canais}",
@@ -3208,6 +3209,7 @@
         "embeddings_recusado": "Chave salva: ela gera texto, mas a OpenAI recusou a busca da base de conhecimento (embeddings). A base passa a usar só a busca por palavras — confira as permissões do projeto e salve a chave de novo.",
         "embeddings_nao_conferido": "Chave salva, mas não foi possível conferir se ela serve à busca da base de conhecimento (embeddings). Se a busca falhar, salve a chave de novo.",
         "modelo_em_uso_indisponivel": "Chave salva, mas o modelo em uso ({modelos}) não respondeu — nem com a chave anterior. Troque o modelo (o do Radar, neste cartão, ou o do assistente).",
+        "transcricao_indisponivel": "Chave salva, mas o modelo da transcrição de áudio não respondeu — nem com a chave anterior. Ele é fixo no sistema: a transcrição segue fora do ar até o sistema ser atualizado.",
         "modulos_nao_criados": "Chave salva, mas não foi possível criar a configuração do Radar — recarregue a página e confira o cartão."
       },
       "erroDaChave": {
@@ -3215,7 +3217,8 @@
         "sem_chave": "Cadastre a chave deste provedor antes de escolher o modelo.",
         "sem_configuracao": "Cadastre primeiro a chave de um provedor.",
         "banco": "Não foi possível gravar agora — tente de novo.",
-        "modelo_em_uso_recusado": "A chave nova não alcança o modelo {modelo}, que está em uso — e a chave atual alcança. Nada foi trocado: troque o modelo antes, ou use uma chave com acesso a ele."
+        "modelo_em_uso_recusado": "A chave nova não alcança o modelo {modelo}, que está em uso — e a chave atual alcança. Nada foi trocado: troque o modelo antes, ou use uma chave com acesso a ele.",
+        "transcricao_recusada": "A chave nova não alcança o modelo da transcrição de áudio ({modelo}), que é fixo no sistema. Nada foi gravado: use uma chave do Google com acesso a ele."
       }
     },
     "groups": {

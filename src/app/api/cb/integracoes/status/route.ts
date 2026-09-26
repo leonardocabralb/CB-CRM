@@ -206,7 +206,7 @@ export async function GET(request: Request) {
           return { ...base, teste: falha ? { ok: false, motivo: falha } : { ok: true } };
         })
       ),
-      (async (): Promise<Teste> => {
+      (async (): Promise<Teste | 'recusada'> => {
         const temOpenai = estado.some((e) => e.provedor === 'openai' && e.existe);
         if (!pingar || !temOpenai) return null;
         try {
@@ -215,7 +215,9 @@ export async function GET(request: Request) {
           // pingada de novo (é a resposta que já se tem).
           const lida = await lerChaveDeEmbeddings(ctx.accountId);
           if (lida.ilegivel) return { ok: false, motivo: 'chave_ilegivel' };
-          if (lida.recusada) return { ok: false, motivo: 'invalid_key' };
+          // Recusada ao gravar: a base usa a busca por palavras e o chat
+          // funciona — o cartão não fica "falhando" por isso (Codex, #294).
+          if (lida.recusada) return 'recusada';
           if (!lida.chave) return null;
           return pingEmbeddings(lida.chave);
         } catch {

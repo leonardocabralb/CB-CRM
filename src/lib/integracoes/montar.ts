@@ -101,7 +101,13 @@ export type Indisponibilidade =
   /** Agente desligado: o assistente e a resposta automática não rodam. */
   | 'conversa_desligada'
   /** O provedor ainda não tem chave: o módulo PRECISA dela para rodar. */
-  | 'sem_chave';
+  | 'sem_chave'
+  /**
+   * A OpenAI recusou os embeddings a esta chave ao gravá-la
+   * (`serve_embeddings = false`): o chat funciona e a base usa só a busca
+   * por palavras. É o MÓDULO que não roda, não a chave que falha (Codex, #294).
+   */
+  | 'embeddings_recusados';
 
 export interface UsoNoCartao {
   modulo: ModuloId;
@@ -158,7 +164,11 @@ export function montarCartoes(
   chaves: ChaveParaMontar[],
   padrao: PadraoParaMontar | null,
   canais: CanalParaMontar[],
-  embeddingsTeste: Teste,
+  /**
+   * O ping da chave que a base usa; `'recusada'` = a OpenAI já recusou os
+   * embeddings a ela (não é pingada de novo, e não conta como falha do cartão).
+   */
+  embeddingsTeste: Teste | 'recusada',
   modeloTranscricao: string,
   modeloEmbeddings: string,
   agentesDeConexao: AgenteDeConexaoParaMontar[] = []
@@ -270,12 +280,14 @@ export function montarCartoes(
         origem: 'fixo',
         canais: [],
         canaisDesligados: [],
-        ...semChave,
+        ...(temChave && embeddingsTeste === 'recusada'
+          ? { indisponivel: 'embeddings_recusados' as const }
+          : semChave),
       });
     }
 
     const testes: Teste[] = temChave ? [chave?.teste ?? null] : [];
-    if (temChave && p === 'openai') testes.push(embeddingsTeste);
+    if (temChave && p === 'openai' && embeddingsTeste !== 'recusada') testes.push(embeddingsTeste);
 
     return {
       id: p,

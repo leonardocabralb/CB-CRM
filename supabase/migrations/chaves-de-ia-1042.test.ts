@@ -90,5 +90,11 @@ describe('1042 — chaves de IA por provedor', () => {
     expect(/CREATE\s+TRIGGER\s+cb_ia_chaves_segue_o_legado\s+AFTER\s+INSERT\s+OR\s+UPDATE\s+OF\s+api_key,\s*embeddings_api_key\s+OR\s+DELETE\s+ON\s+ai_configs/i.test(semComentarios)).toBe(true);
     // O "Remover" do app anterior apaga a cópia também (Codex, #295).
     expect(fn).toMatch(/TG_OP\s*=\s*'DELETE'[\s\S]*DELETE\s+FROM\s+cb_ia_chaves\s+WHERE\s+account_id\s*=\s*OLD\.account_id\s+AND\s+provedor\s*=\s*OLD\.provider/i);
+    // ...e a linha da OpenAI que era SÓ a chave da base sai inteira — no
+    // Remover e quando a tela antiga apaga a chave própria (Codex, #295).
+    const apagaASoDaBase = fn.match(/DELETE\s+FROM\s+cb_ia_chaves\s+WHERE\s+account_id\s*=\s*(OLD|NEW)\.account_id\s+AND\s+provedor\s*=\s*'openai'\s+AND\s+api_key\s*=\s*embeddings_api_key/gi) ?? [];
+    expect(apagaASoDaBase.map((m) => /OLD\./i.test(m) ? 'OLD' : 'NEW').sort()).toEqual(['NEW', 'OLD']);
+    // A troca da chave da base leva as duas colunas da linha que era só dela.
+    expect(fn).toMatch(/api_key\s*=\s*CASE\s+WHEN\s+cb_ia_chaves\.api_key\s*=\s*cb_ia_chaves\.embeddings_api_key\s+THEN\s+EXCLUDED\.api_key/i);
   });
 });

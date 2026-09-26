@@ -2943,7 +2943,8 @@
       "indisponivel": {
         "radar_sem_canal": "no connection has the Radar switched on",
         "conversa_desligada": "assistant switched off",
-        "sem_chave": "needs this provider's key"
+        "sem_chave": "needs this provider's key",
+        "embeddings_recusados": "OpenAI refused knowledge-base search with this key — the base uses keyword search only"
       },
       "emCanais": "switched on in {canais}",
       "desligadoEm": "switched off in {canais}",
@@ -3215,6 +3216,7 @@
         "embeddings_recusado": "Key saved: it generates text, but OpenAI refused the knowledge-base search (embeddings). The knowledge base now uses keyword search only — check the project's permissions and save the key again.",
         "embeddings_nao_conferido": "Key saved, but it could not be checked for the knowledge-base search (embeddings). If the search fails, save the key again.",
         "modelo_em_uso_indisponivel": "Key saved, but the model in use ({modelos}) did not respond — not even with the previous key. Change the model (the Radar's, on this card, or the assistant's).",
+        "transcricao_indisponivel": "Key saved, but the audio transcription model did not respond — not even with the previous key. It is fixed in the system: transcription stays unavailable until the system is updated.",
         "modulos_nao_criados": "Key saved, but the Radar configuration could not be created — reload the page and check the card."
       },
       "erroDaChave": {
@@ -3222,7 +3224,8 @@
         "sem_chave": "Add this provider's key before choosing the model.",
         "sem_configuracao": "Add a provider's key first.",
         "banco": "Could not save right now — try again.",
-        "modelo_em_uso_recusado": "The new key cannot reach the model {modelo}, which is in use — and the current key can. Nothing was changed: change the model first, or use a key with access to it."
+        "modelo_em_uso_recusado": "The new key cannot reach the model {modelo}, which is in use — and the current key can. Nothing was changed: change the model first, or use a key with access to it.",
+        "transcricao_recusada": "The new key cannot reach the audio transcription model ({modelo}), which is fixed in the system. Nothing was saved: use a Google key with access to it."
       }
     },
     "groups": {

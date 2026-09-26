@@ -50,6 +50,7 @@ vi.mock('@/lib/ia-chaves/repo', () => ({
 }))
 
 import { GET } from './route'
+import { lerChaveDeEmbeddings, lerEstado } from '@/lib/ia-chaves/repo'
 
 beforeEach(() => {
   validateAiCredentials.mockClear()
@@ -83,5 +84,23 @@ describe('GET /api/cb/integracoes/status — o ping cobre os agentes de conexão
 
   it('tudo respondendo = ok', async () => {
     expect((await cartaoGemini()).estado).toBe('ok')
+  })
+})
+
+describe('GET /api/cb/integracoes/status — chave da OpenAI recusada para a base (Codex, #294)', () => {
+  it('o cartão da OpenAI fica ok e o uso da base diz que caiu na busca por palavras', async () => {
+    vi.mocked(lerEstado).mockResolvedValueOnce([
+      { provedor: 'gemini', existe: true },
+      { provedor: 'openai', existe: true },
+      { provedor: 'anthropic', existe: false },
+    ] as never)
+    vi.mocked(lerChaveDeEmbeddings).mockResolvedValueOnce({ chave: null, ilegivel: false, recusada: true } as never)
+    const res = await GET(new Request('http://x/api/cb/integracoes/status'))
+    const corpo = (await res.json()) as {
+      cartoes: { id: string; estado: string; usos: { modulo: string; indisponivel?: string }[] }[]
+    }
+    const openai = corpo.cartoes.find((c) => c.id === 'openai')!
+    expect(openai.usos.find((u) => u.modulo === 'rag')?.indisponivel).toBe('embeddings_recusados')
+    expect(openai.estado).not.toBe('erro')
   })
 })

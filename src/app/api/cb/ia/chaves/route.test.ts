@@ -195,4 +195,44 @@ describe('PUT /api/cb/ia/chaves — a transcrição usa o modelo FIXO com a chav
     await PUT(pedido('gemini'))
     expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toContain('gemini-3.7-flash')
   })
+
+  it('sem chave atual e a nova não alcança a transcrição: recusa (não há modelo a trocar), nada gravado', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: null }
+    chaveAtual = null
+    alcanca = (_chave, modelo) => modelo !== 'gemini-3.7-flash'
+    const res = await PUT(pedido('gemini'))
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ code: 'transcricao_recusada', modelo: 'gemini-3.7-flash' })
+    expect(gravarChave).not.toHaveBeenCalled()
+  })
+
+  it('sem chave atual e a transcrição só deu tempo esgotado: devolve o erro passageiro, não "recusada"', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: null }
+    validateAiCredentials.mockImplementationOnce(async () => {
+      throw new AiError('timeout', { code: 'timeout' })
+    })
+    const res = await PUT(pedido('gemini'))
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ code: 'timeout' })
+    expect(gravarChave).not.toHaveBeenCalled()
+  })
+
+  it('a atual alcança a transcrição e a nova não: recusa pela regra geral', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: null }
+    chaveAtual = 'sk-atual'
+    alcanca = (chave, modelo) => !(chave === 'sk-teste' && modelo === 'gemini-3.7-flash')
+    const res = await PUT(pedido('gemini'))
+    expect(await res.json()).toMatchObject({ code: 'modelo_em_uso_recusado', modelo: 'gemini-3.7-flash' })
+    expect(gravarChave).not.toHaveBeenCalled()
+  })
+
+  it('nem a atual alcança a transcrição: aceita com aviso PRÓPRIO, sem mandar trocar modelo', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: null }
+    chaveAtual = 'sk-atual'
+    alcanca = (_chave, modelo) => modelo !== 'gemini-3.7-flash'
+    const res = await PUT(pedido('gemini'))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ ok: true, avisos: ['transcricao_indisponivel'], modelos: [] })
+    expect(gravarChave).toHaveBeenCalled()
+  })
 })
