@@ -49,10 +49,14 @@ vi.mock('@/lib/ia-chaves/repo', () => ({
   lerChaveDeEmbeddings: vi.fn(),
 }))
 
+let agentesDaConta: { nome: string; provedor: string; modelo: string; ativo: boolean }[] = []
+vi.mock('@/lib/ia-agentes/repo', () => ({ listarAgentes: vi.fn(async () => agentesDaConta) }))
+
 import { GET } from './route'
 import { lerChaveDeEmbeddings, lerEstado } from '@/lib/ia-chaves/repo'
 
 beforeEach(() => {
+  agentesDaConta = []
   validateAiCredentials.mockClear()
   modelosQueFalham = []
   linhas = [
@@ -133,5 +137,32 @@ describe('GET /api/cb/integracoes/status — a chave da OpenAI que é SÓ da bas
     estadoComOpenai(false)
     await GET(new Request('http://x/api/cb/integracoes/status'))
     expect(validateAiCredentials.mock.calls.some((c) => c[0].provider === 'openai')).toBe(true)
+  })
+})
+
+describe('GET /api/cb/integracoes/status — os modelos dos agentes de IA ligados (Codex, #295)', () => {
+  it('pinga o modelo do agente LIGADO; o desligado não', async () => {
+    agentesDaConta = [
+      { nome: 'Triagem', provedor: 'gemini', modelo: 'gemini-do-agente', ativo: true },
+      { nome: 'Velho', provedor: 'gemini', modelo: 'gemini-desligado-agente', ativo: false },
+    ]
+    await cartaoGemini()
+    const modelos = validateAiCredentials.mock.calls.map((c) => c[0].model)
+    expect(modelos).toContain('gemini-do-agente')
+    expect(modelos).not.toContain('gemini-desligado-agente')
+  })
+
+  it('o modelo do agente falhando deixa o cartão em erro', async () => {
+    agentesDaConta = [{ nome: 'Triagem', provedor: 'gemini', modelo: 'gemini-aposentado', ativo: true }]
+    modelosQueFalham = ['gemini-aposentado']
+    expect((await cartaoGemini()).estado).toBe('erro')
+  })
+
+  it('no máximo 5 pings por provedor, a linha do chat primeiro', async () => {
+    agentesDaConta = ['a1', 'a2', 'a3', 'a4', 'a5'].map((modelo) => ({ nome: modelo, provedor: 'gemini', modelo, ativo: true }))
+    await cartaoGemini()
+    const modelos = validateAiCredentials.mock.calls.map((c) => c[0].model)
+    expect(modelos).toHaveLength(5)
+    expect(modelos).toContain('gemini-padrao')
   })
 })

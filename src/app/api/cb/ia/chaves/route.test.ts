@@ -18,7 +18,14 @@ const embedTexts = vi.fn()
 let linhaPadrao: Record<string, unknown> | null = null
 let alcanca: (chave: string, modelo: string) => boolean = () => true
 let chaveAtual: string | null = null
+// Falha PASSAGEIRA (tempo esgotado, rede, limite) no dublê: o código, ou nulo.
+let passageira: (chave: string, modelo: string) => string | null = () => null
 const validateAiCredentials = vi.fn(async (cfg: { apiKey: string; model: string }) => {
+  const codigo = passageira(cfg.apiKey, cfg.model)
+  if (codigo) {
+    const { AiError } = await import('@/lib/ai/types')
+    throw new AiError(codigo, { code: codigo })
+  }
   if (!alcanca(cfg.apiKey, cfg.model)) {
     const { AiError } = await import('@/lib/ai/types')
     throw new AiError(`model ${cfg.model} not found`, { code: 'provider_error', status: 404 })
@@ -90,6 +97,7 @@ beforeEach(() => {
   linhaPadrao = null
   linhasPorConexao = []
   alcanca = () => true
+  passageira = () => null
   chaveAtual = null
   agentesDaConta = []
 })
@@ -249,9 +257,7 @@ describe('PUT /api/cb/ia/chaves — a transcrição usa o modelo FIXO com a chav
 
   it('sem chave atual e a transcrição só deu tempo esgotado: devolve o erro passageiro, não "recusada"', async () => {
     linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: null }
-    validateAiCredentials.mockImplementationOnce(async () => {
-      throw new AiError('timeout', { code: 'timeout' })
-    })
+    passageira = (_chave, modelo) => (modelo === 'gemini-3.7-flash' ? 'timeout' : null)
     const res = await PUT(pedido('gemini'))
     expect(res.status).toBe(400)
     expect(await res.json()).toMatchObject({ code: 'timeout' })
@@ -294,5 +300,28 @@ describe('PUT /api/cb/ia/chaves — agente desligado e o teto de modelos (Codex,
     expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.7-flash', 'm1', 'm2', 'm3', 'm4'])
     expect(corpo.avisos).toContain('modelos_nao_conferidos')
     expect(corpo.naoConferidos).toEqual(['m5', 'm6', 'm7'])
+  })
+})
+
+describe('PUT /api/cb/ia/chaves — falha PASSAGEIRA não vira "não alcança o modelo" (Codex, #294)', () => {
+  it('um modelo em uso dá tempo esgotado com a nova: nada é gravado, volta o erro passageiro', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: 'gemini-b' }
+    chaveAtual = 'sk-atual'
+    passageira = (chave, modelo) => (chave === 'sk-teste' && modelo === 'gemini-b' ? 'timeout' : null)
+    const res = await PUT(pedido('gemini'))
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ code: 'timeout' })
+    expect(gravarChave).not.toHaveBeenCalled()
+  })
+
+  it('a conferência com a ATUAL é passageira: não decide, nada é gravado', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: 'gemini-b' }
+    chaveAtual = 'sk-atual'
+    alcanca = (chave, modelo) => !(chave === 'sk-teste' && modelo === 'gemini-b')
+    passageira = (chave, modelo) => (chave === 'sk-atual' && modelo === 'gemini-b' ? 'network_error' : null)
+    const res = await PUT(pedido('gemini'))
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ code: 'network' })
+    expect(gravarChave).not.toHaveBeenCalled()
   })
 })
