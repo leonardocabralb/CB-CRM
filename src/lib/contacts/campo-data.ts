@@ -77,6 +77,12 @@ export function instanteCanonico(texto: string | null | undefined): string | nul
   const m = INSTANTE_COM_OFFSET.exec(texto.trim())
   if (!m) return null
   const [, data, horaMinuto, segundos, fracao, fusoBruto] = m
+  // ⚠️ Dia que não existe no mês ("2026-02-29", "2026-09-31") é RECUSADO: o
+  // `Date.parse` do V8 o empurra para o mês seguinte, e o Postgres o recusa.
+  // Canonizado, o passo `update_contact_field` gravaria na ficha uma data que
+  // ninguém mandou — e o lembrete sairia nela (revisão do PR #305).
+  const [ano, mes, dia] = data.split('-').map(Number)
+  if (new Date(Date.UTC(ano, mes - 1, dia)).getUTCDate() !== dia) return null
   const fuso = /^z$/i.test(fusoBruto)
     ? 'Z'
     : `${fusoBruto.slice(0, 3)}:${fusoBruto.slice(3).replace(':', '') || '00'}`

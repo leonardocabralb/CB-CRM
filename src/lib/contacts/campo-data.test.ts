@@ -127,4 +127,16 @@ describe('instanteCanonico', () => {
     expect(instanteCanonico(null)).toBeNull()
     expect(instanteCanonico(undefined)).toBeNull()
   })
+
+  it('CRÍTICO: dia que não existe no mês devolve null — o V8 o empurraria para o mês seguinte', () => {
+    expect(instanteCanonico('2026-02-29T10:00:00Z')).toBeNull()
+    expect(instanteCanonico('2026-02-30T10:00:00Z')).toBeNull()
+    expect(instanteCanonico('2026-09-31T14:00:00-03:00')).toBeNull()
+    expect(instanteCanonico('2026-04-31 10:00:00+00')).toBeNull()
+    expect(instanteCanonico('2026-09-00T10:00:00Z')).toBeNull()
+    // ano bissexto e o último dia de verdade continuam valendo
+    expect(instanteCanonico('2028-02-29T10:00:00Z')).toBe('2028-02-29T10:00:00.000Z')
+    expect(instanteCanonico('2026-09-30T10:00:00Z')).toBe('2026-09-30T10:00:00.000Z')
+    expect(instanteCanonico('2026-12-31T23:59:59Z')).toBe('2026-12-31T23:59:59.000Z')
+  })
 })

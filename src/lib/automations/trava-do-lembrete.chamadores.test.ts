@@ -17,11 +17,28 @@ import { describe, expect, it } from 'vitest'
 // Por isso TODO INSERT/UPSERT na trava passa o valor por `chaveDaTrava` (o
 // instante canônico), e os escritores são EXATAMENTE a varredura e o
 // cancelamento pré-armado do Calendly. Um terceiro escritor reprova aqui até
-// alguém decidir, por escrito, que ele também grava pelo instante. A
-// devolução (`.delete()` pelo id) e a poda não entram: não escrevem chave.
+// alguém decidir, por escrito, que ele também grava pelo instante.
+//
+// ⚠️ O default-deny é por CITAÇÃO da tabela, não pela forma da escrita
+// (revisão do PR #305): uma regex de `.from(...).insert(` não enxerga o
+// `.update({ valor })`, o construtor guardado numa variável nem o nome da
+// tabela numa constante. Por isso TODO arquivo que cita o literal entra em
+// `CITACOES` com a contagem exata — a leitura, a devolução e a poda
+// inclusive —, e só então as escritas reconhecidas são conferidas.
 // ============================================================
 
 const SRC = path.join(__dirname, '..', '..')
+
+/**
+ * arquivo → quantas vezes o literal `'cb_automation_reminders'` aparece nele
+ * (sem comentários). Arquivo novo, ou citação a mais, reprova.
+ */
+const CITACOES: Record<string, number> = {
+  // A leitura das travas já gravadas, a reivindicação, a devolução e a poda.
+  'lib/automations/varrer-lembretes.ts': 4,
+  // O upsert do cancelamento pré-armado.
+  'lib/calendly/cancelamento.ts': 1,
+}
 
 /** arquivo → quantos INSERT/UPSERT ele faz na trava. */
 const ESCRITORES: Record<string, number> = {
@@ -65,10 +82,25 @@ function argumentos(src: string, abre: number): string {
   return src.slice(abre + 1)
 }
 
+/** Quantas vezes o nome da tabela aparece como literal de texto. */
+function citacoes(src: string): number {
+  return [...src.matchAll(/['"`]cb_automation_reminders['"`]/g)].length
+}
+
 /** Os argumentos de cada `.insert(`/`.upsert(` encadeado logo depois de `.from('cb_automation_reminders')`. */
 function escritasNaTrava(src: string): string[] {
   const achadas: string[] = []
   const re = /\.from\(\s*['"]cb_automation_reminders['"]\s*\)\s*\.\s*(insert|upsert)\s*\(/g
+  for (const m of src.matchAll(re)) {
+    achadas.push(argumentos(src, (m.index ?? 0) + m[0].length - 1))
+  }
+  return achadas
+}
+
+/** Os argumentos de cada `.update(` encadeado logo depois do `.from(...)` da trava. */
+function atualizacoesNaTrava(src: string): string[] {
+  const achadas: string[] = []
+  const re = /\.from\(\s*['"]cb_automation_reminders['"]\s*\)\s*\.\s*update\s*\(/g
   for (const m of src.matchAll(re)) {
     achadas.push(argumentos(src, (m.index ?? 0) + m[0].length - 1))
   }
@@ -83,11 +115,32 @@ function gravaPeloInstante(payload: string): boolean {
 
 describe('a trava do lembrete é gravada pelo INSTANTE, nos dois escritores', () => {
   const achado: Record<string, string[]> = {}
+  const citado: Record<string, number> = {}
+  const atualizado: Record<string, string[]> = {}
   for (const abs of todosOsFontes(SRC)) {
     const rel = path.relative(SRC, abs).split(path.sep).join('/')
-    const escritas = escritasNaTrava(semComentarios(fs.readFileSync(abs, 'utf8')))
+    const fonte = semComentarios(fs.readFileSync(abs, 'utf8'))
+    const n = citacoes(fonte)
+    if (n) citado[rel] = n
+    const escritas = escritasNaTrava(fonte)
     if (escritas.length) achado[rel] = escritas
+    const updates = atualizacoesNaTrava(fonte)
+    if (updates.length) atualizado[rel] = updates
   }
+
+  it('DEFAULT-DENY: o conjunto de arquivos que citam a tabela, e quantas vezes, é EXATO', () => {
+    expect(citado).toEqual(CITACOES)
+  })
+
+  it('UPDATE que mexe na chave também passa por chaveDaTrava', () => {
+    for (const [arquivo, payloads] of Object.entries(atualizado)) {
+      for (const payload of payloads) {
+        if (/(?<![\w])['"]?valor['"]?\s*:/.test(payload)) {
+          expect(gravaPeloInstante(payload), `${arquivo}: ${payload}`).toBe(true)
+        }
+      }
+    }
+  })
 
   it('o conjunto de escritores é EXATO', () => {
     expect(Object.fromEntries(Object.entries(achado).map(([k, v]) => [k, v.length]))).toEqual(
@@ -118,5 +171,11 @@ describe('a trava do lembrete é gravada pelo INSTANTE, nos dois escritores', ()
     expect(escritasNaTrava(`db.from('cb_automation_reminders').delete().eq('id', id)`)).toEqual([])
     // payload sem `valor` nenhum também reprova
     expect(gravaPeloInstante('{ contact_id: c }')).toBe(false)
+    // as formas que a regex das escritas NÃO vê são pegas pela contagem
+    expect(citacoes(`const t = db.from('cb_automation_reminders'); await t.insert({ valor: v })`)).toBe(1)
+    expect(citacoes(`const T = "cb_automation_reminders"; db.from(T).insert({ valor: v })`)).toBe(1)
+    expect(
+      atualizacoesNaTrava(`db.from('cb_automation_reminders').update({ valor: alvo.valor })`),
+    ).toHaveLength(1)
   })
 })
