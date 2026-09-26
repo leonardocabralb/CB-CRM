@@ -224,8 +224,15 @@ Radar.
   policy): só `src/lib/ia-chaves/repo.ts` a toca, com o cliente de SERVIÇO (a
   sessão do usuário leria zero linhas sem erro — "sem chave" com cara de
   certo); pino `chaves.chamadores.test.ts`. A de embeddings é a chave da
-  OpenAI da conta. `ai_configs.api_key`/`embeddings_api_key` ficaram só para o
-  app anterior poder voltar atrás: nada lê nem grava essas colunas.
+  OpenAI da conta, MENOS a que a OpenAI recusou para embeddings ao ser
+  gravada (`serve_embeddings = false`: chave de projeto restrita), e a chave
+  DEDICADA herdada da 1042 (`cb_ia_chaves.embeddings_api_key`) vence —
+  `lerChaveDeEmbeddings`. `ai_configs.api_key`/`embeddings_api_key` ficaram só
+  para o app anterior poder voltar atrás: nada as LÊ, e `gravarChave` as
+  ESPELHA (sem isso a volta atrás traria a chave velha, quase sempre revogada
+  na troca). A chave nova é conferida em CADA modelo em uso (assistente e
+  Radar); recusada num que a atual alcança, nada é trocado
+  (`modelo_em_uso_recusado`).
 - ⚠️ **A linha PADRÃO de `ai_configs` é a configuração dos MÓDULOS** (provedor
   e modelo do Radar) e do assistente legado, para a conta inteira. `montar.ts`
   monta um cartão por provedor a partir da CHAVE (não de um agente) e lê só a

@@ -534,9 +534,11 @@ function FormularioDaChave({
       const dados = (await res.json().catch(() => ({}))) as {
         code?: string;
         avisos?: string[];
+        modelo?: string;
+        modelos?: string[];
       };
       if (!res.ok) {
-        setRecado({ tom: 'erro', texto: textoDoErroDaChave(t, dados.code) });
+        setRecado({ tom: 'erro', texto: textoDoErroDaChave(t, dados.code, dados.modelo) });
         return;
       }
       setChave('');
@@ -544,11 +546,13 @@ function FormularioDaChave({
         (a) =>
           a === 'embeddings_recusado' ||
           a === 'embeddings_nao_conferido' ||
+          a === 'modelo_em_uso_indisponivel' ||
           a === 'modulos_nao_criados'
       );
+      const modelos = (dados.modelos ?? []).join(', ');
       setRecado(
         avisos.length > 0
-          ? { tom: 'aviso', texto: avisos.map((a) => t(`avisoDaChave.${a}`)).join(' ') }
+          ? { tom: 'aviso', texto: avisos.map((a) => t(`avisoDaChave.${a}`, { modelos })).join(' ') }
           : { tom: 'ok', texto: t('salvo') }
       );
       onSalvo();
@@ -783,8 +787,14 @@ function TextoDoRecado({ recado }: { recado: Recado }) {
  */
 function textoDoErroDaChave(
   t: ReturnType<typeof useTranslations>,
-  codigo: string | undefined
+  codigo: string | undefined,
+  modelo?: string
 ): string {
+  // A chave nova não alcança um modelo EM USO que a atual alcança: nada foi
+  // trocado, e a frase diz qual modelo (Codex, #294).
+  if (codigo === 'modelo_em_uso_recusado') {
+    return t('erroDaChave.modelo_em_uso_recusado', { modelo: modelo || '—' });
+  }
   const conhecidos = [
     'invalid_key',
     'rate_limited',
