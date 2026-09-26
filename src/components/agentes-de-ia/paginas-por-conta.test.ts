@@ -46,3 +46,16 @@ describe('Codex, #309 — o recorte da conta ativa e as leituras que envelhecem'
     expect(ler('src/components/agentes-de-ia/nomes-dos-agentes.ts')).toContain('Date.now() - buscadoEm > VALIDADE_MS')
   })
 })
+
+describe('F3 — os catálogos da conta ativa e a prova de que sumiu (Codex, #312)', () => {
+  it('"Acesso" lê só os campos da conta ATIVA e só descarta com a lista COMPLETA', () => {
+    const fonte = ler('src/components/agentes-de-ia/acesso-do-agente.tsx')
+    expect(fonte).toContain(".eq('account_id', accountId)")
+    expect(fonte).toContain("carga.fase === 'pronto' && carga.completo ? new Set(")
+  })
+  it('"Base" só descarta documento ausente com a lista COMPLETA', () => {
+    expect(ler('src/components/agentes-de-ia/base-do-agente.tsx')).toContain(
+      'const documentoIds = completa ? marcados.filter((id) => existentes.has(id)) : marcados;',
+    )
+  })
+})

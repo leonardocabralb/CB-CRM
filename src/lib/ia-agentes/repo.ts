@@ -9,6 +9,10 @@
 // As ETAPAS em que o agente atua (D24) moram em `cb_ia_agente_etapas`, uma
 // linha por etapa (a etapa é a chave: no máximo um agente por etapa). A tela
 // manda a lista inteira; as que ficam mantêm o `desde` (D27).
+//
+// Os DOCUMENTOS da base que o agente usa (F3, D20) moram em
+// `cb_ia_agente_documentos` (1052), fechada ao navegador. Nada marcado =
+// nenhuma base.
 // ============================================================
 
 import { supabaseAdmin } from '@/lib/ai/admin-client'
@@ -40,6 +44,7 @@ export class ErroDoAgente extends Error {
       | 'conexao_instagram'
       | 'etapa_de_outra_conta'
       | 'etapa_ocupada'
+      | 'documento_invalido'
       | 'banco',
     mensagem: string,
     /** No `etapa_ocupada`: o nome do agente que já atua na etapa (a tela o diz). */
@@ -345,4 +350,67 @@ export async function arquivarAgente(accountId: string, userId: string, id: stri
     .maybeSingle()
   if (error) throw new ErroDoAgente('banco', error.message)
   if (!data) throw new ErroDoAgente('nao_encontrado', 'agente não encontrado')
+}
+
+// ------------------------------------------------------------
+// A base de conhecimento do agente (F3, D20)
+// ------------------------------------------------------------
+
+/**
+ * Os ids dos documentos marcados para o agente. Sem paginar: o `PUT` não
+ * deixa passar de `LIMITES.documentos` (200), bem abaixo do teto de 1000 do
+ * PostgREST. Erro de leitura lança (nunca "nenhum documento").
+ */
+export async function lerDocumentosDoAgente(accountId: string, agenteId: string): Promise<string[]> {
+  const { data, error } = await supabaseAdmin()
+    .from('cb_ia_agente_documentos')
+    .select('documento_id')
+    .eq('account_id', accountId)
+    .eq('ia_agente_id', agenteId)
+    .order('documento_id', { ascending: true })
+  if (error) throw new ErroDoAgente('banco', error.message)
+  return ((data ?? []) as { documento_id: string }[]).map((l) => l.documento_id)
+}
+
+/**
+ * Grava a lista INTEIRA de documentos do agente: confere que o agente é
+ * desta conta e não está arquivado, que todo documento é DESTA conta
+ * (`documento_invalido` — a FK composta seria a última palavra, mas com erro
+ * cru), insere os novos PRIMEIRO e só depois apaga os que saíram (a ordem das
+ * etapas: uma falha no meio não deixa o agente sem base). Devolve a lista
+ * gravada, relida do banco.
+ */
+export async function gravarDocumentosDoAgente(
+  accountId: string,
+  agenteId: string,
+  documentoIds: string[],
+): Promise<string[]> {
+  const agente = await obterAgente(accountId, agenteId)
+  if (!agente || agente.arquivadoEm) throw new ErroDoAgente('nao_encontrado', 'agente não encontrado')
+  const db = supabaseAdmin()
+  if (documentoIds.length > 0) {
+    const { data, error } = await db
+      .from('ai_knowledge_documents')
+      .select('id')
+      .eq('account_id', accountId)
+      .in('id', documentoIds)
+    if (error) throw new ErroDoAgente('banco', error.message)
+    if ((data ?? []).length !== documentoIds.length) {
+      throw new ErroDoAgente('documento_invalido', 'documento que não é desta conta')
+    }
+    // `ignoreDuplicates`: o que já estava marcado não se toca (a chave
+    // primária é TOTAL, então serve de alvo do ON CONFLICT).
+    const { error: erroDoInsert } = await db.from('cb_ia_agente_documentos').upsert(
+      documentoIds.map((documento_id) => ({ account_id: accountId, ia_agente_id: agenteId, documento_id })),
+      { onConflict: 'ia_agente_id,documento_id', ignoreDuplicates: true },
+    )
+    // 23503: o documento foi apagado entre a conferência e aqui.
+    if (erroDoInsert?.code === '23503') throw new ErroDoAgente('documento_invalido', 'documento apagado')
+    if (erroDoInsert) throw new ErroDoAgente('banco', erroDoInsert.message)
+  }
+  let apagar = db.from('cb_ia_agente_documentos').delete().eq('account_id', accountId).eq('ia_agente_id', agenteId)
+  if (documentoIds.length > 0) apagar = apagar.not('documento_id', 'in', `(${documentoIds.join(',')})`)
+  const { error } = await apagar
+  if (error) throw new ErroDoAgente('banco', error.message)
+  return lerDocumentosDoAgente(accountId, agenteId)
 }

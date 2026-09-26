@@ -1,12 +1,35 @@
 // Formas que as telas dos agentes de IA recebem das rotas (espelho do servidor).
 
 import type { AiProvider } from '@/lib/ai/types'
-import type { AgenteComEtapas, EtapaDoAgente, Horario } from '@/lib/ia-agentes/agente'
+import type { AcessoDoAgente, AgenteComEtapas, BlocoDoAcesso, EtapaDoAgente, Horario } from '@/lib/ia-agentes/agente'
 
-export type { EtapaDoAgente, Horario }
+export type { AcessoDoAgente, BlocoDoAcesso, EtapaDoAgente, Horario }
+export { BLOCOS_DO_ACESSO } from '@/lib/ia-agentes/agente'
 
-/** O agente como as rotas o devolvem: com as etapas em que atua (D24). */
+/** O agente como as rotas o devolvem: com as etapas em que atua (D24) e o acesso (F3). */
 export type IaAgente = AgenteComEtapas
+
+/**
+ * As caixas do acesso (F3, 5.5), na ordem da tela; `campos` é a lista à
+ * parte. Os rótulos são chave MONTADA (`acesso.bloco.<b>`, `acesso.dica.<c>`),
+ * cobradas em `textos.test.ts`.
+ */
+export const CAIXAS_DO_ACESSO = ['ficha', 'negocio', 'etiquetas', 'cobrancas', 'reuniao'] as const satisfies readonly Exclude<
+  BlocoDoAcesso,
+  'campos'
+>[]
+
+/**
+ * O RETRATO do que o modelo viu num turno (`cb_ia_turnos.contexto`, F3):
+ * os blocos renderizados (em inglês, como foram ao modelo) e os ids dos
+ * documentos de onde vieram os trechos da base. Nulo nos turnos antigos.
+ */
+export interface ContextoDoTurno {
+  blocos: Array<{ bloco: string; texto: string }>
+  documentos: string[]
+  /** O texto de cada trecho da base como foi ao modelo (vazio nos retratos antigos). */
+  trechos: Array<{ documento: string; texto: string }>
+}
 
 export const PROVEDORES: readonly AiProvider[] = ['gemini', 'openai', 'anthropic']
 

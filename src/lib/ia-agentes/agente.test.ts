@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  blocoMarcado,
   colunasDaAlteracao,
+  lerAcesso,
   lerAlteracao,
+  lerDocumentosPedidos,
   lerEtapaDoAgente,
   lerHorario,
   lerLinhaDoAgente,
+  LIMITES,
   planoDasEtapas,
 } from './agente'
 
@@ -168,5 +172,88 @@ describe('planoDasEtapas — uma etapa tem no máximo UM agente (D24)', () => {
 
   it('lista vazia: nada entra (as antigas saem pelo DELETE)', () => {
     expect(planoDasEtapas('ag-1', [], donos)).toEqual({ ocupada: null, inserir: [] })
+  })
+})
+
+// ------------------------------------------------------------
+// F3 — o que o agente vê e a base dele
+// ------------------------------------------------------------
+
+const FECHADO = { ficha: false, campos: [], negocio: false, etiquetas: false, cobrancas: false, reuniao: false }
+const CAMPO = '22222222-2222-4222-8222-222222222222'
+const uuid = (i: number) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`
+
+describe('lerAcesso — fechado por padrão, só o booleano true liga', () => {
+  it('ausente, nulo ou forma estranha = nada marcado (só a conversa)', () => {
+    expect(lerAcesso(undefined)).toEqual(FECHADO)
+    expect(lerAcesso(null)).toEqual(FECHADO)
+    expect(lerAcesso('ficha')).toEqual(FECHADO)
+    expect(lerAcesso([true])).toEqual(FECHADO)
+    expect(lerAcesso({})).toEqual(FECHADO)
+  })
+
+  it('"true" e 1 do JSONB NÃO ligam', () => {
+    expect(lerAcesso({ ficha: 'true', negocio: 1, cobrancas: true })).toEqual({ ...FECHADO, cobrancas: true })
+  })
+
+  it('campos: só uuids, sem repetição, até o teto', () => {
+    expect(lerAcesso({ campos: [CAMPO, 'x', 7, CAMPO] }).campos).toEqual([CAMPO])
+    const muitos = Array.from({ length: LIMITES.campos + 5 }, (_, i) => uuid(i))
+    expect(lerAcesso({ campos: muitos }).campos).toHaveLength(LIMITES.campos)
+  })
+
+  it('blocoMarcado: campos = pelo menos um campo escolhido', () => {
+    expect(blocoMarcado(FECHADO, 'campos')).toBe(false)
+    expect(blocoMarcado({ ...FECHADO, campos: [CAMPO] }, 'campos')).toBe(true)
+    expect(blocoMarcado({ ...FECHADO, reuniao: true }, 'reuniao')).toBe(true)
+  })
+
+  it('a linha do agente traz o acesso lido; sem a coluna, fechado', () => {
+    const base = { id: ID, account_id: ID, provedor: 'gemini' }
+    expect(lerLinhaDoAgente(base)?.acesso).toEqual(FECHADO)
+    expect(lerLinhaDoAgente({ ...base, acesso: { etiquetas: true, campos: [CAMPO] } })?.acesso).toEqual({
+      ...FECHADO,
+      etiquetas: true,
+      campos: [CAMPO],
+    })
+  })
+})
+
+describe('lerAlteracao — acesso (PATCH)', () => {
+  it('objeto inteiro, lido pela régua do acesso; vira a coluna `acesso` com as MESMAS chaves', () => {
+    const r = lerAlteracao({ acesso: { ficha: true, campos: [CAMPO, CAMPO], cobrancas: 'true' } }, false)
+    expect(r).toEqual({ ok: true, valor: { acesso: { ...FECHADO, ficha: true, campos: [CAMPO] } } })
+    if (r.ok) expect(colunasDaAlteracao(r.valor)).toEqual({ acesso: { ...FECHADO, ficha: true, campos: [CAMPO] } })
+  })
+
+  it('acesso que não é objeto: recusado', () => {
+    expect(lerAlteracao({ acesso: null }, false)).toEqual({ ok: false, codigo: 'lista_invalida' })
+    expect(lerAlteracao({ acesso: ['ficha'] }, false)).toEqual({ ok: false, codigo: 'lista_invalida' })
+  })
+
+  it('campos fora da forma RECUSA (não descarta em silêncio o que o administrador marcou)', () => {
+    expect(lerAlteracao({ acesso: { campos: ['telefone'] } }, false)).toEqual({ ok: false, codigo: 'lista_invalida' })
+    expect(lerAlteracao({ acesso: { campos: CAMPO } }, false)).toEqual({ ok: false, codigo: 'lista_invalida' })
+    const demais = Array.from({ length: LIMITES.campos + 1 }, (_, i) => uuid(i))
+    expect(lerAlteracao({ acesso: { campos: demais } }, false)).toEqual({ ok: false, codigo: 'lista_invalida' })
+  })
+
+  it('acesso ausente não mexe', () => {
+    expect(lerAlteracao({ ativo: false }, false)).toEqual({ ok: true, valor: { ativo: false } })
+  })
+})
+
+describe('lerDocumentosPedidos — o corpo do PUT …/documentos', () => {
+  it('lista de uuids, sem repetição; vazia = nenhuma base', () => {
+    expect(lerDocumentosPedidos({ documentoIds: [ID, ID] })).toEqual([ID])
+    expect(lerDocumentosPedidos({ documentoIds: [] })).toEqual([])
+  })
+
+  it('forma errada = null', () => {
+    expect(lerDocumentosPedidos(null)).toBeNull()
+    expect(lerDocumentosPedidos({})).toBeNull()
+    expect(lerDocumentosPedidos({ documentoIds: ['faq'] })).toBeNull()
+    expect(lerDocumentosPedidos([ID])).toBeNull()
+    expect(lerDocumentosPedidos({ documentoIds: Array.from({ length: LIMITES.documentos + 1 }, (_, i) => uuid(i)) })).toBeNull()
   })
 })

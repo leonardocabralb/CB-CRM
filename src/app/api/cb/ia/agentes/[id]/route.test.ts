@@ -24,12 +24,13 @@ vi.mock('@/lib/rate-limit', () => ({
 }))
 
 const etapa = { stageId: 'e1', pipelineId: 'f1', desde: '2026-09-26T10:00:00Z' }
+const acesso = { ficha: false, campos: [], negocio: true, etiquetas: false, cobrancas: true, reuniao: false }
 
 vi.mock('@/lib/ia-agentes/repo', async () => {
   const { ErroDoAgente } = await vi.importActual<typeof import('@/lib/ia-agentes/repo')>('@/lib/ia-agentes/repo')
   return {
     ErroDoAgente,
-    obterAgenteComEtapas: vi.fn(async () => ({ id: ID, nome: 'Triagem', arquivadoEm: null, etapas: [etapa] })),
+    obterAgenteComEtapas: vi.fn(async () => ({ id: ID, nome: 'Triagem', arquivadoEm: null, etapas: [etapa], acesso })),
     etapasDosAgentes: vi.fn(async () => new Map([[ID, [etapa]]])),
     arquivarAgente: vi.fn(),
     atualizarAgente: vi.fn(async () => ({ id: ID, nome: 'Triagem', arquivadoEm: null })),
@@ -91,6 +92,30 @@ describe('PATCH /api/cb/ia/agentes/[id] — etapas', () => {
   it('lista com algo que não é id: 400 sem chamar o repositório', async () => {
     const res = await patch({ etapas: ['lead'] })
     expect(res.status).toBe(400)
+    expect(atualizarAgente).not.toHaveBeenCalled()
+  })
+})
+
+describe('F3 — o acesso do agente', () => {
+  const CAMPO = '33333333-3333-4333-8333-333333333333'
+
+  it('GET traz o acesso', async () => {
+    const res = await GET(new Request('http://x'), ctx)
+    expect((await res.json()).agente.acesso).toEqual(acesso)
+  })
+
+  it('PATCH com `acesso`: o objeto lido pela régua (só o booleano true liga) vai ao repositório', async () => {
+    const res = await patch({ acesso: { ficha: true, cobrancas: 'true', campos: [CAMPO] } })
+    expect(res.status).toBe(200)
+    expect(vi.mocked(atualizarAgente).mock.calls[0][3]).toEqual({
+      acesso: { ficha: true, campos: [CAMPO], negocio: false, etiquetas: false, cobrancas: false, reuniao: false },
+    })
+  })
+
+  it('PATCH com campos fora da forma: 400 lista_invalida, sem gravar', async () => {
+    const res = await patch({ acesso: { campos: ['telefone'] } })
+    expect(res.status).toBe(400)
+    expect((await res.json()).code).toBe('lista_invalida')
     expect(atualizarAgente).not.toHaveBeenCalled()
   })
 })
