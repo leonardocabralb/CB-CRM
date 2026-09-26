@@ -68,6 +68,12 @@ vi.mock('@/lib/ia-agentes/acesso', async (original) => ({
   lerOQueOAgenteVe: vi.fn(async () => visto),
 }))
 
+// As AÇÕES (F4): as opções do pedido, um dublê; a execução NUNCA pode ser
+// chamada no Playground.
+let opcoesDeAcao: Record<string, Array<{ id: string; nome: string }>> = {}
+vi.mock('@/lib/ia-agentes/ferramentas', () => ({ opcoesDoAgente: vi.fn(async () => opcoesDeAcao) }))
+vi.mock('@/lib/ia-agentes/executar-acoes', () => ({ executarAcoes: vi.fn(), anotarNaConversa: vi.fn() }))
+
 let resposta = { text: 'Olá!', handoff: false }
 vi.mock('@/lib/ai/generate', () => ({
   generateReply: vi.fn(async () => ({ ...resposta, usage: null })),
@@ -75,6 +81,8 @@ vi.mock('@/lib/ai/generate', () => ({
 
 import { generateReply } from '@/lib/ai/generate'
 import { lerOQueOAgenteVe } from '@/lib/ia-agentes/acesso'
+import { executarAcoes } from '@/lib/ia-agentes/executar-acoes'
+import { opcoesDoAgente } from '@/lib/ia-agentes/ferramentas'
 import { POST } from './route'
 
 function agente(id: string, extra: Record<string, unknown> = {}) {
@@ -91,6 +99,7 @@ function agente(id: string, extra: Record<string, unknown> = {}) {
     tetoRespostas: 5,
     podePassarPara: [],
     acesso: { ficha: false, campos: [], negocio: false, etiquetas: false, cobrancas: true, reuniao: false },
+    ferramentas: {},
     ...extra,
   }
 }
@@ -119,6 +128,8 @@ beforeEach(() => {
   erroDoContato = null
   filtrosDoContato.length = 0
   visto = { blocos: [], trechos: [], retrato: { blocos: [], documentos: [] } }
+  opcoesDeAcao = {}
+  vi.mocked(opcoesDoAgente).mockClear()
 })
 
 describe('POST /api/cb/ia/agentes/[id]/playground — passagem (D25)', () => {
@@ -229,5 +240,85 @@ describe('POST /api/cb/ia/agentes/[id]/playground — o que o agente vê (F3)', 
     const res = await enviar({ contactId: CONTATO })
     expect(res.status).toBe(500)
     expect(generateReply).not.toHaveBeenCalled()
+  })
+})
+
+describe('POST /api/cb/ia/agentes/[id]/playground — as ações (F4, SIMULADAS)', () => {
+  beforeEach(() => {
+    opcoesDeAcao = {
+      mover_etapa: [{ id: 'etapa-uuid', nome: 'Bancário · Proposta' }],
+      etiquetar: [{ id: 'tag-uuid', nome: 'VIP' }],
+      criar_tarefa: [{ id: 'membro-uuid', nome: 'Ana' }],
+    }
+  })
+
+  it('o pedido lista as ações do agente, pela MESMA leitura do turno', async () => {
+    agentes[ID] = agente(ID, { ferramentas: { etiquetar: { etiquetas: ['x'] } } })
+    await enviar()
+    expect(vi.mocked(opcoesDoAgente).mock.calls[0].slice(1)).toEqual(['conta-1', { etiquetar: { etiquetas: ['x'] } }])
+    const pedido = vi.mocked(generateReply).mock.calls[0][0].systemPrompt as string
+    expect(pedido).toContain('[[MOVER:n]]')
+    expect(pedido).toContain('1. Bancário · Proposta')
+    expect(pedido).not.toContain('etapa-uuid')
+  })
+
+  it('⚠️ as aceitas voltam SIMULADAS — nada executa — e o marcador não aparece na resposta', async () => {
+    resposta = { text: 'Pronto!\n[[MOVER:1]]\n[[ETIQUETAR:1]]\n[[TAREFA:1=Ligar amanhã]]', handoff: false }
+    const corpo = await (await enviar()).json()
+    expect(corpo.reply).toBe('Pronto!')
+    expect(corpo.acoes).toEqual({
+      aceitas: [
+        { tipo: 'mover_etapa', nome: 'Bancário · Proposta' },
+        { tipo: 'etiquetar', nome: 'VIP' },
+        { tipo: 'criar_tarefa', nome: 'Ana', valor: 'Ligar amanhã' },
+      ],
+      recusadas: [],
+    })
+    expect(corpo.linkInventado).toBe(false)
+    expect(executarAcoes).not.toHaveBeenCalled()
+  })
+
+  it('número fora da lista (ou tipo não liberado) aparece como RECUSADO', async () => {
+    resposta = { text: 'Ok\n[[ETIQUETAR:3]]\n[[AUTOMACAO:1]]', handoff: false }
+    const corpo = await (await enviar()).json()
+    expect(corpo.acoes).toEqual({
+      aceitas: [],
+      recusadas: [
+        { tipo: 'etiquetar', motivo: 'fora_da_lista' },
+        { tipo: 'executar_automacao', motivo: 'nao_liberada' },
+      ],
+    })
+  })
+
+  it('link inventado: a tela é avisada (no turno, a resposta seria retida) e as ações não executariam', async () => {
+    resposta = { text: 'Pague em https://boleto.exemplo/1\n[[ETIQUETAR:1]]', handoff: false }
+    const corpo = await (await enviar()).json()
+    expect(corpo.linkInventado).toBe(true)
+    expect(corpo.acoes).toEqual({ aceitas: [], recusadas: [{ tipo: 'etiquetar', motivo: 'transferencia' }] })
+  })
+
+  it('link que veio do pedido (bloco de cobranças) não é inventado', async () => {
+    visto = {
+      blocos: [{ bloco: 'cobrancas', texto: 'Billing:\n- installment 1/3 — payment link: https://www.asaas.com/i/abc' }],
+      trechos: [],
+      retrato: { blocos: [], documentos: [] },
+    }
+    resposta = { text: 'Segue: https://www.asaas.com/i/abc', handoff: false }
+    const corpo = await (await enviar()).json()
+    expect(corpo.linkInventado).toBe(false)
+  })
+
+  it('só marcadores: transfere, como no turno (as ações vão para as recusadas)', async () => {
+    resposta = { text: '[[MOVER:1]]', handoff: false }
+    const corpo = await (await enviar()).json()
+    expect(corpo).toMatchObject({ reply: '', handoff: true })
+    expect(corpo.acoes).toEqual({ aceitas: [], recusadas: [{ tipo: 'mover_etapa', motivo: 'transferencia' }] })
+  })
+
+  it('a passagem vence: as ações vão para as recusadas (`passagem`)', async () => {
+    resposta = { text: '[[PASSAR:1]]\n[[MOVER:1]]', handoff: false }
+    const corpo = await (await enviar()).json()
+    expect(corpo).toMatchObject({ reply: '', passaPara: 'Cobrança' })
+    expect(corpo.acoes).toEqual({ aceitas: [], recusadas: [{ tipo: 'mover_etapa', motivo: 'passagem' }] })
   })
 })

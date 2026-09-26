@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/ai/admin-client'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import { nomeDoContato } from '@/lib/contacts/identidade'
 import { lerRetrato } from '@/lib/ia-agentes/acesso'
+import { lerRegistrosDasAcoes } from '@/lib/ia-agentes/acoes'
 import { obterAgente } from '@/lib/ia-agentes/repo'
 import { respostaDoErro } from '@/lib/ia-agentes/resposta'
 
@@ -22,6 +23,7 @@ interface LinhaDoTurno {
   erro: string | null
   conversation_id: string
   contexto: unknown
+  acoes: unknown
 }
 
 /**
@@ -31,7 +33,10 @@ interface LinhaDoTurno {
  * status, criadoEm, terminadoEm, erro, conversationId, contato, contexto }] }`.
  * `contexto` é o RETRATO do que o modelo viu (F3, 1052): `{ blocos: [{ bloco,
  * texto }], documentos: [ids] }`; nulo nos turnos anteriores à F3 e nos que
- * não chegaram a montar o pedido.
+ * não chegaram a montar o pedido. `acoes` (F4) é o que o agente FEZ junto com
+ * a resposta: `[{ tipo, alvo: { id, nome }, ok, erro? }]` — as executadas e
+ * as recusadas (`alvo.id` nulo e `alvo.nome` "#n": o número que o modelo
+ * pediu); nulo quando o registro não é uma lista.
  * `cb_ia_turnos` é fechada ao navegador — daí a rota, com o cliente de
  * serviço e a conta conferida (o agente e cada consulta).
  */
@@ -47,7 +52,7 @@ export async function GET(_request: Request, { params }: Contexto) {
     const db = supabaseAdmin()
     const { data, error } = await db
       .from('cb_ia_turnos')
-      .select('id, status, created_at, terminado_em, erro, conversation_id, contexto')
+      .select('id, status, created_at, terminado_em, erro, conversation_id, contexto, acoes')
       .eq('account_id', ctx.accountId)
       .eq('ia_agente_id', id)
       .order('created_at', { ascending: false })
@@ -85,6 +90,7 @@ export async function GET(_request: Request, { params }: Contexto) {
         conversationId: t.conversation_id,
         contato: contatoDa.get(t.conversation_id) ?? null,
         contexto: lerRetrato(t.contexto),
+        acoes: lerRegistrosDasAcoes(t.acoes),
       })),
     })
   } catch (err) {

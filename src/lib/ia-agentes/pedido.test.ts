@@ -108,3 +108,47 @@ describe('a PASSAGEM (D25)', () => {
     expect(lerPassagem('[PASSAR:1]')).toBeNull()
   })
 })
+
+describe('as AÇÕES junto com a resposta (F4, D28)', () => {
+  const agora = new Date('2026-09-25T17:05:00Z')
+
+  it('lista as opções NUMERADAS com os NOMES — nunca os ids — e ensina os marcadores', () => {
+    const p = montarPedidoDoAgente({
+      instrucoes: 'Triagem.',
+      regras: [],
+      agora,
+      acoes: {
+        mover_etapa: [
+          { id: 'uuid-etapa-1', nome: 'Bancário · Proposta' },
+          { id: 'uuid-etapa-2', nome: 'Bancário · Documentos' },
+        ],
+        etiquetar: [{ id: 'uuid-tag', nome: 'VIP\ncom quebra' }],
+        preencher_campo: [{ id: 'uuid-campo', nome: 'Tamanho da dívida' }],
+        criar_tarefa: [{ id: 'uuid-membro', nome: 'Ana' }],
+        executar_automacao: [],
+      },
+    })
+    expect(p).toContain('[[MOVER:n]]')
+    expect(p).toContain('1. Bancário · Proposta\n2. Bancário · Documentos')
+    expect(p).toContain('[[ETIQUETAR:n]]')
+    expect(p).toContain('1. VIP com quebra')
+    expect(p).toContain('[[CAMPO:n=value]]')
+    expect(p).toContain('[[TAREFA:n=title]]')
+    // Tipo sem opção não aparece.
+    expect(p).not.toContain('[[AUTOMACAO:n]]')
+    expect(p).not.toContain('[[TIRAR:n]]')
+    expect(p).not.toMatch(/uuid-/)
+    // O protocolo: no fim, só números da lista, e o texto ao cliente é obrigatório.
+    expect(p).toMatch(/at the very END/)
+    expect(p).toMatch(/never make up a number/)
+    expect(p).toMatch(/a message with only markers is handed over to the team/)
+  })
+
+  it('sem ações liberadas, o pedido não fala de ações', () => {
+    expect(montarPedidoDoAgente({ instrucoes: 'x', regras: [], agora })).not.toContain('[[MOVER')
+    expect(montarPedidoDoAgente({ instrucoes: 'x', regras: [], agora, acoes: {} })).not.toContain('Actions you can take')
+    expect(
+      montarPedidoDoAgente({ instrucoes: 'x', regras: [], agora, acoes: { etiquetar: [] } }),
+    ).not.toContain('Actions you can take')
+  })
+})

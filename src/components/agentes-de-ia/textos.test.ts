@@ -3,8 +3,10 @@ import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { CODIGOS_CONHECIDOS, STATUS_DO_TURNO } from './textos'
-import { BLOCOS_DO_ACESSO, CAIXAS_DO_ACESSO, MODELOS_DE_PARTIDA } from './tipos'
+import type { MotivoDaRecusa, MotivoForaDaD5 } from '@/lib/ia-agentes/acoes'
+
+import { CODIGOS_CONHECIDOS, CODIGOS_DA_D5, MOTIVOS_DE_RECUSA, STATUS_DO_TURNO } from './textos'
+import { BLOCOS_DO_ACESSO, CAIXAS_DO_ACESSO, MODELOS_DE_PARTIDA, TIPOS_DE_ACAO } from './tipos'
 
 // As telas dos agentes de IA pedem chaves MONTADAS (`erro.${código}`,
 // `modelos.${m}.*`, `dia.${d}`, `uso.modo.${m}`), que escapam dos portões de
@@ -51,6 +53,36 @@ describe.each(['en.json', 'pt-BR.json'])('IaAgentes em %s', (arquivo) => {
     expect(em(d, 'acesso.blocoDesconhecido')).toBeTruthy()
   })
 
+  it('cada tipo de ação (F4) tem nome, dica, frase no Playground e o "nenhum" da lista; o desconhecido também', () => {
+    for (const tipo of TIPOS_DE_ACAO) {
+      expect(em(d, `ferramentas.tipo.${tipo}.nome`), tipo).toBeTruthy()
+      expect(em(d, `ferramentas.tipo.${tipo}.dica`), tipo).toBeTruthy()
+      expect(em(d, `ferramentas.nenhum.${tipo}`), tipo).toBeTruthy()
+      expect(em(d, `playground.acao.${tipo}`), tipo).toBeTruthy()
+    }
+    expect(em(d, 'ferramentas.tipoDesconhecido')).toBeTruthy()
+    expect(em(d, 'playground.acaoDesconhecida')).toBeTruthy()
+  })
+
+  it('cada motivo da D5 (automação que não pode ser liberada) tem texto, e o "outro" também', () => {
+    for (const c of CODIGOS_DA_D5) expect(em(d, `ferramentas.foraDaD5.${c}`), c).toBeTruthy()
+    expect(em(d, 'ferramentas.foraDaD5.outro')).toBeTruthy()
+  })
+
+  it('cada motivo de recusa de ação (Playground e Turnos) tem texto, e o "outro" também', () => {
+    for (const m of MOTIVOS_DE_RECUSA) expect(em(d, `ferramentas.recusa.${m}`), m).toBeTruthy()
+    expect(em(d, 'ferramentas.recusa.outro')).toBeTruthy()
+  })
+
+  it('cada anotação de AÇÃO que o servidor grava (textosDaAcao) tem texto, e o aviso da tarefa também', () => {
+    for (const tipo of TIPOS_DE_ACAO) expect(em(d, `transferencia.acoes.${tipo}`), tipo).toBeTruthy()
+    expect(em(d, 'transferencia.acoes.avisoDaTarefa')).toBeTruthy()
+  })
+
+  it('o motivo de transferência link_inventado (F4) tem a anotação', () => {
+    expect(em(d, 'transferencia.nota.link_inventado')).toBeTruthy()
+  })
+
   it('os dias e os modos de uso', () => {
     for (let dia = 0; dia <= 6; dia++) expect(em(d, `dia.${dia}`)).toBeTruthy()
     for (const m of ['agente', 'agente_teste', 'radar', 'transcricao', 'auto_reply', 'draft']) {
@@ -58,6 +90,34 @@ describe.each(['en.json', 'pt-BR.json'])('IaAgentes em %s', (arquivo) => {
     }
     expect(em(d, 'uso.producao')).toBeTruthy()
     expect(em(d, 'uso.teste')).toBeTruthy()
+  })
+})
+
+describe('as listas da tela cobrem os códigos do servidor (F4)', () => {
+  // Um Record literal: o COMPILADOR cobra um código novo do servidor aqui, e
+  // o teste cobra que a lista da tela (e, por ela, os dicionários) o tenha.
+  it('todo motivo de recusa de ação tem texto na tela', () => {
+    const doServidor: Record<MotivoDaRecusa, true> = {
+      malformada: true,
+      teto: true,
+      nao_liberada: true,
+      fora_da_lista: true,
+      passagem: true,
+      transferencia: true,
+    }
+    for (const m of Object.keys(doServidor)) expect(MOTIVOS_DE_RECUSA as readonly string[], m).toContain(m)
+  })
+
+  it('todo passo fora da D5 tem texto na tela', () => {
+    const doServidor: Record<MotivoForaDaD5, true> = {
+      send_to_number: true,
+      send_webhook: true,
+      status_de_resultado: true,
+      etapa_de_resultado: true,
+      run_flow: true,
+      campo_vigiado: true,
+    }
+    for (const c of Object.keys(doServidor)) expect(CODIGOS_DA_D5 as readonly string[], c).toContain(c)
   })
 })
 

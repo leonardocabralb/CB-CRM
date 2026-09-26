@@ -184,6 +184,14 @@ vi.mock('@/lib/rate-limit', () => ({
   RATE_LIMITS: { aiAutoReplyAccount: { limit: 30, windowMs: 60_000 } },
 }))
 vi.mock('./repo', () => ({ obterAgente: vi.fn() }))
+// As AÇÕES (F4): as opções vêm de um dublê (a leitura tem teste próprio em
+// `ferramentas.test.ts`) e a execução também (`executar-acoes.test.ts`); a
+// anotação é a de verdade (a transferência a usa).
+vi.mock('./ferramentas', () => ({ opcoesDoAgente: vi.fn(async () => ({})) }))
+vi.mock('./executar-acoes', async (original) => ({
+  ...(await original<typeof import('./executar-acoes')>()),
+  executarAcoes: vi.fn(async () => ({ registros: [], moveu: false })),
+}))
 vi.mock('next/server', async (original) => ({
   ...(await original<typeof import('next/server')>()),
   after: vi.fn(),
@@ -212,6 +220,8 @@ import { EvolutionApiError } from '@/lib/whatsapp/transport/evolution-client'
 import { MetaApiError } from '@/lib/whatsapp/meta-api'
 
 import { lerLinhaDoAgente } from './agente'
+import { executarAcoes } from './executar-acoes'
+import { opcoesDoAgente } from './ferramentas'
 import { JANELA_DO_AUDIO_MS } from './fila'
 import { obterAgente } from './repo'
 import { executarTurno, nadaSaiu, transferirParaGente } from './turno'
@@ -498,6 +508,8 @@ beforeEach(() => {
   vi.mocked(checkRateLimit).mockReset().mockReturnValue({ success: true } as ReturnType<typeof checkRateLimit>)
   vi.mocked(drenarEventosDeFunil).mockClear()
   vi.mocked(after).mockReset()
+  vi.mocked(opcoesDoAgente).mockReset().mockResolvedValue({})
+  vi.mocked(executarAcoes).mockReset().mockResolvedValue({ registros: [], moveu: false })
 })
 
 /** O envio falha DEPOIS de chamar o provedor (o erro vem dele). */
@@ -1943,5 +1955,160 @@ describe('executarTurno — o que o agente vê (F3)', () => {
     await executarTurno(TURNO)
     expect(generateReply).toHaveBeenCalled()
     expect(turno().status).toBe('respondeu')
+  })
+})
+
+// ------------------------------------------------------------
+// As AÇÕES junto com a resposta (F4, D28)
+// ------------------------------------------------------------
+
+describe('executarTurno — as ações (F4, D28)', () => {
+  const OPCOES = {
+    mover_etapa: [{ id: ETAPA_DESTINO, nome: 'Comercial · Cobrança' }],
+    etiquetar: [{ id: 'tag-vip', nome: 'VIP' }],
+  }
+  const pedido = () => vi.mocked(generateReply).mock.calls[0][0].systemPrompt as string
+  const responde = (text: string) =>
+    vi.mocked(generateReply).mockResolvedValue({ text, handoff: false, usage: null })
+
+  beforeEach(() => {
+    vi.mocked(opcoesDoAgente).mockResolvedValue(OPCOES)
+    vi.mocked(executarAcoes).mockImplementation(async (_db, _ctx, aceitas) => ({
+      registros: aceitas.map((a) => ({ tipo: a.tipo, alvo: { id: a.id, nome: a.nome }, ok: true })),
+      moveu: aceitas.some((a) => a.tipo === 'mover_etapa'),
+    }))
+  })
+
+  it('o pedido lista as ações LIGADAS no agente, com os nomes e nunca os ids', async () => {
+    agenteLido().ferramentas = { etiquetar: { etiquetas: ['11111111-1111-4111-8111-111111111111'] } }
+    await executarTurno(TURNO)
+    expect(vi.mocked(opcoesDoAgente).mock.calls[0][1]).toBe(CONTA)
+    expect(vi.mocked(opcoesDoAgente).mock.calls[0][2]).toEqual({
+      etiquetar: { etiquetas: ['11111111-1111-4111-8111-111111111111'] },
+    })
+    expect(pedido()).toContain('[[MOVER:n]]')
+    expect(pedido()).toContain('1. Comercial · Cobrança')
+    expect(pedido()).toContain('[[ETIQUETAR:n]]')
+    expect(pedido()).not.toContain(ETAPA_DESTINO)
+  })
+
+  it('as aceitas executam DEPOIS da reserva e ANTES do envio, com os ids do servidor; o texto sai SEM marcador', async () => {
+    responde('Pronto, anotei!\n\n[[MOVER:1]]\n[[ETIQUETAR:1]]')
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    expect(vi.mocked(engineSendText).mock.calls[0][0].text).toBe('Pronto, anotei!')
+    const [, ctx, aceitas] = vi.mocked(executarAcoes).mock.calls[0]
+    expect(ctx).toEqual({
+      accountId: CONTA,
+      conversationId: CONVERSA,
+      contactId: 'contato-1',
+      dealId: CARD,
+      canalId: CANAL,
+      agente: { id: AGENTE, nome: 'Triagem' },
+      dono: 'dono-1',
+    })
+    expect(aceitas).toEqual([
+      { tipo: 'mover_etapa', id: ETAPA_DESTINO, nome: 'Comercial · Cobrança' },
+      { tipo: 'etiquetar', id: 'tag-vip', nome: 'VIP' },
+    ])
+    // A ordem: reserva → ações → envio.
+    const reserva = banco.rpcChamadas.findIndex((c) => c.nome === 'cb_ia_reservar_envio')
+    expect(reserva).toBeGreaterThanOrEqual(0)
+    expect(vi.mocked(executarAcoes).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(engineSendText).mock.invocationCallOrder[0],
+    )
+    // O registro das ações, no turno.
+    expect(turno().acoes).toEqual([
+      { tipo: 'mover_etapa', alvo: { id: ETAPA_DESTINO, nome: 'Comercial · Cobrança' }, ok: true },
+      { tipo: 'etiquetar', alvo: { id: 'tag-vip', nome: 'VIP' }, ok: true },
+    ])
+  })
+
+  it('card movido: a fila do funil é drenada DEPOIS da resposta', async () => {
+    responde('Pronto!\n[[MOVER:1]]')
+    await executarTurno(TURNO)
+    expect(drenarEventosDeFunil).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(engineSendText).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(drenarEventosDeFunil).mock.invocationCallOrder[0],
+    )
+  })
+
+  it('⚠️ default-deny: número fora da lista e tipo não liberado são RECUSADOS e registrados, nunca executados', async () => {
+    responde('Ok!\n[[MOVER:5]]\n[[AUTOMACAO:1]]\n[[TIRAR:x]]')
+    await executarTurno(TURNO)
+    expect(vi.mocked(executarAcoes).mock.calls[0][2]).toEqual([])
+    expect(turno().acoes).toEqual([
+      { tipo: 'tirar_etiqueta', alvo: { id: null, nome: '' }, ok: false, erro: 'malformada' },
+      { tipo: 'mover_etapa', alvo: { id: null, nome: '#5' }, ok: false, erro: 'fora_da_lista' },
+      { tipo: 'executar_automacao', alvo: { id: null, nome: '#1' }, ok: false, erro: 'nao_liberada' },
+    ])
+    expect(vi.mocked(engineSendText).mock.calls[0][0].text).toBe('Ok!')
+  })
+
+  it('sem marcador, nada a executar nem a registrar', async () => {
+    await executarTurno(TURNO)
+    expect(executarAcoes).not.toHaveBeenCalled()
+    expect(turno().acoes).toBeUndefined()
+  })
+
+  it('⚠️ reserva recusada: NENHUMA ação executa', async () => {
+    responde('Pronto!\n[[MOVER:1]]')
+    antesDaReserva(() => {
+      Object.assign(conversa(), { ai_autoreply_disabled: true, ia_pausada_por: 'gente' })
+    })
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('pausado_no_meio')
+    expect(executarAcoes).not.toHaveBeenCalled()
+    expect(engineSendText).not.toHaveBeenCalled()
+  })
+
+  it('a transferência (sentinela) VENCE: as ações não executam', async () => {
+    vi.mocked(generateReply).mockResolvedValue({ text: 'Um momento [[MOVER:1]]', handoff: true, usage: null })
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({ status: 'transferiu', erro: 'sentinela' })
+    expect(executarAcoes).not.toHaveBeenCalled()
+  })
+
+  it('a passagem VENCE: as ações não executam, e o marcador não sai', async () => {
+    responde('Vou te passar. [[PASSAR:1]] [[MOVER:1]]')
+    await executarTurno(TURNO)
+    expect(executarAcoes).not.toHaveBeenCalled()
+    expect(engineSendText).not.toHaveBeenCalled()
+  })
+
+  it('só marcadores, sem texto ao cliente: transfere (sentinela), nada executa', async () => {
+    responde('[[MOVER:1]]\n[[ETIQUETAR:1]]')
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({ status: 'transferiu', erro: 'sentinela' })
+    expect(executarAcoes).not.toHaveBeenCalled()
+    expect(engineSendText).not.toHaveBeenCalled()
+  })
+
+  it('⚠️ link INVENTADO: a resposta é RETIDA e a conversa vai para gente (`link_inventado`), sem ações', async () => {
+    responde('Segue o boleto: https://pagar.exemplo.com/boleto/123\n[[ETIQUETAR:1]]')
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({ status: 'transferiu', erro: 'link_inventado' })
+    expect(engineSendText).not.toHaveBeenCalled()
+    expect(executarAcoes).not.toHaveBeenCalled()
+    expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'transferencia' })
+    expect(String(notas()[0].texto)).toContain('link')
+  })
+
+  it('link que veio da CONVERSA (ou do pedido) sai', async () => {
+    banco.tabelas.messages[0].content_text = 'O link é https://site.exemplo.com/a mesmo?'
+    responde('Sim, é https://site.exemplo.com/a.')
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    expect(vi.mocked(engineSendText).mock.calls[0][0].text).toBe('Sim, é https://site.exemplo.com/a.')
+  })
+
+  it('agente sem ferramenta: nada no pedido sobre ações, e o marcador que o modelo inventar some', async () => {
+    vi.mocked(opcoesDoAgente).mockResolvedValue({})
+    responde('Oi! [[MOVER:1]]')
+    await executarTurno(TURNO)
+    expect(pedido()).not.toContain('Actions you can take')
+    expect(vi.mocked(engineSendText).mock.calls[0][0].text).toBe('Oi!')
+    expect(vi.mocked(executarAcoes).mock.calls[0][2]).toEqual([])
+    expect(turno().acoes).toEqual([{ tipo: 'mover_etapa', alvo: { id: null, nome: '#1' }, ok: false, erro: 'nao_liberada' }])
   })
 })

@@ -13,12 +13,17 @@
 // Os DOCUMENTOS da base que o agente usa (F3, D20) moram em
 // `cb_ia_agente_documentos` (1052), fechada ao navegador. Nada marcado =
 // nenhuma base.
+//
+// As FERRAMENTAS (F4, D28) moram em `cb_ia_agentes.ferramentas`: cada item
+// liberado é conferido ao salvar (`conferirFerramentas`) — da conta, e dentro
+// da D5 — e de novo na hora de executar.
 // ============================================================
 
 import { supabaseAdmin } from '@/lib/ai/admin-client'
 import { ehInstagram } from '@/lib/cb-channels/transporte'
 import { lerEstado } from '@/lib/ia-chaves/repo'
 
+import { conferirFerramentas } from './ferramentas'
 import {
   COLUNAS_DO_AGENTE,
   colunasDaAlteracao,
@@ -45,10 +50,16 @@ export class ErroDoAgente extends Error {
       | 'etapa_de_outra_conta'
       | 'etapa_ocupada'
       | 'documento_invalido'
+      | 'etapa_de_resultado'
+      | 'item_de_outra_conta'
+      | 'campo_vigiado'
+      | 'automacao_fora_da_d5'
       | 'banco',
     mensagem: string,
     /** No `etapa_ocupada`: o nome do agente que já atua na etapa (a tela o diz). */
     public readonly outroAgente?: string,
+    /** Nas recusas das ferramentas (F4): os ids recusados. */
+    public readonly itens?: string[],
   ) {
     super(mensagem)
   }
@@ -191,6 +202,15 @@ async function conferirReferencias(
       .maybeSingle()
     if (error) throw new ErroDoAgente('banco', error.message)
     if (!data) throw new ErroDoAgente('membro_de_outra_conta', 'membro que não é desta conta')
+  }
+  if (a.ferramentas) {
+    let r: Awaited<ReturnType<typeof conferirFerramentas>>
+    try {
+      r = await conferirFerramentas(db, accountId, a.ferramentas)
+    } catch (err) {
+      throw new ErroDoAgente('banco', err instanceof Error ? err.message : String(err))
+    }
+    if (!r.ok) throw new ErroDoAgente(r.codigo, 'ferramenta recusada', undefined, r.itens)
   }
 }
 

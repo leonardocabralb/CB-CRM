@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // GET /api/cb/ia/agentes/[id]/turnos — a sub-aba Turnos (só admin): os 50
 // últimos turnos do agente, com o contato de cada conversa e o RETRATO do
-// que o modelo viu (F3). A conta é conferida no agente E em cada consulta
-// (cliente de serviço).
+// que o modelo viu (F3) e as AÇÕES que o agente fez (F4). A conta é
+// conferida no agente E em cada consulta (cliente de serviço).
 
 const ID = '11111111-1111-4111-8111-111111111111'
 
@@ -65,8 +65,13 @@ beforeEach(() => {
     {
       id: 't2', status: 'passou', created_at: '2026-09-26T12:00:00Z', terminado_em: null, erro: null, conversation_id: 'conv-2',
       contexto: { blocos: [{ bloco: 'ficha', texto: 'Customer record: no details on file.' }, { bloco: 7 }], documentos: ['doc-1', 3] },
+      acoes: [
+        { tipo: 'mover_etapa', alvo: { id: 'etapa-1', nome: 'Bancário · Proposta' }, ok: true },
+        { tipo: 'etiquetar', alvo: { id: null, nome: '#4' }, ok: false, erro: 'fora_da_lista' },
+        { tipo: 7 },
+      ],
     },
-    { id: 't1', status: 'falhou', created_at: '2026-09-26T11:00:00Z', terminado_em: '2026-09-26T11:00:05Z', erro: 'sem chave', conversation_id: 'conv-1', contexto: null },
+    { id: 't1', status: 'falhou', created_at: '2026-09-26T11:00:00Z', terminado_em: '2026-09-26T11:00:05Z', erro: 'sem chave', conversation_id: 'conv-1', contexto: null, acoes: [] },
   ]
 })
 
@@ -81,11 +86,17 @@ describe('GET /api/cb/ia/agentes/[id]/turnos', () => {
         id: 't2', status: 'passou', criadoEm: '2026-09-26T12:00:00Z', terminadoEm: null, erro: null, conversationId: 'conv-2', contato: '5511888880000',
         // O retrato é LIDO (parse): item fora da forma sai, nunca vai cru à tela.
         contexto: { blocos: [{ bloco: 'ficha', texto: 'Customer record: no details on file.' }], documentos: ['doc-1'] },
+        // As ações (F4), também LIDAS: a linha fora da forma sai.
+        acoes: [
+          { tipo: 'mover_etapa', alvo: { id: 'etapa-1', nome: 'Bancário · Proposta' }, ok: true },
+          { tipo: 'etiquetar', alvo: { id: null, nome: '#4' }, ok: false, erro: 'fora_da_lista' },
+        ],
       },
-      { id: 't1', status: 'falhou', criadoEm: '2026-09-26T11:00:00Z', terminadoEm: '2026-09-26T11:00:05Z', erro: 'sem chave', conversationId: 'conv-1', contato: 'Maria', contexto: null },
+      { id: 't1', status: 'falhou', criadoEm: '2026-09-26T11:00:00Z', terminadoEm: '2026-09-26T11:00:05Z', erro: 'sem chave', conversationId: 'conv-1', contato: 'Maria', contexto: null, acoes: [] },
     ])
     const dosTurnos = consultas.find((c) => c.tabela === 'cb_ia_turnos')!
     expect(dosTurnos.colunas).toContain('contexto')
+    expect(dosTurnos.colunas).toContain('acoes')
     expect(dosTurnos.filtros).toEqual([
       ['eq', 'account_id', 'conta-1'],
       ['eq', 'ia_agente_id', ID],

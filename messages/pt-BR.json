@@ -4286,6 +4286,7 @@
       "configuracao": "Configuração",
       "acesso": "Acesso",
       "base": "Base de conhecimento",
+      "ferramentas": "Ferramentas",
       "playground": "Playground",
       "uso": "Uso",
       "turnos": "Turnos"
@@ -4333,8 +4334,79 @@
       "salvo": "Base de conhecimento salva.",
       "teto": "É o máximo por agente ({n} documentos): para marcar outro, desmarque um."
     },
+    "ferramentas": {
+      "explicacao": "O que este agente pode FAZER junto com a resposta, e com o quê. Nada ligado = o agente só conversa. Ele nunca fecha negócio, nunca manda mensagem para outro número e nunca mexe no Asaas.",
+      "soConversa": "Nada ligado: hoje este agente só conversa.",
+      "falhou": "Não foi possível carregar as opções.",
+      "buscar": "Buscar…",
+      "marcados": "{n, plural, =0 {Nenhum marcado} one {# marcado} other {# marcados}}",
+      "ligadaSemNada": "Nada marcado: ligado assim, o agente não tem o que escolher.",
+      "limite": "No máximo {max} por agente. Desmarque um para marcar outro.",
+      "nenhumNaBusca": "Nada com esse nome.",
+      "recusado": "Recusado ao salvar.",
+      "salvar": "Salvar ferramentas",
+      "salvo": "Ferramentas salvas.",
+      "tipoDesconhecido": "Outra ({tipo})",
+      "tipo": {
+        "mover_etapa": {
+          "nome": "Mover o card",
+          "dica": "Move o card do contato para uma das etapas marcadas. Nunca para etapa de ganho ou perdido."
+        },
+        "etiquetar": {
+          "nome": "Etiquetar",
+          "dica": "Aplica ao contato uma das etiquetas marcadas. As automações de etiqueta rodam como sempre."
+        },
+        "tirar_etiqueta": {
+          "nome": "Tirar etiqueta",
+          "dica": "Tira do contato uma das etiquetas marcadas."
+        },
+        "preencher_campo": {
+          "nome": "Preencher campo",
+          "dica": "Preenche um dos campos marcados com o que o cliente disse. Valor vazio não apaga."
+        },
+        "criar_tarefa": {
+          "nome": "Criar tarefa",
+          "dica": "Cria uma tarefa para hoje, ligada ao contato, para um dos membros marcados."
+        },
+        "executar_automacao": {
+          "nome": "Executar automação",
+          "dica": "Executa uma das automações marcadas nesta conversa."
+        }
+      },
+      "nenhum": {
+        "mover_etapa": "A conta não tem etapas de funil.",
+        "etiquetar": "A conta não tem etiquetas.",
+        "tirar_etiqueta": "A conta não tem etiquetas.",
+        "preencher_campo": "A conta não tem campos personalizados.",
+        "criar_tarefa": "A conta não tem membros.",
+        "executar_automacao": "A conta não tem automações."
+      },
+      "bloqueio": {
+        "etapaDeResultado": "Etapa de ganho/perdido — a IA não fecha negócio.",
+        "campoVigiado": "Data vigiada por um lembrete — a automação do lembrete dispararia depois, sozinha.",
+        "foraDaD5": "Indisponível: {motivo}."
+      },
+      "foraDaD5": {
+        "send_to_number": "manda mensagem para outro número",
+        "send_webhook": "envia dados para fora do CRM (webhook)",
+        "status_de_resultado": "marca o negócio como ganho ou perdido",
+        "etapa_de_resultado": "move o card para etapa de ganho ou perdido",
+        "run_flow": "inicia um robô (fluxo)",
+        "campo_vigiado": "preenche uma data vigiada por lembrete",
+        "outro": "tem um passo que a IA não pode disparar"
+      },
+      "recusa": {
+        "malformada": "marcador ilegível",
+        "teto": "passou do limite de ações por resposta",
+        "nao_liberada": "ação não liberada neste agente",
+        "fora_da_lista": "fora do que está liberado",
+        "passagem": "a resposta passou a conversa a outro agente",
+        "transferencia": "a resposta passou a conversa para a equipe",
+        "outro": "não aceita"
+      }
+    },
     "playground": {
-      "explicacao": "Converse como se fosse o cliente. Vale o que está SALVO no agente (Configuração, Acesso e Base de conhecimento), com o mesmo modelo da produção; o gasto conta como teste.",
+      "explicacao": "Converse como se fosse o cliente. Vale o que está SALVO no agente (Configuração, Acesso, Base de conhecimento e Ferramentas), com o mesmo modelo da produção; o gasto conta como teste. Aqui as ações são só simuladas.",
       "naoSalvo": "Há alterações não salvas em {abas}. O Playground testa o que está SALVO.",
       "recomecar": "Recomeçar",
       "vazio": "Envie uma mensagem para ver como este agente responderia.",
@@ -4355,7 +4427,20 @@
       "limparContato": "Tirar o cliente",
       "viu": "O agente viu: {itens} · {trechos}",
       "conversa": "a conversa",
-      "trechos": "{n, plural, =0 {nenhum trecho da base} one {# trecho da base} other {# trechos da base}}"
+      "trechos": "{n, plural, =0 {nenhum trecho da base} one {# trecho da base} other {# trechos da base}}",
+      "acoesSimuladas": "Ações (simuladas): {itens}",
+      "acoesRecusadas": "Recusadas: {itens}",
+      "recusada": "{tipo} ({motivo})",
+      "linkInventado": "O agente inventou um link: em produção esta resposta seria retida e a conversa iria para uma pessoa.",
+      "acao": {
+        "mover_etapa": "mover para {nome}",
+        "etiquetar": "etiquetar {nome}",
+        "tirar_etiqueta": "tirar a etiqueta {nome}",
+        "preencher_campo": "preencher {nome}",
+        "criar_tarefa": "tarefa para {nome}",
+        "executar_automacao": "executar {nome}"
+      },
+      "acaoDesconhecida": "{tipo}: {nome}"
     },
     "uso": {
       "explicacao": "Últimos {dias} dias. Os valores em R$ são uma ESTIMATIVA pelo preço de lista de cada modelo e pela cotação de hoje.",
@@ -4403,6 +4488,13 @@
         "soAConversa": "Só a conversa: nenhum dado do cliente entrou neste turno.",
         "base": "{n, plural, =0 {Nenhum trecho da base} one {Trechos de # documento da base} other {Trechos de # documentos da base}}",
         "documentoApagado": "(documento apagado)"
+      },
+      "acoes": {
+        "titulo": "{n, plural, one {# ação do agente} other {# ações do agente}}",
+        "falhas": "{n, plural, one {# falhou} other {# falharam}}",
+        "ok": "Feita",
+        "falhou": "Falhou",
+        "semAlvo": "(sem nome)"
       },
       "statusDesconhecido": "Outro ({status})",
       "status": {
@@ -4459,6 +4551,10 @@
       "cotacao_invalida": "Informe a cotação como um número, por exemplo 5,60.",
       "documento_invalido": "Um dos documentos marcados não existe mais na base. Recarregue a página e tente de novo.",
       "contato_nao_encontrado": "Este cliente não foi encontrado nesta conta. Escolha outro.",
+      "etapa_de_resultado": "Etapa de ganho ou perdido não pode ser liberada: a IA não fecha negócio.",
+      "item_de_outra_conta": "Um dos itens marcados não existe mais nesta conta. Recarregue a página e confira.",
+      "campo_vigiado": "Campo de data vigiado por um lembrete não pode ser liberado: a automação do lembrete dispararia depois, fora do controle da IA.",
+      "automacao_fora_da_d5": "Uma automação marcada tem passo que a IA não pode disparar (outro número, webhook, ganho/perdido ou robô).",
       "invalid_key": "O provedor recusou a chave.",
       "rate_limited": "O provedor pediu para esperar — tente em instantes.",
       "timeout": "O provedor não respondeu a tempo.",
@@ -4493,9 +4589,19 @@
         "sentinela": "{agente} passou a conversa para a equipe: o cliente precisa de alguém do escritório.",
         "teto": "{agente} passou a conversa para a equipe: chegou ao limite de respostas nesta conversa.",
         "audio": "{agente} passou a conversa para a equipe: não conseguiu ouvir o áudio do cliente.",
-        "incerto": "{agente} passou a conversa para a equipe: não dá para saber se a última resposta chegou ao cliente — confira antes de responder."
+        "incerto": "{agente} passou a conversa para a equipe: não dá para saber se a última resposta chegou ao cliente — confira antes de responder.",
+        "link_inventado": "{agente} passou a conversa para a equipe: a resposta tinha um link que não veio do sistema, e não foi enviada."
       },
-      "passagem": "{agente} passou a conversa para IA · {destino}, e o card foi para a etapa desse agente."
+      "passagem": "{agente} passou a conversa para IA · {destino}, e o card foi para a etapa desse agente.",
+      "acoes": {
+        "mover_etapa": "{agente} moveu o card para {alvo}.",
+        "etiquetar": "{agente} etiquetou o contato com {alvo}.",
+        "tirar_etiqueta": "{agente} tirou a etiqueta {alvo} do contato.",
+        "preencher_campo": "{agente} preencheu {alvo}: {valor}",
+        "criar_tarefa": "{agente} criou a tarefa “{valor}” para {alvo}.",
+        "executar_automacao": "{agente} executou a automação {alvo}.",
+        "avisoDaTarefa": "O agente de IA {agente} abriu uma tarefa para você"
+      }
     }
   },
   "ForgotPasswordPage": {

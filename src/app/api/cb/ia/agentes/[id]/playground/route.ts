@@ -8,7 +8,9 @@ import { logAiUsage } from '@/lib/ai/usage'
 import { AiError, mensagemSeguraDeAiError, type ChatMessage } from '@/lib/ai/types'
 import { lerChave, lerEstado } from '@/lib/ia-chaves/repo'
 import { blocoIndisponivel, lerOQueOAgenteVe } from '@/lib/ia-agentes/acesso'
+import { lerAcoes, linkInventado, resolverAcoes, type MotivoDaRecusa } from '@/lib/ia-agentes/acoes'
 import { consultaDaUltimaMensagem } from '@/lib/ia-agentes/conhecimento'
+import { opcoesDoAgente } from '@/lib/ia-agentes/ferramentas'
 import { obterAgente } from '@/lib/ia-agentes/repo'
 import { lerPassagem, montarPedidoDoAgente } from '@/lib/ia-agentes/pedido'
 import { respostaDoErro } from '@/lib/ia-agentes/resposta'
@@ -35,6 +37,14 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
  * negócio é o card ABERTO mais recente dele. A base do agente entra sempre.
  * A resposta diz o que o agente viu: `vistos: { blocos, trechos }` — os
  * TRECHOS da base, não os documentos (5 trechos de 1 documento são 5).
+ *
+ * F4 (D28): o pedido lista as AÇÕES liberadas, como no turno, mas aqui elas
+ * são SIMULADAS — nada executa. A resposta traz `acoes: { aceitas: [{ tipo,
+ * nome, valor? }], recusadas: [{ tipo, motivo }] }` (com passagem ou
+ * transferência, as que seriam aceitas vão para as recusadas com o motivo
+ * `passagem`/`transferencia`: no turno elas não executariam) e
+ * `linkInventado` — no turno, a resposta seria retida e a conversa iria para
+ * gente. O `reply` nunca traz marcador.
  */
 export async function POST(request: Request, { params }: Contexto) {
   try {
@@ -122,16 +132,20 @@ export async function POST(request: Request, { params }: Contexto) {
     )
     const opcoes = lidos.filter((a): a is NonNullable<typeof a> => !!a && a.ativo && !a.arquivadoEm)
 
-    // O que o agente vê (F3), pela MESMA leitura do turno.
+    // O que o agente vê (F3) e o que ele pode fazer (F4), pelas MESMAS
+    // leituras do turno.
     const agora = new Date()
-    const visto = await lerOQueOAgenteVe(supabaseAdmin(), {
-      accountId: ctx.accountId,
-      agente,
-      contactId,
-      dealId: null,
-      consulta: consultaDaUltimaMensagem(mensagens),
-      agora,
-    })
+    const [visto, opcoesDeAcao] = await Promise.all([
+      lerOQueOAgenteVe(supabaseAdmin(), {
+        accountId: ctx.accountId,
+        agente,
+        contactId,
+        dealId: null,
+        consulta: consultaDaUltimaMensagem(mensagens),
+        agora,
+      }),
+      opcoesDoAgente(supabaseAdmin(), ctx.accountId, agente.ferramentas),
+    ])
 
     const pedido = montarPedidoDoAgente({
       instrucoes: agente.instrucoes,
@@ -140,6 +154,7 @@ export async function POST(request: Request, { params }: Contexto) {
       passagens: opcoes.map((a) => ({ nome: a.nome, descricao: a.descricao })),
       blocos: visto.blocos,
       conhecimento: visto.trechos.map((t) => t.content),
+      acoes: opcoesDeAcao,
     })
     const resultado = await generateReply({
       config: {
@@ -174,10 +189,30 @@ export async function POST(request: Request, { params }: Contexto) {
     // mostrado como resposta, e passar para um número que não existe transfere.
     const n = resultado.handoff ? null : lerPassagem(resultado.text)
     const destino = n === null ? null : (opcoes[n - 1] ?? null)
+    // As ações (F4), SÓ resolvidas: nada executa no Playground. Resposta sem
+    // texto além dos marcadores transfere, como no turno.
+    const lidas = lerAcoes(resultado.text)
+    const transfere = resultado.handoff || (n !== null && !destino) || (n === null && !lidas.texto)
+    const inventou = !transfere && n === null && linkInventado(lidas.texto, [pedido, ...mensagens.map((m) => m.content)])
+    const resolvidas = resolverAcoes(lidas.pedidas, opcoesDeAcao)
+    // Com passagem, transferência ou link inventado, no turno nada executa.
+    const naoExecutaria: MotivoDaRecusa | null = transfere || inventou ? 'transferencia' : n !== null ? 'passagem' : null
+    const acoes = {
+      aceitas: naoExecutaria
+        ? []
+        : resolvidas.aceitas.map((a) => ({ tipo: a.tipo, nome: a.nome, ...(a.valor !== undefined ? { valor: a.valor } : {}) })),
+      recusadas: [
+        ...lidas.recusadas,
+        ...resolvidas.recusadas,
+        ...(naoExecutaria ? resolvidas.aceitas.map((a) => ({ tipo: a.tipo, motivo: naoExecutaria })) : []),
+      ].map((r) => ({ tipo: r.tipo, motivo: r.motivo })),
+    }
     return NextResponse.json({
-      reply: n === null ? resultado.text : '',
-      handoff: resultado.handoff || (n !== null && !destino),
+      reply: n === null ? lidas.texto : '',
+      handoff: transfere,
       passaPara: destino?.nome ?? null,
+      acoes,
+      linkInventado: inventou,
       usage: resultado.usage,
       // Bloco que saiu "indisponível" não foi VISTO (revisão da F3).
       vistos: {

@@ -1,10 +1,18 @@
 // Formas que as telas dos agentes de IA recebem das rotas (espelho do servidor).
 
 import type { AiProvider } from '@/lib/ai/types'
-import type { AcessoDoAgente, AgenteComEtapas, BlocoDoAcesso, EtapaDoAgente, Horario } from '@/lib/ia-agentes/agente'
+import type {
+  AcessoDoAgente,
+  AgenteComEtapas,
+  BlocoDoAcesso,
+  EtapaDoAgente,
+  FerramentasDoAgente,
+  Horario,
+  TipoDeAcao,
+} from '@/lib/ia-agentes/agente'
 
-export type { AcessoDoAgente, BlocoDoAcesso, EtapaDoAgente, Horario }
-export { BLOCOS_DO_ACESSO } from '@/lib/ia-agentes/agente'
+export type { AcessoDoAgente, BlocoDoAcesso, EtapaDoAgente, FerramentasDoAgente, Horario, TipoDeAcao }
+export { BLOCOS_DO_ACESSO, TIPOS_DE_ACAO } from '@/lib/ia-agentes/agente'
 
 /** O agente como as rotas o devolvem: com as etapas em que atua (D24) e o acesso (F3). */
 export type IaAgente = AgenteComEtapas
@@ -27,6 +35,34 @@ export const CAIXAS_DO_ACESSO = ['ficha', 'negocio', 'etiquetas', 'cobrancas', '
 export interface ContextoDoTurno {
   blocos: Array<{ bloco: string; texto: string }>
   documentos: string[]
+}
+
+/**
+ * O que a sub-aba Ferramentas (F4, D28) oferece para marcar
+ * (`GET /api/cb/ia/agentes/[id]/ferramentas/opcoes`). Quem decide o que a D5
+ * proíbe é o SERVIDOR: etapa com `resultado`, campo `vigiado` por lembrete e
+ * automação `foraDaD5` (o código do passo) — a tela só mostra.
+ */
+export interface OpcoesDasFerramentas {
+  etapas: Array<{ id: string; nome: string; funil: string; resultado: 'ganho' | 'perdido' | null }>
+  etiquetas: Array<{ id: string; nome: string }>
+  campos: Array<{ id: string; nome: string; vigiado: boolean }>
+  membros: Array<{ userId: string; nome: string }>
+  automacoes: Array<{ id: string; nome: string; foraDaD5: string | null }>
+}
+
+/** Uma ação que o agente EXECUTOU num turno (`cb_ia_turnos.acoes`, F4). */
+export interface AcaoDoTurno {
+  tipo: string
+  alvo: { id: string | null; nome: string }
+  ok: boolean
+  erro?: string
+}
+
+/** As ações de uma resposta do Playground — SIMULADAS, nada executa ali (F4). */
+export interface AcoesSimuladas {
+  aceitas: Array<{ tipo: string; nome: string }>
+  recusadas: Array<{ tipo: string; motivo: string }>
 }
 
 export const PROVEDORES: readonly AiProvider[] = ['gemini', 'openai', 'anthropic']

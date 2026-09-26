@@ -1,6 +1,8 @@
 import type { useTranslations } from 'next-intl';
 
-import { BLOCOS_DO_ACESSO } from './tipos';
+import type { MotivoDaRecusa, MotivoForaDaD5 } from '@/lib/ia-agentes/acoes';
+
+import { BLOCOS_DO_ACESSO, TIPOS_DE_ACAO } from './tipos';
 
 /**
  * Os CÓDIGOS que as rotas dos agentes devolvem, traduzidos pelo dicionário
@@ -37,6 +39,11 @@ export const CODIGOS_CONHECIDOS = [
   'cotacao_invalida',
   'documento_invalido',
   'contato_nao_encontrado',
+  // As recusas do Salvar das Ferramentas (F4): o PATCH devolve também `itens`.
+  'etapa_de_resultado',
+  'item_de_outra_conta',
+  'campo_vigiado',
+  'automacao_fora_da_d5',
   'invalid_key',
   'rate_limited',
   'timeout',
@@ -103,4 +110,87 @@ export function rotuloDoBloco(t: ReturnType<typeof useTranslations>, bloco: stri
   return (BLOCOS_DO_ACESSO as readonly string[]).includes(bloco)
     ? t(`acesso.bloco.${bloco}`)
     : t('acesso.blocoDesconhecido', { bloco });
+}
+
+/**
+ * O nome de um tipo de ação (F4) — na sub-aba Ferramentas, nas recusadas do
+ * Playground e nas ações da sub-aba Turnos (`IaAgentes.ferramentas.tipo.<t>.nome`).
+ * Chave MONTADA, cobrada em `textos.test.ts`. Tipo fora da lista (um novo no
+ * servidor antes da tela) cai em `ferramentas.tipoDesconhecido`, nunca na chave crua.
+ */
+export function rotuloDoTipoDeAcao(t: ReturnType<typeof useTranslations>, tipo: string): string {
+  return (TIPOS_DE_ACAO as readonly string[]).includes(tipo)
+    ? t(`ferramentas.tipo.${tipo}.nome`)
+    : t('ferramentas.tipoDesconhecido', { tipo });
+}
+
+/**
+ * Uma ação ACEITA no Playground, como frase curta ("mover para Proposta",
+ * "tarefa para Ana") — `IaAgentes.playground.acao.<t>`, com `{nome}`. Chave
+ * MONTADA, cobrada em `textos.test.ts`.
+ */
+export function fraseDaAcao(t: ReturnType<typeof useTranslations>, tipo: string, nome: string): string {
+  return (TIPOS_DE_ACAO as readonly string[]).includes(tipo)
+    ? t(`playground.acao.${tipo}`, { nome })
+    : t('playground.acaoDesconhecida', { tipo, nome });
+}
+
+/**
+ * Os códigos com que o servidor diz POR QUE uma automação não pode ser
+ * liberada (o passo fora da D5 — `foraDaD5` das opções). Chave MONTADA
+ * (`IaAgentes.ferramentas.foraDaD5.<código>`), cobrada em `textos.test.ts`.
+ * (`MotivoForaDaD5` de `acoes.ts`; `textos.test.ts` cobra que a lista o cubra).
+ * `campo_vigiado`: o validador da D5 recusa também o `update_contact_field`
+ * num campo de data vigiado por lembrete (plano, 5.6).
+ */
+export const CODIGOS_DA_D5 = [
+  'send_to_number',
+  'send_webhook',
+  'status_de_resultado',
+  'etapa_de_resultado',
+  'run_flow',
+  'campo_vigiado',
+] as const satisfies readonly MotivoForaDaD5[];
+
+/** Código fora da lista (um passo novo proibido pelo servidor) cai em `foraDaD5.outro`. */
+export function motivoForaDaD5(t: ReturnType<typeof useTranslations>, codigo: string): string {
+  return (CODIGOS_DA_D5 as readonly string[]).includes(codigo)
+    ? t(`ferramentas.foraDaD5.${codigo}`)
+    : t('ferramentas.foraDaD5.outro');
+}
+
+/**
+ * Por que o servidor RECUSOU uma ação pedida (`MotivoDaRecusa` de
+ * `acoes.ts`) — nas recusadas do Playground e no erro de uma ação da
+ * sub-aba Turnos (`IaAgentes.ferramentas.recusa.<código>`). Chave MONTADA,
+ * cobrada em `textos.test.ts`. Código fora da lista cai em
+ * `ferramentas.recusa.outro`, nunca na chave crua.
+ */
+export const MOTIVOS_DE_RECUSA = [
+  'malformada',
+  'teto',
+  'nao_liberada',
+  'fora_da_lista',
+  'passagem',
+  'transferencia',
+] as const satisfies readonly MotivoDaRecusa[];
+
+export function motivoDaRecusa(t: ReturnType<typeof useTranslations>, motivo: string): string {
+  return (MOTIVOS_DE_RECUSA as readonly string[]).includes(motivo)
+    ? t(`ferramentas.recusa.${motivo}`)
+    : t('ferramentas.recusa.outro');
+}
+
+/**
+ * O erro de uma ação no registro do turno (`cb_ia_turnos.acoes[].erro`): um
+ * CÓDIGO conhecido (a recusa, ou o passo fora da D5 conferido de novo na
+ * hora) vira texto; o resto é a mensagem do motor, que aparece como veio —
+ * é ela que diz por que a escrita falhou.
+ */
+export function textoDoErroDaAcao(t: ReturnType<typeof useTranslations>, erro: string): string {
+  if ((MOTIVOS_DE_RECUSA as readonly string[]).includes(erro)) return motivoDaRecusa(t, erro);
+  if ((CODIGOS_DA_D5 as readonly string[]).includes(erro)) {
+    return t('ferramentas.bloqueio.foraDaD5', { motivo: motivoForaDaD5(t, erro) });
+  }
+  return erro;
 }

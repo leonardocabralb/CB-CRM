@@ -11,18 +11,25 @@
 // responde "por que ele sabia disso?". O cliente escolhido mora no DETALHE:
 // o salvamento que zera a conversa (a `key`) não o apaga. Trocar de cliente
 // zera a conversa — a de um, mandada como se fosse do outro, não testa nada.
+//
+// F4 (D28): as ações que o agente pediu junto com a resposta aparecem
+// debaixo dela como SIMULADAS — no Playground nada executa —, e as que o
+// servidor recusou (número fora da lista, item não liberado) também. Link
+// que não veio do pedido (`linkInventado`) ganha o aviso: em produção a
+// resposta seria retida e a conversa iria para uma pessoa.
 
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { Bot, Eye, Loader2, RotateCcw, Send, UserCircle2, X } from 'lucide-react';
+import { Ban, Bot, Eye, Link2Off, Loader2, RotateCcw, Send, UserCircle2, Wrench, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { SeletorDeContatoRemoto } from '@/components/contacts/seletor-de-contato-remoto';
 import { TETO_DE_RESULTADOS } from '@/lib/contacts/busca-remota';
 import { cn } from '@/lib/utils';
-import type { IaAgente } from './tipos';
-import { rotuloDoBloco, textoDoCodigo } from './textos';
+import { lerAcoesSimuladas } from './ferramentas';
+import type { AcoesSimuladas, IaAgente } from './tipos';
+import { fraseDaAcao, motivoDaRecusa, rotuloDoBloco, rotuloDoTipoDeAcao, textoDoCodigo } from './textos';
 
 /** O que o agente viu para gerar a resposta (`vistos` da rota). */
 interface Vistos {
@@ -49,6 +56,15 @@ interface Turno {
   tokens?: number;
   /** Só do agente: o que ele viu (F3). */
   vistos?: Vistos;
+  /** Só do agente: as ações que ele pediu, SIMULADAS (F4). */
+  acoes?: AcoesSimuladas;
+  /** Só do agente: a resposta tem um link que não veio do pedido (F4). */
+  linkInventado?: boolean;
+}
+
+/** A resposta tem algo das ações (F4) a mostrar: link inventado, ação aceita ou recusada. */
+function temAvisoDeAcao(x: Turno): boolean {
+  return x.linkInventado === true || (!!x.acoes && (x.acoes.aceitas.length > 0 || x.acoes.recusadas.length > 0));
 }
 
 export function PlaygroundDoAgente({
@@ -102,6 +118,8 @@ export function PlaygroundDoAgente({
         passaPara?: string | null;
         usage?: { totalTokens?: number } | null;
         vistos?: unknown;
+        acoes?: unknown;
+        linkInventado?: boolean;
         code?: string;
         error?: string;
       };
@@ -120,6 +138,8 @@ export function PlaygroundDoAgente({
           passaPara: typeof corpo.passaPara === 'string' ? corpo.passaPara : undefined,
           tokens: corpo.usage?.totalTokens ?? undefined,
           vistos: lerVistos(corpo.vistos),
+          acoes: lerAcoesSimuladas(corpo.acoes),
+          linkInventado: corpo.linkInventado === true,
         },
       ]);
     } catch {
@@ -223,6 +243,43 @@ export function PlaygroundDoAgente({
                   <p className="flex items-center gap-1 text-xs text-primary">
                     <Bot className="size-3.5" /> {t('playground.passaria', { agente: x.passaPara })}
                   </p>
+                ) : null}
+                {x.role === 'assistant' && temAvisoDeAcao(x) ? (
+                  <div className="mt-1.5 space-y-1 border-t border-border/50 pt-1.5 text-xs">
+                    {x.linkInventado ? (
+                      <p className="flex items-start gap-1 text-red-700 dark:text-red-300">
+                        <Link2Off className="mt-px size-3.5 shrink-0" />
+                        <span>{t('playground.linkInventado')}</span>
+                      </p>
+                    ) : null}
+                    {x.acoes && x.acoes.aceitas.length > 0 ? (
+                      <p className="flex items-start gap-1 text-foreground">
+                        <Wrench className="mt-px size-3.5 shrink-0 text-primary" />
+                        <span>
+                          {t('playground.acoesSimuladas', {
+                            itens: x.acoes.aceitas.map((a) => fraseDaAcao(t, a.tipo, a.nome)).join(' · '),
+                          })}
+                        </span>
+                      </p>
+                    ) : null}
+                    {x.acoes && x.acoes.recusadas.length > 0 ? (
+                      <p className="flex items-start gap-1 text-amber-700 dark:text-amber-300">
+                        <Ban className="mt-px size-3.5 shrink-0" />
+                        <span>
+                          {t('playground.acoesRecusadas', {
+                            itens: x.acoes.recusadas
+                              .map((r) =>
+                                t('playground.recusada', {
+                                  tipo: rotuloDoTipoDeAcao(t, r.tipo),
+                                  motivo: motivoDaRecusa(t, r.motivo),
+                                }),
+                              )
+                              .join(' · '),
+                          })}
+                        </span>
+                      </p>
+                    ) : null}
+                  </div>
                 ) : null}
                 {x.role === 'assistant' && x.vistos ? (
                   <p className="mt-1.5 flex items-start gap-1 border-t border-border/50 pt-1.5 text-[11px] text-muted-foreground">
