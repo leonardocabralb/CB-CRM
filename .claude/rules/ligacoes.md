@@ -96,8 +96,8 @@ obrigações gerais de caminho de entrada estão em `.claude/rules/ingestao.md`.
   (limite aceito, no plano). A faixa escreve `ligacao.inicio`.
 - Com a conversa aberta, a bolha "no passado" é acrescentada no FIM da lista
   em memória (o tempo real não reordena, de propósito): quem pergunta por
-  ORDEM (`aberturasDeCanal`, `ultimoCanalDoCliente`) passa por `naOrdemDoFio`
-  — ver `canal-na-conversa.md`.
+  ORDEM (`aberturasDeCanal`, `ultimoCanalDoCliente`, o contador "N mensagens
+  não lidas" e a âncora dele) passa por `naOrdemDoFio` (`ordem-do-fio.ts`).
 - A ficha e a conversa nascem por `resolverDestinatario` (dono durável) quando
   o número nunca escreveu (decisão do operador), com o telefone no lugar do
   nome — o aviso não traz o perfil.

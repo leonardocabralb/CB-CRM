@@ -4,6 +4,7 @@ paths:
   - "src/components/inbox/message-bubble.tsx"
   - "src/components/inbox/conversation-list.tsx"
   - "src/lib/inbox/canais-do-fio*"
+  - "src/lib/inbox/ordem-do-fio*"
   - "src/lib/inbox/janela-24h*"
   - "src/lib/inbox/selo-da-janela*"
   - "src/lib/cb-channels/cores*"
@@ -43,7 +44,8 @@ bolinha antes do nome na lista.
   `bg-${cor}-500` não é gerada pelo Tailwind e a bolinha nasce transparente.
   Pino: a regex de `cores.test.ts`.
 - ⚠️⚠️ **As perguntas de ORDEM (`aberturasDeCanal`, `ultimoCanalDoCliente`)
-  passam por `naOrdemDoFio`** (`created_at`, desempate pelo id — o comparador
+  passam por `naOrdemDoFio`** (`src/lib/inbox/ordem-do-fio.ts`; `created_at`,
+  desempate pelo id — o comparador
   de `intercalar`, que desenha o fio). A lista em memória não é cronológica: o
   tempo real acrescenta no fim, e a ligação (1044) e a recuperada (1010) entram
   com carimbo no passado. Na ordem crua, o separador caía na mensagem errada e

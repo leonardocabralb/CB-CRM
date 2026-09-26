@@ -20,6 +20,8 @@
 // cabeçalho.
 // ============================================================
 
+import { naOrdemDoFio } from './ordem-do-fio';
+
 /**
  * O mínimo que este módulo precisa de uma mensagem. Estrutural de
  * propósito: o teste monta o objeto sem arrastar o `Message` inteiro.
@@ -28,32 +30,8 @@ export interface MensagemDoFio {
   id: string;
   sender_type: string;
   channel_id?: string | null;
-  /** Quando presente, a ORDEM das perguntas de trecho sai dele (ver {@link naOrdemDoFio}). */
-  created_at?: string;
-}
-
-/**
- * As mensagens na ordem em que o fio as DESENHA: `created_at`, desempate pelo
- * id — o comparador de `intercalar` (`lead-events/describe.ts`).
- *
- * ⚠️ A lista em memória NÃO é cronológica: o tempo real acrescenta no FIM
- * (de propósito, ver a 1010), e há bolha que entra com carimbo no passado — a
- * ligação da 1044, gravada na hora real depois da folga, e a recuperada da
- * 1010. Percorrendo a ordem crua, o separador de canal cairia na mensagem
- * errada e o aviso de número fixado leria como "a última do cliente" uma
- * mensagem mais antiga, até recarregar (Codex, PR #304). Já em ordem, a lista
- * volta sem cópia.
- */
-export function naOrdemDoFio<M extends MensagemDoFio>(messages: readonly M[]): readonly M[] {
-  const antes = (a: M, b: M) => {
-    const x = a.created_at ?? '';
-    const y = b.created_at ?? '';
-    return x < y ? -1 : x > y ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-  };
-  for (let i = 1; i < messages.length; i++) {
-    if (antes(messages[i - 1], messages[i]) > 0) return [...messages].sort(antes);
-  }
-  return messages;
+  /** Quando presente, a ORDEM das perguntas de trecho sai dele (`naOrdemDoFio`). */
+  created_at?: string | null;
 }
 
 /** Os canais efetivamente carimbados no fio. */

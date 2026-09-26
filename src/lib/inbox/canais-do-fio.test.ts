@@ -5,10 +5,10 @@ import {
   canaisDoFio,
   canalDivergente,
   fioMulticanal,
-  naOrdemDoFio,
   ultimoCanalDoCliente,
   type MensagemDoFio,
 } from './canais-do-fio';
+import { naOrdemDoFio } from './ordem-do-fio';
 
 function msg(
   id: string,
