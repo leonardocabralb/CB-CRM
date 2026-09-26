@@ -36,6 +36,7 @@ import { opcoesDoCampo } from "@/lib/contacts/campo-opcoes";
 import { agruparCampos, type BlocoDeCampos } from "@/lib/contacts/grupos-de-campos";
 import { campoServeAoNo } from "@/lib/flows/resposta-na-ficha";
 import type { CustomField, GrupoDeCampos } from "@/types";
+import { useFlowEditor } from "../flow-editor-state";
 
 const NAO_SALVAR = "__none__";
 
@@ -44,7 +45,13 @@ type EstadoDosCampos =
   | { status: "falhou" }
   | { status: "pronto"; todos: CustomField[]; grupos: GrupoDeCampos[] };
 
-function useCamposDaFicha(): EstadoDosCampos {
+/**
+ * ⚠️ Recortado pela CONTA DO ROBÔ, nunca só pela RLS: ela devolve os campos
+ * de TODA conta de que a pessoa é membro, e um campo de outra conta gravado
+ * no nó faria a ativação acusar "campo apagado" — ou, num robô já ativo
+ * salvo direto, o robô recusaria toda escrita (Codex, PR #314).
+ */
+function useCamposDaFicha(contaId: string): EstadoDosCampos {
   const [estado, setEstado] = useState<EstadoDosCampos>({ status: "carregando" });
   useEffect(() => {
     let vivo = true;
@@ -54,9 +61,15 @@ function useCamposDaFicha(): EstadoDosCampos {
         supabase
           .from("custom_fields")
           .select("*")
+          .eq("account_id", contaId)
           .order("posicao", { nullsFirst: false })
           .order("field_name"),
-        supabase.from("cb_grupos_de_campos").select("*").order("posicao").order("nome"),
+        supabase
+          .from("cb_grupos_de_campos")
+          .select("*")
+          .eq("account_id", contaId)
+          .order("posicao")
+          .order("nome"),
       ]);
       if (!vivo) return;
       if (campos.error || grupos.error) {
@@ -72,7 +85,7 @@ function useCamposDaFicha(): EstadoDosCampos {
     return () => {
       vivo = false;
     };
-  }, []);
+  }, [contaId]);
   return estado;
 }
 
@@ -90,7 +103,8 @@ export function SalvarRespostaRow({
   titulosDasOpcoes?: string[];
 }) {
   const t = useTranslations("Flows.builder.form");
-  const estado = useCamposDaFicha();
+  const { flow } = useFlowEditor();
+  const estado = useCamposDaFicha(flow.account_id);
   const atual = value && value.trim() ? value : NAO_SALVAR;
   // Só o "Coletar resposta" grava no NOME — botão não é nome de ninguém.
   const permitirNome = nodeType === "collect_input";

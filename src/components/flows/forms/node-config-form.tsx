@@ -57,6 +57,7 @@ import { slugify, type BuilderNode } from "../shared";
 import { NextNodeRow, NodeKeySelect, TextRow } from "./fields";
 import { SalvarRespostaRow } from "./salvar-resposta";
 import { MoverCardForm } from "./mover-card";
+import { useFlowEditor } from "../flow-editor-state";
 
 interface NodeConfigFormProps {
   node: BuilderNode;
@@ -947,6 +948,9 @@ function SendMediaForm({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [acervoAberto, setAcervoAberto] = useState(false);
+  // A conta do ROBÔ recorta o acervo: a RLS devolveria o de toda conta de que
+  // a pessoa é membro (Codex, PR #314).
+  const { flow } = useFlowEditor();
   const tUpload = useTranslations("Upload");
   const tResumo = useTranslations("Flows.summary");
 
@@ -957,7 +961,7 @@ function SendMediaForm({
 
   // O acervo só é lido quando o nó aponta para um item: é o que diz se o
   // item ainda existe (apagado, o robô falharia no envio) e o título atual.
-  const acervo = useAcervo(Boolean(acervoId));
+  const acervo = useAcervo(Boolean(acervoId), flow.account_id);
   // ⚠️ O item escolhido AGORA vem do seletor, que leu o acervo na hora — a
   // lista acima pode ser de antes de ele existir (subido noutra aba), e sem
   // esta foto a tela diria "apagado do acervo" sobre o item recém-escolhido.
@@ -1170,6 +1174,7 @@ function SendMediaForm({
           open={acervoAberto}
           onOpenChange={setAcervoAberto}
           onPick={escolherDoAcervo}
+          contaId={flow.account_id}
         />
       </div>
 

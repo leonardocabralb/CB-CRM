@@ -40,6 +40,27 @@ export type ResultadoDaCopia =
    */
   | { ok: false; erro: 'leitura' | 'nao_encontrado' | 'copia'; detalhe: string };
 
+/**
+ * Puro: o caminho da CÓPIA, único por envio. `buildMediaPath` carimba só o
+ * milissegundo, e dois leads que chegam ao mesmo passo "Enviar mídia" do robô
+ * no mesmo milissegundo teriam o MESMO destino — o Storage recusa copiar por
+ * cima de objeto existente, e um dos envios falharia com a mídia perfeita
+ * (Codex, PR #314). Seis dígitos aleatórios colados ao carimbo resolvem sem
+ * mudar a forma do caminho: `basenameFromUrl` (`media/filename.ts`) tira
+ * `^\d{10,}-` e continua achando o nome do arquivo.
+ */
+export function caminhoDaCopia(
+  accountId: string,
+  filename: string,
+  agora: number = Date.now(),
+  sorte: number = Math.floor(Math.random() * 1_000_000),
+): string {
+  const semCarimbo = buildMediaPath(accountId, filename, null);
+  const barra = semCarimbo.lastIndexOf('/');
+  const carimbo = `${agora}${String(sorte).padStart(6, '0')}-`;
+  return semCarimbo.slice(0, barra + 1) + carimbo + semCarimbo.slice(barra + 1);
+}
+
 export async function copiarDoAcervo(
   admin: SupabaseClient,
   accountId: string,
@@ -57,7 +78,7 @@ export async function copiarDoAcervo(
   if (error) return { ok: false, erro: 'leitura', detalhe: error.message };
   if (!item) return { ok: false, erro: 'nao_encontrado', detalhe: 'item not found' };
 
-  const destino = buildMediaPath(accountId, item.filename as string);
+  const destino = caminhoDaCopia(accountId, item.filename as string);
   const { error: erroCopia } = await admin.storage
     .from(CHAT_MEDIA_BUCKET)
     .copy(item.media_path as string, destino);
