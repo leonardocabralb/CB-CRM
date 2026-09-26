@@ -143,6 +143,12 @@ WhatsApp oficial; sem filtro "janela aberta".
   num lado, muda no outro: `selo-da-janela.test.ts` lê o SQL e compara o
   `restante` da lista com o `minutosRestantes` do fio sobre as mesmas
   mensagens, inclusive com DOIS oficiais.
+- ⚠️ **A condição "janela de 24h aberta" das automações lê o MESMO mapa**
+  (`minutosRestantesNoMapa`; regra em `automations/janela-da-meta.ts`), nunca
+  o `seloDaJanela`: encerrada CONTA (o selo cala por decisão de tela), mapa
+  vazio é FECHADA (o "fio vazio = aberta" existe só para não travar o
+  compositor), QR Code é sempre aberta, e erro de leitura responde "não" — o
+  modelo é o lado seguro. Mudou a leitura do mapa, os dois mudam juntos.
 - ⚠️ **UMA divergência escrita, para o lado sem selo:** a conta SEM canal
   nenhum (o fio conta o fio inteiro; a lista cala, porque não sabe por qual
   número se responde).

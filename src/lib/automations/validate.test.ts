@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   validateAsaasReguaForActivation,
+  validateChannelScopeForActivation,
   validateStepsForActivation,
   validateTriggerForActivation,
 } from "./validate";
@@ -78,6 +79,37 @@ describe("validateStepsForActivation", () => {
     expect(issues.map((i) => i.path)).toEqual([
       "steps[3].parar_se_responder",
       "steps[4].parar_se_responder",
+    ]);
+  });
+
+  it("wait no modo horário (B6a): a janela tem de ser legível; amount/unit não contam", () => {
+    const horario = (config: Record<string, unknown>) => ({
+      step_type: "wait",
+      step_config: { modo: "horario", ...config },
+    });
+    const issues = validateStepsForActivation([
+      horario({ janela: "08:00-21:00" }),
+      // amount/unit gravados (voltar para "por um tempo" os devolve) e inválidos: ignorados.
+      horario({ janela: "08:00-21:00", amount: 0, unit: "weeks" }),
+      horario({ janela: "00:00-24:00", somente_seg_a_sex: true }),
+      horario({ janela: "09:00-09:00" }),
+      horario({ janela: "" }),
+      horario({}),
+      horario({ janela: "amanhã" }),
+      horario({ janela: "08:00-21:00", somente_seg_a_sex: "true" }),
+      { step_type: "wait", step_config: { modo: "Horario", amount: 1, unit: "hours" } },
+      { step_type: "wait", step_config: { modo: "tempo", amount: 1, unit: "hours" } },
+      // No modo tempo o "segunda a sexta" não vale, mas o tipo continua conferido.
+      { step_type: "wait", step_config: { amount: 1, unit: "hours", somente_seg_a_sex: 1 } },
+    ]);
+    expect(issues.map((i) => i.path)).toEqual([
+      "steps[3].janela",
+      "steps[4].janela",
+      "steps[5].janela",
+      "steps[6].janela",
+      "steps[7].somente_seg_a_sex",
+      "steps[8].modo",
+      "steps[10].somente_seg_a_sex",
     ]);
   });
 
@@ -225,6 +257,31 @@ describe("validateStepsForActivation", () => {
       "steps[0].operand",
       "steps[0].subject",
     ]);
+  });
+
+  it("hora do dia: a janela tem de ser lida pelo motor (senão o ramo morre em silêncio)", () => {
+    const cond = (step_config: Record<string, unknown>) =>
+      validateStepsForActivation([{ step_type: "condition", step_config }]).map((i) => i.path);
+    expect(cond({ subject: "time_of_day", operand: "08:00-21:00" })).toEqual([]);
+    expect(cond({ subject: "time_of_day", operand: "18:00-09:00" })).toEqual([]);
+    // O que o upstream aceitava continua passando.
+    expect(cond({ subject: "time_of_day", operand: "9-18" })).toEqual([]);
+    for (const operand of ["09:00-09:00", "25:00-09:00", "09:00-", "uma-etiqueta"]) {
+      expect(cond({ subject: "time_of_day", operand })).toEqual(["steps[0].operand"]);
+    }
+    expect(cond({ subject: "time_of_day", operand: "" })).toEqual(["steps[0].operand"]);
+  });
+
+  it("hora do dia: somente_seg_a_sex só aceita booleano", () => {
+    const cond = (somente_seg_a_sex: unknown) =>
+      validateStepsForActivation([
+        { step_type: "condition", step_config: { subject: "time_of_day", operand: "08:00-21:00", somente_seg_a_sex } },
+      ]).map((i) => i.path);
+    expect(cond(true)).toEqual([]);
+    expect(cond(false)).toEqual([]);
+    expect(cond(undefined)).toEqual([]);
+    expect(cond("true")).toEqual(["steps[0].somente_seg_a_sex"]);
+    expect(cond(1)).toEqual(["steps[0].somente_seg_a_sex"]);
   });
 });
 
@@ -429,6 +486,16 @@ describe('régua do Asaas — os passos', () => {
     expect(validateAsaasReguaForActivation('asaas_cobranca_vencida', [msg('c1'), { step_type: 'wait', step_config: { amount: 1, unit: 'minutes' } }])).toHaveLength(1)
   })
 
+  it('inclusive o "até estar dentro do horário" (B6a): também retoma sem reconfirmar o pagamento', () => {
+    const horario = { step_type: 'wait', step_config: { modo: 'horario', janela: '08:00-18:00' } }
+    expect(validateAsaasReguaForActivation('asaas_cobranca_vencida', [horario, msg('c1')]).map((i) => i.path)).toEqual(['steps[0].step_type'])
+    expect(
+      validateAsaasReguaForActivation('asaas_cobranca_vence_hoje', [
+        { step_type: 'condition', step_config: {}, branches: { yes: [horario, msg('c1')] } },
+      ]).map((i) => i.path),
+    ).toEqual(['steps[0].yes.steps[0].step_type'])
+  })
+
   it('"Acionar automação" e "Iniciar robô" são recusados em qualquer escopo — a entrega pela filha não conta como envio e a filha pode esperar (revisão da 4ª rodada do PR #206)', () => {
     const acionar = { step_type: 'run_automation', step_config: { automation_id: 'filha' } }
     const robo = { step_type: 'run_flow', step_config: { flow_id: 'f' } }
@@ -495,5 +562,141 @@ describe('régua do Asaas — precisa de um passo de mensagem de texto (Codex, 3
     expect(validateAsaasReguaForActivation('asaas_cobranca_vencida', [{ step_type: 'add_tag', step_config: { tag_id: 't' } }]).map((i) => i.path)).toEqual(['steps'])
     expect(validateAsaasReguaForActivation('asaas_cobranca_vencida', [midia, texto])).toEqual([])
     expect(validateAsaasReguaForActivation('asaas_cobranca_vence_hoje', [{ step_type: 'condition', step_config: {}, branches: { yes: [texto], no: [] } }])).toEqual([])
+  })
+})
+
+// Fase 2 do plano do previdenciário (26/09/2026).
+describe('previdenciário — Fase 2 (modelo, tarefa, janela)', () => {
+  const paths = (steps: { step_type: string; step_config: Record<string, unknown> }[]) =>
+    validateStepsForActivation(steps).map((i) => i.path)
+
+  it('send_template: valores por POSIÇÃO; chave que não é posição é recusada', () => {
+    expect(
+      paths([
+        {
+          step_type: 'send_template',
+          step_config: {
+            template_name: 'x',
+            variables: { '1': '{{contact.name}}', '2': 'AA' },
+            variaveis_reserva: { '1': 'cliente' },
+            button_params: { '0': 'abc' },
+            header_media_url: 'https://cdn.test/a.png',
+          },
+        },
+      ])
+    ).toEqual([])
+    expect(
+      paths([{ step_type: 'send_template', step_config: { template_name: 'x', variables: { nome: 'a' } } }])
+    ).toEqual(['steps[0].variables'])
+    expect(
+      paths([{ step_type: 'send_template', step_config: { template_name: 'x', variables: { '1': 5 } } }])
+    ).toEqual(['steps[0].variables.1'])
+  })
+
+  it('send_template: arquivo do cabeçalho tem de ser endereço http(s)', () => {
+    expect(
+      paths([{ step_type: 'send_template', step_config: { template_name: 'x', header_media_url: 'javascript:alert(1)' } }])
+    ).toEqual(['steps[0].header_media_url'])
+  })
+
+  it('create_task: a pessoa é obrigatória em TODO modo — nos dinâmicos, como RESERVA', () => {
+    // Sem reserva, o caso comum (ninguém atribuído — nenhum card da conta tem
+    // responsável) falharia de madrugada e pararia as mensagens seguintes.
+    expect(paths([{ step_type: 'create_task', step_config: { titulo: 'T', responsavel_user_id: '' } }])).toEqual([
+      'steps[0].responsavel_user_id',
+    ])
+    expect(
+      paths([{ step_type: 'create_task', step_config: { titulo: 'T', responsavel_modo: 'conversa', responsavel_user_id: '' } }])
+    ).toEqual(['steps[0].responsavel_user_id'])
+    expect(
+      paths([{ step_type: 'create_task', step_config: { titulo: 'T', responsavel_modo: 'card' } }])
+    ).toEqual(['steps[0].responsavel_user_id'])
+    expect(
+      paths([{ step_type: 'create_task', step_config: { titulo: 'T', responsavel_modo: 'card', responsavel_user_id: 'u' } }])
+    ).toEqual([])
+    expect(
+      paths([{ step_type: 'create_task', step_config: { titulo: 'T', responsavel_modo: 'rodizio', responsavel_user_id: 'u' } }])
+    ).toEqual(['steps[0].responsavel_modo'])
+  })
+
+  it('send_template: posição acima do teto e botão fora de 0–9 são recusados', () => {
+    expect(
+      paths([{ step_type: 'send_template', step_config: { template_name: 'x', variables: { '999999': 'a' } } }])
+    ).toEqual(['steps[0].variables'])
+    expect(
+      paths([{ step_type: 'send_template', step_config: { template_name: 'x', variaveis_reserva: { '50': 'a' } } }])
+    ).toEqual([])
+    expect(
+      paths([{ step_type: 'send_template', step_config: { template_name: 'x', button_params: { '10': 'a' } } }])
+    ).toEqual(['steps[0].button_params'])
+  })
+
+  it('condição da janela de 24h dispensa o operando; as outras continuam exigindo', () => {
+    expect(paths([{ step_type: 'condition', step_config: { subject: 'meta_window_open', operand: '' } }])).toEqual([])
+    expect(paths([{ step_type: 'condition', step_config: { subject: 'tag_presence', operand: '' } }])).toEqual([
+      'steps[0].operand',
+    ])
+  })
+})
+
+describe('condição da janela × conexão fixa das mensagens do Sim (Fase 2.8)', () => {
+  const CANAIS = [
+    { id: 'oficial', label: 'API - Meta', kind: 'meta' as const },
+    { id: 'oficial-2', label: 'Meta 2', kind: 'meta' as const },
+    { id: 'qr', label: 'QR Comercial', kind: 'evolution' as const },
+  ]
+  const janela = (operand: string, yes: { step_type: string; step_config: Record<string, unknown> }[]) => ({
+    step_type: 'condition',
+    step_config: { subject: 'meta_window_open', operand },
+    branches: { yes, no: [] },
+  })
+  const texto = (channel_id?: string) => ({
+    step_type: 'send_message',
+    step_config: channel_id ? { text: 'oi', channel_id } : { text: 'oi' },
+  })
+
+  it('em branco com o texto do Sim FIXO no oficial: recusa, nomeando o número', () => {
+    const issues = validateChannelScopeForActivation([janela('', [texto('oficial')])], null, CANAIS)
+    expect(issues.map((i) => i.path)).toEqual(['steps[0].operand'])
+    expect(issues[0].message).toContain('"API - Meta"')
+    expect(issues[0].message).toContain('do número do disparo')
+  })
+
+  it('o mesmo número nos dois lados: passa', () => {
+    expect(validateChannelScopeForActivation([janela('oficial', [texto('oficial')])], null, CANAIS)).toEqual([])
+  })
+
+  it('os dois HERDAM o disparo: passa (é o caso comum)', () => {
+    expect(validateChannelScopeForActivation([janela('', [texto()])], null, CANAIS)).toEqual([])
+  })
+
+  it('texto fixo num QR Code, ou numa conexão apagada: não há janela a errar', () => {
+    expect(validateChannelScopeForActivation([janela('', [texto('qr')])], null, CANAIS)).toEqual([])
+    expect(validateChannelScopeForActivation([janela('', [texto('apagada')])], null, CANAIS)).toEqual([])
+  })
+
+  it('operando noutro oficial, ou o Sim dividido entre dois: recusa', () => {
+    expect(
+      validateChannelScopeForActivation([janela('oficial-2', [texto('oficial')])], null, CANAIS)[0].message
+    ).toContain('de "Meta 2"')
+    expect(
+      validateChannelScopeForActivation([janela('oficial', [texto('oficial'), texto('oficial-2')])], null, CANAIS)[0]
+        .message
+    ).toContain('números diferentes')
+  })
+
+  it('olha DENTRO de uma condição comum no Sim; o ramo Não não conta', () => {
+    const aninhada = {
+      step_type: 'condition',
+      step_config: { subject: 'tag_presence', operand: 't' },
+      branches: { yes: [texto('oficial')], no: [] },
+    }
+    expect(validateChannelScopeForActivation([janela('', [aninhada])], null, CANAIS)).toHaveLength(1)
+    const soNoNao = {
+      step_type: 'condition',
+      step_config: { subject: 'meta_window_open', operand: '' },
+      branches: { yes: [], no: [texto('oficial')] },
+    }
+    expect(validateChannelScopeForActivation([soNoNao], null, CANAIS)).toEqual([])
   })
 })

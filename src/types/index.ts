@@ -1369,10 +1369,26 @@ export interface SendMessageStepConfig extends ChannelScopedStepConfig {
 export type SendButtonsStepConfig = InteractiveMessagePayload;
 export type SendListStepConfig = InteractiveMessagePayload;
 
+/**
+ * Os valores do modelo passam pela interpolação do motor e têm texto de
+ * reserva — ver `src/lib/automations/parametros-do-modelo.ts` (Fase 2.3 do
+ * plano do previdenciário). Tudo opcional: config gravada antes disso continua
+ * valendo.
+ */
 export interface SendTemplateStepConfig extends ChannelScopedStepConfig {
   template_name: string;
   language?: string;
+  /** O `{{N}}` do CORPO, pela posição ("1", "2", …). Aceita `{{contact.*}}`. */
   variables?: Record<string, string>;
+  /** Texto de reserva por posição, para o valor que sair vazio. */
+  variaveis_reserva?: Record<string, string>;
+  /** O `{{1}}` de um cabeçalho de TEXTO, e a reserva dele. */
+  header_text?: string;
+  header_text_reserva?: string;
+  /** Arquivo do cabeçalho de mídia. Vazio = o guardado no modelo. */
+  header_media_url?: string;
+  /** Final do endereço de botão de URL com `{{1}}`, pela posição do botão. */
+  button_params?: Record<string, string>;
 }
 
 export interface TagStepConfig {
@@ -1444,6 +1460,19 @@ export interface WaitStepConfig {
    * resposta marca cada "Aguardar". Ver `automations/parar-se-responder.ts`.
    */
   parar_se_responder?: boolean;
+  /**
+   * `'horario'` = "Aguardar até estar dentro do horário" (26/09/2026): segue
+   * na hora se o instante do passo já está na `janela`, senão estaciona até
+   * o PRÓXIMO início dela (`esperaPeloHorario`, `automations/hora-do-dia.ts`,
+   * no fuso do escritório). Ausente (ou `'tempo'`) = a espera por
+   * `amount`/`unit` de sempre. No modo horário, `amount`/`unit` continuam
+   * gravados (voltar para "por um tempo" devolve o valor) e são IGNORADOS.
+   */
+  modo?: 'tempo' | 'horario';
+  /** `"HH:mm-HH:mm"`, o formato do operando da condição "Hora do dia". */
+  janela?: string;
+  /** Só de segunda a sexta. Só o booleano `true` liga. */
+  somente_seg_a_sex?: boolean;
 }
 
 export type ConditionSubject =
@@ -1461,14 +1490,30 @@ export type ConditionSubject =
    */
   | 'deal_stage'
   /** O negócio está ganho/perdido/aberto agora? `operand` = o status. */
-  | 'deal_status';
+  | 'deal_status'
+  /**
+   * A Meta aceitaria TEXTO LIVRE agora? (janela de 24h, Fase 2.8 do plano do
+   * previdenciário). `operand` OPCIONAL = a conexão por onde a mensagem vai
+   * sair; vazio = a do disparo, senão a da conversa, senão a padrão — a mesma
+   * precedência de um passo de envio sem conexão escolhida. Regra em
+   * `src/lib/automations/janela-da-meta.ts`.
+   */
+  | 'meta_window_open';
 
 export interface ConditionStepConfig {
   subject: ConditionSubject;
-  /** e.g. field name, tag id, substring, or "HH:mm-HH:mm" depending on subject */
+  /**
+   * e.g. field name, tag id, substring, or "HH:mm-HH:mm" depending on subject.
+   * A hora do dia é lida no FUSO DO ESCRITÓRIO (`automations/hora-do-dia.ts`).
+   */
   operand?: string;
   /** For contact_field equals / message_content contains — comparison value */
   value?: string;
+  /**
+   * Só na hora do dia: `true` recorta a janela a segunda–sexta, no fuso do
+   * escritório (só o booleano `true` liga). Ausente = todos os dias.
+   */
+  somente_seg_a_sex?: boolean;
 }
 
 export interface SendWebhookStepConfig {
@@ -1492,7 +1537,19 @@ export interface CreateTaskStepConfig {
   /** Suporta `{{ contact.* }}` / `{{ vars.* }}`, como as mensagens. */
   titulo: string;
   descricao?: string;
-  responsavel_user_id: string;
+  /**
+   * Para quem (Fase 2.4 do plano do previdenciário): `fixo` (ausente = fixo)
+   * usa `responsavel_user_id`; `conversa` e `card` usam quem está atribuído
+   * agora, e aí `responsavel_user_id` vira a RESERVA (opcional). Regra em
+   * `src/lib/automations/responsavel-da-tarefa.ts`.
+   */
+  responsavel_modo?: 'fixo' | 'conversa' | 'card';
+  /**
+   * O responsável no modo `fixo`; a RESERVA nos outros dois (quando ninguém
+   * está atribuído). Obrigatório na ativação em todos; opcional no TIPO
+   * porque o rascunho e a config antiga podem não ter.
+   */
+  responsavel_user_id?: string;
   /** Dias a partir de hoje, no fuso do escritório. Ausente/0 = hoje. */
   prazo_em_dias?: number;
   /** `HH:MM`. Ausente = tarefa do dia inteiro, sem hora. */

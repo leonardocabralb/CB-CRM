@@ -68,10 +68,10 @@ export function corDaJanela(restante: number): CorDaJanela {
  */
 function ultimaNoNumero(
   mapa: NonNullable<Conversation["janela_meta"]>,
-  canalId: string,
+  canalId: string | null,
 ): number | null {
   let ultima: number | null = null;
-  for (const chave of [canalId, CHAVE_SEM_CARIMBO]) {
+  for (const chave of [canalId ?? CHAVE_SEM_CARIMBO, CHAVE_SEM_CARIMBO]) {
     const valor = mapa[chave];
     if (typeof valor !== "string") continue;
     const ms = Date.parse(valor);
@@ -79,6 +79,41 @@ function ultimaNoNumero(
     if (ultima === null || ms > ultima) ultima = ms;
   }
   return ultima;
+}
+
+/**
+ * Minutos que restam da janela de 24h no número oficial `canalId`, lidos do
+ * mapa `conversations.janela_meta` (0..1440; 0 = fechada ou nunca aberta).
+ *
+ * É a LEITURA da janela, separada do selo, porque o motor de automações faz a
+ * mesma pergunta (condição "janela de 24h aberta", Fase 2.8 do
+ * `docs/PLANO-previdenciario.md`) e não pode herdar as recusas que são da
+ * TELA: o selo cala para conversa encerrada, e a automação precisa saber da
+ * janela dela assim mesmo.
+ *
+ * `canalId` nulo é o número oficial SEM id — o espelho legado
+ * `whatsapp_config`, conta sem conexão nenhuma. Ali só existe a chave
+ * `sem_carimbo` (não há conexão para carimbar), que é "toda mensagem do
+ * cliente que veio pela Meta": o mais perto que o mapa chega do "conta o fio
+ * inteiro" do fio.
+ *
+ * O restante é truncado como no fio (`differenceInMinutes`): o minuto em
+ * curso ainda conta. Relógio do aparelho atrasado em relação ao carimbo não
+ * produz "25h": o teto é 24h.
+ */
+export function minutosRestantesNoMapa(
+  mapa: Conversation["janela_meta"],
+  canalId: string | null,
+  agoraMs: number,
+): number {
+  if (!mapa) return 0;
+  const desde = ultimaNoNumero(mapa, canalId);
+  if (desde === null) return 0;
+  const passados = Math.trunc((agoraMs - desde) / 60_000);
+  return Math.min(
+    MINUTOS_DA_JANELA,
+    Math.max(0, MINUTOS_DA_JANELA - passados),
+  );
 }
 
 /**
@@ -95,9 +130,7 @@ function ultimaNoNumero(
  * escreveu por OUTRO número oficial (a janela é por número); ou as 24h já
  * passaram.
  *
- * O restante é truncado como no fio (`differenceInMinutes`): o minuto em
- * curso ainda conta. Relógio do aparelho atrasado em relação ao carimbo não
- * produz "25h": o teto é 24h.
+ * A conta do que resta é `minutosRestantesNoMapa`.
  */
 export function seloDaJanela(
   c: Pick<Conversation, "status" | "group_id" | "janela_meta">,
@@ -106,12 +139,10 @@ export function seloDaJanela(
 ): SeloDaJanela | null {
   if (!c.janela_meta || c.status === "closed" || c.group_id) return null;
   if (!canalDeSaida || !ehMeta(canalDeSaida)) return null;
-  const desde = ultimaNoNumero(c.janela_meta, canalDeSaida.id);
-  if (desde === null) return null;
-  const passados = Math.trunc((agoraMs - desde) / 60_000);
-  const restante = Math.min(
-    MINUTOS_DA_JANELA,
-    Math.max(0, MINUTOS_DA_JANELA - passados),
+  const restante = minutosRestantesNoMapa(
+    c.janela_meta,
+    canalDeSaida.id,
+    agoraMs,
   );
   if (restante === 0) return null;
   return { restante, cor: corDaJanela(restante) };

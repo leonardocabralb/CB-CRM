@@ -24,7 +24,8 @@ em `engine.ts`, na fila ou na retomada. Calendly:
 `.claude/rules/integracoes-calendly.md`; régua do Asaas:
 `.claude/rules/integracoes-asaas.md`. O dreno da fila do funil e o cron
 também ENTREGAM e reentregam os avisos `deal.*` ao n8n (só o cron
-reentrega): `.claude/rules/webhooks.md`.
+reentrega): `.claude/rules/webhooks.md`. Passos com regra própria:
+`.claude/rules/automacoes-passos.md`.
 
 ### A automação é da CONTA
 

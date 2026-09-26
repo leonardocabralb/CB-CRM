@@ -15,6 +15,7 @@ import type {
   WaitStepConfig,
 } from '@/types'
 import { formatarTelefone, telefoneDigitado } from '@/lib/contacts/telefone'
+import { rotuloDaJanela } from './hora-do-dia'
 
 /**
  * "O que esta automação FAZ", em uma linha — o texto em negrito do cartão da
@@ -151,6 +152,20 @@ export function descreverPasso(passo: PassoResumivel, nomes: NomesConhecidos = {
       // Chave própria (e não sufixo colado na tela) porque a frase muda de
       // forma entre os idiomas. `=== true`, como o motor.
       const sufixo = w.parar_se_responder === true ? '_ou_resposta' : ''
+      // "Aguardar até estar dentro do horário" (26/09/2026): chave própria,
+      // com a janela e o "de segunda a sexta" — é o que distingue duas
+      // esperas da cadência na grade. `amount`/`unit` ficam gravados nesse
+      // modo e NÃO valem; mostrá-los diria "Aguardar 1 h" sobre uma espera
+      // até as 8h. Janela ilegível sai "—" (a ativação já a recusa).
+      if (w.modo === 'horario') {
+        const rotulo = rotuloDaJanela(w.janela)
+        const dias = w.somente_seg_a_sex === true ? '_seg_a_sex' : ''
+        return {
+          chave: `wait_horario${dias}${sufixo}`,
+          valores: { inicio: rotulo?.inicio ?? '—', fim: rotulo?.fim ?? '—' },
+          alvoSumiu: false,
+        }
+      }
       return {
         chave: `wait_${w.unit ?? 'hours'}${sufixo}`,
         valores: { quantidade: Number(w.amount ?? 0) },
