@@ -685,6 +685,25 @@ describe('condição da janela × conexão fixa das mensagens do Sim (Fase 2.8)'
     ).toContain('números diferentes')
   })
 
+  // Codex, PR #315: operando preenchido + texto do Sim HERDANDO o disparo.
+  it('operando preenchido, texto HERDADO, escopo com outro oficial (ou "todos"): recusa', () => {
+    const semEscopo = validateChannelScopeForActivation([janela('oficial', [texto()])], null, CANAIS)
+    expect(semEscopo.map((i) => i.path)).toEqual(['steps[0].operand'])
+    expect(semEscopo[0].message).toContain('número do DISPARO')
+    expect(semEscopo[0].message).toContain('"Meta 2"')
+    expect(
+      validateChannelScopeForActivation([janela('oficial', [texto()])], ['oficial', 'oficial-2'], CANAIS),
+    ).toHaveLength(1)
+  })
+
+  it('operando preenchido, texto HERDADO, escopo só nele (ou com QR Code): passa', () => {
+    expect(validateChannelScopeForActivation([janela('oficial', [texto()])], ['oficial'], CANAIS)).toEqual([])
+    expect(validateChannelScopeForActivation([janela('oficial', [texto()])], ['oficial', 'qr'], CANAIS)).toEqual([])
+    // Conta com um oficial só: "todos" não alcança outro oficial.
+    const umOficial = CANAIS.filter((c) => c.id !== 'oficial-2')
+    expect(validateChannelScopeForActivation([janela('oficial', [texto()])], null, umOficial)).toEqual([])
+  })
+
   it('olha DENTRO de uma condição comum no Sim; o ramo Não não conta', () => {
     const aninhada = {
       step_type: 'condition',

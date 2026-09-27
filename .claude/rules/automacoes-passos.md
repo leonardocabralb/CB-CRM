@@ -60,6 +60,10 @@ O resto do motor: `.claude/rules/automacoes.md`; o mapa da janela por número:
   o texto (131047) com o passo concluído. `validateChannelScopeForActivation`
   recusa a divergência (e o construtor mostra ao vivo). O seletor lista só
   números oficiais: QR Code é sempre "sim", Instagram sempre "não".
+  ⚠️ Vale também para o texto que HERDA o disparo com o operando preenchido
+  (Codex, PR #315): ele sai pelo número de onde o disparo veio. Só passa
+  quando todo número oficial que o escopo alcança é o próprio operando
+  (escopo vazio = a conta inteira; QR Code no escopo não conta).
 - **Erro de leitura responde "não"** (o modelo é o lado seguro) e o registro
   diz `janela não conferida`, para o "não" não parecer medido.
 

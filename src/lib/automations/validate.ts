@@ -754,20 +754,31 @@ export function validateChannelScopeForActivation(
   //
   // Só o passo com conexão fixa OFICIAL conta: fixado num QR Code não há
   // janela a errar, e conexão desconhecida (apagada) não trava a ativação —
-  // a mesma escolha do bloco acima. Passo que HERDA o disparo com o operando
-  // preenchido não é recusado: com o escopo no mesmo número (o caso comum)
-  // os dois coincidem.
+  // a mesma escolha do bloco acima.
+  //
+  // ⚠️ Passo que HERDA o disparo, com o operando preenchido (Codex, PR #315):
+  // ele sai pelo número de onde o disparo veio, e a condição pergunta pelo do
+  // operando. Só é seguro quando todo número OFICIAL que o escopo alcança é o
+  // próprio operando — escopo só nele, ou os outros por QR Code (sem janela).
+  // Com escopo vazio ("todos"), vale a conta inteira. Senão o disparo vindo
+  // de outro número oficial passa pelo "Sim" do operando e o texto sai por
+  // uma janela fechada.
+  const oficiaisAlcancaveis = (escopo.length > 0 ? escopo : contasCanais).filter((c) =>
+    ehMeta(c),
+  );
   const conferirJanela = (condicao: StepLike, path: string) => {
     const operando =
       typeof condicao.step_config?.operand === 'string' ? condicao.step_config.operand : '';
     // As conexões OFICIAIS fixadas no texto do Sim (id → nome).
     const fixos = new Map<string, string>();
+    let herdados = 0;
     const olhar = (lista: StepLike[]) => {
       for (const s of lista) {
         if (TEXTO_LIVRE.has(s.step_type)) {
           const fixado = s.step_config?.channel_id;
           const canal = typeof fixado === 'string' && fixado ? porId.get(fixado) : undefined;
           if (canal && ehMeta(canal)) fixos.set(canal.id, canal.label);
+          if (typeof fixado !== 'string' || !fixado) herdados += 1;
         }
         // Outra condição da janela dentro do ramo tem a SUA conferência.
         if (s.step_type === 'condition' && s.step_config?.subject !== 'meta_window_open') {
@@ -777,9 +788,27 @@ export function validateChannelScopeForActivation(
       }
     };
     olhar(condicao.branches?.yes ?? []);
+    const perguntada = operando ? porId.get(operando)?.label : null;
+    if (
+      operando &&
+      herdados > 0 &&
+      oficiaisAlcancaveis.some((c) => c.id !== operando)
+    ) {
+      const outros = oficiaisAlcancaveis
+        .filter((c) => c.id !== operando)
+        .map((c) => `"${c.label}"`)
+        .join(', ');
+      issues.push({
+        path: `${path}.operand`,
+        message: `A condição "Janela de 24h da Meta aberta" pergunta pela janela de ${
+          perguntada ? `"${perguntada}"` : 'uma conexão que foi removida'
+        }, mas uma mensagem do ramo Sim sai pelo número do DISPARO, que pode ser outro número oficial (${outros}). Fixe a conexão de saída dessas mensagens em ${
+          perguntada ? `"${perguntada}"` : 'um número'
+        }, restrinja a automação a esse número, ou deixe "Janela de qual número" em branco (pergunta pelo número do disparo).`,
+      });
+    }
     if (fixos.size === 0 || (fixos.size === 1 && fixos.has(operando))) return;
     const nomes = [...fixos.values()].map((l) => `"${l}"`);
-    const perguntada = operando ? porId.get(operando)?.label : null;
     const inicio = `A condição "Janela de 24h da Meta aberta" pergunta pela janela ${
       perguntada
         ? `de "${perguntada}"`
