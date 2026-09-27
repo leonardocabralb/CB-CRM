@@ -67,6 +67,33 @@ export interface OpcoesDasFerramentas {
   campos: Array<{ id: string; nome: string; vigiado: boolean; tipo: string | null; opcoes: string[] }>
   membros: Array<{ userId: string; nome: string }>
   automacoes: Array<{ id: string; nome: string; foraDaD5: string | null }>
+  /**
+   * "Marcar reunião" (F5, D7): o Calendly da conta. `falhou` = a leitura dos
+   * tipos de evento não respondeu — nunca "não há tipos".
+   */
+  calendly: EstadoDoCalendly
+  /** Os tipos de evento ATIVOS; `null` = desconectado ou a leitura falhou (a tela diz qual). */
+  tiposDeEvento: TipoDeEventoDoCalendly[] | null
+}
+
+/** O Calendly da conta para "Marcar reunião" (F5). */
+export type EstadoDoCalendly = 'conectado' | 'desconectado' | 'falhou'
+
+/** Um tipo de evento do Calendly: a uri é o que o agente grava; `duracao` em minutos. */
+export interface TipoDeEventoDoCalendly {
+  uri: string
+  nome: string
+  duracao: number
+}
+
+/**
+ * Um horário livre que o Playground ofereceu ao modelo (F5), como foi ao
+ * pedido: o número e o texto (em inglês, no fuso do escritório — é o que o
+ * modelo leu).
+ */
+export interface HorarioOferecido {
+  n: number
+  texto: string
 }
 
 /**

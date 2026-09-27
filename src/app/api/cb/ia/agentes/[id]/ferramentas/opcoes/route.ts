@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 
 import { supabaseAdmin } from '@/lib/ai/admin-client'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
+import { tiposDeEventoParaATela } from '@/lib/ia-agentes/agenda'
 import { lerCatalogoDeFerramentas } from '@/lib/ia-agentes/ferramentas'
 import { obterAgente } from '@/lib/ia-agentes/repo'
 import { respostaDoErro } from '@/lib/ia-agentes/resposta'
@@ -30,6 +31,14 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
  * espelha o e-mail) e `opcoes`, as do `select`. A régua do Asaas não aparece
  * (só roda pela varredura). Leitura que falha = 500, nunca um catálogo pela
  * metade.
+ *
+ * F5: `calendly: 'conectado' | 'desconectado' | 'falhou'` e
+ * `tiposDeEvento: [{ uri, nome, duracao }] | null` — os tipos de evento
+ * ATIVOS do Calendly conectado, para o "Marcar reunião"; `null` quando não
+ * está conectado ou a leitura falhou (o `calendly` diz qual). A leitura do
+ * Calendly nunca derruba o catálogo: ela falha para `'falhou'` — e tem PRAZO
+ * total de 8 s (`PRAZO_DOS_TIPOS_NA_TELA_MS`): o Calendly lento vira
+ * `'falhou'` sem segurar o resto da tela.
  */
 export async function GET(_request: Request, { params }: Contexto) {
   try {
@@ -42,7 +51,12 @@ export async function GET(_request: Request, { params }: Contexto) {
     if (!agente || agente.arquivadoEm) return naoEncontrado()
 
     try {
-      return NextResponse.json(await lerCatalogoDeFerramentas(supabaseAdmin(), ctx.accountId))
+      const db = supabaseAdmin()
+      const [catalogo, calendly] = await Promise.all([
+        lerCatalogoDeFerramentas(db, ctx.accountId),
+        tiposDeEventoParaATela(db, ctx.accountId),
+      ])
+      return NextResponse.json({ ...catalogo, ...calendly })
     } catch (err) {
       console.error('[cb/ia/agentes/ferramentas] leitura falhou:', err instanceof Error ? err.message : err)
       return NextResponse.json({ error: 'banco', code: 'banco' }, { status: 500 })

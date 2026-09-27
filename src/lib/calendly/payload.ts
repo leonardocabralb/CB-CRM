@@ -110,6 +110,23 @@ const RE_PERGUNTA_QUE_NAO_E_TELEFONE = /cpf|cnpj|\brg\b|documento|identidade|\bc
 /** CPF/CNPJ escritos com a pontuação usual — não são telefone, seja qual for o rótulo. */
 const RE_DOCUMENTO_FORMATADO = /^\d{3}\.\d{3}\.\d{3}-\d{2}$|^\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}$/;
 
+/**
+ * A pergunta do formulário é a que o operador informou no cartão
+ * (`cb_calendly_config.pergunta_telefone`)? Por trecho, sem acento e sem
+ * caixa. Rótulo vazio não casa nada. Exportada porque o agente de IA que
+ * MARCA a reunião (F5 dos agentes, `respostasDoTelefone`) responde a MESMA
+ * pergunta que este webhook vai ler — uma régua só.
+ */
+export function casaComAPerguntaConfigurada(pergunta: string, configurada: string | null | undefined): boolean {
+  const rotulo = configurada ? normalizarRotulo(configurada) : "";
+  return rotulo !== "" && normalizarRotulo(pergunta).includes(rotulo);
+}
+
+/** O rótulo da pergunta fala de telefone/WhatsApp (a heurística do webhook)? Exportada pelo mesmo motivo. */
+export function rotuloDeTelefone(pergunta: string): boolean {
+  return RE_PERGUNTA_DE_TELEFONE.test(normalizarRotulo(pergunta));
+}
+
 /** Qual `event` este corpo carrega (`invitee.created`, `invitee.canceled`…). */
 export function eventoDoCorpo(corpo: unknown): string | null {
   const o = objeto(corpo);
@@ -137,16 +154,11 @@ export function telefoneDoAgendamento(
   const sms = digitosDoTelefone(texto(payload.text_reminder_number));
   if (sms) return { telefone: sms, origem: "sms" };
 
-  const rotulo = perguntaTelefone ? normalizarRotulo(perguntaTelefone) : "";
-  if (rotulo) {
-    const escolhida = perguntas.find((p) => normalizarRotulo(p.pergunta).includes(rotulo));
-    const digitos = escolhida ? digitosDoTelefone(escolhida.resposta) : null;
-    if (digitos) return { telefone: digitos, origem: "pergunta" };
-  }
+  const escolhida = perguntas.find((p) => casaComAPerguntaConfigurada(p.pergunta, perguntaTelefone));
+  const daConfigurada = escolhida ? digitosDoTelefone(escolhida.resposta) : null;
+  if (daConfigurada) return { telefone: daConfigurada, origem: "pergunta" };
 
-  const comRotulo = perguntas.find(
-    (p) => RE_PERGUNTA_DE_TELEFONE.test(normalizarRotulo(p.pergunta)) && pareceTelefone(p.resposta),
-  );
+  const comRotulo = perguntas.find((p) => rotuloDeTelefone(p.pergunta) && pareceTelefone(p.resposta));
   const qualquer =
     comRotulo ??
     perguntas.find(

@@ -134,6 +134,11 @@ describe.each(['en.json', 'pt-BR.json'])('IaAgentes em %s', (arquivo) => {
     expect(em(d, 'transferencia.nota.link_inventado')).toBeTruthy()
   })
 
+  it('a reunião que não foi marcada (F5) tem a anotação, com o agente e o motivo', () => {
+    const nota = em(d, 'transferencia.nota.reuniao_nao_marcada')
+    expect(typeof nota === 'string' && nota.includes('{agente}') && nota.includes('{motivo}')).toBe(true)
+  })
+
   it('os dias e os modos de uso', () => {
     for (let dia = 0; dia <= 6; dia++) expect(em(d, `dia.${dia}`)).toBeTruthy()
     for (const m of ['agente', 'agente_teste', 'radar', 'transcricao', 'auto_reply', 'draft']) {

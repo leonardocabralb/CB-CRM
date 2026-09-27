@@ -8,14 +8,47 @@
 
 import { createTranslator } from 'next-intl'
 
+import { CODIGOS_DE_FALHA_DA_ACAO, type CodigoDeFalhaDaAcao, type MotivoDaRecusa } from './acoes'
 import type { TipoDeAcao } from './agente'
 
 /**
  * `link_inventado` (F4): a resposta trazia uma URL que não veio do sistema
- * (5.6) — ela é retida e a conversa vai para gente.
+ * (5.6) — ela é retida e a conversa vai para gente. `reuniao_nao_marcada`
+ * (F5): a resposta SAIU, mas a reunião pedida não foi marcada (a nota diz o
+ * motivo, `{motivo}`) — gente confirma o horário com o cliente.
  */
-export const MOTIVOS_DE_TRANSFERENCIA = ['sentinela', 'teto', 'audio', 'incerto', 'link_inventado'] as const
+export const MOTIVOS_DE_TRANSFERENCIA = ['sentinela', 'teto', 'audio', 'incerto', 'link_inventado', 'reuniao_nao_marcada'] as const
 export type MotivoDeTransferencia = (typeof MOTIVOS_DE_TRANSFERENCIA)[number]
+
+/**
+ * Os códigos com que uma reunião pode deixar de ser marcada (F5): as recusas
+ * da leitura do marcador e as falhas de `marcarNoCalendly`. O `{motivo}` da
+ * nota sai do MESMO texto que a aba Turnos mostra para o código
+ * (`chaveDoMotivoDaReuniao`); `textos-do-servidor.test.ts` cobra cada chave
+ * nos dois dicionários.
+ */
+export const CODIGOS_DA_REUNIAO_NAO_MARCADA = [
+  'malformada',
+  'teto',
+  'nao_liberada',
+  'fora_da_lista',
+  'sem_email',
+  'horario_indisponivel',
+  'calendly_desconectado',
+  'recusado',
+  'falhou',
+] as const satisfies ReadonlyArray<MotivoDaRecusa | CodigoDeFalhaDaAcao>
+
+/**
+ * A chave (dentro de `IaAgentes`) do texto de um código de ação: a falha na
+ * execução em `turnos.acoes.erro.<c>`, a recusa em `ferramentas.recusa.<c>` —
+ * as mesmas da tela.
+ */
+export function chaveDoMotivoDaReuniao(codigo: string): string {
+  return (CODIGOS_DE_FALHA_DA_ACAO as readonly string[]).includes(codigo)
+    ? `turnos.acoes.erro.${codigo}`
+    : `ferramentas.recusa.${codigo}`
+}
 
 type Dicionario = { locale: string; messages: Record<string, unknown> }
 let carregado: Promise<Dicionario> | null = null
@@ -32,10 +65,14 @@ async function dicionario(): Promise<Dicionario> {
   return carregado
 }
 
-/** O autor ("IA · Triagem") e o texto da anotação de uma transferência. */
+/**
+ * O autor ("IA · Triagem") e o texto da anotação de uma transferência. Na
+ * `reuniao_nao_marcada` (F5), `codigoDaReuniao` vira o `{motivo}` da nota.
+ */
 export async function textosDaTransferencia(
   agente: string,
   motivo: MotivoDeTransferencia,
+  codigoDaReuniao?: string | null,
 ): Promise<{ autor: string; texto: string }> {
   const { locale, messages } = await dicionario()
   // O dicionário é carregado em tempo de execução (o do idioma da instalação),
@@ -45,6 +82,19 @@ export async function textosDaTransferencia(
     chave: string,
     valores: Record<string, string>,
   ) => string
+  if (motivo === 'reuniao_nao_marcada') {
+    const tDaTela = createTranslator({ locale, messages, namespace: 'IaAgentes' }) as unknown as (
+      chave: string,
+      valores?: Record<string, string>,
+    ) => string
+    const codigo = (CODIGOS_DA_REUNIAO_NAO_MARCADA as readonly string[]).includes(codigoDaReuniao ?? '')
+      ? (codigoDaReuniao as string)
+      : 'falhou'
+    return {
+      autor: t('autor', { agente }),
+      texto: t('nota.reuniao_nao_marcada', { agente, motivo: tDaTela(chaveDoMotivoDaReuniao(codigo)) }),
+    }
+  }
   return {
     autor: t('autor', { agente }),
     texto: t(`nota.${motivo}`, { agente }),
