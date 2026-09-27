@@ -1,6 +1,7 @@
 import type {
   AutomationRefStepConfig,
   AutomationStepType,
+  ConditionStepConfig,
   CreateDealStepConfig,
   CreateTaskStepConfig,
   MoveDealStepConfig,
@@ -16,6 +17,7 @@ import type {
 } from '@/types'
 import { formatarTelefone, telefoneDigitado } from '@/lib/contacts/telefone'
 import { rotuloDaJanela } from './hora-do-dia'
+import { operadorDaCondicao, operadorPedeValor } from './condicao-por-campo'
 
 /**
  * "O que esta automação FAZ", em uma linha — o texto em negrito do cartão da
@@ -40,6 +42,8 @@ export interface NomesConhecidos {
   fluxos?: Record<string, string>
   automacoes?: Record<string, string>
   canais?: Record<string, string>
+  /** `custom_fields.id` → nome do campo (a condição por campo, 2.10). */
+  campos?: Record<string, string>
 }
 
 export interface ResumoDoPasso {
@@ -173,6 +177,28 @@ export function descreverPasso(passo: PassoResumivel, nomes: NomesConhecidos = {
       }
     }
 
+    case 'condition': {
+      // A condição por CAMPO PERSONALIZADO (2.10) diz QUAL campo e o quê — é
+      // ela que distingue "volta ao robô" de "desqualificado por outro
+      // motivo" na grade e na linha do tempo. Chave por operador (a frase
+      // muda de forma: "está vazio" não tem valor). As outras condições
+      // continuam "Verificar uma condição". Campo que o catálogo não conhece
+      // vira "(apagado)", nunca o UUID.
+      const c = cfg as unknown as ConditionStepConfig
+      const op = c.subject === 'custom_field' ? operadorDaCondicao(c.operator) : null
+      if (!op) return simples()
+      const campoId = typeof c.operand === 'string' ? c.operand.trim() : ''
+      const nome = campoId ? nomes.campos?.[campoId] : undefined
+      return {
+        chave: `condition_campo_${op}`,
+        valores: {
+          alvo: nome ?? '',
+          ...(operadorPedeValor(op) ? { valor: recortar(c.value, 30) } : {}),
+        },
+        alvoSumiu: !nome,
+      }
+    }
+
     case 'create_task':
       // O TÍTULO, não o responsável: é ele que distingue duas tarefas no mesmo
       // quadro ("Conferir documentação" × "Ligar para o cliente"). O nome de
@@ -181,7 +207,7 @@ export function descreverPasso(passo: PassoResumivel, nomes: NomesConhecidos = {
       return simples(recortar((cfg as unknown as CreateTaskStepConfig).titulo))
 
     default:
-      // send_buttons, send_list, assign_conversation, stop_flow, condition,
+      // send_buttons, send_list, assign_conversation, stop_flow,
       // send_webhook, close_conversation — o tipo já diz o suficiente.
       return simples()
   }

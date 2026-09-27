@@ -178,6 +178,17 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
   `save_answer_failed`), e o evento guarda o destino, nunca o texto. Ativar o
   robô confere o arquivo do acervo e o campo apontados
   (`referencias-do-robo.ts`, na rota de ativação).
+- ⚠️ **"Atribuir a" do "Transferir para atendente" (`assign_to`, 2.7) é
+  `profiles.user_id`, nunca `profiles.id`**, e o motor confere na HORA que
+  o escolhido ainda é membro da conta do robô (`atribuir-no-handoff.ts`):
+  `conversations.assigned_agent_id` não tem FK, e o gatilho da 027 mandaria o
+  aviso — com o nome do cliente — a quem saiu. Não sendo (ou a leitura
+  falhando), a conversa fica pendente SEM responsável e o evento diz por quê.
+  A ativação recusa (`referencias-do-robo.ts`); a lista da tela é recortada
+  pela conta DO ROBÔ (`membros-do-robo.ts`). "Ninguém" é o padrão.
+  ⚠️ "Sem responsável" ESCREVE `assigned_agent_id = NULL` (com "Ninguém", com
+  quem saiu e com leitura que falha): omitir a coluna manteria o dono ANTERIOR,
+  e a tela promete a fila de quem está sem dono (Codex, PR #319).
 - ⚠️ **Nó NOVO no robô exige MIGRATION**: `flow_nodes.node_type` tem CHECK
   com a lista fechada (0016), e o `PUT /api/flows/[id]` apaga TODOS os nós
   antes de inserir, sem transação — um tipo recusado pelo CHECK deixa o robô

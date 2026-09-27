@@ -88,6 +88,7 @@ import { AsaasTriggerConfig } from "@/components/automations/asaas-trigger-confi
 import { CalendlyTriggerConfig } from "@/components/automations/calendly-trigger-config"
 import { ehGatilhoDaRegua, HORA_PADRAO_COBRANCA, HORA_PADRAO_LEMBRETE } from "@/lib/asaas/regua"
 import { WebhookTriggerConfig } from "@/components/automations/webhook-trigger-config"
+import { CondicaoPorCampoFields } from "@/components/automations/condicao-por-campo-fields"
 import {
   childPath,
   insertAt,
@@ -3280,11 +3281,20 @@ function StepEditor({
                 // ou "etapa" inexistente (condição sempre falsa, em silêncio);
                 // o contrário faria a janela perguntar por um número que o
                 // operador nunca escolheu. A hora do dia também: lá o operando
-                // é "HH:mm-HH:mm", e o "só de segunda a sexta" sai junto.
-                const proprio = (s: unknown) => s === "meta_window_open" || s === "time_of_day"
+                // é "HH:mm-HH:mm", e o "só de segunda a sexta" sai junto. O
+                // campo personalizado (2.10) também: lá o operando é o id de
+                // um CAMPO, e o valor e o operador são dele.
+                const proprio = (s: unknown) =>
+                  s === "meta_window_open" || s === "time_of_day" || s === "custom_field"
                 set(
                   proprio(e.target.value) || proprio(cfg.subject)
-                    ? { subject: e.target.value, operand: "", somente_seg_a_sex: undefined }
+                    ? {
+                        subject: e.target.value,
+                        operand: "",
+                        somente_seg_a_sex: undefined,
+                        value: "",
+                        operator: e.target.value === "custom_field" ? "equals" : undefined,
+                      }
                     : { subject: e.target.value },
                 )
               }}
@@ -3292,6 +3302,7 @@ function StepEditor({
             >
               <option value="tag_presence">{t("config.subjects.tag_presence")}</option>
               <option value="contact_field">{t("config.subjects.contact_field")}</option>
+              <option value="custom_field">{t("config.subjects.custom_field")}</option>
               <option value="message_content">{t("config.subjects.message_content")}</option>
               <option value="time_of_day">{t("config.subjects.time_of_day")}</option>
               {/* Por canal: o motor ramifica assim desde a 903, mas a tela
@@ -3313,7 +3324,9 @@ function StepEditor({
               <option value="meta_window_open">{t("config.subjects.meta_window_open")}</option>
             </select>
           </FieldBlock>
-          {cfg.subject === "meta_window_open" ? (
+          {cfg.subject === "custom_field" ? (
+            <CondicaoPorCampoFields cfg={cfg} set={set} />
+          ) : cfg.subject === "meta_window_open" ? (
             <JanelaDaMetaFields
               value={(cfg.operand as string) || null}
               onChange={(id) => set({ operand: id ?? "" })}

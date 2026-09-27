@@ -57,6 +57,7 @@ import type { CbChannel } from "@/lib/cb-channels/repo";
 import type { FlowNodeRow, FlowRow } from "@/lib/flows/types";
 import { NODE_META, slugify, type BuilderNode, type NodeType } from "./shared";
 import { useCatalogoDoFunil, type CatalogoDoFunil } from "./catalogo-do-funil";
+import { useMembrosDoRobo, type MembrosDoRobo } from "./membros-do-robo";
 
 // ============================================================
 // State shape
@@ -98,6 +99,14 @@ export interface FlowEditorContextValue {
   catalogoDoFunil: CatalogoDoFunil;
   /** Refaz a leitura do catálogo (o botão do aviso "não foi possível carregar"). */
   recarregarCatalogoDoFunil: () => void;
+
+  /**
+   * Membros da conta DO ROBÔ (CB, 26/09/2026): o "Atribuir a" do
+   * "Transferir para atendente" escolhe por eles e o cartão do nó mostra o
+   * nome. Uma consulta para o editor inteiro — ver `membros-do-robo.ts`.
+   */
+  membrosDoRobo: MembrosDoRobo;
+  recarregarMembrosDoRobo: () => void;
 
   // Authored state
   state: BuilderState;
@@ -272,6 +281,9 @@ export function FlowEditorProvider({
   // Recortado pela conta DO ROBÔ — ver `catalogo-do-funil.ts`.
   const { catalogo: catalogoDoFunil, tentarDeNovo: recarregarCatalogoDoFunil } =
     useCatalogoDoFunil(initialFlow.account_id);
+  // Idem: os membros da conta DO ROBÔ — ver `membros-do-robo.ts`.
+  const { membros: membrosDoRobo, tentarDeNovo: recarregarMembrosDoRobo } =
+    useMembrosDoRobo(initialFlow.account_id);
 
   const [state, setStateRaw] = useState<BuilderState>(() => ({
     name: initialFlow.name,
@@ -568,6 +580,8 @@ export function FlowEditorProvider({
       channels,
       catalogoDoFunil,
       recarregarCatalogoDoFunil,
+      membrosDoRobo,
+      recarregarMembrosDoRobo,
       state,
       setState,
       dirty,
@@ -592,6 +606,8 @@ export function FlowEditorProvider({
       channels,
       catalogoDoFunil,
       recarregarCatalogoDoFunil,
+      membrosDoRobo,
+      recarregarMembrosDoRobo,
       state,
       setState,
       dirty,

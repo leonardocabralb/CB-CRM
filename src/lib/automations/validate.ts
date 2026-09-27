@@ -6,6 +6,11 @@ import { motivoDeConfigInvalida } from './lembretes'
 import { lerModoDoResponsavel } from './responsavel-da-tarefa'
 import { MAX_POSICOES_DO_MODELO } from './parametros-do-modelo'
 import { lerJanela } from './hora-do-dia'
+import {
+  problemaDaCondicaoPorCampo,
+  problemaDaFormaDaCondicao,
+  type CampoParaCondicao,
+} from './condicao-por-campo'
 import { ehGatilhoDaRegua, horaDeEnvioValida } from '@/lib/asaas/regua'
 import { ehMeta } from '@/lib/cb-channels/transporte'
 import type { CbChannelKind } from '@/lib/cb-channels/repo'
@@ -311,7 +316,12 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       }
       // A janela de 24h (Fase 2.8) é a ÚNICA sem operando obrigatório: vazio
       // = o número da próxima mensagem (o do disparo, senão o da conversa).
-      if (c.subject !== 'meta_window_open' && !nonEmpty(c.operand)) {
+      if (c.subject === 'custom_field' && !nonEmpty(c.operand)) {
+        issues.push({
+          path: `${path}.operand`,
+          message: 'A condição "Campo personalizado da ficha" precisa do campo — escolha um.',
+        })
+      } else if (c.subject !== 'meta_window_open' && !nonEmpty(c.operand)) {
         issues.push({ path: `${path}.operand`, message: 'condition operand is required' })
       } else if (c.subject === 'time_of_day' && !lerJanela(c.operand)) {
         // O motor responde "não" SEMPRE para janela que não lê — a automação
@@ -326,6 +336,13 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
           path: `${path}.somente_seg_a_sex`,
           message: 'condition somente_seg_a_sex must be true or false',
         })
+      }
+      // Campo personalizado (2.10): aqui só a FORMA (operador conhecido e,
+      // para "é"/"contém", um valor). Que o campo existe NESTA conta e aceita
+      // o operador é da rota, com o banco (`validateCustomFieldConditionsForActivation`).
+      if (c.subject === 'custom_field') {
+        const forma = problemaDaFormaDaCondicao(c)
+        if (forma) issues.push({ path: `${path}.operator`, message: forma })
       }
       break
     case 'send_webhook':
@@ -845,3 +862,35 @@ export function validateChannelScopeForActivation(
  * que a condição da janela protege.
  */
 const TEXTO_LIVRE = new Set(['send_message', 'send_media', 'send_buttons', 'send_list']);
+
+// ------------------------------------------------------------
+// Condição por campo personalizado (Fase 2.10 do plano do previdenciário):
+// o campo existe NESTA conta, aceita o operador e — na lista — o valor é uma
+// das opções. Puro: a rota carrega os campos da conta
+// (`carregarCamposParaCondicoes`) e passa aqui. `null` = a leitura falhou, e a
+// conferência é pulada (o motor continua sendo a guarda: campo de outra conta
+// nunca é lido, e campo apagado responde "não", com a nota no registro).
+// ------------------------------------------------------------
+export function validateCustomFieldConditionsForActivation(
+  steps: StepLike[],
+  campos: ReadonlyMap<string, CampoParaCondicao> | null,
+): ValidationIssue[] {
+  if (!campos || !Array.isArray(steps)) return []
+  const issues: ValidationIssue[] = []
+  const andar = (lista: StepLike[] | undefined, prefix: string) => {
+    ;(lista ?? []).forEach((s, i) => {
+      const path = `${prefix}steps[${i}]`
+      const c = s.step_config ?? {}
+      if (s.step_type === 'condition' && c.subject === 'custom_field' && nonEmpty(c.operand)) {
+        const problema = problemaDaCondicaoPorCampo(c, campos.get(String(c.operand).trim()))
+        if (problema) issues.push({ path: `${path}.operand`, message: problema })
+      }
+      if (s.step_type === 'condition' && s.branches) {
+        andar(s.branches.yes, `${path}.yes.`)
+        andar(s.branches.no, `${path}.no.`)
+      }
+    })
+  }
+  andar(steps, '')
+  return issues
+}

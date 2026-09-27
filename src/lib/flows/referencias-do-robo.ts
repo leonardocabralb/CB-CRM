@@ -13,6 +13,12 @@
 // origem marcadas ainda existem. Sem isto, a etapa apagada viraria "etapa nao
 // existe" da RPC em toda execução, e a origem apagada nunca casaria calada.
 //
+// E o "Atribuir a" do "Transferir para atendente" (2.7): o membro escolhido
+// é desta conta. `conversations.assigned_agent_id` não tem chave estrangeira,
+// e o motor, que confere de novo na hora, não atribuiria — o robô ativo com
+// um nome na tela e ninguém recebendo nada. A leitura é por `profiles.user_id`
+// (o id de LOGIN), nunca `profiles.id`.
+//
 // Todos são ERRO (bloqueiam a ativação), e não aviso: a rota só devolve a
 // lista de problemas quando RECUSA, e o editor mostra só a frase do erro — um
 // aviso aqui não chegaria a ninguém. E gravar a resposta é o ponto do robô de
@@ -25,6 +31,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { membroEscolhidoNoHandoff } from './atribuir-no-handoff';
 import { campoServeAoNo, destinoDaResposta } from './resposta-na-ficha';
 import type { ValidationIssue } from './validate';
 
@@ -46,6 +53,8 @@ export interface ReferenciasExistentes {
   funis: ReadonlySet<string>;
   /** Etapa → funil, só das etapas de funis DESTA conta. */
   etapas: ReadonlyMap<string, string>;
+  /** `user_id` dos membros DESTA conta entre os que os "Transferir" apontam. */
+  membros: ReadonlySet<string>;
 }
 
 const FORMA_DE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -73,6 +82,11 @@ function movimentoDoNo(no: NoDoRobo): MovimentoDoNo | null {
   return { funilId: texto(c.pipeline_id), etapaId: texto(c.stage_id), origens };
 }
 
+function membroDoNo(no: NoDoRobo): string | null {
+  if (no.node_type !== 'handoff') return null;
+  return membroEscolhidoNoHandoff(no.config);
+}
+
 function campoDoNo(no: NoDoRobo): string | null {
   const destino = destinoDaResposta(no.node_type, (no.config as { salvar_em?: unknown }).salvar_em);
   return destino?.tipo === 'campo' ? destino.campoId : null;
@@ -88,8 +102,10 @@ export function referenciasDoRobo(nos: readonly NoDoRobo[]): {
   campoIds: string[];
   funilIds: string[];
   etapaIds: string[];
+  membroIds: string[];
 } {
   const acervo = new Set<string>();
+  const membros = new Set<string>();
   const campos = new Set<string>();
   const funis = new Set<string>();
   const etapas = new Set<string>();
@@ -103,12 +119,15 @@ export function referenciasDoRobo(nos: readonly NoDoRobo[]): {
       if (FORMA_DE_UUID.test(m.funilId)) funis.add(m.funilId);
       for (const id of [m.etapaId, ...m.origens]) if (FORMA_DE_UUID.test(id)) etapas.add(id);
     }
+    const quem = membroDoNo(no);
+    if (quem && FORMA_DE_UUID.test(quem)) membros.add(quem);
   }
   return {
     acervoIds: [...acervo],
     campoIds: [...campos],
     funilIds: [...funis],
     etapaIds: [...etapas],
+    membroIds: [...membros],
   };
 }
 
@@ -185,6 +204,16 @@ export function problemasDasReferencias(
         });
       }
     }
+    const quem = membroDoNo(no);
+    if (quem && !existentes.membros.has(quem)) {
+      problemas.push({
+        severity: 'error',
+        scope: 'node',
+        node_key: no.node_key,
+        field: 'assign_to',
+        message: `A pessoa escolhida em "Atribuir a" no passo "${no.node_key}" não é membro desta conta (ou saiu dela) — escolha outra pessoa ou "Ninguém".`,
+      });
+    }
   }
   return problemas;
 }
@@ -198,8 +227,8 @@ export async function carregarReferenciasExistentes(
   accountId: string,
   nos: readonly NoDoRobo[],
 ): Promise<ReferenciasExistentes | null> {
-  const { acervoIds, campoIds, funilIds, etapaIds } = referenciasDoRobo(nos);
-  const [acervo, campos, etapasLidas] = await Promise.all([
+  const { acervoIds, campoIds, funilIds, etapaIds, membroIds } = referenciasDoRobo(nos);
+  const [acervo, campos, etapasLidas, membrosLidos] = await Promise.all([
     acervoIds.length
       ? db.from('cb_media_library').select('id').eq('account_id', accountId).in('id', acervoIds)
       : Promise.resolve({ data: [], error: null }),
@@ -215,8 +244,11 @@ export async function carregarReferenciasExistentes(
     etapaIds.length
       ? db.from('pipeline_stages').select('id, pipeline_id').in('id', etapaIds)
       : Promise.resolve({ data: [], error: null }),
+    membroIds.length
+      ? db.from('profiles').select('user_id').eq('account_id', accountId).in('user_id', membroIds)
+      : Promise.resolve({ data: [], error: null }),
   ]);
-  if (acervo.error || campos.error || etapasLidas.error) return null;
+  if (acervo.error || campos.error || etapasLidas.error || membrosLidos.error) return null;
 
   const etapasBrutas = (etapasLidas.data ?? []) as Array<{ id: string; pipeline_id: string }>;
   const funisPedidos = [...new Set([...funilIds, ...etapasBrutas.map((e) => e.pipeline_id)])];
@@ -238,5 +270,6 @@ export async function carregarReferenciasExistentes(
     etapas: new Map(
       etapasBrutas.filter((e) => funisDaConta.has(e.pipeline_id)).map((e) => [e.id, e.pipeline_id]),
     ),
+    membros: new Set(((membrosLidos.data ?? []) as Array<{ user_id: string }>).map((r) => r.user_id)),
   };
 }

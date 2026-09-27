@@ -17,7 +17,11 @@ const ITEM = '11111111-1111-4111-8111-111111111111';
 const CAMPO = '33333333-3333-4333-8333-333333333333';
 const CAMPO_NUMERO = '44444444-4444-4444-8444-444444444444';
 
-const SEM_FUNIL = { funis: new Set<string>(), etapas: new Map<string, string>() };
+const SEM_FUNIL = {
+  funis: new Set<string>(),
+  etapas: new Map<string, string>(),
+  membros: new Set<string>(),
+};
 
 const NOS = [
   {
@@ -50,6 +54,7 @@ describe('referenciasDoRobo', () => {
       campoIds: [CAMPO],
       funilIds: [],
       etapaIds: [],
+      membroIds: [],
     });
   });
 
@@ -155,7 +160,13 @@ describe('carregarReferenciasExistentes', () => {
     const { db, pedidos } = banco({});
     const r = await carregarReferenciasExistentes(db, 'acc', [NOS[1], NOS[3]]);
     expect(pedidos).toHaveLength(0);
-    expect(r).toEqual({ acervo: new Set(), campos: new Map(), funis: new Set(), etapas: new Map() });
+    expect(r).toEqual({
+      acervo: new Set(),
+      campos: new Map(),
+      funis: new Set(),
+      etapas: new Map(),
+      membros: new Set(),
+    });
   });
 });
 
@@ -190,6 +201,7 @@ describe('Mover card — referências', () => {
       [ETAPA, FUNIL],
       [ORIGEM, OUTRO_FUNIL],
     ]),
+    membros: new Set<string>(),
   };
 
   it('tudo existe (a origem pode ser de OUTRO funil) = nenhum problema', () => {
@@ -285,5 +297,108 @@ describe('Mover card — referências', () => {
     const funis = pedidos.find((p) => p.tabela === 'pipelines');
     expect(funis?.filtros).toContainEqual(['account_id', 'acc']);
     expect(problemasDasReferencias([MOVER], r!).map((x) => x.field)).toEqual(['origem_stage_ids']);
+  });
+});
+
+// ============================================================
+// "Atribuir a" do "Transferir para atendente" (2.7): a pessoa escolhida é
+// membro DESTA conta — lida por `profiles.user_id` (o id de login).
+// ============================================================
+
+const MEMBRO = '99999999-9999-4999-8999-999999999999';
+const DE_FORA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+const TRANSFERIR = {
+  node_key: 'closer',
+  node_type: 'handoff',
+  config: { note: 'qualificado', assign_to: MEMBRO },
+};
+
+describe('Transferir — "Atribuir a"', () => {
+  const vazio = {
+    acervo: new Set<string>(),
+    campos: new Map(),
+    funis: new Set<string>(),
+    etapas: new Map<string, string>(),
+  };
+
+  it('colhe o membro escolhido; "ninguém" (vazio ou ausente) não entra', () => {
+    expect(referenciasDoRobo([TRANSFERIR]).membroIds).toEqual([MEMBRO]);
+    expect(
+      referenciasDoRobo([
+        { node_key: 'a', node_type: 'handoff', config: { note: '' } },
+        { node_key: 'b', node_type: 'handoff', config: { assign_to: '  ' } },
+      ]).membroIds,
+    ).toEqual([]);
+  });
+
+  it('membro desta conta = nenhum problema', () => {
+    expect(problemasDasReferencias([TRANSFERIR], { ...vazio, membros: new Set([MEMBRO]) })).toEqual([]);
+  });
+
+  it('CRÍTICO: quem não é desta conta (ou saiu) RECUSA a ativação, com a frase', () => {
+    const p = problemasDasReferencias([TRANSFERIR], { ...vazio, membros: new Set() });
+    expect(p).toHaveLength(1);
+    expect(p[0]).toMatchObject({ severity: 'error', node_key: 'closer', field: 'assign_to' });
+    expect(p[0].message).toMatch(/não é membro desta conta/);
+  });
+
+  it('id sem forma de UUID não vai à consulta, e é recusado como "não é membro"', () => {
+    const lixo = { ...TRANSFERIR, config: { assign_to: 'fulano' } };
+    expect(referenciasDoRobo([lixo]).membroIds).toEqual([]);
+    expect(problemasDasReferencias([lixo], { ...vazio, membros: new Set() }).map((x) => x.field)).toEqual([
+      'assign_to',
+    ]);
+  });
+
+  it('"ninguém" nunca é problema', () => {
+    const ninguem = { ...TRANSFERIR, config: { note: 'x' } };
+    expect(problemasDasReferencias([ninguem], { ...vazio, membros: new Set() })).toEqual([]);
+  });
+
+  it('carrega os membros pela CONTA e pelo user_id (nunca profiles.id)', async () => {
+    const pedidos: Array<{ tabela: string; select: string; filtros: Array<[string, unknown]> }> = [];
+    const db = {
+      from(tabela: string) {
+        const pedido = { tabela, select: '', filtros: [] as Array<[string, unknown]> };
+        pedidos.push(pedido);
+        const b = {
+          select: (c: string) => ((pedido.select = c), b),
+          eq: (c: string, v: unknown) => (pedido.filtros.push([c, v]), b),
+          in: (c: string, v: unknown) => {
+            pedido.filtros.push([c, v]);
+            return Promise.resolve({ data: [{ user_id: MEMBRO }], error: null });
+          },
+        };
+        return b;
+      },
+    } as unknown as SupabaseClient;
+
+    const r = await carregarReferenciasExistentes(db, 'acc', [
+      TRANSFERIR,
+      { ...TRANSFERIR, node_key: 'outro', config: { assign_to: DE_FORA } },
+    ]);
+    expect(r?.membros).toEqual(new Set([MEMBRO]));
+    expect(pedidos).toHaveLength(1);
+    expect(pedidos[0]).toMatchObject({ tabela: 'profiles', select: 'user_id' });
+    expect(pedidos[0].filtros).toContainEqual(['account_id', 'acc']);
+    expect(pedidos[0].filtros).toContainEqual(['user_id', [MEMBRO, DE_FORA]]);
+    expect(problemasDasReferencias([{ ...TRANSFERIR, config: { assign_to: DE_FORA } }], r!).map((x) => x.field)).toEqual([
+      'assign_to',
+    ]);
+  });
+
+  it('leitura de membros que falha = null (pula a conferência)', async () => {
+    const db = {
+      from() {
+        const b = {
+          select: () => b,
+          eq: () => b,
+          in: () => Promise.resolve({ data: null, error: { message: 'timeout' } }),
+        };
+        return b;
+      },
+    } as unknown as SupabaseClient;
+    expect(await carregarReferenciasExistentes(db, 'acc', [TRANSFERIR])).toBeNull();
   });
 });

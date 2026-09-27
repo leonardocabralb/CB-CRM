@@ -10,7 +10,9 @@ import {
   validateStepsForActivation,
   validateChannelScopeForActivation,
   validateTriggerForActivation,
+  validateCustomFieldConditionsForActivation,
 } from '@/lib/automations/validate'
+import { carregarCamposParaCondicoes } from '@/lib/automations/condicao-por-campo'
 import { ehGatilhoDaRegua } from '@/lib/asaas/regua'
 import { normalizarAssinatura } from '@/lib/assinatura/assinatura'
 
@@ -110,6 +112,14 @@ export async function POST(request: Request) {
   // (is_active=false) are allowed to be incomplete so users can save
   // progress mid-build.
   if (is_active) {
+    const passos = (effectiveSteps ?? []) as unknown as {
+      step_type: string
+      step_config: Record<string, unknown>
+    }[]
+    // Condição por campo personalizado (2.10): o campo é DESTA conta? Leitura
+    // que falha pula a conferência — o motor continua sendo a guarda.
+    const campos = await carregarCamposParaCondicoes(supabaseAdmin(), accountId, passos)
+    if (!campos) console.error('[automations] field-condition check skipped: lookup failed')
     const issues = [
       ...validateTriggerForActivation(effectiveTriggerType, effectiveTriggerConfig ?? {}),
       ...validateStepsForActivation(
@@ -124,6 +134,7 @@ export async function POST(request: Request) {
         channelIds,
         await loadAccountChannelsForValidation(supabaseAdmin(), accountId),
       ),
+      ...validateCustomFieldConditionsForActivation(passos, campos),
     ]
     if (issues.length > 0) {
       return NextResponse.json(
