@@ -140,6 +140,8 @@ function proximaRetomada(turnos: Turno[], cadencia: number): number | null {
   if (
     ultima.handoff ||
     ultima.passaPara ||
+    // RETIDA na produção (e o turno transfere): nunca armaria (Codex, PR #328).
+    ultima.pedidoVazado ||
     ultima.linkInventado ||
     ultima.reuniaoPrometida ||
     ultima.acoes?.aceitas.some((a) => a.tipo === ACAO_TRANSFERIR)

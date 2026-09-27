@@ -260,7 +260,10 @@ export function proximaRetomada(args: {
       t = lembrete + FOLGA_DO_LEMBRETE_MS
       continue
     }
-    if (args.fimDaJanelaMeta !== null && t > args.fimDaJanelaMeta - FOLGA_DA_JANELA_META_MS) {
+    // `>=`: o fim vem de minutos TRUNCADOS (`minutosRestantesNoMapa`), então
+    // pode estar até 59 s adiante do real — a borda conta como dentro da folga
+    // (Codex, PR #328).
+    if (args.fimDaJanelaMeta !== null && t >= args.fimDaJanelaMeta - FOLGA_DA_JANELA_META_MS) {
       return { tipo: 'parar', motivo: 'janela_24h' }
     }
     return { tipo: 'agendar', instante: t }

@@ -288,6 +288,10 @@ describe('proximaRetomada — a janela de 24 h da Meta', () => {
     expect(proxima({ ancora, fimDaJanelaMeta: em('2026-09-28', '10:19') })).toEqual({ tipo: 'parar', motivo: 'janela_24h' })
   })
 
+  it('⚠️ exatamente na borda da folga (vence 10:15, fecha 10:20): para — o fim vem de minutos truncados', () => {
+    expect(proxima({ ancora, fimDaJanelaMeta: em('2026-09-28', '10:20') })).toEqual({ tipo: 'parar', motivo: 'janela_24h' })
+  })
+
   it('aberta depois do vencimento: sai', () => {
     expect(proxima({ ancora, fimDaJanelaMeta: em('2026-09-28', '10:21') })).toEqual({ tipo: 'agendar', instante: em('2026-09-28', '10:15') })
   })
