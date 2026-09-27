@@ -212,6 +212,16 @@ lead → mql → reuniao → proposta → contrato
 Mais uma classe negativa, `perda`, e a ausência de classe (a etapa **não
 conta** no funil de eficiência — ex.: uma etapa de estacionamento).
 
+> **Desde a 1054 (26/09/2026, C1 e C2 do `docs/PLANO-previdenciario.md`,
+> Fase 6):** um sexto degrau, `pasta`, DEPOIS de `contrato` — opcional
+> ("Pasta fechada" no previdenciário, "Processo protocolado" no
+> Trabalhista). Ele é FECHAMENTO: "fechado" inclui a pasta e "alcançou
+> contrato" é ≥ contrato, então remapear uma etapa de contrato para pasta
+> não muda o CAC. E cada funil configura o próprio painel
+> (`pipelines.painel`: rótulo livre por degrau, degraus que não se aplicam,
+> cartões de custo). As regras estão em `.claude/rules/funil-metricas.md`;
+> o bloco SQL abaixo é o da 975.
+
 Cada `pipeline_stages` ganha **uma** coluna, `degrau`, nula por padrão:
 
 ```sql

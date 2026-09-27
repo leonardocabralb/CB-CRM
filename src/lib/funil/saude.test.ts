@@ -234,3 +234,36 @@ describe("escalaRelativa (cor relativa à linha, D6)", () => {
     expect(coortePequena(COORTE_PEQUENA)).toBe(false);
   });
 });
+
+describe("pasta (1054) na Saúde", () => {
+  const COM_PASTA = classificarEtapas([
+    { id: "lead", name: "Lead", position: 0, degrau: "lead" },
+    { id: "contrato", name: "Contrato", position: 1, degrau: "contrato" },
+    { id: "pasta", name: "Pasta", position: 2, degrau: "pasta" },
+  ]);
+  // agosto: 5 contratos, 3 viram pasta em setembro
+  const linhas = [1, 2, 3, 4, 5].map((i) =>
+    negocio(`p${i}`, [
+      ["lead", d(7, i)],
+      ["contrato", d(7, i + 5)],
+      ...(i <= 3 ? ([["pasta", d(8, i)]] as [string, Date][]) : []),
+    ]),
+  );
+  const fatos = linhas.map((l) => fatosDoNegocio(l, FUNIL, COM_PASTA));
+
+  it("a linha contrato → pasta entra; a global continua lead → contrato", () => {
+    expect(transicoesDoHistorico(COM_PASTA)).toEqual([
+      { de: "lead", para: "contrato", global: false },
+      { de: "contrato", para: "pasta", global: false },
+      { de: "lead", para: "contrato", global: true },
+    ]);
+  });
+
+  it("por período, a pasta conta no mês do protocolo e o contrato no da assinatura", () => {
+    const meses = coortesMensais(fatos, COM_PASTA, 2, AGORA, "periodo");
+    expect(meses.map((m) => m.resumo.fechados)).toEqual([5, 0]);
+    expect(meses.map((m) => m.resumo.porDegrau.find((x) => x.degrau === "pasta")?.alcancaram)).toEqual([0, 3]);
+    // todos os cinco continuam "fechados" hoje — três deles na pasta
+    expect(fatos.every((f) => f.situacao === "fechado")).toBe(true);
+  });
+});

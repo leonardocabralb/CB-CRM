@@ -1240,6 +1240,17 @@
       "stageDegrau": "Efficiency funnel",
       "stageDegrauHint": "Which step of the efficiency funnel this stage maps to. Several stages may map to the same step; a stage without a step is not counted in Performance.",
       "semLead": "No stage is marked as Lead: Performance and Health for this pipeline stay empty until this is configured.",
+      "painel": "Performance and Health dashboard",
+      "painelDica": "How this pipeline shows up on the dashboards. A label applies to this pipeline only; left empty, the step keeps its default name.",
+      "painelDegraus": "Steps",
+      "painelRotulo": "Label for {degrau}",
+      "painelNaoSeAplica": "Does not apply",
+      "painelNaoSeAplicaDica": "With no stage in this step, its card leaves Performance instead of asking for setup.",
+      "painelComEtapa": "This step has a stage: its card shows even when marked.",
+      "painelOpcional": "optional",
+      "painelOpcionalDica": "Optional step, after the contract: with no stage in it, its card does not show.",
+      "painelCustos": "Cost cards (shown with Meta Ads connected)",
+      "painelCustosDica": "A step's cost only shows when the step has a stage.",
       "toastStageMappedWithHistory": "This stage is mapped to the efficiency funnel and has deal history: deleting it would erase that history from Performance. Set its step to \"Not counted\" and save before removing, or keep the stage.",
       "deletePipelineChannels": "These connections put clients into this pipeline: {channels}. Once deleted, they stop creating deals until you point them at another pipeline in Settings › Connections.",
       "toastStageIsChannelEntry": "This stage is the entry point for {channels}. Pick another entry stage in Settings › Connections before deleting it."
@@ -1329,6 +1340,7 @@
         "reuniao": "Meeting",
         "proposta": "Proposal",
         "contrato": "Contract",
+        "pasta": "Case filed",
         "perda": "Loss"
       },
       "situacao": {
@@ -1381,6 +1393,7 @@
           "doAnterior": "{pct} of {degrau}",
           "semEtapa": "No matching stage",
           "etapas": "Stages: {nomes}",
+          "custo": "{valor} per {degrau}",
           "notaPorPeriodo": "Each step counts who reached it for the first time in the period. Rates compare what happened in the same period and can go above 100% when contracts come from leads of earlier months — lead-by-lead conversion is under “By entry month”."
         },
         "negativos": {
@@ -1402,7 +1415,7 @@
           "subtitulo": "current vs previous",
           "atual": "Current period",
           "anterior": "Previous period",
-          "global": "Lead → Contract (overall)"
+          "global": "{de} → {para} (overall)"
         },
         "entradas": {
           "titulo": "Lead entries in the period",
@@ -1416,7 +1429,9 @@
           "custoDosPerdidos": "Cost of lost leads",
           "campanhasDoFunil": "{n} campaign(s) of this pipeline",
           "porLead": "spend ÷ leads",
-          "porContrato": "spend ÷ contracts",
+          "porContrato": "spend ÷ standing contracts",
+          "porDegrau": "spend ÷ {n} who got there",
+          "porContratoAssinado": "spend ÷ {n} contract(s) reached",
           "porPerdido": "cost per lead × lost",
           "porPerdidoNoPeriodo": "cost per lead × this period's leads already lost",
           "semFunil": "{valor} in {n} campaign(s) without a pipeline in the period — assign them in Integrations so cost per lead is right.",
@@ -1430,6 +1445,14 @@
         },
         "periodoPorAtividade": "Counts what happened in the period (each lead once per step)",
         "semAtividade": "Nothing happened in this pipeline in the period: no lead entered, advanced or was lost."
+      },
+      "cartoesDeCusto": {
+        "investimento": "Spend",
+        "lead": "Cost per lead",
+        "porDegrau": "Cost per {degrau}",
+        "contrato": "Cost per signed contract",
+        "cac": "CAC (standing contract)",
+        "perdidos": "Cost of lost leads"
       },
       "saude": {
         "periodo": "Last {meses} months, by funnel entry month",
@@ -1452,6 +1475,13 @@
           "emAberto": "{n} open",
           "pequena": "fewer than {minimo} leads: rate not reliable",
           "pequenaPorPeriodo": "rate over fewer than {minimo} in the month: not reliable"
+        },
+        "custos": {
+          "titulo": "Costs per month",
+          "subtitulo": "ad spend ÷ each count, month by month",
+          "nota": "The same math as Performance, in the counting mode chosen above. A month without a denominator shows “—”. Hover to see the full amount.",
+          "semCartoes": "Every cost card is hidden for this pipeline (Manage pipeline › Dashboard).",
+          "carregando": "Loading ad spend…"
         },
         "periodoPorAtividade": "Last {meses} months, by the month each step happened",
         "fontePorPeriodo": "Stages follow the mapping of the {funil} pipeline. Each month shows what happened in it; a closed month no longer changes, and the current month is still running. A rate can go above 100% when the month's contracts come from earlier leads."
