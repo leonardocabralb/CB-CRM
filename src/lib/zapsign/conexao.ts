@@ -26,8 +26,9 @@ import { EVENTO_ASSINADO } from "./leitura";
  * webhook que já existe (o ZapSign não tem rota de listar webhooks — o id
  * guardado é a única memória dele). Token de outra conta do ZapSign = o
  * webhook antigo é apagado com o token ANTIGO e um novo é criado. O token da
- * URL e a credencial são reaproveitados sempre que legíveis: um webhook vivo
- * continua autenticando.
+ * URL é reaproveitado sempre; a credencial, só com o MESMO token (um webhook
+ * vivo continua autenticando, e o de outra conta do ZapSign deixa de
+ * autenticar).
  */
 
 export const TIPO_DO_WEBHOOK = EVENTO_ASSINADO;
@@ -127,7 +128,7 @@ export async function conectarZapSign(
     console.warn("[zapsign] plano não lido:", e instanceof Error ? e.message : e);
   }
 
-  // 2) O que já havia: token da URL, credencial e webhook são reaproveitados.
+  // 2) O que já havia: o token da URL e o webhook são reaproveitados.
   const { data: anterior, error: erroLeitura } = await admin
     .from("cb_zapsign_config")
     .select("api_token, webhook_url_token, webhook_secret, webhook_id, webhook_estado")
@@ -137,8 +138,13 @@ export async function conectarZapSign(
 
   const tokenDaUrl = typeof anterior?.webhook_url_token === "string" && anterior.webhook_url_token ? anterior.webhook_url_token : gerarTokenDaUrl();
   const segredoAntigo = decifrar(anterior?.webhook_secret);
-  const segredo = segredoAntigo ?? gerarTokenDeAutenticacao();
   const tokenAntigo = decifrar(anterior?.api_token);
+  // A credencial só é reaproveitada com o MESMO token. Token de outra conta
+  // do ZapSign = credencial nova: o webhook da conta antiga, se sobrar (troca
+  // feita fora do host público, ou apagar que falhou), passa a levar 401 em
+  // vez de continuar autenticando e marcando o webhook como ativo (Codex, PR
+  // #329).
+  const segredo = segredoAntigo !== null && tokenAntigo === token ? segredoAntigo : gerarTokenDeAutenticacao();
   const idAntigo = typeof anterior?.webhook_id === "string" && anterior.webhook_id ? anterior.webhook_id : null;
 
   // 3) O webhook.
@@ -151,11 +157,11 @@ export async function conectarZapSign(
     if (naoCriar) {
       // Nada se mexe no ZapSign daqui. Com o token trocado, o webhook antigo
       // (da outra conta) deixa de ser "o nosso ativo"; com a credencial nova
-      // (a antiga ilegível), ele manda a velha e a rota o recusa.
+      // (token trocado, ou a antiga ilegível), ele manda a velha e a rota o recusa.
       if (tokenAntigo !== token || segredoAntigo === null) estado = "ausente";
       webhookErro = estado === "ativo" ? null : naoCriar;
     } else {
-      if (idAntigo) await apagarWebhook(fabrica(tokenAntigo ?? token, [segredo]), idAntigo);
+      if (idAntigo) await apagarWebhook(fabrica(tokenAntigo ?? token, [segredo, ...(segredoAntigo ? [segredoAntigo] : [])]), idAntigo);
       try {
         const criado = await fabrica(token, [segredo]).criarWebhook({
           url: urlDoWebhook(opcoes.origem as string, tokenDaUrl),

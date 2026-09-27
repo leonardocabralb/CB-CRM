@@ -27,7 +27,8 @@ import { variaveisDasRespostas } from "@/lib/zapsign/variaveis";
  *      recebeu 200, e a cópia não pode disparar de novo;
  *   5. responde 200 e processa em `after()`.
  *
- * ⚠️ 404 e 401 são as únicas recusas. Corpo ilegível, outro evento e forma
+ * ⚠️ 404 e 401 são as únicas recusas; 429 (o balde por IP, antes de gravar)
+ * pede para o ZapSign tentar de novo. Corpo ilegível, outro evento e forma
  * estranha respondem 200 com log: o ZapSign retenta tudo o que não é 200, e
  * retentar um corpo que nunca vai ser lido é só ruído.
  */
@@ -36,11 +37,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   if (!RE_TOKEN.test(token)) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
   // Antes do banco, um balde por IP de ORIGEM: quem tiver só a URL não força
-  // leitura + decifragem sem limite (o molde do Asaas). 200 `adiado`, e não
-  // 429: só credencial inválida vale 4xx num webhook de provedor.
+  // leitura + decifragem sem limite (o molde do Asaas). ⚠️ 429, e não 200:
+  // aqui a entrega ainda NÃO foi gravada, e um 200 diria ao ZapSign que ela
+  // chegou — sem ciclo de reconciliação, a assinatura se perderia (Codex, PR
+  // #329). O ZapSign retenta o que não é 200.
   const ip = (request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "desconhecido").slice(0, 64);
   if (!checkRateLimit(`zapsign:webhook:ip:${ip}`, RATE_LIMITS.zapsignWebhookPorIp).success) {
-    return NextResponse.json({ ok: true, adiado: true });
+    return NextResponse.json({ error: "rate_limited" }, { status: 429, headers: { "Retry-After": "60" } });
   }
 
   const admin = supabaseAdmin();

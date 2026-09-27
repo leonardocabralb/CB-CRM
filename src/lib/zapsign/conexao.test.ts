@@ -119,6 +119,18 @@ describe("conectarZapSign", () => {
     expect(config().webhook_id).not.toBe(idAntigo);
   });
 
+  it("token de OUTRA conta trocado fora do host público: credencial nova, webhook ausente", async () => {
+    await conectarZapSign(banco.cliente, CONTA, "u1", TOKEN, publico);
+    const antes = { ...config() };
+    chamadas = [];
+    const r = await conectarZapSign(banco.cliente, CONTA, "u1", OUTRO_TOKEN, doPreview);
+    expect(r).toMatchObject({ ok: true, webhook: "ausente", webhookErro: "fora_do_host" });
+    expect(chamadas.filter((x) => x.metodo !== "modelos" && x.metodo !== "plano")).toEqual([]);
+    // O token da URL fica; a credencial muda — o webhook da conta antiga passa a levar 401.
+    expect(config().webhook_url_token).toBe(antes.webhook_url_token);
+    expect(config().webhook_secret).not.toBe(antes.webhook_secret);
+  });
+
   it("criação recusada pelo ZapSign: conectado, com o webhook em erro e o motivo", async () => {
     falhaDaCriacao = new ZapSignError("zapsign_error", "400");
     const r = await conectarZapSign(banco.cliente, CONTA, "u1", TOKEN, publico);

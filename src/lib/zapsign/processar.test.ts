@@ -205,6 +205,8 @@ describe("resultadoDoDisparo", () => {
     expect(resultadoDoDisparo({ executadas: 2, foraDoEscopo: 0, comFalha: 1, emEspera: 1 }).resultado).toBe("falhou");
     expect(resultadoDoDisparo({ executadas: 1, foraDoEscopo: 0, comFalha: 0, emEspera: 1 }).resultado).toBe("em_espera");
     expect(resultadoDoDisparo({ executadas: 0, foraDoEscopo: 1, comFalha: 0, emEspera: 0 }).resultado).toBe("sem_automacao");
-    expect(resultadoDoDisparo({ executadas: 0, foraDoEscopo: 0, comFalha: 0, emEspera: 0, erro: "x" }).resultado).toBe("falhou");
+    // Erro sem nada executado: o motor recusou antes da primeira automação — reprocessável.
+    expect(resultadoDoDisparo({ executadas: 0, foraDoEscopo: 0, comFalha: 0, emEspera: 0, erro: "x" }).resultado).toBe("recebido");
+    expect(resultadoDoDisparo({ executadas: 1, foraDoEscopo: 0, comFalha: 1, emEspera: 0, erro: "x" }).resultado).toBe("falhou");
   });
 });

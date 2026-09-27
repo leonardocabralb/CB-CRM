@@ -77,7 +77,14 @@ export function resultadoDoDisparo(r: {
   emEspera: number;
   erro?: string;
 }): Pick<ResultadoParaGravar, "resultado" | "detalhe"> {
-  if (r.erro) return { resultado: "falhou", detalhe: `o disparo não aconteceu: ${r.erro}` };
+  // Erro com NADA executado é o motor recusando antes da primeira automação
+  // (conferência do contato ou da conversa, leitura das automações): repetir
+  // é seguro, então fica `recebido` — `falhou` não é reprocessável, e a
+  // assinatura que completou o documento não chega de novo (Codex, PR #329).
+  if (r.erro && r.executadas === 0) {
+    return { resultado: "recebido", detalhe: `o disparo não aconteceu: ${r.erro} — use "Processar de novo"` };
+  }
+  if (r.erro) return { resultado: "falhou", detalhe: `o disparo não terminou: ${r.erro}` };
   if (r.executadas === 0) {
     return {
       resultado: "sem_automacao",
