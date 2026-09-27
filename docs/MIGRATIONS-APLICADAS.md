@@ -835,7 +835,7 @@ nome da época em que foram aplicadas.
   de `ai_knowledge_documents` que a FK exige, as buscas
   `cb_ia_buscar_conhecimento_semantico`/`_fts` (só os documentos do agente;
   agente nulo = nada; por palavras em OU) e `cb_ia_turnos.contexto`. Era 1050
-  (a 1050 virou a da rajada; a 1051 foi reservada pelo Previdenciário).
+  (a 1050 virou a da rajada; a 1051 não existe — o Previdenciário usou a 1053).
   Aplicada em 26/09/2026 pela Management API (histórico `20260926221248`),
   depois do replay verde do CI e antes do merge do PR #312, com autorização
   do operador; conferida no catálogo (RLS sem policy, `anon`/`authenticated`

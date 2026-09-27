@@ -4335,7 +4335,7 @@
       "teto": "É o máximo por agente ({n} documentos): para marcar outro, desmarque um."
     },
     "ferramentas": {
-      "explicacao": "O que este agente pode FAZER junto com a resposta, e com o quê. Nada ligado = o agente só conversa. Ele nunca fecha negócio, nunca manda mensagem para outro número e nunca mexe no Asaas.",
+      "explicacao": "O que este agente pode FAZER junto com a resposta, e com o quê. Nada ligado = o agente só conversa. As ações rodam depois de a resposta sair. Ele nunca fecha negócio, nunca manda mensagem para outro número e nunca mexe no Asaas — nem pelas automações que uma ação dispara.",
       "soConversa": "Nada ligado: hoje este agente só conversa.",
       "falhou": "Não foi possível carregar as opções.",
       "buscar": "Buscar…",
@@ -4384,8 +4384,22 @@
       "bloqueio": {
         "etapaDeResultado": "Etapa de ganho/perdido — a IA não fecha negócio.",
         "campoVigiado": "Data vigiada por um lembrete — a automação do lembrete dispararia depois, sozinha.",
-        "foraDaD5": "Indisponível: {motivo}."
+        "foraDaD5": "Indisponível: {motivo}.",
+        "aguardar": "Indisponível: tem um passo “Aguardar” — a IA só executa automação que termina na hora (a retomada não confere o agente).",
+        "cascata": {
+          "etapa": "Indisponível: uma automação que dispara quando o card entra nesta etapa {motivo}.",
+          "etiquetar": "Indisponível: uma automação que dispara quando esta etiqueta é aplicada {motivo}.",
+          "tirar": "Indisponível: uma automação que dispara quando esta etiqueta sai do contato {motivo}."
+        }
       },
+      "campo": {
+        "text": "Texto",
+        "datetime": "Data",
+        "select": "Lista",
+        "number": "Número",
+        "email": "E-mail"
+      },
+      "campoOpcoes": "Opções: {opcoes}",
       "foraDaD5": {
         "send_to_number": "manda mensagem para outro número",
         "send_webhook": "envia dados para fora do CRM (webhook)",
@@ -4393,6 +4407,7 @@
         "etapa_de_resultado": "move o card para etapa de ganho ou perdido",
         "run_flow": "inicia um robô (fluxo)",
         "campo_vigiado": "preenche uma data vigiada por lembrete",
+        "aguardar": "tem um passo “Aguardar”",
         "outro": "tem um passo que a IA não pode disparar"
       },
       "recusa": {
@@ -4439,6 +4454,10 @@
         "preencher_campo": "preencher {nome}",
         "criar_tarefa": "tarefa para {nome}",
         "executar_automacao": "executar {nome}"
+      },
+      "acaoComValor": {
+        "preencher_campo": "preencher {nome} = {valor}",
+        "criar_tarefa": "tarefa para {nome}: {valor}"
       },
       "acaoDesconhecida": "{tipo}: {nome}"
     },
@@ -4495,7 +4514,29 @@
         "falhas": "{n, plural, one {# falhou} other {# falharam}}",
         "ok": "Feita",
         "falhou": "Falhou",
-        "semAlvo": "(sem nome)"
+        "semAlvo": "(sem nome)",
+        "erro": {
+          "sem_card": "o contato não tem card aberto",
+          "card_fechado": "o card já estava ganho ou perdido",
+          "item_de_outra_conta": "o item não existe mais nesta conta",
+          "etapa_de_resultado": "a etapa é de ganho ou perdido — a IA não fecha negócio",
+          "campo_vigiado": "o campo de data é vigiado por um lembrete",
+          "valor_vazio": "o valor veio vazio (valor vazio não apaga)",
+          "valor_invalido": "o valor não serve para o tipo do campo",
+          "titulo_invalido": "o título da tarefa veio vazio ou longo demais",
+          "automacao_fora_da_d5": "não executada: a automação {motivo}",
+          "cascata_fora_da_d5": "não feita: uma automação que esta ação dispararia {motivo}",
+          "automacao_desligada": "a automação está desligada",
+          "fora_da_conexao": "a automação não vale para a conexão desta conversa",
+          "fora_da_etapa": "a automação não vale para a etapa em que o card está",
+          "envio_falhou": "a resposta não saiu, então a ação não rodou",
+          "recusado": "a escrita foi recusada",
+          "falhou": "a ação falhou",
+          "desconhecido": "não concluída ({erro})",
+          "semCodigo": "não concluída"
+        },
+        "comDetalhe": "{texto} — {detalhe}",
+        "jaEstava": "o card já estava nessa etapa"
       },
       "statusDesconhecido": "Outro ({status})",
       "status": {
@@ -4555,7 +4596,8 @@
       "etapa_de_resultado": "Etapa de ganho ou perdido não pode ser liberada: a IA não fecha negócio.",
       "item_de_outra_conta": "Um dos itens marcados não existe mais nesta conta. Recarregue a página e confira.",
       "campo_vigiado": "Campo de data vigiado por um lembrete não pode ser liberado: a automação do lembrete dispararia depois, fora do controle da IA.",
-      "automacao_fora_da_d5": "Uma automação marcada tem passo que a IA não pode disparar (outro número, webhook, ganho/perdido ou robô).",
+      "automacao_fora_da_d5": "Uma automação marcada tem passo que a IA não pode disparar (outro número, webhook, ganho/perdido, robô ou “Aguardar”).",
+      "cascata_fora_da_d5": "Uma etapa ou etiqueta marcada dispara uma automação com passo que a IA não pode disparar (outro número, webhook, ganho/perdido ou robô). Desmarque o que ficou em vermelho.",
       "invalid_key": "O provedor recusou a chave.",
       "rate_limited": "O provedor pediu para esperar — tente em instantes.",
       "timeout": "O provedor não respondeu a tempo.",

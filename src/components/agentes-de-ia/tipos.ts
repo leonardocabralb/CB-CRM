@@ -42,28 +42,51 @@ export interface ContextoDoTurno {
 /**
  * O que a sub-aba Ferramentas (F4, D28) oferece para marcar
  * (`GET /api/cb/ia/agentes/[id]/ferramentas/opcoes`). Quem decide o que a D5
- * proíbe é o SERVIDOR: etapa com `resultado`, campo `vigiado` por lembrete e
- * automação `foraDaD5` (o código do passo) — a tela só mostra.
+ * proíbe é o SERVIDOR: etapa com `resultado`, campo `vigiado` por lembrete,
+ * automação `foraDaD5` (o código do passo) e a CASCATA — etapa ou etiqueta
+ * `foraDaD5` porque uma automação que dispara ao entrar nela, ao aplicá-la ou
+ * ao tirá-la (ou algo que essa automação aciona) sai da D5. A tela só mostra.
+ * Os códigos ficam `string` (vêm da rede): código novo cai no texto "outro".
  */
 export interface OpcoesDasFerramentas {
-  etapas: Array<{ id: string; nome: string; funil: string; resultado: 'ganho' | 'perdido' | null }>
-  etiquetas: Array<{ id: string; nome: string }>
-  campos: Array<{ id: string; nome: string; vigiado: boolean }>
+  etapas: Array<{
+    id: string
+    nome: string
+    funil: string
+    resultado: 'ganho' | 'perdido' | null
+    /** A cascata: uma automação de ENTRADA na etapa sai da D5. */
+    foraDaD5: string | null
+  }>
+  etiquetas: Array<{
+    id: string
+    nome: string
+    /** A cascata, separada para aplicar e para tirar a etiqueta. */
+    foraDaD5: { etiquetar: string | null; tirar: string | null }
+  }>
+  /** `tipo` = `custom_fields.field_type` (nulo = não veio); `opcoes` = as da lista. */
+  campos: Array<{ id: string; nome: string; vigiado: boolean; tipo: string | null; opcoes: string[] }>
   membros: Array<{ userId: string; nome: string }>
   automacoes: Array<{ id: string; nome: string; foraDaD5: string | null }>
 }
 
-/** Uma ação que o agente EXECUTOU num turno (`cb_ia_turnos.acoes`, F4). */
+/**
+ * Uma ação que o agente EXECUTOU num turno (`cb_ia_turnos.acoes`, F4).
+ * `erro` fica `string`: vem do jsonb, de qualquer versão do servidor — quem o
+ * traduz é `textoDoErroDaAcao`, que cai no genérico para código desconhecido.
+ * `detalhe` é o complemento cru (o passo da D5, `ja_estava`, o texto do motor).
+ */
 export interface AcaoDoTurno {
   tipo: string
   alvo: { id: string | null; nome: string }
   ok: boolean
   erro?: string
+  detalhe?: string
 }
 
 /** As ações de uma resposta do Playground — SIMULADAS, nada executa ali (F4). */
 export interface AcoesSimuladas {
-  aceitas: Array<{ tipo: string; nome: string }>
+  /** `valor`: o valor do campo ou o título da tarefa. */
+  aceitas: Array<{ tipo: string; nome: string; valor?: string }>
   recusadas: Array<{ tipo: string; motivo: string }>
 }
 

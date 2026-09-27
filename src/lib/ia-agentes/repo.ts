@@ -54,6 +54,7 @@ export class ErroDoAgente extends Error {
       | 'item_de_outra_conta'
       | 'campo_vigiado'
       | 'automacao_fora_da_d5'
+      | 'cascata_fora_da_d5'
       | 'banco',
     mensagem: string,
     /** No `etapa_ocupada`: o nome do agente que já atua na etapa (a tela o diz). */

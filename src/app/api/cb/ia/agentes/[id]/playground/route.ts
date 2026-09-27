@@ -185,14 +185,16 @@ export async function POST(request: Request, { params }: Contexto) {
       iaAgenteNome: agente.nome,
     })
 
-    // A régua do turno: a transferência vence a passagem, o marcador nunca é
+    // A régua do turno: a transferência vence a passagem (inclusive o
+    // sentinela escrito de outro jeito, `[[ handoff ]]`), o marcador nunca é
     // mostrado como resposta, e passar para um número que não existe transfere.
-    const n = resultado.handoff ? null : lerPassagem(resultado.text)
-    const destino = n === null ? null : (opcoes[n - 1] ?? null)
     // As ações (F4), SÓ resolvidas: nada executa no Playground. Resposta sem
     // texto além dos marcadores transfere, como no turno.
     const lidas = lerAcoes(resultado.text)
-    const transfere = resultado.handoff || (n !== null && !destino) || (n === null && !lidas.texto)
+    const sentinela = resultado.handoff || lidas.transferir
+    const n = sentinela ? null : lerPassagem(resultado.text)
+    const destino = n === null ? null : (opcoes[n - 1] ?? null)
+    const transfere = sentinela || (n !== null && !destino) || (n === null && !lidas.texto)
     const inventou = !transfere && n === null && linkInventado(lidas.texto, [pedido, ...mensagens.map((m) => m.content)])
     const resolvidas = resolverAcoes(lidas.pedidas, opcoesDeAcao)
     // Com passagem, transferência ou link inventado, no turno nada executa.

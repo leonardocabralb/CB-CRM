@@ -1990,6 +1990,11 @@ describe('executarTurno — as ações (F4, D28)', () => {
   const pedido = () => vi.mocked(generateReply).mock.calls[0][0].systemPrompt as string
   const responde = (text: string) =>
     vi.mocked(generateReply).mockResolvedValue({ text, handoff: false, usage: null })
+  /** As aceitas que NÃO executaram, como o registro as guarda. */
+  const naoExecutadas = (erro: string) => [
+    { tipo: 'mover_etapa', alvo: { id: ETAPA_DESTINO, nome: 'Comercial · Cobrança' }, ok: false, erro },
+    { tipo: 'etiquetar', alvo: { id: 'tag-vip', nome: 'VIP' }, ok: false, erro },
+  ]
 
   beforeEach(() => {
     vi.mocked(opcoesDoAgente).mockResolvedValue(OPCOES)
@@ -2012,7 +2017,25 @@ describe('executarTurno — as ações (F4, D28)', () => {
     expect(pedido()).not.toContain(ETAPA_DESTINO)
   })
 
-  it('as aceitas executam DEPOIS da reserva e ANTES do envio, com os ids do servidor; o texto sai SEM marcador', async () => {
+  it('⚠️ as aceitas executam DEPOIS de a resposta SAIR, com os ids do servidor; o texto sai SEM marcador', async () => {
+    const ordem: string[] = []
+    vi.mocked(engineSendText).mockImplementation(async (args) => {
+      ordem.push('envio')
+      args.antesDoProvedor?.()
+      await args.aoSair?.('wamid.resposta')
+      return { whatsapp_message_id: 'wamid.resposta' }
+    })
+    vi.mocked(executarAcoes).mockImplementation(async (_db, _ctx, aceitas) => {
+      ordem.push('ações')
+      return {
+        registros: aceitas.map((a) => ({ tipo: a.tipo, alvo: { id: a.id, nome: a.nome }, ok: true })),
+        moveu: true,
+      }
+    })
+    vi.mocked(drenarEventosDeFunil).mockImplementation(async () => {
+      ordem.push('dreno')
+      return {} as Awaited<ReturnType<typeof drenarEventosDeFunil>>
+    })
     responde('Pronto, anotei!\n\n[[MOVER:1]]\n[[ETIQUETAR:1]]')
     await executarTurno(TURNO)
     expect(turno().status).toBe('respondeu')
@@ -2031,12 +2054,9 @@ describe('executarTurno — as ações (F4, D28)', () => {
       { tipo: 'mover_etapa', id: ETAPA_DESTINO, nome: 'Comercial · Cobrança' },
       { tipo: 'etiquetar', id: 'tag-vip', nome: 'VIP' },
     ])
-    // A ordem: reserva → ações → envio.
-    const reserva = banco.rpcChamadas.findIndex((c) => c.nome === 'cb_ia_reservar_envio')
-    expect(reserva).toBeGreaterThanOrEqual(0)
-    expect(vi.mocked(executarAcoes).mock.invocationCallOrder[0]).toBeLessThan(
-      vi.mocked(engineSendText).mock.invocationCallOrder[0],
-    )
+    // A ordem: reserva → envio → ações → dreno do funil.
+    expect(banco.rpcChamadas.some((c) => c.nome === 'cb_ia_reservar_envio')).toBe(true)
+    expect(ordem).toEqual(['envio', 'ações', 'dreno'])
     // O registro das ações, no turno.
     expect(turno().acoes).toEqual([
       { tipo: 'mover_etapa', alvo: { id: ETAPA_DESTINO, nome: 'Comercial · Cobrança' }, ok: true },
@@ -2044,19 +2064,35 @@ describe('executarTurno — as ações (F4, D28)', () => {
     ])
   })
 
-  it('card movido: a fila do funil é drenada DEPOIS da resposta', async () => {
-    responde('Pronto!\n[[MOVER:1]]')
+  it('a enviada sem registro (a mensagem SAIU): as ações executam', async () => {
+    responde('Pronto!\n[[ETIQUETAR:1]]')
+    vi.mocked(engineSendText).mockImplementation(async (args) => {
+      args.antesDoProvedor?.()
+      await args.aoSair?.('wamid.resposta')
+      throw new EnviadaSemRegistroError('wamid.resposta', 'insert falhou')
+    })
     await executarTurno(TURNO)
-    expect(drenarEventosDeFunil).toHaveBeenCalledTimes(1)
-    expect(vi.mocked(engineSendText).mock.invocationCallOrder[0]).toBeLessThan(
-      vi.mocked(drenarEventosDeFunil).mock.invocationCallOrder[0],
-    )
+    expect(turno().status).toBe('respondeu')
+    expect(executarAcoes).toHaveBeenCalledTimes(1)
+  })
+
+  it.each<[string, () => void, string]>([
+    ['recusado (4xx: nada saiu)', () => envioFalhaNoProvedor(new EvolutionApiError('número inválido', 400)), 'falhou'],
+    ['incerto (5xx: pode ter saído)', () => envioFalhaNoProvedor(new EvolutionApiError('bad gateway', 502)), 'incerto'],
+  ])('⚠️ envio %s: NENHUMA ação executa, e as aceitas vão ao registro como `envio_falhou`', async (_r, falhar, status) => {
+    responde('Pronto!\n[[MOVER:1]]\n[[ETIQUETAR:1]]')
+    falhar()
+    await executarTurno(TURNO)
+    expect(turno().status).toBe(status)
+    expect(executarAcoes).not.toHaveBeenCalled()
+    expect(drenarEventosDeFunil).not.toHaveBeenCalled()
+    expect(turno().acoes).toEqual(naoExecutadas('envio_falhou'))
   })
 
   it('⚠️ default-deny: número fora da lista e tipo não liberado são RECUSADOS e registrados, nunca executados', async () => {
     responde('Ok!\n[[MOVER:5]]\n[[AUTOMACAO:1]]\n[[TIRAR:x]]')
     await executarTurno(TURNO)
-    expect(vi.mocked(executarAcoes).mock.calls[0][2]).toEqual([])
+    expect(executarAcoes).not.toHaveBeenCalled()
     expect(turno().acoes).toEqual([
       { tipo: 'tirar_etiqueta', alvo: { id: null, nome: '' }, ok: false, erro: 'malformada' },
       { tipo: 'mover_etapa', alvo: { id: null, nome: '#5' }, ok: false, erro: 'fora_da_lista' },
@@ -2082,32 +2118,62 @@ describe('executarTurno — as ações (F4, D28)', () => {
     expect(engineSendText).not.toHaveBeenCalled()
   })
 
-  it('a transferência (sentinela) VENCE: as ações não executam', async () => {
-    vi.mocked(generateReply).mockResolvedValue({ text: 'Um momento [[MOVER:1]]', handoff: true, usage: null })
+  it('o teto da reserva transfere: as ações vão ao registro como `transferencia`', async () => {
+    responde('Pronto!\n[[MOVER:1]]\n[[ETIQUETAR:1]]')
+    agenteLido().teto_respostas = 2
+    banco.tabelas.messages.push(respostaDoAgente('r1', 50_000), respostaDoAgente('r2', 40_000))
     await executarTurno(TURNO)
-    expect(turno()).toMatchObject({ status: 'transferiu', erro: 'sentinela' })
+    expect(turno()).toMatchObject({ status: 'transferiu', erro: 'teto', acoes: naoExecutadas('transferencia') })
     expect(executarAcoes).not.toHaveBeenCalled()
   })
 
-  it('a passagem VENCE: as ações não executam, e o marcador não sai', async () => {
+  it('a transferência (sentinela) VENCE: as ações não executam, e vão ao registro como `transferencia`', async () => {
+    vi.mocked(generateReply).mockResolvedValue({ text: 'Um momento [[MOVER:1]]', handoff: true, usage: null })
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({ status: 'transferiu', erro: 'sentinela' })
+    expect(turno().acoes).toEqual([
+      { tipo: 'mover_etapa', alvo: { id: ETAPA_DESTINO, nome: 'Comercial · Cobrança' }, ok: false, erro: 'transferencia' },
+    ])
+    expect(executarAcoes).not.toHaveBeenCalled()
+  })
+
+  it.each(['Um momento, por favor. [[ handoff ]]', 'Já chamo alguém [[Handoff]] [[MOVER:1]]', 'Ok [HANDOFF]'])(
+    '⚠️ o sentinela escrito de outro jeito também transfere, sem enviar: %s',
+    async (texto) => {
+      responde(texto)
+      await executarTurno(TURNO)
+      expect(turno()).toMatchObject({ status: 'transferiu', erro: 'sentinela' })
+      expect(engineSendText).not.toHaveBeenCalled()
+      expect(executarAcoes).not.toHaveBeenCalled()
+    },
+  )
+
+  it('a passagem VENCE: as ações não executam (registradas como `passagem`), e o marcador não sai', async () => {
     responde('Vou te passar. [[PASSAR:1]] [[MOVER:1]]')
     await executarTurno(TURNO)
     expect(executarAcoes).not.toHaveBeenCalled()
     expect(engineSendText).not.toHaveBeenCalled()
+    expect(turno().acoes).toEqual([
+      { tipo: 'mover_etapa', alvo: { id: ETAPA_DESTINO, nome: 'Comercial · Cobrança' }, ok: false, erro: 'passagem' },
+    ])
   })
 
   it('só marcadores, sem texto ao cliente: transfere (sentinela), nada executa', async () => {
     responde('[[MOVER:1]]\n[[ETIQUETAR:1]]')
     await executarTurno(TURNO)
-    expect(turno()).toMatchObject({ status: 'transferiu', erro: 'sentinela' })
+    expect(turno()).toMatchObject({ status: 'transferiu', erro: 'sentinela', acoes: naoExecutadas('transferencia') })
     expect(executarAcoes).not.toHaveBeenCalled()
     expect(engineSendText).not.toHaveBeenCalled()
   })
 
-  it('⚠️ link INVENTADO: a resposta é RETIDA e a conversa vai para gente (`link_inventado`), sem ações', async () => {
-    responde('Segue o boleto: https://pagar.exemplo.com/boleto/123\n[[ETIQUETAR:1]]')
+  it('⚠️ link INVENTADO: a resposta é RETIDA, a conversa vai para gente, e os links ficam no `erro` do turno', async () => {
+    responde('Segue o boleto: “https://pagar.exemplo.com/boleto/123”\n[[ETIQUETAR:1]]')
     await executarTurno(TURNO)
-    expect(turno()).toMatchObject({ status: 'transferiu', erro: 'link_inventado' })
+    expect(turno()).toMatchObject({
+      status: 'transferiu',
+      erro: 'link inventado: https://pagar.exemplo.com/boleto/123',
+      acoes: [{ tipo: 'etiquetar', alvo: { id: 'tag-vip', nome: 'VIP' }, ok: false, erro: 'transferencia' }],
+    })
     expect(engineSendText).not.toHaveBeenCalled()
     expect(executarAcoes).not.toHaveBeenCalled()
     expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'transferencia' })
@@ -2128,7 +2194,7 @@ describe('executarTurno — as ações (F4, D28)', () => {
     await executarTurno(TURNO)
     expect(pedido()).not.toContain('Actions you can take')
     expect(vi.mocked(engineSendText).mock.calls[0][0].text).toBe('Oi!')
-    expect(vi.mocked(executarAcoes).mock.calls[0][2]).toEqual([])
+    expect(executarAcoes).not.toHaveBeenCalled()
     expect(turno().acoes).toEqual([{ tipo: 'mover_etapa', alvo: { id: null, nome: '#1' }, ok: false, erro: 'nao_liberada' }])
   })
 })

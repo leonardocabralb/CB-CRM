@@ -4342,7 +4342,7 @@
       "teto": "That is the maximum per agent ({n} documents): unmark one to mark another."
     },
     "ferramentas": {
-      "explicacao": "What this agent may DO along with its reply, and with what. Nothing turned on = the agent only talks. It never closes a deal, never sends a message to another number and never touches Asaas.",
+      "explicacao": "What this agent may DO along with its reply, and with what. Nothing turned on = the agent only talks. Actions run after the reply is sent. It never closes a deal, never sends a message to another number and never touches Asaas — not even through the automations an action triggers.",
       "soConversa": "Nothing turned on: today this agent only talks.",
       "falhou": "Could not load the options.",
       "buscar": "Search…",
@@ -4391,8 +4391,22 @@
       "bloqueio": {
         "etapaDeResultado": "Won/lost stage — the AI does not close deals.",
         "campoVigiado": "Date watched by a reminder — the reminder automation would fire later on its own.",
-        "foraDaD5": "Unavailable: {motivo}."
+        "foraDaD5": "Unavailable: {motivo}.",
+        "aguardar": "Unavailable: it has a “Wait” step — the AI only runs automations that finish right away (resuming does not check the agent).",
+        "cascata": {
+          "etapa": "Unavailable: an automation that fires when a card enters this stage — {motivo}.",
+          "etiquetar": "Unavailable: an automation that fires when this tag is added — {motivo}.",
+          "tirar": "Unavailable: an automation that fires when this tag is removed — {motivo}."
+        }
       },
+      "campo": {
+        "text": "Text",
+        "datetime": "Date",
+        "select": "List",
+        "number": "Number",
+        "email": "Email"
+      },
+      "campoOpcoes": "Options: {opcoes}",
       "foraDaD5": {
         "send_to_number": "it sends a message to another number",
         "send_webhook": "it sends data out of the CRM (webhook)",
@@ -4400,6 +4414,7 @@
         "etapa_de_resultado": "it moves the card to a won or lost stage",
         "run_flow": "it starts a chatbot flow",
         "campo_vigiado": "it fills a date watched by a reminder",
+        "aguardar": "it has a “Wait” step",
         "outro": "it has a step the AI may not trigger"
       },
       "recusa": {
@@ -4446,6 +4461,10 @@
         "preencher_campo": "fill in {nome}",
         "criar_tarefa": "task for {nome}",
         "executar_automacao": "run {nome}"
+      },
+      "acaoComValor": {
+        "preencher_campo": "fill in {nome} = {valor}",
+        "criar_tarefa": "task for {nome}: {valor}"
       },
       "acaoDesconhecida": "{tipo}: {nome}"
     },
@@ -4502,7 +4521,29 @@
         "falhas": "{n, plural, one {# failed} other {# failed}}",
         "ok": "Done",
         "falhou": "Failed",
-        "semAlvo": "(no name)"
+        "semAlvo": "(no name)",
+        "erro": {
+          "sem_card": "the contact has no open deal",
+          "card_fechado": "the deal was already won or lost",
+          "item_de_outra_conta": "the item no longer exists in this account",
+          "etapa_de_resultado": "it is a won/lost stage — the AI does not close deals",
+          "campo_vigiado": "the date field is watched by a reminder",
+          "valor_vazio": "the value was empty (an empty value never erases)",
+          "valor_invalido": "the value does not fit the field type",
+          "titulo_invalido": "the task title was empty or too long",
+          "automacao_fora_da_d5": "not run: {motivo}",
+          "cascata_fora_da_d5": "not done: an automation this action would trigger — {motivo}",
+          "automacao_desligada": "the automation is turned off",
+          "fora_da_conexao": "the automation does not apply to this conversation’s connection",
+          "fora_da_etapa": "the automation does not apply to the card’s current stage",
+          "envio_falhou": "the reply was not sent, so the action did not run",
+          "recusado": "the change was refused",
+          "falhou": "the action failed",
+          "desconhecido": "not done ({erro})",
+          "semCodigo": "not done"
+        },
+        "comDetalhe": "{texto} — {detalhe}",
+        "jaEstava": "the card was already in that stage"
       },
       "statusDesconhecido": "Other ({status})",
       "status": {
@@ -4562,7 +4603,8 @@
       "etapa_de_resultado": "A won or lost stage cannot be enabled: the AI does not close deals.",
       "item_de_outra_conta": "One of the ticked items no longer exists in this account. Reload the page and check.",
       "campo_vigiado": "A date field watched by a reminder cannot be enabled: the reminder automation would fire later, outside the AI’s control.",
-      "automacao_fora_da_d5": "A ticked automation has a step the AI may not trigger (another number, webhook, won/lost or a chatbot flow).",
+      "automacao_fora_da_d5": "A ticked automation has a step the AI may not trigger (another number, webhook, won/lost, a chatbot flow or “Wait”).",
+      "cascata_fora_da_d5": "A ticked stage or tag triggers an automation with a step the AI may not trigger (another number, webhook, won/lost or a chatbot flow). Untick what is marked in red.",
       "invalid_key": "The provider rejected the key.",
       "rate_limited": "The provider asked to wait — try again shortly.",
       "timeout": "The provider didn't answer in time.",

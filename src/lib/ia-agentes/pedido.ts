@@ -17,7 +17,7 @@
 
 import { HANDOFF_SENTINEL } from '@/lib/ai/defaults'
 
-import { LIMITES_DAS_ACOES, MARCADOR_DA_ACAO, type OpcoesDeAcao } from './acoes'
+import { LIMITES_DAS_ACOES, MARCADOR_DA_ACAO, type FormatoDoCampo, type OpcaoDeAcao, type OpcoesDeAcao } from './acoes'
 import { TIPOS_DE_ACAO, type TipoDeAcao } from './agente'
 
 export const FUSO_DO_ESCRITORIO = 'America/Sao_Paulo'
@@ -74,7 +74,7 @@ const O_QUE_FAZ: Record<TipoDeAcao, string> = {
   mover_etapa: "move the customer's deal to stage n",
   etiquetar: 'add tag n to the customer',
   tirar_etiqueta: 'remove tag n from the customer',
-  preencher_campo: `fill in the customer's field n with the value (one line, up to ${LIMITES_DAS_ACOES.valorDoCampo} characters)`,
+  preencher_campo: `fill in the customer's field n with the value (one line, up to ${LIMITES_DAS_ACOES.valorDoCampo} characters, in the format given for that field)`,
   criar_tarefa: `create a task for team member n, with that title (up to ${LIMITES_DAS_ACOES.tituloDaTarefa} characters)`,
   executar_automacao: 'run automation n',
 }
@@ -88,14 +88,40 @@ function formaDoMarcador(tipo: TipoDeAcao): string {
 }
 
 /**
+ * O formato do valor de um campo, para o modelo (a execução confere o mesmo,
+ * `valorDoCampo`: fora dele, a ação falha como `valor_invalido`).
+ */
+function descricaoDoFormato(formato: FormatoDoCampo | undefined): string {
+  switch (formato?.tipo) {
+    case 'data':
+      return "a date as YYYY-MM-DD, or a date and time as YYYY-MM-DD HH:MM, in the business's timezone"
+    case 'numero':
+      return "a number: digits only, with '.' as the decimal separator — no currency, no thousands separator (e.g. 150000.50)"
+    case 'lista':
+      return `exactly one of: ${formato.opcoes.map((o) => JSON.stringify(o)).join(', ')}`
+    case 'email':
+      return 'an e-mail address'
+    default:
+      return 'text'
+  }
+}
+
+/** Uma linha da lista numerada: o nome e, nos campos, o formato do valor. */
+function linhaDaOpcao(tipo: TipoDeAcao, o: OpcaoDeAcao, i: number): string {
+  const nome = o.nome.replace(/\s+/g, ' ').trim()
+  return tipo === 'preencher_campo' ? `${i + 1}. ${nome} — ${descricaoDoFormato(o.formato)}` : `${i + 1}. ${nome}`
+}
+
+/**
  * A seção das AÇÕES (F4, D28): o protocolo e as opções NUMERADAS, com os
- * NOMES — nunca os ids (o servidor traduz o número). `null` = nada liberado.
+ * NOMES — nunca os ids (o servidor traduz o número) — e, nos campos, o
+ * formato do valor. `null` = nada liberado.
  */
 function secaoDasAcoes(opcoes: OpcoesDeAcao): string | null {
   const grupos = TIPOS_DE_ACAO.filter((t) => (opcoes[t]?.length ?? 0) > 0).map(
     (t) =>
       `${formaDoMarcador(t)} — ${O_QUE_FAZ[t]}:\n` +
-      (opcoes[t] ?? []).map((o, i) => `${i + 1}. ${o.nome.replace(/\s+/g, ' ').trim()}`).join('\n'),
+      (opcoes[t] ?? []).map((o, i) => linhaDaOpcao(t, o, i)).join('\n'),
   )
   if (grupos.length === 0) return null
   return [

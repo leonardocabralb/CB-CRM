@@ -24,10 +24,12 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
  * F4 (D28): o agente vem com as `ferramentas` (as ações que ele pode fazer
  * junto com a resposta; `lerFerramentas`), e o `PATCH` aceita `ferramentas`
  * inteiro. Forma errada = 400 `lista_invalida`; item de outra conta, etapa de
- * ganho/perdido, campo de data vigiado por lembrete e automação com passo
- * fora da D5 = 400 com `code` (`item_de_outra_conta`, `etapa_de_resultado`,
- * `campo_vigiado`, `automacao_fora_da_d5`) e os ids recusados em `itens`. O
- * catálogo da tela é `…/ferramentas/opcoes`.
+ * ganho/perdido, campo de data vigiado por lembrete, automação com passo
+ * fora da D5 ou "Aguardar", e etapa (para onde move) ou etiqueta (que aplica)
+ * cuja CASCATA dispara automação com passo fora da D5 = 400 com `code`
+ * (`item_de_outra_conta`, `etapa_de_resultado`, `campo_vigiado`,
+ * `automacao_fora_da_d5`, `cascata_fora_da_d5`) e os ids recusados em
+ * `itens`. O catálogo da tela é `…/ferramentas/opcoes`.
  */
 export async function GET(_request: Request, { params }: Contexto) {
   try {

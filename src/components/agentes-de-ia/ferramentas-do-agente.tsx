@@ -9,10 +9,13 @@
 //
 // ⚠️ NADA ligado = o agente só conversa (fechado por padrão, como o acesso).
 // O que sai da D5 não pode ser marcado: etapa de ganho/perdido, campo de
-// data vigiado por lembrete e automação com passo fora da D5 aparecem
-// DESABILITADOS com o motivo — quem calcula é o servidor
-// (`/ferramentas/opcoes`); a tela só mostra. Um item assim que JÁ estava
-// marcado (a etapa virou de resultado depois) continua desmarcável.
+// data vigiado por lembrete, automação com passo fora da D5 (ou com
+// "Aguardar") e a CASCATA — etapa ou etiqueta cuja automação de entrada, de
+// aplicar ou de tirar sai da D5 — aparecem DESABILITADOS com o motivo; quem
+// calcula é o servidor (`/ferramentas/opcoes`), a tela só mostra. Um item
+// assim que JÁ estava marcado (a etapa virou de resultado depois, a
+// automação da etapa ganhou um passo) continua desmarcável, com o motivo em
+// vermelho: o Salvar vai recusá-lo (400 com os `itens`, marcados na lista).
 //
 // ⚠️ As opções carregam à parte: enquanto carregam as listas são esqueleto,
 // e a carga que falha diz que falhou — nunca "a conta não tem etiquetas",
@@ -39,7 +42,7 @@ import {
   rascunhoDasFerramentas,
   type RascunhoDasFerramentas,
 } from './rascunho';
-import { motivoForaDaD5, rotuloDoTipoDeAcao, textoDoCodigo } from './textos';
+import { motivoForaDaD5, rotuloDoTipoDeAcao, rotuloDoTipoDoCampo, textoDoCodigo } from './textos';
 import { TIPOS_DE_ACAO, type IaAgente, type OpcoesDasFerramentas, type TipoDeAcao } from './tipos';
 
 type Carga = { fase: 'carregando' } | { fase: 'falhou' } | { fase: 'pronto'; opcoes: OpcoesDasFerramentas };
@@ -314,6 +317,13 @@ function ItemMarcavel({
   const motivo = item.bloqueio ? textoDoBloqueio(t, item.bloqueio) : null;
   // Bloqueado ou no teto: só dá para DESMARCAR (a rota recusaria a lista).
   const desabilitado = !marcado && (motivo !== null || noTeto);
+  // O tipo do campo ao lado do nome ("Data", "Lista"…): é o que diz ao
+  // administrador que valor o agente vai precisar escrever.
+  const tipoDoCampo = item.campo ? rotuloDoTipoDoCampo(t, item.campo.tipo) : null;
+  const opcoesDoCampo =
+    item.campo && item.campo.opcoes.length > 0
+      ? t('ferramentas.campoOpcoes', { opcoes: item.campo.opcoes.join(', ') })
+      : undefined;
   return (
     <label
       className={cn(
@@ -324,8 +334,18 @@ function ItemMarcavel({
     >
       <Checkbox className="mt-0.5" checked={marcado} disabled={desabilitado} onCheckedChange={aoAlternar} />
       <span className="min-w-0">
-        <span className={cn('block truncate', desabilitado && 'text-muted-foreground')} title={item.nome}>
-          {item.nome}
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className={cn('truncate', desabilitado && 'text-muted-foreground')} title={item.nome}>
+            {item.nome}
+          </span>
+          {tipoDoCampo !== null ? (
+            <span
+              className="shrink-0 rounded bg-muted px-1.5 py-px text-[11px] text-muted-foreground"
+              title={opcoesDoCampo}
+            >
+              {tipoDoCampo}
+            </span>
+          ) : null}
         </span>
         {motivo !== null ? (
           <span
@@ -353,7 +373,13 @@ function textoDoBloqueio(t: ReturnType<typeof useTranslations>, bloqueio: Bloque
     case 'campo_vigiado':
       return t('ferramentas.bloqueio.campoVigiado');
     case 'fora_da_d5':
-      return t('ferramentas.bloqueio.foraDaD5', { motivo: motivoForaDaD5(t, bloqueio.codigo) });
+      // "Aguardar" tem frase própria: não é passo proibido em si — a IA só não
+      // executa automação que pausa (a retomada não confere o agente).
+      return bloqueio.codigo === 'aguardar'
+        ? t('ferramentas.bloqueio.aguardar')
+        : t('ferramentas.bloqueio.foraDaD5', { motivo: motivoForaDaD5(t, bloqueio.codigo) });
+    case 'cascata':
+      return t(`ferramentas.bloqueio.cascata.${bloqueio.gatilho}`, { motivo: motivoForaDaD5(t, bloqueio.codigo) });
     default: {
       const nunca: never = bloqueio;
       return String(nunca);

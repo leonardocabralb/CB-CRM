@@ -20,6 +20,11 @@ function texto(v: unknown): string | null {
   return typeof v === 'string' ? v : null
 }
 
+/** Um código de motivo (da D5): só texto não vazio; o resto não inventa bloqueio. */
+function codigo(v: unknown): string | null {
+  return typeof v === 'string' && v.trim() ? v : null
+}
+
 /** Os itens de uma lista que têm a forma pedida; lista ausente = a resposta não serve. */
 function linhas<T>(v: unknown, ler: (o: Record<string, unknown>) => T | null): T[] | null {
   if (!Array.isArray(v)) return null
@@ -42,18 +47,22 @@ export function lerOpcoes(v: unknown): OpcoesDasFerramentas | null {
     const funil = texto(e.funil)
     if (!id || nome === null || funil === null) return null
     const resultado = e.resultado === 'ganho' || e.resultado === 'perdido' ? e.resultado : null
-    return { id, nome, funil, resultado }
+    return { id, nome, funil, resultado, foraDaD5: codigo(e.foraDaD5) }
   })
-  const etiquetas = linhas(o.etiquetas, (e) => {
+  const etiquetas = linhas<OpcoesDasFerramentas['etiquetas'][number]>(o.etiquetas, (e) => {
     const id = texto(e.id)
     const nome = texto(e.nome)
-    return id && nome !== null ? { id, nome } : null
+    if (!id || nome === null) return null
+    const cascata = objeto(e.foraDaD5)
+    return { id, nome, foraDaD5: { etiquetar: codigo(cascata?.etiquetar), tirar: codigo(cascata?.tirar) } }
   })
-  const campos = linhas(o.campos, (c) => {
+  const campos = linhas<OpcoesDasFerramentas['campos'][number]>(o.campos, (c) => {
     const id = texto(c.id)
     const nome = texto(c.nome)
+    if (!id || nome === null) return null
+    const opcoes = Array.isArray(c.opcoes) ? c.opcoes.filter((x): x is string => typeof x === 'string') : []
     // Só o booleano `true` bloqueia; qualquer outra coisa não inventa bloqueio.
-    return id && nome !== null ? { id, nome, vigiado: c.vigiado === true } : null
+    return { id, nome, vigiado: c.vigiado === true, tipo: codigo(c.tipo), opcoes }
   })
   const membros = linhas(o.membros, (m) => {
     const userId = texto(m.userId)
@@ -64,22 +73,31 @@ export function lerOpcoes(v: unknown): OpcoesDasFerramentas | null {
     const id = texto(a.id)
     const nome = texto(a.nome)
     if (!id || nome === null) return null
-    const foraDaD5 = typeof a.foraDaD5 === 'string' && a.foraDaD5.trim() ? a.foraDaD5 : null
-    return { id, nome, foraDaD5 }
+    return { id, nome, foraDaD5: codigo(a.foraDaD5) }
   })
   if (!etapas || !etiquetas || !campos || !membros || !automacoes) return null
   return { etapas, etiquetas, campos, membros, automacoes }
 }
 
 /**
+ * O que dispara a CASCATA de um item: entrar na etapa, aplicar a etiqueta ou
+ * tirá-la. Chave MONTADA (`IaAgentes.ferramentas.bloqueio.cascata.<g>`),
+ * cobrada em `textos.test.ts`.
+ */
+export const GATILHOS_DA_CASCATA = ['etapa', 'etiquetar', 'tirar'] as const
+export type GatilhoDaCascata = (typeof GATILHOS_DA_CASCATA)[number]
+
+/**
  * Por que um item NÃO pode ser marcado (a D5, calculada pelo servidor):
  * etapa de ganho/perdido, campo de data vigiado por lembrete, automação com
- * passo fora da D5 (o código do passo).
+ * passo fora da D5 (o código do passo) e a cascata de uma etapa ou etiqueta
+ * (uma automação que ela dispara sai da D5; o código do passo dela).
  */
 export type Bloqueio =
   | { tipo: 'etapa_de_resultado' }
   | { tipo: 'campo_vigiado' }
   | { tipo: 'fora_da_d5'; codigo: string }
+  | { tipo: 'cascata'; gatilho: GatilhoDaCascata; codigo: string }
 
 export interface ItemDaLista {
   id: string
@@ -87,27 +105,46 @@ export interface ItemDaLista {
   /** O funil da etapa (as etapas aparecem agrupadas); nulo nas outras listas. */
   grupo: string | null
   bloqueio: Bloqueio | null
+  /** Só nos campos: o tipo (`field_type`) e as opções da lista, que a tela mostra ao lado do nome. */
+  campo?: { tipo: string | null; opcoes: string[] }
+}
+
+function cascata(gatilho: GatilhoDaCascata, codigo: string | null): Bloqueio | null {
+  return codigo ? { tipo: 'cascata', gatilho, codigo } : null
 }
 
 /** A lista de um tipo de ação, na ordem em que o servidor a mandou. */
 export function itensDoTipo(opcoes: OpcoesDasFerramentas, tipo: TipoDeAcao): ItemDaLista[] {
   switch (tipo) {
     case 'mover_etapa':
+      // Ganho/perdido vence a cascata: é o motivo que o operador entende primeiro.
       return opcoes.etapas.map((e) => ({
         id: e.id,
         nome: e.nome,
         grupo: e.funil,
-        bloqueio: e.resultado ? { tipo: 'etapa_de_resultado' } : null,
+        bloqueio: e.resultado ? { tipo: 'etapa_de_resultado' } : cascata('etapa', e.foraDaD5),
       }))
     case 'etiquetar':
+      return opcoes.etiquetas.map((e) => ({
+        id: e.id,
+        nome: e.nome,
+        grupo: null,
+        bloqueio: cascata('etiquetar', e.foraDaD5.etiquetar),
+      }))
     case 'tirar_etiqueta':
-      return opcoes.etiquetas.map((e) => ({ id: e.id, nome: e.nome, grupo: null, bloqueio: null }))
+      return opcoes.etiquetas.map((e) => ({
+        id: e.id,
+        nome: e.nome,
+        grupo: null,
+        bloqueio: cascata('tirar', e.foraDaD5.tirar),
+      }))
     case 'preencher_campo':
       return opcoes.campos.map((c) => ({
         id: c.id,
         nome: c.nome,
         grupo: null,
         bloqueio: c.vigiado ? { tipo: 'campo_vigiado' } : null,
+        campo: { tipo: c.tipo, opcoes: c.opcoes },
       }))
     case 'criar_tarefa':
       return opcoes.membros.map((m) => ({ id: m.userId, nome: m.nome, grupo: null, bloqueio: null }))
@@ -143,10 +180,13 @@ export function agruparItens(itens: ItemDaLista[]): Array<{ grupo: string | null
 export function lerAcoesSimuladas(v: unknown): AcoesSimuladas | undefined {
   const o = objeto(v)
   if (!o) return undefined
-  const aceitas = linhas(o.aceitas, (a) => {
+  const aceitas = linhas<AcoesSimuladas['aceitas'][number]>(o.aceitas, (a) => {
     const tipo = texto(a.tipo)
     const nome = texto(a.nome)
-    return tipo && nome !== null ? { tipo, nome } : null
+    if (!tipo || nome === null) return null
+    // O valor do campo / o título da tarefa; vazio = não veio.
+    const valor = typeof a.valor === 'string' && a.valor.trim() ? a.valor : undefined
+    return valor === undefined ? { tipo, nome } : { tipo, nome, valor }
   })
   const recusadas = linhas(o.recusadas, (r) => {
     const tipo = texto(r.tipo)
@@ -169,6 +209,13 @@ export function lerAcoesDoTurno(v: unknown): AcaoDoTurno[] | null {
     const nome = alvo ? texto(alvo.nome) : null
     if (!tipo || !alvo || nome === null || typeof a.ok !== 'boolean') return null
     const erro = typeof a.erro === 'string' && a.erro.trim() ? a.erro : undefined
-    return { tipo, alvo: { id: texto(alvo.id), nome }, ok: a.ok, ...(erro ? { erro } : {}) }
+    const detalhe = typeof a.detalhe === 'string' && a.detalhe.trim() ? a.detalhe : undefined
+    return {
+      tipo,
+      alvo: { id: texto(alvo.id), nome },
+      ok: a.ok,
+      ...(erro ? { erro } : {}),
+      ...(detalhe ? { detalhe } : {}),
+    }
   })
 }

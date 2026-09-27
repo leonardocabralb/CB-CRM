@@ -15,18 +15,23 @@ import { ehGatilhoDaRegua } from '@/lib/asaas/regua'
 import { TIPO_DATA } from '@/lib/contacts/campo-data'
 
 import {
+  automacoesAlcancaveis,
   camposVigiados,
+  formatoDoCampo,
+  gatilhosDaCascata,
+  motivoDaEtapa,
+  motivoDaEtiqueta,
   motivoForaDaD5,
-  automacoesAcionadas,
   type MotivoForaDaD5,
   type OpcoesDeAcao,
+  type OrigensDaD5,
   type PassoDaAutomacao,
   type ReguaDaD5,
 } from './acoes'
 import { itensDaAcao, type FerramentasDoAgente } from './agente'
 
 const PAGINA = 1000
-/** Camadas de `run_automation` percorridas: passou disso, a régua desiste (e recusa). */
+/** Camadas de automação percorridas (acionadas ou da cascata): passou disso, a régua desiste (e recusa). */
 const CAMADAS_DA_D5 = 20
 
 type Consulta = (de: number, ate: number) => PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>
@@ -107,57 +112,94 @@ function agruparPassos(
   }
 }
 
+/**
+ * A régua da conta: as etapas de resultado, os campos vigiados e quem a
+ * CASCATA dispara (as automações LIGADAS de etapa e de etiqueta). Uma leitura
+ * de `automations` serve às duas últimas. Lança em erro.
+ */
 async function lerRegua(db: SupabaseClient, accountId: string): Promise<ReguaDaD5> {
-  const [etapasDeResultado, vigiados] = await Promise.all([
+  const [etapasDeResultado, automacoes] = await Promise.all([
     lerEtapasDeResultado(db, accountId),
-    lerCamposVigiados(db, accountId),
+    lerTodas<{ id: string; trigger_type: string; trigger_config: unknown; is_active: boolean }>(
+      (de, ate) =>
+        db
+          .from('automations')
+          .select('id, trigger_type, trigger_config, is_active')
+          .eq('account_id', accountId)
+          .in('trigger_type', ['date_field_offset', 'deal_stage_changed', 'tag_added'])
+          .eq('is_active', true)
+          .order('id')
+          .range(de, ate),
+      'automações de lembrete, de etapa e de etiqueta',
+    ),
   ])
-  return { etapasDeResultado, camposVigiados: vigiados }
+  return { etapasDeResultado, camposVigiados: camposVigiados(automacoes), cascata: gatilhosDaCascata(automacoes) }
+}
+
+/** O motivo fora da D5 de cada origem (`null` = dentro). */
+export interface MotivosDaD5 {
+  /** A automação que a IA EXECUTA (o "Aguardar" conta). */
+  automacoes: Map<string, MotivoForaDaD5 | null>
+  /** A etapa para onde a IA move o card, pela cascata. */
+  etapas: Map<string, MotivoForaDaD5 | null>
+  /** A etiqueta que a IA APLICA, pela cascata. */
+  etiquetas: Map<string, MotivoForaDaD5 | null>
 }
 
 /**
- * O motivo fora da D5 de cada automação pedida (`null` = dentro). Lê os
- * passos dela e das que ela aciona, camada por camada — só passos de
- * automação DESTA conta (`automations!inner`). Lança em erro de leitura (quem
- * chama recusa: na dúvida, a IA não dispara).
+ * A D5 de cada origem pedida: a automação que a IA executa (e as que ela
+ * aciona, e a cascata dos passos), a etapa para onde ela move o card e a
+ * etiqueta que ela aplica (as automações que a entrada na etapa / a
+ * etiqueta disparam, e a cascata delas). Lê os passos CAMADA POR CAMADA —
+ * só os que a régua percorre (`automacoesAlcancaveis`, as MESMAS arestas) e
+ * só de automação DESTA conta (`automations!inner`). Lança em erro de leitura
+ * (quem chama recusa: na dúvida, a IA não dispara).
  */
 export async function motivosForaDaD5(
   db: SupabaseClient,
   accountId: string,
-  ids: readonly string[],
-): Promise<Map<string, MotivoForaDaD5 | null>> {
+  origens: OrigensDaD5,
+): Promise<MotivosDaD5> {
+  const regua = await lerRegua(db, accountId)
   const passosDe = new Map<string, PassoDaAutomacao[]>()
-  const vistas = new Set<string>()
-  let fronteira = [...new Set(ids)]
-  for (let camada = 0; fronteira.length > 0; camada++) {
+  const lidas = new Set<string>()
+  for (let camada = 0; ; camada++) {
+    const faltam = [...automacoesAlcancaveis(origens, passosDe, regua.cascata)].filter((id) => !lidas.has(id))
+    if (faltam.length === 0) break
     if (camada >= CAMADAS_DA_D5) throw new Error('automações encadeadas demais para conferir a D5')
-    for (const id of fronteira) vistas.add(id)
-    const atual = fronteira
+    for (const id of faltam) lidas.add(id)
     const linhas = await lerTodas<{ automation_id: string; step_type: string; step_config: unknown }>(
       (de, ate) =>
         db
           .from('automation_steps')
           .select('id, automation_id, step_type, step_config, automations!inner(account_id)')
           .eq('automations.account_id', accountId)
-          .in('automation_id', atual)
+          .in('automation_id', faltam)
           .order('id')
           .range(de, ate),
       'passos das automações',
     )
     agruparPassos(linhas, passosDe)
-    fronteira = [...new Set(atual.flatMap((id) => automacoesAcionadas(passosDe.get(id) ?? [])))].filter(
-      (id) => !vistas.has(id),
-    )
   }
-  const regua = await lerRegua(db, accountId)
-  return new Map(ids.map((id) => [id, motivoForaDaD5(id, passosDe, regua)]))
+  const cada = (ids: readonly string[] | undefined, motivo: (id: string) => MotivoForaDaD5 | null) =>
+    new Map((ids ?? []).map((id) => [id, motivo(id)]))
+  return {
+    automacoes: cada(origens.automacoes, (id) => motivoForaDaD5(id, passosDe, regua)),
+    etapas: cada(origens.etapas, (id) => motivoDaEtapa(id, passosDe, regua)),
+    etiquetas: cada(origens.etiquetas, (id) => motivoDaEtiqueta(id, passosDe, regua)),
+  }
 }
 
 // ------------------------------------------------------------
 // A conferência ao SALVAR (PATCH do agente)
 // ------------------------------------------------------------
 
-export type CodigoDaFerramenta = 'etapa_de_resultado' | 'item_de_outra_conta' | 'campo_vigiado' | 'automacao_fora_da_d5'
+export type CodigoDaFerramenta =
+  | 'etapa_de_resultado'
+  | 'item_de_outra_conta'
+  | 'campo_vigiado'
+  | 'automacao_fora_da_d5'
+  | 'cascata_fora_da_d5'
 
 export type ConferenciaDasFerramentas = { ok: true } | { ok: false; codigo: CodigoDaFerramenta; itens: string[] }
 
@@ -169,9 +211,11 @@ function faltando(pedidos: readonly string[], achados: Iterable<string>): string
 /**
  * Confere as ferramentas que a tela manda: todo item é DESTA conta (array sem
  * FK, escrita em service role), nenhuma etapa é de ganho/perdido (D5),
- * nenhum campo de data é vigiado por lembrete, e nenhuma automação tem passo
- * fora da D5 (percorrendo as que ela aciona). A recusa leva os ids. Lança em
- * erro de leitura.
+ * nenhum campo de data é vigiado por lembrete, nenhuma automação tem passo
+ * fora da D5 ou "Aguardar" (percorrendo as que ela aciona e a cascata), e
+ * nenhuma etapa para onde move nem etiqueta que aplica dispara, pela
+ * CASCATA, automação com passo fora da D5 (`cascata_fora_da_d5`). Tirar
+ * etiqueta não tem cascata. A recusa leva os ids. Lança em erro de leitura.
  */
 export async function conferirFerramentas(
   db: SupabaseClient,
@@ -179,7 +223,8 @@ export async function conferirFerramentas(
   f: FerramentasDoAgente,
 ): Promise<ConferenciaDasFerramentas> {
   const etapas = itensDaAcao(f, 'mover_etapa')
-  const etiquetas = [...new Set([...itensDaAcao(f, 'etiquetar'), ...itensDaAcao(f, 'tirar_etiqueta')])]
+  const aplicar = itensDaAcao(f, 'etiquetar')
+  const etiquetas = [...new Set([...aplicar, ...itensDaAcao(f, 'tirar_etiqueta')])]
   const campos = itensDaAcao(f, 'preencher_campo')
   const membros = itensDaAcao(f, 'criar_tarefa')
   const automacoes = itensDaAcao(f, 'executar_automacao')
@@ -225,10 +270,12 @@ export async function conferirFerramentas(
     if (recusados.length) return { ok: false, codigo: 'campo_vigiado', itens: recusados }
   }
 
-  if (automacoes.length) {
-    const motivos = await motivosForaDaD5(db, accountId, automacoes)
-    const fora = automacoes.filter((id) => motivos.get(id))
+  if (automacoes.length || etapas.length || aplicar.length) {
+    const d5 = await motivosForaDaD5(db, accountId, { automacoes, etapas, etiquetas: aplicar })
+    const fora = automacoes.filter((id) => d5.automacoes.get(id))
     if (fora.length) return { ok: false, codigo: 'automacao_fora_da_d5', itens: fora }
+    const pelaCascata = [...etapas.filter((id) => d5.etapas.get(id)), ...aplicar.filter((id) => d5.etiquetas.get(id))]
+    if (pelaCascata.length) return { ok: false, codigo: 'cascata_fora_da_d5', itens: pelaCascata }
   }
   return { ok: true }
 }
@@ -238,19 +285,36 @@ export async function conferirFerramentas(
 // ------------------------------------------------------------
 
 export interface CatalogoDeFerramentas {
-  etapas: Array<{ id: string; nome: string; funil: string; resultado: 'ganho' | 'perdido' | null }>
-  etiquetas: Array<{ id: string; nome: string }>
-  campos: Array<{ id: string; nome: string; vigiado: boolean }>
+  /** `foraDaD5`: a cascata da entrada na etapa (a etapa de resultado vem em `resultado`). */
+  etapas: Array<{
+    id: string
+    nome: string
+    funil: string
+    resultado: 'ganho' | 'perdido' | null
+    foraDaD5: MotivoForaDaD5 | null
+  }>
+  /** `foraDaD5.etiquetar`: a cascata de `tag_added`; `tirar` não tem cascata (sempre nulo). */
+  etiquetas: Array<{
+    id: string
+    nome: string
+    foraDaD5: { etiquetar: MotivoForaDaD5 | null; tirar: MotivoForaDaD5 | null }
+  }>
+  /**
+   * `tipo` = `field_type`, menos o campo que espelha o e-mail (`'email'`);
+   * `opcoes` = as opções do `select` (vazia nos outros).
+   */
+  campos: Array<{ id: string; nome: string; vigiado: boolean; tipo: string; opcoes: string[] }>
   membros: Array<{ userId: string; nome: string }>
+  /** `foraDaD5`: o passo fora da D5 (ou o "Aguardar") nela, nas que ela aciona e na cascata. */
   automacoes: Array<{ id: string; nome: string; foraDaD5: MotivoForaDaD5 | null }>
 }
 
 /**
  * TUDO o que a conta tem para as ferramentas, com o que o SERVIDOR decide
- * (etapa de resultado, campo vigiado, automação fora da D5) — a tela só
- * mostra. A régua do Asaas fica de fora (ela só roda pela varredura). Lança
- * em erro de leitura: um catálogo pela metade faria a tela dizer "a conta não
- * tem etiquetas".
+ * (etapa de resultado, campo vigiado, D5 da automação, da etapa e da
+ * etiqueta pela cascata) — a tela só mostra. A régua do Asaas fica de fora
+ * (ela só roda pela varredura). Lança em erro de leitura: um catálogo pela
+ * metade faria a tela dizer "a conta não tem etiquetas".
  */
 export async function lerCatalogoDeFerramentas(db: SupabaseClient, accountId: string): Promise<CatalogoDeFerramentas> {
   const [etapas, etiquetas, campos, membros, automacoes, passos, regua] = await Promise.all([
@@ -268,9 +332,14 @@ export async function lerCatalogoDeFerramentas(db: SupabaseClient, accountId: st
       (de, ate) => db.from('tags').select('id, name').eq('account_id', accountId).order('id').range(de, ate),
       'etiquetas',
     ),
-    lerTodas<{ id: string; field_name: string; field_type: string | null }>(
+    lerTodas<{ id: string; field_name: string; field_type: string | null; field_options: unknown; espelho: string | null }>(
       (de, ate) =>
-        db.from('custom_fields').select('id, field_name, field_type').eq('account_id', accountId).order('id').range(de, ate),
+        db
+          .from('custom_fields')
+          .select('id, field_name, field_type, field_options, espelho')
+          .eq('account_id', accountId)
+          .order('id')
+          .range(de, ate),
       'campos',
     ),
     lerTodas<{ user_id: string; full_name: unknown; email: unknown }>(
@@ -302,10 +371,28 @@ export async function lerCatalogoDeFerramentas(db: SupabaseClient, accountId: st
   return {
     etapas: [...etapas]
       .sort((a, b) => funilDa(a).localeCompare(funilDa(b), 'pt-BR') || a.position - b.position)
-      .map((e) => ({ id: e.id, nome: e.name, funil: funilDa(e), resultado: resultadoDa(e.resultado) })),
-    etiquetas: etiquetas.map((t) => ({ id: t.id, nome: t.name })).sort(porNome),
+      .map((e) => ({
+        id: e.id,
+        nome: e.name,
+        funil: funilDa(e),
+        resultado: resultadoDa(e.resultado),
+        foraDaD5: motivoDaEtapa(e.id, passosDe, regua),
+      })),
+    etiquetas: etiquetas
+      .map((t) => ({ id: t.id, nome: t.name, foraDaD5: { etiquetar: motivoDaEtiqueta(t.id, passosDe, regua), tirar: null } }))
+      .sort(porNome),
     campos: campos
-      .map((c) => ({ id: c.id, nome: c.field_name, vigiado: c.field_type === TIPO_DATA && regua.camposVigiados.has(c.id) }))
+      .map((c) => {
+        const formato = formatoDoCampo(c)
+        return {
+          id: c.id,
+          nome: c.field_name,
+          vigiado: c.field_type === TIPO_DATA && regua.camposVigiados.has(c.id),
+          // O espelho do e-mail vai como `email` (a tela pede um e-mail); o resto, o `field_type` cru.
+          tipo: formato.tipo === 'email' ? 'email' : (c.field_type ?? 'text'),
+          opcoes: formato.tipo === 'lista' ? formato.opcoes : [],
+        }
+      })
       .sort(porNome),
     membros: membros.map((m) => ({ userId: m.user_id, nome: nomeDoMembro(m) })).sort(porNome),
     automacoes: automacoes
@@ -322,10 +409,14 @@ export async function lerCatalogoDeFerramentas(db: SupabaseClient, accountId: st
 /**
  * As opções de cada tipo LIGADO no agente, com os nomes, na ordem em que o
  * pedido as numera. Só entra o que ainda existe na conta e pode ser feito
- * agora: etapa sem resultado, campo não vigiado, automação ligada (e fora da
- * régua do Asaas). A D5 da automação é conferida na hora de executar.
+ * agora: etapa sem resultado e dentro da D5 pela cascata, etiqueta a aplicar
+ * dentro da D5 pela cascata, campo não vigiado (com o FORMATO do valor, que
+ * o pedido diz ao modelo; `select` sem opção fica de fora — nada o
+ * preencheria), automação ligada, dentro da D5 e fora da régua do Asaas. A
+ * execução confere tudo DE NOVO.
  * Nunca lança: o tipo cuja leitura falha fica de fora (o agente só não o
- * oferece), e agente sem ferramenta não lê nada.
+ * oferece) — inclusive a leitura da D5, que tira etapas, etiquetas a aplicar
+ * e automações de uma vez —, e agente sem ferramenta não lê nada.
  */
 export async function opcoesDoAgente(
   db: SupabaseClient,
@@ -352,6 +443,15 @@ export async function opcoesDoAgente(
   const membros = itensDaAcao(f, 'criar_tarefa')
   const automacoes = itensDaAcao(f, 'executar_automacao')
 
+  // A D5 (a automação e a cascata da etapa e da etiqueta), lida UMA vez para
+  // os três tipos que dependem dela. O `catch` vazio só marca a rejeição como
+  // tratada: cada tipo que a espera cai no seu `tentar`.
+  const d5 =
+    etapas.length + etiquetar.length + automacoes.length > 0
+      ? motivosForaDaD5(db, accountId, { automacoes, etapas, etiquetas: etiquetar })
+      : null
+  d5?.catch(() => {})
+
   await Promise.all([
     etapas.length > 0 &&
       tentar('etapas', async () => {
@@ -363,8 +463,9 @@ export async function opcoesDoAgente(
             .in('id', etapas),
           'etapas',
         )
+        const motivos = (await d5)?.etapas
         opcoes.mover_etapa = linhas
-          .filter((l) => resultadoDa(l.resultado) === null)
+          .filter((l) => resultadoDa(l.resultado) === null && !motivos?.get(l.id))
           .sort((a, b) => funilDa(a).localeCompare(funilDa(b), 'pt-BR') || a.position - b.position)
           .map((l) => ({ id: l.id, nome: funilDa(l) ? `${funilDa(l)} · ${l.name}` : l.name }))
       }),
@@ -379,20 +480,29 @@ export async function opcoesDoAgente(
           'etiquetas',
         ).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
         const de = (ids: string[]) => linhas.filter((l) => ids.includes(l.id)).map((l) => ({ id: l.id, nome: l.name }))
-        if (etiquetar.length) opcoes.etiquetar = de(etiquetar)
+        // Tirar não tem cascata: entra ANTES de esperar a D5, que pode falhar.
         if (tirar.length) opcoes.tirar_etiqueta = de(tirar)
+        if (etiquetar.length) {
+          const motivos = (await d5)?.etiquetas
+          opcoes.etiquetar = de(etiquetar).filter((o) => !motivos?.get(o.id))
+        }
       }),
     campos.length > 0 &&
       tentar('campos', async () => {
-        const linhas = lista<{ id: string; field_name: string; field_type: string | null }>(
-          await db.from('custom_fields').select('id, field_name, field_type').eq('account_id', accountId).in('id', campos),
+        const linhas = lista<{ id: string; field_name: string; field_type: string | null; field_options: unknown; espelho: string | null }>(
+          await db
+            .from('custom_fields')
+            .select('id, field_name, field_type, field_options, espelho')
+            .eq('account_id', accountId)
+            .in('id', campos),
           'campos',
         )
         const vigiados = linhas.some((l) => l.field_type === TIPO_DATA) ? await lerCamposVigiados(db, accountId) : new Set()
         opcoes.preencher_campo = linhas
           .filter((l) => !(l.field_type === TIPO_DATA && vigiados.has(l.id)))
-          .sort((a, b) => a.field_name.localeCompare(b.field_name, 'pt-BR'))
-          .map((l) => ({ id: l.id, nome: l.field_name }))
+          .map((l) => ({ id: l.id, nome: l.field_name, formato: formatoDoCampo(l) }))
+          .filter((o) => !(o.formato.tipo === 'lista' && o.formato.opcoes.length === 0))
+          .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
       }),
     membros.length > 0 &&
       tentar('membros', async () => {
@@ -415,8 +525,9 @@ export async function opcoesDoAgente(
             .in('id', automacoes),
           'automações',
         )
+        const motivos = (await d5)?.automacoes
         opcoes.executar_automacao = linhas
-          .filter((l) => !ehGatilhoDaRegua(l.trigger_type))
+          .filter((l) => !ehGatilhoDaRegua(l.trigger_type) && !motivos?.get(l.id))
           .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
           .map((l) => ({ id: l.id, nome: l.name }))
       }),

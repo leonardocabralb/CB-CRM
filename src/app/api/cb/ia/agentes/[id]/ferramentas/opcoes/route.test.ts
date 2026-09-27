@@ -26,11 +26,11 @@ import { GET } from './route'
 const chamar = (id = ID) => GET(new Request('http://x'), { params: Promise.resolve({ id }) })
 
 const CATALOGO = {
-  etapas: [{ id: 'e1', nome: 'Proposta', funil: 'Bancário', resultado: null }],
-  etiquetas: [{ id: 't1', nome: 'VIP' }],
-  campos: [{ id: 'c1', nome: 'Data da reunião', vigiado: true }],
+  etapas: [{ id: 'e1', nome: 'Proposta', funil: 'Bancário', resultado: null, foraDaD5: 'send_webhook' }],
+  etiquetas: [{ id: 't1', nome: 'VIP', foraDaD5: { etiquetar: null, tirar: null } }],
+  campos: [{ id: 'c1', nome: 'Data da reunião', vigiado: true, tipo: 'datetime', opcoes: [] }],
   membros: [{ userId: 'u1', nome: 'Ana' }],
-  automacoes: [{ id: 'a1', nome: 'Aciona filha', foraDaD5: 'send_webhook' }],
+  automacoes: [{ id: 'a1', nome: 'Aciona filha', foraDaD5: 'aguardar' }],
 }
 
 beforeEach(() => {

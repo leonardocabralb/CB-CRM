@@ -17,9 +17,11 @@
 //
 // F4 (D28): o turno que registrou AÇÕES (`acoes`) ganha "Ações do agente",
 // uma expansão com cada uma — ✓/✗, o tipo, o alvo (o nome gravado na hora,
-// que sobrevive a renomear a etapa ou a etiqueta) e o erro (o código da
-// recusa traduzido; a mensagem do motor como veio). Turno anterior à
-// F4 (acoes nula) ou sem ação nenhuma não ganha a expansão.
+// que sobrevive a renomear a etapa ou a etiqueta) e, na que falhou, o
+// porquê: o CÓDIGO traduzido (`textoDoErroDaAcao`, Record exaustivo) com o
+// `detalhe` — o passo da D5 traduzido, o resto cru depois. A que deu certo
+// com `detalhe` ("o card já estava nessa etapa") mostra a nota em cinza.
+// Turno anterior à F4 (acoes nula) ou sem ação nenhuma não ganha a expansão.
 // ============================================================
 
 import { useCallback, useEffect, useState } from 'react';
@@ -31,7 +33,13 @@ import { Button } from '@/components/ui/button';
 import { urlDoInbox } from '@/lib/inbox/url';
 import { cn } from '@/lib/utils';
 import { lerAcoesDoTurno } from './ferramentas';
-import { rotuloDoBloco, rotuloDoStatusDoTurno, rotuloDoTipoDeAcao, textoDoErroDaAcao } from './textos';
+import {
+  rotuloDoBloco,
+  rotuloDoStatusDoTurno,
+  rotuloDoTipoDeAcao,
+  textoDoDetalheDaAcao,
+  textoDoErroDaAcao,
+} from './textos';
 import type { AcaoDoTurno, ContextoDoTurno } from './tipos';
 
 interface Turno {
@@ -247,8 +255,10 @@ function AcoesDoTurno({ acoes }: { acoes: AcaoDoTurno[] }) {
             <span className="min-w-0 break-words">
               <span className="font-medium text-foreground">{rotuloDoTipoDeAcao(t, a.tipo)}</span>
               <span className="text-muted-foreground"> · {a.alvo.nome || t('turnos.acoes.semAlvo')}</span>
-              {a.erro ? (
-                <span className="block text-red-700 dark:text-red-300">{textoDoErroDaAcao(t, a.erro)}</span>
+              {!a.ok ? (
+                <span className="block text-red-700 dark:text-red-300">{textoDoErroDaAcao(t, a)}</span>
+              ) : a.detalhe ? (
+                <span className="block text-muted-foreground">{textoDoDetalheDaAcao(t, a.detalhe)}</span>
               ) : null}
             </span>
           </li>

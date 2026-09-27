@@ -6,8 +6,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 //  - contato, card e conversa são os DO TURNO; os ids, os da opção;
 //  - tudo é conferido DE NOVO na hora: etapa que virou de ganho/perdido,
 //    card que fechou ou é de outro contato, campo de data que passou a ser
-//    vigiado, automação que ganhou passo fora da D5 — recusados;
-//  - valor vazio não apaga campo;
+//    vigiado, automação que ganhou passo fora da D5, etapa e etiqueta cuja
+//    CASCATA saiu da D5 — recusados, com o CÓDIGO e o detalhe cru à parte;
+//  - valor vazio não apaga campo, e o valor tem de caber no formato do campo;
+//  - mover para a etapa em que o card JÁ está: ok, sem anotação nem dreno;
 //  - a tarefa é a MESMA inserção do motor, com o dono como autor e prazo hoje;
 //  - a automação roda com o rótulo "ia:<agente>" e as guardas da rota manual;
 //  - falha de uma ação não impede as outras; a feita deixa anotação.
@@ -25,14 +27,20 @@ vi.mock('@/lib/contacts/tag-events', () => ({
 vi.mock('@/lib/contacts/tag-write', () => ({ removeContactTag: vi.fn(async () => true) }))
 vi.mock('./ferramentas', () => ({
   lerCamposVigiados: vi.fn(async () => new Set<string>()),
-  motivosForaDaD5: vi.fn(async (_db: unknown, _conta: string, ids: string[]) => new Map(ids.map((id) => [id, null]))),
+  motivosForaDaD5: vi.fn(
+    async (_db: unknown, _conta: string, o: { automacoes?: string[]; etapas?: string[]; etiquetas?: string[] }) => ({
+      automacoes: new Map((o.automacoes ?? []).map((id) => [id, null])),
+      etapas: new Map((o.etapas ?? []).map((id) => [id, null])),
+      etiquetas: new Map((o.etiquetas ?? []).map((id) => [id, null])),
+    }),
+  ),
 }))
 
 import { channelInScope, criarTarefaComAviso, runAutomationById, stageInScope } from '@/lib/automations/engine'
 import { addContactTagAndDispatch } from '@/lib/contacts/tag-events'
 import { removeContactTag } from '@/lib/contacts/tag-write'
 
-import type { AcaoResolvida } from './acoes'
+import { CODIGOS_DE_FALHA_DA_ACAO, type AcaoResolvida } from './acoes'
 import { executarAcoes, type ContextoDasAcoes } from './executar-acoes'
 import { lerCamposVigiados, motivosForaDaD5 } from './ferramentas'
 
@@ -108,10 +116,13 @@ beforeEach(() => {
         { id: 'etapa-proposta', resultado: null, pipelines: { account_id: 'conta-1' } },
         { id: 'etapa-ganho', resultado: 'ganho', pipelines: { account_id: 'conta-1' } },
       ],
-      deals: [{ id: 'deal-1', account_id: 'conta-1', contact_id: 'contato-1', status: 'open' }],
+      deals: [{ id: 'deal-1', account_id: 'conta-1', contact_id: 'contato-1', status: 'open', stage_id: 'etapa-lead' }],
       custom_fields: [
         { id: 'campo-texto', account_id: 'conta-1', field_type: 'text' },
         { id: 'campo-data', account_id: 'conta-1', field_type: 'datetime' },
+        { id: 'campo-numero', account_id: 'conta-1', field_type: 'number' },
+        { id: 'campo-lista', account_id: 'conta-1', field_type: 'select', field_options: { opcoes: ['Bancário', 'Trabalhista'] } },
+        { id: 'campo-email', account_id: 'conta-1', field_type: 'text', espelho: 'contacts.email' },
       ],
       automations: [
         { id: 'auto-1', account_id: 'conta-1', is_active: true, trigger_type: 'tag_added', name: 'Boas-vindas' },
@@ -197,10 +208,34 @@ describe('mover_etapa', () => {
     expect(r.registros[0]).toMatchObject({ ok: false, erro: 'item_de_outra_conta' })
   })
 
-  it('a RPC recusou (o card mudou de status no meio): falha com o motivo', async () => {
+  it('a RPC recusou (o card mudou de status no meio): `recusado`, com o motivo no detalhe', async () => {
     banco.respostaDaRpc = { data: [{ ok: false, motivo: 'o negocio deixou de estar open' }], error: null }
     const r = await executarAcoes(db, CTX, [acao({ tipo: 'mover_etapa', id: 'etapa-proposta' })])
-    expect(r.registros[0]).toMatchObject({ ok: false, erro: 'recusado: o negocio deixou de estar open' })
+    expect(r.registros[0]).toMatchObject({ ok: false, erro: 'recusado', detalhe: 'o negocio deixou de estar open' })
+    expect(r.moveu).toBe(false)
+  })
+
+  it('o card JÁ está na etapa: ok, `ja_estava`, sem RPC, sem anotação e sem dreno', async () => {
+    banco.tabelas.deals[0].stage_id = 'etapa-proposta'
+    const r = await executarAcoes(db, CTX, [acao({ tipo: 'mover_etapa', id: 'etapa-proposta', nome: 'Proposta' })])
+    expect(r).toEqual({
+      registros: [{ tipo: 'mover_etapa', alvo: { id: 'etapa-proposta', nome: 'Proposta' }, ok: true, detalhe: 'ja_estava' }],
+      moveu: false,
+    })
+    expect(banco.rpcs).toEqual([])
+    expect(notas()).toEqual([])
+  })
+
+  it('⚠️ a CASCATA da etapa saiu da D5 depois de liberada: `cascata_fora_da_d5`, o motivo no detalhe, sem mover', async () => {
+    vi.mocked(motivosForaDaD5).mockResolvedValueOnce({
+      automacoes: new Map(),
+      etapas: new Map([['etapa-proposta', 'send_webhook']]),
+      etiquetas: new Map(),
+    })
+    const r = await executarAcoes(db, CTX, [acao({ tipo: 'mover_etapa', id: 'etapa-proposta' })])
+    expect(r.registros[0]).toMatchObject({ ok: false, erro: 'cascata_fora_da_d5', detalhe: 'send_webhook' })
+    expect(vi.mocked(motivosForaDaD5).mock.calls[0].slice(1)).toEqual(['conta-1', { etapas: ['etapa-proposta'] }])
+    expect(banco.rpcs).toEqual([])
     expect(r.moveu).toBe(false)
   })
 })
@@ -224,6 +259,24 @@ describe('etiquetar / tirar_etiqueta', () => {
     const r = await executarAcoes(db, CTX, [acao({ tipo: 'etiquetar', id: 'tag-vip' })])
     expect(r.registros[0]).toMatchObject({ ok: true })
     expect(notas()).toEqual([])
+  })
+
+  it('⚠️ a CASCATA da etiqueta saiu da D5: `cascata_fora_da_d5`, sem etiquetar', async () => {
+    vi.mocked(motivosForaDaD5).mockResolvedValueOnce({
+      automacoes: new Map(),
+      etapas: new Map(),
+      etiquetas: new Map([['tag-quente', 'send_to_number']]),
+    })
+    const r = await executarAcoes(db, CTX, [acao({ tipo: 'etiquetar', id: 'tag-quente' })])
+    expect(r.registros[0]).toMatchObject({ ok: false, erro: 'cascata_fora_da_d5', detalhe: 'send_to_number' })
+    expect(addContactTagAndDispatch).not.toHaveBeenCalled()
+  })
+
+  it('a conferência da cascata que falha: não etiqueta (`falhou`, com o detalhe)', async () => {
+    vi.mocked(motivosForaDaD5).mockRejectedValueOnce(new Error('banco fora'))
+    const r = await executarAcoes(db, CTX, [acao({ tipo: 'etiquetar', id: 'tag-vip' })])
+    expect(r.registros[0]).toMatchObject({ ok: false, erro: 'falhou', detalhe: 'banco fora' })
+    expect(addContactTagAndDispatch).not.toHaveBeenCalled()
   })
 
   it('tirar: pelo `removeContactTag`, com a conta', async () => {
@@ -265,6 +318,43 @@ describe('preencher_campo', () => {
     expect(gravado).toMatch(/^2026-10-01T17:00:00/)
   })
 
+  const gravado = () => (banco.escritas.find((e) => e.tabela === 'contact_custom_values')?.valores as Linha | undefined)?.value
+
+  it('⚠️ data sem fuso: o dia (e a hora) no fuso do escritório; data ilegível: `valor_invalido`, nada gravado', async () => {
+    await executarAcoes(db, CTX, [acao({ tipo: 'preencher_campo', id: 'campo-data', valor: '2026-10-01 14:00' })])
+    expect(gravado()).toBe('2026-10-01T17:00:00.000Z')
+    banco.escritas = []
+    const r = await executarAcoes(db, CTX, [acao({ tipo: 'preencher_campo', id: 'campo-data', valor: 'amanhã às 14h' })])
+    expect(r.registros[0]).toMatchObject({ ok: false, erro: 'valor_invalido', detalhe: 'data' })
+    expect(gravado()).toBeUndefined()
+  })
+
+  it('número fora da forma, opção fora da lista, e-mail sem forma: `valor_invalido`', async () => {
+    const r = await executarAcoes(db, CTX, [
+      acao({ tipo: 'preencher_campo', id: 'campo-numero', valor: 'R$ 1.500' }),
+      acao({ tipo: 'preencher_campo', id: 'campo-lista', valor: 'Previdenciário' }),
+      acao({ tipo: 'preencher_campo', id: 'campo-email', valor: 'ana arroba x' }),
+    ])
+    expect(r.registros.map((x) => [x.erro, x.detalhe])).toEqual([
+      ['valor_invalido', 'numero'],
+      ['valor_invalido', 'lista'],
+      ['valor_invalido', 'email'],
+    ])
+    expect(gravado()).toBeUndefined()
+  })
+
+  it('a opção da lista grava na grafia DELA; número e e-mail na forma certa gravam', async () => {
+    await executarAcoes(db, CTX, [acao({ tipo: 'preencher_campo', id: 'campo-lista', valor: ' bancário ' })])
+    expect(gravado()).toBe('Bancário')
+    expect(notas()[0].texto).toContain('Bancário')
+    banco.escritas = []
+    await executarAcoes(db, CTX, [acao({ tipo: 'preencher_campo', id: 'campo-numero', valor: '150000.50' })])
+    expect(gravado()).toBe('150000.50')
+    banco.escritas = []
+    await executarAcoes(db, CTX, [acao({ tipo: 'preencher_campo', id: 'campo-email', valor: 'ana@x.com' })])
+    expect(gravado()).toBe('ana@x.com')
+  })
+
   it('campo de outra conta: recusado', async () => {
     const r = await executarAcoes(db, CTX, [acao({ tipo: 'preencher_campo', id: 'campo-sumido', valor: 'x' })])
     expect(r.registros[0]).toMatchObject({ ok: false, erro: 'item_de_outra_conta' })
@@ -299,7 +389,8 @@ describe('criar_tarefa', () => {
       acao({ tipo: 'etiquetar', id: 'tag-vip' }),
     ])
     expect(r.registros.map((x) => x.ok)).toEqual([false, true])
-    expect(r.registros[0].erro).toContain('responsável não é membro')
+    expect(r.registros[0].erro).toBe('falhou')
+    expect(r.registros[0].detalhe).toContain('responsável não é membro')
     expect(addContactTagAndDispatch).toHaveBeenCalled()
   })
 })
@@ -319,10 +410,30 @@ describe('executar_automacao', () => {
     expect(notas()[0].texto).toContain('Boas-vindas')
   })
 
-  it('⚠️ a D5 DE NOVO: a automação ganhou passo fora da D5 depois de liberada — não roda', async () => {
-    vi.mocked(motivosForaDaD5).mockResolvedValueOnce(new Map([['auto-1', 'send_webhook']]))
+  it('⚠️ a D5 DE NOVO: a automação ganhou passo fora da D5 (ou "Aguardar") depois de liberada — não roda', async () => {
+    vi.mocked(motivosForaDaD5).mockResolvedValueOnce({
+      automacoes: new Map([['auto-1', 'send_webhook']]),
+      etapas: new Map(),
+      etiquetas: new Map(),
+    })
     const r = await executarAcoes(db, CTX, [acao({ tipo: 'executar_automacao', id: 'auto-1' })])
-    expect(r.registros[0]).toMatchObject({ ok: false, erro: 'automacao_fora_da_d5:send_webhook' })
+    expect(r.registros[0]).toEqual({
+      tipo: 'executar_automacao',
+      alvo: { id: 'auto-1', nome: 'auto-1' },
+      ok: false,
+      erro: 'automacao_fora_da_d5',
+      detalhe: 'send_webhook',
+    })
+    expect(vi.mocked(motivosForaDaD5).mock.calls[0].slice(1)).toEqual(['conta-1', { automacoes: ['auto-1'] }])
+    expect(runAutomationById).not.toHaveBeenCalled()
+
+    vi.mocked(motivosForaDaD5).mockResolvedValueOnce({
+      automacoes: new Map([['auto-1', 'aguardar']]),
+      etapas: new Map(),
+      etiquetas: new Map(),
+    })
+    const r2 = await executarAcoes(db, CTX, [acao({ tipo: 'executar_automacao', id: 'auto-1' })])
+    expect(r2.registros[0]).toMatchObject({ erro: 'automacao_fora_da_d5', detalhe: 'aguardar' })
     expect(runAutomationById).not.toHaveBeenCalled()
   })
 
@@ -351,11 +462,22 @@ describe('executar_automacao', () => {
   it('o motor recusou: falha com o detalhe', async () => {
     vi.mocked(runAutomationById).mockResolvedValueOnce({ ok: false, detail: 'automação alvo está desativada' })
     const r = await executarAcoes(db, CTX, [acao({ tipo: 'executar_automacao', id: 'auto-1' })])
-    expect(r.registros[0]).toMatchObject({ ok: false, erro: 'automação alvo está desativada' })
+    expect(r.registros[0]).toMatchObject({ ok: false, erro: 'recusado', detalhe: 'automação alvo está desativada' })
   })
 })
 
 describe('executarAcoes', () => {
+  it('⚠️ todo `erro` é um código da lista fechada (o texto cru vai no `detalhe`)', async () => {
+    vi.mocked(criarTarefaComAviso).mockRejectedValueOnce(new Error('qualquer coisa'))
+    banco.respostaDaRpc = { data: [{ ok: false, motivo: 'x' }], error: null }
+    const r = await executarAcoes(db, CTX, [
+      acao({ tipo: 'criar_tarefa', id: 'membro-ana', valor: 'X' }),
+      acao({ tipo: 'mover_etapa', id: 'etapa-proposta' }),
+      acao({ tipo: 'preencher_campo', id: 'campo-sumido', valor: 'x' }),
+    ])
+    for (const x of r.registros) expect(CODIGOS_DE_FALHA_DA_ACAO).toContain(x.erro)
+  })
+
   it('nenhuma ação: nada acontece', async () => {
     expect(await executarAcoes(db, CTX, [])).toEqual({ registros: [], moveu: false })
     expect(banco.escritas).toEqual([])

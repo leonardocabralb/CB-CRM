@@ -68,6 +68,7 @@ beforeEach(() => {
       acoes: [
         { tipo: 'mover_etapa', alvo: { id: 'etapa-1', nome: 'Bancário · Proposta' }, ok: true },
         { tipo: 'etiquetar', alvo: { id: null, nome: '#4' }, ok: false, erro: 'fora_da_lista' },
+        { tipo: 'etiquetar', alvo: { id: 't1', nome: 'Quente' }, ok: false, erro: 'cascata_fora_da_d5', detalhe: 'send_webhook' },
         { tipo: 7 },
       ],
     },
@@ -90,6 +91,8 @@ describe('GET /api/cb/ia/agentes/[id]/turnos', () => {
         acoes: [
           { tipo: 'mover_etapa', alvo: { id: 'etapa-1', nome: 'Bancário · Proposta' }, ok: true },
           { tipo: 'etiquetar', alvo: { id: null, nome: '#4' }, ok: false, erro: 'fora_da_lista' },
+          // O código e o detalhe cru, separados.
+          { tipo: 'etiquetar', alvo: { id: 't1', nome: 'Quente' }, ok: false, erro: 'cascata_fora_da_d5', detalhe: 'send_webhook' },
         ],
       },
       { id: 't1', status: 'falhou', criadoEm: '2026-09-26T11:00:00Z', terminadoEm: '2026-09-26T11:00:05Z', erro: 'sem chave', conversationId: 'conv-1', contato: 'Maria', contexto: null, acoes: [] },

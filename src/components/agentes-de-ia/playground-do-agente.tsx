@@ -13,8 +13,10 @@
 // zera a conversa — a de um, mandada como se fosse do outro, não testa nada.
 //
 // F4 (D28): as ações que o agente pediu junto com a resposta aparecem
-// debaixo dela como SIMULADAS — no Playground nada executa —, e as que o
-// servidor recusou (número fora da lista, item não liberado) também. Link
+// debaixo dela como SIMULADAS — no Playground nada executa —, com o valor
+// ("preencher Tamanho da dívida = 200 mil", "tarefa para Ana: Ligar
+// amanhã"), e as que o servidor recusou (número fora da lista, item não
+// liberado) também. Link
 // que não veio do pedido (`linkInventado`) ganha o aviso: em produção a
 // resposta seria retida e a conversa iria para uma pessoa.
 
@@ -260,7 +262,7 @@ export function PlaygroundDoAgente({
                         <Wrench className="mt-px size-3.5 shrink-0 text-primary" />
                         <span>
                           {t('playground.acoesSimuladas', {
-                            itens: x.acoes.aceitas.map((a) => fraseDaAcao(t, a.tipo, a.nome)).join(' · '),
+                            itens: x.acoes.aceitas.map((a) => fraseDaAcao(t, a.tipo, a.nome, a.valor)).join(' · '),
                           })}
                         </span>
                       </p>

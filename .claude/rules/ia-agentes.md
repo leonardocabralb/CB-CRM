@@ -3,10 +3,14 @@ paths:
   - "src/lib/ia-agentes/acesso*"
   - "src/lib/ia-agentes/conhecimento*"
   - "src/lib/ia-agentes/pedido*"
+  - "src/lib/ia-agentes/acoes*"
+  - "src/lib/ia-agentes/executar-acoes*"
+  - "src/lib/ia-agentes/ferramentas*"
   - "src/app/api/cb/ia/agentes/**"
   - "src/components/agentes-de-ia/acesso-do-agente.tsx"
   - "src/components/agentes-de-ia/base-do-agente.tsx"
   - "src/components/agentes-de-ia/playground-do-agente.tsx"
+  - "src/components/agentes-de-ia/ferramentas*"
   - "supabase/migrations/1052_cb_ia_agente_documentos.sql"
 ---
 
@@ -56,3 +60,37 @@ estão em `.claude/rules/ia.md`.
   documentos.
 - **Limite conhecido**: dois PUT simultâneos de documentos do mesmo agente
   podem deixá-lo sem documento (insere e depois apaga, sem trava).
+
+# Agentes de IA — ações junto com a resposta (F4, D28)
+
+Plano: `docs/PLANO-agentes-de-ia.md` (D5, D28, F4). Sem migration.
+
+- ⚠️⚠️ **O modelo escolhe NÚMERO, nunca id** (`opcoesDoAgente` → pedido
+  numerado → `resolverAcoes`). Contato, card e conversa são os DO TURNO.
+  Número fora da lista = recusada. Nada ligado em `ferramentas` = só conversa.
+- ⚠️⚠️ **As ações rodam DEPOIS de a resposta SAIR** (`turno.ts`). Passagem,
+  transferência, link inventado, reserva recusada, envio recusado ou incerto
+  = nenhuma ação (registradas como recusadas / `envio_falhou`). Cada ação é
+  conferida DE NOVO na hora e deixa a anotação "IA · <agente> …"; uma falha
+  não segura as outras.
+- ⚠️⚠️ **A D5 inclui a CASCATA** (`motivoForaDaD5`, `ferramentas.ts`):
+  `run_automation`, as automações de ENTRADA das etapas movidas e as de
+  etiqueta aplicada (o motor não tem gatilho de etiqueta tirada), com trava de ciclo e o escopo ignorado. Ao salvar
+  (400 com código e `itens`), nas opções do turno e na execução. "Aguardar"
+  só é proibido na automação que a IA executa DIRETAMENTE. Os webhooks de
+  saída `deal.*` ficam fora (assinatura da integração; limite escrito).
+- **Nenhum marcador chega ao cliente** (`lerAcoes`: caixa, acento, espaço,
+  colchete simples; `[[handoff]]` em qualquer forma = transferência). Teste
+  para cada forma nova.
+- **Link inventado** (`linkInventado`): URL da resposta que não está no
+  pedido montado nem nas mensagens enviadas ao modelo → retém e transfere
+  (`link_inventado`), com o link no registro do turno.
+- **Campo com tipo**: data, número, lista e o e-mail espelhado são validados
+  na hora (`valor_invalido`); valor vazio não apaga.
+- **O registro** (`cb_ia_turnos.acoes`): `erro` é código de lista FECHADA
+  (`MotivoDaRecusa` | `CODIGOS_DE_FALHA_DA_ACAO`), o cru vai em `detalhe`; a
+  aba Turnos traduz por Record exaustivo — código novo sem texto não compila.
+- **Playground**: as ações são SIMULADAS (nada executa) e vêm com o valor.
+- **Limites**: a trilha/`deal.*` dizem `automation`/`sistema` (a origem `ia`
+  exige migration); ferramentas lidas no começo do turno; agente e automação
+  da etapa nova falam os dois (o agente primeiro).

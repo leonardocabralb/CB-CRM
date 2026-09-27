@@ -315,6 +315,14 @@ describe('POST /api/cb/ia/agentes/[id]/playground — as ações (F4, SIMULADAS)
     expect(corpo.acoes).toEqual({ aceitas: [], recusadas: [{ tipo: 'mover_etapa', motivo: 'transferencia' }] })
   })
 
+  it('⚠️ o sentinela escrito de outro jeito (`[[ handoff ]]`) transfere, e vence a passagem', async () => {
+    resposta = { text: 'Um momento. [[ handoff ]] [[PASSAR:1]]\n[[MOVER:1]]', handoff: false }
+    const corpo = await (await enviar()).json()
+    expect(corpo).toMatchObject({ handoff: true, passaPara: null })
+    expect(corpo.reply).not.toMatch(/handoff/i)
+    expect(corpo.acoes).toEqual({ aceitas: [], recusadas: [{ tipo: 'mover_etapa', motivo: 'transferencia' }] })
+  })
+
   it('a passagem vence: as ações vão para as recusadas (`passagem`)', async () => {
     resposta = { text: '[[PASSAR:1]]\n[[MOVER:1]]', handoff: false }
     const corpo = await (await enviar()).json()

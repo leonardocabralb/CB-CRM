@@ -34,9 +34,14 @@ interface LinhaDoTurno {
  * `contexto` é o RETRATO do que o modelo viu (F3, 1052): `{ blocos: [{ bloco,
  * texto }], documentos: [ids] }`; nulo nos turnos anteriores à F3 e nos que
  * não chegaram a montar o pedido. `acoes` (F4) é o que o agente FEZ junto com
- * a resposta: `[{ tipo, alvo: { id, nome }, ok, erro? }]` — as executadas e
- * as recusadas (`alvo.id` nulo e `alvo.nome` "#n": o número que o modelo
- * pediu); nulo quando o registro não é uma lista.
+ * a resposta: `[{ tipo, alvo: { id, nome }, ok, erro?, detalhe? }]` — as
+ * executadas, as recusadas na leitura (`alvo.id` nulo e `alvo.nome` "#n": o
+ * número que o modelo pediu) e as aceitas que não executaram (`passagem`,
+ * `transferencia`, `envio_falhou`). `erro` é um código (`MotivoDaRecusa` ou
+ * `CODIGOS_DE_FALHA_DA_ACAO`; o de um registro antigo passa como está),
+ * `detalhe` o complemento cru (o motivo da D5, a recusa da RPC, `ja_estava`).
+ * Nulo quando o registro não é uma lista. O `erro` do TURNO que reteve um
+ * link inventado traz os links ("link inventado: https://…").
  * `cb_ia_turnos` é fechada ao navegador — daí a rota, com o cliente de
  * serviço e a conta conferida (o agente e cada consulta).
  */

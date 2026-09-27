@@ -144,6 +144,29 @@ describe('as AÇÕES junto com a resposta (F4, D28)', () => {
     expect(p).toMatch(/a message with only markers is handed over to the team/)
   })
 
+  it('cada campo diz o FORMATO do valor (data, número, lista com as opções, e-mail, texto)', () => {
+    const p = montarPedidoDoAgente({
+      instrucoes: 'x',
+      regras: [],
+      agora,
+      acoes: {
+        preencher_campo: [
+          { id: 'c1', nome: 'Data do acidente', formato: { tipo: 'data' } },
+          { id: 'c2', nome: 'Tamanho da dívida', formato: { tipo: 'numero' } },
+          { id: 'c3', nome: 'Área', formato: { tipo: 'lista', opcoes: ['Bancário', 'Trabalhista "CLT"'] } },
+          { id: 'c4', nome: 'E-mail', formato: { tipo: 'email' } },
+          { id: 'c5', nome: 'Observação', formato: { tipo: 'texto' } },
+        ],
+      },
+    })
+    expect(p).toContain("1. Data do acidente — a date as YYYY-MM-DD, or a date and time as YYYY-MM-DD HH:MM, in the business's timezone")
+    expect(p).toContain("2. Tamanho da dívida — a number: digits only, with '.' as the decimal separator")
+    expect(p).toContain('3. Área — exactly one of: "Bancário", "Trabalhista \\"CLT\\""')
+    expect(p).toContain('4. E-mail — an e-mail address')
+    expect(p).toContain('5. Observação — text')
+    expect(p).toContain('in the format given for that field')
+  })
+
   it('sem ações liberadas, o pedido não fala de ações', () => {
     expect(montarPedidoDoAgente({ instrucoes: 'x', regras: [], agora })).not.toContain('[[MOVER')
     expect(montarPedidoDoAgente({ instrucoes: 'x', regras: [], agora, acoes: {} })).not.toContain('Actions you can take')
