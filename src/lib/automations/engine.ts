@@ -2204,14 +2204,15 @@ async function runStep(
       // NÃO viajaria ao cliente — a equipe leria uma conversa que o cliente
       // nunca teve. Mesma guarda da 932, aqui em terceiro lugar (banco, tela,
       // motor), porque a config pode ter sido gravada antes desta regra.
+      // A conversa ANTES da legenda, como no texto (Codex, #322).
+      const conversationId = await resolveConversationId(args, {
+        criarSeFaltar: true,
+      });
       const legenda =
         cfg.kind === 'audio'
           ? undefined
           : (await interpolate(cfg.caption ?? '', args)) || undefined;
 
-      const conversationId = await resolveConversationId(args, {
-        criarSeFaltar: true,
-      });
       const { whatsapp_message_id } = await engineSendMedia({
         accountId: args.automation.account_id,
         userId: args.automation.user_id,

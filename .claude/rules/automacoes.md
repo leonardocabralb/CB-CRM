@@ -400,3 +400,7 @@ e a marca na lista e no card por `/api/cb/execucoes/resumo`.
   (ver `.claude/rules/ui.md`).
 - **Nada retroativo**: execução anterior à 985 fica sem desfecho e não aparece
   (carimbar `created_at` mentiria em toda automação com espera).
+- **Limite aceito (Codex, #322):** a conversa criada DENTRO de um ramo de
+  condição não chega aos dados do contato já lidos pelo escopo de fora: um
+  `{{conversation.link}}` desse escopo, depois do ramo, sai vazio naquela
+  execução. O link é o interno do CRM (aviso à equipe), quase nunca vai ao lead.
