@@ -120,6 +120,32 @@ describe('descreverPasso — variantes que viram chaves diferentes', () => {
   })
 })
 
+describe('descreverPasso — "Alterar campo do contato"', () => {
+  it('campo personalizado pelo NOME, nunca "custom:<id>"', () => {
+    const r = descreverPasso(passo('update_contact_field', { field: 'custom:cf1', value: 'x' }), {
+      campos: { cf1: 'Motivo da desqualificação' },
+    })
+    expect(r).toEqual({
+      chave: 'update_contact_field',
+      valores: { alvo: 'Motivo da desqualificação' },
+      alvoSumiu: false,
+    })
+  })
+
+  it('campo que o catálogo não conhece = alvoSumiu, sem o id', () => {
+    const r = descreverPasso(passo('update_contact_field', { field: 'custom:sumiu' }), { campos: {} })
+    expect(r).toEqual({ chave: 'update_contact_field', valores: { alvo: '' }, alvoSumiu: true })
+  })
+
+  it('campo fixo tem chave própria, sem alvo cru em inglês', () => {
+    expect(descreverPasso(passo('update_contact_field', { field: 'email' }))).toEqual({
+      chave: 'update_contact_field_email',
+      valores: {},
+      alvoSumiu: false,
+    })
+  })
+})
+
 describe('descreverPasso — condição por campo personalizado (2.10)', () => {
   const CAMPOS = { cf1: 'Motivo da desqualificação' }
 
@@ -244,6 +270,10 @@ const VARIANTES: Array<[string, Record<string, unknown>]> = [
   ['condition', { subject: 'custom_field', operand: 'cf1', operator: 'contains', value: 'x' }],
   ['condition', { subject: 'custom_field', operand: 'cf1', operator: 'empty' }],
   ['condition', { subject: 'custom_field', operand: 'cf1', operator: 'not_empty' }],
+  // "Alterar campo do contato": os três campos fixos têm frase própria.
+  ['update_contact_field', { field: 'name' }],
+  ['update_contact_field', { field: 'email' }],
+  ['update_contact_field', { field: 'company' }],
 ]
 
 function resumoDoDicionario(arquivo: string): Record<string, string> {

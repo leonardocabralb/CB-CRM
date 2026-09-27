@@ -1296,6 +1296,9 @@
         "remove_tag": "Remove tag: {alvo}",
         "assign_conversation": "Assign the conversation",
         "update_contact_field": "Update contact field: {alvo}",
+        "update_contact_field_name": "Update the contact's name",
+        "update_contact_field_email": "Update the contact's email",
+        "update_contact_field_company": "Update the contact's company",
         "create_deal": "Create deal: {alvo}",
         "move_deal_stage": "Move to stage: {alvo}",
         "set_deal_status_won": "Mark deal as won",
@@ -2231,7 +2234,13 @@
       "moveDown": "Move down",
       "kindCondition": "Condition",
       "kindWait": "Wait",
-      "kindAction": "Action"
+      "kindAction": "Action",
+      "previa": {
+        "semTexto": "no text yet",
+        "semCorpo": "no body yet",
+        "semModelo": "pick a template",
+        "semUrl": "no url"
+      }
     }
   },
   "Flows": {
