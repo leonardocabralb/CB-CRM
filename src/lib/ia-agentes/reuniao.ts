@@ -238,9 +238,14 @@ export interface DadosDoConvidado {
  * pergunta de telefone do formulário (`respostasDoTelefone` — é por ela que o
  * webhook acha o cliente); o local, só o `kind`.
  */
+/** O telefone da ficha em E.164 com `+`, ou nulo quando ele não tem a forma de um. */
+export function telefoneE164(telefone: string | null | undefined): string | null {
+  const digitos = (telefone ?? '').replace(/\D/g, '')
+  return digitos && isValidE164(digitos) ? `+${digitos}` : null
+}
+
 export function corpoDoConvidado(d: DadosDoConvidado): Record<string, unknown> {
-  const digitos = (d.telefone ?? '').replace(/\D/g, '')
-  const telefone = digitos && isValidE164(digitos) ? `+${digitos}` : null
+  const telefone = telefoneE164(d.telefone)
   const respostas = respostasDoTelefone(d.perguntas ?? [], telefone, d.perguntaTelefone)
   return {
     event_type: d.tipoDeEvento,

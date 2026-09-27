@@ -42,6 +42,7 @@ import {
   opcoesDeHorario,
   PRAZO_DOS_HORARIOS_MS,
   recusaDoHorario,
+  telefoneE164,
   type ReuniaoJaMarcada,
 } from './reuniao'
 
@@ -329,7 +330,7 @@ export type ResultadoDoAgendamento =
   | { ok: true; uri: string | null }
   | {
       ok: false
-      erro: Extract<CodigoDeFalhaDaAcao, 'sem_email' | 'horario_indisponivel' | 'calendly_desconectado' | 'recusado' | 'falhou'>
+      erro: Extract<CodigoDeFalhaDaAcao, 'sem_email' | 'sem_telefone' | 'horario_indisponivel' | 'calendly_desconectado' | 'recusado' | 'falhou'>
       detalhe?: string
     }
 
@@ -368,6 +369,13 @@ export async function marcarNoCalendly(
       .maybeSingle()
     if (error) return { ok: false, erro: 'falhou', detalhe: `leitura do contato: ${error.message}` }
     if (!contato) return { ok: false, erro: 'falhou', detalhe: 'contato não encontrado nesta conta' }
+
+    // Sem telefone válido o nosso webhook não acha o cliente do agendamento
+    // (`sem_telefone` no Calendly): a reunião nasceria e a automação do
+    // Calendly não rodaria — nada de card, lembrete nem aviso (Codex, #317).
+    // Não marca; a falha transfere para gente.
+    const c0 = contato as { phone: string | null }
+    if (!telefoneE164(c0.phone)) return { ok: false, erro: 'sem_telefone' }
 
     const email = await emailDoCliente(db, args.accountId, args.contactId)
     if (!email) return { ok: false, erro: 'sem_email' }

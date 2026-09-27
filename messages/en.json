@@ -4671,6 +4671,7 @@
           "desconhecido": "not done ({erro})",
           "semCodigo": "not done",
           "sem_email": "the contact has no e-mail on file (Calendly requires one)",
+          "sem_telefone": "the contact has no valid phone (the CRM finds the booking\u2019s customer by it)",
           "horario_indisponivel": "the slot is no longer free in Calendly",
           "calendly_desconectado": "Calendly is not connected"
         },

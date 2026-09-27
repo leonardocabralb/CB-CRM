@@ -248,6 +248,7 @@ export const CHAVE_DO_ERRO_DA_ACAO = {
   fora_da_etapa: 'turnos.acoes.erro.fora_da_etapa',
   // A reunião (F5): sem e-mail, horário tomado, Calendly desconectado.
   sem_email: 'turnos.acoes.erro.sem_email',
+  sem_telefone: 'turnos.acoes.erro.sem_telefone',
   horario_indisponivel: 'turnos.acoes.erro.horario_indisponivel',
   calendly_desconectado: 'turnos.acoes.erro.calendly_desconectado',
   envio_falhou: 'turnos.acoes.erro.envio_falhou',

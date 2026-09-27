@@ -4664,6 +4664,7 @@
           "desconhecido": "não concluída ({erro})",
           "semCodigo": "não concluída",
           "sem_email": "a ficha não tem e-mail (o Calendly exige um)",
+          "sem_telefone": "a ficha não tem telefone válido (é por ele que o CRM acha o cliente do agendamento)",
           "horario_indisponivel": "o horário não está mais livre no Calendly",
           "calendly_desconectado": "o Calendly não está conectado"
         },

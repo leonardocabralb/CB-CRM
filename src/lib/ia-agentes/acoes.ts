@@ -790,6 +790,7 @@ export const CODIGOS_DE_FALHA_DA_ACAO = [
   // A reunião (F5): sem e-mail na ficha nem no último agendamento; o Calendly
   // recusou o horário (tomado); o Calendly não está conectado (ou o token caiu).
   'sem_email',
+  'sem_telefone',
   'horario_indisponivel',
   'calendly_desconectado',
   'envio_falhou',
