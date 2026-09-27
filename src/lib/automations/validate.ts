@@ -204,7 +204,16 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
           })
         }
       }
-      if (nonEmpty(c.header_media_url)) {
+      // Presente e não-texto (número, booleano, objeto — pela API) é recusado:
+      // o motor o converteria em texto e mandaria "123" como link à Meta, e
+      // toda execução falharia (Codex, PR #315).
+      if (
+        c.header_media_url !== undefined &&
+        c.header_media_url !== null &&
+        typeof c.header_media_url !== 'string'
+      ) {
+        issues.push({ path: `${path}.header_media_url`, message: 'header file must be text (an http or https address)' })
+      } else if (nonEmpty(c.header_media_url)) {
         try {
           const u = new URL(String(c.header_media_url))
           if (u.protocol !== 'http:' && u.protocol !== 'https:') {

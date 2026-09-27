@@ -597,6 +597,13 @@ describe('previdenciário — Fase 2 (modelo, tarefa, janela)', () => {
     expect(
       paths([{ step_type: 'send_template', step_config: { template_name: 'x', header_media_url: 'javascript:alert(1)' } }])
     ).toEqual(['steps[0].header_media_url'])
+    // Pela API: número ou booleano viraria "123"/"true" como link (Codex, #315).
+    expect(
+      paths([{ step_type: 'send_template', step_config: { template_name: 'x', header_media_url: 123 } }])
+    ).toEqual(['steps[0].header_media_url'])
+    expect(
+      paths([{ step_type: 'send_template', step_config: { template_name: 'x', header_media_url: true } }])
+    ).toEqual(['steps[0].header_media_url'])
   })
 
   it('create_task: a pessoa é obrigatória em TODO modo — nos dinâmicos, como RESERVA', () => {
