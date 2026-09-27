@@ -1234,6 +1234,17 @@
       "stageDegrau": "Funil de eficiência",
       "stageDegrauHint": "A que degrau do funil de eficiência esta etapa corresponde. Várias etapas podem apontar para o mesmo degrau; etapa sem degrau não conta no Desempenho.",
       "semLead": "Nenhuma etapa está marcada como Lead: o Desempenho e a Saúde deste funil ficam sem cálculo até isso ser configurado.",
+      "painel": "Painel do Desempenho e da Saúde",
+      "painelDica": "Como este funil aparece nos painéis. O rótulo vale só neste funil; vazio, fica o nome padrão do degrau.",
+      "painelDegraus": "Degraus",
+      "painelRotulo": "Rótulo de {degrau}",
+      "painelNaoSeAplica": "Não se aplica",
+      "painelNaoSeAplicaDica": "Sem etapa neste degrau, o cartão some do Desempenho em vez de pedir configuração.",
+      "painelComEtapa": "Há etapa neste degrau: o cartão aparece mesmo marcado.",
+      "painelOpcional": "opcional",
+      "painelOpcionalDica": "Degrau opcional, depois do contrato: sem etapa nele, o cartão não aparece.",
+      "painelCustos": "Cartões de custo (aparecem com o Meta Ads conectado)",
+      "painelCustosDica": "Custo de degrau só aparece com etapa no degrau.",
       "toastStageMappedWithHistory": "Esta etapa está mapeada no funil de eficiência e tem histórico de negócios: apagá-la apagaria essa história do Desempenho. Mude o degrau para \"Não conta\" e salve antes de remover, ou mantenha a etapa.",
       "deletePipelineChannels": "Estas conexões colocam clientes neste funil: {channels}. Depois de apagar, elas param de criar negócios até você apontá-las para outro funil em Configurações › Conexões.",
       "toastStageIsChannelEntry": "Esta etapa é a entrada de {channels}. Escolha outra etapa de entrada em Configurações › Conexões antes de apagá-la."
@@ -1327,6 +1338,7 @@
         "reuniao": "Reunião",
         "proposta": "Proposta",
         "contrato": "Contrato",
+        "pasta": "Pasta / processo",
         "perda": "Perda"
       },
       "situacao": {
@@ -1379,6 +1391,7 @@
           "doAnterior": "{pct} de {degrau}",
           "semEtapa": "Sem etapa correspondente",
           "etapas": "Etapas: {nomes}",
+          "custo": "{valor} por {degrau}",
           "notaPorPeriodo": "Cada degrau conta quem o alcançou pela primeira vez no período. As taxas comparam o que aconteceu no mesmo período e podem passar de 100% quando os contratos vêm de leads de meses anteriores — a conversão lead a lead está em “Por mês de entrada”."
         },
         "negativos": {
@@ -1400,7 +1413,7 @@
           "subtitulo": "atual vs anterior",
           "atual": "Período atual",
           "anterior": "Período anterior",
-          "global": "Lead → Contrato (global)"
+          "global": "{de} → {para} (global)"
         },
         "entradas": {
           "titulo": "Entrada de leads no período",
@@ -1414,7 +1427,9 @@
           "custoDosPerdidos": "Custo dos perdidos",
           "campanhasDoFunil": "{n} campanha(s) deste funil",
           "porLead": "investimento ÷ leads",
-          "porContrato": "investimento ÷ contratos",
+          "porContrato": "investimento ÷ contratos em pé",
+          "porDegrau": "investimento ÷ {n} que chegaram lá",
+          "porContratoAssinado": "investimento ÷ {n} contrato(s) alcançado(s)",
           "porPerdido": "custo por lead × perdidos",
           "porPerdidoNoPeriodo": "custo por lead × leads do período já perdidos",
           "semFunil": "{valor} em {n} campanha(s) sem funil atribuído no período — atribua em Integrações para o custo por lead ficar certo.",
@@ -1428,6 +1443,14 @@
         },
         "periodoPorAtividade": "Conta o que aconteceu no período (cada lead uma vez por degrau)",
         "semAtividade": "Nada aconteceu neste funil no período: nenhum lead entrou, avançou ou foi perdido."
+      },
+      "cartoesDeCusto": {
+        "investimento": "Investimento",
+        "lead": "Custo por lead",
+        "porDegrau": "Custo por {degrau}",
+        "contrato": "Custo por contrato assinado",
+        "cac": "CAC (contrato em pé)",
+        "perdidos": "Custo dos perdidos"
       },
       "saude": {
         "periodo": "Últimos {meses} meses, pelo mês de entrada no funil",
@@ -1450,6 +1473,13 @@
           "emAberto": "{n} em aberto",
           "pequena": "menos de {minimo} leads: taxa pouco confiável",
           "pequenaPorPeriodo": "taxa sobre menos de {minimo} no mês: pouco confiável"
+        },
+        "custos": {
+          "titulo": "Custos por mês",
+          "subtitulo": "investimento em anúncios ÷ cada contagem, mês a mês",
+          "nota": "A mesma conta do Desempenho, no modo de contagem escolhido acima. Mês sem denominador fica “—”. Passe o mouse para ver o valor inteiro.",
+          "semCartoes": "Todos os cartões de custo estão escondidos neste funil (Gerenciar funil › Painel).",
+          "carregando": "Carregando o investimento em anúncios…"
         },
         "periodoPorAtividade": "Últimos {meses} meses, pelo mês em que cada avanço aconteceu",
         "fontePorPeriodo": "Etapas pelo mapeamento do funil {funil}. Cada mês mostra o que aconteceu nele; mês encerrado não muda mais, e o mês corrente ainda está em curso. A taxa pode passar de 100% quando os contratos do mês vêm de leads anteriores."

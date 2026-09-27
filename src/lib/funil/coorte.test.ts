@@ -154,12 +154,14 @@ describe("resumoDoPeriodo — o funil de eficiência de setembro", () => {
       ["reuniao", 3],
       ["proposta", 3],
       ["contrato", 2],
+      ["pasta", 0], // opcional (1054): este funil não tem etapa nela
     ]);
   });
 
   it("taxa do degrau anterior: a primeira é sobre as entradas", () => {
-    expect(r.porDegrau.map((d) => d.taxaDoAnterior)).toEqual([1, 6 / 9, 0.5, 1, 2 / 3]);
-    expect(r.porDegrau.every((d) => d.comEtapa)).toBe(true);
+    expect(r.porDegrau.map((d) => d.taxaDoAnterior)).toEqual([1, 6 / 9, 0.5, 1, 2 / 3, null]);
+    expect(r.porDegrau.filter((d) => d.degrau !== "pasta").every((d) => d.comEtapa)).toBe(true);
+    expect(r.porDegrau.find((d) => d.degrau === "pasta")?.comEtapa).toBe(false);
   });
 
   it("transições encadeadas e a global", () => {
@@ -309,5 +311,46 @@ describe("comparar — atual × anterior", () => {
     expect(c.entradas.variacao).toBeNull();
     expect(c.global?.pp).toBeNull();
     expect(c.transicoes.every((t) => t.pp === null)).toBe(true);
+  });
+});
+
+describe("pasta (1054) na coorte", () => {
+  const comPasta = classificarEtapas([...ETAPAS, etapa("pasta", 10, "pasta"), etapa("sem-pasta", 12, "perda")]);
+  const linhas = [
+    ...LINHAS,
+    // contrato → pasta (30.000)
+    negocio(
+      "P",
+      "pasta",
+      [
+        passo("avulso", em(1, 7), FUNIL, "deal_created"),
+        passo("contrato", em(2, 7)),
+        passo("pasta", em(3, 7)),
+      ],
+      { value: 30000 },
+    ),
+    // contrato → "Contrato sem pasta" (perda)
+    negocio("Q", "sem-pasta", [
+      passo("avulso", em(1, 6), FUNIL, "deal_created"),
+      passo("contrato", em(2, 6)),
+      passo("sem-pasta", em(3, 6)),
+    ]),
+  ];
+  const r = resumoDoPeriodo(
+    linhas.map((l) => fatosDoNegocio(l, FUNIL, comPasta)),
+    comPasta,
+    SETEMBRO,
+    AGORA,
+  );
+
+  it("quem está na pasta é fechado: entra no dinheiro e no divisor do CAC", () => {
+    expect(r.fechadosAgora).toBe(3); // C, H e P
+    expect(r.valorFechado).toBe(42000 + 30000);
+    expect(r.fechados).toBe(4); // + Q, que alcançou contrato e se perdeu
+    expect(r.porDegrau.find((d) => d.degrau === "pasta")).toMatchObject({ alcancaram: 1, comEtapa: true, taxaDoAnterior: 1 / 4 });
+  });
+
+  it("a partição continua fechando com as entradas", () => {
+    expect(r.fechadosAgora + r.perdidos + r.semAvanco + r.emAndamento + r.foraDoFunil).toBe(r.entradas);
   });
 });

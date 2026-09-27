@@ -5,9 +5,13 @@ import { describe, expect, it } from "vitest";
 import {
   CLASSES,
   DEGRAUS,
+  DEGRAUS_OPCIONAIS,
+  INDICE_DO_CONTRATO,
   classificarEtapas,
+  degrauAntesDoContrato,
   ehClasse,
   ehDegrau,
+  ehFechamento,
   indiceDoDegrau,
   sugerirClasse,
   type EtapaMinima,
@@ -37,10 +41,25 @@ const BANCARIO: EtapaMinima[] = [
 ];
 
 describe("degraus — catálogo", () => {
-  it("a ordem é fixa: lead → mql → reuniao → proposta → contrato", () => {
-    expect([...DEGRAUS]).toEqual(["lead", "mql", "reuniao", "proposta", "contrato"]);
+  it("a ordem é fixa: lead → mql → reuniao → proposta → contrato → pasta", () => {
+    expect([...DEGRAUS]).toEqual(["lead", "mql", "reuniao", "proposta", "contrato", "pasta"]);
     expect(indiceDoDegrau("lead")).toBe(0);
     expect(indiceDoDegrau("contrato")).toBe(4);
+    expect(indiceDoDegrau("pasta")).toBe(5);
+    expect(INDICE_DO_CONTRATO).toBe(4);
+  });
+
+  it("a pasta (1054) é o único degrau opcional", () => {
+    expect([...DEGRAUS_OPCIONAIS]).toEqual(["pasta"]);
+  });
+
+  it("contrato e pasta são FECHAMENTO; o resto não", () => {
+    expect(ehFechamento("contrato")).toBe(true);
+    expect(ehFechamento("pasta")).toBe(true);
+    for (const c of ["lead", "mql", "reuniao", "proposta", "perda"] as const) {
+      expect(ehFechamento(c)).toBe(false);
+    }
+    expect(ehFechamento(null)).toBe(false);
   });
 
   it("perda é classe, não degrau", () => {
@@ -48,7 +67,7 @@ describe("degraus — catálogo", () => {
     expect(ehClasse("perda")).toBe(true);
     expect(ehClasse("ganho")).toBe(false);
     expect(ehClasse(null)).toBe(false);
-    expect(CLASSES).toHaveLength(6);
+    expect(CLASSES).toHaveLength(7);
   });
 });
 
@@ -80,9 +99,31 @@ describe("classificarEtapas", () => {
     expect(c.faltando).toEqual(["lead", "reuniao", "proposta"]);
   });
 
+  it("a pasta sem etapa NÃO é faltando (é opcional); com etapa, entra na classe dela", () => {
+    expect(classificarEtapas(BANCARIO).faltando).not.toContain("pasta");
+    const c = classificarEtapas([...BANCARIO, etapa("pasta", 12, "pasta")]);
+    expect(c.porClasse.pasta.map((e) => e.id)).toEqual(["pasta"]);
+    expect(c.classeDaEtapa.get("pasta")).toBe("pasta");
+  });
+
   it("ordena por posição mesmo recebendo fora de ordem", () => {
     const c = classificarEtapas([etapa("b", 5, "lead"), etapa("a", 1, "lead")]);
     expect(c.porClasse.lead.map((e) => e.id)).toEqual(["a", "b"]);
+  });
+});
+
+describe("degrauAntesDoContrato (o 'pipeline ativo' do balde em andamento)", () => {
+  it("é o último degrau mapeado ANTES do contrato — nunca o contrato, nem a pasta", () => {
+    expect(degrauAntesDoContrato(classificarEtapas(BANCARIO))).toBe("proposta");
+    // com a pasta mapeada, "o penúltimo da lista" seria o contrato — errado
+    expect(degrauAntesDoContrato(classificarEtapas([...BANCARIO, etapa("pasta", 12, "pasta")]))).toBe("proposta");
+    // funil sem proposta nem reunião (o Trabalhista sem reunião, por exemplo)
+    expect(
+      degrauAntesDoContrato(
+        classificarEtapas([etapa("l", 0, "lead"), etapa("m", 1, "mql"), etapa("c", 2, "contrato")]),
+      ),
+    ).toBe("mql");
+    expect(degrauAntesDoContrato(classificarEtapas([etapa("c", 0, "contrato")]))).toBeNull();
   });
 });
 

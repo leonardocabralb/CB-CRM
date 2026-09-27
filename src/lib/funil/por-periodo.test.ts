@@ -82,7 +82,10 @@ const OUTUBRO: Intervalo = { desde: new Date("2026-10-01T00:00:00-03:00"), ate: 
 const AGORA = new Date("2026-10-20T12:00:00-03:00");
 
 type Resumo = ReturnType<typeof resumoPorPeriodo>;
-const contagem = (r: Resumo) => Object.fromEntries(r.porDegrau.map((d) => [d.degrau, d.alcancaram]));
+// Só os degraus COM etapa: este funil não mapeia a pasta (1054, opcional), e
+// ela entraria como `pasta: 0` em toda comparação.
+const contagem = (r: Resumo) =>
+  Object.fromEntries(r.porDegrau.filter((d) => d.comEtapa).map((d) => [d.degrau, d.alcancaram]));
 
 describe("o pedido do operador: o que fechou ESTE mês aparece ESTE mês", () => {
   // 10 reuniões marcadas em agosto; 5 delas fecham contrato em setembro.
@@ -202,6 +205,7 @@ describe("2) sair de Reunião para Contrato não tira o lead de Reunião", () =>
       "2026-09-04",
       "2026-09-12",
       "2026-09-12",
+      undefined, // pasta: este funil não tem etapa nela
     ]);
   });
 });
@@ -340,3 +344,33 @@ describe("o modo", () => {
     expect(resumoNoModo("entrada", fatos, C, AGOSTO, AGORA).fechados).toBe(1);
   });
 });
+
+describe("pasta (1054) por período: o dinheiro fica no mês da ASSINATURA", () => {
+  const comPasta = classificarEtapas([
+    etapa("contato-avulso", 0, "lead"),
+    etapa("proposta", 8, "proposta"),
+    etapa("contrato-fechado", 9, "contrato"),
+    etapa("protocolado", 10, "pasta"),
+  ]);
+  const fatos = [
+    negocio(
+      "x",
+      [
+        p("contato-avulso", "2026-08-02T10:00:00-03:00", "deal_created"),
+        p("contrato-fechado", "2026-08-20T10:00:00-03:00"),
+        p("protocolado", "2026-09-05T10:00:00-03:00"),
+      ],
+      7000,
+    ),
+  ].map((l) => fatosDoNegocio(l, FUNIL, comPasta));
+
+  it("agosto tem o contrato e o dinheiro; setembro tem a pasta e nenhum contrato", () => {
+    const agosto = resumoPorPeriodo(fatos, comPasta, AGOSTO, AGORA);
+    const setembro = resumoPorPeriodo(fatos, comPasta, SETEMBRO, AGORA);
+    expect([agosto.fechados, agosto.fechadosAgora, agosto.valorFechado]).toEqual([1, 1, 7000]);
+    expect([setembro.fechados, setembro.fechadosAgora, setembro.valorFechado]).toEqual([0, 0, 0]);
+    expect(contagem(setembro)).toMatchObject({ pasta: 1, contrato: 0 });
+    expect(contagem(agosto)).toMatchObject({ pasta: 0, contrato: 1 });
+  });
+});
+

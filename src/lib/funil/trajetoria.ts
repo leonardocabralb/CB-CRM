@@ -2,6 +2,8 @@ import {
   type Classificacao,
   type ClasseDaEtapa,
   DEGRAUS,
+  ehFechamento,
+  INDICE_DO_CONTRATO,
   indiceDoDegrau,
 } from "./degraus";
 
@@ -20,7 +22,9 @@ import {
  *  3. Alcançou o degrau k = entrou em alguma etapa de degrau ≥ k. Monotônico
  *     por construção: quem pulou de Lead para Proposta conta como tendo
  *     passado por MQL e Reunião — nenhuma taxa passa de 100%.
- *  4. Situação = a classe da etapa em que está HOJE.
+ *  4. Situação = a classe da etapa em que está HOJE. Contrato E pasta (1054)
+ *     são "fechado": a pasta é o passo seguinte do mesmo contrato, e
+ *     separá-los tiraria do dinheiro e do CAC quem avançou.
  *  5. Na etapa desde = a última entrada na etapa atual (ou a criação).
  *  6. ⚠️⚠️ NEGÓCIO TRANSFERIDO PARA OUTRO FUNIL CONTINUA CONTANDO NO FUNIL DE
  *     ORIGEM, com a última etapa que teve aqui. DECISÃO DO OPERADOR
@@ -221,7 +225,7 @@ export type Situacao =
   | "sem_avanco"
   /** em mql/reuniao/proposta (ou de volta em lead depois de ter avançado) */
   | "andamento"
-  /** está numa etapa de contrato */
+  /** está numa etapa de contrato ou de pasta (`ehFechamento`) */
   | "fechado"
   /** está numa etapa de perda */
   | "perdido";
@@ -265,7 +269,12 @@ export interface FatosDoNegocio {
    */
   perdidoDesde: Date | null;
   situacao: Situacao;
-  /** chegou ao último degrau (conta como contrato mesmo se voltou depois). */
+  /**
+   * chegou a contrato OU a um degrau depois dele (pasta) — conta como
+   * contrato mesmo se voltou depois. ⚠️ É "≥ contrato", nunca "=== contrato":
+   * com a pasta (1054) o contrato deixou de ser o último degrau, e a
+   * igualdade tiraria quem chegou à pasta da conta de contratos.
+   */
   alcancouContrato: boolean;
 }
 
@@ -276,7 +285,7 @@ function instante(iso: string): number {
 function situacaoDe(classeAtual: ClasseDaEtapa | null, degrauMaximo: number | null): Situacao {
   if (classeAtual === null) return "fora_do_funil";
   if (classeAtual === "perda") return "perdido";
-  if (classeAtual === "contrato") return "fechado";
+  if (ehFechamento(classeAtual)) return "fechado";
   if (classeAtual === "lead" && (degrauMaximo ?? 0) === 0) return "sem_avanco";
   return "andamento";
 }
@@ -348,7 +357,7 @@ export function fatosDoNegocio(
     naEtapaDesde: desdeAtual,
     perdidoDesde,
     situacao: situacaoDe(classeAtual, degrauMaximo),
-    alcancouContrato: degrauMaximo === indiceDoDegrau("contrato"),
+    alcancouContrato: degrauMaximo !== null && degrauMaximo >= INDICE_DO_CONTRATO,
   };
 }
 

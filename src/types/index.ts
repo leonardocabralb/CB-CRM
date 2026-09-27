@@ -891,6 +891,13 @@ export interface Pipeline {
   /** NOT NULL desde a 017; faltava no tipo. */
   account_id?: string;
   name: string;
+  /**
+   * A configuração do painel do funil (1054, jsonb NOT NULL DEFAULT '{}'):
+   * rótulos livres por degrau, degraus que não se aplicam e cartões de custo
+   * escondidos. `unknown` de propósito — só se lê por `lerPainel`
+   * (`src/lib/funil/painel.ts`), nunca por `as`.
+   */
+  painel?: unknown;
   created_at: string;
 }
 
@@ -908,8 +915,9 @@ export interface PipelineStage {
    */
   resultado?: string | null;
   /**
-   * A que DEGRAU do funil de eficiência a etapa corresponde (migration 975):
-   * 'lead' | 'mql' | 'reuniao' | 'proposta' | 'contrato' | 'perda' | null.
+   * A que DEGRAU do funil de eficiência a etapa corresponde (migration 975;
+   * `pasta` desde a 1054): 'lead' | 'mql' | 'reuniao' | 'proposta' |
+   * 'contrato' | 'pasta' | 'perda' | null.
    * Nulo = não conta. Várias etapas podem apontar para o mesmo degrau.
    * INDEPENDENTE de `resultado` — nada deriva um do outro. O catálogo e a
    * leitura vivem em `src/lib/funil/degraus.ts`.

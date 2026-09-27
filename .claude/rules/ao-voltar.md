@@ -95,10 +95,11 @@ uma hora atrás, sem aviso. A caixa de entrada tem o seu próprio mecanismo
   `useTrajetorias`, que PISCA o carregando de propósito: Desempenho e Saúde
   afirmam números, e na Lista a tabela sem linhas durante a carga impede mudar
   a etapa de um negócio com a recarga no ar.
-- ⚠️⚠️ **E o que não é trajetória vai JUNTO.** Desempenho: o gasto dos
-  anúncios (`useGastosDeAnuncios.recarregar`, com a versão DENTRO da chave) —
-  só as trajetórias misturava leads novos com gasto velho, e custo por lead e
-  CAC saíam errados. Lista: o catálogo de campos, blocos e perfis
+- ⚠️⚠️ **E o que não é trajetória vai JUNTO.** Desempenho e Saúde (esta com
+  os custos por mês desde a 1054): o gasto dos anúncios
+  (`useGastosDeAnuncios.recarregar`, com a versão DENTRO da chave) — só as
+  trajetórias misturava leads novos com gasto velho, e custo por lead e CAC
+  saíam errados. Pino em `ao-voltar.test.ts`. Lista: o catálogo de campos, blocos e perfis
   (`versaoDoCatalogo`) e as conexões, EM SILÊNCIO, por serem rótulos — a
   recarga do catálogo que falha mantém o que está na tela (vazio tiraria as
   colunas de campo), e as conexões usam o `recarregarEmSilencio` do

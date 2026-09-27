@@ -454,7 +454,10 @@ O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
 - Funil: ganho que sai para etapa neutra segue ganho; perdido que entra em
   neutra volta aberto (21/09/2026).
 - Funil comercial: "por período" é o padrão (18/09/2026); taxa acima de 100%
-  aparece como é; negócio transferido conta no funil de origem.
+  aparece como é; negócio transferido conta no funil de origem. Degrau
+  `pasta` depois do contrato, opcional, e "fechado" o inclui; cada funil
+  configura o próprio painel; "custo por contrato assinado" ao lado do CAC em
+  pé (26/09/2026).
 - Card: título = nome da pessoa, sem prefixo de conexão; o Calendly renomeia
   até título escrito à mão e fixa o nome da ficha.
 - Abrir conversa não cria negócio (o card nasce no primeiro envio).
