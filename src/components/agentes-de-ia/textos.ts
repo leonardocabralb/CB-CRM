@@ -1,6 +1,13 @@
 import type { useTranslations } from 'next-intl';
 
-import { BLOCOS_DO_ACESSO } from './tipos';
+import {
+  ACOES_COM_VALOR,
+  type CodigoDeFalhaDaAcao,
+  type MotivoDaRecusa,
+  type MotivoForaDaD5,
+} from '@/lib/ia-agentes/acoes';
+
+import { BLOCOS_DO_ACESSO, TIPOS_DE_ACAO } from './tipos';
 
 /**
  * Os CÓDIGOS que as rotas dos agentes devolvem, traduzidos pelo dicionário
@@ -37,6 +44,12 @@ export const CODIGOS_CONHECIDOS = [
   'cotacao_invalida',
   'documento_invalido',
   'contato_nao_encontrado',
+  // As recusas do Salvar das Ferramentas (F4): o PATCH devolve também `itens`.
+  'etapa_de_resultado',
+  'item_de_outra_conta',
+  'campo_vigiado',
+  'automacao_fora_da_d5',
+  'cascata_fora_da_d5',
   'invalid_key',
   'rate_limited',
   'timeout',
@@ -103,4 +116,179 @@ export function rotuloDoBloco(t: ReturnType<typeof useTranslations>, bloco: stri
   return (BLOCOS_DO_ACESSO as readonly string[]).includes(bloco)
     ? t(`acesso.bloco.${bloco}`)
     : t('acesso.blocoDesconhecido', { bloco });
+}
+
+/**
+ * O nome de um tipo de ação (F4) — na sub-aba Ferramentas, nas recusadas do
+ * Playground e nas ações da sub-aba Turnos (`IaAgentes.ferramentas.tipo.<t>.nome`).
+ * Chave MONTADA, cobrada em `textos.test.ts`. Tipo fora da lista (um novo no
+ * servidor antes da tela) cai em `ferramentas.tipoDesconhecido`, nunca na chave crua.
+ */
+export function rotuloDoTipoDeAcao(t: ReturnType<typeof useTranslations>, tipo: string): string {
+  return (TIPOS_DE_ACAO as readonly string[]).includes(tipo)
+    ? t(`ferramentas.tipo.${tipo}.nome`)
+    : t('ferramentas.tipoDesconhecido', { tipo });
+}
+
+/**
+ * Uma ação ACEITA no Playground, como frase curta ("mover para Proposta",
+ * "tarefa para Ana") — `IaAgentes.playground.acao.<t>`, com `{nome}`. Com o
+ * `valor` (o do campo, o título da tarefa), `playground.acaoComValor.<t>`:
+ * "tarefa para Ana: Ligar amanhã", "preencher Tamanho da dívida = 200 mil".
+ * Chaves MONTADAS, cobradas em `textos.test.ts`.
+ */
+export function fraseDaAcao(
+  t: ReturnType<typeof useTranslations>,
+  tipo: string,
+  nome: string,
+  valor?: string,
+): string {
+  if (!(TIPOS_DE_ACAO as readonly string[]).includes(tipo)) return t('playground.acaoDesconhecida', { tipo, nome });
+  if (valor && (ACOES_COM_VALOR as ReadonlySet<string>).has(tipo)) return t(`playground.acaoComValor.${tipo}`, { nome, valor });
+  return t(`playground.acao.${tipo}`, { nome });
+}
+
+/**
+ * Os tipos de campo personalizado (`custom_fields.field_type`, o CHECK da 948,
+ * mais `email` — o campo que espelha o e-mail da ficha) que a sub-aba
+ * Ferramentas mostra ao lado do nome (`IaAgentes.ferramentas.campo.<tipo>`).
+ * Chave MONTADA, cobrada em `textos.test.ts`. Tipo fora da lista não ganha
+ * rótulo (nulo): a tela não afirma um tipo que não conhece.
+ */
+export const TIPOS_DE_CAMPO = ['text', 'datetime', 'select', 'number', 'email'] as const;
+
+export function rotuloDoTipoDoCampo(t: ReturnType<typeof useTranslations>, tipo: string | null): string | null {
+  return tipo !== null && (TIPOS_DE_CAMPO as readonly string[]).includes(tipo) ? t(`ferramentas.campo.${tipo}`) : null;
+}
+
+/**
+ * Os códigos com que o servidor diz POR QUE uma automação não pode ser
+ * liberada (o passo fora da D5 — `foraDaD5` das opções). Chave MONTADA
+ * (`IaAgentes.ferramentas.foraDaD5.<código>`), cobrada em `textos.test.ts`.
+ * (`MotivoForaDaD5` de `acoes.ts`; `textos.test.ts` cobra que a lista o cubra).
+ * `campo_vigiado`: o validador da D5 recusa também o `update_contact_field`
+ * num campo de data vigiado por lembrete (plano, 5.6). `aguardar`: a
+ * automação que a IA executa DIRETAMENTE não pode pausar (a retomada não
+ * confere o agente) — na lista de automações tem frase própria
+ * (`ferramentas.bloqueio.aguardar`). Os mesmos códigos dizem por que uma
+ * etapa ou etiqueta sai pela CASCATA (`ferramentas.bloqueio.cascata.<g>`).
+ */
+export const CODIGOS_DA_D5 = [
+  'send_to_number',
+  'send_webhook',
+  'status_de_resultado',
+  'etapa_de_resultado',
+  'run_flow',
+  'campo_vigiado',
+  'aguardar',
+] as const satisfies readonly MotivoForaDaD5[];
+
+/** Código fora da lista (um passo novo proibido pelo servidor) cai em `foraDaD5.outro`. */
+export function motivoForaDaD5(t: ReturnType<typeof useTranslations>, codigo: string): string {
+  return (CODIGOS_DA_D5 as readonly string[]).includes(codigo)
+    ? t(`ferramentas.foraDaD5.${codigo}`)
+    : t('ferramentas.foraDaD5.outro');
+}
+
+/**
+ * Por que o servidor RECUSOU uma ação pedida (`MotivoDaRecusa` de
+ * `acoes.ts`) — nas recusadas do Playground e no erro de uma ação da
+ * sub-aba Turnos (`IaAgentes.ferramentas.recusa.<código>`). Chave MONTADA,
+ * cobrada em `textos.test.ts`. Código fora da lista cai em
+ * `ferramentas.recusa.outro`, nunca na chave crua.
+ */
+export const MOTIVOS_DE_RECUSA = [
+  'malformada',
+  'teto',
+  'nao_liberada',
+  'fora_da_lista',
+  'passagem',
+  'transferencia',
+] as const satisfies readonly MotivoDaRecusa[];
+
+export function motivoDaRecusa(t: ReturnType<typeof useTranslations>, motivo: string): string {
+  return (MOTIVOS_DE_RECUSA as readonly string[]).includes(motivo)
+    ? t(`ferramentas.recusa.${motivo}`)
+    : t('ferramentas.recusa.outro');
+}
+
+/**
+ * A chave do dicionário de cada código que o registro de uma ação pode ter
+ * (`cb_ia_turnos.acoes[].erro`): as recusas (`MotivoDaRecusa`) e as falhas na
+ * hora de executar (`CODIGOS_DE_FALHA_DA_ACAO`). Record EXAUSTIVO: código
+ * novo no servidor não compila sem entrada aqui, e `textos.test.ts` cobra
+ * cada chave nos dois dicionários.
+ */
+export const CHAVE_DO_ERRO_DA_ACAO = {
+  malformada: 'ferramentas.recusa.malformada',
+  teto: 'ferramentas.recusa.teto',
+  nao_liberada: 'ferramentas.recusa.nao_liberada',
+  fora_da_lista: 'ferramentas.recusa.fora_da_lista',
+  passagem: 'ferramentas.recusa.passagem',
+  transferencia: 'ferramentas.recusa.transferencia',
+  sem_card: 'turnos.acoes.erro.sem_card',
+  card_fechado: 'turnos.acoes.erro.card_fechado',
+  item_de_outra_conta: 'turnos.acoes.erro.item_de_outra_conta',
+  etapa_de_resultado: 'turnos.acoes.erro.etapa_de_resultado',
+  // Só no "preencher campo": o CAMPO é vigiado (a automação vigiando sai em `automacao_fora_da_d5`).
+  campo_vigiado: 'turnos.acoes.erro.campo_vigiado',
+  valor_vazio: 'turnos.acoes.erro.valor_vazio',
+  valor_invalido: 'turnos.acoes.erro.valor_invalido',
+  titulo_invalido: 'turnos.acoes.erro.titulo_invalido',
+  // Estes dois levam `{motivo}`: o passo da D5, que vem em `detalhe`.
+  automacao_fora_da_d5: 'turnos.acoes.erro.automacao_fora_da_d5',
+  cascata_fora_da_d5: 'turnos.acoes.erro.cascata_fora_da_d5',
+  automacao_desligada: 'turnos.acoes.erro.automacao_desligada',
+  fora_da_conexao: 'turnos.acoes.erro.fora_da_conexao',
+  fora_da_etapa: 'turnos.acoes.erro.fora_da_etapa',
+  envio_falhou: 'turnos.acoes.erro.envio_falhou',
+  recusado: 'turnos.acoes.erro.recusado',
+  falhou: 'turnos.acoes.erro.falhou',
+} as const satisfies Record<MotivoDaRecusa | CodigoDeFalhaDaAcao, string>;
+
+type CodigoDoErroDaAcao = keyof typeof CHAVE_DO_ERRO_DA_ACAO;
+
+function ehCodigoDoErroDaAcao(v: string): v is CodigoDoErroDaAcao {
+  return Object.prototype.hasOwnProperty.call(CHAVE_DO_ERRO_DA_ACAO, v);
+}
+
+/**
+ * O complemento cru de uma ação (`detalhe`): `ja_estava` (mover para a etapa
+ * em que o card já estava — a ação deu certo sem mexer em nada) vira texto; o
+ * resto (a recusa da RPC, a mensagem do motor) aparece como veio.
+ */
+export function textoDoDetalheDaAcao(t: ReturnType<typeof useTranslations>, detalhe: string): string {
+  return detalhe === 'ja_estava' ? t('turnos.acoes.jaEstava') : detalhe;
+}
+
+/**
+ * Por que uma ação do turno não fez efeito, em texto. O código
+ * (`CHAVE_DO_ERRO_DA_ACAO`) vira a frase; `automacao_fora_da_d5` e
+ * `cascata_fora_da_d5` levam o passo da D5 que veio em `detalhe`, traduzido;
+ * qualquer outro `detalhe` vai depois, cru ("… — status_mudou"). Registro
+ * antigo com código fora das listas: o texto genérico com o código cru —
+ * nunca a chave do dicionário na tela.
+ */
+export function textoDoErroDaAcao(
+  t: ReturnType<typeof useTranslations>,
+  acao: { erro?: string; detalhe?: string },
+): string {
+  const detalhe = acao.detalhe?.trim() || undefined;
+  const erro = acao.erro?.trim() || undefined;
+  let texto: string;
+  let resto = detalhe;
+  if (!erro) {
+    texto = t('turnos.acoes.erro.semCodigo');
+  } else if (!ehCodigoDoErroDaAcao(erro)) {
+    texto = t('turnos.acoes.erro.desconhecido', { erro });
+  } else if (erro === 'automacao_fora_da_d5' || erro === 'cascata_fora_da_d5') {
+    // O passo da D5 entra NA frase; um detalhe que não é passo conhecido cai
+    // no "outro" e ainda aparece cru depois.
+    const conhecido = detalhe !== undefined && (CODIGOS_DA_D5 as readonly string[]).includes(detalhe);
+    texto = t(CHAVE_DO_ERRO_DA_ACAO[erro], { motivo: motivoForaDaD5(t, conhecido ? detalhe : '') });
+    if (conhecido) resto = undefined;
+  } else {
+    texto = t(CHAVE_DO_ERRO_DA_ACAO[erro]);
+  }
+  return resto ? t('turnos.acoes.comDetalhe', { texto, detalhe: textoDoDetalheDaAcao(t, resto) }) : texto;
 }

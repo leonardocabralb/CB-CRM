@@ -10,7 +10,8 @@
 // Três partes:
 //  - `montarBlocos` (PURO): os dados lidos → os textos, em INGLÊS (são para o
 //    MODELO, como o texto-base do pedido), com teto por bloco e truncamento
-//    DECLARADO. Bloco que não pôde ser lido diz "unavailable right now" —
+//    DECLARADO. As cobranças trazem o link de pagamento de cada parcela
+//    devida SÓ com a leitura fresca (F4, a 2ª via da D6 sem ferramenta). Bloco que não pôde ser lido diz "unavailable right now" —
 //    nunca inventa, e nunca "no overdue installments" sem a leitura.
 //  - `lerDadosDoAcesso` (I/O): lê SÓ o que está marcado, cada bloco com o
 //    seu try — erro num bloco não derruba o turno nem os outros blocos.
@@ -138,10 +139,17 @@ const TITULO: Record<BlocoDoAcesso, string> = {
 // A montagem (pura)
 // ------------------------------------------------------------
 
-/** Corta no teto, dizendo que cortou. */
+/**
+ * Corta no teto, dizendo que cortou. ⚠️ Nunca no meio de uma palavra: um
+ * LINK cortado ao meio (o de pagamento, F4) iria ao cliente pela metade — e
+ * a trava de link inventado não o pegaria, porque ele "apareceu" no pedido.
+ */
 export function limitarBloco(texto: string, teto: number = TETO_DO_BLOCO): string {
   if (texto.length <= teto) return texto
-  return texto.slice(0, Math.max(0, teto - TRUNCADO.length)).trimEnd() + TRUNCADO
+  const n = Math.max(0, teto - TRUNCADO.length)
+  let corte = texto.slice(0, n)
+  if (!/\s/.test(texto[n] ?? ' ')) corte = corte.replace(/\S*$/, '')
+  return corte.trimEnd() + TRUNCADO
 }
 
 /** Uma linha por valor: quebras de linha e espaços repetidos viram um espaço. */
@@ -243,7 +251,12 @@ function textoDasCobrancas(c: CobrancasLidas, agora: Date, fuso: string): string
       const dias = diasDeAtraso(p.vencimento, agora, fuso)
       const atraso = dias !== null && dias > 0 ? `, ${dias} ${dias === 1 ? 'day' : 'days'} overdue` : ''
       const negativada = classificar(p.status, p.deleted) === 'negativada' ? ' — sent to the credit bureau' : ''
-      linhas.push(`- ${rotuloDaParcela(p)} — due ${p.vencimento} — ${dinheiro(valorAtualizado(p))}${atraso}${negativada}`)
+      // O LINK de pagamento que já existe (a 2ª via da D6, F4): a fatura, senão
+      // o boleto. ⚠️ Só com a leitura FRESCA — com leitura velha a parcela
+      // pode já ter sido paga, e o link levaria o cliente a pagar de novo.
+      const link = c.fresca ? p.link_fatura?.trim() || p.link_boleto?.trim() || null : null
+      const pagar = link ? ` — payment link: ${link}` : ''
+      linhas.push(`- ${rotuloDaParcela(p)} — due ${p.vencimento} — ${dinheiro(valorAtualizado(p))}${atraso}${negativada}${pagar}`)
     }
   }
   return linhas.join('\n')

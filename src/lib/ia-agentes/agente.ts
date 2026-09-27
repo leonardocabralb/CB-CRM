@@ -21,6 +21,8 @@ export const LIMITES = {
   campos: 50,
   /** Documentos da base marcados para um agente (F3, D20). */
   documentos: 200,
+  /** Itens liberados por tipo de ação (F4, D28): etapas, etiquetas, campos… */
+  itensPorAcao: 50,
 } as const
 
 /**
@@ -42,6 +44,60 @@ export interface AcessoDoAgente {
 /** Os blocos do acesso, na ordem em que o pedido os mostra ao modelo. */
 export const BLOCOS_DO_ACESSO = ['ficha', 'campos', 'negocio', 'etiquetas', 'cobrancas', 'reuniao'] as const
 export type BlocoDoAcesso = (typeof BLOCOS_DO_ACESSO)[number]
+
+/**
+ * As AÇÕES que o agente pode fazer junto com a resposta (F4, D28). Cada tipo
+ * é ligado por agente, com os itens liberados (parâmetros travados, 5.6): o
+ * modelo escolhe só entre eles, por número, e o servidor confere de novo na
+ * hora de executar. Fora da D5 por desenho: ganho/perdido, outro número,
+ * webhook de saída, qualquer escrita no Asaas.
+ */
+export type TipoDeAcao =
+  | 'mover_etapa'
+  | 'etiquetar'
+  | 'tirar_etiqueta'
+  | 'preencher_campo'
+  | 'criar_tarefa'
+  | 'executar_automacao'
+
+export const TIPOS_DE_ACAO: readonly TipoDeAcao[] = [
+  'mover_etapa',
+  'etiquetar',
+  'tirar_etiqueta',
+  'preencher_campo',
+  'criar_tarefa',
+  'executar_automacao',
+]
+
+/**
+ * `cb_ia_agentes.ferramentas` (jsonb, 1048). Tipo AUSENTE = desligado; nada
+ * ligado = o agente só conversa. Ids do servidor: `pipeline_stages`, `tags`,
+ * `custom_fields`, `auth.users` (membros) e `automations`.
+ */
+export interface FerramentasDoAgente {
+  mover_etapa?: { etapas: string[] }
+  etiquetar?: { etiquetas: string[] }
+  tirar_etiqueta?: { etiquetas: string[] }
+  preencher_campo?: { campos: string[] }
+  criar_tarefa?: { membros: string[] }
+  executar_automacao?: { automacoes: string[] }
+}
+
+/** A chave da lista de cada tipo, no JSON gravado. */
+export const LISTA_DA_ACAO = {
+  mover_etapa: 'etapas',
+  etiquetar: 'etiquetas',
+  tirar_etiqueta: 'etiquetas',
+  preencher_campo: 'campos',
+  criar_tarefa: 'membros',
+  executar_automacao: 'automacoes',
+} as const satisfies Record<TipoDeAcao, string>
+
+/** Os ids liberados para um tipo (vazio = desligado ou sem item). */
+export function itensDaAcao(f: FerramentasDoAgente, tipo: TipoDeAcao): string[] {
+  const valor = f[tipo] as Record<string, string[]> | undefined
+  return valor?.[LISTA_DA_ACAO[tipo]] ?? []
+}
 
 /** Horário de funcionamento: dias da semana (0 = domingo) e a janela do dia. */
 export interface Horario {
@@ -71,6 +127,8 @@ export interface IaAgente {
   transferirPara: string | null
   /** O que ele vê além da conversa (F3). */
   acesso: AcessoDoAgente
+  /** O que ele pode FAZER junto com a resposta (F4, D28). */
+  ferramentas: FerramentasDoAgente
   /** Quando foi LIGADO pela última vez (gatilho da 1049); nulo = nunca. D27. */
   ativadoEm: string | null
   arquivadoEm: string | null
@@ -94,7 +152,7 @@ export type AgenteComEtapas = IaAgente & { etapas: EtapaDoAgente[] }
 
 /** Colunas lidas: nomeadas, nunca `*` (uma coluna sem GRANT derrubaria a consulta). */
 export const COLUNAS_DO_AGENTE =
-  'id, account_id, nome, descricao, instrucoes, regras, provedor, modelo, ativo, conexoes, horario, teto_respostas, pode_passar_para, transferir_para, acesso, ativado_em, arquivado_em, created_at, updated_at'
+  'id, account_id, nome, descricao, instrucoes, regras, provedor, modelo, ativo, conexoes, horario, teto_respostas, pode_passar_para, transferir_para, acesso, ferramentas, ativado_em, arquivado_em, created_at, updated_at'
 
 function ehProvedor(v: unknown): v is AiProvider {
   return v === 'openai' || v === 'anthropic' || v === 'gemini'
@@ -128,6 +186,28 @@ export function lerAcesso(v: unknown): AcessoDoAgente {
     cobrancas: a.cobrancas === true,
     reuniao: a.reuniao === true,
   }
+}
+
+/**
+ * Lê as `ferramentas` guardadas — parse, nunca `as`. Tipo ausente, que não é
+ * objeto ou cuja lista não é lista = desligado; a lista fica só com uuids,
+ * sem repetição, até `LIMITES.itensPorAcao`. Forma estranha nunca lança.
+ */
+export function lerFerramentas(v: unknown): FerramentasDoAgente {
+  const f = v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {}
+  const saida: Record<string, Record<string, string[]>> = {}
+  for (const tipo of TIPOS_DE_ACAO) {
+    const valor = f[tipo]
+    if (!valor || typeof valor !== 'object' || Array.isArray(valor)) continue
+    const lista = (valor as Record<string, unknown>)[LISTA_DA_ACAO[tipo]]
+    if (!Array.isArray(lista)) continue
+    saida[tipo] = {
+      [LISTA_DA_ACAO[tipo]]: [
+        ...new Set(lista.filter((x): x is string => typeof x === 'string' && UUID.test(x))),
+      ].slice(0, LIMITES.itensPorAcao),
+    }
+  }
+  return saida as FerramentasDoAgente
 }
 
 /** O bloco está marcado? (`campos` = pelo menos um campo escolhido.) */
@@ -168,6 +248,7 @@ export function lerLinhaDoAgente(linha: Record<string, unknown>): IaAgente | nul
     podePassarPara: listaDeTexto(linha.pode_passar_para),
     transferirPara: typeof linha.transferir_para === 'string' ? linha.transferir_para : null,
     acesso: lerAcesso(linha.acesso),
+    ferramentas: lerFerramentas(linha.ferramentas),
     ativadoEm: typeof linha.ativado_em === 'string' ? linha.ativado_em : null,
     arquivadoEm: typeof linha.arquivado_em === 'string' ? linha.arquivado_em : null,
     createdAt: typeof linha.created_at === 'string' ? linha.created_at : '',
@@ -190,6 +271,8 @@ export interface AlteracaoDoAgente {
   podePassarPara?: string[]
   transferirPara?: string | null
   acesso?: AcessoDoAgente
+  /** O que ele pode fazer junto com a resposta (F4): o objeto INTEIRO. */
+  ferramentas?: FerramentasDoAgente
   /** Ids das etapas em que atua (D24). Não é coluna do agente: vai para `cb_ia_agente_etapas`. */
   etapas?: string[]
 }
@@ -310,6 +393,22 @@ export function lerAlteracao(corpo: unknown, criacao: boolean): LeituraDaAlterac
     }
     v.acesso = lerAcesso(a)
   }
+  if ('ferramentas' in c) {
+    // O objeto inteiro, como o `acesso`. Tipo presente fora da forma (não
+    // objeto, lista que não é lista, id que não é uuid, mais que o teto)
+    // RECUSA — descartar em silêncio tiraria do agente um item que o
+    // administrador acabou de liberar. Tipo nulo = desligado.
+    const f = c.ferramentas
+    if (!f || typeof f !== 'object' || Array.isArray(f)) return { ok: false, codigo: 'lista_invalida' }
+    for (const tipo of TIPOS_DE_ACAO) {
+      const valor = (f as Record<string, unknown>)[tipo]
+      if (valor === undefined || valor === null) continue
+      if (typeof valor !== 'object' || Array.isArray(valor)) return { ok: false, codigo: 'lista_invalida' }
+      const ids = lerIds((valor as Record<string, unknown>)[LISTA_DA_ACAO[tipo]])
+      if (!ids || ids.length > LIMITES.itensPorAcao) return { ok: false, codigo: 'lista_invalida' }
+    }
+    v.ferramentas = lerFerramentas(f)
+  }
   if ('horario' in c) {
     if (c.horario === null) v.horario = null
     else {
@@ -337,6 +436,7 @@ export function colunasDaAlteracao(a: AlteracaoDoAgente): Record<string, unknown
   if (a.podePassarPara !== undefined) c.pode_passar_para = a.podePassarPara
   if (a.transferirPara !== undefined) c.transferir_para = a.transferirPara
   if (a.acesso !== undefined) c.acesso = a.acesso
+  if (a.ferramentas !== undefined) c.ferramentas = a.ferramentas
   return c
 }
 

@@ -14,23 +14,36 @@ describe('detalhe-do-agente — abas', () => {
     expect(playground.slice(0, 120)).toContain('key={`${e.agente.id}:${salvamentos}`}')
   })
 
-  it('salvar o Acesso ou a Base (F3) também zera a conversa do Playground', () => {
+  it('salvar o Acesso, a Base (F3) ou as Ferramentas (F4) também zera a conversa do Playground', () => {
     const acesso = fonte.slice(fonte.indexOf('<AcessoDoAgente'))
     expect(acesso.slice(0, 200)).toContain('aoSalvar={aoSalvarAgente}')
+    const ferramentas = fonte.slice(fonte.indexOf('<FerramentasDoAgente'))
+    expect(ferramentas.slice(0, 200)).toContain('aoSalvar={aoSalvarAgente}')
     const base = fonte.slice(fonte.indexOf('<BaseDoAgente'))
     expect(base.slice(0, 200)).toContain('aoSalvar={() => setSalvamentos((n) => n + 1)}')
   })
 
-  it('Acesso e Base (F3) têm rascunho: montadas depois da 1ª visita, escondidas (não desmontadas)', () => {
-    for (const aba of ['acesso', 'base']) {
+  it('Acesso, Base (F3) e Ferramentas (F4) têm rascunho: montadas depois da 1ª visita, escondidas (não desmontadas)', () => {
+    for (const aba of ['acesso', 'base', 'ferramentas']) {
       expect(fonte).toContain(`{visitadas.has('${aba}') ? (`)
       expect(fonte).toContain(`<div hidden={aba !== '${aba}'}>`)
     }
   })
 
   it('o Playground diz QUAIS abas têm alteração não salva', () => {
-    for (const flag of ['configuracaoNaoSalva', 'acessoNaoSalvo', 'baseNaoSalva']) expect(fonte).toContain(flag)
+    for (const flag of ['configuracaoNaoSalva', 'acessoNaoSalvo', 'baseNaoSalva', 'ferramentasNaoSalvas']) {
+      expect(fonte).toContain(flag)
+    }
     expect(fonte).toContain('naoSalvoEm={naoSalvoEm}')
+  })
+
+  it('Ferramentas fica entre a Base e o Playground (D28)', () => {
+    const base = fonte.indexOf("{ id: 'base'")
+    const ferramentas = fonte.indexOf("{ id: 'ferramentas'")
+    const playground = fonte.indexOf("{ id: 'playground'")
+    expect(base).toBeGreaterThan(-1)
+    expect(ferramentas).toBeGreaterThan(base)
+    expect(playground).toBeGreaterThan(ferramentas)
   })
 
   it('a aba Uso só existe enquanto está aberta (remonta e busca de novo)', () => {

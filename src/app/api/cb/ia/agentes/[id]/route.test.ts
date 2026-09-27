@@ -119,3 +119,30 @@ describe('F3 — o acesso do agente', () => {
     expect(atualizarAgente).not.toHaveBeenCalled()
   })
 })
+
+describe('F4 — as ferramentas do agente', () => {
+  const ETAPA = '44444444-4444-4444-8444-444444444444'
+
+  it('PATCH com `ferramentas`: o objeto lido vai ao repositório', async () => {
+    const res = await patch({ ferramentas: { mover_etapa: { etapas: [ETAPA, ETAPA] } } })
+    expect(res.status).toBe(200)
+    expect(vi.mocked(atualizarAgente).mock.calls[0][3]).toEqual({ ferramentas: { mover_etapa: { etapas: [ETAPA] } } })
+  })
+
+  it('PATCH com ferramentas fora da forma: 400 lista_invalida, sem gravar', async () => {
+    const res = await patch({ ferramentas: { mover_etapa: { etapas: ['lead'] } } })
+    expect(res.status).toBe(400)
+    expect((await res.json()).code).toBe('lista_invalida')
+    expect(atualizarAgente).not.toHaveBeenCalled()
+  })
+
+  it.each(['etapa_de_resultado', 'item_de_outra_conta', 'campo_vigiado', 'automacao_fora_da_d5'] as const)(
+    'recusa do repositório (%s): 400 com o código e os ids recusados em `itens`',
+    async (codigo) => {
+      vi.mocked(atualizarAgente).mockRejectedValueOnce(new ErroDoAgente(codigo, 'x', undefined, [ETAPA]))
+      const res = await patch({ ferramentas: { mover_etapa: { etapas: [ETAPA] } } })
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({ error: codigo, code: codigo, itens: [ETAPA] })
+    },
+  )
+})

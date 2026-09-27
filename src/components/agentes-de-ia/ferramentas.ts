@@ -1,0 +1,221 @@
+// ============================================================
+// As ferramentas de um agente de IA (F4, D28) do lado da TELA: a leitura
+// das opções que a sub-aba Ferramentas oferece, as listas de cada tipo de
+// ação e a leitura das ações que o Playground e a sub-aba Turnos mostram.
+// PURO, testado.
+//
+// ⚠️ Tudo aqui é PARSE, nunca `as`: a forma vem da rota (e o jsonb do turno,
+// de qualquer versão do servidor). Resposta estranha vira "não se sabe" —
+// `null` nas opções (a tela diz que falhou) e nas ações (nada é mostrado),
+// nunca lista vazia, que seria a lista vazia virando afirmação.
+// ============================================================
+
+import type { AcaoDoTurno, AcoesSimuladas, OpcoesDasFerramentas, TipoDeAcao } from './tipos'
+
+function objeto(v: unknown): Record<string, unknown> | null {
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null
+}
+
+function texto(v: unknown): string | null {
+  return typeof v === 'string' ? v : null
+}
+
+/** Um código de motivo (da D5): só texto não vazio; o resto não inventa bloqueio. */
+function codigo(v: unknown): string | null {
+  return typeof v === 'string' && v.trim() ? v : null
+}
+
+/** Os itens de uma lista que têm a forma pedida; lista ausente = a resposta não serve. */
+function linhas<T>(v: unknown, ler: (o: Record<string, unknown>) => T | null): T[] | null {
+  if (!Array.isArray(v)) return null
+  const saida: T[] = []
+  for (const item of v) {
+    const o = objeto(item)
+    const lido = o ? ler(o) : null
+    if (lido) saida.push(lido)
+  }
+  return saida
+}
+
+/** A resposta de `GET …/ferramentas/opcoes`; forma estranha = `null` (a carga falhou). */
+export function lerOpcoes(v: unknown): OpcoesDasFerramentas | null {
+  const o = objeto(v)
+  if (!o) return null
+  const etapas = linhas<OpcoesDasFerramentas['etapas'][number]>(o.etapas, (e) => {
+    const id = texto(e.id)
+    const nome = texto(e.nome)
+    const funil = texto(e.funil)
+    if (!id || nome === null || funil === null) return null
+    const resultado = e.resultado === 'ganho' || e.resultado === 'perdido' ? e.resultado : null
+    return { id, nome, funil, resultado, foraDaD5: codigo(e.foraDaD5) }
+  })
+  const etiquetas = linhas<OpcoesDasFerramentas['etiquetas'][number]>(o.etiquetas, (e) => {
+    const id = texto(e.id)
+    const nome = texto(e.nome)
+    if (!id || nome === null) return null
+    const cascata = objeto(e.foraDaD5)
+    return { id, nome, foraDaD5: { etiquetar: codigo(cascata?.etiquetar), tirar: codigo(cascata?.tirar) } }
+  })
+  const campos = linhas<OpcoesDasFerramentas['campos'][number]>(o.campos, (c) => {
+    const id = texto(c.id)
+    const nome = texto(c.nome)
+    if (!id || nome === null) return null
+    const opcoes = Array.isArray(c.opcoes) ? c.opcoes.filter((x): x is string => typeof x === 'string') : []
+    // Só o booleano `true` bloqueia; qualquer outra coisa não inventa bloqueio.
+    return { id, nome, vigiado: c.vigiado === true, tipo: codigo(c.tipo), opcoes }
+  })
+  const membros = linhas(o.membros, (m) => {
+    const userId = texto(m.userId)
+    const nome = texto(m.nome)
+    return userId && nome !== null ? { userId, nome } : null
+  })
+  const automacoes = linhas(o.automacoes, (a) => {
+    const id = texto(a.id)
+    const nome = texto(a.nome)
+    if (!id || nome === null) return null
+    return { id, nome, foraDaD5: codigo(a.foraDaD5) }
+  })
+  if (!etapas || !etiquetas || !campos || !membros || !automacoes) return null
+  return { etapas, etiquetas, campos, membros, automacoes }
+}
+
+/**
+ * O que dispara a CASCATA de um item: entrar na etapa, aplicar a etiqueta ou
+ * tirá-la. Chave MONTADA (`IaAgentes.ferramentas.bloqueio.cascata.<g>`),
+ * cobrada em `textos.test.ts`.
+ */
+export const GATILHOS_DA_CASCATA = ['etapa', 'etiquetar', 'tirar'] as const
+export type GatilhoDaCascata = (typeof GATILHOS_DA_CASCATA)[number]
+
+/**
+ * Por que um item NÃO pode ser marcado (a D5, calculada pelo servidor):
+ * etapa de ganho/perdido, campo de data vigiado por lembrete, automação com
+ * passo fora da D5 (o código do passo) e a cascata de uma etapa ou etiqueta
+ * (uma automação que ela dispara sai da D5; o código do passo dela).
+ */
+export type Bloqueio =
+  | { tipo: 'etapa_de_resultado' }
+  | { tipo: 'campo_vigiado' }
+  | { tipo: 'fora_da_d5'; codigo: string }
+  | { tipo: 'cascata'; gatilho: GatilhoDaCascata; codigo: string }
+
+export interface ItemDaLista {
+  id: string
+  nome: string
+  /** O funil da etapa (as etapas aparecem agrupadas); nulo nas outras listas. */
+  grupo: string | null
+  bloqueio: Bloqueio | null
+  /** Só nos campos: o tipo (`field_type`) e as opções da lista, que a tela mostra ao lado do nome. */
+  campo?: { tipo: string | null; opcoes: string[] }
+}
+
+function cascata(gatilho: GatilhoDaCascata, codigo: string | null): Bloqueio | null {
+  return codigo ? { tipo: 'cascata', gatilho, codigo } : null
+}
+
+/** A lista de um tipo de ação, na ordem em que o servidor a mandou. */
+export function itensDoTipo(opcoes: OpcoesDasFerramentas, tipo: TipoDeAcao): ItemDaLista[] {
+  switch (tipo) {
+    case 'mover_etapa':
+      // Ganho/perdido vence a cascata: é o motivo que o operador entende primeiro.
+      return opcoes.etapas.map((e) => ({
+        id: e.id,
+        nome: e.nome,
+        grupo: e.funil,
+        bloqueio: e.resultado ? { tipo: 'etapa_de_resultado' } : cascata('etapa', e.foraDaD5),
+      }))
+    case 'etiquetar':
+      return opcoes.etiquetas.map((e) => ({
+        id: e.id,
+        nome: e.nome,
+        grupo: null,
+        bloqueio: cascata('etiquetar', e.foraDaD5.etiquetar),
+      }))
+    case 'tirar_etiqueta':
+      return opcoes.etiquetas.map((e) => ({
+        id: e.id,
+        nome: e.nome,
+        grupo: null,
+        bloqueio: cascata('tirar', e.foraDaD5.tirar),
+      }))
+    case 'preencher_campo':
+      return opcoes.campos.map((c) => ({
+        id: c.id,
+        nome: c.nome,
+        grupo: null,
+        bloqueio: c.vigiado ? { tipo: 'campo_vigiado' } : null,
+        campo: { tipo: c.tipo, opcoes: c.opcoes },
+      }))
+    case 'criar_tarefa':
+      return opcoes.membros.map((m) => ({ id: m.userId, nome: m.nome, grupo: null, bloqueio: null }))
+    case 'executar_automacao':
+      return opcoes.automacoes.map((a) => ({
+        id: a.id,
+        nome: a.nome,
+        grupo: null,
+        bloqueio: a.foraDaD5 ? { tipo: 'fora_da_d5', codigo: a.foraDaD5 } : null,
+      }))
+    default: {
+      const nunca: never = tipo
+      throw new Error(`tipo de ação desconhecido: ${String(nunca)}`)
+    }
+  }
+}
+
+/**
+ * Agrupa pela ordem da PRIMEIRA aparição (o servidor já manda as etapas na
+ * ordem do funil); item sem grupo fica num grupo `null` só dele.
+ */
+export function agruparItens(itens: ItemDaLista[]): Array<{ grupo: string | null; itens: ItemDaLista[] }> {
+  const grupos: Array<{ grupo: string | null; itens: ItemDaLista[] }> = []
+  for (const item of itens) {
+    const existente = grupos.find((g) => g.grupo === item.grupo)
+    if (existente) existente.itens.push(item)
+    else grupos.push({ grupo: item.grupo, itens: [item] })
+  }
+  return grupos
+}
+
+/** As ações SIMULADAS de uma resposta do Playground; forma estranha = `undefined` (nada é mostrado). */
+export function lerAcoesSimuladas(v: unknown): AcoesSimuladas | undefined {
+  const o = objeto(v)
+  if (!o) return undefined
+  const aceitas = linhas<AcoesSimuladas['aceitas'][number]>(o.aceitas, (a) => {
+    const tipo = texto(a.tipo)
+    const nome = texto(a.nome)
+    if (!tipo || nome === null) return null
+    // O valor do campo / o título da tarefa; vazio = não veio.
+    const valor = typeof a.valor === 'string' && a.valor.trim() ? a.valor : undefined
+    return valor === undefined ? { tipo, nome } : { tipo, nome, valor }
+  })
+  const recusadas = linhas(o.recusadas, (r) => {
+    const tipo = texto(r.tipo)
+    const motivo = texto(r.motivo)
+    return tipo !== null && motivo !== null ? { tipo, motivo } : null
+  })
+  if (!aceitas || !recusadas) return undefined
+  return { aceitas, recusadas }
+}
+
+/**
+ * As ações que um turno EXECUTOU (`cb_ia_turnos.acoes`, jsonb). `null` = o
+ * turno não tem registro de ações (turno anterior à F4, ou forma estranha):
+ * a expansão não aparece — nunca quebra a lista.
+ */
+export function lerAcoesDoTurno(v: unknown): AcaoDoTurno[] | null {
+  return linhas(v, (a) => {
+    const tipo = texto(a.tipo)
+    const alvo = objeto(a.alvo)
+    const nome = alvo ? texto(alvo.nome) : null
+    if (!tipo || !alvo || nome === null || typeof a.ok !== 'boolean') return null
+    const erro = typeof a.erro === 'string' && a.erro.trim() ? a.erro : undefined
+    const detalhe = typeof a.detalhe === 'string' && a.detalhe.trim() ? a.detalhe : undefined
+    return {
+      tipo,
+      alvo: { id: texto(alvo.id), nome },
+      ok: a.ok,
+      ...(erro ? { erro } : {}),
+      ...(detalhe ? { detalhe } : {}),
+    }
+  })
+}

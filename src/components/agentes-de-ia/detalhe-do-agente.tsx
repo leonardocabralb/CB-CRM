@@ -1,18 +1,19 @@
 'use client';
 
 // O detalhe de um agente de IA (F1b, 5.9): Configuração, Acesso e Base de
-// conhecimento (F3), Playground, Uso e Turnos (as últimas vezes que ele foi
-// chamado a responder).
+// conhecimento (F3), Ferramentas (F4, D28), Playground, Uso e Turnos (as
+// últimas vezes que ele foi chamado a responder).
 //
-// ⚠️ Configuração, Acesso, Base e Playground ficam MONTADAS depois da
-// primeira visita (escondidas, não desmontadas): o rascunho de cada uma vive
-// nela, e trocar de aba para testar no Playground apagava, sem aviso, o que
-// tinha sido digitado. A conversa do Playground também sobrevive à troca —
-// MENOS a um salvamento (da Configuração, do Acesso ou da Base): a conversa
-// gerada pela versão anterior, mandada à nova, não testa versão nenhuma do
-// agente (Codex, #295). A aba Uso, sem rascunho, remonta a cada visita:
-// montada, os testes feitos no Playground não apareciam até recarregar a
-// página. A aba Turnos, pelo mesmo motivo, também remonta a cada visita.
+// ⚠️ Configuração, Acesso, Base, Ferramentas e Playground ficam MONTADAS
+// depois da primeira visita (escondidas, não desmontadas): o rascunho de
+// cada uma vive nela, e trocar de aba para testar no Playground apagava, sem
+// aviso, o que tinha sido digitado. A conversa do Playground também
+// sobrevive à troca — MENOS a um salvamento (da Configuração, do Acesso, da
+// Base ou das Ferramentas): a conversa gerada pela versão anterior, mandada
+// à nova, não testa versão nenhuma do agente (Codex, #295). A aba Uso, sem
+// rascunho, remonta a cada visita: montada, os testes feitos no Playground
+// não apareciam até recarregar a página. A aba Turnos, pelo mesmo motivo,
+// também remonta a cada visita.
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -24,12 +25,13 @@ import { SubAbas } from '@/components/settings/sub-abas';
 import { AcessoDoAgente } from './acesso-do-agente';
 import { BaseDoAgente } from './base-do-agente';
 import { ConfiguracaoDoAgente } from './configuracao-do-agente';
+import { FerramentasDoAgente } from './ferramentas-do-agente';
 import { PlaygroundDoAgente } from './playground-do-agente';
 import { TurnosDoAgente } from './turnos-do-agente';
 import { UsoDeIa } from './uso-de-ia';
 import type { IaAgente } from './tipos';
 
-type Aba = 'configuracao' | 'acesso' | 'base' | 'playground' | 'uso' | 'turnos';
+type Aba = 'configuracao' | 'acesso' | 'base' | 'ferramentas' | 'playground' | 'uso' | 'turnos';
 
 type Estado =
   | { fase: 'carregando' }
@@ -45,8 +47,9 @@ export function DetalheDoAgente({ id }: { id: string }) {
   const [configuracaoNaoSalva, setConfiguracaoNaoSalva] = useState(false);
   const [acessoNaoSalvo, setAcessoNaoSalvo] = useState(false);
   const [baseNaoSalva, setBaseNaoSalva] = useState(false);
-  // Quantas vezes o agente foi salvo nesta tela (configuração, acesso ou
-  // base): entra na `key` do Playground para zerar a conversa a cada versão
+  const [ferramentasNaoSalvas, setFerramentasNaoSalvas] = useState(false);
+  // Quantas vezes o agente foi salvo nesta tela (configuração, acesso, base
+  // ou ferramentas): entra na `key` do Playground para zerar a conversa a cada versão
   // nova do agente.
   const [salvamentos, setSalvamentos] = useState(0);
   // O cliente do teste do Playground (F3) mora aqui: sobrevive ao salvamento
@@ -93,6 +96,7 @@ export function DetalheDoAgente({ id }: { id: string }) {
     configuracaoNaoSalva ? t('detalhe.configuracao') : null,
     acessoNaoSalvo ? t('detalhe.acesso') : null,
     baseNaoSalva ? t('detalhe.base') : null,
+    ferramentasNaoSalvas ? t('detalhe.ferramentas') : null,
   ].filter((x): x is string => x !== null);
 
   return (
@@ -129,6 +133,7 @@ export function DetalheDoAgente({ id }: { id: string }) {
               { id: 'configuracao', rotulo: t('detalhe.configuracao') },
               { id: 'acesso', rotulo: t('detalhe.acesso') },
               { id: 'base', rotulo: t('detalhe.base') },
+              { id: 'ferramentas', rotulo: t('detalhe.ferramentas') },
               { id: 'playground', rotulo: t('detalhe.playground') },
               { id: 'uso', rotulo: t('detalhe.uso') },
               { id: 'turnos', rotulo: t('detalhe.turnos') },
@@ -159,6 +164,16 @@ export function DetalheDoAgente({ id }: { id: string }) {
                 agenteId={e.agente.id}
                 aoSalvar={() => setSalvamentos((n) => n + 1)}
                 aoMudarNaoSalvo={setBaseNaoSalva}
+              />
+            </div>
+          ) : null}
+          {visitadas.has('ferramentas') ? (
+            <div hidden={aba !== 'ferramentas'}>
+              <FerramentasDoAgente
+                key={e.agente.id}
+                agente={e.agente}
+                aoSalvar={aoSalvarAgente}
+                aoMudarNaoSalvo={setFerramentasNaoSalvas}
               />
             </div>
           ) : null}
