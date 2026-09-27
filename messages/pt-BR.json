@@ -4768,7 +4768,7 @@
         "audio": "{agente} passou a conversa para a equipe: não conseguiu ouvir o áudio do cliente.",
         "incerto": "{agente} passou a conversa para a equipe: não dá para saber se a última resposta chegou ao cliente — confira antes de responder.",
         "link_inventado": "{agente} passou a conversa para a equipe: a resposta tinha um link que não veio do sistema, e não foi enviada.",
-        "reuniao_nao_marcada": "{agente} não conseguiu marcar a reunião: {motivo}. A conversa passou para a equipe — confirme o horário com o cliente."
+        "reuniao_nao_marcada": "{agente} não conseguiu marcar a reunião: {motivo}. A conversa passou para a equipe — confira no Calendly se a reunião não foi criada antes de marcar de novo, e confirme o horário com o cliente."
       },
       "passagem": "{agente} passou a conversa para IA · {destino}, e o card foi para a etapa desse agente.",
       "acoes": {

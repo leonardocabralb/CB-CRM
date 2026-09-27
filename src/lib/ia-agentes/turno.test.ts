@@ -2221,10 +2221,11 @@ describe('executarTurno — marcar reunião (F5)', () => {
     tipoDeEvento: TIPO,
     lida: true,
     horarios: [
-      { id: H1, nome: 'Mon 28/09 15:15' },
-      { id: H2, nome: 'Tue 29/09 10:00' },
+      { id: H1, nome: '28/09/2026 15:15', textoNoPedido: 'Mon 28/09 15:15' },
+      { id: H2, nome: '29/09/2026 10:00', textoNoPedido: 'Tue 29/09 10:00' },
     ],
     temEmail: true,
+    reuniaoMarcada: null,
   }
   const pedido = () => vi.mocked(generateReply).mock.calls[0][0].systemPrompt as string
   const responde = (text: string) =>
@@ -2260,7 +2261,7 @@ describe('executarTurno — marcar reunião (F5)', () => {
       expect(vi.mocked(engineSendText).mock.calls[0][0].text).toBe('Marquei para terça às 10h!')
       const [, ctx, aceitas] = vi.mocked(executarAcoes).mock.calls[0]
       expect(ctx.tipoDeEvento).toBe(TIPO)
-      expect(aceitas).toEqual([{ tipo: 'marcar_reuniao', id: H2, nome: 'Tue 29/09 10:00' }])
+      expect(aceitas).toEqual([{ tipo: 'marcar_reuniao', id: H2, nome: '29/09/2026 10:00' }])
       // Marcou: ninguém é chamado.
       expect(conversa()).toMatchObject({ ai_autoreply_disabled: false })
       expect(notas()).toHaveLength(0)
@@ -2270,7 +2271,7 @@ describe('executarTurno — marcar reunião (F5)', () => {
   it('⚠️ a reunião NÃO marcada (sem e-mail) TRANSFERE para gente, com o motivo — e o desfecho continua `respondeu`', async () => {
     responde('Pronto, marquei!\n[[REUNIAO:1]]')
     vi.mocked(executarAcoes).mockResolvedValue({
-      registros: [{ tipo: 'marcar_reuniao', alvo: { id: H1, nome: 'Mon 28/09 15:15' }, ok: false, erro: 'sem_email' }],
+      registros: [{ tipo: 'marcar_reuniao', alvo: { id: H1, nome: '28/09/2026 15:15' }, ok: false, erro: 'sem_email' }],
       moveu: false,
     })
     await executarTurno(TURNO)
@@ -2299,7 +2300,7 @@ describe('executarTurno — marcar reunião (F5)', () => {
       moveu: false,
     }))
     await executarTurno(TURNO)
-    expect(vi.mocked(executarAcoes).mock.calls[0][2]).toEqual([{ tipo: 'marcar_reuniao', id: H1, nome: 'Mon 28/09 15:15' }])
+    expect(vi.mocked(executarAcoes).mock.calls[0][2]).toEqual([{ tipo: 'marcar_reuniao', id: H1, nome: '28/09/2026 15:15' }])
     expect(turno().acoes).toContainEqual({ tipo: 'marcar_reuniao', alvo: { id: null, nome: '#2' }, ok: false, erro: 'teto' })
     expect(conversa()).toMatchObject({ ai_autoreply_disabled: false })
   })
@@ -2324,23 +2325,43 @@ describe('executarTurno — marcar reunião (F5)', () => {
     expect(executarAcoes).not.toHaveBeenCalled()
     expect(conversa()).toMatchObject({ ai_autoreply_disabled: false })
     expect(turno().acoes).toEqual([
-      { tipo: 'marcar_reuniao', alvo: { id: H1, nome: 'Mon 28/09 15:15' }, ok: false, erro: 'envio_falhou' },
+      { tipo: 'marcar_reuniao', alvo: { id: H1, nome: '28/09/2026 15:15' }, ok: false, erro: 'envio_falhou' },
     ])
   })
 
-  it('a transferência que encontra a conversa JÁ pausada por gente não passa por cima', async () => {
+  it('⚠️ a transferência que encontra a conversa JÁ pausada por gente não passa por cima — mas a ANOTAÇÃO da falha sai', async () => {
     responde('Marquei!\n[[REUNIAO:1]]')
     vi.mocked(executarAcoes).mockImplementation(async () => {
       // A equipe respondeu pelo celular entre o envio e o fim das ações.
       Object.assign(conversa(), { ai_autoreply_disabled: true, ia_pausada_por: 'gente' })
       return {
-        registros: [{ tipo: 'marcar_reuniao', alvo: { id: H1, nome: 'Mon 28/09 15:15' }, ok: false, erro: 'horario_indisponivel' }],
+        registros: [{ tipo: 'marcar_reuniao', alvo: { id: H1, nome: '28/09/2026 15:15' }, ok: false, erro: 'horario_indisponivel' }],
         moveu: false,
       }
     })
     await executarTurno(TURNO)
     expect(turno().status).toBe('respondeu')
     expect(conversa()).toMatchObject({ ia_pausada_por: 'gente' })
-    expect(notas()).toHaveLength(0)
+    // Quem pausou precisa saber que o cliente ouviu "marquei" e a reunião não existe.
+    expect(notas()).toHaveLength(1)
+    expect(String(notas()[0].autor_nome)).toContain('Triagem')
+    expect(String(notas()[0].texto)).toMatch(/não conseguiu marcar a reunião|could not book the meeting/)
+    expect(String(notas()[0].texto)).toMatch(/confira no Calendly se a reunião não foi criada|check in Calendly that the meeting was not created/)
+  })
+
+  it('⚠️ cliente que JÁ tem reunião: nenhum horário no pedido, a data e o link DELA; o marcador inventado é recusado e transfere', async () => {
+    vi.mocked(lerAgendaDoAgente).mockResolvedValue({
+      ...AGENDA,
+      horarios: [],
+      reuniaoMarcada: { inicio: '2026-09-30T17:00:00Z', remarcar: 'https://calendly.com/reschedulings/vivo' },
+    })
+    responde('Marquei!\n[[REUNIAO:1]]')
+    await executarTurno(TURNO)
+    expect(pedido()).toMatch(/already has a meeting booked/)
+    expect(pedido()).toContain('https://calendly.com/reschedulings/vivo')
+    expect(pedido()).not.toContain('[[REUNIAO:n]]')
+    expect(executarAcoes).not.toHaveBeenCalled()
+    expect(turno().acoes).toEqual([{ tipo: 'marcar_reuniao', alvo: { id: null, nome: '#1' }, ok: false, erro: 'nao_liberada' }])
+    expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'transferencia' })
   })
 })

@@ -4775,7 +4775,7 @@
         "audio": "{agente} handed the conversation to the team: it could not hear the customer's audio.",
         "incerto": "{agente} handed the conversation to the team: there is no way to know whether the last reply reached the customer — check before replying.",
         "link_inventado": "{agente} handed the conversation to the team: the reply had a link that did not come from the system, and it was not sent.",
-        "reuniao_nao_marcada": "{agente} could not book the meeting: {motivo}. The conversation went to the team — confirm the time with the customer."
+        "reuniao_nao_marcada": "{agente} could not book the meeting: {motivo}. The conversation went to the team — check in Calendly that the meeting was not created before booking it again, and confirm the time with the customer."
       },
       "passagem": "{agente} handed the conversation to AI · {destino}, and the deal moved to that agent's stage.",
       "acoes": {

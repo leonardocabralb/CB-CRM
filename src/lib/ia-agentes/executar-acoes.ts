@@ -356,8 +356,8 @@ export async function executarAcoes(
     if (acao.tipo === 'mover_etapa') moveu = true
     try {
       // A reunião é nomeada na anotação pela data e hora no fuso do escritório
-      // ("28/09/2026 15:15"): o `nome` da opção é o texto para o MODELO, com
-      // o dia da semana em inglês.
+      // ("28/09/2026 15:15"), recalculada do horário que o Calendly marcou —
+      // o mesmo texto do `nome` da opção (`opcoesDeHorario`).
       const alvo = acao.tipo === 'marcar_reuniao' ? (r.nota.valor ?? acao.nome) : acao.nome
       const { autor, texto } = await textosDaAcao(ctx.agente.nome, acao.tipo, alvo, r.nota.valor)
       await anotarNaConversa(db, {

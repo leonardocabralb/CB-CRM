@@ -136,8 +136,8 @@ export function rotuloDoTipoDeAcao(t: ReturnType<typeof useTranslations>, tipo: 
 
 /**
  * Uma ação ACEITA no Playground, como frase curta ("mover para Proposta",
- * "tarefa para Ana", "marcar reunião em Mon 28/09 15:15" — na reunião, o
- * `nome` é o horário como foi ao pedido) — `IaAgentes.playground.acao.<t>`, com `{nome}`. Com o
+ * "tarefa para Ana", "marcar reunião em 28/09/2026 15:15" — na reunião, o
+ * `nome` é a data e a hora no fuso do escritório) — `IaAgentes.playground.acao.<t>`, com `{nome}`. Com o
  * `valor` (o do campo, o título da tarefa), `playground.acaoComValor.<t>`:
  * "tarefa para Ana: Ligar amanhã", "preencher Tamanho da dívida = 200 mil".
  * Chaves MONTADAS, cobradas em `textos.test.ts`.

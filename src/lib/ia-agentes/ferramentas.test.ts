@@ -455,7 +455,7 @@ describe('lerCatalogoDeFerramentas — a tela só mostra', () => {
 
 describe('conferirFerramentas — marcar reunião (F5)', () => {
   const TIPO = 'https://api.calendly.com/event_types/T1'
-  const tipo = (uri: string, ativo = true) => ({ uri, nome: 'Reunião', ativo, schedulingUrl: null, duracao: 30, local: null })
+  const tipo = (uri: string, ativo = true) => ({ uri, nome: 'Reunião', ativo, schedulingUrl: null, duracao: 30, local: null, perguntas: [] })
 
   beforeEach(() => {
     vi.mocked(tiposDeEventoAtivos).mockReset().mockResolvedValue({ estado: 'conectado', tipos: [tipo(TIPO)] })
@@ -494,5 +494,27 @@ describe('conferirFerramentas — marcar reunião (F5)', () => {
   it('reunião desligada (ou sem tipo): o Calendly nem é lido', async () => {
     expect(await conferirFerramentas(db, CONTA, { marcar_reuniao: { tipos_de_evento: [] } })).toEqual({ ok: true })
     expect(tiposDeEventoAtivos).not.toHaveBeenCalled()
+  })
+
+  it('⚠️ tipo de evento que NÃO mudou em relação ao gravado: o Calendly não é consultado (fora do ar, salvar outra ferramenta não dá 500)', async () => {
+    vi.mocked(tiposDeEventoAtivos).mockRejectedValue(new Error('Calendly fora do ar'))
+    const gravadas = { marcar_reuniao: { tipos_de_evento: [TIPO] } }
+    expect(
+      await conferirFerramentas(db, CONTA, { marcar_reuniao: { tipos_de_evento: [TIPO] }, etiquetar: { etiquetas: [] } }, gravadas),
+    ).toEqual({ ok: true })
+    expect(tiposDeEventoAtivos).not.toHaveBeenCalled()
+  })
+
+  it('tipo de evento que MUDOU (ou criação, sem gravadas): confere no Calendly', async () => {
+    const outro = 'https://api.calendly.com/event_types/OUTRO'
+    vi.mocked(tiposDeEventoAtivos).mockResolvedValue({ estado: 'conectado', tipos: [tipo(TIPO), tipo(outro)] })
+    expect(await conferirFerramentas(db, CONTA, { marcar_reuniao: { tipos_de_evento: [outro] } }, { marcar_reuniao: { tipos_de_evento: [TIPO] } })).toEqual({ ok: true })
+    expect(tiposDeEventoAtivos).toHaveBeenCalledTimes(1)
+    // Reunião ligada agora (nada gravado antes): confere.
+    expect(await conferirFerramentas(db, CONTA, { marcar_reuniao: { tipos_de_evento: [TIPO] } }, {})).toEqual({ ok: true })
+    expect(tiposDeEventoAtivos).toHaveBeenCalledTimes(2)
+    // Sem gravadas (criação): confere.
+    await conferirFerramentas(db, CONTA, { marcar_reuniao: { tipos_de_evento: [TIPO] } })
+    expect(tiposDeEventoAtivos).toHaveBeenCalledTimes(3)
   })
 })

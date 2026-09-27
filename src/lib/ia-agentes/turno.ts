@@ -64,10 +64,12 @@
 //    de posse.
 //  - MARCAR REUNIÃO (F5): com a ação liberada, o turno lê os horários livres
 //    do Calendly com PRAZO (`lerAgendaDoAgente`, 4 s; falhou = o pedido diz
-//    que não há horários agora) e os oferece numerados. A reunião é a
+//    que não há horários agora) e os oferece numerados — nenhum para quem
+//    JÁ tem reunião (o pedido manda o link de remarcar dela). A reunião é a
 //    ÚLTIMA ação, depois de a resposta sair. Pedida e NÃO marcada (recusada
 //    ou falhou) = o turno TRANSFERE para gente, com a anotação do motivo —
-//    a resposta já prometeu —, sem mudar o desfecho `respondeu`.
+//    a resposta já prometeu —, sem mudar o desfecho `respondeu`; com a
+//    conversa já pausada, só a anotação.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -865,7 +867,7 @@ async function conduzir(
     blocos: visto.blocos,
     conhecimento: visto.trechos.map((t) => t.content),
     acoes: opcoesDeAcao,
-    agenda: agenda ? { lida: agenda.lida, temEmail: agenda.temEmail } : null,
+    agenda: agenda ? { lida: agenda.lida, temEmail: agenda.temEmail, reuniaoMarcada: agenda.reuniaoMarcada } : null,
   })
 
   let texto: string
@@ -1074,10 +1076,12 @@ async function conduzir(
   // tomado, desconectado): a resposta que SAIU provavelmente disse "marquei".
   // Transfere para gente, com a anotação do motivo, pelo caminho da F2. O
   // desfecho continua `respondeu` (a resposta saiu); a transferência não
-  // passa por cima de pausa que já existe.
+  // passa por cima de pausa que já existe — mas a ANOTAÇÃO da falha sai do
+  // mesmo jeito: quem pausou (a equipe pelo celular, o botão) precisa saber
+  // que o cliente ouviu "marquei" e a reunião não existe.
   const codigoDaReuniao = reuniaoNaoMarcada(andamento.acoes)
   if (codigoDaReuniao) {
-    await transferirParaGente(db, {
+    const transferencia = await transferirParaGente(db, {
       accountId: turno.account_id,
       conversationId: turno.conversation_id,
       contactId,
@@ -1086,6 +1090,20 @@ async function conduzir(
       motivo: 'reuniao_nao_marcada',
       codigoDaReuniao,
     })
+    if (transferencia === 'nada_mudou') {
+      try {
+        const { autor, texto } = await textosDaTransferencia(agente.nome, 'reuniao_nao_marcada', codigoDaReuniao)
+        await anotarNaConversa(db, {
+          accountId: turno.account_id,
+          conversationId: turno.conversation_id,
+          contactId,
+          autor,
+          texto,
+        })
+      } catch (err) {
+        console.error('[ia-agentes] anotar a reunião não marcada (conversa já pausada) falhou:', err)
+      }
+    }
   }
   return enviado
 }

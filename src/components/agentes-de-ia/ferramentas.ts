@@ -138,8 +138,9 @@ export function situacaoDaReuniao(opcoes: OpcoesDasFerramentas, marcados: readon
 
 /**
  * Os horários livres que o Playground ofereceu ao modelo (F5,
- * `horarios` da rota). `null` = o tipo está desligado ou a leitura falhou
- * (nada é mostrado); lista (vazia inclusive) = o que foi oferecido. Item
+ * `horarios` da rota). `null` = o tipo está desligado, a leitura falhou ou o
+ * cliente já tem reunião (nada é mostrado); lista (vazia inclusive) = o que
+ * foi oferecido. Item
  * estranho sai, sem quebrar a lista.
  */
 export function lerHorariosOferecidos(v: unknown): HorarioOferecido[] | null {

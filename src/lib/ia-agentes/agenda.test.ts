@@ -38,12 +38,15 @@ let banco: Banco
 const db = {
   from(tabela: string) {
     const filtros: Array<[string, unknown]> = []
+    const depois: Array<(l: Linha) => boolean> = []
     let ordem: { coluna: string; asc: boolean } | null = null
     let limite: number | null = null
     const executar = () => {
       banco.consultas.push({ tabela, filtros })
       if (banco.falhas.has(tabela)) return { data: null, error: { message: `${tabela} fora do ar` } }
-      let linhas = (banco.tabelas[tabela] ?? []).filter((l) => filtros.every(([c, v]) => l[c] === v))
+      let linhas = (banco.tabelas[tabela] ?? []).filter(
+        (l) => filtros.every(([c, v]) => l[c] === v) && depois.every((f) => f(l)),
+      )
       if (ordem) {
         const { coluna, asc } = ordem
         linhas = [...linhas].sort((a, b) => (String(a[coluna]) < String(b[coluna]) ? -1 : 1) * (asc ? 1 : -1))
@@ -54,6 +57,8 @@ const db = {
     const q = {
       select: () => q,
       eq: (c: string, v: unknown) => (filtros.push([c, v]), q),
+      gt: (c: string, v: string) => (depois.push((l) => String(l[c]) > v), q),
+      in: (c: string, vs: unknown[]) => (depois.push((l) => vs.includes(l[c])), q),
       order: (c: string, o?: { ascending?: boolean }) => ((ordem = { coluna: c, asc: o?.ascending !== false }), q),
       limit: (n: number) => ((limite = n), q),
       maybeSingle: async () => {
@@ -71,7 +76,7 @@ const CONTATO = 'contato-1'
 const TIPO = 'https://api.calendly.com/event_types/T1'
 
 function tipo(p: Partial<TipoDeEvento> = {}): TipoDeEvento {
-  return { uri: TIPO, nome: 'Reunião', ativo: true, schedulingUrl: null, duracao: 30, local: 'google_conference', ...p }
+  return { uri: TIPO, nome: 'Reunião', ativo: true, schedulingUrl: null, duracao: 30, local: 'google_conference', perguntas: [], ...p }
 }
 
 /** Um dublê do cliente do Calendly: cada método é um `vi.fn` que o teste ajusta. */
@@ -163,6 +168,16 @@ describe('tiposDeEventoAtivos / tiposDeEventoParaATela', () => {
       tiposDeEvento: null,
     })
   })
+
+  it('⚠️ a tela tem PRAZO: o Calendly que não responde vira "falhou" em ~prazo, sem segurar o resto', async () => {
+    calendly.cliente.tiposDeEvento.mockImplementation(() => new Promise(() => {}))
+    const inicio = Date.now()
+    expect(await tiposDeEventoParaATela(db, CONTA, { cliente: calendly.fabrica }, 40)).toEqual({
+      calendly: 'falhou',
+      tiposDeEvento: null,
+    })
+    expect(Date.now() - inicio).toBeLessThan(1_500)
+  })
 })
 
 describe('emailDoCliente', () => {
@@ -208,10 +223,11 @@ describe('lerAgendaDoAgente — os horários do pedido', () => {
       tipoDeEvento: TIPO,
       lida: true,
       horarios: [
-        { id: '2026-09-28T18:15:00.000Z', nome: 'Mon 28/09 15:15' },
-        { id: '2026-09-29T13:00:00.000Z', nome: 'Tue 29/09 10:00' },
+        { id: '2026-09-28T18:15:00.000Z', nome: '28/09/2026 15:15', textoNoPedido: 'Mon 28/09 15:15' },
+        { id: '2026-09-29T13:00:00.000Z', nome: '29/09/2026 10:00', textoNoPedido: 'Tue 29/09 10:00' },
       ],
       temEmail: true,
+      reuniaoMarcada: null,
     })
     expect(calendly.cliente.horariosLivres).toHaveBeenCalledWith(
       { tipoDeEvento: TIPO, inicio: '2026-09-26T13:00:00.000Z', fim: '2026-10-03T12:59:00.000Z' },
@@ -228,7 +244,7 @@ describe('lerAgendaDoAgente — os horários do pedido', () => {
       { cliente: calendly.fabrica },
     )
     expect(Date.now() - inicio).toBeLessThan(1_500)
-    expect(r).toEqual({ tipoDeEvento: TIPO, lida: false, horarios: [], temEmail: true })
+    expect(r).toEqual({ tipoDeEvento: TIPO, lida: false, horarios: [], temEmail: true, reuniaoMarcada: null })
   })
 
   it('falha do Calendly, desconectado ou token que não decifra: "não lidos"', async () => {
@@ -237,6 +253,30 @@ describe('lerAgendaDoAgente — os horários do pedido', () => {
     expect((await lerAgendaDoAgente(db, { accountId: 'conta-sem', ferramentas, contactId: null, agora }, { cliente: calendly.fabrica }))?.lida).toBe(false)
     banco.tabelas.cb_calendly_config[0].access_token = 'ilegivel'
     expect((await lerAgendaDoAgente(db, { accountId: CONTA, ferramentas, contactId: CONTATO, agora }, { cliente: calendly.fabrica }))?.lida).toBe(false)
+  })
+
+  it('⚠️ cliente que JÁ tem reunião futura: NENHUM horário, com a data e o link de remarcar DELA (a leitura do bloco "reuniao")', async () => {
+    banco.tabelas.cb_calendly_eventos = [
+      // A passada não conta; a cancelada (reagendada) também não; a viva, sim.
+      { account_id: CONTA, contact_id: CONTATO, evento: 'invitee.created', invitee_uri: 'I0', inicio: '2026-09-20T13:00:00Z', event_type_nome: 'R', variaveis: {} },
+      { account_id: CONTA, contact_id: CONTATO, evento: 'invitee.created', invitee_uri: 'I1', inicio: '2026-09-29T13:00:00Z', event_type_nome: 'R', variaveis: { agendamento_remarcar: 'https://calendly.com/reschedulings/velho' } },
+      { account_id: CONTA, contact_id: null, evento: 'invitee.canceled', invitee_uri: 'I1', inicio: '2026-09-29T13:00:00Z' },
+      { account_id: CONTA, contact_id: CONTATO, evento: 'invitee.created', invitee_uri: 'I2', inicio: '2026-09-30T17:00:00Z', event_type_nome: 'R', variaveis: { agendamento_remarcar: 'https://calendly.com/reschedulings/vivo' } },
+    ]
+    const r = await lerAgendaDoAgente(db, { accountId: CONTA, ferramentas, contactId: CONTATO, agora }, { cliente: calendly.fabrica })
+    expect(r).toEqual({
+      tipoDeEvento: TIPO,
+      lida: true,
+      horarios: [],
+      temEmail: true,
+      reuniaoMarcada: { inicio: '2026-09-30T17:00:00Z', remarcar: 'https://calendly.com/reschedulings/vivo' },
+    })
+  })
+
+  it('a leitura da reunião já marcada FALHA: nenhum horário (`lida` falso) — na dúvida, não marcar por cima', async () => {
+    banco.falhas.add('cb_calendly_eventos')
+    const r = await lerAgendaDoAgente(db, { accountId: CONTA, ferramentas, contactId: CONTATO, agora }, { cliente: calendly.fabrica })
+    expect(r).toMatchObject({ lida: false, horarios: [], reuniaoMarcada: null })
   })
 
   it('sem contato (Playground sem contato), ou leitura do e-mail que falha: `temEmail` falso', async () => {
@@ -269,6 +309,30 @@ describe('marcarNoCalendly — o POST /invitees', () => {
     })
     expect(opcoes.prazoMs).toBeGreaterThan(0)
     expect(calendly.tokens).toEqual(['token-da-conta'])
+  })
+
+  it('⚠️ o telefone vai como RESPOSTA da pergunta de telefone do tipo de evento (a forma medida) — é por ela que o webhook acha o cliente', async () => {
+    calendly.cliente.tipoDeEvento.mockResolvedValueOnce(
+      tipo({ perguntas: [{ nome: 'Telefone (Whatsapp)', tipo: 'phone_number', obrigatoria: true, posicao: 0, ativa: true }] }),
+    )
+    await marcarNoCalendly(db, args, { cliente: calendly.fabrica })
+    const [corpo] = calendly.cliente.criarConvidado.mock.calls[0] as unknown as [Record<string, unknown>]
+    expect(corpo.questions_and_answers).toEqual([{ question: 'Telefone (Whatsapp)', answer: '+5511999998888', position: 0 }])
+  })
+
+  it('a pergunta CONFIGURADA no cartão do Calendly (`pergunta_telefone`) é a respondida', async () => {
+    banco.tabelas.cb_calendly_config[0].pergunta_telefone = 'contato para'
+    calendly.cliente.tipoDeEvento.mockResolvedValueOnce(
+      tipo({
+        perguntas: [
+          { nome: 'Empresa', tipo: 'string', obrigatoria: false, posicao: 0, ativa: true },
+          { nome: 'Contato para a reunião', tipo: 'string', obrigatoria: true, posicao: 1, ativa: true },
+        ],
+      }),
+    )
+    await marcarNoCalendly(db, args, { cliente: calendly.fabrica })
+    const [corpo] = calendly.cliente.criarConvidado.mock.calls[0] as unknown as [Record<string, unknown>]
+    expect(corpo.questions_and_answers).toEqual([{ question: 'Contato para a reunião', answer: '+5511999998888', position: 1 }])
   })
 
   it('sem nome na ficha, o telefone', async () => {

@@ -20,7 +20,7 @@ import { HANDOFF_SENTINEL } from '@/lib/ai/defaults'
 
 import { LIMITES_DAS_ACOES, MARCADOR_DA_ACAO, type FormatoDoCampo, type OpcaoDeAcao, type OpcoesDeAcao } from './acoes'
 import { TIPOS_DE_ACAO, type TipoDeAcao } from './agente'
-import type { AgendaNoPedido } from './reuniao'
+import { HORARIOS_POR_DIA, type AgendaNoPedido } from './reuniao'
 
 export const FUSO_DO_ESCRITORIO = 'America/Sao_Paulo'
 
@@ -110,23 +110,48 @@ function descricaoDoFormato(formato: FormatoDoCampo | undefined): string {
   }
 }
 
-/** Uma linha da lista numerada: o nome e, nos campos, o formato do valor. */
+/**
+ * Uma linha da lista numerada: o nome (na reunião, o `textoNoPedido`, com o
+ * dia da semana em inglês) e, nos campos, o formato do valor.
+ */
 function linhaDaOpcao(tipo: TipoDeAcao, o: OpcaoDeAcao, i: number): string {
-  const nome = o.nome.replace(/\s+/g, ' ').trim()
+  const nome = (o.textoNoPedido ?? o.nome).replace(/\s+/g, ' ').trim()
   return tipo === 'preencher_campo' ? `${i + 1}. ${nome} — ${descricaoDoFormato(o.formato)}` : `${i + 1}. ${nome}`
 }
 
 /**
  * O que o pedido diz sobre MARCAR REUNIÃO (F5), além da lista de horários:
  * as regras (só um horário da lista que o cliente escolheu, nunca inventar,
- * uma por resposta), se o cliente tem e-mail — sem ele, pedir; com o campo
- * de e-mail liberado em "Preencher campo", gravá-lo e marcar na mesma
- * resposta (a execução roda o campo ANTES da reunião) — e, sem horários
+ * uma por resposta), que os números valem SÓ para esta resposta (a lista é
+ * relida a cada turno: o número de ontem pode ser outro horário hoje), que a
+ * lista é uma AMOSTRA (até 3 por dia — pedido de outro dia/hora = dizer quais
+ * dias têm vaga, nunca "não há"), se o cliente tem e-mail — sem ele, pedir;
+ * com o campo de e-mail liberado em "Preencher campo", gravá-lo e marcar na
+ * mesma resposta (a execução roda o campo ANTES da reunião) — e, sem horários
  * (leitura que falhou ou nenhum livre), que não prometa horário e mande o
- * link de remarcar do bloco da reunião, se houver. `null` = reunião desligada.
+ * link de remarcar do bloco da reunião, se houver.
+ *
+ * ⚠️ Cliente que JÁ tem reunião futura (`reuniaoMarcada`): nenhum horário é
+ * oferecido (a lista vem vazia, e o marcador que o modelo inventar é
+ * `nao_liberada` — e transfere); o pedido diz quando ela é e manda o link de
+ * remarcar DELA, ou, sem link, transferir. `null` = reunião desligada.
  */
-function notaDaAgenda(opcoes: OpcoesDeAcao, agenda: AgendaNoPedido | null | undefined): string | null {
+function notaDaAgenda(opcoes: OpcoesDeAcao, agenda: AgendaNoPedido | null | undefined, fuso?: string): string | null {
   if (!agenda) return null
+  if (agenda.reuniaoMarcada) {
+    const d = new Date(agenda.reuniaoMarcada.inicio)
+    const quando = Number.isNaN(d.getTime())
+      ? agenda.reuniaoMarcada.inicio
+      : `${dataEHora(d, fuso)} (the business's timezone)`
+    const link = agenda.reuniaoMarcada.remarcar?.trim()
+    const mudar = link
+      ? `If the customer wants to change or cancel it, send this reschedule link: ${link}`
+      : `If the customer wants to change or cancel it, reply with exactly ${HANDOFF_SENTINEL} so the team handles it.`
+    return (
+      `Booking a meeting: the customer already has a meeting booked for ${quando}. ` +
+      `Do not book another meeting and do not offer other times. ${mudar}`
+    )
+  }
   const semHorario = "Do not offer or promise any specific time; if the customer wants to schedule or reschedule, send the reschedule link from the meeting information above, if there is one — otherwise say the team will get in touch."
   if (!agenda.lida) return `Booking a meeting: the business's free times are not available right now. ${semHorario}`
   if ((opcoes.marcar_reuniao?.length ?? 0) === 0) {
@@ -136,6 +161,11 @@ function notaDaAgenda(opcoes: OpcoesDeAcao, agenda: AgendaNoPedido | null | unde
   const regras = [
     'Booking rules:',
     "- Only book when the customer has clearly chosen one of the listed times. Never make up a time, and never book a time that is not in the list — if the customer wants another time, offer the listed ones or hand over.",
+    '- The numbers are valid only for the markers of THIS reply: the list is read again for every reply, so a time may now have a different number, or be gone. ' +
+      'Match the DAY and the TIME the customer chose against the list above. If the time the customer chose is no longer in the list, ' +
+      'tell the customer it is no longer free and offer the listed ones — never book a different time.',
+    `- The list is a sample of the free times (up to ${HORARIOS_POR_DIA} per day). If the customer asks for another day or time, ` +
+      'tell them which days have free times (the days in the list) and offer the listed times of those days, instead of saying there are none.',
     '- At most one meeting per reply. When you book, tell the customer the day and time; the confirmation arrives by e-mail.',
     `- Customer e-mail on file: ${agenda.temEmail ? 'yes' : 'no'}.`,
   ]
@@ -158,13 +188,13 @@ function notaDaAgenda(opcoes: OpcoesDeAcao, agenda: AgendaNoPedido | null | unde
  * formato do valor. Na F5, os horários livres e as regras da reunião
  * (`notaDaAgenda`). `null` = nada liberado.
  */
-function secaoDasAcoes(opcoes: OpcoesDeAcao, agenda?: AgendaNoPedido | null): string | null {
+function secaoDasAcoes(opcoes: OpcoesDeAcao, agenda?: AgendaNoPedido | null, fuso?: string): string | null {
   const grupos = TIPOS_DE_ACAO.filter((t) => (opcoes[t]?.length ?? 0) > 0).map(
     (t) =>
       `${formaDoMarcador(t)} — ${O_QUE_FAZ[t]}:\n` +
       (opcoes[t] ?? []).map((o, i) => linhaDaOpcao(t, o, i)).join('\n'),
   )
-  const nota = notaDaAgenda(opcoes, agenda)
+  const nota = notaDaAgenda(opcoes, agenda, fuso)
   // Reunião ligada sem horário e nenhuma outra ação: só a nota, sem protocolo.
   if (grupos.length === 0) return nota
   return [
@@ -198,8 +228,8 @@ export function montarPedidoDoAgente(args: {
   acoes?: OpcoesDeAcao
   /**
    * A agenda (F5), quando "Marcar reunião" está liberado: se os horários
-   * foram lidos (a lista vem em `acoes.marcar_reuniao`) e se o cliente tem
-   * e-mail. Ausente = reunião desligada.
+   * foram lidos (a lista vem em `acoes.marcar_reuniao`), se o cliente tem
+   * e-mail e a reunião que ele já tem. Ausente = reunião desligada.
    */
   agenda?: AgendaNoPedido | null
 }): string {
@@ -255,7 +285,7 @@ export function montarPedidoDoAgente(args: {
     )
   }
 
-  const acoes = secaoDasAcoes(args.acoes ?? {}, args.agenda)
+  const acoes = secaoDasAcoes(args.acoes ?? {}, args.agenda, args.fuso)
   if (acoes) partes.push(acoes)
 
   return partes.join('\n\n')

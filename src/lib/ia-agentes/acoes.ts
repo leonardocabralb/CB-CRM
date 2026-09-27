@@ -138,12 +138,16 @@ export function valorDoCampo(valor: string, formato: FormatoDoCampo): string | n
 /**
  * Uma opção que o servidor oferece ao modelo, numerada a partir de 1 na ordem
  * da lista. Na reunião (`marcar_reuniao`, F5): `id` = o `start_time` do
- * horário livre (ISO, UTC) e `nome` = o horário como o pedido o mostra
- * ("Mon 28/09 15:15", no fuso do escritório — `reuniao.ts`).
+ * horário livre (ISO, UTC), `nome` = o horário para GENTE ler ("28/09/2026
+ * 15:15", no fuso do escritório — vai ao registro do turno, ao Playground e
+ * à anotação) e `textoNoPedido` = o horário para o MODELO ("Mon 28/09 15:15",
+ * com o dia da semana em inglês — `reuniao.ts`).
  */
 export interface OpcaoDeAcao {
   id: string
   nome: string
+  /** O texto da linha no PEDIDO, quando não é o `nome` (a reunião). */
+  textoNoPedido?: string
   /** Só nos campos (`preencher_campo`): o formato do valor, que o pedido diz ao modelo. */
   formato?: FormatoDoCampo
 }

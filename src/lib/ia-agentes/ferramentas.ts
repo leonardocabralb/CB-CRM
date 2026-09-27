@@ -232,12 +232,16 @@ function faltando(pedidos: readonly string[], achados: Iterable<string>): string
  * `calendly_desconectado`). ⚠️ E NÃO passa pela régua da D5 pela cascata —
  * a EXCEÇÃO escrita no plano (5.6, passo 4): a automação do tipo de evento
  * (que pode avisar o advogado por `send_to_number` e mover o card) roda como
- * roda quando o PRÓPRIO cliente agenda pelo link.
+ * roda quando o PRÓPRIO cliente agenda pelo link. O Calendly só é consultado
+ * quando o tipo de evento MUDOU em relação ao gravado (`gravadas`, as
+ * ferramentas do agente antes da alteração; ausente = criação, confere sempre):
+ * sem isso, salvar outra ferramenta com o Calendly fora do ar dava 500.
  */
 export async function conferirFerramentas(
   db: SupabaseClient,
   accountId: string,
   f: FerramentasDoAgente,
+  gravadas?: FerramentasDoAgente | null,
 ): Promise<ConferenciaDasFerramentas> {
   const etapas = itensDaAcao(f, 'mover_etapa')
   const aplicar = itensDaAcao(f, 'etiquetar')
@@ -296,9 +300,13 @@ export async function conferirFerramentas(
     if (pelaCascata.length) return { ok: false, codigo: 'cascata_fora_da_d5', itens: pelaCascata }
   }
 
-  // A reunião (F5): contra o Calendly, sem a cascata da D5 (a exceção acima).
+  // A reunião (F5): contra o Calendly, sem a cascata da D5 (a exceção acima),
+  // e só quando o tipo de evento mudou — o gravado já passou por aqui, e o
+  // turno e a execução o conferem de novo no Calendly (desativado = recusado).
   // Leitura que falha lança (quem chama recusa com `banco`).
-  if (tiposDeEvento.length) {
+  const gravados = gravadas ? itensDaAcao(gravadas, 'marcar_reuniao') : null
+  const mudou = !gravados || gravados.length !== tiposDeEvento.length || tiposDeEvento.some((uri) => !gravados.includes(uri))
+  if (tiposDeEvento.length && mudou) {
     const calendly = await tiposDeEventoAtivos(db, accountId)
     if (calendly.estado === 'desconectado') return { ok: false, codigo: 'calendly_desconectado', itens: tiposDeEvento }
     const ativos = new Set(calendly.tipos.map((t) => t.uri))

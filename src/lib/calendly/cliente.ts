@@ -82,6 +82,25 @@ export interface TipoDeEvento {
   duracao: number | null;
   /** O `kind` do PRIMEIRO local do tipo de evento (`google_conference`, `physical`…); nulo = sem local. */
   local: string | null;
+  /** As perguntas do formulário do tipo de evento (`custom_questions`), na ordem do Calendly. */
+  perguntas: PerguntaDoTipoDeEvento[];
+}
+
+/**
+ * Uma pergunta do formulário do tipo de evento (`custom_questions`). Medido
+ * em 26/09/2026: os tipos da conta têm UMA, `{ name: "Telefone (Whatsapp)",
+ * type: "phone_number", required: true, position: 0, enabled: true }`.
+ */
+export interface PerguntaDoTipoDeEvento {
+  /** O texto da pergunta (`name`), EXATO: a Scheduling API casa a resposta por ele, com caixa. */
+  nome: string;
+  /** `string`, `text`, `phone_number`, `single_select`, `multi_select`… como o Calendly manda; nulo = ausente. */
+  tipo: string | null;
+  obrigatoria: boolean;
+  /** `position` (a resposta leva a mesma). */
+  posicao: number;
+  /** Desligada (`enabled: false`) não aparece no formulário. */
+  ativa: boolean;
 }
 
 export type EscopoDaAssinatura = "organization" | "user";
@@ -110,7 +129,7 @@ export interface ClienteCalendly {
     signingKey: string;
   }): Promise<AssinaturaDeWebhook>;
   apagarAssinatura(uri: string): Promise<void>;
-  /** Um tipo de evento pelo URI (`GET /event_types/{uuid}`) — ativo e local, lidos na hora. */
+  /** Um tipo de evento pelo URI (`GET /event_types/{uuid}`) — ativo, local e perguntas, lidos na hora. */
   tipoDeEvento(uri: string, opcoes?: OpcoesDoPedido): Promise<TipoDeEvento>;
   /**
    * Os horários LIVRES de um tipo de evento (`GET /event_type_available_times`):
@@ -141,6 +160,23 @@ function textoOuNulo(v: unknown): string | null {
   return typeof v === "string" && v !== "" ? v : null;
 }
 
+/** As perguntas do formulário (`custom_questions`): sem `name` fica de fora; sem `position`, a ordem da lista. */
+function lerPerguntas(v: unknown): PerguntaDoTipoDeEvento[] {
+  if (!Array.isArray(v)) return [];
+  const perguntas: PerguntaDoTipoDeEvento[] = [];
+  v.forEach((q, i) => {
+    if (!ehObjeto(q) || typeof q.name !== "string" || q.name.trim() === "") return;
+    perguntas.push({
+      nome: q.name,
+      tipo: textoOuNulo(q.type),
+      obrigatoria: q.required === true,
+      posicao: typeof q.position === "number" && Number.isInteger(q.position) ? q.position : i,
+      ativa: q.enabled !== false,
+    });
+  });
+  return perguntas;
+}
+
 /** Um tipo de evento da API (a linha da lista ou o `resource` do GET por URI). */
 function lerTipoDeEvento(l: unknown): TipoDeEvento | null {
   if (!ehObjeto(l) || typeof l.uri !== "string") return null;
@@ -152,6 +188,7 @@ function lerTipoDeEvento(l: unknown): TipoDeEvento | null {
     schedulingUrl: textoOuNulo(l.scheduling_url),
     duracao: typeof l.duration === "number" ? l.duration : null,
     local: primeiro ? textoOuNulo(primeiro.kind) : null,
+    perguntas: lerPerguntas(l.custom_questions),
   };
 }
 

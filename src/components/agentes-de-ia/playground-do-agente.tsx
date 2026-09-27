@@ -25,8 +25,9 @@
 // (`horarios`); eles aparecem debaixo da resposta — recolhidos quando
 // passam de 4 —, porque é o que explica o horário que o agente propôs. A
 // reunião escolhida vira a ação simulada "marcar reunião em …": nada é
-// marcado aqui. `horarios` nulo (tipo desligado, leitura que falhou) não
-// mostra nada; lista vazia diz que não havia horário livre.
+// marcado aqui. `horarios` nulo (tipo desligado, leitura que falhou, cliente
+// que já tem reunião) não mostra nada; lista vazia diz que não havia horário
+// livre.
 
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
@@ -350,9 +351,10 @@ export function PlaygroundDoAgente({
 
 /**
  * Os horários livres que foram oferecidos ao modelo (F5), numa linha:
- * "Horários oferecidos: 1. Mon 28/09 15:15 · 2. …". Acima de
- * `HORARIOS_A_MOSTRA`, recolhidos (a lista vai a 12). O texto é o que o
- * modelo leu — em inglês e no fuso do escritório, como no pedido.
+ * "Horários oferecidos: 1. 28/09/2026 15:15 · 2. …". Acima de
+ * `HORARIOS_A_MOSTRA`, recolhidos (a lista vai a 15). O número é o que o
+ * modelo leu; o texto, a data e a hora no fuso do escritório (o modelo lê o
+ * mesmo horário com o dia da semana em inglês).
  */
 function HorariosOferecidos({ horarios }: { horarios: HorarioOferecido[] }) {
   const t = useTranslations('IaAgentes');

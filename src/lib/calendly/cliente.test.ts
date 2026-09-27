@@ -104,8 +104,8 @@ describe("criarClienteCalendly", () => {
       organization: "https://api.calendly.com/organizations/O1",
     });
     expect(tipos).toEqual([
-      { uri: "https://api.calendly.com/event_types/A", nome: "Reunião com Advogado - Kommo", ativo: true, schedulingUrl: null, duracao: 30, local: null },
-      { uri: "https://api.calendly.com/event_types/B", nome: "Antigo", ativo: false, schedulingUrl: null, duracao: null, local: null },
+      { uri: "https://api.calendly.com/event_types/A", nome: "Reunião com Advogado - Kommo", ativo: true, schedulingUrl: null, duracao: 30, local: null, perguntas: [] },
+      { uri: "https://api.calendly.com/event_types/B", nome: "Antigo", ativo: false, schedulingUrl: null, duracao: null, local: null, perguntas: [] },
     ]);
     expect(chamadas[0]).toContain("organization=https%3A%2F%2Fapi.calendly.com%2Forganizations%2FO1");
     expect(chamadas[1]).toContain("page_token=p2");
@@ -242,6 +242,33 @@ describe("criarClienteCalendly — a agenda do agente (F5)", () => {
     expect(await cliente.tipoDeEvento(TIPO)).toMatchObject({ uri: TIPO, ativo: true, duracao: 30, local: "google_conference" });
     await expect(cliente.tipoDeEvento("https://evil.com/event_types/T1")).rejects.toMatchObject({ codigo: "calendly_error" });
     expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("tipoDeEvento: as perguntas do formulário (`custom_questions`) — a forma MEDIDA, e a de fora ignorada", async () => {
+    const fetchFn = vi.fn(async () =>
+      resposta(200, {
+        resource: {
+          uri: TIPO,
+          name: "Reunião",
+          active: true,
+          custom_questions: [
+            // A forma medida em produção (26/09/2026).
+            { name: "Telefone (Whatsapp)", type: "phone_number", required: true, position: 0, enabled: true },
+            { name: "Assunto", type: "text", required: false, position: 1, enabled: false },
+            // Sem posição: a da lista; sem nome, fora.
+            { name: "Empresa", type: "string" },
+            { type: "string", position: 3 },
+            "lixo",
+          ],
+        },
+      }),
+    );
+    const tipo = await criarClienteCalendly(TOKEN, fetchFn as unknown as typeof fetch).tipoDeEvento(TIPO);
+    expect(tipo.perguntas).toEqual([
+      { nome: "Telefone (Whatsapp)", tipo: "phone_number", obrigatoria: true, posicao: 0, ativa: true },
+      { nome: "Assunto", tipo: "text", obrigatoria: false, posicao: 1, ativa: false },
+      { nome: "Empresa", tipo: "string", obrigatoria: false, posicao: 2, ativa: true },
+    ]);
   });
 
   it("criarConvidado: POST /invitees com o corpo como veio; 201 devolve a URI", async () => {

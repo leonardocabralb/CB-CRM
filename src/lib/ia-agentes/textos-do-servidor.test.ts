@@ -86,6 +86,11 @@ describe('textos da transferência do agente', () => {
       expect(semEmail.texto).toContain('Reagendamento')
       expect(semEmail.texto).toContain('e-mail')
       expect(semEmail.texto).not.toContain('{motivo}')
+      // Falha por tempo/5xx pode ter criado a reunião: a nota manda conferir no Calendly antes de marcar de novo.
+      // (O dicionário é lido uma vez por processo: o idioma aqui é o do primeiro teste que o carregou.)
+      expect(semEmail.texto).toMatch(
+        /confira no Calendly se a reunião não foi criada antes de marcar de novo|check in Calendly that the meeting was not created before booking it again/,
+      )
       // A recusa da leitura (horário fora da lista) também tem texto.
       const fora = await textosDaTransferencia('Reagendamento', 'reuniao_nao_marcada', 'fora_da_lista')
       expect(fora.texto).not.toMatch(/ferramentas\.recusa|turnos\.acoes/)

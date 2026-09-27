@@ -168,7 +168,7 @@ export async function POST(request: Request, { params }: Contexto) {
       blocos: visto.blocos,
       conhecimento: visto.trechos.map((t) => t.content),
       acoes: opcoesDeAcao,
-      agenda: agenda ? { lida: agenda.lida, temEmail: agenda.temEmail } : null,
+      agenda: agenda ? { lida: agenda.lida, temEmail: agenda.temEmail, reuniaoMarcada: agenda.reuniaoMarcada } : null,
     })
     const resultado = await generateReply({
       config: {
@@ -229,8 +229,11 @@ export async function POST(request: Request, { params }: Contexto) {
       passaPara: destino?.nome ?? null,
       acoes,
       linkInventado: inventou,
-      // O que foi oferecido ao modelo (F5); `null` = reunião desligada ou leitura que falhou.
-      horarios: agenda?.lida ? agenda.horarios.map((h, i) => ({ n: i + 1, texto: h.nome })) : null,
+      // O que foi oferecido ao modelo (F5); `null` = reunião desligada, leitura
+      // que falhou ou cliente que já tem reunião (nada foi oferecido). O
+      // `texto` é o `nome` ("28/09/2026 15:15"), o que gente lê.
+      horarios:
+        agenda?.lida && !agenda.reuniaoMarcada ? agenda.horarios.map((h, i) => ({ n: i + 1, texto: h.nome })) : null,
       usage: resultado.usage,
       // Bloco que saiu "indisponível" não foi VISTO (revisão da F3).
       vistos: {

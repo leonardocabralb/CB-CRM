@@ -4,13 +4,15 @@
 // consulta leva a conta. O que é regra (janela, texto do horário, corpo do
 // `POST /invitees`, leitura da recusa) mora em `reuniao.ts`, PURO.
 //
-//  - `tiposDeEventoParaATela` — o select da sub-aba Ferramentas (nunca lança:
-//    conectado / desconectado / falhou);
+//  - `tiposDeEventoParaATela` — o select da sub-aba Ferramentas, com prazo
+//    total (nunca lança: conectado / desconectado / falhou);
 //  - `tiposDeEventoAtivos` — a conferência ao SALVAR (lança em falha);
 //  - `lerAgendaDoAgente` — os horários livres para o pedido do turno e do
-//    Playground, com PRAZO (`PRAZO_DOS_HORARIOS_MS`); falha em SILÊNCIO para o
-//    turno (o pedido diz que não há horários agora), nunca lança;
-//  - `marcarNoCalendly` — o `POST /invitees`, com o e-mail relido na hora.
+//    Playground, com PRAZO (`PRAZO_DOS_HORARIOS_MS`), e a reunião que o
+//    cliente JÁ tem (com ela, nenhum horário); falha em SILÊNCIO para o turno
+//    (o pedido diz que não há horários agora), nunca lança;
+//  - `marcarNoCalendly` — o `POST /invitees`, com o e-mail relido na hora e o
+//    telefone na pergunta do formulário que o nosso webhook lê.
 //
 // ⚠️ O token do Calendly é lido de `cb_calendly_config` e decifrado aqui,
 // como `src/lib/calendly/conexao.ts` faz. Ele NUNCA vai para log: toda
@@ -31,6 +33,7 @@ import { EVENTO_AGENDADO } from '@/lib/calendly/payload'
 import { nomeDoContato } from '@/lib/contacts/identidade'
 import { decrypt } from '@/lib/whatsapp/encryption'
 
+import { lerProximaReuniao } from './acesso'
 import { valorDoCampo, type CodigoDeFalhaDaAcao, type OpcaoDeAcao } from './acoes'
 import { itensDaAcao, type FerramentasDoAgente } from './agente'
 import {
@@ -39,6 +42,7 @@ import {
   opcoesDeHorario,
   PRAZO_DOS_HORARIOS_MS,
   recusaDoHorario,
+  type ReuniaoJaMarcada,
 } from './reuniao'
 
 type FabricaDeCliente = (token: string) => ClienteCalendly
@@ -50,10 +54,23 @@ export interface DependenciasDaAgenda {
 
 /** Prazo do `POST /invitees` (a resposta ao cliente já saiu; o turno tem folga até o recolhimento). */
 export const PRAZO_DO_AGENDAMENTO_MS = 15_000
+/**
+ * Prazo TOTAL da leitura dos tipos de evento para a sub-aba Ferramentas (as
+ * páginas e a queda da organização para o usuário, juntas): o Calendly lento
+ * não segura a tela — estourou = `falhou`, e o resto do catálogo chega.
+ */
+export const PRAZO_DOS_TIPOS_NA_TELA_MS = 8_000
 
 type Conexao =
   | { estado: 'desconectado' }
-  | { estado: 'conectado'; cliente: ClienteCalendly; userUri: string; organizationUri: string }
+  | {
+      estado: 'conectado'
+      cliente: ClienteCalendly
+      userUri: string
+      organizationUri: string
+      /** O rótulo da pergunta de telefone do formulário, configurado no cartão (nulo = a heurística). */
+      perguntaTelefone: string | null
+    }
 
 /** O token gravado não decifra (a `ENCRYPTION_KEY` mudou): para quem usa, é reconectar. */
 class TokenIlegivel extends Error {
@@ -71,12 +88,12 @@ class TokenIlegivel extends Error {
 async function lerConexao(db: SupabaseClient, accountId: string, deps: DependenciasDaAgenda): Promise<Conexao> {
   const { data, error } = await db
     .from('cb_calendly_config')
-    .select('access_token, user_uri, organization_uri')
+    .select('access_token, user_uri, organization_uri, pergunta_telefone')
     .eq('account_id', accountId)
     .maybeSingle()
   if (error) throw new Error(`leitura da conexão do Calendly: ${error.message}`)
   if (!data) return { estado: 'desconectado' }
-  const linha = data as { access_token: string; user_uri: string; organization_uri: string }
+  const linha = data as { access_token: string; user_uri: string; organization_uri: string; pergunta_telefone?: unknown }
   let token: string
   try {
     token = decrypt(linha.access_token)
@@ -88,7 +105,17 @@ async function lerConexao(db: SupabaseClient, accountId: string, deps: Dependenc
     cliente: (deps.cliente ?? criarClienteCalendly)(token),
     userUri: linha.user_uri,
     organizationUri: linha.organization_uri,
+    perguntaTelefone: typeof linha.pergunta_telefone === 'string' && linha.pergunta_telefone.trim() ? linha.pergunta_telefone : null,
   }
+}
+
+/** Rejeita quando o prazo passa (o pedido em voo segue até o prazo PRÓPRIO do cliente, e é descartado). */
+function comPrazo<T>(p: Promise<T>, ms: number, oQue: string): Promise<T> {
+  let relogio: ReturnType<typeof setTimeout> | undefined
+  const estouro = new Promise<never>((_, rejeitar) => {
+    relogio = setTimeout(() => rejeitar(new Error(`${oQue} passou de ${ms} ms`)), ms)
+  })
+  return Promise.race([p, estouro]).finally(() => clearTimeout(relogio))
 }
 
 /** A mensagem do erro, já sem segredo (o cliente passa tudo por `semSegredo`). */
@@ -141,15 +168,17 @@ export type EstadoDoCalendly = 'conectado' | 'desconectado' | 'falhou'
  * O que a sub-aba Ferramentas mostra no "Marcar reunião": `tiposDeEvento` =
  * só os ATIVOS, em ordem de nome; `null` quando não está conectado ou a
  * leitura falhou (a tela diz qual — nunca lista vazia com cara de "não há").
- * Nunca lança.
+ * Com PRAZO total (`PRAZO_DOS_TIPOS_NA_TELA_MS`): estourou = `falhou`, sem
+ * segurar o resto do catálogo. Nunca lança.
  */
 export async function tiposDeEventoParaATela(
   db: SupabaseClient,
   accountId: string,
   deps: DependenciasDaAgenda = {},
+  prazoMs: number = PRAZO_DOS_TIPOS_NA_TELA_MS,
 ): Promise<{ calendly: EstadoDoCalendly; tiposDeEvento: Array<{ uri: string; nome: string; duracao: number }> | null }> {
   try {
-    const r = await tiposDeEventoAtivos(db, accountId, deps)
+    const r = await comPrazo(tiposDeEventoAtivos(db, accountId, deps), prazoMs, 'a leitura dos tipos de evento')
     if (r.estado === 'desconectado') return { calendly: 'desconectado', tiposDeEvento: null }
     return {
       calendly: 'conectado',
@@ -215,27 +244,31 @@ export interface AgendaDoAgente {
   tipoDeEvento: string
   /** `false` = a leitura falhou ou estourou o prazo (o pedido diz que não há horários agora). */
   lida: boolean
-  /** Os horários oferecidos, numerados na ordem (vazio quando não foram lidos, ou nenhum está livre). */
+  /**
+   * Os horários oferecidos, numerados na ordem (vazio quando não foram lidos,
+   * nenhum está livre, ou o cliente já tem reunião).
+   */
   horarios: OpcaoDeAcao[]
   temEmail: boolean
-}
-
-/** Rejeita quando o prazo passa (o pedido em voo é abortado pelo próprio cliente, com o mesmo prazo). */
-function comPrazo<T>(p: Promise<T>, ms: number): Promise<T> {
-  let relogio: ReturnType<typeof setTimeout> | undefined
-  const estouro = new Promise<never>((_, rejeitar) => {
-    relogio = setTimeout(() => rejeitar(new Error(`a leitura dos horários passou de ${ms} ms`)), ms)
-  })
-  return Promise.race([p, estouro]).finally(() => clearTimeout(relogio))
+  /** A reunião futura que o cliente já tem: com ela, `horarios` vem vazio. Nula = nenhuma. */
+  reuniaoMarcada: ReuniaoJaMarcada | null
 }
 
 /**
  * A agenda do agente, se "Marcar reunião" estiver liberado nele (senão
- * `null`): os horários LIVRES do tipo de evento, de agora + 1 h a 7 dias, os
- * mais próximos (até 12), e se o cliente tem e-mail. A leitura dos horários
- * tem PRAZO (`prazoMs`, 4 s): falhou, estourou ou o Calendly está
- * desconectado = `lida: false`, e o pedido diz ao modelo que os horários não
- * estão disponíveis agora. Nunca lança.
+ * `null`): os horários LIVRES do tipo de evento, de agora + 1 h a 7 dias,
+ * numa amostra espalhada pelos dias (até 3 por dia, 15 no total —
+ * `opcoesDeHorario`), e se o cliente tem e-mail. A leitura dos horários tem
+ * PRAZO (`prazoMs`, 4 s): falhou, estourou ou o Calendly está desconectado =
+ * `lida: false`, e o pedido diz ao modelo que os horários não estão
+ * disponíveis agora.
+ *
+ * ⚠️ Cliente que JÁ tem reunião futura (`lerProximaReuniao`, a mesma leitura
+ * do bloco "reuniao" da F3) NÃO recebe horários: `reuniaoMarcada` vem
+ * preenchida e `horarios` vazio — o pedido manda o link de remarcar dela, e o
+ * marcador que o modelo inventar é `nao_liberada` (transfere). Leitura dessa
+ * reunião que FALHA = `lida: false` (na dúvida, nenhum horário: marcar por
+ * cima de uma reunião viva daria duas). Nunca lança.
  */
 export async function lerAgendaDoAgente(
   db: SupabaseClient,
@@ -260,9 +293,14 @@ export async function lerAgendaDoAgente(
   }
   const lerEmail = async (): Promise<boolean> =>
     args.contactId ? (await emailDoCliente(db, args.accountId, args.contactId)) !== null : false
+  const lerReuniaoMarcada = async (): Promise<ReuniaoJaMarcada | null> => {
+    if (!args.contactId) return null
+    const r = await lerProximaReuniao(db, args.accountId, args.contactId, args.agora)
+    return r ? { inicio: r.inicio, remarcar: r.remarcar } : null
+  }
 
-  const [horarios, temEmail] = await Promise.all([
-    comPrazo(lerHorarios(), prazo).catch((e) => {
+  const [horarios, temEmail, reuniaoMarcada] = await Promise.all([
+    comPrazo(lerHorarios(), prazo, 'a leitura dos horários').catch((e) => {
       console.error('[ia-agentes] horários do Calendly (o pedido diz que não há agora):', mensagemDe(e))
       return null
     }),
@@ -271,10 +309,16 @@ export async function lerAgendaDoAgente(
       console.error('[ia-agentes] e-mail do cliente para a agenda:', mensagemDe(e))
       return false
     }),
+    lerReuniaoMarcada().catch((e): 'falhou' => {
+      console.error('[ia-agentes] a reunião já marcada do cliente (o pedido diz que não há horários agora):', mensagemDe(e))
+      return 'falhou'
+    }),
   ])
-  return horarios === null
-    ? { tipoDeEvento, lida: false, horarios: [], temEmail }
-    : { tipoDeEvento, lida: true, horarios: opcoesDeHorario(horarios), temEmail }
+  if (reuniaoMarcada === 'falhou' || horarios === null) {
+    return { tipoDeEvento, lida: false, horarios: [], temEmail, reuniaoMarcada: null }
+  }
+  if (reuniaoMarcada) return { tipoDeEvento, lida: true, horarios: [], temEmail, reuniaoMarcada }
+  return { tipoDeEvento, lida: true, horarios: opcoesDeHorario(horarios), temEmail, reuniaoMarcada: null }
 }
 
 // ------------------------------------------------------------
@@ -344,6 +388,9 @@ export async function marcarNoCalendly(
     if (!tipo.ativo) return { ok: false, erro: 'recusado', detalhe: 'tipo de evento desativado no Calendly' }
 
     const c = contato as { name: string | null; phone: string | null; wa_username?: string | null; instagram_username?: string | null }
+    // As perguntas do formulário, lidas agora: o telefone vai como resposta da
+    // de telefone — é por ela que o nosso webhook acha o cliente e a automação
+    // do Calendly anda (`respostasDoTelefone`).
     const corpo = corpoDoConvidado({
       tipoDeEvento: args.tipoDeEvento,
       inicio: args.inicio,
@@ -351,6 +398,8 @@ export async function marcarNoCalendly(
       email,
       telefone: c.phone,
       local: tipo.local,
+      perguntas: tipo.perguntas,
+      perguntaTelefone: conexao.perguntaTelefone,
     })
     const criado = await conexao.cliente.criarConvidado(corpo, { prazoMs: PRAZO_DO_AGENDAMENTO_MS })
     return { ok: true, uri: criado.uri }

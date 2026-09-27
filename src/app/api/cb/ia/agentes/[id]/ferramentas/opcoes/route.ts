@@ -36,7 +36,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
  * `tiposDeEvento: [{ uri, nome, duracao }] | null` — os tipos de evento
  * ATIVOS do Calendly conectado, para o "Marcar reunião"; `null` quando não
  * está conectado ou a leitura falhou (o `calendly` diz qual). A leitura do
- * Calendly nunca derruba o catálogo: ela falha para `'falhou'`.
+ * Calendly nunca derruba o catálogo: ela falha para `'falhou'` — e tem PRAZO
+ * total de 8 s (`PRAZO_DOS_TIPOS_NA_TELA_MS`): o Calendly lento vira
+ * `'falhou'` sem segurar o resto da tela.
  */
 export async function GET(_request: Request, { params }: Contexto) {
   try {
