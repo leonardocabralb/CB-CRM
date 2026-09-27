@@ -89,3 +89,17 @@ export function eixoDasTaxas(valores: readonly (number | null)[]): { teto: numbe
 export function paraPontosPercentuais(fracao: number | null): number | null {
   return fracao === null ? null : Math.round(fracao * 1000) / 10;
 }
+
+/**
+ * O rótulo do degrau NO MEIO de uma frase ("Custo por pasta fechada", "R$ 50
+ * por lead"): primeira letra minúscula — menos quando a primeira palavra é
+ * SIGLA ("MQL", "MQL 1"), que fica como está. O rótulo livre do funil
+ * (`painel.ts`) é escrito como título ("Pasta fechada"); sem isto o cartão
+ * dizia "Custo por Pasta fechada".
+ */
+export function noMeioDaFrase(rotulo: string): string {
+  const primeira = rotulo.trim().split(/\s+/)[0] ?? "";
+  const ehSigla = primeira.length > 1 && /\p{L}/u.test(primeira) && primeira === primeira.toLocaleUpperCase("pt-BR");
+  if (ehSigla || rotulo === "") return rotulo;
+  return rotulo.charAt(0).toLocaleLowerCase("pt-BR") + rotulo.slice(1);
+}

@@ -7,14 +7,11 @@ import {
   ArrowRight,
   DollarSign,
   Loader2,
-  Megaphone,
   Percent,
   Receipt,
   Settings,
   Trophy,
-  UserMinus,
   Users,
-  Wallet,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
@@ -25,16 +22,26 @@ import { useModoDeContagem } from "@/hooks/use-modo-de-contagem";
 import { useTrajetorias } from "@/hooks/use-trajetorias";
 import { useAoVoltarParaOApp } from "@/hooks/use-ao-voltar-para-o-app";
 import { formatCurrency } from "@/lib/currency";
-import { custos, diasDoPeriodo, gastoDoPeriodo } from "@/lib/meta-ads/atribuicao";
+import { diasDoPeriodo, gastoDoPeriodo } from "@/lib/meta-ads/atribuicao";
 import {
   formatarPercentual,
   formatarPp,
   formatarVariacao,
+  noMeioDaFrase,
   paraPontosPercentuais,
   sinalArredondado,
 } from "@/lib/funil/apresentacao";
 import { comparar } from "@/lib/funil/coorte";
-import { DEGRAUS, classificarEtapas, type Degrau } from "@/lib/funil/degraus";
+import { TINTA_DO_DEGRAU, gradeDoFunil } from "@/lib/funil/cores";
+import { custosDoResumo } from "@/lib/funil/custos";
+import { classificarEtapas, degrauAntesDoContrato, type Degrau } from "@/lib/funil/degraus";
+import {
+  type CartaoDeCusto,
+  cartoesDeCustoNaTela,
+  estadoDoDegrau,
+  lerPainel,
+  rotuloDoDegrau as rotuloNoPainel,
+} from "@/lib/funil/painel";
 import {
   duracaoEmDias,
   intervaloDoPreset,
@@ -46,6 +53,7 @@ import { periodoSemAtividade, resumoNoModo } from "@/lib/funil/por-periodo";
 import { fatosDoNegocio } from "@/lib/funil/trajetoria";
 import type { Pipeline, PipelineStage } from "@/types";
 
+import { ICONE_DO_CARTAO, useRotuloDoCartaoDeCusto } from "./cartoes-de-custo";
 import { GraficoDeEntradas } from "./grafico-de-entradas";
 import { GraficoDeTaxas, type LinhaDeTaxa } from "./grafico-de-taxas";
 import { SeletorDeModo } from "./seletor-de-modo";
@@ -67,22 +75,11 @@ import { SeletorDePeriodo } from "./seletor-de-periodo";
  *   Período sem coorte → zeros com a nota, NUNCA o estado "configure".
  * - Os cinco baldes da situação aparecem, inclusive "fora do funil" —
  *   escondê-lo faria os totais não fecharem (Codex, PR #119).
+ * - O PAINEL DO FUNIL (1054, `src/lib/funil/painel.ts`) decide rótulos,
+ *   quais degraus aparecem (o que "não se aplica" some; o esquecido sai
+ *   tracejado) e quais cartões de custo. As cores e a grade estão em
+ *   `src/lib/funil/cores.ts`.
  */
-
-/**
- * Fundo e borda tingidos com a cor do degrau (a referência do operador,
- * 05/09 — "referência polida", mantendo a identidade do app: são as classes
- * do cartão de sempre, só a cor mudou de borda superior para tinta). Classes
- * LITERAIS, nunca interpoladas: o Tailwind varre o fonte e não executa
- * código (ver PALETA_DE_CANAIS). Os matizes são os das linhas da Saúde.
- */
-const TINTA_DO_DEGRAU: Record<Degrau, string> = {
-  lead: "border-sky-500/40 bg-sky-500/10",
-  mql: "border-violet-500/40 bg-violet-500/10",
-  reuniao: "border-pink-500/40 bg-pink-500/10",
-  proposta: "border-amber-500/40 bg-amber-500/10",
-  contrato: "border-emerald-500/40 bg-emerald-500/10",
-};
 
 export function Desempenho({
   pipeline,
@@ -132,9 +129,12 @@ export function Desempenho({
   });
 
   const classificacao = classificarEtapas(stages);
+  const painel = lerPainel(pipeline.painel);
   const rotuloDoDegrau = (d: Degrau) =>
-    // chave montada: `degraus.<d>` — cobrada em degraus.test.ts
-    tDegraus(d as Parameters<typeof tDegraus>[0]);
+    // O rótulo livre do funil (não passa pelo dicionário), senão o padrão:
+    // chave montada `degraus.<d>` — cobrada em degraus.test.ts.
+    rotuloNoPainel(painel, d, (x) => tDegraus(x as Parameters<typeof tDegraus>[0]));
+  const rotuloDoCartao = useRotuloDoCartaoDeCusto(rotuloDoDegrau);
 
   // Etapas ainda não chegaram ≠ funil sem etapa: o primeiro espera, o
   // segundo cai no estado de configuração (sem Lead mapeado não há o que
@@ -190,7 +190,7 @@ export function Desempenho({
     ...(comparacao.global
       ? [
           {
-            transicao: t("taxas.global"),
+            transicao: t("taxas.global", { de: rotuloDoDegrau("lead"), para: rotuloDoDegrau("contrato") }),
             atual: paraPontosPercentuais(comparacao.global.atual),
             anterior: paraPontosPercentuais(comparacao.global.anterior),
           },
@@ -198,7 +198,7 @@ export function Desempenho({
       : []),
   ];
 
-  const penultimo = [...DEGRAUS].reverse().find((d, i) => i > 0 && classificacao.porClasse[d].length > 0);
+  const penultimo = degrauAntesDoContrato(classificacao);
   const emPenultimo = penultimo ? (atual.emAndamentoPorDegrau[penultimo] ?? 0) : 0;
   const pctDosLeads = (n: number) => formatarPercentual(atual.entradas > 0 ? n / atual.entradas : null);
   // Por período, "nenhum lead entrou" não é tela vazia: contrato e perda de
@@ -206,13 +206,54 @@ export function Desempenho({
   const vazio = porPeriodo ? periodoSemAtividade(atual) : atual.entradas === 0;
 
   const investimento = gastoDoPeriodo(anuncios.gastos, anuncios.campanhas, pipeline.id, diasDoPeriodo(intervalo, agora));
-  // CAC divide por contrato EM PÉ: com "alcançou contrato", um distrato
-  // dividia o investimento por um número inflado (revisão do PR #123). O
-  // custo dos perdidos multiplica os ENTRANTES do período já perdidos: por
-  // período `perdidos` é fluxo (perda de lead de qualquer mês) e, vezes o
-  // custo por lead deste período, passava do investimento (revisão do #224).
-  const custo = custos(investimento.total, atual.entradas, atual.fechadosAgora, atual.perdidosDosEntrantes);
+  // Toda a conta dos custos mora em `custosDoResumo` (a mesma da Saúde). O
+  // CAC divide por contrato EM PÉ (um distrato inflava o divisor — revisão do
+  // PR #123); o custo por contrato ASSINADO (C1), por quem alcançou contrato;
+  // o custo dos perdidos multiplica os ENTRANTES já perdidos (revisão do #224).
+  const custo = custosDoResumo(investimento.total, atual);
+  const cartoesDeCusto = cartoesDeCustoNaTela(classificacao, painel);
   const moeda = (v: number | null) => (v === null ? "—" : formatCurrency(v));
+  const alcancaram = (d: Degrau) => atual.porDegrau.find((x) => x.degrau === d)?.alcancaram ?? 0;
+  const subtituloDoCusto = (c: CartaoDeCusto): string => {
+    switch (c) {
+      case "investimento":
+        return t("investimento.campanhasDoFunil", { n: investimento.porCampanha.length });
+      case "lead":
+        return t("investimento.porLead");
+      case "contrato":
+        return t("investimento.porContratoAssinado", { n: atual.fechados });
+      case "cac":
+        return t("investimento.porContrato");
+      case "perdidos":
+        return porPeriodo ? t("investimento.porPerdidoNoPeriodo") : t("investimento.porPerdido");
+      case "mql":
+      case "reuniao":
+      case "proposta":
+      case "pasta":
+        return t("investimento.porDegrau", { n: alcancaram(c) });
+    }
+  };
+  // Os títulos de sempre ficam nos cartões de sempre ("Investimento no
+  // período", "CAC"…); os novos saem do mesmo nome que Gerenciar funil usa.
+  const tituloDoCusto = (c: CartaoDeCusto): string => {
+    switch (c) {
+      case "investimento":
+        return t("investimento.investimento");
+      case "lead":
+        return t("investimento.custoPorLead");
+      case "cac":
+        return t("investimento.cac");
+      case "perdidos":
+        return t("investimento.custoDosPerdidos");
+      default:
+        return rotuloDoCartao(c);
+    }
+  };
+  // Os degraus que o funil DESENHA: o que não se aplica (e a pasta sem
+  // etapa) some; o que falta sem marca sai tracejado.
+  const degrausNoFunil = atual.porDegrau
+    .map((d, k) => ({ ...d, k, estado: estadoDoDegrau(d.degrau, classificacao, painel) }))
+    .filter((d) => d.estado !== "nao_se_aplica");
 
   return (
     <div className="flex flex-col gap-4">
@@ -308,32 +349,21 @@ export function Desempenho({
               R$ 0,00 com cara de número. */}
           {anuncios.conectado ? (
             <>
-              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                <MetricCard
-                  title={t("investimento.investimento")}
-                  value={formatCurrency(investimento.total)}
-                  icon={Megaphone}
-                  subtitle={t("investimento.campanhasDoFunil", { n: investimento.porCampanha.length })}
-                />
-                <MetricCard
-                  title={t("investimento.custoPorLead")}
-                  value={moeda(custo.custoPorLead)}
-                  icon={Wallet}
-                  subtitle={t("investimento.porLead")}
-                />
-                <MetricCard
-                  title={t("investimento.cac")}
-                  value={moeda(custo.cac)}
-                  icon={Trophy}
-                  subtitle={t("investimento.porContrato")}
-                />
-                <MetricCard
-                  title={t("investimento.custoDosPerdidos")}
-                  value={moeda(custo.custoDosPerdidos)}
-                  icon={UserMinus}
-                  subtitle={porPeriodo ? t("investimento.porPerdidoNoPeriodo") : t("investimento.porPerdido")}
-                />
-              </div>
+              {/* Os cartões de custo que o painel deste funil mostra (Gerenciar
+                  funil); os de degrau só com etapa no degrau. */}
+              {cartoesDeCusto.length > 0 && (
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                  {cartoesDeCusto.map((c) => (
+                    <MetricCard
+                      key={c}
+                      title={tituloDoCusto(c)}
+                      value={c === "investimento" ? formatCurrency(investimento.total) : moeda(custo[c])}
+                      icon={ICONE_DO_CARTAO[c]}
+                      subtitle={subtituloDoCusto(c)}
+                    />
+                  ))}
+                </div>
+              )}
               {investimento.semFunil.total > 0 && (
                 <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
                   {t("investimento.semFunil", {
@@ -379,19 +409,22 @@ export function Desempenho({
               // (decisão do operador: mostrar como é, e dizer o que é).
               <p className="mb-3 text-[11px] text-muted-foreground">{t("funil.notaPorPeriodo")}</p>
             )}
-            {/* Cinco cartões tingidos com a cor do degrau e uma seta entre eles
-                (a referência do operador). A seta é SÓ seta: a taxa fica dentro
-                do cartão, e a queda em número ("−15") foi descartada por decisão
-                dele. Abaixo de `lg` as setas somem e os cartões voltam à grade —
-                seta quebrando de linha vira ruído. As nove colunas são
-                cartão · seta · cartão · …, com a seta no tamanho do ícone. */}
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)] lg:gap-2">
-              {atual.porDegrau.map((d, k) => {
+            {/* Um cartão por degrau que o funil desenha, tingido com a cor dele,
+                e uma seta entre eles (a referência do operador). A seta é SÓ
+                seta: a taxa fica dentro do cartão, e a queda em número ("−15")
+                foi descartada por decisão dele. Abaixo de `lg` as setas somem e
+                os cartões voltam à grade — seta quebrando de linha vira ruído.
+                No `lg` as colunas são cartão · seta · cartão · …, e a forma da
+                grade depende de QUANTOS cartões há (`gradeDoFunil`). */}
+            <div className={`grid grid-cols-2 gap-3 md:grid-cols-3 lg:gap-2 ${gradeDoFunil(degrausNoFunil.length)}`}>
+              {degrausNoFunil.map((d, i) => {
                 const etapas = classificacao.porClasse[d.degrau].map((e) => e.name);
-                const anteriorMapeado = atual.porDegrau.slice(0, k).reverse().find((x) => x.comEtapa);
+                const anteriorMapeado = atual.porDegrau.slice(0, d.k).reverse().find((x) => x.comEtapa);
+                const custoDoDegrau =
+                  anuncios.conectado && d.comEtapa && cartoesDeCusto.includes(d.degrau) ? custo[d.degrau] : undefined;
                 return (
                   <Fragment key={d.degrau}>
-                    {k > 0 && (
+                    {i > 0 && (
                       <div className="hidden items-center justify-center text-muted-foreground lg:flex" aria-hidden="true">
                         <ArrowRight className="h-4 w-4" />
                       </div>
@@ -422,12 +455,20 @@ export function Desempenho({
                               : t("funil.dasEntradas", { pct: formatarPercentual(d.taxaDoAnterior) })}
                         </span>
                       </div>
+                      {custoDoDegrau !== undefined && (
+                        <div className="mt-1 text-xs font-medium tabular-nums text-foreground">
+                          {t("funil.custo", {
+                            valor: moeda(custoDoDegrau),
+                            degrau: noMeioDaFrase(rotuloDoDegrau(d.degrau)),
+                          })}
+                        </div>
+                      )}
                       {etapas.length > 0 && (
                         <div className="mt-2 truncate text-[11px] text-muted-foreground" title={etapas.join(", ")}>
                           {t("funil.etapas", { nomes: etapas.join(", ") })}
                         </div>
                       )}
-                      {!d.comEtapa && (
+                      {d.estado === "faltando" && (
                         <button type="button" onClick={onConfigurar} className="mt-2 text-[11px] underline hover:text-foreground">
                           {t("configurar")}
                         </button>

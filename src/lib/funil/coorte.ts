@@ -83,19 +83,21 @@ export interface ResumoDoPeriodo {
    */
   foraDoFunil: number;
   /**
-   * ⚠️ ALCANÇARAM contrato (regra 3), mesmo que tenham voltado ou se
-   * perdido depois. É o número do DEGRAU do funil de eficiência e das
-   * taxas — não é "contrato em pé", e somá-lo aos baldes conta o mesmo
-   * negócio duas vezes. Para dinheiro, use `fechadosAgora`.
+   * ⚠️ ALCANÇARAM contrato (regra 3) — contrato OU pasta, "≥ contrato" —,
+   * mesmo que tenham voltado ou se perdido depois. É o número do DEGRAU do
+   * funil de eficiência e das taxas, e o divisor do "custo por contrato
+   * assinado" (C1) — não é "contrato em pé", e somá-lo aos baldes conta o
+   * mesmo negócio duas vezes. Para dinheiro, use `fechadosAgora`.
    */
   fechados: number;
   /**
-   * Contratos que ESTÃO fechados hoje (`situacao === 'fechado'`). É daqui
-   * que saem valor fechado, ticket médio e o CAC: um distrato (chegou a
-   * contrato e foi para uma etapa de perda) reaparecia como receita e
-   * dividia o investimento por um número inflado — medido numa coorte de
-   * teste, 4 "contratos" e R$ 68.000 onde havia 1 e R$ 24.000 (revisão do
-   * PR #123).
+   * Contratos que ESTÃO fechados hoje (`situacao === 'fechado'`: numa etapa
+   * de contrato OU de pasta). É daqui que saem valor fechado, ticket médio e
+   * o CAC ("contrato em pé"): um distrato (chegou a contrato e foi para uma
+   * etapa de perda) reaparecia como receita e dividia o investimento por um
+   * número inflado — medido numa coorte de teste, 4 "contratos" e R$ 68.000
+   * onde havia 1 e R$ 24.000 (revisão do PR #123). "Contrato sem pasta" (uma
+   * perda) muda este número e NÃO muda `fechados`.
    */
   fechadosAgora: number;
   valorFechado: number;

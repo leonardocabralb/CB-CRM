@@ -225,6 +225,9 @@ As regras de ganho/perdido e o gatilho de resultado estão em
 A mecânica está em `automacoes-esperas.md`; aqui fica o que vive no construtor
 e no `validate.ts`.
 
+- ⚠️⚠️ **Salvar PRESERVA o id de cada passo** (`BuilderStep.id`,
+  `replaceSteps`): a espera parada num ramo guarda o id da condição. Ver
+  "SALVAR a automação" em `automacoes-esperas.md`.
 - ⚠️⚠️ **A ÚNICA porta de nascimento da automação de etapa é o `?stage=` da
   grade do funil** (`TRIGGER_OPTIONS` não oferece `deal_stage_changed`; ele só
   volta à lista para automação já gravada com ele). O `?stage=` semeia o
@@ -319,9 +322,15 @@ rotas em `/api/cb/execucoes`. A presença por conversa está em
   (`stageInScope`): erro de consulta passa; contato SEM negócio leva 422
   `stage_out_of_scope`. Grupo é recusado; o log ganha `trigger_event='manual'`.
 - **Linha do tempo**: os futuros são os passos do MESMO escopo da espera
-  (`parent_step_id` + `branch`, de `next_step_position` em diante); condição
-  aparece como "depende da condição" e os passos dentro dos ramos ficam FORA
-  (afirmar um ramo seria mentir). Rótulos por `descreverPasso`.
+  (`parent_step_id` + `branch`), de onde a RETOMADA vai começar em diante;
+  condição aparece como "depende da condição" e os passos dentro dos ramos
+  ficam FORA (afirmar um ramo seria mentir). Rótulos por `descreverPasso`.
+  ⚠️ "Onde a retomada começa" é `decidirRetomada` (`retomada.ts`), a MESMA
+  régua do motor, nunca `next_step_position` cru: depois de uma edição com a
+  execução parada, a posição gravada aponta para outro passo, e o passo pode
+  ter sumido — aí a linha diz `naoRetoma` em vez de listar passos que não vão
+  rodar. A rota lê `context` só para isso; `agruparEsperas` copia campo a
+  campo, e o contexto (variáveis da execução) nunca vai para a resposta.
 
 ### Passo que falha volta para a fila (retentativa)
 

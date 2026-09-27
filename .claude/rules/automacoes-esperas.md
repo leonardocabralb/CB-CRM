@@ -7,6 +7,8 @@ paths:
   - "src/lib/automations/drain-events*"
   - "src/lib/automations/retentativa*"
   - "src/lib/automations/estado-da-execucao*"
+  - "src/lib/automations/retomada*"
+  - "src/lib/automations/steps-tree*"
   - "src/lib/execucoes/**"
   - "src/app/api/automations/cron/**"
   - "src/app/api/automations/events/**"
@@ -40,6 +42,17 @@ Vale ao mexer no "Aguardar", na retomada pela fila (`automation_pending_executio
 - ⚠️ **O INSERT da espera é CONFERIDO** (o Supabase devolve `error`, não lança): fila que recusa vira passo `failed` + `falhou`, nunca "waiting…" sem ninguém para retomar.
 - **Conhecido, não tratado:** a 2ª linha conta mensagem de qualquer transporte (Instagram incluso) e a 1ª só roda no WhatsApp — só diverge depois da unificação manual de fichas; `running` órfã (processo morto na retomada) não tem recolhedor.
 - Caixa no construtor, sufixo `wait_<unidade>_ou_resposta` e `skipped` neutro nos registros: `automacoes.md`. Recarga da aba ~3 s depois da mensagem do cliente: `inbox-conversa.md`.
+
+### SALVAR a automação com execuções paradas: a identidade dos passos e o passo da fila
+
+`replaceSteps` (`steps-tree.ts`), `retomada.ts` (puro + a leitura) e o id em `BuilderStep`. O operador edita as cadências pela aba Automações do funil DEPOIS de montadas, com execuções paradas em "Aguardar" — inclusive dentro de ramos.
+
+- ⚠️⚠️ **Salvar PRESERVA a identidade dos passos** (26/09/2026): atualiza no lugar os de id conhecido, insere os novos e apaga só os que saíram. Até aí apagava tudo e recriava com ids novos: a FK `ON DELETE SET NULL` de `automation_pending_executions.parent_step_id` zerava o pai da espera parada num ramo, e a retomada rodava o escopo de FORA a partir da posição do ramo — outro passo, outra mensagem ao cliente (medido no e2e). O construtor guarda o id do banco (`fromServerSteps`), gera UUID para o passo novo (a tela não recarrega depois de salvar) e `toApiSteps` o manda. Id de OUTRA automação vira id novo: o `upsert` por `id` em service role sobrescreveria o passo alheio. Pinos: `steps-tree.test.ts`, `ids-dos-passos.test.ts` e o id na rota (`route.test.ts`).
+- ⚠️ **APAGA antes de gravar, sem transação** (uma RPC pediria migration e amarraria a ordem do deploy): entre as duas instruções o escopo é a versão antiga sem os removidos — nunca o passo removido ao lado da versão nova, nunca vazio (menos quando TODOS saem). O `upsert` troca o resto numa instrução só. A execução que já carregou o escopo roda a versão que carregou, com ou sem transação. Apagar uma condição leva os ramos (CASCADE), que o construtor também remove.
+- ⚠️⚠️ **Os DOIS estacionamentos gravam QUAL passo parou** (`_passo_da_fila` = `{ id, pos }`, por `comPassoDaFila`), e a retomada o confere (`conferirRetomada`, depois das conferências de marca, resposta e etapa, antes de rodar passo). No mesmo escopo → retoma pela posição ATUAL + o deslocamento gravado (inserir ou remover passo ANTES da espera repetia o "Aguardar" ou pulava a mensagem seguinte). Sumiu, foi para outro ramo, ou `branch` preenchido com `parent_step_id` nulo (a FK apagou a condição; a espera de fora nasce com os dois nulos) → falha VISÍVEL: espera `failed`, registro `failed` com o motivo e `fecharLog('falhou')`. Leitura que falha também para. Só ESSA continuação para; as irmãs se conferem ao acordar. Espera gravada antes (sem a chave) retoma pela posição.
+- ⚠️ **A chave NÃO sai do contexto na retomada** (≠ a marca do "parar se responder"): os dois estacionamentos a reescrevem sempre, e só a retomada a lê, da linha gravada. Estacionamento novo repete `comPassoDaFila` (pino em `retomada.test.ts`, que conta os dois).
+- **A linha do tempo da aba Automações usa a MESMA régua** (`montarLinhaDoTempo` chama `decidirRetomada`): depois de uma edição ela lista os próximos pela posição ATUAL, e a espera que não vai retomar aparece como tal (`naoRetoma`), sem passos. Detalhe em `automacoes.md`, "Execuções na conversa".
+- **Conhecido, não tratado:** o contador da retentativa é amarrado à posição (`{ pos, n }`), e o passo reposicionado durante a retentativa recomeça a contagem (até 3 recusas 4xx a mais, em que nada saiu). Passo MOVIDO para fora de uma condição que saiu no MESMO salvamento (payload que o construtor não gera: ele só reordena dentro do escopo e remove a condição com a subárvore) é apagado pela CASCADE junto com ela e reinserido pelo `upsert` com o mesmo id — se ele for uma condição, as esperas dos ramos dela caem em "ramo removido" (falha visível, texto impreciso).
 
 ### Automação PRESA À ETAPA: "interromper se o card sair desta etapa"
 

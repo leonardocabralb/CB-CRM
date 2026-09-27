@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   validateAsaasReguaForActivation,
   validateChannelScopeForActivation,
+  validateCustomFieldConditionsForActivation,
   validateStepsForActivation,
   validateTriggerForActivation,
 } from "./validate";
@@ -735,3 +736,65 @@ describe('condição da janela × conexão fixa das mensagens do Sim (Fase 2.8)'
     expect(validateChannelScopeForActivation([soNoNao], null, CANAIS)).toEqual([])
   })
 })
+
+describe("condição por campo personalizado (Fase 2.10)", () => {
+  const CAMPO = "11111111-1111-4111-8111-111111111111";
+  const cond = (step_config: Record<string, unknown>) =>
+    validateStepsForActivation([
+      { step_type: "condition", step_config: { subject: "custom_field", ...step_config } },
+    ]);
+
+  it("a forma: sem campo, operador desconhecido e valor vazio são recusados, em português", () => {
+    expect(cond({ operand: "", operator: "empty" }).map((i) => i.message)).toEqual([
+      'A condição "Campo personalizado da ficha" precisa do campo — escolha um.',
+    ]);
+    expect(cond({ operand: CAMPO, operator: "starts_with" }).map((i) => i.path)).toEqual([
+      "steps[0].operator",
+    ]);
+    expect(cond({ operand: CAMPO, operator: "equals", value: " " }).map((i) => i.message)).toEqual([
+      'A condição "Campo personalizado da ficha" precisa do valor a comparar.',
+    ]);
+    expect(cond({ operand: CAMPO, operator: "empty" })).toEqual([]);
+    expect(cond({ operand: CAMPO, operator: "equals", value: "Não respondeu" })).toEqual([]);
+  });
+
+  const MOTIVO = {
+    field_name: "Motivo da desqualificação",
+    field_type: "select",
+    opcoes: ["Não respondeu", "Outro"],
+  };
+  const passos = (cfg: Record<string, unknown>) => [
+    { step_type: "send_message", step_config: { text: "oi" } },
+    {
+      step_type: "condition",
+      step_config: { subject: "deal_stage", operand: "etapa" },
+      branches: {
+        yes: [{ step_type: "condition", step_config: { subject: "custom_field", operand: CAMPO, ...cfg } }],
+        no: [],
+      },
+    },
+  ];
+
+  it("CRÍTICO: campo que não é DESTA conta recusa a ativação — inclusive dentro de um ramo", () => {
+    const issues = validateCustomFieldConditionsForActivation(
+      passos({ operator: "equals", value: "Não respondeu" }),
+      new Map(),
+    );
+    expect(issues.map((i) => i.path)).toEqual(["steps[1].yes.steps[0].operand"]);
+    expect(issues[0].message).toMatch(/não existe nesta conta/);
+  });
+
+  it("campo da conta, opção da lista: passa; opção que não existe mais: recusa", () => {
+    const campos = new Map([[CAMPO, MOTIVO]]);
+    expect(
+      validateCustomFieldConditionsForActivation(passos({ operator: "equals", value: "Não respondeu" }), campos),
+    ).toEqual([]);
+    expect(
+      validateCustomFieldConditionsForActivation(passos({ operator: "equals", value: "Sumiu" }), campos)[0]?.message,
+    ).toMatch(/não é uma opção/);
+  });
+
+  it("leitura dos campos que falhou (null) pula a conferência", () => {
+    expect(validateCustomFieldConditionsForActivation(passos({ operator: "empty" }), null)).toEqual([]);
+  });
+});

@@ -867,6 +867,22 @@ nome da época em que foram aplicadas.
   catálogo (UM CHECK sobre `node_type`, os doze tipos com `move_deal_stage`,
   zero linhas em `flow_nodes` — a conferência não deixou sobra).
 
+- **1054_cb_degrau_pasta_e_painel_do_funil** — o CHECK de
+  `pipeline_stages.degrau` ganha `'pasta'` (o degrau depois do contrato:
+  "Pasta fechada" no previdenciário, "Processo protocolado" no Trabalhista;
+  decisão C1 do operador, 26/09/2026) e `pipelines.painel jsonb NOT NULL
+  DEFAULT '{}'` (a configuração do painel de cada funil, decisão C2: rótulo
+  por degrau, degraus que não se aplicam, cartões de custo). DROP do CHECK
+  pela FORMA + ADD com o nome `cb_pipeline_stages_degrau_check`,
+  `lock_timeout` de 5 s. ADITIVA e ⚠️ ANTES do deploy: a tela nova de
+  "Gerenciar funil" lê e grava `pipelines.painel`. A conferência prova as sete
+  classes no catálogo e o comportamento sem dado (`pasta` passa o CHECK e cai
+  na FK; inventada cai no CHECK), desfeita por `P1054`. Aplicada em 27/09/2026
+  pela Management API (histórico `20260927123256`), depois do replay verde do
+  CI e ANTES do merge do PR #320, com autorização do operador; conferida no
+  catálogo (UM CHECK sobre `degrau`, com `pasta`; a coluna `jsonb`, não nula,
+  padrão `'{}'`; nenhuma sobra da conferência).
+
 ## Notas do histórico
 
 - ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a

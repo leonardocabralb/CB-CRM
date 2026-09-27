@@ -673,6 +673,7 @@
       "falhou": "failed",
       "pulado": "skipped",
       "semPassosFuturos": "Ends after this wait.",
+      "naoRetomaDepoisDaEdicao": "The automation was edited and the point where this wait stopped was removed or moved to another branch: it won't resume (the reason is kept in the history).",
       "executar": {
         "titulo": "Run automation",
         "buscar": "Search by name…",
@@ -1240,6 +1241,17 @@
       "stageDegrau": "Efficiency funnel",
       "stageDegrauHint": "Which step of the efficiency funnel this stage maps to. Several stages may map to the same step; a stage without a step is not counted in Performance.",
       "semLead": "No stage is marked as Lead: Performance and Health for this pipeline stay empty until this is configured.",
+      "painel": "Performance and Health dashboard",
+      "painelDica": "How this pipeline shows up on the dashboards. A label applies to this pipeline only; left empty, the step keeps its default name.",
+      "painelDegraus": "Steps",
+      "painelRotulo": "Label for {degrau}",
+      "painelNaoSeAplica": "Does not apply",
+      "painelNaoSeAplicaDica": "With no stage in this step, its card leaves Performance instead of asking for setup.",
+      "painelComEtapa": "This step has a stage: its card shows even when marked.",
+      "painelOpcional": "optional",
+      "painelOpcionalDica": "Optional step, after the contract: with no stage in it, its card does not show.",
+      "painelCustos": "Cost cards (shown with Meta Ads connected)",
+      "painelCustosDica": "A step's cost only shows when the step has a stage.",
       "toastStageMappedWithHistory": "This stage is mapped to the efficiency funnel and has deal history: deleting it would erase that history from Performance. Set its step to \"Not counted\" and save before removing, or keep the stage.",
       "deletePipelineChannels": "These connections put clients into this pipeline: {channels}. Once deleted, they stop creating deals until you point them at another pipeline in Settings › Connections.",
       "toastStageIsChannelEntry": "This stage is the entry point for {channels}. Pick another entry stage in Settings › Connections before deleting it."
@@ -1312,6 +1324,10 @@
         "wait_horario_ou_resposta": "Wait for the {inicio}–{fim} window or until the customer replies",
         "wait_horario_seg_a_sex_ou_resposta": "Wait for the {inicio}–{fim} window, Monday to Friday, or until the customer replies",
         "condition": "Check a condition",
+        "condition_campo_equals": "If the field {alvo} is \"{valor}\"",
+        "condition_campo_contains": "If the field {alvo} contains \"{valor}\"",
+        "condition_campo_empty": "If the field {alvo} is empty",
+        "condition_campo_not_empty": "If the field {alvo} is filled in",
         "send_webhook": "Call webhook",
         "close_conversation": "Close the conversation",
         "send_to_number": "Notify number: {alvo}",
@@ -1329,6 +1345,7 @@
         "reuniao": "Meeting",
         "proposta": "Proposal",
         "contrato": "Contract",
+        "pasta": "Case filed",
         "perda": "Loss"
       },
       "situacao": {
@@ -1381,6 +1398,7 @@
           "doAnterior": "{pct} of {degrau}",
           "semEtapa": "No matching stage",
           "etapas": "Stages: {nomes}",
+          "custo": "{valor} per {degrau}",
           "notaPorPeriodo": "Each step counts who reached it for the first time in the period. Rates compare what happened in the same period and can go above 100% when contracts come from leads of earlier months — lead-by-lead conversion is under “By entry month”."
         },
         "negativos": {
@@ -1402,7 +1420,7 @@
           "subtitulo": "current vs previous",
           "atual": "Current period",
           "anterior": "Previous period",
-          "global": "Lead → Contract (overall)"
+          "global": "{de} → {para} (overall)"
         },
         "entradas": {
           "titulo": "Lead entries in the period",
@@ -1416,7 +1434,9 @@
           "custoDosPerdidos": "Cost of lost leads",
           "campanhasDoFunil": "{n} campaign(s) of this pipeline",
           "porLead": "spend ÷ leads",
-          "porContrato": "spend ÷ contracts",
+          "porContrato": "spend ÷ standing contracts",
+          "porDegrau": "spend ÷ {n} who got there",
+          "porContratoAssinado": "spend ÷ {n} contract(s) reached",
           "porPerdido": "cost per lead × lost",
           "porPerdidoNoPeriodo": "cost per lead × this period's leads already lost",
           "semFunil": "{valor} in {n} campaign(s) without a pipeline in the period — assign them in Integrations so cost per lead is right.",
@@ -1430,6 +1450,14 @@
         },
         "periodoPorAtividade": "Counts what happened in the period (each lead once per step)",
         "semAtividade": "Nothing happened in this pipeline in the period: no lead entered, advanced or was lost."
+      },
+      "cartoesDeCusto": {
+        "investimento": "Spend",
+        "lead": "Cost per lead",
+        "porDegrau": "Cost per {degrau}",
+        "contrato": "Cost per signed contract",
+        "cac": "CAC (standing contract)",
+        "perdidos": "Cost of lost leads"
       },
       "saude": {
         "periodo": "Last {meses} months, by funnel entry month",
@@ -1452,6 +1480,13 @@
           "emAberto": "{n} open",
           "pequena": "fewer than {minimo} leads: rate not reliable",
           "pequenaPorPeriodo": "rate over fewer than {minimo} in the month: not reliable"
+        },
+        "custos": {
+          "titulo": "Costs per month",
+          "subtitulo": "ad spend ÷ each count, month by month",
+          "nota": "The same math as Performance, in the counting mode chosen above. A month without a denominator shows “—”. Hover to see the full amount.",
+          "semCartoes": "Every cost card is hidden for this pipeline (Manage pipeline › Dashboard).",
+          "carregando": "Loading ad spend…"
         },
         "periodoPorAtividade": "Last {meses} months, by the month each step happened",
         "fontePorPeriodo": "Stages follow the mapping of the {funil} pipeline. Each month shows what happened in it; a closed month no longer changes, and the current month is still running. A rate can go above 100% when the month's contracts come from earlier leads."
@@ -1997,6 +2032,7 @@
         "subjects": {
           "tag_presence": "Tag presence",
           "contact_field": "Contact field",
+          "custom_field": "Custom field on the contact",
           "message_content": "Message content",
           "time_of_day": "Time of day",
           "channel": "Channel",
@@ -2040,7 +2076,27 @@
         "janelaDaMetaCanalLabel": "Window of which number",
         "janelaDaMetaCanalAuto": "The trigger's number (otherwise the conversation's)",
         "janelaDaMetaCanalSumiu": "The chosen connection was removed. Until another one is chosen, the question is asked about the conversation number.",
-        "janelaDaMetaCanalSemJanela": "This connection is not an official number: it has no window, and the condition would always answer the same. Pick an official number or leave the trigger's one."
+        "janelaDaMetaCanalSemJanela": "This connection is not an official number: it has no window, and the condition would always answer the same. Pick an official number or leave the trigger's one.",
+        "campoDaFichaLabel": "Field",
+        "campoDaFichaEscolha": "Pick a field",
+        "campoDaFichaBlocoGeral": "General",
+        "campoDaFichaEscolhido": "The chosen field",
+        "campoDaFichaApagado": "Deleted field",
+        "campoDaFichaCarregando": "Loading the contact fields…",
+        "campoDaFichaFalhou": "Could not load the contact fields.",
+        "campoDaFichaTentarDeNovo": "Try again",
+        "campoDaFichaSumiu": "The chosen field no longer exists in this account — pick another, otherwise the automation will not activate.",
+        "campoDaFichaOperador": "Condition",
+        "campoDaFichaOpEquals": "is",
+        "campoDaFichaOpContains": "contains",
+        "campoDaFichaOpEmpty": "is empty",
+        "campoDaFichaOpNotEmpty": "is not empty",
+        "campoDaFichaDataHelp": "Date field: the condition can only ask whether it is empty or filled in.",
+        "campoDaFichaValor": "Value",
+        "campoDaFichaEscolhaOpcao": "Pick an option",
+        "campoDaFichaOpcaoSumiu": "{valor} (no longer an option of the field)",
+        "campoDaFichaOpcaoSumiuHelp": "The chosen value is no longer one of the field options — pick another, otherwise the automation will not activate.",
+        "campoDaFichaHelp": "Reads the value on the contact record when this step runs. “is” and “contains” ignore upper and lower case; accents count. If the read fails, the condition answers “no” and the run log says it was not checked."
       },
       "delete": "Delete",
       "stages": {
@@ -2271,6 +2327,16 @@
         "varKeyHelp": "Interpolate in downstream prompts and handoff notes with",
         "advanceAfterCapture": "After capturing, advance to",
         "internalNote": "Internal note (for the agent picking up)",
+        "handoffAssignLabel": "Assign to",
+        "handoffAssignNobody": "Nobody (stays pending, unassigned)",
+        "handoffAssignNoName": "Member without a name",
+        "handoffAssignChosen": "The chosen person",
+        "handoffAssignGone": "No longer a member of the account",
+        "handoffAssignLoading": "Loading the account members…",
+        "handoffAssignLoadError": "Could not load the account members.",
+        "handoffAssignGoneHelp": "The chosen person is no longer a member of this account. Pick someone else or \"Nobody\" — otherwise the bot will not activate.",
+        "handoffAssignHelpNobody": "The conversation stays pending, unassigned, in the queue of conversations without an owner.",
+        "handoffAssignHelpSomeone": "The conversation stays pending and is assigned to this person, who gets a notification. If they leave the account, the bot leaves the conversation unassigned.",
         "endNodeHelp": "Terminal node. When the runner reaches this node the run is marked complete. No config needed.",
         "bodyText": "Body text",
         "footerText": "Footer (optional, 60 chars)",
@@ -2461,7 +2527,9 @@
       "moveNone": "Move card (no stage picked)",
       "moveTo": "Move card to {etapa}",
       "movePicked": "Move card to the chosen stage",
-      "moveFromOnly": "{count, plural, =1 {only from 1 stage} other {only from # stages}}"
+      "moveFromOnly": "{count, plural, =1 {only from 1 stage} other {only from # stages}}",
+      "handoffTo": "Assign to {membro}",
+      "handoffToPicked": "Assign to the chosen person"
     },
     "header": {
       "backToFlows": "Back to Flows",

@@ -1,20 +1,27 @@
 "use client";
 
+import Link from "next/link";
 import { Loader2, Settings } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
+import { useGastosDeAnuncios } from "@/hooks/use-gastos-de-anuncios";
 import { useModoDeContagem } from "@/hooks/use-modo-de-contagem";
 import { useTrajetorias } from "@/hooks/use-trajetorias";
 import { useAoVoltarParaOApp } from "@/hooks/use-ao-voltar-para-o-app";
+import { formatCurrency, formatCurrencyShort } from "@/lib/currency";
 import { formatarPercentual, paraPontosPercentuais } from "@/lib/funil/apresentacao";
+import { corDaTransicao } from "@/lib/funil/cores";
+import { custosMensais } from "@/lib/funil/custos";
 import { classificarEtapas, type Degrau } from "@/lib/funil/degraus";
+import { cartoesDeCustoNaTela, lerPainel, rotuloDoDegrau as rotuloNoPainel } from "@/lib/funil/painel";
 import { inicioDoMesLocal } from "@/lib/funil/periodo";
 import { periodoSemAtividade } from "@/lib/funil/por-periodo";
 import { COORTE_PEQUENA, coortesMensais, linhasDoMapa, type TransicaoDoHistorico } from "@/lib/funil/saude";
 import { fatosDoNegocio } from "@/lib/funil/trajetoria";
 import type { Pipeline, PipelineStage } from "@/types";
 
+import { useRotuloDoCartaoDeCusto } from "./cartoes-de-custo";
 import { GraficoDeConversao, type SerieDeConversao } from "./grafico-de-conversao";
 import { MapaDeCalor, type LinhaDoMapaDeCalor } from "./mapa-de-calor";
 import { SeletorDeModo } from "./seletor-de-modo";
@@ -37,32 +44,14 @@ import { SeletorDeModo } from "./seletor-de-modo";
  * pequena (< 5 na base da taxa) fica apagada e fora da escala de cor — por
  * período a base é o degrau de partida do mês, não as entradas (revisão do
  * PR #224); os textos do `title` e da legenda mudam com o modo por isso.
+ *
+ * CUSTOS (6.4 do plano do previdenciário): o gasto em anúncios de cada mês
+ * sobre as contagens do mês, com a MESMA conta do Desempenho
+ * (`custosMensais` → `custosDoResumo`) e os mesmos cartões que o painel do
+ * funil mostra. As cores das linhas estão em `src/lib/funil/cores.ts`.
  */
 
 const MESES = 12;
-
-/**
- * ⚠️ As três classes de cada degrau são LITERAIS, nunca derivadas por
- * `replace("stroke-", "fill-")`: o Tailwind varre o FONTE atrás de strings e
- * não executa código, então uma classe montada em tempo de execução
- * simplesmente não é gerada — e o ponto da linha caía no preto padrão do
- * SVG, sem erro nenhum. Medido no CSS compilado: `.fill-sky-500` tinha ZERO
- * ocorrências enquanto `.stroke-sky-500` tinha uma. É a mesma armadilha da
- * `PALETA_DE_CANAIS` (CLAUDE.md), e há teste cobrando a forma.
- */
-export interface CorDoDegrau {
-  traco: string;
-  ponto: string;
-  bloco: string;
-}
-
-const COR_DA_TRANSICAO: Record<Degrau, CorDoDegrau> = {
-  lead: { traco: "stroke-sky-500", ponto: "fill-sky-500", bloco: "bg-sky-500" },
-  mql: { traco: "stroke-violet-500", ponto: "fill-violet-500", bloco: "bg-violet-500" },
-  reuniao: { traco: "stroke-pink-500", ponto: "fill-pink-500", bloco: "bg-pink-500" },
-  proposta: { traco: "stroke-amber-500", ponto: "fill-amber-500", bloco: "bg-amber-500" },
-  contrato: { traco: "stroke-emerald-500", ponto: "fill-emerald-500", bloco: "bg-emerald-500" },
-};
 
 export function Saude({
   pipeline,
@@ -85,17 +74,30 @@ export function Saude({
   const agora = new Date();
   const desde = inicioDoMesLocal(agora.getFullYear(), agora.getMonth() - (MESES - 1));
   const { linhas, carregando, falhou, recarregar } = useTrajetorias(pipeline.id, { desde, ate: null });
+  // Os custos por mês (6.4): o gasto dos doze meses, sob RLS, como no
+  // Desempenho.
+  const anuncios = useGastosDeAnuncios({ desde, ate: null });
   // O app instalado no celular não tem botão de recarregar: voltar para ele
-  // depois de um tempo fora refaz as coortes. Com o `recarregar` comum, que
-  // pisca o carregando — é relatório, afirma números (a escolha do Meu dia).
-  useAoVoltarParaOApp(recarregar);
+  // depois de um tempo fora refaz as coortes E o gasto, com o `recarregar`
+  // comum, que pisca o carregando — é relatório, afirma números (a escolha
+  // do Meu dia). ⚠️ Os DOIS juntos, como no Desempenho: só as trajetórias
+  // misturariam as contagens novas com o gasto de antes.
+  useAoVoltarParaOApp(() => {
+    recarregar();
+    anuncios.recarregar();
+  });
 
   const classificacao = classificarEtapas(stages);
+  const painel = lerPainel(pipeline.painel);
   const rotuloDoDegrau = (d: Degrau) =>
-    // chave montada: `degraus.<d>` — cobrada em degraus.test.ts
-    tDegraus(d as Parameters<typeof tDegraus>[0]);
+    // O rótulo livre do funil (não passa pelo dicionário), senão o padrão:
+    // chave montada `degraus.<d>` — cobrada em degraus.test.ts.
+    rotuloNoPainel(painel, d, (x) => tDegraus(x as Parameters<typeof tDegraus>[0]));
   const rotuloDaTransicao = (tr: TransicaoDoHistorico) =>
-    tr.global ? tDesempenho("taxas.global") : `${rotuloDoDegrau(tr.de)} → ${rotuloDoDegrau(tr.para)}`;
+    tr.global
+      ? tDesempenho("taxas.global", { de: rotuloDoDegrau("lead"), para: rotuloDoDegrau("contrato") })
+      : `${rotuloDoDegrau(tr.de)} → ${rotuloDoDegrau(tr.para)}`;
+  const rotuloDoCartao = useRotuloDoCartaoDeCusto(rotuloDoDegrau);
 
   // Etapas ainda não chegaram ≠ funil sem etapa (ver `Desempenho`).
   if (!etapasCarregadas) {
@@ -159,9 +161,14 @@ export function Saude({
   const series: SerieDeConversao[] = mapa.map((linha) => ({
     chave: `${linha.transicao.de}-${linha.transicao.para}${linha.transicao.global ? "-global" : ""}`,
     rotulo: rotuloDaTransicao(linha.transicao),
-    cor: COR_DA_TRANSICAO[linha.transicao.global ? "contrato" : linha.transicao.de],
+    cor: corDaTransicao(linha.transicao),
     valores: linha.taxas.map(paraPontosPercentuais),
   }));
+
+  const cartoesDeCusto = cartoesDeCustoNaTela(classificacao, painel);
+  const custosDosMeses = anuncios.conectado
+    ? custosMensais(coortes, anuncios.gastos, anuncios.campanhas, pipeline.id, agora)
+    : [];
 
   const linhasDoCalor: LinhaDoMapaDeCalor[] = mapa.map((linha) => ({
     chave: `${linha.transicao.de}-${linha.transicao.para}${linha.transicao.global ? "-global" : ""}`,
@@ -235,6 +242,70 @@ export function Saude({
         <p className="mt-3 text-[11px] text-muted-foreground">
           {porPeriodo ? t("fontePorPeriodo", { funil: pipeline.name }) : t("fonte", { funil: pipeline.name })}
         </p>
+      </section>
+
+      {/* Custos por mês (6.4). Gasto que falhou ou não coube NÃO vira número
+          (a regra do `useGastosDeAnuncios`); sem integração, a linha que
+          aponta para Integrações — nunca uma tabela de "—" com cara de
+          medição. */}
+      <section className="rounded-xl border border-border bg-card p-4">
+        <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {t("custos.titulo")} <span className="font-normal normal-case">· {t("custos.subtitulo")}</span>
+        </h3>
+        {anuncios.carregando ? (
+          <p className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            {t("custos.carregando")}
+          </p>
+        ) : anuncios.falhou ? (
+          <p className="text-xs text-muted-foreground">{tDesempenho("investimento.falhou")}</p>
+        ) : !anuncios.conectado ? (
+          <p className="text-xs text-muted-foreground">
+            {tDesempenho("investimento.naoConectado")}{" "}
+            <Link href="/settings?tab=integracoes" className="underline hover:text-foreground">
+              {tDesempenho("investimento.abrirIntegracoes")}
+            </Link>
+          </p>
+        ) : cartoesDeCusto.length === 0 ? (
+          <p className="text-xs text-muted-foreground">{t("custos.semCartoes")}</p>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full border-separate border-spacing-1 text-xs">
+                <thead>
+                  <tr>
+                    <th className="w-44 text-left font-medium text-muted-foreground" />
+                    {meses.map((m) => (
+                      <th key={m.chave} className="px-1 py-1 text-center font-medium text-muted-foreground">
+                        {m.rotulo}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {cartoesDeCusto.map((c) => (
+                    <tr key={c}>
+                      <th className="whitespace-nowrap pr-2 text-left font-medium text-foreground">{rotuloDoCartao(c)}</th>
+                      {custosDosMeses.map((mes) => {
+                        const valor = mes.custos[c];
+                        return (
+                          <td
+                            key={mes.chave}
+                            className="rounded-md bg-muted/40 px-1 py-2 text-center tabular-nums text-foreground"
+                            title={valor === null ? undefined : formatCurrency(valor)}
+                          >
+                            {valor === null ? "—" : formatCurrencyShort(valor)}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-3 text-[11px] text-muted-foreground">{t("custos.nota")}</p>
+          </>
+        )}
       </section>
     </div>
   );

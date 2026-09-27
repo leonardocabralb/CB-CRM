@@ -151,3 +151,33 @@ describe('rótulos dos nós nos dois dicionários', () => {
     });
   }
 });
+
+// CB (26/09/2026, 2.7): o "Atribuir a" do "Transferir" aparece no cartão com
+// o NOME de quem recebe — nunca o UUID.
+describe('summarizeNode — Transferir com "Atribuir a"', () => {
+  const t = (k: string, v?: Record<string, string | number>) =>
+    k === 'handoffTo' ? `Atribuir a ${v?.membro}` : k === 'handoffToPicked' ? 'Atribuir à pessoa escolhida' : k;
+  const UID = '582aad06-4836-4865-b850-0466fff8bc7d';
+
+  it('com o nome conhecido, diz quem recebe antes da nota', () => {
+    const resumo = summarizeNode(
+      { node_key: 'h', node_type: 'handoff', config: { note: 'qualificado', assign_to: UID } },
+      t,
+      { membro: (id) => (id === UID ? 'Dra. Isa Lenier' : null) },
+    );
+    expect(resumo).toBe('Atribuir a Dra. Isa Lenier · qualificado');
+  });
+
+  it('nome ainda não carregado (ou quem saiu): "a pessoa escolhida", nunca o UUID', () => {
+    const resumo = summarizeNode({ node_key: 'h', node_type: 'handoff', config: { assign_to: UID } }, t, {
+      membro: () => null,
+    });
+    expect(resumo).toBe('Atribuir à pessoa escolhida');
+    expect(resumo).not.toContain(UID);
+  });
+
+  it('"Ninguém" (o padrão) continua só com a nota — ou nada', () => {
+    expect(summarizeNode({ node_key: 'h', node_type: 'handoff', config: { note: 'x' } }, t)).toBe('x');
+    expect(summarizeNode({ node_key: 'h', node_type: 'handoff', config: { assign_to: '' } }, t)).toBeNull();
+  });
+});

@@ -57,6 +57,7 @@ import { slugify, type BuilderNode } from "../shared";
 import { NextNodeRow, NodeKeySelect, TextRow } from "./fields";
 import { SalvarRespostaRow } from "./salvar-resposta";
 import { MoverCardForm } from "./mover-card";
+import { TransferirForm } from "./transferir";
 import { useFlowEditor } from "../flow-editor-state";
 
 interface NodeConfigFormProps {
@@ -222,11 +223,9 @@ export function NodeConfigForm({
 
     case "handoff":
       return (
-        <TextRow
-          label={t("internalNote")}
-          value={(cfg as { note?: string }).note ?? ""}
-          onChange={(v) => onUpdateConfig({ note: v })}
-          rows={2}
+        <TransferirForm
+          cfg={cfg as { note?: string; assign_to?: string }}
+          onUpdateConfig={onUpdateConfig}
         />
       );
 

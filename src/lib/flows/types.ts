@@ -171,6 +171,12 @@ export interface HandoffNodeConfig {
   /**
    * Optional agent user_id to assign on the conversation when this
    * node fires. Leave unset to flip the status without assignment.
+   *
+   * CB (26/09/2026, 2.7): é `profiles.user_id` (o id de LOGIN), nunca
+   * `profiles.id`. A ativação recusa quem não é membro da conta do robô, e o
+   * motor confere de novo na hora (`atribuir-no-handoff.ts`): quem saiu não
+   * recebe a conversa. ⚠️ Ausente (ou quem saiu) = a conversa fica SEM
+   * responsável: o motor grava o nulo, e o dono anterior sai (Codex, #319).
    */
   assign_to?: string;
 }

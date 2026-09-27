@@ -8,17 +8,19 @@ paths:
   - "src/lib/automations/responsavel-da-tarefa*"
   - "src/lib/automations/janela-da-meta*"
   - "src/lib/automations/hora-do-dia*"
+  - "src/lib/automations/condicao-por-campo*"
   - "src/components/automations/automation-builder.tsx"
+  - "src/components/automations/condicao-por-campo-fields*"
 ---
 
 # Automações — passos com regra própria
 
 Vale ao mexer no "Enviar modelo", no "Criar tarefa" pelo responsável, nas
-condições "Janela de 24h da Meta aberta" e "Hora do dia" e no "Aguardar até
-estar dentro do horário" (Fase 2 do plano do previdenciário, 26/09/2026). As
-regras são puras e testadas:
-`parametros-do-modelo.ts`, `responsavel-da-tarefa.ts`, `janela-da-meta.ts` e
-`hora-do-dia.ts`, em `src/lib/automations/`.
+condições "Janela de 24h da Meta aberta", "Hora do dia" e "Campo
+personalizado da ficha" e no "Aguardar até estar dentro do horário" (Fase 2
+do plano do previdenciário, 26/09/2026). As regras são puras e testadas:
+`parametros-do-modelo.ts`, `responsavel-da-tarefa.ts`, `janela-da-meta.ts`,
+`hora-do-dia.ts` e `condicao-por-campo.ts`, em `src/lib/automations/`.
 O resto do motor: `.claude/rules/automacoes.md`; o mapa da janela por número:
 `.claude/rules/canal-na-conversa.md`.
 
@@ -121,3 +123,34 @@ segue dali (`Aguardar 1 h → Aguardar o horário → lembrete → …`).
 - Resumo: chaves `wait_horario[_seg_a_sex][_ou_resposta]` nos dois
   dicionários (cobradas por `descrever-passo.test.ts`). A régua do Asaas
   continua recusando todo "Aguardar", este incluso.
+
+### Condição "Campo personalizado da ficha" (`custom_field`, 2.10)
+
+É o que devolve ao robô SÓ o "Desqualificado" por "Não respondeu" (o
+`contact_field` do upstream lê só colunas de `contacts`). `operand` =
+`custom_fields.id`, `operator` (`equals`/`contains`/`empty`/`not_empty`;
+ausente = `equals`), `value`.
+
+- ⚠️⚠️ **O motor confere o campo pela CONTA antes de o valor valer**
+  (`avaliarCampoPersonalizado`, service role): sem isso, um id de campo de
+  outra conta viraria oráculo de dado alheio. O contato já vem conferido do
+  disparo. Há pino no `engine.test.ts`.
+- **Erro de leitura responde "não"** e o registro diz `campo não conferido`;
+  campo apagado (ou de outra conta) também "não", com a nota. ⚠️ O VALOR lido
+  NUNCA vai para o registro: o campo pode guardar a senha do gov.br.
+- **Operadores por tipo** (`operadoresDoTipo`): texto os quatro; lista e
+  número sem "contém"; data só vazio/preenchido (a coluna guarda ISO em UTC).
+  "é"/"contém" comparam aparado e sem maiúsculas (acento conta); número pela
+  régua do robô (`numeroDigitado`: "150.000" é 150 mil). Sem linha em
+  `contact_custom_values` = vazio.
+- **Duas camadas na ativação**: a forma em `validateOne` (operador conhecido,
+  valor para "é"/"contém"); o que só o banco sabe (campo da conta, operador
+  do tipo, valor entre as OPÇÕES da lista) nas rotas de automação, por
+  `carregarCamposParaCondicoes` + `validateCustomFieldConditionsForActivation`
+  (leitura que falha pula — o motor é a guarda).
+- **O construtor (`condicao-por-campo-fields.tsx`) recorta os campos pela
+  conta** (`useAuth().accountId`), nunca só pela RLS, e os reparte por BLOCO.
+- **Resumo: `condition_campo_<operador>`** (`descrever-passo.ts`, nos dois
+  dicionários) com o NOME do campo — quem desenha condição precisa carregar
+  `nomes.campos` (a página do funil e `GET /api/cb/execucoes` carregam), senão
+  sai "(apagado)".

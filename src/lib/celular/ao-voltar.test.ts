@@ -48,6 +48,16 @@ describe("as telas que se atualizam ao voltar", () => {
   ])("%s chama useAoVoltarParaOApp", (caminho) => {
     expect(ler(caminho)).toContain("useAoVoltarParaOApp(");
   });
+
+  it.each(["src/components/funil/desempenho.tsx", "src/components/funil/saude.tsx"])(
+    "%s recarrega as trajetórias E o gasto dos anúncios juntos",
+    (caminho) => {
+      // Só as trajetórias misturava as contagens novas com o gasto velho, e
+      // os custos saíam errados (Codex, merge do PR #216; a Saúde ganhou
+      // custos na 1054).
+      expect(ler(caminho)).toMatch(/useAoVoltarParaOApp\(\(\) => \{\s*recarregar\(\);\s*anuncios\.recarregar\(\);\s*\}\);/);
+    },
+  );
 });
 
 describe("as cercas da recarga silenciosa (Codex, PR #216)", () => {

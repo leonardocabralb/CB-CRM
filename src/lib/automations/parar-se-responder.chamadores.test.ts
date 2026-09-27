@@ -105,7 +105,11 @@ describe('o motor cuida da MARCA nas duas pontas', () => {
   const motor = fonte('lib/automations/engine.ts')
 
   it('estaciona a espera com contextoDaEspera', () => {
-    expect(motor).toMatch(/context:\s*contextoDaEspera\(args\.context,\s*cfg,\s*step\.id\)/)
+    // Embrulhado por `comPassoDaFila` (26/09/2026): o passo que estacionou vai
+    // junto, para a retomada o achar depois de uma edição (`retomada.ts`).
+    expect(motor).toMatch(
+      /context:\s*comPassoDaFila\(contextoDaEspera\(args\.context,\s*cfg,\s*step\.id\),\s*step\)/
+    )
   })
 
   it('⚠️ a retomada pergunta se a EXECUÇÃO já foi interrompida, antes de rodar qualquer passo (Codex, PR #223)', () => {
