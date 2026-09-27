@@ -179,6 +179,27 @@ describe('consultaDaUltimaMensagem', () => {
     expect(consultaDaUltimaMensagem([{ role: 'user', content: '[document] segue' }])).toBe('segue')
   })
 
+  it('a LEITURA de uma imagem ou PDF entra na consulta sem o invólucro; a recusa sai com o rótulo', () => {
+    expect(
+      consultaDaUltimaMensagem([{ role: 'user', content: '[image] meu boleto\n(content: Boleto do Banco X, vencimento 10/10)' }]),
+    ).toBe('meu boleto\nBoleto do Banco X, vencimento 10/10')
+    expect(consultaDaUltimaMensagem([{ role: 'user', content: '[image]\n(content: Print: "qual o prazo?")' }])).toBe(
+      'Print: "qual o prazo?"',
+    )
+    expect(
+      consultaDaUltimaMensagem([{ role: 'user', content: '[image — could not be read: arquivo grande demais para ler] segue' }]),
+    ).toBe('segue')
+    expect(
+      consultaDaUltimaMensagem([
+        { role: 'user', content: '[document: x.docx — could not be read: tipo de arquivo que o agente não lê]' },
+      ]),
+    ).toBe('')
+    expect(consultaDaUltimaMensagem([{ role: 'user', content: '[document — could not be read: x] oi' }])).toBe('oi')
+    // A ainda não lida sai com o rótulo, também.
+    expect(consultaDaUltimaMensagem([{ role: 'user', content: '[image — not read yet] meu boleto' }])).toBe('meu boleto')
+    expect(consultaDaUltimaMensagem([{ role: 'user', content: '[document: x.pdf — not read yet]' }])).toBe('')
+  })
+
   it('áudio sem transcrição = consulta vazia (nada a buscar)', () => {
     expect(consultaDaUltimaMensagem([{ role: 'user', content: '[audio message, not transcribed]' }])).toBe('')
   })

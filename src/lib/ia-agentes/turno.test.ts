@@ -179,6 +179,8 @@ vi.mock('@/lib/ia-chaves/repo', () => ({
   lerChaveDeEmbeddings: vi.fn(async () => ({ chave: null, ilegivel: false, recusada: false })),
 }))
 vi.mock('@/lib/transcricao/transcrever', () => ({ transcreverAudio: vi.fn() }))
+// A leitura de imagem e PDF (tem teste próprio em `ler-midia.test.ts`).
+vi.mock('@/lib/transcricao/ler-midia', () => ({ lerMidia: vi.fn(), TIPOS_QUE_SE_LEEM: ['image', 'document'] }))
 vi.mock('@/lib/rate-limit', () => ({
   checkRateLimit: vi.fn(() => ({ success: true })),
   RATE_LIMITS: { aiAutoReplyAccount: { limit: 30, windowMs: 60_000 } },
@@ -217,6 +219,7 @@ import {
 } from '@/lib/flows/meta-send'
 import { lerChave } from '@/lib/ia-chaves/repo'
 import { checkRateLimit } from '@/lib/rate-limit'
+import { lerMidia } from '@/lib/transcricao/ler-midia'
 import { transcreverAudio } from '@/lib/transcricao/transcrever'
 import { EvolutionApiError } from '@/lib/whatsapp/transport/evolution-client'
 import { MetaApiError } from '@/lib/whatsapp/meta-api'
@@ -225,9 +228,9 @@ import { lerLinhaDoAgente } from './agente'
 import { lerAgendaDoAgente } from './agenda'
 import { executarAcoes } from './executar-acoes'
 import { opcoesDoAgente } from './ferramentas'
-import { JANELA_DO_AUDIO_MS } from './fila'
+import { JANELA_DO_AUDIO_MS, REAGENDAR_AUDIO_MS } from './fila'
 import { obterAgente } from './repo'
-import { executarTurno, nadaSaiu, transferirParaGente } from './turno'
+import { executarTurno, MIDIAS_POR_TURNO, nadaSaiu, TETO_DA_ESPERA_DAS_MIDIAS_MS, transferirParaGente } from './turno'
 
 // ------------------------------------------------------------
 // O cenário: o card do contato na etapa da TRIAGEM, que entrou nela depois de
@@ -508,6 +511,8 @@ beforeEach(() => {
       return { whatsapp_message_id: 'wamid.resposta' }
     })
   vi.mocked(transcreverAudio).mockReset()
+  // Padrão: ninguém lê (sem chave) — os cenários sem mídia nem a chamam.
+  vi.mocked(lerMidia).mockReset().mockResolvedValue({ status: 'sem_leitor', erro: 'sem chave' })
   vi.mocked(checkRateLimit).mockReset().mockReturnValue({ success: true } as ReturnType<typeof checkRateLimit>)
   vi.mocked(drenarEventosDeFunil).mockClear()
   vi.mocked(after).mockReset()
@@ -1878,6 +1883,230 @@ describe('executarTurno — áudio', () => {
     await executarTurno(TURNO)
     expect(turno()).toMatchObject({ status: 'descartado', erro: 'mensagem mais nova do cliente' })
     expect(after).not.toHaveBeenCalled()
+  })
+})
+
+// ------------------------------------------------------------
+// Imagem e PDF do cliente (a leitura, 27/09/2026)
+// ------------------------------------------------------------
+
+describe('executarTurno — imagem e PDF do cliente', () => {
+  const conversaEnviada = () =>
+    (vi.mocked(generateReply).mock.calls[0][0].messages as Array<{ role: string; content: string }>).map((m) => m.content)
+
+  /** A imagem ou o documento do cliente, gravado há `haMsGravada`. */
+  function midia(id: string, haMsGravada: number, p: Linha = {}): Linha {
+    return mensagem({
+      id,
+      message_id: `wamid.${id}`,
+      content_type: 'image',
+      content_text: null,
+      media_type: 'image/jpeg',
+      gravada_em: haMs(haMsGravada),
+      created_at: haMs(haMsGravada),
+      ...p,
+    })
+  }
+
+  /** O dublê LÊ de verdade: grava o texto na linha, como `lerMidia` faria. */
+  function leComo(texto: (id: string) => string): void {
+    vi.mocked(lerMidia).mockImplementation(async (_db, { messageId }) => {
+      const linha = banco.tabelas.messages.find((m) => m.id === messageId)!
+      Object.assign(linha, { transcricao: texto(messageId), transcricao_status: 'pronta' })
+      return { status: 'pronta', texto: texto(messageId) }
+    })
+  }
+
+  it('lê a imagem do cliente ANTES de gerar, e o modelo recebe a leitura', async () => {
+    Object.assign(banco.tabelas.messages[0], { content_type: 'image', content_text: 'olha', media_type: 'image/jpeg' })
+    leComo(() => 'Print: "sua dívida é R$ 3.000"')
+    await executarTurno(TURNO)
+    expect(lerMidia).toHaveBeenCalledWith(banco, { accountId: CONTA, messageId: GATILHO })
+    expect(conversaEnviada().at(-1)).toBe('[image] olha\n(content: Print: "sua dívida é R$ 3.000")')
+    expect(turno().status).toBe('respondeu')
+  })
+
+  it('o PDF mandado ANTES da rajada também conta (as mensagens que vão ao modelo, não só a rajada)', async () => {
+    banco.tabelas.messages.unshift(
+      midia('pdf-antigo', 60 * 60_000, { content_type: 'document', media_type: 'application/pdf', media_filename: 'extrato.pdf' }),
+    )
+    leComo(() => 'Extrato, saldo R$ 1.200,00')
+    await executarTurno(TURNO)
+    expect(vi.mocked(lerMidia).mock.calls.map((c) => c[1].messageId)).toEqual(['pdf-antigo'])
+    expect(conversaEnviada()).toContain('[document: extrato.pdf]\n(content: Extrato, saldo R$ 1.200,00)')
+  })
+
+  it('no máximo 5 por turno; ANTES da rajada, as MAIS NOVAS primeiro — e a que ficou de fora vai como "not read yet"', async () => {
+    for (let i = 1; i <= 6; i++) banco.tabelas.messages.push(midia(`foto-${i}`, 20_000 + i * 1_000))
+    leComo((id) => `lida ${id}`)
+    await executarTurno(TURNO)
+    expect(vi.mocked(lerMidia).mock.calls.map((c) => c[1].messageId)).toEqual(['foto-1', 'foto-2', 'foto-3', 'foto-4', 'foto-5'])
+    expect(MIDIAS_POR_TURNO).toBe(5)
+    expect(turno().status).toBe('respondeu')
+    expect(conversaEnviada()).toContain('[image — not read yet]')
+  })
+
+  it('⚠️ as da RAJADA primeiro, da MAIS ANTIGA para a mais nova (as páginas na ordem), e só então as de antes', async () => {
+    // A rajada vai de foto-7 (a primeira mensagem do turno) ao gatilho; a
+    // foto-velha é de antes dela.
+    banco.tabelas.messages.unshift(midia('foto-velha', 60 * 60_000))
+    for (let i = 1; i <= 7; i++) banco.tabelas.messages.push(midia(`foto-${i}`, 20_000 + i * 1_000))
+    turno().mensagem_inicial_id = 'foto-7'
+    leComo((id) => `lida ${id}`)
+    await executarTurno(TURNO)
+    expect(vi.mocked(lerMidia).mock.calls.map((c) => c[1].messageId)).toEqual(['foto-7', 'foto-6', 'foto-5', 'foto-4', 'foto-3'])
+  })
+
+  it('SEM LEITOR (nenhuma chave lê o arquivo): não gasta a vez, e o agente vê "could not be read" com o motivo genérico', async () => {
+    banco.tabelas.messages.push(midia('heic', 21_000, { media_type: 'image/heic' }))
+    for (let i = 1; i <= 5; i++) banco.tabelas.messages.push(midia(`foto-${i}`, 21_500 + i * 100))
+    vi.mocked(lerMidia).mockImplementation(async (_db, { messageId }) => {
+      if (messageId === 'heic') return { status: 'sem_leitor', erro: 'formato que a chave cadastrada não lê (image/heic)' }
+      Object.assign(banco.tabelas.messages.find((m) => m.id === messageId)!, { transcricao: 'x', transcricao_status: 'pronta' })
+      return { status: 'pronta', texto: 'x' }
+    })
+    await executarTurno(TURNO)
+    // O HEIC não ocupou uma das 5 vagas.
+    expect(vi.mocked(lerMidia)).toHaveBeenCalledTimes(6)
+    expect(turno().status).toBe('respondeu')
+    expect(conversaEnviada()).toContain('[image — could not be read: o sistema não consegue ler este tipo de arquivo agora]')
+    expect(conversaEnviada().join('\n')).not.toMatch(/Integrações|chave cadastrada/)
+  })
+
+  it('⚠️ RECUSADA não transfere (diferente do áudio): o agente segue e responde', async () => {
+    banco.tabelas.messages.push(
+      midia('docx', 25_000, {
+        content_type: 'document',
+        media_type: 'application/msword',
+        media_filename: 'procuracao.doc',
+      }),
+    )
+    vi.mocked(lerMidia).mockImplementation(async (_db, { messageId }) => {
+      Object.assign(banco.tabelas.messages.find((m) => m.id === messageId)!, {
+        transcricao_status: 'recusada',
+        transcricao_erro: 'tipo de arquivo que o agente não lê',
+      })
+      return { status: 'recusada', erro: 'tipo de arquivo que o agente não lê' }
+    })
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    expect(conversa().ia_pausada_por).toBeNull()
+    expect(notas()).toHaveLength(0)
+    expect(conversaEnviada()).toContain('[document: procuracao.doc — could not be read: tipo de arquivo que o agente não lê]')
+  })
+
+  it('transitório DENTRO da janela da própria mensagem: REAGENDA, sem gastar a vaga da conta', async () => {
+    banco.tabelas.messages.push(midia('foto-nova', 25_000))
+    vi.mocked(lerMidia).mockResolvedValue({ status: 'falhou', erro: 'o arquivo ainda está sendo baixado' })
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({ status: 'aguardando', rodando_desde: null })
+    expect(generateReply).not.toHaveBeenCalled()
+    expect(checkRateLimit).not.toHaveBeenCalled()
+  })
+
+  it('transitório FORA da janela: segue SEM o texto — um anexo antigo nunca prende a resposta', async () => {
+    banco.tabelas.messages.unshift(midia('foto-velha', JANELA_DO_AUDIO_MS + 60_000))
+    vi.mocked(lerMidia).mockResolvedValue({ status: 'lendo' })
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    // "not read yet", nunca "could not be read": o agente não pede reenvio.
+    expect(conversaEnviada()).toContain('[image — not read yet]')
+  })
+
+  it('⚠️ o TETO DA ESPERA: gatilho mais velho que ele não lê mídia nenhuma — responde com o que tem (sem laço)', async () => {
+    Object.assign(banco.tabelas.messages[0], {
+      gravada_em: haMs(TETO_DA_ESPERA_DAS_MIDIAS_MS + 1_000),
+      created_at: haMs(TETO_DA_ESPERA_DAS_MIDIAS_MS + 1_000),
+    })
+    banco.tabelas.messages.unshift(midia('foto', TETO_DA_ESPERA_DAS_MIDIAS_MS + 2_000))
+    await executarTurno(TURNO)
+    expect(lerMidia).not.toHaveBeenCalled()
+    expect(turno().status).toBe('respondeu')
+    expect(conversaEnviada()).toContain('[image — not read yet]')
+    expect(TETO_DA_ESPERA_DAS_MIDIAS_MS).toBe(3 * 60_000)
+  })
+
+  describe('a leitura come o prazo', () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date())
+    })
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('leu (pronta) e o prazo acabou: REAGENDA — o turno seguinte começa com o prazo cheio e a leitura gravada', async () => {
+      banco.tabelas.messages.push(midia('pdf', 25_000, { content_type: 'document', media_type: 'application/pdf' }))
+      vi.mocked(lerMidia).mockImplementation(async () => {
+        vi.setSystemTime(Date.now() + 40_000)
+        return { status: 'pronta', texto: 'x' }
+      })
+      await executarTurno(TURNO)
+      expect(turno()).toMatchObject({ status: 'aguardando', rodando_desde: null })
+      expect(generateReply).not.toHaveBeenCalled()
+    })
+
+    it('⚠️ anexo ANTIGO cuja leitura falhou comendo o prazo: reagenda, não encerra o turno sem resposta', async () => {
+      banco.tabelas.messages.unshift(midia('pdf-velho', 60 * 60_000, { content_type: 'document', media_type: 'application/pdf' }))
+      vi.mocked(lerMidia).mockImplementation(async () => {
+        vi.setSystemTime(Date.now() + 40_000)
+        return { status: 'falhou', erro: 'tempo esgotado' }
+      })
+      await executarTurno(TURNO)
+      expect(turno()).toMatchObject({ status: 'aguardando', rodando_desde: null })
+    })
+
+    it('⚠️ SEM LAÇO: a leitura que falha comendo o prazo reagenda só até o teto da espera; depois o turno responde sem ela', async () => {
+      banco.tabelas.messages.unshift(midia('pdf-velho', 60 * 60_000, { content_type: 'document', media_type: 'application/pdf' }))
+      // A falha passageira não gasta tentativa: sem o teto, voltaria para sempre.
+      vi.mocked(lerMidia).mockImplementation(async () => {
+        vi.setSystemTime(Date.now() + 40_000)
+        return { status: 'falhou', erro: 'tempo esgotado' }
+      })
+      let rodadas = 0
+      while (rodadas < 50) {
+        rodadas++
+        await executarTurno(TURNO)
+        if (turno().status !== 'aguardando') break
+        // O reagendamento: 10 s depois, o turno volta a vencer.
+        vi.setSystemTime(Date.now() + REAGENDAR_AUDIO_MS)
+        turno().executar_apos = haMs(1)
+      }
+      expect(turno().status).toBe('respondeu')
+      // O gatilho nasceu há 20 s; a cada rodada, 40 s da leitura + 10 s de espera.
+      expect(rodadas).toBeLessThanOrEqual(Math.ceil(TETO_DA_ESPERA_DAS_MIDIAS_MS / 50_000) + 1)
+      expect(conversaEnviada()).toContain('[document — not read yet]')
+    })
+
+    it('sem prazo para mais uma leitura, para de ler (o que foi lido fica gravado)', async () => {
+      for (let i = 1; i <= 3; i++) banco.tabelas.messages.push(midia(`foto-${i}`, 20_000 + i * 1_000))
+      vi.mocked(lerMidia).mockImplementation(async () => {
+        vi.setSystemTime(Date.now() + 25_000)
+        return { status: 'pronta', texto: 'x' }
+      })
+      await executarTurno(TURNO)
+      // 45 s − 10 s de reserva − 8 s do embedding − 25 s da 1ª leitura < 3 s: a 2ª não começa.
+      expect(lerMidia).toHaveBeenCalledTimes(1)
+      expect(turno().status).toBe('aguardando')
+    })
+  })
+
+  it('já lida, recusada antes, figurinha e mídia da EQUIPE não são lidas', async () => {
+    banco.tabelas.messages.push(
+      midia('ja-lida', 21_000, { transcricao: 'x', transcricao_status: 'pronta' }),
+      midia('recusada', 22_000, { transcricao_status: 'recusada', transcricao_erro: 'grande' }),
+      midia('figurinha', 23_000, { media_type: 'image/webp' }),
+      midia('da-equipe', 24_000, { sender_type: 'agent', sender_id: MEMBRO }),
+    )
+    await executarTurno(TURNO)
+    expect(lerMidia).not.toHaveBeenCalled()
+    expect(turno().status).toBe('respondeu')
+  })
+
+  it('só a conexão do turno: a foto mandada por outra conexão não é lida', async () => {
+    banco.tabelas.messages.push(midia('outra-conexao', 25_000, { channel_id: OUTRO_CANAL }))
+    await executarTurno(TURNO)
+    expect(lerMidia).not.toHaveBeenCalled()
   })
 })
 

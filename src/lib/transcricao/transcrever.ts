@@ -11,6 +11,12 @@
 // Provedor: GEMINI, com a chave BYO da conta (decisão 2026-08-27 — o
 // plano original previa ElevenLabs com chave da casa; com o Gemini no
 // projeto, a mesma chave do Radar transcreve sem segredo novo na VPS).
+// ⚠️ Desde 27/09/2026, sem chave do Gemini a transcrição cai para a OPENAI
+// (`MODELO_TRANSCRICAO_OPENAI`, `leitores.ts`), pela ordem de
+// `ORDEM_DA_TRANSCRICAO` — vale para os três chamadores (bolha, Radar e o
+// turno do agente). A ANTHROPIC não tem entrada de áudio: sem Gemini e sem
+// OpenAI, continua `recusada` SEM gravar. O contrato é o mesmo nos dois
+// provedores (cadeado, tentativas, `recusada` só para o irreversível).
 // ⚠️ O PREÇO deixou de ser argumento nessa comparação: com o modelo
 // abaixo estamos em ~US$ 0,24/h de áudio, ACIMA dos ~US$ 0,22/h do
 // ElevenLabs Scribe — eram ~US$ 0,07/h no Flash-Lite, e é daí que vinha o
@@ -25,14 +31,13 @@
 // tentativas compartilhado entre os dois. Avaliado e descartado em
 // 2026-08-28; economia teto de R$ 4/mês.
 //
-// ⚠️ Sem chave Gemini NÃO se grava estado: devolvemos `recusada` sem
-// tocar na linha, para o botão voltar a funcionar no instante em que a
-// chave for cadastrada. Gravar `recusada` (terminal, sem botão) mataria
+// ⚠️ Sem chave (nem do Gemini nem da OpenAI) NÃO se grava estado:
+// devolvemos `recusada` sem tocar na linha, para o botão voltar a funcionar
+// no instante em que a chave for cadastrada. Gravar `recusada` (terminal, sem botão) mataria
 // o áudio para sempre por um problema de configuração passageiro.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { lerChave } from '@/lib/ia-chaves/repo'
 import { aiRequestTimeoutMs } from '@/lib/ai/defaults'
 import {
   geminiEndpoint,
@@ -40,7 +45,17 @@ import {
   geminiUsage,
   type GeminiResponse,
 } from '@/lib/ai/providers/gemini'
+import type { AiUsage } from '@/lib/ai/types'
 import { logAiUsage } from '@/lib/ai/usage'
+
+import { escolherLeitor } from './escolher-leitor'
+import {
+  erroDoProvedor,
+  lerRespostaDeTranscricaoOpenAi,
+  MODELO_TRANSCRICAO_OPENAI,
+  ORDEM_DA_TRANSCRICAO,
+  pedidoDeTranscricaoOpenAi,
+} from './leitores'
 
 /**
  * Fixo de propósito — ver o cabeçalho. Trocar de modelo é trocar AQUI.
@@ -95,7 +110,8 @@ import { logAiUsage } from '@/lib/ai/usage'
 export const MODELO_TRANSCRICAO = 'gemini-3.7-flash'
 const TENTATIVAS_MAX = 3
 const TRAVADA_MIN = 10
-/** Nota de voz real tem centenas de KB; 15 MB já é playlist encaminhada. */
+/** Nota de voz real tem centenas de KB; 15 MB já é playlist encaminhada.
+ *  Abaixo dos dois provedores: a OpenAI aceita "up to 25 MB" (speech-to-text). */
 const TAMANHO_MAX_BYTES = 15 * 1024 * 1024
 const MAX_TOKENS_TRANSCRICAO = 4096
 /** Exportado: o worker do Radar soma isto à reserva de prazo antes de
@@ -106,10 +122,17 @@ export const TIMEOUT_DOWNLOAD_MS = 20_000
  *  mensagem PRIMEIRO e o arquivo segundos depois. */
 const JANELA_DOWNLOAD_MS = 2 * 60_000
 
+/**
+ * A marca do áudio sem fala. O Gemini a escreve (a `INSTRUCAO` pede); a
+ * OpenAI devolve texto VAZIO nesse caso, e o texto vazio dela vira esta mesma
+ * marca — senão o silêncio seria três falhas pagas e uma transferência.
+ */
+export const MARCA_INAUDIVEL = '[inaudível]'
+
 const INSTRUCAO =
   'Transcreva o áudio a seguir fielmente, em português do Brasil. ' +
   'Responda APENAS com o texto transcrito, sem comentários, sem rótulos. ' +
-  'Se o áudio estiver vazio ou ininteligível, responda exatamente: [inaudível]'
+  `Se o áudio estiver vazio ou ininteligível, responda exatamente: ${MARCA_INAUDIVEL}`
 
 export type ResultadoTranscricao =
   | { status: 'pronta'; transcricao: string }
@@ -188,25 +211,25 @@ export async function transcreverAudio(
   }
 
   // Chave ANTES do cadeado (ver cabeçalho: sem chave não se grava estado).
-  // ⚠️ A chave do GEMINI da conta, direto (1047, D1 do
-  // docs/PLANO-agentes-de-ia.md): a transcrição só fala com o Gemini e tem
-  // modelo fixo, então não depende do provedor de agente nenhum. Antes ela
-  // era resolvida pelo canal da conversa, e um agente de outro provedor
-  // naquela conexão fazia toda transcrição ser recusada. Erro de LEITURA é
-  // `falhou` sem gravar (passageiro), nunca "sem chave".
-  let chaveGemini: string | null
-  try {
-    const lida = await lerChave(args.accountId, 'gemini')
-    if (lida.ilegivel) {
-      return { status: 'recusada', erro: 'a chave do Gemini não pôde ser lida — cadastre-a de novo em Configurações → Integrações' }
+  // ⚠️ A chave do PROVEDOR da conta, direto (1047, D1 do
+  // docs/PLANO-agentes-de-ia.md): Gemini, senão OpenAI
+  // (`ORDEM_DA_TRANSCRICAO`), com modelo fixo — não depende do provedor de
+  // agente nenhum. Antes ela era resolvida pelo canal da conversa, e um
+  // agente de outro provedor naquela conexão fazia toda transcrição ser
+  // recusada. Erro de LEITURA é `falhou` sem gravar (passageiro), nunca
+  // "sem chave".
+  const escolha = await escolherLeitor(args.accountId, ORDEM_DA_TRANSCRICAO)
+  if (!escolha.ok) {
+    if (escolha.motivo === 'erro') {
+      return { status: 'falhou', erro: 'não foi possível ler a chave de IA — tente de novo em instantes' }
     }
-    chaveGemini = lida.chave
-  } catch {
-    return { status: 'falhou', erro: 'não foi possível ler a chave do Gemini — tente de novo em instantes' }
+    if (escolha.motivo === 'ilegivel') {
+      return { status: 'recusada', erro: 'a chave do Gemini ou da OpenAI não pôde ser lida — cadastre-a de novo em Configurações → Integrações' }
+    }
+    return { status: 'recusada', erro: 'sem chave do Gemini nem da OpenAI — cadastre uma em Configurações → Integrações' }
   }
-  if (!chaveGemini) {
-    return { status: 'recusada', erro: 'sem chave do Gemini — cadastre uma em Configurações → Integrações' }
-  }
+  const { provedor, chave } = escolha
+  const modelo = provedor === 'gemini' ? MODELO_TRANSCRICAO : MODELO_TRANSCRICAO_OPENAI
 
   // O CADEADO. Teto de tentativas DENTRO do WHERE (uma retentativa
   // concorrente não o fura) e recolhimento de travada embutido (10 min —
@@ -289,62 +312,84 @@ export async function transcreverAudio(
     // `audio/ogg` é o fallback honesto — 100% do acervo real é ogg/opus.
     const mime = msg.media_type || mimeDoStorage || 'audio/ogg'
 
-    const tGemini = new AbortController()
-    const tHandle = setTimeout(() => tGemini.abort(), aiRequestTimeoutMs())
+    const tProvedor = new AbortController()
+    const tHandle = setTimeout(() => tProvedor.abort(), aiRequestTimeoutMs())
     let r: Response
     try {
-      r = await fetch(geminiEndpoint(MODELO_TRANSCRICAO), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          // ⚠️ Header, nunca `?key=` na URL (vaza em log de proxy).
-          'x-goog-api-key': chaveGemini,
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                { text: INSTRUCAO },
-                { inlineData: { mimeType: mime, data: bytes.toString('base64') } },
-              ],
-            },
-          ],
-          generationConfig: { temperature: 0, maxOutputTokens: MAX_TOKENS_TRANSCRICAO },
-        }),
-        signal: tGemini.signal,
-      })
+      r =
+        provedor === 'gemini'
+          ? await fetch(geminiEndpoint(MODELO_TRANSCRICAO), {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                // ⚠️ Header, nunca `?key=` na URL (vaza em log de proxy).
+                'x-goog-api-key': chave,
+              },
+              body: JSON.stringify({
+                contents: [
+                  {
+                    role: 'user',
+                    parts: [
+                      { text: INSTRUCAO },
+                      { inlineData: { mimeType: mime, data: bytes.toString('base64') } },
+                    ],
+                  },
+                ],
+                generationConfig: { temperature: 0, maxOutputTokens: MAX_TOKENS_TRANSCRICAO },
+              }),
+              signal: tProvedor.signal,
+            })
+          : await (async () => {
+              const pedido = pedidoDeTranscricaoOpenAi({ chave, bytes, mime })
+              return fetch(pedido.url, {
+                method: 'POST',
+                headers: pedido.headers,
+                body: pedido.body,
+                signal: tProvedor.signal,
+              })
+            })()
     } finally {
       clearTimeout(tHandle)
     }
 
     if (!r.ok) {
       const corpo = await r.text().catch(() => '')
-      return await falhar(
-        admin,
-        msg.id,
-        claimIso,
-        `Gemini respondeu HTTP ${r.status}: ${corpo.slice(0, 200)}`,
-      )
+      return await falhar(admin, msg.id, claimIso, erroDoProvedor(provedor, r.status, corpo, chave))
     }
-    const dataGemini = (await r.json().catch(() => null)) as GeminiResponse | null
+    const corpoDaResposta = (await r.json().catch(() => null)) as unknown
+
+    // A resposta de cada provedor → texto e uso. A OpenAI não tem "fim por
+    // teto de tokens" na transcrição.
+    let texto: string
+    let usage: AiUsage | null
+    let finish: string | undefined
+    if (provedor === 'gemini') {
+      const dataGemini = corpoDaResposta as GeminiResponse | null
+      texto = geminiText(dataGemini).trim()
+      usage = geminiUsage(dataGemini)
+      finish = dataGemini?.candidates?.[0]?.finishReason
+    } else {
+      // Campo ausente = resposta malformada (falha, abaixo); campo VAZIO = o
+      // áudio sem fala, o mesmo desfecho do "[inaudível]" do Gemini.
+      const lida = lerRespostaDeTranscricaoOpenAi(corpoDaResposta)
+      texto = lida.texto === null ? '' : lida.texto || MARCA_INAUDIVEL
+      usage = lida.usage
+    }
 
     // ⚠️ Custo registrado ANTES de julgar a resposta: um fim MAX_TOKENS ou
     // uma resposta vazia já foram COBRADOS na chave da conta (o áudio de
     // entrada é a parte cara), e `falhou` retenta até 3× — sem o log aqui,
     // exatamente o áudio mais caro sumia do painel de uso (mesmo princípio
-    // gravado no worker do Radar).
+    // gravado no worker do Radar). O provedor e o modelo são os USADOS.
     void logAiUsage(admin, {
       accountId: args.accountId,
       conversationId: msg.conversation_id,
       mode: 'transcricao',
-      provider: 'gemini',
-      model: MODELO_TRANSCRICAO,
-      usage: geminiUsage(dataGemini),
+      provider: provedor,
+      model: modelo,
+      usage,
     })
 
-    const texto = geminiText(dataGemini).trim()
-    const finish = dataGemini?.candidates?.[0]?.finishReason
     if (finish === 'MAX_TOKENS') {
       // Determinístico a temperatura 0: retentar é pagar o MESMO áudio de
       // novo pelo mesmo resultado — terminal, não `falhou`.

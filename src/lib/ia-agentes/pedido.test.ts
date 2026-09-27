@@ -37,6 +37,25 @@ describe('montarPedidoDoAgente', () => {
     expect(p).toMatch(/untrusted/)
   })
 
+  it('a mídia do cliente: a leitura é conteúdo do cliente; SÓ a recusa de vez pede que descreva ou reenvie', () => {
+    const p = montarPedidoDoAgente({ instrucoes: '', regras: [], agora: AGORA })
+    expect(p).toContain('(content: …)')
+    // "could not be read": tentada e recusada — pede que descreva, ou transfere.
+    expect(p).toMatch(/"— could not be read: <reason>" means the system tried and cannot read that file: never guess/)
+    expect(p).toMatch(/ask the customer to describe it, or to send it again as a PDF or a clear image/)
+    expect(p).toMatch(new RegExp(`if it is essential to continue, reply with exactly ${HANDOFF_SENTINEL.replace(/[[\]]/g, '\\$&')}`))
+  })
+
+  it('⚠️ a "not read yet" NÃO pede reenvio (ainda vai ser lida) e a figurinha não se pergunta', () => {
+    const p = montarPedidoDoAgente({ instrucoes: '', regras: [], agora: AGORA })
+    expect(p).toMatch(/"— not read yet" means the file is still being read: you have not seen it, so never guess what it shows, and do not ask the customer to send it again/)
+    expect(p).toMatch(/if you need it to answer, say you are still reviewing the files/)
+    expect(p).toMatch(/\[sticker\] is a WhatsApp sticker, a decorative picture with nothing to read: never ask about it/)
+    // A instrução de reenvio vale SÓ para a recusa: não sobrou a regra antiga,
+    // que a aplicava a toda mídia sem "(content: …)".
+    expect(p).not.toMatch(/has no \(content: …\)/)
+  })
+
   it('"responda e passe" (27/09): o [[TRANSFERIR]] SEMPRE no texto-base, ao lado do [[HANDOFF]] — sem nenhuma ferramenta', () => {
     const p = montarPedidoDoAgente({ instrucoes: '', regras: [], agora: AGORA })
     expect(p).toMatch(/tell the customer that the team will continue/)

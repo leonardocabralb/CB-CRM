@@ -373,3 +373,26 @@ describe('o worker lê `ia_agente_id`, e `houveHumanoNaJanela` não o usa (D11)'
     expect(trecho).not.toContain('bot')
   })
 })
+
+describe('o Radar só usa `transcricao*` de ÁUDIO (27/09/2026)', () => {
+  // Desde a leitura de imagem e PDF para o agente de IA (`ler-midia.ts`), as
+  // colunas `transcricao*` guardam também o texto LIDO de uma foto ou de um
+  // PDF. Sem o filtro, o Radar o poria no transcrito com o PREFIXO_AUDIO — a
+  // foto de um documento viraria "o cliente disse" na análise.
+  const fonte = fs
+    .readFileSync(path.join(__dirname, 'worker.ts'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '')
+
+  it('o mapa das transcrições só recebe mensagem de áudio', () => {
+    const escritas = fonte.match(/transcricoes\.set\(m\.id, m\.transcricao\)/g) ?? []
+    expect(escritas).toHaveLength(1)
+    expect(fonte).toMatch(/if \(m\.transcricao && m\.content_type === 'audio'\) transcricoes\.set\(m\.id, m\.transcricao\)/)
+  })
+
+  it('o que o Radar transcreve sozinho continua sendo só áudio', () => {
+    const inicio = fonte.indexOf('const audiosPendentes')
+    const trecho = fonte.slice(inicio, fonte.indexOf(')', fonte.indexOf('transcricao_status === null', inicio)))
+    expect(trecho).toContain("m.content_type === 'audio'")
+  })
+})

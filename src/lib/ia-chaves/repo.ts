@@ -32,21 +32,32 @@ export function ehProvedor(valor: unknown): valor is AiProvider {
  *
  * Erro de LEITURA lança: "não consegui ler" não é "não há chave" (o Radar
  * gravaria `sem_ia` sobre uma conta configurada).
+ *
+ * `soDaBase` (só OpenAI): a chave nasceu SÓ da base de conhecimento (a marca
+ * da 1047 — o MESMO texto cifrado nas duas colunas, ver `lerEstado`). Ela
+ * pode ser restrita aos embeddings: quem escolhe provedor por conta própria
+ * (a leitura de mídia e a transcrição, `src/lib/transcricao/`) a pula.
  */
 export async function lerChave(
   accountId: string,
   provedor: AiProvider,
-): Promise<{ chave: string | null; ilegivel: boolean }> {
+): Promise<{ chave: string | null; ilegivel: boolean; soDaBase?: boolean }> {
   const { data, error } = await supabaseAdmin()
     .from('cb_ia_chaves')
-    .select('api_key')
+    .select('api_key, embeddings_api_key')
     .eq('account_id', accountId)
     .eq('provedor', provedor)
     .maybeSingle()
   if (error) throw new Error(`[ia-chaves] leitura falhou: ${error.message}`)
   if (!data?.api_key) return { chave: null, ilegivel: false }
+  // Só compara os TEXTOS CIFRADOS (a marca de origem); nada a mais é decifrado.
+  const soDaBase =
+    provedor === 'openai' &&
+    typeof data.embeddings_api_key === 'string' &&
+    data.embeddings_api_key !== '' &&
+    data.api_key === data.embeddings_api_key
   try {
-    return { chave: decrypt(data.api_key as string), ilegivel: false }
+    return { chave: decrypt(data.api_key as string), ilegivel: false, soDaBase }
   } catch {
     console.error(
       `[ia-chaves] a chave ${provedor} da conta ${accountId} não decifra — confira a ENCRYPTION_KEY; cadastre a chave de novo em Integrações.`,
