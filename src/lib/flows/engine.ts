@@ -573,11 +573,17 @@ async function executeHandoff(
   // AINDA é membro da conta do robô — ver `atribuir-no-handoff.ts`. Não sendo
   // (ou a leitura falhando), a conversa fica pendente SEM responsável e o
   // evento diz por quê.
+  //
+  // ⚠️ "Sem responsável" ESCREVE o nulo, nunca "não mexe" (Codex, PR #319): a
+  // tela promete "fica pendente, sem responsável, na fila de quem está sem
+  // dono" com "Ninguém", e "o robô deixa a conversa sem responsável" quando o
+  // escolhido saiu. Omitir a coluna manteria o dono ANTERIOR — inclusive um
+  // login que já saiu da conta.
   const escolhido = membroEscolhidoNoHandoff(cfg);
   const atribuicao = escolhido
     ? await atribuicaoDoHandoff(db, run.account_id, escolhido)
     : null;
-  if (atribuicao?.userId) convUpdate.assigned_agent_id = atribuicao.userId;
+  convUpdate.assigned_agent_id = atribuicao?.userId ?? null;
   if (run.conversation_id) {
     await db
       .from("conversations")

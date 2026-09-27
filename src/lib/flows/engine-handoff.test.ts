@@ -143,7 +143,8 @@ describe("nó handoff — Atribuir a", () => {
     expect(atribuicao).not.toHaveBeenCalled();
     expect(conversas).toHaveLength(1);
     expect(conversas[0]).toMatchObject({ status: "pending" });
-    expect(conversas[0]).not.toHaveProperty("assigned_agent_id");
+    // "Sem responsável" ESCREVE o nulo: o dono anterior sai (Codex, #319).
+    expect(conversas[0]).toHaveProperty("assigned_agent_id", null);
     const ev = eventos.find((e) => e.tipo === "handoff");
     expect(ev?.payload).toEqual({ note: "qualificado", assigned_to: null });
     expect(fimDoRun.at(-1)).toMatchObject({ status: "handed_off" });
@@ -165,7 +166,8 @@ describe("nó handoff — Atribuir a", () => {
     await responder();
 
     expect(conversas[0]).toMatchObject({ status: "pending" });
-    expect(conversas[0]).not.toHaveProperty("assigned_agent_id");
+    // "Sem responsável" ESCREVE o nulo: o dono anterior sai (Codex, #319).
+    expect(conversas[0]).toHaveProperty("assigned_agent_id", null);
     expect(eventos.find((e) => e.tipo === "handoff")?.payload).toMatchObject({
       assigned_to: null,
       assign_requested: MEMBRO,
@@ -179,7 +181,8 @@ describe("nó handoff — Atribuir a", () => {
     atribuicao.mockResolvedValue({ userId: null, motivo: "leitura_falhou" });
     await responder();
 
-    expect(conversas[0]).not.toHaveProperty("assigned_agent_id");
+    // "Sem responsável" ESCREVE o nulo: o dono anterior sai (Codex, #319).
+    expect(conversas[0]).toHaveProperty("assigned_agent_id", null);
     expect(eventos.find((e) => e.tipo === "handoff")?.payload).toMatchObject({
       assign_skipped: "leitura_falhou",
     });

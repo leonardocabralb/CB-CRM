@@ -186,6 +186,9 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
   falhando), a conversa fica pendente SEM responsável e o evento diz por quê.
   A ativação recusa (`referencias-do-robo.ts`); a lista da tela é recortada
   pela conta DO ROBÔ (`membros-do-robo.ts`). "Ninguém" é o padrão.
+  ⚠️ "Sem responsável" ESCREVE `assigned_agent_id = NULL` (com "Ninguém", com
+  quem saiu e com leitura que falha): omitir a coluna manteria o dono ANTERIOR,
+  e a tela promete a fila de quem está sem dono (Codex, PR #319).
 - ⚠️ **Nó NOVO no robô exige MIGRATION**: `flow_nodes.node_type` tem CHECK
   com a lista fechada (0016), e o `PUT /api/flows/[id]` apaga TODOS os nós
   antes de inserir, sem transação — um tipo recusado pelo CHECK deixa o robô
