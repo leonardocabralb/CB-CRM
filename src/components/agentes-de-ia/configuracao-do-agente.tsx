@@ -2,7 +2,8 @@
 
 // ============================================================
 // Configuração de um agente de IA (F1b, 5.9): nome, descrição, instruções,
-// REGRAS (D23, uma por linha), provedor e modelo (D1), conexões, as ETAPAS
+// REGRAS (D23, uma por linha) — com as REGRAS DO SISTEMA, só para ler, acima
+// das instruções (27/09/2026, `regras-do-sistema.tsx`) —, provedor e modelo (D1), conexões, as ETAPAS
 // do funil em que atua (D24, `onde-atua.tsx`), horário, teto, transferência
 // e para quem pode passar (D25: o card vai para a etapa do escolhido).
 //
@@ -41,6 +42,7 @@ import {
 import { textoDoCodigo } from './textos';
 import { alteracoesDoRascunho, lerTeto } from './rascunho';
 import { OndeAtua } from './onde-atua';
+import { RegrasDoSistema } from './regras-do-sistema';
 
 const DIAS = [1, 2, 3, 4, 5, 6, 0] as const;
 
@@ -216,6 +218,9 @@ export function ConfiguracaoDoAgente({
             onChange={(e) => setDescricao(e.target.value)}
           />
         </div>
+        {/* As regras do sistema (27/09/2026): só leitura, e vêm ANTES das
+            instruções no pedido — a ordem da tela é a do pedido. */}
+        <RegrasDoSistema />
         <div className="space-y-1.5">
           <Label htmlFor="ag-instr">{t('campo.instrucoes')}</Label>
           <p className="text-xs text-muted-foreground">{t('campo.instrucoesDica')}</p>

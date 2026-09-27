@@ -20,7 +20,10 @@ import type { TipoDeAcao } from './agente'
  * estava marcada SEM o marcador (`reuniaoPrometida`) — ela é retida (nada
  * foi marcado) e a conversa vai para gente. `agente_passou` (27/09/2026): o
  * agente respondeu e pediu `[[TRANSFERIR]]` — a resposta SAIU e a conversa
- * foi para a equipe, como as instruções dele mandam.
+ * foi para a equipe, como as instruções dele mandam. `pedido_vazado`
+ * (27/09/2026): a resposta reproduzia o pedido interno — o canário das regras
+ * do sistema, um trecho do texto-base ou o nome de um marcador
+ * (`vazouOPedido`) — e é RETIDA, como a do link inventado.
  */
 export const MOTIVOS_DE_TRANSFERENCIA = [
   'sentinela',
@@ -31,6 +34,7 @@ export const MOTIVOS_DE_TRANSFERENCIA = [
   'reuniao_nao_marcada',
   'reuniao_prometida',
   'agente_passou',
+  'pedido_vazado',
 ] as const
 export type MotivoDeTransferencia = (typeof MOTIVOS_DE_TRANSFERENCIA)[number]
 

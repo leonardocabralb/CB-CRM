@@ -67,6 +67,14 @@ describe('textos da transferência do agente', () => {
     expect(texto).not.toMatch(/\{agente\}|IaAgentes/)
   })
 
+  it('o pedido vazado (regras do sistema, 27/09) é um motivo de transferência', async () => {
+    expect(MOTIVOS_DE_TRANSFERENCIA).toContain('pedido_vazado')
+    const { autor, texto } = await textosDaTransferencia('Triagem', 'pedido_vazado')
+    expect(autor).toContain('Triagem')
+    expect(texto).toContain('Triagem')
+    expect(texto).not.toMatch(/\{agente\}|IaAgentes/)
+  })
+
   it('a anotação de cada ação (F4) diz o agente, o alvo e o valor', async () => {
     const mover = await textosDaAcao('Triagem', 'mover_etapa', 'Bancário · Proposta')
     expect(mover.autor).toContain('Triagem')
