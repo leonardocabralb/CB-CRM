@@ -17,7 +17,9 @@ describe('montarPedidoDoAgente', () => {
     expect(i).toBeGreaterThan(-1)
     expect(r).toBeGreaterThan(i)
     expect(p).toContain('2. Não fale de valores.')
-    expect(p).not.toContain('3.')
+    // A régua é a seção das regras DO AGENTE: as regras do sistema, acima,
+    // têm a numeração delas.
+    expect(p.slice(p.indexOf('Rules you must always follow'))).not.toContain('3.')
   })
 
   it('sem regras não há bloco de regras', () => {

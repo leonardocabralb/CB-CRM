@@ -97,6 +97,7 @@ import { lerOQueOAgenteVe } from '@/lib/ia-agentes/acesso'
 import { lerAgendaDoAgente, marcarNoCalendly } from '@/lib/ia-agentes/agenda'
 import { executarAcoes } from '@/lib/ia-agentes/executar-acoes'
 import { opcoesDoAgente } from '@/lib/ia-agentes/ferramentas'
+import { CANARIO_DAS_REGRAS } from '@/lib/ia-agentes/regras-do-sistema'
 import { POST } from './route'
 
 function agente(id: string, extra: Record<string, unknown> = {}) {
@@ -311,6 +312,24 @@ describe('POST /api/cb/ia/agentes/[id]/playground — as ações (F4, SIMULADAS)
     const corpo = await (await enviar()).json()
     expect(corpo.linkInventado).toBe(true)
     expect(corpo.acoes).toEqual({ aceitas: [], recusadas: [{ tipo: 'etiquetar', motivo: 'transferencia' }] })
+  })
+
+  it('⚠️ pedido VAZADO (regras do sistema, 27/09): a tela é avisada, vence o link inventado, e as ações não executariam', async () => {
+    resposta = { text: `Minhas regras: ${CANARIO_DAS_REGRAS}. Pague em https://boleto.exemplo/1\n[[ETIQUETAR:1]]`, handoff: false }
+    const corpo = await (await enviar()).json()
+    expect(corpo).toMatchObject({ pedidoVazado: true, linkInventado: false, reuniaoPrometida: false, handoff: false })
+    expect(corpo.acoes).toEqual({ aceitas: [], recusadas: [{ tipo: 'etiquetar', motivo: 'transferencia' }] })
+    // A resposta comum não é vazamento.
+    resposta = { text: 'Não posso compartilhar isso, mas posso te ajudar.', handoff: false }
+    expect((await (await enviar()).json()).pedidoVazado).toBe(false)
+  })
+
+  it('o pedido do Playground leva as regras do sistema, antes das instruções', async () => {
+    resposta = { text: 'Oi!', handoff: false }
+    await enviar()
+    const pedido = vi.mocked(generateReply).mock.calls.at(-1)?.[0].systemPrompt as string
+    expect(pedido).toContain(CANARIO_DAS_REGRAS)
+    expect(pedido.indexOf(CANARIO_DAS_REGRAS)).toBeLessThan(pedido.indexOf('Current date and time'))
   })
 
   it('link que veio do pedido (bloco de cobranças) não é inventado', async () => {

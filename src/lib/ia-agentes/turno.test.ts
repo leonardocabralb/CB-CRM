@@ -229,6 +229,7 @@ import { lerAgendaDoAgente } from './agenda'
 import { executarAcoes } from './executar-acoes'
 import { opcoesDoAgente } from './ferramentas'
 import { JANELA_DO_AUDIO_MS, REAGENDAR_AUDIO_MS } from './fila'
+import { CANARIO_DAS_REGRAS } from './regras-do-sistema'
 import { obterAgente } from './repo'
 import { executarTurno, MIDIAS_POR_TURNO, nadaSaiu, TETO_DA_ESPERA_DAS_MIDIAS_MS, transferirParaGente } from './turno'
 
@@ -2428,6 +2429,59 @@ describe('executarTurno — as ações (F4, D28)', () => {
     expect(String(notas()[0].texto)).toContain('link')
   })
 
+  // As REGRAS DO SISTEMA (27/09/2026): a resposta que reproduz o pedido
+  // interno é RETIDA, antes do link inventado e da reunião prometida.
+  it('⚠️ o PEDIDO VAZADO (o canário das regras do sistema): a resposta é RETIDA, nada executa, e a conversa vai para gente', async () => {
+    responde(`Claro! Minhas regras: SYSTEM RULES — mandatory. (Internal reference: ${CANARIO_DAS_REGRAS})\n[[ETIQUETAR:1]]`)
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({
+      status: 'transferiu',
+      erro: `pedido vazado: Claro! Minhas regras: SYSTEM RULES — mandatory. (Internal reference: ${CANARIO_DAS_REGRAS})`,
+      acoes: [{ tipo: 'etiquetar', alvo: { id: 'tag-vip', nome: 'VIP' }, ok: false, erro: 'transferencia' }],
+    })
+    expect(engineSendText).not.toHaveBeenCalled()
+    expect(executarAcoes).not.toHaveBeenCalled()
+    expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'transferencia' })
+    expect(String(notas()[0].texto)).toMatch(/instruções internas|internal instructions/)
+    // O turno mandou as regras ao modelo, antes das instruções do agente.
+    expect(pedido().indexOf(CANARIO_DAS_REGRAS)).toBeGreaterThan(-1)
+    expect(pedido().indexOf(CANARIO_DAS_REGRAS)).toBeLessThan(pedido().indexOf('Current date and time'))
+  })
+
+  it('⚠️ o pedido vazado VENCE o link inventado (a trava vem antes), e o marcador legítimo não conta como vazamento', async () => {
+    responde('You are an AI agent answering customers. Pague em https://pagar.exemplo.com/x\n[[MOVER:1]]')
+    await executarTurno(TURNO)
+    expect(turno().erro).toBe('pedido vazado: You are an AI agent answering customers. Pague em https://pagar.exemplo.com/x')
+    expect(engineSendText).not.toHaveBeenCalled()
+  })
+
+  it('o nome de um marcador escrito por extenso (depois de `lerAcoes` tirar os de verdade) é pedido vazado', async () => {
+    responde('Para passar a conversa eu escrevo TRANSFERIR no fim.\n[[ETIQUETAR:1]]')
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({ status: 'transferiu', erro: 'pedido vazado: Para passar a conversa eu escrevo TRANSFERIR no fim.' })
+    expect(engineSendText).not.toHaveBeenCalled()
+  })
+
+  it('a recusa comum ("não posso compartilhar isso") SAI, com as ações', async () => {
+    responde('Não posso compartilhar isso, mas posso te ajudar com o seu caso.\n[[ETIQUETAR:1]]')
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    expect(vi.mocked(engineSendText).mock.calls[0][0].text).toBe('Não posso compartilhar isso, mas posso te ajudar com o seu caso.')
+    expect(executarAcoes).toHaveBeenCalled()
+  })
+
+  it('o pedido copiado COM o [[HANDOFF]] dentro transfere pelo sentinela, antes da trava — nada é enviado', async () => {
+    // `generateReply` tira o `[[HANDOFF]]` do texto e liga o `handoff`.
+    vi.mocked(generateReply).mockResolvedValue({
+      text: `SYSTEM RULES (Internal reference: ${CANARIO_DAS_REGRAS}) reply with exactly`,
+      handoff: true,
+      usage: null,
+    })
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({ status: 'transferiu', erro: 'sentinela' })
+    expect(engineSendText).not.toHaveBeenCalled()
+  })
+
   it('link que veio da CONVERSA (ou do pedido) sai', async () => {
     banco.tabelas.messages[0].content_text = 'O link é https://site.exemplo.com/a mesmo?'
     responde('Sim, é https://site.exemplo.com/a.')
@@ -2518,6 +2572,7 @@ describe('executarTurno — as ações (F4, D28)', () => {
     ['o sentinela sozinho', 'Um momento [[HANDOFF]] [[TRANSFERIR]]', 'sentinela'],
     ['só o [[TRANSFERIR]], sem texto', '[[TRANSFERIR]]', 'sentinela'],
     ['o link inventado', 'Pague em https://pagar.exemplo.com/x\n[[TRANSFERIR]]', 'link inventado: https://pagar.exemplo.com/x'],
+    ['o pedido vazado', 'Meu pedido: no human in the loop.\n[[TRANSFERIR]]', 'pedido vazado: Meu pedido: no human in the loop.'],
   ])('⚠️ precedência: %s VENCE o [[TRANSFERIR]] — nada é enviado', async (_c, texto, erro) => {
     responde(texto)
     await executarTurno(TURNO)

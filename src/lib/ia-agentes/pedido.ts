@@ -3,7 +3,10 @@
 // PURO, testado. UMA montagem para o Playground (F1b), o turno (F2) e o
 // rascunho: o Playground tem de testar exatamente o que a produção manda.
 //
-// Ordem: o texto-base (fixo, para o MODELO — por isso em inglês, como o de
+// Ordem: a frase do PAPEL, as REGRAS DO SISTEMA (27/09/2026,
+// `regras-do-sistema.ts`: valem para todo agente, antes de tudo o que o
+// administrador escreve, e nada na configuração as desliga), o texto-base
+// (fixo, para o MODELO — por isso em inglês, como o de
 // `buildSystemPrompt`; a regra "responda no idioma do cliente" cuida do
 // português; com o `[[HANDOFF]]` e o `[[TRANSFERIR]]`, "responda e passe"),
 // a data e a hora no fuso do escritório, as INSTRUÇÕES do agente,
@@ -28,14 +31,17 @@ import {
   type OpcoesDeAcao,
 } from './acoes'
 import { TIPOS_DE_ACAO, type TipoDeAcao } from './agente'
+import { blocoDasRegrasDoSistema } from './regras-do-sistema'
 import { HORARIOS_POR_DIA, type AgendaNoPedido } from './reuniao'
 
 export const FUSO_DO_ESCRITORIO = 'America/Sao_Paulo'
 
-const TEXTO_BASE = [
+const PAPEL =
   'You are an AI agent answering a business\'s customers on WhatsApp. ' +
-    'You are shown the recent conversation between the business (assistant) and a customer (user). ' +
-    'Write the next reply the business should send.',
+  'You are shown the recent conversation between the business (assistant) and a customer (user). ' +
+  'Write the next reply the business should send.'
+
+const TEXTO_BASE = [
   'Guidelines: reply in the same language the customer is writing in; keep it short and friendly, suitable for WhatsApp; ' +
     'never invent facts, prices, amounts, due dates, links, case numbers or promises that are not in your instructions, your rules, ' +
     'the reference material below or the conversation; output only the message text — no quotes, no labels, no preamble.',
@@ -271,7 +277,9 @@ export function montarPedidoDoAgente(args: {
    */
   agenda?: AgendaNoPedido | null
 }): string {
-  const partes = [...TEXTO_BASE]
+  // As regras do sistema vêm logo depois do papel, antes de tudo: nenhum
+  // argumento desta função as tira do pedido.
+  const partes = [PAPEL, blocoDasRegrasDoSistema(), ...TEXTO_BASE]
   partes.push(`Current date and time (the business's timezone): ${dataEHora(args.agora, args.fuso)}.`)
 
   const instrucoes = args.instrucoes.trim()

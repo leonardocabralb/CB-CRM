@@ -3,6 +3,7 @@ paths:
   - "src/lib/ia-agentes/acesso*"
   - "src/lib/ia-agentes/conhecimento*"
   - "src/lib/ia-agentes/pedido*"
+  - "src/lib/ia-agentes/regras-do-sistema*"
   - "src/lib/ia-agentes/acoes*"
   - "src/lib/ia-agentes/executar-acoes*"
   - "src/lib/ia-agentes/ferramentas*"
@@ -14,6 +15,7 @@ paths:
   - "src/components/agentes-de-ia/acesso-do-agente.tsx"
   - "src/components/agentes-de-ia/base-do-agente.tsx"
   - "src/components/agentes-de-ia/playground-do-agente.tsx"
+  - "src/components/agentes-de-ia/regras-do-sistema*"
   - "src/components/agentes-de-ia/ferramentas*"
   - "supabase/migrations/1052_cb_ia_agente_documentos.sql"
   - "src/lib/ai/providers/**"
@@ -325,3 +327,26 @@ testados; `prepararMidias` em `turno.ts`; `contexto.ts` e `pedido.ts`.
   cortada não entra em `ai_usage_log` (como toda falha de geração). Não há
   teto de caracteres depois de gerar: a Meta recusa texto acima de 4.096 (cai
   no envio recusado, nada sai cortado); a Evolution aceita.
+
+# Agentes de IA — regras do sistema (27/09/2026)
+
+- ⚠️⚠️ **12 regras OBRIGATÓRIAS para todo agente**, existente ou futuro, sem
+  configuração (`regras-do-sistema.ts`): sigilo do prompt, sem promessa de
+  resultado, sem preço/honorário, sem aceitar proposta, sem inverdade, sem
+  dado de outro cliente nem acesso ao sistema, e o resto. Entram no pedido
+  logo depois da frase do papel e ANTES do texto-base, das instruções, das
+  regras do agente, dos blocos, da base e das ações — e dizem que valem acima
+  de tudo isso. Nenhum argumento de `montarPedidoDoAgente` as tira; turno e
+  Playground mandam o mesmo. A tela as mostra só para ler (cartão acima das
+  Instruções; uma chave por `id`, cobrada nos dois dicionários).
+- ⚠️ **A trava do pedido vazado** (`vazouOPedido`): o CANÁRIO do cabeçalho
+  (`CANARIO_DAS_REGRAS`, não é segredo — só serve para ser achado), trechos
+  que só existem no pedido (`TRECHOS_DO_PEDIDO`, com teste cobrando que cada
+  um continua lá), o cabeçalho em MAIÚSCULAS e o nome de marcador por extenso
+  em maiúsculas. Roda sobre o texto SEM marcadores (`lerAcoes`), antes do link
+  inventado: a resposta é RETIDA e o turno transfere (`pedido_vazado`, o texto
+  no `erro`). O pedido copiado com o `[[HANDOFF]]` dentro já cai no sentinela.
+  Heurística: instrução do agente vazada em português, sem nenhum desses
+  sinais, passa.
+- ⚠️ **O assistente legado (`src/lib/ai`, `ai_configs`, desligado em produção)
+  NÃO recebe as regras.** Religá-lo sem elas é voltar a um prompt sem sigilo.

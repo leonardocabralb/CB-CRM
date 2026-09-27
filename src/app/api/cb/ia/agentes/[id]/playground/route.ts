@@ -22,6 +22,7 @@ import { consultaDaUltimaMensagem } from '@/lib/ia-agentes/conhecimento'
 import { opcoesDoAgente } from '@/lib/ia-agentes/ferramentas'
 import { obterAgente } from '@/lib/ia-agentes/repo'
 import { lerPassagem, montarPedidoDoAgente } from '@/lib/ia-agentes/pedido'
+import { vazouOPedido } from '@/lib/ia-agentes/regras-do-sistema'
 import { respostaDoErro } from '@/lib/ia-agentes/resposta'
 
 // O transcrito testado fica limitado, como a janela real do contexto.
@@ -68,7 +69,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
  * ("responda e passe", 27/09/2026) vem como ação simulada `{ tipo:
  * 'transferir', nome: '' }` — no turno a conversa iria para a equipe DEPOIS
  * de a resposta sair. A resposta que promete a equipe SEM o marcador
- * (`equipePrometida`) também, com `transferenciaInferida: true`.
+ * (`equipePrometida`) também, com `transferenciaInferida: true`. E
+ * `pedidoVazado` (as regras do sistema, 27/09/2026): a resposta reproduzia o
+ * pedido interno (`vazouOPedido`) — no turno ela seria retida ANTES das
+ * outras travas e a conversa iria para gente (`pedido_vazado`).
  */
 export async function POST(request: Request, { params }: Contexto) {
   try {
@@ -224,7 +228,11 @@ export async function POST(request: Request, { params }: Contexto) {
     const n = sentinela ? null : lerPassagem(resultado.text)
     const destino = n === null ? null : (opcoes[n - 1] ?? null)
     const transfere = sentinela || (n !== null && !destino) || (n === null && !lidas.texto)
-    const inventou = !transfere && n === null && linkInventado(lidas.texto, [pedido, ...mensagens.map((m) => m.content)])
+    // As travas que RETÊM a resposta, na ordem do turno: o pedido vazado
+    // primeiro, depois o link inventado e a reunião prometida.
+    const vazou = !transfere && n === null && vazouOPedido(lidas.texto)
+    const inventou =
+      !transfere && n === null && !vazou && linkInventado(lidas.texto, [pedido, ...mensagens.map((m) => m.content)])
     // O nome da reunião só passa com ORIGEM (a MESMA régua do turno): o que o
     // cliente escreveu no teste, ou o nome atual da ficha do contato escolhido.
     let nomeDaFicha: string | null = null
@@ -246,15 +254,16 @@ export async function POST(request: Request, { params }: Contexto) {
     const prometeu =
       !transfere &&
       n === null &&
+      !vazou &&
       !inventou &&
       reuniaoPrometida({
         texto: lidas.texto,
         horariosOferecidos: opcoesDeAcao.marcar_reuniao?.length ?? 0,
         aceitas: resolvidas.aceitas,
       })
-    // Com passagem, transferência, link inventado ou reunião prometida, no turno nada executa.
+    // Com passagem, transferência, pedido vazado, link inventado ou reunião prometida, no turno nada executa.
     const naoExecutaria: MotivoDaRecusa | null =
-      transfere || inventou || prometeu ? 'transferencia' : n !== null ? 'passagem' : null
+      transfere || vazou || inventou || prometeu ? 'transferencia' : n !== null ? 'passagem' : null
     // "Responda e passe" (`[[TRANSFERIR]]`, 27/09): no turno, a conversa iria
     // para a equipe DEPOIS de a resposta sair — aqui, uma ação simulada a mais
     // (`tipo: 'transferir'`, sem nome); quando nada sairia, recusada como as outras.
@@ -280,6 +289,7 @@ export async function POST(request: Request, { params }: Contexto) {
       handoff: transfere,
       passaPara: destino?.nome ?? null,
       acoes,
+      pedidoVazado: vazou,
       linkInventado: inventou,
       reuniaoPrometida: prometeu,
       transferenciaInferida,
