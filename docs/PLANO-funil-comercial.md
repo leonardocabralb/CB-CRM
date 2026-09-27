@@ -190,10 +190,12 @@ a correspondência das etapas ANTES de qualquer gráfico.
   Ou seja: **um integrador já conseguiria espelhar o funil externo no CRM
   hoje**, sem código novo — caminho DESCARTADO pelo operador em 03/09: os
   dados do funil vêm do CRM.
-- **Anúncio de origem** — **nada é lido**: o webhook da Meta não declara
-  `referral`, e `evolution-inbound.ts` não olha `contextInfo.externalAdReply`
-  / `ctwaClid` / `sourceUrl`. Os campos `ctwa_clid`/`fbclid`/`nome_da_campanha`
-  só se preenchem por gente ou por API (Fase 5a).
+- **Anúncio de origem** — desde 26/09/2026 o webhook da **Meta** lê o
+  `referral` (Fase 5a, parte Meta): `ctwa_clid`, `id_do_anuncio`,
+  `utm_source` e `utm_medium`. A **Evolution** continua sem ler
+  (`evolution-inbound.ts` não olha `contextInfo.externalAdReply` /
+  `ctwaClid` / `sourceUrl`). Os nomes (`nome_da_campanha`…) e o `fbclid`
+  só se preenchem por gente ou por API.
 
 ---
 
@@ -990,7 +992,39 @@ e #122 e só foram corrigidos aqui):
 
 ### Fase 5 — Depois (cada item é uma decisão à parte)
 
-- **5a — Captura automática do anúncio de origem.** Hoje nada é lido (2.2).
+- **5a — Captura automática do anúncio de origem.** ✅ **Meta feita em
+  26/09/2026** (`src/lib/contacts/anuncio-de-origem.ts` e
+  `gravar-anuncio-de-origem.ts`, chamados pelo webhook da Meta): `ctwa_clid`
+  (último clique, sempre sobrescrito), e `utm_source`/`utm_medium`/
+  `id_do_anuncio` (primeira origem, em bloco, só na ficha sem traqueamento).
+  ⚠️⚠️ **Premissa para o evento de conversão:** o `ctwa_clid` é da FICHA,
+  não do card — é o último clique em QUALQUER anúncio da conta. Um cliente
+  do Bancário que clica num anúncio do Previdenciário troca o da ficha, e o
+  card do Bancário passa a levar o clique do outro funil. Quem enviar
+  conversão à Meta a partir deste campo confere o FUNIL do card contra o do
+  anúncio, ou espera a tabela de cliques que liga o clique à conversa. (E o
+  par da ficha é incoerente de propósito: `id_do_anuncio` do primeiro
+  clique, `ctwa_clid` do último.)
+  ⚠️ **Pendências:** (1) título, texto e link do anúncio não têm campo na
+  conta e ficam de fora; (2) o id do anúncio do ÚLTIMO clique também não
+  tem campo (o `id_do_anuncio` guarda o primeiro); (3) a Evolution — o
+  texto abaixo descreve o `externalAdReply` pelo proto da Baileys, mas
+  nenhum payload real de anúncio foi medido, e a 2.4 monta `externalAdReply`
+  também em prévia de link (não só em anúncio): medir no banco da Evolution
+  antes de ler, trazendo `"contextInfo"->'externalAdReply'`,
+  `"contextInfo"->>'conversionSource'`,
+  `"contextInfo"->>'entryPointConversionSource'` e
+  `"contextInfo"->'externalAdReply'->>'ctwaClid'` de mensagens recebidas —
+  o critério de "é anúncio" será "tem `ctwaClid`" OU "a origem da conversão
+  é de anúncio" (esperado `ctwa_ad`/`FB_Ads`), nunca a simples presença de
+  `externalAdReply`; (4) o formato do `referral` saiu da documentação da
+  Meta — conferir com um clique real num anúncio de teste (e num número em
+  coexistência) que o `ctwa_clid` chega à ficha (o log
+  `[anuncio-de-origem]` diz o tipo e se vieram id e clique, e um `referral`
+  ilegível sai como aviso com a forma dele); (5) o **Instagram Direct** —
+  `src/lib/instagram/webhook.ts` já interpreta o `referral` do clique-para-
+  Direct (`ref`, `source`, `type`), e `persistir.ts` o descarta (D5): o
+  mesmo buraco da Evolution. O texto original deste item segue:
   No Evolution/Baileys a primeira mensagem de um clique em anúncio traz
   `contextInfo.externalAdReply` (título, `sourceUrl`, `sourceId`) e
   `ctwaClid`; na Cloud API, `referral` (`source_id`, `source_url`, `ctwa_clid`,
