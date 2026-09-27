@@ -72,6 +72,17 @@ import {
   blankListPayload,
 } from "@/components/interactive/interactive-builder"
 import { interactivePayloadPreviewText } from "@/lib/whatsapp/interactive"
+import { extractVariableIndices } from "@/lib/whatsapp/template-validators"
+import { linhaDoModeloNaTela } from "@/lib/automations/parametros-do-modelo"
+import {
+  camposDaJanela,
+  ehODiaInteiro,
+  lerJanela,
+  OPERANDO_DO_DIA_INTEIRO,
+  operandoDaJanela,
+  rotuloDaJanela,
+} from "@/lib/automations/hora-do-dia"
+import { ehMeta } from "@/lib/cb-channels/transporte"
 import { createClient } from "@/lib/supabase/client"
 import { AsaasTriggerConfig } from "@/components/automations/asaas-trigger-config"
 import { CalendlyTriggerConfig } from "@/components/automations/calendly-trigger-config"
@@ -822,7 +833,7 @@ function SendTemplateFields({
 }: {
   templateName: string
   language: string
-  onChange: (patch: { template_name: string; language: string }) => void
+  onChange: (patch: Record<string, unknown>) => void
   t: ReturnType<typeof useTranslations>
 }) {
   const { templates } = useResources()
@@ -866,7 +877,10 @@ function SendTemplateFields({
         value={current}
         onChange={(e) => {
           const [name, lang] = e.target.value.split("::")
-          onChange({ template_name: name ?? "", language: lang ?? "" })
+          // ⚠️ Trocar de modelo LIMPA os valores: as posições do anterior não
+          // dizem nada sobre o novo, e um `{{3}}` vazio que sobrasse faria o
+          // envio falhar por uma variável que ninguém vê na tela.
+          onChange({ template_name: name ?? "", language: lang ?? "", ...VALORES_DO_MODELO_LIMPOS })
         }}
         className={SELECT_CLASS}
       >
@@ -885,6 +899,239 @@ function SendTemplateFields({
           </option>
         )}
       </select>
+    </FieldBlock>
+  )
+}
+
+/** O que `ValoresDoModelo` grava, zerado — a troca de modelo recomeça daqui. */
+const VALORES_DO_MODELO_LIMPOS = {
+  variables: {},
+  variaveis_reserva: {},
+  header_text: "",
+  header_text_reserva: "",
+  header_media_url: "",
+  button_params: {},
+}
+
+/**
+ * Os valores do modelo escolhido (Fase 2.3 do plano do previdenciário): um
+ * campo por `{{N}}` do corpo, com o texto de reserva ao lado; o `{{1}}` de um
+ * cabeçalho de texto; o arquivo de um cabeçalho de mídia; o final do endereço
+ * de um botão de URL com `{{1}}`. Só o que o modelo PEDE aparece — é a linha
+ * do modelo que diz quantas variáveis há.
+ *
+ * ⚠️ A RESERVA é o que impede o envio de falhar: a Meta recusa parâmetro
+ * vazio, e `{{contact.name}}` sai vazio para contato sem nome. O motor usa a
+ * reserva quando o valor sai vazio, e falha com o motivo quando os dois saem.
+ */
+function ValoresDoModelo({
+  modelo,
+  cfg,
+  set,
+  t,
+}: {
+  modelo: MessageTemplate
+  cfg: Record<string, unknown>
+  set: (patch: Record<string, unknown>) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const valores = (cfg.variables as Record<string, string> | undefined) ?? {}
+  const reservas = (cfg.variaveis_reserva as Record<string, string> | undefined) ?? {}
+  const botoes = (cfg.button_params as Record<string, string> | undefined) ?? {}
+  const doCorpo = extractVariableIndices(modelo.body_text ?? "")
+  const cabecalhoDeTexto =
+    modelo.header_type === "text" &&
+    extractVariableIndices(modelo.header_content ?? "").length > 0
+  const cabecalhoDeMidia =
+    modelo.header_type === "image" ||
+    modelo.header_type === "video" ||
+    modelo.header_type === "document"
+  const botoesComVariavel = (modelo.buttons ?? [])
+    .map((b, i) => ({ b, i }))
+    .filter(
+      (x): x is { b: Extract<typeof x.b, { type: "URL" }>; i: number } =>
+        x.b.type === "URL" && extractVariableIndices(x.b.url).length > 0,
+    )
+  const temVariavel = doCorpo.length > 0 || cabecalhoDeTexto || botoesComVariavel.length > 0
+
+  return (
+    <>
+      {cabecalhoDeMidia && (
+        <FieldBlock
+          label={
+            modelo.header_type === "image"
+              ? t("templates.arquivoImagemLabel")
+              : modelo.header_type === "video"
+                ? t("templates.arquivoVideoLabel")
+                : t("templates.arquivoDocumentoLabel")
+          }
+        >
+          <Input
+            value={(cfg.header_media_url as string) ?? ""}
+            onChange={(e) => set({ header_media_url: e.target.value })}
+            placeholder="https://…"
+            className="bg-muted text-foreground"
+          />
+          {/* Sem arquivo guardado no modelo e sem endereço aqui, o envio
+              falha — o aviso fica âmbar enquanto for o caso. */}
+          {modelo.header_media_url || (cfg.header_media_url as string)?.trim() ? (
+            <p className="mt-1 text-[11px] text-muted-foreground">{t("templates.arquivoDoModeloHint")}</p>
+          ) : (
+            <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">
+              {t("templates.semArquivoNoModelo")}
+            </p>
+          )}
+        </FieldBlock>
+      )}
+      {cabecalhoDeTexto && (
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <FieldBlock label={t("templates.cabecalhoLabel")}>
+              <Input
+                value={(cfg.header_text as string) ?? ""}
+                onChange={(e) => set({ header_text: e.target.value })}
+                className="bg-muted text-foreground"
+              />
+            </FieldBlock>
+            <FieldBlock label={t("templates.reservaLabel")}>
+              <Input
+                value={(cfg.header_text_reserva as string) ?? ""}
+                onChange={(e) => set({ header_text_reserva: e.target.value })}
+                placeholder={t("templates.reservaPlaceholder")}
+                className="bg-muted text-foreground"
+              />
+            </FieldBlock>
+          </div>
+          {vazio(cfg.header_text) && vazio(cfg.header_text_reserva) && (
+            <p className="-mt-1 mb-2 text-[11px] text-amber-700 dark:text-amber-300">
+              {t("templates.semValor")}
+            </p>
+          )}
+        </>
+      )}
+      <FieldBlock label={t("templates.corpoLabel")}>
+        <p className="whitespace-pre-wrap break-words rounded-md border border-border bg-muted/50 p-2 text-[11px] text-muted-foreground">
+          {modelo.body_text}
+        </p>
+      </FieldBlock>
+      {doCorpo.map((n) => (
+        <div key={n}>
+          <div className="grid grid-cols-2 gap-2">
+            <FieldBlock label={t("templates.variavelLabel", { marca: `{{${n}}}` })}>
+              <Input
+                value={valores[String(n)] ?? ""}
+                onChange={(e) => set({ variables: { ...valores, [String(n)]: e.target.value } })}
+                className="bg-muted text-foreground"
+              />
+            </FieldBlock>
+            <FieldBlock label={t("templates.reservaLabel")}>
+              <Input
+                value={reservas[String(n)] ?? ""}
+                onChange={(e) =>
+                  set({ variaveis_reserva: { ...reservas, [String(n)]: e.target.value } })
+                }
+                placeholder={t("templates.reservaPlaceholder")}
+                className="bg-muted text-foreground"
+              />
+            </FieldBlock>
+          </div>
+          {/* Os dois vazios = TODA execução falha ("a variável {{N}} ficou
+              vazia…"), e isso só apareceria no histórico. A tela sabe
+              quantas variáveis o modelo tem; o servidor, não. */}
+          {vazio(valores[String(n)]) && vazio(reservas[String(n)]) && (
+            <p className="-mt-1 mb-2 text-[11px] text-amber-700 dark:text-amber-300">
+              {t("templates.semValor")}
+            </p>
+          )}
+        </div>
+      ))}
+      {botoesComVariavel.map(({ b, i }) => (
+        <FieldBlock key={i} label={t("templates.botaoLabel", { texto: b.text })}>
+          <Input
+            value={botoes[String(i)] ?? ""}
+            onChange={(e) => set({ button_params: { ...botoes, [String(i)]: e.target.value } })}
+            className="bg-muted text-foreground"
+          />
+          <p className="mt-1 truncate text-[11px] text-muted-foreground" title={b.url}>
+            {b.url}
+          </p>
+          {vazio(botoes[String(i)]) ? (
+            <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">
+              {t("templates.botaoSemValor")}
+            </p>
+          ) : (
+            <p className="mt-1 text-[11px] text-muted-foreground">{t("templates.botaoHint")}</p>
+          )}
+        </FieldBlock>
+      ))}
+      {temVariavel && (
+        <>
+          <p className="mt-1 text-[11px] text-muted-foreground">{t("templates.reservaHelp")}</p>
+          <DicaDeVariaveis t={t} />
+        </>
+      )}
+    </>
+  )
+}
+
+/** Texto em branco (ou ausente) num campo do passo. */
+function vazio(v: unknown): boolean {
+  return typeof v !== "string" || !v.trim()
+}
+
+/**
+ * Os valores GRAVADOS de um passo cujo modelo não está na lista de aprovados
+ * (pausado, reprovado, apagado na Meta, ou a conta ainda não sincronizou). O
+ * envio continua usando esses valores — `resolveTemplateRow` não filtra por
+ * situação —, então escondê-los deixaria o operador sem ver o que vai sair
+ * nem por que falhou. Só leitura: para editar, escolhe-se o modelo de novo.
+ */
+function ValoresGravadosSemModelo({
+  cfg,
+  t,
+}: {
+  cfg: Record<string, unknown>
+  t: ReturnType<typeof useTranslations>
+}) {
+  const valores = (cfg.variables as Record<string, unknown> | undefined) ?? {}
+  const reservas = (cfg.variaveis_reserva as Record<string, unknown> | undefined) ?? {}
+  const botoes = (cfg.button_params as Record<string, unknown> | undefined) ?? {}
+  const posicoes = [...new Set([...Object.keys(valores), ...Object.keys(reservas)])].sort(
+    (a, b) => Number(a) - Number(b),
+  )
+  const linhas: { rotulo: string; valor: string }[] = []
+  const comReserva = (valor: unknown, reserva: unknown) =>
+    [String(valor ?? ""), vazio(reserva) ? "" : `(${t("templates.reservaLabel")}: ${String(reserva)})`]
+      .filter(Boolean)
+      .join(" ")
+  for (const n of posicoes) {
+    linhas.push({ rotulo: `{{${n}}}`, valor: comReserva(valores[n], reservas[n]) })
+  }
+  if (!vazio(cfg.header_text) || !vazio(cfg.header_text_reserva)) {
+    linhas.push({
+      rotulo: t("templates.cabecalhoLabel"),
+      valor: comReserva(cfg.header_text, cfg.header_text_reserva),
+    })
+  }
+  if (!vazio(cfg.header_media_url)) {
+    linhas.push({ rotulo: t("templates.arquivoLabel"), valor: String(cfg.header_media_url) })
+  }
+  for (const [i, v] of Object.entries(botoes)) {
+    linhas.push({ rotulo: t("templates.botaoNumero", { n: Number(i) + 1 }), valor: String(v ?? "") })
+  }
+  if (linhas.length === 0) return null
+  return (
+    <FieldBlock label={t("templates.valoresGravadosLabel")}>
+      <p className="mb-1 text-[11px] text-amber-700 dark:text-amber-300">
+        {t("templates.valoresSemModelo")}
+      </p>
+      <ul className="space-y-0.5 rounded-md border border-border bg-muted/50 p-2 text-[11px] text-muted-foreground">
+        {linhas.map((l, k) => (
+          <li key={k} className="break-words">
+            <span className="font-medium text-foreground">{l.rotulo}</span> {l.valor}
+          </li>
+        ))}
+      </ul>
     </FieldBlock>
   )
 }
@@ -1705,6 +1952,10 @@ function StepRenderer({
   const Icon = meta.icon
   const expanded = props.expandedId === step.cid
   const isCondition = step.step_type === "condition"
+  // A espera pelo horário mostra a JANELA no cartão fechado, não o
+  // `amount`/`unit` que ficou gravado e não vale nesse modo.
+  const esperaPorHorario = step.step_type === "wait" && step.step_config.modo === "horario"
+  const janelaDaEspera = esperaPorHorario ? rotuloDaJanela(step.step_config.janela) : null
   const nested = basePath.length > 0
   // Card widths on mobile fill the full canvas column (max-w-2xl px-4
   // still keeps them reasonable). On sm+ fixed widths come back so the
@@ -1748,7 +1999,13 @@ function StepRenderer({
               </div>
               <div className="truncate text-sm font-medium text-foreground">{t(`steps.${meta.label}`)}</div>
               <div className="truncate text-[11px] text-muted-foreground">
-                {previewFor(step)}
+                {esperaPorHorario
+                  ? t("config.esperaHorarioResumo", {
+                      inicio: janelaDaEspera?.inicio ?? "?",
+                      fim: janelaDaEspera?.fim ?? "?",
+                    }) +
+                    (step.step_config.somente_seg_a_sex === true ? ` · ${t("config.segASexResumo")}` : "")
+                  : previewFor(step)}
                 {/* Visível com o passo FECHADO: numa sequência de dez esperas,
                     é assim que se confere de relance quais param na resposta. */}
                 {step.step_type === "wait" && step.step_config.parar_se_responder === true
@@ -2423,6 +2680,176 @@ function TelefoneDoAviso({
   )
 }
 
+/**
+ * A condição "Janela de 24h da Meta aberta?" (Fase 2.8 do plano do
+ * previdenciário). O que se configura é só POR QUAL NÚMERO perguntar — e, em
+ * branco, é o do DISPARO (senão o da conversa): o certo quando as mensagens
+ * do "Sim" também herdam o disparo. Mensagem do "Sim" FIXADA num número
+ * oficial exige o MESMO número aqui — a ativação recusa a divergência
+ * (`validateChannelScopeForActivation`), e o aviso aparece ao vivo. A regra
+ * mora em `src/lib/automations/janela-da-meta.ts`.
+ *
+ * ⚠️ O seletor lista SÓ números oficiais: QR Code responde sempre "Sim" e
+ * Instagram sempre "Não" — escolher um deles transformaria a condição numa
+ * constante sem o operador perceber. A conexão já gravada continua na lista
+ * (senão o valor sumiria da tela), com o aviso do que ela faz.
+ *
+ * Segue a regra da casa: some com menos de dois números, e volta se a
+ * condição já apontar para uma conexão (apagada inclusive — senão o UUID
+ * morto ficaria sem saída na tela).
+ */
+function JanelaDaMetaFields({
+  value,
+  onChange,
+  t,
+}: {
+  value: string | null
+  onChange: (id: string | null) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const { channels } = useResources()
+  const orfao = !!value && channels.length > 0 && !channels.some((c) => c.id === value)
+  const escolhida = value ? channels.find((c) => c.id === value) : undefined
+  const oficiais = channels.filter((c) => ehMeta(c) || c.id === value)
+  // Sem número oficial nenhum, a lista inteira — só para dar como voltar ao
+  // "do disparo" a partir de um valor gravado.
+  const lista = oficiais.length > 0 ? oficiais : channels
+  return (
+    <>
+      <p className="mb-2 text-[11px] text-muted-foreground">{t("config.janelaDaMetaHelp")}</p>
+      {(channels.length >= 2 || orfao) && (
+        <FieldBlock label={t("config.janelaDaMetaCanalLabel")}>
+          <ChannelSelect
+            channels={lista}
+            value={value}
+            onChange={onChange}
+            allowAll
+            allLabel={t("config.janelaDaMetaCanalAuto")}
+          />
+          {orfao ? (
+            <p className="mt-1 text-xs text-destructive">{t("config.janelaDaMetaCanalSumiu")}</p>
+          ) : escolhida && !ehMeta(escolhida) ? (
+            <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">
+              {t("config.janelaDaMetaCanalSemJanela")}
+            </p>
+          ) : null}
+        </FieldBlock>
+      )}
+    </>
+  )
+}
+
+/**
+ * A janela de horário — dois campos de hora e a caixa "só de segunda a
+ * sexta", tudo no FUSO DO ESCRITÓRIO (o motor lê por `hora-do-dia.ts`; o
+ * contêiner roda em UTC). Serve a DOIS passos, com textos próprios (`para`):
+ * a condição "Hora do dia" (o operando continua "HH:mm-HH:mm", o formato do
+ * upstream — era um texto livre, e o "18-9" digitado errado virava condição
+ * sempre "Não" sem aviso) e o "Aguardar até estar dentro do horário" (a
+ * chave `janela`, no mesmo formato). As chaves de texto são LITERAIS em cada
+ * ramo, nunca montadas: chave montada escapa do portão de i18n.
+ */
+function HoraDoDiaFields({
+  para,
+  operand,
+  segASex,
+  onOperand,
+  onSegASex,
+  t,
+}: {
+  para: "condicao" | "espera"
+  operand: unknown
+  segASex: boolean
+  onOperand: (operand: string) => void
+  /** `undefined` TIRA a chave: ausente = todos os dias. */
+  onSegASex: (valor: true | undefined) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const { inicio, fim } = camposDaJanela(operand)
+  const gravado = typeof operand === "string" ? operand.trim() : ""
+  const janela = lerJanela(gravado)
+  const diaInteiro = ehODiaInteiro(janela)
+  const espera = para === "espera"
+  // O aviso só aparece com algo escrito: vazio é o "obrigatório" de sempre.
+  const aviso = !gravado || janela
+    ? null
+    : inicio && fim && inicio === fim
+      ? espera ? t("config.esperaHorarioIgual") : t("config.horaDoDiaIgual")
+      : espera ? t("config.esperaHorarioIncompleta") : t("config.horaDoDiaIncompleta")
+  return (
+    <>
+      <label className="mb-2 flex items-start gap-2 text-xs text-foreground">
+        <input
+          type="checkbox"
+          checked={diaInteiro}
+          // "00:00-24:00": os dois campos não o escrevem (o `<input
+          // type="time">` não aceita 24:00, e 00:00 → 00:00 é janela vazia).
+          // Desmarcar devolve os campos EM BRANCO, o "obrigatório" de sempre.
+          onChange={(e) => onOperand(e.target.checked ? OPERANDO_DO_DIA_INTEIRO : "")}
+          className="mt-0.5 size-4 accent-primary"
+        />
+        <span>
+          {t("config.horaDoDiaInteiro")}
+          <span className="mt-0.5 block text-[11px] text-muted-foreground">
+            {t("config.horaDoDiaInteiroHelp")}
+          </span>
+        </span>
+      </label>
+      {diaInteiro ? null : (
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <FieldBlock label={t("config.horaDoDiaInicio")}>
+              <Input
+                type="time"
+                aria-label={t("config.horaDoDiaInicio")}
+                value={inicio}
+                onChange={(e) => onOperand(operandoDaJanela(e.target.value, fim))}
+                className="bg-muted text-foreground"
+              />
+            </FieldBlock>
+            <FieldBlock label={t("config.horaDoDiaFim")}>
+              <Input
+                type="time"
+                aria-label={t("config.horaDoDiaFim")}
+                value={fim}
+                onChange={(e) => onOperand(operandoDaJanela(inicio, e.target.value))}
+                className="bg-muted text-foreground"
+              />
+            </FieldBlock>
+          </div>
+          {aviso ? (
+            <p className="mb-2 text-[11px] text-amber-700 dark:text-amber-300">{aviso}</p>
+          ) : janela && janela.inicio > janela.fim ? (
+            // Inclui o legado "18:00-24:00": `lerJanela` o lê como "18:00-00:00".
+            <p className="mb-2 text-[11px] text-muted-foreground">
+              {t("config.horaDoDiaMadrugada", { inicio, fim })}
+            </p>
+          ) : null}
+        </>
+      )}
+      <p className="mb-2 text-[11px] text-muted-foreground">
+        {espera ? t("config.esperaHorarioHelp") : t("config.horaDoDiaHelp")}
+      </p>
+      <label className="flex items-start gap-2 text-xs text-foreground">
+        <input
+          type="checkbox"
+          checked={segASex}
+          // Desmarcar TIRA a chave: ausente = todos os dias, como as
+          // condições gravadas antes dela.
+          onChange={(e) => onSegASex(e.target.checked ? true : undefined)}
+          className="mt-0.5 size-4 accent-primary"
+        />
+        <span>
+          {t("config.horaDoDiaSegASex")}
+          <span className="mt-0.5 block text-[11px] text-muted-foreground">
+            {espera ? t("config.esperaHorarioSegASexHelp") : t("config.horaDoDiaSegASexHelp")}
+          </span>
+        </span>
+      </label>
+    </>
+  )
+}
+
 function StepEditor({
   step,
   onChange,
@@ -2431,7 +2858,7 @@ function StepEditor({
   onChange: (s: BuilderStep) => void
 }) {
   const t = useTranslations("Automations.builder")
-  const { channels, pipelines, stages } = useResources()
+  const { channels, pipelines, stages, templates } = useResources()
   // Mesmo agrupamento do seletor do gatilho: "Contato Acordo" existe em mais
   // de um quadro, e o nome sozinho não distingue.
   const stagesPorFunil = useMemo(
@@ -2444,6 +2871,20 @@ function StepEditor({
   const cfg = step.step_config
   const set = (patch: Record<string, unknown>) =>
     onChange({ ...step, step_config: { ...cfg, ...patch } })
+  // A linha do modelo escolhido (é ela que diz quantas variáveis há), pela
+  // MESMA régua do envio (`linhaDoModeloNaTela` espelha `resolveTemplateRow`):
+  // o catálogo é por WABA, e o mesmo nome pode ter variáveis diferentes em
+  // dois números.
+  const linhaDoModelo =
+    step.step_type === "send_template" && cfg.template_name
+      ? linhaDoModeloNaTela(
+          templates,
+          String(cfg.template_name),
+          cfg.language as string | undefined,
+          canalDoPasso(cfg),
+        )
+      : null
+  const modeloDoPasso = linhaDoModelo?.modelo ?? null
 
   switch (step.step_type) {
     case "send_message":
@@ -2504,9 +2945,37 @@ function StepEditor({
             onChange={(patch) => set(patch)}
             t={t}
           />
+          {linhaDoModelo?.emVariosNumeros && (
+            <p className="mb-2 text-[11px] text-amber-700 dark:text-amber-300">
+              {t("templates.emVariosNumeros")}
+            </p>
+          )}
+          {modeloDoPasso ? (
+            <ValoresDoModelo modelo={modeloDoPasso} cfg={cfg} set={set} t={t} />
+          ) : (
+            cfg.template_name && <ValoresGravadosSemModelo cfg={cfg} t={t} />
+          )}
           <CanalDeSaida
             value={canalDoPasso(cfg)}
-            onChange={(id) => set({ channel_id: id })}
+            onChange={(id) => {
+              // Trocar a conexão pode trocar a LINHA do modelo (o catálogo é
+              // por WABA): aí os valores do anterior não dizem nada sobre o
+              // novo — limpa, como na troca de modelo. Mesma linha, mantém.
+              const antes = modeloDoPasso?.id ?? null
+              const depois = cfg.template_name
+                ? (linhaDoModeloNaTela(
+                    templates,
+                    String(cfg.template_name),
+                    cfg.language as string | undefined,
+                    id,
+                  ).modelo?.id ?? null)
+                : null
+              set(
+                antes !== depois
+                  ? { channel_id: id, ...VALORES_DO_MODELO_LIMPOS }
+                  : { channel_id: id },
+              )
+            }}
             t={t}
           />
         </>
@@ -2679,38 +3148,85 @@ function StepEditor({
           )}
         </FieldBlock>
       )
-    case "wait":
+    case "wait": {
+      // "Aguardar até estar dentro do horário" (26/09/2026): `modo: "horario"`
+      // + `janela`. Ausente = "por um tempo", o de sempre. Trocar para o
+      // horário MANTÉM `amount`/`unit` (o motor os ignora nesse modo, e voltar
+      // devolve o valor); voltar para o tempo TIRA a janela e o "segunda a
+      // sexta" — sem isso, uma espera por tempo carregaria recorte que não vale
+      // — e GRAVA o 1 h que os campos mostram quando não havia valor (senão a
+      // tela diria "1 hora" e a ativação recusaria "amount must be > 0").
+      const porHorario = cfg.modo === "horario"
       return (
         <div className="grid grid-cols-2 gap-2">
-          {/* ⚠️ O aviso é do tamanho da promessa: quem escolhe "segundos" está
-              contando os segundos, e o agendador acorda a espera no ciclo dele.
-              Sem dizer isso, uma pausa de 10 s que chega em 20 s parece bug. */}
-          {cfg.unit === "seconds" && (
-            <p className="col-span-2 text-[11px] text-amber-500">
-              {t("config.segundosAviso")}
-            </p>
+          <div className="col-span-2">
+            <FieldBlock label={t("config.esperaModoLabel")}>
+              <select
+                value={porHorario ? "horario" : "tempo"}
+                onChange={(e) =>
+                  set(
+                    e.target.value === "horario"
+                      ? { modo: "horario", janela: typeof cfg.janela === "string" ? cfg.janela : "" }
+                      : {
+                          modo: undefined,
+                          janela: undefined,
+                          somente_seg_a_sex: undefined,
+                          amount: typeof cfg.amount === "number" ? cfg.amount : 1,
+                          unit: typeof cfg.unit === "string" ? cfg.unit : "hours",
+                        },
+                  )
+                }
+                className={SELECT_CLASS}
+              >
+                <option value="tempo">{t("config.esperaModoTempo")}</option>
+                <option value="horario">{t("config.esperaModoHorario")}</option>
+              </select>
+            </FieldBlock>
+          </div>
+          {porHorario ? (
+            <div className="col-span-2">
+              <HoraDoDiaFields
+                para="espera"
+                operand={cfg.janela}
+                segASex={cfg.somente_seg_a_sex === true}
+                onOperand={(janela) => set({ janela })}
+                onSegASex={(somente_seg_a_sex) => set({ somente_seg_a_sex })}
+                t={t}
+              />
+            </div>
+          ) : (
+            <>
+              {/* ⚠️ O aviso é do tamanho da promessa: quem escolhe "segundos" está
+                  contando os segundos, e o agendador acorda a espera no ciclo dele.
+                  Sem dizer isso, uma pausa de 10 s que chega em 20 s parece bug. */}
+              {cfg.unit === "seconds" && (
+                <p className="col-span-2 text-[11px] text-amber-500">
+                  {t("config.segundosAviso")}
+                </p>
+              )}
+              <FieldBlock label={t("config.amountLabel")}>
+                <Input
+                  type="number"
+                  min={1}
+                  value={(cfg.amount as number) ?? 1}
+                  onChange={(e) => set({ amount: Math.max(1, Number(e.target.value)) })}
+                  className="bg-muted text-foreground"
+                />
+              </FieldBlock>
+              <FieldBlock label={t("config.unitLabel")}>
+                <select
+                  value={(cfg.unit as string) ?? "hours"}
+                  onChange={(e) => set({ unit: e.target.value })}
+                  className="w-full rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground"
+                >
+                  <option value="seconds">{t("config.units.seconds")}</option>
+                  <option value="minutes">{t("config.units.minutes")}</option>
+                  <option value="hours">{t("config.units.hours")}</option>
+                  <option value="days">{t("config.units.days")}</option>
+                </select>
+              </FieldBlock>
+            </>
           )}
-          <FieldBlock label={t("config.amountLabel")}>
-            <Input
-              type="number"
-              min={1}
-              value={(cfg.amount as number) ?? 1}
-              onChange={(e) => set({ amount: Math.max(1, Number(e.target.value)) })}
-              className="bg-muted text-foreground"
-            />
-          </FieldBlock>
-          <FieldBlock label={t("config.unitLabel")}>
-            <select
-              value={(cfg.unit as string) ?? "hours"}
-              onChange={(e) => set({ unit: e.target.value })}
-              className="w-full rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground"
-            >
-              <option value="seconds">{t("config.units.seconds")}</option>
-              <option value="minutes">{t("config.units.minutes")}</option>
-              <option value="hours">{t("config.units.hours")}</option>
-              <option value="days">{t("config.units.days")}</option>
-            </select>
-          </FieldBlock>
           {/* "Pausar: até a mensagem recebida / cronômetro" do Kommo. Marcada,
               a resposta do cliente DURANTE esta espera cancela o resto da
               automação para ele (`parar-se-responder.ts`). ⚠️ `=== true`, como
@@ -2732,13 +3248,27 @@ function StepEditor({
           </label>
         </div>
       )
+    }
     case "condition":
       return (
         <>
           <FieldBlock label={t("config.subjectLabel")}>
             <select
               value={(cfg.subject as string) ?? "tag_presence"}
-              onChange={(e) => set({ subject: e.target.value })}
+              onChange={(e) => {
+                // ⚠️ Entrar na janela de 24h ou sair dela ZERA o operando: lá
+                // ele é uma conexão, e um UUID que sobrasse viraria "etiqueta"
+                // ou "etapa" inexistente (condição sempre falsa, em silêncio);
+                // o contrário faria a janela perguntar por um número que o
+                // operador nunca escolheu. A hora do dia também: lá o operando
+                // é "HH:mm-HH:mm", e o "só de segunda a sexta" sai junto.
+                const proprio = (s: unknown) => s === "meta_window_open" || s === "time_of_day"
+                set(
+                  proprio(e.target.value) || proprio(cfg.subject)
+                    ? { subject: e.target.value, operand: "", somente_seg_a_sex: undefined }
+                    : { subject: e.target.value },
+                )
+              }}
               className="w-full rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground"
             >
               <option value="tag_presence">{t("config.subjects.tag_presence")}</option>
@@ -2761,8 +3291,25 @@ function StepEditor({
                 <option value="deal_stage">{t("config.subjects.deal_stage")}</option>
               )}
               <option value="deal_status">{t("config.subjects.deal_status")}</option>
+              <option value="meta_window_open">{t("config.subjects.meta_window_open")}</option>
             </select>
           </FieldBlock>
+          {cfg.subject === "meta_window_open" ? (
+            <JanelaDaMetaFields
+              value={(cfg.operand as string) || null}
+              onChange={(id) => set({ operand: id ?? "" })}
+              t={t}
+            />
+          ) : cfg.subject === "time_of_day" ? (
+            <HoraDoDiaFields
+              para="condicao"
+              operand={cfg.operand}
+              segASex={cfg.somente_seg_a_sex === true}
+              onOperand={(operand) => set({ operand })}
+              onSegASex={(somente_seg_a_sex) => set({ somente_seg_a_sex })}
+              t={t}
+            />
+          ) : (
           <FieldBlock label={t("config.operandLabel")}>
             {cfg.subject === "deal_stage" ? (
               <select
@@ -2820,9 +3367,7 @@ function StepEditor({
             ) : (
             <Input
               placeholder={
-                cfg.subject === "time_of_day"
-                  ? t("config.placeholderTime")
-                  : cfg.subject === "contact_field"
+                cfg.subject === "contact_field"
                   ? t("config.placeholderContact")
                   : cfg.subject === "tag_presence"
                   ? t("config.placeholderTag")
@@ -2834,6 +3379,7 @@ function StepEditor({
             />
             )}
           </FieldBlock>
+          )}
           {(cfg.subject === "contact_field" || cfg.subject === "message_content") && (
             <FieldBlock label={t("config.valueLabel")}>
               <Input
@@ -2929,12 +3475,47 @@ function StepEditor({
               className="min-h-16 bg-muted text-foreground"
             />
           </FieldBlock>
+          {/* Para quem (Fase 2.4 do plano do previdenciário). Ausente = uma
+              pessoa fixa, que é o que toda tarefa gravada antes disto faz. Nos
+              outros dois modos, a pessoa escolhida embaixo vira a RESERVA —
+              obrigatória na ativação: sem ninguém atribuído (o caso comum) o
+              passo falharia e pararia a sequência (ver
+              `responsavel-da-tarefa.ts`). */}
           <FieldBlock label={t("tarefa.responsavelLabel")}>
+            <select
+              value={(cfg.responsavel_modo as string) || "fixo"}
+              onChange={(e) => set({ responsavel_modo: e.target.value })}
+              className={SELECT_CLASS}
+            >
+              <option value="fixo">{t("tarefa.modoFixo")}</option>
+              <option value="conversa">{t("tarefa.modoConversa")}</option>
+              <option value="card">{t("tarefa.modoCard")}</option>
+            </select>
+          </FieldBlock>
+          {(cfg.responsavel_modo as string | undefined) === "card" && (
+            // Hoje só o formulário do negócio grava `deals.assigned_to` —
+            // nenhuma automação nem o roteador do funil. Sem isto o operador
+            // escolhe "o responsável pelo card" achando que é o dono do lead,
+            // e toda tarefa cai na reserva.
+            <p className="-mt-1 mb-2 text-[11px] text-muted-foreground">{t("tarefa.cardHint")}</p>
+          )}
+          <FieldBlock
+            label={
+              (cfg.responsavel_modo as string | undefined) === "conversa" ||
+              (cfg.responsavel_modo as string | undefined) === "card"
+                ? t("tarefa.reservaLabel")
+                : t("tarefa.pessoaLabel")
+            }
+          >
             <AgentSelect
               value={(cfg.responsavel_user_id as string) ?? ""}
               onChange={(v) => set({ responsavel_user_id: v })}
               t={t}
             />
+            {((cfg.responsavel_modo as string | undefined) === "conversa" ||
+              (cfg.responsavel_modo as string | undefined) === "card") && (
+              <p className="mt-1 text-xs text-muted-foreground">{t("tarefa.reservaHint")}</p>
+            )}
           </FieldBlock>
           <div className="grid grid-cols-2 gap-3">
             <FieldBlock label={t("tarefa.prazoLabel")}>

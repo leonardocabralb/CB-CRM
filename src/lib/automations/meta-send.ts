@@ -22,6 +22,7 @@ import {
   templateContentText,
 } from '@/lib/whatsapp/template-body'
 import { supabaseAdmin } from './admin-client'
+import { faltaNoModelo, recortarAoModelo, type ParametrosDoModelo } from './parametros-do-modelo'
 import { aplicarAssinatura } from '@/lib/assinatura/assinatura'
 import { nomeAutomaticoParaAssinar, nomePersonalizadoParaAssinar } from '@/lib/assinatura/resolver'
 import { ehEvolution, ehInstagram } from '@/lib/cb-channels/transporte'
@@ -69,6 +70,13 @@ interface SendTemplateArgs {
   templateName: string
   language?: string
   params?: string[]
+  /**
+   * Os valores estruturados do passo (Fase 2.3 do plano do previdenciário):
+   * corpo, cabeçalho e botões. Com eles o envio vai com a LINHA do modelo
+   * (`buildSendComponents`), que é o único caminho em que cabeçalho de mídia
+   * e botão com URL variável chegam à Meta. Ausente = só `params`, como antes.
+   */
+  messageParams?: ParametrosDoModelo
   preferredChannelId?: string | null
 }
 
@@ -205,10 +213,12 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
       ? (aplicarAssinatura(input.text, nomeQueAssina) as string)
       : null
 
-  // Local template row — read for the body we persist below, not for
-  // the Meta payload (the wire shape is deliberately unchanged here).
-  // A missing row is fine: the send still goes out, we just can't
-  // reconstruct the text the customer saw.
+  // Local template row — read for the body we persist below and, since
+  // the Fase 2.3 do plano do previdenciário, TAMBÉM para o payload da Meta
+  // quando o passo manda os valores estruturados (`messageParams`): é ela que
+  // leva o cabeçalho de mídia e os botões. A missing row is fine: the send
+  // still goes out (corpo só), we just can't reconstruct the text the
+  // customer saw.
   //
   // O 5o argumento e nosso: o catalogo da Meta e POR WABA, entao o modelo tem
   // que ser o do canal por onde o passo sai.
@@ -254,6 +264,13 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
       'authentication templates (one-time passcodes) require a phone number — this contact is identified only by a WhatsApp username',
     )
   }
+  // Valor que o modelo pede e ficou vazio (sem reserva): recusado AQUI, com a
+  // frase do registro, e não pela Meta depois (parâmetro vazio é recusa).
+  // Só aqui a linha do modelo é conhecida — ela depende do canal de saída.
+  if (input.kind === 'template' && input.messageParams) {
+    const falta = faltaNoModelo(templateRow, input.messageParams)
+    if (falta) throw new Error(`send_template: ${falta}`)
+  }
 
   let waMessageId = ''
   let workingPhone = alvo
@@ -274,6 +291,9 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
 
     const attempt = async (phone: string): Promise<string> => {
       if (input.kind === 'template') {
+        // Com os valores estruturados, a LINHA do modelo vai junto: é ela que
+        // faz o cabeçalho de mídia guardado e os botões chegarem à Meta. Sem
+        // linha local (conta que não sincronizou), fica o caminho "só corpo".
         const r = await sendTemplateMessage({
           phoneNumberId: channel.phone_number_id!,
           accessToken,
@@ -281,6 +301,12 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
           templateName: input.templateName,
           language: input.language,
           params: input.params,
+          ...(input.messageParams
+            ? {
+                template: templateRow ?? undefined,
+                messageParams: recortarAoModelo(templateRow, input.messageParams),
+              }
+            : {}),
         })
         return r.messageId
       }
