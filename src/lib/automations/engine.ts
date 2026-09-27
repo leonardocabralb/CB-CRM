@@ -1493,11 +1493,13 @@ async function runStep(
     case 'send_message': {
       const cfg = step.step_config as SendMessageStepConfig;
       if (!args.contactId) throw new Error('send_message needs a contact');
-      const text = await interpolate(cfg.text, args);
-      if (!text.trim()) throw new Error('send_message has empty text');
+      // A conversa ANTES do texto: a ficha sem conversa ganha a dela aqui, e
+      // `{{conversation.link}}` já sai com ela nesta mensagem (Codex, #322).
       const conversationId = await resolveConversationId(args, {
         criarSeFaltar: true,
       });
+      const text = await interpolate(cfg.text, args);
+      if (!text.trim()) throw new Error('send_message has empty text');
       // ⚠️ Na régua do Asaas (998, D19) a conexão do passo FALHA FECHADA —
       // a mesma cerca do `send_to_number`. `resolveEngineChannelPreferring`
       // cai em silêncio no canal da conversa (e daí no padrão) quando o id
@@ -2605,12 +2607,17 @@ async function resolveConversationId(
   if (error) throw new Error(`conversation lookup failed: ${error.message}`);
   if (!data?.id) {
     if (opcoes?.criarSeFaltar) {
-      return conversaDoContato(
+      const criada = await conversaDoContato(
         supabaseAdmin(),
         args.automation.account_id,
         args.contactId,
         { conversaNovaEncerrada: true }
       );
+      // Os dados do contato desta execução foram lidos SEM conversa (se algum
+      // passo anterior interpolou `contact.*`): esquecê-los faz o próximo
+      // `{{conversation.link}}` reler e achar a conversa nova (Codex, #322).
+      dadosPorExecucao.delete(args);
+      return criada;
     }
     const prefix =
       args.triggerEvent === 'tag_added'
