@@ -696,6 +696,15 @@ describe('condição da janela × conexão fixa das mensagens do Sim (Fase 2.8)'
     ).toHaveLength(1)
   })
 
+  it('operando preenchido e texto fixado numa conexão APAGADA: conta como herança', () => {
+    expect(
+      validateChannelScopeForActivation([janela('oficial', [texto('apagada')])], null, CANAIS),
+    ).toHaveLength(1)
+    expect(
+      validateChannelScopeForActivation([janela('oficial', [texto('apagada')])], ['oficial'], CANAIS),
+    ).toEqual([])
+  })
+
   it('operando preenchido, texto HERDADO, escopo só nele (ou com QR Code): passa', () => {
     expect(validateChannelScopeForActivation([janela('oficial', [texto()])], ['oficial'], CANAIS)).toEqual([])
     expect(validateChannelScopeForActivation([janela('oficial', [texto()])], ['oficial', 'qr'], CANAIS)).toEqual([])

@@ -778,7 +778,9 @@ export function validateChannelScopeForActivation(
           const fixado = s.step_config?.channel_id;
           const canal = typeof fixado === 'string' && fixado ? porId.get(fixado) : undefined;
           if (canal && ehMeta(canal)) fixos.set(canal.id, canal.label);
-          if (typeof fixado !== 'string' || !fixado) herdados += 1;
+          // Conexão APAGADA também conta como herança: o motor não a resolve
+          // e cai no número da conversa (Codex, PR #315).
+          if (typeof fixado !== 'string' || !fixado || !canal) herdados += 1;
         }
         // Outra condição da janela dentro do ramo tem a SUA conferência.
         if (s.step_type === 'condition' && s.step_config?.subject !== 'meta_window_open') {
