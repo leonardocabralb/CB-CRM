@@ -3087,6 +3087,12 @@ describe('a RETOMADA (1056)', () => {
       const pedido = vi.mocked(generateReply).mock.calls[0][0].systemPrompt
       expect(pedido).toContain('the customer has not replied for 20 minutes. This is follow-up 1 of 6.')
       expect(pedido).not.toContain("Actions you can take in the business's CRM")
+      // ⚠️ A conversa NÃO termina na resposta do agente: o Gemini recusa
+      // ("Requests ending with a model turn are not supported", e2e 27/09).
+      const enviadas = vi.mocked(generateReply).mock.calls[0][0].messages
+      expect(enviadas[enviadas.length - 1]).toMatchObject({ role: 'user' })
+      expect(enviadas[enviadas.length - 1].content).toContain('not a message from the customer')
+      expect(enviadas[enviadas.length - 2]).toMatchObject({ role: 'assistant' })
       expect(engineSendText).toHaveBeenCalledWith(
         expect.objectContaining({ text: 'Oi! Conseguiu separar os extratos?', iaAgenteId: AGENTE, exigirCanal: true, preferredChannelId: CANAL }),
       )

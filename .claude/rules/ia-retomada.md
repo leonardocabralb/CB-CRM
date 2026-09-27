@@ -51,9 +51,18 @@ faz, em `.claude/rules/ia-agentes.md`. ⚠️ "Retomada" aqui é o FOLLOW-UP; o
   série (`sem_resposta`, motivo no `erro`), sem mandar — `lerRespostaDaRetomada`
   é a régua do turno E do Playground. O teto conta as retomadas e só para; o
   `incerto` não transfere (nem recolhido pela rede).
+- ⚠️⚠️ **A conversa ao modelo NÃO pode terminar na resposta do agente**: o
+  Gemini recusa ("Requests ending with a model turn are not supported",
+  MEDIDO no e2e de 27/09 — o provedor falso dos testes não pegava) e a
+  Anthropic trata o turno do modelo como texto a CONTINUAR. `comNotaDaRetomada`
+  fecha com uma nota no papel de usuário, que diz não ser o cliente — no turno
+  E no Playground.
 - **Playground**: `retomada: true` simula a tentativa seguinte (a conversa
   termina na resposta do agente), com `parada` quando nada sairia.
 - **Deploy DEPOIS da 1056**: `COLUNAS_DO_AGENTE` pede `retomada` (sem ela,
   toda leitura de agente falha) e a aba Turnos pede `tipo`.
 - **Limites**: fonte `reuniao` (`cb_meetings`) fora dos bloqueios; a
-  mensagem que não abre turno fica na fila até vencer (aba Turnos).
+  mensagem que não abre turno fica na fila até vencer (aba Turnos); o turno
+  que MORRE depois de enviar e antes do `encerrar` é fechado pelo recolhedor
+  como `respondeu` SEM armar a tentativa seguinte — a série acaba ali (Codex,
+  PR #328; janela de segundos num deploy, e o lado é o de mandar menos).

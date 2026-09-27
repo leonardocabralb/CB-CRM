@@ -162,7 +162,7 @@ import {
   type MotivoDoFim,
 } from './retomada'
 import { lerBloqueiosDaRetomada, lerFimDaJanelaMeta, lerMensagensDepois } from './retomada-fatos'
-import { lerRespostaDaRetomada, type ParadaDaResposta } from './retomada-resposta'
+import { comNotaDaRetomada, lerRespostaDaRetomada, type ParadaDaResposta } from './retomada-resposta'
 import { textosDaPassagem, textosDaTransferencia, type MotivoDeTransferencia } from './textos-do-servidor'
 
 /** A linha de `cb_ia_turnos` que o claim devolve. */
@@ -1663,6 +1663,7 @@ async function conduzirRetomada(
   const restante = PRAZO_DO_TURNO_MS - (Date.now() - inicio) - RESERVA_DO_ENVIO_MS
   if (restante < 3_000) return { status: 'falhou', erro: 'o prazo do turno acabou antes de gerar' }
 
+  const semResposta = tempoEmIngles(agora.getTime() - Date.parse(ancora.gravada_em))
   const pedido = montarPedidoDaRetomada({
     instrucoes: agente.instrucoes,
     regras: agente.regras,
@@ -1672,7 +1673,7 @@ async function conduzirRetomada(
     retomada: {
       tentativa,
       de: turno.tentativas ?? agente.retomada.cadencia.length,
-      semResposta: tempoEmIngles(agora.getTime() - Date.parse(ancora.gravada_em)),
+      semResposta,
     },
   })
 
@@ -1682,7 +1683,7 @@ async function conduzirRetomada(
     const r = await generateReply({
       config: configDoAgente(agente, apiKey),
       systemPrompt: pedido,
-      messages: conversa,
+      messages: comNotaDaRetomada(conversa, semResposta),
       timeoutMs: restante,
     })
     texto = r.text

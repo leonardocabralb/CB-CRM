@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { lerRespostaDaRetomada } from './retomada-resposta'
+import { comNotaDaRetomada, lerRespostaDaRetomada } from './retomada-resposta'
 
 // ============================================================
 // A resposta de uma RETOMADA (1056): o que sai ao cliente e o que PARA a
@@ -66,5 +66,21 @@ describe('lerRespostaDaRetomada', () => {
   it('link que veio da conversa: sai', () => {
     const r = lerRespostaDaRetomada('O link é https://calendly.com/cb/reuniao', false, [...FONTES, 'https://calendly.com/cb/reuniao'])
     expect(r.parada).toBeNull()
+  })
+})
+
+describe('comNotaDaRetomada', () => {
+  it('fecha a conversa com uma nota no papel de USUÁRIO (o provedor não aceita terminar no turno do modelo), dizendo que não é o cliente', () => {
+    const conversa = [
+      { role: 'user' as const, content: 'Itaú e Bradesco' },
+      { role: 'assistant' as const, content: 'E que tipo de dívida é?' },
+    ]
+    const r = comNotaDaRetomada(conversa, '3 hours')
+    expect(r).toHaveLength(3)
+    expect(r.slice(0, 2)).toEqual(conversa)
+    expect(r[2].role).toBe('user')
+    expect(r[2].content).toContain('not a message from the customer')
+    expect(r[2].content).toContain('3 hours')
+    expect(conversa).toHaveLength(2)
   })
 })

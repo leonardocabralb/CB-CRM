@@ -25,7 +25,7 @@ import { lerPassagem, montarPedidoDaRetomada, montarPedidoDoAgente } from '@/lib
 import { vazouOPedido } from '@/lib/ia-agentes/regras-do-sistema'
 import { respostaDoErro } from '@/lib/ia-agentes/resposta'
 import { tempoEmIngles } from '@/lib/ia-agentes/retomada'
-import { lerRespostaDaRetomada } from '@/lib/ia-agentes/retomada-resposta'
+import { comNotaDaRetomada, lerRespostaDaRetomada } from '@/lib/ia-agentes/retomada-resposta'
 
 // O transcrito testado fica limitado, como a janela real do contexto.
 const MAX_TURNOS = 20
@@ -184,6 +184,7 @@ export async function POST(request: Request, { params }: Contexto) {
       const pedida = typeof corpo?.tentativa === 'number' && Number.isInteger(corpo.tentativa) ? corpo.tentativa : 1
       const tentativa = Math.min(Math.max(pedida, 1), cadencia.length)
       const agoraDaRetomada = new Date()
+      const semResposta = tempoEmIngles(cadencia[tentativa - 1] * 60_000)
       const visto = await lerOQueOAgenteVe(supabaseAdmin(), {
         accountId: ctx.accountId,
         agente,
@@ -198,7 +199,7 @@ export async function POST(request: Request, { params }: Contexto) {
         agora: agoraDaRetomada,
         blocos: visto.blocos,
         conhecimento: visto.trechos.map((t) => t.content),
-        retomada: { tentativa, de: cadencia.length, semResposta: tempoEmIngles(cadencia[tentativa - 1] * 60_000) },
+        retomada: { tentativa, de: cadencia.length, semResposta },
       })
       const gerada = await generateReply({
         config: {
@@ -214,7 +215,7 @@ export async function POST(request: Request, { params }: Contexto) {
           embeddingsApiKey: null,
         },
         systemPrompt: pedido,
-        messages: mensagens,
+        messages: comNotaDaRetomada(mensagens, semResposta),
       })
       await logAiUsage(supabaseAdmin(), {
         accountId: ctx.accountId,

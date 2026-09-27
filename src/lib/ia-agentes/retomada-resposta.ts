@@ -11,6 +11,8 @@
 // vem antes das outras travas do texto.
 // ============================================================
 
+import type { ChatMessage } from '@/lib/ai/types'
+
 import { equipePrometida, lerAcoes, linksInventados } from './acoes'
 import { lerPassagem, lerSemRetomada } from './pedido'
 import { vazouOPedido } from './regras-do-sistema'
@@ -47,4 +49,22 @@ export function lerRespostaDaRetomada(texto: string, handoff: boolean, fontes: r
   const inventados = linksInventados(lidas.texto, [...fontes])
   if (inventados.length > 0) return { parada: 'link_inventado', detalhe: inventados.join(' ') }
   return { parada: null, texto: lidas.texto }
+}
+
+/**
+ * A conversa de uma retomada termina na resposta do AGENTE, e o provedor não
+ * aceita isso: o Gemini recusa o pedido ("Requests ending with a model turn
+ * are not supported" — MEDIDO no e2e de 27/09/2026, e o teste unitário com
+ * provedor falso não pegava) e a Anthropic trata o último turno do modelo como
+ * resposta a CONTINUAR. Uma nota no papel de usuário fecha a conversa, dizendo
+ * por escrito que NÃO é o cliente. Vale para o turno e para o Playground.
+ */
+export function comNotaDaRetomada(mensagens: readonly ChatMessage[], semResposta: string): ChatMessage[] {
+  return [
+    ...mensagens,
+    {
+      role: 'user',
+      content: `[System note, not a message from the customer: the customer has not replied for ${semResposta}. Write the follow-up now, following the follow-up section of your instructions.]`,
+    },
+  ]
 }
