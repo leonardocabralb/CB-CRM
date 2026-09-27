@@ -197,6 +197,9 @@ vi.mock('./admin-client', () => {
         const casaContato = !contato || donoContato === undefined || contato[2] === donoContato;
         return { data: casaConta && casaContato ? { id: porId[2], ...state.conversaLida } : null, error: null };
       }
+      // Leitura de UMA linha pelo contato (`resolveConversationId` sem
+      // conversa no contexto): a primeira da lista, como o `maybeSingle`.
+      if (ops.unico) return { data: state.conversasDoContato[0] ?? null, error: null };
       return { data: state.conversasDoContato.length > 0 ? state.conversasDoContato : null, error: null };
     }
     if (table === 'messages') {
@@ -557,6 +560,10 @@ const destinatarioMock = vi.hoisted(() => ({
     conversationId: 'conv-equipe',
     criouContato: false,
   })),
+  // A conversa que os passos de envio criam para a ficha SEM conversa
+  // (27/09/2026) — o que ela grava (encerrada, dono da conta) é testado em
+  // `destinatario.test.ts`; aqui, com o quê o motor a chama.
+  conversaDoContato: vi.fn(async () => 'conv-criada'),
 }));
 vi.mock('./destinatario', () => destinatarioMock);
 const canalMock = vi.hoisted(() => ({
@@ -580,7 +587,11 @@ import {
   triggerMatches,
   runAutomationById,
 } from './engine';
-import { engineSendText, engineSendTemplate } from './meta-send';
+import {
+  engineSendText,
+  engineSendTemplate,
+  engineSendInteractive,
+} from './meta-send';
 import { loadStepsTree, replaceSteps, type BuilderStepInput } from './steps-tree';
 import {
   MOTIVO_PASSO_REMOVIDO,
@@ -1642,6 +1653,147 @@ describe('assign_conversation — alvo', () => {
   });
 });
 
+// ------------------------------------------------------------
+// Ficha SEM conversa (27/09/2026): o lead de anúncio chega pela API v1 —
+// ficha e card, sem conversa — e a automação da etapa é o primeiro contato.
+// Os passos que FALAM com o contato criam a conversa (encerrada); os que só
+// leem ou mexem nela não criam nada.
+// ------------------------------------------------------------
+
+describe('ficha sem conversa — os passos de envio criam a conversa (27/09/2026)', () => {
+  beforeEach(() => {
+    vi.mocked(engineSendText).mockClear();
+    vi.mocked(engineSendTemplate).mockClear();
+    vi.mocked(engineSendInteractive).mockClear();
+    destinatarioMock.conversaDoContato.mockClear();
+  });
+
+  async function executar(
+    passo: Record<string, unknown>,
+    context: Record<string, unknown> = {}
+  ) {
+    h.state.owned = { id: 'c1', name: 'Lead' };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [passo];
+    await runAutomationById({
+      automationId: 'a1',
+      accountId: ACCOUNT,
+      contactId: 'c1',
+      context,
+      triggerType: 'deal_stage_changed',
+    });
+  }
+
+  const passoDe = (step_type: string, step_config: Record<string, unknown>) => ({
+    ...sendStep(step_config),
+    step_type,
+  });
+
+  it('CRÍTICO: send_message sem conversa cria a conversa ENCERRADA e envia por ela', async () => {
+    await executar(sendStep({ text: 'Olá! Recebemos o seu contato.' }));
+
+    expect(destinatarioMock.conversaDoContato).toHaveBeenCalledTimes(1);
+    expect(destinatarioMock.conversaDoContato).toHaveBeenCalledWith(
+      expect.anything(),
+      ACCOUNT,
+      'c1',
+      { conversaNovaEncerrada: true }
+    );
+    expect(vi.mocked(engineSendText).mock.calls[0]?.[0]).toMatchObject({
+      conversationId: 'conv-criada',
+      contactId: 'c1',
+    });
+  });
+
+  it.each([
+    ['send_template', { template_name: 'boas_vindas', language: 'pt_BR' }],
+    [
+      'send_buttons',
+      {
+        kind: 'buttons',
+        body: 'Podemos conversar?',
+        buttons: [{ id: 'b1', title: 'Sim' }],
+      },
+    ],
+  ])('%s sem conversa também cria (encerrada) e envia por ela', async (tipo, cfg) => {
+    await executar(passoDe(tipo, cfg));
+
+    expect(destinatarioMock.conversaDoContato).toHaveBeenCalledWith(
+      expect.anything(),
+      ACCOUNT,
+      'c1',
+      { conversaNovaEncerrada: true }
+    );
+    const sender =
+      tipo === 'send_template' ? engineSendTemplate : engineSendInteractive;
+    expect(vi.mocked(sender).mock.calls[0]?.[0]).toMatchObject({
+      conversationId: 'conv-criada',
+    });
+  });
+
+  it('contato COM conversa: usa a que existe, e nada é criado', async () => {
+    h.state.conversasDoContato = [{ id: 'conv-existente' }];
+
+    await executar(sendStep({ text: 'oi' }));
+
+    expect(destinatarioMock.conversaDoContato).not.toHaveBeenCalled();
+    expect(vi.mocked(engineSendText).mock.calls[0]?.[0]).toMatchObject({
+      conversationId: 'conv-existente',
+    });
+  });
+
+  it('⚠️ conversa de OUTRA conta no contexto: continua recusada — nunca trocada por uma nova', async () => {
+    h.state.contaDaConversa = { 'conv-da-vitima': 'outra-conta' };
+
+    await executar(sendStep({ text: 'oi' }), {
+      conversation_id: 'conv-da-vitima',
+    });
+
+    expect(destinatarioMock.conversaDoContato).not.toHaveBeenCalled();
+    expect(engineSendText).not.toHaveBeenCalled();
+    expect(JSON.stringify(h.state.logUpdates)).toContain(
+      'conversation does not belong to this account'
+    );
+  });
+
+  it('⚠️ conversa de OUTRO contato no contexto: continua recusada — nunca trocada por uma nova', async () => {
+    h.state.contatoDaConversa = { 'conv-de-b': 'c2' };
+
+    await executar(sendStep({ text: 'oi' }), { conversation_id: 'conv-de-b' });
+
+    expect(destinatarioMock.conversaDoContato).not.toHaveBeenCalled();
+    expect(engineSendText).not.toHaveBeenCalled();
+    expect(JSON.stringify(h.state.logUpdates)).toContain(
+      'conversation does not belong to this account'
+    );
+  });
+
+  it('set_ai NÃO fala com o contato: sem conversa, continua recusando e não cria nada', async () => {
+    await executar(passoDe('set_ai', { enabled: false }));
+
+    expect(destinatarioMock.conversaDoContato).not.toHaveBeenCalled();
+    expect(JSON.stringify(h.state.logUpdates)).toContain(
+      'cannot send: contact has no existing conversation'
+    );
+  });
+
+  it('a criação falhou: o passo falha com o motivo, e nada é enviado', async () => {
+    destinatarioMock.conversaDoContato.mockRejectedValueOnce(
+      new Error('destinatário: dono da conta não resolvido')
+    );
+
+    await executar(sendStep({ text: 'oi' }));
+
+    expect(engineSendText).not.toHaveBeenCalled();
+    expect(h.state.logUpdates).toContainEqual(
+      expect.objectContaining({
+        status: 'failed',
+        error_message: 'destinatário: dono da conta não resolvido',
+      })
+    );
+  });
+});
+
 describe('set_ai — a pausa com MOTIVO (1049, D26)', () => {
   function passoSetAi(enabled: boolean) {
     return {
@@ -1889,7 +2041,16 @@ describe('triggerMatches — a régua do Asaas (998)', () => {
 });
 
 describe('tag_added — conversation policy', () => {
-  it('records a clear failed step when the contact has no conversation', async () => {
+  beforeEach(() => {
+    vi.mocked(engineSendText).mockClear();
+    destinatarioMock.conversaDoContato.mockClear();
+  });
+
+  // Até 27/09/2026 o passo falhava com "tag_added automation cannot send:
+  // contact has no existing conversation" (upstream). A etiqueta que a
+  // integração aplica pela API (o lead de anúncio) é justamente a ficha sem
+  // conversa — agora a conversa nasce ENCERRADA e a mensagem sai por ela.
+  it('contato sem conversa: a conversa nasce ENCERRADA e a mensagem sai por ela', async () => {
     h.state.owned = { id: 'c1' };
     h.state.automations = [
       {
@@ -1920,12 +2081,19 @@ describe('tag_added — conversation policy', () => {
       context: { tag_id: 'tag-a' },
     });
 
-    expect(h.state.logUpdates).toContainEqual(
-      expect.objectContaining({
-        status: 'failed',
-        error_message:
-          'tag_added automation cannot send: contact has no existing conversation',
-      })
+    expect(destinatarioMock.conversaDoContato).toHaveBeenCalledWith(
+      expect.anything(),
+      ACCOUNT,
+      'c1',
+      { conversaNovaEncerrada: true }
+    );
+    expect(vi.mocked(engineSendText).mock.calls[0]?.[0]).toMatchObject({
+      conversationId: 'conv-criada',
+      contactId: 'c1',
+      text: 'Hello',
+    });
+    expect(JSON.stringify(h.state.logUpdates)).not.toContain(
+      'no existing conversation'
     );
   });
 });

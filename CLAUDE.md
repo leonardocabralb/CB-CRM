@@ -488,7 +488,9 @@ O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
   retroativo.
 - Instagram: robô não responde no Direct; unificar fichas é manual; o que a
   API não cobre fica inacessível na conversa.
-- Webhook de entrada cria a conversa ENCERRADA (só ele; 21/09/2026).
+- Conversa ENCERRADA quando nasce sem o cliente ter escrito: webhook de
+  entrada (21/09/2026) e passo de envio da automação para ficha sem conversa
+  (27/09/2026). Calendly e `send_to_number` a criam aberta.
 - Evolution: voltar de versão da imagem está descartado.
 - Celular: no toque o Enter pula linha; o app instalado abre em `/inbox`.
 - "Sair" do menu sai só deste aparelho; 4 h inativo reabre o Meu dia, sem

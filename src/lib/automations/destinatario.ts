@@ -97,12 +97,23 @@ export async function resolverDestinatario(
  * contato, 036 — a mais antiga, como o webhook faz) ou uma nova, com o dono da
  * conta. Nunca toca na que já existia.
  *
- * Além de `resolverDestinatario`, o agendamento do Calendly chama direto para
- * a ficha que já existia SEM conversa. Desde 24/09/2026 a integração do
- * formulário cria a ficha pela API minutos antes de o lead agendar, e ficha
- * criada pela API não tem conversa: sem esta chamada o `{{conversation.link}}`
- * do aviso ao advogado saía vazio, e os lembretes e o No-show, que falam com o
- * cliente, falhariam por falta de conversa.
+ * Além de `resolverDestinatario`, DOIS chamadores diretos, os dois pela mesma
+ * razão — ficha criada pela API v1 não tem conversa:
+ *
+ *   - o agendamento do Calendly, para a ficha que já existia SEM conversa.
+ *     Desde 24/09/2026 a integração do formulário cria a ficha pela API
+ *     minutos antes de o lead agendar: sem esta chamada o
+ *     `{{conversation.link}}` do aviso ao advogado saía vazio, e os lembretes
+ *     e o No-show, que falam com o cliente, falhariam por falta de conversa.
+ *     Conversa ABERTA (sem a opção).
+ *   - o motor de automações (`resolveConversationId`, 27/09/2026), nos passos
+ *     que FALAM com o contato: o lead de anúncio chega pela API numa etapa do
+ *     funil e a automação da etapa é o primeiro contato do escritório — sem
+ *     esta chamada o envio falhava com "contact has no existing
+ *     conversation". Conversa ENCERRADA
+ *     (`conversaNovaEncerrada`), a decisão do Typebot: o lead ainda não
+ *     escreveu, e a resposta dele a reabre (`reopen.ts`); envio de robô não
+ *     reabre.
  *
  * `dono` evita reler `accounts` quando quem chama acabou de resolvê-lo.
  */
