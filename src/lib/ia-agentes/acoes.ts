@@ -657,6 +657,71 @@ export function reuniaoPrometida(args: {
 }
 
 // ------------------------------------------------------------
+// A EQUIPE PROMETIDA sem o `[[TRANSFERIR]]` (27/09/2026)
+// ------------------------------------------------------------
+
+/** Quem da equipe (depois de artigo, "um de nossos", "nossa"…), no singular ou no plural. */
+const GENTE_DA_EQUIPE = '(?:especialistas?|advogad[oa]s?|equipe|atendentes?|colegas?|pessoas?|time|responsavel)'
+/** Artigos, possessivos e "um de nossos" antes de quem da equipe. */
+const DETERMINANTES = '(?:(?:um|uma|o|a|os|as|nossa|nosso|nossos|nossas|de|da|do|das|dos)\\s+)*'
+/**
+ * As frases que PROMETEM que uma pessoa da equipe vai assumir ou procurar o
+ * cliente, sobre o texto sem acento e em minúsculas:
+ *  - "vou pedir para um de nossos especialistas…", "vou passar/encaminhar/
+ *    transferir (você/o seu atendimento) para a equipe…", "vou chamar um
+ *    advogado";
+ *  - "um especialista / nossa equipe vai (te) analisar / entrar em contato /
+ *    chamar / retornar / responder / falar / assumir / atender / ligar";
+ *  - "vou transferir o seu atendimento / você";
+ *  - "nossa equipe / um especialista entrará em contato";
+ *  - em inglês, "a specialist / our team / a colleague will get back /
+ *    contact / reach out / take over / review…" e "I'll pass / transfer you to".
+ */
+const PROMESSAS_DA_EQUIPE: readonly RegExp[] = [
+  new RegExp(
+    `\\bvou\\s+(?:pedir\\s+(?:para|pra)|chamar|(?:passar|encaminhar|transferir)\\s+(?:(?:voce|o\\s+seu\\s+atendimento|seu\\s+atendimento|o\\s+seu\\s+caso|seu\\s+caso|a\\s+conversa)\\s+)?(?:para|pra))\\s+${DETERMINANTES}${GENTE_DA_EQUIPE}\\b`,
+  ),
+  new RegExp(
+    `\\b(?:um|uma|o|a|os|as|nossa|nosso|nossos|nossas)\\s+${DETERMINANTES}${GENTE_DA_EQUIPE}\\s+(?:vai|vao|ira|irao|deve|devem)\\s+(?:(?:te|lhe)\\s+)?(?:analisar|entrar\\s+em\\s+contato|chamar|retornar|responder|falar|assumir|atender|ligar)\\b`,
+  ),
+  /\bvou\s+transferir\s+(?:o\s+seu\s+atendimento|seu\s+atendimento|voce)\b/,
+  /\b(?:nossa\s+equipe|nosso\s+time|um\s+especialista|uma\s+especialista|um\s+advogado|uma\s+advogada|um\s+atendente)\s+(?:entrara|entra|vai\s+entrar)\s+em\s+contato\b/,
+  /\b(?:a\s+specialist|one\s+of\s+our\s+(?:specialists|lawyers|attorneys|team)|our\s+team|a\s+colleague|a\s+lawyer|an\s+attorney|someone\s+from\s+(?:our|the)\s+team|a\s+member\s+of\s+(?:our|the)\s+team)\s+will\s+(?:get\s+back|contact|reach\s+out|take\s+over|review|call|be\s+in\s+touch|follow\s+up)\b/,
+  /\bi(?:'ll|\s+will)\s+(?:pass|transfer|hand)\s+(?:you|your\s+case|this|the\s+conversation)\s+(?:over\s+)?to\b/,
+]
+/** A análise NA REUNIÃO (o caminho de quem qualificou: "na reunião de diagnóstico o advogado analisa") não é passar para a equipe. */
+const NA_REUNIAO = /reuni|meeting/
+
+/**
+ * A resposta PROMETE que uma pessoa da equipe vai assumir ou procurar o
+ * cliente? Medido no Playground (27/09): com as instruções mandando dizer
+ * isso e passar, em 2 de 4 turnos o modelo escreveu "Vou pedir para um de
+ * nossos especialistas analisar o seu caso e entrar em contato com você por
+ * aqui em breve." SEM o `[[TRANSFERIR]]` — o cliente ouviria que uma pessoa
+ * vem e a IA ficaria com a conversa. Frase a frase, sobre o texto sem
+ * acento: casa uma das `PROMESSAS_DA_EQUIPE`, fora de pergunta ("quer que eu
+ * chame…?"), sem negação nas quatro palavras antes, sem condição antes
+ * ("se preferir, …") e sem falar de reunião na frase (lá o advogado analisa
+ * NA reunião). Quem chama decide o resto: a resposta com `[[TRANSFERIR]]`,
+ * `[[HANDOFF]]` ou `[[PASSAR:n]]` já transfere e nem pergunta.
+ */
+export function equipePrometida(texto: string): boolean {
+  for (const frase of texto.split(/(?<=[.!?…;])\s+|\n+/)) {
+    const f = semAcento(frase.trim()).replace(/\u2019/g, "'")
+    if (!f || PERGUNTA.test(f) || NA_REUNIAO.test(f)) continue
+    for (const promessa of PROMESSAS_DA_EQUIPE) {
+      const m = promessa.exec(f)
+      if (!m) continue
+      const antes = f.slice(0, m.index)
+      if (naoAfirma(antes.split(/\s+/).map(palavraNormalizada).filter(Boolean).slice(-4))) continue
+      if (CONDICAO.test(antes)) continue
+      return true
+    }
+  }
+  return false
+}
+
+// ------------------------------------------------------------
 // A D5 nos passos de uma automação que o AGENTE executa
 // ------------------------------------------------------------
 

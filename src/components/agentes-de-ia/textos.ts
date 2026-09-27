@@ -279,10 +279,14 @@ function ehCodigoDoErroDaAcao(v: string): v is CodigoDoErroDaAcao {
  * O complemento cru de uma ação (`detalhe`): `ja_estava` (a ação REPETIDA —
  * o card já estava na etapa, a etiqueta já estava ou não estava, o campo já
  * tinha o valor: deu certo sem mexer em nada) vira texto; o resto (a recusa
- * da RPC, a mensagem do motor) aparece como veio.
+ * da RPC, a mensagem do motor) aparece como veio. `sem_marcador`: a resposta
+ * prometeu a equipe sem o `[[TRANSFERIR]]`, e a transferência foi inferida.
  */
 export function textoDoDetalheDaAcao(t: ReturnType<typeof useTranslations>, detalhe: string): string {
-  return detalhe === 'ja_estava' ? t('turnos.acoes.jaEstava') : detalhe;
+  if (detalhe === 'ja_estava') return t('turnos.acoes.jaEstava');
+  // A equipe prometida sem o `[[TRANSFERIR]]` (27/09): a transferência foi inferida.
+  if (detalhe === 'sem_marcador') return t('turnos.acoes.semMarcador');
+  return detalhe;
 }
 
 /**

@@ -20,7 +20,9 @@
 // que não veio do pedido (`linkInventado`) ganha o aviso: em produção a
 // resposta seria retida e a conversa iria para uma pessoa. O mesmo para a
 // resposta que diz que marcou a reunião SEM o marcador (`reuniaoPrometida`,
-// 27/09/2026).
+// 27/09/2026). A transferência que a resposta prometeu sem o `[[TRANSFERIR]]`
+// aparece entre as simuladas, com o aviso de que foi inferida
+// (`transferenciaInferida`).
 //
 // F5 (D7): com "Marcar reunião" ligado, a rota lê os horários livres do
 // Calendly AO VIVO e devolve os que foram oferecidos ao modelo
@@ -76,6 +78,8 @@ interface Turno {
   linkInventado?: boolean;
   /** Só do agente: a resposta diz que marcou a reunião sem o marcador (F5, 27/09). */
   reuniaoPrometida?: boolean;
+  /** Só do agente: a resposta prometeu a equipe sem o `[[TRANSFERIR]]` — a transferência simulada foi inferida (27/09). */
+  transferenciaInferida?: boolean;
   /** Só do agente: os horários livres oferecidos ao modelo (F5); nulo = nada a mostrar. */
   horarios?: HorarioOferecido[] | null;
 }
@@ -144,6 +148,7 @@ export function PlaygroundDoAgente({
         acoes?: unknown;
         linkInventado?: boolean;
         reuniaoPrometida?: boolean;
+        transferenciaInferida?: boolean;
         horarios?: unknown;
         code?: string;
         error?: string;
@@ -166,6 +171,7 @@ export function PlaygroundDoAgente({
           acoes: lerAcoesSimuladas(corpo.acoes),
           linkInventado: corpo.linkInventado === true,
           reuniaoPrometida: corpo.reuniaoPrometida === true,
+          transferenciaInferida: corpo.transferenciaInferida === true,
           horarios: lerHorariosOferecidos(corpo.horarios),
         },
       ]);
@@ -279,6 +285,12 @@ export function PlaygroundDoAgente({
                       <p className="flex items-start gap-1 text-red-700 dark:text-red-300">
                         <Link2Off className="mt-px size-3.5 shrink-0" />
                         <span>{t('playground.linkInventado')}</span>
+                      </p>
+                    ) : null}
+                    {x.transferenciaInferida ? (
+                      <p className="flex items-start gap-1 text-amber-700 dark:text-amber-300">
+                        <UserCircle2 className="mt-px size-3.5 shrink-0" />
+                        <span>{t('playground.transferenciaInferida')}</span>
                       </p>
                     ) : null}
                     {x.reuniaoPrometida ? (

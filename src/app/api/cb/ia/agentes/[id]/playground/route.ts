@@ -10,6 +10,7 @@ import { lerChave, lerEstado } from '@/lib/ia-chaves/repo'
 import { blocoIndisponivel, lerOQueOAgenteVe } from '@/lib/ia-agentes/acesso'
 import {
   ACAO_TRANSFERIR,
+  equipePrometida,
   lerAcoes,
   linkInventado,
   resolverAcoes,
@@ -66,7 +67,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
  * gente (`reuniao_prometida`), e as ações não executariam. O `[[TRANSFERIR]]`
  * ("responda e passe", 27/09/2026) vem como ação simulada `{ tipo:
  * 'transferir', nome: '' }` — no turno a conversa iria para a equipe DEPOIS
- * de a resposta sair.
+ * de a resposta sair. A resposta que promete a equipe SEM o marcador
+ * (`equipePrometida`) também, com `transferenciaInferida: true`.
  */
 export async function POST(request: Request, { params }: Contexto) {
   try {
@@ -240,7 +242,10 @@ export async function POST(request: Request, { params }: Contexto) {
     // "Responda e passe" (`[[TRANSFERIR]]`, 27/09): no turno, a conversa iria
     // para a equipe DEPOIS de a resposta sair — aqui, uma ação simulada a mais
     // (`tipo: 'transferir'`, sem nome); quando nada sairia, recusada como as outras.
-    const transferir = lidas.transferirDepois ? [{ tipo: ACAO_TRANSFERIR, nome: '' }] : []
+    // A equipe prometida SEM o marcador (a MESMA régua do turno) vale como se
+    // ele estivesse lá; `transferenciaInferida` avisa a tela.
+    const transferenciaInferida = !sentinela && n === null && !lidas.transferirDepois && equipePrometida(lidas.texto)
+    const transferir = lidas.transferirDepois || transferenciaInferida ? [{ tipo: ACAO_TRANSFERIR, nome: '' }] : []
     const acoes = {
       aceitas: naoExecutaria
         ? []
@@ -261,6 +266,7 @@ export async function POST(request: Request, { params }: Contexto) {
       acoes,
       linkInventado: inventou,
       reuniaoPrometida: prometeu,
+      transferenciaInferida,
       // O que foi oferecido ao modelo (F5); `null` = reunião desligada, leitura
       // que falhou ou cliente que já tem reunião (nada foi oferecido). O
       // `texto` é o `nome` ("28/09/2026 15:15"), o que gente lê.

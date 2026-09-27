@@ -95,6 +95,8 @@ Plano: `docs/PLANO-agentes-de-ia.md` (D5, D28, F4). Sem migration.
   configuração; a resposta SAI e, depois das ações, o turno transfere
   (`agente_passou`, desfecho `respondeu`, linha `transferir` no registro).
   Sentinela, passagem e as travas vencem; só o marcador = transfere sem enviar.
+  A resposta que PROMETE a equipe sem ele (`equipePrometida`, medido: 2 de 4)
+  vale como com ele, `detalhe: 'sem_marcador'`; análise "na reunião" é quieta.
 - **Link inventado** (`linkInventado`): URL da resposta que não está no
   pedido montado nem nas mensagens enviadas ao modelo → retém e transfere
   (`link_inventado`), com o link no registro do turno.

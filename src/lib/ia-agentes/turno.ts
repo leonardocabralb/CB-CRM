@@ -77,7 +77,9 @@
 //    (`agente_passou`), com o desfecho `respondeu` — o `[[HANDOFF]]` é para
 //    quando nada deve ser dito. Perde para o sentinela, a passagem e as
 //    travas (que não enviam); sem texto além dos marcadores, transfere sem
-//    enviar; envio recusado ou incerto = não roda.
+//    enviar; envio recusado ou incerto = não roda. A resposta que PROMETE a
+//    equipe sem o marcador (`equipePrometida`) vale como se ele estivesse lá
+//    (`detalhe: 'sem_marcador'` no registro).
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -103,6 +105,7 @@ import { transcreverAudio } from '@/lib/transcricao/transcrever'
 import { lerOQueOAgenteVe } from './acesso'
 import {
   ACAO_TRANSFERIR,
+  equipePrometida,
   lerAcoes,
   linksInventados,
   registroDaRecusa,
@@ -927,14 +930,33 @@ async function conduzir(
   const lidas = lerAcoes(texto)
   const { aceitas, recusadas } = resolverAcoes(lidas.pedidas, opcoesDeAcao)
   const recusasDaLeitura = [...lidas.recusadas, ...recusadas].map(registroDaRecusa)
+  // A EQUIPE PROMETIDA sem o marcador (27/09/2026): a resposta diz que uma
+  // pessoa vai assumir ou procurar o cliente e o modelo esqueceu o
+  // `[[TRANSFERIR]]` (medido: 2 de 4 turnos). Vale como se o marcador
+  // estivesse lá — a resposta sai e a conversa vai para a equipe —, com
+  // `detalhe: 'sem_marcador'` no registro para medir o esquecimento. Com o
+  // sentinela, a passagem ou o próprio marcador, nem se pergunta.
+  const transferenciaInferida =
+    !handoff &&
+    !lidas.transferir &&
+    !lidas.transferirDepois &&
+    lerPassagem(texto) === null &&
+    equipePrometida(lidas.texto)
+  const transferirDepois = lidas.transferirDepois || transferenciaInferida
+  const linhaDaTransferencia = (r: Omit<RegistroDeAcao, 'tipo' | 'alvo'>): RegistroDeAcao => ({
+    tipo: ACAO_TRANSFERIR,
+    alvo: { id: null, nome: '' },
+    ...r,
+    ...(transferenciaInferida ? { detalhe: 'sem_marcador' } : {}),
+  })
   // O `[[TRANSFERIR]]` entra no registro como mais uma linha (sem alvo): ele
   // só roda com a resposta FORA, como as ações.
   const naoExecutadas = (erro: 'passagem' | 'transferencia' | 'envio_falhou'): RegistroDeAcao[] | null =>
-    aceitas.length + recusasDaLeitura.length === 0 && !lidas.transferirDepois
+    aceitas.length + recusasDaLeitura.length === 0 && !transferirDepois
       ? null
       : [
           ...aceitas.map((a) => ({ tipo: a.tipo, alvo: { id: a.id, nome: a.nome }, ok: false, erro })),
-          ...(lidas.transferirDepois ? [{ tipo: ACAO_TRANSFERIR, alvo: { id: null, nome: '' }, ok: false, erro }] : []),
+          ...(transferirDepois ? [linhaDaTransferencia({ ok: false, erro })] : []),
           ...recusasDaLeitura,
         ]
 
@@ -1144,8 +1166,9 @@ async function conduzir(
   // resposta FORA — o cliente já leu que a equipe vai continuar —, a conversa
   // vai para gente pelo caminho da F2 (pausa, atribui, anota), com o desfecho
   // `respondeu`. Depois da reunião não marcada: se ela já transferiu, esta
-  // encontra a conversa pausada (`nada_mudou`, sem segunda anotação).
-  if (lidas.transferirDepois) {
+  // encontra a conversa pausada (`nada_mudou`, sem segunda anotação). A
+  // equipe prometida sem o marcador entra aqui também (`sem_marcador`).
+  if (transferirDepois) {
     const transferencia = await transferirParaGente(db, {
       accountId: turno.account_id,
       conversationId: turno.conversation_id,
@@ -1154,12 +1177,13 @@ async function conduzir(
       transferirPara: agente.transferirPara,
       motivo: 'agente_passou',
     })
-    const linha: RegistroDeAcao =
+    // A inferida leva `sem_marcador` mesmo no `nada_mudou`: é a medida do esquecimento.
+    const linha =
       transferencia === 'transferiu'
-        ? { tipo: ACAO_TRANSFERIR, alvo: { id: null, nome: '' }, ok: true }
+        ? linhaDaTransferencia({ ok: true })
         : transferencia === 'nada_mudou'
-          ? { tipo: ACAO_TRANSFERIR, alvo: { id: null, nome: '' }, ok: true, detalhe: 'ja_estava' }
-          : { tipo: ACAO_TRANSFERIR, alvo: { id: null, nome: '' }, ok: false, erro: 'falhou' }
+          ? linhaDaTransferencia({ ok: true, detalhe: 'ja_estava' })
+          : linhaDaTransferencia({ ok: false, erro: 'falhou' })
     andamento.acoes = [...(andamento.acoes ?? []), linha]
   }
   return enviado

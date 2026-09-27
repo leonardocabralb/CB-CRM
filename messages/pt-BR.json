@@ -4566,6 +4566,7 @@
       "recusada": "{tipo} ({motivo})",
       "linkInventado": "O agente inventou um link: em produção esta resposta seria retida e a conversa iria para uma pessoa.",
       "reuniaoPrometida": "O agente disse que marcou a reunião sem marcar: em produção esta resposta seria retida e a conversa iria para uma pessoa.",
+      "transferenciaInferida": "O agente prometeu a equipe sem o marcador de transferir: em produção a resposta sai e a conversa vai para uma pessoa assim mesmo.",
       "acao": {
         "mover_etapa": "mover para {nome}",
         "etiquetar": "etiquetar {nome}",
@@ -4668,7 +4669,8 @@
           "calendly_desconectado": "o Calendly não está conectado"
         },
         "comDetalhe": "{texto} — {detalhe}",
-        "jaEstava": "nada mudou: já estava assim"
+        "jaEstava": "nada mudou: já estava assim",
+        "semMarcador": "a resposta prometeu a equipe sem o marcador — transferida assim mesmo"
       },
       "statusDesconhecido": "Outro ({status})",
       "status": {

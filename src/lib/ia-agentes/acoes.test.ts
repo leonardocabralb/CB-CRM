@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   afirmaReuniaoMarcada,
   automacoesAlcancaveis,
+  equipePrometida,
   camposVigiados,
   formatoDoCampo,
   lerAcoes,
@@ -309,6 +310,55 @@ describe('a trava de link inventado', () => {
 
   it('sem link, nada a conferir', () => {
     expect(linkInventado('Olá!', [])).toBe(false)
+  })
+})
+
+describe('a EQUIPE PROMETIDA sem o [[TRANSFERIR]] (27/09)', () => {
+  it('⚠️ as frases MEDIDAS (o modelo prometeu uma pessoa sem o marcador) disparam', () => {
+    for (const t of [
+      'Vou pedir para um de nossos especialistas analisar o seu caso e entrar em contato com você por aqui em breve.',
+      'Obrigado pelas informações! Vou pedir para um especialista analisar o seu caso e te retornar por aqui.',
+    ]) {
+      expect(equipePrometida(t), t).toBe(true)
+    }
+  })
+
+  it('as outras formas da promessa, em português e em inglês', () => {
+    for (const t of [
+      'Vou passar você para a nossa equipe.',
+      'Vou encaminhar o seu caso para um advogado.',
+      'Vou transferir o seu atendimento.',
+      'Vou transferir você para um atendente.',
+      'Vou chamar uma advogada para falar com você.',
+      'Um especialista vai analisar o seu caso e te chamar por aqui.',
+      'Nossa equipe vai entrar em contato em breve.',
+      'Um de nossos advogados irá te retornar ainda hoje.',
+      'Nossa equipe entrará em contato por aqui.',
+      'A specialist will get back to you shortly.',
+      'Our team will reach out to you here.',
+      "I'll pass you to one of our lawyers.",
+      'I will transfer you to our team now.',
+    ]) {
+      expect(equipePrometida(t), t).toBe(true)
+    }
+  })
+
+  it('⚠️ quieta: negação, pergunta, condição, e a análise NA REUNIÃO (o caminho de quem qualificou)', () => {
+    for (const t of [
+      'Não vou pedir para um especialista agora: primeiro preciso de mais informações.',
+      'Quer que eu chame um especialista?',
+      'Quer que eu peça para um especialista entrar em contato?',
+      'Posso pedir para um especialista te ligar?',
+      'Se preferir, vou pedir para um especialista te ligar.',
+      'Um especialista vai analisar o seu caso na reunião.',
+      'Na reunião de diagnóstico o advogado analisa as dívidas e explica os caminhos.',
+      'Na reunião, um de nossos advogados vai analisar suas dívidas e te orientar.',
+      'A specialist will review your case in the meeting.',
+      'Nossa equipe atende de segunda a sexta, das 9h às 18h.',
+      'Obrigado! Qual é o valor aproximado da dívida?',
+    ]) {
+      expect(equipePrometida(t), t).toBe(false)
+    }
   })
 })
 

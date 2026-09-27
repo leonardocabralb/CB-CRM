@@ -2284,6 +2284,59 @@ describe('executarTurno — as ações (F4, D28)', () => {
     expect(turno()).toMatchObject({ status: 'transferiu', erro, acoes: [{ ...TRANSFERIR, ok: false, erro: 'transferencia' }] })
   })
 
+  it('⚠️ a equipe PROMETIDA sem o marcador (medido em 27/09): a resposta SAI e a conversa vai para a equipe, com `sem_marcador`', async () => {
+    const TEXTO = 'Vou pedir para um de nossos especialistas analisar o seu caso e entrar em contato com você por aqui em breve.'
+    let pausadaNoEnvio: unknown = null
+    vi.mocked(engineSendText).mockImplementation(async (args) => {
+      pausadaNoEnvio = conversa().ai_autoreply_disabled
+      args.antesDoProvedor?.()
+      await args.aoSair?.('wamid.resposta')
+      return { whatsapp_message_id: 'wamid.resposta' }
+    })
+    responde(TEXTO)
+    await executarTurno(TURNO)
+    expect(vi.mocked(engineSendText).mock.calls[0][0].text).toBe(TEXTO)
+    expect(pausadaNoEnvio).toBe(false)
+    expect(turno()).toMatchObject({ status: 'respondeu', acoes: [{ ...TRANSFERIR, ok: true, detalhe: 'sem_marcador' }] })
+    expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'transferencia', assigned_agent_id: MEMBRO })
+    expect(notas()).toHaveLength(1)
+  })
+
+  it('a promessa da equipe COM o [[TRANSFERIR]]: não é inferida (sem `sem_marcador`)', async () => {
+    responde('Vou pedir para um especialista analisar o seu caso.\n[[TRANSFERIR]]')
+    await executarTurno(TURNO)
+    expect(turno().acoes).toEqual([{ ...TRANSFERIR, ok: true }])
+  })
+
+  it('a promessa da equipe com o envio recusado: nada roda (registrado `envio_falhou`, com `sem_marcador`)', async () => {
+    responde('Nossa equipe vai entrar em contato em breve.')
+    envioFalhaNoProvedor(new EvolutionApiError('número inválido', 400))
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('falhou')
+    expect(turno().acoes).toEqual([{ ...TRANSFERIR, ok: false, erro: 'envio_falhou', detalhe: 'sem_marcador' }])
+    expect(conversa()).toMatchObject({ ai_autoreply_disabled: false })
+  })
+
+  it.each([
+    'Um especialista vai analisar o seu caso na reunião.',
+    'Quer que eu chame um especialista?',
+    'Se preferir, vou pedir para um especialista te ligar.',
+  ])('quieta: "%s" sai e NÃO transfere', async (texto) => {
+    responde(texto)
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    expect(turno().acoes).toBeUndefined()
+    expect(conversa()).toMatchObject({ ai_autoreply_disabled: false })
+  })
+
+  it('com o sentinela a promessa não é inferida: transfere sem enviar, como sempre', async () => {
+    vi.mocked(generateReply).mockResolvedValue({ text: 'Vou pedir para um especialista te chamar.', handoff: true, usage: null })
+    await executarTurno(TURNO)
+    expect(engineSendText).not.toHaveBeenCalled()
+    expect(turno()).toMatchObject({ status: 'transferiu', erro: 'sentinela' })
+    expect(turno().acoes).toBeUndefined()
+  })
+
   it('⚠️ precedência: a passagem VENCE o [[TRANSFERIR]] — nada é enviado', async () => {
     responde('Vou te passar. [[PASSAR:1]] [[TRANSFERIR]]')
     await executarTurno(TURNO)

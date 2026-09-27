@@ -346,6 +346,23 @@ describe('POST /api/cb/ia/agentes/[id]/playground — as ações (F4, SIMULADAS)
     expect(corpo.acoes).toEqual({ aceitas: [{ tipo: 'transferir', nome: '' }], recusadas: [] })
   })
 
+  it('a equipe PROMETIDA sem o marcador: a transferência simulada é INFERIDA (`transferenciaInferida`)', async () => {
+    resposta = {
+      text: 'Vou pedir para um de nossos especialistas analisar o seu caso e entrar em contato com você por aqui em breve.',
+      handoff: false,
+    }
+    const corpo = await (await enviar()).json()
+    expect(corpo).toMatchObject({ handoff: false, transferenciaInferida: true })
+    expect(corpo.acoes).toEqual({ aceitas: [{ tipo: 'transferir', nome: '' }], recusadas: [] })
+    // Com o marcador, não é inferida.
+    resposta = { text: 'Vou pedir para um especialista analisar.\n[[TRANSFERIR]]', handoff: false }
+    expect((await (await enviar()).json()).transferenciaInferida).toBe(false)
+    // Na reunião, quieta: nada a transferir.
+    resposta = { text: 'Um especialista vai analisar o seu caso na reunião.', handoff: false }
+    const quieta = await (await enviar()).json()
+    expect(quieta).toMatchObject({ transferenciaInferida: false, acoes: { aceitas: [], recusadas: [] } })
+  })
+
   it('[[TRANSFERIR]] perde para o link inventado e para a resposta vazia (vai às recusadas)', async () => {
     resposta = { text: 'Pague em https://boleto.exemplo/1\n[[TRANSFERIR]]', handoff: false }
     const inventou = await (await enviar()).json()

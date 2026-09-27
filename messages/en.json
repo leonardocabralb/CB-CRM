@@ -4573,6 +4573,7 @@
       "recusada": "{tipo} ({motivo})",
       "linkInventado": "The agent made up a link: in production this reply would be held back and the conversation would go to a person.",
       "reuniaoPrometida": "The agent said it booked the meeting without booking it: in production this reply would be held back and the conversation would go to a person.",
+      "transferenciaInferida": "The agent promised the team without the transfer marker: in production the reply is sent and the conversation still goes to a person.",
       "acao": {
         "mover_etapa": "move to {nome}",
         "etiquetar": "tag {nome}",
@@ -4675,7 +4676,8 @@
           "calendly_desconectado": "Calendly is not connected"
         },
         "comDetalhe": "{texto} — {detalhe}",
-        "jaEstava": "nothing changed: it was already that way"
+        "jaEstava": "nothing changed: it was already that way",
+        "semMarcador": "the reply promised the team without the marker — handed over anyway"
       },
       "statusDesconhecido": "Other ({status})",
       "status": {
