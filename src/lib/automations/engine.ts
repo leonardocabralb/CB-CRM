@@ -112,6 +112,7 @@ import {
   execucaoJaInterrompida,
   marcarExecucoesInterrompidas,
 } from './interrupcao';
+import { comPassoDaFila, conferirRetomada } from './retomada';
 import {
   desfechoDoEscopo,
   desfechoDoRetorno,
@@ -649,6 +650,34 @@ export async function resumePendingExecution(pending: {
     return;
   }
 
+  // ⚠️⚠️ O PASSO ONDE ESTA ESPERA PAROU AINDA ESTÁ LÁ? (26/09/2026, NOSSO.)
+  // O operador pode ter salvo a automação durante a espera: a condição do
+  // ramo apagada (a FK zera `parent_step_id` e a retomada rodaria o escopo de
+  // FORA), ou um passo inserido/removido antes dela (a posição gravada
+  // apontaria para outro passo). Removido ou levado para outro ramo → falha
+  // VISÍVEL, com o motivo no registro; nunca seguir por outro caminho em
+  // silêncio. Só ESTA continuação para: as irmãs da execução são conferidas
+  // cada uma pelo seu passo, ao acordar. Ver `retomada.ts`.
+  const retomada = await conferirRetomada(db, automation.id, pending);
+  if (retomada.tipo === 'parar') {
+    await markPending(pending.id, 'failed');
+    await appendResults(
+      pending.log_id,
+      [
+        {
+          step_id: retomada.passoId ?? '',
+          step_type: 'wait',
+          status: 'failed',
+          detail: retomada.motivo,
+        },
+      ],
+      'failed',
+      retomada.motivo
+    );
+    await fecharLog(pending.log_id, 'falhou', pending.id);
+    return;
+  }
+
   try {
     const retorno = await executeStepsFrom({
       automation: automation as Automation,
@@ -661,7 +690,9 @@ export async function resumePendingExecution(pending: {
       context: semMarcaDeResposta(pending.context ?? {}),
       parentStepId: pending.parent_step_id,
       branch: pending.branch,
-      startPosition: pending.next_step_position,
+      // A posição ATUAL do passo que estacionou (`retomada.ts`), não a
+      // gravada: um passo inserido antes dele desloca o escopo inteiro.
+      startPosition: retomada.posicao,
       logId: pending.log_id,
       triggerEvent: 'resumed_wait',
       esperaEmCurso: pending.id,
@@ -1197,7 +1228,9 @@ async function executeStepsFrom(
           // estacionamento — marca ou limpa —, nunca herdada: o contexto é
           // copiado de ponta a ponta da execução, e a marca de uma espera
           // vazaria para as seguintes. Ver `parar-se-responder.ts`.
-          context: contextoDaEspera(args.context, cfg, step.id),
+          // E QUAL passo estacionou (NOSSO, 26/09/2026): é por ele que a
+          // retomada acha o lugar certo depois de uma edição (`retomada.ts`).
+          context: comPassoDaFila(contextoDaEspera(args.context, cfg, step.id), step),
           run_at: retomaEm.toISOString(),
         }
       );
@@ -1368,10 +1401,15 @@ async function executeStepsFrom(
             // de novo. O "Aguardar" enfileira `position + 1` porque ele já
             // terminou; aqui o passo não chegou a acontecer.
             next_step_position: step.position,
-            context: {
-              ...args.context,
-              [CHAVE_DA_TENTATIVA]: contadorDe(step.position, tentativa),
-            },
+            // O passo que vai rodar de novo é o que a retomada procura
+            // depois de uma edição (`retomada.ts`).
+            context: comPassoDaFila(
+              {
+                ...args.context,
+                [CHAVE_DA_TENTATIVA]: contadorDe(step.position, tentativa),
+              },
+              step
+            ),
             run_at: new Date(Date.now() + decisao.esperaMs).toISOString(),
           }
         );

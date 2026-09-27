@@ -666,6 +666,7 @@
       "falhou": "falhou",
       "pulado": "pulado",
       "semPassosFuturos": "Termina depois desta espera.",
+      "naoRetomaDepoisDaEdicao": "A automação foi editada e o ponto onde esta espera parou foi removido ou mudou de ramo: ela não vai retomar (o motivo fica no histórico).",
       "executar": {
         "titulo": "Executar automação",
         "buscar": "Buscar pelo nome…",

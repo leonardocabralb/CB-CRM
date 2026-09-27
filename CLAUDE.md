@@ -531,7 +531,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
 - `.claude/rules/automacoes.md` — motor e construtor, grade do funil,
   execuções na conversa, retentativa, desfecho da execução.
 - `.claude/rules/automacoes-esperas.md` — Aguardar, parar se o cliente
-  responder, presa à etapa, marca de interrupção, fila.
+  responder, presa à etapa, marca de interrupção, fila, salvar com esperas
+  paradas (identidade dos passos).
 - `.claude/rules/automacoes-passos.md` — valores do "Enviar modelo", tarefa
   pelo responsável, condições da janela de 24h e da hora do dia, "Aguardar
   até estar dentro do horário".
