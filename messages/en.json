@@ -673,6 +673,7 @@
       "falhou": "failed",
       "pulado": "skipped",
       "semPassosFuturos": "Ends after this wait.",
+      "naoRetomaDepoisDaEdicao": "The automation was edited and the point where this wait stopped was removed or moved to another branch: it won't resume (the reason is kept in the history).",
       "executar": {
         "titulo": "Run automation",
         "buscar": "Search by name…",

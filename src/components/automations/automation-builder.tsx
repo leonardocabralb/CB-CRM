@@ -119,6 +119,15 @@ type MediaKindUI = "image" | "video" | "document" | "audio"
 export interface BuilderStep {
   /** Client id; the API assigns real UUIDs server-side. */
   cid: string
+  /**
+   * NOSSO (26/09/2026): o id do passo NO BANCO — o que veio do servidor, ou um
+   * UUID gerado aqui para o passo novo. Vai no salvamento e, ao EDITAR, o
+   * servidor o MANTÉM: a espera estacionada num ramo guarda o id da condição,
+   * e um id novo a cada salvamento a desviava para outro passo
+   * (`replaceSteps`, `retomada.ts`). Na criação o servidor atribui ids novos
+   * e a tela recarrega pela edição. Ausente só onde o navegador não gera UUID.
+   */
+  id?: string
   step_type: AutomationStepType
   step_config: Record<string, unknown>
   branches?: { yes: BuilderStep[]; no: BuilderStep[] }
@@ -306,6 +315,15 @@ function cid(): string {
       ? crypto.randomUUID()
       : Math.random().toString(36).slice(2) + Date.now().toString(36))
   )
+}
+
+/**
+ * O id de BANCO do passo novo, gerado aqui para ele ser o MESMO em todos os
+ * salvamentos desta tela (ela não recarrega depois de salvar). Sem
+ * `randomUUID` (contexto sem HTTPS), fica ausente e o servidor atribui.
+ */
+function idDePassoNovo(): string | undefined {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : undefined
 }
 
 // The send_buttons / send_list step_config IS an InteractiveMessagePayload,
@@ -1175,6 +1193,7 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
   function addStepAt(parent: ParentScope, index: number, type: AutomationStepType) {
     const node: BuilderStep = {
       cid: cid(),
+      id: idDePassoNovo(),
       step_type: type,
       step_config: blankConfig(type),
       branches: type === "condition" ? { yes: [], no: [] } : undefined,
@@ -3627,6 +3646,8 @@ function previewFor(step: BuilderStep): string {
 // ------------------------------------------------------------
 
 interface ApiStep {
+  /** O id de banco (ver `BuilderStep.id`): ausente = o servidor atribui. */
+  id?: string
   step_type: string
   step_config: Record<string, unknown>
   branches?: { yes?: ApiStep[]; no?: ApiStep[] }
@@ -3634,6 +3655,7 @@ interface ApiStep {
 
 export function toApiSteps(steps: BuilderStep[]): ApiStep[] {
   return steps.map((s) => ({
+    ...(s.id ? { id: s.id } : {}),
     step_type: s.step_type,
     step_config: s.step_config,
     branches: s.branches
@@ -3656,6 +3678,8 @@ export interface ServerStepNode {
 export function fromServerSteps(nodes: ServerStepNode[]): BuilderStep[] {
   return nodes.map((n) => ({
     cid: cid(),
+    // O id do banco volta no salvamento: é a identidade do passo (NOSSO).
+    id: n.id,
     step_type: n.step_type as AutomationStepType,
     step_config: n.step_config ?? {},
     branches:

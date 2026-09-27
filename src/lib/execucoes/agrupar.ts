@@ -15,6 +15,8 @@
 // corrida); a tela imprime "(apagada)", nunca o UUID — convenção da casa.
 // ============================================================
 
+import { lerPassoDaFila, type PassoDaFila } from '@/lib/automations/retomada'
+
 /** Linha crua da consulta (service-role) sobre `automation_pending_executions`. */
 export interface EsperaPendente {
   id: string
@@ -28,6 +30,12 @@ export interface EsperaPendente {
   parent_step_id?: string | null
   branch?: 'yes' | 'no' | null
   log_id?: string | null
+  /**
+   * O contexto GRAVADO da espera — lido SÓ pelo passo que estacionou
+   * (`lerPassoDaFila`). ⚠️ Nunca vai para a resposta: `referenciaDe` copia
+   * campo a campo, e o contexto carrega as variáveis da execução.
+   */
+  context?: unknown
 }
 
 /** A espera que a linha do tempo detalha (a mais próxima de acordar). */
@@ -36,6 +44,8 @@ export interface ReferenciaDaEspera {
   parent_step_id: string | null
   branch: 'yes' | 'no' | null
   log_id: string | null
+  /** O passo que estacionou (`retomada.ts`) — ausente na espera antiga. */
+  passo_da_fila?: PassoDaFila
 }
 
 /** Uma automação com pelo menos uma espera pendente para o contato. */
@@ -60,11 +70,14 @@ function nomeDoEmbed(e: EsperaPendente): string | null {
 
 function referenciaDe(e: EsperaPendente): ReferenciaDaEspera | undefined {
   if (typeof e.next_step_position !== 'number') return undefined
+  // Só o passo (id e posição), nunca o contexto inteiro — ver `context` acima.
+  const passo = lerPassoDaFila(e.context)
   return {
     next_step_position: e.next_step_position,
     parent_step_id: e.parent_step_id ?? null,
     branch: e.branch ?? null,
     log_id: e.log_id ?? null,
+    ...(passo ? { passo_da_fila: passo } : {}),
   }
 }
 
