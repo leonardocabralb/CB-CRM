@@ -100,6 +100,11 @@ reentrega): `.claude/rules/webhooks.md`. Passos com regra própria:
   responsável (decisão do operador), senão quem reabre herda o dono velho.
   Ele fecha TODAS as conversas do contato. Quem reabre e com que dono:
   `.claude/rules/ingestao.md`.
+- ⚠️ **Ficha SEM conversa: os passos que FALAM com o contato a criam
+  ENCERRADA** (`criarSeFaltar` em `resolveConversationId` → `conversaDoContato`:
+  enviar texto, botões/lista, modelo, mídia e `run_flow`). Ficha da API v1 (o
+  lead de anúncio) não tem conversa. `set_ai` e a condição da janela não
+  criam; `conversation_id` alheio no contexto segue recusado.
 - ⚠️ **Remetente novo do robô confere a conversa por conta**
   (`assertConversationInAccount`, ANTES do canal e do provedor), em
   `engine.ts` e nos dois `meta-send.ts`. Pino:

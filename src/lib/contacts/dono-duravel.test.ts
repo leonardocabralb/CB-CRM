@@ -81,15 +81,17 @@ const UNIVERSO: Record<
   },
   'lib/asaas/varrer-regua.ts': {
     // A régua de cobrança (998) cria a CONVERSA da ficha que nasceu do Asaas
-    // (D2 não cria conversa; o passo `send_message` não a cria). `dono` vem
-    // de `accounts.owner_user_id`, resolvido sem fallback.
+    // (D2 não cria conversa), com o canal do passo, antes do disparo. `dono`
+    // vem de `accounts.owner_user_id`, resolvido sem fallback.
     fontes: ['dono'],
     callSites: 1,
   },
   'lib/automations/destinatario.ts': {
     // O passo `send_to_number` (977) cria a ficha e a conversa do número
-    // avisado. `donoDaConta` vem de `accounts.owner_user_id`, resolvido sem
-    // fallback; o autor da automação nunca entra.
+    // avisado; os passos que falam com o contato (27/09/2026), o Calendly e o
+    // webhook de entrada criam por aqui a conversa da ficha que não tem uma.
+    // `donoDaConta` vem de `accounts.owner_user_id`, resolvido sem fallback;
+    // o autor da automação nunca entra.
     fontes: ['dono'],
     callSites: 2,
   },
