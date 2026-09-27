@@ -56,7 +56,9 @@
 //    marcadores transfere; link que não veio do pedido nem da conversa RETÉM
 //    a resposta e transfere (`link_inventado`, com os links no `erro`), e a
 //    resposta que diz que marcou a reunião SEM o marcador (com horários
-//    oferecidos) também (`reuniao_prometida`, com o texto no `erro`). As
+//    oferecidos) também (`reuniao_prometida`, com o texto no `erro`), e a
+//    que reproduz o pedido interno ANTES das duas (`pedido_vazado`,
+//    `vazouOPedido`, as regras do sistema de 27/09/2026). As
 //    ações executam DEPOIS de a resposta SAIR (`executar-acoes.ts`): reserva
 //    recusada, envio recusado ou incerto = nada executa — a ação não acontece
 //    sem a resposta que a explica, e a automação que ela dispara não fala
@@ -139,6 +141,7 @@ import { anotarNaConversa, executarAcoes } from './executar-acoes'
 import { opcoesDoAgente } from './ferramentas'
 import { dentroDoHorario } from './horario'
 import { lerPassagem, montarPedidoDaRetomada, montarPedidoDoAgente } from './pedido'
+import { vazouOPedido } from './regras-do-sistema'
 import {
   abreTurno,
   ehFigurinha,
@@ -1186,6 +1189,16 @@ async function conduzir(
       andamento.acoes = naoExecutadas('transferencia')
       return { status: 'transferiu', motivo: 'sentinela' }
     }
+    // O PEDIDO VAZADO (27/09/2026, as regras do sistema): a resposta que
+    // reproduz o texto interno — o canário, um trecho do texto-base, o nome de
+    // um marcador escrito por extenso — é RETIDA, e o texto vai para o `erro`
+    // do turno. Olha o texto SEM os marcadores (o que o cliente receberia): o
+    // `[[MOVER:1]]` legítimo já saiu, e o pedido copiado com um `[[HANDOFF]]`
+    // dentro já transferiu acima, pelo sentinela, sem enviar nada.
+    if (vazouOPedido(lidas.texto)) {
+      andamento.acoes = naoExecutadas('transferencia')
+      return { status: 'transferiu', motivo: 'pedido_vazado', erro: `pedido vazado: ${textoRetido(lidas.texto)}` }
+    }
     // Link que não veio do pedido nem da conversa (5.6): a resposta é RETIDA,
     // e os links vão para o `erro` do turno — a equipe vê o que seria enviado.
     const inventados = linksInventados(lidas.texto, [pedido, ...conversa.map((m) => m.content)])
@@ -1475,6 +1488,7 @@ const ERRO_DA_RESPOSTA: Record<ParadaDaResposta, string> = {
   nada_pendente: 'nada pendente: o modelo encerrou a retomada ([[SEM_RETOMADA]])',
   pediu_equipe: 'o modelo pediu a equipe: a retomada não transfere, a série parou',
   sem_texto: 'a retomada veio sem texto',
+  pedido_vazado: 'pedido vazado: a retomada reproduzia o pedido interno',
   link_inventado: 'link inventado',
 }
 

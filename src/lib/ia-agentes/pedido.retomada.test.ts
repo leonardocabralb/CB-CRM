@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { lerSemRetomada, MARCADOR_SEM_RETOMADA, montarPedidoDaRetomada, montarPedidoDoAgente, secaoDaRetomada } from './pedido'
+import { CANARIO_DAS_REGRAS } from './regras-do-sistema'
 
 // ============================================================
 // O pedido de uma RETOMADA (1056): o pedido do agente, sem ações, passagens
@@ -34,6 +35,10 @@ describe('montarPedidoDaRetomada', () => {
     expect(secaoDaRetomada({ tentativa: 6, de: 6, semResposta: '2 days' })).toContain('This IS the last follow-up.')
   })
 
+  it('as regras do sistema valem na retomada também (vêm do pedido do agente)', () => {
+    expect(p).toContain(CANARIO_DAS_REGRAS)
+  })
+
   it('sem a seção das ações, nem a das passagens', () => {
     expect(p).not.toContain("Actions you can take in the business's CRM")
     expect(p).not.toContain('Other AI agents of the business can take this conversation over')
@@ -41,7 +46,7 @@ describe('montarPedidoDaRetomada', () => {
 })
 
 describe('lerSemRetomada', () => {
-  it.each(['[[SEM_RETOMADA]]', '[[sem_retomada]]', '[[ SEM RETOMADA ]]', '[SEM-RETOMADA]', 'Obrigado! [[SEM_RETOMADA]]'])('%s: sim', (t) => {
+  it.each(['[[SEM_RETOMADA]]', '[[sem_retomada]]', '[[ SEM RETOMADA ]]', '[SEM-RETOMADA]', 'Obrigado! [[SEM_RETOMADA]]', 'SEM_RETOMADA', ' sem retomada. '])('%s: sim', (t) => {
     expect(lerSemRetomada(t)).toBe(true)
   })
 

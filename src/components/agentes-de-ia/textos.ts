@@ -351,6 +351,7 @@ export const PARADAS_DA_RETOMADA: Record<ParadaDaResposta, true> = {
   nada_pendente: true,
   pediu_equipe: true,
   sem_texto: true,
+  pedido_vazado: true,
   link_inventado: true,
 };
 

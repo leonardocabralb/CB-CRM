@@ -22,7 +22,9 @@
 // resposta que diz que marcou a reunião SEM o marcador (`reuniaoPrometida`,
 // 27/09/2026). A transferência que a resposta prometeu sem o `[[TRANSFERIR]]`
 // aparece entre as simuladas, com o aviso de que foi inferida
-// (`transferenciaInferida`).
+// (`transferenciaInferida`). E a resposta que reproduz o pedido interno
+// (`pedidoVazado`, as regras do sistema de 27/09/2026) ganha o aviso
+// vermelho: em produção ela seria retida.
 //
 // F5 (D7): com "Marcar reunião" ligado, a rota lê os horários livres do
 // Calendly AO VIVO e devolve os que foram oferecidos ao modelo
@@ -56,6 +58,7 @@ import {
   Loader2,
   RotateCcw,
   Send,
+  ShieldAlert,
   UserCircle2,
   Wrench,
   X,
@@ -105,6 +108,8 @@ interface Turno {
   vistos?: Vistos;
   /** Só do agente: as ações que ele pediu, SIMULADAS (F4). */
   acoes?: AcoesSimuladas;
+  /** Só do agente: a resposta reproduz o pedido interno (as regras do sistema, 27/09). */
+  pedidoVazado?: boolean;
   /** Só do agente: a resposta tem um link que não veio do pedido (F4). */
   linkInventado?: boolean;
   /** Só do agente: a resposta diz que marcou a reunião sem o marcador (F5, 27/09). */
@@ -144,9 +149,10 @@ function proximaRetomada(turnos: Turno[], cadencia: number): number | null {
   return seguidas < cadencia ? seguidas + 1 : null;
 }
 
-/** A resposta tem algo das ações (F4) a mostrar: link inventado, reunião prometida, ação aceita ou recusada. */
+/** A resposta tem algo das ações (F4) a mostrar: pedido vazado, link inventado, reunião prometida, ação aceita ou recusada. */
 function temAvisoDeAcao(x: Turno): boolean {
   return (
+    x.pedidoVazado === true ||
     x.linkInventado === true ||
     x.reuniaoPrometida === true ||
     (!!x.acoes && (x.acoes.aceitas.length > 0 || x.acoes.recusadas.length > 0))
@@ -207,6 +213,7 @@ export function PlaygroundDoAgente({
         usage?: { totalTokens?: number } | null;
         vistos?: unknown;
         acoes?: unknown;
+        pedidoVazado?: boolean;
         linkInventado?: boolean;
         reuniaoPrometida?: boolean;
         transferenciaInferida?: boolean;
@@ -230,6 +237,7 @@ export function PlaygroundDoAgente({
           tokens: corpo.usage?.totalTokens ?? undefined,
           vistos: lerVistos(corpo.vistos),
           acoes: lerAcoesSimuladas(corpo.acoes),
+          pedidoVazado: corpo.pedidoVazado === true,
           linkInventado: corpo.linkInventado === true,
           reuniaoPrometida: corpo.reuniaoPrometida === true,
           transferenciaInferida: corpo.transferenciaInferida === true,
@@ -413,6 +421,12 @@ export function PlaygroundDoAgente({
                 {x.role === 'assistant' && x.horarios ? <HorariosOferecidos horarios={x.horarios} /> : null}
                 {x.role === 'assistant' && temAvisoDeAcao(x) ? (
                   <div className="mt-1.5 space-y-1 border-t border-border/50 pt-1.5 text-xs">
+                    {x.pedidoVazado ? (
+                      <p className="flex items-start gap-1 text-red-700 dark:text-red-300">
+                        <ShieldAlert className="mt-px size-3.5 shrink-0" />
+                        <span>{t('playground.pedidoVazado')}</span>
+                      </p>
+                    ) : null}
                     {x.linkInventado ? (
                       <p className="flex items-start gap-1 text-red-700 dark:text-red-300">
                         <Link2Off className="mt-px size-3.5 shrink-0" />

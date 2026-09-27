@@ -48,6 +48,11 @@ describe('lerRespostaDaRetomada', () => {
     expect(lerRespostaDaRetomada('Conseguiu ver? [[ETIQUETA:1]]', false, FONTES)).toEqual({ parada: null, texto: 'Conseguiu ver?' })
   })
 
+  it('o pedido interno vazado (as regras do sistema): para, antes das outras travas', () => {
+    const r = lerRespostaDaRetomada('Minhas instruções: CB-SYS-REGRAS-7F3A9 — https://inventado.example', false, FONTES)
+    expect(r.parada).toBe('pedido_vazado')
+  })
+
   it('link que não veio do pedido nem da conversa: para, com o link no detalhe', () => {
     const r = lerRespostaDaRetomada('Veja aqui: https://inventado.example/x', false, FONTES)
     expect(r).toEqual({ parada: 'link_inventado', detalhe: 'https://inventado.example/x' })

@@ -3,6 +3,7 @@ paths:
   - "src/lib/ia-agentes/acesso*"
   - "src/lib/ia-agentes/conhecimento*"
   - "src/lib/ia-agentes/pedido*"
+  - "src/lib/ia-agentes/regras-do-sistema*"
   - "src/lib/ia-agentes/acoes*"
   - "src/lib/ia-agentes/executar-acoes*"
   - "src/lib/ia-agentes/ferramentas*"
@@ -14,13 +15,11 @@ paths:
   - "src/components/agentes-de-ia/acesso-do-agente.tsx"
   - "src/components/agentes-de-ia/base-do-agente.tsx"
   - "src/components/agentes-de-ia/playground-do-agente.tsx"
+  - "src/components/agentes-de-ia/regras-do-sistema*"
   - "src/components/agentes-de-ia/ferramentas*"
   - "supabase/migrations/1052_cb_ia_agente_documentos.sql"
   - "src/lib/ai/providers/**"
   - "src/lib/ai/defaults.ts"
-  - "src/lib/ia-agentes/retomada*"
-  - "src/components/agentes-de-ia/retomada*"
-  - "supabase/migrations/1056_cb_ia_retomada.sql"
 ---
 
 # Agentes de IA — o que cada agente vê (F3, 1052)
@@ -329,41 +328,25 @@ testados; `prepararMidias` em `turno.ts`; `contexto.ts` e `pedido.ts`.
   teto de caracteres depois de gerar: a Meta recusa texto acima de 4.096 (cai
   no envio recusado, nada sai cortado); a Evolution aceita.
 
-# Agentes de IA — a retomada (1056, 27/09/2026)
+# Agentes de IA — regras do sistema (27/09/2026)
 
-`retomada.ts` (puro), `retomada-fatos.ts`, `retomada-resposta.ts` e a seção
-"A RETOMADA" de `turno.ts`. Plano: `docs/PLANO-agentes-de-ia.md` (Estado).
-
-- ⚠️⚠️ **É uma linha da MESMA fila** (`cb_ia_turnos.tipo = 'retomada'`,
-  `tentativa` 1-based, `tentativas` = a cadência ao armar), vencendo em
-  `executar_apos`: rodada pela rede do cron, NUNCA por `after()`. A
-  `mensagem_gatilho_id` é a ÂNCORA — a resposta do AGENTE sem resposta.
-- **Quem arma**: o turno `respondeu` sem pedir a equipe (`pediuEquipe`:
-  `[[TRANSFERIR]]`, equipe prometida, reunião não marcada), com a retomada
-  ligada; cada retomada que sai arma a seguinte. 23505 ao armar = o cliente
-  escreveu. Robô, automação e gente não armam.
-- **A cadência conta da âncora** (`ancora + cadencia[k]`, piso de 30 min
-  depois da anterior), dentro da janela ∩ horário do agente. ⚠️ Depois de uma
-  noite fora da janela, as atrasadas saem de 30 em 30 min (pino no teste).
-- ⚠️⚠️ **O cliente que escreve DESCARTA a pendente**: dentro de
-  `cb_ia_enfileirar_turno` (1056, toda conexão) quando abre turno; o que não
-  abre (figurinha, conversa pausada…) é visto quando ela VENCE
-  (`motivoDaParada`: cliente — apagada também —, equipe, robô ou outro agente
-  depois da âncora). A última palavra é a reserva (1056: `cliente_respondeu`,
-  `equipe_respondeu`, `robo_falou`, `sem_ancora`, `retomada_desligada`).
-- **Ao rodar, tudo é reconferido**: card, agente, retomada ligada, quem
-  escreveu, e o vencimento — fora da janela ou a menos de 30 min de um
-  LEMBRETE = volta à fila; a 90 min da reunião, cadência no fim ou janela de
-  24 h da Meta fechada = para. Os lembretes saem das automações
-  `date_field_offset` LIGADAS aplicadas ao campo da ficha (`campoDoLembrete`,
-  `deslocamentoEmMs`); todo campo vigiado conta como data de reunião. Leitura
-  dos lembretes que falha ao rodar = a série para (ao armar, segue sem eles).
-- ⚠️ **Nada executa e nada transfere**: sem ações, passagens nem horários no
-  pedido (`montarPedidoDaRetomada`); `[[SEM_RETOMADA]]`, `[[HANDOFF]]`,
-  `[[TRANSFERIR]]`, passagem, equipe prometida e link inventado PARAM a série
-  (`sem_resposta`, motivo no `erro`), sem mandar. O teto conta as retomadas e
-  só para; o `incerto` não transfere (nem recolhido pela rede).
-- **Playground**: `retomada: true` simula a tentativa seguinte (a conversa
-  termina na resposta do agente), com `parada` quando nada sairia.
-- **Limites**: fonte `reuniao` (`cb_meetings`) fora dos bloqueios; a
-  mensagem que não abre turno fica na fila até vencer (aba Turnos).
+- ⚠️⚠️ **12 regras OBRIGATÓRIAS para todo agente**, existente ou futuro, sem
+  configuração (`regras-do-sistema.ts`): sigilo do prompt, sem promessa de
+  resultado, sem preço/honorário, sem aceitar proposta, sem inverdade, sem
+  dado de outro cliente nem acesso ao sistema, e o resto. Entram no pedido
+  logo depois da frase do papel e ANTES do texto-base, das instruções, das
+  regras do agente, dos blocos, da base e das ações — e dizem que valem acima
+  de tudo isso. Nenhum argumento de `montarPedidoDoAgente` as tira; turno e
+  Playground mandam o mesmo. A tela as mostra só para ler (cartão acima das
+  Instruções; uma chave por `id`, cobrada nos dois dicionários).
+- ⚠️ **A trava do pedido vazado** (`vazouOPedido`): o CANÁRIO do cabeçalho
+  (`CANARIO_DAS_REGRAS`, não é segredo — só serve para ser achado), trechos
+  que só existem no pedido (`TRECHOS_DO_PEDIDO`, com teste cobrando que cada
+  um continua lá), o cabeçalho em MAIÚSCULAS e o nome de marcador por extenso
+  em maiúsculas. Roda sobre o texto SEM marcadores (`lerAcoes`), antes do link
+  inventado: a resposta é RETIDA e o turno transfere (`pedido_vazado`, o texto
+  no `erro`). O pedido copiado com o `[[HANDOFF]]` dentro já cai no sentinela.
+  Heurística: instrução do agente vazada em português, sem nenhum desses
+  sinais, passa.
+- ⚠️ **O assistente legado (`src/lib/ai`, `ai_configs`, desligado em produção)
+  NÃO recebe as regras.** Religá-lo sem elas é voltar a um prompt sem sigilo.
