@@ -2,6 +2,7 @@ import type { useTranslations } from 'next-intl';
 
 import {
   ACOES_COM_VALOR,
+  ACOES_COM_VALOR_OPCIONAL,
   type CodigoDeFalhaDaAcao,
   type MotivoDaRecusa,
   type MotivoForaDaD5,
@@ -49,6 +50,8 @@ export const CODIGOS_CONHECIDOS = [
   'item_de_outra_conta',
   'campo_vigiado',
   'automacao_fora_da_d5',
+  // O servidor não o devolve mais (a D5 deixou de percorrer a cascata em
+  // 27/09/2026); fica para uma tela aberta contra um servidor anterior.
   'cascata_fora_da_d5',
   // "Marcar reunião" (F5): o tipo de evento não é um ativo do Calendly
   // conectado, ou não há Calendly conectado (`itens` = a uri).
@@ -138,8 +141,10 @@ export function rotuloDoTipoDeAcao(t: ReturnType<typeof useTranslations>, tipo: 
  * Uma ação ACEITA no Playground, como frase curta ("mover para Proposta",
  * "tarefa para Ana", "marcar reunião em 28/09/2026 15:15" — na reunião, o
  * `nome` é a data e a hora no fuso do escritório) — `IaAgentes.playground.acao.<t>`, com `{nome}`. Com o
- * `valor` (o do campo, o título da tarefa), `playground.acaoComValor.<t>`:
- * "tarefa para Ana: Ligar amanhã", "preencher Tamanho da dívida = 200 mil".
+ * `valor` (o do campo, o título da tarefa, o nome do convidado na reunião),
+ * `playground.acaoComValor.<t>`: "tarefa para Ana: Ligar amanhã", "preencher
+ * Tamanho da dívida = 200 mil", "marcar reunião em 28/09/2026 15:15 para Ana
+ * Souza".
  * Chaves MONTADAS, cobradas em `textos.test.ts`.
  */
 export function fraseDaAcao(
@@ -149,7 +154,8 @@ export function fraseDaAcao(
   valor?: string,
 ): string {
   if (!(TIPOS_DE_ACAO as readonly string[]).includes(tipo)) return t('playground.acaoDesconhecida', { tipo, nome });
-  if (valor && (ACOES_COM_VALOR as ReadonlySet<string>).has(tipo)) return t(`playground.acaoComValor.${tipo}`, { nome, valor });
+  const comValor = (ACOES_COM_VALOR as ReadonlySet<string>).has(tipo) || (ACOES_COM_VALOR_OPCIONAL as ReadonlySet<string>).has(tipo);
+  if (valor && comValor) return t(`playground.acaoComValor.${tipo}`, { nome, valor });
   return t(`playground.acao.${tipo}`, { nome });
 }
 
@@ -175,8 +181,9 @@ export function rotuloDoTipoDoCampo(t: ReturnType<typeof useTranslations>, tipo:
  * num campo de data vigiado por lembrete (plano, 5.6). `aguardar`: a
  * automação que a IA executa DIRETAMENTE não pode pausar (a retomada não
  * confere o agente) — na lista de automações tem frase própria
- * (`ferramentas.bloqueio.aguardar`). Os mesmos códigos dizem por que uma
- * etapa ou etiqueta sai pela CASCATA (`ferramentas.bloqueio.cascata.<g>`).
+ * (`ferramentas.bloqueio.aguardar`). Os mesmos códigos dizem o passo de um
+ * `cascata_fora_da_d5` nos registros ANTIGOS da aba Turnos (a D5 deixou de
+ * percorrer a cascata em 27/09/2026).
  */
 export const CODIGOS_DA_D5 = [
   'send_to_number',
@@ -263,9 +270,10 @@ function ehCodigoDoErroDaAcao(v: string): v is CodigoDoErroDaAcao {
 }
 
 /**
- * O complemento cru de uma ação (`detalhe`): `ja_estava` (mover para a etapa
- * em que o card já estava — a ação deu certo sem mexer em nada) vira texto; o
- * resto (a recusa da RPC, a mensagem do motor) aparece como veio.
+ * O complemento cru de uma ação (`detalhe`): `ja_estava` (a ação REPETIDA —
+ * o card já estava na etapa, a etiqueta já estava ou não estava, o campo já
+ * tinha o valor: deu certo sem mexer em nada) vira texto; o resto (a recusa
+ * da RPC, a mensagem do motor) aparece como veio.
  */
 export function textoDoDetalheDaAcao(t: ReturnType<typeof useTranslations>, detalhe: string): string {
   return detalhe === 'ja_estava' ? t('turnos.acoes.jaEstava') : detalhe;

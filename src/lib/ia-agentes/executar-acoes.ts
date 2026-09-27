@@ -16,23 +16,27 @@
 //    lembrete, o valor tem de caber no formato do campo, e a automação não
 //    pode ter ganhado passo fora da D5 ou "Aguardar" (ela pode ter sido
 //    editada depois de liberada; `runAutomationById` roda a definição de
-//    agora). A etapa e a etiqueta, pela CASCATA: a automação que a entrada
-//    na etapa ou a etiqueta dispara também não pode sair da D5.
+//    agora). ⚠️ A D5 vale SÓ para o que o agente faz (decisão do operador,
+//    27/09/2026): as automações de ENTRADA da etapa movida e as da etiqueta
+//    aplicada NÃO são conferidas — rodam como quando alguém da equipe move o
+//    card ou etiqueta.
 //  - Falha de uma ação NÃO impede as outras: cada uma fica no registro do
 //    turno (`cb_ia_turnos.acoes`) com um CÓDIGO da lista fechada
 //    (`CODIGOS_DE_FALHA_DA_ACAO`) e o texto cru em `detalhe`.
 //  - Cada ação feita deixa uma anotação interna na conversa, "IA · <agente>
 //    moveu o card para …" — é por ela que a equipe sabe quem foi (a trilha e
 //    o webhook `deal.*` dizem `automacao`/`sistema`: a origem `ia` exige
-//    migration nas funções de gatilho — limite escrito do plano). Mover para
-//    a etapa em que o card JÁ está e etiqueta que já estava: ok, sem anotação.
-//  - A cascata dentro da D5 segue as regras DELA: etiquetar dispara as
-//    automações de `tag_added` na hora, e mover o card enfileira as da etapa
-//    nova (limite escrito da D28).
+//    migration nas funções de gatilho — limite escrito do plano).
+//  - A AÇÃO REPETIDA não faz nada (o modelo re-emite em cada resposta as
+//    ações das anteriores): mover para a etapa em que o card JÁ está,
+//    etiqueta que já estava, etiqueta a tirar que não estava e campo com o
+//    MESMO valor gravado (aparado, sem caixa) = ok com `detalhe: 'ja_estava'`,
+//    sem escrita, sem anotação e sem disparar automação.
+//  - Etiquetar dispara as automações de `tag_added` na hora, e mover o card
+//    enfileira as da etapa nova (limite escrito da D28).
 //  - MARCAR REUNIÃO (F5) roda por ÚLTIMO, depois das outras — o
 //    `preencher_campo` do e-mail espelhado da mesma resposta já gravou o
-//    e-mail que ela relê. ⚠️ É a EXCEÇÃO à D5 pela cascata (plano, 5.6,
-//    passo 4): a automação do tipo de evento roda pelo webhook
+//    e-mail que ela relê. A automação do tipo de evento roda pelo webhook
 //    `invitee.created`, como quando o cliente agenda pelo link. A reunião que
 //    não foi marcada faz o turno TRANSFERIR para gente (`turno.ts`): a
 //    resposta já saiu prometendo.
@@ -53,7 +57,14 @@ import { diaNoFuso } from '@/lib/tasks/prazo'
 import { normalizarTitulo } from '@/lib/tasks/validar'
 import type { Automation } from '@/types'
 
-import { formatoDoCampo, valorDoCampo, type AcaoResolvida, type CodigoDeFalhaDaAcao, type RegistroDeAcao } from './acoes'
+import {
+  formatoDoCampo,
+  mesmoValorDoCampo,
+  valorDoCampo,
+  type AcaoResolvida,
+  type CodigoDeFalhaDaAcao,
+  type RegistroDeAcao,
+} from './acoes'
 import { marcarNoCalendly } from './agenda'
 import { lerCamposVigiados, motivosForaDaD5 } from './ferramentas'
 import { dataHoraDaReuniao } from './reuniao'
@@ -98,7 +109,8 @@ export async function anotarNaConversa(
 
 /**
  * O que uma ação fez: `nota` nula = deu certo sem mudar nada (a etiqueta já
- * estava lá, o card já estava na etapa). `detalhe` é o complemento cru.
+ * estava lá, o card já estava na etapa, o campo já tinha o valor — com
+ * `detalhe: 'ja_estava'`). `detalhe` é o complemento cru.
  */
 type Resultado =
   | { ok: true; nota: { valor?: string } | null; detalhe?: string }
@@ -107,6 +119,8 @@ type Resultado =
 const falha = (erro: CodigoDeFalhaDaAcao, detalhe?: string | null): Resultado =>
   detalhe ? { ok: false, erro, detalhe } : { ok: false, erro }
 const feita = (valor?: string): Resultado => ({ ok: true, nota: valor === undefined ? {} : { valor } })
+/** A ação repetida: já estava assim — nada muda, nada dispara, nada a anotar. */
+const jaEstava: Resultado = { ok: true, nota: null, detalhe: 'ja_estava' }
 
 function resultadoDa(v: unknown): 'ganho' | 'perdido' | null {
   return v === 'ganho' || v === 'perdido' ? v : null
@@ -141,12 +155,9 @@ async function moverEtapa(db: SupabaseClient, ctx: ContextoDasAcoes, acao: AcaoR
   const { status, stage_id: etapaAtual } = card as { status: string; stage_id: string | null }
   if (status !== 'open') return falha('card_fechado')
   // Já está lá: nada muda, nada dispara, nada a anotar.
-  if (etapaAtual === acao.id) return { ok: true, nota: null, detalhe: 'ja_estava' }
-
-  // A CASCATA, de novo: a automação da etapa pode ter sido ligada ou editada
-  // depois de a etapa ser liberada. Leitura que falha lança (a ação falha).
-  const motivo = (await motivosForaDaD5(db, ctx.accountId, { etapas: [acao.id] })).etapas.get(acao.id)
-  if (motivo) return falha('cascata_fora_da_d5', motivo)
+  if (etapaAtual === acao.id) return jaEstava
+  // As automações de ENTRADA na etapa não são conferidas: rodam como quando
+  // alguém da equipe move o card (a D5 vale só para o que o agente faz).
 
   // Pela RPC do motor (funil e etapa no MESMO update, a trilha da 912 conta
   // uma linha), com o status esperado.
@@ -166,12 +177,11 @@ async function moverEtapa(db: SupabaseClient, ctx: ContextoDasAcoes, acao: AcaoR
 }
 
 async function etiquetar(db: SupabaseClient, ctx: ContextoDasAcoes, acao: AcaoResolvida): Promise<Resultado> {
-  // A CASCATA de `tag_added`, de novo: a automação da etiqueta pode ter sido
-  // ligada ou editada depois de a etiqueta ser liberada.
-  const motivo = (await motivosForaDaD5(db, ctx.accountId, { etiquetas: [acao.id] })).etiquetas.get(acao.id)
-  if (motivo) return falha('cascata_fora_da_d5', motivo)
   // O escritor central: dispara o `tag_added` só para etiqueta NOVA, com o
-  // canal da conversa do turno.
+  // canal da conversa do turno. A etiqueta que já estava (o UNIQUE
+  // `(contact_id, tag_id)` recusa o INSERT) não dispara nada: `ja_estava`.
+  // As automações da etiqueta não são conferidas (a D5 vale só para o que o
+  // agente faz).
   const r = await addContactTagAndDispatch({
     db,
     accountId: ctx.accountId,
@@ -179,13 +189,14 @@ async function etiquetar(db: SupabaseClient, ctx: ContextoDasAcoes, acao: AcaoRe
     tagId: acao.id,
     context: { conversation_id: ctx.conversationId, channel_id: ctx.canalId },
   })
-  return r.added ? feita() : { ok: true, nota: null }
+  return r.added ? feita() : jaEstava
 }
 
 async function tirarEtiqueta(db: SupabaseClient, ctx: ContextoDasAcoes, acao: AcaoResolvida): Promise<Resultado> {
-  // Tirar não tem cascata: o motor não tem gatilho de etiqueta tirada.
+  // O motor não tem gatilho de etiqueta tirada. Zero linhas apagadas = a
+  // etiqueta não estava lá: `ja_estava`.
   const tirou = await removeContactTag(db, { accountId: ctx.accountId, contactId: ctx.contactId, tagId: acao.id })
-  return tirou ? feita() : { ok: true, nota: null }
+  return tirou ? feita() : jaEstava
 }
 
 async function preencherCampo(db: SupabaseClient, ctx: ContextoDasAcoes, acao: AcaoResolvida): Promise<Resultado> {
@@ -212,6 +223,18 @@ async function preencherCampo(db: SupabaseClient, ctx: ContextoDasAcoes, acao: A
   const formato = formatoDoCampo(linha)
   const gravado = valorDoCampo(valor, formato)
   if (gravado === null) return falha('valor_invalido', formato.tipo)
+  // O MESMO valor que a ficha já tem (o modelo repete as ações das respostas
+  // anteriores): nada a gravar nem a anotar. A conta vem pelo contato (a
+  // tabela não a tem). Leitura que falha lança.
+  const { data: atual, error: erroAtual } = await db
+    .from('contact_custom_values')
+    .select('value, contacts!inner(account_id)')
+    .eq('contacts.account_id', ctx.accountId)
+    .eq('contact_id', ctx.contactId)
+    .eq('custom_field_id', acao.id)
+    .maybeSingle()
+  if (erroAtual) throw new Error(`leitura do valor do campo: ${erroAtual.message}`)
+  if (mesmoValorDoCampo((atual as { value?: unknown } | null)?.value, gravado, formato)) return jaEstava
   const { error: erroGravar } = await db
     .from('contact_custom_values')
     .upsert({ contact_id: ctx.contactId, custom_field_id: acao.id, value: gravado }, { onConflict: 'contact_id,custom_field_id' })
@@ -243,9 +266,9 @@ async function criarTarefa(db: SupabaseClient, ctx: ContextoDasAcoes, acao: Acao
 
 async function executarAutomacao(db: SupabaseClient, ctx: ContextoDasAcoes, acao: AcaoResolvida): Promise<Resultado> {
   // A D5 DE NOVO (Codex, #292): a automação liberada pode ter sido editada
-  // (passo fora da D5, "Aguardar", ou cascata fora dela). Leitura que falha
-  // lança, e a ação falha — na dúvida, a IA não dispara.
-  const motivo = (await motivosForaDaD5(db, ctx.accountId, { automacoes: [acao.id] })).automacoes.get(acao.id)
+  // (passo fora da D5 ou "Aguardar", nela ou nas que ela aciona). Leitura
+  // que falha lança, e a ação falha — na dúvida, a IA não dispara.
+  const motivo = (await motivosForaDaD5(db, ctx.accountId, [acao.id])).get(acao.id)
   if (motivo) return falha('automacao_fora_da_d5', motivo)
 
   const { data, error } = await db
@@ -277,17 +300,18 @@ async function executarAutomacao(db: SupabaseClient, ctx: ContextoDasAcoes, acao
 }
 
 async function marcarReuniao(db: SupabaseClient, ctx: ContextoDasAcoes, acao: AcaoResolvida): Promise<Resultado> {
-  // ⚠️ Sem a régua da D5 pela cascata, DE PROPÓSITO (plano, 5.6, passo 4): a
-  // automação do tipo de evento roda pelo `invitee.created`, como quando o
+  // A automação do tipo de evento roda pelo `invitee.created`, como quando o
   // PRÓPRIO cliente agenda pelo link — e é ela que move o card, grava a data
   // e arma os lembretes. Nada disso é feito aqui.
   if (!ctx.tipoDeEvento) return falha('recusado', 'marcar reunião sem tipo de evento liberado')
   // O horário é o `id` da opção: um horário que o SERVIDOR leu no Calendly.
+  // O nome completo que o cliente deu (`[[REUNIAO:n=Nome]]`), se veio.
   const r = await marcarNoCalendly(db, {
     accountId: ctx.accountId,
     contactId: ctx.contactId,
     tipoDeEvento: ctx.tipoDeEvento,
     inicio: acao.id,
+    ...(acao.valor ? { nome: acao.valor } : {}),
   })
   if (!r.ok) return falha(r.erro, r.detalhe)
   // Na anotação, a data e a hora no fuso do escritório (o ISO em UTC não é para gente ler).

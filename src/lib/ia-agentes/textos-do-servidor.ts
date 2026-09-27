@@ -16,8 +16,19 @@ import type { TipoDeAcao } from './agente'
  * (5.6) — ela é retida e a conversa vai para gente. `reuniao_nao_marcada`
  * (F5): a resposta SAIU, mas a reunião pedida não foi marcada (a nota diz o
  * motivo, `{motivo}`) — gente confirma o horário com o cliente.
+ * `reuniao_prometida` (F5, 27/09/2026): a resposta dizia que a reunião
+ * estava marcada SEM o marcador (`reuniaoPrometida`) — ela é retida (nada
+ * foi marcado) e a conversa vai para gente.
  */
-export const MOTIVOS_DE_TRANSFERENCIA = ['sentinela', 'teto', 'audio', 'incerto', 'link_inventado', 'reuniao_nao_marcada'] as const
+export const MOTIVOS_DE_TRANSFERENCIA = [
+  'sentinela',
+  'teto',
+  'audio',
+  'incerto',
+  'link_inventado',
+  'reuniao_nao_marcada',
+  'reuniao_prometida',
+] as const
 export type MotivoDeTransferencia = (typeof MOTIVOS_DE_TRANSFERENCIA)[number]
 
 /**

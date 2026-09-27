@@ -376,6 +376,34 @@ describe('POST /api/cb/ia/agentes/[id]/playground — marcar reunião (F5)', () 
     expect(executarAcoes).not.toHaveBeenCalled()
   })
 
+  it('⚠️ a reunião PROMETIDA sem o marcador (27/09): `reuniaoPrometida`, e as ações não executariam', async () => {
+    opcoesDeAcao = { mover_etapa: [{ id: 'etapa-1', nome: 'Comercial · Reunião' }] }
+    agenda = { tipoDeEvento: TIPO, lida: true, horarios: HORARIOS, temEmail: true }
+    resposta = { text: 'Perfeito! Sua reunião está confirmada para terça-feira, 29/09, às 10:00.\n[[MOVER:1]]', handoff: false }
+    const corpo = await (await enviar()).json()
+    expect(corpo).toMatchObject({ reuniaoPrometida: true, linkInventado: false, handoff: false })
+    expect(corpo.acoes).toEqual({ aceitas: [], recusadas: [{ tipo: 'mover_etapa', motivo: 'transferencia' }] })
+  })
+
+  it('a mesma confirmação COM o marcador: não é prometida, a reunião vem simulada', async () => {
+    agenda = { tipoDeEvento: TIPO, lida: true, horarios: HORARIOS, temEmail: true }
+    resposta = { text: 'Perfeito! Sua reunião está confirmada para terça-feira, 29/09, às 10:00.\n[[REUNIAO:2]]', handoff: false }
+    const corpo = await (await enviar()).json()
+    expect(corpo.reuniaoPrometida).toBe(false)
+    expect(corpo.acoes).toEqual({ aceitas: [{ tipo: 'marcar_reuniao', nome: '29/09/2026 10:00' }], recusadas: [] })
+  })
+
+  it('o nome completo no marcador (`[[REUNIAO:n=Nome]]`) vem na ação simulada', async () => {
+    agenda = { tipoDeEvento: TIPO, lida: true, horarios: HORARIOS, temEmail: true }
+    resposta = { text: 'Marquei para terça às 10h!\n[[REUNIAO:2=Maria Aparecida Souza]]', handoff: false }
+    const corpo = await (await enviar()).json()
+    expect(corpo.reply).toBe('Marquei para terça às 10h!')
+    expect(corpo.acoes).toEqual({
+      aceitas: [{ tipo: 'marcar_reuniao', nome: '29/09/2026 10:00', valor: 'Maria Aparecida Souza' }],
+      recusadas: [],
+    })
+  })
+
   it('horário fora da lista: recusado', async () => {
     agenda = { tipoDeEvento: TIPO, lida: true, horarios: HORARIOS, temEmail: true }
     resposta = { text: 'Marquei!\n[[REUNIAO:7]]', handoff: false }

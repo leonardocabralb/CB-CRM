@@ -341,6 +341,12 @@ describe('marcarNoCalendly — o POST /invitees', () => {
     expect(corpo.invitee.name).toBe('5511888887777')
   })
 
+  it('o nome completo que o cliente deu (`[[REUNIAO:n=Nome]]`) vai no lugar do da ficha', async () => {
+    await marcarNoCalendly(db, { ...args, nome: 'Maria Aparecida Souza' }, { cliente: calendly.fabrica })
+    const [corpo] = calendly.cliente.criarConvidado.mock.calls[0] as unknown as [Record<string, Record<string, unknown>>]
+    expect(corpo.invitee.name).toBe('Maria Aparecida Souza')
+  })
+
   it('sem telefone válido: `sem_telefone`, e o Calendly nem é chamado (o webhook não acharia o cliente; Codex, #317)', async () => {
     banco.tabelas.contacts.push({ id: 'sem-telefone', account_id: CONTA, name: 'Ana', phone: null, email: 'ana@x.com' })
     expect(await marcarNoCalendly(db, { ...args, contactId: 'sem-telefone' }, { cliente: calendly.fabrica })).toEqual({

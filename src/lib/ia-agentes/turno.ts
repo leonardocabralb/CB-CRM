@@ -53,7 +53,9 @@
 //    transferência VENCEM (as ações não executam) — inclusive o sentinela
 //    escrito de outro jeito (`[[ handoff ]]`); resposta sem texto além dos
 //    marcadores transfere; link que não veio do pedido nem da conversa RETÉM
-//    a resposta e transfere (`link_inventado`, com os links no `erro`). As
+//    a resposta e transfere (`link_inventado`, com os links no `erro`), e a
+//    resposta que diz que marcou a reunião SEM o marcador (com horários
+//    oferecidos) também (`reuniao_prometida`, com o texto no `erro`). As
 //    ações executam DEPOIS de a resposta SAIR (`executar-acoes.ts`): reserva
 //    recusada, envio recusado ou incerto = nada executa — a ação não acontece
 //    sem a resposta que a explica, e a automação que ela dispara não fala
@@ -99,6 +101,7 @@ import {
   registroDaRecusa,
   resolverAcoes,
   reuniaoNaoMarcada,
+  reuniaoPrometida,
   type RegistroDeAcao,
 } from './acoes'
 import type { IaAgente } from './agente'
@@ -152,7 +155,7 @@ interface Gatilho {
 /** Como o turno termina. `abandonado` = a posse foi perdida: nada se escreve. */
 export type Desfecho =
   | { status: 'respondeu'; mensagemEnviadaId: string; erro?: string }
-  /** `erro`: o que vai para `cb_ia_turnos.erro` no lugar do motivo (os links inventados). */
+  /** `erro`: o que vai para `cb_ia_turnos.erro` no lugar do motivo (os links inventados, o texto retido da reunião prometida). */
   | { status: 'transferiu'; motivo: MotivoDeTransferencia; erro?: string }
   | { status: 'incerto'; erro: string }
   | {
@@ -692,6 +695,13 @@ export function nadaSaiu(err: unknown, tentou: boolean): boolean {
   return recusaComprovada(err)
 }
 
+/** Teto do texto RETIDO que vai ao `erro` do turno (a reunião prometida): a aba Turnos o mostra. */
+const TETO_DO_TEXTO_RETIDO = 1_000
+
+function textoRetido(texto: string): string {
+  return texto.length > TETO_DO_TEXTO_RETIDO ? `${texto.slice(0, TETO_DO_TEXTO_RETIDO)}…` : texto
+}
+
 function configDoAgente(agente: IaAgente, apiKey: string): AiConfig {
   return {
     provider: agente.provedor,
@@ -937,6 +947,20 @@ async function conduzir(
     if (inventados.length > 0) {
       andamento.acoes = naoExecutadas('transferencia')
       return { status: 'transferiu', motivo: 'link_inventado', erro: `link inventado: ${inventados.join(' ')}` }
+    }
+    // A reunião PROMETIDA sem o marcador (F5, 27/09/2026): com horários
+    // oferecidos, a resposta diz "marquei/confirmada" e nada foi marcado. É
+    // RETIDA (o cliente receberia uma confirmação falsa), e o texto vai para o
+    // `erro` do turno — a equipe vê o que seria enviado.
+    if (
+      reuniaoPrometida({
+        texto: lidas.texto,
+        horariosOferecidos: opcoesDeAcao.marcar_reuniao?.length ?? 0,
+        aceitas,
+      })
+    ) {
+      andamento.acoes = naoExecutadas('transferencia')
+      return { status: 'transferiu', motivo: 'reuniao_prometida', erro: `reunião prometida sem marcar: ${textoRetido(lidas.texto)}` }
     }
   }
 

@@ -8,7 +8,7 @@ import { logAiUsage } from '@/lib/ai/usage'
 import { AiError, mensagemSeguraDeAiError, type ChatMessage } from '@/lib/ai/types'
 import { lerChave, lerEstado } from '@/lib/ia-chaves/repo'
 import { blocoIndisponivel, lerOQueOAgenteVe } from '@/lib/ia-agentes/acesso'
-import { lerAcoes, linkInventado, resolverAcoes, type MotivoDaRecusa } from '@/lib/ia-agentes/acoes'
+import { lerAcoes, linkInventado, resolverAcoes, reuniaoPrometida, type MotivoDaRecusa } from '@/lib/ia-agentes/acoes'
 import { lerAgendaDoAgente } from '@/lib/ia-agentes/agenda'
 import { consultaDaUltimaMensagem } from '@/lib/ia-agentes/conhecimento'
 import { opcoesDoAgente } from '@/lib/ia-agentes/ferramentas'
@@ -53,7 +53,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
  * `{ tipo: 'marcar_reuniao', nome: '<data e hora exibidas>' }`. A resposta
  * traz `horarios: [{ n, texto }]` (o que foi oferecido ao modelo; vazio =
  * nenhum livre nos 7 dias) ou `null` (reunião desligada, ou a leitura falhou
- * — o pedido disse ao modelo que não há horários agora).
+ * — o pedido disse ao modelo que não há horários agora). E `reuniaoPrometida`
+ * (27/09/2026): a resposta disse que marcou a reunião SEM o marcador, com
+ * horários oferecidos — no turno ela seria retida e a conversa iria para
+ * gente (`reuniao_prometida`), e as ações não executariam.
  */
 export async function POST(request: Request, { params }: Contexto) {
   try {
@@ -211,8 +214,19 @@ export async function POST(request: Request, { params }: Contexto) {
     const transfere = sentinela || (n !== null && !destino) || (n === null && !lidas.texto)
     const inventou = !transfere && n === null && linkInventado(lidas.texto, [pedido, ...mensagens.map((m) => m.content)])
     const resolvidas = resolverAcoes(lidas.pedidas, opcoesDeAcao)
-    // Com passagem, transferência ou link inventado, no turno nada executa.
-    const naoExecutaria: MotivoDaRecusa | null = transfere || inventou ? 'transferencia' : n !== null ? 'passagem' : null
+    // A reunião prometida sem o marcador (27/09): a MESMA régua do turno.
+    const prometeu =
+      !transfere &&
+      n === null &&
+      !inventou &&
+      reuniaoPrometida({
+        texto: lidas.texto,
+        horariosOferecidos: opcoesDeAcao.marcar_reuniao?.length ?? 0,
+        aceitas: resolvidas.aceitas,
+      })
+    // Com passagem, transferência, link inventado ou reunião prometida, no turno nada executa.
+    const naoExecutaria: MotivoDaRecusa | null =
+      transfere || inventou || prometeu ? 'transferencia' : n !== null ? 'passagem' : null
     const acoes = {
       aceitas: naoExecutaria
         ? []
@@ -229,6 +243,7 @@ export async function POST(request: Request, { params }: Contexto) {
       passaPara: destino?.nome ?? null,
       acoes,
       linkInventado: inventou,
+      reuniaoPrometida: prometeu,
       // O que foi oferecido ao modelo (F5); `null` = reunião desligada, leitura
       // que falhou ou cliente que já tem reunião (nada foi oferecido). O
       // `texto` é o `nome` ("28/09/2026 15:15"), o que gente lê.

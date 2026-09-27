@@ -7,12 +7,12 @@ import type { useTranslations } from 'next-intl'
 
 import {
   ACOES_COM_VALOR,
+  ACOES_COM_VALOR_OPCIONAL,
   CODIGOS_DE_FALHA_DA_ACAO,
   type MotivoDaRecusa,
   type MotivoForaDaD5,
 } from '@/lib/ia-agentes/acoes'
 
-import { GATILHOS_DA_CASCATA } from './ferramentas'
 import {
   CHAVE_DO_ERRO_DA_ACAO,
   CODIGOS_CONHECIDOS,
@@ -83,8 +83,8 @@ describe.each(['en.json', 'pt-BR.json'])('IaAgentes em %s', (arquivo) => {
     expect(em(d, 'playground.acaoDesconhecida')).toBeTruthy()
   })
 
-  it('cada ação com valor (campo, tarefa) tem a frase com o valor no Playground', () => {
-    for (const tipo of ACOES_COM_VALOR) {
+  it('cada ação com valor (campo, tarefa, e o nome opcional da reunião) tem a frase com o valor no Playground', () => {
+    for (const tipo of [...ACOES_COM_VALOR, ...ACOES_COM_VALOR_OPCIONAL]) {
       const frase = em(d, `playground.acaoComValor.${tipo}`)
       expect(typeof frase === 'string' && frase.includes('{nome}') && frase.includes('{valor}'), tipo).toBe(true)
     }
@@ -95,12 +95,12 @@ describe.each(['en.json', 'pt-BR.json'])('IaAgentes em %s', (arquivo) => {
     expect(em(d, 'ferramentas.campoOpcoes')).toBeTruthy()
   })
 
-  it('cada gatilho da cascata (etapa, aplicar, tirar) tem o bloqueio com o motivo, e o "Aguardar" também', () => {
-    for (const g of GATILHOS_DA_CASCATA) {
-      const frase = em(d, `ferramentas.bloqueio.cascata.${g}`)
-      expect(typeof frase === 'string' && frase.includes('{motivo}'), g).toBe(true)
+  it('o bloqueio de cada item (ganho/perdido, campo vigiado, fora da D5, "Aguardar") tem texto', () => {
+    for (const chave of ['etapaDeResultado', 'campoVigiado', 'foraDaD5', 'aguardar']) {
+      expect(em(d, `ferramentas.bloqueio.${chave}`), chave).toBeTruthy()
     }
-    expect(em(d, 'ferramentas.bloqueio.aguardar')).toBeTruthy()
+    // A D5 só para o que o agente faz (27/09/2026): sem bloqueio pela cascata.
+    expect(em(d, 'ferramentas.bloqueio.cascata')).toBeUndefined()
   })
 
   it('cada código do registro de uma ação (recusa e falha) tem texto, com o genérico e o complemento', () => {
@@ -243,6 +243,11 @@ describe('fraseDaAcao e rotuloDoTipoDoCampo', () => {
     )
     expect(fraseDaAcao(t, 'mover_etapa', 'Proposta', 'x')).toBe('playground.acao.mover_etapa{"nome":"Proposta"}')
     expect(fraseDaAcao(t, 'criar_tarefa', 'Ana')).toBe('playground.acao.criar_tarefa{"nome":"Ana"}')
+    // A reunião: com o nome do convidado, a frase com o nome; sem, a de sempre.
+    expect(fraseDaAcao(t, 'marcar_reuniao', '28/09/2026 15:15', 'Ana Souza')).toBe(
+      'playground.acaoComValor.marcar_reuniao{"nome":"28/09/2026 15:15","valor":"Ana Souza"}',
+    )
+    expect(fraseDaAcao(t, 'marcar_reuniao', '28/09/2026 15:15')).toBe('playground.acao.marcar_reuniao{"nome":"28/09/2026 15:15"}')
   })
 
   it('tipo de campo conhecido tem rótulo; o desconhecido (ou ausente) não afirma nada', () => {

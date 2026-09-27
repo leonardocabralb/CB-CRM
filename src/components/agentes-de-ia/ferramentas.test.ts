@@ -15,18 +15,16 @@ import type { OpcoesDasFerramentas } from './tipos'
 
 const OPCOES: OpcoesDasFerramentas = {
   etapas: [
-    { id: 'e1', nome: 'Lead', funil: 'Comercial', resultado: null, foraDaD5: null },
-    // Ganho E cascata: o motivo mostrado é o do ganho.
-    { id: 'e2', nome: 'Contrato Fechado', funil: 'Comercial', resultado: 'ganho', foraDaD5: 'send_webhook' },
-    { id: 'e3', nome: 'Triagem', funil: 'Jurídico', resultado: null, foraDaD5: null },
-    { id: 'e4', nome: 'Perdido', funil: 'Comercial', resultado: 'perdido', foraDaD5: null },
-    // A cascata: uma automação que dispara ao entrar na etapa manda para outro número.
-    { id: 'e5', nome: 'Reunião Agendada', funil: 'Comercial', resultado: null, foraDaD5: 'send_to_number' },
+    { id: 'e1', nome: 'Lead', funil: 'Comercial', resultado: null },
+    { id: 'e2', nome: 'Contrato Fechado', funil: 'Comercial', resultado: 'ganho' },
+    { id: 'e3', nome: 'Triagem', funil: 'Jurídico', resultado: null },
+    { id: 'e4', nome: 'Perdido', funil: 'Comercial', resultado: 'perdido' },
+    { id: 'e5', nome: 'Reunião Agendada', funil: 'Comercial', resultado: null },
   ],
   etiquetas: [
-    { id: 't1', nome: 'VIP', foraDaD5: { etiquetar: null, tirar: null } },
-    { id: 't2', nome: 'Contrato', foraDaD5: { etiquetar: 'send_webhook', tirar: null } },
-    { id: 't3', nome: '-150k', foraDaD5: { etiquetar: null, tirar: 'status_de_resultado' } },
+    { id: 't1', nome: 'VIP' },
+    { id: 't2', nome: 'Contrato' },
+    { id: 't3', nome: '-150k' },
   ],
   campos: [
     { id: 'c1', nome: 'Tamanho da dívida', vigiado: false, tipo: 'number', opcoes: [] },
@@ -68,11 +66,12 @@ describe('lerOpcoes — a resposta de …/ferramentas/opcoes', () => {
       campos: [{ id: 'c1', nome: 'X', vigiado: 'true', opcoes: ['a', 3] }],
       automacoes: [{ id: 'a1', nome: 'A', foraDaD5: '' }],
     })
-    expect(lida?.etapas).toEqual([{ id: 'e1', nome: 'Lead', funil: 'Comercial', resultado: null, foraDaD5: null }])
-    // Cascata ausente ou com forma estranha não inventa bloqueio.
+    // O `foraDaD5` de etapa e etiqueta que um servidor ANTERIOR a 27/09/2026
+    // mande (a cascata) é ignorado: não inventa bloqueio.
+    expect(lida?.etapas).toEqual([{ id: 'e1', nome: 'Lead', funil: 'Comercial', resultado: null }])
     expect(lida?.etiquetas).toEqual([
-      { id: 't1', nome: 'VIP', foraDaD5: { etiquetar: null, tirar: null } },
-      { id: 't2', nome: 'Y', foraDaD5: { etiquetar: null, tirar: 'run_flow' } },
+      { id: 't1', nome: 'VIP' },
+      { id: 't2', nome: 'Y' },
     ])
     // Tipo ausente = nulo (a tela não mostra rótulo); opção que não é texto sai.
     expect(lida?.campos).toEqual([{ id: 'c1', nome: 'X', vigiado: false, tipo: null, opcoes: ['a'] }])
@@ -125,15 +124,14 @@ describe('lerOpcoes — o Calendly de "Marcar reunião" (F5)', () => {
 })
 
 describe('itensDoTipo — a lista de cada tipo de ação', () => {
-  it('etapas: agrupadas pelo funil; as de ganho/perdido e as de cascata fora da D5 bloqueadas', () => {
+  it('etapas: agrupadas pelo funil; só as de ganho/perdido bloqueadas (a D5 é só do agente, 27/09/2026)', () => {
     const itens = itensDoTipo(OPCOES, 'mover_etapa')
     expect(itens.map((i) => [i.id, i.grupo, i.bloqueio])).toEqual([
       ['e1', 'Comercial', null],
-      // Ganho vence a cascata.
       ['e2', 'Comercial', { tipo: 'etapa_de_resultado' }],
       ['e3', 'Jurídico', null],
       ['e4', 'Comercial', { tipo: 'etapa_de_resultado' }],
-      ['e5', 'Comercial', { tipo: 'cascata', gatilho: 'etapa', codigo: 'send_to_number' }],
+      ['e5', 'Comercial', null],
     ])
   })
 
@@ -145,20 +143,12 @@ describe('itensDoTipo — a lista de cada tipo de ação', () => {
     ])
   })
 
-  it('etiquetar e tirar etiqueta: o mesmo catálogo, cada lista com a SUA cascata', () => {
+  it('etiquetar e tirar etiqueta: o mesmo catálogo, nada bloqueado', () => {
     const aplicar = itensDoTipo(OPCOES, 'etiquetar')
     const tirar = itensDoTipo(OPCOES, 'tirar_etiqueta')
     expect(aplicar.map((i) => i.id)).toEqual(tirar.map((i) => i.id))
-    expect(aplicar.map((i) => i.bloqueio)).toEqual([
-      null,
-      { tipo: 'cascata', gatilho: 'etiquetar', codigo: 'send_webhook' },
-      null,
-    ])
-    expect(tirar.map((i) => i.bloqueio)).toEqual([
-      null,
-      null,
-      { tipo: 'cascata', gatilho: 'tirar', codigo: 'status_de_resultado' },
-    ])
+    expect(aplicar.map((i) => i.bloqueio)).toEqual([null, null, null])
+    expect(tirar.map((i) => i.bloqueio)).toEqual([null, null, null])
   })
 
   it('campo vigiado e automação fora da D5 (ou com "Aguardar") vêm bloqueados, com o código do passo', () => {

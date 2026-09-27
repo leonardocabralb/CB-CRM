@@ -6,7 +6,8 @@
 // fim, marcadores no mesmo protocolo do `[[PASSAR:n]]` da F2 —
 // `[[MOVER:n]]`, `[[ETIQUETAR:n]]`, `[[TIRAR:n]]`, `[[CAMPO:n=valor]]`,
 // `[[TAREFA:n=título]]`, `[[AUTOMACAO:n]]` e, na F5, `[[REUNIAO:n]]` (um dos
-// horários livres do Calendly). O `n` é o número de uma opção
+// horários livres do Calendly; com o nome completo que o cliente deu,
+// `[[REUNIAO:n=Nome]]`, opcional). O `n` é o número de uma opção
 // que o SERVIDOR listou no pedido (`OpcoesDeAcao`, com os nomes); o servidor
 // traduz o número para o id. Número fora da lista = recusada.
 //
@@ -19,10 +20,10 @@
 //  - a trava de LINK INVENTADO: toda URL da resposta tem de ter aparecido,
 //    como URL, no que foi mandado ao modelo (o pedido montado e as mensagens
 //    da conversa) — modelo inventa link de boleto;
-//  - a régua da D5 sobre os passos de uma automação (`motivoForaDaD5`),
-//    atravessando as automações que ela aciona E a CASCATA (as de etapa e as
-//    de etiqueta que os passos disparam), com trava de ciclo; e a D5 de uma
-//    etapa ou etiqueta pela cascata (`motivoDaEtapa`, `motivoDaEtiqueta`);
+//  - a régua da D5 sobre os passos da automação que o AGENTE executa
+//    (`motivoForaDaD5`), atravessando as que ela aciona por `run_automation`,
+//    com trava de ciclo — e SÓ elas: desde 27/09/2026 a D5 vale só para o
+//    que o agente faz, sem a cascata das automações de etapa e de etiqueta;
 //  - os campos de DATA vigiados por lembrete (`camposVigiados`);
 //  - o formato do valor de cada campo (`formatoDoCampo`, `valorDoCampo`);
 //  - o parse do registro das ações do turno (`cb_ia_turnos.acoes`).
@@ -131,6 +132,23 @@ export function valorDoCampo(valor: string, formato: FormatoDoCampo): string | n
   }
 }
 
+/**
+ * O valor que a ficha JÁ tem (`atual`, o `contact_custom_values.value`) é o
+ * mesmo que se vai gravar (`novo`, a saída de `valorDoCampo`)? Aparado e sem
+ * caixa; na data, pelo INSTANTE (o gravado por outro escritor pode estar em
+ * outra forma do mesmo horário). O modelo repete em cada resposta as ações
+ * das anteriores, e regravar o mesmo valor deixaria uma anotação a cada
+ * resposta. Sem valor gravado = não é o mesmo.
+ */
+export function mesmoValorDoCampo(atual: unknown, novo: string, formato: FormatoDoCampo): boolean {
+  if (typeof atual !== 'string' || !atual.trim()) return false
+  const chave = (v: string): string => {
+    const aparado = v.trim()
+    return (formato.tipo === 'data' ? (instanteCanonico(aparado) ?? aparado) : aparado).toLocaleLowerCase('pt-BR')
+  }
+  return chave(atual) === chave(novo)
+}
+
 // ------------------------------------------------------------
 // As opções e os marcadores
 // ------------------------------------------------------------
@@ -170,6 +188,14 @@ export const MARCADOR_DA_ACAO: Record<TipoDeAcao, string> = {
 /** Os tipos que levam `=valor` (o valor do campo, o título da tarefa). */
 export const ACOES_COM_VALOR: ReadonlySet<TipoDeAcao> = new Set(['preencher_campo', 'criar_tarefa'])
 
+/**
+ * Os tipos em que o `=valor` é OPCIONAL: a reunião, `[[REUNIAO:n=Nome
+ * Completo]]` — o nome que o cliente deu na conversa (`nomeDoConvidado`).
+ * Nome que não serve é ignorado (a reunião vai com o nome da ficha), nunca
+ * recusa a reunião.
+ */
+export const ACOES_COM_VALOR_OPCIONAL: ReadonlySet<TipoDeAcao> = new Set(['marcar_reuniao'])
+
 export const LIMITES_DAS_ACOES = {
   /** Ações por resposta; o que passar é recusado (`teto`). */
   porResposta: 10,
@@ -177,7 +203,20 @@ export const LIMITES_DAS_ACOES = {
   valorDoCampo: 500,
   /** Título da tarefa (o mesmo teto de `cb_tasks`). */
   tituloDaTarefa: 200,
+  /** O nome do convidado na reunião (`[[REUNIAO:n=Nome]]`). */
+  nomeDoConvidado: 120,
 } as const
+
+/**
+ * O nome completo que o modelo passou na reunião (`[[REUNIAO:n=Nome]]`),
+ * aparado e numa linha, com 2 a 120 caracteres e pelo menos uma letra. `null`
+ * = não serve: a reunião vai com o nome da ficha (nunca é recusada por isso).
+ */
+export function nomeDoConvidado(valor: string | null | undefined): string | null {
+  const nome = (valor ?? '').replace(/\s+/g, ' ').trim()
+  if (nome.length < 2 || nome.length > LIMITES_DAS_ACOES.nomeDoConvidado) return null
+  return /\p{L}/u.test(nome) ? nome : null
+}
 
 /** Por que uma ação pedida não vai executar. A tela traduz o código. */
 export type MotivoDaRecusa =
@@ -294,6 +333,9 @@ export function lerAcoes(texto: string): LeituraDasAcoes {
         recusadas.push({ tipo, n, motivo: 'malformada' })
         return
       }
+    } else if (ACOES_COM_VALOR_OPCIONAL.has(tipo) && m[3] !== undefined) {
+      // Opcional: vazio vale como ausente; quem confere a forma é `resolverAcoes`.
+      valor = numaLinha(m[3]) || undefined
     }
     if (pedidas.length >= LIMITES_DAS_ACOES.porResposta) {
       recusadas.push({ tipo, n, motivo: 'teto' })
@@ -355,6 +397,7 @@ export interface AcaoResolvida {
   tipo: TipoDeAcao
   id: string
   nome: string
+  /** O valor do campo, o título da tarefa ou, na reunião, o nome do convidado (`nomeDoConvidado`). */
   valor?: string
 }
 
@@ -399,11 +442,14 @@ export function resolverAcoes(
       continue
     }
     indiceDe.set(chave, aceitas.length)
-    aceitas.push(p.valor === undefined ? { tipo: p.tipo, id: opcao.id, nome: opcao.nome } : {
+    // Na reunião, o nome do convidado só vai quando tem a forma de um nome;
+    // senão cai (a reunião vai com o nome da ficha), sem recusar a reunião.
+    const valor = p.tipo === 'marcar_reuniao' ? (nomeDoConvidado(p.valor) ?? undefined) : p.valor
+    aceitas.push(valor === undefined ? { tipo: p.tipo, id: opcao.id, nome: opcao.nome } : {
       tipo: p.tipo,
       id: opcao.id,
       nome: opcao.nome,
-      valor: p.valor,
+      valor,
     })
   }
   return { aceitas, recusadas }
@@ -462,7 +508,113 @@ export function linkInventado(texto: string, fontes: readonly string[]): boolean
 }
 
 // ------------------------------------------------------------
-// A D5 nos passos de uma automação, e a CASCATA
+// A trava da REUNIÃO PROMETIDA (F5, 27/09/2026)
+// ------------------------------------------------------------
+
+/**
+ * O particípio que afirma a reunião: "confirmada", "agendada", "marcada",
+ * "remarcada", "reagendada" (e o plural), "booked", "scheduled",
+ * "rescheduled", "confirmed". "Desmarcada" e "agendamento" não casam (o `\b`).
+ */
+const PARTICIPIO_DA_REUNIAO = /\b(?:confirmad|agendad|marcad|remarcad|reagendad)[ao]s?\b|\b(?:booked|scheduled|rescheduled|confirmed)\b/gi
+/**
+ * O que amarra o particípio a uma REUNIÃO na mesma frase: a palavra
+ * ("reunião", "meeting", "consulta") ou um horário ("15:15", "15h", "15h30",
+ * "15 horas", "3 pm") ou uma data com o mês em dois dígitos ("29/09" — não
+ * a parcela "1/3"). Sem isso, "e-mail confirmado" não é reunião.
+ */
+const ANCORA_DA_REUNIAO =
+  /reuni|meeting|appointment|consulta|\b\d{1,2}\s*(?::\s*\d{2}|h\s*\d{0,2}|horas?)\b|\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b|\b\d{1,2}\/(?:0[1-9]|1[0-2])\b/i
+/**
+ * Palavras que, entre as QUATRO antes do particípio, fazem dele não-afirmação:
+ * negação ("ainda não está marcada"), futuro ("será confirmada", "will be
+ * booked"), modal e oferta ("posso deixar agendado", "quer que fique
+ * marcado", "can be scheduled") e infinitivo ("para ser confirmada" — mas
+ * "acabou DE ser marcada" afirma, ver `naoAfirma`). O "no" do inglês fica de
+ * fora: em português é "no dia 29".
+ */
+const NAO_AFIRMA = new Set([
+  'nao', 'nunca', 'nem', 'sera', 'serao', 'seria', 'seriam', 'ficara', 'ficarao', 'ficaria', 'ficariam', 'vai', 'vao',
+  'ira', 'irao', 'vou', 'pode', 'podem', 'podera', 'poderia', 'possa', 'possam', 'podemos', 'posso', 'deve', 'devera',
+  'deveria', 'precisa', 'ser', 'sendo', 'estar', 'estiver', 'estiverem', 'for', 'forem', 'fique', 'fiquem', 'ficar',
+  'seja', 'sejam', 'quer', 'queira', 'gostaria', 'prefere', 'preferir',
+  'not', 'never', 'will', 'would', 'can', 'cannot', 'could', 'may', 'might', 'should', 'must', 'be', 'being', 'to',
+])
+/** Condição ANTES do particípio, na mesma frase: "assim que você escolher, fica agendada". */
+const CONDICAO = /(?:^|[^\p{L}])(?:se|caso|quando|assim que|apos|depois que|logo que|if|once|when|after|as soon as|unless)(?![\p{L}])/u
+/** Logo DEPOIS do particípio: "marcado por outra pessoa" / "booked by someone else" — o horário tomado. */
+const POR_OUTRO = /^\s*(?:por|by)\s+(?:outr|another|someone|other)/i
+/** Pergunta de verdade (termina em "?"), menos a de confirmação no fim ("…, tudo bem?"), que afirma. */
+const PERGUNTA = /\?[^\p{L}\p{N}]*$/u
+const PERGUNTA_DE_CONFIRMACAO = /,\s*(?:tudo bem|ok|okay|certo|combinado|beleza|right|alright)\s*\?[^\p{L}\p{N}]*$/iu
+
+/** Minúsculas e sem acento: "Após" → "apos". */
+function semAcento(p: string): string {
+  return p.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+}
+
+/** Uma palavra só com letras e apóstrofo: "Não," → "nao", "won’t" → "won't". */
+function palavraNormalizada(p: string): string {
+  return semAcento(p).replace(/\u2019/g, "'").replace(/[^a-z']/g, '')
+}
+
+/** As quatro palavras antes do particípio dizem que ele NÃO afirma a reunião? */
+function naoAfirma(ultimas: readonly string[]): boolean {
+  return ultimas.some(
+    (p, i) =>
+      (NAO_AFIRMA.has(p) && !(p === 'ser' && ultimas[i - 1] === 'de')) || p.endsWith("n't") || p.endsWith("'ll"),
+  )
+}
+
+/**
+ * O texto AFIRMA que uma reunião foi marcada, agendada, confirmada,
+ * remarcada ou reagendada? Frase a frase: o particípio com a âncora (reunião
+ * ou horário/data) na MESMA frase, sem negação, futuro, modal ou oferta nas
+ * quatro palavras antes dele, sem condição antes dele na frase, sem "por
+ * outra pessoa" logo depois e fora de pergunta. "Quer que eu marque para
+ * terça às 15:15?" e "podemos agendar" não afirmam nada (não têm o
+ * particípio). Heurística calibrada para o lado da cautela: o falso positivo
+ * leva a conversa a gente; o falso negativo manda ao cliente uma
+ * confirmação falsa.
+ */
+export function afirmaReuniaoMarcada(texto: string): boolean {
+  for (const frase of texto.split(/(?<=[.!?…;])\s+|\n+/)) {
+    const f = frase.trim()
+    if (!f || !ANCORA_DA_REUNIAO.test(f)) continue
+    if (PERGUNTA.test(f) && !PERGUNTA_DE_CONFIRMACAO.test(f)) continue
+    for (const m of f.matchAll(PARTICIPIO_DA_REUNIAO)) {
+      const antes = f.slice(0, m.index)
+      if (naoAfirma(antes.split(/\s+/).map(palavraNormalizada).filter(Boolean).slice(-4))) continue
+      if (CONDICAO.test(semAcento(antes))) continue
+      if (POR_OUTRO.test(f.slice((m.index ?? 0) + m[0].length))) continue
+      return true
+    }
+  }
+  return false
+}
+
+/**
+ * A trava: a resposta vai RETIDA e o turno transfere (`reuniao_prometida`)
+ * quando "Marcar reunião" ofereceu horários NESTE turno (`horariosOferecidos`
+ * > 0), o texto ao cliente — já sem os marcadores — afirma a reunião
+ * (`afirmaReuniaoMarcada`) e nenhuma `marcar_reuniao` foi ACEITA: sem o
+ * marcador nada é marcado, e o cliente receberia uma confirmação falsa
+ * (medido em 27/09: 2 de 6 gerações). Sem horários oferecidos (reunião
+ * desligada, leitura que falhou, cliente que já tem reunião — aí "sua
+ * reunião está confirmada" é verdade) a trava não se aplica.
+ */
+export function reuniaoPrometida(args: {
+  texto: string
+  horariosOferecidos: number
+  aceitas: ReadonlyArray<Pick<AcaoResolvida, 'tipo'>>
+}): boolean {
+  if (args.horariosOferecidos <= 0) return false
+  if (args.aceitas.some((a) => a.tipo === 'marcar_reuniao')) return false
+  return afirmaReuniaoMarcada(args.texto)
+}
+
+// ------------------------------------------------------------
+// A D5 nos passos de uma automação que o AGENTE executa
 // ------------------------------------------------------------
 
 /** O passo que tira a automação da D5 (o código vai para a tela). */
@@ -477,33 +629,19 @@ export type MotivoForaDaD5 =
   | 'aguardar'
 
 /**
- * As automações que o MOTOR dispara sozinho por causa de um passo (ou de uma
- * ação da IA): a cascata. Só as LIGADAS; o escopo de conexão e de etapa
- * (`automations.channel_ids`/`stage_ids`) é IGNORADO de propósito — "pode
- * disparar" conta (a régua é conservadora).
+ * O que a régua da D5 precisa saber da conta, além dos passos.
  *
- * ⚠️ `deal_status_changed` fica de fora: a IA só move card ABERTO para etapa
- * sem resultado, e todo caminho da cascata que muda o status (ganho/perdido
- * pelo status ou pela etapa) já é fora da D5 — o card segue aberto.
+ * ⚠️ D5 SÓ PARA O QUE O AGENTE FAZ (decisão do operador, 27/09/2026): a régua
+ * NÃO percorre mais a CASCATA — as automações de ENTRADA da etapa para onde o
+ * agente move o card e as de etiqueta aplicada rodam como quando alguém da
+ * equipe move o card ou etiqueta. Nem as que um passo "Mover card"/"Adicionar
+ * etiqueta" da automação executada dispararia.
  */
-export interface GatilhosDaCascata {
-  /** `deal_stage_changed`: `etapas` vazia = QUALQUER etapa (`triggerMatches`). */
-  deEtapa: ReadonlyArray<{ id: string; etapas: readonly string[] }>
-  /**
-   * `tag_added`: só com a etiqueta configurada — sem ela o motor NUNCA
-   * dispara (`triggerMatches` exige `tag_id`). Não existe gatilho de
-   * etiqueta TIRADA: tirar não tem cascata.
-   */
-  deEtiqueta: ReadonlyArray<{ id: string; etiqueta: string }>
-}
-
-/** O que a régua da D5 precisa saber da conta, além dos passos. */
 export interface ReguaDaD5 {
   /** Etapas com `pipeline_stages.resultado` (ganho/perdido). */
   etapasDeResultado: ReadonlySet<string>
   /** Campos de data vigiados por lembrete ligado (`camposVigiados`). */
   camposVigiados: ReadonlySet<string>
-  cascata: GatilhosDaCascata
 }
 
 export interface PassoDaAutomacao {
@@ -518,13 +656,12 @@ function texto(v: unknown): string | null {
 /**
  * O passo sai da D5? Mensagem para outro número, webhook de saída, ganho ou
  * perdido (pelo status ou por etapa com resultado — mover para ela ou criar
- * o card nela), iniciar robô (o `run_flow` não carrega origem nem contexto,
- * e a cascata do robô sairia da D5) e preencher campo de data vigiado por
- * lembrete (o cron dispararia aquela automação depois — 5.6, Codex #292).
- * O "Aguardar" NÃO está aqui: ele só conta na automação que a IA executa
- * (`motivoForaDaD5`), não na cascata.
+ * o card nela), iniciar robô (o `run_flow` não carrega origem nem contexto)
+ * e preencher campo de data vigiado por lembrete (o cron dispararia aquela
+ * automação depois — 5.6, Codex #292). O "Aguardar" é conferido à parte
+ * (`motivoForaDaD5`).
  */
-export function motivoDoPasso(p: PassoDaAutomacao, regua: Pick<ReguaDaD5, 'etapasDeResultado' | 'camposVigiados'>): MotivoForaDaD5 | null {
+export function motivoDoPasso(p: PassoDaAutomacao, regua: ReguaDaD5): MotivoForaDaD5 | null {
   switch (p.tipo) {
     case 'send_to_number':
       return 'send_to_number'
@@ -550,167 +687,71 @@ export function motivoDoPasso(p: PassoDaAutomacao, regua: Pick<ReguaDaD5, 'etapa
   }
 }
 
-/** As automações que a entrada do card NESTA etapa dispara. */
-export function automacoesDaEtapa(etapa: string, cascata: GatilhosDaCascata): string[] {
-  return cascata.deEtapa.filter((a) => a.etapas.length === 0 || a.etapas.includes(etapa)).map((a) => a.id)
-}
-
-/** As automações que aplicar ESTA etiqueta dispara. */
-export function automacoesDaEtiqueta(etiqueta: string, cascata: GatilhosDaCascata): string[] {
-  return cascata.deEtiqueta.filter((a) => a.etiqueta === etiqueta).map((a) => a.id)
-}
-
-/** Uma automação a percorrer: `direta` = a que a IA executa (ou uma que ela aciona por `run_automation`). */
-interface Visita {
-  id: string
-  direta: boolean
-}
-
 /**
- * As automações que os passos de UMA automação alcançam: as que ela aciona
- * (`run_automation`, no MESMO modo) e a cascata (sempre indireta) — a entrada
- * do card na etapa do "Mover card"/"Criar negócio" e a etiqueta do
- * "Adicionar etiqueta". Passo sem etapa ou sem etiqueta não dispara nada (o
- * motor o recusa).
- */
-function vizinhas(passos: readonly PassoDaAutomacao[], direta: boolean, cascata: GatilhosDaCascata): Visita[] {
-  const saida: Visita[] = []
-  for (const p of passos) {
-    if (p.tipo === 'run_automation') {
-      const alvo = texto(p.config.automation_id)
-      if (alvo) saida.push({ id: alvo, direta })
-    } else if (p.tipo === 'move_deal_stage' || p.tipo === 'create_deal') {
-      const etapa = texto(p.config.stage_id)
-      if (etapa) saida.push(...automacoesDaEtapa(etapa, cascata).map((id) => ({ id, direta: false })))
-    } else if (p.tipo === 'add_tag') {
-      const etiqueta = texto(p.config.tag_id)
-      if (etiqueta) saida.push(...automacoesDaEtiqueta(etiqueta, cascata).map((id) => ({ id, direta: false })))
-    }
-  }
-  return saida
-}
-
-/**
- * Percorre a partir das sementes, com TRAVA DE CICLO (A aciona B, B aciona
- * A; a etiqueta de A dispara A). Uma automação já vista como DIRETA não é
- * vista de novo; vista só pela cascata, é vista de novo como direta (o
- * "Aguardar" conta ali). `aoVisitar` devolve o motivo que para tudo.
+ * Percorre as automações a partir das raízes, seguindo SÓ o `run_automation`
+ * (o agente agindo: a automação que ele executa aciona outra), com TRAVA DE
+ * CICLO (A aciona B, B aciona A). `aoVisitar` devolve o motivo que para tudo.
  * Automação sem passos no mapa (de outra conta, apagada, ainda não lida) não
  * é percorrida.
  */
 function percorrer(
-  sementes: readonly Visita[],
+  raizes: readonly string[],
   passosDe: ReadonlyMap<string, readonly PassoDaAutomacao[]>,
-  cascata: GatilhosDaCascata,
-  aoVisitar: (v: Visita, passos: readonly PassoDaAutomacao[] | undefined) => MotivoForaDaD5 | null,
+  aoVisitar: (id: string, passos: readonly PassoDaAutomacao[] | undefined) => MotivoForaDaD5 | null,
 ): MotivoForaDaD5 | null {
   const vistas = new Set<string>()
-  const pilha = [...sementes].reverse()
+  const pilha = [...raizes].reverse()
   while (pilha.length > 0) {
-    const v = pilha.pop() as Visita
-    if (vistas.has(`${v.id}|d`) || vistas.has(`${v.id}|${v.direta ? 'd' : 'c'}`)) continue
-    vistas.add(`${v.id}|${v.direta ? 'd' : 'c'}`)
-    const passos = passosDe.get(v.id)
-    const motivo = aoVisitar(v, passos)
+    const id = pilha.pop() as string
+    if (vistas.has(id)) continue
+    vistas.add(id)
+    const passos = passosDe.get(id)
+    const motivo = aoVisitar(id, passos)
     if (motivo) return motivo
-    if (passos) pilha.push(...vizinhas(passos, v.direta, cascata).reverse())
+    const acionadas = (passos ?? [])
+      .filter((p) => p.tipo === 'run_automation')
+      .map((p) => texto(p.config.automation_id))
+      .filter((alvo): alvo is string => alvo !== null)
+    pilha.push(...acionadas.reverse())
   }
   return null
 }
 
-function motivoDasSementes(
-  sementes: readonly Visita[],
-  passosDe: ReadonlyMap<string, readonly PassoDaAutomacao[]>,
-  regua: ReguaDaD5,
-): MotivoForaDaD5 | null {
-  return percorrer(sementes, passosDe, regua.cascata, (v, passos) => {
-    for (const p of passos ?? []) {
-      const motivo = motivoDoPasso(p, regua)
-      if (motivo) return motivo
-      // ⚠️ Só na automação que a IA executa (e nas que ela aciona): a
-      // retomada do "Aguardar" não confere a pausa nem o agente. Na cascata
-      // da etapa, a sequência é da ETAPA — como quando gente move o card.
-      if (v.direta && p.tipo === 'wait') return 'aguardar'
-    }
-    return null
-  })
-}
-
 /**
- * O primeiro passo fora da D5 da automação `raiz` que a IA EXECUTA, das que
- * ela aciona (`run_automation`) e da cascata que os passos disparam (a
- * automação da etapa em que o "Mover card" põe o card, a da etiqueta que o
- * "Adicionar etiqueta" aplica — e assim por diante), com trava de ciclo.
- * O "Aguardar" conta só na raiz e nas que ela aciona.
+ * O primeiro passo fora da D5 da automação `raiz` que a IA EXECUTA e das que
+ * ela aciona (`run_automation`), com trava de ciclo — inclusive o "Aguardar"
+ * (a retomada não confere a pausa nem o agente). Um "Mover card" ou
+ * "Adicionar etiqueta" dela NÃO puxa as automações da etapa ou da etiqueta:
+ * a D5 vale só para o que o agente faz (27/09/2026).
  */
 export function motivoForaDaD5(
   raiz: string,
   passosDe: ReadonlyMap<string, readonly PassoDaAutomacao[]>,
   regua: ReguaDaD5,
 ): MotivoForaDaD5 | null {
-  return motivoDasSementes([{ id: raiz, direta: true }], passosDe, regua)
+  return percorrer([raiz], passosDe, (_id, passos) => {
+    for (const p of passos ?? []) {
+      const motivo = motivoDoPasso(p, regua)
+      if (motivo) return motivo
+      if (p.tipo === 'wait') return 'aguardar'
+    }
+    return null
+  })
 }
 
 /**
- * A D5 da ETAPA para onde a IA move o card: o primeiro passo fora da D5 nas
- * automações ligadas que a entrada nela dispara (e na cascata delas). É o
- * mesmo que a IA fazer aquilo com as próprias mãos.
- */
-export function motivoDaEtapa(
-  etapa: string,
-  passosDe: ReadonlyMap<string, readonly PassoDaAutomacao[]>,
-  regua: ReguaDaD5,
-): MotivoForaDaD5 | null {
-  return motivoDasSementes(
-    automacoesDaEtapa(etapa, regua.cascata).map((id) => ({ id, direta: false })),
-    passosDe,
-    regua,
-  )
-}
-
-/** A D5 da ETIQUETA que a IA aplica, pela cascata de `tag_added`. Tirar não tem cascata. */
-export function motivoDaEtiqueta(
-  etiqueta: string,
-  passosDe: ReadonlyMap<string, readonly PassoDaAutomacao[]>,
-  regua: ReguaDaD5,
-): MotivoForaDaD5 | null {
-  return motivoDasSementes(
-    automacoesDaEtiqueta(etiqueta, regua.cascata).map((id) => ({ id, direta: false })),
-    passosDe,
-    regua,
-  )
-}
-
-/** De onde a régua parte: a automação executada, a etapa para onde move, a etiqueta que aplica. */
-export interface OrigensDaD5 {
-  automacoes?: readonly string[]
-  etapas?: readonly string[]
-  etiquetas?: readonly string[]
-}
-
-/** As sementes de cada origem (o que a régua percorre a partir dela). */
-function sementesDe(origens: OrigensDaD5, cascata: GatilhosDaCascata): Visita[] {
-  return [
-    ...(origens.automacoes ?? []).map((id) => ({ id, direta: true })),
-    ...(origens.etapas ?? []).flatMap((e) => automacoesDaEtapa(e, cascata).map((id) => ({ id, direta: false }))),
-    ...(origens.etiquetas ?? []).flatMap((t) => automacoesDaEtiqueta(t, cascata).map((id) => ({ id, direta: false }))),
-  ]
-}
-
-/**
- * TODAS as automações que a régua percorreria a partir das origens, com os
+ * TODAS as automações que a régua percorreria a partir das raízes, com os
  * passos que já se conhece. Quem lê o banco camada por camada chama de novo
  * até não aparecer automação nova (`ferramentas.ts`): as arestas são as
- * MESMAS da régua (`vizinhas`), então o que ela percorre está lido.
+ * MESMAS da régua (`percorrer`), então o que ela percorre está lido.
  */
 export function automacoesAlcancaveis(
-  origens: OrigensDaD5,
+  raizes: readonly string[],
   passosDe: ReadonlyMap<string, readonly PassoDaAutomacao[]>,
-  cascata: GatilhosDaCascata,
 ): Set<string> {
   const alcancadas = new Set<string>()
-  percorrer(sementesDe(origens, cascata), passosDe, cascata, (v) => {
-    alcancadas.add(v.id)
+  percorrer(raizes, passosDe, (id) => {
+    alcancadas.add(id)
     return null
   })
   return alcancadas
@@ -740,31 +781,6 @@ export function camposVigiados(
   return vigiados
 }
 
-/**
- * Quem a cascata dispara, pelas automações LIGADAS de etapa e de etiqueta
- * (a mesma leitura de `triggerMatches`: etapa sem lista = qualquer etapa;
- * etiqueta sem `tag_id` = nunca). As outras ficam de fora.
- */
-export function gatilhosDaCascata(
-  automacoes: ReadonlyArray<{ id: string; trigger_type: string; trigger_config: unknown; is_active: boolean }>,
-): GatilhosDaCascata {
-  const deEtapa: Array<{ id: string; etapas: string[] }> = []
-  const deEtiqueta: Array<{ id: string; etiqueta: string }> = []
-  for (const a of automacoes) {
-    if (!a.is_active) continue
-    const cfg =
-      a.trigger_config && typeof a.trigger_config === 'object' ? (a.trigger_config as Record<string, unknown>) : {}
-    if (a.trigger_type === 'deal_stage_changed') {
-      const etapas = Array.isArray(cfg.stage_ids) ? cfg.stage_ids.filter((e): e is string => typeof e === 'string') : []
-      deEtapa.push({ id: a.id, etapas })
-    } else if (a.trigger_type === 'tag_added') {
-      const etiqueta = texto(cfg.tag_id)
-      if (etiqueta) deEtiqueta.push({ id: a.id, etiqueta })
-    }
-  }
-  return { deEtapa, deEtiqueta }
-}
-
 // ------------------------------------------------------------
 // O registro das ações do turno (`cb_ia_turnos.acoes`)
 // ------------------------------------------------------------
@@ -783,6 +799,8 @@ export const CODIGOS_DE_FALHA_DA_ACAO = [
   'valor_invalido',
   'titulo_invalido',
   'automacao_fora_da_d5',
+  // Não é mais produzido (a D5 deixou de percorrer a cascata em 27/09/2026):
+  // fica para a aba Turnos traduzir os registros antigos.
   'cascata_fora_da_d5',
   'automacao_desligada',
   'fora_da_conexao',

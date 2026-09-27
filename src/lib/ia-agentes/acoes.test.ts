@@ -1,26 +1,22 @@
 import { describe, expect, it } from 'vitest'
 
-import { triggerMatches } from '@/lib/automations/engine'
-import type { Automation } from '@/types'
-
 import {
+  afirmaReuniaoMarcada,
   automacoesAlcancaveis,
-  automacoesDaEtapa,
-  automacoesDaEtiqueta,
   camposVigiados,
   formatoDoCampo,
-  gatilhosDaCascata,
   lerAcoes,
   lerRegistrosDasAcoes,
   linkInventado,
   linksInventados,
-  motivoDaEtapa,
-  motivoDaEtiqueta,
+  mesmoValorDoCampo,
   motivoDoPasso,
+  nomeDoConvidado,
   motivoForaDaD5,
   registroDaRecusa,
   resolverAcoes,
   reuniaoNaoMarcada,
+  reuniaoPrometida,
   urlsDoTexto,
   valorDoCampo,
   type OpcoesDeAcao,
@@ -34,8 +30,10 @@ import {
 //  - DEFAULT-DENY: só executa o que o servidor listou — tipo não liberado e
 //    número fora da lista são recusados, e o id sai da opção, nunca do texto;
 //  - a trava de link inventado compara URL INTEIRA;
-//  - a régua da D5 atravessa `run_automation` E a cascata (etapa, etiqueta),
-//    com trava de ciclo; o "Aguardar" só conta na automação executada;
+//  - a trava da reunião prometida: o texto que afirma a reunião sem o
+//    marcador (com horários oferecidos) é retido — e só ele;
+//  - a régua da D5 atravessa `run_automation`, com trava de ciclo, e SÓ ele:
+//    a cascata (automações da etapa e da etiqueta) não conta desde 27/09/2026;
 //  - o valor do campo cabe no formato (data, número, lista, e-mail).
 // ============================================================
 
@@ -292,11 +290,79 @@ describe('a trava de link inventado', () => {
   })
 })
 
+describe('a trava da REUNIÃO PROMETIDA (F5, 27/09)', () => {
+  // Os textos MEDIDOS no Playground (2 de 6 gerações): a confirmação sem o marcador.
+  const MEDIDOS = [
+    'Perfeito! Sua reunião está confirmada para terça-feira, 29/09, às 15:15. A confirmação chega por e-mail.',
+    'Pronto, sua reunião está agendada para terça 29/09 às 15:15!',
+  ]
+
+  it('⚠️ os textos medidos AFIRMAM a reunião', () => {
+    for (const t of MEDIDOS) expect(afirmaReuniaoMarcada(t), t).toBe(true)
+  })
+
+  it('outras formas de afirmar: particípio + reunião ou horário/data, em português e em inglês', () => {
+    for (const t of [
+      'Tudo certo! Já deixei sua reunião marcada para amanhã às 10h.',
+      'Reunião remarcada para quinta, 01/10, às 14:00.',
+      'Agendado para terça às 15h30 ✅',
+      'Sua reunião acabou de ser marcada para terça às 15:15.',
+      'Sua reunião está confirmada para terça às 15:15, tudo bem?',
+      'Your meeting is booked for Tuesday at 3:15 pm.',
+      "Great, you're scheduled for Tuesday 29/09 at 15:15!",
+      'Your meeting has been rescheduled to Thursday at 10:00.',
+    ]) {
+      expect(afirmaReuniaoMarcada(t), t).toBe(true)
+    }
+  })
+
+  it('⚠️ não afirma: pergunta, oferta, "podemos agendar", futuro, negação, condição, horário tomado, e-mail confirmado', () => {
+    for (const t of [
+      'Quer que eu marque para terça às 15:15?',
+      'Temos horários na terça às 15:15 e na quarta às 10:00, podemos agendar',
+      'Temos estes horários livres: terça às 15:15 ou quarta às 10:00. Qual fica melhor?',
+      'Posso deixar agendado para terça às 15:15?',
+      'Assim que você me passar o e-mail, deixo sua reunião agendada para terça às 15:15.',
+      'Se preferir, a reunião pode ser marcada para terça às 15:15.',
+      'A reunião será confirmada por e-mail.',
+      'Sua reunião ainda não está marcada: escolha um dos horários.',
+      'Para ser confirmada, a reunião precisa do seu e-mail.',
+      'O horário das 15:15 já foi marcado por outra pessoa. Temos às 16:00.',
+      'Seu e-mail foi confirmado! Agora é só escolher um dos horários.',
+      'O pagamento da parcela 1/3 foi confirmado.',
+      'The meeting will be scheduled once you confirm the time.',
+      "Your meeting isn't booked yet — which time works for you, 15:15 or 16:00?",
+      'Tuesday at 15:15 is confirmed?',
+    ]) {
+      expect(afirmaReuniaoMarcada(t), t).toBe(false)
+    }
+  })
+
+  const HORARIO = [{ tipo: 'marcar_reuniao' as const }]
+
+  it('retém quando houve horários oferecidos, o texto afirma e NENHUMA reunião foi aceita', () => {
+    expect(reuniaoPrometida({ texto: MEDIDOS[0], horariosOferecidos: 5, aceitas: [] })).toBe(true)
+    // Outra ação aceita (etiqueta, campo) não é a reunião.
+    expect(reuniaoPrometida({ texto: MEDIDOS[1], horariosOferecidos: 5, aceitas: [{ tipo: 'etiquetar' }] })).toBe(true)
+  })
+
+  it('⚠️ COM o marcador (a reunião aceita): não dispara', () => {
+    expect(reuniaoPrometida({ texto: MEDIDOS[0], horariosOferecidos: 5, aceitas: HORARIO })).toBe(false)
+  })
+
+  it('sem horários oferecidos neste turno (reunião desligada, leitura que falhou, cliente que JÁ tem reunião): não se aplica', () => {
+    expect(reuniaoPrometida({ texto: 'Sua reunião está confirmada para terça às 15:15.', horariosOferecidos: 0, aceitas: [] })).toBe(false)
+  })
+
+  it('texto que não afirma: não dispara', () => {
+    expect(reuniaoPrometida({ texto: 'Quer que eu marque para terça às 15:15?', horariosOferecidos: 5, aceitas: [] })).toBe(false)
+  })
+})
+
 describe('a régua da D5 nas automações', () => {
   const REGUA: ReguaDaD5 = {
     etapasDeResultado: new Set(['etapa-ganho']),
     camposVigiados: new Set(['campo-data']),
-    cascata: { deEtapa: [], deEtiqueta: [] },
   }
   const passo = (tipo: string, config: Record<string, unknown> = {}): PassoDaAutomacao => ({ tipo, config })
 
@@ -333,118 +399,36 @@ describe('a régua da D5 nas automações', () => {
     expect(motivoForaDaD5('sumida', passos, REGUA)).toBeNull()
   })
 
-  it('⚠️ "Aguardar" na automação EXECUTADA (ou na que ela aciona) tira da D5 — na cascata, não', () => {
-    const regua: ReguaDaD5 = {
-      ...REGUA,
-      cascata: { deEtapa: [{ id: 'da-etapa', etapas: ['etapa-x'] }], deEtiqueta: [] },
-    }
+  it('⚠️ "Aguardar" na automação EXECUTADA (ou na que ela aciona) tira da D5', () => {
     const passos = new Map<string, PassoDaAutomacao[]>([
       ['espera', [passo('send_message'), passo('wait', { amount: 1 })]],
       ['aciona-espera', [passo('run_automation', { automation_id: 'espera' })]],
-      ['move', [passo('move_deal_stage', { stage_id: 'etapa-x' })]],
-      // A sequência da etapa tem "Aguardar": é da ETAPA, como quando gente move o card.
-      ['da-etapa', [passo('send_message'), passo('wait', { amount: 1 })]],
     ])
-    expect(motivoForaDaD5('espera', passos, regua)).toBe('aguardar')
-    expect(motivoForaDaD5('aciona-espera', passos, regua)).toBe('aguardar')
-    expect(motivoForaDaD5('move', passos, regua)).toBeNull()
-    expect(motivoDaEtapa('etapa-x', passos, regua)).toBeNull()
+    expect(motivoForaDaD5('espera', passos, REGUA)).toBe('aguardar')
+    expect(motivoForaDaD5('aciona-espera', passos, REGUA)).toBe('aguardar')
   })
 
-  describe('a CASCATA', () => {
-    const regua: ReguaDaD5 = {
-      ...REGUA,
-      cascata: {
-        deEtapa: [
-          { id: 'na-proposta', etapas: ['etapa-proposta'] },
-          { id: 'em-qualquer', etapas: [] },
-        ],
-        deEtiqueta: [
-          { id: 'da-vip', etiqueta: 'tag-vip' },
-          { id: 'da-quente', etiqueta: 'tag-quente' },
-        ],
-      },
-    }
-
-    it('a etapa: as automações que a entrada nela dispara (lista vazia = qualquer etapa)', () => {
-      const passos = new Map<string, PassoDaAutomacao[]>([
-        ['na-proposta', [passo('send_webhook')]],
-        ['em-qualquer', [passo('send_message')]],
-      ])
-      expect(motivoDaEtapa('etapa-proposta', passos, regua)).toBe('send_webhook')
-      expect(motivoDaEtapa('etapa-docs', passos, regua)).toBeNull()
-      const qualquerFora = new Map([...passos, ['em-qualquer', [passo('send_to_number')]]])
-      expect(motivoDaEtapa('etapa-docs', qualquerFora, regua)).toBe('send_to_number')
-    })
-
-    it('a etiqueta: as automações de `tag_added` DAQUELA etiqueta', () => {
-      const passos = new Map<string, PassoDaAutomacao[]>([
-        ['da-vip', [passo('set_deal_status', { status: 'won' })]],
-        ['da-quente', [passo('send_message')]],
-      ])
-      expect(motivoDaEtiqueta('tag-vip', passos, regua)).toBe('status_de_resultado')
-      expect(motivoDaEtiqueta('tag-quente', passos, regua)).toBeNull()
-      expect(motivoDaEtiqueta('tag-sem-automacao', passos, regua)).toBeNull()
-    })
-
-    it('atravessa: etapa → etiqueta → run_automation → passo fora da D5, com ciclo no meio', () => {
-      const passos = new Map<string, PassoDaAutomacao[]>([
-        ['na-proposta', [passo('add_tag', { tag_id: 'tag-quente' })]],
-        // A etiqueta move o card de volta para a proposta (ciclo) e aciona outra.
-        [
-          'da-quente',
-          [passo('move_deal_stage', { stage_id: 'etapa-proposta' }), passo('run_automation', { automation_id: 'final' })],
-        ],
-        ['final', [passo('send_webhook')]],
-      ])
-      expect(motivoDaEtapa('etapa-proposta', passos, regua)).toBe('send_webhook')
-      // A automação que a IA executa e que etiqueta: a cascata dela conta.
-      const comEtiqueta = new Map([...passos, ['executa', [passo('add_tag', { tag_id: 'tag-quente' })]]])
-      expect(motivoForaDaD5('executa', comEtiqueta, regua)).toBe('send_webhook')
-      expect(automacoesAlcancaveis({ etapas: ['etapa-proposta'] }, passos, regua.cascata)).toEqual(
-        new Set(['na-proposta', 'em-qualquer', 'da-quente', 'final']),
-      )
-    })
-
-    it('`automacoesAlcancaveis` para onde falta ler (o leitor camada por camada)', () => {
-      // Sem os passos de "na-proposta", a régua só conhece as sementes.
-      expect(automacoesAlcancaveis({ etapas: ['etapa-proposta'], automacoes: ['x'] }, new Map(), regua.cascata)).toEqual(
-        new Set(['x', 'na-proposta', 'em-qualquer']),
-      )
-    })
+  it('⚠️ D5 só para o que o agente faz (27/09/2026): "Mover card" e "Adicionar etiqueta" NÃO puxam as automações da etapa ou da etiqueta', () => {
+    // Mesmo que existam automações de etapa/etiqueta com webhook, outro número
+    // ou "Aguardar": a régua não as conhece — elas rodam como quando gente
+    // move o card ou etiqueta.
+    const passos = new Map<string, PassoDaAutomacao[]>([
+      ['move-e-etiqueta', [passo('move_deal_stage', { stage_id: 'etapa-x' }), passo('add_tag', { tag_id: 'tag-quente' })]],
+      ['da-etapa-x', [passo('send_webhook'), passo('wait', { amount: 1 })]],
+      ['da-tag-quente', [passo('send_to_number')]],
+    ])
+    expect(motivoForaDaD5('move-e-etiqueta', passos, REGUA)).toBeNull()
+    expect(automacoesAlcancaveis(['move-e-etiqueta'], passos)).toEqual(new Set(['move-e-etiqueta']))
   })
-})
 
-describe('gatilhosDaCascata — a mesma leitura de `triggerMatches`', () => {
-  const automacao = (id: string, trigger_type: string, trigger_config: unknown, is_active = true) =>
-    ({ id, trigger_type, trigger_config, is_active }) as unknown as Automation & { trigger_config: unknown }
-
-  const AUTOMACOES = [
-    automacao('etapa-a', 'deal_stage_changed', { stage_ids: ['e1'] }),
-    automacao('etapa-qualquer', 'deal_stage_changed', { stage_ids: [] }),
-    automacao('etapa-sem-config', 'deal_stage_changed', {}),
-    automacao('etapa-desligada', 'deal_stage_changed', { stage_ids: ['e1'] }, false),
-    automacao('tag-vip', 'tag_added', { tag_id: 't1' }),
-    automacao('tag-sem-config', 'tag_added', {}),
-    automacao('mensagem', 'new_message_received', {}),
-  ]
-
-  it('concorda com o motor, etapa por etapa e etiqueta por etiqueta (só as ligadas)', () => {
-    const cascata = gatilhosDaCascata(AUTOMACOES)
-    for (const etapa of ['e1', 'e2']) {
-      const motor = AUTOMACOES.filter(
-        (a) => a.is_active && a.trigger_type === 'deal_stage_changed' && triggerMatches(a, { to_stage_id: etapa }),
-      ).map((a) => a.id)
-      expect(automacoesDaEtapa(etapa, cascata), etapa).toEqual(motor)
-    }
-    for (const etiqueta of ['t1', 't2']) {
-      const motor = AUTOMACOES.filter(
-        (a) => a.is_active && a.trigger_type === 'tag_added' && triggerMatches(a, { tag_id: etiqueta }),
-      ).map((a) => a.id)
-      expect(automacoesDaEtiqueta(etiqueta, cascata), etiqueta).toEqual(motor)
-    }
-    // Etiqueta sem `tag_id` o motor NUNCA dispara.
-    expect(cascata.deEtiqueta.map((a) => a.id)).toEqual(['tag-vip'])
+  it('`automacoesAlcancaveis` segue só o `run_automation` (o leitor camada por camada)', () => {
+    const passos = new Map<string, PassoDaAutomacao[]>([
+      ['a', [passo('run_automation', { automation_id: 'b' }), passo('add_tag', { tag_id: 't' })]],
+      ['b', [passo('run_automation', { automation_id: 'a' })]],
+    ])
+    expect(automacoesAlcancaveis(['a'], passos)).toEqual(new Set(['a', 'b']))
+    // Sem os passos, a régua só conhece as raízes.
+    expect(automacoesAlcancaveis(['x', 'y'], new Map())).toEqual(new Set(['x', 'y']))
   })
 })
 
@@ -500,6 +484,20 @@ describe('o formato do valor de um campo', () => {
   it('texto: como veio (aparado); vazio nunca', () => {
     expect(valorDoCampo('  R$ 150 mil ', { tipo: 'texto' })).toBe('R$ 150 mil')
     expect(valorDoCampo('   ', { tipo: 'texto' })).toBeNull()
+  })
+
+  it('o MESMO valor já gravado (a ação repetida): aparado e sem caixa; a data pelo instante', () => {
+    expect(mesmoValorDoCampo(' R$ 150 MIL ', 'R$ 150 mil', { tipo: 'texto' })).toBe(true)
+    expect(mesmoValorDoCampo('Ana@X.com', 'ana@x.com', { tipo: 'email' })).toBe(true)
+    expect(mesmoValorDoCampo('Bancário', 'Bancário', { tipo: 'lista', opcoes: ['Bancário'] })).toBe(true)
+    // A mesma hora em outra forma (outro escritor gravou com offset): é a mesma.
+    expect(mesmoValorDoCampo('2026-10-01T14:00:00-03:00', '2026-10-01T17:00:00.000Z', { tipo: 'data' })).toBe(true)
+    expect(mesmoValorDoCampo('2026-10-01T17:00:00.000Z', '2026-10-02T17:00:00.000Z', { tipo: 'data' })).toBe(false)
+    expect(mesmoValorDoCampo('R$ 150 mil', 'R$ 200 mil', { tipo: 'texto' })).toBe(false)
+    // Sem valor gravado (ou vazio, ou não texto): não é o mesmo — grava.
+    expect(mesmoValorDoCampo(undefined, 'x', { tipo: 'texto' })).toBe(false)
+    expect(mesmoValorDoCampo('  ', 'x', { tipo: 'texto' })).toBe(false)
+    expect(mesmoValorDoCampo(5, '5', { tipo: 'numero' })).toBe(false)
   })
 })
 
@@ -584,6 +582,32 @@ describe('marcar reunião (F5)', () => {
   it('o marcador aberto no fim (resposta cortada) também sai', () => {
     expect(lerAcoes('Marquei! [[REUNIÃO:').texto).toBe('Marquei!')
     expect(lerAcoes('Marquei! [REUNIAO:1').texto).toBe('Marquei!')
+  })
+
+  it('o NOME completo, opcional, no marcador (`[[REUNIAO:n=Nome]]`): lido, e o texto sai limpo; vazio = sem nome, nunca recusa', () => {
+    const r = lerAcoes('Marquei!\n[[REUNIAO:2= Maria   Aparecida\nSouza ]]')
+    expect(r.texto).toBe('Marquei!')
+    expect(r.pedidas).toEqual([{ tipo: 'marcar_reuniao', n: 2, valor: 'Maria Aparecida Souza' }])
+    expect(r.recusadas).toEqual([])
+    expect(lerAcoes('Ok [REUNIÃO:1=Ana Souza]').pedidas).toEqual([{ tipo: 'marcar_reuniao', n: 1, valor: 'Ana Souza' }])
+    expect(lerAcoes('Ok [[REUNIAO:1=]]').pedidas).toEqual([{ tipo: 'marcar_reuniao', n: 1 }])
+  })
+
+  it('o nome vai com a reunião ACEITA só quando tem a forma de um nome — senão cai, e a reunião continua aceita', () => {
+    const r = (valor: string | undefined) => resolverAcoes([{ tipo: 'marcar_reuniao', n: 1, ...(valor === undefined ? {} : { valor }) }], OPCOES)
+    expect(r('Maria Aparecida Souza')).toEqual({
+      aceitas: [{ tipo: 'marcar_reuniao', id: '2026-09-28T18:15:00.000Z', nome: 'Mon 28/09 15:15', valor: 'Maria Aparecida Souza' }],
+      recusadas: [],
+    })
+    for (const ruim of ['x', '12345', 'a'.repeat(121), '  ']) {
+      expect(r(ruim), ruim).toEqual({
+        aceitas: [{ tipo: 'marcar_reuniao', id: '2026-09-28T18:15:00.000Z', nome: 'Mon 28/09 15:15' }],
+        recusadas: [],
+      })
+    }
+    expect(nomeDoConvidado('  João  da   Silva ')).toBe('João da Silva')
+    expect(nomeDoConvidado('Jo')).toBe('Jo')
+    expect(nomeDoConvidado(null)).toBeNull()
   })
 
   it('número → o horário (ISO) que o SERVIDOR leu, com o texto exibido', () => {

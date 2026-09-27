@@ -6,10 +6,14 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 //  - contato, card e conversa são os DO TURNO; os ids, os da opção;
 //  - tudo é conferido DE NOVO na hora: etapa que virou de ganho/perdido,
 //    card que fechou ou é de outro contato, campo de data que passou a ser
-//    vigiado, automação que ganhou passo fora da D5, etapa e etiqueta cuja
-//    CASCATA saiu da D5 — recusados, com o CÓDIGO e o detalhe cru à parte;
+//    vigiado, automação que ganhou passo fora da D5 — recusados, com o
+//    CÓDIGO e o detalhe cru à parte; as automações da etapa e da etiqueta
+//    NÃO são conferidas (a D5 vale só para o que o agente faz, 27/09/2026);
 //  - valor vazio não apaga campo, e o valor tem de caber no formato do campo;
-//  - mover para a etapa em que o card JÁ está: ok, sem anotação nem dreno;
+//  - a AÇÃO REPETIDA (o modelo re-emite as das respostas anteriores): mover
+//    para a etapa em que o card JÁ está, etiqueta que já estava, etiqueta a
+//    tirar que não estava e campo com o MESMO valor — ok com `ja_estava`,
+//    sem escrita, sem anotação e sem dreno;
 //  - a tarefa é a MESMA inserção do motor, com o dono como autor e prazo hoje;
 //  - a automação roda com o rótulo "ia:<agente>" e as guardas da rota manual;
 //  - falha de uma ação não impede as outras; a feita deixa anotação.
@@ -27,13 +31,7 @@ vi.mock('@/lib/contacts/tag-events', () => ({
 vi.mock('@/lib/contacts/tag-write', () => ({ removeContactTag: vi.fn(async () => true) }))
 vi.mock('./ferramentas', () => ({
   lerCamposVigiados: vi.fn(async () => new Set<string>()),
-  motivosForaDaD5: vi.fn(
-    async (_db: unknown, _conta: string, o: { automacoes?: string[]; etapas?: string[]; etiquetas?: string[] }) => ({
-      automacoes: new Map((o.automacoes ?? []).map((id) => [id, null])),
-      etapas: new Map((o.etapas ?? []).map((id) => [id, null])),
-      etiquetas: new Map((o.etiquetas ?? []).map((id) => [id, null])),
-    }),
-  ),
+  motivosForaDaD5: vi.fn(async (_db: unknown, _conta: string, automacoes: string[]) => new Map(automacoes.map((id) => [id, null]))),
 }))
 
 // A agenda do Calendly (F5): o `POST /invitees` é um dublê (testado em `agenda.test.ts`).
@@ -230,17 +228,11 @@ describe('mover_etapa', () => {
     expect(notas()).toEqual([])
   })
 
-  it('⚠️ a CASCATA da etapa saiu da D5 depois de liberada: `cascata_fora_da_d5`, o motivo no detalhe, sem mover', async () => {
-    vi.mocked(motivosForaDaD5).mockResolvedValueOnce({
-      automacoes: new Map(),
-      etapas: new Map([['etapa-proposta', 'send_webhook']]),
-      etiquetas: new Map(),
-    })
+  it('⚠️ D5 só para o que o agente faz (27/09/2026): as automações da etapa NÃO são conferidas — move e drena', async () => {
     const r = await executarAcoes(db, CTX, [acao({ tipo: 'mover_etapa', id: 'etapa-proposta' })])
-    expect(r.registros[0]).toMatchObject({ ok: false, erro: 'cascata_fora_da_d5', detalhe: 'send_webhook' })
-    expect(vi.mocked(motivosForaDaD5).mock.calls[0].slice(1)).toEqual(['conta-1', { etapas: ['etapa-proposta'] }])
-    expect(banco.rpcs).toEqual([])
-    expect(r.moveu).toBe(false)
+    expect(motivosForaDaD5).not.toHaveBeenCalled()
+    expect(r.registros[0]).toMatchObject({ ok: true })
+    expect(r.moveu).toBe(true)
   })
 })
 
@@ -258,35 +250,32 @@ describe('etiquetar / tirar_etiqueta', () => {
     expect(notas()[0].texto).toContain('VIP')
   })
 
-  it('a etiqueta já estava lá: ok, sem anotação', async () => {
+  it('⚠️ a etiqueta já estava lá (a ação repetida): ok, `ja_estava`, sem anotação e sem `tag_added`', async () => {
+    // O escritor central só dispara o `tag_added` para etiqueta NOVA (o UNIQUE recusa a repetida).
     vi.mocked(addContactTagAndDispatch).mockResolvedValueOnce({ added: false, dispatched: false, reason: 'duplicate' })
-    const r = await executarAcoes(db, CTX, [acao({ tipo: 'etiquetar', id: 'tag-vip' })])
-    expect(r.registros[0]).toMatchObject({ ok: true })
+    const r = await executarAcoes(db, CTX, [acao({ tipo: 'etiquetar', id: 'tag-vip', nome: 'VIP' })])
+    expect(r.registros).toEqual([{ tipo: 'etiquetar', alvo: { id: 'tag-vip', nome: 'VIP' }, ok: true, detalhe: 'ja_estava' }])
     expect(notas()).toEqual([])
   })
 
-  it('⚠️ a CASCATA da etiqueta saiu da D5: `cascata_fora_da_d5`, sem etiquetar', async () => {
-    vi.mocked(motivosForaDaD5).mockResolvedValueOnce({
-      automacoes: new Map(),
-      etapas: new Map(),
-      etiquetas: new Map([['tag-quente', 'send_to_number']]),
-    })
+  it('⚠️ D5 só para o que o agente faz (27/09/2026): as automações da etiqueta NÃO são conferidas', async () => {
     const r = await executarAcoes(db, CTX, [acao({ tipo: 'etiquetar', id: 'tag-quente' })])
-    expect(r.registros[0]).toMatchObject({ ok: false, erro: 'cascata_fora_da_d5', detalhe: 'send_to_number' })
-    expect(addContactTagAndDispatch).not.toHaveBeenCalled()
-  })
-
-  it('a conferência da cascata que falha: não etiqueta (`falhou`, com o detalhe)', async () => {
-    vi.mocked(motivosForaDaD5).mockRejectedValueOnce(new Error('banco fora'))
-    const r = await executarAcoes(db, CTX, [acao({ tipo: 'etiquetar', id: 'tag-vip' })])
-    expect(r.registros[0]).toMatchObject({ ok: false, erro: 'falhou', detalhe: 'banco fora' })
-    expect(addContactTagAndDispatch).not.toHaveBeenCalled()
+    expect(motivosForaDaD5).not.toHaveBeenCalled()
+    expect(addContactTagAndDispatch).toHaveBeenCalled()
+    expect(r.registros[0]).toMatchObject({ ok: true })
   })
 
   it('tirar: pelo `removeContactTag`, com a conta', async () => {
     await executarAcoes(db, CTX, [acao({ tipo: 'tirar_etiqueta', id: 'tag-vip', nome: 'VIP' })])
     expect(removeContactTag).toHaveBeenCalledWith(db, { accountId: 'conta-1', contactId: 'contato-1', tagId: 'tag-vip' })
     expect(notas()[0].texto).toContain('VIP')
+  })
+
+  it('⚠️ tirar a etiqueta que NÃO estava (a ação repetida): ok, `ja_estava`, sem anotação', async () => {
+    vi.mocked(removeContactTag).mockResolvedValueOnce(false)
+    const r = await executarAcoes(db, CTX, [acao({ tipo: 'tirar_etiqueta', id: 'tag-vip', nome: 'VIP' })])
+    expect(r.registros).toEqual([{ tipo: 'tirar_etiqueta', alvo: { id: 'tag-vip', nome: 'VIP' }, ok: true, detalhe: 'ja_estava' }])
+    expect(notas()).toEqual([])
   })
 })
 
@@ -301,6 +290,44 @@ describe('preencher_campo', () => {
     })
     expect(r.registros[0]).toMatchObject({ ok: true })
     expect(notas()[0].texto).toContain('R$ 150 mil')
+  })
+
+  it('⚠️ o MESMO valor que a ficha já tem (a ação repetida): ok, `ja_estava`, sem escrita e sem anotação', async () => {
+    const daConta = { account_id: 'conta-1' }
+    banco.tabelas.contact_custom_values = [
+      { contact_id: 'contato-1', custom_field_id: 'campo-texto', value: ' r$ 150 MIL ', contacts: daConta },
+      { contact_id: 'contato-1', custom_field_id: 'campo-data', value: '2026-10-01T14:00:00-03:00', contacts: daConta },
+      // O mesmo valor, mas de OUTRO contato: não conta.
+      { contact_id: 'outro', custom_field_id: 'campo-numero', value: '150000', contacts: daConta },
+    ]
+    const r = await executarAcoes(db, CTX, [
+      acao({ tipo: 'preencher_campo', id: 'campo-texto', nome: 'Dívida', valor: 'R$ 150 mil' }),
+      acao({ tipo: 'preencher_campo', id: 'campo-data', nome: 'Data', valor: '2026-10-01 14:00' }),
+    ])
+    expect(r.registros).toEqual([
+      { tipo: 'preencher_campo', alvo: { id: 'campo-texto', nome: 'Dívida' }, ok: true, detalhe: 'ja_estava' },
+      { tipo: 'preencher_campo', alvo: { id: 'campo-data', nome: 'Data' }, ok: true, detalhe: 'ja_estava' },
+    ])
+    expect(banco.escritas.filter((e) => e.tabela === 'contact_custom_values')).toEqual([])
+    expect(notas()).toEqual([])
+    // O valor é lido do contato DO TURNO, naquele campo, com a conta pelo contato.
+    expect(banco.consultas.find((c) => c.tabela === 'contact_custom_values')?.filtros).toEqual([
+      ['contacts.account_id', 'conta-1'],
+      ['contact_id', 'contato-1'],
+      ['custom_field_id', 'campo-texto'],
+    ])
+
+    // Valor DIFERENTE (ou o do outro contato): grava e anota.
+    const r2 = await executarAcoes(db, CTX, [
+      acao({ tipo: 'preencher_campo', id: 'campo-texto', valor: 'R$ 200 mil' }),
+      acao({ tipo: 'preencher_campo', id: 'campo-numero', valor: '150000' }),
+    ])
+    expect(r2.registros.map((x) => [x.ok, x.detalhe])).toEqual([
+      [true, undefined],
+      [true, undefined],
+    ])
+    expect(banco.escritas.filter((e) => e.tabela === 'contact_custom_values')).toHaveLength(2)
+    expect(notas()).toHaveLength(2)
   })
 
   it('⚠️ valor vazio NÃO apaga', async () => {
@@ -415,11 +442,7 @@ describe('executar_automacao', () => {
   })
 
   it('⚠️ a D5 DE NOVO: a automação ganhou passo fora da D5 (ou "Aguardar") depois de liberada — não roda', async () => {
-    vi.mocked(motivosForaDaD5).mockResolvedValueOnce({
-      automacoes: new Map([['auto-1', 'send_webhook']]),
-      etapas: new Map(),
-      etiquetas: new Map(),
-    })
+    vi.mocked(motivosForaDaD5).mockResolvedValueOnce(new Map([['auto-1', 'send_webhook']]))
     const r = await executarAcoes(db, CTX, [acao({ tipo: 'executar_automacao', id: 'auto-1' })])
     expect(r.registros[0]).toEqual({
       tipo: 'executar_automacao',
@@ -428,14 +451,10 @@ describe('executar_automacao', () => {
       erro: 'automacao_fora_da_d5',
       detalhe: 'send_webhook',
     })
-    expect(vi.mocked(motivosForaDaD5).mock.calls[0].slice(1)).toEqual(['conta-1', { automacoes: ['auto-1'] }])
+    expect(vi.mocked(motivosForaDaD5).mock.calls[0].slice(1)).toEqual(['conta-1', ['auto-1']])
     expect(runAutomationById).not.toHaveBeenCalled()
 
-    vi.mocked(motivosForaDaD5).mockResolvedValueOnce({
-      automacoes: new Map([['auto-1', 'aguardar']]),
-      etapas: new Map(),
-      etiquetas: new Map(),
-    })
+    vi.mocked(motivosForaDaD5).mockResolvedValueOnce(new Map([['auto-1', 'aguardar']]))
     const r2 = await executarAcoes(db, CTX, [acao({ tipo: 'executar_automacao', id: 'auto-1' })])
     expect(r2.registros[0]).toMatchObject({ erro: 'automacao_fora_da_d5', detalhe: 'aguardar' })
     expect(runAutomationById).not.toHaveBeenCalled()
@@ -494,7 +513,7 @@ describe('executarAcoes', () => {
       acao({ tipo: 'executar_automacao', id: 'auto-1' }),
     ])
     for (const c of banco.consultas) {
-      const conta = c.filtros.find(([k]) => k === 'account_id' || k === 'pipelines.account_id')
+      const conta = c.filtros.find(([k]) => k === 'account_id' || k === 'pipelines.account_id' || k === 'contacts.account_id')
       expect(conta?.[1], c.tabela).toBe('conta-1')
     }
   })
@@ -502,7 +521,8 @@ describe('executarAcoes', () => {
 
 // ------------------------------------------------------------
 // MARCAR REUNIÃO (F5): por ÚLTIMO, no tipo de evento liberado e no horário
-// da opção; sem a cascata da D5 (a exceção escrita); a falha vira código.
+// da opção; sem régua da D5 (a automação do Calendly roda como quando o
+// cliente agenda pelo link); a falha vira código.
 // ------------------------------------------------------------
 
 describe('marcar_reuniao (F5)', () => {
@@ -520,11 +540,18 @@ describe('marcar_reuniao (F5)', () => {
       inicio: H,
     })
     expect(r).toEqual({ registros: [{ tipo: 'marcar_reuniao', alvo: { id: H, nome: 'Mon 28/09 15:15' }, ok: true }], moveu: false })
+    // Sem o nome no marcador: `marcarNoCalendly` usa o da ficha (o `nome` nem vai).
+    expect(vi.mocked(marcarNoCalendly).mock.calls[0][1]).not.toHaveProperty('nome')
     expect(notas()).toEqual([
       expect.objectContaining({ autor_nome: 'IA · Triagem', texto: expect.stringContaining('28/09/2026 15:15') }),
     ])
-    // Sem a régua da D5 pela cascata (a exceção da 5.6): nada de `motivosForaDaD5`.
+    // A automação do tipo de evento roda pelo webhook: nada de `motivosForaDaD5`.
     expect(motivosForaDaD5).not.toHaveBeenCalled()
+  })
+
+  it('o nome completo do marcador (`[[REUNIAO:n=Nome]]`) vai ao Calendly', async () => {
+    await executarAcoes(db, CTX_F5, [{ ...reuniao, valor: 'Maria Aparecida Souza' }])
+    expect(vi.mocked(marcarNoCalendly).mock.calls[0][1]).toMatchObject({ inicio: H, nome: 'Maria Aparecida Souza' })
   })
 
   it('⚠️ roda por ÚLTIMO: o e-mail que o `preencher_campo` da mesma resposta grava já está lá', async () => {

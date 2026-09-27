@@ -2282,6 +2282,55 @@ describe('executarTurno — marcar reunião (F5)', () => {
     expect(String(notas()[0].texto)).toContain('e-mail')
   })
 
+  it('⚠️ a reunião PROMETIDA sem o marcador (medido em 27/09): a resposta é RETIDA, a conversa vai para gente, e o texto fica no `erro`', async () => {
+    const TEXTO = 'Perfeito! Sua reunião está confirmada para terça-feira, 29/09, às 10:00. A confirmação chega por e-mail.'
+    agenteLido().ferramentas = { marcar_reuniao: { tipos_de_evento: [TIPO] }, etiquetar: { etiquetas: ['tag-vip'] } }
+    vi.mocked(opcoesDoAgente).mockResolvedValue({ etiquetar: [{ id: 'tag-vip', nome: 'VIP' }] })
+    responde(`${TEXTO}\n[[ETIQUETAR:1]]`)
+    await executarTurno(TURNO)
+    expect(engineSendText).not.toHaveBeenCalled()
+    expect(executarAcoes).not.toHaveBeenCalled()
+    expect(turno()).toMatchObject({
+      status: 'transferiu',
+      erro: `reunião prometida sem marcar: ${TEXTO}`,
+      acoes: [{ tipo: 'etiquetar', alvo: { id: 'tag-vip', nome: 'VIP' }, ok: false, erro: 'transferencia' }],
+    })
+    expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'transferencia' })
+    expect(notas()).toHaveLength(1)
+    expect(String(notas()[0].texto)).toMatch(/nada foi marcado no Calendly|nothing was booked in Calendly/)
+  })
+
+  it('⚠️ o marcador RECUSADO (fora da lista) com o texto afirmando a reunião: também retida (nada seria marcado)', async () => {
+    responde('Pronto! Sua reunião está agendada para sexta às 15:00.\n[[REUNIAO:9]]')
+    await executarTurno(TURNO)
+    expect(engineSendText).not.toHaveBeenCalled()
+    expect(turno()).toMatchObject({
+      status: 'transferiu',
+      acoes: [{ tipo: 'marcar_reuniao', alvo: { id: null, nome: '#9' }, ok: false, erro: 'fora_da_lista' }],
+    })
+    expect(String(turno().erro)).toContain('reunião prometida sem marcar: Pronto! Sua reunião está agendada')
+  })
+
+  it('a mesma confirmação COM o marcador sai e marca', async () => {
+    responde('Perfeito! Sua reunião está confirmada para terça-feira, 29/09, às 10:00.\n[[REUNIAO:2]]')
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    expect(vi.mocked(engineSendText).mock.calls[0][0].text).toBe('Perfeito! Sua reunião está confirmada para terça-feira, 29/09, às 10:00.')
+    expect(vi.mocked(executarAcoes).mock.calls[0][2]).toEqual([{ tipo: 'marcar_reuniao', id: H2, nome: '29/09/2026 10:00' }])
+  })
+
+  it('SEM horários oferecidos (o cliente JÁ tem reunião): "sua reunião está confirmada" é verdade e sai', async () => {
+    vi.mocked(lerAgendaDoAgente).mockResolvedValue({
+      ...AGENDA,
+      horarios: [],
+      reuniaoMarcada: { inicio: '2026-09-30T17:00:00Z', remarcar: 'https://calendly.com/reschedulings/vivo' },
+    })
+    responde('Sua reunião está confirmada para quarta, 30/09, às 14:00.')
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    expect(vi.mocked(engineSendText).mock.calls[0][0].text).toBe('Sua reunião está confirmada para quarta, 30/09, às 14:00.')
+  })
+
   it('⚠️ default-deny: horário FORA da lista é recusado, nada executa, e o turno transfere', async () => {
     responde('Marquei para sexta!\n[[REUNIAO:9]]')
     await executarTurno(TURNO)

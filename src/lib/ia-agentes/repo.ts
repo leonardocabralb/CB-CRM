@@ -56,7 +56,6 @@ export class ErroDoAgente extends Error {
       | 'item_de_outra_conta'
       | 'campo_vigiado'
       | 'automacao_fora_da_d5'
-      | 'cascata_fora_da_d5'
       | 'tipo_de_evento_invalido'
       | 'calendly_desconectado'
       | 'banco',

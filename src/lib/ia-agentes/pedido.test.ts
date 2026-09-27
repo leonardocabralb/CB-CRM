@@ -142,6 +142,8 @@ describe('as AÇÕES junto com a resposta (F4, D28)', () => {
     expect(p).toMatch(/at the very END/)
     expect(p).toMatch(/never make up a number/)
     expect(p).toMatch(/a message with only markers is handed over to the team/)
+    // A ação repetida (27/09): só as NOVAS desta resposta.
+    expect(p).toMatch(/Write only the NEW actions of this reply\. Never repeat an action you already took in an earlier reply/)
   })
 
   it('cada campo diz o FORMATO do valor (data, número, lista com as opções, e-mail, texto)', () => {
@@ -197,6 +199,19 @@ describe('MARCAR REUNIÃO (F5): os horários e as regras', () => {
     expect(p).toMatch(/never book a time that is not in the list/)
     expect(p).toMatch(/At most one meeting per reply/)
     expect(p).toContain('Customer e-mail on file: yes.')
+  })
+
+  it('⚠️ a reunião só existe COM o marcador: dizer que marcou/confirmou sem ele é proibido; horário escolhido = o marcador DELE', () => {
+    const p = montarPedidoDoAgente({ instrucoes: 'x', regras: [], agora, acoes: HORARIOS, agenda: { lida: true, temEmail: true } })
+    expect(p).toMatch(/The meeting exists ONLY if your reply includes the marker \[\[REUNIAO:n\]\]/)
+    expect(p).toMatch(/Never say that the meeting is booked, scheduled, confirmed or rescheduled without that marker in the same reply/)
+    expect(p).toMatch(/When the customer has chosen one of the listed times, your reply MUST include \[\[REUNIAO:n\]\] with the number of that time/)
+    // O nome completo, opcional, no marcador — nunca inventado.
+    expect(p).toMatch(/If the customer gave their full name in the conversation, add it to the marker as \[\[REUNIAO:n=Full Name\]\]/)
+    expect(p).toMatch(/Never make up, guess or complete a name/)
+    // Sem horários (leitura que falhou), a regra não aparece: não há marcador a pôr.
+    const semHorario = montarPedidoDoAgente({ instrucoes: 'x', regras: [], agora, acoes: {}, agenda: { lida: false, temEmail: true } })
+    expect(semHorario).not.toMatch(/The meeting exists ONLY/)
   })
 
   it('⚠️ os números valem SÓ para esta resposta: casar o DIA e a HORA com a lista atual; fora dela, dizer que não está mais livre — nunca marcar outro', () => {

@@ -75,12 +75,19 @@ Plano: `docs/PLANO-agentes-de-ia.md` (D5, D28, F4). Sem migration.
   = nenhuma ação (registradas como recusadas / `envio_falhou`). Cada ação é
   conferida DE NOVO na hora e deixa a anotação "IA · <agente> …"; uma falha
   não segura as outras.
-- ⚠️⚠️ **A D5 inclui a CASCATA** (`motivoForaDaD5`, `ferramentas.ts`):
-  `run_automation`, as automações de ENTRADA das etapas movidas e as de
-  etiqueta aplicada (o motor não tem gatilho de etiqueta tirada), com trava de ciclo e o escopo ignorado. Ao salvar
-  (400 com código e `itens`), nas opções do turno e na execução. "Aguardar"
-  só é proibido na automação que a IA executa DIRETAMENTE. Os webhooks de
-  saída `deal.*` ficam fora (assinatura da integração; limite escrito).
+- ⚠️⚠️ **D5 SÓ para o que o agente faz (decisão do operador, 27/09/2026)**
+  (`motivoForaDaD5`, `ferramentas.ts`): a automação que ele EXECUTA e as que
+  ela aciona por `run_automation` (com trava de ciclo; "Aguardar" conta), e a
+  etapa de ganho/perdido. Ao salvar (400 com código e `itens`), nas opções do
+  turno e na execução. As automações de ENTRADA da etapa movida e as da
+  etiqueta aplicada NÃO são conferidas — nem as que um "Mover card"/"Adicionar
+  etiqueta" da automação executada dispararia: rodam como quando gente move o
+  card. `cascata_fora_da_d5` não é mais produzido (fica nas listas para os
+  registros antigos). Os webhooks de saída `deal.*` ficam fora (limite escrito).
+- **Ação REPETIDA = no-op (27/09)**: mover para a etapa atual, etiqueta que já
+  está, tirar a que não está e campo com o MESMO valor (`mesmoValorDoCampo`:
+  aparado, sem caixa; data pelo instante) = ok com `detalhe: 'ja_estava'`, sem
+  escrita, anotação nem `tag_added`. O pedido manda escrever só as NOVAS.
 - **Nenhum marcador chega ao cliente** (`lerAcoes`: caixa, acento, espaço,
   colchete simples; `[[handoff]]` em qualquer forma = transferência). Teste
   para cada forma nova.
@@ -103,12 +110,17 @@ Plano: `docs/PLANO-agentes-de-ia.md` (D5, D28, F4). Sem migration.
 Plano: `docs/PLANO-agentes-de-ia.md` (D7, D28, 5.6, F5). Sem migration. É
 uma AÇÃO a mais do protocolo da F4 (`marcar_reuniao`, `[[REUNIAO:n]]`).
 
-- ⚠️⚠️ **A EXCEÇÃO à D5 pela cascata**: marcar reunião NÃO passa por
-  `motivosForaDaD5`. A automação do tipo de evento roda pelo webhook
-  `invitee.created`, como quando o PRÓPRIO cliente agenda pelo link (pode
-  avisar o advogado por `send_to_number` e mover o card). Escrito no código
-  (`conferirFerramentas`, `marcarReuniao`, `agenda.ts`), aqui e no plano.
-  O agente NÃO mexe no card, nos campos nem nos lembretes.
+- ⚠️⚠️ Marcar reunião NÃO passa por `motivosForaDaD5`: a automação do tipo
+  de evento roda pelo webhook `invitee.created`, como quando o PRÓPRIO cliente
+  agenda pelo link (pode avisar o advogado por `send_to_number` e mover o
+  card). Era a "exceção à D5 pela cascata" até 27/09, quando a cascata saiu
+  da régua. O agente NÃO mexe no card, nos campos nem nos lembretes.
+- ⚠️⚠️ **Reunião PROMETIDA sem o marcador = RETIDA e transfere** (27/09,
+  medido: 2 de 6 gerações): com horários oferecidos e nenhuma `marcar_reuniao`
+  aceita, texto que afirma a reunião (`afirmaReuniaoMarcada`: particípio +
+  reunião/horário/data, sem negação, futuro, oferta ou condição) vira
+  `reuniao_prometida`, com o texto no `erro` do turno; o Playground avisa
+  (`reuniaoPrometida`). Passagem, transferência e link inventado vencem.
 - **Configuração**: `ferramentas.marcar_reuniao = { tipos_de_evento: [uri] }`
   — lista para caber no código genérico, NO MÁXIMO uma, só a forma
   `https://api.calendly.com/event_types/<id>` (`ehUriDeTipoDeEvento`). Ao
@@ -140,6 +152,10 @@ uma AÇÃO a mais do protocolo da F4 (`marcar_reuniao`, `[[REUNIAO:n]]`).
   bloco desmarcado): o pedido diz quando ela é e manda o link de remarcar
   DELA (sem link, transferir); o marcador inventado é `nao_liberada` e
   transfere. Leitura dessa reunião que falha = sem horários (`lida` falso).
+- **Nome completo opcional** (`[[REUNIAO:n=Nome]]`, 27/09): vai como
+  `invitee.name` no lugar do da ficha (`nomeDoConvidado`: 2–120, com letra;
+  fora da forma, cai — nunca recusa) e VIRA o nome da ficha (o webhook do
+  Calendly o fixa, 999). O pedido proíbe inventar o nome.
 - **Uma reunião por resposta**: o segundo horário é `teto`; horário fora dos
   oferecidos, `fora_da_lista` (default-deny). O `id` da opção é o
   `start_time` que o SERVIDOR leu — é ele que vai ao `POST /invitees`.

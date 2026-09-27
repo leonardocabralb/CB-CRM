@@ -52,12 +52,14 @@ export type BlocoDoAcesso = (typeof BLOCOS_DO_ACESSO)[number]
  * é ligado por agente, com os itens liberados (parâmetros travados, 5.6): o
  * modelo escolhe só entre eles, por número, e o servidor confere de novo na
  * hora de executar. Fora da D5 por desenho: ganho/perdido, outro número,
- * webhook de saída, qualquer escrita no Asaas.
+ * webhook de saída, qualquer escrita no Asaas — no que o AGENTE faz (a
+ * automação que ele executa inclusive); as automações que uma ação dispara
+ * (a da etapa, a da etiqueta) rodam como quando gente faz o mesmo (27/09/2026).
  *
  * `marcar_reuniao` (F5, D7 + D28): marca no Calendly um dos horários livres
- * que o servidor leu e numerou no pedido. ⚠️ É a EXCEÇÃO à D5 pela cascata
- * (plano, 5.6, passo 4): a automação do tipo de evento roda pelo webhook
- * `invitee.created`, como quando o próprio cliente agenda pelo link.
+ * que o servidor leu e numerou no pedido. A automação do tipo de evento roda
+ * pelo webhook `invitee.created`, como quando o próprio cliente agenda pelo
+ * link.
  */
 export type TipoDeAcao =
   | 'mover_etapa'

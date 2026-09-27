@@ -4448,7 +4448,7 @@
       "teto": "That is the maximum per agent ({n} documents): unmark one to mark another."
     },
     "ferramentas": {
-      "explicacao": "What this agent may DO along with its reply, and with what. Nothing turned on = the agent only talks. Actions run after the reply is sent. It never closes a deal, never sends a message to another number and never touches Asaas — not even through the automations an action triggers. The one exception is “Book a meeting”: the Calendly automation runs just as when the customer books through the link.",
+      "explicacao": "What this agent may DO along with its reply, and with what. Nothing turned on = the agent only talks. Actions run after the reply is sent. It never closes a deal, never sends a message to another number and never touches Asaas. The stage or tag automations run just as when someone on the team moves the card, and the Calendly one just as when the customer books through the link.",
       "soConversa": "Nothing turned on: today this agent only talks.",
       "falhou": "Could not load the options.",
       "buscar": "Search…",
@@ -4503,12 +4503,7 @@
         "etapaDeResultado": "Won/lost stage — the AI does not close deals.",
         "campoVigiado": "Date watched by a reminder — the reminder automation would fire later on its own.",
         "foraDaD5": "Unavailable: {motivo}.",
-        "aguardar": "Unavailable: it has a “Wait” step — the AI only runs automations that finish right away (resuming does not check the agent).",
-        "cascata": {
-          "etapa": "Unavailable: an automation that fires when a card enters this stage — {motivo}.",
-          "etiquetar": "Unavailable: an automation that fires when this tag is added — {motivo}.",
-          "tirar": "Unavailable: an automation that fires when this tag is removed — {motivo}."
-        }
+        "aguardar": "Unavailable: it has a “Wait” step — the AI only runs automations that finish right away (resuming does not check the agent)."
       },
       "campo": {
         "text": "Text",
@@ -4576,6 +4571,7 @@
       "acoesRecusadas": "Refused: {itens}",
       "recusada": "{tipo} ({motivo})",
       "linkInventado": "The agent made up a link: in production this reply would be held back and the conversation would go to a person.",
+      "reuniaoPrometida": "The agent said it booked the meeting without booking it: in production this reply would be held back and the conversation would go to a person.",
       "acao": {
         "mover_etapa": "move to {nome}",
         "etiquetar": "tag {nome}",
@@ -4587,7 +4583,8 @@
       },
       "acaoComValor": {
         "preencher_campo": "fill in {nome} = {valor}",
-        "criar_tarefa": "task for {nome}: {valor}"
+        "criar_tarefa": "task for {nome}: {valor}",
+        "marcar_reuniao": "book a meeting at {nome} for {valor}"
       },
       "acaoDesconhecida": "{tipo}: {nome}",
       "horarios": {
@@ -4676,7 +4673,7 @@
           "calendly_desconectado": "Calendly is not connected"
         },
         "comDetalhe": "{texto} — {detalhe}",
-        "jaEstava": "the card was already in that stage"
+        "jaEstava": "nothing changed: it was already that way"
       },
       "statusDesconhecido": "Other ({status})",
       "status": {
@@ -4776,7 +4773,8 @@
         "audio": "{agente} handed the conversation to the team: it could not hear the customer's audio.",
         "incerto": "{agente} handed the conversation to the team: there is no way to know whether the last reply reached the customer — check before replying.",
         "link_inventado": "{agente} handed the conversation to the team: the reply had a link that did not come from the system, and it was not sent.",
-        "reuniao_nao_marcada": "{agente} could not book the meeting: {motivo}. The conversation went to the team — check in Calendly that the meeting was not created before booking it again, and confirm the time with the customer."
+        "reuniao_nao_marcada": "{agente} could not book the meeting: {motivo}. The conversation went to the team — check in Calendly that the meeting was not created before booking it again, and confirm the time with the customer.",
+        "reuniao_prometida": "{agente} handed the conversation to the team: the reply said the meeting was booked, but nothing was booked in Calendly — and it was not sent. The held-back text is in the agent's Turns; confirm the time with the customer and book it."
       },
       "passagem": "{agente} handed the conversation to AI · {destino}, and the deal moved to that agent's stage.",
       "acoes": {
