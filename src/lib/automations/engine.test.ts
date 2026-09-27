@@ -60,6 +60,14 @@ const h = vi.hoisted(() => ({
      * conversa (a leitura volta sem linha).
      */
     responsavelDaConversa: undefined as string | null | undefined,
+    /**
+     * A condição por campo personalizado (Fase 2.10): o valor que o contato
+     * tem no campo (`undefined` = sem linha em `contact_custom_values`), um
+     * erro nas leituras, e os filtros com que o campo foi lido.
+     */
+    valorDoCampo: undefined as string | null | undefined,
+    erroNaCondicaoDoCampo: null as string | null,
+    leiturasDoCampo: [] as [string, string, unknown][][],
     /** A linha que a condição da janela de 24h lê (Fase 2.8). `null` = sem linha. */
     conversaDaJanela: null as { group_id: string | null; janela_meta: Record<string, string> | null } | null,
     /** Mensagens do CLIENTE gravadas depois de a espera ser estacionada. */
@@ -194,6 +202,15 @@ vi.mock('./admin-client', () => {
       return { data: state.membros, error: null };
     }
     if (table === 'custom_fields') {
+      // A condição por campo (2.10) lê SÓ o tipo — e a conta tem de estar no
+      // filtro: sem ela, o campo de outra conta viraria oráculo.
+      if (ops.colunas === 'field_type') {
+        state.leiturasDoCampo.push(ops.filters);
+        if (state.erroNaCondicaoDoCampo) return { data: null, error: { message: state.erroNaCondicaoDoCampo } };
+        const f = state.ownedCustomField;
+        const pediuConta = ops.filters.some(([op, k, v]) => op === 'eq' && k === 'account_id' && v === 'acct-1');
+        return { data: f && pediuConta ? { field_type: f.field_type ?? 'text' } : null, error: null };
+      }
       // account-scoped ownership lookup for a custom field definition
       // `field_type` só volta quando a consulta o PEDE, como no PostgREST:
       // tirá-lo do select desliga a forma canônica da data sem erro nenhum.
@@ -206,6 +223,10 @@ vi.mock('./admin-client', () => {
       };
     }
     if (table === 'contact_custom_values') {
+      if (type === 'select' && ops.colunas === 'value') {
+        if (state.erroNaCondicaoDoCampo) return { data: null, error: { message: state.erroNaCondicaoDoCampo } };
+        return { data: state.valorDoCampo === undefined ? null : { value: state.valorDoCampo }, error: null };
+      }
       if (type === 'upsert') {
         state.upsertCalls.push({ table, payload: ops.payload });
         return { data: null, error: null };
@@ -558,6 +579,9 @@ beforeEach(() => {
   h.state.contatoDaConversa = {};
   h.state.responsavelDaConversa = undefined;
   h.state.conversaDaJanela = null;
+  h.state.valorDoCampo = undefined;
+  h.state.erroNaCondicaoDoCampo = null;
+  h.state.leiturasDoCampo = [];
   h.state.respostasDesde = [];
   h.state.erroNasRespostas = null;
   h.state.ultimoMovimento = null;
@@ -4546,6 +4570,115 @@ describe("condição 'janela de 24h da Meta aberta' (Fase 2.8)", () => {
     canalMock.resolveEngineChannelPreferring.mockClear();
     await avaliar({ provider: 'meta', channelId: 'ch-outro' }, 'ch-outro');
     expect(canalMock.resolveEngineChannelPreferring.mock.calls[0]?.[3]).toBe('ch-outro');
+  });
+});
+
+describe("condição 'campo personalizado da ficha' (Fase 2.10)", () => {
+  const CAMPO = '11111111-1111-4111-8111-111111111111';
+
+  const condicaoDoCampo = (cfg: Record<string, unknown>) => ({
+    id: 'cond-campo',
+    automation_id: 'a1',
+    step_type: 'condition',
+    position: 0,
+    parent_step_id: null,
+    step_config: { subject: 'custom_field', operand: CAMPO, ...cfg },
+  });
+  const ramo = (branch: 'yes' | 'no', text: string) => ({
+    ...sendStep({ text }),
+    id: `ramo-${branch}`,
+    parent_step_id: 'cond-campo',
+    branch,
+    position: 0,
+  });
+
+  async function avaliar(cfg: Record<string, unknown>) {
+    vi.mocked(engineSendText).mockClear();
+    h.state.owned = { id: 'c1' };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [condicaoDoCampo(cfg), ramo('yes', 'sim'), ramo('no', 'nao')];
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: { conversation_id: 'conv1' },
+    });
+    return vi.mocked(engineSendText).mock.calls[0]?.[0]?.text;
+  }
+
+  it('o caso do plano: motivo = "Não respondeu" → SIM; outro motivo → NÃO', async () => {
+    h.state.ownedCustomField = { id: CAMPO, field_type: 'select' };
+    h.state.valorDoCampo = 'Não respondeu';
+    expect(await avaliar({ operator: 'equals', value: 'Não respondeu' })).toBe('sim');
+    h.state.valorDoCampo = 'Já tem advogado';
+    expect(await avaliar({ operator: 'equals', value: 'Não respondeu' })).toBe('nao');
+  });
+
+  it('"é" sem diferença de maiúsculas nem espaços; operador ausente = "é"', async () => {
+    h.state.ownedCustomField = { id: CAMPO, field_type: 'text' };
+    h.state.valorDoCampo = '  NÃO RESPONDEU ';
+    expect(await avaliar({ value: 'não respondeu' })).toBe('sim');
+  });
+
+  it('está vazio: sem linha em contact_custom_values É vazio; preenchido não é', async () => {
+    h.state.ownedCustomField = { id: CAMPO, field_type: 'text' };
+    h.state.valorDoCampo = undefined;
+    expect(await avaliar({ operator: 'empty' })).toBe('sim');
+    h.state.valorDoCampo = 'x';
+    expect(await avaliar({ operator: 'empty' })).toBe('nao');
+    expect(await avaliar({ operator: 'not_empty' })).toBe('sim');
+  });
+
+  it('contém', async () => {
+    h.state.ownedCustomField = { id: CAMPO, field_type: 'text' };
+    h.state.valorDoCampo = 'Acidente de moto na volta do trabalho';
+    expect(await avaliar({ operator: 'contains', value: 'MOTO' })).toBe('sim');
+    expect(await avaliar({ operator: 'contains', value: 'carro' })).toBe('nao');
+  });
+
+  it('CRÍTICO: o campo é lido pela CONTA da automação — campo de outra conta responde NÃO, com a nota', async () => {
+    h.state.ownedCustomField = null;
+    h.state.valorDoCampo = 'Não respondeu';
+    expect(await avaliar({ operator: 'equals', value: 'Não respondeu' })).toBe('nao');
+    expect(h.state.leiturasDoCampo[0]).toContainEqual(['eq', 'account_id', ACCOUNT]);
+    expect(h.state.leiturasDoCampo[0]).toContainEqual(['eq', 'id', CAMPO]);
+    expect(JSON.stringify(h.state.logUpdates)).toContain('não existe nesta conta');
+  });
+
+  it('leitura que falha: NÃO — e o registro DIZ que não conferiu', async () => {
+    h.state.ownedCustomField = { id: CAMPO, field_type: 'select' };
+    h.state.erroNaCondicaoDoCampo = 'timeout';
+    expect(await avaliar({ operator: 'not_empty' })).toBe('nao');
+    expect(JSON.stringify(h.state.logUpdates)).toContain('campo não conferido');
+  });
+
+  it('resposta MEDIDA não leva nota, e o VALOR lido nunca vai para o registro', async () => {
+    h.state.ownedCustomField = { id: CAMPO, field_type: 'text' };
+    h.state.valorDoCampo = 'senha-secreta-123';
+    await avaliar({ operator: 'not_empty' });
+    const registro = JSON.stringify(h.state.logUpdates);
+    expect(registro).not.toContain('campo não conferido');
+    expect(registro).not.toContain('senha-secreta-123');
+  });
+
+  it('operando sem forma de id nem vai ao banco: NÃO, "não existe nesta conta"', async () => {
+    h.state.ownedCustomField = { id: CAMPO, field_type: 'text' };
+    vi.mocked(engineSendText).mockClear();
+    h.state.owned = { id: 'c1' };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [
+      { ...condicaoDoCampo({ operator: 'not_empty' }), step_config: { subject: 'custom_field', operand: 'lixo', operator: 'not_empty' } },
+      ramo('yes', 'sim'),
+      ramo('no', 'nao'),
+    ];
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: { conversation_id: 'conv1' },
+    });
+    expect(vi.mocked(engineSendText).mock.calls[0]?.[0]?.text).toBe('nao');
+    expect(h.state.leiturasDoCampo).toEqual([]);
   });
 });
 

@@ -64,6 +64,7 @@ import { NodeKeySelect } from './forms/fields';
 import { IssueLine } from './validation-panel';
 import { useFlowEditor, type BuilderState } from './flow-editor-state';
 import { nomeDaEtapa } from './catalogo-do-funil';
+import { nomeDoMembro } from './membros-do-robo';
 
 // ============================================================
 // Local state shape — mirrors the DB but the configs are typed
@@ -432,9 +433,10 @@ function NodeCard({
   const c = nodeColors(node.node_type);
   const hasError = issues.some((i) => i.severity === 'error');
   const tSummary = useTranslations('Flows.summary');
-  const { catalogoDoFunil } = useFlowEditor();
+  const { catalogoDoFunil, membrosDoRobo } = useFlowEditor();
   const preview = summarizeNode(node, tSummary, {
     etapa: (id) => nomeDaEtapa(catalogoDoFunil, id),
+    membro: (id) => nomeDoMembro(membrosDoRobo, id),
   });
   return (
     <div

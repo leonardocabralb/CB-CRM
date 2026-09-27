@@ -125,6 +125,7 @@ import {
   lerModoDoResponsavel,
 } from './responsavel-da-tarefa';
 import { janelaDaMetaAberta } from './janela-da-meta';
+import { campoAtendeACondicao, ehIdDeCampo, operadorDaCondicao } from './condicao-por-campo';
 import { avaliarHoraDoDia, esperaPeloHorario } from './hora-do-dia';
 
 /** O motivo do `send_to_number` recusado, na frase que o registro mostra. */
@@ -1259,12 +1260,20 @@ async function executeStepsFrom(
         // como ser conferido depois.
         const hora =
           cfg.subject === 'time_of_day' ? avaliarHoraDoDia(cfg, new Date()) : null;
+        // O campo personalizado (2.10) também diz no registro quando NÃO
+        // conferiu (leitura que falhou, campo apagado) — senão o "não" pareceria
+        // medido. O VALOR lido nunca vai para o registro: o campo pode guardar
+        // coisa que não pode ficar num log (a senha do gov.br do previdenciário).
+        const campo =
+          cfg.subject === 'custom_field' ? await avaliarCampoPersonalizado(cfg, args) : null;
         const taken = janela
           ? janela.aberta
           : hora
             ? hora.sim
-            : await evaluateCondition(cfg, args);
-        const nota = janela?.nota ?? hora?.nota;
+            : campo
+              ? campo.sim
+              : await evaluateCondition(cfg, args);
+        const nota = janela?.nota ?? hora?.nota ?? campo?.nota;
         results.push({
           step_id: step.id,
           step_type: 'condition',
@@ -2948,8 +2957,82 @@ async function evaluateCondition(
      */
     case 'meta_window_open':
       return (await avaliarJanelaDaMeta(cfg, args)).aberta;
+    /**
+     * Um CAMPO PERSONALIZADO da ficha é / contém / está vazio / não está vazio
+     * (Fase 2.10 do plano do previdenciário) — `condicao-por-campo.ts`.
+     * ⚠️ `executeStepsFrom` desvia este critério ANTES (para gravar a nota);
+     * este caso só serve a um chamador direto. Mudou um, muda o outro.
+     */
+    case 'custom_field':
+      return (await avaliarCampoPersonalizado(cfg, args)).sim;
     default:
       return false;
+  }
+}
+
+/**
+ * A condição por campo personalizado, com a NOTA do registro quando a
+ * resposta não foi medida. Mesma regra da janela de 24h: não conseguindo
+ * ler, responde "NÃO" e diz isso — o "não" não pode parecer medido.
+ *
+ * ⚠️ O campo é conferido pela CONTA da automação antes de o valor valer: com
+ * o cliente service-role, um id de campo de outra conta viraria um oráculo de
+ * dados alheios. O contato já foi conferido pela conta no disparo
+ * (`runAutomationsForTrigger`). Campo apagado (ou de outra conta) = "não",
+ * com a nota; a ativação já recusa os dois.
+ */
+async function avaliarCampoPersonalizado(
+  cfg: ConditionStepConfig,
+  args: ExecuteArgs
+): Promise<{ sim: boolean; nota?: string }> {
+  const naoConferido = {
+    sim: false,
+    nota: 'campo não conferido: a leitura falhou — tratado como "não"',
+  };
+  const campoId = typeof cfg.operand === 'string' ? cfg.operand.trim() : '';
+  const operador = operadorDaCondicao(cfg.operator);
+  if (!operador) return { sim: false, nota: 'operador desconhecido — tratado como "não"' };
+  if (!args.contactId) return { sim: false, nota: 'sem contato — tratado como "não"' };
+  const apagado = {
+    sim: false,
+    nota: 'o campo da condição não existe nesta conta — tratado como "não"',
+  };
+  if (!ehIdDeCampo(campoId)) return apagado;
+  const db = supabaseAdmin();
+  try {
+    const [campo, valor] = await Promise.all([
+      db
+        .from('custom_fields')
+        .select('field_type')
+        .eq('id', campoId)
+        .eq('account_id', args.automation.account_id)
+        .maybeSingle(),
+      db
+        .from('contact_custom_values')
+        .select('value')
+        .eq('contact_id', args.contactId)
+        .eq('custom_field_id', campoId)
+        .maybeSingle(),
+    ]);
+    if (campo.error || valor.error) {
+      console.warn(
+        '[automations] condição por campo: leitura falhou',
+        campo.error ?? valor.error
+      );
+      return naoConferido;
+    }
+    if (!campo.data) return apagado;
+    return {
+      sim: campoAtendeACondicao({
+        operador,
+        tipo: String((campo.data as { field_type?: unknown }).field_type ?? ''),
+        gravado: (valor.data as { value?: string | null } | null)?.value ?? null,
+        esperado: typeof cfg.value === 'string' ? cfg.value : '',
+      }),
+    };
+  } catch (err) {
+    console.warn('[automations] condição por campo: falhou', err);
+    return naoConferido;
   }
 }
 

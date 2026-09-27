@@ -45,6 +45,7 @@ import { addContactTagAndDispatch } from "@/lib/contacts/tag-events";
 import { removeContactTag } from "@/lib/contacts/tag-write";
 import { legendaDoEnvio, prepararMidiaDoNo } from "./midia-do-no";
 import { moverCardDoNo, payloadDoMoverCard } from "./mover-card";
+import { atribuicaoDoHandoff, membroEscolhidoNoHandoff } from "./atribuir-no-handoff";
 import {
   destinoDaResposta,
   gravarRespostaNaFicha,
@@ -568,7 +569,15 @@ async function executeHandoff(
     status: "pending",
     updated_at: new Date().toISOString(),
   };
-  if (cfg.assign_to) convUpdate.assigned_agent_id = cfg.assign_to;
+  // "Atribuir a" (2.7, CB, 26/09/2026): o escolhido só recebe a conversa se
+  // AINDA é membro da conta do robô — ver `atribuir-no-handoff.ts`. Não sendo
+  // (ou a leitura falhando), a conversa fica pendente SEM responsável e o
+  // evento diz por quê.
+  const escolhido = membroEscolhidoNoHandoff(cfg);
+  const atribuicao = escolhido
+    ? await atribuicaoDoHandoff(db, run.account_id, escolhido)
+    : null;
+  if (atribuicao?.userId) convUpdate.assigned_agent_id = atribuicao.userId;
   if (run.conversation_id) {
     await db
       .from("conversations")
@@ -577,7 +586,10 @@ async function executeHandoff(
   }
   await logEvent(db, run.id, "handoff", node.node_key, {
     note: cfg.note ?? null,
-    assigned_to: cfg.assign_to ?? null,
+    assigned_to: atribuicao?.userId ?? null,
+    ...(escolhido && atribuicao && atribuicao.userId === null
+      ? { assign_requested: escolhido, assign_skipped: atribuicao.motivo }
+      : {}),
   });
   await endRun(db, run.id, "handed_off", "handoff_node");
 }
