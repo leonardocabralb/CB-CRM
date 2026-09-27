@@ -1185,10 +1185,19 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
   )
   const [saving, setSaving] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  const { areas } = useAreasDeAutomacao()
+  const { areas, falhou: areasFalharam } = useAreasDeAutomacao()
   // Quem escolheu a aba à mão não é atropelado pela sugestão do funil.
   const areaEscolhidaRef = useRef(false)
   const funilDeOrigem = origem?.funil ?? null
+  const [sugestaoResolvida, setSugestaoResolvida] = useState(false)
+  // Enquanto a sugestão do funil não chega, o Salvar espera: salvar antes
+  // gravaria a automação em "Geral" para sempre (Codex, PR #325). Leitura das
+  // abas que falhou, ou conta sem aba, não tem o que esperar.
+  const aguardandoSugestao =
+    !isEditing &&
+    !!funilDeOrigem &&
+    !areasFalharam &&
+    (areas === null || (areas.length > 0 && !sugestaoResolvida))
 
   // Automação NOVA criada pela aba Automações de um funil: nasce na aba cujo
   // nome o funil começa ("Bancário - Comercial" → aba "Bancário"). Só
@@ -1202,11 +1211,18 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
       .select("name")
       .eq("id", funilDeOrigem)
       .maybeSingle()
-      .then(({ data }) => {
-        if (!vivo || areaEscolhidaRef.current) return
-        const sugerida = areaDoFunil((data as { name?: string } | null)?.name, areas)
-        if (sugerida) setState((s) => (s.area_id ? s : { ...s, area_id: sugerida }))
-      })
+      .then(
+        ({ data }) => {
+          if (!vivo) return
+          setSugestaoResolvida(true)
+          if (areaEscolhidaRef.current) return
+          const sugerida = areaDoFunil((data as { name?: string } | null)?.name, areas)
+          if (sugerida) setState((s) => (s.area_id ? s : { ...s, area_id: sugerida }))
+        },
+        () => {
+          if (vivo) setSugestaoResolvida(true)
+        },
+      )
     return () => {
       vivo = false
     }
@@ -1308,7 +1324,7 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
       {/* Top bar. At sub-sm widths the "Active" label is hidden and the
           switch moves to the right of the save button, so the name input
           gets maximum width. */}
-      <header className="flex flex-shrink-0 items-center gap-2 border-b border-border bg-card/80 px-3 py-3 sm:gap-3 sm:px-4">
+      <header className="flex flex-shrink-0 flex-wrap items-center gap-2 border-b border-border bg-card/80 px-3 py-3 sm:flex-nowrap sm:gap-3 sm:px-4">
         <button
           type="button"
           onClick={() => router.push(voltaDoConstrutor(origem))}
@@ -1335,7 +1351,9 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
             }}
             aria-label={t("area.label")}
             title={t("area.label")}
-            className="max-w-[10rem] shrink-0 rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
+            // No celular desce para a própria linha (o cabeçalho quebra), senão
+            // aperta o nome e empurra o Salvar para fora da tela.
+            className="order-last w-full rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground sm:order-none sm:w-auto sm:max-w-[10rem] sm:shrink-0"
           >
             <option value="">{t("area.geral")}</option>
             {areas.map((a) => (
@@ -1355,10 +1373,10 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
         </div>
         <Button
           onClick={save}
-          disabled={saving}
+          disabled={saving || aguardandoSugestao}
           className="bg-primary text-primary-foreground hover:bg-primary/90"
         >
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          {saving || aguardandoSugestao ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
           {isEditing ? t("save") : t("saveDraft")}
         </Button>
       </header>

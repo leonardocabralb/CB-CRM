@@ -303,7 +303,9 @@ export default function AutomationsPage() {
         </div>
       </div>
 
-      {abas !== null && automations.length > 0 && (
+      {/* Sem condição de ter automação: conta nova monta as abas ANTES da
+          primeira automação (o construtor só escolhe aba, não cria). */}
+      {abas !== null && (
         <BarraDeAbas
           areas={abas}
           contagem={contagem}

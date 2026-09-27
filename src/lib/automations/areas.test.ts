@@ -29,6 +29,7 @@ describe("lerNomeDaArea", () => {
     expect(lerNomeDaArea("x".repeat(TETO_DO_NOME_DA_AREA + 1), AREAS)).toEqual({ ok: false, motivo: "longo" })
     expect(lerNomeDaArea("geral", AREAS)).toEqual({ ok: false, motivo: "reservado" })
     expect(lerNomeDaArea("Gerais", AREAS)).toEqual({ ok: false, motivo: "reservado" })
+    expect(lerNomeDaArea("General", AREAS)).toEqual({ ok: false, motivo: "reservado" })
     expect(lerNomeDaArea("bancario", AREAS)).toEqual({ ok: false, motivo: "repetido" })
   })
 
@@ -102,6 +103,12 @@ describe("moverArea", () => {
 })
 
 describe("dicionários", () => {
+  it.each(["pt-BR.json", "en.json"])("%s: o rótulo da aba fixa é um nome reservado", (arquivo) => {
+    const d = JSON.parse(readFileSync(`messages/${arquivo}`, "utf8"))
+    const rotulo = d.Automations.list.abas.geral as string
+    expect(lerNomeDaArea(rotulo, [])).toEqual({ ok: false, motivo: "reservado" })
+  })
+
   // A tela pede `erros.<motivo>` por chave MONTADA, que o portão de i18n do
   // CI só conta, não confere.
   it.each(["pt-BR.json", "en.json"])("%s tem uma frase para cada motivo de recusa do nome", (arquivo) => {

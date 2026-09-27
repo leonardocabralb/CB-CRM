@@ -30,6 +30,9 @@ function chave(texto: string): string {
     .trim()
 }
 
+/** Os rótulos da aba "Geral" nos dicionários (e o plural), sem caixa e sem acento. */
+const NOMES_DA_ABA_FIXA = new Set(["geral", "gerais", "general"])
+
 export type NomeDaArea =
   | { ok: true; nome: string }
   | { ok: false; motivo: "vazio" | "longo" | "reservado" | "repetido" }
@@ -50,7 +53,9 @@ export function lerNomeDaArea(
   if (!nome) return { ok: false, motivo: "vazio" }
   if (nome.length > TETO_DO_NOME_DA_AREA) return { ok: false, motivo: "longo" }
   const k = chave(nome)
-  if (k === "geral" || k === "gerais") return { ok: false, motivo: "reservado" }
+  // O rótulo da aba fixa em TODO dicionário servido ("Geral", "General"):
+  // com outro idioma, uma aba "General" seria gêmea da fixa.
+  if (NOMES_DA_ABA_FIXA.has(k)) return { ok: false, motivo: "reservado" }
   if (areas.some((a) => a.id !== ignorarId && chave(a.nome) === k)) return { ok: false, motivo: "repetido" }
   return { ok: true, nome }
 }
