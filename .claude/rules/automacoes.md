@@ -100,11 +100,6 @@ reentrega): `.claude/rules/webhooks.md`. Passos com regra própria:
   responsável (decisão do operador), senão quem reabre herda o dono velho.
   Ele fecha TODAS as conversas do contato. Quem reabre e com que dono:
   `.claude/rules/ingestao.md`.
-- ⚠️ **Ficha SEM conversa: os passos que FALAM com o contato a criam
-  ENCERRADA** (`criarSeFaltar` em `resolveConversationId` → `conversaDoContato`:
-  enviar texto, botões/lista, modelo, mídia e `run_flow`). Ficha da API v1 (o
-  lead de anúncio) não tem conversa. `set_ai` e a condição da janela não
-  criam; `conversation_id` alheio no contexto segue recusado.
 - ⚠️ **Remetente novo do robô confere a conversa por conta**
   (`assertConversationInAccount`, ANTES do canal e do provedor), em
   `engine.ts` e nos dois `meta-send.ts`. Pino:
@@ -409,7 +404,3 @@ e a marca na lista e no card por `/api/cb/execucoes/resumo`.
   (ver `.claude/rules/ui.md`).
 - **Nada retroativo**: execução anterior à 985 fica sem desfecho e não aparece
   (carimbar `created_at` mentiria em toda automação com espera).
-- **Limite aceito (Codex, #322):** a conversa criada DENTRO de um ramo de
-  condição não chega aos dados do contato já lidos pelo escopo de fora: um
-  `{{conversation.link}}` desse escopo, depois do ramo, sai vazio naquela
-  execução. O link é o interno do CRM (aviso à equipe), quase nunca vai ao lead.

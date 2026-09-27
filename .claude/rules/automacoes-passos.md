@@ -154,3 +154,15 @@ ausente = `equals`), `value`.
   dicionários) com o NOME do campo — quem desenha condição precisa carregar
   `nomes.campos` (a página do funil e `GET /api/cb/execucoes` carregam), senão
   sai "(apagado)".
+
+# Ficha sem conversa (27/09/2026, #322)
+
+- ⚠️ **Ficha SEM conversa: os passos que FALAM com o contato a criam
+  ENCERRADA** (`criarSeFaltar` em `resolveConversationId` → `conversaDoContato`:
+  enviar texto, botões/lista, modelo, mídia e `run_flow`). Ficha da API v1 (o
+  lead de anúncio) não tem conversa. `set_ai` e a condição da janela não
+  criam; `conversation_id` alheio no contexto segue recusado.
+- **Limite aceito (Codex, #322):** a conversa criada DENTRO de um ramo de
+  condição não chega aos dados do contato já lidos pelo escopo de fora: um
+  `{{conversation.link}}` desse escopo, depois do ramo, sai vazio naquela
+  execução. O link é o interno do CRM (aviso à equipe), quase nunca vai ao lead.
