@@ -126,7 +126,11 @@ export function ZapSignCard() {
       const corpo = (await res.json()) as Modelos;
       if (vivoRef.current) setModelos(corpo);
     } catch {
-      if (vivoRef.current) setModelos("falhou");
+      if (!vivoRef.current) return;
+      setModelos("falhou");
+      // A rota registra o token recusado na conexão (`registrarConferencia`):
+      // sem recarregar, o cabeçalho seguia dizendo "Funcionando".
+      void carregar();
     }
   };
 
