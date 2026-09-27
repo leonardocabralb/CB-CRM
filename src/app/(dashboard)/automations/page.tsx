@@ -273,7 +273,9 @@ export default function AutomationsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* `flex-wrap`: no celular o filtro de canal e o "Criar automação" não
+          cabiam ao lado do título, e o botão saía cortado na borda. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground">{t("title")}</h1>
           <p className="mt-1 text-sm text-muted-foreground">

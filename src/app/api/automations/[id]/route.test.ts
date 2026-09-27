@@ -216,6 +216,19 @@ describe('PATCH /api/automations/[id] — qualquer admin da conta', () => {
     expect(automacao('auto-1')?.area_id).toBeNull()
   })
 
+  it('mudar SÓ a aba não revalida a automação ativa; mudar outra coisa revalida', async () => {
+    // Ativa com uma config que a ativação de hoje recusaria (palavra-chave sem palavras).
+    const a = automacao('auto-1')!
+    a.is_active = true
+    a.trigger_type = 'keyword_match'
+    a.trigger_config = {}
+    const aba = '33333333-3333-4333-8333-333333333333'
+    expect((await PATCH(corpo({ area_id: aba }), params('auto-1'))).status).toBe(200)
+    expect(automacao('auto-1')?.area_id).toBe(aba)
+    expect((await PATCH(corpo({ name: 'outro nome' }), params('auto-1'))).status).toBe(400)
+    expect(automacao('auto-1')?.name).toBe('Lembrete de reunião')
+  })
+
   it('aba em forma inválida é 400 e nada muda', async () => {
     const res = await PATCH(corpo({ area_id: 'Tributário' }), params('auto-1'))
     expect(res.status).toBe(400)

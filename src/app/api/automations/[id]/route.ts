@@ -132,10 +132,15 @@ export async function PATCH(
   // are still allowed to be incomplete.
   const willBeActive =
     typeof update.is_active === 'boolean' ? update.is_active : existing.is_active
+  // Mudar SÓ a aba (1055) não muda o que a automação faz: não revalida. Sem
+  // isto, uma automação ativa gravada antes de uma regra nova de ativação não
+  // poderia nem ser organizada — "Mover para a aba" voltaria 400.
+  const soOrganiza =
+    !Array.isArray(body.steps) && Object.keys(update).length > 0 && Object.keys(update).every((k) => k === 'area_id')
   // Gatilho da régua do Asaas (998): sem recorte por etapa — trocar o gatilho
   // pela tela não limpa o valor gravado (a armadilha da grade do funil).
   if (ehGatilhoDaRegua((update.trigger_type ?? existing.trigger_type) as string)) update.stage_ids = null
-  if (willBeActive) {
+  if (willBeActive && !soOrganiza) {
     const mergedTriggerType = (update.trigger_type ?? existing.trigger_type) as string
     const mergedTriggerConfig = update.trigger_config ?? existing.trigger_config
     const mergedSteps = Array.isArray(body.steps)
