@@ -139,6 +139,10 @@ uma AÇÃO a mais do protocolo da F4 (`marcar_reuniao`, `[[REUNIAO:n]]`).
   **Limite aceito** (Codex, #321): basta a forma que afirma e a âncora
   coexistirem na frase — "Seu e-mail está confirmado para agendarmos sua
   reunião às 15:15" dispara. Erra para o lado seguro (retida, vai a gente).
+  **Limite aceito:** as duas travas (reunião prometida e equipe prometida)
+  são heurísticas de segurança sobre a FORMA de dizer, sem cobrir toda frase
+  possível; a primeira defesa é a regra do pedido; toda passagem inferida
+  fica medida em `sem_marcador`.
 - **Configuração**: `ferramentas.marcar_reuniao = { tipos_de_evento: [uri] }`
   — lista para caber no código genérico, NO MÁXIMO uma, só a forma
   `https://api.calendly.com/event_types/<id>` (`ehUriDeTipoDeEvento`). Ao

@@ -362,6 +362,25 @@ describe('a EQUIPE PROMETIDA sem o [[TRANSFERIR]] (27/09)', () => {
     }
   })
 
+  it('⚠️ a promessa da equipe PARA (re)marcar a reunião dispara (Codex, #321); só a análise NA reunião cala', () => {
+    for (const t of [
+      'Nossa equipe vai entrar em contato para remarcar sua reunião.',
+      'Um especialista vai te chamar para confirmar a reunião.',
+      'Nossa equipe entrará em contato para cancelar a sua reunião de terça.',
+      'Our team will get back to you to reschedule your meeting.',
+    ]) {
+      expect(equipePrometida(t), t).toBe(true)
+    }
+    for (const t of [
+      'Um especialista vai analisar o seu caso na reunião.',
+      'Na reunião de diagnóstico, um de nossos advogados vai explicar os caminhos.',
+      'Nossa equipe vai analisar as suas dívidas durante a reunião.',
+      'A specialist will review your case in the meeting.',
+    ]) {
+      expect(equipePrometida(t), t).toBe(false)
+    }
+  })
+
   it('"quando" com o verbo no passado é fato (a mesma régua da reunião prometida); no futuro, condição', () => {
     expect(equipePrometida('Quando você mandou os documentos, nossa equipe vai analisar e te retornar por aqui.')).toBe(true)
     expect(equipePrometida('Quando você mandar os documentos, nossa equipe vai analisar e te retornar por aqui.')).toBe(false)
@@ -461,6 +480,34 @@ describe('a trava da REUNIÃO PROMETIDA (F5, 27/09)', () => {
       'Quando o seu e-mail chegar, sua reunião fica confirmada para terça às 15:15.',
       'When you confirm the time, your meeting is booked for Tuesday at 15:15.',
       'Se você confirmou o e-mail, a reunião está marcada para terça às 15:15.',
+    ]) {
+      expect(afirmaReuniaoMarcada(t), t).toBe(false)
+    }
+  })
+
+  it('⚠️ o auxiliar CONCLUÍDO + a marcação afirma (Codex, #321): "consegui agendar", "acabei de marcar", "fiz o agendamento", "I managed to book"', () => {
+    for (const t of [
+      'Consegui agendar sua reunião para terça às 15:15.',
+      'Acabei de marcar sua consulta.',
+      'Conseguimos remarcar para quinta às 10h.',
+      'Já pude reservar o horário das 15:15 de terça para você.',
+      'Fiz o agendamento da sua reunião para terça às 15:15.',
+      'Realizei o agendamento para terça às 15:15.',
+      'Efetuei a marcação da sua reunião para terça às 15:15.',
+      'I managed to book your meeting for Tuesday at 15:15.',
+      'I just booked your meeting for Tuesday at 15:15.',
+      "I've gone ahead and booked your meeting for Tuesday at 15:15.",
+      'I was able to schedule your meeting for Tuesday at 3:15 pm.',
+    ]) {
+      expect(afirmaReuniaoMarcada(t), t).toBe(true)
+    }
+    for (const t of [
+      'Não consegui agendar sua reunião para terça às 15:15.',
+      'Infelizmente não consegui marcar a reunião das 15:15: o horário não está mais livre.',
+      'Vou conseguir agendar sua reunião para terça às 15:15 assim que você me passar o e-mail.',
+      "I couldn't book the 15:15 meeting.",
+      "I wasn't able to book your meeting at 15:15.",
+      "I haven't managed to book your meeting at 15:15 yet.",
     ]) {
       expect(afirmaReuniaoMarcada(t), t).toBe(false)
     }

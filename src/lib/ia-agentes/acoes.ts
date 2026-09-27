@@ -608,12 +608,19 @@ export function linkInventado(texto: string, fontes: readonly string[]): boolean
  *    "reagendei", "confirmei", "reservei" e "marcamos", "agendamos",
  *    "remarcamos", "reagendamos", "confirmamos", "reservamos" — "marcamos"
  *    também é presente, e com a âncora conta igual;
- *  - "all set" ("you're all set for Tuesday at 15:15").
- * "Desmarcada", "agendamento", "vou marcar", "posso agendar" e "quer que eu
- * marque" não casam (o `\b` e a lista fechada).
+ *  - "all set" ("you're all set for Tuesday at 15:15");
+ *  - o auxiliar CONCLUÍDO + o verbo ou o nome da marcação (Codex, #321):
+ *    "consegui / conseguimos / acabei de / acabamos de / pude / pudemos
+ *    agendar / marcar / remarcar / reagendar / confirmar / reservar", "fiz /
+ *    realizei / efetuei o agendamento / a marcação / a reserva", e em inglês
+ *    "managed to / was able to / were able to book / schedule…" ("I just
+ *    booked" e "I've gone ahead and booked" já caem no particípio).
+ * "Desmarcada", "agendamento", "vou marcar", "posso agendar", "quer que eu
+ * marque", "vou conseguir agendar" e "não consegui agendar" (a negação antes)
+ * não afirmam.
  */
 const FORMA_QUE_AFIRMA =
-  /\b(?:confirmad|agendad|marcad|remarcad|reagendad)[ao]s?\b|\b(?:marquei|agendei|remarquei|reagendei|confirmei|reservei|marcamos|agendamos|remarcamos|reagendamos|confirmamos|reservamos)\b|\b(?:booked|scheduled|rescheduled|confirmed)\b|\ball set\b/gi
+  /\b(?:confirmad|agendad|marcad|remarcad|reagendad)[ao]s?\b|\b(?:marquei|agendei|remarquei|reagendei|confirmei|reservei|marcamos|agendamos|remarcamos|reagendamos|confirmamos|reservamos)\b|\b(?:booked|scheduled|rescheduled|confirmed)\b|\ball set\b|\b(?:consegui|conseguimos|acabei\s+de|acabamos\s+de|pude|pudemos)\s+(?:agendar|marcar|remarcar|reagendar|confirmar|reservar)\b|\b(?:fiz|fizemos|realizei|realizamos|efetuei|efetuamos)\s+(?:(?:o|a|seu|sua|o\s+seu|a\s+sua)\s+)?(?:agendamento|reagendamento|marca[cç][aã]o|remarca[cç][aã]o|reserva)\b|\b(?:managed|was\s+able|were\s+able)\s+to\s+(?:book|schedule|reschedule|confirm)\b/gi
 /**
  * O que amarra a forma que afirma a uma REUNIÃO na mesma frase: a palavra
  * ("reunião", "meeting", "consulta") ou um horário ("15:15", "15h", "15h30",
@@ -782,8 +789,8 @@ const PASSAGENS_PARA_A_EQUIPE: readonly RegExp[] = [
 ]
 /**
  * A PROMESSA de que alguém da equipe vai analisar ou procurar o cliente —
- * quieta quando a frase fala de reunião (lá o advogado analisa NA reunião: o
- * caminho de quem qualificou, "na reunião de diagnóstico o advogado analisa"):
+ * quieta quando a análise acontece NA reunião (`analiseNaReuniao`: o caminho
+ * de quem qualificou, "na reunião de diagnóstico o advogado analisa"):
  *  - "vou pedir para (um de nossos) especialista… (analisar…)";
  *  - "um especialista / nossa equipe vai (te) analisar / entrar em contato /
  *    chamar / retornar / responder / falar / assumir / atender / ligar";
@@ -799,8 +806,19 @@ const PROMESSAS_DA_EQUIPE: readonly RegExp[] = [
   /\b(?:nossa\s+equipe|nosso\s+time|um\s+especialista|uma\s+especialista|um\s+advogado|uma\s+advogada|um\s+atendente)\s+(?:entrara|entra|vai\s+entrar)\s+em\s+contato\b/,
   /\b(?:a\s+specialist|one\s+of\s+our\s+(?:specialists|lawyers|attorneys|team)|our\s+team|a\s+colleague|a\s+lawyer|an\s+attorney|someone\s+from\s+(?:our|the)\s+team|a\s+member\s+of\s+(?:our|the)\s+team)\s+will\s+(?:get\s+back|contact|reach\s+out|take\s+over|review|call|be\s+in\s+touch|follow\s+up)\b/,
 ]
-/** A frase fala de reunião: a PROMESSA de análise é a do caminho qualificado (não passar para a equipe). */
-const NA_REUNIAO = /reuni|meeting/
+/**
+ * A análise acontece NA reunião — "um especialista vai analisar o seu caso na
+ * reunião", "na reunião de diagnóstico o advogado analisa", "will review your
+ * case in the meeting": o caminho de quem qualificou, não passar para a
+ * equipe. Só essa frase cala a PROMESSA (Codex, #321): a equipe que vai
+ * entrar em contato "para remarcar sua reunião" dispara.
+ */
+const NA_REUNIAO = /(?:^|[^\p{L}])(?:na|durante\s+a|in\s+the|during\s+the)\s+(?:\p{L}+\s+)?(?:reuniao|meeting)(?![\p{L}])/u
+const ANALISE = /(?:^|[^\p{L}])(?:analis|avali|explic|apresent|review|explain|assess|go\s+over)\p{L}*/u
+
+function analiseNaReuniao(f: string): boolean {
+  return NA_REUNIAO.test(f) && ANALISE.test(f)
+}
 
 /**
  * A resposta PROMETE que uma pessoa da equipe vai assumir ou procurar o
@@ -810,8 +828,8 @@ const NA_REUNIAO = /reuni|meeting/
  * aqui em breve." SEM o `[[TRANSFERIR]]` — o cliente ouviria que uma pessoa
  * vem e a IA ficaria com a conversa. Frase a frase, sobre o texto sem
  * acento: casa uma das `PASSAGENS_PARA_A_EQUIPE` (sempre) ou das
- * `PROMESSAS_DA_EQUIPE` (só sem reunião na frase — lá o advogado analisa NA
- * reunião), fora de pergunta ("quer que eu chame…?"), sem negação nas quatro
+ * `PROMESSAS_DA_EQUIPE` (menos quando a análise acontece NA reunião,
+ * `analiseNaReuniao`), fora de pergunta ("quer que eu chame…?"), sem negação nas quatro
  * palavras antes e sem condição antes ("se preferir, …"). Quem chama decide
  * o resto: a resposta com `[[TRANSFERIR]]`, `[[HANDOFF]]` ou `[[PASSAR:n]]`
  * já transfere e nem pergunta.
@@ -820,7 +838,7 @@ export function equipePrometida(texto: string): boolean {
   for (const frase of texto.split(/(?<=[.!?…;])\s+|\n+/)) {
     const f = semAcento(frase.trim()).replace(/\u2019/g, "'")
     if (!f || PERGUNTA.test(f)) continue
-    const frases = NA_REUNIAO.test(f) ? PASSAGENS_PARA_A_EQUIPE : [...PASSAGENS_PARA_A_EQUIPE, ...PROMESSAS_DA_EQUIPE]
+    const frases = analiseNaReuniao(f) ? PASSAGENS_PARA_A_EQUIPE : [...PASSAGENS_PARA_A_EQUIPE, ...PROMESSAS_DA_EQUIPE]
     for (const promessa of frases) {
       const m = promessa.exec(f)
       if (!m) continue
