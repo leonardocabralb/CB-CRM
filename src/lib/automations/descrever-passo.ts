@@ -133,8 +133,17 @@ export function descreverPasso(passo: PassoResumivel, nomes: NomesConhecidos = {
         alvoSumiu: false,
       }
 
-    case 'update_contact_field':
-      return simples((cfg as unknown as UpdateContactFieldStepConfig).field ?? '')
+    case 'update_contact_field': {
+      // O campo é gravado como o motor o lê: "name"/"email"/"company" ou
+      // "custom:<id>". Cru, o cartão dizia "Alterar campo do contato:
+      // custom:3888de41-…" — o id no lugar do nome, e "name" em inglês.
+      const campo = String((cfg as unknown as UpdateContactFieldStepConfig).field ?? '').trim()
+      if (campo === 'name' || campo === 'email' || campo === 'company') {
+        return { chave: `update_contact_field_${campo}`, valores: {}, alvoSumiu: false }
+      }
+      if (campo.startsWith('custom:')) return porId(nomes.campos, campo.slice('custom:'.length))
+      return simples(campo)
+    }
 
     case 'send_to_number': {
       // O número, legível: é o que distingue dois avisos no mesmo quadro. A

@@ -68,6 +68,11 @@ async function carregarNomes(
     ) {
       campoIds.add(cfg.operand.trim())
     }
+    // "Alterar campo do contato" guarda o campo como "custom:<id>".
+    if (p.step_type === 'update_contact_field' && typeof cfg.field === 'string') {
+      const id = cfg.field.trim().replace(/^custom:/, '')
+      if (id !== cfg.field.trim() && UUID_RE.test(id)) campoIds.add(id)
+    }
   }
 
   const paraMapa = (

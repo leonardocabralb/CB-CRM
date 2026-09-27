@@ -2025,7 +2025,7 @@ function StepRenderer({
                       fim: janelaDaEspera?.fim ?? "?",
                     }) +
                     (step.step_config.somente_seg_a_sex === true ? ` · ${t("config.segASexResumo")}` : "")
-                  : previewFor(step)}
+                  : previewFor(step, t)}
                 {/* Visível com o passo FECHADO: numa sequência de dez esperas,
                     é assim que se confere de relance quais param na resposta. */}
                 {step.step_type === "wait" && step.step_config.parar_se_responder === true
@@ -3630,21 +3630,41 @@ function FieldBlock({
   )
 }
 
-function previewFor(step: BuilderStep): string {
+/** Os critérios do seletor da condição (`config.subjects.*`). Fora deles o
+ *  cartão fechado mostra "?", nunca a chave crua. */
+const CRITERIOS_DA_CONDICAO = new Set([
+  "tag_presence",
+  "contact_field",
+  "custom_field",
+  "message_content",
+  "time_of_day",
+  "channel",
+  "deal_stage",
+  "deal_status",
+  "meta_window_open",
+])
+
+// O resumo do passo FECHADO. Vinha do original em inglês ("when time_of_day",
+// "no text yet") e aparecia assim com o app em português.
+function previewFor(step: BuilderStep, t: ReturnType<typeof useTranslations>): string {
   switch (step.step_type) {
     case "send_message":
-      return (step.step_config.text as string) || "no text yet"
+      return (step.step_config.text as string) || t("previa.semTexto")
     case "send_buttons":
     case "send_list":
-      return interactivePayloadPreviewText(asInteractive(step.step_config)) || "no body yet"
+      return interactivePayloadPreviewText(asInteractive(step.step_config)) || t("previa.semCorpo")
     case "send_template":
-      return (step.step_config.template_name as string) || "pick a template"
+      return (step.step_config.template_name as string) || t("previa.semModelo")
     case "wait":
       return `${step.step_config.amount ?? "?"} ${step.step_config.unit ?? ""}`
-    case "condition":
-      return `when ${step.step_config.subject ?? "?"}`
+    case "condition": {
+      const criterio = step.step_config.subject
+      return typeof criterio === "string" && CRITERIOS_DA_CONDICAO.has(criterio)
+        ? t(`config.subjects.${criterio}`)
+        : "?"
+    }
     case "send_webhook":
-      return (step.step_config.url as string) || "no url"
+      return (step.step_config.url as string) || t("previa.semUrl")
     case "send_to_number":
       return [step.step_config.phone, (step.step_config.text as string | undefined)?.split("\n")[0]]
         .filter(Boolean)

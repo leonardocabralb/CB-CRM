@@ -1289,6 +1289,9 @@
         "remove_tag": "Excluir tag: {alvo}",
         "assign_conversation": "Atribuir a conversa",
         "update_contact_field": "Alterar campo do contato: {alvo}",
+        "update_contact_field_name": "Alterar o nome do contato",
+        "update_contact_field_email": "Alterar o e-mail do contato",
+        "update_contact_field_company": "Alterar a empresa do contato",
         "create_deal": "Criar negócio: {alvo}",
         "move_deal_stage": "Mover para a etapa: {alvo}",
         "set_deal_status_won": "Marcar o negócio como ganho",
@@ -2224,7 +2227,13 @@
       "moveDown": "Mover para baixo",
       "kindCondition": "Condição",
       "kindWait": "Espera",
-      "kindAction": "Ação"
+      "kindAction": "Ação",
+      "previa": {
+        "semTexto": "sem texto ainda",
+        "semCorpo": "sem texto ainda",
+        "semModelo": "escolha um modelo",
+        "semUrl": "sem endereço"
+      }
     }
   },
   "Flows": {
