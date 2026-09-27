@@ -201,6 +201,8 @@ export function PipelineSettings({
       resultado: s.resultado ?? null,
       // 975: o degrau do funil de eficiência — independente do resultado.
       degrau: s.degrau ?? null,
+      // 1058: o que entrar na etapa diz sobre a reunião (aviso de no-show).
+      desfecho_da_reuniao: s.desfecho_da_reuniao ?? null,
     }));
 
     const abertura = aberturaRef.current;
@@ -341,7 +343,9 @@ export function PipelineSettings({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md bg-popover border-border max-h-[85vh] overflow-y-auto">
+      {/* 1058: `sm:max-w-2xl` (era `md`) — com o terceiro seletor por etapa
+          (Reunião), a 448 px o nome da etapa ficava com 22 px. */}
+      <DialogContent className="sm:max-w-2xl bg-popover border-border max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-popover-foreground">{t("managePipeline")}</DialogTitle>
         </DialogHeader>
@@ -455,6 +459,11 @@ export function PipelineSettings({
                           onDegrauChange={(v) => {
                             const updated = [...localStages];
                             updated[index] = { ...updated[index], degrau: v };
+                            setLocalStages(updated);
+                          }}
+                          onDesfechoChange={(v) => {
+                            const updated = [...localStages];
+                            updated[index] = { ...updated[index], desfecho_da_reuniao: v };
                             setLocalStages(updated);
                           }}
                           opcoesDeDegrau={opcoesDeDegrau}
@@ -652,6 +661,7 @@ function SortableStageRow({
   onColorChange,
   onResultadoChange,
   onDegrauChange,
+  onDesfechoChange,
   opcoesDeDegrau,
   onRemove,
   colors,
@@ -662,6 +672,7 @@ function SortableStageRow({
   onColorChange: (v: string) => void;
   onResultadoChange: (v: string | null) => void;
   onDegrauChange: (v: string | null) => void;
+  onDesfechoChange: (v: 'compareceu' | 'faltou' | null) => void;
   opcoesDeDegrau: { value: string; label: string }[];
   onRemove: () => void;
   colors: string[];
@@ -728,6 +739,25 @@ function SortableStageRow({
             {opcao.label}
           </option>
         ))}
+      </select>
+      {/* 1058: o que ENTRAR nesta etapa diz sobre a reunião — "Faltou" (a
+          etapa de no-show) ou "Compareceu" (reunião feita, sem proposta). É o
+          que o aviso de possível no-show da conversa lê. Independente do
+          resultado e do degrau ao lado. */}
+      <select
+        value={stage.desfecho_da_reuniao ?? ''}
+        onChange={(e) =>
+          onDesfechoChange(
+            e.target.value === 'compareceu' || e.target.value === 'faltou' ? e.target.value : null,
+          )
+        }
+        aria-label={t('stageReuniao')}
+        title={t('stageReuniaoHint')}
+        className="h-7 shrink-0 rounded-md border border-border bg-card px-1 text-xs text-foreground"
+      >
+        <option value="">{t('reuniaoNenhum')}</option>
+        <option value="compareceu">{t('reuniaoCompareceu')}</option>
+        <option value="faltou">{t('reuniaoFaltou')}</option>
       </select>
       <Button
         variant="ghost"

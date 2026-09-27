@@ -11,6 +11,7 @@ paths:
   - "src/app/api/cb/reunioes-transcritas/**"
   - "src/components/transcricoes/**"
   - "src/hooks/use-reunioes*"
+  - "src/components/inbox/faixa-de-no-show.tsx"
   - "src/app/api/v1/meetings/**"
   - "src/lib/api/v1/meetings*"
 ---
@@ -83,6 +84,30 @@ Plano: `docs/PLANO-reunioes-e-no-show.md`.
   marcada, com o link.
 - A lista só aparece com as DUAS fontes respondidas; falha das externas é dita
   (`erroExternas`), nunca "nenhuma reunião".
+
+### Aviso de possível no-show (1058)
+
+`src/lib/agenda/aviso-de-no-show.ts` (puro, testado), calculado pela MESMA
+rota e mostrado SÓ na faixa do fio (`faixa-de-no-show.tsx`; decisão do
+operador: nada no card, na lista nem na aba).
+
+- ⚠️⚠️ **O comparecimento vem de uma MARCAÇÃO na etapa, nunca do degrau nem
+  do nome**: `pipeline_stages.desfecho_da_reuniao` ('compareceu' | 'faltou'),
+  escolhida em Gerenciar funil. MQL 2 é degrau `reuniao` e acontece ANTES da
+  reunião (28 de 30 entradas, medido em 27/09/2026); deduzir pelo nome
+  desligaria o aviso ao renomear "No Show".
+- **Só com reunião FUTURA** (Calendly, Kommo ou agenda, não desmarcada), e
+  some quando ela termina. Motivo `faltou`: entrou numa etapa "Faltou" (a
+  qualquer tempo) ou a agenda registrou a falta. Motivo `sem_avanco`: teve
+  reunião que já terminou e NUNCA avançou (degrau proposta/contrato/pasta,
+  etapa "Compareceu", agenda "Realizada" ou card com valor).
+- ⚠️ **O aviso é tão bom quanto o funil**: enquanto a equipe move os cards na
+  Kommo, o CRM não vê as faltas recentes e `sem_avanco` pode acusar quem
+  compareceu. Por isso o texto é FACTUAL ("foi para No Show em…"), nunca
+  "vai faltar".
+- A trilha lida é a das ENTRADAS em etapa (`stage_changed`, `deal_created`,
+  `pipeline_changed`); `status_changed` repete a etapa em que o card já estava.
+  `pipeline_stages` não tem `account_id`: a cerca é pelo funil, com `!inner`.
 
 ### tl;dv → transcrições (987)
 

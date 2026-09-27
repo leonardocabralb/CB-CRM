@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useId, useState } from 'react';
 
+import { lerAvisoDeNoShow, type AvisoDeNoShow } from '@/lib/agenda/aviso-de-no-show';
 import { lerReunioesExternas, type ReuniaoExterna } from '@/lib/agenda/reunioes-externas';
 import { createClient } from '@/lib/supabase/client';
 import type { Meeting } from '@/types';
@@ -184,11 +185,28 @@ export function useReunioesDoContato(contactId: string | null | undefined) {
  * remonta ao trocar de cliente. E `reunioes: null` no estado é "a leitura
  * falhou" (`falhou`), nunca lista vazia: a aba não pode afirmar "nenhuma
  * reunião" sobre uma resposta que não chegou.
+ *
+ * A mesma resposta traz o aviso de possível no-show, que a faixa da conversa
+ * mostra (`aviso-de-no-show.ts`). Fora do contato atual ele é `null`: a faixa
+ * de um cliente não pode aparecer na conversa de outro.
  */
-export function useReunioesExternasDoContato(contactId: string | null | undefined) {
-  const [estado, setEstado] = useState<{ de: string | null; reunioes: ReuniaoExterna[] | null }>({
+export function useReunioesExternasDoContato(
+  contactId: string | null | undefined,
+  /**
+   * O token de resync de quem monta (o fio o recebe da página do inbox: sobe
+   * ao voltar à aba e na reconexão do realtime). Sem ele, o agendamento que
+   * chega com a conversa aberta só apareceria ao trocar de cliente.
+   */
+  resyncToken: number = 0,
+) {
+  const [estado, setEstado] = useState<{
+    de: string | null;
+    reunioes: ReuniaoExterna[] | null;
+    aviso: AvisoDeNoShow | null;
+  }>({
     de: null,
     reunioes: null,
+    aviso: null,
   });
 
   useEffect(() => {
@@ -198,16 +216,17 @@ export function useReunioesExternasDoContato(contactId: string | null | undefine
       const res = await fetch(`/api/cb/agenda/contato/${contactId}`, { cache: 'no-store' }).catch(() => null);
       const json = res?.ok ? await res.json().catch(() => null) : null;
       if (!vivo) return;
-      setEstado({ de: contactId, reunioes: lerReunioesExternas(json) });
+      setEstado({ de: contactId, reunioes: lerReunioesExternas(json), aviso: lerAvisoDeNoShow(json) });
     })();
     return () => {
       vivo = false;
     };
-  }, [contactId]);
+  }, [contactId, resyncToken]);
 
   const doContatoAtual = !!contactId && estado.de === contactId;
   return {
     reunioes: doContatoAtual ? (estado.reunioes ?? []) : [],
+    aviso: doContatoAtual ? estado.aviso : null,
     carregando: !!contactId && !doContatoAtual,
     falhou: doContatoAtual && estado.reunioes === null,
   };

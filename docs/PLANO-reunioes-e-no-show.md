@@ -13,8 +13,8 @@ marcadas na agenda interna do CRM, e nenhuma do Calendly. Ele quer:
 
 | Fase | O quê | Estado |
 | --- | --- | --- |
-| 1 | Histórico: Calendly e Kommo na aba Reuniões | PR aberto (27/09/2026) |
-| 2 | Aviso de possível no-show na conversa | A fazer |
+| 1 | Histórico: Calendly e Kommo na aba Reuniões | PR #331 (27/09/2026), Codex sem achados no último commit |
+| 2 | Aviso de possível no-show na conversa | Código pronto na branch `feat/aviso-de-no-show`; falta aplicar a 1058, testar no preview e o operador marcar as etapas |
 
 ## Decisões do operador (27/09/2026)
 
@@ -83,30 +83,46 @@ riscados como "Reagendada", o que aconteceu (com transcrição do tl;dv no mesmo
 dia) e a reunião da Kommo; a rota responde só as chaves previstas, 404 para id
 inválido e lista vazia para cliente de outra conta.
 
-## Fase 2 — aviso de possível no-show (a fazer)
+## Fase 2 — aviso de possível no-show
 
-**Desenho proposto** (revisar antes de começar):
+**Objetivo:** quando o lead tem reunião marcada e já faltou (ou marcou antes e
+não avançou), uma faixa pequena na conversa, acima da caixa de mensagem.
 
-- **Migration:** em Gerenciar funil, cada etapa ganha "Reunião: — /
-  Compareceu / Faltou" (coluna nova em `pipeline_stages`, como o degrau).
-  O operador marca No Show = Faltou e Reunião Sem Proposta = Compareceu.
-  Nada é deduzido pelo nome da etapa.
-- **Regra (pura, com teste):** o aviso aparece quando o cliente tem reunião
-  FUTURA (Calendly ou agenda, não desmarcada) e:
-  - já passou por uma etapa marcada "Faltou" (ou tem reunião da agenda com a
-    situação "Cliente não compareceu"); ou
-  - já teve reunião que passou (Calendly, agenda ou Kommo, não desmarcada) e
-    nunca avançou: nenhuma etapa com degrau de proposta ou contrato (ou
-    pasta), nenhuma etapa "Compareceu", nenhum card com valor.
-- **Onde:** faixa pequena no fio, acima da caixa de mensagem, perto da faixa
-  do Asaas. Só conversa 1:1. Texto factual ("foi para No Show em 12/08" ou
-  "teve reunião em 15/09 e não chegou à proposta"), com a data da nova reunião.
-- **Dados:** a mesma rota da Fase 1 devolve também o aviso, lido pelo fio.
+**Arquivos:** migration `1058_cb_desfecho_da_reuniao_na_etapa.sql`
+(`pipeline_stages.desfecho_da_reuniao`); `src/lib/agenda/aviso-de-no-show.ts`
+(puro) e o teste; a rota da Fase 1 devolve também `aviso`; o hook
+`useReunioesExternasDoContato` o repassa (com o `resyncToken` do fio);
+`src/components/inbox/faixa-de-no-show.tsx` montada em `message-thread.tsx`;
+o seletor "Reunião" por etapa em `pipeline-settings.tsx` (diálogo agora
+`sm:max-w-2xl`); o tipo em `src/types/index.ts`; chaves
+`Pipelines.settings.reuniao*`/`stageReuniao*` e `Inbox.noShow.*`.
+
+**Como funciona:**
+- Em Gerenciar funil, cada etapa ganha "Reunião: — / Compareceu / Faltou". O
+  operador marca No Show = Faltou e Reunião Sem Proposta = Compareceu. Nada é
+  deduzido pelo nome da etapa, e proposta/contrato já contam pelo degrau.
+- O aviso aparece quando o cliente tem reunião FUTURA (Calendly, Kommo ou
+  agenda, não desmarcada) e: (1) já entrou numa etapa "Faltou", a qualquer
+  tempo, ou a agenda registrou a falta; ou (2) já teve reunião que terminou,
+  não desmarcada, e NUNCA avançou (degrau proposta/contrato/pasta, etapa
+  "Compareceu", agenda "Realizada" ou card com valor).
+- Texto factual: "Possível no-show — este cliente foi para No Show em 12/08.
+  Nova reunião em 30/09 às 15:00." ou "… teve reunião em 15/09 e não avançou
+  no funil. …". Some quando a nova reunião termina.
+
+**Falta:**
+1. Replay verde do CI no commit exato, e aplicar a 1058 em produção (aditiva,
+   com autorização do operador) ANTES do merge.
+2. Teste no preview: a faixa com um cliente de reunião futura e No Show na
+   trilha; o seletor em Gerenciar funil gravando e relendo.
+3. Depois do deploy, marcar as etapas do Bancário - Comercial (pelo operador,
+   ou por SQL com "pode gravar").
 
 **Limites que o operador precisa saber:**
 - Até o corte da Kommo (ou a atualização final dos dados de lá), o aviso não
   vê faltas recentes e pode acusar quem compareceu (ver Medições).
-- O aviso some quando o horário da nova reunião passa.
+- Gerenciar funil no celular já não cabia com dois seletores por etapa; com
+  três continua sem caber (tela de administrador, usada no computador).
 
 ## Fora do escopo (para depois, se o operador quiser)
 

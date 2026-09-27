@@ -927,6 +927,13 @@ export interface PipelineStage {
    * leitura vivem em `src/lib/funil/degraus.ts`.
    */
   degrau?: string | null;
+  /**
+   * O que ENTRAR nesta etapa diz sobre a reunião com o cliente (1058):
+   * 'compareceu' | 'faltou' | null. É o que o aviso de possível no-show da
+   * conversa lê (`src/lib/agenda/aviso-de-no-show.ts`). Independente de
+   * `resultado` e de `degrau`.
+   */
+  desfecho_da_reuniao?: 'compareceu' | 'faltou' | null;
   created_at: string;
 }
 

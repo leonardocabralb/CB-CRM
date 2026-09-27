@@ -6,12 +6,14 @@ import { useAuth } from "@/hooks/use-auth";
 import { useChannels } from "@/hooks/use-channels";
 import { useLeadEvents } from "@/hooks/use-lead-events";
 import { useExecucoesDoFio } from "@/hooks/use-execucoes-do-fio";
+import { useReunioesExternasDoContato } from "@/hooks/use-reunioes";
 import { useConversationNotes } from "@/hooks/use-conversation-notes";
 import { useApagarNota } from "@/hooks/use-apagar-nota";
 import { useFixarNota } from "@/hooks/use-fixar-nota";
 import { useCan } from "@/hooks/use-can";
 import { ScheduledBar } from "./scheduled-bar";
 import { FaixaDeInadimplencia } from "./faixa-de-inadimplencia";
+import { FaixaDeNoShow } from "./faixa-de-no-show";
 import { dividaDoContato, leituraAindaFresca, type RespostaDoResumo } from "@/lib/asaas/aviso-na-conversa";
 import { ExecutarAutomacaoDialog } from "./executar-automacao-dialog";
 import { CopiarLinkDaConversa } from "@/components/inbox/copiar-link-da-conversa";
@@ -1252,6 +1254,10 @@ export function MessageThread({
     () => dividaDoContato(inadimplencia, contact?.id, agoraDaBadge),
     [inadimplencia, contact?.id, agoraDaBadge],
   );
+  // O aviso de possível no-show (docs/PLANO-reunioes-e-no-show.md, Fase 2),
+  // para a faixa acima do compositor. Grupo não tem contato, e a faixa de um
+  // cliente nunca aparece na conversa de outro (o hook carimba o dono).
+  const { aviso: avisoDeFalta } = useReunioesExternasDoContato(contact?.id, resyncToken);
 
   // Anotações internas (migration 918). Chaveadas pela CONVERSA, não pelo
   // contato como a trilha acima — é a única chave que existe em grupo.
@@ -3090,6 +3096,11 @@ export function MessageThread({
         leituraFresca={inadimplencia ? leituraAindaFresca(inadimplencia, agoraDaBadge) : false}
         aoVerCobrancas={onOpenContactPanel ? () => onOpenContactPanel("cobrancas") : undefined}
       />
+
+      {/* Faixa POSSÍVEL NO-SHOW (plano de reuniões, Fase 2): o lead marcou
+          reunião nova e já faltou, ou marcou antes e não avançou. Some quando
+          a reunião nova termina; cala com `null`. */}
+      <FaixaDeNoShow aviso={avisoDeFalta} agora={agoraDaBadge} />
 
       {/* Faixa AGENDADAS (925), colada no compositor e dentro do fio.
           ⚠️ Fica AQUI, e não na ficha lateral: quem abre a conversa precisa

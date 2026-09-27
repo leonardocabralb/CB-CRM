@@ -581,6 +581,13 @@
       "vazioDica": "Photos, documents and audio shared here will show up.",
       "verNaConversa": "Show in conversation"
     },
+    "noShow": {
+      "titulo": "Possible no-show",
+      "faltouNaEtapa": "this client was moved to {etapa} on {dia}.",
+      "faltouNaAgenda": "this client missed the meeting on {dia}.",
+      "semAvanco": "had a meeting on {dia} and didn't move forward in the pipeline.",
+      "proxima": "New meeting on {dia} at {hora}."
+    },
     "cobrancas": {
       "faixaTitulo": "Delinquent on Asaas",
       "faixaResumo": "{parcelas, plural, one {# past-due instalment} other {# past-due instalments}} · {valor}",
@@ -1240,6 +1247,11 @@
       "outcomeLost": "Lost",
       "stageDegrau": "Efficiency funnel",
       "stageDegrauHint": "Which step of the efficiency funnel this stage maps to. Several stages may map to the same step; a stage without a step is not counted in Performance.",
+      "stageReuniao": "Meeting",
+      "stageReuniaoHint": "What a client entering this stage says about the meeting. The conversation's possible no-show warning uses it: “No-show” marks the no-show stage; “Attended”, a meeting held without a proposal (proposal and contract already count through the step).",
+      "reuniaoNenhum": "Meeting: —",
+      "reuniaoCompareceu": "Attended",
+      "reuniaoFaltou": "No-show",
       "semLead": "No stage is marked as Lead: Performance and Health for this pipeline stay empty until this is configured.",
       "painel": "Performance and Health dashboard",
       "painelDica": "How this pipeline shows up on the dashboards. A label applies to this pipeline only; left empty, the step keeps its default name.",
