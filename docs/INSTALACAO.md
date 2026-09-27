@@ -616,6 +616,20 @@ organização** (para enxergar os eventos de todos). O CRM assina o webhook
 sozinho no endereço público do CRM, que precisa ser alcançável de fora; ao
 trocar de domínio, use **Reassinar** no cartão.
 
+**ZapSign** (contrato assinado move o card): reler o documento assinado
+exige o **plano de API** do ZapSign (sem ele o cartão recusa o token com
+"sem plano de API"). Copie o token em *Configurações → Integrações → API
+ZapSign* e cole no cartão. O CRM cria sozinho o webhook de assinatura, mas
+**só quando o cartão é aberto pelo endereço público do CRM**
+(`NEXT_PUBLIC_SITE_URL`); aberto por outro endereço, o webhook fica
+ausente e o cartão oferece **Reativar webhook**. A cada documento
+completo, o gatilho "Documento assinado (ZapSign)" das automações dispara:
+o cliente é achado pelo negócio do contrato ou, no link público do
+modelo, pelo telefone, e-mail ou CPF (este só com um campo personalizado
+de chave `cpf`) de quem assinou — nenhum contato é criado. Para mover o
+card, crie a automação na aba Automações do funil com a condição
+"Negócio está na etapa…" antes do "Mover card".
+
 **tl;dv** (transcrições de reunião na ficha): a API só existe nos planos
 **Pro e Business**, e só sai pela API a reunião de quem a ORGANIZOU com um
 desses planos. Gere a chave em *Settings → Personal Settings → API Keys*.
