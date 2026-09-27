@@ -1616,9 +1616,11 @@ lembretes de reunião leem — gravar ali sobrescreveria agendamento real e
 armaria lembrete sobre reunião que já passou), nem linhas no log do Calendly
 (`cb_calendly_eventos` alimenta o "Processar de novo", a ponte de e-mail do
 tl;dv e o Meu dia — inventar registro ali contamina os três). Tabela própria,
-`cb_reunioes_da_kommo`, fechada ao navegador e sem gatilho: nenhuma tela,
-automação ou lembrete a lê. Quem vai ler é o mapa de reuniões por dia e
-horário (Fase 8 do funil comercial).
+`cb_reunioes_da_kommo`, fechada ao navegador e sem gatilho: automação e
+lembrete não a leem. A aba Reuniões (ficha e painel da conversa) a mostra
+desde 27/09/2026, pela rota `/api/cb/agenda/contato/[contactId]`
+(`docs/PLANO-reunioes-e-no-show.md`); o mapa de reuniões por dia e horário
+(Fase 8 do funil comercial) vai lê-la pelo servidor.
 
 **Como:** `scripts/kommo/reunioes.mjs` lê da Kommo (só leitura) o campo de lead
 "Reunião Marcada" com "URL Reunião" e "Marcou reunião onde", achados pelo NOME

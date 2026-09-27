@@ -5475,7 +5475,14 @@
     "nenhumClienteEncontrado": "Nenhum cliente encontrado.",
     "desvincularCliente": "Desvincular cliente",
     "abrirConversa": "Abrir conversa",
-    "abrirFicha": "Ver ficha"
+    "abrirFicha": "Ver ficha",
+    "origemCalendly": "Calendly",
+    "origemKommo": "Kommo",
+    "reagendamento": "Reagendamento",
+    "statusReagendada": "Reagendada",
+    "reuniaoSemNome": "Reunião",
+    "linkDaReuniao": "Link da reunião",
+    "erroExternas": "Não foi possível carregar as reuniões do Calendly e da Kommo."
   },
   "Transcricoes": {
     "titulo": "Transcrições",

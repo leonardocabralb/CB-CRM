@@ -57,6 +57,30 @@ testados); a tela é `/agenda`, a escrita passa por `/api/cb/agenda`.
 - **Fora da v1, por decisão: recorrência.** Reunião que repete é marcada de
   novo.
 
+### Reuniões do Calendly e da Kommo na aba Reuniões
+
+`src/lib/agenda/reunioes-externas.ts` (puro, testado), rota
+`GET /api/cb/agenda/contato/[contactId]`, hook `useReunioesExternasDoContato`.
+Plano: `docs/PLANO-reunioes-e-no-show.md`.
+
+- ⚠️ **Por ROTA, nunca SELECT do navegador.** `cb_calendly_eventos` e
+  `cb_reunioes_da_kommo` são fechadas (guardam telefone, e-mail e respostas do
+  formulário): do cliente voltariam vazias com `error: null`, e a aba
+  afirmaria "nenhuma reunião". A rota devolve só data, evento, link e situação.
+- ⚠️ **A reunião da Kommo some quando o Calendly tem uma no MESMO instante**
+  (a integração antiga gravava nos dois). Compara por INSTANTE, nunca texto.
+- ⚠️⚠️ **O convite que um reagendamento substituiu vira `reagendada` por
+  INFERÊNCIA** (`convitesSubstituidos`): o cancelamento só chega desde a 1013
+  (com a assinatura refeita) e a 977 não guarda `old_invitee`. É o mais recente
+  que chegou antes, do mesmo tipo de evento, cuja reunião ainda não tinha
+  acontecido. Sem ela, o reagendamento antigo aparece como reunião que
+  aconteceu (e contaria como "reunião anterior" num aviso de no-show).
+- **Depois do horário, a reunião externa fica SEM situação**: o Calendly não
+  diz se o cliente compareceu, e "Realizada" afirmaria o que ninguém
+  registrou.
+- A lista só aparece com as DUAS fontes respondidas; falha das externas é dita
+  (`erroExternas`), nunca "nenhuma reunião".
+
 ### tl;dv → transcrições (987)
 
 `src/lib/tldv/` (`cliente`, `leitura`, `texto`, `vinculo`, `janela`, `cartao`
