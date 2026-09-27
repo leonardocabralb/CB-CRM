@@ -6,7 +6,10 @@
 // fim, marcadores no mesmo protocolo do `[[PASSAR:n]]` da F2 —
 // `[[MOVER:n]]`, `[[ETIQUETAR:n]]`, `[[TIRAR:n]]`, `[[CAMPO:n=valor]]`,
 // `[[TAREFA:n=título]]`, `[[AUTOMACAO:n]]` e, na F5, `[[REUNIAO:n]]` (um dos
-// horários livres do Calendly). O `n` é o número de uma opção
+// horários livres do Calendly; com o nome completo que o cliente deu,
+// `[[REUNIAO:n=Nome]]`, opcional). E `[[TRANSFERIR]]` (27/09/2026), SEMPRE
+// disponível, sem número: manda esta resposta e DEPOIS passa a conversa para
+// a equipe. O `n` é o número de uma opção
 // que o SERVIDOR listou no pedido (`OpcoesDeAcao`, com os nomes); o servidor
 // traduz o número para o id. Número fora da lista = recusada.
 //
@@ -19,10 +22,10 @@
 //  - a trava de LINK INVENTADO: toda URL da resposta tem de ter aparecido,
 //    como URL, no que foi mandado ao modelo (o pedido montado e as mensagens
 //    da conversa) — modelo inventa link de boleto;
-//  - a régua da D5 sobre os passos de uma automação (`motivoForaDaD5`),
-//    atravessando as automações que ela aciona E a CASCATA (as de etapa e as
-//    de etiqueta que os passos disparam), com trava de ciclo; e a D5 de uma
-//    etapa ou etiqueta pela cascata (`motivoDaEtapa`, `motivoDaEtiqueta`);
+//  - a régua da D5 sobre os passos da automação que o AGENTE executa
+//    (`motivoForaDaD5`), atravessando as que ela aciona por `run_automation`,
+//    com trava de ciclo — e SÓ elas: desde 27/09/2026 a D5 vale só para o
+//    que o agente faz, sem a cascata das automações de etapa e de etiqueta;
 //  - os campos de DATA vigiados por lembrete (`camposVigiados`);
 //  - o formato do valor de cada campo (`formatoDoCampo`, `valorDoCampo`);
 //  - o parse do registro das ações do turno (`cb_ia_turnos.acoes`).
@@ -131,6 +134,23 @@ export function valorDoCampo(valor: string, formato: FormatoDoCampo): string | n
   }
 }
 
+/**
+ * O valor que a ficha JÁ tem (`atual`, o `contact_custom_values.value`) é o
+ * mesmo que se vai gravar (`novo`, a saída de `valorDoCampo`)? Aparado e sem
+ * caixa; na data, pelo INSTANTE (o gravado por outro escritor pode estar em
+ * outra forma do mesmo horário). O modelo repete em cada resposta as ações
+ * das anteriores, e regravar o mesmo valor deixaria uma anotação a cada
+ * resposta. Sem valor gravado = não é o mesmo.
+ */
+export function mesmoValorDoCampo(atual: unknown, novo: string, formato: FormatoDoCampo): boolean {
+  if (typeof atual !== 'string' || !atual.trim()) return false
+  const chave = (v: string): string => {
+    const aparado = v.trim()
+    return (formato.tipo === 'data' ? (instanteCanonico(aparado) ?? aparado) : aparado).toLocaleLowerCase('pt-BR')
+  }
+  return chave(atual) === chave(novo)
+}
+
 // ------------------------------------------------------------
 // As opções e os marcadores
 // ------------------------------------------------------------
@@ -167,8 +187,26 @@ export const MARCADOR_DA_ACAO: Record<TipoDeAcao, string> = {
   marcar_reuniao: 'REUNIAO',
 }
 
+/**
+ * `[[TRANSFERIR]]` (27/09/2026): "responda e passe para a equipe". Ao
+ * contrário do `[[HANDOFF]]` (que tem de ser a resposta INTEIRA — o cliente
+ * não recebe nada), a resposta SAI e só depois o turno transfere
+ * (`agente_passou`). Não é ferramenta: vale para todo agente, sem configuração.
+ */
+export const MARCADOR_DE_TRANSFERENCIA = '[[TRANSFERIR]]'
+/** O `tipo` da linha do `[[TRANSFERIR]]` no registro do turno e nas ações do Playground (não é um `TipoDeAcao`). */
+export const ACAO_TRANSFERIR = 'transferir'
+
 /** Os tipos que levam `=valor` (o valor do campo, o título da tarefa). */
 export const ACOES_COM_VALOR: ReadonlySet<TipoDeAcao> = new Set(['preencher_campo', 'criar_tarefa'])
+
+/**
+ * Os tipos em que o `=valor` é OPCIONAL: a reunião, `[[REUNIAO:n=Nome
+ * Completo]]` — o nome que o cliente deu na conversa (`nomeDoConvidado`).
+ * Nome que não serve é ignorado (a reunião vai com o nome da ficha), nunca
+ * recusa a reunião.
+ */
+export const ACOES_COM_VALOR_OPCIONAL: ReadonlySet<TipoDeAcao> = new Set(['marcar_reuniao'])
 
 export const LIMITES_DAS_ACOES = {
   /** Ações por resposta; o que passar é recusado (`teto`). */
@@ -177,7 +215,54 @@ export const LIMITES_DAS_ACOES = {
   valorDoCampo: 500,
   /** Título da tarefa (o mesmo teto de `cb_tasks`). */
   tituloDaTarefa: 200,
+  /** O nome do convidado na reunião (`[[REUNIAO:n=Nome]]`). */
+  nomeDoConvidado: 120,
 } as const
+
+/**
+ * O nome completo que o modelo passou na reunião (`[[REUNIAO:n=Nome]]`),
+ * aparado e numa linha, com 2 a 120 caracteres e pelo menos uma letra. `null`
+ * = não serve: a reunião vai com o nome da ficha (nunca é recusada por isso).
+ */
+export function nomeDoConvidado(valor: string | null | undefined): string | null {
+  const nome = (valor ?? '').replace(/\s+/g, ' ').trim()
+  if (nome.length < 2 || nome.length > LIMITES_DAS_ACOES.nomeDoConvidado) return null
+  return /\p{L}/u.test(nome) ? nome : null
+}
+
+/** Conectivos de nome que não precisam aparecer na conversa ("Maria DA Silva"). */
+const CONECTIVOS_DO_NOME = new Set(['de', 'da', 'do', 'dos', 'das', 'e'])
+
+/** As palavras de um nome (≥ 2 letras, sem acento, minúsculas, sem os conectivos). */
+function palavrasDoNome(texto: string): string[] {
+  return semAcento(texto)
+    .split(/[^\p{L}]+/u)
+    .filter((p) => p.length >= 2 && !CONECTIVOS_DO_NOME.has(p))
+}
+
+/** De onde o nome do convidado pode ter vindo: o que o CLIENTE escreveu e o nome atual da ficha. */
+export interface OrigemDoNome {
+  /** As mensagens do CLIENTE mandadas ao modelo (role `user`). */
+  mensagensDoCliente: readonly string[]
+  /** O nome atual da ficha (`contacts.name`); nulo = sem nome ou não lido. */
+  nomeDaFicha?: string | null
+}
+
+/**
+ * O nome do `[[REUNIAO:n=Nome]]` tem ORIGEM (Codex, #321)? Só quando TODA
+ * palavra dele (≥ 2 letras, sem os conectivos de/da/do/dos/das/e) aparece
+ * nas mensagens do CLIENTE, sem acento nem caixa — ou quando ele é o nome
+ * atual da ficha. O nome vai ao Calendly e a automação do Calendly o FIXA na
+ * ficha e renomeia o card (999): um nome inventado pelo modelo ("Dr. Silva",
+ * o sobrenome completado) ficaria para sempre no cliente.
+ */
+export function nomeComOrigem(nome: string, origem: OrigemDoNome): boolean {
+  const alvo = palavrasDoNome(nome)
+  if (alvo.length === 0) return false
+  if (origem.nomeDaFicha && palavrasDoNome(origem.nomeDaFicha).join(' ') === alvo.join(' ')) return true
+  const ditas = new Set(origem.mensagensDoCliente.flatMap(palavrasDoNome))
+  return alvo.every((p) => ditas.has(p))
+}
 
 /** Por que uma ação pedida não vai executar. A tela traduz o código. */
 export type MotivoDaRecusa =
@@ -221,6 +306,12 @@ export interface LeituraDasAcoes {
    * não é passagem: transfere, como o sentinela exato.
    */
   transferir: boolean
+  /**
+   * O modelo pediu `[[TRANSFERIR]]` (em qualquer forma: caixa, espaço,
+   * acento, colchete simples): a resposta sai e DEPOIS a conversa vai para a
+   * equipe. Perde para `transferir`, para a passagem e para as travas.
+   */
+  transferirDepois: boolean
 }
 
 /** Maiúsculas, sem acento: "Automação" → "AUTOMACAO". */
@@ -232,7 +323,9 @@ const TIPO_DO_MARCADOR = new Map<string, TipoDeAcao>(
   TIPOS_DE_ACAO.map((t) => [MARCADOR_DA_ACAO[t], t]),
 )
 /** Marcadores de controle que também saem do texto no colchete simples. */
-const MARCADORES_DE_CONTROLE = new Set(['PASSAR', 'HANDOFF'])
+const MARCADORES_DE_CONTROLE = new Set(['PASSAR', 'HANDOFF', 'TRANSFERIR'])
+/** Os de controle que valem SEM dois-pontos no colchete simples: `[HANDOFF]`, `[TRANSFERIR]`. */
+const CONTROLE_SEM_NUMERO = new Set(['HANDOFF', 'TRANSFERIR'])
 
 /** Onde um marcador estava: o texto o troca por isto antes da limpeza final. */
 const LUGAR = '\u0000'
@@ -244,8 +337,8 @@ const LUGAR = '\u0000'
  *     de um marcador válido não engole o texto até ele;
  *  2. `[NOME:…]` com colchete simples (ou um lado dobrado), numa linha — só
  *     vira marcador quando NOME é de ação ou de controle; o resto é texto
- *     ("[Obs: …]" fica). Sem dois-pontos, só o `[HANDOFF]`.
- * `[[HANDOFF]]` sem dois-pontos cai no 1.
+ *     ("[Obs: …]" fica). Sem dois-pontos, só o `[HANDOFF]` e o `[TRANSFERIR]`.
+ * `[[HANDOFF]]` e `[[TRANSFERIR]]` sem dois-pontos caem no 1.
  */
 const MARCADOR = /\[\[((?:(?!\[\[)[\s\S])*?)\]\]+|\[{1,2}[ \t]*(\p{L}+)[ \t]*(?::([^[\]\n]*))?\]{1,2}/gu
 /** O miolo de um marcador de ação: `TIPO : n` e, opcional, `= valor`. */
@@ -270,14 +363,24 @@ export function lerAcoes(texto: string): LeituraDasAcoes {
   const pedidas: AcaoPedida[] = []
   const recusadas: RecusaDeAcao[] = []
   let transferir = false
+  let transferirDepois = false
 
   const ler = (miolo: string): void => {
     if (/^\s*handoff\s*$/i.test(miolo)) {
       transferir = true
       return
     }
+    if (nomeNormalizado(miolo).trim() === 'TRANSFERIR') {
+      transferirDepois = true
+      return
+    }
     const m = MIOLO.exec(miolo)
     if (!m) return
+    // `[[TRANSFERIR: …]]` com algo depois: a intenção é a mesma.
+    if (nomeNormalizado(m[1]) === 'TRANSFERIR') {
+      transferirDepois = true
+      return
+    }
     const tipo = TIPO_DO_MARCADOR.get(nomeNormalizado(m[1]))
     // PASSAR, HANDOFF e o que não é ação: só saem do texto.
     if (!tipo) return
@@ -294,6 +397,9 @@ export function lerAcoes(texto: string): LeituraDasAcoes {
         recusadas.push({ tipo, n, motivo: 'malformada' })
         return
       }
+    } else if (ACOES_COM_VALOR_OPCIONAL.has(tipo) && m[3] !== undefined) {
+      // Opcional: vazio vale como ausente; quem confere a forma é `resolverAcoes`.
+      valor = numaLinha(m[3]) || undefined
     }
     if (pedidas.length >= LIMITES_DAS_ACOES.porResposta) {
       recusadas.push({ tipo, n, motivo: 'teto' })
@@ -314,8 +420,10 @@ export function lerAcoes(texto: string): LeituraDasAcoes {
     }
     if (!nome) return inteiro
     if (resto === undefined) {
-      if (nomeNormalizado(nome) !== 'HANDOFF') return inteiro
-      transferir = true
+      const controle = nomeNormalizado(nome)
+      if (!CONTROLE_SEM_NUMERO.has(controle)) return inteiro
+      if (controle === 'HANDOFF') transferir = true
+      else transferirDepois = true
       return LUGAR
     }
     if (!conhecido(nome)) return inteiro
@@ -347,7 +455,7 @@ export function lerAcoes(texto: string): LeituraDasAcoes {
     .replace(/[ \t]+$/gm, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
-  return { texto: limpo, pedidas, recusadas, transferir }
+  return { texto: limpo, pedidas, recusadas, transferir, transferirDepois }
 }
 
 /** Uma ação com os IDS do servidor, pronta para executar. */
@@ -355,7 +463,14 @@ export interface AcaoResolvida {
   tipo: TipoDeAcao
   id: string
   nome: string
+  /** O valor do campo, o título da tarefa ou, na reunião, o nome do convidado (`nomeDoConvidado`). */
   valor?: string
+  /**
+   * Só na reunião: o modelo passou um nome SEM origem na conversa
+   * (`nomeComOrigem`) — ele caiu, a reunião vai com o nome da ficha, e o
+   * registro diz `nome_sem_origem`.
+   */
+  nomeSemOrigem?: true
 }
 
 /**
@@ -373,6 +488,11 @@ export interface AcaoResolvida {
 export function resolverAcoes(
   pedidas: readonly AcaoPedida[],
   opcoes: OpcoesDeAcao,
+  /**
+   * De onde o nome da reunião pode vir (`nomeComOrigem`). Ausente = nenhum
+   * nome passa: sem a conversa não há como conferir (default-deny).
+   */
+  origemDoNome?: OrigemDoNome,
 ): { aceitas: AcaoResolvida[]; recusadas: RecusaDeAcao[] } {
   const aceitas: AcaoResolvida[] = []
   const recusadas: RecusaDeAcao[] = []
@@ -399,11 +519,23 @@ export function resolverAcoes(
       continue
     }
     indiceDe.set(chave, aceitas.length)
-    aceitas.push(p.valor === undefined ? { tipo: p.tipo, id: opcao.id, nome: opcao.nome } : {
+    // Na reunião, o nome do convidado só vai quando tem a forma de um nome E
+    // origem na conversa (`nomeComOrigem`); senão cai (a reunião vai com o
+    // nome da ficha), sem recusar a reunião — o sem origem fica marcado.
+    let valor = p.valor
+    let nomeSemOrigem = false
+    if (p.tipo === 'marcar_reuniao') {
+      const nome = nomeDoConvidado(p.valor)
+      const comOrigem = nome !== null && origemDoNome !== undefined && nomeComOrigem(nome, origemDoNome)
+      valor = comOrigem ? nome : undefined
+      nomeSemOrigem = nome !== null && !comOrigem
+    }
+    aceitas.push({
       tipo: p.tipo,
       id: opcao.id,
       nome: opcao.nome,
-      valor: p.valor,
+      ...(valor !== undefined ? { valor } : {}),
+      ...(nomeSemOrigem ? { nomeSemOrigem: true as const } : {}),
     })
   }
   return { aceitas, recusadas }
@@ -462,7 +594,265 @@ export function linkInventado(texto: string, fontes: readonly string[]): boolean
 }
 
 // ------------------------------------------------------------
-// A D5 nos passos de uma automação, e a CASCATA
+// A trava da REUNIÃO PROMETIDA (F5, 27/09/2026)
+// ------------------------------------------------------------
+
+/**
+ * A forma que afirma a reunião:
+ *  - o particípio: "confirmada", "agendada", "marcada", "remarcada",
+ *    "reagendada" (e o plural) — o que cobre "já está marcada" e "ficou
+ *    agendado" —, e em inglês "booked", "scheduled", "rescheduled",
+ *    "confirmed" (o que cobre "I booked", "I've scheduled", "we booked",
+ *    "you're booked");
+ *  - a forma FINITA (Codex, #321): "marquei", "agendei", "remarquei",
+ *    "reagendei", "confirmei", "reservei" e "marcamos", "agendamos",
+ *    "remarcamos", "reagendamos", "confirmamos", "reservamos" — "marcamos"
+ *    também é presente, e com a âncora conta igual;
+ *  - "all set" ("you're all set for Tuesday at 15:15");
+ *  - o auxiliar CONCLUÍDO + o verbo ou o nome da marcação (Codex, #321):
+ *    "consegui / conseguimos / acabei de / acabamos de / pude / pudemos
+ *    agendar / marcar / remarcar / reagendar / confirmar / reservar", "fiz /
+ *    realizei / efetuei o agendamento / a marcação / a reserva", e em inglês
+ *    "managed to / was able to / were able to book / schedule…" ("I just
+ *    booked" e "I've gone ahead and booked" já caem no particípio).
+ * "Desmarcada", "agendamento", "vou marcar", "posso agendar", "quer que eu
+ * marque", "vou conseguir agendar" e "não consegui agendar" (a negação antes)
+ * não afirmam.
+ */
+const FORMA_QUE_AFIRMA =
+  /\b(?:confirmad|agendad|marcad|remarcad|reagendad)[ao]s?\b|\b(?:marquei|agendei|remarquei|reagendei|confirmei|reservei|marcamos|agendamos|remarcamos|reagendamos|confirmamos|reservamos)\b|\b(?:booked|scheduled|rescheduled|confirmed)\b|\ball set\b|\b(?:consegui|conseguimos|acabei\s+de|acabamos\s+de|pude|pudemos)\s+(?:agendar|marcar|remarcar|reagendar|confirmar|reservar)\b|\b(?:fiz|fizemos|realizei|realizamos|efetuei|efetuamos)\s+(?:(?:o|a|seu|sua|o\s+seu|a\s+sua)\s+)?(?:agendamento|reagendamento|marca[cç][aã]o|remarca[cç][aã]o|reserva)\b|\b(?:managed|was\s+able|were\s+able)\s+to\s+(?:book|schedule|reschedule|confirm)\b/gi
+/**
+ * O que amarra a forma que afirma a uma REUNIÃO na mesma frase: a palavra
+ * ("reunião", "meeting", "consulta") ou um horário ("15:15", "15h", "15h30",
+ * "15 horas", "3 pm") ou uma data com o mês em dois dígitos ("29/09" — não
+ * a parcela "1/3"). Sem isso, "e-mail confirmado" não é reunião.
+ */
+const ANCORA_DA_REUNIAO =
+  /reuni|meeting|appointment|consulta|\b\d{1,2}\s*(?::\s*\d{2}|h\s*\d{0,2}|horas?)\b|\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b|\b\d{1,2}\/(?:0[1-9]|1[0-2])\b/i
+/**
+ * Palavras que, entre as QUATRO antes da forma que afirma, fazem dela não-afirmação:
+ * negação ("ainda não está marcada"), futuro ("será confirmada", "will be
+ * booked"), modal e oferta ("posso deixar agendado", "quer que fique
+ * marcado", "can be scheduled") e infinitivo ("para ser confirmada" — mas
+ * "acabou DE ser marcada" afirma, ver `naoAfirma`). O "no" do inglês fica de
+ * fora: em português é "no dia 29".
+ */
+const NAO_AFIRMA = new Set([
+  'nao', 'nunca', 'nem', 'sera', 'serao', 'seria', 'seriam', 'ficara', 'ficarao', 'ficaria', 'ficariam', 'vai', 'vao',
+  'ira', 'irao', 'vou', 'pode', 'podem', 'podera', 'poderia', 'possa', 'possam', 'podemos', 'posso', 'deve', 'devera',
+  'deveria', 'precisa', 'ser', 'sendo', 'estar', 'estiver', 'estiverem', 'for', 'forem', 'fique', 'fiquem', 'ficar',
+  'seja', 'sejam', 'quer', 'queira', 'gostaria', 'prefere', 'preferir',
+  'not', 'never', 'will', 'would', 'can', 'cannot', 'could', 'may', 'might', 'should', 'must', 'be', 'being', 'to',
+])
+/** Condição SEMPRE, antes da forma que afirma, na mesma frase: "se preferir, …", "if you like". */
+const CONDICAO = /(?:^|[^\p{L}])(?:se|caso|if|unless)(?![\p{L}])/u
+/**
+ * A subordinada de TEMPO ("quando", "assim que", "depois que", "when",
+ * "once"…): é condição quando o verbo dela está no futuro ou no presente
+ * ("quando você confirmar, fica marcada"), e FATO quando está no passado
+ * ("quando você confirmou o horário, marquei…" — Codex, #321: a versão que
+ * calava todo "quando" deixava sair a confirmação falsa).
+ */
+const TEMPORAL = /(?:^|[^\p{L}])(?:quando|assim que|apos|depois que|logo que|when|once|after|as soon as)(?![\p{L}])/gu
+/** Palavras que TERMINAM como passado sem ser verbo no passado ("eu", "seu", "vou", "sei", "you", "need"). */
+const NAO_E_PASSADO = new Set([
+  'eu', 'seu', 'meu', 'teu', 'ou', 'sou', 'vou', 'estou', 'dou', 'sei', 'lei',
+  'you', 'thou', 'need', 'indeed', 'feed', 'seed', 'speed', 'bed', 'red',
+])
+/** Passado irregular do inglês que aparece nessa conversa. */
+const PASSADO_IRREGULAR = new Set([
+  'chose', 'sent', 'gave', 'told', 'said', 'made', 'got', 'wrote', 'paid', 'was', 'were', 'had', 'did', 'came', 'went',
+  'took', 'found', 'saw', 'spoke', 'left',
+])
+
+/** Verbo no passado: -ou/-eu/-iu/-ei ("confirmou", "escolheu", "pediu", "falei"), -ed ou o irregular do inglês. */
+function verboNoPassado(p: string): boolean {
+  if (NAO_E_PASSADO.has(p)) return false
+  return /(?:ou|eu|iu|ei|ed)$/.test(p) || PASSADO_IRREGULAR.has(p)
+}
+
+/**
+ * Há condição antes da forma que afirma? `antes` já sem acento e em
+ * minúsculas. A condição sempre ("se", "if") cala; a de tempo só quando as
+ * até quatro palavras que a seguem, na mesma oração (até a vírgula), não têm
+ * verbo no passado.
+ */
+function haCondicao(antes: string): boolean {
+  if (CONDICAO.test(antes)) return true
+  for (const m of antes.matchAll(TEMPORAL)) {
+    const seguintes = antes
+      .slice((m.index ?? 0) + m[0].length)
+      .split(/[,;:]/)[0]
+      .split(/\s+/)
+      .map(palavraNormalizada)
+      .filter(Boolean)
+      .slice(0, 4)
+    if (!seguintes.some(verboNoPassado)) return true
+  }
+  return false
+}
+/** Logo DEPOIS da forma que afirma: "marcado por outra pessoa" / "booked by someone else" — o horário tomado. */
+const POR_OUTRO = /^\s*(?:por|by)\s+(?:outr|another|someone|other)/i
+/** Pergunta de verdade (termina em "?"), menos a de confirmação no fim ("…, tudo bem?"), que afirma. */
+const PERGUNTA = /\?[^\p{L}\p{N}]*$/u
+const PERGUNTA_DE_CONFIRMACAO = /,\s*(?:tudo bem|ok|okay|certo|combinado|beleza|right|alright)\s*\?[^\p{L}\p{N}]*$/iu
+
+/** Minúsculas e sem acento: "Após" → "apos". */
+function semAcento(p: string): string {
+  return p.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+}
+
+/** Uma palavra só com letras e apóstrofo: "Não," → "nao", "won’t" → "won't". */
+function palavraNormalizada(p: string): string {
+  return semAcento(p).replace(/\u2019/g, "'").replace(/[^a-z']/g, '')
+}
+
+/** As quatro palavras antes da forma que afirma dizem que ela NÃO afirma a reunião? */
+function naoAfirma(ultimas: readonly string[]): boolean {
+  return ultimas.some(
+    (p, i) =>
+      (NAO_AFIRMA.has(p) && !(p === 'ser' && ultimas[i - 1] === 'de')) || p.endsWith("n't") || p.endsWith("'ll"),
+  )
+}
+
+/**
+ * O texto AFIRMA que uma reunião foi marcada, agendada, confirmada,
+ * remarcada ou reagendada? Frase a frase: a forma que afirma (particípio ou
+ * forma finita, `FORMA_QUE_AFIRMA`) com a âncora (reunião ou horário/data) na
+ * MESMA frase, sem negação, futuro, modal ou oferta nas quatro palavras antes
+ * dela, sem condição antes dela na frase, sem "por outra pessoa" logo depois
+ * e fora de pergunta. "Quer que eu marque para terça às 15:15?", "vou
+ * marcar" e "podemos agendar" não afirmam nada (não têm a forma).
+ * Heurística calibrada para o lado da cautela: o falso positivo leva a
+ * conversa a gente; o falso negativo manda ao cliente uma confirmação falsa.
+ */
+export function afirmaReuniaoMarcada(texto: string): boolean {
+  for (const frase of texto.split(/(?<=[.!?…;])\s+|\n+/)) {
+    const f = frase.trim()
+    if (!f || !ANCORA_DA_REUNIAO.test(f)) continue
+    if (PERGUNTA.test(f) && !PERGUNTA_DE_CONFIRMACAO.test(f)) continue
+    for (const m of f.matchAll(FORMA_QUE_AFIRMA)) {
+      const antes = f.slice(0, m.index)
+      if (naoAfirma(antes.split(/\s+/).map(palavraNormalizada).filter(Boolean).slice(-4))) continue
+      if (haCondicao(semAcento(antes))) continue
+      if (POR_OUTRO.test(f.slice((m.index ?? 0) + m[0].length))) continue
+      return true
+    }
+  }
+  return false
+}
+
+/**
+ * A trava: a resposta vai RETIDA e o turno transfere (`reuniao_prometida`)
+ * quando "Marcar reunião" ofereceu horários NESTE turno (`horariosOferecidos`
+ * > 0), o texto ao cliente — já sem os marcadores — afirma a reunião
+ * (`afirmaReuniaoMarcada`) e nenhuma `marcar_reuniao` foi ACEITA: sem o
+ * marcador nada é marcado, e o cliente receberia uma confirmação falsa
+ * (medido em 27/09: 2 de 6 gerações). Sem horários oferecidos (reunião
+ * desligada, leitura que falhou, cliente que já tem reunião — aí "sua
+ * reunião está confirmada" é verdade) a trava não se aplica.
+ */
+export function reuniaoPrometida(args: {
+  texto: string
+  horariosOferecidos: number
+  aceitas: ReadonlyArray<Pick<AcaoResolvida, 'tipo'>>
+}): boolean {
+  if (args.horariosOferecidos <= 0) return false
+  if (args.aceitas.some((a) => a.tipo === 'marcar_reuniao')) return false
+  return afirmaReuniaoMarcada(args.texto)
+}
+
+// ------------------------------------------------------------
+// A EQUIPE PROMETIDA sem o `[[TRANSFERIR]]` (27/09/2026)
+// ------------------------------------------------------------
+
+/** Quem da equipe (depois de artigo, "um de nossos", "nossa"…), no singular ou no plural. */
+const GENTE_DA_EQUIPE = '(?:especialistas?|advogad[oa]s?|equipe|atendentes?|colegas?|pessoas?|time|responsavel)'
+/** Artigos, possessivos e "um de nossos" antes de quem da equipe. */
+const DETERMINANTES = '(?:(?:um|uma|o|a|os|as|nossa|nosso|nossos|nossas|de|da|do|das|dos)\\s+)*'
+/**
+ * O agente PASSANDO a conversa, com o verbo dele, sobre o texto sem acento e
+ * em minúsculas — vale mesmo quando a frase fala de reunião ("vou passar você
+ * para nossa equipe para remarcar sua reunião"; Codex, #321):
+ *  - "vou chamar / passar / encaminhar / transferir (você / o seu atendimento
+ *    / o seu caso / a conversa) para (um de nossos) especialista / advogado /
+ *    equipe / atendente…";
+ *  - "vou transferir o seu atendimento / você";
+ *  - em inglês, "I'll pass / transfer / hand you to".
+ */
+const PASSAGENS_PARA_A_EQUIPE: readonly RegExp[] = [
+  new RegExp(
+    `\\bvou\\s+(?:chamar|(?:passar|encaminhar|transferir)\\s+(?:(?:voce|o\\s+seu\\s+atendimento|seu\\s+atendimento|o\\s+seu\\s+caso|seu\\s+caso|a\\s+conversa)\\s+)?(?:para|pra))\\s+${DETERMINANTES}${GENTE_DA_EQUIPE}\\b`,
+  ),
+  /\bvou\s+transferir\s+(?:o\s+seu\s+atendimento|seu\s+atendimento|voce)\b/,
+  /\bi(?:'ll|\s+will)\s+(?:pass|transfer|hand)\s+(?:you|your\s+case|this|the\s+conversation)\s+(?:over\s+)?to\b/,
+]
+/**
+ * A PROMESSA de que alguém da equipe vai analisar ou procurar o cliente —
+ * quieta quando a análise acontece NA reunião (`analiseNaReuniao`: o caminho
+ * de quem qualificou, "na reunião de diagnóstico o advogado analisa"):
+ *  - "vou pedir para (um de nossos) especialista… (analisar…)";
+ *  - "um especialista / nossa equipe vai (te) analisar / entrar em contato /
+ *    chamar / retornar / responder / falar / assumir / atender / ligar";
+ *  - "nossa equipe / um especialista entrará em contato";
+ *  - em inglês, "a specialist / our team / a colleague will get back /
+ *    contact / reach out / take over / review…".
+ */
+const PROMESSAS_DA_EQUIPE: readonly RegExp[] = [
+  new RegExp(`\\bvou\\s+pedir\\s+(?:para|pra)\\s+${DETERMINANTES}${GENTE_DA_EQUIPE}\\b`),
+  new RegExp(
+    `\\b(?:um|uma|o|a|os|as|nossa|nosso|nossos|nossas)\\s+${DETERMINANTES}${GENTE_DA_EQUIPE}\\s+(?:vai|vao|ira|irao|deve|devem)\\s+(?:(?:te|lhe)\\s+)?(?:analisar|entrar\\s+em\\s+contato|chamar|retornar|responder|falar|assumir|atender|ligar)\\b`,
+  ),
+  /\b(?:nossa\s+equipe|nosso\s+time|um\s+especialista|uma\s+especialista|um\s+advogado|uma\s+advogada|um\s+atendente)\s+(?:entrara|entra|vai\s+entrar)\s+em\s+contato\b/,
+  /\b(?:a\s+specialist|one\s+of\s+our\s+(?:specialists|lawyers|attorneys|team)|our\s+team|a\s+colleague|a\s+lawyer|an\s+attorney|someone\s+from\s+(?:our|the)\s+team|a\s+member\s+of\s+(?:our|the)\s+team)\s+will\s+(?:get\s+back|contact|reach\s+out|take\s+over|review|call|be\s+in\s+touch|follow\s+up)\b/,
+]
+/**
+ * A análise acontece NA reunião — "um especialista vai analisar o seu caso na
+ * reunião", "na reunião de diagnóstico o advogado analisa", "will review your
+ * case in the meeting": o caminho de quem qualificou, não passar para a
+ * equipe. Só essa frase cala a PROMESSA (Codex, #321): a equipe que vai
+ * entrar em contato "para remarcar sua reunião" dispara.
+ */
+const NA_REUNIAO = /(?:^|[^\p{L}])(?:na|durante\s+a|in\s+the|during\s+the)\s+(?:\p{L}+\s+)?(?:reuniao|meeting)(?![\p{L}])/u
+const ANALISE = /(?:^|[^\p{L}])(?:analis|avali|explic|apresent|review|explain|assess|go\s+over)\p{L}*/u
+
+function analiseNaReuniao(f: string): boolean {
+  return NA_REUNIAO.test(f) && ANALISE.test(f)
+}
+
+/**
+ * A resposta PROMETE que uma pessoa da equipe vai assumir ou procurar o
+ * cliente? Medido no Playground (27/09): com as instruções mandando dizer
+ * isso e passar, em 2 de 4 turnos o modelo escreveu "Vou pedir para um de
+ * nossos especialistas analisar o seu caso e entrar em contato com você por
+ * aqui em breve." SEM o `[[TRANSFERIR]]` — o cliente ouviria que uma pessoa
+ * vem e a IA ficaria com a conversa. Frase a frase, sobre o texto sem
+ * acento: casa uma das `PASSAGENS_PARA_A_EQUIPE` (sempre) ou das
+ * `PROMESSAS_DA_EQUIPE` (menos quando a análise acontece NA reunião,
+ * `analiseNaReuniao`), fora de pergunta ("quer que eu chame…?"), sem negação nas quatro
+ * palavras antes e sem condição antes ("se preferir, …"). Quem chama decide
+ * o resto: a resposta com `[[TRANSFERIR]]`, `[[HANDOFF]]` ou `[[PASSAR:n]]`
+ * já transfere e nem pergunta.
+ */
+export function equipePrometida(texto: string): boolean {
+  for (const frase of texto.split(/(?<=[.!?…;])\s+|\n+/)) {
+    const f = semAcento(frase.trim()).replace(/\u2019/g, "'")
+    if (!f || PERGUNTA.test(f)) continue
+    const frases = analiseNaReuniao(f) ? PASSAGENS_PARA_A_EQUIPE : [...PASSAGENS_PARA_A_EQUIPE, ...PROMESSAS_DA_EQUIPE]
+    for (const promessa of frases) {
+      const m = promessa.exec(f)
+      if (!m) continue
+      const antes = f.slice(0, m.index)
+      if (naoAfirma(antes.split(/\s+/).map(palavraNormalizada).filter(Boolean).slice(-4))) continue
+      if (haCondicao(antes)) continue
+      return true
+    }
+  }
+  return false
+}
+
+// ------------------------------------------------------------
+// A D5 nos passos de uma automação que o AGENTE executa
 // ------------------------------------------------------------
 
 /** O passo que tira a automação da D5 (o código vai para a tela). */
@@ -477,33 +867,19 @@ export type MotivoForaDaD5 =
   | 'aguardar'
 
 /**
- * As automações que o MOTOR dispara sozinho por causa de um passo (ou de uma
- * ação da IA): a cascata. Só as LIGADAS; o escopo de conexão e de etapa
- * (`automations.channel_ids`/`stage_ids`) é IGNORADO de propósito — "pode
- * disparar" conta (a régua é conservadora).
+ * O que a régua da D5 precisa saber da conta, além dos passos.
  *
- * ⚠️ `deal_status_changed` fica de fora: a IA só move card ABERTO para etapa
- * sem resultado, e todo caminho da cascata que muda o status (ganho/perdido
- * pelo status ou pela etapa) já é fora da D5 — o card segue aberto.
+ * ⚠️ D5 SÓ PARA O QUE O AGENTE FAZ (decisão do operador, 27/09/2026): a régua
+ * NÃO percorre mais a CASCATA — as automações de ENTRADA da etapa para onde o
+ * agente move o card e as de etiqueta aplicada rodam como quando alguém da
+ * equipe move o card ou etiqueta. Nem as que um passo "Mover card"/"Adicionar
+ * etiqueta" da automação executada dispararia.
  */
-export interface GatilhosDaCascata {
-  /** `deal_stage_changed`: `etapas` vazia = QUALQUER etapa (`triggerMatches`). */
-  deEtapa: ReadonlyArray<{ id: string; etapas: readonly string[] }>
-  /**
-   * `tag_added`: só com a etiqueta configurada — sem ela o motor NUNCA
-   * dispara (`triggerMatches` exige `tag_id`). Não existe gatilho de
-   * etiqueta TIRADA: tirar não tem cascata.
-   */
-  deEtiqueta: ReadonlyArray<{ id: string; etiqueta: string }>
-}
-
-/** O que a régua da D5 precisa saber da conta, além dos passos. */
 export interface ReguaDaD5 {
   /** Etapas com `pipeline_stages.resultado` (ganho/perdido). */
   etapasDeResultado: ReadonlySet<string>
   /** Campos de data vigiados por lembrete ligado (`camposVigiados`). */
   camposVigiados: ReadonlySet<string>
-  cascata: GatilhosDaCascata
 }
 
 export interface PassoDaAutomacao {
@@ -518,13 +894,12 @@ function texto(v: unknown): string | null {
 /**
  * O passo sai da D5? Mensagem para outro número, webhook de saída, ganho ou
  * perdido (pelo status ou por etapa com resultado — mover para ela ou criar
- * o card nela), iniciar robô (o `run_flow` não carrega origem nem contexto,
- * e a cascata do robô sairia da D5) e preencher campo de data vigiado por
- * lembrete (o cron dispararia aquela automação depois — 5.6, Codex #292).
- * O "Aguardar" NÃO está aqui: ele só conta na automação que a IA executa
- * (`motivoForaDaD5`), não na cascata.
+ * o card nela), iniciar robô (o `run_flow` não carrega origem nem contexto)
+ * e preencher campo de data vigiado por lembrete (o cron dispararia aquela
+ * automação depois — 5.6, Codex #292). O "Aguardar" é conferido à parte
+ * (`motivoForaDaD5`).
  */
-export function motivoDoPasso(p: PassoDaAutomacao, regua: Pick<ReguaDaD5, 'etapasDeResultado' | 'camposVigiados'>): MotivoForaDaD5 | null {
+export function motivoDoPasso(p: PassoDaAutomacao, regua: ReguaDaD5): MotivoForaDaD5 | null {
   switch (p.tipo) {
     case 'send_to_number':
       return 'send_to_number'
@@ -550,167 +925,71 @@ export function motivoDoPasso(p: PassoDaAutomacao, regua: Pick<ReguaDaD5, 'etapa
   }
 }
 
-/** As automações que a entrada do card NESTA etapa dispara. */
-export function automacoesDaEtapa(etapa: string, cascata: GatilhosDaCascata): string[] {
-  return cascata.deEtapa.filter((a) => a.etapas.length === 0 || a.etapas.includes(etapa)).map((a) => a.id)
-}
-
-/** As automações que aplicar ESTA etiqueta dispara. */
-export function automacoesDaEtiqueta(etiqueta: string, cascata: GatilhosDaCascata): string[] {
-  return cascata.deEtiqueta.filter((a) => a.etiqueta === etiqueta).map((a) => a.id)
-}
-
-/** Uma automação a percorrer: `direta` = a que a IA executa (ou uma que ela aciona por `run_automation`). */
-interface Visita {
-  id: string
-  direta: boolean
-}
-
 /**
- * As automações que os passos de UMA automação alcançam: as que ela aciona
- * (`run_automation`, no MESMO modo) e a cascata (sempre indireta) — a entrada
- * do card na etapa do "Mover card"/"Criar negócio" e a etiqueta do
- * "Adicionar etiqueta". Passo sem etapa ou sem etiqueta não dispara nada (o
- * motor o recusa).
- */
-function vizinhas(passos: readonly PassoDaAutomacao[], direta: boolean, cascata: GatilhosDaCascata): Visita[] {
-  const saida: Visita[] = []
-  for (const p of passos) {
-    if (p.tipo === 'run_automation') {
-      const alvo = texto(p.config.automation_id)
-      if (alvo) saida.push({ id: alvo, direta })
-    } else if (p.tipo === 'move_deal_stage' || p.tipo === 'create_deal') {
-      const etapa = texto(p.config.stage_id)
-      if (etapa) saida.push(...automacoesDaEtapa(etapa, cascata).map((id) => ({ id, direta: false })))
-    } else if (p.tipo === 'add_tag') {
-      const etiqueta = texto(p.config.tag_id)
-      if (etiqueta) saida.push(...automacoesDaEtiqueta(etiqueta, cascata).map((id) => ({ id, direta: false })))
-    }
-  }
-  return saida
-}
-
-/**
- * Percorre a partir das sementes, com TRAVA DE CICLO (A aciona B, B aciona
- * A; a etiqueta de A dispara A). Uma automação já vista como DIRETA não é
- * vista de novo; vista só pela cascata, é vista de novo como direta (o
- * "Aguardar" conta ali). `aoVisitar` devolve o motivo que para tudo.
+ * Percorre as automações a partir das raízes, seguindo SÓ o `run_automation`
+ * (o agente agindo: a automação que ele executa aciona outra), com TRAVA DE
+ * CICLO (A aciona B, B aciona A). `aoVisitar` devolve o motivo que para tudo.
  * Automação sem passos no mapa (de outra conta, apagada, ainda não lida) não
  * é percorrida.
  */
 function percorrer(
-  sementes: readonly Visita[],
+  raizes: readonly string[],
   passosDe: ReadonlyMap<string, readonly PassoDaAutomacao[]>,
-  cascata: GatilhosDaCascata,
-  aoVisitar: (v: Visita, passos: readonly PassoDaAutomacao[] | undefined) => MotivoForaDaD5 | null,
+  aoVisitar: (id: string, passos: readonly PassoDaAutomacao[] | undefined) => MotivoForaDaD5 | null,
 ): MotivoForaDaD5 | null {
   const vistas = new Set<string>()
-  const pilha = [...sementes].reverse()
+  const pilha = [...raizes].reverse()
   while (pilha.length > 0) {
-    const v = pilha.pop() as Visita
-    if (vistas.has(`${v.id}|d`) || vistas.has(`${v.id}|${v.direta ? 'd' : 'c'}`)) continue
-    vistas.add(`${v.id}|${v.direta ? 'd' : 'c'}`)
-    const passos = passosDe.get(v.id)
-    const motivo = aoVisitar(v, passos)
+    const id = pilha.pop() as string
+    if (vistas.has(id)) continue
+    vistas.add(id)
+    const passos = passosDe.get(id)
+    const motivo = aoVisitar(id, passos)
     if (motivo) return motivo
-    if (passos) pilha.push(...vizinhas(passos, v.direta, cascata).reverse())
+    const acionadas = (passos ?? [])
+      .filter((p) => p.tipo === 'run_automation')
+      .map((p) => texto(p.config.automation_id))
+      .filter((alvo): alvo is string => alvo !== null)
+    pilha.push(...acionadas.reverse())
   }
   return null
 }
 
-function motivoDasSementes(
-  sementes: readonly Visita[],
-  passosDe: ReadonlyMap<string, readonly PassoDaAutomacao[]>,
-  regua: ReguaDaD5,
-): MotivoForaDaD5 | null {
-  return percorrer(sementes, passosDe, regua.cascata, (v, passos) => {
-    for (const p of passos ?? []) {
-      const motivo = motivoDoPasso(p, regua)
-      if (motivo) return motivo
-      // ⚠️ Só na automação que a IA executa (e nas que ela aciona): a
-      // retomada do "Aguardar" não confere a pausa nem o agente. Na cascata
-      // da etapa, a sequência é da ETAPA — como quando gente move o card.
-      if (v.direta && p.tipo === 'wait') return 'aguardar'
-    }
-    return null
-  })
-}
-
 /**
- * O primeiro passo fora da D5 da automação `raiz` que a IA EXECUTA, das que
- * ela aciona (`run_automation`) e da cascata que os passos disparam (a
- * automação da etapa em que o "Mover card" põe o card, a da etiqueta que o
- * "Adicionar etiqueta" aplica — e assim por diante), com trava de ciclo.
- * O "Aguardar" conta só na raiz e nas que ela aciona.
+ * O primeiro passo fora da D5 da automação `raiz` que a IA EXECUTA e das que
+ * ela aciona (`run_automation`), com trava de ciclo — inclusive o "Aguardar"
+ * (a retomada não confere a pausa nem o agente). Um "Mover card" ou
+ * "Adicionar etiqueta" dela NÃO puxa as automações da etapa ou da etiqueta:
+ * a D5 vale só para o que o agente faz (27/09/2026).
  */
 export function motivoForaDaD5(
   raiz: string,
   passosDe: ReadonlyMap<string, readonly PassoDaAutomacao[]>,
   regua: ReguaDaD5,
 ): MotivoForaDaD5 | null {
-  return motivoDasSementes([{ id: raiz, direta: true }], passosDe, regua)
+  return percorrer([raiz], passosDe, (_id, passos) => {
+    for (const p of passos ?? []) {
+      const motivo = motivoDoPasso(p, regua)
+      if (motivo) return motivo
+      if (p.tipo === 'wait') return 'aguardar'
+    }
+    return null
+  })
 }
 
 /**
- * A D5 da ETAPA para onde a IA move o card: o primeiro passo fora da D5 nas
- * automações ligadas que a entrada nela dispara (e na cascata delas). É o
- * mesmo que a IA fazer aquilo com as próprias mãos.
- */
-export function motivoDaEtapa(
-  etapa: string,
-  passosDe: ReadonlyMap<string, readonly PassoDaAutomacao[]>,
-  regua: ReguaDaD5,
-): MotivoForaDaD5 | null {
-  return motivoDasSementes(
-    automacoesDaEtapa(etapa, regua.cascata).map((id) => ({ id, direta: false })),
-    passosDe,
-    regua,
-  )
-}
-
-/** A D5 da ETIQUETA que a IA aplica, pela cascata de `tag_added`. Tirar não tem cascata. */
-export function motivoDaEtiqueta(
-  etiqueta: string,
-  passosDe: ReadonlyMap<string, readonly PassoDaAutomacao[]>,
-  regua: ReguaDaD5,
-): MotivoForaDaD5 | null {
-  return motivoDasSementes(
-    automacoesDaEtiqueta(etiqueta, regua.cascata).map((id) => ({ id, direta: false })),
-    passosDe,
-    regua,
-  )
-}
-
-/** De onde a régua parte: a automação executada, a etapa para onde move, a etiqueta que aplica. */
-export interface OrigensDaD5 {
-  automacoes?: readonly string[]
-  etapas?: readonly string[]
-  etiquetas?: readonly string[]
-}
-
-/** As sementes de cada origem (o que a régua percorre a partir dela). */
-function sementesDe(origens: OrigensDaD5, cascata: GatilhosDaCascata): Visita[] {
-  return [
-    ...(origens.automacoes ?? []).map((id) => ({ id, direta: true })),
-    ...(origens.etapas ?? []).flatMap((e) => automacoesDaEtapa(e, cascata).map((id) => ({ id, direta: false }))),
-    ...(origens.etiquetas ?? []).flatMap((t) => automacoesDaEtiqueta(t, cascata).map((id) => ({ id, direta: false }))),
-  ]
-}
-
-/**
- * TODAS as automações que a régua percorreria a partir das origens, com os
+ * TODAS as automações que a régua percorreria a partir das raízes, com os
  * passos que já se conhece. Quem lê o banco camada por camada chama de novo
  * até não aparecer automação nova (`ferramentas.ts`): as arestas são as
- * MESMAS da régua (`vizinhas`), então o que ela percorre está lido.
+ * MESMAS da régua (`percorrer`), então o que ela percorre está lido.
  */
 export function automacoesAlcancaveis(
-  origens: OrigensDaD5,
+  raizes: readonly string[],
   passosDe: ReadonlyMap<string, readonly PassoDaAutomacao[]>,
-  cascata: GatilhosDaCascata,
 ): Set<string> {
   const alcancadas = new Set<string>()
-  percorrer(sementesDe(origens, cascata), passosDe, cascata, (v) => {
-    alcancadas.add(v.id)
+  percorrer(raizes, passosDe, (id) => {
+    alcancadas.add(id)
     return null
   })
   return alcancadas
@@ -740,31 +1019,6 @@ export function camposVigiados(
   return vigiados
 }
 
-/**
- * Quem a cascata dispara, pelas automações LIGADAS de etapa e de etiqueta
- * (a mesma leitura de `triggerMatches`: etapa sem lista = qualquer etapa;
- * etiqueta sem `tag_id` = nunca). As outras ficam de fora.
- */
-export function gatilhosDaCascata(
-  automacoes: ReadonlyArray<{ id: string; trigger_type: string; trigger_config: unknown; is_active: boolean }>,
-): GatilhosDaCascata {
-  const deEtapa: Array<{ id: string; etapas: string[] }> = []
-  const deEtiqueta: Array<{ id: string; etiqueta: string }> = []
-  for (const a of automacoes) {
-    if (!a.is_active) continue
-    const cfg =
-      a.trigger_config && typeof a.trigger_config === 'object' ? (a.trigger_config as Record<string, unknown>) : {}
-    if (a.trigger_type === 'deal_stage_changed') {
-      const etapas = Array.isArray(cfg.stage_ids) ? cfg.stage_ids.filter((e): e is string => typeof e === 'string') : []
-      deEtapa.push({ id: a.id, etapas })
-    } else if (a.trigger_type === 'tag_added') {
-      const etiqueta = texto(cfg.tag_id)
-      if (etiqueta) deEtiqueta.push({ id: a.id, etiqueta })
-    }
-  }
-  return { deEtapa, deEtiqueta }
-}
-
 // ------------------------------------------------------------
 // O registro das ações do turno (`cb_ia_turnos.acoes`)
 // ------------------------------------------------------------
@@ -783,6 +1037,8 @@ export const CODIGOS_DE_FALHA_DA_ACAO = [
   'valor_invalido',
   'titulo_invalido',
   'automacao_fora_da_d5',
+  // Não é mais produzido (a D5 deixou de percorrer a cascata em 27/09/2026):
+  // fica para a aba Turnos traduzir os registros antigos.
   'cascata_fora_da_d5',
   'automacao_desligada',
   'fora_da_conexao',

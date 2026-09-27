@@ -54,7 +54,9 @@
 //    transferência VENCEM (as ações não executam) — inclusive o sentinela
 //    escrito de outro jeito (`[[ handoff ]]`); resposta sem texto além dos
 //    marcadores transfere; link que não veio do pedido nem da conversa RETÉM
-//    a resposta e transfere (`link_inventado`, com os links no `erro`). As
+//    a resposta e transfere (`link_inventado`, com os links no `erro`), e a
+//    resposta que diz que marcou a reunião SEM o marcador (com horários
+//    oferecidos) também (`reuniao_prometida`, com o texto no `erro`). As
 //    ações executam DEPOIS de a resposta SAIR (`executar-acoes.ts`): reserva
 //    recusada, envio recusado ou incerto = nada executa — a ação não acontece
 //    sem a resposta que a explica, e a automação que ela dispara não fala
@@ -71,6 +73,14 @@
 //    ou falhou) = o turno TRANSFERE para gente, com a anotação do motivo —
 //    a resposta já prometeu —, sem mudar o desfecho `respondeu`; com a
 //    conversa já pausada, só a anotação.
+//  - "RESPONDA E PASSE" (`[[TRANSFERIR]]`, 27/09/2026): sempre disponível,
+//    sem configuração. A resposta sai e, DEPOIS das ações, o turno transfere
+//    (`agente_passou`), com o desfecho `respondeu` — o `[[HANDOFF]]` é para
+//    quando nada deve ser dito. Perde para o sentinela, a passagem e as
+//    travas (que não enviam); sem texto além dos marcadores, transfere sem
+//    enviar; envio recusado ou incerto = não roda. A resposta que PROMETE a
+//    equipe sem o marcador (`equipePrometida`) vale como se ele estivesse lá
+//    (`detalhe: 'sem_marcador'` no registro).
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -97,11 +107,14 @@ import { transcreverAudio } from '@/lib/transcricao/transcrever'
 
 import { lerOQueOAgenteVe } from './acesso'
 import {
+  ACAO_TRANSFERIR,
+  equipePrometida,
   lerAcoes,
   linksInventados,
   registroDaRecusa,
   resolverAcoes,
   reuniaoNaoMarcada,
+  reuniaoPrometida,
   type RegistroDeAcao,
 } from './acoes'
 import type { IaAgente } from './agente'
@@ -162,7 +175,7 @@ interface Gatilho {
 /** Como o turno termina. `abandonado` = a posse foi perdida: nada se escreve. */
 export type Desfecho =
   | { status: 'respondeu'; mensagemEnviadaId: string; erro?: string }
-  /** `erro`: o que vai para `cb_ia_turnos.erro` no lugar do motivo (os links inventados). */
+  /** `erro`: o que vai para `cb_ia_turnos.erro` no lugar do motivo (os links inventados, o texto retido da reunião prometida). */
   | { status: 'transferiu'; motivo: MotivoDeTransferencia; erro?: string }
   | { status: 'incerto'; erro: string }
   | {
@@ -823,6 +836,35 @@ export function nadaSaiu(err: unknown, tentou: boolean): boolean {
   return recusaComprovada(err)
 }
 
+/**
+ * O nome atual da ficha, para a origem do nome da reunião (`nomeComOrigem`).
+ * Falha ou sem contato = nulo: a origem fica só a conversa (o nome cai se
+ * não estiver nela — o lado seguro).
+ */
+async function lerNomeDaFicha(db: SupabaseClient, accountId: string, contactId: string | null): Promise<string | null> {
+  if (!contactId) return null
+  try {
+    const { data, error } = await db
+      .from('contacts')
+      .select('name')
+      .eq('account_id', accountId)
+      .eq('id', contactId)
+      .maybeSingle()
+    if (error) return null
+    const nome = (data as { name?: unknown } | null)?.name
+    return typeof nome === 'string' ? nome : null
+  } catch {
+    return null
+  }
+}
+
+/** Teto do texto RETIDO que vai ao `erro` do turno (a reunião prometida): a aba Turnos o mostra. */
+const TETO_DO_TEXTO_RETIDO = 1_000
+
+function textoRetido(texto: string): string {
+  return texto.length > TETO_DO_TEXTO_RETIDO ? `${texto.slice(0, TETO_DO_TEXTO_RETIDO)}…` : texto
+}
+
 function configDoAgente(agente: IaAgente, apiKey: string): AiConfig {
   return {
     provider: agente.provedor,
@@ -1027,6 +1069,10 @@ async function conduzir(
     handoff = r.handoff
     andamento.usage = r.usage
   } catch (err) {
+    // Toda falha da geração termina aqui, sem enviar nada e sem transferir
+    // (E8) — inclusive a resposta CORTADA pelo teto de tokens
+    // (`output_truncated`): o texto pela metade nunca chega ao cliente, e a
+    // próxima mensagem dele abre um turno novo.
     return {
       status: 'falhou',
       erro: err instanceof AiError ? mensagemSeguraDeAiError(err) : 'erro inesperado ao gerar',
@@ -1052,13 +1098,42 @@ async function conduzir(
   // transferência, passagem ou envio que não saiu — vai para o registro com o
   // motivo, como o Playground mostra.
   const lidas = lerAcoes(texto)
-  const { aceitas, recusadas } = resolverAcoes(lidas.pedidas, opcoesDeAcao)
+  // O nome da reunião (`[[REUNIAO:n=Nome]]`) só passa com ORIGEM: o que o
+  // cliente escreveu, ou o nome atual da ficha — lido só quando há nome.
+  const { aceitas, recusadas } = resolverAcoes(lidas.pedidas, opcoesDeAcao, {
+    mensagensDoCliente: conversa.filter((m) => m.role === 'user').map((m) => m.content),
+    nomeDaFicha: lidas.pedidas.some((p) => p.tipo === 'marcar_reuniao' && p.valor)
+      ? await lerNomeDaFicha(db, turno.account_id, primeira.contactId)
+      : null,
+  })
   const recusasDaLeitura = [...lidas.recusadas, ...recusadas].map(registroDaRecusa)
+  // A EQUIPE PROMETIDA sem o marcador (27/09/2026): a resposta diz que uma
+  // pessoa vai assumir ou procurar o cliente e o modelo esqueceu o
+  // `[[TRANSFERIR]]` (medido: 2 de 4 turnos). Vale como se o marcador
+  // estivesse lá — a resposta sai e a conversa vai para a equipe —, com
+  // `detalhe: 'sem_marcador'` no registro para medir o esquecimento. Com o
+  // sentinela, a passagem ou o próprio marcador, nem se pergunta.
+  const transferenciaInferida =
+    !handoff &&
+    !lidas.transferir &&
+    !lidas.transferirDepois &&
+    lerPassagem(texto) === null &&
+    equipePrometida(lidas.texto)
+  const transferirDepois = lidas.transferirDepois || transferenciaInferida
+  const linhaDaTransferencia = (r: Omit<RegistroDeAcao, 'tipo' | 'alvo'>): RegistroDeAcao => ({
+    tipo: ACAO_TRANSFERIR,
+    alvo: { id: null, nome: '' },
+    ...r,
+    ...(transferenciaInferida ? { detalhe: 'sem_marcador' } : {}),
+  })
+  // O `[[TRANSFERIR]]` entra no registro como mais uma linha (sem alvo): ele
+  // só roda com a resposta FORA, como as ações.
   const naoExecutadas = (erro: 'passagem' | 'transferencia' | 'envio_falhou'): RegistroDeAcao[] | null =>
-    aceitas.length + recusasDaLeitura.length === 0
+    aceitas.length + recusasDaLeitura.length === 0 && !transferirDepois
       ? null
       : [
           ...aceitas.map((a) => ({ tipo: a.tipo, alvo: { id: a.id, nome: a.nome }, ok: false, erro })),
+          ...(transferirDepois ? [linhaDaTransferencia({ ok: false, erro })] : []),
           ...recusasDaLeitura,
         ]
 
@@ -1081,6 +1156,20 @@ async function conduzir(
     if (inventados.length > 0) {
       andamento.acoes = naoExecutadas('transferencia')
       return { status: 'transferiu', motivo: 'link_inventado', erro: `link inventado: ${inventados.join(' ')}` }
+    }
+    // A reunião PROMETIDA sem o marcador (F5, 27/09/2026): com horários
+    // oferecidos, a resposta diz "marquei/confirmada" e nada foi marcado. É
+    // RETIDA (o cliente receberia uma confirmação falsa), e o texto vai para o
+    // `erro` do turno — a equipe vê o que seria enviado.
+    if (
+      reuniaoPrometida({
+        texto: lidas.texto,
+        horariosOferecidos: opcoesDeAcao.marcar_reuniao?.length ?? 0,
+        aceitas,
+      })
+    ) {
+      andamento.acoes = naoExecutadas('transferencia')
+      return { status: 'transferiu', motivo: 'reuniao_prometida', erro: `reunião prometida sem marcar: ${textoRetido(lidas.texto)}` }
     }
   }
 
@@ -1248,6 +1337,31 @@ async function conduzir(
         console.error('[ia-agentes] anotar a reunião não marcada (conversa já pausada) falhou:', err)
       }
     }
+  }
+
+  // "Responda e passe para a equipe" (`[[TRANSFERIR]]`, 27/09/2026): com a
+  // resposta FORA — o cliente já leu que a equipe vai continuar —, a conversa
+  // vai para gente pelo caminho da F2 (pausa, atribui, anota), com o desfecho
+  // `respondeu`. Depois da reunião não marcada: se ela já transferiu, esta
+  // encontra a conversa pausada (`nada_mudou`, sem segunda anotação). A
+  // equipe prometida sem o marcador entra aqui também (`sem_marcador`).
+  if (transferirDepois) {
+    const transferencia = await transferirParaGente(db, {
+      accountId: turno.account_id,
+      conversationId: turno.conversation_id,
+      contactId,
+      nomeDoAgente: agente.nome,
+      transferirPara: agente.transferirPara,
+      motivo: 'agente_passou',
+    })
+    // A inferida leva `sem_marcador` mesmo no `nada_mudou`: é a medida do esquecimento.
+    const linha =
+      transferencia === 'transferiu'
+        ? linhaDaTransferencia({ ok: true })
+        : transferencia === 'nada_mudou'
+          ? linhaDaTransferencia({ ok: true, detalhe: 'ja_estava' })
+          : linhaDaTransferencia({ ok: false, erro: 'falhou' })
+    andamento.acoes = [...(andamento.acoes ?? []), linha]
   }
   return enviado
 }

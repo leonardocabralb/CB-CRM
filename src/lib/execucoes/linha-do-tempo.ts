@@ -9,7 +9,15 @@
 //               status e o detalhe em texto do motor);
 //   atual     — a própria espera (`run_at` — a tela já formata "acorda em X");
 //   próximos  — `automation_steps` do MESMO escopo da espera (mesmo
-//               parent/branch), de `next_step_position` em diante.
+//               parent/branch), de onde a RETOMADA vai começar em diante.
+//
+// ⚠️ "Onde a retomada vai começar" é a MESMA régua do motor
+// (`decidirRetomada`, `lib/automations/retomada.ts`), nunca
+// `next_step_position` cru (26/09/2026): depois que o operador salva a
+// automação com a execução parada, a posição gravada pode apontar para outro
+// passo, e o passo onde ela parou pode nem existir mais. Aí a espera NÃO
+// retoma (falha visível ao acordar), e a linha diz isso (`naoRetoma`) em vez
+// de listar passos que não vão rodar.
 //
 // ⚠️ Passo futuro dentro de RAMO de condição não é listado: qual ramo vai
 // rodar depende de dado que só existe na hora. A linha mostra a condição em
@@ -24,6 +32,7 @@ import {
   descreverPasso,
   type NomesConhecidos,
 } from '@/lib/automations/descrever-passo'
+import { decidirRetomada, type PassoDaFila } from '@/lib/automations/retomada'
 
 /** Linha crua de `automation_steps`, como o GET a entrega. */
 export interface PassoDaAutomacao {
@@ -48,6 +57,8 @@ export interface EsperaDeReferencia {
   next_step_position: number
   parent_step_id: string | null
   branch: 'yes' | 'no' | null
+  /** O passo que estacionou (`retomada.ts`); ausente na espera antiga. */
+  passo_da_fila?: PassoDaFila | null
 }
 
 export interface ItemDaLinha {
@@ -65,6 +76,12 @@ export interface ItemDaLinha {
 export interface LinhaDoTempo {
   feitos: ItemDaLinha[]
   proximos: ItemDaLinha[]
+  /**
+   * A automação foi editada e o passo onde esta espera parou sumiu (ou foi
+   * para outro ramo): ao acordar ela FALHA, com o motivo no registro, em vez
+   * de retomar. `proximos` vem vazio. Ausente = retoma normalmente.
+   */
+  naoRetoma?: true
 }
 
 const ESTADO_POR_STATUS = {
@@ -97,12 +114,25 @@ export function montarLinhaDoTempo(args: {
     }
   })
 
+  // A MESMA decisão da retomada (ver o cabeçalho). `passos` são os desta
+  // automação, então o passo gravado é procurado entre eles.
+  const gravado = espera.passo_da_fila ?? null
+  const agora = gravado ? porId.get(gravado.id) : undefined
+  const retomada = decidirRetomada(
+    { ...espera, context: null },
+    gravado,
+    agora
+      ? { parent_step_id: agora.parent_step_id, branch: agora.branch, position: agora.position }
+      : null,
+  )
+  if (retomada.tipo === 'parar') return { feitos, proximos: [], naoRetoma: true }
+
   const proximos: ItemDaLinha[] = passos
     .filter(
       (p) =>
         p.parent_step_id === espera.parent_step_id &&
         p.branch === espera.branch &&
-        p.position >= espera.next_step_position,
+        p.position >= retomada.posicao,
     )
     .sort((a, b) => a.position - b.position)
     .map((p) => {

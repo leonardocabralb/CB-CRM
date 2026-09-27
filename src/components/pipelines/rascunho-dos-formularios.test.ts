@@ -81,6 +81,16 @@ describe("Gerenciar funil", () => {
     expect(settings).toContain(`readOnly={situacao !== "pronto"}`);
   });
 
+  it("o painel do funil (1054) vem do banco junto com o nome e volta normalizado no mesmo UPDATE", () => {
+    // Semeado de outro lugar (a prop `pipeline`), ele seria o de antes do
+    // último salvamento; e o formulário só existe com a leitura pronta —
+    // antes dela o rascunho é o padrão, e salvar o gravaria por cima.
+    expect(settings).toContain(`.select("name, painel")`);
+    expect(settings).toContain("setPainel(lerPainel(lido.painel));");
+    expect(settings).toContain(".update({ name: name.trim(), painel: escreverPainel(painel) })");
+    expect(settings).toMatch(/\{situacao === "pronto" && \(\s*<details/);
+  });
+
   it("enquanto carrega, nada afirma nem grava", () => {
     // Lista vazia durante a carga pareceria funil sem etapa: "Adicionar"
     // gravaria na posição 0, e o aviso de Lead acenderia sobre nada.

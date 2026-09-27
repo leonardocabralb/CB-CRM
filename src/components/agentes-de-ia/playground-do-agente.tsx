@@ -18,7 +18,11 @@
 // amanhã"), e as que o servidor recusou (número fora da lista, item não
 // liberado) também. Link
 // que não veio do pedido (`linkInventado`) ganha o aviso: em produção a
-// resposta seria retida e a conversa iria para uma pessoa.
+// resposta seria retida e a conversa iria para uma pessoa. O mesmo para a
+// resposta que diz que marcou a reunião SEM o marcador (`reuniaoPrometida`,
+// 27/09/2026). A transferência que a resposta prometeu sem o `[[TRANSFERIR]]`
+// aparece entre as simuladas, com o aviso de que foi inferida
+// (`transferenciaInferida`).
 //
 // F5 (D7): com "Marcar reunião" ligado, a rota lê os horários livres do
 // Calendly AO VIVO e devolve os que foram oferecidos ao modelo
@@ -32,7 +36,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { Ban, Bot, CalendarClock, Eye, Link2Off, Loader2, RotateCcw, Send, UserCircle2, Wrench, X } from 'lucide-react';
+import { Ban, Bot, CalendarClock, CalendarX, Eye, Link2Off, Loader2, RotateCcw, Send, UserCircle2, Wrench, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/use-auth';
@@ -72,13 +76,21 @@ interface Turno {
   acoes?: AcoesSimuladas;
   /** Só do agente: a resposta tem um link que não veio do pedido (F4). */
   linkInventado?: boolean;
+  /** Só do agente: a resposta diz que marcou a reunião sem o marcador (F5, 27/09). */
+  reuniaoPrometida?: boolean;
+  /** Só do agente: a resposta prometeu a equipe sem o `[[TRANSFERIR]]` — a transferência simulada foi inferida (27/09). */
+  transferenciaInferida?: boolean;
   /** Só do agente: os horários livres oferecidos ao modelo (F5); nulo = nada a mostrar. */
   horarios?: HorarioOferecido[] | null;
 }
 
-/** A resposta tem algo das ações (F4) a mostrar: link inventado, ação aceita ou recusada. */
+/** A resposta tem algo das ações (F4) a mostrar: link inventado, reunião prometida, ação aceita ou recusada. */
 function temAvisoDeAcao(x: Turno): boolean {
-  return x.linkInventado === true || (!!x.acoes && (x.acoes.aceitas.length > 0 || x.acoes.recusadas.length > 0));
+  return (
+    x.linkInventado === true ||
+    x.reuniaoPrometida === true ||
+    (!!x.acoes && (x.acoes.aceitas.length > 0 || x.acoes.recusadas.length > 0))
+  );
 }
 
 export function PlaygroundDoAgente({
@@ -135,6 +147,8 @@ export function PlaygroundDoAgente({
         vistos?: unknown;
         acoes?: unknown;
         linkInventado?: boolean;
+        reuniaoPrometida?: boolean;
+        transferenciaInferida?: boolean;
         horarios?: unknown;
         code?: string;
         error?: string;
@@ -156,6 +170,8 @@ export function PlaygroundDoAgente({
           vistos: lerVistos(corpo.vistos),
           acoes: lerAcoesSimuladas(corpo.acoes),
           linkInventado: corpo.linkInventado === true,
+          reuniaoPrometida: corpo.reuniaoPrometida === true,
+          transferenciaInferida: corpo.transferenciaInferida === true,
           horarios: lerHorariosOferecidos(corpo.horarios),
         },
       ]);
@@ -269,6 +285,18 @@ export function PlaygroundDoAgente({
                       <p className="flex items-start gap-1 text-red-700 dark:text-red-300">
                         <Link2Off className="mt-px size-3.5 shrink-0" />
                         <span>{t('playground.linkInventado')}</span>
+                      </p>
+                    ) : null}
+                    {x.transferenciaInferida ? (
+                      <p className="flex items-start gap-1 text-amber-700 dark:text-amber-300">
+                        <UserCircle2 className="mt-px size-3.5 shrink-0" />
+                        <span>{t('playground.transferenciaInferida')}</span>
+                      </p>
+                    ) : null}
+                    {x.reuniaoPrometida ? (
+                      <p className="flex items-start gap-1 text-red-700 dark:text-red-300">
+                        <CalendarX className="mt-px size-3.5 shrink-0" />
+                        <span>{t('playground.reuniaoPrometida')}</span>
                       </p>
                     ) : null}
                     {x.acoes && x.acoes.aceitas.length > 0 ? (

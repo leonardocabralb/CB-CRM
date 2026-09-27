@@ -19,11 +19,12 @@
 // mensagem de erro do cliente já passa por `semSegredo`, e aqui só se loga o
 // código e a mensagem limpa.
 //
-// ⚠️⚠️ Marcar a reunião é a EXCEÇÃO à D5 pela cascata (plano, 5.6, passo 4):
-// o Calendly entrega o `invitee.created` ao nosso webhook e a automação do
-// tipo de evento roda como quando o PRÓPRIO cliente agenda pelo link — pode
-// avisar o advogado por outro número (`send_to_number`) e mover o card. É o
-// que se quer: o agente só faz pelo cliente o que o link faria.
+// ⚠️⚠️ O Calendly entrega o `invitee.created` ao nosso webhook e a automação
+// do tipo de evento roda como quando o PRÓPRIO cliente agenda pelo link —
+// pode avisar o advogado por outro número (`send_to_number`) e mover o card.
+// É o que se quer: o agente só faz pelo cliente o que o link faria (e, desde
+// 27/09/2026, a D5 vale só para o que o agente faz — nenhuma automação que
+// uma ação dispara é conferida).
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -346,18 +347,19 @@ function falhaDoCalendly(e: unknown): Extract<ResultadoDoAgendamento, { ok: fals
 /**
  * Marca a reunião no Calendly em nome do cliente do turno (`POST /invitees`),
  * no tipo de evento liberado e no horário ESCOLHIDO (o `id` de uma opção que
- * o servidor leu — nunca um horário vindo do modelo). Nome da ficha (sem
- * nome, o telefone ou o `@`), o e-mail relido AGORA (`emailDoCliente`), o
+ * o servidor leu — nunca um horário vindo do modelo). O nome completo que o
+ * cliente deu (`nome`, do marcador `[[REUNIAO:n=Nome]]`), senão o da ficha
+ * (sem nome, o telefone ou o `@`), o e-mail relido AGORA (`emailDoCliente`), o
  * fuso do escritório, o telefone para o lembrete por SMS, e o local do tipo
  * de evento lido na hora. Nunca lança.
  *
  * ⚠️ Não mexe no card, nos campos nem nos lembretes: o Calendly entrega o
  * `invitee.created` ao nosso webhook e a automação do Calendly faz o resto,
- * como quando o cliente agenda pelo link (a exceção da D5 pela cascata).
+ * como quando o cliente agenda pelo link.
  */
 export async function marcarNoCalendly(
   db: SupabaseClient,
-  args: { accountId: string; contactId: string; tipoDeEvento: string; inicio: string },
+  args: { accountId: string; contactId: string; tipoDeEvento: string; inicio: string; nome?: string | null },
   deps: DependenciasDaAgenda = {},
 ): Promise<ResultadoDoAgendamento> {
   try {
@@ -403,6 +405,7 @@ export async function marcarNoCalendly(
       tipoDeEvento: args.tipoDeEvento,
       inicio: args.inicio,
       nome: nomeDoContato(c, email),
+      nomeInformado: args.nome ?? null,
       email,
       telefone: c.phone,
       local: tipo.local,

@@ -60,6 +60,14 @@ const h = vi.hoisted(() => ({
      * conversa (a leitura volta sem linha).
      */
     responsavelDaConversa: undefined as string | null | undefined,
+    /**
+     * A condição por campo personalizado (Fase 2.10): o valor que o contato
+     * tem no campo (`undefined` = sem linha em `contact_custom_values`), um
+     * erro nas leituras, e os filtros com que o campo foi lido.
+     */
+    valorDoCampo: undefined as string | null | undefined,
+    erroNaCondicaoDoCampo: null as string | null,
+    leiturasDoCampo: [] as [string, string, unknown][][],
     /** A linha que a condição da janela de 24h lê (Fase 2.8). `null` = sem linha. */
     conversaDaJanela: null as { group_id: string | null; janela_meta: Record<string, string> | null } | null,
     /** Mensagens do CLIENTE gravadas depois de a espera ser estacionada. */
@@ -86,6 +94,12 @@ const h = vi.hoisted(() => ({
     /** Preenchido, a consulta de automações DESTE gatilho devolve o erro. */
     erroPorGatilho: {} as Record<string, string>,
     steps: [] as Record<string, unknown>[],
+    /**
+     * Os passos que a GRAVAÇÃO do construtor apagou (`replaceSteps`), com a
+     * CASCADE dos ramos — é por eles que o teste encena a FK `ON DELETE SET
+     * NULL` de `automation_pending_executions.parent_step_id`.
+     */
+    passosApagados: new Set<string>(),
     /** Liga o recorte dos passos por `automation_id` (duas automações no mesmo teste). */
     passosPorAutomacao: false,
     /** A etiqueta que a conferência de posse de `addContactTagIfAbsent` acha em `tags`. */
@@ -136,6 +150,8 @@ vi.mock('./admin-client', () => {
     recorte?: [string, string, unknown][];
     limite?: number;
     colunas: string;
+    /** `.single()`/`.maybeSingle()` — UMA linha, como o PostgREST. */
+    unico?: boolean;
   }) {
     const { table, type } = ops;
     if (table === 'contacts') {
@@ -181,6 +197,9 @@ vi.mock('./admin-client', () => {
         const casaContato = !contato || donoContato === undefined || contato[2] === donoContato;
         return { data: casaConta && casaContato ? { id: porId[2], ...state.conversaLida } : null, error: null };
       }
+      // Leitura de UMA linha pelo contato (`resolveConversationId` sem
+      // conversa no contexto): a primeira da lista, como o `maybeSingle`.
+      if (ops.unico) return { data: state.conversasDoContato[0] ?? null, error: null };
       return { data: state.conversasDoContato.length > 0 ? state.conversasDoContato : null, error: null };
     }
     if (table === 'messages') {
@@ -194,6 +213,15 @@ vi.mock('./admin-client', () => {
       return { data: state.membros, error: null };
     }
     if (table === 'custom_fields') {
+      // A condição por campo (2.10) lê SÓ o tipo — e a conta tem de estar no
+      // filtro: sem ela, o campo de outra conta viraria oráculo.
+      if (ops.colunas === 'field_type') {
+        state.leiturasDoCampo.push(ops.filters);
+        if (state.erroNaCondicaoDoCampo) return { data: null, error: { message: state.erroNaCondicaoDoCampo } };
+        const f = state.ownedCustomField;
+        const pediuConta = ops.filters.some(([op, k, v]) => op === 'eq' && k === 'account_id' && v === 'acct-1');
+        return { data: f && pediuConta ? { field_type: f.field_type ?? 'text' } : null, error: null };
+      }
       // account-scoped ownership lookup for a custom field definition
       // `field_type` só volta quando a consulta o PEDE, como no PostgREST:
       // tirá-lo do select desliga a forma canônica da data sem erro nenhum.
@@ -206,6 +234,10 @@ vi.mock('./admin-client', () => {
       };
     }
     if (table === 'contact_custom_values') {
+      if (type === 'select' && ops.colunas === 'value') {
+        if (state.erroNaCondicaoDoCampo) return { data: null, error: { message: state.erroNaCondicaoDoCampo } };
+        return { data: state.valorDoCampo === undefined ? null : { value: state.valorDoCampo }, error: null };
+      }
       if (type === 'upsert') {
         state.upsertCalls.push({ table, payload: ops.payload });
         return { data: null, error: null };
@@ -365,6 +397,43 @@ vi.mock('./admin-client', () => {
       };
     }
     if (table === 'automation_steps') {
+      // A GRAVAÇÃO do construtor (`replaceSteps`, 26/09/2026): o upsert por
+      // `id` e o DELETE dos que saíram, com a CASCADE da FK dos ramos.
+      if (type === 'upsert') {
+        for (const linha of ops.payload as Record<string, unknown>[]) {
+          const i = state.steps.findIndex((p) => p.id === linha.id);
+          if (i >= 0) state.steps[i] = { ...state.steps[i], ...linha };
+          else state.steps.push({ ...linha });
+        }
+        return { data: null, error: null };
+      }
+      if (type === 'delete') {
+        const conta = ops.filters.find(([op, k]) => op === 'eq' && k === 'automation_id')?.[2];
+        const fora = String(
+          ops.filters.find(([op, k]) => op === 'not.in' && k === 'id')?.[2] ?? '()'
+        )
+          .slice(1, -1)
+          .split(',')
+          .filter(Boolean);
+        const apagados = new Set(
+          state.steps
+            .filter((p) => p.automation_id === conta && !fora.includes(String(p.id)))
+            .map((p) => String(p.id))
+        );
+        let cresceu = true;
+        while (cresceu) {
+          cresceu = false;
+          for (const p of state.steps) {
+            if (p.parent_step_id && apagados.has(String(p.parent_step_id)) && !apagados.has(String(p.id))) {
+              apagados.add(String(p.id));
+              cresceu = true;
+            }
+          }
+        }
+        state.steps = state.steps.filter((p) => !apagados.has(String(p.id)));
+        for (const id of apagados) state.passosApagados.add(id);
+        return { data: null, error: null };
+      }
       // Recorte por ESCOPO (parent_step_id / branch / position), para os
       // testes de ramo e espera: sem ele a consulta do ramo devolvia a lista
       // inteira — inclusive a própria condição, em recursão infinita. Passo
@@ -378,11 +447,14 @@ vi.mock('./admin-client', () => {
         if (op === 'is' && v === null)
           lista = lista.filter((s) => s[k] == null);
         else if (op === 'eq') lista = lista.filter((s) => (s[k] ?? null) === v);
+        else if (op === 'in') lista = lista.filter((s) => (v as unknown[]).includes(s[k]));
         else if (op === 'gte')
           lista = lista.filter(
             (s) => s[k] === undefined || Number(s[k]) >= Number(v)
           );
       }
+      // A conferência da retomada (`retomada.ts`) procura UM passo por id.
+      if (ops.unico) return { data: lista[0] ?? null, error: null };
       return { data: lista, error: null };
     }
     return { data: null, error: null };
@@ -422,8 +494,8 @@ vi.mock('./admin-client', () => {
       is: (k: string, v: unknown) => (ops.recorte.push(['is', k, v]), b),
       order: () => b,
       limit: (n: number) => ((ops.limite = n), b),
-      single: () => Promise.resolve(resolve(ops)),
-      maybeSingle: () => Promise.resolve(resolve(ops)),
+      single: () => Promise.resolve(resolve({ ...ops, unico: true })),
+      maybeSingle: () => Promise.resolve(resolve({ ...ops, unico: true })),
       then: (onF: (v: unknown) => unknown, onR?: (e: unknown) => unknown) =>
         Promise.resolve(resolve(ops)).then(onF, onR),
     };
@@ -488,6 +560,10 @@ const destinatarioMock = vi.hoisted(() => ({
     conversationId: 'conv-equipe',
     criouContato: false,
   })),
+  // A conversa que os passos de envio criam para a ficha SEM conversa
+  // (27/09/2026) — o que ela grava (encerrada, dono da conta) é testado em
+  // `destinatario.test.ts`; aqui, com o quê o motor a chama.
+  conversaDoContato: vi.fn(async () => 'conv-criada'),
 }));
 vi.mock('./destinatario', () => destinatarioMock);
 const canalMock = vi.hoisted(() => ({
@@ -511,7 +587,17 @@ import {
   triggerMatches,
   runAutomationById,
 } from './engine';
-import { engineSendText, engineSendTemplate } from './meta-send';
+import {
+  engineSendText,
+  engineSendTemplate,
+  engineSendInteractive,
+} from './meta-send';
+import { loadStepsTree, replaceSteps, type BuilderStepInput } from './steps-tree';
+import {
+  MOTIVO_PASSO_REMOVIDO,
+  MOTIVO_RAMO_REMOVIDO,
+  comPassoDaFila,
+} from './retomada';
 import type { Automation, KeywordMatchTriggerConfig } from '@/types';
 import { diaNoFuso, somarDias } from '@/lib/tasks/prazo';
 
@@ -535,6 +621,7 @@ beforeEach(() => {
   h.state.automacoesPorGatilho = null;
   h.state.erroPorGatilho = {};
   h.state.steps = [];
+  h.state.passosApagados = new Set();
   h.state.passosPorAutomacao = false;
   h.state.tagDaConta = null;
   h.state.fromCalls = [];
@@ -558,6 +645,9 @@ beforeEach(() => {
   h.state.contatoDaConversa = {};
   h.state.responsavelDaConversa = undefined;
   h.state.conversaDaJanela = null;
+  h.state.valorDoCampo = undefined;
+  h.state.erroNaCondicaoDoCampo = null;
+  h.state.leiturasDoCampo = [];
   h.state.respostasDesde = [];
   h.state.erroNasRespostas = null;
   h.state.ultimoMovimento = null;
@@ -1563,6 +1653,147 @@ describe('assign_conversation — alvo', () => {
   });
 });
 
+// ------------------------------------------------------------
+// Ficha SEM conversa (27/09/2026): o lead de anúncio chega pela API v1 —
+// ficha e card, sem conversa — e a automação da etapa é o primeiro contato.
+// Os passos que FALAM com o contato criam a conversa (encerrada); os que só
+// leem ou mexem nela não criam nada.
+// ------------------------------------------------------------
+
+describe('ficha sem conversa — os passos de envio criam a conversa (27/09/2026)', () => {
+  beforeEach(() => {
+    vi.mocked(engineSendText).mockClear();
+    vi.mocked(engineSendTemplate).mockClear();
+    vi.mocked(engineSendInteractive).mockClear();
+    destinatarioMock.conversaDoContato.mockClear();
+  });
+
+  async function executar(
+    passo: Record<string, unknown>,
+    context: Record<string, unknown> = {}
+  ) {
+    h.state.owned = { id: 'c1', name: 'Lead' };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [passo];
+    await runAutomationById({
+      automationId: 'a1',
+      accountId: ACCOUNT,
+      contactId: 'c1',
+      context,
+      triggerType: 'deal_stage_changed',
+    });
+  }
+
+  const passoDe = (step_type: string, step_config: Record<string, unknown>) => ({
+    ...sendStep(step_config),
+    step_type,
+  });
+
+  it('CRÍTICO: send_message sem conversa cria a conversa ENCERRADA e envia por ela', async () => {
+    await executar(sendStep({ text: 'Olá! Recebemos o seu contato.' }));
+
+    expect(destinatarioMock.conversaDoContato).toHaveBeenCalledTimes(1);
+    expect(destinatarioMock.conversaDoContato).toHaveBeenCalledWith(
+      expect.anything(),
+      ACCOUNT,
+      'c1',
+      { conversaNovaEncerrada: true }
+    );
+    expect(vi.mocked(engineSendText).mock.calls[0]?.[0]).toMatchObject({
+      conversationId: 'conv-criada',
+      contactId: 'c1',
+    });
+  });
+
+  it.each([
+    ['send_template', { template_name: 'boas_vindas', language: 'pt_BR' }],
+    [
+      'send_buttons',
+      {
+        kind: 'buttons',
+        body: 'Podemos conversar?',
+        buttons: [{ id: 'b1', title: 'Sim' }],
+      },
+    ],
+  ])('%s sem conversa também cria (encerrada) e envia por ela', async (tipo, cfg) => {
+    await executar(passoDe(tipo, cfg));
+
+    expect(destinatarioMock.conversaDoContato).toHaveBeenCalledWith(
+      expect.anything(),
+      ACCOUNT,
+      'c1',
+      { conversaNovaEncerrada: true }
+    );
+    const sender =
+      tipo === 'send_template' ? engineSendTemplate : engineSendInteractive;
+    expect(vi.mocked(sender).mock.calls[0]?.[0]).toMatchObject({
+      conversationId: 'conv-criada',
+    });
+  });
+
+  it('contato COM conversa: usa a que existe, e nada é criado', async () => {
+    h.state.conversasDoContato = [{ id: 'conv-existente' }];
+
+    await executar(sendStep({ text: 'oi' }));
+
+    expect(destinatarioMock.conversaDoContato).not.toHaveBeenCalled();
+    expect(vi.mocked(engineSendText).mock.calls[0]?.[0]).toMatchObject({
+      conversationId: 'conv-existente',
+    });
+  });
+
+  it('⚠️ conversa de OUTRA conta no contexto: continua recusada — nunca trocada por uma nova', async () => {
+    h.state.contaDaConversa = { 'conv-da-vitima': 'outra-conta' };
+
+    await executar(sendStep({ text: 'oi' }), {
+      conversation_id: 'conv-da-vitima',
+    });
+
+    expect(destinatarioMock.conversaDoContato).not.toHaveBeenCalled();
+    expect(engineSendText).not.toHaveBeenCalled();
+    expect(JSON.stringify(h.state.logUpdates)).toContain(
+      'conversation does not belong to this account'
+    );
+  });
+
+  it('⚠️ conversa de OUTRO contato no contexto: continua recusada — nunca trocada por uma nova', async () => {
+    h.state.contatoDaConversa = { 'conv-de-b': 'c2' };
+
+    await executar(sendStep({ text: 'oi' }), { conversation_id: 'conv-de-b' });
+
+    expect(destinatarioMock.conversaDoContato).not.toHaveBeenCalled();
+    expect(engineSendText).not.toHaveBeenCalled();
+    expect(JSON.stringify(h.state.logUpdates)).toContain(
+      'conversation does not belong to this account'
+    );
+  });
+
+  it('set_ai NÃO fala com o contato: sem conversa, continua recusando e não cria nada', async () => {
+    await executar(passoDe('set_ai', { enabled: false }));
+
+    expect(destinatarioMock.conversaDoContato).not.toHaveBeenCalled();
+    expect(JSON.stringify(h.state.logUpdates)).toContain(
+      'cannot send: contact has no existing conversation'
+    );
+  });
+
+  it('a criação falhou: o passo falha com o motivo, e nada é enviado', async () => {
+    destinatarioMock.conversaDoContato.mockRejectedValueOnce(
+      new Error('destinatário: dono da conta não resolvido')
+    );
+
+    await executar(sendStep({ text: 'oi' }));
+
+    expect(engineSendText).not.toHaveBeenCalled();
+    expect(h.state.logUpdates).toContainEqual(
+      expect.objectContaining({
+        status: 'failed',
+        error_message: 'destinatário: dono da conta não resolvido',
+      })
+    );
+  });
+});
+
 describe('set_ai — a pausa com MOTIVO (1049, D26)', () => {
   function passoSetAi(enabled: boolean) {
     return {
@@ -1810,7 +2041,16 @@ describe('triggerMatches — a régua do Asaas (998)', () => {
 });
 
 describe('tag_added — conversation policy', () => {
-  it('records a clear failed step when the contact has no conversation', async () => {
+  beforeEach(() => {
+    vi.mocked(engineSendText).mockClear();
+    destinatarioMock.conversaDoContato.mockClear();
+  });
+
+  // Até 27/09/2026 o passo falhava com "tag_added automation cannot send:
+  // contact has no existing conversation" (upstream). A etiqueta que a
+  // integração aplica pela API (o lead de anúncio) é justamente a ficha sem
+  // conversa — agora a conversa nasce ENCERRADA e a mensagem sai por ela.
+  it('contato sem conversa: a conversa nasce ENCERRADA e a mensagem sai por ela', async () => {
     h.state.owned = { id: 'c1' };
     h.state.automations = [
       {
@@ -1841,12 +2081,19 @@ describe('tag_added — conversation policy', () => {
       context: { tag_id: 'tag-a' },
     });
 
-    expect(h.state.logUpdates).toContainEqual(
-      expect.objectContaining({
-        status: 'failed',
-        error_message:
-          'tag_added automation cannot send: contact has no existing conversation',
-      })
+    expect(destinatarioMock.conversaDoContato).toHaveBeenCalledWith(
+      expect.anything(),
+      ACCOUNT,
+      'c1',
+      { conversaNovaEncerrada: true }
+    );
+    expect(vi.mocked(engineSendText).mock.calls[0]?.[0]).toMatchObject({
+      conversationId: 'conv-criada',
+      contactId: 'c1',
+      text: 'Hello',
+    });
+    expect(JSON.stringify(h.state.logUpdates)).not.toContain(
+      'no existing conversation'
     );
   });
 });
@@ -4549,6 +4796,115 @@ describe("condição 'janela de 24h da Meta aberta' (Fase 2.8)", () => {
   });
 });
 
+describe("condição 'campo personalizado da ficha' (Fase 2.10)", () => {
+  const CAMPO = '11111111-1111-4111-8111-111111111111';
+
+  const condicaoDoCampo = (cfg: Record<string, unknown>) => ({
+    id: 'cond-campo',
+    automation_id: 'a1',
+    step_type: 'condition',
+    position: 0,
+    parent_step_id: null,
+    step_config: { subject: 'custom_field', operand: CAMPO, ...cfg },
+  });
+  const ramo = (branch: 'yes' | 'no', text: string) => ({
+    ...sendStep({ text }),
+    id: `ramo-${branch}`,
+    parent_step_id: 'cond-campo',
+    branch,
+    position: 0,
+  });
+
+  async function avaliar(cfg: Record<string, unknown>) {
+    vi.mocked(engineSendText).mockClear();
+    h.state.owned = { id: 'c1' };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [condicaoDoCampo(cfg), ramo('yes', 'sim'), ramo('no', 'nao')];
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: { conversation_id: 'conv1' },
+    });
+    return vi.mocked(engineSendText).mock.calls[0]?.[0]?.text;
+  }
+
+  it('o caso do plano: motivo = "Não respondeu" → SIM; outro motivo → NÃO', async () => {
+    h.state.ownedCustomField = { id: CAMPO, field_type: 'select' };
+    h.state.valorDoCampo = 'Não respondeu';
+    expect(await avaliar({ operator: 'equals', value: 'Não respondeu' })).toBe('sim');
+    h.state.valorDoCampo = 'Já tem advogado';
+    expect(await avaliar({ operator: 'equals', value: 'Não respondeu' })).toBe('nao');
+  });
+
+  it('"é" sem diferença de maiúsculas nem espaços; operador ausente = "é"', async () => {
+    h.state.ownedCustomField = { id: CAMPO, field_type: 'text' };
+    h.state.valorDoCampo = '  NÃO RESPONDEU ';
+    expect(await avaliar({ value: 'não respondeu' })).toBe('sim');
+  });
+
+  it('está vazio: sem linha em contact_custom_values É vazio; preenchido não é', async () => {
+    h.state.ownedCustomField = { id: CAMPO, field_type: 'text' };
+    h.state.valorDoCampo = undefined;
+    expect(await avaliar({ operator: 'empty' })).toBe('sim');
+    h.state.valorDoCampo = 'x';
+    expect(await avaliar({ operator: 'empty' })).toBe('nao');
+    expect(await avaliar({ operator: 'not_empty' })).toBe('sim');
+  });
+
+  it('contém', async () => {
+    h.state.ownedCustomField = { id: CAMPO, field_type: 'text' };
+    h.state.valorDoCampo = 'Acidente de moto na volta do trabalho';
+    expect(await avaliar({ operator: 'contains', value: 'MOTO' })).toBe('sim');
+    expect(await avaliar({ operator: 'contains', value: 'carro' })).toBe('nao');
+  });
+
+  it('CRÍTICO: o campo é lido pela CONTA da automação — campo de outra conta responde NÃO, com a nota', async () => {
+    h.state.ownedCustomField = null;
+    h.state.valorDoCampo = 'Não respondeu';
+    expect(await avaliar({ operator: 'equals', value: 'Não respondeu' })).toBe('nao');
+    expect(h.state.leiturasDoCampo[0]).toContainEqual(['eq', 'account_id', ACCOUNT]);
+    expect(h.state.leiturasDoCampo[0]).toContainEqual(['eq', 'id', CAMPO]);
+    expect(JSON.stringify(h.state.logUpdates)).toContain('não existe nesta conta');
+  });
+
+  it('leitura que falha: NÃO — e o registro DIZ que não conferiu', async () => {
+    h.state.ownedCustomField = { id: CAMPO, field_type: 'select' };
+    h.state.erroNaCondicaoDoCampo = 'timeout';
+    expect(await avaliar({ operator: 'not_empty' })).toBe('nao');
+    expect(JSON.stringify(h.state.logUpdates)).toContain('campo não conferido');
+  });
+
+  it('resposta MEDIDA não leva nota, e o VALOR lido nunca vai para o registro', async () => {
+    h.state.ownedCustomField = { id: CAMPO, field_type: 'text' };
+    h.state.valorDoCampo = 'senha-secreta-123';
+    await avaliar({ operator: 'not_empty' });
+    const registro = JSON.stringify(h.state.logUpdates);
+    expect(registro).not.toContain('campo não conferido');
+    expect(registro).not.toContain('senha-secreta-123');
+  });
+
+  it('operando sem forma de id nem vai ao banco: NÃO, "não existe nesta conta"', async () => {
+    h.state.ownedCustomField = { id: CAMPO, field_type: 'text' };
+    vi.mocked(engineSendText).mockClear();
+    h.state.owned = { id: 'c1' };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [
+      { ...condicaoDoCampo({ operator: 'not_empty' }), step_config: { subject: 'custom_field', operand: 'lixo', operator: 'not_empty' } },
+      ramo('yes', 'sim'),
+      ramo('no', 'nao'),
+    ];
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: { conversation_id: 'conv1' },
+    });
+    expect(vi.mocked(engineSendText).mock.calls[0]?.[0]?.text).toBe('nao');
+    expect(h.state.leiturasDoCampo).toEqual([]);
+  });
+});
+
 describe("condição 'hora do dia' — no fuso do escritório", () => {
   // Instantes UTC explícitos: o pino vale com a máquina em qualquer fuso. O
   // relógio falso é SÓ o Date — timers de verdade, senão os awaits do motor
@@ -4972,5 +5328,159 @@ describe('envio que falhou sem recusa comprovada conta como fala (E4)', () => {
     expect(h.state.esperasEnfileiradas).toHaveLength(0);
     expect(r.comFalha).toBe(1);
     expect(r.falou).toBeFalsy();
+  });
+});
+
+// ============================================================
+// SALVAR a automação com uma execução parada num "Aguardar" DENTRO de um ramo
+// (26/09/2026). Achado no e2e: `replaceSteps` apagava todos os passos e
+// reinseria com ids novos; a FK `ON DELETE SET NULL` zerava o
+// `parent_step_id` da espera, e a retomada rodava o escopo de FORA a partir da
+// posição do ramo — outro passo, outra mensagem. Aqui a gravação de verdade
+// (`replaceSteps`) roda contra o mesmo banco falso da retomada.
+// ============================================================
+describe('salvar a automação com uma espera parada num ramo (26/09/2026)', () => {
+  const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  const COND = uuid(1);
+  const ESPERA = uuid(2);
+  const NO_RAMO = uuid(3);
+  const DE_FORA = uuid(4);
+
+  const passo = (
+    id: string,
+    step_type: string,
+    position: number,
+    parent_step_id: string | null,
+    step_config: Record<string, unknown>
+  ) => ({
+    id,
+    automation_id: 'a-ramo',
+    step_type,
+    position,
+    parent_step_id,
+    branch: parent_step_id ? 'yes' : null,
+    step_config,
+  });
+
+  beforeEach(() => {
+    h.state.automations = [automacaoSimples('a-ramo')];
+    // [condição → sim: [Aguardar, "do ramo"]], "de fora"
+    h.state.steps = [
+      passo(COND, 'condition', 0, null, { subject: 'tag_presence', operand: 'tag-x' }),
+      passo(ESPERA, 'wait', 0, COND, { amount: 30, unit: 'hours' }),
+      passo(NO_RAMO, 'update_contact_field', 1, COND, { field: 'company', value: 'do ramo' }),
+      passo(DE_FORA, 'update_contact_field', 1, null, { field: 'company', value: 'de fora' }),
+    ];
+  });
+
+  /** A espera como o "Aguardar" do ramo a estacionou (a posição SEGUINTE e o passo). */
+  const esperaNoRamo = (context: Record<string, unknown> = comPassoDaFila({}, { id: ESPERA, position: 0 })) => ({
+    id: 'espera-ramo',
+    automation_id: 'a-ramo',
+    account_id: ACCOUNT,
+    user_id: 'u1',
+    contact_id: 'c1',
+    log_id: 'log-ramo',
+    parent_step_id: COND,
+    branch: 'yes' as const,
+    next_step_position: 1,
+    context,
+  });
+
+  /** A FK `ON DELETE SET NULL`: a condição apagada zera a coluna da espera. */
+  const depoisDaFk = (e: ReturnType<typeof esperaNoRamo>) => ({
+    ...e,
+    parent_step_id: e.parent_step_id && h.state.passosApagados.has(e.parent_step_id) ? null : e.parent_step_id,
+  });
+
+  const valoresGravados = () =>
+    h.state.updateCalls
+      .filter((c) => c.table === 'contacts')
+      .map((c) => (c.payload as Record<string, unknown>).company);
+
+  /** A árvore como o construtor a manda de volta: o GET, com os ids do banco. */
+  const arvoreDoConstrutor = async (): Promise<BuilderStepInput[]> =>
+    (await loadStepsTree('a-ramo')) as BuilderStepInput[];
+
+  it('CRÍTICO: depois de salvar com um passo NOVO no começo do ramo, a espera retoma no MESMO ramo, pelo passo seguinte a ela', async () => {
+    const arvore = await arvoreDoConstrutor();
+    arvore[0].branches!.yes!.unshift({
+      step_type: 'update_contact_field',
+      step_config: { field: 'company', value: 'novo no ramo' },
+    });
+    expect(await replaceSteps('a-ramo', arvore)).toBeNull();
+
+    // A identidade ficou: nada apagado, a condição com o mesmo id.
+    expect(h.state.passosApagados.size).toBe(0);
+    const espera = depoisDaFk(esperaNoRamo());
+    expect(espera.parent_step_id).toBe(COND);
+
+    await resumePendingExecution(espera);
+
+    // Nem o passo novo (antes da espera), nem a espera de novo, nem o escopo
+    // de fora: só o passo que vinha DEPOIS da espera, no ramo dela.
+    expect(valoresGravados()).toEqual(['do ramo']);
+    expect(h.state.esperasEnfileiradas).toHaveLength(0);
+    expect(h.state.statusDaFila).toContain('done');
+  });
+
+  it('⚠️⚠️ o defeito medido: salvar SEM os ids (o construtor antigo) apaga a condição — e a retomada NÃO roda o escopo de fora, falha visível', async () => {
+    const semIds = (steps: BuilderStepInput[]): BuilderStepInput[] =>
+      steps.map((s) => ({
+        step_type: s.step_type,
+        step_config: s.step_config,
+        branches: s.branches
+          ? { yes: semIds(s.branches.yes ?? []), no: semIds(s.branches.no ?? []) }
+          : undefined,
+      }));
+    expect(await replaceSteps('a-ramo', semIds(await arvoreDoConstrutor()))).toBeNull();
+    expect(h.state.passosApagados.has(COND)).toBe(true);
+
+    await resumePendingExecution(depoisDaFk(esperaNoRamo()));
+
+    // Antes: "de fora" (a posição 1 da RAIZ) era gravado — outro passo.
+    expect(valoresGravados()).toEqual([]);
+    expect(h.state.statusDaFila).toContain('failed');
+    expect(desfechoGravado()?.desfecho).toBe('falhou');
+    const registro = h.state.logUpdates.find((u) => 'steps_executed' in u) as
+      | { steps_executed: { detail?: string; status: string }[]; error_message?: string }
+      | undefined;
+    expect(registro?.steps_executed.at(-1)).toMatchObject({ status: 'failed', detail: MOTIVO_RAMO_REMOVIDO });
+    expect(registro?.error_message).toBe(MOTIVO_RAMO_REMOVIDO);
+  });
+
+  it('o operador REMOVEU o "Aguardar" em que a execução parou: falha visível, nada roda', async () => {
+    const arvore = await arvoreDoConstrutor();
+    arvore[0].branches!.yes = arvore[0].branches!.yes!.filter((p) => p.id !== ESPERA);
+    expect(await replaceSteps('a-ramo', arvore)).toBeNull();
+    expect([...h.state.passosApagados]).toEqual([ESPERA]);
+
+    await resumePendingExecution(depoisDaFk(esperaNoRamo()));
+
+    expect(valoresGravados()).toEqual([]);
+    expect(desfechoGravado()?.desfecho).toBe('falhou');
+    const registro = h.state.logUpdates.find((u) => 'steps_executed' in u) as
+      | { steps_executed: { detail?: string; step_id: string }[] }
+      | undefined;
+    expect(registro?.steps_executed.at(-1)).toMatchObject({ step_id: ESPERA, detail: MOTIVO_PASSO_REMOVIDO });
+  });
+
+  it('espera gravada ANTES desta entrega (sem o passo no contexto) retoma pela posição, como sempre', async () => {
+    await resumePendingExecution(esperaNoRamo({}));
+    expect(valoresGravados()).toEqual(['do ramo']);
+  });
+
+  it('o "Aguardar" grava no contexto da fila QUAL passo estacionou', async () => {
+    h.state.esperasEnfileiradas = [];
+    h.state.owned = { id: 'c1' };
+    h.state.steps = [
+      { ...passo(ESPERA, 'wait', 0, null, { amount: 1, unit: 'hours' }), automation_id: 'a-desf' },
+    ];
+    h.state.automations = [automacaoSimples()];
+    await dispara();
+    expect(h.state.esperasEnfileiradas).toHaveLength(1);
+    expect(
+      (h.state.esperasEnfileiradas[0].context as Record<string, unknown>)._passo_da_fila
+    ).toEqual({ id: ESPERA, pos: 0 });
   });
 });

@@ -67,8 +67,9 @@ import {
  *  6. TRAVA o grupo num INSERT só (23505 em qualquer parcela = outro
  *     processo pegou → o grupo inteiro sai), reconferindo o interruptor
  *     antes; a conversa da ficha nasce aqui se não existir (a ficha da D2
- *     não tem conversa, e o passo `send_message` não a cria), com o canal
- *     do passo e sem pino.
+ *     não tem conversa), com o canal do passo e sem pino. Desde 27/09/2026 o
+ *     passo `send_message` também a criaria, mas ENCERRADA e sem canal — a
+ *     da régua nasce antes, e o motor a encontra.
  *  7. Dispara SÓ a automação carimbada (`automation_id` no contexto) e mede
  *     pelo `automation_logs` — `enviado` com um passo que ENTREGA ao contato
  *     bem-sucedido (`PASSOS_QUE_FALAM_COM_O_CONTATO`);

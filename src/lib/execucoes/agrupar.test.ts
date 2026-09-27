@@ -90,4 +90,26 @@ describe('agruparEsperas', () => {
       log_id: 'log-cedo',
     })
   })
+
+  it('⚠️ a referência leva SÓ o passo que estacionou — o contexto (variáveis da execução) nunca vai para a resposta', () => {
+    const grupos = agruparEsperas([
+      {
+        ...linha('a', '2026-09-02T12:00:00Z'),
+        next_step_position: 3,
+        log_id: 'log-1',
+        context: {
+          _passo_da_fila: { id: 'passo-espera', pos: 2 },
+          vars: { cpf: '000.000.000-00' },
+        },
+      },
+    ])
+    expect(grupos[0].referencia).toEqual({
+      next_step_position: 3,
+      parent_step_id: null,
+      branch: null,
+      log_id: 'log-1',
+      passo_da_fila: { id: 'passo-espera', pos: 2 },
+    })
+    expect(JSON.stringify(grupos)).not.toContain('cpf')
+  })
 })

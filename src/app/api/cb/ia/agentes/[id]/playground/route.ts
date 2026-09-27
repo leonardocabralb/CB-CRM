@@ -8,7 +8,15 @@ import { logAiUsage } from '@/lib/ai/usage'
 import { AiError, mensagemSeguraDeAiError, type ChatMessage } from '@/lib/ai/types'
 import { lerChave, lerEstado } from '@/lib/ia-chaves/repo'
 import { blocoIndisponivel, lerOQueOAgenteVe } from '@/lib/ia-agentes/acesso'
-import { lerAcoes, linkInventado, resolverAcoes, type MotivoDaRecusa } from '@/lib/ia-agentes/acoes'
+import {
+  ACAO_TRANSFERIR,
+  equipePrometida,
+  lerAcoes,
+  linkInventado,
+  resolverAcoes,
+  reuniaoPrometida,
+  type MotivoDaRecusa,
+} from '@/lib/ia-agentes/acoes'
 import { lerAgendaDoAgente } from '@/lib/ia-agentes/agenda'
 import { consultaDaUltimaMensagem } from '@/lib/ia-agentes/conhecimento'
 import { opcoesDoAgente } from '@/lib/ia-agentes/ferramentas'
@@ -53,7 +61,14 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
  * `{ tipo: 'marcar_reuniao', nome: '<data e hora exibidas>' }`. A resposta
  * traz `horarios: [{ n, texto }]` (o que foi oferecido ao modelo; vazio =
  * nenhum livre nos 7 dias) ou `null` (reunião desligada, ou a leitura falhou
- * — o pedido disse ao modelo que não há horários agora).
+ * — o pedido disse ao modelo que não há horários agora). E `reuniaoPrometida`
+ * (27/09/2026): a resposta disse que marcou a reunião SEM o marcador, com
+ * horários oferecidos — no turno ela seria retida e a conversa iria para
+ * gente (`reuniao_prometida`), e as ações não executariam. O `[[TRANSFERIR]]`
+ * ("responda e passe", 27/09/2026) vem como ação simulada `{ tipo:
+ * 'transferir', nome: '' }` — no turno a conversa iria para a equipe DEPOIS
+ * de a resposta sair. A resposta que promete a equipe SEM o marcador
+ * (`equipePrometida`) também, com `transferenciaInferida: true`.
  */
 export async function POST(request: Request, { params }: Contexto) {
   try {
@@ -210,17 +225,54 @@ export async function POST(request: Request, { params }: Contexto) {
     const destino = n === null ? null : (opcoes[n - 1] ?? null)
     const transfere = sentinela || (n !== null && !destino) || (n === null && !lidas.texto)
     const inventou = !transfere && n === null && linkInventado(lidas.texto, [pedido, ...mensagens.map((m) => m.content)])
-    const resolvidas = resolverAcoes(lidas.pedidas, opcoesDeAcao)
-    // Com passagem, transferência ou link inventado, no turno nada executa.
-    const naoExecutaria: MotivoDaRecusa | null = transfere || inventou ? 'transferencia' : n !== null ? 'passagem' : null
+    // O nome da reunião só passa com ORIGEM (a MESMA régua do turno): o que o
+    // cliente escreveu no teste, ou o nome atual da ficha do contato escolhido.
+    let nomeDaFicha: string | null = null
+    if (contactId && lidas.pedidas.some((p) => p.tipo === 'marcar_reuniao' && p.valor)) {
+      const { data: ficha } = await supabaseAdmin()
+        .from('contacts')
+        .select('name')
+        .eq('account_id', ctx.accountId)
+        .eq('id', contactId)
+        .maybeSingle()
+      const nome = (ficha as { name?: unknown } | null)?.name
+      nomeDaFicha = typeof nome === 'string' ? nome : null
+    }
+    const resolvidas = resolverAcoes(lidas.pedidas, opcoesDeAcao, {
+      mensagensDoCliente: mensagens.filter((m) => m.role === 'user').map((m) => m.content),
+      nomeDaFicha,
+    })
+    // A reunião prometida sem o marcador (27/09): a MESMA régua do turno.
+    const prometeu =
+      !transfere &&
+      n === null &&
+      !inventou &&
+      reuniaoPrometida({
+        texto: lidas.texto,
+        horariosOferecidos: opcoesDeAcao.marcar_reuniao?.length ?? 0,
+        aceitas: resolvidas.aceitas,
+      })
+    // Com passagem, transferência, link inventado ou reunião prometida, no turno nada executa.
+    const naoExecutaria: MotivoDaRecusa | null =
+      transfere || inventou || prometeu ? 'transferencia' : n !== null ? 'passagem' : null
+    // "Responda e passe" (`[[TRANSFERIR]]`, 27/09): no turno, a conversa iria
+    // para a equipe DEPOIS de a resposta sair — aqui, uma ação simulada a mais
+    // (`tipo: 'transferir'`, sem nome); quando nada sairia, recusada como as outras.
+    // A equipe prometida SEM o marcador (a MESMA régua do turno) vale como se
+    // ele estivesse lá; `transferenciaInferida` avisa a tela.
+    const transferenciaInferida = !sentinela && n === null && !lidas.transferirDepois && equipePrometida(lidas.texto)
+    const transferir = lidas.transferirDepois || transferenciaInferida ? [{ tipo: ACAO_TRANSFERIR, nome: '' }] : []
     const acoes = {
       aceitas: naoExecutaria
         ? []
-        : resolvidas.aceitas.map((a) => ({ tipo: a.tipo, nome: a.nome, ...(a.valor !== undefined ? { valor: a.valor } : {}) })),
+        : [
+            ...resolvidas.aceitas.map((a) => ({ tipo: a.tipo, nome: a.nome, ...(a.valor !== undefined ? { valor: a.valor } : {}) })),
+            ...transferir,
+          ],
       recusadas: [
         ...lidas.recusadas,
         ...resolvidas.recusadas,
-        ...(naoExecutaria ? resolvidas.aceitas.map((a) => ({ tipo: a.tipo, motivo: naoExecutaria })) : []),
+        ...(naoExecutaria ? [...resolvidas.aceitas, ...transferir].map((a) => ({ tipo: a.tipo, motivo: naoExecutaria })) : []),
       ].map((r) => ({ tipo: r.tipo, motivo: r.motivo })),
     }
     return NextResponse.json({
@@ -229,6 +281,8 @@ export async function POST(request: Request, { params }: Contexto) {
       passaPara: destino?.nome ?? null,
       acoes,
       linkInventado: inventou,
+      reuniaoPrometida: prometeu,
+      transferenciaInferida,
       // O que foi oferecido ao modelo (F5); `null` = reunião desligada, leitura
       // que falhou ou cliente que já tem reunião (nada foi oferecido). O
       // `texto` é o `nome` ("28/09/2026 15:15"), o que gente lê.

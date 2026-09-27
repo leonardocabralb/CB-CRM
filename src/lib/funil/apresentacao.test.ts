@@ -5,6 +5,7 @@ import {
   formatarPercentual,
   formatarPp,
   formatarVariacao,
+  noMeioDaFrase,
   paraPontosPercentuais,
   rotuloCurtoDoDia,
   sinalDe,
@@ -59,5 +60,18 @@ describe("eixoDasTaxas — o teto sobe quando a taxa passa de 100%", () => {
       expect(ticks.length).toBeLessThanOrEqual(7);
       expect(ticks[ticks.length - 1]).toBe(teto);
     }
+  });
+});
+
+describe("noMeioDaFrase — o rótulo do degrau dentro de 'Custo por …'", () => {
+  it("primeira letra minúscula; sigla fica como está", () => {
+    expect(noMeioDaFrase("Pasta fechada")).toBe("pasta fechada");
+    expect(noMeioDaFrase("Processo protocolado")).toBe("processo protocolado");
+    expect(noMeioDaFrase("Lead")).toBe("lead");
+    expect(noMeioDaFrase("Reunião")).toBe("reunião");
+    expect(noMeioDaFrase("MQL")).toBe("MQL");
+    expect(noMeioDaFrase("MQL 1 - Recebeu link")).toBe("MQL 1 - Recebeu link");
+    expect(noMeioDaFrase("Ágil")).toBe("ágil");
+    expect(noMeioDaFrase("")).toBe("");
   });
 });

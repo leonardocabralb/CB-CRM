@@ -25,10 +25,10 @@ o texto antigo está em `git show f5879b3f:CLAUDE.md`.
 
 ### Funil comercial (975): funil de eficiência FIXO, cada funil mapeia as etapas
 
-`pipeline_stages.degrau` ∈ {lead, mql, reuniao, proposta, contrato, perda,
-NULL}. `src/lib/funil/` é puro e testado; `carregar.ts` é o único com I/O (o
-laço paginado da RPC `cb_funil_trajetorias`). O seletor por etapa mora em
-`pipeline-settings.tsx`.
+`pipeline_stages.degrau` ∈ {lead, mql, reuniao, proposta, contrato, pasta,
+perda, NULL} (`pasta` desde a 1054). `src/lib/funil/` é puro e testado;
+`carregar.ts` é o único com I/O (o laço paginado da RPC
+`cb_funil_trajetorias`). O seletor por etapa mora em `pipeline-settings.tsx`.
 
 - ⚠️⚠️ **NEGÓCIO TRANSFERIDO PARA OUTRO FUNIL CONTINUA CONTANDO NO FUNIL DE
   ORIGEM, com a última etapa que teve lá** (decisão do operador, 03/09/2026: "fechou
@@ -66,16 +66,80 @@ laço paginado da RPC `cb_funil_trajetorias`). O seletor por etapa mora em
   duas vezes quem voltou para Proposta (`coorte.test.ts` recalcula a partir de
   `situacao`). O cartão "fora do funil" só aparece com alguém nele.
 - ⚠️⚠️ **`resumo.fechados` NÃO é dinheiro.** `fechados` = "ALCANÇOU contrato"
-  (monotônico; é o degrau do funil e as taxas); `fechadosAgora` =
-  `situacao === 'fechado'` (valor fechado, ticket médio, CAC). Um distrato
-  está nos primeiros e não nos segundos: contado como receita, aparecia como
-  ganho E como perda e inflava o divisor do CAC.
+  (monotônico, ≥ contrato; é o degrau do funil, as taxas e o divisor do
+  "custo por contrato assinado"); `fechadosAgora` = `situacao === 'fechado'`
+  (valor fechado, ticket médio, CAC — o contrato "em pé"). Um distrato está
+  nos primeiros e não nos segundos: contado como receita, aparecia como ganho
+  E como perda e inflava o divisor do CAC.
 - ⚠️ **Apagar etapa MAPEADA com histórico é barrado na tela de Funis.** O
   mapeamento é lido sobre a história inteira (remapear reescreve o passado, de
   propósito), e etapa apagada tira da coorte quem só passou por ela — "zero
   negócios na etapa" não protege. Saída: "Não conta", salvar, remover.
-- Os rótulos dos degraus são chave MONTADA (`Pipelines.funil.degraus.<c>`);
-  `degraus.test.ts` cobra os dois dicionários.
+- Os rótulos PADRÃO dos degraus são chave MONTADA
+  (`Pipelines.funil.degraus.<c>`); `degraus.test.ts` cobra os dois
+  dicionários. O rótulo LIVRE do funil (abaixo) não passa pelo dicionário.
+
+### Degrau `pasta` (1054): depois do contrato, opcional, e é FECHAMENTO
+
+Decisão do operador (26/09/2026, C1 do `docs/PLANO-previdenciario.md`): um
+degrau depois de `contrato`, igual para todos os funis — "Pasta fechada" no
+previdenciário, "Processo protocolado" no Trabalhista.
+
+- ⚠️⚠️ **"Fechado" inclui a pasta, e "alcançou contrato" é ≥ contrato**
+  (`ehFechamento`, `INDICE_DO_CONTRATO` em `degraus.ts`). Com `===
+  contrato`, remapear "Protocolado" de contrato para pasta tiraria os
+  protocolados do dinheiro e do CAC do Trabalhista de uma vez. Pino em
+  `custos.test.ts`: CAC, custo por contrato assinado, contratos, dinheiro e
+  global IDÊNTICOS antes e depois do remapeamento, nos dois modos. A data do
+  contrato continua a da ASSINATURA (`alcancouEm[contrato]`, a primeira vez ≥
+  contrato), nunca a do protocolo.
+- **Opcional** (`DEGRAUS_OPCIONAIS`): funil sem etapa em pasta não tem nada
+  faltando — o cartão simplesmente não aparece, nem tracejado.
+- ⚠️ `porDegrau`, `alcancouEm` e as transições ganharam o sexto item; quem
+  itera `DEGRAUS` e usa o índice (`porDegrau[k]`) continua alinhado. "O
+  penúltimo degrau" (o pipeline ativo do balde "em andamento") é
+  `degrauAntesDoContrato`, contado a partir do CONTRATO — do fim da lista ele
+  passaria a ser o próprio contrato. A global continua lead → contrato.
+- ⚠️ **"Contrato sem pasta" (perda) muda o CAC e NÃO o custo por contrato
+  assinado** — é para isso que os dois cartões existem lado a lado. Pino em
+  `custos.test.ts`.
+- `sugerirClasse(ganho)` continua sugerindo `contrato` (a pasta é opcional).
+- O CHECK do banco e `CLASSES` andam juntos: `degrau-pasta-1054.test.ts`
+  compara o CHECK vigente com o código (classe nova sem migration faz o
+  salvamento de "Gerenciar funil" ser recusado inteiro).
+
+### O painel de CADA funil (1054): `pipelines.painel`
+
+Decisão do operador (C2): cada funil configura o próprio Desempenho e a
+própria Saúde em Gerenciar funil (só admin). `src/lib/funil/painel.ts` (puro,
+com teste); jsonb com `rotulos`, `nao_se_aplica`, `custos_ocultos`.
+
+- ⚠️ **Parse, nunca `as`** (`lerPainel`): chave e valor desconhecidos são
+  ignorados; `{}` é o padrão. Grava-se por `escreverPainel` (normalizado).
+- ⚠️⚠️ **"Não se aplica" esconde só quem MARCOU** (`estadoDoDegrau`): sem
+  marca, degrau sem etapa segue tracejado com "Configurar etapas" — é o aviso
+  de esquecimento, e esconder por padrão o apagaria de todo funil. Etapa
+  MAPEADA vence a marca (o cartão aparece). Não afeta cálculo nenhum: só o
+  desenho.
+- **Rótulo livre** vence o padrão em toda a tela (cartões, taxas, Saúde,
+  títulos de custo, o seletor de degrau das etapas); teto `ROTULO_MAX`. No
+  meio da frase, `noMeioDaFrase` (primeira letra minúscula, sigla intacta).
+- **Guarda-se o que o operador ESCONDEU** (`custos_ocultos`), nunca o que
+  mostra: cartão novo nasce visível. Cartão de custo de degrau só aparece com
+  o degrau MAPEADO (`cartoesDeCustoNaTela`).
+- ⚠️ O diálogo lê `name, painel` do BANCO na abertura e grava no mesmo UPDATE
+  do nome; o bloco só existe com a leitura pronta (antes dela o rascunho é o
+  padrão, e salvar o gravaria por cima). Sem a 1054 aplicada o diálogo não
+  abre — a migration é ADITIVA e vai ANTES do deploy.
+
+### Custos (1054): uma conta só, `custosDoResumo`
+
+`src/lib/funil/custos.ts`: investimento ÷ entradas (lead), ÷ quem alcançou o
+degrau (mql, reunião, proposta, pasta), ÷ `fechados` (contrato ASSINADO), ÷
+`fechadosAgora` (CAC, contrato em pé), e custo por lead × entrantes perdidos.
+A MESMA função no Desempenho (período) e na Saúde (`custosMensais`, mês a
+mês, com o gasto do mês): cópia divergiria. Sem denominador = `null` ("—").
+Números de custo são das vistas de admin.
 - Funis "TESTE" não são desta conta. Teste de tela com escrita: funil de teste
   criado na hora e apagado, ou mexer no real e REVERTER.
 
@@ -163,7 +227,14 @@ coorte ("por mês de entrada") fica sob demanda.
 - ⚠️⚠️ **As cores das linhas da Saúde são TRÊS classes literais por degrau**
   (`traco`/`ponto`/`bloco`), nunca uma derivada com
   `replace("stroke-", "fill-")`: classe montada não é gerada, e o ponto caía no
-  preto padrão do SVG, sem erro.
+  preto padrão do SVG, sem erro. Moram em `src/lib/funil/cores.ts` (com teste
+  da forma), junto da tinta dos cartões e da grade por QUANTIDADE de cartões
+  (`gradeDoFunil`). A linha contrato → pasta toma a cor da PASTA: pela regra do
+  degrau de partida ela repetiria a da global.
+- **Custos na Saúde** (tabela mês × cartão, `custosMensais`): o gasto dos doze
+  meses vem do mesmo `useGastosDeAnuncios`, recarregado junto com as
+  trajetórias na volta ao app (pino em `ao-voltar.test.ts`); falhou ou não
+  coube = frase, nunca tabela.
 - Gráficos: barras = Tremor vendorizado (`src/components/tremor/`); área =
   recharts DIRETO (`grafico-de-entradas.tsx`, cor por classe com
   `stroke=""`/`fill=""`, o truque do Tremor) — não vendorizar outro Tremor.

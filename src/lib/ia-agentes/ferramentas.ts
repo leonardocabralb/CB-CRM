@@ -8,10 +8,15 @@
 // A régua em si (o que sai da D5, o que é campo vigiado) é PURA e mora em
 // `acoes.ts`; aqui só se lê o que ela precisa.
 //
+// ⚠️ A D5 vale SÓ para o que o agente faz (decisão do operador, 27/09/2026):
+// a régua confere a automação que ele EXECUTA (e as que ela aciona por
+// `run_automation`) e a etapa de ganho/perdido — não percorre mais a CASCATA
+// (as automações de entrada da etapa movida e as de etiqueta aplicada rodam
+// como quando alguém da equipe move o card ou etiqueta).
+//
 // "Marcar reunião" (F5) é conferido contra o CALENDLY (o tipo de evento é
-// ativo na conta conectada), não contra o banco — e fica FORA da régua da D5
-// pela cascata, de propósito (ver `conferirFerramentas`). Os horários do
-// pedido vêm de `agenda.ts`, não de `opcoesDoAgente`.
+// ativo na conta conectada), não contra o banco. Os horários do pedido vêm
+// de `agenda.ts`, não de `opcoesDoAgente`.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -23,13 +28,9 @@ import {
   automacoesAlcancaveis,
   camposVigiados,
   formatoDoCampo,
-  gatilhosDaCascata,
-  motivoDaEtapa,
-  motivoDaEtiqueta,
   motivoForaDaD5,
   type MotivoForaDaD5,
   type OpcoesDeAcao,
-  type OrigensDaD5,
   type PassoDaAutomacao,
   type ReguaDaD5,
 } from './acoes'
@@ -37,7 +38,7 @@ import { itensDaAcao, type FerramentasDoAgente } from './agente'
 import { tiposDeEventoAtivos } from './agenda'
 
 const PAGINA = 1000
-/** Camadas de automação percorridas (acionadas ou da cascata): passou disso, a régua desiste (e recusa). */
+/** Camadas de automação percorridas (as acionadas por `run_automation`): passou disso, a régua desiste (e recusa). */
 const CAMADAS_DA_D5 = 20
 
 type Consulta = (de: number, ate: number) => PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>
@@ -118,59 +119,32 @@ function agruparPassos(
   }
 }
 
-/**
- * A régua da conta: as etapas de resultado, os campos vigiados e quem a
- * CASCATA dispara (as automações LIGADAS de etapa e de etiqueta). Uma leitura
- * de `automations` serve às duas últimas. Lança em erro.
- */
+/** A régua da conta: as etapas de resultado e os campos vigiados. Lança em erro. */
 async function lerRegua(db: SupabaseClient, accountId: string): Promise<ReguaDaD5> {
-  const [etapasDeResultado, automacoes] = await Promise.all([
+  const [etapasDeResultado, vigiados] = await Promise.all([
     lerEtapasDeResultado(db, accountId),
-    lerTodas<{ id: string; trigger_type: string; trigger_config: unknown; is_active: boolean }>(
-      (de, ate) =>
-        db
-          .from('automations')
-          .select('id, trigger_type, trigger_config, is_active')
-          .eq('account_id', accountId)
-          .in('trigger_type', ['date_field_offset', 'deal_stage_changed', 'tag_added'])
-          .eq('is_active', true)
-          .order('id')
-          .range(de, ate),
-      'automações de lembrete, de etapa e de etiqueta',
-    ),
+    lerCamposVigiados(db, accountId),
   ])
-  return { etapasDeResultado, camposVigiados: camposVigiados(automacoes), cascata: gatilhosDaCascata(automacoes) }
-}
-
-/** O motivo fora da D5 de cada origem (`null` = dentro). */
-export interface MotivosDaD5 {
-  /** A automação que a IA EXECUTA (o "Aguardar" conta). */
-  automacoes: Map<string, MotivoForaDaD5 | null>
-  /** A etapa para onde a IA move o card, pela cascata. */
-  etapas: Map<string, MotivoForaDaD5 | null>
-  /** A etiqueta que a IA APLICA, pela cascata. */
-  etiquetas: Map<string, MotivoForaDaD5 | null>
+  return { etapasDeResultado, camposVigiados: vigiados }
 }
 
 /**
- * A D5 de cada origem pedida: a automação que a IA executa (e as que ela
- * aciona, e a cascata dos passos), a etapa para onde ela move o card e a
- * etiqueta que ela aplica (as automações que a entrada na etapa / a
- * etiqueta disparam, e a cascata delas). Lê os passos CAMADA POR CAMADA —
- * só os que a régua percorre (`automacoesAlcancaveis`, as MESMAS arestas) e
- * só de automação DESTA conta (`automations!inner`). Lança em erro de leitura
- * (quem chama recusa: na dúvida, a IA não dispara).
+ * A D5 de cada automação que a IA EXECUTA (e das que ela aciona por
+ * `run_automation`; o "Aguardar" conta) — `null` = dentro. Lê os passos
+ * CAMADA POR CAMADA — só os que a régua percorre (`automacoesAlcancaveis`,
+ * as MESMAS arestas) e só de automação DESTA conta (`automations!inner`).
+ * Lança em erro de leitura (quem chama recusa: na dúvida, a IA não dispara).
  */
 export async function motivosForaDaD5(
   db: SupabaseClient,
   accountId: string,
-  origens: OrigensDaD5,
-): Promise<MotivosDaD5> {
+  automacoes: readonly string[],
+): Promise<Map<string, MotivoForaDaD5 | null>> {
   const regua = await lerRegua(db, accountId)
   const passosDe = new Map<string, PassoDaAutomacao[]>()
   const lidas = new Set<string>()
   for (let camada = 0; ; camada++) {
-    const faltam = [...automacoesAlcancaveis(origens, passosDe, regua.cascata)].filter((id) => !lidas.has(id))
+    const faltam = [...automacoesAlcancaveis(automacoes, passosDe)].filter((id) => !lidas.has(id))
     if (faltam.length === 0) break
     if (camada >= CAMADAS_DA_D5) throw new Error('automações encadeadas demais para conferir a D5')
     for (const id of faltam) lidas.add(id)
@@ -187,13 +161,7 @@ export async function motivosForaDaD5(
     )
     agruparPassos(linhas, passosDe)
   }
-  const cada = (ids: readonly string[] | undefined, motivo: (id: string) => MotivoForaDaD5 | null) =>
-    new Map((ids ?? []).map((id) => [id, motivo(id)]))
-  return {
-    automacoes: cada(origens.automacoes, (id) => motivoForaDaD5(id, passosDe, regua)),
-    etapas: cada(origens.etapas, (id) => motivoDaEtapa(id, passosDe, regua)),
-    etiquetas: cada(origens.etiquetas, (id) => motivoDaEtiqueta(id, passosDe, regua)),
-  }
+  return new Map(automacoes.map((id) => [id, motivoForaDaD5(id, passosDe, regua)]))
 }
 
 // ------------------------------------------------------------
@@ -205,7 +173,6 @@ export type CodigoDaFerramenta =
   | 'item_de_outra_conta'
   | 'campo_vigiado'
   | 'automacao_fora_da_d5'
-  | 'cascata_fora_da_d5'
   /** "Marcar reunião" (F5): o tipo de evento não é um ATIVO da conta do Calendly conectado. */
   | 'tipo_de_evento_invalido'
   /** "Marcar reunião" (F5): não há Calendly conectado (ou o token foi recusado). */
@@ -221,18 +188,17 @@ function faltando(pedidos: readonly string[], achados: Iterable<string>): string
 /**
  * Confere as ferramentas que a tela manda: todo item é DESTA conta (array sem
  * FK, escrita em service role), nenhuma etapa é de ganho/perdido (D5),
- * nenhum campo de data é vigiado por lembrete, nenhuma automação tem passo
- * fora da D5 ou "Aguardar" (percorrendo as que ela aciona e a cascata), e
- * nenhuma etapa para onde move nem etiqueta que aplica dispara, pela
- * CASCATA, automação com passo fora da D5 (`cascata_fora_da_d5`). Tirar
- * etiqueta não tem cascata. A recusa leva os ids. Lança em erro de leitura.
+ * nenhum campo de data é vigiado por lembrete e nenhuma automação tem passo
+ * fora da D5 ou "Aguardar" (percorrendo as que ela aciona por
+ * `run_automation`). As automações de ENTRADA da etapa e as de etiqueta não
+ * são conferidas: a D5 vale só para o que o agente faz (27/09/2026). A
+ * recusa leva os ids. Lança em erro de leitura.
  *
  * "Marcar reunião" (F5): o tipo de evento tem de ser um ATIVO da conta do
  * Calendly conectado, lido na API (`tipo_de_evento_invalido`; sem Calendly,
- * `calendly_desconectado`). ⚠️ E NÃO passa pela régua da D5 pela cascata —
- * a EXCEÇÃO escrita no plano (5.6, passo 4): a automação do tipo de evento
- * (que pode avisar o advogado por `send_to_number` e mover o card) roda como
- * roda quando o PRÓPRIO cliente agenda pelo link. O Calendly só é consultado
+ * `calendly_desconectado`). A automação do tipo de evento (que pode avisar o
+ * advogado por `send_to_number` e mover o card) roda como roda quando o
+ * PRÓPRIO cliente agenda pelo link. O Calendly só é consultado
  * quando o tipo de evento MUDOU em relação ao gravado (`gravadas`, as
  * ferramentas do agente antes da alteração; ausente = criação, confere sempre):
  * sem isso, salvar outra ferramenta com o Calendly fora do ar dava 500.
@@ -244,8 +210,7 @@ export async function conferirFerramentas(
   gravadas?: FerramentasDoAgente | null,
 ): Promise<ConferenciaDasFerramentas> {
   const etapas = itensDaAcao(f, 'mover_etapa')
-  const aplicar = itensDaAcao(f, 'etiquetar')
-  const etiquetas = [...new Set([...aplicar, ...itensDaAcao(f, 'tirar_etiqueta')])]
+  const etiquetas = [...new Set([...itensDaAcao(f, 'etiquetar'), ...itensDaAcao(f, 'tirar_etiqueta')])]
   const campos = itensDaAcao(f, 'preencher_campo')
   const membros = itensDaAcao(f, 'criar_tarefa')
   const automacoes = itensDaAcao(f, 'executar_automacao')
@@ -292,18 +257,16 @@ export async function conferirFerramentas(
     if (recusados.length) return { ok: false, codigo: 'campo_vigiado', itens: recusados }
   }
 
-  if (automacoes.length || etapas.length || aplicar.length) {
-    const d5 = await motivosForaDaD5(db, accountId, { automacoes, etapas, etiquetas: aplicar })
-    const fora = automacoes.filter((id) => d5.automacoes.get(id))
+  if (automacoes.length) {
+    const d5 = await motivosForaDaD5(db, accountId, automacoes)
+    const fora = automacoes.filter((id) => d5.get(id))
     if (fora.length) return { ok: false, codigo: 'automacao_fora_da_d5', itens: fora }
-    const pelaCascata = [...etapas.filter((id) => d5.etapas.get(id)), ...aplicar.filter((id) => d5.etiquetas.get(id))]
-    if (pelaCascata.length) return { ok: false, codigo: 'cascata_fora_da_d5', itens: pelaCascata }
   }
 
-  // A reunião (F5): contra o Calendly, sem a cascata da D5 (a exceção acima),
-  // e só quando o tipo de evento mudou — o gravado já passou por aqui, e o
-  // turno e a execução o conferem de novo no Calendly (desativado = recusado).
-  // Leitura que falha lança (quem chama recusa com `banco`).
+  // A reunião (F5): contra o Calendly, e só quando o tipo de evento mudou — o
+  // gravado já passou por aqui, e o turno e a execução o conferem de novo no
+  // Calendly (desativado = recusado). Leitura que falha lança (quem chama
+  // recusa com `banco`).
   const gravados = gravadas ? itensDaAcao(gravadas, 'marcar_reuniao') : null
   const mudou = !gravados || gravados.length !== tiposDeEvento.length || tiposDeEvento.some((uri) => !gravados.includes(uri))
   if (tiposDeEvento.length && mudou) {
@@ -321,34 +284,22 @@ export async function conferirFerramentas(
 // ------------------------------------------------------------
 
 export interface CatalogoDeFerramentas {
-  /** `foraDaD5`: a cascata da entrada na etapa (a etapa de resultado vem em `resultado`). */
-  etapas: Array<{
-    id: string
-    nome: string
-    funil: string
-    resultado: 'ganho' | 'perdido' | null
-    foraDaD5: MotivoForaDaD5 | null
-  }>
-  /** `foraDaD5.etiquetar`: a cascata de `tag_added`; `tirar` não tem cascata (sempre nulo). */
-  etiquetas: Array<{
-    id: string
-    nome: string
-    foraDaD5: { etiquetar: MotivoForaDaD5 | null; tirar: MotivoForaDaD5 | null }
-  }>
+  /** A etapa de ganho/perdido vem em `resultado` (a única que a D5 recusa). */
+  etapas: Array<{ id: string; nome: string; funil: string; resultado: 'ganho' | 'perdido' | null }>
+  etiquetas: Array<{ id: string; nome: string }>
   /**
    * `tipo` = `field_type`, menos o campo que espelha o e-mail (`'email'`);
    * `opcoes` = as opções do `select` (vazia nos outros).
    */
   campos: Array<{ id: string; nome: string; vigiado: boolean; tipo: string; opcoes: string[] }>
   membros: Array<{ userId: string; nome: string }>
-  /** `foraDaD5`: o passo fora da D5 (ou o "Aguardar") nela, nas que ela aciona e na cascata. */
+  /** `foraDaD5`: o passo fora da D5 (ou o "Aguardar") nela e nas que ela aciona por `run_automation`. */
   automacoes: Array<{ id: string; nome: string; foraDaD5: MotivoForaDaD5 | null }>
 }
 
 /**
  * TUDO o que a conta tem para as ferramentas, com o que o SERVIDOR decide
- * (etapa de resultado, campo vigiado, D5 da automação, da etapa e da
- * etiqueta pela cascata) — a tela só mostra. A régua do Asaas fica de fora
+ * (etapa de resultado, campo vigiado, D5 da automação) — a tela só mostra. A régua do Asaas fica de fora
  * (ela só roda pela varredura). Lança em erro de leitura: um catálogo pela
  * metade faria a tela dizer "a conta não tem etiquetas".
  */
@@ -407,16 +358,8 @@ export async function lerCatalogoDeFerramentas(db: SupabaseClient, accountId: st
   return {
     etapas: [...etapas]
       .sort((a, b) => funilDa(a).localeCompare(funilDa(b), 'pt-BR') || a.position - b.position)
-      .map((e) => ({
-        id: e.id,
-        nome: e.name,
-        funil: funilDa(e),
-        resultado: resultadoDa(e.resultado),
-        foraDaD5: motivoDaEtapa(e.id, passosDe, regua),
-      })),
-    etiquetas: etiquetas
-      .map((t) => ({ id: t.id, nome: t.name, foraDaD5: { etiquetar: motivoDaEtiqueta(t.id, passosDe, regua), tirar: null } }))
-      .sort(porNome),
+      .map((e) => ({ id: e.id, nome: e.name, funil: funilDa(e), resultado: resultadoDa(e.resultado) })),
+    etiquetas: etiquetas.map((t) => ({ id: t.id, nome: t.name })).sort(porNome),
     campos: campos
       .map((c) => {
         const formato = formatoDoCampo(c)
@@ -445,14 +388,13 @@ export async function lerCatalogoDeFerramentas(db: SupabaseClient, accountId: st
 /**
  * As opções de cada tipo LIGADO no agente, com os nomes, na ordem em que o
  * pedido as numera. Só entra o que ainda existe na conta e pode ser feito
- * agora: etapa sem resultado e dentro da D5 pela cascata, etiqueta a aplicar
- * dentro da D5 pela cascata, campo não vigiado (com o FORMATO do valor, que
- * o pedido diz ao modelo; `select` sem opção fica de fora — nada o
- * preencheria), automação ligada, dentro da D5 e fora da régua do Asaas. A
- * execução confere tudo DE NOVO.
+ * agora: etapa sem resultado, etiqueta, campo não vigiado (com o FORMATO do
+ * valor, que o pedido diz ao modelo; `select` sem opção fica de fora — nada
+ * o preencheria), automação ligada, dentro da D5 e fora da régua do Asaas.
+ * A execução confere tudo DE NOVO.
  * Nunca lança: o tipo cuja leitura falha fica de fora (o agente só não o
- * oferece) — inclusive a leitura da D5, que tira etapas, etiquetas a aplicar
- * e automações de uma vez —, e agente sem ferramenta não lê nada.
+ * oferece) — a leitura da D5 só pesa nas automações —, e agente sem
+ * ferramenta não lê nada.
  * A reunião (F5) NÃO sai daqui: os horários são lidos com prazo próprio por
  * `lerAgendaDoAgente` (`agenda.ts`), que o turno e o Playground juntam.
  */
@@ -481,15 +423,6 @@ export async function opcoesDoAgente(
   const membros = itensDaAcao(f, 'criar_tarefa')
   const automacoes = itensDaAcao(f, 'executar_automacao')
 
-  // A D5 (a automação e a cascata da etapa e da etiqueta), lida UMA vez para
-  // os três tipos que dependem dela. O `catch` vazio só marca a rejeição como
-  // tratada: cada tipo que a espera cai no seu `tentar`.
-  const d5 =
-    etapas.length + etiquetar.length + automacoes.length > 0
-      ? motivosForaDaD5(db, accountId, { automacoes, etapas, etiquetas: etiquetar })
-      : null
-  d5?.catch(() => {})
-
   await Promise.all([
     etapas.length > 0 &&
       tentar('etapas', async () => {
@@ -501,9 +434,8 @@ export async function opcoesDoAgente(
             .in('id', etapas),
           'etapas',
         )
-        const motivos = (await d5)?.etapas
         opcoes.mover_etapa = linhas
-          .filter((l) => resultadoDa(l.resultado) === null && !motivos?.get(l.id))
+          .filter((l) => resultadoDa(l.resultado) === null)
           .sort((a, b) => funilDa(a).localeCompare(funilDa(b), 'pt-BR') || a.position - b.position)
           .map((l) => ({ id: l.id, nome: funilDa(l) ? `${funilDa(l)} · ${l.name}` : l.name }))
       }),
@@ -518,12 +450,8 @@ export async function opcoesDoAgente(
           'etiquetas',
         ).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
         const de = (ids: string[]) => linhas.filter((l) => ids.includes(l.id)).map((l) => ({ id: l.id, nome: l.name }))
-        // Tirar não tem cascata: entra ANTES de esperar a D5, que pode falhar.
+        if (etiquetar.length) opcoes.etiquetar = de(etiquetar)
         if (tirar.length) opcoes.tirar_etiqueta = de(tirar)
-        if (etiquetar.length) {
-          const motivos = (await d5)?.etiquetas
-          opcoes.etiquetar = de(etiquetar).filter((o) => !motivos?.get(o.id))
-        }
       }),
     campos.length > 0 &&
       tentar('campos', async () => {
@@ -563,9 +491,9 @@ export async function opcoesDoAgente(
             .in('id', automacoes),
           'automações',
         )
-        const motivos = (await d5)?.automacoes
+        const motivos = await motivosForaDaD5(db, accountId, automacoes)
         opcoes.executar_automacao = linhas
-          .filter((l) => !ehGatilhoDaRegua(l.trigger_type) && !motivos?.get(l.id))
+          .filter((l) => !ehGatilhoDaRegua(l.trigger_type) && !motivos.get(l.id))
           .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
           .map((l) => ({ id: l.id, nome: l.name }))
       }),

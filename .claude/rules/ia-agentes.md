@@ -16,6 +16,8 @@ paths:
   - "src/components/agentes-de-ia/playground-do-agente.tsx"
   - "src/components/agentes-de-ia/ferramentas*"
   - "supabase/migrations/1052_cb_ia_agente_documentos.sql"
+  - "src/lib/ai/providers/**"
+  - "src/lib/ai/defaults.ts"
 ---
 
 # Agentes de IA — o que cada agente vê (F3, 1052)
@@ -77,15 +79,34 @@ Plano: `docs/PLANO-agentes-de-ia.md` (D5, D28, F4). Sem migration.
   = nenhuma ação (registradas como recusadas / `envio_falhou`). Cada ação é
   conferida DE NOVO na hora e deixa a anotação "IA · <agente> …"; uma falha
   não segura as outras.
-- ⚠️⚠️ **A D5 inclui a CASCATA** (`motivoForaDaD5`, `ferramentas.ts`):
-  `run_automation`, as automações de ENTRADA das etapas movidas e as de
-  etiqueta aplicada (o motor não tem gatilho de etiqueta tirada), com trava de ciclo e o escopo ignorado. Ao salvar
-  (400 com código e `itens`), nas opções do turno e na execução. "Aguardar"
-  só é proibido na automação que a IA executa DIRETAMENTE. Os webhooks de
-  saída `deal.*` ficam fora (assinatura da integração; limite escrito).
+- ⚠️⚠️ **D5 SÓ para o que o agente faz (decisão do operador, 27/09/2026)**
+  (`motivoForaDaD5`, `ferramentas.ts`): a automação que ele EXECUTA e as que
+  ela aciona por `run_automation` (com trava de ciclo; "Aguardar" conta), e a
+  etapa de ganho/perdido. Ao salvar (400 com código e `itens`), nas opções do
+  turno e na execução. As automações de ENTRADA da etapa movida e as da
+  etiqueta aplicada NÃO são conferidas — nem as que um "Mover card"/"Adicionar
+  etiqueta" da automação executada dispararia: rodam como quando gente move o
+  card. `cascata_fora_da_d5` não é mais produzido (fica nas listas para os
+  registros antigos). Os webhooks de saída `deal.*` ficam fora (limite escrito).
+- **Ação REPETIDA = no-op (27/09)**: mover para a etapa atual, etiqueta que já
+  está, tirar a que não está e campo com o MESMO valor (`mesmoValorDoCampo`:
+  aparado, sem caixa; data pelo instante) = ok com `detalhe: 'ja_estava'`, sem
+  escrita, anotação nem `tag_added`. O pedido manda escrever só as NOVAS.
 - **Nenhum marcador chega ao cliente** (`lerAcoes`: caixa, acento, espaço,
   colchete simples; `[[handoff]]` em qualquer forma = transferência). Teste
   para cada forma nova.
+- **`[[TRANSFERIR]]` = responda e passe** (27/09): sempre disponível, sem
+  configuração; a resposta SAI e, depois das ações, o turno transfere
+  (`agente_passou`, desfecho `respondeu`, linha `transferir` no registro).
+  Sentinela, passagem e as travas vencem; só o marcador = transfere sem enviar.
+  A resposta que PROMETE a equipe sem ele (`equipePrometida`, medido: 2 de 4)
+  vale como com ele, `detalhe: 'sem_marcador'`; análise "na reunião" é quieta.
+  Condição (as duas travas, `haCondicao`): "se"/"if" sempre; "quando"/"when"
+  só com o verbo no futuro — no passado ("quando você confirmou") é fato.
+  "Vou passar/transferir/encaminhar/chamar…" dispara mesmo com reunião na
+  frase; só a PROMESSA de análise fica quieta nela ("analisa na reunião").
+  **Limite aceito** (Codex, #321): condição DEPOIS da promessa ("nossa equipe
+  vai entrar em contato se for necessário") infere a transferência — seguro.
 - **Link inventado** (`linkInventado`): URL da resposta que não está no
   pedido montado nem nas mensagens enviadas ao modelo → retém e transfere
   (`link_inventado`), com o link no registro do turno.
@@ -105,12 +126,25 @@ Plano: `docs/PLANO-agentes-de-ia.md` (D5, D28, F4). Sem migration.
 Plano: `docs/PLANO-agentes-de-ia.md` (D7, D28, 5.6, F5). Sem migration. É
 uma AÇÃO a mais do protocolo da F4 (`marcar_reuniao`, `[[REUNIAO:n]]`).
 
-- ⚠️⚠️ **A EXCEÇÃO à D5 pela cascata**: marcar reunião NÃO passa por
-  `motivosForaDaD5`. A automação do tipo de evento roda pelo webhook
-  `invitee.created`, como quando o PRÓPRIO cliente agenda pelo link (pode
-  avisar o advogado por `send_to_number` e mover o card). Escrito no código
-  (`conferirFerramentas`, `marcarReuniao`, `agenda.ts`), aqui e no plano.
-  O agente NÃO mexe no card, nos campos nem nos lembretes.
+- ⚠️⚠️ Marcar reunião NÃO passa por `motivosForaDaD5`: a automação do tipo
+  de evento roda pelo webhook `invitee.created`, como quando o PRÓPRIO cliente
+  agenda pelo link (pode avisar o advogado por `send_to_number` e mover o
+  card). Era a "exceção à D5 pela cascata" até 27/09, quando a cascata saiu
+  da régua. O agente NÃO mexe no card, nos campos nem nos lembretes.
+- ⚠️⚠️ **Reunião PROMETIDA sem o marcador = RETIDA e transfere** (27/09,
+  medido: 2 de 6 gerações): com horários oferecidos e nenhuma `marcar_reuniao`
+  aceita, texto que afirma a reunião (`afirmaReuniaoMarcada`: particípio ou
+  forma finita — "marquei", "agendamos", "I booked", "all set" (Codex, #321) —
+  + reunião/horário/data, sem negação, futuro, oferta ou condição) vira
+  `reuniao_prometida`, com o texto no `erro` do turno; o Playground avisa
+  (`reuniaoPrometida`). Passagem, transferência e link inventado vencem.
+  **Limite aceito** (Codex, #321): basta a forma que afirma e a âncora
+  coexistirem na frase — "Seu e-mail está confirmado para agendarmos sua
+  reunião às 15:15" dispara. Erra para o lado seguro (retida, vai a gente).
+  **Limite aceito:** as duas travas (reunião prometida e equipe prometida)
+  são heurísticas de segurança sobre a FORMA de dizer, sem cobrir toda frase
+  possível; a primeira defesa é a regra do pedido; toda passagem inferida
+  fica medida em `sem_marcador`.
 - **Configuração**: `ferramentas.marcar_reuniao = { tipos_de_evento: [uri] }`
   — lista para caber no código genérico, NO MÁXIMO uma, só a forma
   `https://api.calendly.com/event_types/<id>` (`ehUriDeTipoDeEvento`). Ao
@@ -142,6 +176,13 @@ uma AÇÃO a mais do protocolo da F4 (`marcar_reuniao`, `[[REUNIAO:n]]`).
   bloco desmarcado): o pedido diz quando ela é e manda o link de remarcar
   DELA (sem link, transferir); o marcador inventado é `nao_liberada` e
   transfere. Leitura dessa reunião que falha = sem horários (`lida` falso).
+- **Nome completo opcional** (`[[REUNIAO:n=Nome]]`, 27/09): vai como
+  `invitee.name` no lugar do da ficha (`nomeDoConvidado`: 2–120, com letra;
+  fora da forma, cai — nunca recusa) e VIRA o nome da ficha (o webhook do
+  Calendly o fixa, 999). O pedido proíbe inventar o nome. ⚠️ Só vai com
+  ORIGEM (`nomeComOrigem`, Codex, #321): toda palavra (≥ 2 letras, sem
+  de/da/do/dos/das/e) nas mensagens do CLIENTE, ou o nome atual da ficha;
+  senão cai — marca com o da ficha e o registro diz `nome_sem_origem`.
 - **Uma reunião por resposta**: o segundo horário é `teto`; horário fora dos
   oferecidos, `fora_da_lista` (default-deny). O `id` da opção é o
   `start_time` que o SERVIDOR leu — é ele que vai ao `POST /invitees`.
@@ -269,3 +310,18 @@ testados; `prepararMidias` em `turno.ts`; `contexto.ts` e `pedido.ts`.
   como leitura — não há como distinguir. (4) a falha passageira do ÁUDIO
   (`transcrever.ts`) ainda gasta tentativa: a regra nova é só da leitura.
 
+# Agentes de IA — a resposta cortada (27/09/2026)
+
+- ⚠️⚠️ **Resposta que parou no teto de tokens vira `output_truncated`, nunca
+  texto** (`respostaCortada`: Gemini `MAX_TOKENS`, OpenAI `length`, Anthropic
+  `max_tokens`): o texto pela metade iria ao cliente. No turno, `falhou` sem
+  envio (E8). O teto (`MAX_OUTPUT_TOKENS`, 8192) é folga para o RACIOCÍNIO,
+  que conta nele (Gemini 3.x, gpt-5, Sonnet 5): com 1024 a resposta saía
+  cortada. Curta é o prompt; não desligar o raciocínio. O ping aceita a
+  cortada.
+- **Limites aceitos (Codex, #323):** modelo ANTIGO com teto de saída abaixo
+  de 8192 (gpt-3.5, gpt-4-turbo, Claude 3) recusa o pedido — aparece no teste
+  de chave ao salvar; em 27/09 a conta usa só `gemini-3.7-flash`. A resposta
+  cortada não entra em `ai_usage_log` (como toda falha de geração). Não há
+  teto de caracteres depois de gerar: a Meta recusa texto acima de 4.096 (cai
+  no envio recusado, nada sai cortado); a Evolution aceita.

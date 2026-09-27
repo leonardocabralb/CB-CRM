@@ -208,13 +208,14 @@ function PipelinesPageInner() {
   const [automations, setAutomations] = useState<Automation[]>([]);
   /** Passos por automação, para o resumo do cartão ("Adicionar tag: X"). */
   const [steps, setSteps] = useState<Record<string, AutomationStep[]>>({});
-  /** Nomes de tag/etapa/robô, para o cartão não exibir UUID. */
+  /** Nomes de tag/etapa/robô/campo, para o cartão não exibir UUID. */
   const [nomes, setNomes] = useState<{
     tags: Record<string, string>;
     etapas: Record<string, string>;
     fluxos: Record<string, string>;
     automacoes: Record<string, string>;
-  }>({ tags: {}, etapas: {}, fluxos: {}, automacoes: {} });
+    campos: Record<string, string>;
+  }>({ tags: {}, etapas: {}, fluxos: {}, automacoes: {}, campos: {} });
 
   /** "leads" = o Kanban de sempre; "automacoes" = a grade estilo Kommo. */
   // "leads" é o QUADRO (o id ficou pelo diff mínimo; o rótulo virou "Quadro"
@@ -464,13 +465,13 @@ function PipelinesPageInner() {
    *
    * Falha em silêncio, como o resto desta página: sem os passos o cartão
    * mostra "sem ações", que é menos ruim que um quadro que não abre. O
-   * `falhou` diz se alguma das quatro consultas caiu: a carga de sempre o
+   * `falhou` diz se alguma das consultas caiu: a carga de sempre o
    * ignora; a volta ao app não grava por cima do que já está na tela.
    */
   const loadPassosENomes = useCallback(
     async (lista: Automation[]) => {
       const ids = lista.map((a) => a.id);
-      const [passosRes, tagsRes, etapasRes, fluxosRes] = await Promise.all([
+      const [passosRes, tagsRes, etapasRes, fluxosRes, camposRes] = await Promise.all([
         ids.length
           ? supabase
               .from("automation_steps")
@@ -481,6 +482,9 @@ function PipelinesPageInner() {
         supabase.from("tags").select("id, name"),
         supabase.from("pipeline_stages").select("id, name"),
         supabase.from("flows").select("id, name"),
+        // A condição por CAMPO PERSONALIZADO (2.10) diz o nome do campo no
+        // cartão; `field_name` vira `name` para o mesmo `mapear`.
+        supabase.from("custom_fields").select("id, name:field_name"),
       ]);
 
       const porAutomacao: Record<string, AutomationStep[]> = {};
@@ -493,7 +497,11 @@ function PipelinesPageInner() {
 
       return {
         falhou: Boolean(
-          passosRes.error || tagsRes.error || etapasRes.error || fluxosRes.error,
+          passosRes.error ||
+            tagsRes.error ||
+            etapasRes.error ||
+            fluxosRes.error ||
+            camposRes.error,
         ),
         passos: porAutomacao,
         nomes: {
@@ -501,6 +509,7 @@ function PipelinesPageInner() {
           etapas: mapear(etapasRes.data as { id: string; name: string }[] | null),
           fluxos: mapear(fluxosRes.data as { id: string; name: string }[] | null),
           automacoes: Object.fromEntries(lista.map((a) => [a.id, a.name])),
+          campos: mapear(camposRes.data as { id: string; name: string }[] | null),
         },
       };
     },

@@ -54,14 +54,12 @@ export function lerOpcoes(v: unknown): OpcoesDasFerramentas | null {
     const funil = texto(e.funil)
     if (!id || nome === null || funil === null) return null
     const resultado = e.resultado === 'ganho' || e.resultado === 'perdido' ? e.resultado : null
-    return { id, nome, funil, resultado, foraDaD5: codigo(e.foraDaD5) }
+    return { id, nome, funil, resultado }
   })
   const etiquetas = linhas<OpcoesDasFerramentas['etiquetas'][number]>(o.etiquetas, (e) => {
     const id = texto(e.id)
     const nome = texto(e.nome)
-    if (!id || nome === null) return null
-    const cascata = objeto(e.foraDaD5)
-    return { id, nome, foraDaD5: { etiquetar: codigo(cascata?.etiquetar), tirar: codigo(cascata?.tirar) } }
+    return id && nome !== null ? { id, nome } : null
   })
   const campos = linhas<OpcoesDasFerramentas['campos'][number]>(o.campos, (c) => {
     const id = texto(c.id)
@@ -156,24 +154,16 @@ export function lerHorariosOferecidos(v: unknown): HorarioOferecido[] | null {
 export const HORARIOS_A_MOSTRA = 4
 
 /**
- * O que dispara a CASCATA de um item: entrar na etapa, aplicar a etiqueta ou
- * tirá-la. Chave MONTADA (`IaAgentes.ferramentas.bloqueio.cascata.<g>`),
- * cobrada em `textos.test.ts`.
- */
-export const GATILHOS_DA_CASCATA = ['etapa', 'etiquetar', 'tirar'] as const
-export type GatilhoDaCascata = (typeof GATILHOS_DA_CASCATA)[number]
-
-/**
  * Por que um item NÃO pode ser marcado (a D5, calculada pelo servidor):
- * etapa de ganho/perdido, campo de data vigiado por lembrete, automação com
- * passo fora da D5 (o código do passo) e a cascata de uma etapa ou etiqueta
- * (uma automação que ela dispara sai da D5; o código do passo dela).
+ * etapa de ganho/perdido, campo de data vigiado por lembrete e automação com
+ * passo fora da D5 (o código do passo). As automações que a etapa ou a
+ * etiqueta disparam não contam (a D5 vale só para o que o agente faz,
+ * 27/09/2026).
  */
 export type Bloqueio =
   | { tipo: 'etapa_de_resultado' }
   | { tipo: 'campo_vigiado' }
   | { tipo: 'fora_da_d5'; codigo: string }
-  | { tipo: 'cascata'; gatilho: GatilhoDaCascata; codigo: string }
 
 export interface ItemDaLista {
   id: string
@@ -185,35 +175,19 @@ export interface ItemDaLista {
   campo?: { tipo: string | null; opcoes: string[] }
 }
 
-function cascata(gatilho: GatilhoDaCascata, codigo: string | null): Bloqueio | null {
-  return codigo ? { tipo: 'cascata', gatilho, codigo } : null
-}
-
 /** A lista de um tipo de ação, na ordem em que o servidor a mandou. */
 export function itensDoTipo(opcoes: OpcoesDasFerramentas, tipo: TipoDeAcao): ItemDaLista[] {
   switch (tipo) {
     case 'mover_etapa':
-      // Ganho/perdido vence a cascata: é o motivo que o operador entende primeiro.
       return opcoes.etapas.map((e) => ({
         id: e.id,
         nome: e.nome,
         grupo: e.funil,
-        bloqueio: e.resultado ? { tipo: 'etapa_de_resultado' } : cascata('etapa', e.foraDaD5),
+        bloqueio: e.resultado ? { tipo: 'etapa_de_resultado' } : null,
       }))
     case 'etiquetar':
-      return opcoes.etiquetas.map((e) => ({
-        id: e.id,
-        nome: e.nome,
-        grupo: null,
-        bloqueio: cascata('etiquetar', e.foraDaD5.etiquetar),
-      }))
     case 'tirar_etiqueta':
-      return opcoes.etiquetas.map((e) => ({
-        id: e.id,
-        nome: e.nome,
-        grupo: null,
-        bloqueio: cascata('tirar', e.foraDaD5.tirar),
-      }))
+      return opcoes.etiquetas.map((e) => ({ id: e.id, nome: e.nome, grupo: null, bloqueio: null }))
     case 'preencher_campo':
       return opcoes.campos.map((c) => ({
         id: c.id,

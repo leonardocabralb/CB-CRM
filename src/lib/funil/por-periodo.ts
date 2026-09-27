@@ -38,8 +38,11 @@ import type { FatosDoNegocio } from "./trajetoria";
  *    se perdeu de novo conta na segunda vez, e some da primeira — a mesma
  *    régua da coorte ("perda é onde está hoje"), agora datada.
  *  - DINHEIRO (valor fechado, ticket, e o CAC que a tela deriva) = contrato
- *    alcançado no período que CONTINUA fechado hoje. O distrato conta no
- *    degrau e some do dinheiro, como na coorte.
+ *    alcançado no período que CONTINUA fechado hoje (em contrato ou em pasta,
+ *    1054). O distrato conta no degrau e some do dinheiro, como na coorte. A
+ *    data é a do CONTRATO (`alcancouEm[contrato]`, a primeira vez em
+ *    contrato ou pasta), nunca a da pasta: remapear uma etapa de contrato
+ *    para pasta não move dinheiro de mês.
  *  - SEM AVANÇO / EM ANDAMENTO / FORA DO FUNIL = a foto de hoje dos leads que
  *    ENTRARAM no período. Não são fluxo, e por isso não mudam entre os modos.
  *  - CUSTO DOS PERDIDOS (a tela) = custo por lead do período × entrantes do
