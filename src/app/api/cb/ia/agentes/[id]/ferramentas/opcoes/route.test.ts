@@ -18,8 +18,10 @@ vi.mock('@/lib/ia-agentes/repo', () => ({
 }))
 vi.mock('@/lib/ai/admin-client', () => ({ supabaseAdmin: () => ({ banco: true }) }))
 vi.mock('@/lib/ia-agentes/ferramentas', () => ({ lerCatalogoDeFerramentas: vi.fn() }))
+vi.mock('@/lib/ia-agentes/agenda', () => ({ tiposDeEventoParaATela: vi.fn() }))
 
 import { requireRole } from '@/lib/auth/account'
+import { tiposDeEventoParaATela } from '@/lib/ia-agentes/agenda'
 import { lerCatalogoDeFerramentas } from '@/lib/ia-agentes/ferramentas'
 import { GET } from './route'
 
@@ -33,9 +35,15 @@ const CATALOGO = {
   automacoes: [{ id: 'a1', nome: 'Aciona filha', foraDaD5: 'aguardar' }],
 }
 
+const CALENDLY = {
+  calendly: 'conectado' as const,
+  tiposDeEvento: [{ uri: 'https://api.calendly.com/event_types/T1', nome: 'Reunião', duracao: 30 }],
+}
+
 beforeEach(() => {
   agenteDaConta = { id: ID, arquivadoEm: null }
   vi.mocked(lerCatalogoDeFerramentas).mockReset().mockResolvedValue(CATALOGO as never)
+  vi.mocked(tiposDeEventoParaATela).mockReset().mockResolvedValue(CALENDLY)
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
@@ -44,8 +52,16 @@ describe('GET /api/cb/ia/agentes/[id]/ferramentas/opcoes', () => {
     const res = await chamar()
     expect(res.status).toBe(200)
     expect(requireRole).toHaveBeenCalledWith('admin')
-    expect(await res.json()).toEqual(CATALOGO)
+    expect(await res.json()).toEqual({ ...CATALOGO, ...CALENDLY })
     expect(vi.mocked(lerCatalogoDeFerramentas).mock.calls[0][1]).toBe('conta-1')
+    expect(vi.mocked(tiposDeEventoParaATela).mock.calls[0][1]).toBe('conta-1')
+  })
+
+  it('F5: Calendly desconectado ou que falhou vem como estado, com `tiposDeEvento` nulo — o catálogo não cai', async () => {
+    vi.mocked(tiposDeEventoParaATela).mockResolvedValueOnce({ calendly: 'falhou', tiposDeEvento: null })
+    const res = await chamar()
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ calendly: 'falhou', tiposDeEvento: null, etapas: CATALOGO.etapas })
   })
 
   it('agente de outra conta, arquivado ou id que não é uuid: 404, sem ler o catálogo', async () => {

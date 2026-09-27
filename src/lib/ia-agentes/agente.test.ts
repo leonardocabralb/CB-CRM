@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   blocoMarcado,
   colunasDaAlteracao,
+  ehUriDeTipoDeEvento,
   itensDaAcao,
   lerAcesso,
   lerAlteracao,
@@ -265,7 +266,7 @@ describe('lerFerramentas — nada ligado = o agente só conversa (F4, D28)', () 
   const A = '22222222-2222-4222-8222-222222222222'
   const B = '33333333-3333-4333-8333-333333333333'
 
-  it('os seis tipos, nessa ordem', () => {
+  it('os sete tipos, nessa ordem (a reunião da F5 no fim)', () => {
     expect(TIPOS_DE_ACAO).toEqual([
       'mover_etapa',
       'etiquetar',
@@ -273,7 +274,34 @@ describe('lerFerramentas — nada ligado = o agente só conversa (F4, D28)', () 
       'preencher_campo',
       'criar_tarefa',
       'executar_automacao',
+      'marcar_reuniao',
     ])
+  })
+
+  it('F5: a reunião guarda UMA URI de tipo de evento do Calendly — só essa forma', () => {
+    const URI = 'https://api.calendly.com/event_types/GBGBDCAADAEDCRZ2'
+    const OUTRA = 'https://api.calendly.com/event_types/AAAA-1111'
+    expect(ehUriDeTipoDeEvento(URI)).toBe(true)
+    for (const v of [
+      A,
+      'http://api.calendly.com/event_types/X',
+      'https://api.calendly.com.evil.com/event_types/X',
+      'https://api.calendly.com/event_types/X/../users/me',
+      'https://api.calendly.com/event_types/X?y=1',
+      'https://api.calendly.com/users/X',
+      'https://api.calendly.com/event_types/',
+      7,
+      null,
+    ]) {
+      expect(ehUriDeTipoDeEvento(v), String(v)).toBe(false)
+    }
+    // Uuid não serve na reunião; URI não serve nos outros; a segunda URI cai no teto de 1.
+    const f = lerFerramentas({
+      marcar_reuniao: { tipos_de_evento: [A, URI, URI, OUTRA] },
+      etiquetar: { etiquetas: [URI, A] },
+    })
+    expect(f).toEqual({ marcar_reuniao: { tipos_de_evento: [URI] }, etiquetar: { etiquetas: [A] } })
+    expect(itensDaAcao(f, 'marcar_reuniao')).toEqual([URI])
   })
 
   it('forma estranha = nada ligado, nunca exceção', () => {
@@ -329,6 +357,20 @@ describe('lerAlteracao — ferramentas (PATCH)', () => {
     expect(lerAlteracao({ ferramentas: { etiquetar: {} } }, false)).toEqual(recusa)
     const demais = Array.from({ length: 51 }, (_, i) => `44444444-4444-4444-8444-${String(i).padStart(12, '0')}`)
     expect(lerAlteracao({ ferramentas: { criar_tarefa: { membros: demais } } }, false)).toEqual(recusa)
+  })
+
+  it('F5: a reunião aceita UMA URI de tipo de evento; outra forma ou mais de uma RECUSA', () => {
+    const URI = 'https://api.calendly.com/event_types/GBGBDCAADAEDCRZ2'
+    const OUTRA = 'https://api.calendly.com/event_types/OUTRO'
+    const recusa = { ok: false, codigo: 'lista_invalida' }
+    const r = lerAlteracao({ ferramentas: { marcar_reuniao: { tipos_de_evento: [URI, URI] } } }, false)
+    expect(r).toEqual({ ok: true, valor: { ferramentas: { marcar_reuniao: { tipos_de_evento: [URI] } } } })
+    expect(lerAlteracao({ ferramentas: { marcar_reuniao: { tipos_de_evento: [URI, OUTRA] } } }, false)).toEqual(recusa)
+    expect(lerAlteracao({ ferramentas: { marcar_reuniao: { tipos_de_evento: [A] } } }, false)).toEqual(recusa)
+    expect(lerAlteracao({ ferramentas: { marcar_reuniao: { tipos_de_evento: URI } } }, false)).toEqual(recusa)
+    expect(lerAlteracao({ ferramentas: { marcar_reuniao: { tipo_de_evento: URI } } }, false)).toEqual(recusa)
+    // E a URI não entra numa lista de uuids.
+    expect(lerAlteracao({ ferramentas: { mover_etapa: { etapas: [URI] } } }, false)).toEqual(recusa)
   })
 
   it('sem `ferramentas` no corpo, a coluna não se toca', () => {

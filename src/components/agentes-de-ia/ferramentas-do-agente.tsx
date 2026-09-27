@@ -20,9 +20,16 @@
 // ⚠️ As opções carregam à parte: enquanto carregam as listas são esqueleto,
 // e a carga que falha diz que falhou — nunca "a conta não tem etiquetas",
 // que seria a lista vazia virando afirmação (CLAUDE.md).
+//
+// F5 (D7): "Marcar reunião" não é lista de caixas — é UM tipo de evento do
+// Calendly, num select (`situacaoDaReuniao`). Sem Calendly conectado a chave
+// não liga (só desliga, se já estava ligada — o Salvar recusaria), com o
+// motivo e o link para Integrações; a leitura dos tipos que falhou diz que
+// falhou e oferece tentar de novo — nunca "o Calendly não tem tipos".
 // ============================================================
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { RefreshCw, Search } from 'lucide-react';
@@ -34,7 +41,16 @@ import { Switch } from '@/components/ui/switch';
 import { LIMITES } from '@/lib/ia-agentes/agente';
 import { semAcento } from '@/lib/inbox/busca-em-mensagens';
 import { cn } from '@/lib/utils';
-import { agruparItens, itensDoTipo, lerOpcoes, type Bloqueio, type ItemDaLista } from './ferramentas';
+import {
+  agruparItens,
+  catalogoDoTipo,
+  itensDoTipo,
+  lerOpcoes,
+  situacaoDaReuniao,
+  type Bloqueio,
+  type ItemDaLista,
+  type SituacaoDaReuniao,
+} from './ferramentas';
 import {
   ferramentasDoRascunho,
   ferramentasMudaram,
@@ -47,8 +63,8 @@ import { TIPOS_DE_ACAO, type IaAgente, type OpcoesDasFerramentas, type TipoDeAca
 
 type Carga = { fase: 'carregando' } | { fase: 'falhou' } | { fase: 'pronto'; opcoes: OpcoesDasFerramentas };
 
-/** O teto de linhas do PostgREST: lista com isto (ou mais) pode ter sido cortada. */
-const TETO_DO_POSTGREST = 1000;
+/** Onde o Calendly é conectado (Configurações → Integrações). */
+const URL_DAS_INTEGRACOES = '/settings?tab=integracoes';
 
 /** Acima disto a lista ganha a caixa de busca. */
 const ITENS_PARA_BUSCAR = 10;
@@ -88,6 +104,11 @@ export function FerramentasDoAgente({
     })();
   }, [carregar]);
 
+  const tentarDeNovo = useCallback(() => {
+    setCarga({ fase: 'carregando' });
+    void carregar();
+  }, [carregar]);
+
   const ferramentas = useMemo(() => ferramentasDoRascunho(rascunho), [rascunho]);
   const naoSalvo = ferramentasMudaram(agente.ferramentas, ferramentas);
   useEffect(() => {
@@ -96,14 +117,12 @@ export function FerramentasDoAgente({
 
   // O catálogo de cada tipo, para podar o que não existe mais. ⚠️ Só uma
   // lista COMPLETA prova que o item sumiu (Codex, #312): cortada pelo teto
-  // do PostgREST — ou sem carga —, nada é descartado.
+  // do PostgREST, sem carga — ou, na reunião, sem Calendly legível —, nada
+  // é descartado (`catalogoDoTipo`).
   const existentes = useMemo(() => {
     const saida: Partial<Record<TipoDeAcao, ReadonlySet<string> | null>> = {};
     if (carga.fase !== 'pronto') return saida;
-    for (const tipo of TIPOS_DE_ACAO) {
-      const itens = itensDoTipo(carga.opcoes, tipo);
-      saida[tipo] = itens.length < TETO_DO_POSTGREST ? new Set(itens.map((i) => i.id)) : null;
-    }
+    for (const tipo of TIPOS_DE_ACAO) saida[tipo] = catalogoDoTipo(carga.opcoes, tipo);
     return saida;
   }, [carga]);
 
@@ -114,6 +133,11 @@ export function FerramentasDoAgente({
       ...r,
       ligadas: ligar ? (r.ligadas.includes(tipo) ? r.ligadas : [...r.ligadas, tipo]) : r.ligadas.filter((x) => x !== tipo),
     }));
+  }
+
+  /** "Marcar reunião": UM tipo de evento (vazio = nenhum escolhido). */
+  function escolherTipoDeEvento(uri: string) {
+    setRascunho((r) => ({ ...r, listas: { ...r.listas, marcar_reuniao: uri ? [uri] : [] } }));
   }
 
   function alternarItem(tipo: TipoDeAcao, id: string) {
@@ -168,32 +192,45 @@ export function FerramentasDoAgente({
       <div className="space-y-3">
         {TIPOS_DE_ACAO.map((tipo) => {
           const ligada = rascunho.ligadas.includes(tipo);
+          const reuniao =
+            tipo === 'marcar_reuniao' && carga.fase === 'pronto'
+              ? situacaoDaReuniao(carga.opcoes, rascunho.listas.marcar_reuniao)
+              : null;
+          // Sem Calendly conectado, "Marcar reunião" não LIGA; ligada, só desliga.
+          const naoLiga = !ligada && reuniao?.fase === 'desconectado';
           return (
             <section key={tipo} className="space-y-3 rounded-md border border-border p-3">
-              <label className="flex cursor-pointer items-start gap-3">
-                <Switch className="mt-0.5" checked={ligada} onCheckedChange={(v) => alternarTipo(tipo, v === true)} />
+              <label className={cn('flex items-start gap-3', naoLiga ? 'cursor-not-allowed' : 'cursor-pointer')}>
+                <Switch
+                  className="mt-0.5"
+                  checked={ligada}
+                  disabled={naoLiga}
+                  onCheckedChange={(v) => alternarTipo(tipo, v === true)}
+                />
                 <span className="min-w-0">
                   <span className="block text-sm font-medium text-foreground">{rotuloDoTipoDeAcao(t, tipo)}</span>
                   <span className="block text-xs text-muted-foreground">{t(`ferramentas.tipo.${tipo}.dica`)}</span>
                 </span>
               </label>
+              {naoLiga ? <AvisoDoCalendly texto={t('ferramentas.reuniao.desconectado')} /> : null}
               {ligada ? (
                 carga.fase === 'carregando' ? (
                   <div className="h-20 animate-pulse rounded-md bg-muted/40" />
                 ) : carga.fase === 'falhou' ? (
                   <div className="space-y-2">
                     <p className="text-sm text-muted-foreground">{t('ferramentas.falhou')}</p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setCarga({ fase: 'carregando' });
-                        void carregar();
-                      }}
-                    >
+                    <Button variant="outline" size="sm" onClick={tentarDeNovo}>
                       <RefreshCw className="size-4" /> {t('tentarDeNovo')}
                     </Button>
                   </div>
+                ) : reuniao ? (
+                  <EscolhaDoTipoDeEvento
+                    situacao={reuniao}
+                    marcados={rascunho.listas.marcar_reuniao}
+                    recusados={recusados}
+                    aoEscolher={escolherTipoDeEvento}
+                    aoTentarDeNovo={tentarDeNovo}
+                  />
                 ) : (
                   <ListaDoTipo
                     tipo={tipo}
@@ -216,6 +253,92 @@ export function FerramentasDoAgente({
       </div>
     </div>
   );
+}
+
+/** O motivo de o Calendly não servir, com o link para conectá-lo em Integrações. */
+function AvisoDoCalendly({ texto, erro = false }: { texto: string; erro?: boolean }) {
+  const t = useTranslations('IaAgentes');
+  return (
+    <p className={cn('text-xs', erro ? 'text-red-700 dark:text-red-300' : 'text-muted-foreground')}>
+      {texto}{' '}
+      <Link href={URL_DAS_INTEGRACOES} className="underline underline-offset-2 hover:text-foreground">
+        {t('ferramentas.reuniao.abrirIntegracoes')}
+      </Link>
+    </p>
+  );
+}
+
+/**
+ * "Marcar reunião" ligada (F5): o select do tipo de evento, ou por que ele
+ * não aparece. Ligada com o Calendly desconectado, o motivo sai em vermelho:
+ * o Salvar vai recusar (`calendly_desconectado`) até a chave ser desligada.
+ */
+function EscolhaDoTipoDeEvento({
+  situacao,
+  marcados,
+  recusados,
+  aoEscolher,
+  aoTentarDeNovo,
+}: {
+  situacao: SituacaoDaReuniao;
+  marcados: string[];
+  recusados: ReadonlySet<string>;
+  aoEscolher: (uri: string) => void;
+  aoTentarDeNovo: () => void;
+}) {
+  const t = useTranslations('IaAgentes');
+  switch (situacao.fase) {
+    case 'desconectado':
+      return <AvisoDoCalendly texto={t('ferramentas.reuniao.desconectadoLigada')} erro />;
+    case 'falhou':
+      return (
+        <div className="space-y-2">
+          <p className="text-sm text-muted-foreground">{t('ferramentas.reuniao.falhou')}</p>
+          <Button variant="outline" size="sm" onClick={aoTentarDeNovo}>
+            <RefreshCw className="size-4" /> {t('tentarDeNovo')}
+          </Button>
+        </div>
+      );
+    case 'sem_tipos':
+      return <p className="text-sm text-muted-foreground">{t('ferramentas.nenhum.marcar_reuniao')}</p>;
+    case 'escolher': {
+      // Recusado ao salvar (400 `tipo_de_evento_invalido`, com a uri nos `itens`).
+      const recusado = marcados.some((uri) => recusados.has(uri));
+      return (
+        <div className="space-y-1.5">
+          <label className="block text-xs font-medium text-muted-foreground" htmlFor="ag-tipo-de-evento">
+            {t('ferramentas.reuniao.rotulo')}
+          </label>
+          <select
+            id="ag-tipo-de-evento"
+            className={cn(
+              'h-9 w-full rounded-md border border-border bg-background px-2 text-sm sm:max-w-md',
+              recusado && 'ring-1 ring-red-500/60',
+            )}
+            value={situacao.escolhido ?? ''}
+            onChange={(e) => aoEscolher(e.target.value)}
+          >
+            <option value="">{t('ferramentas.reuniao.escolher')}</option>
+            {situacao.tipos.map((e) => (
+              <option key={e.uri} value={e.uri}>
+                {e.duracao > 0 ? t('ferramentas.reuniao.opcao', { nome: e.nome, duracao: e.duracao }) : e.nome}
+              </option>
+            ))}
+          </select>
+          {situacao.orfao ? (
+            <p className="text-xs text-amber-700 dark:text-amber-300">{t('ferramentas.reuniao.orfao')}</p>
+          ) : situacao.escolhido === null ? (
+            <p className="text-xs text-amber-700 dark:text-amber-300">{t('ferramentas.reuniao.semEscolha')}</p>
+          ) : null}
+          {recusado ? <p className="text-xs text-red-700 dark:text-red-300">{t('ferramentas.recusado')}</p> : null}
+        </div>
+      );
+    }
+    default: {
+      const nunca: never = situacao;
+      return String(nunca);
+    }
+  }
 }
 
 /** A lista de um tipo ligado: marcar o que o agente pode escolher. */

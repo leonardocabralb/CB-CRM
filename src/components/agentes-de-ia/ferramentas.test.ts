@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest'
 
-import { agruparItens, itensDoTipo, lerAcoesDoTurno, lerAcoesSimuladas, lerOpcoes } from './ferramentas'
+import {
+  agruparItens,
+  catalogoDoTipo,
+  itensDoTipo,
+  lerAcoesDoTurno,
+  lerAcoesSimuladas,
+  lerHorariosOferecidos,
+  lerOpcoes,
+  situacaoDaReuniao,
+  TETO_DO_POSTGREST,
+} from './ferramentas'
 import type { OpcoesDasFerramentas } from './tipos'
 
 const OPCOES: OpcoesDasFerramentas = {
@@ -28,6 +38,11 @@ const OPCOES: OpcoesDasFerramentas = {
     { id: 'a1', nome: 'Boas-vindas', foraDaD5: null },
     { id: 'a2', nome: 'Aviso ao advogado', foraDaD5: 'send_to_number' },
     { id: 'a3', nome: 'Recuperação de No Show', foraDaD5: 'aguardar' },
+  ],
+  calendly: 'conectado',
+  tiposDeEvento: [
+    { uri: 'https://api.calendly.com/event_types/abc', nome: 'Reunião inicial', duracao: 30 },
+    { uri: 'https://api.calendly.com/event_types/def', nome: 'Retorno', duracao: 15 },
   ],
 }
 
@@ -62,6 +77,50 @@ describe('lerOpcoes — a resposta de …/ferramentas/opcoes', () => {
     // Tipo ausente = nulo (a tela não mostra rótulo); opção que não é texto sai.
     expect(lida?.campos).toEqual([{ id: 'c1', nome: 'X', vigiado: false, tipo: null, opcoes: ['a'] }])
     expect(lida?.automacoes).toEqual([{ id: 'a1', nome: 'A', foraDaD5: null }])
+  })
+})
+
+describe('lerOpcoes — o Calendly de "Marcar reunião" (F5)', () => {
+  const tipo = { uri: 'https://api.calendly.com/event_types/abc', nome: 'Reunião inicial', duracao: 30 }
+
+  it('desconectado: a lista não vale, mesmo que venha', () => {
+    expect(lerOpcoes({ ...OPCOES, calendly: 'desconectado', tiposDeEvento: [tipo] })).toMatchObject({
+      calendly: 'desconectado',
+      tiposDeEvento: null,
+    })
+  })
+
+  it('estado ausente (servidor anterior à F5) ou estranho = falhou, nunca desconectado', () => {
+    const semCalendly: Record<string, unknown> = { ...OPCOES }
+    delete semCalendly.calendly
+    delete semCalendly.tiposDeEvento
+    expect(lerOpcoes(semCalendly)).toMatchObject({ calendly: 'falhou', tiposDeEvento: null })
+    expect(lerOpcoes({ ...OPCOES, calendly: 'ok' })).toMatchObject({ calendly: 'falhou', tiposDeEvento: null })
+    expect(lerOpcoes({ ...OPCOES, calendly: 'falhou', tiposDeEvento: [tipo] })).toMatchObject({
+      calendly: 'falhou',
+      tiposDeEvento: null,
+    })
+  })
+
+  it('conectado sem a lista legível = falhou (lista vazia afirmaria "não há tipos")', () => {
+    expect(lerOpcoes({ ...OPCOES, tiposDeEvento: null })).toMatchObject({ calendly: 'falhou', tiposDeEvento: null })
+    expect(lerOpcoes({ ...OPCOES, tiposDeEvento: 'x' })).toMatchObject({ calendly: 'falhou', tiposDeEvento: null })
+  })
+
+  it('conectado com a lista vazia é resposta: o Calendly não tem tipo ativo', () => {
+    expect(lerOpcoes({ ...OPCOES, tiposDeEvento: [] })).toMatchObject({ calendly: 'conectado', tiposDeEvento: [] })
+  })
+
+  it('tipo sem uri sai; duração ilegível vira 0 (a tela omite os minutos)', () => {
+    expect(
+      lerOpcoes({
+        ...OPCOES,
+        tiposDeEvento: [{ nome: 'Sem uri', duracao: 30 }, { ...tipo, duracao: '30' }, { ...tipo, duracao: -5 }],
+      })?.tiposDeEvento,
+    ).toEqual([
+      { ...tipo, duracao: 0 },
+      { ...tipo, duracao: 0 },
+    ])
   })
 })
 
@@ -197,5 +256,101 @@ describe('lerAcoesDoTurno — cb_ia_turnos.acoes', () => {
     expect(lerAcoesDoTurno([{ tipo: 'mover_etapa', ok: true }, { tipo: 'x', alvo: { nome: 'y' }, ok: true }])).toEqual([
       { tipo: 'x', alvo: { id: null, nome: 'y' }, ok: true },
     ])
+  })
+})
+
+describe('lerHorariosOferecidos — os horários do Playground (F5)', () => {
+  it('lê o número e o texto, como foram ao modelo', () => {
+    const v = [
+      { n: 1, texto: 'Mon 28/09 15:15' },
+      { n: 2, texto: 'Mon 28/09 15:45' },
+    ]
+    expect(lerHorariosOferecidos(v)).toEqual(v)
+  })
+
+  it('ausente ou nulo (tipo desligado, leitura que falhou) = null; lista vazia é resposta', () => {
+    expect(lerHorariosOferecidos(undefined)).toBeNull()
+    expect(lerHorariosOferecidos(null)).toBeNull()
+    expect(lerHorariosOferecidos({})).toBeNull()
+    expect(lerHorariosOferecidos([])).toEqual([])
+  })
+
+  it('item estranho sai sem quebrar a lista', () => {
+    expect(
+      lerHorariosOferecidos([
+        { n: '1', texto: 'a' },
+        { n: 0, texto: 'b' },
+        { n: 1.5, texto: 'c' },
+        { n: 2, texto: '  ' },
+        { n: 3, texto: 'Tue 29/09 10:00' },
+        'x',
+      ]),
+    ).toEqual([{ n: 3, texto: 'Tue 29/09 10:00' }])
+  })
+})
+
+describe('situacaoDaReuniao — a seção "Marcar reunião" (F5)', () => {
+  const ABC = 'https://api.calendly.com/event_types/abc'
+  const DEF = 'https://api.calendly.com/event_types/def'
+
+  it('desconectado e falha de leitura são estados PRÓPRIOS, nunca lista vazia', () => {
+    expect(situacaoDaReuniao({ ...OPCOES, calendly: 'desconectado', tiposDeEvento: null }, [ABC])).toEqual({
+      fase: 'desconectado',
+    })
+    expect(situacaoDaReuniao({ ...OPCOES, calendly: 'falhou', tiposDeEvento: null }, [])).toEqual({ fase: 'falhou' })
+    // Conectado sem a lista (não deveria chegar aqui: `lerOpcoes` já o lê como falha).
+    expect(situacaoDaReuniao({ ...OPCOES, tiposDeEvento: null }, [])).toEqual({ fase: 'falhou' })
+  })
+
+  it('conectado sem tipo ativo: a resposta do Calendly, não uma falha', () => {
+    expect(situacaoDaReuniao({ ...OPCOES, tiposDeEvento: [] }, [ABC])).toEqual({ fase: 'sem_tipos' })
+  })
+
+  it('escolher: o marcado ativo vem escolhido; nada marcado = sem escolha, sem órfão', () => {
+    expect(situacaoDaReuniao(OPCOES, [DEF])).toEqual({
+      fase: 'escolher',
+      tipos: OPCOES.tiposDeEvento,
+      escolhido: DEF,
+      orfao: false,
+    })
+    expect(situacaoDaReuniao(OPCOES, [])).toMatchObject({ escolhido: null, orfao: false })
+  })
+
+  it('o tipo salvo que saiu dos ativos (desativado, apagado) é ÓRFÃO: sem escolha, e a tela diz por quê', () => {
+    expect(situacaoDaReuniao(OPCOES, ['https://api.calendly.com/event_types/velho'])).toMatchObject({
+      escolhido: null,
+      orfao: true,
+    })
+    // Entre vários (não deveria haver), vale o primeiro que ainda existe.
+    expect(situacaoDaReuniao(OPCOES, ['https://api.calendly.com/event_types/velho', ABC])).toMatchObject({
+      escolhido: ABC,
+      orfao: false,
+    })
+  })
+})
+
+describe('catalogoDoTipo — o que PROVA que um item marcado sumiu', () => {
+  it('as listas da conta: o catálogo inteiro; cortada pelo teto do PostgREST, nenhuma prova', () => {
+    expect(catalogoDoTipo(OPCOES, 'etiquetar')).toEqual(new Set(['t1', 't2', 't3']))
+    const muitas = Array.from({ length: TETO_DO_POSTGREST }, (_, i) => ({ id: `a${i}`, nome: 'A', foraDaD5: null }))
+    expect(catalogoDoTipo({ ...OPCOES, automacoes: muitas }, 'executar_automacao')).toBeNull()
+  })
+
+  it('"Marcar reunião": os tipos ATIVOS; desconectado ou sem leitura, nenhuma prova (nada é podado)', () => {
+    expect(catalogoDoTipo(OPCOES, 'marcar_reuniao')).toEqual(
+      new Set(['https://api.calendly.com/event_types/abc', 'https://api.calendly.com/event_types/def']),
+    )
+    expect(catalogoDoTipo({ ...OPCOES, calendly: 'desconectado', tiposDeEvento: null }, 'marcar_reuniao')).toBeNull()
+    expect(catalogoDoTipo({ ...OPCOES, calendly: 'falhou', tiposDeEvento: null }, 'marcar_reuniao')).toBeNull()
+    // Conectado sem tipo ativo É prova: o marcado sumiu.
+    expect(catalogoDoTipo({ ...OPCOES, tiposDeEvento: [] }, 'marcar_reuniao')).toEqual(new Set())
+  })
+
+  it('itensDoTipo da reunião: os tipos de evento, pela uri; sem Calendly legível, nenhum', () => {
+    expect(itensDoTipo(OPCOES, 'marcar_reuniao').map((i) => [i.id, i.nome])).toEqual([
+      ['https://api.calendly.com/event_types/abc', 'Reunião inicial'],
+      ['https://api.calendly.com/event_types/def', 'Retorno'],
+    ])
+    expect(itensDoTipo({ ...OPCOES, calendly: 'falhou', tiposDeEvento: null }, 'marcar_reuniao')).toEqual([])
   })
 })

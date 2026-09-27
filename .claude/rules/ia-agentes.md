@@ -6,6 +6,8 @@ paths:
   - "src/lib/ia-agentes/acoes*"
   - "src/lib/ia-agentes/executar-acoes*"
   - "src/lib/ia-agentes/ferramentas*"
+  - "src/lib/ia-agentes/agenda*"
+  - "src/lib/ia-agentes/reuniao*"
   - "src/app/api/cb/ia/agentes/**"
   - "src/components/agentes-de-ia/acesso-do-agente.tsx"
   - "src/components/agentes-de-ia/base-do-agente.tsx"
@@ -95,3 +97,87 @@ Plano: `docs/PLANO-agentes-de-ia.md` (D5, D28, F4). Sem migration.
   exige migration); ferramentas lidas no começo do turno; agente e automação
   da etapa nova falam os dois (o agente primeiro); as ações não são
   reconferidas uma a uma depois do envio (a reserva é a conferência; #316).
+
+# Agentes de IA — marcar reunião no Calendly (F5, D7 + D28)
+
+Plano: `docs/PLANO-agentes-de-ia.md` (D7, D28, 5.6, F5). Sem migration. É
+uma AÇÃO a mais do protocolo da F4 (`marcar_reuniao`, `[[REUNIAO:n]]`).
+
+- ⚠️⚠️ **A EXCEÇÃO à D5 pela cascata**: marcar reunião NÃO passa por
+  `motivosForaDaD5`. A automação do tipo de evento roda pelo webhook
+  `invitee.created`, como quando o PRÓPRIO cliente agenda pelo link (pode
+  avisar o advogado por `send_to_number` e mover o card). Escrito no código
+  (`conferirFerramentas`, `marcarReuniao`, `agenda.ts`), aqui e no plano.
+  O agente NÃO mexe no card, nos campos nem nos lembretes.
+- **Configuração**: `ferramentas.marcar_reuniao = { tipos_de_evento: [uri] }`
+  — lista para caber no código genérico, NO MÁXIMO uma, só a forma
+  `https://api.calendly.com/event_types/<id>` (`ehUriDeTipoDeEvento`). Ao
+  salvar, o tipo tem de ser ATIVO na conta do Calendly conectado, lido na API
+  (`tipo_de_evento_invalido`; sem Calendly, `calendly_desconectado`); leitura
+  que falha = `banco`. ⚠️ Só quando o tipo MUDOU em relação ao gravado
+  (`conferirFerramentas(…, gravadas)`): senão o Calendly fora do ar dava 500
+  ao salvar OUTRA ferramenta. A tela recebe `calendly` + `tiposDeEvento` (só
+  os ativos; `null` = desconectado ou falhou, nunca lista vazia), com prazo
+  total de 8 s (`PRAZO_DOS_TIPOS_NA_TELA_MS`; estourou = `falhou`, o resto do
+  catálogo chega).
+- **O pedido**: os horários livres (`lerAgendaDoAgente`) de agora + 1 h a 7
+  dias, numa AMOSTRA espalhada (`opcoesDeHorario`: até 3 por dia — o
+  primeiro, o último e o do meio —, 15 no total, em rodízio que cobre todos
+  os dias antes do 2º horário de qualquer um), NUMERADOS no fuso do
+  escritório. ⚠️ Dois textos por horário: `textoNoPedido` ("Mon 28/09
+  15:15", para o MODELO casar "segunda às 15h") e `nome` ("28/09/2026
+  15:15", o que GENTE lê: registro do turno, Playground, anotação) —
+  `formatToParts`, nunca o ISO para o modelo. O pedido diz que os números
+  valem SÓ para o marcador desta resposta (casar DIA e HORA com a lista
+  atual; fora dela = "não está mais livre", nunca marcar outro) e que a lista
+  é amostra (pedido de outro dia = dizer quais dias têm vaga). ⚠️ Leitura com
+  PRAZO (`PRAZO_DOS_HORARIOS_MS`, 4 s) que falha EM SILÊNCIO para o turno: o
+  pedido diz que não há horários agora e manda o link de remarcar do bloco da
+  reunião, se houver (sem o marcador). "Customer e-mail on file" usa a MESMA
+  régua da execução (a ficha, senão o último `invitee.created`).
+- ⚠️⚠️ **Cliente que JÁ tem reunião futura não recebe horários**
+  (`lerProximaReuniao`, a MESMA leitura do bloco "reuniao", lida mesmo com o
+  bloco desmarcado): o pedido diz quando ela é e manda o link de remarcar
+  DELA (sem link, transferir); o marcador inventado é `nao_liberada` e
+  transfere. Leitura dessa reunião que falha = sem horários (`lida` falso).
+- **Uma reunião por resposta**: o segundo horário é `teto`; horário fora dos
+  oferecidos, `fora_da_lista` (default-deny). O `id` da opção é o
+  `start_time` que o SERVIDOR leu — é ele que vai ao `POST /invitees`.
+- **Execução**: por ÚLTIMO, depois do `preencher_campo` (o e-mail espelhado
+  da mesma resposta), com o e-mail RELIDO. O corpo do `POST /invitees` é
+  montado SÓ em `corpoDoConvidado` (a forma da doc; ⚠️ ainda não medido).
+  Códigos: `sem_email`, `horario_indisponivel` (409 ou 4xx que fala do
+  horário, `recusaDoHorario`), `calendly_desconectado` (sem config, token
+  ilegível ou 401), `recusado`, `falhou` (rede/tempo).
+- ⚠️⚠️ **O telefone vai como RESPOSTA da pergunta de telefone do formulário**
+  (`respostasDoTelefone` → `questions_and_answers: [{ question, answer,
+  position }]`, E.164 com `+`), além do `text_reminder_number`: o Calendly não
+  tem campo de telefone, e sem a resposta o nosso webhook termina
+  `sem_telefone` (card parado, lembretes desarmados, advogado sem aviso).
+  Respondidas: toda pergunta ATIVA de tipo `phone_number` (a medida:
+  "Telefone (Whatsapp)", obrigatória), a configurada no cartão
+  (`pergunta_telefone`) e, sem nenhuma das duas, a primeira que a heurística
+  do webhook reconhece — a MESMA régua (`casaComAPerguntaConfigurada`,
+  `rotuloDeTelefone`, exportadas de `payload.ts`; nunca copiar a regex).
+  Pergunta OBRIGATÓRIA que não é de telefone fica sem resposta: o POST falha
+  e o turno transfere (não inventar).
+- ⚠️⚠️ **Pedida e NÃO marcada = o turno TRANSFERE para gente**
+  (`reuniaoNaoMarcada` + `transferirParaGente`, motivo
+  `reuniao_nao_marcada` com o `{motivo}` do código): a resposta já saiu
+  prometendo. O desfecho continua `respondeu`; a transferência não passa por
+  cima de pausa existente — mas, com a conversa já pausada (`nada_mudou`), a
+  ANOTAÇÃO da falha sai assim mesmo (`anotarNaConversa`). A nota manda
+  conferir no Calendly se a reunião não foi criada antes de marcar de novo
+  (5xx/tempo podem tê-la criado). Envio que não saiu não transfere pela
+  reunião.
+- **Playground**: horários AO VIVO, reunião SIMULADA (`marcarNoCalendly`
+  nunca é chamado); a resposta traz `horarios: [{ n, texto }] | null` (o
+  `texto` é o `nome`; nulo também para quem já tem reunião).
+- **Limites**: o turno lê as ferramentas no começo (o tipo de evento
+  desligado durante a geração ainda marca naquele turno, se ainda ativo no
+  Calendly); 5xx ou tempo esgotado no `POST /invitees` vira falha e
+  transfere, mas a reunião PODE ter nascido: a nota manda conferir no
+  Calendly antes de marcar de novo.
+- **Limites (F5)**: ficha sem nome manda o telefone como nome do convidado;
+  o nome do perfil do WhatsApp é fixado pela automação do Calendly; o
+  Playground não distingue "desligada" de "leitura falhou".

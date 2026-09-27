@@ -167,8 +167,17 @@ describe('ferramentas (F4) — o rascunho da sub-aba Ferramentas', () => {
       preencher_campo: { campos: ['c'] },
       criar_tarefa: { membros: ['m'] },
       executar_automacao: { automacoes: ['x'] },
+      marcar_reuniao: { tipos_de_evento: ['https://api.calendly.com/event_types/r'] },
     }
-    expect(TIPOS_DE_ACAO.map((tipo) => listaDaFerramenta(f, tipo))).toEqual([['e'], ['a'], ['b'], ['c'], ['m'], ['x']])
+    expect(TIPOS_DE_ACAO.map((tipo) => listaDaFerramenta(f, tipo))).toEqual([
+      ['e'],
+      ['a'],
+      ['b'],
+      ['c'],
+      ['m'],
+      ['x'],
+      ['https://api.calendly.com/event_types/r'],
+    ])
     for (const tipo of TIPOS_DE_ACAO) expect(listaDaFerramenta({}, tipo), tipo).toBeNull()
   })
 
@@ -233,5 +242,26 @@ describe('ferramentasParaSalvar (F4) — o item apagado da conta sai no Salvar',
 
   it('tipo desligado não vira ligado', () => {
     expect(ferramentasParaSalvar({}, { executar_automacao: new Set(['x']) })).toEqual({})
+  })
+})
+
+describe('"Marcar reunião" (F5) — UM tipo de evento, com o nome de chave do servidor', () => {
+  const URI = 'https://api.calendly.com/event_types/abc'
+  const VELHO = 'https://api.calendly.com/event_types/velho'
+
+  it('ida e volta pelo rascunho, e trocar o tipo de evento conta como mudança', () => {
+    const salvo: FerramentasDoAgente = { marcar_reuniao: { tipos_de_evento: [URI] } }
+    const r = rascunhoDasFerramentas(salvo)
+    expect(r.listas.marcar_reuniao).toEqual([URI])
+    expect(ferramentasDoRascunho(r)).toEqual(salvo)
+    expect(ferramentasMudaram(salvo, { marcar_reuniao: { tipos_de_evento: [VELHO] } })).toBe(true)
+  })
+
+  it('o tipo de evento que saiu dos ativos sai no Salvar; sem Calendly legível (null), fica', () => {
+    const f: FerramentasDoAgente = { marcar_reuniao: { tipos_de_evento: [VELHO] } }
+    expect(ferramentasParaSalvar(f, { marcar_reuniao: new Set([URI]) })).toEqual({
+      marcar_reuniao: { tipos_de_evento: [] },
+    })
+    expect(ferramentasParaSalvar(f, { marcar_reuniao: null })).toEqual(f)
   })
 })

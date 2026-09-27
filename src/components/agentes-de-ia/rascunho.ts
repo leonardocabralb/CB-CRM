@@ -133,6 +133,8 @@ export function listaDaFerramenta(f: FerramentasDoAgente, tipo: TipoDeAcao): str
       return f.criar_tarefa ? f.criar_tarefa.membros : null
     case 'executar_automacao':
       return f.executar_automacao ? f.executar_automacao.automacoes : null
+    case 'marcar_reuniao':
+      return f.marcar_reuniao ? f.marcar_reuniao.tipos_de_evento : null
     default: {
       const nunca: never = tipo
       throw new Error(`tipo de ação desconhecido: ${String(nunca)}`)
@@ -155,6 +157,8 @@ function comLista(f: FerramentasDoAgente, tipo: TipoDeAcao, ids: string[]): Ferr
       return { ...f, criar_tarefa: { membros: ids } }
     case 'executar_automacao':
       return { ...f, executar_automacao: { automacoes: ids } }
+    case 'marcar_reuniao':
+      return { ...f, marcar_reuniao: { tipos_de_evento: ids } }
     default: {
       const nunca: never = tipo
       throw new Error(`tipo de ação desconhecido: ${String(nunca)}`)

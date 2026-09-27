@@ -27,11 +27,13 @@ import { conferirFerramentas } from './ferramentas'
 import {
   COLUNAS_DO_AGENTE,
   colunasDaAlteracao,
+  itensDaAcao,
   lerEtapaDoAgente,
   lerLinhaDoAgente,
   planoDasEtapas,
   type AlteracaoDoAgente,
   type EtapaDoAgente,
+  type FerramentasDoAgente,
   type IaAgente,
 } from './agente'
 
@@ -55,6 +57,8 @@ export class ErroDoAgente extends Error {
       | 'campo_vigiado'
       | 'automacao_fora_da_d5'
       | 'cascata_fora_da_d5'
+      | 'tipo_de_evento_invalido'
+      | 'calendly_desconectado'
       | 'banco',
     mensagem: string,
     /** No `etapa_ocupada`: o nome do agente que já atua na etapa (a tela o diz). */
@@ -145,6 +149,8 @@ async function conferirReferencias(
   accountId: string,
   a: AlteracaoDoAgente,
   proprioId: string | null,
+  /** As ferramentas GRAVADAS (na edição): o tipo de evento que não mudou não vai ao Calendly. */
+  ferramentasGravadas?: FerramentasDoAgente,
 ): Promise<void> {
   const db = supabaseAdmin()
   if (a.provedor) {
@@ -207,7 +213,7 @@ async function conferirReferencias(
   if (a.ferramentas) {
     let r: Awaited<ReturnType<typeof conferirFerramentas>>
     try {
-      r = await conferirFerramentas(db, accountId, a.ferramentas)
+      r = await conferirFerramentas(db, accountId, a.ferramentas, ferramentasGravadas)
     } catch (err) {
       throw new ErroDoAgente('banco', err instanceof Error ? err.message : String(err))
     }
@@ -322,13 +328,19 @@ export async function atualizarAgente(
   // por uma só da base) com o agente desligado — ele ligaria mudo (Codex, #295).
   // Mexer nas ETAPAS também lê o agente: arquivado, ele não pode voltar a
   // ser dono de etapa (o gatilho da 1049 já as soltou ao arquivar).
+  // "Marcar reunião" (F5) também lê: o tipo de evento que NÃO mudou não é
+  // conferido no Calendly de novo — salvar outra ferramenta com o Calendly
+  // fora do ar dava 500.
   let provedorAConferir = a.provedor
-  if ((a.ativo === true && provedorAConferir === undefined) || a.etapas !== undefined) {
+  let ferramentasGravadas: FerramentasDoAgente | undefined
+  const temReuniao = a.ferramentas !== undefined && itensDaAcao(a.ferramentas, 'marcar_reuniao').length > 0
+  if ((a.ativo === true && provedorAConferir === undefined) || a.etapas !== undefined || temReuniao) {
     const atual = await obterAgente(accountId, id)
     if (!atual || atual.arquivadoEm) throw new ErroDoAgente('nao_encontrado', 'agente não encontrado')
     if (a.ativo === true && provedorAConferir === undefined) provedorAConferir = atual.provedor
+    ferramentasGravadas = atual.ferramentas
   }
-  await conferirReferencias(accountId, { ...a, provedor: provedorAConferir }, id)
+  await conferirReferencias(accountId, { ...a, provedor: provedorAConferir }, id, ferramentasGravadas)
   const inserirEtapas = a.etapas ? await conferirEtapas(accountId, id, a.etapas) : null
   // As etapas ANTES do resto: a etapa tomada por outro agente recusa o
   // salvamento sem ter mudado nada do agente (Codex, #309).

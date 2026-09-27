@@ -94,6 +94,12 @@ const h = vi.hoisted(() => ({
     /** Preenchido, a consulta de automações DESTE gatilho devolve o erro. */
     erroPorGatilho: {} as Record<string, string>,
     steps: [] as Record<string, unknown>[],
+    /**
+     * Os passos que a GRAVAÇÃO do construtor apagou (`replaceSteps`), com a
+     * CASCADE dos ramos — é por eles que o teste encena a FK `ON DELETE SET
+     * NULL` de `automation_pending_executions.parent_step_id`.
+     */
+    passosApagados: new Set<string>(),
     /** Liga o recorte dos passos por `automation_id` (duas automações no mesmo teste). */
     passosPorAutomacao: false,
     /** A etiqueta que a conferência de posse de `addContactTagIfAbsent` acha em `tags`. */
@@ -144,6 +150,8 @@ vi.mock('./admin-client', () => {
     recorte?: [string, string, unknown][];
     limite?: number;
     colunas: string;
+    /** `.single()`/`.maybeSingle()` — UMA linha, como o PostgREST. */
+    unico?: boolean;
   }) {
     const { table, type } = ops;
     if (table === 'contacts') {
@@ -386,6 +394,43 @@ vi.mock('./admin-client', () => {
       };
     }
     if (table === 'automation_steps') {
+      // A GRAVAÇÃO do construtor (`replaceSteps`, 26/09/2026): o upsert por
+      // `id` e o DELETE dos que saíram, com a CASCADE da FK dos ramos.
+      if (type === 'upsert') {
+        for (const linha of ops.payload as Record<string, unknown>[]) {
+          const i = state.steps.findIndex((p) => p.id === linha.id);
+          if (i >= 0) state.steps[i] = { ...state.steps[i], ...linha };
+          else state.steps.push({ ...linha });
+        }
+        return { data: null, error: null };
+      }
+      if (type === 'delete') {
+        const conta = ops.filters.find(([op, k]) => op === 'eq' && k === 'automation_id')?.[2];
+        const fora = String(
+          ops.filters.find(([op, k]) => op === 'not.in' && k === 'id')?.[2] ?? '()'
+        )
+          .slice(1, -1)
+          .split(',')
+          .filter(Boolean);
+        const apagados = new Set(
+          state.steps
+            .filter((p) => p.automation_id === conta && !fora.includes(String(p.id)))
+            .map((p) => String(p.id))
+        );
+        let cresceu = true;
+        while (cresceu) {
+          cresceu = false;
+          for (const p of state.steps) {
+            if (p.parent_step_id && apagados.has(String(p.parent_step_id)) && !apagados.has(String(p.id))) {
+              apagados.add(String(p.id));
+              cresceu = true;
+            }
+          }
+        }
+        state.steps = state.steps.filter((p) => !apagados.has(String(p.id)));
+        for (const id of apagados) state.passosApagados.add(id);
+        return { data: null, error: null };
+      }
       // Recorte por ESCOPO (parent_step_id / branch / position), para os
       // testes de ramo e espera: sem ele a consulta do ramo devolvia a lista
       // inteira — inclusive a própria condição, em recursão infinita. Passo
@@ -399,11 +444,14 @@ vi.mock('./admin-client', () => {
         if (op === 'is' && v === null)
           lista = lista.filter((s) => s[k] == null);
         else if (op === 'eq') lista = lista.filter((s) => (s[k] ?? null) === v);
+        else if (op === 'in') lista = lista.filter((s) => (v as unknown[]).includes(s[k]));
         else if (op === 'gte')
           lista = lista.filter(
             (s) => s[k] === undefined || Number(s[k]) >= Number(v)
           );
       }
+      // A conferência da retomada (`retomada.ts`) procura UM passo por id.
+      if (ops.unico) return { data: lista[0] ?? null, error: null };
       return { data: lista, error: null };
     }
     return { data: null, error: null };
@@ -443,8 +491,8 @@ vi.mock('./admin-client', () => {
       is: (k: string, v: unknown) => (ops.recorte.push(['is', k, v]), b),
       order: () => b,
       limit: (n: number) => ((ops.limite = n), b),
-      single: () => Promise.resolve(resolve(ops)),
-      maybeSingle: () => Promise.resolve(resolve(ops)),
+      single: () => Promise.resolve(resolve({ ...ops, unico: true })),
+      maybeSingle: () => Promise.resolve(resolve({ ...ops, unico: true })),
       then: (onF: (v: unknown) => unknown, onR?: (e: unknown) => unknown) =>
         Promise.resolve(resolve(ops)).then(onF, onR),
     };
@@ -533,6 +581,12 @@ import {
   runAutomationById,
 } from './engine';
 import { engineSendText, engineSendTemplate } from './meta-send';
+import { loadStepsTree, replaceSteps, type BuilderStepInput } from './steps-tree';
+import {
+  MOTIVO_PASSO_REMOVIDO,
+  MOTIVO_RAMO_REMOVIDO,
+  comPassoDaFila,
+} from './retomada';
 import type { Automation, KeywordMatchTriggerConfig } from '@/types';
 import { diaNoFuso, somarDias } from '@/lib/tasks/prazo';
 
@@ -556,6 +610,7 @@ beforeEach(() => {
   h.state.automacoesPorGatilho = null;
   h.state.erroPorGatilho = {};
   h.state.steps = [];
+  h.state.passosApagados = new Set();
   h.state.passosPorAutomacao = false;
   h.state.tagDaConta = null;
   h.state.fromCalls = [];
@@ -5105,5 +5160,159 @@ describe('envio que falhou sem recusa comprovada conta como fala (E4)', () => {
     expect(h.state.esperasEnfileiradas).toHaveLength(0);
     expect(r.comFalha).toBe(1);
     expect(r.falou).toBeFalsy();
+  });
+});
+
+// ============================================================
+// SALVAR a automação com uma execução parada num "Aguardar" DENTRO de um ramo
+// (26/09/2026). Achado no e2e: `replaceSteps` apagava todos os passos e
+// reinseria com ids novos; a FK `ON DELETE SET NULL` zerava o
+// `parent_step_id` da espera, e a retomada rodava o escopo de FORA a partir da
+// posição do ramo — outro passo, outra mensagem. Aqui a gravação de verdade
+// (`replaceSteps`) roda contra o mesmo banco falso da retomada.
+// ============================================================
+describe('salvar a automação com uma espera parada num ramo (26/09/2026)', () => {
+  const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  const COND = uuid(1);
+  const ESPERA = uuid(2);
+  const NO_RAMO = uuid(3);
+  const DE_FORA = uuid(4);
+
+  const passo = (
+    id: string,
+    step_type: string,
+    position: number,
+    parent_step_id: string | null,
+    step_config: Record<string, unknown>
+  ) => ({
+    id,
+    automation_id: 'a-ramo',
+    step_type,
+    position,
+    parent_step_id,
+    branch: parent_step_id ? 'yes' : null,
+    step_config,
+  });
+
+  beforeEach(() => {
+    h.state.automations = [automacaoSimples('a-ramo')];
+    // [condição → sim: [Aguardar, "do ramo"]], "de fora"
+    h.state.steps = [
+      passo(COND, 'condition', 0, null, { subject: 'tag_presence', operand: 'tag-x' }),
+      passo(ESPERA, 'wait', 0, COND, { amount: 30, unit: 'hours' }),
+      passo(NO_RAMO, 'update_contact_field', 1, COND, { field: 'company', value: 'do ramo' }),
+      passo(DE_FORA, 'update_contact_field', 1, null, { field: 'company', value: 'de fora' }),
+    ];
+  });
+
+  /** A espera como o "Aguardar" do ramo a estacionou (a posição SEGUINTE e o passo). */
+  const esperaNoRamo = (context: Record<string, unknown> = comPassoDaFila({}, { id: ESPERA, position: 0 })) => ({
+    id: 'espera-ramo',
+    automation_id: 'a-ramo',
+    account_id: ACCOUNT,
+    user_id: 'u1',
+    contact_id: 'c1',
+    log_id: 'log-ramo',
+    parent_step_id: COND,
+    branch: 'yes' as const,
+    next_step_position: 1,
+    context,
+  });
+
+  /** A FK `ON DELETE SET NULL`: a condição apagada zera a coluna da espera. */
+  const depoisDaFk = (e: ReturnType<typeof esperaNoRamo>) => ({
+    ...e,
+    parent_step_id: e.parent_step_id && h.state.passosApagados.has(e.parent_step_id) ? null : e.parent_step_id,
+  });
+
+  const valoresGravados = () =>
+    h.state.updateCalls
+      .filter((c) => c.table === 'contacts')
+      .map((c) => (c.payload as Record<string, unknown>).company);
+
+  /** A árvore como o construtor a manda de volta: o GET, com os ids do banco. */
+  const arvoreDoConstrutor = async (): Promise<BuilderStepInput[]> =>
+    (await loadStepsTree('a-ramo')) as BuilderStepInput[];
+
+  it('CRÍTICO: depois de salvar com um passo NOVO no começo do ramo, a espera retoma no MESMO ramo, pelo passo seguinte a ela', async () => {
+    const arvore = await arvoreDoConstrutor();
+    arvore[0].branches!.yes!.unshift({
+      step_type: 'update_contact_field',
+      step_config: { field: 'company', value: 'novo no ramo' },
+    });
+    expect(await replaceSteps('a-ramo', arvore)).toBeNull();
+
+    // A identidade ficou: nada apagado, a condição com o mesmo id.
+    expect(h.state.passosApagados.size).toBe(0);
+    const espera = depoisDaFk(esperaNoRamo());
+    expect(espera.parent_step_id).toBe(COND);
+
+    await resumePendingExecution(espera);
+
+    // Nem o passo novo (antes da espera), nem a espera de novo, nem o escopo
+    // de fora: só o passo que vinha DEPOIS da espera, no ramo dela.
+    expect(valoresGravados()).toEqual(['do ramo']);
+    expect(h.state.esperasEnfileiradas).toHaveLength(0);
+    expect(h.state.statusDaFila).toContain('done');
+  });
+
+  it('⚠️⚠️ o defeito medido: salvar SEM os ids (o construtor antigo) apaga a condição — e a retomada NÃO roda o escopo de fora, falha visível', async () => {
+    const semIds = (steps: BuilderStepInput[]): BuilderStepInput[] =>
+      steps.map((s) => ({
+        step_type: s.step_type,
+        step_config: s.step_config,
+        branches: s.branches
+          ? { yes: semIds(s.branches.yes ?? []), no: semIds(s.branches.no ?? []) }
+          : undefined,
+      }));
+    expect(await replaceSteps('a-ramo', semIds(await arvoreDoConstrutor()))).toBeNull();
+    expect(h.state.passosApagados.has(COND)).toBe(true);
+
+    await resumePendingExecution(depoisDaFk(esperaNoRamo()));
+
+    // Antes: "de fora" (a posição 1 da RAIZ) era gravado — outro passo.
+    expect(valoresGravados()).toEqual([]);
+    expect(h.state.statusDaFila).toContain('failed');
+    expect(desfechoGravado()?.desfecho).toBe('falhou');
+    const registro = h.state.logUpdates.find((u) => 'steps_executed' in u) as
+      | { steps_executed: { detail?: string; status: string }[]; error_message?: string }
+      | undefined;
+    expect(registro?.steps_executed.at(-1)).toMatchObject({ status: 'failed', detail: MOTIVO_RAMO_REMOVIDO });
+    expect(registro?.error_message).toBe(MOTIVO_RAMO_REMOVIDO);
+  });
+
+  it('o operador REMOVEU o "Aguardar" em que a execução parou: falha visível, nada roda', async () => {
+    const arvore = await arvoreDoConstrutor();
+    arvore[0].branches!.yes = arvore[0].branches!.yes!.filter((p) => p.id !== ESPERA);
+    expect(await replaceSteps('a-ramo', arvore)).toBeNull();
+    expect([...h.state.passosApagados]).toEqual([ESPERA]);
+
+    await resumePendingExecution(depoisDaFk(esperaNoRamo()));
+
+    expect(valoresGravados()).toEqual([]);
+    expect(desfechoGravado()?.desfecho).toBe('falhou');
+    const registro = h.state.logUpdates.find((u) => 'steps_executed' in u) as
+      | { steps_executed: { detail?: string; step_id: string }[] }
+      | undefined;
+    expect(registro?.steps_executed.at(-1)).toMatchObject({ step_id: ESPERA, detail: MOTIVO_PASSO_REMOVIDO });
+  });
+
+  it('espera gravada ANTES desta entrega (sem o passo no contexto) retoma pela posição, como sempre', async () => {
+    await resumePendingExecution(esperaNoRamo({}));
+    expect(valoresGravados()).toEqual(['do ramo']);
+  });
+
+  it('o "Aguardar" grava no contexto da fila QUAL passo estacionou', async () => {
+    h.state.esperasEnfileiradas = [];
+    h.state.owned = { id: 'c1' };
+    h.state.steps = [
+      { ...passo(ESPERA, 'wait', 0, null, { amount: 1, unit: 'hours' }), automation_id: 'a-desf' },
+    ];
+    h.state.automations = [automacaoSimples()];
+    await dispara();
+    expect(h.state.esperasEnfileiradas).toHaveLength(1);
+    expect(
+      (h.state.esperasEnfileiradas[0].context as Record<string, unknown>)._passo_da_fila
+    ).toEqual({ id: ESPERA, pos: 0 });
   });
 });

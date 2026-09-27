@@ -138,7 +138,11 @@ export async function GET(request: Request) {
     const { data, error } = await db
       .from('automation_pending_executions')
       .select(
-        'id, automation_id, run_at, next_step_position, parent_step_id, branch, log_id, automations(name)',
+        // `context`: a linha do tempo precisa do passo que estacionou
+        // (`retomada.ts`) para não listar passos que não vão rodar depois de
+        // uma edição. Não vai para a resposta (`agruparEsperas` copia campo a
+        // campo).
+        'id, automation_id, run_at, next_step_position, parent_step_id, branch, log_id, context, automations(name)',
       )
       .eq('account_id', ctx.accountId)
       .eq('contact_id', contactId)

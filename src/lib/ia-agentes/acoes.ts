@@ -5,7 +5,8 @@
 // Não há laço de ferramentas: o modelo escreve a resposta ao cliente e, no
 // fim, marcadores no mesmo protocolo do `[[PASSAR:n]]` da F2 —
 // `[[MOVER:n]]`, `[[ETIQUETAR:n]]`, `[[TIRAR:n]]`, `[[CAMPO:n=valor]]`,
-// `[[TAREFA:n=título]]`, `[[AUTOMACAO:n]]`. O `n` é o número de uma opção
+// `[[TAREFA:n=título]]`, `[[AUTOMACAO:n]]` e, na F5, `[[REUNIAO:n]]` (um dos
+// horários livres do Calendly). O `n` é o número de uma opção
 // que o SERVIDOR listou no pedido (`OpcoesDeAcao`, com os nomes); o servidor
 // traduz o número para o id. Número fora da lista = recusada.
 //
@@ -134,10 +135,19 @@ export function valorDoCampo(valor: string, formato: FormatoDoCampo): string | n
 // As opções e os marcadores
 // ------------------------------------------------------------
 
-/** Uma opção que o servidor oferece ao modelo, numerada a partir de 1 na ordem da lista. */
+/**
+ * Uma opção que o servidor oferece ao modelo, numerada a partir de 1 na ordem
+ * da lista. Na reunião (`marcar_reuniao`, F5): `id` = o `start_time` do
+ * horário livre (ISO, UTC), `nome` = o horário para GENTE ler ("28/09/2026
+ * 15:15", no fuso do escritório — vai ao registro do turno, ao Playground e
+ * à anotação) e `textoNoPedido` = o horário para o MODELO ("Mon 28/09 15:15",
+ * com o dia da semana em inglês — `reuniao.ts`).
+ */
 export interface OpcaoDeAcao {
   id: string
   nome: string
+  /** O texto da linha no PEDIDO, quando não é o `nome` (a reunião). */
+  textoNoPedido?: string
   /** Só nos campos (`preencher_campo`): o formato do valor, que o pedido diz ao modelo. */
   formato?: FormatoDoCampo
 }
@@ -153,6 +163,8 @@ export const MARCADOR_DA_ACAO: Record<TipoDeAcao, string> = {
   preencher_campo: 'CAMPO',
   criar_tarefa: 'TAREFA',
   executar_automacao: 'AUTOMACAO',
+  // `[[REUNIÃO:n]]` também: o nome é lido sem acento (`nomeNormalizado`).
+  marcar_reuniao: 'REUNIAO',
 }
 
 /** Os tipos que levam `=valor` (o valor do campo, o título da tarefa). */
@@ -352,6 +364,11 @@ export interface AcaoResolvida {
  * etapa, etiqueta ou automação uma vez só; o mesmo campo fica com o ÚLTIMO
  * valor pedido; tarefa repetida só com o mesmo título (títulos diferentes
  * para a mesma pessoa são tarefas diferentes).
+ *
+ * ⚠️ UMA reunião por resposta (F5): o mesmo horário pedido duas vezes
+ * colapsa; um SEGUNDO horário diferente é recusado (`teto`) — só o primeiro
+ * é marcado. O número fora dos horários oferecidos é `fora_da_lista`: o
+ * modelo nunca marca um horário que o servidor não leu no Calendly.
  */
 export function resolverAcoes(
   pedidas: readonly AcaoPedida[],
@@ -375,6 +392,10 @@ export function resolverAcoes(
     const ja = indiceDe.get(chave)
     if (ja !== undefined) {
       if (p.tipo === 'preencher_campo') aceitas[ja] = { ...aceitas[ja], valor: p.valor }
+      continue
+    }
+    if (p.tipo === 'marcar_reuniao' && aceitas.some((a) => a.tipo === 'marcar_reuniao')) {
+      recusadas.push({ tipo: p.tipo, n: p.n, motivo: 'teto' })
       continue
     }
     indiceDe.set(chave, aceitas.length)
@@ -766,6 +787,12 @@ export const CODIGOS_DE_FALHA_DA_ACAO = [
   'automacao_desligada',
   'fora_da_conexao',
   'fora_da_etapa',
+  // A reunião (F5): sem e-mail na ficha nem no último agendamento; o Calendly
+  // recusou o horário (tomado); o Calendly não está conectado (ou o token caiu).
+  'sem_email',
+  'sem_telefone',
+  'horario_indisponivel',
+  'calendly_desconectado',
   'envio_falhou',
   'recusado',
   'falhou',
@@ -816,4 +843,16 @@ export function lerRegistrosDasAcoes(v: unknown): RegistroDeAcaoLido[] | null {
     })
   }
   return saida
+}
+
+/**
+ * A reunião foi PEDIDA e NÃO foi marcada? A resposta ao cliente já saiu —
+ * ela provavelmente disse "marquei" —, então o turno transfere para gente
+ * (F5). Devolve o código da primeira linha de reunião do registro (a recusa
+ * ou a falha) quando nenhuma deu certo; `null` = não pediu, ou marcou.
+ */
+export function reuniaoNaoMarcada(registros: readonly RegistroDeAcao[] | null): MotivoDaRecusa | CodigoDeFalhaDaAcao | null {
+  const daReuniao = (registros ?? []).filter((r) => r.tipo === 'marcar_reuniao')
+  if (daReuniao.length === 0 || daReuniao.some((r) => r.ok)) return null
+  return daReuniao.find((r) => r.erro)?.erro ?? 'falhou'
 }

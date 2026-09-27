@@ -29,6 +29,13 @@
 //  - A cascata dentro da D5 segue as regras DELA: etiquetar dispara as
 //    automações de `tag_added` na hora, e mover o card enfileira as da etapa
 //    nova (limite escrito da D28).
+//  - MARCAR REUNIÃO (F5) roda por ÚLTIMO, depois das outras — o
+//    `preencher_campo` do e-mail espelhado da mesma resposta já gravou o
+//    e-mail que ela relê. ⚠️ É a EXCEÇÃO à D5 pela cascata (plano, 5.6,
+//    passo 4): a automação do tipo de evento roda pelo webhook
+//    `invitee.created`, como quando o cliente agenda pelo link. A reunião que
+//    não foi marcada faz o turno TRANSFERIR para gente (`turno.ts`): a
+//    resposta já saiu prometendo.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -47,7 +54,9 @@ import { normalizarTitulo } from '@/lib/tasks/validar'
 import type { Automation } from '@/types'
 
 import { formatoDoCampo, valorDoCampo, type AcaoResolvida, type CodigoDeFalhaDaAcao, type RegistroDeAcao } from './acoes'
+import { marcarNoCalendly } from './agenda'
 import { lerCamposVigiados, motivosForaDaD5 } from './ferramentas'
+import { dataHoraDaReuniao } from './reuniao'
 import { avisoDaTarefa, textosDaAcao } from './textos-do-servidor'
 
 /** O que as ações sabem do turno. Nada disto vem do modelo. */
@@ -61,6 +70,11 @@ export interface ContextoDasAcoes {
   agente: { id: string; nome: string }
   /** O dono da conta: o autor da tarefa que o agente cria. */
   dono: string
+  /**
+   * O tipo de evento do Calendly liberado em "Marcar reunião" (F5), lido no
+   * começo do turno com as ferramentas; nulo = reunião desligada.
+   */
+  tipoDeEvento?: string | null
 }
 
 /**
@@ -262,6 +276,24 @@ async function executarAutomacao(db: SupabaseClient, ctx: ContextoDasAcoes, acao
   return feita()
 }
 
+async function marcarReuniao(db: SupabaseClient, ctx: ContextoDasAcoes, acao: AcaoResolvida): Promise<Resultado> {
+  // ⚠️ Sem a régua da D5 pela cascata, DE PROPÓSITO (plano, 5.6, passo 4): a
+  // automação do tipo de evento roda pelo `invitee.created`, como quando o
+  // PRÓPRIO cliente agenda pelo link — e é ela que move o card, grava a data
+  // e arma os lembretes. Nada disso é feito aqui.
+  if (!ctx.tipoDeEvento) return falha('recusado', 'marcar reunião sem tipo de evento liberado')
+  // O horário é o `id` da opção: um horário que o SERVIDOR leu no Calendly.
+  const r = await marcarNoCalendly(db, {
+    accountId: ctx.accountId,
+    contactId: ctx.contactId,
+    tipoDeEvento: ctx.tipoDeEvento,
+    inicio: acao.id,
+  })
+  if (!r.ok) return falha(r.erro, r.detalhe)
+  // Na anotação, a data e a hora no fuso do escritório (o ISO em UTC não é para gente ler).
+  return feita(dataHoraDaReuniao(acao.id))
+}
+
 async function executarUma(db: SupabaseClient, ctx: ContextoDasAcoes, acao: AcaoResolvida): Promise<Resultado> {
   switch (acao.tipo) {
     case 'mover_etapa':
@@ -276,6 +308,8 @@ async function executarUma(db: SupabaseClient, ctx: ContextoDasAcoes, acao: Acao
       return criarTarefa(db, ctx, acao)
     case 'executar_automacao':
       return executarAutomacao(db, ctx, acao)
+    case 'marcar_reuniao':
+      return marcarReuniao(db, ctx, acao)
     default: {
       const nunca: never = acao.tipo
       throw new Error(`ação desconhecida: ${String(nunca)}`)
@@ -285,9 +319,11 @@ async function executarUma(db: SupabaseClient, ctx: ContextoDasAcoes, acao: Acao
 
 /**
  * Executa as ações ACEITAS, na ordem em que o modelo as pediu, uma de cada
- * vez. Nunca lança: cada falha vira linha do registro com o código e o
- * detalhe. Devolve o registro (para `cb_ia_turnos.acoes`) e se o card mudou
- * de etapa (o turno drena a fila do funil depois).
+ * vez — menos a REUNIÃO (F5), que vai por ÚLTIMO: o e-mail que ela relê pode
+ * ter sido gravado pelo `preencher_campo` da mesma resposta. Nunca lança:
+ * cada falha vira linha do registro com o código e o detalhe. Devolve o
+ * registro (para `cb_ia_turnos.acoes`) e se o card mudou de etapa (o turno
+ * drena a fila do funil depois).
  */
 export async function executarAcoes(
   db: SupabaseClient,
@@ -296,7 +332,11 @@ export async function executarAcoes(
 ): Promise<{ registros: RegistroDeAcao[]; moveu: boolean }> {
   const registros: RegistroDeAcao[] = []
   let moveu = false
-  for (const acao of aceitas) {
+  const naOrdem = [
+    ...aceitas.filter((a) => a.tipo !== 'marcar_reuniao'),
+    ...aceitas.filter((a) => a.tipo === 'marcar_reuniao'),
+  ]
+  for (const acao of naOrdem) {
     const alvo = { id: acao.id, nome: acao.nome }
     let r: Resultado
     try {
@@ -315,7 +355,11 @@ export async function executarAcoes(
     if (!r.nota) continue
     if (acao.tipo === 'mover_etapa') moveu = true
     try {
-      const { autor, texto } = await textosDaAcao(ctx.agente.nome, acao.tipo, acao.nome, r.nota.valor)
+      // A reunião é nomeada na anotação pela data e hora no fuso do escritório
+      // ("28/09/2026 15:15"), recalculada do horário que o Calendly marcou —
+      // o mesmo texto do `nome` da opção (`opcoesDeHorario`).
+      const alvo = acao.tipo === 'marcar_reuniao' ? (r.nota.valor ?? acao.nome) : acao.nome
+      const { autor, texto } = await textosDaAcao(ctx.agente.nome, acao.tipo, alvo, r.nota.valor)
       await anotarNaConversa(db, {
         accountId: ctx.accountId,
         conversationId: ctx.conversationId,

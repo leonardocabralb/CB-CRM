@@ -7,12 +7,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const updates: Record<string, unknown>[] = []
 const inserts: Record<string, unknown>[] = []
+/** A linha do agente GRAVADO que `obterAgente` lê (F5: as ferramentas de antes da alteração). */
+let gravado: Record<string, unknown> | null = null
 
 vi.mock('@/lib/ia-chaves/repo', () => ({ lerEstado: vi.fn(async () => []) }))
 vi.mock('./ferramentas', () => ({ conferirFerramentas: vi.fn() }))
 vi.mock('@/lib/ai/admin-client', () => ({
   supabaseAdmin: () => ({
     from: () => ({
+      select: () => {
+        const cadeia: Record<string, unknown> = {}
+        cadeia.eq = () => cadeia
+        cadeia.maybeSingle = async () => ({ data: gravado, error: null })
+        return cadeia
+      },
       insert: (linha: Record<string, unknown>) => {
         inserts.push(linha)
         return { select: () => ({ single: async () => ({ data: null, error: { code: 'XX000', message: 'parou aqui' } }) }) }
@@ -38,6 +46,7 @@ const ETAPA = '44444444-4444-4444-8444-444444444444'
 beforeEach(() => {
   updates.length = 0
   inserts.length = 0
+  gravado = null
   vi.mocked(conferirFerramentas).mockReset()
 })
 
@@ -51,6 +60,8 @@ describe('as ferramentas são conferidas antes de gravar', () => {
     expect(vi.mocked(conferirFerramentas).mock.calls[0].slice(1)).toEqual([
       'conta-1',
       { mover_etapa: { etapas: [ETAPA] } },
+      // Sem "Marcar reunião", o agente gravado nem é lido.
+      undefined,
     ])
   })
 
@@ -68,6 +79,26 @@ describe('as ferramentas são conferidas antes de gravar', () => {
       atualizarAgente('conta-1', 'user-1', 'ag-1', { ferramentas: { etiquetar: { etiquetas: [ETAPA] } } }),
     ).rejects.toMatchObject({ codigo: 'banco' })
     expect(updates).toHaveLength(0)
+  })
+
+  it('⚠️ com "Marcar reunião" (F5): a conferência recebe as ferramentas GRAVADAS — o tipo que não mudou não vai ao Calendly', async () => {
+    const TIPO = 'https://api.calendly.com/event_types/T1'
+    gravado = { id: 'ag-1', account_id: 'conta-1', provedor: 'anthropic', ferramentas: { marcar_reuniao: { tipos_de_evento: [TIPO] } } }
+    vi.mocked(conferirFerramentas).mockResolvedValue({ ok: true })
+    const ferramentas = { marcar_reuniao: { tipos_de_evento: [TIPO] }, etiquetar: { etiquetas: [ETAPA] } }
+    await atualizarAgente('conta-1', 'user-1', 'ag-1', { ferramentas }).catch(() => {})
+    expect(vi.mocked(conferirFerramentas).mock.calls[0].slice(1)).toEqual([
+      'conta-1',
+      ferramentas,
+      { marcar_reuniao: { tipos_de_evento: [TIPO] } },
+    ])
+  })
+
+  it('com "Marcar reunião" num agente arquivado ou sumido: `nao_encontrado`, sem conferir', async () => {
+    await expect(
+      atualizarAgente('conta-1', 'user-1', 'ag-1', { ferramentas: { marcar_reuniao: { tipos_de_evento: ['https://api.calendly.com/event_types/T1'] } } }),
+    ).rejects.toMatchObject({ codigo: 'nao_encontrado' })
+    expect(conferirFerramentas).not.toHaveBeenCalled()
   })
 
   it('sem `ferramentas` na alteração, não confere nada', async () => {
