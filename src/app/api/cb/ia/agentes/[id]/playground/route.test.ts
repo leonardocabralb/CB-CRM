@@ -484,3 +484,67 @@ describe('POST /api/cb/ia/agentes/[id]/playground — marcar reunião (F5)', () 
     expect((await (await enviar()).json()).horarios).toEqual([])
   })
 })
+
+describe('POST /api/cb/ia/agentes/[id]/playground — "Simular retomada" (1056)', () => {
+  const CONVERSA = [
+    { role: 'user', content: 'Quero revisar meu contrato' },
+    { role: 'assistant', content: 'Claro! Você conseguiu separar os extratos?' },
+  ]
+  const retomada = { ativa: false, cadencia: [15, 60, 180], janela: { inicio: '08:00', fim: '21:00' } }
+
+  function simular(extra: Record<string, unknown> = {}, messages: unknown = CONVERSA) {
+    return POST(
+      new Request(`http://x/api/cb/ia/agentes/${ID}/playground`, {
+        method: 'POST',
+        body: JSON.stringify({ messages, retomada: true, ...extra }),
+      }),
+      { params: Promise.resolve({ id: ID }) },
+    )
+  }
+
+  beforeEach(() => {
+    agentes[ID] = agente(ID, { nome: 'Triagem', podePassarPara: ['cobranca'], retomada })
+  })
+
+  it('a conversa tem de terminar na resposta do AGENTE (senão 400 retomada_sem_resposta)', async () => {
+    const res = await simular({}, [{ role: 'user', content: 'oi' }])
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ code: 'retomada_sem_resposta' })
+    expect(generateReply).not.toHaveBeenCalled()
+  })
+
+  it('sem a flag, a conversa que termina no agente continua sendo 400 sem_mensagens', async () => {
+    const res = await POST(
+      new Request(`http://x/api/cb/ia/agentes/${ID}/playground`, { method: 'POST', body: JSON.stringify({ messages: CONVERSA }) }),
+      { params: Promise.resolve({ id: ID }) },
+    )
+    expect(await res.json()).toMatchObject({ code: 'sem_mensagens' })
+  })
+
+  it('gera com a seção da retomada (a tentativa e o tempo da cadência), sem ações, passagens nem horários — e nada é enviado', async () => {
+    resposta = { text: 'Oi! Conseguiu separar os extratos?', handoff: false }
+    const corpo = await (await simular({ tentativa: 2 })).json()
+    expect(corpo.retomada).toEqual({ tentativa: 2, de: 3, texto: 'Oi! Conseguiu separar os extratos?', parada: null })
+    const pedido = vi.mocked(generateReply).mock.calls[0][0].systemPrompt as string
+    expect(pedido).toContain('the customer has not replied for 1 hour. This is follow-up 2 of 3.')
+    expect(pedido).not.toContain('[[PASSAR:n]]')
+    expect(opcoesDoAgente).not.toHaveBeenCalled()
+    expect(lerAgendaDoAgente).not.toHaveBeenCalled()
+    expect(executarAcoes).not.toHaveBeenCalled()
+  })
+
+  it('a tentativa fica dentro da cadência (acima = a última; ilegível = a 1ª)', async () => {
+    expect((await (await simular({ tentativa: 9 })).json()).retomada).toMatchObject({ tentativa: 3, de: 3 })
+    expect((await (await simular({ tentativa: 'x' })).json()).retomada).toMatchObject({ tentativa: 1 })
+  })
+
+  it.each<[string, { text: string; handoff: boolean }, string]>([
+    ['[[SEM_RETOMADA]]', { text: '[[SEM_RETOMADA]]', handoff: false }, 'nada_pendente'],
+    ['[[HANDOFF]]', { text: '', handoff: true }, 'pediu_equipe'],
+    ['link inventado', { text: 'Veja: https://inventado.example', handoff: false }, 'link_inventado'],
+  ])('%s: nada sairia, e a resposta diz por quê', async (_rotulo, gerada, parada) => {
+    resposta = gerada
+    const corpo = await (await simular()).json()
+    expect(corpo.retomada).toMatchObject({ texto: '', parada })
+  })
+})

@@ -21,8 +21,10 @@ import { lerAgendaDoAgente } from '@/lib/ia-agentes/agenda'
 import { consultaDaUltimaMensagem } from '@/lib/ia-agentes/conhecimento'
 import { opcoesDoAgente } from '@/lib/ia-agentes/ferramentas'
 import { obterAgente } from '@/lib/ia-agentes/repo'
-import { lerPassagem, montarPedidoDoAgente } from '@/lib/ia-agentes/pedido'
+import { lerPassagem, montarPedidoDaRetomada, montarPedidoDoAgente } from '@/lib/ia-agentes/pedido'
 import { respostaDoErro } from '@/lib/ia-agentes/resposta'
+import { tempoEmIngles } from '@/lib/ia-agentes/retomada'
+import { lerRespostaDaRetomada } from '@/lib/ia-agentes/retomada-resposta'
 
 // O transcrito testado fica limitado, como a janela real do contexto.
 const MAX_TURNOS = 20
@@ -69,6 +71,17 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
  * 'transferir', nome: '' }` — no turno a conversa iria para a equipe DEPOIS
  * de a resposta sair. A resposta que promete a equipe SEM o marcador
  * (`equipePrometida`) também, com `transferenciaInferida: true`.
+ *
+ * RETOMADA (1056): `{ messages, contactId?, retomada: true, tentativa? }`
+ * simula o cliente que NÃO respondeu à última mensagem do agente (a conversa
+ * tem de terminar numa resposta dele — senão 400 `retomada_sem_resposta`). O
+ * pedido é o da retomada (`montarPedidoDaRetomada`: sem ações, passagens nem
+ * horários), com a tentativa (1-based, até o tamanho da cadência do agente) e
+ * o tempo sem resposta = o intervalo da cadência. Nada é enviado. Devolve
+ * `retomada: { tentativa, de, texto, parada }` — `parada` nula e o `texto` que
+ * sairia, ou o motivo de a série parar sem mandar (`nada_pendente`,
+ * `pediu_equipe`, `sem_texto`, `link_inventado`) — e `usage`/`vistos` como a
+ * conversa normal.
  */
 export async function POST(request: Request, { params }: Contexto) {
   try {
@@ -87,7 +100,13 @@ export async function POST(request: Request, { params }: Contexto) {
       return NextResponse.json({ error: 'nao_encontrado', code: 'nao_encontrado' }, { status: 404 })
     }
 
-    const corpo = (await request.json().catch(() => null)) as { messages?: unknown; contactId?: unknown } | null
+    const corpo = (await request.json().catch(() => null)) as {
+      messages?: unknown
+      contactId?: unknown
+      retomada?: unknown
+      tentativa?: unknown
+    } | null
+    const ehRetomada = corpo?.retomada === true
     const brutas = Array.isArray(corpo?.messages) ? corpo.messages : null
     if (!brutas) return NextResponse.json({ error: 'sem_mensagens', code: 'sem_mensagens' }, { status: 400 })
     const mensagens: ChatMessage[] = brutas
@@ -100,8 +119,14 @@ export async function POST(request: Request, { params }: Contexto) {
           (m as ChatMessage).content.trim().length > 0,
       )
       .slice(-MAX_TURNOS)
-    if (mensagens.length === 0 || mensagens[mensagens.length - 1].role !== 'user') {
+    if (mensagens.length === 0) {
       return NextResponse.json({ error: 'sem_mensagens', code: 'sem_mensagens' }, { status: 400 })
+    }
+    // A conversa responde ao CLIENTE; a retomada, ao silêncio depois da
+    // resposta do AGENTE.
+    if (mensagens[mensagens.length - 1].role !== (ehRetomada ? 'assistant' : 'user')) {
+      const code = ehRetomada ? 'retomada_sem_resposta' : 'sem_mensagens'
+      return NextResponse.json({ error: code, code }, { status: 400 })
     }
 
     // O contato do teste (F3): conferido NA CONTA — o cliente de serviço
@@ -146,6 +171,72 @@ export async function POST(request: Request, { params }: Contexto) {
     }
     if (!chave) {
       return NextResponse.json({ error: 'sem_chave', code: 'sem_chave' }, { status: 400 })
+    }
+
+    if (ehRetomada) {
+      // A cadência do agente (a padrão se ele ainda não a ligou): a tentativa
+      // pedida, dentro dela, e o tempo sem resposta = o intervalo dela.
+      const cadencia = agente.retomada.cadencia
+      const pedida = typeof corpo?.tentativa === 'number' && Number.isInteger(corpo.tentativa) ? corpo.tentativa : 1
+      const tentativa = Math.min(Math.max(pedida, 1), cadencia.length)
+      const agoraDaRetomada = new Date()
+      const visto = await lerOQueOAgenteVe(supabaseAdmin(), {
+        accountId: ctx.accountId,
+        agente,
+        contactId,
+        dealId: null,
+        consulta: consultaDaUltimaMensagem(mensagens),
+        agora: agoraDaRetomada,
+      })
+      const pedido = montarPedidoDaRetomada({
+        instrucoes: agente.instrucoes,
+        regras: agente.regras,
+        agora: agoraDaRetomada,
+        blocos: visto.blocos,
+        conhecimento: visto.trechos.map((t) => t.content),
+        retomada: { tentativa, de: cadencia.length, semResposta: tempoEmIngles(cadencia[tentativa - 1] * 60_000) },
+      })
+      const gerada = await generateReply({
+        config: {
+          provider: agente.provedor,
+          model: agente.modelo,
+          radarModel: null,
+          apiKey: chave,
+          systemPrompt: null,
+          isActive: true,
+          autoReplyEnabled: false,
+          autoReplyMaxPerConversation: agente.tetoRespostas,
+          handoffAgentId: null,
+          embeddingsApiKey: null,
+        },
+        systemPrompt: pedido,
+        messages: mensagens,
+      })
+      await logAiUsage(supabaseAdmin(), {
+        accountId: ctx.accountId,
+        conversationId: null,
+        mode: 'agente_teste',
+        provider: agente.provedor,
+        model: agente.modelo,
+        usage: gerada.usage,
+        iaAgenteId: agente.id,
+        iaAgenteNome: agente.nome,
+      })
+      // A MESMA régua do turno: o que para a série não é mostrado como texto.
+      const lida = lerRespostaDaRetomada(gerada.text, gerada.handoff, [pedido, ...mensagens.map((m) => m.content)])
+      return NextResponse.json({
+        retomada: {
+          tentativa,
+          de: cadencia.length,
+          texto: lida.parada === null ? lida.texto : '',
+          parada: lida.parada,
+        },
+        usage: gerada.usage,
+        vistos: {
+          blocos: visto.blocos.filter((b) => !blocoIndisponivel(b)).map((b) => b.bloco),
+          trechos: visto.trechos.length,
+        },
+      })
     }
 
     // Os agentes para quem este pode PASSAR (D25), como o turno os mostra ao

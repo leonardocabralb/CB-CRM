@@ -15,6 +15,7 @@ import type {
   AcoesSimuladas,
   HorarioOferecido,
   OpcoesDasFerramentas,
+  RetomadaSimulada,
   TipoDeAcao,
   TipoDeEventoDoCalendly,
 } from './tipos'
@@ -148,6 +149,23 @@ export function lerHorariosOferecidos(v: unknown): HorarioOferecido[] | null {
     if (typeof n !== 'number' || !Number.isInteger(n) || n < 1 || t === null || !t.trim()) return null
     return { n, texto: t }
   })
+}
+
+/**
+ * A retomada SIMULADA no Playground (1056, `retomada` da rota). `null` =
+ * forma estranha (a tela avisa o erro genérico). `parada` fica `string`: um
+ * motivo novo no servidor cai no texto genérico da tela.
+ */
+export function lerRetomadaSimulada(v: unknown): RetomadaSimulada | null {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null
+  const r = v as Record<string, unknown>
+  const inteiro = (x: unknown) => typeof x === 'number' && Number.isInteger(x) && x >= 1
+  if (!inteiro(r.tentativa) || !inteiro(r.de)) return null
+  const parada = typeof r.parada === 'string' && r.parada ? r.parada : null
+  const t = typeof r.texto === 'string' ? r.texto : ''
+  // Sem parada, tem de haver texto: é o que sairia.
+  if (parada === null && !t.trim()) return null
+  return { tentativa: r.tentativa as number, de: r.de as number, texto: parada === null ? t : '', parada }
 }
 
 /** Acima disto a lista de horários do Playground aparece recolhida (F5). */

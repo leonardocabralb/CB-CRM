@@ -12,6 +12,7 @@ import type {
 } from '@/lib/ia-agentes/agente'
 
 export type { AcessoDoAgente, BlocoDoAcesso, EtapaDoAgente, FerramentasDoAgente, Horario, TipoDeAcao }
+export type { ConfigDaRetomada } from '@/lib/ia-agentes/retomada'
 export { BLOCOS_DO_ACESSO, TIPOS_DE_ACAO } from '@/lib/ia-agentes/agente'
 
 /** O agente como as rotas o devolvem: com as etapas em que atua (D24) e o acesso (F3). */
@@ -96,6 +97,17 @@ export interface AcaoDoTurno {
   ok: boolean
   erro?: string
   detalhe?: string
+}
+
+/**
+ * A retomada SIMULADA no Playground (1056): a tentativa (1-based) de quantas,
+ * o texto que sairia e, quando nada sairia, o motivo (`parada`).
+ */
+export interface RetomadaSimulada {
+  tentativa: number
+  de: number
+  texto: string
+  parada: string | null
 }
 
 /** As ações de uma resposta do Playground — SIMULADAS, nada executa ali (F4). */

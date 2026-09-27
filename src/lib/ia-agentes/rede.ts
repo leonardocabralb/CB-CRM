@@ -37,13 +37,15 @@ interface Orfao {
   rodando_desde: string
   enviando_desde: string | null
   mensagem_enviada_id: string | null
+  /** `retomada` (1056) nunca transfere, nem recolhida no meio do envio. */
+  tipo?: string | null
 }
 
 async function recolherOrfaos(db: SupabaseClient): Promise<void> {
   const corte = new Date(Date.now() - RECOLHER_TURNO_MS).toISOString()
   const { data, error } = await db
     .from('cb_ia_turnos')
-    .select('id, account_id, conversation_id, ia_agente_id, rodando_desde, enviando_desde, mensagem_enviada_id')
+    .select('id, account_id, conversation_id, ia_agente_id, rodando_desde, enviando_desde, mensagem_enviada_id, tipo')
     .eq('status', 'rodando')
     .lt('rodando_desde', corte)
     .order('rodando_desde', { ascending: true })
@@ -80,7 +82,9 @@ async function recolherOrfaos(db: SupabaseClient): Promise<void> {
     // (a equipe respondeu, o botão Pausar): `transferirParaGente` não passa
     // por cima da pausa e não escreve nada. O `incerto` fica: ele fala do
     // ENVIO, não da transferência.
-    if (status === 'incerto' && o.ia_agente_id) {
+    // A RETOMADA (1056) fica de fora: o cliente não está esperando resposta,
+    // e ela nunca transfere por conta própria.
+    if (status === 'incerto' && o.ia_agente_id && o.tipo !== 'retomada') {
       const agente = await obterAgente(o.account_id, o.ia_agente_id).catch(() => null)
       const { data: conv } = await db
         .from('conversations')

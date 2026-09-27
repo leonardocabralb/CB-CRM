@@ -8,6 +8,8 @@ import {
   type MotivoDaRecusa,
   type MotivoForaDaD5,
 } from '@/lib/ia-agentes/acoes';
+import { partesDoIntervalo } from '@/lib/ia-agentes/retomada';
+import type { ParadaDaResposta } from '@/lib/ia-agentes/retomada-resposta';
 
 import { BLOCOS_DO_ACESSO, TIPOS_DE_ACAO } from './tipos';
 
@@ -58,6 +60,10 @@ export const CODIGOS_CONHECIDOS = [
   // conectado, ou não há Calendly conectado (`itens` = a uri).
   'tipo_de_evento_invalido',
   'calendly_desconectado',
+  // A retomada (1056): a cadência ou a janela fora da forma no Salvar, e a
+  // simulação no Playground sem a resposta do agente para retomar.
+  'retomada_invalida',
+  'retomada_sem_resposta',
   'invalid_key',
   'rate_limited',
   'timeout',
@@ -323,4 +329,33 @@ export function textoDoErroDaAcao(
     texto = t(CHAVE_DO_ERRO_DA_ACAO[erro]);
   }
   return resto ? t('turnos.acoes.comDetalhe', { texto, detalhe: textoDoDetalheDaAcao(t, resto) }) : texto;
+}
+
+/**
+ * Um intervalo da cadência da retomada (1056) em texto: "15 min", "3 h",
+ * "7 dias" (`IaAgentes.retomada.unidade.<u>`, chave MONTADA cobrada em
+ * `textos.test.ts`).
+ */
+export function textoDoIntervalo(t: ReturnType<typeof useTranslations>, minutos: number): string {
+  const { valor, unidade } = partesDoIntervalo(minutos);
+  return t(`retomada.unidade.${unidade}`, { n: valor });
+}
+
+/**
+ * Por que a retomada SIMULADA no Playground não mandaria nada
+ * (`IaAgentes.playground.retomadaParada.<p>`). Record exaustivo: parada nova
+ * no servidor sem texto aqui não compila; a que chega de um servidor mais
+ * novo cai no texto genérico.
+ */
+export const PARADAS_DA_RETOMADA: Record<ParadaDaResposta, true> = {
+  nada_pendente: true,
+  pediu_equipe: true,
+  sem_texto: true,
+  link_inventado: true,
+};
+
+export function textoDaParadaDaRetomada(t: ReturnType<typeof useTranslations>, parada: string): string {
+  return Object.prototype.hasOwnProperty.call(PARADAS_DA_RETOMADA, parada)
+    ? t(`playground.retomadaParada.${parada}`)
+    : t('playground.retomadaParadaDesconhecida');
 }

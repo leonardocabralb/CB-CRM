@@ -4521,7 +4521,8 @@
       "ferramentas": "Tools",
       "playground": "Playground",
       "uso": "Usage",
-      "turnos": "Turns"
+      "turnos": "Turns",
+      "retomada": "Follow-ups"
     },
     "acesso": {
       "explicacao": "What this agent can see about the customer besides the conversation. This is customer data sent to the AI provider with every reply: tick only what its job needs. With nothing ticked, it sees only the conversation.",
@@ -4714,7 +4715,17 @@
         "recolhidos": "{n, plural, one {# slot offered} other {# slots offered}}",
         "nenhum": "Slots offered: no free slot.",
         "item": "{n}. {texto}"
-      }
+      },
+      "simularRetomada": "Simulate follow-up",
+      "simularRetomadaDica": "Generates the message the agent would send if the customer didn't answer its last reply. Nothing is sent.",
+      "retomadaRotulo": "Follow-up {k}/{n} (simulated)",
+      "retomadaParada": {
+        "nada_pendente": "Nothing pending: the agent would end the follow-ups without sending anything.",
+        "pediu_equipe": "The agent asked for the team: the follow-ups would stop without sending anything (a follow-up doesn't hand the conversation over).",
+        "sem_texto": "The reply had no text: the follow-ups would stop.",
+        "link_inventado": "The message had a link that didn't come from the conversation: the follow-ups would stop without sending anything."
+      },
+      "retomadaParadaDesconhecida": "The follow-ups would stop without sending anything."
     },
     "uso": {
       "explicacao": "Last {dias} days. Amounts in R$ are an ESTIMATE from each model's list price and today's exchange rate.",
@@ -4812,7 +4823,9 @@
         "descartado": "Discarded",
         "falhou": "Failed",
         "incerto": "Uncertain delivery"
-      }
+      },
+      "retomada": "Follow-up {k}/{n}",
+      "prevista": "due {quando}"
     },
     "dia": {
       "0": "Sun",
@@ -4868,7 +4881,9 @@
       "output_truncated": "The model stopped before finishing the reply. Try again; if it keeps happening, shorten the instructions or change the model.",
       "banco": "Could not save right now — try again.",
       "tipo_de_evento_invalido": "The chosen event type is not an active event type of the connected Calendly. Pick another one.",
-      "calendly_desconectado": "Calendly is not connected. Connect it in Settings → Integrations, or turn “Book a meeting” off."
+      "calendly_desconectado": "Calendly is not connected. Connect it in Settings → Integrations, or turn “Book a meeting” off.",
+      "retomada_invalida": "The follow-ups were not saved: the cadence needs 1 to 8 increasing intervals, from 10 min to 7 days, and the window needs its start before its end.",
+      "retomada_sem_resposta": "To simulate a follow-up, the conversation must end with a reply from the agent."
     },
     "modelos": {
       "triagem": {
@@ -4913,6 +4928,41 @@
         "avisoDaTarefa": "The AI agent {agente} opened a task for you",
         "marcar_reuniao": "{agente} booked the meeting for {alvo}."
       }
+    },
+    "retomada": {
+      "explicacao": "When the agent asks something and the customer doesn't answer, it gets back to the customer on a cadence. The message is written by the model, from the conversation, and goes out through the same connection.",
+      "ligar": "Follow up when the customer doesn't answer",
+      "ligarDica": "Only for the agent's last reply left unanswered — never after a message from an automation, the bot or the team.",
+      "cadencia": "Cadence",
+      "cadenciaDica": "Each attempt goes out this long after the agent's last unanswered reply, and never less than 30 min after the previous one. From 1 to {max} attempts, 10 min to 7 days each.",
+      "tentativa": "Attempt {n}",
+      "remover": "Remove {tempo}",
+      "novoIntervalo": "Time",
+      "unidadeDoIntervalo": "Time unit",
+      "unidadeNome": {
+        "min": "min",
+        "h": "hours",
+        "d": "days"
+      },
+      "unidade": {
+        "min": "{n} min",
+        "h": "{n} h",
+        "d": "{n, plural, one {# day} other {# days}}"
+      },
+      "adicionar": "Add",
+      "restaurarPadrao": "Back to default",
+      "invalido": "Use a whole number of time, from 10 min to 7 days.",
+      "repetido": "That time is already in the cadence.",
+      "cheia": "The cadence already has {max} attempts.",
+      "janela": "Sending window",
+      "janelaDica": "Every day, Brasília time. An attempt due outside the window goes out when it opens again.",
+      "janelaComHorario": "This agent has its own hours ({inicio}–{fim}): what both windows have in common applies.",
+      "janelaInvalida": "The start must be before the end.",
+      "inicio": "Window start",
+      "fim": "Window end",
+      "paradas": "Follow-ups stop on their own when the customer answers, when someone from the team writes or pauses the AI, when the conversation is closed, when the deal leaves the agent's stage and near the customer's meeting: never within 30 min of a meeting reminder, and never in the 90 min before it. On an official Meta connection, also when the 24-hour window closes. If nothing is pending, the agent ends the follow-ups without sending anything — and they never hand the conversation to the team. Each follow-up counts toward the agent's reply limit.",
+      "salvar": "Save follow-ups",
+      "salvo": "Follow-ups saved."
     }
   },
   "ForgotPasswordPage": {

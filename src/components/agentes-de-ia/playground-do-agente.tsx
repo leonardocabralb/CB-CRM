@@ -32,20 +32,51 @@
 // marcado aqui. `horarios` nulo (tipo desligado, leitura que falhou, cliente
 // que já tem reunião) não mostra nada; lista vazia diz que não havia horário
 // livre.
+//
+// RETOMADA (1056): "Simular retomada" gera a mensagem que o agente mandaria se
+// o cliente NÃO respondesse à última resposta dele (a tentativa seguinte da
+// cadência do agente), sem enviar nada. O texto entra na conversa como uma
+// resposta marcada "Retomada k/n (simulada)"; quando nada sairia ("nada
+// pendente", a equipe pedida, link inventado), a bolha diz por quê, e a série
+// para — até o cliente do teste escrever de novo. O botão só acende quando o
+// turno real ARMARIA uma retomada: a última resposta saiu sem transferir nem
+// passar a conversa.
 
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { Ban, Bot, CalendarClock, CalendarX, Eye, Link2Off, Loader2, RotateCcw, Send, UserCircle2, Wrench, X } from 'lucide-react';
+import {
+  Ban,
+  Bot,
+  CalendarClock,
+  CalendarX,
+  Eye,
+  History,
+  Link2Off,
+  Loader2,
+  RotateCcw,
+  Send,
+  UserCircle2,
+  Wrench,
+  X,
+} from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/use-auth';
 import { SeletorDeContatoRemoto } from '@/components/contacts/seletor-de-contato-remoto';
 import { TETO_DE_RESULTADOS } from '@/lib/contacts/busca-remota';
+import { ACAO_TRANSFERIR } from '@/lib/ia-agentes/acoes';
 import { cn } from '@/lib/utils';
-import { HORARIOS_A_MOSTRA, lerAcoesSimuladas, lerHorariosOferecidos } from './ferramentas';
+import { HORARIOS_A_MOSTRA, lerAcoesSimuladas, lerHorariosOferecidos, lerRetomadaSimulada } from './ferramentas';
 import type { AcoesSimuladas, HorarioOferecido, IaAgente } from './tipos';
-import { fraseDaAcao, motivoDaRecusa, rotuloDoBloco, rotuloDoTipoDeAcao, textoDoCodigo } from './textos';
+import {
+  fraseDaAcao,
+  motivoDaRecusa,
+  rotuloDoBloco,
+  rotuloDoTipoDeAcao,
+  textoDaParadaDaRetomada,
+  textoDoCodigo,
+} from './textos';
 
 /** O que o agente viu para gerar a resposta (`vistos` da rota). */
 interface Vistos {
@@ -82,6 +113,35 @@ interface Turno {
   transferenciaInferida?: boolean;
   /** Só do agente: os horários livres oferecidos ao modelo (F5); nulo = nada a mostrar. */
   horarios?: HorarioOferecido[] | null;
+  /** Só do agente: esta é uma RETOMADA simulada (1056); `parada` = nada sairia, e por quê. */
+  retomada?: { tentativa: number; de: number; parada: string | null };
+}
+
+/**
+ * A próxima retomada que dá para simular (1-based), ou `null`: a conversa
+ * termina numa resposta do agente que SAIU sem transferir nem passar (a que o
+ * turno real ARMARIA), a série não parou e a cadência não acabou.
+ */
+function proximaRetomada(turnos: Turno[], cadencia: number): number | null {
+  let seguidas = 0;
+  for (let i = turnos.length - 1; i >= 0; i--) {
+    const x = turnos[i];
+    if (x.role !== 'assistant' || !x.retomada) break;
+    if (x.retomada.parada) return null;
+    seguidas++;
+  }
+  const ultima = turnos.at(-1);
+  if (!ultima || ultima.role !== 'assistant' || !ultima.content) return null;
+  if (
+    ultima.handoff ||
+    ultima.passaPara ||
+    ultima.linkInventado ||
+    ultima.reuniaoPrometida ||
+    ultima.acoes?.aceitas.some((a) => a.tipo === ACAO_TRANSFERIR)
+  ) {
+    return null;
+  }
+  return seguidas < cadencia ? seguidas + 1 : null;
 }
 
 /** A resposta tem algo das ações (F4) a mostrar: link inventado, reunião prometida, ação aceita ou recusada. */
@@ -112,6 +172,7 @@ export function PlaygroundDoAgente({
   const [texto, setTexto] = useState('');
   const [enviando, setEnviando] = useState(false);
   const rolagemRef = useRef<HTMLDivElement>(null);
+  const tentativaDaRetomada = proximaRetomada(turnos, agente.retomada.cadencia.length);
 
   useEffect(() => {
     rolagemRef.current?.scrollTo({ top: rolagemRef.current.scrollHeight });
@@ -184,6 +245,53 @@ export function PlaygroundDoAgente({
     }
   }
 
+  async function simularRetomada() {
+    if (enviando || tentativaDaRetomada === null) return;
+    setEnviando(true);
+    try {
+      const res = await fetch(`/api/cb/ia/agentes/${agente.id}/playground`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: turnos.map((x) => ({ role: x.role, content: x.content })),
+          retomada: true,
+          tentativa: tentativaDaRetomada,
+          ...(contatoId ? { contactId: contatoId } : {}),
+        }),
+      });
+      const corpo = (await res.json().catch(() => ({}))) as {
+        retomada?: unknown;
+        usage?: { totalTokens?: number } | null;
+        vistos?: unknown;
+        code?: string;
+        error?: string;
+      };
+      if (!res.ok) {
+        toast.error(textoDoCodigo(t, corpo.code, corpo.error));
+        return;
+      }
+      const r = lerRetomadaSimulada(corpo.retomada);
+      if (!r) {
+        toast.error(t('erro.generico'));
+        return;
+      }
+      setTurnos([
+        ...turnos,
+        {
+          role: 'assistant',
+          content: r.texto,
+          tokens: corpo.usage?.totalTokens ?? undefined,
+          vistos: lerVistos(corpo.vistos),
+          retomada: { tentativa: r.tentativa, de: r.de, parada: r.parada },
+        },
+      ]);
+    } catch {
+      toast.error(t('erro.generico'));
+    } finally {
+      setEnviando(false);
+    }
+  }
+
   return (
     <div className="space-y-2">
       <p className="text-xs text-muted-foreground">{t('playground.explicacao')}</p>
@@ -231,15 +339,27 @@ export function PlaygroundDoAgente({
           <span className="min-w-0 truncate text-sm font-medium text-foreground">
             {agente.nome} · <code className="text-xs text-muted-foreground">{agente.modelo}</code>
           </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setTurnos([])}
-            disabled={turnos.length === 0 || enviando}
-            className="text-muted-foreground"
-          >
-            <RotateCcw className="mr-1.5 size-3.5" /> {t('playground.recomecar')}
-          </Button>
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void simularRetomada()}
+              disabled={tentativaDaRetomada === null || enviando}
+              title={t('playground.simularRetomadaDica')}
+              className="text-muted-foreground"
+            >
+              <History className="mr-1.5 size-3.5" /> {t('playground.simularRetomada')}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setTurnos([])}
+              disabled={turnos.length === 0 || enviando}
+              className="text-muted-foreground"
+            >
+              <RotateCcw className="mr-1.5 size-3.5" /> {t('playground.recomecar')}
+            </Button>
+          </div>
         </div>
 
         <div ref={rolagemRef} className="flex-1 space-y-4 overflow-y-auto p-4">
@@ -262,7 +382,19 @@ export function PlaygroundDoAgente({
                     : 'rounded-bl-sm bg-muted text-foreground'
                 )}
               >
+                {x.role === 'assistant' && x.retomada ? (
+                  <p className="mb-1 flex items-center gap-1 text-[11px] text-muted-foreground">
+                    <History className="size-3 shrink-0" />
+                    {t('playground.retomadaRotulo', { k: x.retomada.tentativa, n: x.retomada.de })}
+                  </p>
+                ) : null}
                 {x.content ? <p className="whitespace-pre-wrap">{x.content}</p> : null}
+                {x.role === 'assistant' && x.retomada?.parada ? (
+                  <p className="flex items-start gap-1 text-xs text-amber-700 dark:text-amber-300">
+                    <Ban className="mt-px size-3.5 shrink-0" />
+                    <span>{textoDaParadaDaRetomada(t, x.retomada.parada)}</span>
+                  </p>
+                ) : null}
                 {x.role === 'assistant' && x.handoff ? (
                   <p
                     className={cn(

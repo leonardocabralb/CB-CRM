@@ -4514,7 +4514,8 @@
       "ferramentas": "Ferramentas",
       "playground": "Playground",
       "uso": "Uso",
-      "turnos": "Turnos"
+      "turnos": "Turnos",
+      "retomada": "Retomada"
     },
     "acesso": {
       "explicacao": "O que este agente pode ver do cliente, além da conversa. É dado do cliente enviado ao provedor de IA a cada resposta: marque só o que o trabalho dele pede. Nada marcado, ele vê só a conversa.",
@@ -4707,7 +4708,17 @@
         "recolhidos": "{n, plural, one {# horário oferecido} other {# horários oferecidos}}",
         "nenhum": "Horários oferecidos: nenhum horário livre.",
         "item": "{n}. {texto}"
-      }
+      },
+      "simularRetomada": "Simular retomada",
+      "simularRetomadaDica": "Gera a mensagem que o agente mandaria se o cliente não respondesse à última resposta dele. Nada é enviado.",
+      "retomadaRotulo": "Retomada {k}/{n} (simulada)",
+      "retomadaParada": {
+        "nada_pendente": "Nada pendente: o agente encerraria as retomadas sem mandar nada.",
+        "pediu_equipe": "O agente pediu a equipe: as retomadas parariam sem mandar nada (a retomada não transfere a conversa).",
+        "sem_texto": "A resposta veio sem texto: as retomadas parariam.",
+        "link_inventado": "A mensagem trazia um link que não veio da conversa: as retomadas parariam sem mandar nada."
+      },
+      "retomadaParadaDesconhecida": "As retomadas parariam sem mandar nada."
     },
     "uso": {
       "explicacao": "Últimos {dias} dias. Os valores em R$ são uma ESTIMATIVA pelo preço de lista de cada modelo e pela cotação de hoje.",
@@ -4805,7 +4816,9 @@
         "descartado": "Descartado",
         "falhou": "Falhou",
         "incerto": "Envio incerto"
-      }
+      },
+      "retomada": "Retomada {k}/{n}",
+      "prevista": "prevista para {quando}"
     },
     "dia": {
       "0": "Dom",
@@ -4861,7 +4874,9 @@
       "output_truncated": "O modelo parou antes de terminar a resposta. Tente de novo; se continuar, encurte as instruções ou troque o modelo.",
       "banco": "Não foi possível gravar agora — tente de novo.",
       "tipo_de_evento_invalido": "O tipo de evento escolhido não é um tipo ativo do Calendly conectado. Escolha outro.",
-      "calendly_desconectado": "O Calendly não está conectado. Conecte em Configurações → Integrações, ou desligue “Marcar reunião”."
+      "calendly_desconectado": "O Calendly não está conectado. Conecte em Configurações → Integrações, ou desligue “Marcar reunião”.",
+      "retomada_invalida": "A retomada não foi salva: a cadência precisa de 1 a 8 intervalos crescentes, de 10 min a 7 dias, e a janela, o início antes do fim.",
+      "retomada_sem_resposta": "Para simular a retomada, a conversa tem de terminar numa resposta do agente."
     },
     "modelos": {
       "triagem": {
@@ -4906,6 +4921,41 @@
         "avisoDaTarefa": "O agente de IA {agente} abriu uma tarefa para você",
         "marcar_reuniao": "{agente} marcou a reunião para {alvo}."
       }
+    },
+    "retomada": {
+      "explicacao": "Quando o agente pergunta algo e o cliente não responde, ele volta a falar com o cliente numa cadência. A mensagem é escrita pelo modelo, a partir da conversa, e sai pela mesma conexão.",
+      "ligar": "Retomar quando o cliente não responde",
+      "ligarDica": "Vale só para a última resposta do agente que ficou sem resposta — nunca depois de mensagem de automação, do robô ou da equipe.",
+      "cadencia": "Cadência",
+      "cadenciaDica": "Cada tentativa sai este tempo depois da última resposta do agente sem resposta, e nunca a menos de 30 min da anterior. De 1 a {max} tentativas, de 10 min a 7 dias cada.",
+      "tentativa": "Tentativa {n}",
+      "remover": "Tirar {tempo}",
+      "novoIntervalo": "Tempo",
+      "unidadeDoIntervalo": "Unidade do tempo",
+      "unidadeNome": {
+        "min": "min",
+        "h": "horas",
+        "d": "dias"
+      },
+      "unidade": {
+        "min": "{n} min",
+        "h": "{n} h",
+        "d": "{n, plural, one {# dia} other {# dias}}"
+      },
+      "adicionar": "Adicionar",
+      "restaurarPadrao": "Voltar ao padrão",
+      "invalido": "Use um tempo inteiro, de 10 min a 7 dias.",
+      "repetido": "Esse tempo já está na cadência.",
+      "cheia": "A cadência já tem {max} tentativas.",
+      "janela": "Janela de envio",
+      "janelaDica": "Todos os dias, no horário de Brasília. A tentativa que vence fora da janela sai quando ela abre de novo.",
+      "janelaComHorario": "Este agente tem horário próprio ({inicio}–{fim}): vale o que as duas janelas têm em comum.",
+      "janelaInvalida": "O início tem de ser antes do fim.",
+      "inicio": "Início da janela",
+      "fim": "Fim da janela",
+      "paradas": "As retomadas param sozinhas quando o cliente responde, quando alguém da equipe escreve ou pausa a IA, quando a conversa é encerrada, quando o card sai da etapa do agente e perto da reunião do cliente: nunca a menos de 30 min de um lembrete da reunião, e nunca nos 90 min antes dela. Numa conexão oficial da Meta, também quando a janela de 24 h fecha. Se não houver nada pendente, o agente encerra as retomadas sem mandar nada — e elas nunca passam a conversa para a equipe. Cada retomada conta no teto de respostas do agente.",
+      "salvar": "Salvar retomada",
+      "salvo": "Retomada salva."
     }
   },
   "ForgotPasswordPage": {

@@ -1,10 +1,11 @@
 'use client';
 
 // O detalhe de um agente de IA (F1b, 5.9): Configuração, Acesso e Base de
-// conhecimento (F3), Ferramentas (F4, D28), Playground, Uso e Turnos (as
-// últimas vezes que ele foi chamado a responder).
+// conhecimento (F3), Ferramentas (F4, D28), Retomada (1056: voltar a falar com
+// quem não respondeu), Playground, Uso e Turnos (as últimas vezes que ele foi
+// chamado a responder).
 //
-// ⚠️ Configuração, Acesso, Base, Ferramentas e Playground ficam MONTADAS
+// ⚠️ Configuração, Acesso, Base, Ferramentas, Retomada e Playground ficam MONTADAS
 // depois da primeira visita (escondidas, não desmontadas): o rascunho de
 // cada uma vive nela, e trocar de aba para testar no Playground apagava, sem
 // aviso, o que tinha sido digitado. A conversa do Playground também
@@ -27,11 +28,12 @@ import { BaseDoAgente } from './base-do-agente';
 import { ConfiguracaoDoAgente } from './configuracao-do-agente';
 import { FerramentasDoAgente } from './ferramentas-do-agente';
 import { PlaygroundDoAgente } from './playground-do-agente';
+import { RetomadaDoAgente } from './retomada-do-agente';
 import { TurnosDoAgente } from './turnos-do-agente';
 import { UsoDeIa } from './uso-de-ia';
 import type { IaAgente } from './tipos';
 
-type Aba = 'configuracao' | 'acesso' | 'base' | 'ferramentas' | 'playground' | 'uso' | 'turnos';
+type Aba = 'configuracao' | 'acesso' | 'base' | 'ferramentas' | 'retomada' | 'playground' | 'uso' | 'turnos';
 
 type Estado =
   | { fase: 'carregando' }
@@ -48,6 +50,7 @@ export function DetalheDoAgente({ id }: { id: string }) {
   const [acessoNaoSalvo, setAcessoNaoSalvo] = useState(false);
   const [baseNaoSalva, setBaseNaoSalva] = useState(false);
   const [ferramentasNaoSalvas, setFerramentasNaoSalvas] = useState(false);
+  const [retomadaNaoSalva, setRetomadaNaoSalva] = useState(false);
   // Quantas vezes o agente foi salvo nesta tela (configuração, acesso, base
   // ou ferramentas): entra na `key` do Playground para zerar a conversa a cada versão
   // nova do agente.
@@ -97,6 +100,7 @@ export function DetalheDoAgente({ id }: { id: string }) {
     acessoNaoSalvo ? t('detalhe.acesso') : null,
     baseNaoSalva ? t('detalhe.base') : null,
     ferramentasNaoSalvas ? t('detalhe.ferramentas') : null,
+    retomadaNaoSalva ? t('detalhe.retomada') : null,
   ].filter((x): x is string => x !== null);
 
   return (
@@ -134,6 +138,7 @@ export function DetalheDoAgente({ id }: { id: string }) {
               { id: 'acesso', rotulo: t('detalhe.acesso') },
               { id: 'base', rotulo: t('detalhe.base') },
               { id: 'ferramentas', rotulo: t('detalhe.ferramentas') },
+              { id: 'retomada', rotulo: t('detalhe.retomada') },
               { id: 'playground', rotulo: t('detalhe.playground') },
               { id: 'uso', rotulo: t('detalhe.uso') },
               { id: 'turnos', rotulo: t('detalhe.turnos') },
@@ -174,6 +179,16 @@ export function DetalheDoAgente({ id }: { id: string }) {
                 agente={e.agente}
                 aoSalvar={aoSalvarAgente}
                 aoMudarNaoSalvo={setFerramentasNaoSalvas}
+              />
+            </div>
+          ) : null}
+          {visitadas.has('retomada') ? (
+            <div hidden={aba !== 'retomada'}>
+              <RetomadaDoAgente
+                key={e.agente.id}
+                agente={e.agente}
+                aoSalvar={aoSalvarAgente}
+                aoMudarNaoSalvo={setRetomadaNaoSalva}
               />
             </div>
           ) : null}

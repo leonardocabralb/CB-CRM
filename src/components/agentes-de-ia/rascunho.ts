@@ -14,6 +14,7 @@
 // ============================================================
 
 import type { AiProvider } from '@/lib/ai/types'
+import { LIMITES_DA_RETOMADA, type ConfigDaRetomada } from '@/lib/ia-agentes/retomada'
 import {
   CAIXAS_DO_ACESSO,
   TIPOS_DE_ACAO,
@@ -231,4 +232,39 @@ export function ferramentasParaSalvar(
     saida = comLista(saida, tipo, catalogo ? lista.filter((id) => catalogo.has(id)) : [...lista])
   }
   return saida
+}
+
+/**
+ * A retomada (1056) mudou em relação à salva? A cadência na ORDEM (é uma
+ * sequência, não um conjunto), a janela e o interruptor.
+ */
+export function retomadaMudou(salva: ConfigDaRetomada, r: ConfigDaRetomada): boolean {
+  return (
+    salva.ativa !== r.ativa ||
+    salva.janela.inicio !== r.janela.inicio ||
+    salva.janela.fim !== r.janela.fim ||
+    salva.cadencia.length !== r.cadencia.length ||
+    salva.cadencia.some((m, i) => m !== r.cadencia[i])
+  )
+}
+
+/**
+ * Um intervalo digitado na tela (valor + unidade) → minutos, para ACRESCENTAR
+ * à cadência. `null` com o motivo quando não cabe: fora de 10 min a 7 dias,
+ * não inteiro, repetido, ou a cadência já no teto de tentativas. A lista volta
+ * ORDENADA (a cadência é crescente — o servidor recusa outra ordem).
+ */
+export function acrescentarIntervalo(
+  cadencia: readonly number[],
+  valor: string,
+  unidade: 'min' | 'h' | 'd',
+): { ok: true; cadencia: number[] } | { ok: false; motivo: 'invalido' | 'repetido' | 'cheia' } {
+  if (cadencia.length >= LIMITES_DA_RETOMADA.tentativasMax) return { ok: false, motivo: 'cheia' }
+  const n = Number(valor.trim().replace(',', '.'))
+  const minutos = n * (unidade === 'min' ? 1 : unidade === 'h' ? 60 : 1440)
+  if (!valor.trim() || !Number.isInteger(minutos) || minutos < LIMITES_DA_RETOMADA.minutosMin || minutos > LIMITES_DA_RETOMADA.minutosMax) {
+    return { ok: false, motivo: 'invalido' }
+  }
+  if (cadencia.includes(minutos)) return { ok: false, motivo: 'repetido' }
+  return { ok: true, cadencia: [...cadencia, minutos].sort((a, b) => a - b) }
 }

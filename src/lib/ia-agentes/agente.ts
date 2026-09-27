@@ -8,6 +8,8 @@
 
 import type { AiProvider } from '@/lib/ai/types'
 
+import { lerRetomada, lerRetomadaDoCorpo, type ConfigDaRetomada } from './retomada'
+
 export const LIMITES = {
   nome: 80,
   descricao: 1000,
@@ -166,6 +168,8 @@ export interface IaAgente {
   acesso: AcessoDoAgente
   /** O que ele pode FAZER junto com a resposta (F4, D28). */
   ferramentas: FerramentasDoAgente
+  /** A retomada quando o cliente não responde (1056); `ativa` falso = desligada. */
+  retomada: ConfigDaRetomada
   /** Quando foi LIGADO pela última vez (gatilho da 1049); nulo = nunca. D27. */
   ativadoEm: string | null
   arquivadoEm: string | null
@@ -189,7 +193,7 @@ export type AgenteComEtapas = IaAgente & { etapas: EtapaDoAgente[] }
 
 /** Colunas lidas: nomeadas, nunca `*` (uma coluna sem GRANT derrubaria a consulta). */
 export const COLUNAS_DO_AGENTE =
-  'id, account_id, nome, descricao, instrucoes, regras, provedor, modelo, ativo, conexoes, horario, teto_respostas, pode_passar_para, transferir_para, acesso, ferramentas, ativado_em, arquivado_em, created_at, updated_at'
+  'id, account_id, nome, descricao, instrucoes, regras, provedor, modelo, ativo, conexoes, horario, teto_respostas, pode_passar_para, transferir_para, acesso, ferramentas, retomada, ativado_em, arquivado_em, created_at, updated_at'
 
 function ehProvedor(v: unknown): v is AiProvider {
   return v === 'openai' || v === 'anthropic' || v === 'gemini'
@@ -288,6 +292,7 @@ export function lerLinhaDoAgente(linha: Record<string, unknown>): IaAgente | nul
     transferirPara: typeof linha.transferir_para === 'string' ? linha.transferir_para : null,
     acesso: lerAcesso(linha.acesso),
     ferramentas: lerFerramentas(linha.ferramentas),
+    retomada: lerRetomada(linha.retomada),
     ativadoEm: typeof linha.ativado_em === 'string' ? linha.ativado_em : null,
     arquivadoEm: typeof linha.arquivado_em === 'string' ? linha.arquivado_em : null,
     createdAt: typeof linha.created_at === 'string' ? linha.created_at : '',
@@ -312,6 +317,8 @@ export interface AlteracaoDoAgente {
   acesso?: AcessoDoAgente
   /** O que ele pode fazer junto com a resposta (F4): o objeto INTEIRO. */
   ferramentas?: FerramentasDoAgente
+  /** A retomada (1056): o objeto INTEIRO. */
+  retomada?: ConfigDaRetomada
   /** Ids das etapas em que atua (D24). Não é coluna do agente: vai para `cb_ia_agente_etapas`. */
   etapas?: string[]
 }
@@ -329,6 +336,7 @@ export type CodigoDeRecusa =
   | 'teto_invalido'
   | 'horario_invalido'
   | 'lista_invalida'
+  | 'retomada_invalida'
 
 export type LeituraDaAlteracao =
   | { ok: true; valor: AlteracaoDoAgente }
@@ -452,6 +460,13 @@ export function lerAlteracao(corpo: unknown, criacao: boolean): LeituraDaAlterac
     }
     v.ferramentas = lerFerramentas(f)
   }
+  if ('retomada' in c) {
+    // O objeto inteiro, ESTRITO: cadência ou janela fora da forma recusa —
+    // descartar em silêncio mandaria retomadas noutros horários.
+    const r = lerRetomadaDoCorpo(c.retomada)
+    if (!r) return { ok: false, codigo: 'retomada_invalida' }
+    v.retomada = r
+  }
   if ('horario' in c) {
     if (c.horario === null) v.horario = null
     else {
@@ -480,6 +495,7 @@ export function colunasDaAlteracao(a: AlteracaoDoAgente): Record<string, unknown
   if (a.transferirPara !== undefined) c.transferir_para = a.transferirPara
   if (a.acesso !== undefined) c.acesso = a.acesso
   if (a.ferramentas !== undefined) c.ferramentas = a.ferramentas
+  if (a.retomada !== undefined) c.retomada = a.retomada
   return c
 }
 

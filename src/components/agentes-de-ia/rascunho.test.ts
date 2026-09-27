@@ -37,6 +37,7 @@ const SALVO: IaAgente = {
   arquivadoEm: null,
   acesso: { ficha: true, campos: ['c1', 'c2'], negocio: false, etiquetas: false, cobrancas: true, reuniao: false },
   ferramentas: { mover_etapa: { etapas: ['e1', 'e2'] }, etiquetar: { etiquetas: ['t1'] } },
+  retomada: { ativa: true, cadencia: [15, 60, 180], janela: { inicio: '08:00', fim: '21:00' } },
   createdAt: '2026-09-25T00:00:00Z',
   updatedAt: '2026-09-25T00:00:00Z',
 }
