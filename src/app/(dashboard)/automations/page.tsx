@@ -260,6 +260,9 @@ export default function AutomationsPage() {
       ? noCanal.filter((a) => abaDaAutomacao(a.area_id, idsDasAbas) === abaVigente)
       : noCanal
   const contagem = contarPorAba(noCanal, abas ?? [])
+  // O diálogo conta TODAS: "N automações voltam para Geral" ao apagar uma aba
+  // não pode depender do filtro de canal que está na tela.
+  const contagemDaConta = contarPorAba(automations, abas ?? [])
   // Em "Todas", a lista vem AGRUPADA por aba (Geral primeiro), só com as abas
   // que têm automação — é o que tira a lista comprida de uma coluna só.
   const grupos: { id: string; nome: string; itens: Automation[] }[] | null =
@@ -396,7 +399,7 @@ export default function AutomationsPage() {
           open={gerenciando}
           onOpenChange={setGerenciando}
           areas={abas}
-          contagem={contagem}
+          contagem={contagemDaConta}
           accountId={accountId}
           onMudou={async () => {
             // Apagar uma aba devolve as automações dela para "Geral" no
