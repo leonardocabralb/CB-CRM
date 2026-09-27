@@ -60,6 +60,8 @@ export const CODIGOS_CONHECIDOS = [
   'network_error',
   'provider_error',
   'empty_response',
+  // A resposta parou no teto de tokens (`respostaCortada`): o texto cortado não é mostrado.
+  'output_truncated',
   'banco',
 ] as const;
 

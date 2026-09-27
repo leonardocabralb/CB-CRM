@@ -51,6 +51,19 @@ export function toNetworkError(err: unknown): AiError {
   })
 }
 
+/**
+ * A resposta PAROU no teto de tokens (`MAX_OUTPUT_TOKENS`) — Gemini
+ * `finishReason: 'MAX_TOKENS'`, OpenAI `finish_reason: 'length'`, Anthropic
+ * `stop_reason: 'max_tokens'`. Vira erro, NUNCA texto: o que veio é a
+ * resposta cortada no meio da frase, e no turno do agente ela iria ao
+ * CLIENTE. Mesmo código do caminho estruturado (`structured.ts`).
+ */
+export function respostaCortada(provider: string): AiError {
+  return new AiError(`${provider} hit the output token limit before finishing the reply.`, {
+    code: 'output_truncated',
+  })
+}
+
 /** Build a typed AiError from a non-2xx provider response, pulling the
  *  provider's own error message out of the JSON body when present. */
 export async function providerHttpError(

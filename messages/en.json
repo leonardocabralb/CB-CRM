@@ -4812,6 +4812,7 @@
       "network_error": "Could not reach the provider.",
       "provider_error": "The provider refused the request: {detalhe}",
       "empty_response": "The model returned no text. Try again, or change the model.",
+      "output_truncated": "The model stopped before finishing the reply. Try again; if it keeps happening, shorten the instructions or change the model.",
       "banco": "Could not save right now — try again.",
       "tipo_de_evento_invalido": "The chosen event type is not an active event type of the connected Calendly. Pick another one.",
       "calendly_desconectado": "Calendly is not connected. Connect it in Settings → Integrations, or turn “Book a meeting” off."

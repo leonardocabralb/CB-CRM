@@ -4805,6 +4805,7 @@
       "network_error": "Não foi possível falar com o provedor.",
       "provider_error": "O provedor recusou o pedido: {detalhe}",
       "empty_response": "O modelo não devolveu texto. Tente de novo, ou troque o modelo.",
+      "output_truncated": "O modelo parou antes de terminar a resposta. Tente de novo; se continuar, encurte as instruções ou troque o modelo.",
       "banco": "Não foi possível gravar agora — tente de novo.",
       "tipo_de_evento_invalido": "O tipo de evento escolhido não é um tipo ativo do Calendly conectado. Escolha outro.",
       "calendly_desconectado": "O Calendly não está conectado. Conecte em Configurações → Integrações, ou desligue “Marcar reunião”."
