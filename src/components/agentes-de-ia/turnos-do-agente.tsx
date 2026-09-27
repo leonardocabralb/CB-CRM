@@ -14,18 +14,33 @@
 // que explica a resposta depois que a ficha, o card ou o documento mudarem.
 // Turno anterior ao retrato (contexto nulo) não ganha a expansão. Os nomes
 // dos documentos vêm da base de hoje; a leitura que falha mostra só a conta.
+//
+// F4 (D28): o turno que registrou AÇÕES (`acoes`) ganha "Ações do agente",
+// uma expansão com cada uma — ✓/✗, o tipo, o alvo (o nome gravado na hora,
+// que sobrevive a renomear a etapa ou a etiqueta) e, na que falhou, o
+// porquê: o CÓDIGO traduzido (`textoDoErroDaAcao`, Record exaustivo) com o
+// `detalhe` — o passo da D5 traduzido, o resto cru depois. A que deu certo
+// com `detalhe` ("o card já estava nessa etapa") mostra a nota em cinza.
+// Turno anterior à F4 (acoes nula) ou sem ação nenhuma não ganha a expansão.
 // ============================================================
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { Eye, RefreshCw } from 'lucide-react';
+import { Check, Eye, RefreshCw, Wrench, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { urlDoInbox } from '@/lib/inbox/url';
 import { cn } from '@/lib/utils';
-import { rotuloDoBloco, rotuloDoStatusDoTurno } from './textos';
-import type { ContextoDoTurno } from './tipos';
+import { lerAcoesDoTurno } from './ferramentas';
+import {
+  rotuloDoBloco,
+  rotuloDoStatusDoTurno,
+  rotuloDoTipoDeAcao,
+  textoDoDetalheDaAcao,
+  textoDoErroDaAcao,
+} from './textos';
+import type { AcaoDoTurno, ContextoDoTurno } from './tipos';
 
 interface Turno {
   id: string;
@@ -37,6 +52,8 @@ interface Turno {
   contato: string | null;
   /** O retrato do turno (F3); nulo nos turnos antigos. */
   contexto: ContextoDoTurno | null;
+  /** As ações que o agente executou (F4); nulo nos turnos antigos. */
+  acoes: AcaoDoTurno[] | null;
 }
 
 /** Parse, nunca `as`: o retrato é jsonb; forma estranha = sem expansão (nunca quebra a lista). */
@@ -83,13 +100,17 @@ export function TurnosDoAgente({ agenteId }: { agenteId: string }) {
           .catch(() => null),
       ]);
       if (!res.ok) throw new Error(String(res.status));
-      const corpo = (await res.json()) as { turnos?: Array<Omit<Turno, 'contexto'> & { contexto?: unknown }> };
+      const corpo = (await res.json()) as {
+        turnos?: Array<Omit<Turno, 'contexto' | 'acoes'> & { contexto?: unknown; acoes?: unknown }>;
+      };
       // ⚠️ "Apagado" só com a lista COMPLETA: no teto de 1.000 linhas do
       // PostgREST ela pode ter sido cortada, e um documento vivo apareceria
       // como apagado (Codex, #312).
       const docs = base?.documents ?? [];
       setTitulos(base ? { mapa: new Map(docs.map((d) => [d.id, d.title])), completo: docs.length < 1000 } : null);
-      setTurnos((corpo.turnos ?? []).map((x) => ({ ...x, contexto: lerContexto(x.contexto) })));
+      setTurnos(
+        (corpo.turnos ?? []).map((x) => ({ ...x, contexto: lerContexto(x.contexto), acoes: lerAcoesDoTurno(x.acoes) }))
+      );
       setFalhou(false);
     } catch {
       setFalhou(true);
@@ -145,6 +166,7 @@ export function TurnosDoAgente({ agenteId }: { agenteId: string }) {
                   {turno.erro}
                 </p>
               ) : null}
+              {turno.acoes && turno.acoes.length > 0 ? <AcoesDoTurno acoes={turno.acoes} /> : null}
               {turno.contexto ? <RetratoDoTurno contexto={turno.contexto} titulos={titulos} /> : null}
             </li>
           ))}
@@ -204,6 +226,44 @@ function RetratoDoTurno({
           ) : null}
         </div>
       </div>
+    </details>
+  );
+}
+
+function AcoesDoTurno({ acoes }: { acoes: AcaoDoTurno[] }) {
+  const t = useTranslations('IaAgentes');
+  const falhas = acoes.filter((a) => !a.ok).length;
+  return (
+    <details className="w-full text-xs">
+      <summary className="inline-flex cursor-pointer items-center gap-1 text-muted-foreground hover:text-foreground">
+        <Wrench className="size-3.5" /> {t('turnos.acoes.titulo', { n: acoes.length })}
+        {falhas > 0 ? (
+          <span className="text-red-700 dark:text-red-300">· {t('turnos.acoes.falhas', { n: falhas })}</span>
+        ) : null}
+      </summary>
+      <ul className="mt-2 space-y-1 rounded-md border border-border bg-muted/30 p-2">
+        {acoes.map((a, i) => (
+          <li key={`${a.tipo}:${a.alvo.id ?? i}:${i}`} className="flex min-w-0 items-start gap-1.5">
+            {a.ok ? (
+              <Check
+                className="mt-px size-3.5 shrink-0 text-emerald-700 dark:text-emerald-300"
+                aria-label={t('turnos.acoes.ok')}
+              />
+            ) : (
+              <X className="mt-px size-3.5 shrink-0 text-red-700 dark:text-red-300" aria-label={t('turnos.acoes.falhou')} />
+            )}
+            <span className="min-w-0 break-words">
+              <span className="font-medium text-foreground">{rotuloDoTipoDeAcao(t, a.tipo)}</span>
+              <span className="text-muted-foreground"> · {a.alvo.nome || t('turnos.acoes.semAlvo')}</span>
+              {!a.ok ? (
+                <span className="block text-red-700 dark:text-red-300">{textoDoErroDaAcao(t, a)}</span>
+              ) : a.detalhe ? (
+                <span className="block text-muted-foreground">{textoDoDetalheDaAcao(t, a.detalhe)}</span>
+              ) : null}
+            </span>
+          </li>
+        ))}
+      </ul>
     </details>
   );
 }

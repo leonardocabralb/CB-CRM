@@ -118,10 +118,11 @@ cliente.
 - ⚠️ **`ON DELETE SET NULL (grupo_id)`, com a coluna NOMEADA**: `account_id`
   (NOT NULL) faz parte da FK composta, e sem a lista apagar um bloco
   estouraria em vez de devolver os campos ao Geral.
-- **O semeador dos 10 campos padrão vive no CATÁLOGO** e cria no bloco
-  selecionado no formulário de cima; o botão diz qual (dez campos no bloco
+- **O semeador dos 11 campos padrão vive no CATÁLOGO** e cria no bloco
+  selecionado no formulário de cima; o botão diz qual (onze campos no bloco
   errado dão trabalho para desfazer). A aba "Traqueamento" do painel não
-  existe mais.
+  existe mais. O 11º, `id_do_anuncio` (26/09/2026), existe porque o webhook
+  da Meta o preenche com o anúncio de origem (`ingestao.md`).
 - **Save em LOTE, se voltar, resolve antes o valor escondido**: o digitado num
   bloco fora de vista continua em `customValues` e sobrevive à troca de
   pastilha — perder digitação é pior que gravá-la.

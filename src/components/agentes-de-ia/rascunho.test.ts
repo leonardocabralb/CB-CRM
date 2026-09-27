@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest'
 
-import { acessoMudou, acessoParaSalvar, alteracoesDoRascunho, lerTeto, type Rascunho } from './rascunho'
-import type { AcessoDoAgente, IaAgente } from './tipos'
+import {
+  acessoMudou,
+  acessoParaSalvar,
+  alteracoesDoRascunho,
+  ferramentasDoRascunho,
+  ferramentasMudaram,
+  ferramentasParaSalvar,
+  lerTeto,
+  listaDaFerramenta,
+  rascunhoDasFerramentas,
+  type Rascunho,
+} from './rascunho'
+import { TIPOS_DE_ACAO, type AcessoDoAgente, type FerramentasDoAgente, type IaAgente } from './tipos'
 
 const SALVO: IaAgente = {
   id: 'a1',
@@ -25,6 +36,7 @@ const SALVO: IaAgente = {
   ],
   arquivadoEm: null,
   acesso: { ficha: true, campos: ['c1', 'c2'], negocio: false, etiquetas: false, cobrancas: true, reuniao: false },
+  ferramentas: { mover_etapa: { etapas: ['e1', 'e2'] }, etiquetar: { etiquetas: ['t1'] } },
   createdAt: '2026-09-25T00:00:00Z',
   updatedAt: '2026-09-25T00:00:00Z',
 }
@@ -137,5 +149,89 @@ describe('acessoParaSalvar — o campo apagado do catálogo sai no Salvar', () =
 
   it('as caixas não mudam', () => {
     expect(acessoParaSalvar(r, new Set())).toEqual({ ...r, campos: [] })
+  })
+})
+
+describe('ferramentas (F4) — o rascunho da sub-aba Ferramentas', () => {
+  const salvo: FerramentasDoAgente = {
+    mover_etapa: { etapas: ['e1', 'e2'] },
+    etiquetar: { etiquetas: ['t1'] },
+    criar_tarefa: { membros: [] },
+  }
+
+  it('cada tipo lê a SUA lista, com o nome de chave do servidor; ausente = desligado (null)', () => {
+    const f: FerramentasDoAgente = {
+      mover_etapa: { etapas: ['e'] },
+      etiquetar: { etiquetas: ['a'] },
+      tirar_etiqueta: { etiquetas: ['b'] },
+      preencher_campo: { campos: ['c'] },
+      criar_tarefa: { membros: ['m'] },
+      executar_automacao: { automacoes: ['x'] },
+    }
+    expect(TIPOS_DE_ACAO.map((tipo) => listaDaFerramenta(f, tipo))).toEqual([['e'], ['a'], ['b'], ['c'], ['m'], ['x']])
+    for (const tipo of TIPOS_DE_ACAO) expect(listaDaFerramenta({}, tipo), tipo).toBeNull()
+  })
+
+  it('ida e volta: o rascunho do salvo devolve o salvo, e sem mudança nada está por salvar', () => {
+    const r = rascunhoDasFerramentas(salvo)
+    expect(r.ligadas).toEqual(['mover_etapa', 'etiquetar', 'criar_tarefa'])
+    expect(ferramentasDoRascunho(r)).toEqual(salvo)
+    expect(ferramentasMudaram(salvo, ferramentasDoRascunho(r))).toBe(false)
+  })
+
+  it('desligar e religar antes de salvar NÃO perde as marcações; desligado, a lista não vai', () => {
+    const r = rascunhoDasFerramentas(salvo)
+    const desligado = { ...r, ligadas: r.ligadas.filter((x) => x !== 'mover_etapa') }
+    expect(ferramentasDoRascunho(desligado).mover_etapa).toBeUndefined()
+    expect(ferramentasMudaram(salvo, ferramentasDoRascunho(desligado))).toBe(true)
+    const religado = { ...desligado, ligadas: [...desligado.ligadas, 'mover_etapa' as const] }
+    expect(ferramentasDoRascunho(religado).mover_etapa).toEqual({ etapas: ['e1', 'e2'] })
+    expect(ferramentasMudaram(salvo, ferramentasDoRascunho(religado))).toBe(false)
+  })
+
+  it('a lista é conjunto (a ordem não conta); marcar ou desmarcar conta', () => {
+    expect(ferramentasMudaram(salvo, { ...salvo, mover_etapa: { etapas: ['e2', 'e1'] } })).toBe(false)
+    expect(ferramentasMudaram(salvo, { ...salvo, mover_etapa: { etapas: ['e1'] } })).toBe(true)
+    expect(ferramentasMudaram(salvo, { ...salvo, etiquetar: { etiquetas: ['t1', 't2'] } })).toBe(true)
+  })
+
+  it('ligado com a lista VAZIA é diferente de desligado (é o que vai ao servidor)', () => {
+    expect(ferramentasMudaram({}, { tirar_etiqueta: { etiquetas: [] } })).toBe(true)
+    expect(ferramentasMudaram(salvo, { mover_etapa: salvo.mover_etapa, etiquetar: salvo.etiquetar })).toBe(true)
+  })
+
+  it('etiquetar e tirar etiqueta são listas SEPARADAS', () => {
+    const r = rascunhoDasFerramentas({ etiquetar: { etiquetas: ['t1'] }, tirar_etiqueta: { etiquetas: ['t2'] } })
+    expect(r.listas.etiquetar).toEqual(['t1'])
+    expect(r.listas.tirar_etiqueta).toEqual(['t2'])
+  })
+})
+
+describe('ferramentasParaSalvar (F4) — o item apagado da conta sai no Salvar', () => {
+  const f: FerramentasDoAgente = {
+    mover_etapa: { etapas: ['e1', 'apagada'] },
+    etiquetar: { etiquetas: ['t1', 'apagada'] },
+    criar_tarefa: { membros: [] },
+  }
+
+  it('com o catálogo carregado, só o que existe vai; tipo ligado com a lista vazia continua ligado', () => {
+    const saida = ferramentasParaSalvar(f, {
+      mover_etapa: new Set(['e1']),
+      etiquetar: new Set(['t1']),
+      criar_tarefa: new Set(['m1']),
+    })
+    expect(saida).toEqual({ mover_etapa: { etapas: ['e1'] }, etiquetar: { etiquetas: ['t1'] }, criar_tarefa: { membros: [] } })
+  })
+
+  it('catálogo NÃO carregado (ausente) ou cortado pelo teto (null) = a lista vai como está', () => {
+    expect(ferramentasParaSalvar(f, {})).toEqual(f)
+    expect(ferramentasParaSalvar(f, { mover_etapa: null, etiquetar: new Set(['t1']) })).toEqual({
+      ...f,
+      etiquetar: { etiquetas: ['t1'] },
+    })
+  })
+
+  it('tipo desligado não vira ligado', () => {
+    expect(ferramentasParaSalvar({}, { executar_automacao: new Set(['x']) })).toEqual({})
   })
 })

@@ -6,8 +6,16 @@ import type { CustomField } from "@/types";
  * São os campos que um clique em anúncio da Meta produz e que a futura
  * integração com a API de Conversões vai precisar devolver: os cinco UTMs,
  * os dois click-ids (`fbclid` do tráfego comum, `ctwa_clid` do
- * click-to-WhatsApp) e os três nomes legíveis que o operador pediu por
- * extenso (campanha, conjunto, anúncio).
+ * click-to-WhatsApp), os três nomes legíveis que o operador pediu por
+ * extenso (campanha, conjunto, anúncio) e o `id_do_anuncio`.
+ *
+ * ⚠️ O `id_do_anuncio` entrou em 26/09/2026 porque o webhook da Meta o
+ * PREENCHE sozinho, junto com `utm_source`/`utm_medium`/`ctwa_clid`, a partir
+ * do anúncio de origem (`anuncio-de-origem.ts`, que nunca cria campo). Fora
+ * do semeador, numa instalação nova ele não existiria e o id do anúncio seria
+ * pulado sem ninguém saber. O teste de `anuncio-de-origem` cobra que toda
+ * chave que o webhook grava esteja aqui. (Esta conta já o tinha, criado à
+ * mão com o mesmo nome.)
  *
  * ⚠️ As CHAVES são contrato. `utm_source`/`fbclid`/`ctwa_clid` têm o nome
  * do parâmetro real de propósito — quem for mapear webhook de entrada ou
@@ -32,6 +40,7 @@ export const CAMPOS_DE_TRAQUEAMENTO: ReadonlyArray<{
   { key: "utm_content", nome: "utm_content" },
   { key: "fbclid", nome: "fbclid" },
   { key: "ctwa_clid", nome: "ctwa_clid" },
+  { key: "id_do_anuncio", nome: "ID do anúncio" },
 ];
 
 /**

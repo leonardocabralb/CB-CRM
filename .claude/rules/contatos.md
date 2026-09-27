@@ -20,7 +20,8 @@ etiquetas e a exclusão. Campo personalizado que salva sozinho, blocos de
 campos, e-mail espelhado e nome escrito à mão → `campos-e-nome.md`. Dono
 durável (`user_id` = dono da conta) → raiz, seção 8. Apagar e fundir fichas no
 banco → `supabase.md`. Recarga ao voltar ao app → `ao-voltar.md`. Abas e painel
-lateral da ficha (armadilha do tailwind-merge) → `ui.md`.
+lateral da ficha (armadilha do tailwind-merge) → `ui.md`. Anúncio de origem nos
+campos de traqueamento (`anuncio-de-origem.ts`) → `ingestao.md`.
 
 ### Chave única do telefone (1024)
 `contacts.telefone_canonico` (coluna gerada: dígitos, e o celular brasileiro
