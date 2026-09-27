@@ -73,6 +73,13 @@ vi.mock('@/lib/ia-agentes/acesso', async (original) => ({
 let opcoesDeAcao: Record<string, Array<{ id: string; nome: string }>> = {}
 vi.mock('@/lib/ia-agentes/ferramentas', () => ({ opcoesDoAgente: vi.fn(async () => opcoesDeAcao) }))
 vi.mock('@/lib/ia-agentes/executar-acoes', () => ({ executarAcoes: vi.fn(), anotarNaConversa: vi.fn() }))
+// A agenda (F5): os horários AO VIVO são um dublê; marcar NUNCA pode ser chamado no Playground.
+type Agenda = { tipoDeEvento: string; lida: boolean; horarios: Array<{ id: string; nome: string }>; temEmail: boolean }
+let agenda: Agenda | null = null
+vi.mock('@/lib/ia-agentes/agenda', () => ({
+  lerAgendaDoAgente: vi.fn(async () => agenda),
+  marcarNoCalendly: vi.fn(),
+}))
 
 let resposta = { text: 'Olá!', handoff: false }
 vi.mock('@/lib/ai/generate', () => ({
@@ -81,6 +88,7 @@ vi.mock('@/lib/ai/generate', () => ({
 
 import { generateReply } from '@/lib/ai/generate'
 import { lerOQueOAgenteVe } from '@/lib/ia-agentes/acesso'
+import { lerAgendaDoAgente, marcarNoCalendly } from '@/lib/ia-agentes/agenda'
 import { executarAcoes } from '@/lib/ia-agentes/executar-acoes'
 import { opcoesDoAgente } from '@/lib/ia-agentes/ferramentas'
 import { POST } from './route'
@@ -130,6 +138,8 @@ beforeEach(() => {
   visto = { blocos: [], trechos: [], retrato: { blocos: [], documentos: [] } }
   opcoesDeAcao = {}
   vi.mocked(opcoesDoAgente).mockClear()
+  agenda = null
+  vi.mocked(lerAgendaDoAgente).mockClear()
 })
 
 describe('POST /api/cb/ia/agentes/[id]/playground — passagem (D25)', () => {
@@ -328,5 +338,54 @@ describe('POST /api/cb/ia/agentes/[id]/playground — as ações (F4, SIMULADAS)
     const corpo = await (await enviar()).json()
     expect(corpo).toMatchObject({ reply: '', passaPara: 'Cobrança' })
     expect(corpo.acoes).toEqual({ aceitas: [], recusadas: [{ tipo: 'mover_etapa', motivo: 'passagem' }] })
+  })
+})
+
+describe('POST /api/cb/ia/agentes/[id]/playground — marcar reunião (F5)', () => {
+  const TIPO = 'https://api.calendly.com/event_types/T1'
+  const HORARIOS = [
+    { id: '2026-09-28T18:15:00.000Z', nome: 'Mon 28/09 15:15' },
+    { id: '2026-09-29T13:00:00.000Z', nome: 'Tue 29/09 10:00' },
+  ]
+
+  it('⚠️ os horários são lidos AO VIVO (a leitura do turno) e a reunião é SIMULADA — nada é marcado', async () => {
+    agentes[ID] = agente(ID, { nome: 'Reagendamento', ferramentas: { marcar_reuniao: { tipos_de_evento: [TIPO] } } })
+    agenda = { tipoDeEvento: TIPO, lida: true, horarios: HORARIOS, temEmail: true }
+    resposta = { text: 'Marquei para terça às 10h!\n[[REUNIÃO:2]]', handoff: false }
+    const corpo = await (await enviar({ contactId: CONTATO })).json()
+    const [, args] = vi.mocked(lerAgendaDoAgente).mock.calls[0]
+    expect(args).toMatchObject({ accountId: 'conta-1', contactId: CONTATO, ferramentas: { marcar_reuniao: { tipos_de_evento: [TIPO] } } })
+    const pedido = vi.mocked(generateReply).mock.calls[0][0].systemPrompt as string
+    expect(pedido).toContain('[[REUNIAO:n]]')
+    expect(pedido).toContain('2. Tue 29/09 10:00')
+    expect(corpo.reply).toBe('Marquei para terça às 10h!')
+    expect(corpo.acoes).toEqual({ aceitas: [{ tipo: 'marcar_reuniao', nome: 'Tue 29/09 10:00' }], recusadas: [] })
+    expect(corpo.horarios).toEqual([
+      { n: 1, texto: 'Mon 28/09 15:15' },
+      { n: 2, texto: 'Tue 29/09 10:00' },
+    ])
+    expect(marcarNoCalendly).not.toHaveBeenCalled()
+    expect(executarAcoes).not.toHaveBeenCalled()
+  })
+
+  it('horário fora da lista: recusado', async () => {
+    agenda = { tipoDeEvento: TIPO, lida: true, horarios: HORARIOS, temEmail: true }
+    resposta = { text: 'Marquei!\n[[REUNIAO:7]]', handoff: false }
+    const corpo = await (await enviar()).json()
+    expect(corpo.acoes).toEqual({ aceitas: [], recusadas: [{ tipo: 'marcar_reuniao', motivo: 'fora_da_lista' }] })
+  })
+
+  it('leitura que falhou: `horarios` nulo, e o pedido diz que não há horários agora; reunião desligada: nulo também', async () => {
+    agenda = { tipoDeEvento: TIPO, lida: false, horarios: [], temEmail: false }
+    const falhou = await (await enviar()).json()
+    expect(falhou.horarios).toBeNull()
+    expect(vi.mocked(generateReply).mock.calls[0][0].systemPrompt).toMatch(/not available right now/)
+    agenda = null
+    expect((await (await enviar()).json()).horarios).toBeNull()
+  })
+
+  it('lida e nenhum livre: lista VAZIA (não é falha)', async () => {
+    agenda = { tipoDeEvento: TIPO, lida: true, horarios: [], temEmail: true }
+    expect((await (await enviar()).json()).horarios).toEqual([])
   })
 })

@@ -7,6 +7,11 @@
 //
 // A régua em si (o que sai da D5, o que é campo vigiado) é PURA e mora em
 // `acoes.ts`; aqui só se lê o que ela precisa.
+//
+// "Marcar reunião" (F5) é conferido contra o CALENDLY (o tipo de evento é
+// ativo na conta conectada), não contra o banco — e fica FORA da régua da D5
+// pela cascata, de propósito (ver `conferirFerramentas`). Os horários do
+// pedido vêm de `agenda.ts`, não de `opcoesDoAgente`.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -29,6 +34,7 @@ import {
   type ReguaDaD5,
 } from './acoes'
 import { itensDaAcao, type FerramentasDoAgente } from './agente'
+import { tiposDeEventoAtivos } from './agenda'
 
 const PAGINA = 1000
 /** Camadas de automação percorridas (acionadas ou da cascata): passou disso, a régua desiste (e recusa). */
@@ -200,6 +206,10 @@ export type CodigoDaFerramenta =
   | 'campo_vigiado'
   | 'automacao_fora_da_d5'
   | 'cascata_fora_da_d5'
+  /** "Marcar reunião" (F5): o tipo de evento não é um ATIVO da conta do Calendly conectado. */
+  | 'tipo_de_evento_invalido'
+  /** "Marcar reunião" (F5): não há Calendly conectado (ou o token foi recusado). */
+  | 'calendly_desconectado'
 
 export type ConferenciaDasFerramentas = { ok: true } | { ok: false; codigo: CodigoDaFerramenta; itens: string[] }
 
@@ -216,6 +226,13 @@ function faltando(pedidos: readonly string[], achados: Iterable<string>): string
  * nenhuma etapa para onde move nem etiqueta que aplica dispara, pela
  * CASCATA, automação com passo fora da D5 (`cascata_fora_da_d5`). Tirar
  * etiqueta não tem cascata. A recusa leva os ids. Lança em erro de leitura.
+ *
+ * "Marcar reunião" (F5): o tipo de evento tem de ser um ATIVO da conta do
+ * Calendly conectado, lido na API (`tipo_de_evento_invalido`; sem Calendly,
+ * `calendly_desconectado`). ⚠️ E NÃO passa pela régua da D5 pela cascata —
+ * a EXCEÇÃO escrita no plano (5.6, passo 4): a automação do tipo de evento
+ * (que pode avisar o advogado por `send_to_number` e mover o card) roda como
+ * roda quando o PRÓPRIO cliente agenda pelo link.
  */
 export async function conferirFerramentas(
   db: SupabaseClient,
@@ -228,6 +245,7 @@ export async function conferirFerramentas(
   const campos = itensDaAcao(f, 'preencher_campo')
   const membros = itensDaAcao(f, 'criar_tarefa')
   const automacoes = itensDaAcao(f, 'executar_automacao')
+  const tiposDeEvento = itensDaAcao(f, 'marcar_reuniao')
 
   const vazio = Promise.resolve({ data: [] as unknown[], error: null })
   const [rEtapas, rEtiquetas, rCampos, rMembros, rAutomacoes] = await Promise.all([
@@ -276,6 +294,16 @@ export async function conferirFerramentas(
     if (fora.length) return { ok: false, codigo: 'automacao_fora_da_d5', itens: fora }
     const pelaCascata = [...etapas.filter((id) => d5.etapas.get(id)), ...aplicar.filter((id) => d5.etiquetas.get(id))]
     if (pelaCascata.length) return { ok: false, codigo: 'cascata_fora_da_d5', itens: pelaCascata }
+  }
+
+  // A reunião (F5): contra o Calendly, sem a cascata da D5 (a exceção acima).
+  // Leitura que falha lança (quem chama recusa com `banco`).
+  if (tiposDeEvento.length) {
+    const calendly = await tiposDeEventoAtivos(db, accountId)
+    if (calendly.estado === 'desconectado') return { ok: false, codigo: 'calendly_desconectado', itens: tiposDeEvento }
+    const ativos = new Set(calendly.tipos.map((t) => t.uri))
+    const invalidos = tiposDeEvento.filter((uri) => !ativos.has(uri))
+    if (invalidos.length) return { ok: false, codigo: 'tipo_de_evento_invalido', itens: invalidos }
   }
   return { ok: true }
 }
@@ -417,6 +445,8 @@ export async function lerCatalogoDeFerramentas(db: SupabaseClient, accountId: st
  * Nunca lança: o tipo cuja leitura falha fica de fora (o agente só não o
  * oferece) — inclusive a leitura da D5, que tira etapas, etiquetas a aplicar
  * e automações de uma vez —, e agente sem ferramenta não lê nada.
+ * A reunião (F5) NÃO sai daqui: os horários são lidos com prazo próprio por
+ * `lerAgendaDoAgente` (`agenda.ts`), que o turno e o Playground juntam.
  */
 export async function opcoesDoAgente(
   db: SupabaseClient,

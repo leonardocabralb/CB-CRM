@@ -30,6 +30,13 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
  * (`item_de_outra_conta`, `etapa_de_resultado`, `campo_vigiado`,
  * `automacao_fora_da_d5`, `cascata_fora_da_d5`) e os ids recusados em
  * `itens`. O catálogo da tela é `…/ferramentas/opcoes`.
+ *
+ * F5: `ferramentas.marcar_reuniao = { tipos_de_evento: [uri] }` — no máximo
+ * UMA URI de tipo de evento do Calendly (`https://api.calendly.com/event_types/<id>`;
+ * outra forma ou mais de uma = 400 `lista_invalida`). Tipo que não é ATIVO
+ * na conta do Calendly conectado = 400 `tipo_de_evento_invalido`; sem
+ * Calendly conectado = 400 `calendly_desconectado` (os dois com `itens` =
+ * [uri]). A reunião NÃO passa pela régua da D5 pela cascata (plano, 5.6).
  */
 export async function GET(_request: Request, { params }: Contexto) {
   try {

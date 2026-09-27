@@ -9,7 +9,8 @@
 // as REGRAS numeradas (D23), os agentes para quem ele pode PASSAR a conversa
 // (D25), o que ele sabe do CLIENTE — os blocos de acesso (F3, `acesso.ts`) —,
 // os trechos da base de conhecimento dele (F3, D20) e, por último, as AÇÕES
-// que ele pode fazer junto com a resposta (F4, D28, `acoes.ts`).
+// que ele pode fazer junto com a resposta (F4, D28, `acoes.ts`) — na F5,
+// também os horários livres do Calendly para marcar reunião (`reuniao.ts`).
 //
 // ⚠️ Instruções e regras vêm do administrador; a mensagem do cliente continua
 // sendo conteúdo NÃO confiável, e o texto-base diz isso ao modelo.
@@ -19,6 +20,7 @@ import { HANDOFF_SENTINEL } from '@/lib/ai/defaults'
 
 import { LIMITES_DAS_ACOES, MARCADOR_DA_ACAO, type FormatoDoCampo, type OpcaoDeAcao, type OpcoesDeAcao } from './acoes'
 import { TIPOS_DE_ACAO, type TipoDeAcao } from './agente'
+import type { AgendaNoPedido } from './reuniao'
 
 export const FUSO_DO_ESCRITORIO = 'America/Sao_Paulo'
 
@@ -77,6 +79,8 @@ const O_QUE_FAZ: Record<TipoDeAcao, string> = {
   preencher_campo: `fill in the customer's field n with the value (one line, up to ${LIMITES_DAS_ACOES.valorDoCampo} characters, in the format given for that field)`,
   criar_tarefa: `create a task for team member n, with that title (up to ${LIMITES_DAS_ACOES.tituloDaTarefa} characters)`,
   executar_automacao: 'run automation n',
+  marcar_reuniao:
+    "book the customer's meeting at time n — the business's free times, in the business's timezone (booking happens after your message is sent)",
 }
 
 /** Como o marcador se escreve: `[[CAMPO:n=value]]`, `[[TAREFA:n=title]]`, `[[MOVER:n]]`. */
@@ -113,17 +117,56 @@ function linhaDaOpcao(tipo: TipoDeAcao, o: OpcaoDeAcao, i: number): string {
 }
 
 /**
+ * O que o pedido diz sobre MARCAR REUNIÃO (F5), além da lista de horários:
+ * as regras (só um horário da lista que o cliente escolheu, nunca inventar,
+ * uma por resposta), se o cliente tem e-mail — sem ele, pedir; com o campo
+ * de e-mail liberado em "Preencher campo", gravá-lo e marcar na mesma
+ * resposta (a execução roda o campo ANTES da reunião) — e, sem horários
+ * (leitura que falhou ou nenhum livre), que não prometa horário e mande o
+ * link de remarcar do bloco da reunião, se houver. `null` = reunião desligada.
+ */
+function notaDaAgenda(opcoes: OpcoesDeAcao, agenda: AgendaNoPedido | null | undefined): string | null {
+  if (!agenda) return null
+  const semHorario = "Do not offer or promise any specific time; if the customer wants to schedule or reschedule, send the reschedule link from the meeting information above, if there is one — otherwise say the team will get in touch."
+  if (!agenda.lida) return `Booking a meeting: the business's free times are not available right now. ${semHorario}`
+  if ((opcoes.marcar_reuniao?.length ?? 0) === 0) {
+    return `Booking a meeting: there are no free times in the next 7 days. ${semHorario}`
+  }
+  const email = (opcoes.preencher_campo ?? []).findIndex((o) => o.formato?.tipo === 'email')
+  const regras = [
+    'Booking rules:',
+    "- Only book when the customer has clearly chosen one of the listed times. Never make up a time, and never book a time that is not in the list — if the customer wants another time, offer the listed ones or hand over.",
+    '- At most one meeting per reply. When you book, tell the customer the day and time; the confirmation arrives by e-mail.',
+    `- Customer e-mail on file: ${agenda.temEmail ? 'yes' : 'no'}.`,
+  ]
+  if (!agenda.temEmail) {
+    // Sem o campo de e-mail liberado o agente não tem onde guardar o e-mail:
+    // pede, e com o horário escolhido e o e-mail dado passa para a equipe
+    // marcar — nunca marca sem e-mail (a execução recusaria com `sem_email`).
+    regras.push(
+      email >= 0
+        ? `- The booking needs the customer's e-mail: ask for it before booking. When the customer gives it, save it with [[${MARCADOR_DA_ACAO.preencher_campo}:${email + 1}=value]] (the e-mail as the value) and you may book in the same reply.`
+        : `- The booking needs the customer's e-mail, and you cannot save it: ask for it, do not book, and once the customer has chosen a time and given the e-mail, reply with exactly ${HANDOFF_SENTINEL} so the team books it.`,
+    )
+  }
+  return regras.join('\n')
+}
+
+/**
  * A seção das AÇÕES (F4, D28): o protocolo e as opções NUMERADAS, com os
  * NOMES — nunca os ids (o servidor traduz o número) — e, nos campos, o
- * formato do valor. `null` = nada liberado.
+ * formato do valor. Na F5, os horários livres e as regras da reunião
+ * (`notaDaAgenda`). `null` = nada liberado.
  */
-function secaoDasAcoes(opcoes: OpcoesDeAcao): string | null {
+function secaoDasAcoes(opcoes: OpcoesDeAcao, agenda?: AgendaNoPedido | null): string | null {
   const grupos = TIPOS_DE_ACAO.filter((t) => (opcoes[t]?.length ?? 0) > 0).map(
     (t) =>
       `${formaDoMarcador(t)} — ${O_QUE_FAZ[t]}:\n` +
       (opcoes[t] ?? []).map((o, i) => linhaDaOpcao(t, o, i)).join('\n'),
   )
-  if (grupos.length === 0) return null
+  const nota = notaDaAgenda(opcoes, agenda)
+  // Reunião ligada sem horário e nenhuma outra ação: só a nota, sem protocolo.
+  if (grupos.length === 0) return nota
   return [
     "Actions you can take in the business's CRM, together with your reply. To take one, write its marker at the very END " +
       'of your message, after the text for the customer, one marker per line. The markers are removed before the customer sees the message.',
@@ -133,6 +176,7 @@ function secaoDasAcoes(opcoes: OpcoesDeAcao): string | null {
     `- At most ${LIMITES_DAS_ACOES.porResposta} actions per reply.`,
     '',
     grupos.join('\n\n'),
+    ...(nota ? ['', nota] : []),
   ].join('\n')
 }
 
@@ -152,6 +196,12 @@ export function montarPedidoDoAgente(args: {
   conhecimento?: string[]
   /** As ações liberadas NAQUELE agente, com as opções numeradas (F4, D28). */
   acoes?: OpcoesDeAcao
+  /**
+   * A agenda (F5), quando "Marcar reunião" está liberado: se os horários
+   * foram lidos (a lista vem em `acoes.marcar_reuniao`) e se o cliente tem
+   * e-mail. Ausente = reunião desligada.
+   */
+  agenda?: AgendaNoPedido | null
 }): string {
   const partes = [...TEXTO_BASE]
   partes.push(`Current date and time (the business's timezone): ${dataEHora(args.agora, args.fuso)}.`)
@@ -205,7 +255,7 @@ export function montarPedidoDoAgente(args: {
     )
   }
 
-  const acoes = args.acoes ? secaoDasAcoes(args.acoes) : null
+  const acoes = secaoDasAcoes(args.acoes ?? {}, args.agenda)
   if (acoes) partes.push(acoes)
 
   return partes.join('\n\n')

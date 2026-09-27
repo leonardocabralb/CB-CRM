@@ -146,3 +146,32 @@ describe('F4 — as ferramentas do agente', () => {
     },
   )
 })
+
+describe('F5 — marcar reunião', () => {
+  const TIPO = 'https://api.calendly.com/event_types/T1'
+
+  it('PATCH com a URI do tipo de evento: vai ao repositório', async () => {
+    const res = await patch({ ferramentas: { marcar_reuniao: { tipos_de_evento: [TIPO] } } })
+    expect(res.status).toBe(200)
+    expect(vi.mocked(atualizarAgente).mock.calls[0][3]).toEqual({ ferramentas: { marcar_reuniao: { tipos_de_evento: [TIPO] } } })
+  })
+
+  it('mais de um tipo de evento, ou forma que não é a URI do Calendly: 400 lista_invalida, sem gravar', async () => {
+    for (const lista of [[TIPO, `${TIPO}X`], ['https://evil.com/event_types/T1'], ['44444444-4444-4444-8444-444444444444']]) {
+      const res = await patch({ ferramentas: { marcar_reuniao: { tipos_de_evento: lista } } })
+      expect(res.status).toBe(400)
+      expect((await res.json()).code).toBe('lista_invalida')
+    }
+    expect(atualizarAgente).not.toHaveBeenCalled()
+  })
+
+  it.each(['tipo_de_evento_invalido', 'calendly_desconectado'] as const)(
+    'recusa do repositório (%s): 400 com o código e a URI em `itens`',
+    async (codigo) => {
+      vi.mocked(atualizarAgente).mockRejectedValueOnce(new ErroDoAgente(codigo, 'x', undefined, [TIPO]))
+      const res = await patch({ ferramentas: { marcar_reuniao: { tipos_de_evento: [TIPO] } } })
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({ error: codigo, code: codigo, itens: [TIPO] })
+    },
+  )
+})

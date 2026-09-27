@@ -50,6 +50,10 @@ export const CODIGOS_CONHECIDOS = [
   'campo_vigiado',
   'automacao_fora_da_d5',
   'cascata_fora_da_d5',
+  // "Marcar reunião" (F5): o tipo de evento não é um ativo do Calendly
+  // conectado, ou não há Calendly conectado (`itens` = a uri).
+  'tipo_de_evento_invalido',
+  'calendly_desconectado',
   'invalid_key',
   'rate_limited',
   'timeout',
@@ -132,7 +136,8 @@ export function rotuloDoTipoDeAcao(t: ReturnType<typeof useTranslations>, tipo: 
 
 /**
  * Uma ação ACEITA no Playground, como frase curta ("mover para Proposta",
- * "tarefa para Ana") — `IaAgentes.playground.acao.<t>`, com `{nome}`. Com o
+ * "tarefa para Ana", "marcar reunião em Mon 28/09 15:15" — na reunião, o
+ * `nome` é o horário como foi ao pedido) — `IaAgentes.playground.acao.<t>`, com `{nome}`. Com o
  * `valor` (o do campo, o título da tarefa), `playground.acaoComValor.<t>`:
  * "tarefa para Ana: Ligar amanhã", "preencher Tamanho da dívida = 200 mil".
  * Chaves MONTADAS, cobradas em `textos.test.ts`.
@@ -241,6 +246,10 @@ export const CHAVE_DO_ERRO_DA_ACAO = {
   automacao_desligada: 'turnos.acoes.erro.automacao_desligada',
   fora_da_conexao: 'turnos.acoes.erro.fora_da_conexao',
   fora_da_etapa: 'turnos.acoes.erro.fora_da_etapa',
+  // A reunião (F5): sem e-mail, horário tomado, Calendly desconectado.
+  sem_email: 'turnos.acoes.erro.sem_email',
+  horario_indisponivel: 'turnos.acoes.erro.horario_indisponivel',
+  calendly_desconectado: 'turnos.acoes.erro.calendly_desconectado',
   envio_falhou: 'turnos.acoes.erro.envio_falhou',
   recusado: 'turnos.acoes.erro.recusado',
   falhou: 'turnos.acoes.erro.falhou',

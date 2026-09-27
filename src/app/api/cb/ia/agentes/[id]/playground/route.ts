@@ -9,6 +9,7 @@ import { AiError, mensagemSeguraDeAiError, type ChatMessage } from '@/lib/ai/typ
 import { lerChave, lerEstado } from '@/lib/ia-chaves/repo'
 import { blocoIndisponivel, lerOQueOAgenteVe } from '@/lib/ia-agentes/acesso'
 import { lerAcoes, linkInventado, resolverAcoes, type MotivoDaRecusa } from '@/lib/ia-agentes/acoes'
+import { lerAgendaDoAgente } from '@/lib/ia-agentes/agenda'
 import { consultaDaUltimaMensagem } from '@/lib/ia-agentes/conhecimento'
 import { opcoesDoAgente } from '@/lib/ia-agentes/ferramentas'
 import { obterAgente } from '@/lib/ia-agentes/repo'
@@ -45,6 +46,14 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
  * `passagem`/`transferencia`: no turno elas não executariam) e
  * `linkInventado` — no turno, a resposta seria retida e a conversa iria para
  * gente. O `reply` nunca traz marcador.
+ *
+ * F5: com "Marcar reunião" liberado, os horários livres são lidos AO VIVO no
+ * Calendly (a mesma leitura do turno, com o mesmo prazo), e a reunião é
+ * SIMULADA como as outras ações — nada é marcado: `acoes.aceitas[]` traz
+ * `{ tipo: 'marcar_reuniao', nome: '<data e hora exibidas>' }`. A resposta
+ * traz `horarios: [{ n, texto }]` (o que foi oferecido ao modelo; vazio =
+ * nenhum livre nos 7 dias) ou `null` (reunião desligada, ou a leitura falhou
+ * — o pedido disse ao modelo que não há horários agora).
  */
 export async function POST(request: Request, { params }: Contexto) {
   try {
@@ -135,7 +144,7 @@ export async function POST(request: Request, { params }: Contexto) {
     // O que o agente vê (F3) e o que ele pode fazer (F4), pelas MESMAS
     // leituras do turno.
     const agora = new Date()
-    const [visto, opcoesDeAcao] = await Promise.all([
+    const [visto, opcoesSemAgenda, agenda] = await Promise.all([
       lerOQueOAgenteVe(supabaseAdmin(), {
         accountId: ctx.accountId,
         agente,
@@ -145,7 +154,11 @@ export async function POST(request: Request, { params }: Contexto) {
         agora,
       }),
       opcoesDoAgente(supabaseAdmin(), ctx.accountId, agente.ferramentas),
+      // A agenda (F5): os horários AO VIVO, com o prazo do turno. Nada é marcado aqui.
+      lerAgendaDoAgente(supabaseAdmin(), { accountId: ctx.accountId, ferramentas: agente.ferramentas, contactId, agora }),
     ])
+    const opcoesDeAcao =
+      agenda && agenda.horarios.length > 0 ? { ...opcoesSemAgenda, marcar_reuniao: agenda.horarios } : opcoesSemAgenda
 
     const pedido = montarPedidoDoAgente({
       instrucoes: agente.instrucoes,
@@ -155,6 +168,7 @@ export async function POST(request: Request, { params }: Contexto) {
       blocos: visto.blocos,
       conhecimento: visto.trechos.map((t) => t.content),
       acoes: opcoesDeAcao,
+      agenda: agenda ? { lida: agenda.lida, temEmail: agenda.temEmail } : null,
     })
     const resultado = await generateReply({
       config: {
@@ -215,6 +229,8 @@ export async function POST(request: Request, { params }: Contexto) {
       passaPara: destino?.nome ?? null,
       acoes,
       linkInventado: inventou,
+      // O que foi oferecido ao modelo (F5); `null` = reunião desligada ou leitura que falhou.
+      horarios: agenda?.lida ? agenda.horarios.map((h, i) => ({ n: i + 1, texto: h.nome })) : null,
       usage: resultado.usage,
       // Bloco que saiu "indisponível" não foi VISTO (revisão da F3).
       vistos: {

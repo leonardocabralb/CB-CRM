@@ -188,6 +188,8 @@ vi.mock('./repo', () => ({ obterAgente: vi.fn() }))
 // `ferramentas.test.ts`) e a execução também (`executar-acoes.test.ts`); a
 // anotação é a de verdade (a transferência a usa).
 vi.mock('./ferramentas', () => ({ opcoesDoAgente: vi.fn(async () => ({})) }))
+// A agenda do Calendly (F5): um dublê (a leitura tem teste próprio em `agenda.test.ts`).
+vi.mock('./agenda', () => ({ lerAgendaDoAgente: vi.fn(async () => null) }))
 vi.mock('./executar-acoes', async (original) => ({
   ...(await original<typeof import('./executar-acoes')>()),
   executarAcoes: vi.fn(async () => ({ registros: [], moveu: false })),
@@ -220,6 +222,7 @@ import { EvolutionApiError } from '@/lib/whatsapp/transport/evolution-client'
 import { MetaApiError } from '@/lib/whatsapp/meta-api'
 
 import { lerLinhaDoAgente } from './agente'
+import { lerAgendaDoAgente } from './agenda'
 import { executarAcoes } from './executar-acoes'
 import { opcoesDoAgente } from './ferramentas'
 import { JANELA_DO_AUDIO_MS } from './fila'
@@ -509,6 +512,7 @@ beforeEach(() => {
   vi.mocked(drenarEventosDeFunil).mockClear()
   vi.mocked(after).mockReset()
   vi.mocked(opcoesDoAgente).mockReset().mockResolvedValue({})
+  vi.mocked(lerAgendaDoAgente).mockReset().mockResolvedValue(null)
   vi.mocked(executarAcoes).mockReset().mockResolvedValue({ registros: [], moveu: false })
 })
 
@@ -2049,6 +2053,7 @@ describe('executarTurno — as ações (F4, D28)', () => {
       canalId: CANAL,
       agente: { id: AGENTE, nome: 'Triagem' },
       dono: 'dono-1',
+      tipoDeEvento: null,
     })
     expect(aceitas).toEqual([
       { tipo: 'mover_etapa', id: ETAPA_DESTINO, nome: 'Comercial · Cobrança' },
@@ -2198,5 +2203,144 @@ describe('executarTurno — as ações (F4, D28)', () => {
     expect(vi.mocked(engineSendText).mock.calls[0][0].text).toBe('Oi!')
     expect(executarAcoes).not.toHaveBeenCalled()
     expect(turno().acoes).toEqual([{ tipo: 'mover_etapa', alvo: { id: null, nome: '#1' }, ok: false, erro: 'nao_liberada' }])
+  })
+})
+
+// ------------------------------------------------------------
+// MARCAR REUNIÃO (F5 — D7 + D28): os horários livres entram no pedido,
+// numerados; a reunião é a última ação, depois de a resposta sair; pedida e
+// NÃO marcada = o turno TRANSFERE para gente (a resposta já prometeu), sem
+// mudar o desfecho `respondeu`.
+// ------------------------------------------------------------
+
+describe('executarTurno — marcar reunião (F5)', () => {
+  const TIPO = 'https://api.calendly.com/event_types/T1'
+  const H1 = '2026-09-28T18:15:00.000Z'
+  const H2 = '2026-09-29T13:00:00.000Z'
+  const AGENDA = {
+    tipoDeEvento: TIPO,
+    lida: true,
+    horarios: [
+      { id: H1, nome: 'Mon 28/09 15:15' },
+      { id: H2, nome: 'Tue 29/09 10:00' },
+    ],
+    temEmail: true,
+  }
+  const pedido = () => vi.mocked(generateReply).mock.calls[0][0].systemPrompt as string
+  const responde = (text: string) =>
+    vi.mocked(generateReply).mockResolvedValue({ text, handoff: false, usage: null })
+
+  beforeEach(() => {
+    agenteLido().ferramentas = { marcar_reuniao: { tipos_de_evento: [TIPO] } }
+    vi.mocked(lerAgendaDoAgente).mockResolvedValue(AGENDA)
+    vi.mocked(executarAcoes).mockImplementation(async (_db, _ctx, aceitas) => ({
+      registros: aceitas.map((a) => ({ tipo: a.tipo, alvo: { id: a.id, nome: a.nome }, ok: true })),
+      moveu: false,
+    }))
+  })
+
+  it('os horários entram no pedido, numerados, com o protocolo e o e-mail; a leitura é a do contato do turno', async () => {
+    await executarTurno(TURNO)
+    const [, args] = vi.mocked(lerAgendaDoAgente).mock.calls[0]
+    expect(args).toMatchObject({ accountId: CONTA, contactId: 'contato-1', ferramentas: { marcar_reuniao: { tipos_de_evento: [TIPO] } } })
+    expect(pedido()).toContain('[[REUNIAO:n]]')
+    expect(pedido()).toContain('1. Mon 28/09 15:15')
+    expect(pedido()).toContain('2. Tue 29/09 10:00')
+    expect(pedido()).toContain('Customer e-mail on file: yes')
+    // Nunca o ISO (o id): o modelo escolhe por número.
+    expect(pedido()).not.toContain(H1)
+  })
+
+  it.each(['Marquei para terça às 10h!\n[[REUNIAO:2]]', 'Marquei para terça às 10h!\n[[REUNIÃO:2]]'])(
+    '⚠️ a reunião escolhida executa DEPOIS da resposta, com o horário do SERVIDOR e o tipo de evento; o marcador não sai (%s)',
+    async (texto) => {
+      responde(texto)
+      await executarTurno(TURNO)
+      expect(turno().status).toBe('respondeu')
+      expect(vi.mocked(engineSendText).mock.calls[0][0].text).toBe('Marquei para terça às 10h!')
+      const [, ctx, aceitas] = vi.mocked(executarAcoes).mock.calls[0]
+      expect(ctx.tipoDeEvento).toBe(TIPO)
+      expect(aceitas).toEqual([{ tipo: 'marcar_reuniao', id: H2, nome: 'Tue 29/09 10:00' }])
+      // Marcou: ninguém é chamado.
+      expect(conversa()).toMatchObject({ ai_autoreply_disabled: false })
+      expect(notas()).toHaveLength(0)
+    },
+  )
+
+  it('⚠️ a reunião NÃO marcada (sem e-mail) TRANSFERE para gente, com o motivo — e o desfecho continua `respondeu`', async () => {
+    responde('Pronto, marquei!\n[[REUNIAO:1]]')
+    vi.mocked(executarAcoes).mockResolvedValue({
+      registros: [{ tipo: 'marcar_reuniao', alvo: { id: H1, nome: 'Mon 28/09 15:15' }, ok: false, erro: 'sem_email' }],
+      moveu: false,
+    })
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({ status: 'respondeu', mensagem_enviada_id: 'wamid.resposta' })
+    expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'transferencia', assigned_agent_id: MEMBRO })
+    expect(notas()).toHaveLength(1)
+    expect(String(notas()[0].autor_nome)).toContain('Triagem')
+    expect(String(notas()[0].texto)).toContain('e-mail')
+  })
+
+  it('⚠️ default-deny: horário FORA da lista é recusado, nada executa, e o turno transfere', async () => {
+    responde('Marquei para sexta!\n[[REUNIAO:9]]')
+    await executarTurno(TURNO)
+    expect(executarAcoes).not.toHaveBeenCalled()
+    expect(turno()).toMatchObject({
+      status: 'respondeu',
+      acoes: [{ tipo: 'marcar_reuniao', alvo: { id: null, nome: '#9' }, ok: false, erro: 'fora_da_lista' }],
+    })
+    expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'transferencia' })
+  })
+
+  it('duas reuniões numa resposta: só a PRIMEIRA executa, a outra é recusada (`teto`), e não transfere', async () => {
+    responde('Ok!\n[[REUNIAO:1]]\n[[REUNIAO:2]]')
+    vi.mocked(executarAcoes).mockImplementation(async (_db, _ctx, aceitas) => ({
+      registros: aceitas.map((a) => ({ tipo: a.tipo, alvo: { id: a.id, nome: a.nome }, ok: true })),
+      moveu: false,
+    }))
+    await executarTurno(TURNO)
+    expect(vi.mocked(executarAcoes).mock.calls[0][2]).toEqual([{ tipo: 'marcar_reuniao', id: H1, nome: 'Mon 28/09 15:15' }])
+    expect(turno().acoes).toContainEqual({ tipo: 'marcar_reuniao', alvo: { id: null, nome: '#2' }, ok: false, erro: 'teto' })
+    expect(conversa()).toMatchObject({ ai_autoreply_disabled: false })
+  })
+
+  it('a leitura dos horários FALHOU: o pedido diz que não há horários agora, sem o marcador; o que o modelo inventar é recusado e transfere', async () => {
+    vi.mocked(lerAgendaDoAgente).mockResolvedValue({ ...AGENDA, lida: false, horarios: [] })
+    responde('Marquei!\n[[REUNIAO:1]]')
+    await executarTurno(TURNO)
+    expect(pedido()).toMatch(/free times are not available right now/)
+    expect(pedido()).not.toContain('[[REUNIAO:n]]')
+    expect(pedido()).toMatch(/reschedule link/)
+    expect(executarAcoes).not.toHaveBeenCalled()
+    expect(turno().acoes).toEqual([{ tipo: 'marcar_reuniao', alvo: { id: null, nome: '#1' }, ok: false, erro: 'nao_liberada' }])
+    expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'transferencia' })
+  })
+
+  it('⚠️ envio que não saiu: a reunião não é marcada e NÃO transfere pela reunião (nada foi prometido ao cliente)', async () => {
+    responde('Marquei!\n[[REUNIAO:1]]')
+    envioFalhaNoProvedor(new EvolutionApiError('número inválido', 400))
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('falhou')
+    expect(executarAcoes).not.toHaveBeenCalled()
+    expect(conversa()).toMatchObject({ ai_autoreply_disabled: false })
+    expect(turno().acoes).toEqual([
+      { tipo: 'marcar_reuniao', alvo: { id: H1, nome: 'Mon 28/09 15:15' }, ok: false, erro: 'envio_falhou' },
+    ])
+  })
+
+  it('a transferência que encontra a conversa JÁ pausada por gente não passa por cima', async () => {
+    responde('Marquei!\n[[REUNIAO:1]]')
+    vi.mocked(executarAcoes).mockImplementation(async () => {
+      // A equipe respondeu pelo celular entre o envio e o fim das ações.
+      Object.assign(conversa(), { ai_autoreply_disabled: true, ia_pausada_por: 'gente' })
+      return {
+        registros: [{ tipo: 'marcar_reuniao', alvo: { id: H1, nome: 'Mon 28/09 15:15' }, ok: false, erro: 'horario_indisponivel' }],
+        moveu: false,
+      }
+    })
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    expect(conversa()).toMatchObject({ ia_pausada_por: 'gente' })
+    expect(notas()).toHaveLength(0)
   })
 })

@@ -6,6 +6,8 @@ paths:
   - "src/lib/ia-agentes/acoes*"
   - "src/lib/ia-agentes/executar-acoes*"
   - "src/lib/ia-agentes/ferramentas*"
+  - "src/lib/ia-agentes/agenda*"
+  - "src/lib/ia-agentes/reuniao*"
   - "src/app/api/cb/ia/agentes/**"
   - "src/components/agentes-de-ia/acesso-do-agente.tsx"
   - "src/components/agentes-de-ia/base-do-agente.tsx"
@@ -95,3 +97,52 @@ Plano: `docs/PLANO-agentes-de-ia.md` (D5, D28, F4). Sem migration.
   exige migration); ferramentas lidas no começo do turno; agente e automação
   da etapa nova falam os dois (o agente primeiro); as ações não são
   reconferidas uma a uma depois do envio (a reserva é a conferência; #316).
+
+# Agentes de IA — marcar reunião no Calendly (F5, D7 + D28)
+
+Plano: `docs/PLANO-agentes-de-ia.md` (D7, D28, 5.6, F5). Sem migration. É
+uma AÇÃO a mais do protocolo da F4 (`marcar_reuniao`, `[[REUNIAO:n]]`).
+
+- ⚠️⚠️ **A EXCEÇÃO à D5 pela cascata**: marcar reunião NÃO passa por
+  `motivosForaDaD5`. A automação do tipo de evento roda pelo webhook
+  `invitee.created`, como quando o PRÓPRIO cliente agenda pelo link (pode
+  avisar o advogado por `send_to_number` e mover o card). Escrito no código
+  (`conferirFerramentas`, `marcarReuniao`, `agenda.ts`), aqui e no plano.
+  O agente NÃO mexe no card, nos campos nem nos lembretes.
+- **Configuração**: `ferramentas.marcar_reuniao = { tipos_de_evento: [uri] }`
+  — lista para caber no código genérico, NO MÁXIMO uma, só a forma
+  `https://api.calendly.com/event_types/<id>` (`ehUriDeTipoDeEvento`). Ao
+  salvar, o tipo tem de ser ATIVO na conta do Calendly conectado, lido na API
+  (`tipo_de_evento_invalido`; sem Calendly, `calendly_desconectado`); leitura
+  que falha = `banco`. A tela recebe `calendly` + `tiposDeEvento` (só os
+  ativos; `null` = desconectado ou falhou, nunca lista vazia).
+- **O pedido**: os horários livres (`lerAgendaDoAgente`) de agora + 1 h a 7
+  dias, os 12 mais próximos, NUMERADOS no fuso do escritório ("Mon 28/09
+  15:15", `formatToParts`) — o modelo nunca vê o ISO. ⚠️ Leitura com PRAZO
+  (`PRAZO_DOS_HORARIOS_MS`, 4 s) que falha EM SILÊNCIO para o turno: o pedido
+  diz que não há horários agora e manda o link de remarcar do bloco da
+  reunião, se houver (sem o marcador). "Customer e-mail on file" usa a MESMA
+  régua da execução (a ficha, senão o último `invitee.created`).
+- **Uma reunião por resposta**: o segundo horário é `teto`; horário fora dos
+  oferecidos, `fora_da_lista` (default-deny). O `id` da opção é o
+  `start_time` que o SERVIDOR leu — é ele que vai ao `POST /invitees`.
+- **Execução**: por ÚLTIMO, depois do `preencher_campo` (o e-mail espelhado
+  da mesma resposta), com o e-mail RELIDO. O corpo do `POST /invitees` é
+  montado SÓ em `corpoDoConvidado` (a forma da doc; ⚠️ ainda não medido).
+  Códigos: `sem_email`, `horario_indisponivel` (409 ou 4xx que fala do
+  horário, `recusaDoHorario`), `calendly_desconectado` (sem config, token
+  ilegível ou 401), `recusado`, `falhou` (rede/tempo).
+- ⚠️⚠️ **Pedida e NÃO marcada = o turno TRANSFERE para gente**
+  (`reuniaoNaoMarcada` + `transferirParaGente`, motivo
+  `reuniao_nao_marcada` com o `{motivo}` do código): a resposta já saiu
+  prometendo. O desfecho continua `respondeu`; a transferência não passa por
+  cima de pausa existente. Envio que não saiu não transfere pela reunião.
+- **Playground**: horários AO VIVO, reunião SIMULADA (`marcarNoCalendly`
+  nunca é chamado); a resposta traz `horarios: [{ n, texto }] | null`.
+- **Limites**: o turno lê as ferramentas no começo (o tipo de evento
+  desligado durante a geração ainda marca naquele turno, se ainda ativo no
+  Calendly); o `nome` da opção é inglês ("Mon") — a anotação usa
+  "28/09/2026 15:15"; 5xx ou tempo esgotado no `POST /invitees` vira falha e
+  transfere, mas a reunião PODE ter nascido: a pessoa confere no Calendly
+  antes de marcar de novo.
+

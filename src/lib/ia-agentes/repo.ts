@@ -55,6 +55,8 @@ export class ErroDoAgente extends Error {
       | 'campo_vigiado'
       | 'automacao_fora_da_d5'
       | 'cascata_fora_da_d5'
+      | 'tipo_de_evento_invalido'
+      | 'calendly_desconectado'
       | 'banco',
     mensagem: string,
     /** No `etapa_ocupada`: o nome do agente que já atua na etapa (a tela o diz). */

@@ -104,8 +104,8 @@ describe("criarClienteCalendly", () => {
       organization: "https://api.calendly.com/organizations/O1",
     });
     expect(tipos).toEqual([
-      { uri: "https://api.calendly.com/event_types/A", nome: "Reunião com Advogado - Kommo", ativo: true, schedulingUrl: null, duracao: 30 },
-      { uri: "https://api.calendly.com/event_types/B", nome: "Antigo", ativo: false, schedulingUrl: null, duracao: null },
+      { uri: "https://api.calendly.com/event_types/A", nome: "Reunião com Advogado - Kommo", ativo: true, schedulingUrl: null, duracao: 30, local: null },
+      { uri: "https://api.calendly.com/event_types/B", nome: "Antigo", ativo: false, schedulingUrl: null, duracao: null, local: null },
     ]);
     expect(chamadas[0]).toContain("organization=https%3A%2F%2Fapi.calendly.com%2Forganizations%2FO1");
     expect(chamadas[1]).toContain("page_token=p2");
@@ -171,5 +171,97 @@ describe("criarClienteCalendly", () => {
       codigo: "calendly_error",
     });
     expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ------------------------------------------------------------
+// F5 dos agentes de IA: horários livres, o tipo de evento lido na hora e o
+// agendamento em nome do cliente (`POST /invitees`). Sem rede: dublê.
+// ------------------------------------------------------------
+describe("criarClienteCalendly — a agenda do agente (F5)", () => {
+  const TIPO = "https://api.calendly.com/event_types/T1";
+
+  it("horariosLivres: a janela na consulta, só o que está `available`", async () => {
+    const fetchFn = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const u = new URL(String(url));
+      expect(u.origin + u.pathname).toBe("https://api.calendly.com/event_type_available_times");
+      expect(u.searchParams.get("event_type")).toBe(TIPO);
+      expect(u.searchParams.get("start_time")).toBe("2026-09-26T13:00:00.000Z");
+      expect(u.searchParams.get("end_time")).toBe("2026-10-03T12:59:00.000Z");
+      expect((init?.headers as Record<string, string>).Authorization).toBe(`Bearer ${TOKEN}`);
+      expect(String(url)).not.toContain(TOKEN);
+      return resposta(200, {
+        collection: [
+          { start_time: "2026-09-28T18:15:00Z", status: "available", invitees_remaining: 1 },
+          { start_time: "2026-09-28T18:45:00Z", status: "unavailable", invitees_remaining: 0 },
+          { start_time: "2026-09-28T19:15:00Z" },
+          { status: "available" },
+          { start_time: "2026-09-29T13:00:00Z", status: "available", invitees_remaining: 1 },
+        ],
+      });
+    });
+    const livres = await criarClienteCalendly(TOKEN, fetchFn as unknown as typeof fetch).horariosLivres({
+      tipoDeEvento: TIPO,
+      inicio: "2026-09-26T13:00:00.000Z",
+      fim: "2026-10-03T12:59:00.000Z",
+    });
+    expect(livres).toEqual(["2026-09-28T18:15:00Z", "2026-09-29T13:00:00Z"]);
+  });
+
+  it("horariosLivres: o prazo aborta o pedido e vira `rede`", async () => {
+    const fetchFn = vi.fn(
+      (_url: string | URL | Request, init?: RequestInit) =>
+        new Promise<Response>((_, rejeitar) => {
+          init?.signal?.addEventListener("abort", () => rejeitar(new Error("The operation was aborted due to timeout")));
+        }),
+    );
+    const inicio = Date.now();
+    await expect(
+      criarClienteCalendly(TOKEN, fetchFn as unknown as typeof fetch).horariosLivres(
+        { tipoDeEvento: TIPO, inicio: "a", fim: "b" },
+        { prazoMs: 30 },
+      ),
+    ).rejects.toMatchObject({ codigo: "rede", status: null });
+    expect(Date.now() - inicio).toBeLessThan(2_000);
+  });
+
+  it("tipoDeEvento: ativo e o `kind` do PRIMEIRO local; URI de fora não é pedida", async () => {
+    const fetchFn = vi.fn(async (url: string | URL | Request) => {
+      expect(String(url)).toBe(TIPO);
+      return resposta(200, {
+        resource: {
+          uri: TIPO,
+          name: "Reunião",
+          active: true,
+          duration: 30,
+          locations: [{ kind: "google_conference" }, { kind: "physical", location: "Rua X" }],
+        },
+      });
+    });
+    const cliente = criarClienteCalendly(TOKEN, fetchFn as unknown as typeof fetch);
+    expect(await cliente.tipoDeEvento(TIPO)).toMatchObject({ uri: TIPO, ativo: true, duracao: 30, local: "google_conference" });
+    await expect(cliente.tipoDeEvento("https://evil.com/event_types/T1")).rejects.toMatchObject({ codigo: "calendly_error" });
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("criarConvidado: POST /invitees com o corpo como veio; 201 devolve a URI", async () => {
+    const corpo = { event_type: TIPO, start_time: "2026-09-28T18:15:00.000Z", invitee: { name: "Maria", email: "m@x.com", timezone: "America/Sao_Paulo" } };
+    const fetchFn = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      expect(String(url)).toBe("https://api.calendly.com/invitees");
+      expect(init?.method).toBe("POST");
+      expect((init?.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
+      expect(JSON.parse(String(init?.body))).toEqual(corpo);
+      return resposta(201, { resource: { uri: "https://api.calendly.com/scheduled_events/E1/invitees/I1" } });
+    });
+    const r = await criarClienteCalendly(TOKEN, fetchFn as unknown as typeof fetch).criarConvidado(corpo);
+    expect(r).toEqual({ uri: "https://api.calendly.com/scheduled_events/E1/invitees/I1" });
+  });
+
+  it("criarConvidado: a recusa carrega o STATUS (é ele que separa horário tomado de outra recusa)", async () => {
+    const fetchFn = vi.fn(async () => resposta(409, { title: "Conflict", message: "The selected time is no longer available" }));
+    await expect(criarClienteCalendly(TOKEN, fetchFn as unknown as typeof fetch).criarConvidado({})).rejects.toMatchObject({
+      codigo: "calendly_error",
+      status: 409,
+    });
   });
 });

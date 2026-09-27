@@ -10,7 +10,14 @@
 // nunca lista vazia, que seria a lista vazia virando afirmação.
 // ============================================================
 
-import type { AcaoDoTurno, AcoesSimuladas, OpcoesDasFerramentas, TipoDeAcao } from './tipos'
+import type {
+  AcaoDoTurno,
+  AcoesSimuladas,
+  HorarioOferecido,
+  OpcoesDasFerramentas,
+  TipoDeAcao,
+  TipoDeEventoDoCalendly,
+} from './tipos'
 
 function objeto(v: unknown): Record<string, unknown> | null {
   return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null
@@ -76,8 +83,76 @@ export function lerOpcoes(v: unknown): OpcoesDasFerramentas | null {
     return { id, nome, foraDaD5: codigo(a.foraDaD5) }
   })
   if (!etapas || !etiquetas || !campos || !membros || !automacoes) return null
-  return { etapas, etiquetas, campos, membros, automacoes }
+  return { etapas, etiquetas, campos, membros, automacoes, ...lerCalendly(o) }
 }
+
+/**
+ * O Calendly das opções (F5). ⚠️ Estado fora dos três (resposta de um
+ * servidor anterior à F5, forma estranha) vira `falhou` — nunca
+ * `desconectado`, que mandaria o administrador reconectar o que pode estar
+ * de pé. `conectado` sem a lista legível também vira `falhou`: lista vazia
+ * aqui seria "o Calendly não tem tipos de evento", uma afirmação sobre dado
+ * que não chegou.
+ */
+function lerCalendly(o: Record<string, unknown>): Pick<OpcoesDasFerramentas, 'calendly' | 'tiposDeEvento'> {
+  if (o.calendly === 'desconectado') return { calendly: 'desconectado', tiposDeEvento: null }
+  if (o.calendly !== 'conectado') return { calendly: 'falhou', tiposDeEvento: null }
+  const tipos = linhas<TipoDeEventoDoCalendly>(o.tiposDeEvento, (e) => {
+    const uri = texto(e.uri)
+    const nome = texto(e.nome)
+    if (!uri || nome === null) return null
+    // Duração ilegível = 0: a tela omite o "· N min", nunca inventa um número.
+    const duracao = typeof e.duracao === 'number' && Number.isFinite(e.duracao) && e.duracao > 0 ? e.duracao : 0
+    return { uri, nome, duracao }
+  })
+  return tipos ? { calendly: 'conectado', tiposDeEvento: tipos } : { calendly: 'falhou', tiposDeEvento: null }
+}
+
+/**
+ * O que a seção "Marcar reunião" da sub-aba Ferramentas mostra (F5), pelas
+ * opções e pelo que está marcado — UM tipo de evento, escolhido num select:
+ *  - `desconectado`: não há Calendly conectado (o motivo e o link para
+ *    Integrações; ligado assim, o Salvar é recusado);
+ *  - `falhou`: a leitura dos tipos não respondeu ("não consegui ler" e
+ *    tentar de novo) — nunca "não há tipos";
+ *  - `sem_tipos`: o Calendly respondeu, sem tipo de evento ativo;
+ *  - `escolher`: o select. `orfao` = o tipo marcado não está mais entre os
+ *    ativos (desativado ou apagado no Calendly): o select fica sem escolha e
+ *    a tela diz por quê — o Salvar o descarta (`ferramentasParaSalvar`).
+ */
+export type SituacaoDaReuniao =
+  | { fase: 'desconectado' }
+  | { fase: 'falhou' }
+  | { fase: 'sem_tipos' }
+  | { fase: 'escolher'; tipos: TipoDeEventoDoCalendly[]; escolhido: string | null; orfao: boolean }
+
+export function situacaoDaReuniao(opcoes: OpcoesDasFerramentas, marcados: readonly string[]): SituacaoDaReuniao {
+  if (opcoes.calendly === 'desconectado') return { fase: 'desconectado' }
+  if (opcoes.calendly !== 'conectado' || opcoes.tiposDeEvento === null) return { fase: 'falhou' }
+  const tipos = opcoes.tiposDeEvento
+  if (tipos.length === 0) return { fase: 'sem_tipos' }
+  const ativos = new Set(tipos.map((e) => e.uri))
+  const escolhido = marcados.find((uri) => ativos.has(uri)) ?? null
+  return { fase: 'escolher', tipos, escolhido, orfao: escolhido === null && marcados.length > 0 }
+}
+
+/**
+ * Os horários livres que o Playground ofereceu ao modelo (F5,
+ * `horarios` da rota). `null` = o tipo está desligado ou a leitura falhou
+ * (nada é mostrado); lista (vazia inclusive) = o que foi oferecido. Item
+ * estranho sai, sem quebrar a lista.
+ */
+export function lerHorariosOferecidos(v: unknown): HorarioOferecido[] | null {
+  return linhas<HorarioOferecido>(v, (h) => {
+    const n = h.n
+    const t = texto(h.texto)
+    if (typeof n !== 'number' || !Number.isInteger(n) || n < 1 || t === null || !t.trim()) return null
+    return { n, texto: t }
+  })
+}
+
+/** Acima disto a lista de horários do Playground aparece recolhida (F5). */
+export const HORARIOS_A_MOSTRA = 4
 
 /**
  * O que dispara a CASCATA de um item: entrar na etapa, aplicar a etiqueta ou
@@ -155,11 +230,33 @@ export function itensDoTipo(opcoes: OpcoesDasFerramentas, tipo: TipoDeAcao): Ite
         grupo: null,
         bloqueio: a.foraDaD5 ? { tipo: 'fora_da_d5', codigo: a.foraDaD5 } : null,
       }))
+    case 'marcar_reuniao':
+      // Os tipos de evento ATIVOS (a tela os mostra num select, não na lista
+      // de caixas — `situacaoDaReuniao`). Sem Calendly legível, nenhum.
+      return (opcoes.tiposDeEvento ?? []).map((e) => ({ id: e.uri, nome: e.nome, grupo: null, bloqueio: null }))
     default: {
       const nunca: never = tipo
       throw new Error(`tipo de ação desconhecido: ${String(nunca)}`)
     }
   }
+}
+
+/** O teto de linhas do PostgREST: lista com isto (ou mais) pode ter sido cortada. */
+export const TETO_DO_POSTGREST = 1000
+
+/**
+ * O catálogo COMPLETO de um tipo, que PROVA que um item marcado não existe
+ * mais (a poda do `ferramentasParaSalvar`). `null` = sem prova, nada é
+ * descartado: a lista cortada pelo teto do PostgREST (Codex, #312) e, em
+ * "Marcar reunião" (F5), o Calendly desconectado ou sem leitura — descartar
+ * ali apagaria o tipo de evento bom por falta de rede.
+ */
+export function catalogoDoTipo(opcoes: OpcoesDasFerramentas, tipo: TipoDeAcao): ReadonlySet<string> | null {
+  if (tipo === 'marcar_reuniao') {
+    return opcoes.tiposDeEvento === null ? null : new Set(opcoes.tiposDeEvento.map((e) => e.uri))
+  }
+  const itens = itensDoTipo(opcoes, tipo)
+  return itens.length < TETO_DO_POSTGREST ? new Set(itens.map((i) => i.id)) : null
 }
 
 /**

@@ -1,11 +1,13 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { TIPOS_DE_ACAO } from './agente'
 import {
   avisoDaTarefa,
+  chaveDoMotivoDaReuniao,
+  CODIGOS_DA_REUNIAO_NAO_MARCADA,
   MOTIVOS_DE_TRANSFERENCIA,
   textosDaAcao,
   textosDaPassagem,
@@ -38,6 +40,10 @@ describe('textos da transferência do agente', () => {
         expect(typeof pegar(d, `IaAgentes.transferencia.acoes.${tipo}`), tipo).toBe('string')
       }
       expect(typeof pegar(d, 'IaAgentes.transferencia.acoes.avisoDaTarefa')).toBe('string')
+      // A reunião não marcada (F5): o `{motivo}` sai do texto de cada código.
+      for (const c of CODIGOS_DA_REUNIAO_NAO_MARCADA) {
+        expect(typeof pegar(d, `IaAgentes.${chaveDoMotivoDaReuniao(c)}`), c).toBe('string')
+      }
     })
   }
 
@@ -70,5 +76,29 @@ describe('textos da transferência do agente', () => {
     expect(autor).toContain('Triagem')
     expect(texto).toContain('Triagem')
     expect(texto).toContain('Cobrança')
+  })
+
+  it('F5: a reunião não marcada diz o agente e o MOTIVO (o texto do código), no idioma da instalação', async () => {
+    vi.stubEnv('NEXT_PUBLIC_APP_LOCALE', 'pt-BR')
+    try {
+      const semEmail = await textosDaTransferencia('Reagendamento', 'reuniao_nao_marcada', 'sem_email')
+      expect(semEmail.autor).toContain('Reagendamento')
+      expect(semEmail.texto).toContain('Reagendamento')
+      expect(semEmail.texto).toContain('e-mail')
+      expect(semEmail.texto).not.toContain('{motivo}')
+      // A recusa da leitura (horário fora da lista) também tem texto.
+      const fora = await textosDaTransferencia('Reagendamento', 'reuniao_nao_marcada', 'fora_da_lista')
+      expect(fora.texto).not.toMatch(/ferramentas\.recusa|turnos\.acoes/)
+      // Código que não é da lista (ou ausente) cai no genérico, nunca na chave crua.
+      const outro = await textosDaTransferencia('Reagendamento', 'reuniao_nao_marcada', 'qualquer')
+      expect(outro.texto).not.toMatch(/IaAgentes|\{motivo\}/)
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('a chave do motivo: falha na execução em `turnos.acoes.erro`, recusa em `ferramentas.recusa`', () => {
+    expect(chaveDoMotivoDaReuniao('sem_email')).toBe('turnos.acoes.erro.sem_email')
+    expect(chaveDoMotivoDaReuniao('fora_da_lista')).toBe('ferramentas.recusa.fora_da_lista')
   })
 })

@@ -175,3 +175,75 @@ describe('as AÇÕES junto com a resposta (F4, D28)', () => {
     ).not.toContain('Actions you can take')
   })
 })
+
+describe('MARCAR REUNIÃO (F5): os horários e as regras', () => {
+  const agora = new Date('2026-09-26T12:00:00Z')
+  const HORARIOS = {
+    marcar_reuniao: [
+      { id: '2026-09-28T18:15:00.000Z', nome: 'Mon 28/09 15:15' },
+      { id: '2026-09-29T13:00:00.000Z', nome: 'Tue 29/09 10:00' },
+    ],
+  }
+
+  it('os horários NUMERADOS no fuso do escritório, sem o ISO, com o marcador e as regras', () => {
+    const p = montarPedidoDoAgente({ instrucoes: 'x', regras: [], agora, acoes: HORARIOS, agenda: { lida: true, temEmail: true } })
+    expect(p).toContain('[[REUNIAO:n]]')
+    expect(p).toContain('1. Mon 28/09 15:15\n2. Tue 29/09 10:00')
+    expect(p).not.toContain('2026-09-28T18:15')
+    expect(p).toMatch(/Only book when the customer has clearly chosen one of the listed times/)
+    expect(p).toMatch(/never book a time that is not in the list/)
+    expect(p).toMatch(/At most one meeting per reply/)
+    expect(p).toContain('Customer e-mail on file: yes.')
+  })
+
+  it('sem e-mail: pede; com o campo de e-mail liberado, grava pelo número DELE e marca na mesma resposta', () => {
+    const semCampo = montarPedidoDoAgente({ instrucoes: 'x', regras: [], agora, acoes: HORARIOS, agenda: { lida: true, temEmail: false } })
+    expect(semCampo).toContain('Customer e-mail on file: no.')
+    expect(semCampo).toMatch(/ask for it, do not book/)
+    expect(semCampo).toContain(HANDOFF_SENTINEL)
+    const comCampo = montarPedidoDoAgente({
+      instrucoes: 'x',
+      regras: [],
+      agora,
+      acoes: {
+        ...HORARIOS,
+        preencher_campo: [
+          { id: 'c1', nome: 'Área', formato: { tipo: 'texto' } },
+          { id: 'c2', nome: 'E-mail', formato: { tipo: 'email' } },
+        ],
+      },
+      agenda: { lida: true, temEmail: false },
+    })
+    expect(comCampo).toContain('[[CAMPO:2=value]] (the e-mail as the value)')
+    expect(comCampo).toMatch(/you may book in the same reply/)
+  })
+
+  it('⚠️ leitura que falhou: diz que não há horários agora, sem o marcador — e manda o link de remarcar', () => {
+    const p = montarPedidoDoAgente({ instrucoes: 'x', regras: [], agora, acoes: {}, agenda: { lida: false, temEmail: true } })
+    expect(p).toMatch(/free times are not available right now/)
+    expect(p).toMatch(/Do not offer or promise any specific time/)
+    expect(p).toMatch(/reschedule link from the meeting information above/)
+    expect(p).not.toContain('[[REUNIAO:n]]')
+    // Sem nenhuma outra ação, não há o protocolo inteiro.
+    expect(p).not.toContain('Actions you can take')
+  })
+
+  it('lida e sem nenhum horário livre nos 7 dias: diz isso, sem o marcador', () => {
+    const p = montarPedidoDoAgente({
+      instrucoes: 'x',
+      regras: [],
+      agora,
+      acoes: { etiquetar: [{ id: 't', nome: 'VIP' }] },
+      agenda: { lida: true, temEmail: true },
+    })
+    expect(p).toMatch(/no free times in the next 7 days/)
+    expect(p).not.toContain('[[REUNIAO:n]]')
+    // As outras ações continuam, com o protocolo.
+    expect(p).toContain('[[ETIQUETAR:n]]')
+  })
+
+  it('reunião desligada: nada sobre reunião', () => {
+    const p = montarPedidoDoAgente({ instrucoes: 'x', regras: [], agora, acoes: {}, agenda: null })
+    expect(p).not.toMatch(/Booking/)
+  })
+})

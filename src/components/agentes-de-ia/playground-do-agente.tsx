@@ -19,19 +19,27 @@
 // liberado) também. Link
 // que não veio do pedido (`linkInventado`) ganha o aviso: em produção a
 // resposta seria retida e a conversa iria para uma pessoa.
+//
+// F5 (D7): com "Marcar reunião" ligado, a rota lê os horários livres do
+// Calendly AO VIVO e devolve os que foram oferecidos ao modelo
+// (`horarios`); eles aparecem debaixo da resposta — recolhidos quando
+// passam de 4 —, porque é o que explica o horário que o agente propôs. A
+// reunião escolhida vira a ação simulada "marcar reunião em …": nada é
+// marcado aqui. `horarios` nulo (tipo desligado, leitura que falhou) não
+// mostra nada; lista vazia diz que não havia horário livre.
 
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { Ban, Bot, Eye, Link2Off, Loader2, RotateCcw, Send, UserCircle2, Wrench, X } from 'lucide-react';
+import { Ban, Bot, CalendarClock, Eye, Link2Off, Loader2, RotateCcw, Send, UserCircle2, Wrench, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/use-auth';
 import { SeletorDeContatoRemoto } from '@/components/contacts/seletor-de-contato-remoto';
 import { TETO_DE_RESULTADOS } from '@/lib/contacts/busca-remota';
 import { cn } from '@/lib/utils';
-import { lerAcoesSimuladas } from './ferramentas';
-import type { AcoesSimuladas, IaAgente } from './tipos';
+import { HORARIOS_A_MOSTRA, lerAcoesSimuladas, lerHorariosOferecidos } from './ferramentas';
+import type { AcoesSimuladas, HorarioOferecido, IaAgente } from './tipos';
 import { fraseDaAcao, motivoDaRecusa, rotuloDoBloco, rotuloDoTipoDeAcao, textoDoCodigo } from './textos';
 
 /** O que o agente viu para gerar a resposta (`vistos` da rota). */
@@ -63,6 +71,8 @@ interface Turno {
   acoes?: AcoesSimuladas;
   /** Só do agente: a resposta tem um link que não veio do pedido (F4). */
   linkInventado?: boolean;
+  /** Só do agente: os horários livres oferecidos ao modelo (F5); nulo = nada a mostrar. */
+  horarios?: HorarioOferecido[] | null;
 }
 
 /** A resposta tem algo das ações (F4) a mostrar: link inventado, ação aceita ou recusada. */
@@ -124,6 +134,7 @@ export function PlaygroundDoAgente({
         vistos?: unknown;
         acoes?: unknown;
         linkInventado?: boolean;
+        horarios?: unknown;
         code?: string;
         error?: string;
       };
@@ -144,6 +155,7 @@ export function PlaygroundDoAgente({
           vistos: lerVistos(corpo.vistos),
           acoes: lerAcoesSimuladas(corpo.acoes),
           linkInventado: corpo.linkInventado === true,
+          horarios: lerHorariosOferecidos(corpo.horarios),
         },
       ]);
     } catch {
@@ -249,6 +261,7 @@ export function PlaygroundDoAgente({
                     <Bot className="size-3.5" /> {t('playground.passaria', { agente: x.passaPara })}
                   </p>
                 ) : null}
+                {x.role === 'assistant' && x.horarios ? <HorariosOferecidos horarios={x.horarios} /> : null}
                 {x.role === 'assistant' && temAvisoDeAcao(x) ? (
                   <div className="mt-1.5 space-y-1 border-t border-border/50 pt-1.5 text-xs">
                     {x.linkInventado ? (
@@ -332,5 +345,41 @@ export function PlaygroundDoAgente({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Os horários livres que foram oferecidos ao modelo (F5), numa linha:
+ * "Horários oferecidos: 1. Mon 28/09 15:15 · 2. …". Acima de
+ * `HORARIOS_A_MOSTRA`, recolhidos (a lista vai a 12). O texto é o que o
+ * modelo leu — em inglês e no fuso do escritório, como no pedido.
+ */
+function HorariosOferecidos({ horarios }: { horarios: HorarioOferecido[] }) {
+  const t = useTranslations('IaAgentes');
+  const classe = 'mt-1.5 border-t border-border/50 pt-1.5 text-[11px] text-muted-foreground';
+  if (horarios.length === 0) {
+    return (
+      <p className={cn('flex items-start gap-1', classe)}>
+        <CalendarClock className="mt-px size-3 shrink-0" />
+        <span>{t('playground.horarios.nenhum')}</span>
+      </p>
+    );
+  }
+  const itens = horarios.map((h) => t('playground.horarios.item', { n: h.n, texto: h.texto })).join(' · ');
+  if (horarios.length <= HORARIOS_A_MOSTRA) {
+    return (
+      <p className={cn('flex items-start gap-1', classe)}>
+        <CalendarClock className="mt-px size-3 shrink-0" />
+        <span>{t('playground.horarios.titulo', { itens })}</span>
+      </p>
+    );
+  }
+  return (
+    <details className={classe}>
+      <summary className="inline-flex cursor-pointer items-center gap-1 hover:text-foreground">
+        <CalendarClock className="size-3 shrink-0" /> {t('playground.horarios.recolhidos', { n: horarios.length })}
+      </summary>
+      <p className="mt-1">{itens}</p>
+    </details>
   );
 }
