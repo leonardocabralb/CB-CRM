@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useId, useState } from 'react';
 
+import { lerReunioesExternas, type ReuniaoExterna } from '@/lib/agenda/reunioes-externas';
 import { createClient } from '@/lib/supabase/client';
 import type { Meeting } from '@/types';
 
@@ -170,5 +171,44 @@ export function useReunioesDoContato(contactId: string | null | undefined) {
     reunioes: doContatoAtual ? estado.reunioes : [],
     carregando: !!contactId && !doContatoAtual,
     recarregar: buscar,
+  };
+}
+
+/**
+ * As reuniões do cliente que vieram de FORA da agenda — os agendamentos do
+ * Calendly e a última reunião da Kommo —, pela rota
+ * `/api/cb/agenda/contato/[contactId]` (as duas tabelas são fechadas ao
+ * navegador).
+ *
+ * ⚠️ Mesmo carimbo `{ de, … }` do hook acima, pelo mesmo motivo: o painel não
+ * remonta ao trocar de cliente. E `reunioes: null` no estado é "a leitura
+ * falhou" (`falhou`), nunca lista vazia: a aba não pode afirmar "nenhuma
+ * reunião" sobre uma resposta que não chegou.
+ */
+export function useReunioesExternasDoContato(contactId: string | null | undefined) {
+  const [estado, setEstado] = useState<{ de: string | null; reunioes: ReuniaoExterna[] | null }>({
+    de: null,
+    reunioes: null,
+  });
+
+  useEffect(() => {
+    if (!contactId) return;
+    let vivo = true;
+    void (async () => {
+      const res = await fetch(`/api/cb/agenda/contato/${contactId}`, { cache: 'no-store' }).catch(() => null);
+      const json = res?.ok ? await res.json().catch(() => null) : null;
+      if (!vivo) return;
+      setEstado({ de: contactId, reunioes: lerReunioesExternas(json) });
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [contactId]);
+
+  const doContatoAtual = !!contactId && estado.de === contactId;
+  return {
+    reunioes: doContatoAtual ? (estado.reunioes ?? []) : [],
+    carregando: !!contactId && !doContatoAtual,
+    falhou: doContatoAtual && estado.reunioes === null,
   };
 }

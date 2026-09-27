@@ -693,8 +693,10 @@ nome da época em que foram aplicadas.
   ao navegador (RLS sem policy, REVOKE das duas metades), sem gatilho: o
   campo "Data e Hora Reunião" é do Calendly e é o que os lembretes leem —
   gravar ali sobrescreveria agendamento real e dispararia lembrete sobre
-  reunião passada. Nenhuma tela, automação ou lembrete lê a tabela; quem
-  vai ler é o mapa de reuniões (Fase 8 do funil comercial), pelo servidor.
+  reunião passada. Automação e lembrete não a leem; a aba Reuniões (ficha e
+  painel da conversa) a mostra desde 27/09/2026 pela rota
+  `/api/cb/agenda/contato/[contactId]`, e o mapa de reuniões (Fase 8 do
+  funil comercial) vai lê-la pelo servidor.
   `contact_id` é NULO para o lead perdido que ficou fora do recorte da
   carga (a data não se perde quando a Kommo sair do ar), com SET NULL ao
   apagar o contato. Chave `(account_id, kommo_lead_id)`: rodar de novo no

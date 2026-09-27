@@ -22,6 +22,14 @@ export { FUSO_DO_ESCRITORIO };
 /** "2026-08-26T16:45:00Z" → "26/08/2026 às 13:45h" no fuso dado. */
 export const formatarDataHora = formatarParaMensagem;
 
+/**
+ * O valor de `agendamento_situacao` de um reagendamento. ⚠️ Fica GRAVADO em
+ * `cb_calendly_eventos.variaveis` e é lido de volta pelo histórico da aba
+ * Reuniões (`src/lib/agenda/reunioes-externas.ts`): trocar o texto aqui
+ * deixa as linhas antigas com o valor velho.
+ */
+export const SITUACAO_REAGENDAMENTO = "Reagendamento";
+
 export function variaveisDoAgendamento(a: Agendamento, fuso: string = FUSO_DO_ESCRITORIO): Record<string, string> {
   return {
     agendamento_nome: a.nome,
@@ -35,7 +43,7 @@ export function variaveisDoAgendamento(a: Agendamento, fuso: string = FUSO_DO_ES
     agendamento_local: a.local ?? "",
     agendamento_cancelar: a.cancelarUrl ?? "",
     agendamento_remarcar: a.remarcarUrl ?? "",
-    agendamento_situacao: a.reagendado ? "Reagendamento" : "Novo agendamento",
+    agendamento_situacao: a.reagendado ? SITUACAO_REAGENDAMENTO : "Novo agendamento",
   };
 }
 

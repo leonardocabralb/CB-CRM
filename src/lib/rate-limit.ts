@@ -239,6 +239,11 @@ export const RATE_LIMITS = {
    *  `integracoesPing` porque parar espera pendente é barato e às vezes se
    *  para meia dúzia de uma vez. */
   execucao: { limit: 30, windowMs: 60_000 },
+  /** Leitura das reuniões do Calendly e da Kommo de UM cliente (a aba
+   *  Reuniões), por usuário. Balde próprio, e não o `execucao`: é leitura
+   *  que acompanha a troca de cliente, e dividir o balde faria quem folheia
+   *  conversas perder o botão de executar automação. */
+  reunioesDoContato: { limit: 120, windowMs: 60_000 },
   /** Webhook do Calendly (977), por token de conta. A assinatura HMAC é o
    *  portão; isto só impede que um token vazado vire enxurrada de linhas em
    *  `cb_calendly_eventos`. Um escritório não marca 120 reuniões por

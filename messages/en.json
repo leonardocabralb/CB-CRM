@@ -5475,7 +5475,14 @@
     "nenhumClienteEncontrado": "No client found.",
     "desvincularCliente": "Unlink client",
     "abrirConversa": "Open conversation",
-    "abrirFicha": "View profile"
+    "abrirFicha": "View profile",
+    "origemCalendly": "Calendly",
+    "origemKommo": "Kommo",
+    "reagendamento": "New time",
+    "statusReagendada": "Rescheduled",
+    "reuniaoSemNome": "Meeting",
+    "linkDaReuniao": "Meeting link",
+    "erroExternas": "Couldn't load the Calendly and Kommo meetings."
   },
   "Transcricoes": {
     "titulo": "Transcripts",
