@@ -1,5 +1,5 @@
 import { generateReply } from './generate'
-import type { AiConfig } from './types'
+import { AiError, type AiConfig } from './types'
 
 /**
  * Cheap liveness + auth check: one tiny generation against the
@@ -10,9 +10,17 @@ import type { AiConfig } from './types'
  * WhatsApp config uses with Meta.
  */
 export async function validateAiCredentials(config: AiConfig): Promise<void> {
-  await generateReply({
-    config,
-    systemPrompt: 'You are a connectivity check. Reply with the single word: OK.',
-    messages: [{ role: 'user', content: 'ping' }],
-  })
+  try {
+    await generateReply({
+      config,
+      systemPrompt: 'You are a connectivity check. Reply with the single word: OK.',
+      messages: [{ role: 'user', content: 'ping' }],
+    })
+  } catch (err) {
+    // Resposta cortada pelo teto É resposta: o provedor aceitou a chave e o
+    // modelo existe, que é tudo o que o ping pergunta. Sem isto, o texto
+    // cortado que antes passava no ping viraria "chave/modelo recusado".
+    if (err instanceof AiError && err.code === 'output_truncated') return
+    throw err
+  }
 }

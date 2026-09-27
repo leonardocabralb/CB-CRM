@@ -14,6 +14,8 @@ paths:
   - "src/components/agentes-de-ia/playground-do-agente.tsx"
   - "src/components/agentes-de-ia/ferramentas*"
   - "supabase/migrations/1052_cb_ia_agente_documentos.sql"
+  - "src/lib/ai/providers/**"
+  - "src/lib/ai/defaults.ts"
 ---
 
 # Agentes de IA — o que cada agente vê (F3, 1052)
@@ -181,3 +183,13 @@ uma AÇÃO a mais do protocolo da F4 (`marcar_reuniao`, `[[REUNIAO:n]]`).
 - **Limites (F5)**: ficha sem nome manda o telefone como nome do convidado;
   o nome do perfil do WhatsApp é fixado pela automação do Calendly; o
   Playground não distingue "desligada" de "leitura falhou".
+
+# Agentes de IA — a resposta cortada (27/09/2026)
+
+- ⚠️⚠️ **Resposta que parou no teto de tokens vira `output_truncated`, nunca
+  texto** (`respostaCortada`: Gemini `MAX_TOKENS`, OpenAI `length`, Anthropic
+  `max_tokens`): o texto pela metade iria ao cliente. No turno, `falhou` sem
+  envio (E8). O teto (`MAX_OUTPUT_TOKENS`, 8192) é folga para o RACIOCÍNIO,
+  que conta nele (Gemini 3.x, gpt-5, Sonnet 5): com 1024 a resposta saía
+  cortada. Curta é o prompt; não desligar o raciocínio. O ping aceita a
+  cortada.

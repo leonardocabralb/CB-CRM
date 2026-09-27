@@ -54,9 +54,22 @@ export const AI_PROVIDER_MODELS: Record<AiProvider, readonly string[]> = {
  */
 export const HANDOFF_SENTINEL = '[[HANDOFF]]'
 
-/** Cap on generated reply length — keeps WhatsApp replies short and
- *  bounds token spend on the caller's own key. */
-export const MAX_OUTPUT_TOKENS = 1024
+/**
+ * Teto de SAÍDA de uma resposta (rascunho, resposta automática, Playground e o
+ * turno do agente), enviado como `maxOutputTokens` (Gemini),
+ * `max_completion_tokens` (OpenAI) e `max_tokens` (Anthropic).
+ *
+ * ⚠️ NÃO é o que deixa a resposta curta — quem faz isso é o PROMPT ("concise,
+ * suitable for WhatsApp"). Nos modelos que raciocinam (Gemini 3.x Flash, a
+ * família gpt-5, o Claude Sonnet 5 sem `thinking` no pedido) o raciocínio
+ * conta NESTE teto: medido em 27/09/2026 no Playground de um agente
+ * (gemini-3.7-flash), um turno comum gastou ~900 tokens pensando para 77 de
+ * texto, e com o teto antigo de 1024 a resposta saiu cortada no meio da
+ * frase. O teto é folga para o raciocínio; o texto continua curto. Quem bater
+ * nele recebe `output_truncated` (os três adapters leem o motivo de parada),
+ * nunca o texto pela metade. Não desligar o raciocínio para "caber".
+ */
+export const MAX_OUTPUT_TOKENS = 8192
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000
 const DEFAULT_CONTEXT_MESSAGE_LIMIT = 20

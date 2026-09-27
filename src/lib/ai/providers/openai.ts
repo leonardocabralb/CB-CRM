@@ -4,6 +4,7 @@ import {
   mergeConsecutive,
   normalizeUsage,
   providerHttpError,
+  respostaCortada,
   toNetworkError,
   type ProviderArgs,
 } from './shared'
@@ -11,7 +12,7 @@ import {
 export const OPENAI_URL = 'https://api.openai.com/v1/chat/completions'
 
 interface OpenAiResponse {
-  choices?: { message?: { content?: string } }[]
+  choices?: { message?: { content?: string }; finish_reason?: string }[]
   usage?: {
     prompt_tokens?: number
     completion_tokens?: number
@@ -54,6 +55,11 @@ export async function generateOpenAi(args: ProviderArgs): Promise<ProviderResult
   }
 
   const data = (await res.json().catch(() => null)) as OpenAiResponse | null
+  // Antes do texto: com o teto batido (o raciocínio conta nele), o que veio é
+  // a resposta pela metade.
+  if (data?.choices?.[0]?.finish_reason === 'length') {
+    throw respostaCortada('OpenAI')
+  }
   const text = data?.choices?.[0]?.message?.content
   if (!text || typeof text !== 'string' || !text.trim()) {
     throw new AiError('OpenAI returned an empty response.', {

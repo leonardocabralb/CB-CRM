@@ -4,6 +4,7 @@ import {
   mergeConsecutive,
   normalizeUsage,
   providerHttpError,
+  respostaCortada,
   toNetworkError,
   type ProviderArgs,
 } from './shared'
@@ -100,6 +101,11 @@ export async function generateGemini(args: ProviderArgs): Promise<ProviderResult
   }
 
   const data = (await res.json().catch(() => null)) as GeminiResponse | null
+  // Antes do texto: com o teto batido, o que veio é a resposta pela metade
+  // (ou nada, quando o raciocínio gastou tudo).
+  if (data?.candidates?.[0]?.finishReason === 'MAX_TOKENS') {
+    throw respostaCortada('Gemini')
+  }
   const text = geminiText(data)
   if (!text) {
     throw new AiError('Gemini returned an empty response.', {
