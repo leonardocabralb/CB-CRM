@@ -106,15 +106,16 @@ export async function GET(_request: Request, { params }: { params: Promise<{ con
     const entradasCruas = (trilha.data ?? []) as { occurred_at: string; to_stage_id: string; to_stage_label: string | null }[];
     // O degrau e a marcação de HOJE de cada etapa. `pipeline_stages` não tem
     // `account_id`: a cerca é pelo funil (`!inner`, senão a linha voltaria
-    // com o embutido nulo em vez de sumir).
+    // com o embutido nulo em vez de sumir) — a mesma forma, sem apelido, de
+    // `/api/cb/execucoes` e das ferramentas dos agentes de IA.
     const idsDasEtapas = [...new Set(entradasCruas.map((e) => e.to_stage_id))];
     const etapas = new Map<string, { degrau: string | null; desfecho: DesfechoDaReuniao | null }>();
     if (idsDasEtapas.length > 0) {
       const { data, error } = await admin
         .from('pipeline_stages')
-        .select('id, degrau, desfecho_da_reuniao, pipeline:pipelines!inner(account_id)')
+        .select('id, degrau, desfecho_da_reuniao, pipelines!inner(account_id)')
         .in('id', idsDasEtapas)
-        .eq('pipeline.account_id', ctx.accountId);
+        .eq('pipelines.account_id', ctx.accountId);
       if (error) throw new Error(`etapas: ${error.message}`);
       for (const e of (data ?? []) as { id: string; degrau: string | null; desfecho_da_reuniao: string | null }[]) {
         etapas.set(e.id, {
