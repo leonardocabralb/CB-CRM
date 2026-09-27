@@ -666,6 +666,7 @@
       "falhou": "falhou",
       "pulado": "pulado",
       "semPassosFuturos": "Termina depois desta espera.",
+      "naoRetomaDepoisDaEdicao": "A automação foi editada e o ponto onde esta espera parou foi removido ou mudou de ramo: ela não vai retomar (o motivo fica no histórico).",
       "executar": {
         "titulo": "Executar automação",
         "buscar": "Buscar pelo nome…",
@@ -1316,6 +1317,10 @@
         "wait_horario_ou_resposta": "Aguardar o horário das {inicio} às {fim} ou até o cliente responder",
         "wait_horario_seg_a_sex_ou_resposta": "Aguardar o horário das {inicio} às {fim}, de segunda a sexta, ou até o cliente responder",
         "condition": "Verificar uma condição",
+        "condition_campo_equals": "Se o campo {alvo} for \"{valor}\"",
+        "condition_campo_contains": "Se o campo {alvo} contiver \"{valor}\"",
+        "condition_campo_empty": "Se o campo {alvo} estiver vazio",
+        "condition_campo_not_empty": "Se o campo {alvo} estiver preenchido",
         "send_webhook": "Disparar webhook",
         "close_conversation": "Encerrar a conversa",
         "send_to_number": "Avisar o número: {alvo}",
@@ -2020,6 +2025,7 @@
         "subjects": {
           "tag_presence": "Presença de etiqueta",
           "contact_field": "Campo do contato",
+          "custom_field": "Campo personalizado da ficha",
           "message_content": "Conteúdo da mensagem",
           "time_of_day": "Hora do dia",
           "channel": "Canal de entrada",
@@ -2063,7 +2069,27 @@
         "janelaDaMetaCanalLabel": "Janela de qual número",
         "janelaDaMetaCanalAuto": "O do disparo (senão o da conversa)",
         "janelaDaMetaCanalSumiu": "A conexão escolhida foi removida. Enquanto outra não for escolhida, a pergunta é feita sobre o número da conversa.",
-        "janelaDaMetaCanalSemJanela": "Esta conexão não é número oficial: ela não tem janela, e a condição responderia sempre a mesma coisa. Escolha um número oficial ou deixe o do disparo."
+        "janelaDaMetaCanalSemJanela": "Esta conexão não é número oficial: ela não tem janela, e a condição responderia sempre a mesma coisa. Escolha um número oficial ou deixe o do disparo.",
+        "campoDaFichaLabel": "Campo",
+        "campoDaFichaEscolha": "Escolha um campo",
+        "campoDaFichaBlocoGeral": "Geral",
+        "campoDaFichaEscolhido": "O campo escolhido",
+        "campoDaFichaApagado": "Campo apagado",
+        "campoDaFichaCarregando": "Carregando os campos da ficha…",
+        "campoDaFichaFalhou": "Não foi possível carregar os campos da ficha.",
+        "campoDaFichaTentarDeNovo": "Tentar de novo",
+        "campoDaFichaSumiu": "O campo escolhido não existe mais nesta conta — escolha outro, senão a automação não ativa.",
+        "campoDaFichaOperador": "Condição",
+        "campoDaFichaOpEquals": "é",
+        "campoDaFichaOpContains": "contém",
+        "campoDaFichaOpEmpty": "está vazio",
+        "campoDaFichaOpNotEmpty": "não está vazio",
+        "campoDaFichaDataHelp": "Campo de data: a condição só pergunta se ele está vazio ou preenchido.",
+        "campoDaFichaValor": "Valor",
+        "campoDaFichaEscolhaOpcao": "Escolha uma opção",
+        "campoDaFichaOpcaoSumiu": "{valor} (não é mais uma opção do campo)",
+        "campoDaFichaOpcaoSumiuHelp": "O valor escolhido não é mais uma das opções do campo — escolha outra, senão a automação não ativa.",
+        "campoDaFichaHelp": "Lê o valor na ficha do cliente na hora deste passo. “é” e “contém” não diferenciam maiúsculas e minúsculas; o acento conta. Se a leitura falhar, a condição responde “não” e o registro da execução diz que não conferiu."
       },
       "delete": "Excluir",
       "stages": {
@@ -2294,6 +2320,16 @@
         "varKeyHelp": "Use nas perguntas seguintes e nas notas de transferência com",
         "advanceAfterCapture": "Após capturar, avançar para",
         "internalNote": "Nota interna (para o atendente que assumir)",
+        "handoffAssignLabel": "Atribuir a",
+        "handoffAssignNobody": "Ninguém (fica pendente, sem responsável)",
+        "handoffAssignNoName": "Membro sem nome",
+        "handoffAssignChosen": "A pessoa escolhida",
+        "handoffAssignGone": "Não é mais membro da conta",
+        "handoffAssignLoading": "Carregando os membros da conta…",
+        "handoffAssignLoadError": "Não foi possível carregar os membros da conta.",
+        "handoffAssignGoneHelp": "A pessoa escolhida não é mais membro desta conta. Escolha outra pessoa ou \"Ninguém\" — senão o robô não ativa.",
+        "handoffAssignHelpNobody": "A conversa fica pendente, sem responsável, na fila de quem está sem dono.",
+        "handoffAssignHelpSomeone": "A conversa fica pendente e passa a ser dessa pessoa, que recebe o aviso. Se ela sair da conta, o robô deixa a conversa sem responsável.",
         "endNodeHelp": "Nó final. Quando a execução chega a este nó, ela é marcada como concluída. Não exige configuração.",
         "bodyText": "Texto principal",
         "footerText": "Rodapé (opcional, 60 caracteres)",
@@ -2484,7 +2520,9 @@
       "moveNone": "Mover card (nenhuma etapa escolhida)",
       "moveTo": "Mover o card para {etapa}",
       "movePicked": "Mover o card para a etapa escolhida",
-      "moveFromOnly": "{count, plural, =1 {só de 1 etapa} other {só de # etapas}}"
+      "moveFromOnly": "{count, plural, =1 {só de 1 etapa} other {só de # etapas}}",
+      "handoffTo": "Atribuir a {membro}",
+      "handoffToPicked": "Atribuir à pessoa escolhida"
     },
     "header": {
       "backToFlows": "Voltar para Fluxos",
@@ -4471,7 +4509,7 @@
       "teto": "É o máximo por agente ({n} documentos): para marcar outro, desmarque um."
     },
     "ferramentas": {
-      "explicacao": "O que este agente pode FAZER junto com a resposta, e com o quê. Nada ligado = o agente só conversa. As ações rodam depois de a resposta sair. Ele nunca fecha negócio, nunca manda mensagem para outro número e nunca mexe no Asaas — nem pelas automações que uma ação dispara.",
+      "explicacao": "O que este agente pode FAZER junto com a resposta, e com o quê. Nada ligado = o agente só conversa. As ações rodam depois de a resposta sair. Ele nunca fecha negócio, nunca manda mensagem para outro número e nunca mexe no Asaas — nem pelas automações que uma ação dispara. A exceção é “Marcar reunião”: a automação do Calendly roda como quando o próprio cliente agenda pelo link.",
       "soConversa": "Nada ligado: hoje este agente só conversa.",
       "falhou": "Não foi possível carregar as opções.",
       "buscar": "Buscar…",
@@ -4507,6 +4545,10 @@
         "executar_automacao": {
           "nome": "Executar automação",
           "dica": "Executa uma das automações marcadas nesta conversa."
+        },
+        "marcar_reuniao": {
+          "nome": "Marcar reunião",
+          "dica": "Oferece ao cliente os horários livres do tipo de evento escolhido no Calendly e marca a reunião no horário que ele escolher, com o nome e o e-mail da ficha. O card, os lembretes e o aviso ao advogado são da automação do Calendly, que roda como quando o próprio cliente agenda pelo link."
         }
       },
       "nenhum": {
@@ -4515,7 +4557,8 @@
         "tirar_etiqueta": "A conta não tem etiquetas.",
         "preencher_campo": "A conta não tem campos personalizados.",
         "criar_tarefa": "A conta não tem membros.",
-        "executar_automacao": "A conta não tem automações."
+        "executar_automacao": "A conta não tem automações.",
+        "marcar_reuniao": "O Calendly conectado não tem tipos de evento ativos."
       },
       "bloqueio": {
         "etapaDeResultado": "Etapa de ganho/perdido — a IA não fecha negócio.",
@@ -4554,6 +4597,17 @@
         "passagem": "a resposta passou a conversa a outro agente",
         "transferencia": "a resposta passou a conversa para a equipe",
         "outro": "não aceita"
+      },
+      "reuniao": {
+        "rotulo": "Tipo de evento",
+        "escolher": "Escolha um tipo de evento",
+        "opcao": "{nome} · {duracao} min",
+        "desconectado": "O Calendly não está conectado.",
+        "desconectadoLigada": "O Calendly não está conectado: desligue esta ação para salvar, ou conecte o Calendly.",
+        "abrirIntegracoes": "Conectar em Configurações → Integrações",
+        "falhou": "Não consegui ler os tipos de evento do Calendly.",
+        "orfao": "O tipo de evento salvo não está mais ativo no Calendly. Escolha outro.",
+        "semEscolha": "Nenhum tipo de evento escolhido: ligado assim, o agente não tem como marcar."
       }
     },
     "playground": {
@@ -4589,13 +4643,20 @@
         "tirar_etiqueta": "tirar a etiqueta {nome}",
         "preencher_campo": "preencher {nome}",
         "criar_tarefa": "tarefa para {nome}",
-        "executar_automacao": "executar {nome}"
+        "executar_automacao": "executar {nome}",
+        "marcar_reuniao": "marcar reunião em {nome}"
       },
       "acaoComValor": {
         "preencher_campo": "preencher {nome} = {valor}",
         "criar_tarefa": "tarefa para {nome}: {valor}"
       },
-      "acaoDesconhecida": "{tipo}: {nome}"
+      "acaoDesconhecida": "{tipo}: {nome}",
+      "horarios": {
+        "titulo": "Horários oferecidos: {itens}",
+        "recolhidos": "{n, plural, one {# horário oferecido} other {# horários oferecidos}}",
+        "nenhum": "Horários oferecidos: nenhum horário livre.",
+        "item": "{n}. {texto}"
+      }
     },
     "uso": {
       "explicacao": "Últimos {dias} dias. Os valores em R$ são uma ESTIMATIVA pelo preço de lista de cada modelo e pela cotação de hoje.",
@@ -4669,7 +4730,11 @@
           "recusado": "a escrita foi recusada",
           "falhou": "a ação falhou",
           "desconhecido": "não concluída ({erro})",
-          "semCodigo": "não concluída"
+          "semCodigo": "não concluída",
+          "sem_email": "a ficha não tem e-mail (o Calendly exige um)",
+          "sem_telefone": "a ficha não tem telefone válido (é por ele que o CRM acha o cliente do agendamento)",
+          "horario_indisponivel": "o horário não está mais livre no Calendly",
+          "calendly_desconectado": "o Calendly não está conectado"
         },
         "comDetalhe": "{texto} — {detalhe}",
         "jaEstava": "o card já estava nessa etapa"
@@ -4740,7 +4805,9 @@
       "network_error": "Não foi possível falar com o provedor.",
       "provider_error": "O provedor recusou o pedido: {detalhe}",
       "empty_response": "O modelo não devolveu texto. Tente de novo, ou troque o modelo.",
-      "banco": "Não foi possível gravar agora — tente de novo."
+      "banco": "Não foi possível gravar agora — tente de novo.",
+      "tipo_de_evento_invalido": "O tipo de evento escolhido não é um tipo ativo do Calendly conectado. Escolha outro.",
+      "calendly_desconectado": "O Calendly não está conectado. Conecte em Configurações → Integrações, ou desligue “Marcar reunião”."
     },
     "modelos": {
       "triagem": {
@@ -4769,7 +4836,8 @@
         "teto": "{agente} passou a conversa para a equipe: chegou ao limite de respostas nesta conversa.",
         "audio": "{agente} passou a conversa para a equipe: não conseguiu ouvir o áudio do cliente.",
         "incerto": "{agente} passou a conversa para a equipe: não dá para saber se a última resposta chegou ao cliente — confira antes de responder.",
-        "link_inventado": "{agente} passou a conversa para a equipe: a resposta tinha um link que não veio do sistema, e não foi enviada."
+        "link_inventado": "{agente} passou a conversa para a equipe: a resposta tinha um link que não veio do sistema, e não foi enviada.",
+        "reuniao_nao_marcada": "{agente} não conseguiu marcar a reunião: {motivo}. A conversa passou para a equipe — confira no Calendly se a reunião não foi criada antes de marcar de novo, e confirme o horário com o cliente."
       },
       "passagem": "{agente} passou a conversa para IA · {destino}, e o card foi para a etapa desse agente.",
       "acoes": {
@@ -4779,7 +4847,8 @@
         "preencher_campo": "{agente} preencheu {alvo}: {valor}",
         "criar_tarefa": "{agente} criou a tarefa “{valor}” para {alvo}.",
         "executar_automacao": "{agente} executou a automação {alvo}.",
-        "avisoDaTarefa": "O agente de IA {agente} abriu uma tarefa para você"
+        "avisoDaTarefa": "O agente de IA {agente} abriu uma tarefa para você",
+        "marcar_reuniao": "{agente} marcou a reunião para {alvo}."
       }
     }
   },

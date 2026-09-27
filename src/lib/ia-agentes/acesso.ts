@@ -526,8 +526,11 @@ async function lerCobrancas(db: SupabaseClient, accountId: string, contactId: st
  * A PRÓXIMA reunião: o `invitee.created` do contato com `inicio` no futuro e
  * SEM `invitee.canceled` para o mesmo invitee — reagendar cancela o antigo e
  * cria um novo (a URI muda), então o antigo cancelado fica de fora sozinho.
+ * Exportada para a agenda do agente (F5, `agenda.ts`): cliente que já tem
+ * reunião não recebe horários — é a MESMA leitura deste bloco. Lança em erro
+ * de banco.
  */
-async function lerReuniao(db: SupabaseClient, accountId: string, contactId: string, agora: Date): Promise<ReuniaoLida | null> {
+export async function lerProximaReuniao(db: SupabaseClient, accountId: string, contactId: string, agora: Date): Promise<ReuniaoLida | null> {
   const { data, error } = await db
     .from('cb_calendly_eventos')
     .select('invitee_uri, inicio, event_type_nome, variaveis')
@@ -581,7 +584,7 @@ export async function lerDadosDoAcesso(
     acesso.negocio ? lerBloco('negocio', () => lerNegocio(db, accountId, contactId, args.dealId)) : undefined,
     acesso.etiquetas ? lerBloco('etiquetas', () => lerEtiquetas(db, accountId, contactId)) : undefined,
     acesso.cobrancas ? lerBloco('cobrancas', () => lerCobrancas(db, accountId, contactId, agora)) : undefined,
-    acesso.reuniao ? lerBloco('reuniao', () => lerReuniao(db, accountId, contactId, agora)) : undefined,
+    acesso.reuniao ? lerBloco('reuniao', () => lerProximaReuniao(db, accountId, contactId, agora)) : undefined,
   ])
   const dados: DadosDoAcesso = {}
   if (ficha) dados.ficha = ficha

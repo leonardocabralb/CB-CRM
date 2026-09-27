@@ -62,6 +62,14 @@
 //    também as que não executaram, com o motivo (`passagem`,
 //    `transferencia`, `envio_falhou`) — gravado no encerramento, com a cerca
 //    de posse.
+//  - MARCAR REUNIÃO (F5): com a ação liberada, o turno lê os horários livres
+//    do Calendly com PRAZO (`lerAgendaDoAgente`, 4 s; falhou = o pedido diz
+//    que não há horários agora) e os oferece numerados — nenhum para quem
+//    JÁ tem reunião (o pedido manda o link de remarcar dela). A reunião é a
+//    ÚLTIMA ação, depois de a resposta sair. Pedida e NÃO marcada (recusada
+//    ou falhou) = o turno TRANSFERE para gente, com a anotação do motivo —
+//    a resposta já prometeu —, sem mudar o desfecho `respondeu`; com a
+//    conversa já pausada, só a anotação.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -85,8 +93,16 @@ import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { transcreverAudio } from '@/lib/transcricao/transcrever'
 
 import { lerOQueOAgenteVe } from './acesso'
-import { lerAcoes, linksInventados, registroDaRecusa, resolverAcoes, type RegistroDeAcao } from './acoes'
+import {
+  lerAcoes,
+  linksInventados,
+  registroDaRecusa,
+  resolverAcoes,
+  reuniaoNaoMarcada,
+  type RegistroDeAcao,
+} from './acoes'
 import type { IaAgente } from './agente'
+import { lerAgendaDoAgente } from './agenda'
 import { consultaDaUltimaMensagem, PRAZO_DO_EMBEDDING_MS } from './conhecimento'
 import { lerConversaDaConexao } from './contexto'
 import {
@@ -234,6 +250,8 @@ export async function transferirParaGente(
     nomeDoAgente: string
     transferirPara: string | null
     motivo: MotivoDeTransferencia
+    /** Na `reuniao_nao_marcada` (F5): o código da recusa ou da falha, que a nota diz. */
+    codigoDaReuniao?: string | null
   },
 ): Promise<ResultadoDaTransferencia> {
   const agora = new Date().toISOString()
@@ -271,7 +289,7 @@ export async function transferirParaGente(
       }
     }
 
-    const { autor, texto } = await textosDaTransferencia(args.nomeDoAgente, args.motivo)
+    const { autor, texto } = await textosDaTransferencia(args.nomeDoAgente, args.motivo, args.codigoDaReuniao)
     await anotarNaConversa(db, { ...args, autor, texto })
     return 'transferiu'
   } catch (err) {
@@ -782,9 +800,11 @@ async function conduzir(
   if (!limite.success) return { status: 'sem_resposta', erro: 'limite de respostas por minuto da conta' }
 
   // O que o agente vê além da conversa (F3) e o que ele pode FAZER (F4, as
-  // opções numeradas do pedido), lidos antes de medir o prazo que sobra para
-  // gerar. Nenhum dos dois lança; agente sem ferramenta não lê nada.
-  const [visto, opcoesDeAcao] = await Promise.all([
+  // opções numeradas do pedido; F5, os horários livres do Calendly, com o
+  // prazo PRÓPRIO de 4 s — menor que o do embedding, e em paralelo), lidos
+  // antes de medir o prazo que sobra para gerar. Nenhum lança; agente sem
+  // ferramenta não lê nada.
+  const [visto, opcoesSemAgenda, agenda] = await Promise.all([
     lerOQueOAgenteVe(db, {
       accountId: turno.account_id,
       agente,
@@ -794,7 +814,15 @@ async function conduzir(
       agora: new Date(),
     }),
     opcoesDoAgente(db, turno.account_id, agente.ferramentas),
+    lerAgendaDoAgente(db, {
+      accountId: turno.account_id,
+      ferramentas: agente.ferramentas,
+      contactId: primeira.contactId,
+      agora: new Date(),
+    }),
   ])
+  const opcoesDeAcao =
+    agenda && agenda.horarios.length > 0 ? { ...opcoesSemAgenda, marcar_reuniao: agenda.horarios } : opcoesSemAgenda
   // O RETRATO (1052): é o que responde "por que a IA fez isso?" depois que a
   // ficha, o card ou o documento mudarem. Escrita separada do desfecho, com a
   // cerca de posse: ERRO de banco é melhor esforço (segue), mas ZERO linhas é
@@ -839,6 +867,7 @@ async function conduzir(
     blocos: visto.blocos,
     conhecimento: visto.trechos.map((t) => t.content),
     acoes: opcoesDeAcao,
+    agenda: agenda ? { lida: agenda.lida, temEmail: agenda.temEmail, reuniaoMarcada: agenda.reuniaoMarcada } : null,
   })
 
   let texto: string
@@ -1029,6 +1058,7 @@ async function conduzir(
         canalId: turno.canal_id,
         agente: { id: agente.id, nome: agente.nome },
         dono,
+        tipoDeEvento: agenda?.tipoDeEvento ?? null,
       },
       aceitas,
     )
@@ -1039,6 +1069,41 @@ async function conduzir(
     if (feitas.moveu) void drenarEventosDeFunil().catch(() => {})
   } else if (recusasDaLeitura.length > 0) {
     andamento.acoes = recusasDaLeitura
+  }
+
+  // A REUNIÃO pedida e NÃO marcada (F5) — recusada na leitura (horário fora
+  // da lista, marcador ilegível) ou falhou no Calendly (sem e-mail, horário
+  // tomado, desconectado): a resposta que SAIU provavelmente disse "marquei".
+  // Transfere para gente, com a anotação do motivo, pelo caminho da F2. O
+  // desfecho continua `respondeu` (a resposta saiu); a transferência não
+  // passa por cima de pausa que já existe — mas a ANOTAÇÃO da falha sai do
+  // mesmo jeito: quem pausou (a equipe pelo celular, o botão) precisa saber
+  // que o cliente ouviu "marquei" e a reunião não existe.
+  const codigoDaReuniao = reuniaoNaoMarcada(andamento.acoes)
+  if (codigoDaReuniao) {
+    const transferencia = await transferirParaGente(db, {
+      accountId: turno.account_id,
+      conversationId: turno.conversation_id,
+      contactId,
+      nomeDoAgente: agente.nome,
+      transferirPara: agente.transferirPara,
+      motivo: 'reuniao_nao_marcada',
+      codigoDaReuniao,
+    })
+    if (transferencia === 'nada_mudou') {
+      try {
+        const { autor, texto } = await textosDaTransferencia(agente.nome, 'reuniao_nao_marcada', codigoDaReuniao)
+        await anotarNaConversa(db, {
+          accountId: turno.account_id,
+          conversationId: turno.conversation_id,
+          contactId,
+          autor,
+          texto,
+        })
+      } catch (err) {
+        console.error('[ia-agentes] anotar a reunião não marcada (conversa já pausada) falhou:', err)
+      }
+    }
   }
   return enviado
 }

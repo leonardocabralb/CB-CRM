@@ -20,6 +20,7 @@ import {
   motivoForaDaD5,
   registroDaRecusa,
   resolverAcoes,
+  reuniaoNaoMarcada,
   urlsDoTexto,
   valorDoCampo,
   type OpcoesDeAcao,
@@ -556,5 +557,72 @@ describe('o registro das ações do turno', () => {
       { tipo: 'executar_automacao', alvo: { id: 'a', nome: 'A' }, ok: false, erro: 'automacao_fora_da_d5:send_webhook' },
       { tipo: 'etiquetar', alvo: { id: 't', nome: 'T' }, ok: true },
     ])
+  })
+})
+
+// ------------------------------------------------------------
+// MARCAR REUNIÃO (F5): o marcador, uma por resposta, e "pedida e não marcada"
+// ------------------------------------------------------------
+
+describe('marcar reunião (F5)', () => {
+  const OPCOES: OpcoesDeAcao = {
+    marcar_reuniao: [
+      { id: '2026-09-28T18:15:00.000Z', nome: 'Mon 28/09 15:15' },
+      { id: '2026-09-29T13:00:00.000Z', nome: 'Tue 29/09 10:00' },
+    ],
+  }
+
+  it.each(['[[REUNIAO:2]]', '[[REUNIÃO:2]]', '[[ reuniao : 2 ]]', '[REUNIÃO:2]', '[[Reunião:2]]'])(
+    '⚠️ o marcador é lido em qualquer forma e NUNCA chega ao cliente: %s',
+    (marcador) => {
+      const r = lerAcoes(`Marquei para terça às 10h!\n${marcador}`)
+      expect(r.texto).toBe('Marquei para terça às 10h!')
+      expect(r.pedidas).toEqual([{ tipo: 'marcar_reuniao', n: 2 }])
+    },
+  )
+
+  it('o marcador aberto no fim (resposta cortada) também sai', () => {
+    expect(lerAcoes('Marquei! [[REUNIÃO:').texto).toBe('Marquei!')
+    expect(lerAcoes('Marquei! [REUNIAO:1').texto).toBe('Marquei!')
+  })
+
+  it('número → o horário (ISO) que o SERVIDOR leu, com o texto exibido', () => {
+    expect(resolverAcoes([{ tipo: 'marcar_reuniao', n: 2 }], OPCOES).aceitas).toEqual([
+      { tipo: 'marcar_reuniao', id: '2026-09-29T13:00:00.000Z', nome: 'Tue 29/09 10:00' },
+    ])
+  })
+
+  it('⚠️ default-deny: horário FORA da lista é recusado; sem horários oferecidos, `nao_liberada`', () => {
+    expect(resolverAcoes([{ tipo: 'marcar_reuniao', n: 3 }], OPCOES)).toEqual({
+      aceitas: [],
+      recusadas: [{ tipo: 'marcar_reuniao', n: 3, motivo: 'fora_da_lista' }],
+    })
+    expect(resolverAcoes([{ tipo: 'marcar_reuniao', n: 1 }], {}).recusadas).toEqual([
+      { tipo: 'marcar_reuniao', n: 1, motivo: 'nao_liberada' },
+    ])
+  })
+
+  it('UMA reunião por resposta: o mesmo horário colapsa; um SEGUNDO horário é recusado (`teto`)', () => {
+    const r = resolverAcoes(
+      [
+        { tipo: 'marcar_reuniao', n: 1 },
+        { tipo: 'marcar_reuniao', n: 1 },
+        { tipo: 'marcar_reuniao', n: 2 },
+      ],
+      OPCOES,
+    )
+    expect(r.aceitas).toEqual([{ tipo: 'marcar_reuniao', id: '2026-09-28T18:15:00.000Z', nome: 'Mon 28/09 15:15' }])
+    expect(r.recusadas).toEqual([{ tipo: 'marcar_reuniao', n: 2, motivo: 'teto' }])
+  })
+
+  it('reuniaoNaoMarcada: pedida e nenhuma deu certo = o código; marcada ou não pedida = null', () => {
+    const ok = { tipo: 'marcar_reuniao', alvo: { id: 'h', nome: 'x' }, ok: true }
+    const falhou = { tipo: 'marcar_reuniao', alvo: { id: 'h', nome: 'x' }, ok: false, erro: 'sem_email' as const }
+    const outra = { tipo: 'etiquetar', alvo: { id: 't', nome: 'VIP' }, ok: false, erro: 'falhou' as const }
+    expect(reuniaoNaoMarcada(null)).toBeNull()
+    expect(reuniaoNaoMarcada([outra])).toBeNull()
+    expect(reuniaoNaoMarcada([falhou, outra])).toBe('sem_email')
+    expect(reuniaoNaoMarcada([ok, { ...registroDaRecusa({ tipo: 'marcar_reuniao', n: 2, motivo: 'teto' }) }])).toBeNull()
+    expect(reuniaoNaoMarcada([registroDaRecusa({ tipo: 'marcar_reuniao', n: 9, motivo: 'fora_da_lista' })])).toBe('fora_da_lista')
   })
 })

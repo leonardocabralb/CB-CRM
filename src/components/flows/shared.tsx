@@ -306,13 +306,15 @@ export function truncate(s: string, max = 80): string {
 }
 
 /**
- * Nomes que o cartão não tem como buscar sozinho (a função é síncrona). Hoje
- * só o nome da ETAPA do "Mover card" (CB, 26/09/2026): quem monta o cartão
- * lê o catálogo de funis do editor. Sem ele, o cartão diz "a etapa
- * escolhida" — nunca o UUID, que o operador leria como nome.
+ * Nomes que o cartão não tem como buscar sozinho (a função é síncrona): o da
+ * ETAPA do "Mover card" e o do MEMBRO do "Atribuir a" do "Transferir" (CB,
+ * 26/09/2026). Quem monta o cartão lê os catálogos do editor. Sem eles, o
+ * cartão diz "a etapa escolhida"/"a pessoa escolhida" — nunca o UUID, que o
+ * operador leria como nome.
  */
 export interface NomesDoResumo {
   etapa?: (id: string) => string | null;
+  membro?: (userId: string) => string | null;
 }
 
 export function summarizeNode(
@@ -463,7 +465,18 @@ function resumoDoNo(
     }
     case 'handoff': {
       const note = typeof cfg.note === 'string' ? cfg.note : '';
-      return note.length > 0 ? truncate(note) : null;
+      // "Atribuir a" (2.7): quem recebe vem ANTES da nota — é o que decide
+      // para onde a conversa vai. "Ninguém" (o padrão) não escreve nada, como
+      // antes; o operador lê o cartão sem nome como "fica sem responsável".
+      const quem = typeof cfg.assign_to === 'string' ? cfg.assign_to.trim() : '';
+      const nome = quem ? (nomes?.membro?.(quem) ?? null) : null;
+      const atribui = !quem
+        ? null
+        : nome
+          ? t ? t('handoffTo', { membro: truncate(nome, 30) }) : `Assign to ${truncate(nome, 30)}`
+          : t ? t('handoffToPicked') : 'Assign to the chosen person';
+      if (!atribui) return note.length > 0 ? truncate(note) : null;
+      return note.length > 0 ? `${atribui} · ${truncate(note, 40)}` : atribui;
     }
   }
 }

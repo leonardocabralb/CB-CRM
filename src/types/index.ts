@@ -1527,7 +1527,17 @@ export type ConditionSubject =
    * precedência de um passo de envio sem conexão escolhida. Regra em
    * `src/lib/automations/janela-da-meta.ts`.
    */
-  | 'meta_window_open';
+  | 'meta_window_open'
+  /**
+   * Um CAMPO PERSONALIZADO da ficha (Fase 2.10 do plano do previdenciário):
+   * `operand` = `custom_fields.id` (da conta da automação), `operator` e
+   * `value`. Lê `contact_custom_values` na hora do passo. Regra em
+   * `src/lib/automations/condicao-por-campo.ts`.
+   */
+  | 'custom_field';
+
+/** Operadores da condição por campo personalizado (`subject: 'custom_field'`). */
+export type OperadorDoCampo = 'equals' | 'contains' | 'empty' | 'not_empty';
 
 export interface ConditionStepConfig {
   subject: ConditionSubject;
@@ -1538,6 +1548,11 @@ export interface ConditionStepConfig {
   operand?: string;
   /** For contact_field equals / message_content contains — comparison value */
   value?: string;
+  /**
+   * Só no campo personalizado (`custom_field`): é / contém / está vazio /
+   * não está vazio. Ausente = `equals`.
+   */
+  operator?: OperadorDoCampo;
   /**
    * Só na hora do dia: `true` recorta a janela a segunda–sexta, no fuso do
    * escritório (só o booleano `true` liga). Ausente = todos os dias.

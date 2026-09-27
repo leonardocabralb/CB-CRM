@@ -23,6 +23,8 @@ export const LIMITES = {
   documentos: 200,
   /** Itens liberados por tipo de ação (F4, D28): etapas, etiquetas, campos… */
   itensPorAcao: 50,
+  /** Tipos de evento do Calendly em "Marcar reunião" (F5): UM — o que o agente oferece. */
+  tiposDeEvento: 1,
 } as const
 
 /**
@@ -51,6 +53,11 @@ export type BlocoDoAcesso = (typeof BLOCOS_DO_ACESSO)[number]
  * modelo escolhe só entre eles, por número, e o servidor confere de novo na
  * hora de executar. Fora da D5 por desenho: ganho/perdido, outro número,
  * webhook de saída, qualquer escrita no Asaas.
+ *
+ * `marcar_reuniao` (F5, D7 + D28): marca no Calendly um dos horários livres
+ * que o servidor leu e numerou no pedido. ⚠️ É a EXCEÇÃO à D5 pela cascata
+ * (plano, 5.6, passo 4): a automação do tipo de evento roda pelo webhook
+ * `invitee.created`, como quando o próprio cliente agenda pelo link.
  */
 export type TipoDeAcao =
   | 'mover_etapa'
@@ -59,6 +66,7 @@ export type TipoDeAcao =
   | 'preencher_campo'
   | 'criar_tarefa'
   | 'executar_automacao'
+  | 'marcar_reuniao'
 
 export const TIPOS_DE_ACAO: readonly TipoDeAcao[] = [
   'mover_etapa',
@@ -67,12 +75,16 @@ export const TIPOS_DE_ACAO: readonly TipoDeAcao[] = [
   'preencher_campo',
   'criar_tarefa',
   'executar_automacao',
+  'marcar_reuniao',
 ]
 
 /**
  * `cb_ia_agentes.ferramentas` (jsonb, 1048). Tipo AUSENTE = desligado; nada
  * ligado = o agente só conversa. Ids do servidor: `pipeline_stages`, `tags`,
- * `custom_fields`, `auth.users` (membros) e `automations`.
+ * `custom_fields`, `auth.users` (membros) e `automations` — e, na reunião
+ * (F5), a URI do tipo de evento do Calendly
+ * (`https://api.calendly.com/event_types/<id>`), NO MÁXIMO uma. É lista para
+ * caber no código genérico (`LISTA_DA_ACAO`, `itensDaAcao`).
  */
 export interface FerramentasDoAgente {
   mover_etapa?: { etapas: string[] }
@@ -81,6 +93,7 @@ export interface FerramentasDoAgente {
   preencher_campo?: { campos: string[] }
   criar_tarefa?: { membros: string[] }
   executar_automacao?: { automacoes: string[] }
+  marcar_reuniao?: { tipos_de_evento: string[] }
 }
 
 /** A chave da lista de cada tipo, no JSON gravado. */
@@ -91,7 +104,29 @@ export const LISTA_DA_ACAO = {
   preencher_campo: 'campos',
   criar_tarefa: 'membros',
   executar_automacao: 'automacoes',
+  marcar_reuniao: 'tipos_de_evento',
 } as const satisfies Record<TipoDeAcao, string>
+
+/**
+ * A URI de um tipo de evento do Calendly — a ÚNICA forma aceita em
+ * `marcar_reuniao`. Host preso a `api.calendly.com` (o token viaja para lá) e
+ * o id sem barra, ponto nem consulta.
+ */
+const URI_DE_TIPO_DE_EVENTO = /^https:\/\/api\.calendly\.com\/event_types\/[A-Za-z0-9_-]{1,64}$/
+
+export function ehUriDeTipoDeEvento(v: unknown): v is string {
+  return typeof v === 'string' && URI_DE_TIPO_DE_EVENTO.test(v)
+}
+
+/** O item tem a forma do tipo? Uuid em todos, menos na reunião (a URI do Calendly). */
+function itemDaAcao(tipo: TipoDeAcao, x: unknown): x is string {
+  return tipo === 'marcar_reuniao' ? ehUriDeTipoDeEvento(x) : typeof x === 'string' && UUID.test(x)
+}
+
+/** Quantos itens o tipo aceita. */
+function tetoDaAcao(tipo: TipoDeAcao): number {
+  return tipo === 'marcar_reuniao' ? LIMITES.tiposDeEvento : LIMITES.itensPorAcao
+}
 
 /** Os ids liberados para um tipo (vazio = desligado ou sem item). */
 export function itensDaAcao(f: FerramentasDoAgente, tipo: TipoDeAcao): string[] {
@@ -190,8 +225,9 @@ export function lerAcesso(v: unknown): AcessoDoAgente {
 
 /**
  * Lê as `ferramentas` guardadas — parse, nunca `as`. Tipo ausente, que não é
- * objeto ou cuja lista não é lista = desligado; a lista fica só com uuids,
- * sem repetição, até `LIMITES.itensPorAcao`. Forma estranha nunca lança.
+ * objeto ou cuja lista não é lista = desligado; a lista fica só com os itens
+ * na forma do tipo (uuids; na reunião, a URI do tipo de evento), sem
+ * repetição, até o teto do tipo. Forma estranha nunca lança.
  */
 export function lerFerramentas(v: unknown): FerramentasDoAgente {
   const f = v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {}
@@ -202,9 +238,10 @@ export function lerFerramentas(v: unknown): FerramentasDoAgente {
     const lista = (valor as Record<string, unknown>)[LISTA_DA_ACAO[tipo]]
     if (!Array.isArray(lista)) continue
     saida[tipo] = {
-      [LISTA_DA_ACAO[tipo]]: [
-        ...new Set(lista.filter((x): x is string => typeof x === 'string' && UUID.test(x))),
-      ].slice(0, LIMITES.itensPorAcao),
+      [LISTA_DA_ACAO[tipo]]: [...new Set(lista.filter((x): x is string => itemDaAcao(tipo, x)))].slice(
+        0,
+        tetoDaAcao(tipo),
+      ),
     }
   }
   return saida as FerramentasDoAgente
@@ -395,17 +432,21 @@ export function lerAlteracao(corpo: unknown, criacao: boolean): LeituraDaAlterac
   }
   if ('ferramentas' in c) {
     // O objeto inteiro, como o `acesso`. Tipo presente fora da forma (não
-    // objeto, lista que não é lista, id que não é uuid, mais que o teto)
-    // RECUSA — descartar em silêncio tiraria do agente um item que o
-    // administrador acabou de liberar. Tipo nulo = desligado.
+    // objeto, lista que não é lista, item fora da forma do tipo, mais que o
+    // teto — na reunião, mais de UM tipo de evento) RECUSA — descartar em
+    // silêncio tiraria do agente um item que o administrador acabou de
+    // liberar. Tipo nulo = desligado.
     const f = c.ferramentas
     if (!f || typeof f !== 'object' || Array.isArray(f)) return { ok: false, codigo: 'lista_invalida' }
     for (const tipo of TIPOS_DE_ACAO) {
       const valor = (f as Record<string, unknown>)[tipo]
       if (valor === undefined || valor === null) continue
       if (typeof valor !== 'object' || Array.isArray(valor)) return { ok: false, codigo: 'lista_invalida' }
-      const ids = lerIds((valor as Record<string, unknown>)[LISTA_DA_ACAO[tipo]])
-      if (!ids || ids.length > LIMITES.itensPorAcao) return { ok: false, codigo: 'lista_invalida' }
+      const lista = (valor as Record<string, unknown>)[LISTA_DA_ACAO[tipo]]
+      if (!Array.isArray(lista) || !lista.every((x) => itemDaAcao(tipo, x))) {
+        return { ok: false, codigo: 'lista_invalida' }
+      }
+      if (new Set(lista).size > tetoDaAcao(tipo)) return { ok: false, codigo: 'lista_invalida' }
     }
     v.ferramentas = lerFerramentas(f)
   }

@@ -1,7 +1,10 @@
 /**
  * Cliente da API v2 do Calendly — só o que a integração usa: quem é o dono
- * do token, os tipos de evento (para o select do gatilho) e as assinaturas
- * de webhook (criar, listar, apagar).
+ * do token, os tipos de evento (para o select do gatilho), as assinaturas
+ * de webhook (criar, listar, apagar) e, para o agente de IA que marca
+ * reunião (F5 dos agentes), os horários livres de um tipo de evento
+ * (`GET /event_type_available_times`) e o agendamento em nome do cliente
+ * (`POST /invitees`, a Scheduling API).
  *
  * - Token no header `Authorization: Bearer`, nunca na URL.
  * - Erro vira CÓDIGO (`token_invalido`, `sem_permissao`, …) para a tela
@@ -29,6 +32,8 @@ export class CalendlyError extends Error {
   constructor(
     public readonly codigo: CodigoDoErroCalendly,
     mensagem: string,
+    /** O status HTTP da resposta (nulo = nem houve resposta: rede, tempo, URL recusada). */
+    public readonly status: number | null = null,
   ) {
     super(mensagem);
     this.name = "CalendlyError";
@@ -75,6 +80,27 @@ export interface TipoDeEvento {
   ativo: boolean;
   schedulingUrl: string | null;
   duracao: number | null;
+  /** O `kind` do PRIMEIRO local do tipo de evento (`google_conference`, `physical`…); nulo = sem local. */
+  local: string | null;
+  /** As perguntas do formulário do tipo de evento (`custom_questions`), na ordem do Calendly. */
+  perguntas: PerguntaDoTipoDeEvento[];
+}
+
+/**
+ * Uma pergunta do formulário do tipo de evento (`custom_questions`). Medido
+ * em 26/09/2026: os tipos da conta têm UMA, `{ name: "Telefone (Whatsapp)",
+ * type: "phone_number", required: true, position: 0, enabled: true }`.
+ */
+export interface PerguntaDoTipoDeEvento {
+  /** O texto da pergunta (`name`), EXATO: a Scheduling API casa a resposta por ele, com caixa. */
+  nome: string;
+  /** `string`, `text`, `phone_number`, `single_select`, `multi_select`… como o Calendly manda; nulo = ausente. */
+  tipo: string | null;
+  obrigatoria: boolean;
+  /** `position` (a resposta leva a mesma). */
+  posicao: number;
+  /** Desligada (`enabled: false`) não aparece no formulário. */
+  ativa: boolean;
 }
 
 export type EscopoDaAssinatura = "organization" | "user";
@@ -103,6 +129,25 @@ export interface ClienteCalendly {
     signingKey: string;
   }): Promise<AssinaturaDeWebhook>;
   apagarAssinatura(uri: string): Promise<void>;
+  /** Um tipo de evento pelo URI (`GET /event_types/{uuid}`) — ativo, local e perguntas, lidos na hora. */
+  tipoDeEvento(uri: string, opcoes?: OpcoesDoPedido): Promise<TipoDeEvento>;
+  /**
+   * Os horários LIVRES de um tipo de evento (`GET /event_type_available_times`):
+   * os `start_time` (ISO, UTC) com `status = 'available'`. A janela é de no
+   * máximo 7 dias (medido em 26/09/2026).
+   */
+  horariosLivres(args: { tipoDeEvento: string; inicio: string; fim: string }, opcoes?: OpcoesDoPedido): Promise<string[]>;
+  /**
+   * Marca uma reunião em nome do convidado (`POST /invitees`, a Scheduling
+   * API). O corpo é montado por quem chama (`corpoDoConvidado`, um ponto só).
+   * Devolve a URI do convidado criado (nula quando a resposta não a traz).
+   */
+  criarConvidado(corpo: Record<string, unknown>, opcoes?: OpcoesDoPedido): Promise<{ uri: string | null }>;
+}
+
+export interface OpcoesDoPedido {
+  /** Prazo do pedido, em ms (padrão: 15 s). Estourado = `CalendlyError('rede')`. */
+  prazoMs?: number;
 }
 
 type Fetch = typeof fetch;
@@ -113,6 +158,38 @@ function ehObjeto(v: unknown): v is Record<string, unknown> {
 
 function textoOuNulo(v: unknown): string | null {
   return typeof v === "string" && v !== "" ? v : null;
+}
+
+/** As perguntas do formulário (`custom_questions`): sem `name` fica de fora; sem `position`, a ordem da lista. */
+function lerPerguntas(v: unknown): PerguntaDoTipoDeEvento[] {
+  if (!Array.isArray(v)) return [];
+  const perguntas: PerguntaDoTipoDeEvento[] = [];
+  v.forEach((q, i) => {
+    if (!ehObjeto(q) || typeof q.name !== "string" || q.name.trim() === "") return;
+    perguntas.push({
+      nome: q.name,
+      tipo: textoOuNulo(q.type),
+      obrigatoria: q.required === true,
+      posicao: typeof q.position === "number" && Number.isInteger(q.position) ? q.position : i,
+      ativa: q.enabled !== false,
+    });
+  });
+  return perguntas;
+}
+
+/** Um tipo de evento da API (a linha da lista ou o `resource` do GET por URI). */
+function lerTipoDeEvento(l: unknown): TipoDeEvento | null {
+  if (!ehObjeto(l) || typeof l.uri !== "string") return null;
+  const primeiro = Array.isArray(l.locations) ? l.locations.find(ehObjeto) : undefined;
+  return {
+    uri: l.uri,
+    nome: typeof l.name === "string" ? l.name : l.uri,
+    ativo: l.active !== false,
+    schedulingUrl: textoOuNulo(l.scheduling_url),
+    duracao: typeof l.duration === "number" ? l.duration : null,
+    local: primeiro ? textoOuNulo(primeiro.kind) : null,
+    perguntas: lerPerguntas(l.custom_questions),
+  };
 }
 
 function lerAssinatura(r: unknown): AssinaturaDeWebhook | null {
@@ -128,7 +205,11 @@ function lerAssinatura(r: unknown): AssinaturaDeWebhook | null {
 }
 
 export function criarClienteCalendly(token: string, fetchFn: Fetch = fetch): ClienteCalendly {
-  async function pedir(url: string, init: RequestInit = {}): Promise<Record<string, unknown> | null> {
+  async function pedir(
+    url: string,
+    init: RequestInit = {},
+    opcoes: OpcoesDoPedido = {},
+  ): Promise<Record<string, unknown> | null> {
     if (!doCalendly(url)) throw new CalendlyError("calendly_error", "URL fora de api.calendly.com");
     let resposta: Response;
     try {
@@ -139,7 +220,7 @@ export function criarClienteCalendly(token: string, fetchFn: Fetch = fetch): Cli
           Accept: "application/json",
           ...(init.body ? { "Content-Type": "application/json" } : {}),
         },
-        signal: AbortSignal.timeout(TIMEOUT_MS),
+        signal: AbortSignal.timeout(opcoes.prazoMs ?? TIMEOUT_MS),
       });
     } catch (e) {
       throw new CalendlyError("rede", semSegredo(e instanceof Error ? e.message : String(e), token));
@@ -153,7 +234,11 @@ export function criarClienteCalendly(token: string, fetchFn: Fetch = fetch): Cli
           : ehObjeto(corpo) && typeof corpo.title === "string"
             ? corpo.title
             : `HTTP ${resposta.status}`;
-      throw new CalendlyError(codigoDoErro(resposta.status), semSegredo(`${resposta.status}: ${mensagem}`, token));
+      throw new CalendlyError(
+        codigoDoErro(resposta.status),
+        semSegredo(`${resposta.status}: ${mensagem}`, token),
+        resposta.status,
+      );
     }
     if (!ehObjeto(corpo)) throw new CalendlyError("calendly_error", "resposta sem corpo JSON");
     return corpo;
@@ -204,18 +289,7 @@ export function criarClienteCalendly(token: string, fetchFn: Fetch = fetch): Cli
       if (filtro.user) u.searchParams.set("user", filtro.user);
       u.searchParams.set("count", "100");
       const linhas = await paginar(u.toString());
-      const tipos: TipoDeEvento[] = [];
-      for (const l of linhas) {
-        if (!ehObjeto(l) || typeof l.uri !== "string") continue;
-        tipos.push({
-          uri: l.uri,
-          nome: typeof l.name === "string" ? l.name : l.uri,
-          ativo: l.active !== false,
-          schedulingUrl: textoOuNulo(l.scheduling_url),
-          duracao: typeof l.duration === "number" ? l.duration : null,
-        });
-      }
-      return tipos;
+      return linhas.map(lerTipoDeEvento).filter((t): t is TipoDeEvento => t !== null);
     },
 
     async assinaturas(filtro) {
@@ -254,6 +328,40 @@ export function criarClienteCalendly(token: string, fetchFn: Fetch = fetch): Cli
 
     async apagarAssinatura(uri) {
       await pedir(uri, { method: "DELETE" });
+    },
+
+    async tipoDeEvento(uri, opcoes) {
+      const corpo = await pedir(uri, {}, opcoes);
+      const lido = corpo ? lerTipoDeEvento(corpo.resource) : null;
+      if (!lido) throw new CalendlyError("calendly_error", "tipo de evento sem `resource.uri` na resposta");
+      return lido;
+    },
+
+    async horariosLivres(args, opcoes) {
+      const u = new URL(`${ORIGEM_CALENDLY}/event_type_available_times`);
+      u.searchParams.set("event_type", args.tipoDeEvento);
+      u.searchParams.set("start_time", args.inicio);
+      u.searchParams.set("end_time", args.fim);
+      const corpo = await pedir(u.toString(), {}, opcoes);
+      const linhas = corpo && Array.isArray(corpo.collection) ? corpo.collection : [];
+      const livres: string[] = [];
+      for (const l of linhas) {
+        if (!ehObjeto(l) || typeof l.start_time !== "string") continue;
+        // Só o que o Calendly diz que está LIVRE: o status ausente não é livre.
+        if (l.status !== "available") continue;
+        livres.push(l.start_time);
+      }
+      return livres;
+    },
+
+    async criarConvidado(corpoDoPedido, opcoes) {
+      const corpo = await pedir(
+        `${ORIGEM_CALENDLY}/invitees`,
+        { method: "POST", body: JSON.stringify(corpoDoPedido) },
+        opcoes,
+      );
+      const r = corpo && ehObjeto(corpo.resource) ? corpo.resource : null;
+      return { uri: r && typeof r.uri === "string" ? r.uri : null };
     },
   };
 }

@@ -36,11 +36,15 @@ vi.mock('./ferramentas', () => ({
   ),
 }))
 
+// A agenda do Calendly (F5): o `POST /invitees` é um dublê (testado em `agenda.test.ts`).
+vi.mock('./agenda', () => ({ marcarNoCalendly: vi.fn(async () => ({ ok: true, uri: 'https://api.calendly.com/x/I1' })) }))
+
 import { channelInScope, criarTarefaComAviso, runAutomationById, stageInScope } from '@/lib/automations/engine'
 import { addContactTagAndDispatch } from '@/lib/contacts/tag-events'
 import { removeContactTag } from '@/lib/contacts/tag-write'
 
 import { CODIGOS_DE_FALHA_DA_ACAO, type AcaoResolvida } from './acoes'
+import { marcarNoCalendly } from './agenda'
 import { executarAcoes, type ContextoDasAcoes } from './executar-acoes'
 import { lerCamposVigiados, motivosForaDaD5 } from './ferramentas'
 
@@ -493,5 +497,79 @@ describe('executarAcoes', () => {
       const conta = c.filtros.find(([k]) => k === 'account_id' || k === 'pipelines.account_id')
       expect(conta?.[1], c.tabela).toBe('conta-1')
     }
+  })
+})
+
+// ------------------------------------------------------------
+// MARCAR REUNIÃO (F5): por ÚLTIMO, no tipo de evento liberado e no horário
+// da opção; sem a cascata da D5 (a exceção escrita); a falha vira código.
+// ------------------------------------------------------------
+
+describe('marcar_reuniao (F5)', () => {
+  const TIPO = 'https://api.calendly.com/event_types/T1'
+  const H = '2026-09-28T18:15:00.000Z'
+  const CTX_F5: ContextoDasAcoes = { ...CTX, tipoDeEvento: TIPO }
+  const reuniao = acao({ tipo: 'marcar_reuniao', id: H, nome: 'Mon 28/09 15:15' })
+
+  it('marca no tipo de evento liberado, no horário DA OPÇÃO, e anota a data no fuso do escritório', async () => {
+    const r = await executarAcoes(db, CTX_F5, [reuniao])
+    expect(marcarNoCalendly).toHaveBeenCalledWith(db, {
+      accountId: 'conta-1',
+      contactId: 'contato-1',
+      tipoDeEvento: TIPO,
+      inicio: H,
+    })
+    expect(r).toEqual({ registros: [{ tipo: 'marcar_reuniao', alvo: { id: H, nome: 'Mon 28/09 15:15' }, ok: true }], moveu: false })
+    expect(notas()).toEqual([
+      expect.objectContaining({ autor_nome: 'IA · Triagem', texto: expect.stringContaining('28/09/2026 15:15') }),
+    ])
+    // Sem a régua da D5 pela cascata (a exceção da 5.6): nada de `motivosForaDaD5`.
+    expect(motivosForaDaD5).not.toHaveBeenCalled()
+  })
+
+  it('⚠️ roda por ÚLTIMO: o e-mail que o `preencher_campo` da mesma resposta grava já está lá', async () => {
+    const ordem: string[] = []
+    vi.mocked(marcarNoCalendly).mockImplementationOnce(async () => {
+      ordem.push('reunião')
+      return { ok: true, uri: null }
+    })
+    vi.mocked(addContactTagAndDispatch).mockImplementationOnce(async () => {
+      ordem.push('etiqueta')
+      return { added: true, dispatched: true }
+    })
+    const r = await executarAcoes(db, CTX_F5, [
+      reuniao,
+      acao({ tipo: 'preencher_campo', id: 'campo-email', valor: 'maria@exemplo.com' }),
+      acao({ tipo: 'etiquetar', id: 'tag-vip' }),
+    ])
+    const upsert = banco.escritas.findIndex((e) => e.tabela === 'contact_custom_values')
+    expect(upsert).toBeGreaterThanOrEqual(0)
+    expect(ordem).toEqual(['etiqueta', 'reunião'])
+    expect(r.registros.map((x) => x.tipo)).toEqual(['preencher_campo', 'etiquetar', 'marcar_reuniao'])
+  })
+
+  it('a falha vira o CÓDIGO da lista fechada, com o detalhe cru à parte, e sem anotação', async () => {
+    vi.mocked(marcarNoCalendly).mockResolvedValueOnce({ ok: false, erro: 'horario_indisponivel', detalhe: '409: Conflict' })
+    const r = await executarAcoes(db, CTX_F5, [reuniao])
+    expect(r.registros[0]).toEqual({
+      tipo: 'marcar_reuniao',
+      alvo: { id: H, nome: 'Mon 28/09 15:15' },
+      ok: false,
+      erro: 'horario_indisponivel',
+      detalhe: '409: Conflict',
+    })
+    expect(CODIGOS_DE_FALHA_DA_ACAO).toContain(r.registros[0].erro)
+    expect(notas()).toEqual([])
+  })
+
+  it('sem e-mail: `sem_email`', async () => {
+    vi.mocked(marcarNoCalendly).mockResolvedValueOnce({ ok: false, erro: 'sem_email' })
+    expect((await executarAcoes(db, CTX_F5, [reuniao])).registros[0]).toMatchObject({ ok: false, erro: 'sem_email' })
+  })
+
+  it('turno sem tipo de evento liberado: recusada, sem chamar o Calendly', async () => {
+    const r = await executarAcoes(db, CTX, [reuniao])
+    expect(r.registros[0]).toMatchObject({ ok: false, erro: 'recusado' })
+    expect(marcarNoCalendly).not.toHaveBeenCalled()
   })
 })

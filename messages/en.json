@@ -673,6 +673,7 @@
       "falhou": "failed",
       "pulado": "skipped",
       "semPassosFuturos": "Ends after this wait.",
+      "naoRetomaDepoisDaEdicao": "The automation was edited and the point where this wait stopped was removed or moved to another branch: it won't resume (the reason is kept in the history).",
       "executar": {
         "titulo": "Run automation",
         "buscar": "Search by name…",
@@ -1323,6 +1324,10 @@
         "wait_horario_ou_resposta": "Wait for the {inicio}–{fim} window or until the customer replies",
         "wait_horario_seg_a_sex_ou_resposta": "Wait for the {inicio}–{fim} window, Monday to Friday, or until the customer replies",
         "condition": "Check a condition",
+        "condition_campo_equals": "If the field {alvo} is \"{valor}\"",
+        "condition_campo_contains": "If the field {alvo} contains \"{valor}\"",
+        "condition_campo_empty": "If the field {alvo} is empty",
+        "condition_campo_not_empty": "If the field {alvo} is filled in",
         "send_webhook": "Call webhook",
         "close_conversation": "Close the conversation",
         "send_to_number": "Notify number: {alvo}",
@@ -2027,6 +2032,7 @@
         "subjects": {
           "tag_presence": "Tag presence",
           "contact_field": "Contact field",
+          "custom_field": "Custom field on the contact",
           "message_content": "Message content",
           "time_of_day": "Time of day",
           "channel": "Channel",
@@ -2070,7 +2076,27 @@
         "janelaDaMetaCanalLabel": "Window of which number",
         "janelaDaMetaCanalAuto": "The trigger's number (otherwise the conversation's)",
         "janelaDaMetaCanalSumiu": "The chosen connection was removed. Until another one is chosen, the question is asked about the conversation number.",
-        "janelaDaMetaCanalSemJanela": "This connection is not an official number: it has no window, and the condition would always answer the same. Pick an official number or leave the trigger's one."
+        "janelaDaMetaCanalSemJanela": "This connection is not an official number: it has no window, and the condition would always answer the same. Pick an official number or leave the trigger's one.",
+        "campoDaFichaLabel": "Field",
+        "campoDaFichaEscolha": "Pick a field",
+        "campoDaFichaBlocoGeral": "General",
+        "campoDaFichaEscolhido": "The chosen field",
+        "campoDaFichaApagado": "Deleted field",
+        "campoDaFichaCarregando": "Loading the contact fields…",
+        "campoDaFichaFalhou": "Could not load the contact fields.",
+        "campoDaFichaTentarDeNovo": "Try again",
+        "campoDaFichaSumiu": "The chosen field no longer exists in this account — pick another, otherwise the automation will not activate.",
+        "campoDaFichaOperador": "Condition",
+        "campoDaFichaOpEquals": "is",
+        "campoDaFichaOpContains": "contains",
+        "campoDaFichaOpEmpty": "is empty",
+        "campoDaFichaOpNotEmpty": "is not empty",
+        "campoDaFichaDataHelp": "Date field: the condition can only ask whether it is empty or filled in.",
+        "campoDaFichaValor": "Value",
+        "campoDaFichaEscolhaOpcao": "Pick an option",
+        "campoDaFichaOpcaoSumiu": "{valor} (no longer an option of the field)",
+        "campoDaFichaOpcaoSumiuHelp": "The chosen value is no longer one of the field options — pick another, otherwise the automation will not activate.",
+        "campoDaFichaHelp": "Reads the value on the contact record when this step runs. “is” and “contains” ignore upper and lower case; accents count. If the read fails, the condition answers “no” and the run log says it was not checked."
       },
       "delete": "Delete",
       "stages": {
@@ -2301,6 +2327,16 @@
         "varKeyHelp": "Interpolate in downstream prompts and handoff notes with",
         "advanceAfterCapture": "After capturing, advance to",
         "internalNote": "Internal note (for the agent picking up)",
+        "handoffAssignLabel": "Assign to",
+        "handoffAssignNobody": "Nobody (stays pending, unassigned)",
+        "handoffAssignNoName": "Member without a name",
+        "handoffAssignChosen": "The chosen person",
+        "handoffAssignGone": "No longer a member of the account",
+        "handoffAssignLoading": "Loading the account members…",
+        "handoffAssignLoadError": "Could not load the account members.",
+        "handoffAssignGoneHelp": "The chosen person is no longer a member of this account. Pick someone else or \"Nobody\" — otherwise the bot will not activate.",
+        "handoffAssignHelpNobody": "The conversation stays pending, unassigned, in the queue of conversations without an owner.",
+        "handoffAssignHelpSomeone": "The conversation stays pending and is assigned to this person, who gets a notification. If they leave the account, the bot leaves the conversation unassigned.",
         "endNodeHelp": "Terminal node. When the runner reaches this node the run is marked complete. No config needed.",
         "bodyText": "Body text",
         "footerText": "Footer (optional, 60 chars)",
@@ -2491,7 +2527,9 @@
       "moveNone": "Move card (no stage picked)",
       "moveTo": "Move card to {etapa}",
       "movePicked": "Move card to the chosen stage",
-      "moveFromOnly": "{count, plural, =1 {only from 1 stage} other {only from # stages}}"
+      "moveFromOnly": "{count, plural, =1 {only from 1 stage} other {only from # stages}}",
+      "handoffTo": "Assign to {membro}",
+      "handoffToPicked": "Assign to the chosen person"
     },
     "header": {
       "backToFlows": "Back to Flows",
@@ -4478,7 +4516,7 @@
       "teto": "That is the maximum per agent ({n} documents): unmark one to mark another."
     },
     "ferramentas": {
-      "explicacao": "What this agent may DO along with its reply, and with what. Nothing turned on = the agent only talks. Actions run after the reply is sent. It never closes a deal, never sends a message to another number and never touches Asaas — not even through the automations an action triggers.",
+      "explicacao": "What this agent may DO along with its reply, and with what. Nothing turned on = the agent only talks. Actions run after the reply is sent. It never closes a deal, never sends a message to another number and never touches Asaas — not even through the automations an action triggers. The one exception is “Book a meeting”: the Calendly automation runs just as when the customer books through the link.",
       "soConversa": "Nothing turned on: today this agent only talks.",
       "falhou": "Could not load the options.",
       "buscar": "Search…",
@@ -4514,6 +4552,10 @@
         "executar_automacao": {
           "nome": "Run an automation",
           "dica": "Runs one of the ticked automations in this conversation."
+        },
+        "marcar_reuniao": {
+          "nome": "Book a meeting",
+          "dica": "Offers the customer the free slots of the chosen Calendly event type and books the meeting at the time they pick, with the name and e-mail on file. The deal, the reminders and the notice to the lawyer are up to the Calendly automation, which runs just as when the customer books through the link."
         }
       },
       "nenhum": {
@@ -4522,7 +4564,8 @@
         "tirar_etiqueta": "This account has no tags.",
         "preencher_campo": "This account has no custom fields.",
         "criar_tarefa": "This account has no members.",
-        "executar_automacao": "This account has no automations."
+        "executar_automacao": "This account has no automations.",
+        "marcar_reuniao": "The connected Calendly has no active event types."
       },
       "bloqueio": {
         "etapaDeResultado": "Won/lost stage — the AI does not close deals.",
@@ -4561,6 +4604,17 @@
         "passagem": "the reply handed the conversation to another agent",
         "transferencia": "the reply handed the conversation to the team",
         "outro": "not accepted"
+      },
+      "reuniao": {
+        "rotulo": "Event type",
+        "escolher": "Pick an event type",
+        "opcao": "{nome} · {duracao} min",
+        "desconectado": "Calendly is not connected.",
+        "desconectadoLigada": "Calendly is not connected: turn this action off to save, or connect Calendly.",
+        "abrirIntegracoes": "Connect it in Settings → Integrations",
+        "falhou": "Could not read the Calendly event types.",
+        "orfao": "The saved event type is no longer active in Calendly. Pick another one.",
+        "semEscolha": "No event type chosen: turned on like this, the agent cannot book."
       }
     },
     "playground": {
@@ -4596,13 +4650,20 @@
         "tirar_etiqueta": "remove the tag {nome}",
         "preencher_campo": "fill in {nome}",
         "criar_tarefa": "task for {nome}",
-        "executar_automacao": "run {nome}"
+        "executar_automacao": "run {nome}",
+        "marcar_reuniao": "book a meeting at {nome}"
       },
       "acaoComValor": {
         "preencher_campo": "fill in {nome} = {valor}",
         "criar_tarefa": "task for {nome}: {valor}"
       },
-      "acaoDesconhecida": "{tipo}: {nome}"
+      "acaoDesconhecida": "{tipo}: {nome}",
+      "horarios": {
+        "titulo": "Slots offered: {itens}",
+        "recolhidos": "{n, plural, one {# slot offered} other {# slots offered}}",
+        "nenhum": "Slots offered: no free slot.",
+        "item": "{n}. {texto}"
+      }
     },
     "uso": {
       "explicacao": "Last {dias} days. Amounts in R$ are an ESTIMATE from each model's list price and today's exchange rate.",
@@ -4676,7 +4737,11 @@
           "recusado": "the change was refused",
           "falhou": "the action failed",
           "desconhecido": "not done ({erro})",
-          "semCodigo": "not done"
+          "semCodigo": "not done",
+          "sem_email": "the contact has no e-mail on file (Calendly requires one)",
+          "sem_telefone": "the contact has no valid phone (the CRM finds the booking\u2019s customer by it)",
+          "horario_indisponivel": "the slot is no longer free in Calendly",
+          "calendly_desconectado": "Calendly is not connected"
         },
         "comDetalhe": "{texto} — {detalhe}",
         "jaEstava": "the card was already in that stage"
@@ -4747,7 +4812,9 @@
       "network_error": "Could not reach the provider.",
       "provider_error": "The provider refused the request: {detalhe}",
       "empty_response": "The model returned no text. Try again, or change the model.",
-      "banco": "Could not save right now — try again."
+      "banco": "Could not save right now — try again.",
+      "tipo_de_evento_invalido": "The chosen event type is not an active event type of the connected Calendly. Pick another one.",
+      "calendly_desconectado": "Calendly is not connected. Connect it in Settings → Integrations, or turn “Book a meeting” off."
     },
     "modelos": {
       "triagem": {
@@ -4776,7 +4843,8 @@
         "teto": "{agente} handed the conversation to the team: it reached the reply limit for this conversation.",
         "audio": "{agente} handed the conversation to the team: it could not hear the customer's audio.",
         "incerto": "{agente} handed the conversation to the team: there is no way to know whether the last reply reached the customer — check before replying.",
-        "link_inventado": "{agente} handed the conversation to the team: the reply had a link that did not come from the system, and it was not sent."
+        "link_inventado": "{agente} handed the conversation to the team: the reply had a link that did not come from the system, and it was not sent.",
+        "reuniao_nao_marcada": "{agente} could not book the meeting: {motivo}. The conversation went to the team — check in Calendly that the meeting was not created before booking it again, and confirm the time with the customer."
       },
       "passagem": "{agente} handed the conversation to AI · {destino}, and the deal moved to that agent's stage.",
       "acoes": {
@@ -4786,7 +4854,8 @@
         "preencher_campo": "{agente} filled in {alvo}: {valor}",
         "criar_tarefa": "{agente} created the task “{valor}” for {alvo}.",
         "executar_automacao": "{agente} ran the automation {alvo}.",
-        "avisoDaTarefa": "The AI agent {agente} opened a task for you"
+        "avisoDaTarefa": "The AI agent {agente} opened a task for you",
+        "marcar_reuniao": "{agente} booked the meeting for {alvo}."
       }
     }
   },

@@ -12,7 +12,9 @@ import {
   validateChannelScopeForActivation,
   validateAsaasReguaForActivation,
   validateTriggerForActivation,
+  validateCustomFieldConditionsForActivation,
 } from '@/lib/automations/validate'
+import { carregarCamposParaCondicoes } from '@/lib/automations/condicao-por-campo'
 import { ehGatilhoDaRegua } from '@/lib/asaas/regua'
 import { normalizarAssinatura } from '@/lib/assinatura/assinatura'
 
@@ -130,6 +132,14 @@ export async function PATCH(
     const mergedSteps = Array.isArray(body.steps)
       ? (body.steps as { step_type: string; step_config: Record<string, unknown> }[])
       : await loadStepsTree(id)
+    // Condição por campo personalizado (2.10): o campo é DESTA conta? Leitura
+    // que falha pula a conferência — o motor continua sendo a guarda.
+    const campos = await carregarCamposParaCondicoes(
+      supabaseAdmin(),
+      existing.account_id as string,
+      mergedSteps as { step_type: string; step_config: Record<string, unknown> }[],
+    )
+    if (!campos) console.error('[automations] field-condition check skipped: lookup failed', { id })
     const issues = [
       ...validateTriggerForActivation(mergedTriggerType, mergedTriggerConfig),
       ...validateStepsForActivation(mergedSteps),
@@ -140,6 +150,10 @@ export async function PATCH(
           ? update.channel_ids
           : existing.channel_ids) as string[] | null) ?? null,
         await loadAccountChannelsForValidation(supabaseAdmin(), existing.account_id as string),
+      ),
+      ...validateCustomFieldConditionsForActivation(
+        mergedSteps as { step_type: string; step_config: Record<string, unknown> }[],
+        campos,
       ),
     ]
     if (issues.length > 0) {
