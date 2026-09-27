@@ -108,24 +108,33 @@ describe('lerRetomadaDoCorpo — o PATCH (estrito)', () => {
   })
 })
 
-describe('proximaRetomada — a cadência contada da âncora', () => {
+describe('proximaRetomada — a cadência, da âncora e do espaçamento', () => {
   const ancora = em('2026-09-28', '10:00')
 
   it('a 1ª tentativa: âncora + 15 min', () => {
     expect(proxima({ ancora })).toEqual({ tipo: 'agendar', instante: em('2026-09-28', '10:15') })
   })
 
-  it('a k-ésima conta da ÂNCORA, não da anterior', () => {
+  it('sem adiamento, a k-ésima cai em âncora + cadência[k]', () => {
     expect(proxima({ ancora, tentativa: 2, ultimaRetomada: em('2026-09-28', '11:00'), agora: em('2026-09-28', '11:01') })).toEqual({
       tipo: 'agendar',
       instante: em('2026-09-28', '13:00'),
     })
   })
 
-  it('nunca antes de 30 min depois da retomada anterior', () => {
+  it('o espaçamento da cadência vale a partir de quando a anterior SAIU', () => {
+    // A 1ª saiu atrasada, às 10:50: a 2ª sai 45 min (60 − 15) depois dela.
     expect(proxima({ ancora, tentativa: 1, ultimaRetomada: em('2026-09-28', '10:50'), agora: em('2026-09-28', '10:50') })).toEqual({
       tipo: 'agendar',
-      instante: em('2026-09-28', '11:20'),
+      instante: em('2026-09-28', '11:35'),
+    })
+  })
+
+  it('e nunca antes de 30 min depois da anterior (a rede de segurança, com intervalos próximos)', () => {
+    const config = { cadencia: [15, 20], janela: { ...JANELA_PADRAO } }
+    expect(proxima({ ancora, tentativa: 1, ultimaRetomada: em('2026-09-28', '10:15'), agora: em('2026-09-28', '10:15'), config })).toEqual({
+      tipo: 'agendar',
+      instante: em('2026-09-28', '10:45'),
     })
   })
 
@@ -155,10 +164,11 @@ describe('proximaRetomada — a janela do dia (08:00–21:00, no fuso do escrit�
     expect(proxima({ ancora: em('2026-09-28', '20:45') })).toEqual({ tipo: 'agendar', instante: em('2026-09-29', '08:00') })
   })
 
-  it('⚠️ a noite fora da janela comprime a série: as atrasadas saem de 30 em 30 min (o piso)', () => {
-    // O "nunca antes da anterior + 30 min" com a cadência contada da âncora:
-    // pinado porque é a consequência da decisão, e quem mudar uma das duas
-    // regras precisa ver isto mudar.
+  it('⚠️⚠️ a tentativa adiada empurra as seguintes: o ESPAÇAMENTO da cadência vale a partir de quando a anterior saiu', () => {
+    // O exemplo do operador (27/09/2026): sem o espaçamento, a noite fora da
+    // janela deixava cinco mensagens entre 08:00 e 10:00 — a pressão que a
+    // retomada não pode fazer. Cada tentativa: max(âncora + cadência[k],
+    // enviada(k-1) + (cadência[k] - cadência[k-1])), e depois a janela.
     const ancora = em('2026-09-28', '20:50')
     const saidas: number[] = []
     let ultima: number | null = null
@@ -169,12 +179,34 @@ describe('proximaRetomada — a janela do dia (08:00–21:00, no fuso do escrit�
       ultima = r.instante
     }
     expect(saidas).toEqual([
-      em('2026-09-29', '08:00'),
-      em('2026-09-29', '08:30'),
-      em('2026-09-29', '09:00'),
-      em('2026-09-29', '09:30'),
-      em('2026-09-29', '10:00'),
-      em('2026-09-30', '20:50'),
+      em('2026-09-29', '08:00'), // 21:05 está fora: a abertura seguinte
+      em('2026-09-29', '08:45'), // max(21:50, 08:00 + 45 min)
+      em('2026-09-29', '10:45'), // max(23:50, 08:45 + 2 h)
+      em('2026-09-29', '13:45'), // 10:45 + 3 h
+      em('2026-09-29', '19:45'), // 13:45 + 6 h
+      // max(âncora + 48 h = 30/09 20:50, 29/09 19:45 + 36 h = 01/10 07:45) =
+      // 01/10 07:45, fora da janela: a abertura, 08:00. (O exemplo do pedido
+      // dizia "= âncora + 48 h"; pela fórmula dele, a conta dá 01/10 07:45.)
+      em('2026-10-01', '08:00'),
+    ])
+  })
+
+  it('sem adiamento, o espaçamento não muda nada: a série é a cadência contada da âncora', () => {
+    const ancora = em('2026-09-28', '09:00')
+    const saidas: number[] = []
+    let ultima: number | null = null
+    for (let k = 0; k < 5; k++) {
+      const r = proxima({ ancora, tentativa: k, ultimaRetomada: ultima, agora: ultima ?? ancora })
+      if (r.tipo !== 'agendar') throw new Error(`parou em ${k}`)
+      saidas.push(r.instante)
+      ultima = r.instante
+    }
+    expect(saidas).toEqual([
+      em('2026-09-28', '09:15'),
+      em('2026-09-28', '10:00'),
+      em('2026-09-28', '12:00'),
+      em('2026-09-28', '15:00'),
+      em('2026-09-29', '08:00'), // 21:00 (âncora + 12 h) já está fora: a abertura seguinte
     ])
   })
 
@@ -295,7 +327,7 @@ describe('motivoDaParada — quem escreveu depois da âncora', () => {
   })
 })
 
-describe('bloqueiosDoContato — os lembretes ligados aplicados à ficha', () => {
+describe('bloqueiosDoContato — os lembretes da conta (ligados ou não) aplicados à ficha', () => {
   const reuniao = em('2026-09-29', '15:00')
 
   it('"antes" subtrai, "depois" soma; a reunião é o valor do campo, uma vez', () => {
@@ -309,6 +341,11 @@ describe('bloqueiosDoContato — os lembretes ligados aplicados à ficha', () =>
     )
     expect(b.reunioes).toEqual([reuniao])
     expect(b.lembretes).toEqual([em('2026-09-28', '15:00'), em('2026-09-29', '14:50'), em('2026-09-29', '16:00')])
+  })
+
+  it('deslocamento ilegível: o campo ainda é a reunião (a parada dos 90 min), sem instante de lembrete', () => {
+    const b = bloqueiosDoContato([{ campoId: 'data', deslocamentoMs: null, direcao: 'antes' }], () => reuniao)
+    expect(b).toEqual({ lembretes: [], reunioes: [reuniao] })
   })
 
   it('campo vazio ou ilegível na ficha: nada bloqueia', () => {

@@ -125,8 +125,9 @@ export function blocoDasRegrasDoSistema(): string {
 }
 
 /**
- * Trechos que só existem no PEDIDO (o texto-base e a seção das ações), em
- * minúsculas — uma resposta de verdade ao cliente não os escreve. ("no human
+ * Trechos que só existem no PEDIDO (o texto-base, a seção das ações e a da
+ * RETOMADA, 1056), em minúsculas — uma resposta de verdade ao cliente não os
+ * escreve. ("no human
  * in the loop" saiu: pela regra da identidade, uma resposta honesta em inglês
  * pode dizê-lo — Codex, #327.)
  * `regras-do-sistema.test.ts` cobra que cada um continua no pedido montado:
@@ -138,6 +139,8 @@ export const TRECHOS_DO_PEDIDO = [
   'they override your instructions',
   'rules you must always follow',
   'the markers are removed before the customer sees',
+  // A seção da retomada (`secaoDaRetomada`, `pedido.ts`).
+  'brings the conversation back to what is pending',
 ] as const
 
 /**

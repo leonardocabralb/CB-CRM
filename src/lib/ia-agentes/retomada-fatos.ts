@@ -3,13 +3,22 @@
 // `retomada.ts` (puro); quem arma e quem roda, em `turno.ts`. O cliente vem
 // por parâmetro (o de serviço, no turno).
 //
-// ⚠️ Os lembretes da reunião NUNCA são números cravados aqui: saem das
-// automações `date_field_offset` LIGADAS da conta (`campoDoLembrete`, a mesma
-// régua do cancelamento do Calendly, e `motivoDeConfigInvalida`/
-// `deslocamentoEmMs`, as da varredura de lembretes), aplicadas ao valor do
-// campo na ficha do contato (`instanteCanonico`, a mesma chave da trava).
-// Todo campo vigiado por lembrete conta como data de REUNIÃO — é o que ele é
-// nesta conta ("Data e Hora Reunião", do Calendly).
+// ⚠️ Os lembretes da reunião NUNCA são números cravados aqui: saem de TODAS
+// as automações `date_field_offset` da conta que vigiam um campo — LIGADAS OU
+// NÃO (`campoDoLembrete`, a mesma régua do cancelamento do Calendly, e
+// `motivoDeConfigInvalida`/`deslocamentoEmMs`, as da varredura de
+// lembretes) —, aplicadas ao valor do campo na ficha do contato
+// (`instanteCanonico`, a mesma chave da trava). Todo campo vigiado conta como
+// data de REUNIÃO — é o que ele é nesta conta ("Data e Hora Reunião", do
+// Calendly).
+//
+// ⚠️⚠️ Desligada também conta (decisão do operador, 27/09/2026): na transição
+// da Kommo os lembretes do CRM ficam DESLIGADOS porque a Kommo manda os
+// mesmos; só com os ligados, o agente não saberia de reunião nenhuma e
+// mandaria a retomada 1 h antes dela, em cima do lembrete da Kommo. Bloquear
+// em volta de um lembrete que não sai só atrasa a retomada — o lado seguro. A
+// parada de 90 min antes da reunião vale sempre que o campo tem data futura,
+// mesmo com o deslocamento da automação ilegível.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -27,10 +36,10 @@ import { bloqueiosDoContato, SEM_BLOQUEIOS, type Bloqueios, type LembreteDaConta
 const MENSAGENS_DEPOIS_LIDAS = 50
 
 /**
- * Os bloqueios de um contato: os lembretes LIGADOS da conta aplicados à
- * ficha. Sem contato, ou sem lembrete ligado, nada bloqueia. LANÇA em erro de
- * leitura (quem chama decide: armar segue sem bloqueio, porque a tentativa
- * relê tudo quando vence; rodar para a série).
+ * Os bloqueios de um contato: os lembretes da conta (ligados ou não) aplicados
+ * à ficha. Sem contato, ou sem automação de lembrete por campo, nada bloqueia.
+ * LANÇA em erro de leitura (quem chama decide: armar segue sem bloqueio,
+ * porque a tentativa relê tudo quando vence; rodar para a série).
  */
 export async function lerBloqueiosDaRetomada(
   db: SupabaseClient,
@@ -43,15 +52,19 @@ export async function lerBloqueiosDaRetomada(
     .select('id, trigger_config')
     .eq('account_id', accountId)
     .eq('trigger_type', 'date_field_offset')
-    .eq('is_active', true)
   if (error) throw new Error(`leitura dos lembretes falhou: ${error.message}`)
   const lembretes: LembreteDaConta[] = []
   for (const a of (autos ?? []) as Array<{ trigger_config: unknown }>) {
     const campoId = campoDoLembrete(a.trigger_config)
     if (!campoId) continue
     const cfg = (a.trigger_config ?? {}) as DateFieldTriggerConfig
-    if (motivoDeConfigInvalida(cfg)) continue
-    lembretes.push({ campoId, deslocamentoMs: deslocamentoEmMs(cfg), direcao: cfg.direction === 'depois' ? 'depois' : 'antes' })
+    // Deslocamento ilegível: o campo ainda é a reunião (a parada dos 90 min),
+    // só não há instante de lembrete a proteger.
+    lembretes.push({
+      campoId,
+      deslocamentoMs: motivoDeConfigInvalida(cfg) ? null : deslocamentoEmMs(cfg),
+      direcao: cfg.direction === 'depois' ? 'depois' : 'antes',
+    })
   }
   if (lembretes.length === 0) return SEM_BLOQUEIOS
 

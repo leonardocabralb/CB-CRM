@@ -3091,11 +3091,12 @@ describe('a RETOMADA (1056)', () => {
         expect.objectContaining({ text: 'Oi! Conseguiu separar os extratos?', iaAgenteId: AGENTE, exigirCanal: true, preferredChannelId: CANAL }),
       )
       expect(logAiUsage).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ mode: 'agente', turnoId: RETOMADA }))
-      // A 2ª: âncora + 60 min (40 min daqui), a MESMA âncora; o piso de 30 min depois desta não aperta.
+      // A 2ª, com a MESMA âncora: max(âncora + 60 min = daqui a 40 min, esta
+      // retomada (agora) + o espaçamento 60 − 15 = 45 min) = daqui a 45 min.
       const proxima = retomadas()
       expect(proxima).toHaveLength(1)
       expect(proxima[0]).toMatchObject({ tentativa: 2, tentativas: 6, mensagem_gatilho_id: ANCORA, status: 'aguardando' })
-      expect(proxima[0].executar_apos).toBe(new Date(MEIO_DIA.getTime() + 40 * MIN).toISOString())
+      expect(proxima[0].executar_apos).toBe(new Date(MEIO_DIA.getTime() + 45 * MIN).toISOString())
     })
 
     it('a ÚLTIMA tentativa que sai não arma outra', async () => {
@@ -3307,11 +3308,27 @@ describe('a RETOMADA (1056)', () => {
       expect(engineSendText).not.toHaveBeenCalled()
     })
 
-    it('lembrete DESLIGADO não bloqueia nada', async () => {
+    it('⚠️ lembrete DESLIGADO também protege (a Kommo manda o mesmo na transição): a reunião daqui a 1 h para a série', async () => {
       comRetomadaPendente()
       reuniaoEm(60 * MIN, { is_active: false })
       await executarTurno(RETOMADA)
-      expect(turno(RETOMADA).status).toBe('respondeu')
+      expect(turno(RETOMADA)).toMatchObject({ status: 'sem_resposta', erro: 'a reunião do cliente está perto (os lembretes cuidam dele)' })
+      expect(engineSendText).not.toHaveBeenCalled()
+    })
+
+    it('lembrete DESLIGADO também empurra: a menos de 30 min dele, volta para a fila', async () => {
+      comRetomadaPendente()
+      reuniaoEm(24 * 60 * MIN + 10 * MIN, { is_active: false })
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA)).toMatchObject({ status: 'aguardando' })
+      expect(turno(RETOMADA).executar_apos).toBe(new Date(MEIO_DIA.getTime() + 40 * MIN).toISOString())
+    })
+
+    it('automação de lembrete com o deslocamento ilegível: a reunião ainda conta (parada dos 90 min)', async () => {
+      comRetomadaPendente()
+      reuniaoEm(60 * MIN, { trigger_config: { custom_field_id: 'campo-reuniao', direction: 'antes' } })
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA).status).toBe('sem_resposta')
     })
 
     it('a leitura dos lembretes falha: a série para (sem saber, não manda)', async () => {

@@ -5,16 +5,20 @@
 // O agente fez uma pergunta e o cliente não respondeu: mensagens de retomada
 // numa cadência contada da ÚLTIMA mensagem do agente sem resposta (a
 // "âncora" — a resposta de um turno normal), padrão 15 min, 1 h, 3 h, 6 h,
-// 12 h e 48 h. A tentativa k (0-based) vence em `ancora + cadencia[k]`, e
-// nunca antes de `ultima_retomada + 30 min`. Só dentro da janela do dia (padrão
-// 08:00–21:00, no fuso do escritório; com `horario` no agente, a interseção),
-// nunca a menos de 30 min de um instante de LEMBRETE da reunião, e nunca a
-// partir de 90 min antes da reunião (aí a série PARA).
+// 12 h e 48 h. A tentativa k (0-based) vence em
+// `max(ancora + cadencia[k], enviada(k-1) + (cadencia[k] - cadencia[k-1]))`
+// — a cadência E o ESPAÇAMENTO dela a partir de quando a anterior SAIU —, e
+// nunca antes de `enviada(k-1) + 30 min` (a rede de segurança). Só dentro da
+// janela do dia (padrão 08:00–21:00, no fuso do escritório; com `horario` no
+// agente, a interseção), nunca a menos de 30 min de um instante de LEMBRETE da
+// reunião, e nunca a partir de 90 min antes da reunião (aí a série PARA).
 //
-// ⚠️ A cadência é contada da ÂNCORA, não da tentativa anterior: a tentativa
-// empurrada pela janela (ou por um lembrete) não empurra as seguintes, e
-// depois de uma noite fora da janela as atrasadas saem de 30 em 30 min
-// (o piso) a partir da abertura da janela.
+// ⚠️⚠️ O espaçamento é o que impede a PRESSÃO (decisão do operador,
+// 27/09/2026): contada só da âncora, a tentativa empurrada pela janela
+// deixava as seguintes todas atrasadas, e depois de uma noite fora da janela
+// saíam cinco mensagens entre 08:00 e 10:00. Com o espaçamento, a tentativa
+// adiada empurra as seguintes (âncora 20:50 → 08:00, 08:45, 10:45, 13:45,
+// 19:45 e âncora + 48 h; pino no teste).
 //
 // Quem arma, quem roda e quem para está em `turno.ts`; a leitura do banco,
 // em `retomada-fatos.ts`. Aqui só as regras.
@@ -131,8 +135,9 @@ export function lerRetomadaDoCorpo(v: unknown): ConfigDaRetomada | null {
 
 /**
  * O que bloqueia o envio, em milissegundos: os instantes dos LEMBRETES da
- * reunião (as automações `date_field_offset` ligadas aplicadas ao valor do
- * campo de data na ficha) e os instantes das REUNIÕES (o próprio valor).
+ * reunião (as automações `date_field_offset` da conta — LIGADAS OU NÃO —
+ * aplicadas ao valor do campo de data na ficha) e os instantes das REUNIÕES
+ * (o próprio valor).
  */
 export interface Bloqueios {
   lembretes: number[]
@@ -208,12 +213,13 @@ export function dentroDaJanela(
 /**
  * Quando sai a tentativa `tentativa` (0-based), ou por que a série para.
  *
- * `ultimaRetomada`: o instante da retomada anterior desta série (nulo na
- * primeira). `fimDaJanelaMeta`: quando fecha a janela de 24 h da Meta na
+ * `ultimaRetomada`: quando a retomada anterior desta série SAIU de fato (nulo
+ * na primeira). `fimDaJanelaMeta`: quando fecha a janela de 24 h da Meta na
  * conexão (nulo = a conexão não é oficial, ou nada a conferir).
  *
- * A ordem: o vencimento nominal (âncora + cadência, o piso de 30 min depois da
- * anterior, e nunca antes de agora) → a janela → a reunião (a menos de 90 min,
+ * A ordem: o vencimento nominal (âncora + cadência; o espaçamento da cadência
+ * depois da anterior; o piso de 30 min depois dela; e nunca antes de agora) →
+ * a janela → a reunião (a menos de 90 min,
  * PARA) → os lembretes (a menos de 30 min, empurra para 30 min depois deles e
  * volta à janela) → a janela da Meta. Laço com teto: um lembrete a cada meia
  * hora a noite inteira não prende a conta num laço infinito.
@@ -234,9 +240,13 @@ export function proximaRetomada(args: {
   const janela = janelaEfetiva(config.janela, args.horario)
   if (!janela) return { tipo: 'parar', motivo: 'sem_janela' }
 
+  const k = args.tentativa
+  const anterior = args.ultimaRetomada
   let t = Math.max(
-    args.ancora + config.cadencia[args.tentativa] * 60_000,
-    args.ultimaRetomada === null ? Number.NEGATIVE_INFINITY : args.ultimaRetomada + INTERVALO_MINIMO_MS,
+    args.ancora + config.cadencia[k] * 60_000,
+    // O ESPAÇAMENTO: a anterior adiada (janela, lembrete, cron) empurra esta.
+    anterior === null || k === 0 ? Number.NEGATIVE_INFINITY : anterior + (config.cadencia[k] - config.cadencia[k - 1]) * 60_000,
+    anterior === null ? Number.NEGATIVE_INFINITY : anterior + INTERVALO_MINIMO_MS,
     args.agora,
   )
   const reunioes = args.bloqueios.reunioes.filter((r) => r > args.agora)
@@ -287,11 +297,15 @@ export function motivoDaParada(depois: readonly MensagemDepois[], agenteId: stri
 // Os lembretes da reunião, a partir das automações e da ficha
 // ------------------------------------------------------------
 
-/** Uma automação de lembrete já lida e conferida (`motivoDeConfigInvalida` nulo, fonte campo). */
+/** Uma automação de lembrete da conta que vigia um campo (fonte campo), ligada ou não. */
 export interface LembreteDaConta {
   campoId: string
-  /** O deslocamento em ms (`deslocamentoEmMs`). */
-  deslocamentoMs: number
+  /**
+   * O deslocamento em ms (`deslocamentoEmMs`). Nulo = a config é ilegível
+   * (`motivoDeConfigInvalida`): o campo ainda é a data da reunião, mas não há
+   * instante de lembrete.
+   */
+  deslocamentoMs: number | null
   direcao: 'antes' | 'depois'
 }
 
@@ -309,6 +323,7 @@ export function bloqueiosDoContato(
     const reuniao = instanteDoCampo(l.campoId)
     if (reuniao === null) continue
     if (!saida.reunioes.includes(reuniao)) saida.reunioes.push(reuniao)
+    if (l.deslocamentoMs === null) continue
     saida.lembretes.push(l.direcao === 'depois' ? reuniao + l.deslocamentoMs : reuniao - l.deslocamentoMs)
   }
   return saida

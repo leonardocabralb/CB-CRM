@@ -4955,7 +4955,7 @@
       "ligar": "Follow up when the customer doesn't answer",
       "ligarDica": "Only for the agent's last reply left unanswered — never after a message from an automation, the bot or the team.",
       "cadencia": "Cadence",
-      "cadenciaDica": "Each attempt goes out this long after the agent's last unanswered reply, and never less than 30 min after the previous one. From 1 to {max} attempts, 10 min to 7 days each.",
+      "cadenciaDica": "Each attempt goes out this long after the agent's last unanswered reply. If one is delayed (outside the window, near a meeting reminder), the following ones keep their spacing — and never go out less than 30 min after the previous one. From 1 to {max} attempts, 10 min to 7 days each.",
       "tentativa": "Attempt {n}",
       "remover": "Remove {tempo}",
       "novoIntervalo": "Time",

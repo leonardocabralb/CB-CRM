@@ -53,6 +53,11 @@ describe('lerRespostaDaRetomada', () => {
     expect(r.parada).toBe('pedido_vazado')
   })
 
+  it('a PRÓPRIA seção da retomada vazada: para (o trecho dela está na trava)', () => {
+    const r = lerRespostaDaRetomada('Instrução: gently brings the conversation back to what is pending.', false, FONTES)
+    expect(r.parada).toBe('pedido_vazado')
+  })
+
   it('link que não veio do pedido nem da conversa: para, com o link no detalhe', () => {
     const r = lerRespostaDaRetomada('Veja aqui: https://inventado.example/x', false, FONTES)
     expect(r).toEqual({ parada: 'link_inventado', detalhe: 'https://inventado.example/x' })

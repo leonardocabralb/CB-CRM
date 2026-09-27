@@ -4948,7 +4948,7 @@
       "ligar": "Retomar quando o cliente não responde",
       "ligarDica": "Vale só para a última resposta do agente que ficou sem resposta — nunca depois de mensagem de automação, do robô ou da equipe.",
       "cadencia": "Cadência",
-      "cadenciaDica": "Cada tentativa sai este tempo depois da última resposta do agente sem resposta, e nunca a menos de 30 min da anterior. De 1 a {max} tentativas, de 10 min a 7 dias cada.",
+      "cadenciaDica": "Cada tentativa sai este tempo depois da última resposta do agente sem resposta. Se uma atrasa (fora da janela, perto de um lembrete da reunião), as seguintes mantêm o intervalo entre elas — e nunca saem a menos de 30 min da anterior. De 1 a {max} tentativas, de 10 min a 7 dias cada.",
       "tentativa": "Tentativa {n}",
       "remover": "Tirar {tempo}",
       "novoIntervalo": "Tempo",
