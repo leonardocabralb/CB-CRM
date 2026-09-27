@@ -133,6 +133,12 @@ Gerenciar funil, porque o upsert dele não leva a coluna).
   vê faltas recentes e pode acusar quem compareceu (ver Medições).
 - Gerenciar funil no celular já não cabia com dois seletores por etapa; com
   três continua sem caber (tela de administrador, usada no computador).
+- O aviso é calculado quando a conversa abre (e ao voltar à aba ou apertar
+  "Atualizar"). Com DUAS reuniões futuras e a conversa aberta durante o fim da
+  primeira, a faixa só se ajusta ao reabrir (Codex, PR #332). Caso raro, e o
+  lado é seguro: o aviso atrasa, não afirma nada falso. O conserto, se o
+  operador quiser, é a rota devolver o fim da próxima reunião e o hook se
+  reler nessa hora.
 
 ## Fora do escopo (para depois, se o operador quiser)
 

@@ -108,6 +108,9 @@ operador: nada no card, na lista nem na aba).
 - A trilha lida é a das ENTRADAS em etapa (`stage_changed`, `deal_created`,
   `pipeline_changed`); `status_changed` repete a etapa em que o card já estava.
   `pipeline_stages` não tem `account_id`: a cerca é pelo funil, com `!inner`.
+- **O aviso é calculado quando a conversa abre** (e no `resyncToken`): com
+  duas reuniões futuras, o fim da primeira não o recalcula com a conversa
+  aberta. Limite aceito (Codex, PR #332): o aviso atrasa, não mente.
 
 ### tl;dv → transcrições (987)
 
