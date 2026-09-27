@@ -273,6 +273,51 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
   `messages.edited` sem texto é ignorado de propósito (a revogação chega por
   `messages.delete`).
 
+### Anúncio de origem — o `referral` do Click-to-WhatsApp (Meta)
+`anuncio-de-origem.ts` (puro) e `gravar-anuncio-de-origem.ts`, em
+`src/lib/contacts/`; chamado só pelo webhook da Meta.
+- ⚠️ Roda DEPOIS do `return` da reentrega e ANTES do robô, das automações e
+  do `routeContactToPipeline`: o `deal.created` do card novo (o webhook de
+  saída leva os campos) e a automação já enxergam a origem. Nunca lança.
+- ⚠️⚠️ A PRIMEIRA origem (`utm_source`, `utm_medium`, `id_do_anuncio`) entra
+  em BLOCO, só na ficha sem nenhum campo de traqueamento preenchido, e por
+  INSERT … ON CONFLICT DO NOTHING (`manterExistentes`). Campo a campo, a ficha
+  de formulário da iMotion ganharia o id de outro anúncio ao lado do nome do
+  primeiro. O `ctwa_clid` é o ÚLTIMO clique: sempre sobrescrito (o evento de
+  conversão precisa do clique DESTA conversa).
+- ⚠️⚠️ **O `ctwa_clid` é da FICHA, não do card**: é o último clique em
+  QUALQUER anúncio da conta. O cliente do Bancário que clica num anúncio do
+  Previdenciário troca o da ficha, e o `deal.stage_changed` do card do
+  Bancário (que o n8n/TinTim recebe com os campos) passa a levar o clique do
+  outro funil. Quem montar o evento de conversão sobre este campo confere o
+  FUNIL do card contra o do anúncio, ou espera a tabela de cliques que liga o
+  clique à conversa. E dentro da ficha o par é incoerente de propósito:
+  `id_do_anuncio` é o do PRIMEIRO clique, `ctwa_clid` o do último.
+- ⚠️ O bloco NÃO é atômico: "a ficha tem origem?" é respondido sobre uma
+  leitura, e o INSERT … DO NOTHING protege campo a campo. Se o Make da iMotion
+  gravar um desses campos pela API v1 no intervalo (milissegundos), o dele
+  fica e os outros entram — origem misturada. Aceito; fechar pede uma RPC com
+  a pergunta e o INSERT na mesma transação.
+- A primeira origem só com `source_type` `ad` ou `post`; outro tipo (ou
+  ausente) grava só o `ctwa_clid` — senão um `utm_source` sozinho travaria a
+  origem sem o id do anúncio, para sempre.
+- ⚠️ `referral` PRESENTE e ilegível vira `console.warn` com a FORMA (chaves e
+  tipos, nunca valores, `formaDoReferral`): o formato saiu da documentação da
+  Meta, sem clique real medido, e o dado do clique chega uma vez só. Na falha
+  de gravação o log leva o `ctwa_clid` e o id do anúncio (não são dado
+  pessoal): nada tenta de novo, e é por ali que se regrava à mão.
+- Campo que falta na conta fica de fora; o código nunca cria campo. O
+  semeador de traqueamento cria as quatro chaves (`id_do_anuncio` incluso).
+- A Evolution não lê o anúncio (`externalAdReply`): o formato não foi medido
+  num payload real, e a 2.4 monta `externalAdReply` também em PRÉVIA DE LINK
+  (inclusive a de outro sistema sobre a Evolution que escreva ao escritório).
+  A presença de `externalAdReply` NÃO é sinal de anúncio: o critério a medir
+  é "tem `externalAdReply.ctwaClid`" OU "`contextInfo.entryPointConversionSource`
+  (ou `conversionSource`) de anúncio" (esperado `ctwa_ad`/`FB_Ads`).
+- O Instagram Direct também não lê: `instagram/webhook.ts` interpreta o
+  `referral` (`ref`, `source`, `type`) e `persistir.ts` o descarta (D5) — o
+  mesmo buraco, para anúncio de clique-para-Direct.
+
 ### Foto de perfil do contato (973)
 - `contacts.avatar_checked_at` impede a chamada infinita: a Evolution devolve
   `null` para "sem foto" e para "privada". Revalida em 30 dias.

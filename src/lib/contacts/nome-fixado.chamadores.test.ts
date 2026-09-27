@@ -16,6 +16,11 @@ import path from "node:path";
 //     no manifesto abaixo. É a categoria que precisa de decisão: um UPDATE
 //     sem marca sobrescreve o nome escolhido; um INSERT sem marca cria a
 //     ficha com um nome que a próxima mensagem troca.
+//   · FIXA SE LIVRE — respeita E grava: fixa o nome só onde ninguém o fixou
+//     ainda. É a fonte deliberada FRACA — o robô gravando o que o cliente
+//     digitou no chat (26/09/2026): o nome que gente, o Asaas ou o Calendly
+//     fixaram vence. Até ali as duas juntas eram tratadas como engano; agora
+//     são uma classe própria, e só quem está no manifesto pode usá-la.
 //
 // Até a 999, três caminhos automáticos trocavam o nome da ficha pelo do
 // perfil do WhatsApp a cada mensagem — e o nome que o cliente digitou no
@@ -38,7 +43,7 @@ import path from "node:path";
 
 const SRC = path.resolve(__dirname, "..", "..");
 
-type Classe = "respeita" | "grava" | "sem-marca";
+type Classe = "respeita" | "grava" | "sem-marca" | "fixa-se-livre";
 type Op = "update" | "insert" | "upsert";
 
 /** Manifesto: arquivo → cada escrita de nome dele, como `op:classe`, em ordem. */
@@ -63,6 +68,12 @@ const ESCRITORES: Record<string, string[]> = {
   // não é nome não sobrescreve). O 2º é o mesmo passo para e-mail e empresa:
   // a chave computada ainda aparece, mas o nome já saiu antes dela.
   "lib/automations/engine.ts": ["update:grava", "update:sem-marca"],
+  // O robô (Fluxos) com "Salvar a resposta → Nome do contato" no "Coletar
+  // resposta" (26/09/2026): grava FIXADO, mas só onde ninguém fixou o nome
+  // ainda (`.is('nome_fixado_em', null)` no mesmo UPDATE) — o valor é texto
+  // livre do chat, e o nome escolhido por gente ou por integração vence. O
+  // que não parece nome (`nomeDigitadoNoChat`) nem chega ao banco.
+  "lib/flows/resposta-na-ficha.ts": ["update:fixa-se-livre"],
 
   // ---- Automáticos, o nome do perfil do WhatsApp: respeitam no UPDATE ----
   // O INSERT cria a ficha com o nome do perfil (ou o telefone): nome que
@@ -113,7 +124,7 @@ interface Escrita {
   arquivo: string;
   linha: number;
   op: Op;
-  classe: Classe | null;
+  classe: Classe;
 }
 
 const RESPEITA = /\.is\(\s*['"]nome_fixado_em['"]\s*,\s*null\s*\)/;
@@ -152,9 +163,9 @@ function escritasDeNome(): Escrita[] {
         arquivo: path.relative(SRC, abs).split(path.sep).join("/"),
         linha: fonte.slice(0, m.index).split("\n").length,
         op: op[1] as Op,
-        // As duas juntas não fazem sentido (gravar a marca só onde ela já é
-        // nula) — quem aparecer assim reprova como classe nula.
-        classe: respeita && grava ? null : respeita ? "respeita" : grava ? "grava" : "sem-marca",
+        // As duas juntas = gravar a marca só onde ela ainda é nula. É uma
+        // classe própria, e o teste abaixo a restringe a quem a declarou.
+        classe: respeita && grava ? "fixa-se-livre" : respeita ? "respeita" : grava ? "grava" : "sem-marca",
       });
     }
   }
@@ -164,9 +175,14 @@ function escritasDeNome(): Escrita[] {
 describe("escritores de contacts.name × nome fixado (999)", () => {
   const achadas = escritasDeNome();
 
-  it("CRÍTICO: nenhum escritor respeita E grava a marca ao mesmo tempo", () => {
-    const soltos = achadas.filter((e) => e.classe === null).map((e) => `${e.arquivo}:${e.linha}`);
-    expect(soltos).toEqual([]);
+  it("CRÍTICO: respeitar E gravar a marca juntos só vale para a fonte fraca declarada (o robô)", () => {
+    // Fixar-se-livre em qualquer outro lugar é quase sempre engano: o
+    // automático que devia só respeitar passaria a CONGELAR o nome do perfil
+    // do WhatsApp na primeira mensagem.
+    const juntos = [
+      ...new Set(achadas.filter((e) => e.classe === "fixa-se-livre").map((e) => e.arquivo)),
+    ];
+    expect(juntos).toEqual(["lib/flows/resposta-na-ficha.ts"]);
   });
 
   it("CRÍTICO: o conjunto de escritores é EXATO — escritor novo é decisão escrita neste arquivo", () => {

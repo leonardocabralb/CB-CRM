@@ -108,3 +108,70 @@ describe('a PASSAGEM (D25)', () => {
     expect(lerPassagem('[PASSAR:1]')).toBeNull()
   })
 })
+
+describe('as AÇÕES junto com a resposta (F4, D28)', () => {
+  const agora = new Date('2026-09-25T17:05:00Z')
+
+  it('lista as opções NUMERADAS com os NOMES — nunca os ids — e ensina os marcadores', () => {
+    const p = montarPedidoDoAgente({
+      instrucoes: 'Triagem.',
+      regras: [],
+      agora,
+      acoes: {
+        mover_etapa: [
+          { id: 'uuid-etapa-1', nome: 'Bancário · Proposta' },
+          { id: 'uuid-etapa-2', nome: 'Bancário · Documentos' },
+        ],
+        etiquetar: [{ id: 'uuid-tag', nome: 'VIP\ncom quebra' }],
+        preencher_campo: [{ id: 'uuid-campo', nome: 'Tamanho da dívida' }],
+        criar_tarefa: [{ id: 'uuid-membro', nome: 'Ana' }],
+        executar_automacao: [],
+      },
+    })
+    expect(p).toContain('[[MOVER:n]]')
+    expect(p).toContain('1. Bancário · Proposta\n2. Bancário · Documentos')
+    expect(p).toContain('[[ETIQUETAR:n]]')
+    expect(p).toContain('1. VIP com quebra')
+    expect(p).toContain('[[CAMPO:n=value]]')
+    expect(p).toContain('[[TAREFA:n=title]]')
+    // Tipo sem opção não aparece.
+    expect(p).not.toContain('[[AUTOMACAO:n]]')
+    expect(p).not.toContain('[[TIRAR:n]]')
+    expect(p).not.toMatch(/uuid-/)
+    // O protocolo: no fim, só números da lista, e o texto ao cliente é obrigatório.
+    expect(p).toMatch(/at the very END/)
+    expect(p).toMatch(/never make up a number/)
+    expect(p).toMatch(/a message with only markers is handed over to the team/)
+  })
+
+  it('cada campo diz o FORMATO do valor (data, número, lista com as opções, e-mail, texto)', () => {
+    const p = montarPedidoDoAgente({
+      instrucoes: 'x',
+      regras: [],
+      agora,
+      acoes: {
+        preencher_campo: [
+          { id: 'c1', nome: 'Data do acidente', formato: { tipo: 'data' } },
+          { id: 'c2', nome: 'Tamanho da dívida', formato: { tipo: 'numero' } },
+          { id: 'c3', nome: 'Área', formato: { tipo: 'lista', opcoes: ['Bancário', 'Trabalhista "CLT"'] } },
+          { id: 'c4', nome: 'E-mail', formato: { tipo: 'email' } },
+          { id: 'c5', nome: 'Observação', formato: { tipo: 'texto' } },
+        ],
+      },
+    })
+    expect(p).toContain("1. Data do acidente — a date as YYYY-MM-DD, or a date and time as YYYY-MM-DD HH:MM, in the business's timezone")
+    expect(p).toContain("2. Tamanho da dívida — a number: digits only, with '.' as the decimal separator")
+    expect(p).toContain('3. Área — exactly one of: "Bancário", "Trabalhista \\"CLT\\""')
+    expect(p).toContain('4. E-mail — an e-mail address')
+    expect(p).toContain('5. Observação — text')
+    expect(p).toContain('in the format given for that field')
+  })
+
+  it('sem ações liberadas, o pedido não fala de ações', () => {
+    expect(montarPedidoDoAgente({ instrucoes: 'x', regras: [], agora })).not.toContain('[[MOVER')
+    expect(montarPedidoDoAgente({ instrucoes: 'x', regras: [], agora, acoes: {} })).not.toContain('Actions you can take')
+    expect(
+      montarPedidoDoAgente({ instrucoes: 'x', regras: [], agora, acoes: { etiquetar: [] } }),
+    ).not.toContain('Actions you can take')
+  })
+})

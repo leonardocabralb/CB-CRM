@@ -607,3 +607,40 @@ describe('lerOQueOAgenteVe', () => {
     expect(lerChaveDeEmbeddings).not.toHaveBeenCalled()
   })
 })
+
+describe('as cobranças trazem o LINK de pagamento (F4, a 2ª via da D6)', () => {
+  it('leitura FRESCA: o link da fatura de cada parcela devida', () => {
+    const t = texto({ cobrancas: { ok: true, valor: cobrancas() } }, TUDO)
+    expect(t).toContain('— payment link: https://www.asaas.com/i/x')
+  })
+
+  it('sem fatura, o boleto', () => {
+    const c = cobrancas()
+    if (!c.conectado) throw new Error('fixture')
+    c.resumo = { ...c.resumo, vencidas: [parcela({ link_fatura: null, link_boleto: 'https://www.asaas.com/b/pdf/y' })] }
+    expect(texto({ cobrancas: { ok: true, valor: c } }, TUDO)).toContain('payment link: https://www.asaas.com/b/pdf/y')
+  })
+
+  it('⚠️ leitura VELHA: nenhum link (a parcela pode já ter sido paga)', () => {
+    const t = texto({ cobrancas: { ok: true, valor: cobrancas({ fresca: false }) } }, TUDO)
+    expect(t).not.toContain('https://')
+    expect(t).not.toContain('payment link')
+  })
+
+  it('⚠️ o teto nunca corta um link ao meio', () => {
+    const c = cobrancas()
+    if (!c.conectado) throw new Error('fixture')
+    const muitas = Array.from({ length: 40 }, (_, i) =>
+      parcela({ id: `p${i}`, parcela_numero: i + 1, parcela_total: 40, link_fatura: `https://www.asaas.com/i/${'k'.repeat(20)}${i}` }),
+    )
+    c.resumo = { ...c.resumo, vencidas: muitas }
+    const t = texto({ cobrancas: { ok: true, valor: c } }, TUDO)
+    expect(t.endsWith('[… truncated]')).toBe(true)
+    const links = t.match(/https:\/\/\S+/g) ?? []
+    for (const link of links) expect(link).toMatch(/^https:\/\/www\.asaas\.com\/i\/k{20}\d+$/)
+  })
+
+  it('limitarBloco não corta palavra', () => {
+    expect(limitarBloco('aaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbb', 20)).toBe('aaaa\n[… truncated]')
+  })
+})

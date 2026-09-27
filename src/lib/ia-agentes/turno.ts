@@ -2,7 +2,8 @@
 // O TURNO do agente de IA (docs/PLANO-agentes-de-ia.md, D24–D27 e E5–E10).
 //
 // Um turno = reivindicar o pendente → conferir tudo de novo → (áudio) →
-// gerar → conferir de novo → PASSAR (D25) ou reservar e enviar → encerrar. A
+// gerar → ler as AÇÕES (F4) → conferir de novo → PASSAR (D25) ou reservar,
+// enviar e, com a resposta FORA, executar as ações → encerrar. A
 // ingestão só enfileira (`entrada.ts`), com o agente da etapa, o card e a
 // etapa; este módulo roda no `after()` do disparo ou na rede do cron.
 //
@@ -46,6 +47,21 @@
 //    que falha fica vazia — nenhum dos dois derruba o turno. O RETRATO do que
 //    entrou no pedido é gravado em `cb_ia_turnos.contexto` (1052), com a
 //    cerca de posse, antes da geração.
+//  - AÇÕES junto com a resposta (F4, D28): o modelo lista marcadores no fim
+//    (`acoes.ts`), sobre as opções numeradas que o pedido mostrou
+//    (`opcoesDoAgente`). O marcador NUNCA chega ao cliente; passagem e
+//    transferência VENCEM (as ações não executam) — inclusive o sentinela
+//    escrito de outro jeito (`[[ handoff ]]`); resposta sem texto além dos
+//    marcadores transfere; link que não veio do pedido nem da conversa RETÉM
+//    a resposta e transfere (`link_inventado`, com os links no `erro`). As
+//    ações executam DEPOIS de a resposta SAIR (`executar-acoes.ts`): reserva
+//    recusada, envio recusado ou incerto = nada executa — a ação não acontece
+//    sem a resposta que a explica, e a automação que ela dispara não fala
+//    antes do agente. O dreno do funil (card movido) vem depois das ações.
+//    Toda ação pedida vai para o registro do turno (`cb_ia_turnos.acoes`),
+//    também as que não executaram, com o motivo (`passagem`,
+//    `transferencia`, `envio_falhou`) — gravado no encerramento, com a cerca
+//    de posse.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -69,6 +85,7 @@ import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { transcreverAudio } from '@/lib/transcricao/transcrever'
 
 import { lerOQueOAgenteVe } from './acesso'
+import { lerAcoes, linksInventados, registroDaRecusa, resolverAcoes, type RegistroDeAcao } from './acoes'
 import type { IaAgente } from './agente'
 import { consultaDaUltimaMensagem, PRAZO_DO_EMBEDDING_MS } from './conhecimento'
 import { lerConversaDaConexao } from './contexto'
@@ -81,6 +98,8 @@ import {
   RESERVA_DO_ENVIO_MS,
   type TurnoNaFila,
 } from './fila'
+import { anotarNaConversa, executarAcoes } from './executar-acoes'
+import { opcoesDoAgente } from './ferramentas'
 import { dentroDoHorario } from './horario'
 import { lerPassagem, montarPedidoDoAgente } from './pedido'
 import { abreTurno, lerQuemAtende, quemResponde, TIPOS_QUE_ABREM_TURNO, type CardDoContato } from './quem-responde'
@@ -117,7 +136,8 @@ interface Gatilho {
 /** Como o turno termina. `abandonado` = a posse foi perdida: nada se escreve. */
 export type Desfecho =
   | { status: 'respondeu'; mensagemEnviadaId: string; erro?: string }
-  | { status: 'transferiu'; motivo: MotivoDeTransferencia }
+  /** `erro`: o que vai para `cb_ia_turnos.erro` no lugar do motivo (os links inventados). */
+  | { status: 'transferiu'; motivo: MotivoDeTransferencia; erro?: string }
   | { status: 'incerto'; erro: string }
   | {
       status: 'passou' | 'descartado' | 'pausado_no_meio' | 'fora_do_horario' | 'sem_resposta' | 'falhou'
@@ -252,28 +272,12 @@ export async function transferirParaGente(
     }
 
     const { autor, texto } = await textosDaTransferencia(args.nomeDoAgente, args.motivo)
-    await anotar(db, { ...args, autor, texto })
+    await anotarNaConversa(db, { ...args, autor, texto })
     return 'transferiu'
   } catch (err) {
     console.error('[ia-agentes] transferência falhou:', err)
     return 'falhou'
   }
-}
-
-/** Anotação interna sem usuário (autor congelado "IA · <agente>"). Melhor esforço. */
-async function anotar(
-  db: SupabaseClient,
-  args: { accountId: string; conversationId: string; contactId: string | null; autor: string; texto: string },
-): Promise<void> {
-  const { error } = await db.from('cb_conversation_notes').insert({
-    account_id: args.accountId,
-    conversation_id: args.conversationId,
-    contact_id: args.contactId,
-    author_user_id: null,
-    autor_nome: args.autor,
-    texto: args.texto,
-  })
-  if (error) console.error('[ia-agentes] anotação da IA falhou:', error.message)
 }
 
 // ------------------------------------------------------------
@@ -620,7 +624,7 @@ async function passar(
   void drenarEventosDeFunil().catch(() => {})
 
   const { autor, texto } = await textosDaPassagem(conferido.agente.nome, destino.nome)
-  await anotar(db, {
+  await anotarNaConversa(db, {
     accountId: turno.account_id,
     conversationId: turno.conversation_id,
     contactId: conferido.contactId,
@@ -699,6 +703,12 @@ interface Andamento {
   /** Algum áudio da rajada foi transcrito NESTA rodada (`prepararAudios`). */
   transcreveu: boolean
   /**
+   * O registro das ações pedidas (F4): as executadas e as que não executaram,
+   * com o motivo. Gravado no encerramento, junto com o desfecho (cerca de
+   * posse). Nulo = o modelo não pediu nada.
+   */
+  acoes: RegistroDeAcao[] | null
+  /**
    * Cancela o "digitando…" (`mostrarDigitando`). O envio o CONCLUI antes de a
    * resposta sair (`concluirDigitando`), e `executarTurno` o cancela em TODA
    * saída — senão o pedido em voo chegava à Meta depois de o turno desistir.
@@ -771,16 +781,20 @@ async function conduzir(
   const limite = checkRateLimit(`ai-autoreply:${turno.account_id}`, RATE_LIMITS.aiAutoReplyAccount)
   if (!limite.success) return { status: 'sem_resposta', erro: 'limite de respostas por minuto da conta' }
 
-  // O que o agente vê além da conversa (F3), lido antes de medir o prazo que
-  // sobra para gerar. Nunca lança.
-  const visto = await lerOQueOAgenteVe(db, {
-    accountId: turno.account_id,
-    agente,
-    contactId: primeira.contactId,
-    dealId: turno.deal_id,
-    consulta: consultaDaUltimaMensagem(conversa),
-    agora: new Date(),
-  })
+  // O que o agente vê além da conversa (F3) e o que ele pode FAZER (F4, as
+  // opções numeradas do pedido), lidos antes de medir o prazo que sobra para
+  // gerar. Nenhum dos dois lança; agente sem ferramenta não lê nada.
+  const [visto, opcoesDeAcao] = await Promise.all([
+    lerOQueOAgenteVe(db, {
+      accountId: turno.account_id,
+      agente,
+      contactId: primeira.contactId,
+      dealId: turno.deal_id,
+      consulta: consultaDaUltimaMensagem(conversa),
+      agora: new Date(),
+    }),
+    opcoesDoAgente(db, turno.account_id, agente.ferramentas),
+  ])
   // O RETRATO (1052): é o que responde "por que a IA fez isso?" depois que a
   // ficha, o card ou o documento mudarem. Escrita separada do desfecho, com a
   // cerca de posse: ERRO de banco é melhor esforço (segue), mas ZERO linhas é
@@ -817,19 +831,22 @@ async function conduzir(
     sinal: andamento.cancelarDigitando.signal,
   })
 
+  const pedido = montarPedidoDoAgente({
+    instrucoes: agente.instrucoes,
+    regras: agente.regras,
+    agora: new Date(),
+    passagens: opcoes.map((a) => ({ nome: a.nome, descricao: a.descricao })),
+    blocos: visto.blocos,
+    conhecimento: visto.trechos.map((t) => t.content),
+    acoes: opcoesDeAcao,
+  })
+
   let texto: string
   let handoff: boolean
   try {
     const r = await generateReply({
       config: configDoAgente(agente, apiKey),
-      systemPrompt: montarPedidoDoAgente({
-        instrucoes: agente.instrucoes,
-        regras: agente.regras,
-        agora: new Date(),
-        passagens: opcoes.map((a) => ({ nome: a.nome, descricao: a.descricao })),
-        blocos: visto.blocos,
-        conhecimento: visto.trechos.map((t) => t.content),
-      }),
+      systemPrompt: pedido,
       messages: conversa,
       timeoutMs: restante,
     })
@@ -857,8 +874,42 @@ async function conduzir(
     turnoId: turno.id,
   })
 
-  if (handoff || !texto.trim()) return { status: 'transferiu', motivo: 'sentinela' }
+  // As ações (F4): o texto ao cliente sai SEM nenhum marcador. As pedidas são
+  // resolvidas já (os ids das opções do pedido); o que não executa — por
+  // transferência, passagem ou envio que não saiu — vai para o registro com o
+  // motivo, como o Playground mostra.
+  const lidas = lerAcoes(texto)
+  const { aceitas, recusadas } = resolverAcoes(lidas.pedidas, opcoesDeAcao)
+  const recusasDaLeitura = [...lidas.recusadas, ...recusadas].map(registroDaRecusa)
+  const naoExecutadas = (erro: 'passagem' | 'transferencia' | 'envio_falhou'): RegistroDeAcao[] | null =>
+    aceitas.length + recusasDaLeitura.length === 0
+      ? null
+      : [
+          ...aceitas.map((a) => ({ tipo: a.tipo, alvo: { id: a.id, nome: a.nome }, ok: false, erro })),
+          ...recusasDaLeitura,
+        ]
+
+  // A transferência VENCE tudo: o sentinela exato (`generateReply`), o
+  // escrito de outro jeito (`[[ handoff ]]`, `[[Handoff]]`) e a resposta vazia.
+  if (handoff || lidas.transferir || !texto.trim()) {
+    andamento.acoes = naoExecutadas('transferencia')
+    return { status: 'transferiu', motivo: 'sentinela' }
+  }
   const passagem = lerPassagem(texto)
+  if (passagem === null) {
+    // Só marcadores, sem texto ao cliente: transfere (o protocolo o diz ao modelo).
+    if (!lidas.texto) {
+      andamento.acoes = naoExecutadas('transferencia')
+      return { status: 'transferiu', motivo: 'sentinela' }
+    }
+    // Link que não veio do pedido nem da conversa (5.6): a resposta é RETIDA,
+    // e os links vão para o `erro` do turno — a equipe vê o que seria enviado.
+    const inventados = linksInventados(lidas.texto, [pedido, ...conversa.map((m) => m.content)])
+    if (inventados.length > 0) {
+      andamento.acoes = naoExecutadas('transferencia')
+      return { status: 'transferiu', motivo: 'link_inventado', erro: `link inventado: ${inventados.join(' ')}` }
+    }
+  }
 
   // O "digitando…" termina (ou é cancelado, passados 2 s) ANTES da última
   // conferência, e não entre a reserva e o envio.
@@ -867,15 +918,25 @@ async function conduzir(
   // De novo, com a resposta pronta: o advogado pode ter respondido, o card
   // pode ter mudado de etapa, a conversa pode ter sido pausada ou o agente
   // desligado enquanto o modelo pensava.
+  // Daqui até a reserva, toda saída é "a resposta não saiu": as ações pedidas
+  // vão ao registro assim, para a aba Turnos mostrar o que ficou de fora
+  // (Codex, #316 — a pausa na reserva as fazia sumir).
+  const semEnvio = (desfecho: Desfecho): Desfecho => {
+    andamento.acoes = naoExecutadas('envio_falhou')
+    return desfecho
+  }
   const segunda = await conferir(db, turno, gatilho)
-  if (!segunda.ok) return segunda.desfecho
+  if (!segunda.ok) return semEnvio(segunda.desfecho)
 
-  if (passagem !== null) return passar(db, turno, gatilho, segunda, opcoes, passagem)
+  if (passagem !== null) {
+    andamento.acoes = naoExecutadas('passagem')
+    return passar(db, turno, gatilho, segunda, opcoes, passagem)
+  }
 
   const dono = await donoDaConta(db, turno.account_id)
-  if (!dono) return { status: 'falhou', erro: 'a conta não tem dono' }
+  if (!dono) return semEnvio({ status: 'falhou', erro: 'a conta não tem dono' })
   const contactId = segunda.contactId
-  if (!contactId) return { status: 'descartado', erro: 'conversa sem contato' }
+  if (!contactId) return semEnvio({ status: 'descartado', erro: 'conversa sem contato' })
 
   // A ÚLTIMA palavra, no banco, numa escrita atômica: o turno ainda
   // `rodando` e da posse; conversa aberta e sem pausa; o card aberto e na
@@ -886,12 +947,15 @@ async function conduzir(
     p_turno_id: turno.id,
     p_rodando_desde: turno.rodando_desde,
   })
-  if (erroReserva) return { status: 'falhou', erro: `reservar a resposta falhou: ${erroReserva.message}` }
-  if (reserva === 'teto') return { status: 'transferiu', motivo: 'teto' }
-  if (reserva === 'pausada') return { status: 'pausado_no_meio', erro: 'pausada antes do envio' }
+  if (erroReserva) return semEnvio({ status: 'falhou', erro: `reservar a resposta falhou: ${erroReserva.message}` })
+  if (reserva === 'teto') {
+    andamento.acoes = naoExecutadas('transferencia')
+    return { status: 'transferiu', motivo: 'teto' }
+  }
+  if (reserva === 'pausada') return semEnvio({ status: 'pausado_no_meio', erro: 'pausada antes do envio' })
   // Qualquer outra recusa descarta, sem enviar e sem transferir: transferir
   // por um motivo que não é teto pausaria a IA até alguém clicar "Retomar".
-  if (reserva !== 'ok') return { status: 'descartado', erro: `a reserva recusou o envio: ${String(reserva)}` }
+  if (reserva !== 'ok') return semEnvio({ status: 'descartado', erro: `a reserva recusou o envio: ${String(reserva)}` })
 
   // A posse, carimbando o começo do envio (o recolhedor distingue "morreu
   // antes de enviar" de "morreu no meio"). ⚠️ DEPOIS da reserva: "`rodando`
@@ -908,13 +972,14 @@ async function conduzir(
   })
   if (!posse) return { status: 'abandonado' }
 
+  let enviado: Desfecho
   try {
     const r = await engineSendText({
       accountId: turno.account_id,
       userId: dono,
       conversationId: turno.conversation_id,
       contactId,
-      text: texto,
+      text: lidas.texto,
       aiGenerated: true,
       preferredChannelId: turno.canal_id,
       exigirCanal: true,
@@ -928,16 +993,54 @@ async function conduzir(
       },
     })
     await marcarUltimoAgente(db, turno, agente.id)
-    return { status: 'respondeu', mensagemEnviadaId: r.whatsapp_message_id }
+    enviado = { status: 'respondeu', mensagemEnviadaId: r.whatsapp_message_id }
   } catch (err) {
     if (err instanceof EnviadaSemRegistroError) {
       await marcarUltimoAgente(db, turno, agente.id)
-      return { status: 'respondeu', mensagemEnviadaId: err.providerMessageId, erro: err.message }
+      enviado = { status: 'respondeu', mensagemEnviadaId: err.providerMessageId, erro: err.message }
+    } else {
+      const detalhe = err instanceof Error ? err.message : String(err)
+      enviado = nadaSaiu(err, andamento.tentouEnviar)
+        ? { status: 'falhou', erro: `envio recusado: ${detalhe}` }
+        : { status: 'incerto', erro: `não dá para saber se saiu: ${detalhe}` }
     }
-    const detalhe = err instanceof Error ? err.message : String(err)
-    if (nadaSaiu(err, andamento.tentouEnviar)) return { status: 'falhou', erro: `envio recusado: ${detalhe}` }
-    return { status: 'incerto', erro: `não dá para saber se saiu: ${detalhe}` }
   }
+
+  // A resposta NÃO saiu (recusada) ou não se sabe (incerto): nenhuma ação
+  // executa — a ação sem a resposta que a explica deixaria o cliente sem
+  // entender, e o incerto já vai para gente.
+  if (enviado.status !== 'respondeu') {
+    andamento.acoes = naoExecutadas('envio_falhou')
+    return enviado
+  }
+
+  // As AÇÕES (F4), com a resposta FORA. Os ids são do servidor (as opções
+  // numeradas do pedido); contato, card e conversa são os do turno. Falha de
+  // uma ação não segura as outras; o registro vai para o turno no
+  // encerramento, com a cerca de posse.
+  if (aceitas.length > 0) {
+    const feitas = await executarAcoes(
+      db,
+      {
+        accountId: turno.account_id,
+        conversationId: turno.conversation_id,
+        contactId,
+        dealId: turno.deal_id,
+        canalId: turno.canal_id,
+        agente: { id: agente.id, nome: agente.nome },
+        dono,
+      },
+      aceitas,
+    )
+    andamento.acoes = [...feitas.registros, ...recusasDaLeitura]
+    // O card mudou de etapa (ação `mover_etapa`): a automação da etapa nova
+    // roda já, como a tela faz — DEPOIS da resposta e das ações. A rede do
+    // cron cuida se isto falhar.
+    if (feitas.moveu) void drenarEventosDeFunil().catch(() => {})
+  } else if (recusasDaLeitura.length > 0) {
+    andamento.acoes = recusasDaLeitura
+  }
+  return enviado
 }
 
 // ------------------------------------------------------------
@@ -984,7 +1087,7 @@ async function encerrar(
 
   const erro =
     desfecho.status === 'transferiu'
-      ? desfecho.motivo
+      ? (desfecho.erro ?? desfecho.motivo)
       : 'erro' in desfecho
         ? (desfecho.erro ?? null)
         : null
@@ -996,6 +1099,7 @@ async function encerrar(
     erro,
     terminado_em: terminadoEm,
     ...(desfecho.status === 'respondeu' ? { mensagem_enviada_id: desfecho.mensagemEnviadaId } : {}),
+    ...(andamento.acoes ? { acoes: andamento.acoes } : {}),
   })
   if (!escreveu) return
 
@@ -1018,7 +1122,7 @@ async function encerrar(
       .from('cb_ia_turnos')
       .update({
         status: 'pausado_no_meio',
-        erro: `não transferiu (${desfecho.motivo}): a conversa já estava pausada ou encerrada`,
+        erro: `não transferiu (${desfecho.erro ?? desfecho.motivo}): a conversa já estava pausada ou encerrada`,
         updated_at: new Date().toISOString(),
       })
       .eq('id', turno.id)
@@ -1061,6 +1165,7 @@ export async function executarTurno(turnoId: string): Promise<void> {
     tentouEnviar: false,
     enviadaId: null,
     transcreveu: false,
+    acoes: null,
     cancelarDigitando: new AbortController(),
   }
   let desfecho: Desfecho

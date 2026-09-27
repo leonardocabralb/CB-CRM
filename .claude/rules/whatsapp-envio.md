@@ -155,6 +155,34 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
   interativos. O `substituicao` de `startFlowForContact` carimba a run
   substituída como gente (`stopped_by_agent`/`replaced_by_agent`), não como
   regra.
+- ⚠️ **O "Enviar mídia" do robô manda arquivo do ACERVO (`acervo_id`), áudio
+  incluso, e COPIA o item a cada envio** (`midia-do-no.ts` →
+  `copiarDoAcervo`): a mensagem no fio aponta para a cópia, e apagar o item do
+  acervo (que remove o objeto) não deixa "indisponível" o histórico que o robô
+  atendeu. Item apagado = run `failed` com o motivo, nunca um link morto à
+  Meta. A cópia NÃO é apagada quando o envio falha: a Meta baixa a mídia
+  DEPOIS de aceitar, e um erro tardio com a cópia apagada quebraria a mídia no
+  celular do cliente. Áudio nunca leva legenda (932), em três lugares
+  (validação, tela, motor).
+- ⚠️ **`salvar_em` grava a resposta na FICHA** (`resposta-na-ficha.ts`): o
+  texto do `collect_input` ou o TÍTULO da opção tocada. Nome só no
+  `collect_input`, e o valor é CONVERSA, não formulário: passa por
+  `nomeDigitadoNoChat` ("Bom dia", emoji, frase e número não viram nome;
+  "Meu nome é Maria" vira "Maria") e só FIXA onde ninguém fixou ainda
+  (`.is('nome_fixado_em', null)` no UPDATE — a classe "fixa-se-livre" do
+  pino `nome-fixado.chamadores.test.ts`). Campo da conta conferido (service
+  role); a tela só oferece o campo que serve ao nó (`campoServeAoNo`: nada de
+  número nem do E-mail espelhado em botões/lista); número "1.000" é mil; o
+  E-mail espelhado exige forma de e-mail; data só com instante de fuso
+  escrito; vazio não apaga. Falha NUNCA segura o robô (evento
+  `save_answer_failed`), e o evento guarda o destino, nunca o texto. Ativar o
+  robô confere o arquivo do acervo e o campo apontados
+  (`referencias-do-robo.ts`, na rota de ativação).
+- ⚠️ **Nó NOVO no robô exige MIGRATION**: `flow_nodes.node_type` tem CHECK
+  com a lista fechada (0016), e o `PUT /api/flows/[id]` apaga TODOS os nós
+  antes de inserir, sem transação — um tipo recusado pelo CHECK deixa o robô
+  sem nó nenhum. Opção nova num nó que já existe (`config` é JSONB) não
+  precisa.
 
 ### Modelos da Meta
 

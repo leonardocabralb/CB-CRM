@@ -2,8 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { supabaseAdmin } from '@/lib/automations/admin-client';
-import { CHAT_MEDIA_BUCKET } from '@/lib/storage/buckets';
-import { buildMediaPath } from '@/lib/storage/media-path';
+import { copiarDoAcervo } from '@/lib/acervo/copiar';
 
 /**
  * Preparar o envio de um item do acervo: COPIA o objeto para o caminho normal
@@ -18,8 +17,9 @@ import { buildMediaPath } from '@/lib/storage/media-path';
  *   2. num CRM jurídico o que FOI ENVIADO não muda depois. Com a cópia, apagar
  *      ou trocar o item não mexe na mensagem que o cliente recebeu.
  *
- * `copy()` roda dentro do Storage: nada trafega por aqui, nem para baixar nem
- * para subir.
+ * A cópia mora em `copiarDoAcervo` (`src/lib/acervo/copiar.ts`) desde que o
+ * nó "Enviar mídia" do robô passou a mandar arquivo do acervo (26/09/2026):
+ * uma regra só para os dois chamadores.
  *
  * Papel `agent` — quem envia mensagem envia do acervo. Montar o acervo é que é
  * de admin.
@@ -32,43 +32,27 @@ export async function POST(
     const ctx = await requireRole('agent');
     const { id } = await params;
 
-    const admin = supabaseAdmin();
-    const { data: item, error } = await admin
-      .from('cb_media_library')
-      .select('id, tipo, media_path, filename, mime_type')
-      .eq('id', id)
-      .eq('account_id', ctx.accountId)
-      .maybeSingle();
+    const copia = await copiarDoAcervo(supabaseAdmin(), ctx.accountId, id);
 
-    if (error) {
-      // Erro de banco NÃO é "não encontrado" (regra do projeto): virar 404
-      // aqui faria o atendente cadastrar o arquivo de novo.
-      console.error('[POST /api/cb/acervo/copiar] lookup:', error.message);
-      return NextResponse.json({ error: 'Failed to load item' }, { status: 500 });
-    }
-    if (!item) {
-      return NextResponse.json({ error: 'Item not found' }, { status: 404 });
-    }
-
-    const destino = buildMediaPath(ctx.accountId, item.filename as string);
-    const { error: erroCopia } = await admin.storage
-      .from(CHAT_MEDIA_BUCKET)
-      .copy(item.media_path as string, destino);
-
-    if (erroCopia) {
-      console.error('[POST /api/cb/acervo/copiar] copy:', erroCopia.message);
+    if (!copia.ok) {
+      if (copia.erro === 'leitura') {
+        // Erro de banco NÃO é "não encontrado" (regra do projeto): virar 404
+        // aqui faria o atendente cadastrar o arquivo de novo.
+        console.error('[POST /api/cb/acervo/copiar] lookup:', copia.detalhe);
+        return NextResponse.json({ error: 'Failed to load item' }, { status: 500 });
+      }
+      if (copia.erro === 'nao_encontrado') {
+        return NextResponse.json({ error: 'Item not found' }, { status: 404 });
+      }
+      console.error('[POST /api/cb/acervo/copiar] copy:', copia.detalhe);
       return NextResponse.json({ error: 'COPY_FAILED' }, { status: 502 });
     }
 
-    const {
-      data: { publicUrl },
-    } = admin.storage.from(CHAT_MEDIA_BUCKET).getPublicUrl(destino);
-
     return NextResponse.json({
-      kind: item.tipo,
-      mediaUrl: publicUrl,
-      path: destino,
-      filename: item.filename,
+      kind: copia.tipo,
+      mediaUrl: copia.mediaUrl,
+      path: copia.path,
+      filename: copia.filename,
     });
   } catch (error) {
     return toErrorResponse(error);

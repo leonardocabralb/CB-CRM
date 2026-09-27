@@ -2361,30 +2361,19 @@ async function runStep(
       const hoje = diaNoFuso(new Date(), FUSO_DO_ESCRITORIO);
       const vence_em = somarDias(hoje, Number(cfg.prazo_em_dias) || 0);
 
-      // Uma consulta que responde três coisas: quem é membro desta conta, como
-      // traduzir o `profiles.id` do card para o id de LOGIN, e quais nomes
-      // congelar nas colunas. São os membros de UMA conta (uma dezena).
-      const autorId = args.automation.user_id;
+      // Uma consulta que responde duas coisas: quem é membro desta conta e
+      // como traduzir o `profiles.id` do card para o id de LOGIN. São os
+      // membros de UMA conta (uma dezena). Os nomes congelados nas colunas
+      // saem de `criarTarefaComAviso`.
       const { data: perfis, error: erroPerfis } = await db
         .from('profiles')
-        .select('id, user_id, full_name, email')
+        .select('id, user_id')
         .eq('account_id', args.automation.account_id);
       if (erroPerfis)
         throw new Error(
           `create_task: leitura de perfis falhou: ${erroPerfis.message}`
         );
-      const membros = (perfis ?? []) as {
-        id?: string;
-        user_id: string;
-        full_name?: string | null;
-        email?: string | null;
-      }[];
-
-      const nomeDe = (id: string): string | null => {
-        const p = membros.find((x) => x.user_id === id);
-        const nome = p?.full_name?.trim();
-        return nome || (p?.email ?? null);
-      };
+      const membros = (perfis ?? []) as { id?: string; user_id: string }[];
 
       // Quem está atribuído AGORA (Fase 2.4), já como id de LOGIN. ⚠️ O card
       // guarda `profiles.id`, a conversa o id de LOGIN — ver
@@ -2422,64 +2411,127 @@ async function runStep(
       const responsavel = escolha.userId;
       const pelaReserva = frase ? ` — ${frase}` : '';
 
-      const { data: tarefa, error: erroTarefa } = await db
-        .from('cb_tasks')
-        .insert({
-          account_id: args.automation.account_id,
-          contact_id: args.contactId,
-          // O AUTOR da automação, que é quem o projeto usa como responsável
-          // de registro em todo caminho sem gente na tela. Pode ser null se
-          // ele já saiu — a coluna é ON DELETE SET NULL de qualquer forma.
-          criador_user_id: autorId,
-          responsavel_user_id: responsavel,
-          criador_nome: nomeDe(autorId),
-          responsavel_nome: nomeDe(responsavel),
-          titulo,
-          descricao,
-          vence_em,
-          vence_as: hora,
-          importante: cfg.importante === true,
-          tipo: 'tarefa',
-        })
-        .select('id')
-        .single();
-      if (erroTarefa)
-        throw new Error(`create_task falhou: ${erroTarefa.message}`);
-
-      // ⚠️ AVISA MESMO QUANDO O RESPONSÁVEL É O AUTOR DA AUTOMAÇÃO — e aqui
-      // divergimos da rota de propósito. Lá o silêncio existe porque a pessoa
-      // ACABOU de escrever a tarefa e não quer sino do próprio gesto; aqui
-      // ela escreveu uma REGRA, possivelmente meses antes, e o aviso é o
-      // ponto: é ele que diz que um contrato fechou agora.
-      //
-      // Best-effort, como na rota: perder o sino é chato, perder a tarefa que
-      // a automação abriu é pior. O passo não falha por causa dele.
-      const { error: erroSino } = await db.from('notifications').insert({
-        account_id: args.automation.account_id,
-        user_id: responsavel,
-        type: 'task_assigned',
-        // Nulo de propósito: a tela roteia por `task_id`; com
-        // `conversation_id` o clique cairia no fio em vez da tarefa.
-        contact_id: args.contactId,
-        task_id: tarefa.id,
-        actor_user_id: autorId,
+      const { tarefaId, avisou } = await criarTarefaComAviso(db, {
+        accountId: args.automation.account_id,
+        contactId: args.contactId,
+        // O AUTOR da automação, que é quem o projeto usa como responsável
+        // de registro em todo caminho sem gente na tela. Pode ser null se
+        // ele já saiu — a coluna é ON DELETE SET NULL de qualquer forma.
+        autorId: args.automation.user_id,
+        responsavelUserId: responsavel,
+        titulo,
+        descricao,
+        venceEm: vence_em,
+        venceAs: hora,
+        importante: cfg.importante === true,
+        // ⚠️ AVISA MESMO QUANDO O RESPONSÁVEL É O AUTOR DA AUTOMAÇÃO — e aqui
+        // divergimos da rota de propósito. Lá o silêncio existe porque a
+        // pessoa ACABOU de escrever a tarefa e não quer sino do próprio
+        // gesto; aqui ela escreveu uma REGRA, possivelmente meses antes, e o
+        // aviso é o ponto: é ele que diz que um contrato fechou agora.
         // Texto cru, sem dicionário — como o trigger da 027 e a rota.
-        title: `A automação "${args.automation.name}" abriu uma tarefa para você`,
-        body: titulo,
+        tituloDoAviso: `A automação "${args.automation.name}" abriu uma tarefa para você`,
       });
-      if (erroSino) {
-        console.error(
-          '[automations] create_task: aviso não saiu:',
-          erroSino.message
-        );
-        return `tarefa criada (${tarefa.id}), sem aviso${pelaReserva}`;
-      }
-      return `tarefa criada (${tarefa.id})${pelaReserva}`;
+      return avisou
+        ? `tarefa criada (${tarefaId})${pelaReserva}`
+        : `tarefa criada (${tarefaId}), sem aviso${pelaReserva}`;
     }
 
     default:
       return `unknown step: ${step.step_type}`;
   }
+}
+
+// ------------------------------------------------------------
+// Criar tarefa — o miolo do passo `create_task`, exportado para o agente de
+// IA (a ação `criar_tarefa`, F4 do docs/PLANO-agentes-de-ia.md): UMA escrita
+// para os dois, com as mesmas cercas.
+// ------------------------------------------------------------
+
+/**
+ * Cria a tarefa e o aviso no sino do responsável. O responsável tem de ser
+ * MEMBRO da conta (a mesma consulta devolve os nomes que as colunas
+ * congelam). Lança com o motivo quando a tarefa não nasce; o aviso é melhor
+ * esforço: perder o sino é chato, perder a tarefa é pior (`avisou: false`).
+ */
+export async function criarTarefaComAviso(
+  db: ReturnType<typeof supabaseAdmin>,
+  args: {
+    accountId: string;
+    contactId: string;
+    /** Quem aparece como criador (e ator do aviso). Pode ser nulo. */
+    autorId: string | null;
+    responsavelUserId: string;
+    titulo: string;
+    descricao: string | null;
+    /** `AAAA-MM-DD`, no fuso do escritório. */
+    venceEm: string;
+    /** `HH:MM`; nulo = o dia inteiro. */
+    venceAs: string | null;
+    importante: boolean;
+    tituloDoAviso: string;
+  }
+): Promise<{ tarefaId: string; avisou: boolean }> {
+  // Uma consulta que responde duas coisas: o responsável é membro desta
+  // conta? E quais nomes congelar nas colunas.
+  const autorId = args.autorId;
+  const { data: perfis, error: erroPerfis } = await db
+    .from('profiles')
+    .select('user_id, full_name, email')
+    .eq('account_id', args.accountId)
+    .in('user_id', [autorId, args.responsavelUserId]);
+  if (erroPerfis)
+    throw new Error(
+      `create_task: leitura de perfis falhou: ${erroPerfis.message}`
+    );
+
+  const nomeDe = (id: string | null): string | null => {
+    const p = (perfis ?? []).find((x) => x.user_id === id);
+    const nome = (p?.full_name as string | null)?.trim();
+    return nome || ((p?.email as string | null) ?? null);
+  };
+  if (!(perfis ?? []).some((p) => p.user_id === args.responsavelUserId)) {
+    throw new Error('create_task: responsável não é membro desta conta');
+  }
+
+  const { data: tarefa, error: erroTarefa } = await db
+    .from('cb_tasks')
+    .insert({
+      account_id: args.accountId,
+      contact_id: args.contactId,
+      criador_user_id: autorId,
+      responsavel_user_id: args.responsavelUserId,
+      criador_nome: nomeDe(autorId),
+      responsavel_nome: nomeDe(args.responsavelUserId),
+      titulo: args.titulo,
+      descricao: args.descricao,
+      vence_em: args.venceEm,
+      vence_as: args.venceAs,
+      importante: args.importante,
+      tipo: 'tarefa',
+    })
+    .select('id')
+    .single();
+  if (erroTarefa) throw new Error(`create_task falhou: ${erroTarefa.message}`);
+
+  // Best-effort, como na rota: o passo não falha por causa do aviso.
+  const { error: erroSino } = await db.from('notifications').insert({
+    account_id: args.accountId,
+    user_id: args.responsavelUserId,
+    type: 'task_assigned',
+    // `conversation_id` fica nulo de propósito: a tela roteia por
+    // `task_id`; com ele o clique cairia no fio em vez da tarefa.
+    contact_id: args.contactId,
+    task_id: tarefa.id,
+    actor_user_id: autorId,
+    title: args.tituloDoAviso,
+    body: args.titulo,
+  });
+  if (erroSino) {
+    console.error('[automations] create_task: aviso não saiu:', erroSino.message);
+    return { tarefaId: tarefa.id as string, avisou: false };
+  }
+  return { tarefaId: tarefa.id as string, avisou: true };
 }
 
 // ------------------------------------------------------------
@@ -3089,7 +3141,7 @@ async function etapaAtualDoCard(
  * (`deal_status_fixado`; ausente no card do evento ainda não escrito). A RPC
  * só escreve se ele não mudou no meio.
  */
-async function negocioAlvo(
+export async function negocioAlvo(
   db: ReturnType<typeof supabaseAdmin>,
   args: ExecuteArgs
 ): Promise<{ id: string; statusVisto: DealStatus | null } | null> {

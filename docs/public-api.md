@@ -462,6 +462,31 @@ id yet):
 }
 ```
 
+> **Click-to-WhatsApp ads fill some tracking fields by themselves.** On an
+> official (Meta Cloud API) number, the first message after a customer taps
+> an ad carries the ad's `referral`, and the CRM writes it to the contact:
+> - `ctwa_clid` is **always overwritten** with the latest click (it is the
+>   click id the Conversions API needs). It belongs to the **contact**, not
+>   to a deal: it is the latest click on **any** ad of the account, so a
+>   contact with deals in two pipelines carries the click of whichever ad
+>   they tapped last. Before sending a conversion for a deal, check that
+>   the ad belongs to that deal's pipeline.
+> - `utm_source` (`instagram` for an Instagram link, otherwise `facebook`,
+>   meaning "Meta Ads": the ad link is usually the `fb.me` shortener even
+>   for Instagram placements), `utm_medium` (`paid`) and `id_do_anuncio` are
+>   written **only when the contact has no tracking field filled yet**. A
+>   tap on a boosted **post** (`source_type: post`) writes only
+>   `utm_source`. A `referral` with an unknown `source_type` writes only
+>   `ctwa_clid`.
+> - An origin your integration already stored is never replaced **by the
+>   CRM**; a later write of yours replaces the one the CRM stored, as with
+>   any field.
+> - The fields are looked up by these exact keys (`ctwa_clid`,
+>   `utm_source`, `utm_medium`, `id_do_anuncio`), in any category. The
+>   tracking seed in *Settings → Fields and tags* creates all four; a key
+>   that doesn't exist in the account is skipped (the CRM never creates
+>   fields). The ad's title, text and link are not stored.
+
 > **The `email` field mirrors the contact's e-mail.** Every account has
 > one custom field (usually keyed `email`) that is kept identical to the
 > contact's `email`, in both directions, by the database. Writing it here
@@ -1050,8 +1075,10 @@ the change:
   send** to them — from the CRM screens, from the paired phone, or through
   `POST /api/v1/messages` — so `channel` does not mean "inbound lead";
 - `automation` — an automation's "Create Deal", "Move deal to stage" or
-  "Mark won or lost" step — including an automation that one of your API
-  calls set off (a tag applied through this API, for instance);
+  "Mark won or lost" step, or a robot's (flow's) "Move card" block
+  (which also creates the card when the contact has none) — including an
+  automation that one of your API calls set off (a tag applied through this
+  API, for instance);
 - `api` — deal writes through this API (`POST`/`PATCH /api/v1/deals`);
 - `system` — anything else done without a signed-in user (a fix run
   straight in the database, for instance). Before migration `1040` this

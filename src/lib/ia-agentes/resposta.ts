@@ -20,7 +20,11 @@ export function respostaDoErro(err: unknown): NextResponse | null {
           ? 500
           : 400
   if (status === 500) console.error('[ia-agentes]', err.message)
-  // `etapa_ocupada` leva o nome do agente que já atua na etapa (D24).
-  const extra = err.codigo === 'etapa_ocupada' ? { outroAgente: err.outroAgente ?? null } : {}
+  // `etapa_ocupada` leva o nome do agente que já atua na etapa (D24); as
+  // recusas das ferramentas (F4) levam os ids recusados.
+  const extra = {
+    ...(err.codigo === 'etapa_ocupada' ? { outroAgente: err.outroAgente ?? null } : {}),
+    ...(err.itens ? { itens: err.itens } : {}),
+  }
   return NextResponse.json({ error: err.codigo, code: err.codigo, ...extra }, { status })
 }

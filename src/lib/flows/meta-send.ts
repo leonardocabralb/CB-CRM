@@ -457,6 +457,11 @@ const preview = legendaFinal?.trim() || `[${args.kind}]`
       // formato de defeito, porque ninguém desconfia do que já saiu. O envio
       // manual sempre gravou (`send-message.ts:783`); só este caminho não.
       media_url: args.link,
+      // CB (26/09/2026): o nome do DOCUMENTO como saiu (969). Sem ele a bolha
+      // cai no nome do objeto no bucket — com o arquivo do acervo, a CÓPIA
+      // ("<carimbo>-Contrato_padrao.pdf"). Só documento: nota de voz não tem
+      // nome, e foto e vídeo não o mostram.
+      ...(args.kind === 'document' && args.filename ? { media_filename: args.filename } : {}),
       message_id: waMessageId,
       remote_jid: outboundRemoteJid,
       from_me: ehEvolution(channel) ? true : null,

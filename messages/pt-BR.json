@@ -2317,7 +2317,49 @@
         "fileUploaded": "Arquivo enviado.",
         "uploadFailed": "O envio falhou.",
         "fileTooLarge": "O arquivo tem {size} MB — o limite é 16 MB.",
-        "defaultOptionTitle": "Opção"
+        "defaultOptionTitle": "Opção",
+        "audioLabel": "Áudio (do acervo de mídias)",
+        "pickFromLibrary": "Escolher do acervo de mídias",
+        "fromLibraryBadge": "do acervo",
+        "libraryItemMissing": "Este arquivo foi apagado do acervo — escolha outro, senão o robô falha neste passo.",
+        "audioHelp": "O áudio vem do acervo de mídias e sai sem legenda. Pela conexão por QR Code, sai sempre como nota de voz; pelo número oficial (API da Meta), só arquivo .ogg (Opus) aparece como nota de voz.",
+        "audioNotOggWarning": "Este áudio não é .ogg: no número oficial ele chega ao cliente como ARQUIVO de áudio, não como nota de voz. Para sair como nota de voz, converta-o para .ogg (Opus) e suba de novo no acervo.",
+        "mediaTypeFollowsLibrary": "O tipo do passo mudou para {tipo}, o do arquivo escolhido no acervo.",
+        "saveAnswerLabel": "Salvar a resposta na ficha",
+        "saveAnswerNone": "Não salvar",
+        "saveAnswerName": "Nome do contato",
+        "saveAnswerGeneralGroup": "Geral",
+        "saveAnswerUnknownField": "Campo apagado",
+        "saveAnswerHelpInput": "A resposta digitada vai para o campo escolhido. Nome do contato: só grava se a resposta parecer um nome (sem saudação, número ou frase), fica fixado (a mensagem seguinte do WhatsApp não troca) e não substitui um nome já fixado por alguém da equipe ou por uma integração.",
+        "saveAnswerHelpOptions": "O título da opção que o cliente tocar vai para o campo escolhido.",
+        "saveAnswerNoDates": "Campos de data não aparecem: o que o cliente digita não vira data.",
+        "saveAnswerNoDatesOrNumbers": "Campos de data, de número e o E-mail não aparecem: o título de uma opção não vira nenhum deles.",
+        "saveAnswerFreeTextInList": "O cliente digita livremente: a resposta é gravada como veio, mesmo fora das opções da lista — filtros e condições por opção podem não casar.",
+        "saveAnswerLoadError": "Não foi possível carregar os campos personalizados. Abra o passo de novo para tentar outra vez.",
+        "saveAnswerOrphan": "Este campo não existe mais ou não serve a este passo (campo de data; número ou e-mail num passo de botões ou lista). Escolha outro, senão a resposta não é salva.",
+        "saveAnswerNotInOptions": "Estas opções não existem na lista do campo e serão gravadas assim mesmo: {titulos}",
+        "saveAnswerChosenField": "Campo escolhido",
+        "movePipelineLabel": "Funil",
+        "movePickPipeline": "Escolha o funil",
+        "movePipelineChosen": "O funil escolhido",
+        "movePipelineMissing": "Funil apagado",
+        "moveStageLabel": "Etapa de destino",
+        "movePickStage": "Escolha a etapa",
+        "moveStageChosen": "A etapa escolhida",
+        "moveStageMissing": "Etapa apagada",
+        "moveLoading": "Carregando os funis…",
+        "moveLoadError": "Não foi possível carregar os funis e as etapas.",
+        "moveLoadRetry": "Tentar de novo",
+        "moveNoStages": "Este funil não tem etapas. Crie uma em Funis antes de usá-lo aqui.",
+        "moveDestinationMissing": "O destino escolhido aqui não existe mais. Escolha outro — o robô não pode ser ativado assim.",
+        "moveOriginLabel": "Só mover o card que estiver numa destas etapas",
+        "moveOriginAny": "Nenhuma marcada: o card é movido de qualquer etapa, de qualquer funil — inclusive o de um cliente com caso em andamento em outro funil, que sai de lá e vem para cá. Marque as etapas de onde o card pode sair para evitar isso.",
+        "moveOriginCount": "{count, plural, =1 {Só o card que estiver na etapa marcada é movido.} other {Só o card que estiver numa das # etapas marcadas é movido.}} Em qualquer outra, o card fica onde está e o robô segue.",
+        "moveOriginMissing": "{count, plural, =1 {Uma etapa marcada foi apagada} other {# etapas marcadas foram apagadas}} — o robô não pode ser ativado assim.",
+        "moveOriginRemoveMissing": "{count, plural, =1 {Tirar a etapa apagada} other {Tirar as # etapas apagadas}}",
+        "moveOriginMissingAll": "Sem nenhuma marcada, o card passa a vir de qualquer etapa, de qualquer funil — marque de novo as etapas de onde ele pode sair.",
+        "moveHelp": "O card é o que as automações mexeriam: o card aberto mais recente do contato (sem nenhum aberto, o perdido). Contato sem card ganha um, criado já na etapa de destino. Contato que só tem card ganho (cliente) não é mexido. O robô nunca para aqui: o que não moveu fica escrito em Execuções.",
+        "moveHelpOrder": "Se uma automação da etapa de destino aciona outro robô, deixe o Mover card por último, logo antes de Fim ou Transferir: em segundos o outro robô assume a conversa e este para. Na primeira mensagem do contato, o robô roda antes do funil da conexão: um Mover card logo no começo cria o card direto na etapa escolhida, e a etapa de entrada da conexão (com as automações dela) é pulada."
       },
       "categories": {
         "messaging": "Mensagens",
@@ -2356,6 +2398,10 @@
         "set_tag": {
           "label": "Etiquetar contato",
           "blurb": "Adiciona ou remove uma etiqueta do contato"
+        },
+        "move_deal_stage": {
+          "label": "Mover card de etapa",
+          "blurb": "Leva o card do contato a uma etapa do funil"
         },
         "handoff": {
           "label": "Transferir para atendente",
@@ -2403,7 +2449,12 @@
       "modeAdd": "Adicionar",
       "modeRemove": "Remover",
       "tagPicked": "{mode} etiqueta {tag}…",
-      "tagNone": "{mode} etiqueta (nenhuma escolhida)"
+      "tagNone": "{mode} etiqueta (nenhuma escolhida)",
+      "savesToProfile": "grava na ficha",
+      "moveNone": "Mover card (nenhuma etapa escolhida)",
+      "moveTo": "Mover o card para {etapa}",
+      "movePicked": "Mover o card para a etapa escolhida",
+      "moveFromOnly": "{count, plural, =1 {só de 1 etapa} other {só de # etapas}}"
     },
     "header": {
       "backToFlows": "Voltar para Fluxos",
@@ -4105,7 +4156,7 @@
           "desliga": "{falhas} falhas seguidas desligam o endereço, e o contador é do ENDEREÇO, não do evento: uma fila de avisos de negócio represada (com o agendador parado, por exemplo) sai de uma vez e, se o seu sistema estiver fora do ar nessa hora, ela sozinha pode somar as {falhas} — desligando junto os avisos de mensagem. Religue na aba Enviados; isso zera o contador.",
           "repeticao": "Não há ordem garantida — a única exceção: na mensagem que abre a conversa, <code>conversation.created</code> chega antes de <code>message.received</code>. Nos eventos de negócio, o <code>id</code> do envelope (igual a <code>data.event_id</code>) é estável, e descartar repetição por ele é OBRIGATÓRIO: um aviso de negócio interrompido por um reinício do servidor sai de novo, com o mesmo <code>id</code>.",
           "teste": "O botão Enviar teste manda dados fictícios com <code>\"test\": true</code>: filtre-os nos fluxos de produção.",
-          "negocio": "Nos eventos de negócio, <code>deal</code> é o negócio NA HORA DO ENVIO e <code>stage</code> é a etapa DESTE movimento — leia <code>stage</code>, não <code>deal.stage_id</code>. <code>assignee</code> é o responsável e <code>contact</code> traz etiquetas e <code>custom_fields</code>. <code>source</code> diz quem causou: <code>user</code> (alguém nas telas do CRM), <code>channel</code> (a conexão abriu o card na primeira mensagem, do cliente ou da equipe), <code>automation</code> (os passos “Criar negócio”, “Mover card de etapa” e “Marcar ganho ou perdido” das automações), <code>api</code> (a API de negócios: criar e mover pela chave) ou <code>system</code> (o resto, como uma correção feita direto no banco). <code>channel_id</code> é o número da conversa do contato naquele momento, e vem vazio quando ele ainda não conversou por nenhuma conexão — lead de webhook recebido (Typebot) ou do Calendly que ainda não escreveu, ficha criada pela API, card sem contato. Quem filtra por número decide o que fazer com esses.",
+          "negocio": "Nos eventos de negócio, <code>deal</code> é o negócio NA HORA DO ENVIO e <code>stage</code> é a etapa DESTE movimento — leia <code>stage</code>, não <code>deal.stage_id</code>. <code>assignee</code> é o responsável e <code>contact</code> traz etiquetas e <code>custom_fields</code>. <code>source</code> diz quem causou: <code>user</code> (alguém nas telas do CRM), <code>channel</code> (a conexão abriu o card na primeira mensagem, do cliente ou da equipe), <code>automation</code> (os passos “Criar negócio”, “Mover card de etapa” e “Marcar ganho ou perdido” das automações, e o bloco “Mover card de etapa” dos robôs), <code>api</code> (a API de negócios: criar e mover pela chave) ou <code>system</code> (o resto, como uma correção feita direto no banco). <code>channel_id</code> é o número da conversa do contato naquele momento, e vem vazio quando ele ainda não conversou por nenhuma conexão — lead de webhook recebido (Typebot) ou do Calendly que ainda não escreveu, ficha criada pela API, card sem contato. Quem filtra por número decide o que fazer com esses.",
           "atraso": "Aviso atrasado sai mesmo assim, com a hora real do fato em <code>occurred_at</code>.",
           "doisAvisos": "Levar um card a uma etapa marcada como ganho ou perdido gera dois avisos: mudou de etapa e mudou de status. Já o card CRIADO numa etapa assim nasce com esse status e gera só <code>deal.created</code>: quem espera o “ganho” confere também o <code>deal.status</code> desse aviso.",
           "migracao": "Carga em massa de migração de dados não gera aviso."
@@ -4126,7 +4177,7 @@
         "etapa": {
           "titulo": "Quando o lead mudar de etapa, avisar o n8n",
           "texto": "Cadastre um endereço com o evento <code>deal.stage_changed</code> e, no n8n, filtre pelo id da etapa (aba IDs) num nó <b>IF</b>:",
-          "laco": "⚠️ Se o seu fluxo mover o card pela API, isso gera outro aviso, com <code>source</code> igual a <code>api</code>, e o fluxo reagiria ao próprio movimento. O filtro acima o descarta. O passo “Mover card de etapa” das automações sai como <code>automation</code> e continua chegando — por isso o filtro não corta o laço que passa por uma automação: se uma automação da etapa para onde o fluxo leva o card o devolver à etapa observada, o fluxo o move de novo, e a guarda de ciclo do CRM não enxerga esse vaivém. Confira as automações da etapa de destino."
+          "laco": "⚠️ Se o seu fluxo mover o card pela API, isso gera outro aviso, com <code>source</code> igual a <code>api</code>, e o fluxo reagiria ao próprio movimento. O filtro acima o descarta. O passo “Mover card de etapa” das automações (e o bloco de mesmo nome dos robôs) sai como <code>automation</code> e continua chegando — por isso o filtro não corta o laço que passa por uma automação: se uma automação da etapa para onde o fluxo leva o card o devolver à etapa observada, o fluxo o move de novo, e a guarda de ciclo do CRM não enxerga esse vaivém. Confira as automações da etapa de destino."
         },
         "negocio": {
           "titulo": "Criar um negócio numa etapa",
@@ -4341,6 +4392,7 @@
       "configuracao": "Configuração",
       "acesso": "Acesso",
       "base": "Base de conhecimento",
+      "ferramentas": "Ferramentas",
       "playground": "Playground",
       "uso": "Uso",
       "turnos": "Turnos"
@@ -4388,8 +4440,94 @@
       "salvo": "Base de conhecimento salva.",
       "teto": "É o máximo por agente ({n} documentos): para marcar outro, desmarque um."
     },
+    "ferramentas": {
+      "explicacao": "O que este agente pode FAZER junto com a resposta, e com o quê. Nada ligado = o agente só conversa. As ações rodam depois de a resposta sair. Ele nunca fecha negócio, nunca manda mensagem para outro número e nunca mexe no Asaas — nem pelas automações que uma ação dispara.",
+      "soConversa": "Nada ligado: hoje este agente só conversa.",
+      "falhou": "Não foi possível carregar as opções.",
+      "buscar": "Buscar…",
+      "marcados": "{n, plural, =0 {Nenhum marcado} one {# marcado} other {# marcados}}",
+      "ligadaSemNada": "Nada marcado: ligado assim, o agente não tem o que escolher.",
+      "limite": "No máximo {max} por agente. Desmarque um para marcar outro.",
+      "nenhumNaBusca": "Nada com esse nome.",
+      "recusado": "Recusado ao salvar.",
+      "salvar": "Salvar ferramentas",
+      "salvo": "Ferramentas salvas.",
+      "tipoDesconhecido": "Outra ({tipo})",
+      "tipo": {
+        "mover_etapa": {
+          "nome": "Mover o card",
+          "dica": "Move o card do contato para uma das etapas marcadas. Nunca para etapa de ganho ou perdido."
+        },
+        "etiquetar": {
+          "nome": "Etiquetar",
+          "dica": "Aplica ao contato uma das etiquetas marcadas. As automações de etiqueta rodam como sempre."
+        },
+        "tirar_etiqueta": {
+          "nome": "Tirar etiqueta",
+          "dica": "Tira do contato uma das etiquetas marcadas."
+        },
+        "preencher_campo": {
+          "nome": "Preencher campo",
+          "dica": "Preenche um dos campos marcados com o que o cliente disse. Valor vazio não apaga."
+        },
+        "criar_tarefa": {
+          "nome": "Criar tarefa",
+          "dica": "Cria uma tarefa para hoje, ligada ao contato, para um dos membros marcados."
+        },
+        "executar_automacao": {
+          "nome": "Executar automação",
+          "dica": "Executa uma das automações marcadas nesta conversa."
+        }
+      },
+      "nenhum": {
+        "mover_etapa": "A conta não tem etapas de funil.",
+        "etiquetar": "A conta não tem etiquetas.",
+        "tirar_etiqueta": "A conta não tem etiquetas.",
+        "preencher_campo": "A conta não tem campos personalizados.",
+        "criar_tarefa": "A conta não tem membros.",
+        "executar_automacao": "A conta não tem automações."
+      },
+      "bloqueio": {
+        "etapaDeResultado": "Etapa de ganho/perdido — a IA não fecha negócio.",
+        "campoVigiado": "Data vigiada por um lembrete — a automação do lembrete dispararia depois, sozinha.",
+        "foraDaD5": "Indisponível: {motivo}.",
+        "aguardar": "Indisponível: tem um passo “Aguardar” — a IA só executa automação que termina na hora (a retomada não confere o agente).",
+        "cascata": {
+          "etapa": "Indisponível: uma automação que dispara quando o card entra nesta etapa {motivo}.",
+          "etiquetar": "Indisponível: uma automação que dispara quando esta etiqueta é aplicada {motivo}.",
+          "tirar": "Indisponível: uma automação que dispara quando esta etiqueta sai do contato {motivo}."
+        }
+      },
+      "campo": {
+        "text": "Texto",
+        "datetime": "Data",
+        "select": "Lista",
+        "number": "Número",
+        "email": "E-mail"
+      },
+      "campoOpcoes": "Opções: {opcoes}",
+      "foraDaD5": {
+        "send_to_number": "manda mensagem para outro número",
+        "send_webhook": "envia dados para fora do CRM (webhook)",
+        "status_de_resultado": "marca o negócio como ganho ou perdido",
+        "etapa_de_resultado": "move o card para etapa de ganho ou perdido",
+        "run_flow": "inicia um robô (fluxo)",
+        "campo_vigiado": "preenche uma data vigiada por lembrete",
+        "aguardar": "tem um passo “Aguardar”",
+        "outro": "tem um passo que a IA não pode disparar"
+      },
+      "recusa": {
+        "malformada": "marcador ilegível",
+        "teto": "passou do limite de ações por resposta",
+        "nao_liberada": "ação não liberada neste agente",
+        "fora_da_lista": "fora do que está liberado",
+        "passagem": "a resposta passou a conversa a outro agente",
+        "transferencia": "a resposta passou a conversa para a equipe",
+        "outro": "não aceita"
+      }
+    },
     "playground": {
-      "explicacao": "Converse como se fosse o cliente. Vale o que está SALVO no agente (Configuração, Acesso e Base de conhecimento), com o mesmo modelo da produção; o gasto conta como teste.",
+      "explicacao": "Converse como se fosse o cliente. Vale o que está SALVO no agente (Configuração, Acesso, Base de conhecimento e Ferramentas), com o mesmo modelo da produção; o gasto conta como teste. Aqui as ações são só simuladas.",
       "naoSalvo": "Há alterações não salvas em {abas}. O Playground testa o que está SALVO.",
       "recomecar": "Recomeçar",
       "vazio": "Envie uma mensagem para ver como este agente responderia.",
@@ -4410,7 +4548,24 @@
       "limparContato": "Tirar o cliente",
       "viu": "O agente viu: {itens} · {trechos}",
       "conversa": "a conversa",
-      "trechos": "{n, plural, =0 {nenhum trecho da base} one {# trecho da base} other {# trechos da base}}"
+      "trechos": "{n, plural, =0 {nenhum trecho da base} one {# trecho da base} other {# trechos da base}}",
+      "acoesSimuladas": "Ações (simuladas): {itens}",
+      "acoesRecusadas": "Recusadas: {itens}",
+      "recusada": "{tipo} ({motivo})",
+      "linkInventado": "O agente inventou um link: em produção esta resposta seria retida e a conversa iria para uma pessoa.",
+      "acao": {
+        "mover_etapa": "mover para {nome}",
+        "etiquetar": "etiquetar {nome}",
+        "tirar_etiqueta": "tirar a etiqueta {nome}",
+        "preencher_campo": "preencher {nome}",
+        "criar_tarefa": "tarefa para {nome}",
+        "executar_automacao": "executar {nome}"
+      },
+      "acaoComValor": {
+        "preencher_campo": "preencher {nome} = {valor}",
+        "criar_tarefa": "tarefa para {nome}: {valor}"
+      },
+      "acaoDesconhecida": "{tipo}: {nome}"
     },
     "uso": {
       "explicacao": "Últimos {dias} dias. Os valores em R$ são uma ESTIMATIVA pelo preço de lista de cada modelo e pela cotação de hoje.",
@@ -4459,6 +4614,35 @@
         "base": "{n, plural, =0 {Nenhum trecho da base} one {Trechos de # documento da base} other {Trechos de # documentos da base}}",
         "documentoApagado": "(documento apagado)",
         "documento": "(documento)"
+      },
+      "acoes": {
+        "titulo": "{n, plural, one {# ação do agente} other {# ações do agente}}",
+        "falhas": "{n, plural, one {# falhou} other {# falharam}}",
+        "ok": "Feita",
+        "falhou": "Falhou",
+        "semAlvo": "(sem nome)",
+        "erro": {
+          "sem_card": "o contato não tem card aberto",
+          "card_fechado": "o card já estava ganho ou perdido",
+          "item_de_outra_conta": "o item não existe mais nesta conta",
+          "etapa_de_resultado": "a etapa é de ganho ou perdido — a IA não fecha negócio",
+          "campo_vigiado": "o campo de data é vigiado por um lembrete",
+          "valor_vazio": "o valor veio vazio (valor vazio não apaga)",
+          "valor_invalido": "o valor não serve para o tipo do campo",
+          "titulo_invalido": "o título da tarefa veio vazio ou longo demais",
+          "automacao_fora_da_d5": "não executada: a automação {motivo}",
+          "cascata_fora_da_d5": "não feita: uma automação que esta ação dispararia {motivo}",
+          "automacao_desligada": "a automação está desligada",
+          "fora_da_conexao": "a automação não vale para a conexão desta conversa",
+          "fora_da_etapa": "a automação não vale para a etapa em que o card está",
+          "envio_falhou": "a resposta não saiu, então a ação não rodou",
+          "recusado": "a escrita foi recusada",
+          "falhou": "a ação falhou",
+          "desconhecido": "não concluída ({erro})",
+          "semCodigo": "não concluída"
+        },
+        "comDetalhe": "{texto} — {detalhe}",
+        "jaEstava": "o card já estava nessa etapa"
       },
       "statusDesconhecido": "Outro ({status})",
       "status": {
@@ -4515,6 +4699,11 @@
       "cotacao_invalida": "Informe a cotação como um número, por exemplo 5,60.",
       "documento_invalido": "Um dos documentos marcados não existe mais na base. Recarregue a página e tente de novo.",
       "contato_nao_encontrado": "Este cliente não foi encontrado nesta conta. Escolha outro.",
+      "etapa_de_resultado": "Etapa de ganho ou perdido não pode ser liberada: a IA não fecha negócio.",
+      "item_de_outra_conta": "Um dos itens marcados não existe mais nesta conta. Recarregue a página e confira.",
+      "campo_vigiado": "Campo de data vigiado por um lembrete não pode ser liberado: a automação do lembrete dispararia depois, fora do controle da IA.",
+      "automacao_fora_da_d5": "Uma automação marcada tem passo que a IA não pode disparar (outro número, webhook, ganho/perdido, robô ou “Aguardar”).",
+      "cascata_fora_da_d5": "Uma etapa ou etiqueta marcada dispara uma automação com passo que a IA não pode disparar (outro número, webhook, ganho/perdido ou robô). Desmarque o que ficou em vermelho.",
       "invalid_key": "O provedor recusou a chave.",
       "rate_limited": "O provedor pediu para esperar — tente em instantes.",
       "timeout": "O provedor não respondeu a tempo.",
@@ -4549,9 +4738,19 @@
         "sentinela": "{agente} passou a conversa para a equipe: o cliente precisa de alguém do escritório.",
         "teto": "{agente} passou a conversa para a equipe: chegou ao limite de respostas nesta conversa.",
         "audio": "{agente} passou a conversa para a equipe: não conseguiu ouvir o áudio do cliente.",
-        "incerto": "{agente} passou a conversa para a equipe: não dá para saber se a última resposta chegou ao cliente — confira antes de responder."
+        "incerto": "{agente} passou a conversa para a equipe: não dá para saber se a última resposta chegou ao cliente — confira antes de responder.",
+        "link_inventado": "{agente} passou a conversa para a equipe: a resposta tinha um link que não veio do sistema, e não foi enviada."
       },
-      "passagem": "{agente} passou a conversa para IA · {destino}, e o card foi para a etapa desse agente."
+      "passagem": "{agente} passou a conversa para IA · {destino}, e o card foi para a etapa desse agente.",
+      "acoes": {
+        "mover_etapa": "{agente} moveu o card para {alvo}.",
+        "etiquetar": "{agente} etiquetou o contato com {alvo}.",
+        "tirar_etiqueta": "{agente} tirou a etiqueta {alvo} do contato.",
+        "preencher_campo": "{agente} preencheu {alvo}: {valor}",
+        "criar_tarefa": "{agente} criou a tarefa “{valor}” para {alvo}.",
+        "executar_automacao": "{agente} executou a automação {alvo}.",
+        "avisoDaTarefa": "O agente de IA {agente} abriu uma tarefa para você"
+      }
     }
   },
   "ForgotPasswordPage": {

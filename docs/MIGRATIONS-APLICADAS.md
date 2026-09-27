@@ -835,12 +835,37 @@ nome da época em que foram aplicadas.
   de `ai_knowledge_documents` que a FK exige, as buscas
   `cb_ia_buscar_conhecimento_semantico`/`_fts` (só os documentos do agente;
   agente nulo = nada; por palavras em OU) e `cb_ia_turnos.contexto`. Era 1050
-  (a 1050 virou a da rajada; a 1051 foi reservada pelo Previdenciário).
+  (a 1050 virou a da rajada; a 1051 não existe — o Previdenciário usou a 1053).
   Aplicada em 26/09/2026 pela Management API (histórico `20260926221248`),
   depois do replay verde do CI e antes do merge do PR #312, com autorização
   do operador; conferida no catálogo (RLS sem policy, `anon`/`authenticated`
   sem nada, as buscas só do `service_role`, a coluna e o índice único, a
   conferência sem sobra) e pelo e2e no preview.
+- **1053_cb_robo_mover_card** — o CHECK de `flow_nodes.node_type` ganha
+  `'move_deal_stage'` (o nó "Mover card de etapa" do robô; a config mora no
+  JSONB). DROP pela FORMA (a 010 escreveu o CHECK inline) + ADD com o nome
+  `flow_nodes_node_type_check`, `lock_timeout` de 5 s. ADITIVA e ⚠️ ANTES do
+  merge: `PUT /api/flows/[id]` apaga os nós antes de inserir, então o app novo
+  com o CHECK velho deixaria o robô com o nó "Mover card" SEM NENHUM NÓ.
+  ⚠️ **Não existe 1051.** O arquivo nasceu 1051 (a frente de agentes de IA
+  tinha reservado o número para cá e seguido na 1052), mas a
+  `1052_cb_ia_agente_documentos` (PR #312) foi aplicada em produção antes
+  (histórico `20260926221248`) e chega ao `main` antes deste PR: número novo
+  vem depois do maior do `main` (a instalação que atualiza por `supabase db
+  push` recusa o fora de ordem), e ele virou 1053 ANTES de ser aplicado em
+  lugar nenhum. A conferência prova os doze tipos no catálogo e o
+  comportamento sem depender de dado (tipo novo passa o CHECK e cai na FK;
+  inventado cai no CHECK), desfeita por `P1053`. Testada num Postgres 16
+  descartável: CHECK inline da 010, a forma da produção (010 + 016 com uma
+  linha de cada tipo), reaplicação, e um mutante sem o tipo novo, que a
+  conferência reprova. ⚠️ ROLLBACK: depois que houver robô salvo com o nó,
+  NÃO voltar a imagem do app para uma anterior a este PR — o motor antigo
+  encerra o run como `failed` (`unknown_node_type`) e o editor antigo quebra
+  ao desenhar o nó (`NODE_META` sem a entrada). Aplicada em 26/09/2026 pela
+  Management API (histórico `20260926232121`), depois do replay verde do CI e
+  ANTES do merge do PR #314, com autorização do operador; conferida no
+  catálogo (UM CHECK sobre `node_type`, os doze tipos com `move_deal_stage`,
+  zero linhas em `flow_nodes` — a conferência não deixou sobra).
 
 ## Notas do histórico
 

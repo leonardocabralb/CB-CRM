@@ -118,10 +118,11 @@ cliente.
 - ⚠️ **`ON DELETE SET NULL (grupo_id)`, com a coluna NOMEADA**: `account_id`
   (NOT NULL) faz parte da FK composta, e sem a lista apagar um bloco
   estouraria em vez de devolver os campos ao Geral.
-- **O semeador dos 10 campos padrão vive no CATÁLOGO** e cria no bloco
-  selecionado no formulário de cima; o botão diz qual (dez campos no bloco
+- **O semeador dos 11 campos padrão vive no CATÁLOGO** e cria no bloco
+  selecionado no formulário de cima; o botão diz qual (onze campos no bloco
   errado dão trabalho para desfazer). A aba "Traqueamento" do painel não
-  existe mais.
+  existe mais. O 11º, `id_do_anuncio` (26/09/2026), existe porque o webhook
+  da Meta o preenche com o anúncio de origem (`ingestao.md`).
 - **Save em LOTE, se voltar, resolve antes o valor escondido**: o digitado num
   bloco fora de vista continua em `customValues` e sobrevive à troca de
   pastilha — perder digitação é pior que gravá-la.
@@ -186,4 +187,7 @@ trocar o nome da ficha. A guarda nesses caminhos está em
   disparo) e a ficha de `destinatario.ts` (`send_to_number` e webhook de
   entrada). A ficha criada pelo Asaas GRAVA a marca (nome do contrato,
   decisão do operador, 19/09/2026); o perfil do Instagram só preenche ficha
-  sem nome nenhum.
+  sem nome nenhum. O robô ("Coletar resposta" → Nome do contato,
+  `resposta-na-ficha.ts`) é a única escrita que RESPEITA e GRAVA ao mesmo
+  tempo ("fixa-se-livre"): fixa só onde ninguém fixou, porque o valor é texto
+  livre do chat (`nomeDigitadoNoChat`).

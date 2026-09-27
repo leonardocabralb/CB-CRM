@@ -43,6 +43,14 @@ import { decideFallback, resolveFallbackPolicy } from "./fallback";
 import { abortActiveRunsForContact, type MotivoDeParada } from "./parar-run";
 import { addContactTagAndDispatch } from "@/lib/contacts/tag-events";
 import { removeContactTag } from "@/lib/contacts/tag-write";
+import { legendaDoEnvio, prepararMidiaDoNo } from "./midia-do-no";
+import { moverCardDoNo, payloadDoMoverCard } from "./mover-card";
+import {
+  destinoDaResposta,
+  gravarRespostaNaFicha,
+  salvarEmDoDestino,
+  tituloDaOpcao,
+} from "./resposta-na-ficha";
 import {
   type CollectInputNodeConfig,
   type ConditionNodeConfig,
@@ -59,6 +67,7 @@ import {
   type SetTagNodeConfig,
   type StartNodeConfig,
   type KeywordTriggerConfig,
+  type MoveDealStageNodeConfig,
 } from "./types";
 
 // ============================================================
@@ -201,7 +210,8 @@ export function isAutoAdvancing(node_type: string): boolean {
     node_type === "send_message" ||
     node_type === "send_media" ||
     node_type === "condition" ||
-    node_type === "set_tag"
+    node_type === "set_tag" ||
+    node_type === "move_deal_stage"
   );
 }
 
@@ -573,6 +583,54 @@ async function executeHandoff(
 }
 
 /**
+ * Grava a resposta do cliente na FICHA quando o nó pede (`salvar_em`, CB,
+ * 26/09/2026). Ver `resposta-na-ficha.ts`.
+ *
+ * ⚠️ NUNCA segura o robô: falha de banco vira evento `error` e o fluxo segue
+ * — a mesma decisão do `set_tag` ("a tag-write failure shouldn't strand the
+ * customer mid-flow"). Roda ANTES de avançar, para o nó seguinte (uma
+ * condição sobre o nome, por exemplo) já enxergar o valor gravado.
+ *
+ * ⚠️ O evento guarda o DESTINO e o resultado, nunca o texto do cliente — a
+ * mesma regra do `reply_received` logo acima (o robô pode perguntar coisa que
+ * não pode ficar num log para sempre).
+ */
+async function gravarRespostaDoNo(
+  db: AdminClient,
+  run: FlowRunRow,
+  node: FlowNodeRow,
+  valor: string,
+): Promise<void> {
+  const destino = destinoDaResposta(
+    node.node_type,
+    (node.config as { salvar_em?: unknown }).salvar_em,
+  );
+  if (!destino || !run.contact_id) return;
+  const salvoEm = salvarEmDoDestino(destino);
+  try {
+    const r = await gravarRespostaNaFicha(db, {
+      accountId: run.account_id,
+      contactId: run.contact_id,
+      destino,
+      valor,
+    });
+    await logEvent(
+      db,
+      run.id,
+      "node_entered",
+      node.node_key,
+      r.gravou ? { saved_to: salvoEm } : { saved_to: salvoEm, reason: r.detalhe },
+    );
+  } catch (err) {
+    await logEvent(db, run.id, "error", node.node_key, {
+      reason: "save_answer_failed",
+      saved_to: salvoEm,
+      detail: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/**
  * Resolve a condition node's subject value from DB / run state, then
  * call the pure `evaluateConditionPredicate`. Splits out so the
  * predicate itself stays unit-testable without a Supabase mock.
@@ -736,26 +794,37 @@ async function advanceFromNodeKey(
     }
     if (node.node_type === "send_media") {
       const cfg = node.config as unknown as SendMediaNodeConfig;
+      // CB (26/09/2026): o arquivo pode vir do ACERVO (`acervo_id`, copiado a
+      // cada envio) e pode ser ÁUDIO, que sai como nota de voz e sem legenda.
+      // Ver `midia-do-no.ts`. O nó antigo (`media_url`) segue igual.
       try {
+        const midia = await prepararMidiaDoNo(db, run.account_id, cfg);
         const { whatsapp_message_id } = await engineSendMedia({
           accountId: run.account_id,
-    userId: run.user_id,
+          userId: run.user_id,
           conversationId: run.conversation_id!,
           contactId: run.contact_id!,
-          kind: cfg.media_type,
-          link: cfg.media_url,
-          caption: cfg.caption
-            ? interpolateVars(cfg.caption, run.vars)
-            : undefined,
-          filename: cfg.filename,
+          kind: midia.tipo,
+          link: midia.link,
+          caption: legendaDoEnvio(
+            midia.tipo,
+            cfg.caption ? interpolateVars(cfg.caption, run.vars) : undefined,
+          ),
+          filename: midia.filename,
           preferredChannelId: nodeChannel(cfg, run),
         });
         await logEvent(db, run.id, "message_sent", node.node_key, {
           node_type: "send_media",
-          media_type: cfg.media_type,
+          media_type: midia.tipo,
+          acervo_id: cfg.acervo_id ?? null,
           whatsapp_message_id,
         });
       } catch (err) {
+        // ⚠️ A cópia do acervo NÃO é apagada aqui, de propósito: a Meta baixa
+        // a mídia DEPOIS de aceitar o pedido, e um erro que chega depois do
+        // aceite (tempo esgotado, "sent but DB insert failed") com a cópia
+        // apagada viraria mídia quebrada no celular do cliente. O pior caso de
+        // não apagar é um objeto órfão no bucket, que ninguém vê.
         await logEvent(db, run.id, "error", node.node_key, {
           reason: "send_media_failed",
           detail: err instanceof Error ? err.message : String(err),
@@ -874,6 +943,42 @@ async function advanceFromNodeKey(
         // strand the customer mid-flow.
         await logEvent(db, run.id, "error", node.node_key, {
           reason: "set_tag_failed",
+          detail: err instanceof Error ? err.message : String(err),
+        });
+      }
+      currentKey = cfg.next_node_key;
+      continue;
+    }
+    if (node.node_type === "move_deal_stage") {
+      // CB (26/09/2026, migration 1053): leva o card do contato à etapa do nó
+      // pela RPC das automações — ver `mover-card.ts`. Card fora das etapas de
+      // origem permitidas, contato só com card ganho e grupo NÃO movem: o
+      // motivo vai para o registro e o robô segue.
+      //
+      // ⚠️ FALHA (banco, recusa da RPC, card que não pôde ser criado) também
+      // SEGUE, e é decisão: o card é bastidor, a conversa é o que o cliente
+      // vê. Encerrar o run aqui largaria o lead no meio da pré-qualificação
+      // por causa de um erro que ele não enxerga — o mesmo trato de
+      // `set_tag_failed` e `save_answer_failed`. O erro fica escrito
+      // (`move_deal_failed`) em Fluxos → execuções.
+      const cfg = node.config as unknown as MoveDealStageNodeConfig;
+      try {
+        const r = await moverCardDoNo(
+          db,
+          {
+            accountId: run.account_id,
+            userId: run.user_id,
+            flowId: run.flow_id,
+            contactId: run.contact_id,
+            conversationId: run.conversation_id,
+            channelId: run.channel_id ?? null,
+          },
+          cfg,
+        );
+        await logEvent(db, run.id, "node_entered", node.node_key, payloadDoMoverCard(r));
+      } catch (err) {
+        await logEvent(db, run.id, "error", node.node_key, {
+          reason: "move_deal_failed",
           detail: err instanceof Error ? err.message : String(err),
         });
       }
@@ -1129,7 +1234,18 @@ async function handleReplyForActiveRun(
           captured_length: captured.length,
         });
         matched = cfg.next_node_key;
+        await gravarRespostaDoNo(db, run, currentNode, captured);
       }
+    }
+  }
+
+  // Botão/lista que casou: o TÍTULO da opção tocada vai para a ficha, se o
+  // nó pedir (CB, 26/09/2026). O título configurado, com as variáveis do run
+  // — o mesmo texto que saiu no botão —, e não o que o transporte devolveu.
+  if (matched && message.kind === "interactive_reply") {
+    const titulo = tituloDaOpcao(currentNode.node_type, currentNode.config, message.reply_id);
+    if (titulo !== null) {
+      await gravarRespostaDoNo(db, run, currentNode, interpolateVars(titulo, run.vars ?? {}));
     }
   }
 

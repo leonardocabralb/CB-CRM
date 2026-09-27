@@ -23,6 +23,7 @@ import {
   ListChecks,
   ListPlus,
   MessageCircle,
+  MoveRight,
   Paperclip,
   PlayCircle,
   Tag,
@@ -49,6 +50,7 @@ export type NodeType =
   | 'collect_input'
   | 'condition'
   | 'set_tag'
+  | 'move_deal_stage'
   | 'handoff'
   | 'end';
 
@@ -145,6 +147,13 @@ export const NODE_META: Record<
     color: 'text-pink-400',
     category: 'logic',
   },
+  // CB (26/09/2026, migration 1053) — ver `src/lib/flows/mover-card.ts`.
+  move_deal_stage: {
+    slugSeed: 'Move card',
+    icon: MoveRight,
+    color: 'text-lime-500',
+    category: 'logic',
+  },
   handoff: {
     slugSeed: 'Handoff to agent',
     icon: UserPlus,
@@ -195,6 +204,7 @@ const NODE_HUE: Record<NodeType, { l: number; c: number; h: number }> = {
   collect_input: { l: 0.65, c: 0.1, h: 185 }, // teal — capture
   condition: { l: 0.72, c: 0.15, h: 65 }, // amber — a fork in the road
   set_tag: { l: 0.65, c: 0.15, h: 350 }, // pink
+  move_deal_stage: { l: 0.64, c: 0.15, h: 130 }, // lime — o card andando no funil
   handoff: { l: 0.65, c: 0.17, h: 16 }, // rose — hands off
   end: { l: 0.55, c: 0.01, h: 260 }, // neutral grey — terminal
 };
@@ -295,9 +305,34 @@ export function truncate(s: string, max = 80): string {
   return clean.slice(0, max - 1) + '…';
 }
 
+/**
+ * Nomes que o cartão não tem como buscar sozinho (a função é síncrona). Hoje
+ * só o nome da ETAPA do "Mover card" (CB, 26/09/2026): quem monta o cartão
+ * lê o catálogo de funis do editor. Sem ele, o cartão diz "a etapa
+ * escolhida" — nunca o UUID, que o operador leria como nome.
+ */
+export interface NomesDoResumo {
+  etapa?: (id: string) => string | null;
+}
+
 export function summarizeNode(
   node: BuilderNode,
-  t?: (key: string, values?: Record<string, string | number>) => string
+  t?: (key: string, values?: Record<string, string | number>) => string,
+  nomes?: NomesDoResumo
+): string | null {
+  const base = resumoDoNo(node, t, nomes);
+  // CB (26/09/2026): o nó que grava a resposta na ficha (`salvar_em`) diz
+  // isso no cartão — sem abrir o nó, ninguém saberia que ele escreve na ficha.
+  const salvarEm = node.config.salvar_em;
+  if (typeof salvarEm !== 'string' || !salvarEm.trim()) return base;
+  const marca = t ? t('savesToProfile') : 'saves to profile';
+  return base ? `${base} · ${marca}` : marca;
+}
+
+function resumoDoNo(
+  node: BuilderNode,
+  t?: (key: string, values?: Record<string, string | number>) => string,
+  nomes?: NomesDoResumo
 ): string | null {
   const cfg = node.config;
   switch (node.node_type) {
@@ -353,7 +388,10 @@ export function summarizeNode(
       const label = mediaType
         ? t ? t(mediaType) || (mediaType.charAt(0).toUpperCase() + mediaType.slice(1)) : mediaType.charAt(0).toUpperCase() + mediaType.slice(1)
         : t ? t('media') : 'Media';
-      if (!url) return t ? t('noFile', { label }) : `${label} (no file uploaded)`;
+      // CB (26/09/2026): o arquivo do ACERVO vale sem `media_url` — o motor
+      // copia o item (`acervo_id`), e a URL guardada é só da tela.
+      const doAcervo = typeof cfg.acervo_id === 'string' && cfg.acervo_id.trim() !== '';
+      if (!url && !doAcervo) return t ? t('noFile', { label }) : `${label} (no file uploaded)`;
       const name = filename || url.split('/').pop() || 'file';
       return caption
         ? `${label}: ${truncate(name, 30)} · ${truncate(caption, 40)}`
@@ -409,6 +447,19 @@ export function summarizeNode(
       return tagId
         ? t ? t('tagPicked', { mode, tag: tagId.slice(0, 8) }) : `${mode} tag ${tagId.slice(0, 8)}…`
         : t ? t('tagNone', { mode }) : `${mode} tag (none picked)`;
+    }
+    case 'move_deal_stage': {
+      const etapaId = typeof cfg.stage_id === 'string' ? cfg.stage_id.trim() : '';
+      if (!etapaId) return t ? t('moveNone') : 'Move card (no stage picked)';
+      const nome = nomes?.etapa?.(etapaId) ?? null;
+      const destino = nome
+        ? t ? t('moveTo', { etapa: truncate(nome, 40) }) : `Move card to ${truncate(nome, 40)}`
+        : t ? t('movePicked') : 'Move card to the chosen stage';
+      const origens = Array.isArray(cfg.origem_stage_ids)
+        ? cfg.origem_stage_ids.filter((v) => typeof v === 'string' && v.trim() !== '').length
+        : 0;
+      if (origens === 0) return destino;
+      return `${destino} · ${t ? t('moveFromOnly', { count: origens }) : `only from ${origens} stage(s)`}`;
     }
     case 'handoff': {
       const note = typeof cfg.note === 'string' ? cfg.note : '';

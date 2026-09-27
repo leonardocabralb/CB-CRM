@@ -2324,7 +2324,49 @@
         "fileUploaded": "File uploaded.",
         "uploadFailed": "Upload failed.",
         "fileTooLarge": "File is {size} MB — limit is 16 MB.",
-        "defaultOptionTitle": "Option"
+        "defaultOptionTitle": "Option",
+        "audioLabel": "Audio (from the media library)",
+        "pickFromLibrary": "Pick from the media library",
+        "fromLibraryBadge": "from the library",
+        "libraryItemMissing": "This file was deleted from the media library — pick another one, or the robot will fail at this step.",
+        "audioHelp": "Audio comes from the media library and goes without a caption. Over a QR Code connection it always arrives as a voice note; over the official number (Meta API), only an .ogg (Opus) file shows as a voice note.",
+        "audioNotOggWarning": "This audio isn't .ogg: over the official number it reaches the customer as an audio FILE, not a voice note. To send it as a voice note, convert it to .ogg (Opus) and upload it to the library again.",
+        "mediaTypeFollowsLibrary": "The step type changed to {tipo}, the type of the file picked from the library.",
+        "saveAnswerLabel": "Save the answer on the contact",
+        "saveAnswerNone": "Don't save",
+        "saveAnswerName": "Contact name",
+        "saveAnswerGeneralGroup": "General",
+        "saveAnswerUnknownField": "Deleted field",
+        "saveAnswerHelpInput": "The typed answer goes to the chosen field. Contact name: saved only when the answer looks like a name (no greeting, number or sentence), kept as fixed (the next WhatsApp message won't replace it), and never replaces a name already fixed by the team or by an integration.",
+        "saveAnswerHelpOptions": "The title of the option the customer taps goes to the chosen field.",
+        "saveAnswerNoDates": "Date fields aren't listed: what the customer types doesn't become a date.",
+        "saveAnswerNoDatesOrNumbers": "Date fields, number fields and E-mail aren't listed: an option's title doesn't become any of them.",
+        "saveAnswerFreeTextInList": "The customer types freely: the answer is saved as typed, even outside the list's options — filters and conditions by option may not match.",
+        "saveAnswerLoadError": "Couldn't load the custom fields. Reopen the step to try again.",
+        "saveAnswerOrphan": "This field no longer exists or doesn't fit this step (a date field; a number or e-mail on a buttons or list step). Pick another one, or the answer won't be saved.",
+        "saveAnswerNotInOptions": "These options aren't in the field's list and will be saved as they are: {titulos}",
+        "saveAnswerChosenField": "Chosen field",
+        "movePipelineLabel": "Funnel",
+        "movePickPipeline": "Pick a funnel",
+        "movePipelineChosen": "The chosen funnel",
+        "movePipelineMissing": "Deleted funnel",
+        "moveStageLabel": "Destination stage",
+        "movePickStage": "Pick a stage",
+        "moveStageChosen": "The chosen stage",
+        "moveStageMissing": "Deleted stage",
+        "moveLoading": "Loading the funnels…",
+        "moveLoadError": "Couldn't load the funnels and stages.",
+        "moveLoadRetry": "Try again",
+        "moveNoStages": "This funnel has no stages. Create one in Funnels before using it here.",
+        "moveDestinationMissing": "The destination chosen here no longer exists. Pick another one — the robot can't be activated like this.",
+        "moveOriginLabel": "Only move the card that is in one of these stages",
+        "moveOriginAny": "None checked: the card is moved from any stage, of any funnel — including a client's card with a case in progress in another funnel, which leaves it and comes here. Check the stages the card may leave from to avoid that.",
+        "moveOriginCount": "{count, plural, =1 {Only a card in the checked stage is moved.} other {Only a card in one of the # checked stages is moved.}} Anywhere else, the card stays where it is and the robot moves on.",
+        "moveOriginMissing": "{count, plural, =1 {One checked stage was deleted} other {# checked stages were deleted}} — the robot can't be activated like this.",
+        "moveOriginRemoveMissing": "{count, plural, =1 {Remove the deleted stage} other {Remove the # deleted stages}}",
+        "moveOriginMissingAll": "With none checked, the card comes from any stage, of any funnel — check again the stages it may leave from.",
+        "moveHelp": "The card is the one automations would move: the contact's most recent open card (with none open, the lost one). A contact with no card gets one, created in the destination stage. A contact who only has a won card (a client) is left alone. The robot never stops here: whatever didn't move is written down in Executions.",
+        "moveHelpOrder": "If an automation on the destination stage starts another robot, put Move card last, right before End or Hand off: within seconds the other robot takes over the conversation and this one stops. On the contact's first message, the robot runs before the connection's funnel: a Move card right at the start creates the card straight in the chosen stage, and the connection's entry stage (with its automations) is skipped."
       },
       "categories": {
         "messaging": "Messaging",
@@ -2363,6 +2405,10 @@
         "set_tag": {
           "label": "Tag contact",
           "blurb": "Adds or removes a contact tag"
+        },
+        "move_deal_stage": {
+          "label": "Move card",
+          "blurb": "Moves the contact's card to a funnel stage"
         },
         "handoff": {
           "label": "Handoff to agent",
@@ -2410,7 +2456,12 @@
       "modeAdd": "Add",
       "modeRemove": "Remove",
       "tagPicked": "{mode} tag {tag}…",
-      "tagNone": "{mode} tag (none picked)"
+      "tagNone": "{mode} tag (none picked)",
+      "savesToProfile": "saves on the contact",
+      "moveNone": "Move card (no stage picked)",
+      "moveTo": "Move card to {etapa}",
+      "movePicked": "Move card to the chosen stage",
+      "moveFromOnly": "{count, plural, =1 {only from 1 stage} other {only from # stages}}"
     },
     "header": {
       "backToFlows": "Back to Flows",
@@ -4112,7 +4163,7 @@
           "desliga": "{falhas} consecutive failures switch the endpoint off, and the counter belongs to the ENDPOINT, not to the event: a backlog of deal notifications (with the scheduler down, for instance) goes out at once and, if your system is down at that moment, it alone can add up to {falhas} — switching off the message notifications along with it. Turn it back on in the Outgoing tab; that resets the counter.",
           "repeticao": "Order is not guaranteed — the one exception: for the message that opens a conversation, <code>conversation.created</code> arrives before <code>message.received</code>. On deal events, the envelope <code>id</code> (equal to <code>data.event_id</code>) is stable, and dropping repeats by it is REQUIRED: a deal notification cut short by a server restart goes out again, with the same <code>id</code>.",
           "teste": "The Send test button sends fictitious data with <code>\"test\": true</code>: filter it out of production flows.",
-          "negocio": "On deal events, <code>deal</code> is the deal AS OF DELIVERY and <code>stage</code> is the stage of THIS move — read <code>stage</code>, not <code>deal.stage_id</code>. <code>assignee</code> is the owner and <code>contact</code> carries tags and <code>custom_fields</code>. <code>source</code> says who caused it: <code>user</code> (someone in the CRM screens), <code>channel</code> (the connection opened the card on the first message, from the client or from the team), <code>automation</code> (the automations' “Create Deal”, “Move deal to stage” and “Mark won or lost” steps), <code>api</code> (the deals API: creating and moving with a key) or <code>system</code> (anything else, such as a fix made straight in the database). <code>channel_id</code> is the number of the contact's conversation at that moment, and comes empty when they have not talked through any connection yet — an incoming-webhook (Typebot) or Calendly lead who has not written, a contact created by the API, a card with no contact. If you filter by number, decide what to do with these.",
+          "negocio": "On deal events, <code>deal</code> is the deal AS OF DELIVERY and <code>stage</code> is the stage of THIS move — read <code>stage</code>, not <code>deal.stage_id</code>. <code>assignee</code> is the owner and <code>contact</code> carries tags and <code>custom_fields</code>. <code>source</code> says who caused it: <code>user</code> (someone in the CRM screens), <code>channel</code> (the connection opened the card on the first message, from the client or from the team), <code>automation</code> (the automations' “Create Deal”, “Move deal to stage” and “Mark won or lost” steps, and the robots' “Move card” block), <code>api</code> (the deals API: creating and moving with a key) or <code>system</code> (anything else, such as a fix made straight in the database). <code>channel_id</code> is the number of the contact's conversation at that moment, and comes empty when they have not talked through any connection yet — an incoming-webhook (Typebot) or Calendly lead who has not written, a contact created by the API, a card with no contact. If you filter by number, decide what to do with these.",
           "atraso": "A late notification still goes out, with the real time of the fact in <code>occurred_at</code>.",
           "doisAvisos": "Moving a card into a stage marked won or lost produces two notifications: stage changed and status changed. A card CREATED in such a stage, though, is born with that status and produces only <code>deal.created</code>: if you wait for “won”, also check <code>deal.status</code> on that notification.",
           "migracao": "Bulk data migration loads produce no notification."
@@ -4133,7 +4184,7 @@
         "etapa": {
           "titulo": "When a lead changes stage, notify n8n",
           "texto": "Register an endpoint with the <code>deal.stage_changed</code> event and, in n8n, filter by the stage id (IDs tab) in an <b>IF</b> node:",
-          "laco": "⚠️ If your flow moves the card through the API, that produces another notification, with <code>source</code> equal to <code>api</code>, and the flow would react to its own move. The filter above drops it. The automations' “Move deal to stage” step comes out as <code>automation</code> and still gets through — so the filter does not stop a loop that goes through an automation: if an automation on the stage your flow moves the card to sends it back to the stage the flow watches, the flow moves it again, and the CRM's cycle guard does not see that back-and-forth. Check the automations on the destination stage."
+          "laco": "⚠️ If your flow moves the card through the API, that produces another notification, with <code>source</code> equal to <code>api</code>, and the flow would react to its own move. The filter above drops it. The automations' “Move deal to stage” step (and the robots' “Move card” block) comes out as <code>automation</code> and still gets through — so the filter does not stop a loop that goes through an automation: if an automation on the stage your flow moves the card to sends it back to the stage the flow watches, the flow moves it again, and the CRM's cycle guard does not see that back-and-forth. Check the automations on the destination stage."
         },
         "negocio": {
           "titulo": "Create a deal in a stage",
@@ -4348,6 +4399,7 @@
       "configuracao": "Settings",
       "acesso": "Access",
       "base": "Knowledge base",
+      "ferramentas": "Tools",
       "playground": "Playground",
       "uso": "Usage",
       "turnos": "Turns"
@@ -4395,8 +4447,94 @@
       "salvo": "Knowledge base saved.",
       "teto": "That is the maximum per agent ({n} documents): unmark one to mark another."
     },
+    "ferramentas": {
+      "explicacao": "What this agent may DO along with its reply, and with what. Nothing turned on = the agent only talks. Actions run after the reply is sent. It never closes a deal, never sends a message to another number and never touches Asaas — not even through the automations an action triggers.",
+      "soConversa": "Nothing turned on: today this agent only talks.",
+      "falhou": "Could not load the options.",
+      "buscar": "Search…",
+      "marcados": "{n, plural, =0 {None ticked} one {# ticked} other {# ticked}}",
+      "ligadaSemNada": "Nothing ticked: turned on like this, the agent has nothing to choose from.",
+      "limite": "At most {max} per agent. Untick one to tick another.",
+      "nenhumNaBusca": "Nothing with that name.",
+      "recusado": "Refused when saving.",
+      "salvar": "Save tools",
+      "salvo": "Tools saved.",
+      "tipoDesconhecido": "Other ({tipo})",
+      "tipo": {
+        "mover_etapa": {
+          "nome": "Move the deal",
+          "dica": "Moves the contact’s card to one of the ticked stages. Never to a won or lost stage."
+        },
+        "etiquetar": {
+          "nome": "Add a tag",
+          "dica": "Adds one of the ticked tags to the contact. Tag automations run as usual."
+        },
+        "tirar_etiqueta": {
+          "nome": "Remove a tag",
+          "dica": "Removes one of the ticked tags from the contact."
+        },
+        "preencher_campo": {
+          "nome": "Fill in a field",
+          "dica": "Fills one of the ticked fields with what the customer said. An empty value never erases."
+        },
+        "criar_tarefa": {
+          "nome": "Create a task",
+          "dica": "Creates a task due today, linked to the contact, for one of the ticked members."
+        },
+        "executar_automacao": {
+          "nome": "Run an automation",
+          "dica": "Runs one of the ticked automations in this conversation."
+        }
+      },
+      "nenhum": {
+        "mover_etapa": "This account has no pipeline stages.",
+        "etiquetar": "This account has no tags.",
+        "tirar_etiqueta": "This account has no tags.",
+        "preencher_campo": "This account has no custom fields.",
+        "criar_tarefa": "This account has no members.",
+        "executar_automacao": "This account has no automations."
+      },
+      "bloqueio": {
+        "etapaDeResultado": "Won/lost stage — the AI does not close deals.",
+        "campoVigiado": "Date watched by a reminder — the reminder automation would fire later on its own.",
+        "foraDaD5": "Unavailable: {motivo}.",
+        "aguardar": "Unavailable: it has a “Wait” step — the AI only runs automations that finish right away (resuming does not check the agent).",
+        "cascata": {
+          "etapa": "Unavailable: an automation that fires when a card enters this stage — {motivo}.",
+          "etiquetar": "Unavailable: an automation that fires when this tag is added — {motivo}.",
+          "tirar": "Unavailable: an automation that fires when this tag is removed — {motivo}."
+        }
+      },
+      "campo": {
+        "text": "Text",
+        "datetime": "Date",
+        "select": "List",
+        "number": "Number",
+        "email": "Email"
+      },
+      "campoOpcoes": "Options: {opcoes}",
+      "foraDaD5": {
+        "send_to_number": "it sends a message to another number",
+        "send_webhook": "it sends data out of the CRM (webhook)",
+        "status_de_resultado": "it marks the deal as won or lost",
+        "etapa_de_resultado": "it moves the card to a won or lost stage",
+        "run_flow": "it starts a chatbot flow",
+        "campo_vigiado": "it fills a date watched by a reminder",
+        "aguardar": "it has a “Wait” step",
+        "outro": "it has a step the AI may not trigger"
+      },
+      "recusa": {
+        "malformada": "unreadable marker",
+        "teto": "over the per-reply action limit",
+        "nao_liberada": "action not enabled in this agent",
+        "fora_da_lista": "not among what is enabled",
+        "passagem": "the reply handed the conversation to another agent",
+        "transferencia": "the reply handed the conversation to the team",
+        "outro": "not accepted"
+      }
+    },
     "playground": {
-      "explicacao": "Chat as if you were the customer. What's SAVED in the agent (Settings, Access and Knowledge base) applies, with the same model as production; the spend counts as testing.",
+      "explicacao": "Chat as if you were the customer. What’s SAVED in the agent (Settings, Access, Knowledge base and Tools) applies, with the same model as production; the spend counts as testing. Actions are only simulated here.",
       "naoSalvo": "There are unsaved changes in {abas}. The Playground tests what is SAVED.",
       "recomecar": "Start over",
       "vazio": "Send a message to see how this agent would answer.",
@@ -4417,7 +4555,24 @@
       "limparContato": "Remove the customer",
       "viu": "The agent saw: {itens} · {trechos}",
       "conversa": "the conversation",
-      "trechos": "{n, plural, =0 {no knowledge-base excerpt} one {# knowledge-base excerpt} other {# knowledge-base excerpts}}"
+      "trechos": "{n, plural, =0 {no knowledge-base excerpt} one {# knowledge-base excerpt} other {# knowledge-base excerpts}}",
+      "acoesSimuladas": "Actions (simulated): {itens}",
+      "acoesRecusadas": "Refused: {itens}",
+      "recusada": "{tipo} ({motivo})",
+      "linkInventado": "The agent made up a link: in production this reply would be held back and the conversation would go to a person.",
+      "acao": {
+        "mover_etapa": "move to {nome}",
+        "etiquetar": "tag {nome}",
+        "tirar_etiqueta": "remove the tag {nome}",
+        "preencher_campo": "fill in {nome}",
+        "criar_tarefa": "task for {nome}",
+        "executar_automacao": "run {nome}"
+      },
+      "acaoComValor": {
+        "preencher_campo": "fill in {nome} = {valor}",
+        "criar_tarefa": "task for {nome}: {valor}"
+      },
+      "acaoDesconhecida": "{tipo}: {nome}"
     },
     "uso": {
       "explicacao": "Last {dias} days. Amounts in R$ are an ESTIMATE from each model's list price and today's exchange rate.",
@@ -4466,6 +4621,35 @@
         "base": "{n, plural, =0 {No knowledge-base excerpt} one {Excerpts from # knowledge-base document} other {Excerpts from # knowledge-base documents}}",
         "documentoApagado": "(deleted document)",
         "documento": "(document)"
+      },
+      "acoes": {
+        "titulo": "{n, plural, one {# agent action} other {# agent actions}}",
+        "falhas": "{n, plural, one {# failed} other {# failed}}",
+        "ok": "Done",
+        "falhou": "Failed",
+        "semAlvo": "(no name)",
+        "erro": {
+          "sem_card": "the contact has no open deal",
+          "card_fechado": "the deal was already won or lost",
+          "item_de_outra_conta": "the item no longer exists in this account",
+          "etapa_de_resultado": "it is a won/lost stage — the AI does not close deals",
+          "campo_vigiado": "the date field is watched by a reminder",
+          "valor_vazio": "the value was empty (an empty value never erases)",
+          "valor_invalido": "the value does not fit the field type",
+          "titulo_invalido": "the task title was empty or too long",
+          "automacao_fora_da_d5": "not run: {motivo}",
+          "cascata_fora_da_d5": "not done: an automation this action would trigger — {motivo}",
+          "automacao_desligada": "the automation is turned off",
+          "fora_da_conexao": "the automation does not apply to this conversation’s connection",
+          "fora_da_etapa": "the automation does not apply to the card’s current stage",
+          "envio_falhou": "the reply was not sent, so the action did not run",
+          "recusado": "the change was refused",
+          "falhou": "the action failed",
+          "desconhecido": "not done ({erro})",
+          "semCodigo": "not done"
+        },
+        "comDetalhe": "{texto} — {detalhe}",
+        "jaEstava": "the card was already in that stage"
       },
       "statusDesconhecido": "Other ({status})",
       "status": {
@@ -4522,6 +4706,11 @@
       "cotacao_invalida": "Enter the exchange rate as a number, for example 5.60.",
       "documento_invalido": "One of the ticked documents no longer exists in the knowledge base. Reload the page and try again.",
       "contato_nao_encontrado": "This customer was not found in this account. Choose another.",
+      "etapa_de_resultado": "A won or lost stage cannot be enabled: the AI does not close deals.",
+      "item_de_outra_conta": "One of the ticked items no longer exists in this account. Reload the page and check.",
+      "campo_vigiado": "A date field watched by a reminder cannot be enabled: the reminder automation would fire later, outside the AI’s control.",
+      "automacao_fora_da_d5": "A ticked automation has a step the AI may not trigger (another number, webhook, won/lost, a chatbot flow or “Wait”).",
+      "cascata_fora_da_d5": "A ticked stage or tag triggers an automation with a step the AI may not trigger (another number, webhook, won/lost or a chatbot flow). Untick what is marked in red.",
       "invalid_key": "The provider rejected the key.",
       "rate_limited": "The provider asked to wait — try again shortly.",
       "timeout": "The provider didn't answer in time.",
@@ -4556,9 +4745,19 @@
         "sentinela": "{agente} handed the conversation to the team: the customer needs someone from the office.",
         "teto": "{agente} handed the conversation to the team: it reached the reply limit for this conversation.",
         "audio": "{agente} handed the conversation to the team: it could not hear the customer's audio.",
-        "incerto": "{agente} handed the conversation to the team: there is no way to know whether the last reply reached the customer — check before replying."
+        "incerto": "{agente} handed the conversation to the team: there is no way to know whether the last reply reached the customer — check before replying.",
+        "link_inventado": "{agente} handed the conversation to the team: the reply had a link that did not come from the system, and it was not sent."
       },
-      "passagem": "{agente} handed the conversation to AI · {destino}, and the deal moved to that agent's stage."
+      "passagem": "{agente} handed the conversation to AI · {destino}, and the deal moved to that agent's stage.",
+      "acoes": {
+        "mover_etapa": "{agente} moved the card to {alvo}.",
+        "etiquetar": "{agente} tagged the contact with {alvo}.",
+        "tirar_etiqueta": "{agente} removed the tag {alvo} from the contact.",
+        "preencher_campo": "{agente} filled in {alvo}: {valor}",
+        "criar_tarefa": "{agente} created the task “{valor}” for {alvo}.",
+        "executar_automacao": "{agente} ran the automation {alvo}.",
+        "avisoDaTarefa": "The AI agent {agente} opened a task for you"
+      }
     }
   },
   "ForgotPasswordPage": {

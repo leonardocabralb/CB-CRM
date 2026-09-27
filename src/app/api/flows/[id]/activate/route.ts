@@ -5,6 +5,10 @@ import { createClient } from '@/lib/supabase/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
 import { validateFlowForActivation } from '@/lib/flows/validate'
+import {
+  carregarReferenciasExistentes,
+  problemasDasReferencias,
+} from '@/lib/flows/referencias-do-robo'
 
 /**
  * POST /api/flows/[id]/activate
@@ -113,11 +117,33 @@ export async function POST(
         ),
       ),
     )
+    // CB (26/09/2026): o arquivo do acervo e o campo da ficha que os nós
+    // apontam ainda existem? O validador acima não tem banco. Leitura que
+    // falha pula a conferência (o motor falha visível no envio). Ver
+    // `referencias-do-robo.ts`.
+    const nosDoRobo = (nodes ?? []) as Array<{
+      node_key: string
+      node_type: string
+      config: Record<string, unknown>
+    }>
+    const existentes = await carregarReferenciasExistentes(
+      admin,
+      (flow as { account_id: string }).account_id,
+      nosDoRobo,
+    )
+    if (!existentes) {
+      console.error('[flows/activate] references check skipped: lookup failed', { flowId: id })
+    }
+    const daReferencia = existentes ? problemasDasReferencias(nosDoRobo, existentes) : []
+    issues.push(...daReferencia)
     const blockers = issues.filter((i) => i.severity === 'error')
     if (blockers.length > 0) {
       return NextResponse.json(
         {
-          error: 'Cannot activate flow — fix the issues below first.',
+          // O editor mostra só esta frase: o problema que só o SERVIDOR
+          // enxerga (item/campo apagado) vai escrito nela, senão o operador
+          // leria "corrija os problemas abaixo" sem problema nenhum abaixo.
+          error: daReferencia[0]?.message ?? 'Cannot activate flow — fix the issues below first.',
           issues,
         },
         { status: 422 },

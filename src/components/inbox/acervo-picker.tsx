@@ -40,13 +40,16 @@ export function AcervoPicker({
   open,
   onOpenChange,
   onPick,
+  contaId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onPick: (item: MediaLibraryItem) => void;
+  /** Só os itens desta conta (o editor do robô passa a conta do robô). */
+  contaId?: string;
 }) {
   const t = useTranslations("Inbox.acervo");
-  const { itens, jaCarregou, falhou } = useAcervo(open);
+  const { itens, jaCarregou, falhou } = useAcervo(open, contaId);
   const [termo, setTermo] = useState("");
   const [categoria, setCategoria] = useState<string | null>(null);
 

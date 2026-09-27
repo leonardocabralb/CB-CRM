@@ -68,8 +68,10 @@ export interface ConversationCreatedData {
  *   feito por uma pessoa na tela sai `channel`, porque o roteador escreve em
  *   service role (sem `auth.uid()`);
  * - `automation`: os passos "Criar negócio", "Mover card de etapa" e "Marcar
- *   ganho ou perdido" de uma automação — inclusive a que um pedido da API
- *   disparou (a cadeia e o `source` são conferidos ANTES do cabeçalho);
+ *   ganho ou perdido" de uma automação, e o bloco "Mover card de etapa" de um
+ *   ROBÔ (1053: move pela mesma RPC, com a cadeia `flow:<id>`, e cria o card
+ *   com `source: 'automation'`) — inclusive a que um pedido da API disparou
+ *   (a cadeia e o `source` são conferidos ANTES do cabeçalho);
  * - `api`: a API pública de negócios (`POST`/`PATCH /api/v1/deals`), pelo
  *   cliente próprio das rotas v1 (`src/lib/api/v1/cliente-da-api.ts`). É o
  *   que o integrador filtra para não reagir ao PRÓPRIO movimento — não corta

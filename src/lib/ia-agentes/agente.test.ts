@@ -3,14 +3,17 @@ import { describe, expect, it } from 'vitest'
 import {
   blocoMarcado,
   colunasDaAlteracao,
+  itensDaAcao,
   lerAcesso,
   lerAlteracao,
+  lerFerramentas,
   lerDocumentosPedidos,
   lerEtapaDoAgente,
   lerHorario,
   lerLinhaDoAgente,
   LIMITES,
   planoDasEtapas,
+  TIPOS_DE_ACAO,
 } from './agente'
 
 const ID = '11111111-1111-4111-8111-111111111111'
@@ -255,5 +258,82 @@ describe('lerDocumentosPedidos — o corpo do PUT …/documentos', () => {
     expect(lerDocumentosPedidos({ documentoIds: ['faq'] })).toBeNull()
     expect(lerDocumentosPedidos([ID])).toBeNull()
     expect(lerDocumentosPedidos({ documentoIds: Array.from({ length: LIMITES.documentos + 1 }, (_, i) => uuid(i)) })).toBeNull()
+  })
+})
+
+describe('lerFerramentas — nada ligado = o agente só conversa (F4, D28)', () => {
+  const A = '22222222-2222-4222-8222-222222222222'
+  const B = '33333333-3333-4333-8333-333333333333'
+
+  it('os seis tipos, nessa ordem', () => {
+    expect(TIPOS_DE_ACAO).toEqual([
+      'mover_etapa',
+      'etiquetar',
+      'tirar_etiqueta',
+      'preencher_campo',
+      'criar_tarefa',
+      'executar_automacao',
+    ])
+  })
+
+  it('forma estranha = nada ligado, nunca exceção', () => {
+    for (const v of [null, undefined, 'x', 1, [], { mover_etapa: 'x' }, { mover_etapa: { etapas: 'x' } }]) {
+      expect(lerFerramentas(v)).toEqual({})
+    }
+  })
+
+  it('cada tipo com a SUA lista; só uuid, sem repetição, até o teto', () => {
+    const muitos = Array.from({ length: 60 }, (_, i) => `44444444-4444-4444-8444-${String(i).padStart(12, '0')}`)
+    const f = lerFerramentas({
+      mover_etapa: { etapas: [A, A, 'lead', 7] },
+      etiquetar: { etiquetas: [B] },
+      tirar_etiqueta: { etapas: [A] },
+      criar_tarefa: { membros: muitos },
+      outra_coisa: { ids: [A] },
+    })
+    expect(f).toEqual({
+      mover_etapa: { etapas: [A] },
+      etiquetar: { etiquetas: [B] },
+      // A lista na chave errada (`etapas` num tipo de etiquetas) = desligado.
+      criar_tarefa: { membros: muitos.slice(0, LIMITES.itensPorAcao) },
+    })
+    expect(itensDaAcao(f, 'mover_etapa')).toEqual([A])
+    expect(itensDaAcao(f, 'executar_automacao')).toEqual([])
+  })
+
+  it('a linha do banco traz as ferramentas (ausentes = nada ligado)', () => {
+    const base = { id: ID, account_id: 'c', provedor: 'gemini' }
+    expect(lerLinhaDoAgente(base)?.ferramentas).toEqual({})
+    expect(lerLinhaDoAgente({ ...base, ferramentas: { etiquetar: { etiquetas: [A] } } })?.ferramentas).toEqual({
+      etiquetar: { etiquetas: [A] },
+    })
+  })
+})
+
+describe('lerAlteracao — ferramentas (PATCH)', () => {
+  const A = '22222222-2222-4222-8222-222222222222'
+
+  it('o objeto inteiro vai para a coluna', () => {
+    const r = lerAlteracao({ ferramentas: { mover_etapa: { etapas: [A] }, etiquetar: null } }, false)
+    expect(r).toEqual({ ok: true, valor: { ferramentas: { mover_etapa: { etapas: [A] } } } })
+    if (!r.ok) throw new Error('fixture')
+    expect(colunasDaAlteracao(r.valor)).toEqual({ ferramentas: { mover_etapa: { etapas: [A] } } })
+  })
+
+  it('fora da forma RECUSA (descartar em silêncio tiraria um item liberado)', () => {
+    const recusa = { ok: false, codigo: 'lista_invalida' }
+    expect(lerAlteracao({ ferramentas: [] }, false)).toEqual(recusa)
+    expect(lerAlteracao({ ferramentas: null }, false)).toEqual(recusa)
+    expect(lerAlteracao({ ferramentas: { mover_etapa: [A] } }, false)).toEqual(recusa)
+    expect(lerAlteracao({ ferramentas: { mover_etapa: { etapas: ['lead'] } } }, false)).toEqual(recusa)
+    expect(lerAlteracao({ ferramentas: { etiquetar: {} } }, false)).toEqual(recusa)
+    const demais = Array.from({ length: 51 }, (_, i) => `44444444-4444-4444-8444-${String(i).padStart(12, '0')}`)
+    expect(lerAlteracao({ ferramentas: { criar_tarefa: { membros: demais } } }, false)).toEqual(recusa)
+  })
+
+  it('sem `ferramentas` no corpo, a coluna não se toca', () => {
+    const r = lerAlteracao({ nome: 'X' }, false)
+    if (!r.ok) throw new Error('fixture')
+    expect(colunasDaAlteracao(r.valor)).not.toHaveProperty('ferramentas')
   })
 })

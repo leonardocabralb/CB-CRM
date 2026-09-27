@@ -14,7 +14,15 @@
 // ============================================================
 
 import type { AiProvider } from '@/lib/ai/types'
-import { CAIXAS_DO_ACESSO, type AcessoDoAgente, type Horario, type IaAgente } from './tipos'
+import {
+  CAIXAS_DO_ACESSO,
+  TIPOS_DE_ACAO,
+  type AcessoDoAgente,
+  type FerramentasDoAgente,
+  type Horario,
+  type IaAgente,
+  type TipoDeAcao,
+} from './tipos'
 
 export interface Rascunho {
   nome: string
@@ -104,4 +112,119 @@ export function acessoMudou(salvo: AcessoDoAgente, r: AcessoDoAgente): boolean {
 export function acessoParaSalvar(r: AcessoDoAgente, existentes: ReadonlySet<string> | null): AcessoDoAgente {
   if (existentes === null) return r
   return { ...r, campos: r.campos.filter((id) => existentes.has(id)) }
+}
+
+// ------------------------------------------------------------
+// Ferramentas (F4, D28, sub-aba Ferramentas): o que o agente pode FAZER.
+// ------------------------------------------------------------
+
+/** A lista de ids de um tipo de ação; `null` = o tipo está desligado. */
+export function listaDaFerramenta(f: FerramentasDoAgente, tipo: TipoDeAcao): string[] | null {
+  switch (tipo) {
+    case 'mover_etapa':
+      return f.mover_etapa ? f.mover_etapa.etapas : null
+    case 'etiquetar':
+      return f.etiquetar ? f.etiquetar.etiquetas : null
+    case 'tirar_etiqueta':
+      return f.tirar_etiqueta ? f.tirar_etiqueta.etiquetas : null
+    case 'preencher_campo':
+      return f.preencher_campo ? f.preencher_campo.campos : null
+    case 'criar_tarefa':
+      return f.criar_tarefa ? f.criar_tarefa.membros : null
+    case 'executar_automacao':
+      return f.executar_automacao ? f.executar_automacao.automacoes : null
+    default: {
+      const nunca: never = tipo
+      throw new Error(`tipo de ação desconhecido: ${String(nunca)}`)
+    }
+  }
+}
+
+/** `f` com o tipo LIGADO e esta lista (os nomes das chaves são os do servidor). */
+function comLista(f: FerramentasDoAgente, tipo: TipoDeAcao, ids: string[]): FerramentasDoAgente {
+  switch (tipo) {
+    case 'mover_etapa':
+      return { ...f, mover_etapa: { etapas: ids } }
+    case 'etiquetar':
+      return { ...f, etiquetar: { etiquetas: ids } }
+    case 'tirar_etiqueta':
+      return { ...f, tirar_etiqueta: { etiquetas: ids } }
+    case 'preencher_campo':
+      return { ...f, preencher_campo: { campos: ids } }
+    case 'criar_tarefa':
+      return { ...f, criar_tarefa: { membros: ids } }
+    case 'executar_automacao':
+      return { ...f, executar_automacao: { automacoes: ids } }
+    default: {
+      const nunca: never = tipo
+      throw new Error(`tipo de ação desconhecido: ${String(nunca)}`)
+    }
+  }
+}
+
+/**
+ * O rascunho da sub-aba: quais tipos estão ligados e a lista de CADA tipo.
+ * A lista fica guardada também com a chave desligada — desligar e religar
+ * antes de salvar não perde as marcações (só as ligadas vão no Salvar).
+ */
+export interface RascunhoDasFerramentas {
+  ligadas: TipoDeAcao[]
+  listas: Record<TipoDeAcao, string[]>
+}
+
+export function rascunhoDasFerramentas(f: FerramentasDoAgente): RascunhoDasFerramentas {
+  const listas = {} as Record<TipoDeAcao, string[]>
+  const ligadas: TipoDeAcao[] = []
+  for (const tipo of TIPOS_DE_ACAO) {
+    const lista = listaDaFerramenta(f, tipo)
+    listas[tipo] = lista ? [...lista] : []
+    if (lista) ligadas.push(tipo)
+  }
+  return { ligadas, listas }
+}
+
+/** O que o rascunho significa para o servidor: só os tipos ligados, cada um com a sua lista. */
+export function ferramentasDoRascunho(r: RascunhoDasFerramentas): FerramentasDoAgente {
+  let f: FerramentasDoAgente = {}
+  for (const tipo of TIPOS_DE_ACAO) if (r.ligadas.includes(tipo)) f = comLista(f, tipo, r.listas[tipo])
+  return f
+}
+
+/**
+ * As ferramentas mudaram? Por tipo: ligado × desligado conta, e a lista é
+ * CONJUNTO (a ordem não conta). Ligado com a lista vazia é diferente de
+ * desligado — é o que o servidor recebe.
+ */
+export function ferramentasMudaram(salvo: FerramentasDoAgente, r: FerramentasDoAgente): boolean {
+  return TIPOS_DE_ACAO.some((tipo) => {
+    const a = listaDaFerramenta(salvo, tipo)
+    const b = listaDaFerramenta(r, tipo)
+    if (a === null || b === null) return a !== b
+    return !mesmoConjunto(a, b)
+  })
+}
+
+/**
+ * As ferramentas que vão no PATCH: sem os itens que não existem mais na
+ * conta (a etiqueta apagada, o campo removido). Eles não aparecem na lista —
+ * não haveria como desmarcá-los —, e o servidor os recusaria
+ * (`item_de_outra_conta`), travando todo salvamento.
+ *
+ * ⚠️ Catálogo NÃO carregado, ou cortado pelo teto do PostgREST (`null` para
+ * aquele tipo) = a lista vai como está: descartar ali seria apagar marcação
+ * boa por falta de prova (a lição do `acessoParaSalvar`, Codex #312). E a
+ * poda é só no SALVAR, nunca em `ferramentasMudaram`.
+ */
+export function ferramentasParaSalvar(
+  f: FerramentasDoAgente,
+  existentes: Partial<Record<TipoDeAcao, ReadonlySet<string> | null>>,
+): FerramentasDoAgente {
+  let saida: FerramentasDoAgente = {}
+  for (const tipo of TIPOS_DE_ACAO) {
+    const lista = listaDaFerramenta(f, tipo)
+    if (lista === null) continue
+    const catalogo = existentes[tipo] ?? null
+    saida = comLista(saida, tipo, catalogo ? lista.filter((id) => catalogo.has(id)) : [...lista])
+  }
+  return saida
 }
