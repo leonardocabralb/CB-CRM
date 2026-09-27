@@ -17,6 +17,7 @@ import {
 import { carregarCamposParaCondicoes } from '@/lib/automations/condicao-por-campo'
 import { ehGatilhoDaRegua } from '@/lib/asaas/regua'
 import { normalizarAssinatura } from '@/lib/assinatura/assinatura'
+import { ehAreaDeOutraConta, lerIdDaArea } from '@/lib/automations/areas'
 
 // ⚠️⚠️ A automação é da CONTA, não de quem a criou (23/09/2026, decisão do
 // operador). As rotas do upstream filtravam por `user_id = user.id`, herança
@@ -107,6 +108,14 @@ export async function PATCH(
   // "Assinar como" (998, D18): ausente do corpo = não mexe (a convenção de
   // `handoff_agent_id`); presente, texto aparado com teto ou NULL.
   if ('assinatura_personalizada' in body) update.assinatura_personalizada = normalizarAssinatura(body.assinatura_personalizada)
+  // A aba da tela de Automações (1055): ausente = não mexe; `null` = "Geral".
+  if ('area_id' in body) {
+    const areaId = lerIdDaArea(body.area_id)
+    if (areaId === undefined) {
+      return NextResponse.json({ error: 'area_id must be an area id or null' }, { status: 400 })
+    }
+    update.area_id = areaId
+  }
   // Array vazio significaria "nenhum canal", mas o dispatch o leria como
   // "sem restricao" — normaliza para null, a mesma regra da migration 903.
   if (Array.isArray(update.channel_ids) && update.channel_ids.length === 0) {
@@ -186,6 +195,7 @@ export async function PATCH(
       .eq('id', id)
       .eq('account_id', accountId)
       .select('id')
+    if (ehAreaDeOutraConta(updErr)) return NextResponse.json({ error: 'area_not_found' }, { status: 400 })
     if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
     if (!atualizadas || atualizadas.length === 0) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })

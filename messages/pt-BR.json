@@ -1781,7 +1781,41 @@
       "never": "nunca",
       "activeIndicator": "ativa",
       "openMenu": "Abrir menu",
-      "loadError": "Falha ao carregar as automações"
+      "loadError": "Falha ao carregar as automações",
+      "abas": {
+        "todas": "Todas",
+        "geral": "Geral",
+        "gerenciar": "Gerenciar abas",
+        "dialogoTitulo": "Abas das automações",
+        "dialogoDescricao": "Separe as automações por área. É só organização: a aba não muda o que a automação faz. \"Geral\" é fixa e guarda as automações sem aba.",
+        "novaPlaceholder": "Nova aba (ex.: Tributário)",
+        "adicionar": "Adicionar",
+        "fixa": "fixa",
+        "renomearAria": "Renomear a aba {nome}",
+        "antes": "Mover a aba {nome} para a esquerda",
+        "depois": "Mover a aba {nome} para a direita",
+        "apagarAria": "Apagar a aba {nome}",
+        "confirmarApagar": "Apagar a aba \"{nome}\"? {count, plural, =0 {Ela está vazia.} one {A automação dela volta para Geral.} other {As # automações dela voltam para Geral.}}",
+        "apagar": "Apagar",
+        "cancelar": "Cancelar",
+        "nenhuma": "Nenhuma aba criada ainda: todas as automações estão em Geral.",
+        "criada": "Aba \"{nome}\" criada",
+        "renomeada": "Aba renomeada",
+        "apagada": "Aba \"{nome}\" apagada",
+        "moverPara": "Mover para a aba",
+        "movida": "Automação movida para \"{aba}\"",
+        "vazia": "Nenhuma automação nesta aba.",
+        "carregarFalhou": "Não foi possível carregar as abas; a lista aparece sem elas.",
+        "erros": {
+          "vazio": "Dê um nome à aba.",
+          "longo": "Use até {max} caracteres.",
+          "reservado": "\"Geral\" já existe e é fixa.",
+          "repetido": "Já existe uma aba com esse nome.",
+          "semPermissao": "Seu perfil não pode mudar as abas.",
+          "falhou": "Não foi possível salvar. Tente de novo.",
+          "mover": "Não foi possível mover a automação. Tente de novo."
+        }
+      }
     },
     "edit": {
       "loadError": "Falha ao carregar ({status})",
@@ -2221,6 +2255,10 @@
         "label": "Assinar como",
         "placeholder": "Carol - financeiro",
         "ajuda": "O nome que assina as mensagens de texto desta automação, no lugar do nome automático do escritório. Vazio = o nome automático. Continua sob o interruptor de assinatura da conta."
+      },
+      "area": {
+        "label": "Aba da automação",
+        "geral": "Geral"
       },
       "schedulePlaceholder": "Expressão cron ou HH:mm",
       "moveUp": "Mover para cima",

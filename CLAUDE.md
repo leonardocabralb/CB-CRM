@@ -539,6 +539,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
 - `.claude/rules/automacoes-passos.md` — valores do "Enviar modelo", tarefa
   pelo responsável, condições da janela de 24h e da hora do dia, "Aguardar
   até estar dentro do horário".
+- `.claude/rules/automacoes-abas.md` — as abas da tela de Automações (1055),
+  criadas por cada conta; "Geral" é `area_id` nulo.
 - `.claude/rules/funil.md` — card abre a conversa, ganho/perdido, título do
   card, `createDeal`, FKs compostas, concorrência do quadro.
 - `.claude/rules/funil-metricas.md` — degraus, coorte × por período,

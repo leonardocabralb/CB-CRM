@@ -53,6 +53,7 @@ function NewAutomationPageInner() {
         channel_ids: [],
         stage_ids: [],
         assinatura_personalizada: null,
+        area_id: null,
         is_active: false,
         steps,
       }
@@ -79,6 +80,7 @@ function NewAutomationPageInner() {
         // categoria "nunca dispara aqui" do painel.
         stage_ids: [],
         assinatura_personalizada: null,
+        area_id: null,
         is_active: false,
         steps: [],
       }
@@ -91,6 +93,7 @@ function NewAutomationPageInner() {
       channel_ids: [],
       stage_ids: [],
       assinatura_personalizada: null,
+      area_id: null,
       is_active: false,
       steps: [],
     }

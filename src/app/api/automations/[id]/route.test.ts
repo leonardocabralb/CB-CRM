@@ -148,6 +148,7 @@ beforeEach(() => {
       stage_ids: null,
       is_active: false,
       assinatura_personalizada: 'Dra. Isa',
+      area_id: '11111111-1111-4111-8111-111111111111',
     },
     {
       id: 'auto-2',
@@ -205,6 +206,22 @@ describe('PATCH /api/automations/[id] — qualquer admin da conta', () => {
     expect(automacao('auto-1')?.name).toBe('Lembrete · 24h')
   })
 
+  it('muda a aba (1055): id de aba, `null` = "Geral"; ausente não mexe', async () => {
+    const outra = '22222222-2222-4222-8222-222222222222'
+    expect((await PATCH(corpo({ area_id: outra }), params('auto-1'))).status).toBe(200)
+    expect(automacao('auto-1')?.area_id).toBe(outra)
+    expect((await PATCH(corpo({ name: 'só o nome' }), params('auto-1'))).status).toBe(200)
+    expect(automacao('auto-1')?.area_id).toBe(outra)
+    expect((await PATCH(corpo({ area_id: null }), params('auto-1'))).status).toBe(200)
+    expect(automacao('auto-1')?.area_id).toBeNull()
+  })
+
+  it('aba em forma inválida é 400 e nada muda', async () => {
+    const res = await PATCH(corpo({ area_id: 'Tributário' }), params('auto-1'))
+    expect(res.status).toBe(400)
+    expect(automacao('auto-1')?.area_id).toBe('11111111-1111-4111-8111-111111111111')
+  })
+
   it('automação de outra conta é 404 e fica intacta', async () => {
     const res = await PATCH(corpo({ name: 'invadida' }), params('auto-2'))
     expect(res.status).toBe(404)
@@ -247,6 +264,8 @@ describe('POST /api/automations/[id]/duplicate', () => {
       user_id: 'u-ricardo',
       is_active: false,
       assinatura_personalizada: 'Dra. Isa',
+      // A aba (1055): a cópia aparece ao lado da original, não em "Geral".
+      area_id: '11111111-1111-4111-8111-111111111111',
     })
     const passos = h.db.automation_steps.filter((s) => s.automation_id === 'copia-1')
     expect(passos).toHaveLength(1)
