@@ -91,6 +91,10 @@ Plano: `docs/PLANO-agentes-de-ia.md` (D5, D28, F4). Sem migration.
 - **Nenhum marcador chega ao cliente** (`lerAcoes`: caixa, acento, espaço,
   colchete simples; `[[handoff]]` em qualquer forma = transferência). Teste
   para cada forma nova.
+- **`[[TRANSFERIR]]` = responda e passe** (27/09): sempre disponível, sem
+  configuração; a resposta SAI e, depois das ações, o turno transfere
+  (`agente_passou`, desfecho `respondeu`, linha `transferir` no registro).
+  Sentinela, passagem e as travas vencem; só o marcador = transfere sem enviar.
 - **Link inventado** (`linkInventado`): URL da resposta que não está no
   pedido montado nem nas mensagens enviadas ao modelo → retém e transfere
   (`link_inventado`), com o link no registro do turno.
@@ -117,8 +121,9 @@ uma AÇÃO a mais do protocolo da F4 (`marcar_reuniao`, `[[REUNIAO:n]]`).
   da régua. O agente NÃO mexe no card, nos campos nem nos lembretes.
 - ⚠️⚠️ **Reunião PROMETIDA sem o marcador = RETIDA e transfere** (27/09,
   medido: 2 de 6 gerações): com horários oferecidos e nenhuma `marcar_reuniao`
-  aceita, texto que afirma a reunião (`afirmaReuniaoMarcada`: particípio +
-  reunião/horário/data, sem negação, futuro, oferta ou condição) vira
+  aceita, texto que afirma a reunião (`afirmaReuniaoMarcada`: particípio ou
+  forma finita — "marquei", "agendamos", "I booked", "all set" (Codex, #321) —
+  + reunião/horário/data, sem negação, futuro, oferta ou condição) vira
   `reuniao_prometida`, com o texto no `erro` do turno; o Playground avisa
   (`reuniaoPrometida`). Passagem, transferência e link inventado vencem.
 - **Configuração**: `ferramentas.marcar_reuniao = { tipos_de_evento: [uri] }`

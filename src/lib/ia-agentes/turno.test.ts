@@ -2204,6 +2204,92 @@ describe('executarTurno — as ações (F4, D28)', () => {
     expect(executarAcoes).not.toHaveBeenCalled()
     expect(turno().acoes).toEqual([{ tipo: 'mover_etapa', alvo: { id: null, nome: '#1' }, ok: false, erro: 'nao_liberada' }])
   })
+
+  // "Responda e passe" (`[[TRANSFERIR]]`, 27/09/2026): sempre disponível, a
+  // resposta SAI e só depois a conversa vai para a equipe.
+  const TRANSFERIR = { tipo: 'transferir', alvo: { id: null, nome: '' } }
+
+  it('⚠️ [[TRANSFERIR]]: a resposta SAI (sem o marcador), e DEPOIS das ações a conversa vai para a equipe; desfecho `respondeu`', async () => {
+    vi.mocked(opcoesDoAgente).mockResolvedValue({})
+    agenteLido().ferramentas = {}
+    let pausadaNoEnvio: unknown = null
+    vi.mocked(engineSendText).mockImplementation(async (args) => {
+      pausadaNoEnvio = conversa().ai_autoreply_disabled
+      args.antesDoProvedor?.()
+      await args.aoSair?.('wamid.resposta')
+      return { whatsapp_message_id: 'wamid.resposta' }
+    })
+    responde('Um especialista vai analisar o seu caso e te retorna por aqui.\n[[TRANSFERIR]]')
+    await executarTurno(TURNO)
+    expect(vi.mocked(engineSendText).mock.calls[0][0].text).toBe('Um especialista vai analisar o seu caso e te retorna por aqui.')
+    // No envio a conversa AINDA não estava pausada: a transferência vem depois.
+    expect(pausadaNoEnvio).toBe(false)
+    expect(turno()).toMatchObject({ status: 'respondeu', mensagem_enviada_id: 'wamid.resposta', acoes: [{ ...TRANSFERIR, ok: true }] })
+    expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'transferencia', assigned_agent_id: MEMBRO })
+    expect(notas()).toHaveLength(1)
+    expect(String(notas()[0].autor_nome)).toContain('Triagem')
+    expect(String(notas()[0].texto)).toMatch(/respondeu ao cliente e passou a conversa para a equipe|replied to the customer and handed the conversation to the team/)
+  })
+
+  it('[[TRANSFERIR]] junto com ações: as ações executam primeiro, a transferência por último', async () => {
+    const ordem: string[] = []
+    vi.mocked(executarAcoes).mockImplementation(async (_db, _ctx, aceitas) => {
+      ordem.push(`ações; pausada=${String(conversa().ai_autoreply_disabled)}`)
+      return { registros: aceitas.map((a) => ({ tipo: a.tipo, alvo: { id: a.id, nome: a.nome }, ok: true })), moveu: false }
+    })
+    responde('Anotei, a equipe te chama.\n[[ETIQUETAR:1]]\n[ transferir ]')
+    await executarTurno(TURNO)
+    expect(ordem).toEqual(['ações; pausada=false'])
+    expect(turno().acoes).toEqual([{ tipo: 'etiquetar', alvo: { id: 'tag-vip', nome: 'VIP' }, ok: true }, { ...TRANSFERIR, ok: true }])
+    expect(conversa()).toMatchObject({ ai_autoreply_disabled: true })
+  })
+
+  it('[[TRANSFERIR]] com a conversa JÁ pausada por gente: não passa por cima, sem anotação — `ja_estava`', async () => {
+    responde('A equipe te chama.\n[[TRANSFERIR]]')
+    vi.mocked(engineSendText).mockImplementation(async (args) => {
+      args.antesDoProvedor?.()
+      await args.aoSair?.('wamid.resposta')
+      // A equipe respondeu pelo celular logo depois do envio.
+      Object.assign(conversa(), { ai_autoreply_disabled: true, ia_pausada_por: 'gente' })
+      return { whatsapp_message_id: 'wamid.resposta' }
+    })
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    expect(conversa()).toMatchObject({ ia_pausada_por: 'gente' })
+    expect(notas()).toHaveLength(0)
+    expect(turno().acoes).toEqual([{ ...TRANSFERIR, ok: true, detalhe: 'ja_estava' }])
+  })
+
+  it.each<[string, () => void, string]>([
+    ['recusado (4xx)', () => envioFalhaNoProvedor(new EvolutionApiError('número inválido', 400)), 'falhou'],
+    ['incerto (5xx)', () => envioFalhaNoProvedor(new EvolutionApiError('bad gateway', 502)), 'incerto'],
+  ])('⚠️ [[TRANSFERIR]] com o envio %s: não roda (registrado `envio_falhou`)', async (_r, falhar, status) => {
+    responde('A equipe te chama.\n[[TRANSFERIR]]')
+    falhar()
+    await executarTurno(TURNO)
+    expect(turno().status).toBe(status)
+    expect(turno().acoes).toEqual([{ ...TRANSFERIR, ok: false, erro: 'envio_falhou' }])
+    // O recusado não transfere (nada saiu); o incerto transfere pela regra DELE (`incerto`), não pelo marcador.
+    if (status === 'falhou') expect(conversa()).toMatchObject({ ai_autoreply_disabled: false })
+  })
+
+  it.each<[string, string, string]>([
+    ['o sentinela sozinho', 'Um momento [[HANDOFF]] [[TRANSFERIR]]', 'sentinela'],
+    ['só o [[TRANSFERIR]], sem texto', '[[TRANSFERIR]]', 'sentinela'],
+    ['o link inventado', 'Pague em https://pagar.exemplo.com/x\n[[TRANSFERIR]]', 'link inventado: https://pagar.exemplo.com/x'],
+  ])('⚠️ precedência: %s VENCE o [[TRANSFERIR]] — nada é enviado', async (_c, texto, erro) => {
+    responde(texto)
+    await executarTurno(TURNO)
+    expect(engineSendText).not.toHaveBeenCalled()
+    expect(turno()).toMatchObject({ status: 'transferiu', erro, acoes: [{ ...TRANSFERIR, ok: false, erro: 'transferencia' }] })
+  })
+
+  it('⚠️ precedência: a passagem VENCE o [[TRANSFERIR]] — nada é enviado', async () => {
+    responde('Vou te passar. [[PASSAR:1]] [[TRANSFERIR]]')
+    await executarTurno(TURNO)
+    expect(engineSendText).not.toHaveBeenCalled()
+    expect(turno().acoes).toEqual([{ ...TRANSFERIR, ok: false, erro: 'passagem' }])
+  })
 })
 
 // ------------------------------------------------------------
@@ -2309,6 +2395,17 @@ describe('executarTurno — marcar reunião (F5)', () => {
       acoes: [{ tipo: 'marcar_reuniao', alvo: { id: null, nome: '#9' }, ok: false, erro: 'fora_da_lista' }],
     })
     expect(String(turno().erro)).toContain('reunião prometida sem marcar: Pronto! Sua reunião está agendada')
+  })
+
+  it('⚠️ a reunião prometida VENCE o [[TRANSFERIR]]: retida, nada enviado', async () => {
+    responde('Perfeito! Sua reunião está confirmada para terça-feira, 29/09, às 10:00.\n[[TRANSFERIR]]')
+    await executarTurno(TURNO)
+    expect(engineSendText).not.toHaveBeenCalled()
+    expect(turno()).toMatchObject({
+      status: 'transferiu',
+      acoes: [{ tipo: 'transferir', alvo: { id: null, nome: '' }, ok: false, erro: 'transferencia' }],
+    })
+    expect(String(turno().erro)).toContain('reunião prometida sem marcar')
   })
 
   it('a mesma confirmação COM o marcador sai e marca', async () => {

@@ -30,6 +30,7 @@ import { useTranslations } from 'next-intl';
 import { Check, Eye, RefreshCw, Wrench, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { ACAO_TRANSFERIR } from '@/lib/ia-agentes/acoes';
 import { urlDoInbox } from '@/lib/inbox/url';
 import { cn } from '@/lib/utils';
 import { lerAcoesDoTurno } from './ferramentas';
@@ -254,7 +255,10 @@ function AcoesDoTurno({ acoes }: { acoes: AcaoDoTurno[] }) {
             )}
             <span className="min-w-0 break-words">
               <span className="font-medium text-foreground">{rotuloDoTipoDeAcao(t, a.tipo)}</span>
-              <span className="text-muted-foreground"> · {a.alvo.nome || t('turnos.acoes.semAlvo')}</span>
+              {/* O `[[TRANSFERIR]]` não tem alvo: nada de "(sem nome)". */}
+              {a.tipo !== ACAO_TRANSFERIR ? (
+                <span className="text-muted-foreground"> · {a.alvo.nome || t('turnos.acoes.semAlvo')}</span>
+              ) : null}
               {!a.ok ? (
                 <span className="block text-red-700 dark:text-red-300">{textoDoErroDaAcao(t, a)}</span>
               ) : a.detalhe ? (

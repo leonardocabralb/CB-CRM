@@ -339,6 +339,23 @@ describe('POST /api/cb/ia/agentes/[id]/playground — as ações (F4, SIMULADAS)
     expect(corpo.acoes).toEqual({ aceitas: [], recusadas: [{ tipo: 'mover_etapa', motivo: 'transferencia' }] })
   })
 
+  it('"responda e passe" ([[TRANSFERIR]]): a resposta aparece SEM o marcador e a transferência vem como ação simulada', async () => {
+    resposta = { text: 'Um especialista vai analisar o seu caso e te retorna por aqui.\n[[TRANSFERIR]]', handoff: false }
+    const corpo = await (await enviar()).json()
+    expect(corpo).toMatchObject({ reply: 'Um especialista vai analisar o seu caso e te retorna por aqui.', handoff: false })
+    expect(corpo.acoes).toEqual({ aceitas: [{ tipo: 'transferir', nome: '' }], recusadas: [] })
+  })
+
+  it('[[TRANSFERIR]] perde para o link inventado e para a resposta vazia (vai às recusadas)', async () => {
+    resposta = { text: 'Pague em https://boleto.exemplo/1\n[[TRANSFERIR]]', handoff: false }
+    const inventou = await (await enviar()).json()
+    expect(inventou.acoes).toEqual({ aceitas: [], recusadas: [{ tipo: 'transferir', motivo: 'transferencia' }] })
+    resposta = { text: '[[TRANSFERIR]]', handoff: false }
+    const vazio = await (await enviar()).json()
+    expect(vazio).toMatchObject({ reply: '', handoff: true })
+    expect(vazio.acoes).toEqual({ aceitas: [], recusadas: [{ tipo: 'transferir', motivo: 'transferencia' }] })
+  })
+
   it('a passagem vence: as ações vão para as recusadas (`passagem`)', async () => {
     resposta = { text: '[[PASSAR:1]]\n[[MOVER:1]]', handoff: false }
     const corpo = await (await enviar()).json()

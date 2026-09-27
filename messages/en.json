@@ -4460,6 +4460,7 @@
       "salvar": "Save tools",
       "salvo": "Tools saved.",
       "tipoDesconhecido": "Other ({tipo})",
+      "transferir": "Hand over to the team",
       "tipo": {
         "mover_etapa": {
           "nome": "Move the deal",
@@ -4587,6 +4588,7 @@
         "marcar_reuniao": "book a meeting at {nome} for {valor}"
       },
       "acaoDesconhecida": "{tipo}: {nome}",
+      "acaoTransferir": "hand over to the team",
       "horarios": {
         "titulo": "Slots offered: {itens}",
         "recolhidos": "{n, plural, one {# slot offered} other {# slots offered}}",
@@ -4774,7 +4776,8 @@
         "incerto": "{agente} handed the conversation to the team: there is no way to know whether the last reply reached the customer — check before replying.",
         "link_inventado": "{agente} handed the conversation to the team: the reply had a link that did not come from the system, and it was not sent.",
         "reuniao_nao_marcada": "{agente} could not book the meeting: {motivo}. The conversation went to the team — check in Calendly that the meeting was not created before booking it again, and confirm the time with the customer.",
-        "reuniao_prometida": "{agente} handed the conversation to the team: the reply said the meeting was booked, but nothing was booked in Calendly — and it was not sent. The held-back text is in the agent's Turns; confirm the time with the customer and book it."
+        "reuniao_prometida": "{agente} handed the conversation to the team: the reply said the meeting was booked, but nothing was booked in Calendly — and it was not sent. The held-back text is in the agent's Turns; confirm the time with the customer and book it.",
+        "agente_passou": "{agente} replied to the customer and handed the conversation to the team."
       },
       "passagem": "{agente} handed the conversation to AI · {destino}, and the deal moved to that agent's stage.",
       "acoes": {

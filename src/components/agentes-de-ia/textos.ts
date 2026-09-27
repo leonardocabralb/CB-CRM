@@ -1,6 +1,7 @@
 import type { useTranslations } from 'next-intl';
 
 import {
+  ACAO_TRANSFERIR,
   ACOES_COM_VALOR,
   ACOES_COM_VALOR_OPCIONAL,
   type CodigoDeFalhaDaAcao,
@@ -128,10 +129,13 @@ export function rotuloDoBloco(t: ReturnType<typeof useTranslations>, bloco: stri
 /**
  * O nome de um tipo de ação (F4) — na sub-aba Ferramentas, nas recusadas do
  * Playground e nas ações da sub-aba Turnos (`IaAgentes.ferramentas.tipo.<t>.nome`).
- * Chave MONTADA, cobrada em `textos.test.ts`. Tipo fora da lista (um novo no
- * servidor antes da tela) cai em `ferramentas.tipoDesconhecido`, nunca na chave crua.
+ * Chave MONTADA, cobrada em `textos.test.ts`. O `[[TRANSFERIR]]` ("responda e
+ * passe", 27/09/2026 — não é ferramenta) tem rótulo próprio. Tipo fora da
+ * lista (um novo no servidor antes da tela) cai em `ferramentas.tipoDesconhecido`,
+ * nunca na chave crua.
  */
 export function rotuloDoTipoDeAcao(t: ReturnType<typeof useTranslations>, tipo: string): string {
+  if (tipo === ACAO_TRANSFERIR) return t('ferramentas.transferir');
   return (TIPOS_DE_ACAO as readonly string[]).includes(tipo)
     ? t(`ferramentas.tipo.${tipo}.nome`)
     : t('ferramentas.tipoDesconhecido', { tipo });
@@ -153,6 +157,8 @@ export function fraseDaAcao(
   nome: string,
   valor?: string,
 ): string {
+  // "Responda e passe" (`[[TRANSFERIR]]`): sem nome — "transferir para a equipe".
+  if (tipo === ACAO_TRANSFERIR) return t('playground.acaoTransferir');
   if (!(TIPOS_DE_ACAO as readonly string[]).includes(tipo)) return t('playground.acaoDesconhecida', { tipo, nome });
   const comValor = (ACOES_COM_VALOR as ReadonlySet<string>).has(tipo) || (ACOES_COM_VALOR_OPCIONAL as ReadonlySet<string>).has(tipo);
   if (valor && comValor) return t(`playground.acaoComValor.${tipo}`, { nome, valor });

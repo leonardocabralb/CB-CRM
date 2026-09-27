@@ -170,6 +170,28 @@ describe('lerAcoes', () => {
     expect(lerAcoes('Ok! [[MOVER:1]]').transferir).toBe(false)
   })
 
+  it.each(['[[TRANSFERIR]]', '[[ transferir ]]', '[[Transferir]]', '[TRANSFERIR]', '[ Transferir ]', '[[TRANSFERÍR]]', '[[TRANSFERIR: equipe]]'])(
+    '⚠️ "responda e passe": %s é lido, SAI do texto e não é ação nem sentinela',
+    (marcador) => {
+      const r = lerAcoes(`Um especialista vai analisar o seu caso e te retorna por aqui.\n${marcador}`)
+      expect(r.texto).toBe('Um especialista vai analisar o seu caso e te retorna por aqui.')
+      expect(r.transferirDepois).toBe(true)
+      expect(r.transferir).toBe(false)
+      expect(r.pedidas).toEqual([])
+      expect(r.recusadas).toEqual([])
+    },
+  )
+
+  it('sem o marcador, `transferirDepois` é falso; "[Transferir o caso]" é texto; só o marcador deixa o texto vazio', () => {
+    expect(lerAcoes('Olá! [[MOVER:1]]').transferirDepois).toBe(false)
+    expect(lerAcoes('Veja [Transferir o caso] depois').texto).toBe('Veja [Transferir o caso] depois')
+    expect(lerAcoes('Veja [Transferir o caso] depois').transferirDepois).toBe(false)
+    const so = lerAcoes('[[TRANSFERIR]]')
+    expect(so).toMatchObject({ texto: '', transferirDepois: true })
+    // Com o sentinela junto, os dois ficam marcados — quem decide a precedência é o turno.
+    expect(lerAcoes('Um momento [[HANDOFF]] [[TRANSFERIR]]')).toMatchObject({ transferir: true, transferirDepois: true })
+  })
+
   it('`[PASSAR:n]` com colchete simples não é passagem (`lerPassagem`): sai do texto e TRANSFERE', () => {
     const r = lerAcoes('Vou te passar. [PASSAR:1]')
     expect(r.texto).toBe('Vou te passar.')
@@ -313,6 +335,53 @@ describe('a trava da REUNIÃO PROMETIDA (F5, 27/09)', () => {
       'Your meeting has been rescheduled to Thursday at 10:00.',
     ]) {
       expect(afirmaReuniaoMarcada(t), t).toBe(true)
+    }
+  })
+
+  it('⚠️ a forma FINITA também afirma (Codex, #321): "marquei", "agendamos", "já está marcada", "ficou agendado", "I booked", "you\'re all set"', () => {
+    for (const t of [
+      'Pronto, marquei sua reunião para terça às 15:15.',
+      'Agendei para terça, 29/09, às 15:15.',
+      'Remarquei sua reunião para quinta às 10h.',
+      'Reagendei para quinta às 10:00.',
+      'Confirmei sua reunião de terça às 15:15.',
+      'Reservei o horário das 15:15 de terça para você.',
+      'Marcamos sua reunião para terça às 15:15!',
+      'Agendamos para terça às 15:15.',
+      'Remarcamos para quinta às 10h.',
+      'Reagendamos para quinta às 10:00.',
+      'Confirmamos sua reunião para terça às 15:15.',
+      'Reservamos terça às 15:15 para você.',
+      'Sua reunião já está marcada para terça às 15:15.',
+      'Ficou agendado para terça às 15:15.',
+      'Ficou marcada para terça às 15:15.',
+      'I booked your meeting for Tuesday at 3:15 pm.',
+      "I've scheduled you for Tuesday at 15:15.",
+      'We booked Tuesday at 15:15 for you.',
+      'I confirmed your meeting for Tuesday at 15:15.',
+      'I rescheduled it to Thursday at 10:00.',
+      "You're booked for Tuesday at 15:15.",
+      "You're all set for Tuesday at 15:15!",
+    ]) {
+      expect(afirmaReuniaoMarcada(t), t).toBe(true)
+    }
+  })
+
+  it('⚠️ a forma finita NÃO afirma no futuro, na oferta, na pergunta, na condição ou na negação', () => {
+    for (const t of [
+      'Vou marcar para terça às 15:15.',
+      'Vou marcar sua reunião para terça às 15:15 agora mesmo.',
+      'Posso agendar para terça às 15:15?',
+      'Quer que eu marque para terça às 15:15?',
+      'Marcamos para terça às 15:15?',
+      'Se preferir, marcamos para terça às 15:15.',
+      'Assim que você me passar o e-mail, agendamos para terça às 15:15.',
+      'Ainda não marquei: terça às 15:15 continua livre.',
+      "I haven't booked it yet — Tuesday at 15:15 is still free.",
+      "Once you confirm, you'll be all set for Tuesday at 15:15.",
+      'I can book Tuesday at 15:15 if you like.',
+    ]) {
+      expect(afirmaReuniaoMarcada(t), t).toBe(false)
     }
   })
 

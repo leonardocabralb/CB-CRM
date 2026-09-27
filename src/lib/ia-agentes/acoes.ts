@@ -7,7 +7,9 @@
 // `[[MOVER:n]]`, `[[ETIQUETAR:n]]`, `[[TIRAR:n]]`, `[[CAMPO:n=valor]]`,
 // `[[TAREFA:n=título]]`, `[[AUTOMACAO:n]]` e, na F5, `[[REUNIAO:n]]` (um dos
 // horários livres do Calendly; com o nome completo que o cliente deu,
-// `[[REUNIAO:n=Nome]]`, opcional). O `n` é o número de uma opção
+// `[[REUNIAO:n=Nome]]`, opcional). E `[[TRANSFERIR]]` (27/09/2026), SEMPRE
+// disponível, sem número: manda esta resposta e DEPOIS passa a conversa para
+// a equipe. O `n` é o número de uma opção
 // que o SERVIDOR listou no pedido (`OpcoesDeAcao`, com os nomes); o servidor
 // traduz o número para o id. Número fora da lista = recusada.
 //
@@ -185,6 +187,16 @@ export const MARCADOR_DA_ACAO: Record<TipoDeAcao, string> = {
   marcar_reuniao: 'REUNIAO',
 }
 
+/**
+ * `[[TRANSFERIR]]` (27/09/2026): "responda e passe para a equipe". Ao
+ * contrário do `[[HANDOFF]]` (que tem de ser a resposta INTEIRA — o cliente
+ * não recebe nada), a resposta SAI e só depois o turno transfere
+ * (`agente_passou`). Não é ferramenta: vale para todo agente, sem configuração.
+ */
+export const MARCADOR_DE_TRANSFERENCIA = '[[TRANSFERIR]]'
+/** O `tipo` da linha do `[[TRANSFERIR]]` no registro do turno e nas ações do Playground (não é um `TipoDeAcao`). */
+export const ACAO_TRANSFERIR = 'transferir'
+
 /** Os tipos que levam `=valor` (o valor do campo, o título da tarefa). */
 export const ACOES_COM_VALOR: ReadonlySet<TipoDeAcao> = new Set(['preencher_campo', 'criar_tarefa'])
 
@@ -260,6 +272,12 @@ export interface LeituraDasAcoes {
    * não é passagem: transfere, como o sentinela exato.
    */
   transferir: boolean
+  /**
+   * O modelo pediu `[[TRANSFERIR]]` (em qualquer forma: caixa, espaço,
+   * acento, colchete simples): a resposta sai e DEPOIS a conversa vai para a
+   * equipe. Perde para `transferir`, para a passagem e para as travas.
+   */
+  transferirDepois: boolean
 }
 
 /** Maiúsculas, sem acento: "Automação" → "AUTOMACAO". */
@@ -271,7 +289,9 @@ const TIPO_DO_MARCADOR = new Map<string, TipoDeAcao>(
   TIPOS_DE_ACAO.map((t) => [MARCADOR_DA_ACAO[t], t]),
 )
 /** Marcadores de controle que também saem do texto no colchete simples. */
-const MARCADORES_DE_CONTROLE = new Set(['PASSAR', 'HANDOFF'])
+const MARCADORES_DE_CONTROLE = new Set(['PASSAR', 'HANDOFF', 'TRANSFERIR'])
+/** Os de controle que valem SEM dois-pontos no colchete simples: `[HANDOFF]`, `[TRANSFERIR]`. */
+const CONTROLE_SEM_NUMERO = new Set(['HANDOFF', 'TRANSFERIR'])
 
 /** Onde um marcador estava: o texto o troca por isto antes da limpeza final. */
 const LUGAR = '\u0000'
@@ -283,8 +303,8 @@ const LUGAR = '\u0000'
  *     de um marcador válido não engole o texto até ele;
  *  2. `[NOME:…]` com colchete simples (ou um lado dobrado), numa linha — só
  *     vira marcador quando NOME é de ação ou de controle; o resto é texto
- *     ("[Obs: …]" fica). Sem dois-pontos, só o `[HANDOFF]`.
- * `[[HANDOFF]]` sem dois-pontos cai no 1.
+ *     ("[Obs: …]" fica). Sem dois-pontos, só o `[HANDOFF]` e o `[TRANSFERIR]`.
+ * `[[HANDOFF]]` e `[[TRANSFERIR]]` sem dois-pontos caem no 1.
  */
 const MARCADOR = /\[\[((?:(?!\[\[)[\s\S])*?)\]\]+|\[{1,2}[ \t]*(\p{L}+)[ \t]*(?::([^[\]\n]*))?\]{1,2}/gu
 /** O miolo de um marcador de ação: `TIPO : n` e, opcional, `= valor`. */
@@ -309,14 +329,24 @@ export function lerAcoes(texto: string): LeituraDasAcoes {
   const pedidas: AcaoPedida[] = []
   const recusadas: RecusaDeAcao[] = []
   let transferir = false
+  let transferirDepois = false
 
   const ler = (miolo: string): void => {
     if (/^\s*handoff\s*$/i.test(miolo)) {
       transferir = true
       return
     }
+    if (nomeNormalizado(miolo).trim() === 'TRANSFERIR') {
+      transferirDepois = true
+      return
+    }
     const m = MIOLO.exec(miolo)
     if (!m) return
+    // `[[TRANSFERIR: …]]` com algo depois: a intenção é a mesma.
+    if (nomeNormalizado(m[1]) === 'TRANSFERIR') {
+      transferirDepois = true
+      return
+    }
     const tipo = TIPO_DO_MARCADOR.get(nomeNormalizado(m[1]))
     // PASSAR, HANDOFF e o que não é ação: só saem do texto.
     if (!tipo) return
@@ -356,8 +386,10 @@ export function lerAcoes(texto: string): LeituraDasAcoes {
     }
     if (!nome) return inteiro
     if (resto === undefined) {
-      if (nomeNormalizado(nome) !== 'HANDOFF') return inteiro
-      transferir = true
+      const controle = nomeNormalizado(nome)
+      if (!CONTROLE_SEM_NUMERO.has(controle)) return inteiro
+      if (controle === 'HANDOFF') transferir = true
+      else transferirDepois = true
       return LUGAR
     }
     if (!conhecido(nome)) return inteiro
@@ -389,7 +421,7 @@ export function lerAcoes(texto: string): LeituraDasAcoes {
     .replace(/[ \t]+$/gm, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
-  return { texto: limpo, pedidas, recusadas, transferir }
+  return { texto: limpo, pedidas, recusadas, transferir, transferirDepois }
 }
 
 /** Uma ação com os IDS do servidor, pronta para executar. */
@@ -512,13 +544,24 @@ export function linkInventado(texto: string, fontes: readonly string[]): boolean
 // ------------------------------------------------------------
 
 /**
- * O particípio que afirma a reunião: "confirmada", "agendada", "marcada",
- * "remarcada", "reagendada" (e o plural), "booked", "scheduled",
- * "rescheduled", "confirmed". "Desmarcada" e "agendamento" não casam (o `\b`).
+ * A forma que afirma a reunião:
+ *  - o particípio: "confirmada", "agendada", "marcada", "remarcada",
+ *    "reagendada" (e o plural) — o que cobre "já está marcada" e "ficou
+ *    agendado" —, e em inglês "booked", "scheduled", "rescheduled",
+ *    "confirmed" (o que cobre "I booked", "I've scheduled", "we booked",
+ *    "you're booked");
+ *  - a forma FINITA (Codex, #321): "marquei", "agendei", "remarquei",
+ *    "reagendei", "confirmei", "reservei" e "marcamos", "agendamos",
+ *    "remarcamos", "reagendamos", "confirmamos", "reservamos" — "marcamos"
+ *    também é presente, e com a âncora conta igual;
+ *  - "all set" ("you're all set for Tuesday at 15:15").
+ * "Desmarcada", "agendamento", "vou marcar", "posso agendar" e "quer que eu
+ * marque" não casam (o `\b` e a lista fechada).
  */
-const PARTICIPIO_DA_REUNIAO = /\b(?:confirmad|agendad|marcad|remarcad|reagendad)[ao]s?\b|\b(?:booked|scheduled|rescheduled|confirmed)\b/gi
+const FORMA_QUE_AFIRMA =
+  /\b(?:confirmad|agendad|marcad|remarcad|reagendad)[ao]s?\b|\b(?:marquei|agendei|remarquei|reagendei|confirmei|reservei|marcamos|agendamos|remarcamos|reagendamos|confirmamos|reservamos)\b|\b(?:booked|scheduled|rescheduled|confirmed)\b|\ball set\b/gi
 /**
- * O que amarra o particípio a uma REUNIÃO na mesma frase: a palavra
+ * O que amarra a forma que afirma a uma REUNIÃO na mesma frase: a palavra
  * ("reunião", "meeting", "consulta") ou um horário ("15:15", "15h", "15h30",
  * "15 horas", "3 pm") ou uma data com o mês em dois dígitos ("29/09" — não
  * a parcela "1/3"). Sem isso, "e-mail confirmado" não é reunião.
@@ -526,7 +569,7 @@ const PARTICIPIO_DA_REUNIAO = /\b(?:confirmad|agendad|marcad|remarcad|reagendad)
 const ANCORA_DA_REUNIAO =
   /reuni|meeting|appointment|consulta|\b\d{1,2}\s*(?::\s*\d{2}|h\s*\d{0,2}|horas?)\b|\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b|\b\d{1,2}\/(?:0[1-9]|1[0-2])\b/i
 /**
- * Palavras que, entre as QUATRO antes do particípio, fazem dele não-afirmação:
+ * Palavras que, entre as QUATRO antes da forma que afirma, fazem dela não-afirmação:
  * negação ("ainda não está marcada"), futuro ("será confirmada", "will be
  * booked"), modal e oferta ("posso deixar agendado", "quer que fique
  * marcado", "can be scheduled") e infinitivo ("para ser confirmada" — mas
@@ -540,9 +583,9 @@ const NAO_AFIRMA = new Set([
   'seja', 'sejam', 'quer', 'queira', 'gostaria', 'prefere', 'preferir',
   'not', 'never', 'will', 'would', 'can', 'cannot', 'could', 'may', 'might', 'should', 'must', 'be', 'being', 'to',
 ])
-/** Condição ANTES do particípio, na mesma frase: "assim que você escolher, fica agendada". */
+/** Condição ANTES da forma que afirma, na mesma frase: "assim que você escolher, fica agendada". */
 const CONDICAO = /(?:^|[^\p{L}])(?:se|caso|quando|assim que|apos|depois que|logo que|if|once|when|after|as soon as|unless)(?![\p{L}])/u
-/** Logo DEPOIS do particípio: "marcado por outra pessoa" / "booked by someone else" — o horário tomado. */
+/** Logo DEPOIS da forma que afirma: "marcado por outra pessoa" / "booked by someone else" — o horário tomado. */
 const POR_OUTRO = /^\s*(?:por|by)\s+(?:outr|another|someone|other)/i
 /** Pergunta de verdade (termina em "?"), menos a de confirmação no fim ("…, tudo bem?"), que afirma. */
 const PERGUNTA = /\?[^\p{L}\p{N}]*$/u
@@ -558,7 +601,7 @@ function palavraNormalizada(p: string): string {
   return semAcento(p).replace(/\u2019/g, "'").replace(/[^a-z']/g, '')
 }
 
-/** As quatro palavras antes do particípio dizem que ele NÃO afirma a reunião? */
+/** As quatro palavras antes da forma que afirma dizem que ela NÃO afirma a reunião? */
 function naoAfirma(ultimas: readonly string[]): boolean {
   return ultimas.some(
     (p, i) =>
@@ -568,21 +611,21 @@ function naoAfirma(ultimas: readonly string[]): boolean {
 
 /**
  * O texto AFIRMA que uma reunião foi marcada, agendada, confirmada,
- * remarcada ou reagendada? Frase a frase: o particípio com a âncora (reunião
- * ou horário/data) na MESMA frase, sem negação, futuro, modal ou oferta nas
- * quatro palavras antes dele, sem condição antes dele na frase, sem "por
- * outra pessoa" logo depois e fora de pergunta. "Quer que eu marque para
- * terça às 15:15?" e "podemos agendar" não afirmam nada (não têm o
- * particípio). Heurística calibrada para o lado da cautela: o falso positivo
- * leva a conversa a gente; o falso negativo manda ao cliente uma
- * confirmação falsa.
+ * remarcada ou reagendada? Frase a frase: a forma que afirma (particípio ou
+ * forma finita, `FORMA_QUE_AFIRMA`) com a âncora (reunião ou horário/data) na
+ * MESMA frase, sem negação, futuro, modal ou oferta nas quatro palavras antes
+ * dela, sem condição antes dela na frase, sem "por outra pessoa" logo depois
+ * e fora de pergunta. "Quer que eu marque para terça às 15:15?", "vou
+ * marcar" e "podemos agendar" não afirmam nada (não têm a forma).
+ * Heurística calibrada para o lado da cautela: o falso positivo leva a
+ * conversa a gente; o falso negativo manda ao cliente uma confirmação falsa.
  */
 export function afirmaReuniaoMarcada(texto: string): boolean {
   for (const frase of texto.split(/(?<=[.!?…;])\s+|\n+/)) {
     const f = frase.trim()
     if (!f || !ANCORA_DA_REUNIAO.test(f)) continue
     if (PERGUNTA.test(f) && !PERGUNTA_DE_CONFIRMACAO.test(f)) continue
-    for (const m of f.matchAll(PARTICIPIO_DA_REUNIAO)) {
+    for (const m of f.matchAll(FORMA_QUE_AFIRMA)) {
       const antes = f.slice(0, m.index)
       if (naoAfirma(antes.split(/\s+/).map(palavraNormalizada).filter(Boolean).slice(-4))) continue
       if (CONDICAO.test(semAcento(antes))) continue

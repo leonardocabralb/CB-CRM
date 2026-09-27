@@ -5,7 +5,8 @@
 //
 // Ordem: o texto-base (fixo, para o MODELO — por isso em inglês, como o de
 // `buildSystemPrompt`; a regra "responda no idioma do cliente" cuida do
-// português), a data e a hora no fuso do escritório, as INSTRUÇÕES do agente,
+// português; com o `[[HANDOFF]]` e o `[[TRANSFERIR]]`, "responda e passe"),
+// a data e a hora no fuso do escritório, as INSTRUÇÕES do agente,
 // as REGRAS numeradas (D23), os agentes para quem ele pode PASSAR a conversa
 // (D25), o que ele sabe do CLIENTE — os blocos de acesso (F3, `acesso.ts`) —,
 // os trechos da base de conhecimento dele (F3, D20) e, por último, as AÇÕES
@@ -18,7 +19,14 @@
 
 import { HANDOFF_SENTINEL } from '@/lib/ai/defaults'
 
-import { LIMITES_DAS_ACOES, MARCADOR_DA_ACAO, type FormatoDoCampo, type OpcaoDeAcao, type OpcoesDeAcao } from './acoes'
+import {
+  LIMITES_DAS_ACOES,
+  MARCADOR_DA_ACAO,
+  MARCADOR_DE_TRANSFERENCIA,
+  type FormatoDoCampo,
+  type OpcaoDeAcao,
+  type OpcoesDeAcao,
+} from './acoes'
 import { TIPOS_DE_ACAO, type TipoDeAcao } from './agente'
 import { HORARIOS_POR_DIA, type AgendaNoPedido } from './reuniao'
 
@@ -36,6 +44,14 @@ const TEXTO_BASE = [
   `You are replying with no human in the loop. If you cannot confidently and safely help — the customer asks for a human, ` +
     `is upset or complaining, or the request needs information you do not have — reply with exactly ${HANDOFF_SENTINEL} and nothing else. ` +
     'A person from the team will then take over. Prefer handing off over guessing.',
+  // "Responda e passe" (27/09/2026): o `[[HANDOFF]]` sozinho não manda nada
+  // ao cliente; quando ele deve ler que a equipe vai continuar, o texto sai
+  // e o `[[TRANSFERIR]]` passa a conversa DEPOIS (`turno.ts`).
+  `If your instructions ask you to tell the customer that the team will continue — or the customer should get a short message ` +
+    `before a person takes over (for example, that a specialist will analyse the case and get back to them) — write that short message ` +
+    `and add ${MARCADOR_DE_TRANSFERENCIA} at the very end: the message is sent, and then the conversation goes to a person. ` +
+    `Never tell the customer that someone will take over without ${MARCADOR_DE_TRANSFERENCIA}. ` +
+    `Use ${HANDOFF_SENTINEL} alone only when nothing should be said to the customer.`,
 ]
 
 /** "Wednesday, 25 September 2026, 14:05" no fuso dado. */

@@ -72,6 +72,12 @@
 //    ou falhou) = o turno TRANSFERE para gente, com a anotação do motivo —
 //    a resposta já prometeu —, sem mudar o desfecho `respondeu`; com a
 //    conversa já pausada, só a anotação.
+//  - "RESPONDA E PASSE" (`[[TRANSFERIR]]`, 27/09/2026): sempre disponível,
+//    sem configuração. A resposta sai e, DEPOIS das ações, o turno transfere
+//    (`agente_passou`), com o desfecho `respondeu` — o `[[HANDOFF]]` é para
+//    quando nada deve ser dito. Perde para o sentinela, a passagem e as
+//    travas (que não enviam); sem texto além dos marcadores, transfere sem
+//    enviar; envio recusado ou incerto = não roda.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -96,6 +102,7 @@ import { transcreverAudio } from '@/lib/transcricao/transcrever'
 
 import { lerOQueOAgenteVe } from './acesso'
 import {
+  ACAO_TRANSFERIR,
   lerAcoes,
   linksInventados,
   registroDaRecusa,
@@ -920,11 +927,14 @@ async function conduzir(
   const lidas = lerAcoes(texto)
   const { aceitas, recusadas } = resolverAcoes(lidas.pedidas, opcoesDeAcao)
   const recusasDaLeitura = [...lidas.recusadas, ...recusadas].map(registroDaRecusa)
+  // O `[[TRANSFERIR]]` entra no registro como mais uma linha (sem alvo): ele
+  // só roda com a resposta FORA, como as ações.
   const naoExecutadas = (erro: 'passagem' | 'transferencia' | 'envio_falhou'): RegistroDeAcao[] | null =>
-    aceitas.length + recusasDaLeitura.length === 0
+    aceitas.length + recusasDaLeitura.length === 0 && !lidas.transferirDepois
       ? null
       : [
           ...aceitas.map((a) => ({ tipo: a.tipo, alvo: { id: a.id, nome: a.nome }, ok: false, erro })),
+          ...(lidas.transferirDepois ? [{ tipo: ACAO_TRANSFERIR, alvo: { id: null, nome: '' }, ok: false, erro }] : []),
           ...recusasDaLeitura,
         ]
 
@@ -1128,6 +1138,29 @@ async function conduzir(
         console.error('[ia-agentes] anotar a reunião não marcada (conversa já pausada) falhou:', err)
       }
     }
+  }
+
+  // "Responda e passe para a equipe" (`[[TRANSFERIR]]`, 27/09/2026): com a
+  // resposta FORA — o cliente já leu que a equipe vai continuar —, a conversa
+  // vai para gente pelo caminho da F2 (pausa, atribui, anota), com o desfecho
+  // `respondeu`. Depois da reunião não marcada: se ela já transferiu, esta
+  // encontra a conversa pausada (`nada_mudou`, sem segunda anotação).
+  if (lidas.transferirDepois) {
+    const transferencia = await transferirParaGente(db, {
+      accountId: turno.account_id,
+      conversationId: turno.conversation_id,
+      contactId,
+      nomeDoAgente: agente.nome,
+      transferirPara: agente.transferirPara,
+      motivo: 'agente_passou',
+    })
+    const linha: RegistroDeAcao =
+      transferencia === 'transferiu'
+        ? { tipo: ACAO_TRANSFERIR, alvo: { id: null, nome: '' }, ok: true }
+        : transferencia === 'nada_mudou'
+          ? { tipo: ACAO_TRANSFERIR, alvo: { id: null, nome: '' }, ok: true, detalhe: 'ja_estava' }
+          : { tipo: ACAO_TRANSFERIR, alvo: { id: null, nome: '' }, ok: false, erro: 'falhou' }
+    andamento.acoes = [...(andamento.acoes ?? []), linha]
   }
   return enviado
 }

@@ -18,7 +18,9 @@ import type { TipoDeAcao } from './agente'
  * motivo, `{motivo}`) — gente confirma o horário com o cliente.
  * `reuniao_prometida` (F5, 27/09/2026): a resposta dizia que a reunião
  * estava marcada SEM o marcador (`reuniaoPrometida`) — ela é retida (nada
- * foi marcado) e a conversa vai para gente.
+ * foi marcado) e a conversa vai para gente. `agente_passou` (27/09/2026): o
+ * agente respondeu e pediu `[[TRANSFERIR]]` — a resposta SAIU e a conversa
+ * foi para a equipe, como as instruções dele mandam.
  */
 export const MOTIVOS_DE_TRANSFERENCIA = [
   'sentinela',
@@ -28,6 +30,7 @@ export const MOTIVOS_DE_TRANSFERENCIA = [
   'link_inventado',
   'reuniao_nao_marcada',
   'reuniao_prometida',
+  'agente_passou',
 ] as const
 export type MotivoDeTransferencia = (typeof MOTIVOS_DE_TRANSFERENCIA)[number]
 

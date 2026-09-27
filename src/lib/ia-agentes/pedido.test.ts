@@ -37,6 +37,15 @@ describe('montarPedidoDoAgente', () => {
     expect(p).toMatch(/untrusted/)
   })
 
+  it('"responda e passe" (27/09): o [[TRANSFERIR]] SEMPRE no texto-base, ao lado do [[HANDOFF]] — sem nenhuma ferramenta', () => {
+    const p = montarPedidoDoAgente({ instrucoes: '', regras: [], agora: AGORA })
+    expect(p).toMatch(/tell the customer that the team will continue/)
+    expect(p).toMatch(/write that short message and add \[\[TRANSFERIR\]\] at the very end: the message is sent, and then the conversation goes to a person/)
+    expect(p).toMatch(/Never tell the customer that someone will take over without \[\[TRANSFERIR\]\]/)
+    expect(p).toMatch(/Use \[\[HANDOFF\]\] alone only when nothing should be said to the customer/)
+    expect(p).not.toContain('Actions you can take')
+  })
+
   it('trechos da base entram por último, numerados', () => {
     const p = montarPedidoDoAgente({ instrucoes: 'a', regras: ['b'], agora: AGORA, conhecimento: ['T1', 'T2'] })
     expect(p.indexOf('[1] T1')).toBeGreaterThan(p.indexOf('1. b'))

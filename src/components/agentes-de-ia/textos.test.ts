@@ -21,6 +21,7 @@ import {
   STATUS_DO_TURNO,
   TIPOS_DE_CAMPO,
   fraseDaAcao,
+  rotuloDoTipoDeAcao,
   rotuloDoTipoDoCampo,
   textoDoDetalheDaAcao,
   textoDoErroDaAcao,
@@ -81,6 +82,9 @@ describe.each(['en.json', 'pt-BR.json'])('IaAgentes em %s', (arquivo) => {
     }
     expect(em(d, 'ferramentas.tipoDesconhecido')).toBeTruthy()
     expect(em(d, 'playground.acaoDesconhecida')).toBeTruthy()
+    // "Responda e passe" ([[TRANSFERIR]], 27/09): o rótulo e a frase do Playground.
+    expect(em(d, 'ferramentas.transferir')).toBeTruthy()
+    expect(em(d, 'playground.acaoTransferir')).toBeTruthy()
   })
 
   it('cada ação com valor (campo, tarefa, e o nome opcional da reunião) tem a frase com o valor no Playground', () => {
@@ -248,6 +252,9 @@ describe('fraseDaAcao e rotuloDoTipoDoCampo', () => {
       'playground.acaoComValor.marcar_reuniao{"nome":"28/09/2026 15:15","valor":"Ana Souza"}',
     )
     expect(fraseDaAcao(t, 'marcar_reuniao', '28/09/2026 15:15')).toBe('playground.acao.marcar_reuniao{"nome":"28/09/2026 15:15"}')
+    // "Responda e passe" ([[TRANSFERIR]]): frase e rótulo próprios, nunca o "desconhecido".
+    expect(fraseDaAcao(t, 'transferir', '')).toBe('playground.acaoTransferir')
+    expect(rotuloDoTipoDeAcao(t, 'transferir')).toBe('ferramentas.transferir')
   })
 
   it('tipo de campo conhecido tem rótulo; o desconhecido (ou ausente) não afirma nada', () => {

@@ -4453,6 +4453,7 @@
       "salvar": "Salvar ferramentas",
       "salvo": "Ferramentas salvas.",
       "tipoDesconhecido": "Outra ({tipo})",
+      "transferir": "Passar para a equipe",
       "tipo": {
         "mover_etapa": {
           "nome": "Mover o card",
@@ -4580,6 +4581,7 @@
         "marcar_reuniao": "marcar reunião em {nome} para {valor}"
       },
       "acaoDesconhecida": "{tipo}: {nome}",
+      "acaoTransferir": "transferir para a equipe",
       "horarios": {
         "titulo": "Horários oferecidos: {itens}",
         "recolhidos": "{n, plural, one {# horário oferecido} other {# horários oferecidos}}",
@@ -4767,7 +4769,8 @@
         "incerto": "{agente} passou a conversa para a equipe: não dá para saber se a última resposta chegou ao cliente — confira antes de responder.",
         "link_inventado": "{agente} passou a conversa para a equipe: a resposta tinha um link que não veio do sistema, e não foi enviada.",
         "reuniao_nao_marcada": "{agente} não conseguiu marcar a reunião: {motivo}. A conversa passou para a equipe — confira no Calendly se a reunião não foi criada antes de marcar de novo, e confirme o horário com o cliente.",
-        "reuniao_prometida": "{agente} passou a conversa para a equipe: a resposta dizia que a reunião estava marcada, mas nada foi marcado no Calendly — e ela não foi enviada. O texto retido está nos Turnos do agente; confirme o horário com o cliente e marque."
+        "reuniao_prometida": "{agente} passou a conversa para a equipe: a resposta dizia que a reunião estava marcada, mas nada foi marcado no Calendly — e ela não foi enviada. O texto retido está nos Turnos do agente; confirme o horário com o cliente e marque.",
+        "agente_passou": "{agente} respondeu ao cliente e passou a conversa para a equipe."
       },
       "passagem": "{agente} passou a conversa para IA · {destino}, e o card foi para a etapa desse agente.",
       "acoes": {
