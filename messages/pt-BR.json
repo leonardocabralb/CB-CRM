@@ -1929,6 +1929,10 @@
           "label": "Webhook recebido",
           "hint": "Quando um sistema de fora (Typebot, n8n…) aciona um dos seus webhooks de entrada. Crie-os em Configurações → Webhooks. O contato é achado pelo telefone que vem no payload."
         },
+        "zapsign_documento_assinado": {
+          "label": "Documento assinado (ZapSign)",
+          "hint": "Quando um documento do ZapSign fica completo — todos assinaram (integração em Configurações → Integrações). O cliente é achado pelo negócio do documento (contrato gerado pelo CRM) ou, no link público do modelo, pelo telefone, e-mail ou CPF de quem assinou. Nenhum contato é criado. Para mover o card, use a condição \"Negócio está na etapa…\" antes do \"Mover card\"."
+        },
         "manual": {
           "label": "Manual (só pelo botão)",
           "hint": "Nunca dispara sozinha. Ela roda quando você a executa dentro de uma conversa, pelo menu + do compositor → Executar automação."
@@ -2171,6 +2175,13 @@
         "variaveisTitulo": "Variáveis do agendamento, para usar nos passos",
         "variaveisAjuda": "Ex.: Nome: {nome} · Data: {data} (dd/mm/aaaa hh:mm) · o campo de data da reunião recebe {inicio}.",
         "variaveisDoContatoTitulo": "Do contato (em qualquer passo de texto)"
+      },
+      "zapsign": {
+        "semConfig": "Não tem configuração: toda assinatura completa da conta dispara. A conexão fica em",
+        "abrirIntegracoes": "Configurações → Integrações",
+        "card": "Quando o documento foi gerado pelo CRM, o card é o do próprio negócio. No link público, o card é o do cliente achado — por isso a condição de etapa antes do \"Mover card\" é o que protege os outros cards.",
+        "variaveisTitulo": "Variáveis da assinatura",
+        "respostasAjuda": "As respostas do formulário do modelo também viram variável, como {exemplo} — menos CPF, RG e outros números de documento, que nunca entram."
       },
       "webhook": {
         "webhookLabel": "Qual webhook",

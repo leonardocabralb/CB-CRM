@@ -1118,6 +1118,16 @@ export type AutomationTriggerType =
    */
   | 'webhook_received'
   /**
+   * Um documento do ZapSign ficou COMPLETO — todos assinaram (migration
+   * 1057). Chega pelo webhook `doc_signed`; o CRM relê o documento com a
+   * própria chave e acha o cliente pelo `external_id` (o id do negócio,
+   * EXATO) ou pelos signatários (telefone → e-mail → CPF). NUNCA cria
+   * contato. Sem config: toda assinatura completa da conta dispara. Com o
+   * casamento exato, `context.deal_id` traz o card — é ele que o "Mover
+   * card" move. Os dados entram em `context.vars` (`{{vars.zapsign_*}}`).
+   */
+  | 'zapsign_documento_assinado'
+  /**
    * NUNCA dispara sozinho — só pelo botão "Executar automação" do menu + da
    * conversa (955). O dispatch é uma consulta `.eq('trigger_type', …)` pelo
    * tipo do EVENTO, e nenhum evento carrega este; `runAutomationById`, que é

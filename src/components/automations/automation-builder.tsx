@@ -91,6 +91,7 @@ import { AsaasTriggerConfig } from "@/components/automations/asaas-trigger-confi
 import { CalendlyTriggerConfig } from "@/components/automations/calendly-trigger-config"
 import { ehGatilhoDaRegua, HORA_PADRAO_COBRANCA, HORA_PADRAO_LEMBRETE } from "@/lib/asaas/regua"
 import { WebhookTriggerConfig } from "@/components/automations/webhook-trigger-config"
+import { ZapSignTriggerConfig } from "@/components/automations/zapsign-trigger-config"
 import { CondicaoPorCampoFields } from "@/components/automations/condicao-por-campo-fields"
 import {
   childPath,
@@ -303,6 +304,8 @@ const TRIGGER_OPTIONS: { value: AutomationTriggerType }[] = [
   { value: "date_field_offset" },
   { value: "calendly_booking" },
   { value: "webhook_received" },
+  // A assinatura completa no ZapSign (1057): call site no webhook da integração.
+  { value: "zapsign_documento_assinado" },
   // A régua do Asaas (998): os dois têm call site na varredura do cron.
   { value: "asaas_cobranca_vencida" },
   { value: "asaas_cobranca_vence_hoje" },
@@ -1769,6 +1772,9 @@ function TriggerCard({
             {type === "webhook_received" && (
               <WebhookTriggerConfig config={config} onChange={onConfigChange} />
             )}
+            {/* Assinatura no ZapSign (1057): sem configuração — só as
+                variáveis e o que o casamento faz com o card. */}
+            {type === "zapsign_documento_assinado" && <ZapSignTriggerConfig />}
             {/* "Assinar como" (998, D18): o prefixo de todo `send_message`
                 desta automação, sob o interruptor de assinatura da conta.
                 Mora na automação (uma régua são 3–4 automações e a mesma
