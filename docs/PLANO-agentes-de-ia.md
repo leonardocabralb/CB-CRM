@@ -388,6 +388,7 @@ Um mapa do código em sete frentes (ingestão, envio, banco, fila, telas, automa
   - Os webhooks de SAÍDA `deal.*` (a assinatura da integração, ex.: o Make da iMotion) disparam quando a IA move o card, como quando gente move. Eles não são automação e não entram na régua da D5.
   - Mover para uma etapa com automação que fala: as duas falam (a do agente primeiro, porque as ações rodam depois do envio). A E4 da passagem (quem fala é a automação) não vale aqui: a resposta do agente já foi gerada para a pergunta do cliente.
   - As ferramentas do agente são lidas no começo do turno: desmarcar uma durante a geração (até ~35 s) não impede aquele turno.
+  - As ações NÃO são reconferidas uma a uma: a conferência atômica é a reserva do envio, e elas rodam logo depois de a resposta autorizada sair — pertencem a ela. Uma pausa, uma mensagem nova do cliente ou uma automação disparada pela ação anterior, no segundo entre o envio e o fim das ações, não impede as seguintes (Codex, #316: aceito — o lado é o da resposta que já saiu; fechar pede uma conferência atômica por ação).
   - Ação executada e processo que morre antes de gravar o registro: a ação fica feita sem registro no turno (a anotação na conversa costuma ter saído).
 - **Pronto quando:** no Playground, um agente com mover, etiquetar e tarefa liberados mostra as ações simuladas debaixo da resposta, e a pedida fora da lista aparece recusada; no turno real, as ações executam depois da resposta e deixam a anotação.
 

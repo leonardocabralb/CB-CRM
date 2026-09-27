@@ -93,4 +93,5 @@ Plano: `docs/PLANO-agentes-de-ia.md` (D5, D28, F4). Sem migration.
 - **Playground**: as ações são SIMULADAS (nada executa) e vêm com o valor.
 - **Limites**: a trilha/`deal.*` dizem `automation`/`sistema` (a origem `ia`
   exige migration); ferramentas lidas no começo do turno; agente e automação
-  da etapa nova falam os dois (o agente primeiro).
+  da etapa nova falam os dois (o agente primeiro); as ações não são
+  reconferidas uma a uma depois do envio (a reserva é a conferência; #316).

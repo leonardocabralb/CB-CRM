@@ -2116,6 +2116,8 @@ describe('executarTurno — as ações (F4, D28)', () => {
     expect(turno().status).toBe('pausado_no_meio')
     expect(executarAcoes).not.toHaveBeenCalled()
     expect(engineSendText).not.toHaveBeenCalled()
+    // As pedidas não somem do registro (Codex, #316).
+    expect(turno().acoes).toEqual(naoExecutadas('envio_falhou').slice(0, 1))
   })
 
   it('o teto da reserva transfere: as ações vão ao registro como `transferencia`', async () => {

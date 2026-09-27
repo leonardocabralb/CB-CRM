@@ -918,8 +918,15 @@ async function conduzir(
   // De novo, com a resposta pronta: o advogado pode ter respondido, o card
   // pode ter mudado de etapa, a conversa pode ter sido pausada ou o agente
   // desligado enquanto o modelo pensava.
+  // Daqui até a reserva, toda saída é "a resposta não saiu": as ações pedidas
+  // vão ao registro assim, para a aba Turnos mostrar o que ficou de fora
+  // (Codex, #316 — a pausa na reserva as fazia sumir).
+  const semEnvio = (desfecho: Desfecho): Desfecho => {
+    andamento.acoes = naoExecutadas('envio_falhou')
+    return desfecho
+  }
   const segunda = await conferir(db, turno, gatilho)
-  if (!segunda.ok) return segunda.desfecho
+  if (!segunda.ok) return semEnvio(segunda.desfecho)
 
   if (passagem !== null) {
     andamento.acoes = naoExecutadas('passagem')
@@ -927,9 +934,9 @@ async function conduzir(
   }
 
   const dono = await donoDaConta(db, turno.account_id)
-  if (!dono) return { status: 'falhou', erro: 'a conta não tem dono' }
+  if (!dono) return semEnvio({ status: 'falhou', erro: 'a conta não tem dono' })
   const contactId = segunda.contactId
-  if (!contactId) return { status: 'descartado', erro: 'conversa sem contato' }
+  if (!contactId) return semEnvio({ status: 'descartado', erro: 'conversa sem contato' })
 
   // A ÚLTIMA palavra, no banco, numa escrita atômica: o turno ainda
   // `rodando` e da posse; conversa aberta e sem pausa; o card aberto e na
@@ -940,15 +947,15 @@ async function conduzir(
     p_turno_id: turno.id,
     p_rodando_desde: turno.rodando_desde,
   })
-  if (erroReserva) return { status: 'falhou', erro: `reservar a resposta falhou: ${erroReserva.message}` }
+  if (erroReserva) return semEnvio({ status: 'falhou', erro: `reservar a resposta falhou: ${erroReserva.message}` })
   if (reserva === 'teto') {
     andamento.acoes = naoExecutadas('transferencia')
     return { status: 'transferiu', motivo: 'teto' }
   }
-  if (reserva === 'pausada') return { status: 'pausado_no_meio', erro: 'pausada antes do envio' }
+  if (reserva === 'pausada') return semEnvio({ status: 'pausado_no_meio', erro: 'pausada antes do envio' })
   // Qualquer outra recusa descarta, sem enviar e sem transferir: transferir
   // por um motivo que não é teto pausaria a IA até alguém clicar "Retomar".
-  if (reserva !== 'ok') return { status: 'descartado', erro: `a reserva recusou o envio: ${String(reserva)}` }
+  if (reserva !== 'ok') return semEnvio({ status: 'descartado', erro: `a reserva recusou o envio: ${String(reserva)}` })
 
   // A posse, carimbando o começo do envio (o recolhedor distingue "morreu
   // antes de enviar" de "morreu no meio"). ⚠️ DEPOIS da reserva: "`rodando`
