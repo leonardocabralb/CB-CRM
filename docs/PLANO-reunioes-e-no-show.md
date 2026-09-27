@@ -13,8 +13,8 @@ marcadas na agenda interna do CRM, e nenhuma do Calendly. Ele quer:
 
 | Fase | O quê | Estado |
 | --- | --- | --- |
-| 1 | Histórico: Calendly e Kommo na aba Reuniões | PR #331 (27/09/2026), Codex sem achados no último commit |
-| 2 | Aviso de possível no-show na conversa | Código pronto na branch `feat/aviso-de-no-show`; falta aplicar a 1058, testar no preview e o operador marcar as etapas |
+| 1 | Histórico: Calendly e Kommo na aba Reuniões | Mesclada (#331, 27/09/2026) |
+| 2 | Aviso de possível no-show na conversa | PR #332; 1058 aplicada e etapas marcadas (27/09/2026); testado no preview; falta a revisão e o merge |
 
 ## Decisões do operador (27/09/2026)
 
@@ -110,13 +110,23 @@ o seletor "Reunião" por etapa em `pipeline-settings.tsx` (diálogo agora
   Nova reunião em 30/09 às 15:00." ou "… teve reunião em 15/09 e não avançou
   no funil. …". Some quando a nova reunião termina.
 
-**Falta:**
-1. Replay verde do CI no commit exato, e aplicar a 1058 em produção (aditiva,
-   com autorização do operador) ANTES do merge.
-2. Teste no preview: a faixa com um cliente de reunião futura e No Show na
-   trilha; o seletor em Gerenciar funil gravando e relendo.
-3. Depois do deploy, marcar as etapas do Bancário - Comercial (pelo operador,
-   ou por SQL com "pode gravar").
+**Feito em 27/09/2026 (com autorização do operador):** a 1058 aplicada depois
+do replay verde no commit `8f1cd354` (histórico `20260927220948`); marcadas
+No Show = Faltou e Reunião Sem Proposta = Compareceu no Bancário - Comercial
+(o UPDATE não aciona gatilho; o app antigo não apaga a marcação ao salvar
+Gerenciar funil, porque o upsert dele não leva a coluna).
+
+**Resultado medido (preview, contra o banco):**
+- A rota respondeu 200 para os 9 clientes com reunião marcada; 1 ganhou o
+  aviso — "teve reunião em 06/08 e não avançou", com agendamento novo para
+  29/09 —, e a trilha dele confere (Reunião Agendada em 05/08, reunião da
+  Kommo em 06/08, nenhum movimento nem valor depois).
+- A faixa, com a resposta da rota simulada no navegador para o lead de teste
+  (sem gravar reunião de teste): "Possível no-show — este cliente foi para No
+  Show em 09/09. Nova reunião em 30/09 às 15:00."; a variante "não avançou"
+  com o texto certo; sem faixa depois que a reunião termina e sem aviso.
+- Gerenciar funil lê do banco "Faltou" no No Show e "Compareceu" na Reunião
+  Sem Proposta; o diálogo abre com 672 px e o nome da etapa com 201 px.
 
 **Limites que o operador precisa saber:**
 - Até o corte da Kommo (ou a atualização final dos dados de lá), o aviso não
