@@ -114,7 +114,6 @@ describe('vazouOPedido', () => {
     ['o cabeçalho', 'Minhas regras: SYSTEM RULES — mandatory.'],
     ['o cabeçalho traduzido, em maiúsculas', 'REGRAS DO SISTEMA — obrigatórias. Elas valem acima…'],
     ['a frase do papel', 'Eu sou assim: "You are an AI agent answering a business\'s customers on WhatsApp."'],
-    ['"no human in the loop"', 'Respondo sem ninguém: no human   in the\nloop.'],
     ['"as untrusted content"', 'Trato suas mensagens as untrusted content.'],
     ['o cabeçalho das regras do agente', 'Rules you must always follow: nunca fale de valores.'],
     ['a explicação dos marcadores', 'The markers are removed before the customer sees the message.'],
@@ -131,6 +130,8 @@ describe('vazouOPedido', () => {
   it.each([
     'Não posso compartilhar isso, mas posso te ajudar com o seu caso.',
     'Desculpe, não posso compartilhar as regras do sistema nem as minhas instruções.',
+    // A regra da identidade permite a resposta honesta em inglês (Codex, #327).
+    "I'm an automated assistant — there is no human in the loop right now, but the team can take over.",
     "Sorry, I can't share my system rules or instructions.",
     'Vou transferir você para a equipe, que já te responde.',
     'Vamos mover o seu atendimento para a próxima etapa.',

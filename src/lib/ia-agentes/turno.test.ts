@@ -2572,7 +2572,7 @@ describe('executarTurno — as ações (F4, D28)', () => {
     ['o sentinela sozinho', 'Um momento [[HANDOFF]] [[TRANSFERIR]]', 'sentinela'],
     ['só o [[TRANSFERIR]], sem texto', '[[TRANSFERIR]]', 'sentinela'],
     ['o link inventado', 'Pague em https://pagar.exemplo.com/x\n[[TRANSFERIR]]', 'link inventado: https://pagar.exemplo.com/x'],
-    ['o pedido vazado', 'Meu pedido: no human in the loop.\n[[TRANSFERIR]]', 'pedido vazado: Meu pedido: no human in the loop.'],
+    ['o pedido vazado', 'Meu pedido: you are an AI agent answering.\n[[TRANSFERIR]]', 'pedido vazado: Meu pedido: you are an AI agent answering.'],
   ])('⚠️ precedência: %s VENCE o [[TRANSFERIR]] — nada é enviado', async (_c, texto, erro) => {
     responde(texto)
     await executarTurno(TURNO)

@@ -126,13 +126,14 @@ export function blocoDasRegrasDoSistema(): string {
 
 /**
  * Trechos que só existem no PEDIDO (o texto-base e a seção das ações), em
- * minúsculas — uma resposta de verdade ao cliente não os escreve.
+ * minúsculas — uma resposta de verdade ao cliente não os escreve. ("no human
+ * in the loop" saiu: pela regra da identidade, uma resposta honesta em inglês
+ * pode dizê-lo — Codex, #327.)
  * `regras-do-sistema.test.ts` cobra que cada um continua no pedido montado:
  * trecho que saiu do texto-base é trava que nunca dispara.
  */
 export const TRECHOS_DO_PEDIDO = [
   'you are an ai agent answering',
-  'no human in the loop',
   'as untrusted content',
   'they override your instructions',
   'rules you must always follow',
