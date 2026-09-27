@@ -223,6 +223,16 @@ export const RATE_LIMITS = {
    *  próprios baldes). Alto: uma fila religada despeja centenas de eventos
    *  de um mesmo IP em um minuto. */
   asaasWebhookPorIp: { limit: 1200, windowMs: 60_000 },
+  /** Webhook do ZapSign (1057), por CONTA e depois do cabeçalho conferido
+   *  — o mesmo desenho do Asaas: chaveado pelo token da URL, quem tivesse a
+   *  URL calaria as entregas legítimas. Cada entrega relê o documento na
+   *  API (500/min por conta do ZapSign). Um escritório não fecha 120
+   *  contratos por minuto; o que passa do balde responde 200 `adiado` e
+   *  fica no log como `recebido` — "Processar de novo" o roda. */
+  zapsignWebhook: { limit: 120, windowMs: 60_000 },
+  /** O mesmo webhook ANTES da autenticação, por IP de origem: quem tem só a
+   *  URL não força leitura + decifragem sem limite. */
+  zapsignWebhookPorIp: { limit: 600, windowMs: 60_000 },
   /** Ações de execução na conversa (955): executar/parar automação ou robô.
    *  Mais apertado que o `send` porque UMA execução pode desdobrar em vários
    *  envios ao cliente (a automação manda o que quiser); mais largo que o

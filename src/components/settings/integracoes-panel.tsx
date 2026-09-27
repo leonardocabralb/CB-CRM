@@ -15,6 +15,7 @@ import { AsaasCard } from './asaas-card';
 import { MetaAdsCard } from './meta-ads-card';
 import { CalendlyCard } from './calendly-card';
 import { TldvCard } from './tldv-card';
+import { ZapSignCard } from './zapsign-card';
 import { SettingsChip, type ChipVariant } from './settings-chip';
 import { SettingsPanelHead } from './settings-panel-head';
 import { cn } from '@/lib/utils';
@@ -283,6 +284,9 @@ function Conteudo() {
           levantamento da conta (só leitura) — o espelho das cobranças e a
           régua de cobrança dependem dos números dele. */}
       <AsaasCard />
+      {/* ZapSign (1057): mesmo desenho — rota própria (`GET /api/cb/zapsign`);
+          o token e a credencial do webhook nunca chegam ao navegador. */}
+      <ZapSignCard />
     </div>
   );
 }

@@ -59,6 +59,10 @@ export const TRIGGER_META: Record<AutomationTriggerType, TriggerMeta> = {
     label: 'Webhook',
     pillClass: 'border-teal-500/30 bg-teal-500/10 text-teal-300',
   },
+  zapsign_documento_assinado: {
+    label: 'ZapSign — document signed',
+    pillClass: 'border-lime-500/30 bg-lime-500/10 text-lime-300',
+  },
   asaas_cobranca_vencida: {
     label: 'Asaas — overdue',
     pillClass: 'border-red-500/30 bg-red-500/10 text-red-300',

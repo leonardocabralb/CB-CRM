@@ -2923,6 +2923,13 @@ export function triggerMatches(
     return Boolean(ctx?.webhook_id && ctx.webhook_id === alvo);
   }
 
+  // Assinatura completa no ZapSign (1057): SEM config — toda assinatura
+  // completa da conta dispara. "Qual contrato" e "em que etapa" são a
+  // CONDIÇÃO da automação (o card do casamento exato vem em `deal_id`), não o
+  // gatilho. Explícito para uma mudança do `return true` final não calar a
+  // integração em silêncio.
+  if (automation.trigger_type === 'zapsign_documento_assinado') return true;
+
   // A régua do Asaas (998): SÓ a automação carimbada no contexto, como o
   // lembrete por data — o "aconteceu?" é decidido pela varredura, fora do
   // motor, e o dispatch por tipo abriria o leque (a de 5 dias sairia junto

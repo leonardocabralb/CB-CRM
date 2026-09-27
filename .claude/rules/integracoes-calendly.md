@@ -126,8 +126,9 @@ Decisão do operador (08/09/2026): telefone sem contato não é mais
   cobrando a margem: sem teto, "10 min sem notícias" não prova que o dono
   morreu. Passou do teto grava `falhou` e sai; a promessa em voo não se
   aborta, e os efeitos dela (mensagem, data na ficha) seguem.
-- **O gêmeo é `src/lib/webhooks-de-entrada/claim.ts`**, de propósito não
-  fatorado: mudou um, confere o outro.
+- **Os gêmeos são `src/lib/webhooks-de-entrada/claim.ts` e
+  `src/lib/zapsign/claim.ts`**, de propósito não fatorados: mudou um, confere
+  os outros.
 
 ### Processar de novo e o resultado
 
