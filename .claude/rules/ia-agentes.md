@@ -97,6 +97,8 @@ Plano: `docs/PLANO-agentes-de-ia.md` (D5, D28, F4). Sem migration.
   Sentinela, passagem e as travas vencem; só o marcador = transfere sem enviar.
   A resposta que PROMETE a equipe sem ele (`equipePrometida`, medido: 2 de 4)
   vale como com ele, `detalhe: 'sem_marcador'`; análise "na reunião" é quieta.
+  Condição (as duas travas, `haCondicao`): "se"/"if" sempre; "quando"/"when"
+  só com o verbo no futuro — no passado ("quando você confirmou") é fato.
 - **Link inventado** (`linkInventado`): URL da resposta que não está no
   pedido montado nem nas mensagens enviadas ao modelo → retém e transfere
   (`link_inventado`), com o link no registro do turno.
@@ -128,6 +130,9 @@ uma AÇÃO a mais do protocolo da F4 (`marcar_reuniao`, `[[REUNIAO:n]]`).
   + reunião/horário/data, sem negação, futuro, oferta ou condição) vira
   `reuniao_prometida`, com o texto no `erro` do turno; o Playground avisa
   (`reuniaoPrometida`). Passagem, transferência e link inventado vencem.
+  **Limite aceito** (Codex, #321): basta a forma que afirma e a âncora
+  coexistirem na frase — "Seu e-mail está confirmado para agendarmos sua
+  reunião às 15:15" dispara. Erra para o lado seguro (retida, vai a gente).
 - **Configuração**: `ferramentas.marcar_reuniao = { tipos_de_evento: [uri] }`
   — lista para caber no código genérico, NO MÁXIMO uma, só a forma
   `https://api.calendly.com/event_types/<id>` (`ehUriDeTipoDeEvento`). Ao

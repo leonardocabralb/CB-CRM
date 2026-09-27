@@ -583,8 +583,53 @@ const NAO_AFIRMA = new Set([
   'seja', 'sejam', 'quer', 'queira', 'gostaria', 'prefere', 'preferir',
   'not', 'never', 'will', 'would', 'can', 'cannot', 'could', 'may', 'might', 'should', 'must', 'be', 'being', 'to',
 ])
-/** Condição ANTES da forma que afirma, na mesma frase: "assim que você escolher, fica agendada". */
-const CONDICAO = /(?:^|[^\p{L}])(?:se|caso|quando|assim que|apos|depois que|logo que|if|once|when|after|as soon as|unless)(?![\p{L}])/u
+/** Condição SEMPRE, antes da forma que afirma, na mesma frase: "se preferir, …", "if you like". */
+const CONDICAO = /(?:^|[^\p{L}])(?:se|caso|if|unless)(?![\p{L}])/u
+/**
+ * A subordinada de TEMPO ("quando", "assim que", "depois que", "when",
+ * "once"…): é condição quando o verbo dela está no futuro ou no presente
+ * ("quando você confirmar, fica marcada"), e FATO quando está no passado
+ * ("quando você confirmou o horário, marquei…" — Codex, #321: a versão que
+ * calava todo "quando" deixava sair a confirmação falsa).
+ */
+const TEMPORAL = /(?:^|[^\p{L}])(?:quando|assim que|apos|depois que|logo que|when|once|after|as soon as)(?![\p{L}])/gu
+/** Palavras que TERMINAM como passado sem ser verbo no passado ("eu", "seu", "vou", "sei", "you", "need"). */
+const NAO_E_PASSADO = new Set([
+  'eu', 'seu', 'meu', 'teu', 'ou', 'sou', 'vou', 'estou', 'dou', 'sei', 'lei',
+  'you', 'thou', 'need', 'indeed', 'feed', 'seed', 'speed', 'bed', 'red',
+])
+/** Passado irregular do inglês que aparece nessa conversa. */
+const PASSADO_IRREGULAR = new Set([
+  'chose', 'sent', 'gave', 'told', 'said', 'made', 'got', 'wrote', 'paid', 'was', 'were', 'had', 'did', 'came', 'went',
+  'took', 'found', 'saw', 'spoke', 'left',
+])
+
+/** Verbo no passado: -ou/-eu/-iu/-ei ("confirmou", "escolheu", "pediu", "falei"), -ed ou o irregular do inglês. */
+function verboNoPassado(p: string): boolean {
+  if (NAO_E_PASSADO.has(p)) return false
+  return /(?:ou|eu|iu|ei|ed)$/.test(p) || PASSADO_IRREGULAR.has(p)
+}
+
+/**
+ * Há condição antes da forma que afirma? `antes` já sem acento e em
+ * minúsculas. A condição sempre ("se", "if") cala; a de tempo só quando as
+ * até quatro palavras que a seguem, na mesma oração (até a vírgula), não têm
+ * verbo no passado.
+ */
+function haCondicao(antes: string): boolean {
+  if (CONDICAO.test(antes)) return true
+  for (const m of antes.matchAll(TEMPORAL)) {
+    const seguintes = antes
+      .slice((m.index ?? 0) + m[0].length)
+      .split(/[,;:]/)[0]
+      .split(/\s+/)
+      .map(palavraNormalizada)
+      .filter(Boolean)
+      .slice(0, 4)
+    if (!seguintes.some(verboNoPassado)) return true
+  }
+  return false
+}
 /** Logo DEPOIS da forma que afirma: "marcado por outra pessoa" / "booked by someone else" — o horário tomado. */
 const POR_OUTRO = /^\s*(?:por|by)\s+(?:outr|another|someone|other)/i
 /** Pergunta de verdade (termina em "?"), menos a de confirmação no fim ("…, tudo bem?"), que afirma. */
@@ -628,7 +673,7 @@ export function afirmaReuniaoMarcada(texto: string): boolean {
     for (const m of f.matchAll(FORMA_QUE_AFIRMA)) {
       const antes = f.slice(0, m.index)
       if (naoAfirma(antes.split(/\s+/).map(palavraNormalizada).filter(Boolean).slice(-4))) continue
-      if (CONDICAO.test(semAcento(antes))) continue
+      if (haCondicao(semAcento(antes))) continue
       if (POR_OUTRO.test(f.slice((m.index ?? 0) + m[0].length))) continue
       return true
     }
@@ -714,7 +759,7 @@ export function equipePrometida(texto: string): boolean {
       if (!m) continue
       const antes = f.slice(0, m.index)
       if (naoAfirma(antes.split(/\s+/).map(palavraNormalizada).filter(Boolean).slice(-4))) continue
-      if (CONDICAO.test(antes)) continue
+      if (haCondicao(antes)) continue
       return true
     }
   }

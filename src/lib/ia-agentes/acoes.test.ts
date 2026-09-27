@@ -343,6 +343,11 @@ describe('a EQUIPE PROMETIDA sem o [[TRANSFERIR]] (27/09)', () => {
     }
   })
 
+  it('"quando" com o verbo no passado é fato (a mesma régua da reunião prometida); no futuro, condição', () => {
+    expect(equipePrometida('Quando você mandou os documentos, nossa equipe vai analisar e te retornar por aqui.')).toBe(true)
+    expect(equipePrometida('Quando você mandar os documentos, nossa equipe vai analisar e te retornar por aqui.')).toBe(false)
+  })
+
   it('⚠️ quieta: negação, pergunta, condição, e a análise NA REUNIÃO (o caminho de quem qualificou)', () => {
     for (const t of [
       'Não vou pedir para um especialista agora: primeiro preciso de mais informações.',
@@ -414,6 +419,31 @@ describe('a trava da REUNIÃO PROMETIDA (F5, 27/09)', () => {
       "You're all set for Tuesday at 15:15!",
     ]) {
       expect(afirmaReuniaoMarcada(t), t).toBe(true)
+    }
+  })
+
+  it('⚠️ "quando" com o verbo no PASSADO é fato, não condição (Codex, #321): a confirmação falsa dispara', () => {
+    for (const t of [
+      'Quando você confirmou o horário, marquei sua reunião para terça às 15:15.',
+      'Depois que você escolheu o horário, agendei sua reunião para terça às 15:15.',
+      'Assim que você me passou o e-mail, sua reunião ficou marcada para terça às 15:15.',
+      'When you confirmed the time, I booked your meeting for Tuesday at 15:15.',
+      'Once you chose Tuesday, I scheduled your meeting for 15:15.',
+    ]) {
+      expect(afirmaReuniaoMarcada(t), t).toBe(true)
+    }
+    // LIMITE ACEITO (Codex, #321): basta a forma e a âncora na mesma frase — erra
+    // para o lado seguro (a resposta é retida e vai para gente).
+    expect(afirmaReuniaoMarcada('Seu e-mail está confirmado para agendarmos sua reunião às 15:15.')).toBe(true)
+    // O mesmo "quando" no futuro/presente continua condição: quieta.
+    for (const t of [
+      'Quando você confirmar o horário, sua reunião fica marcada para terça às 15:15.',
+      'Quando você escolher, a reunião fica agendada para terça às 15:15.',
+      'Quando o seu e-mail chegar, sua reunião fica confirmada para terça às 15:15.',
+      'When you confirm the time, your meeting is booked for Tuesday at 15:15.',
+      'Se você confirmou o e-mail, a reunião está marcada para terça às 15:15.',
+    ]) {
+      expect(afirmaReuniaoMarcada(t), t).toBe(false)
     }
   })
 
