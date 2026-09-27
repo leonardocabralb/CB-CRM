@@ -32,7 +32,7 @@ import type {
   DealStatus,
 } from '@/types';
 import { supabaseAdmin } from './admin-client';
-import { resolverDestinatario } from './destinatario';
+import { conversaDoContato, resolverDestinatario } from './destinatario';
 import { resolveEngineChannelPreferring } from '@/lib/cb-channels/engine-send';
 import { ehGatilhoDaRegua, PASSOS_QUE_FALAM_COM_O_CONTATO } from '@/lib/asaas/regua';
 
@@ -112,6 +112,7 @@ import {
   execucaoJaInterrompida,
   marcarExecucoesInterrompidas,
 } from './interrupcao';
+import { comPassoDaFila, conferirRetomada } from './retomada';
 import {
   desfechoDoEscopo,
   desfechoDoRetorno,
@@ -125,6 +126,7 @@ import {
   lerModoDoResponsavel,
 } from './responsavel-da-tarefa';
 import { janelaDaMetaAberta } from './janela-da-meta';
+import { campoAtendeACondicao, ehIdDeCampo, operadorDaCondicao } from './condicao-por-campo';
 import { avaliarHoraDoDia, esperaPeloHorario } from './hora-do-dia';
 
 /** O motivo do `send_to_number` recusado, na frase que o registro mostra. */
@@ -649,6 +651,34 @@ export async function resumePendingExecution(pending: {
     return;
   }
 
+  // ⚠️⚠️ O PASSO ONDE ESTA ESPERA PAROU AINDA ESTÁ LÁ? (26/09/2026, NOSSO.)
+  // O operador pode ter salvo a automação durante a espera: a condição do
+  // ramo apagada (a FK zera `parent_step_id` e a retomada rodaria o escopo de
+  // FORA), ou um passo inserido/removido antes dela (a posição gravada
+  // apontaria para outro passo). Removido ou levado para outro ramo → falha
+  // VISÍVEL, com o motivo no registro; nunca seguir por outro caminho em
+  // silêncio. Só ESTA continuação para: as irmãs da execução são conferidas
+  // cada uma pelo seu passo, ao acordar. Ver `retomada.ts`.
+  const retomada = await conferirRetomada(db, automation.id, pending);
+  if (retomada.tipo === 'parar') {
+    await markPending(pending.id, 'failed');
+    await appendResults(
+      pending.log_id,
+      [
+        {
+          step_id: retomada.passoId ?? '',
+          step_type: 'wait',
+          status: 'failed',
+          detail: retomada.motivo,
+        },
+      ],
+      'failed',
+      retomada.motivo
+    );
+    await fecharLog(pending.log_id, 'falhou', pending.id);
+    return;
+  }
+
   try {
     const retorno = await executeStepsFrom({
       automation: automation as Automation,
@@ -661,7 +691,9 @@ export async function resumePendingExecution(pending: {
       context: semMarcaDeResposta(pending.context ?? {}),
       parentStepId: pending.parent_step_id,
       branch: pending.branch,
-      startPosition: pending.next_step_position,
+      // A posição ATUAL do passo que estacionou (`retomada.ts`), não a
+      // gravada: um passo inserido antes dele desloca o escopo inteiro.
+      startPosition: retomada.posicao,
       logId: pending.log_id,
       triggerEvent: 'resumed_wait',
       esperaEmCurso: pending.id,
@@ -1197,7 +1229,9 @@ async function executeStepsFrom(
           // estacionamento — marca ou limpa —, nunca herdada: o contexto é
           // copiado de ponta a ponta da execução, e a marca de uma espera
           // vazaria para as seguintes. Ver `parar-se-responder.ts`.
-          context: contextoDaEspera(args.context, cfg, step.id),
+          // E QUAL passo estacionou (NOSSO, 26/09/2026): é por ele que a
+          // retomada acha o lugar certo depois de uma edição (`retomada.ts`).
+          context: comPassoDaFila(contextoDaEspera(args.context, cfg, step.id), step),
           run_at: retomaEm.toISOString(),
         }
       );
@@ -1259,12 +1293,20 @@ async function executeStepsFrom(
         // como ser conferido depois.
         const hora =
           cfg.subject === 'time_of_day' ? avaliarHoraDoDia(cfg, new Date()) : null;
+        // O campo personalizado (2.10) também diz no registro quando NÃO
+        // conferiu (leitura que falhou, campo apagado) — senão o "não" pareceria
+        // medido. O VALOR lido nunca vai para o registro: o campo pode guardar
+        // coisa que não pode ficar num log (a senha do gov.br do previdenciário).
+        const campo =
+          cfg.subject === 'custom_field' ? await avaliarCampoPersonalizado(cfg, args) : null;
         const taken = janela
           ? janela.aberta
           : hora
             ? hora.sim
-            : await evaluateCondition(cfg, args);
-        const nota = janela?.nota ?? hora?.nota;
+            : campo
+              ? campo.sim
+              : await evaluateCondition(cfg, args);
+        const nota = janela?.nota ?? hora?.nota ?? campo?.nota;
         results.push({
           step_id: step.id,
           step_type: 'condition',
@@ -1368,10 +1410,15 @@ async function executeStepsFrom(
             // de novo. O "Aguardar" enfileira `position + 1` porque ele já
             // terminou; aqui o passo não chegou a acontecer.
             next_step_position: step.position,
-            context: {
-              ...args.context,
-              [CHAVE_DA_TENTATIVA]: contadorDe(step.position, tentativa),
-            },
+            // O passo que vai rodar de novo é o que a retomada procura
+            // depois de uma edição (`retomada.ts`).
+            context: comPassoDaFila(
+              {
+                ...args.context,
+                [CHAVE_DA_TENTATIVA]: contadorDe(step.position, tentativa),
+              },
+              step
+            ),
             run_at: new Date(Date.now() + decisao.esperaMs).toISOString(),
           }
         );
@@ -1493,9 +1540,13 @@ async function runStep(
     case 'send_message': {
       const cfg = step.step_config as SendMessageStepConfig;
       if (!args.contactId) throw new Error('send_message needs a contact');
+      // A conversa ANTES do texto: a ficha sem conversa ganha a dela aqui, e
+      // `{{conversation.link}}` já sai com ela nesta mensagem (Codex, #322).
+      const conversationId = await resolveConversationId(args, {
+        criarSeFaltar: true,
+      });
       const text = await interpolate(cfg.text, args);
       if (!text.trim()) throw new Error('send_message has empty text');
-      const conversationId = await resolveConversationId(args);
       // ⚠️ Na régua do Asaas (998, D19) a conexão do passo FALHA FECHADA —
       // a mesma cerca do `send_to_number`. `resolveEngineChannelPreferring`
       // cai em silêncio no canal da conversa (e daí no padrão) quando o id
@@ -1543,7 +1594,9 @@ async function runStep(
       // Meta 400 mid-conversation.
       const check = validateInteractivePayload(payload);
       if (!check.ok) throw new Error(check.error);
-      const conversationId = await resolveConversationId(args);
+      const conversationId = await resolveConversationId(args, {
+        criarSeFaltar: true,
+      });
       const { whatsapp_message_id } = await engineSendInteractive({
         accountId: args.automation.account_id,
         userId: args.automation.user_id,
@@ -1563,7 +1616,9 @@ async function runStep(
       if (!args.contactId) throw new Error('send_template needs a contact');
       if (!cfg.template_name)
         throw new Error('send_template needs template_name');
-      const conversationId = await resolveConversationId(args);
+      const conversationId = await resolveConversationId(args, {
+        criarSeFaltar: true,
+      });
       // Os valores do modelo (Fase 2.3 do plano do previdenciário): cada
       // `{{N}}` passa pela interpolação, com texto de reserva quando sai
       // vazio, e o cabeçalho e os botões vão junto. POSICIONAL — ver
@@ -2095,7 +2150,9 @@ async function runStep(
       );
       if (!passo.ok) throw new Error(`run_flow recusado: ${passo.motivo}`);
 
-      const conversationId = await resolveConversationId(args);
+      const conversationId = await resolveConversationId(args, {
+        criarSeFaltar: true,
+      });
       // ⚠️ Import DINÂMICO, e é load-bearing: `flows/engine` importa
       // `contacts/tag-events`, que importa ESTE módulo. Um import estático
       // fecharia o ciclo. (`parar-run.ts` foi separado justamente para não
@@ -2194,12 +2251,15 @@ async function runStep(
       // NÃO viajaria ao cliente — a equipe leria uma conversa que o cliente
       // nunca teve. Mesma guarda da 932, aqui em terceiro lugar (banco, tela,
       // motor), porque a config pode ter sido gravada antes desta regra.
+      // A conversa ANTES da legenda, como no texto (Codex, #322).
+      const conversationId = await resolveConversationId(args, {
+        criarSeFaltar: true,
+      });
       const legenda =
         cfg.kind === 'audio'
           ? undefined
           : (await interpolate(cfg.caption ?? '', args)) || undefined;
 
-      const conversationId = await resolveConversationId(args);
       const { whatsapp_message_id } = await engineSendMedia({
         accountId: args.automation.account_id,
         userId: args.automation.user_id,
@@ -2542,10 +2602,28 @@ export async function criarTarefaComAviso(
  * Pick the conversation a send-type step should use. Prefer the id the
  * webhook handed us (it's the one that just got the inbound message);
  * fall back to the contact's conversation for resumed/wait paths and
- * manual engine POSTs. Throws if none exists — send steps have
- * no meaningful target without a conversation.
+ * manual engine POSTs.
+ *
+ * ⚠️ NOSSO (27/09/2026): contato SEM conversa. Os passos que FALAM com o
+ * contato (`send_message`, `send_buttons`/`send_list`, `send_template`,
+ * `send_media` e `run_flow`, que liga um robô para falar com ele) passam
+ * `criarSeFaltar` e a conversa nasce aqui, por `conversaDoContato`
+ * (`destinatario.ts`: dono durável da conta, corrida do UNIQUE, nunca toca na
+ * que já existe). Ficha criada pela API v1 não tem conversa — é o lead do
+ * anúncio que a agência manda pelo Make —, e o primeiro contato do
+ * escritório com ele é justamente a automação da etapa. Nasce ENCERRADA, a
+ * decisão do Typebot (`webhooks-de-entrada/processar.ts`): o lead ainda não
+ * escreveu, uma conversa vazia em "Abertas" é ruído, e a resposta dele a
+ * reabre pelos caminhos de sempre (`reopen.ts`) — envio de robô não reabre.
+ * Quem não fala com o contato (`set_ai`, a condição da janela da Meta) NÃO
+ * cria nada e continua recusando. O ramo de `context.conversation_id` não
+ * muda: id que não é desta conta e deste contato é recusado, nunca trocado
+ * por uma conversa nova.
  */
-async function resolveConversationId(args: ExecuteArgs): Promise<string> {
+async function resolveConversationId(
+  args: ExecuteArgs,
+  opcoes?: { criarSeFaltar?: boolean }
+): Promise<string> {
   const fromCtx = args.context.conversation_id;
   if (fromCtx) {
     // Confere em vez de confiar (upstream #589): o disparo confere o id que
@@ -2576,6 +2654,19 @@ async function resolveConversationId(args: ExecuteArgs): Promise<string> {
     .maybeSingle();
   if (error) throw new Error(`conversation lookup failed: ${error.message}`);
   if (!data?.id) {
+    if (opcoes?.criarSeFaltar) {
+      const criada = await conversaDoContato(
+        supabaseAdmin(),
+        args.automation.account_id,
+        args.contactId,
+        { conversaNovaEncerrada: true }
+      );
+      // Os dados do contato desta execução foram lidos SEM conversa (se algum
+      // passo anterior interpolou `contact.*`): esquecê-los faz o próximo
+      // `{{conversation.link}}` reler e achar a conversa nova (Codex, #322).
+      dadosPorExecucao.delete(args);
+      return criada;
+    }
     const prefix =
       args.triggerEvent === 'tag_added'
         ? 'tag_added automation cannot send'
@@ -2948,8 +3039,82 @@ async function evaluateCondition(
      */
     case 'meta_window_open':
       return (await avaliarJanelaDaMeta(cfg, args)).aberta;
+    /**
+     * Um CAMPO PERSONALIZADO da ficha é / contém / está vazio / não está vazio
+     * (Fase 2.10 do plano do previdenciário) — `condicao-por-campo.ts`.
+     * ⚠️ `executeStepsFrom` desvia este critério ANTES (para gravar a nota);
+     * este caso só serve a um chamador direto. Mudou um, muda o outro.
+     */
+    case 'custom_field':
+      return (await avaliarCampoPersonalizado(cfg, args)).sim;
     default:
       return false;
+  }
+}
+
+/**
+ * A condição por campo personalizado, com a NOTA do registro quando a
+ * resposta não foi medida. Mesma regra da janela de 24h: não conseguindo
+ * ler, responde "NÃO" e diz isso — o "não" não pode parecer medido.
+ *
+ * ⚠️ O campo é conferido pela CONTA da automação antes de o valor valer: com
+ * o cliente service-role, um id de campo de outra conta viraria um oráculo de
+ * dados alheios. O contato já foi conferido pela conta no disparo
+ * (`runAutomationsForTrigger`). Campo apagado (ou de outra conta) = "não",
+ * com a nota; a ativação já recusa os dois.
+ */
+async function avaliarCampoPersonalizado(
+  cfg: ConditionStepConfig,
+  args: ExecuteArgs
+): Promise<{ sim: boolean; nota?: string }> {
+  const naoConferido = {
+    sim: false,
+    nota: 'campo não conferido: a leitura falhou — tratado como "não"',
+  };
+  const campoId = typeof cfg.operand === 'string' ? cfg.operand.trim() : '';
+  const operador = operadorDaCondicao(cfg.operator);
+  if (!operador) return { sim: false, nota: 'operador desconhecido — tratado como "não"' };
+  if (!args.contactId) return { sim: false, nota: 'sem contato — tratado como "não"' };
+  const apagado = {
+    sim: false,
+    nota: 'o campo da condição não existe nesta conta — tratado como "não"',
+  };
+  if (!ehIdDeCampo(campoId)) return apagado;
+  const db = supabaseAdmin();
+  try {
+    const [campo, valor] = await Promise.all([
+      db
+        .from('custom_fields')
+        .select('field_type')
+        .eq('id', campoId)
+        .eq('account_id', args.automation.account_id)
+        .maybeSingle(),
+      db
+        .from('contact_custom_values')
+        .select('value')
+        .eq('contact_id', args.contactId)
+        .eq('custom_field_id', campoId)
+        .maybeSingle(),
+    ]);
+    if (campo.error || valor.error) {
+      console.warn(
+        '[automations] condição por campo: leitura falhou',
+        campo.error ?? valor.error
+      );
+      return naoConferido;
+    }
+    if (!campo.data) return apagado;
+    return {
+      sim: campoAtendeACondicao({
+        operador,
+        tipo: String((campo.data as { field_type?: unknown }).field_type ?? ''),
+        gravado: (valor.data as { value?: string | null } | null)?.value ?? null,
+        esperado: typeof cfg.value === 'string' ? cfg.value : '',
+      }),
+    };
+  } catch (err) {
+    console.warn('[automations] condição por campo: falhou', err);
+    return naoConferido;
   }
 }
 

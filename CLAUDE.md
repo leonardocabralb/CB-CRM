@@ -454,7 +454,10 @@ O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
 - Funil: ganho que sai para etapa neutra segue ganho; perdido que entra em
   neutra volta aberto (21/09/2026).
 - Funil comercial: "por período" é o padrão (18/09/2026); taxa acima de 100%
-  aparece como é; negócio transferido conta no funil de origem.
+  aparece como é; negócio transferido conta no funil de origem. Degrau
+  `pasta` depois do contrato, opcional, e "fechado" o inclui; cada funil
+  configura o próprio painel; "custo por contrato assinado" ao lado do CAC em
+  pé (26/09/2026).
 - Card: título = nome da pessoa, sem prefixo de conexão; o Calendly renomeia
   até título escrito à mão e fixa o nome da ficha.
 - Abrir conversa não cria negócio (o card nasce no primeiro envio).
@@ -485,7 +488,9 @@ O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
   retroativo.
 - Instagram: robô não responde no Direct; unificar fichas é manual; o que a
   API não cobre fica inacessível na conversa.
-- Webhook de entrada cria a conversa ENCERRADA (só ele; 21/09/2026).
+- Conversa ENCERRADA quando nasce sem o cliente ter escrito: webhook de
+  entrada (21/09/2026) e passo de envio da automação para ficha sem conversa
+  (27/09/2026). Calendly e `send_to_number` a criam aberta.
 - Evolution: voltar de versão da imagem está descartado.
 - Celular: no toque o Enter pula linha; o app instalado abre em `/inbox`.
 - "Sair" do menu sai só deste aparelho; 4 h inativo reabre o Meu dia, sem
@@ -531,7 +536,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
 - `.claude/rules/automacoes.md` — motor e construtor, grade do funil,
   execuções na conversa, retentativa, desfecho da execução.
 - `.claude/rules/automacoes-esperas.md` — Aguardar, parar se o cliente
-  responder, presa à etapa, marca de interrupção, fila.
+  responder, presa à etapa, marca de interrupção, fila, salvar com esperas
+  paradas (identidade dos passos).
 - `.claude/rules/automacoes-passos.md` — valores do "Enviar modelo", tarefa
   pelo responsável, condições da janela de 24h e da hora do dia, "Aguardar
   até estar dentro do horário".
@@ -550,7 +556,7 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
 - `.claude/rules/ia.md` — Radar, transcrição de áudio, chaves e modelos por
   módulo (Integrações).
 - `.claude/rules/ia-agentes.md` — o que cada agente de IA vê (acesso, blocos)
-  e a base de conhecimento por agente (1052).
+  e a base de conhecimento por agente (1052); a resposta cortada pelo teto.
 - `.claude/rules/reunioes.md` — agenda (EXCLUDE, fuso), tl;dv e
   transcrições.
 - `.claude/rules/agendadas.md` — mensagem agendada, anexo e citação, tela

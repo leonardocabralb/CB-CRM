@@ -374,6 +374,7 @@ describe("alcancouEm — a data de cada degrau (regra 7, contagem por período)"
       null,
       null,
       null,
+      null,
     ]);
   });
 
@@ -391,6 +392,7 @@ describe("alcancouEm — a data de cada degrau (regra 7, contagem por período)"
       "2026-09-05T12:00:00.000Z",
       "2026-09-05T12:00:00.000Z",
       "2026-09-05T12:00:00.000Z",
+      null,
       null,
     ]);
   });
@@ -415,13 +417,13 @@ describe("alcancouEm — a data de cada degrau (regra 7, contagem por período)"
       stage_id: "desq",
       trajeto: [passo("desq", "2026-09-01T12:00:00+00:00", FUNIL, "deal_created")],
     });
-    expect(datas(l)).toEqual([null, null, null, null, null]);
+    expect(datas(l)).toEqual([null, null, null, null, null, null]);
     const estacionado = linha({
       deal_id: "e",
       stage_id: "parking",
       trajeto: [passo("parking", "2026-09-01T12:00:00+00:00", FUNIL, "deal_created")],
     });
-    expect(datas(estacionado)).toEqual([null, null, null, null, null]);
+    expect(datas(estacionado)).toEqual([null, null, null, null, null, null]);
   });
 
   it("só contam os passos DESTE funil; trajeto fora de ordem é ordenado antes", () => {
@@ -437,6 +439,7 @@ describe("alcancouEm — a data de cada degrau (regra 7, contagem por período)"
     expect(datas(l)).toEqual([
       "2026-09-01T12:00:00.000Z",
       "2026-09-09T12:00:00.000Z",
+      null,
       null,
       null,
       null,
@@ -531,5 +534,74 @@ describe("perdidoDesde — o começo da estadia em perda (regra 8)", () => {
     expect(f.classeAtual).toBe("perda");
     expect(f.perdidoDesde?.toISOString()).toBe("2026-06-10T12:00:00.000Z");
     expect(f.perdidoDesde?.getTime()).toBe(f.naEtapaDesde?.getTime());
+  });
+});
+
+describe("pasta (1054): o degrau depois do contrato é FECHAMENTO", () => {
+  // O funil do previdenciário: contrato assinado → documentação (contrato) →
+  // pasta fechada (pasta); "Contrato sem pasta" é perda.
+  const PREV = classificarEtapas([
+    etapa("novo", 0, "lead"),
+    etapa("mql", 2, "mql"),
+    etapa("assinatura", 3, "proposta"),
+    etapa("assinado", 4, "contrato"),
+    etapa("docs", 5, "contrato"),
+    etapa("pasta", 6, "pasta"),
+    etapa("sem-pasta", 12, "perda"),
+  ]);
+  const fatos = (l: LinhaDeTrajetoria) => fatosDoNegocio(l, FUNIL, PREV);
+
+  it("quem está na pasta está FECHADO e alcançou contrato (≥ contrato, não = contrato)", () => {
+    const f = fatos(
+      linha({
+        deal_id: "p1",
+        stage_id: "pasta",
+        trajeto: [
+          passo("novo", "2026-09-01T12:00:00+00:00", FUNIL, "deal_created"),
+          passo("assinado", "2026-09-03T12:00:00+00:00"),
+          passo("pasta", "2026-09-10T12:00:00+00:00"),
+        ],
+      }),
+    );
+    expect(f.situacao).toBe("fechado");
+    expect(f.alcancouContrato).toBe(true);
+    expect(f.degrauMaximo).toBe(5);
+    // o contrato é datado na ASSINATURA; a pasta, na pasta
+    expect(f.alcancouEm[4]?.toISOString()).toBe("2026-09-03T12:00:00.000Z");
+    expect(f.alcancouEm[5]?.toISOString()).toBe("2026-09-10T12:00:00.000Z");
+  });
+
+  it("pular direto para a pasta alcança o contrato NA DATA DA PASTA", () => {
+    const f = fatos(
+      linha({
+        deal_id: "p2",
+        stage_id: "pasta",
+        trajeto: [
+          passo("novo", "2026-09-01T12:00:00+00:00", FUNIL, "deal_created"),
+          passo("pasta", "2026-09-05T12:00:00+00:00"),
+        ],
+      }),
+    );
+    expect(f.alcancouContrato).toBe(true);
+    expect(f.alcancouEm[4]?.toISOString()).toBe("2026-09-05T12:00:00.000Z");
+    expect(f.alcancouEm[5]?.toISOString()).toBe("2026-09-05T12:00:00.000Z");
+  });
+
+  it("'Contrato sem pasta' é PERDIDO, mas continua tendo alcançado contrato", () => {
+    const f = fatos(
+      linha({
+        deal_id: "p3",
+        stage_id: "sem-pasta",
+        trajeto: [
+          passo("novo", "2026-09-01T12:00:00+00:00", FUNIL, "deal_created"),
+          passo("assinado", "2026-09-03T12:00:00+00:00"),
+          passo("docs", "2026-09-04T12:00:00+00:00"),
+          passo("sem-pasta", "2026-09-20T12:00:00+00:00"),
+        ],
+      }),
+    );
+    expect(f.situacao).toBe("perdido");
+    expect(f.alcancouContrato).toBe(true);
+    expect(f.perdidoDesde?.toISOString()).toBe("2026-09-20T12:00:00.000Z");
   });
 });

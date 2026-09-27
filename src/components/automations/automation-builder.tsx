@@ -88,6 +88,7 @@ import { AsaasTriggerConfig } from "@/components/automations/asaas-trigger-confi
 import { CalendlyTriggerConfig } from "@/components/automations/calendly-trigger-config"
 import { ehGatilhoDaRegua, HORA_PADRAO_COBRANCA, HORA_PADRAO_LEMBRETE } from "@/lib/asaas/regua"
 import { WebhookTriggerConfig } from "@/components/automations/webhook-trigger-config"
+import { CondicaoPorCampoFields } from "@/components/automations/condicao-por-campo-fields"
 import {
   childPath,
   insertAt,
@@ -119,6 +120,15 @@ type MediaKindUI = "image" | "video" | "document" | "audio"
 export interface BuilderStep {
   /** Client id; the API assigns real UUIDs server-side. */
   cid: string
+  /**
+   * NOSSO (26/09/2026): o id do passo NO BANCO — o que veio do servidor, ou um
+   * UUID gerado aqui para o passo novo. Vai no salvamento e, ao EDITAR, o
+   * servidor o MANTÉM: a espera estacionada num ramo guarda o id da condição,
+   * e um id novo a cada salvamento a desviava para outro passo
+   * (`replaceSteps`, `retomada.ts`). Na criação o servidor atribui ids novos
+   * e a tela recarrega pela edição. Ausente só onde o navegador não gera UUID.
+   */
+  id?: string
   step_type: AutomationStepType
   step_config: Record<string, unknown>
   branches?: { yes: BuilderStep[]; no: BuilderStep[] }
@@ -306,6 +316,15 @@ function cid(): string {
       ? crypto.randomUUID()
       : Math.random().toString(36).slice(2) + Date.now().toString(36))
   )
+}
+
+/**
+ * O id de BANCO do passo novo, gerado aqui para ele ser o MESMO em todos os
+ * salvamentos desta tela (ela não recarrega depois de salvar). Sem
+ * `randomUUID` (contexto sem HTTPS), fica ausente e o servidor atribui.
+ */
+function idDePassoNovo(): string | undefined {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : undefined
 }
 
 // The send_buttons / send_list step_config IS an InteractiveMessagePayload,
@@ -1175,6 +1194,7 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
   function addStepAt(parent: ParentScope, index: number, type: AutomationStepType) {
     const node: BuilderStep = {
       cid: cid(),
+      id: idDePassoNovo(),
       step_type: type,
       step_config: blankConfig(type),
       branches: type === "condition" ? { yes: [], no: [] } : undefined,
@@ -2005,7 +2025,7 @@ function StepRenderer({
                       fim: janelaDaEspera?.fim ?? "?",
                     }) +
                     (step.step_config.somente_seg_a_sex === true ? ` · ${t("config.segASexResumo")}` : "")
-                  : previewFor(step)}
+                  : previewFor(step, t)}
                 {/* Visível com o passo FECHADO: numa sequência de dez esperas,
                     é assim que se confere de relance quais param na resposta. */}
                 {step.step_type === "wait" && step.step_config.parar_se_responder === true
@@ -3261,11 +3281,20 @@ function StepEditor({
                 // ou "etapa" inexistente (condição sempre falsa, em silêncio);
                 // o contrário faria a janela perguntar por um número que o
                 // operador nunca escolheu. A hora do dia também: lá o operando
-                // é "HH:mm-HH:mm", e o "só de segunda a sexta" sai junto.
-                const proprio = (s: unknown) => s === "meta_window_open" || s === "time_of_day"
+                // é "HH:mm-HH:mm", e o "só de segunda a sexta" sai junto. O
+                // campo personalizado (2.10) também: lá o operando é o id de
+                // um CAMPO, e o valor e o operador são dele.
+                const proprio = (s: unknown) =>
+                  s === "meta_window_open" || s === "time_of_day" || s === "custom_field"
                 set(
                   proprio(e.target.value) || proprio(cfg.subject)
-                    ? { subject: e.target.value, operand: "", somente_seg_a_sex: undefined }
+                    ? {
+                        subject: e.target.value,
+                        operand: "",
+                        somente_seg_a_sex: undefined,
+                        value: "",
+                        operator: e.target.value === "custom_field" ? "equals" : undefined,
+                      }
                     : { subject: e.target.value },
                 )
               }}
@@ -3273,6 +3302,7 @@ function StepEditor({
             >
               <option value="tag_presence">{t("config.subjects.tag_presence")}</option>
               <option value="contact_field">{t("config.subjects.contact_field")}</option>
+              <option value="custom_field">{t("config.subjects.custom_field")}</option>
               <option value="message_content">{t("config.subjects.message_content")}</option>
               <option value="time_of_day">{t("config.subjects.time_of_day")}</option>
               {/* Por canal: o motor ramifica assim desde a 903, mas a tela
@@ -3294,7 +3324,9 @@ function StepEditor({
               <option value="meta_window_open">{t("config.subjects.meta_window_open")}</option>
             </select>
           </FieldBlock>
-          {cfg.subject === "meta_window_open" ? (
+          {cfg.subject === "custom_field" ? (
+            <CondicaoPorCampoFields cfg={cfg} set={set} />
+          ) : cfg.subject === "meta_window_open" ? (
             <JanelaDaMetaFields
               value={(cfg.operand as string) || null}
               onChange={(id) => set({ operand: id ?? "" })}
@@ -3598,21 +3630,41 @@ function FieldBlock({
   )
 }
 
-function previewFor(step: BuilderStep): string {
+/** Os critérios do seletor da condição (`config.subjects.*`). Fora deles o
+ *  cartão fechado mostra "?", nunca a chave crua. */
+const CRITERIOS_DA_CONDICAO = new Set([
+  "tag_presence",
+  "contact_field",
+  "custom_field",
+  "message_content",
+  "time_of_day",
+  "channel",
+  "deal_stage",
+  "deal_status",
+  "meta_window_open",
+])
+
+// O resumo do passo FECHADO. Vinha do original em inglês ("when time_of_day",
+// "no text yet") e aparecia assim com o app em português.
+function previewFor(step: BuilderStep, t: ReturnType<typeof useTranslations>): string {
   switch (step.step_type) {
     case "send_message":
-      return (step.step_config.text as string) || "no text yet"
+      return (step.step_config.text as string) || t("previa.semTexto")
     case "send_buttons":
     case "send_list":
-      return interactivePayloadPreviewText(asInteractive(step.step_config)) || "no body yet"
+      return interactivePayloadPreviewText(asInteractive(step.step_config)) || t("previa.semCorpo")
     case "send_template":
-      return (step.step_config.template_name as string) || "pick a template"
+      return (step.step_config.template_name as string) || t("previa.semModelo")
     case "wait":
       return `${step.step_config.amount ?? "?"} ${step.step_config.unit ?? ""}`
-    case "condition":
-      return `when ${step.step_config.subject ?? "?"}`
+    case "condition": {
+      const criterio = step.step_config.subject
+      return typeof criterio === "string" && CRITERIOS_DA_CONDICAO.has(criterio)
+        ? t(`config.subjects.${criterio}`)
+        : "?"
+    }
     case "send_webhook":
-      return (step.step_config.url as string) || "no url"
+      return (step.step_config.url as string) || t("previa.semUrl")
     case "send_to_number":
       return [step.step_config.phone, (step.step_config.text as string | undefined)?.split("\n")[0]]
         .filter(Boolean)
@@ -3627,6 +3679,8 @@ function previewFor(step: BuilderStep): string {
 // ------------------------------------------------------------
 
 interface ApiStep {
+  /** O id de banco (ver `BuilderStep.id`): ausente = o servidor atribui. */
+  id?: string
   step_type: string
   step_config: Record<string, unknown>
   branches?: { yes?: ApiStep[]; no?: ApiStep[] }
@@ -3634,6 +3688,7 @@ interface ApiStep {
 
 export function toApiSteps(steps: BuilderStep[]): ApiStep[] {
   return steps.map((s) => ({
+    ...(s.id ? { id: s.id } : {}),
     step_type: s.step_type,
     step_config: s.step_config,
     branches: s.branches
@@ -3656,6 +3711,8 @@ export interface ServerStepNode {
 export function fromServerSteps(nodes: ServerStepNode[]): BuilderStep[] {
   return nodes.map((n) => ({
     cid: cid(),
+    // O id do banco volta no salvamento: é a identidade do passo (NOSSO).
+    id: n.id,
     step_type: n.step_type as AutomationStepType,
     step_config: n.step_config ?? {},
     branches:

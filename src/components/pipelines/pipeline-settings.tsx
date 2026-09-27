@@ -23,7 +23,16 @@ import {
   channelsUsingStage,
 } from "@/lib/cb-channels/display";
 import type { Pipeline, PipelineStage } from "@/types";
-import { CLASSES, sugerirClasse } from "@/lib/funil/degraus";
+import { CLASSES, DEGRAUS, DEGRAUS_OPCIONAIS, ehDegrau, sugerirClasse, type Degrau } from "@/lib/funil/degraus";
+import {
+  CARTOES_DE_CUSTO,
+  escreverPainel,
+  lerPainel,
+  normalizarRotulo,
+  ROTULO_MAX,
+  type PainelDoFunil,
+} from "@/lib/funil/painel";
+import { useRotuloDoCartaoDeCusto } from "@/components/funil/cartoes-de-custo";
 import {
   Dialog,
   DialogContent,
@@ -76,17 +85,6 @@ export function PipelineSettings({
 }: PipelineSettingsProps) {
   const t = useTranslations("Pipelines.settings");
   const tFunil = useTranslations("Pipelines.funil");
-  // 975: o seletor de degrau do funil de eficiência, por etapa. Os rótulos
-  // das classes são chave MONTADA (`degraus.${classe}`) — o portão estático
-  // de i18n não as enxerga; `src/lib/funil/degraus.test.ts` cobra os dois
-  // dicionários.
-  const opcoesDeDegrau = [
-    { value: "", label: tFunil("degraus.nenhum") },
-    ...CLASSES.map((classe) => ({
-      value: classe,
-      label: tFunil(`degraus.${classe}` as Parameters<typeof tFunil>[0]),
-    })),
-  ];
   const supabase = createClient();
   // Uma busca por montagem, falha silenciosa → lista vazia. É fail-open
   // consciente: sem os canais o operador perde o AVISO, não a ação — travar
@@ -101,6 +99,25 @@ export function PipelineSettings({
   const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // 1054: o painel do funil (rótulos, "não se aplica", cartões de custo),
+  // lido do BANCO com o nome e as etapas, a cada abertura.
+  const [painel, setPainel] = useState<PainelDoFunil>(() => lerPainel(null));
+
+  // 975: o seletor de degrau do funil de eficiência, por etapa. Os rótulos
+  // das classes são chave MONTADA (`degraus.${classe}`) — o portão estático
+  // de i18n não as enxerga; `src/lib/funil/degraus.test.ts` cobra os dois
+  // dicionários. Com rótulo livre no painel (1054), o degrau aparece com ele
+  // — é o nome que o operador vai ver no Desempenho.
+  const rotuloPadrao = (classe: string) => tFunil(`degraus.${classe}` as Parameters<typeof tFunil>[0]);
+  const rotuloDoDegrau = (d: Degrau) => normalizarRotulo(painel.rotulos[d]) ?? rotuloPadrao(d);
+  const rotuloDoCartao = useRotuloDoCartaoDeCusto(rotuloDoDegrau);
+  const opcoesDeDegrau = [
+    { value: "", label: tFunil("degraus.nenhum") },
+    ...CLASSES.map((classe) => ({
+      value: classe,
+      label: ehDegrau(classe) ? rotuloDoDegrau(classe) : rotuloPadrao(classe),
+    })),
+  ];
 
   /**
    * ⚠️ O rascunho vem do BANCO, lido a cada abertura, e não das props
@@ -128,7 +145,7 @@ export function PipelineSettings({
     (async () => {
       await gravacaoRef.current?.catch(() => undefined);
       const [funil, etapas] = await Promise.all([
-        supabase.from("pipelines").select("name").eq("id", pipeline.id).maybeSingle(),
+        supabase.from("pipelines").select("name, painel").eq("id", pipeline.id).maybeSingle(),
         supabase
           .from("pipeline_stages")
           .select("*")
@@ -140,7 +157,9 @@ export function PipelineSettings({
         setSituacao("falhou");
         return;
       }
-      setName((funil.data as { name: string }).name);
+      const lido = funil.data as { name: string; painel: unknown };
+      setName(lido.name);
+      setPainel(lerPainel(lido.painel));
       setLocalStages((etapas.data ?? []) as PipelineStage[]);
       setSituacao("pronto");
     })();
@@ -189,7 +208,7 @@ export function PipelineSettings({
       Promise.all([
         supabase
           .from("pipelines")
-          .update({ name: name.trim() })
+          .update({ name: name.trim(), painel: escreverPainel(painel) })
           .eq("id", pipeline.id),
         supabase.from("pipeline_stages").upsert(stageRows, { onConflict: "id" }),
       ]),
@@ -501,6 +520,92 @@ export function PipelineSettings({
                   </Button>
                 </div>
               </div>
+
+              {/* 1054 (C2): o painel DESTE funil no Desempenho e na Saúde. Só
+                  depois da leitura: antes, o rascunho é o padrão, e salvar
+                  gravaria o padrão por cima da configuração. */}
+              {situacao === "pronto" && (
+                <details className="rounded-lg border border-border p-2">
+                  <summary className="cursor-pointer text-sm text-muted-foreground">{t("painel")}</summary>
+                  <p className="mt-2 text-xs text-muted-foreground">{t("painelDica")}</p>
+                  <div className="mt-3 grid gap-1.5">
+                    <Label className="text-xs text-muted-foreground">{t("painelDegraus")}</Label>
+                    {DEGRAUS.map((d) => {
+                      const marcado = painel.naoSeAplica.includes(d);
+                      // Etapa mapeada vence a marca (o cartão aparece): marcar
+                      // aqui não esconderia nada. Desmarcar continua livre.
+                      const comEtapa = localStages.some((s) => s.degrau === d);
+                      return (
+                        <div key={d} className="flex items-center gap-2">
+                          <Input
+                            value={painel.rotulos[d] ?? ""}
+                            placeholder={rotuloPadrao(d)}
+                            maxLength={ROTULO_MAX}
+                            aria-label={t("painelRotulo", { degrau: rotuloPadrao(d) })}
+                            onChange={(e) =>
+                              setPainel((atual) => ({
+                                ...atual,
+                                rotulos: { ...atual.rotulos, [d]: e.target.value },
+                              }))
+                            }
+                            className="h-7 flex-1 border-border bg-muted text-sm text-foreground"
+                          />
+                          {d === "lead" ? (
+                            // Sem Lead o painel não calcula nada (`configurado`):
+                            // "não se aplica" não tem sentido aqui.
+                            <span className="w-28 shrink-0" />
+                          ) : DEGRAUS_OPCIONAIS.includes(d) ? (
+                            <span className="w-28 shrink-0 text-xs text-muted-foreground" title={t("painelOpcionalDica")}>
+                              {t("painelOpcional")}
+                            </span>
+                          ) : (
+                            <label
+                              className="flex w-28 shrink-0 items-center gap-1.5 text-xs text-muted-foreground"
+                              title={comEtapa ? t("painelComEtapa") : t("painelNaoSeAplicaDica")}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={marcado}
+                                disabled={comEtapa && !marcado}
+                                onChange={(e) =>
+                                  setPainel((atual) => ({
+                                    ...atual,
+                                    naoSeAplica: e.target.checked
+                                      ? DEGRAUS.filter((x) => x === d || atual.naoSeAplica.includes(x))
+                                      : atual.naoSeAplica.filter((x) => x !== d),
+                                  }))
+                                }
+                              />
+                              {t("painelNaoSeAplica")}
+                            </label>
+                          )}
+                        </div>
+                      );
+                    })}
+                    <Label className="mt-2 text-xs text-muted-foreground">{t("painelCustos")}</Label>
+                    <p className="text-[11px] text-muted-foreground">{t("painelCustosDica")}</p>
+                    <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+                      {CARTOES_DE_CUSTO.map((c) => (
+                        <label key={c} className="flex min-w-0 items-center gap-1.5 text-xs text-foreground">
+                          <input
+                            type="checkbox"
+                            checked={!painel.custosOcultos.includes(c)}
+                            onChange={(e) =>
+                              setPainel((atual) => ({
+                                ...atual,
+                                custosOcultos: e.target.checked
+                                  ? atual.custosOcultos.filter((x) => x !== c)
+                                  : CARTOES_DE_CUSTO.filter((x) => x === c || atual.custosOcultos.includes(x)),
+                              }))
+                            }
+                          />
+                          <span className="truncate">{rotuloDoCartao(c)}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </details>
+              )}
 
               <Button
                 variant="outline"

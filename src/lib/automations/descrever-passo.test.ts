@@ -120,6 +120,72 @@ describe('descreverPasso — variantes que viram chaves diferentes', () => {
   })
 })
 
+describe('descreverPasso — "Alterar campo do contato"', () => {
+  it('campo personalizado pelo NOME, nunca "custom:<id>"', () => {
+    const r = descreverPasso(passo('update_contact_field', { field: 'custom:cf1', value: 'x' }), {
+      campos: { cf1: 'Motivo da desqualificação' },
+    })
+    expect(r).toEqual({
+      chave: 'update_contact_field',
+      valores: { alvo: 'Motivo da desqualificação' },
+      alvoSumiu: false,
+    })
+  })
+
+  it('campo que o catálogo não conhece = alvoSumiu, sem o id', () => {
+    const r = descreverPasso(passo('update_contact_field', { field: 'custom:sumiu' }), { campos: {} })
+    expect(r).toEqual({ chave: 'update_contact_field', valores: { alvo: '' }, alvoSumiu: true })
+  })
+
+  it('campo fixo tem chave própria, sem alvo cru em inglês', () => {
+    expect(descreverPasso(passo('update_contact_field', { field: 'email' }))).toEqual({
+      chave: 'update_contact_field_email',
+      valores: {},
+      alvoSumiu: false,
+    })
+  })
+})
+
+describe('descreverPasso — condição por campo personalizado (2.10)', () => {
+  const CAMPOS = { cf1: 'Motivo da desqualificação' }
+
+  it('diz QUAL campo e o valor — sem UUID', () => {
+    const r = descreverPasso(
+      passo('condition', { subject: 'custom_field', operand: 'cf1', operator: 'equals', value: 'Não respondeu' }),
+      { campos: CAMPOS },
+    )
+    expect(r).toEqual({
+      chave: 'condition_campo_equals',
+      valores: { alvo: 'Motivo da desqualificação', valor: 'Não respondeu' },
+      alvoSumiu: false,
+    })
+  })
+
+  it('operador ausente = "é"; vazio/preenchido não levam valor', () => {
+    expect(descreverPasso(passo('condition', { subject: 'custom_field', operand: 'cf1', value: 'a' }), { campos: CAMPOS }).chave).toBe(
+      'condition_campo_equals',
+    )
+    expect(
+      descreverPasso(passo('condition', { subject: 'custom_field', operand: 'cf1', operator: 'empty' }), { campos: CAMPOS }).valores,
+    ).toEqual({ alvo: 'Motivo da desqualificação' })
+  })
+
+  it('campo que o catálogo não conhece = alvoSumiu (a tela escreve "(apagado)"), nunca o id', () => {
+    const r = descreverPasso(passo('condition', { subject: 'custom_field', operand: 'sumiu', operator: 'not_empty' }), {
+      campos: CAMPOS,
+    })
+    expect(r.alvoSumiu).toBe(true)
+    expect(r.valores.alvo).toBe('')
+  })
+
+  it('as outras condições (e operador desconhecido) continuam "Verificar uma condição"', () => {
+    expect(descreverPasso(passo('condition', { subject: 'deal_stage', operand: 'e1' })).chave).toBe('condition')
+    expect(
+      descreverPasso(passo('condition', { subject: 'custom_field', operand: 'cf1', operator: 'starts_with' })).chave,
+    ).toBe('condition')
+  })
+})
+
 describe('descreverPasso — texto', () => {
   it('mensagem longa é cortada com reticência', () => {
     const r = descreverPasso(passo('send_message', { text: 'a'.repeat(200) }))
@@ -199,6 +265,15 @@ const VARIANTES: Array<[string, Record<string, unknown>]> = [
   ['wait', { modo: 'horario', janela: '08:00-21:00', somente_seg_a_sex: true }],
   ['wait', { modo: 'horario', janela: '08:00-21:00', parar_se_responder: true }],
   ['wait', { modo: 'horario', janela: '08:00-21:00', somente_seg_a_sex: true, parar_se_responder: true }],
+  // Condição por CAMPO PERSONALIZADO (2.10): uma chave por operador.
+  ['condition', { subject: 'custom_field', operand: 'cf1', operator: 'equals', value: 'x' }],
+  ['condition', { subject: 'custom_field', operand: 'cf1', operator: 'contains', value: 'x' }],
+  ['condition', { subject: 'custom_field', operand: 'cf1', operator: 'empty' }],
+  ['condition', { subject: 'custom_field', operand: 'cf1', operator: 'not_empty' }],
+  // "Alterar campo do contato": os três campos fixos têm frase própria.
+  ['update_contact_field', { field: 'name' }],
+  ['update_contact_field', { field: 'email' }],
+  ['update_contact_field', { field: 'company' }],
 ]
 
 function resumoDoDicionario(arquivo: string): Record<string, string> {

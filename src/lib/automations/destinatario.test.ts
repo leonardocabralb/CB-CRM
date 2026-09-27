@@ -89,3 +89,24 @@ describe('conversaDoContato — a ficha que já existe (o agendamento do Calendl
     expect(insercoes).toEqual([])
   })
 })
+
+describe('conversaDoContato — o passo de envio do motor (27/09/2026)', () => {
+  it('CRÍTICO: com conversaNovaEncerrada, a ficha sem conversa ganha uma ENCERRADA, com o dono da conta', async () => {
+    const id = await conversaDoContato(db, 'conta-1', 'lead-da-api', { conversaNovaEncerrada: true })
+
+    expect(id).toBe('conversa-nova')
+    expect(conversaInserida()).toEqual({
+      account_id: 'conta-1',
+      user_id: 'dono-1',
+      contact_id: 'lead-da-api',
+      status: 'closed',
+    })
+  })
+
+  it('CRÍTICO: conversa que já existe NÃO é tocada, nem com a opção', async () => {
+    conversasExistentes = [{ id: 'conversa-ativa' }]
+
+    expect(await conversaDoContato(db, 'conta-1', 'lead-da-api', { conversaNovaEncerrada: true })).toBe('conversa-ativa')
+    expect(insercoes).toEqual([])
+  })
+})

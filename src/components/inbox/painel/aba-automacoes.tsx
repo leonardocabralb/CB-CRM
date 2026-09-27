@@ -403,7 +403,16 @@ export function AbaAutomacoes({
                         </p>
                       </div>
 
-                      {grupo.linha.proximos.length === 0 ? (
+                      {/* A automação foi editada e o passo desta espera
+                          sumiu (ou foi para outro ramo): ao acordar ela FALHA,
+                          com o motivo no registro — nunca segue por outro
+                          caminho (`retomada.ts`). "Termina depois desta
+                          espera" seria mentira. */}
+                      {grupo.linha.naoRetoma ? (
+                        <p className="pl-5 text-[11px] text-amber-700 dark:text-amber-400">
+                          {t('naoRetomaDepoisDaEdicao')}
+                        </p>
+                      ) : grupo.linha.proximos.length === 0 ? (
                         <p className="text-muted-foreground/70 pl-5 text-[11px]">
                           {t('semPassosFuturos')}
                         </p>

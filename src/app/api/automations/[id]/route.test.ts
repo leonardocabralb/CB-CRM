@@ -323,6 +323,26 @@ describe('upstream #587 — o piso nosso e a escrita pela conta', () => {
     expect(h.filtrosDasEscritas).toEqual([[['id', 'auto-1'], ['account_id', 'acc-1']]])
     expect(replaceSteps).toHaveBeenCalledTimes(1)
   })
+
+  it('⚠️ os IDS dos passos chegam intactos a `replaceSteps` (26/09/2026): é a identidade que a espera do ramo guarda', async () => {
+    // Até aqui o construtor nem mandava id, e todo salvamento recriava os
+    // passos — a espera parada num ramo perdia a condição e a retomada rodava
+    // o escopo de fora. Quem decide se o id fica é `replaceSteps`; a rota só
+    // não pode perdê-lo no caminho.
+    const passos = [
+      {
+        id: '00000000-0000-4000-8000-000000000001',
+        step_type: 'condition',
+        step_config: {},
+        branches: {
+          yes: [{ id: '00000000-0000-4000-8000-000000000002', step_type: 'wait', step_config: {} }],
+          no: [],
+        },
+      },
+    ]
+    expect((await PATCH(corpo({ steps: passos }), params('auto-1'))).status).toBe(200)
+    expect(replaceSteps).toHaveBeenCalledWith('auto-1', passos)
+  })
 })
 
 // Um merge do upstream traz o filtro pelo autor de volta sem conflito nenhum.

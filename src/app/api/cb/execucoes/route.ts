@@ -51,6 +51,7 @@ async function carregarNomes(
   const etapaIds = new Set<string>()
   const fluxoIds = new Set<string>()
   const autoIds = new Set<string>()
+  const campoIds = new Set<string>()
 
   for (const p of passos) {
     const cfg = (p.step_config ?? {}) as Record<string, unknown>
@@ -58,6 +59,20 @@ async function carregarNomes(
     if (typeof cfg.stage_id === 'string') etapaIds.add(cfg.stage_id)
     if (typeof cfg.flow_id === 'string') fluxoIds.add(cfg.flow_id)
     if (typeof cfg.automation_id === 'string') autoIds.add(cfg.automation_id)
+    // A condição por campo personalizado (2.10) guarda o campo no `operand`.
+    if (
+      p.step_type === 'condition' &&
+      cfg.subject === 'custom_field' &&
+      typeof cfg.operand === 'string' &&
+      UUID_RE.test(cfg.operand.trim())
+    ) {
+      campoIds.add(cfg.operand.trim())
+    }
+    // "Alterar campo do contato" guarda o campo como "custom:<id>".
+    if (p.step_type === 'update_contact_field' && typeof cfg.field === 'string') {
+      const id = cfg.field.trim().replace(/^custom:/, '')
+      if (id !== cfg.field.trim() && UUID_RE.test(id)) campoIds.add(id)
+    }
   }
 
   const paraMapa = (
@@ -79,7 +94,7 @@ async function carregarNomes(
   }
 
   const vazio = { data: [], error: null } as const
-  const [tagsRes, etapasRes, fluxosRes, autosRes] = await Promise.all([
+  const [tagsRes, etapasRes, fluxosRes, autosRes, camposRes] = await Promise.all([
     tagIds.size
       ? db.from('tags').select('id, name').in('id', [...tagIds]).eq('account_id', accountId)
       : Promise.resolve(vazio),
@@ -96,6 +111,14 @@ async function carregarNomes(
     autoIds.size
       ? db.from('automations').select('id, name').in('id', [...autoIds]).eq('account_id', accountId)
       : Promise.resolve(vazio),
+    // `field_name` vira `name`: o `paraMapa` lê `name`.
+    campoIds.size
+      ? db
+          .from('custom_fields')
+          .select('id, name:field_name')
+          .in('id', [...campoIds])
+          .eq('account_id', accountId)
+      : Promise.resolve(vazio),
   ])
 
   return {
@@ -103,6 +126,7 @@ async function carregarNomes(
     etapas: paraMapa('pipeline_stages', etapasRes),
     fluxos: paraMapa('flows', fluxosRes),
     automacoes: paraMapa('automations', autosRes),
+    campos: paraMapa('custom_fields', camposRes),
   }
 }
 
@@ -119,7 +143,11 @@ export async function GET(request: Request) {
     const { data, error } = await db
       .from('automation_pending_executions')
       .select(
-        'id, automation_id, run_at, next_step_position, parent_step_id, branch, log_id, automations(name)',
+        // `context`: a linha do tempo precisa do passo que estacionou
+        // (`retomada.ts`) para não listar passos que não vão rodar depois de
+        // uma edição. Não vai para a resposta (`agruparEsperas` copia campo a
+        // campo).
+        'id, automation_id, run_at, next_step_position, parent_step_id, branch, log_id, context, automations(name)',
       )
       .eq('account_id', ctx.accountId)
       .eq('contact_id', contactId)

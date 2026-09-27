@@ -925,6 +925,10 @@ async function conduzir(
     handoff = r.handoff
     andamento.usage = r.usage
   } catch (err) {
+    // Toda falha da geração termina aqui, sem enviar nada e sem transferir
+    // (E8) — inclusive a resposta CORTADA pelo teto de tokens
+    // (`output_truncated`): o texto pela metade nunca chega ao cliente, e a
+    // próxima mensagem dele abre um turno novo.
     return {
       status: 'falhou',
       erro: err instanceof AiError ? mensagemSeguraDeAiError(err) : 'erro inesperado ao gerar',

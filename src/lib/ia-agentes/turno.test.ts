@@ -1191,6 +1191,18 @@ describe('executarTurno — falha de configuração termina `falhou` sem transfe
     semTransferencia()
   })
 
+  it('resposta CORTADA pelo teto de tokens: nada sai ao cliente (27/09/2026)', async () => {
+    vi.mocked(generateReply).mockRejectedValue(
+      new AiError('Gemini hit the output token limit before finishing the reply.', { code: 'output_truncated' }),
+    )
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({
+      status: 'falhou',
+      erro: 'Gemini hit the output token limit before finishing the reply.',
+    })
+    semTransferencia()
+  })
+
   it('erro inesperado na geração', async () => {
     vi.mocked(generateReply).mockRejectedValue(new TypeError('boom'))
     await executarTurno(TURNO)

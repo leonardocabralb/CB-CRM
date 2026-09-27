@@ -4,6 +4,7 @@ import {
   mergeConsecutive,
   normalizeUsage,
   providerHttpError,
+  respostaCortada,
   toNetworkError,
   type ProviderArgs,
 } from './shared'
@@ -13,6 +14,7 @@ export const ANTHROPIC_VERSION = '2023-06-01'
 
 interface AnthropicResponse {
   content?: { type?: string; text?: string }[]
+  stop_reason?: string
   usage?: { input_tokens?: number; output_tokens?: number }
 }
 
@@ -68,6 +70,11 @@ export async function generateAnthropic(args: ProviderArgs): Promise<ProviderRes
   }
 
   const data = (await res.json().catch(() => null)) as AnthropicResponse | null
+  // Antes do texto: com o teto batido (o Sonnet 5 raciocina sem `thinking` no
+  // pedido, e o raciocínio conta nele), o que veio é a resposta pela metade.
+  if (data?.stop_reason === 'max_tokens') {
+    throw respostaCortada('Anthropic')
+  }
   const text = data?.content
     ?.filter((b) => b.type === 'text' && typeof b.text === 'string')
     .map((b) => b.text)

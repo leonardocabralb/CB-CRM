@@ -891,6 +891,13 @@ export interface Pipeline {
   /** NOT NULL desde a 017; faltava no tipo. */
   account_id?: string;
   name: string;
+  /**
+   * A configuração do painel do funil (1054, jsonb NOT NULL DEFAULT '{}'):
+   * rótulos livres por degrau, degraus que não se aplicam e cartões de custo
+   * escondidos. `unknown` de propósito — só se lê por `lerPainel`
+   * (`src/lib/funil/painel.ts`), nunca por `as`.
+   */
+  painel?: unknown;
   created_at: string;
 }
 
@@ -908,8 +915,9 @@ export interface PipelineStage {
    */
   resultado?: string | null;
   /**
-   * A que DEGRAU do funil de eficiência a etapa corresponde (migration 975):
-   * 'lead' | 'mql' | 'reuniao' | 'proposta' | 'contrato' | 'perda' | null.
+   * A que DEGRAU do funil de eficiência a etapa corresponde (migration 975;
+   * `pasta` desde a 1054): 'lead' | 'mql' | 'reuniao' | 'proposta' |
+   * 'contrato' | 'pasta' | 'perda' | null.
    * Nulo = não conta. Várias etapas podem apontar para o mesmo degrau.
    * INDEPENDENTE de `resultado` — nada deriva um do outro. O catálogo e a
    * leitura vivem em `src/lib/funil/degraus.ts`.
@@ -1519,7 +1527,17 @@ export type ConditionSubject =
    * precedência de um passo de envio sem conexão escolhida. Regra em
    * `src/lib/automations/janela-da-meta.ts`.
    */
-  | 'meta_window_open';
+  | 'meta_window_open'
+  /**
+   * Um CAMPO PERSONALIZADO da ficha (Fase 2.10 do plano do previdenciário):
+   * `operand` = `custom_fields.id` (da conta da automação), `operator` e
+   * `value`. Lê `contact_custom_values` na hora do passo. Regra em
+   * `src/lib/automations/condicao-por-campo.ts`.
+   */
+  | 'custom_field';
+
+/** Operadores da condição por campo personalizado (`subject: 'custom_field'`). */
+export type OperadorDoCampo = 'equals' | 'contains' | 'empty' | 'not_empty';
 
 export interface ConditionStepConfig {
   subject: ConditionSubject;
@@ -1530,6 +1548,11 @@ export interface ConditionStepConfig {
   operand?: string;
   /** For contact_field equals / message_content contains — comparison value */
   value?: string;
+  /**
+   * Só no campo personalizado (`custom_field`): é / contém / está vazio /
+   * não está vazio. Ausente = `equals`.
+   */
+  operator?: OperadorDoCampo;
   /**
    * Só na hora do dia: `true` recorta a janela a segunda–sexta, no fuso do
    * escritório (só o booleano `true` liga). Ausente = todos os dias.

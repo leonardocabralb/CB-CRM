@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { generateReply, parseGeneration } from './generate'
+import { MAX_OUTPUT_TOKENS } from './defaults'
+import { validateAiCredentials } from './validate'
 import { AiError, type AiConfig } from './types'
 
 function config(overrides: Partial<AiConfig> = {}): AiConfig {
@@ -243,5 +245,123 @@ describe('generateReply — Anthropic', () => {
     const body = JSON.parse(fetchMock.mock.calls[0][1].body)
     expect(body.messages[0].role).toBe('user')
     expect(body.messages).toHaveLength(1)
+  })
+})
+
+// ------------------------------------------------------------
+// Resposta CORTADA pelo teto de tokens (27/09/2026).
+//
+// Medido no Playground de um agente (gemini-3.7-flash): com o teto antigo de
+// 1024, o raciocínio (~900 tokens num turno comum) mais o texto passaram do
+// teto e a resposta voltou cortada no meio da frase — como resposta normal. No
+// turno do agente, esse texto iria ao CLIENTE.
+// ------------------------------------------------------------
+
+describe('generateReply — resposta cortada pelo teto de tokens', () => {
+  const casos = [
+    {
+      provedor: 'gemini' as const,
+      campoDoTeto: (body: Record<string, unknown>) =>
+        (body.generationConfig as { maxOutputTokens?: number }).maxOutputTokens,
+      cortada: {
+        candidates: [
+          {
+            content: { parts: [{ text: 'o melhor e-mail para enviarmos o link da' }] },
+            finishReason: 'MAX_TOKENS',
+          },
+        ],
+      },
+      normal: { candidates: [{ content: { parts: [{ text: 'Olá!' }] }, finishReason: 'STOP' }] },
+    },
+    {
+      provedor: 'openai' as const,
+      campoDoTeto: (body: Record<string, unknown>) => body.max_completion_tokens,
+      cortada: {
+        choices: [
+          { message: { content: 'o melhor e-mail para enviarmos o link da' }, finish_reason: 'length' },
+        ],
+      },
+      normal: { choices: [{ message: { content: 'Olá!' }, finish_reason: 'stop' }] },
+    },
+    {
+      provedor: 'anthropic' as const,
+      campoDoTeto: (body: Record<string, unknown>) => body.max_tokens,
+      cortada: {
+        content: [{ type: 'text', text: 'o melhor e-mail para enviarmos o link da' }],
+        stop_reason: 'max_tokens',
+      },
+      normal: { content: [{ type: 'text', text: 'Olá!' }], stop_reason: 'end_turn' },
+    },
+  ]
+
+  for (const c of casos) {
+    it(`${c.provedor}: cortada vira output_truncated, nunca o texto pela metade`, async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(okResponse(c.cortada)))
+      await expect(
+        generateReply({
+          config: config({ provider: c.provedor }),
+          systemPrompt: 'sys',
+          messages: [{ role: 'user', content: 'Oi' }],
+        }),
+      ).rejects.toMatchObject({ name: 'AiError', code: 'output_truncated' })
+    })
+
+    it(`${c.provedor}: parada normal devolve o texto, com o teto novo no pedido`, async () => {
+      const fetchMock = vi.fn().mockResolvedValue(okResponse(c.normal))
+      vi.stubGlobal('fetch', fetchMock)
+      const res = await generateReply({
+        config: config({ provider: c.provedor }),
+        systemPrompt: 'sys',
+        messages: [{ role: 'user', content: 'Oi' }],
+      })
+      expect(res.text).toBe('Olá!')
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body) as Record<string, unknown>
+      expect(c.campoDoTeto(body)).toBe(MAX_OUTPUT_TOKENS)
+    })
+  }
+
+  it('o teto é folga para o RACIOCÍNIO, não o tamanho da resposta: nunca volta a 1024', () => {
+    expect(MAX_OUTPUT_TOKENS).toBeGreaterThanOrEqual(8192)
+  })
+
+  // O outro sintoma medido no mesmo Playground: "Gemini returned an empty
+  // response." — o raciocínio gastou o teto inteiro e nenhuma parte de texto
+  // voltou. O motivo de parada é conferido ANTES do texto vazio.
+  it.each([
+    ['gemini' as const, { candidates: [{ content: { parts: [] }, finishReason: 'MAX_TOKENS' }] }],
+    ['gemini' as const, { candidates: [{ finishReason: 'MAX_TOKENS' }] }],
+    ['openai' as const, { choices: [{ message: { content: '' }, finish_reason: 'length' }] }],
+    ['anthropic' as const, { content: [], stop_reason: 'max_tokens' }],
+  ])('%s que gastou o teto pensando (sem texto) é output_truncated, não empty_response', async (provedor, corpo) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(okResponse(corpo)))
+    await expect(
+      generateReply({
+        config: config({ provider: provedor }),
+        systemPrompt: 'sys',
+        messages: [{ role: 'user', content: 'Oi' }],
+      }),
+    ).rejects.toMatchObject({ code: 'output_truncated' })
+  })
+})
+
+describe('validateAiCredentials', () => {
+  it('resposta cortada É resposta: a chave e o modelo servem', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        okResponse({ candidates: [{ content: { parts: [{ text: 'O' }] }, finishReason: 'MAX_TOKENS' }] }),
+      ),
+    )
+    await expect(validateAiCredentials(config({ provider: 'gemini' }))).resolves.toBeUndefined()
+  })
+
+  it('as demais falhas continuam falhando', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(errResponse(401, { error: { message: 'bad key' } })),
+    )
+    await expect(validateAiCredentials(config({ provider: 'gemini' }))).rejects.toMatchObject({
+      code: 'invalid_key',
+    })
   })
 })

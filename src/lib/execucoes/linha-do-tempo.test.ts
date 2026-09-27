@@ -125,4 +125,55 @@ describe('montarLinhaDoTempo', () => {
     })
     expect(proximos).toEqual([])
   })
+
+  // ⚠️ Depois que o operador salva a automação com a execução parada
+  // (26/09/2026): a linha segue a MESMA régua da retomada (`decidirRetomada`),
+  // nunca `next_step_position` cru — senão lista passos que não vão rodar.
+  describe('depois de uma edição com a execução parada', () => {
+    it('passo inserido ANTES da espera: os próximos são os que vêm depois dela na posição ATUAL', () => {
+      // A espera parou em p1 (posição 1 → next 2); um passo novo entrou antes.
+      const editados = [
+        passo('novo', 0),
+        passo('p0', 1),
+        passo('p1', 2, 'wait', { step_config: { amount: 30, unit: 'days' } }),
+        passo('p2', 3),
+        passo('p3', 4, 'condition', { step_config: {} }),
+      ]
+      const linha = montarLinhaDoTempo({
+        passos: editados,
+        espera: { ...ESPERA, passo_da_fila: { id: 'p1', pos: 1 } },
+        executados: [],
+      })
+      expect(linha.proximos.map((p) => p.id)).toEqual(['p2', 'p3'])
+      expect(linha.naoRetoma).toBeUndefined()
+    })
+
+    it('o passo onde a espera parou foi REMOVIDO: não lista nada e marca `naoRetoma`', () => {
+      const linha = montarLinhaDoTempo({
+        passos: PASSOS.filter((p) => p.id !== 'p1'),
+        espera: { ...ESPERA, passo_da_fila: { id: 'p1', pos: 1 } },
+        executados: [executado('p0')],
+      })
+      expect(linha.proximos).toEqual([])
+      expect(linha.naoRetoma).toBe(true)
+      // O que já rodou continua na linha.
+      expect(linha.feitos).toHaveLength(1)
+    })
+
+    it('ramo sem condição (a FK zerou o pai): `naoRetoma`, nunca os passos da raiz', () => {
+      const linha = montarLinhaDoTempo({
+        passos: PASSOS,
+        espera: { next_step_position: 1, parent_step_id: null, branch: 'yes' },
+        executados: [],
+      })
+      expect(linha.proximos).toEqual([])
+      expect(linha.naoRetoma).toBe(true)
+    })
+
+    it('espera antiga (sem o passo gravado) segue pela posição, como sempre', () => {
+      const linha = montarLinhaDoTempo({ passos: PASSOS, espera: ESPERA, executados: [] })
+      expect(linha.proximos.map((p) => p.id)).toEqual(['p2', 'p3'])
+      expect(linha.naoRetoma).toBeUndefined()
+    })
+  })
 })
