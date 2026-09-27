@@ -65,4 +65,7 @@ faz, em `.claude/rules/ia-agentes.md`. ⚠️ "Retomada" aqui é o FOLLOW-UP; o
   mensagem que não abre turno fica na fila até vencer (aba Turnos); o turno
   que MORRE depois de enviar e antes do `encerrar` é fechado pelo recolhedor
   como `respondeu` SEM armar a tentativa seguinte — a série acaba ali (Codex,
-  PR #328; janela de segundos num deploy, e o lado é o de mandar menos).
+  PR #328; janela de segundos num deploy, e o lado é o de mandar menos); o
+  horário é conferido ANTES de gerar e a 2ª conferência só olha quem escreveu,
+  então a geração (segundos) pode fazer a retomada sair segundos depois do fim
+  da janela ou dentro de uma folga (Codex, PR #328).
