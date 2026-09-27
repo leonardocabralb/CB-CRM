@@ -427,15 +427,23 @@ describe('POST /api/cb/ia/agentes/[id]/playground — marcar reunião (F5)', () 
     expect(corpo.acoes).toEqual({ aceitas: [{ tipo: 'marcar_reuniao', nome: '29/09/2026 10:00' }], recusadas: [] })
   })
 
-  it('o nome completo no marcador (`[[REUNIAO:n=Nome]]`) vem na ação simulada', async () => {
+  it('o nome completo no marcador (`[[REUNIAO:n=Nome]]`) vem na ação simulada — quando o CLIENTE o escreveu', async () => {
     agenda = { tipoDeEvento: TIPO, lida: true, horarios: HORARIOS, temEmail: true }
     resposta = { text: 'Marquei para terça às 10h!\n[[REUNIAO:2=Maria Aparecida Souza]]', handoff: false }
-    const corpo = await (await enviar()).json()
+    const mensagens = [{ role: 'user', content: 'Meu nome completo é maria aparecida de souza, pode ser terça 10h' }]
+    const corpo = await (await enviar({ messages: mensagens })).json()
     expect(corpo.reply).toBe('Marquei para terça às 10h!')
     expect(corpo.acoes).toEqual({
       aceitas: [{ tipo: 'marcar_reuniao', nome: '29/09/2026 10:00', valor: 'Maria Aparecida Souza' }],
       recusadas: [],
     })
+  })
+
+  it('⚠️ o nome SEM origem na conversa (Codex, #321) cai: a reunião simulada vai sem ele', async () => {
+    agenda = { tipoDeEvento: TIPO, lida: true, horarios: HORARIOS, temEmail: true }
+    resposta = { text: 'Marquei para terça às 10h!\n[[REUNIAO:2=Dr. Silva]]', handoff: false }
+    const corpo = await (await enviar({ messages: [{ role: 'user', content: 'Pode ser terça às 10h' }] })).json()
+    expect(corpo.acoes).toEqual({ aceitas: [{ tipo: 'marcar_reuniao', nome: '29/09/2026 10:00' }], recusadas: [] })
   })
 
   it('horário fora da lista: recusado', async () => {

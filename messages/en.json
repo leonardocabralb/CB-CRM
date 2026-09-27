@@ -4677,7 +4677,8 @@
         },
         "comDetalhe": "{texto} — {detalhe}",
         "jaEstava": "nothing changed: it was already that way",
-        "semMarcador": "the reply promised the team without the marker — handed over anyway"
+        "semMarcador": "the reply promised the team without the marker — handed over anyway",
+        "nomeSemOrigem": "the name the agent passed did not come from the customer — booked with the contact's name"
       },
       "statusDesconhecido": "Other ({status})",
       "status": {

@@ -225,7 +225,23 @@ export async function POST(request: Request, { params }: Contexto) {
     const destino = n === null ? null : (opcoes[n - 1] ?? null)
     const transfere = sentinela || (n !== null && !destino) || (n === null && !lidas.texto)
     const inventou = !transfere && n === null && linkInventado(lidas.texto, [pedido, ...mensagens.map((m) => m.content)])
-    const resolvidas = resolverAcoes(lidas.pedidas, opcoesDeAcao)
+    // O nome da reunião só passa com ORIGEM (a MESMA régua do turno): o que o
+    // cliente escreveu no teste, ou o nome atual da ficha do contato escolhido.
+    let nomeDaFicha: string | null = null
+    if (contactId && lidas.pedidas.some((p) => p.tipo === 'marcar_reuniao' && p.valor)) {
+      const { data: ficha } = await supabaseAdmin()
+        .from('contacts')
+        .select('name')
+        .eq('account_id', ctx.accountId)
+        .eq('id', contactId)
+        .maybeSingle()
+      const nome = (ficha as { name?: unknown } | null)?.name
+      nomeDaFicha = typeof nome === 'string' ? nome : null
+    }
+    const resolvidas = resolverAcoes(lidas.pedidas, opcoesDeAcao, {
+      mensagensDoCliente: mensagens.filter((m) => m.role === 'user').map((m) => m.content),
+      nomeDaFicha,
+    })
     // A reunião prometida sem o marcador (27/09): a MESMA régua do turno.
     const prometeu =
       !transfere &&

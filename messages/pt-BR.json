@@ -4670,7 +4670,8 @@
         },
         "comDetalhe": "{texto} — {detalhe}",
         "jaEstava": "nada mudou: já estava assim",
-        "semMarcador": "a resposta prometeu a equipe sem o marcador — transferida assim mesmo"
+        "semMarcador": "a resposta prometeu a equipe sem o marcador — transferida assim mesmo",
+        "nomeSemOrigem": "o nome que o agente passou não veio do cliente — marcada com o nome da ficha"
       },
       "statusDesconhecido": "Outro ({status})",
       "status": {

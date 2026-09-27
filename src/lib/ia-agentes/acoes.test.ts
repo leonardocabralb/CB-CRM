@@ -12,6 +12,7 @@ import {
   linksInventados,
   mesmoValorDoCampo,
   motivoDoPasso,
+  nomeComOrigem,
   nomeDoConvidado,
   motivoForaDaD5,
   registroDaRecusa,
@@ -340,6 +341,24 @@ describe('a EQUIPE PROMETIDA sem o [[TRANSFERIR]] (27/09)', () => {
       'I will transfer you to our team now.',
     ]) {
       expect(equipePrometida(t), t).toBe(true)
+    }
+  })
+
+  it('⚠️ a PASSAGEM explícita para a equipe dispara mesmo falando de reunião (Codex, #321); a análise NA reunião, não', () => {
+    for (const t of [
+      'Vou passar você para nossa equipe para remarcar sua reunião.',
+      'Vou transferir o seu atendimento para um atendente, que vai remarcar a reunião.',
+      'Vou chamar um advogado para confirmar a sua reunião.',
+      "I'll pass you to our team to reschedule your meeting.",
+    ]) {
+      expect(equipePrometida(t), t).toBe(true)
+    }
+    for (const t of [
+      'Na reunião de diagnóstico o advogado analisa as dívidas.',
+      'Um especialista vai analisar o seu caso na reunião.',
+      'Vou pedir para um especialista analisar o seu caso na reunião.',
+    ]) {
+      expect(equipePrometida(t), t).toBe(false)
     }
   })
 
@@ -743,7 +762,9 @@ describe('marcar reunião (F5)', () => {
   })
 
   it('o nome vai com a reunião ACEITA só quando tem a forma de um nome — senão cai, e a reunião continua aceita', () => {
-    const r = (valor: string | undefined) => resolverAcoes([{ tipo: 'marcar_reuniao', n: 1, ...(valor === undefined ? {} : { valor }) }], OPCOES)
+    const origem = { mensagensDoCliente: ['Sou a Maria Aparecida Souza'] }
+    const r = (valor: string | undefined) =>
+      resolverAcoes([{ tipo: 'marcar_reuniao', n: 1, ...(valor === undefined ? {} : { valor }) }], OPCOES, origem)
     expect(r('Maria Aparecida Souza')).toEqual({
       aceitas: [{ tipo: 'marcar_reuniao', id: '2026-09-28T18:15:00.000Z', nome: 'Mon 28/09 15:15', valor: 'Maria Aparecida Souza' }],
       recusadas: [],
@@ -757,6 +778,28 @@ describe('marcar reunião (F5)', () => {
     expect(nomeDoConvidado('  João  da   Silva ')).toBe('João da Silva')
     expect(nomeDoConvidado('Jo')).toBe('Jo')
     expect(nomeDoConvidado(null)).toBeNull()
+  })
+
+  it('⚠️ o nome só vai com ORIGEM (Codex, #321): o que o CLIENTE escreveu, ou o nome da ficha — senão cai, marcado `nomeSemOrigem`', () => {
+    const H = { tipo: 'marcar_reuniao' as const, id: '2026-09-28T18:15:00.000Z', nome: 'Mon 28/09 15:15' }
+    const cliente = ['oi, quero agendar', 'meu nome é joão PEREIRA da silva', 'Pode ser segunda']
+    const r = (valor: string, nomeDaFicha: string | null = null, mensagens = cliente) =>
+      resolverAcoes([{ tipo: 'marcar_reuniao', n: 1, valor }], OPCOES, { mensagensDoCliente: mensagens, nomeDaFicha }).aceitas
+    // Digitado pelo cliente (caixa, acento e conectivo não importam).
+    expect(r('João Pereira da Silva')).toEqual([{ ...H, valor: 'João Pereira da Silva' }])
+    expect(r('Joao Pereira Silva')).toEqual([{ ...H, valor: 'Joao Pereira Silva' }])
+    // Inventado pelo modelo (a equipe, um título): cai.
+    expect(r('Dr. Silva')).toEqual([{ ...H, nomeSemOrigem: true }])
+    // O primeiro nome na conversa e o sobrenome completado: cai.
+    expect(r('João Pereira Santos')).toEqual([{ ...H, nomeSemOrigem: true }])
+    // O nome atual da ficha também serve.
+    expect(r('Ana Clara Souza', 'ana clara souza')).toEqual([{ ...H, valor: 'Ana Clara Souza' }])
+    // Sem a origem (quem chama não passou a conversa): nenhum nome passa.
+    expect(resolverAcoes([{ tipo: 'marcar_reuniao', n: 1, valor: 'João Pereira da Silva' }], OPCOES).aceitas).toEqual([
+      { ...H, nomeSemOrigem: true },
+    ])
+    expect(nomeComOrigem('João da Silva', { mensagensDoCliente: ['JOÃO DA SILVA'] })).toBe(true)
+    expect(nomeComOrigem('de da', { mensagensDoCliente: ['de da'] })).toBe(false)
   })
 
   it('número → o horário (ISO) que o SERVIDOR leu, com o texto exibido', () => {

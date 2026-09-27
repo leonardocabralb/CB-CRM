@@ -315,7 +315,9 @@ async function marcarReuniao(db: SupabaseClient, ctx: ContextoDasAcoes, acao: Ac
   })
   if (!r.ok) return falha(r.erro, r.detalhe)
   // Na anotação, a data e a hora no fuso do escritório (o ISO em UTC não é para gente ler).
-  return feita(dataHoraDaReuniao(acao.id))
+  const marcada = feita(dataHoraDaReuniao(acao.id))
+  // O nome que o modelo passou sem origem na conversa caiu (a ficha foi usada): o registro diz.
+  return acao.nomeSemOrigem && marcada.ok ? { ...marcada, detalhe: 'nome_sem_origem' } : marcada
 }
 
 async function executarUma(db: SupabaseClient, ctx: ContextoDasAcoes, acao: AcaoResolvida): Promise<Resultado> {

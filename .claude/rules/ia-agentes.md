@@ -99,6 +99,10 @@ Plano: `docs/PLANO-agentes-de-ia.md` (D5, D28, F4). Sem migration.
   vale como com ele, `detalhe: 'sem_marcador'`; análise "na reunião" é quieta.
   Condição (as duas travas, `haCondicao`): "se"/"if" sempre; "quando"/"when"
   só com o verbo no futuro — no passado ("quando você confirmou") é fato.
+  "Vou passar/transferir/encaminhar/chamar…" dispara mesmo com reunião na
+  frase; só a PROMESSA de análise fica quieta nela ("analisa na reunião").
+  **Limite aceito** (Codex, #321): condição DEPOIS da promessa ("nossa equipe
+  vai entrar em contato se for necessário") infere a transferência — seguro.
 - **Link inventado** (`linkInventado`): URL da resposta que não está no
   pedido montado nem nas mensagens enviadas ao modelo → retém e transfere
   (`link_inventado`), com o link no registro do turno.
@@ -167,7 +171,10 @@ uma AÇÃO a mais do protocolo da F4 (`marcar_reuniao`, `[[REUNIAO:n]]`).
 - **Nome completo opcional** (`[[REUNIAO:n=Nome]]`, 27/09): vai como
   `invitee.name` no lugar do da ficha (`nomeDoConvidado`: 2–120, com letra;
   fora da forma, cai — nunca recusa) e VIRA o nome da ficha (o webhook do
-  Calendly o fixa, 999). O pedido proíbe inventar o nome.
+  Calendly o fixa, 999). O pedido proíbe inventar o nome. ⚠️ Só vai com
+  ORIGEM (`nomeComOrigem`, Codex, #321): toda palavra (≥ 2 letras, sem
+  de/da/do/dos/das/e) nas mensagens do CLIENTE, ou o nome atual da ficha;
+  senão cai — marca com o da ficha e o registro diz `nome_sem_origem`.
 - **Uma reunião por resposta**: o segundo horário é `teto`; horário fora dos
   oferecidos, `fora_da_lista` (default-deny). O `id` da opção é o
   `start_time` que o SERVIDOR leu — é ele que vai ao `POST /invitees`.

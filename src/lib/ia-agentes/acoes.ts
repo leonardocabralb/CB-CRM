@@ -230,6 +230,40 @@ export function nomeDoConvidado(valor: string | null | undefined): string | null
   return /\p{L}/u.test(nome) ? nome : null
 }
 
+/** Conectivos de nome que não precisam aparecer na conversa ("Maria DA Silva"). */
+const CONECTIVOS_DO_NOME = new Set(['de', 'da', 'do', 'dos', 'das', 'e'])
+
+/** As palavras de um nome (≥ 2 letras, sem acento, minúsculas, sem os conectivos). */
+function palavrasDoNome(texto: string): string[] {
+  return semAcento(texto)
+    .split(/[^\p{L}]+/u)
+    .filter((p) => p.length >= 2 && !CONECTIVOS_DO_NOME.has(p))
+}
+
+/** De onde o nome do convidado pode ter vindo: o que o CLIENTE escreveu e o nome atual da ficha. */
+export interface OrigemDoNome {
+  /** As mensagens do CLIENTE mandadas ao modelo (role `user`). */
+  mensagensDoCliente: readonly string[]
+  /** O nome atual da ficha (`contacts.name`); nulo = sem nome ou não lido. */
+  nomeDaFicha?: string | null
+}
+
+/**
+ * O nome do `[[REUNIAO:n=Nome]]` tem ORIGEM (Codex, #321)? Só quando TODA
+ * palavra dele (≥ 2 letras, sem os conectivos de/da/do/dos/das/e) aparece
+ * nas mensagens do CLIENTE, sem acento nem caixa — ou quando ele é o nome
+ * atual da ficha. O nome vai ao Calendly e a automação do Calendly o FIXA na
+ * ficha e renomeia o card (999): um nome inventado pelo modelo ("Dr. Silva",
+ * o sobrenome completado) ficaria para sempre no cliente.
+ */
+export function nomeComOrigem(nome: string, origem: OrigemDoNome): boolean {
+  const alvo = palavrasDoNome(nome)
+  if (alvo.length === 0) return false
+  if (origem.nomeDaFicha && palavrasDoNome(origem.nomeDaFicha).join(' ') === alvo.join(' ')) return true
+  const ditas = new Set(origem.mensagensDoCliente.flatMap(palavrasDoNome))
+  return alvo.every((p) => ditas.has(p))
+}
+
 /** Por que uma ação pedida não vai executar. A tela traduz o código. */
 export type MotivoDaRecusa =
   /** O marcador não tem a forma (número ilegível, valor vazio ou longo demais). */
@@ -431,6 +465,12 @@ export interface AcaoResolvida {
   nome: string
   /** O valor do campo, o título da tarefa ou, na reunião, o nome do convidado (`nomeDoConvidado`). */
   valor?: string
+  /**
+   * Só na reunião: o modelo passou um nome SEM origem na conversa
+   * (`nomeComOrigem`) — ele caiu, a reunião vai com o nome da ficha, e o
+   * registro diz `nome_sem_origem`.
+   */
+  nomeSemOrigem?: true
 }
 
 /**
@@ -448,6 +488,11 @@ export interface AcaoResolvida {
 export function resolverAcoes(
   pedidas: readonly AcaoPedida[],
   opcoes: OpcoesDeAcao,
+  /**
+   * De onde o nome da reunião pode vir (`nomeComOrigem`). Ausente = nenhum
+   * nome passa: sem a conversa não há como conferir (default-deny).
+   */
+  origemDoNome?: OrigemDoNome,
 ): { aceitas: AcaoResolvida[]; recusadas: RecusaDeAcao[] } {
   const aceitas: AcaoResolvida[] = []
   const recusadas: RecusaDeAcao[] = []
@@ -474,14 +519,23 @@ export function resolverAcoes(
       continue
     }
     indiceDe.set(chave, aceitas.length)
-    // Na reunião, o nome do convidado só vai quando tem a forma de um nome;
-    // senão cai (a reunião vai com o nome da ficha), sem recusar a reunião.
-    const valor = p.tipo === 'marcar_reuniao' ? (nomeDoConvidado(p.valor) ?? undefined) : p.valor
-    aceitas.push(valor === undefined ? { tipo: p.tipo, id: opcao.id, nome: opcao.nome } : {
+    // Na reunião, o nome do convidado só vai quando tem a forma de um nome E
+    // origem na conversa (`nomeComOrigem`); senão cai (a reunião vai com o
+    // nome da ficha), sem recusar a reunião — o sem origem fica marcado.
+    let valor = p.valor
+    let nomeSemOrigem = false
+    if (p.tipo === 'marcar_reuniao') {
+      const nome = nomeDoConvidado(p.valor)
+      const comOrigem = nome !== null && origemDoNome !== undefined && nomeComOrigem(nome, origemDoNome)
+      valor = comOrigem ? nome : undefined
+      nomeSemOrigem = nome !== null && !comOrigem
+    }
+    aceitas.push({
       tipo: p.tipo,
       id: opcao.id,
       nome: opcao.nome,
-      valor,
+      ...(valor !== undefined ? { valor } : {}),
+      ...(nomeSemOrigem ? { nomeSemOrigem: true as const } : {}),
     })
   }
   return { aceitas, recusadas }
@@ -710,31 +764,42 @@ const GENTE_DA_EQUIPE = '(?:especialistas?|advogad[oa]s?|equipe|atendentes?|cole
 /** Artigos, possessivos e "um de nossos" antes de quem da equipe. */
 const DETERMINANTES = '(?:(?:um|uma|o|a|os|as|nossa|nosso|nossos|nossas|de|da|do|das|dos)\\s+)*'
 /**
- * As frases que PROMETEM que uma pessoa da equipe vai assumir ou procurar o
- * cliente, sobre o texto sem acento e em minúsculas:
- *  - "vou pedir para um de nossos especialistas…", "vou passar/encaminhar/
- *    transferir (você/o seu atendimento) para a equipe…", "vou chamar um
- *    advogado";
+ * O agente PASSANDO a conversa, com o verbo dele, sobre o texto sem acento e
+ * em minúsculas — vale mesmo quando a frase fala de reunião ("vou passar você
+ * para nossa equipe para remarcar sua reunião"; Codex, #321):
+ *  - "vou chamar / passar / encaminhar / transferir (você / o seu atendimento
+ *    / o seu caso / a conversa) para (um de nossos) especialista / advogado /
+ *    equipe / atendente…";
+ *  - "vou transferir o seu atendimento / você";
+ *  - em inglês, "I'll pass / transfer / hand you to".
+ */
+const PASSAGENS_PARA_A_EQUIPE: readonly RegExp[] = [
+  new RegExp(
+    `\\bvou\\s+(?:chamar|(?:passar|encaminhar|transferir)\\s+(?:(?:voce|o\\s+seu\\s+atendimento|seu\\s+atendimento|o\\s+seu\\s+caso|seu\\s+caso|a\\s+conversa)\\s+)?(?:para|pra))\\s+${DETERMINANTES}${GENTE_DA_EQUIPE}\\b`,
+  ),
+  /\bvou\s+transferir\s+(?:o\s+seu\s+atendimento|seu\s+atendimento|voce)\b/,
+  /\bi(?:'ll|\s+will)\s+(?:pass|transfer|hand)\s+(?:you|your\s+case|this|the\s+conversation)\s+(?:over\s+)?to\b/,
+]
+/**
+ * A PROMESSA de que alguém da equipe vai analisar ou procurar o cliente —
+ * quieta quando a frase fala de reunião (lá o advogado analisa NA reunião: o
+ * caminho de quem qualificou, "na reunião de diagnóstico o advogado analisa"):
+ *  - "vou pedir para (um de nossos) especialista… (analisar…)";
  *  - "um especialista / nossa equipe vai (te) analisar / entrar em contato /
  *    chamar / retornar / responder / falar / assumir / atender / ligar";
- *  - "vou transferir o seu atendimento / você";
  *  - "nossa equipe / um especialista entrará em contato";
  *  - em inglês, "a specialist / our team / a colleague will get back /
- *    contact / reach out / take over / review…" e "I'll pass / transfer you to".
+ *    contact / reach out / take over / review…".
  */
 const PROMESSAS_DA_EQUIPE: readonly RegExp[] = [
-  new RegExp(
-    `\\bvou\\s+(?:pedir\\s+(?:para|pra)|chamar|(?:passar|encaminhar|transferir)\\s+(?:(?:voce|o\\s+seu\\s+atendimento|seu\\s+atendimento|o\\s+seu\\s+caso|seu\\s+caso|a\\s+conversa)\\s+)?(?:para|pra))\\s+${DETERMINANTES}${GENTE_DA_EQUIPE}\\b`,
-  ),
+  new RegExp(`\\bvou\\s+pedir\\s+(?:para|pra)\\s+${DETERMINANTES}${GENTE_DA_EQUIPE}\\b`),
   new RegExp(
     `\\b(?:um|uma|o|a|os|as|nossa|nosso|nossos|nossas)\\s+${DETERMINANTES}${GENTE_DA_EQUIPE}\\s+(?:vai|vao|ira|irao|deve|devem)\\s+(?:(?:te|lhe)\\s+)?(?:analisar|entrar\\s+em\\s+contato|chamar|retornar|responder|falar|assumir|atender|ligar)\\b`,
   ),
-  /\bvou\s+transferir\s+(?:o\s+seu\s+atendimento|seu\s+atendimento|voce)\b/,
   /\b(?:nossa\s+equipe|nosso\s+time|um\s+especialista|uma\s+especialista|um\s+advogado|uma\s+advogada|um\s+atendente)\s+(?:entrara|entra|vai\s+entrar)\s+em\s+contato\b/,
   /\b(?:a\s+specialist|one\s+of\s+our\s+(?:specialists|lawyers|attorneys|team)|our\s+team|a\s+colleague|a\s+lawyer|an\s+attorney|someone\s+from\s+(?:our|the)\s+team|a\s+member\s+of\s+(?:our|the)\s+team)\s+will\s+(?:get\s+back|contact|reach\s+out|take\s+over|review|call|be\s+in\s+touch|follow\s+up)\b/,
-  /\bi(?:'ll|\s+will)\s+(?:pass|transfer|hand)\s+(?:you|your\s+case|this|the\s+conversation)\s+(?:over\s+)?to\b/,
 ]
-/** A análise NA REUNIÃO (o caminho de quem qualificou: "na reunião de diagnóstico o advogado analisa") não é passar para a equipe. */
+/** A frase fala de reunião: a PROMESSA de análise é a do caminho qualificado (não passar para a equipe). */
 const NA_REUNIAO = /reuni|meeting/
 
 /**
@@ -744,17 +809,19 @@ const NA_REUNIAO = /reuni|meeting/
  * nossos especialistas analisar o seu caso e entrar em contato com você por
  * aqui em breve." SEM o `[[TRANSFERIR]]` — o cliente ouviria que uma pessoa
  * vem e a IA ficaria com a conversa. Frase a frase, sobre o texto sem
- * acento: casa uma das `PROMESSAS_DA_EQUIPE`, fora de pergunta ("quer que eu
- * chame…?"), sem negação nas quatro palavras antes, sem condição antes
- * ("se preferir, …") e sem falar de reunião na frase (lá o advogado analisa
- * NA reunião). Quem chama decide o resto: a resposta com `[[TRANSFERIR]]`,
- * `[[HANDOFF]]` ou `[[PASSAR:n]]` já transfere e nem pergunta.
+ * acento: casa uma das `PASSAGENS_PARA_A_EQUIPE` (sempre) ou das
+ * `PROMESSAS_DA_EQUIPE` (só sem reunião na frase — lá o advogado analisa NA
+ * reunião), fora de pergunta ("quer que eu chame…?"), sem negação nas quatro
+ * palavras antes e sem condição antes ("se preferir, …"). Quem chama decide
+ * o resto: a resposta com `[[TRANSFERIR]]`, `[[HANDOFF]]` ou `[[PASSAR:n]]`
+ * já transfere e nem pergunta.
  */
 export function equipePrometida(texto: string): boolean {
   for (const frase of texto.split(/(?<=[.!?…;])\s+|\n+/)) {
     const f = semAcento(frase.trim()).replace(/\u2019/g, "'")
-    if (!f || PERGUNTA.test(f) || NA_REUNIAO.test(f)) continue
-    for (const promessa of PROMESSAS_DA_EQUIPE) {
+    if (!f || PERGUNTA.test(f)) continue
+    const frases = NA_REUNIAO.test(f) ? PASSAGENS_PARA_A_EQUIPE : [...PASSAGENS_PARA_A_EQUIPE, ...PROMESSAS_DA_EQUIPE]
+    for (const promessa of frases) {
       const m = promessa.exec(f)
       if (!m) continue
       const antes = f.slice(0, m.index)

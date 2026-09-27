@@ -2407,6 +2407,23 @@ describe('executarTurno — marcar reunião (F5)', () => {
     },
   )
 
+  it('⚠️ o nome do marcador só vai com ORIGEM na conversa do cliente (Codex, #321); o inventado cai (`nomeSemOrigem`)', async () => {
+    banco.tabelas.messages[0].content_text = 'Meu nome é Maria Aparecida Souza, pode ser terça às 10h'
+    responde('Marquei para terça às 10h!\n[[REUNIAO:2=Maria Aparecida Souza]]')
+    await executarTurno(TURNO)
+    expect(vi.mocked(executarAcoes).mock.calls[0][2]).toEqual([
+      { tipo: 'marcar_reuniao', id: H2, nome: '29/09/2026 10:00', valor: 'Maria Aparecida Souza' },
+    ])
+  })
+
+  it('o nome que o cliente NÃO escreveu ("Dr. Silva") cai: a reunião segue com o da ficha, marcada `nomeSemOrigem`', async () => {
+    responde('Marquei para terça às 10h!\n[[REUNIAO:2=Dr. Silva]]')
+    await executarTurno(TURNO)
+    expect(vi.mocked(executarAcoes).mock.calls[0][2]).toEqual([
+      { tipo: 'marcar_reuniao', id: H2, nome: '29/09/2026 10:00', nomeSemOrigem: true },
+    ])
+  })
+
   it('⚠️ a reunião NÃO marcada (sem e-mail) TRANSFERE para gente, com o motivo — e o desfecho continua `respondeu`', async () => {
     responde('Pronto, marquei!\n[[REUNIAO:1]]')
     vi.mocked(executarAcoes).mockResolvedValue({

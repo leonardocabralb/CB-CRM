@@ -705,6 +705,28 @@ export function nadaSaiu(err: unknown, tentou: boolean): boolean {
   return recusaComprovada(err)
 }
 
+/**
+ * O nome atual da ficha, para a origem do nome da reunião (`nomeComOrigem`).
+ * Falha ou sem contato = nulo: a origem fica só a conversa (o nome cai se
+ * não estiver nela — o lado seguro).
+ */
+async function lerNomeDaFicha(db: SupabaseClient, accountId: string, contactId: string | null): Promise<string | null> {
+  if (!contactId) return null
+  try {
+    const { data, error } = await db
+      .from('contacts')
+      .select('name')
+      .eq('account_id', accountId)
+      .eq('id', contactId)
+      .maybeSingle()
+    if (error) return null
+    const nome = (data as { name?: unknown } | null)?.name
+    return typeof nome === 'string' ? nome : null
+  } catch {
+    return null
+  }
+}
+
 /** Teto do texto RETIDO que vai ao `erro` do turno (a reunião prometida): a aba Turnos o mostra. */
 const TETO_DO_TEXTO_RETIDO = 1_000
 
@@ -928,7 +950,14 @@ async function conduzir(
   // transferência, passagem ou envio que não saiu — vai para o registro com o
   // motivo, como o Playground mostra.
   const lidas = lerAcoes(texto)
-  const { aceitas, recusadas } = resolverAcoes(lidas.pedidas, opcoesDeAcao)
+  // O nome da reunião (`[[REUNIAO:n=Nome]]`) só passa com ORIGEM: o que o
+  // cliente escreveu, ou o nome atual da ficha — lido só quando há nome.
+  const { aceitas, recusadas } = resolverAcoes(lidas.pedidas, opcoesDeAcao, {
+    mensagensDoCliente: conversa.filter((m) => m.role === 'user').map((m) => m.content),
+    nomeDaFicha: lidas.pedidas.some((p) => p.tipo === 'marcar_reuniao' && p.valor)
+      ? await lerNomeDaFicha(db, turno.account_id, primeira.contactId)
+      : null,
+  })
   const recusasDaLeitura = [...lidas.recusadas, ...recusadas].map(registroDaRecusa)
   // A EQUIPE PROMETIDA sem o marcador (27/09/2026): a resposta diz que uma
   // pessoa vai assumir ou procurar o cliente e o modelo esqueceu o

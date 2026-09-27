@@ -549,6 +549,14 @@ describe('marcar_reuniao (F5)', () => {
     expect(motivosForaDaD5).not.toHaveBeenCalled()
   })
 
+  it('o nome SEM origem caiu na resolução: marca com o da ficha e o registro diz `nome_sem_origem`', async () => {
+    const r = await executarAcoes(db, CTX_F5, [{ ...reuniao, nomeSemOrigem: true }])
+    expect(vi.mocked(marcarNoCalendly).mock.calls[0][1]).not.toHaveProperty('nome')
+    expect(r.registros).toEqual([
+      { tipo: 'marcar_reuniao', alvo: { id: H, nome: 'Mon 28/09 15:15' }, ok: true, detalhe: 'nome_sem_origem' },
+    ])
+  })
+
   it('o nome completo do marcador (`[[REUNIAO:n=Nome]]`) vai ao Calendly', async () => {
     await executarAcoes(db, CTX_F5, [{ ...reuniao, valor: 'Maria Aparecida Souza' }])
     expect(vi.mocked(marcarNoCalendly).mock.calls[0][1]).toMatchObject({ inicio: H, nome: 'Maria Aparecida Souza' })

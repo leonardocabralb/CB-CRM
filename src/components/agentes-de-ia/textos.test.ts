@@ -88,6 +88,7 @@ describe.each(['en.json', 'pt-BR.json'])('IaAgentes em %s', (arquivo) => {
     // A equipe prometida sem o marcador (27/09): o aviso do Playground e o detalhe na aba Turnos.
     expect(em(d, 'playground.transferenciaInferida')).toBeTruthy()
     expect(em(d, 'turnos.acoes.semMarcador')).toBeTruthy()
+    expect(em(d, 'turnos.acoes.nomeSemOrigem')).toBeTruthy()
   })
 
   it('cada ação com valor (campo, tarefa, e o nome opcional da reunião) tem a frase com o valor no Playground', () => {
@@ -234,6 +235,7 @@ describe('textoDoErroDaAcao — o porquê de uma ação do turno', () => {
   it('`ja_estava` (a ação deu certo sem mexer) vira texto; outro detalhe sai cru', () => {
     expect(textoDoDetalheDaAcao(t, 'ja_estava')).toBe('turnos.acoes.jaEstava')
     expect(textoDoDetalheDaAcao(t, 'sem_marcador')).toBe('turnos.acoes.semMarcador')
+    expect(textoDoDetalheDaAcao(t, 'nome_sem_origem')).toBe('turnos.acoes.nomeSemOrigem')
     expect(textoDoDetalheDaAcao(t, 'qualquer')).toBe('qualquer')
   })
 })

@@ -286,6 +286,8 @@ export function textoDoDetalheDaAcao(t: ReturnType<typeof useTranslations>, deta
   if (detalhe === 'ja_estava') return t('turnos.acoes.jaEstava');
   // A equipe prometida sem o `[[TRANSFERIR]]` (27/09): a transferência foi inferida.
   if (detalhe === 'sem_marcador') return t('turnos.acoes.semMarcador');
+  // O nome da reunião sem origem na conversa caiu: marcada com o da ficha (Codex, #321).
+  if (detalhe === 'nome_sem_origem') return t('turnos.acoes.nomeSemOrigem');
   return detalhe;
 }
 
