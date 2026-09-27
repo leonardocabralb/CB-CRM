@@ -67,12 +67,15 @@ em `src/lib/rate-limit.ts`; `SITUACAO_REAGENDAMENTO` em
 - A rota lê as duas tabelas fechadas e devolve só data, evento, link e
   situação (sem telefone, e-mail ou respostas do formulário).
 - Cancelamento casado pelo convite. O convite que um reagendamento substituiu
-  vira "Reagendada" por inferência (o mais recente que chegou antes, do mesmo
-  tipo de evento, cuja reunião ainda não tinha acontecido). Conferida contra
-  os 8 reagendamentos e os 2 casos que têm o cancelamento gravado.
+  vira "Reagendada" por inferência: entre os que chegaram antes, do mesmo tipo
+  de evento e cuja reunião ainda não tinha acontecido, só quando a resposta é
+  única (um candidato, ou o único que o Calendly avisou como cancelado).
+  Conferida contra os 8 reagendamentos (todos com candidato único) e os 2
+  casos que têm o cancelamento gravado.
 - A reunião da Kommo some quando o Calendly tem uma no mesmo instante.
-- Depois do horário, a reunião externa fica sem situação (o Calendly não diz
-  se o cliente compareceu).
+- Depois que a reunião termina (pelo fim, não pelo início), ela fica sem
+  situação (o Calendly não diz se o cliente compareceu); durante a reunião o
+  link continua na tela.
 
 **Resultado medido (preview, contra o banco, só leitura):** cliente com três
 agendamentos e dois reagendamentos anteriores à 1013 mostra os dois antigos

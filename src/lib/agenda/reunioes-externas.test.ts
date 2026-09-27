@@ -8,6 +8,7 @@ import {
   intercalarHistorico,
   lerReunioesExternas,
   montarReunioesExternas,
+  reuniaoTerminou,
   type LinhaDaKommo,
   type LinhaDoCalendly,
 } from './reunioes-externas';
@@ -66,6 +67,22 @@ describe('montarReunioesExternas', () => {
       [],
     );
     expect(desmarcadas(lista)).toEqual({ r1: 'reagendada', r2: 'reagendada', r3: null });
+  });
+
+  it('com duas reuniões futuras do mesmo tipo, só marca quando o cancelamento desempata (Codex, PR #331)', () => {
+    const a = calendly({ id: 'a', inicio: '2026-10-01T13:00:00Z', recebido_em: '2026-09-20T10:00:00Z' });
+    const b = calendly({ id: 'b', inicio: '2026-10-02T13:00:00Z', recebido_em: '2026-09-21T10:00:00Z' });
+    // O cliente reagendou a de 01/10 (A), não a de 02/10 (B).
+    const c = calendly({ id: 'c', inicio: '2026-10-03T13:00:00Z', recebido_em: '2026-09-22T10:00:00Z', situacao: 'Reagendamento' });
+
+    // Depois da 1013 o Calendly avisa o cancelamento de A: é ele.
+    expect(desmarcadas(montarReunioesExternas([a, b, c], new Set([a.invitee_uri]), []))).toEqual({
+      a: 'reagendada',
+      b: null,
+      c: null,
+    });
+    // Sem o aviso, é ambíguo: não marca nenhuma (B continua de pé).
+    expect(desmarcadas(montarReunioesExternas([a, b, c], new Set(), []))).toEqual({ a: null, b: null, c: null });
   });
 
   it('não toma reunião que JÁ tinha acontecido quando o cliente reagendou, nem de outro tipo de evento', () => {
@@ -179,6 +196,22 @@ describe('lerReunioesExternas', () => {
     })!;
     expect(r.desmarcada).toBeNull();
     expect(r.reagendamento).toBe(false);
+  });
+});
+
+describe('reuniaoTerminou', () => {
+  const r = { inicio: '2026-09-30T13:00:00Z', fim: '2026-09-30T13:30:00Z' };
+
+  it('durante a reunião ela ainda não terminou (o link continua servindo)', () => {
+    expect(reuniaoTerminou(r, new Date('2026-09-30T12:59:00Z'))).toBe(false);
+    expect(reuniaoTerminou(r, new Date('2026-09-30T13:01:00Z'))).toBe(false);
+    expect(reuniaoTerminou(r, new Date('2026-09-30T13:30:00Z'))).toBe(true);
+  });
+
+  it('sem o fim (Kommo), conta uma hora a partir do início', () => {
+    const k = { inicio: '2026-09-30T13:00:00Z', fim: null };
+    expect(reuniaoTerminou(k, new Date('2026-09-30T13:59:00Z'))).toBe(false);
+    expect(reuniaoTerminou(k, new Date('2026-09-30T14:00:00Z'))).toBe(true);
   });
 });
 

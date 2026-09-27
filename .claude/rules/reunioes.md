@@ -71,13 +71,16 @@ Plano: `docs/PLANO-reunioes-e-no-show.md`.
   (a integração antiga gravava nos dois). Compara por INSTANTE, nunca texto.
 - ⚠️⚠️ **O convite que um reagendamento substituiu vira `reagendada` por
   INFERÊNCIA** (`convitesSubstituidos`): o cancelamento só chega desde a 1013
-  (com a assinatura refeita) e a 977 não guarda `old_invitee`. É o mais recente
-  que chegou antes, do mesmo tipo de evento, cuja reunião ainda não tinha
-  acontecido. Sem ela, o reagendamento antigo aparece como reunião que
-  aconteceu (e contaria como "reunião anterior" num aviso de no-show).
-- **Depois do horário, a reunião externa fica SEM situação**: o Calendly não
-  diz se o cliente compareceu, e "Realizada" afirmaria o que ninguém
-  registrou.
+  (com a assinatura refeita) e a 977 não guarda `old_invitee`. Candidatos: os
+  que chegaram antes, do mesmo tipo de evento, cuja reunião ainda não tinha
+  acontecido. Só marca com resposta ÚNICA (um candidato, ou o único
+  cancelado); ambíguo não marca — marcar o errado esconderia reunião de pé.
+  Sem a inferência, o reagendamento antigo aparece como reunião que aconteceu
+  (e contaria como "reunião anterior" num aviso de no-show).
+- **Depois que TERMINA (pelo fim, não pelo início), a reunião externa fica SEM
+  situação** (`reuniaoTerminou`): o Calendly não diz se o cliente compareceu,
+  e "Realizada" afirmaria o que ninguém registrou. Durante a reunião ela segue
+  marcada, com o link.
 - A lista só aparece com as DUAS fontes respondidas; falha das externas é dita
   (`erroExternas`), nunca "nenhuma reunião".
 

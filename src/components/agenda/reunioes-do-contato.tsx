@@ -8,7 +8,7 @@ import { ReuniaoForm } from '@/components/agenda/reuniao-form';
 import { Button } from '@/components/ui/button';
 import { useReunioesDoContato, useReunioesExternasDoContato } from '@/hooks/use-reunioes';
 import { FUSO_PADRAO, diaNoFuso, horaNoFuso } from '@/lib/agenda/fuso';
-import { intercalarHistorico, type ReuniaoExterna } from '@/lib/agenda/reunioes-externas';
+import { intercalarHistorico, reuniaoTerminou, type ReuniaoExterna } from '@/lib/agenda/reunioes-externas';
 import { cn } from '@/lib/utils';
 import type { Meeting } from '@/types';
 
@@ -151,13 +151,14 @@ function LinhaDaAgenda({ reuniao: r, agora, aoAbrir }: { reuniao: Meeting; agora
 
 /**
  * Reunião do Calendly ou da Kommo: só leitura (quem manda nela é o Calendly).
- * Sem situação à direita depois que o horário passa: o Calendly não diz se o
+ * Sem situação à direita depois que ela termina: o Calendly não diz se o
  * cliente compareceu, e "Realizada" afirmaria o que ninguém registrou.
+ * "Terminou" é pelo FIM: durante a reunião ela segue marcada, com o link.
  */
 function LinhaExterna({ reuniao: r, agora }: { reuniao: ReuniaoExterna; agora: Date }) {
   const t = useTranslations('Agenda');
   const inicio = new Date(r.inicio);
-  const passou = inicio < agora;
+  const passou = reuniaoTerminou(r, agora);
   const situacao =
     r.desmarcada === 'reagendada'
       ? t('statusReagendada')
