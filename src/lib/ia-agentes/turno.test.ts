@@ -2877,3 +2877,488 @@ describe('executarTurno — marcar reunião (F5)', () => {
     expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'transferencia' })
   })
 })
+
+// ------------------------------------------------------------
+// A RETOMADA (1056): o cliente não respondeu
+// ------------------------------------------------------------
+
+describe('a RETOMADA (1056)', () => {
+  // Segunda, 28/09/2026, 12:00 em Brasília: dentro da janela padrão (08–21).
+  const MEIO_DIA = new Date('2026-09-28T15:00:00Z')
+  const ANCORA = 'msg-ancora'
+  const RETOMADA = 'turno-retomada'
+  const CADENCIA = [15, 60, 180, 360, 720, 2880]
+  const MIN = 60_000
+
+  const retomadaLigada = (p: Linha = {}) => ({ ativa: true, cadencia: CADENCIA, janela: { inicio: '08:00', fim: '21:00' }, ...p })
+  const retomadas = () => banco.tabelas.cb_ia_turnos.filter((t) => t.tipo === 'retomada' && t.id !== RETOMADA)
+
+  /** A resposta do agente que ficou sem resposta (a âncora). */
+  function ancora(haQuantoMs: number): Linha {
+    return mensagem({
+      id: ANCORA,
+      sender_type: 'bot',
+      ia_agente_id: AGENTE,
+      message_id: 'wamid.ancora',
+      content_text: 'Você conseguiu separar os extratos?',
+      gravada_em: haMs(haQuantoMs),
+      created_at: haMs(haQuantoMs),
+    })
+  }
+
+  /** A retomada pendente e vencida, ancorada na resposta de `haQuantoMs` atrás. */
+  function comRetomadaPendente(p: Linha = {}, haQuantoMs = 20 * MIN): void {
+    // A mensagem do cliente veio ANTES da resposta do agente (a âncora).
+    Object.assign(banco.tabelas.messages.find((m) => m.id === GATILHO)!, {
+      gravada_em: haMs(haQuantoMs + MIN),
+      created_at: haMs(haQuantoMs + MIN),
+    })
+    banco.tabelas.messages.push(ancora(haQuantoMs))
+    banco.tabelas.cb_ia_turnos = [
+      {
+        ...turno(),
+        id: RETOMADA,
+        tipo: 'retomada',
+        tentativa: 1,
+        tentativas: 6,
+        mensagem_gatilho_id: ANCORA,
+        mensagem_inicial_id: ANCORA,
+        executar_apos: haMs(1_000),
+        ...p,
+      },
+    ]
+  }
+
+  /** O envio GRAVA a mensagem do agente (é o que o turno seguinte lê como âncora). */
+  function envioGrava(): void {
+    vi.mocked(engineSendText).mockImplementation(async (args) => {
+      args.antesDoProvedor?.()
+      const id = `wamid.${banco.tabelas.messages.length + 1}`
+      await args.aoSair?.(id)
+      banco.tabelas.messages.push(
+        mensagem({
+          id: `msg-${id}`,
+          sender_type: 'bot',
+          ia_agente_id: args.iaAgenteId ?? null,
+          message_id: id,
+          content_text: args.text,
+          gravada_em: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+        }),
+      )
+      return { whatsapp_message_id: id }
+    })
+  }
+
+  /** A reserva da 1056 para a retomada: as recusas dela, na ordem do SQL. */
+  function reservaComRetomada(): void {
+    const daResposta = banco.rpcs.cb_ia_reservar_envio
+    banco.rpcs.cb_ia_reservar_envio = (args) => {
+      const t = banco.tabelas.cb_ia_turnos.find((x) => x.id === args.p_turno_id)
+      const base = daResposta(args)
+      if (!t || t.tipo !== 'retomada') return base
+      const antes = ['descartado', 'encerrada', 'pausada', 'card_mudou', 'card_fechado', 'agente_desligado', 'fora_da_conexao', 'agente_sem_etapa']
+      if (antes.includes(base.data as string)) return base
+      const r = (data: string) => ({ data, error: null })
+      const ag = banco.tabelas.cb_ia_agentes.find((x) => x.id === t.ia_agente_id)
+      if ((ag?.retomada as { ativa?: unknown } | null)?.ativa !== true) return r('retomada_desligada')
+      const g = banco.tabelas.messages.find((m) => m.id === t.mensagem_gatilho_id)
+      if (!g || temValor(g.deleted_at)) return r('sem_ancora')
+      const depois = banco.tabelas.messages.filter(
+        (m) => m.conversation_id === t.conversation_id && temValor(m.gravada_em) && comparar(m.gravada_em, g.gravada_em) > 0,
+      )
+      if (depois.some((m) => m.sender_type === 'customer')) return r('cliente_respondeu')
+      if (depois.some((m) => m.sender_type === 'agent')) return r('equipe_respondeu')
+      if (depois.some((m) => m.sender_type === 'bot' && m.ia_agente_id !== t.ia_agente_id && !temValor(m.deleted_at))) {
+        return r('robo_falou')
+      }
+      return base
+    }
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(MEIO_DIA)
+    montarCenario()
+    reservaComRetomada()
+    agenteLido().retomada = retomadaLigada()
+    // O card entrou na etapa há 12 h: a âncora (minutos atrás) conta no teto.
+    card().etapa_desde = haMs(12 * 60 * MIN)
+    envioGrava()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  describe('quem ARMA', () => {
+    it('a resposta que saiu arma a 1ª tentativa: âncora + 15 min, amarrada ao agente, card, etapa e conexão', async () => {
+      await executarTurno(TURNO)
+      expect(turno().status).toBe('respondeu')
+      const armadas = retomadas()
+      expect(armadas).toHaveLength(1)
+      const resposta = banco.tabelas.messages.find((m) => m.message_id === turno().mensagem_enviada_id)!
+      expect(armadas[0]).toMatchObject({
+        status: 'aguardando',
+        tipo: 'retomada',
+        tentativa: 1,
+        tentativas: 6,
+        mensagem_gatilho_id: resposta.id,
+        mensagem_inicial_id: resposta.id,
+        ia_agente_id: AGENTE,
+        deal_id: CARD,
+        stage_id: ETAPA,
+        canal_id: CANAL,
+        veio_de_passagem: false,
+      })
+      expect(armadas[0].executar_apos).toBe(new Date(MEIO_DIA.getTime() + 15 * MIN).toISOString())
+      // Nada de `after()` segurando 15 min: quem roda a retomada é a rede do cron.
+      expect(after).not.toHaveBeenCalled()
+    })
+
+    it('retomada DESLIGADA no agente: nada armado', async () => {
+      agenteLido().retomada = retomadaLigada({ ativa: false })
+      await executarTurno(TURNO)
+      expect(turno().status).toBe('respondeu')
+      expect(retomadas()).toHaveLength(0)
+    })
+
+    it('agente de antes da 1056 (sem a coluna): desligada, nada armado', async () => {
+      delete agenteLido().retomada
+      await executarTurno(TURNO)
+      expect(retomadas()).toHaveLength(0)
+    })
+
+    it('transferiu ([[HANDOFF]]): nada armado', async () => {
+      vi.mocked(generateReply).mockResolvedValue({ text: '', handoff: true, usage: null })
+      await executarTurno(TURNO)
+      expect(turno().status).toBe('transferiu')
+      expect(retomadas()).toHaveLength(0)
+    })
+
+    it('respondeu e passou para a equipe ([[TRANSFERIR]]): nada armado', async () => {
+      vi.mocked(generateReply).mockResolvedValue({ text: 'Nossa especialista vai analisar. [[TRANSFERIR]]', handoff: false, usage: null })
+      await executarTurno(TURNO)
+      expect(turno().status).toBe('respondeu')
+      expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'transferencia' })
+      expect(retomadas()).toHaveLength(0)
+    })
+
+    it('passou a conversa (D25): nada armado — nem pela triagem, nem pelo destino sem a retomada', async () => {
+      agenteLido().pode_passar_para = [DESTINO]
+      banco.tabelas.cb_ia_agentes.push(linhaDoAgente({ id: DESTINO, nome: 'Cobrança' }))
+      banco.tabelas.cb_ia_agente_etapas.push({ stage_id: ETAPA_DESTINO, account_id: CONTA, ia_agente_id: DESTINO, desde: haMs(DIA) })
+      vi.mocked(generateReply)
+        .mockResolvedValueOnce({ text: '[[PASSAR:1]]', handoff: false, usage: null })
+        .mockResolvedValue({ text: 'Aqui é a Cobrança.', handoff: false, usage: null })
+      await executarTurno(TURNO)
+      expect(turno().status).toBe('passou')
+      expect(retomadas()).toHaveLength(0)
+    })
+
+    it('o cliente escreveu logo depois da resposta: nada armado', async () => {
+      vi.mocked(engineSendText).mockImplementation(async (args) => {
+        args.antesDoProvedor?.()
+        banco.tabelas.messages.push(
+          mensagem({ id: 'msg-r', sender_type: 'bot', ia_agente_id: AGENTE, message_id: 'wamid.r', gravada_em: new Date(Date.now() - 1).toISOString() }),
+          mensagem({ id: 'msg-c', sender_type: 'customer', message_id: 'wamid.c', gravada_em: new Date().toISOString() }),
+        )
+        return { whatsapp_message_id: 'wamid.r' }
+      })
+      await executarTurno(TURNO)
+      expect(retomadas()).toHaveLength(0)
+    })
+
+    it('já há um pendente na conexão (23505 — o cliente escreveu): nada, sem erro', async () => {
+      banco.falhas.push({ tabela: 'cb_ia_turnos', op: 'insert', erro: { message: 'duplicate', code: '23505' } })
+      await executarTurno(TURNO)
+      expect(turno().status).toBe('respondeu')
+      expect(retomadas()).toHaveLength(0)
+      expect(console.error).not.toHaveBeenCalledWith('[ia-agentes] armar a retomada falhou:', TURNO, 'duplicate')
+    })
+  })
+
+  describe('a retomada RODA', () => {
+    it('gera com a seção da retomada, envia pelo caminho do turno e arma a tentativa seguinte', async () => {
+      comRetomadaPendente()
+      vi.mocked(generateReply).mockResolvedValue({ text: 'Oi! Conseguiu separar os extratos?', handoff: false, usage: null })
+      await executarTurno(RETOMADA)
+      const r = turno(RETOMADA)
+      expect(r.status).toBe('respondeu')
+      const pedido = vi.mocked(generateReply).mock.calls[0][0].systemPrompt
+      expect(pedido).toContain('the customer has not replied for 20 minutes. This is follow-up 1 of 6.')
+      expect(pedido).not.toContain("Actions you can take in the business's CRM")
+      // ⚠️ A conversa NÃO termina na resposta do agente: o Gemini recusa
+      // ("Requests ending with a model turn are not supported", e2e 27/09).
+      const enviadas = vi.mocked(generateReply).mock.calls[0][0].messages
+      expect(enviadas[enviadas.length - 1]).toMatchObject({ role: 'user' })
+      expect(enviadas[enviadas.length - 1].content).toContain('not a message from the customer')
+      expect(enviadas[enviadas.length - 2]).toMatchObject({ role: 'assistant' })
+      expect(engineSendText).toHaveBeenCalledWith(
+        expect.objectContaining({ text: 'Oi! Conseguiu separar os extratos?', iaAgenteId: AGENTE, exigirCanal: true, preferredChannelId: CANAL }),
+      )
+      expect(logAiUsage).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ mode: 'agente', turnoId: RETOMADA }))
+      // A 2ª, com a MESMA âncora: max(âncora + 60 min = daqui a 40 min, esta
+      // retomada (agora) + o espaçamento 60 − 15 = 45 min) = daqui a 45 min.
+      const proxima = retomadas()
+      expect(proxima).toHaveLength(1)
+      expect(proxima[0]).toMatchObject({ tentativa: 2, tentativas: 6, mensagem_gatilho_id: ANCORA, status: 'aguardando' })
+      expect(proxima[0].executar_apos).toBe(new Date(MEIO_DIA.getTime() + 45 * MIN).toISOString())
+    })
+
+    it('a ÚLTIMA tentativa que sai não arma outra', async () => {
+      comRetomadaPendente({ tentativa: 6 }, 2880 * MIN + MIN)
+      vi.mocked(generateReply).mockResolvedValue({ text: 'Fico à disposição quando quiser continuar.', handoff: false, usage: null })
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA).status).toBe('respondeu')
+      expect(vi.mocked(generateReply).mock.calls[0][0].systemPrompt).toContain('This IS the last follow-up.')
+      expect(retomadas()).toHaveLength(0)
+    })
+
+    it.each<[string, Linha]>([
+      ['o cliente escreveu (mesmo uma figurinha, que não abre turno)', { sender_type: 'customer', content_type: 'image', media_type: 'image/webp' }],
+      ['o cliente escreveu noutra conexão', { sender_type: 'customer', channel_id: OUTRO_CANAL }],
+      ['a equipe escreveu pelo celular pareado', { sender_type: 'agent', from_device: true }],
+      ['uma automação falou', { sender_type: 'bot', ia_agente_id: null }],
+      ['outro agente falou', { sender_type: 'bot', ia_agente_id: DESTINO }],
+    ])('%s depois da âncora: a série PARA, sem gerar nem mandar', async (_rotulo, p) => {
+      comRetomadaPendente()
+      banco.tabelas.messages.push(mensagem({ id: 'msg-depois', gravada_em: haMs(5 * MIN), ...p }))
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA).status).toBe('descartado')
+      expect(generateReply).not.toHaveBeenCalled()
+      expect(engineSendText).not.toHaveBeenCalled()
+      expect(retomadas()).toHaveLength(0)
+    })
+
+    it('a retomada anterior do MESMO agente não para a série', async () => {
+      comRetomadaPendente({ tentativa: 2 }, 70 * MIN)
+      banco.tabelas.messages.push(mensagem({ id: 'msg-retomada-1', sender_type: 'bot', ia_agente_id: AGENTE, gravada_em: haMs(55 * MIN) }))
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA).status).toBe('respondeu')
+    })
+
+    it('a IA pausada: pausado_no_meio, nada sai', async () => {
+      comRetomadaPendente()
+      conversa().ai_autoreply_disabled = true
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA).status).toBe('pausado_no_meio')
+      expect(engineSendText).not.toHaveBeenCalled()
+    })
+
+    it('o card saiu da etapa: descartada', async () => {
+      comRetomadaPendente()
+      card().stage_id = 'etapa-meio'
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA).status).toBe('descartado')
+      expect(engineSendText).not.toHaveBeenCalled()
+    })
+
+    it('a retomada foi desligada no agente depois de armada: descartada', async () => {
+      comRetomadaPendente()
+      agenteLido().retomada = retomadaLigada({ ativa: false })
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA)).toMatchObject({ status: 'descartado', erro: 'a retomada foi desligada no agente' })
+    })
+
+    it('a âncora foi apagada: descartada', async () => {
+      comRetomadaPendente()
+      banco.tabelas.messages.find((m) => m.id === ANCORA)!.deleted_at = haMs(MIN)
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA).status).toBe('descartado')
+    })
+
+    it('[[SEM_RETOMADA]] (nada pendente): para, sem mandar e sem armar', async () => {
+      comRetomadaPendente()
+      vi.mocked(generateReply).mockResolvedValue({ text: '[[SEM_RETOMADA]]', handoff: false, usage: null })
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA)).toMatchObject({ status: 'sem_resposta' })
+      expect(String(turno(RETOMADA).erro)).toContain('nada pendente')
+      expect(engineSendText).not.toHaveBeenCalled()
+      expect(retomadas()).toHaveLength(0)
+    })
+
+    it.each<[string, { text: string; handoff: boolean }]>([
+      ['[[HANDOFF]]', { text: '', handoff: true }],
+      ['[[TRANSFERIR]]', { text: 'Vou chamar a equipe. [[TRANSFERIR]]', handoff: false }],
+      ['a equipe prometida sem marcador', { text: 'Nossa equipe vai entrar em contato com você.', handoff: false }],
+    ])('%s: a série PARA e fica registrada — a retomada NÃO transfere', async (_rotulo, gerada) => {
+      comRetomadaPendente()
+      vi.mocked(generateReply).mockResolvedValue({ ...gerada, usage: null })
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA).status).toBe('sem_resposta')
+      expect(String(turno(RETOMADA).erro)).toContain('a retomada não transfere')
+      expect(engineSendText).not.toHaveBeenCalled()
+      expect(conversa()).toMatchObject({ ai_autoreply_disabled: false, ia_pausada_por: null })
+      expect(notas()).toHaveLength(0)
+      expect(retomadas()).toHaveLength(0)
+    })
+
+    it('link inventado: para, com o link no registro', async () => {
+      comRetomadaPendente()
+      vi.mocked(generateReply).mockResolvedValue({ text: 'Veja: https://inventado.example/boleto', handoff: false, usage: null })
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA)).toMatchObject({ status: 'sem_resposta', erro: 'link inventado: https://inventado.example/boleto' })
+      expect(engineSendText).not.toHaveBeenCalled()
+    })
+
+    it('marcador de ação: sai do texto e NÃO executa', async () => {
+      comRetomadaPendente()
+      vi.mocked(generateReply).mockResolvedValue({ text: 'Conseguiu ver? [[MOVER:1]]', handoff: false, usage: null })
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA).status).toBe('respondeu')
+      expect(engineSendText).toHaveBeenCalledWith(expect.objectContaining({ text: 'Conseguiu ver?' }))
+      expect(executarAcoes).not.toHaveBeenCalled()
+    })
+
+    it('o teto de respostas (que conta as retomadas): para, SEM transferir', async () => {
+      comRetomadaPendente({ tentativa: 2 }, 70 * MIN)
+      banco.tabelas.messages.push(mensagem({ id: 'msg-retomada-1', sender_type: 'bot', ia_agente_id: AGENTE, gravada_em: haMs(55 * MIN) }))
+      agenteLido().teto_respostas = 2
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA)).toMatchObject({ status: 'sem_resposta', erro: 'o teto de respostas do agente foi atingido' })
+      expect(engineSendText).not.toHaveBeenCalled()
+      expect(conversa()).toMatchObject({ ai_autoreply_disabled: false })
+      expect(retomadas()).toHaveLength(0)
+    })
+
+    it('⚠️ a corrida: o cliente escreve ENQUANTO a retomada é gerada — a RESERVA recusa', async () => {
+      comRetomadaPendente()
+      // Depois das duas conferências em JS: só a reserva, no banco, vê.
+      antesDaReserva(() => {
+        banco.tabelas.messages.push(mensagem({ id: 'msg-cliente', sender_type: 'customer', gravada_em: new Date().toISOString() }))
+      })
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA)).toMatchObject({ status: 'descartado', erro: 'a reserva recusou a retomada: cliente_respondeu' })
+      expect(engineSendText).not.toHaveBeenCalled()
+      expect(retomadas()).toHaveLength(0)
+    })
+
+    it('o cliente escreve durante a geração: a 2ª conferência já para', async () => {
+      comRetomadaPendente()
+      vi.mocked(generateReply).mockImplementation(async () => {
+        banco.tabelas.messages.push(mensagem({ id: 'msg-cliente', sender_type: 'customer', gravada_em: new Date().toISOString() }))
+        return { text: 'Oi! Conseguiu?', handoff: false, usage: null }
+      })
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA).status).toBe('descartado')
+      expect(engineSendText).not.toHaveBeenCalled()
+    })
+
+    it('envio incerto: registrado, SEM transferir e sem armar a seguinte', async () => {
+      comRetomadaPendente()
+      envioFalhaNoProvedor(new EvolutionApiError('tempo esgotado', 504))
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA).status).toBe('incerto')
+      expect(conversa()).toMatchObject({ ai_autoreply_disabled: false })
+      expect(notas()).toHaveLength(0)
+      expect(retomadas()).toHaveLength(0)
+    })
+
+    it('o limite da conta cheio: volta para a fila daqui a 2 min (a série não se perde)', async () => {
+      comRetomadaPendente()
+      vi.mocked(checkRateLimit).mockReturnValue({ success: false } as ReturnType<typeof checkRateLimit>)
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA)).toMatchObject({ status: 'aguardando', rodando_desde: null })
+      expect(turno(RETOMADA).executar_apos).toBe(new Date(MEIO_DIA.getTime() + 2 * MIN).toISOString())
+      expect(after).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('a retomada reconfere o vencimento', () => {
+    it('fora da janela (21:30): volta para a fila às 08:00 do dia seguinte, sem gerar', async () => {
+      vi.setSystemTime(new Date('2026-09-29T00:30:00Z')) // 28/09, 21:30 em Brasília
+      montarCenario()
+      reservaComRetomada()
+      agenteLido().retomada = retomadaLigada()
+      card().etapa_desde = haMs(12 * 60 * MIN)
+      comRetomadaPendente()
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA)).toMatchObject({ status: 'aguardando', executar_apos: '2026-09-29T11:00:00.000Z' })
+      expect(generateReply).not.toHaveBeenCalled()
+      // Horas à frente: é da rede do cron, nunca de um `after()` dormindo.
+      expect(after).not.toHaveBeenCalled()
+    })
+
+    /** Um lembrete LIGADO de "24 h antes" do campo "Data e Hora Reunião", e a data na ficha. */
+    function reuniaoEm(ms: number, p: Linha = {}): void {
+      banco.tabelas.automations = [
+        {
+          id: 'lembrete-24h',
+          account_id: CONTA,
+          trigger_type: 'date_field_offset',
+          is_active: true,
+          trigger_config: { custom_field_id: 'campo-reuniao', offset_hours: 24, direction: 'antes' },
+          ...p,
+        },
+      ]
+      banco.tabelas.contact_custom_values = [
+        { contact_id: 'contato-1', custom_field_id: 'campo-reuniao', value: new Date(MEIO_DIA.getTime() + ms).toISOString() },
+      ]
+    }
+
+    it('a menos de 30 min de um lembrete da reunião: volta para a fila 30 min depois dele', async () => {
+      comRetomadaPendente()
+      // Reunião amanhã às 12:10 → o lembrete de 24 h antes sai hoje às 12:10.
+      reuniaoEm(24 * 60 * MIN + 10 * MIN)
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA)).toMatchObject({ status: 'aguardando' })
+      expect(turno(RETOMADA).executar_apos).toBe(new Date(MEIO_DIA.getTime() + 40 * MIN).toISOString())
+      expect(generateReply).not.toHaveBeenCalled()
+    })
+
+    it('a reunião daqui a 1 h: a série PARA (os lembretes cuidam dele)', async () => {
+      comRetomadaPendente()
+      reuniaoEm(60 * MIN)
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA)).toMatchObject({ status: 'sem_resposta', erro: 'a reunião do cliente está perto (os lembretes cuidam dele)' })
+      expect(engineSendText).not.toHaveBeenCalled()
+    })
+
+    it('⚠️ lembrete DESLIGADO também protege (a Kommo manda o mesmo na transição): a reunião daqui a 1 h para a série', async () => {
+      comRetomadaPendente()
+      reuniaoEm(60 * MIN, { is_active: false })
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA)).toMatchObject({ status: 'sem_resposta', erro: 'a reunião do cliente está perto (os lembretes cuidam dele)' })
+      expect(engineSendText).not.toHaveBeenCalled()
+    })
+
+    it('lembrete DESLIGADO também empurra: a menos de 30 min dele, volta para a fila', async () => {
+      comRetomadaPendente()
+      reuniaoEm(24 * 60 * MIN + 10 * MIN, { is_active: false })
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA)).toMatchObject({ status: 'aguardando' })
+      expect(turno(RETOMADA).executar_apos).toBe(new Date(MEIO_DIA.getTime() + 40 * MIN).toISOString())
+    })
+
+    it('automação de lembrete com o deslocamento ilegível: a reunião ainda conta (parada dos 90 min)', async () => {
+      comRetomadaPendente()
+      reuniaoEm(60 * MIN, { trigger_config: { custom_field_id: 'campo-reuniao', direction: 'antes' } })
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA).status).toBe('sem_resposta')
+    })
+
+    it('a leitura dos lembretes falha: a série para (sem saber, não manda)', async () => {
+      comRetomadaPendente()
+      banco.falhas.push({ tabela: 'automations', op: 'select', erro: { message: 'timeout' } })
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA)).toMatchObject({ status: 'falhou', erro: 'leitura dos lembretes da reunião falhou' })
+      expect(engineSendText).not.toHaveBeenCalled()
+    })
+
+    it('número oficial com a janela de 24 h da Meta fechada: para', async () => {
+      comRetomadaPendente()
+      banco.tabelas.cb_channels[0].kind = 'meta'
+      conversa().janela_meta = { [CANAL]: haMs(25 * 60 * MIN) }
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA)).toMatchObject({ status: 'sem_resposta', erro: 'a janela de 24 h da Meta fechou (texto livre não sai)' })
+    })
+
+    it('número oficial com a janela aberta: sai', async () => {
+      comRetomadaPendente()
+      banco.tabelas.cb_channels[0].kind = 'meta'
+      conversa().janela_meta = { [CANAL]: haMs(60 * MIN) }
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA).status).toBe('respondeu')
+    })
+  })
+})

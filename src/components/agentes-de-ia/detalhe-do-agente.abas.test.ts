@@ -23,18 +23,31 @@ describe('detalhe-do-agente — abas', () => {
     expect(base.slice(0, 200)).toContain('aoSalvar={() => setSalvamentos((n) => n + 1)}')
   })
 
-  it('Acesso, Base (F3) e Ferramentas (F4) têm rascunho: montadas depois da 1ª visita, escondidas (não desmontadas)', () => {
-    for (const aba of ['acesso', 'base', 'ferramentas']) {
+  it('Acesso, Base (F3), Ferramentas (F4) e Retomada (1056) têm rascunho: montadas depois da 1ª visita, escondidas (não desmontadas)', () => {
+    for (const aba of ['acesso', 'base', 'ferramentas', 'retomada']) {
       expect(fonte).toContain(`{visitadas.has('${aba}') ? (`)
       expect(fonte).toContain(`<div hidden={aba !== '${aba}'}>`)
     }
   })
 
   it('o Playground diz QUAIS abas têm alteração não salva', () => {
-    for (const flag of ['configuracaoNaoSalva', 'acessoNaoSalvo', 'baseNaoSalva', 'ferramentasNaoSalvas']) {
+    for (const flag of ['configuracaoNaoSalva', 'acessoNaoSalvo', 'baseNaoSalva', 'ferramentasNaoSalvas', 'retomadaNaoSalva']) {
       expect(fonte).toContain(flag)
     }
     expect(fonte).toContain('naoSalvoEm={naoSalvoEm}')
+  })
+
+  it('salvar a Retomada também zera a conversa do Playground', () => {
+    const retomada = fonte.slice(fonte.indexOf('<RetomadaDoAgente'))
+    expect(retomada.slice(0, 200)).toContain('aoSalvar={aoSalvarAgente}')
+  })
+
+  it('a Retomada fica entre as Ferramentas e o Playground (1056)', () => {
+    const ferramentas = fonte.indexOf("{ id: 'ferramentas'")
+    const retomada = fonte.indexOf("{ id: 'retomada'")
+    const playground = fonte.indexOf("{ id: 'playground'")
+    expect(retomada).toBeGreaterThan(ferramentas)
+    expect(playground).toBeGreaterThan(retomada)
   })
 
   it('Ferramentas fica entre a Base e o Playground (D28)', () => {

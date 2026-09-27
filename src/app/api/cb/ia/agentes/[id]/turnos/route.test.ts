@@ -62,6 +62,11 @@ beforeEach(() => {
   agenteDaConta = { id: ID }
   erroDosTurnos = null
   turnos = [
+    // A RETOMADA (1056) que ainda espera na fila: tentativa, total e vencimento.
+    {
+      id: 't3', status: 'aguardando', created_at: '2026-09-26T12:05:00Z', terminado_em: null, erro: null, conversation_id: 'conv-1',
+      contexto: null, acoes: [], tipo: 'retomada', tentativa: 2, tentativas: 6, executar_apos: '2026-09-26T13:00:00Z',
+    },
     {
       id: 't2', status: 'passou', created_at: '2026-09-26T12:00:00Z', terminado_em: null, erro: null, conversation_id: 'conv-2',
       contexto: { blocos: [{ bloco: 'ficha', texto: 'Customer record: no details on file.' }, { bloco: 7 }], documentos: ['doc-1', 3] },
@@ -84,6 +89,10 @@ describe('GET /api/cb/ia/agentes/[id]/turnos', () => {
     const corpo = (await res.json()) as { turnos: Record<string, unknown>[] }
     expect(corpo.turnos).toEqual([
       {
+        id: 't3', status: 'aguardando', criadoEm: '2026-09-26T12:05:00Z', terminadoEm: null, erro: null, conversationId: 'conv-1', contato: 'Maria',
+        contexto: null, acoes: [], retomada: { tentativa: 2, de: 6 }, executarApos: '2026-09-26T13:00:00Z',
+      },
+      {
         id: 't2', status: 'passou', criadoEm: '2026-09-26T12:00:00Z', terminadoEm: null, erro: null, conversationId: 'conv-2', contato: '5511888880000',
         // O retrato é LIDO (parse): item fora da forma sai, nunca vai cru à tela.
         contexto: { blocos: [{ bloco: 'ficha', texto: 'Customer record: no details on file.' }], documentos: ['doc-1'], trechos: [] },
@@ -94,12 +103,15 @@ describe('GET /api/cb/ia/agentes/[id]/turnos', () => {
           // O código e o detalhe cru, separados.
           { tipo: 'etiquetar', alvo: { id: 't1', nome: 'Quente' }, ok: false, erro: 'cascata_fora_da_d5', detalhe: 'send_webhook' },
         ],
+        // O turno de resposta (e o anterior à 1056, sem as colunas): sem retomada.
+        retomada: null,
       },
-      { id: 't1', status: 'falhou', criadoEm: '2026-09-26T11:00:00Z', terminadoEm: '2026-09-26T11:00:05Z', erro: 'sem chave', conversationId: 'conv-1', contato: 'Maria', contexto: null, acoes: [] },
+      { id: 't1', status: 'falhou', criadoEm: '2026-09-26T11:00:00Z', terminadoEm: '2026-09-26T11:00:05Z', erro: 'sem chave', conversationId: 'conv-1', contato: 'Maria', contexto: null, acoes: [], retomada: null },
     ])
     const dosTurnos = consultas.find((c) => c.tabela === 'cb_ia_turnos')!
     expect(dosTurnos.colunas).toContain('contexto')
     expect(dosTurnos.colunas).toContain('acoes')
+    for (const col of ['tipo', 'tentativa', 'tentativas', 'executar_apos']) expect(dosTurnos.colunas).toContain(col)
     expect(dosTurnos.filtros).toEqual([
       ['eq', 'account_id', 'conta-1'],
       ['eq', 'ia_agente_id', ID],

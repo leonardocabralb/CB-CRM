@@ -251,6 +251,13 @@ describe('rodarRedeDosTurnos — o órfão', () => {
     expect(transferirParaGente).not.toHaveBeenCalled()
   })
 
+  it('incerto de uma RETOMADA (1056): recolhe, sem transferir — o cliente não está esperando resposta', async () => {
+    banco.tabelas.cb_ia_turnos.push(orfao({ enviando_desde: haMs(RECOLHER_TURNO_MS), tipo: 'retomada', tentativa: 1, tentativas: 6 }))
+    await rodarRedeDosTurnos()
+    expect(linha('turno-orfao').status).toBe('incerto')
+    expect(transferirParaGente).not.toHaveBeenCalled()
+  })
+
   it('com o id do provedor: saiu → `respondeu`, com o erro, sem transferir', async () => {
     banco.tabelas.cb_ia_turnos.push(
       orfao({ enviando_desde: haMs(RECOLHER_TURNO_MS), mensagem_enviada_id: 'wamid.resposta' }),

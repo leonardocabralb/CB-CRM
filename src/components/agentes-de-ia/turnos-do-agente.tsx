@@ -22,12 +22,15 @@
 // `detalhe` — o passo da D5 traduzido, o resto cru depois. A que deu certo
 // com `detalhe` ("o card já estava nessa etapa") mostra a nota em cinza.
 // Turno anterior à F4 (acoes nula) ou sem ação nenhuma não ganha a expansão.
+//
+// A RETOMADA (1056) é um turno como os outros, com o rótulo "Retomada k/n" ao
+// lado do status; a que ainda espera na fila diz para quando está prevista.
 // ============================================================
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { Check, Eye, RefreshCw, Wrench, X } from 'lucide-react';
+import { Check, Eye, History, RefreshCw, Wrench, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { ACAO_TRANSFERIR } from '@/lib/ia-agentes/acoes';
@@ -55,6 +58,17 @@ interface Turno {
   contexto: ContextoDoTurno | null;
   /** As ações que o agente executou (F4); nulo nos turnos antigos. */
   acoes: AcaoDoTurno[] | null;
+  /** A retomada (1056): a tentativa de quantas; nulo no turno de resposta. */
+  retomada: { tentativa: number; de: number } | null;
+  /** O vencimento — o que a tela mostra da retomada que ainda espera. */
+  executarApos: string | null;
+}
+
+/** Parse, nunca `as`: forma estranha = turno de resposta (sem rótulo). */
+function lerRetomadaDoTurno(v: unknown): Turno['retomada'] {
+  if (!v || typeof v !== 'object') return null;
+  const { tentativa, de } = v as { tentativa?: unknown; de?: unknown };
+  return typeof tentativa === 'number' && typeof de === 'number' ? { tentativa, de } : null;
 }
 
 /** Parse, nunca `as`: o retrato é jsonb; forma estranha = sem expansão (nunca quebra a lista). */
@@ -102,7 +116,14 @@ export function TurnosDoAgente({ agenteId }: { agenteId: string }) {
       ]);
       if (!res.ok) throw new Error(String(res.status));
       const corpo = (await res.json()) as {
-        turnos?: Array<Omit<Turno, 'contexto' | 'acoes'> & { contexto?: unknown; acoes?: unknown }>;
+        turnos?: Array<
+          Omit<Turno, 'contexto' | 'acoes' | 'retomada' | 'executarApos'> & {
+            contexto?: unknown;
+            acoes?: unknown;
+            retomada?: unknown;
+            executarApos?: unknown;
+          }
+        >;
       };
       // ⚠️ "Apagado" só com a lista COMPLETA: no teto de 1.000 linhas do
       // PostgREST ela pode ter sido cortada, e um documento vivo apareceria
@@ -110,7 +131,13 @@ export function TurnosDoAgente({ agenteId }: { agenteId: string }) {
       const docs = base?.documents ?? [];
       setTitulos(base ? { mapa: new Map(docs.map((d) => [d.id, d.title])), completo: docs.length < 1000 } : null);
       setTurnos(
-        (corpo.turnos ?? []).map((x) => ({ ...x, contexto: lerContexto(x.contexto), acoes: lerAcoesDoTurno(x.acoes) }))
+        (corpo.turnos ?? []).map((x) => ({
+          ...x,
+          contexto: lerContexto(x.contexto),
+          acoes: lerAcoesDoTurno(x.acoes),
+          retomada: lerRetomadaDoTurno(x.retomada),
+          executarApos: typeof x.executarApos === 'string' ? x.executarApos : null,
+        }))
       );
       setFalhou(false);
     } catch {
@@ -153,6 +180,20 @@ export function TurnosDoAgente({ agenteId }: { agenteId: string }) {
               >
                 {rotuloDoStatusDoTurno(t, turno.status)}
               </span>
+              {turno.retomada ? (
+                <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+                  <History className="size-3" />
+                  {t('turnos.retomada', { k: turno.retomada.tentativa, n: turno.retomada.de })}
+                  {turno.status === 'aguardando' && turno.executarApos
+                    ? ` · ${t('turnos.prevista', {
+                        quando: new Date(turno.executarApos).toLocaleString(undefined, {
+                          dateStyle: 'short',
+                          timeStyle: 'short',
+                        }),
+                      })}`
+                    : null}
+                </span>
+              ) : null}
               <span className="shrink-0 text-xs text-muted-foreground">
                 {new Date(turno.criadoEm).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
               </span>

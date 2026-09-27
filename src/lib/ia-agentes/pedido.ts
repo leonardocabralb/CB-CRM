@@ -336,3 +336,53 @@ export function montarPedidoDoAgente(args: {
 
   return partes.join('\n\n')
 }
+
+// ------------------------------------------------------------
+// A RETOMADA (1056): a seção própria do pedido quando o cliente não respondeu
+// ------------------------------------------------------------
+//
+// ⚠️ Acrescentada DEPOIS do pedido de sempre, sem mexer nele: todas as regras
+// do texto-base e do agente continuam valendo. Na retomada o pedido não lista
+// ações, passagens nem horários (nada disso executa numa retomada), e o
+// `[[HANDOFF]]` ou o `[[SEM_RETOMADA]]` só encerram a série — a retomada
+// nunca transfere para gente por conta própria (`turno.ts`).
+
+/** "Nada pendente": a série acaba sem mandar nada. */
+export const MARCADOR_SEM_RETOMADA = '[[SEM_RETOMADA]]'
+
+/**
+ * A resposta traz o `[[SEM_RETOMADA]]` (em qualquer ponto, com espaço, caixa,
+ * hífen ou colchete simples) — ou é SÓ o nome dele, sem colchete nenhum? Então
+ * NADA vai ao cliente: o nome solto sairia cru na conversa.
+ */
+export function lerSemRetomada(texto: string): boolean {
+  return /\[{1,2}\s*SEM[\s_-]*RETOMADA\s*\]{1,2}/i.test(texto) || /^\s*SEM[\s_-]*RETOMADA\s*[.!]?\s*$/i.test(texto)
+}
+
+/** A seção da retomada, para o MODELO (inglês). `semResposta` = "15 minutes", "3 hours"… */
+export function secaoDaRetomada(a: { tentativa: number; de: number; semResposta: string }): string {
+  return [
+    `Follow-up: the customer has not replied for ${a.semResposta}. This is follow-up ${a.tentativa} of ${a.de}.`,
+    'Write ONE short message that gently brings the conversation back to what is pending: restate the last open question clearly — one question only. ' +
+      'Never repeat a previous message word for word, and do not pressure the customer. ' +
+      'On the LAST follow-up, close politely, saying you remain available whenever the customer wants to continue.',
+    ...(a.tentativa >= a.de ? ['This IS the last follow-up.'] : []),
+    `If nothing is pending — the conversation ended naturally, the customer declined, or everything was done — reply with exactly ${MARCADOR_SEM_RETOMADA} and nothing else.`,
+    'Do not take any action, book anything or hand the conversation over in this message: write only the text for the customer.',
+  ].join('\n')
+}
+
+/**
+ * O pedido de uma RETOMADA: o do agente (texto-base, data e hora, instruções,
+ * regras, o que ele sabe do cliente e a base), SEM passagens, ações nem
+ * horários, e a seção da retomada no fim. UMA montagem para o turno e o
+ * Playground ("Simular retomada").
+ */
+export function montarPedidoDaRetomada(
+  args: Omit<Parameters<typeof montarPedidoDoAgente>[0], 'passagens' | 'acoes' | 'agenda'> & {
+    retomada: { tentativa: number; de: number; semResposta: string }
+  },
+): string {
+  const { retomada, ...resto } = args
+  return `${montarPedidoDoAgente(resto)}\n\n${secaoDaRetomada(retomada)}`
+}

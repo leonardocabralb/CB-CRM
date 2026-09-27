@@ -83,6 +83,11 @@
 //    enviar; envio recusado ou incerto = não roda. A resposta que PROMETE a
 //    equipe sem o marcador (`equipePrometida`) vale como se ele estivesse lá
 //    (`detalhe: 'sem_marcador'` no registro).
+//  - RETOMADA (1056): a resposta que SAIU arma a 1ª tentativa, e cada
+//    retomada que sai arma a seguinte (`armarRetomada`). A retomada é uma
+//    linha da mesma fila (`tipo = 'retomada'`), roda por `conduzirRetomada`
+//    e para quando alguém escreve depois da âncora — as regras dela estão na
+//    seção própria, abaixo.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -135,7 +140,7 @@ import {
 import { anotarNaConversa, executarAcoes } from './executar-acoes'
 import { opcoesDoAgente } from './ferramentas'
 import { dentroDoHorario } from './horario'
-import { lerPassagem, montarPedidoDoAgente } from './pedido'
+import { lerPassagem, montarPedidoDaRetomada, montarPedidoDoAgente } from './pedido'
 import { vazouOPedido } from './regras-do-sistema'
 import {
   abreTurno,
@@ -146,6 +151,18 @@ import {
   type CardDoContato,
 } from './quem-responde'
 import { obterAgente } from './repo'
+import {
+  motivoDaParada,
+  proximaRetomada,
+  SEM_BLOQUEIOS,
+  tempoEmIngles,
+  TOLERANCIA_DO_VENCIMENTO_MS,
+  type Bloqueios,
+  type MotivoDaParada,
+  type MotivoDoFim,
+} from './retomada'
+import { lerBloqueiosDaRetomada, lerFimDaJanelaMeta, lerMensagensDepois } from './retomada-fatos'
+import { comNotaDaRetomada, lerRespostaDaRetomada, type ParadaDaResposta } from './retomada-resposta'
 import { textosDaPassagem, textosDaTransferencia, type MotivoDeTransferencia } from './textos-do-servidor'
 
 /** A linha de `cb_ia_turnos` que o claim devolve. */
@@ -164,6 +181,15 @@ export interface LinhaDoTurno {
   mensagem_gatilho_id: string | null
   mensagem_inicial_id: string | null
   rodando_desde: string
+  /**
+   * `resposta` (ausente nas linhas de antes da 1056) ou `retomada`: o agente
+   * volta a falar com quem não respondeu. Na retomada, `mensagem_gatilho_id`
+   * é a ÂNCORA — a resposta do agente que ficou sem resposta —, `tentativa`
+   * é 1-based e `tentativas` o tamanho da cadência quando ela foi armada.
+   */
+  tipo?: string | null
+  tentativa?: number | null
+  tentativas?: number | null
 }
 
 interface Gatilho {
@@ -185,7 +211,8 @@ export type Desfecho =
       status: 'passou' | 'descartado' | 'pausado_no_meio' | 'fora_do_horario' | 'sem_resposta' | 'falhou'
       erro?: string
     }
-  | { status: 'reagendar' }
+  /** `executarApos`: a retomada empurrada para a janela ou para depois de um lembrete (sem ele, `REAGENDAR_AUDIO_MS`). */
+  | { status: 'reagendar'; executarApos?: string }
   | { status: 'abandonado' }
 
 // ------------------------------------------------------------
@@ -912,6 +939,12 @@ interface Andamento {
    */
   acoes: RegistroDeAcao[] | null
   /**
+   * A resposta que saiu pediu a EQUIPE (o `[[TRANSFERIR]]`, a equipe
+   * prometida, a reunião pedida e não marcada): não se arma retomada — a
+   * conversa foi para gente.
+   */
+  pediuEquipe: boolean
+  /**
    * Cancela o "digitando…" (`mostrarDigitando`). O envio o CONCLUI antes de a
    * resposta sair (`concluirDigitando`), e `executarTurno` o cancela em TODA
    * saída — senão o pedido em voo chegava à Meta depois de o turno desistir.
@@ -925,6 +958,9 @@ async function conduzir(
   inicio: number,
   andamento: Andamento,
 ): Promise<Desfecho> {
+  // A RETOMADA (1056) tem a condução própria: a âncora é a resposta do
+  // agente, não uma mensagem do cliente.
+  if (turno.tipo === 'retomada') return conduzirRetomada(db, turno, inicio, andamento)
   if (!turno.mensagem_gatilho_id || !turno.canal_id) return { status: 'descartado', erro: 'sem mensagem ou conexão' }
   const { data: gatilhoLido, error: erroGatilho } = await db
     .from('messages')
@@ -1232,54 +1268,8 @@ async function conduzir(
   // por um motivo que não é teto pausaria a IA até alguém clicar "Retomar".
   if (reserva !== 'ok') return semEnvio({ status: 'descartado', erro: `a reserva recusou o envio: ${String(reserva)}` })
 
-  // A posse, carimbando o começo do envio (o recolhedor distingue "morreu
-  // antes de enviar" de "morreu no meio"). ⚠️ DEPOIS da reserva: "`rodando`
-  // sem `enviando_desde`" quer dizer "ainda não pode ter enviado", e a
-  // entrada descarta exatamente esse (`descartarPendente`). Perdida = nada
-  // saiu.
-  const tokens = andamento.usage
-  const posse = await gravarNoTurno(db, turno, {
-    enviando_desde: new Date().toISOString(),
-    iteracoes: 1,
-    tokens_entrada: tokens?.promptTokens ?? null,
-    tokens_saida: tokens?.completionTokens ?? null,
-    tokens_total: tokens?.totalTokens ?? null,
-  })
-  if (!posse) return { status: 'abandonado' }
-
-  let enviado: Desfecho
-  try {
-    const r = await engineSendText({
-      accountId: turno.account_id,
-      userId: dono,
-      conversationId: turno.conversation_id,
-      contactId,
-      text: lidas.texto,
-      aiGenerated: true,
-      preferredChannelId: turno.canal_id,
-      exigirCanal: true,
-      iaAgenteId: agente.id,
-      antesDoProvedor: () => {
-        andamento.tentouEnviar = true
-      },
-      aoSair: async (id) => {
-        andamento.enviadaId = id
-        await gravarIdEnviado(db, turno, id)
-      },
-    })
-    await marcarUltimoAgente(db, turno, agente.id)
-    enviado = { status: 'respondeu', mensagemEnviadaId: r.whatsapp_message_id }
-  } catch (err) {
-    if (err instanceof EnviadaSemRegistroError) {
-      await marcarUltimoAgente(db, turno, agente.id)
-      enviado = { status: 'respondeu', mensagemEnviadaId: err.providerMessageId, erro: err.message }
-    } else {
-      const detalhe = err instanceof Error ? err.message : String(err)
-      enviado = nadaSaiu(err, andamento.tentouEnviar)
-        ? { status: 'falhou', erro: `envio recusado: ${detalhe}` }
-        : { status: 'incerto', erro: `não dá para saber se saiu: ${detalhe}` }
-    }
-  }
+  const enviado = await enviarComPosse(db, turno, andamento, { agente, contactId, dono, texto: lidas.texto })
+  if (enviado.status === 'abandonado') return enviado
 
   // A resposta NÃO saiu (recusada) ou não se sabe (incerto): nenhuma ação
   // executa — a ação sem a resposta que a explica deixaria o cliente sem
@@ -1326,6 +1316,9 @@ async function conduzir(
   // mesmo jeito: quem pausou (a equipe pelo celular, o botão) precisa saber
   // que o cliente ouviu "marquei" e a reunião não existe.
   const codigoDaReuniao = reuniaoNaoMarcada(andamento.acoes)
+  // A conversa vai para gente (reunião não marcada, "responda e passe"): a
+  // série de retomadas não nasce.
+  if (codigoDaReuniao || transferirDepois) andamento.pediuEquipe = true
   if (codigoDaReuniao) {
     const transferencia = await transferirParaGente(db, {
       accountId: turno.account_id,
@@ -1380,6 +1373,473 @@ async function conduzir(
 }
 
 // ------------------------------------------------------------
+// O envio (o turno e a retomada)
+// ------------------------------------------------------------
+
+/**
+ * O ENVIO, depois da reserva: a posse (`enviando_desde`) e a mensagem. O
+ * turno de resposta e a retomada saem pelo MESMO caminho.
+ *
+ * A posse carimba o começo do envio (o recolhedor distingue "morreu antes de
+ * enviar" de "morreu no meio"). ⚠️ DEPOIS da reserva: "`rodando` sem
+ * `enviando_desde`" quer dizer "ainda não pode ter enviado", e a entrada
+ * descarta exatamente esse (`descartarPendente`). Perdida = nada saiu
+ * (`abandonado`).
+ */
+async function enviarComPosse(
+  db: SupabaseClient,
+  turno: LinhaDoTurno,
+  andamento: Andamento,
+  args: { agente: IaAgente; contactId: string; dono: string; texto: string },
+): Promise<Desfecho> {
+  const { agente } = args
+  const tokens = andamento.usage
+  const posse = await gravarNoTurno(db, turno, {
+    enviando_desde: new Date().toISOString(),
+    iteracoes: 1,
+    tokens_entrada: tokens?.promptTokens ?? null,
+    tokens_saida: tokens?.completionTokens ?? null,
+    tokens_total: tokens?.totalTokens ?? null,
+  })
+  if (!posse) return { status: 'abandonado' }
+
+  try {
+    const r = await engineSendText({
+      accountId: turno.account_id,
+      userId: args.dono,
+      conversationId: turno.conversation_id,
+      contactId: args.contactId,
+      text: args.texto,
+      aiGenerated: true,
+      preferredChannelId: turno.canal_id,
+      exigirCanal: true,
+      iaAgenteId: agente.id,
+      antesDoProvedor: () => {
+        andamento.tentouEnviar = true
+      },
+      aoSair: async (id) => {
+        andamento.enviadaId = id
+        await gravarIdEnviado(db, turno, id)
+      },
+    })
+    await marcarUltimoAgente(db, turno, agente.id)
+    return { status: 'respondeu', mensagemEnviadaId: r.whatsapp_message_id }
+  } catch (err) {
+    if (err instanceof EnviadaSemRegistroError) {
+      await marcarUltimoAgente(db, turno, agente.id)
+      return { status: 'respondeu', mensagemEnviadaId: err.providerMessageId, erro: err.message }
+    }
+    const detalhe = err instanceof Error ? err.message : String(err)
+    return nadaSaiu(err, andamento.tentouEnviar)
+      ? { status: 'falhou', erro: `envio recusado: ${detalhe}` }
+      : { status: 'incerto', erro: `não dá para saber se saiu: ${detalhe}` }
+  }
+}
+
+// ------------------------------------------------------------
+// A RETOMADA (1056): o cliente não respondeu
+// ------------------------------------------------------------
+//
+// ⚠️⚠️ As regras que seguram a retomada, e o motivo de cada uma:
+//  - Quem ARMA é o turno que ENVIOU resposta (`respondeu`) sem pedir a equipe
+//    (`pediuEquipe`), com a retomada ligada no agente — nunca mensagem de
+//    robô, automação ou gente. A tentativa seguinte é armada pela retomada
+//    que saiu. A âncora é a resposta do agente (`messages.id`), e fica na
+//    `mensagem_gatilho_id` da linha.
+//  - A linha é da MESMA fila (`tipo = 'retomada'`, `executar_apos` = o
+//    vencimento): posse, reivindicação, prazo, recolhedor e a rede do cron são
+//    os de sempre. Nunca `agendarDisparo`: segurar um `after()` por horas não
+//    serve — quem a roda é a rede do cron.
+//  - A mensagem do cliente que ABRE turno descarta a retomada pendente dentro
+//    de `cb_ia_enfileirar_turno` (1056); a que não abre (figurinha,
+//    localização, conversa pausada…) é vista aqui, quando a retomada vence:
+//    QUALQUER mensagem do cliente, da equipe, do robô ou de outro agente
+//    depois da âncora para a série (`motivoDaParada`). E a reserva (1056) diz
+//    a última palavra, com a conversa travada.
+//  - Ao rodar, TUDO é conferido de novo (a foto do agendamento envelhece): o
+//    card, o agente, a retomada ligada, quem escreveu, e o vencimento com a
+//    janela, os lembretes da reunião e a janela de 24 h da Meta — vencimento
+//    mais à frente REAGENDA a linha; série que acabou para sem mandar.
+//  - Ações NÃO executam numa retomada, e ela nunca transfere para gente:
+//    `[[HANDOFF]]`, `[[TRANSFERIR]]`, passagem, a equipe prometida e o link
+//    inventado PARAM a série (registrado no `erro`), sem mandar nada. O teto
+//    de respostas conta as retomadas, e o teto também só para.
+
+/** O conteúdo com que a retomada passa por `quemResponde` (a régua do conteúdo não se aplica a ela). */
+const CONTEUDO_DA_RETOMADA = { tipo: 'text', texto: 'retomada', mime: null } as const
+
+/** Quanto a retomada espera quando o limite de respostas da conta está cheio (ela não tem pressa). */
+const ESPERA_DO_LIMITE_MS = 2 * 60_000
+
+const ERRO_DA_PARADA: Record<MotivoDaParada, string> = {
+  cliente_respondeu: 'o cliente escreveu depois da mensagem do agente',
+  equipe_respondeu: 'a equipe escreveu depois da mensagem do agente',
+  robo_falou: 'o robô, uma automação ou outro agente escreveu depois da mensagem do agente',
+}
+
+const ERRO_DO_FIM: Record<MotivoDoFim, string> = {
+  cadencia_acabou: 'a cadência de retomadas acabou',
+  reuniao_proxima: 'a reunião do cliente está perto (os lembretes cuidam dele)',
+  sem_janela: 'a janela da retomada não cruza o horário do agente',
+  janela_24h: 'a janela de 24 h da Meta fechou (texto livre não sai)',
+}
+
+const ERRO_DA_RESPOSTA: Record<ParadaDaResposta, string> = {
+  nada_pendente: 'nada pendente: o modelo encerrou a retomada ([[SEM_RETOMADA]])',
+  pediu_equipe: 'o modelo pediu a equipe: a retomada não transfere, a série parou',
+  sem_texto: 'a retomada veio sem texto',
+  pedido_vazado: 'pedido vazado: a retomada reproduzia o pedido interno',
+  link_inventado: 'link inventado',
+}
+
+type ConferenciaDaRetomada =
+  | { ok: true; contactId: string | null; agente: IaAgente }
+  | { ok: false; desfecho: Desfecho }
+
+/**
+ * A retomada ainda vale? O card na etapa do turno com o MESMO agente (a
+ * leitura da entrada, `lerQuemAtende` + `quemResponde`), a conversa aberta e
+ * sem pausa, a retomada ligada no agente e ninguém depois da âncora. Com
+ * `reprogramar`, também o vencimento: fora da janela ou perto de um lembrete,
+ * a linha volta para a fila no instante certo; a série que não tem mais onde
+ * caber (cadência, reunião, janela da Meta) para. LANÇA em erro de leitura
+ * (o turno vira `falhou`).
+ */
+async function conferirRetomada(
+  db: SupabaseClient,
+  turno: LinhaDoTurno,
+  ancoraGravadaEm: string,
+  opcoes: { reprogramar: boolean },
+): Promise<ConferenciaDaRetomada> {
+  if (!turno.canal_id || !turno.ia_agente_id || !turno.deal_id || !turno.stage_id) {
+    return { ok: false, desfecho: { status: 'descartado', erro: 'retomada sem agente, card ou conexão' } }
+  }
+  const leitura = await lerQuemAtende(db, {
+    accountId: turno.account_id,
+    conversationId: turno.conversation_id,
+    canalId: turno.canal_id,
+  })
+  if (!leitura) return { ok: false, desfecho: { status: 'descartado', erro: 'conversa' } }
+  const decisao = quemResponde({
+    ...leitura,
+    canalId: turno.canal_id,
+    conteudo: CONTEUDO_DA_RETOMADA,
+    ehRespostaDeBotao: false,
+    roboConsumiu: false,
+    automacaoFalou: false,
+  })
+  if (decisao.quem === 'ninguem') {
+    return decisao.motivo === 'pausada'
+      ? { ok: false, desfecho: { status: 'pausado_no_meio', erro: 'a IA foi pausada na conversa' } }
+      : { ok: false, desfecho: { status: 'descartado', erro: decisao.motivo } }
+  }
+  if (decisao.agenteId !== turno.ia_agente_id || decisao.dealId !== turno.deal_id || decisao.stageId !== turno.stage_id) {
+    return { ok: false, desfecho: { status: 'descartado', erro: 'o card mudou de etapa ou a etapa mudou de agente' } }
+  }
+  const agente = await obterAgente(turno.account_id, decisao.agenteId)
+  if (!agente) return { ok: false, desfecho: { status: 'descartado', erro: 'agente indisponível' } }
+  if (!agente.retomada.ativa) {
+    return { ok: false, desfecho: { status: 'descartado', erro: 'a retomada foi desligada no agente' } }
+  }
+
+  const agora = Date.now()
+  const { depois, ultimaDoAgente } = await lerMensagensDepois(db, {
+    conversationId: turno.conversation_id,
+    ancoraGravadaEm,
+    agenteId: agente.id,
+  })
+  const parada = motivoDaParada(depois, agente.id)
+  if (parada) return { ok: false, desfecho: { status: 'descartado', erro: ERRO_DA_PARADA[parada] } }
+
+  if (opcoes.reprogramar) {
+    let bloqueios: Bloqueios
+    try {
+      bloqueios = await lerBloqueiosDaRetomada(db, turno.account_id, leitura.contactId)
+    } catch (err) {
+      // Sem saber quando são os lembretes, não manda: a retomada podia cair
+      // em cima de um (o lado seguro é a série parar).
+      console.error('[ia-agentes] a retomada não leu os lembretes da reunião:', turno.id, err)
+      return { ok: false, desfecho: { status: 'falhou', erro: 'leitura dos lembretes da reunião falhou' } }
+    }
+    const fimDaJanelaMeta = await lerFimDaJanelaMeta(db, {
+      accountId: turno.account_id,
+      conversationId: turno.conversation_id,
+      canalId: turno.canal_id,
+      agora,
+    })
+    const proxima = proximaRetomada({
+      ancora: Date.parse(ancoraGravadaEm),
+      tentativa: (turno.tentativa ?? 1) - 1,
+      ultimaRetomada: ultimaDoAgente,
+      agora,
+      config: agente.retomada,
+      horario: agente.horario,
+      bloqueios,
+      fimDaJanelaMeta,
+    })
+    if (proxima.tipo === 'parar') {
+      return { ok: false, desfecho: { status: 'sem_resposta', erro: ERRO_DO_FIM[proxima.motivo] } }
+    }
+    if (proxima.instante > agora + TOLERANCIA_DO_VENCIMENTO_MS) {
+      return { ok: false, desfecho: { status: 'reagendar', executarApos: new Date(proxima.instante).toISOString() } }
+    }
+  }
+  return { ok: true, contactId: leitura.contactId, agente }
+}
+
+/**
+ * Roda UMA retomada: confere, gera a mensagem com a seção da retomada no
+ * pedido (`montarPedidoDaRetomada`) e envia pelo MESMO caminho do turno
+ * (reserva, posse, `enviarComPosse`). A próxima tentativa é armada no
+ * encerramento (`armarRetomada`).
+ */
+async function conduzirRetomada(
+  db: SupabaseClient,
+  turno: LinhaDoTurno,
+  inicio: number,
+  andamento: Andamento,
+): Promise<Desfecho> {
+  const tentativa = turno.tentativa ?? 0
+  if (!turno.mensagem_gatilho_id || !turno.canal_id || tentativa < 1) {
+    return { status: 'descartado', erro: 'retomada sem âncora ou sem tentativa' }
+  }
+  const { data: ancoraLida, error: erroDaAncora } = await db
+    .from('messages')
+    .select('id, gravada_em, deleted_at')
+    .eq('id', turno.mensagem_gatilho_id)
+    .maybeSingle()
+  if (erroDaAncora) throw new Error(`leitura da âncora falhou: ${erroDaAncora.message}`)
+  const ancora = ancoraLida as { id: string; gravada_em: string | null; deleted_at: string | null } | null
+  if (!ancora || ancora.deleted_at || !ancora.gravada_em) {
+    return { status: 'descartado', erro: 'a mensagem do agente sumiu ou foi apagada' }
+  }
+
+  const primeira = await conferirRetomada(db, turno, ancora.gravada_em, { reprogramar: true })
+  if (!primeira.ok) return primeira.desfecho
+  const { agente } = primeira
+  andamento.agente = agente
+  andamento.contactId = primeira.contactId
+
+  const conversa = await lerConversaDaConexao(db, { conversationId: turno.conversation_id, canalId: turno.canal_id })
+  if (conversa.length === 0) return { status: 'descartado', erro: 'conversa vazia nesta conexão' }
+
+  let apiKey: string | null
+  try {
+    const lida = await lerChave(turno.account_id, agente.provedor)
+    if (lida.ilegivel) return { status: 'falhou', erro: 'a chave do provedor não decifra' }
+    apiKey = lida.chave
+  } catch {
+    return { status: 'falhou', erro: 'leitura da chave falhou' }
+  }
+  if (!apiKey) return { status: 'falhou', erro: `sem chave do provedor ${agente.provedor}` }
+
+  if (PRAZO_DO_TURNO_MS - (Date.now() - inicio) - RESERVA_DO_ENVIO_MS - PRAZO_DO_EMBEDDING_MS < 3_000) {
+    return { status: 'falhou', erro: 'o prazo do turno acabou antes de gerar' }
+  }
+  // O limite da conta (a MESMA vaga das respostas): cheio, a retomada espera
+  // um pouco — ela não tem pressa, e acabar a série por um pico seria perdê-la.
+  const limite = checkRateLimit(`ai-autoreply:${turno.account_id}`, RATE_LIMITS.aiAutoReplyAccount)
+  if (!limite.success) return { status: 'reagendar', executarApos: new Date(Date.now() + ESPERA_DO_LIMITE_MS).toISOString() }
+
+  const agora = new Date()
+  const visto = await lerOQueOAgenteVe(db, {
+    accountId: turno.account_id,
+    agente,
+    contactId: primeira.contactId,
+    dealId: turno.deal_id,
+    consulta: consultaDaUltimaMensagem(conversa),
+    agora,
+  })
+  const { data: comRetrato, error: erroRetrato } = await db
+    .from('cb_ia_turnos')
+    .update({ contexto: visto.retrato, updated_at: new Date().toISOString() })
+    .eq('id', turno.id)
+    .eq('status', 'rodando')
+    .eq('rodando_desde', turno.rodando_desde)
+    .select('id')
+  if (erroRetrato) console.error('[ia-agentes] gravar o retrato da retomada falhou:', turno.id, erroRetrato.message)
+  else if ((comRetrato?.length ?? 0) === 0) return { status: 'abandonado' }
+
+  const restante = PRAZO_DO_TURNO_MS - (Date.now() - inicio) - RESERVA_DO_ENVIO_MS
+  if (restante < 3_000) return { status: 'falhou', erro: 'o prazo do turno acabou antes de gerar' }
+
+  const semResposta = tempoEmIngles(agora.getTime() - Date.parse(ancora.gravada_em))
+  const pedido = montarPedidoDaRetomada({
+    instrucoes: agente.instrucoes,
+    regras: agente.regras,
+    agora,
+    blocos: visto.blocos,
+    conhecimento: visto.trechos.map((t) => t.content),
+    retomada: {
+      tentativa,
+      de: turno.tentativas ?? agente.retomada.cadencia.length,
+      semResposta,
+    },
+  })
+
+  let texto: string
+  let handoff: boolean
+  try {
+    const r = await generateReply({
+      config: configDoAgente(agente, apiKey),
+      systemPrompt: pedido,
+      messages: comNotaDaRetomada(conversa, semResposta),
+      timeoutMs: restante,
+    })
+    texto = r.text
+    handoff = r.handoff
+    andamento.usage = r.usage
+  } catch (err) {
+    return {
+      status: 'falhou',
+      erro: err instanceof AiError ? mensagemSeguraDeAiError(err) : 'erro inesperado ao gerar',
+    }
+  }
+
+  void logAiUsage(db, {
+    accountId: turno.account_id,
+    conversationId: turno.conversation_id,
+    mode: 'agente',
+    channelId: turno.canal_id,
+    provider: agente.provedor,
+    model: agente.modelo,
+    usage: andamento.usage,
+    iaAgenteId: agente.id,
+    iaAgenteNome: agente.nome,
+    turnoId: turno.id,
+  })
+
+  // "Nada pendente", a equipe pedida, a passagem, o link inventado: a série
+  // PARA, sem mandar nada, e fica registrado — a retomada nunca transfere.
+  const lida = lerRespostaDaRetomada(texto, handoff, [pedido, ...conversa.map((m) => m.content)])
+  if (lida.parada !== null) {
+    const detalhe = lida.detalhe ? `: ${textoRetido(lida.detalhe)}` : ''
+    return { status: 'sem_resposta', erro: `${ERRO_DA_RESPOSTA[lida.parada]}${detalhe}` }
+  }
+
+  // De novo, com o texto pronto: o cliente pode ter escrito enquanto o modelo pensava.
+  const segunda = await conferirRetomada(db, turno, ancora.gravada_em, { reprogramar: false })
+  if (!segunda.ok) return segunda.desfecho
+  const dono = await donoDaConta(db, turno.account_id)
+  if (!dono) return { status: 'falhou', erro: 'a conta não tem dono' }
+  const contactId = segunda.contactId
+  if (!contactId) return { status: 'descartado', erro: 'conversa sem contato' }
+
+  // A última palavra, no banco, com a conversa travada: além das recusas do
+  // turno, a retomada recusa quem escreveu depois da âncora e a retomada
+  // desligada (1056). O teto aqui só para a série.
+  const { data: reserva, error: erroReserva } = await db.rpc('cb_ia_reservar_envio', {
+    p_turno_id: turno.id,
+    p_rodando_desde: turno.rodando_desde,
+  })
+  if (erroReserva) return { status: 'falhou', erro: `reservar a retomada falhou: ${erroReserva.message}` }
+  if (reserva === 'pausada') return { status: 'pausado_no_meio', erro: 'pausada antes do envio' }
+  if (reserva === 'teto') return { status: 'sem_resposta', erro: 'o teto de respostas do agente foi atingido' }
+  if (reserva !== 'ok') return { status: 'descartado', erro: `a reserva recusou a retomada: ${String(reserva)}` }
+
+  return enviarComPosse(db, turno, andamento, { agente, contactId, dono, texto: lida.texto })
+}
+
+/**
+ * ARMA a próxima tentativa da série, depois de uma resposta (a 1ª) ou de uma
+ * retomada (a seguinte) que SAIU. Nada se arma com a retomada desligada, a
+ * equipe pedida, a conversa encerrada ou pausada, alguém tendo escrito depois
+ * da âncora, ou a série que não cabe mais (`proximaRetomada` = parar). Já
+ * existe pendente na conexão (23505) = o cliente escreveu: nada. Os lembretes
+ * que não se leem aqui não seguram o armar — a tentativa relê tudo quando
+ * vence. Nunca lança: a resposta já saiu.
+ */
+async function armarRetomada(
+  db: SupabaseClient,
+  turno: LinhaDoTurno,
+  mensagemEnviadaId: string,
+  andamento: Andamento,
+): Promise<void> {
+  try {
+    const agente = andamento.agente
+    if (!agente || !agente.retomada.ativa || andamento.pediuEquipe) return
+    if (!turno.canal_id || !turno.deal_id || !turno.stage_id) return
+    const ehRetomada = turno.tipo === 'retomada'
+    const tentativa = ehRetomada ? (turno.tentativa ?? 0) + 1 : 1
+    if (tentativa > agente.retomada.cadencia.length) return
+
+    // A âncora: a resposta que acabou de sair; na retomada, a mesma da série.
+    const consulta = db.from('messages').select('id, gravada_em')
+    const { data: lida, error } = ehRetomada
+      ? await consulta.eq('id', turno.mensagem_gatilho_id ?? '').maybeSingle()
+      : await consulta.eq('conversation_id', turno.conversation_id).eq('message_id', mensagemEnviadaId).limit(1).maybeSingle()
+    if (error) throw new Error(`leitura da âncora falhou: ${error.message}`)
+    const ancora = lida as { id: string; gravada_em: string | null } | null
+    if (!ancora?.gravada_em) return
+
+    const { data: conv, error: erroDaConversa } = await db
+      .from('conversations')
+      .select('status, ai_autoreply_disabled')
+      .eq('id', turno.conversation_id)
+      .eq('account_id', turno.account_id)
+      .maybeSingle()
+    if (erroDaConversa) throw new Error(`leitura da conversa falhou: ${erroDaConversa.message}`)
+    const c = conv as { status: string; ai_autoreply_disabled: boolean | null } | null
+    if (!c || c.status === 'closed' || c.ai_autoreply_disabled === true) return
+
+    const { depois } = await lerMensagensDepois(db, {
+      conversationId: turno.conversation_id,
+      ancoraGravadaEm: ancora.gravada_em,
+      agenteId: agente.id,
+    })
+    if (motivoDaParada(depois, agente.id)) return
+
+    const agora = Date.now()
+    let bloqueios = SEM_BLOQUEIOS
+    try {
+      bloqueios = await lerBloqueiosDaRetomada(db, turno.account_id, andamento.contactId)
+    } catch (err) {
+      console.error('[ia-agentes] armar a retomada sem os lembretes (a tentativa relê quando vencer):', turno.id, err)
+    }
+    const fimDaJanelaMeta = await lerFimDaJanelaMeta(db, {
+      accountId: turno.account_id,
+      conversationId: turno.conversation_id,
+      canalId: turno.canal_id,
+      agora,
+    })
+    const proxima = proximaRetomada({
+      ancora: Date.parse(ancora.gravada_em),
+      tentativa: tentativa - 1,
+      ultimaRetomada: ehRetomada ? agora : null,
+      agora,
+      config: agente.retomada,
+      horario: agente.horario,
+      bloqueios,
+      fimDaJanelaMeta,
+    })
+    if (proxima.tipo === 'parar') return
+
+    const { error: erroDoInsert } = await db.from('cb_ia_turnos').insert({
+      account_id: turno.account_id,
+      conversation_id: turno.conversation_id,
+      canal_id: turno.canal_id,
+      ia_agente_id: agente.id,
+      deal_id: turno.deal_id,
+      stage_id: turno.stage_id,
+      veio_de_passagem: false,
+      mensagem_gatilho_id: ancora.id,
+      mensagem_inicial_id: ancora.id,
+      status: 'aguardando',
+      executar_apos: new Date(proxima.instante).toISOString(),
+      tipo: 'retomada',
+      tentativa,
+      tentativas: agente.retomada.cadencia.length,
+    })
+    // 23505: já há um pendente nesta conexão — o cliente escreveu. Nada a armar.
+    if (erroDoInsert && erroDoInsert.code !== '23505') {
+      console.error('[ia-agentes] armar a retomada falhou:', turno.id, erroDoInsert.message)
+    }
+  } catch (err) {
+    console.error('[ia-agentes] armar a retomada falhou:', turno.id, err)
+  }
+}
+
+// ------------------------------------------------------------
 // O encerramento
 // ------------------------------------------------------------
 
@@ -1392,7 +1852,7 @@ async function encerrar(
   if (desfecho.status === 'abandonado') return
 
   if (desfecho.status === 'reagendar') {
-    const executarApos = new Date(Date.now() + REAGENDAR_AUDIO_MS).toISOString()
+    const executarApos = desfecho.executarApos ?? new Date(Date.now() + REAGENDAR_AUDIO_MS).toISOString()
     const { data, error } = await db
       .from('cb_ia_turnos')
       .update({
@@ -1408,7 +1868,9 @@ async function encerrar(
       .eq('rodando_desde', turno.rodando_desde)
       .select('id')
     if (!error && data && data.length > 0) {
-      agendarTurno({ id: turno.id, executarApos })
+      // Só o reagendamento curto (o áudio, a mídia) ganha disparo no próprio
+      // processo; a retomada empurrada (minutos, horas) é da rede do cron.
+      if (!desfecho.executarApos) agendarTurno({ id: turno.id, executarApos })
       return
     }
     // 23505: já há outro pendente nesta conexão (mensagem mais nova) — ele
@@ -1438,6 +1900,12 @@ async function encerrar(
     ...(andamento.acoes ? { acoes: andamento.acoes } : {}),
   })
   if (!escreveu) return
+
+  // A resposta (ou a retomada) SAIU: arma a próxima tentativa da série.
+  if (desfecho.status === 'respondeu') await armarRetomada(db, turno, desfecho.mensagemEnviadaId, andamento)
+  // A retomada nunca transfere para gente por conta própria — nem no envio
+  // incerto: o cliente não está esperando resposta, e a série só não segue.
+  if (turno.tipo === 'retomada') return
 
   const motivo: MotivoDeTransferencia | null =
     desfecho.status === 'transferiu' ? desfecho.motivo : desfecho.status === 'incerto' ? 'incerto' : null
@@ -1503,6 +1971,7 @@ export async function executarTurno(turnoId: string): Promise<void> {
     transcreveu: false,
     semLeitor: new Set(),
     acoes: null,
+    pediuEquipe: false,
     cancelarDigitando: new AbortController(),
   }
   let desfecho: Desfecho

@@ -24,6 +24,10 @@ interface LinhaDoTurno {
   conversation_id: string
   contexto: unknown
   acoes: unknown
+  tipo: string | null
+  tentativa: number | null
+  tentativas: number | null
+  executar_apos: string | null
 }
 
 /**
@@ -42,6 +46,8 @@ interface LinhaDoTurno {
  * `detalhe` o complemento cru (o motivo da D5, a recusa da RPC, `ja_estava`).
  * Nulo quando o registro não é uma lista. O `erro` do TURNO que reteve um
  * link inventado traz os links ("link inventado: https://…").
+ * A RETOMADA (1056) vem com `retomada: { tentativa, de }` (nula no turno de
+ * resposta) e `executarApos` — o vencimento da que ainda espera na fila.
  * `cb_ia_turnos` é fechada ao navegador — daí a rota, com o cliente de
  * serviço e a conta conferida (o agente e cada consulta).
  */
@@ -57,7 +63,7 @@ export async function GET(_request: Request, { params }: Contexto) {
     const db = supabaseAdmin()
     const { data, error } = await db
       .from('cb_ia_turnos')
-      .select('id, status, created_at, terminado_em, erro, conversation_id, contexto, acoes')
+      .select('id, status, created_at, terminado_em, erro, conversation_id, contexto, acoes, tipo, tentativa, tentativas, executar_apos')
       .eq('account_id', ctx.accountId)
       .eq('ia_agente_id', id)
       .order('created_at', { ascending: false })
@@ -96,6 +102,11 @@ export async function GET(_request: Request, { params }: Contexto) {
         contato: contatoDa.get(t.conversation_id) ?? null,
         contexto: lerRetrato(t.contexto),
         acoes: lerRegistrosDasAcoes(t.acoes),
+        retomada:
+          t.tipo === 'retomada' && typeof t.tentativa === 'number' && typeof t.tentativas === 'number'
+            ? { tentativa: t.tentativa, de: t.tentativas }
+            : null,
+        executarApos: t.executar_apos,
       })),
     })
   } catch (err) {
