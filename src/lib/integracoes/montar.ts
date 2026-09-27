@@ -12,7 +12,10 @@
 //   - o Radar tem modelo PRÓPRIO (`radar_model`, migration 946) e,
 //     quando ele é nulo, HERDA o do agente de conversa;
 //   - a transcrição usa modelo FIXO no código (`MODELO_TRANSCRICAO`),
-//     que não é configurável e não tem relação com o do agente;
+//     que não é configurável e não tem relação com o do agente — Gemini,
+//     senão OpenAI (27/09/2026);
+//   - a leitura de imagem e PDF para o agente de IA usa modelo FIXO por
+//     provedor, pela ordem Gemini → OpenAI → Anthropic (a primeira chave);
 //   - o RAG usa modelo FIXO da OpenAI, casado com `vector(1536)`.
 // Sem essa etiqueta, o operador lê o modelo do agente e conclui que ele
 // vale para tudo — foi exatamente o engano que originou esta tela.
@@ -43,6 +46,23 @@ export interface ChaveParaMontar {
   provedor: ProviderId;
   existe: boolean;
   teste: Teste;
+  /**
+   * Só OpenAI: a chave nasceu SÓ da base (1047). A leitura e a transcrição a
+   * PULAM (pode ser restrita aos embeddings) — o cartão não pode dizer que ela
+   * as atende.
+   */
+  soDaBase?: boolean;
+}
+
+/**
+ * Os modelos FIXOS da leitura de mídia e da queda da transcrição
+ * (`src/lib/transcricao/leitores.ts`), por PARÂMETRO como os demais.
+ */
+export interface ModelosDaLeitura {
+  /** O modelo que lê imagem e PDF em cada provedor. */
+  leitura: Record<ProviderId, string>;
+  /** O modelo de transcrição da OpenAI (sem chave do Gemini). */
+  transcricaoOpenai: string;
 }
 
 /**
@@ -83,7 +103,7 @@ export interface AgenteNoCartao {
   teste: Teste;
 }
 
-export type ModuloId = 'conversa' | 'radar' | 'transcricao' | 'rag';
+export type ModuloId = 'conversa' | 'radar' | 'transcricao' | 'leitura' | 'rag';
 
 /** De onde veio o modelo que este módulo usa. */
 export type OrigemDoModelo =
@@ -107,7 +127,16 @@ export type Indisponibilidade =
    * (`serve_embeddings = false`): o chat funciona e a base usa só a busca
    * por palavras. É o MÓDULO que não roda, não a chave que falha (Codex, #294).
    */
-  | 'embeddings_recusados';
+  | 'embeddings_recusados'
+  /**
+   * Reserva: o módulo lê a chave DESTE provedor só quando a conta não tem
+   * chave do Gemini (transcrição e leitura na OpenAI).
+   */
+  | 'so_sem_gemini'
+  /** Reserva: só sem chave do Gemini NEM da OpenAI (a leitura na Anthropic). */
+  | 'so_sem_gemini_e_openai'
+  /** A chave da OpenAI nasceu só da base: a leitura e a transcrição a pulam. */
+  | 'chave_so_da_base';
 
 export interface UsoNoCartao {
   modulo: ModuloId;
@@ -182,8 +211,15 @@ export function montarCartoes(
   modeloTranscricao: string,
   modeloEmbeddings: string,
   agentesDeConexao: AgenteDeConexaoParaMontar[] = [],
-  agentesDeIa: AgenteDeIaNoCartao[] = []
+  agentesDeIa: AgenteDeIaNoCartao[] = [],
+  /** `null` = os cartões não mostram a leitura nem a queda da transcrição. */
+  modelosDaLeitura: ModelosDaLeitura | null = null
 ): CartaoDeIntegracao[] {
+  // A chave SERVE à leitura e à transcrição? A da OpenAI "só da base" não.
+  const serve = (p: ProviderId) => {
+    const c = chaves.find((x) => x.provedor === p);
+    return c?.existe === true && !(p === 'openai' && c.soDaBase === true);
+  };
   const cartoes: CartaoDeIntegracao[] = PROVIDERS.map((p) => {
     const chave = chaves.find((c) => c.provedor === p);
     const temChave = chave?.existe === true;
@@ -266,9 +302,9 @@ export function montarCartoes(
     }
 
     // ---- Transcrição de áudio ----
-    // Gemini-only, modelo FIXO, e desde a 1047 lê a chave do Gemini
-    // DIRETO — não depende do provedor de agente nenhum. Só no cartão do
-    // Gemini.
+    // Modelo FIXO, e desde a 1047 lê a chave do PROVEDOR direto — não depende
+    // do provedor de agente nenhum. Gemini primeiro; sem ele, a OpenAI
+    // (27/09/2026). A Anthropic não recebe áudio: nada no cartão dela.
     if (p === 'gemini') {
       usos.push({
         modulo: 'transcricao',
@@ -277,6 +313,48 @@ export function montarCartoes(
         canais: [],
         canaisDesligados: [],
         ...semChave,
+      });
+    }
+    // A reserva só aparece quando os cartões trazem os modelos da leitura.
+    const soDaBase = p === 'openai' && chave?.soDaBase === true;
+    if (p === 'openai' && modelosDaLeitura) {
+      usos.push({
+        modulo: 'transcricao',
+        modelo: modelosDaLeitura.transcricaoOpenai,
+        origem: 'fixo',
+        canais: [],
+        canaisDesligados: [],
+        ...(!temChave
+          ? semChave
+          : soDaBase
+            ? { indisponivel: 'chave_so_da_base' as const }
+            : serve('gemini')
+              ? { indisponivel: 'so_sem_gemini' as const }
+              : {}),
+      });
+    }
+
+    // ---- Leitura de imagem e PDF (agentes de IA) ----
+    // Modelo FIXO por provedor; lê a PRIMEIRA chave que a conta tiver, na
+    // ordem Gemini → OpenAI → Anthropic. Os outros cartões dizem que são reserva.
+    if (modelosDaLeitura) {
+      const reserva =
+        p === 'openai' && serve('gemini')
+          ? { indisponivel: 'so_sem_gemini' as const }
+          : p === 'anthropic' && (serve('gemini') || serve('openai'))
+            ? { indisponivel: 'so_sem_gemini_e_openai' as const }
+            : {};
+      usos.push({
+        modulo: 'leitura',
+        modelo: modelosDaLeitura.leitura[p],
+        origem: 'fixo',
+        canais: [],
+        canaisDesligados: [],
+        ...(!temChave
+          ? semChave
+          : soDaBase
+            ? { indisponivel: 'chave_so_da_base' as const }
+            : reserva),
       });
     }
 

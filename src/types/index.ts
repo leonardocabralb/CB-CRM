@@ -661,6 +661,10 @@ export interface Message {
    * diferentes, e num CRM jurídico a distinção é permanente. Estados:
    * NULL (nunca pedida) → transcrevendo → pronta | falhou (retentável) |
    * recusada (terminal, sem botão).
+   *
+   * ⚠️ Numa IMAGEM ou num DOCUMENTO do cliente, as mesmas colunas guardam o
+   * texto LIDO do arquivo para o agente de IA (`src/lib/transcricao/ler-midia.ts`,
+   * 27/09/2026). Quem mostrar a transcrição filtra por `content_type === 'audio'`.
    */
   transcricao?: string | null;
   transcricao_status?:

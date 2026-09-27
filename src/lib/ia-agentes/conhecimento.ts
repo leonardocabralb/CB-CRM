@@ -59,9 +59,12 @@ function lerLinhas(data: unknown): LinhaDaBusca[] {
  */
 export function consultaDaUltimaMensagem(conversa: ChatMessage[]): string {
   // ⚠️ SÓ os rótulos que `contexto.ts` põe: "[reembolso]" digitado pelo
-  // cliente é a pergunta, não rótulo (Codex, #312).
+  // cliente é a pergunta, não rótulo (Codex, #312). A leitura de uma imagem
+  // ou PDF ("(content: …)", na linha de baixo) entra SEM o invólucro: o que o
+  // cliente mandou por escrito numa foto também é a pergunta.
   return latestUserMessage(conversa)
-    .replace(/^\[(?:audio message[^\]]*|image|video|document(?::[^\]]*)?|sticker|location)\]\s*/, '')
+    .replace(/^\[(?:audio message[^\]]*|image(?: — [^\]]*)?|video|document(?:(?::| —)[^\]]*)?|sticker|location)\]\s*/, '')
+    .replace(/^\(content: ([\s\S]*)\)$/m, '$1')
     .trim()
 }
 

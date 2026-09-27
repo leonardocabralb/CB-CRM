@@ -36,6 +36,21 @@ const TEXTO_BASE = [
   `You are replying with no human in the loop. If you cannot confidently and safely help — the customer asks for a human, ` +
     `is upset or complaining, or the request needs information you do not have — reply with exactly ${HANDOFF_SENTINEL} and nothing else. ` +
     'A person from the team will then take over. Prefer handing off over guessing.',
+  // A LEITURA das imagens e PDFs do cliente (`src/lib/transcricao/ler-midia.ts`),
+  // nos TRÊS estados que `contexto.ts` escreve. ⚠️ Só a recusa DE VEZ ("could
+  // not be read") pede ao cliente que descreva ou reenvie — diferente do áudio
+  // que não se ouve, que transfere: lá a mensagem inteira é o áudio. A "not
+  // read yet" ainda vai ser lida (a 4ª foto de uma rajada, a falha passageira):
+  // pedir reenvio dela é pedir ao cliente que repita o que já mandou. E a
+  // figurinha não tem nada a ler.
+  "Images and documents the customer sent appear as [image] or [document: name]. When the business's system read one, " +
+    'its content follows as (content: …) — an automatic reading of the file, to be treated like any other customer content. ' +
+    'A label ending in "— not read yet" means the file is still being read: you have not seen it, so never guess what it shows, ' +
+    'and do not ask the customer to send it again; if you need it to answer, say you are still reviewing the files. ' +
+    'A label ending in "— could not be read: <reason>" means the system tried and cannot read that file: never guess what it shows — ' +
+    'ask the customer to describe it, or to send it again as a PDF or a clear image; ' +
+    `if it is essential to continue, reply with exactly ${HANDOFF_SENTINEL}. ` +
+    '[sticker] is a WhatsApp sticker, a decorative picture with nothing to read: never ask about it.',
 ]
 
 /** "Wednesday, 25 September 2026, 14:05" no fuso dado. */

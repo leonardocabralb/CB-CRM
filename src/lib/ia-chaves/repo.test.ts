@@ -51,7 +51,7 @@ vi.mock('@/lib/ai/admin-client', () => ({
   }),
 }))
 
-import { gravarChave } from './repo'
+import { gravarChave, lerChave } from './repo'
 
 beforeEach(() => {
   upserts.length = 0
@@ -123,5 +123,24 @@ describe('gravarChave — a chave que só gera embedding leva a MARCA de só da 
   it('a marca não vale fora da OpenAI', async () => {
     await gravarChave('conta-1', 'gemini', 'g-nova', 'user-1', null, { soDaBase: true })
     expect(upserts[0]).not.toHaveProperty('embeddings_api_key')
+  })
+})
+
+describe('lerChave — a marca "só da base" (a leitura e a transcrição a pulam)', () => {
+  it('o MESMO texto cifrado nas duas colunas = só da base', async () => {
+    linhaOpenai = { api_key: 'cifra:90:sk-da-base', embeddings_api_key: 'cifra:90:sk-da-base' }
+    expect(await lerChave('conta-1', 'openai')).toEqual({ chave: 'sk-da-base', ilegivel: false, soDaBase: true })
+  })
+
+  it('a chave própria diferente dos embeddings não marca a do chat', async () => {
+    linhaOpenai = { api_key: 'cifra:90:sk-chat', embeddings_api_key: 'cifra:91:sk-chat' }
+    expect(await lerChave('conta-1', 'openai')).toEqual({ chave: 'sk-chat', ilegivel: false, soDaBase: false })
+    linhaOpenai = { api_key: 'cifra:90:sk-chat', embeddings_api_key: null }
+    expect((await lerChave('conta-1', 'openai')).soDaBase).toBe(false)
+  })
+
+  it('a marca não vale fora da OpenAI', async () => {
+    linhaOpenai = { api_key: 'cifra:90:g', embeddings_api_key: 'cifra:90:g' }
+    expect((await lerChave('conta-1', 'gemini')).soDaBase).toBe(false)
   })
 })

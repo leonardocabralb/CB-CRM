@@ -43,6 +43,15 @@ export const TIPOS_QUE_ABREM_TURNO: ReadonlySet<string> = new Set(['text', 'audi
 export const MIME_DA_FIGURINHA = 'image/webp'
 
 /**
+ * A linha é uma FIGURINHA? UMA régua para as três pontas: quem abre turno
+ * (`abreTurno`), quem o turno lê (`prepararMidias` — figurinha não se lê) e
+ * como o agente a vê (`contexto.ts`: `[sticker]`, nunca uma foto não lida).
+ */
+export function ehFigurinha(tipo: string, mime: string | null | undefined): boolean {
+  return tipo === 'image' && mime?.split(';')[0].trim().toLowerCase() === MIME_DA_FIGURINHA
+}
+
+/**
  * O começo do texto com que o webhook da META grava o tipo de mensagem que
  * ele não sabe ler — cartão de contato (`contacts`), `system`, `unsupported`,
  * e o que a Meta inventar depois: `content_type = 'text'` e `content_text =
@@ -82,7 +91,7 @@ function temTextoVisivel(texto: string | null): boolean {
  */
 export function abreTurno(c: ConteudoDaMensagem): boolean {
   if (!TIPOS_QUE_ABREM_TURNO.has(c.tipo)) return false
-  if (c.tipo === 'image' && c.mime?.split(';')[0].trim().toLowerCase() === MIME_DA_FIGURINHA) return false
+  if (ehFigurinha(c.tipo, c.mime)) return false
   if (c.tipo === 'text' && !temTextoVisivel(c.texto)) return false
   if (c.tipo === 'text' && c.texto?.startsWith(PREFIXO_DE_TIPO_NAO_SUPORTADO)) return false
   return true

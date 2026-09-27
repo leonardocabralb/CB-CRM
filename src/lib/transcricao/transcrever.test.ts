@@ -5,7 +5,10 @@ vi.mock('@/lib/ai/usage', () => ({ logAiUsage: vi.fn(async () => {}) }))
 
 import { lerChave } from '@/lib/ia-chaves/repo'
 import { logAiUsage } from '@/lib/ai/usage'
-import { MODELO_TRANSCRICAO, transcreverAudio } from './transcrever'
+import { MARCA_INAUDIVEL, MODELO_TRANSCRICAO, transcreverAudio } from './transcrever'
+
+/** O `fetch` falso, com o `init` tipado nas chamadas registradas. */
+type FetchFalso = (url: string, init?: RequestInit) => Promise<unknown>
 
 // ------------------------------------------------------------
 // Stub do supabase: cada `from()` vira um registro (tabela, operação,
@@ -81,7 +84,7 @@ const respostaGemini = {
 }
 
 function fakeFetchOk() {
-  return vi.fn(async (url: string, _init?: RequestInit) => {
+  return vi.fn<FetchFalso>(async (url) => {
     if (String(url).includes('generativelanguage')) {
       return {
         ok: true,
@@ -100,7 +103,7 @@ function fakeFetchOk() {
 }
 
 beforeEach(() => {
-  vi.mocked(lerChave).mockResolvedValue(chaveGemini)
+  vi.mocked(lerChave).mockReset().mockResolvedValue(chaveGemini)
   vi.mocked(logAiUsage).mockClear()
 })
 afterEach(() => {
@@ -356,6 +359,112 @@ describe('transcreverAudio', () => {
       expect.anything(),
       expect.objectContaining({ model: MODELO_TRANSCRICAO }),
     )
+  })
+
+  // ---- A queda para a OpenAI (27/09/2026) ----
+
+  it('SEM chave do Gemini: transcreve pela OPENAI (multipart, gpt-transcribe) e registra o custo dela', async () => {
+    vi.mocked(lerChave).mockImplementation(async (_conta, p) =>
+      p === 'openai' ? { chave: 'sk-openai', ilegivel: false } : { chave: null, ilegivel: false },
+    )
+    const chamadas: Chamada[] = []
+    const admin = fakeAdmin([{ data: msgBase }, { data: { id: 'm1' } }, { data: { id: 'm1' } }], chamadas)
+    const fetchSpy = vi.fn<FetchFalso>(async (url) => {
+      if (String(url).includes('api.openai.com')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ text: ' Oi doutor ', usage: { type: 'tokens', input_tokens: 80, output_tokens: 4, total_tokens: 84 } }),
+          text: async () => '',
+        }
+      }
+      return { ok: true, status: 200, headers: { get: () => 'audio/ogg' }, arrayBuffer: async () => new ArrayBuffer(64) }
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+
+    const r = await transcreverAudio(admin, { accountId: 'a1', messageId: 'm1' })
+    expect(r).toEqual({ status: 'pronta', transcricao: 'Oi doutor' })
+    const chamada = fetchSpy.mock.calls.find((c) => String(c[0]).includes('api.openai.com'))!
+    expect(String(chamada[0])).toBe('https://api.openai.com/v1/audio/transcriptions')
+    const init = chamada[1] as RequestInit
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer sk-openai')
+    const form = init.body as FormData
+    expect(form.get('model')).toBe('gpt-transcribe')
+    expect((form.get('file') as File).name).toBe('audio.ogg')
+    expect(fetchSpy.mock.calls.some((c) => String(c[0]).includes('generativelanguage'))).toBe(false)
+    expect(logAiUsage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ mode: 'transcricao', provider: 'openai', model: 'gpt-transcribe' }),
+    )
+    // O mesmo contrato: gravação com a cerca de posse.
+    const grava = chamadas.filter((c) => c.op === 'update').at(-1)!
+    expect(grava.payload?.transcricao_status).toBe('pronta')
+    expect(grava.filtros.join(' ')).toContain('eq(transcricao_desde|')
+  })
+
+  it('⚠️ só a ANTHROPIC tem chave: ela não ouve áudio — `recusada` SEM gravar, sem nem perguntar pela chave dela', async () => {
+    vi.mocked(lerChave).mockImplementation(async (_conta, p) =>
+      p === 'anthropic' ? { chave: 'a-1', ilegivel: false } : { chave: null, ilegivel: false },
+    )
+    const chamadas: Chamada[] = []
+    const admin = fakeAdmin([{ data: msgBase }], chamadas)
+    const fetchSpy = fakeFetchOk()
+    vi.stubGlobal('fetch', fetchSpy)
+    const r = await transcreverAudio(admin, { accountId: 'a1', messageId: 'm1' })
+    expect(r.status).toBe('recusada')
+    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(chamadas.filter((c) => c.op === 'update')).toHaveLength(0)
+    expect(vi.mocked(lerChave).mock.calls.map((c) => c[1])).not.toContain('anthropic')
+  })
+
+  it('⚠️ OpenAI devolve texto VAZIO (áudio sem fala): grava a marca de inaudível, como o Gemini — não é falha', async () => {
+    vi.mocked(lerChave).mockImplementation(async (_conta, p) =>
+      p === 'openai' ? { chave: 'sk-openai', ilegivel: false } : { chave: null, ilegivel: false },
+    )
+    const chamadas: Chamada[] = []
+    const admin = fakeAdmin([{ data: msgBase }, { data: { id: 'm1' } }, { data: { id: 'm1' } }], chamadas)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<FetchFalso>(async (url) =>
+        String(url).includes('api.openai.com')
+          ? { ok: true, status: 200, json: async () => ({ text: '' }), text: async () => '' }
+          : { ok: true, status: 200, headers: { get: () => 'audio/ogg' }, arrayBuffer: async () => new ArrayBuffer(64) },
+      ),
+    )
+    expect(await transcreverAudio(admin, { accountId: 'a1', messageId: 'm1' })).toEqual({
+      status: 'pronta',
+      transcricao: MARCA_INAUDIVEL,
+    })
+    expect(MARCA_INAUDIVEL).toBe('[inaudível]')
+    expect(chamadas.filter((c) => c.op === 'update').at(-1)!.payload).toMatchObject({
+      transcricao_status: 'pronta',
+      transcricao: '[inaudível]',
+    })
+  })
+
+  it('OpenAI sem o campo `text` (resposta malformada): `falhou`, não inaudível', async () => {
+    vi.mocked(lerChave).mockImplementation(async (_conta, p) =>
+      p === 'openai' ? { chave: 'sk-openai', ilegivel: false } : { chave: null, ilegivel: false },
+    )
+    const admin = fakeAdmin([{ data: msgBase }, { data: { id: 'm1' } }, { error: null }], [])
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<FetchFalso>(async (url) =>
+        String(url).includes('api.openai.com')
+          ? { ok: true, status: 200, json: async () => ({}), text: async () => '' }
+          : { ok: true, status: 200, headers: { get: () => 'audio/ogg' }, arrayBuffer: async () => new ArrayBuffer(64) },
+      ),
+    )
+    expect((await transcreverAudio(admin, { accountId: 'a1', messageId: 'm1' })).status).toBe('falhou')
+  })
+
+  it('com as duas chaves, o GEMINI continua sendo o primeiro', async () => {
+    const admin = fakeAdmin([{ data: msgBase }, { data: { id: 'm1' } }, { data: { id: 'm1' } }], [])
+    const fetchSpy = fakeFetchOk()
+    vi.stubGlobal('fetch', fetchSpy)
+    await transcreverAudio(admin, { accountId: 'a1', messageId: 'm1' })
+    expect(fetchSpy.mock.calls.some((c) => String(c[0]).includes('generativelanguage'))).toBe(true)
+    expect(fetchSpy.mock.calls.some((c) => String(c[0]).includes('api.openai.com'))).toBe(false)
   })
 
   it('erro do Gemini grava `falhou` retentável, com a cerca', async () => {

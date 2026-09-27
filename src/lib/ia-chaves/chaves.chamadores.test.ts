@@ -12,7 +12,9 @@ import { describe, expect, it } from 'vitest';
 //    sobre uma conta configurada.
 // 2. O Radar NÃO resolve a configuração pelo canal: um agente criado para uma
 //    conexão trocaria, em silêncio, a chave e o modelo do Radar ali.
-// 3. A transcrição lê a chave do GEMINI direto, sem depender de agente.
+// 3. A transcrição e a leitura de imagem/PDF leem a chave do PROVEDOR direto
+//    (Gemini → OpenAI, e a leitura → Anthropic), sem depender de agente
+//    (27/09/2026: antes a transcrição era só do Gemini).
 // ============================================================
 
 const RAIZ = join(__dirname, '..', '..');
@@ -54,11 +56,15 @@ describe('chaves de IA por provedor — quem chama', () => {
     expect(fonte).toMatch(/lerChave\(/);
   });
 
-  it('a transcrição lê a chave do Gemini direto, sem loadAiConfig', () => {
-    const fonte = semComentarios(
-      readFileSync(join(RAIZ, 'lib', 'transcricao', 'transcrever.ts'), 'utf8'),
-    );
-    expect(fonte).not.toMatch(/loadAiConfig/);
-    expect(fonte).toMatch(/lerChave\(\s*args\.accountId\s*,\s*'gemini'\s*\)/);
+  it('a transcrição e a leitura escolhem a chave pelo provedor, sem loadAiConfig', () => {
+    const ler = (arquivo: string) =>
+      semComentarios(readFileSync(join(RAIZ, 'lib', 'transcricao', arquivo), 'utf8'));
+    const transcrever = ler('transcrever.ts');
+    const lerMidia = ler('ler-midia.ts');
+    for (const fonte of [transcrever, lerMidia]) expect(fonte).not.toMatch(/loadAiConfig/);
+    expect(transcrever).toMatch(/escolherLeitor\(\s*args\.accountId\s*,\s*ORDEM_DA_TRANSCRICAO\s*\)/);
+    expect(lerMidia).toMatch(/escolherLeitor\(\s*args\.accountId\s*,\s*ORDEM_DA_LEITURA\s*\)/);
+    // A escolha lê a chave pelo repositório, provedor a provedor.
+    expect(ler('escolher-leitor.ts')).toMatch(/lerChave\(\s*accountId\s*,\s*provedor\s*\)/);
   });
 });

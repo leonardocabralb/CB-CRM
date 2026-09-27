@@ -1,8 +1,8 @@
 // ============================================================
 // O TURNO do agente de IA (docs/PLANO-agentes-de-ia.md, D24–D27 e E5–E10).
 //
-// Um turno = reivindicar o pendente → conferir tudo de novo → (áudio) →
-// gerar → ler as AÇÕES (F4) → conferir de novo → PASSAR (D25) ou reservar,
+// Um turno = reivindicar o pendente → conferir tudo de novo → (áudio, imagem
+// e PDF viram texto) → gerar → ler as AÇÕES (F4) → conferir de novo → PASSAR (D25) ou reservar,
 // enviar e, com a resposta FORA, executar as ações → encerrar. A
 // ingestão só enfileira (`entrada.ts`), com o agente da etapa, o card e a
 // etapa; este módulo roda no `after()` do disparo ou na rede do cron.
@@ -26,7 +26,8 @@
 //    alerta de atraso já chama a equipe. Transferem: o sentinela, a resposta
 //    vazia, o teto de respostas (que a reserva conta pelas mensagens do
 //    agente), o áudio que não se ouve, o envio incerto e a passagem que não
-//    dá para fazer.
+//    dá para fazer. ⚠️ A imagem ou o PDF que não se lê NÃO transfere: o
+//    agente pede ao cliente que descreva (`prepararMidias`, `pedido.ts`).
 //  - Mensagem mais nova do cliente NA MESMA CONEXÃO descarta o turno (E10)
 //    — só a que ABRE turno (`abreTurno`, a régua da entrada).
 //  - Gente respondeu: a IA PAUSA ('gente', D26) — quem pausa é o gatilho da
@@ -75,6 +76,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { supabaseAdmin } from '@/lib/ai/admin-client'
+import { aiContextMessageLimit } from '@/lib/ai/defaults'
 import { concluirDigitando, mostrarDigitando } from '@/lib/ai/digitando'
 import { generateReply } from '@/lib/ai/generate'
 import { AiError, mensagemSeguraDeAiError, type AiConfig, type AiUsage } from '@/lib/ai/types'
@@ -90,6 +92,7 @@ import {
 } from '@/lib/flows/meta-send'
 import { lerChave } from '@/lib/ia-chaves/repo'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
+import { lerMidia, TIPOS_QUE_SE_LEEM } from '@/lib/transcricao/ler-midia'
 import { transcreverAudio } from '@/lib/transcricao/transcrever'
 
 import { lerOQueOAgenteVe } from './acesso'
@@ -118,7 +121,14 @@ import { anotarNaConversa, executarAcoes } from './executar-acoes'
 import { opcoesDoAgente } from './ferramentas'
 import { dentroDoHorario } from './horario'
 import { lerPassagem, montarPedidoDoAgente } from './pedido'
-import { abreTurno, lerQuemAtende, quemResponde, TIPOS_QUE_ABREM_TURNO, type CardDoContato } from './quem-responde'
+import {
+  abreTurno,
+  ehFigurinha,
+  lerQuemAtende,
+  quemResponde,
+  TIPOS_QUE_ABREM_TURNO,
+  type CardDoContato,
+} from './quem-responde'
 import { obterAgente } from './repo'
 import { textosDaPassagem, textosDaTransferencia, type MotivoDeTransferencia } from './textos-do-servidor'
 
@@ -488,6 +498,21 @@ async function conferir(db: SupabaseClient, turno: LinhaDoTurno, gatilho: Gatilh
 const AUDIOS_DA_RAJADA = 5
 
 /**
+ * O começo da RAJADA: o `gravada_em` da primeira mensagem do turno (senão o
+ * do gatilho). `null` = o gatilho não tem carimbo (linha anterior à 1003).
+ */
+async function inicioDaRajada(db: SupabaseClient, turno: LinhaDoTurno, gatilho: Gatilho): Promise<string | null> {
+  if (!gatilho.gravada_em) return null
+  if (!turno.mensagem_inicial_id || turno.mensagem_inicial_id === gatilho.id) return gatilho.gravada_em
+  const { data: inicial } = await db
+    .from('messages')
+    .select('gravada_em')
+    .eq('id', turno.mensagem_inicial_id)
+    .maybeSingle()
+  return (inicial?.gravada_em as string | undefined) ?? gatilho.gravada_em
+}
+
+/**
  * Os áudios da RAJADA (da primeira à última mensagem do turno, nesta
  * conexão) precisam estar transcritos antes de gerar. `null` = pode seguir.
  * Marca `andamento.transcreveu` quando algum áudio passou a ter transcrição
@@ -499,18 +524,10 @@ async function prepararAudios(
   db: SupabaseClient,
   turno: LinhaDoTurno,
   gatilho: Gatilho,
+  desde: string | null,
   andamento: Andamento,
 ): Promise<Desfecho | null> {
-  if (!turno.canal_id || !gatilho.gravada_em) return null
-  let desde = gatilho.gravada_em
-  if (turno.mensagem_inicial_id && turno.mensagem_inicial_id !== gatilho.id) {
-    const { data: inicial } = await db
-      .from('messages')
-      .select('gravada_em')
-      .eq('id', turno.mensagem_inicial_id)
-      .maybeSingle()
-    if (inicial?.gravada_em) desde = inicial.gravada_em as string
-  }
+  if (!turno.canal_id || !gatilho.gravada_em || !desde) return null
   const { data, error } = await db
     .from('messages')
     .select('id, gravada_em, transcricao, transcricao_status')
@@ -539,6 +556,120 @@ async function prepararAudios(
     const idade = Number.isFinite(gravada) ? Date.now() - gravada : Number.POSITIVE_INFINITY
     if (r.status === 'transcrevendo' || idade < JANELA_DO_AUDIO_MS) return { status: 'reagendar' }
     return { status: 'transferiu', motivo: 'audio' }
+  }
+  return null
+}
+
+// ------------------------------------------------------------
+// Imagem e PDF do cliente
+// ------------------------------------------------------------
+
+/** Quantas imagens/PDFs o turno TENTA ler por rodada (o `sem_leitor` não conta). */
+export const MIDIAS_POR_TURNO = 5
+/**
+ * Até quando, contado do `gravada_em` do GATILHO, a leitura das mídias pode
+ * segurar (e reagendar) o turno. Depois dele o turno NÃO tenta ler mais nada
+ * e responde com o que tem — as não lidas vão como "not read yet" e são lidas
+ * num turno seguinte. É o teto dos reagendamentos: a falha passageira não
+ * gasta tentativa (`ler-midia.ts`) e a lenta come o prazo e reagenda; sem ele
+ * um provedor (ou um banco) lento laçava o turno para sempre. A janela da
+ * própria mensagem (`JANELA_DO_AUDIO_MS`, 2 min) mais um minuto: com 10 s
+ * entre rodadas, no máximo ~18 rodadas por gatilho.
+ */
+export const TETO_DA_ESPERA_DAS_MIDIAS_MS = JANELA_DO_AUDIO_MS + 60_000
+
+interface LinhaDeMidia {
+  id: string
+  sender_type: string
+  content_type: string
+  media_type: string | null
+  gravada_em: string | null
+  transcricao: string | null
+  transcricao_status: string | null
+}
+
+/**
+ * As imagens e os documentos do CLIENTE que vão ao modelo nesta resposta — as
+ * MESMAS últimas mensagens da conexão que `lerConversaDaConexao` lê, não só a
+ * rajada: o PDF mandado logo antes também conta — e ainda não têm leitura
+ * (`lerMidia`, que grava o texto na mensagem, uma vez). `null` = pode seguir.
+ *
+ * A ORDEM: as da RAJADA primeiro, da mais antiga para a mais nova (as fotos
+ * das páginas de um documento são lidas na ordem das páginas), depois as de
+ * antes, da mais nova para a mais antiga. Até `MIDIAS_POR_TURNO` tentativas,
+ * e só enquanto sobra o prazo da prévia. Marca `andamento.transcreveu` quando
+ * alguma passou a ter leitura NESTA rodada (é o que deixa a prévia do prazo
+ * reagendar); o `sem_leitor` vai para `andamento.semLeitor`.
+ *
+ * ⚠️ Diferente do áudio: a RECUSA não transfere — o agente vê "could not be
+ * read" (`contexto.ts`) e pede ao cliente que descreva (`pedido.ts`). O
+ * transitório (`lendo`, `falhou`) reagenda só dentro de `JANELA_DO_AUDIO_MS`
+ * contada da própria mensagem; depois dela o turno segue SEM o texto. E nada
+ * disso passa de `TETO_DA_ESPERA_DAS_MIDIAS_MS` contado do gatilho. A
+ * figurinha fica de fora (`ehFigurinha`, a régua de `abreTurno`).
+ */
+async function prepararMidias(
+  db: SupabaseClient,
+  turno: LinhaDoTurno,
+  gatilho: Gatilho,
+  desde: string | null,
+  inicio: number,
+  andamento: Andamento,
+): Promise<Desfecho | null> {
+  if (!turno.canal_id) return null
+  // O teto dos reagendamentos: gatilho velho demais (ou sem carimbo) não
+  // espera leitura nenhuma.
+  const doGatilho = Date.parse(gatilho.gravada_em ?? '')
+  if (!Number.isFinite(doGatilho) || Date.now() - doGatilho >= TETO_DA_ESPERA_DAS_MIDIAS_MS) return null
+
+  const { data, error } = await db
+    .from('messages')
+    .select('id, sender_type, content_type, media_type, gravada_em, transcricao, transcricao_status')
+    .eq('conversation_id', turno.conversation_id)
+    .eq('channel_id', turno.canal_id)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+    .limit(aiContextMessageLimit())
+  if (error) throw new Error(`leitura das mídias falhou: ${error.message}`)
+
+  // Mais novas primeiro (a ordem da consulta).
+  const pendentes = ((data ?? []) as LinhaDeMidia[])
+    .filter((m) => m.sender_type === 'customer' && TIPOS_QUE_SE_LEEM.includes(m.content_type))
+    .filter((m) => !ehFigurinha(m.content_type, m.media_type))
+    .filter((m) => !m.transcricao && m.transcricao_status !== 'pronta' && m.transcricao_status !== 'recusada')
+  const inicioDaRajadaMs = Date.parse(desde ?? '')
+  const naRajada = (m: LinhaDeMidia) => {
+    const g = Date.parse(m.gravada_em ?? '')
+    return Number.isFinite(inicioDaRajadaMs) && Number.isFinite(g) && g >= inicioDaRajadaMs && g <= doGatilho
+  }
+  const ordem = [...pendentes.filter(naRajada).reverse(), ...pendentes.filter((m) => !naRajada(m))]
+
+  let tentadas = 0
+  for (const m of ordem) {
+    if (tentadas >= MIDIAS_POR_TURNO) break
+    // Sem prazo para mais uma leitura, para: o que já foi lido está gravado, e
+    // a prévia do prazo reagenda (se a leitura avançou) ou segue.
+    if (PRAZO_DO_TURNO_MS - (Date.now() - inicio) - RESERVA_DO_ENVIO_MS - PRAZO_DO_EMBEDDING_MS < 3_000) break
+    const r = await lerMidia(db, { accountId: turno.account_id, messageId: m.id })
+    if (r.status === 'sem_leitor') {
+      // Configuração: nada foi baixado nem gravado — não gasta a vez.
+      andamento.semLeitor.add(m.id)
+      continue
+    }
+    tentadas++
+    if (r.status === 'pronta') {
+      andamento.transcreveu = true
+      continue
+    }
+    if (r.status === 'recusada') continue
+    const gravada = Date.parse(m.gravada_em ?? '')
+    const idade = Number.isFinite(gravada) ? Date.now() - gravada : Number.POSITIVE_INFINITY
+    if (idade < JANELA_DO_AUDIO_MS) return { status: 'reagendar' }
+    // Fora da janela o turno segue sem o texto — mas a tentativa que FALHOU
+    // pode ter comido o prazo (download + provedor lento): contada como
+    // avanço, a prévia reagenda em vez de encerrar o turno sem resposta. Não
+    // laça: `TETO_DA_ESPERA_DAS_MIDIAS_MS`, acima, para de ler.
+    if (r.status === 'falhou') andamento.transcreveu = true
   }
   return null
 }
@@ -718,8 +849,17 @@ interface Andamento {
   /** A primeira chamada ao provedor de MENSAGEM aconteceu. */
   tentouEnviar: boolean
   enviadaId: string | null
-  /** Algum áudio da rajada foi transcrito NESTA rodada (`prepararAudios`). */
+  /**
+   * Algum áudio da rajada foi transcrito, ou alguma imagem/PDF foi lida, NESTA
+   * rodada (`prepararAudios`, `prepararMidias`).
+   */
   transcreveu: boolean
+  /**
+   * As imagens/PDFs que NENHUMA chave cadastrada lê nesta rodada
+   * (`sem_leitor`, nada gravado): o contexto as mostra como "could not be
+   * read" em vez de "not read yet" — não há o que esperar.
+   */
+  semLeitor: Set<string>
   /**
    * O registro das ações pedidas (F4): as executadas e as que não executaram,
    * com o motivo. Gravado no encerramento, junto com o desfecho (cerca de
@@ -759,12 +899,16 @@ async function conduzir(
 
   if (!dentroDoHorario(agente.horario, new Date())) return { status: 'fora_do_horario' }
 
-  const audio = await prepararAudios(db, turno, gatilho, andamento)
+  const desde = await inicioDaRajada(db, turno, gatilho)
+  const audio = await prepararAudios(db, turno, gatilho, desde, andamento)
   if (audio) return audio
+  const midias = await prepararMidias(db, turno, gatilho, desde, inicio, andamento)
+  if (midias) return midias
 
   const conversa = await lerConversaDaConexao(db, {
     conversationId: turno.conversation_id,
     canalId: turno.canal_id,
+    semLeitor: andamento.semLeitor,
   })
   if (conversa.length === 0) return { status: 'descartado', erro: 'conversa vazia nesta conexão' }
 
@@ -1230,6 +1374,7 @@ export async function executarTurno(turnoId: string): Promise<void> {
     tentouEnviar: false,
     enviadaId: null,
     transcreveu: false,
+    semLeitor: new Set(),
     acoes: null,
     cancelarDigitando: new AbortController(),
   }

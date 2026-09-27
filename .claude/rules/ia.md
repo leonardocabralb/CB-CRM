@@ -124,11 +124,14 @@ A IA lê as conversas dos últimos 7 dias e grava `cb_conversation_insights`
 - **O upsert em `cb_conversation_insights` funciona**: o UNIQUE de
   `conversation_id` é TOTAL.
 
-### Transcrição de áudio (943): função ÚNICA, Gemini-only, chave BYO
+### Transcrição de áudio (943): função ÚNICA, Gemini (senão OpenAI), chave BYO
 
 `transcrever.ts` (testado), `POST /api/cb/transcricao/[messageId]`, colunas
 `transcricao_*` em `messages`. A MESMA função idempotente serve ao botão da
-bolha e ao worker do Radar.
+bolha, ao Radar e ao agente de IA.
+
+- ⚠️ **As MESMAS colunas guardam a LEITURA de imagem/PDF**
+  (`ler-midia.ts`): leitor de `transcricao*` filtra `audio` (Radar incluso).
 
 - **A transcrição NUNCA vai para `content_text`**: o escrito e o ouvido diferem,
   e sobrescrever é irreversível.
@@ -141,11 +144,10 @@ bolha e ao worker do Radar.
   Gemini, chave ilegível, apagada, não-áudio, conta errada, áudio ainda sem
   `media_url` — janela de 2 min): gravar mataria o botão para sempre.
   `recusada` GRAVADA é só o irreversível (URL relativa antiga, grande demais,
-  `MAX_TOKENS`, tentativas esgotadas). ⚠️ A chave é a do GEMINI da conta
-  (`lerChave(conta, 'gemini')`, 1047) — nem agente nem canal; erro de LEITURA
-  dela é `falhou` sem gravar, nunca "sem chave".
-- ⚠️ **O modelo é FIXADO em `MODELO_TRANSCRICAO`**, UM para os dois
-  chamadores (quem chega primeiro fixa o do áudio, nenhuma coluna o registra,
+  `MAX_TOKENS`, tentativas esgotadas). ⚠️ A chave é a do PROVEDOR
+  (`escolherLeitor`, 1047): Gemini, senão OpenAI; a Anthropic não ouve. Erro de LEITURA é `falhou` sem gravar, nunca "sem chave".
+- ⚠️ **O modelo é FIXADO em `MODELO_TRANSCRICAO`** (OpenAI:
+  `MODELO_TRANSCRICAO_OPENAI`), UM para os chamadores (quem chega primeiro fixa o do áudio, nenhuma coluna o registra,
   o teto de 3 tentativas é compartilhado). Plano B no comentário da
   constante. ⚠️ Não desligar o raciocínio (`thinkingBudget: 0` piora o erro,
   medido). ⚠️ Trocar o modelo NÃO refaz o já transcrito — quem trocar decide
@@ -208,9 +210,9 @@ bolha e ao worker do Radar.
   ⚠️ O SAVE do modelo do Radar devolve a mensagem do provedor ("modelo não
   encontrado") — EXCETO `code === 'invalid_key'`, texto genérico (manter).
 - **Módulo sem uso ativo NÃO some**: aparece com o motivo.
-- **Radar exige `radar_enabled === true`; transcrição é Gemini-only; RAG é
-  OpenAI-only** (modelo fixo, `vector(1536)`), no cartão da OpenAI mesmo com
-  outro provedor.
+- **Radar exige `radar_enabled === true`; transcrição Gemini, senão OpenAI;
+  leitura de mídia Gemini → OpenAI → Anthropic; RAG é OpenAI-only** (modelo
+  fixo, `vector(1536)`), no cartão da OpenAI mesmo com outro provedor.
 - **`AI_PROVIDER_MODELS` é SUGESTÃO (`<datalist>`), nunca allow-list.**
   Google Agenda é cartão "não conectado" de propósito.
 
@@ -347,7 +349,8 @@ ingestões), `fila.ts`, `turno.ts`, `rede.ts` (no topo de `/api/automations/cron
   default-deny): a 972 conta `bot` COM `ia_agente_id` como "respondido".
   Depois do envio, `conversations.ia_agente_id` = o ÚLTIMO agente que respondeu.
 - ⚠️ **O contexto é SÓ da conexão do turno** (D4); áudio pela transcrição
-  (reagenda até 2 min de `gravada_em`), mídia como descrição (`contexto.ts`).
+  (reagenda até 2 min de `gravada_em`), imagem/PDF pela leitura
+  (`prepararMidias`), vídeo como descrição (`contexto.ts`).
   Gatilho apagado ou editado descarta. O eco da Evolution que chega antes do
   INSERT é gravado COMO a resposta do agente por `eco.ts`, sem motor.
 - **FK anulável de `cb_ia_turnos`/`ai_usage_log` ganha índice PARCIAL**;

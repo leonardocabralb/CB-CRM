@@ -2881,7 +2881,7 @@
         "leitura_falhou": "não foi possível ler a chave no banco — tente de novo"
       },
       "usos": "Onde é usada",
-      "naoConfiguradaDica": "Cole a chave do provedor abaixo. Ela é uma só para a conta inteira: o Radar, a transcrição (Gemini), a base de conhecimento (OpenAI) e os agentes deste provedor passam a usá-la assim que ela é salva.",
+      "naoConfiguradaDica": "Cole a chave do provedor abaixo. Ela é uma só para a conta inteira: o Radar, a transcrição (Gemini, senão OpenAI), a leitura de imagem e PDF dos agentes (Gemini, OpenAI ou Anthropic), a base de conhecimento (OpenAI) e os agentes deste provedor passam a usá-la assim que ela é salva.",
       "abrirAgentes": "Abrir o assistente anterior",
       "googleDesc": "A sincronização das reuniões com o Google Agenda ainda não está conectada. A agenda já funciona internamente; este cartão vira o ponto de conexão quando a integração existir.",
       "metaAds": {
@@ -3066,6 +3066,7 @@
         "conversa": "Assistente de conversa",
         "radar": "Radar de Atendimento",
         "transcricao": "Transcrição de áudio",
+        "leitura": "Leitura de imagem e PDF (agentes de IA)",
         "rag": "Base de conhecimento (RAG)"
       },
       "origem": {
@@ -3077,7 +3078,10 @@
         "radar_sem_canal": "nenhuma conexão está com o Radar ligado",
         "conversa_desligada": "assistente desligado",
         "sem_chave": "precisa da chave deste provedor",
-        "embeddings_recusados": "a OpenAI recusou a busca da base com esta chave — a base usa só a busca por palavras"
+        "embeddings_recusados": "a OpenAI recusou a busca da base com esta chave — a base usa só a busca por palavras",
+        "so_sem_gemini": "reserva: só é usada quando não há chave do Gemini",
+        "so_sem_gemini_e_openai": "reserva: só é usada quando não há chave do Gemini nem da OpenAI",
+        "chave_so_da_base": "esta chave serve só à base de conhecimento — não é usada aqui"
       },
       "emCanais": "ligado em {canais}",
       "desligadoEm": "desligado em {canais}",

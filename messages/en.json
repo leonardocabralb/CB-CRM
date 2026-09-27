@@ -2888,7 +2888,7 @@
         "leitura_falhou": "could not read the key from the database — try again"
       },
       "usos": "Where it is used",
-      "naoConfiguradaDica": "Paste the provider's key below. There is one per account: the Radar, transcription (Gemini), the knowledge base (OpenAI) and this provider's agents start using it as soon as it is saved.",
+      "naoConfiguradaDica": "Paste the provider's key below. There is one per account: the Radar, transcription (Gemini, else OpenAI), the agents' reading of images and PDFs (Gemini, OpenAI or Anthropic), the knowledge base (OpenAI) and this provider's agents start using it as soon as it is saved.",
       "abrirAgentes": "Open the previous assistant",
       "googleDesc": "Meeting sync with Google Calendar is not connected yet. The calendar already works internally; this card becomes the connection point once the integration ships.",
       "metaAds": {
@@ -3073,6 +3073,7 @@
         "conversa": "Conversation assistant",
         "radar": "Service Radar",
         "transcricao": "Voice transcription",
+        "leitura": "Reading images and PDFs (AI agents)",
         "rag": "Knowledge base (RAG)"
       },
       "origem": {
@@ -3084,7 +3085,10 @@
         "radar_sem_canal": "no connection has the Radar switched on",
         "conversa_desligada": "assistant switched off",
         "sem_chave": "needs this provider's key",
-        "embeddings_recusados": "OpenAI refused knowledge-base search with this key — the base uses keyword search only"
+        "embeddings_recusados": "OpenAI refused knowledge-base search with this key — the base uses keyword search only",
+        "so_sem_gemini": "backup: used only when there is no Gemini key",
+        "so_sem_gemini_e_openai": "backup: used only when there is no Gemini or OpenAI key",
+        "chave_so_da_base": "this key only serves the knowledge base — not used here"
       },
       "emCanais": "switched on in {canais}",
       "desligadoEm": "switched off in {canais}",

@@ -10,6 +10,7 @@ import { listChannels } from '@/lib/cb-channels/repo';
 import { validateAiCredentials } from '@/lib/ai/validate';
 import { embedTexts, EMBEDDING_MODEL } from '@/lib/ai/embeddings';
 import { MODELO_TRANSCRICAO } from '@/lib/transcricao/transcrever';
+import { MODELO_DE_LEITURA, MODELO_TRANSCRICAO_OPENAI } from '@/lib/transcricao/leitores';
 import { AiError, type AiProvider } from '@/lib/ai/types';
 import { AI_PROVIDER_DEFAULT_MODEL } from '@/lib/ai/defaults';
 import { lerChave, lerChaveDeEmbeddings, lerEstado } from '@/lib/ia-chaves/repo';
@@ -177,7 +178,9 @@ export async function GET(request: Request) {
     const [testes, embeddingsTeste] = await Promise.all([
       Promise.all(
         estado.map(async (e): Promise<ChaveParaMontar> => {
-          const base = { provedor: e.provedor as ProviderId, existe: e.existe };
+          // `soDaBase`: a leitura e a transcrição PULAM essa chave da OpenAI —
+          // o cartão não pode dizer que ela as atende.
+          const base = { provedor: e.provedor as ProviderId, existe: e.existe, soDaBase: e.soDaBase };
           if (!pingar || !e.existe) return { ...base, teste: null };
           let chave: string | null;
           try {
@@ -324,7 +327,11 @@ export async function GET(request: Request) {
         provedor: a.provedor as ProviderId,
         modelo: a.modelo,
         ativo: a.ativo,
-      }))
+      })),
+      // A leitura de imagem e PDF e a queda da transcrição para a OpenAI: as
+      // constantes REAIS, de quem as usa. Não são pingadas (cada ping é uma
+      // geração paga a cada carga da tela).
+      { leitura: MODELO_DE_LEITURA, transcricaoOpenai: MODELO_TRANSCRICAO_OPENAI }
     );
 
     return NextResponse.json({

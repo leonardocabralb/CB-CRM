@@ -197,12 +197,15 @@ describe('montarCartoes — chave por PROVEDOR (1047)', () => {
 describe('rótulos montados de Integrações', () => {
   // `modulo.${…}` e `indisponivel.${…}` são chaves MONTADAS no painel:
   // escapam do portão de i18n do CI. O compilador não cobra o dicionário.
-  const MODULOS: UsoNoCartao['modulo'][] = ['conversa', 'radar', 'transcricao', 'rag'];
+  const MODULOS: UsoNoCartao['modulo'][] = ['conversa', 'radar', 'transcricao', 'leitura', 'rag'];
   const INDISPONIVEIS: NonNullable<UsoNoCartao['indisponivel']>[] = [
     'radar_sem_canal',
     'conversa_desligada',
     'sem_chave',
     'embeddings_recusados',
+    'so_sem_gemini',
+    'so_sem_gemini_e_openai',
+    'chave_so_da_base',
   ];
   for (const arquivo of ['en.json', 'pt-BR.json']) {
     it(`existem em ${arquivo}`, () => {
@@ -274,5 +277,67 @@ describe('montarCartoes — chave da OpenAI recusada para a base (Codex, #294)',
     );
     expect(uso(cartoes, 'openai', 'rag').indisponivel).toBeUndefined();
     expect(cartao(cartoes, 'openai').estado).toBe('erro');
+  });
+});
+
+describe('montarCartoes — leitura de imagem e PDF, e a queda da transcrição (27/09/2026)', () => {
+  const MODELOS = {
+    leitura: { gemini: 'leitor-g', openai: 'leitor-o', anthropic: 'leitor-a' },
+    transcricaoOpenai: 'transcritor-o',
+  };
+  const comLeitura = (chaves: ChaveParaMontar[]) =>
+    montarCartoes(chaves, padrao(), CANAIS, { ok: true }, MODELO_TRANSCRICAO, MODELO_EMBEDDINGS, [], [], MODELOS);
+  const usosDe = (cartoes: ReturnType<typeof montarCartoes>, id: string, modulo: UsoNoCartao['modulo']) =>
+    cartao(cartoes, id).usos.filter((u) => u.modulo === modulo);
+
+  it('sem os modelos da leitura, nada muda (os chamadores antigos)', () => {
+    const cartoes = montar([chave('gemini'), chave('openai'), chave('anthropic')]);
+    for (const id of ['gemini', 'openai', 'anthropic']) expect(usosDe(cartoes, id, 'leitura')).toHaveLength(0);
+    expect(usosDe(cartoes, 'openai', 'transcricao')).toHaveLength(0);
+  });
+
+  it('com as três chaves: o Gemini lê e transcreve; OpenAI e Anthropic aparecem como RESERVA', () => {
+    const cartoes = comLeitura([chave('gemini'), chave('openai'), chave('anthropic')]);
+    expect(usosDe(cartoes, 'gemini', 'leitura')).toEqual([
+      { modulo: 'leitura', modelo: 'leitor-g', origem: 'fixo', canais: [], canaisDesligados: [] },
+    ]);
+    expect(usosDe(cartoes, 'openai', 'leitura')[0]).toMatchObject({ modelo: 'leitor-o', indisponivel: 'so_sem_gemini' });
+    expect(usosDe(cartoes, 'openai', 'transcricao')[0]).toMatchObject({
+      modelo: 'transcritor-o',
+      origem: 'fixo',
+      indisponivel: 'so_sem_gemini',
+    });
+    expect(usosDe(cartoes, 'anthropic', 'leitura')[0]).toMatchObject({
+      modelo: 'leitor-a',
+      indisponivel: 'so_sem_gemini_e_openai',
+    });
+    // A Anthropic não ouve áudio: nada de transcrição no cartão dela.
+    expect(usosDe(cartoes, 'anthropic', 'transcricao')).toHaveLength(0);
+  });
+
+  it('sem Gemini: a OpenAI lê e transcreve; a Anthropic segue reserva', () => {
+    const cartoes = comLeitura([chave('openai'), chave('anthropic')]);
+    expect(usosDe(cartoes, 'openai', 'leitura')[0].indisponivel).toBeUndefined();
+    expect(usosDe(cartoes, 'openai', 'transcricao')[0].indisponivel).toBeUndefined();
+    expect(usosDe(cartoes, 'anthropic', 'leitura')[0].indisponivel).toBe('so_sem_gemini_e_openai');
+    expect(usosDe(cartoes, 'gemini', 'leitura')[0].indisponivel).toBe('sem_chave');
+  });
+
+  it('só a Anthropic: ela lê', () => {
+    const cartoes = comLeitura([chave('anthropic')]);
+    expect(usosDe(cartoes, 'anthropic', 'leitura')[0].indisponivel).toBeUndefined();
+  });
+
+  it('a chave da OpenAI "só da base" não lê nem transcreve — e não tira a vez da Anthropic', () => {
+    const cartoes = comLeitura([{ ...chave('openai'), soDaBase: true }, chave('anthropic')]);
+    expect(usosDe(cartoes, 'openai', 'leitura')[0].indisponivel).toBe('chave_so_da_base');
+    expect(usosDe(cartoes, 'openai', 'transcricao')[0].indisponivel).toBe('chave_so_da_base');
+    expect(usosDe(cartoes, 'anthropic', 'leitura')[0].indisponivel).toBeUndefined();
+  });
+
+  it('a reserva não conta como falha nem some da lista (módulo sem uso ativo aparece com o motivo)', () => {
+    const cartoes = comLeitura([chave('gemini'), chave('openai')]);
+    expect(cartao(cartoes, 'openai').estado).toBe('ok');
+    expect(usosDe(cartoes, 'openai', 'leitura')).toHaveLength(1);
   });
 });

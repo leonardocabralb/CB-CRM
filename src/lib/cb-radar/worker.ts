@@ -599,7 +599,11 @@ export async function analisarConversaReivindicada(
   const deadlineMs = args.deadlineMs ?? Date.now() + TETO_ABSOLUTO_MS
   const transcricoes = new Map<string, string>()
   for (const m of comData) {
-    if (m.transcricao) transcricoes.set(m.id, m.transcricao)
+    // ⚠️ SÓ áudio: desde 27/09/2026 as mesmas colunas guardam a LEITURA de
+    // imagem e PDF feita para o agente de IA (`ler-midia.ts`), e aqui ela
+    // entraria no transcrito com o `PREFIXO_AUDIO` — o Radar leria a foto de
+    // um documento como "o cliente disse".
+    if (m.transcricao && m.content_type === 'audio') transcricoes.set(m.id, m.transcricao)
   }
   // ⚠️ Só áudio NUNCA tentado (`status` nulo). Retentar `falhou`
   // automaticamente a cada ciclo queimava o teto de 3 tentativas em ~45
