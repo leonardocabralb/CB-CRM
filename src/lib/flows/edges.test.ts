@@ -589,3 +589,29 @@ describe("unlinkNodeReferences", () => {
     expect(after[1]).toBe(nodes[1]);
   });
 });
+
+// CB (1053): o "Mover card" é nó de passagem — uma saída, `next`.
+describe("move_deal_stage (CB, 1053)", () => {
+  const mover = {
+    node_key: "mover",
+    node_type: "move_deal_stage" as const,
+    config: { pipeline_id: "f", stage_id: "e", next_node_key: "fim" },
+  };
+  const fim = { node_key: "fim", node_type: "end" as const, config: {} };
+
+  it("desenha a seta para o próximo passo e tem UMA saída", () => {
+    expect(deriveCanvasEdges([mover, fim])).toEqual([
+      { id: "mover--next--fim", source: "mover", target: "fim", sourceHandle: "next" },
+    ]);
+    expect(outgoingSlots(mover)).toEqual([{ id: "next", label: "Next" }]);
+  });
+
+  it("ligar e apagar o próximo passo mexem só no next_node_key", () => {
+    expect(applyEdgeConnection(mover, "next", "outro")).toEqual({ next_node_key: "outro" });
+    expect(unlinkNodeReferences([mover], "fim")[0].config).toEqual({
+      pipeline_id: "f",
+      stage_id: "e",
+      next_node_key: "",
+    });
+  });
+});

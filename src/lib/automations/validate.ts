@@ -3,6 +3,9 @@ import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
 import { telefoneDigitado } from '@/lib/contacts/telefone'
 import { MAX_DESCRICAO, MAX_TITULO, normalizarHora } from '@/lib/tasks/validar'
 import { motivoDeConfigInvalida } from './lembretes'
+import { lerModoDoResponsavel } from './responsavel-da-tarefa'
+import { MAX_POSICOES_DO_MODELO } from './parametros-do-modelo'
+import { lerJanela } from './hora-do-dia'
 import { ehGatilhoDaRegua, horaDeEnvioValida } from '@/lib/asaas/regua'
 import { ehMeta } from '@/lib/cb-channels/transporte'
 import type { CbChannelKind } from '@/lib/cb-channels/repo'
@@ -151,11 +154,77 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       }
       break
     }
-    case 'send_template':
+    case 'send_template': {
       if (!nonEmpty(c.template_name)) {
         issues.push({ path: `${path}.template_name`, message: 'template name is required' })
       }
+      // Os valores do modelo (Fase 2.3 do plano do previdenciário). O CORPO é
+      // POSICIONAL e o motor ignora chave que não é posição — aceitá-la aqui
+      // deixaria o operador achar que preencheu um `{{nome}}` que não sai.
+      // Quantas variáveis o modelo PEDE só se sabe no envio (a linha depende
+      // do canal de saída); lá, faltar valor é falha com o motivo escrito.
+      for (const campo of ['variables', 'variaveis_reserva'] as const) {
+        const mapa = c[campo]
+        if (mapa === undefined || mapa === null) continue
+        if (typeof mapa !== 'object' || Array.isArray(mapa)) {
+          issues.push({ path: `${path}.${campo}`, message: `${campo} must be an object` })
+          continue
+        }
+        for (const [k, v] of Object.entries(mapa as Record<string, unknown>)) {
+          if (!/^[1-9]\d*$/.test(k)) {
+            issues.push({
+              path: `${path}.${campo}`,
+              message: `template variable keys must be positions (1, 2, …), got "${k}"`,
+            })
+          } else if (Number(k) > MAX_POSICOES_DO_MODELO) {
+            // O motor ignora acima do teto (um laço por posição); aceitar aqui
+            // deixaria o operador achar que preencheu uma variável que não sai.
+            issues.push({
+              path: `${path}.${campo}`,
+              message: `template variable positions go up to ${MAX_POSICOES_DO_MODELO}, got "${k}"`,
+            })
+          } else if (typeof v !== 'string') {
+            issues.push({ path: `${path}.${campo}.${k}`, message: 'template variable values must be text' })
+          }
+        }
+      }
+      const bp = c.button_params
+      if (bp !== undefined && bp !== null) {
+        if (typeof bp !== 'object' || Array.isArray(bp)) {
+          issues.push({ path: `${path}.button_params`, message: 'button_params must be an object' })
+        } else if (
+          Object.entries(bp as Record<string, unknown>).some(
+            ([k, v]) => !/^\d$/.test(k) || typeof v !== 'string'
+          )
+        ) {
+          // Um modelo tem no máximo 10 botões: posição de 0 a 9.
+          issues.push({
+            path: `${path}.button_params`,
+            message: 'button_params keys must be button positions (0 to 9) and values text',
+          })
+        }
+      }
+      // Presente e não-texto (número, booleano, objeto — pela API) é recusado:
+      // o motor o converteria em texto e mandaria "123" como link à Meta, e
+      // toda execução falharia (Codex, PR #315).
+      if (
+        c.header_media_url !== undefined &&
+        c.header_media_url !== null &&
+        typeof c.header_media_url !== 'string'
+      ) {
+        issues.push({ path: `${path}.header_media_url`, message: 'header file must be text (an http or https address)' })
+      } else if (nonEmpty(c.header_media_url)) {
+        try {
+          const u = new URL(String(c.header_media_url))
+          if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+            issues.push({ path: `${path}.header_media_url`, message: 'header file must be an http or https address' })
+          }
+        } catch {
+          issues.push({ path: `${path}.header_media_url`, message: 'header file is not a valid address' })
+        }
+      }
       break
+    }
     case 'add_tag':
     case 'remove_tag':
       if (!nonEmpty(c.tag_id)) {
@@ -190,13 +259,39 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       }
       break
     case 'wait':
-      if (typeof c.amount !== 'number' || !Number.isFinite(c.amount) || c.amount <= 0) {
-        issues.push({ path: `${path}.amount`, message: 'wait amount must be greater than 0' })
+      // Ausente = "por um tempo", o de sempre (toda espera já gravada).
+      if (c.modo !== undefined && c.modo !== 'tempo' && c.modo !== 'horario') {
+        issues.push({ path: `${path}.modo`, message: 'wait modo must be "tempo" or "horario"' })
       }
-      if (!['seconds', 'minutes', 'hours', 'days'].includes(String(c.unit))) {
+      if (c.modo === 'horario') {
+        // "Aguardar até estar dentro do horário": a janela é a mesma da
+        // condição "Hora do dia". O motor FALHA o passo com a janela que não
+        // lê — a automação ficaria ligada parando toda execução ali. Início
+        // igual ao fim é janela vazia (recusada por `lerJanela`); o dia
+        // inteiro ("00:00-24:00") passa. `amount`/`unit` são ignorados aqui.
+        if (!lerJanela(c.janela)) {
+          issues.push({
+            path: `${path}.janela`,
+            message: 'wait window must be "HH:mm-HH:mm" with different start and end',
+          })
+        }
+      } else {
+        if (typeof c.amount !== 'number' || !Number.isFinite(c.amount) || c.amount <= 0) {
+          issues.push({ path: `${path}.amount`, message: 'wait amount must be greater than 0' })
+        }
+        if (!['seconds', 'minutes', 'hours', 'days'].includes(String(c.unit))) {
+          issues.push({
+            path: `${path}.unit`,
+            message: 'wait unit must be seconds, minutes, hours, or days',
+          })
+        }
+      }
+      // Só booleano, como a caixa da condição: `"true"` seria uma caixa
+      // marcada na tela que o motor ignora (esperaria também no sábado).
+      if (c.somente_seg_a_sex !== undefined && typeof c.somente_seg_a_sex !== 'boolean') {
         issues.push({
-          path: `${path}.unit`,
-          message: 'wait unit must be seconds, minutes, hours, or days',
+          path: `${path}.somente_seg_a_sex`,
+          message: 'wait somente_seg_a_sex must be true or false',
         })
       }
       // ⚠️ Só booleano. O motor liga a opção apenas com `true` estrito, então
@@ -214,8 +309,23 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       if (!nonEmpty(c.subject)) {
         issues.push({ path: `${path}.subject`, message: 'condition subject is required' })
       }
-      if (!nonEmpty(c.operand)) {
+      // A janela de 24h (Fase 2.8) é a ÚNICA sem operando obrigatório: vazio
+      // = o número da próxima mensagem (o do disparo, senão o da conversa).
+      if (c.subject !== 'meta_window_open' && !nonEmpty(c.operand)) {
         issues.push({ path: `${path}.operand`, message: 'condition operand is required' })
+      } else if (c.subject === 'time_of_day' && !lerJanela(c.operand)) {
+        // O motor responde "não" SEMPRE para janela que não lê — a automação
+        // ficaria ligada com um ramo morto, sem nada dizendo por quê.
+        issues.push({
+          path: `${path}.operand`,
+          message: 'time of day must be "HH:mm-HH:mm" with different start and end',
+        })
+      }
+      if (c.somente_seg_a_sex !== undefined && typeof c.somente_seg_a_sex !== 'boolean') {
+        issues.push({
+          path: `${path}.somente_seg_a_sex`,
+          message: 'condition somente_seg_a_sex must be true or false',
+        })
       }
       break
     case 'send_webhook':
@@ -273,8 +383,25 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       // em execução — o tipo de falha que esta validação existe para pegar
       // antes de a automação ser ativada. Se ela é MEMBRO da conta é o motor
       // que confere: a lista de membros muda depois de a regra ser gravada.
-      if (!nonEmpty(c.responsavel_user_id)) {
-        issues.push({ path: `${path}.responsavel_user_id`, message: 'task assignee is required' })
+      // Nos modos "responsável pela conversa/pelo card" (Fase 2.4), o fixo
+      // vira a RESERVA — e continua OBRIGATÓRIO: sem ninguém atribuído (o caso
+      // comum; medido em 26/09/2026, nenhum card da conta tem responsável) o
+      // passo falharia na execução e pararia as mensagens seguintes ao
+      // cliente. Ver `responsavel-da-tarefa.ts`.
+      const modo = lerModoDoResponsavel(c.responsavel_modo)
+      if (!modo) {
+        issues.push({
+          path: `${path}.responsavel_modo`,
+          message: 'task assignee mode must be "fixo", "conversa" or "card"',
+        })
+      } else if (!nonEmpty(c.responsavel_user_id)) {
+        issues.push({
+          path: `${path}.responsavel_user_id`,
+          message:
+            modo === 'fixo'
+              ? 'task assignee is required'
+              : 'a fallback assignee is required: the task goes to them when no one is assigned',
+        })
       }
       // Mesmo teto do motor e da rota de tarefas. Sem isto a automação ativa
       // com uma descrição longa demais e falha em TODA execução — o passo
@@ -484,6 +611,9 @@ export function validateAsaasReguaForActivation(
   const visitar = (lista: StepLike[], prefixo: string) => {
     lista.forEach((s, i) => {
       const path = `${prefixo}steps[${i}]`
+      // Inclusive o "até estar dentro do horário" (26/09/2026): ele também
+      // retoma às cegas, sem reconfirmar o pagamento. A janela da régua é a
+      // dela (`hora_envio` até 18:00), conferida pela varredura.
       if (s.step_type === 'wait') {
         issues.push({ path: `${path}.step_type`, message: 'the Asaas collection sequence cannot wait — each milestone is its own automation' })
       }
@@ -613,12 +743,105 @@ export function validateChannelScopeForActivation(
           });
         }
       }
+      if (s.step_type === 'condition' && s.step_config?.subject === 'meta_window_open') {
+        conferirJanela(s, path);
+      }
       if (s.step_type === 'condition' && s.branches) {
         if (s.branches.yes) visitar(s.branches.yes, `${path}.yes.`);
         if (s.branches.no) visitar(s.branches.no, `${path}.no.`);
       }
     });
   };
+
+  // A condição "Janela de 24h da Meta aberta" (Fase 2.8 do plano do
+  // previdenciário) pergunta por UM número — o do operando, ou, em branco, o
+  // do disparo (senão o da conversa). Se o texto livre do ramo "Sim" sai FIXO
+  // por outro número OFICIAL, a condição responde sobre uma janela que a
+  // mensagem não usa: "sim" pela janela do QR Code (sempre aberta) e o texto
+  // sai pelo oficial, onde a Meta o recusa (131047) com o passo contado como
+  // concluído. Exige o MESMO número nos dois lados.
+  //
+  // Só o passo com conexão fixa OFICIAL conta: fixado num QR Code não há
+  // janela a errar, e conexão desconhecida (apagada) não trava a ativação —
+  // a mesma escolha do bloco acima.
+  //
+  // ⚠️ Passo que HERDA o disparo, com o operando preenchido (Codex, PR #315):
+  // ele sai pelo número de onde o disparo veio, e a condição pergunta pelo do
+  // operando. Só é seguro quando todo número OFICIAL que o escopo alcança é o
+  // próprio operando — escopo só nele, ou os outros por QR Code (sem janela).
+  // Com escopo vazio ("todos"), vale a conta inteira. Senão o disparo vindo
+  // de outro número oficial passa pelo "Sim" do operando e o texto sai por
+  // uma janela fechada.
+  const oficiaisAlcancaveis = (escopo.length > 0 ? escopo : contasCanais).filter((c) =>
+    ehMeta(c),
+  );
+  const conferirJanela = (condicao: StepLike, path: string) => {
+    const operando =
+      typeof condicao.step_config?.operand === 'string' ? condicao.step_config.operand : '';
+    // As conexões OFICIAIS fixadas no texto do Sim (id → nome).
+    const fixos = new Map<string, string>();
+    let herdados = 0;
+    const olhar = (lista: StepLike[]) => {
+      for (const s of lista) {
+        if (TEXTO_LIVRE.has(s.step_type)) {
+          const fixado = s.step_config?.channel_id;
+          const canal = typeof fixado === 'string' && fixado ? porId.get(fixado) : undefined;
+          if (canal && ehMeta(canal)) fixos.set(canal.id, canal.label);
+          // Conexão APAGADA também conta como herança: o motor não a resolve
+          // e cai no número da conversa (Codex, PR #315).
+          if (typeof fixado !== 'string' || !fixado || !canal) herdados += 1;
+        }
+        // Outra condição da janela dentro do ramo tem a SUA conferência.
+        if (s.step_type === 'condition' && s.step_config?.subject !== 'meta_window_open') {
+          olhar(s.branches?.yes ?? []);
+          olhar(s.branches?.no ?? []);
+        }
+      }
+    };
+    olhar(condicao.branches?.yes ?? []);
+    const perguntada = operando ? porId.get(operando)?.label : null;
+    if (
+      operando &&
+      herdados > 0 &&
+      oficiaisAlcancaveis.some((c) => c.id !== operando)
+    ) {
+      const outros = oficiaisAlcancaveis
+        .filter((c) => c.id !== operando)
+        .map((c) => `"${c.label}"`)
+        .join(', ');
+      issues.push({
+        path: `${path}.operand`,
+        message: `A condição "Janela de 24h da Meta aberta" pergunta pela janela de ${
+          perguntada ? `"${perguntada}"` : 'uma conexão que foi removida'
+        }, mas uma mensagem do ramo Sim sai pelo número do DISPARO, que pode ser outro número oficial (${outros}). Fixe a conexão de saída dessas mensagens em ${
+          perguntada ? `"${perguntada}"` : 'um número'
+        }, restrinja a automação a esse número, ou deixe "Janela de qual número" em branco (pergunta pelo número do disparo).`,
+      });
+    }
+    if (fixos.size === 0 || (fixos.size === 1 && fixos.has(operando))) return;
+    const nomes = [...fixos.values()].map((l) => `"${l}"`);
+    const inicio = `A condição "Janela de 24h da Meta aberta" pergunta pela janela ${
+      perguntada
+        ? `de "${perguntada}"`
+        : operando
+          ? 'de uma conexão que foi removida'
+          : 'do número do disparo'
+    }`;
+    issues.push({
+      path: `${path}.operand`,
+      message:
+        nomes.length === 1
+          ? `${inicio}, mas a mensagem do ramo Sim sai sempre por ${nomes[0]}. Escolha ${nomes[0]} em "Janela de qual número" — senão a condição responde sobre outra janela e a Meta recusa o texto.`
+          : `${inicio}, mas as mensagens do ramo Sim saem por números diferentes (${nomes.join(', ')}). Uma condição responde por um número só: use uma condição da janela para cada número.`,
+    });
+  };
+
   visitar(steps, '');
   return issues;
 }
+
+/**
+ * Passos de TEXTO LIVRE: a Meta só os aceita com a janela de 24h aberta. É o
+ * que a condição da janela protege.
+ */
+const TEXTO_LIVRE = new Set(['send_message', 'send_media', 'send_buttons', 'send_list']);

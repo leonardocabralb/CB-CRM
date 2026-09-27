@@ -118,6 +118,14 @@ import {
   sinaisDoHistorico,
   type Desfecho,
 } from './estado-da-execucao';
+import { montarParametrosDoModelo } from './parametros-do-modelo';
+import {
+  escolherResponsavel,
+  fraseDaEscolha,
+  lerModoDoResponsavel,
+} from './responsavel-da-tarefa';
+import { janelaDaMetaAberta } from './janela-da-meta';
+import { avaliarHoraDoDia, esperaPeloHorario } from './hora-do-dia';
 
 /** O motivo do `send_to_number` recusado, na frase que o registro mostra. */
 const POR_QUE_O_NUMERO_NAO_SERVE: Record<MotivoDoTelefone, string> = {
@@ -1124,7 +1132,46 @@ async function executeStepsFrom(
     if (step.step_type === 'wait') {
       args.aoFalar?.();
       const cfg = step.step_config as WaitStepConfig;
-      const ms = waitMs(cfg);
+      // "Aguardar até estar dentro do horário" (26/09/2026): o instante de
+      // retomada é o PRÓXIMO início da janela, no fuso do escritório — e,
+      // se o passo já está dentro dela, não há espera nenhuma: segue para o
+      // passo seguinte na hora. Fora disso é o MESMO estacionamento do
+      // "Aguardar" comum, pela mesma porta e com o mesmo contexto (as marcas
+      // "parar se o cliente responder" e a estadia na etapa continuam
+      // valendo durante esta espera). Regra em `hora-do-dia.ts`.
+      let retomaEm: Date;
+      let detalhe: string;
+      if (cfg.modo === 'horario') {
+        const decisao = esperaPeloHorario(cfg, new Date());
+        if (decisao.tipo === 'invalida') {
+          // A ativação já recusa a janela que o motor não lê; config gravada
+          // por fora cai aqui. Falhar é o lado seguro: seguir mandaria a
+          // mensagem seguinte fora do horário prometido.
+          results.push({
+            step_id: step.id,
+            step_type: step.step_type,
+            status: 'failed',
+            detail: decisao.nota,
+          });
+          status = 'failed';
+          errorMessage = decisao.nota;
+          break;
+        }
+        if (decisao.tipo === 'segue') {
+          results.push({
+            step_id: step.id,
+            step_type: step.step_type,
+            status: 'success',
+            detail: decisao.nota,
+          });
+          continue;
+        }
+        retomaEm = decisao.ate;
+        detalhe = decisao.nota;
+      } else {
+        retomaEm = new Date(Date.now() + waitMs(cfg));
+        detalhe = `waiting ${cfg.amount} ${cfg.unit}`;
+      }
       // ⚠️⚠️ ESTACIONA PELA FUNÇÃO `cb_estacionar_espera` (1005), nunca por
       // INSERT direto. Ela trava a linha do registro (`FOR UPDATE`), confere
       // `interrompida_em` e só então insere — numa transação só. Sem isso,
@@ -1151,7 +1198,7 @@ async function executeStepsFrom(
           // copiado de ponta a ponta da execução, e a marca de uma espera
           // vazaria para as seguintes. Ver `parar-se-responder.ts`.
           context: contextoDaEspera(args.context, cfg, step.id),
-          run_at: new Date(Date.now() + ms).toISOString(),
+          run_at: retomaEm.toISOString(),
         }
       );
       // ⚠️ Fila que recusa a linha NÃO pode virar "esperando": ninguém
@@ -1189,8 +1236,8 @@ async function executeStepsFrom(
         status: 'success',
         detail:
           cfg.parar_se_responder === true
-            ? `waiting ${cfg.amount} ${cfg.unit} (para se o cliente responder)`
-            : `waiting ${cfg.amount} ${cfg.unit}`,
+            ? `${detalhe} (para se o cliente responder)`
+            : detalhe,
       });
       status = 'partial';
       await appendResults(args.logId, results, status, errorMessage);
@@ -1200,12 +1247,29 @@ async function executeStepsFrom(
     try {
       if (step.step_type === 'condition') {
         const cfg = step.step_config as ConditionStepConfig;
-        const taken = await evaluateCondition(cfg, args);
+        // A janela de 24h responde "não" também quando NÃO CONSEGUIU ler
+        // (o lado seguro, o do modelo) — e diz isso no registro, senão o
+        // histórico mostraria o ramo "não" como janela MEDIDA fechada.
+        const janela =
+          cfg.subject === 'meta_window_open'
+            ? await avaliarJanelaDaMeta(cfg, args)
+            : null;
+        // A hora do dia diz no registro QUE HORA leu (no fuso do escritório):
+        // sem isso, o ramo "não" de uma janela bem configurada não teria
+        // como ser conferido depois.
+        const hora =
+          cfg.subject === 'time_of_day' ? avaliarHoraDoDia(cfg, new Date()) : null;
+        const taken = janela
+          ? janela.aberta
+          : hora
+            ? hora.sim
+            : await evaluateCondition(cfg, args);
+        const nota = janela?.nota ?? hora?.nota;
         results.push({
           step_id: step.id,
           step_type: 'condition',
           status: 'success',
-          detail: `branch=${taken ? 'yes' : 'no'}`,
+          detail: `branch=${taken ? 'yes' : 'no'}${nota ? ` (${nota})` : ''}`,
         });
         // Recurse into the chosen branch at position 0 (children use their
         // own ordering within the branch scope).
@@ -1500,24 +1564,16 @@ async function runStep(
       if (!cfg.template_name)
         throw new Error('send_template needs template_name');
       const conversationId = await resolveConversationId(args);
-      // Meta templates use positional {{1}}, {{2}}, … placeholders, so
-      // we MUST emit params in strict numeric order. Lexicographic sort
-      // of "1", "2", …, "10" yields "1", "10", "2", … which silently
-      // scrambles every template with ≥10 variables.
-      const params = cfg.variables
-        ? Object.keys(cfg.variables)
-            .sort((a, b) => {
-              const na = Number(a);
-              const nb = Number(b);
-              const aNum = Number.isFinite(na);
-              const bNum = Number.isFinite(nb);
-              if (aNum && bNum) return na - nb;
-              if (aNum) return -1;
-              if (bNum) return 1;
-              return a.localeCompare(b);
-            })
-            .map((k) => String(cfg.variables![k]))
-        : [];
+      // Os valores do modelo (Fase 2.3 do plano do previdenciário): cada
+      // `{{N}}` passa pela interpolação, com texto de reserva quando sai
+      // vazio, e o cabeçalho e os botões vão junto. POSICIONAL — ver
+      // `parametros-do-modelo.ts`. Quem confere o que FALTOU é o remetente,
+      // o único que conhece a linha do modelo (depende do canal de saída).
+      // Um cache de `{{deal.*}}` para o PASSO: são várias interpolações.
+      const negocioDoPasso = {};
+      const messageParams = await montarParametrosDoModelo(cfg, (texto, o) =>
+        interpolate(texto, args, { ...o, negocio: negocioDoPasso })
+      );
       const { whatsapp_message_id } = await engineSendTemplate({
         preferredChannelId: stepChannel(cfg, args),
         accountId: args.automation.account_id,
@@ -1526,7 +1582,8 @@ async function runStep(
         contactId: args.contactId,
         templateName: cfg.template_name,
         language: cfg.language,
-        params,
+        params: messageParams.body,
+        messageParams,
       });
       return `template sent (${whatsapp_message_id})`;
     }
@@ -2277,7 +2334,10 @@ async function runStep(
     case 'create_task': {
       const cfg = step.step_config as CreateTaskStepConfig;
       if (!args.contactId) throw new Error('create_task precisa de um contato');
-      if (!cfg.responsavel_user_id)
+      const modo = lerModoDoResponsavel(cfg.responsavel_modo);
+      if (!modo)
+        throw new Error('create_task: modo de responsável desconhecido');
+      if (modo === 'fixo' && !cfg.responsavel_user_id)
         throw new Error('create_task precisa de um responsável');
 
       const titulo = normalizarTitulo(
@@ -2301,6 +2361,56 @@ async function runStep(
       const hoje = diaNoFuso(new Date(), FUSO_DO_ESCRITORIO);
       const vence_em = somarDias(hoje, Number(cfg.prazo_em_dias) || 0);
 
+      // Uma consulta que responde duas coisas: quem é membro desta conta e
+      // como traduzir o `profiles.id` do card para o id de LOGIN. São os
+      // membros de UMA conta (uma dezena). Os nomes congelados nas colunas
+      // saem de `criarTarefaComAviso`.
+      const { data: perfis, error: erroPerfis } = await db
+        .from('profiles')
+        .select('id, user_id')
+        .eq('account_id', args.automation.account_id);
+      if (erroPerfis)
+        throw new Error(
+          `create_task: leitura de perfis falhou: ${erroPerfis.message}`
+        );
+      const membros = (perfis ?? []) as { id?: string; user_id: string }[];
+
+      // Quem está atribuído AGORA (Fase 2.4), já como id de LOGIN. ⚠️ O card
+      // guarda `profiles.id`, a conversa o id de LOGIN — ver
+      // `responsavel-da-tarefa.ts`. Perfil do card que não está entre os
+      // membros passa CRU: não casa com id de login nenhum, e a escolha o lê
+      // como "havia alguém, que saiu".
+      let atribuido: { existe: boolean; userId: string | null } = {
+        existe: true,
+        userId: null,
+      };
+      if (modo === 'conversa') {
+        atribuido = await responsavelDaConversa(db, args);
+      } else if (modo === 'card') {
+        const doCard = await responsavelDoCard(db, args);
+        atribuido = {
+          existe: doCard.existe,
+          userId: doCard.perfilId
+            ? (membros.find((p) => p.id === doCard.perfilId)?.user_id ??
+              doCard.perfilId)
+            : null,
+        };
+      }
+      const escolha = escolherResponsavel({
+        modo,
+        dinamico: atribuido.userId,
+        alvoExiste: atribuido.existe,
+        fixo: cfg.responsavel_user_id ?? null,
+        ehMembro: (id) => membros.some((p) => p.user_id === id),
+      });
+      // A frase do registro vem de `fraseDaEscolha` (pura, com teste): diz
+      // POR QUÊ a tarefa não foi para quem o passo pedia — ninguém atribuído,
+      // quem estava saiu da conta, ou o contato nem tem conversa/card.
+      const frase = fraseDaEscolha(modo, escolha);
+      if (!escolha.ok) throw new Error(`create_task: ${frase}`);
+      const responsavel = escolha.userId;
+      const pelaReserva = frase ? ` — ${frase}` : '';
+
       const { tarefaId, avisou } = await criarTarefaComAviso(db, {
         accountId: args.automation.account_id,
         contactId: args.contactId,
@@ -2308,7 +2418,7 @@ async function runStep(
         // de registro em todo caminho sem gente na tela. Pode ser null se
         // ele já saiu — a coluna é ON DELETE SET NULL de qualquer forma.
         autorId: args.automation.user_id,
-        responsavelUserId: cfg.responsavel_user_id,
+        responsavelUserId: responsavel,
         titulo,
         descricao,
         venceEm: vence_em,
@@ -2323,8 +2433,8 @@ async function runStep(
         tituloDoAviso: `A automação "${args.automation.name}" abriu uma tarefa para você`,
       });
       return avisou
-        ? `tarefa criada (${tarefaId})`
-        : `tarefa criada (${tarefaId}), sem aviso`;
+        ? `tarefa criada (${tarefaId})${pelaReserva}`
+        : `tarefa criada (${tarefaId}), sem aviso${pelaReserva}`;
     }
 
     default:
@@ -2780,19 +2890,14 @@ async function evaluateCondition(
       );
     }
     case 'time_of_day': {
-      // operand form "HH:mm-HH:mm" — true if now is within that window
-      // (supports over-midnight ranges like "18:00-09:00").
-      const [from, to] = (cfg.operand ?? '').split('-');
-      if (!from || !to) return false;
-      const now = new Date();
-      const mins = now.getHours() * 60 + now.getMinutes();
-      const parse = (s: string) => {
-        const [h, m] = s.split(':').map(Number);
-        return (h || 0) * 60 + (m || 0);
-      };
-      const f = parse(from);
-      const t = parse(to);
-      return f <= t ? mins >= f && mins < t : mins >= f || mins < t;
+      // "HH:mm-HH:mm" (atravessa a meia-noite quando o início é maior),
+      // opcionalmente só de segunda a sexta — tudo no FUSO DO ESCRITÓRIO.
+      // ⚠️ O upstream lia a hora local do processo, e o contêiner roda em
+      // UTC: a janela valia três horas antes. Regra em `hora-do-dia.ts`.
+      // ⚠️ `executeStepsFrom` desvia este critério ANTES (para gravar a nota
+      // da hora); este caso só serve a um chamador direto. Mudou um, muda o
+      // outro.
+      return avaliarHoraDoDia(cfg, new Date()).sim;
     }
     /**
      * O negócio está NESTA etapa AGORA? (934)
@@ -2819,8 +2924,83 @@ async function evaluateCondition(
       const deal = await negocioAtualDoContexto(args);
       return deal?.status === alvo;
     }
+    /**
+     * A janela de 24h da Meta está aberta? (Fase 2.8 do plano do
+     * previdenciário) — "sim: texto; não: modelo". A régua é a da ampulheta
+     * (`janela-da-meta.ts`), lida no instante do passo: depois de um
+     * "Aguardar" de horas a janela pode ter fechado, ou reaberto.
+     *
+     * O número é o da SAÍDA, com a precedência de um passo de envio sem
+     * conexão escolhida: o do operando, senão o do disparo, senão o da
+     * conversa, senão o padrão. Perguntar por outro número responderia sobre
+     * uma janela que a mensagem seguinte não usa.
+     *
+     * ⚠️ Com o operando em branco, as mensagens do "Sim" precisam sair pelo
+     * MESMO número (herdando o disparo); fixadas noutro, a condição
+     * responderia sobre a janela errada — a ativação recusa essa combinação
+     * (`validateChannelScopeForActivation`).
+     *
+     * ⚠️ Erro de leitura responde "NÃO", de propósito: o ramo "não" manda o
+     * modelo, que a Meta aceita com a janela aberta ou fechada. O "sim" de
+     * mentira mandaria texto que a Meta recusa depois, com o passo contado
+     * como concluído. O registro da execução DIZ que não conferiu
+     * (`avaliarJanelaDaMeta`), para o "não" não parecer medido.
+     */
+    case 'meta_window_open':
+      return (await avaliarJanelaDaMeta(cfg, args)).aberta;
     default:
       return false;
+  }
+}
+
+/**
+ * A condição "Janela de 24h da Meta aberta?" — com a NOTA do registro quando
+ * a resposta não foi medida. `nota` só existe quando a leitura falhou: aí a
+ * resposta é "não" (ver o comentário da condição em `evaluateCondition`).
+ */
+async function avaliarJanelaDaMeta(
+  cfg: ConditionStepConfig,
+  args: ExecuteArgs
+): Promise<{ aberta: boolean; nota?: string }> {
+  const naoConferida = {
+    aberta: false,
+    nota: 'janela não conferida: a leitura falhou — tratada como fechada',
+  };
+  const db = supabaseAdmin();
+  try {
+    const conversationId = await resolveConversationId(args);
+    const { data, error } = await db
+      .from('conversations')
+      .select('group_id, janela_meta')
+      .eq('id', conversationId)
+      .eq('account_id', args.automation.account_id)
+      .maybeSingle();
+    if (error || !data) {
+      console.warn(
+        '[automations] condição da janela: leitura da conversa falhou',
+        error
+      );
+      return naoConferida;
+    }
+    const saida = await resolveEngineChannelPreferring(
+      db,
+      args.automation.account_id,
+      conversationId,
+      cfg.operand || args.context.channel_id || null
+    );
+    return {
+      aberta: janelaDaMetaAberta(
+        data as {
+          group_id?: string | null;
+          janela_meta?: Record<string, string> | null;
+        },
+        saida,
+        Date.now()
+      ),
+    };
+  } catch (err) {
+    console.warn('[automations] condição da janela: falhou', err);
+    return naoConferida;
   }
 }
 
@@ -2961,7 +3141,7 @@ async function etapaAtualDoCard(
  * (`deal_status_fixado`; ausente no card do evento ainda não escrito). A RPC
  * só escreve se ele não mudou no meio.
  */
-async function negocioAlvo(
+export async function negocioAlvo(
   db: ReturnType<typeof supabaseAdmin>,
   args: ExecuteArgs
 ): Promise<{ id: string; statusVisto: DealStatus | null } | null> {
@@ -3195,20 +3375,7 @@ async function carregarNegocio(
 ): Promise<DadosDoNegocio | null> {
   const db = supabaseAdmin();
   try {
-    let id = (await negocioAlvo(db, args))?.id ?? null;
-    if (!id && args.contactId) {
-      const { data: ganho, error: erroDoGanho } = await db
-        .from('deals')
-        .select('id')
-        .eq('account_id', args.automation.account_id)
-        .eq('contact_id', args.contactId)
-        .eq('status', 'won')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (erroDoGanho) throw new Error(erroDoGanho.message);
-      id = (ganho?.id as string | undefined) ?? null;
-    }
+    const id = await negocioParaLeitura(db, args);
     if (!id) return null;
     const { data, error } = await db
       .from('deals')
@@ -3237,6 +3404,91 @@ async function carregarNegocio(
   }
 }
 
+/**
+ * O id do negócio que uma LEITURA descreve: o de `negocioAlvo` (o mesmo das
+ * ações), com a queda SÓ DE LEITURA no GANHO mais recente — ver
+ * `carregarNegocio`. Lança em erro de banco; `null` = o contato não tem card.
+ */
+async function negocioParaLeitura(
+  db: ReturnType<typeof supabaseAdmin>,
+  args: ExecuteArgs
+): Promise<string | null> {
+  const alvo = (await negocioAlvo(db, args))?.id ?? null;
+  if (alvo || !args.contactId) return alvo;
+  const { data: ganho, error: erroDoGanho } = await db
+    .from('deals')
+    .select('id')
+    .eq('account_id', args.automation.account_id)
+    .eq('contact_id', args.contactId)
+    .eq('status', 'won')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (erroDoGanho) throw new Error(erroDoGanho.message);
+  return (ganho?.id as string | undefined) ?? null;
+}
+
+/**
+ * Quem está atribuído à CONVERSA do contato — o id de LOGIN
+ * (`conversations.assigned_agent_id`), e se a conversa EXISTE (`existe:
+ * false` só muda a frase do registro). A conversa é a do contexto quando há
+ * uma (conferida por conta e contato, como `resolveConversationId`), senão a
+ * do contato (uma por conta, 036). Lança em erro de banco: "não sei" não pode
+ * virar "ninguém".
+ */
+async function responsavelDaConversa(
+  db: ReturnType<typeof supabaseAdmin>,
+  args: ExecuteArgs
+): Promise<{ existe: boolean; userId: string | null }> {
+  if (!args.contactId) return { existe: false, userId: null };
+  let consulta = db
+    .from('conversations')
+    .select('assigned_agent_id')
+    .eq('account_id', args.automation.account_id)
+    .eq('contact_id', args.contactId);
+  if (args.context.conversation_id)
+    consulta = consulta.eq('id', args.context.conversation_id);
+  const { data, error } = await consulta.maybeSingle();
+  if (error)
+    throw new Error(
+      `create_task: leitura do responsável da conversa falhou: ${error.message}`
+    );
+  if (!data) return { existe: false, userId: null };
+  const id = (data as { assigned_agent_id?: string | null }).assigned_agent_id;
+  return { existe: true, userId: id || null };
+}
+
+/**
+ * Quem está atribuído ao NEGÓCIO — `deals.assigned_to`, que é `profiles.id`
+ * (⚠️ NÃO o id de login; quem traduz é o chamador). O card é o de
+ * `negocioParaLeitura`: o do contexto, senão o aberto, senão o perdido, e só
+ * para LER, o ganho mais recente — a tarefa "conferir os documentos" nasce
+ * justamente quando o card fecha. Lança em erro de banco.
+ */
+async function responsavelDoCard(
+  db: ReturnType<typeof supabaseAdmin>,
+  args: ExecuteArgs
+): Promise<{ existe: boolean; perfilId: string | null }> {
+  try {
+    const id = await negocioParaLeitura(db, args);
+    if (!id) return { existe: false, perfilId: null };
+    const { data, error } = await db
+      .from('deals')
+      .select('assigned_to')
+      .eq('id', id)
+      .eq('account_id', args.automation.account_id)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) return { existe: false, perfilId: null };
+    const perfil = (data as { assigned_to?: string | null }).assigned_to;
+    return { existe: true, perfilId: perfil || null };
+  } catch (err) {
+    throw new Error(
+      `create_task: leitura do responsável do card falhou: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+}
+
 /** ISO em UTC ("…T19:00:00.000Z"), a forma que os campos de data guardam. */
 function isoUtc(v: string | null): string {
   if (!v) return '';
@@ -3256,18 +3508,39 @@ function isoUtc(v: string | null): string {
  * JSON (o corpo do `send_webhook`). O modelo é texto com `{{…}}` no meio de um
  * JSON: sem o escape, um nome com aspas ou uma quebra de linha no campo
  * quebrava o corpo inteiro, e o sistema do outro lado recusava a entrega.
+ *
+ * `url: true` CODIFICA cada valor substituído (`encodeURIComponent`) — o final
+ * do endereço de um botão de URL do modelo (Fase 2.3 do plano do
+ * previdenciário): `/`, `?`, `#`, `&` ou acento de um `{{contact.*}}` mudariam
+ * o endereço. O texto literal fica como o operador escreveu.
+ *
+ * `negocio`: o cache de `{{deal.*}}` de UM passo que interpola vários textos
+ * (o "Enviar modelo" interpola cada variável, o cabeçalho e os botões). Sem
+ * ele, cinco `{{deal.value}}` releriam o negócio cinco vezes. É por PASSO, não
+ * por execução — o valor pode mudar durante um "Aguardar" (ver
+ * `carregarNegocio`).
  */
 async function interpolate(
   s: string,
   args: ExecuteArgs,
-  opcoes: { cru?: boolean; json?: boolean } = {}
+  opcoes: {
+    cru?: boolean;
+    json?: boolean;
+    url?: boolean;
+    negocio?: { lido?: Promise<DadosDoNegocio | null> };
+  } = {}
 ): Promise<string> {
   if (!s) return '';
   const dados = RE_CITA_CONTATO.test(s) ? await dadosDoContato(args) : null;
-  const negocio = RE_CITA_NEGOCIO.test(s) ? await carregarNegocio(args) : null;
+  const negocio = !RE_CITA_NEGOCIO.test(s)
+    ? null
+    : opcoes.negocio
+      ? await (opcoes.negocio.lido ??= carregarNegocio(args))
+      : await carregarNegocio(args);
   return s.replace(RE_VARIAVEL, (_, key) => {
     const valor = valorDaVariavel(String(key), args, dados, negocio, opcoes);
-    return opcoes.json ? JSON.stringify(valor).slice(1, -1) : valor;
+    if (opcoes.json) return JSON.stringify(valor).slice(1, -1);
+    return opcoes.url ? encodeURIComponent(valor) : valor;
   });
 }
 

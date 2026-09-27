@@ -59,22 +59,28 @@ export const AUTOMATION_TEMPLATES: Record<TemplateSlug, AutomationTemplateDefini
     description: 'Auto-reply during off-hours so nobody is left waiting.',
     trigger_type: 'new_message_received',
     trigger_config: {},
+    // ⚠️ A hora é lida no FUSO DO ESCRITÓRIO (`hora-do-dia.ts`). Com a hora
+    // local do processo (o upstream), num contêiner em UTC o "estamos fora"
+    // saía às 15h de Brasília. A condição pergunta pelo EXPEDIENTE (segunda a
+    // sexta, 09:00-18:00) e a resposta vai no "Não": o "18:00-09:00" do
+    // upstream calava no sábado e no domingo de dia.
     steps: [
       {
         step_type: 'condition',
         step_config: {
           subject: 'time_of_day',
-          operand: '18:00-09:00',
+          operand: '09:00-18:00',
+          somente_seg_a_sex: true,
         },
       },
       {
         step_type: 'send_message',
         step_config: {
           text:
-            "Thanks for your message! Our team is offline right now (9am–6pm) and will reply first thing tomorrow.",
+            "Thanks for your message! Our team is offline right now (Mon–Fri, 9am–6pm) and will reply as soon as we're back.",
         },
         parent_index: 0,
-        branch: 'yes',
+        branch: 'no',
       },
     ],
   },

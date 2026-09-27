@@ -103,6 +103,21 @@ describe('descreverPasso — variantes que viram chaves diferentes', () => {
       expect(r.chave).toBe('wait_days')
     }
   })
+
+  it('espera pelo HORÁRIO mostra a janela, nunca o amount/unit que ficou gravado (B6a)', () => {
+    const r = descreverPasso(passo('wait', { modo: 'horario', janela: '08:00-21:00', amount: 1, unit: 'hours' }))
+    expect(r).toEqual({ chave: 'wait_horario', valores: { inicio: '08:00', fim: '21:00' }, alvoSumiu: false })
+    expect(
+      descreverPasso(passo('wait', { modo: 'horario', janela: '08:00-21:00', somente_seg_a_sex: true, parar_se_responder: true })).chave,
+    ).toBe('wait_horario_seg_a_sex_ou_resposta')
+    // O dia inteiro vai até 24:00; janela ilegível sai "—" (a ativação a recusa).
+    expect(descreverPasso(passo('wait', { modo: 'horario', janela: '00:00-24:00' })).valores).toEqual({ inicio: '00:00', fim: '24:00' })
+    expect(descreverPasso(passo('wait', { modo: 'horario', janela: '' })).valores).toEqual({ inicio: '—', fim: '—' })
+    // Só `true` liga o "segunda a sexta", como o motor.
+    expect(descreverPasso(passo('wait', { modo: 'horario', janela: '08:00-21:00', somente_seg_a_sex: 'true' })).chave).toBe('wait_horario')
+    // O modo "tempo" é o de sempre.
+    expect(descreverPasso(passo('wait', { modo: 'tempo', amount: 2, unit: 'hours' })).chave).toBe('wait_hours')
+  })
 })
 
 describe('descreverPasso — texto', () => {
@@ -179,6 +194,11 @@ const VARIANTES: Array<[string, Record<string, unknown>]> = [
   ['wait', { unit: 'minutes', parar_se_responder: true }],
   ['wait', { unit: 'hours', parar_se_responder: true }],
   ['wait', { unit: 'days', parar_se_responder: true }],
+  // "Aguardar até estar dentro do horário" (B6a): quatro chaves próprias.
+  ['wait', { modo: 'horario', janela: '08:00-21:00' }],
+  ['wait', { modo: 'horario', janela: '08:00-21:00', somente_seg_a_sex: true }],
+  ['wait', { modo: 'horario', janela: '08:00-21:00', parar_se_responder: true }],
+  ['wait', { modo: 'horario', janela: '08:00-21:00', somente_seg_a_sex: true, parar_se_responder: true }],
 ]
 
 function resumoDoDicionario(arquivo: string): Record<string, string> {

@@ -23,7 +23,7 @@ import type { MediaLibraryItem } from '@/types';
  * mas escrever é o que impede uma troca futura para DESC de empurrar o Geral
  * para o topo em silêncio.
  */
-export function useAcervo(ativo = true) {
+export function useAcervo(ativo = true, contaId?: string) {
   const [itens, setItens] = useState<MediaLibraryItem[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [falhou, setFalhou] = useState(false);
@@ -41,9 +41,12 @@ export function useAcervo(ativo = true) {
     const valeAinda = () => (vivo ? vivo() : true);
     setCarregando(true);
     const supabase = createClient();
-    const { data, error } = await supabase
-      .from('cb_media_library')
-      .select('*')
+    // `contaId` recorta pela conta de quem vai USAR o item (o robô: Codex,
+    // PR #314). Sem ele vale a RLS, que devolve o acervo de toda conta de que
+    // a pessoa é membro — o comportamento de sempre do compositor.
+    let consulta = supabase.from('cb_media_library').select('*');
+    if (contaId) consulta = consulta.eq('account_id', contaId);
+    const { data, error } = await consulta
       .order('categoria', { ascending: true, nullsFirst: false })
       .order('titulo', { ascending: true })
       // Teto de segurança, da mesma família dos outros do projeto (924/929):
@@ -64,7 +67,7 @@ export function useAcervo(ativo = true) {
     }
     setCarregando(false);
     setJaCarregou(true);
-  }, []);
+  }, [contaId]);
 
   useEffect(() => {
     if (!ativo) return;

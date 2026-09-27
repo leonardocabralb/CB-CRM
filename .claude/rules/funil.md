@@ -4,6 +4,9 @@ paths:
   - "src/components/pipelines/**"
   - "src/app/*/pipelines/**"
   - "src/lib/deals/**"
+  - "src/lib/flows/mover-card*"
+  - "src/components/flows/forms/mover-card.tsx"
+  - "src/components/flows/catalogo-do-funil*"
   - "src/lib/cb-channels/pipeline-routing*"
   - "src/app/api/v1/deals/**"
   - "src/app/api/v1/pipelines/**"
@@ -130,9 +133,9 @@ Pinos: `src/lib/celular/ao-voltar.test.ts`, `cartao.test.ts`
 ### Etapa com RESULTADO (950/1031): quem carimba ganho/perdido é o BANCO
 
 `pipeline_stages.resultado` ('ganho' | 'perdido' | null) + gatilho BEFORE em
-`deals`: ENTRAR numa etapa marcada grava o status, para os seis escritores de
+`deals`: ENTRAR numa etapa marcada grava o status, para os escritores de
 etapa (painel da conversa, arrasto, lista do funil, formulário, RPC das
-automações, API).
+automações — que o nó "Mover card" do ROBÔ também usa desde a 1053 —, API).
 
 - ⚠️ **GANHO que sai para etapa neutra CONTINUA ganho** (decisão do operador:
   fechou → transfere para o funil do jurídico → segue ganho). Não "corrigir"
@@ -212,10 +215,37 @@ automações, API).
 ### Negócio só nasce por `createDeal` (908/910)
 
 `src/lib/deals/create-deal.ts`, no servidor: o roteador de entrada
-(`pipeline-routing.ts`), o passo `create_deal` e a v1 passam por ele. O
-formulário da tela de Funis é a exceção (roda no cliente, sob RLS).
-`createDeal` devolve a linha inserida (`deal`, de onde a v1 serializa) e aceita
-`tituloFixadoEm`.
+(`pipeline-routing.ts`), o passo `create_deal`, a v1 e o nó "Mover card" do
+robô (1053, contato sem card nenhum) passam por ele. O formulário da tela de
+Funis é a exceção (roda no cliente, sob RLS). `createDeal` devolve a linha
+inserida (`deal`, de onde a v1 serializa) e aceita `tituloFixadoEm`.
+
+- ⚠️ **O nó "Mover card de etapa" do ROBÔ (1053, `src/lib/flows/mover-card.ts`)**
+  acha o card por `negocioAlvo` (a régua das automações, exportada — ver
+  `.claude/rules/automacoes.md`), move pela RPC `cb_atualizar_negocio` com
+  `p_status_esperado` e a cadeia `flow:<robô>`, e sem card NENHUM cria na etapa
+  de destino (título pela 1007, SEM marca, `source: 'automation'`). Contato só
+  com card GANHO não é mexido nem ganha segundo card. A lista de etapas de
+  ORIGEM (vazia = qualquer, de qualquer funil) trava o movimento; fora dela o
+  robô registra o motivo e segue — inclusive o PERDIDO parado no destino, que
+  só reabre se a lista estiver vazia ou incluir o destino. Falha também SEGUE
+  (`move_deal_failed`): o card é bastidor. Antes da RPC o motor confere que a
+  etapa é do funil do nó (a RPC seguiria o funil da etapa; a criação
+  recusaria). Sem dreno imediato da fila, de propósito — mas só protege o
+  MESMO laço: se a etapa de destino tem automação que aciona outro robô
+  (`run_flow`), o cron a roda em ~15 s e o run é substituído; a ajuda do
+  passo manda deixá-lo por último. ⚠️ Na PRIMEIRA mensagem o robô roda antes
+  do roteador da conexão: um "Mover card" no começo cria o card direto na
+  etapa do nó e a etapa de entrada da conexão é pulada.
+  ⚠️ A origem VAZIA é o padrão do nó novo e o lado perigoso (o card aberto do
+  Jurídico vem junto): o validador AVISA (sem bloquear) e o texto fica âmbar.
+  ⚠️ O catálogo do editor (`catalogo-do-funil.ts`) é recortado pela conta DO
+  ROBÔ (`flows.account_id`), nunca só pela RLS da 1032, que devolve os funis
+  de toda conta da pessoa; etapa de origem apagada ganha o botão "Tirar as
+  etapas apagadas" (não há caixa para desmarcar).
+  ⚠️ O CHECK de `flow_nodes.node_type` precisa do tipo (1053): nó novo no
+  código sem migration faz salvar o robô APAGAR os nós (pino
+  `supabase/migrations/tipos-de-no-do-robo-1053.test.ts`).
 
 - **A etapa de entrada é explícita (`default_stage_id`), nunca
   `MIN(position)`**: por posição o cliente cai numa faixa de estacionamento

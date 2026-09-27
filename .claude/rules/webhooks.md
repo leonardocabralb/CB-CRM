@@ -207,7 +207,9 @@ e `reentregar-eventos-de-funil.ts` (E/S), a coleta em `drain-events.ts`.
   decide NESTA ordem: `auth.uid()` → `cb.cadeia` (a RPC das automações a
   carimba sempre) → `source` do INSERT → cabeçalho `x-cb-origem: api` → resto.
   Cadeia antes do cabeçalho: o que uma automação faz é `automation` mesmo
-  dentro de um pedido da API. O cabeçalho vem do `clienteDaApi` das rotas v1
+  dentro de um pedido da API. O bloco "Mover card" do ROBÔ (1053) também sai
+  `automation` (a RPC com a cadeia `flow:<id>`; a criação com `source:
+  'automation'`) — a doc pública e os dois dicionários dizem isso. O cabeçalho vem do `clienteDaApi` das rotas v1
   e chega pela GUC `request.headers`, lida num bloco com EXCEPTION (um
   `::jsonb` malformado fora dele derrubaria toda escrita em `deals`). Rota v1
   que escreva por `supabaseAdmin()` sai `system` (há pino).

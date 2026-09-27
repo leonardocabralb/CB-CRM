@@ -63,6 +63,7 @@ import { NodeConfigForm } from './forms/node-config-form';
 import { NodeKeySelect } from './forms/fields';
 import { IssueLine } from './validation-panel';
 import { useFlowEditor, type BuilderState } from './flow-editor-state';
+import { nomeDaEtapa } from './catalogo-do-funil';
 
 // ============================================================
 // Local state shape — mirrors the DB but the configs are typed
@@ -431,7 +432,10 @@ function NodeCard({
   const c = nodeColors(node.node_type);
   const hasError = issues.some((i) => i.severity === 'error');
   const tSummary = useTranslations('Flows.summary');
-  const preview = summarizeNode(node, tSummary);
+  const { catalogoDoFunil } = useFlowEditor();
+  const preview = summarizeNode(node, tSummary, {
+    etapa: (id) => nomeDaEtapa(catalogoDoFunil, id),
+  });
   return (
     <div
       ref={cardRef}
@@ -614,6 +618,7 @@ function AddNodeButton({ onAdd, t }: { onAdd: (type: NodeType) => void; t: Retur
     'collect_input',
     'condition',
     'set_tag',
+    'move_deal_stage',
     'handoff',
     'end',
   ];

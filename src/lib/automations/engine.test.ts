@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 // Shared mock state for the service-role client. Lives in a hoisted block
 // so the vi.mock factory below can close over it.
@@ -54,6 +54,14 @@ const h = vi.hoisted(() => ({
     contaDaConversa: {} as Record<string, string>,
     /** De QUAL contato é cada conversa (Codex, 3ª rodada do #261). Ausente = de qualquer um. */
     contatoDaConversa: {} as Record<string, string>,
+    /**
+     * `conversations.assigned_agent_id` (id de LOGIN) — o "responsável pela
+     * conversa" do `create_task` (Fase 2.4). `undefined` = o contato não tem
+     * conversa (a leitura volta sem linha).
+     */
+    responsavelDaConversa: undefined as string | null | undefined,
+    /** A linha que a condição da janela de 24h lê (Fase 2.8). `null` = sem linha. */
+    conversaDaJanela: null as { group_id: string | null; janela_meta: Record<string, string> | null } | null,
     /** Mensagens do CLIENTE gravadas depois de a espera ser estacionada. */
     respostasDesde: [] as { id: string }[],
     erroNasRespostas: null as string | null,
@@ -145,6 +153,20 @@ vi.mock('./admin-client', () => {
       if (type === 'update') {
         state.updateCalls.push({ table, filters: ops.filters, payload: ops.payload });
         return { data: null, error: null };
+      }
+      // As duas leituras da Fase 2 do previdenciário, pelo que PEDEM: o
+      // responsável da conversa (`create_task`) e a janela da Meta (condição).
+      if (/\bassigned_agent_id\b/.test(ops.colunas)) {
+        return {
+          data:
+            state.responsavelDaConversa === undefined
+              ? null
+              : { assigned_agent_id: state.responsavelDaConversa },
+          error: null,
+        };
+      }
+      if (/\bjanela_meta\b/.test(ops.colunas)) {
+        return { data: state.conversaDaJanela, error: null };
       }
       // Leitura POR ID = a conferência de posse (upstream #589): a linha só
       // vem quando o filtro de conta casa com a dona — a leitura que esquecer
@@ -489,7 +511,7 @@ import {
   triggerMatches,
   runAutomationById,
 } from './engine';
-import { engineSendText } from './meta-send';
+import { engineSendText, engineSendTemplate } from './meta-send';
 import type { Automation, KeywordMatchTriggerConfig } from '@/types';
 import { diaNoFuso, somarDias } from '@/lib/tasks/prazo';
 
@@ -534,6 +556,8 @@ beforeEach(() => {
   h.state.conversasDoContato = [];
   h.state.contaDaConversa = {};
   h.state.contatoDaConversa = {};
+  h.state.responsavelDaConversa = undefined;
+  h.state.conversaDaJanela = null;
   h.state.respostasDesde = [];
   h.state.erroNasRespostas = null;
   h.state.ultimoMovimento = null;
@@ -4286,6 +4310,402 @@ describe('retomada de automação presa à etapa', () => {
     expect(statusGravado()).toBe('failed');
     expect(desfechoGravado()?.desfecho).toBe('falhou');
     expect(horaDeFimGravada()).toBeTruthy();
+  });
+});
+
+// ------------------------------------------------------------
+// Fase 2 do plano do previdenciário (26/09/2026): os valores do "Enviar
+// modelo" (2.3), o responsável dinâmico do "Criar tarefa" (2.4) e a condição
+// "janela de 24h da Meta aberta" (2.8). As regras puras têm teste próprio
+// (`parametros-do-modelo`, `responsavel-da-tarefa`, `janela-da-meta`); aqui o
+// que se prova é o ENCANAMENTO no motor.
+// ------------------------------------------------------------
+
+describe('send_template — os valores do modelo (Fase 2.3)', () => {
+  beforeEach(() => vi.mocked(engineSendTemplate).mockClear());
+
+  async function dispararModelo(step_config: Record<string, unknown>) {
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [{ ...sendStep(step_config), step_type: 'send_template' }];
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: { conversation_id: 'conv1' },
+    });
+    return vi.mocked(engineSendTemplate).mock.calls[0]?.[0];
+  }
+
+  it('interpola cada {{N}} e manda os valores ESTRUTURADOS ao remetente', async () => {
+    h.state.owned = { id: 'c1', name: 'Joana' };
+    const args = await dispararModelo({
+      template_name: 'boas_vindas',
+      language: 'pt_BR',
+      variables: { '1': '{{contact.name}}', '2': 'auxílio-acidente' },
+    });
+    expect(args?.params).toEqual(['Joana', 'auxílio-acidente']);
+    expect(args?.messageParams).toEqual({ body: ['Joana', 'auxílio-acidente'] });
+  });
+
+  it('nome vazio cai no texto de reserva — a Meta recusaria o parâmetro vazio', async () => {
+    h.state.owned = { id: 'c1', name: '' };
+    const args = await dispararModelo({
+      template_name: 'boas_vindas',
+      variables: { '1': '{{contact.name}}' },
+      variaveis_reserva: { '1': 'cliente' },
+    });
+    expect(args?.params).toEqual(['cliente']);
+  });
+
+  it('várias variáveis com {{deal.*}} leem o negócio UMA vez no passo', async () => {
+    const lerCom = async (variables: Record<string, string>) => {
+      vi.mocked(engineSendTemplate).mockClear();
+      comNegocio({
+        step_type: 'send_template',
+        step_config: { template_name: 'proposta', language: 'pt_BR', variables },
+      });
+      h.state.dealSelects = [];
+      await dispararComNegocio();
+      return {
+        leituras: h.state.dealSelects.length,
+        body: vi.mocked(engineSendTemplate).mock.calls[0]?.[0]?.messageParams?.body,
+      };
+    };
+    const uma = await lerCom({ '1': '{{deal.value}}' });
+    const tres = await lerCom({ '1': '{{deal.value}}', '2': '{{deal.value}}', '3': '{{deal.created_at}}' });
+    expect(tres.body).toHaveLength(3);
+    expect(tres.body?.[0]).toContain('3.500,50');
+    expect(tres.leituras).toBe(uma.leituras);
+  });
+
+  it('botão de URL: o valor da variável sai CODIFICADO; o caminho literal, não', async () => {
+    h.state.owned = { id: 'c1', name: 'Ana Maria/2' } as unknown as { id: string };
+    const args = await dispararModelo({
+      template_name: 'assinatura',
+      button_params: { '0': 'caso/{{contact.name}}' },
+    });
+    expect(args?.messageParams?.buttonParams).toEqual({ 0: 'caso/Ana%20Maria%2F2' });
+  });
+
+  it('config ANTIGA (só modelo e idioma) continua mandando o modelo, sem valor nenhum', async () => {
+    h.state.owned = { id: 'c1' };
+    const args = await dispararModelo({ template_name: 'estatico', language: 'pt_BR' });
+    expect(args?.templateName).toBe('estatico');
+    expect(args?.params).toEqual([]);
+  });
+});
+
+describe('create_task — o responsável da conversa ou do card (Fase 2.4)', () => {
+  const MEMBROS = [
+    { id: 'p-autor', user_id: 'agente-fallback', full_name: 'Agente Um', email: 'um@cb.test' },
+    { id: 'p-bia', user_id: 'bia-login', full_name: 'Bia Closer', email: 'bia@cb.test' },
+  ];
+
+  async function dispararTarefa(cfg: Record<string, unknown>) {
+    h.state.owned = { id: 'c1' };
+    h.state.membros = MEMBROS;
+    const { automacao, passo } = automacaoDeTarefa({ titulo: 'Conferir documentos', ...cfg });
+    h.state.automations = [automacao];
+    h.state.steps = [passo];
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: {},
+    });
+  }
+
+  it('conversa: vai para quem está atribuído (id de LOGIN), com nome e aviso', async () => {
+    h.state.responsavelDaConversa = 'bia-login';
+    await dispararTarefa({ responsavel_modo: 'conversa', responsavel_user_id: '' });
+    expect(h.state.taskInserts[0]).toMatchObject({
+      responsavel_user_id: 'bia-login',
+      responsavel_nome: 'Bia Closer',
+    });
+    expect(h.state.notifInserts[0]).toMatchObject({ user_id: 'bia-login' });
+  });
+
+  it('CRÍTICO: card guarda profiles.id — o motor TRADUZ para o id de login', async () => {
+    h.state.dealExistente = { id: 'd1', assigned_to: 'p-bia' } as never;
+    await dispararTarefa({ responsavel_modo: 'card', responsavel_user_id: '' });
+    expect(h.state.taskInserts[0]).toMatchObject({ responsavel_user_id: 'bia-login' });
+  });
+
+  it('ninguém atribuído: cai na RESERVA, e o registro diz isso', async () => {
+    h.state.responsavelDaConversa = null;
+    await dispararTarefa({ responsavel_modo: 'conversa', responsavel_user_id: 'agente-fallback' });
+    expect(h.state.taskInserts[0]).toMatchObject({ responsavel_user_id: 'agente-fallback' });
+    expect(JSON.stringify(h.state.logUpdates)).toContain('responsável reserva');
+  });
+
+  it('ninguém atribuído e sem reserva: NÃO cria tarefa, e a falha diz por quê', async () => {
+    h.state.responsavelDaConversa = null;
+    await dispararTarefa({ responsavel_modo: 'conversa', responsavel_user_id: '' });
+    expect(h.state.taskInserts).toHaveLength(0);
+    expect(h.state.notifInserts).toHaveLength(0);
+    expect(JSON.stringify(h.state.logUpdates)).toContain('não tem responsável');
+  });
+
+  it('o atribuído SAIU da conta e não há reserva: falha com o motivo', async () => {
+    h.state.dealExistente = { id: 'd1', assigned_to: 'perfil-de-quem-saiu' } as never;
+    await dispararTarefa({ responsavel_modo: 'card', responsavel_user_id: '' });
+    expect(h.state.taskInserts).toHaveLength(0);
+    expect(JSON.stringify(h.state.logUpdates)).toContain('não é mais membro');
+  });
+
+  it('o contato SEM conversa: a reserva, e o registro diz que não há conversa', async () => {
+    h.state.responsavelDaConversa = undefined;
+    await dispararTarefa({ responsavel_modo: 'conversa', responsavel_user_id: 'agente-fallback' });
+    expect(h.state.taskInserts[0]).toMatchObject({ responsavel_user_id: 'agente-fallback' });
+    expect(JSON.stringify(h.state.logUpdates)).toContain('o contato não tem conversa');
+  });
+
+  it('o atribuído SAIU e a reserva recebe: o registro diz que ele saiu, não "sem responsável"', async () => {
+    h.state.dealExistente = { id: 'd1', assigned_to: 'perfil-de-quem-saiu' } as never;
+    await dispararTarefa({ responsavel_modo: 'card', responsavel_user_id: 'agente-fallback' });
+    expect(h.state.taskInserts[0]).toMatchObject({ responsavel_user_id: 'agente-fallback' });
+    expect(JSON.stringify(h.state.logUpdates)).toContain(
+      'quem estava atribuído ao card não é mais membro'
+    );
+  });
+
+  it('modo desconhecido falha em vez de adivinhar', async () => {
+    await dispararTarefa({ responsavel_modo: 'rodizio', responsavel_user_id: 'agente-fallback' });
+    expect(h.state.taskInserts).toHaveLength(0);
+    expect(JSON.stringify(h.state.logUpdates)).toContain('modo de responsável desconhecido');
+  });
+});
+
+describe("condição 'janela de 24h da Meta aberta' (Fase 2.8)", () => {
+  const RECENTE = () => new Date(Date.now() - 60 * 60_000).toISOString();
+  const VELHA = () => new Date(Date.now() - 25 * 60 * 60_000).toISOString();
+
+  const condicaoDaJanela = (operand = '') => ({
+    id: 'cond-janela',
+    automation_id: 'a1',
+    step_type: 'condition',
+    position: 0,
+    parent_step_id: null,
+    step_config: { subject: 'meta_window_open', operand },
+  });
+  const ramo = (branch: 'yes' | 'no', text: string) => ({
+    ...sendStep({ text }),
+    id: `ramo-${branch}`,
+    parent_step_id: 'cond-janela',
+    branch,
+    position: 0,
+  });
+
+  async function avaliar(saida: { provider: string; channelId: string | null } | null, operand = '') {
+    vi.mocked(engineSendText).mockClear();
+    canalMock.resolveEngineChannelPreferring.mockImplementationOnce((async () => saida) as never);
+    h.state.owned = { id: 'c1' };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [condicaoDaJanela(operand), ramo('yes', 'texto livre'), ramo('no', 'vai modelo')];
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: { conversation_id: 'conv1', channel_id: 'ch-oficial' },
+    });
+    return vi.mocked(engineSendText).mock.calls[0]?.[0]?.text;
+  }
+
+  it('cliente escreveu há 1h pelo número de saída: SIM', async () => {
+    h.state.conversaDaJanela = { group_id: null, janela_meta: { 'ch-oficial': RECENTE() } };
+    expect(await avaliar({ provider: 'meta', channelId: 'ch-oficial' })).toBe('texto livre');
+  });
+
+  it('passou das 24h: NÃO', async () => {
+    h.state.conversaDaJanela = { group_id: null, janela_meta: { 'ch-oficial': VELHA() } };
+    expect(await avaliar({ provider: 'meta', channelId: 'ch-oficial' })).toBe('vai modelo');
+  });
+
+  it('conexão por QR Code não tem janela: SIM', async () => {
+    h.state.conversaDaJanela = { group_id: null, janela_meta: null };
+    expect(await avaliar({ provider: 'evolution', channelId: 'ch-qr' })).toBe('texto livre');
+  });
+
+  it('leitura da conversa falhou: NÃO — o modelo é o lado seguro — e o registro DIZ que não conferiu', async () => {
+    h.state.conversaDaJanela = null;
+    expect(await avaliar({ provider: 'meta', channelId: 'ch-oficial' })).toBe('vai modelo');
+    expect(JSON.stringify(h.state.logUpdates)).toContain('janela não conferida');
+  });
+
+  it('janela MEDIDA fechada não leva a nota de "não conferida"', async () => {
+    h.state.conversaDaJanela = { group_id: null, janela_meta: { 'ch-oficial': VELHA() } };
+    await avaliar({ provider: 'meta', channelId: 'ch-oficial' });
+    expect(JSON.stringify(h.state.logUpdates)).not.toContain('janela não conferida');
+  });
+
+  it('pergunta pelo número de SAÍDA: o do operando, senão o do disparo', async () => {
+    h.state.conversaDaJanela = { group_id: null, janela_meta: {} };
+    canalMock.resolveEngineChannelPreferring.mockClear();
+    await avaliar({ provider: 'meta', channelId: 'ch-oficial' });
+    expect(canalMock.resolveEngineChannelPreferring.mock.calls[0]?.[3]).toBe('ch-oficial');
+    canalMock.resolveEngineChannelPreferring.mockClear();
+    await avaliar({ provider: 'meta', channelId: 'ch-outro' }, 'ch-outro');
+    expect(canalMock.resolveEngineChannelPreferring.mock.calls[0]?.[3]).toBe('ch-outro');
+  });
+});
+
+describe("condição 'hora do dia' — no fuso do escritório", () => {
+  // Instantes UTC explícitos: o pino vale com a máquina em qualquer fuso. O
+  // relógio falso é SÓ o Date — timers de verdade, senão os awaits do motor
+  // não andam.
+  afterEach(() => vi.useRealTimers());
+
+  const condicaoDeHora = (step_config: Record<string, unknown>) => ({
+    id: 'cond-hora',
+    automation_id: 'a1',
+    step_type: 'condition',
+    position: 0,
+    parent_step_id: null,
+    step_config: { subject: 'time_of_day', ...step_config },
+  });
+  const ramo = (branch: 'yes' | 'no', text: string) => ({
+    ...sendStep({ text }),
+    id: `ramo-${branch}`,
+    parent_step_id: 'cond-hora',
+    branch,
+    position: 0,
+  });
+
+  async function avaliar(agoraIso: string, step_config: Record<string, unknown>) {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(agoraIso));
+    vi.mocked(engineSendText).mockClear();
+    h.state.owned = { id: 'c1' };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [condicaoDeHora(step_config), ramo('yes', 'dentro'), ramo('no', 'fora')];
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: { conversation_id: 'conv1' },
+    });
+    return vi.mocked(engineSendText).mock.calls[0]?.[0]?.text;
+  }
+
+  it('20:59 em Brasília (23:59 UTC) está dentro de 08:00-21:00; 21:00 (00:00 UTC) já não', async () => {
+    expect(await avaliar('2026-09-25T23:59:00Z', { operand: '08:00-21:00' })).toBe('dentro');
+    expect(await avaliar('2026-09-26T00:00:00Z', { operand: '08:00-21:00' })).toBe('fora');
+  });
+
+  it('06:00 em Brasília (09:00 UTC) está fora — com a hora do servidor, estaria dentro', async () => {
+    expect(await avaliar('2026-09-25T09:00:00Z', { operand: '08:00-21:00' })).toBe('fora');
+  });
+
+  it('só de segunda a sexta: sábado ao meio-dia de Brasília responde Não', async () => {
+    expect(
+      await avaliar('2026-09-26T15:00:00Z', { operand: '08:00-21:00', somente_seg_a_sex: true }),
+    ).toBe('fora');
+  });
+
+  it('o registro diz que hora o motor leu, no fuso do escritório', async () => {
+    await avaliar('2026-09-26T00:30:00Z', { operand: '08:00-21:00' });
+    expect(JSON.stringify(h.state.logUpdates)).toContain('hora no escritório: sex 21:30');
+  });
+});
+
+describe('Aguardar até estar dentro do horário (B6a, 26/09/2026)', () => {
+  // Instantes UTC explícitos (Brasília = UTC-3). Relógio falso SÓ do Date:
+  // timers de verdade, senão os awaits do motor não andam. 25/09/2026 é
+  // sexta; 28/09, segunda.
+  afterEach(() => vi.useRealTimers());
+
+  const esperaPeloHorario = (config: Record<string, unknown>) => ({
+    id: 'esp-horario',
+    automation_id: 'a1',
+    step_type: 'wait',
+    position: 0,
+    parent_step_id: null,
+    // `amount`/`unit` ficam gravados no modo horário e NÃO valem.
+    step_config: { amount: 1, unit: 'hours', modo: 'horario', ...config },
+  });
+  const lembrete = { ...sendStep({ text: 'lembrete' }), id: 'lembrete', position: 1 };
+
+  async function roda(agoraIso: string, config: Record<string, unknown>) {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(agoraIso));
+    vi.mocked(engineSendText).mockClear();
+    h.state.esperasEnfileiradas = [];
+    h.state.owned = { id: 'c1' };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [esperaPeloHorario(config), lembrete];
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: { conversation_id: 'conv1' },
+    });
+  }
+
+  it('fora do horário: estaciona pela porta de sempre até o PRÓXIMO início, e o lembrete não sai', async () => {
+    // Sexta 22:40 em Brasília, de segunda a sexta → segunda 08:00 (11:00 UTC).
+    await roda('2026-09-26T01:40:00Z', { janela: '08:00-21:00', somente_seg_a_sex: true });
+
+    expect(vi.mocked(engineSendText)).not.toHaveBeenCalled();
+    expect(h.state.esperasEnfileiradas).toHaveLength(1);
+    const espera = h.state.esperasEnfileiradas[0];
+    expect(espera.run_at).toBe('2026-09-28T11:00:00.000Z');
+    // Retoma no passo SEGUINTE, como o "Aguardar" comum.
+    expect(espera.next_step_position).toBe(1);
+    expect(espera.log_id).toBeTruthy();
+    expect(JSON.stringify(h.state.logUpdates)).toContain(
+      'fora do horário (sex 22:40); aguarda até seg 08:00'
+    );
+  });
+
+  it('dentro do horário: segue na hora, sem estacionar — o lembrete sai já', async () => {
+    await roda('2026-09-25T13:00:00Z', { janela: '08:00-21:00', somente_seg_a_sex: true });
+
+    expect(h.state.esperasEnfileiradas).toHaveLength(0);
+    expect(vi.mocked(engineSendText).mock.calls[0]?.[0]?.text).toBe('lembrete');
+    expect(JSON.stringify(h.state.logUpdates)).toContain('dentro do horário (sex 10:00); segue');
+  });
+
+  it('é a hora de Brasília: 06:00 BRT (09:00 UTC) espera as 08:00 de hoje', async () => {
+    await roda('2026-09-25T09:00:00Z', { janela: '08:00-21:00' });
+
+    expect(vi.mocked(engineSendText)).not.toHaveBeenCalled();
+    expect(h.state.esperasEnfileiradas[0]?.run_at).toBe('2026-09-25T11:00:00.000Z');
+  });
+
+  it('"parar se o cliente responder" continua valendo nesta espera: a marca vai para a fila', async () => {
+    await roda('2026-09-26T01:40:00Z', { janela: '08:00-21:00', parar_se_responder: true });
+
+    const contexto = h.state.esperasEnfileiradas[0]?.context as Record<string, unknown>;
+    expect(contexto._parar_se_responder).toBe('esp-horario');
+    // O resto do contexto atravessa intacto.
+    expect(contexto.conversation_id).toBe('conv1');
+    expect(JSON.stringify(h.state.logUpdates)).toContain(
+      'aguarda até sáb 08:00 (para se o cliente responder)'
+    );
+  });
+
+  it('janela que o motor não lê: o passo FALHA e nada sai (a ativação já a recusa)', async () => {
+    await roda('2026-09-25T13:00:00Z', { janela: '09:00-09:00' });
+
+    expect(h.state.esperasEnfileiradas).toHaveLength(0);
+    expect(vi.mocked(engineSendText)).not.toHaveBeenCalled();
+    expect(JSON.stringify(h.state.logUpdates)).toContain('janela de horário inválida: \\"09:00-09:00\\"');
+  });
+
+  it('a execução já interrompida não estaciona (a mesma porta, a mesma recusa)', async () => {
+    h.state.interrompida = true;
+    await roda('2026-09-26T01:40:00Z', { janela: '08:00-21:00' });
+
+    expect(h.state.esperasEnfileiradas).toHaveLength(0);
+    expect(vi.mocked(engineSendText)).not.toHaveBeenCalled();
+    expect(JSON.stringify(h.state.logUpdates)).toContain('não estacionada');
+  });
+
+  it('o modo "tempo" (e a ausência de modo) é o Aguardar de sempre', async () => {
+    for (const modo of ['tempo', undefined]) {
+      await roda('2026-09-26T01:40:00Z', { modo, janela: '08:00-21:00' });
+      expect(h.state.esperasEnfileiradas[0]?.run_at).toBe('2026-09-26T02:40:00.000Z');
+    }
   });
 });
 
