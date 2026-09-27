@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react"
@@ -84,6 +85,8 @@ import {
 } from "@/lib/automations/hora-do-dia"
 import { ehMeta } from "@/lib/cb-channels/transporte"
 import { createClient } from "@/lib/supabase/client"
+import { useAreasDeAutomacao } from "@/hooks/use-areas-de-automacao"
+import { areaDoFunil } from "@/lib/automations/areas"
 import { AsaasTriggerConfig } from "@/components/automations/asaas-trigger-config"
 import { CalendlyTriggerConfig } from "@/components/automations/calendly-trigger-config"
 import { ehGatilhoDaRegua, HORA_PADRAO_COBRANCA, HORA_PADRAO_LEMBRETE } from "@/lib/asaas/regua"
@@ -154,6 +157,8 @@ export interface BuilderInitial {
   stage_ids: string[]
   /** "Assinar como" (998, D18): `null` = o nome automático do escritório. */
   assinatura_personalizada: string | null
+  /** A aba da tela de Automações (1055). `null` = "Geral". Só organiza. */
+  area_id: string | null
   is_active: boolean
   steps: BuilderStep[]
 }
@@ -1180,6 +1185,48 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
   )
   const [saving, setSaving] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const { areas, falhou: areasFalharam } = useAreasDeAutomacao()
+  // Quem escolheu a aba à mão não é atropelado pela sugestão do funil.
+  const areaEscolhidaRef = useRef(false)
+  const funilDeOrigem = origem?.funil ?? null
+  const [sugestaoResolvida, setSugestaoResolvida] = useState(false)
+  // Enquanto a sugestão do funil não chega, o Salvar espera: salvar antes
+  // gravaria a automação em "Geral" para sempre (Codex, PR #325). Leitura das
+  // abas que falhou, ou conta sem aba, não tem o que esperar.
+  const aguardandoSugestao =
+    !isEditing &&
+    !!funilDeOrigem &&
+    !areasFalharam &&
+    (areas === null || (areas.length > 0 && !sugestaoResolvida))
+
+  // Automação NOVA criada pela aba Automações de um funil: nasce na aba cujo
+  // nome o funil começa ("Bancário - Comercial" → aba "Bancário"). Só
+  // sugere — o seletor está à vista no cabeçalho, e sem aba que case ela
+  // fica em "Geral".
+  useEffect(() => {
+    if (isEditing || !funilDeOrigem || !areas || areas.length === 0) return
+    let vivo = true
+    createClient()
+      .from("pipelines")
+      .select("name")
+      .eq("id", funilDeOrigem)
+      .maybeSingle()
+      .then(
+        ({ data }) => {
+          if (!vivo) return
+          setSugestaoResolvida(true)
+          if (areaEscolhidaRef.current) return
+          const sugerida = areaDoFunil((data as { name?: string } | null)?.name, areas)
+          if (sugerida) setState((s) => (s.area_id ? s : { ...s, area_id: sugerida }))
+        },
+        () => {
+          if (vivo) setSugestaoResolvida(true)
+        },
+      )
+    return () => {
+      vivo = false
+    }
+  }, [isEditing, funilDeOrigem, areas])
 
   function patchTop<K extends keyof BuilderInitial>(key: K, value: BuilderInitial[K]) {
     setState((s) => ({ ...s, [key]: value }))
@@ -1227,6 +1274,7 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
         // seria pedir para o trigger da 933 tratar como escopo órfão.
         stage_ids: state.stage_ids.length > 0 ? state.stage_ids : null,
         assinatura_personalizada: state.assinatura_personalizada?.trim() || null,
+        area_id: state.area_id ?? null,
         is_active: state.is_active,
         steps: toApiSteps(state.steps),
       }
@@ -1276,7 +1324,7 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
       {/* Top bar. At sub-sm widths the "Active" label is hidden and the
           switch moves to the right of the save button, so the name input
           gets maximum width. */}
-      <header className="flex flex-shrink-0 items-center gap-2 border-b border-border bg-card/80 px-3 py-3 sm:gap-3 sm:px-4">
+      <header className="flex flex-shrink-0 flex-wrap items-center gap-2 border-b border-border bg-card/80 px-3 py-3 sm:flex-nowrap sm:gap-3 sm:px-4">
         <button
           type="button"
           onClick={() => router.push(voltaDoConstrutor(origem))}
@@ -1291,6 +1339,30 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
           placeholder={t("untitled")}
           className="min-w-0 flex-1 rounded-md bg-transparent px-2 py-1 text-sm font-semibold text-foreground placeholder:text-muted-foreground focus:bg-muted focus:outline-none sm:text-base"
         />
+        {/* A aba da tela de Automações (1055). Só com as abas lidas: antes
+            disso a opção gravada não existiria na lista, e o seletor
+            mostraria "Geral" sobre uma automação que está em outra aba. */}
+        {areas && areas.length > 0 && (
+          <select
+            value={state.area_id ?? ""}
+            onChange={(e) => {
+              areaEscolhidaRef.current = true
+              patchTop("area_id", e.target.value || null)
+            }}
+            aria-label={t("area.label")}
+            title={t("area.label")}
+            // No celular desce para a própria linha (o cabeçalho quebra), senão
+            // aperta o nome e empurra o Salvar para fora da tela.
+            className="order-last w-full rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground sm:order-none sm:w-auto sm:max-w-[10rem] sm:shrink-0"
+          >
+            <option value="">{t("area.geral")}</option>
+            {areas.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.nome}
+              </option>
+            ))}
+          </select>
+        )}
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span className="hidden sm:inline">{t("active")}</span>
           <Switch
@@ -1301,10 +1373,10 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
         </div>
         <Button
           onClick={save}
-          disabled={saving}
+          disabled={saving || aguardandoSugestao}
           className="bg-primary text-primary-foreground hover:bg-primary/90"
         >
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          {saving || aguardandoSugestao ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
           {isEditing ? t("save") : t("saveDraft")}
         </Button>
       </header>

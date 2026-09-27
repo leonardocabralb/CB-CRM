@@ -1788,7 +1788,41 @@
       "never": "never",
       "activeIndicator": "active",
       "openMenu": "Open menu",
-      "loadError": "Failed to load automations"
+      "loadError": "Failed to load automations",
+      "abas": {
+        "todas": "All",
+        "geral": "General",
+        "gerenciar": "Manage tabs",
+        "dialogoTitulo": "Automation tabs",
+        "dialogoDescricao": "Group automations by area. It is only organization: a tab does not change what the automation does. \"General\" is fixed and holds the automations without a tab.",
+        "novaPlaceholder": "New tab (e.g. Tax)",
+        "adicionar": "Add",
+        "fixa": "fixed",
+        "renomearAria": "Rename the {nome} tab",
+        "antes": "Move the {nome} tab left",
+        "depois": "Move the {nome} tab right",
+        "apagarAria": "Delete the {nome} tab",
+        "confirmarApagar": "Delete the \"{nome}\" tab? {count, plural, =0 {It is empty.} one {Its automation goes back to General.} other {Its # automations go back to General.}}",
+        "apagar": "Delete",
+        "cancelar": "Cancel",
+        "nenhuma": "No tabs yet: every automation is in General.",
+        "criada": "Tab \"{nome}\" created",
+        "renomeada": "Tab renamed",
+        "apagada": "Tab \"{nome}\" deleted",
+        "moverPara": "Move to tab",
+        "movida": "Automation moved to \"{aba}\"",
+        "vazia": "No automations in this tab.",
+        "carregarFalhou": "Couldn't load the tabs; the list shows without them.",
+        "erros": {
+          "vazio": "Give the tab a name.",
+          "longo": "Use up to {max} characters.",
+          "reservado": "\"General\" already exists and is fixed.",
+          "repetido": "A tab with this name already exists.",
+          "semPermissao": "Your profile can't change the tabs.",
+          "falhou": "Couldn't save. Try again.",
+          "mover": "Couldn't move the automation. Try again."
+        }
+      }
     },
     "edit": {
       "loadError": "Failed to load ({status})",
@@ -2228,6 +2262,10 @@
         "label": "Sign as",
         "placeholder": "Carol - billing",
         "ajuda": "The name that signs this automation's text messages, instead of the firm's automatic name. Empty = the automatic name. Still under the account's signature switch."
+      },
+      "area": {
+        "label": "Automation tab",
+        "geral": "General"
       },
       "schedulePlaceholder": "Cron expression or HH:mm",
       "moveUp": "Move up",

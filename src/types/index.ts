@@ -1768,6 +1768,8 @@ export interface Automation {
    * nome automático do escritório, como sempre foi.
    */
   assinatura_personalizada?: string | null;
+  /** A aba da tela de Automações (1055). NULO = "Geral". Só organiza. */
+  area_id?: string | null;
   is_active: boolean;
   execution_count: number;
   last_executed_at?: string | null;

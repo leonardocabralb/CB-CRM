@@ -54,6 +54,8 @@ export async function POST(
       // "Assinar como" (998): sem isto a cópia nasce assinando com o nome da
       // conta, e a diferença só aparece na mensagem que chega ao cliente.
       assinatura_personalizada: original.assinatura_personalizada ?? null,
+      // A aba (1055): a cópia aparece ao lado da original, não em "Geral".
+      area_id: original.area_id ?? null,
       is_active: false,
     })
     .select()

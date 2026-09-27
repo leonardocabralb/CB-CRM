@@ -15,6 +15,7 @@ import {
 import { carregarCamposParaCondicoes } from '@/lib/automations/condicao-por-campo'
 import { ehGatilhoDaRegua } from '@/lib/asaas/regua'
 import { normalizarAssinatura } from '@/lib/assinatura/assinatura'
+import { ehAreaDeOutraConta, lerIdDaArea } from '@/lib/automations/areas'
 
 export async function GET() {
   const supabase = await createClient()
@@ -82,6 +83,11 @@ export async function POST(request: Request) {
     : null
   // "Assinar como" (998, D18): texto livre aparado, teto de 60; vazio = NULL.
   const assinatura = normalizarAssinatura(body.assinatura_personalizada)
+  // A aba da tela de Automações (1055). Ausente = "Geral".
+  const areaId = 'area_id' in body ? lerIdDaArea(body.area_id) : null
+  if (areaId === undefined) {
+    return NextResponse.json({ error: 'area_id must be an area id or null' }, { status: 400 })
+  }
 
   let effectiveSteps: BuilderStepInput[] | undefined = steps
   let effectiveName = name
@@ -160,11 +166,15 @@ export async function POST(request: Request) {
       // esconder o seletor não bastaria, o valor gravado continuaria valendo.
       stage_ids: ehGatilhoDaRegua(effectiveTriggerType) ? null : stageIds && stageIds.length > 0 ? stageIds : null,
       assinatura_personalizada: assinatura,
+      area_id: areaId,
       is_active: !!is_active,
     })
     .select()
     .single()
 
+  if (ehAreaDeOutraConta(insertErr)) {
+    return NextResponse.json({ error: 'area_not_found' }, { status: 400 })
+  }
   if (insertErr || !automation) {
     return NextResponse.json(
       { error: insertErr?.message ?? 'insert failed' },

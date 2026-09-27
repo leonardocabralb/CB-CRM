@@ -16,6 +16,8 @@ import {
   Users,
   PhoneCall,
   Loader2,
+  FolderInput,
+  Check,
 } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/client"
@@ -30,6 +32,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
@@ -47,6 +52,32 @@ import { useChannels } from "@/hooks/use-channels"
 import type { CbChannel } from "@/lib/cb-channels/repo"
 import { TRIGGER_META, triggerMeta, formatRelative } from "@/lib/automations/trigger-meta"
 import { cn } from "@/lib/utils"
+import { useAuth } from "@/hooks/use-auth"
+import { useAreasDeAutomacao } from "@/hooks/use-areas-de-automacao"
+import { ABA_GERAL, abaDaAutomacao, contarPorAba, type AreaDeAutomacao } from "@/lib/automations/areas"
+import { BarraDeAbas, GerenciarAbasDialog } from "@/components/automations/abas-de-automacao"
+
+// A aba escolhida fica lembrada NESTE aparelho (conveniência de quem usa;
+// storage que falha só volta para "Todas").
+const CHAVE_DA_ABA = "cb-automacoes-aba"
+
+function lerAbaGuardada(): string | null {
+  if (typeof window === "undefined") return null
+  try {
+    return window.localStorage.getItem(CHAVE_DA_ABA)
+  } catch {
+    return null
+  }
+}
+
+function guardarAba(aba: string | null) {
+  try {
+    if (aba) window.localStorage.setItem(CHAVE_DA_ABA, aba)
+    else window.localStorage.removeItem(CHAVE_DA_ABA)
+  } catch {
+    // sem storage, a aba só não é lembrada
+  }
+}
 
 const TEMPLATE_ORDER: TemplateSlug[] = [
   "welcome_message",
@@ -76,6 +107,18 @@ export default function AutomationsPage() {
   // todos os números, então ela aparece em qualquer filtro — esconder a
   // regra que dispara em todo lugar seria a leitura mais perigosa da tela.
   const [filtroCanal, setFiltroCanal] = useState<string | null>(null)
+  const tAbas = useTranslations("Automations.list.abas")
+  const { accountId } = useAuth()
+  const { areas, falhou: abasFalharam, recarregar: recarregarAbas } = useAreasDeAutomacao()
+  // `null` = "Todas". Lida uma vez (a primeira renderização é o spinner, então
+  // o servidor e o navegador desenham a mesma coisa).
+  const [aba, setAba] = useState<string | null>(lerAbaGuardada)
+  const [gerenciando, setGerenciando] = useState(false)
+
+  function escolherAba(nova: string | null) {
+    setAba(nova)
+    guardarAba(nova)
+  }
 
   async function load() {
     try {
@@ -151,6 +194,30 @@ export default function AutomationsPage() {
     load()
   }
 
+  async function moverParaAba(a: Automation, areaId: string | null) {
+    const antes = a.area_id ?? null
+    if (antes === areaId) return
+    setAutomations(
+      (prev) => prev?.map((x) => (x.id === a.id ? { ...x, area_id: areaId } : x)) ?? prev,
+    )
+    const res = await fetch(`/api/automations/${a.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ area_id: areaId }),
+    })
+    if (!res.ok) {
+      setAutomations(
+        (prev) => prev?.map((x) => (x.id === a.id ? { ...x, area_id: antes } : x)) ?? prev,
+      )
+      toast.error(tAbas("erros.mover"))
+      // A aba pode ter sido apagada com a tela aberta: relê as duas listas.
+      void recarregarAbas()
+      return
+    }
+    const nome = areaId ? areas?.find((x) => x.id === areaId)?.nome ?? "" : tAbas("geral")
+    toast.success(tAbas("movida", { aba: nome }))
+  }
+
   async function startFromTemplate(slug: TemplateSlug) {
     router.push(`/automations/new?template=${slug}`)
   }
@@ -174,18 +241,44 @@ export default function AutomationsPage() {
     )
   }
 
-  const visiveis = filtroCanal
+  const noCanal = filtroCanal
     ? automations.filter((a) => {
         const escopo = a.channel_ids
         return !escopo || escopo.length === 0 || escopo.includes(filtroCanal)
       })
     : automations
+  // As abas só entram com a lista delas LIDA: sem ela, toda automação cairia
+  // em "Geral" por um instante (ver `useAreasDeAutomacao`). Até lá, e se a
+  // leitura falhar, a lista é a de sempre, sem abas.
+  const abas = areas
+  const idsDasAbas = new Set((abas ?? []).map((x) => x.id))
+  // Aba guardada que não existe mais (apagada) volta para "Todas".
+  const abaVigente =
+    abas === null || aba === null || aba === ABA_GERAL || idsDasAbas.has(aba) ? aba : null
+  const visiveis =
+    abas && abaVigente !== null
+      ? noCanal.filter((a) => abaDaAutomacao(a.area_id, idsDasAbas) === abaVigente)
+      : noCanal
+  const contagem = contarPorAba(noCanal, abas ?? [])
+  // O diálogo conta TODAS: "N automações voltam para Geral" ao apagar uma aba
+  // não pode depender do filtro de canal que está na tela.
+  const contagemDaConta = contarPorAba(automations, abas ?? [])
+  // Em "Todas", a lista vem AGRUPADA por aba (Geral primeiro), só com as abas
+  // que têm automação — é o que tira a lista comprida de uma coluna só.
+  const grupos: { id: string; nome: string; itens: Automation[] }[] | null =
+    abas && abas.length > 0 && abaVigente === null
+      ? [{ id: ABA_GERAL, nome: tAbas("geral") }, ...abas.map((x) => ({ id: x.id, nome: x.nome }))]
+          .map((g) => ({ ...g, itens: noCanal.filter((a) => abaDaAutomacao(a.area_id, idsDasAbas) === g.id) }))
+          .filter((g) => g.itens.length > 0)
+      : null
 
   const showTemplates = automations.length < 3
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* `flex-wrap`: no celular o filtro de canal e o "Criar automação" não
+          cabiam ao lado do título, e o botão saía cortado na borda. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground">{t("title")}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -209,6 +302,23 @@ export default function AutomationsPage() {
           </GatedButton>
         </div>
       </div>
+
+      {/* Sem condição de ter automação: conta nova monta as abas ANTES da
+          primeira automação (o construtor só escolhe aba, não cria). */}
+      {abas !== null && (
+        <BarraDeAbas
+          areas={abas}
+          contagem={contagem}
+          total={noCanal.length}
+          aba={abaVigente}
+          onAba={escolherAba}
+          podeGerenciar={canCreate}
+          onGerenciar={() => setGerenciando(true)}
+        />
+      )}
+      {abasFalharam && abas === null && (
+        <p className="text-xs text-muted-foreground">{tAbas("carregarFalhou")}</p>
+      )}
 
       {showTemplates && (
         <section>
@@ -252,23 +362,53 @@ export default function AutomationsPage() {
               tinham sumido. */}
           {visiveis.length === 0 && (
             <li className="rounded-xl border border-dashed border-border bg-card/40 px-4 py-6 text-center text-sm text-muted-foreground">
-              {tCanais("noneOnChannel")}
+              {abaVigente !== null && noCanal.length > 0 ? tAbas("vazia") : tCanais("noneOnChannel")}
             </li>
           )}
-          {visiveis.map((a) => (
-            <AutomationCard
-              key={a.id}
-              automation={a}
-              channels={channels}
-              onToggle={(next) => toggleActive(a, next)}
-              onEdit={() => router.push(`/automations/${a.id}/edit`)}
-              onDuplicate={() => duplicate(a)}
-              onLogs={() => router.push(`/automations/${a.id}/logs`)}
-              onDelete={() => setPendingDelete(a)}
-              t={t}
-            />
+          {(grupos ?? [{ id: "", nome: "", itens: visiveis }]).map((g) => (
+            <li key={g.id || "lista"} className="space-y-3">
+              {grupos && (
+                <h2 className="flex items-center gap-2 pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {g.nome}
+                  <span className="tabular-nums font-normal">{g.itens.length}</span>
+                </h2>
+              )}
+              <ul className="space-y-3">
+                {g.itens.map((a) => (
+                  <AutomationCard
+                    key={a.id}
+                    automation={a}
+                    channels={channels}
+                    abas={abas}
+                    podeMover={canCreate}
+                    onMover={(areaId) => moverParaAba(a, areaId)}
+                    onToggle={(next) => toggleActive(a, next)}
+                    onEdit={() => router.push(`/automations/${a.id}/edit`)}
+                    onDuplicate={() => duplicate(a)}
+                    onLogs={() => router.push(`/automations/${a.id}/logs`)}
+                    onDelete={() => setPendingDelete(a)}
+                    t={t}
+                  />
+                ))}
+              </ul>
+            </li>
           ))}
         </ul>
+      )}
+
+      {abas !== null && (
+        <GerenciarAbasDialog
+          open={gerenciando}
+          onOpenChange={setGerenciando}
+          areas={abas}
+          contagem={contagemDaConta}
+          accountId={accountId}
+          onMudou={async () => {
+            // Apagar uma aba devolve as automações dela para "Geral" no
+            // banco (SET NULL): relê as duas listas.
+            await Promise.all([recarregarAbas(), load()])
+          }}
+        />
       )}
 
       <Dialog open={!!pendingDelete} onOpenChange={(v) => !v && setPendingDelete(null)}>
@@ -305,6 +445,9 @@ export default function AutomationsPage() {
 function AutomationCard({
   automation,
   channels,
+  abas,
+  podeMover,
+  onMover,
   onToggle,
   onEdit,
   onDuplicate,
@@ -314,6 +457,10 @@ function AutomationCard({
 }: {
   automation: Automation
   channels: CbChannel[]
+  /** `null` = as abas ainda não foram lidas (o item "Mover" não aparece). */
+  abas: AreaDeAutomacao[] | null
+  podeMover: boolean
+  onMover: (areaId: string | null) => void
   onToggle: (next: boolean) => void
   onEdit: () => void
   onDuplicate: () => void
@@ -323,6 +470,8 @@ function AutomationCard({
 }) {
   const meta = triggerMeta(automation.trigger_type)
   const tGatilhos = useTranslations("Automations.builder.triggers")
+  const tAbas = useTranslations("Automations.list.abas")
+  const atual = automation.area_id ?? null
   return (
     <li className="rounded-xl border border-border bg-card transition-colors hover:border-border">
       <div className="flex items-center gap-4 p-4">
@@ -407,6 +556,26 @@ function AutomationCard({
                 <FileText className="h-4 w-4" />
                 {t("viewLogs")}
               </DropdownMenuItem>
+              {podeMover && abas && abas.length > 0 && (
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <FolderInput className="h-4 w-4" />
+                    {tAbas("moverPara")}
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    {[{ id: null as string | null, nome: tAbas("geral") }, ...abas].map((x) => (
+                      <DropdownMenuItem
+                        key={x.id ?? "geral"}
+                        disabled={x.id === atual}
+                        onClick={() => onMover(x.id)}
+                      >
+                        {x.id === atual ? <Check className="h-4 w-4" /> : <span className="h-4 w-4" />}
+                        <span className="max-w-[14rem] truncate">{x.nome}</span>
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem variant="destructive" onClick={onDelete}>
                 <Trash2 className="h-4 w-4" />
