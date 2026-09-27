@@ -24,19 +24,19 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
  * F4 (D28): o agente vem com as `ferramentas` (as ações que ele pode fazer
  * junto com a resposta; `lerFerramentas`), e o `PATCH` aceita `ferramentas`
  * inteiro. Forma errada = 400 `lista_invalida`; item de outra conta, etapa de
- * ganho/perdido, campo de data vigiado por lembrete, automação com passo
- * fora da D5 ou "Aguardar", e etapa (para onde move) ou etiqueta (que aplica)
- * cuja CASCATA dispara automação com passo fora da D5 = 400 com `code`
+ * ganho/perdido, campo de data vigiado por lembrete e automação com passo
+ * fora da D5 ou "Aguardar" (nela ou nas que ela aciona) = 400 com `code`
  * (`item_de_outra_conta`, `etapa_de_resultado`, `campo_vigiado`,
- * `automacao_fora_da_d5`, `cascata_fora_da_d5`) e os ids recusados em
- * `itens`. O catálogo da tela é `…/ferramentas/opcoes`.
+ * `automacao_fora_da_d5`) e os ids recusados em `itens`. As automações de
+ * ENTRADA da etapa e as de etiqueta não são conferidas (a D5 vale só para o
+ * que o agente faz, 27/09/2026). O catálogo da tela é `…/ferramentas/opcoes`.
  *
  * F5: `ferramentas.marcar_reuniao = { tipos_de_evento: [uri] }` — no máximo
  * UMA URI de tipo de evento do Calendly (`https://api.calendly.com/event_types/<id>`;
  * outra forma ou mais de uma = 400 `lista_invalida`). Tipo que não é ATIVO
  * na conta do Calendly conectado = 400 `tipo_de_evento_invalido`; sem
  * Calendly conectado = 400 `calendly_desconectado` (os dois com `itens` =
- * [uri]). A reunião NÃO passa pela régua da D5 pela cascata (plano, 5.6).
+ * [uri]).
  */
 export async function GET(_request: Request, { params }: Contexto) {
   try {

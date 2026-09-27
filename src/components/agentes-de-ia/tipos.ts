@@ -42,27 +42,15 @@ export interface ContextoDoTurno {
 /**
  * O que a sub-aba Ferramentas (F4, D28) oferece para marcar
  * (`GET /api/cb/ia/agentes/[id]/ferramentas/opcoes`). Quem decide o que a D5
- * proíbe é o SERVIDOR: etapa com `resultado`, campo `vigiado` por lembrete,
- * automação `foraDaD5` (o código do passo) e a CASCATA — etapa ou etiqueta
- * `foraDaD5` porque uma automação que dispara ao entrar nela, ao aplicá-la ou
- * ao tirá-la (ou algo que essa automação aciona) sai da D5. A tela só mostra.
- * Os códigos ficam `string` (vêm da rede): código novo cai no texto "outro".
+ * proíbe é o SERVIDOR: etapa com `resultado`, campo `vigiado` por lembrete e
+ * automação `foraDaD5` (o código do passo, nela ou nas que ela aciona). A
+ * tela só mostra. As automações que a etapa ou a etiqueta disparam não
+ * contam (a D5 vale só para o que o agente faz, 27/09/2026). Os códigos
+ * ficam `string` (vêm da rede): código novo cai no texto "outro".
  */
 export interface OpcoesDasFerramentas {
-  etapas: Array<{
-    id: string
-    nome: string
-    funil: string
-    resultado: 'ganho' | 'perdido' | null
-    /** A cascata: uma automação de ENTRADA na etapa sai da D5. */
-    foraDaD5: string | null
-  }>
-  etiquetas: Array<{
-    id: string
-    nome: string
-    /** A cascata, separada para aplicar e para tirar a etiqueta. */
-    foraDaD5: { etiquetar: string | null; tirar: string | null }
-  }>
+  etapas: Array<{ id: string; nome: string; funil: string; resultado: 'ganho' | 'perdido' | null }>
+  etiquetas: Array<{ id: string; nome: string }>
   /** `tipo` = `custom_fields.field_type` (nulo = não veio); `opcoes` = as da lista. */
   campos: Array<{ id: string; nome: string; vigiado: boolean; tipo: string | null; opcoes: string[] }>
   membros: Array<{ userId: string; nome: string }>

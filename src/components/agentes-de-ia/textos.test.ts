@@ -7,12 +7,12 @@ import type { useTranslations } from 'next-intl'
 
 import {
   ACOES_COM_VALOR,
+  ACOES_COM_VALOR_OPCIONAL,
   CODIGOS_DE_FALHA_DA_ACAO,
   type MotivoDaRecusa,
   type MotivoForaDaD5,
 } from '@/lib/ia-agentes/acoes'
 
-import { GATILHOS_DA_CASCATA } from './ferramentas'
 import {
   CHAVE_DO_ERRO_DA_ACAO,
   CODIGOS_CONHECIDOS,
@@ -21,6 +21,7 @@ import {
   STATUS_DO_TURNO,
   TIPOS_DE_CAMPO,
   fraseDaAcao,
+  rotuloDoTipoDeAcao,
   rotuloDoTipoDoCampo,
   textoDoDetalheDaAcao,
   textoDoErroDaAcao,
@@ -81,10 +82,17 @@ describe.each(['en.json', 'pt-BR.json'])('IaAgentes em %s', (arquivo) => {
     }
     expect(em(d, 'ferramentas.tipoDesconhecido')).toBeTruthy()
     expect(em(d, 'playground.acaoDesconhecida')).toBeTruthy()
+    // "Responda e passe" ([[TRANSFERIR]], 27/09): o rótulo e a frase do Playground.
+    expect(em(d, 'ferramentas.transferir')).toBeTruthy()
+    expect(em(d, 'playground.acaoTransferir')).toBeTruthy()
+    // A equipe prometida sem o marcador (27/09): o aviso do Playground e o detalhe na aba Turnos.
+    expect(em(d, 'playground.transferenciaInferida')).toBeTruthy()
+    expect(em(d, 'turnos.acoes.semMarcador')).toBeTruthy()
+    expect(em(d, 'turnos.acoes.nomeSemOrigem')).toBeTruthy()
   })
 
-  it('cada ação com valor (campo, tarefa) tem a frase com o valor no Playground', () => {
-    for (const tipo of ACOES_COM_VALOR) {
+  it('cada ação com valor (campo, tarefa, e o nome opcional da reunião) tem a frase com o valor no Playground', () => {
+    for (const tipo of [...ACOES_COM_VALOR, ...ACOES_COM_VALOR_OPCIONAL]) {
       const frase = em(d, `playground.acaoComValor.${tipo}`)
       expect(typeof frase === 'string' && frase.includes('{nome}') && frase.includes('{valor}'), tipo).toBe(true)
     }
@@ -95,12 +103,12 @@ describe.each(['en.json', 'pt-BR.json'])('IaAgentes em %s', (arquivo) => {
     expect(em(d, 'ferramentas.campoOpcoes')).toBeTruthy()
   })
 
-  it('cada gatilho da cascata (etapa, aplicar, tirar) tem o bloqueio com o motivo, e o "Aguardar" também', () => {
-    for (const g of GATILHOS_DA_CASCATA) {
-      const frase = em(d, `ferramentas.bloqueio.cascata.${g}`)
-      expect(typeof frase === 'string' && frase.includes('{motivo}'), g).toBe(true)
+  it('o bloqueio de cada item (ganho/perdido, campo vigiado, fora da D5, "Aguardar") tem texto', () => {
+    for (const chave of ['etapaDeResultado', 'campoVigiado', 'foraDaD5', 'aguardar']) {
+      expect(em(d, `ferramentas.bloqueio.${chave}`), chave).toBeTruthy()
     }
-    expect(em(d, 'ferramentas.bloqueio.aguardar')).toBeTruthy()
+    // A D5 só para o que o agente faz (27/09/2026): sem bloqueio pela cascata.
+    expect(em(d, 'ferramentas.bloqueio.cascata')).toBeUndefined()
   })
 
   it('cada código do registro de uma ação (recusa e falha) tem texto, com o genérico e o complemento', () => {
@@ -226,6 +234,8 @@ describe('textoDoErroDaAcao — o porquê de uma ação do turno', () => {
 
   it('`ja_estava` (a ação deu certo sem mexer) vira texto; outro detalhe sai cru', () => {
     expect(textoDoDetalheDaAcao(t, 'ja_estava')).toBe('turnos.acoes.jaEstava')
+    expect(textoDoDetalheDaAcao(t, 'sem_marcador')).toBe('turnos.acoes.semMarcador')
+    expect(textoDoDetalheDaAcao(t, 'nome_sem_origem')).toBe('turnos.acoes.nomeSemOrigem')
     expect(textoDoDetalheDaAcao(t, 'qualquer')).toBe('qualquer')
   })
 })
@@ -243,6 +253,14 @@ describe('fraseDaAcao e rotuloDoTipoDoCampo', () => {
     )
     expect(fraseDaAcao(t, 'mover_etapa', 'Proposta', 'x')).toBe('playground.acao.mover_etapa{"nome":"Proposta"}')
     expect(fraseDaAcao(t, 'criar_tarefa', 'Ana')).toBe('playground.acao.criar_tarefa{"nome":"Ana"}')
+    // A reunião: com o nome do convidado, a frase com o nome; sem, a de sempre.
+    expect(fraseDaAcao(t, 'marcar_reuniao', '28/09/2026 15:15', 'Ana Souza')).toBe(
+      'playground.acaoComValor.marcar_reuniao{"nome":"28/09/2026 15:15","valor":"Ana Souza"}',
+    )
+    expect(fraseDaAcao(t, 'marcar_reuniao', '28/09/2026 15:15')).toBe('playground.acao.marcar_reuniao{"nome":"28/09/2026 15:15"}')
+    // "Responda e passe" ([[TRANSFERIR]]): frase e rótulo próprios, nunca o "desconhecido".
+    expect(fraseDaAcao(t, 'transferir', '')).toBe('playground.acaoTransferir')
+    expect(rotuloDoTipoDeAcao(t, 'transferir')).toBe('ferramentas.transferir')
   })
 
   it('tipo de campo conhecido tem rótulo; o desconhecido (ou ausente) não afirma nada', () => {

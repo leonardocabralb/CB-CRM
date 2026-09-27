@@ -2216,6 +2216,145 @@ describe('executarTurno — as ações (F4, D28)', () => {
     expect(executarAcoes).not.toHaveBeenCalled()
     expect(turno().acoes).toEqual([{ tipo: 'mover_etapa', alvo: { id: null, nome: '#1' }, ok: false, erro: 'nao_liberada' }])
   })
+
+  // "Responda e passe" (`[[TRANSFERIR]]`, 27/09/2026): sempre disponível, a
+  // resposta SAI e só depois a conversa vai para a equipe.
+  const TRANSFERIR = { tipo: 'transferir', alvo: { id: null, nome: '' } }
+
+  it('⚠️ [[TRANSFERIR]]: a resposta SAI (sem o marcador), e DEPOIS das ações a conversa vai para a equipe; desfecho `respondeu`', async () => {
+    vi.mocked(opcoesDoAgente).mockResolvedValue({})
+    agenteLido().ferramentas = {}
+    let pausadaNoEnvio: unknown = null
+    vi.mocked(engineSendText).mockImplementation(async (args) => {
+      pausadaNoEnvio = conversa().ai_autoreply_disabled
+      args.antesDoProvedor?.()
+      await args.aoSair?.('wamid.resposta')
+      return { whatsapp_message_id: 'wamid.resposta' }
+    })
+    responde('Um especialista vai analisar o seu caso e te retorna por aqui.\n[[TRANSFERIR]]')
+    await executarTurno(TURNO)
+    expect(vi.mocked(engineSendText).mock.calls[0][0].text).toBe('Um especialista vai analisar o seu caso e te retorna por aqui.')
+    // No envio a conversa AINDA não estava pausada: a transferência vem depois.
+    expect(pausadaNoEnvio).toBe(false)
+    expect(turno()).toMatchObject({ status: 'respondeu', mensagem_enviada_id: 'wamid.resposta', acoes: [{ ...TRANSFERIR, ok: true }] })
+    expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'transferencia', assigned_agent_id: MEMBRO })
+    expect(notas()).toHaveLength(1)
+    expect(String(notas()[0].autor_nome)).toContain('Triagem')
+    expect(String(notas()[0].texto)).toMatch(/respondeu ao cliente e passou a conversa para a equipe|replied to the customer and handed the conversation to the team/)
+  })
+
+  it('[[TRANSFERIR]] junto com ações: as ações executam primeiro, a transferência por último', async () => {
+    const ordem: string[] = []
+    vi.mocked(executarAcoes).mockImplementation(async (_db, _ctx, aceitas) => {
+      ordem.push(`ações; pausada=${String(conversa().ai_autoreply_disabled)}`)
+      return { registros: aceitas.map((a) => ({ tipo: a.tipo, alvo: { id: a.id, nome: a.nome }, ok: true })), moveu: false }
+    })
+    responde('Anotei, a equipe te chama.\n[[ETIQUETAR:1]]\n[ transferir ]')
+    await executarTurno(TURNO)
+    expect(ordem).toEqual(['ações; pausada=false'])
+    expect(turno().acoes).toEqual([{ tipo: 'etiquetar', alvo: { id: 'tag-vip', nome: 'VIP' }, ok: true }, { ...TRANSFERIR, ok: true }])
+    expect(conversa()).toMatchObject({ ai_autoreply_disabled: true })
+  })
+
+  it('[[TRANSFERIR]] com a conversa JÁ pausada por gente: não passa por cima, sem anotação — `ja_estava`', async () => {
+    responde('A equipe te chama.\n[[TRANSFERIR]]')
+    vi.mocked(engineSendText).mockImplementation(async (args) => {
+      args.antesDoProvedor?.()
+      await args.aoSair?.('wamid.resposta')
+      // A equipe respondeu pelo celular logo depois do envio.
+      Object.assign(conversa(), { ai_autoreply_disabled: true, ia_pausada_por: 'gente' })
+      return { whatsapp_message_id: 'wamid.resposta' }
+    })
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    expect(conversa()).toMatchObject({ ia_pausada_por: 'gente' })
+    expect(notas()).toHaveLength(0)
+    expect(turno().acoes).toEqual([{ ...TRANSFERIR, ok: true, detalhe: 'ja_estava' }])
+  })
+
+  it.each<[string, () => void, string]>([
+    ['recusado (4xx)', () => envioFalhaNoProvedor(new EvolutionApiError('número inválido', 400)), 'falhou'],
+    ['incerto (5xx)', () => envioFalhaNoProvedor(new EvolutionApiError('bad gateway', 502)), 'incerto'],
+  ])('⚠️ [[TRANSFERIR]] com o envio %s: não roda (registrado `envio_falhou`)', async (_r, falhar, status) => {
+    responde('A equipe te chama.\n[[TRANSFERIR]]')
+    falhar()
+    await executarTurno(TURNO)
+    expect(turno().status).toBe(status)
+    expect(turno().acoes).toEqual([{ ...TRANSFERIR, ok: false, erro: 'envio_falhou' }])
+    // O recusado não transfere (nada saiu); o incerto transfere pela regra DELE (`incerto`), não pelo marcador.
+    if (status === 'falhou') expect(conversa()).toMatchObject({ ai_autoreply_disabled: false })
+  })
+
+  it.each<[string, string, string]>([
+    ['o sentinela sozinho', 'Um momento [[HANDOFF]] [[TRANSFERIR]]', 'sentinela'],
+    ['só o [[TRANSFERIR]], sem texto', '[[TRANSFERIR]]', 'sentinela'],
+    ['o link inventado', 'Pague em https://pagar.exemplo.com/x\n[[TRANSFERIR]]', 'link inventado: https://pagar.exemplo.com/x'],
+  ])('⚠️ precedência: %s VENCE o [[TRANSFERIR]] — nada é enviado', async (_c, texto, erro) => {
+    responde(texto)
+    await executarTurno(TURNO)
+    expect(engineSendText).not.toHaveBeenCalled()
+    expect(turno()).toMatchObject({ status: 'transferiu', erro, acoes: [{ ...TRANSFERIR, ok: false, erro: 'transferencia' }] })
+  })
+
+  it('⚠️ a equipe PROMETIDA sem o marcador (medido em 27/09): a resposta SAI e a conversa vai para a equipe, com `sem_marcador`', async () => {
+    const TEXTO = 'Vou pedir para um de nossos especialistas analisar o seu caso e entrar em contato com você por aqui em breve.'
+    let pausadaNoEnvio: unknown = null
+    vi.mocked(engineSendText).mockImplementation(async (args) => {
+      pausadaNoEnvio = conversa().ai_autoreply_disabled
+      args.antesDoProvedor?.()
+      await args.aoSair?.('wamid.resposta')
+      return { whatsapp_message_id: 'wamid.resposta' }
+    })
+    responde(TEXTO)
+    await executarTurno(TURNO)
+    expect(vi.mocked(engineSendText).mock.calls[0][0].text).toBe(TEXTO)
+    expect(pausadaNoEnvio).toBe(false)
+    expect(turno()).toMatchObject({ status: 'respondeu', acoes: [{ ...TRANSFERIR, ok: true, detalhe: 'sem_marcador' }] })
+    expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'transferencia', assigned_agent_id: MEMBRO })
+    expect(notas()).toHaveLength(1)
+  })
+
+  it('a promessa da equipe COM o [[TRANSFERIR]]: não é inferida (sem `sem_marcador`)', async () => {
+    responde('Vou pedir para um especialista analisar o seu caso.\n[[TRANSFERIR]]')
+    await executarTurno(TURNO)
+    expect(turno().acoes).toEqual([{ ...TRANSFERIR, ok: true }])
+  })
+
+  it('a promessa da equipe com o envio recusado: nada roda (registrado `envio_falhou`, com `sem_marcador`)', async () => {
+    responde('Nossa equipe vai entrar em contato em breve.')
+    envioFalhaNoProvedor(new EvolutionApiError('número inválido', 400))
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('falhou')
+    expect(turno().acoes).toEqual([{ ...TRANSFERIR, ok: false, erro: 'envio_falhou', detalhe: 'sem_marcador' }])
+    expect(conversa()).toMatchObject({ ai_autoreply_disabled: false })
+  })
+
+  it.each([
+    'Um especialista vai analisar o seu caso na reunião.',
+    'Quer que eu chame um especialista?',
+    'Se preferir, vou pedir para um especialista te ligar.',
+  ])('quieta: "%s" sai e NÃO transfere', async (texto) => {
+    responde(texto)
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    expect(turno().acoes).toBeUndefined()
+    expect(conversa()).toMatchObject({ ai_autoreply_disabled: false })
+  })
+
+  it('com o sentinela a promessa não é inferida: transfere sem enviar, como sempre', async () => {
+    vi.mocked(generateReply).mockResolvedValue({ text: 'Vou pedir para um especialista te chamar.', handoff: true, usage: null })
+    await executarTurno(TURNO)
+    expect(engineSendText).not.toHaveBeenCalled()
+    expect(turno()).toMatchObject({ status: 'transferiu', erro: 'sentinela' })
+    expect(turno().acoes).toBeUndefined()
+  })
+
+  it('⚠️ precedência: a passagem VENCE o [[TRANSFERIR]] — nada é enviado', async () => {
+    responde('Vou te passar. [[PASSAR:1]] [[TRANSFERIR]]')
+    await executarTurno(TURNO)
+    expect(engineSendText).not.toHaveBeenCalled()
+    expect(turno().acoes).toEqual([{ ...TRANSFERIR, ok: false, erro: 'passagem' }])
+  })
 })
 
 // ------------------------------------------------------------
@@ -2280,6 +2419,23 @@ describe('executarTurno — marcar reunião (F5)', () => {
     },
   )
 
+  it('⚠️ o nome do marcador só vai com ORIGEM na conversa do cliente (Codex, #321); o inventado cai (`nomeSemOrigem`)', async () => {
+    banco.tabelas.messages[0].content_text = 'Meu nome é Maria Aparecida Souza, pode ser terça às 10h'
+    responde('Marquei para terça às 10h!\n[[REUNIAO:2=Maria Aparecida Souza]]')
+    await executarTurno(TURNO)
+    expect(vi.mocked(executarAcoes).mock.calls[0][2]).toEqual([
+      { tipo: 'marcar_reuniao', id: H2, nome: '29/09/2026 10:00', valor: 'Maria Aparecida Souza' },
+    ])
+  })
+
+  it('o nome que o cliente NÃO escreveu ("Dr. Silva") cai: a reunião segue com o da ficha, marcada `nomeSemOrigem`', async () => {
+    responde('Marquei para terça às 10h!\n[[REUNIAO:2=Dr. Silva]]')
+    await executarTurno(TURNO)
+    expect(vi.mocked(executarAcoes).mock.calls[0][2]).toEqual([
+      { tipo: 'marcar_reuniao', id: H2, nome: '29/09/2026 10:00', nomeSemOrigem: true },
+    ])
+  })
+
   it('⚠️ a reunião NÃO marcada (sem e-mail) TRANSFERE para gente, com o motivo — e o desfecho continua `respondeu`', async () => {
     responde('Pronto, marquei!\n[[REUNIAO:1]]')
     vi.mocked(executarAcoes).mockResolvedValue({
@@ -2292,6 +2448,66 @@ describe('executarTurno — marcar reunião (F5)', () => {
     expect(notas()).toHaveLength(1)
     expect(String(notas()[0].autor_nome)).toContain('Triagem')
     expect(String(notas()[0].texto)).toContain('e-mail')
+  })
+
+  it('⚠️ a reunião PROMETIDA sem o marcador (medido em 27/09): a resposta é RETIDA, a conversa vai para gente, e o texto fica no `erro`', async () => {
+    const TEXTO = 'Perfeito! Sua reunião está confirmada para terça-feira, 29/09, às 10:00. A confirmação chega por e-mail.'
+    agenteLido().ferramentas = { marcar_reuniao: { tipos_de_evento: [TIPO] }, etiquetar: { etiquetas: ['tag-vip'] } }
+    vi.mocked(opcoesDoAgente).mockResolvedValue({ etiquetar: [{ id: 'tag-vip', nome: 'VIP' }] })
+    responde(`${TEXTO}\n[[ETIQUETAR:1]]`)
+    await executarTurno(TURNO)
+    expect(engineSendText).not.toHaveBeenCalled()
+    expect(executarAcoes).not.toHaveBeenCalled()
+    expect(turno()).toMatchObject({
+      status: 'transferiu',
+      erro: `reunião prometida sem marcar: ${TEXTO}`,
+      acoes: [{ tipo: 'etiquetar', alvo: { id: 'tag-vip', nome: 'VIP' }, ok: false, erro: 'transferencia' }],
+    })
+    expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'transferencia' })
+    expect(notas()).toHaveLength(1)
+    expect(String(notas()[0].texto)).toMatch(/nada foi marcado no Calendly|nothing was booked in Calendly/)
+  })
+
+  it('⚠️ o marcador RECUSADO (fora da lista) com o texto afirmando a reunião: também retida (nada seria marcado)', async () => {
+    responde('Pronto! Sua reunião está agendada para sexta às 15:00.\n[[REUNIAO:9]]')
+    await executarTurno(TURNO)
+    expect(engineSendText).not.toHaveBeenCalled()
+    expect(turno()).toMatchObject({
+      status: 'transferiu',
+      acoes: [{ tipo: 'marcar_reuniao', alvo: { id: null, nome: '#9' }, ok: false, erro: 'fora_da_lista' }],
+    })
+    expect(String(turno().erro)).toContain('reunião prometida sem marcar: Pronto! Sua reunião está agendada')
+  })
+
+  it('⚠️ a reunião prometida VENCE o [[TRANSFERIR]]: retida, nada enviado', async () => {
+    responde('Perfeito! Sua reunião está confirmada para terça-feira, 29/09, às 10:00.\n[[TRANSFERIR]]')
+    await executarTurno(TURNO)
+    expect(engineSendText).not.toHaveBeenCalled()
+    expect(turno()).toMatchObject({
+      status: 'transferiu',
+      acoes: [{ tipo: 'transferir', alvo: { id: null, nome: '' }, ok: false, erro: 'transferencia' }],
+    })
+    expect(String(turno().erro)).toContain('reunião prometida sem marcar')
+  })
+
+  it('a mesma confirmação COM o marcador sai e marca', async () => {
+    responde('Perfeito! Sua reunião está confirmada para terça-feira, 29/09, às 10:00.\n[[REUNIAO:2]]')
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    expect(vi.mocked(engineSendText).mock.calls[0][0].text).toBe('Perfeito! Sua reunião está confirmada para terça-feira, 29/09, às 10:00.')
+    expect(vi.mocked(executarAcoes).mock.calls[0][2]).toEqual([{ tipo: 'marcar_reuniao', id: H2, nome: '29/09/2026 10:00' }])
+  })
+
+  it('SEM horários oferecidos (o cliente JÁ tem reunião): "sua reunião está confirmada" é verdade e sai', async () => {
+    vi.mocked(lerAgendaDoAgente).mockResolvedValue({
+      ...AGENDA,
+      horarios: [],
+      reuniaoMarcada: { inicio: '2026-09-30T17:00:00Z', remarcar: 'https://calendly.com/reschedulings/vivo' },
+    })
+    responde('Sua reunião está confirmada para quarta, 30/09, às 14:00.')
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    expect(vi.mocked(engineSendText).mock.calls[0][0].text).toBe('Sua reunião está confirmada para quarta, 30/09, às 14:00.')
   })
 
   it('⚠️ default-deny: horário FORA da lista é recusado, nada executa, e o turno transfere', async () => {

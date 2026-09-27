@@ -4518,7 +4518,7 @@
       "teto": "É o máximo por agente ({n} documentos): para marcar outro, desmarque um."
     },
     "ferramentas": {
-      "explicacao": "O que este agente pode FAZER junto com a resposta, e com o quê. Nada ligado = o agente só conversa. As ações rodam depois de a resposta sair. Ele nunca fecha negócio, nunca manda mensagem para outro número e nunca mexe no Asaas — nem pelas automações que uma ação dispara. A exceção é “Marcar reunião”: a automação do Calendly roda como quando o próprio cliente agenda pelo link.",
+      "explicacao": "O que este agente pode FAZER junto com a resposta, e com o quê. Nada ligado = o agente só conversa. As ações rodam depois de a resposta sair. Ele nunca fecha negócio, nunca manda mensagem para outro número e nunca mexe no Asaas. As automações da etapa ou da etiqueta rodam como quando alguém da equipe move o card, e a do Calendly, como quando o próprio cliente agenda pelo link.",
       "soConversa": "Nada ligado: hoje este agente só conversa.",
       "falhou": "Não foi possível carregar as opções.",
       "buscar": "Buscar…",
@@ -4530,6 +4530,7 @@
       "salvar": "Salvar ferramentas",
       "salvo": "Ferramentas salvas.",
       "tipoDesconhecido": "Outra ({tipo})",
+      "transferir": "Passar para a equipe",
       "tipo": {
         "mover_etapa": {
           "nome": "Mover o card",
@@ -4573,12 +4574,7 @@
         "etapaDeResultado": "Etapa de ganho/perdido — a IA não fecha negócio.",
         "campoVigiado": "Data vigiada por um lembrete — a automação do lembrete dispararia depois, sozinha.",
         "foraDaD5": "Indisponível: {motivo}.",
-        "aguardar": "Indisponível: tem um passo “Aguardar” — a IA só executa automação que termina na hora (a retomada não confere o agente).",
-        "cascata": {
-          "etapa": "Indisponível: uma automação que dispara quando o card entra nesta etapa {motivo}.",
-          "etiquetar": "Indisponível: uma automação que dispara quando esta etiqueta é aplicada {motivo}.",
-          "tirar": "Indisponível: uma automação que dispara quando esta etiqueta sai do contato {motivo}."
-        }
+        "aguardar": "Indisponível: tem um passo “Aguardar” — a IA só executa automação que termina na hora (a retomada não confere o agente)."
       },
       "campo": {
         "text": "Texto",
@@ -4646,6 +4642,8 @@
       "acoesRecusadas": "Recusadas: {itens}",
       "recusada": "{tipo} ({motivo})",
       "linkInventado": "O agente inventou um link: em produção esta resposta seria retida e a conversa iria para uma pessoa.",
+      "reuniaoPrometida": "O agente disse que marcou a reunião sem marcar: em produção esta resposta seria retida e a conversa iria para uma pessoa.",
+      "transferenciaInferida": "O agente prometeu a equipe sem o marcador de transferir: em produção a resposta sai e a conversa vai para uma pessoa assim mesmo.",
       "acao": {
         "mover_etapa": "mover para {nome}",
         "etiquetar": "etiquetar {nome}",
@@ -4657,9 +4655,11 @@
       },
       "acaoComValor": {
         "preencher_campo": "preencher {nome} = {valor}",
-        "criar_tarefa": "tarefa para {nome}: {valor}"
+        "criar_tarefa": "tarefa para {nome}: {valor}",
+        "marcar_reuniao": "marcar reunião em {nome} para {valor}"
       },
       "acaoDesconhecida": "{tipo}: {nome}",
+      "acaoTransferir": "transferir para a equipe",
       "horarios": {
         "titulo": "Horários oferecidos: {itens}",
         "recolhidos": "{n, plural, one {# horário oferecido} other {# horários oferecidos}}",
@@ -4746,7 +4746,9 @@
           "calendly_desconectado": "o Calendly não está conectado"
         },
         "comDetalhe": "{texto} — {detalhe}",
-        "jaEstava": "o card já estava nessa etapa"
+        "jaEstava": "nada mudou: já estava assim",
+        "semMarcador": "a resposta prometeu a equipe sem o marcador — transferida assim mesmo",
+        "nomeSemOrigem": "o nome que o agente passou não veio do cliente — marcada com o nome da ficha"
       },
       "statusDesconhecido": "Outro ({status})",
       "status": {
@@ -4847,7 +4849,9 @@
         "audio": "{agente} passou a conversa para a equipe: não conseguiu ouvir o áudio do cliente.",
         "incerto": "{agente} passou a conversa para a equipe: não dá para saber se a última resposta chegou ao cliente — confira antes de responder.",
         "link_inventado": "{agente} passou a conversa para a equipe: a resposta tinha um link que não veio do sistema, e não foi enviada.",
-        "reuniao_nao_marcada": "{agente} não conseguiu marcar a reunião: {motivo}. A conversa passou para a equipe — confira no Calendly se a reunião não foi criada antes de marcar de novo, e confirme o horário com o cliente."
+        "reuniao_nao_marcada": "{agente} não conseguiu marcar a reunião: {motivo}. A conversa passou para a equipe — confira no Calendly se a reunião não foi criada antes de marcar de novo, e confirme o horário com o cliente.",
+        "reuniao_prometida": "{agente} passou a conversa para a equipe: a resposta dizia que a reunião estava marcada, mas nada foi marcado no Calendly — e ela não foi enviada. O texto retido está nos Turnos do agente; confirme o horário com o cliente e marque.",
+        "agente_passou": "{agente} respondeu ao cliente e passou a conversa para a equipe."
       },
       "passagem": "{agente} passou a conversa para IA · {destino}, e o card foi para a etapa desse agente.",
       "acoes": {

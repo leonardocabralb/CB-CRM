@@ -9,13 +9,13 @@
 //
 // ⚠️ NADA ligado = o agente só conversa (fechado por padrão, como o acesso).
 // O que sai da D5 não pode ser marcado: etapa de ganho/perdido, campo de
-// data vigiado por lembrete, automação com passo fora da D5 (ou com
-// "Aguardar") e a CASCATA — etapa ou etiqueta cuja automação de entrada, de
-// aplicar ou de tirar sai da D5 — aparecem DESABILITADOS com o motivo; quem
-// calcula é o servidor (`/ferramentas/opcoes`), a tela só mostra. Um item
-// assim que JÁ estava marcado (a etapa virou de resultado depois, a
-// automação da etapa ganhou um passo) continua desmarcável, com o motivo em
-// vermelho: o Salvar vai recusá-lo (400 com os `itens`, marcados na lista).
+// data vigiado por lembrete e automação com passo fora da D5 (ou com
+// "Aguardar") aparecem DESABILITADOS com o motivo; quem calcula é o servidor
+// (`/ferramentas/opcoes`), a tela só mostra. As automações que a etapa ou a
+// etiqueta disparam NÃO contam: a D5 vale só para o que o agente faz
+// (27/09/2026). Um item assim que JÁ estava marcado (a etapa virou de
+// resultado depois, a automação ganhou um passo) continua desmarcável, com o
+// motivo em vermelho: o Salvar vai recusá-lo (400 com os `itens`).
 //
 // ⚠️ As opções carregam à parte: enquanto carregam as listas são esqueleto,
 // e a carga que falha diz que falhou — nunca "a conta não tem etiquetas",
@@ -501,8 +501,6 @@ function textoDoBloqueio(t: ReturnType<typeof useTranslations>, bloqueio: Bloque
       return bloqueio.codigo === 'aguardar'
         ? t('ferramentas.bloqueio.aguardar')
         : t('ferramentas.bloqueio.foraDaD5', { motivo: motivoForaDaD5(t, bloqueio.codigo) });
-    case 'cascata':
-      return t(`ferramentas.bloqueio.cascata.${bloqueio.gatilho}`, { motivo: motivoForaDaD5(t, bloqueio.codigo) });
     default: {
       const nunca: never = bloqueio;
       return String(nunca);

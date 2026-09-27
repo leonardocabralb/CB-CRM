@@ -21,7 +21,7 @@ import { casaComAPerguntaConfigurada, rotuloDeTelefone } from '@/lib/calendly/pa
 import { FUSO_DO_ESCRITORIO } from '@/lib/contacts/campo-data'
 import { isValidE164 } from '@/lib/whatsapp/phone-utils'
 
-import type { OpcaoDeAcao } from './acoes'
+import { nomeDoConvidado, type OpcaoDeAcao } from './acoes'
 
 /** Prazo da leitura dos horários no turno e no Playground: estourou = "não há horários agora". */
 export const PRAZO_DOS_HORARIOS_MS = 4_000
@@ -218,7 +218,15 @@ export interface DadosDoConvidado {
   tipoDeEvento: string
   /** O `start_time` escolhido (o `id` da opção). */
   inicio: string
+  /** O nome da ficha (sem nome, o telefone ou o `@`). */
   nome: string
+  /**
+   * O nome completo que o cliente deu na conversa e o modelo passou no
+   * marcador (`[[REUNIAO:n=Nome]]`). Vence o da ficha quando tem a forma de
+   * um nome (`nomeDoConvidado`). ⚠️ Vira o nome da FICHA: a automação do
+   * Calendly o fixa pelo webhook (999).
+   */
+  nomeInformado?: string | null
   email: string
   /** O telefone da ficha como gravado (só dígitos, E.164 sem `+`); nulo = sem telefone. */
   telefone: string | null
@@ -251,7 +259,7 @@ export function corpoDoConvidado(d: DadosDoConvidado): Record<string, unknown> {
     event_type: d.tipoDeEvento,
     start_time: d.inicio,
     invitee: {
-      name: d.nome,
+      name: nomeDoConvidado(d.nomeInformado) ?? d.nome,
       email: d.email,
       timezone: d.fuso ?? FUSO_DO_ESCRITORIO,
       ...(telefone ? { text_reminder_number: telefone } : {}),

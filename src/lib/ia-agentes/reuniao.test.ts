@@ -229,6 +229,18 @@ describe('corpoDoConvidado — o corpo do POST /invitees, num ponto só', () => 
     expect(corpo).not.toHaveProperty('questions_and_answers')
   })
 
+  it('o nome completo que o cliente deu (`nomeInformado`, do `[[REUNIAO:n=Nome]]`) vence o da ficha; fora da forma, fica o da ficha', () => {
+    const invitee = (d: Partial<typeof base> & { nomeInformado?: string | null }) =>
+      corpoDoConvidado({ ...base, ...d }).invitee as Record<string, unknown>
+    expect(invitee({ nomeInformado: '  Maria   Aparecida Souza ' }).name).toBe('Maria Aparecida Souza')
+    expect(invitee({ nomeInformado: null }).name).toBe('Maria Souza')
+    expect(invitee({ nomeInformado: 'x' }).name).toBe('Maria Souza')
+    expect(invitee({ nomeInformado: '12345' }).name).toBe('Maria Souza')
+    expect(invitee({ nomeInformado: 'a'.repeat(121) }).name).toBe('Maria Souza')
+    // Sem nome na ficha (o telefone) e com o nome dado: o dado.
+    expect(invitee({ nome: '5511999998888', nomeInformado: 'João da Silva' }).name).toBe('João da Silva')
+  })
+
   it('sem telefone válido, sem o lembrete por SMS; sem local, sem `location`', () => {
     const corpo = corpoDoConvidado({ ...base, telefone: null, local: null })
     expect(corpo).not.toHaveProperty('location')

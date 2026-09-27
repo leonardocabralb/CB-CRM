@@ -16,18 +16,18 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
  *
  * O que a conta tem para as FERRAMENTAS do agente (F4, D28), com o que o
  * SERVIDOR decide — a tela só mostra:
- * `{ etapas: [{ id, nome, funil, resultado, foraDaD5 }],
- *    etiquetas: [{ id, nome, foraDaD5: { etiquetar, tirar } }],
+ * `{ etapas: [{ id, nome, funil, resultado }], etiquetas: [{ id, nome }],
  *    campos: [{ id, nome, vigiado, tipo, opcoes }], membros: [{ userId, nome }],
  *    automacoes: [{ id, nome, foraDaD5 }] }`.
  * `resultado` ganho/perdido e `vigiado` (campo de data de um lembrete ligado)
  * não podem ser liberados. `foraDaD5` é o código do passo que tira da D5
  * (`send_to_number`, `send_webhook`, `status_de_resultado`,
  * `etapa_de_resultado`, `run_flow`, `campo_vigiado`, e — só na automação que
- * a IA executa — `aguardar`), nulo = pode: na automação, nela, nas que ela
- * aciona e na cascata; na etapa e na etiqueta, na CASCATA (as automações que
- * a entrada na etapa ou a etiqueta disparam). Tirar etiqueta não tem cascata
- * (`tirar` sempre nulo). `tipo` é o `field_type` (`email` no campo que
+ * a IA executa — `aguardar`), nulo = pode: na automação e nas que ela
+ * aciona por `run_automation`. Etapa e etiqueta não têm `foraDaD5`: as
+ * automações que a entrada na etapa ou a etiqueta disparam não são
+ * conferidas (a D5 vale só para o que o agente faz, 27/09/2026). `tipo` é o
+ * `field_type` (`email` no campo que
  * espelha o e-mail) e `opcoes`, as do `select`. A régua do Asaas não aparece
  * (só roda pela varredura). Leitura que falha = 500, nunca um catálogo pela
  * metade.
