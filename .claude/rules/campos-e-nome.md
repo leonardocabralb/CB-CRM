@@ -187,4 +187,7 @@ trocar o nome da ficha. A guarda nesses caminhos está em
   disparo) e a ficha de `destinatario.ts` (`send_to_number` e webhook de
   entrada). A ficha criada pelo Asaas GRAVA a marca (nome do contrato,
   decisão do operador, 19/09/2026); o perfil do Instagram só preenche ficha
-  sem nome nenhum.
+  sem nome nenhum. O robô ("Coletar resposta" → Nome do contato,
+  `resposta-na-ficha.ts`) é a única escrita que RESPEITA e GRAVA ao mesmo
+  tempo ("fixa-se-livre"): fixa só onde ninguém fixou, porque o valor é texto
+  livre do chat (`nomeDigitadoNoChat`).

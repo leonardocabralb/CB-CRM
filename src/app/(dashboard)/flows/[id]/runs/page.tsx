@@ -391,7 +391,11 @@ function EventLine({ ev }: { ev: EventRow }) {
 function summarizePayload(payload: Record<string, unknown>): string {
   // Show the keys that matter most to a human debugger; full JSON is
   // available via the "Captured vars" details panel for the run.
-  const keys = ["reply_id", "captured_key", "reason", "advancing_to"];
+  // `saved_to` (CB, 26/09/2026): a resposta foi gravada na ficha — o nome ou
+  // `custom:<id do campo>`. Depois de `reason`, para o motivo de NÃO ter
+  // gravado aparecer primeiro. `deal` (1053): o que o "Mover card" fez com o
+  // card (`moved`, `created`…); quando ele NÃO moveu, o `reason` vem antes.
+  const keys = ["reply_id", "captured_key", "reason", "saved_to", "deal", "advancing_to"];
   for (const k of keys) {
     if (k in payload && payload[k] !== null && payload[k] !== undefined) {
       return `${k}=${String(payload[k]).slice(0, 80)}`;

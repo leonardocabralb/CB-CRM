@@ -240,3 +240,24 @@ describe('robô (fluxo e IA): o alvo por BSUID', () => {
     await expect(engineSendText({ ...BASE, text: 'oi' })).rejects.toThrow(/contact not found for this account/)
   })
 })
+
+// CB (26/09/2026): o robô manda arquivo do ACERVO, e a bolha mostrava o nome da
+// CÓPIA no bucket. O documento grava o nome com que saiu (969).
+describe('robô: o nome do documento enviado fica na mensagem', () => {
+  it('documento grava media_filename', async () => {
+    await engineSendMedia({
+      ...BASE,
+      kind: 'document',
+      link: 'https://x.test/123-Contrato_padrao.pdf',
+      filename: 'Contrato padrão.pdf',
+    })
+    expect(h.mensagens[0]?.media_filename).toBe('Contrato padrão.pdf')
+  })
+
+  it('foto, vídeo e áudio não levam nome (e documento sem nome não grava NULL)', async () => {
+    await engineSendMedia({ ...BASE, kind: 'image', link: 'https://x.test/a.jpg', filename: 'a.jpg' })
+    await engineSendMedia({ ...BASE, kind: 'audio', link: 'https://x.test/a.ogg', filename: 'a.ogg' })
+    await engineSendMedia({ ...BASE, kind: 'document', link: 'https://x.test/b.pdf' })
+    for (const m of h.mensagens) expect(m).not.toHaveProperty('media_filename')
+  })
+})

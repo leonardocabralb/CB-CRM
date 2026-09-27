@@ -96,6 +96,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useFlowEditor } from './flow-editor-state';
+import { nomeDaEtapa } from './catalogo-do-funil';
 import { NodeConfigForm } from './forms/node-config-form';
 
 // React-Flow node `data` payload — the bits our custom renderer needs.
@@ -139,7 +140,10 @@ function FlowNodeCard({ data, selected }: NodeProps) {
   const meta = NODE_META[node.node_type];
   const c = nodeColors(node.node_type);
   const tSummary = useTranslations('Flows.summary');
-  const summary = summarizeNode(node, tSummary);
+  const { catalogoDoFunil } = useFlowEditor();
+  const summary = summarizeNode(node, tSummary, {
+    etapa: (id) => nomeDaEtapa(catalogoDoFunil, id),
+  });
   const slots = outgoingSlots(node);
   // Start nodes are entry-only; nothing ever targets them, so they
   // don't need an incoming Handle. Every other node type accepts
@@ -707,6 +711,7 @@ const ADD_NODE_TYPES: NodeType[] = [
   'collect_input',
   'condition',
   'set_tag',
+  'move_deal_stage',
   'handoff',
   'end',
 ];

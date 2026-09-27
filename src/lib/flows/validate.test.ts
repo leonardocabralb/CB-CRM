@@ -547,3 +547,172 @@ describe("reachableFromEntry", () => {
     expect(set).toEqual(new Set(["a", "b"]));
   });
 });
+
+// ------------------------------------------------------------
+// CB (26/09/2026): áudio e arquivo do ACERVO no "Enviar mídia", e
+// "Salvar a resposta na ficha" nos nós que perguntam.
+// ------------------------------------------------------------
+
+describe("validateFlowForActivation — mídia do acervo e áudio (CB)", () => {
+  const baseFlow = { ...validFlow, entry_node_id: "s" };
+  const nodesWith = (mediaConfig: Record<string, unknown>) => [
+    { node_key: "s", node_type: "start", config: { next_node_key: "m" } },
+    { node_key: "m", node_type: "send_media", config: mediaConfig },
+    { node_key: "h", node_type: "handoff", config: {} },
+  ];
+
+  it("áudio do acervo, sem legenda, passa — mesmo sem media_url", () => {
+    expect(
+      validateFlowForActivation(
+        baseFlow,
+        nodesWith({ media_type: "audio", acervo_id: "item-1", media_url: "", next_node_key: "h" }),
+      ),
+    ).toEqual([]);
+  });
+
+  it("áudio com legenda é recusado (932: a nota de voz não leva texto)", () => {
+    const issues = validateFlowForActivation(
+      baseFlow,
+      nodesWith({
+        media_type: "audio",
+        acervo_id: "item-1",
+        caption: "Ouça",
+        next_node_key: "h",
+      }),
+    );
+    expect(issues.some((i) => i.node_key === "m" && i.field === "caption")).toBe(true);
+  });
+
+  it("sem acervo_id e sem media_url continua sendo 'sem arquivo'", () => {
+    const issues = validateFlowForActivation(
+      baseFlow,
+      nodesWith({ media_type: "audio", acervo_id: null, media_url: "", next_node_key: "h" }),
+    );
+    expect(issues.some((i) => i.node_key === "m" && i.field === "media_url")).toBe(true);
+  });
+});
+
+describe("validateFlowForActivation — salvar a resposta na ficha (CB)", () => {
+  const baseFlow = { ...validFlow, entry_node_id: "s" };
+  const comNo = (node: { node_type: string; config: Record<string, unknown> }) => [
+    { node_key: "s", node_type: "start", config: { next_node_key: "q" } },
+    { node_key: "q", ...node },
+    { node_key: "h", node_type: "handoff", config: {} },
+  ];
+  const coletar = (salvar_em: unknown) =>
+    comNo({
+      node_type: "collect_input",
+      config: { prompt_text: "Seu nome?", var_key: "nome", next_node_key: "h", salvar_em },
+    });
+  const botoes = (salvar_em: unknown) =>
+    comNo({
+      node_type: "send_buttons",
+      config: {
+        text: "Ficou encostado?",
+        buttons: [{ reply_id: "sim", title: "Sim", next_node_key: "h" }],
+        salvar_em,
+      },
+    });
+
+  it("nome no 'Coletar resposta' e campo em qualquer um passam", () => {
+    expect(validateFlowForActivation(baseFlow, coletar("name"))).toEqual([]);
+    expect(validateFlowForActivation(baseFlow, coletar("custom:f1"))).toEqual([]);
+    expect(validateFlowForActivation(baseFlow, botoes("custom:f1"))).toEqual([]);
+  });
+
+  it("ausente ou nulo não é erro — o nó antigo não grava nada", () => {
+    expect(validateFlowForActivation(baseFlow, coletar(undefined))).toEqual([]);
+    expect(validateFlowForActivation(baseFlow, coletar(null))).toEqual([]);
+  });
+
+  it("botão gravando no NOME é recusado", () => {
+    const issues = validateFlowForActivation(baseFlow, botoes("name"));
+    expect(issues.some((i) => i.node_key === "q" && i.field === "salvar_em")).toBe(true);
+  });
+
+  it("destino com forma estranha é recusado", () => {
+    const issues = validateFlowForActivation(baseFlow, coletar("email"));
+    expect(issues.some((i) => i.node_key === "q" && i.field === "salvar_em")).toBe(true);
+  });
+});
+
+describe("validateFlowForActivation — mover card de etapa (CB, 1053)", () => {
+  const baseFlow = { ...validFlow, entry_node_id: "s" };
+  const comMover = (config: Record<string, unknown>) => [
+    { node_key: "s", node_type: "start", config: { next_node_key: "m" } },
+    { node_key: "m", node_type: "move_deal_stage", config },
+    { node_key: "h", node_type: "handoff", config: {} },
+  ];
+  // Só os ERROS: a origem vazia rende um AVISO, cobrado no teste próprio.
+  const campos = (issues: ReturnType<typeof validateFlowForActivation>) =>
+    issues.filter((i) => i.node_key === "m" && i.severity === "error").map((i) => i.field);
+
+  it("funil + etapa + próximo passo passam (a origem é opcional)", () => {
+    expect(
+      campos(
+        validateFlowForActivation(
+          baseFlow,
+          comMover({ pipeline_id: "f", stage_id: "e", next_node_key: "h" }),
+        ),
+      ),
+    ).toEqual([]);
+    expect(
+      validateFlowForActivation(
+        baseFlow,
+        comMover({ pipeline_id: "f", stage_id: "e", origem_stage_ids: ["o1", "o2"], next_node_key: "h" }),
+      ),
+    ).toEqual([]);
+  });
+
+  it("origem VAZIA (o padrão do nó novo) AVISA, sem bloquear — traz card de qualquer funil", () => {
+    for (const origem of [undefined, null, []]) {
+      const issues = validateFlowForActivation(
+        baseFlow,
+        comMover({ pipeline_id: "f", stage_id: "e", origem_stage_ids: origem, next_node_key: "h" }),
+      );
+      expect(issues).toHaveLength(1);
+      expect(issues[0]).toMatchObject({ severity: "warning", node_key: "m", field: "origem_stage_ids" });
+      expect(issues[0].message).toMatch(/QUALQUER funil/);
+    }
+  });
+
+  it("destino é obrigatório: sem funil e sem etapa, dois erros", () => {
+    expect(
+      campos(validateFlowForActivation(baseFlow, comMover({ pipeline_id: "", stage_id: " ", next_node_key: "h" }))),
+    ).toEqual(["pipeline_id", "stage_id"]);
+  });
+
+  it("lista de origem com forma estranha é recusada", () => {
+    expect(
+      campos(
+        validateFlowForActivation(
+          baseFlow,
+          comMover({ pipeline_id: "f", stage_id: "e", origem_stage_ids: ["o1", 7], next_node_key: "h" }),
+        ),
+      ),
+    ).toEqual(["origem_stage_ids"]);
+    expect(
+      campos(
+        validateFlowForActivation(
+          baseFlow,
+          comMover({ pipeline_id: "f", stage_id: "e", origem_stage_ids: "o1", next_node_key: "h" }),
+        ),
+      ),
+    ).toEqual(["origem_stage_ids"]);
+  });
+
+  it("é nó de passagem: precisa do próximo passo, e o próximo passo é alcançável", () => {
+    expect(
+      campos(validateFlowForActivation(baseFlow, comMover({ pipeline_id: "f", stage_id: "e", next_node_key: "" }))),
+    ).toEqual(["next_node_key"]);
+    expect(
+      campos(validateFlowForActivation(baseFlow, comMover({ pipeline_id: "f", stage_id: "e", next_node_key: "x" }))),
+    ).toEqual(["next_node_key"]);
+    // `h` só é alcançável ATRAVÉS do mover — sem o aviso de inalcançável.
+    const issues = validateFlowForActivation(
+      baseFlow,
+      comMover({ pipeline_id: "f", stage_id: "e", next_node_key: "h" }),
+    );
+    expect(issues.some((i) => i.node_key === "h")).toBe(false);
+  });
+});

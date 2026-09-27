@@ -152,6 +152,8 @@ describe("node classification helpers", () => {
     expect(isAutoAdvancing("send_media")).toBe(true);
     expect(isAutoAdvancing("condition")).toBe(true);
     expect(isAutoAdvancing("set_tag")).toBe(true);
+    // CB (1053): mover o card não espera o cliente — segue para o próximo nó.
+    expect(isAutoAdvancing("move_deal_stage")).toBe(true);
     expect(isAutoAdvancing("send_buttons")).toBe(false);
     expect(isAutoAdvancing("send_list")).toBe(false);
     expect(isAutoAdvancing("collect_input")).toBe(false);
@@ -189,6 +191,7 @@ describe("node classification helpers", () => {
       "collect_input",
       "condition",
       "set_tag",
+      "move_deal_stage",
       "handoff",
       "end",
     ];

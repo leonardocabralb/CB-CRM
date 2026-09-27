@@ -2961,7 +2961,7 @@ async function etapaAtualDoCard(
  * (`deal_status_fixado`; ausente no card do evento ainda não escrito). A RPC
  * só escreve se ele não mudou no meio.
  */
-async function negocioAlvo(
+export async function negocioAlvo(
   db: ReturnType<typeof supabaseAdmin>,
   args: ExecuteArgs
 ): Promise<{ id: string; statusVisto: DealStatus | null } | null> {

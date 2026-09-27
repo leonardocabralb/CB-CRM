@@ -133,6 +133,13 @@ reentrega): `.claude/rules/webhooks.md`.
 As regras de ganho/perdido e o gatilho de resultado estão em
 `.claude/rules/funil.md`.
 
+- ⚠️ **`negocioAlvo` é EXPORTADA e o ROBÔ a usa** (nó "Mover card", 1053,
+  `src/lib/flows/mover-card.ts`): mudar a régua muda o robô junto, de
+  propósito. O robô monta só os quatro campos de `args` que ela lê
+  (`context.deal_id`, `context.deal_status_fixado`, `contactId`,
+  `automation.account_id`); há pino em `mover-card.test.ts` lendo o corpo — se
+  ela passar a ler outro campo, decida lá se o robô precisa dele.
+
 - ⚠️⚠️ **Alvo = o card ABERTO mais recente; sem aberto, o PERDIDO — menos
   quando o contato tem card GANHO** (é cliente: o formulário público reabriria
   o perdido antigo dele). O GANHO nunca é alvo de escrita.
