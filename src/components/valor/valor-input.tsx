@@ -27,9 +27,9 @@ import {
   aplicarEdicao,
   colar,
   type Edicao,
-  irParaCentavos,
   paraEdicao,
   parsearValor,
+  teclaDecimal,
 } from '@/lib/valor/mascara';
 
 export interface ValorInputProps {
@@ -139,9 +139,15 @@ export function ValorInput({
         if (prox) aplicar(prox);
       }}
       onKeyDown={(e) => {
-        if (e.code !== 'NumpadDecimal') return;
+        // ⚠️ Só a tecla do teclado numérico que escreve PONTO. A que escreve
+        // vírgula (layout ABNT2) já entra pelo `onChange`. E com o Num Lock
+        // desligado a mesma tecla física (`NumpadDecimal`) é Delete — o
+        // `key` diz o que ela faz, o `code` só diz onde ela fica.
+        if (e.code !== 'NumpadDecimal' || e.key !== '.') return;
         e.preventDefault();
-        setEdicao(irParaCentavos(edicao?.texto ?? ''));
+        const el = e.currentTarget;
+        const inicio = el.selectionStart ?? el.value.length;
+        aplicar(teclaDecimal(edicao?.texto ?? '', inicio, el.selectionEnd ?? inicio));
       }}
       onBlur={() => {
         const novo = parsearValor(edicao?.texto ?? '') ?? 0;

@@ -6,10 +6,10 @@ import {
   aplicarEdicao,
   colar,
   type Edicao,
-  irParaCentavos,
   MAX_DIGITOS_INTEIROS,
   paraEdicao,
   parsearValor,
+  teclaDecimal,
 } from './mascara';
 
 describe('parsearValor', () => {
@@ -338,10 +338,24 @@ describe('colar', () => {
   });
 });
 
-describe('irParaCentavos (a tecla decimal do teclado numérico)', () => {
-  it('leva o cursor para os centavos, abrindo R$ 0,00 no campo vazio', () => {
-    expect(comCursor(campo(irParaCentavos('')))).toBe(rs('0,|00'));
-    expect(comCursor(campo(irParaCentavos(rs('40.000,00'))))).toBe(rs('40.000,|00'));
+describe('teclaDecimal (a tecla decimal do teclado numérico)', () => {
+  it('vale como vírgula no lugar do cursor: leva aos centavos sem mudar o valor', () => {
+    expect(comCursor(campo(teclaDecimal('', 0, 0)))).toBe(rs('0,|00'));
+    const antesDaVirgula = rs('40.000').length;
+    expect(comCursor(campo(teclaDecimal(rs('40.000,00'), antesDaVirgula, antesDaVirgula)))).toBe(
+      rs('40.000,|00'),
+    );
+  });
+
+  it('com o valor todo selecionado, troca a seleção como a vírgula comum (Codex, PR #334)', () => {
+    // ⚠️ A versão anterior preservava a parte inteira: tecla decimal + 50
+    // sobre "R$ 40.000,00" selecionado dava R$ 40.000,50, e a vírgula
+    // comum, R$ 0,50.
+    const tudo = rs('40.000,00');
+    const tecla = campo(teclaDecimal(tudo, 0, tudo.length));
+    expect(comCursor(tecla)).toBe(rs('0,|00'));
+    expect(comCursor(digitar(tecla, '50'))).toBe(comCursor(digitar(digitar(tudoSelecionado(tudo), ','), '50')));
+    expect(comCursor(digitar(tecla, '50'))).toBe(rs('0,50|'));
   });
 });
 

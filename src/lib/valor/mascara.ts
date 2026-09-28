@@ -386,13 +386,15 @@ function nosCentavos(novo: string, cursor: number, v: number): Edicao {
 }
 
 /**
- * A tecla decimal do teclado numérico (`NumpadDecimal`) escreve `.` em
- * vários layouts, e aqui o ponto é ignorado. Quem a aperta quer os
- * centavos: vale como vírgula.
+ * A tecla decimal do teclado numérico escreve `.` em vários layouts, e aqui
+ * o ponto é ignorado. Quem a aperta quer os centavos: vale como uma
+ * VÍRGULA digitada no lugar do cursor — trocando a seleção, como a tecla
+ * comum faria. Com o valor inteiro selecionado (o foco seleciona), ela
+ * começa um valor novo em `R$ 0,|00`, e não preserva o antigo (Codex,
+ * PR #334).
  */
-export function irParaCentavos(texto: string): Edicao {
-  const base = texto || montar('', '00');
-  return { texto: base, cursor: base.indexOf(',') + 1 };
+export function teclaDecimal(texto: string, inicio: number, fim: number): Edicao {
+  return aplicarEdicao(texto, `${texto.slice(0, inicio)},${texto.slice(fim)}`, inicio + 1, 'insertText');
 }
 
 /**
