@@ -8,7 +8,7 @@ import { nomeParaFixar } from "@/lib/contacts/nome-fixado";
 import { houveCancelamento } from "./cancelamento";
 import type { ResultadoDoEvento } from "./cartao";
 import type { Agendamento } from "./payload";
-import { variaveisDoAgendamento } from "./variaveis";
+import { SITUACAO_REAGENDAMENTO, variaveisDoAgendamento } from "./variaveis";
 
 /**
  * Do agendamento gravado ao motor de automações.
@@ -49,12 +49,23 @@ export interface AutomacaoQueEscuta {
   is_active: boolean;
 }
 
-/** Puro: quais automações ativas do tipo `calendly_booking` casam com este evento. */
-export function escutamEsteEvento(automacoes: readonly AutomacaoQueEscuta[], eventoUri: string | null): number {
+/**
+ * Puro: quais automações ativas do tipo `calendly_booking` casam com este
+ * evento. ⚠️ Espelho de `triggerMatches` (engine.ts), inclusive a caixa
+ * "Ignorar reagendamentos": sem ela aqui, um reagendamento escutado SÓ por
+ * automações que o ignoram criava ficha e conversa antes de descobrir que
+ * nada ia rodar (Codex, PR #333).
+ */
+export function escutamEsteEvento(
+  automacoes: readonly AutomacaoQueEscuta[],
+  eventoUri: string | null,
+  reagendamento = false,
+): number {
   let n = 0;
   for (const a of automacoes) {
     if (a.trigger_type !== "calendly_booking" || !a.is_active) continue;
-    const cfg = (a.trigger_config ?? {}) as { event_type_uri?: unknown };
+    const cfg = (a.trigger_config ?? {}) as { event_type_uri?: unknown; ignorar_reagendamento?: unknown };
+    if (reagendamento && cfg.ignorar_reagendamento === true) continue;
     const alvo = typeof cfg.event_type_uri === "string" ? cfg.event_type_uri.trim() : "";
     if (!alvo || (eventoUri && alvo === eventoUri)) n += 1;
   }
@@ -130,7 +141,11 @@ export async function processarAgendamento(
   if (erroAuto) {
     return { resultado: "falhou", detalhe: `leitura das automações falhou: ${erroAuto.message}`, contactId: contatoExistente };
   }
-  if (escutamEsteEvento((automacoes ?? []) as AutomacaoQueEscuta[], agendamento.eventoUri) === 0) {
+  // A situação sai das MESMAS variáveis que o motor recebe (as gravadas, no
+  // "Processar de novo"): é por elas que `triggerMatches` decide.
+  const reagendamento =
+    (vars ?? variaveisDoAgendamento(agendamento)).agendamento_situacao === SITUACAO_REAGENDAMENTO;
+  if (escutamEsteEvento((automacoes ?? []) as AutomacaoQueEscuta[], agendamento.eventoUri, reagendamento) === 0) {
     return { resultado: "sem_automacao", detalhe: "nenhuma automação ativa escuta este evento", contactId: contatoExistente };
   }
 
