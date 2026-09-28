@@ -43,11 +43,18 @@ let canaisAbertos = 0;
  *   canal perdeu enquanto esteve fora.
  * - O que sai daqui é sempre do contato do render ATUAL (`eventosDoContato`):
  *   o estado só troca de contato quando a busca nova volta, e até lá o fio do
- *   cliente B mostraria a trilha do cliente A.
+ *   cliente B mostraria a trilha do cliente A. Pelo mesmo motivo `carregando`
+ *   vale até a busca DESTE contato voltar (`buscadoDe`): sem isso, a aba
+ *   Histórico dizia "sem atividade" a cada troca de cliente.
+ * - O `occurred_at` do tempo real chega no mesmo formato do PostgREST (medido
+ *   em 28/09/2026: `2026-09-28T18:32:49.447009+00:00`), e é isso que deixa
+ *   `ordenarPorTempo` e `intercalar` compararem o texto.
  */
 export function useLeadEvents(contactId: string | null | undefined, token = 0) {
   const [eventos, setEventos] = useState<LeadEvent[]>([]);
   const [carregando, setCarregando] = useState(false);
+  /** De qual contato é a última busca que VOLTOU, bem ou mal. */
+  const [buscadoDe, setBuscadoDe] = useState<string | null>(null);
   /**
    * Ids que chegaram pelo tempo real desde o COMEÇO da busca em curso.
    *
@@ -97,6 +104,7 @@ export function useLeadEvents(contactId: string | null | undefined, token = 0) {
           ),
         );
       }
+      setBuscadoDe(contactId);
       setCarregando(false);
     },
     [contactId],
@@ -147,5 +155,9 @@ export function useLeadEvents(contactId: string | null | undefined, token = 0) {
     [eventos, contactId],
   );
 
-  return { eventos: eventosDoContato, carregando, recarregar: buscar };
+  return {
+    eventos: eventosDoContato,
+    carregando: carregando || (!!contactId && buscadoDe !== contactId),
+    recarregar: buscar,
+  };
 }

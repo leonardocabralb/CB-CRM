@@ -329,5 +329,10 @@ atualizar.
   (`chegadosRef`): a foto dela pode ser anterior ao evento. Na junção, a versão
   buscada vence.
 - **O que sai do hook é do contato do render ATUAL** (filtro por
-  `contact_id`), e a busca do contato anterior que volta por último é
-  descartada (`vivo`).
+  `contact_id`), a busca do contato anterior que volta por último é
+  descartada (`vivo`), e `carregando` vale até a busca DESTE contato voltar
+  (`buscadoDe`) — senão a aba Histórico diz "sem atividade" a cada troca.
+- O `occurred_at` do tempo real chega no formato do PostgREST (medido em
+  28/09/2026, `…T18:32:49.447009+00:00`): é o que deixa `ordenarPorTempo` e
+  `intercalar` compararem texto. Se um dia divergir, a trilha sai fora de
+  ordem sem erro nenhum.

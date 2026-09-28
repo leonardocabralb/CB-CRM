@@ -900,6 +900,22 @@ nome da época em que foram aplicadas.
   Comercial: No Show = `faltou` e Reunião Sem Proposta = `compareceu` (o
   UPDATE não aciona gatilho: `pipeline_stages` só tem o de DELETE).
 
+- **1059_cb_trilha_do_lead_em_tempo_real** — `cb_lead_events` (a trilha da 912)
+  entra na publicação `supabase_realtime`, SEM lista de colunas; mais o `GRANT
+  SELECT` ao `authenticated` que a conferência cobra (no-op aqui). Quem assina é
+  `useLeadEvents` (só INSERT, pelo contato). ADITIVA e ANTES do deploy: o app
+  anterior não assina nada. A trava do `ADD TABLE` é SHARE UPDATE EXCLUSIVE
+  (medido num Postgres 16: um INSERT concorrente passa sem esperar). Aplicada em
+  28/09/2026 pela Management API (histórico `20260928183133`), depois do replay
+  verde do CI no commit `75c57277` e ANTES do merge do PR #336, com autorização
+  do operador; conferida no catálogo (publicada, `prattrs` nulo, `authenticated`
+  lê, `anon` não). ⚠️ Nasceu disputando o número com a `1059_cb_cartao_de_contato`
+  de outra sessão, ainda sem commit; ela foi renumerada para 1060 antes de
+  qualquer aplicação. Teste no preview contra o banco real: uma linha de teste na
+  trilha do lead de teste apareceu no fio e na aba Histórico sem atualizar, com o
+  horário no mesmo formato do PostgREST, e foi apagada em seguida (78 eventos
+  antes e depois).
+
 ## Notas do histórico
 
 - ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
