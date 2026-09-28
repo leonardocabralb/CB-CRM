@@ -145,7 +145,23 @@ export async function processarAgendamento(
   // "Processar de novo"): é por elas que `triggerMatches` decide.
   const reagendamento =
     (vars ?? variaveisDoAgendamento(agendamento)).agendamento_situacao === SITUACAO_REAGENDAMENTO;
-  if (escutamEsteEvento((automacoes ?? []) as AutomacaoQueEscuta[], agendamento.eventoUri, reagendamento) === 0) {
+  const escutando = (automacoes ?? []) as AutomacaoQueEscuta[];
+  // Reagendamento descartado DE PROPÓSITO (todas as que escutam o evento
+  // ignoram reagendamentos) é `ignorado`, terminal: `sem_automacao` entraria
+  // no bloco de correções do Meu dia e ofereceria um "Processar de novo" que
+  // daria o mesmo resultado (Codex, PR #333).
+  if (
+    reagendamento &&
+    escutamEsteEvento(escutando, agendamento.eventoUri, true) === 0 &&
+    escutamEsteEvento(escutando, agendamento.eventoUri, false) > 0
+  ) {
+    return {
+      resultado: "ignorado",
+      detalhe: "reagendamento: as automações deste evento ignoram reagendamentos — nada foi disparado",
+      contactId: contatoExistente,
+    };
+  }
+  if (escutamEsteEvento(escutando, agendamento.eventoUri, reagendamento) === 0) {
     return { resultado: "sem_automacao", detalhe: "nenhuma automação ativa escuta este evento", contactId: contatoExistente };
   }
 
