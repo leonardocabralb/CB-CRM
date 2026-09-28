@@ -14,13 +14,15 @@
 import { mediaBytesOf as bytesDeclarados } from './anexo-declarado';
 import {
   detectContentType,
-  extractText,
+  extractContatos,
   isLidJid,
+  textoParaGravar,
   unwrapMessage,
   type EvolutionMessageKey,
   type EvolutionUpsert,
 } from './evolution-inbound';
 import type { NormalizedInbound } from '@/lib/whatsapp/inbound-store';
+import type { ContatoCompartilhado } from '@/lib/whatsapp/cartao-de-contato';
 
 /** O JID é de um grupo de WhatsApp? */
 export function isGroupJid(jid: string | undefined | null): boolean {
@@ -55,6 +57,8 @@ export interface NormalizedGroupInbound {
   timestamp: number;
   contentType: NormalizedInbound['contentType'];
   text: string | null;
+  /** Só no cartão de contato (1060) — ver `NormalizedInbound.contatos`. */
+  contatos?: ContatoCompartilhado[];
   /** JIDs marcados na mensagem, como vieram (normalmente `@lid`). */
   mentionedJids: string[];
   /**
@@ -172,6 +176,8 @@ export function normalizeGroupUpsert(
         ? parseInt(item.messageTimestamp, 10) || Math.floor(Date.now() / 1000)
         : Math.floor(Date.now() / 1000);
 
+  const contentType = detectContentType(item.message);
+
   return {
     accountId,
     configOwnerUserId,
@@ -183,8 +189,9 @@ export function normalizeGroupUpsert(
     senderName: item.pushName || null,
     providerMessageId: id,
     timestamp: ts,
-    contentType: detectContentType(item.message),
-    text: extractText(item.message),
+    contentType,
+    text: textoParaGravar(item.message, contentType),
+    ...(contentType === 'contact' ? { contatos: extractContatos(item.message) ?? [] } : {}),
     mentionedJids: extractMentionedJids(item),
     mediaBytes: bytesDeclarados(item),
   };

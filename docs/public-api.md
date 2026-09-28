@@ -558,6 +558,13 @@ answered is `inbound`; a call answered on one of the office's phones is
 message id — it can't be replied to, reacted to or deleted. The CRM does not
 carry call audio: the row only records that the call happened.
 
+**Contact cards** (a contact someone shared on WhatsApp) are listed with
+`content_type: "contact"`. `content_text` carries one line per shared contact,
+in the form `👤 Name · +55 85 90000-0000` (the phone numbers, when the card has
+any). A WhatsApp message type the CRM can't read yet is listed as
+`content_type: "text"` with `content_text` set to
+`[Unsupported message type: <type>]`.
+
 ### `POST /api/v1/broadcasts`
 
 Launch a template broadcast to a list of recipients. Scope:

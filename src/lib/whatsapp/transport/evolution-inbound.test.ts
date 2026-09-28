@@ -24,6 +24,11 @@ import {
   edicaoCifrada,
   isSecretEncrypted,
   quotedProviderId,
+  ehMensagemAuxiliar,
+  extractContatos,
+  rotuloDeTipoNaoLido,
+  temArquivo,
+  textoParaGravar,
 } from './evolution-inbound';
 
 function item(message: Record<string, unknown>, over: Partial<EvolutionUpsert> = {}) {
@@ -667,5 +672,238 @@ describe('quotedProviderId — a citação muda de lugar com a versão da Evolut
     };
     expect(quotedProviderId(item)).toBeNull();
     expect(normalizeUpsert(item, 'acc', 'owner', null)?.quotedProviderId).toBeNull();
+  });
+});
+
+// ============================================================
+// 1060 — o que virava BOLHA VAZIA. Medido em 28/09/2026: das 116 bolhas
+// vazias de setembro, 24 eram cartão de contato, 34 abertura de álbum, 22
+// modelo de empresa, 2 Pix do celular do escritório e 1 vídeo de Live Photo
+// (as 33 edições cifradas já eram descartadas desde 09/09).
+// ============================================================
+
+const VCARD_EMPRESA = [
+  'BEGIN:VCARD',
+  'VERSION:3.0',
+  'N:;Assessoria Exemplo;;;',
+  'FN:Assessoria Exemplo',
+  'X-WA-BIZ-NAME:Assessoria Exemplo',
+  'ORG:Assessoria Exemplo;',
+  'TEL;type=CELL;type=VOICE;waid=5585900000013:+55 85 90000-0013',
+  'END:VCARD',
+].join('\n');
+
+describe('cartão de contato (1060)', () => {
+  it('contactMessage vira tipo contact, com o resumo no texto e os contatos à parte', () => {
+    const n = normalizeUpsert(
+      item({ contactMessage: { displayName: 'Assessoria Exemplo', vcard: VCARD_EMPRESA } }),
+      'acc',
+      'owner',
+    );
+    expect(n?.contentType).toBe('contact');
+    expect(n?.text).toBe('👤 Assessoria Exemplo · +55 85 90000-0013');
+    expect(n?.contatos).toEqual([
+      {
+        nome: 'Assessoria Exemplo',
+        empresa: null,
+        telefones: [{ numero: '+55 85 90000-0013', waid: '5585900000013' }],
+      },
+    ]);
+  });
+
+  it('contactsArrayMessage traz todos os contatos', () => {
+    const n = normalizeUpsert(
+      item({
+        contactsArrayMessage: {
+          displayName: '2 contatos',
+          contacts: [
+            { displayName: 'Assessoria Exemplo', vcard: VCARD_EMPRESA },
+            { displayName: 'Ana', vcard: 'BEGIN:VCARD\nFN:Ana\nitem1.TEL;waid=5585900000005:+55 85 90000-0005\nEND:VCARD' },
+          ],
+        },
+      }),
+      'acc',
+      'owner',
+    );
+    expect(n?.contentType).toBe('contact');
+    expect(n?.contatos?.map((c) => c.nome)).toEqual(['Assessoria Exemplo', 'Ana']);
+    expect(n?.text?.split('\n')).toHaveLength(2);
+  });
+
+  it('dentro de ephemeralMessage também', () => {
+    const msg = { ephemeralMessage: { message: { contactMessage: { displayName: 'X', vcard: VCARD_EMPRESA } } } };
+    expect(detectContentType(msg)).toBe('contact');
+    expect(extractContatos(msg)).toHaveLength(1);
+  });
+
+  it('cartão sem nada legível continua sendo cartão (lista vazia, texto nulo)', () => {
+    const n = normalizeUpsert(item({ contactMessage: { vcard: 'BEGIN:VCARD\nEND:VCARD' } }), 'acc', 'owner');
+    expect(n?.contentType).toBe('contact');
+    expect(n?.contatos).toEqual([]);
+    expect(n?.text).toBeNull();
+  });
+
+  it('mensagem que NÃO é cartão não ganha a chave `contatos` (o INSERT de sempre)', () => {
+    const n = normalizeUpsert(item({ conversation: 'oi' }), 'acc', 'owner');
+    expect(n && 'contatos' in n).toBe(false);
+  });
+
+  it('cartão que responde a uma mensagem guarda a citação', () => {
+    const n = normalizeUpsert(
+      item({ contactMessage: { displayName: 'X', vcard: VCARD_EMPRESA, contextInfo: { stanzaId: 'CITADA1' } } }),
+      'acc',
+      'owner',
+    );
+    expect(n?.quotedProviderId).toBe('CITADA1');
+  });
+
+  it('não tem arquivo a baixar (nem localização)', () => {
+    expect(temArquivo('contact')).toBe(false);
+    expect(temArquivo('location')).toBe(false);
+    expect(temArquivo('text')).toBe(false);
+    for (const t of ['image', 'video', 'audio', 'document']) expect(temArquivo(t)).toBe(true);
+  });
+});
+
+describe('abertura de álbum e cópia auxiliar (1060)', () => {
+  it('albumMessage é descartada: as fotos chegam uma a uma', () => {
+    const album = { albumMessage: { expectedImageCount: 2, expectedVideoCount: 0 }, messageContextInfo: {} };
+    expect(ehMensagemAuxiliar(album)).toBe(true);
+    expect(normalizeUpsert(item(album), 'acc', 'owner')).toBeNull();
+    expect(ehMensagemAuxiliar({ ephemeralMessage: { message: { albumMessage: {} } } })).toBe(true);
+  });
+
+  it('vídeo da Live Photo (associação 12) é descartado — a foto chegou antes', () => {
+    const livePhoto = {
+      messageContextInfo: {
+        messageAssociation: { associationType: 12, parentMessageKey: { id: 'FOTO1', fromMe: true } },
+      },
+      associatedChildMessage: { message: { videoMessage: { mimetype: 'video/mp4', seconds: 2 } } },
+    };
+    expect(ehMensagemAuxiliar(livePhoto)).toBe(true);
+    expect(normalizeUpsert(item(livePhoto), 'acc', 'owner')).toBeNull();
+  });
+
+  it('as cópias em alta qualidade também (5, 10, 19), com o tipo em número ou nome', () => {
+    for (const tipo of [5, 10, 19, '12', 'HD_IMAGE_DUAL_UPLOAD']) {
+      expect(
+        ehMensagemAuxiliar({
+          messageContextInfo: { messageAssociation: { associationType: tipo } },
+          associatedChildMessage: { message: { imageMessage: {} } },
+        }),
+      ).toBe(true);
+    }
+  });
+
+  it('foto de álbum (associação 1) é conteúdo: desembrulha e entra como imagem', () => {
+    const filhaDoAlbum = {
+      messageContextInfo: { messageAssociation: { associationType: 1 } },
+      associatedChildMessage: { message: { imageMessage: { mimetype: 'image/jpeg', caption: 'frente' } } },
+    };
+    expect(ehMensagemAuxiliar(filhaDoAlbum)).toBe(false);
+    const n = normalizeUpsert(item(filhaDoAlbum), 'acc', 'owner');
+    expect(n?.contentType).toBe('image');
+    expect(n?.text).toBe('frente');
+  });
+
+  it('mensagem comum não é auxiliar', () => {
+    expect(ehMensagemAuxiliar({ conversation: 'oi' })).toBe(false);
+    expect(ehMensagemAuxiliar(IMAGEM)).toBe(false);
+    expect(ehMensagemAuxiliar(null)).toBe(false);
+  });
+});
+
+describe('mensagem de empresa com botões (1060)', () => {
+  it('hydratedTemplate: corpo, rodapé e os botões com link', () => {
+    const modelo = {
+      templateMessage: {
+        templateId: '1434875718137819',
+        hydratedTemplate: {
+          hydratedTitleText: '',
+          hydratedContentText: 'Olá! Sua fatura vence amanhã.',
+          hydratedFooterText: 'Banco Fictício',
+          hydratedButtons: [
+            { index: 0, quickReplyButton: { displayText: 'Já paguei', id: 'x' } },
+            { index: 1, urlButton: { displayText: 'Ver boleto', url: 'https://exemplo.test/boleto' } },
+            { index: 2, callButton: { displayText: 'Ligar', phoneNumber: '+55 11 3000-0000' } },
+          ],
+        },
+      },
+    };
+    expect(normalizeUpsert(item(modelo), 'acc', 'owner')?.text).toBe(
+      'Olá! Sua fatura vence amanhã.\n\nBanco Fictício\n\n[Já paguei]\n[Ver boleto] https://exemplo.test/boleto\n[Ligar] +55 11 3000-0000',
+    );
+  });
+
+  it('interactiveMessageTemplate: corpo e rodapé', () => {
+    const modelo = {
+      templateMessage: {
+        interactiveMessageTemplate: { body: { text: 'Proposta de acordo' }, footer: { text: 'Responda SAIR para parar' } },
+      },
+    };
+    expect(extractText(modelo)).toBe('Proposta de acordo\n\nResponda SAIR para parar');
+  });
+
+  it('pedido de Pix do celular do escritório', () => {
+    const pix = {
+      interactiveMessage: {
+        nativeFlowMessage: {
+          buttons: [
+            {
+              name: 'payment_info',
+              buttonParamsJson: JSON.stringify({
+                currency: 'BRL',
+                total_amount: { value: 150000, offset: 100 },
+                payment_settings: [
+                  { type: 'pix_static_code', pix_static_code: { merchant_name: 'Escritório Exemplo', key: 'financeiro@exemplo.test', key_type: 'EMAIL' } },
+                  { type: 'cards', cards: { enabled: false } },
+                ],
+              }),
+            },
+          ],
+        },
+      },
+    };
+    const texto = extractText(pix) ?? '';
+    // O valor sai do Intl (com espaço rígido entre "R$" e o número): confere o
+    // essencial, não a forma exata do separador.
+    expect(texto.startsWith('💠 Pix · Escritório Exemplo · financeiro@exemplo.test · ')).toBe(true);
+    expect(texto).toContain('1.500,00');
+  });
+
+  it('botão nativo comum mostra o rótulo e o link', () => {
+    const interativa = {
+      interactiveMessage: {
+        body: { text: 'Escolha' },
+        nativeFlowMessage: {
+          buttons: [{ name: 'cta_url', buttonParamsJson: JSON.stringify({ display_text: 'Abrir', url: 'https://exemplo.test' }) }, { name: 'quebrado', buttonParamsJson: '{' }],
+        },
+      },
+    };
+    expect(extractText(interativa)).toBe('Escolha\n\n[Abrir] https://exemplo.test');
+  });
+});
+
+describe('tipo que o normalizador não lê (1060)', () => {
+  it('vira o rótulo da Meta em vez de bolha vazia', () => {
+    const n = normalizeUpsert(item({ pollCreationMessageV3: { name: 'Enquete' }, messageContextInfo: {} }), 'acc', 'owner');
+    expect(n?.contentType).toBe('text');
+    expect(n?.text).toBe('[Unsupported message type: pollCreationMessageV3]');
+    expect(rotuloDeTipoNaoLido({ senderKeyDistributionMessage: {}, eventMessage: {} })).toBe(
+      '[Unsupported message type: eventMessage]',
+    );
+  });
+
+  it('não rotula texto vazio de verdade nem protocolMessage', () => {
+    expect(normalizeUpsert(item({ conversation: '' }), 'acc', 'owner')?.text).toBe('');
+    expect(rotuloDeTipoNaoLido({ protocolMessage: { type: 0 } })).toBeNull();
+    expect(rotuloDeTipoNaoLido({ messageContextInfo: {} })).toBeNull();
+  });
+
+  it('só rotula quando o resultado seria texto vazio', () => {
+    // Imagem sem legenda continua imagem sem texto — a bolha mostra a foto.
+    expect(textoParaGravar(FIGURINHA, 'image')).toBeNull();
+    expect(textoParaGravar(IMAGEM, 'image')).toBe('olha o contrato');
+    expect(textoParaGravar({ locationMessage: { degreesLatitude: 1 } }, 'location')).toBeNull();
   });
 });

@@ -486,6 +486,9 @@ O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
   grade; as antigas não mudam (18/09/2026).
 - Asaas: o CRM cria a ficha, com nome fixado; ligar a régua não é
   retroativo.
+- Cartão de contato: aparece como cartão, com Copiar e Conversar (a "Nova
+  conversa" já preenchida); `.html` recebido é guardado e oferecido para
+  baixar (28/09/2026).
 - Instagram: robô não responde no Direct; unificar fichas é manual; o que a
   API não cobre fica inacessível na conversa.
 - Conversa ENCERRADA quando nasce sem o cliente ter escrito: webhook de

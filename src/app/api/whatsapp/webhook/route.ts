@@ -19,6 +19,11 @@ import { cancelarEsperasPorResposta } from '@/lib/automations/parar-se-responder
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
 import { aoChegarMensagemDoCliente } from '@/lib/ia-agentes/entrada'
 import { PREFIXO_DE_TIPO_NAO_SUPORTADO } from '@/lib/ia-agentes/quem-responde'
+import {
+  contatosDaMeta,
+  resumoDosContatos,
+  type ContatoCompartilhado,
+} from '@/lib/whatsapp/cartao-de-contato'
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver'
 import {
   handleTemplateWebhookChange,
@@ -92,6 +97,12 @@ interface WhatsAppMessage {
   audio?: { id: string; mime_type: string }
   sticker?: { id: string; mime_type: string }
   location?: { latitude: number; longitude: number; name?: string; address?: string }
+  /**
+   * Cartão de contato (`type: "contacts"`, 1060): a Meta já entrega o cartão
+   * aberto (nome, empresa, telefones com `wa_id`). Lido por `contatosDaMeta`,
+   * campo a campo — por isso `unknown` aqui.
+   */
+  contacts?: unknown
   reaction?: { message_id: string; emoji: string }
   /**
    * Set when the customer taps a button or list row on an interactive
@@ -1005,7 +1016,7 @@ async function processMessage(
   }
 
   // Parse message content based on type
-  const { contentText, mediaUrl, mediaType, mediaFilename, interactiveReplyId } =
+  const { contentText, mediaUrl, mediaType, mediaFilename, interactiveReplyId, contatos } =
     await parseMessageContent(
       message,
       accessToken,
@@ -1050,7 +1061,9 @@ async function processMessage(
       ? 'image'         // stickers are images
       : message.type === 'button'
         ? 'interactive' // template quick-reply tap (issue #478)
-        : 'text'        // reaction, unknown → text fallback
+        : message.type === 'contacts'
+          ? 'contact'   // ⚠️ NOSSO: cartão de contato (1060)
+          : 'text'      // reaction, unknown → text fallback
 
   // Determine whether this is the contact's very first inbound message
   // BEFORE we insert, so the count is accurate. Covers the case where
@@ -1100,6 +1113,8 @@ async function processMessage(
             // Nome do arquivo como o remetente enviou (969). Antes só existia
             // dentro de `content_text`, e só quando não havia legenda.
             media_filename: mediaFilename,
+            // ⚠️ NOSSO: os contatos do cartão (1060), só nele.
+            ...(contatos ? { contatos } : {}),
             message_id: message.id,
             status: 'delivered',
             created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),
@@ -1436,6 +1451,8 @@ async function parseMessageContent(
    * tap with the right affordance. Null for everything else.
    */
   interactiveReplyId: string | null
+  /** ⚠️ NOSSO: os contatos do cartão (1060). Null em todo outro tipo. */
+  contatos: ContatoCompartilhado[] | null
 }> {
   // getMediaUrl signature is (mediaId, accessToken) — earlier code had
   // the args swapped, so every verification hit an invalid Meta URL and
@@ -1499,6 +1516,7 @@ async function parseMessageContent(
     mediaType: null,
     mediaFilename: null,
     interactiveReplyId: null,
+    contatos: null,
   }
 
   switch (message.type) {
@@ -1585,6 +1603,14 @@ async function parseMessageContent(
 
     case 'reaction':
       return { ...empty, contentText: message.reaction?.emoji || null }
+
+    // ⚠️ NOSSO: cartão de contato (1060). Até aqui caía no `default` e virava
+    // "[Unsupported message type: contacts]". O resumo vai para o texto
+    // (prévia, busca, Radar, API); a bolha desenha o cartão por `contatos`.
+    case 'contacts': {
+      const contatos = contatosDaMeta(message.contacts)
+      return { ...empty, contentText: resumoDosContatos(contatos), contatos }
+    }
 
     case 'interactive': {
       // The customer tapped a reply button or a list row on a message

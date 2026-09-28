@@ -6,6 +6,9 @@ paths:
   - "src/components/inbox/contact-sidebar.tsx"
   - "src/components/inbox/group-sidebar.tsx"
   - "src/components/inbox/cartao-de-nota.tsx"
+  - "src/components/inbox/cartao-de-contato.tsx"
+  - "src/lib/inbox/conversar-com-contato*"
+  - "src/lib/inbox/tipo-nao-suportado*"
   - "src/components/inbox/internal-note-box.tsx"
   - "src/components/inbox/nota-fixada-bar.tsx"
   - "src/components/inbox/note-line.tsx"
@@ -254,6 +257,18 @@ O WhatsApp quase nunca anuncia a falha; este vermelho é INFERIDO.
   da Meta (senão apagaria num fio parado da Evolution).
 - ⚠️ **Saída se mede por `sender_type`, nunca por `from_me`** (a Meta grava nulo).
 - **A falha da Meta mostra o texto dela na bolha** (`motivoNaBolha`).
+
+### Cartão de contato e tipo não suportado na bolha (1060)
+
+- **`CartaoDeContato` lê `messages.contatos` por `lerContatosGravados`** (JSON de
+  fora, campo a campo); sem nada legível mostra o resumo ou "sem dados", nunca
+  bolha vazia. A ingestão está em `.claude/rules/whatsapp-evolution.md`.
+- ⚠️ **"Conversar" só com `waid` e só para quem envia**
+  (`useCan('send-messages')`), e dispara `EVENTO_CONVERSAR_COM_CONTATO`
+  (`conversar-com-contato.ts`): a "Nova conversa" mora na LISTA, irmã do fio.
+  Uma segunda cópia do nome do evento faria o botão não fazer nada.
+- O rótulo de tipo não suportado vira `Inbox.bubble.naoSuportada`
+  (`tipoNaoSuportado`), com o tipo técnico no `title`.
 
 ### Nome do anexo na bolha
 

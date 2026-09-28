@@ -24,6 +24,7 @@ import { FileText, Locate, Mic, Paperclip, Play } from "lucide-react";
 import { coletarAnexos, filtrarPorTipo, type Anexo } from "@/lib/media/anexos";
 import { GaleriaDoFio } from "../media-gallery";
 import type { Message } from "@/types";
+import { urlParaAbrirAnexo } from "@/lib/media/abrir-anexo";
 
 interface AbaArquivosProps {
   /** O fio inteiro, como a página já o tem em estado. */
@@ -293,7 +294,9 @@ function LinhaDeArquivo({
     // para o nome longo continuar truncando.
     <li className="flex items-center gap-1">
       <a
-        href={anexo.url}
+        // Página .html vai para BAIXAR (1060, ver `abrir-anexo.ts`). A aba não
+        // tem o mime: vale a extensão do nome.
+        href={urlParaAbrirAnexo(anexo.url, null, anexo.nome)}
         target="_blank"
         rel="noopener noreferrer"
         className="hover:bg-muted flex min-w-0 flex-1 items-center gap-2 rounded px-2 py-1.5"

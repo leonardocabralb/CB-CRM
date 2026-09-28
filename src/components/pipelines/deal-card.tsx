@@ -12,6 +12,7 @@ import type { CamposDoCard } from "@/lib/pipelines/campos-do-card";
 import { stripWhatsAppFormat } from "@/lib/inbox/whatsapp-format";
 import { identidadeDoContato, nomeDoContato } from "@/lib/contacts/identidade";
 import { ehPreviaDeLigacao } from "@/lib/whatsapp/ligacoes/previa";
+import { tipoNaoSuportado } from "@/lib/inbox/tipo-nao-suportado";
 
 interface DealCardProps {
   deal: DealDoQuadro;
@@ -79,6 +80,8 @@ export const DealCard = memo(function DealCard({
   const t = useTranslations("Pipelines.card");
   // A prévia da ligação (1044) é o marcador `[call]` no banco; a frase é daqui.
   const tLigacao = useTranslations("Inbox.ligacao");
+  // O tipo de mensagem que a ingestão não lê (1060) também é rótulo no banco.
+  const tLista = useTranslations("Inbox.conversationList");
   const contactLabel = nomeDoContato(deal.contact, t("noContact"));
   const assigneeLabel = deal.assignee?.full_name || null;
 
@@ -104,7 +107,9 @@ export const DealCard = memo(function DealCard({
     campos.ultimaMensagem && resumo?.last_message_text
       ? ehPreviaDeLigacao(resumo.last_message_text)
         ? tLigacao("previa")
-        : stripWhatsAppFormat(resumo.last_message_text)
+        : tipoNaoSuportado(resumo.last_message_text) !== null
+          ? tLista("previaNaoSuportada")
+          : stripWhatsAppFormat(resumo.last_message_text)
       : null;
   const naoLidas = campos.naoLidas ? (resumo?.unread_count ?? 0) : 0;
 

@@ -10,6 +10,13 @@
 // ============================================================
 
 import type { NormalizedInbound } from '@/lib/whatsapp/inbound-store';
+import { PREFIXO_DE_TIPO_NAO_SUPORTADO } from '@/lib/ia-agentes/quem-responde';
+import {
+  MAX_CONTATOS,
+  lerVcard,
+  resumoDosContatos,
+  type ContatoCompartilhado,
+} from '@/lib/whatsapp/cartao-de-contato';
 
 export interface EvolutionMessageKey {
   remoteJid?: string;
@@ -165,6 +172,11 @@ const INVOLUCROS = [
   'viewOnceMessageV2',
   'viewOnceMessageV2Extension',
   'documentWithCaptionMessage',
+  // Mídia "associada" a outra (1060). A cópia AUXILIAR — o vídeo da Live
+  // Photo, a versão em alta qualidade — é descartada antes, por
+  // `ehMensagemAuxiliar`; o que sobra (a foto de um álbum, por exemplo) é
+  // conteúdo de verdade e tem de aparecer.
+  'associatedChildMessage',
 ] as const;
 
 /**
@@ -211,7 +223,227 @@ export function extractText(message?: Record<string, unknown> | null): string | 
       return m.caption;
     }
   }
+  // Cartão de contato (1060): o resumo vai para `content_text` — prévia,
+  // busca, Radar e API leem dali; a bolha desenha o cartão por `contatos`.
+  const contatos = extractContatos(m0);
+  if (contatos) return resumoDosContatos(contatos);
+  // Mensagem de EMPRESA com botões (modelo do WhatsApp Business): medido em
+  // setembro, 22 chegaram assim e viraram bolha vazia — o texto se perdia.
+  const modelo = asRecord(m0.templateMessage);
+  if (modelo) return textoDoModelo(modelo);
+  const interativa = asRecord(m0.interactiveMessage);
+  if (interativa) return textoInterativo(interativa);
   return null;
+}
+
+/** Texto não vazio, ou nada. */
+function textoOuNada(v: unknown): string | null {
+  return typeof v === 'string' && v.trim() ? v.trim() : null;
+}
+
+/**
+ * Os botões de um modelo (`hydratedButtons`), um por linha: `[Sim]`,
+ * `[Ver boleto] https://…`, `[Ligar] +55…`. O link e o telefone ficam no
+ * texto porque, sem eles, "[Ver boleto]" não diz ao operador para onde o
+ * cliente foi mandado.
+ */
+function botoesDoModelo(botoes: unknown): string[] {
+  if (!Array.isArray(botoes)) return [];
+  const linhas: string[] = [];
+  for (const b of botoes) {
+    const botao = asRecord(b);
+    if (!botao) continue;
+    const resposta = asRecord(botao.quickReplyButton);
+    const link = asRecord(botao.urlButton);
+    const ligar = asRecord(botao.callButton);
+    const alvo = resposta ?? link ?? ligar;
+    const rotulo = textoOuNada(alvo?.displayText);
+    if (!rotulo) continue;
+    const extra = textoOuNada(link?.url) ?? textoOuNada(ligar?.phoneNumber);
+    linhas.push(extra ? `[${rotulo}] ${extra}` : `[${rotulo}]`);
+  }
+  return linhas;
+}
+
+/** Junta os blocos de texto (separados por linha em branco) e os botões. */
+function montarTexto(blocos: (string | null)[], botoes: string[]): string | null {
+  const partes = blocos.filter((b): b is string => !!b);
+  if (botoes.length > 0) partes.push(botoes.join('\n'));
+  return partes.length > 0 ? partes.join('\n\n') : null;
+}
+
+/**
+ * `templateMessage` — as três formas medidas nos 22 de setembro:
+ * `hydratedTemplate` (título, corpo, rodapé e botões), a variante
+ * `hydratedFourRowTemplate` (mesmos campos) e `interactiveMessageTemplate`
+ * (a forma nova, igual à `interactiveMessage`). A imagem do cabeçalho, quando
+ * há, NÃO é baixada: a mensagem é gravada como texto.
+ */
+function textoDoModelo(modelo: Record<string, unknown>): string | null {
+  const hidratado = asRecord(modelo.hydratedTemplate) ?? asRecord(modelo.hydratedFourRowTemplate);
+  if (hidratado) {
+    return montarTexto(
+      [
+        textoOuNada(hidratado.hydratedTitleText),
+        textoOuNada(hidratado.hydratedContentText),
+        textoOuNada(hidratado.hydratedFooterText),
+      ],
+      botoesDoModelo(hidratado.hydratedButtons),
+    );
+  }
+  const interativo = asRecord(modelo.interactiveMessageTemplate);
+  return interativo ? textoInterativo(interativo) : null;
+}
+
+/**
+ * Pedido de pagamento por Pix (`nativeFlowMessage`, botão `payment_info`) —
+ * medido: é o que o celular do escritório manda quando cobra pelo WhatsApp
+ * Business. Vira `💠 Pix · titular · chave · valor`.
+ */
+function textoDoPix(parametros: Record<string, unknown>): string | null {
+  const configuracoes = Array.isArray(parametros.payment_settings) ? parametros.payment_settings : [];
+  const pix = configuracoes.map((c) => asRecord(asRecord(c)?.pix_static_code)).find(Boolean);
+  if (!pix) return null;
+  let valor: string | null = null;
+  const total = asRecord(parametros.total_amount);
+  if (typeof total?.value === 'number' && total.value > 0) {
+    // `offset` é DIVISOR (100 = centavos), como no `total_amount` da Meta.
+    const divisor = typeof total.offset === 'number' && total.offset > 0 ? total.offset : 1;
+    const moeda = textoOuNada(parametros.currency) ?? 'BRL';
+    try {
+      valor = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: moeda }).format(
+        total.value / divisor,
+      );
+    } catch {
+      valor = `${moeda} ${(total.value / divisor).toFixed(2)}`;
+    }
+  }
+  return ['💠 Pix', textoOuNada(pix.merchant_name), textoOuNada(pix.key), valor]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/** Os botões nativos (`nativeFlowMessage.buttons`): o rótulo, ou o Pix. */
+function botoesNativos(nativo: unknown): string[] {
+  const botoes = asRecord(nativo)?.buttons;
+  if (!Array.isArray(botoes)) return [];
+  const linhas: string[] = [];
+  for (const b of botoes) {
+    const botao = asRecord(b);
+    if (!botao || typeof botao.buttonParamsJson !== 'string') continue;
+    let parametros: Record<string, unknown> | undefined;
+    try {
+      parametros = asRecord(JSON.parse(botao.buttonParamsJson));
+    } catch {
+      continue;
+    }
+    if (!parametros) continue;
+    if (botao.name === 'payment_info') {
+      const pix = textoDoPix(parametros);
+      if (pix) linhas.push(pix);
+      continue;
+    }
+    const rotulo = textoOuNada(parametros.display_text);
+    if (!rotulo) continue;
+    const extra = textoOuNada(parametros.url) ?? textoOuNada(parametros.phone_number);
+    linhas.push(extra ? `[${rotulo}] ${extra}` : `[${rotulo}]`);
+  }
+  return linhas;
+}
+
+/** `interactiveMessage`: cabeçalho, corpo, rodapé e os botões nativos. */
+function textoInterativo(interativa: Record<string, unknown>): string | null {
+  return montarTexto(
+    [
+      textoOuNada(asRecord(interativa.header)?.title),
+      textoOuNada(asRecord(interativa.body)?.text),
+      textoOuNada(asRecord(interativa.footer)?.text),
+    ],
+    botoesNativos(interativa.nativeFlowMessage),
+  );
+}
+
+/**
+ * Os contatos de um cartão (`contactMessage`, um; `contactsArrayMessage`,
+ * vários). `null` = a mensagem não é cartão de contato; `[]` = é, mas nenhum
+ * vCard trouxe nome ou telefone.
+ */
+export function extractContatos(
+  message?: Record<string, unknown> | null,
+): ContatoCompartilhado[] | null {
+  const m = unwrapMessage(message);
+  if (!m) return null;
+  const texto = (v: unknown) => (typeof v === 'string' ? v : null);
+  const um = asRecord(m.contactMessage);
+  if (um) {
+    const contato = lerVcard(texto(um.vcard), texto(um.displayName));
+    return contato ? [contato] : [];
+  }
+  const varios = asRecord(m.contactsArrayMessage);
+  if (varios) {
+    const lista = Array.isArray(varios.contacts) ? varios.contacts.slice(0, MAX_CONTATOS) : [];
+    return lista
+      .map((c) => asRecord(c))
+      .map((c) => (c ? lerVcard(texto(c.vcard), texto(c.displayName)) : null))
+      .filter((c): c is ContatoCompartilhado => c !== null);
+  }
+  return null;
+}
+
+/**
+ * Chaves que ACOMPANHAM o conteúdo sem ser ele: o contexto da mensagem e a
+ * distribuição de chave de grupo, que chega junto do texto.
+ */
+const CHAVES_DE_CONTEXTO = new Set(['messageContextInfo', 'senderKeyDistributionMessage']);
+
+/**
+ * O rótulo gravado quando a mensagem viraria uma bolha VAZIA: um tipo que o
+ * normalizador não sabe ler (enquete, vídeo redondo, evento, o que o WhatsApp
+ * inventar depois). É a MESMA constante que o webhook da Meta usa para o tipo
+ * que ele não lê — e é por isso que o agente de IA não abre turno com ela
+ * (`abreTurno` a recusa) e a bolha a troca por "veja no WhatsApp".
+ *
+ * ⚠️ Texto vazio de verdade (`conversation: ""`) e `protocolMessage` ficam
+ * como sempre foram: o primeiro não é tipo desconhecido, e o segundo é
+ * controle (revogação e edição chegam por `messages.delete`/`.edited`), não
+ * conteúdo de ninguém.
+ */
+export function rotuloDeTipoNaoLido(message?: Record<string, unknown> | null): string | null {
+  const m = unwrapMessage(message);
+  if (!m) return null;
+  const tipo = Object.keys(m).find((k) => !CHAVES_DE_CONTEXTO.has(k));
+  if (!tipo || tipo === 'conversation' || tipo === 'extendedTextMessage' || tipo === 'protocolMessage') {
+    return null;
+  }
+  return `${PREFIXO_DE_TIPO_NAO_SUPORTADO} ${tipo}]`;
+}
+
+/**
+ * O texto de uma mensagem como ela é GRAVADA: o que `extractText` lê, ou,
+ * quando o resultado seria uma bolha de texto vazia, o rótulo do tipo não lido.
+ */
+export function textoParaGravar(
+  message: Record<string, unknown> | null | undefined,
+  contentType: NormalizedInbound['contentType'],
+): string | null {
+  const texto = extractText(message);
+  if (texto !== null || contentType !== 'text') return texto;
+  return rotuloDeTipoNaoLido(message);
+}
+
+/**
+ * O tipo tem ARQUIVO a baixar da Evolution? Texto, localização e cartão de
+ * contato não têm — e pedir o download deles só gasta uma chamada para
+ * terminar em erro no log. (No 1:1, até 1060 só o texto ficava de fora: toda
+ * localização recebida disparava um download que não podia dar certo.)
+ */
+export function temArquivo(contentType: string): boolean {
+  return (
+    contentType === 'image' ||
+    contentType === 'video' ||
+    contentType === 'audio' ||
+    contentType === 'document'
+  );
 }
 
 export function detectContentType(
@@ -224,7 +456,57 @@ export function detectContentType(
   if (m.audioMessage) return 'audio';
   if (m.documentMessage) return 'document';
   if (m.locationMessage) return 'location';
+  if (m.contactMessage || m.contactsArrayMessage) return 'contact';
   return 'text';
+}
+
+/**
+ * Tipo de associação (proto `MessageAssociation.AssociationType`) que é só
+ * CÓPIA AUXILIAR de uma mídia que já chegou como mensagem própria: a versão
+ * em alta qualidade (5, 10, 19) e o vídeo da Live Photo do iPhone (12).
+ * Medido na mensagem de 18/09/2026: o vídeo da Live Photo chegou 1 s depois da foto, com
+ * `parentMessageKey` apontando para ela. `MEDIA_ALBUM` (1) NÃO está aqui: é
+ * a foto de um álbum, conteúdo de verdade.
+ */
+const ASSOCIACOES_AUXILIARES = new Set<unknown>([
+  5,
+  'HD_VIDEO_DUAL_UPLOAD',
+  10,
+  'HD_IMAGE_DUAL_UPLOAD',
+  12,
+  'MOTION_PHOTO',
+  19,
+  'HEVC_VIDEO_DUAL_UPLOAD',
+]);
+
+function tipoDaAssociacao(m: Record<string, unknown> | undefined): unknown {
+  const tipo = asRecord(asRecord(m?.messageContextInfo)?.messageAssociation)?.associationType;
+  return typeof tipo === 'string' && /^\d+$/.test(tipo) ? Number(tipo) : tipo;
+}
+
+/**
+ * Item que não é mensagem de ninguém, só acompanha outra (1060):
+ *   - `albumMessage`: a ABERTURA de um álbum ("vêm 5 fotos"). Não tem
+ *     conteúdo — as fotos chegam uma a uma, como mensagens próprias (conferido
+ *     nos álbuns de setembro). Gravada, era uma bolha vazia a mais: 34 em
+ *     setembro.
+ *   - `associatedChildMessage` de tipo auxiliar (`ASSOCIACOES_AUXILIARES`).
+ * Descartado como a reação: nem bolha, nem não-lida, nem gatilho de automação.
+ */
+export function ehMensagemAuxiliar(message?: Record<string, unknown> | null): boolean {
+  let atual = message ?? null;
+  for (let i = 0; i < 5 && atual; i++) {
+    if (asRecord(atual.albumMessage)) return true;
+    const filha = asRecord(atual.associatedChildMessage);
+    if (filha) {
+      const tipo = tipoDaAssociacao(atual) ?? tipoDaAssociacao(asRecord(filha.message));
+      return ASSOCIACOES_AUXILIARES.has(tipo);
+    }
+    const involucro = INVOLUCROS.find((k) => k !== 'associatedChildMessage' && asRecord(atual![k]));
+    if (!involucro) return false;
+    atual = asRecord(asRecord(atual[involucro])!.message) ?? null;
+  }
+  return false;
 }
 
 /**
@@ -246,6 +528,9 @@ const CAIXAS_COM_CONTEXTO = [
   // Localização também é resposta possível, e `detectContentType` a aceita —
   // sem ela aqui a mensagem entrava e a citação se perdia (Codex, PR #184).
   'locationMessage',
+  // O cartão de contato também pode responder a uma mensagem (1060).
+  'contactMessage',
+  'contactsArrayMessage',
 ] as const;
 
 /**
@@ -366,6 +651,7 @@ export function normalizeUpsert(
   if (isNonChatJid(bruto)) return null; // grupo, canal, status: não é 1:1
   if (isReaction(item.message)) return null; // reação não é mensagem (ver isReaction)
   if (isSecretEncrypted(item.message)) return null; // edição cifrada: sem texto (ver isSecretEncrypted)
+  if (ehMensagemAuxiliar(item.message)) return null; // abertura de álbum, cópia auxiliar (ver ehMensagemAuxiliar)
 
   // Endereço de TELEFONE da conversa. Um `@lid` sem contrapartida devolve
   // null e a mensagem NÃO é gravada aqui — ver `phoneJidFromKey` para o
@@ -387,6 +673,8 @@ export function normalizeUpsert(
       : typeof item.messageTimestamp === 'string'
         ? parseInt(item.messageTimestamp, 10) || Math.floor(Date.now() / 1000)
         : Math.floor(Date.now() / 1000);
+
+  const contentType = detectContentType(item.message);
 
   return {
     accountId,
@@ -410,8 +698,11 @@ export function normalizeUpsert(
     remoteJidLid: lidJidFromKey(item.key),
     quotedProviderId: quotedProviderId(item),
     timestamp: ts,
-    contentType: detectContentType(item.message),
-    text: extractText(item.message),
+    contentType,
+    text: textoParaGravar(item.message, contentType),
+    // Só no cartão de contato (1060): a chave ausente nas outras mantém o
+    // INSERT de sempre para todo o resto.
+    ...(contentType === 'contact' ? { contatos: extractContatos(item.message) ?? [] } : {}),
     // Preenchido pelo webhook, que tem as credenciais para chamar
     // chat/getBase64FromMediaMessage — ver evolution-media.ts.
     mediaUrl: null,

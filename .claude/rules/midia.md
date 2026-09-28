@@ -118,7 +118,13 @@ teto. A bolha, a fila de anexos do compositor e o player de áudio estão em
 - ⚠️ **`MIMES_POR_TIPO` (`src/lib/acervo/tipos.ts`) é ESPELHO da
   `allowed_mime_types` da 023.** Alargar só no código faz o upload falhar no
   Storage com "erro de upload"; só na migration faz a tela recusar arquivo que
-  o WhatsApp aceita. Os dois, sempre.
+  o WhatsApp aceita. Os dois, sempre — menos os tipos SÓ DE ENTRADA, que o
+  bucket aceita e a lista de envio não: GIF, QuickTime, 3gp e Opus (042) e
+  `text/html` (1060).
+- ⚠️ **`.html` recebido é guardado (1060, decisão do operador) e oferecido para
+  BAIXAR, nunca aberto a partir do Storage**: `urlParaAbrirAnexo`
+  (`abrir-anexo.ts`) põe `?download=` na bolha e na aba Arquivos. Link novo
+  para anexo passa por ele.
 
 ### Acervo de mídias (953/954)
 

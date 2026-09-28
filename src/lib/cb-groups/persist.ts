@@ -29,7 +29,16 @@ const CONTENT_TYPES_OK = new Set([
   'template',
   'interactive',
   'system',
+  // Cartão de contato (1060).
+  'contact',
 ]);
+
+/**
+ * Tipos SEM arquivo: não passam pelo download, e o `media_state` fica nulo.
+ * Sem o cartão de contato aqui, ele nasceria "pendente" e acenderia o botão
+ * "toque para baixar" sobre algo que não tem o que baixar.
+ */
+const SEM_ARQUIVO = new Set(['text', 'location', 'contact']);
 
 /**
  * Até este tamanho o anexo de grupo baixa sozinho na chegada; acima, fica
@@ -202,7 +211,7 @@ export async function persistGroupMessage(
   );
   if (!conversa) return null;
 
-  const temAnexo = m.contentType !== 'text' && m.contentType !== 'location';
+  const temAnexo = !SEM_ARQUIVO.has(m.contentType);
   const contentType = CONTENT_TYPES_OK.has(m.contentType) ? m.contentType : 'text';
 
   const { data: gravada, error } = await db
@@ -220,6 +229,7 @@ export async function persistGroupMessage(
       group_sender_name: m.senderName,
       mentions_us: mencionaNos(m.mentionedJids, ownLid),
       media_state: temAnexo ? 'pending' : null,
+      ...(contentType === 'contact' ? { contatos: m.contatos ?? [] } : {}),
       // Inline, e não via `stampMessageChannel`: aquele helper faz um UPDATE
       // separado para ser seguro se a migration 902 ainda não tivesse rodado.
       // Este caminho só existe a partir da 906, muito depois — então o
@@ -285,7 +295,7 @@ export async function persistGroupDeviceMessage(
   );
   if (!conversa) return null;
 
-  const temAnexo = m.contentType !== 'text' && m.contentType !== 'location';
+  const temAnexo = !SEM_ARQUIVO.has(m.contentType);
   const contentType = CONTENT_TYPES_OK.has(m.contentType) ? m.contentType : 'text';
 
   const { data: gravada, error } = await db
@@ -304,6 +314,7 @@ export async function persistGroupDeviceMessage(
       // operador e a bolha já se identifica como nossa pelo `from_device`.
       group_sender_jid: m.senderJid,
       media_state: temAnexo ? 'pending' : null,
+      ...(contentType === 'contact' ? { contatos: m.contatos ?? [] } : {}),
       channel_id: m.channelId ?? null,
       created_at: new Date(m.timestamp * 1000).toISOString(),
     })
