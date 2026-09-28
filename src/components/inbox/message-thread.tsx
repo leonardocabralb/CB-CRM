@@ -88,6 +88,7 @@ import {
   X,
 } from "lucide-react";
 import { nomeDoGrupo } from "@/lib/cb-groups/display";
+import { identidadeDoCanal } from "@/lib/cb-channels/display";
 import type { CbChannel } from "@/lib/cb-channels/repo";
 import { format, isToday, isYesterday } from "date-fns";
 import { LOCALE_DAS_DATAS } from "@/lib/idioma-das-datas";
@@ -2556,7 +2557,10 @@ export function MessageThread({
                 </span>
                 <ChevronDown className="h-3 w-3" />
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="border-border bg-popover">
+              {/* Largura pelo CONTEÚDO, não pela do gatilho (o padrão do
+                  menu): com o número debaixo do nome, a largura do botão
+                  "Bancário - Comercial" quebrava o telefone em três linhas. */}
+              <DropdownMenuContent align="end" className="border-border bg-popover w-auto min-w-56 max-w-72">
                 {canaisQueNaoAlcancam.size > 0 && (
                   <>
                     <p className="max-w-[15rem] px-2 py-1.5 text-xs text-muted-foreground">
@@ -2570,6 +2574,11 @@ export function MessageThread({
                     Boolean(conversation.channel_pinned) &&
                     c.id === activeChannel.id;
                   const naoAlcanca = canaisQueNaoAlcancam.has(c.id);
+                  // O número debaixo do nome (pedido do operador,
+                  // 28/09/2026): o rótulo diz a área, e é o número que o
+                  // cliente vê. No Instagram é o `@`; conexão por QR Code
+                  // ainda não pareada não tem nenhum, e a linha não aparece.
+                  const identidade = identidadeDoCanal(c);
                   return (
                     <DropdownMenuItem
                       key={c.id}
@@ -2589,7 +2598,14 @@ export function MessageThread({
                         )}
                       />
                       <IconeDoTransporte kind={c.kind} className="mr-2 h-3.5 w-3.5" />
-                      <span className="flex-1">{c.label}</span>
+                      <span className="flex min-w-0 flex-1 flex-col">
+                        <span>{c.label}</span>
+                        {identidade && (
+                          <span className="text-muted-foreground text-xs whitespace-nowrap tabular-nums">
+                            {identidade}
+                          </span>
+                        )}
+                      </span>
                       {isSelected && <Check className="ml-2 h-3 w-3" />}
                     </DropdownMenuItem>
                   );
