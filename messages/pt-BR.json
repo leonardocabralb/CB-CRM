@@ -2186,7 +2186,9 @@
         "inativo": "{nome} (inativo)",
         "variaveisTitulo": "Variáveis do agendamento, para usar nos passos",
         "variaveisAjuda": "Ex.: Nome: {nome} · Data: {data} (dd/mm/aaaa hh:mm) · o campo de data da reunião recebe {inicio}.",
-        "variaveisDoContatoTitulo": "Do contato (em qualquer passo de texto)"
+        "variaveisDoContatoTitulo": "Do contato (em qualquer passo de texto)",
+        "ignorarReagendamentoLabel": "Ignorar reagendamentos",
+        "ignorarReagendamentoHelp": "O Calendly avisa a remarcação como um agendamento novo. Marcada, esta automação roda só no primeiro agendamento, e quem remarca não recebe a sequência de novo."
       },
       "zapsign": {
         "semConfig": "Não tem configuração: toda assinatura completa da conta dispara. A conexão fica em",

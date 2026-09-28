@@ -116,6 +116,23 @@ export function CalendlyTriggerConfig({
         )}
         {carga.estado === "falhou" && <p className="mt-1 text-[11px] text-destructive">{t("falhou")}</p>}
       </div>
+      {/* O Calendly manda a remarcação como agendamento NOVO; sem a caixa,
+          a sequência de boas-vindas sai de novo para quem já a recebeu.
+          `=== true`, como o motor. */}
+      <label className="flex items-start gap-2 text-xs text-foreground">
+        <input
+          type="checkbox"
+          checked={config.ignorar_reagendamento === true}
+          onChange={(e) => onChange({ ...config, ignorar_reagendamento: e.target.checked })}
+          className="mt-0.5 size-4 accent-primary"
+        />
+        <span>
+          {t("ignorarReagendamentoLabel")}
+          <span className="mt-0.5 block text-[11px] text-muted-foreground">
+            {t("ignorarReagendamentoHelp")}
+          </span>
+        </span>
+      </label>
       <div className="rounded-md border border-border bg-muted/40 p-2">
         <p className="text-[11px] font-medium text-muted-foreground">{t("variaveisTitulo")}</p>
         <p className="mt-1 font-mono text-[11px] leading-5 text-foreground">
