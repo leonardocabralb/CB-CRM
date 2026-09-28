@@ -41,6 +41,11 @@ let canaisAbertos = 0;
  * - O `token` continua refazendo a busca: o botão de atualizar da thread, a
  *   volta à aba e a reconexão do tempo real passam por ele e cobrem o que o
  *   canal perdeu enquanto esteve fora.
+ * - LIMITE CONHECIDO (Codex, PR #336): evento gravado entre a foto da busca
+ *   inicial e o canal ficar ativo (~0,1–0,5 s ao abrir a conversa) não chega
+ *   por nenhum dos dois, e aparece na próxima busca — como era antes da 1059.
+ *   Fechar pede uma segunda busca a cada abertura mais uma trava de ordem entre
+ *   as buscas; não compensa para uma janela desse tamanho.
  * - O que sai daqui é sempre do contato do render ATUAL (`eventosDoContato`):
  *   o estado só troca de contato quando a busca nova volta, e até lá o fio do
  *   cliente B mostraria a trilha do cliente A. Pelo mesmo motivo `carregando`
@@ -71,7 +76,10 @@ export function useLeadEvents(contactId: string | null | undefined, token = 0) {
       // `onClick` mandaria o evento do clique no lugar da função.
       const valeAinda = () => (typeof vivo === 'function' ? vivo() : true);
       if (!contactId) {
+        // Grupo não tem contato. A busca de um cliente que ainda estava no ar
+        // é descartada pelo `vivo` e não desliga o `carregando`: desliga aqui.
         setEventos([]);
+        setCarregando(false);
         return;
       }
       setCarregando(true);
@@ -93,8 +101,9 @@ export function useLeadEvents(contactId: string | null | undefined, token = 0) {
       if (error) {
         // Falha aqui não pode derrubar a conversa: a trilha é informação
         // acessória do atendimento, e o chat precisa abrir de qualquer jeito.
+        // A lista fica como está: o canal pode ter entregado evento durante a
+        // busca, e a busca que falhou não sabe nada melhor (Codex, PR #336).
         console.warn('[lead-events] falha ao buscar histórico:', error.message);
-        setEventos([]);
       } else {
         const chegados = chegadosRef.current;
         setEventos((atuais) =>

@@ -327,7 +327,11 @@ atualizar.
   `next dev` monta cada efeito duas vezes.
 - ⚠️ **A busca que volta não apaga o que o canal entregou durante ela**
   (`chegadosRef`): a foto dela pode ser anterior ao evento. Na junção, a versão
-  buscada vence.
+  buscada vence. A busca que FALHA deixa a lista como está.
+- **Limite conhecido**: evento gravado entre a foto da busca inicial e o canal
+  ficar ativo (~0,1–0,5 s ao abrir a conversa) só aparece na próxima busca.
+  Fechar pede uma segunda busca por abertura e trava de ordem entre as buscas —
+  decidido não compensar (Codex, PR #336).
 - **O que sai do hook é do contato do render ATUAL** (filtro por
   `contact_id`), a busca do contato anterior que volta por último é
   descartada (`vivo`), e `carregando` vale até a busca DESTE contato voltar
