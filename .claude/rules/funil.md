@@ -307,3 +307,27 @@ filtro de canal, o cartão que o recorte não alcança diz "Conta inteira"
 (contato não tem `channel_id`), e o de negócios diz "Originados neste número"
 (`deals.channel_id` é do nascimento). Sem a ressalva, qualquer um dos dois é
 lido como "isto é do Comercial".
+
+### Trilha do lead no fio e no Histórico: em tempo real (1059)
+
+`src/hooks/use-lead-events.ts` e `juntarEventos` (`src/lib/lead-events/describe.ts`,
+pino `describe.test.ts`). A 912 deixou a trilha fora do realtime porque nada
+que gera evento acontecia na tela da conversa; o painel passou a mudar etapa,
+status e etiqueta, e automações e colegas no Kanban movem o card com a
+conversa aberta — a linha "Avançou de … para …" só aparecia depois de
+atualizar.
+
+- **Só INSERT**, filtrado por `contact_id`. A trilha só cresce; o evento
+  apagado por um desfazer de carga some na próxima busca. O `token`
+  (atualizar, volta à aba, reconexão) continua refazendo a busca.
+- ⚠️ **Um tópico por ASSINATURA** (`trilha:<contato>:<contador de módulo>`),
+  não só por montagem: o cliente do Supabase devolve o canal que ainda está
+  SAINDO quando o tópico se repete, e o `.subscribe()` dele não faz nada. O fio
+  e a aba Histórico assinam o mesmo contato ao mesmo tempo, e o StrictMode do
+  `next dev` monta cada efeito duas vezes.
+- ⚠️ **A busca que volta não apaga o que o canal entregou durante ela**
+  (`chegadosRef`): a foto dela pode ser anterior ao evento. Na junção, a versão
+  buscada vence.
+- **O que sai do hook é do contato do render ATUAL** (filtro por
+  `contact_id`), e a busca do contato anterior que volta por último é
+  descartada (`vivo`).

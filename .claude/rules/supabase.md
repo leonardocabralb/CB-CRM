@@ -313,6 +313,12 @@ canal ou `.is('channel_id', null)`).
   `null` entre funis). `deal_deleted` e `reconstructed` ficam fora do chat.
 - CHECK de forma nunca exige `contact_id`: apagar contato faz SET NULL (UPDATE),
   o UPDATE revalida o CHECK e a exclusão falharia.
+- **Está na publicação realtime desde a 1059, SEM lista de colunas** (a
+  armadilha da 909). REPLICA IDENTITY padrão basta: o app assina só INSERT.
+  Carga em massa na trilha (a da Kommo gravou 1.171 eventos num segundo)
+  atravessa o servidor de tempo real, como a das mensagens; só recebe quem
+  está com a conversa daquele contato aberta. O hook está em
+  `.claude/rules/funil.md`.
 
 ### Gatilhos que espelham regra de TS
 Escritor demais para espelhar em código: a regra mora no banco, e o TS guarda

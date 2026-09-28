@@ -124,6 +124,26 @@ export function ordenarPorTempo(eventos: readonly LeadEvent[]): LeadEvent[] {
 }
 
 /**
+ * Junta duas listas da trilha sem repetir evento e devolve na ordem da
+ * conversa. No `id` repetido vale a versão da PRIMEIRA lista.
+ *
+ * É a peça do tempo real (1059): o evento que chega pelo canal entra na lista
+ * que já está na tela (`juntarEventos(atuais, [novo])`), e a busca que volta
+ * depois de um evento ter chegado não o perde — a foto dela pode ser anterior
+ * a ele (`juntarEventos(buscados, chegados)`, a versão buscada vence).
+ */
+export function juntarEventos(
+  primeira: readonly LeadEvent[],
+  segunda: readonly LeadEvent[],
+): LeadEvent[] {
+  const porId = new Map<string, LeadEvent>();
+  for (const evento of [...primeira, ...segunda]) {
+    if (!porId.has(evento.id)) porId.set(evento.id, evento);
+  }
+  return ordenarPorTempo([...porId.values()]);
+}
+
+/**
  * ⚠️ Comparação byte a byte, NÃO `localeCompare`: em vários locales o
  * colador padrão trata `-` e `:` como pontuação ignorável, e duas datas ISO
  * que só diferem na pontuação comparariam iguais. Em ISO com o mesmo fuso
