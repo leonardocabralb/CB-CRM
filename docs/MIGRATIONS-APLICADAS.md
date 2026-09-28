@@ -885,6 +885,21 @@ nome da época em que foram aplicadas.
   catálogo (UM CHECK sobre `degrau`, com `pasta`; a coluna `jsonb`, não nula,
   padrão `'{}'`; nenhuma sobra da conferência).
 
+- **1058_cb_desfecho_da_reuniao_na_etapa** — `pipeline_stages.desfecho_da_reuniao`
+  ('compareceu' | 'faltou' | NULO), com o CHECK nomeado
+  `cb_pipeline_stages_desfecho_da_reuniao_check`: o que ENTRAR na etapa diz
+  sobre a reunião, lido pelo aviso de possível no-show da conversa
+  (`docs/PLANO-reunioes-e-no-show.md`, Fase 2). Nada semeado na migration.
+  ADITIVA e ANTES do deploy: a tela nova de "Gerenciar funil" grava a coluna e
+  a rota do aviso a seleciona; o upsert do app antigo (sem a coluna no corpo)
+  a deixa como está. Aplicada em 27/09/2026 pela Management API (histórico
+  `20260927220948`), depois do replay verde do CI no commit `8f1cd354` e ANTES
+  do merge do PR #332, com autorização do operador; conferida no catálogo
+  (coluna `text`, o CHECK com os dois valores, nenhuma etapa marcada). Em
+  seguida, com a mesma autorização, marcadas as duas etapas do Bancário -
+  Comercial: No Show = `faltou` e Reunião Sem Proposta = `compareceu` (o
+  UPDATE não aciona gatilho: `pipeline_stages` só tem o de DELETE).
+
 ## Notas do histórico
 
 - ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a

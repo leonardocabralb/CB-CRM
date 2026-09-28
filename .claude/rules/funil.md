@@ -84,8 +84,11 @@ funis. As métricas (Lista, Desempenho, Saúde, Meta Ads) estão em
   `docs/MERGE-UPSTREAM.md`): o raio com contador no cabeçalho da coluna e a
   carga das automações de funil, o botão de conversas por coluna,
   `navegarParaInbox` com a restauração de rolagem, `useChannels` içado e o
-  popover de campos; no `PipelineSettings`, degrau (975) e resultado (950) por
-  etapa e os avisos de conexão que usa o funil ou a etapa.
+  popover de campos; no `PipelineSettings`, degrau (975), resultado (950) e a
+  marcação "Reunião" (Compareceu/Faltou, `desfecho_da_reuniao`, 1058 — o aviso
+  de possível no-show a lê: `.claude/rules/reunioes.md`) por etapa, e os
+  avisos de conexão que usa o funil ou a etapa. Com três seletores por etapa o
+  diálogo é `sm:max-w-2xl`: a 448 px o nome da etapa ficava com 22 px.
 
 ### Concorrência do quadro: leituras, arrastos e formulários
 

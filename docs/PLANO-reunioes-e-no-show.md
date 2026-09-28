@@ -13,8 +13,8 @@ marcadas na agenda interna do CRM, e nenhuma do Calendly. Ele quer:
 
 | Fase | O quê | Estado |
 | --- | --- | --- |
-| 1 | Histórico: Calendly e Kommo na aba Reuniões | PR aberto (27/09/2026) |
-| 2 | Aviso de possível no-show na conversa | A fazer |
+| 1 | Histórico: Calendly e Kommo na aba Reuniões | Mesclada (#331, 27/09/2026) |
+| 2 | Aviso de possível no-show na conversa | PR #332; 1058 aplicada e etapas marcadas (27/09/2026); testado no preview; falta a revisão e o merge |
 
 ## Decisões do operador (27/09/2026)
 
@@ -83,30 +83,62 @@ riscados como "Reagendada", o que aconteceu (com transcrição do tl;dv no mesmo
 dia) e a reunião da Kommo; a rota responde só as chaves previstas, 404 para id
 inválido e lista vazia para cliente de outra conta.
 
-## Fase 2 — aviso de possível no-show (a fazer)
+## Fase 2 — aviso de possível no-show
 
-**Desenho proposto** (revisar antes de começar):
+**Objetivo:** quando o lead tem reunião marcada e já faltou (ou marcou antes e
+não avançou), uma faixa pequena na conversa, acima da caixa de mensagem.
 
-- **Migration:** em Gerenciar funil, cada etapa ganha "Reunião: — /
-  Compareceu / Faltou" (coluna nova em `pipeline_stages`, como o degrau).
-  O operador marca No Show = Faltou e Reunião Sem Proposta = Compareceu.
-  Nada é deduzido pelo nome da etapa.
-- **Regra (pura, com teste):** o aviso aparece quando o cliente tem reunião
-  FUTURA (Calendly ou agenda, não desmarcada) e:
-  - já passou por uma etapa marcada "Faltou" (ou tem reunião da agenda com a
-    situação "Cliente não compareceu"); ou
-  - já teve reunião que passou (Calendly, agenda ou Kommo, não desmarcada) e
-    nunca avançou: nenhuma etapa com degrau de proposta ou contrato (ou
-    pasta), nenhuma etapa "Compareceu", nenhum card com valor.
-- **Onde:** faixa pequena no fio, acima da caixa de mensagem, perto da faixa
-  do Asaas. Só conversa 1:1. Texto factual ("foi para No Show em 12/08" ou
-  "teve reunião em 15/09 e não chegou à proposta"), com a data da nova reunião.
-- **Dados:** a mesma rota da Fase 1 devolve também o aviso, lido pelo fio.
+**Arquivos:** migration `1058_cb_desfecho_da_reuniao_na_etapa.sql`
+(`pipeline_stages.desfecho_da_reuniao`); `src/lib/agenda/aviso-de-no-show.ts`
+(puro) e o teste; a rota da Fase 1 devolve também `aviso`; o hook
+`useReunioesExternasDoContato` o repassa (com o `resyncToken` do fio);
+`src/components/inbox/faixa-de-no-show.tsx` montada em `message-thread.tsx`;
+o seletor "Reunião" por etapa em `pipeline-settings.tsx` (diálogo agora
+`sm:max-w-2xl`); o tipo em `src/types/index.ts`; chaves
+`Pipelines.settings.reuniao*`/`stageReuniao*` e `Inbox.noShow.*`.
+
+**Como funciona:**
+- Em Gerenciar funil, cada etapa ganha "Reunião: — / Compareceu / Faltou". O
+  operador marca No Show = Faltou e Reunião Sem Proposta = Compareceu. Nada é
+  deduzido pelo nome da etapa, e proposta/contrato já contam pelo degrau.
+- O aviso aparece quando o cliente tem reunião FUTURA (Calendly, Kommo ou
+  agenda, não desmarcada) e: (1) já entrou numa etapa "Faltou", a qualquer
+  tempo, ou a agenda registrou a falta; ou (2) já teve reunião que terminou,
+  não desmarcada, e NUNCA avançou (degrau proposta/contrato/pasta, etapa
+  "Compareceu", agenda "Realizada" ou card com valor).
+- Texto factual: "Possível no-show — este cliente foi para No Show em 12/08.
+  Nova reunião em 30/09 às 15:00." ou "… teve reunião em 15/09 e não avançou
+  no funil. …". Some quando a nova reunião termina.
+
+**Feito em 27/09/2026 (com autorização do operador):** a 1058 aplicada depois
+do replay verde no commit `8f1cd354` (histórico `20260927220948`); marcadas
+No Show = Faltou e Reunião Sem Proposta = Compareceu no Bancário - Comercial
+(o UPDATE não aciona gatilho; o app antigo não apaga a marcação ao salvar
+Gerenciar funil, porque o upsert dele não leva a coluna).
+
+**Resultado medido (preview, contra o banco):**
+- A rota respondeu 200 para os 9 clientes com reunião marcada; 1 ganhou o
+  aviso — "teve reunião em 06/08 e não avançou", com agendamento novo para
+  29/09 —, e a trilha dele confere (Reunião Agendada em 05/08, reunião da
+  Kommo em 06/08, nenhum movimento nem valor depois).
+- A faixa, com a resposta da rota simulada no navegador para o lead de teste
+  (sem gravar reunião de teste): "Possível no-show — este cliente foi para No
+  Show em 09/09. Nova reunião em 30/09 às 15:00."; a variante "não avançou"
+  com o texto certo; sem faixa depois que a reunião termina e sem aviso.
+- Gerenciar funil lê do banco "Faltou" no No Show e "Compareceu" na Reunião
+  Sem Proposta; o diálogo abre com 672 px e o nome da etapa com 201 px.
 
 **Limites que o operador precisa saber:**
 - Até o corte da Kommo (ou a atualização final dos dados de lá), o aviso não
   vê faltas recentes e pode acusar quem compareceu (ver Medições).
-- O aviso some quando o horário da nova reunião passa.
+- Gerenciar funil no celular já não cabia com dois seletores por etapa; com
+  três continua sem caber (tela de administrador, usada no computador).
+- O aviso é calculado quando a conversa abre (e ao voltar à aba ou apertar
+  "Atualizar"). Com DUAS reuniões futuras e a conversa aberta durante o fim da
+  primeira, a faixa só se ajusta ao reabrir (Codex, PR #332). Caso raro, e o
+  lado é seguro: o aviso atrasa, não afirma nada falso. O conserto, se o
+  operador quiser, é a rota devolver o fim da próxima reunião e o hook se
+  reler nessa hora.
 
 ## Fora do escopo (para depois, se o operador quiser)
 

@@ -76,6 +76,10 @@ ficha em `.claude/rules/campos-e-nome.md`.
 - ⚠️ **A faixa da nota fixada compara `conversation_id` com a prop do render
   atual**: o `useConversationNotes` esvazia num efeito, e a nota do cliente
   anterior aparecia sob o cabeçalho do novo.
+- **Faixas acima do compositor, nesta ordem:** inadimplência do Asaas,
+  possível no-show (`FaixaDeNoShow`, regra em `.claude/rules/reunioes.md`) e
+  agendadas. A de no-show vem do hook que carimba o contato dono do aviso: a
+  de um cliente nunca aparece na conversa de outro.
 
 ### O salto da busca dentro do fio roda em JS, e isso tem prazo de validade
 

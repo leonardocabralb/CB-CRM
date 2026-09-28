@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 
+import { avisoDeNoShow, type DesfechoDaReuniao } from '@/lib/agenda/aviso-de-no-show';
 import { montarReunioesExternas, type LinhaDaKommo, type LinhaDoCalendly } from '@/lib/agenda/reunioes-externas';
 import { supabaseAdmin } from '@/lib/automations/admin-client';
 import { getCurrentAccount, toErrorResponse } from '@/lib/auth/account';
@@ -10,7 +11,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /**
  * GET /api/cb/agenda/contato/[contactId] — as reuniões do cliente que não
  * moram na agenda do CRM: os agendamentos do Calendly e a última reunião da
- * Kommo. `{ reunioes: ReuniaoExterna[] }`, do mais recente para o mais antigo.
+ * Kommo. `{ reunioes: ReuniaoExterna[], aviso: AvisoDeNoShow | null }`, as
+ * reuniões do mais recente para o mais antigo; o aviso de possível no-show
+ * (`aviso-de-no-show.ts`) é o que a faixa da conversa mostra.
  *
  * ⚠️ Por ROTA porque `cb_calendly_eventos` e `cb_reunioes_da_kommo` são
  * fechadas ao navegador: do cliente devolveriam vazio com `error: null`, e a
@@ -70,9 +73,79 @@ export async function GET(_request: Request, { params }: { params: Promise<{ con
       cancelados = new Set((data ?? []).map((l) => l.invitee_uri as string));
     }
 
-    return NextResponse.json({
-      reunioes: montarReunioesExternas(linhas, cancelados, (kommo.data ?? []) as LinhaDaKommo[]),
+    const reunioes = montarReunioesExternas(linhas, cancelados, (kommo.data ?? []) as LinhaDaKommo[]);
+
+    // O aviso de possível no-show (Fase 2): a agenda do CRM, as entradas do
+    // card em etapas (a trilha, com a Kommo inclusive) e o valor dos cards.
+    // `status_changed` fica de fora: ele repete a etapa em que o card JÁ
+    // estava, não é entrada.
+    const [agenda, trilha, comValor] = await Promise.all([
+      admin
+        .from('cb_meetings')
+        .select('starts_at, ends_at, status')
+        .eq('account_id', ctx.accountId)
+        .eq('contact_id', contactId),
+      admin
+        .from('cb_lead_events')
+        .select('occurred_at, to_stage_id, to_stage_label')
+        .eq('account_id', ctx.accountId)
+        .eq('contact_id', contactId)
+        .in('event_type', ['stage_changed', 'deal_created', 'pipeline_changed'])
+        .not('to_stage_id', 'is', null),
+      admin
+        .from('deals')
+        .select('id', { count: 'exact', head: true })
+        .eq('account_id', ctx.accountId)
+        .eq('contact_id', contactId)
+        .gt('value', 0),
+    ]);
+    if (agenda.error) throw new Error(`agenda: ${agenda.error.message}`);
+    if (trilha.error) throw new Error(`trilha: ${trilha.error.message}`);
+    if (comValor.error) throw new Error(`valor: ${comValor.error.message}`);
+
+    const entradasCruas = (trilha.data ?? []) as { occurred_at: string; to_stage_id: string; to_stage_label: string | null }[];
+    // O degrau e a marcação de HOJE de cada etapa. `pipeline_stages` não tem
+    // `account_id`: a cerca é pelo funil (`!inner`, senão a linha voltaria
+    // com o embutido nulo em vez de sumir) — a mesma forma, sem apelido, de
+    // `/api/cb/execucoes` e das ferramentas dos agentes de IA.
+    const idsDasEtapas = [...new Set(entradasCruas.map((e) => e.to_stage_id))];
+    const etapas = new Map<string, { degrau: string | null; desfecho: DesfechoDaReuniao | null }>();
+    if (idsDasEtapas.length > 0) {
+      const { data, error } = await admin
+        .from('pipeline_stages')
+        .select('id, degrau, desfecho_da_reuniao, pipelines!inner(account_id)')
+        .in('id', idsDasEtapas)
+        .eq('pipelines.account_id', ctx.accountId);
+      if (error) throw new Error(`etapas: ${error.message}`);
+      for (const e of (data ?? []) as { id: string; degrau: string | null; desfecho_da_reuniao: string | null }[]) {
+        etapas.set(e.id, {
+          degrau: e.degrau,
+          desfecho: e.desfecho_da_reuniao === 'compareceu' || e.desfecho_da_reuniao === 'faltou' ? e.desfecho_da_reuniao : null,
+        });
+      }
+    }
+
+    const aviso = avisoDeNoShow({
+      reunioes: [
+        ...reunioes.map((r) => ({ inicio: r.inicio, fim: r.fim, desmarcada: r.desmarcada !== null, desfecho: null })),
+        ...((agenda.data ?? []) as { starts_at: string; ends_at: string; status: string }[]).map((m) => ({
+          inicio: m.starts_at,
+          fim: m.ends_at,
+          desmarcada: m.status === 'cancelada',
+          desfecho: m.status === 'falta' ? ('faltou' as const) : m.status === 'realizada' ? ('compareceu' as const) : null,
+        })),
+      ],
+      entradas: entradasCruas.map((e) => ({
+        em: e.occurred_at,
+        etapa: e.to_stage_label,
+        degrau: etapas.get(e.to_stage_id)?.degrau ?? null,
+        desfecho: etapas.get(e.to_stage_id)?.desfecho ?? null,
+      })),
+      temValorNoCard: (comValor.count ?? 0) > 0,
+      agora: new Date(),
     });
+
+    return NextResponse.json({ reunioes, aviso });
   } catch (err) {
     if (err instanceof Error && !('status' in err)) {
       console.error('[agenda/contato] leitura falhou:', err.message);

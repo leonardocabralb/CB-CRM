@@ -574,6 +574,13 @@
       "vazioDica": "Fotos, documentos e áudios trocados aparecem aqui.",
       "verNaConversa": "Ver na conversa"
     },
+    "noShow": {
+      "titulo": "Possível no-show",
+      "faltouNaEtapa": "este cliente foi para {etapa} em {dia}.",
+      "faltouNaAgenda": "este cliente faltou à reunião de {dia}.",
+      "semAvanco": "teve reunião em {dia} e não avançou no funil.",
+      "proxima": "Nova reunião em {dia} às {hora}."
+    },
     "cobrancas": {
       "faixaTitulo": "Inadimplente no Asaas",
       "faixaResumo": "{parcelas, plural, one {# parcela vencida} other {# parcelas vencidas}} · {valor}",
@@ -1233,6 +1240,11 @@
       "outcomeLost": "Perdido",
       "stageDegrau": "Funil de eficiência",
       "stageDegrauHint": "A que degrau do funil de eficiência esta etapa corresponde. Várias etapas podem apontar para o mesmo degrau; etapa sem degrau não conta no Desempenho.",
+      "stageReuniao": "Reunião",
+      "stageReuniaoHint": "O que o cliente entrar nesta etapa diz sobre a reunião. É o que o aviso de possível no-show da conversa usa: “Faltou” marca a etapa de no-show; “Compareceu”, a reunião feita sem proposta (proposta e contrato já contam pelo degrau).",
+      "reuniaoNenhum": "Reunião: —",
+      "reuniaoCompareceu": "Compareceu",
+      "reuniaoFaltou": "Faltou",
       "semLead": "Nenhuma etapa está marcada como Lead: o Desempenho e a Saúde deste funil ficam sem cálculo até isso ser configurado.",
       "painel": "Painel do Desempenho e da Saúde",
       "painelDica": "Como este funil aparece nos painéis. O rótulo vale só neste funil; vazio, fica o nome padrão do degrau.",
