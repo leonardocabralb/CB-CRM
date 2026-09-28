@@ -1022,6 +1022,9 @@ contatos. Aí eles entram pela porta normal, sem exceção no código. O resto d
     Vale para TODA tabela de apoio da carga, o livro-razão de desfazer
     inclusive — ele guarda id de contato e de negócio da conta inteira. Nos 1.150, só sobrescrever quando o nome atual estiver vazio ou
     for telefone; o resto vira CSV para o operador decidir.
+    ⚠️ **O CSV não foi feito.** As 690 fichas que já existiam ficaram com o
+    nome do CRM até 28/09/2026, quando o operador decidiu pelo nome do
+    NEGÓCIO — ver "Nomes pelo negócio da Kommo".
 
 ### E. Conferências do ensaio (fase 3) e do pós-carga (fase 6)
 
@@ -1136,6 +1139,9 @@ as contagens e as regras. Esta seção é o índice.
 - **8 e 20 — o nome da Kommo vence e fica FIXADO** (`nome_fixado_em`), exceto
   nos 297 já fixados à mão. Todo nome passa por `nomeParaFixar`, que recusa
   número.
+  ⚠️ **Revista em 28/09/2026.** O "nome da Kommo" aqui era o do CONTATO, e a
+  regra 27 o restringiu às fichas sem nome. Hoje vale o nome do NEGÓCIO — ver
+  "Nomes pelo negócio da Kommo".
 - **5 e 21 — reusa 8 etiquetas, cria só `kommo`** (cor `#6b7280`). As outras 23
   da Kommo não são criadas. A No‑Show sai da ETAPA, não de etiqueta.
 - **3 — 283 conversas novas, nascendo ENCERRADA**, para abrigar as 543
@@ -1490,6 +1496,9 @@ os 677 ganhos todos neste mês.
   (decisão 27) vieram depois, em 22/09, pela 1036 — ver a seção própria.
 - **A Fase 5 não foi feita.** A Kommo continua recebendo ~30 leads/dia, e o
   delta do dia do corte é uma segunda passada da mesma carga.
+- **Não usou o nome do NEGÓCIO**: a ficha criada e o título do card vieram do
+  nome do CONTATO da Kommo. Corrigido em 28/09/2026 — ver "Nomes pelo negócio
+  da Kommo".
 
 ### Desfazer
 
@@ -1661,6 +1670,91 @@ e depois — nada disparou.
 — nada referencia a tabela. **No dia do corte**, rodar de novo atualiza as
 linhas pela chave `(account_id, kommo_lead_id)` e acrescenta as reuniões que
 tiverem passado até lá.
+
+## Nomes pelo negócio da Kommo — 28/09/2026
+
+A equipe estranhou que o nome de clientes no CRM não era o que via na Kommo.
+Medido pela API da Kommo (contatos, negócios e as trocas de nome desde a cópia
+de 19/09) contra o banco, só leitura. Nomes abaixo são inventados.
+
+**O que a carga tinha feito com o nome**
+
+- ⚠️⚠️ **O "nome da Kommo" da decisão 8 sempre foi o do CONTATO, nunca o do
+  NEGÓCIO.** A medição que embasou a decisão (os 640 nomes diferentes da
+  sobreposição) comparou o contato da Kommo com a ficha
+  (`scripts/kommo/cruzamento.mjs`). Mas o que aparece em destaque no card da
+  Kommo é o nome do NEGÓCIO, que a equipe digitava completo ("Maria Exemplo
+  Souza (EXEMPLO LTDA)"). O do contato costuma ser o apelido do perfil do
+  WhatsApp que a Kommo guardou ("Mari ✨").
+- A ficha que a carga CRIOU (3.875) recebeu o nome do contato, fixado, ou o do
+  negócio quando o contato estava vazio (55). 477 nasceram com o TELEFONE,
+  porque o contato só tinha ponto, emoji ou nada.
+- A ficha que JÁ EXISTIA (761) só recebeu o nome da Kommo quando o daqui era
+  vazio ou telefone (71, regra 27). As outras 690 ficaram com o nome do CRM, e
+  o CSV que a regra 27 prometia não foi feito.
+- O título do card também veio do CONTATO, inclusive nos cards movidos: 1.230
+  com título totalmente diferente do negócio, 1.051 parcialmente e 604 com o
+  telefone no título.
+
+**Decisão do operador (28/09/2026): vale o nome do NEGÓCIO**, pelo critério
+de que o negócio "costuma ser mais completo". A regra aplicada:
+
+- **Card:** o nome do negócio como a equipe digitou, com as anotações, e
+  FIXADO (`titulo_fixado_em`). ⚠️ Menos quando o título atual já contém o
+  nome do negócio e mais (390: "Maria Exemplo" não vira "Maria"). Esses
+  também foram fixados; sem isso, o gatilho da 1007 os encurtaria ao renomear
+  a ficha (medido no 1º ensaio: 9 cards).
+- **Ficha:** o nome da PESSOA tirado do negócio, fixado.
+  - Nome simples: o nome do negócio.
+  - Com anotação ("Maria Exemplo (esposo)", "Maria Exemplo - número novo",
+    "Maria Exemplo (EXEMPLO LTDA)"): sem a anotação, que fica no card.
+  - Negócio que começa por banco, escritório ou empresa ("Banco X - Gerente
+    Fulana"): o rótulo inteiro. São contatos de banco e advogados parceiros,
+    não clientes.
+  - Ficha que ficaria mais curta que o próprio card preservado: o nome do card
+    (12).
+  - **Fica como está:** o nome do contrato do Asaas (decisão do operador,
+    254), o nome fixado depois da carga pelo Calendly ou pela equipe (17), a
+    ficha que já é mais completa que o negócio (401) e o negócio sem nome real
+    ("Lead #…", "Autolead", ponto, telefone; 596).
+- ⚠️ **Por que a ficha não leva a anotação:** o nome da ficha entra no
+  `{{contact.name}}` das mensagens automáticas (lembretes de reunião,
+  automações do Previdenciário). Com a anotação, o cliente receberia "Olá,
+  Maria Exemplo (esposo)!".
+- ⚠️ **Nos rótulos que citam parente ou outra pessoa (~56), a ficha fica com o
+  PRIMEIRO nome do rótulo.** Em "Maria Exemplo (esposo)" é a cliente, embora o
+  telefone seja do marido. Aceito pelo operador com esse exemplo.
+- **O Asaas não é afetado.** A régua de cobrança usa
+  `{{vars.cliente_primeiro_nome}}`, que vem do cadastro do Asaas, não da
+  ficha. O vínculo usa o nome da ficha só na cerca da esposa que paga, e só
+  para cliente NOVO do Asaas; as ligações que existem não são revistas.
+
+**Aplicado em 28/09/2026 às 15h16**, com autorização do operador e dois
+ensaios antes (desfeitos por exceção no fim). Uma transação só:
+
+- 1.347 títulos trocados, 4.160 cards fixados, 1.243 fichas renomeadas e
+  fixadas.
+- `set_updated_at` de `deals` desligado NOMINALMENTE e religado na mesma
+  transação: a data do card não mudou (o cabeçalho do Kanban conta "ganhos do
+  mês" por ela). Conferido: 0 card com a data da gravação, gatilho religado.
+- 0 evento de funil, trilha, aviso, execução, espera, robô ou mensagem,
+  contados pelo `xmin` (só o que a própria transação escreveu).
+- Só foi gravado o que continuava como na leitura das 13h48 (mesmo título ou
+  nome, sem marca posterior): 3 registros alterados por gente no meio ficaram
+  de fora.
+- `contacts.updated_at` MUDOU nas 1.243 fichas, porque a ficha foi editada de
+  fato. O desfazer da carga (1022) passa a tratá-las como "editadas depois" e
+  a retê-las.
+
+**Foto para desfazer:** `migracao_kommo.nomes_do_negocio_20260928`
+(`tabela`, `registro_id`, `antes`, `depois`, `gravado_em`), criada à mão no
+schema da migração (fora das migrations, como o `nomes_antes` da regra 27
+previa), com o REVOKE das duas metades. Desfazer é devolver o `antes` (título
+e `titulo_fixado_em`, nome e `nome_fixado_em`) com o `set_updated_at` de
+`deals` desligado na mesma transação.
+
+⚠️ **Todo delta futuro da Kommo tem de seguir esta regra.** O `carga.py`
+original usa o nome do CONTATO para a ficha e para o título.
 
 ## Notas que viviam no CLAUDE.md: o histórico do WhatsApp e as migrations da carga
 
