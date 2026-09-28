@@ -41,7 +41,12 @@ o motor faz o resto.
   assinatura inteira.
 - **Reagendamento chega como `invitee.created` NOVO** (a URI do convidado
   muda), com `agendamento_situacao = "Reagendamento"` — e o antigo chega
-  como cancelamento (ver abaixo).
+  como cancelamento (ver abaixo). ⚠️ Por isso o gatilho tem a caixa
+  **"Ignorar reagendamentos"** (`trigger_config.ignorar_reagendamento`, só o
+  booleano `true`, conferido em `triggerMatches`): sem ela, a sequência de
+  boas-vindas e perguntas saía de novo para quem já a recebera (medido em
+  28/09/2026, dois casos parados à mão). A automação que grava a data e move
+  o card (`b18a4301`) NÃO a marca: a data nova tem de ser gravada.
 - ⚠️⚠️ **A lista de eventos é FIXADA NA CRIAÇÃO da assinatura**
   (`EVENTOS_ASSINADOS`): conta conectada antes da 1013 só recebe
   `invitee.created` até alguém apertar **Reassinar**, e o sintoma é ausência.

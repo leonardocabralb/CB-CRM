@@ -444,6 +444,14 @@ describe("send_to_number / calendly_booking (977)", () => {
       { path: "trigger.event_type_uri", message: "event type must be a string" },
     ]);
   });
+
+  it("gatilho: 'ignorar reagendamentos' só aceita booleano", () => {
+    expect(validateTriggerForActivation("calendly_booking", { ignorar_reagendamento: true })).toEqual([]);
+    expect(validateTriggerForActivation("calendly_booking", { ignorar_reagendamento: false })).toEqual([]);
+    expect(validateTriggerForActivation("calendly_booking", { ignorar_reagendamento: "true" })).toEqual([
+      { path: "trigger.ignorar_reagendamento", message: "ignore reschedules must be true or false" },
+    ]);
+  });
 });
 
 // ============================================================

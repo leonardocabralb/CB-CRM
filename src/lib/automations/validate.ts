@@ -541,6 +541,10 @@ export function validateTriggerForActivation(
     if (uri != null && typeof uri !== 'string') {
       issues.push({ path: 'trigger.event_type_uri', message: 'event type must be a string' })
     }
+    // Só booleano: `"true"` seria uma caixa marcada na tela que o motor ignora.
+    if (cfg.ignorar_reagendamento != null && typeof cfg.ignorar_reagendamento !== 'boolean') {
+      issues.push({ path: 'trigger.ignorar_reagendamento', message: 'ignore reschedules must be true or false' })
+    }
   } else if (triggerType === 'webhook_received') {
     // Vazio = qualquer webhook de entrada da conta (convenção do projeto).
     // Só o lixo é recusado: um `webhook_id` que não seja texto nunca casaria

@@ -98,6 +98,33 @@ describe("processarAgendamento — telefone que não é de nenhum contato", () =
     expect(r.resultado).toBe("sem_automacao");
   });
 
+  // "Ignorar reagendamentos" (Codex, PR #333): reagendamento descartado de
+  // propósito é `ignorado` (terminal), sem criar ficha — nunca `sem_automacao`,
+  // que o Meu dia conta como problema e o "Processar de novo" aceita.
+  it("reagendamento escutado só por automação que o ignora: `ignorado`, sem ficha nem disparo", async () => {
+    automacoes = [{ trigger_type: "calendly_booking", trigger_config: { ignorar_reagendamento: true }, is_active: true }];
+    const r = await processarAgendamento(admin, "acct-1", { ...AGENDAMENTO, reagendado: true });
+    expect(r.resultado).toBe("ignorado");
+    expect(destino.resolverDestinatario).not.toHaveBeenCalled();
+    expect(motor.dispararAutomacoes).not.toHaveBeenCalled();
+  });
+
+  it("reagendamento com outra automação que NÃO ignora: segue e dispara", async () => {
+    automacoes = [
+      { trigger_type: "calendly_booking", trigger_config: { ignorar_reagendamento: true }, is_active: true },
+      { trigger_type: "calendly_booking", trigger_config: {}, is_active: true },
+    ];
+    const r = await processarAgendamento(admin, "acct-1", { ...AGENDAMENTO, reagendado: true });
+    expect(r.resultado).toBe("disparado");
+    expect(motor.dispararAutomacoes).toHaveBeenCalledTimes(1);
+  });
+
+  it("agendamento NOVO com a caixa marcada: dispara normalmente", async () => {
+    automacoes = [{ trigger_type: "calendly_booking", trigger_config: { ignorar_reagendamento: true }, is_active: true }];
+    const r = await processarAgendamento(admin, "acct-1", AGENDAMENTO);
+    expect(r.resultado).toBe("disparado");
+  });
+
   it("contato que já existe não passa pela criação", async () => {
     busca.findExistingContact.mockResolvedValue({ contato: { id: "c1", phone: "5519980000004" }, falhou: false });
     conversaExistente = { id: "conv-1", channel_id: "canal-1" };

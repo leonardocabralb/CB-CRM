@@ -2193,7 +2193,9 @@
         "inativo": "{nome} (inactive)",
         "variaveisTitulo": "Booking variables, for use in the steps",
         "variaveisAjuda": "E.g. Name: {nome} · Date: {data} (dd/mm/yyyy hh:mm) · the meeting date field takes {inicio}.",
-        "variaveisDoContatoTitulo": "From the contact (in any text step)"
+        "variaveisDoContatoTitulo": "From the contact (in any text step)",
+        "ignorarReagendamentoLabel": "Ignore reschedules",
+        "ignorarReagendamentoHelp": "Calendly reports a reschedule as a new booking. When checked, this automation runs only on the first booking, and whoever reschedules does not get the sequence again."
       },
       "zapsign": {
         "semConfig": "No configuration: every completed signature in the account fires. The connection lives in",

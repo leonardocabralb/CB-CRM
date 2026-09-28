@@ -2378,6 +2378,46 @@ describe('triggerMatches — calendly_booking', () => {
       )
     ).toBe(false);
   });
+
+  // "Ignorar reagendamentos" (28/09/2026): o Calendly manda a remarcação como
+  // invitee.created NOVO; a sequência de boas-vindas não pode sair de novo.
+  it('ignorar_reagendamento === true: o reagendamento não dispara; o novo, sim', () => {
+    const uri = 'https://api.calendly.com/event_types/A';
+    const a = auto({ event_type_uri: uri, ignorar_reagendamento: true });
+    expect(
+      triggerMatches(a, {
+        calendly_event_type: uri,
+        vars: { agendamento_situacao: 'Reagendamento' },
+      })
+    ).toBe(false);
+    expect(
+      triggerMatches(a, {
+        calendly_event_type: uri,
+        vars: { agendamento_situacao: 'Novo agendamento' },
+      })
+    ).toBe(true);
+    // Config vazia de evento também respeita a caixa.
+    expect(
+      triggerMatches(auto({ ignorar_reagendamento: true }), {
+        vars: { agendamento_situacao: 'Reagendamento' },
+      })
+    ).toBe(false);
+  });
+
+  it('sem a caixa (ou com valor que não é o booleano true), o reagendamento dispara como antes', () => {
+    const uri = 'https://api.calendly.com/event_types/A';
+    const ctx = {
+      calendly_event_type: uri,
+      vars: { agendamento_situacao: 'Reagendamento' },
+    };
+    expect(triggerMatches(auto({ event_type_uri: uri }), ctx)).toBe(true);
+    expect(
+      triggerMatches(auto({ event_type_uri: uri, ignorar_reagendamento: false }), ctx)
+    ).toBe(true);
+    expect(
+      triggerMatches(auto({ event_type_uri: uri, ignorar_reagendamento: 'true' }), ctx)
+    ).toBe(true);
+  });
 });
 
 // ------------------------------------------------------------

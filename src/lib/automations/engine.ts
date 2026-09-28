@@ -49,6 +49,7 @@ const PASSOS_QUE_CALAM_O_AGENTE: ReadonlySet<string> = new Set([
 ]);
 import { telefoneDigitado, type MotivoDoTelefone } from '@/lib/contacts/telefone';
 import { nomeParaFixar } from '@/lib/contacts/nome-fixado';
+import { SITUACAO_REAGENDAMENTO } from '@/lib/calendly/variaveis';
 import { urlDoInbox } from '@/lib/inbox/url';
 import { formatCurrency } from '@/lib/currency';
 import { addContactTagIfAbsent } from '@/lib/contacts/tag-write';
@@ -2900,6 +2901,15 @@ export function triggerMatches(
   // evento?" não tem resposta honesta sem saber qual foi.
   if (automation.trigger_type === 'calendly_booking') {
     const cfg = automation.trigger_config as CalendlyTriggerConfig;
+    // "Ignorar reagendamentos" (28/09/2026): o Calendly manda a remarcação
+    // como agendamento NOVO, e a sequência de confirmação e perguntas saía de
+    // novo para quem já a tinha recebido. Só o booleano `true` liga.
+    if (
+      cfg?.ignorar_reagendamento === true &&
+      ctx?.vars?.agendamento_situacao === SITUACAO_REAGENDAMENTO
+    ) {
+      return false;
+    }
     const alvo =
       typeof cfg?.event_type_uri === 'string' ? cfg.event_type_uri.trim() : '';
     if (!alvo) return true;

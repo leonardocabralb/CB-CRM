@@ -22,6 +22,21 @@ describe("escutamEsteEvento", () => {
     expect(escutamEsteEvento(lista, null)).toBe(0);
   });
 
+  it("no reagendamento, a automação com 'ignorar reagendamentos' não conta (espelho do motor)", () => {
+    const lista = [
+      { trigger_type: "calendly_booking", trigger_config: { event_type_uri: A, ignorar_reagendamento: true }, is_active: true },
+    ];
+    expect(escutamEsteEvento(lista, A, true)).toBe(0);
+    expect(escutamEsteEvento(lista, A, false)).toBe(1);
+    expect(escutamEsteEvento(lista, A)).toBe(1);
+    // Com outra automação que não ignora, o reagendamento continua escutado.
+    const comOutra = [...lista, { trigger_type: "calendly_booking", trigger_config: { event_type_uri: A }, is_active: true }];
+    expect(escutamEsteEvento(comOutra, A, true)).toBe(1);
+    // Só o booleano true liga.
+    const texto = [{ trigger_type: "calendly_booking", trigger_config: { event_type_uri: A, ignorar_reagendamento: "true" }, is_active: true }];
+    expect(escutamEsteEvento(texto, A, true)).toBe(1);
+  });
+
   it("inativa e de outro tipo não contam", () => {
     const lista = [
       { trigger_type: "calendly_booking", trigger_config: {}, is_active: false },

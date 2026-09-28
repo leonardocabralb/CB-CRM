@@ -1294,6 +1294,14 @@ export interface DealStatusTriggerConfig {
 export interface CalendlyTriggerConfig {
   event_type_uri?: string;
   event_type_nome?: string;
+  /**
+   * `true` = só agendamento NOVO dispara; o reagendamento (que o Calendly
+   * manda como `invitee.created` novo, com `agendamento_situacao =
+   * "Reagendamento"`) é ignorado. Para a sequência de confirmação e
+   * perguntas, que o lead já recebeu no primeiro agendamento. Só o booleano
+   * `true` liga (`"true"` vindo de JSONB não).
+   */
+  ignorar_reagendamento?: boolean;
 }
 
 /**
