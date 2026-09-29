@@ -40,25 +40,39 @@ Fase 1 não depende de nada (decisão do operador, 29/09/2026).
 
 ## Fase 1 — faixa pela etapa
 
-**O que o operador vê.** Na conversa de um cliente cujo card está numa etapa
-marcada, a PRIMEIRA faixa acima do compositor diz "Cliente RESCINDIDO"
-(vermelha) ou "Cliente FINALIZADO" (azul), com o funil e a etapa, e a dica
-"Confira o histórico antes de seguir o atendimento ou oferecer um novo
-serviço". Sem botão, sem bloquear nada.
+**O que o operador vê.** Na conversa de um cliente rescindido ou finalizado,
+a PRIMEIRA faixa acima do compositor diz "Cliente [RESCINDIDO]" (borda e
+pastilha vermelhas) ou "Cliente [FINALIZADO]" (azuis), com o funil e a etapa,
+e a dica "Confira o histórico antes de seguir o atendimento ou oferecer um
+novo serviço". Sem botão, sem bloquear nada. O texto é `text-foreground` e a
+cor fica na borda, no ícone e na pastilha opaca: com o `dark:` inerte, nenhum
+tom único de vermelho ou azul é legível como texto nos dois modos.
 
 **Regra** (`src/lib/pipelines/situacao-do-cliente.ts`, pinos ao lado):
 
 - A etapa diz a situação pela MARCA `pipeline_stages.situacao_do_cliente`
   ('rescindido' | 'finalizado' | nula), escolhida em Gerenciar funil (4º
   seletor, "Situação do cliente"). Nunca pelo nome.
-- Por FUNIL, vale o card MAIS RECENTE do contato (qualquer status). O
-  ex-cliente que voltou por um card novo do Comercial acende a faixa pelo card
-  antigo do Jurídico; depois do contrato novo, o card transferido é o mais
-  recente do Jurídico e a faixa apaga.
-- Recorte pelo perfil de quem vê, como o painel (cada equipe vê o seu).
+- ⚠️ **Um card por contato, e ele viaja entre funis.** O ex-cliente que volta
+  (agenda pelo Calendly, ou alguém move o card para o Comercial) leva o ÚNICO
+  card para fora do Jurídico. Por isso, por funil: com card lá, vale a etapa
+  ATUAL; sem card, vale a etapa de onde ele SAIU na última saída da trilha
+  (`pipeline_changed` para outro funil ou `deal_deleted`, com
+  `from_stage_id`). A faixa apaga quando o card volta ao funil numa etapa sem
+  marca (o contrato novo o leva a "Cliente Ativo").
+- ⚠️ Nunca "o último evento por data" para a etapa atual: a trilha retroativa
+  da Kommo tem data histórica, e em ~260 cards o `deal_created` da conexão é
+  mais novo que os eventos que os puseram onde estão (medido em 29/09/2026).
+- Card apagado numa etapa marcada mantém a faixa (a pessoa continua tendo
+  sido rescindida). Limite conhecido.
+- Recorte pelo perfil de quem vê, como o painel (cada equipe vê o seu),
+  DERIVADO no render (a lente "Ver como" não mostra o perfil anterior).
 - Cala com "não sei" (leitura falhou) e fora do contato atual (carimbo
   `{ de }`). Relê a cada evento novo da trilha do lead (mover card com a
   conversa aberta).
+- Gerenciar funil: com o 4º seletor a linha da etapa tem ~818 px de mínimo;
+  ela só deixa de quebrar a partir de `lg` (no iPad em retrato o diálogo
+  rolava de lado).
 
 **Arquivos:** `supabase/migrations/1070_cb_situacao_do_cliente_na_etapa.sql`,
 `src/lib/pipelines/situacao-do-cliente.ts` (+ teste, com o pino do CHECK),
@@ -74,8 +88,13 @@ dicionários, `.claude/rules/funil.md`, `.claude/rules/inbox-conversa.md`,
 2. Em Gerenciar funil do Bancário - Jurídico: "Cliente Rescindido" →
    Rescindido; "Cliente Finalizado" → Finalizado.
 
-**Medido até aqui:** suíte inteira verde em Node 22 (626 arquivos, 9.580
-testes), typecheck e lint limpos. Falta o teste no preview.
+**Medido até aqui:** suíte inteira verde em Node 22, typecheck e lint limpos.
+Revisão independente (três óticas) no PR #355: a primeira versão decidia pelo
+card mais recente e apagava a faixa quando o único card saía do Jurídico —
+corrigido pela saída da trilha; também corrigidos o contraste no tema escuro,
+a linha do Gerenciar funil no iPad, o recorte de perfil velho na lente "Ver
+como" e um comentário que mentia sobre a largura do diálogo. A consulta e a
+migration contra o banco real: nada encontrado. Falta o teste no preview.
 
 ## Fase 0 — "Criar cliente no Atlas" (quando a Prioridade 1 do Atlas chegar)
 

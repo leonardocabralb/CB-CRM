@@ -7,16 +7,24 @@
 // escolhida em Gerenciar funil), nunca pelo nome: o CRM é vendido a quem dá
 // outros nomes, e renomear a etapa não pode desligar a faixa em silêncio.
 //
-// ⚠️ Por FUNIL, vale o card MAIS RECENTE do contato. É o que separa os dois
-// casos que importam:
-//   - o ex-cliente que voltou e está num card NOVO do Comercial: o funil do
-//     Jurídico só tem o card antigo, na etapa marcada → a faixa acende (é
-//     justamente quando quem atende precisa saber);
-//   - o mesmo cliente depois de fechar o contrato novo: o card novo foi
-//     transferido para o Jurídico (Cliente Ativo) e é o mais recente de lá →
-//     a faixa apaga, mesmo com o card antigo ainda em "Rescindido".
-// Qualquer status conta (aberto, ganho, perdido): a etapa é o que diz a
-// situação do contrato.
+// ⚠️⚠️ UM card por contato, e ele VIAJA entre funis (o roteador, o
+// `create_deal` e a v1 recusam o segundo). O ex-cliente rescindido que volta
+// (agenda pelo Calendly, ou alguém move o card para o Comercial) leva o
+// ÚNICO card para fora do Jurídico — e é justamente aí que a faixa importa.
+// Por isso, por FUNIL:
+//   1. o contato TEM card nele → vale a etapa ATUAL do card mais recente;
+//   2. não tem mais → vale a etapa de onde o card SAIU na última saída
+//      (`pipeline_changed` para outro funil, ou `deal_deleted`), que a trilha
+//      grava com `from_stage_id`.
+// A faixa só apaga quando um card volta ao funil numa etapa SEM marca (o
+// contrato novo leva o card para "Cliente Ativo"), ou quando alguém o move
+// para uma etapa sem marca antes de tirá-lo do funil.
+//
+// ⚠️ Nunca "o último evento por `occurred_at`" para a etapa ATUAL: a carga da
+// Kommo gravou trilha RETROATIVA com data histórica, e em ~260 cards o
+// `deal_created` da conexão é mais novo que os eventos que os puseram onde
+// estão (medido em 29/09/2026). As SAÍDAS não têm esse problema: as feitas no
+// CRM são gravadas na hora e ficam depois de toda a história retroativa.
 //
 // Puro: quem busca (o hook `use-situacao-do-cliente.ts`) e quem desenha ficam
 // fora. Pino: `situacao-do-cliente.test.ts`, que também confere o CHECK da
@@ -33,20 +41,35 @@ export function lerSituacaoDoCliente(valor: unknown): SituacaoDoCliente | null {
   return valor === 'rescindido' || valor === 'finalizado' ? valor : null;
 }
 
-/** A forma que a consulta do hook devolve: o card com a etapa e o funil embutidos. */
-export interface NegocioComEtapa {
+/** Os cards do contato como estão AGORA. */
+export interface NegocioDoContato {
+  id: string;
   pipeline_id: string | null;
+  stage_id: string | null;
   created_at: string;
-  stage: {
-    name: string;
-    situacao_do_cliente: string | null;
-    pipeline: { name: string } | null;
-  } | null;
+}
+
+/** Os eventos da trilha que podem ser uma SAÍDA de funil. */
+export interface EventoDeSaida {
+  id: string;
+  event_type: string;
+  from_pipeline_id: string | null;
+  from_stage_id: string | null;
+  to_pipeline_id: string | null;
+  occurred_at: string;
+}
+
+/** Uma etapa com a marca, com o funil embutido para a faixa dizer ONDE. */
+export interface EtapaMarcada {
+  id: string;
+  name: string;
+  situacao_do_cliente: string | null;
+  pipeline: { name: string } | null;
 }
 
 export interface SituacaoNoFunil {
   situacao: SituacaoDoCliente;
-  /** Nome do funil — a faixa diz ONDE: "finalizado no Bancário" não é "finalizado no Trabalhista". */
+  /** Nome do funil — "finalizado no Bancário" não é "finalizado no Trabalhista". */
   funil: string;
   etapa: string;
 }
@@ -56,31 +79,57 @@ function instante(iso: string): number {
   return Number.isNaN(t) ? Number.NEGATIVE_INFINITY : t;
 }
 
+/** `a` vem depois de `b`? No empate de instante, o id desempata (escolha estável). */
+function depois(aQuando: string, aId: string, bQuando: string, bId: string): boolean {
+  const da = instante(aQuando);
+  const db = instante(bQuando);
+  return da !== db ? da > db : aId > bId;
+}
+
+function ehSaida(e: EventoDeSaida): boolean {
+  if (!e.from_pipeline_id) return false;
+  if (e.event_type === 'deal_deleted') return true;
+  return e.event_type === 'pipeline_changed' && e.to_pipeline_id !== e.from_pipeline_id;
+}
+
 /**
- * Uma entrada por funil cujo card mais recente está numa etapa marcada, a
- * mais grave primeiro (rescindido antes de finalizado) e, no empate, pelo
- * nome do funil. Vazio = nenhuma etapa marcada diz nada sobre este cliente.
+ * Uma entrada por funil em que o contato está (ou estava, ao sair) numa
+ * etapa marcada — a mais grave primeiro (rescindido antes de finalizado) e,
+ * no empate, pelo nome do funil. Vazio = nenhuma etapa marcada diz nada
+ * sobre este cliente.
  */
-export function situacoesDoCliente(negocios: NegocioComEtapa[]): SituacaoNoFunil[] {
-  const maisRecente = new Map<string, NegocioComEtapa>();
-  for (const negocio of negocios) {
-    // Card sem funil (órfão) não diz em que funil a situação vale.
-    if (!negocio.pipeline_id) continue;
-    const atual = maisRecente.get(negocio.pipeline_id);
-    if (!atual || instante(negocio.created_at) > instante(atual.created_at)) {
-      maisRecente.set(negocio.pipeline_id, negocio);
-    }
+export function situacoesDoCliente(
+  negocios: NegocioDoContato[],
+  eventos: EventoDeSaida[],
+  etapasMarcadas: EtapaMarcada[],
+): SituacaoNoFunil[] {
+  const etapaPorId = new Map(etapasMarcadas.map((e) => [e.id, e]));
+
+  // 1. A etapa atual do card mais recente de cada funil.
+  const cardPorFunil = new Map<string, NegocioDoContato>();
+  for (const n of negocios) {
+    if (!n.pipeline_id) continue;
+    const atual = cardPorFunil.get(n.pipeline_id);
+    if (!atual || depois(n.created_at, n.id, atual.created_at, atual.id)) cardPorFunil.set(n.pipeline_id, n);
   }
+  const etapaPorFunil = new Map<string, string | null>();
+  for (const [funil, card] of cardPorFunil) etapaPorFunil.set(funil, card.stage_id);
+
+  // 2. Funil de onde o contato já saiu: a etapa da ÚLTIMA saída.
+  const saidaPorFunil = new Map<string, EventoDeSaida>();
+  for (const e of eventos) {
+    if (!ehSaida(e) || cardPorFunil.has(e.from_pipeline_id!)) continue;
+    const atual = saidaPorFunil.get(e.from_pipeline_id!);
+    if (!atual || depois(e.occurred_at, e.id, atual.occurred_at, atual.id)) saidaPorFunil.set(e.from_pipeline_id!, e);
+  }
+  for (const [funil, saida] of saidaPorFunil) etapaPorFunil.set(funil, saida.from_stage_id);
 
   const situacoes: SituacaoNoFunil[] = [];
-  for (const negocio of maisRecente.values()) {
-    const situacao = lerSituacaoDoCliente(negocio.stage?.situacao_do_cliente);
-    if (!situacao || !negocio.stage) continue;
-    situacoes.push({
-      situacao,
-      funil: negocio.stage.pipeline?.name ?? '',
-      etapa: negocio.stage.name,
-    });
+  for (const etapaId of etapaPorFunil.values()) {
+    const etapa = etapaId ? etapaPorId.get(etapaId) : undefined;
+    const situacao = lerSituacaoDoCliente(etapa?.situacao_do_cliente);
+    if (!etapa || !situacao) continue;
+    situacoes.push({ situacao, funil: etapa.pipeline?.name ?? '', etapa: etapa.name });
   }
 
   return situacoes.sort(

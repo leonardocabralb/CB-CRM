@@ -377,7 +377,10 @@ export function PipelineSettings({
       {/* 1058: `sm:max-w-2xl` (era `md`) — com o terceiro seletor por etapa
           (Reunião), a 448 px o nome da etapa ficava com 22 px. 29/09/2026:
           `4xl`, porque os seletores ganharam largura fixa (títulos das
-          colunas) e opções que dizem o que são ("Compareceu, sem proposta"). */}
+          colunas) e opções que dizem o que são ("Compareceu, sem proposta").
+          1070: `5xl`, com o quarto seletor (Situação do cliente). A linha da
+          etapa só deixa de quebrar a partir de `lg` (~818 px de mínimo): em
+          `sm`/`md` (iPad em retrato) ela não cabia e o diálogo rolava de lado. */}
       <DialogContent className="sm:max-w-5xl bg-popover border-border max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-popover-foreground">{t("managePipeline")}</DialogTitle>
@@ -482,11 +485,11 @@ export function PipelineSettings({
                 </details>
                 {situacao === "pronto" && localStages.length > 0 && (
                   // Os títulos das colunas, alinhados às caixas de cada etapa
-                  // (as larguras são as mesmas de `SortableStageRow`). No
-                  // celular a etapa quebra linha e não há como alinhar.
+                  // (as larguras são as mesmas de `SortableStageRow`). Abaixo
+                  // de `lg` a etapa quebra linha e não há como alinhar.
                   <div
                     aria-hidden
-                    className="hidden items-center gap-2 px-2 text-[11px] font-medium text-muted-foreground sm:flex"
+                    className="hidden items-center gap-2 px-2 text-[11px] font-medium text-muted-foreground lg:flex"
                   >
                     <span className="flex-1 pl-12">{t("colunaEtapa")}</span>
                     <span className={LARGURA_DO_RESULTADO}>{t("colunaResultado")}</span>
@@ -811,7 +814,7 @@ function SortableStageRow({
     <div
       ref={setNodeRef}
       style={style}
-      className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted p-2 sm:flex-nowrap"
+      className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted p-2 lg:flex-nowrap"
     >
       <button
         type="button"

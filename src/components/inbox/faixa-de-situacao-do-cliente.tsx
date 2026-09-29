@@ -7,15 +7,18 @@
 // cliente acabou e DECIDIR se segue a conversa — ela só informa, nunca
 // bloqueia (o mesmo padrão da faixa de número divergente).
 //
-// A situação vem da MARCA da etapa em que está o card mais recente de cada
-// funil (`situacao-do-cliente.ts`); a faixa diz ONDE ("no Bancário -
+// A situação vem da MARCA da etapa (`situacao-do-cliente.ts`: a etapa atual
+// em cada funil, ou a de onde o card saiu); a faixa diz ONDE ("Bancário -
 // Jurídico, etapa Cliente Rescindido"), porque o mesmo cliente pode ter caso
 // encerrado numa área e ativo noutra. Cala com `situacoes` nula — que também
 // é "não sei": nada aqui afirma "cliente ativo".
 //
-// ⚠️ Cores: o `dark:` está INERTE (`.claude/rules/ui.md`), então a PRIMEIRA
-// cor vale nos dois modos: `red-700` (a da inadimplência) e `sky-600` (a da
-// bolha), legíveis nos dois. Finalizado não é "mau": azul, não vermelho.
+// ⚠️ Cores: o `dark:` está INERTE (`.claude/rules/ui.md`) e nenhum tom único
+// de vermelho ou azul passa de 4:1 como TEXTO nos dois modos (medido na
+// revisão do PR #355: red-700 no escuro dá ~3:1). Então o texto é
+// `text-foreground` e a cor fica na borda, no fundo, no ícone e na PASTILHA
+// da palavra-chave — branco sobre red-600 (~4,8:1) e sobre sky-700 (~5,9:1),
+// opacas, legíveis nos dois modos. Finalizado não é "mau": azul.
 // ============================================================
 
 import { FileCheck, FileX } from "lucide-react";
@@ -37,21 +40,35 @@ export function FaixaDeSituacaoDoCliente({ situacoes }: { situacoes: SituacaoNoF
       data-situacao={situacoes[0].situacao}
       className={
         rescindido
-          ? "mx-3 mt-2 flex max-w-full items-start gap-2.5 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300"
-          : "mx-3 mt-2 flex max-w-full items-start gap-2.5 rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-xs text-sky-600 dark:text-sky-400"
+          ? "mx-3 mt-2 flex max-w-full items-start gap-2.5 rounded-lg border border-red-500/50 bg-red-500/10 px-3 py-2 text-xs text-foreground"
+          : "mx-3 mt-2 flex max-w-full items-start gap-2.5 rounded-lg border border-sky-500/50 bg-sky-500/10 px-3 py-2 text-xs text-foreground"
       }
     >
-      <Icone className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+      <Icone
+        className={rescindido ? "mt-0.5 h-4 w-4 shrink-0 text-red-600" : "mt-0.5 h-4 w-4 shrink-0 text-sky-600"}
+        aria-hidden="true"
+      />
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold">{rescindido ? t("tituloRescindido") : t("tituloFinalizado")}</p>
+        <p className="text-sm font-semibold">
+          {t("cliente")}{" "}
+          <span
+            className={
+              rescindido
+                ? "rounded bg-red-600 px-1.5 py-px text-xs font-bold uppercase tracking-wide text-white"
+                : "rounded bg-sky-700 px-1.5 py-px text-xs font-bold uppercase tracking-wide text-white"
+            }
+          >
+            {rescindido ? t("rotuloRescindido") : t("rotuloFinalizado")}
+          </span>
+        </p>
         {situacoes.map((s) => (
-          <p key={`${s.situacao}:${s.funil}`} className="break-words">
+          <p key={`${s.situacao}:${s.funil}`} className="mt-0.5 break-words">
             {s.situacao === "rescindido"
               ? t("ondeRescindido", { funil: s.funil, etapa: s.etapa })
               : t("ondeFinalizado", { funil: s.funil, etapa: s.etapa })}
           </p>
         ))}
-        <p className="opacity-80">{t("dica")}</p>
+        <p className="text-muted-foreground">{t("dica")}</p>
       </div>
     </div>
   );

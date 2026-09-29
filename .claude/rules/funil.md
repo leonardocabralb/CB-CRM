@@ -88,9 +88,10 @@ funis. As métricas (Lista, Desempenho, Saúde, Meta Ads) estão em
   marcação "Reunião" (Compareceu/Faltou, `desfecho_da_reuniao`, 1058 — o aviso
   de possível no-show a lê: `.claude/rules/reunioes.md`) e a "Situação do
   cliente" (Rescindido/Finalizado, `situacao_do_cliente`, 1070 — a faixa da
-  conversa a lê pelo card MAIS RECENTE de cada funil,
+  conversa lê, por funil, a etapa atual do card ou a de onde ele SAIU:
   `situacao-do-cliente.ts`) por etapa, e os avisos de conexão que usa o funil
-  ou a etapa. Com quatro seletores o diálogo é `sm:max-w-5xl`. Os seletores
+  ou a etapa. Com quatro seletores o diálogo é `sm:max-w-5xl` e a linha só
+  deixa de quebrar em `lg` (iPad rolava de lado). Os seletores
   têm largura FIXA (`LARGURA_DO_*`), que os títulos das colunas repetem —
   mudar uma sem a outra desalinha o cabeçalho —, e o bloco "O que cada coluna
   quer dizer" explica as quatro (o `title` nunca aparece no toque).

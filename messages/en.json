@@ -621,8 +621,9 @@
       "verNaConversa": "Show in conversation"
     },
     "situacaoDoCliente": {
-      "tituloRescindido": "Client TERMINATED",
-      "tituloFinalizado": "Client CLOSED OUT",
+      "cliente": "Client",
+      "rotuloRescindido": "Terminated",
+      "rotuloFinalizado": "Closed out",
       "ondeRescindido": "Contract terminated — {funil}, stage “{etapa}”.",
       "ondeFinalizado": "Contract closed out — {funil}, stage “{etapa}”.",
       "dica": "Check the history before carrying on or offering a new service."
@@ -1412,7 +1413,7 @@
       "situacaoNenhuma": "Status: —",
       "situacaoRescindido": "Terminated",
       "situacaoFinalizado": "Closed out",
-      "ajudaSituacao": "Terminated or Closed out: the client’s contract has ended. When the client’s most recent card in this pipeline is in a marked stage, their conversation shows a prominent banner, so whoever answers knows before replying. The banner only informs: the conversation goes on as usual. Leave the other stages empty (“Status: —”).",
+      "ajudaSituacao": "Terminated or Closed out: the client’s contract has ended. Anyone in a marked stage — or who left this pipeline from it, like a former client coming back through sales — gets a prominent banner in the conversation, so whoever answers knows before replying. It goes away when the card comes back to this pipeline in an unmarked stage. The banner only informs: the conversation goes on as usual. Leave the other stages empty (“Status: —”).",
       "semLead": "No stage is marked as Lead: Performance and Health for this pipeline stay empty until this is configured.",
       "painel": "Performance and Health dashboard",
       "painelDica": "How this pipeline shows up on the dashboards. A label applies to this pipeline only; left empty, the step keeps its default name.",
