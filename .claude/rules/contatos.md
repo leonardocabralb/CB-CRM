@@ -11,6 +11,7 @@ paths:
   - "src/components/settings/fields-and-tags-panel.tsx"
   - "src/components/settings/tag-manager.tsx"
   - "src/lib/whatsapp/phone-utils*"
+  - "src/hooks/use-contatos-relacionados*"
 ---
 
 # Contatos — regras
@@ -157,6 +158,28 @@ VAZIO para quem não é o dono. Escrita só para admin (`useCan('edit-settings')
 o DELETE de etiqueta confere o `count` com `lerExclusao`. Pino
 `catalogo-da-conta.test.ts`. O original filtra pelo autor e mostra os botões a
 todos: num merge, fica o nosso.
+
+### Contatos relacionados (1069)
+`cb_contatos_relacionados`, `src/lib/contacts/relacionados.ts` (puro, testado),
+`use-contatos-relacionados.ts` e `contatos-relacionados.tsx` — a aba
+"Relacionados" do painel da conversa e da ficha. Decisões do operador
+(29/09/2026) e plano: `docs/PLANO-contatos-relacionados.md`.
+- ⚠️ **UM vínculo é UMA linha e vale para os dois lados**: a leitura procura o
+  contato nas DUAS colunas (`.or(a.eq,b.eq)`) e mostra a outra ponta
+  (`outroLado`). O índice único sobre `LEAST/GREATEST` recusa o par repetido
+  em qualquer ordem (23505 → "já vinculados"); nunca gravar A→B e B→A.
+- **Par a par**: três pessoas no mesmo caso = três vínculos. Sem "grupo de
+  caso" (decisão do operador).
+- **FKs compostas com CASCADE**: apagar uma das fichas desfaz o vínculo; a
+  fusão de fichas reaponta os vínculos (receita em `supabase.md`).
+- ⚠️ **Os dados vêm por PROP e são carimbados (`{ de, itens }`)**: o painel
+  não remonta ao trocar de cliente, e a lista do anterior abriria a conversa
+  errada. Quem monta a aba passa `key` com o contato (o formulário de vincular
+  é rascunho). Escrita: `agent`; UPDATE/DELETE com zero linhas MEDE o motivo
+  (a linha ainda existe?).
+- **Na ficha de /contatos o nome é link para `/inbox?c=`; no inbox, a página
+  abre a conversa e liga a faixa "Voltar para"** (`inbox-conversa.md`). O
+  "Conversar" (contato sem conversa) só existe no inbox: o diálogo mora lá.
 
 ### API v1 de contatos
 - `getContactById` ESTOURA em erro de banco: erro não é 404 (o integrador

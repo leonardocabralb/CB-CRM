@@ -52,6 +52,9 @@ import { useExecucoesDoContato } from '@/hooks/use-execucoes-do-contato';
 import { useExecucoesDoFio } from '@/hooks/use-execucoes-do-fio';
 import { avisarDrenagemDeFunil } from '@/lib/automations/avisar-drenagem';
 import { CampoComSalvamento } from '@/components/contacts/campo-com-salvamento';
+import { ContatosRelacionados } from '@/components/contacts/contatos-relacionados';
+import { useContatosRelacionados } from '@/hooks/use-contatos-relacionados';
+import { pedirConversaComContato } from '@/lib/inbox/conversar-com-contato';
 import { MenuDeBlocos } from '@/components/contacts/menu-de-blocos';
 import { LinhaDeEdicao } from '@/components/inbox/painel/linha-de-edicao';
 import { InternalNoteBox } from '@/components/inbox/internal-note-box';
@@ -97,6 +100,7 @@ import {
   PanelRightClose,
   Pencil,
   Settings2,
+  Users,
   Zap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -181,6 +185,11 @@ export interface PainelDoContatoProps {
    * os botões não aparecem.
    */
   onIrParaItemDoFio?: (alvo: AlvoDoSalto) => void;
+  /**
+   * Aba Relacionados (1069): pede à página — dona da seleção — que abra a
+   * conversa do contato relacionado e ligue a faixa "Voltar para".
+   */
+  onAbrirConversaRelacionada?: (conversaId: string) => void;
 }
 
 export function PainelDoContato({
@@ -196,6 +205,7 @@ export function PainelDoContato({
   messages = [],
   messagesCarregando = false,
   onIrParaItemDoFio,
+  onAbrirConversaRelacionada,
 }: PainelDoContatoProps) {
   const tSidebar = useTranslations('Inbox.sidebar');
   /** A aba escolhida AQUI. `abaPedida` vence enquanto existir — ver a prop. */
@@ -211,7 +221,7 @@ export function PainelDoContato({
   // O mesmo gate da RLS: `agent`+ escreve contato/etiqueta/valores ("viewer"
   // só olha). O catálogo de CAMPOS é admin — gate separado, mais abaixo.
   const podeEditar = useCan('send-messages');
-  const { acesso, user } = useAuth();
+  const { acesso, user, accountId } = useAuth();
   const podeGerirCampos = useCan('edit-settings');
   // Apagar anotação é do AUTOR ou de um admin — a mesma régua do fio
   // (`message-thread.tsx`), porque é a mesma policy da 918 dos dois lados.
@@ -244,6 +254,9 @@ export function PainelDoContato({
   // abrir. O hook carimba o dono da resposta (`{ de }`) e deriva
   // `carregando` — a guarda do efeito passivo.
   const cobrancas = useCobrancasDoContato(contact?.id ?? null, resyncToken);
+  // Contatos relacionados (1069). No TOPO pelo mesmo motivo: a etiqueta da
+  // aba mostra quantos são antes de a aba abrir.
+  const relacionados = useContatosRelacionados(contact?.id ?? null, resyncToken);
   const vencidasDoAsaas = useMemo(
     () =>
       cobrancas.dados?.conectado
@@ -1121,6 +1134,16 @@ export function PainelDoContato({
           <AbaDeIcone value="arquivos" label={tSidebar('tabFiles')}>
             <Paperclip className="h-4 w-4" />
           </AbaDeIcone>
+          {/* Relacionados (1069): as fichas ligadas a esta. Entrou DEPOIS das
+              abas que o time já conhece, para não mudar a posição de nenhuma;
+              o número na etiqueta é o que chama o olho quando há vínculo. */}
+          <AbaDeIcone
+            value="relacionados"
+            label={tSidebar('tabRelated')}
+            badge={relacionados.itens?.length ?? null}
+          >
+            <Users className="h-4 w-4" />
+          </AbaDeIcone>
           <AbaDeIcone value="historico" label={tSidebar('tabHistory')}>
             <History className="h-4 w-4" />
           </AbaDeIcone>
@@ -1697,6 +1720,30 @@ export function PainelDoContato({
             onVerNaConversa={
               onIrParaItemDoFio
                 ? (id) => onIrParaItemDoFio({ tipo: 'mensagem', id })
+                : undefined
+            }
+          />
+        </TabsContent>
+
+        {/* ---- Relacionados (1069): clicar abre a conversa da outra pessoa
+             na própria caixa de entrada. `key` com o contato: o formulário
+             de vincular é rascunho e não pode atravessar a troca. ---- */}
+        <TabsContent
+          value="relacionados"
+          className="min-h-0 flex-1 overflow-y-auto p-4"
+        >
+          <ContatosRelacionados
+            key={contact.id}
+            contactId={contact.id}
+            accountId={accountId}
+            relacionados={relacionados}
+            podeEditar={podeEditar}
+            onAbrirConversa={onAbrirConversaRelacionada}
+            onConversar={
+              onAbrirConversaRelacionada
+                ? (c) => {
+                    if (c.phone) pedirConversaComContato({ telefone: c.phone, nome: c.name });
+                  }
                 : undefined
             }
           />

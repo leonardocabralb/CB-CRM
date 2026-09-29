@@ -45,6 +45,7 @@ paths:
   - "src/components/inbox/quick-reply-picker.tsx"
   - "src/components/inbox/ai-thread-banner.tsx"
   - "src/components/inbox/conversa-fora-da-area.tsx"
+  - "src/components/inbox/voltar-para-conversa.tsx"
 ---
 
 # Caixa de entrada: a conversa — regras
@@ -351,6 +352,21 @@ O WhatsApp quase nunca anuncia a falha; este vermelho é INFERIDO.
 - ⚠️ **`carregando` é prop OBRIGATÓRIA da `AbaArquivos`**: o painel é IRMÃO do
   fio e recebe `messages` vazio DURANTE a carga, e dizia "Nenhum arquivo" sobre
   conversa cheia. A página carimba de quem é o array (`messagesDaConversa`).
+
+### Aba Relacionados e a faixa "Voltar para" (1069)
+
+O vínculo e a aba: `.claude/rules/contatos.md`. Aqui, o pulo entre conversas.
+
+- **A aba entrou DEPOIS de Arquivos** (antes do Histórico, que é sempre o
+  último), para não mudar a posição das abas que o time já conhece.
+- ⚠️ **O pulo é da PÁGINA** (`onAbrirConversaRelacionada`): a conversa do
+  relacionado já está em `conversations` (a lista carrega todas), e a seleção
+  é a do clique na lista; a nascida depois da carga vai por
+  `handleConversaAberta`. Nunca `router.push` do painel: a página não remonta,
+  e o fio ficaria na conversa antiga.
+- ⚠️ **A faixa aparece só com `voltarPara.naConversa === activeConversation.id`,
+  DERIVADO no render**; clique na lista, fechar e o aviso do navegador a zeram.
+  Um nível só (decisão do operador): de B para C, ela vira "Voltar para B".
 
 ### Presença por conversa (963)
 

@@ -178,7 +178,9 @@
     "page": {
       "whatsappNotConnected": "O WhatsApp® não está conectado. Acesse Configurações para conectar sua conta.",
       "backToPipeline": "Voltar ao funil",
-      "backToReunioes": "Voltar às reuniões"
+      "backToReunioes": "Voltar às reuniões",
+      "backToContact": "Voltar para {nome}",
+      "backToConversation": "Voltar à conversa anterior"
     },
     "conversationList": {
       "typeAll": "Todos os tipos",
@@ -579,6 +581,7 @@
       "tabFiles": "Arquivos",
       "tabMeetings": "Reuniões",
       "tabBilling": "Cobranças",
+      "tabRelated": "Relacionados",
       "fieldSaved": "Salvo",
       "fieldSaveError": "Não foi possível salvar \"{campo}\" em {cliente}.",
       "avancar": {
@@ -923,6 +926,43 @@
     }
   },
   "Contacts": {
+    "related": {
+      "linkContact": "Vincular contato",
+      "chooseContact": "Escolher contato…",
+      "contactSearchPlaceholder": "Buscar por nome ou telefone…",
+      "contactSearchHint": "Digite ao menos 2 letras para buscar.",
+      "contactSearchEmpty": "Nenhum contato encontrado para a busca.",
+      "contactSearchFailed": "A busca falhou. Digite de novo para tentar.",
+      "contactSearchMore": "Mostrando os {count} primeiros. Continue digitando para afinar.",
+      "descriptionLabel": "Descrição (opcional)",
+      "descriptionPlaceholder": "Descrição (opcional): esposa, procurador…",
+      "confirmLink": "Vincular",
+      "cancel": "Cancelar",
+      "save": "Salvar",
+      "sameContact": "Escolha outro contato: este é o próprio.",
+      "alreadyLinked": "Estes contatos já estão vinculados.",
+      "loading": "Carregando…",
+      "loadFailed": "Não foi possível carregar os contatos relacionados.",
+      "retry": "Tentar de novo",
+      "empty": "Nenhum contato relacionado.",
+      "emptyHint": "Vincule outra pessoa que trata do mesmo assunto.",
+      "unknownContact": "Contato sem nome",
+      "openConversation": "Abrir conversa",
+      "noConversation": "Sem conversa",
+      "startConversation": "Conversar",
+      "editDescription": "Editar descrição",
+      "unlink": "Desvincular",
+      "unlinkQuestion": "Desfazer o vínculo?",
+      "confirmUnlink": "Desvincular",
+      "toastLinked": "Contatos vinculados.",
+      "toastDescriptionSaved": "Descrição salva.",
+      "toastUnlinked": "Vínculo desfeito.",
+      "toastInvalid": "Não foi possível vincular: confira o contato e a descrição.",
+      "toastRefused": "Você não tem permissão para alterar vínculos.",
+      "toastContactGone": "O contato escolhido não existe mais.",
+      "toastLinkGone": "Este vínculo já tinha sido desfeito.",
+      "toastFailed": "Não foi possível salvar. Tente de novo."
+    },
     "page": {
       "title": "Contatos",
       "subtitle": "Gerencie sua lista de contatos. {count} contatos no total.",
@@ -1014,6 +1054,7 @@
         "deals": "Negócios",
         "tasks": "Tarefas",
         "billing": "Cobranças",
+        "related": "Relacionados",
         "tags": "Etiquetas"
       },
       "unnamed": "Desconhecido",

@@ -505,6 +505,9 @@ O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
 - "Sair" do menu sai só deste aparelho; 4 h inativo reabre o Meu dia, sem
   senha.
 - Celular do membro: EXIGIDO ao abrir o CRM, não só no login (26/09/2026).
+- Contatos relacionados: vínculo PAR A PAR, visto dos dois lados, com
+  descrição opcional; quem edita contato vincula; faixa "Voltar para" de um
+  nível só (29/09/2026).
 
 ## 13. Índice das áreas
 
