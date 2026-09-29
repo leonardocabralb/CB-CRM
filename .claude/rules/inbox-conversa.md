@@ -72,7 +72,9 @@ ficha em `.claude/rules/campos-e-nome.md`.
   em `publicarMensagemOtimista` e ao acrescentar nota, senão o autor não vê.
 - **A linha do tempo intercala mensagens E eventos do lead**
   (`groupTimelineByDate`, `intercalar`, ramo `item.evento`); a `ScheduledBar`
-  fica logo acima do compositor.
+  fica logo acima do compositor. Os eventos chegam em tempo real desde a 1059
+  (`useLeadEvents`, ver `.claude/rules/funil.md`) e, ao contrário da mensagem,
+  entram pelo carimbo: o evento de agora já cai no fim.
 - ⚠️ **Mensagem do realtime entra no FIM do fio aberto, não pelo carimbo — de
   propósito**: pelo carimbo, toda mensagem atrasada nasceria acima da dobra,
   despercebida. Ao recarregar, ela vai para o lugar do carimbo.
