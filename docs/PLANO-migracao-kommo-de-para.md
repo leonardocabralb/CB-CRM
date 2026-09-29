@@ -381,6 +381,10 @@ está na lista de consertos do plano principal.
 apelido do WhatsApp apaga 15 meses de trabalho do SDR em poucos dias. Todo nome
 passa por `nomeParaFixar`, que recusa número.
 
+⚠️ **Revisto em 28/09/2026:** vale o nome do NEGÓCIO, não o do contato. A
+regra e o que foi aplicado estão em `PLANO-migracao-kommo.md`, seção "Nomes
+pelo negócio da Kommo".
+
 **43 nomes corrompidos** são consertados (reinterpretação de bytes).
 
 ---
