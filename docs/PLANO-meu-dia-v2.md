@@ -23,8 +23,8 @@ aba) é `docs/PLANO-meu-dia.md`; as regras vivas, `.claude/rules/meu-dia.md`.
 | Fase | O quê | Estado |
 | --- | --- | --- |
 | 1 | Tela: indicadores por conexão, notificações e tarefas em destaque, agenda pela pauta de reuniões, saem "Negócios no funil" e "O dia até agora" | Implementada e testada no preview (29/09/2026): os números das 5 conexões bateram com o banco; "Ver como" Bancário - Geral e Gestor Geral conferidos |
-| 2 | Tarefa vista: coluna `vista_em` (1068), rota que marca, observador na tela, "vista/não vista" para quem pediu | Implementada; migration provada num Postgres 16 local (duas aplicações, cenários e controle negativo). Falta aplicar a 1068 (autorização do operador) e testar no preview |
-| 3 | Card "Equipe" (admin + quem vê o Painel): vencidas e de hoje por membro, com as não vistas | Implementada; o card aparece para Gestor Geral e some para Bancário - Geral. Os números dependem da 1068 |
+| 2 | Tarefa vista: coluna `vista_em` (1068), rota que marca, observador na tela, "vista/não vista" para quem pediu | 1068 APLICADA em 29/09/2026 (histórico `20260929185000`, depois do replay verde no `e6fc71dd`). Observador provado no Playwright com a página visível (página de prova temporária, fora do commit): só a tarefa do responsável, aberta e não vista, em lote e com `keepalive`; a de baixo da dobra só depois de rolar. Com o pane do app oculto a tela não marca nada — é a regra da aba oculta |
+| 3 | Card "Equipe" (admin + quem vê o Painel): vencidas e de hoje por membro, com as não vistas | Testada no preview com a 1068: Isa 12 vencidas / 1 hoje, Estephany 3 / 1, Bárbara 1 / 0 — todas não vistas — e 10 pessoas "em dia"; bateu com o banco pessoa por pessoa. Aparece para Gestor Geral e some para Bancário - Geral |
 | 4 | O clique no indicador abre a caixa de entrada filtrada (conexão + "Não lidas" ou "Em atraso") | Implementada e testada: 60 em atraso e 46 não lidas abriram 60 e 46 linhas; conexão inexistente é descartada |
 
 ## Decisões do operador (29/09/2026)

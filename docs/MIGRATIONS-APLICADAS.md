@@ -1035,6 +1035,21 @@ nome da época em que foram aplicadas.
   não-dono, a confirmação com "3 conversas abertas" (conferido no banco) e o
   Cancelar, que deixou tudo como estava. Foi esse teste que pegou a linha
   espremida (o nome virava uma letra a 1440 px), corrigida antes do merge.
+- **1068_cb_tarefa_vista** — `cb_tasks.vista_em timestamptz`: quando o
+  responsável ATUAL viu a tarefa pela primeira vez (Meu dia v2, PR #350). Só a
+  rota `POST /api/cb/tasks/vistas` grava (a tela marca sozinha quando a tarefa
+  fica ~1 s visível); "marcar como não lida" não a toca, redirecionar a zera.
+  Preenchida com `lida_em` onde havia (1 tarefa). ADITIVA e ANTES do deploy: a
+  aba Meu dia, a rota nova e as rotas de tarefa leem ou gravam a coluna; o app
+  antigo a ignora. Aplicada em 29/09/2026 pelo conector do Supabase
+  (`apply_migration`, histórico `20260929185000`), depois do replay verde do CI
+  no commit `e6fc71dd` e ANTES do merge, com autorização do operador. A sessão
+  "contatos relacionados" tinha uma 1068 SEM commit e renumerou para 1069.
+  Provada num Postgres 16 descartável (duas aplicações, os cenários da rota e
+  o controle negativo: tabela FULL numa publicação COM lista de colunas recusa
+  UPDATE depois da coluna nova — `cb_tasks` não tem lista, conferido). Conferida
+  no catálogo: `timestamp with time zone`, 1 com vista, nenhuma lida sem vista,
+  publicação sem lista.
 
 ## Notas do histórico
 
