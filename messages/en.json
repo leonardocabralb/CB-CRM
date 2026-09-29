@@ -2690,6 +2690,9 @@
       "webhookLegenda": "Came in the last call to this webhook.",
       "webhookSemEscolha": "Pick the webhook in the trigger to see its variables.",
       "webhookNunca": "This webhook has not been called yet: the variables show up after the first call.",
+      "webhookCarregando": "Loading the variables from the last call…",
+      "webhookFalhou": "Couldn’t load the variables from the last call.",
+      "tentarDeNovo": "Try again",
       "alerta": {
         "vazio": "Sending leaves this code blank: it doesn't exist.",
         "campoInexistente": "No contact field has this key: it goes out blank.",

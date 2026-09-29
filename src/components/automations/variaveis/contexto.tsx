@@ -73,14 +73,26 @@ export interface ValorParaMostrar {
   origem: OrigemDoValor
 }
 
+export interface NotaDoEvento {
+  texto: string
+  erro?: boolean
+  /** Presente = a tela oferece "Tentar de novo". */
+  tentar?: () => void
+}
+
 export type EstadoDaPrevia = "sem-cliente" | "carregando" | "pronto" | "falhou"
 
 interface VariaveisDoConstrutor {
   grupos: GrupoDoPainel[]
   /** Os campos da ficha ainda não chegaram (ou falharam): a lista está incompleta. */
   camposEstado: "carregando" | "pronto" | "falhou"
-  /** Uma frase sob o grupo do evento (respostas do ZapSign, webhook sem acionamento). */
-  notaDoEvento: string | null
+  /**
+   * Uma frase sob o grupo do evento (respostas do ZapSign, webhook sem
+   * acionamento, carregando ou FALHOU — com o jeito de tentar de novo).
+   */
+  notaDoEvento: NotaDoEvento | null
+  /** Refaz a leitura dos campos da ficha que falhou. */
+  tentarCamposDeNovo: () => void
   resolver: ResolverDeEtiqueta
   /** `null` = não há o que mostrar (sem cliente escolhido, sem exemplo). */
   valorDe: (codigo: string, modo: ModoDoValor) => ValorParaMostrar | null
@@ -99,6 +111,7 @@ const SEM_VARIAVEIS: VariaveisDoConstrutor = {
   grupos: [],
   camposEstado: "carregando",
   notaDoEvento: null,
+  tentarCamposDeNovo: () => {},
   resolver: () => ({ rotulo: null }),
   valorDe: () => null,
   podePrevia: false,
@@ -144,7 +157,7 @@ export function VariaveisProvider({
 }) {
   const t = useTranslations("Automations.variaveis")
   const { accountId, accountRole, account } = useAuth()
-  const { estado: campos } = useCamposDaConta(accountId)
+  const { estado: campos, tentarDeNovo: tentarCamposDeNovo } = useCamposDaConta(accountId)
   const podePrevia = accountRole !== null && hasMinRole(accountRole, "admin")
   const familia = familiaDoEvento(gatilho)
   const [agora] = useState(() => new Date())
@@ -196,14 +209,20 @@ export function VariaveisProvider({
   const cardIncerto = gatilhoTrazCard(gatilho) && (negociosDaPrevia ?? 0) > 1
 
   // --- O último acionamento do webhook (a leitura do cartão do gatilho) ---
+  // ⚠️ Falha NÃO vira "sem variáveis" (Codex, #348): a nota diz que falhou e
+  // oferece tentar de novo. O carimbo leva a TENTATIVA: durante a nova leitura
+  // o estado velho (a falha) não vale, e a tela diz "carregando".
+  const [tentativaDoWebhook, setTentativaDoWebhook] = useState(0)
   const [acionamento, setAcionamento] = useState<{
     de: string
+    tentativa: number
     variaveis: Record<string, string> | null
     falhou: boolean
   } | null>(null)
   useEffect(() => {
     if (familia !== "webhook" || !webhookId) return
     let vivo = true
+    const carimbo = { de: webhookId, tentativa: tentativaDoWebhook }
     ;(async () => {
       try {
         const res = await fetch(`/api/cb/webhooks/${encodeURIComponent(webhookId)}/eventos?pagina=1`, {
@@ -211,21 +230,28 @@ export function VariaveisProvider({
         })
         if (!vivo) return
         if (!res.ok) {
-          setAcionamento({ de: webhookId, variaveis: null, falhou: true })
+          setAcionamento({ ...carimbo, variaveis: null, falhou: true })
           return
         }
         const corpo = (await res.json()) as { eventos?: { variaveis?: Record<string, string> }[] }
         const ultimo = corpo.eventos?.[0]?.variaveis
-        if (vivo) setAcionamento({ de: webhookId, variaveis: ultimo ?? null, falhou: false })
+        if (vivo) setAcionamento({ ...carimbo, variaveis: ultimo ?? null, falhou: false })
       } catch {
-        if (vivo) setAcionamento({ de: webhookId, variaveis: null, falhou: true })
+        if (vivo) setAcionamento({ ...carimbo, variaveis: null, falhou: true })
       }
     })()
     return () => {
       vivo = false
     }
-  }, [familia, webhookId])
-  const ultimo = familia === "webhook" && webhookId && acionamento?.de === webhookId ? acionamento : null
+  }, [familia, webhookId, tentativaDoWebhook])
+  const tentarWebhookDeNovo = useCallback(() => setTentativaDoWebhook((n) => n + 1), [])
+  const ultimo =
+    familia === "webhook" &&
+    webhookId &&
+    acionamento?.de === webhookId &&
+    acionamento.tentativa === tentativaDoWebhook
+      ? acionamento
+      : null
 
   // --- Os exemplos (o nome do cliente escolhido entra no lugar do fictício) ---
   const exemplos = useMemo(
@@ -343,16 +369,23 @@ export function VariaveisProvider({
     return lista
   }, [t, familia, gatilho, campos, ultimo])
 
-  const notaDoEvento =
-    familia === "zapsign"
-      ? t("respostasNota", { exemplo: `{{${PREFIXO_DO_EVENTO}${PREFIXO_DA_RESPOSTA}…}}` })
-      : familia === "webhook"
-        ? !webhookId
-          ? t("webhookSemEscolha")
-          : ultimo && !ultimo.falhou && !ultimo.variaveis
-            ? t("webhookNunca")
-            : null
-        : null
+  const notaDoEvento = useMemo<NotaDoEvento | null>(
+    () =>
+      familia === "zapsign"
+        ? { texto: t("respostasNota", { exemplo: `{{${PREFIXO_DO_EVENTO}${PREFIXO_DA_RESPOSTA}…}}` }) }
+        : familia !== "webhook"
+          ? null
+          : !webhookId
+            ? { texto: t("webhookSemEscolha") }
+            : !ultimo
+              ? { texto: t("webhookCarregando") }
+              : ultimo.falhou
+                ? { texto: t("webhookFalhou"), erro: true, tentar: tentarWebhookDeNovo }
+                : !ultimo.variaveis
+                  ? { texto: t("webhookNunca") }
+                  : null,
+    [familia, webhookId, ultimo, t, tentarWebhookDeNovo],
+  )
 
   const valorDe = useCallback(
     (codigo: string, modo: ModoDoValor): ValorParaMostrar | null => {
@@ -391,6 +424,7 @@ export function VariaveisProvider({
       grupos,
       camposEstado,
       notaDoEvento,
+      tentarCamposDeNovo,
       resolver,
       valorDe,
       podePrevia,
@@ -404,6 +438,7 @@ export function VariaveisProvider({
       grupos,
       camposEstado,
       notaDoEvento,
+      tentarCamposDeNovo,
       resolver,
       valorDe,
       podePrevia,

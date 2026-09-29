@@ -156,12 +156,46 @@ export function BotaoInserirCampo({
             <p className="px-2 py-1 text-[11px] text-muted-foreground">{t("carregando")}</p>
           )}
           {v.camposEstado === "falhou" && (
-            <p className="px-2 py-1 text-[11px] text-destructive">{t("falhouCampos")}</p>
+            <NotaComTentativa texto={t("falhouCampos")} erro tentar={v.tentarCamposDeNovo} rotulo={t("tentarDeNovo")} />
           )}
-          {v.notaDoEvento && <p className="px-2 py-1 text-[11px] text-muted-foreground">{v.notaDoEvento}</p>}
+          {v.notaDoEvento && (
+            <NotaComTentativa
+              texto={v.notaDoEvento.texto}
+              erro={v.notaDoEvento.erro}
+              tentar={v.notaDoEvento.tentar}
+              rotulo={t("tentarDeNovo")}
+            />
+          )}
         </div>
       </PopoverContent>
     </Popover>
+  )
+}
+
+/** Uma frase do painel; na falha, com "Tentar de novo" (a lista vazia não afirma "não há"). */
+function NotaComTentativa({
+  texto,
+  erro,
+  tentar,
+  rotulo,
+}: {
+  texto: string
+  erro?: boolean
+  tentar?: () => void
+  rotulo: string
+}) {
+  return (
+    <p className={cn("px-2 py-1 text-[11px]", erro ? "text-destructive" : "text-muted-foreground")}>
+      {texto}
+      {tentar && (
+        <>
+          {" "}
+          <button type="button" onClick={tentar} className="font-medium text-foreground underline underline-offset-2">
+            {rotulo}
+          </button>
+        </>
+      )}
+    </p>
   )
 }
 

@@ -2683,6 +2683,9 @@
       "webhookLegenda": "Veio no último acionamento deste webhook.",
       "webhookSemEscolha": "Escolha o webhook no gatilho para ver as variáveis dele.",
       "webhookNunca": "Este webhook ainda não foi acionado: as variáveis aparecem depois do primeiro acionamento.",
+      "webhookCarregando": "Carregando as variáveis do último acionamento…",
+      "webhookFalhou": "Não foi possível carregar as variáveis do último acionamento.",
+      "tentarDeNovo": "Tentar de novo",
       "alerta": {
         "vazio": "O envio deixa este código em branco: ele não existe.",
         "campoInexistente": "Nenhum campo da ficha tem esta chave: sai em branco.",

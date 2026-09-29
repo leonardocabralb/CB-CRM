@@ -74,6 +74,12 @@ não é texto não derruba o editor (`comoTexto`, só para exibir).
   que no disparo vale o card do evento. Com um card só, o valor é exato e sai
   sem marca. Conferido no preview (1 card real: sem marca; 2 simulados na
   aba: com marca).
+- 2ª rodada, P2: falha ao ler o último acionamento do webhook fazia o grupo
+  SUMIR (parecia "não há variáveis"), sem jeito de tentar de novo. Agora a
+  nota diz "carregando", "não foi possível" (com "Tentar de novo", carimbo
+  com a tentativa) ou "nunca acionado"; os campos da ficha que falham também
+  ganharam "Tentar de novo". Conferido no preview com a falha simulada na
+  aba.
 
 ## Decisões do operador (29/09/2026)
 
