@@ -13,6 +13,7 @@ function resumo(nos: NoFormatado[]): string {
     .map((no) => {
       if (no.tipo === 'texto') return no.texto;
       if (no.tipo === 'mono') return `mono(${no.texto})`;
+      if (no.tipo === 'link') return `link(${no.texto})`;
       return `${no.tipo}(${resumo(no.filhos)})`;
     })
     .join('');
@@ -127,11 +128,72 @@ describe('parseWhatsAppFormat', () => {
   });
 });
 
+describe('parseWhatsAppFormat — endereços viram link', () => {
+  it('o link sai inteiro, com o texto em volta', () => {
+    expect(resumo(parseWhatsAppFormat('Docs: https://x.com/a?b=1. Obrigado'))).toBe(
+      'Docs: link(https://x.com/a?b=1). Obrigado',
+    );
+    expect(parseWhatsAppFormat('www.x.com.br')).toEqual([
+      { tipo: 'link', texto: 'www.x.com.br', href: 'https://www.x.com.br' },
+    ]);
+  });
+
+  it('⚠️ `_` e `~` de dentro da URL não viram itálico nem riscado', () => {
+    // Sem a detecção antes, `/_a_/` virava itálico e partia o link em três.
+    expect(resumo(parseWhatsAppFormat('https://x.com/_a_/b'))).toBe(
+      'link(https://x.com/_a_/b)',
+    );
+    expect(resumo(parseWhatsAppFormat('https://x.com/~joao~/c'))).toBe(
+      'link(https://x.com/~joao~/c)',
+    );
+  });
+
+  it('link com a forma do SharePoint do print do operador fica um link só', () => {
+    const url =
+      'https://exemplo-my.sharepoint.com/:f:/g/personal/financeiro_exemplo_com_br/ZxC1vBn2_MaS3-dFg4HjK5lQw6?e=Ef3Gh4';
+    expect(parseWhatsAppFormat(url)).toEqual([{ tipo: 'link', texto: url, href: url }]);
+  });
+
+  it('formatação EM VOLTA do link continua valendo', () => {
+    expect(resumo(parseWhatsAppFormat('*https://x.com*'))).toBe('negrito(link(https://x.com))');
+    expect(resumo(parseWhatsAppFormat('_veja www.x.com_ agora'))).toBe(
+      'italico(veja link(www.x.com)) agora',
+    );
+    expect(resumo(parseWhatsAppFormat('*Link:* https://x.com/a_b'))).toBe(
+      'negrito(Link:) link(https://x.com/a_b)',
+    );
+  });
+
+  it('⚠️ `_` no fim do endereço, sem itálico aberto antes, fica NO link (Codex, PR #347)', () => {
+    expect(parseWhatsAppFormat('Pasta: https://host/documento_')).toEqual([
+      { tipo: 'texto', texto: 'Pasta: ' },
+      { tipo: 'link', texto: 'https://host/documento_', href: 'https://host/documento_' },
+    ]);
+  });
+
+  it('⚠️ itálico que já fechou antes não come o `_` do endereço (Codex, PR #347, 2ª rodada)', () => {
+    expect(resumo(parseWhatsAppFormat('_ênfase_ https://host/documento_'))).toBe(
+      'italico(ênfase) link(https://host/documento_)',
+    );
+  });
+
+  it('dentro de monoespaçado o endereço fica literal', () => {
+    expect(resumo(parseWhatsAppFormat('`https://x.com`'))).toBe('mono(https://x.com)');
+    expect(resumo(parseWhatsAppFormat('```\nhttps://x.com\n``` e https://y.com'))).toBe(
+      'mono(\nhttps://x.com\n) e link(https://y.com)',
+    );
+  });
+});
+
 describe('stripWhatsAppFormat', () => {
   it('tira os marcadores para o preview da lista', () => {
     expect(stripWhatsAppFormat('*Novo Agendamento:* às *15:00*')).toBe(
       'Novo Agendamento: às 15:00',
     );
+  });
+
+  it('o link volta como texto', () => {
+    expect(stripWhatsAppFormat('Veja *https://x.com/a_b*')).toBe('Veja https://x.com/a_b');
   });
 
   it('deixa o marcador solto em paz', () => {

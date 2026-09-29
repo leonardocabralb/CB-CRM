@@ -19,12 +19,20 @@
 //  - Aninha: `*_negrito e itálico_*`.
 //  - Dentro de bloco/monoespaçado NÃO há formatação: ali o texto é literal,
 //    senão um trecho de código com underline viraria itálico.
+//  - ENDEREÇO (http, https, www) é achado ANTES da formatação e sai inteiro
+//    como nó `link` (29/09/2026): `_` e `~` são comuns em URL
+//    (`/personal/financeiro_x_com_br/`, `/~usuario/`) e, lidos como
+//    marcador, partiam o link em itálico. Formatação EM VOLTA do link vale
+//    (`*https://x.com*`). Detecção em `links-no-texto.ts`.
 // ============================================================
+
+import { acharLinks, type LinkNoTexto } from './links-no-texto';
 
 export type NoFormatado =
   | { tipo: 'texto'; texto: string }
   | { tipo: 'negrito' | 'italico' | 'riscado'; filhos: NoFormatado[] }
-  | { tipo: 'mono'; texto: string };
+  | { tipo: 'mono'; texto: string }
+  | { tipo: 'link'; texto: string; href: string };
 
 /** Marcador → tipo de nó. A ordem não importa; o casamento é por caractere. */
 const MARCADORES: Record<string, 'negrito' | 'italico' | 'riscado'> = {
@@ -70,9 +78,22 @@ function podeFechar(texto: string, i: number): boolean {
 /**
  * Procura o marcador que fecha o aberto em `inicio`, respeitando a regra de
  * adjacência. Devolve -1 quando não há par — e aí o marcador é texto comum.
+ * Pula os endereços inteiros: o `_` de uma URL não fecha itálico nenhum.
  */
-function acharFechamento(texto: string, marcador: string, inicio: number): number {
+function acharFechamento(
+  texto: string,
+  marcador: string,
+  inicio: number,
+  links: LinkNoTexto[],
+): number {
+  let k = 0;
   for (let i = inicio + 1; i < texto.length; i++) {
+    while (k < links.length && links[k].fim <= i) k++;
+    const link = links[k];
+    if (link && link.inicio <= i) {
+      i = link.fim - 1;
+      continue;
+    }
     if (texto[i] !== marcador) continue;
     if (podeFechar(texto, i)) return i;
   }
@@ -101,7 +122,15 @@ function compactar(nos: NoFormatado[]): NoFormatado[] {
  */
 export function parseWhatsAppFormat(texto: string | null | undefined): NoFormatado[] {
   if (!texto) return [];
+  return analisar(texto, acharLinks(texto));
+}
 
+/**
+ * ⚠️ `links` vem do texto INTEIRO e desce deslocado para o miolo: achar de
+ * novo no pedaço poderia divergir da primeira leitura. Nenhum miolo corta um
+ * endereço, porque nenhum marcador dentro dele abre nem fecha.
+ */
+function analisar(texto: string, links: LinkNoTexto[]): NoFormatado[] {
   const nos: NoFormatado[] = [];
   let buffer = '';
 
@@ -112,8 +141,21 @@ export function parseWhatsAppFormat(texto: string | null | undefined): NoFormata
     }
   };
 
+  let k = 0;
   for (let i = 0; i < texto.length; i++) {
     const c = texto[i];
+
+    // Endereço: sai inteiro, como link. Os que ficaram dentro de um bloco
+    // monoespaçado já pulado são descartados — ali tudo é literal.
+    while (k < links.length && links[k].inicio < i) k++;
+    const link = links[k];
+    if (link && link.inicio === i) {
+      despejar();
+      nos.push({ tipo: 'link', texto: link.texto, href: link.href });
+      i = link.fim - 1;
+      k++;
+      continue;
+    }
 
     // Bloco ```...``` — literal por dentro, inclusive quebras de linha.
     if (c === '`' && texto.startsWith('```', i)) {
@@ -139,11 +181,15 @@ export function parseWhatsAppFormat(texto: string | null | undefined): NoFormata
 
     const tipo = MARCADORES[c];
     if (tipo && podeAbrir(texto, i)) {
-      const fim = acharFechamento(texto, c, i);
+      const fim = acharFechamento(texto, c, i, links);
       if (fim > i) {
         despejar();
         // Recursão no miolo: `*_assim_*` aninha de verdade.
-        nos.push({ tipo, filhos: parseWhatsAppFormat(texto.slice(i + 1, fim)) });
+        const miolo = i + 1;
+        const linksDoMiolo = links
+          .filter((l) => l.inicio >= miolo && l.fim <= fim)
+          .map((l) => ({ ...l, inicio: l.inicio - miolo, fim: l.fim - miolo }));
+        nos.push({ tipo, filhos: analisar(texto.slice(miolo, fim), linksDoMiolo) });
         i = fim;
         continue;
       }
@@ -168,7 +214,7 @@ export function stripWhatsAppFormat(texto: string | null | undefined): string {
 function textoPlano(nos: NoFormatado[]): string {
   return nos
     .map((no) => {
-      if (no.tipo === 'texto' || no.tipo === 'mono') return no.texto;
+      if (no.tipo === 'texto' || no.tipo === 'mono' || no.tipo === 'link') return no.texto;
       return textoPlano(no.filhos);
     })
     .join('');
