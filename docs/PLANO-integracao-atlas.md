@@ -29,7 +29,7 @@ qualquer um que também use o Atlas, **só pela API pública do Atlas**, com
 
 | Fase | O quê | Depende de | Estado |
 |---|---|---|---|
-| 1 | Faixa "Cliente rescindido / finalizado" pela MARCA da etapa (sem Atlas) | nada | **Em curso** — código na branch `feat/faixa-situacao-do-cliente`; falta aplicar a 1070, marcar as etapas e testar no preview |
+| 1 | Faixa "Cliente rescindido / finalizado" pela MARCA da etapa (sem Atlas) | nada | **Pronta para o merge** (PR #355): 1070 aplicada, etapas do CB marcadas, e2e no preview feito (29/09/2026) |
 | 0 | Conectar pela chave + passo "Criar cliente no Atlas" (reativa quem já existe) no lugar da perna do Atlas no n8n | Prioridade 1 da API do Atlas (testar a chave, buscar cliente, códigos de erro) em staging | Aguardando o Atlas |
 | 2 | Vínculo contato ↔ cliente do Atlas + botão "Abrir no Atlas" + faixa também pela situação do Atlas | Fase 0; Prioridade 2 do Atlas (link direto abre a ficha) | Planejada |
 | 3 | Aba "Atlas" com o histórico de negociação | Prioridade 3 do Atlas (leitura de negociação com permissão própria) | Planejada |
@@ -101,7 +101,21 @@ card mais recente e apagava a faixa quando o único card saía do Jurídico —
 corrigido pela saída da trilha; também corrigidos o contraste no tema escuro,
 a linha do Gerenciar funil no iPad, o recorte de perfil velho na lente "Ver
 como" e um comentário que mentia sobre a largura do diálogo. A consulta e a
-migration contra o banco real: nada encontrado. Falta o teste no preview.
+migration contra o banco real: nada encontrado. O Codex apontou dois P2
+(releitura que falha mantinha valor velho; apagar etapa marcada tirava a
+faixa de quem saiu dela), os dois corrigidos.
+
+**Aplicado e testado (29/09/2026):** 1070 em produção (histórico
+`20260929230658`); "Cliente Rescindido" e "Cliente Finalizado" marcados pela
+tela. E2E no preview só com o lead de teste: faixa vermelha em Rescindido,
+azul em Finalizado (atualiza sozinha com a conversa aberta), CONTINUA acesa
+com o card de volta ao Comercial, apaga quando ele volta ao Jurídico em
+"Cliente Ativo" (onde o botão "avançar" não aparece mais); celular (375 px,
+sem rolagem lateral) e tema claro legíveis; a trava de apagar etapa marcada
+com histórico recusou numa etapa TEMPORÁRIA, que depois foi desmarcada e
+apagada; Gerenciar funil a 820 px sem rolagem lateral. Limpeza conferida no
+banco: o card voltou a MQL 1 com o mesmo valor, 7 eventos na trilha, fila
+processada sem erro, nenhuma automação nem mensagem.
 
 ## Fase 0 — "Criar cliente no Atlas" (quando a Prioridade 1 do Atlas chegar)
 
