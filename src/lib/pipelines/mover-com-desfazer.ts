@@ -381,6 +381,16 @@ function escutarAPagina() {
   window.addEventListener('online', () => {
     if (usuarioDaRetomada) retomarMovimentosPendentes(usuarioDaRetomada);
   });
+  // Outra aba mexeu na fila (agendou, concluiu, desistiu): o card desta aba
+  // trava ou destrava junto. Sem isso, com duas abas na mesma conversa, o
+  // clique aqui era recusado em silêncio enquanto a outra movia o card
+  // (Codex, PR #340). `key` nulo = o armazenamento foi limpo.
+  window.addEventListener('storage', (evento) => {
+    if (!usuarioDaRetomada) return;
+    if (evento.key === null || evento.key === CHAVE_DA_FILA + usuarioDaRetomada) {
+      retomarMovimentosPendentes(usuarioDaRetomada);
+    }
+  });
 }
 
 // ---- A API ---------------------------------------------------
@@ -391,10 +401,13 @@ function escutarAPagina() {
  *
  * `false` = recusado: o negócio já tem um pedido GUARDADO esperando o
  * servidor, e um novo o substituiria (ver o cabeçalho). A tela trava o card
- * nesse estado; a recusa é a segunda barreira.
+ * nesse estado; a recusa é a segunda barreira — e ela TRAVA o card também,
+ * pela retomada: o pedido pode ser de outra aba que esta ainda não viu, e a
+ * recusa calada deixaria o botão de pé com o clique sem efeito (Codex, PR #340).
  */
 export function agendarMovimento(pedido: PedidoDeMovimento, usuario: string): boolean {
   if (!aguardando.has(pedido.dealId) && lerFila(usuario).some((e) => e.dealId === pedido.dealId)) {
+    retomarMovimentosPendentes(usuario);
     return false;
   }
   concluirAgora(pedido.dealId);

@@ -310,6 +310,26 @@ describe('a reserva no aparelho', () => {
     expect(enviar).not.toHaveBeenCalled();
   });
 
+  it('duas abas: o clique nesta, com o pedido da OUTRA ainda na janela, trava o card em vez de ser recusado calado (Codex, PR #340)', async () => {
+    const agora = Date.now();
+    guardado.set(
+      `cb-movimentos-pendentes:${USUARIO}`,
+      JSON.stringify([{ id: 'da-outra', dealId: 'negocio-1', de: 'etapa-a', para: 'etapa-b', prazo: agora + 2000, textos: pedido().textos }]),
+    );
+    // Esta aba não viu o pedido (nenhuma retomada desde que a outra agendou).
+    expect(fotoDoMovimento('negocio-1')).toBeNull();
+    expect(agendarMovimento(pedido('negocio-1', 'etapa-c'), USUARIO)).toBe(false);
+    // O card mostra o pedido que VAI acontecer — o da outra aba, não o clicado.
+    expect(fotoDoMovimento('negocio-1')).toEqual({ fase: 'tentando', para: 'etapa-b' });
+    const guardados = fila() as { para: string }[];
+    expect(guardados.map((e) => e.para)).toEqual(['etapa-b']);
+    // A outra aba concluiu: depois da folga, esta destrava sem mandar nada.
+    guardado.delete(`cb-movimentos-pendentes:${USUARIO}`);
+    await esperar(2000 + FOLGA_DA_RETOMADA_MS);
+    expect(fotoDoMovimento('negocio-1')).toBeNull();
+    expect(enviar).not.toHaveBeenCalled();
+  });
+
   it('Tentar agora num card cujo pedido já saiu da fila: destrava em vez de não fazer nada', async () => {
     respostas.push({ ok: false, status: 503 });
     agendarMovimento(pedido(), USUARIO);

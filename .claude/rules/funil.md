@@ -124,9 +124,10 @@ seção "Botão de avançar" do Gerenciar funil.
   etapa e os botões Ganho/Perdido travam (perdido marcado no meio seria
   reaberto pela 1031 quando o movimento saísse para etapa neutra).
 - ⚠️ **Pedido GUARDADO trava o card** (`tentando`, também depois de
-  recarregar): um clique novo o substituiria na fila e o primeiro se perderia
-  sem "Desfazer" — `agendarMovimento` recusa. Sai pelo servidor, "Tentar
-  agora" ou "Desistir" (decisão explícita).
+  recarregar e quando o pedido é de OUTRA aba — evento `storage`, e a recusa
+  de `agendarMovimento` também trava): um clique novo o substituiria na fila e
+  o primeiro se perderia sem "Desfazer". Sai pelo servidor, "Tentar agora" ou
+  "Desistir" (decisão explícita).
 
 ### Concorrência do quadro: leituras, arrastos e formulários
 
