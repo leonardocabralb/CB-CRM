@@ -34,6 +34,7 @@ describe('atribuicaoDoHandoff', () => {
         const b = {
           select: (c: string) => ((colunas = c), b),
           eq: (c: string, v: unknown) => (filtros.push([c, v]), b),
+          is: (c: string, v: unknown) => (filtros.push([`is:${c}`, v]), b),
           limit: () => (resp === 'lanca' ? Promise.reject(new Error('rede')) : Promise.resolve(resp)),
         };
         return b;
@@ -49,6 +50,8 @@ describe('atribuicaoDoHandoff', () => {
     expect(filtros).toEqual([
       ['account_id', 'acc'],
       ['user_id', MEMBRO],
+      // 1067: quem está suspenso não é achado, e a conversa fica na fila.
+      ['is:suspenso_em', null],
     ]);
   });
 

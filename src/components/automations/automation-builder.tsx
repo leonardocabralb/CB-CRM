@@ -128,6 +128,7 @@ import { uploadAccountMedia, MEDIA_MAX_BYTES_BY_KIND } from "@/lib/storage/uploa
 import { mensagemDoUpload } from "@/lib/storage/erro-de-upload"
 import { CHAT_MEDIA_BUCKET } from "@/lib/storage/buckets"
 import { origemDoConstrutor, urlDoConstrutor, voltaDoConstrutor } from "@/lib/pipelines/url"
+import { opcoesDeResponsavel } from "@/lib/account/suspensao"
 
 /** Os quatro tipos que o passo `send_media` oferece. */
 type MediaKindUI = "image" | "video" | "document" | "audio"
@@ -1041,11 +1042,14 @@ function AgentSelect({
       className={SELECT_CLASS}
     >
       <option value="">{t("agents.select")}</option>
-      {members.map((m) => (
+      {/* 1067: suspenso não é oferecido; o já escolhido fica, marcado. */}
+      {opcoesDeResponsavel(members, (m) => m.user_id === value).map((m) => (
         <option key={m.user_id} value={m.user_id}>
           {/* Sem nome nem e-mail (o e-mail só aparece para admin), um rótulo —
-              nunca o id do login. */}
-          {m.full_name || m.email || t("agents.semNome")}
+              nunca o id do login. Suspenso (1067) vem marcado. */}
+          {m.suspenso_em
+            ? t("agents.suspended", { name: m.full_name || m.email || t("agents.semNome") })
+            : m.full_name || m.email || t("agents.semNome")}
         </option>
       ))}
       {value && !selected && (

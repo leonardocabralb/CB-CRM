@@ -257,6 +257,15 @@ EXCEPTION WHEN insufficient_privilege THEN
 END $$;
 ```
 
+### SECURITY DEFINER que lê `profiles` confere a suspensão (1067)
+Função SECURITY DEFINER ignora a RLS — e com ela o corte do membro suspenso.
+Toda função assim que descobre o chamador em `profiles` pelo `auth.uid()`
+confere `suspenso_em` (recusando com `'membro_suspenso'`, SQLSTATE 42501) ou
+entra na lista de exceções de `membro-suspenso-1067.test.ts`, com o motivo
+escrito — o teste é DEFAULT-DENY sobre a última definição de cada função. E
+quem recriar `is_account_member` ou `cb_contas_do_usuario` mantém o
+`AND p.suspenso_em IS NULL`: as duas não podem discordar sobre quem é membro.
+
 ### Tabela cb_* nova nasce sem nada para anon
 - Tabela `cb_*` nasce com `REVOKE ALL ON TABLE … FROM anon`; confira as duas
   metades (anon perdeu; authenticated/service_role não). Tabela do upstream

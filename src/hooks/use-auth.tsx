@@ -96,7 +96,13 @@ export type AccountStatus =
   /** Signed in, but no profile row / no account / no role on it. */
   | "unlinked"
   /** The profile lookup itself failed after retrying. */
-  | "error";
+  | "error"
+  /**
+   * 1067: o acesso desta pessoa foi SUSPENSO por um administrador. A casca
+   * troca o app inteiro pela tela de acesso suspenso — nada de dado aparece,
+   * e o banco já recusa tudo de qualquer jeito.
+   */
+  | "suspenso";
 
 interface AuthContextValue {
   user: User | null;
@@ -152,6 +158,8 @@ interface AuthContextValue {
   accountStatus: AccountStatus;
   /** Underlying message when `accountStatus` is 'error' / 'unlinked'. */
   accountStatusDetail: string | null;
+  /** 1067: desde quando o acesso está suspenso; `null` fora de `accountStatus === 'suspenso'`. */
+  suspensoEm: string | null;
   /** Account id the current user belongs to. Null while loading. */
   accountId: string | null;
   /** Role within that account. Null while loading. */
@@ -339,6 +347,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Why the account/role couldn't be established, when it couldn't.
   // Null on the happy path.
   const [statusDetail, setStatusDetail] = useState<string | null>(null);
+  // 1067: preenchido só quando o banco confirma que o acesso está suspenso.
+  const [suspensoEm, setSuspensoEm] = useState<string | null>(null);
   // Tracked separately from `loading`. The session settles fast (one
   // local cookie read); the profile fetch crosses the network and
   // settles later. Callers that gate on `profile.*` need to know which
@@ -481,6 +491,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ? data.account_role
           : null;
 
+        // A linha voltou a aparecer: reativado (ou nunca suspenso). ⚠️ AQUI,
+        // no mesmo passo do setProfile/setAccount, e não antes das leituras
+        // da conta e do perfil de acesso: limpo antes, a casca passava por
+        // "error" (suspensoEm nulo, profile nulo) e montava o app sem
+        // restrição — e a exigência do celular, que decide uma vez na
+        // montagem, era pulada (revisão do PR da 1067).
+        setSuspensoEm(null);
         setProfile({
           id: data.id,
           full_name: data.full_name,
@@ -507,6 +524,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           );
         }
       } else {
+        // 1067: a própria linha fica INVISÍVEL para quem está suspenso
+        // (`profiles_select`). Só o banco sabe dizer se é isso ou uma linha
+        // que falta de verdade. Falha nesta pergunta cai no caminho de antes
+        // (o alerta de conta), nunca num "suspenso" inventado.
+        const suspensao = await supabase.rpc("cb_minha_suspensao");
+        if (!suspensao.error && typeof suspensao.data === "string") {
+          setProfile(null);
+          setAccount(null);
+          setPerfilDeAcesso(null);
+          setSuspensoEm(suspensao.data);
+          return;
+        }
         lastFetchedUserIdRef.current = null;
         setStatusDetail("no profiles row for the signed-in user");
       }
@@ -592,6 +621,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfile(null);
         setAccount(null);
         setPerfilDeAcesso(null);
+        setSuspensoEm(null);
         // Qualquer saída (outra aba, sessão invalidada) apaga a lente.
         gravarSimulacaoNaAba(null);
         setSimulacaoGravada(null);
@@ -625,6 +655,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null);
     setAccount(null);
     setPerfilDeAcesso(null);
+    setSuspensoEm(null);
     // A lente não pode sobreviver à troca de pessoa na mesma aba.
     gravarSimulacaoNaAba(null);
     setSimulacaoGravada(null);
@@ -747,11 +778,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ? "loading"
     : profileLoading
       ? "loading"
-      : !profile
-        ? "error"
-        : derived.accountId && derived.accountRole
-          ? "ready"
-          : "unlinked";
+      : suspensoEm
+        ? "suspenso"
+        : !profile
+          ? "error"
+          : derived.accountId && derived.accountRole
+            ? "ready"
+            : "unlinked";
 
   return (
     <AuthContext.Provider
@@ -775,6 +808,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ownerUserId: account?.owner_user_id ?? null,
         accountStatus,
         accountStatusDetail: statusDetail,
+        suspensoEm,
         ...derived,
       }}
     >
@@ -824,6 +858,7 @@ export function useAuth(): AuthContextValue {
       // keeps the access alert from firing on, say, the login page.
       accountStatus: "loading",
       accountStatusDetail: null,
+      suspensoEm: null,
       accountId: null,
       accountRole: null,
       isOwner: false,

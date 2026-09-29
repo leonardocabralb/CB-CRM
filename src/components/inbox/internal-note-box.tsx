@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { fetchAccountMembers, memberLabel } from '@/lib/account/members';
+import { membrosAtivos } from '@/lib/account/suspensao';
 import {
   aplicarMencao,
   filtrarMembros,
@@ -84,8 +85,9 @@ export function InternalNoteBox({
     let vivo = true;
     void fetchAccountMembers().then((lista) => {
       if (!vivo) return;
+      // 1067: quem está suspenso não lê anotação — mencioná-lo não chega.
       setMembros(
-        lista.map((m) => ({ user_id: m.user_id, rotulo: memberLabel(m) }))
+        membrosAtivos(lista).map((m) => ({ user_id: m.user_id, rotulo: memberLabel(m) }))
       );
     });
     return () => {

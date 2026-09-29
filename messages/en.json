@@ -320,6 +320,7 @@
       "copyLinkFailed": "Couldn't copy the link",
       "assignee": "Assignee",
       "assignUpdateFailed": "Failed to update assignment",
+      "assigneeSuspended": "{name} (suspended)",
       "channelSectionLabel": "Messages on {channel}",
       "channelMismatch": "The last message came in on {channel}.",
       "channelMismatchAction": "Reply from it",
@@ -1217,6 +1218,7 @@
       "stage": "Stage",
       "assignedTo": "Assigned To",
       "unassigned": "Unassigned",
+      "assignedToSuspended": "{name} (suspended)",
       "notes": "Notes",
       "notesPlaceholder": "Add notes...",
       "status": "Status",
@@ -2072,7 +2074,8 @@
       "agents": {
         "select": "Select an agent…",
         "unknown": "Removed agent",
-        "semNome": "Unnamed member"
+        "semNome": "Unnamed member",
+        "suspended": "{name} (suspended)"
       },
       "pipelines": {
         "pipelineLabel": "Pipeline",
@@ -2571,6 +2574,7 @@
         "handoffAssignNoName": "Member without a name",
         "handoffAssignChosen": "The chosen person",
         "handoffAssignGone": "No longer a member of the account",
+        "handoffAssignSuspended": "{name} (suspended)",
         "handoffAssignLoading": "Loading the account members…",
         "handoffAssignLoadError": "Could not load the account members.",
         "handoffAssignGoneHelp": "The chosen person is no longer a member of this account. Pick someone else or \"Nobody\" — otherwise the bot will not activate.",
@@ -2850,7 +2854,23 @@
       "removeFailed": "Failed to remove member",
       "revokeFailed": "Failed to revoke invitation",
       "networkError": "Could not reach the server",
-      "memberAlt": "Member"
+      "memberAlt": "Member",
+      "statusActive": "Active",
+      "statusSuspended": "Suspended",
+      "suspendedSince": "since {date}",
+      "suspendedSinceBy": "since {date}, by {name}",
+      "suspendedCount": "{count} suspended",
+      "suspend": "Suspend",
+      "reactivate": "Reactivate",
+      "suspendDialogTitle": "Suspend access",
+      "suspendDialogDesc": "Suspend <bold>{name}</bold>'s access? Until it's reactivated, access to the CRM is blocked. Nothing is deleted: conversations, tasks and deals stay assigned, and reactivating restores access as it was.",
+      "suspendDialogConversas": "{count, plural, =1 {1 open conversation is assigned to {name} and stays that way.} other {# open conversations are assigned to {name} and stay that way.}} To redistribute, use the assignee filter in the inbox.",
+      "suspending": "Suspending...",
+      "suspendBtn": "Suspend access",
+      "suspendedToast": "{name}'s access suspended",
+      "reactivatedToast": "{name}'s access reactivated",
+      "suspendFailed": "Couldn't suspend access",
+      "reactivateFailed": "Couldn't reactivate access"
     },
     "invite": {
       "inviteCreated": "Invite created",
@@ -4764,6 +4784,7 @@
       "tetoInvalido": "Use a number from 1 to 100.",
       "transferirPara": "Hand over to",
       "fila": "Unassigned queue (anyone can take it)",
+      "membroSuspenso": "{name} (suspended)",
       "foraDaEquipe": "(this person left the team)",
       "foraDaEquipeDica": "The person who received the transfers left the team. Choose someone else, or the unassigned queue.",
       "equipeNaoCarregou": "The team could not be loaded. The transfer destination stays as it is until you reload the page.",
@@ -5631,6 +5652,7 @@
     "statusCancelada": "Cancelled",
     "statusFalta": "No-show",
     "responsavel": "Assignee",
+    "responsavelSuspenso": "{name} (suspended)",
     "euMesmo": "Myself",
     "local": "Location",
     "localPlaceholder": "Meeting room or call link",
@@ -5803,6 +5825,7 @@
     "fieldAssignee": "Assign to",
     "assigneePlaceholder": "Choose a teammate",
     "assigneeOnlyYou": "You (only member of this account)",
+    "assigneeSuspended": "{name} (suspended)",
     "assigneeInviteHint": "Invite teammates under Settings → Team members to assign tasks to them.",
     "assigneeLoadFailed": "Could not load the team. Try again to pick the assignee.",
     "assigneeRetry": "Try again",
@@ -6065,6 +6088,14 @@
     "agendaAndMore": "{count, plural, =1 {and 1 more meeting in this window} other {and {count} more meetings in this window}}",
     "agendaOnlyCrm": "CRM agenda only. Calendly bookings are left out: the integration doesn't record cancellations or reschedules, so the list would show meetings that won't happen.",
     "openAgenda": "Open Agenda"
+  },
+  "AcessoSuspenso": {
+    "titulo": "Your access is suspended",
+    "descricao": "An administrator suspended your access to this CRM.",
+    "descricaoComData": "An administrator suspended your access to this CRM on {data}.",
+    "comoVoltar": "Your data is kept. To get back in, talk to an administrator on your team.",
+    "tentarDeNovo": "Check again",
+    "sair": "Sign out"
   },
   "DashboardShell": {
     "loading": "Loading…",

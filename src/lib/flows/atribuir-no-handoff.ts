@@ -53,6 +53,8 @@ export async function atribuicaoDoHandoff(
       .select('user_id')
       .eq('account_id', accountId)
       .eq('user_id', escolhido)
+      // 1067: suspenso conta como fora da equipe — a conversa fica na fila.
+      .is('suspenso_em', null)
       .limit(1);
     if (error) return { userId: null, motivo: 'leitura_falhou' };
     return Array.isArray(data) && data.length > 0
