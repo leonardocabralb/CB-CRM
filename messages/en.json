@@ -185,7 +185,9 @@
     "page": {
       "whatsappNotConnected": "WhatsApp® is not connected. Go to Settings to connect your account.",
       "backToPipeline": "Back to pipeline",
-      "backToReunioes": "Back to meetings"
+      "backToReunioes": "Back to meetings",
+      "backToContact": "Back to {nome}",
+      "backToConversation": "Back to the previous conversation"
     },
     "conversationList": {
       "typeAll": "All types",
@@ -586,6 +588,7 @@
       "tabFiles": "Files",
       "tabMeetings": "Meetings",
       "tabBilling": "Billing",
+      "tabRelated": "Related",
       "fieldSaved": "Saved",
       "fieldSaveError": "Could not save \"{campo}\" for {cliente}.",
       "avancar": {
@@ -984,6 +987,43 @@
     }
   },
   "Contacts": {
+    "related": {
+      "linkContact": "Link contact",
+      "chooseContact": "Choose contact…",
+      "contactSearchPlaceholder": "Search by name or phone…",
+      "contactSearchHint": "Type at least 2 letters to search.",
+      "contactSearchEmpty": "No contact matches the search.",
+      "contactSearchFailed": "The search failed. Type again to retry.",
+      "contactSearchMore": "Showing the first {count}. Keep typing to narrow it down.",
+      "descriptionLabel": "Description (optional)",
+      "descriptionPlaceholder": "Description (optional): spouse, attorney…",
+      "confirmLink": "Link",
+      "cancel": "Cancel",
+      "save": "Save",
+      "sameContact": "Choose another contact: this is the same one.",
+      "alreadyLinked": "These contacts are already linked.",
+      "loading": "Loading…",
+      "loadFailed": "Could not load the related contacts.",
+      "retry": "Try again",
+      "empty": "No related contacts.",
+      "emptyHint": "Link another person who deals with the same matter.",
+      "unknownContact": "Unnamed contact",
+      "openConversation": "Open conversation",
+      "noConversation": "No conversation",
+      "startConversation": "Start conversation",
+      "editDescription": "Edit description",
+      "unlink": "Unlink",
+      "unlinkQuestion": "Remove the link?",
+      "confirmUnlink": "Unlink",
+      "toastLinked": "Contacts linked.",
+      "toastDescriptionSaved": "Description saved.",
+      "toastUnlinked": "Link removed.",
+      "toastInvalid": "Could not link: check the contact and the description.",
+      "toastRefused": "You are not allowed to change links.",
+      "toastContactGone": "The chosen contact no longer exists.",
+      "toastLinkGone": "This link had already been removed.",
+      "toastFailed": "Could not save. Try again."
+    },
     "page": {
       "title": "Contacts",
       "subtitle": "Manage your contact list. {count} total contacts.",
@@ -1075,6 +1115,7 @@
         "deals": "Deals",
         "tasks": "Tasks",
         "billing": "Billing",
+        "related": "Related",
         "tags": "Tags"
       },
       "unnamed": "Unknown",

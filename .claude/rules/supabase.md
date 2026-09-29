@@ -371,7 +371,8 @@ um espelho com pino lendo o SQL. Mudou um lado, muda o outro.
 ### ⚠️⚠️ APAGAR CONTATO e merge_duplicate_contacts (receita de fusão)
 - CASCADE (some sem aviso): `conversations` (e TODAS as mensagens),
   `contact_tags`, `contact_custom_values`, `cb_tasks`, `cb_conversation_notes`,
-  `cb_automation_reminders`.
+  `cb_automation_reminders`, `cb_contatos_relacionados` (1069, pelas DUAS
+  pontas).
 - SET NULL (fica órfão): `deals`, `cb_lead_events`, `cb_calendly_eventos`,
   `cb_meetings`, `cb_reunioes_transcritas`, `cb_asaas_clientes`,
   `cb_asaas_regua_envios`, `cb_automation_events`, `cb_webhook_eventos`,
@@ -391,8 +392,10 @@ um espelho com pino lendo o SQL. Mudou um lado, muda o outro.
   TODAS as contas e agrupa por grafia exata (não vê as duas grafias do nono
   dígito).
 - **Receita de fusão**: reapontar TODAS as referências do perdedor para o
-  sobrevivente (as 17 do SET NULL e as 6 do CASCADE; `contact_tags` e
-  `contact_custom_values` com `NOT EXISTS`, por serem únicas por contato) →
+  sobrevivente (as 17 do SET NULL e as 7 do CASCADE; `contact_tags` e
+  `contact_custom_values` com `NOT EXISTS`, por serem únicas por contato;
+  `cb_contatos_relacionados` nas duas colunas, pulando o par que viraria
+  repetido ou o sobrevivente ligado a si mesmo — o CASCADE leva o resto) →
   mover os campos que faltam na ficha sobrevivente — `wa_user_id`/`wa_username`/
   `wa_parent_user_id` (o BSUID) ZERADOS no perdedor ANTES de gravados no
   sobrevivente, senão o índice único por conta (1038) recusa — → apagar o negócio duplicado
