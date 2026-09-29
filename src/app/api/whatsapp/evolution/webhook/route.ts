@@ -640,7 +640,9 @@ export async function POST(request: Request) {
           // rebaixando), e sem a guarda a bolha voltava a um ✓ com a mensagem
           // entregue. Uma versão deste comentário dizia que a escada "já era
           // monotônica na prática" — era, na 6.7.19. A rota da Meta usa a
-          // mesma regra desde 23/09/2026.
+          // mesma regra desde 23/09/2026. E o READ tira da falha (29/09/2026):
+          // o ERROR às vezes chega junto com os outros recibos e grava
+          // primeiro, e a mensagem que o cliente leu ficava "não entregue".
           q = q.in('status', aceitamORecibo(status));
           const { data: atualizadas, error } = await q.select('id');
           if (error) {
