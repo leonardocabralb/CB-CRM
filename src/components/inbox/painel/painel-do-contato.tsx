@@ -486,8 +486,9 @@ export function PainelDoContato({
     [notas]
   );
 
-  // A fixada (951) sai do fluxo e vira o cartão sticky do topo. No máximo
-  // uma por cliente — o índice parcial garante; aqui é só find.
+  // A fixada (951) sai do fluxo e vira o cartão sticky logo abaixo da caixa
+  // de escrever. No máximo uma por cliente — o índice parcial garante; aqui
+  // é só find.
   const notaFixada = useMemo(
     () => notes.find((n) => n.fixada_em) ?? null,
     [notes]
@@ -1540,12 +1541,41 @@ export function PainelDoContato({
           keepMounted
           className="min-h-0 flex-1 overflow-y-auto p-4"
         >
-          {/* A nota FIXADA (951) vem antes de tudo e é sticky: rolar a
-              lista não a leva embora. `top-0` gruda na borda do scrollport
-              — o padding do TabsContent rola junto com o conteúdo. */}
+          {/* A MESMA caixa amarela do compositor (918/919): menção por `@`
+              com autocomplete e aviso quando o sino de menção falha. `key`
+              pela conversa — a caixa guarda rascunho próprio, e sem o
+              remonte o texto escrito para um cliente sobreviveria à troca
+              e seria salvo no seguinte (a armadilha documentada do
+              rascunho de nota). Lista de sugestões para BAIXO: aqui a
+              caixa fica no topo do painel, não no rodapé da tela.
+              ⚠️ A caixa vem ANTES da nota fixada (pedido do operador,
+              29/09/2026): escrever é o que se faz ao abrir a aba. */}
+          {conversationId ? (
+            <InternalNoteBox
+              key={conversationId}
+              conversationId={conversationId}
+              listaParaBaixo
+              autoFocus={false}
+              onSaved={(nota) => {
+                if (nota.conversation_id === conversationId)
+                  acrescentarNota(nota);
+              }}
+            />
+          ) : null}
+
+          {/* A nota FIXADA (951) vem logo abaixo da caixa e é sticky: rolar
+              a lista não a leva embora. ⚠️ O sticky respeita o padding do
+              TabsContent (medido: com `top-0` o cartão parava a 16 px da
+              borda e a lista passava visível por cima dele); `-top-4` leva
+              o bloco até a borda e o `pt-2` com `bg-card` é a faixa que a
+              cobre. ⚠️ Nasce RECOLHIDA (o cartão explica): presa e
+              inteira, uma anotação longa cobria a rolagem da lista toda.
+              `key` pela nota: aberta/recolhida (e a confirmação de apagar)
+              é da leitura DESTA anotação, não da fixada do cliente anterior. */}
           {notaFixada && (
-            <div className="sticky top-0 z-10 mb-2">
+            <div className="bg-card sticky -top-4 z-10 pt-2">
               <CartaoDeNota
+                key={notaFixada.id}
                 nota={notaFixada}
                 destaque
                 fixada
@@ -1564,27 +1594,7 @@ export function PainelDoContato({
             </div>
           )}
 
-          {/* A MESMA caixa amarela do compositor (918/919): menção por `@`
-              com autocomplete e aviso quando o sino de menção falha. `key`
-              pela conversa — a caixa guarda rascunho próprio, e sem o
-              remonte o texto escrito para um cliente sobreviveria à troca
-              e seria salvo no seguinte (a armadilha documentada do
-              rascunho de nota). Lista de sugestões para BAIXO: aqui a
-              caixa fica no topo do painel, não no rodapé da tela. */}
-          {conversationId ? (
-            <InternalNoteBox
-              key={conversationId}
-              conversationId={conversationId}
-              listaParaBaixo
-              autoFocus={false}
-              onSaved={(nota) => {
-                if (nota.conversation_id === conversationId)
-                  acrescentarNota(nota);
-              }}
-            />
-          ) : null}
-
-          <div className="mt-2 space-y-2">
+          <div className="mt-3 space-y-3">
             {notasComuns.map((note) => (
               <CartaoDeNota
                 key={note.id}

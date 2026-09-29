@@ -293,6 +293,13 @@ O WhatsApp quase nunca anuncia a falha; este vermelho é INFERIDO.
 - ⚠️ **Nota de GRUPO não fixa** (o índice parcial exige `contact_id`): sem
   `onFixar` o alfinete não aparece. Quem monta a aba decide, e também o
   `sticky`.
+- ⚠️ **Aba Notas do painel (decisão do operador, 29/09/2026): caixa de
+  escrever PRIMEIRO, fixada logo abaixo, RECOLHIDA** (`destaque` no
+  `CartaoDeNota`: duas linhas, seta só com texto cortado de verdade, aberta
+  com teto e rolagem própria). Presa e inteira, uma nota longa cobria a
+  lista toda. O sticky respeita o padding do `TabsContent`: `-top-4` + faixa
+  `bg-card`, senão a lista aparece por cima do cartão. Pino
+  `cartao-de-nota.test.tsx`.
 - **`contact-detail-view` tem `deleteNote` próprio, de propósito**: distingue
   "proibido" de "falhou".
 - **A frase do autor é `Inbox.note.wrote` nas quatro telas.**
