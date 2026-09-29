@@ -49,11 +49,11 @@ a conversa e voltar.
 
 | Fase | O quê | Estado |
 | --- | --- | --- |
-| 1 | Migration 1069 + pino | em curso |
-| 2 | Hook + módulo puro + aba no painel da conversa | — |
-| 3 | Faixa "Voltar para" na caixa de entrada | — |
-| 4 | Aba na ficha de /contatos | — |
-| 5 | Revisão, teste no preview, regras e PR | — |
+| 1 | Migration 1069 + pino | [x] no código (a 1068 ficou com o PR #350). Provada num Postgres 16 descartável: banco vazio pula a prova; aplicada 2×; 6 cenários (par invertido, a si mesma, descrição, outra conta, visualizador lê e não grava, não membro não lê, CASCADE); sem o índice do par a própria migration reprova. **Falta aplicar em produção.** |
+| 2 | Hook + módulo puro + aba no painel da conversa | [x] |
+| 3 | Faixa "Voltar para" na caixa de entrada | [x] |
+| 4 | Aba na ficha de /contatos | [x] |
+| 5 | Revisão, teste no preview, regras e PR | Regras, tabela de merge e revisão feitas; suíte inteira verde em Node 22 (9.400). Preview (29/09): 9 abas cabem no painel de 360 px; sem a tabela a aba diz "Não foi possível carregar", nunca "nenhum". **Falta:** PR + replay do CI, aplicar a 1069, e2e (vincular, descrição, pulo, faixa, desvincular) e merge. |
 
 ## Deixado de fora
 
