@@ -16,7 +16,8 @@
 >
 > **29/09/2026:** o contrato fechado foi LIGADO pelo operador **sem a cadeia
 > dos Documentos** (tirou a espera de 2 minutos e o acionamento; a de
-> Documentos segue desligada e só roda à mão), e a automação da seção 8
+> Documentos segue desligada — e desligada nem à mão roda: o "Executar
+> automação" recusa automação desligada), e a automação da seção 8
 > (cliente do Bancário passa ao Jurídico) foi ligada.
 
 ## Onde estamos
@@ -300,18 +301,20 @@ Enquanto isso, gostaria de te pedir para avaliar com 05 estrelas nosso atendimen
 [LINK GOOGLE]
 ```
 
-**3.2 — a tarefa criada para a equipe** (não vai para o cliente) · ⏳ sem
-resposta
+**3.2 — a tarefa criada para a equipe** (não vai para o cliente) · ✅
+responsável escolhido pelo operador ao ligar (29/09/2026)
 
 ```
 Título:      Novo cliente fechado: {{contact.name}}
 Descrição:   Contrato assinado. Dar início ao atendimento jurídico.
 Prazo:       1 dia
-Responsável: [QUEM?]
+Responsável: um membro do time jurídico, escolhido pelo operador
+             (o nome fica no passo, no CRM — este repositório é público)
 ```
 
-Sem responsável a tela recusa ligar a automação. Se a tarefa não for
-necessária, me diga e eu tiro o passo.
+Sem responsável a tela recusaria ligar a automação; ele foi preenchido na
+ligação. Quem recebe as tarefas se vê abrindo o passo "Criar tarefa" do
+contrato fechado.
 
 **3.3 — o aviso ao Atlas e à planilha**
 
@@ -349,13 +352,15 @@ planilha"), com o endereço
 passo do CRM chama. Conferido na exportação: token, código de formatação,
 planilha (credencial "Google Sheets account 2", cabeçalho na linha 5) e Atlas.
 
-> ⚠️ **O gatilho antigo da Kommo (`contador-bancario`) foi DESATIVADO no mesmo
-> dia**, e o contrato fechado do CRM continua desligado. Enquanto os dois
-> estiverem assim, **contrato fechado não chega ao Atlas nem à planilha por
-> caminho nenhum**. A troca tem de ser no mesmo dia: reativar o nó antigo até
-> ligar o contrato fechado no CRM, e desativá-lo nesse dia (os dois ligados =
-> o cliente entra duas vezes). E a **"Planilha Geral BI"** só era alimentada
-> pela cadeia antiga — com ela desativada, a BI parou de receber.
+> ✅ **Troca feita em 29/09/2026 (por volta das 12h), com a ordem do
+> operador:** no fluxo do n8n, o nó antigo da Kommo (`contador-bancario`)
+> está DESATIVADO e o "Aviso do CB CRM" (`crm-contrato-fechado`) ATIVADO; o
+> contrato fechado do CRM está ligado. ⚠️ **Não reativar o nó antigo**: os
+> dois ligados criam o cliente duas vezes no Atlas e na planilha. (O primeiro
+> contrato fechado pelo CRM, de manhã, voltou 404 porque o nó novo ainda
+> estava desativado; foi reenviado uma vez depois da troca.) A **"Planilha
+> Geral BI"** só era alimentada pela cadeia antiga — com ela desativada, a BI
+> não recebe o contrato fechado (pendência 6).
 
 O aviso leva um **token** no cabeçalho que o fluxo novo confere: quem
 descobrir o endereço não consegue criar cliente no Atlas. Falha na planilha ou
@@ -590,9 +595,9 @@ Pelo Jurídico:
 | 1 | Ordem para ligar os lembretes | Lembretes |
 | 2 | Link público de agendamento do Calendly | No-show |
 | 3 | A imagem (2.6) e o PDF (2.7) | No-show |
-| 4 | O link de avaliação do Google | Contrato fechado |
-| 5 | Responsável da tarefa (ou tirar a tarefa) | Contrato fechado |
-| 6 | O gatilho da Kommo no n8n: reativar até ligar o contrato fechado? E a Planilha Geral BI? | Atlas e planilhas sem buraco |
+| 4 | O link de avaliação do Google — a boas-vindas saiu com o marcador `[LINK GOOGLE]` (29/09) | Contrato fechado |
+| 5 | ✅ Responsável da tarefa — escolhido pelo operador ao ligar (29/09) | — |
+| 6 | A Planilha Geral BI deve receber o contrato fechado do CRM (um nó a mais no n8n)? A troca do gatilho da Kommo já foi feita (29/09) — **não reativar o nó antigo** | BI |
 | 7 | O arquivo Excel da planilha | Documentos |
 | 8 | Ligar a de Desqualificado como está? | Desqualificado |
 
