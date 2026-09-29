@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 import {
   CLASSES,
   DEGRAUS,
+  alcancaProposta,
+  marcaDaReuniaoQueVale,
   DEGRAUS_OPCIONAIS,
   INDICE_DO_CONTRATO,
   classificarEtapas,
@@ -155,4 +157,21 @@ describe("i18n — as chaves montadas `Pipelines.funil.degraus.<classe>`", () =>
       }
     });
   }
+});
+
+describe("a marcação \"Reunião\" que vale (desfecho_da_reuniao)", () => {
+  it("proposta, contrato e pasta alcançam a proposta; o resto não", () => {
+    expect(["proposta", "contrato", "pasta"].map(alcancaProposta)).toEqual([true, true, true]);
+    expect(["lead", "mql", "reuniao", "perda", null, undefined, "lixo"].map(alcancaProposta)).toEqual([
+      false, false, false, false, false, false, false,
+    ]);
+  });
+  it("da proposta em diante a marcação é ignorada; antes, vale como está", () => {
+    expect(marcaDaReuniaoQueVale("proposta", "compareceu")).toBeNull();
+    expect(marcaDaReuniaoQueVale("contrato", "faltou")).toBeNull();
+    expect(marcaDaReuniaoQueVale("reuniao", "compareceu")).toBe("compareceu");
+    expect(marcaDaReuniaoQueVale(null, "faltou")).toBe("faltou");
+    expect(marcaDaReuniaoQueVale("reuniao", null)).toBeNull();
+    expect(marcaDaReuniaoQueVale("reuniao", undefined)).toBeNull();
+  });
 });

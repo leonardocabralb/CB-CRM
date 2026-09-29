@@ -72,6 +72,32 @@ export function ehFechamento(classe: ClasseDaEtapa | null): boolean {
   return classe !== null && classe !== "perda" && indiceDoDegrau(classe) >= INDICE_DO_CONTRATO;
 }
 
+const INDICE_DA_PROPOSTA = DEGRAUS.indexOf("proposta");
+
+/**
+ * A etapa está na proposta ou depois (proposta, contrato, pasta)? Entrar nela
+ * diz que a reunião aconteceu E houve proposta.
+ */
+export function alcancaProposta(degrau: string | null | undefined): boolean {
+  return ehDegrau(degrau) && indiceDoDegrau(degrau) >= INDICE_DA_PROPOSTA;
+}
+
+/**
+ * A marcação "Reunião" (`pipeline_stages.desfecho_da_reuniao`) que VALE: nula
+ * em etapa de proposta em diante, porque ali o DEGRAU já diz o que houve —
+ * compareceu, com proposta.
+ *
+ * ⚠️ Sem esta régua, marcar "Proposta Realizada" como "Compareceu" (a
+ * intuição natural: quem recebeu proposta compareceu, e foi o que o operador
+ * fez em 29/09/2026) fazia a tela Reuniões ler a entrada nela como "reunião
+ * SEM proposta" — "Compareceu" é a marca da etapa "Reunião Sem Proposta". E
+ * "Faltou" numa etapa de proposta acenderia o aviso de no-show sobre quem
+ * recebeu proposta. Todo leitor da marcação passa por aqui.
+ */
+export function marcaDaReuniaoQueVale<M extends string>(degrau: string | null | undefined, marca: M | null | undefined): M | null {
+  return alcancaProposta(degrau) ? null : (marca ?? null);
+}
+
 export type EtapaMinima = Pick<PipelineStage, "id" | "name" | "position" | "degrau">;
 
 export interface Classificacao {

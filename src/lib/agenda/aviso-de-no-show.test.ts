@@ -86,6 +86,11 @@ describe('avisoDeNoShow', () => {
     expect(avisoDeNoShow({ reunioes: [realizada, NOVA], entradas: [], temValorNoCard: false, agora: AGORA })).toBeNull();
   });
 
+  it('"Faltou" marcado numa etapa de proposta em diante NÃO é falta — ali houve proposta', () => {
+    const proposta = entrada('2026-09-15T15:00:00Z', { etapa: 'Proposta Realizada', degrau: 'proposta', desfecho: 'faltou' });
+    expect(avisoDeNoShow({ reunioes: [ANTIGA, NOVA], entradas: [proposta], temValorNoCard: false, agora: AGORA })).toBeNull();
+  });
+
   it('MQL 2 (degrau reuniao) NÃO é avanço — ela acontece antes da reunião', () => {
     const mql2 = entrada('2026-09-15T08:00:00Z', { etapa: 'MQL 2 - Reunião Qualificada', degrau: 'reuniao' });
     expect(avisoDeNoShow({ reunioes: [ANTIGA, NOVA], entradas: [mql2], temValorNoCard: false, agora: AGORA })?.motivo).toBe('sem_avanco');

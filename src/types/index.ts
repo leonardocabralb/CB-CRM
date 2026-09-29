@@ -949,6 +949,10 @@ export interface PipelineStage {
    * pauta de reuniões leva o card — ANTES da reunião. ⚠️ Não diz nada sobre o
    * comparecimento: o aviso de no-show a lê como nula, nunca como
    * "compareceu".
+   *
+   * ⚠️ Em etapa de degrau proposta, contrato ou pasta a marcação NÃO vale — o
+   * degrau já diz "compareceu, com proposta". Leia sempre por
+   * `marcaDaReuniaoQueVale` (`src/lib/funil/degraus.ts`), nunca o campo cru.
    */
   desfecho_da_reuniao?: 'qualificada' | 'compareceu' | 'faltou' | null;
   /**

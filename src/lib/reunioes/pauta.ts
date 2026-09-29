@@ -1,4 +1,4 @@
-import { DEGRAUS, ehDegrau, indiceDoDegrau } from '@/lib/funil/degraus';
+import { alcancaProposta, marcaDaReuniaoQueVale } from '@/lib/funil/degraus';
 
 /**
  * A PAUTA DE REUNIÕES (`/reunioes`): o que aconteceu com cada reunião e para
@@ -99,21 +99,26 @@ function ms(iso: string | null | undefined): number | null {
   return Number.isNaN(v) ? null : v;
 }
 
-const INDICE_DA_PROPOSTA = DEGRAUS.indexOf('proposta');
-
 /**
- * O resultado que ENTRAR nesta etapa quer dizer. `faltou` → no show;
- * `compareceu` → sem proposta; degrau de proposta ou depois (contrato, pasta)
- * → com proposta. É a mesma régua de "avançou" do aviso de possível no-show
+ * O resultado que ENTRAR nesta etapa quer dizer. Degrau de proposta ou
+ * depois (contrato, pasta) → com proposta, e ele VENCE a marcação "Reunião"
+ * da etapa (`marcaDaReuniaoQueVale`); `faltou` → no show; `compareceu` → sem
+ * proposta. É a mesma régua de "avançou" do aviso de possível no-show
  * (`aviso-de-no-show.ts`), e pelo mesmo motivo a MQL 2 NÃO conta: medido em
  * 27/09/2026, 28 das 30 entradas nela acontecem ANTES da reunião.
  */
 export function resultadoDaEtapa(etapa: Pick<EtapaDoFunil, 'degrau' | 'marca'> | undefined): Resultado | null {
   if (!etapa) return null;
-  if (etapa.marca === 'faltou') return 'no_show';
-  if (etapa.marca === 'compareceu') return 'sem_proposta';
-  if (ehDegrau(etapa.degrau) && indiceDoDegrau(etapa.degrau) >= INDICE_DA_PROPOSTA) return 'proposta';
+  if (alcancaProposta(etapa.degrau)) return 'proposta';
+  const marca = marcaDe(etapa);
+  if (marca === 'faltou') return 'no_show';
+  if (marca === 'compareceu') return 'sem_proposta';
   return null;
+}
+
+/** A marcação "Reunião" que vale para a etapa: nula da proposta em diante. */
+function marcaDe(etapa: Pick<EtapaDoFunil, 'degrau' | 'marca'> | undefined): MarcaDaEtapa | null {
+  return etapa ? marcaDaReuniaoQueVale(etapa.degrau, etapa.marca) : null;
 }
 
 /**
@@ -132,10 +137,10 @@ export function alvosDoFunil(etapas: EtapaDoFunil[], pipelineId: string): AlvosD
     return e ? { id: e.id, nome: e.nome } : null;
   };
   return {
-    qualificada: primeira((e) => e.marca === 'qualificada'),
+    qualificada: primeira((e) => marcaDe(e) === 'qualificada'),
     proposta: primeira((e) => e.degrau === 'proposta'),
-    sem_proposta: primeira((e) => e.marca === 'compareceu'),
-    no_show: primeira((e) => e.marca === 'faltou'),
+    sem_proposta: primeira((e) => marcaDe(e) === 'compareceu'),
+    no_show: primeira((e) => marcaDe(e) === 'faltou'),
   };
 }
 
@@ -249,7 +254,7 @@ export function qualificacaoDaReuniao(args: {
     candidatos.push({ em: m.registrado_em, por: m.registrado_por_nome, fonte: 'tela', etapa: null });
   }
   for (const e of entradasDaReuniao(args.entradas, ms(args.desde), ms(args.ate), args.dealId)) {
-    if (args.etapas.get(e.etapaId)?.marca !== 'qualificada') continue;
+    if (marcaDe(args.etapas.get(e.etapaId)) !== 'qualificada') continue;
     candidatos.push({ em: e.em, por: e.por, fonte: 'funil', etapa: e.etapa });
   }
   return maisRecente(candidatos);
@@ -270,7 +275,7 @@ export function faltouAntes(args: {
   const faltas = args.entradas
     .filter((e) => {
       const em = ms(e.em);
-      return em !== null && em < inicio && args.etapas.get(e.etapaId)?.marca === 'faltou';
+      return em !== null && em < inicio && marcaDe(args.etapas.get(e.etapaId)) === 'faltou';
     })
     .map((e) => ({ em: e.em, etapa: e.etapa }));
   return maisRecente(faltas);

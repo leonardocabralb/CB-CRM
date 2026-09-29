@@ -61,6 +61,14 @@ describe('resultadoDaEtapa', () => {
     expect(resultadoDaEtapa(POR_ID.get('agendada'))).toBeNull();
     expect(resultadoDaEtapa(undefined)).toBeNull();
   });
+  it('o degrau de proposta VENCE a marcação: "Proposta Realizada" marcada "Compareceu" continua com proposta', () => {
+    // Foi o que aconteceu em produção em 29/09/2026: a intuição "quem recebeu
+    // proposta compareceu" marcava a etapa, e a entrada nela virava "sem proposta".
+    for (const marca of ['compareceu', 'faltou', 'qualificada'] as const) {
+      expect(resultadoDaEtapa({ degrau: 'proposta', marca })).toBe('proposta');
+      expect(resultadoDaEtapa({ degrau: 'contrato', marca })).toBe('proposta');
+    }
+  });
 });
 
 describe('alvosDoFunil', () => {
@@ -82,6 +90,45 @@ describe('alvosDoFunil', () => {
       { id: 'noshow2', pipelineId: 'banc', nome: 'No Show 2', posicao: 1, degrau: null, marca: 'faltou' as const },
     ];
     expect(alvosDoFunil(etapas, 'banc').no_show?.id).toBe('noshow2');
+  });
+  it('marcação numa etapa de proposta em diante não vira destino de botão', () => {
+    // Só a Proposta Realizada marcada (sem a Reunião Sem Proposta): o botão
+    // "Sem proposta" levaria o card para a proposta.
+    const etapas: EtapaDoFunil[] = [
+      { id: 'agendada', pipelineId: 'x', nome: 'Reunião Agendada', posicao: 0, degrau: 'reuniao', marca: null },
+      { id: 'prop', pipelineId: 'x', nome: 'Proposta Realizada', posicao: 1, degrau: 'proposta', marca: 'compareceu' },
+      { id: 'contrato', pipelineId: 'x', nome: 'Contrato', posicao: 2, degrau: 'contrato', marca: 'faltou' },
+      { id: 'pasta', pipelineId: 'x', nome: 'Pasta', posicao: 3, degrau: 'pasta', marca: 'qualificada' },
+    ];
+    expect(alvosDoFunil(etapas, 'x')).toEqual({
+      qualificada: null,
+      proposta: { id: 'prop', nome: 'Proposta Realizada' },
+      sem_proposta: null,
+      no_show: null,
+    });
+  });
+});
+
+describe('a marcação de etapa de proposta em diante não vale em lugar nenhum', () => {
+  const comMarcaNaProposta = new Map(
+    [...POR_ID].map(([id, e]) => [id, id === 'prop' ? { ...e, marca: 'faltou' as const } : id === 'contrato' ? { ...e, marca: 'qualificada' as const } : e]),
+  );
+  it('"Faltou" na Proposta Realizada não conta como falta anterior', () => {
+    expect(
+      faltouAntes({ inicio: '2026-09-29T14:00:00Z', entradas: [entrada('2026-09-20T10:00:00Z', 'prop')], etapas: comMarcaNaProposta }),
+    ).toBeNull();
+  });
+  it('"Qualificada" no Contrato não conta como qualificação', () => {
+    expect(
+      qualificacaoDaReuniao({
+        desde: '2026-09-28T10:00:00Z',
+        ate: null,
+        dealId: 'd1',
+        marcos: [],
+        entradas: [entrada('2026-09-29T10:00:00Z', 'contrato')],
+        etapas: comMarcaNaProposta,
+      }),
+    ).toBeNull();
   });
 });
 
