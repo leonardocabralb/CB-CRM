@@ -301,6 +301,9 @@
       "refreshConversation": "Refresh conversation",
       "naoLidasAbaixo": "{count, plural, one {# unread message} other {# unread messages}}",
       "tambemNaConversa": "{nome} is also viewing this conversation",
+      "presencaUm": "{nome} is also in this conversation",
+      "presencaDois": "{nome} and {outro} are also in this conversation",
+      "presencaMais": "{nome} and {n, plural, one {# other person} other {# other people}} are also in this conversation",
       "status": "Status",
       "statusOpen": "Open",
       "statusPending": "Pending",
@@ -2261,7 +2264,6 @@
         "placeholderNotifyText": "New booking: {nome} at {data}",
         "notifyChannelInherit": "The number's conversation (or the default connection)",
         "notifyChannelHelp": "Choosing a connection sends the notice ALWAYS through it — and fails if it is unavailable, instead of going out through another number.",
-        "variaveisDeTexto": "Variables: {lista} — the field key is the one in the catalogue (Settings → Fields & tags).",
         "segundosAviso": "Seconds are not exact: the wait resumes on the scheduler’s next cycle. Use it to space messages out, not to time anything.",
         "janelaDaMetaHelp": "Yes = Meta accepts free text right now (the client wrote to this official number less than 24 hours ago). No = only an approved template goes out. A QR Code connection always answers Yes: it has no window. If the Yes messages leave from a fixed number, choose the SAME number here.",
         "janelaDaMetaCanalLabel": "Window of which number",
@@ -2538,6 +2540,248 @@
         "semModelo": "pick a template",
         "contem": "contains “{texto}”",
         "semUrl": "no url"
+      }
+    },
+    "variaveis": {
+      "inserir": "Insert field",
+      "inserirAria": "Insert a field into the text",
+      "buscar": "Search fields",
+      "nenhum": "No field with that name.",
+      "carregando": "Loading…",
+      "falhouCampos": "Couldn't load the contact fields.",
+      "blocoGeral": "General",
+      "grupos": {
+        "contato": "Contact",
+        "campos": "Contact fields · {bloco}",
+        "negocio": "Deal (card)",
+        "conversa": "Conversation",
+        "data": "Date and time",
+        "mensagem": "Received message",
+        "asaas": "Asaas charge",
+        "calendly": "Calendly booking",
+        "zapsign": "ZapSign signature",
+        "webhook": "Received webhook"
+      },
+      "fixas": {
+        "contact_name": {
+          "rotulo": "Contact name",
+          "legenda": "The name on the contact record."
+        },
+        "contact_phone": {
+          "rotulo": "Phone",
+          "legenda": "The phone on the record, with country code."
+        },
+        "contact_email": {
+          "rotulo": "Email",
+          "legenda": "The email on the record."
+        },
+        "contact_company": {
+          "rotulo": "Company",
+          "legenda": "The company on the record."
+        },
+        "contact_origem": {
+          "rotulo": "Ad origin",
+          "legenda": "Campaign - Ad set - Ad, only the filled parts."
+        },
+        "contact_link": {
+          "rotulo": "Contact link",
+          "legenda": "Opens the contact record. For team notices."
+        },
+        "deal_value": {
+          "rotulo": "Deal value",
+          "legenda": "The card value in reais (R$ 3.500,00). In fields and webhooks, just the number."
+        },
+        "deal_created_at": {
+          "rotulo": "Deal created at",
+          "legenda": "When the card was created (30/08/2026 às 16:00h). In fields and webhooks, the technical date."
+        },
+        "conversation_link": {
+          "rotulo": "Conversation link",
+          "legenda": "Opens the contact conversation. For team notices."
+        },
+        "channel_id": {
+          "rotulo": "Connection id",
+          "legenda": "The connection the customer wrote through. For external systems (webhook)."
+        },
+        "now": {
+          "rotulo": "Send date and time",
+          "legenda": "The moment the step runs (30/08/2026 às 16:00h)."
+        },
+        "message_text": {
+          "rotulo": "Received message text",
+          "legenda": "What the customer wrote in the message that triggered the automation."
+        }
+      },
+      "evento": {
+        "cliente_nome": {
+          "rotulo": "Customer name in Asaas",
+          "legenda": "The full name, as it is in Asaas."
+        },
+        "cliente_primeiro_nome": {
+          "rotulo": "Customer first name",
+          "legenda": "Only the first name, capitalized."
+        },
+        "escritorio_nome": {
+          "rotulo": "Office name",
+          "legenda": "The account name."
+        },
+        "cobranca_detalhe": {
+          "rotulo": "Open installments",
+          "legenda": "Every overdue installment, one per line, with amount, due date and payment link. In the reminder, only the one due today."
+        },
+        "cobranca_parcelas": {
+          "rotulo": "Installment numbers",
+          "legenda": "Which installments are open (2/12, 3/12…)."
+        },
+        "cobranca_valor": {
+          "rotulo": "Open amount",
+          "legenda": "The sum of the open installments, with interest and fines."
+        },
+        "cobranca_vencimento": {
+          "rotulo": "Oldest due date",
+          "legenda": "The day the oldest installment was due."
+        },
+        "cobranca_quantidade": {
+          "rotulo": "Number of installments",
+          "legenda": "How many installments are open."
+        },
+        "dias_de_atraso": {
+          "rotulo": "Days overdue (the milestone)",
+          "legenda": "How late the installment that crossed this milestone is."
+        },
+        "dias_de_atraso_maior": {
+          "rotulo": "Longest delay",
+          "legenda": "How late the oldest installment is, in days."
+        },
+        "marco_detalhe": {
+          "rotulo": "Installment that crossed the milestone",
+          "legenda": "Only the installments that crossed the milestone today, with link."
+        },
+        "vence_hoje_detalhe": {
+          "rotulo": "Installment due today",
+          "legenda": "The installment due today, if any, with link."
+        },
+        "vencimento_texto": {
+          "rotulo": "Due date text",
+          "legenda": "“vence hoje”, or “venceu no sábado, 12/09 — o boleto pode ser pago hoje sem juros”."
+        },
+        "agendamento_nome": {
+          "rotulo": "Booker name",
+          "legenda": "The name given in Calendly."
+        },
+        "agendamento_telefone": {
+          "rotulo": "Booker phone",
+          "legenda": "The phone given, formatted for reading."
+        },
+        "agendamento_evento": {
+          "rotulo": "Meeting type",
+          "legenda": "The event name in Calendly."
+        },
+        "agendamento_data": {
+          "rotulo": "Meeting date and time",
+          "legenda": "In the office's time zone (30/09/2026 às 14:00h)."
+        },
+        "agendamento_link": {
+          "rotulo": "Meeting link",
+          "legenda": "The video call link, or the location when it is a web address."
+        },
+        "agendamento_inicio": {
+          "rotulo": "Meeting start (data)",
+          "legenda": "The technical date, to store in a date field."
+        },
+        "agendamento_email": {
+          "rotulo": "Booker email",
+          "legenda": "The email given in Calendly."
+        },
+        "agendamento_local": {
+          "rotulo": "Meeting location",
+          "legenda": "The event location, when it is not a link."
+        },
+        "agendamento_situacao": {
+          "rotulo": "Booking status",
+          "legenda": "“Novo agendamento” or “Reagendamento”."
+        },
+        "agendamento_cancelar": {
+          "rotulo": "Cancel link",
+          "legenda": "The Calendly link for the customer to cancel."
+        },
+        "agendamento_remarcar": {
+          "rotulo": "Reschedule link",
+          "legenda": "The Calendly link for the customer to reschedule."
+        },
+        "agendamento_fim": {
+          "rotulo": "Meeting end (data)",
+          "legenda": "The technical date of the meeting end."
+        },
+        "zapsign_documento_nome": {
+          "rotulo": "Document name",
+          "legenda": "The document name in ZapSign."
+        },
+        "zapsign_signatario_nome": {
+          "rotulo": "Signer name",
+          "legenda": "The name of the signer."
+        },
+        "zapsign_signatario_telefone": {
+          "rotulo": "Signer phone",
+          "legenda": "The signer phone, formatted."
+        },
+        "zapsign_signatario_email": {
+          "rotulo": "Signer email",
+          "legenda": "The signer email."
+        },
+        "zapsign_assinado_em": {
+          "rotulo": "Signature date",
+          "legenda": "When the document was signed (30/09/2026 às 10:15h)."
+        },
+        "zapsign_documento_token": {
+          "rotulo": "Document code",
+          "legenda": "The document identifier in ZapSign."
+        }
+      },
+      "resposta": {
+        "rotulo": "Answer: {pergunta}",
+        "legenda": "An answer to a question in the document's form."
+      },
+      "respostasNota": "The document form's answers come in as {exemplo}.",
+      "webhookLegenda": "Came in the last call to this webhook.",
+      "webhookSemEscolha": "Pick the webhook in the trigger to see its variables.",
+      "webhookNunca": "This webhook has not been called yet: the variables show up after the first call.",
+      "webhookCarregando": "Loading the variables from the last call…",
+      "webhookFalhou": "Couldn’t load the variables from the last call.",
+      "tentarDeNovo": "Try again",
+      "alerta": {
+        "vazio": "Sending leaves this code blank: it doesn't exist.",
+        "campoInexistente": "No contact field has this key: it goes out blank.",
+        "eventoDeOutroGatilho": "This trigger doesn't deliver this variable: it goes out blank, unless it comes from another automation.",
+        "mensagemForaDoGatilho": "Only message triggers carry the received text: here it goes out blank, unless it comes from another automation."
+      },
+      "previa": {
+        "titulo": "Preview",
+        "com": "Preview with",
+        "semCliente": "Pick a customer to see how the message goes out.",
+        "escolher": "Pick customer",
+        "buscar": "Name or phone",
+        "dica": "Type at least 2 letters to search.",
+        "carregandoBusca": "Searching…",
+        "nenhumCliente": "No customer found.",
+        "falhouBusca": "Couldn't search.",
+        "mais": "There are more results: refine the search.",
+        "calculando": "Building the preview…",
+        "falhou": "Couldn't load this customer's data.",
+        "vazio": "empty",
+        "vazioAjuda": "Empty for this customer: it would go out blank.",
+        "exemplo": "example",
+        "exemploAjuda": "Example value: the real one comes from the event, when sending.",
+        "ultimoAcionamento": "last call",
+        "doEvento": "comes from the event",
+        "valoresDe": "Values for {nome}",
+        "semValores": "To see a customer’s values, pick them in the preview under a message text.",
+        "legenda": "Underlined: an example, or the last call. The real value comes from the event, when sending.",
+        "vazioAjudaDado": "Empty for this customer.",
+        "dadoVazio": "For this customer the value comes out empty: the contact field is not changed.",
+        "valoresDoCliente": "Values for the chosen customer",
+        "cardDoEvento": "event card?",
+        "cardDoEventoAjuda": "The customer has {n} cards: the preview uses the newest, and when it runs the event’s card counts, which may be another one."
       }
     }
   },

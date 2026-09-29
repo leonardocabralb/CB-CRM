@@ -15,7 +15,9 @@ paths:
   - "src/components/inbox/reply-quote.tsx"
   - "src/components/inbox/media-*.tsx"
   - "src/components/inbox/formatted-text.tsx"
+  - "src/components/inbox/texto-com-links.tsx"
   - "src/components/inbox/avatares-na-conversa.tsx"
+  - "src/components/inbox/faixa-de-presenca.tsx"
   - "src/components/inbox/copiar-link-da-conversa.tsx"
   - "src/lib/inbox/achados-no-fio*"
   - "src/lib/inbox/salto-no-fio*"
@@ -25,6 +27,7 @@ paths:
   - "src/lib/inbox/fila-de-anexos*"
   - "src/lib/inbox/nao-lidas-abaixo*"
   - "src/lib/inbox/whatsapp-format*"
+  - "src/lib/inbox/links-no-texto*"
   - "src/lib/audio/**"
   - "src/lib/presenca-na-conversa*"
   - "src/lib/contacts/origem*"
@@ -82,9 +85,10 @@ ficha em `.claude/rules/campos-e-nome.md`.
   atual**: o `useConversationNotes` esvazia num efeito, e a nota do cliente
   anterior aparecia sob o cabeçalho do novo.
 - **Faixas acima do compositor, nesta ordem:** inadimplência do Asaas,
-  possível no-show (`FaixaDeNoShow`, regra em `.claude/rules/reunioes.md`) e
-  agendadas. A de no-show vem do hook que carimba o contato dono do aviso: a
-  de um cliente nunca aparece na conversa de outro.
+  possível no-show (`FaixaDeNoShow`, regra em `.claude/rules/reunioes.md`),
+  agendadas, presença (`FaixaDePresenca`) e o número divergente, que fica
+  COLADO no compositor. A de no-show vem do hook que carimba o contato dono do
+  aviso: a de um cliente nunca aparece na conversa de outro.
 
 ### O salto da busca dentro do fio roda em JS, e isso tem prazo de validade
 
@@ -281,6 +285,28 @@ O WhatsApp quase nunca anuncia a falha; este vermelho é INFERIDO.
 - **Áudio não mostra nome** (o WhatsApp manda um id hexadecimal): mostra a
   transcrição quando pronta.
 
+### Links clicáveis na bolha e na anotação (29/09/2026)
+
+`src/lib/inbox/links-no-texto.ts` e `src/components/inbox/texto-com-links.tsx`
+(pinos `links-no-texto.test.ts`, `texto-com-links.test.tsx` e o fuzz).
+
+- ⚠️⚠️ **O endereço é achado ANTES da formatação** e sai inteiro como nó
+  `link` do `parseWhatsAppFormat`: `_` e `~` são comuns em URL e, lidos como
+  marcador, partiam o link em itálico. Formatação EM VOLTA dele vale — mas o
+  `_`/`~`/`*` do FIM só sai do link quando o mesmo marcador está ABERTO (e
+  ainda não fechado) antes dele (`abertoAntes`, que simula o pareamento do
+  interpretador; Codex, #347, duas rodadas): código de compartilhamento
+  termina em `_`, e tirá-lo mandava o `href` para outra página.
+- ⚠️ **Só `http(s)://` e `www.`**, de propósito: domínio solto daria link
+  falso em número de processo, CNPJ e "fls.23". O `href` sai do prefixo, e o
+  `new URL` confere o esquema.
+- **A anotação passa só por `TextoComLinks`**, sem a formatação do WhatsApp
+  (asterisco na nota fica asterisco), nas quatro telas e na faixa fixada.
+- ⚠️ **`LinkDoTexto` para o `onContextMenu`**: a linha da mensagem troca o
+  botão direito e o toque longo pela barra de ações; sobre o link, o menu é o
+  do navegador. Aba nova com `noopener noreferrer`; cor HERDADA com
+  sublinhado (a mesma peça vai na bolha violeta).
+
 ### Anotação interna: são QUATRO telas
 
 `src/hooks/use-apagar-nota.ts` e `src/components/inbox/cartao-de-nota.tsx`.
@@ -293,6 +319,13 @@ O WhatsApp quase nunca anuncia a falha; este vermelho é INFERIDO.
 - ⚠️ **Nota de GRUPO não fixa** (o índice parcial exige `contact_id`): sem
   `onFixar` o alfinete não aparece. Quem monta a aba decide, e também o
   `sticky`.
+- ⚠️ **Aba Notas do painel (decisão do operador, 29/09/2026): caixa de
+  escrever PRIMEIRO, fixada logo abaixo, RECOLHIDA** (`destaque` no
+  `CartaoDeNota`: duas linhas, seta só com texto cortado de verdade, aberta
+  com teto e rolagem própria). Presa e inteira, uma nota longa cobria a
+  lista toda. O sticky respeita o padding do `TabsContent`: `-top-4` + faixa
+  `bg-card`, senão a lista aparece por cima do cartão. Pino
+  `cartao-de-nota.test.tsx`.
 - **`contact-detail-view` tem `deleteNote` próprio, de propósito**: distingue
   "proibido" de "falhou".
 - **A frase do autor é `Inbox.note.wrote` nas quatro telas.**
@@ -337,6 +370,11 @@ O WhatsApp quase nunca anuncia a falha; este vermelho é INFERIDO.
   resposta atrasada não pode vencer a intenção nova.
 - **A página do inbox é a dona da seleção** (`useMarcarConversaAberta`); o
   cabeçalho mostra `<AvataresNaConversa>` por `useQuemVeAConversa`.
+- **Decisão do operador (29/09/2026): a presença também sai em FRASE acima do
+  compositor** (`<FaixaDePresenca>`, os mesmos `vendoAgora` e roster dos
+  avatares): é na hora de responder que importa. Verde, nunca as cores da
+  situação (violeta/âmbar/cinza leriam como "pendente"). Pino
+  `faixa-de-presenca.test.tsx`.
 
 ### Automações na conversa
 

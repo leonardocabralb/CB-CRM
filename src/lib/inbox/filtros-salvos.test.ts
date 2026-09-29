@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
+  casaComAEtapa,
   contarFiltrosAtivos,
   FILTROS_VAZIOS,
   SEM_ETAPA,
@@ -16,7 +17,7 @@ import {
   mesmoFiltro,
   type CatalogosDoFiltro,
 } from "./filtros-salvos";
-import type { PipelineStage, Profile, Tag } from "@/types";
+import type { Conversation, PipelineStage, Profile, Tag } from "@/types";
 
 // ------------------------------------------------------------
 // Filtros salvos (967).
@@ -78,8 +79,8 @@ describe("lerFiltroSalvo", () => {
         etiquetaIds: ["t1", "t2"],
         modoDeEtiqueta: "todas",
         empresa: "ACME",
-        funilId: "p1",
-        etapaId: "e1",
+        funilIds: ["p1", "p2"],
+        etapaIds: ["e1", SEM_ETAPA],
         favoritas: true,
         naoLidas: true,
       }),
@@ -92,8 +93,8 @@ describe("lerFiltroSalvo", () => {
       etiquetaIds: ["t1", "t2"],
       modoDeEtiqueta: "todas",
       empresa: "ACME",
-      funilId: "p1",
-      etapaId: "e1",
+      funilIds: ["p1", "p2"],
+      etapaIds: ["e1", SEM_ETAPA],
       favoritas: true,
       naoLidas: true,
       emAtraso: false,
@@ -127,9 +128,10 @@ describe("lerFiltroSalvo", () => {
   });
 
   it("string vazia vira null — id vazio não casa com nada", () => {
-    const f = lerFiltroSalvo({ canalId: "", etapaId: "   ", empresa: "" });
+    const f = lerFiltroSalvo({ canalId: "", etapaId: "   ", funilId: "", empresa: "" });
     expect(f.canalIds).toEqual([]);
-    expect(f.etapaId).toBeNull();
+    expect(f.etapaIds).toEqual([]);
+    expect(f.funilIds).toEqual([]);
     expect(f.empresa).toBeNull();
   });
 
@@ -149,7 +151,8 @@ describe("lerFiltroSalvo", () => {
     const original = {
       ...FILTROS_VAZIOS,
       canalIds: ["c1"],
-      etapaId: "e1",
+      funilIds: ["p1", "p2"],
+      etapaIds: ["e1", SEM_ETAPA],
       etiquetaIds: ["t1"],
       naoLidas: true,
     };
@@ -164,16 +167,27 @@ describe("escreverFiltroSalvo", () => {
       "canalIds",
       "emAtraso",
       "empresa",
-      "etapaId",
+      "etapaIds",
       "etiquetaIds",
       "favoritas",
-      "funilId",
+      "funilIds",
       "inadimplentes",
       "modoDeEtiqueta",
       "naoLidas",
       "responsavelId",
       "tipo",
     ]);
+  });
+
+  it("grava só o formato NOVO de funil e etapa — o antigo é só lido", () => {
+    const gravado = escreverFiltroSalvo({
+      ...FILTROS_VAZIOS,
+      funilIds: ["p1"],
+      etapaIds: ["e1"],
+    });
+    expect(gravado).toMatchObject({ funilIds: ["p1"], etapaIds: ["e1"] });
+    expect("funilId" in gravado).toBe(false);
+    expect("etapaId" in gravado).toBe(false);
   });
 
   it("não grava a aba: `status` não vai para o banco", () => {
@@ -237,7 +251,7 @@ describe("descreverFiltro", () => {
 
   it("troca id por nome", () => {
     const p = descreverFiltro(
-      { ...FILTROS_VAZIOS, canalIds: ["c1"], etapaId: "e1", etiquetaIds: ["t1"] },
+      { ...FILTROS_VAZIOS, canalIds: ["c1"], etapaIds: ["e1"], etiquetaIds: ["t1"] },
       CAT,
     );
     // A ordem é a MESMA das pastilhas do painel: canal → etiqueta → etapa.
@@ -254,7 +268,8 @@ describe("descreverFiltro", () => {
       {
         ...FILTROS_VAZIOS,
         canalIds: ["sumiu"],
-        etapaId: "sumiu",
+        funilIds: ["sumiu"],
+        etapaIds: ["sumiu"],
         etiquetaIds: ["sumiu"],
         responsavelId: "sumiu",
       },
@@ -284,10 +299,10 @@ describe("descreverFiltro", () => {
       {
         ...FILTROS_VAZIOS,
         canalIds: ["c1"],
-        etapaId: "e1",
+        etapaIds: ["e1"],
         etiquetaIds: ["t1"],
         responsavelId: "u1",
-        funilId: "p1",
+        funilIds: ["p1"],
       },
       catVazio,
     );
@@ -304,7 +319,7 @@ describe("descreverFiltro", () => {
 
   it("os sentinelas não são órfãos", () => {
     const p = descreverFiltro(
-      { ...FILTROS_VAZIOS, etapaId: SEM_ETAPA, responsavelId: SEM_RESPONSAVEL },
+      { ...FILTROS_VAZIOS, etapaIds: [SEM_ETAPA], responsavelId: SEM_RESPONSAVEL },
       CAT,
     );
     expect(p.map((x) => x.rotulo)).toEqual([
@@ -336,7 +351,7 @@ describe("descreverFiltro", () => {
         ["p2", "Jurídico"],
       ]),
     };
-    expect(descreverFiltro({ ...FILTROS_VAZIOS, etapaId: "e1" }, dois)[0].rotulo).toEqual(
+    expect(descreverFiltro({ ...FILTROS_VAZIOS, etapaIds: ["e1"] }, dois)[0].rotulo).toEqual(
       { fonte: "dado", texto: "Comercial · Reunião marcada" },
     );
   });
@@ -362,8 +377,8 @@ describe("descreverFiltro", () => {
       tipo: "grupos",
       canalIds: ["c1"],
       responsavelId: "u1",
-      funilId: "p1",
-      etapaId: "e1",
+      funilIds: ["p1"],
+      etapaIds: ["e1"],
       empresa: "ACME",
       etiquetaIds: ["t1"],
       naoLidas: true,
@@ -387,7 +402,8 @@ describe("limparOrfaos", () => {
       ...FILTROS_VAZIOS,
       canalIds: ["c1"],
       responsavelId: "u1",
-      etapaId: "e1",
+      funilIds: ["p1"],
+      etapaIds: ["e1"],
       etiquetaIds: ["t1", "t2"],
     };
     expect(limparOrfaos(f, CAT)).toEqual(f);
@@ -398,7 +414,8 @@ describe("limparOrfaos", () => {
       ...FILTROS_VAZIOS,
       canalIds: ["morto"],
       responsavelId: "morto",
-      etapaId: "morto",
+      funilIds: ["morto"],
+      etapaIds: ["morto"],
       etiquetaIds: ["t1", "morto"],
     };
     expect(limparOrfaos(f, CAT)).toEqual({
@@ -412,7 +429,8 @@ describe("limparOrfaos", () => {
       ...FILTROS_VAZIOS,
       canalIds: ["c1"],
       responsavelId: "u1",
-      etapaId: "e1",
+      funilIds: ["p1"],
+      etapaIds: ["e1"],
       etiquetaIds: ["t1"],
     };
     const vazio: CatalogosDoFiltro = {
@@ -426,8 +444,12 @@ describe("limparOrfaos", () => {
   });
 
   it("os sentinelas sobrevivem — não são ids", () => {
-    const f = { ...FILTROS_VAZIOS, etapaId: SEM_ETAPA, responsavelId: SEM_RESPONSAVEL };
+    const f = { ...FILTROS_VAZIOS, etapaIds: [SEM_ETAPA], responsavelId: SEM_RESPONSAVEL };
     expect(limparOrfaos(f, CAT)).toEqual(f);
+    // E ao lado de uma etapa morta, só a morta sai.
+    expect(
+      limparOrfaos({ ...FILTROS_VAZIOS, etapaIds: [SEM_ETAPA, "morta", "e1"] }, CAT).etapaIds,
+    ).toEqual([SEM_ETAPA, "e1"]);
   });
 
   it("empresa sobrevive mesmo sem conversa daquela empresa agora", () => {
@@ -466,8 +488,8 @@ const AMOSTRAS: Record<keyof FiltrosDoInbox, Partial<FiltrosDoInbox> | null> = {
   // também o ignora, de propósito.
   modoDeEtiqueta: null,
   empresa: { empresa: "ACME" },
-  funilId: { funilId: "p1" },
-  etapaId: { etapaId: "e1" },
+  funilIds: { funilIds: ["p1"] },
+  etapaIds: { etapaIds: ["e1"] },
   favoritas: { favoritas: true },
   naoLidas: { naoLidas: true },
   emAtraso: { emAtraso: true },
@@ -504,31 +526,185 @@ describe("funil (dois níveis)", () => {
     ]),
   };
 
-  it("funil e etapa viram DUAS pastilhas, e a etapa perde o prefixo", () => {
-    const p = descreverFiltro({ ...FILTROS_VAZIOS, funilId: "p1", etapaId: "e1" }, DOIS);
+  it("a etapa vai DENTRO do pedaço do funil dela — ela refina só aquele funil", () => {
+    const p = descreverFiltro(
+      { ...FILTROS_VAZIOS, funilIds: ["p1"], etapaIds: ["e1"] },
+      DOIS,
+    );
     expect(p.map((x) => [x.chave, x.rotulo])).toEqual([
-      ["funil", { fonte: "dado", texto: "Comercial" }],
-      // Sem "Comercial · " na frente: o funil já tem pastilha própria, e
-      // repetir estourava os 320px da coluna.
-      ["etapa", { fonte: "dado", texto: "Reunião marcada" }],
+      ["funil:p1", { fonte: "dado", texto: "Comercial (Reunião marcada)" }],
     ]);
   });
 
-  it("tirar o funil tira a etapa junto", () => {
-    const p = descreverFiltro({ ...FILTROS_VAZIOS, funilId: "p1", etapaId: "e1" }, DOIS);
-    expect(p[0].limpar).toEqual({ funilId: null, etapaId: null });
+  it("vários funis: um pedaço por funil, cada um com as etapas DELE", () => {
+    const p = descreverFiltro(
+      { ...FILTROS_VAZIOS, funilIds: ["p1", "p2"], etapaIds: ["e1"] },
+      DOIS,
+    );
+    // "Comercial · Jurídico · Reunião marcada" faria a reunião parecer valer
+    // para os dois funis — e o Jurídico recorta inteiro.
+    expect(p.map((x) => x.rotulo)).toEqual([
+      { fonte: "dado", texto: "Comercial (Reunião marcada)" },
+      { fonte: "dado", texto: "Jurídico" },
+    ]);
   });
 
-  it("com UM funil só, a etapa volta a ser descrita sem prefixo", () => {
-    expect(descreverFiltro({ ...FILTROS_VAZIOS, etapaId: "e1" }, CAT)[0].rotulo).toEqual({
+  it("'Sem negócio' vem primeiro, como no painel, e soma com os funis", () => {
+    const p = descreverFiltro(
+      { ...FILTROS_VAZIOS, funilIds: ["p2"], etapaIds: [SEM_ETAPA] },
+      DOIS,
+    );
+    expect(p.map((x) => x.rotulo)).toEqual([
+      { fonte: "i18n", chave: "stageNone" },
+      { fonte: "dado", texto: "Jurídico" },
+    ]);
+    // Tirar o "Sem negócio" não mexe no funil.
+    expect(p[0].limpar).toEqual({ etapaIds: [] });
+  });
+
+  it("⚠️ etapa SOLTA numa conta de dois níveis (visão antiga) é descrita no funil DERIVADO — como o painel a mostra", () => {
+    const p = descreverFiltro({ ...FILTROS_VAZIOS, etapaIds: ["e2"] }, DOIS);
+    expect(p.map((x) => [x.chave, x.rotulo])).toEqual([
+      ["funil:p2", { fonte: "dado", texto: "Jurídico (Triagem)" }],
+    ]);
+    // Tirar esse pedaço é tirar a etapa — o funil derivado sai sozinho.
+    expect(p[0].limpar).toEqual({ funilIds: [], etapaIds: [] });
+  });
+
+  it("tirar o funil tira as etapas DELE junto, e as dos outros ficam", () => {
+    const p = descreverFiltro(
+      { ...FILTROS_VAZIOS, funilIds: ["p1", "p2"], etapaIds: ["e1", "e2"] },
+      DOIS,
+    );
+    expect(p[0].limpar).toEqual({ funilIds: ["p2"], etapaIds: ["e2"] });
+    expect(p[1].limpar).toEqual({ funilIds: ["p1"], etapaIds: ["e1"] });
+  });
+
+  it("com UM funil só, a etapa volta a ser descrita sozinha e sem prefixo", () => {
+    expect(descreverFiltro({ ...FILTROS_VAZIOS, etapaIds: ["e1"] }, CAT)[0].rotulo).toEqual({
       fonte: "dado",
       texto: "Reunião marcada",
     });
   });
 
-  it("CRÍTICO: funil apagado leva a etapa junto na limpeza", () => {
-    const f = { ...FILTROS_VAZIOS, funilId: "morto", etapaId: "e1" };
+  it("funil sem nome conhecido não engole as etapas: elas seguem com o nome delas", () => {
+    const semNomes: CatalogosDoFiltro = { ...DOIS, funis: new Map([["p2", "Jurídico"]]) };
+    const p = descreverFiltro(
+      { ...FILTROS_VAZIOS, funilIds: ["p1"], etapaIds: ["e1"] },
+      semNomes,
+    );
+    expect(p.map((x) => x.rotulo)).toEqual([
+      { fonte: "i18n", chave: "labelPipeline" },
+      { fonte: "dado", texto: "Reunião marcada" },
+    ]);
+  });
+
+  it("CRÍTICO: funil apagado leva as etapas DELE junto na limpeza — as dos outros funis ficam", () => {
+    // Catálogo com uma etapa "viva" que aponta para o funil apagado: dado
+    // velho de catálogo, não recorte aplicável.
+    const comVelha: CatalogosDoFiltro = {
+      ...DOIS,
+      etapas: [...DOIS.etapas, etapa("ev", "morto", "Velha")],
+    };
+    const f = { ...FILTROS_VAZIOS, funilIds: ["morto", "p2"], etapaIds: ["ev", "e2"] };
+    expect(limparOrfaos(f, comVelha)).toEqual({
+      ...FILTROS_VAZIOS,
+      funilIds: ["p2"],
+      etapaIds: ["e2"],
+    });
+  });
+
+  it("CRÍTICO: visão ANTIGA com funil apagado — a etapa dele morreu junto (cascata) e o recorte some", () => {
+    const f = lerFiltroSalvo({ funilId: "morto", etapaId: "etapa-do-morto" });
     expect(limparOrfaos(f, DOIS)).toEqual(FILTROS_VAZIOS);
+  });
+});
+
+// ============================================================
+// ⚠️ As visões salvas ANTIGAS (um funil e uma etapa, até 29/09/2026).
+//
+// Estão no banco de cada membro — as "Bancário"/"Trabalhista" foram copiadas
+// aos 12 — e nenhuma migration as converte: `lerFiltroSalvo` traduz na
+// leitura, e o recorte tem de responder EXATAMENTE como respondia.
+// ============================================================
+
+describe("visões salvas ANTIGAS (funilId/etapaId) continuam recortando igual", () => {
+  // e1 e e3 são do p1; e2 do p2. ct1 em e1; ct2 em e2 e e3; ct9 sem negócio.
+  const etapaPorContato = new Map([
+    ["ct1", new Set(["e1"])],
+    ["ct2", new Set(["e2", "e3"])],
+  ]);
+  const funilPorEtapa = new Map([
+    ["e1", "p1"],
+    ["e2", "p2"],
+    ["e3", "p1"],
+  ]);
+  const quemCasa = (bruto: unknown) =>
+    ["ct1", "ct2", "ct9"].filter((id) =>
+      casaComAEtapa(
+        { id: "c", contact_id: id } as Conversation,
+        lerFiltroSalvo(bruto),
+        etapaPorContato,
+        funilPorEtapa,
+      ),
+    );
+
+  it("o JSON antigo vira lista de um, sem perder nada", () => {
+    expect(lerFiltroSalvo({ funilId: "p1", etapaId: "e1" })).toEqual({
+      ...FILTROS_VAZIOS,
+      funilIds: ["p1"],
+      etapaIds: ["e1"],
+    });
+    expect(lerFiltroSalvo({ etapaId: SEM_ETAPA }).etapaIds).toEqual([SEM_ETAPA]);
+    // Sem o campo, sem recorte — como antes.
+    expect(lerFiltroSalvo({ funilId: null, etapaId: null })).toEqual(FILTROS_VAZIOS);
+  });
+
+  it("só a etapa: quem tem negócio nela", () => {
+    expect(quemCasa({ funilId: null, etapaId: "e1" })).toEqual(["ct1"]);
+  });
+
+  it("só o funil: quem tem negócio em QUALQUER etapa dele", () => {
+    expect(quemCasa({ funilId: "p1", etapaId: null })).toEqual(["ct1", "ct2"]);
+    expect(quemCasa({ funilId: "p2" })).toEqual(["ct2"]);
+  });
+
+  it("funil com etapa dele: só a etapa (ela refina o funil)", () => {
+    expect(quemCasa({ funilId: "p1", etapaId: "e3" })).toEqual(["ct2"]);
+  });
+
+  it("'Sem negócio': só quem não tem negócio nenhum", () => {
+    expect(quemCasa({ funilId: null, etapaId: SEM_ETAPA })).toEqual(["ct9"]);
+  });
+
+  it("nenhum dos dois: não recorta", () => {
+    expect(quemCasa({ funilId: null, etapaId: null })).toEqual(["ct1", "ct2", "ct9"]);
+  });
+});
+
+describe("funilIds/etapaIds — vários funis e etapas num filtro (29/09)", () => {
+  it("a lista nova vence o valor antigo quando os dois vêm; lixo vira sem recorte", () => {
+    expect(lerFiltroSalvo({ funilId: "p9", funilIds: ["p1", "p2"] }).funilIds).toEqual([
+      "p1",
+      "p2",
+    ]);
+    expect(lerFiltroSalvo({ etapaId: "e9", etapaIds: ["e1"] }).etapaIds).toEqual(["e1"]);
+    // Lista vazia ou de lixo cai para o antigo, que é o que há de legível.
+    expect(lerFiltroSalvo({ etapaId: "e9", etapaIds: [] }).etapaIds).toEqual(["e9"]);
+    for (const lixo of ["p1", 42, { a: 1 }, [null, 3, ""], true]) {
+      expect(lerFiltroSalvo({ funilIds: lixo, etapaIds: lixo })).toEqual(FILTROS_VAZIOS);
+    }
+    // Sem repetição, aparado.
+    expect(lerFiltroSalvo({ etapaIds: ["e1", " e1 ", "e2"] }).etapaIds).toEqual(["e1", "e2"]);
+  });
+
+  it("mesmoFiltro compara funis e etapas como CONJUNTO", () => {
+    const a = { ...FILTROS_VAZIOS, funilIds: ["p1", "p2"], etapaIds: ["e1", SEM_ETAPA] };
+    expect(
+      mesmoFiltro(a, { ...a, funilIds: ["p2", "p1"], etapaIds: [SEM_ETAPA, "e1"] }),
+    ).toBe(true);
+    expect(mesmoFiltro(a, { ...a, funilIds: ["p1"] })).toBe(false);
+    expect(mesmoFiltro(a, { ...a, etapaIds: ["e1"] })).toBe(false);
   });
 });
 

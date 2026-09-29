@@ -126,6 +126,8 @@ const h = vi.hoisted(() => ({
     // (com a definição embutida) — é por eles que a interpolação de
     // `{{contact.campo.*}}` passa.
     customValues: [] as Record<string, unknown>[],
+    /** Preenchido, a leitura dos valores do contato (`contact_custom_values`, lista) devolve este erro. */
+    erroNosValoresDoContato: null as string | null,
     // A guarda de `fecharLog` (985) pergunta se sobrou espera VIVA deste log.
     // Vazio = nenhuma, que é o caso da maioria dos testes.
     esperasVivas: [] as Record<string, unknown>[],
@@ -247,6 +249,9 @@ vi.mock('./admin-client', () => {
       if (type === 'upsert') {
         state.upsertCalls.push({ table, payload: ops.payload });
         return { data: null, error: null };
+      }
+      if (state.erroNosValoresDoContato) {
+        return { data: null, error: { message: state.erroNosValoresDoContato } };
       }
       return { data: state.customValues, error: null };
     }
@@ -592,7 +597,10 @@ import {
   runAutomationsForTrigger,
   triggerMatches,
   runAutomationById,
+  valorDaVariavel,
+  valoresParaPrevia,
 } from './engine';
+import { classificarCodigo, CODIGOS_DO_CLIENTE, VARIAVEIS_FIXAS } from './variaveis/catalogo';
 import {
   engineSendText,
   engineSendTemplate,
@@ -640,6 +648,7 @@ beforeEach(() => {
   h.state.taskInserts = [];
   h.state.notifInserts = [];
   h.state.customValues = [];
+  h.state.erroNosValoresDoContato = null;
   h.state.esperasVivas = [];
   h.state.erroNaFila = null;
   h.state.erroNoNegocio = null;
@@ -5549,5 +5558,142 @@ describe('salvar a automação com uma espera parada num ramo (26/09/2026)', () 
     expect(
       (h.state.esperasEnfileiradas[0].context as Record<string, unknown>)._passo_da_fila
     ).toEqual({ id: ESPERA, pos: 0 });
+  });
+});
+
+// ------------------------------------------------------------
+// O seletor de variáveis do construtor (29/09/2026). A etiqueta e a prévia
+// só dizem a verdade se seguirem o MOTOR: `classificarCodigo` é o espelho de
+// `valorDaVariavel`, e `valoresParaPrevia` passa pelas mesmas funções do
+// envio — e só LÊ.
+// ------------------------------------------------------------
+
+describe('seletor de variáveis — o espelho do motor', () => {
+  const args = {
+    automation: { account_id: ACCOUNT } as Automation,
+    contactId: 'c1',
+    context: { message_text: 'oi', vars: { a: 'va' }, channel_id: 'ch1' },
+    parentStepId: null,
+    branch: null,
+    startPosition: 0,
+    logId: null,
+    triggerEvent: 't',
+  } as unknown as Parameters<typeof valorDaVariavel>[1];
+  const dados = {
+    contato: { name: 'N', phone: 'P', email: 'E', company: 'C' },
+    campos: { k: 'vk', nome_da_campanha: 'Camp' },
+    camposCru: { k: 'vk', nome_da_campanha: 'Camp' },
+    conversationId: 'conv1',
+  };
+  const negocio = { value: 10, created_at: '2026-01-01T00:00:00Z' };
+
+  it('o que o seletor chama de vazio o motor deixa em branco; o resto ele preenche', () => {
+    const codigos = [
+      ...VARIAVEIS_FIXAS.map((v) => v.codigo),
+      'contact.campo.k',
+      'vars.a',
+      'vars.a.b',
+      'contact.name.extra',
+      '1',
+      'foo',
+      'contact.foo',
+      'deal.title',
+      'now.x',
+      'vars',
+      'channel.nome',
+      'conversation.id',
+      'message.x',
+    ];
+    for (const codigo of codigos) {
+      const valor = valorDaVariavel(codigo, args, dados, negocio, {});
+      if (classificarCodigo(codigo).tipo === 'vazio') expect(valor, codigo).toBe('');
+      else expect(valor, codigo).not.toBe('');
+    }
+  });
+});
+
+describe('valoresParaPrevia — a prévia usa as funções do envio e só lê', () => {
+  beforeEach(() => vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'https://crm.exemplo.com/'));
+
+  it('os dois modos, pelas mesmas regras, e os campos preenchidos do contato', async () => {
+    h.state.owned = {
+      id: 'c1',
+      name: 'Marcelo',
+      phone: '5596990000016',
+      email: 'm@x.com',
+      company: null,
+    } as unknown as { id: string };
+    h.state.dealPorStatus = {
+      open: { id: 'd9', value: 3500.5, created_at: '2025-07-09T19:25:00Z' } as unknown as { id: string },
+      won: null,
+      lost: null,
+    };
+    h.state.customValues = [
+      {
+        value: '2026-08-30T19:00:00.000Z',
+        custom_fields: { field_key: 'data_e_hora_reuniao', field_type: 'datetime', account_id: ACCOUNT },
+      },
+      // Campo de OUTRA conta nunca entra.
+      { value: 'alheio', custom_fields: { field_key: 'segredo', field_type: 'text', account_id: 'outra' } },
+    ];
+
+    const v = await valoresParaPrevia({ accountId: ACCOUNT, contactId: 'c1', codigos: CODIGOS_DO_CLIENTE });
+
+    expect(v['contact.name']).toEqual({ mensagem: 'Marcelo', cru: 'Marcelo' });
+    expect(v['contact.company']).toEqual({ mensagem: '', cru: '' });
+    expect(v['deal.value']).toEqual({ mensagem: 'R$ 3.500,50', cru: '3500.5' });
+    expect(v['deal.created_at']).toEqual({ mensagem: '09/07/2025 às 16:25h', cru: '2025-07-09T19:25:00.000Z' });
+    expect(v['contact.campo.data_e_hora_reuniao']).toEqual({
+      mensagem: '30/08/2026 às 16:00h',
+      cru: '2026-08-30T19:00:00.000Z',
+    });
+    expect(v['contact.campo.segredo']).toBeUndefined();
+    expect(v['contact.link'].mensagem).toBe('https://crm.exemplo.com/contacts?contact=c1');
+    // Nada do evento: a prévia não inventa texto de mensagem nem conexão.
+    expect(v['message.text']).toBeUndefined();
+    expect(v['channel.id']).toBeUndefined();
+  });
+
+  it('não escreve NADA no banco', async () => {
+    h.state.esperasEnfileiradas = [];
+    h.state.owned = { id: 'c1', name: 'Marcelo' } as unknown as { id: string };
+    await valoresParaPrevia({ accountId: ACCOUNT, contactId: 'c1', codigos: CODIGOS_DO_CLIENTE });
+    expect(h.state.updateCalls).toEqual([]);
+    expect(h.state.upsertCalls).toEqual([]);
+    expect(h.state.logInserts).toEqual([]);
+    expect(h.state.dealInserts).toEqual([]);
+    expect(h.state.taskInserts).toEqual([]);
+    expect(h.state.esperasEnfileiradas).toEqual([]);
+  });
+
+  it('leitura dos campos que FALHA lança — nunca "vazio" sobre campo que tem valor', async () => {
+    h.state.owned = { id: 'c1', name: 'Marcelo' } as unknown as { id: string };
+    h.state.erroNosValoresDoContato = 'fora do ar';
+    await expect(
+      valoresParaPrevia({ accountId: ACCOUNT, contactId: 'c1', codigos: CODIGOS_DO_CLIENTE })
+    ).rejects.toThrow(/leitura do contato falhou/);
+  });
+
+  it('leitura do negócio que FALHA lança na prévia (no envio, segue vazia)', async () => {
+    h.state.owned = { id: 'c1', name: 'Marcelo' } as unknown as { id: string };
+    h.state.erroNoNegocio = 'fora do ar';
+    await expect(
+      valoresParaPrevia({ accountId: ACCOUNT, contactId: 'c1', codigos: CODIGOS_DO_CLIENTE })
+    ).rejects.toThrow();
+  });
+
+  it('o ENVIO continua tratando a falha dos campos como vazio: o passo segue', async () => {
+    vi.mocked(engineSendText).mockClear();
+    h.state.owned = { id: 'c1', name: 'Marcelo' } as unknown as { id: string };
+    h.state.erroNosValoresDoContato = 'fora do ar';
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [sendStep({ text: 'Oi {{contact.name}} [{{contact.campo.x}}]' })];
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: { conversation_id: 'conv1' },
+    });
+    expect(vi.mocked(engineSendText).mock.calls[0]?.[0]?.text).toBe('Oi Marcelo []');
   });
 });
