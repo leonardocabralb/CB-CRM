@@ -148,7 +148,7 @@ Troca de LENTE no navegador, e só nele (`simulacao.ts`, o override no
   administradores, como o e-mail, e com barreira no banco (RLS de
   `cb_celulares_dos_membros`). As regras estão em `meu-dia.md`.
 
-### Membro SUSPENSO (1062)
+### Membro SUSPENSO (1064)
 Configurações → Membros → Suspender/Reativar (pedido do operador, 29/09/2026).
 `profiles.suspenso_em`/`suspenso_por`, a RPC `cb_definir_suspensao` (a régua
 do remover: admin+, nunca o dono, nunca a si mesmo), a rota

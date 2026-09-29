@@ -119,9 +119,9 @@ describe('fraseDaEscolha — o que o histórico da automação diz', () => {
   })
 })
 
-// 1062: membro SUSPENSO continua na conta, mas não recebe tarefa nova — ela
+// 1064: membro SUSPENSO continua na conta, mas não recebe tarefa nova — ela
 // cai na reserva, e o registro diz "suspenso", nunca "saiu da conta".
-describe('escolherResponsavel — membro suspenso (1062)', () => {
+describe('escolherResponsavel — membro suspenso (1064)', () => {
   const suspensos = new Set(['cris'])
   const podeReceber = (id: string) => (membros.has(id) || suspensos.has(id)) && !suspensos.has(id)
   const ehSuspenso = (id: string) => suspensos.has(id)

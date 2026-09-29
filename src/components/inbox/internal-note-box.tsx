@@ -85,7 +85,7 @@ export function InternalNoteBox({
     let vivo = true;
     void fetchAccountMembers().then((lista) => {
       if (!vivo) return;
-      // 1062: quem está suspenso não lê anotação — mencioná-lo não chega.
+      // 1064: quem está suspenso não lê anotação — mencioná-lo não chega.
       setMembros(
         membrosAtivos(lista).map((m) => ({ user_id: m.user_id, rotulo: memberLabel(m) }))
       );

@@ -30,7 +30,7 @@ export function AccountAccessAlert() {
   const t = useTranslations("AccountAccess");
   const [retrying, setRetrying] = useState(false);
 
-  // `suspenso` (1062) tem tela própria, que a casca põe no lugar do app.
+  // `suspenso` (1064) tem tela própria, que a casca põe no lugar do app.
   if (
     accountStatus === "loading" ||
     accountStatus === "ready" ||

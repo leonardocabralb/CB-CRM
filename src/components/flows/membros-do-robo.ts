@@ -32,7 +32,7 @@ export interface MembroDoRobo {
   userId: string;
   /** Nome, senão e-mail; vazio = a tela escreve "membro sem nome". */
   nome: string;
-  /** 1062: presente (e `true`) só para quem está com o acesso suspenso. */
+  /** 1064: presente (e `true`) só para quem está com o acesso suspenso. */
   suspenso?: true;
 }
 

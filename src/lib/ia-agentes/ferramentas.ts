@@ -473,7 +473,7 @@ export async function opcoesDoAgente(
     membros.length > 0 &&
       tentar('membros', async () => {
         const linhas = lista<{ user_id: string; full_name: unknown; email: unknown }>(
-          // 1062: quem está suspenso não recebe tarefa nova da IA.
+          // 1064: quem está suspenso não recebe tarefa nova da IA.
           await db
             .from('profiles')
             .select('user_id, full_name, email')

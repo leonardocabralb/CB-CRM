@@ -1716,14 +1716,14 @@ async function runStep(
           .from('profiles')
           .select('user_id')
           .eq('account_id', args.automation.account_id)
-          // 1062: quem está suspenso não recebe conversa nova.
+          // 1064: quem está suspenso não recebe conversa nova.
           .is('suspenso_em', null)
           .limit(1);
         agentId = profiles?.[0]?.user_id;
       }
       if (!agentId) return 'no agent resolved';
 
-      // 1062: o atendente FIXO que está suspenso não recebe conversa nova — ela
+      // 1064: o atendente FIXO que está suspenso não recebe conversa nova — ela
       // fica na fila (sem responsável), como no nó "Transferir" do robô. Só a
       // suspensão CONFIRMADA barra: leitura que falha segue como antes.
       if (cfg.mode !== 'round_robin') {
@@ -2483,7 +2483,7 @@ async function runStep(
         dinamico: atribuido.userId,
         alvoExiste: atribuido.existe,
         fixo: cfg.responsavel_user_id ?? null,
-        // 1062: quem está suspenso é membro, mas não recebe tarefa nova — ela
+        // 1064: quem está suspenso é membro, mas não recebe tarefa nova — ela
         // cai na reserva, e o registro diz por quê.
         ehMembro: (id) => membros.some((p) => p.user_id === id && !p.suspenso_em),
         ehSuspenso: (id) =>

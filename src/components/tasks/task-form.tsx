@@ -95,7 +95,7 @@ export function TaskForm({
   const [titulo, setTitulo] = useState('');
   const [descricao, setDescricao] = useState('');
   const [responsavel, setResponsavel] = useState('');
-  // 1062: quem está suspenso não recebe tarefa nova. O responsável ATUAL (na
+  // 1064: quem está suspenso não recebe tarefa nova. O responsável ATUAL (na
   // edição) continua nas opções, senão o seletor mostraria o id cru.
   const opcoesDeMembro = opcoesDeResponsavel(membros, (m) => m.user_id === responsavel);
   const quantosAtivos = membrosAtivos(membros).length;

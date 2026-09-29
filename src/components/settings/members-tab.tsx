@@ -5,7 +5,7 @@
 //
 // Two stacked sections:
 //   1. Roster   — every member of the account. Admin+ can change a
-//                 teammate's role inline, suspend/reactivate them (1062)
+//                 teammate's role inline, suspend/reactivate them (1064)
 //                 and remove them. Owner row
 //                 is non-editable everywhere (transfer is its own
 //                 separate flow, deferred to a later PR).
@@ -93,7 +93,7 @@ interface Member {
   joined_at: string;
   /** 1046: ausente = quem olha não vê; `null` = o membro ainda não informou. */
   celular?: string | null;
-  /** 1062: desde quando está suspenso; `null`/ausente = ativo. */
+  /** 1064: desde quando está suspenso; `null`/ausente = ativo. */
   suspenso_em?: string | null;
   suspenso_por_nome?: string | null;
 }
@@ -157,7 +157,7 @@ export function MembersTab() {
 
   const [inviteOpen, setInviteOpen] = useState(false);
   const [removingMember, setRemovingMember] = useState<Member | null>(null);
-  // 1062: quem está na caixa de "suspender", e quantas conversas abertas estão
+  // 1064: quem está na caixa de "suspender", e quantas conversas abertas estão
   // com a pessoa (null = contando ou a contagem falhou — aí a frase some).
   const [suspendingMember, setSuspendingMember] = useState<Member | null>(null);
   const [conversasAbertas, setConversasAbertas] = useState<{
@@ -328,7 +328,7 @@ export function MembersTab() {
     }
   }
 
-  // 1062: abre a caixa de suspender e conta as conversas abertas que
+  // 1064: abre a caixa de suspender e conta as conversas abertas que
   // continuam com a pessoa. A contagem é carimbada com o dono (`de`): a
   // resposta atrasada de outra pessoa não aparece na caixa errada.
   async function abrirSuspensao(member: Member) {
@@ -565,7 +565,7 @@ export function MembersTab() {
                     </div>
                   </div>
 
-                  {/* Situação (1062) — a coluna que o operador pediu. Em
+                  {/* Situação (1064) — a coluna que o operador pediu. Em
                       toda linha, inclusive a do dono, para a coluna não
                       "pular": o dono nunca é suspenso, e diz Ativo. */}
                   <div className="flex shrink-0 flex-col items-start gap-0.5 sm:w-32 sm:items-center">
@@ -675,7 +675,7 @@ export function MembersTab() {
                       </span>
                     )}
 
-                    {/* Suspender / reativar (1062). A régua do remover:
+                    {/* Suspender / reativar (1064). A régua do remover:
                         admin+, nunca o dono, nunca a si mesmo. Suspender
                         pede confirmação; reativar é um clique. */}
                     {canManageMembers && !isOwnerRow && !isSelf &&

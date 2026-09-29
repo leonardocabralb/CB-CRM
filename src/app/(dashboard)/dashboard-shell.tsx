@@ -106,7 +106,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
 
   if (!user) return null;
 
-  // Acesso SUSPENSO (1062): o aviso no lugar do app inteiro — nem a exigência
+  // Acesso SUSPENSO (1064): o aviso no lugar do app inteiro — nem a exigência
   // do celular, nem a porta de entrada, nem o batimento de presença montam.
   // O banco já recusa tudo a esta pessoa; a tela só diz por quê.
   if (accountStatus === 'suspenso') {

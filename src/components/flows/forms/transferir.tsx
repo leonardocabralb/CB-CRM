@@ -96,7 +96,7 @@ export function CamposDoTransferir({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={NINGUEM}>{t("handoffAssignNobody")}</SelectItem>
-            {/* 1062: suspenso sai das opções, menos o já escolhido — que
+            {/* 1064: suspenso sai das opções, menos o já escolhido — que
                 aparece marcado (o robô o trata como fora da equipe). */}
             {membros
               .filter((m) => !m.suspenso || m.userId === escolhido)

@@ -1130,7 +1130,7 @@ describe('transferirParaGente', () => {
     expect(notas()).toHaveLength(0)
   })
 
-  it('1062: destino SUSPENSO não recebe a conversa — ela fica na fila, pausada e anotada', async () => {
+  it('1064: destino SUSPENSO não recebe a conversa — ela fica na fila, pausada e anotada', async () => {
     banco.tabelas.profiles = [{ id: 'perfil-1', user_id: MEMBRO, account_id: CONTA, suspenso_em: '2026-09-29T12:00:00Z' }]
     await expect(transferirParaGente(banco as never, args)).resolves.toBe('transferiu')
     expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'transferencia' })

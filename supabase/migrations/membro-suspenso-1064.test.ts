@@ -5,7 +5,7 @@ import path from 'node:path';
 import { RECUSA_DE_SUSPENSO } from '../../src/lib/account/suspensao';
 
 // ============================================================
-// 1062 — membro SUSPENSO. O corte mora no banco; este pino segura as peças
+// 1064 — membro SUSPENSO. O corte mora no banco; este pino segura as peças
 // que um merge ou uma migration nova derrubariam em silêncio:
 //
 // 1. A ÚLTIMA definição de cada função que decide "é membro?" confere
@@ -17,15 +17,15 @@ import { RECUSA_DE_SUSPENSO } from '../../src/lib/account/suspensao';
 //    reprova até conferir `suspenso_em` ou entrar na lista abaixo, com o
 //    motivo escrito.
 // 3. As policies que escondem a própria linha e os avisos continuam na forma
-//    da 1062 no fim do replay.
+//    da 1064 no fim do replay.
 // 4. A mensagem `membro_suspenso` é contrato com o batimento de presença.
 //
 // LIMITE DECLARADO: lê os `.sql`. Função criada por `EXECUTE` dentro de um DO
-// é invisível aqui — a conferência da própria 1062 confere o catálogo.
+// é invisível aqui — a conferência da própria 1064 confere o catálogo.
 // ============================================================
 
 const DIR = __dirname;
-const SQL_1062 = fs.readFileSync(path.join(DIR, '1062_cb_membro_suspenso.sql'), 'utf8');
+const SQL_1064 = fs.readFileSync(path.join(DIR, '1064_cb_membro_suspenso.sql'), 'utf8');
 
 type Definicao = { arquivo: string; texto: string };
 
@@ -80,7 +80,7 @@ const SEM_CONFERIR_A_SUSPENSAO: Record<string, string> = {
   notify_conversation_assigned: 'gatilho: grava o aviso para quem RECEBE a conversa; não decide acesso de ninguém',
 };
 
-describe('1062 — membro suspenso', () => {
+describe('1064 — membro suspenso', () => {
   const vivas = ultimasDefinicoes();
 
   it('as funções que decidem "é membro?" conferem a suspensão na ÚLTIMA definição', () => {
@@ -137,10 +137,10 @@ describe('1062 — membro suspenso', () => {
     expect(vivas.get('touch_presence')!.arquivo).not.toBe('0024_member_presence.sql');
   });
 
-  it('a própria linha e os avisos: as policies ficam na forma da 1062', () => {
+  it('a própria linha e os avisos: as policies ficam na forma da 1064', () => {
     const alter = (politica: string) => {
-      const m = SQL_1062.match(new RegExp(`ALTER\\s+POLICY\\s+${politica}\\s+ON[^;]*;`, 'i'));
-      expect(m, `${politica} não é alterada pela 1062`).not.toBeNull();
+      const m = SQL_1064.match(new RegExp(`ALTER\\s+POLICY\\s+${politica}\\s+ON[^;]*;`, 'i'));
+      expect(m, `${politica} não é alterada pela 1064`).not.toBeNull();
       return m![0];
     };
     expect(alter('profiles_select')).toMatch(/user_id\s+AND\s+suspenso_em\s+IS\s+NULL/i);
@@ -149,10 +149,10 @@ describe('1062 — membro suspenso', () => {
       expect(alter(p)).toMatch(/=\s*ANY\s*\(\s*ARRAY\s*\(\s*SELECT\s+public\.cb_contas_do_usuario\(\)\s*\)\s*\)/i);
     }
 
-    // Nenhuma migration POSTERIOR à 1062 mexe nelas sem manter o corte.
+    // Nenhuma migration POSTERIOR à 1064 mexe nelas sem manter o corte.
     const depois = fs
       .readdirSync(DIR)
-      .filter((f) => f.endsWith('.sql') && f > '1062_cb_membro_suspenso.sql');
+      .filter((f) => f.endsWith('.sql') && f > '1064_cb_membro_suspenso.sql');
     for (const arquivo of depois) {
       const sql = fs.readFileSync(path.join(DIR, arquivo), 'utf8');
       for (const m of sql.matchAll(/(?:ALTER|CREATE)\s+POLICY\s+(profiles_select|profiles_update|notifications_select|notifications_update)\s+ON[^;]*;/gi)) {
@@ -164,18 +164,18 @@ describe('1062 — membro suspenso', () => {
 
   it('a recusa `membro_suspenso` é a mesma mensagem que o navegador reconhece', () => {
     expect(RECUSA_DE_SUSPENSO).toBe('membro_suspenso');
-    const recusas = [...SQL_1062.matchAll(/RAISE\s+EXCEPTION\s+'(membro_suspenso)'\s+USING\s+ERRCODE\s*=\s*'42501'/g)];
+    const recusas = [...SQL_1064.matchAll(/RAISE\s+EXCEPTION\s+'(membro_suspenso)'\s+USING\s+ERRCODE\s*=\s*'42501'/g)];
     // touch_presence, cb_marcar_conversa_aberta, set_member_role,
     // remove_account_member e cb_definir_suspensao.
     expect(recusas).toHaveLength(5);
   });
 
   it('a migration trava antes de mexer em profiles, e a conferência desfaz a prova pelo SQLSTATE próprio', () => {
-    const trava = SQL_1062.search(/SET\s+LOCAL\s+lock_timeout/i);
+    const trava = SQL_1064.search(/SET\s+LOCAL\s+lock_timeout/i);
     expect(trava).toBeGreaterThanOrEqual(0);
-    expect(trava).toBeLessThan(SQL_1062.search(/ALTER\s+TABLE\s+public\.profiles/i));
-    const semComentarios = SQL_1062.replace(/--[^\n]*/g, '');
-    expect(semComentarios).toMatch(/WHEN\s+SQLSTATE\s+'P1062'\s+THEN\s+NULL/);
+    expect(trava).toBeLessThan(SQL_1064.search(/ALTER\s+TABLE\s+public\.profiles/i));
+    const semComentarios = SQL_1064.replace(/--[^\n]*/g, '');
+    expect(semComentarios).toMatch(/WHEN\s+SQLSTATE\s+'P1064'\s+THEN\s+NULL/);
     expect(semComentarios).not.toMatch(/WHEN\s+OTHERS/i);
   });
 });

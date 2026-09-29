@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ============================================================
-// A rota de suspender/reativar (1062) só repassa à RPC e traduz o SQLSTATE.
+// A rota de suspender/reativar (1064) só repassa à RPC e traduz o SQLSTATE.
 // Quem decide quem pode suspender quem é o banco (`cb_definir_suspensao`);
 // aqui se cobra que a rota não invente regra nem engula o erro dele.
 // ============================================================

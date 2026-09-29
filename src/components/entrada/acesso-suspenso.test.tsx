@@ -9,7 +9,7 @@ vi.mock('@/lib/supabase/client', () => ({ createClient: () => ({ auth: {} }) }))
 import { AcessoSuspenso } from './acesso-suspenso';
 
 // ============================================================
-// A tela de quem teve o acesso suspenso (1062). Ela substitui o app inteiro e
+// A tela de quem teve o acesso suspenso (1064). Ela substitui o app inteiro e
 // só aparece a quem está suspenso — o navegador de teste não chega nela sem
 // entrar como alguém suspenso, então o desenho é conferido aqui, com o
 // dicionário de verdade.
