@@ -1050,6 +1050,25 @@ nome da época em que foram aplicadas.
   UPDATE depois da coluna nova — `cb_tasks` não tem lista, conferido). Conferida
   no catálogo: `timestamp with time zone`, 1 com vista, nenhuma lida sem vista,
   publicação sem lista.
+- **1069_cb_contatos_relacionados** — `cb_contatos_relacionados`, o vínculo
+  entre duas fichas da mesma conta (aba "Relacionados" do painel da conversa e
+  da ficha, PR #352): uma linha vale para os dois lados; índice único sobre
+  `LEAST/GREATEST` (o par em qualquer ordem); CHECK contra a ficha ligada a si
+  mesma e da descrição (aparada, até 80); FKs COMPOSTAS `(contato, account_id)`
+  com CASCADE; leitura na forma da 1032, escrita `agent`, nada para `anon`.
+  ADITIVA e ANTES do deploy (o app antigo não sabe da tabela). Aplicada em
+  29/09/2026 pela Management API (histórico `20260929191304`), depois do replay
+  verde do CI no commit `d91fd8ae` (o SQL é byte a byte o do HEAD que entrou,
+  mesmo sha256) e ANTES do merge, com autorização do operador. Provada num
+  Postgres 16 descartável (banco vazio, duas aplicações, 6 cenários, e a
+  própria migration reprova sem o índice do par). Conferida no catálogo: zero
+  linhas (a prova do par invertido rodou com fichas reais e se desfez), as
+  duas FKs CASCADE, a autoria SET NULL, as 4 policies, `anon` sem leitura; o
+  assessor de segurança não aponta nada nela. E2E no preview com duas fichas
+  de TESTE de número fictício (vincular com descrição, par repetido barrado,
+  "Conversar" preenchido e cancelado, pulo e faixa de volta, editar pelo outro
+  lado, ficha de /contatos, desvincular); a limpeza apagou as fichas e o
+  CASCADE levou o vínculo restante — a tabela ficou vazia.
 
 ## Notas do histórico
 

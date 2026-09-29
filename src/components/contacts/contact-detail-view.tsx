@@ -38,6 +38,8 @@ import { ReunioesTranscritasDoContato } from '@/components/transcricoes/reunioes
 import { AbaCobrancas } from '@/components/inbox/painel/aba-cobrancas';
 import { TextoComLinks } from '@/components/inbox/texto-com-links';
 import { useCobrancasDoContato } from '@/hooks/use-cobrancas-do-contato';
+import { ContatosRelacionados } from '@/components/contacts/contatos-relacionados';
+import { useContatosRelacionados } from '@/hooks/use-contatos-relacionados';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -97,7 +99,7 @@ export function ContactDetailView({
   const supabase = createClient();
   // `accountId` saiu com o insert direto: a anotação agora nasce na rota,
   // que resolve a conta no servidor a partir da sessão.
-  const { acesso } = useAuth();
+  const { acesso, accountId } = useAuth();
 
   const [contact, setContact] = useState<Contact | null>(null);
   const [loading, setLoading] = useState(false);
@@ -106,6 +108,9 @@ export function ContactDetailView({
   // Só busca com a ficha aberta: fechada, `contactId` é o do último aberto
   // e uma leitura ali seria tráfego para ninguém.
   const cobrancas = useCobrancasDoContato(open ? contactId : null);
+  // Contatos relacionados (1069) — a MESMA aba do painel da conversa. Aqui o
+  // nome vira link para a conversa na caixa de entrada.
+  const relacionados = useContatosRelacionados(open ? contactId : null);
 
   // Send template — lets the business initiate (or re-open) a conversation
   // with this contact by sending an approved template. The send route
@@ -822,6 +827,12 @@ export function ContactDetailView({
                   </TabsTrigger>
                 )}
                 <TabsTrigger
+                  value="related"
+                  className="data-active:bg-muted data-active:text-primary text-muted-foreground"
+                >
+                  {t('tabs.related')}
+                </TabsTrigger>
+                <TabsTrigger
                   value="history"
                   className="data-active:bg-muted data-active:text-primary text-muted-foreground"
                 >
@@ -1149,6 +1160,24 @@ export function ContactDetailView({
                   falhou={cobrancas.falhou}
                   recarregar={cobrancas.recarregar}
                 />
+              </TabsContent>
+
+              {/* Relacionados (1069): o mesmo componente do painel da conversa.
+                  Sem `onAbrirConversa`, o nome vira link para `/inbox?c=`; sem
+                  `onConversar`, o contato sem conversa só diz "Sem conversa"
+                  (a "Nova conversa" mora na caixa de entrada). */}
+              <TabsContent value="related" className="flex-1 overflow-y-auto px-4 py-3">
+                {/* O MESMO `contactId` do hook: a aba e o "Vincular" falam
+                    sempre da ficha cujos vínculos estão na tela. */}
+                {contactId ? (
+                  <ContatosRelacionados
+                    key={contactId}
+                    contactId={contactId}
+                    accountId={accountId}
+                    relacionados={relacionados}
+                    podeEditar={podeEditar}
+                  />
+                ) : null}
               </TabsContent>
 
               <TabsContent value="history" className="flex-1 overflow-y-auto px-4 py-3">

@@ -24,6 +24,8 @@ import { conversaNoEscopo } from "@/lib/perfis/escopo";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { VoltarAoFunil } from "@/components/inbox/voltar-ao-funil";
 import { VoltarAsReunioes } from "@/components/inbox/voltar-as-reunioes";
+import { VoltarParaConversa } from "@/components/inbox/voltar-para-conversa";
+import { nomeDoContato } from "@/lib/contacts/identidade";
 import { avisarExecucoesMudaram } from "@/lib/execucoes/aviso";
 import {
   EVENTO_ABRIR_CONVERSA,
@@ -297,6 +299,23 @@ function InboxPageInner() {
    * A ref não corre contra nada. (Achado do Codex na revisão do PR #79.)
    */
   const conversaRecemAbertaRef = useRef<string | null>(null);
+  /**
+   * A faixa "Voltar para <nome>" (1069): o operador pulou da conversa
+   * `conversaId` para a `naConversa` pela aba Relacionados do painel.
+   *
+   * ⚠️ A faixa só aparece com `naConversa === activeConversation.id`,
+   * DERIVADO no render: trocar de conversa por qualquer caminho a esconde
+   * sem depender de limpeza em efeito. Os caminhos que trocam de conversa
+   * (clique na lista, fechar, aviso do navegador) ainda a ZERAM, senão voltar
+   * à conversa B mais tarde traria de volta uma faixa velha. Um nível só:
+   * pular de B para C troca a faixa para "Voltar para B" (decisão do
+   * operador, 29/09/2026).
+   */
+  const [voltarPara, setVoltarPara] = useState<{
+    naConversa: string;
+    conversaId: string;
+    nome: string | null;
+  } | null>(null);
   /**
    * A conversa aberta criou um passo no histórico (celular — ver
    * `navegacaoAoAbrir`)? É o que decide se fechar pelo botão DESFAZ o passo
@@ -663,6 +682,11 @@ function InboxPageInner() {
     (conversationId: string) => {
       conversaRecemAbertaRef.current = conversationId;
       setResyncToken((t) => t + 1);
+      // A conversa que ABRE não fica atrás do painel do celular — a mesma
+      // regra do clique na lista. O "Conversar" da aba Relacionados (1069)
+      // pede a Nova conversa com o painel ABERTO sobre o fio, e sem isto a
+      // conversa criada nascia escondida (Codex, PR #352).
+      setPainelMobileAberto(false);
       // Mesma regra do clique na lista (`navegacaoAoAbrir`): no celular, a
       // conversa recém-criada também ganha o passo que o gesto de voltar
       // desfaz.
@@ -761,6 +785,9 @@ function InboxPageInner() {
       // when conversationId changes — so messages would stay empty until
       // the user navigated away and back. Bail out early instead.
       if (activeConversation?.id === conv.id) return;
+      // Escolher outra conversa desfaz a faixa "Voltar para" (1069). Quem
+      // pula pela aba Relacionados passa por aqui e a religa logo depois.
+      setVoltarPara(null);
       const bloqueadaAoSelecionar = !conversaNoEscopo(acesso, conv);
       setActiveConversation(conv);
       setActiveContact(conv.contact ?? null);
@@ -845,6 +872,7 @@ function InboxPageInner() {
     setMessages([]);
     setMessagesDaConversa(null);
     setPainelMobileAberto(false);
+    setVoltarPara(null);
     // Clearing the ref lets the deep-link auto-selector fire again if
     // the user later visits /inbox?c=<same-id> — desirable UX.
     autoSelectedForDeepLinkRef.current = null;
@@ -870,6 +898,47 @@ function InboxPageInner() {
     }
     router.replace(urlDoInbox({ de }), { scroll: false });
   }, [limparConversaAberta, router, de]);
+
+  /**
+   * Abre, pela aba Relacionados do painel (1069), a conversa de outro contato
+   * — e liga a faixa que volta para esta.
+   *
+   * A lista carrega TODAS as conversas da conta (a de qualquer situação e
+   * fora do filtro), então a do relacionado quase sempre já está em
+   * `conversations`: a seleção é a do clique na lista (URL, não lidas,
+   * escopo do perfil, painel do celular fechando). Só a conversa nascida
+   * depois da última carga cai no caminho do "Nova conversa", que recarrega
+   * a lista e a seleciona quando ela chega.
+   */
+  const handleAbrirConversaRelacionada = useCallback(
+    (conversaId: string) => {
+      const origem = activeConversation;
+      if (!origem || origem.id === conversaId) return;
+      const nome = nomeDoContato(activeContact, "") || null;
+      const conv = conversations.find((c) => c.id === conversaId);
+      if (conv) {
+        handleSelectConversation(conv);
+      } else {
+        handleConversaAberta(conversaId);
+      }
+      // DEPOIS da seleção, que zera a faixa: as duas escritas saem no mesmo
+      // lote, e esta vence.
+      setVoltarPara({ naConversa: conversaId, conversaId: origem.id, nome });
+    },
+    [activeConversation, activeContact, conversations, handleSelectConversation, handleConversaAberta],
+  );
+
+  /** A faixa "Voltar para": a conversa de onde se pulou, pelo mesmo caminho. */
+  const handleVoltarParaConversa = useCallback(() => {
+    if (!voltarPara) return;
+    const conv = conversations.find((c) => c.id === voltarPara.conversaId);
+    if (conv) {
+      handleSelectConversation(conv);
+    } else {
+      setVoltarPara(null);
+      handleConversaAberta(voltarPara.conversaId);
+    }
+  }, [voltarPara, conversations, handleSelectConversation, handleConversaAberta]);
 
   /**
    * O histórico andou: o gesto de voltar do iPhone, o botão voltar do
@@ -918,6 +987,7 @@ function InboxPageInner() {
       if (typeof id !== "string" || !id) return;
       if (conversaAbertaRef.current === id) return;
       conversaRecemAbertaRef.current = id;
+      setVoltarPara(null);
       setResyncToken((n) => n + 1);
     };
     window.addEventListener(EVENTO_ABRIR_CONVERSA, aoPedirAbertura);
@@ -1061,6 +1131,15 @@ function InboxPageInner() {
       {veioDoFunil && <VoltarAoFunil inert={fundoInerte} />}
       {/* A mesma faixa para quem veio da pauta de reuniões. */}
       {veioDasReunioes && <VoltarAsReunioes inert={fundoInerte} />}
+      {/* Volta da conversa de um contato RELACIONADO (1069). Derivada: só
+          vale enquanto a conversa aberta é a de destino do pulo. */}
+      {voltarPara && voltarPara.naConversa === activeConversation?.id && (
+        <VoltarParaConversa
+          nome={voltarPara.nome}
+          onVoltar={handleVoltarParaConversa}
+          inert={fundoInerte}
+        />
+      )}
       {/* WhatsApp connection banner — in the flex column, not absolute,
           so it pushes the panels down instead of overlapping them. */}
       {whatsappConnected === false && (
@@ -1249,6 +1328,7 @@ function InboxPageInner() {
                   messagesDaConversa !== activeConversation.id
                 }
                 onIrParaItemDoFio={handleIrParaItemDoFio}
+                onAbrirConversaRelacionada={handleAbrirConversaRelacionada}
               />
             )}
           </div>
