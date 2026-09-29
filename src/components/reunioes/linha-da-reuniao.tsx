@@ -103,7 +103,7 @@ export function LinhaDaReuniao({
     const plano = comoMarcar(r, acao, alvos);
     return plano.alvo
       ? t('levaPara', { etapa: plano.alvo.nome })
-      : t(TEXTO_DO_MOTIVO[plano.motivo], { data: r.proximaEm ? dataCurta(r.proximaEm) : '' });
+      : t(TEXTO_DO_MOTIVO[plano.motivo], { data: r.proximaEm ? dataCurta(r.proximaEm) : '', hora: r.proximaEm ? hora(r.proximaEm) : '' });
   };
 
   const botao = (acao: Acao, rotulo: string, onClick?: () => void, destaque = false) => (
@@ -139,7 +139,7 @@ export function LinhaDaReuniao({
   // a dica do botão não aparece no toque.
   const avisoDoResultado = (() => {
     const plano = comoMarcar(r, 'no_show', alvos);
-    return plano.alvo ? null : t(TEXTO_DO_MOTIVO[plano.motivo], { data: r.proximaEm ? dataCurta(r.proximaEm) : '' });
+    return plano.alvo ? null : t(TEXTO_DO_MOTIVO[plano.motivo], { data: r.proximaEm ? dataCurta(r.proximaEm) : '', hora: r.proximaEm ? hora(r.proximaEm) : '' });
   })();
 
   const botoesDoResultado = (
@@ -259,7 +259,7 @@ export function LinhaDaReuniao({
         <span className="text-xs text-muted-foreground">{t('resultadoAbreAs', { hora: hora(r.inicio) })}</span>
         {podeMarcar && !r.qualificada && !planoDaQualificacao.alvo && (
           <span className="w-full text-[11px] text-muted-foreground">
-            {t(TEXTO_DO_MOTIVO[planoDaQualificacao.motivo], { data: '' })}
+            {t(TEXTO_DO_MOTIVO[planoDaQualificacao.motivo], { data: '', hora: '' })}
           </span>
         )}
       </div>

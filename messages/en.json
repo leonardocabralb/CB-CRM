@@ -5988,8 +5988,10 @@
     "toastRegistrado": "{nome}: outcome recorded",
     "motivoSemCard": "No card in the pipeline: only records the outcome.",
     "motivoCardFechado": "The card is won or lost: only records the outcome, without touching it.",
-    "motivoReuniaoPosterior": "The card already belongs to the meeting on {data}: only records this one’s outcome.",
+    "motivoReuniaoPosterior": "The card already belongs to the meeting on {data} at {hora}: only records this one’s outcome.",
     "motivoSemEtapa": "No stage of this pipeline is marked for this (Pipelines → Manage pipeline): only records.",
-    "corrigir": "Correct"
+    "corrigir": "Correct",
+    "verOutrosDias": "See the {n} from other days",
+    "esconderOutrosDias": "Hide"
   }
 }

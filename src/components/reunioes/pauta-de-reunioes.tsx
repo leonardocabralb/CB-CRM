@@ -54,10 +54,15 @@ function diaDoParametro(v: string | null): string | null {
   return Number.isNaN(Date.parse(`${v}T12:00:00Z`)) ? null : v;
 }
 
+/** Só a primeira letra: `capitalize` do CSS põe maiúscula em CADA palavra. */
+function comMaiuscula(texto: string): string {
+  return texto.charAt(0).toUpperCase() + texto.slice(1);
+}
+
 function rotuloDoDia(dia: string): { semana: string; data: string } {
   const meioDia = new Date(`${dia}T12:00:00Z`);
   return {
-    semana: meioDia.toLocaleDateString(undefined, { weekday: 'short', timeZone: 'UTC' }).replace('.', ''),
+    semana: comMaiuscula(meioDia.toLocaleDateString(undefined, { weekday: 'short', timeZone: 'UTC' }).replace('.', '')),
     data: meioDia.toLocaleDateString(undefined, { day: '2-digit', month: '2-digit', timeZone: 'UTC' }),
   };
 }
@@ -114,6 +119,10 @@ export function PautaDeReunioes() {
   const hoje = diaNoFuso(agora, FUSO_PADRAO);
   const [dia, setDia] = useState<string>(() => diaDoParametro(searchParams.get('dia')) ?? hoje);
   const [filtro, setFiltro] = useState<Filtro>('todas');
+  // A lista das reuniões sem resultado de OUTROS dias começa recolhida: com o
+  // acúmulo (41 em 29/09/2026), aberta ela empurraria o dia para baixo — e o
+  // dia é o que a tela existe para mostrar. O aviso diz quantas são.
+  const [verOutrosDias, setVerOutrosDias] = useState(false);
 
   const semana = useMemo(() => gradeDaSemana(dia, hoje), [dia, hoje]);
   // As janelas das duas leituras, derivadas de DIAS, nunca do relógio corrido
@@ -376,15 +385,34 @@ export function PautaDeReunioes() {
                 d === dia ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted',
               )}
             >
-              <div className={cn('text-[11px] capitalize', ehHoje ? 'font-semibold text-primary' : 'text-muted-foreground')}>
+              <div className={cn('text-[11px]', ehHoje ? 'font-semibold text-primary' : 'text-muted-foreground')}>
                 {r.semana}
               </div>
-              <div className="text-sm font-medium tabular-nums">{r.data}</div>
+              {/* No celular a célula tem ~44 px: só o dia e os números. */}
+              <div className="text-sm font-medium tabular-nums">
+                <span className="sm:hidden">{d.slice(8)}</span>
+                <span className="hidden sm:inline">{r.data}</span>
+              </div>
               <div className="truncate text-[11px] text-muted-foreground">
-                {!pauta ? '·' : doD.length ? t('nReunioes', { n: doD.length }) : '—'}
+                {!pauta ? (
+                  '·'
+                ) : doD.length ? (
+                  <>
+                    <span className="sm:hidden">{doD.length}</span>
+                    <span className="hidden sm:inline">{t('nReunioes', { n: doD.length })}</span>
+                  </>
+                ) : (
+                  '—'
+                )}
               </div>
               {semRes > 0 && (
-                <div className="truncate text-[11px] text-amber-700 dark:text-amber-300">{t('nSemResultado', { n: semRes })}</div>
+                <div
+                  className="truncate text-[11px] text-amber-700 dark:text-amber-300"
+                  title={t('nSemResultado', { n: semRes })}
+                >
+                  <span className="sm:hidden">!{semRes}</span>
+                  <span className="hidden sm:inline">{t('nSemResultado', { n: semRes })}</span>
+                </div>
               )}
             </button>
           );
@@ -408,11 +436,19 @@ export function PautaDeReunioes() {
           {falhou && <p className="text-xs text-amber-700 dark:text-amber-300">{t('recargaFalhou')}</p>}
 
           {semResultado === null ? null : semResultado.length > 0 ? (
-            <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
-              <div className="flex items-center gap-2">
-                <ShieldAlert className="h-4 w-4 shrink-0" />
-                {t('redeAcesa', { n: semResultado.length })}
-              </div>
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+              <ShieldAlert className="h-4 w-4 shrink-0" />
+              <span className="min-w-[12rem] flex-1">{t('redeAcesa', { n: semResultado.length })}</span>
+              {deOutrosDias.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  aria-expanded={verOutrosDias}
+                  onClick={() => setVerOutrosDias((v) => !v)}
+                >
+                  {verOutrosDias ? t('esconderOutrosDias') : t('verOutrosDias', { n: deOutrosDias.length })}
+                </Button>
+              )}
             </div>
           ) : (
             <div className="flex items-center gap-2 rounded-lg border border-green-600/30 bg-green-600/5 px-3 py-2 text-sm text-green-700 dark:text-green-300">
@@ -421,7 +457,7 @@ export function PautaDeReunioes() {
             </div>
           )}
 
-          {deOutrosDias.length > 0 && (
+          {verOutrosDias && deOutrosDias.length > 0 && (
             <section className="space-y-2">
               <h2 className="text-xs font-medium text-muted-foreground">{t('deOutrosDias', { n: deOutrosDias.length })}</h2>
               {deOutrosDias.map((r) => linha(r, true))}
@@ -430,7 +466,7 @@ export function PautaDeReunioes() {
 
           <section className="space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-sm font-medium capitalize">
+              <h2 className="text-sm font-medium">
                 {dia === hoje ? t('hojeExtenso') : `${rotuloDoDia(dia).semana} ${rotuloDoDia(dia).data}`}
               </h2>
               <div className="inline-flex overflow-hidden rounded-md border border-border">
