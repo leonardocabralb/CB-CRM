@@ -1,7 +1,7 @@
 'use client';
 
 // ============================================================
-// A tela de quem teve o acesso SUSPENSO (1064): no lugar do CRM inteiro, sem
+// A tela de quem teve o acesso SUSPENSO (1067): no lugar do CRM inteiro, sem
 // menu, página nem batimento de presença — no molde da exigência do celular.
 //
 // Ela não é a barreira: o banco já recusa tudo a quem está suspenso (a

@@ -740,7 +740,7 @@ function AgentSelect({
       className={SELECT_CLASS}
     >
       <option value="">{t("agents.select")}</option>
-      {/* 1064: suspenso não é oferecido; o já escolhido fica, marcado. */}
+      {/* 1067: suspenso não é oferecido; o já escolhido fica, marcado. */}
       {opcoesDeResponsavel(members, (m) => m.user_id === value).map((m) => (
         <option key={m.user_id} value={m.user_id}>
           {m.suspenso_em

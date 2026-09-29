@@ -1,7 +1,7 @@
 // ============================================================
 // POST /api/account/members/[userId]/suspensao   { suspenso: boolean }
 //
-// Suspende ou reativa o acesso de um membro (1064). Admin+.
+// Suspende ou reativa o acesso de um membro (1067). Admin+.
 //
 // Quem decide é a RPC `cb_definir_suspensao` (SECURITY DEFINER): admin ou
 // dono, nunca o dono como alvo, nunca a si mesmo, só membro da própria conta
@@ -64,7 +64,7 @@ export async function POST(
     });
 
     if (error) {
-      // Os SQLSTATE da RPC (1064): 42501 = sem permissão para isto;
+      // Os SQLSTATE da RPC (1067): 42501 = sem permissão para isto;
       // 22023 = alvo inválido (o dono, a si mesmo, alguém que não existe).
       if (error.code === "42501") {
         return NextResponse.json({ error: error.message }, { status: 403 });

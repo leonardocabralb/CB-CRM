@@ -14,7 +14,7 @@
 //   O celular (1046) segue a mesma regra, e com barreira no banco: ver o
 //   comentário na leitura, abaixo.
 //
-//   A suspensão (1064) vem para TODOS: quem atribui trabalho precisa saber
+//   A suspensão (1067) vem para TODOS: quem atribui trabalho precisa saber
 //   quem está fora. Quem está suspenso não chega aqui — a própria linha é
 //   invisível para ele, e `getCurrentAccount` recusa.
 // ============================================================
@@ -90,7 +90,7 @@ export async function GET() {
       }
     }
 
-    // Quem suspendeu (1064) é nome de colega, que a lista já mostra; quem saiu
+    // Quem suspendeu (1067) é nome de colega, que a lista já mostra; quem saiu
     // da conta não está aqui, e aí o nome fica `null` ("não se sabe").
     const nomePorUsuario = new Map(
       (data as ProfileRow[]).map((row) => [row.user_id, row.full_name ?? ""]),

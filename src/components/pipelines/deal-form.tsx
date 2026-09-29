@@ -509,7 +509,7 @@ export function DealForm({
                 className="h-9 w-full rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary"
               >
                 <option value="">{t("unassigned")}</option>
-                {/* 1064: suspenso sai das opções, menos o atual (sem ele o
+                {/* 1067: suspenso sai das opções, menos o atual (sem ele o
                     select mostraria vazio e salvar tiraria o responsável). */}
                 {opcoesDeResponsavel(profiles, (p) => p.id === assignedTo).map((p) => (
                   <option key={p.id} value={p.id}>

@@ -1,5 +1,5 @@
 -- ============================================================
--- 1064 — membro SUSPENSO: o acesso para, a pessoa continua na conta
+-- 1067 — membro SUSPENSO: o acesso para, a pessoa continua na conta
 --
 -- Pedido do operador (29/09/2026): em Configurações → Membros só havia
 -- EXCLUIR, e ele quer suspender alguém por um tempo sem perder nada. Nada é
@@ -51,10 +51,18 @@
 -- troca o corpo inteiro, e um trecho esquecido apaga uma guarda em silêncio.
 -- CREATE OR REPLACE mantém dono e privilégios, então nenhum GRANT delas muda.
 --
--- ⚠️ Nasceu 1062 e virou 1064 ANTES de ser aplicada em qualquer banco: a 1063
--- (pauta de reuniões, outra sessão) foi aplicada em produção em 29/09/2026 e
--- entra no main antes — e número novo vem depois do maior do main (a
--- instalação que atualiza por `db push` recusa número fora de ordem).
+-- ⚠️ APLICADA EM PRODUÇÃO COMO 1064 (histórico `20260929143833`, 29/09/2026).
+-- O arquivo virou 1067 no merge porque, quando ele chegou ao `main`, já
+-- estavam lá a 1065 (etapas recomendadas) e a 1066 (contadores do disparo) —
+-- e a instalação que atualiza por `db push` recusa número menor que o maior
+-- já aplicado (a regra da 1030; precedente: a 1033, aplicada como 1027). A
+-- ordem do replay (1063 → 1065 → 1066 → 1067) é a mesma em que a produção as
+-- recebeu, e nenhuma das duas toca o que esta recria. Antes disso, ela nasceu
+-- 1062 e virou 1064 sem ter sido aplicada: a 1063 (pauta) entrou antes. Em
+-- produção o histórico guarda o nome antigo, e nada reaplica. Depois de
+-- aplicada, só mudaram aqui os COMENTÁRIOS e os marcadores internos das
+-- conferências (a exceção P1067, os textos '1067: …') — o que ela muda no
+-- banco é idêntico ao aplicado.
 --
 -- Idempotente — seguro rodar mais de uma vez.
 -- ============================================================
@@ -72,9 +80,9 @@ ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS suspenso_por uuid;
 
 COMMENT ON COLUMN public.profiles.suspenso_em IS
-  '1064: quando o acesso foi suspenso. NULL = ativo. Só cb_definir_suspensao (e remove_account_member, que zera) escreve; a trava enforce_profile_privilege_columns barra o navegador.';
+  '1067: quando o acesso foi suspenso. NULL = ativo. Só cb_definir_suspensao (e remove_account_member, que zera) escreve; a trava enforce_profile_privilege_columns barra o navegador.';
 COMMENT ON COLUMN public.profiles.suspenso_por IS
-  '1064: user_id de quem suspendeu (auth.users), para a tela de Membros. Sem FK de propósito: apagar o login de quem suspendeu não pode mexer na suspensão.';
+  '1067: user_id de quem suspendeu (auth.users), para a tela de Membros. Sem FK de propósito: apagar o login de quem suspendeu não pode mexer na suspensão.';
 
 -- ------------------------------------------------------------
 -- 1b. A trava (corpo da 958 + as duas colunas)
@@ -91,7 +99,7 @@ BEGIN
       -- self-service. Nulo = sem restrição, então deixar a própria pessoa
       -- zerá-lo desfaz o recorte de área com um PATCH.
       OR NEW.perfil_id IS DISTINCT FROM OLD.perfil_id
-      -- 1064: a suspensão. Sem isto, a pessoa se reativaria sozinha.
+      -- 1067: a suspensão. Sem isto, a pessoa se reativaria sozinha.
       OR NEW.suspenso_em IS DISTINCT FROM OLD.suspenso_em
       OR NEW.suspenso_por IS DISTINCT FROM OLD.suspenso_por)
      AND current_user = 'authenticated'
@@ -123,7 +131,7 @@ AS $$
     FROM profiles p
     WHERE p.user_id = auth.uid()
       AND p.account_id = target_account_id
-      -- 1064: quem está suspenso não é membro para regra nenhuma.
+      -- 1067: quem está suspenso não é membro para regra nenhuma.
       AND p.suspenso_em IS NULL
       AND CASE p.account_role
             WHEN 'owner'  THEN 4
@@ -158,7 +166,7 @@ AS $$
     FROM public.profiles p
    WHERE p.user_id = auth.uid()
      AND p.account_id IS NOT NULL
-     -- 1064: o mesmo corte da is_account_member — as duas não podem
+     -- 1067: o mesmo corte da is_account_member — as duas não podem
      -- discordar sobre quem é membro.
      AND p.suspenso_em IS NULL
      AND CASE p.account_role
@@ -239,7 +247,7 @@ BEGIN
   FROM profiles
   WHERE user_id = auth.uid();
 
-  -- 1064
+  -- 1067
   IF v_suspenso_em IS NOT NULL THEN
     RAISE EXCEPTION 'membro_suspenso' USING ERRCODE = '42501';
   END IF;
@@ -278,7 +286,7 @@ BEGIN
     FROM profiles
    WHERE user_id = auth.uid();
 
-  -- 1064
+  -- 1067
   IF v_suspenso_em IS NOT NULL THEN
     RAISE EXCEPTION 'membro_suspenso' USING ERRCODE = '42501';
   END IF;
@@ -334,7 +342,7 @@ BEGIN
     RAISE EXCEPTION 'Caller has no account' USING ERRCODE = '42501';
   END IF;
 
-  -- 1064
+  -- 1067
   IF v_caller_suspenso IS NOT NULL THEN
     RAISE EXCEPTION 'membro_suspenso' USING ERRCODE = '42501';
   END IF;
@@ -415,7 +423,7 @@ BEGIN
     RAISE EXCEPTION 'Caller has no account' USING ERRCODE = '42501';
   END IF;
 
-  -- 1064
+  -- 1067
   IF v_caller_suspenso IS NOT NULL THEN
     RAISE EXCEPTION 'membro_suspenso' USING ERRCODE = '42501';
   END IF;
@@ -465,7 +473,7 @@ BEGIN
       -- a FK composta da 957 estoura (perfil da conta antiga × conta nova) e
       -- a remoção inteira falha.
       perfil_id = NULL,
-      -- 1064: a suspensão era desta conta. Dona da conta nova e suspensa,
+      -- 1067: a suspensão era desta conta. Dona da conta nova e suspensa,
       -- ficaria trancada sem ninguém para reativá-la.
       suspenso_em = NULL,
       suspenso_por = NULL
@@ -514,7 +522,7 @@ BEGIN
       USING ERRCODE = '22023';
   END IF;
 
-  -- 1064: FOR UPDATE serializa com `cb_definir_suspensao`, que trava a mesma
+  -- 1067: FOR UPDATE serializa com `cb_definir_suspensao`, que trava a mesma
   -- linha: sem ele, transferir e suspender a mesma pessoa ao mesmo tempo
   -- podia gravar um dono suspenso.
   SELECT account_id, account_role, suspenso_em
@@ -532,7 +540,7 @@ BEGIN
       USING ERRCODE = '42501';
   END IF;
 
-  -- 1064: dono suspenso é conta trancada — ninguém reativa o dono.
+  -- 1067: dono suspenso é conta trancada — ninguém reativa o dono.
   IF v_target_suspenso IS NOT NULL THEN
     RAISE EXCEPTION 'Reactivate this member before transferring ownership'
       USING ERRCODE = '22023';
@@ -706,7 +714,7 @@ BEGIN
   IF (SELECT count(*) FROM information_schema.columns
        WHERE table_schema = 'public' AND table_name = 'profiles'
          AND column_name IN ('suspenso_em', 'suspenso_por')) <> 2 THEN
-    RAISE EXCEPTION '1064: as colunas de suspensão não existem em profiles';
+    RAISE EXCEPTION '1067: as colunas de suspensão não existem em profiles';
   END IF;
 
   FOREACH v_fn IN ARRAY ARRAY[
@@ -721,50 +729,50 @@ BEGIN
   ] LOOP
     v_def := pg_get_functiondef(v_fn::regprocedure);
     IF v_def !~ 'suspenso_em' THEN
-      RAISE EXCEPTION '1064: % não menciona suspenso_em — o REPLACE não pegou', v_fn;
+      RAISE EXCEPTION '1067: % não menciona suspenso_em — o REPLACE não pegou', v_fn;
     END IF;
   END LOOP;
 
   -- As guardas que vieram das migrations anteriores continuam lá (a lição da
   -- 922: um REPLACE que esquece um trecho apaga a guarda em silêncio).
   IF pg_get_functiondef('public.remove_account_member(uuid)'::regprocedure) !~ 'perfil_id = NULL' THEN
-    RAISE EXCEPTION '1064: remove_account_member perdeu o perfil_id = NULL da 961';
+    RAISE EXCEPTION '1067: remove_account_member perdeu o perfil_id = NULL da 961';
   END IF;
   IF pg_get_functiondef('public.set_member_role(uuid, account_role_enum)'::regprocedure) !~ 'access profile' THEN
-    RAISE EXCEPTION '1064: set_member_role perdeu a guarda de perfil da 962';
+    RAISE EXCEPTION '1067: set_member_role perdeu a guarda de perfil da 962';
   END IF;
   IF pg_get_functiondef('public.transfer_account_ownership(uuid)'::regprocedure) !~ 'UPDATE custom_fields' THEN
-    RAISE EXCEPTION '1064: transfer_account_ownership perdeu o acervo da 971';
+    RAISE EXCEPTION '1067: transfer_account_ownership perdeu o acervo da 971';
   END IF;
   IF pg_get_functiondef('public.enforce_profile_privilege_columns()'::regprocedure) !~ 'perfil_id' THEN
-    RAISE EXCEPTION '1064: a trava perdeu o perfil_id da 958';
+    RAISE EXCEPTION '1067: a trava perdeu o perfil_id da 958';
   END IF;
 
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public'
                   AND tablename = 'profiles' AND policyname = 'profiles_select'
                   AND qual ~ 'suspenso_em') THEN
-    RAISE EXCEPTION '1064: profiles_select não esconde a própria linha suspensa';
+    RAISE EXCEPTION '1067: profiles_select não esconde a própria linha suspensa';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public'
                   AND tablename = 'profiles' AND policyname = 'profiles_update'
                   AND qual ~ 'suspenso_em') THEN
-    RAISE EXCEPTION '1064: profiles_update não barra a linha suspensa';
+    RAISE EXCEPTION '1067: profiles_update não barra a linha suspensa';
   END IF;
   IF (SELECT count(*) FROM pg_policies WHERE schemaname = 'public'
        AND tablename = 'notifications'
        AND policyname IN ('notifications_select', 'notifications_update')
        AND qual ~ 'cb_contas_do_usuario') <> 2 THEN
-    RAISE EXCEPTION '1064: as policies de notifications não perguntam a conta';
+    RAISE EXCEPTION '1067: as policies de notifications não perguntam a conta';
   END IF;
 
   IF has_function_privilege('anon', 'public.cb_definir_suspensao(uuid, boolean)', 'EXECUTE')
      OR has_function_privilege('anon', 'public.cb_minha_suspensao()', 'EXECUTE') THEN
-    RAISE EXCEPTION '1064: anon executa as funções novas — não devia';
+    RAISE EXCEPTION '1067: anon executa as funções novas — não devia';
   END IF;
   IF NOT has_function_privilege('authenticated', 'public.cb_definir_suspensao(uuid, boolean)', 'EXECUTE')
      OR NOT has_function_privilege('authenticated', 'public.cb_minha_suspensao()', 'EXECUTE')
      OR NOT has_function_privilege('service_role', 'public.cb_definir_suspensao(uuid, boolean)', 'EXECUTE') THEN
-    RAISE EXCEPTION '1064: authenticated/service_role sem EXECUTE nas funções novas';
+    RAISE EXCEPTION '1067: authenticated/service_role sem EXECUTE nas funções novas';
   END IF;
 END $$;
 
@@ -772,7 +780,7 @@ END $$;
 -- Conferência 2 — comportamento, CHAMANDO as funções (regra 3 do CLAUDE.md)
 --
 -- Suspende de verdade um membro real num subbloco que se DESFAZ pela exceção
--- própria P1064 — nada sobra no banco. Banco sem um membro não-dono numa
+-- própria P1067 — nada sobra no banco. Banco sem um membro não-dono numa
 -- conta com dono (o replay do CI) pula com NOTICE (regra 2).
 --
 -- ⚠️ Roda com as travas das ALTER acima presas (`profiles`, `notifications`),
@@ -804,7 +812,7 @@ BEGIN
   LIMIT 1;
 
   IF v_alvo IS NULL THEN
-    RAISE NOTICE '1064: sem membro não-dono numa conta com dono — pulando a prova de comportamento.';
+    RAISE NOTICE '1067: sem membro não-dono numa conta com dono — pulando a prova de comportamento.';
     RETURN;
   END IF;
 
@@ -816,12 +824,12 @@ BEGIN
 
     v_ts := public.cb_definir_suspensao(v_alvo, true);
     IF v_ts IS NULL THEN
-      RAISE EXCEPTION '1064: cb_definir_suspensao(true) não devolveu a data';
+      RAISE EXCEPTION '1067: cb_definir_suspensao(true) não devolveu a data';
     END IF;
 
     -- Suspender de novo não muda a data.
     IF public.cb_definir_suspensao(v_alvo, true) IS DISTINCT FROM v_ts THEN
-      RAISE EXCEPTION '1064: suspender de novo mudou a data da suspensão';
+      RAISE EXCEPTION '1067: suspender de novo mudou a data da suspensão';
     END IF;
 
     -- O dono NÃO transfere a conta para quem está suspenso.
@@ -831,7 +839,7 @@ BEGIN
     EXCEPTION WHEN invalid_parameter_value THEN v_ok := true;
     END;
     IF NOT v_ok THEN
-      RAISE EXCEPTION '1064: transfer_account_ownership aceitou alvo suspenso';
+      RAISE EXCEPTION '1067: transfer_account_ownership aceitou alvo suspenso';
     END IF;
 
     -- Ninguém se suspende (o dono, aqui).
@@ -841,7 +849,7 @@ BEGIN
     EXCEPTION WHEN invalid_parameter_value THEN v_ok := true;
     END;
     IF NOT v_ok THEN
-      RAISE EXCEPTION '1064: o dono conseguiu suspender a si mesmo';
+      RAISE EXCEPTION '1067: o dono conseguiu suspender a si mesmo';
     END IF;
 
     -- ---- Como o SUSPENSO: não vê nada, não faz nada ------------------------
@@ -853,27 +861,27 @@ BEGIN
     SELECT count(*) INTO v_n FROM public.profiles
      WHERE user_id = v_alvo OR account_id = v_conta;
     IF v_n <> 0 THEN
-      RAISE EXCEPTION '1064: o suspenso ainda lê % linha(s) de profiles', v_n;
+      RAISE EXCEPTION '1067: o suspenso ainda lê % linha(s) de profiles', v_n;
     END IF;
     SELECT count(*) INTO v_n FROM public.cb_contas_do_usuario();
     IF v_n <> 0 THEN
-      RAISE EXCEPTION '1064: cb_contas_do_usuario ainda devolve conta ao suspenso';
+      RAISE EXCEPTION '1067: cb_contas_do_usuario ainda devolve conta ao suspenso';
     END IF;
     IF public.is_account_member(v_conta) THEN
-      RAISE EXCEPTION '1064: is_account_member ainda diz que o suspenso é membro';
+      RAISE EXCEPTION '1067: is_account_member ainda diz que o suspenso é membro';
     END IF;
     SELECT count(*) INTO v_n FROM public.notifications WHERE user_id = v_alvo;
     IF v_n <> 0 THEN
-      RAISE EXCEPTION '1064: o suspenso ainda lê % aviso(s)', v_n;
+      RAISE EXCEPTION '1067: o suspenso ainda lê % aviso(s)', v_n;
     END IF;
     IF public.cb_minha_suspensao() IS DISTINCT FROM v_ts THEN
-      RAISE EXCEPTION '1064: cb_minha_suspensao não devolveu a data ao suspenso';
+      RAISE EXCEPTION '1067: cb_minha_suspensao não devolveu a data ao suspenso';
     END IF;
 
     UPDATE public.profiles SET full_name = full_name WHERE user_id = v_alvo;
     GET DIAGNOSTICS v_n = ROW_COUNT;
     IF v_n <> 0 THEN
-      RAISE EXCEPTION '1064: o suspenso ainda edita a própria linha';
+      RAISE EXCEPTION '1067: o suspenso ainda edita a própria linha';
     END IF;
 
     v_ok := false;
@@ -883,7 +891,7 @@ BEGIN
       v_ok := SQLERRM = 'membro_suspenso';
     END;
     IF NOT v_ok THEN
-      RAISE EXCEPTION '1064: touch_presence não recusou o suspenso com membro_suspenso';
+      RAISE EXCEPTION '1067: touch_presence não recusou o suspenso com membro_suspenso';
     END IF;
 
     v_ok := false;
@@ -893,7 +901,7 @@ BEGIN
       v_ok := SQLERRM = 'membro_suspenso';
     END;
     IF NOT v_ok THEN
-      RAISE EXCEPTION '1064: cb_marcar_conversa_aberta não recusou o suspenso';
+      RAISE EXCEPTION '1067: cb_marcar_conversa_aberta não recusou o suspenso';
     END IF;
 
     v_ok := false;
@@ -903,7 +911,7 @@ BEGIN
       v_ok := SQLERRM = 'membro_suspenso';
     END;
     IF NOT v_ok THEN
-      RAISE EXCEPTION '1064: o suspenso conseguiu chamar cb_definir_suspensao';
+      RAISE EXCEPTION '1067: o suspenso conseguiu chamar cb_definir_suspensao';
     END IF;
 
     v_ok := false;
@@ -913,7 +921,7 @@ BEGIN
       v_ok := SQLERRM = 'membro_suspenso';
     END;
     IF NOT v_ok THEN
-      RAISE EXCEPTION '1064: set_member_role não recusou o chamador suspenso';
+      RAISE EXCEPTION '1067: set_member_role não recusou o chamador suspenso';
     END IF;
 
     v_ok := false;
@@ -923,7 +931,7 @@ BEGIN
       v_ok := SQLERRM = 'membro_suspenso';
     END;
     IF NOT v_ok THEN
-      RAISE EXCEPTION '1064: remove_account_member não recusou o chamador suspenso';
+      RAISE EXCEPTION '1067: remove_account_member não recusou o chamador suspenso';
     END IF;
 
     -- ---- Como o DONO: reativa; o membro volta a ver ------------------------
@@ -933,7 +941,7 @@ BEGIN
     SET LOCAL ROLE authenticated;
 
     IF public.cb_definir_suspensao(v_alvo, false) IS NOT NULL THEN
-      RAISE EXCEPTION '1064: cb_definir_suspensao(false) não devolveu NULL';
+      RAISE EXCEPTION '1067: cb_definir_suspensao(false) não devolveu NULL';
     END IF;
 
     RESET ROLE;
@@ -943,7 +951,7 @@ BEGIN
 
     SELECT count(*) INTO v_n FROM public.profiles WHERE user_id = v_alvo;
     IF v_n <> 1 OR NOT public.is_account_member(v_conta) THEN
-      RAISE EXCEPTION '1064: reativado, o membro não voltou a ver a própria conta';
+      RAISE EXCEPTION '1067: reativado, o membro não voltou a ver a própria conta';
     END IF;
 
     -- A trava: ativo, ele continua sem poder se suspender pelo PATCH.
@@ -953,7 +961,7 @@ BEGIN
     EXCEPTION WHEN insufficient_privilege THEN v_ok := true;
     END;
     IF NOT v_ok THEN
-      RAISE EXCEPTION '1064: a trava deixou o membro mexer em suspenso_em';
+      RAISE EXCEPTION '1067: a trava deixou o membro mexer em suspenso_em';
     END IF;
 
     -- ---- Como o DONO: suspende de novo e REMOVE; a suspensão sai junto -----
@@ -969,21 +977,21 @@ BEGIN
     IF EXISTS (SELECT 1 FROM public.profiles
                 WHERE user_id = v_alvo
                   AND (suspenso_em IS NOT NULL OR account_id = v_conta)) THEN
-      RAISE EXCEPTION '1064: remove_account_member não levou a pessoa para fora com a suspensão desfeita';
+      RAISE EXCEPTION '1067: remove_account_member não levou a pessoa para fora com a suspensão desfeita';
     END IF;
 
     -- Tudo certo: desfaz o teste inteiro.
-    RAISE EXCEPTION USING ERRCODE = 'P1064', MESSAGE = 'desfaz a prova de comportamento';
+    RAISE EXCEPTION USING ERRCODE = 'P1067', MESSAGE = 'desfaz a prova de comportamento';
   EXCEPTION
     -- ⚠️ Só o SQLSTATE próprio. `WHEN OTHERS` engoliria justamente o erro que
     -- a prova existe para mostrar.
-    WHEN SQLSTATE 'P1064' THEN NULL;
+    WHEN SQLSTATE 'P1067' THEN NULL;
   END;
 
   RESET ROLE;
   IF EXISTS (SELECT 1 FROM public.profiles
               WHERE user_id = v_alvo
                 AND (suspenso_em IS NOT NULL OR account_id <> v_conta)) THEN
-    RAISE EXCEPTION '1064: o teste de comportamento não se desfez';
+    RAISE EXCEPTION '1067: o teste de comportamento não se desfez';
   END IF;
 END $$;

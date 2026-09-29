@@ -98,7 +98,7 @@ export type AccountStatus =
   /** The profile lookup itself failed after retrying. */
   | "error"
   /**
-   * 1064: o acesso desta pessoa foi SUSPENSO por um administrador. A casca
+   * 1067: o acesso desta pessoa foi SUSPENSO por um administrador. A casca
    * troca o app inteiro pela tela de acesso suspenso — nada de dado aparece,
    * e o banco já recusa tudo de qualquer jeito.
    */
@@ -158,7 +158,7 @@ interface AuthContextValue {
   accountStatus: AccountStatus;
   /** Underlying message when `accountStatus` is 'error' / 'unlinked'. */
   accountStatusDetail: string | null;
-  /** 1064: desde quando o acesso está suspenso; `null` fora de `accountStatus === 'suspenso'`. */
+  /** 1067: desde quando o acesso está suspenso; `null` fora de `accountStatus === 'suspenso'`. */
   suspensoEm: string | null;
   /** Account id the current user belongs to. Null while loading. */
   accountId: string | null;
@@ -347,7 +347,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Why the account/role couldn't be established, when it couldn't.
   // Null on the happy path.
   const [statusDetail, setStatusDetail] = useState<string | null>(null);
-  // 1064: preenchido só quando o banco confirma que o acesso está suspenso.
+  // 1067: preenchido só quando o banco confirma que o acesso está suspenso.
   const [suspensoEm, setSuspensoEm] = useState<string | null>(null);
   // Tracked separately from `loading`. The session settles fast (one
   // local cookie read); the profile fetch crosses the network and
@@ -496,7 +496,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // da conta e do perfil de acesso: limpo antes, a casca passava por
         // "error" (suspensoEm nulo, profile nulo) e montava o app sem
         // restrição — e a exigência do celular, que decide uma vez na
-        // montagem, era pulada (revisão do PR da 1064).
+        // montagem, era pulada (revisão do PR da 1067).
         setSuspensoEm(null);
         setProfile({
           id: data.id,
@@ -524,7 +524,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           );
         }
       } else {
-        // 1064: a própria linha fica INVISÍVEL para quem está suspenso
+        // 1067: a própria linha fica INVISÍVEL para quem está suspenso
         // (`profiles_select`). Só o banco sabe dizer se é isso ou uma linha
         // que falta de verdade. Falha nesta pergunta cai no caminho de antes
         // (o alerta de conta), nunca num "suspenso" inventado.

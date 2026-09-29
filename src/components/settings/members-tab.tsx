@@ -5,7 +5,7 @@
 //
 // Two stacked sections:
 //   1. Roster   — every member of the account. Admin+ can change a
-//                 teammate's role inline, suspend/reactivate them (1064)
+//                 teammate's role inline, suspend/reactivate them (1067)
 //                 and remove them. Owner row
 //                 is non-editable everywhere (transfer is its own
 //                 separate flow, deferred to a later PR).
@@ -93,7 +93,7 @@ interface Member {
   joined_at: string;
   /** 1046: ausente = quem olha não vê; `null` = o membro ainda não informou. */
   celular?: string | null;
-  /** 1064: desde quando está suspenso; `null`/ausente = ativo. */
+  /** 1067: desde quando está suspenso; `null`/ausente = ativo. */
   suspenso_em?: string | null;
   suspenso_por_nome?: string | null;
 }
@@ -157,7 +157,7 @@ export function MembersTab() {
 
   const [inviteOpen, setInviteOpen] = useState(false);
   const [removingMember, setRemovingMember] = useState<Member | null>(null);
-  // 1064: quem está na caixa de "suspender", e quantas conversas abertas estão
+  // 1067: quem está na caixa de "suspender", e quantas conversas abertas estão
   // com a pessoa (null = contando ou a contagem falhou — aí a frase some).
   const [suspendingMember, setSuspendingMember] = useState<Member | null>(null);
   const [conversasAbertas, setConversasAbertas] = useState<{
@@ -328,7 +328,7 @@ export function MembersTab() {
     }
   }
 
-  // 1064: abre a caixa de suspender e conta as conversas abertas que
+  // 1067: abre a caixa de suspender e conta as conversas abertas que
   // continuam com a pessoa. A contagem é carimbada com o dono (`de`): a
   // resposta atrasada de outra pessoa não aparece na caixa errada.
   async function abrirSuspensao(member: Member) {
@@ -565,7 +565,7 @@ export function MembersTab() {
                     </div>
                   </div>
 
-                  {/* Situação (1064) — a coluna que o operador pediu: a
+                  {/* Situação (1067) — a coluna que o operador pediu: a
                       chave desliga e religa o acesso (admin+, nunca o dono,
                       nunca a si mesmo — a régua do remover). Desligar abre a
                       confirmação com as conversas abertas; religar é um

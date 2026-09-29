@@ -210,7 +210,7 @@ vi.mock('./admin-client', () => {
       // round_robin resolve um membro da conta por aqui; `create_task` usa a
       // MESMA consulta para provar que o responsável é membro e para carimbar
       // o nome dele na tarefa.
-      // Leitura de UM perfil (o atendente fixo do assign_conversation, 1064):
+      // Leitura de UM perfil (o atendente fixo do assign_conversation, 1067):
       // o membro pelo `user_id` do filtro, ou nada.
       if (ops.unico) {
         const alvo = ops.filters.find(([op, k]) => op === 'eq' && k === 'user_id')?.[2];
@@ -1658,7 +1658,7 @@ describe('assign_conversation — alvo', () => {
     expect(conversas[0].filters.map((f) => f[1])).toContain('contact_id');
   });
 
-  it('1064: atendente fixo SUSPENSO não recebe — a conversa fica na fila', async () => {
+  it('1067: atendente fixo SUSPENSO não recebe — a conversa fica na fila', async () => {
     h.state.owned = { id: 'c1' };
     h.state.automations = [automationWithUpdateStep()];
     h.state.steps = [passoAtribuir];

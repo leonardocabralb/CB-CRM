@@ -50,7 +50,7 @@ describe('atribuicaoDoHandoff', () => {
     expect(filtros).toEqual([
       ['account_id', 'acc'],
       ['user_id', MEMBRO],
-      // 1064: quem está suspenso não é achado, e a conversa fica na fila.
+      // 1067: quem está suspenso não é achado, e a conversa fica na fila.
       ['is:suspenso_em', null],
     ]);
   });

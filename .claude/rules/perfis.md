@@ -148,7 +148,7 @@ Troca de LENTE no navegador, e só nele (`simulacao.ts`, o override no
   administradores, como o e-mail, e com barreira no banco (RLS de
   `cb_celulares_dos_membros`). As regras estão em `meu-dia.md`.
 
-### Membro SUSPENSO (1064)
+### Membro SUSPENSO (1067)
 Configurações → Membros → a chave da coluna "Situação" (pedido do operador,
 29/09/2026: desligar abre a confirmação com as conversas abertas da pessoa;
 religar é um clique).

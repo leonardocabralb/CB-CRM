@@ -1003,6 +1003,38 @@ nome da época em que foram aplicadas.
   nas duas, `anon` e `authenticated` sem EXECUTE, gatilho ligado, DEFINER e com
   o dono executando `_bcast_bump`) e no assessor de segurança (as duas saíram
   das listas 0028/0029: de 11 para 9 e de 15 para 13).
+- **1067_cb_membro_suspenso** (⚠️ APLICADA COMO **1064**) — suspender e
+  reativar membro sem excluir (Configurações → Membros, a chave da coluna
+  "Situação"): `profiles.suspenso_em`/`suspenso_por`, na trava
+  `enforce_profile_privilege_columns`; `is_account_member` e
+  `cb_contas_do_usuario` respondem "não é membro" para quem está suspenso; a
+  própria linha de `profiles` some para ele (`profiles_select`/`_update`);
+  `notifications_select`/`_update` passam a exigir a conta; as SECURITY
+  DEFINER que leem `profiles` direto (`touch_presence`,
+  `cb_marcar_conversa_aberta`, `set_member_role`, `remove_account_member`,
+  `transfer_account_ownership`) conferem a suspensão; e as novas
+  `cb_definir_suspensao` e `cb_minha_suspensao`. ANTES do deploy: a lista de
+  membros e o rodízio das automações leem `suspenso_em`, e sem a coluna os dois
+  falhariam; para o app antigo nada muda enquanto ninguém estiver suspenso
+  (salvo os avisos de uma conta de que a pessoa já não é membro, que deixam de
+  aparecer). Aplicada em 29/09/2026 pela Management API como 1064 (histórico
+  `20260929143833`), depois do replay verde do CI no commit `816a43c6` e ANTES
+  do merge do PR #341, com autorização do operador. O ARQUIVO virou 1067 no
+  merge: a 1065 e a 1066 entraram no `main` antes, e a instalação que atualiza
+  por `db push` recusa número menor que o maior já aplicado (a regra da 1030,
+  como a 1033). Fora dos comentários, o SQL é idêntico ao aplicado, e a ordem
+  do replay é a mesma em que a produção as recebeu (1065, 1066 e esta). Antes
+  disso, nasceu 1062 e virou 1064 sem ter sido aplicada. Provada num Postgres
+  16 descartável (com dados, duas vezes, em banco vazio e 19 grupos de
+  cenários). Conferida no catálogo: as duas colunas; as 10 funções conferem
+  `suspenso_em`, sem sobrecarga nova das duas funções de acesso; as 4 policies
+  na forma nova; as duas funções novas sem PUBLIC e sem `anon`; ninguém
+  suspenso. A conferência da própria migration suspendeu um membro real num
+  subbloco desfeito, e nada ficou gravado. Teste no preview contra o banco
+  real, SEM suspender ninguém (decisão do operador): a chave nas 11 linhas de
+  não-dono, a confirmação com "3 conversas abertas" (conferido no banco) e o
+  Cancelar, que deixou tudo como estava. Foi esse teste que pegou a linha
+  espremida (o nome virava uma letra a 1440 px), corrigida antes do merge.
 
 ## Notas do histórico
 

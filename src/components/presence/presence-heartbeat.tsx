@@ -61,7 +61,7 @@ export function PresenceHeartbeat() {
         p_status: currentStatus(),
       });
       if (error && !cancelled) {
-        // 1064: um administrador suspendeu esta pessoa com o CRM aberto. O
+        // 1067: um administrador suspendeu esta pessoa com o CRM aberto. O
         // banco já recusa tudo; reler o perfil é o que troca a tela pelo
         // aviso de acesso suspenso (a casca desmonta este componente).
         if (ehRecusaDeSuspenso(error)) {

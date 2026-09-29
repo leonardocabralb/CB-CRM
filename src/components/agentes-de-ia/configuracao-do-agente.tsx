@@ -432,7 +432,7 @@ export function ConfiguracaoDoAgente({
               {transferenciaForaDaEquipe ? (
                 <option value={transferirPara ?? ''}>{t('campo.foraDaEquipe')}</option>
               ) : null}
-              {/* 1064: suspenso não recebe conversa nova; o escolhido fica. */}
+              {/* 1067: suspenso não recebe conversa nova; o escolhido fica. */}
               {opcoesDeResponsavel(membros ?? [], (m) => m.user_id === transferirPara).map((m) => (
                 <option key={m.user_id} value={m.user_id}>
                   {m.suspenso_em

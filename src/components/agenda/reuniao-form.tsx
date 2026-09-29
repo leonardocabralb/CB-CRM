@@ -360,7 +360,7 @@ export function ReuniaoForm({
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {/* 1064: suspenso não recebe reunião nova; o atual fica. */}
+                  {/* 1067: suspenso não recebe reunião nova; o atual fica. */}
                   {opcoesDeResponsavel(membros, (m) => m.user_id === responsavel).map((m) => (
                     <SelectItem key={m.user_id} value={m.user_id}>
                       {m.suspenso_em

@@ -48,7 +48,7 @@ export function lerModoDoResponsavel(valor: unknown): ModoDoResponsavel | null {
  * Por que a tarefa NÃO foi para quem está atribuído (modos `conversa`/`card`):
  * `sem_alvo` = o contato não tem conversa (ou card); `ninguem` = tem, sem
  * ninguém atribuído; `saiu` = quem estava atribuído não é mais membro;
- * `suspenso` = continua membro, mas com o acesso suspenso (1064) — a tarefa
+ * `suspenso` = continua membro, mas com o acesso suspenso (1067) — a tarefa
  * iria para quem não consegue abri-la.
  */
 export type PorqueDaReserva = 'sem_alvo' | 'ninguem' | 'saiu' | 'suspenso'
@@ -64,7 +64,7 @@ export type EscolhaDoResponsavel =
        * `responsavel_saiu`: havia alguém atribuído, que não é mais membro, e
        *   nenhuma reserva;
        * `fixo_fora_da_conta`: o responsável fixo (ou a reserva) não é membro;
-       * `fixo_suspenso`: é membro, mas está com o acesso suspenso (1064).
+       * `fixo_suspenso`: é membro, mas está com o acesso suspenso (1067).
        */
       motivo: 'sem_responsavel' | 'responsavel_saiu' | 'fixo_fora_da_conta' | 'fixo_suspenso'
       /** Nos modos `conversa`/`card`: por que o atribuído não serviu. */
@@ -79,7 +79,7 @@ export type EscolhaDoResponsavel =
  * @param fixo `responsavel_user_id` do passo: o responsável no modo `fixo`, a
  *   reserva nos outros dois.
  * @param ehMembro a pessoa pode RECEBER tarefa nesta conta hoje? (membro e,
- *   desde a 1064, não suspensa)
+ *   desde a 1067, não suspensa)
  * @param ehSuspenso a pessoa é membro com o acesso suspenso? Só muda a frase
  *   do registro ("está suspensa" × "saiu da conta"). Ausente = ninguém está.
  */

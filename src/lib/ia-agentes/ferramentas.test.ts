@@ -91,7 +91,7 @@ const CAMPO_TEXTO = uuid(20)
 const CAMPO_DATA = uuid(21)
 const CAMPO_DATA_VIGIADO = uuid(22)
 const MEMBRO = uuid(30)
-/** 1064: suspensa — fica no catálogo da configuração, mas a IA não lhe cria tarefa. */
+/** 1067: suspensa — fica no catálogo da configuração, mas a IA não lhe cria tarefa. */
 const MEMBRO_SUSPENSO = uuid(31)
 const AUTO_LIMPA = uuid(40)
 const AUTO_COM_WEBHOOK_NA_FILHA = uuid(41)
@@ -336,7 +336,7 @@ describe('opcoesDoAgente — o que o pedido lista', () => {
       etiquetar: { etiquetas: [TAG_VIP, TAG_DE_OUTRA] },
       tirar_etiqueta: { etiquetas: [TAG_VIP] },
       preencher_campo: { campos: [CAMPO_TEXTO, CAMPO_DATA_VIGIADO] },
-      // A suspensa (1064) está ligada no agente, mas não vira opção do turno.
+      // A suspensa (1067) está ligada no agente, mas não vira opção do turno.
       criar_tarefa: { membros: [MEMBRO, MEMBRO_SUSPENSO] },
       executar_automacao: { automacoes: [AUTO_LIMPA, AUTO_DESLIGADA, AUTO_REGUA, AUTO_DE_OUTRA] },
     })
@@ -447,7 +447,7 @@ describe('lerCatalogoDeFerramentas — a tela só mostra', () => {
       { id: CAMPO_TEXTO, nome: 'Tamanho da dívida', vigiado: false, tipo: 'text', opcoes: [] },
     ])
     // O catálogo da CONFIGURAÇÃO lista todo mundo, suspensa inclusive: quem
-    // decide não oferecer ao turno é `opcoesDoAgente` (1064).
+    // decide não oferecer ao turno é `opcoesDoAgente` (1067).
     expect(c.membros).toEqual([
       { userId: MEMBRO, nome: 'Ana' },
       { userId: MEMBRO_SUSPENSO, nome: 'Bia' },

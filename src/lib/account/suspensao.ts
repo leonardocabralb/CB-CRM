@@ -1,5 +1,5 @@
 // ============================================================
-// Membro SUSPENSO (1064) — as duas regras que o navegador precisa.
+// Membro SUSPENSO (1067) — as duas regras que o navegador precisa.
 //
 // O corte de verdade mora no banco (a própria linha fica invisível e as
 // funções de acesso respondem "não é membro"). Aqui só há o que a TELA faz
@@ -9,7 +9,7 @@
 /**
  * A mensagem com que o banco recusa quem está suspenso (`touch_presence`,
  * `cb_marcar_conversa_aberta`, `set_member_role`, `remove_account_member`,
- * `cb_definir_suspensao`). É CONTRATO com a migration 1064 — há teste lendo
+ * `cb_definir_suspensao`). É CONTRATO com a migration 1067 — há teste lendo
  * o SQL: o batimento de presença a reconhece para trocar a tela aberta de
  * quem acabou de ser suspenso pela tela de acesso suspenso.
  */
@@ -27,7 +27,7 @@ export function ehRecusaDeSuspenso(
  * nome a quem já é responsável, use a lista inteira, senão a conversa de um
  * suspenso aparece "sem nome".
  *
- * `suspenso_em` AUSENTE conta como ativo: é o dado de antes da 1064, e
+ * `suspenso_em` AUSENTE conta como ativo: é o dado de antes da 1067, e
  * esconder por ignorância sumiria com gente que pode trabalhar.
  */
 export function membrosAtivos<T extends { suspenso_em?: string | null }>(

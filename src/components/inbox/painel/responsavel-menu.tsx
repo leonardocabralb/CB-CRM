@@ -96,7 +96,7 @@ export function ResponsavelMenu({
   );
 
   const atual = profiles.find((p) => p.user_id === assignedAgentId);
-  // 1064: quem está suspenso sai das opções, menos o responsável atual — que
+  // 1067: quem está suspenso sai das opções, menos o responsável atual — que
   // aparece marcado, para a equipe saber que precisa redistribuir.
   const opcoes = opcoesDeResponsavel(profiles, (p) => p.user_id === assignedAgentId);
   const rotulo = assignedAgentId
