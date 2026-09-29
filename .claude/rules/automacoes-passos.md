@@ -17,8 +17,8 @@ paths:
 
 Vale ao mexer no "Enviar modelo", no "Criar tarefa" pelo responsável, nas
 condições "Janela de 24h da Meta aberta", "Hora do dia" e "Campo
-personalizado da ficha" e no "Aguardar até estar dentro do horário" (Fase 2
-do plano do previdenciário, 26/09/2026). As regras são puras e testadas:
+personalizado da ficha", no "Aguardar até estar dentro do horário" (Fase 2
+do plano do previdenciário, 26/09/2026) e no "Fixar a conversa no número". As regras são puras e testadas:
 `parametros-do-modelo.ts`, `responsavel-da-tarefa.ts`, `janela-da-meta.ts`,
 `hora-do-dia.ts` e `condicao-por-campo.ts`, em `src/lib/automations/`.
 O resto do motor: `.claude/rules/automacoes.md`; o mapa da janela por número:
@@ -154,6 +154,34 @@ ausente = `equals`), `value`.
   dicionários) com o NOME do campo — quem desenha condição precisa carregar
   `nomes.campos` (a página do funil e `GET /api/cb/execucoes` carregam), senão
   sai "(apagado)".
+
+### "Fixar a conversa no número" (`pin_conversation_channel`)
+
+A troca de número Comercial → Jurídico (29/09/2026): o cliente do Bancário
+que escreve no Comercial é avisado e passa a ser atendido pelo Jurídico.
+
+- ⚠️⚠️ **Enviar por um número NÃO muda o número da conversa**: `sendViaMeta`
+  só grava a prévia, e a mensagem seguinte do cliente pelo número antigo a
+  puxa de volta (`followConversationChannel`, conversa solta). Sem este passo,
+  a resposta dada pelo CRM depois do aviso sairia pelo Comercial. Fixada
+  (`channel_pinned`), ela fica no número até alguém escolher "Automático" no
+  cabeçalho, e a faixa de divergência aparece quando o cliente escreve por
+  outro (`canal-na-conversa.md`).
+- ⚠️ **A recusa vem ANTES do efeito**, como em `/api/whatsapp/send`: conexão
+  apagada ou de outra conta, que não é de WhatsApp, ou que não alcança o
+  contato (`alvoDeEnvio`: só o BSUID num QR Code) FALHA o passo — nunca "fica
+  onde estava" nem prende a conversa num número que não chega ao cliente.
+  Grupo é recusado (segunda tranca, como no `set_ai`). Sem conversa, falha
+  como o `set_ai`: o passo não fala com ninguém, então não cria conversa.
+- **Conexão obrigatória, sem "a do disparo"** (`fixar_sem_conexao`); a
+  ativação recusa Instagram (`validateChannelScopeForActivation`), e id
+  desconhecido não trava (o motor falha fechado nele). O seletor aparece
+  mesmo com um número só e lista só WhatsApp; sem número para escolher,
+  `ListaSemEscolha` diz se está carregando, se falhou ou se não há nenhum
+  (Codex, PR #353), e "conexão apagada" só com a lista carregada.
+- O registro diz o NOME do número (`conversa fixada no número "…"`): o motor
+  já leu a conexão para a recusa. O resumo do cartão (`descrever-passo.ts`)
+  fica sem o nome — nenhuma tela que resume passo carrega `nomes.canais`.
 
 # Ficha sem conversa (27/09/2026, #322)
 

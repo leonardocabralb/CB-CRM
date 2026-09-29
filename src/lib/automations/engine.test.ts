@@ -9,9 +9,11 @@ const h = vi.hoisted(() => ({
     owned: null as {
       id: string;
       name?: string;
-      phone?: string;
+      phone?: string | null;
       email?: string;
       company?: string;
+      /** O BSUID de quem a Meta identifica só pelo nome de usuário (Fase 11.3). */
+      wa_user_id?: string | null;
     } | null,
     ownedCustomField: null as { id: string; field_type?: string } | null,
     pipeline: null as { id: string } | null,
@@ -32,6 +34,8 @@ const h = vi.hoisted(() => ({
     rpcStatusGravado: 'open' as string,
     /** Campos a mais da conversa lida por id (a pausa da IA que o `set_ai` lê). */
     conversaLida: {} as Record<string, unknown>,
+    /** A conexão que "Fixar a conversa no número" acha em `cb_channels` (só pela conta `acct-1`). */
+    canalDaConta: null as { id: string; label: string; kind: string } | null,
     /** Preenchido, a LEITURA de `deals` devolve este erro (18/09). */
     erroNoNegocio: null as string | null,
     /**
@@ -263,6 +267,14 @@ vi.mock('./admin-client', () => {
       const proximo = state.movimentosPorChamada?.shift();
       if (proximo === 'erro') return { data: null, error: { message: 'fila de eventos fora do ar' } };
       return { data: proximo ?? state.movimentosDepois, error: null };
+    }
+    if (table === 'cb_channels') {
+      // A conexão só volta quando o filtro de CONTA casa: a leitura que o
+      // esquecer enxergaria a conexão de outra conta, e o teste vê isso.
+      const conta = ops.filters.find(([op, k]) => op === 'eq' && k === 'account_id')?.[2];
+      const id = ops.filters.find(([op, k]) => op === 'eq' && k === 'id')?.[2];
+      const c = state.canalDaConta;
+      return { data: c && conta === 'acct-1' && id === c.id ? c : null, error: null };
     }
     if (table === 'pipelines') return { data: state.pipeline, error: null };
     if (table === 'pipeline_stages') return { data: state.stage, error: null };
@@ -629,6 +641,7 @@ beforeEach(() => {
   h.state.rpcMoverRecusa = null;
   h.state.rpcStatusGravado = 'open';
   h.state.conversaLida = {};
+  h.state.canalDaConta = null;
   h.state.dealSelects = [];
   h.state.dealInserts = [];
   h.state.automations = [];
@@ -1898,6 +1911,127 @@ describe('set_ai — a pausa com MOTIVO (1049, D26)', () => {
     await rodar(true);
     expect(escritasNaConversa()).toHaveLength(0);
     expect(passos()).toContainEqual(expect.objectContaining({ status: 'success', detail: 'IA já estava ligada' }));
+  });
+});
+
+describe('pin_conversation_channel — fixar a conversa no número (Comercial → Jurídico)', () => {
+  const JURIDICO = { id: 'ch-jur', label: 'Bancário - Jurídico', kind: 'evolution' };
+
+  async function rodar(step_config: Record<string, unknown> = { channel_id: 'ch-jur' }) {
+    h.state.owned ??= { id: 'c1', phone: '5583999990000' };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [
+      {
+        id: 's1',
+        automation_id: 'a1',
+        step_type: 'pin_conversation_channel',
+        position: 0,
+        parent_step_id: null,
+        step_config,
+      },
+    ];
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: { conversation_id: 'conv-1', channel_id: 'ch-comercial' },
+    });
+  }
+
+  function passos() {
+    return h.state.logUpdates.flatMap(
+      (u) => (u.steps_executed as { status: string; detail?: string }[] | undefined) ?? []
+    );
+  }
+
+  const escritasNaConversa = () => h.state.updateCalls.filter((u) => u.table === 'conversations');
+
+  beforeEach(() => {
+    h.state.canalDaConta = JURIDICO;
+    h.state.conversaLida = { group_id: null, channel_id: 'ch-comercial', channel_pinned: false };
+  });
+
+  it('CRÍTICO: fixa a conversa DO DISPARO no número escolhido, cercada pela conta', async () => {
+    await rodar();
+
+    const conversas = escritasNaConversa();
+    expect(conversas).toHaveLength(1);
+    expect(conversas[0].payload).toEqual({ channel_id: 'ch-jur', channel_pinned: true });
+    expect(conversas[0].filters).toContainEqual(['eq', 'id', 'conv-1']);
+    expect(conversas[0].filters).toContainEqual(['eq', 'account_id', ACCOUNT]);
+    expect(passos()).toContainEqual(
+      expect.objectContaining({ status: 'success', detail: 'conversa fixada no número "Bancário - Jurídico"' })
+    );
+  });
+
+  it('fixada em OUTRO número: troca para o escolhido', async () => {
+    h.state.conversaLida = { group_id: null, channel_id: 'ch-comercial', channel_pinned: true };
+    await rodar();
+    expect(escritasNaConversa()[0]?.payload).toEqual({ channel_id: 'ch-jur', channel_pinned: true });
+  });
+
+  it('já fixada neste número: nada a escrever', async () => {
+    h.state.conversaLida = { group_id: null, channel_id: 'ch-jur', channel_pinned: true };
+    await rodar();
+    expect(escritasNaConversa()).toHaveLength(0);
+    expect(passos()).toContainEqual(
+      expect.objectContaining({ status: 'success', detail: 'conversa já estava fixada no número "Bancário - Jurídico"' })
+    );
+  });
+
+  it('no número certo mas SOLTA (segue o cliente): fixa — a próxima mensagem pelo Comercial a puxaria de volta', async () => {
+    h.state.conversaLida = { group_id: null, channel_id: 'ch-jur', channel_pinned: false };
+    await rodar();
+    expect(escritasNaConversa()[0]?.payload).toEqual({ channel_id: 'ch-jur', channel_pinned: true });
+  });
+
+  it('⚠️ conexão apagada ou de OUTRA conta: FALHA, e a conversa não é tocada', async () => {
+    h.state.canalDaConta = null;
+    await rodar();
+    expect(escritasNaConversa()).toHaveLength(0);
+    expect(JSON.stringify(h.state.logUpdates)).toContain('a conexão escolhida não existe nesta conta');
+  });
+
+  it('⚠️ conexão do Instagram: FALHA — prenderia a conversa do telefone num transporte que não o alcança', async () => {
+    h.state.canalDaConta = { id: 'ch-jur', label: 'Instagram', kind: 'instagram' };
+    await rodar();
+    expect(escritasNaConversa()).toHaveLength(0);
+    expect(JSON.stringify(h.state.logUpdates)).toContain('só vale para conexão de WhatsApp');
+  });
+
+  it('⚠️ contato só com o BSUID num número por QR Code: FALHA antes de fixar (não chegaria a ele)', async () => {
+    h.state.owned = { id: 'c1', phone: null, wa_user_id: 'BR.1234567890' };
+    await rodar();
+    expect(escritasNaConversa()).toHaveLength(0);
+    expect(JSON.stringify(h.state.logUpdates)).toContain('não é número oficial');
+  });
+
+  it('contato só com o BSUID num número OFICIAL: fixa (a Meta o alcança pelo usuário)', async () => {
+    h.state.owned = { id: 'c1', phone: null, wa_user_id: 'BR.1234567890' };
+    h.state.canalDaConta = { id: 'ch-jur', label: 'Oficial', kind: 'meta' };
+    await rodar();
+    expect(escritasNaConversa()[0]?.payload).toEqual({ channel_id: 'ch-jur', channel_pinned: true });
+  });
+
+  it('⚠️ contato sem telefone nem usuário: FALHA', async () => {
+    h.state.owned = { id: 'c1', phone: null, wa_user_id: null };
+    await rodar();
+    expect(escritasNaConversa()).toHaveLength(0);
+    expect(JSON.stringify(h.state.logUpdates)).toContain('não tem telefone nem usuário');
+  });
+
+  it('⚠️ conversa de grupo: FALHA (o número do grupo é o de `cb_groups`)', async () => {
+    h.state.conversaLida = { group_id: 'g1', channel_id: null, channel_pinned: false };
+    await rodar();
+    expect(escritasNaConversa()).toHaveLength(0);
+    expect(JSON.stringify(h.state.logUpdates)).toContain('não vale em conversa de grupo');
+  });
+
+  it('sem conexão escolhida: FALHA com o motivo, sem ler nada', async () => {
+    await rodar({ channel_id: '' });
+    expect(escritasNaConversa()).toHaveLength(0);
+    expect(h.state.fromCalls).not.toContain('cb_channels');
+    expect(JSON.stringify(h.state.logUpdates)).toContain('nenhuma conexão escolhida');
   });
 });
 

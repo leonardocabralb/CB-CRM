@@ -234,7 +234,7 @@ const TODOS_OS_TIPOS: Record<AutomationStepType, true> = {
   move_deal_stage: true, set_deal_status: true, run_automation: true, stop_automation: true,
   run_flow: true, stop_flow: true, set_ai: true, send_media: true,
   wait: true, condition: true, send_webhook: true, close_conversation: true,
-  send_to_number: true, create_task: true,
+  send_to_number: true, create_task: true, pin_conversation_channel: true,
 }
 const TIPOS_DE_PASSO = Object.keys(TODOS_OS_TIPOS) as AutomationStepType[]
 
@@ -299,6 +299,14 @@ describe.each(['pt-BR.json', 'en.json'])('dicionário %s', (arquivo) => {
       (c) => !(c in resumo),
     )
     expect(semChave).toEqual([])
+  })
+
+  it('CRÍTICO: todo tipo de passo tem NOME no construtor (`Automations.builder.steps`)', () => {
+    // O construtor, a tela de registros e a aba da conversa escrevem
+    // `t(\`steps.${tipo}\`)` — chave MONTADA, que escapa do portão de i18n
+    // do CI: passo novo sem o nome apareceria com o caminho cru na paleta.
+    const nomes = JSON.parse(readFileSync(`messages/${arquivo}`, 'utf8')).Automations.builder.steps
+    expect(TIPOS_DE_PASSO.filter((t) => !(t in nomes))).toEqual([])
   })
 
   it('não sobra chave órfã no dicionário', () => {

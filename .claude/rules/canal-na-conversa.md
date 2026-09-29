@@ -73,7 +73,8 @@ bolinha antes do nome na lista.
   desligaria o seguimento em silêncio. Com pino, a divergência é permanente e
   escolhida — toda resposta cai noutra conversa no celular do cliente. Não
   exige `fioMulticanal`. O botão re-fixa no número do cliente; "Automático" no
-  menu solta.
+  menu solta. A automação também fixa (passo "Fixar a conversa no número",
+  `automacoes-passos.md`): é assim que o cliente do Bancário passa ao Jurídico.
 - ⚠️ **A mensagem otimista nasce carimbada com o canal da tela, e
   `/api/whatsapp/send` devolve `channel_id`.** Sem os dois, a resposta enviada
   pelo número B ficava desenhada no trecho de A até o realtime trocar a bolha

@@ -218,6 +218,9 @@ export function descreverPasso(passo: PassoResumivel, nomes: NomesConhecidos = {
     default:
       // send_buttons, send_list, assign_conversation, stop_flow,
       // send_webhook, close_conversation — o tipo já diz o suficiente.
+      // pin_conversation_channel também: o nome da conexão pediria
+      // `nomes.canais`, que nenhuma tela que resume passo carrega — e o id cru
+      // ou "(apagado)" sobre conexão viva seriam piores que a frase sem ele.
       return simples()
   }
 }

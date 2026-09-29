@@ -23,6 +23,7 @@ import type {
   AutomationRefStepConfig,
   RunFlowStepConfig,
   SetAiStepConfig,
+  PinConversationChannelStepConfig,
   SendMediaStepConfig,
   SendToNumberStepConfig,
   CalendlyTriggerConfig,
@@ -34,6 +35,8 @@ import type {
 import { supabaseAdmin } from './admin-client';
 import { conversaDoContato, resolverDestinatario } from './destinatario';
 import { resolveEngineChannelPreferring } from '@/lib/cb-channels/engine-send';
+import { ehWhatsApp } from '@/lib/cb-channels/transporte';
+import { alvoDeEnvio } from '@/lib/whatsapp/alvo-de-envio';
 import { ehGatilhoDaRegua, PASSOS_QUE_FALAM_COM_O_CONTATO } from '@/lib/asaas/regua';
 
 /**
@@ -2397,6 +2400,91 @@ async function runStep(
         .eq('account_id', args.automation.account_id)
         .eq('contact_id', args.contactId);
       return 'conversation closed';
+    }
+
+    // ------------------------------------------------------------
+    // Fixar a conversa num número (o seletor do cabeçalho do fio, pela
+    // automação) — a troca de número Comercial → Jurídico.
+    //
+    // ⚠️ Enviar pelo Jurídico NÃO muda o número da conversa (`sendViaMeta` só
+    // grava a prévia), e a mensagem seguinte do cliente pelo Comercial a puxa
+    // de volta (`followConversationChannel`): a resposta dada pelo CRM sairia
+    // pelo Comercial, desmentindo o aviso. Fixada, ela fica no número
+    // escolhido até alguém soltar ("Automático" no cabeçalho), e a faixa de
+    // divergência aparece quando o cliente escrever por outro.
+    //
+    // ⚠️ A recusa vem ANTES do efeito, como em `/api/whatsapp/send`: conexão
+    // apagada, que não é de WhatsApp ou que não alcança o contato (a ficha só
+    // com o BSUID num número por QR Code) FALHA o passo — fixada nela, a
+    // conversa ficaria presa num número que não chega ao cliente.
+    // ------------------------------------------------------------
+    case 'pin_conversation_channel': {
+      const cfg = step.step_config as PinConversationChannelStepConfig;
+      if (!args.contactId)
+        throw new Error('pin_conversation_channel needs a contact');
+      const canalId =
+        typeof cfg.channel_id === 'string' ? cfg.channel_id.trim() : '';
+      if (!canalId) throw new Error('fixar a conversa: nenhuma conexão escolhida');
+
+      const { data: canal, error: canalErr } = await db
+        .from('cb_channels')
+        .select('id, label, kind')
+        .eq('id', canalId)
+        .eq('account_id', args.automation.account_id)
+        .maybeSingle();
+      if (canalErr)
+        throw new Error(`fixar a conversa: leitura da conexão falhou: ${canalErr.message}`);
+      if (!canal)
+        throw new Error('fixar a conversa: a conexão escolhida não existe nesta conta');
+      if (!ehWhatsApp(canal as { kind: string }))
+        throw new Error('fixar a conversa: só vale para conexão de WhatsApp');
+      const rotulo = String((canal as { label?: string | null }).label ?? canalId);
+
+      const { data: contato, error: contatoErr } = await db
+        .from('contacts')
+        .select('phone, wa_user_id')
+        .eq('id', args.contactId)
+        .eq('account_id', args.automation.account_id)
+        .maybeSingle();
+      if (contatoErr)
+        throw new Error(`fixar a conversa: leitura do contato falhou: ${contatoErr.message}`);
+      const alcance = alvoDeEnvio(
+        contato as { phone?: string | null; wa_user_id?: string | null } | null,
+        canal as { kind: string }
+      );
+      if (!alcance.ok) {
+        throw new Error(
+          alcance.motivo === 'so_numero_oficial'
+            ? `fixar a conversa: o contato não tem telefone, e "${rotulo}" não é número oficial — não chegaria a ele`
+            : 'fixar a conversa: o contato não tem telefone nem usuário do WhatsApp'
+        );
+      }
+
+      const conversationId = await resolveConversationId(args);
+      const { data: conv, error: convErr } = await db
+        .from('conversations')
+        .select('group_id, channel_id, channel_pinned')
+        .eq('id', conversationId)
+        .eq('account_id', args.automation.account_id)
+        .maybeSingle();
+      if (convErr)
+        throw new Error(`fixar a conversa: leitura da conversa falhou: ${convErr.message}`);
+      if (!conv) throw new Error('fixar a conversa: conversa não encontrada nesta conta');
+      // Segunda tranca, como no `set_ai`: automação não dispara em grupo, e o
+      // número do grupo é `cb_groups.channel_id`, nunca o da conversa.
+      if (conv.group_id)
+        throw new Error('fixar a conversa não vale em conversa de grupo');
+      if (conv.channel_pinned === true && conv.channel_id === canalId) {
+        return `conversa já estava fixada no número "${rotulo}"`;
+      }
+
+      const { error: upErr } = await db
+        .from('conversations')
+        .update({ channel_id: canalId, channel_pinned: true })
+        .eq('id', conversationId)
+        .eq('account_id', args.automation.account_id);
+      if (upErr) throw new Error(`fixar a conversa falhou: ${upErr.message}`);
+      return `conversa fixada no número "${rotulo}"`;
     }
 
     // ------------------------------------------------------------
