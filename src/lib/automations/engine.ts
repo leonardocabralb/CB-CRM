@@ -3418,7 +3418,7 @@ function waitMs(cfg: WaitStepConfig): number {
 // Os links saem de `NEXT_PUBLIC_SITE_URL`; sem ela, caminho relativo.
 // ------------------------------------------------------------
 
-interface DadosDoContato {
+export interface DadosDoContato {
   contato: {
     name: string;
     phone: string;
@@ -3457,8 +3457,15 @@ function dadosDoContato(args: ExecuteArgs): Promise<DadosDoContato> {
   return p;
 }
 
+/**
+ * ⚠️ `estrito` é SÓ da prévia do construtor (`valoresParaPrevia`): leitura que
+ * falha LANÇA, e a rota responde 500 — senão a prévia pintaria "vazio, sairia
+ * em branco" num campo que tem valor. O ENVIO não passa o parâmetro e segue
+ * como sempre: leitura que falha vira variável vazia e o passo segue.
+ */
 async function carregarDadosDoContato(
-  args: ExecuteArgs
+  args: ExecuteArgs,
+  { estrito = false }: { estrito?: boolean } = {}
 ): Promise<DadosDoContato> {
   const conversaDoContexto = args.context.conversation_id ?? null;
   if (!args.contactId)
@@ -3495,6 +3502,14 @@ async function carregarDadosDoContato(
           .limit(1)
           .maybeSingle(),
   ]);
+  if (estrito) {
+    const erro =
+      contato.error ??
+      valores.error ??
+      (conversa as { error?: { message: string } | null }).error ??
+      null;
+    if (erro) throw new Error(`prévia: leitura do contato falhou: ${erro.message}`);
+  }
 
   const campos: Record<string, string> = {};
   const camposCru: Record<string, string> = {};
@@ -3554,7 +3569,7 @@ const RE_VARIAVEL = /\{\{\s*([\w.]+)\s*\}\}/g;
 const RE_CITA_CONTATO = /\{\{\s*(contact|conversation)\./;
 const RE_CITA_NEGOCIO = /\{\{\s*deal\./;
 
-interface DadosDoNegocio {
+export interface DadosDoNegocio {
   value: number | null;
   created_at: string | null;
 }
@@ -3578,7 +3593,9 @@ interface DadosDoNegocio {
  * como 0, indistinguível de um zero de verdade.
  */
 async function carregarNegocio(
-  args: ExecuteArgs
+  args: ExecuteArgs,
+  // ⚠️ Só a prévia passa `estrito` (ver `carregarDadosDoContato`).
+  { estrito = false }: { estrito?: boolean } = {}
 ): Promise<DadosDoNegocio | null> {
   const db = supabaseAdmin();
   try {
@@ -3591,6 +3608,7 @@ async function carregarNegocio(
       .eq('account_id', args.automation.account_id)
       .maybeSingle();
     if (error) {
+      if (estrito) throw new Error(`prévia: leitura do negócio falhou: ${error.message}`);
       console.warn(
         '[automations] {{deal.*}}: leitura do negócio falhou',
         error
@@ -3606,6 +3624,7 @@ async function carregarNegocio(
       created_at: typeof d.created_at === 'string' ? d.created_at : null,
     };
   } catch (err) {
+    if (estrito) throw err;
     console.warn('[automations] {{deal.*}}: busca do negócio falhou', err);
     return null;
   }
@@ -3751,7 +3770,12 @@ async function interpolate(
   });
 }
 
-function valorDaVariavel(
+/**
+ * O valor de UM código. Exportada para o seletor de variáveis do construtor:
+ * `classificarCodigo` (`variaveis/catalogo.ts`) é o espelho desta régua, e o
+ * teste cruza os dois — mudou aqui, muda lá.
+ */
+export function valorDaVariavel(
   key: string,
   args: ExecuteArgs,
   dados: DadosDoContato | null,
@@ -3826,6 +3850,61 @@ function valorDaVariavel(
       : '';
   }
   return '';
+}
+
+/**
+ * A PRÉVIA do construtor (seletor de variáveis, 29/09/2026): o valor de cada
+ * código para um cliente escolhido, pelas MESMAS funções do envio —
+ * `dadosDoContato`, `carregarNegocio` (o card de `negocioParaLeitura`) e
+ * `valorDaVariavel`. A tela não tem cópia das regras (data formatada, moeda,
+ * origem, links), então a prévia não diverge do que sai.
+ *
+ * Os dois modos, porque o mesmo código sai diferente conforme o passo: texto
+ * para gente (`mensagem`) e dado (`cru` — "Atualizar campo" e webhook).
+ *
+ * Só LEITURA: nada é gravado, e o valor nunca vai para log (um campo pode
+ * guardar a senha do gov.br). ⚠️ Leitura que falha LANÇA (modo `estrito`):
+ * no envio ela vira variável vazia, mas aqui a tela afirmaria "sairia em
+ * branco" sobre um campo que tem valor. `vars.*`, `message.text` e
+ * `channel.id` são do EVENTO e não existem aqui — a tela usa o exemplo. Além
+ * dos `codigos` pedidos, devolve todo `contact.campo.<chave>` que o contato
+ * tem preenchido.
+ *
+ * ⚠️ O `ExecuteArgs` leva só o que estas funções leem: a conta, o contato e um
+ * contexto VAZIO (sem card fixado — o alvo é o de uma execução à mão). Se
+ * alguma delas passar a ler outro campo, decida aqui se a prévia precisa dele.
+ */
+export async function valoresParaPrevia(input: {
+  accountId: string;
+  contactId: string;
+  codigos: readonly string[];
+}): Promise<Record<string, { mensagem: string; cru: string }>> {
+  const args: ExecuteArgs = {
+    automation: { account_id: input.accountId } as Automation,
+    contactId: input.contactId,
+    context: {},
+    parentStepId: null,
+    branch: null,
+    startPosition: 0,
+    logId: null,
+    triggerEvent: 'previa',
+  };
+  const [dados, negocio] = await Promise.all([
+    carregarDadosDoContato(args, { estrito: true }),
+    carregarNegocio(args, { estrito: true }),
+  ]);
+  const codigos = new Set(input.codigos);
+  for (const chave of Object.keys(dados.campos)) {
+    codigos.add(`contact.campo.${chave}`);
+  }
+  const valores: Record<string, { mensagem: string; cru: string }> = {};
+  for (const codigo of codigos) {
+    valores[codigo] = {
+      mensagem: valorDaVariavel(codigo, args, dados, negocio, {}),
+      cru: valorDaVariavel(codigo, args, dados, negocio, { cru: true }),
+    };
+  }
+  return valores;
 }
 
 /**
