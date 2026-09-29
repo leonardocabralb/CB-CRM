@@ -92,11 +92,13 @@ function PreviaDoTexto({ texto, modo }: { texto: string; modo: ModoDoValor }) {
   const pedacos = pedacosDoTexto(texto)
   // Algum valor é EXEMPLO (ou do último acionamento)? Então a legenda do
   // sublinhado vai embaixo: sem ela, "Olá, Maria!" parece dado de verdade.
-  const temMarcado = pedacos.some((p) => {
-    if (p.tipo !== "codigo") return false
-    const origem = v.valorDe(p.codigo, modo)?.origem
-    return origem === "exemplo" || origem === "ultimo"
-  })
+  const origens = pedacos.map((p) => (p.tipo === "codigo" ? v.valorDe(p.codigo, modo)?.origem : undefined))
+  const temMarcado = origens.some((o) => o === "exemplo" || o === "ultimo")
+  // `{{deal.*}}` num gatilho que traz o card do EVENTO, com o cliente tendo
+  // mais de um card: o valor é do card mais recente, e no disparo pode ser
+  // outro (Codex, #348).
+  const temCard = origens.includes("card")
+  const ajudaDoCard = t("previa.cardDoEventoAjuda", { n: v.negociosDaPrevia ?? 0 })
   // No DADO ("Atualizar campo"), valor que sai INTEIRO vazio não grava nada
   // (regra do motor): diz isso, em vez de "sairia em branco". Só quando todo
   // código tem valor conhecido — sem cliente, não há o que afirmar.
@@ -171,7 +173,7 @@ function PreviaDoTexto({ texto, modo }: { texto: string; modo: ModoDoValor }) {
               </span>
             )
           }
-          const marcado = valor.origem === "exemplo" || valor.origem === "ultimo"
+          const marcado = valor.origem === "exemplo" || valor.origem === "ultimo" || valor.origem === "card"
           return (
             <span
               key={i}
@@ -184,7 +186,9 @@ function PreviaDoTexto({ texto, modo }: { texto: string; modo: ModoDoValor }) {
                   ? ` — ${t("previa.exemploAjuda")}`
                   : valor.origem === "ultimo"
                     ? ` — ${t("previa.ultimoAcionamento")}`
-                    : ""
+                    : valor.origem === "card"
+                      ? ` — ${ajudaDoCard}`
+                      : ""
               }`}
             >
               {valor.texto}
@@ -193,6 +197,7 @@ function PreviaDoTexto({ texto, modo }: { texto: string; modo: ModoDoValor }) {
         })}
       </div>
       {temMarcado && <p className="mt-1 text-[10px] text-muted-foreground">{t("previa.legenda")}</p>}
+      {temCard && <p className="mt-1 text-[10px] text-muted-foreground">{ajudaDoCard}</p>}
       {dadoVazio && (
         <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">{t("previa.dadoVazio")}</p>
       )}

@@ -2713,7 +2713,9 @@
         "legenda": "Sublinhado: exemplo, ou o último acionamento. O valor real vem do evento, na hora do envio.",
         "vazioAjudaDado": "Vazio para este cliente.",
         "dadoVazio": "Para este cliente o valor sai vazio: o campo da ficha não é alterado.",
-        "valoresDoCliente": "Valores do cliente escolhido"
+        "valoresDoCliente": "Valores do cliente escolhido",
+        "cardDoEvento": "card do evento?",
+        "cardDoEventoAjuda": "O cliente tem {n} cards: na prévia vale o mais recente, e no disparo vale o card do evento, que pode ser outro."
       }
     }
   },

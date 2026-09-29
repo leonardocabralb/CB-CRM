@@ -47,6 +47,10 @@ interpolação: `.claude/rules/automacoes.md`, seção "Variáveis".
 - **O nome no cartão fechado só em `send_message`/`send_to_number`**: o corpo
   dos botões e a URL do webhook NÃO são interpolados, e o nome ali prometeria
   uma troca que não acontece.
+- **`{{deal.*}}` nos gatilhos que trazem o card do EVENTO**
+  (`gatilhoTrazCard`): o envio usa o card do evento; a prévia, sem evento,
+  usa o de `negocioAlvo`. Com mais de um card no cliente, a prévia marca
+  "card do evento?" (a rota devolve `negocios`) — nunca afirma o valor.
 - Estados da prévia e do último acionamento são CARIMBADOS (`de`) e
   comparados com a entrada do render atual (efeito passivo, CLAUDE.md 8c).
 - Monoespaçado por `FONTE_MONO` (a classe `font-mono` sai na Inter); cor em

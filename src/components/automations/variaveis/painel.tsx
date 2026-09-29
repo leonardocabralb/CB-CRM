@@ -180,7 +180,9 @@ function ValorDoItem({
       ? t("previa.exemplo")
       : valor.origem === "ultimo"
         ? t("previa.ultimoAcionamento")
-        : null
+        : valor.origem === "card"
+          ? t("previa.cardDoEvento")
+          : null
   return (
     <span className="flex max-w-[45%] shrink-0 flex-col items-end text-right">
       <span

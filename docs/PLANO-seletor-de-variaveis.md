@@ -64,6 +64,17 @@ editar grava o `step_config` idêntico. Corrigidos os dois P3: escolher de novo
 o mesmo cliente refaz a prévia que falhou (`tentativa`), e valor gravado que
 não é texto não derruba o editor (`comoTexto`, só para exibir).
 
+### Codex (PR #348)
+
+- 1ª rodada, P2: nos gatilhos cujo EVENTO traz o card (`deal_stage_changed`,
+  `deal_status_changed`, `zapsign_documento_assinado` — `gatilhoTrazCard`), o
+  envio usa aquele card em `{{deal.*}}`, e a prévia usa o de `negocioAlvo`.
+  Corrigido sem inventar card: a rota devolve quantos cards o cliente tem, e
+  com MAIS DE UM a prévia marca `{{deal.*}}` como "card do evento?", dizendo
+  que no disparo vale o card do evento. Com um card só, o valor é exato e sai
+  sem marca. Conferido no preview (1 card real: sem marca; 2 simulados na
+  aba: com marca).
+
 ## Decisões do operador (29/09/2026)
 
 - **D1 — etiqueta com o nome (opção B da maquete).** O campo inserido aparece

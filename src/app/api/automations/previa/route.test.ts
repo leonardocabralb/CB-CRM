@@ -14,6 +14,8 @@ const h = vi.hoisted(() => ({
   conta: 'acc-1',
   erroDeLeitura: null as { message: string } | null,
   contatos: [] as Record<string, unknown>[],
+  negocios: 1,
+  erroNaContagem: null as { message: string } | null,
   filtros: [] as [string, unknown][],
   escritas: 0,
 }))
@@ -36,6 +38,11 @@ vi.mock('@/lib/automations/admin-client', () => ({
           if (h.erroDeLeitura) return { data: null, error: h.erroDeLeitura }
           return { data: h.contatos.find((c) => filtros.every(([k, v]) => c[k] === v)) ?? null, error: null }
         },
+        // A contagem dos cards (`select` com `head: true`, sem maybeSingle).
+        then: (f: (v: unknown) => unknown) =>
+          Promise.resolve(
+            h.erroNaContagem ? { count: null, error: h.erroNaContagem } : { count: h.negocios, error: null },
+          ).then(f),
       }
       return b
     },
@@ -73,6 +80,8 @@ beforeEach(() => {
   h.filtros = []
   h.escritas = 0
   h.contatos = [{ id: CONTATO, account_id: 'acc-1' }]
+  h.negocios = 1
+  h.erroNaContagem = null
 })
 
 describe('GET /api/automations/previa', () => {
@@ -86,7 +95,7 @@ describe('GET /api/automations/previa', () => {
   it('devolve os valores do motor para o contato da conta', async () => {
     const res = await pedir(CONTATO)
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ valores: { 'contact.name': { mensagem: 'Marcelo', cru: 'Marcelo' } } })
+    expect(await res.json()).toEqual({ valores: { 'contact.name': { mensagem: 'Marcelo', cru: 'Marcelo' } }, negocios: 1 })
     expect(vi.mocked(valoresParaPrevia)).toHaveBeenCalledWith(
       expect.objectContaining({ accountId: 'acc-1', contactId: CONTATO }),
     )
@@ -111,6 +120,13 @@ describe('GET /api/automations/previa', () => {
     const res = await pedir(CONTATO)
     expect(res.status).toBe(500)
     expect(await res.json()).toEqual({ error: 'db_error' })
+  })
+
+  it('devolve quantos cards o cliente tem, e a contagem que falha é 500', async () => {
+    h.negocios = 3
+    expect((await (await pedir(CONTATO)).json()).negocios).toBe(3)
+    h.erroNaContagem = { message: 'fora do ar' }
+    expect((await pedir(CONTATO)).status).toBe(500)
   })
 
   it('id que não é UUID é 400', async () => {

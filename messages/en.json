@@ -2720,7 +2720,9 @@
         "legenda": "Underlined: an example, or the last call. The real value comes from the event, when sending.",
         "vazioAjudaDado": "Empty for this customer.",
         "dadoVazio": "For this customer the value comes out empty: the contact field is not changed.",
-        "valoresDoCliente": "Values for the chosen customer"
+        "valoresDoCliente": "Values for the chosen customer",
+        "cardDoEvento": "event card?",
+        "cardDoEventoAjuda": "The customer has {n} cards: the preview uses the newest, and when it runs the event’s card counts, which may be another one."
       }
     }
   },

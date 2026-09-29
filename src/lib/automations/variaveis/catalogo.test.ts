@@ -10,6 +10,7 @@ import {
   CODIGOS_DO_CLIENTE,
   familiaDoEvento,
   gatilhoDeMensagem,
+  gatilhoTrazCard,
   VARIAVEIS_FIXAS,
 } from './catalogo';
 import { NOMES_DO_EVENTO } from './exemplos';
@@ -67,6 +68,14 @@ describe('classificarCodigo — a régua do motor', () => {
     expect(familiaDoEvento('deal_stage_changed')).toBeNull();
     expect(gatilhoDeMensagem('keyword_match')).toBe(true);
     expect(gatilhoDeMensagem('manual')).toBe(false);
+  });
+
+  it('gatilhos cujo EVENTO traz o card (a prévia de {{deal.*}} pode ser de outro card)', () => {
+    expect(gatilhoTrazCard('deal_stage_changed')).toBe(true);
+    expect(gatilhoTrazCard('deal_status_changed')).toBe(true);
+    expect(gatilhoTrazCard('zapsign_documento_assinado')).toBe(true);
+    expect(gatilhoTrazCard('manual')).toBe(false);
+    expect(gatilhoTrazCard('calendly_booking')).toBe(false);
   });
 });
 

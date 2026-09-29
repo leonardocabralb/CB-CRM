@@ -29,6 +29,7 @@ import {
   classificarCodigo,
   familiaDoEvento,
   gatilhoDeMensagem,
+  gatilhoTrazCard,
   PREFIXO_DO_CAMPO,
   PREFIXO_DO_EVENTO,
   VARIAVEIS_FIXAS,
@@ -60,10 +61,12 @@ export interface GrupoDoPainel {
  * - `cliente`: calculado para o cliente escolhido (vazio = sai em branco);
  * - `exemplo`: gerado pelo código real, com dado fictício;
  * - `ultimo`: veio no último acionamento do webhook;
+ * - `card`: valor de `{{deal.*}}` do card mais recente, num gatilho que traz
+ *   o card do EVENTO e com o cliente tendo mais de um card — pode ser outro;
  * - `evento`: só existe no disparo, sem valor na prévia;
  * - `nenhum`: o motor deixa este código em branco, sempre.
  */
-export type OrigemDoValor = "cliente" | "exemplo" | "ultimo" | "evento" | "nenhum"
+export type OrigemDoValor = "cliente" | "exemplo" | "ultimo" | "card" | "evento" | "nenhum"
 
 export interface ValorParaMostrar {
   texto: string
@@ -88,6 +91,8 @@ interface VariaveisDoConstrutor {
   previa: EstadoDaPrevia
   /** O nome do cliente da prévia, quando já carregado. */
   nomeDaPrevia: string | null
+  /** Quantos cards o cliente da prévia tem (nulo sem cliente carregado). */
+  negociosDaPrevia: number | null
 }
 
 const SEM_VARIAVEIS: VariaveisDoConstrutor = {
@@ -101,6 +106,7 @@ const SEM_VARIAVEIS: VariaveisDoConstrutor = {
   escolherContato: () => {},
   previa: "sem-cliente",
   nomeDaPrevia: null,
+  negociosDaPrevia: null,
 }
 
 const VariaveisContext = createContext<VariaveisDoConstrutor>(SEM_VARIAVEIS)
@@ -149,7 +155,9 @@ export function VariaveisProvider({
   // falhado): sem o contador, o React descarta o setState de valor igual.
   const [tentativa, setTentativa] = useState(0)
   const [carregada, setCarregada] = useState<
-    { de: string; status: "pronto"; valores: ValoresDoCliente } | { de: string; status: "falhou" } | null
+    | { de: string; status: "pronto"; valores: ValoresDoCliente; negocios: number }
+    | { de: string; status: "falhou" }
+    | null
   >(null)
   useEffect(() => {
     if (!contatoDaPrevia || !podePrevia) return
@@ -164,8 +172,14 @@ export function VariaveisProvider({
           setCarregada({ de: contatoDaPrevia, status: "falhou" })
           return
         }
-        const corpo = (await res.json()) as { valores?: ValoresDoCliente }
-        if (vivo) setCarregada({ de: contatoDaPrevia, status: "pronto", valores: corpo.valores ?? {} })
+        const corpo = (await res.json()) as { valores?: ValoresDoCliente; negocios?: number }
+        if (vivo)
+          setCarregada({
+            de: contatoDaPrevia,
+            status: "pronto",
+            valores: corpo.valores ?? {},
+            negocios: typeof corpo.negocios === "number" ? corpo.negocios : 0,
+          })
       } catch {
         if (vivo) setCarregada({ de: contatoDaPrevia, status: "falhou" })
       }
@@ -178,6 +192,8 @@ export function VariaveisProvider({
   const previa: EstadoDaPrevia = !contatoDaPrevia ? "sem-cliente" : !atual ? "carregando" : atual.status
   const valoresDoCliente = atual?.status === "pronto" ? atual.valores : null
   const nomeDaPrevia = valoresDoCliente?.["contact.name"]?.mensagem || null
+  const negociosDaPrevia = atual?.status === "pronto" ? atual.negocios : null
+  const cardIncerto = gatilhoTrazCard(gatilho) && (negociosDaPrevia ?? 0) > 1
 
   // --- O último acionamento do webhook (a leitura do cartão do gatilho) ---
   const [acionamento, setAcionamento] = useState<{
@@ -345,7 +361,10 @@ export function VariaveisProvider({
         case "fixa":
           if (c.variavel.doEvento) return { texto: "", origem: "evento" }
           if (!valoresDoCliente) return null
-          return { texto: valoresDoCliente[c.variavel.codigo]?.[modo] ?? "", origem: "cliente" }
+          return {
+            texto: valoresDoCliente[c.variavel.codigo]?.[modo] ?? "",
+            origem: cardIncerto && c.variavel.grupo === "negocio" ? "card" : "cliente",
+          }
         case "campo":
           if (!valoresDoCliente) return null
           // A rota devolve os campos PREENCHIDOS: ausente = vazio.
@@ -362,7 +381,7 @@ export function VariaveisProvider({
           return { texto: "", origem: "nenhum" }
       }
     },
-    [valoresDoCliente, familia, ultimo, exemplos],
+    [valoresDoCliente, familia, ultimo, exemplos, cardIncerto],
   )
 
   const camposEstado = campos.status
@@ -379,8 +398,21 @@ export function VariaveisProvider({
       escolherContato,
       previa,
       nomeDaPrevia,
+      negociosDaPrevia,
     }),
-    [grupos, camposEstado, notaDoEvento, resolver, valorDe, podePrevia, contatoDaPrevia, escolherContato, previa, nomeDaPrevia],
+    [
+      grupos,
+      camposEstado,
+      notaDoEvento,
+      resolver,
+      valorDe,
+      podePrevia,
+      contatoDaPrevia,
+      escolherContato,
+      previa,
+      nomeDaPrevia,
+      negociosDaPrevia,
+    ],
   )
 
   return <VariaveisContext.Provider value={valor}>{children}</VariaveisContext.Provider>

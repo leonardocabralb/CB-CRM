@@ -85,6 +85,20 @@ export function gatilhoDeMensagem(tipoDoGatilho: string): boolean {
   );
 }
 
+/**
+ * Gatilhos cujo EVENTO traz o card (`context.deal_id`): o motor usa aquele
+ * card em `{{deal.*}}`, e a prévia, sem evento, usa o de `negocioAlvo` (o
+ * aberto mais recente, senão o perdido, senão o ganho). Com mais de um card
+ * no cliente, a prévia pode estar mostrando outro — a tela avisa (Codex, #348).
+ */
+export function gatilhoTrazCard(tipoDoGatilho: string): boolean {
+  return (
+    tipoDoGatilho === 'deal_stage_changed' ||
+    tipoDoGatilho === 'deal_status_changed' ||
+    tipoDoGatilho === 'zapsign_documento_assinado'
+  );
+}
+
 export type ClasseDoCodigo =
   | { tipo: 'fixa'; variavel: VariavelFixa }
   /** `contact.campo.<chave>` — a `field_key` do catálogo de campos. */

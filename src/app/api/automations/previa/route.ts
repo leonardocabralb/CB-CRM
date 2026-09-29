@@ -50,6 +50,19 @@ export async function GET(request: Request) {
     }
     if (!data) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
+    // Quantos cards o cliente tem: nos gatilhos que trazem o card do evento,
+    // com mais de um a prévia de `{{deal.*}}` pode ser de OUTRO card, e a tela
+    // avisa. Falha de leitura é 500, como o resto.
+    const { count: negocios, error: erroDosNegocios } = await supabaseAdmin()
+      .from('deals')
+      .select('id', { count: 'exact', head: true })
+      .eq('account_id', ctx.accountId)
+      .eq('contact_id', contatoId);
+    if (erroDosNegocios) {
+      console.error('[automations/previa] contar os cards:', erroDosNegocios.message);
+      return NextResponse.json({ error: 'db_error' }, { status: 500 });
+    }
+
     let valores: Awaited<ReturnType<typeof valoresParaPrevia>>;
     try {
       // Modo estrito: leitura que falha LANÇA — a prévia nunca diz "vazio"
@@ -64,7 +77,10 @@ export async function GET(request: Request) {
       console.error('[automations/previa] leitura:', err instanceof Error ? err.message : err);
       return NextResponse.json({ error: 'db_error' }, { status: 500 });
     }
-    return NextResponse.json({ valores }, { headers: { 'Cache-Control': 'no-store' } });
+    return NextResponse.json(
+      { valores, negocios: negocios ?? 0 },
+      { headers: { 'Cache-Control': 'no-store' } },
+    );
   } catch (err) {
     return toErrorResponse(err);
   }
