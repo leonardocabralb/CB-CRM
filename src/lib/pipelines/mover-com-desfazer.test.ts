@@ -375,6 +375,32 @@ describe('a reserva no aparelho', () => {
     expect(enviar.mock.calls[0][0]).toBe('/api/cb/negocios/negocio-8/mover');
   });
 
+  it('aparelho que LÊ mas não grava (cota cheia): a memória segura a nova tentativa (Codex, PR #340)', async () => {
+    guardado.set(`cb-movimentos-pendentes:${USUARIO}`, '[]');
+    __reiniciarParaTeste({
+      agora: () => Date.now(),
+      enviar: enviar as unknown as typeof fetch,
+      armazenamento: () => ({
+        getItem: (k) => guardado.get(k) ?? null,
+        setItem: () => {
+          throw new Error('QuotaExceededError');
+        },
+        removeItem: (k) => void guardado.delete(k),
+      }),
+      sucesso,
+      erro,
+      drenar,
+    });
+    aoConcluirMovimento((c) => conclusoes.push(c));
+    respostas.push({ ok: false, status: 503 });
+    agendarMovimento(pedido(), USUARIO);
+    await esperar(ESPERA_PARA_DESFAZER_MS);
+    expect(fotoDoMovimento('negocio-1')?.fase).toBe('tentando');
+    await esperar(INTERVALO_DE_NOVA_TENTATIVA_MS);
+    expect(enviar).toHaveBeenCalledTimes(2);
+    expect(conclusoes[0]?.resultado.tipo).toBe('movido');
+  });
+
   it('armazenamento indisponível (modo privado): o movimento acontece do mesmo jeito', async () => {
     __reiniciarParaTeste({
       agora: () => Date.now(),

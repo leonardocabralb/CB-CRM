@@ -10,8 +10,12 @@ import { createClient } from '@/lib/supabase/client';
 // automático do botão "avançar" (`cb_movimentos_entre_etapas`, 1061).
 //
 // Em memória por funil, válidos por 10 minutos: o painel troca de conversa o
-// tempo todo, e o número não muda em minutos. `null` = carregando ou falhou —
-// o automático não afirma nada sem ele (a escolha à mão não precisa dele).
+// tempo todo, e o número não muda em minutos. `null` = nenhuma leitura boa
+// ainda (carregando, ou a primeira falhou) — o automático não afirma nada sem
+// ela (a escolha à mão não precisa). Depois de uma leitura boa, a releitura
+// que FALHA mantém a anterior, de propósito: o histórico de 30 dias muda
+// devagar, e esconder o botão por um soluço do banco seria pior que uma
+// sugestão de minutos atrás (Codex, PR #340, decidido não trocar).
 //
 // ⚠️ A validade é cumprida com o painel MONTADO: ele passa o expediente
 // inteiro aberto no mesmo funil, e sem o relógio que relê na validade a

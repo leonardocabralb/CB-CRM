@@ -196,8 +196,13 @@ function definirFoto(dealId: string, foto: EstadoDoMovimento | null) {
 // disponível (bloqueado, cota) — sem ela, a nova tentativa da mesma página
 // não acharia o pedido que acabou de falhar.
 const filaEmMemoria = new Map<string, Pendente[]>();
+// Gravar falhou uma vez (cota cheia, com a LEITURA ainda funcionando): daí em
+// diante a memória é a fila desta página — lido do aparelho, o pedido novo
+// não estaria lá, e a falha provisória o daria por desistido (Codex, PR #340).
+let gravacaoFalhou = false;
 
 function lerFila(usuario: string): Pendente[] {
+  if (gravacaoFalhou) return filaEmMemoria.get(usuario) ?? [];
   let bruto: string | null = null;
   try {
     const armazenamento = ambiente.armazenamento();
@@ -251,7 +256,9 @@ function gravarFila(usuario: string, fila: Pendente[]) {
       ),
     );
   } catch {
-    // Sem armazenamento (modo privado, cota): fica só a garantia do `keepalive`.
+    // Sem armazenamento (bloqueado, cota): a memória segura esta página, e o
+    // `keepalive` a saída dela.
+    gravacaoFalhou = true;
   }
 }
 
@@ -539,6 +546,7 @@ export function __reiniciarParaTeste(novo: Partial<Ambiente> = {}): void {
   aguardando.clear();
   emVoo.clear();
   filaEmMemoria.clear();
+  gravacaoFalhou = false;
   avisadosDaFalha.clear();
   tentativas.clear();
   relogioDaTentativa = null;
