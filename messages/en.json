@@ -6072,7 +6072,7 @@
     "connectionsTitle": "Your connections",
     "connectionsUnread": "unread",
     "connectionsLate": "overdue",
-    "connectionsCritical": "{count, plural, =1 {1 over 30 min} other {{count} over 30 min}}",
+    "connectionsCritical": "{count} over 30 min",
     "connectionsNone": "No connections in your profile.",
     "connectionsNoChannel": "No connection recorded: {naoLidos} unread · {emAtraso} overdue",
     "connectionsOpenUnread": "Open unread in {conexao}",

@@ -6072,7 +6072,7 @@
     "connectionsTitle": "Suas conexões",
     "connectionsUnread": "não lidos",
     "connectionsLate": "em atraso",
-    "connectionsCritical": "{count, plural, =1 {1 há mais de 30 min} other {{count} há mais de 30 min}}",
+    "connectionsCritical": "{count} há 30+ min",
     "connectionsNone": "Nenhuma conexão no seu perfil.",
     "connectionsNoChannel": "Sem conexão registrada: {naoLidos} não lidos · {emAtraso} em atraso",
     "connectionsOpenUnread": "Abrir os não lidos de {conexao}",

@@ -102,13 +102,9 @@ export function BlocoDeNotificacoes({
         icone={<Bell className="size-4" aria-hidden />}
         titulo={t('notificationsTitle')}
         direita={
-          pronto ? (
-            <span
-              className={cn(
-                'text-sm',
-                avisos.length > 0 && 'text-primary font-medium'
-              )}
-            >
+          // Sem nenhuma, o corpo já diz; o número no título repetiria.
+          pronto && avisos.length > 0 ? (
+            <span className="text-primary text-sm font-medium">
               {pronto.truncada
                 ? t('notificationsUnreadAtLeast', { count: avisos.length })
                 : t('notificationsUnread', { count: avisos.length })}
