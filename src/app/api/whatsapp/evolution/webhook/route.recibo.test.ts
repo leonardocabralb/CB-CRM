@@ -246,3 +246,51 @@ describe('recibo que chega antes da mensagem — a rota inteira', () => {
     expect(h.estado.disparos).toEqual([]);
   });
 });
+
+describe('o ERROR que chega junto com os outros recibos', () => {
+  beforeEach(() => {
+    // A mensagem que o atendente mandou pelo CRM: a linha nasce `sent`.
+    h.estado.tabelas.messages.push({
+      id: 'msg-1',
+      conversation_id: 'conv-1',
+      message_id: KEY_ID,
+      sender_type: 'agent',
+      status: 'sent',
+      conversations: { account_id: 'conta-1' },
+    });
+  });
+
+  const situacao = () => h.estado.tabelas.messages[0].status;
+  const anunciados = () => h.estado.disparos.map((d) => d.status);
+
+  it('⚠️ o que foi medido em 24–25/09/2026: o ERROR grava primeiro, o DELIVERY_ACK é recusado, e o READ tira da falha', async () => {
+    await (await receber(recibo('ERROR')))();
+    await (await receber(recibo('DELIVERY_ACK')))();
+    expect(situacao()).toBe('failed');
+
+    // De 8 a 30 s depois, o cliente leu. Antes deste PR o READ era recusado,
+    // e a bolha dizia "não entregue, envie de novo" sobre mensagem lida.
+    await (await receber(recibo('READ')))();
+    expect(situacao()).toBe('read');
+    expect(anunciados()).toEqual(['failed', 'read']);
+  });
+
+  it('sem o READ, a falha fica: nem o DELIVERY_ACK nem o SERVER_ACK tiram da falha', async () => {
+    await (await receber(recibo('ERROR')))();
+    await (await receber(recibo('DELIVERY_ACK')))();
+    await (await receber(recibo('SERVER_ACK')))();
+
+    expect(situacao()).toBe('failed');
+    expect(anunciados()).toEqual(['failed']);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('depois do READ, um ERROR atrasado não volta a pintar de vermelho', async () => {
+    await (await receber(recibo('ERROR')))();
+    await (await receber(recibo('READ')))();
+    await (await receber(recibo('ERROR')))();
+
+    expect(situacao()).toBe('read');
+    expect(anunciados()).toEqual(['failed', 'read']);
+  });
+});

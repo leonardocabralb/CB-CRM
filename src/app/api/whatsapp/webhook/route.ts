@@ -623,8 +623,10 @@ async function handleStatusUpdate(
   // O motivo da falha (upstream #535; colunas da 1039). Só existe no
   // `failed`, e entra no MESMO UPDATE da situação nos dois espelhos abaixo:
   // a falha que a escada recusa (chegou depois da entrega) não grava motivo,
-  // e um recibo posterior que não é falha não o apaga — ele nem alcança a
-  // linha `failed` (a escada não sai da falha).
+  // e um recibo posterior não o apaga. O `sent` e o `delivered` nem alcançam
+  // a linha `failed`; o `read` alcança (desde 29/09/2026 ele tira da falha, ver
+  // `aceitamORecibo`) e grava só a situação — o motivo fica, e a bolha só o
+  // mostra enquanto a mensagem está em falha (`motivoNaBolha`).
   const motivo = motivoDaFalhaDaMeta(status.status, status.errors)
   if (motivo) {
     console.warn(`WhatsApp message ${status.id} failed: ${linhaDoMotivo(motivo)}`)

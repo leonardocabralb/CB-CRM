@@ -53,10 +53,11 @@ export function aceitamAvancoPara(novo: StatusDeAvanco): StatusDeEntrega[] {
 /**
  * Situações a partir das quais `failed` é crível.
  *
- * ⚠️ A escada de status é de mão única, e `failed` é um desvio terminal válido
- * só no começo dela. Uma falha que chegue DEPOIS de a mensagem ter sido
- * entregue ou lida é ruído do provedor — aplicá-la pintaria de "não entregue"
- * uma mensagem que o cliente comprovadamente leu.
+ * ⚠️ A escada de status é de mão única, e `failed` é um desvio válido só no
+ * começo dela. Uma falha que chegue DEPOIS de a mensagem ter sido entregue ou
+ * lida é ruído do provedor — aplicá-la pintaria de "não entregue" uma mensagem
+ * que o cliente comprovadamente leu. Da falha, só o `read` tira a mensagem
+ * (ver `aceitamORecibo`).
  *
  * Morava dentro da rota da Evolution até 23/09/2026, e a da Meta não tinha
  * nada parecido.
@@ -68,9 +69,21 @@ export const ACEITA_FALHA: readonly StatusDeEntrega[] = ['sending', 'sent'];
  * escada para o avanço, `ACEITA_FALHA` para a falha. É a regra das duas
  * rotas — quem escrever um terceiro consumidor de recibo usa esta função, e
  * não um UPDATE solto.
+ *
+ * ⚠️ O `read` também tira a mensagem da FALHA (29/09/2026). Medido na
+ * Evolution em 24 e 25/09: três mensagens de atendente receberam o ERROR em
+ * menos de dois segundos depois do envio, junto com os outros recibos, e ele
+ * gravou primeiro. O READ chegou de 8 a 30 s depois e era recusado, porque a
+ * falha era final: a bolha dizia "não entregue, envie de novo" sobre mensagem
+ * que o cliente leu e respondeu. O `sent` e o `delivered` continuam sem tirar
+ * da falha: dizem que o servidor ou o aparelho recebeu, não que conseguiu
+ * mostrar — o ERROR dos links com prévia de anúncio em Android era o aparelho
+ * recebendo sem conseguir exibir (docs/PLANO-link-sem-previa.md).
  */
 export function aceitamORecibo(recibo: StatusDoRecibo): readonly StatusDeEntrega[] {
-  return recibo === 'failed' ? ACEITA_FALHA : aceitamAvancoPara(recibo);
+  if (recibo === 'failed') return ACEITA_FALHA;
+  if (recibo === 'read') return [...aceitamAvancoPara('read'), 'failed'];
+  return aceitamAvancoPara(recibo);
 }
 
 /** Aplica a escada a uma sequência de recibos, na ordem em que chegaram. */

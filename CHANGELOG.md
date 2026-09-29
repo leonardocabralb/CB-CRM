@@ -107,6 +107,15 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Corrigido
 
+- **Mensagem lida pelo cliente não fica mais marcada "Não entregue".** Nas
+  conexões por QR Code, o WhatsApp às vezes manda um aviso de erro no mesmo
+  instante que os de envio e entrega. Quando o erro era gravado primeiro, a
+  mensagem ficava "Não entregue — envie de novo" para sempre, mesmo depois
+  de o cliente ler e responder (três casos em 24 e 25/09/2026). Agora o
+  aviso de "lida" tira a mensagem da falha. O de "entregue" não tira: ele
+  diz que o aparelho recebeu, não que conseguiu mostrar. Para quem
+  integra: um `message.status_updated` com `read` pode chegar depois de um
+  com `failed` para a mesma mensagem.
 - **A conexão com um número oficial (Meta) que falha diz por quê.** Em
   *Configurações → Conexões*, quando a Meta recusa a conexão, o diálogo
   mostra um aviso que fica na tela: o que está errado (token vencido ou sem

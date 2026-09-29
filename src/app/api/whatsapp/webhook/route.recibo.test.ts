@@ -656,15 +656,23 @@ describe('o motivo da falha que a Meta manda no recibo', () => {
     expect(h.estado.tabelas.broadcast_recipients[0]).not.toHaveProperty('error_message');
   });
 
-  it('⚠️ um recibo depois da falha não apaga o motivo — e a situação continua failed', async () => {
+  it('⚠️ um recibo depois da falha não apaga o motivo: o delivered nem alcança a linha', async () => {
     h.estado.tabelas.messages.push(mensagem());
     await (await falhaComMotivo())();
     await (await recibo('delivered'))();
-    await (await recibo('read'))();
 
     // Sem conferir a situação, este caso passaria sem testar nada: é a escada
-    // (a falha é terminal) que impede o recibo seguinte de alcançar a linha.
+    // que impede o delivered de alcançar a linha em falha.
     expect(linha()).toMatchObject({ status: 'failed', error_code: 131026, error_title: 'Message undeliverable' });
+  });
+
+  it('o read tira da falha, é anunciado, e grava só a situação: o motivo fica gravado', async () => {
+    h.estado.tabelas.messages.push(mensagem());
+    await (await falhaComMotivo())();
+    await (await recibo('read'))();
+
+    expect(linha()).toMatchObject({ status: 'read', error_code: 131026, error_title: 'Message undeliverable' });
+    expect(h.estado.disparos.map((d) => d.status)).toEqual(['failed', 'read']);
   });
 
   it('a falha que chega antes da gravação espera a linha e grava o motivo junto', async () => {
