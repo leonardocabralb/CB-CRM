@@ -15,7 +15,7 @@ import { DEGRAUS, ehDegrau, indiceDoDegrau } from '@/lib/funil/degraus';
  * automações verem GENTE — ver `mover.ts`).
  *
  * ⚠️ O resultado vem de DUAS fontes, e vence a mais recente:
- * - o MARCO gravado pela tela (`cb_reunioes_marcos`, 1061), por reunião;
+ * - o MARCO gravado pela tela (`cb_reunioes_marcos`, 1063), por reunião;
  * - a TRILHA do card (`cb_lead_events`): a equipe pode mover o card pelo
  *   quadro, pela lista ou pelo painel da conversa, e isso também conta. Só as
  *   entradas DEPOIS do início da reunião.
@@ -36,7 +36,7 @@ export function ehResultado(v: unknown): v is Resultado {
   return typeof v === 'string' && (RESULTADOS as readonly string[]).includes(v);
 }
 
-/** A etapa como a pauta precisa dela: posição, degrau e a marca da 1058/1061. */
+/** A etapa como a pauta precisa dela: posição, degrau e a marca da 1058/1063. */
 export interface EtapaDoFunil {
   id: string;
   pipelineId: string;

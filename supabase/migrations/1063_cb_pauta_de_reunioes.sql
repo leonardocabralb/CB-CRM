@@ -1,6 +1,10 @@
 -- ============================================================
--- 1061 — A pauta de reuniões: a etapa de "reunião qualificada" e o registro
+-- 1063 — A pauta de reuniões: a etapa de "reunião qualificada" e o registro
 --        do que a equipe marcou em cada reunião
+--
+-- ⚠️ É 1063, e não 1061 nem 1062: em 29/09/2026 as duas estavam tomadas por
+-- branches de outras sessões ainda não aplicadas (etapas recomendadas,
+-- membro suspenso). Não "preencher" a lacuna.
 --
 -- Plano: docs/PLANO-pauta-de-reunioes.md. Pedido do operador (28/09/2026):
 -- uma tela com as reuniões do dia em que, antes da reunião, "Reunião
@@ -60,7 +64,7 @@ ALTER TABLE public.pipeline_stages
   CHECK (desfecho_da_reuniao IS NULL OR desfecho_da_reuniao IN ('qualificada', 'compareceu', 'faltou'));
 
 COMMENT ON COLUMN public.pipeline_stages.desfecho_da_reuniao IS
-  'O que entrar nesta etapa diz sobre a reunião (1058/1061): qualificada (antes da reunião; o botão da pauta leva para cá) | compareceu | faltou | NULO (nada). O aviso de possível no-show lê só compareceu e faltou.';
+  'O que entrar nesta etapa diz sobre a reunião (1058/1063): qualificada (antes da reunião; o botão da pauta leva para cá) | compareceu | faltou | NULO (nada). O aviso de possível no-show lê só compareceu e faltou.';
 
 -- ------------------------------------------------------------
 -- 2. O registro por reunião
@@ -92,7 +96,7 @@ CREATE TABLE IF NOT EXISTS public.cb_reunioes_marcos (
 );
 
 COMMENT ON TABLE public.cb_reunioes_marcos IS
-  'Pauta de reuniões (1061): o que a equipe marcou em cada reunião — qualificada e resultado (proposta com valor, sem proposta, no show). Quem marcou é carimbado por gatilho.';
+  'Pauta de reuniões (1063): o que a equipe marcou em cada reunião — qualificada e resultado (proposta com valor, sem proposta, no show). Quem marcou é carimbado por gatilho.';
 
 -- Quem marcou e quando: do banco, nunca do corpo. Sem usuário (service role,
 -- script), fica o que veio.
@@ -167,32 +171,32 @@ BEGIN
      AND contype = 'c'
      AND pg_get_constraintdef(oid) ~ 'desfecho_da_reuniao';
   IF v_quantos <> 1 THEN
-    RAISE EXCEPTION '1061: % CHECK(s) sobre desfecho_da_reuniao (esperado 1).', v_quantos;
+    RAISE EXCEPTION '1063: % CHECK(s) sobre desfecho_da_reuniao (esperado 1).', v_quantos;
   END IF;
 
   -- Os privilégios, as duas metades.
   IF has_table_privilege('anon', 'public.cb_reunioes_marcos', 'SELECT')
      OR has_table_privilege('anon', 'public.cb_reunioes_marcos', 'INSERT') THEN
-    RAISE EXCEPTION '1061: anon enxerga cb_reunioes_marcos.';
+    RAISE EXCEPTION '1063: anon enxerga cb_reunioes_marcos.';
   END IF;
   IF NOT has_table_privilege('authenticated', 'public.cb_reunioes_marcos', 'SELECT')
      OR NOT has_table_privilege('authenticated', 'public.cb_reunioes_marcos', 'INSERT')
      OR NOT has_table_privilege('authenticated', 'public.cb_reunioes_marcos', 'UPDATE') THEN
-    RAISE EXCEPTION '1061: authenticated sem SELECT/INSERT/UPDATE em cb_reunioes_marcos.';
+    RAISE EXCEPTION '1063: authenticated sem SELECT/INSERT/UPDATE em cb_reunioes_marcos.';
   END IF;
   IF has_table_privilege('authenticated', 'public.cb_reunioes_marcos', 'DELETE') THEN
-    RAISE EXCEPTION '1061: authenticated pode apagar cb_reunioes_marcos.';
+    RAISE EXCEPTION '1063: authenticated pode apagar cb_reunioes_marcos.';
   END IF;
   IF has_function_privilege('anon', 'public.cb_reunioes_marcos_carimbo()', 'EXECUTE')
      OR has_function_privilege('authenticated', 'public.cb_reunioes_marcos_carimbo()', 'EXECUTE') THEN
-    RAISE EXCEPTION '1061: o carimbo ficou executável fora do servidor.';
+    RAISE EXCEPTION '1063: o carimbo ficou executável fora do servidor.';
   END IF;
   IF NOT (SELECT relrowsecurity FROM pg_class WHERE oid = 'public.cb_reunioes_marcos'::regclass) THEN
-    RAISE EXCEPTION '1061: RLS desligada em cb_reunioes_marcos.';
+    RAISE EXCEPTION '1063: RLS desligada em cb_reunioes_marcos.';
   END IF;
   SELECT count(*) INTO v_quantos FROM pg_policy WHERE polrelid = 'public.cb_reunioes_marcos'::regclass;
   IF v_quantos <> 3 THEN
-    RAISE EXCEPTION '1061: % policies em cb_reunioes_marcos (esperado 3: select, insert, update).', v_quantos;
+    RAISE EXCEPTION '1063: % policies em cb_reunioes_marcos (esperado 3: select, insert, update).', v_quantos;
   END IF;
 
   -- O COMPORTAMENTO, sem dado. O CHECK da etapa aceita 'qualificada' (cai na
@@ -200,26 +204,26 @@ BEGIN
   BEGIN
     BEGIN
       INSERT INTO public.pipeline_stages (pipeline_id, name, desfecho_da_reuniao)
-      VALUES (gen_random_uuid(), 'conferencia_1061', 'qualificada');
+      VALUES (gen_random_uuid(), 'conferencia_1063', 'qualificada');
       v_estado := 'gravou';
     EXCEPTION
       WHEN check_violation THEN v_estado := 'check';
       WHEN foreign_key_violation THEN v_estado := 'fk';
     END;
     IF v_estado = 'check' THEN
-      RAISE EXCEPTION '1061: o CHECK da etapa recusa qualificada.';
+      RAISE EXCEPTION '1063: o CHECK da etapa recusa qualificada.';
     END IF;
 
     BEGIN
       INSERT INTO public.pipeline_stages (pipeline_id, name, desfecho_da_reuniao)
-      VALUES (gen_random_uuid(), 'conferencia_1061', 'talvez');
+      VALUES (gen_random_uuid(), 'conferencia_1063', 'talvez');
       v_estado := 'gravou';
     EXCEPTION
       WHEN check_violation THEN v_estado := 'check';
       WHEN foreign_key_violation THEN v_estado := 'fk';
     END;
     IF v_estado <> 'check' THEN
-      RAISE EXCEPTION '1061: o CHECK da etapa deixou passar um valor inventado (%).', v_estado;
+      RAISE EXCEPTION '1063: o CHECK da etapa deixou passar um valor inventado (%).', v_estado;
     END IF;
 
     -- A forma do marco: resultado sem tipo é recusado ANTES da FK da conta.
@@ -232,7 +236,7 @@ BEGIN
       WHEN foreign_key_violation THEN v_estado := 'fk';
     END;
     IF v_estado <> 'check' THEN
-      RAISE EXCEPTION '1061: marco de resultado sem resultado passou (%).', v_estado;
+      RAISE EXCEPTION '1063: marco de resultado sem resultado passou (%).', v_estado;
     END IF;
 
     -- O gatilho RODA (a regra 3 da seção de migrations: função plpgsql nova é
@@ -240,18 +244,18 @@ BEGIN
     -- pula. Sem usuário, o nome enviado fica e a hora é a do banco.
     SELECT id INTO v_conta FROM public.accounts LIMIT 1;
     IF v_conta IS NULL THEN
-      RAISE NOTICE '1061: banco vazio, o gatilho fica sem prova de execução aqui.';
+      RAISE NOTICE '1063: banco vazio, o gatilho fica sem prova de execução aqui.';
     ELSE
       INSERT INTO public.cb_reunioes_marcos (account_id, origem, reuniao_id, marco, registrado_por_nome, registrado_em)
       VALUES (v_conta, 'agenda', gen_random_uuid(), 'qualificada', 'conferencia', '2000-01-01T00:00:00Z')
       RETURNING registrado_por_nome, registrado_em INTO v_nome, v_em;
       IF v_nome IS DISTINCT FROM 'conferencia' OR v_em < now() - interval '1 minute' THEN
-        RAISE EXCEPTION '1061: o carimbo não rodou como esperado (nome %, em %).', v_nome, v_em;
+        RAISE EXCEPTION '1063: o carimbo não rodou como esperado (nome %, em %).', v_nome, v_em;
       END IF;
     END IF;
 
-    RAISE EXCEPTION USING ERRCODE = 'P1061', MESSAGE = 'desfaz a conferência';
+    RAISE EXCEPTION USING ERRCODE = 'P1063', MESSAGE = 'desfaz a conferência';
   EXCEPTION
-    WHEN SQLSTATE 'P1061' THEN NULL;
+    WHEN SQLSTATE 'P1063' THEN NULL;
   END;
 END $$;

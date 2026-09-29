@@ -933,7 +933,7 @@ export interface PipelineStage {
    * conversa lê (`src/lib/agenda/aviso-de-no-show.ts`). Independente de
    * `resultado` e de `degrau`.
    *
-   * 'qualificada' (1061) é a etapa para onde o botão "Reunião qualificada" da
+   * 'qualificada' (1063) é a etapa para onde o botão "Reunião qualificada" da
    * pauta de reuniões leva o card — ANTES da reunião. ⚠️ Não diz nada sobre o
    * comparecimento: o aviso de no-show a lê como nula, nunca como
    * "compareceu".

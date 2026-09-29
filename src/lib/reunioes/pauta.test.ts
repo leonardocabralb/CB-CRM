@@ -17,7 +17,7 @@ import {
 } from './pauta';
 
 // O Bancário - Comercial como está em produção (28/09/2026), com a MQL 2
-// marcada "qualificada" pela 1061.
+// marcada "qualificada" pela 1063.
 const ETAPAS: EtapaDoFunil[] = [
   { id: 'avulso', pipelineId: 'banc', nome: 'Contato Avulso', posicao: 0, degrau: 'lead', marca: null },
   { id: 'agendada', pipelineId: 'banc', nome: 'Reunião Agendada', posicao: 4, degrau: 'reuniao', marca: null },

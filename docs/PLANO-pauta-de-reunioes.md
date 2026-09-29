@@ -27,7 +27,7 @@ por situação ficaram para a Fase 3.
 ## Fase 1 — o que foi feito
 
 **Arquivos:**
-- `supabase/migrations/1061_cb_pauta_de_reunioes.sql` — a marca `qualificada`
+- `supabase/migrations/1063_cb_pauta_de_reunioes.sql` — a marca `qualificada`
   em `pipeline_stages.desfecho_da_reuniao` e a tabela `cb_reunioes_marcos`
   (uma linha por reunião e por marco, com quem marcou carimbado pelo banco).
 - `src/lib/reunioes/pauta.ts` (regras, puro), `montar.ts` (monta a pauta a
@@ -62,7 +62,7 @@ pode ser revista):
 **⚠️ DECISÃO DO OPERADOR, antes de ligar a qualificação** (P1 da revisão do
 PR #339, medido em 29/09/2026): os quatro lembretes de reunião (24 h, 4 h,
 1 h, 10 min) têm escopo só em "Reunião Agendada". Levar o card para a MQL 2
-os CALA para os leads qualificados. Por isso a 1061 não marca etapa nenhuma:
+os CALA para os leads qualificados. Por isso a 1063 não marca etapa nenhuma:
 o botão "Reunião qualificada" só registra até a MQL 2 ser marcada
 "Qualificada" em Gerenciar funil — e, antes disso, a MQL 2 precisa entrar no
 escopo dos quatro lembretes (aba Automações do funil).
@@ -92,8 +92,8 @@ escopo dos quatro lembretes (aba Automações do funil).
 
 ## Verificação
 
-- Testes: `src/lib/reunioes/*.test.ts`, `supabase/migrations/pauta-de-reunioes-1061.test.ts`.
-- A 1061 provada num Postgres 16 descartável antes de aplicar: aplicada duas
+- Testes: `src/lib/reunioes/*.test.ts`, `supabase/migrations/pauta-de-reunioes-1063.test.ts`.
+- A 1063 provada num Postgres 16 descartável antes de aplicar: aplicada duas
   vezes (idempotência), banco vazio, e 9 cenários (carimbo do banco, upsert,
   outra conta, observador, anon, forma). Achou um defeito real no CHECK de
   forma (`NULL IN (…)` passava), corrigido antes de aplicar.

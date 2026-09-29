@@ -117,7 +117,7 @@ operador: nada no card, na lista nem na aba).
   duas reuniões futuras, o fim da primeira não o recalcula com a conversa
   aberta. Limite aceito (Codex, PR #332): o aviso atrasa, não mente.
 
-### Pauta de reuniões (1061)
+### Pauta de reuniões (1063)
 
 `/reunioes`; `src/lib/reunioes/` (`pauta.ts` e `montar.ts` puros, testados),
 a rota `/api/cb/reunioes`, `src/components/reunioes/`. Plano:
@@ -148,7 +148,7 @@ a rota `/api/cb/reunioes`, `src/components/reunioes/`. Plano:
 - ⚠️ **Valor e etapa na MESMA escrita** ("com proposta"): o Make da iMotion
   manda à TinTim o `deal.value` do instante da entrada em Proposta Realizada.
 - ⚠️ **Para onde cada botão leva é MARCA, nunca nome**: `qualificada`
-  (desfecho da 1061), `compareceu`, `faltou` e o primeiro degrau `proposta`
+  (desfecho da 1063), `compareceu`, `faltou` e o primeiro degrau `proposta`
   do funil do card. Funil sem a marca desliga o botão com a explicação. O
   aviso de possível no-show lê só `compareceu`/`faltou` — `qualificada` não
   é comparecimento.

@@ -743,7 +743,7 @@ function SortableStageRow({
       {/* 1058: o que ENTRAR nesta etapa diz sobre a reunião — "Faltou" (a
           etapa de no-show) ou "Compareceu" (reunião feita, sem proposta). É o
           que o aviso de possível no-show da conversa lê. Independente do
-          resultado e do degrau ao lado. 1061: "Qualificada" é o destino do
+          resultado e do degrau ao lado. 1063: "Qualificada" é o destino do
           botão "Reunião qualificada" da pauta de reuniões (antes da reunião;
           o aviso de no-show não a lê como comparecimento). */}
       <select

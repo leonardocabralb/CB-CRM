@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 // ============================================================
-// 1061 — a pauta de reuniões. O que este pino segura:
+// 1063 — a pauta de reuniões. O que este pino segura:
 //
 // 1. A marca 'qualificada' entra no CHECK SEM tirar as da 1058: o aviso de
 //    possível no-show lê 'compareceu' e 'faltou', e um CHECK reescrito sem
@@ -17,12 +17,12 @@ import path from 'node:path';
 //    alvo de ON CONFLICT no PostgREST (a lição da 903).
 // ============================================================
 
-const SQL = fs.readFileSync(path.join(__dirname, '1061_cb_pauta_de_reunioes.sql'), 'utf8');
+const SQL = fs.readFileSync(path.join(__dirname, '1063_cb_pauta_de_reunioes.sql'), 'utf8');
 // Sem os comentários: um comentário que descreva a forma proibida não pode
 // fazer o pino passar.
 const CODIGO = SQL.replace(/--.*$/gm, '');
 
-describe('1061 — pauta de reuniões', () => {
+describe('1063 — pauta de reuniões', () => {
   it('o CHECK da etapa aceita as três marcas', () => {
     expect(CODIGO).toMatch(
       /CHECK \(desfecho_da_reuniao IS NULL OR desfecho_da_reuniao IN \('qualificada', 'compareceu', 'faltou'\)\)/,
@@ -60,7 +60,7 @@ describe('1061 — pauta de reuniões', () => {
 
   it('a conferência chama o gatilho e se desfaz com o SQLSTATE próprio', () => {
     expect(CODIGO).toMatch(/INSERT INTO public\.cb_reunioes_marcos \(account_id, origem, reuniao_id, marco, registrado_por_nome, registrado_em\)/);
-    expect(CODIGO).toMatch(/ERRCODE = 'P1061'/);
-    expect(CODIGO).toMatch(/WHEN SQLSTATE 'P1061' THEN NULL;/);
+    expect(CODIGO).toMatch(/ERRCODE = 'P1063'/);
+    expect(CODIGO).toMatch(/WHEN SQLSTATE 'P1063' THEN NULL;/);
   });
 });
