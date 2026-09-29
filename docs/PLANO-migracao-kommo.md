@@ -1686,9 +1686,11 @@ de 19/09) contra o banco, só leitura. Nomes abaixo são inventados.
   Kommo é o nome do NEGÓCIO, que a equipe digitava completo ("Maria Exemplo
   Souza (EXEMPLO LTDA)"). O do contato costuma ser o apelido do perfil do
   WhatsApp que a Kommo guardou ("Mari ✨").
-- A ficha que a carga CRIOU (3.875) recebeu o nome do contato, fixado, ou o do
-  negócio quando o contato estava vazio (55). 477 nasceram com o TELEFONE,
-  porque o contato só tinha ponto, emoji ou nada.
+- São 4.636 fichas ligadas à Kommo: as 4.635 pessoas da carga de 21/09 e 1
+  criada no ajuste de 27/09.
+- A ficha que a carga CRIOU (3.875: as 3.874 de 21/09 e a de 27/09) recebeu o
+  nome do contato, fixado, ou o do negócio quando o contato estava vazio (55).
+  477 nasceram com o TELEFONE, porque o contato só tinha ponto, emoji ou nada.
 - A ficha que JÁ EXISTIA (761) só recebeu o nome da Kommo quando o daqui era
   vazio ou telefone (71, regra 27). As outras 690 ficaram com o nome do CRM, e
   o CSV que a regra 27 prometia não foi feito.
