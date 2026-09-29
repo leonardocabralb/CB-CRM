@@ -21,6 +21,7 @@ import { dispatchInboundToFlows } from '@/lib/flows/engine';
 import { aoChegarMensagemDoCliente } from '@/lib/ia-agentes/entrada';
 import { MIME_DA_FIGURINHA } from '@/lib/ia-agentes/quem-responde';
 import type { ContatoCompartilhado } from '@/lib/whatsapp/cartao-de-contato';
+import { textoParaOsMotores } from '@/lib/whatsapp/texto-para-os-motores';
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
 import {
   followConversationChannel,
@@ -68,7 +69,11 @@ export interface NormalizedInbound {
   quotedProviderId?: string | null;
   /** Unix seconds. */
   timestamp: number;
-  contentType: 'text' | 'image' | 'video' | 'audio' | 'document' | 'location' | 'contact';
+  /**
+   * `template` = mensagem montada por SISTEMA de empresa (modelo com botões,
+   * mensagem interativa), desde a 1060 — ver `detectContentType`.
+   */
+  contentType: 'text' | 'image' | 'video' | 'audio' | 'document' | 'location' | 'contact' | 'template';
   text: string | null;
   /**
    * Os contatos do cartão (1060) → `messages.contatos`. Só existe quando
@@ -523,7 +528,9 @@ export async function persistInboundMessage(
   await registrarEntrega(db, canalGravado, m.timestamp);
 
   // ---- downstream engines (parity with the Meta webhook) ----
-  const inboundText = m.text ?? '';
+  // O texto que a ingestão MONTOU (cartão de contato, mensagem de empresa)
+  // não chega ao robô nem às automações — ver `texto-para-os-motores.ts`.
+  const inboundText = textoParaOsMotores(contentType, m.text);
 
   // O cliente respondeu: as esperas marcadas "parar se o cliente responder"
   // deste contato são canceladas. ⚠️ ANTES do despacho de robôs e automações,

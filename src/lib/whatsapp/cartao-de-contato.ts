@@ -39,8 +39,20 @@ export const MAX_CONTATOS = 50;
 export const MAX_TELEFONES = 10;
 const MAX_TEXTO = 200;
 
+/**
+ * Corta por CARACTERE (`Array.from`), nunca por unidade UTF-16: `slice` parte
+ * um emoji ao meio, e o surrogate solto que sobra faz o PostgREST recusar o
+ * INSERT inteiro (medido na Fase 5 do plano do upstream, ver
+ * `recibo-da-meta.ts`) — o cartão se perderia com a Evolution já respondida.
+ * Surrogate solto que já veio no vCard vira `�`. Sem lookbehind no regex:
+ * este módulo também roda no navegador (ver `partes`).
+ */
 function aparar(texto: string | null | undefined, teto = MAX_TEXTO): string {
-  return (texto ?? '').replace(/\s+/g, ' ').trim().slice(0, teto);
+  return Array.from((texto ?? '').replace(/\s+/g, ' ').trim())
+    .slice(0, teto)
+    .map((c) => (c.length === 1 && c >= '\uD800' && c <= '\uDFFF' ? '\uFFFD' : c))
+    .join('')
+    .trim();
 }
 
 function soDigitos(valor: unknown): string | null {

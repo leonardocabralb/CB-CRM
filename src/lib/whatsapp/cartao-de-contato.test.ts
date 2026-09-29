@@ -113,6 +113,18 @@ describe('lerVcard', () => {
     expect(lerVcard('', '  ')).toBeNull();
   });
 
+  it('nome longo com emoji no corte não deixa metade de emoji (o INSERT seria recusado)', () => {
+    const v = `BEGIN:VCARD\nFN:${'A'.repeat(199)}😀 Silva\nTEL;waid=5585900000009:+55 85 90000-0009\nEND:VCARD`;
+    const contato = lerVcard(v);
+    expect(contato?.nome.isWellFormed()).toBe(true);
+    expect(contato?.nome.endsWith('😀')).toBe(true);
+    expect(resumoDosContatos([contato!])?.isWellFormed()).toBe(true);
+  });
+
+  it('surrogate solto que já veio no vCard vira o caractere de substituição', () => {
+    expect(lerVcard('BEGIN:VCARD\nFN:Ana \uD83D Lima\nEND:VCARD')?.nome).toBe('Ana \uFFFD Lima');
+  });
+
   it('só o displayName, sem vCard, ainda dá o nome', () => {
     expect(lerVcard(null, 'Fulano')).toEqual({ nome: 'Fulano', empresa: null, telefones: [] });
   });

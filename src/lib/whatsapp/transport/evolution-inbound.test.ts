@@ -833,6 +833,9 @@ describe('mensagem de empresa com botões (1060)', () => {
     expect(normalizeUpsert(item(modelo), 'acc', 'owner')?.text).toBe(
       'Olá! Sua fatura vence amanhã.\n\nBanco Fictício\n\n[Já paguei]\n[Ver boleto] https://exemplo.test/boleto\n[Ligar] +55 11 3000-0000',
     );
+    // Gravada como `template`: selo "Modelo" na bolha, e nem a IA nem o robô a
+    // tratam como alguém escrevendo (um banco avisando do boleto).
+    expect(normalizeUpsert(item(modelo), 'acc', 'owner')?.contentType).toBe('template');
   });
 
   it('interactiveMessageTemplate: corpo e rodapé', () => {
@@ -869,6 +872,7 @@ describe('mensagem de empresa com botões (1060)', () => {
     // essencial, não a forma exata do separador.
     expect(texto.startsWith('💠 Pix · Escritório Exemplo · financeiro@exemplo.test · ')).toBe(true);
     expect(texto).toContain('1.500,00');
+    expect(detectContentType(pix)).toBe('template');
   });
 
   it('botão nativo comum mostra o rótulo e o link', () => {
@@ -881,6 +885,7 @@ describe('mensagem de empresa com botões (1060)', () => {
       },
     };
     expect(extractText(interativa)).toBe('Escolha\n\n[Abrir] https://exemplo.test');
+    expect(detectContentType(interativa)).toBe('template');
   });
 });
 

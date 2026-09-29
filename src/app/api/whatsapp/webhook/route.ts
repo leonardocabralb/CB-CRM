@@ -24,6 +24,7 @@ import {
   resumoDosContatos,
   type ContatoCompartilhado,
 } from '@/lib/whatsapp/cartao-de-contato'
+import { textoParaOsMotores } from '@/lib/whatsapp/texto-para-os-motores'
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver'
 import {
   handleTemplateWebhookChange,
@@ -1258,7 +1259,9 @@ async function processMessage(
           }
         : {
             kind: 'text',
-            text: contentText ?? message.text?.body ?? '',
+            // ⚠️ NOSSO (1060): o texto que a ingestão montou (o cartão de
+            // contato) não chega ao robô — ver `texto-para-os-motores.ts`.
+            text: textoParaOsMotores(contentType, contentText ?? message.text?.body),
             meta_message_id: message.id,
           },
     isFirstInboundMessage,
@@ -1269,7 +1272,8 @@ async function processMessage(
   // run here (not earlier) so the contact, conversation, and inbound
   // message all exist before any step — including send_message — runs.
   // The provider already has its 200: this whole block runs inside `after()`.
-  const inboundText = contentText ?? message.text?.body ?? ''
+  // ⚠️ NOSSO (1060): nem às automações (`texto-para-os-motores.ts`).
+  const inboundText = textoParaOsMotores(contentType, contentText ?? message.text?.body)
   const automationTriggers: (
     | 'new_contact_created'
     | 'first_inbound_message'

@@ -457,6 +457,13 @@ export function detectContentType(
   if (m.documentMessage) return 'document';
   if (m.locationMessage) return 'location';
   if (m.contactMessage || m.contactsArrayMessage) return 'contact';
+  // Mensagem montada por SISTEMA de empresa (1060): modelo com botões,
+  // mensagem interativa, o pedido de Pix do WhatsApp Business. Gravada como
+  // `template`, e não `text`: a bolha mostra o selo "Modelo" com o texto, o
+  // agente de IA não abre turno com ela (quem escreveu foi um sistema — um
+  // banco avisando do boleto —, não uma pessoa) e o robô e as automações
+  // continuam sem vê-la (`texto-para-os-motores.ts`), como antes da 1060.
+  if (m.templateMessage || m.interactiveMessage) return 'template';
   return 'text';
 }
 

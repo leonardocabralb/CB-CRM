@@ -49,7 +49,18 @@ export type ResultadoDaHistorica =
   | { status: 'duplicada' }
   | { status: 'falhou' };
 
-const TIPOS_ACEITOS = new Set(['text', 'image', 'document', 'audio', 'video', 'location', 'contact']);
+const TIPOS_ACEITOS = new Set([
+  'text',
+  'image',
+  'document',
+  'audio',
+  'video',
+  'location',
+  'contact',
+  // Mensagem de empresa (1060): sem ele, a histórica voltava a ser `text` e
+  // o agente de IA abriria turno com ela.
+  'template',
+]);
 
 /** `messages.id` da citada, dentro da conversa. Erro vira "sem citação". */
 async function idDaCitada(

@@ -79,6 +79,19 @@ Live Photo e edições cifradas de antes do descarte).
 - **Modelo de empresa e mensagem interativa viram texto** (corpo, rodapé,
   botões com link ou telefone); o pedido de Pix do celular do escritório vira
   `💠 Pix · titular · chave · valor`. A imagem de cabeçalho não é baixada.
+  ⚠️ Gravadas como `content_type = 'template'`, nunca `'text'`: quem escreveu
+  foi um SISTEMA (um banco avisando do boleto), e como `'text'` com texto
+  visível o agente de IA abriria turno e responderia ao robô do banco. A bolha
+  já tinha o selo "Modelo" para esse tipo.
+- ⚠️⚠️ **O texto MONTADO (cartão e modelo) não chega aos motores**
+  (`texto-para-os-motores.ts`, com pino lendo as duas ingestões): o robô e as
+  automações recebem `''`, como antes da 1060. Senão um robô com a palavra
+  "oi" começaria pelo nome de um cartão ("Joice") e a pergunta de um robô
+  seria respondida por um texto que ninguém digitou. Caminho novo de ingestão
+  passa o texto pela mesma função.
+- **O nome do cartão é cortado por caractere, não por unidade UTF-16**
+  (`aparar`): metade de um emoji faz o PostgREST recusar o INSERT inteiro, e o
+  cartão sumiria com a Evolution já respondida.
 - ⚠️ **Tipo que o normalizador não lê é gravado com
   `PREFIXO_DE_TIPO_NAO_SUPORTADO`** (`textoParaGravar`), a constante da Meta: o
   agente não abre turno com ela, e a bolha, a lista e o card do funil a trocam

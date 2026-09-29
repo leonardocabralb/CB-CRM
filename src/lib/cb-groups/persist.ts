@@ -17,6 +17,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { isUniqueViolation } from '@/lib/contacts/dedupe';
 import type { NormalizedGroupInbound } from '@/lib/whatsapp/transport/evolution-group-inbound';
+import { temArquivo } from '@/lib/whatsapp/transport/evolution-inbound';
 
 /** Tipos que `messages.content_type` aceita (CHECK da 906). */
 const CONTENT_TYPES_OK = new Set([
@@ -32,13 +33,6 @@ const CONTENT_TYPES_OK = new Set([
   // Cartão de contato (1060).
   'contact',
 ]);
-
-/**
- * Tipos SEM arquivo: não passam pelo download, e o `media_state` fica nulo.
- * Sem o cartão de contato aqui, ele nasceria "pendente" e acenderia o botão
- * "toque para baixar" sobre algo que não tem o que baixar.
- */
-const SEM_ARQUIVO = new Set(['text', 'location', 'contact']);
 
 /**
  * Até este tamanho o anexo de grupo baixa sozinho na chegada; acima, fica
@@ -211,7 +205,11 @@ export async function persistGroupMessage(
   );
   if (!conversa) return null;
 
-  const temAnexo = !SEM_ARQUIVO.has(m.contentType);
+  // Só tipo COM arquivo passa pelo download e nasce `pending` — a MESMA régua
+  // com que o webhook decide baixar (`temArquivo`). Por lista de exclusão, a
+  // mensagem de empresa (1060) nasceria "pendente" e acenderia o botão "toque
+  // para baixar" sobre algo sem arquivo.
+  const temAnexo = temArquivo(m.contentType);
   const contentType = CONTENT_TYPES_OK.has(m.contentType) ? m.contentType : 'text';
 
   const { data: gravada, error } = await db
@@ -295,7 +293,11 @@ export async function persistGroupDeviceMessage(
   );
   if (!conversa) return null;
 
-  const temAnexo = !SEM_ARQUIVO.has(m.contentType);
+  // Só tipo COM arquivo passa pelo download e nasce `pending` — a MESMA régua
+  // com que o webhook decide baixar (`temArquivo`). Por lista de exclusão, a
+  // mensagem de empresa (1060) nasceria "pendente" e acenderia o botão "toque
+  // para baixar" sobre algo sem arquivo.
+  const temAnexo = temArquivo(m.contentType);
   const contentType = CONTENT_TYPES_OK.has(m.contentType) ? m.contentType : 'text';
 
   const { data: gravada, error } = await db

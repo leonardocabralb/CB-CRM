@@ -561,7 +561,11 @@ carry call audio: the row only records that the call happened.
 **Contact cards** (a contact someone shared on WhatsApp) are listed with
 `content_type: "contact"`. `content_text` carries one line per shared contact,
 in the form `👤 Name · +55 85 90000-0000` (the phone numbers, when the card has
-any). A WhatsApp message type the CRM can't read yet is listed as
+any). A message built by a company's system — a WhatsApp Business template
+with buttons, or an interactive message — is listed with
+`content_type: "template"` even when the customer's side sent it; its
+`content_text` carries the body, the footer and one line per button. A
+WhatsApp message type the CRM can't read yet is listed as
 `content_type: "text"` with `content_text` set to
 `[Unsupported message type: <type>]`.
 
