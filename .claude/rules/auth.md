@@ -93,6 +93,13 @@ requisição, com o `redeem_invitation` rodando com o JWT da pessoa. Pino:
 - `sessionId` nulo decide SÓ pelo dia: tratar `null === null` como "mesma
   sessão" faria um registro sem sessão valer para todo login futuro.
 
+### `accountStatus === 'suspenso'` (1062)
+Quem teve o acesso suspenso vê `AcessoSuspenso` no lugar do app inteiro (a
+casca decide antes da exigência do celular e da porta de entrada). O estado
+vem de `cb_minha_suspensao()`, chamada só quando a leitura do próprio perfil
+volta VAZIA — a linha é invisível para o suspenso. As regras da suspensão estão
+em `.claude/rules/perfis.md`.
+
 ### Guarda de inatividade (4 h)
 
 `src/lib/auth/inatividade.ts` (régua pura) e

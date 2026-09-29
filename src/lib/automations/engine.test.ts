@@ -210,6 +210,12 @@ vi.mock('./admin-client', () => {
       // round_robin resolve um membro da conta por aqui; `create_task` usa a
       // MESMA consulta para provar que o responsável é membro e para carimbar
       // o nome dele na tarefa.
+      // Leitura de UM perfil (o atendente fixo do assign_conversation, 1062):
+      // o membro pelo `user_id` do filtro, ou nada.
+      if (ops.unico) {
+        const alvo = ops.filters.find(([op, k]) => op === 'eq' && k === 'user_id')?.[2];
+        return { data: state.membros.find((m) => m.user_id === alvo) ?? null, error: null };
+      }
       return { data: state.membros, error: null };
     }
     if (table === 'custom_fields') {
@@ -1650,6 +1656,27 @@ describe('assign_conversation — alvo', () => {
     );
     expect(conversas).toHaveLength(1);
     expect(conversas[0].filters.map((f) => f[1])).toContain('contact_id');
+  });
+
+  it('1062: atendente fixo SUSPENSO não recebe — a conversa fica na fila', async () => {
+    h.state.owned = { id: 'c1' };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [passoAtribuir];
+    h.state.membros = [
+      { user_id: 'agente-1', full_name: 'Agente Suspenso', suspenso_em: '2026-09-29T12:00:00Z' },
+    ];
+
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: { conversation_id: 'conv-do-disparo' },
+    });
+
+    const conversas = h.state.updateCalls.filter(
+      (u) => u.table === 'conversations'
+    );
+    expect(conversas).toHaveLength(0);
   });
 });
 

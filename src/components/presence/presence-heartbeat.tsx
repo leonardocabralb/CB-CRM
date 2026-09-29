@@ -5,6 +5,7 @@ import { useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { HEARTBEAT_MS, IDLE_AFTER_MS, type StoredPresence } from "@/lib/presence";
+import { ehRecusaDeSuspenso } from "@/lib/account/suspensao";
 
 /**
  * PresenceHeartbeat — headless. Mount ONCE per signed-in dashboard tab
@@ -20,7 +21,7 @@ import { HEARTBEAT_MS, IDLE_AFTER_MS, type StoredPresence } from "@/lib/presence
  * 'offline' from staleness — no unreliable unload write needed.
  */
 export function PresenceHeartbeat() {
-  const { accountId } = useAuth();
+  const { accountId, refreshProfile } = useAuth();
 
   // 0 = "never recorded"; set on mount so we don't read the clock during
   // render (impure). Until the effect runs the tab counts as active.
@@ -60,6 +61,13 @@ export function PresenceHeartbeat() {
         p_status: currentStatus(),
       });
       if (error && !cancelled) {
+        // 1062: um administrador suspendeu esta pessoa com o CRM aberto. O
+        // banco já recusa tudo; reler o perfil é o que troca a tela pelo
+        // aviso de acesso suspenso (a casca desmonta este componente).
+        if (ehRecusaDeSuspenso(error)) {
+          void refreshProfile();
+          return;
+        }
         // Non-fatal: presence is best-effort. Log once per failure so a
         // misconfigured RPC is visible without spamming.
         console.error("[PresenceHeartbeat] touch_presence failed:", error.message);
@@ -99,7 +107,7 @@ export function PresenceHeartbeat() {
       document.removeEventListener("visibilitychange", onReturn);
       window.removeEventListener("focus", onReturn);
     };
-  }, [accountId]);
+  }, [accountId, refreshProfile]);
 
   return null;
 }

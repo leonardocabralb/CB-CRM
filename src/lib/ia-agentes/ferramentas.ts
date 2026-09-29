@@ -473,7 +473,13 @@ export async function opcoesDoAgente(
     membros.length > 0 &&
       tentar('membros', async () => {
         const linhas = lista<{ user_id: string; full_name: unknown; email: unknown }>(
-          await db.from('profiles').select('user_id, full_name, email').eq('account_id', accountId).in('user_id', membros),
+          // 1062: quem está suspenso não recebe tarefa nova da IA.
+          await db
+            .from('profiles')
+            .select('user_id, full_name, email')
+            .eq('account_id', accountId)
+            .in('user_id', membros)
+            .is('suspenso_em', null),
           'membros',
         )
         opcoes.criar_tarefa = linhas

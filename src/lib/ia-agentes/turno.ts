@@ -330,6 +330,8 @@ export async function transferirParaGente(
         .select('user_id')
         .eq('user_id', args.transferirPara)
         .eq('account_id', args.accountId)
+        // 1062: suspenso conta como fora da equipe — a conversa fica na fila.
+        .is('suspenso_em', null)
         .maybeSingle()
       if (membro) {
         // Só quando ninguém é responsável: nunca tirar a conversa de alguém.

@@ -5,7 +5,8 @@
 //
 // Two stacked sections:
 //   1. Roster   — every member of the account. Admin+ can change a
-//                 teammate's role inline and remove them. Owner row
+//                 teammate's role inline, suspend/reactivate them (1062)
+//                 and remove them. Owner row
 //                 is non-editable everywhere (transfer is its own
 //                 separate flow, deferred to a later PR).
 //   2. Pending  — outstanding invite links. Admin+ can revoke. The
@@ -17,8 +18,8 @@
 //   The tab itself is reachable by any member, but mutation buttons
 //   are wrapped in `<RequireRole min="admin">` / `useCan` so an
 //   agent or viewer sees the roster read-only. The server-side
-//   RPCs (set_member_role, remove_account_member) double-check
-//   the role anyway.
+//   RPCs (set_member_role, remove_account_member, cb_definir_suspensao)
+//   double-check the role anyway.
 // ============================================================
 
 import { useCallback, useEffect, useState } from 'react';
@@ -31,6 +32,8 @@ import {
   Plus,
   Smartphone,
   Trash2,
+  UserCheck,
+  UserX,
   UsersRound,
 } from 'lucide-react';
 
@@ -90,6 +93,9 @@ interface Member {
   joined_at: string;
   /** 1046: ausente = quem olha não vê; `null` = o membro ainda não informou. */
   celular?: string | null;
+  /** 1062: desde quando está suspenso; `null`/ausente = ativo. */
+  suspenso_em?: string | null;
+  suspenso_por_nome?: string | null;
 }
 
 interface Invitation {
@@ -151,6 +157,13 @@ export function MembersTab() {
 
   const [inviteOpen, setInviteOpen] = useState(false);
   const [removingMember, setRemovingMember] = useState<Member | null>(null);
+  // 1062: quem está na caixa de "suspender", e quantas conversas abertas estão
+  // com a pessoa (null = contando ou a contagem falhou — aí a frase some).
+  const [suspendingMember, setSuspendingMember] = useState<Member | null>(null);
+  const [conversasAbertas, setConversasAbertas] = useState<{
+    de: string;
+    total: number;
+  } | null>(null);
   const [pendingMemberAction, setPendingMemberAction] = useState<string | null>(
     null,
   );
@@ -315,6 +328,55 @@ export function MembersTab() {
     }
   }
 
+  // 1062: abre a caixa de suspender e conta as conversas abertas que
+  // continuam com a pessoa. A contagem é carimbada com o dono (`de`): a
+  // resposta atrasada de outra pessoa não aparece na caixa errada.
+  async function abrirSuspensao(member: Member) {
+    setSuspendingMember(member);
+    setConversasAbertas(null);
+    const { count, error } = await createClient()
+      .from('conversations')
+      .select('id', { count: 'exact', head: true })
+      .eq('assigned_agent_id', member.user_id)
+      .neq('status', 'closed');
+    if (error || count === null) return;
+    setConversasAbertas({ de: member.user_id, total: count });
+  }
+
+  async function handleSuspensao(member: Member, suspenso: boolean) {
+    setPendingMemberAction(member.user_id);
+    try {
+      const res = await fetch(
+        `/api/account/members/${member.user_id}/suspensao`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ suspenso }),
+        },
+      );
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        toast.error(suspenso ? t('suspendFailed') : t('reactivateFailed'), {
+          description: payload.error,
+        });
+        return;
+      }
+      const name = member.full_name || t('unnamed');
+      toast.success(
+        suspenso
+          ? t('suspendedToast', { name })
+          : t('reactivatedToast', { name }),
+      );
+      setSuspendingMember(null);
+      await loadEverything();
+    } catch (err) {
+      console.error('[MembersTab] suspensão:', err);
+      toast.error(t('networkError'));
+    } finally {
+      setPendingMemberAction(null);
+    }
+  }
+
   async function handleRevoke(invite: Invitation) {
     try {
       const res = await fetch(`/api/account/invitations/${invite.id}`, {
@@ -378,6 +440,14 @@ export function MembersTab() {
               <span className="text-muted-foreground/70">
                 · {t('memberCount', { count: members.length })}
               </span>
+              {(() => {
+                const suspensos = members.filter((m) => m.suspenso_em).length;
+                return suspensos > 0 ? (
+                  <span className="text-amber-700 dark:text-amber-300">
+                    · {t('suspendedCount', { count: suspensos })}
+                  </span>
+                ) : null;
+              })()}
             </div>
           );
         })()}
@@ -392,6 +462,7 @@ export function MembersTab() {
               const isSelf = member.user_id === user?.id;
               const isOwnerRow = member.role === 'owner';
               const isBusy = pendingMemberAction === member.user_id;
+              const suspenso = Boolean(member.suspenso_em);
               const presence = getPresence(member.user_id);
               const presenceRow = getRow(member.user_id);
               const presenceText = presenceLabel(
@@ -410,7 +481,9 @@ export function MembersTab() {
                   // before.
                   className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:gap-4"
                 >
-                  <div className="flex min-w-0 flex-1 items-center gap-4">
+                  <div
+                    className={`flex min-w-0 flex-1 items-center gap-4${suspenso ? ' opacity-60' : ''}`}
+                  >
                     <Tooltip>
                       <TooltipTrigger
                         render={
@@ -490,6 +563,33 @@ export function MembersTab() {
                         ) : null;
                       })()}
                     </div>
+                  </div>
+
+                  {/* Situação (1062) — a coluna que o operador pediu. Em
+                      toda linha, inclusive a do dono, para a coluna não
+                      "pular": o dono nunca é suspenso, e diz Ativo. */}
+                  <div className="flex shrink-0 flex-col items-start gap-0.5 sm:w-32 sm:items-center">
+                    <span
+                      className={
+                        suspenso
+                          ? 'inline-flex items-center rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300'
+                          : 'inline-flex items-center rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300'
+                      }
+                    >
+                      {suspenso ? t('statusSuspended') : t('statusActive')}
+                    </span>
+                    {suspenso && member.suspenso_em && (
+                      <span className="text-[11px] text-muted-foreground sm:text-center">
+                        {member.suspenso_por_nome
+                          ? t('suspendedSinceBy', {
+                              date: fmtDate(member.suspenso_em),
+                              name: member.suspenso_por_nome,
+                            })
+                          : t('suspendedSince', {
+                              date: fmtDate(member.suspenso_em),
+                            })}
+                      </span>
+                    )}
                   </div>
 
                   {/* Joined date stays desktop-only. The mobile row's
@@ -574,6 +674,37 @@ export function MembersTab() {
                         {tRoles(member.role)}
                       </span>
                     )}
+
+                    {/* Suspender / reativar (1062). A régua do remover:
+                        admin+, nunca o dono, nunca a si mesmo. Suspender
+                        pede confirmação; reativar é um clique. */}
+                    {canManageMembers && !isOwnerRow && !isSelf &&
+                      (suspenso ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleSuspensao(member, false)}
+                          disabled={isBusy}
+                        >
+                          {isBusy ? (
+                            <Loader2 className="size-4 animate-spin" />
+                          ) : (
+                            <UserCheck className="size-4" />
+                          )}
+                          {t('reactivate')}
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void abrirSuspensao(member)}
+                          disabled={isBusy}
+                          className="border-amber-500/40 text-amber-700 hover:bg-amber-500/10 dark:text-amber-300"
+                        >
+                          <UserX className="size-4" />
+                          {t('suspend')}
+                        </Button>
+                      ))}
 
                     {/* Remove. Admin+ only; never on the owner row;
                         never on yourself. Pre-polish styling was
@@ -731,6 +862,65 @@ export function MembersTab() {
         onOpenChange={setInviteOpen}
         onCreated={loadEverything}
       />
+
+      <Dialog
+        open={suspendingMember !== null}
+        onOpenChange={(open) => {
+          if (!open) setSuspendingMember(null);
+        }}
+      >
+        <DialogContent className="bg-popover border-border sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-popover-foreground">
+              <UserX className="size-4 text-amber-500" />
+              {t('suspendDialogTitle')}
+            </DialogTitle>
+            <DialogDescription className="text-muted-foreground">
+              {t.rich('suspendDialogDesc', {
+                name: suspendingMember?.full_name || t('unnamed'),
+                bold: (chunks: React.ReactNode) => <strong>{chunks}</strong>,
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          {/* Só a contagem DESTA pessoa (carimbada), e só quando há conversa:
+              a decisão do operador é que elas FICAM com ela. */}
+          {suspendingMember &&
+            conversasAbertas?.de === suspendingMember.user_id &&
+            conversasAbertas.total > 0 && (
+              <p className="text-sm text-muted-foreground">
+                {t('suspendDialogConversas', {
+                  count: conversasAbertas.total,
+                  name: suspendingMember.full_name || t('unnamed'),
+                })}
+              </p>
+            )}
+          <DialogFooter className="bg-popover border-border">
+            <Button
+              variant="outline"
+              onClick={() => setSuspendingMember(null)}
+              className="border-border text-muted-foreground hover:bg-muted"
+            >
+              {t('cancel')}
+            </Button>
+            <Button
+              onClick={() =>
+                suspendingMember && handleSuspensao(suspendingMember, true)
+              }
+              disabled={!!pendingMemberAction}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              {pendingMemberAction ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  {t('suspending')}
+                </>
+              ) : (
+                t('suspendBtn')
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={removingMember !== null}

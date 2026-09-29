@@ -13,6 +13,7 @@ import { TelaBloqueada } from '@/components/auth/tela-bloqueada';
 import { FaixaDeSimulacao } from '@/components/auth/faixa-de-simulacao';
 import { PortaDeEntrada } from '@/components/entrada/porta-de-entrada';
 import { ExigenciaDoCelular } from '@/components/entrada/exigencia-do-celular';
+import { AcessoSuspenso } from '@/components/entrada/acesso-suspenso';
 import { useMeuCelular } from '@/hooks/use-meu-celular';
 import { useTelaAcimaDoTeclado } from '@/hooks/use-tela-acima-do-teclado';
 import { ROTA_DA_TELA, TODAS_AS_TELAS } from '@/lib/perfis/catalogo';
@@ -23,7 +24,8 @@ import { podeVerTela, telaDoCaminho } from '@/lib/perfis/visibilidade';
 // client components can't export Next's metadata object.
 
 function DashboardShellInner({ children }: { children: React.ReactNode }) {
-  const { user, loading, profileLoading, acesso, accountStatus } = useAuth();
+  const { user, loading, profileLoading, acesso, accountStatus, suspensoEm, refreshProfile } =
+    useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const t = useTranslations('DashboardShell');
@@ -103,6 +105,13 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
   }
 
   if (!user) return null;
+
+  // Acesso SUSPENSO (1062): o aviso no lugar do app inteiro — nem a exigência
+  // do celular, nem a porta de entrada, nem o batimento de presença montam.
+  // O banco já recusa tudo a esta pessoa; a tela só diz por quê.
+  if (accountStatus === 'suspenso') {
+    return <AcessoSuspenso suspensoEm={suspensoEm} aoTentarDeNovo={refreshProfile} />;
+  }
 
   // O celular é EXIGIDO (1046): quem não informou vê só o cartão, no lugar do
   // app inteiro — nem a porta de entrada monta. A decisão é tomada UMA vez,

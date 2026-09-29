@@ -47,9 +47,11 @@ export function lerModoDoResponsavel(valor: unknown): ModoDoResponsavel | null {
 /**
  * Por que a tarefa NÃO foi para quem está atribuído (modos `conversa`/`card`):
  * `sem_alvo` = o contato não tem conversa (ou card); `ninguem` = tem, sem
- * ninguém atribuído; `saiu` = quem estava atribuído não é mais membro.
+ * ninguém atribuído; `saiu` = quem estava atribuído não é mais membro;
+ * `suspenso` = continua membro, mas com o acesso suspenso (1062) — a tarefa
+ * iria para quem não consegue abri-la.
  */
-export type PorqueDaReserva = 'sem_alvo' | 'ninguem' | 'saiu'
+export type PorqueDaReserva = 'sem_alvo' | 'ninguem' | 'saiu' | 'suspenso'
 
 export type EscolhaDoResponsavel =
   | { ok: true; userId: string; porReserva: false }
@@ -61,9 +63,10 @@ export type EscolhaDoResponsavel =
        *   `fixo`, o passo sem pessoa);
        * `responsavel_saiu`: havia alguém atribuído, que não é mais membro, e
        *   nenhuma reserva;
-       * `fixo_fora_da_conta`: o responsável fixo (ou a reserva) não é membro.
+       * `fixo_fora_da_conta`: o responsável fixo (ou a reserva) não é membro;
+       * `fixo_suspenso`: é membro, mas está com o acesso suspenso (1062).
        */
-      motivo: 'sem_responsavel' | 'responsavel_saiu' | 'fixo_fora_da_conta'
+      motivo: 'sem_responsavel' | 'responsavel_saiu' | 'fixo_fora_da_conta' | 'fixo_suspenso'
       /** Nos modos `conversa`/`card`: por que o atribuído não serviu. */
       porque?: PorqueDaReserva
     }
@@ -75,7 +78,10 @@ export type EscolhaDoResponsavel =
  *   muda a frase do registro ("não tem conversa" × "ninguém atribuído").
  * @param fixo `responsavel_user_id` do passo: o responsável no modo `fixo`, a
  *   reserva nos outros dois.
- * @param ehMembro a pessoa é membro DESTA conta hoje?
+ * @param ehMembro a pessoa pode RECEBER tarefa nesta conta hoje? (membro e,
+ *   desde a 1062, não suspensa)
+ * @param ehSuspenso a pessoa é membro com o acesso suspenso? Só muda a frase
+ *   do registro ("está suspensa" × "saiu da conta"). Ausente = ninguém está.
  */
 export function escolherResponsavel(e: {
   modo: ModoDoResponsavel
@@ -83,20 +89,30 @@ export function escolherResponsavel(e: {
   alvoExiste?: boolean
   fixo: string | null
   ehMembro: (userId: string) => boolean
+  ehSuspenso?: (userId: string) => boolean
 }): EscolhaDoResponsavel {
   const fixo = e.fixo?.trim() || null
+  const suspenso = (id: string) => e.ehSuspenso?.(id) ?? false
+  const foraDaConta = (id: string): 'fixo_suspenso' | 'fixo_fora_da_conta' =>
+    suspenso(id) ? 'fixo_suspenso' : 'fixo_fora_da_conta'
   if (e.modo === 'fixo') {
     if (!fixo) return { ok: false, motivo: 'sem_responsavel' }
-    if (!e.ehMembro(fixo)) return { ok: false, motivo: 'fixo_fora_da_conta' }
+    if (!e.ehMembro(fixo)) return { ok: false, motivo: foraDaConta(fixo) }
     return { ok: true, userId: fixo, porReserva: false }
   }
   if (e.dinamico && e.ehMembro(e.dinamico)) {
     return { ok: true, userId: e.dinamico, porReserva: false }
   }
   const porque: PorqueDaReserva =
-    e.alvoExiste === false ? 'sem_alvo' : e.dinamico ? 'saiu' : 'ninguem'
+    e.alvoExiste === false
+      ? 'sem_alvo'
+      : e.dinamico
+        ? suspenso(e.dinamico)
+          ? 'suspenso'
+          : 'saiu'
+        : 'ninguem'
   if (fixo && e.ehMembro(fixo)) return { ok: true, userId: fixo, porReserva: true, porque }
-  if (fixo) return { ok: false, motivo: 'fixo_fora_da_conta', porque }
+  if (fixo) return { ok: false, motivo: foraDaConta(fixo), porque }
   return { ok: false, motivo: e.dinamico ? 'responsavel_saiu' : 'sem_responsavel', porque }
 }
 
@@ -105,11 +121,13 @@ const FRASE_DO_PORQUE: Record<'conversa' | 'card', Record<PorqueDaReserva, strin
     sem_alvo: 'o contato não tem conversa',
     ninguem: 'ninguém está atribuído à conversa',
     saiu: 'quem estava atribuído à conversa não é mais membro desta conta',
+    suspenso: 'quem está atribuído à conversa está com o acesso suspenso',
   },
   card: {
     sem_alvo: 'o contato não tem card',
     ninguem: 'ninguém está atribuído ao card',
     saiu: 'quem estava atribuído ao card não é mais membro desta conta',
+    suspenso: 'quem está atribuído ao card está com o acesso suspenso',
   },
 }
 
@@ -127,6 +145,7 @@ export function fraseDaEscolha(
     return `para o responsável reserva (${FRASE_DO_PORQUE[modo][escolha.porque]})`
   }
   if (modo === 'fixo') {
+    if (escolha.motivo === 'fixo_suspenso') return 'responsável está com o acesso suspenso'
     return escolha.motivo === 'fixo_fora_da_conta'
       ? 'responsável não é membro desta conta'
       : 'o passo não tem responsável'
@@ -134,6 +153,8 @@ export function fraseDaEscolha(
   const porque =
     escolha.porque ?? (escolha.motivo === 'responsavel_saiu' ? 'saiu' : 'ninguem')
   const motivo = FRASE_DO_PORQUE[modo][porque]
+  if (escolha.motivo === 'fixo_suspenso')
+    return `${motivo}, e o responsável reserva está com o acesso suspenso`
   return escolha.motivo === 'fixo_fora_da_conta'
     ? `${motivo}, e o responsável reserva não é membro desta conta`
     : `${motivo}, e o passo não tem responsável reserva`

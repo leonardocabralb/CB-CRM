@@ -32,6 +32,8 @@ export interface MembroDoRobo {
   userId: string;
   /** Nome, senão e-mail; vazio = a tela escreve "membro sem nome". */
   nome: string;
+  /** 1062: presente (e `true`) só para quem está com o acesso suspenso. */
+  suspenso?: true;
 }
 
 export type MembrosDoRobo =
@@ -39,7 +41,12 @@ export type MembrosDoRobo =
   | { status: "falhou" }
   | { status: "pronto"; membros: MembroDoRobo[] };
 
-type LinhaDePerfil = { user_id: string; full_name: string | null; email: string | null };
+type LinhaDePerfil = {
+  user_id: string;
+  full_name: string | null;
+  email: string | null;
+  suspenso_em?: string | null;
+};
 
 /** Puro: as linhas de `profiles` viram a lista, em ordem de nome. */
 export function montarMembros(linhas: ReadonlyArray<LinhaDePerfil>): MembroDoRobo[] {
@@ -48,7 +55,11 @@ export function montarMembros(linhas: ReadonlyArray<LinhaDePerfil>): MembroDoRob
   for (const l of linhas) {
     if (!l.user_id || vistos.has(l.user_id)) continue;
     vistos.add(l.user_id);
-    lista.push({ userId: l.user_id, nome: l.full_name?.trim() || l.email?.trim() || "" });
+    lista.push({
+      userId: l.user_id,
+      nome: l.full_name?.trim() || l.email?.trim() || "",
+      ...(l.suspenso_em ? { suspenso: true as const } : {}),
+    });
   }
   return lista.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
 }
@@ -66,7 +77,7 @@ export async function carregarMembrosDoRobo(
 ): Promise<MembrosDoRobo> {
   const { data, error } = await db
     .from("profiles")
-    .select("user_id, full_name, email")
+    .select("user_id, full_name, email, suspenso_em")
     .eq("account_id", accountId);
   if (error) return { status: "falhou" };
   return { status: "pronto", membros: montarMembros((data ?? []) as LinhaDePerfil[]) };

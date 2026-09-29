@@ -147,3 +147,50 @@ Troca de LENTE no navegador, e só nele (`simulacao.ts`, o override no
 - O celular de cada membro (1046) aparece na lista de Membros SÓ para
   administradores, como o e-mail, e com barreira no banco (RLS de
   `cb_celulares_dos_membros`). As regras estão em `meu-dia.md`.
+
+### Membro SUSPENSO (1062)
+Configurações → Membros → Suspender/Reativar (pedido do operador, 29/09/2026).
+`profiles.suspenso_em`/`suspenso_por`, a RPC `cb_definir_suspensao` (a régua
+do remover: admin+, nunca o dono, nunca a si mesmo), a rota
+`/api/account/members/[userId]/suspensao`, `src/lib/account/suspensao.ts` e a
+tela `src/components/entrada/acesso-suspenso.tsx`. Decisões do operador: nada é
+apagado nem reatribuído (conversas, tarefas e negócios ficam com a pessoa), e
+ela ainda faz login — cai na tela de acesso suspenso.
+
+- ⚠️⚠️ **O corte mora no BANCO, não na tela.** `is_account_member` e
+  `cb_contas_do_usuario` respondem "não é membro" para quem está suspenso — é
+  por elas que passa toda policy que dá acesso a dado da conta (e o Realtime).
+  ⚠️ Os buckets de mídia são públicos: URL de arquivo que a pessoa já tem
+  continua abrindo; a RLS governa listar e gravar. A PRÓPRIA linha de `profiles`
+  fica invisível para o suspenso, e isso fecha de graça as rotas que leem o
+  cadastro do chamador e depois agem com service role (`cb/notes`,
+  `cb/agenda`, `conversas/abrir`, `whatsapp/*`): todas recusam sem cadastro.
+  Rota nova nesse molde herda o corte; rota que descobrir o chamador por outro
+  caminho (service role lendo `profiles` pelo id da sessão) NÃO herda.
+- ⚠️ **As colunas estão na trava `enforce_profile_privilege_columns`**: a
+  policy `profiles_update` deixa cada um editar a própria linha, e sem a trava
+  a pessoa se reativaria com um PATCH.
+- ⚠️ **O navegador não lê a própria suspensão pela tabela** (a linha some):
+  `useAuth` pergunta a `cb_minha_suspensao()` quando a leitura do perfil volta
+  vazia, e só então `accountStatus === 'suspenso'`. Falha nessa pergunta cai
+  no alerta de conta de sempre, nunca num "suspenso" inventado.
+- A tela aberta de quem acabou de ser suspenso troca sozinha em até ~30 s: o
+  `touch_presence` recusa com a mensagem `membro_suspenso` (contrato com
+  `RECUSA_DE_SUSPENSO`, há teste lendo o SQL) e o batimento relê o perfil.
+- **Listas de escolha**: `opcoesDeResponsavel` tira o suspenso das OPÇÕES e
+  mantém o responsável ATUAL, marcado "(suspenso)" — sem ele, o seletor
+  mostraria vazio (ou o id cru) e salvar apagaria a atribuição. Nos filtros e
+  onde se dá NOME a quem já é responsável, a lista inteira.
+- **Os motores tratam o suspenso como fora da equipe**: o rodízio das
+  automações e as opções de "criar tarefa" da IA o excluem; o passo "Atribuir"
+  com atendente específico, o nó "Transferir" do robô e a transferência do
+  agente de IA deixam a conversa na FILA; a tarefa automática
+  (`responsavel-da-tarefa.ts`, `ehSuspenso`) cai no responsável reserva, e o
+  registro diz "está com o acesso suspenso" — nunca "saiu da conta".
+- **Remover um suspenso desfaz a suspensão** (ele sai dono de uma conta
+  pessoal, e suspenso ali ficaria trancado sem ninguém para reativá-lo), e
+  **transferir a conta para um suspenso é recusado** — com `FOR UPDATE` no
+  alvo, que serializa com a suspensão. Só SUSPENDER o dono é recusado:
+  reativar um dono suspenso fica aberto, como saída.
+- Chaves de API são da CONTA: as que a pessoa criou continuam valendo. Agendadas
+  dela continuam saindo.

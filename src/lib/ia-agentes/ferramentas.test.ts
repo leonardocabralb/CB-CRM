@@ -51,6 +51,7 @@ function criarBanco(tabelas: Record<string, Linha[]>): { banco: Banco; db: Supab
             if (op === 'eq') return x === v
             if (op === 'in') return (v as unknown[]).includes(x)
             if (op === 'notnull') return x !== null && x !== undefined
+            if (op === 'is') return v === null ? x === null || x === undefined : x === v
             return true
           }),
         )
@@ -63,6 +64,7 @@ function criarBanco(tabelas: Record<string, Linha[]>): { banco: Banco; db: Supab
         eq: (c: string, v: unknown) => (filtros.push(['eq', c, v]), q),
         in: (c: string, v: unknown[]) => (filtros.push(['in', c, v]), q),
         not: (c: string) => (filtros.push(['notnull', c, null]), q),
+        is: (c: string, v: unknown) => (filtros.push(['is', c, v]), q),
         range: (de: number, ate: number) => ((faixa = [de, ate]), q),
         then: (ok: (r: unknown) => unknown, erro: (e: unknown) => unknown) => executar().then(ok, erro),
       }
@@ -89,6 +91,8 @@ const CAMPO_TEXTO = uuid(20)
 const CAMPO_DATA = uuid(21)
 const CAMPO_DATA_VIGIADO = uuid(22)
 const MEMBRO = uuid(30)
+/** 1062: suspensa — fica no catálogo da configuração, mas a IA não lhe cria tarefa. */
+const MEMBRO_SUSPENSO = uuid(31)
 const AUTO_LIMPA = uuid(40)
 const AUTO_COM_WEBHOOK_NA_FILHA = uuid(41)
 const AUTO_FILHA = uuid(42)
@@ -121,7 +125,10 @@ function tabelas(): Record<string, Linha[]> {
       { id: CAMPO_DATA, field_name: 'Data livre', field_type: 'datetime', account_id: CONTA },
       { id: CAMPO_DATA_VIGIADO, field_name: 'Data da reunião', field_type: 'datetime', account_id: CONTA },
     ],
-    profiles: [{ user_id: MEMBRO, full_name: 'Ana', email: 'ana@x', account_id: CONTA }],
+    profiles: [
+      { user_id: MEMBRO, full_name: 'Ana', email: 'ana@x', account_id: CONTA },
+      { user_id: MEMBRO_SUSPENSO, full_name: 'Bia', email: 'bia@x', account_id: CONTA, suspenso_em: '2026-09-29T12:00:00Z' },
+    ],
     automations: [
       { id: AUTO_LIMPA, name: 'Boas-vindas', account_id: CONTA, is_active: true, trigger_type: 'tag_added', trigger_config: {} },
       { id: AUTO_COM_WEBHOOK_NA_FILHA, name: 'Aciona filha', account_id: CONTA, is_active: true, trigger_type: 'tag_added', trigger_config: {} },
@@ -329,7 +336,8 @@ describe('opcoesDoAgente — o que o pedido lista', () => {
       etiquetar: { etiquetas: [TAG_VIP, TAG_DE_OUTRA] },
       tirar_etiqueta: { etiquetas: [TAG_VIP] },
       preencher_campo: { campos: [CAMPO_TEXTO, CAMPO_DATA_VIGIADO] },
-      criar_tarefa: { membros: [MEMBRO] },
+      // A suspensa (1062) está ligada no agente, mas não vira opção do turno.
+      criar_tarefa: { membros: [MEMBRO, MEMBRO_SUSPENSO] },
       executar_automacao: { automacoes: [AUTO_LIMPA, AUTO_DESLIGADA, AUTO_REGUA, AUTO_DE_OUTRA] },
     })
     expect(o).toEqual({
@@ -438,7 +446,12 @@ describe('lerCatalogoDeFerramentas — a tela só mostra', () => {
       { id: uuid(25), nome: 'E-mail', vigiado: false, tipo: 'email', opcoes: [] },
       { id: CAMPO_TEXTO, nome: 'Tamanho da dívida', vigiado: false, tipo: 'text', opcoes: [] },
     ])
-    expect(c.membros).toEqual([{ userId: MEMBRO, nome: 'Ana' }])
+    // O catálogo da CONFIGURAÇÃO lista todo mundo, suspensa inclusive: quem
+    // decide não oferecer ao turno é `opcoesDoAgente` (1062).
+    expect(c.membros).toEqual([
+      { userId: MEMBRO, nome: 'Ana' },
+      { userId: MEMBRO_SUSPENSO, nome: 'Bia' },
+    ])
     expect(c.automacoes.map((a) => [a.nome, a.foraDaD5])).toEqual([
       ['Aciona filha', 'send_webhook'],
       // Etiqueta TAG_QUENTE, cuja automação manda para outro número: não conta.

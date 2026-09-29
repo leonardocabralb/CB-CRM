@@ -96,11 +96,17 @@ export function CamposDoTransferir({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={NINGUEM}>{t("handoffAssignNobody")}</SelectItem>
-            {membros.map((m) => (
-              <SelectItem key={m.userId} value={m.userId}>
-                {m.nome || t("handoffAssignNoName")}
-              </SelectItem>
-            ))}
+            {/* 1062: suspenso sai das opções, menos o já escolhido — que
+                aparece marcado (o robô o trata como fora da equipe). */}
+            {membros
+              .filter((m) => !m.suspenso || m.userId === escolhido)
+              .map((m) => (
+                <SelectItem key={m.userId} value={m.userId}>
+                  {m.suspenso
+                    ? t("handoffAssignSuspended", { name: m.nome || t("handoffAssignNoName") })
+                    : m.nome || t("handoffAssignNoName")}
+                </SelectItem>
+              ))}
             {/* O gravado precisa de um item enquanto a lista não chega (ou
                 se a pessoa saiu da conta) — sem ele o gatilho mostraria o
                 UUID cru. */}

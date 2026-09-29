@@ -1716,10 +1716,27 @@ async function runStep(
           .from('profiles')
           .select('user_id')
           .eq('account_id', args.automation.account_id)
+          // 1062: quem está suspenso não recebe conversa nova.
+          .is('suspenso_em', null)
           .limit(1);
         agentId = profiles?.[0]?.user_id;
       }
       if (!agentId) return 'no agent resolved';
+
+      // 1062: o atendente FIXO que está suspenso não recebe conversa nova — ela
+      // fica na fila (sem responsável), como no nó "Transferir" do robô. Só a
+      // suspensão CONFIRMADA barra: leitura que falha segue como antes.
+      if (cfg.mode !== 'round_robin') {
+        const { data: fixo } = await db
+          .from('profiles')
+          .select('suspenso_em')
+          .eq('account_id', args.automation.account_id)
+          .eq('user_id', agentId)
+          .maybeSingle();
+        if ((fixo as { suspenso_em?: string | null } | null)?.suspenso_em) {
+          return `agent ${agentId} is suspended — conversation left unassigned`;
+        }
+      }
 
       // ⚠️ A conversa DO DISPARO, não todas as do contato. O código anterior
       // filtrava só por conta+contato, então um contato com três conversas
@@ -2428,13 +2445,17 @@ async function runStep(
       // saem de `criarTarefaComAviso`.
       const { data: perfis, error: erroPerfis } = await db
         .from('profiles')
-        .select('id, user_id')
+        .select('id, user_id, suspenso_em')
         .eq('account_id', args.automation.account_id);
       if (erroPerfis)
         throw new Error(
           `create_task: leitura de perfis falhou: ${erroPerfis.message}`
         );
-      const membros = (perfis ?? []) as { id?: string; user_id: string }[];
+      const membros = (perfis ?? []) as {
+        id?: string;
+        user_id: string;
+        suspenso_em?: string | null;
+      }[];
 
       // Quem está atribuído AGORA (Fase 2.4), já como id de LOGIN. ⚠️ O card
       // guarda `profiles.id`, a conversa o id de LOGIN — ver
@@ -2462,7 +2483,11 @@ async function runStep(
         dinamico: atribuido.userId,
         alvoExiste: atribuido.existe,
         fixo: cfg.responsavel_user_id ?? null,
-        ehMembro: (id) => membros.some((p) => p.user_id === id),
+        // 1062: quem está suspenso é membro, mas não recebe tarefa nova — ela
+        // cai na reserva, e o registro diz por quê.
+        ehMembro: (id) => membros.some((p) => p.user_id === id && !p.suspenso_em),
+        ehSuspenso: (id) =>
+          membros.some((p) => p.user_id === id && Boolean(p.suspenso_em)),
       });
       // A frase do registro vem de `fraseDaEscolha` (pura, com teste): diz
       // POR QUÊ a tarefa não foi para quem o passo pedia — ninguém atribuído,
