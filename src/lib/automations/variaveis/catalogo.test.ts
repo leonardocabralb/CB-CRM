@@ -67,6 +67,8 @@ describe('classificarCodigo — a régua do motor', () => {
     expect(familiaDoEvento('webhook_received')).toBe('webhook');
     expect(familiaDoEvento('deal_stage_changed')).toBeNull();
     expect(gatilhoDeMensagem('keyword_match')).toBe(true);
+    // Só a ingestão de mensagem o despacha, com `message_text` no contexto.
+    expect(gatilhoDeMensagem('new_contact_created')).toBe(true);
     expect(gatilhoDeMensagem('manual')).toBe(false);
   });
 

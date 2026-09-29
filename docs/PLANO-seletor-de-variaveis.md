@@ -80,6 +80,12 @@ não é texto não derruba o editor (`comoTexto`, só para exibir).
   com a tentativa) ou "nunca acionado"; os campos da ficha que falham também
   ganharam "Tentar de novo". Conferido no preview com a falha simulada na
   aba.
+- 3ª rodada (o pedido do commit `094276b` voltou com erro do próprio Codex,
+  "git ref does not exist"; pedido de novo depois do merge do `main`), P2:
+  "Novo contato criado" escondia `{{message.text}}` e marcava o uso como
+  indisponível, mas só a ingestão de mensagem o despacha, com o texto no
+  contexto (webhook da Meta e `inbound-store.ts`). Entrou em
+  `gatilhoDeMensagem`, com teste.
 
 ## Decisões do operador (29/09/2026)
 

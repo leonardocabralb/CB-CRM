@@ -73,12 +73,15 @@ export function familiaDoEvento(tipoDoGatilho: string): FamiliaDoEvento | null {
 
 /**
  * Os gatilhos que põem `message_text` no contexto: só a ingestão de mensagem
- * o faz. Fora deles, `{{message.text}}` sai em branco (menos por encadeamento),
- * e o botão não o oferece.
+ * o faz (o webhook da Meta e `inbound-store.ts`, com o texto da mensagem em
+ * TODOS os tipos que despacham — "Novo contato criado" inclusive, que só nasce
+ * ali; Codex, #348). Fora deles, `{{message.text}}` sai em branco (menos por
+ * encadeamento), e o botão não o oferece.
  */
 export function gatilhoDeMensagem(tipoDoGatilho: string): boolean {
   return (
     tipoDoGatilho === 'new_message_received' ||
+    tipoDoGatilho === 'new_contact_created' ||
     tipoDoGatilho === 'first_inbound_message' ||
     tipoDoGatilho === 'keyword_match' ||
     tipoDoGatilho === 'interactive_reply'
