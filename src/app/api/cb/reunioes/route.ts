@@ -115,6 +115,21 @@ export async function GET(request: Request) {
     // 2. TODO o Calendly desses contatos: a inferência do convite substituído
     //    por reagendamento compara com agendamentos fora da janela também.
     const calendly: LinhaDoCalendlyDaPauta[] = [...linhasDaJanela.filter((l) => !l.contact_id)];
+    // E TODA a agenda do CRM desses contatos: a próxima reunião de um contato
+    // (que decide se o card ainda é desta reunião) pode cair fora da janela.
+    const agendaPorId = new Map(linhasDaAgenda.map((a) => [a.id, a]));
+    for (const ids of lotes(contatos)) {
+      const { data, error } = await admin
+        .from('cb_meetings')
+        .select('id, contact_id, conversation_id, titulo, local, starts_at, ends_at, status, created_at')
+        .eq('account_id', conta)
+        .neq('status', 'cancelada')
+        .in('contact_id', ids)
+        .limit(PAGINA);
+      if (error) throw new Error(`agenda dos contatos: ${error.message}`);
+      if ((data ?? []).length >= PAGINA) throw new Error('reuniões da agenda demais para uma leitura');
+      for (const a of (data ?? []) as LinhaDaAgenda[]) agendaPorId.set(a.id, a);
+    }
     for (const ids of lotes(contatos)) {
       const { data, error } = await admin
         .from('cb_calendly_eventos')
@@ -245,7 +260,7 @@ export async function GET(request: Request) {
         for (let pagina = 0; ; pagina++) {
           const { data, error } = await admin
             .from('cb_lead_events')
-            .select('id, contact_id, occurred_at, to_stage_id, to_stage_label, actor_label')
+            .select('id, contact_id, deal_id, occurred_at, to_stage_id, to_stage_label, actor_label')
             .eq('account_id', conta)
             .in('contact_id', ids)
             .in('event_type', ['stage_changed', 'deal_created', 'pipeline_changed'])
@@ -255,6 +270,7 @@ export async function GET(request: Request) {
           if (error) throw new Error(`trilha: ${error.message}`);
           const linhas = (data ?? []) as {
             contact_id: string | null;
+            deal_id: string | null;
             occurred_at: string;
             to_stage_id: string;
             to_stage_label: string | null;
@@ -263,7 +279,13 @@ export async function GET(request: Request) {
           for (const l of linhas) {
             if (!l.contact_id) continue;
             const lista = trilha.get(l.contact_id) ?? [];
-            lista.push({ em: l.occurred_at, etapaId: l.to_stage_id, etapa: l.to_stage_label, por: l.actor_label });
+            lista.push({
+              em: l.occurred_at,
+              dealId: l.deal_id,
+              etapaId: l.to_stage_id,
+              etapa: l.to_stage_label,
+              por: l.actor_label,
+            });
             trilha.set(l.contact_id, lista);
           }
           if (linhas.length < PAGINA) break;
@@ -273,7 +295,7 @@ export async function GET(request: Request) {
 
     // 5. O que a tela já marcou nestas reuniões.
     const marcos = new Map<string, LinhaDoMarco[]>();
-    const idsDasReunioes = [...calendly.map((l) => l.id), ...linhasDaAgenda.map((a) => a.id)];
+    const idsDasReunioes = [...calendly.map((l) => l.id), ...agendaPorId.keys()];
     for (const ids of lotes([...new Set(idsDasReunioes)])) {
       const { data, error } = await admin
         .from('cb_reunioes_marcos')
@@ -293,7 +315,7 @@ export async function GET(request: Request) {
       janela: { de, ate },
       calendly,
       cancelados,
-      agenda: linhasDaAgenda,
+      agenda: [...agendaPorId.values()],
       contatos: nomes,
       conversas,
       negocios,

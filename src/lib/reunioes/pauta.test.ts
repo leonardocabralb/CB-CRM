@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import {
   alvosDoFunil,
+  comoMarcar,
   faltouAntes,
   faseDaReuniao,
   lerPauta,
-  negocioAceitaAcao,
   pendentes,
   qualificacaoDaReuniao,
   resultadoDaEtapa,
@@ -30,8 +30,9 @@ const ETAPAS: EtapaDoFunil[] = [
 ];
 const POR_ID = new Map(ETAPAS.map((e) => [e.id, e]));
 
-const entrada = (em: string, etapaId: string, por: string | null = 'Ana'): EntradaDaTrilha => ({
+const entrada = (em: string, etapaId: string, por: string | null = 'Ana', dealId: string | null = 'd1'): EntradaDaTrilha => ({
   em,
+  dealId,
   etapaId,
   etapa: POR_ID.get(etapaId)?.nome ?? null,
   por,
@@ -88,12 +89,14 @@ describe('resultadoDaReuniao', () => {
   const inicio = '2026-09-29T14:00:00Z';
 
   it('sem nada: sem resultado', () => {
-    expect(resultadoDaReuniao({ inicio, marcos: [], entradas: [], etapas: POR_ID })).toBeNull();
+    expect(resultadoDaReuniao({ inicio, ate: null, dealId: 'd1', marcos: [], entradas: [], etapas: POR_ID })).toBeNull();
   });
 
   it('entrada no funil ANTES do início é de outra reunião e não conta', () => {
     const r = resultadoDaReuniao({
       inicio,
+      ate: null,
+      dealId: 'd1',
       marcos: [],
       entradas: [entrada('2026-09-20T10:00:00Z', 'noshow'), entrada('2026-09-29T13:59:00Z', 'prop')],
       etapas: POR_ID,
@@ -102,7 +105,7 @@ describe('resultadoDaReuniao', () => {
   });
 
   it('o card movido pelo funil DEPOIS do início resolve a reunião (fonte funil)', () => {
-    const r = resultadoDaReuniao({ inicio, marcos: [], entradas: [entrada('2026-09-29T14:20:00Z', 'semprop', 'Bia')], etapas: POR_ID });
+    const r = resultadoDaReuniao({ inicio, ate: null, dealId: 'd1', marcos: [], entradas: [entrada('2026-09-29T14:20:00Z', 'semprop', 'Bia')], etapas: POR_ID });
     expect(r).toEqual({
       tipo: 'sem_proposta',
       em: '2026-09-29T14:20:00Z',
@@ -116,6 +119,8 @@ describe('resultadoDaReuniao', () => {
   it('o marco da tela resolve mesmo sem entrada (o card já estava na etapa)', () => {
     const r = resultadoDaReuniao({
       inicio,
+      ate: null,
+      dealId: 'd1',
       marcos: [marco({ resultado: 'proposta', valor: 18000 })],
       entradas: [],
       etapas: POR_ID,
@@ -128,6 +133,8 @@ describe('resultadoDaReuniao', () => {
   it('vence o MAIS RECENTE: marcado No show na tela e depois levado para Proposta no quadro', () => {
     const r = resultadoDaReuniao({
       inicio,
+      ate: null,
+      dealId: 'd1',
       marcos: [marco({ resultado: 'no_show', registrado_em: '2026-09-29T14:10:00Z' })],
       entradas: [entrada('2026-09-29T16:00:00Z', 'prop')],
       etapas: POR_ID,
@@ -139,6 +146,8 @@ describe('resultadoDaReuniao', () => {
   it('o marco de QUALIFICADA não é resultado', () => {
     const r = resultadoDaReuniao({
       inicio,
+      ate: null,
+      dealId: 'd1',
       marcos: [marco({ marco: 'qualificada', resultado: null })],
       entradas: [entrada('2026-09-29T14:30:00Z', 'mql2')],
       etapas: POR_ID,
@@ -146,8 +155,44 @@ describe('resultadoDaReuniao', () => {
     expect(r).toBeNull();
   });
 
+  it('a entrada DEPOIS do início da próxima reunião do contato é da próxima, não desta', () => {
+    const r = resultadoDaReuniao({
+      inicio,
+      ate: '2026-10-02T14:00:00Z',
+      dealId: 'd1',
+      marcos: [],
+      entradas: [entrada('2026-10-02T14:40:00Z', 'semprop')],
+      etapas: POR_ID,
+    });
+    expect(r).toBeNull();
+  });
+
+  it('entrada de OUTRO card do mesmo contato (outro funil) não resolve esta reunião', () => {
+    const r = resultadoDaReuniao({
+      inicio,
+      ate: null,
+      dealId: 'd1',
+      marcos: [],
+      entradas: [entrada('2026-09-29T15:00:00Z', 'outro-prop', 'Bia', 'd-trabalhista')],
+      etapas: POR_ID,
+    });
+    expect(r).toBeNull();
+  });
+
+  it('marco de resultado gravado ANTES do início (reunião da agenda remarcada) não vale', () => {
+    const r = resultadoDaReuniao({
+      inicio,
+      ate: null,
+      dealId: 'd1',
+      marcos: [marco({ resultado: 'no_show', registrado_em: '2026-09-20T10:00:00Z' })],
+      entradas: [],
+      etapas: POR_ID,
+    });
+    expect(r).toBeNull();
+  });
+
   it('valor só acompanha a proposta', () => {
-    const r = resultadoDaReuniao({ inicio, marcos: [marco({ resultado: 'no_show', valor: 5 })], entradas: [], etapas: POR_ID });
+    const r = resultadoDaReuniao({ inicio, ate: null, dealId: 'd1', marcos: [marco({ resultado: 'no_show', valor: 5 })], entradas: [], etapas: POR_ID });
     expect(r?.valor).toBeNull();
   });
 });
@@ -156,15 +201,17 @@ describe('qualificacaoDaReuniao', () => {
   it('entrada na etapa qualificada a partir do agendamento conta; antes, não', () => {
     const desde = '2026-09-28T10:00:00Z';
     expect(
-      qualificacaoDaReuniao({ desde, marcos: [], entradas: [entrada('2026-09-01T10:00:00Z', 'mql2')], etapas: POR_ID }),
+      qualificacaoDaReuniao({ desde, ate: null, dealId: 'd1', marcos: [], entradas: [entrada('2026-09-01T10:00:00Z', 'mql2')], etapas: POR_ID }),
     ).toBeNull();
     expect(
-      qualificacaoDaReuniao({ desde, marcos: [], entradas: [entrada('2026-09-28T11:00:00Z', 'mql2', 'Leo')], etapas: POR_ID }),
+      qualificacaoDaReuniao({ desde, ate: null, dealId: 'd1', marcos: [], entradas: [entrada('2026-09-28T11:00:00Z', 'mql2', 'Leo')], etapas: POR_ID }),
     ).toEqual({ em: '2026-09-28T11:00:00Z', por: 'Leo', fonte: 'funil', etapa: 'MQL 2 - Reunião Qualificada' });
   });
   it('o marco da tela conta sempre', () => {
     const q = qualificacaoDaReuniao({
       desde: '2026-09-28T10:00:00Z',
+      ate: null,
+      dealId: 'd1',
       marcos: [marco({ marco: 'qualificada', resultado: null, registrado_em: '2026-09-28T12:00:00Z' })],
       entradas: [],
       etapas: POR_ID,
@@ -200,6 +247,7 @@ function reuniao(p: Partial<ReuniaoDaPauta>): ReuniaoDaPauta {
     evento: null,
     link: null,
     reagendamento: false,
+    proximaEm: null,
     contato: { id: 'c1', nome: 'Ana' },
     conversaId: 'v1',
     negocio: null,
@@ -243,13 +291,32 @@ describe('pendentes (a rede de segurança)', () => {
   });
 });
 
-describe('negocioAceitaAcao', () => {
+describe('comoMarcar', () => {
   const n = { id: 'd', pipelineId: 'banc', pipelineNome: null, etapaId: 'agendada', etapaNome: null, valor: 0 };
-  it('aberto e perdido aceitam (entrar em etapa neutra reabre o perdido); ganho e sem card, não', () => {
-    expect(negocioAceitaAcao({ ...n, status: 'open' })).toBe(true);
-    expect(negocioAceitaAcao({ ...n, status: 'lost' })).toBe(true);
-    expect(negocioAceitaAcao({ ...n, status: 'won' })).toBe(false);
-    expect(negocioAceitaAcao(null)).toBe(false);
+  const alvos = alvosDoFunil(ETAPAS, 'banc');
+
+  it('card aberto, sem reunião posterior e com etapa marcada: move', () => {
+    expect(comoMarcar({ negocio: { ...n, status: 'open' }, proximaEm: null }, 'no_show', alvos)).toEqual({
+      alvo: { id: 'noshow', nome: 'No Show' },
+      motivo: null,
+    });
+  });
+
+  it('sem card, card ganho ou PERDIDO: só registra (o perdido reabriria pela 1031)', () => {
+    expect(comoMarcar({ negocio: null, proximaEm: null }, 'no_show', alvos)).toEqual({ alvo: null, motivo: 'sem_card' });
+    expect(comoMarcar({ negocio: { ...n, status: 'won' }, proximaEm: null }, 'no_show', alvos).motivo).toBe('card_fechado');
+    expect(comoMarcar({ negocio: { ...n, status: 'lost' }, proximaEm: null }, 'no_show', alvos).motivo).toBe('card_fechado');
+  });
+
+  it('com reunião POSTERIOR do contato, o resultado só registra (o card é da seguinte); a qualificação ainda move', () => {
+    const r = { negocio: { ...n, status: 'open' as const }, proximaEm: '2026-10-02T14:00:00Z' };
+    expect(comoMarcar(r, 'no_show', alvos).motivo).toBe('reuniao_posterior');
+    expect(comoMarcar(r, 'qualificada', alvos).alvo?.id).toBe('mql2');
+  });
+
+  it('funil sem a etapa marcada: só registra', () => {
+    const semMql = alvosDoFunil(ETAPAS.filter((e) => e.id !== 'mql2'), 'banc');
+    expect(comoMarcar({ negocio: { ...n, status: 'open' }, proximaEm: null }, 'qualificada', semMql).motivo).toBe('sem_etapa');
   });
 });
 

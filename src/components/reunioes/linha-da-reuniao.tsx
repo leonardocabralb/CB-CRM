@@ -9,9 +9,10 @@ import { ValorInput } from '@/components/valor/valor-input';
 import { horaNoFuso, FUSO_PADRAO } from '@/lib/agenda/fuso';
 import { formatCurrency } from '@/lib/currency';
 import {
+  comoMarcar,
   faseDaReuniao,
-  negocioAceitaAcao,
   type Acao,
+  type MotivoDeSoRegistrar,
   type AlvosDoFunil,
   type ReuniaoDaPauta,
   type Resultado,
@@ -21,7 +22,8 @@ import { cn } from '@/lib/utils';
 /** Uma marcação esperando os segundos do "Desfazer". */
 export interface MarcacaoPendente {
   acao: Acao;
-  alvoNome: string;
+  /** Para onde o card vai; nulo = só registra. */
+  alvoNome: string | null;
   valor: number | null;
   restanteS: number;
 }
@@ -30,6 +32,13 @@ const ROTULO_DO_RESULTADO: Record<Resultado, 'resultadoProposta' | 'resultadoSem
   proposta: 'resultadoProposta',
   sem_proposta: 'resultadoSemProposta',
   no_show: 'resultadoNoShow',
+};
+
+const TEXTO_DO_MOTIVO: Record<MotivoDeSoRegistrar, 'motivoSemCard' | 'motivoCardFechado' | 'motivoReuniaoPosterior' | 'motivoSemEtapa'> = {
+  sem_card: 'motivoSemCard',
+  card_fechado: 'motivoCardFechado',
+  reuniao_posterior: 'motivoReuniaoPosterior',
+  sem_etapa: 'motivoSemEtapa',
 };
 
 function hora(iso: string): string {
@@ -81,27 +90,40 @@ export function LinhaDaReuniao({
   const [pedindoValor, setPedindoValor] = useState(false);
   const [valor, setValor] = useState(0);
   const [erroDoValor, setErroDoValor] = useState(false);
+  // Resultado já registrado, reaberto para corrigir (marca de novo: o upsert
+  // troca a linha do mesmo marco, e o card anda se puder).
+  const [corrigindo, setCorrigindo] = useState(false);
 
   const fase = faseDaReuniao(r, agora);
-  const aceita = negocioAceitaAcao(r.negocio);
   const link = linkDeReuniao(r.link);
   const { divida, atraso, origem } = r.qualificacao;
 
-  const botao = (acao: Acao, rotulo: string, onClick?: () => void, destaque = false) => {
-    const alvo = alvos?.[acao] ?? null;
-    return (
-      <Button
-        key={acao}
-        size="sm"
-        variant={destaque ? 'default' : 'outline'}
-        disabled={!alvo || ocupada}
-        title={alvo ? t('levaPara', { etapa: alvo.nome }) : t('semEtapaMarcada')}
-        onClick={onClick ?? (() => aoMarcar(acao, null))}
-      >
-        {rotulo}
-      </Button>
-    );
+  /** O que o botão faz, dito na dica: leva o card para X, ou só registra (e por quê). */
+  const dica = (acao: Acao): string => {
+    const plano = comoMarcar(r, acao, alvos);
+    return plano.alvo
+      ? t('levaPara', { etapa: plano.alvo.nome })
+      : t(TEXTO_DO_MOTIVO[plano.motivo], { data: r.proximaEm ? dataCurta(r.proximaEm) : '' });
   };
+
+  const botao = (acao: Acao, rotulo: string, onClick?: () => void, destaque = false) => (
+    <Button
+      key={acao}
+      size="sm"
+      variant={destaque ? 'default' : 'outline'}
+      disabled={ocupada}
+      title={dica(acao)}
+      onClick={
+        onClick ??
+        (() => {
+          setCorrigindo(false);
+          aoMarcar(acao, null);
+        })
+      }
+    >
+      {rotulo}
+    </Button>
+  );
 
   const confirmarProposta = () => {
     if (!(valor > 0)) {
@@ -109,8 +131,43 @@ export function LinhaDaReuniao({
       return;
     }
     setPedindoValor(false);
+    setCorrigindo(false);
     aoMarcar('proposta', valor);
   };
+
+  // Quando o resultado só REGISTRA (sem mover o card), a linha diz por quê —
+  // a dica do botão não aparece no toque.
+  const avisoDoResultado = (() => {
+    const plano = comoMarcar(r, 'no_show', alvos);
+    return plano.alvo ? null : t(TEXTO_DO_MOTIVO[plano.motivo], { data: r.proximaEm ? dataCurta(r.proximaEm) : '' });
+  })();
+
+  const botoesDoResultado = (
+    <div className="flex flex-wrap items-center gap-2">
+      {!corrigindo && (
+        <span className="inline-flex items-center gap-1 text-xs text-amber-700 dark:text-amber-300">
+          <AlertTriangle className="h-3.5 w-3.5" />
+          {t('registreOResultado')}
+        </span>
+      )}
+      {podeMarcar && (
+        <>
+          {botao('proposta', t('botaoProposta'), () => {
+            setValor(r.resultado?.valor ?? r.negocio?.valor ?? 0);
+            setPedindoValor(true);
+          })}
+          {botao('sem_proposta', t('botaoSemProposta'))}
+          {botao('no_show', t('botaoNoShow'))}
+          {corrigindo && (
+            <Button size="sm" variant="ghost" onClick={() => setCorrigindo(false)}>
+              {t('cancelar')}
+            </Button>
+          )}
+        </>
+      )}
+      {podeMarcar && avisoDoResultado && <span className="w-full text-[11px] text-muted-foreground">{avisoDoResultado}</span>}
+    </div>
+  );
 
   let acoes: ReactNode = null;
   if (ocupada) {
@@ -124,45 +181,15 @@ export function LinhaDaReuniao({
     acoes = (
       <span className="inline-flex flex-wrap items-center gap-1.5 text-xs text-primary">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        {pendente.valor !== null
-          ? t('movendoComValor', { etapa: pendente.alvoNome, valor: formatCurrency(pendente.valor), s: pendente.restanteS })
-          : t('movendo', { etapa: pendente.alvoNome, s: pendente.restanteS })}
+        {pendente.alvoNome === null
+          ? t('registrando', { s: pendente.restanteS })
+          : pendente.valor !== null
+            ? t('movendoComValor', { etapa: pendente.alvoNome, valor: formatCurrency(pendente.valor), s: pendente.restanteS })
+            : t('movendo', { etapa: pendente.alvoNome, s: pendente.restanteS })}
         <button type="button" className="font-medium underline underline-offset-2" onClick={aoDesfazer}>
           {t('desfazer')}
         </button>
       </span>
-    );
-  } else if (fase === 'com_resultado' && r.resultado) {
-    const res = r.resultado;
-    const oQue =
-      res.tipo === 'proposta' && res.valor !== null
-        ? t('resultadoPropostaComValor', { valor: formatCurrency(res.valor) })
-        : t(ROTULO_DO_RESULTADO[res.tipo]);
-    acoes = (
-      <span className="inline-flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-        <CheckCircle2 className="h-3.5 w-3.5 text-green-700 dark:text-green-300" />
-        {res.fonte === 'tela'
-          ? t('resultadoRegistrado', { oQue, por: res.por ?? t('alguem'), hora: hora(res.em) })
-          : t('resultadoPeloFunil', { oQue, etapa: res.etapa ?? '—', por: res.por ?? t('sistema') })}
-      </span>
-    );
-  } else if (!r.negocio) {
-    acoes = <span className="text-xs text-muted-foreground">{t('semCard')}</span>;
-  } else if (!aceita) {
-    acoes = <span className="text-xs text-muted-foreground">{t('cardGanho')}</span>;
-  } else if (fase === 'antes') {
-    acoes = (
-      <div className="flex flex-wrap items-center gap-2">
-        {r.qualificada ? (
-          <span className="inline-flex items-center gap-1 text-xs text-primary">
-            <CheckCircle2 className="h-3.5 w-3.5" />
-            {t('qualificadaPor', { por: r.qualificada.por ?? t('alguem') })}
-          </span>
-        ) : podeMarcar ? (
-          botao('qualificada', t('botaoQualificada'), undefined, true)
-        ) : null}
-        <span className="text-xs text-muted-foreground">{t('resultadoAbreAs', { hora: hora(r.inicio) })}</span>
-      </div>
     );
   } else if (pedindoValor) {
     acoes = (
@@ -194,25 +221,51 @@ export function LinhaDaReuniao({
         {erroDoValor && <span className="text-xs text-red-700 dark:text-red-300">{t('valorObrigatorio')}</span>}
       </div>
     );
-  } else {
+  } else if (fase === 'com_resultado' && r.resultado && !corrigindo) {
+    const res = r.resultado;
+    const oQue =
+      res.tipo === 'proposta' && res.valor !== null
+        ? t('resultadoPropostaComValor', { valor: formatCurrency(res.valor) })
+        : t(ROTULO_DO_RESULTADO[res.tipo]);
+    acoes = (
+      <span className="inline-flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+        <CheckCircle2 className="h-3.5 w-3.5 text-green-700 dark:text-green-300" />
+        {res.fonte === 'tela'
+          ? t('resultadoRegistrado', { oQue, por: res.por ?? t('alguem'), hora: hora(res.em) })
+          : t('resultadoPeloFunil', { oQue, etapa: res.etapa ?? '—', por: res.por ?? t('sistema') })}
+        {podeMarcar && (
+          <button
+            type="button"
+            className="font-medium text-foreground underline underline-offset-2"
+            onClick={() => setCorrigindo(true)}
+          >
+            {t('corrigir')}
+          </button>
+        )}
+      </span>
+    );
+  } else if (fase === 'antes') {
+    const planoDaQualificacao = comoMarcar(r, 'qualificada', alvos);
     acoes = (
       <div className="flex flex-wrap items-center gap-2">
-        <span className="inline-flex items-center gap-1 text-xs text-amber-700 dark:text-amber-300">
-          <AlertTriangle className="h-3.5 w-3.5" />
-          {t('registreOResultado')}
-        </span>
-        {podeMarcar && (
-          <>
-            {botao('proposta', t('botaoProposta'), () => {
-              setValor(r.negocio?.valor ?? 0);
-              setPedindoValor(true);
-            })}
-            {botao('sem_proposta', t('botaoSemProposta'))}
-            {botao('no_show', t('botaoNoShow'))}
-          </>
+        {r.qualificada ? (
+          <span className="inline-flex items-center gap-1 text-xs text-primary">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            {t('qualificadaPor', { por: r.qualificada.por ?? t('alguem') })}
+          </span>
+        ) : podeMarcar ? (
+          botao('qualificada', t('botaoQualificada'), undefined, true)
+        ) : null}
+        <span className="text-xs text-muted-foreground">{t('resultadoAbreAs', { hora: hora(r.inicio) })}</span>
+        {podeMarcar && !r.qualificada && !planoDaQualificacao.alvo && (
+          <span className="w-full text-[11px] text-muted-foreground">
+            {t(TEXTO_DO_MOTIVO[planoDaQualificacao.motivo], { data: '' })}
+          </span>
         )}
       </div>
     );
+  } else {
+    acoes = botoesDoResultado;
   }
 
   return (

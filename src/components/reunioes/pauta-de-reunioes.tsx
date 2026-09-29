@@ -17,7 +17,15 @@ import { gradeDaSemana, somarDias } from '@/lib/agenda/grade';
 import { urlDoInbox } from '@/lib/inbox/url';
 import { funilNoEscopo } from '@/lib/perfis/escopo';
 import { executarAcao } from '@/lib/reunioes/executar';
-import { faseDaReuniao, pendentes as reunioesPendentes, type Acao, type ReuniaoDaPauta } from '@/lib/reunioes/pauta';
+import {
+  comoMarcar,
+  faseDaReuniao,
+  pendentes as reunioesPendentes,
+  type Acao,
+  type AlvoDaAcao,
+  type AlvosDoFunil,
+  type ReuniaoDaPauta,
+} from '@/lib/reunioes/pauta';
 import { guardarRetornoDaPauta } from '@/lib/reunioes/retorno';
 import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
@@ -26,13 +34,15 @@ import { cn } from '@/lib/utils';
 const ESPERA_DO_DESFAZER_S = 5;
 /** Recuo da rede de segurança na leitura (a lista de pendentes olha 30 dias). */
 const DIAS_DA_REDE = 30;
+/** Recarga silenciosa com a aba à vista: agendamento e cancelamento do dia chegam sozinhos. */
+const RECARGA_MS = 2 * 60_000;
 
 type Filtro = 'todas' | 'sem_resultado' | 'nao_qualificadas';
 
 interface Pendente {
   acao: Acao;
-  alvoId: string;
-  alvoNome: string;
+  /** Para onde o card vai (`comoMarcar`, no clique); nulo = só registra. */
+  destino: AlvoDaAcao | null;
   valor: number | null;
   ateMs: number;
 }
@@ -64,10 +74,16 @@ function rotuloDoDia(dia: string): { semana: string; data: string } {
  * ⚠️ Cada botão espera `ESPERA_DO_DESFAZER_S` segundos com "Desfazer" antes de
  * mover o card: mover dispara as automações da etapa e o aviso à TinTim na
  * hora, e isso não tem volta. Sair da tela no meio NÃO cancela — a marcação é
- * gravada na hora (quem clica e abre a conversa em seguida não perde nada).
+ * gravada na hora (quem clica e abre a conversa em seguida não perde nada); e
+ * FECHAR a aba no meio pede confirmação ao navegador (a gravação é assíncrona
+ * e não sobreviveria ao fechamento).
  *
- * ⚠️ O recorte por funil usa a LENTE (`acesso`), como o Meu dia: é tela de
- * dentro do app, e o "Ver como" tem de mostrar o que o perfil vê.
+ * ⚠️ O recorte por funil usa a LENTE (`acesso`), pela regra de perfis: é tela
+ * de dentro do app, e o "Ver como" tem de mostrar o que o perfil vê.
+ *
+ * São DUAS leituras: a semana à vista e a rede de segurança (30 dias até
+ * hoje). Numa só, navegar para semanas distantes passaria do teto de janela
+ * da rota (revisão do PR #339).
  */
 export function PautaDeReunioes() {
   const t = useTranslations('Reunioes');
@@ -100,23 +116,46 @@ export function PautaDeReunioes() {
   const [filtro, setFiltro] = useState<Filtro>('todas');
 
   const semana = useMemo(() => gradeDaSemana(dia, hoje), [dia, hoje]);
-  // A janela da leitura: a semana à vista E os 30 dias da rede de segurança
-  // (até o fim de hoje). Derivada de DIAS, nunca do relógio corrido — senão
-  // a chave mudaria a cada tique e a tela releria sem parar.
-  const janela = useMemo(() => {
-    const inicioDaSemana = semana[0].dia;
-    const fimDaSemana = semana[6].dia;
-    const pisoDaRede = somarDias(hoje, -DIAS_DA_REDE);
-    const primeiro = pisoDaRede < inicioDaSemana ? pisoDaRede : inicioDaSemana;
-    const ultimo = hoje > fimDaSemana ? hoje : fimDaSemana;
-    return {
-      de: paraInstante(primeiro, '00:00', FUSO_PADRAO).toISOString(),
-      ate: paraInstante(ultimo, '23:59', FUSO_PADRAO).toISOString(),
-    };
-  }, [semana, hoje]);
+  // As janelas das duas leituras, derivadas de DIAS, nunca do relógio corrido
+  // — senão a chave mudaria a cada tique e a tela releria sem parar.
+  const janelaDaSemana = useMemo(
+    () => ({
+      de: paraInstante(semana[0].dia, '00:00', FUSO_PADRAO).toISOString(),
+      ate: paraInstante(semana[6].dia, '23:59', FUSO_PADRAO).toISOString(),
+    }),
+    [semana],
+  );
+  const janelaDaRede = useMemo(
+    () => ({
+      de: paraInstante(somarDias(hoje, -DIAS_DA_REDE), '00:00', FUSO_PADRAO).toISOString(),
+      ate: paraInstante(hoje, '23:59', FUSO_PADRAO).toISOString(),
+    }),
+    [hoje],
+  );
 
-  const { pauta, carregando, falhou, recarregar } = usePautaDeReunioes(janela);
+  const daSemana = usePautaDeReunioes(janelaDaSemana);
+  const daRede = usePautaDeReunioes(janelaDaRede);
+  const { pauta, carregando, falhou } = daSemana;
+  const recarregarSemana = daSemana.recarregar;
+  const recarregarRede = daRede.recarregar;
+  const recarregar = useCallback(() => {
+    recarregarSemana();
+    recarregarRede();
+  }, [recarregarSemana, recarregarRede]);
   useAoVoltarParaOApp(recarregar);
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') recarregar();
+    }, RECARGA_MS);
+    return () => clearInterval(id);
+  }, [recarregar]);
+
+  // Os destinos dos botões, das duas leituras (a rede pode ter reunião de um
+  // funil que a semana não tem).
+  const funis = useMemo<Record<string, AlvosDoFunil>>(
+    () => ({ ...(daRede.pauta?.funis ?? {}), ...(pauta?.funis ?? {}) }),
+    [daRede.pauta, pauta],
+  );
 
   const irParaDia = useCallback(
     (novo: string) => {
@@ -128,13 +167,17 @@ export function PautaDeReunioes() {
 
   // O recorte do perfil: reunião cujo card está num funil fora do escopo não
   // aparece. Sem card, aparece (não há funil para recortar).
-  const visiveis = useMemo(
-    () => (pauta?.reunioes ?? []).filter((r) => !r.negocio || funilNoEscopo(acesso, r.negocio.pipelineId)),
-    [pauta, acesso],
+  const noEscopo = useCallback(
+    (r: ReuniaoDaPauta) => !r.negocio || funilNoEscopo(acesso, r.negocio.pipelineId),
+    [acesso],
   );
+  const visiveis = useMemo(() => (pauta?.reunioes ?? []).filter(noEscopo), [pauta, noEscopo]);
+  const daRedeVisiveis = useMemo(() => (daRede.pauta?.reunioes ?? []).filter(noEscopo), [daRede.pauta, noEscopo]);
   const doDia = (d: string) => visiveis.filter((r) => diaNoFuso(new Date(r.inicio), FUSO_PADRAO) === d);
-  const semResultado = reunioesPendentes(visiveis, agora);
-  const deOutrosDias = semResultado.filter((r) => diaNoFuso(new Date(r.inicio), FUSO_PADRAO) !== dia);
+  // `null` = a leitura da rede ainda não chegou (ou falhou): "não sei", nunca
+  // "tudo em ordem".
+  const semResultado = daRede.pauta ? reunioesPendentes(daRedeVisiveis, agora) : null;
+  const deOutrosDias = (semResultado ?? []).filter((r) => diaNoFuso(new Date(r.inicio), FUSO_PADRAO) !== dia);
 
   let lista = doDia(dia);
   if (filtro === 'sem_resultado') lista = lista.filter((r) => faseDaReuniao(r, agora) === 'sem_resultado');
@@ -146,7 +189,10 @@ export function PautaDeReunioes() {
   // As marcações: pendentes com "Desfazer", depois gravadas.
   // ------------------------------------------------------------------
   const [ocupadas, setOcupadas] = useState<Set<string>>(() => new Set());
-  const reunioesPorChave = useMemo(() => new Map(visiveis.map((r) => [r.chave, r])), [visiveis]);
+  const reunioesPorChave = useMemo(
+    () => new Map([...daRedeVisiveis, ...visiveis].map((r) => [r.chave, r])),
+    [daRedeVisiveis, visiveis],
+  );
   // A foto que a gravação usa: a reunião COMO ESTAVA quando o botão foi
   // clicado (a cerca da etapa compara com o que a pessoa viu).
   const fotoRef = useRef(new Map<string, ReuniaoDaPauta>());
@@ -161,12 +207,12 @@ export function PautaDeReunioes() {
       fotoRef.current.delete(chave);
       if (!r || !accountId) return;
       setOcupadas((s) => new Set(s).add(chave));
-      const desfecho = await executarAcao({
+      const { desfecho, moveu } = await executarAcao({
         supabase,
         accountId,
         reuniao: r,
         acao: p.acao,
-        alvo: { id: p.alvoId, nome: p.alvoNome },
+        destino: p.destino,
         valor: p.valor,
       });
       setOcupadas((s) => {
@@ -175,10 +221,12 @@ export function PautaDeReunioes() {
         return n;
       });
       const nome = r.contato?.nome ?? t('semContato');
-      if (desfecho === 'ok') toast.success(t('toastMovido', { nome, etapa: p.alvoNome }));
-      else if (desfecho === 'card_mudou') toast.warning(t('toastCardMudou', { nome }));
-      else if (desfecho === 'registro_falhou') toast.warning(t('toastRegistroFalhou', { nome }));
-      else toast.error(t('toastFalhou', { nome }));
+      if (desfecho === 'ok') {
+        toast.success(moveu && p.destino ? t('toastMovido', { nome, etapa: p.destino.nome }) : t('toastRegistrado', { nome }));
+      } else if (desfecho === 'card_mudou') toast.warning(t('toastCardMudou', { nome }));
+      else if (desfecho === 'registro_falhou') {
+        toast.warning(moveu ? t('toastRegistroFalhou', { nome }) : t('toastFalhou', { nome }));
+      } else toast.error(t('toastFalhou', { nome }));
       recarregar();
     },
     [accountId, supabase, recarregar, t],
@@ -222,13 +270,24 @@ export function PautaDeReunioes() {
     };
   }, []);
 
+  // Fechar a aba (ou recarregar) no meio do "Desfazer" perderia a marcação:
+  // a gravação é assíncrona. O navegador pergunta antes.
+  useEffect(() => {
+    if (!haPendenteLocal) return;
+    const aoSair = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener('beforeunload', aoSair);
+    return () => window.removeEventListener('beforeunload', aoSair);
+  }, [haPendenteLocal]);
+
   const marcar = (r: ReuniaoDaPauta, acao: Acao, valor: number | null) => {
-    const alvo = r.negocio ? pauta?.funis[r.negocio.pipelineId]?.[acao] : null;
-    if (!alvo) return;
+    const alvos = r.negocio ? (funis[r.negocio.pipelineId] ?? null) : null;
+    const destino = comoMarcar(r, acao, alvos).alvo;
     fotoRef.current.set(r.chave, r);
     setPendentesLocais((antes) => ({
       ...antes,
-      [r.chave]: { acao, alvoId: alvo.id, alvoNome: alvo.nome, valor, ateMs: Date.now() + ESPERA_DO_DESFAZER_S * 1000 },
+      [r.chave]: { acao, destino, valor, ateMs: Date.now() + ESPERA_DO_DESFAZER_S * 1000 },
     }));
   };
 
@@ -252,7 +311,7 @@ export function PautaDeReunioes() {
     if (!p) return null;
     return {
       acao: p.acao,
-      alvoNome: p.alvoNome,
+      alvoNome: p.destino?.nome ?? null,
       valor: p.valor,
       restanteS: Math.max(1, Math.ceil((p.ateMs - agoraMs) / 1000)),
     };
@@ -262,7 +321,7 @@ export function PautaDeReunioes() {
     <LinhaDaReuniao
       key={r.chave}
       reuniao={r}
-      alvos={r.negocio ? (pauta?.funis[r.negocio.pipelineId] ?? null) : null}
+      alvos={r.negocio ? (funis[r.negocio.pipelineId] ?? null) : null}
       agora={agora}
       podeMarcar={podeMarcar}
       pendente={pendenteDaLinha(r.chave)}
@@ -309,6 +368,8 @@ export function PautaDeReunioes() {
             <button
               key={d}
               type="button"
+              aria-pressed={d === dia}
+              aria-current={ehHoje ? 'date' : undefined}
               onClick={() => irParaDia(d)}
               className={cn(
                 'min-w-0 rounded-lg border px-1 py-1.5 text-center transition-colors',
@@ -346,7 +407,7 @@ export function PautaDeReunioes() {
         <>
           {falhou && <p className="text-xs text-amber-700 dark:text-amber-300">{t('recargaFalhou')}</p>}
 
-          {semResultado.length > 0 ? (
+          {semResultado === null ? null : semResultado.length > 0 ? (
             <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
               <div className="flex items-center gap-2">
                 <ShieldAlert className="h-4 w-4 shrink-0" />
@@ -377,6 +438,7 @@ export function PautaDeReunioes() {
                   <button
                     key={f}
                     type="button"
+                    aria-pressed={filtro === f}
                     onClick={() => setFiltro(f)}
                     className={cn(
                       'px-2.5 py-1 text-xs transition-colors',

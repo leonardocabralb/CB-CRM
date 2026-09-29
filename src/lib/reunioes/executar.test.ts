@@ -51,6 +51,7 @@ const reuniao: ReuniaoDaPauta = {
   evento: null,
   link: null,
   reagendamento: false,
+  proximaEm: null,
   contato: { id: 'c1', nome: 'Ana' },
   conversaId: 'v1',
   negocio: { id: 'd1', pipelineId: 'banc', pipelineNome: null, etapaId: 'agendada', etapaNome: null, valor: 0, status: 'open' },
@@ -71,10 +72,10 @@ describe('executarAcao', () => {
       accountId: 'conta',
       reuniao,
       acao: 'proposta',
-      alvo: { id: 'prop', nome: 'Proposta Realizada' },
+      destino: { id: 'prop', nome: 'Proposta Realizada' },
       valor: 18000,
     });
-    expect(r).toBe('ok');
+    expect(r).toEqual({ desfecho: 'ok', moveu: true });
     // O que viaja é o JSON: chave `undefined` não sai.
     expect(JSON.parse(JSON.stringify(chamadas[0].valor))).toEqual({ stage_id: 'prop', value: 18000 });
     expect(chamadas[0]).toEqual({
@@ -84,6 +85,7 @@ describe('executarAcao', () => {
       filtros: [
         ['id', 'd1'],
         ['stage_id', 'agendada'],
+        ['status', 'open'],
       ],
     });
     expect(chamadas[1]).toMatchObject({
@@ -102,10 +104,10 @@ describe('executarAcao', () => {
       accountId: 'conta',
       reuniao,
       acao: 'no_show',
-      alvo: { id: 'noshow', nome: 'No Show' },
+      destino: { id: 'noshow', nome: 'No Show' },
       valor: null,
     });
-    expect(r).toBe('card_mudou');
+    expect(r).toEqual({ desfecho: 'card_mudou', moveu: false });
     expect(chamadas.map((c) => c.op)).toEqual(['update']);
     expect(avisarDrenagemDeFunil).not.toHaveBeenCalled();
   });
@@ -117,10 +119,10 @@ describe('executarAcao', () => {
       accountId: 'conta',
       reuniao,
       acao: 'sem_proposta',
-      alvo: { id: 'semprop', nome: 'Reunião Sem Proposta' },
+      destino: { id: 'semprop', nome: 'Reunião Sem Proposta' },
       valor: null,
     });
-    expect(r).toBe('falhou');
+    expect(r).toEqual({ desfecho: 'falhou', moveu: false });
     expect(chamadas).toHaveLength(1);
   });
 
@@ -131,10 +133,10 @@ describe('executarAcao', () => {
       accountId: 'conta',
       reuniao: { ...reuniao, negocio: { ...reuniao.negocio!, etapaId: 'mql2' } },
       acao: 'qualificada',
-      alvo: { id: 'mql2', nome: 'MQL 2' },
+      destino: { id: 'mql2', nome: 'MQL 2' },
       valor: null,
     });
-    expect(r).toBe('ok');
+    expect(r).toEqual({ desfecho: 'ok', moveu: false });
     expect(chamadas.map((c) => c.op)).toEqual(['upsert']);
     expect(chamadas[0].valor).toMatchObject({ marco: 'qualificada', resultado: null, valor: null });
     expect(avisarDrenagemDeFunil).not.toHaveBeenCalled();
@@ -147,23 +149,31 @@ describe('executarAcao', () => {
       accountId: 'conta',
       reuniao,
       acao: 'no_show',
-      alvo: { id: 'noshow', nome: 'No Show' },
+      destino: { id: 'noshow', nome: 'No Show' },
       valor: null,
     });
-    expect(r).toBe('registro_falhou');
+    expect(r).toEqual({ desfecho: 'registro_falhou', moveu: true });
   });
 
-  it('sem card: falhou, sem escrita', async () => {
+  it('sem destino (só registra): nenhuma escrita no card, só o marco', async () => {
     const { cliente, chamadas } = falso();
     const r = await executarAcao({
       supabase: cliente,
       accountId: 'conta',
       reuniao: { ...reuniao, negocio: null },
       acao: 'no_show',
-      alvo: { id: 'noshow', nome: 'No Show' },
+      destino: null,
       valor: null,
     });
-    expect(r).toBe('falhou');
-    expect(chamadas).toHaveLength(0);
+    expect(r).toEqual({ desfecho: 'ok', moveu: false });
+    expect(chamadas.map((c) => c.op)).toEqual(['upsert']);
+    expect(avisarDrenagemDeFunil).not.toHaveBeenCalled();
+  });
+
+  it('proposta só registrada guarda o valor no marco', async () => {
+    const { cliente, chamadas } = falso();
+    await executarAcao({ supabase: cliente, accountId: 'conta', reuniao, acao: 'proposta', destino: null, valor: 900 });
+    expect(chamadas).toHaveLength(1);
+    expect(chamadas[0].valor).toMatchObject({ marco: 'resultado', resultado: 'proposta', valor: 900 });
   });
 });

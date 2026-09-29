@@ -54,13 +54,27 @@ pode ser revista):
 | P5 | A rede de segurança olha os últimos 30 dias | Cobre o log do Calendly inteiro (começa em 08/09) sem crescer para sempre. |
 | P6 | O valor digitado vai para o valor do CARD, na mesma escrita que a etapa | O Make da iMotion manda à TinTim o valor do card no instante da entrada em Proposta Realizada. |
 | P7 | A etapa de "reunião qualificada" é uma MARCA em Gerenciar funil (nunca o nome) | Renomear "MQL 2" desligaria o botão em silêncio. |
-| P8 | "Desfazer" de 5 s antes de mover o card; sair da tela no meio GRAVA na hora | Mover dispara automações e o aviso à TinTim, sem volta. Quem clica e abre a conversa em seguida conta com o card movido. |
-| P9 | Card GANHO não recebe botões; PERDIDO recebe (entrar em etapa neutra o reabre, 1031) | Ganho é cliente. |
+| P8 | "Desfazer" de 5 s antes de gravar; sair da tela no meio GRAVA na hora; fechar a aba no meio pede confirmação ao navegador | Mover dispara automações e o aviso à TinTim, sem volta. Quem clica e abre a conversa em seguida conta com o card movido. |
+| P9 | Só card ABERTO anda. Sem card, card ganho ou perdido, funil sem a etapa marcada, ou reunião ANTIGA de um contato que já tem reunião mais nova: o botão só REGISTRA o resultado (a tela diz por quê) | Ganho é cliente; o perdido entrando em etapa neutra seria reaberto pela 1031; o card de quem remarcou já é da reunião nova (e dos lembretes dela). Registrar sempre é o que deixa a rede de segurança apagar (revisão do PR #339). |
+| P10 | Cada reunião só olha a trilha do SEU card e da sua janela: do início dela até o início da próxima reunião do mesmo contato | Sem o teto, o resultado da reunião B resolveria a A, anterior (revisão do PR #339). |
+| P11 | "Corrigir" reabre os botões numa reunião já resolvida | Corrigir é marcar de novo: o upsert troca o registro do mesmo marco. |
+
+**⚠️ DECISÃO DO OPERADOR, antes de ligar a qualificação** (P1 da revisão do
+PR #339, medido em 29/09/2026): os quatro lembretes de reunião (24 h, 4 h,
+1 h, 10 min) têm escopo só em "Reunião Agendada". Levar o card para a MQL 2
+os CALA para os leads qualificados. Por isso a 1061 não marca etapa nenhuma:
+o botão "Reunião qualificada" só registra até a MQL 2 ser marcada
+"Qualificada" em Gerenciar funil — e, antes disso, a MQL 2 precisa entrar no
+escopo dos quatro lembretes (aba Automações do funil).
 
 **O que fica de fora, por escrito:**
 - A reunião resolvida por outro caminho (quadro, lista, painel da conversa)
   conta pela TRILHA do card; o marco da tela serve para o caso em que o card
-  já estava na etapa (mover para a mesma etapa não grava trilha).
+  já estava na etapa (mover para a mesma etapa não grava trilha) e para os
+  casos em que o card não anda (P9).
+- Duas leituras (a semana à vista e os 30 dias da rede), porque numa só a
+  navegação para semanas distantes passava do teto de janela da rota. A tela
+  se relê a cada 2 minutos com a aba à vista.
 - O advogado de cada reunião não é gravado (o webhook do Calendly não lê o
   anfitrião): não há filtro por advogado.
 - "Confirmado" não existe; o pedido o trocou por "qualificada".

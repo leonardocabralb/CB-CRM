@@ -49,6 +49,8 @@ export interface EtapaDoFunil {
 /** Uma entrada do card numa etapa, pela trilha (`cb_lead_events`). */
 export interface EntradaDaTrilha {
   em: string;
+  /** O card que entrou (a trilha é do CONTATO; um contato pode ter card em outro funil). */
+  dealId: string | null;
   etapaId: string;
   /** O nome gravado na trilha (sobrevive a renomear a etapa). */
   etapa: string | null;
@@ -153,12 +155,41 @@ function maisRecente<T extends { em: string }>(lista: T[]): T | null {
 }
 
 /**
+ * As entradas que falam DESTA reunião: do card dela (quando há card) e dentro
+ * da janela `[desde, ate)`.
+ *
+ * ⚠️ O limite de cima é o INÍCIO DA PRÓXIMA reunião do mesmo contato: a
+ * trilha é do contato inteiro, e sem o teto a entrada que resolveu a reunião
+ * B resolveria também a A, anterior — a A (um no show sem registro) sairia da
+ * rede de segurança com o resultado da B (revisão do PR #339). O filtro pelo
+ * card tira a entrada de um card de OUTRO funil do mesmo contato.
+ */
+function entradasDaReuniao(
+  entradas: EntradaDaTrilha[],
+  desde: number | null,
+  ate: number | null,
+  dealId: string | null,
+): EntradaDaTrilha[] {
+  return entradas.filter((e) => {
+    const em = ms(e.em);
+    if (em === null) return false;
+    if (desde !== null && em < desde) return false;
+    if (ate !== null && em >= ate) return false;
+    return dealId === null || e.dealId === null || e.dealId === dealId;
+  });
+}
+
+/**
  * O resultado da reunião: o mais recente entre o marco gravado pela tela e as
- * entradas do card, DEPOIS do início, numa etapa que diz resultado. Nulo =
- * sem resultado (a rede de segurança acende quando a reunião já começou).
+ * entradas do card, DEPOIS do início (e antes da próxima reunião do contato),
+ * numa etapa que diz resultado. Nulo = sem resultado (a rede de segurança
+ * acende quando a reunião já começou).
  */
 export function resultadoDaReuniao(args: {
   inicio: string;
+  /** Início da próxima reunião do mesmo contato; nulo = não há. */
+  ate: string | null;
+  dealId: string | null;
   marcos: LinhaDoMarco[];
   entradas: EntradaDaTrilha[];
   etapas: ReadonlyMap<string, EtapaDoFunil>;
@@ -169,6 +200,11 @@ export function resultadoDaReuniao(args: {
 
   for (const m of args.marcos) {
     if (m.marco !== 'resultado' || !ehResultado(m.resultado)) continue;
+    // Resultado registrado ANTES do início não é desta reunião: a da agenda do
+    // CRM pode ter mudado de data depois de marcada (a tela só oferece o
+    // resultado a partir do início).
+    const em = ms(m.registrado_em);
+    if (em === null || em < inicio) continue;
     candidatos.push({
       tipo: m.resultado,
       em: m.registrado_em,
@@ -178,9 +214,7 @@ export function resultadoDaReuniao(args: {
       valor: m.resultado === 'proposta' ? m.valor : null,
     });
   }
-  for (const e of args.entradas) {
-    const em = ms(e.em);
-    if (em === null || em < inicio) continue;
+  for (const e of entradasDaReuniao(args.entradas, inicio, ms(args.ate), args.dealId)) {
     const tipo = resultadoDaEtapa(args.etapas.get(e.etapaId));
     if (!tipo) continue;
     candidatos.push({ tipo, em: e.em, por: e.por, fonte: 'funil', etapa: e.etapa, valor: null });
@@ -196,19 +230,19 @@ export function resultadoDaReuniao(args: {
  */
 export function qualificacaoDaReuniao(args: {
   desde: string | null;
+  /** Início da próxima reunião do mesmo contato; nulo = não há. */
+  ate: string | null;
+  dealId: string | null;
   marcos: LinhaDoMarco[];
   entradas: EntradaDaTrilha[];
   etapas: ReadonlyMap<string, EtapaDoFunil>;
 }): Registro | null {
-  const desde = ms(args.desde);
   const candidatos: Registro[] = [];
   for (const m of args.marcos) {
     if (m.marco !== 'qualificada') continue;
     candidatos.push({ em: m.registrado_em, por: m.registrado_por_nome, fonte: 'tela', etapa: null });
   }
-  for (const e of args.entradas) {
-    const em = ms(e.em);
-    if (em === null || (desde !== null && em < desde)) continue;
+  for (const e of entradasDaReuniao(args.entradas, ms(args.desde), ms(args.ate), args.dealId)) {
     if (args.etapas.get(e.etapaId)?.marca !== 'qualificada') continue;
     candidatos.push({ em: e.em, por: e.por, fonte: 'funil', etapa: e.etapa });
   }
@@ -249,6 +283,11 @@ export interface ReuniaoDaPauta {
   link: string | null;
   /** É o horário novo de um reagendamento. */
   reagendamento: boolean;
+  /**
+   * Início da PRÓXIMA reunião (não desmarcada) do mesmo contato, em qualquer
+   * data; nulo = esta é a última. Com ela, o card já é da reunião seguinte.
+   */
+  proximaEm: string | null;
   contato: { id: string; nome: string | null } | null;
   conversaId: string | null;
   /** O card do contato: o aberto mais recente, senão o mais recente. */
@@ -303,14 +342,35 @@ export function pendentes(reunioes: ReuniaoDaPauta[], agora: Date): ReuniaoDaPau
     .sort((a, b) => (ms(a.inicio) ?? 0) - (ms(b.inicio) ?? 0));
 }
 
+/** Por que o botão só REGISTRA, sem mover o card. */
+export type MotivoDeSoRegistrar = 'sem_card' | 'card_fechado' | 'reuniao_posterior' | 'sem_etapa';
+
 /**
- * O card pode receber os botões? Precisa existir e não estar GANHO: ganho é
- * cliente, e levá-lo para a MQL 2 ou para o No Show não teria sentido (o
- * gatilho da 950 manteria o ganho, e a etapa ficaria mentindo). O PERDIDO
- * pode: entrar numa etapa neutra o reabre (1031), que é o lead voltando.
+ * O que um botão faz nesta reunião: move o card para `alvo`, ou só registra
+ * o marco (com o motivo). ⚠️ TODA reunião pode ser resolvida — a rede de
+ * segurança cobra resultado de todas, e reunião sem saída ficaria acesa 30
+ * dias (revisão do PR #339). O que muda é se o card anda:
+ *
+ * - `sem_card`: o contato não tem card.
+ * - `card_fechado`: só card ABERTO anda. Ganho é cliente; o PERDIDO entrando
+ *   em etapa neutra (No Show, Sem Proposta, MQL 2) seria REABERTO pela 1031 —
+ *   o lead que desistiu voltaria ao funil por um registro de reunião.
+ * - `reuniao_posterior`: o contato já tem reunião MAIS NOVA; o card é dela
+ *   (o Calendly o levou para "Reunião Agendada"), e mover pelo resultado da
+ *   reunião antiga tiraria a nova da etapa — e dos lembretes.
+ * - `sem_etapa`: nenhuma etapa do funil do card tem a marca (a MQL 2 só é
+ *   destino depois de marcada "Qualificada" em Gerenciar funil).
  */
-export function negocioAceitaAcao(n: ReuniaoDaPauta['negocio']): boolean {
-  return n !== null && n.status !== 'won';
+export function comoMarcar(
+  r: Pick<ReuniaoDaPauta, 'negocio' | 'proximaEm'>,
+  acao: Acao,
+  alvos: AlvosDoFunil | null,
+): { alvo: AlvoDaAcao; motivo: null } | { alvo: null; motivo: MotivoDeSoRegistrar } {
+  if (!r.negocio) return { alvo: null, motivo: 'sem_card' };
+  if (r.negocio.status !== 'open') return { alvo: null, motivo: 'card_fechado' };
+  if (acao !== 'qualificada' && r.proximaEm !== null) return { alvo: null, motivo: 'reuniao_posterior' };
+  const alvo = alvos?.[acao] ?? null;
+  return alvo ? { alvo, motivo: null } : { alvo: null, motivo: 'sem_etapa' };
 }
 
 /**

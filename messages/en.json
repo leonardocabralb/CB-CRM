@@ -5968,9 +5968,6 @@
     "cancelar": "Cancel",
     "valorObrigatorio": "Enter the proposal value",
     "levaPara": "Moves the card to {etapa}",
-    "semEtapaMarcada": "No stage of this pipeline is marked for this. Mark one in Pipelines → Manage pipeline.",
-    "semCard": "No card in the pipeline",
-    "cardGanho": "The card is already won",
     "movendo": "Moving to {etapa} in {s} s",
     "movendoComValor": "Moving to {etapa} with {valor} in {s} s",
     "desfazer": "Undo",
@@ -5986,6 +5983,13 @@
     "toastMovido": "{nome}: card moved to {etapa}",
     "toastCardMudou": "{nome}: the card changed stage since the agenda loaded. The agenda was refreshed; check it and mark again.",
     "toastRegistroFalhou": "{nome}: the card was moved, but saving the meeting record failed. Try marking again.",
-    "toastFalhou": "{nome}: couldn't move the card. Try again."
+    "toastFalhou": "{nome}: couldn't move the card. Try again.",
+    "registrando": "Saving in {s} s",
+    "toastRegistrado": "{nome}: outcome recorded",
+    "motivoSemCard": "No card in the pipeline: only records the outcome.",
+    "motivoCardFechado": "The card is won or lost: only records the outcome, without touching it.",
+    "motivoReuniaoPosterior": "The card already belongs to the meeting on {data}: only records this one’s outcome.",
+    "motivoSemEtapa": "No stage of this pipeline is marked for this (Pipelines → Manage pipeline): only records.",
+    "corrigir": "Correct"
   }
 }

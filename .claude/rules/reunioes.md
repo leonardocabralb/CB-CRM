@@ -129,10 +129,22 @@ a rota `/api/cb/reunioes`, `src/components/reunioes/`. Plano:
   a trilha, a reunião resolvida no quadro fica "sem resultado" para sempre;
   sem o marco, a do card que JÁ estava na etapa não se resolve (mover para a
   mesma etapa não grava trilha).
+- ⚠️⚠️ **A trilha de cada reunião é recortada pelo CARD dela e pela janela
+  `[início, início da próxima reunião do contato)`** (`proximaEm`, de QUALQUER
+  data — a rota lê a agenda e o Calendly inteiros dos contatos). Sem o teto, o
+  resultado da reunião B resolvia a A, anterior.
 - ⚠️⚠️ **O botão move o card pelo NAVEGADOR, sob RLS** (`executar.ts`), e a
-  escrita é CERCADA pela etapa vista (`.eq('stage_id', …)`): por rota de
+  escrita é CERCADA pela etapa vista E pelo status aberto: por rota de
   servidor a trilha e os webhooks `deal.*` diriam `system`; sem a cerca, o
-  clique levaria para trás um card que o Calendly acabou de mover.
+  clique levaria para trás um card que o Calendly acabou de mover, ou
+  reabriria o perdido marcado depois da carga.
+- ⚠️⚠️ **Toda reunião pode ser resolvida; nem toda move o card**
+  (`comoMarcar`): só card ABERTO anda, e o resultado de reunião ANTIGA de quem
+  já tem reunião mais nova só registra (o card é da nova, e dos lembretes
+  dela). Sem card, card fechado ou funil sem a marca: só registra.
+- ⚠️ **Os lembretes de reunião têm escopo só em "Reunião Agendada"**: marcar
+  a MQL 2 como "Qualificada" sem pô-la no escopo deles cala os lembretes dos
+  leads qualificados. Decisão do operador (plano).
 - ⚠️ **Valor e etapa na MESMA escrita** ("com proposta"): o Make da iMotion
   manda à TinTim o `deal.value` do instante da entrada em Proposta Realizada.
 - ⚠️ **Para onde cada botão leva é MARCA, nunca nome**: `qualificada`

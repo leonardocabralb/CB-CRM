@@ -7,7 +7,8 @@ import type { Acao, AlvoDaAcao, ReuniaoDaPauta } from './pauta';
 export type DesfechoDaAcao = 'ok' | 'card_mudou' | 'falhou' | 'registro_falhou';
 
 /**
- * Executa um botão da pauta: move o card e registra a marcação.
+ * Executa um botão da pauta: move o card (quando há destino) e registra a
+ * marcação.
  *
  * ⚠️ A mudança de etapa vai do NAVEGADOR, sob RLS, como o arrasto do quadro e
  * o painel da conversa: é o que faz a trilha (912) e as automações e avisos de
@@ -18,45 +19,48 @@ export type DesfechoDaAcao = 'ok' | 'card_mudou' | 'falhou' | 'registro_falhou';
  * Proposta Realizada e manda à TinTim o valor do card NAQUELE instante — em
  * duas escritas, a TinTim receberia R$ 0.
  *
- * ⚠️ A escrita é CERCADA pela etapa em que a tela viu o card
- * (`.eq('stage_id', …)`): entre carregar a pauta e clicar, uma automação (o
- * Calendly move para "Reunião Agendada") ou um colega pode ter movido o card,
- * e passar por cima levaria o card para trás. Zero linhas = `card_mudou`: a
- * tela recarrega e a pessoa decide de novo.
+ * ⚠️ A escrita é CERCADA pela etapa em que a tela viu o card E pelo status
+ * aberto: entre carregar a pauta e clicar, uma automação (o Calendly move para
+ * "Reunião Agendada") ou um colega pode ter movido o card, ou marcado ganho ou
+ * perdido pelo botão do card — passar por cima levaria o card para trás, ou
+ * reabriria o perdido (1031). Zero linhas = `card_mudou`: a tela recarrega e
+ * a pessoa decide de novo. Quem decide se o card pode andar é `comoMarcar`;
+ * `destino` nulo = só o registro.
  *
  * O card primeiro, o registro depois. Se o registro falhar com o card já
- * movido, a trilha ainda resolve a reunião (a tela lê as duas fontes) — o
- * único caso que ficaria aberto é o card que já estava na etapa, e aí a tela
- * avisa (`registro_falhou`).
+ * movido, a trilha ainda resolve a reunião (a tela lê as duas fontes).
  */
 export async function executarAcao(args: {
   supabase: SupabaseClient;
   accountId: string;
   reuniao: ReuniaoDaPauta;
   acao: Acao;
-  alvo: AlvoDaAcao;
+  destino: AlvoDaAcao | null;
   valor: number | null;
-}): Promise<DesfechoDaAcao> {
-  const { supabase, accountId, reuniao, acao, alvo, valor } = args;
+}): Promise<{ desfecho: DesfechoDaAcao; moveu: boolean }> {
+  const { supabase, accountId, reuniao, acao, destino, valor } = args;
   const negocio = reuniao.negocio;
-  if (!negocio) return 'falhou';
+  let moveu = false;
 
-  const novaEtapa = alvo.id !== negocio.etapaId ? alvo.id : undefined;
-  const novoValor = acao === 'proposta' && valor !== null ? valor : undefined;
-
-  if (novaEtapa !== undefined || novoValor !== undefined) {
-    // Objeto LITERAL, só etapa e valor: chave `undefined` não vai no corpo
-    // (o JSON a descarta), e o pino dos escritores de título
-    // (`titulo-do-card.chamadores.test.ts`) enxerga que aqui não há título.
-    const { data, error } = await supabase
-      .from('deals')
-      .update({ stage_id: novaEtapa, value: novoValor })
-      .eq('id', negocio.id)
-      .eq('stage_id', negocio.etapaId)
-      .select('id');
-    if (error) return 'falhou';
-    if (!data || data.length === 0) return 'card_mudou';
-    if (novaEtapa !== undefined) avisarDrenagemDeFunil();
+  if (destino && negocio) {
+    const novaEtapa = destino.id !== negocio.etapaId ? destino.id : undefined;
+    const novoValor = acao === 'proposta' && valor !== null ? valor : undefined;
+    if (novaEtapa !== undefined || novoValor !== undefined) {
+      // Objeto LITERAL, só etapa e valor: chave `undefined` não vai no corpo
+      // (o JSON a descarta), e o pino dos escritores de título
+      // (`titulo-do-card.chamadores.test.ts`) enxerga que aqui não há título.
+      const { data, error } = await supabase
+        .from('deals')
+        .update({ stage_id: novaEtapa, value: novoValor })
+        .eq('id', negocio.id)
+        .eq('stage_id', negocio.etapaId)
+        .eq('status', 'open')
+        .select('id');
+      if (error) return { desfecho: 'falhou', moveu };
+      if (!data || data.length === 0) return { desfecho: 'card_mudou', moveu };
+      moveu = novaEtapa !== undefined;
+      if (moveu) avisarDrenagemDeFunil();
+    }
   }
 
   const marco = acao === 'qualificada' ? 'qualificada' : 'resultado';
@@ -71,5 +75,5 @@ export async function executarAcao(args: {
     },
     { onConflict: 'account_id,origem,reuniao_id,marco' },
   );
-  return error ? 'registro_falhou' : 'ok';
+  return { desfecho: error ? 'registro_falhou' : 'ok', moveu };
 }

@@ -1,4 +1,4 @@
-import { montarReunioesExternas, type LinhaDoCalendly } from '@/lib/agenda/reunioes-externas';
+import { montarReunioesExternas, type LinhaDoCalendly, type ReuniaoExterna } from '@/lib/agenda/reunioes-externas';
 
 import {
   alvosDoFunil,
@@ -51,6 +51,7 @@ export interface DadosDaPauta {
   calendly: LinhaDoCalendlyDaPauta[];
   /** Convites com `invitee.canceled`. */
   cancelados: ReadonlySet<string>;
+  /** A agenda do CRM dos contatos (em qualquer data — a próxima reunião pode estar fora da janela) e a da janela sem contato. */
   agenda: LinhaDaAgenda[];
   contatos: ReadonlyMap<string, string | null>;
   conversas: ReadonlyMap<string, { id: string; aguardando_desde: string | null }>;
@@ -80,13 +81,20 @@ function dentro(iso: string, janela: { de: Date; ate: Date }): boolean {
 }
 
 /**
- * O card do contato: o ABERTO mais recente, senão o mais recente de todos. A
- * mesma escolha do motor (`negocioAlvo`) no que importa aqui: com um card por
- * contato (a regra da casa), é ele.
+ * O card que a pauta mostra: o ABERTO mais recente; sem aberto, o GANHO mais
+ * recente (é cliente — e o motor também não puxa o perdido de quem tem card
+ * ganho, 1031); só então o perdido mais recente. Só o aberto recebe
+ * movimento (`comoMarcar`); os outros aparecem para a pessoa saber onde o
+ * lead está.
  */
 export function negocioDoContato(negocios: LinhaDoNegocio[]): LinhaDoNegocio | null {
   const porCriacao = [...negocios].sort((a, b) => (ms(b.created_at) ?? 0) - (ms(a.created_at) ?? 0));
-  return porCriacao.find((n) => n.status === 'open') ?? porCriacao[0] ?? null;
+  return (
+    porCriacao.find((n) => n.status === 'open') ??
+    porCriacao.find((n) => n.status === 'won') ??
+    porCriacao[0] ??
+    null
+  );
 }
 
 function statusDoNegocio(s: string): 'open' | 'won' | 'lost' {
@@ -103,6 +111,24 @@ export function montarPauta(d: DadosDaPauta): { reunioes: ReuniaoDaPauta[]; funi
     negociosPorContato.set(n.contact_id, lista);
   }
 
+  // Toda reunião de pé (não desmarcada) de cada contato, em QUALQUER data: é
+  // o que diz qual é a próxima. Montada antes, para a janela não esconder a
+  // reunião seguinte que cai fora dela.
+  const iniciosPorContato = new Map<string, number[]>();
+  const anotarInicio = (contactId: string | null, inicio: string) => {
+    const v = ms(inicio);
+    if (!contactId || v === null) return;
+    const lista = iniciosPorContato.get(contactId) ?? [];
+    lista.push(v);
+    iniciosPorContato.set(contactId, lista);
+  };
+  const proximaDepoisDe = (contactId: string | null, inicio: string): string | null => {
+    const v = ms(inicio);
+    if (!contactId || v === null) return null;
+    const seguintes = (iniciosPorContato.get(contactId) ?? []).filter((x) => x > v);
+    return seguintes.length > 0 ? new Date(Math.min(...seguintes)).toISOString() : null;
+  };
+
   const reunioes: ReuniaoDaPauta[] = [];
   const completar = (
     base: Pick<ReuniaoDaPauta, 'origem' | 'reuniaoId' | 'inicio' | 'fim' | 'evento' | 'link' | 'reagendamento'>,
@@ -115,9 +141,12 @@ export function montarPauta(d: DadosDaPauta): { reunioes: ReuniaoDaPauta[]; funi
     const entradas = contactId ? (d.trilha.get(contactId) ?? []) : [];
     const n = contactId ? negocioDoContato(negociosPorContato.get(contactId) ?? []) : null;
     const conversa = contactId ? d.conversas.get(contactId) : undefined;
+    const proximaEm = proximaDepoisDe(contactId, base.inicio);
+    const dealId = n?.id ?? null;
     reunioes.push({
       ...base,
       chave,
+      proximaEm,
       contato: contactId ? { id: contactId, nome: d.contatos.get(contactId) ?? null } : null,
       conversaId: conversa?.id ?? conversaDaLinha,
       negocio: n
@@ -132,8 +161,8 @@ export function montarPauta(d: DadosDaPauta): { reunioes: ReuniaoDaPauta[]; funi
           }
         : null,
       qualificacao: (contactId ? d.campos.get(contactId) : undefined) ?? { divida: null, atraso: null, origem: null },
-      qualificada: qualificacaoDaReuniao({ desde, marcos, entradas, etapas: etapaPorId }),
-      resultado: resultadoDaReuniao({ inicio: base.inicio, marcos, entradas, etapas: etapaPorId }),
+      qualificada: qualificacaoDaReuniao({ desde, ate: proximaEm, dealId, marcos, entradas, etapas: etapaPorId }),
+      resultado: resultadoDaReuniao({ inicio: base.inicio, ate: proximaEm, dealId, marcos, entradas, etapas: etapaPorId }),
       faltouAntes: faltouAntes({ inicio: base.inicio, entradas, etapas: etapaPorId }),
       aguardandoDesde: conversa?.aguardando_desde ?? null,
     });
@@ -149,32 +178,40 @@ export function montarPauta(d: DadosDaPauta): { reunioes: ReuniaoDaPauta[]; funi
     lista.push(l);
     porContato.set(k, lista);
   }
+  const deCalendly: { r: ReuniaoExterna; linha: LinhaDoCalendlyDaPauta }[] = [];
   for (const linhas of porContato.values()) {
     const porId = new Map(linhas.map((l) => [l.id, l]));
     for (const r of montarReunioesExternas(linhas, d.cancelados, [])) {
-      if (r.desmarcada !== null || !dentro(r.inicio, d.janela)) continue;
       const linha = porId.get(r.id);
-      if (!linha) continue;
-      completar(
-        {
-          origem: 'calendly',
-          reuniaoId: r.id,
-          inicio: r.inicio,
-          fim: r.fim,
-          evento: r.evento,
-          link: r.link,
-          reagendamento: r.reagendamento,
-        },
-        linha.contact_id,
-        linha.recebido_em,
-        null,
-      );
+      if (r.desmarcada !== null || !linha) continue;
+      anotarInicio(linha.contact_id, r.inicio);
+      deCalendly.push({ r, linha });
     }
+  }
+  const deAgenda = d.agenda.filter((a) => a.status !== 'cancelada' && ms(a.starts_at) !== null);
+  for (const a of deAgenda) anotarInicio(a.contact_id, a.starts_at);
+
+  for (const { r, linha } of deCalendly) {
+    if (!dentro(r.inicio, d.janela)) continue;
+    completar(
+      {
+        origem: 'calendly',
+        reuniaoId: r.id,
+        inicio: r.inicio,
+        fim: r.fim,
+        evento: r.evento,
+        link: r.link,
+        reagendamento: r.reagendamento,
+      },
+      linha.contact_id,
+      linha.recebido_em,
+      null,
+    );
   }
 
   // Agenda do CRM: cancelada não é reunião.
-  for (const a of d.agenda) {
-    if (a.status === 'cancelada' || !dentro(a.starts_at, d.janela)) continue;
+  for (const a of deAgenda) {
+    if (!dentro(a.starts_at, d.janela)) continue;
     const inicio = ms(a.starts_at);
     if (inicio === null) continue;
     const fim = ms(a.ends_at);
