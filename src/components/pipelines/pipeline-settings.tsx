@@ -331,14 +331,18 @@ export function PipelineSettings({
     // NA etapa (a guarda acima) não protege disso: é o caso comum de uma
     // etapa antiga. Tirar o degrau antes é a saída explícita (achado do Codex
     // no PR #119). Sem degrau, a história daquela etapa não contava mesmo.
+    // 1070: o mesmo para a "Situação do cliente". A faixa da conversa lê a
+    // etapa de onde o card SAIU do funil (`situacao-do-cliente.ts`); apagar a
+    // etapa marcada apagaria a faixa de todo ex-cliente que saiu dela (Codex,
+    // PR #355). Tirar a marca antes é a saída explícita — e consciente.
     const etapa = localStages.find((s) => s.id === stageId);
-    if (etapa?.degrau) {
+    if (etapa?.degrau || etapa?.situacao_do_cliente) {
       const { count: eventos, error: erroTrilha } = await supabase
         .from("cb_lead_events")
         .select("id", { count: "exact", head: true })
         .or(`to_stage_id.eq.${stageId},from_stage_id.eq.${stageId}`);
       if (erroTrilha || (eventos ?? 0) > 0) {
-        toast.error(t("toastStageMappedWithHistory"));
+        toast.error(t(etapa.degrau ? "toastStageMappedWithHistory" : "toastStageMarkedWithHistory"));
         return;
       }
     }

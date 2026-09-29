@@ -76,9 +76,11 @@ export function useSituacaoDoCliente(
       const erro = negocios.error ?? saidas.error ?? etapas.error;
       if (erro) {
         console.error('[situacao-do-cliente] leitura falhou:', erro.message);
-        // Recarga que falha mantém o que já era DESTE contato; a primeira
-        // leitura que falha deixa a faixa calada.
-        setEstado((atual) => (atual.de === contactId ? atual : { de: contactId, lido: null }));
+        // Leitura que falha CALA a faixa, mesmo numa recarga: quem pediu a
+        // releitura foi um evento da trilha (o card mudou de etapa ou de
+        // funil), e o que estava na tela pode ter acabado de ficar errado —
+        // "rescindido" sobre um cliente reativado (Codex, PR #355).
+        setEstado({ de: contactId, lido: null });
         return;
       }
       setEstado({

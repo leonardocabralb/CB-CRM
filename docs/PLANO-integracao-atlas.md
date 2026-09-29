@@ -65,6 +65,13 @@ tom único de vermelho ou azul é legível como texto nos dois modos.
   mais novo que os eventos que os puseram onde estão (medido em 29/09/2026).
 - Card apagado numa etapa marcada mantém a faixa (a pessoa continua tendo
   sido rescindida). Limite conhecido.
+- Etapa marcada COM histórico não se apaga em Gerenciar funil (como a etapa
+  com degrau): apagá-la tiraria a faixa de todo ex-cliente que saiu dela.
+  Tirar a marca antes é a saída explícita. Apagar o FUNIL inteiro leva os
+  cards e as etapas juntos (confirmação própria) e apaga essas faixas — limite
+  conhecido, como no Desempenho.
+- Leitura que falha CALA a faixa, mesmo numa recarga: a releitura foi pedida
+  por um evento da trilha, e o que estava na tela pode ter ficado errado.
 - Recorte pelo perfil de quem vê, como o painel (cada equipe vê o seu),
   DERIVADO no render (a lente "Ver como" não mostra o perfil anterior).
 - Cala com "não sei" (leitura falhou) e fora do contato atual (carimbo
