@@ -17,8 +17,15 @@
 // cliente: sem colapso, esta feature DOBRA o comprimento de um fio ativo.
 // ============================================================
 
+import {
+  MOTIVO_PASSO_MOVIDO,
+  MOTIVO_PASSO_NAO_CONFERIDO,
+  MOTIVO_PASSO_REMOVIDO,
+  MOTIVO_RAMO_REMOVIDO,
+} from '@/lib/automations/retomada'
 import type { AutomationLogDesfecho } from '@/types'
 import type { AutomationLogStepResult } from '@/types'
+import { ehAvisoDeTentativa } from './texto-do-motor'
 
 /** Uma linha de `automation_logs` como o hook a lê. */
 export interface ExecucaoEncerrada {
@@ -30,6 +37,12 @@ export interface ExecucaoEncerrada {
   finalizadoEm: string | null
   errorMessage: string | null
   stepsExecuted: AutomationLogStepResult[] | null
+  /**
+   * A marca durável da interrupção (1005). Só a ABA a lê (`itensDoHistorico`):
+   * o fio ignora a execução interrompida sem desfecho, de propósito.
+   */
+  interrompidaEm?: string | null
+  interrompidaPor?: string | null
 }
 
 export interface ItemDeExecucao {
@@ -72,17 +85,43 @@ function diaLocal(iso: string): string {
 }
 
 /**
- * O passo que PAROU a execução.
+ * A entrada que ENCERROU a execução: a `failed` que não é aviso de
+ * retentativa (`-1` = nenhuma).
  *
- * ⚠️ Sai da entrada com `status: 'failed'`, NUNCA de `at(-1)`. O ramo de uma
- * condição faz seu próprio flush de dentro da recursão, antes de o escopo de
+ * ⚠️ NUNCA `at(-1)`. O ramo de uma condição faz seu próprio flush de dentro da recursão, antes de o escopo de
  * fora gravar o dele — então o último elemento do array não é o último passo
  * a rodar. Uma régua por `at(-1)` acerta no caso simples e erra exatamente
  * onde há ramo, que é onde o operador mais precisa da resposta.
  */
+export function falhaQueEncerrou(
+  passos: readonly Pick<AutomationLogStepResult, 'status' | 'detail'>[] | null,
+): number {
+  if (!Array.isArray(passos)) return -1
+  // O aviso de retentativa também é `failed`, mas não encerrou nada: o passo
+  // foi reagendado (e pode ter saído na tentativa seguinte).
+  return passos.findIndex((p) => p?.status === 'failed' && !ehAvisoDeTentativa(p.detail))
+}
+
+/**
+ * A conferência da RETOMADA (`retomada.ts`) é gravada com o id do passo que
+ * estacionou e o tipo `wait`: quem falhou foi o motor ao acordar, não aquele
+ * passo — "falhou no passo Aguardar" seria falso.
+ */
+export const MOTIVOS_DA_RETOMADA: ReadonlySet<string> = new Set<string>([
+  MOTIVO_RAMO_REMOVIDO,
+  MOTIVO_PASSO_REMOVIDO,
+  MOTIVO_PASSO_MOVIDO,
+  MOTIVO_PASSO_NAO_CONFERIDO,
+])
+
+/** O tipo do passo que PAROU a execução — o fio e a linha fechada da aba o nomeiam. */
 function passoQueFalhou(passos: AutomationLogStepResult[] | null): string | undefined {
-  if (!Array.isArray(passos)) return undefined
-  return passos.find((p) => p?.status === 'failed')?.step_type
+  const i = falhaQueEncerrou(passos)
+  const p = i >= 0 ? passos?.[i] : undefined
+  // Linha do motor (sem passo: a conferência ao acordar ou ao nascer) não
+  // tem "passo que parou".
+  if (!p?.step_id || MOTIVOS_DA_RETOMADA.has(p.detail ?? '')) return undefined
+  return p.step_type
 }
 
 /** A condição que desviou, para o aviso poder dizer QUAL barrou. */
@@ -150,4 +189,118 @@ export function itensDoFio(
   // histórico antigo é o que menos importa para quem está lendo a conversa.
   itens.sort((a, b) => (a.quando < b.quando ? -1 : a.quando > b.quando ? 1 : 0))
   return itens.length > teto ? itens.slice(itens.length - teto) : itens
+}
+
+// ============================================================
+// O "JÁ RODOU" da aba Automações — a mesma régua do fio, com duas diferenças
+// (pedido do operador, 29/09/2026: a mini-auditoria):
+//
+//   1. A execução INTERROMPIDA entra (o cliente respondeu durante a espera,
+//      alguém clicou Parar, o card saiu da etapa, outra automação a parou, a
+//      automação foi desligada). Sem desfecho — `interrompida_em` é a marca
+//      durável (1005) e é ela que decide. Só na aba: no fio, cada resposta do
+//      cliente a uma sequência viraria uma linha no meio da conversa, e o fio
+//      não vira log (a lição do Radar, no topo deste arquivo).
+//   2. O grupo guarda TODAS as execuções, não só a mais recente: expandida, a
+//      linha deixa trocar entre elas.
+//
+// Ordem: da mais RECENTE para a mais antiga (a da aba).
+// ============================================================
+
+/** Os valores do CHECK de `automation_logs.interrompida_por` (1005). */
+export type MotivoDaInterrupcao = 'resposta' | 'etapa' | 'parar' | 'passo' | 'desativacao'
+
+export const MOTIVOS_DA_INTERRUPCAO: readonly MotivoDaInterrupcao[] = [
+  'resposta',
+  'etapa',
+  'parar',
+  'passo',
+  'desativacao',
+]
+
+export type DesfechoDoHistorico = AutomationLogDesfecho | 'interrompida'
+
+export interface ItemDoHistorico {
+  chave: string
+  /** Quando terminou (`finalizado_em`) ou foi interrompida (`interrompida_em`). */
+  quando: string
+  desfecho: DesfechoDoHistorico
+  nome: string | null
+  automationId: string
+  /** As execuções do grupo, da mais recente para a mais antiga. `length` é o "N×". */
+  execucoes: { id: string; quando: string }[]
+  /** Tipo do passo que falhou, quando houve falha. */
+  passoQueParou?: string
+  /** Texto cru do motor: o erro, ou a condição que barrou. */
+  motivoBruto?: string
+  /** Por que parou, na interrompida. `null` = valor fora do CHECK (não sei). */
+  interrompidaPor?: MotivoDaInterrupcao | null
+}
+
+/** Teto da aba: mais folgado que o do fio — aqui é auditoria, lá é conversa. */
+export const TETO_DO_HISTORICO = 30
+
+export function itensDoHistorico(
+  linhas: readonly ExecucaoEncerrada[],
+  opcoes: { teto?: number } = {},
+): ItemDoHistorico[] {
+  const teto = opcoes.teto ?? TETO_DO_HISTORICO
+
+  const validas: { l: ExecucaoEncerrada; desfecho: DesfechoDoHistorico; quando: string }[] = []
+  for (const l of linhas) {
+    if (!l) continue
+    // O desfecho vence: a interrompida que já tinha falhado num ramo antes
+    // (a marca publica a hora de fim da falha adiada) é uma FALHA.
+    if (l.desfecho && l.finalizadoEm) {
+      validas.push({ l, desfecho: l.desfecho, quando: l.finalizadoEm })
+    } else if (l.interrompidaEm) {
+      validas.push({ l, desfecho: 'interrompida', quando: l.interrompidaEm })
+    }
+  }
+
+  const grupos = new Map<string, typeof validas>()
+  for (const v of validas) {
+    // A interrompida agrupa também pelo MOTIVO: "o cliente respondeu" e
+    // "alguém clicou Parar" no mesmo dia são duas histórias, e a linha
+    // fechada só mostra o motivo da mais recente.
+    const motivo = v.desfecho === 'interrompida' ? `:${v.l.interrompidaPor ?? ''}` : ''
+    const chave = `${v.l.automationId}|${diaLocal(v.quando)}|${v.desfecho}${motivo}`
+    const g = grupos.get(chave)
+    if (g) g.push(v)
+    else grupos.set(chave, [v])
+  }
+
+  const itens: ItemDoHistorico[] = []
+  for (const [chave, g] of grupos) {
+    const ordenadas = [...g].sort((a, b) => (a.quando < b.quando ? 1 : a.quando > b.quando ? -1 : 0))
+    const mais = ordenadas[0]
+    const motivo = mais.l.interrompidaPor
+    itens.push({
+      chave,
+      quando: mais.quando,
+      desfecho: mais.desfecho,
+      nome: mais.l.nomeDaAutomacao,
+      automationId: mais.l.automationId,
+      execucoes: ordenadas.map((v) => ({ id: v.l.id, quando: v.quando })),
+      ...(mais.desfecho === 'falhou'
+        ? {
+            passoQueParou: passoQueFalhou(mais.l.stepsExecuted),
+            motivoBruto: mais.l.errorMessage ?? undefined,
+          }
+        : {}),
+      ...(mais.desfecho === 'barrada'
+        ? { motivoBruto: condicaoQueBarrou(mais.l.stepsExecuted) }
+        : {}),
+      ...(mais.desfecho === 'interrompida'
+        ? {
+            interrompidaPor: MOTIVOS_DA_INTERRUPCAO.includes(motivo as MotivoDaInterrupcao)
+              ? (motivo as MotivoDaInterrupcao)
+              : null,
+          }
+        : {}),
+    })
+  }
+
+  itens.sort((a, b) => (a.quando < b.quando ? 1 : a.quando > b.quando ? -1 : 0))
+  return itens.slice(0, teto)
 }

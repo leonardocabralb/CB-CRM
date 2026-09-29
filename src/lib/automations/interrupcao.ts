@@ -11,10 +11,12 @@
 //
 // ⚠️ Só ACRESCENTA a `steps_executed`. `status`, `desfecho` e
 // `finalizado_em` NÃO são tocados — o precedente da 936 para todo
-// cancelamento. A execução interrompida não aparece no fio nem no "Já rodou":
-// não há desfecho que a descreva sem mentir (`concluida` e `barrada` dizem
-// outra coisa), e um 4º desfecho pede migration no CHECK da 985 mais os
-// consumidores — vale para os QUATRO cancelamentos, e ficou de fora.
+// cancelamento. A execução interrompida não aparece no FIO: não há desfecho
+// que a descreva sem mentir (`concluida` e `barrada` dizem outra coisa), e um
+// 4º desfecho pede migration no CHECK da 985 mais os consumidores — vale para
+// os QUATRO cancelamentos, e ficou de fora. No "Já rodou" da ABA ela entra
+// pela marca `interrompida_em` (29/09/2026, `itensDoHistorico`), e o rodapé
+// da expansão diz o motivo — esta anotação não vira passo lá.
 //
 // `skipped` num passo `wait`: `sinaisDoHistorico` ignora `wait` por inteiro,
 // então a anotação não muda desfecho nenhum.
