@@ -141,6 +141,12 @@ export const MAX_DIGITOS_INTEIROS = 10;
 export interface Edicao {
   texto: string;
   cursor: number;
+  /**
+   * Fim da SELEÇÃO, quando a edição devolve o campo com um trecho
+   * selecionado — a tecla recusada sobre uma seleção deixa a seleção onde
+   * estava. Ausente = cursor sem seleção.
+   */
+  fim?: number;
 }
 
 const soDigitos = (texto: string) => texto.replace(/\D/g, '');
@@ -198,14 +204,31 @@ function cursorNoInteiro(texto: string, k: number): number {
  * @param tipo o `InputEvent.inputType`, quando o navegador o informa: decide
  *   para que lado o cursor pula a vírgula. Sem ele, um texto mais curto conta
  *   como Backspace.
+ * @param dado o `InputEvent.data` (o texto que entrou), quando o navegador o
+ *   informa: diz exatamente o trecho trocado. Sem ele, o trecho é deduzido
+ *   dos dois textos (ver `trechoDaEdicao`).
  */
 export function aplicarEdicao(
   anterior: string,
   novo: string,
   cursor: number,
   tipo?: string,
+  dado?: string | null,
 ): Edicao {
   const apagando = tipo ? tipo.startsWith('delete') : novo.length < anterior.length;
+  const trecho = trechoDaEdicao(anterior, novo, cursor, dado);
+
+  // ⚠️ Tecla RECUSADA (letra, sinal, o ponto comum) não mexe em nada — nem
+  // na seleção. Sem isto, com o valor selecionado (o foco seleciona tudo),
+  // uma letra digitada por engano trocava o texto inteiro por ela, o campo
+  // ficava vazio e o blur gravava ZERO por cima do valor; e sobre um trecho
+  // de dígitos, a tecla recusada apagava o trecho (Codex, PR #334).
+  const entrou = trecho?.digitado ?? dado ?? '';
+  if (!apagando && entrou !== '' && !/[\d,]/.test(entrou)) {
+    return trecho
+      ? { texto: anterior, cursor: trecho.inicio, fim: trecho.fim }
+      : { texto: anterior, cursor: Math.min(anterior.length, Math.max(0, cursor - entrou.length)) };
+  }
 
   // ⚠️ Texto que entra DE UMA VEZ (ditado, autocompletar, alguns teclados de
   // celular) vale como digitado tecla a tecla. Medido no navegador: ",5"
@@ -215,18 +238,14 @@ export function aplicarEdicao(
   // trecho selecionado e as outras entram no cursor. Sem isso, "1,2" ditado
   // sobre o "40" de R$ 40.000,00 dava R$ 12.000,00, e digitado dá
   // R$ 1.000,20 (Codex, PR #334).
-  const trecho = trechoDigitado(anterior, novo, cursor);
   if (!apagando && trecho && trecho.digitado.length > 1) {
-    const [primeira, ...resto] = trecho.digitado;
-    let atual = aplicarEdicao(
-      anterior,
-      anterior.slice(0, trecho.inicio) + primeira + anterior.slice(trecho.fim),
-      trecho.inicio + 1,
-      'insertText',
-    );
-    for (const tecla of resto) {
-      const comTecla = atual.texto.slice(0, atual.cursor) + tecla + atual.texto.slice(atual.cursor);
-      atual = aplicarEdicao(atual.texto, comTecla, atual.cursor + 1, 'insertText');
+    let atual: Edicao = { texto: anterior, cursor: trecho.inicio, fim: trecho.fim };
+    for (const tecla of trecho.digitado) {
+      // A primeira troca o trecho selecionado; uma recusada o deixa
+      // selecionado para a seguinte, como o teclado faria.
+      const comTecla =
+        atual.texto.slice(0, atual.cursor) + tecla + atual.texto.slice(atual.fim ?? atual.cursor);
+      atual = aplicarEdicao(atual.texto, comTecla, atual.cursor + 1, 'insertText', tecla);
     }
     return atual;
   }
@@ -248,27 +267,42 @@ export function aplicarEdicao(
 /**
  * Onde a edição aconteceu: `anterior.slice(inicio, fim)` virou `digitado`.
  *
- * O cursor depois da edição fica no FIM do que entrou, então tudo o que vem
- * depois dele é o fim intacto do texto anterior; o começo é o maior prefixo
- * comum aos dois.
+ * Com o `dado` do evento, o trecho é exato: o que entrou termina no cursor.
+ * Sem ele (ou se não fechar com os textos), é deduzido: o cursor depois da
+ * edição fica no FIM do que entrou, então tudo o que vem depois dele é o
+ * fim intacto do texto anterior, e o começo é o maior prefixo comum aos dois.
  *
- * ⚠️ Quando o que entrou começa pelo mesmo caractere que foi trocado, a
- * leitura é ambígua, e o maior prefixo escolhe a MENOR troca — que pode
- * não ser a que a pessoa fez: "90" ditado sobre o "9,0" de R$ 19,01 chega
- * como `R$ 1901`, o mesmo texto de apagar só a vírgula. Sem a seleção de
- * antes da edição não há como separar os dois; o resultado continua sendo
- * um valor bem formado, e o caso pede ditado sobre um trecho que cruza a
- * vírgula.
+ * ⚠️ Deduzido, quando o que entrou começa pelo mesmo caractere que foi
+ * trocado, a leitura é ambígua, e o maior prefixo escolhe a MENOR troca —
+ * que pode não ser a que a pessoa fez: "90" ditado sobre o "9,0" de
+ * R$ 19,01 chega como `R$ 1901`, o mesmo texto de apagar só a vírgula. É o
+ * `dado` que desempata; sem ele o resultado continua sendo um valor bem
+ * formado.
  *
  * `null` quando o que sobra depois do cursor não é o fim do texto anterior
  * (o navegador pôs o cursor em outro lugar): a edição segue pelo caminho
  * comum, que lê o texto inteiro.
  */
-function trechoDigitado(
+function trechoDaEdicao(
   anterior: string,
   novo: string,
   cursor: number,
+  dado?: string | null,
 ): { inicio: number; fim: number; digitado: string } | null {
+  if (dado) {
+    const inicio = cursor - dado.length;
+    const fim = inicio + anterior.length - (novo.length - dado.length);
+    if (
+      inicio >= 0 &&
+      fim >= inicio &&
+      fim <= anterior.length &&
+      novo.slice(inicio, cursor) === dado &&
+      novo.slice(0, inicio) === anterior.slice(0, inicio) &&
+      novo.slice(cursor) === anterior.slice(fim)
+    ) {
+      return { inicio, fim, digitado: dado };
+    }
+  }
   const depois = novo.slice(cursor);
   if (!anterior.endsWith(depois)) return null;
   const fim = anterior.length - depois.length;
@@ -431,7 +465,7 @@ function nosCentavos(novo: string, cursor: number, v: number): Edicao {
  * PR #334).
  */
 export function teclaDecimal(texto: string, inicio: number, fim: number): Edicao {
-  return aplicarEdicao(texto, `${texto.slice(0, inicio)},${texto.slice(fim)}`, inicio + 1, 'insertText');
+  return aplicarEdicao(texto, `${texto.slice(0, inicio)},${texto.slice(fim)}`, inicio + 1, 'insertText', ',');
 }
 
 /**

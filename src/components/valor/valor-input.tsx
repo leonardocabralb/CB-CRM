@@ -57,9 +57,10 @@ export interface ValorInputProps {
 
 /**
  * O texto em edição e onde pôr o cursor. `cursor: null` = não mexer (é o
- * caso da entrada no campo, que seleciona tudo).
+ * caso da entrada no campo, que seleciona tudo); `fim` = a seleção que a
+ * tecla recusada devolve.
  */
-type EmEdicao = { texto: string; cursor: number | null };
+type EmEdicao = { texto: string; cursor: number | null; fim?: number };
 
 export function ValorInput({
   valor,
@@ -93,7 +94,7 @@ export function ValorInput({
   useLayoutEffect(() => {
     const el = campo.current;
     if (!el || edicao?.cursor == null || document.activeElement !== el) return;
-    el.setSelectionRange(edicao.cursor, edicao.cursor);
+    el.setSelectionRange(edicao.cursor, edicao.fim ?? edicao.cursor);
   }, [edicao]);
 
   // ⚠️ Zero mostra o campo VAZIO, não `R$ 0,00`, e é o comportamento que já
@@ -133,6 +134,7 @@ export function ValorInput({
             el.value,
             el.selectionStart ?? el.value.length,
             (e.nativeEvent as InputEvent).inputType,
+            (e.nativeEvent as InputEvent).data,
           ),
         );
       }}

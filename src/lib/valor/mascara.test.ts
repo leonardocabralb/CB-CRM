@@ -112,7 +112,7 @@ interface Campo {
 }
 
 const VAZIO: Campo = { texto: '', ini: 0, fim: 0 };
-const campo = (e: Edicao): Campo => ({ texto: e.texto, ini: e.cursor, fim: e.cursor });
+const campo = (e: Edicao): Campo => ({ texto: e.texto, ini: e.cursor, fim: e.fim ?? e.cursor });
 const tudoSelecionado = (texto: string): Campo => ({ texto, ini: 0, fim: texto.length });
 const cursorEm = (texto: string, ini: number): Campo => ({ texto, ini, fim: ini });
 
@@ -121,7 +121,7 @@ function digitar(c: Campo, teclas: string): Campo {
   let atual = c;
   for (const tecla of teclas) {
     const novo = atual.texto.slice(0, atual.ini) + tecla + atual.texto.slice(atual.fim);
-    atual = campo(aplicarEdicao(atual.texto, novo, atual.ini + tecla.length, 'insertText'));
+    atual = campo(aplicarEdicao(atual.texto, novo, atual.ini + tecla.length, 'insertText', tecla));
   }
   return atual;
 }
@@ -209,6 +209,23 @@ describe('aplicarEdicao — digitando', () => {
     expect(comCursor(digitar(VAZIO, '-5'))).toBe(rs('5|,00'));
   });
 
+  it('tecla recusada sobre uma seleção não apaga nada, e a seleção fica (Codex, PR #334)', () => {
+    // ⚠️ O foco seleciona tudo. Uma letra (ou o ponto comum) digitada por
+    // engano trocava o texto inteiro por ela, o campo ficava vazio e o blur
+    // gravava ZERO por cima do valor.
+    const tudo = tudoSelecionado(rs('40.000,00'));
+    for (const tecla of ['a', '.', ' ', '-']) {
+      expect(digitar(tudo, tecla)).toEqual(tudo);
+    }
+    // A seleção continua valendo para a tecla seguinte.
+    expect(comCursor(digitar(tudo, 'a7'))).toBe(rs('7|,00'));
+    // Sobre um trecho de dígitos, idem: nada sai.
+    const trecho: Campo = { texto: rs('40.000,00'), ini: rs('').length, fim: rs('40').length };
+    expect(digitar(trecho, 'x')).toEqual(trecho);
+    // Sem o `data` do evento, a recusa sai do trecho deduzido.
+    expect(campo(aplicarEdicao(tudo.texto, 'a', 1, 'insertText'))).toEqual(tudo);
+  });
+
   it('zero à esquerda não fica', () => {
     expect(comCursor(digitar(VAZIO, '0'))).toBe(rs('0|,00'));
     expect(comCursor(digitar(VAZIO, '05'))).toBe(rs('5|,00'));
@@ -260,9 +277,27 @@ describe('aplicarEdicao — digitando', () => {
     const texto = rs('40.000,00');
     const selecao: Campo = { texto, ini: rs('').length, fim: rs('40').length };
     const novo = rs('1,2.000,00');
-    const deUmaVez = campo(aplicarEdicao(texto, novo, rs('1,2').length, 'insertText'));
-    expect(comCursor(deUmaVez)).toBe(rs('1.000,2|0'));
-    expect(comCursor(deUmaVez)).toBe(comCursor(digitar(selecao, '1,2')));
+    const comDado = campo(aplicarEdicao(texto, novo, rs('1,2').length, 'insertText', '1,2'));
+    expect(comCursor(comDado)).toBe(rs('1.000,2|0'));
+    expect(comCursor(comDado)).toBe(comCursor(digitar(selecao, '1,2')));
+    // Sem o `data` do evento, o trecho é deduzido dos dois textos.
+    const deduzido = campo(aplicarEdicao(texto, novo, rs('1,2').length, 'insertText'));
+    expect(comCursor(deduzido)).toBe(rs('1.000,2|0'));
+  });
+
+  it('sem o `data`, a troca que começa pelo caractere trocado é ambígua; com ele, não', () => {
+    // "90" sobre o "9,0" de R$ 19,01 chega como `R$ 1901` — o mesmo texto de
+    // apagar só a vírgula. Deduzido, fica a menor troca (nada muda); o
+    // `data` diz o que entrou, e aí vale o digitado.
+    const texto = rs('19,01');
+    const selecao: Campo = { texto, ini: rs('1').length, fim: rs('19,0').length };
+    const novo = rs('1901');
+    expect(comCursor(campo(aplicarEdicao(texto, novo, rs('190').length, 'insertText')))).toBe(
+      rs('19|,01'),
+    );
+    const comDado = campo(aplicarEdicao(texto, novo, rs('190').length, 'insertText', '90'));
+    expect(comCursor(comDado)).toBe(comCursor(digitar(selecao, '90')));
+    expect(comCursor(comDado)).toBe(rs('190|,10'));
   });
 
   it('com tudo selecionado (o foco seleciona), digitar troca o valor inteiro', () => {
@@ -396,12 +431,10 @@ describe('aplicarEdicao — qualquer sequência de teclas', () => {
           // tem de dar o mesmo que digitá-las uma a uma.
           const grupo = Array.from({ length: 2 + Math.floor(acaso() * 2) }, tecla).join('');
           const novo = c.texto.slice(0, c.ini) + grupo + c.texto.slice(c.fim);
-          const deUmaVez = campo(aplicarEdicao(c.texto, novo, c.ini + grupo.length, 'insertText'));
-          // Menos quando o grupo começa pelo caractere que troca: aí o texto
-          // que chega é ambíguo (ver `trechoDigitado`).
-          if (c.ini === c.fim || grupo[0] !== c.texto[c.ini]) {
-            expect(comCursor(deUmaVez)).toBe(comCursor(digitar(c, grupo)));
-          }
+          const deUmaVez = campo(
+            aplicarEdicao(c.texto, novo, c.ini + grupo.length, 'insertText', grupo),
+          );
+          expect(deUmaVez).toEqual(digitar(c, grupo));
           c = deUmaVez;
         } else if (r < 0.68) c = apagar(c);
         else if (r < 0.78) c = apagarParaFrente(c);
