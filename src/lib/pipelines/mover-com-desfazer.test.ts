@@ -162,8 +162,8 @@ describe('a resposta da rota', () => {
     expect(fila()).toEqual([]);
   });
 
-  it('recusa DEFINITIVA (400, 403, 404): avisa e tira da fila — tentar de novo daria o mesmo', async () => {
-    for (const status of [400, 403, 404]) {
+  it('recusa DEFINITIVA (400, 404): avisa e tira da fila — tentar de novo daria o mesmo', async () => {
+    for (const status of [400, 404]) {
       respostas.push({ ok: false, status });
       agendarMovimento(pedido(), USUARIO);
       await esperar(ESPERA_PARA_DESFAZER_MS);
@@ -259,12 +259,54 @@ describe('a reserva no aparelho', () => {
     expect(enviar).toHaveBeenCalledTimes(envios);
   });
 
-  it('sessão vencida (401) também fica: o login seguinte refaz', async () => {
-    respostas.push({ ok: false, status: 401 });
+  it('sessão vencida (401) e conta ilegível (403) também ficam: nada foi decidido (Codex, PR #340)', async () => {
+    for (const status of [401, 403]) {
+      __reiniciarParaTeste({
+        agora: () => Date.now(),
+        enviar: enviar as unknown as typeof fetch,
+        armazenamento: () => ({
+          getItem: (k) => guardado.get(k) ?? null,
+          setItem: (k, v) => void guardado.set(k, v),
+          removeItem: (k) => void guardado.delete(k),
+        }),
+        sucesso,
+        erro,
+        drenar,
+      });
+      guardado.clear();
+      respostas.push({ ok: false, status });
+      agendarMovimento(pedido(), USUARIO);
+      await esperar(ESPERA_PARA_DESFAZER_MS);
+      expect(fila()).toHaveLength(1);
+      expect(fotoDoMovimento('negocio-1')).toEqual({ fase: 'tentando', para: 'etapa-b' });
+    }
+  });
+
+  it('duas abas: o card travado pelo pedido da OUTRA aba destrava quando ela conclui (Codex, PR #340)', async () => {
+    // A outra aba está na janela de desfazer: o pedido está no aparelho.
+    const agora = Date.now();
+    guardado.set(
+      `cb-movimentos-pendentes:${USUARIO}`,
+      JSON.stringify([{ id: 'da-outra', dealId: 'negocio-1', de: 'etapa-a', para: 'etapa-b', prazo: agora + 2000, textos: pedido().textos }]),
+    );
+    retomarMovimentosPendentes(USUARIO);
+    expect(fotoDoMovimento('negocio-1')).toEqual({ fase: 'tentando', para: 'etapa-b' });
+    // A outra aba concluiu (ou desfez) e tirou o pedido da fila.
+    guardado.delete(`cb-movimentos-pendentes:${USUARIO}`);
+    await esperar(2000 + FOLGA_DA_RETOMADA_MS);
+    expect(fotoDoMovimento('negocio-1')).toBeNull();
+    expect(enviar).not.toHaveBeenCalled();
+  });
+
+  it('Tentar agora num card cujo pedido já saiu da fila: destrava em vez de não fazer nada', async () => {
+    respostas.push({ ok: false, status: 503 });
     agendarMovimento(pedido(), USUARIO);
     await esperar(ESPERA_PARA_DESFAZER_MS);
-    expect(fila()).toHaveLength(1);
-    expect(erro).toHaveBeenCalledWith('tentando de novo');
+    expect(fotoDoMovimento('negocio-1')?.fase).toBe('tentando');
+    // Outra aba concluiu: a fila do aparelho não tem mais o pedido.
+    guardado.delete(`cb-movimentos-pendentes:${USUARIO}`);
+    tentarAgora('negocio-1', USUARIO);
+    expect(fotoDoMovimento('negocio-1')).toBeNull();
   });
 
   it('depois de recarregar, refaz o que ficou — mas só depois da folga (a aba dona pode estar viva)', async () => {

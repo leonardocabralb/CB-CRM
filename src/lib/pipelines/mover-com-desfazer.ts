@@ -66,10 +66,15 @@ export const MAXIMO_DE_TENTATIVAS_NA_PAGINA = 10;
 /**
  * A resposta que não decide nada: o servidor não conseguiu (5xx num deploy,
  * banco lento), mandou esperar (429, 408) ou a sessão venceu (401 — o login
- * seguinte refaz). O pedido fica na fila. 400, 403 e 404 são definitivos.
+ * seguinte refaz). O pedido fica na fila. Só 400 e 404 são definitivos.
+ *
+ * ⚠️ 403 também é provisório: `getCurrentAccount` devolve Forbidden quando a
+ * LEITURA do perfil ou da conta falha, sem ter decidido nada sobre o papel
+ * (Codex, PR #340). O papel de fato insuficiente acaba no card travado, com
+ * "Desistir" — nunca num pedido perdido.
  */
 const ehProvisoria = (status: number) =>
-  status === 401 || status === 408 || status === 429 || status >= 500;
+  status === 401 || status === 403 || status === 408 || status === 429 || status >= 500;
 
 const CHAVE_DA_FILA = 'cb-movimentos-pendentes:';
 
@@ -428,10 +433,25 @@ function guardadoDo(dealId: string, usuario: string): Pendente | undefined {
   return lerFila(usuario).find((e) => e.dealId === dealId);
 }
 
+/**
+ * Card travado cujo pedido já saiu da fila — concluído ou desfeito noutra
+ * aba, que lê o mesmo `localStorage` — destrava. Sem isso o card ficaria
+ * travado para sempre, com botões que não acham pedido nenhum (Codex, PR #340).
+ */
+function destravarSemPedido(usuario: string) {
+  const naFila = new Set(lerFila(usuario).map((e) => e.dealId));
+  for (const [dealId, foto] of [...fotos]) {
+    if (foto.fase === 'tentando' && !naFila.has(dealId) && !aguardando.has(dealId)) {
+      definirFoto(dealId, null);
+    }
+  }
+}
+
 /** "Tentar agora" do card travado: manda o pedido guardado já. */
 export function tentarAgora(dealId: string, usuario: string): void {
   const pedido = guardadoDo(dealId, usuario);
   if (pedido) void enviar(pedido, false);
+  else destravarSemPedido(usuario);
 }
 
 /**
@@ -441,7 +461,10 @@ export function tentarAgora(dealId: string, usuario: string): void {
  */
 export function desistirDoMovimento(dealId: string, usuario: string): boolean {
   const pedido = guardadoDo(dealId, usuario);
-  if (!pedido) return false;
+  if (!pedido) {
+    destravarSemPedido(usuario);
+    return false;
+  }
   tirarDaFila(usuario, pedido.id);
   tentativas.delete(pedido.id);
   avisadosDaFalha.delete(pedido.id);
@@ -464,6 +487,7 @@ export function retomarMovimentosPendentes(usuario: string): void {
   escutarAPagina();
   if (relogioDaRetomada) clearTimeout(relogioDaRetomada);
   relogioDaRetomada = null;
+  destravarSemPedido(usuario);
   const destaAba = new Set([...aguardando.values()].map((item) => item.pedido.id));
   const agora = ambiente.agora();
   let proxima = Number.POSITIVE_INFINITY;
