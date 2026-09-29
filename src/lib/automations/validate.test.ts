@@ -9,13 +9,15 @@ import {
 
 describe("validateStepsForActivation", () => {
   it("rejects empty or missing step lists", () => {
+    // `path` e `message` são contrato da API (o 400 os devolve); o `codigo`
+    // é o que a tela traduz (`pendencias.ts`).
     expect(validateStepsForActivation([])).toEqual([
-      { path: "steps", message: "active automations need at least one step" },
+      { path: "steps", message: "active automations need at least one step", codigo: "sem_passos" },
     ]);
     expect(
       validateStepsForActivation(undefined as unknown as never[]),
     ).toEqual([
-      { path: "steps", message: "active automations need at least one step" },
+      { path: "steps", message: "active automations need at least one step", codigo: "sem_passos" },
     ]);
   });
 
@@ -246,7 +248,7 @@ describe("validateStepsForActivation", () => {
       { step_type: "do_a_barrel_roll", step_config: {} },
     ]);
     expect(issues).toEqual([
-      { path: "steps[0]", message: "unknown step type: do_a_barrel_roll" },
+      { path: "steps[0]", message: "unknown step type: do_a_barrel_roll", codigo: "passo_desconhecido" },
     ]);
   });
 
@@ -271,6 +273,79 @@ describe("validateStepsForActivation", () => {
       expect(cond({ subject: "time_of_day", operand })).toEqual(["steps[0].operand"]);
     }
     expect(cond({ subject: "time_of_day", operand: "" })).toEqual(["steps[0].operand"]);
+  });
+
+  it("conteúdo da mensagem: exige o TEXTO (value) e não o operando — o motor só lê o value", () => {
+    // O motor faz `texto.includes(value)` e ignora `operand`: value vazio
+    // casaria com TODA mensagem. Até 29/09/2026 a regra exigia o operando e
+    // deixava passar o value vazio — o contrário.
+    const cond = (step_config: Record<string, unknown>) =>
+      validateStepsForActivation([
+        { step_type: "condition", step_config: { subject: "message_content", ...step_config } },
+      ]);
+    // As automações ligadas em produção: value preenchido, operando "contém"
+    // digitado à mão — continuam passando.
+    expect(cond({ operand: "contém", value: "não tenho interesse" })).toEqual([]);
+    // Sem operando também passa (é o que a tela vai gravar).
+    expect(cond({ value: "não tenho interesse" })).toEqual([]);
+    for (const value of [undefined, "", "   ", 42]) {
+      expect(cond({ operand: "contém", value })).toEqual([
+        { path: "steps[0].value", message: "condition text is required", codigo: "condicao_sem_texto" },
+      ]);
+    }
+    // Os outros critérios continuam exigindo o operando — com o mesmo path e
+    // message de sempre; só o código diz O QUE escolher.
+    const semOperando = (subject: string) =>
+      validateStepsForActivation([{ step_type: "condition", step_config: { subject, value: "x" } }]);
+    for (const [subject, codigo] of [
+      ["tag_presence", "condicao_sem_etiqueta"],
+      ["contact_field", "condicao_sem_campo_do_contato"],
+      ["deal_stage", "condicao_sem_etapa"],
+      ["deal_status", "condicao_sem_status"],
+      ["channel", "condicao_sem_conexao"],
+      ["time_of_day", "condicao_sem_valor"],
+    ]) {
+      expect(semOperando(subject)).toEqual([
+        { path: "steps[0].operand", message: "condition operand is required", codigo },
+      ]);
+    }
+  });
+
+  it("create_task: responsável e reserva têm códigos diferentes (o conserto muda)", () => {
+    // O caso que motivou as pendências: "task assignee is required" num ramo.
+    const issues = validateStepsForActivation([
+      {
+        step_type: "condition",
+        step_config: { subject: "tag_presence", operand: "t" },
+        branches: {
+          yes: [],
+          no: [{ step_type: "create_task", step_config: { titulo: "Contrato", responsavel_modo: "fixo" } }],
+        },
+      },
+    ]);
+    expect(issues).toEqual([
+      {
+        path: "steps[0].no.steps[0].responsavel_user_id",
+        message: "task assignee is required",
+        codigo: "tarefa_sem_responsavel",
+      },
+    ]);
+    expect(
+      validateStepsForActivation([
+        { step_type: "create_task", step_config: { titulo: "T", responsavel_modo: "card" } },
+      ])[0]?.codigo,
+    ).toBe("tarefa_sem_reserva");
+  });
+
+  it("run_automation e stop_automation: a mesma regra, códigos diferentes", () => {
+    const codigos = validateStepsForActivation([
+      { step_type: "run_automation", step_config: {} },
+      { step_type: "stop_automation", step_config: { automation_id: " " } },
+    ]).map((i) => [i.path, i.message, i.codigo]);
+    expect(codigos).toEqual([
+      ["steps[0].automation_id", "automation is required", "acionar_sem_automacao"],
+      ["steps[1].automation_id", "automation is required", "parar_sem_automacao"],
+    ]);
   });
 
   it("hora do dia: somente_seg_a_sex só aceita booleano", () => {
@@ -365,7 +440,7 @@ describe("validateTriggerForActivation", () => {
 
   it("requires schedule on time_based triggers", () => {
     expect(validateTriggerForActivation("time_based", {})).toEqual([
-      { path: "trigger.schedule", message: "schedule is required" },
+      { path: "trigger.schedule", message: "schedule is required", codigo: "gatilho_sem_agenda" },
     ]);
     expect(
       validateTriggerForActivation("time_based", { schedule: "0 9 * * *" }),
@@ -374,7 +449,7 @@ describe("validateTriggerForActivation", () => {
 
   it("requires tag_id on tag_added triggers", () => {
     expect(validateTriggerForActivation("tag_added", {})).toEqual([
-      { path: "trigger.tag_id", message: "tag is required" },
+      { path: "trigger.tag_id", message: "tag is required", codigo: "gatilho_sem_etiqueta" },
     ]);
     expect(
       validateTriggerForActivation("tag_added", { tag_id: "tag-uuid" }),
@@ -383,7 +458,7 @@ describe("validateTriggerForActivation", () => {
 
   it("requires reply_ids on interactive_reply triggers", () => {
     expect(validateTriggerForActivation("interactive_reply", {})).toEqual([
-      { path: "trigger.reply_ids", message: "at least one reply id is required" },
+      { path: "trigger.reply_ids", message: "at least one reply id is required", codigo: "gatilho_sem_respostas" },
     ]);
     expect(
       validateTriggerForActivation("interactive_reply", { reply_ids: ["yes", "no"] }),
@@ -408,16 +483,16 @@ describe("send_to_number / calendly_booking (977)", () => {
     ).toEqual([]);
     expect(
       validateStepsForActivation([{ step_type: "send_to_number", step_config: { phone: "123", text: "oi" } }]),
-    ).toEqual([{ path: "steps[0].phone", message: "phone is too short (missing the area code?)" }]);
+    ).toEqual([{ path: "steps[0].phone", message: "phone is too short (missing the area code?)", codigo: "numero_telefone_curto" }]);
     expect(
       validateStepsForActivation([{ step_type: "send_to_number", step_config: { text: "oi" } }]),
-    ).toEqual([{ path: "steps[0].phone", message: "phone is required" }]);
+    ).toEqual([{ path: "steps[0].phone", message: "phone is required", codigo: "numero_sem_telefone" }]);
     expect(
       validateStepsForActivation([{ step_type: "send_to_number", step_config: { phone: "+1 404 555 1234", text: "oi" } }]),
     ).toEqual([]);
     expect(
       validateStepsForActivation([{ step_type: "send_to_number", step_config: { phone: "5583980000016", text: " " } }]),
-    ).toEqual([{ path: "steps[0].text", message: "message text is required" }]);
+    ).toEqual([{ path: "steps[0].text", message: "message text is required", codigo: "mensagem_sem_texto" }]);
   });
 
   it("o número sem DDD e o id do WhatsApp colado são recusados na ATIVAÇÃO, não no envio", () => {
@@ -425,15 +500,17 @@ describe("send_to_number / calendly_booking (977)", () => {
     // "98000-0016" virava +98, e o LID virava telefone (os 15 dígitos dele como
     // destino do aviso). O JID de pessoa caía no número certo por acaso, e é
     // recusado junto — texto com letra não é número digitado.
-    for (const [phone, motivo] of [
-      ["98000-0016", "phone is too short (missing the area code?)"],
-      ["123456789012345@lid", "phone is not a valid number (Brazilian: with the area code; other countries: with + and the country code)"],
-      ["5583980000016@s.whatsapp.net", "phone is not a valid number (Brazilian: with the area code; other countries: with + and the country code)"],
-      ["083 98000-0016", "phone is not a valid number (Brazilian: with the area code; other countries: with + and the country code)"],
+    const invalido =
+      "phone is not a valid number (Brazilian: with the area code; other countries: with + and the country code)";
+    for (const [phone, motivo, codigo] of [
+      ["98000-0016", "phone is too short (missing the area code?)", "numero_telefone_curto"],
+      ["123456789012345@lid", invalido, "numero_telefone_invalido"],
+      ["5583980000016@s.whatsapp.net", invalido, "numero_telefone_invalido"],
+      ["083 98000-0016", invalido, "numero_telefone_invalido"],
     ]) {
       expect(
         validateStepsForActivation([{ step_type: "send_to_number", step_config: { phone, text: "oi" } }]),
-      ).toEqual([{ path: "steps[0].phone", message: motivo }]);
+      ).toEqual([{ path: "steps[0].phone", message: motivo, codigo }]);
     }
   });
 
@@ -441,7 +518,7 @@ describe("send_to_number / calendly_booking (977)", () => {
     expect(validateTriggerForActivation("calendly_booking", {})).toEqual([]);
     expect(validateTriggerForActivation("calendly_booking", { event_type_uri: "https://api.calendly.com/event_types/A" })).toEqual([]);
     expect(validateTriggerForActivation("calendly_booking", { event_type_uri: 12 })).toEqual([
-      { path: "trigger.event_type_uri", message: "event type must be a string" },
+      { path: "trigger.event_type_uri", message: "event type must be a string", codigo: "gatilho_evento_invalido" },
     ]);
   });
 
@@ -449,7 +526,7 @@ describe("send_to_number / calendly_booking (977)", () => {
     expect(validateTriggerForActivation("calendly_booking", { ignorar_reagendamento: true })).toEqual([]);
     expect(validateTriggerForActivation("calendly_booking", { ignorar_reagendamento: false })).toEqual([]);
     expect(validateTriggerForActivation("calendly_booking", { ignorar_reagendamento: "true" })).toEqual([
-      { path: "trigger.ignorar_reagendamento", message: "ignore reschedules must be true or false" },
+      { path: "trigger.ignorar_reagendamento", message: "ignore reschedules must be true or false", codigo: "gatilho_reagendamento_invalido" },
     ]);
   });
 });
