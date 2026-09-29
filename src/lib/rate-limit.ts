@@ -194,6 +194,11 @@ export const RATE_LIMITS = {
    *  60/min cobre alguém dando baixa numa fila inteira de manhã, e ainda
    *  limita um script em laço. */
   tarefa: { limit: 60, windowMs: 60_000 },
+  /** Tarefa VISTA (1068), por usuário: a tela avisa sozinha, em lote, que a
+   *  pessoa viu as tarefas dela. Balde PRÓPRIO: rolar uma lista longa manda
+   *  um lote a cada ~1,5 s, e no balde `tarefa` isso gastaria a cota do
+   *  concluir e do marcar da mesma pessoa. */
+  tarefaVista: { limit: 120, windowMs: 60_000 },
   /** Aba de Integrações COM ping, por usuário. Não é ação administrativa
    *  barata: cada pedido dispara UMA GERAÇÃO PAGA por agente da conta
    *  (mais o ping de embeddings), então numa conta com 5 agentes o balde

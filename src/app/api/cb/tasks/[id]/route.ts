@@ -123,6 +123,9 @@ export async function PATCH(
     switch (acao) {
       case 'marcar-lida':
         patch.lida_em = new Date().toISOString();
+        // Quem marca lida à mão viu a tarefa (1068). Só a PRIMEIRA vez: a
+        // vista é registro, e remarcar depois de "não lida" não a reescreve.
+        if (!tarefa.vista_em) patch.vista_em = patch.lida_em;
         break;
 
       case 'marcar-nao-lida':
@@ -232,6 +235,9 @@ export async function PATCH(
             // desaparece da contagem do menu dela, que é o único lugar onde
             // ela ia tropeçar no assunto.
             patch.lida_em = null;
+            // E não VIU (1068): a vista é do responsável ATUAL — sem zerar, o
+            // card da equipe diria "vista" sobre quem nunca abriu a tarefa.
+            patch.vista_em = null;
 
             // Avisar só quem não é quem está mexendo (chamar a si mesmo de
             // volta seria sino do próprio clique).

@@ -31,6 +31,7 @@ function tarefa(id: string, vence_em: string, extra: Partial<Task> = {}): Task {
     status: 'aberta',
     concluida_em: null,
     lida_em: null,
+    vista_em: null,
     importante: false,
     tarefa_pai_id: null,
     tarefa_pai_titulo: null,

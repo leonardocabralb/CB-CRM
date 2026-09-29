@@ -58,6 +58,7 @@ import {
 } from "lucide-react";
 import { atrasoDeResposta } from "@/lib/inbox/atraso";
 import { ordenarComoOBanco } from "@/lib/inbox/ordem-da-lista";
+import type { VerDoInbox } from "@/lib/inbox/url";
 import { restanteParaExibir, type CanalDeSaida } from "@/lib/inbox/janela-24h";
 import { seloDaJanela, type CorDaJanela } from "@/lib/inbox/selo-da-janela";
 import { formatDistanceToNow } from "date-fns";
@@ -126,6 +127,15 @@ interface ConversationListProps {
    */
   etapaInicial?: string | null;
   /**
+   * Conexão vinda da URL (`?conexao=`, os indicadores do Meu dia), com QUAL
+   * número foi clicado (`?ver=`: "Não lidas" ou "Em atraso"). Mesmo contrato
+   * do `etapaInicial`: semeia o filtro UMA vez, no estado inicial, e vence o
+   * filtro padrão — o indicador prometeu aquele número. Conexão que não
+   * existe ou está fora do perfil é descartada quando o catálogo chega.
+   */
+  conexaoInicial?: string | null;
+  verInicial?: VerDoInbox | null;
+  /**
    * `de === "funil"` na URL — a jornada quadro→inbox está viva. ⚠️ Quando ela
    * MORRE (clique em "Caixa de entrada" na sidebar, numa notificação: a URL
    * limpa, a faixa "Voltar ao funil" some), o filtro SEMEADO morre junto —
@@ -167,6 +177,8 @@ export function ConversationList({
   onTermoDeBusca,
   onConversaAberta,
   etapaInicial = null,
+  conexaoInicial = null,
+  verInicial = null,
   jornadaDoFunil = false,
   inadimplencia = null,
 }: ConversationListProps) {
@@ -192,9 +204,18 @@ export function ConversationList({
    * abertura da caixa.
    */
   const [buscarNasMensagens, setBuscarNasMensagens] = useState(false);
-  const [filtros, setFiltros] = useState<FiltrosDoInbox>(() =>
-    etapaInicial ? { ...FILTROS_VAZIOS, etapaId: etapaInicial } : FILTROS_VAZIOS,
-  );
+  const [filtros, setFiltros] = useState<FiltrosDoInbox>(() => {
+    if (etapaInicial) return { ...FILTROS_VAZIOS, etapaId: etapaInicial };
+    if (conexaoInicial) {
+      return {
+        ...FILTROS_VAZIOS,
+        canalIds: [conexaoInicial],
+        naoLidas: verInicial === "nao-lidas",
+        emAtraso: verInicial === "em-atraso",
+      };
+    }
+    return FILTROS_VAZIOS;
+  });
   const [loading, setLoading] = useState(true);
   // Relógio do alerta de atraso (972). A linha não muda no banco quando os 10
   // minutos vencem — quem muda é o tempo —, então a lista re-renderiza a cada
@@ -748,6 +769,27 @@ export function ConversationList({
   }, [jornadaDoFunil, etapasStatus, etapas, funis]);
 
   /**
+   * A conexão SEMEADA por `?conexao=` (os indicadores do Meu dia) que não
+   * existe mais, ou que o perfil não enxerga, sai do recorte quando o
+   * catálogo chega — senão a caixa abriria "nenhuma conversa" sob uma
+   * pastilha sem nome. Uma vez só; o "Não lidas"/"Em atraso" que veio junto
+   * fica (tem chip aceso na barra). Catálogo que FALHOU não prova nada: a
+   * semente fica.
+   */
+  const seedDeConexaoRef = useRef(conexaoInicial);
+  useEffect(() => {
+    const seed = seedDeConexaoRef.current;
+    if (!seed || canaisCarregando || canaisFalharam) return;
+    seedDeConexaoRef.current = null;
+    if (canaisDoPerfil.some((c) => c.id === seed)) return;
+    setFiltros((prev) =>
+      prev.canalIds.includes(seed)
+        ? { ...prev, canalIds: prev.canalIds.filter((id) => id !== seed) }
+        : prev,
+    );
+  }, [canaisCarregando, canaisFalharam, canaisDoPerfil]);
+
+  /**
    * ⚠️ A SEMENTE DO FILTRO PADRÃO (968) — UMA VEZ, E SÓ UMA.
    *
    * O padrão chega de uma consulta, depois do primeiro render. Reaplicá-lo a
@@ -770,7 +812,9 @@ export function ConversationList({
   const semeouPadraoRef = useRef(false);
   useEffect(() => {
     if (semeouPadraoRef.current) return;
-    if (etapaInicial) {
+    // O indicador do Meu dia também vence o padrão: ele prometeu um número
+    // daquela conexão, e o padrão por cima mostraria outro.
+    if (etapaInicial || conexaoInicial) {
       semeouPadraoRef.current = true;
       return;
     }
@@ -823,6 +867,7 @@ export function ConversationList({
     }));
   }, [
     etapaInicial,
+    conexaoInicial,
     salvosCarregando,
     filtroPadraoId,
     filtrosSalvos,
@@ -846,6 +891,7 @@ export function ConversationList({
    */
   const esperandoPadrao =
     !etapaInicial &&
+    !conexaoInicial &&
     (salvosCarregando ||
       (filtroPadraoId !== null && (!catalogosProntos || canaisCarregando)));
 

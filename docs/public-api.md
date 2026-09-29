@@ -723,6 +723,12 @@ Each task carries `vence_em` (`YYYY-MM-DD`, a plain calendar date with
 `criador_nome` / `responsavel_nome` (they survive the member leaving
 the account).
 
+`vista_em` (ISO timestamp, or `null`) is when the current assignee first
+**saw** the task on screen — the dashboard records it by itself. It never
+goes back to `null` when the assignee marks the task unread (`lida_em`
+does); it does when the task is reassigned. `null` on an open task means
+the assignee has not looked at it yet.
+
 ### `POST /api/v1/tasks`
 
 Create a task about a contact, assigned to a team member. Scope:

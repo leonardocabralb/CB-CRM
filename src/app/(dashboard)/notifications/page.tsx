@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useMembros } from "@/hooks/use-membros";
 import type { Notification } from "@/types";
 import { textoDoAviso, type AvisoComContato } from "@/lib/notifications/texto-do-aviso";
+import { rotaDoAviso } from "@/lib/notifications/rota-do-aviso";
 import {
   AtSign,
   Bell,
@@ -149,18 +150,10 @@ export default function NotificationsPage() {
   const handleClick = useCallback(
     (n: Notification) => {
       if (!n.read_at) markRead(n.id);
-      // ⚠️ `task_id` é testado ANTES de `conversation_id` (944). As linhas de
-      // tarefa nascem sem conversa justamente para não caírem no inbox, mas a
-      // ordem inversa aqui mandaria para o fio qualquer aviso que um dia
-      // ganhasse as duas colunas — e o destino de um aviso de tarefa é a
-      // tarefa.
-      if (n.task_id) {
-        router.push('/tarefas');
-        return;
-      }
-      if (n.conversation_id) {
-        router.push(`/inbox?c=${n.conversation_id}`);
-      }
+      // ⚠️ Tarefa ANTES de conversa (944) — a regra mora em `rotaDoAviso`,
+      // a mesma do card de notificações do Meu dia.
+      const rota = rotaDoAviso(n);
+      if (rota) router.push(rota);
     },
     [markRead, router],
   );

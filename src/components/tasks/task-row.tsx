@@ -42,6 +42,7 @@ import {
 import type { TarefaNaTela } from '@/hooks/use-tarefas';
 import type { Task } from '@/types';
 import type { AcoesDaTarefa } from '@/hooks/use-acoes-da-tarefa';
+import { useVistaDaTarefa } from '@/hooks/use-vista-da-tarefa';
 import { podeNaTarefa, type AtorDaTarefa } from '@/lib/tasks/permissoes';
 import { dataParaExibir, horaJaPassou, horaParaExibir } from '@/lib/tasks/prazo';
 import { cn } from '@/lib/utils';
@@ -83,6 +84,16 @@ export function TaskRow({
   const concluida = tarefa.status === 'concluida';
   const naoLida = !tarefa.lida_em && !concluida;
   const souResponsavel = tarefa.responsavel_user_id === ator.userId;
+  // Na tela do responsável por um instante = vista (1068). Nas três telas que
+  // usam esta linha: Tarefas, a ficha e a conversa.
+  const refDaVista = useVistaDaTarefa(tarefa, ator.userId);
+  // Quem PEDIU (ou olha a fila) vê se o responsável já viu. Só na tarefa
+  // aberta e delegada: no lembrete para si mesmo e na concluída não diz nada.
+  const mostrarVista =
+    !souResponsavel &&
+    !concluida &&
+    !!tarefa.responsavel_user_id &&
+    tarefa.criador_user_id !== tarefa.responsavel_user_id;
   const atrasadaHoje =
     !concluida && horaJaPassou(tarefa.vence_em, tarefa.vence_as, new Date());
 
@@ -117,6 +128,7 @@ export function TaskRow({
 
   return (
     <li
+      ref={refDaVista}
       className={cn(
         'flex items-start gap-3 rounded-lg border border-border bg-card px-3 py-2.5 transition-colors',
         naoLida && 'border-primary/40 bg-primary/5',
@@ -221,6 +233,27 @@ export function TaskRow({
                 : t('toWho', { nome: tarefa.responsavel_nome ?? t('someone') })}
             </span>
           )}
+
+          {mostrarVista ? (
+            tarefa.vista_em ? (
+              <span className="inline-flex items-center gap-1">
+                <Eye className="size-3" />
+                {t('seenAt', {
+                  quando: new Date(tarefa.vista_em).toLocaleString(undefined, {
+                    day: '2-digit',
+                    month: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  }),
+                })}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-300">
+                <EyeOff className="size-3" />
+                {t('notSeenYet')}
+              </span>
+            )
+          ) : null}
         </div>
 
         {tarefa.tarefa_pai_titulo ? (

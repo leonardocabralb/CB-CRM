@@ -22,6 +22,8 @@
 // todos os replaces da sessão, sem UI nenhuma para removê-lo.
 // ============================================================
 
+import { UUID } from "@/lib/tasks/validar";
+
 /** As telas que abrem a caixa de entrada com uma faixa de volta. */
 export type OrigemDoInbox = "funil" | "reunioes";
 
@@ -32,16 +34,56 @@ export function ehOrigemDoInbox(
   return de === "funil" || de === "reunioes";
 }
 
+/**
+ * Qual número do indicador do Meu dia foi clicado: "não lidos" liga o filtro
+ * "Não lidas"; "em atraso", o "Em atraso".
+ */
+export type VerDoInbox = "nao-lidas" | "em-atraso";
+
+function ehVerDoInbox(v: string | null | undefined): v is VerDoInbox {
+  return v === "nao-lidas" || v === "em-atraso";
+}
+
+/** O recorte que os indicadores do Meu dia pedem à caixa de entrada. */
+export interface RecorteDaUrl {
+  conexao: string;
+  ver: VerDoInbox | null;
+}
+
+/**
+ * `?conexao=<id>&ver=…` lidos da URL, em PARSE: conexão que não tem forma de
+ * id não semeia nada, e `ver` desconhecido é ignorado (a conexão sozinha
+ * ainda recorta). Se a conexão existe e está no perfil, quem confere é a
+ * lista, quando o catálogo chega.
+ */
+export function recorteDaUrl(
+  conexao: string | null | undefined,
+  ver: string | null | undefined,
+): RecorteDaUrl | null {
+  if (!conexao || !UUID.test(conexao)) return null;
+  return { conexao, ver: ehVerDoInbox(ver) ? ver : null };
+}
+
+/**
+ * ⚠️ `conexao` e `ver` são porta de ENTRADA, como `etapa` (os indicadores de
+ * conexão do Meu dia): `c` e `etapa` vencem, e quem navega de novo não os
+ * repete — a pastilha do painel é quem conta o recorte depois.
+ */
 export function urlDoInbox(params: {
   c?: string | null;
   etapa?: string | null;
   de?: string | null;
+  conexao?: string | null;
+  ver?: VerDoInbox | null;
 }): string {
   const partes: string[] = [];
   if (params.c) {
     partes.push(`c=${encodeURIComponent(params.c)}`);
   } else if (params.etapa) {
     partes.push(`etapa=${encodeURIComponent(params.etapa)}`);
+  } else if (params.conexao) {
+    partes.push(`conexao=${encodeURIComponent(params.conexao)}`);
+    if (ehVerDoInbox(params.ver)) partes.push(`ver=${params.ver}`);
   }
   if (ehOrigemDoInbox(params.de)) partes.push(`de=${params.de}`);
   return partes.length > 0 ? `/inbox?${partes.join("&")}` : "/inbox";
