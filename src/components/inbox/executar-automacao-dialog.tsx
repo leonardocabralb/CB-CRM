@@ -4,12 +4,15 @@
 // "Executar automação" — popup do menu + do compositor (referência Kommo,
 // adaptada por decisão do operador: botão, nunca "/" no texto).
 //
-// Lista as automações LIGADAS e os robôs ATIVOS da conta (leitura direta
-// sob RLS — policies por conta desde a 017) e dispara pelo POST
+// Lista as automações e os robôs da conta (leitura direta sob RLS —
+// policies por conta desde a 017) e dispara pelo POST
 // /api/cb/execucoes/executar, que valida grupo/escopo/papel no servidor.
 //
-// Item fora do escopo de canal da conversa fica VISÍVEL e desabilitado,
-// com o motivo — escondê-lo faria o operador achar que a automação sumiu.
+// Item que não pode rodar aqui fica VISÍVEL e desabilitado, com o motivo —
+// escondê-lo faria o operador achar que a automação sumiu. Vale para o que
+// está fora do escopo de canal da conversa e, desde 29/09/2026, para o que
+// está DESLIGADO (seção própria no fim; a separação é
+// `separarParaExecutar`, em `src/lib/execucoes/lista-para-executar.ts`).
 // Clique pede confirmação NO LUGAR (a execução pode enviar mensagem real
 // ao cliente; não há janela de desfazer aqui).
 //
@@ -31,26 +34,14 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
-import { ehGatilhoDaRegua } from "@/lib/asaas/regua";
 import { semAcento } from "@/lib/inbox/busca-em-mensagens";
+import {
+  listaVazia,
+  separarParaExecutar,
+  type AutomacaoParaExecutar,
+  type RoboParaExecutar,
+} from "@/lib/execucoes/lista-para-executar";
 import { avisarExecucoesMudaram } from "@/hooks/use-execucoes-do-contato";
-
-interface AutomacaoDaLista {
-  id: string;
-  name: string;
-  description: string | null;
-  /** Escopo de canal (903): vazio/nulo = todos os números. */
-  channel_ids: string[] | null;
-  /** a régua do Asaas (998) não é oferecida aqui */
-  trigger_type: string;
-}
-
-interface RoboDaLista {
-  id: string;
-  name: string;
-  /** Escopo SINGULAR (903): nulo = todos os números. */
-  channel_id: string | null;
-}
 
 type Selecao =
   | { tipo: "automacao"; id: string; nome: string }
@@ -74,8 +65,8 @@ export function ExecutarAutomacaoDialog({
 }: ExecutarAutomacaoDialogProps) {
   const t = useTranslations("Inbox.execucoes.executar");
 
-  const [automacoes, setAutomacoes] = useState<AutomacaoDaLista[]>([]);
-  const [robos, setRobos] = useState<RoboDaLista[]>([]);
+  const [automacoes, setAutomacoes] = useState<AutomacaoParaExecutar[]>([]);
+  const [robos, setRobos] = useState<RoboParaExecutar[]>([]);
   const [carregou, setCarregou] = useState(false);
   const [erroCarga, setErroCarga] = useState(false);
   const [busca, setBusca] = useState("");
@@ -94,28 +85,50 @@ export function ExecutarAutomacaoDialog({
     const supabase = createClient();
     let cancelado = false;
     void (async () => {
-      const [autosRes, robosRes] = await Promise.all([
+      // As desligadas também aparecem (no fim, sem clique); quem separa os
+      // grupos na tela é `separarParaExecutar`.
+      // ⚠️ Ligadas e desligadas em consultas SEPARADAS (Codex, PR #343): o
+      // PostgREST corta em 1000 linhas sem avisar, e numa consulta só, em
+      // ordem de nome, as desligadas do começo do alfabeto empurrariam para
+      // fora do teto automações que dá para executar. Assim o que roda chega
+      // como chegava antes; as desligadas vêm à parte, só para serem vistas.
+      const colunasDaAutomacao = "id, name, description, channel_ids, trigger_type, is_active";
+      const colunasDoRobo = "id, name, channel_id, status";
+      const [autosLigadas, autosDesligadas, robosAtivos, robosInativos] = await Promise.all([
         supabase
           .from("automations")
-          .select("id, name, description, channel_ids, trigger_type")
+          .select(colunasDaAutomacao)
           .eq("is_active", true)
+          .order("name"),
+        // `IS NOT TRUE`: nulo também é desligada (a régua de `separarParaExecutar`).
+        supabase
+          .from("automations")
+          .select(colunasDaAutomacao)
+          .not("is_active", "is", true)
           .order("name"),
         supabase
           .from("flows")
-          .select("id, name, channel_id")
+          .select(colunasDoRobo)
           .eq("status", "active")
+          .order("name"),
+        supabase
+          .from("flows")
+          .select(colunasDoRobo)
+          .or("status.is.null,status.neq.active")
           .order("name"),
       ]);
       if (cancelado) return;
-      if (autosRes.error || robosRes.error) {
-        console.error(
-          "[executar] carga falhou:",
-          autosRes.error?.message ?? robosRes.error?.message,
-        );
+      const falha =
+        autosLigadas.error ?? autosDesligadas.error ?? robosAtivos.error ?? robosInativos.error;
+      if (falha) {
+        console.error("[executar] carga falhou:", falha.message);
         setErroCarga(true);
       } else {
-        setAutomacoes((autosRes.data ?? []) as AutomacaoDaLista[]);
-        setRobos((robosRes.data ?? []) as RoboDaLista[]);
+        setAutomacoes([
+          ...(autosLigadas.data ?? []),
+          ...(autosDesligadas.data ?? []),
+        ] as AutomacaoParaExecutar[]);
+        setRobos([...(robosAtivos.data ?? []), ...(robosInativos.data ?? [])] as RoboParaExecutar[]);
       }
       setCarregou(true);
     })();
@@ -126,29 +139,25 @@ export function ExecutarAutomacaoDialog({
 
   // ⚠️ `semAcento` como o resto do inbox: com o `.toLowerCase()` cru,
   // "cobranca" não achava "Cobrança" e o dialog dizia "Nada casa com a
-  // busca" sobre item existente (ledger 48h).
+  // busca" sobre item existente (ledger 48h). Aqui só decide a FRASE do
+  // estado vazio; o recorte (com a mesma régua) é de `separarParaExecutar`.
   const termo = semAcento(busca.trim());
   // A régua do Asaas (998) só roda pela varredura: por aqui sairia com as
   // `{{vars.*}}` vazias, sem reconfirmar o pagamento e sem trava — a rota
   // também recusa (`runAutomationById`), mas oferecer o botão seria mentir.
-  const automacoesVisiveis = useMemo(
-    () =>
-      automacoes.filter((a) => !ehGatilhoDaRegua(a.trigger_type) && (!termo || semAcento(a.name).includes(termo))),
-    [automacoes, termo],
-  );
-  const robosVisiveis = useMemo(
-    () =>
-      termo ? robos.filter((r) => semAcento(r.name).includes(termo)) : robos,
-    [robos, termo],
+  // Ela sai dos DOIS grupos dentro de `separarParaExecutar`.
+  const lista = useMemo(
+    () => separarParaExecutar(automacoes, robos, busca),
+    [automacoes, robos, busca],
   );
 
   // Falha ABERTA, como o motor: canal da conversa desconhecido (pré-903)
   // não desabilita nada — o envio resolve o canal padrão, igual aos gatilhos.
-  function automacaoForaDoCanal(a: AutomacaoDaLista): boolean {
+  function automacaoForaDoCanal(a: AutomacaoParaExecutar): boolean {
     if (!a.channel_ids || a.channel_ids.length === 0 || !channelId) return false;
     return !a.channel_ids.includes(channelId);
   }
-  function roboForaDoCanal(r: RoboDaLista): boolean {
+  function roboForaDoCanal(r: RoboParaExecutar): boolean {
     return Boolean(r.channel_id && channelId && r.channel_id !== channelId);
   }
 
@@ -192,23 +201,26 @@ export function ExecutarAutomacaoDialog({
     }
   }
 
+  // `bloqueio` preenchido = a linha aparece desabilitada, com o motivo (fora
+  // do canal da conversa, ou desligada). Sem `onClick` nesse caso: o item
+  // desligado não abre nem a confirmação.
   function LinhaDeItem({
     icone,
     nome,
     descricao,
-    fora,
+    bloqueio,
     onClick,
   }: {
     icone: React.ReactNode;
     nome: string;
     descricao?: string | null;
-    fora: boolean;
-    onClick: () => void;
+    bloqueio: string | null;
+    onClick?: () => void;
   }) {
     return (
       <button
         type="button"
-        disabled={fora}
+        disabled={bloqueio !== null}
         onClick={onClick}
         className="border-border bg-muted/40 hover:border-primary/50 hover:bg-muted flex w-full items-center gap-2 rounded-md border p-2.5 text-left disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border disabled:hover:bg-muted/40"
       >
@@ -217,11 +229,11 @@ export function ExecutarAutomacaoDialog({
           <span className="text-foreground block truncate text-sm font-medium">
             {nome}
           </span>
-          {/* Fora do escopo, o MOTIVO ocupa a linha de baixo — é a
-              informação que decide, a descrição pode esperar. */}
-          {fora ? (
+          {/* Bloqueada, o MOTIVO ocupa a linha de baixo — é a informação
+              que decide, a descrição pode esperar. */}
+          {bloqueio !== null ? (
             <span className="text-muted-foreground block text-xs">
-              {t("foraDoCanal")}
+              {bloqueio}
             </span>
           ) : descricao ? (
             <span className="text-muted-foreground block truncate text-xs">
@@ -290,24 +302,26 @@ export function ExecutarAutomacaoDialog({
                 <p className="text-muted-foreground py-8 text-center text-sm">
                   {t("erroCarregar")}
                 </p>
-              ) : automacoesVisiveis.length === 0 && robosVisiveis.length === 0 ? (
+              ) : listaVazia(lista) ? (
+                /* Só quando NENHUM dos grupos tem resultado: a busca que
+                   acha apenas uma desligada mostra a desligada, não "nada". */
                 <p className="text-muted-foreground py-8 text-center text-sm">
                   {termo ? t("nadaNaBusca") : t("nadaDisponivel")}
                 </p>
               ) : (
                 <>
-                  {automacoesVisiveis.length > 0 && (
+                  {lista.automacoes.length > 0 && (
                     <div className="space-y-1.5">
                       <p className="text-muted-foreground text-xs font-semibold uppercase">
                         {t("grupoAutomacoes")}
                       </p>
-                      {automacoesVisiveis.map((a) => (
+                      {lista.automacoes.map((a) => (
                         <LinhaDeItem
                           key={a.id}
                           icone={<Zap className="text-primary h-4 w-4 shrink-0" />}
                           nome={a.name}
                           descricao={a.description}
-                          fora={automacaoForaDoCanal(a)}
+                          bloqueio={automacaoForaDoCanal(a) ? t("foraDoCanal") : null}
                           onClick={() =>
                             setSelecao({ tipo: "automacao", id: a.id, nome: a.name })
                           }
@@ -315,22 +329,55 @@ export function ExecutarAutomacaoDialog({
                       ))}
                     </div>
                   )}
-                  {robosVisiveis.length > 0 && (
+                  {lista.robos.length > 0 && (
                     <div className="space-y-1.5">
                       <p className="text-muted-foreground text-xs font-semibold uppercase">
                         {t("grupoRobos")}
                       </p>
-                      {robosVisiveis.map((r) => (
+                      {lista.robos.map((r) => (
                         <LinhaDeItem
                           key={r.id}
                           icone={<Bot className="text-primary h-4 w-4 shrink-0" />}
                           nome={r.name}
-                          fora={roboForaDoCanal(r)}
+                          bloqueio={roboForaDoCanal(r) ? t("foraDoCanal") : null}
                           onClick={() =>
                             setSelecao({ tipo: "robo", id: r.id, nome: r.name })
                           }
                         />
                       ))}
+                    </div>
+                  )}
+                  {/* Desligadas no FIM, sem clique: aparecem para o operador
+                      não concluir que a automação sumiu (29/09/2026), e o
+                      motivo diz onde ligar. O robô usa o MESMO rótulo da tela
+                      de Fluxos (Rascunho/Arquivado), que é onde ele vai
+                      procurar. A rota continua recusando desligada. */}
+                  {lista.desligadas.length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="text-muted-foreground text-xs font-semibold uppercase">
+                        {t("grupoDesligadas")}
+                      </p>
+                      {lista.desligadas.map((d) =>
+                        d.tipo === "automacao" ? (
+                          <LinhaDeItem
+                            key={d.automacao.id}
+                            icone={<Zap className="text-primary h-4 w-4 shrink-0" />}
+                            nome={d.automacao.name}
+                            bloqueio={t("motivoAutomacaoDesligada")}
+                          />
+                        ) : (
+                          <LinhaDeItem
+                            key={d.robo.id}
+                            icone={<Bot className="text-primary h-4 w-4 shrink-0" />}
+                            nome={d.robo.name}
+                            bloqueio={
+                              d.robo.status === "archived"
+                                ? t("motivoRoboArquivado")
+                                : t("motivoRoboRascunho")
+                            }
+                          />
+                        ),
+                      )}
                     </div>
                   )}
                 </>

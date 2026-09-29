@@ -7,7 +7,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ReactNode,
 } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useTranslations } from "next-intl"
@@ -45,6 +44,8 @@ import {
   Upload,
   BellRing,
   ListTodo,
+  CircleAlert,
+  TriangleAlert,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -84,6 +85,7 @@ import {
   rotuloDaJanela,
 } from "@/lib/automations/hora-do-dia"
 import { ehMeta } from "@/lib/cb-channels/transporte"
+import { channelLabel } from "@/lib/cb-channels/display"
 import { createClient } from "@/lib/supabase/client"
 import { useAreasDeAutomacao } from "@/hooks/use-areas-de-automacao"
 import { areaDoFunil } from "@/lib/automations/areas"
@@ -106,7 +108,20 @@ import { cn } from "@/lib/utils"
 import { useChannels } from "@/hooks/use-channels"
 import type { CbChannel } from "@/lib/cb-channels/repo"
 import { ChannelMultiSelect, ChannelSelect } from "@/components/channels/channel-select"
-import { validateChannelScopeForActivation } from "@/lib/automations/validate"
+import { validateChannelScopeForActivation, type ValidationIssue } from "@/lib/automations/validate"
+import {
+  camposParaConferir,
+  conferirParaLigar,
+  TETO_DE_LINHAS,
+} from "@/lib/automations/conferir-para-ligar"
+import {
+  avisosDaAutomacao,
+  chaveDaPendencia,
+  localDoPasso,
+  localizarPendencias,
+  type PendenciasLocalizadas,
+} from "@/lib/automations/pendencias"
+import { useAuth } from "@/hooks/use-auth"
 import { TIPO_DATA } from "@/lib/contacts/campo-data"
 import { telefoneDigitado } from "@/lib/contacts/telefone"
 import { uploadAccountMedia, MEDIA_MAX_BYTES_BY_KIND } from "@/lib/storage/upload-media"
@@ -455,12 +470,47 @@ interface AutomationResources {
   automacaoAtualId?: string
   /** Robôs (fluxos) da conta, para `run_flow`. */
   flows: FlowOption[]
+  /** Em que pé está a carga de cada lista acima — ver `CargaDasListas`. */
+  carga: CargaDasListas
+}
+
+/**
+ * ⚠️ Três estados, nunca dois. A lista vazia quer dizer três coisas: ainda
+ * não chegou, chegou vazia ou a consulta falhou — e o seletor diz uma coisa
+ * diferente em cada caso. Até aqui ela era só vazia, e todo seletor caía numa
+ * caixa para DIGITAR o id: durante a carga o operador via "Cole o id" em vez
+ * da lista, e numa falha a caixa convidava a colar um UUID que ele não tem
+ * como achar ("escolher na lista, nunca digitar ID", pedido do operador).
+ */
+type EstadoDaLista = "carregando" | "pronto" | "falhou"
+
+interface CargaDasListas {
+  tags: EstadoDaLista
+  customFields: EstadoDaLista
+  /** Funis E etapas: os seletores precisam dos dois, e um sem o outro não escolhe nada. */
+  pipelines: EstadoDaLista
+  automations: EstadoDaLista
+  flows: EstadoDaLista
+  members: EstadoDaLista
+  channels: EstadoDaLista
+}
+
+const CARGA_INICIAL: CargaDasListas = {
+  tags: "carregando",
+  customFields: "carregando",
+  pipelines: "carregando",
+  automations: "carregando",
+  flows: "carregando",
+  members: "carregando",
+  channels: "carregando",
 }
 
 interface AutomationOption {
   id: string
   name: string
   is_active: boolean
+  /** Para o aviso e o filtro da régua do Asaas, que o motor não aciona. */
+  trigger_type: string
 }
 
 interface FlowOption {
@@ -492,23 +542,154 @@ const ResourcesContext = createContext<AutomationResources>({
   channels: [],
   automations: [],
   flows: [],
+  carga: CARGA_INICIAL,
 })
 
 function useResources(): AutomationResources {
   return useContext(ResourcesContext)
 }
 
-function ResourcesProvider({
-  children,
-  automacaoAtualId,
-  reguaDoAsaas = false,
-}: {
-  children: ReactNode
-  /** `undefined` numa automação nova — ela ainda não tem id para se excluir. */
-  automacaoAtualId?: string
-  /** o gatilho em edição é da régua do Asaas (ver `AutomationResources.reguaDoAsaas`) */
-  reguaDoAsaas?: boolean
-}) {
+// ------------------------------------------------------------
+// As MARCAS de pendência e de aviso nos cartões (29/09/2026).
+//
+// Nasceu do "Contrato fechado": ligar mostrava só um toast em inglês com um
+// endereço ("at steps[0].no.steps[9].responsavel_user_id") que o operador não
+// tinha como achar numa automação de dezenas de passos. Agora o passo com
+// pendência fica em VERMELHO dizendo o que ajustar, e o que não impede ligar
+// mas quebra em execução (acionar automação desligada) fica em ÂMBAR.
+//
+// Por contexto, e não por prop: os passos descem por StepList →
+// StepRenderer → ConditionBranches → StepList, e cada nível espalharia a prop.
+// A chave é o `cid` do passo — a marca segue o passo mesmo que ele mude de
+// lugar (ver `pendencias.ts`).
+// ------------------------------------------------------------
+
+interface MarcasDosCartoes {
+  /** O que impede ligar, por `cid` do passo. */
+  pendencias: ReadonlyMap<string, ValidationIssue[]>
+  /** O que não impede ligar, mas faz o passo falhar em execução. */
+  avisos: ReadonlyMap<string, ValidationIssue[]>
+}
+
+const SEM_ISSUES: ValidationIssue[] = []
+const SEM_MARCAS: MarcasDosCartoes = { pendencias: new Map(), avisos: new Map() }
+const MarcasContext = createContext<MarcasDosCartoes>(SEM_MARCAS)
+
+/**
+ * A frase da pendência no idioma do app, pelo `codigo`. Sem código (as que já
+ * nascem em português: canal, janela da Meta, condição por campo) ou com um
+ * código que este bundle não conhece (deploy em curso), o `message` do
+ * servidor — nunca a chave crua.
+ */
+function fraseDaPendencia(issue: ValidationIssue, t: ReturnType<typeof useTranslations>): string {
+  const chave = chaveDaPendencia(issue)
+  return chave ? t(chave) : issue.message
+}
+
+/** Os `cid` da árvore na ordem de leitura: o passo, o ramo SIM, o ramo NÃO. */
+function cidsEmOrdem(steps: BuilderStep[]): string[] {
+  return steps.flatMap((s) => [
+    s.cid,
+    ...(s.step_type === "condition" && s.branches
+      ? [...cidsEmOrdem(s.branches.yes), ...cidsEmOrdem(s.branches.no)]
+      : []),
+  ])
+}
+
+/**
+ * "Passo 10 · ramo NÃO da condição do passo 1" — o número na própria lista e,
+ * subindo, cada ramo até a raiz.
+ */
+function descreverLocal(
+  steps: BuilderStep[],
+  passoCid: string,
+  t: ReturnType<typeof useTranslations>,
+): string | null {
+  const local = localDoPasso(steps, passoCid)
+  if (!local) return null
+  const partes = [t("pendencias.passo", { numero: local.numero })]
+  for (let k = local.cadeia.length - 1; k >= 1; k--) {
+    const numero = local.cadeia[k - 1].numero
+    partes.push(
+      local.cadeia[k].ramo === "yes"
+        ? t("pendencias.ramoSim", { numero })
+        : t("pendencias.ramoNao", { numero }),
+    )
+  }
+  return partes.join(" · ")
+}
+
+/** Uma linha do painel: onde, o que ajustar, e para onde o clique leva. */
+interface LinhaDoPainel {
+  local: string
+  frase: string
+  ir: { tipo: "passo"; cid: string } | { tipo: "gatilho" } | null
+}
+
+/**
+ * As linhas do painel, na ordem de leitura da tela: o gatilho, os passos de
+ * cima para baixo, e as da automação inteira (sem passo, sem link). Pendência
+ * de passo que não está mais na árvore (apagado depois da recusa do servidor)
+ * não vira linha — não há o que ajustar nele.
+ */
+function linhasDoPainel(
+  steps: BuilderStep[],
+  loc: PendenciasLocalizadas,
+  t: ReturnType<typeof useTranslations>,
+): LinhaDoPainel[] {
+  const linhas: LinhaDoPainel[] = loc.doGatilho.map((issue) => ({
+    local: t("pendencias.gatilho"),
+    frase: fraseDaPendencia(issue, t),
+    ir: { tipo: "gatilho" },
+  }))
+  for (const passoCid of cidsEmOrdem(steps)) {
+    const doPasso = loc.porPasso.get(passoCid)
+    const local = doPasso ? descreverLocal(steps, passoCid, t) : null
+    if (!doPasso || !local) continue
+    for (const issue of doPasso) {
+      linhas.push({ local, frase: fraseDaPendencia(issue, t), ir: { tipo: "passo", cid: passoCid } })
+    }
+  }
+  for (const issue of loc.gerais) {
+    linhas.push({ local: t("pendencias.automacao"), frase: fraseDaPendencia(issue, t), ir: null })
+  }
+  return linhas
+}
+
+/** Quantas pendências a localização tem, somando passos, gatilho e gerais. */
+function totalDePendencias(loc: PendenciasLocalizadas): number {
+  let total = loc.doGatilho.length + loc.gerais.length
+  for (const lista of loc.porPasso.values()) total += lista.length
+  return total
+}
+
+/** O que o servidor devolveu no 400, lido campo a campo — corpo estranho vira lista vazia. */
+function issuesDaResposta(body: unknown): ValidationIssue[] {
+  const lista = (body as { issues?: unknown } | null)?.issues
+  if (!Array.isArray(lista)) return []
+  return lista.flatMap((i): ValidationIssue[] => {
+    if (!i || typeof i !== "object") return []
+    const { path, message, codigo } = i as Record<string, unknown>
+    if (typeof path !== "string" || typeof message !== "string") return []
+    return [{ path, message, ...(typeof codigo === "string" ? { codigo } : {}) }]
+  })
+}
+
+/**
+ * Carrega as listas da conta que os seletores usam. Era um componente-provedor
+ * montado dentro do canvas; virou hook do construtor (29/09/2026) porque o
+ * SALVAR — que mora no cabeçalho, fora do canvas — precisa das MESMAS listas
+ * para conferir as pendências antes de ligar (`conferirParaLigar`) e marcar
+ * os avisos, sem uma segunda busca. O construtor põe o resultado no
+ * `ResourcesContext`, junto com `reguaDoAsaas` (que depende do gatilho em
+ * edição, e por isso não sai daqui).
+ *
+ * `automacaoAtualId`: `undefined` numa automação nova — ela ainda não tem id
+ * para se excluir.
+ */
+function useRecursosDaAutomacao(
+  automacaoAtualId: string | undefined,
+): Omit<AutomationResources, "reguaDoAsaas"> {
   const [tags, setTags] = useState<TagRecord[]>([])
   const [members, setMembers] = useState<AccountMember[]>([])
   const [templates, setTemplates] = useState<MessageTemplate[]>([])
@@ -517,9 +698,16 @@ function ResourcesProvider({
   const [stages, setStages] = useState<PipelineStageOption[]>([])
   const [automations, setAutomations] = useState<AutomationOption[]>([])
   const [flows, setFlows] = useState<FlowOption[]>([])
-  // No provider, e não dentro do StepEditor: aquele monta uma vez por passo
-  // aberto, e cada montagem seria um GET novo.
-  const { channels } = useChannels()
+  // Os canais têm a carga no próprio hook; o resto sai daqui.
+  const [carga, setCarga] = useState<Omit<CargaDasListas, "channels">>(CARGA_INICIAL)
+  // Aqui, na raiz do construtor, e não dentro do StepEditor: aquele monta uma
+  // vez por passo aberto, e cada montagem seria um GET novo.
+  const { channels, loading: canaisCarregando, falhou: canaisFalharam } = useChannels()
+  const cargaDosCanais: EstadoDaLista = canaisCarregando
+    ? "carregando"
+    : canaisFalharam
+      ? "falhou"
+      : "pronto"
 
   useEffect(() => {
     let cancelled = false
@@ -530,62 +718,95 @@ function ResourcesProvider({
     // actually be sent (anything else 400s at send time), matching the
     // broadcast picker.
     void (async () => {
-      const [
-        tagsRes,
-        templatesRes,
-        customFieldsRes,
-        pipelinesRes,
-        stagesRes,
-        automationsRes,
-        flowsRes,
-      ] = await Promise.all([
-        supabase.from("tags").select("*").order("name"),
-        supabase
-          .from("message_templates")
-          .select("*")
-          .eq("status", "APPROVED")
-          .order("name"),
-        supabase
-          .from("custom_fields")
-          .select("*")
-          // ⚠️ Alfabética: lista PLANA. `posicao` é a ordem DENTRO do bloco
-          // (966) e reinicia em cada um — ordenar a conta inteira por ela
-          // intercala os blocos. Só quem REAGRUPA pode usá-la.
-          .order("field_name"),
-        supabase.from("pipelines").select("id, name").order("name"),
-        supabase
-          .from("pipeline_stages")
-          .select("id, name, pipeline_id, position")
-          .order("position"),
-        // Orquestração (936). Traz INATIVAS também: o motor recusa acionar
-        // automação desligada, e a tela precisa poder dizer isso ao operador
-        // — some da lista seria pior, porque ele procuraria a automação que
-        // sabe que existe e concluiria que a feature está quebrada.
-        supabase.from("automations").select("id, name, is_active").order("name"),
-        supabase.from("flows").select("id, name, status").order("name"),
-      ])
-      if (cancelled) return
-      setTags((tagsRes.data as TagRecord[] | null) ?? [])
-      setTemplates((templatesRes.data as MessageTemplate[] | null) ?? [])
-      setCustomFields((customFieldsRes.data as CustomField[] | null) ?? [])
-      setPipelines((pipelinesRes.data as PipelineOption[] | null) ?? [])
-      setStages((stagesRes.data as PipelineStageOption[] | null) ?? [])
-      setAutomations((automationsRes.data as AutomationOption[] | null) ?? [])
-      setFlows((flowsRes.data as FlowOption[] | null) ?? [])
+      // ⚠️ O erro de cada consulta agora CONTA (antes era jogado fora e a
+      // lista virava vazia): é ele que separa "a conta não tem etiqueta" de
+      // "não consegui perguntar". O supabase-js devolve `error` em vez de
+      // lançar; o `catch` é para o que escapa mesmo assim (rede).
+      try {
+        const [
+          tagsRes,
+          templatesRes,
+          customFieldsRes,
+          pipelinesRes,
+          stagesRes,
+          automationsRes,
+          flowsRes,
+        ] = await Promise.all([
+          supabase.from("tags").select("*").order("name"),
+          supabase
+            .from("message_templates")
+            .select("*")
+            .eq("status", "APPROVED")
+            .order("name"),
+          supabase
+            .from("custom_fields")
+            .select("*")
+            // ⚠️ Alfabética: lista PLANA. `posicao` é a ordem DENTRO do bloco
+            // (966) e reinicia em cada um — ordenar a conta inteira por ela
+            // intercala os blocos. Só quem REAGRUPA pode usá-la.
+            .order("field_name"),
+          supabase.from("pipelines").select("id, name").order("name"),
+          supabase
+            .from("pipeline_stages")
+            .select("id, name, pipeline_id, position")
+            .order("position"),
+          // Orquestração (936). Traz INATIVAS também: o motor recusa acionar
+          // automação desligada, e a tela precisa poder dizer isso ao operador
+          // — some da lista seria pior, porque ele procuraria a automação que
+          // sabe que existe e concluiria que a feature está quebrada.
+          supabase.from("automations").select("id, name, is_active, trigger_type").order("name"),
+          supabase.from("flows").select("id, name, status").order("name"),
+        ])
+        if (cancelled) return
+        setTags((tagsRes.data as TagRecord[] | null) ?? [])
+        setTemplates((templatesRes.data as MessageTemplate[] | null) ?? [])
+        setCustomFields((customFieldsRes.data as CustomField[] | null) ?? [])
+        setPipelines((pipelinesRes.data as PipelineOption[] | null) ?? [])
+        setStages((stagesRes.data as PipelineStageOption[] | null) ?? [])
+        setAutomations((automationsRes.data as AutomationOption[] | null) ?? [])
+        setFlows((flowsRes.data as FlowOption[] | null) ?? [])
+        const estado = (...rs: { error: unknown }[]): EstadoDaLista =>
+          rs.some((r) => r.error) ? "falhou" : "pronto"
+        setCarga((c) => ({
+          ...c,
+          tags: estado(tagsRes),
+          customFields: estado(customFieldsRes),
+          pipelines: estado(pipelinesRes, stagesRes),
+          automations: estado(automationsRes),
+          flows: estado(flowsRes),
+        }))
+      } catch {
+        if (cancelled) return
+        setCarga((c) => ({
+          ...c,
+          tags: "falhou",
+          customFields: "falhou",
+          pipelines: "falhou",
+          automations: "falhou",
+          flows: "falhou",
+        }))
+      }
     })()
 
     // Members go through the API so we inherit its email-visibility
-    // rules (agents/viewers don't see emails). Unreachable on older
-    // deployments → pickers fall back to a raw agent-id input.
+    // rules (agents/viewers don't see emails). Falha (rede, não-200) vira
+    // `falhou` — nunca a caixa de digitar o id do atendente que existia aqui.
     void (async () => {
+      let resultado: { members: AccountMember[]; estado: EstadoDaLista }
       try {
         const res = await fetch("/api/account/members", { cache: "no-store" })
-        if (!res.ok) return
-        const json = (await res.json()) as { members?: AccountMember[] }
-        if (!cancelled) setMembers(json.members ?? [])
+        if (!res.ok) {
+          resultado = { members: [], estado: "falhou" }
+        } else {
+          const json = (await res.json()) as { members?: AccountMember[] }
+          resultado = { members: json.members ?? [], estado: "pronto" }
+        }
       } catch {
-        // Members endpoint absent — caller falls back to raw input.
+        resultado = { members: [], estado: "falhou" }
       }
+      if (cancelled) return
+      setMembers(resultado.members)
+      setCarga((c) => ({ ...c, members: resultado.estado }))
     })()
 
     return () => {
@@ -593,32 +814,53 @@ function ResourcesProvider({
     }
   }, [])
 
-  return (
-    <ResourcesContext.Provider
-      value={{
-        reguaDoAsaas,
-        tags,
-        members,
-        templates,
-        customFields,
-        pipelines,
-        stages,
-        channels,
-        automations,
-        automacaoAtualId,
-        flows,
-      }}
-    >
-      {children}
-    </ResourcesContext.Provider>
-  )
+  return {
+    tags,
+    members,
+    templates,
+    customFields,
+    pipelines,
+    stages,
+    channels,
+    automations,
+    automacaoAtualId,
+    flows,
+    carga: { ...carga, channels: cargaDosCanais },
+  }
 }
 
 const SELECT_CLASS =
   "w-full rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none"
 
-/** Tag dropdown by name + color, storing the tag's id. Falls back to a
- *  raw id input when no tags exist yet. */
+/**
+ * O que um seletor mostra quando a lista dele NÃO tem o que escolher: ainda
+ * carregando, a conta não tem nenhum item, ou a consulta falhou. ⚠️ Nunca
+ * uma caixa para digitar o id (era o que havia aqui), e nunca um
+ * `onChange`: o valor já gravado no passo fica intacto até o operador
+ * escolher outro — a tela não reescreve config por abrir.
+ */
+function ListaSemEscolha({
+  estado,
+  vazio,
+  t,
+}: {
+  estado: EstadoDaLista
+  /** O texto da lista que CHEGOU vazia ("Nenhuma etiqueta cadastrada"). */
+  vazio: string
+  t: ReturnType<typeof useTranslations>
+}) {
+  if (estado === "falhou") {
+    return <p className="text-xs text-destructive">{t("listas.falhou")}</p>
+  }
+  return (
+    <select disabled className={cn(SELECT_CLASS, "cursor-not-allowed opacity-70")}>
+      <option>{estado === "carregando" ? t("listas.carregando") : vazio}</option>
+    </select>
+  )
+}
+
+/** Tag dropdown by name + color, storing the tag's id. Sem etiqueta para
+ *  escolher, `ListaSemEscolha`. */
 function TagSelect({
   value,
   onChange,
@@ -628,16 +870,9 @@ function TagSelect({
   onChange: (v: string) => void
   t: ReturnType<typeof useTranslations>
 }) {
-  const { tags } = useResources()
+  const { tags, carga } = useResources()
   if (tags.length === 0) {
-    return (
-      <Input
-        placeholder={t("tags.placeholder")}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="bg-muted text-foreground"
-      />
-    )
+    return <ListaSemEscolha estado={carga.tags} vazio={t("listas.semEtiquetas")} t={t} />
   }
   const selected = tags.find((t) => t.id === value)
   return (
@@ -661,7 +896,7 @@ function TagSelect({
         {/* Preserve a saved tag that's since been deleted so editing an
             existing automation doesn't silently drop it. */}
         {value && !selected && (
-          <option value={value}>{t("tags.unknown", { id: value })}</option>
+          <option value={value}>{t("tags.unknown")}</option>
         )}
       </select>
     </div>
@@ -681,37 +916,111 @@ function ContactFieldSelect({
   onChange: (v: string) => void
   t: ReturnType<typeof useTranslations>
 }) {
-  const { customFields } = useResources()
+  const { customFields, carga } = useResources()
   const customValue = value.startsWith("custom:") ? value : ""
   const knownCustom =
     customValue && customFields.some((f) => `custom:${f.id}` === customValue)
   return (
-    <select
-      value={value || "name"}
-      onChange={(e) => onChange(e.target.value)}
-      className={SELECT_CLASS}
-    >
-      <option value="name">{t("fields.name")}</option>
-      <option value="email">{t("fields.email")}</option>
-      <option value="company">{t("fields.company")}</option>
-      {customFields.length > 0 && (
-        <optgroup label={t("fields.customFields")}>
-          {customFields.map((f) => (
-            <option key={f.id} value={`custom:${f.id}`}>
-              {f.field_name}
-            </option>
-          ))}
-        </optgroup>
+    <>
+      <select
+        value={value || "name"}
+        onChange={(e) => onChange(e.target.value)}
+        className={SELECT_CLASS}
+      >
+        <option value="name">{t("fields.name")}</option>
+        <option value="email">{t("fields.email")}</option>
+        <option value="company">{t("fields.company")}</option>
+        {customFields.length > 0 && (
+          <optgroup label={t("fields.customFields")}>
+            {customFields.map((f) => (
+              <option key={f.id} value={`custom:${f.id}`}>
+                {f.field_name}
+              </option>
+            ))}
+          </optgroup>
+        )}
+        {/* O campo gravado que a lista não traz: "apagado" só com a lista
+            CARREGADA — durante a carga, ou com ela falhando, é só "o campo
+            escolhido" (afirmar "apagado" ali seria mentira; o id, nunca). */}
+        {customValue && !knownCustom && (
+          <option value={customValue}>
+            {carga.customFields === "pronto"
+              ? t("fields.unknown")
+              : t("config.campoDaFichaEscolhido")}
+          </option>
+        )}
+      </select>
+      {carga.customFields === "falhou" && (
+        <p className="mt-1 text-xs text-destructive">{t("listas.falhou")}</p>
       )}
-      {customValue && !knownCustom && (
-        <option value={customValue}>{t("fields.unknown", { id: customValue })}</option>
+    </>
+  )
+}
+
+/**
+ * As colunas do contato que a condição "Campo do contato" sabe ler. ⚠️ É a
+ * COLUNA da tabela, e não o seletor do "Atualizar campo" (`ContactFieldSelect`,
+ * que oferece `custom:<id>`): o motor faz `contacts.select(operand)` e compara
+ * o valor como texto, então um `custom:<id>` ali seria uma coluna que não
+ * existe — condição sempre falsa, sem erro. Campo personalizado tem critério
+ * próprio ("Campo personalizado da ficha").
+ */
+const COLUNAS_DO_CONTATO = ["name", "phone", "email", "company"] as const
+type ColunaDoContato = (typeof COLUNAS_DO_CONTATO)[number]
+
+function ehColunaDoContato(v: string): v is ColunaDoContato {
+  return (COLUNAS_DO_CONTATO as readonly string[]).includes(v)
+}
+
+/** O rótulo de cada coluna. Chaves LITERAIS: chave montada escapa do portão de i18n. */
+function rotuloDaColuna(coluna: ColunaDoContato, t: ReturnType<typeof useTranslations>): string {
+  switch (coluna) {
+    case "name":
+      return t("fields.name")
+    case "phone":
+      return t("fields.phone")
+    case "email":
+      return t("fields.email")
+    case "company":
+      return t("fields.company")
+  }
+}
+
+/** Parece um id (UUID)? Sobra de outro critério — nunca vai para a tela. */
+const PARECE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function ColunaDoContatoSelect({
+  value,
+  onChange,
+  t,
+}: {
+  value: string
+  onChange: (v: string) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  // Coluna gravada fora da lista (a caixa de texto antiga aceitava qualquer
+  // coisa): vira uma opção PRESERVADA e rotulada, nunca some — sumir faria o
+  // primeiro clique trocá-la sem o operador ver o que havia.
+  const antiga = !!value && !ehColunaDoContato(value)
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} className={SELECT_CLASS}>
+      <option value="">{t("fields.escolhaColuna")}</option>
+      {COLUNAS_DO_CONTATO.map((c) => (
+        <option key={c} value={c}>
+          {rotuloDaColuna(c, t)}
+        </option>
+      ))}
+      {antiga && (
+        <option value={value}>
+          {PARECE_UUID.test(value) ? t("fields.unknown") : t("fields.colunaAntiga", { coluna: value })}
+        </option>
       )}
     </select>
   )
 }
 
-/** Agent dropdown by name, storing the member's user_id. Falls back to
- *  a raw id input when the member list is unavailable. */
+/** Agent dropdown by name, storing the member's user_id. Sem membro para
+ *  escolher, `ListaSemEscolha`. */
 function AgentSelect({
   value,
   onChange,
@@ -721,16 +1030,9 @@ function AgentSelect({
   onChange: (v: string) => void
   t: ReturnType<typeof useTranslations>
 }) {
-  const { members } = useResources()
+  const { members, carga } = useResources()
   if (members.length === 0) {
-    return (
-      <Input
-        placeholder={t("agents.placeholder")}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="bg-muted text-foreground"
-      />
-    )
+    return <ListaSemEscolha estado={carga.members} vazio={t("listas.semAtendentes")} t={t} />
   }
   const selected = members.find((m) => m.user_id === value)
   return (
@@ -743,13 +1045,15 @@ function AgentSelect({
       {/* 1067: suspenso não é oferecido; o já escolhido fica, marcado. */}
       {opcoesDeResponsavel(members, (m) => m.user_id === value).map((m) => (
         <option key={m.user_id} value={m.user_id}>
+          {/* Sem nome nem e-mail (o e-mail só aparece para admin), um rótulo —
+              nunca o id do login. Suspenso (1067) vem marcado. */}
           {m.suspenso_em
-            ? t("agents.suspended", { name: m.full_name || m.email || m.user_id })
-            : m.full_name || m.email || m.user_id}
+            ? t("agents.suspended", { name: m.full_name || m.email || t("agents.semNome") })
+            : m.full_name || m.email || t("agents.semNome")}
         </option>
       ))}
       {value && !selected && (
-        <option value={value}>{t("agents.unknown", { id: value })}</option>
+        <option value={value}>{t("agents.unknown")}</option>
       )}
     </select>
   )
@@ -768,36 +1072,23 @@ function DealPipelineFields({
   onChange: (patch: { pipeline_id: string; stage_id: string }) => void
   t: ReturnType<typeof useTranslations>
 }) {
-  const { pipelines, stages } = useResources()
+  const { pipelines, stages, carga } = useResources()
 
   if (pipelines.length === 0) {
     return (
-      <>
-        <FieldBlock label={t("pipelines.pipelineIdLabel")}>
-          <Input
-            value={pipelineId}
-            onChange={(e) =>
-              onChange({ pipeline_id: e.target.value, stage_id: stageId })
-            }
-            className="bg-muted text-foreground"
-          />
-        </FieldBlock>
-        <FieldBlock label={t("pipelines.stageIdLabel")}>
-          <Input
-            value={stageId}
-            onChange={(e) =>
-              onChange({ pipeline_id: pipelineId, stage_id: e.target.value })
-            }
-            className="bg-muted text-foreground"
-          />
-        </FieldBlock>
-      </>
+      <FieldBlock label={t("pipelines.pipelineLabel")}>
+        <ListaSemEscolha estado={carga.pipelines} vazio={t("listas.semFunis")} t={t} />
+      </FieldBlock>
     )
   }
 
   const selectedPipeline = pipelines.find((p) => p.id === pipelineId)
   const stageOptions = stages.filter((s) => s.pipeline_id === pipelineId)
   const selectedStage = stageOptions.find((s) => s.id === stageId)
+  // Funis e etapas chegam em DUAS consultas com um estado só: a de etapas pode
+  // falhar com a de funis de pé. "Apagado" só com as duas carregadas — antes
+  // disso o item só não chegou, e o card diria "Etapa apagada" sobre etapa viva.
+  const listasProntas = carga.pipelines === "pronto"
 
   return (
     <>
@@ -823,7 +1114,9 @@ function DealPipelineFields({
             </option>
           ))}
           {pipelineId && !selectedPipeline && (
-            <option value={pipelineId}>{t("pipelines.unknownPipeline", { id: pipelineId })}</option>
+            <option value={pipelineId}>
+              {listasProntas ? t("pipelines.unknownPipeline") : t("listas.carregando")}
+            </option>
           )}
         </select>
       </FieldBlock>
@@ -845,9 +1138,14 @@ function DealPipelineFields({
             </option>
           ))}
           {stageId && pipelineId && !selectedStage && (
-            <option value={stageId}>{t("pipelines.unknownStage", { id: stageId })}</option>
+            <option value={stageId}>
+              {listasProntas ? t("pipelines.unknownStage") : t("listas.carregando")}
+            </option>
           )}
         </select>
+        {carga.pipelines === "falhou" && (
+          <p className="mt-1 text-xs text-destructive">{t("listas.falhou")}</p>
+        )}
       </FieldBlock>
     </>
   )
@@ -1192,6 +1490,141 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
   )
   const [saving, setSaving] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  // O cartão do gatilho abre por aqui, e não por estado próprio: o painel de
+  // pendências precisa abri-lo ao apontar uma pendência do gatilho.
+  const [gatilhoAberto, setGatilhoAberto] = useState(false)
+  const recursosCarregados = useRecursosDaAutomacao(initial.id)
+  const { accountId } = useAuth()
+
+  // --- Pendências para LIGAR (29/09/2026) ---
+  //
+  // Decisão do operador: o vermelho aparece AO TENTAR LIGAR (salvar com a
+  // automação ativa), nunca enquanto ele monta um rascunho desligado; depois
+  // disso, se apaga sozinho conforme ele corrige. Por isso a conferência roda
+  // AO VIVO só com `tentouLigar` — da tentativa recusada até a próxima que der
+  // certo — e com a automação ativa. Desligar o "Ativa" apaga tudo.
+  const [tentouLigar, setTentouLigar] = useState(false)
+  // O que o SERVIDOR recusou na última tentativa, já localizado nos passos
+  // (pelo `cid`, contra a árvore que foi no pedido). Só aparece quando a
+  // conferência da tela não acha nada: é a divergência (uma validação que só
+  // a rota faz), e fica até a próxima tentativa.
+  const [recusaDoServidor, setRecusaDoServidor] = useState<PendenciasLocalizadas | null>(null)
+  // Os avisos em âmbar (não impedem ligar) aparecem a partir da primeira
+  // tentativa de salvar LIGADA — inclusive a que deu certo: é o caso do
+  // "Contrato fechado", que liga com um passo acionando uma automação
+  // desligada, e o aviso para o n8n logo depois dele nunca sairia.
+  const [mostrarAvisos, setMostrarAvisos] = useState(false)
+  // Para onde rolar depois do próximo render (o passo recém-aberto, o
+  // gatilho, o painel). Num efeito, e não no clique: abrir um passo FECHA o
+  // que estava aberto, e se ele estava acima, o alvo sobe depois do render.
+  const [rolarPara, setRolarPara] = useState<{ seletor: string } | null>(null)
+  useEffect(() => {
+    if (!rolarPara) return
+    document.querySelector(rolarPara.seletor)?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }, [rolarPara])
+
+  const { channels, customFields, automations, flows, carga } = recursosCarregados
+  // `null` = a lista não carregou (ou falhou): aquela conferência é pulada, e
+  // quem responde é o servidor — nunca "a conta não tem canal" sobre lista
+  // vazia durante a carga.
+  const canaisParaConferir = useMemo(
+    () =>
+      carga.channels === "pronto"
+        ? channels.map((c) => ({ id: c.id, label: c.label, kind: c.kind }))
+        : null,
+    [carga.channels, channels],
+  )
+  const camposDaConta = useMemo(
+    () => (carga.customFields === "pronto" ? camposParaConferir(customFields, accountId) : null),
+    [carga.customFields, customFields, accountId],
+  )
+  // As automações e robôs que os passos acionam, para os avisos. A própria
+  // automação entra com o "Ativa" da TELA, não o do banco: ligá-la agora não
+  // pode gerar "a automação acionada está desligada" sobre ela mesma (o
+  // seletor não a oferece; só um passo antigo a aponta, e o motor recusa o
+  // laço de qualquer jeito).
+  // ⚠️ Lista no teto do PostgREST pode ter vindo CORTADA (as consultas não
+  // paginam): aí nada é afirmado — "apagada" sobre item que só ficou fora do
+  // corte seria mentira (a regra de `camposParaConferir`).
+  const referenciasDosPassos = useMemo(
+    () => ({
+      automacoes:
+        carga.automations === "pronto" && automations.length < TETO_DE_LINHAS
+          ? automations.map((a) => (a.id === initial.id ? { ...a, is_active: state.is_active } : a))
+          : null,
+      robos: carga.flows === "pronto" && flows.length < TETO_DE_LINHAS ? flows : null,
+    }),
+    [carga.automations, automations, initial.id, state.is_active, carga.flows, flows],
+  )
+
+  const vermelhoLigado = state.is_active && tentouLigar
+  const pendenciasAoVivo = useMemo(
+    () =>
+      vermelhoLigado
+        ? localizarPendencias(
+            state.steps,
+            conferirParaLigar({
+              triggerType: state.trigger_type,
+              triggerConfig: state.trigger_config,
+              channelIds: state.channel_ids,
+              steps: toApiSteps(state.steps),
+              canais: canaisParaConferir,
+              campos: camposDaConta,
+            }),
+          )
+        : null,
+    [
+      vermelhoLigado,
+      state.steps,
+      state.trigger_type,
+      state.trigger_config,
+      state.channel_ids,
+      canaisParaConferir,
+      camposDaConta,
+    ],
+  )
+  const pendencias =
+    pendenciasAoVivo && totalDePendencias(pendenciasAoVivo) === 0 && recusaDoServidor
+      ? recusaDoServidor
+      : pendenciasAoVivo
+  const avisos = useMemo(
+    () =>
+      state.is_active && mostrarAvisos
+        ? localizarPendencias(state.steps, avisosDaAutomacao(state.steps, referenciasDosPassos))
+        : null,
+    [state.is_active, mostrarAvisos, state.steps, referenciasDosPassos],
+  )
+  const marcas = useMemo<MarcasDosCartoes>(
+    () => ({
+      pendencias: pendencias?.porPasso ?? SEM_MARCAS.pendencias,
+      avisos: avisos?.porPasso ?? SEM_MARCAS.avisos,
+    }),
+    [pendencias, avisos],
+  )
+
+  function irParaPasso(passoCid: string) {
+    setExpandedId(passoCid)
+    setRolarPara({ seletor: `[data-passo-cid="${CSS.escape(passoCid)}"]` })
+  }
+
+  function irParaGatilho() {
+    setGatilhoAberto(true)
+    setRolarPara({ seletor: "[data-cartao-do-gatilho]" })
+  }
+
+  /**
+   * A recusa de ligar: o toast em português e o PRIMEIRO passo com pendência
+   * (na ordem de leitura) aberto e à vista; sem passo, o gatilho; sem gatilho,
+   * o painel.
+   */
+  function apontarPendencias(loc: PendenciasLocalizadas, passos: BuilderStep[], total: number) {
+    toast.error(t("pendencias.toast", { count: total }))
+    const primeiro = cidsEmOrdem(passos).find((c) => loc.porPasso.has(c))
+    if (primeiro) irParaPasso(primeiro)
+    else if (loc.doGatilho.length > 0) irParaGatilho()
+    else setRolarPara({ seletor: "[data-painel-de-pendencias]" })
+  }
+
   const { areas, falhou: areasFalharam } = useAreasDeAutomacao()
   // Quem escolheu a aba à mão não é atropelado pela sugestão do funil.
   const areaEscolhidaRef = useRef(false)
@@ -1266,6 +1699,31 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
   }
 
   async function save() {
+    // Ligar (29/09/2026): a tela confere ANTES as mesmas validações da rota.
+    // Com pendência, nem chama o servidor — ele recusaria igual, e o operador
+    // ficaria com um toast no lugar do passo marcado.
+    if (state.is_active) {
+      setMostrarAvisos(true)
+      const issues = conferirParaLigar({
+        triggerType: state.trigger_type,
+        triggerConfig: state.trigger_config,
+        channelIds: state.channel_ids,
+        steps: toApiSteps(state.steps),
+        canais: canaisParaConferir,
+        campos: camposDaConta,
+      })
+      if (issues.length > 0) {
+        setTentouLigar(true)
+        // A última tentativa não chegou ao servidor: a recusa dele é velha.
+        setRecusaDoServidor(null)
+        apontarPendencias(localizarPendencias(state.steps, issues), state.steps, issues.length)
+        return
+      }
+    }
+    // A árvore que VAI no pedido: o `path` das pendências do servidor é
+    // posicional, e é contra ela que se localiza — o operador pode mexer na
+    // tela enquanto o pedido está no ar.
+    const passosEnviados = state.steps
     setSaving(true)
     try {
       const payload = {
@@ -1300,21 +1758,29 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
 
       const body = await res.json().catch(() => ({}))
       if (!res.ok) {
-        // If the server blocked activation with validation issues,
-        // surface the first concrete problem so the user can fix it
-        // without opening DevTools for the full array.
-        const firstIssue: { path?: string; message?: string } | undefined =
-          body?.issues?.[0]
-        if (firstIssue?.message) {
-          toast.error(firstIssue.message, {
-            description: firstIssue.path ? `at ${firstIssue.path}` : undefined,
-          })
+        // O servidor recusou ligar com pendências que a tela não viu (uma
+        // validação que só a rota faz, ou uma lista que a tela não tinha
+        // carregado): o mesmo tratamento, com as pendências DELE.
+        const issues = issuesDaResposta(body)
+        if (issues.length > 0) {
+          const loc = localizarPendencias(passosEnviados, issues)
+          setTentouLigar(true)
+          setRecusaDoServidor(loc)
+          apontarPendencias(loc, passosEnviados, issues.length)
         } else {
           toast.error(body?.error ?? t("toasts.saveFailed"))
         }
         return
       }
-      toast.success(isEditing ? t("toasts.saved") : t("toasts.created"))
+      // Deu certo: nada mais a marcar em vermelho — a próxima marca só volta
+      // numa nova tentativa de ligar. Os avisos em âmbar ficam (ver acima).
+      setTentouLigar(false)
+      setRecusaDoServidor(null)
+      const qtdDeAvisos = payload.is_active
+        ? avisosDaAutomacao(passosEnviados, referenciasDosPassos).length
+        : 0
+      if (qtdDeAvisos > 0) toast.warning(t("pendencias.avisosToast", { count: qtdDeAvisos }))
+      else toast.success(isEditing ? t("toasts.saved") : t("toasts.created"))
       if (!isEditing && body?.automation?.id) {
         // ⚠️ A origem viaja junto: criar pela coluna do funil, salvar o
         // rascunho e SÓ ENTÃO voltar é o caminho mais comum, e sem ela o
@@ -1374,7 +1840,17 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
           <span className="hidden sm:inline">{t("active")}</span>
           <Switch
             checked={state.is_active}
-            onCheckedChange={(v) => patchTop("is_active", !!v)}
+            onCheckedChange={(v) => {
+              patchTop("is_active", !!v)
+              // Desligada, a automação volta a ser rascunho, que pode ficar
+              // incompleto: some o vermelho e o âmbar, e eles só voltam na
+              // próxima tentativa de salvar LIGADA.
+              if (!v) {
+                setTentouLigar(false)
+                setRecusaDoServidor(null)
+                setMostrarAvisos(false)
+              }
+            }}
             aria-label={t("activeAria")}
           />
         </div>
@@ -1392,55 +1868,73 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
       <div className="relative flex-1 overflow-y-auto">
         <div className="absolute inset-0 bg-[radial-gradient(circle,var(--border)_1px,transparent_1px)] [background-size:20px_20px] pointer-events-none" />
         <div className="relative mx-auto flex max-w-2xl flex-col items-center gap-0 px-4 py-10">
-          <ResourcesProvider automacaoAtualId={initial.id} reguaDoAsaas={ehGatilhoDaRegua(state.trigger_type)}>
-            <AvisosDeCanal steps={state.steps} channelIds={state.channel_ids} />
-            <TriggerCard
-              type={state.trigger_type}
-              config={state.trigger_config}
-              channelIds={state.channel_ids}
-              stageIds={state.stage_ids}
-              onTypeChange={(tVal) =>
-                setState((s) => ({
-                  ...s,
-                  trigger_type: tVal,
-                  // ⚠️ O lembrete por data SEMEIA os defaults NA CONFIG, não
-                  // só na tela — ver `semearLembrete`. Os inputs mostravam
-                  // `?? 24` / `?? "antes"` sem gravar nada: digitar só os
-                  // minutos salvava um lembrete de 30min-antes com a tela
-                  // dizendo 24h30, e o formulário intocado era recusado na
-                  // ativação por "direção inválida" — com "antes"
-                  // selecionado na tela. O que se vê é o que se salva.
-                  trigger_config:
-                    tVal === "date_field_offset"
-                      ? semearLembrete(s.trigger_config)
-                      : ehGatilhoDaRegua(tVal)
-                        ? semearRegua(tVal, s.trigger_config)
-                        : s.trigger_config,
-                  // A régua do Asaas (998) não tem recorte por etapa: esconder o
-                  // seletor não limpa o valor gravado (a armadilha da grade do
-                  // funil), e `stageInScope` barraria quem não tem card.
-                  stage_ids: ehGatilhoDaRegua(tVal) ? [] : s.stage_ids,
-                }))
-              }
-              onConfigChange={(c) => patchTop("trigger_config", c)}
-              onChannelIdsChange={(ids) => patchTop("channel_ids", ids)}
-              onStageIdsChange={(ids) => patchTop("stage_ids", ids)}
-              assinatura={state.assinatura_personalizada}
-              onAssinaturaChange={(v) => patchTop("assinatura_personalizada", v)}
-              t={t}
-            />
-            <StepList
-              steps={state.steps}
-              basePath={[]}
-              scope={{ kind: "root" }}
-              expandedId={expandedId}
-              setExpandedId={setExpandedId}
-              updateStep={updateStep}
-              addStepAt={addStepAt}
-              deleteStepAt={deleteStepAt}
-              moveStepAt={moveStepAt}
-            />
-          </ResourcesProvider>
+          <ResourcesContext.Provider
+            value={{ ...recursosCarregados, reguaDoAsaas: ehGatilhoDaRegua(state.trigger_type) }}
+          >
+            <MarcasContext.Provider value={marcas}>
+              <PainelDePendencias
+                steps={state.steps}
+                pendencias={pendencias}
+                avisos={avisos}
+                onIrParaPasso={irParaPasso}
+                onIrParaGatilho={irParaGatilho}
+                t={t}
+              />
+              {/* Com o vermelho ligado, os avisos de canal já estão no painel
+                  acima (a conferência de ligar roda a mesma função) — mostrá-los
+                  aqui também seria a mesma frase duas vezes. */}
+              {!vermelhoLigado && <AvisosDeCanal steps={state.steps} channelIds={state.channel_ids} />}
+              <TriggerCard
+                aberto={gatilhoAberto}
+                onAbertoChange={setGatilhoAberto}
+                pendencias={pendencias?.doGatilho ?? SEM_ISSUES}
+                type={state.trigger_type}
+                config={state.trigger_config}
+                channelIds={state.channel_ids}
+                stageIds={state.stage_ids}
+                onTypeChange={(tVal) =>
+                  setState((s) => ({
+                    ...s,
+                    trigger_type: tVal,
+                    // ⚠️ O lembrete por data SEMEIA os defaults NA CONFIG, não
+                    // só na tela — ver `semearLembrete`. Os inputs mostravam
+                    // `?? 24` / `?? "antes"` sem gravar nada: digitar só os
+                    // minutos salvava um lembrete de 30min-antes com a tela
+                    // dizendo 24h30, e o formulário intocado era recusado na
+                    // ativação por "direção inválida" — com "antes"
+                    // selecionado na tela. O que se vê é o que se salva.
+                    trigger_config:
+                      tVal === "date_field_offset"
+                        ? semearLembrete(s.trigger_config)
+                        : ehGatilhoDaRegua(tVal)
+                          ? semearRegua(tVal, s.trigger_config)
+                          : s.trigger_config,
+                    // A régua do Asaas (998) não tem recorte por etapa: esconder o
+                    // seletor não limpa o valor gravado (a armadilha da grade do
+                    // funil), e `stageInScope` barraria quem não tem card.
+                    stage_ids: ehGatilhoDaRegua(tVal) ? [] : s.stage_ids,
+                  }))
+                }
+                onConfigChange={(c) => patchTop("trigger_config", c)}
+                onChannelIdsChange={(ids) => patchTop("channel_ids", ids)}
+                onStageIdsChange={(ids) => patchTop("stage_ids", ids)}
+                assinatura={state.assinatura_personalizada}
+                onAssinaturaChange={(v) => patchTop("assinatura_personalizada", v)}
+                t={t}
+              />
+              <StepList
+                steps={state.steps}
+                basePath={[]}
+                scope={{ kind: "root" }}
+                expandedId={expandedId}
+                setExpandedId={setExpandedId}
+                updateStep={updateStep}
+                addStepAt={addStepAt}
+                deleteStepAt={deleteStepAt}
+                moveStepAt={moveStepAt}
+              />
+            </MarcasContext.Provider>
+          </ResourcesContext.Provider>
         </div>
       </div>
     </div>
@@ -1452,6 +1946,9 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
 // ------------------------------------------------------------
 
 function TriggerCard({
+  aberto: open,
+  onAbertoChange,
+  pendencias,
   type,
   config,
   channelIds,
@@ -1464,6 +1961,11 @@ function TriggerCard({
   onAssinaturaChange,
   t,
 }: {
+  /** Aberto/fechado mora no construtor: o painel de pendências o abre. */
+  aberto: boolean
+  onAbertoChange: (aberto: boolean) => void
+  /** As pendências do GATILHO (`trigger.*`) — vazio quando não há o que marcar. */
+  pendencias: ValidationIssue[]
   type: AutomationTriggerType
   config: Record<string, unknown>
   channelIds: string[]
@@ -1476,11 +1978,10 @@ function TriggerCard({
   onAssinaturaChange: (v: string | null) => void
   t: ReturnType<typeof useTranslations>
 }) {
-  const [open, setOpen] = useState(false)
   const tCanais = useTranslations("Channels")
   // Do contexto, NÃO um `useChannels()` próprio. `useChannels` não tem cache
   // nem dedup: cada chamada é um GET /api/cb/channels por montagem, e este
-  // card monta junto com o provider que já busca a mesma lista. Mesmo motivo
+  // card monta junto com o construtor, que já busca a mesma lista. Mesmo motivo
   // que levou os fluxos a buscarem uma vez só no editor.
   const { channels, customFields } = useResources()
   // Só campos de data: oferecer um campo de texto aqui faria a automação
@@ -1504,11 +2005,16 @@ function TriggerCard({
   return (
     // Card width: full on mobile, fixed 320px on sm+. The canvas wrapper
     // (max-w-2xl + px-4) keeps this tidy on tablet/desktop.
-    <div className="z-10 w-full max-w-[320px] sm:w-80">
-      <div className="rounded-lg border border-border border-l-4 border-l-blue-500 bg-card shadow-lg">
+    <div data-cartao-do-gatilho className="z-10 w-full max-w-[320px] scroll-mt-6 sm:w-80">
+      <div
+        className={cn(
+          "rounded-lg border border-border border-l-4 bg-card shadow-lg",
+          pendencias.length > 0 ? "border-destructive ring-2 ring-destructive/30" : "border-l-blue-500",
+        )}
+      >
         <button
           type="button"
-          onClick={() => setOpen((v) => !v)}
+          onClick={() => onAbertoChange(!open)}
           className="flex w-full items-center gap-3 px-4 py-3 text-left"
         >
           <div className="flex h-8 w-8 items-center justify-center rounded-md bg-blue-500/10 text-blue-400">
@@ -1524,6 +2030,7 @@ function TriggerCard({
             className={cn("h-4 w-4 text-muted-foreground transition-transform", open && "rotate-180")}
           />
         </button>
+        <MarcasNoCartao pendencias={pendencias} avisos={SEM_ISSUES} t={t} />
         {open && (
           <div className="space-y-3 border-t border-border px-4 py-3">
             <div>
@@ -1597,7 +2104,7 @@ function TriggerCard({
             {type === "tag_added" && (
               <div>
                 <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                  Tag
+                  {t("tags.label")}
                 </label>
                 <TagSelect
                   value={(config.tag_id as string) ?? ""}
@@ -2049,6 +2556,11 @@ function StepRenderer({
   basePath: StepPath
 } & Omit<StepListProps, "steps" | "basePath" | "scope">) {
   const t = useTranslations("Automations.builder")
+  // As listas da conta: o resumo do passo fechado diz o alvo pelo NOME.
+  const recursos = useResources()
+  const marcas = useContext(MarcasContext)
+  const pendenciasDoPasso = marcas.pendencias.get(step.cid) ?? SEM_ISSUES
+  const avisosDoPasso = marcas.avisos.get(step.cid) ?? SEM_ISSUES
   const path = childPath(basePath, scope, index)
   const meta = STEP_META[step.step_type]
   const Icon = meta.icon
@@ -2079,11 +2591,16 @@ function StepRenderer({
 
   return (
     <>
-      <div className={cn("z-10 flex min-w-0 flex-col", width)}>
+      <div data-passo-cid={step.cid} className={cn("z-10 flex min-w-0 scroll-mt-6 flex-col", width)}>
         <div
           className={cn(
             "rounded-lg border border-border border-l-4 bg-card shadow-lg",
-            meta.border,
+            // Pendência (impede ligar) troca a cor da faixa pelo vermelho em
+            // volta do cartão inteiro; aviso (não impede) só ganha o anel
+            // âmbar — a faixa âmbar à esquerda já é da condição.
+            pendenciasDoPasso.length > 0
+              ? "border-destructive ring-2 ring-destructive/30"
+              : cn(meta.border, avisosDoPasso.length > 0 && "ring-2 ring-amber-500/50"),
           )}
         >
           <button
@@ -2107,7 +2624,7 @@ function StepRenderer({
                       fim: janelaDaEspera?.fim ?? "?",
                     }) +
                     (step.step_config.somente_seg_a_sex === true ? ` · ${t("config.segASexResumo")}` : "")
-                  : previewFor(step, t)}
+                  : previewFor(step, t, recursos)}
                 {/* Visível com o passo FECHADO: numa sequência de dez esperas,
                     é assim que se confere de relance quais param na resposta. */}
                 {step.step_type === "wait" && step.step_config.parar_se_responder === true
@@ -2119,6 +2636,9 @@ function StepRenderer({
               className={cn("h-4 w-4 text-muted-foreground transition-transform", expanded && "rotate-180")}
             />
           </button>
+          {/* Mesmo com o passo FECHADO: numa automação de dezenas de passos,
+              é a frase que diz o que ajustar sem precisar abrir um por um. */}
+          <MarcasNoCartao pendencias={pendenciasDoPasso} avisos={avisosDoPasso} t={t} />
           {expanded && (
             <div className="border-t border-border px-4 py-3">
               <StepEditor
@@ -2293,7 +2813,8 @@ function SeletorDeEtapas({
   onChange: (ids: string[]) => void
   vazioLabel: string
 }) {
-  const { pipelines, stages } = useResources()
+  const { pipelines, stages, carga } = useResources()
+  const t = useTranslations("Automations.builder")
   const tEtapas = useTranslations("Automations.builder.stages")
 
   const porFunil = useMemo(() => {
@@ -2311,9 +2832,16 @@ function SeletorDeEtapas({
   // Etapa apagada entre editar e salvar. O trigger da 933 limpa o array em
   // `automations.stage_ids`, mas não o `trigger_config` — mesma dívida do
   // canal órfão, e a tela é quem denuncia.
-  const orfaos = value.filter((id) => !stages.some((s) => s.id === id))
+  // "Apagada" só com a lista CARREGADA: durante a carga (ou numa falha só da
+  // consulta de etapas) a etapa gravada só não chegou.
+  const orfaos =
+    carga.pipelines === "pronto" ? value.filter((id) => !stages.some((s) => s.id === id)) : []
 
-  if (porFunil.length === 0) return null
+  // Sem etapa para escolher, o estado da carga — o seletor sumir durante a
+  // carga fazia o gatilho parecer "sem etapa", e numa falha nada dizia por quê.
+  if (porFunil.length === 0) {
+    return <ListaSemEscolha estado={carga.pipelines} vazio={t("listas.semFunis")} t={t} />
+  }
 
   return (
     <div className="rounded-md border border-border bg-muted/40 p-2">
@@ -2349,6 +2877,125 @@ function SeletorDeEtapas({
         <p className="mt-1 text-[11px] text-destructive">
           {tEtapas("stageGone", { count: orfaos.length })}
         </p>
+      )}
+    </div>
+  )
+}
+
+// ------------------------------------------------------------
+// Pendências e avisos NA TELA (29/09/2026) — ver `MarcasDosCartoes`.
+//
+// O painel no topo lista uma linha por pendência ("Passo 10 · ramo NÃO da
+// condição do passo 1 — Escolha o responsável da tarefa"), e cada linha leva
+// ao passo: abre e rola até ele. É o que resolve a automação grande, onde o
+// cartão vermelho pode estar dezenas de passos abaixo da dobra.
+// ------------------------------------------------------------
+
+/** As frases dentro do cartão, visíveis com ele FECHADO. */
+function MarcasNoCartao({
+  pendencias,
+  avisos,
+  t,
+}: {
+  pendencias: ValidationIssue[]
+  avisos: ValidationIssue[]
+  t: ReturnType<typeof useTranslations>
+}) {
+  if (pendencias.length === 0 && avisos.length === 0) return null
+  return (
+    <ul
+      className={cn(
+        "space-y-1 border-t px-4 py-2",
+        pendencias.length > 0 ? "border-destructive/30" : "border-amber-500/30",
+      )}
+    >
+      {pendencias.map((issue, i) => (
+        <li key={`p${i}`} className="flex items-start gap-1.5 text-[11px] leading-snug text-destructive">
+          <CircleAlert className="mt-px h-3 w-3 flex-shrink-0" aria-hidden />
+          <span>{fraseDaPendencia(issue, t)}</span>
+        </li>
+      ))}
+      {avisos.map((issue, i) => (
+        <li
+          key={`a${i}`}
+          className="flex items-start gap-1.5 text-[11px] leading-snug text-amber-700 dark:text-amber-300"
+        >
+          <TriangleAlert className="mt-px h-3 w-3 flex-shrink-0" aria-hidden />
+          <span>{fraseDaPendencia(issue, t)}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function PainelDePendencias({
+  steps,
+  pendencias,
+  avisos,
+  onIrParaPasso,
+  onIrParaGatilho,
+  t,
+}: {
+  steps: BuilderStep[]
+  /** `null` = nada a marcar em vermelho (ninguém tentou ligar, ou está desligada). */
+  pendencias: PendenciasLocalizadas | null
+  /** `null` = nada a marcar em âmbar. */
+  avisos: PendenciasLocalizadas | null
+  onIrParaPasso: (passoCid: string) => void
+  onIrParaGatilho: () => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const linhasPendentes = pendencias ? linhasDoPainel(steps, pendencias, t) : []
+  const linhasDeAviso = avisos ? linhasDoPainel(steps, avisos, t) : []
+  if (linhasPendentes.length === 0 && linhasDeAviso.length === 0) return null
+
+  const linha = (l: LinhaDoPainel, i: number, cor: string) => {
+    const texto = (
+      <>
+        <span className="font-semibold">{l.local}</span> — {l.frase}
+      </>
+    )
+    const ir = l.ir
+    return (
+      <li key={i} className={cn("text-xs leading-snug", cor)}>
+        {ir ? (
+          <button
+            type="button"
+            onClick={() => (ir.tipo === "passo" ? onIrParaPasso(ir.cid) : onIrParaGatilho())}
+            className="w-full rounded px-1 py-0.5 text-left underline-offset-2 hover:bg-background/60 hover:underline"
+          >
+            {texto}
+          </button>
+        ) : (
+          <span className="block px-1 py-0.5">{texto}</span>
+        )}
+      </li>
+    )
+  }
+
+  return (
+    <div data-painel-de-pendencias className="z-10 mb-4 w-full max-w-[600px] scroll-mt-6 space-y-2">
+      {linhasPendentes.length > 0 && (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2">
+          <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-destructive">
+            <CircleAlert className="h-3.5 w-3.5 flex-shrink-0" aria-hidden />
+            {t("pendencias.titulo", { count: linhasPendentes.length })}
+          </p>
+          <ul className="space-y-0.5">
+            {linhasPendentes.map((l, i) => linha(l, i, "text-destructive"))}
+          </ul>
+        </div>
+      )}
+      {linhasDeAviso.length > 0 && (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+          <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
+            <TriangleAlert className="h-3.5 w-3.5 flex-shrink-0" aria-hidden />
+            {t("pendencias.atencao")}
+          </p>
+          <ul className="space-y-0.5">
+            {linhasDeAviso.map((l, i) => linha(l, i, "text-amber-700 dark:text-amber-300"))}
+          </ul>
+        </div>
       )}
     </div>
   )
@@ -2648,20 +3295,25 @@ function SeletorDeAutomacao({
   acionar: boolean
   t: ReturnType<typeof useTranslations>
 }) {
-  const { automations, automacaoAtualId } = useResources()
+  const { automations, automacaoAtualId, carga } = useResources()
   // Só `run_automation` esconde a si mesma — ver a nota em `AutomationResources`.
-  const lista = acionar ? automations.filter((a) => a.id !== automacaoAtualId) : automations
+  // E esconde a régua do Asaas: o motor recusa acioná-la (ela só roda pela
+  // varredura, `runAutomationById`), e oferecê-la seria oferecer um passo que
+  // sempre falha. A JÁ ESCOLHIDA fica, para o seletor não a chamar de apagada
+  // — o aviso âmbar do cartão diz o que há com ela.
+  const lista = acionar
+    ? automations.filter(
+        (a) => a.id !== automacaoAtualId && (!ehGatilhoDaRegua(a.trigger_type) || a.id === value),
+      )
+    : automations
   const escolhida = lista.find((a) => a.id === value)
-  const orfa = !!value && !escolhida
+  // "Não existe mais" só com a lista CARREGADA: durante a carga ela está
+  // vazia, e o aviso acusaria de apagada a automação que só não chegou.
+  const orfa = carga.automations === "pronto" && !!value && !escolhida
   return (
     <FieldBlock label={t(acionar ? "orquestracao.runAutomationLabel" : "orquestracao.stopAutomationLabel")}>
       {lista.length === 0 ? (
-        <Input
-          placeholder={t("orquestracao.rawIdPlaceholder")}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="bg-muted text-foreground"
-        />
+        <ListaSemEscolha estado={carga.automations} vazio={t("listas.semAutomacoes")} t={t} />
       ) : (
         <select
           value={value}
@@ -2703,18 +3355,14 @@ function SeletorDeRobo({
   onChange: (v: string) => void
   t: ReturnType<typeof useTranslations>
 }) {
-  const { flows } = useResources()
+  const { flows, carga } = useResources()
   const escolhido = flows.find((f) => f.id === value)
-  const orfao = !!value && !escolhido
+  // Idem: "não existe mais" só com a lista carregada.
+  const orfao = carga.flows === "pronto" && !!value && !escolhido
   return (
     <FieldBlock label={t("orquestracao.runFlowLabel")}>
       {flows.length === 0 ? (
-        <Input
-          placeholder={t("orquestracao.rawIdPlaceholder")}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="bg-muted text-foreground"
-        />
+        <ListaSemEscolha estado={carga.flows} vazio={t("listas.semRobos")} t={t} />
       ) : (
         <select
           value={value}
@@ -2960,7 +3608,7 @@ function StepEditor({
   onChange: (s: BuilderStep) => void
 }) {
   const t = useTranslations("Automations.builder")
-  const { channels, pipelines, stages, templates } = useResources()
+  const { channels, pipelines, stages, templates, carga } = useResources()
   // Mesmo agrupamento do seletor do gatilho: "Contato Acordo" existe em mais
   // de um quadro, e o nome sozinho não distingue.
   const stagesPorFunil = useMemo(
@@ -3167,23 +3815,41 @@ function StepEditor({
       return (
         <FieldBlock label={t("stages.moveToLabel")}>
           {/* Uma etapa só, não várias: mover é para UM lugar. Por isso um
-              seletor plano em vez do multi-select do gatilho. */}
-          <select
-            value={(cfg.stage_id as string) ?? ""}
-            onChange={(e) => set({ stage_id: e.target.value })}
-            className={SELECT_CLASS}
-          >
-            <option value="">{t("stages.pickStage")}</option>
-            {stagesPorFunil.map((g) => (
-              <optgroup key={g.funil.id} label={g.funil.name}>
-                {g.etapas.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
+              seletor plano em vez do multi-select do gatilho. Etapa gravada
+              que a lista não traz fica PRESERVADA como opção — "apagada" só
+              com a lista carregada (a regra da condição por etapa). */}
+          {stagesPorFunil.length === 0 ? (
+            <ListaSemEscolha estado={carga.pipelines} vazio={t("listas.semFunis")} t={t} />
+          ) : (
+            <select
+              value={(cfg.stage_id as string) ?? ""}
+              onChange={(e) => set({ stage_id: e.target.value })}
+              className={SELECT_CLASS}
+            >
+              <option value="">{t("stages.pickStage")}</option>
+              {stagesPorFunil.map((g) => (
+                <optgroup key={g.funil.id} label={g.funil.name}>
+                  {g.etapas.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+              {typeof cfg.stage_id === "string" &&
+                cfg.stage_id !== "" &&
+                !stagesPorFunil.some((g) => g.etapas.some((s) => s.id === cfg.stage_id)) && (
+                  <option value={cfg.stage_id}>
+                    {carga.pipelines === "pronto"
+                      ? t("pipelines.unknownStage")
+                      : t("listas.carregando")}
                   </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
+                )}
+            </select>
+          )}
+          {carga.pipelines === "falhou" && stagesPorFunil.length > 0 && (
+            <p className="mt-1 text-xs text-destructive">{t("listas.falhou")}</p>
+          )}
           <p className="mt-1 text-[11px] text-muted-foreground">
             {t("stages.moveHelp")}
           </p>
@@ -3351,34 +4017,149 @@ function StepEditor({
         </div>
       )
     }
-    case "condition":
+    case "condition": {
+      // O critério em vigor. Sem `subject` gravado a tela sempre mostrou a
+      // presença de etiqueta (é com ela que o passo novo nasce).
+      const criterio = (cfg.subject as string | undefined) ?? "tag_presence"
+      const operando = typeof cfg.operand === "string" ? cfg.operand : ""
+      // A etapa gravada que a lista não traz: "apagada" só com a lista
+      // CARREGADA — antes disso ela só não chegou.
+      const etapaOrfa =
+        !!operando &&
+        carga.pipelines === "pronto" &&
+        !stagesPorFunil.some((g) => g.etapas.some((s) => s.id === operando))
+      // O seletor do OPERANDO de cada critério. ⚠️ Nenhum deles é uma caixa
+      // de texto: o operador escolhe na lista, nunca digita o id (a caixa
+      // "id da etiqueta" que existia aqui gravava o que se colasse, e uma
+      // letra a mais deixava a condição sempre falsa, em silêncio).
+      // `message_content` não tem operando: o motor só lê `value`.
+      const seletorDoOperando =
+        criterio === "tag_presence" ? (
+          <FieldBlock label={t("tags.label")}>
+            <TagSelect
+              value={operando}
+              // `subject` junto: sem ele gravado, a tela mostra etiqueta e o
+              // motor não saberia o que perguntar.
+              onChange={(v) => set({ subject: criterio, operand: v })}
+              t={t}
+            />
+          </FieldBlock>
+        ) : criterio === "contact_field" ? (
+          <FieldBlock label={t("config.fieldLabel")}>
+            <ColunaDoContatoSelect
+              value={operando}
+              onChange={(v) => set({ subject: criterio, operand: v })}
+              t={t}
+            />
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {t("fields.dicaPersonalizado")}
+            </p>
+          </FieldBlock>
+        ) : criterio === "deal_stage" ? (
+          <FieldBlock label={t("config.operandLabel")}>
+            {stagesPorFunil.length === 0 ? (
+              <ListaSemEscolha estado={carga.pipelines} vazio={t("listas.semFunis")} t={t} />
+            ) : (
+              <select
+                value={operando}
+                onChange={(e) => set({ operand: e.target.value })}
+                className={SELECT_CLASS}
+              >
+                <option value="">{t("stages.pickStage")}</option>
+                {stagesPorFunil.map((g) => (
+                  <optgroup key={g.funil.id} label={g.funil.name}>
+                    {g.etapas.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+                {etapaOrfa && <option value={operando}>{t("pipelines.unknownStage")}</option>}
+              </select>
+            )}
+          </FieldBlock>
+        ) : criterio === "deal_status" ? (
+          <FieldBlock label={t("config.operandLabel")}>
+            {/* A opção vazia só aparece sobre passo gravado SEM status: antes
+                o seletor mostrava "Ganho" em cima de um operando vazio, e o
+                motor respondia "não" a toda execução. */}
+            <select
+              value={operando}
+              onChange={(e) => set({ operand: e.target.value })}
+              className={SELECT_CLASS}
+            >
+              {!operando && <option value="">{t("config.escolhaStatus")}</option>}
+              <option value="won">{t("stages.status_won")}</option>
+              <option value="lost">{t("stages.status_lost")}</option>
+              <option value="open">{t("config.negocioAberto")}</option>
+            </select>
+          </FieldBlock>
+        ) : criterio === "channel" ? (
+          <FieldBlock label={t("config.operandLabel")}>
+            {channels.length > 0 ? (
+              // Grava em `operand` — é o que o motor lê (cfg.operand ?? cfg.value)
+              // e o que `validate.ts` exige não-vazio. Sem `allowAll`: aqui a
+              // condição é "veio DESTE número", não um escopo.
+              <>
+                <ChannelSelect
+                  channels={channels}
+                  value={operando || null}
+                  onChange={(id) => set({ operand: id ?? "" })}
+                />
+                {/* CANAL APAGADO. O trigger `cb_drop_channel_from_automations`
+                    (903) limpa `automations.channel_ids`, mas NÃO toca em
+                    `step_config` — nenhum trigger toca. O UUID fica pendurado,
+                    a condição passa a ser sempre falsa e a automação segue
+                    ATIVA, sem nada na tela nem no log dizendo por quê.
+                    Dívida que a própria opção "canal" criou: antes dela não
+                    havia o que orfanar. O seletor sozinho não denunciaria —
+                    ele só mostraria o placeholder, indistinguível de "ainda
+                    não escolhi". */}
+                {!!operando && !channels.some((c) => c.id === operando) && (
+                  <p className="mt-1 text-xs text-destructive">{t("config.channelGone")}</p>
+                )}
+              </>
+            ) : (
+              // Sem conexão na lista: carregando, a conta sem nenhuma, ou a
+              // consulta falhou. A conexão gravada fica como está.
+              <ListaSemEscolha estado={carga.channels} vazio={t("listas.semConexoes")} t={t} />
+            )}
+          </FieldBlock>
+        ) : null
       return (
         <>
           <FieldBlock label={t("config.subjectLabel")}>
             <select
-              value={(cfg.subject as string) ?? "tag_presence"}
+              value={criterio}
               onChange={(e) => {
-                // ⚠️ Entrar na janela de 24h ou sair dela ZERA o operando: lá
-                // ele é uma conexão, e um UUID que sobrasse viraria "etiqueta"
-                // ou "etapa" inexistente (condição sempre falsa, em silêncio);
-                // o contrário faria a janela perguntar por um número que o
-                // operador nunca escolheu. A hora do dia também: lá o operando
-                // é "HH:mm-HH:mm", e o "só de segunda a sexta" sai junto. O
-                // campo personalizado (2.10) também: lá o operando é o id de
-                // um CAMPO, e o valor e o operador são dele.
+                const novo = e.target.value
+                if (novo === criterio) return
+                // ⚠️ Trocar de critério ZERA o operando, qualquer que seja o
+                // par: em cada um ele é uma coisa (o id da etiqueta, a coluna
+                // do contato, a conexão, a etapa, o status, a janela
+                // "HH:mm-HH:mm", o id do campo personalizado). O que sobrasse
+                // viraria etiqueta/etapa inexistente — condição sempre falsa,
+                // em silêncio — e, com os seletores, um item "apagado" que
+                // ninguém escolheu. O status nasce "Ganho", que é o que o
+                // seletor dele mostra primeiro: o que se vê é o que se salva.
+                //
+                // Entrar ou sair da janela de 24h, da hora do dia ou do campo
+                // personalizado (2.10) limpa também o resto: o "só de segunda
+                // a sexta" é da hora, e o valor e o operador são do campo.
                 const proprio = (s: unknown) =>
                   s === "meta_window_open" || s === "time_of_day" || s === "custom_field"
-                set(
-                  proprio(e.target.value) || proprio(cfg.subject)
+                set({
+                  subject: novo,
+                  operand: novo === "deal_status" ? "won" : "",
+                  ...(proprio(novo) || proprio(cfg.subject)
                     ? {
-                        subject: e.target.value,
-                        operand: "",
                         somente_seg_a_sex: undefined,
                         value: "",
-                        operator: e.target.value === "custom_field" ? "equals" : undefined,
+                        operator: novo === "custom_field" ? "equals" : undefined,
                       }
-                    : { subject: e.target.value },
-                )
+                    : {}),
+                })
               }}
               className="w-full rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground"
             >
@@ -3406,15 +4187,15 @@ function StepEditor({
               <option value="meta_window_open">{t("config.subjects.meta_window_open")}</option>
             </select>
           </FieldBlock>
-          {cfg.subject === "custom_field" ? (
+          {criterio === "custom_field" ? (
             <CondicaoPorCampoFields cfg={cfg} set={set} />
-          ) : cfg.subject === "meta_window_open" ? (
+          ) : criterio === "meta_window_open" ? (
             <JanelaDaMetaFields
-              value={(cfg.operand as string) || null}
+              value={operando || null}
               onChange={(id) => set({ operand: id ?? "" })}
               t={t}
             />
-          ) : cfg.subject === "time_of_day" ? (
+          ) : criterio === "time_of_day" ? (
             <HoraDoDiaFields
               para="condicao"
               operand={cfg.operand}
@@ -3424,78 +4205,24 @@ function StepEditor({
               t={t}
             />
           ) : (
-          <FieldBlock label={t("config.operandLabel")}>
-            {cfg.subject === "deal_stage" ? (
-              <select
-                value={(cfg.operand as string) ?? ""}
-                onChange={(e) => set({ operand: e.target.value })}
-                className={SELECT_CLASS}
-              >
-                <option value="">{t("stages.pickStage")}</option>
-                {stagesPorFunil.map((g) => (
-                  <optgroup key={g.funil.id} label={g.funil.name}>
-                    {g.etapas.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-            ) : cfg.subject === "deal_status" ? (
-              <select
-                value={(cfg.operand as string) ?? "won"}
-                onChange={(e) => set({ operand: e.target.value })}
-                className={SELECT_CLASS}
-              >
-                <option value="won">{t("stages.status_won")}</option>
-                <option value="lost">{t("stages.status_lost")}</option>
-                <option value="open">{t("stages.status_open")}</option>
-              </select>
-            ) : cfg.subject === "channel" && channels.length > 0 ? (
-              // Grava em `operand` — é o que o motor lê (cfg.operand ?? cfg.value)
-              // e o que `validate.ts` exige não-vazio. Sem `allowAll`: aqui a
-              // condição é "veio DESTE número", não um escopo.
-              <>
-                <ChannelSelect
-                  channels={channels}
-                  value={(cfg.operand as string) || null}
-                  onChange={(id) => set({ operand: id ?? "" })}
-                />
-                {/* CANAL APAGADO. O trigger `cb_drop_channel_from_automations`
-                    (903) limpa `automations.channel_ids`, mas NÃO toca em
-                    `step_config` — nenhum trigger toca. O UUID fica pendurado,
-                    a condição passa a ser sempre falsa e a automação segue
-                    ATIVA, sem nada na tela nem no log dizendo por quê.
-                    Dívida que a própria opção "canal" criou: antes dela não
-                    havia o que orfanar. O seletor sozinho não denunciaria —
-                    ele só mostraria o placeholder, indistinguível de "ainda
-                    não escolhi". */}
-                {!!cfg.operand &&
-                  !channels.some((c) => c.id === cfg.operand) && (
-                    <p className="mt-1 text-xs text-destructive">
-                      {t("config.channelGone")}
-                    </p>
-                  )}
-              </>
-            ) : (
-            <Input
-              placeholder={
-                cfg.subject === "contact_field"
-                  ? t("config.placeholderContact")
-                  : cfg.subject === "tag_presence"
-                  ? t("config.placeholderTag")
-                  : ""
-              }
-              value={(cfg.operand as string) ?? ""}
-              onChange={(e) => set({ operand: e.target.value })}
-              className="bg-muted text-foreground"
-            />
-            )}
-          </FieldBlock>
+            seletorDoOperando
           )}
-          {(cfg.subject === "contact_field" || cfg.subject === "message_content") && (
+          {criterio === "contact_field" && (
             <FieldBlock label={t("config.valueLabel")}>
+              <Input
+                value={(cfg.value as string) ?? ""}
+                onChange={(e) => set({ value: e.target.value })}
+                className="bg-muted text-foreground"
+              />
+            </FieldBlock>
+          )}
+          {/* O texto procurado. O motor lê SÓ `value` aqui (`includes`, sem
+              diferenciar maiúsculas) — o campo "Operando" que existia antes
+              não entrava em conta nenhuma. O `operand` já gravado em passos
+              antigos fica onde está: é inofensivo, e a tela não reescreve
+              config por abrir. */}
+          {criterio === "message_content" && (
+            <FieldBlock label={t("config.mensagemContemLabel")}>
               <Input
                 value={(cfg.value as string) ?? ""}
                 onChange={(e) => set({ value: e.target.value })}
@@ -3505,6 +4232,7 @@ function StepEditor({
           )}
         </>
       )
+    }
     case "send_to_number":
       // Aviso para a EQUIPE (977). O canal aqui NÃO herda o do disparo (é o
       // número do cliente); ausente = a conversa que já existe com o número
@@ -3726,9 +4454,98 @@ const CRITERIOS_DA_CONDICAO = new Set([
   "meta_window_open",
 ])
 
+/** Corta o texto do resumo: o cartão fechado tem uma linha só. */
+function recortar(texto: string, max = 40): string {
+  const limpo = texto.replace(/\s+/g, " ").trim()
+  return limpo.length > max ? `${limpo.slice(0, max - 1)}…` : limpo
+}
+
+/**
+ * O resumo da CONDIÇÃO no cartão fechado: o critério e, quando dá para dizer
+ * pelo NOME, o alvo ("Presença de etiqueta · Cliente Fechado"). Numa
+ * automação grande, só o critério obrigava a abrir condição por condição
+ * para achar a que se procurava.
+ *
+ * ⚠️ Nunca o UUID. Alvo que a lista não resolve cai em duas coisas
+ * diferentes: com a lista CARREGADA, o item foi apagado ("Etiqueta apagada");
+ * ainda carregando (ou falhou), fica só o critério — afirmar "apagada"
+ * durante a carga seria mentira.
+ */
+function resumoDaCondicao(
+  cfg: Record<string, unknown>,
+  t: ReturnType<typeof useTranslations>,
+  r: AutomationResources,
+): string {
+  const criterio = cfg.subject
+  if (typeof criterio !== "string" || !CRITERIOS_DA_CONDICAO.has(criterio)) return "?"
+  const nome = t(`config.subjects.${criterio}`)
+  const operando = typeof cfg.operand === "string" ? cfg.operand : ""
+  const valor = typeof cfg.value === "string" ? cfg.value : ""
+  let alvo: string | null = null
+  switch (criterio) {
+    case "tag_presence": {
+      if (!operando) break
+      const etiqueta = r.tags.find((x) => x.id === operando)
+      alvo = etiqueta ? etiqueta.name : r.carga.tags === "pronto" ? t("tags.unknown") : null
+      break
+    }
+    case "deal_stage": {
+      if (!operando) break
+      const etapa = r.stages.find((s) => s.id === operando)
+      alvo = etapa
+        ? etapa.name
+        : r.carga.pipelines === "pronto"
+          ? t("pipelines.unknownStage")
+          : null
+      break
+    }
+    case "deal_status":
+      alvo =
+        operando === "won"
+          ? t("stages.status_won")
+          : operando === "lost"
+            ? t("stages.status_lost")
+            : operando === "open"
+              ? t("config.negocioAberto")
+              : null
+      break
+    case "channel":
+      if (!operando) break
+      alvo =
+        channelLabel(r.channels, operando) ??
+        (r.carga.channels === "pronto" ? t("listas.conexaoApagada") : null)
+      break
+    case "contact_field": {
+      // Sobra de id de outro critério não vira nome de coluna na tela.
+      if (!operando || PARECE_UUID.test(operando)) break
+      const coluna = ehColunaDoContato(operando) ? rotuloDaColuna(operando, t) : operando
+      alvo = valor ? `${coluna} = ${recortar(valor)}` : coluna
+      break
+    }
+    case "message_content":
+      alvo = valor ? t("previa.contem", { texto: recortar(valor) }) : null
+      break
+    case "custom_field": {
+      if (!operando) break
+      const campo = r.customFields.find((f) => f.id === operando)
+      alvo = campo
+        ? campo.field_name
+        : r.carga.customFields === "pronto"
+          ? t("fields.unknown")
+          : null
+      break
+    }
+  }
+  return alvo ? `${nome} · ${alvo}` : nome
+}
+
 // O resumo do passo FECHADO. Vinha do original em inglês ("when time_of_day",
 // "no text yet") e aparecia assim com o app em português.
-function previewFor(step: BuilderStep, t: ReturnType<typeof useTranslations>): string {
+function previewFor(
+  step: BuilderStep,
+  t: ReturnType<typeof useTranslations>,
+  recursos: AutomationResources,
+): string {
   switch (step.step_type) {
     case "send_message":
       return (step.step_config.text as string) || t("previa.semTexto")
@@ -3739,12 +4556,8 @@ function previewFor(step: BuilderStep, t: ReturnType<typeof useTranslations>): s
       return (step.step_config.template_name as string) || t("previa.semModelo")
     case "wait":
       return `${step.step_config.amount ?? "?"} ${step.step_config.unit ?? ""}`
-    case "condition": {
-      const criterio = step.step_config.subject
-      return typeof criterio === "string" && CRITERIOS_DA_CONDICAO.has(criterio)
-        ? t(`config.subjects.${criterio}`)
-        : "?"
-    }
+    case "condition":
+      return resumoDaCondicao(step.step_config, t, recursos)
     case "send_webhook":
       return (step.step_config.url as string) || t("previa.semUrl")
     case "send_to_number":

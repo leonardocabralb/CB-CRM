@@ -33,6 +33,21 @@ export interface ValidationIssue {
   /** Dot-path for the UI to highlight; stable enough to build a table. */
   path: string
   message: string
+  /**
+   * NOSSO: o motivo em código estável, para a TELA escrever a frase no idioma
+   * do app (`Automations.builder.pendencias.codigos.<codigo>`, via
+   * `chaveDaPendencia` de `pendencias.ts`). O `message` continua em inglês e
+   * é CONTRATO — a API o devolve no 400 —, e por isso nenhum dos dois muda:
+   * só se acrescenta. Ausente nas mensagens que já nascem em português (escopo
+   * de canal, janela da Meta, condição por campo): a tela mostra o `message`.
+   *
+   * ⚠️ Sempre um texto LITERAL no próprio `push`, nunca montado nem num
+   * ternário: o teste de `pendencias.test.ts` colhe os literais deste arquivo
+   * e cobra a frase nos dois dicionários (e a lista `CODIGOS_DE_PENDENCIA`) —
+   * chave montada escapa do portão de i18n do CI. Por isso há `case` e `push`
+   * separados onde a regra é a mesma e só o conserto muda.
+   */
+  codigo?: string
 }
 
 interface StepLike {
@@ -47,6 +62,7 @@ export function validateStepsForActivation(steps: StepLike[]): ValidationIssue[]
     issues.push({
       path: 'steps',
       message: 'active automations need at least one step',
+      codigo: 'sem_passos',
     })
     return issues
   }
@@ -73,7 +89,7 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       // motor estouraria em execução — o tipo de falha que esta validação
       // existe para antecipar.
       if (!nonEmpty(c.stage_id)) {
-        issues.push({ path: `${path}.stage_id`, message: 'stage is required' })
+        issues.push({ path: `${path}.stage_id`, message: 'stage is required', codigo: 'mover_card_sem_etapa' })
       }
       break
     case 'set_deal_status':
@@ -81,6 +97,7 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
         issues.push({
           path: `${path}.status`,
           message: 'status must be "won", "lost" or "open"',
+          codigo: 'status_do_negocio_invalido',
         })
       }
       break
@@ -93,15 +110,23 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
     // pode ser desativada depois, e uma validação que passou ontem afirmaria
     // hoje uma coisa falsa. O motor confere na hora, e a tela avisa enquanto
     // se edita.
+    //
+    // Os dois `case` são SEPARADOS (a regra é a mesma) só para cada um levar o
+    // seu código literal — "qual automação acionar" e "qual parar" são frases
+    // diferentes para quem vai consertar.
     case 'run_automation':
+      if (!nonEmpty(c.automation_id)) {
+        issues.push({ path: `${path}.automation_id`, message: 'automation is required', codigo: 'acionar_sem_automacao' })
+      }
+      break
     case 'stop_automation':
       if (!nonEmpty(c.automation_id)) {
-        issues.push({ path: `${path}.automation_id`, message: 'automation is required' })
+        issues.push({ path: `${path}.automation_id`, message: 'automation is required', codigo: 'parar_sem_automacao' })
       }
       break
     case 'run_flow':
       if (!nonEmpty(c.flow_id)) {
-        issues.push({ path: `${path}.flow_id`, message: 'flow is required' })
+        issues.push({ path: `${path}.flow_id`, message: 'flow is required', codigo: 'iniciar_robo_sem_robo' })
       }
       break
     case 'stop_flow':
@@ -114,16 +139,16 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       // ausente ou de outro tipo viraria "desligar" em silêncio (o motor lê
       // `!cfg.enabled`), que é o oposto do padrão do passo recém-criado.
       if (typeof c.enabled !== 'boolean') {
-        issues.push({ path: `${path}.enabled`, message: 'enabled must be true or false' })
+        issues.push({ path: `${path}.enabled`, message: 'enabled must be true or false', codigo: 'ia_sem_escolha' })
       }
       break
     case 'send_media': {
       if (!nonEmpty(c.url)) {
-        issues.push({ path: `${path}.url`, message: 'a file is required' })
+        issues.push({ path: `${path}.url`, message: 'a file is required', codigo: 'midia_sem_arquivo' })
       }
       const tipos = ['image', 'video', 'document', 'audio']
       if (typeof c.kind !== 'string' || !tipos.includes(c.kind)) {
-        issues.push({ path: `${path}.kind`, message: 'kind must be image, video, document or audio' })
+        issues.push({ path: `${path}.kind`, message: 'kind must be image, video, document or audio', codigo: 'midia_tipo_invalido' })
       }
       // ⚠️ ÁUDIO COM LEGENDA É RECUSADO, e não é preciosismo. A nota de voz sai
       // por `sendWhatsAppAudio`, que não tem campo de legenda: o texto seria
@@ -135,33 +160,37 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
         issues.push({
           path: `${path}.caption`,
           message: 'audio has no caption — WhatsApp voice notes cannot carry text',
+          codigo: 'audio_com_legenda',
         })
       }
       // Teto do WhatsApp. A assinatura automática ainda entra por cima no
       // envio, então o núcleo revalida — isto só evita o erro óbvio.
       if (typeof c.caption === 'string' && c.caption.length > 1024) {
-        issues.push({ path: `${path}.caption`, message: 'caption is longer than 1024 characters' })
+        issues.push({ path: `${path}.caption`, message: 'caption is longer than 1024 characters', codigo: 'legenda_longa' })
       }
       break
     }
     case 'send_message':
       if (!nonEmpty(c.text)) {
-        issues.push({ path: `${path}.text`, message: 'message text is required' })
+        issues.push({ path: `${path}.text`, message: 'message text is required', codigo: 'mensagem_sem_texto' })
       }
       break
     case 'send_buttons':
     case 'send_list': {
       // The whole step_config IS the interactive payload; validate it
       // against Meta's limits (same check the engine runs before send).
+      // O detalhe (qual limite, qual botão) a própria caixa da interativa já
+      // mostra, no idioma do app (`mensagemDaInterativa`); o código aqui só
+      // aponta o passo.
       const result = validateInteractivePayload(c)
       if (!result.ok) {
-        issues.push({ path: `${path}.interactive`, message: result.error })
+        issues.push({ path: `${path}.interactive`, message: result.error, codigo: 'interativa_invalida' })
       }
       break
     }
     case 'send_template': {
       if (!nonEmpty(c.template_name)) {
-        issues.push({ path: `${path}.template_name`, message: 'template name is required' })
+        issues.push({ path: `${path}.template_name`, message: 'template name is required', codigo: 'modelo_nao_escolhido' })
       }
       // Os valores do modelo (Fase 2.3 do plano do previdenciário). O CORPO é
       // POSICIONAL e o motor ignora chave que não é posição — aceitá-la aqui
@@ -172,7 +201,7 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
         const mapa = c[campo]
         if (mapa === undefined || mapa === null) continue
         if (typeof mapa !== 'object' || Array.isArray(mapa)) {
-          issues.push({ path: `${path}.${campo}`, message: `${campo} must be an object` })
+          issues.push({ path: `${path}.${campo}`, message: `${campo} must be an object`, codigo: 'modelo_valores_invalidos' })
           continue
         }
         for (const [k, v] of Object.entries(mapa as Record<string, unknown>)) {
@@ -180,6 +209,7 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
             issues.push({
               path: `${path}.${campo}`,
               message: `template variable keys must be positions (1, 2, …), got "${k}"`,
+              codigo: 'modelo_valor_fora_de_posicao',
             })
           } else if (Number(k) > MAX_POSICOES_DO_MODELO) {
             // O motor ignora acima do teto (um laço por posição); aceitar aqui
@@ -187,16 +217,17 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
             issues.push({
               path: `${path}.${campo}`,
               message: `template variable positions go up to ${MAX_POSICOES_DO_MODELO}, got "${k}"`,
+              codigo: 'modelo_posicao_acima_do_teto',
             })
           } else if (typeof v !== 'string') {
-            issues.push({ path: `${path}.${campo}.${k}`, message: 'template variable values must be text' })
+            issues.push({ path: `${path}.${campo}.${k}`, message: 'template variable values must be text', codigo: 'modelo_valor_sem_texto' })
           }
         }
       }
       const bp = c.button_params
       if (bp !== undefined && bp !== null) {
         if (typeof bp !== 'object' || Array.isArray(bp)) {
-          issues.push({ path: `${path}.button_params`, message: 'button_params must be an object' })
+          issues.push({ path: `${path}.button_params`, message: 'button_params must be an object', codigo: 'modelo_botoes_invalidos' })
         } else if (
           Object.entries(bp as Record<string, unknown>).some(
             ([k, v]) => !/^\d$/.test(k) || typeof v !== 'string'
@@ -206,6 +237,7 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
           issues.push({
             path: `${path}.button_params`,
             message: 'button_params keys must be button positions (0 to 9) and values text',
+            codigo: 'modelo_botoes_invalidos',
           })
         }
       }
@@ -217,15 +249,15 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
         c.header_media_url !== null &&
         typeof c.header_media_url !== 'string'
       ) {
-        issues.push({ path: `${path}.header_media_url`, message: 'header file must be text (an http or https address)' })
+        issues.push({ path: `${path}.header_media_url`, message: 'header file must be text (an http or https address)', codigo: 'modelo_cabecalho_invalido' })
       } else if (nonEmpty(c.header_media_url)) {
         try {
           const u = new URL(String(c.header_media_url))
           if (u.protocol !== 'http:' && u.protocol !== 'https:') {
-            issues.push({ path: `${path}.header_media_url`, message: 'header file must be an http or https address' })
+            issues.push({ path: `${path}.header_media_url`, message: 'header file must be an http or https address', codigo: 'modelo_cabecalho_invalido' })
           }
         } catch {
-          issues.push({ path: `${path}.header_media_url`, message: 'header file is not a valid address' })
+          issues.push({ path: `${path}.header_media_url`, message: 'header file is not a valid address', codigo: 'modelo_cabecalho_invalido' })
         }
       }
       break
@@ -233,7 +265,7 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
     case 'add_tag':
     case 'remove_tag':
       if (!nonEmpty(c.tag_id)) {
-        issues.push({ path: `${path}.tag_id`, message: 'tag is required' })
+        issues.push({ path: `${path}.tag_id`, message: 'tag is required', codigo: 'etiqueta_nao_escolhida' })
       }
       break
     case 'assign_conversation':
@@ -241,32 +273,33 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
         issues.push({
           path: `${path}.agent_id`,
           message: 'agent is required when mode is "specific"',
+          codigo: 'atribuir_sem_atendente',
         })
       }
       break
     case 'update_contact_field':
       if (!nonEmpty(c.field)) {
-        issues.push({ path: `${path}.field`, message: 'field name is required' })
+        issues.push({ path: `${path}.field`, message: 'field name is required', codigo: 'campo_nao_escolhido' })
       }
       if (c.value === undefined || c.value === null || c.value === '') {
-        issues.push({ path: `${path}.value`, message: 'field value is required' })
+        issues.push({ path: `${path}.value`, message: 'field value is required', codigo: 'campo_sem_valor' })
       }
       break
     case 'create_deal':
       if (!nonEmpty(c.pipeline_id)) {
-        issues.push({ path: `${path}.pipeline_id`, message: 'pipeline is required' })
+        issues.push({ path: `${path}.pipeline_id`, message: 'pipeline is required', codigo: 'criar_card_sem_funil' })
       }
       if (!nonEmpty(c.stage_id)) {
-        issues.push({ path: `${path}.stage_id`, message: 'stage is required' })
+        issues.push({ path: `${path}.stage_id`, message: 'stage is required', codigo: 'criar_card_sem_etapa' })
       }
       if (!nonEmpty(c.title)) {
-        issues.push({ path: `${path}.title`, message: 'title is required' })
+        issues.push({ path: `${path}.title`, message: 'title is required', codigo: 'criar_card_sem_titulo' })
       }
       break
     case 'wait':
       // Ausente = "por um tempo", o de sempre (toda espera já gravada).
       if (c.modo !== undefined && c.modo !== 'tempo' && c.modo !== 'horario') {
-        issues.push({ path: `${path}.modo`, message: 'wait modo must be "tempo" or "horario"' })
+        issues.push({ path: `${path}.modo`, message: 'wait modo must be "tempo" or "horario"', codigo: 'espera_modo_invalido' })
       }
       if (c.modo === 'horario') {
         // "Aguardar até estar dentro do horário": a janela é a mesma da
@@ -278,16 +311,18 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
           issues.push({
             path: `${path}.janela`,
             message: 'wait window must be "HH:mm-HH:mm" with different start and end',
+            codigo: 'espera_janela_invalida',
           })
         }
       } else {
         if (typeof c.amount !== 'number' || !Number.isFinite(c.amount) || c.amount <= 0) {
-          issues.push({ path: `${path}.amount`, message: 'wait amount must be greater than 0' })
+          issues.push({ path: `${path}.amount`, message: 'wait amount must be greater than 0', codigo: 'espera_sem_tempo' })
         }
         if (!['seconds', 'minutes', 'hours', 'days'].includes(String(c.unit))) {
           issues.push({
             path: `${path}.unit`,
             message: 'wait unit must be seconds, minutes, hours, or days',
+            codigo: 'espera_unidade_invalida',
           })
         }
       }
@@ -297,6 +332,7 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
         issues.push({
           path: `${path}.somente_seg_a_sex`,
           message: 'wait somente_seg_a_sex must be true or false',
+          codigo: 'espera_dias_uteis_invalido',
         })
       }
       // ⚠️ Só booleano. O motor liga a opção apenas com `true` estrito, então
@@ -307,12 +343,13 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
         issues.push({
           path: `${path}.parar_se_responder`,
           message: 'wait parar_se_responder must be true or false',
+          codigo: 'espera_parar_se_responder_invalido',
         })
       }
       break
     case 'condition':
       if (!nonEmpty(c.subject)) {
-        issues.push({ path: `${path}.subject`, message: 'condition subject is required' })
+        issues.push({ path: `${path}.subject`, message: 'condition subject is required', codigo: 'condicao_sem_criterio' })
       }
       // A janela de 24h (Fase 2.8) é a ÚNICA sem operando obrigatório: vazio
       // = o número da próxima mensagem (o do disparo, senão o da conversa).
@@ -321,20 +358,42 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
           path: `${path}.operand`,
           message: 'A condição "Campo personalizado da ficha" precisa do campo — escolha um.',
         })
+      } else if (c.subject === 'message_content') {
+        // ⚠️ "O conteúdo da mensagem contém" é o `value`, e o operando NÃO é
+        // lido: o motor faz `texto.includes(value)` e ignora `operand`. Até
+        // 29/09/2026 esta regra exigia o operando — por isso há automações em
+        // produção com "contém" digitado à mão no operando — e deixava passar
+        // o `value` vazio, que é o perigo de verdade: `includes('')` é
+        // verdadeiro para TODA mensagem, e a condição responderia "sim" a
+        // qualquer coisa que o cliente escrevesse. Medido antes de mudar: as
+        // duas automações ligadas com este critério têm o `value` preenchido.
+        if (!nonEmpty(c.value)) {
+          issues.push({ path: `${path}.value`, message: 'condition text is required', codigo: 'condicao_sem_texto' })
+        }
       } else if (c.subject !== 'meta_window_open' && !nonEmpty(c.operand)) {
-        issues.push({ path: `${path}.operand`, message: 'condition operand is required' })
+        // Um código por critério: a frase na tela diz O QUE escolher ("Escolha
+        // a etiqueta"), não um genérico. Mesmo path e message para todos.
+        const semOperando = { path: `${path}.operand`, message: 'condition operand is required' }
+        if (c.subject === 'tag_presence') issues.push({ ...semOperando, codigo: 'condicao_sem_etiqueta' })
+        else if (c.subject === 'contact_field') issues.push({ ...semOperando, codigo: 'condicao_sem_campo_do_contato' })
+        else if (c.subject === 'deal_stage') issues.push({ ...semOperando, codigo: 'condicao_sem_etapa' })
+        else if (c.subject === 'deal_status') issues.push({ ...semOperando, codigo: 'condicao_sem_status' })
+        else if (c.subject === 'channel') issues.push({ ...semOperando, codigo: 'condicao_sem_conexao' })
+        else issues.push({ ...semOperando, codigo: 'condicao_sem_valor' })
       } else if (c.subject === 'time_of_day' && !lerJanela(c.operand)) {
         // O motor responde "não" SEMPRE para janela que não lê — a automação
         // ficaria ligada com um ramo morto, sem nada dizendo por quê.
         issues.push({
           path: `${path}.operand`,
           message: 'time of day must be "HH:mm-HH:mm" with different start and end',
+          codigo: 'condicao_horario_invalido',
         })
       }
       if (c.somente_seg_a_sex !== undefined && typeof c.somente_seg_a_sex !== 'boolean') {
         issues.push({
           path: `${path}.somente_seg_a_sex`,
           message: 'condition somente_seg_a_sex must be true or false',
+          codigo: 'condicao_dias_uteis_invalido',
         })
       }
       // Campo personalizado (2.10): aqui só a FORMA (operador conhecido e,
@@ -347,7 +406,7 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       break
     case 'send_webhook':
       if (!nonEmpty(c.url)) {
-        issues.push({ path: `${path}.url`, message: 'webhook URL is required' })
+        issues.push({ path: `${path}.url`, message: 'webhook URL is required', codigo: 'webhook_sem_endereco' })
         break
       }
       try {
@@ -356,10 +415,11 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
           issues.push({
             path: `${path}.url`,
             message: 'webhook URL must use http or https',
+            codigo: 'webhook_endereco_invalido',
           })
         }
       } catch {
-        issues.push({ path: `${path}.url`, message: 'webhook URL is not a valid URL' })
+        issues.push({ path: `${path}.url`, message: 'webhook URL is not a valid URL', codigo: 'webhook_endereco_invalido' })
       }
       break
     case 'close_conversation':
@@ -373,28 +433,38 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       // advogado saía para +98. Sem telefone o passo não tem destinatário, e o
       // motor estouraria em execução — o tipo de falha que esta validação
       // existe para pegar antes de ativar.
+      //
+      // Um `push` por motivo (e não um ternário no `message`) para cada um
+      // levar o SEU código literal.
       const telefone = telefoneDigitado(typeof c.phone === 'string' ? c.phone : '')
       if (!telefone.ok) {
-        issues.push({
-          path: `${path}.phone`,
-          message:
-            telefone.motivo === 'vazio'
-              ? 'phone is required'
-              : telefone.motivo === 'curto'
-                ? 'phone is too short (missing the area code?)'
-                : 'phone is not a valid number (Brazilian: with the area code; other countries: with + and the country code)',
-        })
+        if (telefone.motivo === 'vazio') {
+          issues.push({ path: `${path}.phone`, message: 'phone is required', codigo: 'numero_sem_telefone' })
+        } else if (telefone.motivo === 'curto') {
+          issues.push({
+            path: `${path}.phone`,
+            message: 'phone is too short (missing the area code?)',
+            codigo: 'numero_telefone_curto',
+          })
+        } else {
+          issues.push({
+            path: `${path}.phone`,
+            message:
+              'phone is not a valid number (Brazilian: with the area code; other countries: with + and the country code)',
+            codigo: 'numero_telefone_invalido',
+          })
+        }
       }
       if (!nonEmpty(c.text)) {
-        issues.push({ path: `${path}.text`, message: 'message text is required' })
+        issues.push({ path: `${path}.text`, message: 'message text is required', codigo: 'mensagem_sem_texto' })
       }
       break
     }
     case 'create_task': {
       if (!nonEmpty(c.titulo)) {
-        issues.push({ path: `${path}.titulo`, message: 'task title is required' })
+        issues.push({ path: `${path}.titulo`, message: 'task title is required', codigo: 'tarefa_sem_titulo' })
       } else if (String(c.titulo).trim().length > MAX_TITULO) {
-        issues.push({ path: `${path}.titulo`, message: `task title must be at most ${MAX_TITULO} chars` })
+        issues.push({ path: `${path}.titulo`, message: `task title must be at most ${MAX_TITULO} chars`, codigo: 'tarefa_titulo_longo' })
       }
       // ⚠️ Sem responsável a tarefa não tem para quem ir, e o motor estouraria
       // em execução — o tipo de falha que esta validação existe para pegar
@@ -410,15 +480,25 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
         issues.push({
           path: `${path}.responsavel_modo`,
           message: 'task assignee mode must be "fixo", "conversa" or "card"',
+          codigo: 'tarefa_modo_invalido',
         })
       } else if (!nonEmpty(c.responsavel_user_id)) {
-        issues.push({
-          path: `${path}.responsavel_user_id`,
-          message:
-            modo === 'fixo'
-              ? 'task assignee is required'
-              : 'a fallback assignee is required: the task goes to them when no one is assigned',
-        })
+        // Um `push` por modo, cada um com o seu código literal: "escolha o
+        // responsável" e "escolha a pessoa de reserva" são consertos que a
+        // tela precisa dizer de jeitos diferentes.
+        if (modo === 'fixo') {
+          issues.push({
+            path: `${path}.responsavel_user_id`,
+            message: 'task assignee is required',
+            codigo: 'tarefa_sem_responsavel',
+          })
+        } else {
+          issues.push({
+            path: `${path}.responsavel_user_id`,
+            message: 'a fallback assignee is required: the task goes to them when no one is assigned',
+            codigo: 'tarefa_sem_reserva',
+          })
+        }
       }
       // Mesmo teto do motor e da rota de tarefas. Sem isto a automação ativa
       // com uma descrição longa demais e falha em TODA execução — o passo
@@ -428,21 +508,22 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
         issues.push({
           path: `${path}.descricao`,
           message: `task description must be at most ${MAX_DESCRICAO} chars`,
+          codigo: 'tarefa_descricao_longa',
         })
       }
       if (c.prazo_em_dias !== undefined && c.prazo_em_dias !== null) {
         const dias = Number(c.prazo_em_dias)
         if (!Number.isFinite(dias) || dias < 0 || dias > 365) {
-          issues.push({ path: `${path}.prazo_em_dias`, message: 'due date must be 0–365 days from today' })
+          issues.push({ path: `${path}.prazo_em_dias`, message: 'due date must be 0–365 days from today', codigo: 'tarefa_prazo_invalido' })
         }
       }
       if (nonEmpty(c.hora) && normalizarHora(c.hora) === undefined) {
-        issues.push({ path: `${path}.hora`, message: 'time must be HH:MM' })
+        issues.push({ path: `${path}.hora`, message: 'time must be HH:MM', codigo: 'tarefa_hora_invalida' })
       }
       break
     }
     default:
-      issues.push({ path, message: `unknown step type: ${step.step_type}` })
+      issues.push({ path, message: `unknown step type: ${step.step_type}`, codigo: 'passo_desconhecido' })
   }
 }
 
@@ -456,9 +537,9 @@ export function validateTriggerForActivation(
   if (triggerType === 'keyword_match') {
     const k = cfg.keywords
     if (!Array.isArray(k) || k.length === 0) {
-      issues.push({ path: 'trigger.keywords', message: 'at least one keyword is required' })
+      issues.push({ path: 'trigger.keywords', message: 'at least one keyword is required', codigo: 'gatilho_sem_palavras' })
     } else if (k.some((v) => typeof v !== 'string' || v.trim() === '')) {
-      issues.push({ path: 'trigger.keywords', message: 'keywords cannot be empty strings' })
+      issues.push({ path: 'trigger.keywords', message: 'keywords cannot be empty strings', codigo: 'gatilho_palavra_vazia' })
     }
     // A missing match_type defaults to "contains" at runtime (see
     // automations/engine.ts and flows/engine.ts, which both read
@@ -475,15 +556,16 @@ export function validateTriggerForActivation(
       issues.push({
         path: 'trigger.match_type',
         message: 'match type must be "exact", "contains" or "word"',
+        codigo: 'gatilho_tipo_de_busca_invalido',
       })
     }
   } else if (triggerType === 'time_based') {
     if (!nonEmpty(cfg.schedule)) {
-      issues.push({ path: 'trigger.schedule', message: 'schedule is required' })
+      issues.push({ path: 'trigger.schedule', message: 'schedule is required', codigo: 'gatilho_sem_agenda' })
     }
   } else if (triggerType === 'tag_added') {
     if (!nonEmpty(cfg.tag_id)) {
-      issues.push({ path: 'trigger.tag_id', message: 'tag is required' })
+      issues.push({ path: 'trigger.tag_id', message: 'tag is required', codigo: 'gatilho_sem_etiqueta' })
     }
   } else if (triggerType === 'interactive_reply') {
     const ids = cfg.reply_ids
@@ -491,11 +573,13 @@ export function validateTriggerForActivation(
       issues.push({
         path: 'trigger.reply_ids',
         message: 'at least one reply id is required',
+        codigo: 'gatilho_sem_respostas',
       })
     } else if (ids.some((v) => typeof v !== 'string' || v.trim() === '')) {
       issues.push({
         path: 'trigger.reply_ids',
         message: 'reply ids cannot be empty strings',
+        codigo: 'gatilho_resposta_vazia',
       })
     }
   } else if (triggerType === 'deal_stage_changed') {
@@ -506,7 +590,7 @@ export function validateTriggerForActivation(
     // etapa nenhuma, deixando a automação ativa e muda.
     const ids = cfg.stage_ids
     if (ids != null && !Array.isArray(ids)) {
-      issues.push({ path: 'trigger.stage_ids', message: 'stage_ids must be a list' })
+      issues.push({ path: 'trigger.stage_ids', message: 'stage_ids must be a list', codigo: 'gatilho_etapas_invalidas' })
     } else if (
       Array.isArray(ids) &&
       ids.some((v) => typeof v !== 'string' || v.trim() === '')
@@ -514,6 +598,7 @@ export function validateTriggerForActivation(
       issues.push({
         path: 'trigger.stage_ids',
         message: 'stage ids cannot be empty strings',
+        codigo: 'gatilho_etapas_invalidas',
       })
     }
     // ⚠️ Só booleano: o motor prende a automação à etapa apenas com `true`
@@ -522,6 +607,7 @@ export function validateTriggerForActivation(
       issues.push({
         path: 'trigger.parar_ao_sair',
         message: 'parar_ao_sair must be true or false',
+        codigo: 'gatilho_parar_ao_sair_invalido',
       })
     }
   } else if (triggerType === 'date_field_offset') {
@@ -539,11 +625,11 @@ export function validateTriggerForActivation(
     // deixaria a automação ativa e muda.
     const uri = cfg.event_type_uri
     if (uri != null && typeof uri !== 'string') {
-      issues.push({ path: 'trigger.event_type_uri', message: 'event type must be a string' })
+      issues.push({ path: 'trigger.event_type_uri', message: 'event type must be a string', codigo: 'gatilho_evento_invalido' })
     }
     // Só booleano: `"true"` seria uma caixa marcada na tela que o motor ignora.
     if (cfg.ignorar_reagendamento != null && typeof cfg.ignorar_reagendamento !== 'boolean') {
-      issues.push({ path: 'trigger.ignorar_reagendamento', message: 'ignore reschedules must be true or false' })
+      issues.push({ path: 'trigger.ignorar_reagendamento', message: 'ignore reschedules must be true or false', codigo: 'gatilho_reagendamento_invalido' })
     }
   } else if (triggerType === 'webhook_received') {
     // Vazio = qualquer webhook de entrada da conta (convenção do projeto).
@@ -551,7 +637,7 @@ export function validateTriggerForActivation(
     // com acionamento nenhum e deixaria a automação ativa e muda.
     const id = cfg.webhook_id
     if (id != null && typeof id !== 'string') {
-      issues.push({ path: 'trigger.webhook_id', message: 'webhook must be a string' })
+      issues.push({ path: 'trigger.webhook_id', message: 'webhook must be a string', codigo: 'gatilho_webhook_invalido' })
     }
   } else if (ehGatilhoDaRegua(triggerType)) {
     // A régua do Asaas (998). O marco é OBRIGATÓRIO na cobrança: sem ele a
@@ -561,19 +647,19 @@ export function validateTriggerForActivation(
     if (triggerType === 'asaas_cobranca_vencida') {
       const dias = Number(cfg.dias_de_atraso)
       if (!Number.isInteger(dias) || dias < 1 || dias > 365) {
-        issues.push({ path: 'trigger.dias_de_atraso', message: 'days overdue must be a whole number from 1 to 365' })
+        issues.push({ path: 'trigger.dias_de_atraso', message: 'days overdue must be a whole number from 1 to 365', codigo: 'gatilho_dias_de_atraso_invalido' })
       }
     }
     if (cfg.hora_envio != null && cfg.hora_envio !== '' && !horaDeEnvioValida(cfg.hora_envio)) {
-      issues.push({ path: 'trigger.hora_envio', message: 'send time must be HH:MM between 08:00 and 17:00' })
+      issues.push({ path: 'trigger.hora_envio', message: 'send time must be HH:MM between 08:00 and 17:00', codigo: 'gatilho_hora_de_envio_invalida' })
     }
     if (cfg.somente_dias_uteis != null && typeof cfg.somente_dias_uteis !== 'boolean') {
-      issues.push({ path: 'trigger.somente_dias_uteis', message: 'business days only must be true or false' })
+      issues.push({ path: 'trigger.somente_dias_uteis', message: 'business days only must be true or false', codigo: 'gatilho_dias_uteis_invalido' })
     }
   } else if (triggerType === 'deal_status_changed') {
     const st = cfg.statuses
     if (st != null && !Array.isArray(st)) {
-      issues.push({ path: 'trigger.statuses', message: 'statuses must be a list' })
+      issues.push({ path: 'trigger.statuses', message: 'statuses must be a list', codigo: 'gatilho_status_invalidos' })
     } else if (
       Array.isArray(st) &&
       st.some((v) => v !== 'won' && v !== 'lost' && v !== 'open')
@@ -581,6 +667,7 @@ export function validateTriggerForActivation(
       issues.push({
         path: 'trigger.statuses',
         message: 'status must be "won", "lost" or "open"',
+        codigo: 'gatilho_status_invalidos',
       })
     }
   }
@@ -636,7 +723,7 @@ export function validateAsaasReguaForActivation(
       // retoma às cegas, sem reconfirmar o pagamento. A janela da régua é a
       // dela (`hora_envio` até 18:00), conferida pela varredura.
       if (s.step_type === 'wait') {
-        issues.push({ path: `${path}.step_type`, message: 'the Asaas collection sequence cannot wait — each milestone is its own automation' })
+        issues.push({ path: `${path}.step_type`, message: 'the Asaas collection sequence cannot wait — each milestone is its own automation', codigo: 'regua_com_espera' })
       }
       // ⚠️ Nem "Acionar automação" nem "Iniciar robô", em nenhum escopo: a
       // mensagem que sai pela FILHA fica no log dela, e o log da régua fecha
@@ -647,7 +734,7 @@ export function validateAsaasReguaForActivation(
       // "Aguardar" e a D19 ficavam dribladas por um passo (revisão da 4ª
       // rodada do PR #206). Parar (`stop_*`) segue permitido: não entrega nada.
       if (s.step_type === 'run_automation' || s.step_type === 'run_flow') {
-        issues.push({ path: `${path}.step_type`, message: 'the Asaas collection sequence cannot run another automation or bot — the message must be sent by this automation' })
+        issues.push({ path: `${path}.step_type`, message: 'the Asaas collection sequence cannot run another automation or bot — the message must be sent by this automation', codigo: 'regua_aciona_outra' })
       }
       // ⚠️ Nem modelo, nem botões, nem lista, em nenhum escopo: só saem pela
       // Meta, e a régua é só QR Code na v1 (o modelo aprovado é Fase 4). Fixado
@@ -659,17 +746,17 @@ export function validateAsaasReguaForActivation(
       // disparo, falhava sempre e gastava a trava do marco como `falhou`
       // (revisão da 4ª rodada do PR #206).
       if (s.step_type === 'send_template' || s.step_type === 'send_buttons' || s.step_type === 'send_list') {
-        issues.push({ path: `${path}.step_type`, message: 'the Asaas collection sequence sends through a QR Code connection — templates, buttons and lists are only available on the official API' })
+        issues.push({ path: `${path}.step_type`, message: 'the Asaas collection sequence sends through a QR Code connection — templates, buttons and lists are only available on the official API', codigo: 'regua_so_texto' })
       }
       if (s.step_type === 'send_message') temMensagem = true
       if (s.step_type === 'send_message' || s.step_type === 'send_media') {
         const canal = s.step_config?.channel_id
         if (!nonEmpty(canal)) {
-          issues.push({ path: `${path}.channel_id`, message: 'the Asaas collection message needs a connection chosen on the step' })
+          issues.push({ path: `${path}.channel_id`, message: 'the Asaas collection message needs a connection chosen on the step', codigo: 'regua_sem_conexao' })
         } else if (conexao === null) {
           conexao = canal as string
         } else if (canal !== conexao) {
-          issues.push({ path: `${path}.channel_id`, message: 'the Asaas collection sequence must send every message through the same connection' })
+          issues.push({ path: `${path}.channel_id`, message: 'the Asaas collection sequence must send every message through the same connection', codigo: 'regua_conexao_diferente' })
         }
       }
       if (s.step_type === 'condition' && s.branches) {
@@ -680,7 +767,7 @@ export function validateAsaasReguaForActivation(
   }
   visitar(steps, '')
   if (!temMensagem) {
-    issues.push({ path: 'steps', message: 'the Asaas collection sequence needs a text message step (send_message)' })
+    issues.push({ path: 'steps', message: 'the Asaas collection sequence needs a text message step (send_message)', codigo: 'regua_sem_mensagem' })
   }
   return issues
 }
@@ -699,6 +786,15 @@ export function validateAsaasReguaForActivation(
 
 /** Passos que exigem um canal Meta (API oficial). */
 const META_ONLY_STEPS = new Set(['send_template', 'send_buttons', 'send_list']);
+
+// O nome do passo como o construtor o mostra. Estas mensagens aparecem em
+// vermelho no cartão e no painel de pendências (29/09/2026), e o tipo cru
+// ("send_template") ali era jargão de banco na frente do operador.
+const ROTULO_DO_PASSO_SO_META: Record<string, string> = {
+  send_template: 'Enviar modelo',
+  send_buttons: 'Enviar botões',
+  send_list: 'Enviar lista',
+};
 
 export interface ChannelForValidation {
   id: string;
@@ -754,13 +850,13 @@ export function validateChannelScopeForActivation(
           if (!ehMeta(canalFixado)) {
             issues.push({
               path: `${path}.channel_id`,
-              message: `"${s.step_type}" só funciona em número oficial da Meta, e este passo está fixado para enviar por "${canalFixado.label}", que é um número não oficial (QR Code). Troque a conexão de saída deste passo ou use uma mensagem de texto.`,
+              message: `"${ROTULO_DO_PASSO_SO_META[s.step_type] ?? s.step_type}" só funciona em número oficial da Meta, e este passo está fixado para enviar por "${canalFixado.label}", que é um número não oficial (QR Code). Troque a conexão de saída deste passo ou use uma mensagem de texto.`,
             });
           }
         } else if (!herancaPodeSerMeta) {
           issues.push({
             path: `${path}.step_type`,
-            message: `"${s.step_type}" só funciona em número oficial da Meta, e esta automação está restrita a ${nomesDoEscopo}. Inclua um canal oficial no escopo ou troque o passo por uma mensagem de texto.`,
+            message: `"${ROTULO_DO_PASSO_SO_META[s.step_type] ?? s.step_type}" só funciona em número oficial da Meta, e esta automação está restrita a ${nomesDoEscopo}. Inclua um canal oficial no escopo ou troque o passo por uma mensagem de texto.`,
           });
         }
       }
