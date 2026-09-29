@@ -747,7 +747,61 @@
       "tituloDaSecao": "Já rodou",
       "vazio": "Nenhuma automação terminou para este cliente ainda.",
       "carregando": "Carregando execuções…",
-      "falhouCarga": "Não consegui ler as execuções."
+      "falhouCarga": "Não consegui ler as execuções.",
+      "historico": {
+        "abrir": "Ver o que rodou em {nome}",
+        "carregando": "Carregando o registro…",
+        "falhou": "Não consegui ler o registro desta execução.",
+        "gatilho": "Disparada por: {gatilho}",
+        "gatilhoManual": "Disparada à mão, pelo botão \"Executar automação\"",
+        "gatilhoAcionada": "Disparada por outra automação (passo \"Acionar automação\")",
+        "periodo": "Começou {inicio} · terminou {fim}",
+        "periodoInterrompida": "Começou {inicio} · interrompida {fim}",
+        "execucoesDoDia": "Execuções deste dia:",
+        "semPassos": "Nenhum passo chegou a rodar.",
+        "doMotor": "Conferência antes de seguir",
+        "parouAqui": "parou aqui",
+        "removido": "passo removido da automação depois",
+        "naoRodaram": "Não rodaram por causa disso:",
+        "nadaFicou": "Nenhum passo ficou para trás.",
+        "naoRodaramDesconhecido": "A automação foi editada depois desta execução: não dá para dizer com certeza o que ficou para trás.",
+        "motivo": "Motivo: {motivo}",
+        "falhouEm": "falhou em: {passo}",
+        "interrompida": {
+          "resposta": "Interrompida: o cliente respondeu durante a espera",
+          "etapa": "Interrompida: o card saiu da etapa desta automação",
+          "parar": "Interrompida: alguém clicou em Parar",
+          "passo": "Interrompida por outra automação (passo \"Parar automação\")",
+          "desativacao": "Interrompida: a automação foi desligada",
+          "desconhecido": "Interrompida"
+        },
+        "verRegistros": "Ver todas as execuções desta automação",
+        "mostrarMais": "Mostrar mais {n}"
+      },
+      "motor": {
+        "enviadaPara": "enviada para {numero}",
+        "etiquetaJaEstava": "o contato já tinha esta etiqueta",
+        "semResponsavel": "ninguém disponível para atribuir",
+        "responsavelSuspenso": "{nome} está suspenso: a conversa ficou sem responsável",
+        "campoVazio": "valor vazio: o campo não foi alterado",
+        "campoNaoGravavel": "este campo não pode ser alterado por automação",
+        "nomeRecusado": "o valor não parece um nome: o nome não foi alterado",
+        "cardJaExistia": "o cliente já tinha um card: nenhum novo foi criado",
+        "cardMovido": "card movido para {etapa}",
+        "ramoSim": "seguiu pelo Sim",
+        "ramoNao": "seguiu pelo Não",
+        "webhookOk": "o destino respondeu {status}",
+        "webhookNaoEncontrado": "o destino respondeu {status}: endereço não encontrado (o fluxo do outro lado pode estar desligado ou ter mudado de endereço)",
+        "webhookRecusou": "o destino recusou o acesso ({status})",
+        "webhookErroNoDestino": "o destino deu erro ({status}): o problema é do lado de lá",
+        "webhookStatus": "o destino respondeu {status}",
+        "webhookBloqueado": "endereço não permitido (rede interna ou inválido)",
+        "tarefaCriada": "tarefa criada: {tarefa}",
+        "conexaoCaiu": "a conexão do WhatsApp caiu durante o envio",
+        "tentativa": "recusado: nova tentativa agendada para {segundos} s depois (tentativa {n} de {de})",
+        "desistiu": "desistiu depois de {n} tentativas",
+        "naoRepetiu": "não tentou de novo: a execução já tinha sido interrompida"
+      }
     },
     "aiBanner": {
       "atendendo": "IA · {agente} responde nesta conversa",
@@ -2245,7 +2299,6 @@
         "placeholderNotifyText": "Novo agendamento: {nome} em {data}",
         "notifyChannelInherit": "A conversa do número (ou a conexão padrão)",
         "notifyChannelHelp": "Escolhendo uma conexão, o aviso sai SEMPRE por ela — e falha se ela não estiver disponível, em vez de sair por outro número.",
-        "variaveisDeTexto": "Variáveis: {lista} — a chave do campo é a do catálogo (Configurações → Campos e etiquetas).",
         "segundosAviso": "Segundos não são exatos: a espera acorda no ciclo seguinte do agendador. Serve para separar mensagens, não para cronometrar.",
         "janelaDaMetaHelp": "Sim = a Meta aceita texto livre agora (o cliente escreveu para este número oficial há menos de 24 horas). Não = só sai modelo aprovado. Conexão por QR Code responde sempre Sim: ela não tem janela. Se as mensagens do Sim saem por um número fixo, escolha o MESMO número aqui.",
         "janelaDaMetaCanalLabel": "Janela de qual número",
@@ -2522,6 +2575,248 @@
         "semModelo": "escolha um modelo",
         "contem": "contém “{texto}”",
         "semUrl": "sem endereço"
+      }
+    },
+    "variaveis": {
+      "inserir": "Inserir campo",
+      "inserirAria": "Inserir um campo no texto",
+      "buscar": "Buscar campo",
+      "nenhum": "Nenhum campo com esse nome.",
+      "carregando": "Carregando…",
+      "falhouCampos": "Não foi possível carregar os campos da ficha.",
+      "blocoGeral": "Geral",
+      "grupos": {
+        "contato": "Contato",
+        "campos": "Campos da ficha · {bloco}",
+        "negocio": "Negócio (card)",
+        "conversa": "Conversa",
+        "data": "Data e hora",
+        "mensagem": "Mensagem recebida",
+        "asaas": "Cobrança do Asaas",
+        "calendly": "Agendamento do Calendly",
+        "zapsign": "Assinatura do ZapSign",
+        "webhook": "Webhook recebido"
+      },
+      "fixas": {
+        "contact_name": {
+          "rotulo": "Nome do cliente",
+          "legenda": "O nome na ficha do contato."
+        },
+        "contact_phone": {
+          "rotulo": "Telefone",
+          "legenda": "O telefone da ficha, com DDI."
+        },
+        "contact_email": {
+          "rotulo": "E-mail",
+          "legenda": "O e-mail da ficha."
+        },
+        "contact_company": {
+          "rotulo": "Empresa",
+          "legenda": "A empresa da ficha."
+        },
+        "contact_origem": {
+          "rotulo": "Origem do anúncio",
+          "legenda": "Campanha - Conjunto - Anúncio, só as partes preenchidas."
+        },
+        "contact_link": {
+          "rotulo": "Link da ficha",
+          "legenda": "Abre a ficha do contato. Para avisos à equipe."
+        },
+        "deal_value": {
+          "rotulo": "Valor do negócio",
+          "legenda": "O valor do card em reais (R$ 3.500,00). Em campo e webhook, só o número."
+        },
+        "deal_created_at": {
+          "rotulo": "Criação do negócio",
+          "legenda": "Quando o card foi criado (30/08/2026 às 16:00h). Em campo e webhook, a data técnica."
+        },
+        "conversation_link": {
+          "rotulo": "Link da conversa",
+          "legenda": "Abre a conversa do contato. Para avisos à equipe."
+        },
+        "channel_id": {
+          "rotulo": "Id da conexão",
+          "legenda": "A conexão por onde o cliente falou. Para sistemas externos (webhook)."
+        },
+        "now": {
+          "rotulo": "Data e hora do envio",
+          "legenda": "O instante em que o passo roda (30/08/2026 às 16:00h)."
+        },
+        "message_text": {
+          "rotulo": "Texto da mensagem recebida",
+          "legenda": "O que o cliente escreveu na mensagem que disparou a automação."
+        }
+      },
+      "evento": {
+        "cliente_nome": {
+          "rotulo": "Nome do cliente no Asaas",
+          "legenda": "O nome completo, como está no Asaas."
+        },
+        "cliente_primeiro_nome": {
+          "rotulo": "Primeiro nome do cliente",
+          "legenda": "Só o primeiro nome, com a inicial maiúscula."
+        },
+        "escritorio_nome": {
+          "rotulo": "Nome do escritório",
+          "legenda": "O nome da conta."
+        },
+        "cobranca_detalhe": {
+          "rotulo": "Parcelas em aberto",
+          "legenda": "Todas as parcelas vencidas, uma por linha, com valor, vencimento e link de pagamento. No lembrete, só a que vence hoje."
+        },
+        "cobranca_parcelas": {
+          "rotulo": "Números das parcelas",
+          "legenda": "Quais parcelas estão em aberto (2/12, 3/12…)."
+        },
+        "cobranca_valor": {
+          "rotulo": "Valor em aberto",
+          "legenda": "A soma das parcelas em aberto, com juros e multa."
+        },
+        "cobranca_vencimento": {
+          "rotulo": "Vencimento mais antigo",
+          "legenda": "O dia em que venceu a parcela mais antiga."
+        },
+        "cobranca_quantidade": {
+          "rotulo": "Quantidade de parcelas",
+          "legenda": "Quantas parcelas estão em aberto."
+        },
+        "dias_de_atraso": {
+          "rotulo": "Dias de atraso (o marco)",
+          "legenda": "O atraso da parcela que cruzou este marco."
+        },
+        "dias_de_atraso_maior": {
+          "rotulo": "Maior atraso",
+          "legenda": "O atraso da parcela mais antiga, em dias."
+        },
+        "marco_detalhe": {
+          "rotulo": "Parcela que cruzou o marco",
+          "legenda": "Só as parcelas que cruzaram o marco hoje, com link."
+        },
+        "vence_hoje_detalhe": {
+          "rotulo": "Parcela que vence hoje",
+          "legenda": "A parcela que vence hoje, quando houver, com link."
+        },
+        "vencimento_texto": {
+          "rotulo": "Texto do vencimento",
+          "legenda": "“vence hoje”, ou “venceu no sábado, 12/09 — o boleto pode ser pago hoje sem juros”."
+        },
+        "agendamento_nome": {
+          "rotulo": "Nome de quem agendou",
+          "legenda": "O nome informado no Calendly."
+        },
+        "agendamento_telefone": {
+          "rotulo": "Telefone de quem agendou",
+          "legenda": "O telefone informado, formatado para leitura."
+        },
+        "agendamento_evento": {
+          "rotulo": "Tipo de reunião",
+          "legenda": "O nome do evento no Calendly."
+        },
+        "agendamento_data": {
+          "rotulo": "Data e hora da reunião",
+          "legenda": "No fuso do escritório (30/09/2026 às 14:00h)."
+        },
+        "agendamento_link": {
+          "rotulo": "Link da reunião",
+          "legenda": "O link da videochamada, ou o local quando ele é um endereço web."
+        },
+        "agendamento_inicio": {
+          "rotulo": "Início da reunião (dado)",
+          "legenda": "A data técnica, para gravar em campo de data."
+        },
+        "agendamento_email": {
+          "rotulo": "E-mail de quem agendou",
+          "legenda": "O e-mail informado no Calendly."
+        },
+        "agendamento_local": {
+          "rotulo": "Local da reunião",
+          "legenda": "O local informado no evento, quando não é link."
+        },
+        "agendamento_situacao": {
+          "rotulo": "Situação do agendamento",
+          "legenda": "“Novo agendamento” ou “Reagendamento”."
+        },
+        "agendamento_cancelar": {
+          "rotulo": "Link para cancelar",
+          "legenda": "O link do Calendly para o cliente cancelar."
+        },
+        "agendamento_remarcar": {
+          "rotulo": "Link para remarcar",
+          "legenda": "O link do Calendly para o cliente remarcar."
+        },
+        "agendamento_fim": {
+          "rotulo": "Fim da reunião (dado)",
+          "legenda": "A data técnica do fim da reunião."
+        },
+        "zapsign_documento_nome": {
+          "rotulo": "Nome do documento",
+          "legenda": "O nome do documento no ZapSign."
+        },
+        "zapsign_signatario_nome": {
+          "rotulo": "Nome de quem assinou",
+          "legenda": "O nome do signatário."
+        },
+        "zapsign_signatario_telefone": {
+          "rotulo": "Telefone de quem assinou",
+          "legenda": "O telefone do signatário, formatado."
+        },
+        "zapsign_signatario_email": {
+          "rotulo": "E-mail de quem assinou",
+          "legenda": "O e-mail do signatário."
+        },
+        "zapsign_assinado_em": {
+          "rotulo": "Data da assinatura",
+          "legenda": "Quando o documento foi assinado (30/09/2026 às 10:15h)."
+        },
+        "zapsign_documento_token": {
+          "rotulo": "Código do documento",
+          "legenda": "O identificador do documento no ZapSign."
+        }
+      },
+      "resposta": {
+        "rotulo": "Resposta: {pergunta}",
+        "legenda": "A resposta a uma pergunta do formulário do documento."
+      },
+      "respostasNota": "As respostas do formulário do documento entram como {exemplo}.",
+      "webhookLegenda": "Veio no último acionamento deste webhook.",
+      "webhookSemEscolha": "Escolha o webhook no gatilho para ver as variáveis dele.",
+      "webhookNunca": "Este webhook ainda não foi acionado: as variáveis aparecem depois do primeiro acionamento.",
+      "webhookCarregando": "Carregando as variáveis do último acionamento…",
+      "webhookFalhou": "Não foi possível carregar as variáveis do último acionamento.",
+      "tentarDeNovo": "Tentar de novo",
+      "alerta": {
+        "vazio": "O envio deixa este código em branco: ele não existe.",
+        "campoInexistente": "Nenhum campo da ficha tem esta chave: sai em branco.",
+        "eventoDeOutroGatilho": "Este gatilho não entrega esta variável: sai em branco, a menos que ela venha de outra automação.",
+        "mensagemForaDoGatilho": "Só os gatilhos de mensagem trazem o texto recebido: aqui sai em branco, a menos que venha de outra automação."
+      },
+      "previa": {
+        "titulo": "Prévia",
+        "com": "Prévia com",
+        "semCliente": "Escolha um cliente para ver como a mensagem sai.",
+        "escolher": "Escolher cliente",
+        "buscar": "Nome ou telefone",
+        "dica": "Digite ao menos 2 letras para buscar.",
+        "carregandoBusca": "Buscando…",
+        "nenhumCliente": "Nenhum cliente encontrado.",
+        "falhouBusca": "Não foi possível buscar.",
+        "mais": "Há mais resultados: refine a busca.",
+        "calculando": "Calculando a prévia…",
+        "falhou": "Não foi possível carregar os dados deste cliente.",
+        "vazio": "vazio",
+        "vazioAjuda": "Vazio para este cliente: sairia em branco.",
+        "exemplo": "exemplo",
+        "exemploAjuda": "Valor de exemplo: o real vem do evento, na hora do envio.",
+        "ultimoAcionamento": "último acionamento",
+        "doEvento": "vem do evento",
+        "valoresDe": "Valores de {nome}",
+        "semValores": "Para ver os valores de um cliente, escolha-o na prévia embaixo do texto de uma mensagem.",
+        "legenda": "Sublinhado: exemplo, ou o último acionamento. O valor real vem do evento, na hora do envio.",
+        "vazioAjudaDado": "Vazio para este cliente.",
+        "dadoVazio": "Para este cliente o valor sai vazio: o campo da ficha não é alterado.",
+        "valoresDoCliente": "Valores do cliente escolhido",
+        "cardDoEvento": "card do evento?",
+        "cardDoEventoAjuda": "O cliente tem {n} cards: na prévia vale o mais recente, e no disparo vale o card do evento, que pode ser outro."
       }
     }
   },
