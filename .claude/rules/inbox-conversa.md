@@ -363,7 +363,9 @@ O vínculo e a aba: `.claude/rules/contatos.md`. Aqui, o pulo entre conversas.
   relacionado já está em `conversations` (a lista carrega todas), e a seleção
   é a do clique na lista; a nascida depois da carga vai por
   `handleConversaAberta`. Nunca `router.push` do painel: a página não remonta,
-  e o fio ficaria na conversa antiga.
+  e o fio ficaria na conversa antiga. ⚠️ `handleConversaAberta` FECHA o painel
+  do celular: o "Conversar" da aba abre a Nova conversa com o painel sobre o
+  fio, e a conversa criada nascia escondida (Codex, #352).
 - ⚠️ **A faixa aparece só com `voltarPara.naConversa === activeConversation.id`,
   DERIVADO no render**; clique na lista, fechar e o aviso do navegador a zeram.
   Um nível só (decisão do operador): de B para C, ela vira "Voltar para B".

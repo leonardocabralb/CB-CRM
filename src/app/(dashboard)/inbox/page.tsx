@@ -672,6 +672,11 @@ function InboxPageInner() {
     (conversationId: string) => {
       conversaRecemAbertaRef.current = conversationId;
       setResyncToken((t) => t + 1);
+      // A conversa que ABRE não fica atrás do painel do celular — a mesma
+      // regra do clique na lista. O "Conversar" da aba Relacionados (1069)
+      // pede a Nova conversa com o painel ABERTO sobre o fio, e sem isto a
+      // conversa criada nascia escondida (Codex, PR #352).
+      setPainelMobileAberto(false);
       // Mesma regra do clique na lista (`navegacaoAoAbrir`): no celular, a
       // conversa recém-criada também ganha o passo que o gesto de voltar
       // desfaz.
@@ -904,7 +909,6 @@ function InboxPageInner() {
       if (conv) {
         handleSelectConversation(conv);
       } else {
-        setPainelMobileAberto(false);
         handleConversaAberta(conversaId);
       }
       // DEPOIS da seleção, que zera a faixa: as duas escritas saem no mesmo
