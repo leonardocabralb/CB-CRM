@@ -78,6 +78,8 @@ const SEM_CONFERIR_A_SUSPENSAO: Record<string, string> = {
     'exige que o chamador seja o DONO único da conta atual, e o dono não pode ser suspenso (cb_definir_suspensao recusa)',
   cb_lead_event_actor: 'só resolve o NOME do autor para a trilha (912); não é chamável pelo navegador',
   notify_conversation_assigned: 'gatilho: grava o aviso para quem RECEBE a conversa; não decide acesso de ninguém',
+  cb_reunioes_marcos_carimbo:
+    'gatilho (1063): só carimba o NOME de quem marcou; a escrita na tabela já exige is_account_member',
 };
 
 describe('1064 — membro suspenso', () => {
