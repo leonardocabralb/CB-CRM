@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp, Pin, PinOff } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 
+import { TextoComLinks } from '@/components/inbox/texto-com-links';
 import { cn } from '@/lib/utils';
 import type { ConversationNote } from '@/types';
 
@@ -86,7 +87,7 @@ export function NotaFixadaBar({
             aberto ? 'max-h-32 overflow-y-auto' : 'line-clamp-2'
           )}
         >
-          {nota.texto}
+          <TextoComLinks texto={nota.texto} />
         </p>
       </div>
       {(truncado || aberto) && (

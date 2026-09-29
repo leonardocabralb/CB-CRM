@@ -11,7 +11,9 @@ let semente = 12345;
 const rnd = () => ((semente = (semente * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
 const pick = <T,>(a: T[]) => a[Math.floor(rnd() * a.length)];
 
-const PECAS = ['*','_','~','`','```','a','B','9','R$','1.500','_00',' ','\n','.',':',',','(',')','ção','0001234','@','/','-','ab_cd','x*y'];
+const PECAS = ['*','_','~','`','```','a','B','9','R$','1.500','_00',' ','\n','.',':',',','(',')','ção','0001234','@','/','-','ab_cd','x*y',
+  // Endereços (links, 29/09/2026): o link também não pode comer caractere.
+  'https://','www.','x.com','/a_b','?e=1'];
 
 function aleatorio(n: number) {
   let s = '';
@@ -24,6 +26,7 @@ function reconstituir(nos: ReturnType<typeof parseWhatsAppFormat>): string {
   return nos.map((no) => {
     if (no.tipo === 'texto') return no.texto;
     if (no.tipo === 'mono') return no.texto;
+    if (no.tipo === 'link') return no.texto;
     return reconstituir(no.filhos);
   }).join('');
 }

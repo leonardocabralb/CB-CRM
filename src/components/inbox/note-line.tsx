@@ -5,6 +5,7 @@ import { Pin, PinOff, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
+import { TextoComLinks } from '@/components/inbox/texto-com-links';
 import { cn } from '@/lib/utils';
 import type { ConversationNote } from '@/types';
 
@@ -112,7 +113,9 @@ export function NoteLine({
               ))}
           </span>
         </div>
-        <p className="whitespace-pre-wrap break-words">{nota.texto}</p>
+        <p className="whitespace-pre-wrap break-words">
+          <TextoComLinks texto={nota.texto} />
+        </p>
       </div>
     </div>
   );
