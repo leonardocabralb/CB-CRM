@@ -284,7 +284,8 @@
       "novaConversa": "New conversation",
       "automacaoRodando": "{n, plural, one {# automation scheduled for this contact} other {# automations scheduled for this contact}}",
       "searchPlaceholderInMessages": "Search by name, number or message...",
-      "searchInsideMessages": "Also search inside messages"
+      "searchInsideMessages": "Also search inside messages",
+      "previaNaoSuportada": "Unsupported message"
     },
     "messageThread": {
       "unknownAuthor": "Unknown",
@@ -438,6 +439,7 @@
       "buttonReply": "Button reply",
       "interactiveReply": "[Interactive reply]",
       "unsupported": "[Unsupported message type]",
+      "naoSuportada": "A message type the CRM can't show yet — check it on WhatsApp.",
       "aiBadge": "AI",
       "aiBadgeTitle": "Sent automatically by the AI assistant",
       "iaAgente": "AI · {nome}",
@@ -465,6 +467,17 @@
       "expandVideo": "Expand video",
       "imageAlt": "Shared image",
       "motivoDaFalha": "Reason given by Meta: {motivo}"
+    },
+    "cartaoDeContato": {
+      "copiarNumero": "Copy number",
+      "numeroCopiado": "Number copied",
+      "copiarFalhou": "Couldn't copy the number",
+      "conversar": "Message",
+      "conversarDica": "Open a conversation with this number in the CRM",
+      "semTelefone": "No phone number on this card",
+      "semNome": "Contact",
+      "vazio": "Contact card with no readable data",
+      "varios": "{total} contacts"
     },
     "ligacao": {
       "vozPerdida": "Missed voice call",

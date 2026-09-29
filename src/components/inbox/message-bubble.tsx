@@ -21,6 +21,7 @@ import {
   Trash2,
   Pencil,
   Download,
+  MessageSquareWarning,
 } from "lucide-react";
 import { corDoRemetente, podeBaixarAnexo } from "@/lib/cb-groups/display";
 import { mediaFilename, nomeDeclarado } from "@/lib/media/filename";
@@ -32,6 +33,9 @@ import { MediaViewer } from "./media-viewer";
 import { MessageReactions } from "./message-reactions";
 import { PlayerDeAudio } from "./player-de-audio";
 import { AvisoDeLigacao } from "./aviso-de-ligacao";
+import { CartaoDeContato } from "./cartao-de-contato";
+import { tipoNaoSuportado } from "@/lib/inbox/tipo-nao-suportado";
+import { urlParaAbrirAnexo } from "@/lib/media/abrir-anexo";
 import { InteractivePreview } from "@/components/interactive/interactive-preview";
 import { useNomeDoAgenteDeIa } from "@/components/agentes-de-ia/nomes-dos-agentes";
 import { useTranslations } from "next-intl";
@@ -473,10 +477,26 @@ function MessageContent({
   onAbrirGaleria?: (messageId: string) => void;
 }) {
   switch (message.content_type) {
-    case "text":
+    case "text": {
+      // O tipo que a ingestão não sabe ler (1060): o banco guarda o rótulo em
+      // inglês, a bolha diz o que o operador precisa saber. O tipo técnico
+      // fica no `title`, para quem for investigar.
+      const tipo = tipoNaoSuportado(message.content_text);
+      if (tipo !== null) {
+        return (
+          <div className="flex items-start gap-1.5 text-sm italic opacity-80" title={tipo || undefined}>
+            <MessageSquareWarning className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{t("naoSuportada")}</span>
+          </div>
+        );
+      }
       return (
         <FormattedText texto={message.content_text} />
       );
+    }
+
+    case "contact":
+      return <CartaoDeContato message={message} />;
 
     case "image":
       return (
@@ -557,7 +577,9 @@ function MessageContent({
       return (
         <div>
           <a
-            href={message.media_url}
+            // Página .html vai para BAIXAR, nunca abrir a partir do nosso
+            // Storage (1060, ver `abrir-anexo.ts`).
+            href={urlParaAbrirAnexo(message.media_url, message.media_type, nome)}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2 text-sm hover:bg-muted"
