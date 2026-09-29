@@ -43,9 +43,25 @@ describe('acharLinks — o que vira link', () => {
     ]);
   });
 
-  it('marcador do WhatsApp no fim fica de fora (a formatação fecha depois do link)', () => {
+  it('marcador do WhatsApp no fim fica de fora QUANDO algum o abre antes (é formatação)', () => {
     expect(enderecos('*https://x.com*')).toEqual(['https://x.com']);
     expect(enderecos('_www.x.com_')).toEqual(['www.x.com']);
+    expect(enderecos('*veja https://x.com/a*')).toEqual(['https://x.com/a']);
+    expect(enderecos('~https://x.com~.')).toEqual(['https://x.com']);
+  });
+
+  it('⚠️ sem quem o abra antes, o `_`/`~`/`*` do fim é do ENDEREÇO (Codex, PR #347)', () => {
+    // Código de compartilhamento termina em `_` uma vez em 64: tirá-lo
+    // mandaria o `href` para outra página.
+    expect(enderecos('https://host/documento_')).toEqual(['https://host/documento_']);
+    expect(enderecos('veja https://host/a~ e https://host/b*')).toEqual([
+      'https://host/a~',
+      'https://host/b*',
+    ]);
+    // Marcador solto (com espaço dos dois lados) não abre nada.
+    expect(enderecos('2 * 3 https://host/c_')).toEqual(['https://host/c_']);
+    // A pontuação da frase continua saindo; o `_` de antes dela fica.
+    expect(enderecos('Acesse https://host/doc_.')).toEqual(['https://host/doc_']);
   });
 
   it('caractere invisível e emoji encerram o endereço', () => {

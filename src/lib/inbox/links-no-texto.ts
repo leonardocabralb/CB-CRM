@@ -41,13 +41,26 @@ const CANDIDATO =
  */
 const ANTES_PROIBIDO = /[\p{L}\p{N}@./-]/u;
 
-/**
- * Pontuação que fecha a FRASE, não o endereço: "veja https://x.com." e
- * "(https://x.com)". Os marcadores do WhatsApp entram aqui para a formatação
- * poder fechar logo depois do link: `*https://x.com*` é negrito em volta dele.
- */
-const FIM_DE_FRASE = /[.,;:!?*_~'"”’»…]/u;
+/** Pontuação que fecha a FRASE, não o endereço: "veja https://x.com." */
+const FIM_DE_FRASE = /[.,;:!?'"”’»…]/u;
 const ABRE_DO_PAR: Record<string, string> = { ')': '(', ']': '[', '}': '{' };
+
+/**
+ * Marcador do WhatsApp que PODE ABRIR formatação no texto antes do endereço
+ * (a régua de `podeAbrir` do interpretador: sem letra/dígito colado à
+ * esquerda, sem espaço à direita).
+ *
+ * ⚠️ É o que decide se o `_`/`~`/`*` do FIM é da formatação ou do endereço
+ * (Codex, PR #347). Tirá-lo sempre quebrava link de verdade: código de
+ * compartilhamento (Drive, SharePoint) termina em `_` uma vez em 64, e o
+ * `href` apontaria para outra página. Só sai quando há quem o abra antes:
+ * `*veja https://x.com*`, `_https://x.com_`.
+ */
+const ABRE_ANTES: Record<string, RegExp> = {
+  '*': /(?:^|[^\p{L}\p{N}])\*(?=\S)/u,
+  _: /(?:^|[^\p{L}\p{N}])_(?=\S)/u,
+  '~': /(?:^|[^\p{L}\p{N}])~(?=\S)/u,
+};
 
 /** Depois de aparado, o mínimo para ser endereço de verdade. */
 const VALIDO = /^(?:https?:\/\/[\p{L}\p{N}]|www\.[\p{L}\p{N}-]+\.[\p{L}\p{N}])/iu;
@@ -60,16 +73,20 @@ function contar(texto: string, c: string): number {
 
 /**
  * Tira do fim o que é da frase. O parêntese de fechamento só sai quando está
- * SOBRANDO: `https://pt.wikipedia.org/wiki/Direito_(Brasil)` o mantém.
+ * SOBRANDO: `https://pt.wikipedia.org/wiki/Direito_(Brasil)` o mantém. O
+ * marcador do WhatsApp só sai quando algum o abre ANTES do endereço
+ * (`antes` = o texto até o 1º caractere dele) — ver {@link ABRE_ANTES}.
  */
-function aparar(url: string): string {
+function aparar(url: string, antes: string): string {
   let u = url;
   for (;;) {
     const ultimo = u[u.length - 1];
     if (ultimo === undefined) return u;
     const abre = ABRE_DO_PAR[ultimo];
+    const marcador = ABRE_ANTES[ultimo];
     if (
       FIM_DE_FRASE.test(ultimo) ||
+      (marcador !== undefined && marcador.test(antes)) ||
       (abre !== undefined && contar(u, abre) < contar(u, ultimo))
     ) {
       u = u.slice(0, -1);
@@ -97,7 +114,9 @@ export function acharLinks(texto: string | null | undefined): LinkNoTexto[] {
     const inicio = m.index ?? 0;
     const antes = texto[inicio - 1];
     if (antes !== undefined && ANTES_PROIBIDO.test(antes)) continue;
-    const url = aparar(m[0]);
+    // O 1º caractere do endereço entra no `antes`: o marcador colado nele
+    // (`*https://…`) tem de enxergar que à direita não há espaço.
+    const url = aparar(m[0], texto.slice(0, inicio + 1));
     if (!VALIDO.test(url)) continue;
     const href = hrefDe(url);
     if (!href) continue;

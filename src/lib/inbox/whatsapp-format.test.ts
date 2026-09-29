@@ -164,6 +164,13 @@ describe('parseWhatsAppFormat — endereços viram link', () => {
     );
   });
 
+  it('⚠️ `_` no fim do endereço, sem itálico aberto antes, fica NO link (Codex, PR #347)', () => {
+    expect(parseWhatsAppFormat('Pasta: https://host/documento_')).toEqual([
+      { tipo: 'texto', texto: 'Pasta: ' },
+      { tipo: 'link', texto: 'https://host/documento_', href: 'https://host/documento_' },
+    ]);
+  });
+
   it('dentro de monoespaçado o endereço fica literal', () => {
     expect(resumo(parseWhatsAppFormat('`https://x.com`'))).toBe('mono(https://x.com)');
     expect(resumo(parseWhatsAppFormat('```\nhttps://x.com\n``` e https://y.com'))).toBe(
