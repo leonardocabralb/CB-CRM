@@ -46,6 +46,7 @@ import {
   ListTodo,
   CircleAlert,
   TriangleAlert,
+  Pin,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -83,7 +84,7 @@ import {
   operandoDaJanela,
   rotuloDaJanela,
 } from "@/lib/automations/hora-do-dia"
-import { ehMeta } from "@/lib/cb-channels/transporte"
+import { ehMeta, ehWhatsApp } from "@/lib/cb-channels/transporte"
 import { channelLabel } from "@/lib/cb-channels/display"
 import { createClient } from "@/lib/supabase/client"
 import { useAreasDeAutomacao } from "@/hooks/use-areas-de-automacao"
@@ -263,6 +264,9 @@ const STEP_META: Record<AutomationStepType, StepMeta> = {
   // Tarefa é trabalho INTERNO, como o aviso ao número: mesma borda, pelo mesmo
   // motivo — nada disto chega ao cliente.
   create_task: { label: "create_task", icon: ListTodo, border: "border-l-sky-500" },
+  // Não fala com ninguém: muda por qual número a conversa corre, como o
+  // `set_ai` muda quem responde — mesma borda.
+  pin_conversation_channel: { label: "pin_conversation_channel", icon: Pin, border: "border-l-violet-500" },
 }
 
 const ADDABLE_STEPS: AutomationStepType[] = [
@@ -274,6 +278,7 @@ const ADDABLE_STEPS: AutomationStepType[] = [
   "add_tag",
   "remove_tag",
   "assign_conversation",
+  "pin_conversation_channel",
   "update_contact_field",
   "create_deal",
   "move_deal_stage",
@@ -416,6 +421,10 @@ function blankConfig(type: AutomationStepType): Record<string, unknown> {
       return { url: "", headers: {}, body_template: "" }
     case "close_conversation":
       return {}
+    // Sem conexão escolhida: não há número "óbvio" para fixar, e a ativação
+    // cobra a escolha (`fixar_sem_conexao`).
+    case "pin_conversation_channel":
+      return { channel_id: "" }
     // Prazo HOJE por padrão, e sem hora: a tarefa que uma automação abre é
     // quase sempre "faça isso agora" (o contrato fechou). Nascer com prazo
     // distante faria o passo, aceito sem abrir a config, criar tarefa que não
@@ -3516,6 +3525,38 @@ function JanelaDaMetaFields({
 }
 
 /**
+ * "Fixar a conversa no número": a conexão é OBRIGATÓRIA e só de WhatsApp.
+ * Diferente de `CanalDeSaida`, não há "a mesma do disparo" (fixar no número
+ * por onde o cliente já escreveu não troca nada) e o seletor aparece mesmo
+ * com um número só — a escolha é o passo inteiro. A conexão já gravada fica
+ * na lista (senão o valor sumiria da tela); apagada, o aviso diz que o passo
+ * vai falhar — o motor falha fechado, nunca "fica onde estava".
+ */
+function FixarConversaFields({
+  value,
+  onChange,
+  t,
+}: {
+  value: string | null
+  onChange: (id: string | null) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const { channels } = useResources()
+  const orfao = !!value && channels.length > 0 && !channels.some((c) => c.id === value)
+  const lista = channels.filter((c) => ehWhatsApp(c) || c.id === value)
+  return (
+    <FieldBlock label={t("config.fixarConexaoLabel")}>
+      <ChannelSelect channels={lista} value={value} onChange={onChange} />
+      {orfao ? (
+        <p className="mt-1 text-xs text-destructive">{t("config.fixarConexaoSumiu")}</p>
+      ) : (
+        <p className="mt-1 text-[11px] text-muted-foreground">{t("config.fixarConexaoHelp")}</p>
+      )}
+    </FieldBlock>
+  )
+}
+
+/**
  * A janela de horário — dois campos de hora e a caixa "só de segunda a
  * sexta", tudo no FUSO DO ESCRITÓRIO (o motor lê por `hora-do-dia.ts`; o
  * contêiner roda em UTC). Serve a DOIS passos, com textos próprios (`para`):
@@ -4324,6 +4365,14 @@ function StepEditor({
           {t("config.closeConversationHint")}
         </p>
       )
+    case "pin_conversation_channel":
+      return (
+        <FixarConversaFields
+          value={canalDoPasso(cfg)}
+          onChange={(id) => set({ channel_id: id ?? "" })}
+          t={t}
+        />
+      )
     case "create_task":
       return (
         <>
@@ -4561,6 +4610,13 @@ function previewFor(
       return [step.step_config.phone, (step.step_config.text as string | undefined)?.split("\n")[0]]
         .filter(Boolean)
         .join(" · ")
+    // O nome do número no cartão fechado: é o que diferencia este passo de
+    // outro igual. Conexão apagada ou ainda carregando fica sem texto (a
+    // configuração aberta diz o que houve).
+    case "pin_conversation_channel": {
+      const id = step.step_config.channel_id
+      return (typeof id === "string" && id && recursos.channels.find((c) => c.id === id)?.label) || ""
+    }
     default:
       return ""
   }

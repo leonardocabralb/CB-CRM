@@ -261,6 +261,7 @@ export const CODIGOS_DE_PENDENCIA = [
   'tarefa_descricao_longa',
   'tarefa_prazo_invalido',
   'tarefa_hora_invalida',
+  'fixar_sem_conexao',
   'passo_desconhecido',
   // Gatilho
   'gatilho_sem_palavras',

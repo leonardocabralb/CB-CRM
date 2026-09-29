@@ -1473,7 +1473,8 @@
         "send_webhook": "Call webhook",
         "close_conversation": "Close the conversation",
         "send_to_number": "Notify number: {alvo}",
-        "create_task": "Create task: {alvo}"
+        "create_task": "Create task: {alvo}",
+        "pin_conversation_channel": "Pin the conversation to a number"
       },
       "cancelar": "Cancel",
       "salvar": "Save",
@@ -2020,7 +2021,8 @@
         "set_ai": "AI assistant",
         "send_media": "Send file",
         "send_to_number": "Notify a number",
-        "create_task": "Create task"
+        "create_task": "Create task",
+        "pin_conversation_channel": "Pin conversation to a number"
       },
       "triggers": {
         "new_message_received": {
@@ -2258,6 +2260,9 @@
         "closeConversationHint": "Sets the conversation status to \"closed\". No configuration needed.",
         "channelGone": "The connection in this condition was removed — until you pick another, this condition will never be true.",
         "outboundChannelGone": "The connection picked for this step was removed. Until you pick another one, the message still goes out — through the conversation's connection, not the one you chose.",
+        "fixarConexaoLabel": "Pin to number",
+        "fixarConexaoHelp": "From now on, replies sent from the CRM go out through this number, even if the customer writes to another one — and the conversation shows a notice when that happens. To release it, choose \"Automatic (follows the customer)\" in the number menu of the conversation header.",
+        "fixarConexaoSumiu": "The chosen connection was removed: pick another one, or this step fails.",
         "phoneLabel": "Number that gets the notice",
         "phoneHint": "With the area code, e.g. (83) 98000-0016. Any other country: with + and the country code (e.g. +1 404 555 1234).",
         "contactNameLabel": "Name on the contact (optional)",
@@ -2505,6 +2510,7 @@
           "tarefa_descricao_longa": "Shorten the task description.",
           "tarefa_prazo_invalido": "Choose a due date between 0 and 365 days.",
           "tarefa_hora_invalida": "Write the task time as HH:MM.",
+          "fixar_sem_conexao": "Choose the number the conversation gets pinned to.",
           "passo_desconhecido": "This step type no longer exists: delete the step.",
           "gatilho_sem_palavras": "Write at least one keyword.",
           "gatilho_palavra_vazia": "Remove the blank keywords.",

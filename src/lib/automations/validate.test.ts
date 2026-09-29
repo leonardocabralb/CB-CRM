@@ -883,3 +883,40 @@ describe("condição por campo personalizado (Fase 2.10)", () => {
     expect(validateCustomFieldConditionsForActivation(passos({ operator: "empty" }), null)).toEqual([]);
   });
 });
+
+describe("pin_conversation_channel — fixar a conversa no número", () => {
+  const CONTAS = [
+    { id: "ch-com", label: "Bancário - Comercial", kind: "evolution" as const },
+    { id: "ch-jur", label: "Bancário - Jurídico", kind: "evolution" as const },
+    { id: "ch-meta", label: "Oficial", kind: "meta" as const },
+    { id: "ch-ig", label: "Instagram", kind: "instagram" as const },
+  ];
+  const fixar = (channel_id: unknown) => ({ step_type: "pin_conversation_channel", step_config: { channel_id } });
+
+  it("a conexão é obrigatória, com código próprio — inclusive dentro de um ramo", () => {
+    expect(validateStepsForActivation([fixar("")])).toEqual([
+      { path: "steps[0].channel_id", message: "connection is required", codigo: "fixar_sem_conexao" },
+    ]);
+    const noRamo = validateStepsForActivation([
+      {
+        step_type: "condition",
+        step_config: { subject: "tag_presence", operand: "t1" },
+        branches: { yes: [], no: [fixar(undefined)] },
+      },
+    ]);
+    expect(noRamo.map((i) => i.path)).toEqual(["steps[0].no.steps[0].channel_id"]);
+    expect(validateStepsForActivation([fixar("ch-jur")])).toEqual([]);
+  });
+
+  it("WhatsApp (QR Code ou oficial) passa; Instagram é recusado, com o nome da conexão", () => {
+    expect(validateChannelScopeForActivation([fixar("ch-jur")], ["ch-com"], CONTAS)).toEqual([]);
+    expect(validateChannelScopeForActivation([fixar("ch-meta")], null, CONTAS)).toEqual([]);
+    const ig = validateChannelScopeForActivation([fixar("ch-ig")], null, CONTAS);
+    expect(ig.map((i) => i.path)).toEqual(["steps[0].channel_id"]);
+    expect(ig[0].message).toMatch(/só vale para número de WhatsApp.*"Instagram"/);
+  });
+
+  it("conexão desconhecida (apagada) não trava a ativação — o motor falha fechado nela", () => {
+    expect(validateChannelScopeForActivation([fixar("ch-apagada")], null, CONTAS)).toEqual([]);
+  });
+});

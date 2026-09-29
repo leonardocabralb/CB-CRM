@@ -20,11 +20,12 @@
 | --- | --- | --- | --- | --- |
 | 1 | Lembrete de reunião · 24h / 4h / 1h / 10min | **aprovados** | não | só a sua ordem |
 | 2 | (PENDENTE) No-show · recuperação | **aprovados** (9 mensagens) | não | link de agendamento, imagem (2.6), PDF (2.7) |
-| 3 | (PENDENTE) Contrato fechado | **boas-vindas aprovada** | não | link do Google, responsável da tarefa, **a de Documentos ligada antes** |
+| 3 | Contrato fechado | **boas-vindas aprovada** | **sim** (29/09/2026, pelo operador, sem o passo de Documentos) | — |
 | 4 | (PENDENTE) Documentos de gestão de passivo | **aprovados** (4 mensagens) | não | arquivo Excel da planilha |
 | 5 | Typebot · Abaixo de 150 mil com processo | texto 5.1 **fica para depois** | sim (sem mensagem) | — |
 | 6 | (PENDENTE) Desqualificado | não tem texto | não | só a sua palavra |
 | 7 | Funil · grava a data da proposta (**nova**) | não tem texto | **sim** | — |
+| 8 | Bancário · cliente do Jurídico que escreve no Comercial (**nova**, seção 8) | rascunho | não | o passo "Fixar a conversa no número" no ar, o "pode gravar" e a sua ordem |
 
 Nenhuma delas é ligada sem ordem sua. Aprovar o texto e ligar são dois
 passos — os lembretes, por exemplo, pegam na hora quem já tem reunião marcada.
@@ -451,6 +452,87 @@ ficha — o campo já existia e estava vazio em todos os contatos.
   gravados ficou guardada para desfazer.
 - Ela não manda mensagem, e foi ligada depois que o PR #275 entrou no ar
   (antes disso a variável `{{now}}` não existe e o passo não gravaria nada).
+
+## Seção 8 — Cliente do Bancário no número do Jurídico (NOVO, 29/09/2026)
+
+Pedido do operador: o cliente do Bancário que ainda escreve no número do
+**Comercial** recebe, UMA vez, o aviso de que o atendimento passou para o
+número do **Jurídico** — e uma mensagem por lá, para salvar o contato. O
+histórico já está no CRM: a conversa é uma só, com os dois números.
+**Nenhum impacto no Trabalhista.**
+
+**Quem recebe (medido em 29/09/2026):** o card no funil **Bancário -
+Jurídico** em *Cliente Ativo*, *Cliente Rescindido* ou *Cliente Finalizado*
+— 415 clientes (Finalizado vazia). A etiqueta "Cliente Fechado" NÃO serve de
+critério: está em 1.082 contatos, e 730 deles são do Trabalhista (vieram
+assim da Kommo). Nos 30 dias anteriores, 137 desses clientes escreveram no
+Comercial (68 na última semana) e 2 no Jurídico; quase 80% das respostas a
+eles saíram do celular do Comercial, não do CRM.
+
+**A automação** (aba Bancário, nasce DESLIGADA):
+
+- **Gatilho:** "Nova mensagem recebida", só na conexão Bancário - Comercial.
+  O número oficial da Meta fica de fora (atende o Previdenciário; nenhum
+  cliente do Bancário escreveu nele).
+- **Só roda com o card em** Cliente Ativo, Cliente Rescindido ou Cliente
+  Finalizado — cartão nessas colunas da aba Automações do Bancário - Jurídico.
+- **Passos:** condição "tem a etiqueta *Transferido ao Jurídico*?" → no
+  "Não": (1) adiciona a etiqueta — antes de tudo, para o aviso sair uma vez
+  só; (2) mensagem pelo número do disparo (o Comercial); (3) mensagem pela
+  conexão Bancário - Jurídico; (4) **Fixar a conversa no número** Bancário -
+  Jurídico (passo novo, 29/09/2026).
+- **Quem assume:** nada automático (decisão do operador) — a conversa fica
+  aberta, sem responsável, para o time do Jurídico.
+
+**Textos (rascunho; editáveis no construtor):**
+
+Pelo Comercial:
+
+> Olá, {{contact.name}}! Para agilizar o andamento do seu caso, a partir de
+> agora o seu atendimento será feito pelo número do nosso time jurídico:
+> *<número do Jurídico>*.
+>
+> Todo o histórico da nossa conversa já foi repassado para esse número. Você
+> vai receber agora mesmo uma mensagem por ele — *salve o contato na sua
+> agenda* e continue a conversa por lá.
+
+Pelo Jurídico:
+
+> Olá, {{contact.name}}! Aqui é do time jurídico do CB Advogados.
+>
+> A partir de agora, este é o número oficial para tratar do seu caso. *Peço
+> que salve este contato na sua agenda.*
+>
+> Estou transferindo o seu caso para um dos nossos advogados, que vai dar
+> andamento e falar com você por aqui.
+
+**Limites conhecidos:**
+
+- A trava de etapa só enxerga card ABERTO. O cliente que chega pelo
+  "Contrato fechado" tem o card GANHO em Cliente Ativo e não recebe o aviso:
+  para ele, o "Contrato fechado" ganha o "Fixar a conversa no número" depois
+  das boas-vindas (decisão do operador) — as boas-vindas já saem pelo
+  Jurídico.
+- A faixa "A última mensagem chegou pelo Bancário - Comercial — Responder por
+  ele" aparece quando esses clientes escrevem no Comercial: o botão devolve a
+  conversa ao Comercial. A equipe responde pelo Jurídico e deixa o botão.
+- No celular do Jurídico aparecem só as mensagens novas; o histórico inteiro
+  fica no CRM.
+- Aviso em dobro só com duas mensagens do cliente quase juntas: nos 30 dias
+  medidos, 1 em 1.284 chegou a menos de 1 s da anterior.
+- O Jurídico é conexão por QR Code e vai mandar a primeira mensagem a ~140
+  pessoas por mês: risco de bloqueio baixo (cada envio responde a uma
+  mensagem do próprio cliente, avisado antes), mas não zero.
+
+**Estado:**
+
+| Fase | O quê | Estado |
+| --- | --- | --- |
+| 1 | Passo "Fixar a conversa no número" (branch `feat/fixar-conversa-no-numero`) | testado no preview (29/09); em revisão |
+| 2 | Etiqueta *Transferido ao Jurídico* + a automação, DESLIGADA | aguarda a fase 1 no ar e o "pode gravar" |
+| 3 | "Fixar a conversa no número" no "Contrato fechado", depois das boas-vindas | aguarda a fase 1 no ar e o "pode gravar" (mostrar antes) |
+| 4 | Teste no contato de teste (cópia com gatilho manual) | depois da fase 2 |
+| 5 | Ligar | ordem do operador, combinada com a equipe |
 
 ---
 

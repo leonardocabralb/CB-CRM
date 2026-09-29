@@ -1233,7 +1233,15 @@ export type AutomationStepType =
    * disparo — "avise o advogado que o cliente marcou reunião". Sai como
    * robô por `engineSendText`: não reabre conversa nem abre card.
    */
-  | 'send_to_number';
+  | 'send_to_number'
+  /**
+   * FIXA a conversa num número (o mesmo que escolher o número no cabeçalho
+   * do fio): as respostas pelo CRM passam a sair por ele, mesmo que o
+   * cliente volte a escrever por outro. Existe para a troca de número
+   * Comercial → Jurídico — o envio pelo Jurídico não muda o número da
+   * conversa. Não fala com ninguém.
+   */
+  | 'pin_conversation_channel';
 
 export type AutomationLogStatus = 'success' | 'partial' | 'failed';
 
@@ -1775,6 +1783,15 @@ export interface SetAiStepConfig {
   agent_id?: string;
 }
 
+/**
+ * "Fixar a conversa no número". `channel_id` é OBRIGATÓRIO e não herda o
+ * disparo (vazio não quer dizer nada aqui): a conexão apagada ou que não é de
+ * WhatsApp faz o passo FALHAR, nunca "ficar onde estava".
+ */
+export interface PinConversationChannelStepConfig {
+  channel_id: string;
+}
+
 export type AutomationStepConfig =
   | SendMessageStepConfig
   | SendButtonsStepConfig
@@ -1788,6 +1805,7 @@ export type AutomationStepConfig =
   | AutomationRefStepConfig
   | RunFlowStepConfig
   | SetAiStepConfig
+  | PinConversationChannelStepConfig
   | SendMediaStepConfig
   | WaitStepConfig
   | ConditionStepConfig

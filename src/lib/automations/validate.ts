@@ -12,7 +12,7 @@ import {
   type CampoParaCondicao,
 } from './condicao-por-campo'
 import { ehGatilhoDaRegua, horaDeEnvioValida } from '@/lib/asaas/regua'
-import { ehMeta } from '@/lib/cb-channels/transporte'
+import { ehMeta, ehWhatsApp } from '@/lib/cb-channels/transporte'
 import type { CbChannelKind } from '@/lib/cb-channels/repo'
 
 // ------------------------------------------------------------
@@ -424,6 +424,14 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       break
     case 'close_conversation':
       // No config required.
+      break
+    case 'pin_conversation_channel':
+      // Sem conexão o passo não sabe em qual número fixar, e o motor
+      // estouraria em execução. Que ela existe e é de WhatsApp é conferido com
+      // as conexões da conta, em `validateChannelScopeForActivation`.
+      if (!nonEmpty(c.channel_id)) {
+        issues.push({ path: `${path}.channel_id`, message: 'connection is required', codigo: 'fixar_sem_conexao' })
+      }
       break
     case 'send_to_number': {
       // O número que o OPERADOR digita no construtor passa pela régua das
@@ -862,6 +870,20 @@ export function validateChannelScopeForActivation(
       }
       if (s.step_type === 'condition' && s.step_config?.subject === 'meta_window_open') {
         conferirJanela(s, path);
+      }
+      // "Fixar a conversa no número" só em WhatsApp: fixada no Instagram, a
+      // conversa do telefone ficaria presa num transporte que não alcança o
+      // cliente. Conexão desconhecida (apagada) não trava — a mesma escolha
+      // do bloco acima; o motor falha fechado nela.
+      if (s.step_type === 'pin_conversation_channel') {
+        const fixado = s.step_config?.channel_id;
+        const canal = typeof fixado === 'string' && fixado ? porId.get(fixado) : undefined;
+        if (canal && !ehWhatsApp(canal)) {
+          issues.push({
+            path: `${path}.channel_id`,
+            message: `"Fixar a conversa no número" só vale para número de WhatsApp, e este passo aponta para "${canal.label}". Escolha um número de WhatsApp.`,
+          });
+        }
       }
       if (s.step_type === 'condition' && s.branches) {
         if (s.branches.yes) visitar(s.branches.yes, `${path}.yes.`);

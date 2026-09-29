@@ -1466,7 +1466,8 @@
         "send_webhook": "Disparar webhook",
         "close_conversation": "Encerrar a conversa",
         "send_to_number": "Avisar o número: {alvo}",
-        "create_task": "Criar tarefa: {alvo}"
+        "create_task": "Criar tarefa: {alvo}",
+        "pin_conversation_channel": "Fixar a conversa num número"
       },
       "cancelar": "Cancelar",
       "salvar": "Salvar",
@@ -2013,7 +2014,8 @@
         "set_ai": "Assistente de IA",
         "send_media": "Enviar arquivo",
         "send_to_number": "Avisar um número",
-        "create_task": "Criar tarefa"
+        "create_task": "Criar tarefa",
+        "pin_conversation_channel": "Fixar a conversa no número"
       },
       "triggers": {
         "new_message_received": {
@@ -2249,6 +2251,9 @@
         "closeConversationHint": "Define o status da conversa como \"encerrada\". Nenhuma configuração necessária.",
         "channelGone": "A conexão desta condição foi removida — enquanto ela não for trocada, esta condição nunca será verdadeira.",
         "outboundChannelGone": "A conexão escolhida para este envio foi removida. Enquanto outra não for escolhida, a mensagem continua saindo — mas pela conexão da conversa, não pela que você escolheu.",
+        "fixarConexaoLabel": "Fixar no número",
+        "fixarConexaoHelp": "Daqui em diante, as respostas dadas pelo CRM saem por este número, mesmo que o cliente volte a escrever por outro — e a conversa mostra um aviso quando isso acontecer. Para soltar, escolha \"Automático (segue o cliente)\" no número do cabeçalho da conversa.",
+        "fixarConexaoSumiu": "A conexão escolhida foi removida: escolha outra, senão este passo falha.",
         "matchWord": "Palavra inteira",
         "matchWordHint": "Casa a palavra-chave apenas como palavra isolada, então \"k\" deixa de disparar em \"obrigada\". Ideal para palavras-chave curtas; use Contém para idiomas escritos sem espaços.",
         "phoneLabel": "Número que recebe o aviso",
@@ -2498,6 +2503,7 @@
           "tarefa_descricao_longa": "Encurte a descrição da tarefa.",
           "tarefa_prazo_invalido": "Escolha um prazo entre 0 e 365 dias.",
           "tarefa_hora_invalida": "Escreva a hora da tarefa no formato HH:MM.",
+          "fixar_sem_conexao": "Escolha o número em que a conversa fica fixada.",
           "passo_desconhecido": "Este tipo de passo não existe mais: apague o passo.",
           "gatilho_sem_palavras": "Escreva pelo menos uma palavra-chave.",
           "gatilho_palavra_vazia": "Apague as palavras-chave em branco.",
