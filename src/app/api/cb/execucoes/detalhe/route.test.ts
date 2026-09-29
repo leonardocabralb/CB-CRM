@@ -166,10 +166,18 @@ describe('GET /api/cb/execucoes/detalhe', () => {
     }
   })
 
-  it('nome que não carregou não vira "(apagada)": o catálogo fica fora de `carregados`', async () => {
+  it('nome do PASSO que não carregou é 500 — "(apagado)" sobre etiqueta viva seria afirmar o que não se leu', async () => {
     h.erros = { tags: { message: 'fora do ar' } }
-    const corpo = await (await pedir(LOG)).json()
-    expect(corpo.nomesDoTexto.carregados).not.toContain('etiqueta')
+    expect((await pedir(LOG)).status).toBe(500)
+  })
+
+  it('nome do TEXTO que não carregou fica fora de `carregados` (o id aparece cru, nunca "apagada")', async () => {
+    h.erros = { cb_tasks: { message: 'fora do ar' } }
+    const res = await pedir(LOG)
+    expect(res.status).toBe(200)
+    const corpo = await res.json()
+    expect(corpo.nomesDoTexto.carregados).not.toContain('tarefa')
+    expect(corpo.nomesDoTexto.carregados).toContain('etiqueta')
   })
 
   it('id que não é UUID é 400', async () => {

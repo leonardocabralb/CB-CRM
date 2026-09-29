@@ -765,8 +765,9 @@
         "semPassos": "No step got to run.",
         "doMotor": "Check before continuing",
         "parouAqui": "stopped here",
+        "removido": "step removed from the automation afterwards",
         "naoRodaram": "Didn't run because of this:",
-        "nadaFicou": "It was the last step: nothing was left behind.",
+        "nadaFicou": "No step was left behind.",
         "naoRodaramDesconhecido": "The automation was edited after this run: it's not possible to say for sure what was left behind.",
         "motivo": "Reason: {motivo}",
         "falhouEm": "failed at: {passo}",
@@ -801,7 +802,7 @@
         "webhookBloqueado": "address not allowed (internal network or invalid)",
         "tarefaCriada": "task created: {tarefa}",
         "conexaoCaiu": "the WhatsApp connection dropped during the send",
-        "tentativa": "attempt {n} of {de}: tried again in {segundos} s",
+        "tentativa": "refused: retry scheduled {segundos} s later (attempt {n} of {de})",
         "desistiu": "gave up after {n} attempts",
         "naoRepetiu": "didn't try again: the run had already been interrupted"
       }

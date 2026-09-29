@@ -17,8 +17,15 @@
 // cliente: sem colapso, esta feature DOBRA o comprimento de um fio ativo.
 // ============================================================
 
+import {
+  MOTIVO_PASSO_MOVIDO,
+  MOTIVO_PASSO_NAO_CONFERIDO,
+  MOTIVO_PASSO_REMOVIDO,
+  MOTIVO_RAMO_REMOVIDO,
+} from '@/lib/automations/retomada'
 import type { AutomationLogDesfecho } from '@/types'
 import type { AutomationLogStepResult } from '@/types'
+import { ehAvisoDeTentativa } from './texto-do-motor'
 
 /** Uma linha de `automation_logs` como o hook a lê. */
 export interface ExecucaoEncerrada {
@@ -78,17 +85,43 @@ function diaLocal(iso: string): string {
 }
 
 /**
- * O passo que PAROU a execução.
+ * A entrada que ENCERROU a execução: a `failed` que não é aviso de
+ * retentativa (`-1` = nenhuma).
  *
- * ⚠️ Sai da entrada com `status: 'failed'`, NUNCA de `at(-1)`. O ramo de uma
- * condição faz seu próprio flush de dentro da recursão, antes de o escopo de
+ * ⚠️ NUNCA `at(-1)`. O ramo de uma condição faz seu próprio flush de dentro da recursão, antes de o escopo de
  * fora gravar o dele — então o último elemento do array não é o último passo
  * a rodar. Uma régua por `at(-1)` acerta no caso simples e erra exatamente
  * onde há ramo, que é onde o operador mais precisa da resposta.
  */
+export function falhaQueEncerrou(
+  passos: readonly Pick<AutomationLogStepResult, 'status' | 'detail'>[] | null,
+): number {
+  if (!Array.isArray(passos)) return -1
+  // O aviso de retentativa também é `failed`, mas não encerrou nada: o passo
+  // foi reagendado (e pode ter saído na tentativa seguinte).
+  return passos.findIndex((p) => p?.status === 'failed' && !ehAvisoDeTentativa(p.detail))
+}
+
+/**
+ * A conferência da RETOMADA (`retomada.ts`) é gravada com o id do passo que
+ * estacionou e o tipo `wait`: quem falhou foi o motor ao acordar, não aquele
+ * passo — "falhou no passo Aguardar" seria falso.
+ */
+export const MOTIVOS_DA_RETOMADA: ReadonlySet<string> = new Set<string>([
+  MOTIVO_RAMO_REMOVIDO,
+  MOTIVO_PASSO_REMOVIDO,
+  MOTIVO_PASSO_MOVIDO,
+  MOTIVO_PASSO_NAO_CONFERIDO,
+])
+
+/** O tipo do passo que PAROU a execução — o fio e a linha fechada da aba o nomeiam. */
 function passoQueFalhou(passos: AutomationLogStepResult[] | null): string | undefined {
-  if (!Array.isArray(passos)) return undefined
-  return passos.find((p) => p?.status === 'failed')?.step_type
+  const i = falhaQueEncerrou(passos)
+  const p = i >= 0 ? passos?.[i] : undefined
+  // Linha do motor (sem passo: a conferência ao acordar ou ao nascer) não
+  // tem "passo que parou".
+  if (!p?.step_id || MOTIVOS_DA_RETOMADA.has(p.detail ?? '')) return undefined
+  return p.step_type
 }
 
 /** A condição que desviou, para o aviso poder dizer QUAL barrou. */
@@ -227,7 +260,11 @@ export function itensDoHistorico(
 
   const grupos = new Map<string, typeof validas>()
   for (const v of validas) {
-    const chave = `${v.l.automationId}|${diaLocal(v.quando)}|${v.desfecho}`
+    // A interrompida agrupa também pelo MOTIVO: "o cliente respondeu" e
+    // "alguém clicou Parar" no mesmo dia são duas histórias, e a linha
+    // fechada só mostra o motivo da mais recente.
+    const motivo = v.desfecho === 'interrompida' ? `:${v.l.interrompidaPor ?? ''}` : ''
+    const chave = `${v.l.automationId}|${diaLocal(v.quando)}|${v.desfecho}${motivo}`
     const g = grupos.get(chave)
     if (g) g.push(v)
     else grupos.set(chave, [v])

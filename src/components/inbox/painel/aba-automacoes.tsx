@@ -47,7 +47,6 @@ import {
   type GrupoDeEsperas,
   type RoboAtivo,
 } from '@/hooks/use-execucoes-do-contato';
-import { descreverPasso } from '@/lib/automations/descrever-passo';
 import type { ItemDoHistorico } from '@/lib/execucoes/desfecho';
 import type { ItemDaLinha } from '@/lib/execucoes/linha-do-tempo';
 import { lerTextoDoMotor } from '@/lib/execucoes/texto-do-motor';
@@ -116,10 +115,16 @@ export function AbaAutomacoes({
   const [ocupado, setOcupado] = useState<string | null>(null);
   /** Automação com a linha do tempo aberta. */
   const [expandida, setExpandida] = useState<string | null>(null);
-  /** Linha do "Já rodou" aberta (a chave do grupo). */
-  const [historicoAberto, setHistoricoAberto] = useState<string | null>(null);
-  /** O "Já rodou" mostra as 8 mais recentes até o operador pedir o resto. */
-  const [historicoInteiro, setHistoricoInteiro] = useState(false);
+  /**
+   * Linha do "Já rodou" aberta — carimbada com o CONTATO: a chave do grupo
+   * (automação, dia, desfecho) se repete entre clientes, e a linha abriria
+   * sozinha na conversa seguinte.
+   */
+  const [historicoAberto, setHistoricoAberto] = useState<{ de: string; chave: string } | null>(null);
+  /** O "Já rodou" mostra as 8 mais recentes até o operador pedir o resto (por contato). */
+  const [historicoInteiroDe, setHistoricoInteiroDe] = useState<string | null>(null);
+  const historicoInteiro = historicoInteiroDe === contactId;
+  const abertaNoHistorico = historicoAberto?.de === contactId ? historicoAberto.chave : null;
 
   async function parar(chave: string, corpo: Record<string, string>, rota: string) {
     setOcupado(chave);
@@ -468,14 +473,18 @@ export function AbaAutomacoes({
                 key={item.chave}
                 item={item}
                 agora={agora}
-                aberta={historicoAberto === item.chave}
-                alternar={() => setHistoricoAberto(historicoAberto === item.chave ? null : item.chave)}
+                aberta={abertaNoHistorico === item.chave}
+                alternar={() =>
+                  setHistoricoAberto(
+                    abertaNoHistorico === item.chave ? null : { de: contactId, chave: item.chave },
+                  )
+                }
               />
             ))}
             {!historicoInteiro && historico.length > 8 && (
               <button
                 type="button"
-                onClick={() => setHistoricoInteiro(true)}
+                onClick={() => setHistoricoInteiroDe(contactId)}
                 className="text-muted-foreground hover:text-foreground text-[11px] underline underline-offset-2"
               >
                 {t('historico.mostrarMais', { n: historico.length - 8 })}
@@ -507,7 +516,7 @@ function LinhaDoHistorico({
   alternar: () => void;
 }) {
   const t = useTranslations('Inbox.execucoes');
-  const tAuto = useTranslations('Pipelines.automacoes');
+  const tTipos = useTranslations('Automations.builder.steps');
   const Icone =
     item.desfecho === 'falhou'
       ? X
@@ -532,17 +541,11 @@ function LinhaDoHistorico({
         .map((p) => ('chave' in p ? t(`motor.${p.chave}` as Parameters<typeof t>[0], p.valores) : p.texto))
         .join(' · ')
     : '';
-  // "Aguardar" como passo que parou é quase sempre a conferência AO ACORDAR
-  // (o motor grava a falha com o tipo `wait` e sem passo): "falhou em:
-  // Aguardar 0 h" seria falso. O motivo basta.
-  const passo = item.passoQueParou && item.passoQueParou !== 'wait'
-    ? tAuto(`resumo.${descreverPasso({ step_type: item.passoQueParou }).chave}` as Parameters<typeof tAuto>[0], {
-        alvo: '',
-        quantidade: 0,
-      })
-        .replace(/:\s*$/, '')
-        .trim()
-    : '';
+  // O rótulo do TIPO ("Marcar ganho ou perdido"): a linha fechada só tem o
+  // tipo, e `descreverPasso` sem a config escolheria uma variante ao acaso
+  // ("Reabrir o negócio" para um "Marcar como ganho" que falhou).
+  const chaveDoTipo = item.passoQueParou as Parameters<typeof tTipos>[0] | undefined;
+  const passo = chaveDoTipo ? (tTipos.has(chaveDoTipo) ? tTipos(chaveDoTipo) : chaveDoTipo) : '';
 
   return (
     <div className={cn('rounded-md', aberta && 'border-border bg-muted/30 border p-2')}>

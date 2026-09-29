@@ -94,6 +94,7 @@ export function DetalheDaExecucao({ item }: { item: ItemDoHistorico }) {
   const tAuto = useTranslations('Pipelines.automacoes');
   const tLogs = useTranslations('Automations.logs');
   const tGatilhos = useTranslations('Automations.builder.triggers');
+  const tTipos = useTranslations('Automations.builder.steps');
   const podeVerRegistros = useCan('manage-automations');
 
   const [escolhida, setEscolhida] = useState(item.execucoes[0]?.id ?? '');
@@ -137,6 +138,12 @@ export function DetalheDaExecucao({ item }: { item: ItemDoHistorico }) {
 
   function rotulo(p: PassoDoDetalhe | PassoQueNaoRodou): string {
     if ('doMotor' in p && p.doMotor) return t('historico.doMotor');
+    // Passo que saiu da automação: o rótulo do TIPO ("Enviar arquivo"), sem a
+    // config que não existe mais — ver `removido` em `detalhe.ts`.
+    if ('removido' in p && p.removido) {
+      const chave = p.tipo as Parameters<typeof tTipos>[0];
+      return tTipos.has(chave) ? tTipos(chave) : p.tipo;
+    }
     return tAuto(`resumo.${p.chave}` as Parameters<typeof tAuto>[0], {
       ...p.valores,
       alvo: p.alvoSumiu ? tAuto('alvoSumiu') : (p.valores.alvo ?? ''),
@@ -181,7 +188,12 @@ export function DetalheDaExecucao({ item }: { item: ItemDoHistorico }) {
           {t('historico.falhou')}{' '}
           <button
             type="button"
-            onClick={() => setTentativa((n) => n + 1)}
+            onClick={() => {
+              // Volta ao "carregando" na hora: o aviso de falha parado na tela
+              // durante a nova leitura pareceria que o clique não fez nada.
+              setEstado(null);
+              setTentativa((n) => n + 1);
+            }}
             className="text-foreground font-medium underline underline-offset-2"
           >
             {t('tentarDeNovo')}
@@ -257,6 +269,9 @@ function CorpoDoDetalhe({
                 <div className="min-w-0 flex-1">
                   <p className="text-foreground text-xs break-words">
                     {rotulo(p)}
+                    {p.removido && (
+                      <span className="text-muted-foreground/70"> · {t('historico.removido')}</span>
+                    )}
                     {p.parou && (
                       <span className="font-medium text-red-700 dark:text-red-300"> · {t('historico.parouAqui')}</span>
                     )}

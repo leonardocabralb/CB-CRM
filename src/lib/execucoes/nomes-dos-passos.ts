@@ -30,11 +30,17 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * alheio no step_config de propósito — sem a cerca, esta rota viraria um
  * oráculo de nomes de outras contas (achado da revisão do Codex no PR #70).
  * `pipeline_stages` não tem account_id; a cerca vai pelo funil pai.
+ *
+ * `estrito`: consulta que falha LANÇA. A linha do tempo de quem aguarda
+ * prefere o "(apagado)" a derrubar a aba; a expansão do "Já rodou" é
+ * auditoria, e dizer "apagado" sobre um alvo vivo que ela não conseguiu ler
+ * seria afirmar o que não sabe (a régua de `registro-legivel.ts`).
  */
 export async function carregarNomesDosPassos(
   db: Db,
   passos: readonly PassoDaAutomacao[],
   accountId: string,
+  { estrito = false }: { estrito?: boolean } = {},
 ): Promise<NomesConhecidos> {
   const tagIds = new Set<string>()
   const etapaIds = new Set<string>()
@@ -69,6 +75,7 @@ export async function carregarNomesDosPassos(
     res: { data: unknown; error: { message: string } | null },
   ) => {
     if (res.error) {
+      if (estrito) throw new Error(`nomes de ${rotulo} falharam: ${res.error.message}`)
       // Rótulo é decorativo: sem ele a linha mostra "(apagado)", que é
       // pior que o certo mas melhor que derrubar a aba inteira.
       console.error(`[execucoes] nomes de ${rotulo} falharam:`, res.error.message)

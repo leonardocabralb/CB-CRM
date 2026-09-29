@@ -758,8 +758,9 @@
         "semPassos": "Nenhum passo chegou a rodar.",
         "doMotor": "Conferência antes de seguir",
         "parouAqui": "parou aqui",
+        "removido": "passo removido da automação depois",
         "naoRodaram": "Não rodaram por causa disso:",
-        "nadaFicou": "Era o último passo: nada ficou para trás.",
+        "nadaFicou": "Nenhum passo ficou para trás.",
         "naoRodaramDesconhecido": "A automação foi editada depois desta execução: não dá para dizer com certeza o que ficou para trás.",
         "motivo": "Motivo: {motivo}",
         "falhouEm": "falhou em: {passo}",
@@ -794,7 +795,7 @@
         "webhookBloqueado": "endereço não permitido (rede interna ou inválido)",
         "tarefaCriada": "tarefa criada: {tarefa}",
         "conexaoCaiu": "a conexão do WhatsApp caiu durante o envio",
-        "tentativa": "tentativa {n} de {de}: tentou de novo em {segundos} s",
+        "tentativa": "recusado: nova tentativa agendada para {segundos} s depois (tentativa {n} de {de})",
         "desistiu": "desistiu depois de {n} tentativas",
         "naoRepetiu": "não tentou de novo: a execução já tinha sido interrompida"
       }

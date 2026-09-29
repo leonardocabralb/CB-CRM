@@ -115,14 +115,31 @@ export async function GET(request: Request) {
     }
 
     const passos = (passosRes.data ?? []) as unknown as PassoDaAutomacao[]
-    const [nomesDosPassos, nomesDoTexto] = await Promise.all([
-      carregarNomesDosPassos(db, passos, ctx.accountId),
-      carregarNomesDoTexto(
-        db,
-        idsCitados([log.error_message, ...executados.map((e) => e?.detail)]),
-        ctx.accountId,
-      ),
-    ])
+    let nomesDosPassos: Awaited<ReturnType<typeof carregarNomesDosPassos>>
+    let nomesDoTexto: Awaited<ReturnType<typeof carregarNomesDoTexto>>
+    try {
+      // Estrito: o "(apagado)" sobre uma etiqueta viva que a consulta não leu
+      // seria afirmar o que não se sabe. Os nomes do TEXTO já têm a régua dos
+      // catálogos carregados (`carregados`).
+      ;[nomesDosPassos, nomesDoTexto] = await Promise.all([
+        carregarNomesDosPassos(db, passos, ctx.accountId, { estrito: true }),
+        carregarNomesDoTexto(
+          db,
+          idsCitados([log.error_message, ...executados.map((e) => e?.detail)]),
+          ctx.accountId,
+        ),
+      ])
+    } catch (err) {
+      console.error('[execucoes/detalhe] nomes:', err instanceof Error ? err.message : err)
+      return NextResponse.json({ error: 'db_error' }, { status: 500 })
+    }
+
+    // ⚠️ Sem aviso de "a automação foi alterada depois": `automations.updated_at`
+    // muda a CADA execução (`increment_automation_execution_count` passa pelo
+    // gatilho `set_updated_at`), e `automation_steps` não tem carimbo de
+    // edição — o aviso apareceria em toda execução (medido no preview,
+    // 29/09/2026). O que fica honesto: passo que saiu da automação vira
+    // `removido`, e ponto de parada sumido não vira lista.
 
     return NextResponse.json(
       {

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import { DETALHE_DA_INTERRUPCAO } from '@/lib/automations/parar-se-responder'
+import { MOTIVO_PASSO_MOVIDO } from '@/lib/automations/retomada'
+import { DETALHE_SAIU_DA_ETAPA } from '@/lib/automations/so-na-etapa'
 import { montarDetalhe, type EsperaEncerrada } from './detalhe'
 import type { PassoDaAutomacao, PassoExecutado } from './linha-do-tempo'
 
@@ -285,5 +287,138 @@ describe('montarDetalhe — interrompida', () => {
       ],
     })
     expect(d.naoRodaram?.map((p) => p.id)).toEqual(['r2', 'f2'])
+  })
+})
+
+describe('montarDetalhe — a ORDEM em que rodou (o ramo grava antes da condição)', () => {
+  it('ramo cheio que falha: a ordem gravada pelo motor volta à ordem em que rodou', () => {
+    // Plano: A (0) → C (1, condição) → D (2); no ramo "não": B1, B2, B3.
+    // O motor grava o array do RAMO ao terminar (com a falha) e só depois o
+    // de fora, com A e a condição: [B1, B2✗, A, C]. D nunca rodou.
+    const d = montarDetalhe({
+      passos: [
+        passo('A', 0),
+        passo('C', 1, 'condition'),
+        passo('D', 2),
+        passo('B1', 0, 'send_message', noRamo('C', 'no')),
+        passo('B2', 1, 'send_webhook', noRamo('C', 'no')),
+        passo('B3', 2, 'send_message', noRamo('C', 'no')),
+      ],
+      executados: [
+        rodou('B1'),
+        rodou('B2', 'failed', 'webhook returned 404', 'send_webhook'),
+        rodou('A'),
+        rodou('C', 'success', 'branch=no', 'condition'),
+      ],
+      desfecho: 'falhou',
+      esperasEncerradas: [],
+    })
+    expect(d.passos.map((p) => p.id.split('-')[0])).toEqual(['A', 'C', 'B1', 'B2'])
+    expect(d.passos.at(-1)?.parou).toBe(true)
+    expect(d.naoRodaram?.map((p) => p.id)).toEqual(['B3', 'D'])
+  })
+
+  it('espera no ramo: o trecho gravado ANTES da condição sobe, o da retomada fica depois do escopo de fora', () => {
+    // Plano: C (0) → D (1); no ramo "sim": W (espera), B. O ramo estaciona e
+    // grava [W]; o escopo de fora segue e grava [C, D]; horas depois a
+    // retomada grava [B]. Rodou nesta ordem: C, W, D, B.
+    const d = montarDetalhe({
+      passos: [
+        passo('C', 0, 'condition'),
+        passo('D', 1),
+        passo('W', 0, 'wait', noRamo('C', 'yes')),
+        passo('B', 1, 'send_message', noRamo('C', 'yes')),
+      ],
+      executados: [
+        rodou('W', 'success', 'waiting 1 days', 'wait'),
+        rodou('C', 'success', 'branch=yes', 'condition'),
+        rodou('D'),
+        rodou('B'),
+      ],
+      desfecho: 'concluida',
+      esperasEncerradas: [],
+    })
+    expect(d.passos.map((p) => p.id.split('-')[0])).toEqual(['C', 'W', 'D', 'B'])
+  })
+
+  it('ramo dentro de ramo: cada trecho vai para depois da SUA condição', () => {
+    const d = montarDetalhe({
+      passos: [
+        passo('C1', 0, 'condition'),
+        passo('C2', 0, 'condition', noRamo('C1', 'yes')),
+        passo('X', 0, 'send_message', noRamo('C2', 'no')),
+      ],
+      executados: [
+        rodou('X'),
+        rodou('C2', 'success', 'branch=no', 'condition'),
+        rodou('C1', 'success', 'branch=yes', 'condition'),
+      ],
+      desfecho: 'concluida',
+      esperasEncerradas: [],
+    })
+    expect(d.passos.map((p) => p.id.split('-')[0])).toEqual(['C1', 'C2', 'X'])
+  })
+})
+
+describe('montarDetalhe — o revisor de 29/09', () => {
+  it('envio recusado e reagendado, depois cancelado, NÃO saiu: aparece em "não rodaram"', () => {
+    // A retentativa estaciona na posição do PRÓPRIO passo; o operador clicou
+    // Parar antes da nova tentativa.
+    const d = montarDetalhe({
+      passos: [passo('a', 0), passo('envio', 1)],
+      executados: [
+        rodou('a'),
+        rodou('envio', 'failed', 'recusado — tentativa 1 de 3; nova tentativa em 30s'),
+      ],
+      desfecho: 'interrompida',
+      esperasEncerradas: [
+        { parent_step_id: null, branch: null, next_step_position: 1, context: { _passo_da_fila: { id: 'envio', pos: 1 } } },
+      ],
+    })
+    expect(d.passos[1].estado).toBe('tentativa')
+    expect(d.naoRodaram?.map((p) => p.id)).toEqual(['envio'])
+  })
+
+  it('a retomada que parou por passo MOVIDO é linha do motor, e a lista não é afirmada', () => {
+    // O motor grava o id do passo que estacionou, com tipo `wait`; hoje ele
+    // está noutro ramo — calcular a partir do escopo NOVO mentiria.
+    const d = montarDetalhe({
+      passos: [passo('cond', 0, 'condition'), passo('w', 0, 'wait', noRamo('cond', 'yes')), passo('b', 1)],
+      executados: [
+        rodou('w', 'success', 'waiting 1 days', 'wait'),
+        { step_id: 'w', step_type: 'wait', status: 'failed', detail: MOTIVO_PASSO_MOVIDO },
+      ],
+      desfecho: 'falhou',
+      esperasEncerradas: [
+        { parent_step_id: null, branch: null, next_step_position: 1, context: { _passo_da_fila: { id: 'w', pos: 0 } } },
+      ],
+    })
+    expect(d.passos[1]).toMatchObject({ doMotor: true, parou: true })
+    expect(d.naoRodaramDesconhecido).toBe(true)
+    expect(d.naoRodaram).toBeNull()
+  })
+
+  it('passo que rodou e saiu da automação depois: rótulo do tipo (`removido`), não "(apagado)"', () => {
+    const d = montarDetalhe({
+      passos: [],
+      executados: [rodou('sumiu', 'success', 'tag x added and tag_added dispatched', 'add_tag')],
+      desfecho: 'concluida',
+      esperasEncerradas: [],
+    })
+    expect(d.passos[0]).toMatchObject({ removido: true, tipo: 'add_tag' })
+    expect(d.passos[0].doMotor).toBeUndefined()
+  })
+
+  it('a guarda do motor "card saiu da etapa" num passo real é ponto de parada (sem espera na fila)', () => {
+    const d = montarDetalhe({
+      passos: [passo('a', 0), passo('b', 1), passo('c', 2)],
+      executados: [rodou('a'), { step_id: 'b', step_type: 'send_message', status: 'skipped', detail: DETALHE_SAIU_DA_ETAPA }],
+      desfecho: 'interrompida',
+      esperasEncerradas: [],
+    })
+    // A anotação não vira passo (o rodapé diz o motivo)...
+    expect(d.passos.map((p) => p.id)).toEqual(['a-0'])
+    // ...mas diz de onde a sequência não seguiu.
+    expect(d.naoRodaram?.map((p) => p.id)).toEqual(['b', 'c'])
   })
 })

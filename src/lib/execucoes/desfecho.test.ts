@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
+  falhaQueEncerrou,
   itensDoFio,
   itensDoHistorico,
   MOTIVOS_DA_INTERRUPCAO,
@@ -285,5 +286,39 @@ describe('o motivo da interrupção nos dois dicionários (chave montada)', () =
     const check = migration.match(/interrompida_por in \(([^)]*)\)/)?.[1] ?? ''
     const doBanco = [...check.matchAll(/'([a-z]+)'/g)].map((m) => m[1]).sort()
     expect(doBanco).toEqual([...MOTIVOS_DA_INTERRUPCAO].sort())
+  })
+})
+
+describe('o passo que PAROU (a linha fechada da aba e o cartão do fio)', () => {
+  it('aviso de retentativa não é a falha que encerrou', () => {
+    const passos = [
+      { step_id: 'm', step_type: 'send_message' as const, status: 'failed' as const, detail: 'x — tentativa 1 de 3; nova tentativa em 30s' },
+      { step_id: 'm', step_type: 'send_message' as const, status: 'success' as const, detail: 'sent (1)' },
+      { step_id: 'w', step_type: 'send_webhook' as const, status: 'failed' as const, detail: 'webhook returned 500' },
+    ]
+    expect(falhaQueEncerrou(passos)).toBe(2)
+    const [item] = itensDoFio([linha({ desfecho: 'falhou', stepsExecuted: passos })])
+    expect(item.passoQueParou).toBe('send_webhook')
+  })
+
+  it('a conferência do motor (sem passo) não tem "passo que parou" — nunca "Aguardar"', () => {
+    const [item] = itensDoFio([
+      linha({
+        desfecho: 'falhou',
+        stepsExecuted: [{ step_id: '', step_type: 'wait', status: 'failed', detail: 'não consegui conferir…' }],
+      }),
+    ])
+    expect(item.passoQueParou).toBeUndefined()
+  })
+})
+
+describe('itensDoHistorico — interrompidas por motivos diferentes no mesmo dia', () => {
+  it('não se juntam: cada motivo é uma linha', () => {
+    const base = { desfecho: null, finalizadoEm: null }
+    const itens = itensDoHistorico([
+      linha({ ...base, id: 'r', interrompidaEm: '2026-09-09T12:00:00.000Z', interrompidaPor: 'resposta' }),
+      linha({ ...base, id: 'p', interrompidaEm: '2026-09-09T13:00:00.000Z', interrompidaPor: 'parar' }),
+    ])
+    expect(itens.map((i) => i.interrompidaPor)).toEqual(['parar', 'resposta'])
   })
 })
