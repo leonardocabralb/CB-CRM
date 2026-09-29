@@ -312,6 +312,15 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
   `user_id: ownerUserId` com falha fechada (`if (!ownerUserId) throw`), nunca
   `user.id` (`contacts.user_id` CASCADEia de `auth.users`); o upstream grava
   `user.id`. Pino `src/hooks/use-broadcast-sending.dono-do-csv.test.ts`.
+- ⚠️⚠️ **Os contadores de `broadcasts` só mudam pelo GATILHO, e a função dele
+  TEM de continuar SECURITY DEFINER** (1066). `_bcast_bump` e
+  `recompute_broadcast_counts` são fechadas a `anon`/`authenticated` (abertas,
+  a chave anônima e o id de uma campanha mexiam nos números de qualquer
+  conta); quem as chama é `broadcast_recipient_aggregate_trigger()`, rodando
+  como dono. Recriada como INVOKER (merge do upstream, "conserto" de lint), a
+  rota do lote e o navegador — que gravam `broadcast_recipients` como
+  `authenticated` — levam 42501 ao MARCAR o envio, com a mensagem já
+  entregue. Pino `supabase/migrations/contadores-do-disparo-1066.test.ts`.
 
 ### Assinatura
 
