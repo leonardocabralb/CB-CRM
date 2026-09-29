@@ -1,15 +1,18 @@
 'use client';
 
 // ============================================================
-// /meu-dia — a ÁREA DE TRABALHO (F5).
+// /meu-dia — a ÁREA DE TRABALHO.
 //
-// Até 12/09 esta rota era o mesmo cartão da entrada, em modo página — e o
-// operador devolveu: "parece só uma miniatura idêntica da que aparece no
-// modal; o ideal é uma área mais estruturada, para o operador efetivamente
-// trabalhar, visualizar os resultados, as falhas e ter a visão sobre o que
-// precisa ser corrigido". Hoje são sete blocos num grid: os três pessoais
-// (que continuam vindo de `useResumoDoDia`, o mesmo do cartão) e os quatro
-// de operação (`useAreaDeTrabalho`).
+// v2 (pedido do operador, 29/09/2026 — `docs/PLANO-meu-dia-v2.md`), de cima
+// para baixo:
+//   · as CONEXÕES que a pessoa enxerga, cada uma com os clientes não lidos e
+//     em atraso (no lugar da lista de clientes esperando);
+//   · a EQUIPE — só administrador e quem vê o Painel (D1): tarefas vencidas
+//     e de hoje de cada membro, com as que ainda não foram vistas;
+//   · as NOTIFICAÇÕES não lidas e as SUAS TAREFAS, em destaque;
+//   · a AGENDA de hoje e amanhã, pela pauta de reuniões;
+//   · o que precisa ser corrigido (só administrador, como antes).
+// Saíram "O dia até agora" e "Negócios no funil".
 //
 // ⚠️ Usa a LENTE do "Ver como" (`acesso`), e não o contexto real: esta tela
 // vive DENTRO do app, onde o shell bloqueia telas pela lente — com o ctx
@@ -19,28 +22,17 @@
 // ⚠️ Fica FORA do catálogo de perfis de propósito (`telaDoCaminho` devolve
 // null e a guarda deixa passar): uma tela nova no catálogo nasceria
 // invisível para todo perfil já gravado.
-//
-// As novidades e a fila "nova" contam a partir da última confirmação da
-// entrada, lida do navegador — a mesma âncora da porta.
 // ============================================================
 
-import { Suspense, useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { ListTodo, MessageCircle } from 'lucide-react';
 
-import {
-  BlocoDaAgenda,
-  BlocoDeCorrecoes,
-  BlocoDeNegocios,
-  BlocoDeResultados,
-} from '@/components/meu-dia/blocos-de-operacao';
-import {
-  Cabecalho,
-  Conversas,
-  Novidades,
-  Tarefas,
-} from '@/components/meu-dia/blocos-pessoais';
+import { BlocoDaAgenda } from '@/components/meu-dia/bloco-da-agenda';
+import { BlocoDaEquipe } from '@/components/meu-dia/bloco-da-equipe';
+import { BlocoDeConexoes } from '@/components/meu-dia/bloco-de-conexoes';
+import { BlocoDeNotificacoes } from '@/components/meu-dia/bloco-de-notificacoes';
+import { BlocoDeTarefas } from '@/components/meu-dia/bloco-de-tarefas';
+import { BlocoDeCorrecoes } from '@/components/meu-dia/blocos-de-operacao';
 import { Button } from '@/components/ui/button';
 import { useAgendadorSaude } from '@/hooks/use-agendador-saude';
 import { useAreaDeTrabalho } from '@/hooks/use-area-de-trabalho';
@@ -48,83 +40,16 @@ import { useAoVoltarParaOApp } from '@/hooks/use-ao-voltar-para-o-app';
 import { useAuth } from '@/hooks/use-auth';
 import { useCan } from '@/hooks/use-can';
 import { useChannelHealth } from '@/hooks/use-channel-health';
-import { useResumoDoDia } from '@/hooks/use-resumo-do-dia';
+import { useChannels } from '@/hooks/use-channels';
+import { useMembros } from '@/hooks/use-membros';
+import { usePautaDeReunioes } from '@/hooks/use-pauta-de-reunioes';
+import { diaNoFuso, FUSO_PADRAO, paraInstante } from '@/lib/agenda/fuso';
 import type { EstadoDaFonte } from '@/lib/meu-dia/correcoes';
 import { canaisVisiveis } from '@/lib/perfis/escopo';
 import type { ContextoDeAcesso } from '@/lib/perfis/tipos';
 import { podeVerSecao, podeVerTela } from '@/lib/perfis/visibilidade';
-import { lerRegistroDoNavegador } from '@/lib/resumo-do-dia/navegador';
-import { inicioDasNovidades } from '@/lib/resumo-do-dia/pendencia';
 import type { SaudeDoAgendador } from '@/lib/scheduled/saude';
-import { diaLocal } from '@/lib/tasks/prazo';
-
-interface Pedido {
-  agoraMs: number;
-  desdeMs: number;
-  daConfirmacao: boolean;
-}
-
-/**
- * A janela herdada do cartão da entrada (`?desde=`), quando houver.
- *
- * ⚠️ É PARSE, nunca `Number(x)` cru: o parâmetro vem da URL, que qualquer um
- * edita. Recusa o que não é inteiro positivo, o que está no FUTURO (janela
- * que ainda não começou não mostraria nada) e o que é velho demais — o teto
- * é o mesmo da janela padrão de quem nunca confirmou, e sem ele um `desde=0`
- * mandaria a consulta varrer a conta inteira.
- */
-interface JanelaHerdada {
-  desdeMs: number;
-  /** A janela do cartão era a confirmação anterior, ou o recuo de 24 h? */
-  daConfirmacao: boolean;
-}
-
-function janelaHerdada(
-  bruto: string | null,
-  conf: string | null,
-  agoraMs: number
-): JanelaHerdada | null {
-  if (!bruto) return null;
-  const n = Number(bruto);
-  if (!Number.isInteger(n) || n <= 0) return null;
-  if (n > agoraMs) return null;
-  if (agoraMs - n > TETO_DA_JANELA_MS) return null;
-  // Só o literal '1' confirma. Parâmetro ausente (link antigo, ou colado à
-  // mão) é tratado como as "últimas 24 h": afirmar uma entrada anterior que
-  // não houve é a mentira que este campo existe para evitar.
-  return { desdeMs: n, daConfirmacao: conf === '1' };
-}
-
-/** Trinta dias — o mesmo teto que `inicioDasNovidades` usa para não varrer a conta. */
-const TETO_DA_JANELA_MS = 30 * 24 * 60 * 60_000;
-
-function montarPedido(
-  userId: string | null,
-  herdada: JanelaHerdada | null
-): Pedido {
-  const agoraMs = Date.now();
-  const inicio = inicioDasNovidades(
-    userId ? lerRegistroDoNavegador(userId) : null,
-    agoraMs
-  );
-  // A janela do cartão vence a do registro: ela é a que a pessoa viu, e o
-  // registro já foi reescrito pelo "Continuar" que o botão disparou.
-  if (herdada !== null) {
-    return {
-      agoraMs,
-      desdeMs: herdada.desdeMs,
-      daConfirmacao: herdada.daConfirmacao,
-    };
-  }
-  return {
-    agoraMs,
-    desdeMs: inicio.desdeMs,
-    daConfirmacao: inicio.daConfirmacao,
-  };
-}
-
-/** A aba não tem porta acima dela: navegar daqui não precisa confirmar nada. */
-const NADA = () => {};
+import { diaLocal, somarDias } from '@/lib/tasks/prazo';
 
 /**
  * ⚠️ `deveAparecer` NÃO serve aqui: ele é true também para
@@ -142,46 +67,9 @@ function agendadorEstaParado(s: SaudeDoAgendador): boolean {
   );
 }
 
-// ⚠️ `useSearchParams` (o `?desde=` herdado do cartão) exige um limite de
-// Suspense — é o mesmo invólucro fino de `inbox` e `contacts`. Sem ele a
-// página prerenderizada resolve a query string no build, e o parâmetro que
-// o botão da entrada manda seria ignorado na hidratação.
 export default function MeuDiaPage() {
-  return (
-    <Suspense fallback={null}>
-      <MeuDiaPageInner />
-    </Suspense>
-  );
-}
-
-function MeuDiaPageInner() {
   const { user, accountId, accountStatus, profile, acesso } = useAuth();
   const userId = user?.id ?? null;
-  const params = useSearchParams();
-  const router = useRouter();
-
-  // O pedido nasce no inicializador e só muda no clique em "Atualizar" — o
-  // relógio novo (`agoraMs`) é a chave que faz os hooks consultarem de novo.
-  // ⚠️ A janela herdada entra SÓ na primeira montagem: o "Atualizar" tem de
-  // partir do registro de verdade, senão a aba ficaria presa para sempre na
-  // janela de uma entrada que já foi confirmada.
-  const [pedido, setPedido] = useState<Pedido>(() =>
-    montarPedido(
-      userId,
-      janelaHerdada(params.get('desde'), params.get('conf'), Date.now())
-    )
-  );
-
-  // ⚠️ O carimbo é consumido UMA vez: ele fica na barra de endereço, e um
-  // recarregamento duro — ou a volta pelo histórico — remontaria a página
-  // consumindo o MESMO carimbo velho, reclassificando como novo o que a
-  // pessoa já tratou, por até trinta dias (Codex, PR #202). Trocar só a
-  // query não remonta a rota (é o que o inbox faz com `?c=`), então o
-  // pedido já montado fica de pé.
-  useEffect(() => {
-    if (!params.has('desde') && !params.has('conf')) return;
-    router.replace('/meu-dia', { scroll: false });
-  }, [params, router]);
 
   // O shell já segura sessão e perfil; conta quebrada é narrada pelo
   // `AccountAccessAlert` acima desta página.
@@ -191,11 +79,8 @@ function MeuDiaPageInner() {
     <AreaDeTrabalho
       userId={userId}
       accountId={accountId}
-      profileId={profile?.id ?? null}
       primeiroNome={profile?.full_name?.trim().split(/\s+/)[0] || null}
       acesso={acesso}
-      pedido={pedido}
-      onAtualizar={() => setPedido(montarPedido(userId, null))}
     />
   );
 }
@@ -209,37 +94,52 @@ function MeuDiaPageInner() {
 function AreaDeTrabalho({
   userId,
   accountId,
-  profileId,
   primeiroNome,
   acesso,
-  pedido,
-  onAtualizar,
 }: {
   userId: string;
   accountId: string;
-  profileId: string | null;
   primeiroNome: string | null;
   acesso: ContextoDeAcesso;
-  pedido: Pedido;
-  onAtualizar: () => void;
 }) {
   const t = useTranslations('MeuDia');
   const tResumo = useTranslations('ResumoDoDia');
 
-  const resumo = useResumoDoDia({
-    userId,
-    accountId,
-    ctx: acesso,
-    desdeMs: pedido.desdeMs,
-    versao: pedido.agoraMs,
-  });
+  // O relógio da tela: nasce no inicializador e só muda no "Atualizar" — é a
+  // chave que faz os hooks consultarem de novo.
+  const [agoraMs, setAgoraMs] = useState(() => Date.now());
+
+  const veTarefas = podeVerTela(acesso, 'tarefas');
+  const veContatos = podeVerTela(acesso, 'contacts');
+  const veInbox = podeVerTela(acesso, 'inbox');
+  const veNotificacoes = podeVerTela(acesso, 'notifications');
+  const veAgendadas = podeVerTela(acesso, 'agendadas');
+  const veAgenda = podeVerTela(acesso, 'agenda');
+  const veAutomacoes = podeVerTela(acesso, 'automations');
+  const veCorrecoes = useCan('view-reports');
+  // ⚠️ D1 (29/09/2026): a equipe é do administrador e de quem vê o PAINEL —
+  // hoje, exatamente o perfil "Gestor Geral". `papel` nulo é perfil ainda
+  // chegando: sem a guarda, `podeVerTela` sem perfil responde "sim" e o card
+  // piscaria para o atendente.
+  const veEquipe =
+    acesso.papel !== null &&
+    (veCorrecoes || podeVerTela(acesso, 'dashboard'));
+  // Por SEÇÃO: a tela de Configurações não é recortável, mas as seções são.
+  const veConexoes = podeVerSecao(acesso, 'channels');
+  const veIntegracoes = podeVerSecao(acesso, 'integracoes');
+  const veWebhooks = podeVerSecao(acesso, 'webhooks');
+
   const area = useAreaDeTrabalho({
     userId,
-    profileId,
     accountId,
     ctx: acesso,
-    versao: pedido.agoraMs,
+    comEquipe: veEquipe,
+    versao: agoraMs,
   });
+  const membros = useMembros();
+  // A lista de conexões dos indicadores (com `loading`/`falhou`: é afirmação).
+  // Aqui, e não no bloco, para o "Atualizar" alcançá-la.
+  const canais = useChannels();
   const {
     channels,
     loading: conexoesCarregando,
@@ -247,6 +147,21 @@ function AreaDeTrabalho({
     recarregar: recarregarConexoes,
   } = useChannelHealth();
   const { saude, recarregar: recarregarAgendador } = useAgendadorSaude();
+
+  // Hoje e amanhã no fuso da AGENDA — a janela da pauta de /reunioes. A
+  // janela só muda com o dia; o "Atualizar" relê pela `recarregar`.
+  // ⚠️ O fim é a meia-noite DEPOIS de amanhã, não "amanhã 23:59": a rota
+  // compara com `lte`, e a reunião das 23:59:30 ficaria de fora (Codex, PR
+  // #350). A de 00:00 em ponto do dia seguinte que entra junto não aparece:
+  // o bloco mostra só os dias de hoje e amanhã.
+  const janelaDaPauta = useMemo(() => {
+    const hojeNoFuso = diaNoFuso(new Date(agoraMs), FUSO_PADRAO);
+    return {
+      de: paraInstante(hojeNoFuso, '00:00', FUSO_PADRAO).toISOString(),
+      ate: paraInstante(somarDias(hojeNoFuso, 2), '00:00', FUSO_PADRAO).toISOString(),
+    };
+  }, [agoraMs]);
+  const pauta = usePautaDeReunioes(janelaDaPauta);
 
   // ⚠️ Só as conexões que o perfil enxerga: um perfil restrito ao
   // trabalhista não tem o que fazer com a conexão do bancário caída — e o
@@ -273,8 +188,7 @@ function AreaDeTrabalho({
   //
   // ⚠️ O teste é `detail === 'lagging'`, não `tone === 'warn'`: `warn`
   // também cobre `stale`, `pairing` e `lastError`, que são transitórios e
-  // encheriam o bloco de alarme que se resolve sozinho — e um bloco que
-  // acende à toa é um bloco que se aprende a ignorar.
+  // encheriam o bloco de alarme que se resolve sozinho.
   const conexoesAtrasadas: EstadoDaFonte = conexoesCarregando
     ? { status: 'carregando' }
     : conexoesFalharam
@@ -288,21 +202,8 @@ function AreaDeTrabalho({
           },
         };
 
-  const veTarefas = podeVerTela(acesso, 'tarefas');
-  const veContatos = podeVerTela(acesso, 'contacts');
-  const veInbox = podeVerTela(acesso, 'inbox');
-  const veNotificacoes = podeVerTela(acesso, 'notifications');
-  const veAgendadas = podeVerTela(acesso, 'agendadas');
-  const veAgenda = podeVerTela(acesso, 'agenda');
-  const veFunis = podeVerTela(acesso, 'pipelines');
-  const veAutomacoes = podeVerTela(acesso, 'automations');
-  const veCorrecoes = useCan('view-reports');
-  // Por SEÇÃO: a tela de Configurações não é recortável, mas as seções são.
-  const veConexoes = podeVerSecao(acesso, 'channels');
-  const veIntegracoes = podeVerSecao(acesso, 'integracoes');
-  const veWebhooks = podeVerSecao(acesso, 'webhooks');
-
-  const agora = new Date(pedido.agoraMs);
+  const agora = new Date(agoraMs);
+  const hoje = diaLocal(agora);
   const hora = agora.getHours();
   const saudacao = primeiroNome
     ? hora < 12
@@ -317,15 +218,20 @@ function AreaDeTrabalho({
         : tResumo('greetingEveningPlain');
 
   /**
-   * ⚠️ O "Atualizar" precisa alcançar as DUAS sondas de saúde, que têm laço
-   * próprio e não enxergam o `pedido`: sem isso, o operador conserta a
-   * conexão, clica em Atualizar e o bloco continua vermelho até o próximo
-   * tique — até cinco minutos no agendador (Codex, PR #202).
+   * ⚠️ O "Atualizar" precisa alcançar as sondas e a pauta, que têm laço ou
+   * chave próprios e não enxergam o relógio da tela: sem isso, o operador
+   * conserta a conexão, clica em Atualizar e o bloco continua vermelho até o
+   * próximo tique (Codex, PR #202).
    */
   const atualizarTudo = () => {
-    onAtualizar();
+    setAgoraMs(Date.now());
     recarregarConexoes();
     recarregarAgendador();
+    pauta.recarregar();
+    // As duas listas têm leitura própria: sem isto, uma falha na montagem
+    // prendia o bloco em "Não consegui carregar" até sair da tela.
+    void canais.recarregar();
+    membros.recarregar();
   };
 
   // O app instalado no celular não tem botão de recarregar: voltar para ele
@@ -335,17 +241,18 @@ function AreaDeTrabalho({
   // seria pior que piscar.
   useAoVoltarParaOApp(atualizarTudo);
 
-  const carregando = [
-    resumo.novidades,
-    resumo.tarefas,
-    resumo.conversas,
-    resumo.fila,
-    area.correcoes,
-    area.integracoes,
-    area.resultados,
-    area.negocios,
-    area.agenda,
-  ].some((b) => b.status === 'carregando');
+  const carregando =
+    pauta.carregando ||
+    canais.loading ||
+    (veEquipe && membros.carregando) ||
+    [
+      area.conexoes,
+      area.notificacoes,
+      area.tarefas,
+      area.correcoes,
+      area.integracoes,
+      ...(veEquipe ? [area.equipe] : []),
+    ].some((b) => b.status === 'carregando');
 
   return (
     <div className="space-y-5">
@@ -379,81 +286,80 @@ function AreaDeTrabalho({
         </div>
       </div>
 
-      {/* ⚠️ Grid de SEIS colunas: a primeira fileira são os três blocos
-          pessoais (o que está com a pessoa AGORA), e as duas de baixo, os de
-          operação, em meias larguras. A ordem não é estética — é a de quem
-          abre a tela para trabalhar: primeiro o que é seu, depois o que
-          quebrou, por último o que já andou. */}
+      {/* ⚠️ A ordem é a de quem abre a tela para trabalhar: a fila das
+          conexões (onde o cliente espera), a equipe para quem a acompanha
+          (a "prioridade" do pedido), o que é da pessoa, a agenda e, por
+          último, o que quebrou (só administrador). */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-6">
-        <section className="border-border bg-card rounded-xl border p-4 shadow-sm lg:col-span-2">
-          <h2 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-            {pedido.daConfirmacao
-              ? tResumo('sinceLast', {
-                  quando: new Date(pedido.desdeMs).toLocaleString(undefined, {
-                    weekday: 'short',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  }),
-                })
-              : tResumo('last24h')}
-          </h2>
-          <Novidades
-            bloco={resumo.novidades}
-            veNotificacoes={veNotificacoes}
-            onContinuar={NADA}
-          />
-        </section>
-
-        <section className="border-border bg-card rounded-xl border p-4 shadow-sm lg:col-span-2">
-          <Cabecalho
-            icone={<ListTodo className="size-4" aria-hidden />}
-            titulo={tResumo('tasksTitle')}
-            direita={
-              resumo.tarefas.status === 'pronto' ? (
-                <span className="text-sm">
-                  {tResumo('tasksOverdue', {
-                    count: resumo.tarefas.dados.totais.vencidas,
-                  })}
-                </span>
-              ) : null
-            }
-          />
-          <Tarefas
-            bloco={resumo.tarefas}
-            hoje={diaLocal(agora)}
-            veTarefas={veTarefas}
-            veContatos={veContatos}
-            onContinuar={NADA}
-          />
-        </section>
-
-        <section className="border-border bg-card rounded-xl border p-4 shadow-sm lg:col-span-2">
-          <Cabecalho
-            icone={<MessageCircle className="size-4" aria-hidden />}
-            titulo={tResumo('conversationsTitle')}
-            direita={null}
-          />
-          <Conversas
-            conversas={resumo.conversas}
-            fila={resumo.fila}
-            temConfirmacaoAnterior={pedido.daConfirmacao}
+        <div className="lg:col-span-6">
+          <BlocoDeConexoes
+            bloco={area.conexoes}
+            canais={canais}
+            agoraMs={area.agoraMs}
+            acesso={acesso}
             veInbox={veInbox}
-            onContinuar={NADA}
           />
-        </section>
+        </div>
+
+        {veEquipe && (
+          <div className="lg:col-span-6">
+            <BlocoDaEquipe
+              bloco={area.equipe}
+              membros={membros}
+              userId={userId}
+              hoje={hoje}
+              veTarefas={veTarefas}
+              veInbox={veInbox}
+              veContatos={veContatos}
+            />
+          </div>
+        )}
+
+        <div className="lg:col-span-3">
+          <BlocoDeNotificacoes
+            bloco={area.notificacoes}
+            membros={membros.membros}
+            veNotificacoes={veNotificacoes}
+            veTarefas={veTarefas}
+            veInbox={veInbox}
+          />
+        </div>
+
+        <div className="lg:col-span-3">
+          <BlocoDeTarefas
+            bloco={area.tarefas}
+            hoje={hoje}
+            userId={userId}
+            veTarefas={veTarefas}
+            veInbox={veInbox}
+            veContatos={veContatos}
+          />
+        </div>
+
+        <div className="lg:col-span-6">
+          <BlocoDaAgenda
+            pauta={{
+              reunioes: pauta.pauta?.reunioes ?? null,
+              carregando: pauta.carregando,
+              falhou: pauta.falhou,
+            }}
+            agoraMs={agoraMs}
+            acesso={acesso}
+            veInbox={veInbox}
+            veContatos={veContatos}
+            veAgenda={veAgenda}
+          />
+        </div>
 
         {/* ⚠️ Só o ADMINISTRADOR vê o que precisa ser corrigido (pedido do
             operador, 13/09/2026). É a régua das abas analíticas do funil
-            (`view-reports`), e pela mesma razão: agendada que não saiu,
-            conexão fora do ar, automação que falhou e entrada que não virou
-            atendimento são a saúde da OPERAÇÃO — quem conserta é quem
-            administra, e para o atendente seria um alarme sobre o qual ele
-            não pode agir. ⚠️ `useCan` deriva do acesso EFETIVO, então o
-            "Ver como" esconde o bloco junto; e devolve `false` enquanto o
-            perfil carrega, de propósito — o bloco entra depois, em vez de
-            piscar para quem não o vê. */}
+            (`view-reports`): agendada que não saiu, conexão fora do ar,
+            automação que falhou e entrada que não virou atendimento são a
+            saúde da OPERAÇÃO — para o atendente seria um alarme sobre o qual
+            ele não pode agir. `useCan` segue o acesso EFETIVO: o "Ver como"
+            esconde o bloco junto. */}
         {veCorrecoes && (
-          <div className="lg:col-span-3">
+          <div className="lg:col-span-6">
             <BlocoDeCorrecoes
               correcoes={area.correcoes}
               integracoes={area.integracoes}
@@ -472,27 +378,6 @@ function AreaDeTrabalho({
             />
           </div>
         )}
-
-        <div className="lg:col-span-3">
-          <BlocoDeResultados
-            bloco={area.resultados}
-            veTarefas={veTarefas}
-            veFunis={veFunis}
-            veContatos={veContatos}
-          />
-        </div>
-
-        <div className="lg:col-span-3">
-          <BlocoDeNegocios bloco={area.negocios} veFunis={veFunis} />
-        </div>
-
-        <div className="lg:col-span-3">
-          <BlocoDaAgenda
-            bloco={area.agenda}
-            agoraMs={pedido.agoraMs}
-            veAgenda={veAgenda}
-          />
-        </div>
       </div>
     </div>
   );

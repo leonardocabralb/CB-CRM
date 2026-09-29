@@ -6,6 +6,7 @@ import {
   faltouAntes,
   faseDaReuniao,
   lerPauta,
+  linkDeReuniao,
   pendentes,
   qualificacaoDaReuniao,
   resultadoDaEtapa,
@@ -382,5 +383,16 @@ describe('lerPauta', () => {
     });
     expect(lido?.reunioes).toHaveLength(1);
     expect(lido?.funis.banc).toEqual({ qualificada: { id: 'mql2', nome: 'MQL 2' }, proposta: null, sem_proposta: null, no_show: null });
+  });
+});
+
+describe('linkDeReuniao', () => {
+  it('só abre http(s) — o local da agenda pode ser um endereço', () => {
+    expect(linkDeReuniao('https://meet.google.com/abc-defg-hij')).toBe('https://meet.google.com/abc-defg-hij');
+    expect(linkDeReuniao('http://exemplo.com/sala')).toBe('http://exemplo.com/sala');
+    expect(linkDeReuniao('Escritório')).toBeNull();
+    expect(linkDeReuniao('Rua das Flores, 10')).toBeNull();
+    expect(linkDeReuniao('javascript:alert(1)')).toBeNull();
+    expect(linkDeReuniao(null)).toBeNull();
   });
 });

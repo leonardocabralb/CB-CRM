@@ -6,8 +6,8 @@
 // ⚠️ Ele é ENXUTO de propósito (F5, pedido do operador em 12/09): números do
 // dia e UM caminho para a frente — o botão que abre a aba /meu-dia, que é
 // onde se trabalha. Antes, o cartão listava tarefas e conversas com link em
-// cada item, e a aba era uma cópia dele; agora as listas vivem em
-// `components/meu-dia/blocos-pessoais.tsx`, montadas pela aba.
+// cada item, e a aba era uma cópia dele; agora a aba tem os blocos dela
+// (`components/meu-dia/`) e este cartão só usa o de `Novidades`.
 //
 // Só APRESENTA. Os números vêm de `useResumoDoDia`, a regra de "aparece ou
 // não" mora na porta (`porta-de-entrada.tsx`) e as contagens em
@@ -137,21 +137,12 @@ export function ResumoDoDia({
 
   // A aba é a MESMA tela protegida do menu; ela não está no catálogo de
   // perfis (`telaDoCaminho` devolve null), então não há gate a consultar.
-  //
-  // ⚠️⚠️ A JANELA VAI NA URL, e isso é o contrário de um detalhe.
-  // `onContinuar` GRAVA a confirmação de agora antes de navegar, e a aba
-  // monta o pedido dela relendo esse registro — sem o parâmetro, ela abriria
-  // com `desdeMs` = o instante do clique e diria "nada de novo" sobre
-  // exatamente as pendências que a pessoa clicou para tratar (Codex, PR
-  // #202). Levar `desde` preserva a janela que ESTE cartão mostrou.
+  // Até a v2 a janela das novidades ia na URL (`?desde=&conf=`), porque a
+  // aba repetia este bloco; desde 29/09/2026 a aba mostra as notificações
+  // NÃO LIDAS, que não dependem de janela nenhuma.
   const abrirMeuDia = () => {
     onContinuar();
-    // ⚠️ A PROVENIÊNCIA vai junto (`conf`), não só o carimbo. Sem ela, a aba
-    // tratava toda janela herdada como confirmação e escrevia "desde a sua
-    // última entrada" para quem nunca entrou neste aparelho — ali a janela é
-    // o recuo de 24 h, e o cartão diz isso (Codex, PR #202).
-    const conf = temConfirmacaoAnterior ? '1' : '0';
-    router.push(`/meu-dia?desde=${desdeMs}&conf=${conf}`);
+    router.push('/meu-dia');
   };
 
   return (

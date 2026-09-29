@@ -7,6 +7,7 @@ paths:
   - "src/app/*/notifications/**"
   - "src/hooks/use-tarefas*"
   - "src/hooks/use-acoes-da-tarefa*"
+  - "src/hooks/use-vista-da-tarefa*"
   - "src/app/api/v1/tasks/**"
   - "src/lib/api/v1/tasks*"
 ---
@@ -47,11 +48,37 @@ história, está em `git show f5879b3f:CLAUDE.md`.
 - **A etiqueta do menu depende de `REPLICA IDENTITY FULL`**: o contador tira o
   delta comparando a linha ANTES e DEPOIS de cada UPDATE (marcar não lida,
   concluir, reabrir e redirecionar mexem na conta em sentidos diferentes).
-- **Redirecionar zera `lida_em`**: a tarefa chega "não lida" para quem acabou
-  de recebê-la; senão some da contagem do menu da pessoa nova.
+- **Redirecionar zera `lida_em` E `vista_em`**: a tarefa chega "não lida" e
+  "não vista" para quem acabou de recebê-la; senão some da contagem do menu da
+  pessoa nova e o card da equipe diria "vista" sobre quem nunca a abriu.
+
+### Tarefa VISTA (1068): registro, não estado
+
+Decisão do operador (29/09/2026): a tarefa conta como vista quando fica
+visível na tela do RESPONSÁVEL (Tarefas, ficha, conversa, Meu dia); o card
+"Equipe" do Meu dia separa "não vista" de "vista e não cumprida".
+
+- ⚠️ **`vista_em` só é gravada pela rota `POST /api/cb/tasks/vistas`**, com a
+  cerca NA CONSULTA (`responsavel_user_id` = quem chama, `aberta`,
+  `vista_em IS NULL`) — `contaComoVista` (`src/lib/tasks/vista.ts`) é só o
+  filtro do navegador. São duas escritas: a não lida ganha `vista_em` e
+  `lida_em`; a lida à mão, só a vista.
+- ⚠️ **É a PRIMEIRA vez, e não volta**: "marcar como não lida" não toca
+  `vista_em` (senão a rota remarcaria lida a cada aparição e o botão não
+  serviria); marcar lida à mão grava a vista se faltar; o lembrete para si
+  mesmo nasce visto e lido.
+- **`useVistaDaTarefa` devolve o `ref` da linha**: um `IntersectionObserver`
+  de MÓDULO (60% visível por 1 s, aba à vista; a volta à aba religa o relógio
+  de quem está na tela), ids em lote a cada 1,5 s, balde `tarefaVista`
+  próprio. A linha NÃO muda na tela quando grava — o "Não lida" fica até a
+  próxima carga. Tela nova que lista tarefa usa o mesmo `ref`.
+- **Ver a tarefa não marca o aviso dela no sino** (decisão do operador, D3):
+  o aviso só sai pelo clique. Quem não é o responsável vê na linha "vista em
+  …" ou "ainda não vista" (só tarefa aberta e delegada).
 - **Aviso de tarefa nasce SEM `conversation_id`** e roteia por
-  `notifications.task_id`: em `notifications/page.tsx` o teste de `task_id`
-  vem ANTES do de `conversation_id`, senão o clique cai no inbox.
+  `notifications.task_id`: em `rotaDoAviso` (`src/lib/notifications/`, a
+  mesma do sino e do Meu dia) o teste de `task_id` vem ANTES do de
+  `conversation_id`, senão o clique cai no inbox.
 - **`TYPE_ICON` do sino é exaustivo, de propósito**: tipo `task_*` novo sem
   ícone quebra o typecheck — inclusive o que um merge do upstream trouxer.
 - **A conversa da linha é DERIVADA do contato na tela** (uma conversa por

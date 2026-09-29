@@ -31,6 +31,7 @@ import {
   EVENTO_ABRIR_CONVERSA,
   EVENTO_CONVERSA_ABERTA,
   ehOrigemDoInbox,
+  recorteDaUrl,
   urlDoInbox,
 } from "@/lib/inbox/url";
 import { comMensagemNova } from "@/lib/inbox/ordem-da-lista";
@@ -85,6 +86,15 @@ function InboxPageInner() {
    * aqui a cada render e reescrito por `urlDoInbox`.
    */
   const etapaInicial = searchParams.get("etapa");
+  /**
+   * `?conexao=<id>&ver=nao-lidas|em-atraso` — porta de entrada dos
+   * indicadores de conexão do Meu dia. Mesmo contrato do `?etapa=`: semeia o
+   * filtro da lista UMA vez e não sobrevive aos replaces (`urlDoInbox`).
+   */
+  const recorteInicial = recorteDaUrl(
+    searchParams.get("conexao"),
+    searchParams.get("ver"),
+  );
   // Só os valores com leitor viajam adiante: `urlDoInbox` também recusa
   // outros, mas sanear aqui evita que um `de=` estranho de link colado
   // circule.
@@ -1164,6 +1174,8 @@ function InboxPageInner() {
             activeConversationId={activeConversation?.id ?? null}
             onSelect={handleSelectConversation}
             etapaInicial={etapaInicial}
+            conexaoInicial={recorteInicial?.conexao ?? null}
+            verInicial={recorteInicial?.ver ?? null}
             jornadaDoFunil={veioDoFunil}
             conversations={conversations}
             onConversationsLoaded={handleConversationsLoaded}

@@ -30,7 +30,7 @@ Vale ao editar ou revisar a tela de entrada (a porta), a aba `/meu-dia`, a
 rota de pendências, a casca do painel (`dashboard-shell.tsx`) e as
 notificações do navegador. Sair, `sessionId` e a guarda de inatividade estão
 em `.claude/rules/auth.md`; o recarregar ao voltar para o app, em
-`.claude/rules/ao-voltar.md`. Plano vivo: `docs/PLANO-meu-dia.md`.
+`.claude/rules/ao-voltar.md`. Planos vivos: `docs/PLANO-meu-dia.md` (a porta e a v1 da aba) e `docs/PLANO-meu-dia-v2.md`.
 
 ### Meu dia: a tela de entrada SUBSTITUI o app até o "Continuar"
 
@@ -150,11 +150,29 @@ login).
   o cliente do CHAMADOR (a RLS é a segunda barreira): AUSENTE = não vê ou a
   leitura falhou; `null` = ainda não informou.
 
-### A ABA `/meu-dia` é uma ÁREA DE TRABALHO
+### A ABA `/meu-dia` é uma ÁREA DE TRABALHO (v2, 29/09/2026)
 
-Sete blocos (`src/lib/meu-dia/`, `use-area-de-trabalho.ts`,
-`src/components/meu-dia/`, a rota `/api/cb/meu-dia/pendencias`, namespace
-`MeuDia`). O cartão da entrada fica com os números e UM botão para a aba.
+Conexões → Equipe (admin e quem vê o Painel) → Notificações | Suas tarefas →
+Agenda → o que precisa ser corrigido (admin). `src/lib/meu-dia/`,
+`use-area-de-trabalho.ts`, `src/components/meu-dia/`, a rota
+`/api/cb/meu-dia/pendencias`, namespace `MeuDia`; plano
+`docs/PLANO-meu-dia-v2.md`. O cartão da entrada fica com os números e UM botão
+para a aba (`/meu-dia`, sem janela na URL: a aba não repete as novidades).
+
+- ⚠️ **Conexões: a régua é a da CAIXA DE ENTRADA** (`contarPorConexao`): não
+  lido = `unread_count > 0`, atraso = `atrasoDeResposta` (30 min em vermelho),
+  só 1:1 ativa, leitura COMPLETA paginada por `id`. As conexões são as do
+  perfil pela lente, e a lista é AFIRMAÇÃO: lê `loading`/`falhou` do
+  `useChannels`. Número do ESCRITÓRIO (pastilha `De`). O clique abre a caixa
+  filtrada (`urlDoInbox({ conexao, ver })`); zero não vira link.
+- ⚠️ **Equipe (D1): `veCorrecoes || podeVerTela(acesso, 'dashboard')`, com
+  `papel !== null`** — sem a guarda, o perfil ainda chegando responde "sem
+  restrição" e o card piscaria para o atendente. A própria pessoa fica fora;
+  "em dia" só com a lista de membros respondida (`emDia: null` = não sei).
+- **Notificações: as NÃO LIDAS** (a janela "desde a última entrada" ficou no
+  cartão), clique pela `rotaDoAviso`, recorte por conexão do perfil.
+- **Suas tarefas: vencidas, de hoje e NOVAS** (não vistas, prazo futuro), cada
+  grupo com `count: 'exact'`; aparecer aqui conta como vista (`tarefas.md`).
 
 - ⚠️ **O bloco "o que precisa ser corrigido" é SÓ DO ADMINISTRADOR**
   (`useCan('view-reports')`, pedido do operador, 13/09/2026): é saúde da
@@ -165,10 +183,6 @@ Sete blocos (`src/lib/meu-dia/`, `use-area-de-trabalho.ts`,
   distinto de `limpo`; fonte ausente do mapa conta como "carregando", nunca
   zero. Um selo verde sobre consulta que falhou faz a pessoa fechar a aba
   enquanto a mensagem do cliente não saiu. Pino: `correcoes.test.ts`.
-- ⚠️⚠️ **`deals.assigned_to` guarda `profiles.id`, NÃO o id do login** — a
-  exceção deste arquivo. `user.id` ali devolve zero linhas sem erro. Por isso
-  `PedidoDaArea` carrega `profileId` separado de `userId`, e o bloco ESPERA o
-  perfil em vez de afirmar zero.
 - ⚠️⚠️ **Automação que falhou é `desfecho = 'falhou'` com `finalizado_em` no
   dia, nunca `status`**: `status` nasce `'failed'` antes do primeiro passo e
   pintaria de vermelho toda automação que apenas começou.
@@ -176,15 +190,11 @@ Sete blocos (`src/lib/meu-dia/`, `use-area-de-trabalho.ts`,
   disjuntas**: somadas cruas contam a mesma linha duas vezes, e as ações são
   opostas — reenviar o que falhou é seguro; reenviar o incerto manda a
   mensagem duas vezes ao cliente.
-- ⚠️⚠️ **"Mensagens enviadas hoje" é número do ESCRITÓRIO**: quase tudo sai
-  pelo celular pareado (`from_device`, `sender_id` nulo), sem autor a quem
-  creditar. Pelo mesmo motivo não há "tarefas que VOCÊ concluiu" (não existe
-  `concluida_por`) nem bloco de conversas encerradas (não existe carimbo de
-  quem encerrou nem quando). Qualquer número desses seria inventado.
-- ⚠️ **Ganho do dia vem de `cb_lead_events` (`to_status='won'`), do
-  escritório**: ganho por automação ou pelo gatilho da etapa não tem ator. É
-  nomeado pelo CONTATO — `cb_lead_events.deal_id` não tem FK, e o PostgREST
-  não embute `deals`.
+- ⚠️ **Número "seu" de trabalho feito não existe no banco**: quase toda
+  mensagem sai pelo celular pareado (`from_device`, `sender_id` nulo), não há
+  `concluida_por` nem carimbo de quem encerrou a conversa. Por isso o antigo
+  "O dia até agora" (que saiu na v2) era do ESCRITÓRIO; um número desses por
+  pessoa seria inventado.
 - ⚠️ **Tabelas fechadas ao navegador (`cb_calendly_eventos`,
   `cb_webhook_eventos`, `cb_mensagens_sem_telefone`) vêm pela rota
   `/api/cb/meu-dia/pendencias`**: do cliente devolveriam zero com
@@ -202,7 +212,7 @@ Sete blocos (`src/lib/meu-dia/`, `use-area-de-trabalho.ts`,
   `conversations!inner`, senão a contagem é de todas as contas da pessoa.
 - **O recorte por perfil vai NA CONSULTA em `cb_scheduled_messages`** (a linha
   carrega o próprio `channel_id`), em JS nas conversas e por funil
-  (`funilNoEscopo`) em `deals`. Conexão fora do ar também é recortada: aviso
+  (`funilNoEscopo`) nas reuniões. Conexão fora do ar também é recortada: aviso
   que não é seu ensina a ignorar o bloco.
 - ⚠️ **Chave de i18n LITERAL por fonte de correção**, nunca montada com o
   nome da fonte: chave montada escapa do portão do CI.
@@ -219,12 +229,12 @@ Sete blocos (`src/lib/meu-dia/`, `use-area-de-trabalho.ts`,
   por Configurações (que todo perfil vê): o link cairia na `TelaBloqueada`. O
   parâmetro de Configurações é **`?tab=`**, nunca `?section=` — a página ignora
   o resto e abriria a Visão geral. Pino: `destinos-das-correcoes.test.ts`.
-- ⚠️⚠️ **Agendamentos do Calendly NÃO entram no bloco da agenda.** A linha do
-  agendamento nunca é marcada depois: o cancelamento chega como evento próprio
-  (1013) e o reagendamento insere linha nova sem invalidar a antiga. Listar por
-  `inicio >= agora` mostraria reunião cancelada e as duas pontas de um
-  reagendamento. O bloco é só `cb_meetings`, e diz por quê; juntar exige casar
-  cada agendamento com o seu cancelamento.
+- ⚠️⚠️ **A agenda é a PAUTA de `/reunioes`** (`usePautaDeReunioes`, hoje e
+  amanhã no fuso da agenda), nunca o Calendly cru: a linha do agendamento não
+  é marcada depois (o cancelamento é evento próprio, 1013; o reagendamento
+  insere linha nova), e só a pauta casa os dois. Até a v2 o bloco lia só
+  `cb_meetings` (vazia) por isso. Recorte pelo FUNIL do perfil, como a pauta;
+  o nome leva à conversa SEM `de=reunioes` (a faixa de volta mentiria).
 
 ### Notificações do navegador (#516, portado na Fase 8)
 
