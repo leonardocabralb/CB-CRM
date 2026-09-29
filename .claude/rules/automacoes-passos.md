@@ -176,7 +176,9 @@ que escreve no Comercial é avisado e passa a ser atendido pelo Jurídico.
 - **Conexão obrigatória, sem "a do disparo"** (`fixar_sem_conexao`); a
   ativação recusa Instagram (`validateChannelScopeForActivation`), e id
   desconhecido não trava (o motor falha fechado nele). O seletor aparece
-  mesmo com um número só e lista só WhatsApp.
+  mesmo com um número só e lista só WhatsApp; sem número para escolher,
+  `ListaSemEscolha` diz se está carregando, se falhou ou se não há nenhum
+  (Codex, PR #353), e "conexão apagada" só com a lista carregada.
 - O registro diz o NOME do número (`conversa fixada no número "…"`): o motor
   já leu a conexão para a recusa. O resumo do cartão (`descrever-passo.ts`)
   fica sem o nome — nenhuma tela que resume passo carrega `nomes.canais`.

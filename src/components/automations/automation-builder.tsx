@@ -3541,12 +3541,22 @@ function FixarConversaFields({
   onChange: (id: string | null) => void
   t: ReturnType<typeof useTranslations>
 }) {
-  const { channels } = useResources()
-  const orfao = !!value && channels.length > 0 && !channels.some((c) => c.id === value)
+  const { channels, carga } = useResources()
+  // "Apagada" só com a lista CARREGADA: vazia por carga ou por falha não
+  // prova que a conexão sumiu.
+  const orfao = carga.channels === "pronto" && !!value && !channels.some((c) => c.id === value)
   const lista = channels.filter((c) => ehWhatsApp(c) || c.id === value)
   return (
     <FieldBlock label={t("config.fixarConexaoLabel")}>
-      <ChannelSelect channels={lista} value={value} onChange={onChange} />
+      {lista.length > 0 ? (
+        <ChannelSelect channels={lista} value={value} onChange={onChange} />
+      ) : (
+        // Sem número para escolher: carregando, a conta sem WhatsApp, ou a
+        // consulta falhou — cada um dito como é, nunca só o texto de ajuda
+        // sobre um seletor que sumiu (Codex, PR #353). A conexão gravada
+        // fica como está.
+        <ListaSemEscolha estado={carga.channels} vazio={t("listas.semConexoes")} t={t} />
+      )}
       {orfao ? (
         <p className="mt-1 text-xs text-destructive">{t("config.fixarConexaoSumiu")}</p>
       ) : (
