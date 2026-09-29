@@ -3,7 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 // ============================================================
-// A contagem que alimenta o automático do botão "avançar" (1061).
+// A contagem que alimenta o automático do botão "avançar" (1065).
 //
 // ⚠️ O recorte da janela é por `occurred_at`, nunca `created_at`: a carga da
 // Kommo gravou a trilha retroativa em setembro de 2026 com a data histórica
@@ -32,7 +32,7 @@ function corpoDaFuncao(sql: string): string {
   return m[1].replace(/--.*$/gm, '');
 }
 
-describe('cb_movimentos_entre_etapas (1061)', () => {
+describe('cb_movimentos_entre_etapas (1065)', () => {
   it('recorta a janela por occurred_at, e não por created_at', () => {
     const corpo = corpoDaFuncao(migration());
     expect(corpo).toMatch(/occurred_at\s*>=\s*p_desde/);

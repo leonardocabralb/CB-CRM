@@ -1,7 +1,7 @@
 'use client';
 
 // ============================================================
-// "Botão de avançar" no Gerenciar funil (1061): a escolha, por etapa, do que
+// "Botão de avançar" no Gerenciar funil (1065): a escolha, por etapa, do que
 // o botão do painel da conversa recomenda — decisão do operador, 29/09/2026:
 // automático só para a frente por padrão, "com possibilidade de escolher as
 // etapas de cada um no gerenciador".

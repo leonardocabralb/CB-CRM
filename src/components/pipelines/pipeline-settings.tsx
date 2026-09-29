@@ -139,7 +139,7 @@ export function PipelineSettings({
   );
   const aberturaRef = useRef(0);
   const gravacaoRef = useRef<Promise<unknown> | null>(null);
-  // 1061: os movimentos dos últimos 30 dias, para a seção do botão de
+  // 1065: os movimentos dos últimos 30 dias, para a seção do botão de
   // avançar mostrar o que o automático sugere. Lidos a cada abertura, à
   // parte das etapas: falhar aqui não trava o diálogo.
   const [movimentos, setMovimentos] = useState<Movimento[] | null>(null);
@@ -217,7 +217,7 @@ export function PipelineSettings({
       degrau: s.degrau ?? null,
       // 1058: o que entrar na etapa diz sobre a reunião (aviso de no-show).
       desfecho_da_reuniao: s.desfecho_da_reuniao ?? null,
-      // 1061: o que o botão de avançar recomenda depois dela (NULL = automático).
+      // 1065: o que o botão de avançar recomenda depois dela (NULL = automático).
       proximas_etapas: s.proximas_etapas ?? null,
     }));
 
@@ -546,7 +546,7 @@ export function PipelineSettings({
                 </div>
               </div>
 
-              {/* 1061: o botão de avançar do painel da conversa. Só depois da
+              {/* 1065: o botão de avançar do painel da conversa. Só depois da
                   leitura, como o painel abaixo: antes, o rascunho está vazio. */}
               {situacao === "pronto" && (
                 <EtapasRecomendadasConfig

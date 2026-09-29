@@ -382,7 +382,7 @@ export function PainelDoContato({
     return fixado ?? deals.find((d) => d.status === 'open') ?? deals[0] ?? null;
   }, [deals, ultimoNegocioMexido]);
 
-  // O botão "avançar" (1061): os movimentos do funil em 30 dias alimentam o
+  // O botão "avançar" (1065): os movimentos do funil em 30 dias alimentam o
   // automático, e o movimento na janela de desfazer trava o seletor de etapa
   // — um movimento por vez (ver `avancar-etapa.tsx`).
   const movimentosDoFunil = useMovimentosDoFunil(dealAtivo?.pipeline_id);

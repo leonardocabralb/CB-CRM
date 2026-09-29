@@ -1,5 +1,5 @@
 -- ============================================================
--- 1061 — Etapas recomendadas: o botão "avançar" do painel da conversa.
+-- 1065 — Etapas recomendadas: o botão "avançar" do painel da conversa.
 --
 -- Pedido do operador (28–29/09/2026): no cartão de negócio da conversa, um
 -- botão que leva o card à próxima etapa num clique, com as outras opções
@@ -88,23 +88,23 @@ BEGIN
      AND a.attname = 'proximas_etapas'
      AND NOT a.attisdropped;
   IF v_tipo IS DISTINCT FROM 'uuid[]' THEN
-    RAISE EXCEPTION '1061: pipeline_stages.proximas_etapas deveria ser uuid[], é %', v_tipo;
+    RAISE EXCEPTION '1065: pipeline_stages.proximas_etapas deveria ser uuid[], é %', v_tipo;
   END IF;
 
   IF (SELECT count(*) FROM pg_proc
        WHERE proname = 'cb_movimentos_entre_etapas'
          AND pronamespace = 'public'::regnamespace) <> 1 THEN
-    RAISE EXCEPTION '1061: esperava UMA função cb_movimentos_entre_etapas';
+    RAISE EXCEPTION '1065: esperava UMA função cb_movimentos_entre_etapas';
   END IF;
 
   IF has_function_privilege('anon', 'public.cb_movimentos_entre_etapas(uuid, timestamptz)', 'EXECUTE') THEN
-    RAISE EXCEPTION '1061: anon não pode executar cb_movimentos_entre_etapas';
+    RAISE EXCEPTION '1065: anon não pode executar cb_movimentos_entre_etapas';
   END IF;
   IF NOT has_function_privilege('authenticated', 'public.cb_movimentos_entre_etapas(uuid, timestamptz)', 'EXECUTE') THEN
-    RAISE EXCEPTION '1061: authenticated precisa executar cb_movimentos_entre_etapas';
+    RAISE EXCEPTION '1065: authenticated precisa executar cb_movimentos_entre_etapas';
   END IF;
   IF NOT has_function_privilege('service_role', 'public.cb_movimentos_entre_etapas(uuid, timestamptz)', 'EXECUTE') THEN
-    RAISE EXCEPTION '1061: service_role precisa executar cb_movimentos_entre_etapas';
+    RAISE EXCEPTION '1065: service_role precisa executar cb_movimentos_entre_etapas';
   END IF;
 END $$;
 
@@ -118,5 +118,5 @@ BEGIN
   PERFORM 1 FROM public.cb_movimentos_entre_etapas(gen_random_uuid(), now() - interval '30 days');
   RESET ROLE;
 EXCEPTION WHEN insufficient_privilege THEN
-  RAISE EXCEPTION '1061: authenticated não consegue executar cb_movimentos_entre_etapas: %', SQLERRM;
+  RAISE EXCEPTION '1065: authenticated não consegue executar cb_movimentos_entre_etapas: %', SQLERRM;
 END $$;

@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 
 // ============================================================
 // Os movimentos de etapa de um funil nos últimos 30 dias — a base do
-// automático do botão "avançar" (`cb_movimentos_entre_etapas`, 1061).
+// automático do botão "avançar" (`cb_movimentos_entre_etapas`, 1065).
 //
 // Em memória por funil, válidos por 10 minutos: o painel troca de conversa o
 // tempo todo, e o número não muda em minutos. `null` = nenhuma leitura boa

@@ -3,7 +3,7 @@
 // leva o card (decisão do operador, 29/09/2026).
 //
 // - Com `proximas_etapas` preenchida na etapa (Gerenciar funil, migration
-//   1061), vale a escolha À MÃO, na ordem gravada: a primeira é o botão
+//   1065), vale a escolha À MÃO, na ordem gravada: a primeira é o botão
 //   principal, as outras viram links. Lista vazia = nenhuma (o botão some).
 // - Sem escolha (NULL), o AUTOMÁTICO: as etapas PARA A FRENTE (posição
 //   maior, no mesmo funil) mais usadas nos últimos 30 dias, com pelo menos
@@ -19,7 +19,7 @@
 // negócio acabou ali (o ganho que segue para o Jurídico muda de FUNIL, e o
 // botão move dentro do funil).
 //
-// Puro: quem busca os movimentos (`cb_movimentos_entre_etapas`, 1061) e
+// Puro: quem busca os movimentos (`cb_movimentos_entre_etapas`, 1065) e
 // quem desenha ficam fora. Os movimentos vêm contados por `occurred_at` —
 // ver a migration.
 // ============================================================

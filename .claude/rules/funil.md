@@ -90,7 +90,7 @@ funis. As métricas (Lista, Desempenho, Saúde, Meta Ads) estão em
   avisos de conexão que usa o funil ou a etapa. Com três seletores por etapa o
   diálogo é `sm:max-w-2xl`: a 448 px o nome da etapa ficava com 22 px.
 
-### Botão "avançar" no cartão de negócio do painel (1061)
+### Botão "avançar" no cartão de negócio do painel (1065)
 
 `src/lib/pipelines/etapas-recomendadas.ts` (a regra) e `mover-com-desfazer.ts`
 (o movimento), pinos ao lado; a rota `POST /api/cb/negocios/[id]/mover` e a
@@ -105,7 +105,7 @@ seção "Botão de avançar" do Gerenciar funil.
 - ⚠️⚠️ **A contagem é por `occurred_at`, nunca `created_at`**
   (`cb_movimentos_entre_etapas`): a carga da Kommo gravou a trilha retroativa
   com a data histórica só em `occurred_at`. Pino
-  `supabase/migrations/etapas-recomendadas-1061.test.ts`.
+  `supabase/migrations/etapas-recomendadas-1065.test.ts`.
 - ⚠️⚠️ **O movimento só deixa de acontecer pelo "Desfazer"** (decisão do
   operador): nada sai nos 4 s; trocar de conversa ou sair do painel conclui na
   hora (`concluirAgora` na limpeza do PAINEL — o botão desmonta ao trocar de
