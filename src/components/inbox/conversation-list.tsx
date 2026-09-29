@@ -204,8 +204,11 @@ export function ConversationList({
    * abertura da caixa.
    */
   const [buscarNasMensagens, setBuscarNasMensagens] = useState(false);
+  // A URL continua trazendo UMA etapa (o botão da coluna do quadro); o filtro
+  // é que virou lista (29/09) — a etapa semeada é a lista de uma. A conexão
+  // do Meu dia é a mesma ideia: uma conexão, e o chip do número clicado.
   const [filtros, setFiltros] = useState<FiltrosDoInbox>(() => {
-    if (etapaInicial) return { ...FILTROS_VAZIOS, etapaId: etapaInicial };
+    if (etapaInicial) return { ...FILTROS_VAZIOS, etapaIds: [etapaInicial] };
     if (conexaoInicial) {
       return {
         ...FILTROS_VAZIOS,
@@ -710,7 +713,7 @@ export function ConversationList({
     ],
   );
   const aguardandoEtapas =
-    (filtros.etapaId !== null || filtros.funilId !== null) &&
+    (filtros.etapaIds.length > 0 || filtros.funilIds.length > 0) &&
     etapasStatus === "carregando";
   // ⚠️ O recorte "Favoritas" sobre o conjunto VAZIO da montagem diria "nenhuma
   // conversa" até a consulta das favoritas voltar. O padrão salvo com
@@ -720,8 +723,8 @@ export function ConversationList({
   const aguardandoFavoritas = filtros.favoritas && !favoritasCarregadas;
 
   /**
-   * Ciclo de vida do filtro SEMEADO por `?etapa=` (e só dele — etapa
-   * escolhida à mão no painel não passa por aqui):
+   * Ciclo de vida do filtro SEMEADO por `?etapa=` (e só dele — recorte de
+   * funil/etapa mexido à mão no painel não passa por aqui):
    * · a jornada do funil acaba (URL limpa pela sidebar/notificação — a
    *   página NÃO remonta) → o seed morre junto com a faixa, senão a lista
    *   ficava recortada sem nada na tela explicando;
@@ -738,6 +741,14 @@ export function ConversationList({
     if (!seed) return;
     const daSemeada = etapas.find((e) => e.id === seed);
     const seedSumiu = etapasStatus === "ok" && !daSemeada;
+    // O recorte de funil/etapa ainda é o SEMEADO: só a etapa da URL e, no
+    // máximo, o funil dela carimbado abaixo. Com funil e etapa em lista
+    // (29/09), marcar outra etapa ou outro funil faz dele um recorte do
+    // operador — era o "etapa escolhida à mão", que o ciclo de vida não toca.
+    const aindaSemeado = (f: FiltrosDoInbox) =>
+      f.etapaIds.length === 1 &&
+      f.etapaIds[0] === seed &&
+      f.funilIds.every((id) => id === daSemeada?.pipeline_id);
     if (!jornadaAcabou && !seedSumiu) {
       // ⚠️ O funil da etapa semeada é preenchido AQUI, quando as etapas
       // chegam — a URL traz só a etapa. Sem isto o painel de dois níveis
@@ -746,14 +757,14 @@ export function ConversationList({
       //
       // ⚠️ E SÓ onde esse seletor existe. Numa conta de um funil só — ou com
       // a consulta de `pipelines` falhando sozinha — o painel é a lista
-      // chapada de sempre: carimbar `funilId` ali deixaria um recorte de
-      // funil ativo sem campo nenhum que o mostrasse, e "Qualquer etapa"
-      // (que significa "não filtro por etapa") passaria a esconder quem não
-      // tem negócio. Achado do Codex no PR #73.
+      // chapada de sempre: carimbar o funil ali deixaria um recorte de funil
+      // ativo sem campo nenhum que o mostrasse, e "Qualquer etapa" (que
+      // significa "não filtro por etapa") passaria a esconder quem não tem
+      // negócio. Achado do Codex no PR #73.
       if (daSemeada && recorteTemDoisNiveis(etapas, funis)) {
         setFiltros((prev) =>
-          prev.etapaId === seed && prev.funilId === null
-            ? { ...prev, funilId: daSemeada.pipeline_id }
+          aindaSemeado(prev) && prev.funilIds.length === 0
+            ? { ...prev, funilIds: [daSemeada.pipeline_id] }
             : prev,
         );
       }
@@ -764,7 +775,7 @@ export function ConversationList({
     // trouxe, e deixá-lo de pé manteria a lista recortada pelo funil inteiro
     // sem nada na tela explicando.
     setFiltros((prev) =>
-      prev.etapaId === seed ? { ...prev, etapaId: null, funilId: null } : prev,
+      aindaSemeado(prev) ? { ...prev, etapaIds: [], funilIds: [] } : prev,
     );
   }, [jornadaDoFunil, etapasStatus, etapas, funis]);
 
@@ -1045,7 +1056,7 @@ export function ConversationList({
             ⚠️ Os DOIS níveis, não só a etapa: um recorte só de funil cai
             junto, e sem esta linha ele exibia a pastilha do funil sobre a
             lista inteira, sem nada explicando. */}
-        {(filtros.etapaId !== null || filtros.funilId !== null) &&
+        {(filtros.etapaIds.length > 0 || filtros.funilIds.length > 0) &&
           etapasStatus === "indisponivel" && (
           <p className="px-0.5 text-[11px] text-destructive">
             {t("stageFilterUnavailable")}

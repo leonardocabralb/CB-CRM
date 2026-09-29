@@ -18,6 +18,7 @@
 
 import {
   FILTROS_VAZIOS,
+  funisDoFiltro,
   recorteTemDoisNiveis,
   SEM_ETAPA,
   SEM_RESPONSAVEL,
@@ -50,12 +51,6 @@ function umDe<T extends string>(
     : padrao;
 }
 
-/**
- * String não vazia, ou `null`.
- *
- * ⚠️ `""` vira `null` de propósito: um id vazio não casa com nada e faria o
- * recorte devolver zero conversas com cara de filtro configurado.
- */
 /** Lista de ids: só strings não vazias, sem repetição; outra forma vira []. */
 function listaDeIds(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
@@ -66,10 +61,34 @@ function listaDeIds(v: unknown): string[] {
   return saida;
 }
 
+/**
+ * String não vazia, ou `null`.
+ *
+ * ⚠️ `""` vira `null` de propósito: um id vazio não casa com nada e faria o
+ * recorte devolver zero conversas com cara de filtro configurado.
+ */
 function textoOuNulo(valor: unknown): string | null {
   if (typeof valor !== "string") return null;
   const t = valor.trim();
   return t === "" ? null : t;
+}
+
+/**
+ * A lista do formato NOVO ou, sem ela, o valor único do formato ANTIGO.
+ *
+ * ⚠️ Os três campos que viraram lista — conexões (`canalId`, até 03/09),
+ * funil e etapa (`funilId`/`etapaId`, até 29/09) — foram gravados como UM
+ * valor, e as visões salvas antigas continuam no banco de cada membro (as
+ * "Bancário"/"Trabalhista" foram copiadas aos 12). Traduzir AQUI, na leitura,
+ * é o que as mantém de pé sem migration de dados; tirar a leitura do antigo
+ * faria essas visões virarem "sem recorte" em silêncio. A lista nova vence
+ * quando as duas vêm; lixo nas duas vira [] (sem recorte).
+ */
+function listaOuValorAntigo(nova: unknown, antigo: unknown): string[] {
+  const lista = listaDeIds(nova);
+  if (lista.length > 0) return lista;
+  const valor = textoOuNulo(antigo);
+  return valor ? [valor] : [];
 }
 
 /** JSONB → `FiltrosDoInbox`. Nunca lança; o pior caso é `FILTROS_VAZIOS`. */
@@ -103,20 +122,17 @@ export function lerFiltroSalvo(bruto: unknown): FiltrosDoInbox {
     // Abertas — a queixa do operador.
     status: FILTROS_VAZIOS.status,
     // ⚠️ Aceita o formato ANTIGO (`canalId: "x"`, uma conexão só, até 03/09)
-    // além do novo (`canalIds: [...]`): o JSON gravado antes da mudança
-    // continua legível sem migration de dados.
-    canalIds:
-      listaDeIds(o.canalIds).length > 0
-        ? listaDeIds(o.canalIds)
-        : textoOuNulo(o.canalId)
-          ? [textoOuNulo(o.canalId) as string]
-          : [],
+    // além do novo (`canalIds: [...]`) — ver `listaOuValorAntigo`.
+    canalIds: listaOuValorAntigo(o.canalIds, o.canalId),
     responsavelId: textoOuNulo(o.responsavelId),
     etiquetaIds,
     modoDeEtiqueta: umDe(o.modoDeEtiqueta, MODOS, FILTROS_VAZIOS.modoDeEtiqueta),
     empresa: textoOuNulo(o.empresa),
-    funilId: textoOuNulo(o.funilId),
-    etapaId: textoOuNulo(o.etapaId),
+    // ⚠️ Idem para funil e etapa (um só de cada até 29/09): `funilId: "p"`
+    // vira `["p"]`, e `etapaId` — inclusive o sentinela "sem negócio" — vira
+    // lista de um. As duas formas recortam igual (`casaComAEtapa`).
+    funilIds: listaOuValorAntigo(o.funilIds, o.funilId),
+    etapaIds: listaOuValorAntigo(o.etapaIds, o.etapaId),
     favoritas: o.favoritas === true,
     naoLidas: o.naoLidas === true,
     emAtraso: o.emAtraso === true,
@@ -131,7 +147,9 @@ export function lerFiltroSalvo(bruto: unknown): FiltrosDoInbox {
  * de UI (aberto/fechado, rascunho) e um spread o gravaria no banco em silêncio,
  * onde ele viveria para sempre sem ninguém saber de onde veio.
  *
- * `status` (a aba) fica de fora de propósito — ver `lerFiltroSalvo`.
+ * `status` (a aba) fica de fora de propósito — ver `lerFiltroSalvo`. E só o
+ * formato NOVO é gravado (as listas): o antigo é só LIDO, e "Salvar
+ * alterações" numa visão antiga a regrava inteira no novo.
  */
 export function escreverFiltroSalvo(f: FiltrosDoInbox): Record<string, unknown> {
   return {
@@ -141,13 +159,20 @@ export function escreverFiltroSalvo(f: FiltrosDoInbox): Record<string, unknown> 
     etiquetaIds: f.etiquetaIds,
     modoDeEtiqueta: f.modoDeEtiqueta,
     empresa: f.empresa,
-    funilId: f.funilId,
-    etapaId: f.etapaId,
+    funilIds: f.funilIds,
+    etapaIds: f.etapaIds,
     favoritas: f.favoritas,
     naoLidas: f.naoLidas,
     emAtraso: f.emAtraso,
     inadimplentes: f.inadimplentes,
   };
+}
+
+/** Igualdade de conjunto (ordem não importa) — para as listas de ids. */
+function mesmoConjunto(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const sb = new Set(b);
+  return a.every((x) => sb.has(x));
 }
 
 /**
@@ -161,19 +186,13 @@ export function escreverFiltroSalvo(f: FiltrosDoInbox): Record<string, unknown> 
  * sem ordenar o menu deixaria de marcar o filtro que o operador acabou de
  * aplicar. `modoDeEtiqueta` só conta quando há 2+ etiquetas — com uma só,
  * "qualquer" e "todas" recortam igual, e diferenciar ali faria o mesmo recorte
- * parecer dois.
+ * parecer dois. Conexões, funis e etapas também comparam como conjunto, pelo
+ * mesmo motivo.
  *
  * ⚠️ `status` (a aba) NÃO entra: trocar de aba com um chip aceso não pode
  * apagá-lo nem oferecer "salvar alterações" — a aba não faz parte da visão
  * (ver `lerFiltroSalvo`).
  */
-/** Igualdade de conjunto (ordem não importa) — para as listas de ids. */
-function mesmoConjunto(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false;
-  const sb = new Set(b);
-  return a.every((x) => sb.has(x));
-}
-
 export function mesmoFiltro(a: FiltrosDoInbox, b: FiltrosDoInbox): boolean {
   const etiquetasIguais = (() => {
     if (a.etiquetaIds.length !== b.etiquetaIds.length) return false;
@@ -191,8 +210,8 @@ export function mesmoFiltro(a: FiltrosDoInbox, b: FiltrosDoInbox): boolean {
     mesmoConjunto(a.canalIds, b.canalIds) &&
     a.responsavelId === b.responsavelId &&
     a.empresa === b.empresa &&
-    a.funilId === b.funilId &&
-    a.etapaId === b.etapaId &&
+    mesmoConjunto(a.funilIds, b.funilIds) &&
+    mesmoConjunto(a.etapaIds, b.etapaIds) &&
     a.favoritas === b.favoritas &&
     a.naoLidas === b.naoLidas &&
     a.emAtraso === b.emAtraso &&
@@ -295,8 +314,8 @@ export function descreverFiltro(
   cat: CatalogosDoFiltro,
 ): PedacoDoFiltro[] {
   const pedacos: PedacoDoFiltro[] = [];
-  // Com 2+ funis o painel mostra funil e etapa em pastilhas SEPARADAS, e a
-  // etapa perde o prefixo (repeti-lo estourava a largura de 320px).
+  // Com 2+ funis o painel tem os dois campos, e a etapa é descrita DENTRO do
+  // pedaço do funil dela — ver o bloco de funil/etapa abaixo.
   const doisNiveis = recorteTemDoisNiveis(cat.etapas, cat.funis);
 
   if (f.tipo !== "todas") {
@@ -382,44 +401,70 @@ export function descreverFiltro(
     });
   }
 
-  if (f.funilId) {
-    const nome = cat.funis.get(f.funilId);
+  // FUNIL E ETAPA (vários de cada desde 29/09, somando com OU): "Sem negócio"
+  // primeiro — é a primeira opção do painel —, depois UM pedaço por funil,
+  // com as etapas DELE entre parênteses, e por último as etapas soltas.
+  //
+  // ⚠️ As etapas vão DENTRO do pedaço do funil, e não soltas ao lado: a etapa
+  // refina SÓ o funil dela (`casaComAEtapa`), e "Bancário · Trabalhista ·
+  // Reunião marcada" faria o operador ler a reunião como valendo para os dois.
+  if (f.etapaIds.includes(SEM_ETAPA)) {
     pedacos.push({
-      chave: "funil",
-      rotulo: nome
-        ? { fonte: "dado", texto: nome }
-        : { fonte: "i18n", chave: "labelPipeline" },
-      orfao: cat.funis.size > 0 && !nome,
-      // ⚠️ Tirar o funil tira a ETAPA junto — é o que a pastilha faz. O
-      // seletor de dois níveis não sabe exibir etapa sem o funil dela, e o
-      // recorte ficaria valendo com o painel dizendo "Qualquer funil".
-      limpar: { funilId: null, etapaId: null },
+      chave: `etapa:${SEM_ETAPA}`,
+      rotulo: { fonte: "i18n", chave: "stageNone" },
+      limpar: { etapaIds: f.etapaIds.filter((x) => x !== SEM_ETAPA) },
     });
   }
 
-  if (f.etapaId) {
-    if (f.etapaId === SEM_ETAPA) {
-      pedacos.push({
-        chave: "etapa",
-        rotulo: { fonte: "i18n", chave: "stageNone" },
-        limpar: { etapaId: null },
-      });
-    } else {
-      const etapa = cat.etapas.find((e) => e.id === f.etapaId);
-      pedacos.push({
-        chave: "etapa",
-        // Etapa não resolvida: o rótulo genérico do campo é o honesto —
-        // "Qualquer etapa" seria o OPOSTO do que está acontecendo.
-        rotulo: etapa
-          ? {
-              fonte: "dado",
-              texto: doisNiveis ? etapa.name : nomeDaEtapa(etapa, cat.funis),
-            }
-          : { fonte: "i18n", chave: "labelStage" },
-        orfao: cat.etapas.length > 0 && !etapa,
-        limpar: { etapaId: null },
-      });
-    }
+  // Com dois níveis, o funil DERIVADO de uma etapa solta (visão salva numa
+  // conta de um funil) ganha pedaço também — é como o painel o mostra
+  // (`funisDoFiltro`). Com um funil só não há seletor de funil, e a etapa é
+  // descrita sozinha, como sempre foi.
+  const funisDescritos = doisNiveis ? funisDoFiltro(f, cat.etapas) : f.funilIds;
+  const agrupadas = new Set<string>();
+  for (const id of funisDescritos) {
+    const nome = cat.funis.get(id);
+    const etapasDele = f.etapaIds
+      .map((e) => cat.etapas.find((x) => x.id === e))
+      .filter((e): e is PipelineStage => e !== undefined && e.pipeline_id === id);
+    // Sem o nome do funil, as etapas dele seguem soltas, com o nome delas:
+    // agrupadas sob o rótulo genérico, sumiriam da descrição.
+    if (nome) for (const e of etapasDele) agrupadas.add(e.id);
+    pedacos.push({
+      chave: `funil:${id}`,
+      rotulo: nome
+        ? {
+            fonte: "dado",
+            texto:
+              etapasDele.length > 0
+                ? `${nome} (${etapasDele.map((e) => e.name).join(", ")})`
+                : nome,
+          }
+        : { fonte: "i18n", chave: "labelPipeline" },
+      orfao: cat.funis.size > 0 && !nome,
+      // ⚠️ Tirar o funil tira as etapas DELE junto — é o que o painel faz ao
+      // desmarcá-lo (o funil derivado de uma etapa só sai assim). As etapas
+      // dos outros funis ficam.
+      limpar: {
+        funilIds: f.funilIds.filter((x) => x !== id),
+        etapaIds: f.etapaIds.filter((x) => !etapasDele.some((e) => e.id === x)),
+      },
+    });
+  }
+
+  for (const id of f.etapaIds) {
+    if (id === SEM_ETAPA || agrupadas.has(id)) continue;
+    const etapa = cat.etapas.find((e) => e.id === id);
+    pedacos.push({
+      chave: `etapa:${id}`,
+      // Etapa não resolvida: o rótulo genérico do campo é o honesto —
+      // "Qualquer etapa" seria o OPOSTO do que está acontecendo.
+      rotulo: etapa
+        ? { fonte: "dado", texto: nomeDaEtapa(etapa, cat.funis) }
+        : { fonte: "i18n", chave: "labelStage" },
+      orfao: cat.etapas.length > 0 && !etapa,
+      limpar: { etapaIds: f.etapaIds.filter((x) => x !== id) },
+    });
   }
 
   if (f.naoLidas) {
@@ -507,25 +552,26 @@ export function limparOrfaos(
     limpo.responsavelId = null;
   }
 
-  // ⚠️ Funil morto leva a ETAPA junto: as etapas cascateiam com o funil no
-  // banco, então uma etapa "viva" apontando para funil apagado é dado velho de
-  // catálogo, não recorte aplicável.
-  if (
-    limpo.funilId &&
-    cat.funis.size > 0 &&
-    !cat.funis.has(limpo.funilId)
-  ) {
-    limpo.funilId = null;
-    limpo.etapaId = null;
+  // ⚠️ Funil morto leva as etapas DELE junto: as etapas cascateiam com o
+  // funil no banco, então uma etapa "viva" apontando para funil apagado é dado
+  // velho de catálogo, não recorte aplicável. As etapas dos OUTROS funis
+  // ficam — com vários funis marcados, levar todas junto apagaria recorte bom.
+  if (limpo.funilIds.length > 0 && cat.funis.size > 0) {
+    const mortos = limpo.funilIds.filter((id) => !cat.funis.has(id));
+    if (mortos.length > 0) {
+      limpo.funilIds = limpo.funilIds.filter((id) => cat.funis.has(id));
+      limpo.etapaIds = limpo.etapaIds.filter((id) => {
+        const funil = cat.etapas.find((e) => e.id === id)?.pipeline_id;
+        return !funil || !mortos.includes(funil);
+      });
+    }
   }
 
-  if (
-    limpo.etapaId &&
-    limpo.etapaId !== SEM_ETAPA &&
-    cat.etapas.length > 0 &&
-    !cat.etapas.some((e) => e.id === limpo.etapaId)
-  ) {
-    limpo.etapaId = null;
+  // Tira só as etapas MORTAS; as vivas e o sentinela ficam.
+  if (limpo.etapaIds.length > 0 && cat.etapas.length > 0) {
+    limpo.etapaIds = limpo.etapaIds.filter(
+      (id) => id === SEM_ETAPA || cat.etapas.some((e) => e.id === id),
+    );
   }
 
   if (limpo.etiquetaIds.length > 0 && cat.etiquetas.length > 0) {
