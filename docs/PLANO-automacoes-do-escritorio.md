@@ -25,7 +25,7 @@
 | 5 | Typebot · Abaixo de 150 mil com processo | texto 5.1 **fica para depois** | sim (sem mensagem) | — |
 | 6 | (PENDENTE) Desqualificado | não tem texto | não | só a sua palavra |
 | 7 | Funil · grava a data da proposta (**nova**) | não tem texto | **sim** | — |
-| 8 | Bancário · cliente do Jurídico que escreve no Comercial (**nova**, seção 8) | rascunho | não | o passo "Fixar a conversa no número" no ar, o "pode gravar" e a sua ordem |
+| 8 | Bancário · Cliente do Jurídico que escreve no Comercial (**nova**, seção 8) | gravados (29/09) | não | a sua ordem, combinada com a equipe |
 
 Nenhuma delas é ligada sem ordem sua. Aprovar o texto e ligar são dois
 passos — os lembretes, por exemplo, pegam na hora quem já tem reunião marcada.
@@ -461,15 +461,19 @@ número do **Jurídico** — e uma mensagem por lá, para salvar o contato. O
 histórico já está no CRM: a conversa é uma só, com os dois números.
 **Nenhum impacto no Trabalhista.**
 
-**Quem recebe (medido em 29/09/2026):** o card no funil **Bancário -
-Jurídico** em *Cliente Ativo*, *Cliente Rescindido* ou *Cliente Finalizado*
-— 415 clientes (Finalizado vazia). A etiqueta "Cliente Fechado" NÃO serve de
-critério: está em 1.082 contatos, e 730 deles são do Trabalhista (vieram
-assim da Kommo). Nos 30 dias anteriores, 137 desses clientes escreveram no
-Comercial (68 na última semana) e 2 no Jurídico; quase 80% das respostas a
-eles saíram do celular do Comercial, não do CRM.
+**Quem recebe (medido em 29/09/2026):** o card ABERTO no funil **Bancário -
+Jurídico** em *Cliente Ativo*, *Cliente Rescindido* ou *Cliente Finalizado*.
+De manhã eram 415 (405 + 10 + 0); à tarde o funil foi reorganizado e ficaram
+**374** (234 + 94 + 46). A etiqueta "Cliente Fechado" NÃO serve de critério:
+está em 1.082 contatos, e 730 deles são do Trabalhista (vieram assim da
+Kommo). Nos 30 dias anteriores, 137 desses clientes escreveram no Comercial
+(68 na última semana) e 2 no Jurídico; quase 80% das respostas a eles saíram
+do celular do Comercial, não do CRM. **215 dos 374 nomes estão em
+MAIÚSCULAS** (vieram assim da Kommo): a saudação sai "Olá, NOME COMPLETO!" —
+tirar o nome da saudação é decisão do operador.
 
-**A automação** (aba Bancário, nasce DESLIGADA):
+**A automação** "Bancário · Cliente do Jurídico que escreve no Comercial"
+(aba Bancário, gravada DESLIGADA em 29/09/2026, pela tela):
 
 - **Gatilho:** "Nova mensagem recebida", só na conexão Bancário - Comercial.
   O número oficial da Meta fica de fora (atende o Previdenciário; nenhum
@@ -484,7 +488,8 @@ eles saíram do celular do Comercial, não do CRM.
 - **Quem assume:** nada automático (decisão do operador) — a conversa fica
   aberta, sem responsável, para o time do Jurídico.
 
-**Textos (rascunho; editáveis no construtor):**
+**Textos (gravados como aqui, com o número real no lugar do marcador;
+editáveis no construtor):**
 
 Pelo Comercial:
 
@@ -510,9 +515,15 @@ Pelo Jurídico:
 
 - A trava de etapa só enxerga card ABERTO. O cliente que chega pelo
   "Contrato fechado" tem o card GANHO em Cliente Ativo e não recebe o aviso:
-  para ele, o "Contrato fechado" ganha o "Fixar a conversa no número" depois
-  das boas-vindas (decisão do operador) — as boas-vindas já saem pelo
-  Jurídico.
+  para ele, o "Contrato fechado" ganhou o "Fixar a conversa no número"
+  (decisão do operador; gravado em 29/09/2026) — as boas-vindas já saem pelo
+  Jurídico. É o ÚLTIMO passo, depois do envio ao n8n: passo que falha encerra
+  a execução, e ali a falha dele não impede a tarefa, a mudança para Cliente
+  Ativo nem o Atlas.
+- Depois do aviso, cada mensagem do cliente no Comercial roda a automação de
+  novo e ela para na trava da etiqueta: uma pílula cinza "barrada" por dia no
+  fio, agrupada — é a forma das travas, e diz que o cliente insistiu no número
+  antigo.
 - A faixa "A última mensagem chegou pelo Bancário - Comercial — Responder por
   ele" aparece quando esses clientes escrevem no Comercial: o botão devolve a
   conversa ao Comercial. A equipe responde pelo Jurídico e deixa o botão.
@@ -528,10 +539,10 @@ Pelo Jurídico:
 
 | Fase | O quê | Estado |
 | --- | --- | --- |
-| 1 | Passo "Fixar a conversa no número" (branch `feat/fixar-conversa-no-numero`) | testado no preview (29/09); em revisão |
-| 2 | Etiqueta *Transferido ao Jurídico* + a automação, DESLIGADA | aguarda a fase 1 no ar e o "pode gravar" |
-| 3 | "Fixar a conversa no número" no "Contrato fechado", depois das boas-vindas | aguarda a fase 1 no ar e o "pode gravar" (mostrar antes) |
-| 4 | Teste no contato de teste (cópia com gatilho manual) | depois da fase 2 |
+| 1 | Passo "Fixar a conversa no número" | ✅ no ar (PR #353, 29/09/2026) |
+| 2 | Etiqueta *Transferido ao Jurídico* + a automação, DESLIGADA | ✅ gravadas pela tela (29/09/2026) |
+| 3 | "Fixar a conversa no número" no "Contrato fechado" | ✅ gravado como último passo (29/09/2026); o "Contrato fechado" seguiu ligado |
+| 4 | Teste no contato de teste (cópia com gatilho manual) | ✅ 29/09/2026: etiqueta, as duas mensagens (uma por número, entregues), conversa fixada no Jurídico; 2ª execução "barrada", sem mensagem. Cópia apagada, etiqueta retirada e conversa devolvida ao estado anterior |
 | 5 | Ligar | ordem do operador, combinada com a equipe |
 
 ---
