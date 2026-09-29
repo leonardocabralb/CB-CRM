@@ -102,7 +102,10 @@ export function BlocoDeConexoes({
         </p>
       ) : (
         <>
-          <ul className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[repeat(auto-fit,minmax(13rem,1fr))]">
+          {/* No celular, uma por linha e COMPACTA (número e rótulo na mesma
+              linha): duas por linha cortavam o nome da conexão, que é o
+              dado; grande, as cinco empurravam o resto para fora da tela. */}
+          <ul className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 xl:grid-cols-[repeat(auto-fit,minmax(13rem,1fr))]">
             {visiveis.map((canal) => (
               <PecaDaConexao
                 key={canal.id}
@@ -144,7 +147,7 @@ function PecaDaConexao({
 }) {
   const t = useTranslations('MeuDia');
   return (
-    <li className="border-border bg-background/40 min-w-0 rounded-lg border p-3">
+    <li className="border-border bg-background/40 min-w-0 rounded-lg border p-2.5 sm:p-3">
       <p className="text-foreground flex min-w-0 items-center gap-1.5 text-sm font-medium">
         {cor && (
           <span
@@ -156,7 +159,7 @@ function PecaDaConexao({
           {nome}
         </span>
       </p>
-      <div className="mt-2 grid grid-cols-2 gap-2">
+      <div className="mt-1.5 grid grid-cols-2 gap-2 sm:mt-2">
         <Numero
           valor={numeros.naoLidos}
           rotulo={t('connectionsUnread')}
@@ -219,18 +222,22 @@ function Numero({
 }) {
   const conteudo = (
     <>
-      <span
-        className={cn(
-          'block text-2xl leading-none font-semibold tabular-nums',
-          destaque === 'primario' && 'text-primary',
-          destaque === 'atraso' && 'text-amber-700 dark:text-amber-300',
-          destaque === 'critico' && 'text-destructive',
-          destaque === null && 'text-muted-foreground'
-        )}
-      >
-        {valor}
+      <span className="flex items-baseline gap-1.5 sm:block">
+        <span
+          className={cn(
+            'text-xl leading-none font-semibold tabular-nums sm:block sm:text-2xl',
+            destaque === 'primario' && 'text-primary',
+            destaque === 'atraso' && 'text-amber-700 dark:text-amber-300',
+            destaque === 'critico' && 'text-destructive',
+            destaque === null && 'text-muted-foreground'
+          )}
+        >
+          {valor}
+        </span>
+        <span className="text-muted-foreground text-xs sm:mt-1 sm:block">
+          {rotulo}
+        </span>
       </span>
-      <span className="text-muted-foreground mt-1 block text-xs">{rotulo}</span>
       {detalhe && (
         <span className="text-destructive block text-[11px]">{detalhe}</span>
       )}
