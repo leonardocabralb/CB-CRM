@@ -62,7 +62,8 @@
     "agenda": "Agenda",
     "unreadTasks": "{count} {count, plural, =1 {tarefa não lida} other {tarefas não lidas}}",
     "meuDia": "Meu dia",
-    "primaryNav": "Principal"
+    "primaryNav": "Principal",
+    "reunioes": "Reuniões"
   },
   "Header": {
     "dashboard": "Painel",
@@ -86,7 +87,8 @@
     "aiAgents": "Agentes de IA",
     "radar": "Radar do atendimento",
     "agenda": "Agenda de reuniões",
-    "meuDia": "Meu dia"
+    "meuDia": "Meu dia",
+    "reunioes": "Reuniões"
   },
   "ModeToggle": {
     "switchMode": "Alternar para o modo {mode}"
@@ -175,7 +177,8 @@
   "Inbox": {
     "page": {
       "whatsappNotConnected": "O WhatsApp® não está conectado. Acesse Configurações para conectar sua conta.",
-      "backToPipeline": "Voltar ao funil"
+      "backToPipeline": "Voltar ao funil",
+      "backToReunioes": "Voltar às reuniões"
     },
     "conversationList": {
       "typeAll": "Todos os tipos",
@@ -1256,7 +1259,7 @@
       "stageDegrau": "Funil de eficiência",
       "stageDegrauHint": "A que degrau do funil de eficiência esta etapa corresponde. Várias etapas podem apontar para o mesmo degrau; etapa sem degrau não conta no Desempenho.",
       "stageReuniao": "Reunião",
-      "stageReuniaoHint": "O que o cliente entrar nesta etapa diz sobre a reunião. É o que o aviso de possível no-show da conversa usa: “Faltou” marca a etapa de no-show; “Compareceu”, a reunião feita sem proposta (proposta e contrato já contam pelo degrau).",
+      "stageReuniaoHint": "O que o cliente entrar nesta etapa diz sobre a reunião. É o que o aviso de possível no-show da conversa usa: “Faltou” marca a etapa de no-show; “Compareceu”, a reunião feita sem proposta (proposta e contrato já contam pelo degrau). “Qualificada” é para onde o botão “Reunião qualificada” da tela Reuniões leva o card, antes da reunião.",
       "reuniaoNenhum": "Reunião: —",
       "reuniaoCompareceu": "Compareceu",
       "reuniaoFaltou": "Faltou",
@@ -1274,7 +1277,8 @@
       "painelCustosDica": "Custo de degrau só aparece com etapa no degrau.",
       "toastStageMappedWithHistory": "Esta etapa está mapeada no funil de eficiência e tem histórico de negócios: apagá-la apagaria essa história do Desempenho. Mude o degrau para \"Não conta\" e salve antes de remover, ou mantenha a etapa.",
       "deletePipelineChannels": "Estas conexões colocam clientes neste funil: {channels}. Depois de apagar, elas param de criar negócios até você apontá-las para outro funil em Configurações › Conexões.",
-      "toastStageIsChannelEntry": "Esta etapa é a entrada de {channels}. Escolha outra etapa de entrada em Configurações › Conexões antes de apagá-la."
+      "toastStageIsChannelEntry": "Esta etapa é a entrada de {channels}. Escolha outra etapa de entrada em Configurações › Conexões antes de apagá-la.",
+      "reuniaoQualificada": "Qualificada"
     },
     "automacoes": {
       "abaLeads": "Quadro",
@@ -5959,5 +5963,81 @@
   },
   "Toaster": {
     "rotulo": "Notificações"
+  },
+  "Reunioes": {
+    "titulo": "Reuniões",
+    "subtitulo": "A pauta das reuniões agendadas. Antes da reunião, marque se ela está qualificada; depois que ela começar, registre o resultado.",
+    "semanaAnterior": "Semana anterior",
+    "semanaSeguinte": "Semana seguinte",
+    "hoje": "Hoje",
+    "hojeExtenso": "Reuniões de hoje",
+    "nReunioes": "{n, plural, one {# reunião} other {# reuniões}}",
+    "nSemResultado": "{n} sem resultado",
+    "carregando": "Carregando as reuniões…",
+    "falhou": "Não foi possível carregar as reuniões.",
+    "tentarDeNovo": "Tentar de novo",
+    "recargaFalhou": "A última atualização falhou; a pauta abaixo pode estar desatualizada.",
+    "redeAcesa": "{n, plural, one {# reunião já começou e está sem resultado} other {# reuniões já começaram e estão sem resultado}}",
+    "redeApagada": "Todas as reuniões que já começaram têm resultado",
+    "redeFalhou": "Não foi possível conferir as reuniões dos últimos 30 dias que estão sem resultado.",
+    "deOutrosDias": "Sem resultado em outros dias ({n})",
+    "filtroTodas": "Todas",
+    "filtroSemResultado": "Sem resultado",
+    "filtroNaoQualificadas": "Não qualificadas",
+    "diaVazio": "Nenhuma reunião neste dia.",
+    "recorteVazio": "Nenhuma reunião neste recorte.",
+    "semContato": "Contato sem ficha",
+    "reagendamento": "Reagendamento",
+    "qualificada": "Qualificada",
+    "ganho": "ganho",
+    "perdido": "perdido",
+    "divida": "Dívida",
+    "atraso": "Atraso",
+    "origem": "Origem",
+    "naoInformado": "não informado",
+    "semQualificacaoNaFicha": "Sem dados de qualificação na ficha",
+    "jaFaltou": "Já faltou: {etapa} em {data}",
+    "aguardandoResposta": "Cliente esperando resposta desde {data} às {hora}",
+    "entrar": "Entrar",
+    "entrarNaReuniao": "Entrar na reunião",
+    "abrirConversa": "Abrir conversa",
+    "botaoQualificada": "Reunião qualificada",
+    "qualificadaPor": "Qualificada · {por}",
+    "resultadoAbreAs": "O resultado abre às {hora}",
+    "registreOResultado": "Registre o resultado",
+    "botaoProposta": "Com proposta",
+    "botaoSemProposta": "Sem proposta",
+    "botaoNoShow": "No show",
+    "valorDaProposta": "Valor da proposta",
+    "confirmar": "Confirmar",
+    "cancelar": "Cancelar",
+    "valorObrigatorio": "Informe o valor da proposta",
+    "levaPara": "Leva o card para {etapa}",
+    "movendo": "Movendo para {etapa} em {s} s",
+    "movendoComValor": "Movendo para {etapa} com {valor} em {s} s",
+    "desfazer": "Desfazer",
+    "gravando": "Gravando…",
+    "resultadoProposta": "com proposta",
+    "resultadoPropostaComValor": "com proposta de {valor}",
+    "resultadoSemProposta": "compareceu, sem proposta",
+    "resultadoNoShow": "no show",
+    "resultadoRegistrado": "Resultado: {oQue} · {por} às {hora}",
+    "resultadoPeloFunil": "Resultado: {oQue} · o card entrou em {etapa} ({por})",
+    "alguem": "alguém da equipe",
+    "sistema": "sistema",
+    "toastMovido": "{nome}: card movido para {etapa}",
+    "toastCardMudou": "{nome}: o card mudou de etapa desde que a pauta carregou. A pauta foi atualizada; confira e marque de novo.",
+    "toastRegistroFalhou": "{nome}: o card foi movido, mas o registro da reunião falhou. Tente marcar de novo.",
+    "toastFalhou": "{nome}: não foi possível mover o card. Tente de novo.",
+    "registrando": "Registrando em {s} s",
+    "toastRegistrado": "{nome}: resultado registrado",
+    "motivoSemCard": "Sem card no funil: só registra o resultado.",
+    "motivoCardFechado": "O card está ganho ou perdido: só registra o resultado, sem mexer nele.",
+    "motivoReuniaoPosterior": "O card já é da reunião de {data} às {hora}: só registra o resultado desta.",
+    "motivoSemEtapa": "Nenhuma etapa deste funil está marcada para isto (Funis → Gerenciar funil): só registra.",
+    "avisoDoBotao": "{botao}: {texto}",
+    "corrigir": "Corrigir",
+    "verOutrosDias": "Ver as {n} de outros dias",
+    "esconderOutrosDias": "Esconder"
   }
 }
