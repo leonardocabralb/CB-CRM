@@ -944,8 +944,13 @@ export interface PipelineStage {
    * 'compareceu' | 'faltou' | null. É o que o aviso de possível no-show da
    * conversa lê (`src/lib/agenda/aviso-de-no-show.ts`). Independente de
    * `resultado` e de `degrau`.
+   *
+   * 'qualificada' (1063) é a etapa para onde o botão "Reunião qualificada" da
+   * pauta de reuniões leva o card — ANTES da reunião. ⚠️ Não diz nada sobre o
+   * comparecimento: o aviso de no-show a lê como nula, nunca como
+   * "compareceu".
    */
-  desfecho_da_reuniao?: 'compareceu' | 'faltou' | null;
+  desfecho_da_reuniao?: 'qualificada' | 'compareceu' | 'faltou' | null;
   /**
    * As etapas que o botão "avançar" do painel recomenda depois desta, na
    * ordem — a primeira é o botão principal (1065). NULL = automático (para a

@@ -244,6 +244,10 @@ export const RATE_LIMITS = {
    *  que acompanha a troca de cliente, e dividir o balde faria quem folheia
    *  conversas perder o botão de executar automação. */
   reunioesDoContato: { limit: 120, windowMs: 60_000 },
+  /** A pauta de reuniões (`/api/cb/reunioes`), por usuário. Cada leitura faz
+   *  uma dúzia de consultas; a tela recarrega ao voltar ao app e depois de cada
+   *  marcação, e ninguém marca 60 reuniões por minuto. */
+  pautaDeReunioes: { limit: 60, windowMs: 60_000 },
   /** Webhook do Calendly (977), por token de conta. A assinatura HMAC é o
    *  portão; isto só impede que um token vazado vire enxurrada de linhas em
    *  `cb_calendly_eventos`. Um escritório não marca 120 reuniões por
