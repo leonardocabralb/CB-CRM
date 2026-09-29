@@ -1,7 +1,7 @@
 import { Compartment } from '@codemirror/state';
 import { describe, expect, it } from 'vitest';
 
-import { decidirSincronia, etiquetasDoEstado, montarEstado, type ResolverDeEtiqueta } from './editor-com-etiquetas';
+import { comoTexto, decidirSincronia, etiquetasDoEstado, montarEstado, type ResolverDeEtiqueta } from './editor-com-etiquetas';
 
 // ============================================================
 // ⚠️⚠️ O editor com etiquetas NUNCA muda o texto sozinho (decisão D3 do
@@ -77,5 +77,14 @@ describe('decidirSincronia — o valor que chega por props', () => {
   it('valor que o editor nunca emitiu veio de fora e entra', () => {
     expect(decidirSincronia('abc', '', ['abc'])).toEqual({ trocar: true, emitidos: [] });
     expect(decidirSincronia('texto antigo', 'modelo novo', [])).toEqual({ trocar: true, emitidos: [] });
+  });
+});
+
+describe('comoTexto — valor gravado que não é texto não derruba o construtor', () => {
+  it('texto passa idêntico; número vira texto só para exibir; nulo vira vazio', () => {
+    expect(comoTexto('  a\r\nb ')).toBe('  a\r\nb ');
+    expect(comoTexto(5)).toBe('5');
+    expect(comoTexto(null)).toBe('');
+    expect(comoTexto(undefined)).toBe('');
   });
 });

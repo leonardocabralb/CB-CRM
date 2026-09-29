@@ -269,6 +269,16 @@ export function montarEstado(doc: string, o: OpcoesDoEstado): EditorState {
   })
 }
 
+/**
+ * O valor como TEXTO para o editor. Todo campo trocado guarda string (medido
+ * em produção, 29/09/2026), mas um passo gravado por fora com número não pode
+ * derrubar o construtor. Só para EXIBIR: sem o operador editar, nada é
+ * emitido e o valor gravado continua o que era.
+ */
+export function comoTexto(valor: unknown): string {
+  return typeof valor === "string" ? valor : valor === null || valor === undefined ? "" : String(valor)
+}
+
 /** Teto da fila de ecos: um pai que nunca devolve o valor não a faz crescer para sempre. */
 const MAX_EMITIDOS = 100
 
@@ -324,7 +334,7 @@ export function EditorComEtiquetas({
       },
     }),
   )
-  const valorAtual = useEffectEvent(() => value)
+  const valorAtual = useEffectEvent(() => comoTexto(value))
 
   useEffect(() => {
     const host = hostRef.current
@@ -340,9 +350,10 @@ export function EditorComEtiquetas({
   useEffect(() => {
     const view = viewRef.current
     if (!view) return
-    const decisao = decidirSincronia(view.state.doc.toString(), value, emitidos.current)
+    const texto = comoTexto(value)
+    const decisao = decidirSincronia(view.state.doc.toString(), texto, emitidos.current)
     emitidos.current = decisao.emitidos
-    if (decisao.trocar) view.setState(criarEstado(value))
+    if (decisao.trocar) view.setState(criarEstado(texto))
   }, [value])
 
   useEffect(() => {

@@ -21,7 +21,7 @@ import { codigosDoTexto, pedacosDoTexto, textoDoCodigo } from "@/lib/automations
 import { cn } from "@/lib/utils"
 
 import { useVariaveis, type ModoDoValor } from "./contexto"
-import { EditorComEtiquetas, type EditorComEtiquetasApi } from "./editor-com-etiquetas"
+import { comoTexto, EditorComEtiquetas, type EditorComEtiquetasApi } from "./editor-com-etiquetas"
 import { BotaoInserirCampo } from "./painel"
 
 export function CampoComVariaveis({
@@ -57,6 +57,7 @@ export function CampoComVariaveis({
   const editor = useRef<EditorComEtiquetasApi>(null)
   const v = useVariaveis()
   const comPrevia = previa ?? !linhaUnica
+  const texto = comoTexto(value)
   return (
     <div className={cn("mb-2 last:mb-0", className)}>
       <div className="mb-1 flex items-end justify-between gap-2">
@@ -74,7 +75,7 @@ export function CampoComVariaveis({
         monoespacado={monoespacado}
       />
       {ajuda}
-      {comPrevia && v.podePrevia && codigosDoTexto(value).length > 0 && <PreviaDoTexto texto={value} modo={modo} />}
+      {comPrevia && v.podePrevia && codigosDoTexto(texto).length > 0 && <PreviaDoTexto texto={texto} modo={modo} />}
     </div>
   )
 }

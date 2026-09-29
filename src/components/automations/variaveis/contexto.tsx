@@ -145,6 +145,9 @@ export function VariaveisProvider({
 
   // --- A prévia do cliente ---
   const [contatoDaPrevia, setContatoDaPrevia] = useState("")
+  // Escolher o MESMO cliente de novo refaz a leitura (a anterior pode ter
+  // falhado): sem o contador, o React descarta o setState de valor igual.
+  const [tentativa, setTentativa] = useState(0)
   const [carregada, setCarregada] = useState<
     { de: string; status: "pronto"; valores: ValoresDoCliente } | { de: string; status: "falhou" } | null
   >(null)
@@ -170,7 +173,7 @@ export function VariaveisProvider({
     return () => {
       vivo = false
     }
-  }, [contatoDaPrevia, podePrevia])
+  }, [contatoDaPrevia, podePrevia, tentativa])
   const atual = carregada && carregada.de === contatoDaPrevia ? carregada : null
   const previa: EstadoDaPrevia = !contatoDaPrevia ? "sem-cliente" : !atual ? "carregando" : atual.status
   const valoresDoCliente = atual?.status === "pronto" ? atual.valores : null
@@ -214,7 +217,10 @@ export function VariaveisProvider({
     [gatilho, agora, nomeDaPrevia, account?.name],
   )
 
-  const escolherContato = useCallback((id: string) => setContatoDaPrevia(id), [])
+  const escolherContato = useCallback((id: string) => {
+    setContatoDaPrevia(id)
+    setTentativa((n) => n + 1)
+  }, [])
 
   const rotuloDoEvento = useCallback(
     (nome: string): { rotulo: string | null; legenda: string | null } => {

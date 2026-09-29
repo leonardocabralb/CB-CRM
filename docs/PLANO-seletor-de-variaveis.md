@@ -51,6 +51,19 @@ Nenhum P1 (as quatro garantias resistiram). Corrigido:
 - Ficou de fora: escolher o cliente de dentro do painel (a escolha fica na
   prévia de um texto de mensagem).
 
+### Revisão final (29/09/2026, pedida pelo operador)
+
+Dois revisores independentes — o código depois das correções e a
+compatibilidade com a iMotion. Nenhum P1 nem P2. Confirmado com evidência:
+nada em `/api/v1` nem nos webhooks de saída `deal.*` (o do Make, 71fa9f36)
+mudou; o envio do motor é idêntico (os parâmetros novos têm padrão que
+preserva o antigo, e nenhum chamador de envio os passa); todo código em uso
+nas automações ligadas de funil (as que os movimentos de card da iMotion
+disparam) é reconhecido como pelo motor, e as `field_key` existem; salvar sem
+editar grava o `step_config` idêntico. Corrigidos os dois P3: escolher de novo
+o mesmo cliente refaz a prévia que falhou (`tentativa`), e valor gravado que
+não é texto não derruba o editor (`comoTexto`, só para exibir).
+
 ## Decisões do operador (29/09/2026)
 
 - **D1 — etiqueta com o nome (opção B da maquete).** O campo inserido aparece
