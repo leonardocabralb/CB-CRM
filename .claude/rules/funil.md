@@ -312,7 +312,10 @@ inserida (`deal`, de onde a v1 serializa) e aceita `tituloFixadoEm`.
   evento: `first_inbound_message` é por conversa, e cliente que muda de número
   nunca dispararia. Quem chama o roteador (só os caminhos de gente) está em
   `.claude/rules/ingestao.md`. Abrir conversa não cria negócio (decisão do
-  operador): o card nasce no primeiro envio.
+  operador): o card nasce no primeiro envio. ⚠️ Conversa em que chegou
+  mensagem de SISTEMA de empresa (`template`) não abre card, nem pela resposta
+  da equipe (guarda 5, decisão do operador, 29/09/2026): cliente assim ganha
+  card à mão.
 - ⚠️ **Um card por contato é regra de CÓDIGO**: o índice único da 911 é
   parcial (`source = 'channel'`), então `create_deal` e a v1 conferem antes do
   insert (a v1 responde 409 `contact_already_has_deal`).

@@ -207,7 +207,10 @@ da ligação e o aviso não sai, nem quando ele escreve depois), por carga de
 migração, nem as de grupo. Para "lead novo no funil" — inclusive o que a
 equipe abordou primeiro —, assine `deal.created`: a conexão com funil padrão
 abre o card na primeira mensagem, do cliente ou da equipe, ou na primeira
-ligação (`source: "channel"`).
+ligação (`source: "channel"`). A exceção é o número de **empresa**: a conversa
+em que chegou mensagem automática de sistema (modelo com botões — cobrança,
+propaganda) não abre card, nem quando a equipe responde; se for cliente, o
+card é criado à mão.
 
 Os três `deal.*` valem para **todo** jeito de mexer no card: arrastar no
 quadro, formulário, lista, painel da conversa, automações e a API. O aviso

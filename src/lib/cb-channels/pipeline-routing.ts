@@ -1,6 +1,9 @@
 // ============================================================
 // "Quem CONVERSAR neste número entra naquele funil."
 //
+// Menos número de EMPRESA (guarda 5, decisão do operador de 29/09/2026): a
+// conversa em que chegou mensagem de SISTEMA de empresa não abre card.
+//
 // VALE NOS DOIS SENTIDOS, e isso é o ponto.
 // Até 2026-08-31 só a mensagem RECEBIDA chamava aqui, e o efeito medido em
 // produção foi este: 1.041 mensagens da equipe saíram pelo celular pareado
@@ -148,6 +151,43 @@ export async function routeContactToPipeline(args: RouteContactArgs): Promise<st
       return null;
     }
     if (existente) return null;
+
+    // ---- Guarda 5: número de EMPRESA não vira card ----
+    //
+    // ⚠️ Decisão do operador (29/09/2026). O sinal é a mensagem RECEBIDA do
+    // tipo `template` (1060): modelo com botões ou mensagem interativa, que só
+    // o sistema de uma empresa manda — quem usa o WhatsApp comum não consegue.
+    // Medido em produção: dos 711 cards abertos por aqui desde agosto, 10
+    // tinham nascido assim (cobrança de financeira, propaganda, escritório
+    // pedindo reunião), e nenhum lead de verdade.
+    //
+    // Por ESTADO, como a guarda 4, e não só na mensagem da empresa: um sistema
+    // externo ligado ao celular responde em segundos a todo número novo, e
+    // pelo caminho do celular o card nasceria do mesmo jeito. Pela mesma
+    // razão, a resposta da equipe e um texto posterior de lá também não abrem
+    // card. Se for mesmo cliente, o card é criado à mão.
+    //
+    // Só o que o CONTATO mandou (`customer`): o modelo que nós enviamos e o
+    // pedido de Pix do celular do escritório são `agent`/`bot`, e o cliente
+    // cobrado continua entrando no funil. Depois da guarda 4 de propósito: o
+    // contato que já tem card não paga esta consulta. Sem a conversa não há o
+    // que conferir (todo chamador a passa).
+    if (args.conversationId) {
+      const { data: deEmpresa, error: deEmpresaErr } = await db
+        .from('messages')
+        .select('id')
+        .eq('conversation_id', args.conversationId)
+        .eq('sender_type', 'customer')
+        .eq('content_type', 'template')
+        .limit(1)
+        .maybeSingle();
+
+      if (deEmpresaErr) {
+        console.warn('[pipeline-routing] checagem de mensagem de empresa falhou:', deEmpresaErr.message);
+        return null;
+      }
+      if (deEmpresa) return null;
+    }
 
     // ---- Dono do card ----
     // O dono da CONTA, não quem pareou o QR: `cb_channels.created_by` é

@@ -177,7 +177,10 @@ then sends.
 > created automatically in the default pipeline/stage of the number the
 > message **went out on** (`source: 'channel'`) — the same rule as sends
 > from the CRM composer. Only if that number has a default pipeline set
-> (*Settings → Connections*); without one, no deal is created. At most one
+> (*Settings → Connections*); without one, no deal is created. Nor for a
+> **business** number: a contact who has sent an automated business message
+> (a template with buttons — billing, marketing) never gets a deal this way;
+> create it by hand if it is a client. At most one
 > deal per contact is ever created this way; contacts that already have a
 > deal are left untouched. This is intentional (PR #79); if your
 > integration must not open deals, don't send through this endpoint for
@@ -959,7 +962,9 @@ by bulk data migrations, or group conversations. For "a new lead reached the
 funnel" — including the ones your team approached first — listen to
 `deal.created` instead: a number with a default pipeline opens the card on
 the first message in either direction, or on the first WhatsApp call
-(`source: "channel"`).
+(`source: "channel"`) — except for a business number: a conversation that
+received an automated business message (a template with buttons) opens no
+card, not even when your team replies.
 
 Every event carries `channel_id` in `data` — which of your numbers the
 event happened on. Without it, several numbers look like one

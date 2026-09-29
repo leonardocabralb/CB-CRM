@@ -461,6 +461,8 @@ O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
 - Card: título = nome da pessoa, sem prefixo de conexão; o Calendly renomeia
   até título escrito à mão e fixa o nome da ficha.
 - Abrir conversa não cria negócio (o card nasce no primeiro envio).
+- Número de empresa (mandou mensagem de sistema, `template`) não vira card
+  sozinho, nem pela resposta da equipe; cliente assim, card à mão (29/09/2026).
 - Encerrar conversa SOLTA o responsável; quem reabre enviando fica
   responsável; cliente, celular e API reabrem sem responsável (02/09/2026).
 - De ADMIN: "Gerenciar funil", as abas Lista/Desempenho/Saúde e apagar
