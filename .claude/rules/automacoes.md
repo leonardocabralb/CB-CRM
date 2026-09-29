@@ -128,6 +128,7 @@ reentrega): `.claude/rules/webhooks.md`. Passos com regra própria:
 - ⚠️⚠️ **O corpo do `send_webhook` ESCAPA cada valor (`json: true`)**: uma aspa
   ou quebra de linha num nome quebrava o JSON e o passo falhava. Consequência:
   variável só DENTRO de string no modelo (`"valor": "{{deal.value}}"`).
+- O seletor do construtor espelha esta régua: `automacoes-variaveis.md`.
 
 ### O card do negócio (`negocioAlvo`)
 
