@@ -543,6 +543,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
 - `.claude/rules/automacoes-esperas.md` — Aguardar, parar se o cliente
   responder, presa à etapa, marca de interrupção, fila, salvar com esperas
   paradas (identidade dos passos).
+- `.claude/rules/automacoes-historico.md` — o "Já rodou" expansível da
+  conversa: interrompidas na aba, o que não rodou, texto do motor traduzido.
 - `.claude/rules/automacoes-passos.md` — valores do "Enviar modelo", tarefa
   pelo responsável, condições da janela de 24h e da hora do dia, "Aguardar
   até estar dentro do horário".

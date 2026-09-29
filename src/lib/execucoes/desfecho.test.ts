@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { itensDoFio, TETO_DE_ITENS, type ExecucaoEncerrada } from './desfecho'
+import {
+  itensDoFio,
+  itensDoHistorico,
+  MOTIVOS_DA_INTERRUPCAO,
+  TETO_DE_ITENS,
+  type ExecucaoEncerrada,
+} from './desfecho'
 
 function linha(over: Partial<ExecucaoEncerrada> = {}): ExecucaoEncerrada {
   return {
@@ -193,4 +199,91 @@ describe.each(['pt-BR.json', 'en.json'])('dicionário %s', (arquivo) => {
       }
     })
   }
+})
+
+describe('itensDoHistorico — o "Já rodou" da aba (29/09/2026)', () => {
+  it('a interrompida entra na ABA, com o motivo — e continua fora do fio', () => {
+    const interrompida = linha({
+      id: 'i',
+      desfecho: null,
+      finalizadoEm: null,
+      interrompidaEm: '2026-09-09T15:00:00.000Z',
+      interrompidaPor: 'resposta',
+    })
+    expect(itensDoFio([interrompida])).toEqual([])
+    const [item] = itensDoHistorico([interrompida])
+    expect(item).toMatchObject({
+      desfecho: 'interrompida',
+      quando: '2026-09-09T15:00:00.000Z',
+      interrompidaPor: 'resposta',
+      execucoes: [{ id: 'i', quando: '2026-09-09T15:00:00.000Z' }],
+    })
+  })
+
+  it('motivo fora do CHECK vira "não sei" (null), nunca um motivo inventado', () => {
+    const [item] = itensDoHistorico([
+      linha({ desfecho: null, finalizadoEm: null, interrompidaEm: '2026-09-09T15:00:00.000Z', interrompidaPor: 'outro' }),
+    ])
+    expect(item.interrompidaPor).toBeNull()
+  })
+
+  it('o desfecho vence a marca: interrompida que já tinha falhado é FALHA', () => {
+    const [item] = itensDoHistorico([
+      linha({
+        desfecho: 'falhou',
+        errorMessage: 'webhook returned 404',
+        interrompidaEm: '2026-09-09T15:00:00.000Z',
+        interrompidaPor: 'resposta',
+      }),
+    ])
+    expect(item.desfecho).toBe('falhou')
+    expect(item.motivoBruto).toBe('webhook returned 404')
+  })
+
+  it('execução em curso (sem desfecho e sem marca) não aparece', () => {
+    expect(itensDoHistorico([linha({ desfecho: null, finalizadoEm: null })])).toEqual([])
+  })
+
+  it('o grupo guarda TODAS as execuções, da mais recente para a mais antiga', () => {
+    const [item] = itensDoHistorico([
+      linha({ id: 'a', desfecho: 'barrada', finalizadoEm: '2026-09-09T12:00:00.000Z' }),
+      linha({ id: 'b', desfecho: 'barrada', finalizadoEm: '2026-09-09T13:00:00.000Z' }),
+    ])
+    expect(item.execucoes.map((e) => e.id)).toEqual(['b', 'a'])
+    expect(item.quando).toBe('2026-09-09T13:00:00.000Z')
+  })
+
+  it('a ordem da aba é da mais recente para a mais antiga, com teto', () => {
+    const itens = itensDoHistorico(
+      [
+        linha({ id: 'velha', automationId: 'x', finalizadoEm: '2026-09-01T12:00:00.000Z' }),
+        linha({ id: 'nova', automationId: 'y', finalizadoEm: '2026-09-09T12:00:00.000Z' }),
+        linha({ id: 'meio', automationId: 'z', finalizadoEm: '2026-09-05T12:00:00.000Z' }),
+      ],
+      { teto: 2 },
+    )
+    expect(itens.map((i) => i.execucoes[0].id)).toEqual(['nova', 'meio'])
+  })
+})
+
+describe('o motivo da interrupção nos dois dicionários (chave montada)', () => {
+  // `historico.interrompida.${motivo ?? 'desconhecido'}`: a lista vem do código
+  // (o CHECK da 1005), nunca digitada aqui.
+  for (const arquivo of ['pt-BR.json', 'en.json']) {
+    it(`${arquivo}: um texto por motivo, mais o "não sei", e nenhum órfão`, () => {
+      const dic = JSON.parse(readFileSync(`messages/${arquivo}`, 'utf8'))
+      const bloco = dic?.Inbox?.execucoes?.historico?.interrompida ?? {}
+      expect(Object.keys(bloco).sort()).toEqual([...MOTIVOS_DA_INTERRUPCAO, 'desconhecido'].sort())
+      for (const [k, v] of Object.entries(bloco)) {
+        expect(typeof v === 'string' && v.trim().length > 0, `${k} está vazia`).toBe(true)
+      }
+    })
+  }
+
+  it('a lista do código é a do CHECK da 1005', () => {
+    const migration = readFileSync('supabase/migrations/1005_cb_execucao_interrompida.sql', 'utf8')
+    const check = migration.match(/interrompida_por in \(([^)]*)\)/)?.[1] ?? ''
+    const doBanco = [...check.matchAll(/'([a-z]+)'/g)].map((m) => m[1]).sort()
+    expect(doBanco).toEqual([...MOTIVOS_DA_INTERRUPCAO].sort())
+  })
 })

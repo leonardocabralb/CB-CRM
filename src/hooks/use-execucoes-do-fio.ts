@@ -37,8 +37,10 @@ import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "./use-auth";
 import {
   itensDoFio,
+  itensDoHistorico,
   type ExecucaoEncerrada,
   type ItemDeExecucao,
+  type ItemDoHistorico,
 } from "@/lib/execucoes/desfecho";
 import { EVENTO_EXECUCOES } from "./use-execucoes-do-contato";
 import type { AutomationLogDesfecho, AutomationLogStepResult } from "@/types";
@@ -88,6 +90,8 @@ interface LinhaDeLog {
   finalizado_em: string | null;
   error_message: string | null;
   steps_executed: AutomationLogStepResult[] | null;
+  interrompida_em?: string | null;
+  interrompida_por?: string | null;
   automations: { name: string | null } | { name: string | null }[] | null;
 }
 
@@ -103,6 +107,8 @@ function mapear(linha: LinhaDeLog): ExecucaoEncerrada {
     finalizadoEm: linha.finalizado_em,
     errorMessage: linha.error_message,
     stepsExecuted: linha.steps_executed,
+    interrompidaEm: linha.interrompida_em ?? null,
+    interrompidaPor: linha.interrompida_por ?? null,
   };
 }
 
@@ -172,6 +178,104 @@ export function useExecucoesDoFio(
 
   return {
     itens: atual?.itens ?? SEM_ITENS,
+    carregou: atual !== null,
+    erro: atual?.erro ?? false,
+  };
+}
+
+// ============================================================
+// O "JÁ RODOU" da aba Automações (29/09/2026) — irmão do de cima, com a régua
+// da ABA (`itensDoHistorico`): a execução INTERROMPIDA entra (decisão do
+// operador), e cada grupo guarda todas as execuções para a expansão.
+//
+// Duas consultas, e não uma com `or`: a interrompida não tem `finalizado_em`,
+// e ordenar a consulta do fio por uma coluna com nulos (DESC põe os nulos
+// PRIMEIRO) mudaria o plano medido no índice `(account_id, contact_id,
+// finalizado_em DESC)`. A segunda é pequena: só execução interrompida e não
+// encerrada (10 na conta inteira em 29/09/2026).
+//
+// Mesmas guardas do irmão: resultado carimbado com o contato de origem,
+// `carregou` derivado, falha que vira aviso — nunca "nenhuma automação
+// terminou" durante a carga ou a falha.
+// ============================================================
+
+const SEM_HISTORICO: ItemDoHistorico[] = [];
+
+interface DadosDoHistorico {
+  contactId: string;
+  itens: ItemDoHistorico[];
+  erro: boolean;
+}
+
+const COLUNAS_DO_HISTORICO =
+  "id, automation_id, desfecho, finalizado_em, error_message, steps_executed, interrompida_em, interrompida_por, automations(name)";
+
+export function useHistoricoDeExecucoes(contactId: string | null | undefined): {
+  itens: ItemDoHistorico[];
+  carregou: boolean;
+  erro: boolean;
+} {
+  const { accountId } = useAuth();
+  const [dados, setDados] = useState<DadosDoHistorico | null>(null);
+  const [nonce, setNonce] = useState(0);
+
+  useEffect(() => {
+    const aoMudar = () => setNonce((n) => n + 1);
+    window.addEventListener(EVENTO_EXECUCOES, aoMudar);
+    return () => window.removeEventListener(EVENTO_EXECUCOES, aoMudar);
+  }, []);
+
+  useEffect(() => {
+    if (!contactId || !accountId) return;
+    const supabase = createClient();
+    let cancelado = false;
+
+    void (async () => {
+      const [encerradas, interrompidas] = await Promise.all([
+        supabase
+          .from("automation_logs")
+          .select(COLUNAS_DO_HISTORICO)
+          .eq("account_id", accountId)
+          .eq("contact_id", contactId)
+          .not("finalizado_em", "is", null)
+          .order("finalizado_em", { ascending: false })
+          .limit(LIMITE_DE_LINHAS),
+        supabase
+          .from("automation_logs")
+          .select(COLUNAS_DO_HISTORICO)
+          .eq("account_id", accountId)
+          .eq("contact_id", contactId)
+          .is("finalizado_em", null)
+          .not("interrompida_em", "is", null)
+          .order("interrompida_em", { ascending: false })
+          .limit(LIMITE_DE_LINHAS),
+      ]);
+
+      if (cancelado) return;
+
+      const erro = encerradas.error ?? interrompidas.error;
+      if (erro) {
+        console.error("[historico-de-execucoes] leitura falhou:", erro.message);
+        setDados({ contactId, itens: SEM_HISTORICO, erro: true });
+        return;
+      }
+
+      const linhas = [
+        ...((encerradas.data ?? []) as unknown as LinhaDeLog[]),
+        ...((interrompidas.data ?? []) as unknown as LinhaDeLog[]),
+      ].map(mapear);
+      setDados({ contactId, itens: itensDoHistorico(linhas), erro: false });
+    })();
+
+    return () => {
+      cancelado = true;
+    };
+  }, [accountId, contactId, nonce]);
+
+  const atual = dados !== null && dados.contactId === contactId ? dados : null;
+
+  return {
+    itens: atual?.itens ?? SEM_HISTORICO,
     carregou: atual !== null,
     erro: atual?.erro ?? false,
   };

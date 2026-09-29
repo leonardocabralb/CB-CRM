@@ -30,6 +30,12 @@ export interface ExecucaoEncerrada {
   finalizadoEm: string | null
   errorMessage: string | null
   stepsExecuted: AutomationLogStepResult[] | null
+  /**
+   * A marca durável da interrupção (1005). Só a ABA a lê (`itensDoHistorico`):
+   * o fio ignora a execução interrompida sem desfecho, de propósito.
+   */
+  interrompidaEm?: string | null
+  interrompidaPor?: string | null
 }
 
 export interface ItemDeExecucao {
@@ -150,4 +156,114 @@ export function itensDoFio(
   // histórico antigo é o que menos importa para quem está lendo a conversa.
   itens.sort((a, b) => (a.quando < b.quando ? -1 : a.quando > b.quando ? 1 : 0))
   return itens.length > teto ? itens.slice(itens.length - teto) : itens
+}
+
+// ============================================================
+// O "JÁ RODOU" da aba Automações — a mesma régua do fio, com duas diferenças
+// (pedido do operador, 29/09/2026: a mini-auditoria):
+//
+//   1. A execução INTERROMPIDA entra (o cliente respondeu durante a espera,
+//      alguém clicou Parar, o card saiu da etapa, outra automação a parou, a
+//      automação foi desligada). Sem desfecho — `interrompida_em` é a marca
+//      durável (1005) e é ela que decide. Só na aba: no fio, cada resposta do
+//      cliente a uma sequência viraria uma linha no meio da conversa, e o fio
+//      não vira log (a lição do Radar, no topo deste arquivo).
+//   2. O grupo guarda TODAS as execuções, não só a mais recente: expandida, a
+//      linha deixa trocar entre elas.
+//
+// Ordem: da mais RECENTE para a mais antiga (a da aba).
+// ============================================================
+
+/** Os valores do CHECK de `automation_logs.interrompida_por` (1005). */
+export type MotivoDaInterrupcao = 'resposta' | 'etapa' | 'parar' | 'passo' | 'desativacao'
+
+export const MOTIVOS_DA_INTERRUPCAO: readonly MotivoDaInterrupcao[] = [
+  'resposta',
+  'etapa',
+  'parar',
+  'passo',
+  'desativacao',
+]
+
+export type DesfechoDoHistorico = AutomationLogDesfecho | 'interrompida'
+
+export interface ItemDoHistorico {
+  chave: string
+  /** Quando terminou (`finalizado_em`) ou foi interrompida (`interrompida_em`). */
+  quando: string
+  desfecho: DesfechoDoHistorico
+  nome: string | null
+  automationId: string
+  /** As execuções do grupo, da mais recente para a mais antiga. `length` é o "N×". */
+  execucoes: { id: string; quando: string }[]
+  /** Tipo do passo que falhou, quando houve falha. */
+  passoQueParou?: string
+  /** Texto cru do motor: o erro, ou a condição que barrou. */
+  motivoBruto?: string
+  /** Por que parou, na interrompida. `null` = valor fora do CHECK (não sei). */
+  interrompidaPor?: MotivoDaInterrupcao | null
+}
+
+/** Teto da aba: mais folgado que o do fio — aqui é auditoria, lá é conversa. */
+export const TETO_DO_HISTORICO = 30
+
+export function itensDoHistorico(
+  linhas: readonly ExecucaoEncerrada[],
+  opcoes: { teto?: number } = {},
+): ItemDoHistorico[] {
+  const teto = opcoes.teto ?? TETO_DO_HISTORICO
+
+  const validas: { l: ExecucaoEncerrada; desfecho: DesfechoDoHistorico; quando: string }[] = []
+  for (const l of linhas) {
+    if (!l) continue
+    // O desfecho vence: a interrompida que já tinha falhado num ramo antes
+    // (a marca publica a hora de fim da falha adiada) é uma FALHA.
+    if (l.desfecho && l.finalizadoEm) {
+      validas.push({ l, desfecho: l.desfecho, quando: l.finalizadoEm })
+    } else if (l.interrompidaEm) {
+      validas.push({ l, desfecho: 'interrompida', quando: l.interrompidaEm })
+    }
+  }
+
+  const grupos = new Map<string, typeof validas>()
+  for (const v of validas) {
+    const chave = `${v.l.automationId}|${diaLocal(v.quando)}|${v.desfecho}`
+    const g = grupos.get(chave)
+    if (g) g.push(v)
+    else grupos.set(chave, [v])
+  }
+
+  const itens: ItemDoHistorico[] = []
+  for (const [chave, g] of grupos) {
+    const ordenadas = [...g].sort((a, b) => (a.quando < b.quando ? 1 : a.quando > b.quando ? -1 : 0))
+    const mais = ordenadas[0]
+    const motivo = mais.l.interrompidaPor
+    itens.push({
+      chave,
+      quando: mais.quando,
+      desfecho: mais.desfecho,
+      nome: mais.l.nomeDaAutomacao,
+      automationId: mais.l.automationId,
+      execucoes: ordenadas.map((v) => ({ id: v.l.id, quando: v.quando })),
+      ...(mais.desfecho === 'falhou'
+        ? {
+            passoQueParou: passoQueFalhou(mais.l.stepsExecuted),
+            motivoBruto: mais.l.errorMessage ?? undefined,
+          }
+        : {}),
+      ...(mais.desfecho === 'barrada'
+        ? { motivoBruto: condicaoQueBarrou(mais.l.stepsExecuted) }
+        : {}),
+      ...(mais.desfecho === 'interrompida'
+        ? {
+            interrompidaPor: MOTIVOS_DA_INTERRUPCAO.includes(motivo as MotivoDaInterrupcao)
+              ? (motivo as MotivoDaInterrupcao)
+              : null,
+          }
+        : {}),
+    })
+  }
+
+  itens.sort((a, b) => (a.quando < b.quando ? 1 : a.quando > b.quando ? -1 : 0))
+  return itens.slice(0, teto)
 }
