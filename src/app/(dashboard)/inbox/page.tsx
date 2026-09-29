@@ -23,8 +23,14 @@ import { useAuth } from "@/hooks/use-auth";
 import { conversaNoEscopo } from "@/lib/perfis/escopo";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { VoltarAoFunil } from "@/components/inbox/voltar-ao-funil";
+import { VoltarAsReunioes } from "@/components/inbox/voltar-as-reunioes";
 import { avisarExecucoesMudaram } from "@/lib/execucoes/aviso";
-import { EVENTO_ABRIR_CONVERSA, EVENTO_CONVERSA_ABERTA, urlDoInbox } from "@/lib/inbox/url";
+import {
+  EVENTO_ABRIR_CONVERSA,
+  EVENTO_CONVERSA_ABERTA,
+  ehOrigemDoInbox,
+  urlDoInbox,
+} from "@/lib/inbox/url";
 import { comMensagemNova } from "@/lib/inbox/ordem-da-lista";
 import {
   novoPedidoDeSalto,
@@ -72,14 +78,21 @@ function InboxPageInner() {
    * é preservada nos replaces, de propósito: preservar faria o filtro que o
    * operador limpou no painel voltar no reload (ver `urlDoInbox`).
    *
-   * `?de=funil` liga a faixa "Voltar ao funil" e ESSE sobrevive aos
-   * replaces — relido aqui a cada render e reescrito por `urlDoInbox`.
+   * `?de=funil` liga a faixa "Voltar ao funil" (e `?de=reunioes`, a
+   * "Voltar às reuniões", da pauta) e ESSE sobrevive aos replaces — relido
+   * aqui a cada render e reescrito por `urlDoInbox`.
    */
   const etapaInicial = searchParams.get("etapa");
-  // Só o valor com leitor viaja adiante: `urlDoInbox` também recusa outros,
-  // mas sanear aqui evita que um `de=` estranho de link colado circule.
-  const de = searchParams.get("de") === "funil" ? "funil" : null;
+  // Só os valores com leitor viajam adiante: `urlDoInbox` também recusa
+  // outros, mas sanear aqui evita que um `de=` estranho de link colado
+  // circule.
+  const deNaUrl = searchParams.get("de");
+  const de = ehOrigemDoInbox(deNaUrl) ? deNaUrl : null;
+  // ⚠️ SÓ o funil liga a jornada do quadro (`jornadaDoFunil` da lista, que
+  // mexe no filtro semeado por `?etapa=`). A pauta de reuniões não semeia
+  // filtro nenhum: dela vem apenas a faixa de volta.
   const veioDoFunil = de === "funil";
+  const veioDasReunioes = de === "reunioes";
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   // Recorte por perfil (Fase 3). A LINHA aparece na lista (a busca acha
@@ -787,8 +800,8 @@ function InboxPageInner() {
       conversaRecemAbertaRef.current = null;
       // Reflect the selection in the URL so a refresh lands the user
       // back in the same thread, and so copy-paste links work.
-      // `urlDoInbox` reescreve o `de=funil` vigente — sem isso, o primeiro
-      // clique numa conversa apagava a faixa "Voltar ao funil".
+      // `urlDoInbox` reescreve o `de` vigente (`funil` ou `reunioes`) — sem
+      // isso, o primeiro clique numa conversa apagava a faixa de volta.
       // ⚠️ No CELULAR, abrir a conversa a partir da lista vira um PASSO no
       // histórico (`navegacaoAoAbrir`): é o que faz o gesto de voltar do
       // iPhone e o botão voltar do Android fecharem a conversa, em vez de
@@ -1036,6 +1049,8 @@ function InboxPageInner() {
           verdade), Tab não pode alcançar um link invisível atrás do
           backdrop. */}
       {veioDoFunil && <VoltarAoFunil inert={fundoInerte} />}
+      {/* A mesma faixa para quem veio da pauta de reuniões. */}
+      {veioDasReunioes && <VoltarAsReunioes inert={fundoInerte} />}
       {/* WhatsApp connection banner — in the flex column, not absolute,
           so it pushes the panels down instead of overlapping them. */}
       {whatsappConnected === false && (

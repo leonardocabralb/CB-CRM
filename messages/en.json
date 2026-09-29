@@ -62,7 +62,8 @@
     "agenda": "Calendar",
     "unreadTasks": "{count} unread {count, plural, =1 {task} other {tasks}}",
     "meuDia": "My day",
-    "primaryNav": "Primary"
+    "primaryNav": "Primary",
+    "reunioes": "Meetings"
   },
   "Header": {
     "dashboard": "Dashboard",
@@ -86,7 +87,8 @@
     "aiAgents": "AI Agents",
     "radar": "Service radar",
     "agenda": "Meeting calendar",
-    "meuDia": "My day"
+    "meuDia": "My day",
+    "reunioes": "Meetings"
   },
   "ModeToggle": {
     "switchMode": "Switch to {mode} mode"
@@ -182,7 +184,8 @@
   "Inbox": {
     "page": {
       "whatsappNotConnected": "WhatsApp® is not connected. Go to Settings to connect your account.",
-      "backToPipeline": "Back to pipeline"
+      "backToPipeline": "Back to pipeline",
+      "backToReunioes": "Back to meetings"
     },
     "conversationList": {
       "typeAll": "All types",
@@ -1265,7 +1268,7 @@
       "stageDegrau": "Efficiency funnel",
       "stageDegrauHint": "Which step of the efficiency funnel this stage maps to. Several stages may map to the same step; a stage without a step is not counted in Performance.",
       "stageReuniao": "Meeting",
-      "stageReuniaoHint": "What a client entering this stage says about the meeting. The conversation's possible no-show warning uses it: “No-show” marks the no-show stage; “Attended”, a meeting held without a proposal (proposal and contract already count through the step).",
+      "stageReuniaoHint": "What a client entering this stage says about the meeting. The conversation's possible no-show warning uses it: “No-show” marks the no-show stage; “Attended”, a meeting held without a proposal (proposal and contract already count through the step). “Qualified” is where the “Meeting qualified” button on the Meetings screen moves the card, before the meeting.",
       "reuniaoNenhum": "Meeting: —",
       "reuniaoCompareceu": "Attended",
       "reuniaoFaltou": "No-show",
@@ -1283,7 +1286,8 @@
       "painelCustosDica": "A step's cost only shows when the step has a stage.",
       "toastStageMappedWithHistory": "This stage is mapped to the efficiency funnel and has deal history: deleting it would erase that history from Performance. Set its step to \"Not counted\" and save before removing, or keep the stage.",
       "deletePipelineChannels": "These connections put clients into this pipeline: {channels}. Once deleted, they stop creating deals until you point them at another pipeline in Settings › Connections.",
-      "toastStageIsChannelEntry": "This stage is the entry point for {channels}. Pick another entry stage in Settings › Connections before deleting it."
+      "toastStageIsChannelEntry": "This stage is the entry point for {channels}. Pick another entry stage in Settings › Connections before deleting it.",
+      "reuniaoQualificada": "Qualified"
     },
     "automacoes": {
       "abaLeads": "Board",
@@ -6043,5 +6047,81 @@
   },
   "Toaster": {
     "rotulo": "Notifications"
+  },
+  "Reunioes": {
+    "titulo": "Meetings",
+    "subtitulo": "The agenda of booked meetings. Before a meeting, mark whether it is qualified; once it starts, record the outcome.",
+    "semanaAnterior": "Previous week",
+    "semanaSeguinte": "Next week",
+    "hoje": "Today",
+    "hojeExtenso": "Today's meetings",
+    "nReunioes": "{n, plural, one {# meeting} other {# meetings}}",
+    "nSemResultado": "{n} without outcome",
+    "carregando": "Loading meetings…",
+    "falhou": "Couldn't load the meetings.",
+    "tentarDeNovo": "Try again",
+    "recargaFalhou": "The last refresh failed; the agenda below may be out of date.",
+    "redeAcesa": "{n, plural, one {# meeting has started and has no outcome} other {# meetings have started and have no outcome}}",
+    "redeApagada": "Every meeting that has started has an outcome",
+    "redeFalhou": "Couldn't check the last 30 days for meetings without an outcome.",
+    "deOutrosDias": "Without outcome on other days ({n})",
+    "filtroTodas": "All",
+    "filtroSemResultado": "Without outcome",
+    "filtroNaoQualificadas": "Not qualified",
+    "diaVazio": "No meetings on this day.",
+    "recorteVazio": "No meetings match this filter.",
+    "semContato": "Contact without a record",
+    "reagendamento": "Rescheduled",
+    "qualificada": "Qualified",
+    "ganho": "won",
+    "perdido": "lost",
+    "divida": "Debt",
+    "atraso": "Overdue",
+    "origem": "Origin",
+    "naoInformado": "not provided",
+    "semQualificacaoNaFicha": "No qualification data on the record",
+    "jaFaltou": "Missed before: {etapa} on {data}",
+    "aguardandoResposta": "Customer waiting for a reply since {data} at {hora}",
+    "entrar": "Join",
+    "entrarNaReuniao": "Join the meeting",
+    "abrirConversa": "Open conversation",
+    "botaoQualificada": "Meeting qualified",
+    "qualificadaPor": "Qualified · {por}",
+    "resultadoAbreAs": "The outcome opens at {hora}",
+    "registreOResultado": "Record the outcome",
+    "botaoProposta": "With proposal",
+    "botaoSemProposta": "No proposal",
+    "botaoNoShow": "No-show",
+    "valorDaProposta": "Proposal value",
+    "confirmar": "Confirm",
+    "cancelar": "Cancel",
+    "valorObrigatorio": "Enter the proposal value",
+    "levaPara": "Moves the card to {etapa}",
+    "movendo": "Moving to {etapa} in {s} s",
+    "movendoComValor": "Moving to {etapa} with {valor} in {s} s",
+    "desfazer": "Undo",
+    "gravando": "Saving…",
+    "resultadoProposta": "with proposal",
+    "resultadoPropostaComValor": "with a proposal of {valor}",
+    "resultadoSemProposta": "attended, no proposal",
+    "resultadoNoShow": "no-show",
+    "resultadoRegistrado": "Outcome: {oQue} · {por} at {hora}",
+    "resultadoPeloFunil": "Outcome: {oQue} · the card entered {etapa} ({por})",
+    "alguem": "someone on the team",
+    "sistema": "system",
+    "toastMovido": "{nome}: card moved to {etapa}",
+    "toastCardMudou": "{nome}: the card changed stage since the agenda loaded. The agenda was refreshed; check it and mark again.",
+    "toastRegistroFalhou": "{nome}: the card was moved, but saving the meeting record failed. Try marking again.",
+    "toastFalhou": "{nome}: couldn't move the card. Try again.",
+    "registrando": "Saving in {s} s",
+    "toastRegistrado": "{nome}: outcome recorded",
+    "motivoSemCard": "No card in the pipeline: only records the outcome.",
+    "motivoCardFechado": "The card is won or lost: only records the outcome, without touching it.",
+    "motivoReuniaoPosterior": "The card already belongs to the meeting on {data} at {hora}: only records this one’s outcome.",
+    "motivoSemEtapa": "No stage of this pipeline is marked for this (Pipelines → Manage pipeline): only records.",
+    "avisoDoBotao": "{botao}: {texto}",
+    "corrigir": "Correct",
+    "verOutrosDias": "See the {n} from other days",
+    "esconderOutrosDias": "Hide"
   }
 }

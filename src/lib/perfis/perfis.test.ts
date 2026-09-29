@@ -222,6 +222,11 @@ describe("telaDoCaminho", () => {
   it("caminho fora do catálogo não resolve para tela nenhuma", () => {
     expect(telaDoCaminho("/join/abc", ROTA_DA_TELA)).toBeNull();
     expect(telaDoCaminho("/", ROTA_DA_TELA)).toBeNull();
+    // ⚠️ `/meu-dia` e `/reunioes` ficam fora do catálogo DE PROPÓSITO: tela
+    // nova no catálogo nasce invisível para todo perfil já gravado, e o menu
+    // e o shell deixam passar o que não resolve para tela nenhuma.
+    expect(telaDoCaminho("/meu-dia", ROTA_DA_TELA)).toBeNull();
+    expect(telaDoCaminho("/reunioes", ROTA_DA_TELA)).toBeNull();
   });
 });
 

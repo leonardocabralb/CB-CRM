@@ -14,6 +14,11 @@ paths:
   - "src/components/inbox/faixa-de-no-show.tsx"
   - "src/app/api/v1/meetings/**"
   - "src/lib/api/v1/meetings*"
+  - "src/lib/reunioes/**"
+  - "src/app/api/cb/reunioes/**"
+  - "src/app/*/reunioes/**"
+  - "src/components/reunioes/**"
+  - "src/hooks/use-pauta-de-reunioes.ts"
 ---
 
 # Reuniões — regras
@@ -111,6 +116,63 @@ operador: nada no card, na lista nem na aba).
 - **O aviso é calculado quando a conversa abre** (e no `resyncToken`): com
   duas reuniões futuras, o fim da primeira não o recalcula com a conversa
   aberta. Limite aceito (Codex, PR #332): o aviso atrasa, não mente.
+
+### Pauta de reuniões (1063)
+
+`/reunioes`; `src/lib/reunioes/` (`pauta.ts` e `montar.ts` puros, testados),
+a rota `/api/cb/reunioes`, `src/components/reunioes/`. Plano:
+`docs/PLANO-pauta-de-reunioes.md`.
+
+- ⚠️⚠️ **O resultado tem DUAS fontes e vence a mais recente**: o marco da
+  tela (`cb_reunioes_marcos`, por reunião) e a TRILHA do card (entrada numa
+  etapa "faltou"/"compareceu" ou de proposta em diante, DEPOIS do início). Sem
+  a trilha, a reunião resolvida no quadro fica "sem resultado" para sempre;
+  sem o marco, a do card que JÁ estava na etapa não se resolve (mover para a
+  mesma etapa não grava trilha).
+- ⚠️⚠️ **A trilha de cada reunião é recortada pelo CARD dela e pela janela
+  `[início, início da próxima reunião do contato)`** (`proximaEm`, de QUALQUER
+  data — a rota lê a agenda e o Calendly inteiros dos contatos). Sem o teto, o
+  resultado da reunião B resolvia a A, anterior.
+- ⚠️⚠️ **O botão move o card pelo NAVEGADOR, sob RLS** (`executar.ts`), e a
+  escrita é CERCADA pela etapa vista E pelo status aberto: por rota de
+  servidor a trilha e os webhooks `deal.*` diriam `system`; sem a cerca, o
+  clique levaria para trás um card que o Calendly acabou de mover, ou
+  reabriria o perdido marcado depois da carga.
+- ⚠️⚠️ **Toda reunião pode ser resolvida; nem toda move o card**
+  (`comoMarcar`): só card ABERTO anda, e o resultado de reunião ANTIGA de quem
+  já tem reunião mais nova só registra (o card é da nova, e dos lembretes
+  dela). Sem card, card fechado ou funil sem a marca: só registra.
+- ⚠️ **O card da reunião é o que JÁ EXISTIA no início dela**
+  (`negocioDoContato(…, inicio)`): card criado depois (outra área) não é
+  movido pelo botão. E o card que a tela viu já na etapa do botão passa pela
+  MESMA cerca, por leitura, antes do registro (`executarAcao`).
+- ⚠️ **Os lembretes de reunião valem em "Reunião Agendada" E na MQL 2**
+  (escopo gravado em 29/09/2026, decisão do operador): o botão "Reunião
+  qualificada" leva o card para a MQL 2 antes da reunião. Lembrete de reunião
+  novo com escopo só na primeira se cala para o lead qualificado.
+- ⚠️ **Valor e etapa na MESMA escrita** ("com proposta"): o Make da iMotion
+  manda à TinTim o `deal.value` do instante da entrada em Proposta Realizada.
+  Por isso o campo do valor nasce VAZIO (nunca o valor antigo do card) e
+  `executarAcao` recusa "com proposta" sem valor maior que zero, sem gravar
+  nada — o card só anda com o valor digitado (pedido do operador).
+- ⚠️ **Para onde cada botão leva é MARCA, nunca nome**: `qualificada`
+  (desfecho da 1063), `compareceu`, `faltou` e o primeiro degrau `proposta`
+  do funil do card. Funil sem a marca desliga o botão com a explicação. O
+  aviso de possível no-show lê só `compareceu`/`faltou` — `qualificada` não
+  é comparecimento.
+- ⚠️ **A montagem do Calendly é POR CONTATO e com TODOS os agendamentos
+  dele** (`montarReunioesExternas`): a inferência do convite substituído por
+  reagendamento compara com agendamentos fora da janela, e misturar contatos
+  casaria o reagendamento de um com o convite de outro.
+- **Quem marcou é carimbado por gatilho** (`auth.uid()` e o nome do perfil),
+  nunca aceito do navegador; sem DELETE (corrigir é marcar de novo: o upsert
+  troca a linha do mesmo marco).
+- **"Desfazer" de 5 s antes de gravar; sair da tela no meio GRAVA** — quem
+  clica "No show" e abre a conversa em seguida conta com o card movido. O
+  disparo é único por (reunião, prazo) (`disparadasRef`): o efeito roda a cada
+  tique e duas vezes no modo estrito.
+- **Fora do catálogo de perfis** (visível a todos, como o Meu dia) e recortada
+  por FUNIL do perfil, pela lente (`acesso`).
 
 ### tl;dv → transcrições (987)
 

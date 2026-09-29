@@ -38,6 +38,9 @@ const pageTitles: Record<string, string> = {
   // `startsWith` na ORDEM de inserção, e `/agendadas/...` começa com
   // `/agenda` (a mesma armadilha que `telaDoCaminho` resolveu por tamanho).
   "/agenda": "agenda",
+  // A pauta das reuniões. Nenhuma outra rota começa com `/reunioes` nem é
+  // prefixo dela, então a ordem aqui não importa (ao contrário do par acima).
+  "/reunioes": "reunioes",
   "/automations": "automations",
   // ⚠️ `/flows` e `/agents` faltavam aqui desde que as telas nasceram, e o
   // `getPageTitleKey` abaixo cai em "dashboard" para rota desconhecida — as
