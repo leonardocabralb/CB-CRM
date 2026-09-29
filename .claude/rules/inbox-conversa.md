@@ -293,9 +293,10 @@ O WhatsApp quase nunca anuncia a falha; este vermelho é INFERIDO.
 - ⚠️⚠️ **O endereço é achado ANTES da formatação** e sai inteiro como nó
   `link` do `parseWhatsAppFormat`: `_` e `~` são comuns em URL e, lidos como
   marcador, partiam o link em itálico. Formatação EM VOLTA dele vale — mas o
-  `_`/`~`/`*` do FIM só sai do link quando um marcador o ABRE antes
-  (`ABRE_ANTES`; Codex, #347): código de compartilhamento termina em `_`, e
-  tirá-lo sempre mandava o `href` para outra página.
+  `_`/`~`/`*` do FIM só sai do link quando o mesmo marcador está ABERTO (e
+  ainda não fechado) antes dele (`abertoAntes`, que simula o pareamento do
+  interpretador; Codex, #347, duas rodadas): código de compartilhamento
+  termina em `_`, e tirá-lo mandava o `href` para outra página.
 - ⚠️ **Só `http(s)://` e `www.`**, de propósito: domínio solto daria link
   falso em número de processo, CNPJ e "fls.23". O `href` sai do prefixo, e o
   `new URL` confere o esquema.

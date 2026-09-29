@@ -64,6 +64,23 @@ describe('acharLinks — o que vira link', () => {
     expect(enderecos('Acesse https://host/doc_.')).toEqual(['https://host/doc_']);
   });
 
+  it('⚠️ formatação que JÁ FECHOU antes não leva o marcador do endereço (Codex, PR #347, 2ª rodada)', () => {
+    expect(enderecos('_ênfase_ https://host/documento_')).toEqual(['https://host/documento_']);
+    expect(enderecos('*Link:* https://host/b*')).toEqual(['https://host/b*']);
+    // O `_` de um endereço ANTERIOR não abre nada (endereço é literal)…
+    expect(enderecos('https://a.com/_x e https://b.com/doc_')).toEqual([
+      'https://a.com/_x',
+      'https://b.com/doc_',
+    ]);
+    // …nem o de dentro de monoespaçado.
+    expect(enderecos('`_` https://host/doc_')).toEqual(['https://host/doc_']);
+  });
+
+  it('formatação ainda ABERTA fecha depois do endereço, inclusive aninhada', () => {
+    expect(enderecos('_ênfase_ e _veja https://host/doc_')).toEqual(['https://host/doc']);
+    expect(enderecos('*_https://x.com_*')).toEqual(['https://x.com']);
+  });
+
   it('caractere invisível e emoji encerram o endereço', () => {
     expect(enderecos('https://x.com\u200e')).toEqual(['https://x.com']);
     expect(enderecos('https://x.com👍 ok')).toEqual(['https://x.com']);

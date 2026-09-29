@@ -171,6 +171,12 @@ describe('parseWhatsAppFormat — endereços viram link', () => {
     ]);
   });
 
+  it('⚠️ itálico que já fechou antes não come o `_` do endereço (Codex, PR #347, 2ª rodada)', () => {
+    expect(resumo(parseWhatsAppFormat('_ênfase_ https://host/documento_'))).toBe(
+      'italico(ênfase) link(https://host/documento_)',
+    );
+  });
+
   it('dentro de monoespaçado o endereço fica literal', () => {
     expect(resumo(parseWhatsAppFormat('`https://x.com`'))).toBe('mono(https://x.com)');
     expect(resumo(parseWhatsAppFormat('```\nhttps://x.com\n``` e https://y.com'))).toBe(
