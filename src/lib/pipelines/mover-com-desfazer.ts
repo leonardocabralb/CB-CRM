@@ -29,6 +29,13 @@
 // aberta lê o mesmo `localStorage`, e retomar um pedido ainda na janela de
 // desfazer da aba dona tiraria dela o "Desfazer".
 //
+// ⚠️⚠️ Pedido GUARDADO trava o card (fase `tentando`), e um clique novo não
+// o substitui: com os botões de volta depois de uma falha provisória, um
+// clique noutra etapa apagava o pedido da fila, e o primeiro movimento se
+// perdia sem "Desfazer" (Codex, PR #340). Sair do `tentando` só por três
+// portas: o servidor responder, "Tentar agora", ou "Desistir" — decisão
+// explícita, como o Desfazer.
+//
 // Módulo de biblioteca, sem React: o estado é um só para o app inteiro (o
 // painel desenha, a casca retoma), e o botão pode desmontar com o pedido no
 // ar. As telas assinam por `assinarMovimentos`/`fotoDoMovimento`.
@@ -94,6 +101,8 @@ interface Pendente extends PedidoDeMovimento {
 export type EstadoDoMovimento =
   | { fase: 'aguardando'; para: string; prazo: number }
   | { fase: 'enviando'; para: string }
+  /** Guardado no aparelho, esperando o servidor (falha provisória, ou de outra aba/página). */
+  | { fase: 'tentando'; para: string }
   | { fase: 'movido'; para: string }
   | { fase: 'desfeito' };
 
@@ -178,12 +187,19 @@ function definirFoto(dealId: string, foto: EstadoDoMovimento | null) {
 
 // ---- A fila no aparelho --------------------------------------
 
+// Cópia em memória da fila: é ela que vale quando o `localStorage` não está
+// disponível (bloqueado, cota) — sem ela, a nova tentativa da mesma página
+// não acharia o pedido que acabou de falhar.
+const filaEmMemoria = new Map<string, Pendente[]>();
+
 function lerFila(usuario: string): Pendente[] {
   let bruto: string | null = null;
   try {
-    bruto = ambiente.armazenamento()?.getItem(CHAVE_DA_FILA + usuario) ?? null;
+    const armazenamento = ambiente.armazenamento();
+    if (!armazenamento) return filaEmMemoria.get(usuario) ?? [];
+    bruto = armazenamento.getItem(CHAVE_DA_FILA + usuario);
   } catch {
-    return [];
+    return filaEmMemoria.get(usuario) ?? [];
   }
   if (!bruto) return [];
   let lido: unknown;
@@ -214,6 +230,7 @@ function lerFila(usuario: string): Pendente[] {
 }
 
 function gravarFila(usuario: string, fila: Pendente[]) {
+  filaEmMemoria.set(usuario, fila);
   try {
     const armazenamento = ambiente.armazenamento();
     if (!armazenamento) return;
@@ -244,7 +261,14 @@ const tirarDaFila = (usuario: string, id: string) =>
  */
 function tentarDeNovoMaisTarde(pedido: Pendente) {
   emVoo.delete(pedido.id);
-  definirFoto(pedido.dealId, null);
+  // Fora da fila = alguém decidiu enquanto o envio estava no ar ("Desistir",
+  // ou outra aba concluiu): não há o que tentar, e travar o card o deixaria
+  // travado para sempre.
+  if (!lerFila(pedido.usuario).some((e) => e.id === pedido.id)) {
+    definirFoto(pedido.dealId, null);
+    return;
+  }
+  definirFoto(pedido.dealId, { fase: 'tentando', para: pedido.para });
   if (!avisadosDaFalha.has(pedido.id)) {
     avisadosDaFalha.add(pedido.id);
     ambiente.erro(pedido.textos.tentandoDeNovo);
@@ -346,8 +370,15 @@ function escutarAPagina() {
 /**
  * Começa a janela de desfazer. Depois de `ESPERA_PARA_DESFAZER_MS`, o card
  * é movido — a não ser que `desfazerMovimento` venha antes.
+ *
+ * `false` = recusado: o negócio já tem um pedido GUARDADO esperando o
+ * servidor, e um novo o substituiria (ver o cabeçalho). A tela trava o card
+ * nesse estado; a recusa é a segunda barreira.
  */
-export function agendarMovimento(pedido: PedidoDeMovimento, usuario: string): void {
+export function agendarMovimento(pedido: PedidoDeMovimento, usuario: string): boolean {
+  if (!aguardando.has(pedido.dealId) && lerFila(usuario).some((e) => e.dealId === pedido.dealId)) {
+    return false;
+  }
   concluirAgora(pedido.dealId);
   const pendente: Pendente = {
     ...pedido,
@@ -364,6 +395,7 @@ export function agendarMovimento(pedido: PedidoDeMovimento, usuario: string): vo
   usuarioDaRetomada = usuario;
   escutarAPagina();
   definirFoto(pedido.dealId, { fase: 'aguardando', para: pedido.para, prazo: pendente.prazo });
+  return true;
 }
 
 /** Cancela o movimento na janela de desfazer. `false` = não havia (já saiu). */
@@ -390,6 +422,33 @@ export function concluirAgora(dealId: string, opcoes: { avisarPorToast?: boolean
   void enviar(item.pedido, opcoes.avisarPorToast ?? false);
 }
 
+/** O pedido guardado deste negócio que não está na janela desta aba. */
+function guardadoDo(dealId: string, usuario: string): Pendente | undefined {
+  if (aguardando.has(dealId)) return undefined;
+  return lerFila(usuario).find((e) => e.dealId === dealId);
+}
+
+/** "Tentar agora" do card travado: manda o pedido guardado já. */
+export function tentarAgora(dealId: string, usuario: string): void {
+  const pedido = guardadoDo(dealId, usuario);
+  if (pedido) void enviar(pedido, false);
+}
+
+/**
+ * "Desistir" do card travado: a decisão explícita de não mover — como o
+ * Desfazer, só que depois de o servidor falhar. Um envio já no ar ainda pode
+ * chegar (e aí o card se move, e a tela diz).
+ */
+export function desistirDoMovimento(dealId: string, usuario: string): boolean {
+  const pedido = guardadoDo(dealId, usuario);
+  if (!pedido) return false;
+  tirarDaFila(usuario, pedido.id);
+  tentativas.delete(pedido.id);
+  avisadosDaFalha.delete(pedido.id);
+  definirFoto(dealId, null);
+  return true;
+}
+
 /** A página indo embora (ou para o fundo, no celular): tudo o que espera sai agora. */
 export function concluirTodosAgora(): void {
   for (const dealId of [...aguardando.keys()]) concluirAgora(dealId);
@@ -410,6 +469,12 @@ export function retomarMovimentosPendentes(usuario: string): void {
   let proxima = Number.POSITIVE_INFINITY;
   for (const pedido of lerFila(usuario)) {
     if (destaAba.has(pedido.id) || emVoo.has(pedido.id)) continue;
+    // Guardado trava o card desde já, também o que ainda está na folga (de
+    // outra aba): senão os botões voltariam, e o clique seria recusado.
+    const foto = fotos.get(pedido.dealId);
+    if (!foto || foto.fase === 'desfeito') {
+      definirFoto(pedido.dealId, { fase: 'tentando', para: pedido.para });
+    }
     const quando = pedido.prazo + FOLGA_DA_RETOMADA_MS;
     if (quando > agora) {
       proxima = Math.min(proxima, quando - agora);
@@ -449,6 +514,7 @@ export function __reiniciarParaTeste(novo: Partial<Ambiente> = {}): void {
   if (relogioDaTentativa) clearTimeout(relogioDaTentativa);
   aguardando.clear();
   emVoo.clear();
+  filaEmMemoria.clear();
   avisadosDaFalha.clear();
   tentativas.clear();
   relogioDaTentativa = null;

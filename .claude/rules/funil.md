@@ -121,6 +121,10 @@ seção "Botão de avançar" do Gerenciar funil.
 - **Um movimento por vez**: na janela, as recomendações somem e o seletor de
   etapa e os botões Ganho/Perdido travam (perdido marcado no meio seria
   reaberto pela 1031 quando o movimento saísse para etapa neutra).
+- ⚠️ **Pedido GUARDADO trava o card** (`tentando`, também depois de
+  recarregar): um clique novo o substituiria na fila e o primeiro se perderia
+  sem "Desfazer" — `agendarMovimento` recusa. Sai pelo servidor, "Tentar
+  agora" ou "Desistir" (decisão explícita).
 
 ### Concorrência do quadro: leituras, arrastos e formulários
 

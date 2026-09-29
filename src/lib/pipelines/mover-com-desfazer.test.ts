@@ -8,6 +8,7 @@ import {
   concluirTodosAgora,
   type Conclusao,
   desfazerMovimento,
+  desistirDoMovimento,
   ESPERA_PARA_DESFAZER_MS,
   FOLGA_DA_RETOMADA_MS,
   fotoDoMovimento,
@@ -16,6 +17,7 @@ import {
   type PedidoDeMovimento,
   retomarMovimentosPendentes,
   TEMPO_DO_AVISO_MS,
+  tentarAgora,
 } from './mover-com-desfazer';
 
 // ⚠️ O que este arquivo protege é a decisão do operador (29/09/2026): o
@@ -179,6 +181,8 @@ describe('a reserva no aparelho', () => {
     expect(erro).toHaveBeenCalledWith('tentando de novo');
     expect(fila()).toHaveLength(1);
     expect(conclusoes).toEqual([]);
+    // O card fica TRAVADO mostrando o pedido — os botões não voltam.
+    expect(fotoDoMovimento('negocio-1')).toEqual({ fase: 'tentando', para: 'etapa-b' });
 
     await esperar(INTERVALO_DE_NOVA_TENTATIVA_MS);
     expect(enviar).toHaveBeenCalledTimes(2);
@@ -209,6 +213,52 @@ describe('a reserva no aparelho', () => {
     expect(fila()).toHaveLength(1);
   });
 
+  it('pedido guardado NÃO é substituído por um clique novo (Codex, PR #340)', async () => {
+    respostas.push({ ok: false, status: 503 });
+    agendarMovimento(pedido('negocio-1', 'etapa-b'), USUARIO);
+    await esperar(ESPERA_PARA_DESFAZER_MS);
+    expect(fila()).toHaveLength(1);
+    expect(agendarMovimento(pedido('negocio-1', 'etapa-c'), USUARIO)).toBe(false);
+    const guardados = fila() as { para: string }[];
+    expect(guardados.map((e) => e.para)).toEqual(['etapa-b']);
+  });
+
+  it('Desistir: a decisão explícita tira o pedido e destrava o card; Tentar agora manda já', async () => {
+    respostas.push({ ok: false, status: 503 });
+    agendarMovimento(pedido(), USUARIO);
+    await esperar(ESPERA_PARA_DESFAZER_MS);
+    tentarAgora('negocio-1', USUARIO);
+    await esperar(0);
+    expect(enviar).toHaveBeenCalledTimes(2);
+    expect(fila()).toEqual([]);
+
+    respostas.push({ ok: false, status: 503 });
+    agendarMovimento(pedido(), USUARIO);
+    await esperar(ESPERA_PARA_DESFAZER_MS);
+    expect(desistirDoMovimento('negocio-1', USUARIO)).toBe(true);
+    expect(fila()).toEqual([]);
+    expect(fotoDoMovimento('negocio-1')).toBeNull();
+    await esperar(INTERVALO_DE_NOVA_TENTATIVA_MS * 3);
+    expect(enviar).toHaveBeenCalledTimes(3);
+  });
+
+  it('Desistir com um envio no ar que falha: o card destrava, e nada volta a tentar', async () => {
+    let soltar: (r: Response) => void = () => {};
+    enviar.mockImplementationOnce(() => new Promise<Response>((r) => (soltar = r)));
+    respostas.push({ ok: false, status: 503 });
+    agendarMovimento(pedido(), USUARIO);
+    await esperar(ESPERA_PARA_DESFAZER_MS);
+    await esperar(INTERVALO_DE_NOVA_TENTATIVA_MS);
+    // Na segunda tentativa, com o envio ainda no ar, a pessoa desiste.
+    expect(desistirDoMovimento('negocio-1', USUARIO)).toBe(true);
+    soltar({ ok: false, status: 503, json: async () => ({}) } as Response);
+    await esperar(0);
+    expect(fotoDoMovimento('negocio-1')).toBeNull();
+    const envios = enviar.mock.calls.length;
+    await esperar(INTERVALO_DE_NOVA_TENTATIVA_MS * 3);
+    expect(enviar).toHaveBeenCalledTimes(envios);
+  });
+
   it('sessão vencida (401) também fica: o login seguinte refaz', async () => {
     respostas.push({ ok: false, status: 401 });
     agendarMovimento(pedido(), USUARIO);
@@ -234,6 +284,8 @@ describe('a reserva no aparelho', () => {
       drenar,
     });
     retomarMovimentosPendentes(USUARIO);
+    // O pedido guardado trava o card desde a abertura, mesmo antes da folga.
+    expect(fotoDoMovimento('negocio-1')).toEqual({ fase: 'tentando', para: 'etapa-b' });
     await esperar(ESPERA_PARA_DESFAZER_MS);
     expect(enviar).not.toHaveBeenCalled();
 
@@ -292,8 +344,14 @@ describe('a reserva no aparelho', () => {
       erro,
       drenar,
     });
+    aoConcluirMovimento((c) => conclusoes.push(c));
+    respostas.push('rede');
     agendarMovimento(pedido(), USUARIO);
     await esperar(ESPERA_PARA_DESFAZER_MS);
     expect(enviar).toHaveBeenCalledTimes(1);
+    // A nova tentativa acha o pedido na cópia em memória.
+    await esperar(INTERVALO_DE_NOVA_TENTATIVA_MS);
+    expect(enviar).toHaveBeenCalledTimes(2);
+    expect(conclusoes[0]?.resultado.tipo).toBe('movido');
   });
 });

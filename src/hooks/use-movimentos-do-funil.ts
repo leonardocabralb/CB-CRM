@@ -9,16 +9,27 @@ import { createClient } from '@/lib/supabase/client';
 // Os movimentos de etapa de um funil nos últimos 30 dias — a base do
 // automático do botão "avançar" (`cb_movimentos_entre_etapas`, 1061).
 //
-// Em memória por funil, por 10 minutos: o painel troca de conversa o tempo
-// todo, e o número não muda em minutos. `null` = carregando ou falhou — o
-// automático não afirma nada sem ele (a escolha à mão não precisa dele).
+// Em memória por funil, válidos por 10 minutos: o painel troca de conversa o
+// tempo todo, e o número não muda em minutos. `null` = carregando ou falhou —
+// o automático não afirma nada sem ele (a escolha à mão não precisa dele).
+//
+// ⚠️ A validade é cumprida com o painel MONTADO: ele passa o expediente
+// inteiro aberto no mesmo funil, e sem o relógio que relê na validade a
+// recomendação ficaria na foto da primeira conversa (Codex, PR #340).
 // ============================================================
 
 const VALIDADE_MS = 10 * 60 * 1000;
-const guardados = new Map<string, { em: number; movimentos: Movimento[] }>();
-const emVoo = new Map<string, Promise<Movimento[] | null>>();
+const NOVA_LEITURA_APOS_FALHA_MS = 60 * 1000;
 
-function lerDoBanco(pipelineId: string): Promise<Movimento[] | null> {
+interface Guardado {
+  em: number;
+  movimentos: Movimento[];
+}
+
+const guardados = new Map<string, Guardado>();
+const emVoo = new Map<string, Promise<Guardado | null>>();
+
+function lerDoBanco(pipelineId: string): Promise<Guardado | null> {
   const noAr = emVoo.get(pipelineId);
   if (noAr) return noAr;
   const desde = new Date(Date.now() - JANELA_DO_AUTOMATICO_DIAS * 24 * 60 * 60 * 1000);
@@ -33,8 +44,9 @@ function lerDoBanco(pipelineId: string): Promise<Movimento[] | null> {
         ? [{ de: l.de, para: l.para, vezes: l.vezes }]
         : [],
     );
-    guardados.set(pipelineId, { em: Date.now(), movimentos });
-    return movimentos;
+    const guardado = { em: Date.now(), movimentos };
+    guardados.set(pipelineId, guardado);
+    return guardado;
   })().finally(() => emVoo.delete(pipelineId));
   emVoo.set(pipelineId, pedido);
   return pedido;
@@ -42,29 +54,39 @@ function lerDoBanco(pipelineId: string): Promise<Movimento[] | null> {
 
 /** Os movimentos do funil, ou `null` enquanto não há (carregando ou falhou). */
 export function useMovimentosDoFunil(pipelineId: string | null | undefined): Movimento[] | null {
-  const [lidos, setLidos] = useState<{ de: string; movimentos: Movimento[] } | null>(null);
+  const [lidos, setLidos] = useState<(Guardado & { de: string }) | null>(null);
 
   useEffect(() => {
     if (!pipelineId) return;
-    const guardado = guardados.get(pipelineId);
-    if (guardado && Date.now() - guardado.em < VALIDADE_MS) return;
     let vivo = true;
-    void lerDoBanco(pipelineId).then((movimentos) => {
-      if (vivo && movimentos) setLidos({ de: pipelineId, movimentos });
-    });
+    let relogio: ReturnType<typeof setTimeout> | undefined;
+    const buscar = () => {
+      void lerDoBanco(pipelineId).then((guardado) => {
+        if (!vivo) return;
+        if (guardado) setLidos({ de: pipelineId, ...guardado });
+        relogio = setTimeout(buscar, guardado ? VALIDADE_MS : NOVA_LEITURA_APOS_FALHA_MS);
+      });
+    };
+    const guardado = guardados.get(pipelineId);
+    const idade = guardado ? Date.now() - guardado.em : Number.POSITIVE_INFINITY;
+    if (idade < VALIDADE_MS) relogio = setTimeout(buscar, VALIDADE_MS - idade);
+    else buscar();
     return () => {
       vivo = false;
+      if (relogio) clearTimeout(relogio);
     };
   }, [pipelineId]);
 
   if (!pipelineId) return null;
-  // A resposta é carimbada com o funil: trocar de negócio para um de outro
-  // funil não pode mostrar, por um quadro, os movimentos do anterior.
-  if (lidos?.de === pipelineId) return lidos.movimentos;
-  return guardados.get(pipelineId)?.movimentos ?? null;
+  // A leitura mais nova vence — a desta tela ou a de outra (o Gerenciar
+  // funil relê a cada abertura). Carimbada com o funil: trocar para um
+  // negócio de outro funil não mostra, por um quadro, os movimentos do anterior.
+  const guardado = guardados.get(pipelineId);
+  if (lidos?.de === pipelineId && (!guardado || lidos.em >= guardado.em)) return lidos.movimentos;
+  return guardado?.movimentos ?? null;
 }
 
 /** Para a tela de funis, que precisa ler de novo a cada abertura. */
-export function lerMovimentosDoFunil(pipelineId: string): Promise<Movimento[] | null> {
-  return lerDoBanco(pipelineId);
+export async function lerMovimentosDoFunil(pipelineId: string): Promise<Movimento[] | null> {
+  return (await lerDoBanco(pipelineId))?.movimentos ?? null;
 }

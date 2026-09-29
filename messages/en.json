@@ -592,7 +592,10 @@
         "toastMovido": "{contato}'s deal moved to {etapa}.",
         "toastMudou": "{contato}'s deal had already changed stage; the move to {etapa} was not made.",
         "toastFalhou": "Couldn't move {contato}'s deal to {etapa}.",
-        "toastTentandoDeNovo": "Couldn't move it right now: the CRM will try again, and {contato}'s deal will move to {etapa} as soon as it can."
+        "toastTentandoDeNovo": "Couldn't move it right now: the CRM will try again, and {contato}'s deal will move to {etapa} as soon as it can.",
+        "pendente": "Move to <etapa>{nome}</etapa> pending — the CRM is trying to finish it.",
+        "tentarAgora": "Try now",
+        "desistir": "Give up"
       }
     },
     "arquivos": {

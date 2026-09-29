@@ -13,7 +13,10 @@
 // ⚠️ Com um movimento na janela de desfazer, as recomendações SOMEM (e o
 // seletor de etapa do cartão fica travado): elas seriam as da etapa de
 // destino, que ainda não está no banco, e um segundo clique encadearia um
-// movimento a partir de uma etapa que o card ainda não tem. Um por vez.
+// movimento a partir de uma etapa que o card ainda não tem. Um por vez. O
+// mesmo com o pedido GUARDADO esperando o servidor (`tentando`): um clique
+// novo o substituiria — sai dali pelo servidor, "Tentar agora" ou
+// "Desistir".
 // ============================================================
 
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
@@ -25,7 +28,9 @@ import { recomendarEtapas, type Movimento } from '@/lib/pipelines/etapas-recomen
 import {
   agendarMovimento,
   desfazerMovimento,
+  desistirDoMovimento,
   ESPERA_PARA_DESFAZER_MS,
+  tentarAgora,
 } from '@/lib/pipelines/mover-com-desfazer';
 import type { Deal, PipelineStage } from '@/types';
 
@@ -79,6 +84,36 @@ export function AvancarEtapa({
             rotulo={(segundos) => t('desfazer', { segundos })}
           />
         )}
+      </div>
+    );
+  }
+
+  if (movimento?.fase === 'tentando') {
+    const destino = porId.get(movimento.para);
+    return (
+      <div className="space-y-1 rounded-md border border-amber-600/40 bg-card px-2 py-1.5 text-xs">
+        <p className="text-muted-foreground">
+          {t.rich('pendente', {
+            nome: destino?.name ?? '—',
+            etapa: (nome) => <NomeDaEtapa cor={destino?.color}>{nome}</NomeDaEtapa>,
+          })}
+        </p>
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={() => tentarAgora(deal.id, userId)}
+            className="font-medium text-primary hover:underline"
+          >
+            {t('tentarAgora')}
+          </button>
+          <button
+            type="button"
+            onClick={() => desistirDoMovimento(deal.id, userId)}
+            className="text-muted-foreground hover:text-foreground hover:underline"
+          >
+            {t('desistir')}
+          </button>
+        </div>
       </div>
     );
   }

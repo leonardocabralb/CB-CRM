@@ -388,7 +388,9 @@ export function PainelDoContato({
   const movimentosDoFunil = useMovimentosDoFunil(dealAtivo?.pipeline_id);
   const movimentoDoNegocio = useMovimentoDeEtapa(dealAtivo?.id);
   const movendoEtapa =
-    movimentoDoNegocio?.fase === 'aguardando' || movimentoDoNegocio?.fase === 'enviando';
+    movimentoDoNegocio?.fase === 'aguardando' ||
+    movimentoDoNegocio?.fase === 'enviando' ||
+    movimentoDoNegocio?.fase === 'tentando';
 
   // ⚠️ Trocar de conversa (ou sair do painel) com o movimento na janela de
   // desfazer CONCLUI o movimento na hora — nunca o perde (decisão do
