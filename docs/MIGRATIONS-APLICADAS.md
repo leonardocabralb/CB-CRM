@@ -1004,8 +1004,8 @@ nome da época em que foram aplicadas.
   o dono executando `_bcast_bump`) e no assessor de segurança (as duas saíram
   das listas 0028/0029: de 11 para 9 e de 15 para 13).
 - **1067_cb_membro_suspenso** (⚠️ APLICADA COMO **1064**) — suspender e
-  reativar membro sem excluir (Configurações → Membros, a chave da coluna
-  "Situação"): `profiles.suspenso_em`/`suspenso_por`, na trava
+  reativar membro sem excluir (Configurações → Membros: a coluna "Situação" e
+  a chave junto do excluir): `profiles.suspenso_em`/`suspenso_por`, na trava
   `enforce_profile_privilege_columns`; `is_account_member` e
   `cb_contas_do_usuario` respondem "não é membro" para quem está suspenso; a
   própria linha de `profiles` some para ele (`profiles_select`/`_update`);

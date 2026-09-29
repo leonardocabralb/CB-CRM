@@ -565,41 +565,25 @@ export function MembersTab() {
                     </div>
                   </div>
 
-                  {/* Situação (1067) — a coluna que o operador pediu: a
-                      chave desliga e religa o acesso (admin+, nunca o dono,
-                      nunca a si mesmo — a régua do remover). Desligar abre a
-                      confirmação com as conversas abertas; religar é um
-                      clique. Em toda linha, inclusive a do dono, para a
-                      coluna não "pular": o dono nunca é suspenso, e diz Ativo.
+                  {/* Situação (1067) — a coluna que o operador pediu. Em toda
+                      linha, inclusive a do dono, para a coluna não "pular": o
+                      dono nunca é suspenso, e diz Ativo. A CHAVE que desliga e
+                      religa mora nas ações, junto do excluir (pedido do
+                      operador, pela estética).
                       ⚠️ A data de entrada mora AQUI, e não numa coluna
                       própria: com a chave, o seletor de perfil e o papel na
                       mesma linha, aquela coluna espremia o nome numa letra
                       (medido a 1440 px: 64 px para avatar e nome). */}
                   <div className="flex shrink-0 flex-col items-start gap-1 sm:w-40">
-                    <div className="flex items-center gap-2">
-                      {canManageMembers && !isOwnerRow && !isSelf && (
-                        <Switch
-                          checked={!suspenso}
-                          onCheckedChange={(ativo) =>
-                            ativo
-                              ? void handleSuspensao(member, false)
-                              : void abrirSuspensao(member)
-                          }
-                          disabled={isBusy}
-                          aria-label={suspenso ? t('reactivate') : t('suspend')}
-                          title={suspenso ? t('reactivate') : t('suspend')}
-                        />
-                      )}
-                      <span
-                        className={
-                          suspenso
-                            ? 'inline-flex items-center rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300'
-                            : 'inline-flex items-center rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300'
-                        }
-                      >
-                        {suspenso ? t('statusSuspended') : t('statusActive')}
-                      </span>
-                    </div>
+                    <span
+                      className={
+                        suspenso
+                          ? 'inline-flex items-center rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300'
+                          : 'inline-flex items-center rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300'
+                      }
+                    >
+                      {suspenso ? t('statusSuspended') : t('statusActive')}
+                    </span>
                     {suspenso && member.suspenso_em ? (
                       <span className="text-[11px] text-muted-foreground">
                         {member.suspenso_por_nome
@@ -695,6 +679,24 @@ export function MembersTab() {
                         <RoleIcon className="size-3.5" />
                         {tRoles(member.role)}
                       </span>
+                    )}
+
+                    {/* Suspender / reativar (1067): a régua do remover —
+                        admin+, nunca o dono, nunca a si mesmo. Desligar abre
+                        a confirmação com as conversas abertas; religar é um
+                        clique. */}
+                    {canManageMembers && !isOwnerRow && !isSelf && (
+                      <Switch
+                        checked={!suspenso}
+                        onCheckedChange={(ativo) =>
+                          ativo
+                            ? void handleSuspensao(member, false)
+                            : void abrirSuspensao(member)
+                        }
+                        disabled={isBusy}
+                        aria-label={suspenso ? t('reactivate') : t('suspend')}
+                        title={suspenso ? t('reactivate') : t('suspend')}
+                      />
                     )}
 
                     {/* Remove. Admin+ only; never on the owner row;

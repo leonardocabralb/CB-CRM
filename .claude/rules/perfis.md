@@ -149,9 +149,9 @@ Troca de LENTE no navegador, e só nele (`simulacao.ts`, o override no
   `cb_celulares_dos_membros`). As regras estão em `meu-dia.md`.
 
 ### Membro SUSPENSO (1067)
-Configurações → Membros → a chave da coluna "Situação" (pedido do operador,
-29/09/2026: desligar abre a confirmação com as conversas abertas da pessoa;
-religar é um clique).
+Configurações → Membros: a coluna "Situação" (Ativo / Suspenso) e a chave, à
+direita junto do excluir (pedido do operador, 29/09/2026: desligar abre a
+confirmação com as conversas abertas da pessoa; religar é um clique).
 `profiles.suspenso_em`/`suspenso_por`, a RPC `cb_definir_suspensao` (a régua
 do remover: admin+, nunca o dono, nunca a si mesmo), a rota
 `/api/account/members/[userId]/suspensao`, `src/lib/account/suspensao.ts` e a
@@ -169,6 +169,10 @@ ela ainda faz login — cai na tela de acesso suspenso.
   `cb/agenda`, `conversas/abrir`, `whatsapp/*`): todas recusam sem cadastro.
   Rota nova nesse molde herda o corte; rota que descobrir o chamador por outro
   caminho (service role lendo `profiles` pelo id da sessão) NÃO herda.
+  ⚠️ O Storage só fecha na pasta da CONTA: a pasta do PRÓPRIO usuário
+  (`<user_id>/…` em `flow-media` e `avatars`) não consulta `profiles` e
+  continua gravável por qualquer login, suspenso incluso (Codex, PR #341).
+  Os dois buckets estavam vazios em 29/09/2026; fechar é tarefa própria.
 - ⚠️ **As colunas estão na trava `enforce_profile_privilege_columns`**: a
   policy `profiles_update` deixa cada um editar a própria linha, e sem a trava
   a pessoa se reativaria com um PATCH.
@@ -197,7 +201,7 @@ ela ainda faz login — cai na tela de acesso suspenso.
 - Chaves de API são da CONTA: as que a pessoa criou continuam valendo. Agendadas
   dela continuam saindo.
 - ⚠️ **A linha de Membros não comporta mais uma coluna.** A data de entrada
-  mora DENTRO da coluna "Situação" (embaixo da chave), e suspender é a chave,
+  mora DENTRO da coluna "Situação" (embaixo do selo), e suspender é a chave,
   não um botão: a 1ª versão tinha as duas coisas soltas e, a 1440 px, sobravam
   64 px para avatar, nome e e-mail — o nome virava uma letra. Quem acrescentar
   controle à linha mede o nome na tela antes.

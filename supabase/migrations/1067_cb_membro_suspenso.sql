@@ -26,8 +26,12 @@
 --    e `profiles_update`). É o que fecha as rotas que leem o cadastro do
 --    chamador e depois agem com service role (`cb/notes`, `cb/agenda`,
 --    `conversas/abrir`, `whatsapp/*`): todas recusam quando não o acham. E as
---    policies do Storage (`chat-media`, `flow-media`) consultam `profiles`
---    sob a RLS de quem chama.
+--    policies do Storage na pasta da CONTA (`chat-media`, `flow-media`)
+--    consultam `profiles` sob a RLS de quem chama. ⚠️ A pasta do PRÓPRIO
+--    usuário (`<user_id>/…` em `flow-media` e `avatars`) não passa por
+--    `profiles` e continua gravável por qualquer login, suspenso incluso
+--    (achado do Codex no PR #341; os dois buckets estavam VAZIOS em
+--    29/09/2026, então nada existente se perde). Fechar é tarefa própria.
 -- 4. As funções SECURITY DEFINER que leem `profiles` direto (e por isso
 --    ignoram as peças 2 e 3) conferem a suspensão: `touch_presence`,
 --    `cb_marcar_conversa_aberta`, `set_member_role` e `remove_account_member`
