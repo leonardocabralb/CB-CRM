@@ -6,6 +6,7 @@ import {
   chaveDoTexto,
   direcaoDoMovimento,
   intercalar,
+  juntarEventos,
   ordenarPorTempo,
 } from './describe';
 import type { LeadEvent, ConversationNote } from '@/types';
@@ -202,6 +203,47 @@ describe('ordenarPorTempo', () => {
     ];
     ordenarPorTempo(lista);
     expect(lista.map((e) => e.id)).toEqual(['a', 'b']);
+  });
+});
+
+describe('juntarEventos', () => {
+  it('evento do tempo real entra no lugar do tempo dele', () => {
+    const naTela = [
+      evento({ id: 'a', occurred_at: '2026-09-28T14:00:00+00:00' }),
+      evento({ id: 'c', occurred_at: '2026-09-28T16:00:00+00:00' }),
+    ];
+    const novo = evento({ id: 'b', occurred_at: '2026-09-28T15:00:00+00:00' });
+    expect(juntarEventos(naTela, [novo]).map((e) => e.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('não repete o evento que chegou pelas duas vias', () => {
+    const buscado = evento({ id: 'a', occurred_at: '2026-09-28T14:00:00+00:00' });
+    const chegado = evento({ id: 'a', occurred_at: '2026-09-28T14:00:00+00:00' });
+    expect(juntarEventos([buscado], [chegado])).toHaveLength(1);
+  });
+
+  it('no id repetido vale a versão da PRIMEIRA lista', () => {
+    // A busca que volta passa a sua lista primeiro: a versão do PostgREST
+    // vence a do canal.
+    const buscado = evento({ id: 'a', to_stage_label: 'da busca' });
+    const chegado = evento({ id: 'a', to_stage_label: 'do canal' });
+    expect(juntarEventos([buscado], [chegado])[0].to_stage_label).toBe('da busca');
+    expect(juntarEventos([chegado], [buscado])[0].to_stage_label).toBe('do canal');
+  });
+
+  it('a busca que volta depois de um evento chegar não o perde', () => {
+    // A foto da busca é anterior ao evento: ele só existe na tela.
+    const buscados = [evento({ id: 'a', occurred_at: '2026-09-28T14:00:00+00:00' })];
+    const chegados = [evento({ id: 'b', occurred_at: '2026-09-28T14:35:00+00:00' })];
+    expect(juntarEventos(buscados, chegados).map((e) => e.id)).toEqual(['a', 'b']);
+  });
+
+  it('não muta as listas recebidas', () => {
+    const primeira = [evento({ id: 'b', occurred_at: '2026-09-28T15:00:00+00:00' })];
+    const segunda = [evento({ id: 'a', occurred_at: '2026-09-28T14:00:00+00:00' })];
+    juntarEventos(primeira, segunda);
+    expect(primeira.map((e) => e.id)).toEqual(['b']);
+    expect(segunda.map((e) => e.id)).toEqual(['a']);
   });
 });
 
