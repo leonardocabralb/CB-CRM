@@ -150,11 +150,15 @@ function AreaDeTrabalho({
 
   // Hoje e amanhã no fuso da AGENDA — a janela da pauta de /reunioes. A
   // janela só muda com o dia; o "Atualizar" relê pela `recarregar`.
+  // ⚠️ O fim é a meia-noite DEPOIS de amanhã, não "amanhã 23:59": a rota
+  // compara com `lte`, e a reunião das 23:59:30 ficaria de fora (Codex, PR
+  // #350). A de 00:00 em ponto do dia seguinte que entra junto não aparece:
+  // o bloco mostra só os dias de hoje e amanhã.
   const janelaDaPauta = useMemo(() => {
     const hojeNoFuso = diaNoFuso(new Date(agoraMs), FUSO_PADRAO);
     return {
       de: paraInstante(hojeNoFuso, '00:00', FUSO_PADRAO).toISOString(),
-      ate: paraInstante(somarDias(hojeNoFuso, 1), '23:59', FUSO_PADRAO).toISOString(),
+      ate: paraInstante(somarDias(hojeNoFuso, 2), '00:00', FUSO_PADRAO).toISOString(),
     };
   }, [agoraMs]);
   const pauta = usePautaDeReunioes(janelaDaPauta);

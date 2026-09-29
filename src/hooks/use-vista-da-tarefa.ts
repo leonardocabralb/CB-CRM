@@ -22,7 +22,8 @@
 //
 // ⚠️ Aba OCULTA não vê nada: o relógio confere `visibilityState` quando
 // vence, e a volta à aba recomeça o relógio de quem já estava na tela (o
-// observador não avisa de novo sem rolagem).
+// observador não avisa de novo sem rolagem). E a aba que SOME (ou a página
+// que fecha) manda na hora o que esperava na janela do lote.
 //
 // Limite aceito: a memória do que foi mandado vale a carga de página inteira,
 // então a tarefa redirecionada para outra pessoa e DEVOLVIDA sem recarregar
@@ -94,6 +95,21 @@ async function mandarLote(): Promise<void> {
   }
 }
 
+/**
+ * Manda JÁ o que está na fila (Codex, PR #350): a aba que some ou a página
+ * que fecha dentro da janela do lote destruiria o relógio antes de o pedido
+ * sair — e o `keepalive` só salva pedido que já COMEÇOU.
+ */
+function mandarJa(): void {
+  while (fila.size > 0) {
+    if (loteAgendado) clearTimeout(loteAgendado);
+    loteAgendado = null;
+    void mandarLote();
+  }
+  if (loteAgendado) clearTimeout(loteAgendado);
+  loteAgendado = null;
+}
+
 function enfileirar(id: string): void {
   if (enviadas.has(id)) return;
   enviadas.add(id);
@@ -121,8 +137,11 @@ function ligarRelogio(el: Element): void {
   );
 }
 
-function aoVoltarParaAAba(): void {
-  if (document.visibilityState !== 'visible') return;
+function aoMudarAVisibilidade(): void {
+  if (document.visibilityState !== 'visible') {
+    mandarJa();
+    return;
+  }
   for (const el of naTela) ligarRelogio(el);
 }
 
@@ -143,7 +162,8 @@ function obterObservador(): IntersectionObserver {
     { threshold: [0, FRACAO_VISIVEL] },
   );
   if (!ouvindoAVolta) {
-    document.addEventListener('visibilitychange', aoVoltarParaAAba);
+    document.addEventListener('visibilitychange', aoMudarAVisibilidade);
+    window.addEventListener('pagehide', mandarJa);
     ouvindoAVolta = true;
   }
   return observador;
