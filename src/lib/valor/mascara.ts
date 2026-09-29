@@ -117,6 +117,12 @@ export function parsearValor(texto: string): number | null {
 // - Os centavos ficam sempre à vista (`,00`). Digitar a vírgula leva o
 //   cursor para eles, e ali cada dígito escreve POR CIMA do seguinte.
 // - O ponto de milhar é da máscara: um `.` digitado é ignorado.
+//   ⚠️ Inclusive o do teclado VIRTUAL, de propósito: num celular cujo
+//   teclado decimal só tem ponto, os centavos não entram por ele (Codex,
+//   PR #334). Ler o ponto como vírgula faria quem digita "40.000" por hábito
+//   gravar R$ 40,00 — mil vezes menos, sem erro nenhum. O teclado decimal do
+//   iPhone em pt-BR mostra a vírgula; só a tecla decimal do teclado NUMÉRICO
+//   físico vale como vírgula (`teclaDecimal`).
 //
 // Até aqui o campo com foco mostrava o número cru (`40000`) e só formatava
 // ao sair.
