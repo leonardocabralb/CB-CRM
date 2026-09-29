@@ -23,6 +23,10 @@
 // ⚠️ Aba OCULTA não vê nada: o relógio confere `visibilityState` quando
 // vence, e a volta à aba recomeça o relógio de quem já estava na tela (o
 // observador não avisa de novo sem rolagem).
+//
+// Limite aceito: a memória do que foi mandado vale a carga de página inteira,
+// então a tarefa redirecionada para outra pessoa e DEVOLVIDA sem recarregar
+// só é marcada de novo na próxima carga.
 // ============================================================
 
 import { useCallback } from 'react';
@@ -37,6 +41,13 @@ import {
 
 /** Quanto esperar para juntar as linhas que entram na tela juntas. */
 const JANELA_DO_LOTE_MS = 1_500;
+
+/**
+ * Depois de um pedido que falhou (rede, 5xx, 429), quanto esperar para tentar
+ * de novo com o que CONTINUA na tela: parada, a linha não cruza limiar nenhum
+ * e o observador não avisaria de novo.
+ */
+const ESPERA_DEPOIS_DA_FALHA_MS = 30_000;
 
 /** Ids já mandados (ou em voo) nesta carga de página. */
 const enviadas = new Set<string>();
@@ -63,12 +74,19 @@ async function mandarLote(): Promise<void> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ids }),
+      // Fechar a aba dentro da janela do lote não perde a marca.
+      keepalive: true,
     });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
   } catch (e) {
-    // Falhou: esquece o envio, e a próxima aparição da linha tenta de novo.
-    // Nada na tela depende disto — é registro, não estado da linha.
+    // Falhou: esquece o envio e, depois de um tempo, religa o relógio de
+    // quem ainda está na tela. Nada na tela depende disto — é registro, não
+    // estado da linha.
     for (const id of ids) enviadas.delete(id);
+    setTimeout(() => {
+      if (document.visibilityState !== 'visible') return;
+      for (const el of naTela) ligarRelogio(el);
+    }, ESPERA_DEPOIS_DA_FALHA_MS);
     console.warn(
       '[useVistaDaTarefa] não consegui marcar como vista:',
       e instanceof Error ? e.message : e,

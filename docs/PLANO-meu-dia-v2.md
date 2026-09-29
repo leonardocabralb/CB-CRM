@@ -95,8 +95,8 @@ inteira) → o que precisa ser corrigido (só administrador, como antes).
 - Criar tarefa para si mesmo já nasce vista e lida; redirecionar zera
   `vista_em` junto com `lida_em` (quem recebe ainda não viu).
 - Quem PEDIU vê na linha "vista em dd/mm hh:mm" ou "ainda não vista".
-- A API v1 devolve `select('*')`: `vista_em` aparece nas respostas de
-  tarefas — documentado em `docs/public-api.md`.
+- A API v1 monta a resposta campo a campo (`serializeTask`): `vista_em` NÃO
+  sai nela (nem `lida_em`). Expor é decisão à parte, do contrato com o n8n.
 
 ## Fase 3 — card da equipe
 

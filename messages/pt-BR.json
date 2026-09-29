@@ -6082,6 +6082,8 @@
     "notificationsUnreadAtLeast": "pelo menos {count} não lidas",
     "notificationsNone": "Nenhuma notificação não lida.",
     "notificationsNoneListed": "Nenhuma não lida do seu perfil entre as mais recentes.",
+    "notificationsNoneInProfile": "Nenhuma notificação não lida do seu perfil.",
+    "notificationsMoreAtLeast": "e pelo menos mais {count}",
     "tasksTitle": "Suas tarefas",
     "tasksGroupOverdue": "Vencidas",
     "tasksGroupToday": "Para hoje",

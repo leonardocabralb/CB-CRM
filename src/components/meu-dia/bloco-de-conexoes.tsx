@@ -13,7 +13,8 @@
 //
 // ⚠️ A lista de conexões é AFIRMAÇÃO aqui ("estas são as suas conexões"):
 // por isso lê `loading`/`falhou` do `useChannels` — lista vazia de uma
-// leitura que falhou não é "nenhuma conexão".
+// leitura que falhou não é "nenhuma conexão". O hook mora na PÁGINA, para o
+// "Atualizar" reler a lista (uma falha na montagem prendia o bloco).
 // ============================================================
 
 import Link from 'next/link';
@@ -23,7 +24,7 @@ import { Radio } from 'lucide-react';
 
 import type { Bloco } from '@/hooks/use-resumo-do-dia';
 import type { Conexoes } from '@/hooks/use-area-de-trabalho';
-import { useChannels } from '@/hooks/use-channels';
+import type { UseChannelsResult } from '@/hooks/use-channels';
 import { coresPorCanal } from '@/lib/cb-channels/cores';
 import { urlDoInbox } from '@/lib/inbox/url';
 import {
@@ -39,11 +40,14 @@ import { Cabecalho, ForaDoPerfil } from './blocos-pessoais';
 
 export function BlocoDeConexoes({
   bloco,
+  canais,
   agoraMs,
   acesso,
   veInbox,
 }: {
   bloco: Bloco<Conexoes>;
+  /** O `useChannels` da página. */
+  canais: Pick<UseChannelsResult, 'channels' | 'loading' | 'falhou'>;
   /** O instante em que as conversas foram lidas — a régua do atraso. */
   agoraMs: number;
   /** A LENTE do "Ver como": quais conexões esta tela mostra. */
@@ -51,7 +55,7 @@ export function BlocoDeConexoes({
   veInbox: boolean;
 }) {
   const t = useTranslations('MeuDia');
-  const { channels, loading, falhou } = useChannels();
+  const { channels, loading, falhou } = canais;
 
   // As do perfil, na ordem em que foram criadas (a mesma das cores): a
   // ordem da rota põe a padrão primeiro, e marcar outra como padrão

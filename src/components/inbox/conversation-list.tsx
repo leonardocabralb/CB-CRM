@@ -207,11 +207,14 @@ export function ConversationList({
   // A URL continua trazendo UMA etapa (o botão da coluna do quadro); o filtro
   // é que virou lista (29/09) — a etapa semeada é a lista de uma. A conexão
   // do Meu dia é a mesma ideia: uma conexão, e o chip do número clicado.
+  // ⚠️ Com `tipo: "diretas"`: o indicador conta CLIENTES (grupo fica de
+  // fora), e o grupo acumula não lida — sem o tipo, "3 não lidos" abria 8.
   const [filtros, setFiltros] = useState<FiltrosDoInbox>(() => {
     if (etapaInicial) return { ...FILTROS_VAZIOS, etapaIds: [etapaInicial] };
     if (conexaoInicial) {
       return {
         ...FILTROS_VAZIOS,
+        tipo: "diretas",
         canalIds: [conexaoInicial],
         naoLidas: verInicial === "nao-lidas",
         emAtraso: verInicial === "em-atraso",

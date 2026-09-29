@@ -6082,6 +6082,8 @@
     "notificationsUnreadAtLeast": "at least {count} unread",
     "notificationsNone": "No unread notifications.",
     "notificationsNoneListed": "None of the most recent unread ones is in your profile.",
+    "notificationsNoneInProfile": "No unread notifications in your profile.",
+    "notificationsMoreAtLeast": "and at least {count} more",
     "tasksTitle": "Your tasks",
     "tasksGroupOverdue": "Overdue",
     "tasksGroupToday": "Due today",

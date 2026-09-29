@@ -40,6 +40,7 @@ import { useAoVoltarParaOApp } from '@/hooks/use-ao-voltar-para-o-app';
 import { useAuth } from '@/hooks/use-auth';
 import { useCan } from '@/hooks/use-can';
 import { useChannelHealth } from '@/hooks/use-channel-health';
+import { useChannels } from '@/hooks/use-channels';
 import { useMembros } from '@/hooks/use-membros';
 import { usePautaDeReunioes } from '@/hooks/use-pauta-de-reunioes';
 import { diaNoFuso, FUSO_PADRAO, paraInstante } from '@/lib/agenda/fuso';
@@ -136,6 +137,9 @@ function AreaDeTrabalho({
     versao: agoraMs,
   });
   const membros = useMembros();
+  // A lista de conexões dos indicadores (com `loading`/`falhou`: é afirmação).
+  // Aqui, e não no bloco, para o "Atualizar" alcançá-la.
+  const canais = useChannels();
   const {
     channels,
     loading: conexoesCarregando,
@@ -220,6 +224,10 @@ function AreaDeTrabalho({
     recarregarConexoes();
     recarregarAgendador();
     pauta.recarregar();
+    // As duas listas têm leitura própria: sem isto, uma falha na montagem
+    // prendia o bloco em "Não consegui carregar" até sair da tela.
+    void canais.recarregar();
+    membros.recarregar();
   };
 
   // O app instalado no celular não tem botão de recarregar: voltar para ele
@@ -231,6 +239,8 @@ function AreaDeTrabalho({
 
   const carregando =
     pauta.carregando ||
+    canais.loading ||
+    (veEquipe && membros.carregando) ||
     [
       area.conexoes,
       area.notificacoes,
@@ -280,6 +290,7 @@ function AreaDeTrabalho({
         <div className="lg:col-span-6">
           <BlocoDeConexoes
             bloco={area.conexoes}
+            canais={canais}
             agoraMs={area.agoraMs}
             acesso={acesso}
             veInbox={veInbox}

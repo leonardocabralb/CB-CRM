@@ -28,7 +28,11 @@ import { diaNoFuso, FUSO_PADRAO } from '@/lib/agenda/fuso';
 import { urlDoInbox } from '@/lib/inbox/url';
 import { funilNoEscopo } from '@/lib/perfis/escopo';
 import type { ContextoDeAcesso } from '@/lib/perfis/tipos';
-import type { ReuniaoDaPauta, Resultado } from '@/lib/reunioes/pauta';
+import {
+  linkDeReuniao,
+  type ReuniaoDaPauta,
+  type Resultado,
+} from '@/lib/reunioes/pauta';
 import { somarDias } from '@/lib/tasks/prazo';
 import { cn } from '@/lib/utils';
 
@@ -187,7 +191,8 @@ function LinhaDaReuniao({
   // "Entrar" só até o FIM da reunião (sem fim, até 1 h depois do início):
   // link de reunião que já acabou é convite para a sala vazia.
   const fimMs = r.fim ? Date.parse(r.fim) : Date.parse(r.inicio) + 60 * 60_000;
-  const podeEntrar = !!r.link && agoraMs < fimMs;
+  // Só http(s): o `local` da agenda do CRM também vira `link` na pauta.
+  const link = agoraMs < fimMs ? linkDeReuniao(r.link) : null;
 
   return (
     <li className="flex items-start gap-3 rounded-md p-1 text-sm">
@@ -226,9 +231,9 @@ function LinhaDaReuniao({
           )}
         </span>
       </span>
-      {podeEntrar && (
+      {link && (
         <a
-          href={r.link!}
+          href={link}
           target="_blank"
           rel="noopener noreferrer"
           className="text-primary inline-flex shrink-0 items-center gap-1 text-xs hover:underline"

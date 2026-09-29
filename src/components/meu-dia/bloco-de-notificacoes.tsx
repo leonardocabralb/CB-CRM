@@ -118,7 +118,14 @@ export function BlocoDeNotificacoes({
         <div className="mt-2 flex flex-1 flex-col">
           {avisos.length === 0 ? (
             <p className="text-muted-foreground text-sm">
-              {t(pronto.truncada ? 'notificationsNoneListed' : 'notificationsNone')}
+              {/* ⚠️ "Nenhuma não lida" só sem nada fora do perfil: com avisos de
+                  outra conexão, a frase seria falsa ao lado do "N fora do
+                  seu perfil" logo abaixo. */}
+              {pronto.truncada
+                ? t('notificationsNoneListed')
+                : pronto.foraDoPerfil > 0
+                  ? t('notificationsNoneInProfile')
+                  : t('notificationsNone')}
             </p>
           ) : (
             <ul className="space-y-1.5">
@@ -176,9 +183,13 @@ export function BlocoDeNotificacoes({
               })}
             </ul>
           )}
+          {/* ⚠️ Com a leitura cortada no teto, o resto é um PISO: "e mais 42"
+              seria falso com 72 esperando. */}
           {restantes > 0 && (
             <p className="text-muted-foreground mt-1 text-xs">
-              {tResumo('andMore', { count: restantes })}
+              {pronto.truncada
+                ? t('notificationsMoreAtLeast', { count: restantes })
+                : tResumo('andMore', { count: restantes })}
             </p>
           )}
           {pronto.foraDoPerfil > 0 && (
