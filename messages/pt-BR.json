@@ -4017,7 +4017,7 @@
       "configureFailed": "Não foi possível salvar a conexão.",
       "pipelineField": "Funil padrão",
       "pipelineNone": "Nenhum — não criar negócio",
-      "pipelineHint": "Quem escrever neste número entra automaticamente neste funil.",
+      "pipelineHint": "Quem escrever neste número entra automaticamente neste funil — menos empresa que manda mensagem automática (modelo com botões).",
       "pipelineStageBadge": "Entra no funil {pipeline} · etapa {stage}",
       "pipelineNoStage": "Entra no funil {pipeline}, mas sem etapa de entrada — os leads caem na primeira etapa da lista. Escolha a etapa em Configurar.",
       "pipelineMissing": "O funil configurado foi apagado — escolha outro.",
@@ -4627,7 +4627,7 @@
         },
         "mensagem": {
           "titulo": "Mandar uma mensagem",
-          "texto": "Pelo telefone: com DDD — sem + e sem o código do país, é lido como brasileiro e ganha o 55, ex.: (81) 98874-5316; de outro país, sempre com + e o código do país. Sem <code>channel_id</code>, sai pelo número em que a conversa já está (senão, pelo padrão da conta). Com ele, sai por aquele número e a conversa fica FIXADA nele — a resposta do cliente volta ao mesmo número. Contato sem negócio ganha um card só se a conexão por onde a mensagem saiu tiver funil padrão. Escopo <code>messages:send</code>."
+          "texto": "Pelo telefone: com DDD — sem + e sem o código do país, é lido como brasileiro e ganha o 55, ex.: (81) 98874-5316; de outro país, sempre com + e o código do país. Sem <code>channel_id</code>, sai pelo número em que a conversa já está (senão, pelo padrão da conta). Com ele, sai por aquele número e a conversa fica FIXADA nele — a resposta do cliente volta ao mesmo número. Contato sem negócio ganha um card só se a conexão por onde a mensagem saiu tiver funil padrão e ele nunca tiver mandado mensagem automática de empresa (modelo com botões). Escopo <code>messages:send</code>."
         }
       },
       "erros": {
