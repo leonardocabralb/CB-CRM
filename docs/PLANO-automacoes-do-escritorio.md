@@ -13,6 +13,12 @@
 > **Gravado na produção em 23/09/2026 à noite** (todas desligadas, menos a da
 > data da proposta, que não manda mensagem). O fluxo do n8n foi importado e
 > ativado pelo operador no mesmo dia.
+>
+> **29/09/2026:** o contrato fechado foi LIGADO pelo operador **sem a cadeia
+> dos Documentos** (tirou a espera de 2 minutos e o acionamento; a de
+> Documentos segue desligada — e desligada nem à mão roda: o "Executar
+> automação" recusa automação desligada), e a automação da seção 8
+> (cliente do Bancário passa ao Jurídico) foi ligada.
 
 ## Onde estamos
 
@@ -20,12 +26,12 @@
 | --- | --- | --- | --- | --- |
 | 1 | Lembrete de reunião · 24h / 4h / 1h / 10min | **aprovados** | não | só a sua ordem |
 | 2 | (PENDENTE) No-show · recuperação | **aprovados** (9 mensagens) | não | link de agendamento, imagem (2.6), PDF (2.7) |
-| 3 | Contrato fechado | **boas-vindas aprovada** | **sim** (29/09/2026, pelo operador, sem o passo de Documentos) | — |
-| 4 | (PENDENTE) Documentos de gestão de passivo | **aprovados** (4 mensagens) | não | arquivo Excel da planilha |
+| 3 | Contrato fechado | **boas-vindas aprovada** | **sim** (29/09/2026, pelo operador, sem o passo de Documentos) | ⚠️ o link do Google na boas-vindas: ela saiu com o marcador `[LINK GOOGLE]` (3.1) |
+| 4 | (PENDENTE) Documentos de gestão de passivo | **aprovados** (4 mensagens) | não | arquivo Excel da planilha; para rodar sozinha, devolver o acionamento ao contrato fechado (tirado em 29/09) |
 | 5 | Typebot · Abaixo de 150 mil com processo | texto 5.1 **fica para depois** | sim (sem mensagem) | — |
 | 6 | (PENDENTE) Desqualificado | não tem texto | não | só a sua palavra |
 | 7 | Funil · grava a data da proposta (**nova**) | não tem texto | **sim** | — |
-| 8 | Bancário · cliente do Jurídico que escreve no Comercial (**nova**, seção 8) | rascunho | não | o passo "Fixar a conversa no número" no ar, o "pode gravar" e a sua ordem |
+| 8 | Bancário · Cliente do Jurídico que escreve no Comercial (**nova**, seção 8) | gravados (29/09) | **sim** (29/09/2026, 18h17) | — |
 
 Nenhuma delas é ligada sem ordem sua. Aprovar o texto e ligar são dois
 passos — os lembretes, por exemplo, pegam na hora quem já tem reunião marcada.
@@ -42,7 +48,8 @@ passos — os lembretes, por exemplo, pegam na hora quem já tem reunião marcad
   Clientes - CB Advogados** continua recebendo a linha.
 - **Documentos:** deixa de ser só manual — roda sozinha **2 minutos depois do
   fim** do contrato fechado. As mensagens são assinadas pela **Dra. Maura
-  Emília - Jurídico**.
+  Emília - Jurídico**. (29/09/2026: o acionamento saiu na ligação do contrato
+  fechado; hoje a de Documentos NÃO roda sozinha — seção 4.)
 - **Typebot -150k:** fica pendente; será feito depois.
 - **Data da proposta:** é a data em que o card entra na etapa da proposta, e o
   CRM a controla num campo da ficha.
@@ -256,19 +263,27 @@ o cliente de receber tudo duas vezes). Sem a etiqueta, nesta ordem:
 5. manda as **boas-vindas pelo Bancário - Jurídico** (3.1);
 6. espera 10 s, cria a **tarefa** para a equipe (3.2);
 7. move o card para **Bancário - Jurídico → Cliente Ativo**;
-8. espera **2 minutos** e **aciona a automação de Documentos** (seção 4);
-9. **por último, avisa o Atlas e a planilha** (3.3).
+8. **avisa o Atlas e a planilha** (3.3);
+9. **por último, fixa a conversa no número Bancário - Jurídico** (seção 8,
+   29/09/2026).
 
-> **Por que o aviso ao Atlas é o último passo** (antes vinha logo depois do
-> passo 2): passo que falha encerra a execução, e a trava por etiqueta impede
-> rodar de novo. Com o aviso antes, um soluço do n8n (fora do ar, fluxo
-> desativado, mais de 10 s para responder) deixaria o cliente sem
-> boas-vindas, sem o card no Jurídico ou sem os documentos — e sem como
-> repetir. Por último, uma falha dele só deixa de criar a linha no Atlas e na
-> planilha, e o resto já aconteceu; a falha aparece na conversa como
-> automação que falhou, e a linha é criada à mão. (A primeira gravação deixou
-> o aviso antes dos documentos; a verificação independente pegou e a ordem
-> foi corrigida no mesmo dia.)
+Os passos "espera 2 minutos" e "aciona a automação de Documentos" (seção 4)
+saíram na ligação de 29/09/2026, pelo operador; a de Documentos segue
+desligada.
+
+> **Por que o aviso ao Atlas vem no fim** (antes vinha logo depois do passo
+> 2): passo que falha encerra a execução, e a trava por etiqueta impede rodar
+> de novo. Com o aviso antes, um soluço do n8n (fora do ar, fluxo desativado,
+> mais de 10 s para responder) deixaria o cliente sem boas-vindas, sem o card
+> no Jurídico ou sem os documentos — e sem como repetir. No fim, uma falha
+> dele só deixa de criar a linha no Atlas e na planilha — e de fixar a
+> conversa no Jurídico, o único passo depois dele —; a falha aparece na
+> conversa como automação que falhou, a linha é criada à mão e a conversa se
+> fixa pelo número do cabeçalho. O "Fixar" ficou DEPOIS do aviso de
+> propósito: a falha dele (conexão apagada, contato sem telefone) não pode
+> tirar o cliente do Atlas. (A primeira gravação deixou o aviso antes dos
+> documentos; a verificação independente pegou e a ordem foi corrigida no
+> mesmo dia.)
 
 **3.1 — boas-vindas ao cliente** ✅ aprovado · sai pelo **Bancário - Jurídico**
 
@@ -286,18 +301,20 @@ Enquanto isso, gostaria de te pedir para avaliar com 05 estrelas nosso atendimen
 [LINK GOOGLE]
 ```
 
-**3.2 — a tarefa criada para a equipe** (não vai para o cliente) · ⏳ sem
-resposta
+**3.2 — a tarefa criada para a equipe** (não vai para o cliente) · ✅
+responsável escolhido pelo operador ao ligar (29/09/2026)
 
 ```
 Título:      Novo cliente fechado: {{contact.name}}
 Descrição:   Contrato assinado. Dar início ao atendimento jurídico.
 Prazo:       1 dia
-Responsável: [QUEM?]
+Responsável: um membro do time jurídico, escolhido pelo operador
+             (o nome fica no passo, no CRM — este repositório é público)
 ```
 
-Sem responsável a tela recusa ligar a automação. Se a tarefa não for
-necessária, me diga e eu tiro o passo.
+Sem responsável a tela recusaria ligar a automação; ele foi preenchido na
+ligação. Quem recebe as tarefas se vê abrindo o passo "Criar tarefa" do
+contrato fechado.
 
 **3.3 — o aviso ao Atlas e à planilha**
 
@@ -335,38 +352,49 @@ planilha"), com o endereço
 passo do CRM chama. Conferido na exportação: token, código de formatação,
 planilha (credencial "Google Sheets account 2", cabeçalho na linha 5) e Atlas.
 
-> ⚠️ **O gatilho antigo da Kommo (`contador-bancario`) foi DESATIVADO no mesmo
-> dia**, e o contrato fechado do CRM continua desligado. Enquanto os dois
-> estiverem assim, **contrato fechado não chega ao Atlas nem à planilha por
-> caminho nenhum**. A troca tem de ser no mesmo dia: reativar o nó antigo até
-> ligar o contrato fechado no CRM, e desativá-lo nesse dia (os dois ligados =
-> o cliente entra duas vezes). E a **"Planilha Geral BI"** só era alimentada
-> pela cadeia antiga — com ela desativada, a BI parou de receber.
+> ✅ **Troca feita em 29/09/2026 (por volta das 12h), com a ordem do
+> operador:** no fluxo do n8n, o nó antigo da Kommo (`contador-bancario`)
+> está DESATIVADO e o "Aviso do CB CRM" (`crm-contrato-fechado`) ATIVADO; o
+> contrato fechado do CRM está ligado. ⚠️ **Não reativar o nó antigo**: os
+> dois ligados criam o cliente duas vezes no Atlas e na planilha. (O primeiro
+> contrato fechado pelo CRM, de manhã, voltou 404 porque o nó novo ainda
+> estava desativado; foi reenviado uma vez depois da troca.) A **"Planilha
+> Geral BI"** só era alimentada pela cadeia antiga — com ela desativada, a BI
+> não recebe o contrato fechado (pendência 6).
 
 O aviso leva um **token** no cabeçalho que o fluxo novo confere: quem
 descobrir o endereço não consegue criar cliente no Atlas. Falha na planilha ou
 no Atlas aparece no **histórico de execuções do n8n**, como hoje — o CRM só
 sabe que o n8n recebeu.
 
-**Falta para ligar:** o link do Google (3.1), o responsável da tarefa (3.2) e
-a **automação de Documentos ligada ANTES** (seção 4) — o motor se recusa a
-acionar automação desligada, e a execução terminaria "falhou" no passo 8, sem
-o aviso ao Atlas, com a trava por etiqueta impedindo repetir. A de Documentos,
-por sua vez, só liga com o Excel.
+**Estado (29/09/2026):** ligada pelo operador, com o responsável da tarefa
+preenchido e SEM o passo de Documentos — por isso ela não depende mais da de
+Documentos ligada. ⚠️ **A boas-vindas (3.1) ainda leva o marcador
+`[LINK GOOGLE]`** no lugar do link de avaliação, e saiu assim para o primeiro
+cliente (29/09): falta o link, ou tirar o trecho. Se os Documentos voltarem
+para a cadeia, a de Documentos tem de estar ligada ANTES — o motor se recusa a
+acionar automação desligada, e a execução terminaria "falhou" nesse passo, sem
+o aviso ao Atlas, com a trava por etiqueta impedindo repetir.
 
 ---
 
 ## Seção 4 — Documentos de gestão de passivo ✅ aprovados
 
-**Roda sozinha 2 minutos depois do fim do contrato fechado** (a de contrato a
-aciona) e continua podendo ser rodada à mão pelo menu + da conversa. Sai pelo
+**Desenhada para rodar sozinha 2 minutos depois do fim do contrato fechado**
+(a de contrato a acionava) — ⚠️ **desde 29/09/2026 NÃO roda sozinha**: o
+operador tirou o acionamento ao ligar o contrato fechado, e esta segue
+desligada. Pode ser rodada à mão pelo menu + da conversa depois de ligada;
+para voltar a rodar sozinha, ligar esta e devolver ao contrato fechado o
+"Aguardar 2 minutos" + "Acionar automação". Sai pelo
 **Bancário - Jurídico**, **assinada como "Dra. Maura Emília - Jurídico"**,
 com 10 segundos entre as mensagens e a planilha no fim.
 
 > ⚠️ **Ligar esta ANTES da de contrato fechado.** O motor se recusa a acionar
 > automação desligada — de propósito, para o interruptor continuar sendo o
 > freio. Com esta desligada, o contrato fechado terminaria em "falhou" no
-> último passo.
+> passo que a aciona. (29/09/2026: o operador tirou esse passo — e a espera
+> de 2 minutos — do contrato fechado ao ligá-lo; religar os documentos pede
+> o passo de volta lá.)
 
 **4.1**
 
@@ -461,15 +489,21 @@ número do **Jurídico** — e uma mensagem por lá, para salvar o contato. O
 histórico já está no CRM: a conversa é uma só, com os dois números.
 **Nenhum impacto no Trabalhista.**
 
-**Quem recebe (medido em 29/09/2026):** o card no funil **Bancário -
-Jurídico** em *Cliente Ativo*, *Cliente Rescindido* ou *Cliente Finalizado*
-— 415 clientes (Finalizado vazia). A etiqueta "Cliente Fechado" NÃO serve de
-critério: está em 1.082 contatos, e 730 deles são do Trabalhista (vieram
-assim da Kommo). Nos 30 dias anteriores, 137 desses clientes escreveram no
-Comercial (68 na última semana) e 2 no Jurídico; quase 80% das respostas a
-eles saíram do celular do Comercial, não do CRM.
+**Quem recebe (medido em 29/09/2026):** o card ABERTO no funil **Bancário -
+Jurídico** em *Cliente Ativo*, *Cliente Rescindido* ou *Cliente Finalizado*.
+De manhã eram 415 (405 + 10 + 0); à tarde o funil foi reorganizado e ficaram
+**374** (234 + 94 + 46). A etiqueta "Cliente Fechado" NÃO serve de critério:
+está em 1.082 contatos, e 730 deles são do Trabalhista (vieram assim da
+Kommo). Nos 30 dias anteriores, 137 desses clientes escreveram no Comercial
+(68 na última semana) e 2 no Jurídico; quase 80% das respostas a eles saíram
+do celular do Comercial, não do CRM. **215 dos 374 nomes estão em
+MAIÚSCULAS** (vieram assim da Kommo): por isso a saudação é só "Olá!", sem o
+nome (decisão do operador, 29/09/2026). A boas-vindas do "Contrato fechado"
+continua com o nome.
 
-**A automação** (aba Bancário, nasce DESLIGADA):
+**A automação** "Bancário · Cliente do Jurídico que escreve no Comercial"
+(aba Bancário, gravada pela tela e **LIGADA em 29/09/2026 às 18h17**, com a
+ordem do operador):
 
 - **Gatilho:** "Nova mensagem recebida", só na conexão Bancário - Comercial.
   O número oficial da Meta fica de fora (atende o Previdenciário; nenhum
@@ -484,11 +518,12 @@ eles saíram do celular do Comercial, não do CRM.
 - **Quem assume:** nada automático (decisão do operador) — a conversa fica
   aberta, sem responsável, para o time do Jurídico.
 
-**Textos (rascunho; editáveis no construtor):**
+**Textos (gravados como aqui, com o número real no lugar do marcador;
+editáveis no construtor):**
 
 Pelo Comercial:
 
-> Olá, {{contact.name}}! Para agilizar o andamento do seu caso, a partir de
+> Olá! Para agilizar o andamento do seu caso, a partir de
 > agora o seu atendimento será feito pelo número do nosso time jurídico:
 > *<número do Jurídico>*.
 >
@@ -498,7 +533,7 @@ Pelo Comercial:
 
 Pelo Jurídico:
 
-> Olá, {{contact.name}}! Aqui é do time jurídico do CB Advogados.
+> Olá! Aqui é do time jurídico do CB Advogados.
 >
 > A partir de agora, este é o número oficial para tratar do seu caso. *Peço
 > que salve este contato na sua agenda.*
@@ -510,9 +545,26 @@ Pelo Jurídico:
 
 - A trava de etapa só enxerga card ABERTO. O cliente que chega pelo
   "Contrato fechado" tem o card GANHO em Cliente Ativo e não recebe o aviso:
-  para ele, o "Contrato fechado" ganha o "Fixar a conversa no número" depois
-  das boas-vindas (decisão do operador) — as boas-vindas já saem pelo
-  Jurídico.
+  para ele, o "Contrato fechado" ganhou o "Fixar a conversa no número"
+  (decisão do operador; gravado em 29/09/2026) — as boas-vindas já saem pelo
+  Jurídico. É o ÚLTIMO passo, depois do envio ao n8n: passo que falha encerra
+  a execução, e ali a falha dele não impede a tarefa, a mudança para Cliente
+  Ativo nem o Atlas. O preço: se o envio ao n8n falhar, a conversa desse
+  cliente fica sem fixar — a equipe fixa à mão pelo número do cabeçalho (a
+  falha aparece na conversa). Ordem e motivo: seção 3.
+- Depois do aviso, cada mensagem do cliente no Comercial roda a automação de
+  novo e ela para na trava da etiqueta: uma pílula cinza "barrada" por dia no
+  fio, agrupada — é a forma das travas, e diz que o cliente insistiu no número
+  antigo.
+- **A etiqueta vem ANTES dos envios, de propósito, e isso tem preço** (achado
+  do Codex, PR #354): se um envio ou a fixação falhar, a etiqueta já está lá e
+  a automação não tenta de novo sozinha. A falha aparece na conversa
+  (automação que falhou); para repetir, tirar a etiqueta "Transferido ao
+  Jurídico" do contato — a próxima mensagem dele no Comercial roda tudo de
+  novo. A recusa passageira da Evolution já é repetida pelo motor (até 3
+  vezes). Etiqueta no FIM trocaria isso por aviso em dobro: entre o primeiro
+  envio e a etiqueta passam uns 4 s (medido na primeira execução real), e
+  quem manda duas mensagens nesse intervalo receberia tudo duas vezes.
 - A faixa "A última mensagem chegou pelo Bancário - Comercial — Responder por
   ele" aparece quando esses clientes escrevem no Comercial: o botão devolve a
   conversa ao Comercial. A equipe responde pelo Jurídico e deixa o botão.
@@ -528,11 +580,11 @@ Pelo Jurídico:
 
 | Fase | O quê | Estado |
 | --- | --- | --- |
-| 1 | Passo "Fixar a conversa no número" (branch `feat/fixar-conversa-no-numero`) | testado no preview (29/09); em revisão |
-| 2 | Etiqueta *Transferido ao Jurídico* + a automação, DESLIGADA | aguarda a fase 1 no ar e o "pode gravar" |
-| 3 | "Fixar a conversa no número" no "Contrato fechado", depois das boas-vindas | aguarda a fase 1 no ar e o "pode gravar" (mostrar antes) |
-| 4 | Teste no contato de teste (cópia com gatilho manual) | depois da fase 2 |
-| 5 | Ligar | ordem do operador, combinada com a equipe |
+| 1 | Passo "Fixar a conversa no número" | ✅ no ar (PR #353, 29/09/2026) |
+| 2 | Etiqueta *Transferido ao Jurídico* + a automação, DESLIGADA | ✅ gravadas pela tela (29/09/2026) |
+| 3 | "Fixar a conversa no número" no "Contrato fechado" | ✅ gravado como último passo (29/09/2026); o "Contrato fechado" seguiu ligado |
+| 4 | Teste no contato de teste (cópia com gatilho manual) | ✅ 29/09/2026: etiqueta, as duas mensagens (uma por número, entregues), conversa fixada no Jurídico; 2ª execução "barrada", sem mensagem. Cópia apagada, etiqueta retirada e conversa devolvida ao estado anterior |
+| 5 | Ligar | ✅ ligada em 29/09/2026 às 18h17, com a ordem do operador (saudação trocada para "Olá!" na mesma gravação) |
 
 ---
 
@@ -543,9 +595,9 @@ Pelo Jurídico:
 | 1 | Ordem para ligar os lembretes | Lembretes |
 | 2 | Link público de agendamento do Calendly | No-show |
 | 3 | A imagem (2.6) e o PDF (2.7) | No-show |
-| 4 | O link de avaliação do Google | Contrato fechado |
-| 5 | Responsável da tarefa (ou tirar a tarefa) | Contrato fechado |
-| 6 | O gatilho da Kommo no n8n: reativar até ligar o contrato fechado? E a Planilha Geral BI? | Atlas e planilhas sem buraco |
+| 4 | O link de avaliação do Google — a boas-vindas saiu com o marcador `[LINK GOOGLE]` (29/09) | Contrato fechado |
+| 5 | ✅ Responsável da tarefa — escolhido pelo operador ao ligar (29/09) | — |
+| 6 | A Planilha Geral BI deve receber o contrato fechado do CRM (um nó a mais no n8n)? A troca do gatilho da Kommo já foi feita (29/09) — **não reativar o nó antigo** | BI |
 | 7 | O arquivo Excel da planilha | Documentos |
 | 8 | Ligar a de Desqualificado como está? | Desqualificado |
 
@@ -557,7 +609,8 @@ mensagem saem formatadas ("R$ 3.500,00", "30/08/2026 às 16:00h"); no webhook e
 ao gravar campo, cruas (`3500`, data ISO). O corpo do webhook passou a
 escapar cada valor — um nome com aspas quebrava o JSON inteiro.
 
-**O corpo que o CRM manda ao n8n** (o último passo do contrato fechado):
+**O corpo que o CRM manda ao n8n** (o penúltimo passo do contrato fechado;
+o último é o "Fixar a conversa no número", seção 8):
 
 ```
 {
@@ -612,12 +665,16 @@ resolvidas, o teste é o primeiro passo depois de ligar, num card de teste.
 - **No-show com 9 mensagens; boas-vindas pelo Bancário - Jurídico; documentos
   2 minutos depois do contrato fechado, assinados pela Dra. Maura; Atlas e
   planilha pelo n8n; data da proposta = entrada em Proposta Realizada.**
-  (23/09)
+  (23/09) — o acionamento dos documentos saiu em 29/09/2026, na ligação do
+  contrato fechado (seção 4).
 - **O aviso ao Atlas é o ÚLTIMO passo do contrato fechado, depois dos
   documentos** (antes vinha logo depois do "mover"), para uma falha dele não
   impedir o resto. Escolha do implementador em 23/09, que substitui a decisão
   de 08/09 "mover para o funil Jurídico é o último passo" — o "mover" continua
-  antes da espera e dos documentos.
+  antes da espera e dos documentos. (29/09/2026: os documentos e a espera
+  saíram, e o aviso passou a PENÚLTIMO — depois dele vem o "Fixar a conversa
+  no número", seção 8, de propósito: a falha do "Fixar" não tira o cliente do
+  Atlas.)
 - **Atlas e planilha pelo n8n, não por integração própria do CRM**: o CRM
   manda os dados, o n8n formata e distribui; as chaves do Atlas e do Google
   ficam só no n8n. (23/09)
