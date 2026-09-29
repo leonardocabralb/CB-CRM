@@ -11,6 +11,7 @@ import {
   mapaDeEtapasPorContato,
   SEM_ETAPA,
   SEM_RESPONSAVEL,
+  funisDoFiltro,
   funisDoRecorte,
   recorteTemDoisNiveis,
   type ContextoDosFiltros,
@@ -311,81 +312,137 @@ describe("casaComAEtapa", () => {
     ["s2", "f1"],
     ["s3", "f2"],
   ]);
-  const recorte = (patch: Partial<FiltrosDoInbox> = {}) => ({
-    funilId: null,
-    etapaId: null,
+  const recorte = (
+    patch: Partial<Pick<FiltrosDoInbox, "funilIds" | "etapaIds">> = {},
+  ) => ({
+    funilIds: [] as string[],
+    etapaIds: [] as string[],
     ...patch,
   });
+  /** A mesma pergunta para vários contatos: quem casa? */
+  const quemCasa = (r: ReturnType<typeof recorte>, contatos: string[]) =>
+    contatos.filter((id) =>
+      casaComAEtapa(conversa({ contact_id: id }), r, mapa, funis),
+    );
 
   it("nada escolhido não filtra nada", () => {
     expect(casaComAEtapa(conversa(), recorte(), mapa, funis)).toBe(true);
   });
 
   it("casa com a etapa do negócio do contato", () => {
-    expect(casaComAEtapa(conversa(), recorte({ etapaId: "s1" }), mapa, funis)).toBe(
+    expect(casaComAEtapa(conversa(), recorte({ etapaIds: ["s1"] }), mapa, funis)).toBe(
       true,
     );
-    expect(casaComAEtapa(conversa(), recorte({ etapaId: "s2" }), mapa, funis)).toBe(
+    expect(casaComAEtapa(conversa(), recorte({ etapaIds: ["s2"] }), mapa, funis)).toBe(
       false,
     );
+  });
+
+  it("várias etapas somam com OU (29/09)", () => {
+    expect(quemCasa(recorte({ etapaIds: ["s1", "s3"] }), ["ct1", "ct2", "ct9"])).toEqual([
+      "ct1",
+      "ct2",
+    ]);
+    expect(quemCasa(recorte({ etapaIds: ["s2"] }), ["ct1", "ct2"])).toEqual(["ct2"]);
   });
 
   it("SEM_ETAPA acha quem não tem negócio nenhum", () => {
     expect(
       casaComAEtapa(
         conversa({ contact_id: "ct9" }),
-        recorte({ etapaId: SEM_ETAPA }),
+        recorte({ etapaIds: [SEM_ETAPA] }),
         mapa,
         funis,
       ),
     ).toBe(true);
     expect(
-      casaComAEtapa(conversa(), recorte({ etapaId: SEM_ETAPA }), mapa, funis),
+      casaComAEtapa(conversa(), recorte({ etapaIds: [SEM_ETAPA] }), mapa, funis),
     ).toBe(false);
+  });
+
+  it("'Sem negócio' SOMA com funis e etapas (OU): quem não tem negócio + quem está neles", () => {
+    expect(
+      quemCasa(recorte({ funilIds: ["f2"], etapaIds: [SEM_ETAPA] }), ["ct1", "ct2", "ct9"]),
+    ).toEqual(["ct2", "ct9"]);
+    expect(
+      quemCasa(recorte({ etapaIds: [SEM_ETAPA, "s1"] }), ["ct1", "ct2", "ct9"]),
+    ).toEqual(["ct1", "ct9"]);
   });
 
   it("grupo cai em SEM_ETAPA — não tem contato, logo não tem negócio", () => {
     expect(
-      casaComAEtapa(grupo(), recorte({ etapaId: SEM_ETAPA }), mapa, funis),
+      casaComAEtapa(grupo(), recorte({ etapaIds: [SEM_ETAPA] }), mapa, funis),
     ).toBe(true);
-    expect(casaComAEtapa(grupo(), recorte({ etapaId: "s1" }), mapa, funis)).toBe(
+    expect(casaComAEtapa(grupo(), recorte({ etapaIds: ["s1"] }), mapa, funis)).toBe(
       false,
     );
     // E some de qualquer recorte por funil, pelo mesmo motivo.
-    expect(casaComAEtapa(grupo(), recorte({ funilId: "f1" }), mapa, funis)).toBe(
+    expect(casaComAEtapa(grupo(), recorte({ funilIds: ["f1"] }), mapa, funis)).toBe(
       false,
     );
   });
 
   it("só o funil acha quem tem negócio em QUALQUER etapa dele", () => {
-    expect(casaComAEtapa(conversa(), recorte({ funilId: "f1" }), mapa, funis)).toBe(
+    expect(casaComAEtapa(conversa(), recorte({ funilIds: ["f1"] }), mapa, funis)).toBe(
       true,
     );
-    expect(casaComAEtapa(conversa(), recorte({ funilId: "f2" }), mapa, funis)).toBe(
+    expect(casaComAEtapa(conversa(), recorte({ funilIds: ["f2"] }), mapa, funis)).toBe(
       false,
     );
   });
 
-  it("contato com negócio em dois funis casa com os DOIS", () => {
-    const ct2 = conversa({ contact_id: "ct2" });
-    expect(casaComAEtapa(ct2, recorte({ funilId: "f1" }), mapa, funis)).toBe(true);
-    expect(casaComAEtapa(ct2, recorte({ funilId: "f2" }), mapa, funis)).toBe(true);
+  it("vários funis somam com OU (29/09)", () => {
+    const soNoF2 = new Map([...mapa, ["ct3", new Set(["s3"])]]);
+    const casa = (id: string) =>
+      casaComAEtapa(conversa({ contact_id: id }), recorte({ funilIds: ["f1", "f2"] }), soNoF2, funis);
+    expect(casa("ct1")).toBe(true);
+    expect(casa("ct3")).toBe(true);
+    expect(casa("ct9")).toBe(false);
   });
 
-  it("⚠️ a ETAPA vence o funil quando os dois vêm preenchidos — somar os dois recortes repetiria a mesma pergunta, e um funil errado no estado esconderia a etapa escolhida", () => {
-    expect(
-      casaComAEtapa(conversa(), recorte({ funilId: "f2", etapaId: "s1" }), mapa, funis),
-    ).toBe(true);
+  it("contato com negócio em dois funis casa com os DOIS", () => {
+    const ct2 = conversa({ contact_id: "ct2" });
+    expect(casaComAEtapa(ct2, recorte({ funilIds: ["f1"] }), mapa, funis)).toBe(true);
+    expect(casaComAEtapa(ct2, recorte({ funilIds: ["f2"] }), mapa, funis)).toBe(true);
+  });
+
+  it("⚠️ a etapa REFINA só o funil DELA: 'f1 (s1) + f2' é a s1 do f1 OU qualquer etapa do f2", () => {
+    // ct4 tem negócio só em s2 (f1, mas não a etapa marcada); ct3 só em s3 (f2).
+    const mais = new Map([
+      ...mapa,
+      ["ct3", new Set(["s3"])],
+      ["ct4", new Set(["s2"])],
+    ]);
+    const casa = (id: string, r: ReturnType<typeof recorte>) =>
+      casaComAEtapa(conversa({ contact_id: id }), r, mais, funis);
+    const r = recorte({ funilIds: ["f1", "f2"], etapaIds: ["s1"] });
+    expect(casa("ct1", r)).toBe(true);
+    // Somar o f1 inteiro apagaria o refinamento que o operador escolheu.
+    expect(casa("ct4", r)).toBe(false);
+    // O f2, sem etapa dele marcada, vale inteiro.
+    expect(casa("ct3", r)).toBe(true);
+  });
+
+  it("⚠️ etapa de funil NÃO marcado vale sozinha — a regra antiga 'a etapa vence o funil' (visão salva de conta de um funil)", () => {
+    // s1 é do f1, que não está marcado; o f2 está.
+    const r = recorte({ funilIds: ["f2"], etapaIds: ["s1"] });
+    expect(quemCasa(r, ["ct1", "ct2", "ct9"])).toEqual(["ct1", "ct2"]);
+    const ct4 = new Map([["ct4", new Set(["s2"])]]);
+    expect(casaComAEtapa(conversa({ contact_id: "ct4" }), r, ct4, funis)).toBe(false);
   });
 
   it("⚠️ etapa fora do mapa de funis não casa com funil nenhum — o mapa é a única fonte de 'esta etapa é de qual funil'", () => {
     expect(
-      casaComAEtapa(conversa(), recorte({ funilId: "f1" }), mapa, new Map()),
+      casaComAEtapa(conversa(), recorte({ funilIds: ["f1"] }), mapa, new Map()),
     ).toBe(false);
+    // A etapa marcada em si não precisa do mapa: é o negócio que está nela.
+    expect(
+      casaComAEtapa(conversa(), recorte({ etapaIds: ["s1"] }), mapa, new Map()),
+    ).toBe(true);
   });
 
   it("⚠️ com o mapa VAZIO (deals ainda não carregados) conversa com contato reprova — é por isso que `recorteDeEtapaConfiavel` existe no ctx; sem a neutralização, o deep link ?etapa= abre 'nenhuma conversa' com cara de resposta certa", () => {
-    expect(casaComAEtapa(conversa(), recorte({ etapaId: "s1" }), new Map(), funis)).toBe(
+    expect(casaComAEtapa(conversa(), recorte({ etapaIds: ["s1"] }), new Map(), funis)).toBe(
       false,
     );
   });
@@ -396,7 +453,7 @@ describe("casaComAEtapa", () => {
     expect(
       aplicarFiltros(
         [c1],
-        { ...FILTROS_VAZIOS, etapaId: "s1" },
+        { ...FILTROS_VAZIOS, etapaIds: ["s1"] },
         ctx({ recorteDeEtapaConfiavel: false }),
       ).map((c) => c.id),
     ).toEqual(["c1"]);
@@ -404,7 +461,7 @@ describe("casaComAEtapa", () => {
     expect(
       aplicarFiltros(
         [c1],
-        { ...FILTROS_VAZIOS, funilId: "f1" },
+        { ...FILTROS_VAZIOS, funilIds: ["f1"] },
         ctx({ recorteDeEtapaConfiavel: false }),
       ).map((c) => c.id),
     ).toEqual(["c1"]);
@@ -412,7 +469,7 @@ describe("casaComAEtapa", () => {
     expect(
       aplicarFiltros(
         [c1],
-        { ...FILTROS_VAZIOS, etapaId: "s1" },
+        { ...FILTROS_VAZIOS, etapaIds: ["s1"] },
         ctx({ recorteDeEtapaConfiavel: true }),
       ),
     ).toEqual([]);
@@ -421,17 +478,43 @@ describe("casaComAEtapa", () => {
   it("o recorte por funil passa pelo aplicarFiltros com os dois mapas do ctx", () => {
     const c1 = conversa({ id: "c1" });
     expect(
-      aplicarFiltros([c1], { ...FILTROS_VAZIOS, funilId: "f1" }, ctx({
+      aplicarFiltros([c1], { ...FILTROS_VAZIOS, funilIds: ["f1"] }, ctx({
         etapaPorContato: mapa,
         funilPorEtapa: funis,
       })).map((c) => c.id),
     ).toEqual(["c1"]);
     expect(
-      aplicarFiltros([c1], { ...FILTROS_VAZIOS, funilId: "f2" }, ctx({
+      aplicarFiltros([c1], { ...FILTROS_VAZIOS, funilIds: ["f2"] }, ctx({
         etapaPorContato: mapa,
         funilPorEtapa: funis,
       })),
     ).toEqual([]);
+  });
+});
+
+describe("funisDoFiltro — os funis em jogo (marcados e derivados)", () => {
+  const etapas = [
+    { id: "s1", pipeline_id: "f1" },
+    { id: "s2", pipeline_id: "f1" },
+    { id: "s3", pipeline_id: "f2" },
+  ];
+
+  it("os marcados, na ordem do clique, e depois os derivados das etapas", () => {
+    expect(
+      funisDoFiltro({ funilIds: ["f2"], etapaIds: ["s1", "s2"] }, etapas),
+    ).toEqual(["f2", "f1"]);
+  });
+
+  it("sem repetir funil que já está marcado", () => {
+    expect(funisDoFiltro({ funilIds: ["f1"], etapaIds: ["s1"] }, etapas)).toEqual(["f1"]);
+  });
+
+  it("'Sem negócio' e etapa fora do catálogo não derivam nada", () => {
+    expect(
+      funisDoFiltro({ funilIds: [], etapaIds: [SEM_ETAPA, "sumiu"] }, etapas),
+    ).toEqual([]);
+    // Catálogo vazio (ainda carregando): nada a derivar, nada inventado.
+    expect(funisDoFiltro({ funilIds: [], etapaIds: ["s1"] }, [])).toEqual([]);
   });
 });
 
@@ -498,10 +581,20 @@ describe("contarFiltrosAtivos", () => {
   });
 
   it("⚠️ funil e etapa contam como UM filtro só — com etapa escolhida o funil vem junto, e somar dois faria o distintivo dizer '2' sobre uma escolha só", () => {
-    expect(contarFiltrosAtivos({ ...FILTROS_VAZIOS, funilId: "f1" })).toBe(1);
-    expect(contarFiltrosAtivos({ ...FILTROS_VAZIOS, etapaId: "s1" })).toBe(1);
+    expect(contarFiltrosAtivos({ ...FILTROS_VAZIOS, funilIds: ["f1"] })).toBe(1);
+    expect(contarFiltrosAtivos({ ...FILTROS_VAZIOS, etapaIds: ["s1"] })).toBe(1);
     expect(
-      contarFiltrosAtivos({ ...FILTROS_VAZIOS, funilId: "f1", etapaId: "s1" }),
+      contarFiltrosAtivos({ ...FILTROS_VAZIOS, funilIds: ["f1"], etapaIds: ["s1"] }),
+    ).toBe(1);
+  });
+
+  it("⚠️ e VÁRIOS funis e etapas marcados continuam UM (como as várias conexões)", () => {
+    expect(
+      contarFiltrosAtivos({
+        ...FILTROS_VAZIOS,
+        funilIds: ["f1", "f2"],
+        etapaIds: [SEM_ETAPA, "s1", "s3"],
+      }),
     ).toBe(1);
   });
 

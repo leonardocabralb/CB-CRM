@@ -86,25 +86,33 @@ export interface FiltrosDoInbox {
   /** Nome exato da empresa, ou `null`. */
   empresa: string | null;
   /**
-   * Id do funil, ou `null` para todos. É o PRIMEIRO nível do recorte de
-   * etapa: escolhido sozinho, ele acha quem tem negócio em QUALQUER etapa
-   * daquele funil.
+   * Funis marcados — VAZIO = todos. É o PRIMEIRO nível do recorte de etapa, e
+   * vários somam com OU, como as conexões (pedido do operador, 29/09/2026):
+   * funil marcado sem etapa DELE marcada acha quem tem negócio em QUALQUER
+   * etapa daquele funil. Era `funilId: string | null` (um só) até 29/09; o
+   * JSON salvo antigo é traduzido em `lerFiltroSalvo`.
    *
-   * ⚠️ Quem escreve esta coluna é SÓ o seletor de funil — escolher uma etapa
-   * nunca a preenche. Sem essa regra, o caso de um funil só ficava com
-   * `funilId` preenchido por tabela, e "Qualquer etapa" (que hoje significa
-   * "não filtro por etapa") passaria a significar "quem tem negócio neste
-   * funil" — sumindo em silêncio com quem ainda não virou negócio.
+   * ⚠️ Quem escreve esta coluna é SÓ o seletor de funil (e o carimbo do
+   * `?etapa=`, só onde esse seletor existe) — marcar uma etapa nunca a
+   * preenche. Sem essa regra, o caso de um funil só ficava com `funilIds`
+   * preenchido por tabela, e "Qualquer etapa" (que hoje significa "não filtro
+   * por etapa") passaria a significar "quem tem negócio neste funil" —
+   * sumindo em silêncio com quem ainda não virou negócio.
    */
-  funilId: string | null;
+  funilIds: string[];
   /**
-   * Id da etapa, ou {@link SEM_ETAPA}, ou `null` para todas.
+   * Etapas marcadas, e/ou {@link SEM_ETAPA} — VAZIO = todas. Era
+   * `etapaId: string | null` (uma só) até 29/09, traduzido em
+   * `lerFiltroSalvo` como o funil.
    *
-   * ⚠️ Manda no {@link FiltrosDoInbox.funilId} quando os dois estão
-   * preenchidos: a etapa já vive dentro de um funil, e somar os dois
-   * recortes só repetiria a mesma pergunta.
+   * ⚠️ A etapa REFINA o funil DELA, e só o dela: com Bancário e Trabalhista
+   * marcados e só "Reunião marcada" (do Bancário) marcada, o recorte é
+   * "reunião marcada no Bancário OU qualquer etapa do Trabalhista". Etapa
+   * cujo funil não está marcado (conta de um funil só; visão salva antiga)
+   * vale sozinha — era a regra antiga "a etapa vence o funil". `SEM_ETAPA`
+   * mora aqui nas duas formas do painel e soma com OU. Ver `casaComAEtapa`.
    */
-  etapaId: string | null;
+  etapaIds: string[];
   /** Só as que EU marquei. */
   favoritas: boolean;
   /**
@@ -163,8 +171,8 @@ export const FILTROS_VAZIOS: FiltrosDoInbox = {
   etiquetaIds: [],
   modoDeEtiqueta: "qualquer",
   empresa: null,
-  funilId: null,
-  etapaId: null,
+  funilIds: [],
+  etapaIds: [],
   favoritas: false,
   naoLidas: false,
   emAtraso: false,
@@ -197,11 +205,12 @@ export function contarFiltrosAtivos(f: FiltrosDoInbox): number {
   if (f.responsavelId) n++;
   if (f.etiquetaIds.length > 0) n++;
   if (f.empresa !== null) n++;
-  // ⚠️ Os dois níveis contam como UM. Com etapa escolhida o funil vem junto
-  // (é o pai dela), e somar dois faria o distintivo dizer "2 filtros" sobre
-  // uma escolha só — o número existe para explicar uma lista curta, não para
+  // ⚠️ Os dois níveis contam como UM, com quantos funis e etapas houver
+  // marcados (como as várias conexões). Com etapa escolhida o funil vem junto
+  // (é o pai dela), e somar faria o distintivo dizer "3 filtros" sobre um
+  // recorte só — o número existe para explicar uma lista curta, não para
   // contar controles na tela.
-  if (f.etapaId || f.funilId) n++;
+  if (f.etapaIds.length > 0 || f.funilIds.length > 0) n++;
   if (f.favoritas) n++;
   if (f.naoLidas) n++;
   if (f.emAtraso) n++;
@@ -242,8 +251,8 @@ export function mapaDeEtapasPorContato(
  *
  * ⚠️ **Mora aqui porque DOIS arquivos precisam da mesma resposta**: o painel,
  * para desenhar um nível ou dois, e a lista, para decidir se o deep link
- * `?etapa=` pode carimbar `funilId`. Quando os dois divergiram, um link do
- * quadro numa conta de um funil só deixava `funilId` preenchido sem seletor
+ * `?etapa=` pode carimbar o funil. Quando os dois divergiram, um link do
+ * quadro numa conta de um funil só deixava o funil preenchido sem seletor
  * que o mostrasse — e "Qualquer etapa" passava a esconder quem não tem
  * negócio (achado do Codex no PR #73).
  */
@@ -265,7 +274,7 @@ export function funisDoRecorte(
 /**
  * O recorte tem os dois níveis (funil → etapa)? Com um funil só não há o que
  * subdividir, e o campo continua sendo a lista de etapas de sempre — com
- * `funilId` SEMPRE nulo, para "Qualquer etapa" seguir significando "não
+ * `funilIds` SEMPRE vazio, para "Qualquer etapa" seguir significando "não
  * filtro por etapa".
  */
 export function recorteTemDoisNiveis(
@@ -273,6 +282,35 @@ export function recorteTemDoisNiveis(
   nomes: Map<string, string>,
 ): boolean {
   return funisDoRecorte(etapas, nomes).length >= 2;
+}
+
+/**
+ * Os funis que o recorte PÕE EM JOGO: os marcados no seletor, na ordem em que
+ * foram marcados, e depois os DERIVADOS das etapas marcadas cujo funil não
+ * está marcado.
+ *
+ * ⚠️ Derivar, nunca carimbar (#26 do plano 31/08). Uma visão salva numa conta
+ * de um funil só grava a etapa sem funil, e o `?etapa=` chega antes do
+ * carimbo: sem a derivação, o painel de dois níveis ficava recortado por uma
+ * etapa que ele não mostrava nem deixava trocar. Carimbar seria a armadilha
+ * de {@link FiltrosDoInbox.funilIds}.
+ *
+ * ⚠️ Mora aqui porque DOIS arquivos precisam da mesma resposta: o painel
+ * (quais funis aparecem marcados, de quais ele oferece etapas) e a descrição
+ * da visão salva (`descreverFiltro`), que agrupa as etapas pelo funil. Etapa
+ * fora do catálogo (apagada, ou catálogo ainda vazio) e `SEM_ETAPA` não
+ * derivam nada.
+ */
+export function funisDoFiltro(
+  f: Pick<FiltrosDoInbox, "funilIds" | "etapaIds">,
+  etapas: { id: string; pipeline_id: string }[],
+): string[] {
+  const funis = [...f.funilIds];
+  for (const id of f.etapaIds) {
+    const funil = etapas.find((e) => e.id === id)?.pipeline_id;
+    if (funil && !funis.includes(funil)) funis.push(funil);
+  }
+  return funis;
 }
 
 export interface ContextoDosFiltros {
@@ -479,19 +517,27 @@ export function canalDaConversa(conversation: Conversation): string | null {
 }
 
 /**
- * O recorte de funil/etapa, nos dois níveis.
+ * O recorte de funil/etapa, nos dois níveis — e tudo nele soma com OU
+ * (decisão do operador, 29/09/2026). A conversa casa quando o contato:
+ *  - não tem negócio nenhum, com "Sem negócio" ({@link SEM_ETAPA}) marcado;
+ *  - tem negócio numa etapa marcada;
+ *  - tem negócio em QUALQUER etapa de um funil marcado que não tem etapa
+ *    NENHUMA dele marcada.
  *
- * ⚠️ A etapa VENCE o funil quando ambos vêm preenchidos — ver
- * {@link FiltrosDoInbox.etapaId}.
+ * ⚠️ A etapa refina o funil DELA, e só o dela — ver
+ * {@link FiltrosDoInbox.etapaIds}. As formas antigas (um funil, uma etapa,
+ * lidas de visão salva ou do `?etapa=`) respondem aqui exatamente como
+ * respondiam: etapa sozinha = negócio nela; funil sozinho = qualquer etapa
+ * dele; funil com etapa dele = só a etapa.
  */
 export function casaComAEtapa(
   conversation: Conversation,
-  recorte: Pick<FiltrosDoInbox, "funilId" | "etapaId">,
+  recorte: Pick<FiltrosDoInbox, "funilIds" | "etapaIds">,
   etapaPorContato: Map<string, Set<string>>,
   funilPorEtapa: Map<string, string>,
 ): boolean {
-  const { funilId, etapaId } = recorte;
-  if (!etapaId && !funilId) return true;
+  const { funilIds, etapaIds } = recorte;
+  if (funilIds.length === 0 && etapaIds.length === 0) return true;
 
   // Grupo não tem contato e portanto não tem negócio. Ele cai em "sem etapa"
   // de propósito: é literalmente verdade, e o filtro de tipo é quem esconde
@@ -500,15 +546,30 @@ export function casaComAEtapa(
     ? etapaPorContato.get(conversation.contact_id)
     : undefined;
 
-  if (etapaId === SEM_ETAPA) return !doContato || doContato.size === 0;
-  if (etapaId) return !!doContato?.has(etapaId);
-
-  // Só o funil: basta UM negócio em qualquer etapa dele. É um conjunto de
-  // etapas por contato (índice único da 911 só cobre `source='channel'`), e o
-  // contato pode ter negócio em dois funis ao mesmo tempo.
+  if (etapaIds.includes(SEM_ETAPA) && (!doContato || doContato.size === 0)) {
+    return true;
+  }
   if (!doContato) return false;
+
+  // Basta UM negócio numa etapa marcada. É um conjunto de etapas por contato
+  // (índice único da 911 só cobre `source='channel'`), e o contato pode ter
+  // negócio em dois funis ao mesmo tempo. (`SEM_ETAPA` não é etapa de
+  // ninguém, e passa por aqui sem casar.)
+  for (const etapa of etapaIds) {
+    if (doContato.has(etapa)) return true;
+  }
+
+  // Funil marcado SEM etapa dele marcada: basta um negócio em qualquer etapa
+  // dele. ⚠️ O funil que TEM etapa marcada fica de fora daqui — quem responde
+  // por ele é o laço acima; somar o funil inteiro apagaria o refinamento.
+  const refinados = new Set<string>();
+  for (const etapa of etapaIds) {
+    const funil = funilPorEtapa.get(etapa);
+    if (funil) refinados.add(funil);
+  }
   for (const etapa of doContato) {
-    if (funilPorEtapa.get(etapa) === funilId) return true;
+    const funil = funilPorEtapa.get(etapa);
+    if (funil && funilIds.includes(funil) && !refinados.has(funil)) return true;
   }
   return false;
 }
@@ -610,8 +671,8 @@ export function aplicarFiltros(
     // funil/etapa é neutralizado — nunca aplicado sobre um mapa incompleto.
     // Os DOIS níveis caem juntos: o mapa que falta é o mesmo.
     const recorteDeEtapa = ctx.recorteDeEtapaConfiavel
-      ? { funilId: f.funilId, etapaId: f.etapaId }
-      : { funilId: null, etapaId: null };
+      ? { funilIds: f.funilIds, etapaIds: f.etapaIds }
+      : { funilIds: [], etapaIds: [] };
     if (
       !casaComAEtapa(c, recorteDeEtapa, ctx.etapaPorContato, ctx.funilPorEtapa)
     ) {
