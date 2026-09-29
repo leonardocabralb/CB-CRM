@@ -82,7 +82,8 @@ Live Photo e edições cifradas de antes do descarte).
   ⚠️ Gravadas como `content_type = 'template'`, nunca `'text'`: quem escreveu
   foi um SISTEMA (um banco avisando do boleto), e como `'text'` com texto
   visível o agente de IA abriria turno e responderia ao robô do banco. A bolha
-  já tinha o selo "Modelo" para esse tipo.
+  já tinha o selo "Modelo" para esse tipo. E o número que a manda não vira
+  card (guarda 5 de `pipeline-routing.ts`, lê o `template` RECEBIDO).
 - ⚠️⚠️ **O texto MONTADO (cartão e modelo) não chega aos motores**
   (`texto-para-os-motores.ts`, com pino lendo as duas ingestões): o robô e as
   automações recebem `''`, como antes da 1060. Senão um robô com a palavra

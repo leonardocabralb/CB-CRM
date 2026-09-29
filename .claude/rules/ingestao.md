@@ -98,7 +98,11 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
   operador: número novo que liga vira card). No núcleo, via
   `supabaseAdmin()`: sob a RLS do operador um `agent` deixaria de abrir card em
   silêncio. Gatilho por ESTADO ("o contato já tem card?"). Abrir conversa não
-  cria negócio (decisão do operador): o card nasce no primeiro envio. ⚠️ O
+  cria negócio (decisão do operador): o card nasce no primeiro envio. ⚠️
+  Número de EMPRESA não abre card em caminho nenhum (guarda 5, decisão do
+  operador, 29/09/2026): conversa com `template` RECEBIDO fica fora — só na
+  mensagem da empresa não bastaria, a resposta automática de outro sistema no
+  celular abriria o card segundos depois. ⚠️ O
   robô envia por DOIS remetentes reais: `src/lib/flows/meta-send.ts` (fluxo,
   IA, mídia, botões e lista) e `sendViaMeta` em `automations/meta-send.ts`
   (texto, modelo, `send_to_number` e a régua) — nenhum dos dois é wrapper.

@@ -24,6 +24,9 @@ interface Cfg {
   insertError?: { code?: string; message: string };
   /** A linha que o INSERT devolve (o `select('*')` de `createDeal`). Padrão: o payload com id. */
   inserted?: Linha;
+  /** A mensagem de sistema de empresa achada na conversa (guarda 5). Padrão: nenhuma. */
+  mensagemDeEmpresa?: Linha;
+  mensagensError?: { message: string };
 }
 
 function makeDb(cfg: Cfg): {
@@ -32,18 +35,22 @@ function makeDb(cfg: Cfg): {
   tabelas: string[];
   /** Colunas usadas em `.eq()`, por tabela — para afirmar a FORMA da consulta. */
   filtros: Record<string, string[]>;
+  /** Os valores de cada `.eq()`, por tabela. */
+  igualdades: Record<string, Record<string, unknown>>;
 } {
   const inserts: Record<string, unknown>[] = [];
   const tabelas: string[] = [];
   const filtros: Record<string, string[]> = {};
+  const igualdades: Record<string, Record<string, unknown>> = {};
   let table = '';
 
   const make = () => {
     let ordenado = false;
     const chain: Record<string, unknown> = {
       select: () => chain,
-      eq: (coluna: string) => {
+      eq: (coluna: string, valor: unknown) => {
         (filtros[table] ??= []).push(coluna);
+        (igualdades[table] ??= {})[coluna] = valor;
         return chain;
       },
       limit: () => chain,
@@ -63,6 +70,12 @@ function makeDb(cfg: Cfg): {
         }
         if (table === 'accounts') {
           return Promise.resolve({ data: cfg.account ?? null, error: null });
+        }
+        if (table === 'messages') {
+          return Promise.resolve({
+            data: cfg.mensagemDeEmpresa ?? null,
+            error: cfg.mensagensError ?? null,
+          });
         }
         if (table === 'pipelines') {
           return Promise.resolve({ data: cfg.pipeline ?? { id: 'funil-1' }, error: null });
@@ -106,7 +119,7 @@ function makeDb(cfg: Cfg): {
     },
   } as unknown as SupabaseClient;
 
-  return { db, inserts, tabelas, filtros };
+  return { db, inserts, tabelas, filtros, igualdades };
 }
 
 const CANAL_CONFIGURADO = {
@@ -366,5 +379,77 @@ describe('routeContactToPipeline — devolve a etapa do card que CRIOU', () => {
     const qualquer = makeDb({ channel: CANAL_CONFIGURADO });
     await expect(routeContactToPipeline({ db: qualquer.db, ...BASE, channelId: null })).resolves.toBeNull();
     await expect(routeContactToPipeline({ db: qualquer.db, ...BASE, contactId: null })).resolves.toBeNull();
+  });
+});
+
+// ------------------------------------------------------------
+// Número de EMPRESA não vira card (guarda 5, decisão do operador de
+// 29/09/2026). Medido em produção: 10 dos 711 cards abertos pelo roteador
+// desde agosto eram cobrança de financeira, propaganda e escritório pedindo
+// reunião — todos com mensagem `template` RECEBIDA antes do card.
+// ------------------------------------------------------------
+describe('routeContactToPipeline — número de empresa não vira card', () => {
+  const COM_CONVERSA = { ...BASE, conversationId: 'conversa-9' };
+
+  it('conversa em que chegou mensagem de sistema de empresa: nenhum card', async () => {
+    const { db, inserts } = makeDb({
+      channel: CANAL_CONFIGURADO,
+      account: { owner_user_id: 'dono-da-conta' },
+      mensagemDeEmpresa: { id: 'cobranca-do-banco' },
+    });
+
+    await expect(routeContactToPipeline({ db, ...COM_CONVERSA })).resolves.toBeNull();
+    expect(inserts).toHaveLength(0);
+  });
+
+  it('procura só o que o CONTATO mandou, e só `template`, na conversa dele', async () => {
+    // O modelo que NÓS mandamos e o pedido de Pix do celular do escritório são
+    // `agent`/`bot`: contá-los tiraria do funil o cliente que foi cobrado.
+    const { db, igualdades } = makeDb({
+      channel: CANAL_CONFIGURADO,
+      account: { owner_user_id: 'dono-da-conta' },
+    });
+
+    await routeContactToPipeline({ db, ...COM_CONVERSA });
+
+    expect(igualdades.messages).toEqual({
+      conversation_id: 'conversa-9',
+      sender_type: 'customer',
+      content_type: 'template',
+    });
+  });
+
+  it('conversa sem mensagem de empresa continua abrindo o card', async () => {
+    const { db, inserts } = makeDb({
+      channel: CANAL_CONFIGURADO,
+      account: { owner_user_id: 'dono-da-conta' },
+      stage: { id: 'etapa-lead' },
+    });
+
+    await expect(routeContactToPipeline({ db, ...COM_CONVERSA })).resolves.toBe('etapa-lead');
+    expect(inserts).toHaveLength(1);
+  });
+
+  it('contato que já tem card não paga a consulta às mensagens', async () => {
+    const { db, tabelas } = makeDb({
+      channel: CANAL_CONFIGURADO,
+      existingDeal: { id: 'negocio-antigo' },
+      mensagemDeEmpresa: { id: 'cobranca-do-banco' },
+    });
+
+    await routeContactToPipeline({ db, ...COM_CONVERSA });
+
+    expect(tabelas).toEqual(['cb_channels', 'deals']);
+  });
+
+  it('falha ao ler as mensagens não cria nada nem lança — a próxima mensagem tenta de novo', async () => {
+    const { db, inserts } = makeDb({
+      channel: CANAL_CONFIGURADO,
+      account: { owner_user_id: 'dono-da-conta' },
+      mensagensError: { message: 'timeout' },
+    });
+
+    await expect(routeContactToPipeline({ db, ...COM_CONVERSA })).resolves.toBeNull();
+    expect(inserts).toHaveLength(0);
   });
 });
