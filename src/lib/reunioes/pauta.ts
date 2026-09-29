@@ -163,6 +163,11 @@ function maisRecente<T extends { em: string }>(lista: T[]): T | null {
  * B resolveria também a A, anterior — a A (um no show sem registro) sairia da
  * rede de segurança com o resultado da B (revisão do PR #339). O filtro pelo
  * card tira a entrada de um card de OUTRO funil do mesmo contato.
+ *
+ * ⚠️ Reunião SEM card não aceita trilha nenhuma: sem card, só o marco da
+ * tela a resolve. Aceitar "qualquer card" deixava um card criado DEPOIS da
+ * reunião (que `negocioDoContato` recusa de propósito) resolvê-la ao entrar
+ * numa etapa de resultado (Codex, PR #339).
  */
 function entradasDaReuniao(
   entradas: EntradaDaTrilha[],
@@ -170,12 +175,13 @@ function entradasDaReuniao(
   ate: number | null,
   dealId: string | null,
 ): EntradaDaTrilha[] {
+  if (dealId === null) return [];
   return entradas.filter((e) => {
     const em = ms(e.em);
     if (em === null) return false;
     if (desde !== null && em < desde) return false;
     if (ate !== null && em >= ate) return false;
-    return dealId === null || e.dealId === null || e.dealId === dealId;
+    return e.dealId === null || e.dealId === dealId;
   });
 }
 

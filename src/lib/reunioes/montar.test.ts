@@ -157,12 +157,29 @@ describe('montarPauta', () => {
             ],
           ],
         ]),
-        trilha: new Map([['c2', [{ em: '2026-09-29T12:10:00Z', dealId: null, etapaId: 'noshow', etapa: 'No Show', por: 'Bia' }]]]),
+        negocios: [
+          { id: 'd2', contact_id: 'c2', pipeline_id: 'banc', stage_id: 'noshow', value: 0, status: 'open', created_at: '2026-09-01T00:00:00Z' },
+        ],
+        trilha: new Map([['c2', [{ em: '2026-09-29T12:10:00Z', dealId: 'd2', etapaId: 'noshow', etapa: 'No Show', por: 'Bia' }]]]),
       }),
     );
     expect(reunioes.map((r) => r.reuniaoId)).toEqual(['manha', 'tarde']);
     expect(reunioes[0].resultado?.tipo).toBe('no_show');
     expect(reunioes[1].qualificada?.por).toBe('Leo');
+  });
+
+  it('reunião SEM card (o único card nasceu depois dela) não é resolvida pela trilha desse card', () => {
+    const { reunioes } = montarPauta(
+      dados({
+        calendly: [cal({ id: 'antiga', inicio: '2026-09-29T12:00:00Z' })],
+        negocios: [
+          { id: 'novo', contact_id: 'c1', pipeline_id: 'banc', stage_id: 'noshow', value: 0, status: 'open', created_at: '2026-09-29T15:00:00Z' },
+        ],
+        trilha: new Map([['c1', [{ em: '2026-09-29T15:05:00Z', dealId: 'novo', etapaId: 'noshow', etapa: 'No Show', por: 'Bia' }]]]),
+      }),
+    );
+    expect(reunioes[0].negocio).toBeNull();
+    expect(reunioes[0].resultado).toBeNull();
   });
 });
 
