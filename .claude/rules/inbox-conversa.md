@@ -18,6 +18,8 @@ paths:
   - "src/components/inbox/texto-com-links.tsx"
   - "src/components/inbox/avatares-na-conversa.tsx"
   - "src/components/inbox/faixa-de-presenca.tsx"
+  - "src/components/inbox/faixa-de-situacao-do-cliente.tsx"
+  - "src/hooks/use-situacao-do-cliente*"
   - "src/components/inbox/copiar-link-da-conversa.tsx"
   - "src/lib/inbox/achados-no-fio*"
   - "src/lib/inbox/salto-no-fio*"
@@ -85,7 +87,10 @@ ficha em `.claude/rules/campos-e-nome.md`.
 - ⚠️ **A faixa da nota fixada compara `conversation_id` com a prop do render
   atual**: o `useConversationNotes` esvazia num efeito, e a nota do cliente
   anterior aparecia sob o cabeçalho do novo.
-- **Faixas acima do compositor, nesta ordem:** inadimplência do Asaas,
+- **Faixas acima do compositor, nesta ordem:** situação do cliente
+  (`FaixaDeSituacaoDoCliente`, 1070: rescindido/finalizado pela MARCA da
+  etapa do card mais recente de cada funil, recortado pelo perfil; só
+  informa; cala com `null` — relê a cada evento da trilha), inadimplência do Asaas,
   possível no-show (`FaixaDeNoShow`, regra em `.claude/rules/reunioes.md`),
   agendadas, presença (`FaixaDePresenca`) e o número divergente, que fica
   COLADO no compositor. A de no-show vem do hook que carimba o contato dono do

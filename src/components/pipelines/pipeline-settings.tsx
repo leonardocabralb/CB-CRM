@@ -33,6 +33,7 @@ import {
   sugerirClasse,
   type Degrau,
 } from "@/lib/funil/degraus";
+import { lerSituacaoDoCliente } from "@/lib/pipelines/situacao-do-cliente";
 import {
   CARTOES_DE_CUSTO,
   escreverPainel,
@@ -231,6 +232,8 @@ export function PipelineSettings({
       desfecho_da_reuniao: marcaDaReuniaoQueVale(s.degrau, s.desfecho_da_reuniao),
       // 1065: o que o botão de avançar recomenda depois dela (NULL = automático).
       proximas_etapas: s.proximas_etapas ?? null,
+      // 1070: o que estar nela diz sobre o contrato (faixa da conversa).
+      situacao_do_cliente: s.situacao_do_cliente ?? null,
     }));
 
     const abertura = aberturaRef.current;
@@ -375,7 +378,7 @@ export function PipelineSettings({
           (Reunião), a 448 px o nome da etapa ficava com 22 px. 29/09/2026:
           `4xl`, porque os seletores ganharam largura fixa (títulos das
           colunas) e opções que dizem o que são ("Compareceu, sem proposta"). */}
-      <DialogContent className="sm:max-w-4xl bg-popover border-border max-h-[85vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-5xl bg-popover border-border max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-popover-foreground">{t("managePipeline")}</DialogTitle>
         </DialogHeader>
@@ -471,6 +474,10 @@ export function PipelineSettings({
                         </ul>
                       </dd>
                     </div>
+                    <div>
+                      <dt className="font-medium text-foreground">{t("colunaSituacao")}</dt>
+                      <dd>{t("ajudaSituacao")}</dd>
+                    </div>
                   </dl>
                 </details>
                 {situacao === "pronto" && localStages.length > 0 && (
@@ -485,6 +492,7 @@ export function PipelineSettings({
                     <span className={LARGURA_DO_RESULTADO}>{t("colunaResultado")}</span>
                     <span className={LARGURA_DO_DEGRAU}>{t("stageDegrau")}</span>
                     <span className={LARGURA_DA_REUNIAO}>{t("stageReuniao")}</span>
+                    <span className={LARGURA_DA_SITUACAO}>{t("colunaSituacao")}</span>
                     <span className="w-6 shrink-0" />
                   </div>
                 )}
@@ -545,6 +553,11 @@ export function PipelineSettings({
                           onDesfechoChange={(v) => {
                             const updated = [...localStages];
                             updated[index] = { ...updated[index], desfecho_da_reuniao: v };
+                            setLocalStages(updated);
+                          }}
+                          onSituacaoChange={(v) => {
+                            const updated = [...localStages];
+                            updated[index] = { ...updated[index], situacao_do_cliente: v };
                             setLocalStages(updated);
                           }}
                           opcoesDeDegrau={opcoesDeDegrau}
@@ -751,12 +764,13 @@ export function PipelineSettings({
   );
 }
 
-// As larguras das três caixas de cada etapa, repetidas nos títulos das
+// As larguras das quatro caixas de cada etapa, repetidas nos títulos das
 // colunas: mudar uma sem a outra desalinha o cabeçalho. Classes LITERAIS (o
 // Tailwind não gera classe montada em tempo de execução).
 const LARGURA_DO_RESULTADO = "w-28 shrink-0";
 const LARGURA_DO_DEGRAU = "w-32 shrink-0";
 const LARGURA_DA_REUNIAO = "w-48 shrink-0";
+const LARGURA_DA_SITUACAO = "w-32 shrink-0";
 
 function SortableStageRow({
   stage,
@@ -765,6 +779,7 @@ function SortableStageRow({
   onResultadoChange,
   onDegrauChange,
   onDesfechoChange,
+  onSituacaoChange,
   opcoesDeDegrau,
   onRemove,
   colors,
@@ -776,6 +791,7 @@ function SortableStageRow({
   onResultadoChange: (v: string | null) => void;
   onDegrauChange: (v: string | null) => void;
   onDesfechoChange: (v: PipelineStage['desfecho_da_reuniao']) => void;
+  onSituacaoChange: (v: PipelineStage['situacao_do_cliente']) => void;
   opcoesDeDegrau: { value: string; label: string }[];
   onRemove: () => void;
   colors: string[];
@@ -881,6 +897,20 @@ function SortableStageRow({
           <option value="faltou">{t('reuniaoFaltou')}</option>
         </select>
       )}
+      {/* 1070: o que ESTAR nesta etapa diz sobre o contrato do cliente —
+          "Rescindido" ou "Finalizado". É o que acende a faixa bem visível da
+          conversa (`situacao-do-cliente.ts`). Marca, nunca nome. */}
+      <select
+        value={stage.situacao_do_cliente ?? ''}
+        onChange={(e) => onSituacaoChange(lerSituacaoDoCliente(e.target.value))}
+        aria-label={t('colunaSituacao')}
+        title={t('stageSituacaoHint')}
+        className={`h-7 ${LARGURA_DA_SITUACAO} rounded-md border border-border bg-card px-1 text-xs text-foreground`}
+      >
+        <option value="">{t('situacaoNenhuma')}</option>
+        <option value="rescindido">{t('situacaoRescindido')}</option>
+        <option value="finalizado">{t('situacaoFinalizado')}</option>
+      </select>
       <Button
         variant="ghost"
         size="icon-xs"
