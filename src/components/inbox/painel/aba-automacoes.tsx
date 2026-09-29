@@ -31,6 +31,7 @@ import {
   GitBranch,
   Loader2,
   Minus,
+  Pause,
   RefreshCw,
   X,
   Zap,
@@ -46,9 +47,11 @@ import {
   type GrupoDeEsperas,
   type RoboAtivo,
 } from '@/hooks/use-execucoes-do-contato';
-import type { ItemDeExecucao } from '@/lib/execucoes/desfecho';
+import type { ItemDoHistorico } from '@/lib/execucoes/desfecho';
 import type { ItemDaLinha } from '@/lib/execucoes/linha-do-tempo';
+import { lerTextoDoMotor } from '@/lib/execucoes/texto-do-motor';
 import { relativoAoInstante } from '@/lib/execucoes/tempo';
+import { DetalheDaExecucao } from './detalhe-da-execucao';
 import { TituloDeSecao } from './painel-do-contato';
 
 interface AbaAutomacoesProps {
@@ -67,7 +70,7 @@ interface AbaAutomacoesProps {
    * efeito passivo, que neste projeto já mordeu quatro vezes. Exigi-las faz
    * o compilador cobrar de quem montar a aba numa tela nova.
    */
-  historico: ItemDeExecucao[];
+  historico: ItemDoHistorico[];
   historicoPronto: boolean;
   historicoFalhou: boolean;
 }
@@ -112,6 +115,16 @@ export function AbaAutomacoes({
   const [ocupado, setOcupado] = useState<string | null>(null);
   /** Automação com a linha do tempo aberta. */
   const [expandida, setExpandida] = useState<string | null>(null);
+  /**
+   * Linha do "Já rodou" aberta — carimbada com o CONTATO: a chave do grupo
+   * (automação, dia, desfecho) se repete entre clientes, e a linha abriria
+   * sozinha na conversa seguinte.
+   */
+  const [historicoAberto, setHistoricoAberto] = useState<{ de: string; chave: string } | null>(null);
+  /** O "Já rodou" mostra as 8 mais recentes até o operador pedir o resto (por contato). */
+  const [historicoInteiroDe, setHistoricoInteiroDe] = useState<string | null>(null);
+  const historicoInteiro = historicoInteiroDe === contactId;
+  const abertaNoHistorico = historicoAberto?.de === contactId ? historicoAberto.chave : null;
 
   async function parar(chave: string, corpo: Record<string, string>, rota: string) {
     setOcupado(chave);
@@ -432,11 +445,16 @@ export function AbaAutomacoes({
 
       {/* ------------------------------------------------------------
           JÁ RODOU (985) — o destino do clique no cartão de falha do fio.
-          
-          ⚠️ Sem expansão de linha do tempo aqui: `montarLinhaDoTempo` precisa
-          de uma ESPERA de referência para dizer "o que vem depois", e
-          fabricar uma faria a tela afirmar próximos passos que nunca vão
-          rodar. Execução encerrada não tem futuro.
+
+          Cada linha abre o REGISTRO da execução (29/09/2026, a
+          mini-auditoria): o que rodou, onde parou e por quê, e o que não
+          chegou a rodar — `DetalheDaExecucao`, lido só ao abrir. A
+          interrompida entra aqui (e só aqui: no fio, não).
+
+          ⚠️ "Não rodou" não é "o que vem depois" da linha do tempo de quem
+          aguarda: execução encerrada não tem futuro. A lista é do que ficou
+          para trás, e não é afirmada quando a automação foi editada depois
+          (`src/lib/execucoes/detalhe.ts`).
           ------------------------------------------------------------ */}
       <div>
         <TituloDeSecao>{t('tituloDaSecao')}</TituloDeSecao>
@@ -450,9 +468,28 @@ export function AbaAutomacoes({
           <p className="text-muted-foreground/70 text-[11px]">{t('vazio')}</p>
         ) : (
           <div className="space-y-1.5">
-            {[...historico].reverse().slice(0, 8).map((item) => (
-              <LinhaDoHistorico key={item.chave} item={item} agora={agora} t={t} />
+            {(historicoInteiro ? historico : historico.slice(0, 8)).map((item) => (
+              <LinhaDoHistorico
+                key={item.chave}
+                item={item}
+                agora={agora}
+                aberta={abertaNoHistorico === item.chave}
+                alternar={() =>
+                  setHistoricoAberto(
+                    abertaNoHistorico === item.chave ? null : { de: contactId, chave: item.chave },
+                  )
+                }
+              />
             ))}
+            {!historicoInteiro && historico.length > 8 && (
+              <button
+                type="button"
+                onClick={() => setHistoricoInteiroDe(contactId)}
+                className="text-muted-foreground hover:text-foreground text-[11px] underline underline-offset-2"
+              >
+                {t('historico.mostrarMais', { n: historico.length - 8 })}
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -461,49 +498,98 @@ export function AbaAutomacoes({
 }
 
 /**
- * Uma execução encerrada na aba. É AQUI — e só aqui — que o motivo CRU do
- * motor aparece: em inglês, com id dentro, a 11px, numa aba que o operador
- * abriu de propósito. No fio ele ficaria no meio da conversa com o cliente.
+ * Uma execução encerrada (ou interrompida) na aba. Fechada, diz o bastante
+ * para decidir se vale abrir: quando, e — na falha, na barrada e na
+ * interrompida — o porquê, em português. Aberta, o registro inteiro
+ * (`DetalheDaExecucao`). É AQUI — e só aqui — que o texto do motor aparece: no
+ * fio ele ficaria no meio da conversa com o cliente.
  */
 function LinhaDoHistorico({
   item,
   agora,
-  t,
+  aberta,
+  alternar,
 }: {
-  item: ItemDeExecucao;
+  item: ItemDoHistorico;
   agora: number;
-  t: ReturnType<typeof useTranslations>;
+  aberta: boolean;
+  alternar: () => void;
 }) {
+  const t = useTranslations('Inbox.execucoes');
+  const tTipos = useTranslations('Automations.builder.steps');
   const Icone =
-    item.desfecho === 'falhou' ? X : item.desfecho === 'barrada' ? GitBranch : Check;
+    item.desfecho === 'falhou'
+      ? X
+      : item.desfecho === 'barrada'
+        ? GitBranch
+        : item.desfecho === 'interrompida'
+          ? Pause
+          : Check;
   const cor =
     item.desfecho === 'falhou'
       ? 'text-red-600 dark:text-red-400'
       : item.desfecho === 'barrada'
         ? 'text-amber-600 dark:text-amber-400'
-        : 'text-primary';
+        : item.desfecho === 'interrompida'
+          ? 'text-muted-foreground'
+          : 'text-primary';
+
+  // O porquê, numa linha: o texto do motor traduzido (sem nomes — eles só
+  // chegam com o registro, ao abrir; o id cru fica para a expansão).
+  const motivo = item.motivoBruto
+    ? lerTextoDoMotor(item.motivoBruto)
+        .map((p) => ('chave' in p ? t(`motor.${p.chave}` as Parameters<typeof t>[0], p.valores) : p.texto))
+        .join(' · ')
+    : '';
+  // O rótulo do TIPO ("Marcar ganho ou perdido"): a linha fechada só tem o
+  // tipo, e `descreverPasso` sem a config escolheria uma variante ao acaso
+  // ("Reabrir o negócio" para um "Marcar como ganho" que falhou).
+  const chaveDoTipo = item.passoQueParou as Parameters<typeof tTipos>[0] | undefined;
+  const passo = chaveDoTipo ? (tTipos.has(chaveDoTipo) ? tTipos(chaveDoTipo) : chaveDoTipo) : '';
 
   return (
-    <div className="flex items-start gap-2">
-      <Icone className={cn('mt-0.5 h-3 w-3 shrink-0', cor)} />
-      <div className="min-w-0">
-        <p className="text-foreground text-xs">
-          {item.nome ?? t('semNome')}
-          {item.vezes > 1 && (
-            <span className="text-muted-foreground"> {t('vezes', { vezes: item.vezes })}</span>
+    <div className={cn('rounded-md', aberta && 'border-border bg-muted/30 border p-2')}>
+      <button
+        type="button"
+        aria-expanded={aberta}
+        aria-label={t('historico.abrir', { nome: item.nome ?? t('semNome') })}
+        onClick={alternar}
+        className="flex w-full items-start gap-2 text-left"
+      >
+        <Icone className={cn('mt-0.5 h-3 w-3 shrink-0', cor)} />
+        <span className="min-w-0 flex-1">
+          <span className="text-foreground block text-xs">
+            {item.nome ?? t('semNome')}
+            {item.execucoes.length > 1 && (
+              <span className="text-muted-foreground"> {t('vezes', { vezes: item.execucoes.length })}</span>
+            )}
+          </span>
+          <span className="text-muted-foreground block text-[11px]">{relativoAoInstante(item.quando, agora)}</span>
+          {!aberta && item.desfecho === 'falhou' && (passo || motivo) && (
+            <span className="block text-[11px] break-words text-red-700/90 dark:text-red-300/90" title={item.motivoBruto}>
+              {passo ? t('historico.falhouEm', { passo }) : ''}
+              {passo && motivo ? ' · ' : ''}
+              {motivo}
+            </span>
           )}
-        </p>
-        <p className="text-muted-foreground text-[11px]">
-          {relativoAoInstante(item.quando, agora)}
-        </p>
-        {/* ⚠️ Em barrada isto também aparece: era calculado e nunca exibido
-            (achado da revisão). É na aba que o detalhe mora — no fio, não. */}
-        {item.motivoBruto && (
-          <p className="text-muted-foreground/80 mt-0.5 text-[11px] break-words whitespace-pre-wrap">
-            {item.motivoBruto}
-          </p>
+          {!aberta && item.desfecho === 'barrada' && motivo && (
+            <span className="text-muted-foreground/80 block text-[11px] break-words" title={item.motivoBruto}>
+              {motivo}
+            </span>
+          )}
+          {!aberta && item.desfecho === 'interrompida' && (
+            <span className="text-muted-foreground/80 block text-[11px]">
+              {t(`historico.interrompida.${item.interrompidaPor ?? 'desconhecido'}` as Parameters<typeof t>[0])}
+            </span>
+          )}
+        </span>
+        {aberta ? (
+          <ChevronUp className="text-muted-foreground mt-0.5 h-3.5 w-3.5 shrink-0" />
+        ) : (
+          <ChevronDown className="text-muted-foreground mt-0.5 h-3.5 w-3.5 shrink-0" />
         )}
-      </div>
+      </button>
+      {aberta && <DetalheDaExecucao item={item} />}
     </div>
   );
 }

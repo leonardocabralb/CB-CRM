@@ -33,7 +33,6 @@
 import { AlertTriangle, CheckCircle2, GitBranch } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { descreverPasso } from "@/lib/automations/descrever-passo";
 
 import type { ItemDeExecucao } from "@/lib/execucoes/desfecho";
 
@@ -62,10 +61,12 @@ export function AvisoDeExecucao({
   const t = useTranslations("Inbox.execucoes");
   // ⚠️ O passo sai TRADUZIDO. `passoQueParou` é o `step_type` cru em inglês
   // (`send_webhook`), e o cartão fica no meio da conversa com o cliente. O
-  // projeto já tem uma tradução por tipo, com teste cobrando uma chave por
-  // tipo — e é `descreverPasso` que sabe normalizar os casos com variante
-  // (`wait` → `wait_hours`), então não se monta `resumo.<step_type>` na mão.
-  const tPasso = useTranslations("Pipelines.automacoes");
+  // rótulo é o do TIPO (`Automations.builder.steps`, o do construtor): sem a
+  // config, o resumo de `descreverPasso` escolheria uma variante ao acaso
+  // ("Reabrir o negócio" para um "Marcar como ganho" que falhou, "Aguardar
+  // 0 h", "Enviar mensagem:" com os dois-pontos pendurados — revisão do
+  // "Já rodou", 29/09/2026). Tipo sem tradução cai no nome técnico.
+  const tTipos = useTranslations("Automations.builder.steps");
   const nome = item.nome ?? t("semNome");
   const texto = t(`aviso.${item.desfecho}` as Parameters<typeof t>[0], { nome });
   const repetido = item.vezes > 1 ? ` ${t("vezes", { vezes: item.vezes })}` : "";
@@ -88,12 +89,9 @@ export function AvisoDeExecucao({
               {item.passoQueParou && (
                 <p className="mt-0.5 text-[11px] break-words text-red-700/80 dark:text-red-300/80">
                   {t("no_passo", {
-                    passo: tPasso(
-                      `resumo.${descreverPasso({ step_type: item.passoQueParou }).chave}` as Parameters<
-                        typeof tPasso
-                      >[0],
-                      { alvo: "", quantidade: 0 },
-                    ),
+                    passo: tTipos.has(item.passoQueParou as Parameters<typeof tTipos>[0])
+                      ? tTipos(item.passoQueParou as Parameters<typeof tTipos>[0])
+                      : item.passoQueParou,
                   })}
                 </p>
               )}

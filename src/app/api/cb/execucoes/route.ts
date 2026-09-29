@@ -19,9 +19,9 @@
 import { NextResponse } from 'next/server'
 
 import { supabaseAdmin } from '@/lib/automations/admin-client'
-import type { NomesConhecidos } from '@/lib/automations/descrever-passo'
 import { getCurrentAccount, toErrorResponse } from '@/lib/auth/account'
 import { agruparEsperas, type EsperaPendente } from '@/lib/execucoes/agrupar'
+import { carregarNomesDosPassos } from '@/lib/execucoes/nomes-dos-passos'
 import {
   montarLinhaDoTempo,
   type PassoDaAutomacao,
@@ -31,104 +31,6 @@ import {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 type LinhaDePasso = PassoDaAutomacao & { automation_id: string }
-
-/**
- * Ids citados nos `step_config` → nomes legíveis, para o `descreverPasso`
- * não imprimir UUID nem carimbar "(apagado)" em alvo vivo.
- *
- * ⚠️ CADA lookup é cercado pela CONTA, mesmo sendo "só rótulo": o validador
- * de ativação NÃO confere posse do alvo, então um agent pode gravar um UUID
- * alheio no step_config de propósito — sem a cerca, esta rota viraria um
- * oráculo de nomes de outras contas (achado da revisão do Codex no PR #70).
- * `pipeline_stages` não tem account_id; a cerca vai pelo funil pai.
- */
-async function carregarNomes(
-  db: ReturnType<typeof supabaseAdmin>,
-  passos: LinhaDePasso[],
-  accountId: string,
-): Promise<NomesConhecidos> {
-  const tagIds = new Set<string>()
-  const etapaIds = new Set<string>()
-  const fluxoIds = new Set<string>()
-  const autoIds = new Set<string>()
-  const campoIds = new Set<string>()
-
-  for (const p of passos) {
-    const cfg = (p.step_config ?? {}) as Record<string, unknown>
-    if (typeof cfg.tag_id === 'string') tagIds.add(cfg.tag_id)
-    if (typeof cfg.stage_id === 'string') etapaIds.add(cfg.stage_id)
-    if (typeof cfg.flow_id === 'string') fluxoIds.add(cfg.flow_id)
-    if (typeof cfg.automation_id === 'string') autoIds.add(cfg.automation_id)
-    // A condição por campo personalizado (2.10) guarda o campo no `operand`.
-    if (
-      p.step_type === 'condition' &&
-      cfg.subject === 'custom_field' &&
-      typeof cfg.operand === 'string' &&
-      UUID_RE.test(cfg.operand.trim())
-    ) {
-      campoIds.add(cfg.operand.trim())
-    }
-    // "Alterar campo do contato" guarda o campo como "custom:<id>".
-    if (p.step_type === 'update_contact_field' && typeof cfg.field === 'string') {
-      const id = cfg.field.trim().replace(/^custom:/, '')
-      if (id !== cfg.field.trim() && UUID_RE.test(id)) campoIds.add(id)
-    }
-  }
-
-  const paraMapa = (
-    rotulo: string,
-    res: { data: unknown; error: { message: string } | null },
-  ) => {
-    if (res.error) {
-      // Rótulo é decorativo: sem ele a linha mostra "(apagado)", que é
-      // pior que o certo mas melhor que derrubar a aba inteira.
-      console.error(`[execucoes] nomes de ${rotulo} falharam:`, res.error.message)
-      return {}
-    }
-    return Object.fromEntries(
-      ((res.data ?? []) as { id: string; name: string }[]).map((r) => [
-        r.id,
-        r.name,
-      ]),
-    )
-  }
-
-  const vazio = { data: [], error: null } as const
-  const [tagsRes, etapasRes, fluxosRes, autosRes, camposRes] = await Promise.all([
-    tagIds.size
-      ? db.from('tags').select('id, name').in('id', [...tagIds]).eq('account_id', accountId)
-      : Promise.resolve(vazio),
-    etapaIds.size
-      ? db
-          .from('pipeline_stages')
-          .select('id, name, pipelines!inner(account_id)')
-          .in('id', [...etapaIds])
-          .eq('pipelines.account_id', accountId)
-      : Promise.resolve(vazio),
-    fluxoIds.size
-      ? db.from('flows').select('id, name').in('id', [...fluxoIds]).eq('account_id', accountId)
-      : Promise.resolve(vazio),
-    autoIds.size
-      ? db.from('automations').select('id, name').in('id', [...autoIds]).eq('account_id', accountId)
-      : Promise.resolve(vazio),
-    // `field_name` vira `name`: o `paraMapa` lê `name`.
-    campoIds.size
-      ? db
-          .from('custom_fields')
-          .select('id, name:field_name')
-          .in('id', [...campoIds])
-          .eq('account_id', accountId)
-      : Promise.resolve(vazio),
-  ])
-
-  return {
-    tags: paraMapa('tags', tagsRes),
-    etapas: paraMapa('pipeline_stages', etapasRes),
-    fluxos: paraMapa('flows', fluxosRes),
-    automacoes: paraMapa('automations', autosRes),
-    campos: paraMapa('custom_fields', camposRes),
-  }
-}
 
 export async function GET(request: Request) {
   try {
@@ -197,7 +99,7 @@ export async function GET(request: Request) {
     }
 
     const passos = (stepsRes.data ?? []) as unknown as LinhaDePasso[]
-    const nomes = await carregarNomes(db, passos, ctx.accountId)
+    const nomes = await carregarNomesDosPassos(db, passos, ctx.accountId)
     const executadosPorLog = new Map(
       ((logsRes.data ?? []) as { id: string; steps_executed: PassoExecutado[] }[]).map(
         (l) => [l.id, l.steps_executed ?? []],
