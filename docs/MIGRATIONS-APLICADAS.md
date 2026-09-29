@@ -957,6 +957,33 @@ nome da época em que foram aplicadas.
   `qualificada`: a MQL 2 do Bancário - Comercial espera a decisão sobre o
   escopo dos lembretes (ver `docs/PLANO-pauta-de-reunioes.md`). Teste no
   preview num funil de teste com o card do lead autorizado, limpo no fim.
+- **1065_cb_etapas_recomendadas** — `pipeline_stages.proximas_etapas uuid[]`
+  (a escolha à mão do botão "avançar" do painel da conversa: NULL =
+  automático, vazio = nenhuma, a 1ª é o principal) e a função
+  `cb_movimentos_entre_etapas(funil, desde)` (SECURITY INVOKER, `LANGUAGE sql`,
+  EXECUTE só de `authenticated` e `service_role`), que conta os movimentos de
+  etapa dentro do funil por `occurred_at` — a base do automático. ADITIVA e
+  ANTES do deploy: sem a coluna, o "Salvar" do Gerenciar funil seria recusado.
+  Aplicada em 29/09/2026 pela Management API (histórico `20260929135248`),
+  depois do replay verde do CI no commit `44faffc4` e ANTES do merge do PR
+  #340, com autorização do operador; conferida no catálogo (coluna `uuid[]`,
+  nenhuma etapa com escolha, UMA função, `prosecdef` falso, ACL sem PUBLIC e
+  sem `anon`). Nasceu 1061 e foi renumerada antes de qualquer aplicação (a
+  1063 e a 1064 são de outras sessões). Teste no preview contra o banco real,
+  com o card do lead de teste no Bancário - Comercial: clicar e desfazer
+  (nenhum pedido saiu); mover para Reunião Agendada; No Show com a página
+  atualizada no meio da contagem (o card mudou 1 s depois, 2 s antes do fim
+  da contagem, e a retomada achou o card no destino e limpou a fila); volta a
+  MQL 1 pelo seletor; Reunião Agendada saindo para a tela de Funis no meio da
+  contagem (o aviso apareceu já na tela de Funis) e volta a MQL 1; duas abas
+  (a segunda mostrou o pedido pendente da primeira e destravou com o
+  Desfazer); escolha à mão em MQL 1 (No Show principal, Contato Avulso)
+  conferida no painel e devolvida ao automático. Estado final igual ao
+  inicial (MQL 1, nenhuma mensagem, nenhuma espera, as mesmas etiquetas);
+  ficaram as 5 linhas dos movimentos na trilha, 5 eventos de funil entregues
+  (o Make só repassa MQL 2, Proposta e Contrato) e 2 execuções da automação
+  da etiqueta Bancário, que o lead já tinha. O "Salvar" regravou o `painel`
+  do funil de `{}` para a forma normalizada, com o mesmo conteúdo.
 - **1066_cb_contadores_do_disparo_so_pelo_servidor** — fecha o EXECUTE de
   `_bcast_bump` e `recompute_broadcast_counts` (0003/0005, SECURITY DEFINER)
   para PUBLIC, `anon` e `authenticated`, com o GRANT de volta ao

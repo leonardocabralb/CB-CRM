@@ -51,6 +51,10 @@ em `.claude/rules/auth.md`; o recarregar ao voltar para o app, em
   no meio do uso desmontaria o compositor — rascunho perdido, anexo apagado do
   bucket, mensagem na janela de desfazer ENVIADA. A única exceção é `reabrir`,
   chamada só pela guarda de inatividade.
+- **Exceção escrita: `useRetomarMovimentosPendentes` roda na casca, FORA da
+  porta.** Não age em nome da pessoa sobre o que ela não viu: conclui o
+  movimento que ela mesma pediu no botão "avançar" e que a página fechada
+  deixou pendente (`.claude/rules/funil.md`).
 - ⚠️ **O registro é PARSE, nunca `as`** (`lerRegistro`): JSON estranho vira
   "sem registro", e a tela aparece — resumo a mais é barato, pendência
   escondida não. Chave `cb-meu-dia:<userId>`; storage que lança cai na memória.
