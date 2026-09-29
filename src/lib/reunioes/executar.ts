@@ -66,6 +66,19 @@ export async function executarAcao(args: {
       if (!data || data.length === 0) return { desfecho: 'card_mudou', moveu };
       moveu = novaEtapa !== undefined;
       if (moveu) avisarDrenagemDeFunil();
+    } else {
+      // O card JÁ estava na etapa do botão: nada a escrever nele, mas a MESMA
+      // cerca vale — se alguém o moveu ou fechou depois da carga, registrar
+      // o resultado afirmaria um estado que o card não tem mais (Codex, PR
+      // #339).
+      const { data, error } = await supabase
+        .from('deals')
+        .select('id')
+        .eq('id', negocio.id)
+        .eq('stage_id', negocio.etapaId)
+        .eq('status', 'open');
+      if (error) return { desfecho: 'falhou', moveu };
+      if (!data || data.length === 0) return { desfecho: 'card_mudou', moveu };
     }
   }
 

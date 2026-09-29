@@ -86,9 +86,17 @@ function dentro(iso: string, janela: { de: Date; ate: Date }): boolean {
  * ganho, 1031); só então o perdido mais recente. Só o aberto recebe
  * movimento (`comoMarcar`); os outros aparecem para a pessoa saber onde o
  * lead está.
+ *
+ * ⚠️ Só entra card que JÁ EXISTIA no início da reunião (`inicio`): um card
+ * criado depois (outro funil, outra área) não é da reunião — o botão o
+ * moveria, e a trilha do card de verdade seria descartada pelo recorte por
+ * `dealId` (Codex, PR #339). Sem nenhum, a reunião fica sem card e só
+ * registra. Card sem `created_at` conta como existente (não se sabe).
  */
-export function negocioDoContato(negocios: LinhaDoNegocio[]): LinhaDoNegocio | null {
-  const porCriacao = [...negocios].sort((a, b) => (ms(b.created_at) ?? 0) - (ms(a.created_at) ?? 0));
+export function negocioDoContato(negocios: LinhaDoNegocio[], inicio?: string): LinhaDoNegocio | null {
+  const inicioMs = ms(inicio);
+  const daReuniao = inicioMs === null ? negocios : negocios.filter((n) => (ms(n.created_at) ?? -Infinity) <= inicioMs);
+  const porCriacao = [...daReuniao].sort((a, b) => (ms(b.created_at) ?? 0) - (ms(a.created_at) ?? 0));
   return (
     porCriacao.find((n) => n.status === 'open') ??
     porCriacao.find((n) => n.status === 'won') ??
@@ -139,7 +147,7 @@ export function montarPauta(d: DadosDaPauta): { reunioes: ReuniaoDaPauta[]; funi
     const chave = `${base.origem}:${base.reuniaoId}`;
     const marcos = d.marcos.get(chave) ?? [];
     const entradas = contactId ? (d.trilha.get(contactId) ?? []) : [];
-    const n = contactId ? negocioDoContato(negociosPorContato.get(contactId) ?? []) : null;
+    const n = contactId ? negocioDoContato(negociosPorContato.get(contactId) ?? [], base.inicio) : null;
     const conversa = contactId ? d.conversas.get(contactId) : undefined;
     const proximaEm = proximaDepoisDe(contactId, base.inicio);
     const dealId = n?.id ?? null;

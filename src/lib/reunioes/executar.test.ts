@@ -9,11 +9,30 @@ import { executarAcao } from './executar';
 import type { ReuniaoDaPauta } from './pauta';
 
 /** Um cliente falso que grava o que a função pediu ao banco. */
-function falso(opcoes: { linhasDoUpdate?: number; erroDoUpdate?: boolean; erroDoUpsert?: boolean } = {}) {
+function falso(
+  opcoes: { linhasDoUpdate?: number; erroDoUpdate?: boolean; erroDoUpsert?: boolean; linhasDoSelect?: number; erroDoSelect?: boolean } = {},
+) {
   const chamadas: { tabela: string; op: string; valor: unknown; filtros: [string, unknown][]; opcoes?: unknown }[] = [];
   const cliente = {
     from(tabela: string) {
       return {
+        select(colunas: unknown) {
+          const c = { tabela, op: 'select', valor: colunas, filtros: [] as [string, unknown][] };
+          chamadas.push(c);
+          const resposta = opcoes.erroDoSelect
+            ? { data: null, error: { message: 'x' } }
+            : { data: Array.from({ length: opcoes.linhasDoSelect ?? 1 }, () => ({ id: 'd1' })), error: null };
+          const q = {
+            eq(col: string, v: unknown) {
+              c.filtros.push([col, v]);
+              return q;
+            },
+            then(ok: (r: typeof resposta) => unknown, erro?: (e: unknown) => unknown) {
+              return Promise.resolve(resposta).then(ok, erro);
+            },
+          };
+          return q;
+        },
         update(valor: unknown) {
           const c = { tabela, op: 'update', valor, filtros: [] as [string, unknown][] };
           chamadas.push(c);
@@ -126,7 +145,7 @@ describe('executarAcao', () => {
     expect(chamadas).toHaveLength(1);
   });
 
-  it('card JÁ na etapa do botão: nenhuma escrita no card, só o marco (é o que resolve a reunião)', async () => {
+  it('card JÁ na etapa do botão: nenhuma escrita no card, a MESMA cerca conferida por leitura, e o marco', async () => {
     const { cliente, chamadas } = falso();
     const r = await executarAcao({
       supabase: cliente,
@@ -137,9 +156,28 @@ describe('executarAcao', () => {
       valor: null,
     });
     expect(r).toEqual({ desfecho: 'ok', moveu: false });
-    expect(chamadas.map((c) => c.op)).toEqual(['upsert']);
-    expect(chamadas[0].valor).toMatchObject({ marco: 'qualificada', resultado: null, valor: null });
+    expect(chamadas.map((c) => c.op)).toEqual(['select', 'upsert']);
+    expect(chamadas[0].filtros).toEqual([
+      ['id', 'd1'],
+      ['stage_id', 'mql2'],
+      ['status', 'open'],
+    ]);
+    expect(chamadas[1].valor).toMatchObject({ marco: 'qualificada', resultado: null, valor: null });
     expect(avisarDrenagemDeFunil).not.toHaveBeenCalled();
+  });
+
+  it('card JÁ na etapa, mas movido ou fechado depois da carga: card_mudou, sem marco', async () => {
+    const { cliente, chamadas } = falso({ linhasDoSelect: 0 });
+    const r = await executarAcao({
+      supabase: cliente,
+      accountId: 'conta',
+      reuniao: { ...reuniao, negocio: { ...reuniao.negocio!, etapaId: 'noshow' } },
+      acao: 'no_show',
+      destino: { id: 'noshow', nome: 'No Show' },
+      valor: null,
+    });
+    expect(r).toEqual({ desfecho: 'card_mudou', moveu: false });
+    expect(chamadas.map((c) => c.op)).toEqual(['select']);
   });
 
   it('marco que falha depois do card movido: registro_falhou', async () => {

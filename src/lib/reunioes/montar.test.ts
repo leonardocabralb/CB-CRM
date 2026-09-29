@@ -244,4 +244,15 @@ describe('negocioDoContato', () => {
     expect(negocioDoContato([n('a', 'lost', '2026-01-01'), n('b', 'lost', '2026-09-01')])?.id).toBe('b');
     expect(negocioDoContato([])).toBeNull();
   });
+
+  it('só o card que JÁ existia no início da reunião; o criado depois não é dela', () => {
+    const cards = [n('da-reuniao', 'open', '2026-09-01T10:00:00Z'), n('criado-depois', 'open', '2026-09-20T10:00:00Z')];
+    expect(negocioDoContato(cards, '2026-09-10T14:00:00Z')?.id).toBe('da-reuniao');
+    // Nenhum existia: a reunião fica sem card (só registra).
+    expect(negocioDoContato([n('criado-depois', 'open', '2026-09-20T10:00:00Z')], '2026-09-10T14:00:00Z')).toBeNull();
+    // Criado no mesmo instante (o Calendly cria o card ao agendar, antes do início): conta.
+    expect(negocioDoContato([n('mesmo', 'open', '2026-09-10T14:00:00Z')], '2026-09-10T14:00:00Z')?.id).toBe('mesmo');
+    // Sem data de criação: conta como existente.
+    expect(negocioDoContato([{ ...n('sem-data', 'open', ''), created_at: null }], '2026-09-10T14:00:00Z')?.id).toBe('sem-data');
+  });
 });

@@ -142,6 +142,10 @@ a rota `/api/cb/reunioes`, `src/components/reunioes/`. Plano:
   (`comoMarcar`): só card ABERTO anda, e o resultado de reunião ANTIGA de quem
   já tem reunião mais nova só registra (o card é da nova, e dos lembretes
   dela). Sem card, card fechado ou funil sem a marca: só registra.
+- ⚠️ **O card da reunião é o que JÁ EXISTIA no início dela**
+  (`negocioDoContato(…, inicio)`): card criado depois (outra área) não é
+  movido pelo botão. E o card que a tela viu já na etapa do botão passa pela
+  MESMA cerca, por leitura, antes do registro (`executarAcao`).
 - ⚠️ **Os lembretes de reunião valem em "Reunião Agendada" E na MQL 2**
   (escopo gravado em 29/09/2026, decisão do operador): o botão "Reunião
   qualificada" leva o card para a MQL 2 antes da reunião. Lembrete de reunião
