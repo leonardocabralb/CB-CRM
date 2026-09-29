@@ -33,6 +33,9 @@ import {
   type PainelDoFunil,
 } from "@/lib/funil/painel";
 import { useRotuloDoCartaoDeCusto } from "@/components/funil/cartoes-de-custo";
+import { EtapasRecomendadasConfig } from "@/components/pipelines/etapas-recomendadas-config";
+import { lerMovimentosDoFunil } from "@/hooks/use-movimentos-do-funil";
+import type { Movimento } from "@/lib/pipelines/etapas-recomendadas";
 import {
   Dialog,
   DialogContent,
@@ -136,12 +139,23 @@ export function PipelineSettings({
   );
   const aberturaRef = useRef(0);
   const gravacaoRef = useRef<Promise<unknown> | null>(null);
+  // 1065: os movimentos dos últimos 30 dias, para a seção do botão de
+  // avançar mostrar o que o automático sugere. Lidos a cada abertura, à
+  // parte das etapas: falhar aqui não trava o diálogo.
+  const [movimentos, setMovimentos] = useState<Movimento[] | null>(null);
+  const [historico, setHistorico] = useState<"carregando" | "pronto" | "falhou">("carregando");
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     const abertura = ++aberturaRef.current;
     if (!open) return;
     setSituacao("carregando");
     setShowDeleteConfirm(false);
+    setHistorico("carregando");
+    void lerMovimentosDoFunil(pipeline.id).then((lidos) => {
+      if (aberturaRef.current !== abertura) return;
+      setMovimentos(lidos);
+      setHistorico(lidos ? "pronto" : "falhou");
+    });
     (async () => {
       await gravacaoRef.current?.catch(() => undefined);
       const [funil, etapas] = await Promise.all([
@@ -203,6 +217,8 @@ export function PipelineSettings({
       degrau: s.degrau ?? null,
       // 1058: o que entrar na etapa diz sobre a reunião (aviso de no-show).
       desfecho_da_reuniao: s.desfecho_da_reuniao ?? null,
+      // 1065: o que o botão de avançar recomenda depois dela (NULL = automático).
+      proximas_etapas: s.proximas_etapas ?? null,
     }));
 
     const abertura = aberturaRef.current;
@@ -529,6 +545,21 @@ export function PipelineSettings({
                   </Button>
                 </div>
               </div>
+
+              {/* 1065: o botão de avançar do painel da conversa. Só depois da
+                  leitura, como o painel abaixo: antes, o rascunho está vazio. */}
+              {situacao === "pronto" && (
+                <EtapasRecomendadasConfig
+                  etapas={localStages}
+                  movimentos={movimentos}
+                  historico={historico}
+                  onChange={(stageId, proximas) =>
+                    setLocalStages((atual) =>
+                      atual.map((s) => (s.id === stageId ? { ...s, proximas_etapas: proximas } : s)),
+                    )
+                  }
+                />
+              )}
 
               {/* 1054 (C2): o painel DESTE funil no Desempenho e na Saúde. Só
                   depois da leitura: antes, o rascunho é o padrão, e salvar

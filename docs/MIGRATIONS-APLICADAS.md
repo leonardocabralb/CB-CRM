@@ -957,6 +957,52 @@ nome da época em que foram aplicadas.
   `qualificada`: a MQL 2 do Bancário - Comercial espera a decisão sobre o
   escopo dos lembretes (ver `docs/PLANO-pauta-de-reunioes.md`). Teste no
   preview num funil de teste com o card do lead autorizado, limpo no fim.
+- **1065_cb_etapas_recomendadas** — `pipeline_stages.proximas_etapas uuid[]`
+  (a escolha à mão do botão "avançar" do painel da conversa: NULL =
+  automático, vazio = nenhuma, a 1ª é o principal) e a função
+  `cb_movimentos_entre_etapas(funil, desde)` (SECURITY INVOKER, `LANGUAGE sql`,
+  EXECUTE só de `authenticated` e `service_role`), que conta os movimentos de
+  etapa dentro do funil por `occurred_at` — a base do automático. ADITIVA e
+  ANTES do deploy: sem a coluna, o "Salvar" do Gerenciar funil seria recusado.
+  Aplicada em 29/09/2026 pela Management API (histórico `20260929135248`),
+  depois do replay verde do CI no commit `44faffc4` e ANTES do merge do PR
+  #340, com autorização do operador; conferida no catálogo (coluna `uuid[]`,
+  nenhuma etapa com escolha, UMA função, `prosecdef` falso, ACL sem PUBLIC e
+  sem `anon`). Nasceu 1061 e foi renumerada antes de qualquer aplicação (a
+  1063 e a 1064 são de outras sessões). Teste no preview contra o banco real,
+  com o card do lead de teste no Bancário - Comercial: clicar e desfazer
+  (nenhum pedido saiu); mover para Reunião Agendada; No Show com a página
+  atualizada no meio da contagem (o card mudou 1 s depois, 2 s antes do fim
+  da contagem, e a retomada achou o card no destino e limpou a fila); volta a
+  MQL 1 pelo seletor; Reunião Agendada saindo para a tela de Funis no meio da
+  contagem (o aviso apareceu já na tela de Funis) e volta a MQL 1; duas abas
+  (a segunda mostrou o pedido pendente da primeira e destravou com o
+  Desfazer); escolha à mão em MQL 1 (No Show principal, Contato Avulso)
+  conferida no painel e devolvida ao automático. Estado final igual ao
+  inicial (MQL 1, nenhuma mensagem, nenhuma espera, as mesmas etiquetas);
+  ficaram as 5 linhas dos movimentos na trilha, 5 eventos de funil entregues
+  (o Make só repassa MQL 2, Proposta e Contrato) e 2 execuções da automação
+  da etiqueta Bancário, que o lead já tinha. O "Salvar" regravou o `painel`
+  do funil de `{}` para a forma normalizada, com o mesmo conteúdo.
+- **1066_cb_contadores_do_disparo_so_pelo_servidor** — fecha o EXECUTE de
+  `_bcast_bump` e `recompute_broadcast_counts` (0003/0005, SECURITY DEFINER)
+  para PUBLIC, `anon` e `authenticated`, com o GRANT de volta ao
+  `service_role`: com a chave anônima e o id de uma campanha, qualquer pessoa
+  mudava os contadores (ou o `total_recipients`) de campanhas de qualquer
+  conta. Não recria função. Restritiva, mas sem dependência de deploy: nenhum
+  app chama as duas, e a única chamadora é a função do gatilho
+  `broadcast_recipient_aggregate_trigger()`, SECURITY DEFINER (roda como o
+  dono, que mantém o EXECUTE) — a conferência exige isso de todo chamador.
+  Provada num Postgres 16 descartável com os papéis, donos, policies e
+  definições de produção: o navegador gravando destinatários como
+  `authenticated` continua acertando os contadores, e o mutante com o gatilho
+  INVOKER leva 42501 e reprova a conferência. Aplicada em 29/09/2026 pela
+  Management API (histórico `20260929143541`), depois do replay verde do CI no
+  commit `61073ff` e antes do merge do PR #342, com autorização do operador;
+  conferida no catálogo (`proacl` = `{postgres=X/postgres,service_role=X/postgres}`
+  nas duas, `anon` e `authenticated` sem EXECUTE, gatilho ligado, DEFINER e com
+  o dono executando `_bcast_bump`) e no assessor de segurança (as duas saíram
+  das listas 0028/0029: de 11 para 9 e de 15 para 13).
 
 ## Notas do histórico
 
