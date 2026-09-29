@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import type { CustomField } from '@/types'
-import { camposParaConferir, conferirParaLigar, type ConferenciaParaLigar } from './conferir-para-ligar'
+import { camposParaConferir, conferirParaLigar, TETO_DE_LINHAS, type ConferenciaParaLigar } from './conferir-para-ligar'
 import { localizarPendencias } from './pendencias'
 
 const base: ConferenciaParaLigar = {
@@ -80,6 +80,12 @@ describe('camposParaConferir', () => {
 
   it('sem conta conhecida: null (pula a conferência)', () => {
     expect(camposParaConferir([campo('a', 'c1')], null)).toBeNull()
+  })
+
+  it('lista que pode ter vindo cortada pelo teto do PostgREST: null (a rota decide)', () => {
+    const cheia = Array.from({ length: TETO_DE_LINHAS }, (_, i) => campo(`f${i}`, 'c1'))
+    expect(camposParaConferir(cheia, 'c1')).toBeNull()
+    expect(camposParaConferir(cheia.slice(1), 'c1')?.size).toBe(TETO_DE_LINHAS - 1)
   })
 })
 

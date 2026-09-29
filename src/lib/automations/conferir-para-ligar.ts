@@ -72,18 +72,29 @@ export function conferirParaLigar(a: ConferenciaParaLigar): ValidationIssue[] {
   ]
 }
 
+/** O `max_rows` do PostgREST deste projeto (medido: 1000). */
+export const TETO_DE_LINHAS = 1000
+
 /**
  * O mapa de campos que `validateCustomFieldConditionsForActivation` espera,
  * a partir da lista que a tela carregou — só os da CONTA (`contaId`): a
  * leitura do navegador devolve os campos de toda conta de que a pessoa é
  * membro (policy da 1032), e o servidor confere contra a conta da automação.
  * Sem conta conhecida, `null` (a conferência é pulada).
+ *
+ * ⚠️ Lista que pode ter vindo CORTADA também é `null` (Codex, PR #343): a
+ * consulta da tela não pagina, e o PostgREST corta em `TETO_DE_LINHAS` sem
+ * avisar. Um campo válido fora do corte seria acusado de "apagado", e a tela
+ * barraria sem chamar o servidor uma automação que ele aceitaria. Aqui a
+ * conferência só pode falhar ABERTA: quem decide é a rota, que lê o campo
+ * direto.
  */
 export function camposParaConferir(
   campos: readonly CustomField[],
   contaId: string | null,
 ): Map<string, CampoParaCondicao> | null {
   if (!contaId) return null
+  if (campos.length >= TETO_DE_LINHAS) return null
   return new Map(
     campos
       .filter((c) => c.account_id === contaId)

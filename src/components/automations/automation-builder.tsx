@@ -109,7 +109,11 @@ import { useChannels } from "@/hooks/use-channels"
 import type { CbChannel } from "@/lib/cb-channels/repo"
 import { ChannelMultiSelect, ChannelSelect } from "@/components/channels/channel-select"
 import { validateChannelScopeForActivation, type ValidationIssue } from "@/lib/automations/validate"
-import { camposParaConferir, conferirParaLigar } from "@/lib/automations/conferir-para-ligar"
+import {
+  camposParaConferir,
+  conferirParaLigar,
+  TETO_DE_LINHAS,
+} from "@/lib/automations/conferir-para-ligar"
 import {
   avisosDaAutomacao,
   chaveDaPendencia,
@@ -1535,13 +1539,16 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
   // pode gerar "a automação acionada está desligada" sobre ela mesma (o
   // seletor não a oferece; só um passo antigo a aponta, e o motor recusa o
   // laço de qualquer jeito).
+  // ⚠️ Lista no teto do PostgREST pode ter vindo CORTADA (as consultas não
+  // paginam): aí nada é afirmado — "apagada" sobre item que só ficou fora do
+  // corte seria mentira (a regra de `camposParaConferir`).
   const referenciasDosPassos = useMemo(
     () => ({
       automacoes:
-        carga.automations === "pronto"
+        carga.automations === "pronto" && automations.length < TETO_DE_LINHAS
           ? automations.map((a) => (a.id === initial.id ? { ...a, is_active: state.is_active } : a))
           : null,
-      robos: carga.flows === "pronto" ? flows : null,
+      robos: carga.flows === "pronto" && flows.length < TETO_DE_LINHAS ? flows : null,
     }),
     [carga.automations, automations, initial.id, state.is_active, carga.flows, flows],
   )
