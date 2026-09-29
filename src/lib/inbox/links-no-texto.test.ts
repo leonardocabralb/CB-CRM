@@ -1,0 +1,114 @@
+import { describe, expect, it } from 'vitest';
+
+import { acharLinks, partirEmLinks } from './links-no-texto';
+
+/** Só os endereços achados, para o teste ficar legível. */
+const enderecos = (texto: string) => acharLinks(texto).map((l) => l.texto);
+
+describe('acharLinks — o que vira link', () => {
+  it('http, https e www', () => {
+    expect(enderecos('veja https://exemplo.com.br/a?b=1 e http://x.org')).toEqual([
+      'https://exemplo.com.br/a?b=1',
+      'http://x.org',
+    ]);
+    expect(enderecos('site: www.exemplo.com.br')).toEqual(['www.exemplo.com.br']);
+  });
+
+  it('www ganha https no href; o texto fica como foi escrito', () => {
+    expect(acharLinks('www.site.com.br')).toEqual([
+      { inicio: 0, fim: 15, texto: 'www.site.com.br', href: 'https://www.site.com.br' },
+    ]);
+  });
+
+  it('link com a forma do SharePoint do print do operador sai inteiro, com os `_` e o `?e=`', () => {
+    const url =
+      'https://exemplo-my.sharepoint.com/:f:/g/personal/financeiro_exemplo_com_br/QwE1rTy2_UiO3-pAs4DfG5hJk6?e=Ab1Cd2';
+    expect(enderecos(`Links abaixo:\n\n${url}\n\n`)).toEqual([url]);
+  });
+
+  it('pontuação da frase fica de fora', () => {
+    expect(enderecos('Acesse https://x.com.')).toEqual(['https://x.com']);
+    expect(enderecos('https://x.com, https://y.com; https://z.com!')).toEqual([
+      'https://x.com',
+      'https://y.com',
+      'https://z.com',
+    ]);
+    expect(enderecos('link: https://x.com/a…')).toEqual(['https://x.com/a']);
+  });
+
+  it('parêntese: sai o que sobra, fica o que é par do endereço', () => {
+    expect(enderecos('(veja https://x.com/a)')).toEqual(['https://x.com/a']);
+    expect(enderecos('https://pt.wikipedia.org/wiki/Direito_(Brasil)')).toEqual([
+      'https://pt.wikipedia.org/wiki/Direito_(Brasil)',
+    ]);
+  });
+
+  it('marcador do WhatsApp no fim fica de fora (a formatação fecha depois do link)', () => {
+    expect(enderecos('*https://x.com*')).toEqual(['https://x.com']);
+    expect(enderecos('_www.x.com_')).toEqual(['www.x.com']);
+  });
+
+  it('caractere invisível e emoji encerram o endereço', () => {
+    expect(enderecos('https://x.com\u200e')).toEqual(['https://x.com']);
+    expect(enderecos('https://x.com👍 ok')).toEqual(['https://x.com']);
+  });
+
+  it('aspas e sinais de menor/maior encerram o endereço', () => {
+    expect(enderecos('"https://x.com/a"')).toEqual(['https://x.com/a']);
+    expect(enderecos('<https://x.com/a>')).toEqual(['https://x.com/a']);
+  });
+});
+
+describe('acharLinks — o que NÃO vira link', () => {
+  it('número de processo, CNPJ, valor e abreviação', () => {
+    for (const texto of [
+      'processo 0801234-56.2024.8.15.2001',
+      'CNPJ 12.345.678/0001-90',
+      'R$ 1.500,00',
+      'fls.23 e Art. 5º',
+      'e-mail joao@gmail.com',
+      'site.com.br sem prefixo',
+    ]) {
+      expect(enderecos(texto), texto).toEqual([]);
+    }
+  });
+
+  it('prefixo sem endereço', () => {
+    expect(enderecos('https:// e www. soltos')).toEqual([]);
+    expect(enderecos('www.semponto')).toEqual([]);
+  });
+
+  it('prefixo colado em outra palavra ou e-mail', () => {
+    expect(enderecos('abcwww.site.com')).toEqual([]);
+    expect(enderecos('contato@www.site.com')).toEqual([]);
+  });
+
+  it('⚠️ esquema perigoso nunca vira href', () => {
+    expect(enderecos('javascript:alert(1)')).toEqual([]);
+    expect(enderecos('data:text/html,oi')).toEqual([]);
+    for (const l of acharLinks('https://x.com javascript://y www.z.com')) {
+      expect(l.href).toMatch(/^https?:\/\//);
+    }
+  });
+});
+
+describe('partirEmLinks', () => {
+  it('alterna texto e link, sem perder caractere', () => {
+    const texto = 'Docs: https://a.com/x e www.b.com.br. Fim';
+    const trechos = partirEmLinks(texto);
+    expect(trechos).toEqual([
+      { tipo: 'texto', texto: 'Docs: ' },
+      { tipo: 'link', texto: 'https://a.com/x', href: 'https://a.com/x' },
+      { tipo: 'texto', texto: ' e ' },
+      { tipo: 'link', texto: 'www.b.com.br', href: 'https://www.b.com.br' },
+      { tipo: 'texto', texto: '. Fim' },
+    ]);
+    expect(trechos.map((t) => t.texto).join('')).toBe(texto);
+  });
+
+  it('sem link, um trecho só; vazio e nulo, nenhum', () => {
+    expect(partirEmLinks('Bom dia')).toEqual([{ tipo: 'texto', texto: 'Bom dia' }]);
+    expect(partirEmLinks('')).toEqual([]);
+    expect(partirEmLinks(null)).toEqual([]);
+  });
+});

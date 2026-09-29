@@ -11,6 +11,7 @@ import {
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 
+import { TextoComLinks } from '@/components/inbox/texto-com-links';
 import { cn } from '@/lib/utils';
 import type { ConversationNote } from '@/types';
 
@@ -232,7 +233,9 @@ export function CartaoDeNota({
           destaque && (aberta ? 'max-h-64 overflow-y-auto' : 'line-clamp-2')
         )}
       >
-        {nota.texto}
+        {/* Endereço clicável (29/09/2026) — link de documento colado na
+            nota é o caso comum. */}
+        <TextoComLinks texto={nota.texto} />
       </p>
     </div>
   );

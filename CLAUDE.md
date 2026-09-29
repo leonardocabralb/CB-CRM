@@ -481,6 +481,8 @@ O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
 - Ficha: um bloco de campos por vez, em menu horizontal.
 - Notas do painel: a caixa de escrever vem ANTES da fixada, e a fixada nasce
   recolhida (29/09/2026).
+- Quem mais está com a conversa aberta: frase acima do compositor, além dos
+  avatares do cabeçalho (29/09/2026).
 - Canal: a faixa de divergência só informa, não bloqueia; cor derivada; anel
   no avatar e trilha colorida foram descartados.
 - IA: chave por PROVEDOR, uma para a conta toda — nunca por conexão

@@ -5,6 +5,9 @@
 // operador, DISCRETO: fileira de bolinhas 20px sobrepostas no cabeçalho do
 // fio, com o nome no tooltip. Some por completo quando não há ninguém (o
 // caso de todo dia numa conta de um membro).
+//
+// A versão VISÍVEL é a `FaixaDePresenca`, em frase, acima do compositor
+// (29/09/2026: o operador achou só os avatares discretos demais).
 // ============================================================
 
 import { useTranslations } from "next-intl";
