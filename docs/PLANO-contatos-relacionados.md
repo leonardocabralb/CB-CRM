@@ -49,11 +49,23 @@ a conversa e voltar.
 
 | Fase | O quê | Estado |
 | --- | --- | --- |
-| 1 | Migration 1069 + pino | [x] no código (a 1068 ficou com o PR #350). Provada num Postgres 16 descartável: banco vazio pula a prova; aplicada 2×; 6 cenários (par invertido, a si mesma, descrição, outra conta, visualizador lê e não grava, não membro não lê, CASCADE); sem o índice do par a própria migration reprova. **Falta aplicar em produção.** |
+| 1 | Migration 1069 + pino | [x] (a 1068 ficou com o PR #350). Provada num Postgres 16 descartável: banco vazio pula a prova; aplicada 2×; 6 cenários (par invertido, a si mesma, descrição, outra conta, visualizador lê e não grava, não membro não lê, CASCADE); sem o índice do par a própria migration reprova. Aplicada em produção em 29/09/2026 (histórico `20260929191304`), depois do replay verde do CI. |
 | 2 | Hook + módulo puro + aba no painel da conversa | [x] |
 | 3 | Faixa "Voltar para" na caixa de entrada | [x] |
 | 4 | Aba na ficha de /contatos | [x] |
-| 5 | Revisão, teste no preview, regras e PR | Regras, tabela de merge e revisão feitas; suíte inteira verde em Node 22 (9.400). Preview (29/09): 9 abas cabem no painel de 360 px; sem a tabela a aba diz "Não foi possível carregar", nunca "nenhum". **Falta:** PR + replay do CI, aplicar a 1069, e2e (vincular, descrição, pulo, faixa, desvincular) e merge. |
+| 5 | Revisão, teste no preview, regras e PR | [x] PR #352. Codex: 2 P2 — a conversa criada pelo "Conversar" nascia atrás do painel do celular (consertado: `handleConversaAberta` fecha o painel) e a faixa não aparece depois do "Conversar" (limite conhecido, abaixo). E2E no preview (29/09), com duas fichas de TESTE de número fictício: vincular com descrição (aparada, autoria gravada), par repetido barrado na tela, "Conversar" abrindo a Nova conversa preenchida (cancelada), pulo para a conversa de A com a faixa "Voltar para", descrição editada por A e vista pelo lead, a faixa voltando e sumindo, a aba da ficha de /contatos com link para `/inbox?c=`, desvincular com confirmação; limpeza por CASCADE, tabela vazia no fim. |
+
+## Limites conhecidos
+
+- **A faixa "Voltar para" não aparece depois do "Conversar"** (relacionado
+  SEM conversa → Nova conversa → a conversa criada). Codex, #352. O caminho é
+  raro (os relacionados normalmente já conversam com o escritório) e tem saída
+  segura: a aba Relacionados da conversa nova já mostra quem ficou para trás.
+  Consertar exige carregar o destino pendente até a lista trazer a conversa
+  criada (`handleConversationsLoaded`), o trecho mais sensível da página. Se o
+  operador quiser, é uma fase própria.
+- A volta tem um nível só (D5), e o celular só se confere no aparelho depois do
+  deploy (`.claude/rules/celular.md`).
 
 ## Deixado de fora
 
