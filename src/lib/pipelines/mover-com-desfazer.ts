@@ -70,8 +70,10 @@ export const MAXIMO_DE_TENTATIVAS_NA_PAGINA = 10;
  *
  * ⚠️ 403 também é provisório: `getCurrentAccount` devolve Forbidden quando a
  * LEITURA do perfil ou da conta falha, sem ter decidido nada sobre o papel
- * (Codex, PR #340). O papel de fato insuficiente acaba no card travado, com
- * "Desistir" — nunca num pedido perdido.
+ * (Codex, PR #340). A exceção é o papel de fato insuficiente, que a rota
+ * responde com `papel_insuficiente` e que `enviar` trata como definitivo:
+ * quem foi rebaixado a Visualizador não vê o botão nem o "Desistir", e
+ * refazer a cada abertura do app seria para sempre (Codex, 6ª rodada).
  */
 const ehProvisoria = (status: number) =>
   status === 401 || status === 403 || status === 408 || status === 429 || status >= 500;
@@ -315,16 +317,20 @@ async function enviar(pedido: Pendente, avisarPorToast: boolean): Promise<void> 
     tentarDeNovoMaisTarde(pedido);
     return;
   }
-  if (ehProvisoria(resposta.status)) {
-    tentarDeNovoMaisTarde(pedido);
-    return;
-  }
 
-  let corpo: { stage_id?: unknown; status?: unknown } = {};
+  // O corpo é lido ANTES de decidir se a falha é provisória: é ele que
+  // separa o 403 do papel insuficiente (definitivo) do 403 da conta que não
+  // carregou (provisório).
+  let corpo: { stage_id?: unknown; status?: unknown; error?: unknown } = {};
   try {
     corpo = (await resposta.json()) as typeof corpo;
   } catch {
     // Corpo ilegível: decide pelo status.
+  }
+  const papelInsuficiente = resposta.status === 403 && corpo.error === 'papel_insuficiente';
+  if (ehProvisoria(resposta.status) && !papelInsuficiente) {
+    tentarDeNovoMaisTarde(pedido);
+    return;
   }
   const stageId = typeof corpo.stage_id === 'string' ? corpo.stage_id : null;
   const status =

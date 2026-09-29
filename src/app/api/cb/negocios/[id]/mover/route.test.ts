@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ requireRole: vi.fn() }));
+const mocks = vi.hoisted(() => ({ getCurrentAccount: vi.fn() }));
 
 vi.mock('@/lib/auth/account', () => ({
-  requireRole: mocks.requireRole,
-  toErrorResponse: vi.fn(() => Response.json({ error: 'auth failed' }, { status: 403 })),
+  getCurrentAccount: mocks.getCurrentAccount,
+  // A resposta genérica da guarda — a da leitura do perfil que falhou.
+  toErrorResponse: vi.fn(() => Response.json({ error: 'Could not load account context' }, { status: 403 })),
 }));
 
 import { POST } from './route';
@@ -66,11 +67,11 @@ function pedir(corpo: unknown, id = NEGOCIO) {
 let cliente: ReturnType<typeof clienteFalso>;
 const usar = (c: ReturnType<typeof clienteFalso>) => {
   cliente = c;
-  mocks.requireRole.mockResolvedValue({ supabase: c, userId: 'u', accountId: 'a', role: 'agent' });
+  mocks.getCurrentAccount.mockResolvedValue({ supabase: c, userId: 'u', accountId: 'a', role: 'agent' });
 };
 
 beforeEach(() => {
-  mocks.requireRole.mockReset();
+  mocks.getCurrentAccount.mockReset();
   usar(clienteFalso({ data: [{ stage_id: PARA, status: 'open' }], error: null }));
 });
 
@@ -79,7 +80,7 @@ describe('POST /api/cb/negocios/[id]/mover', () => {
     const resposta = await pedir({ de: DE, para: PARA });
     expect(resposta.status).toBe(200);
     expect(await resposta.json()).toEqual({ ok: true, stage_id: PARA, status: 'open' });
-    expect(mocks.requireRole).toHaveBeenCalledWith('agent');
+    expect(mocks.getCurrentAccount).toHaveBeenCalled();
     const [update] = cliente.consultas;
     expect(update.patch).toEqual({ stage_id: PARA });
     // ⚠️ A cerca: sem o `stage_id = de`, o card que um colega já tinha levado
@@ -125,8 +126,19 @@ describe('POST /api/cb/negocios/[id]/mover', () => {
     expect((await pedir({ de: DE, para: PARA }, 'nao-e-uuid')).status).toBe(400);
   });
 
-  it('sem o papel: a resposta da guarda', async () => {
-    mocks.requireRole.mockRejectedValue(new Error('forbidden'));
-    expect((await pedir({ de: DE, para: PARA })).status).toBe(403);
+  it('papel abaixo de agent: 403 com código PRÓPRIO, sem tocar no banco (quem chama o trata como definitivo)', async () => {
+    usar(clienteFalso({ data: [], error: null }));
+    mocks.getCurrentAccount.mockResolvedValue({ supabase: cliente, userId: 'u', accountId: 'a', role: 'viewer' });
+    const resposta = await pedir({ de: DE, para: PARA });
+    expect(resposta.status).toBe(403);
+    expect(await resposta.json()).toEqual({ error: 'papel_insuficiente' });
+    expect(cliente.consultas).toEqual([]);
+  });
+
+  it('contexto que não carregou: a resposta genérica da guarda, que quem chama trata como provisória', async () => {
+    mocks.getCurrentAccount.mockRejectedValue(new Error('forbidden'));
+    const resposta = await pedir({ de: DE, para: PARA });
+    expect(resposta.status).toBe(403);
+    expect(await resposta.json()).not.toEqual({ error: 'papel_insuficiente' });
   });
 });

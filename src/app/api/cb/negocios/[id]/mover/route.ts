@@ -23,7 +23,8 @@
 
 import { NextResponse } from 'next/server';
 
-import { requireRole, toErrorResponse } from '@/lib/auth/account';
+import { getCurrentAccount, toErrorResponse } from '@/lib/auth/account';
+import { hasMinRole } from '@/lib/auth/roles';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -33,7 +34,16 @@ export async function POST(
 ) {
   try {
     // `agent` é quem já move card (a RLS de `deals` exige o mesmo papel).
-    const ctx = await requireRole('agent');
+    // ⚠️ Conferido AQUI, e não por `requireRole`: o 403 genérico da guarda
+    // também cobre a leitura do perfil que FALHOU (provisória, e quem chama
+    // tenta de novo), e a recusa por papel precisa de um código próprio, que
+    // quem chama trata como DEFINITIVA. Sem a distinção, o pedido guardado de
+    // quem foi rebaixado a Visualizador seria refeito a cada abertura do app,
+    // para sempre — e ele nem vê o "Desistir" (Codex, PR #340).
+    const ctx = await getCurrentAccount();
+    if (!hasMinRole(ctx.role, 'agent')) {
+      return NextResponse.json({ error: 'papel_insuficiente' }, { status: 403 });
+    }
     const { id } = await params;
     const corpo = (await request.json().catch(() => null)) as {
       de?: unknown;

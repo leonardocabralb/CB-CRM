@@ -110,12 +110,13 @@ seção "Botão de avançar" do Gerenciar funil.
   operador): nada sai nos 4 s; trocar de conversa ou sair do painel conclui na
   hora (`concluirAgora` na limpeza do PAINEL — o botão desmonta ao trocar de
   aba); `pagehide`/`visibilitychange` concluem com `keepalive`; e o pedido
-  fica no `localStorage` até uma resposta DEFINITIVA (ok, 409, 400, 404),
-  para a casca refazer (`useRetomarMovimentosPendentes`). Falha provisória
-  (rede, 5xx, 429, 408, 401 e 403 — `getCurrentAccount` devolve Forbidden
-  quando a LEITURA da conta falha) FICA e a página tenta de novo, com teto
-  (Codex, PR #340). A retomada espera `FOLGA_DA_RETOMADA_MS` depois do
-  prazo: outra aba lê a mesma fila.
+  fica no `localStorage` até uma resposta DEFINITIVA (ok, 409, 400, 404 e o
+  403 `papel_insuficiente` da rota — o rebaixado a Visualizador não vê o
+  "Desistir"), para a casca refazer (`useRetomarMovimentosPendentes`). Falha
+  provisória (rede, 5xx, 429, 408, 401 e o 403 genérico — `getCurrentAccount`
+  devolve Forbidden quando a LEITURA da conta falha) FICA e a página tenta de
+  novo, com teto (Codex, PR #340). A retomada espera `FOLGA_DA_RETOMADA_MS`
+  depois do prazo: outra aba lê a mesma fila.
 - ⚠️ **A rota só move se o card AINDA está na origem** (`.eq('stage_id', de)`);
   409 com o card já no destino conta como feito. O update incondicional
   levaria para trás o card que um colega moveu nesses segundos.

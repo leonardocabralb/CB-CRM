@@ -162,14 +162,24 @@ describe('a resposta da rota', () => {
     expect(fila()).toEqual([]);
   });
 
-  it('recusa DEFINITIVA (400, 404): avisa e tira da fila — tentar de novo daria o mesmo', async () => {
-    for (const status of [400, 404]) {
-      respostas.push({ ok: false, status });
+  it('recusa DEFINITIVA (400, 404 e o 403 do papel insuficiente): avisa e tira da fila — tentar de novo daria o mesmo', async () => {
+    const definitivas: Resposta[] = [
+      { ok: false, status: 400 },
+      { ok: false, status: 404 },
+      // Quem foi rebaixado a Visualizador não vê o botão nem o "Desistir":
+      // refazer a cada abertura do app seria para sempre (Codex, PR #340).
+      { ok: false, status: 403, corpo: { error: 'papel_insuficiente' } },
+    ];
+    for (const resposta of definitivas) {
+      respostas.push(resposta);
       agendarMovimento(pedido(), USUARIO);
       await esperar(ESPERA_PARA_DESFAZER_MS);
       expect(erro).toHaveBeenLastCalledWith('falhou');
       expect(fila()).toEqual([]);
+      expect(fotoDoMovimento('negocio-1')).toBeNull();
     }
+    await esperar(INTERVALO_DE_NOVA_TENTATIVA_MS * 3);
+    expect(enviar).toHaveBeenCalledTimes(definitivas.length);
   });
 });
 
@@ -274,7 +284,9 @@ describe('a reserva no aparelho', () => {
         drenar,
       });
       guardado.clear();
-      respostas.push({ ok: false, status });
+      // O 403 é o da guarda quando a leitura do perfil falha — sem o código
+      // `papel_insuficiente`, que é o único 403 definitivo.
+      respostas.push({ ok: false, status, corpo: { error: status === 403 ? 'Could not load account context' : 'Unauthorized' } });
       agendarMovimento(pedido(), USUARIO);
       await esperar(ESPERA_PARA_DESFAZER_MS);
       expect(fila()).toHaveLength(1);
