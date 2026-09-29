@@ -85,28 +85,50 @@ export function ExecutarAutomacaoDialog({
     const supabase = createClient();
     let cancelado = false;
     void (async () => {
-      // SEM filtro de ligada/ativo: as desligadas também aparecem (no fim,
-      // sem clique). Quem separa é `separarParaExecutar`.
-      const [autosRes, robosRes] = await Promise.all([
+      // As desligadas também aparecem (no fim, sem clique); quem separa os
+      // grupos na tela é `separarParaExecutar`.
+      // ⚠️ Ligadas e desligadas em consultas SEPARADAS (Codex, PR #343): o
+      // PostgREST corta em 1000 linhas sem avisar, e numa consulta só, em
+      // ordem de nome, as desligadas do começo do alfabeto empurrariam para
+      // fora do teto automações que dá para executar. Assim o que roda chega
+      // como chegava antes; as desligadas vêm à parte, só para serem vistas.
+      const colunasDaAutomacao = "id, name, description, channel_ids, trigger_type, is_active";
+      const colunasDoRobo = "id, name, channel_id, status";
+      const [autosLigadas, autosDesligadas, robosAtivos, robosInativos] = await Promise.all([
         supabase
           .from("automations")
-          .select("id, name, description, channel_ids, trigger_type, is_active")
+          .select(colunasDaAutomacao)
+          .eq("is_active", true)
+          .order("name"),
+        // `IS NOT TRUE`: nulo também é desligada (a régua de `separarParaExecutar`).
+        supabase
+          .from("automations")
+          .select(colunasDaAutomacao)
+          .not("is_active", "is", true)
           .order("name"),
         supabase
           .from("flows")
-          .select("id, name, channel_id, status")
+          .select(colunasDoRobo)
+          .eq("status", "active")
+          .order("name"),
+        supabase
+          .from("flows")
+          .select(colunasDoRobo)
+          .or("status.is.null,status.neq.active")
           .order("name"),
       ]);
       if (cancelado) return;
-      if (autosRes.error || robosRes.error) {
-        console.error(
-          "[executar] carga falhou:",
-          autosRes.error?.message ?? robosRes.error?.message,
-        );
+      const falha =
+        autosLigadas.error ?? autosDesligadas.error ?? robosAtivos.error ?? robosInativos.error;
+      if (falha) {
+        console.error("[executar] carga falhou:", falha.message);
         setErroCarga(true);
       } else {
-        setAutomacoes((autosRes.data ?? []) as AutomacaoParaExecutar[]);
-        setRobos((robosRes.data ?? []) as RoboParaExecutar[]);
+        setAutomacoes([
+          ...(autosLigadas.data ?? []),
+          ...(autosDesligadas.data ?? []),
+        ] as AutomacaoParaExecutar[]);
+        setRobos([...(robosAtivos.data ?? []), ...(robosInativos.data ?? [])] as RoboParaExecutar[]);
       }
       setCarregou(true);
     })();
