@@ -934,6 +934,13 @@ export interface PipelineStage {
    * `resultado` e de `degrau`.
    */
   desfecho_da_reuniao?: 'compareceu' | 'faltou' | null;
+  /**
+   * As etapas que o botão "avançar" do painel recomenda depois desta, na
+   * ordem — a primeira é o botão principal (1061). NULL = automático (para a
+   * frente, 30 dias); vazio = nenhuma. A regra mora em
+   * `src/lib/pipelines/etapas-recomendadas.ts`.
+   */
+  proximas_etapas?: string[] | null;
   created_at: string;
 }
 

@@ -90,6 +90,36 @@ funis. As métricas (Lista, Desempenho, Saúde, Meta Ads) estão em
   avisos de conexão que usa o funil ou a etapa. Com três seletores por etapa o
   diálogo é `sm:max-w-2xl`: a 448 px o nome da etapa ficava com 22 px.
 
+### Botão "avançar" no cartão de negócio do painel (1061)
+
+`src/lib/pipelines/etapas-recomendadas.ts` (a regra) e `mover-com-desfazer.ts`
+(o movimento), pinos ao lado; a rota `POST /api/cb/negocios/[id]/mover` e a
+seção "Botão de avançar" do Gerenciar funil.
+
+- ⚠️ **Automático só para a FRENTE** (decisão do operador): as etapas de
+  posição maior mais usadas em 30 dias, com pelo menos 2 movimentos; perda
+  nunca é o botão principal; etapa de ganho ou perda não recomenda. A volta
+  (No Show → Reunião Agendada) é escolha à mão: `proximas_etapas` (NULL =
+  automático, vazio = nenhuma, a 1ª é o principal; id órfão ou de outro funil
+  é ignorado ao ler).
+- ⚠️⚠️ **A contagem é por `occurred_at`, nunca `created_at`**
+  (`cb_movimentos_entre_etapas`): a carga da Kommo gravou a trilha retroativa
+  com a data histórica só em `occurred_at`. Pino
+  `supabase/migrations/etapas-recomendadas-1061.test.ts`.
+- ⚠️⚠️ **O movimento só deixa de acontecer pelo "Desfazer"** (decisão do
+  operador): nada sai nos 4 s; trocar de conversa ou sair do painel conclui na
+  hora (`concluirAgora` na limpeza do PAINEL — o botão desmonta ao trocar de
+  aba); `pagehide`/`visibilitychange` concluem com `keepalive`; e o pedido
+  fica no `localStorage` até o servidor responder, para a casca refazer
+  (`useRetomarMovimentosPendentes`). A retomada espera
+  `FOLGA_DA_RETOMADA_MS` depois do prazo: outra aba lê a mesma fila.
+- ⚠️ **A rota só move se o card AINDA está na origem** (`.eq('stage_id', de)`);
+  409 com o card já no destino conta como feito. O update incondicional
+  levaria para trás o card que um colega moveu nesses segundos.
+- **Um movimento por vez**: na janela, as recomendações somem e o seletor de
+  etapa e os botões Ganho/Perdido travam (perdido marcado no meio seria
+  reaberto pela 1031 quando o movimento saísse para etapa neutra).
+
 ### Concorrência do quadro: leituras, arrastos e formulários
 
 O quadro não tem realtime, e toda tela que grava negócio parte de uma foto.

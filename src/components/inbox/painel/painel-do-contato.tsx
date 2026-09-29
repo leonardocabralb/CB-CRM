@@ -31,6 +31,10 @@ import { ContactTasks } from '@/components/tasks/contact-tasks';
 import { CustomFieldsManager } from '@/components/contacts/custom-fields-manager';
 import { DealForm } from '@/components/pipelines/deal-form';
 import { SeletorFunilEtapa } from '@/components/inbox/painel/seletor-funil-etapa';
+import { AvancarEtapa } from '@/components/inbox/painel/avancar-etapa';
+import { useMovimentoDeEtapa } from '@/hooks/use-movimento-de-etapa';
+import { useMovimentosDoFunil } from '@/hooks/use-movimentos-do-funil';
+import { aoConcluirMovimento, concluirAgora } from '@/lib/pipelines/mover-com-desfazer';
 import { AbaAutomacoes } from '@/components/inbox/painel/aba-automacoes';
 import { AbaArquivos } from '@/components/inbox/painel/aba-arquivos';
 import { AbaCobrancas } from '@/components/inbox/painel/aba-cobrancas';
@@ -377,6 +381,23 @@ export function PainelDoContato({
       : undefined;
     return fixado ?? deals.find((d) => d.status === 'open') ?? deals[0] ?? null;
   }, [deals, ultimoNegocioMexido]);
+
+  // O botão "avançar" (1061): os movimentos do funil em 30 dias alimentam o
+  // automático, e o movimento na janela de desfazer trava o seletor de etapa
+  // — um movimento por vez (ver `avancar-etapa.tsx`).
+  const movimentosDoFunil = useMovimentosDoFunil(dealAtivo?.pipeline_id);
+  const movimentoDoNegocio = useMovimentoDeEtapa(dealAtivo?.id);
+  const movendoEtapa =
+    movimentoDoNegocio?.fase === 'aguardando' || movimentoDoNegocio?.fase === 'enviando';
+
+  // ⚠️ Trocar de conversa (ou sair do painel) com o movimento na janela de
+  // desfazer CONCLUI o movimento na hora — nunca o perde (decisão do
+  // operador, 29/09/2026). O aviso vira toast: o cartão já não está à vista.
+  const dealAtivoId = dealAtivo?.id ?? null;
+  useEffect(() => {
+    if (!dealAtivoId) return;
+    return () => concluirAgora(dealAtivoId, { avisarPorToast: true });
+  }, [dealAtivoId]);
 
   /**
    * Etapas do DealForm MEMOIZADAS. Até 23/09/2026 a identidade era o ponto:
@@ -773,6 +794,46 @@ export function PainelDoContato({
     [atualizarNegocio]
   );
 
+  /**
+   * O movimento do botão "avançar" terminou (às vezes com o cartão de outro
+   * cliente na tela, às vezes sem cartão nenhum): o estado local segue o que
+   * o BANCO gravou — a etapa e o status que o gatilho da 950/1031 carimbou.
+   * "Já tinha mudado" refaz a busca: a tela estava vendo um card velho.
+   */
+  const etapasRef = useRef(allStages);
+  const negociosRef = useRef(deals);
+  useEffect(() => {
+    etapasRef.current = allStages;
+    negociosRef.current = deals;
+  }, [allStages, deals]);
+  useEffect(
+    () =>
+      aoConcluirMovimento(({ dealId, resultado }) => {
+        if (!negociosRef.current.some((d) => d.id === dealId)) return;
+        if (resultado.tipo === 'movido') {
+          setDeals((prev) =>
+            prev.map((d) =>
+              d.id === dealId
+                ? {
+                    ...d,
+                    stage_id: resultado.stageId,
+                    ...(resultado.status ? { status: resultado.status } : {}),
+                    stage:
+                      etapasRef.current.find((st) => st.id === resultado.stageId) ?? d.stage,
+                  }
+                : d
+            )
+          );
+          // Ancora o cartão: movido para uma etapa de perda, ele não salta
+          // para outro negócio aberto no meio da interação.
+          setUltimoNegocioMexido(dealId);
+        } else if (resultado.tipo === 'mudou') {
+          void fetchContactData();
+        }
+      }),
+    [fetchContactData]
+  );
+
   const mudarStatus = useCallback(
     (deal: Deal, status: DealStatus) => {
       const toasts: Record<DealStatus, string> = {
@@ -1118,9 +1179,20 @@ export function PainelDoContato({
                   pipelineId={dealAtivo.pipeline_id}
                   stageId={dealAtivo.stage_id}
                   onEscolher={(pId, sId) => moverPara(dealAtivo, pId, sId)}
-                  disabled={!podeEditar || negocioOcupado}
+                  disabled={!podeEditar || negocioOcupado || movendoEtapa}
                   ariaLabel={tForm('stage')}
                 />
+
+                {podeEditar && user && (
+                  <AvancarEtapa
+                    deal={dealAtivo}
+                    etapas={allStages}
+                    movimentos={movimentosDoFunil}
+                    contato={displayName}
+                    userId={user.id}
+                    disabled={negocioOcupado}
+                  />
+                )}
 
                 <div className="flex items-center gap-2">
                   {/* Sem `key` de reset aqui, ao contrário da data logo
@@ -1207,7 +1279,7 @@ export function PainelDoContato({
                           <Button
                             size="sm"
                             variant="outline"
-                            disabled={negocioOcupado}
+                            disabled={negocioOcupado || movendoEtapa}
                             onClick={() => mudarStatus(dealAtivo, 'won')}
                             className="border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-400"
                           >
@@ -1216,7 +1288,7 @@ export function PainelDoContato({
                           <Button
                             size="sm"
                             variant="outline"
-                            disabled={negocioOcupado}
+                            disabled={negocioOcupado || movendoEtapa}
                             onClick={() => mudarStatus(dealAtivo, 'lost')}
                             className="border-destructive/40 text-destructive hover:bg-destructive/10"
                           >
@@ -1227,7 +1299,7 @@ export function PainelDoContato({
                         <Button
                           size="sm"
                           variant="outline"
-                          disabled={negocioOcupado}
+                          disabled={negocioOcupado || movendoEtapa}
                           onClick={() => mudarStatus(dealAtivo, 'open')}
                           className="w-full"
                         >
