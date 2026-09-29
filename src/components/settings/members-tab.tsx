@@ -32,7 +32,6 @@ import {
   Plus,
   Smartphone,
   Trash2,
-  UserCheck,
   UserX,
   UsersRound,
 } from 'lucide-react';
@@ -66,6 +65,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { useTranslations } from 'next-intl';
 import { RequireRole } from '@/components/auth/require-role';
 import { useAuth } from '@/hooks/use-auth';
@@ -565,21 +565,43 @@ export function MembersTab() {
                     </div>
                   </div>
 
-                  {/* Situação (1064) — a coluna que o operador pediu. Em
-                      toda linha, inclusive a do dono, para a coluna não
-                      "pular": o dono nunca é suspenso, e diz Ativo. */}
-                  <div className="flex shrink-0 flex-col items-start gap-0.5 sm:w-32 sm:items-center">
-                    <span
-                      className={
-                        suspenso
-                          ? 'inline-flex items-center rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300'
-                          : 'inline-flex items-center rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300'
-                      }
-                    >
-                      {suspenso ? t('statusSuspended') : t('statusActive')}
-                    </span>
-                    {suspenso && member.suspenso_em && (
-                      <span className="text-[11px] text-muted-foreground sm:text-center">
+                  {/* Situação (1064) — a coluna que o operador pediu: a
+                      chave desliga e religa o acesso (admin+, nunca o dono,
+                      nunca a si mesmo — a régua do remover). Desligar abre a
+                      confirmação com as conversas abertas; religar é um
+                      clique. Em toda linha, inclusive a do dono, para a
+                      coluna não "pular": o dono nunca é suspenso, e diz Ativo.
+                      ⚠️ A data de entrada mora AQUI, e não numa coluna
+                      própria: com a chave, o seletor de perfil e o papel na
+                      mesma linha, aquela coluna espremia o nome numa letra
+                      (medido a 1440 px: 64 px para avatar e nome). */}
+                  <div className="flex shrink-0 flex-col items-start gap-1 sm:w-40">
+                    <div className="flex items-center gap-2">
+                      {canManageMembers && !isOwnerRow && !isSelf && (
+                        <Switch
+                          checked={!suspenso}
+                          onCheckedChange={(ativo) =>
+                            ativo
+                              ? void handleSuspensao(member, false)
+                              : void abrirSuspensao(member)
+                          }
+                          disabled={isBusy}
+                          aria-label={suspenso ? t('reactivate') : t('suspend')}
+                          title={suspenso ? t('reactivate') : t('suspend')}
+                        />
+                      )}
+                      <span
+                        className={
+                          suspenso
+                            ? 'inline-flex items-center rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300'
+                            : 'inline-flex items-center rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300'
+                        }
+                      >
+                        {suspenso ? t('statusSuspended') : t('statusActive')}
+                      </span>
+                    </div>
+                    {suspenso && member.suspenso_em ? (
+                      <span className="text-[11px] text-muted-foreground">
                         {member.suspenso_por_nome
                           ? t('suspendedSinceBy', {
                               date: fmtDate(member.suspenso_em),
@@ -589,13 +611,13 @@ export function MembersTab() {
                               date: fmtDate(member.suspenso_em),
                             })}
                       </span>
+                    ) : (
+                      // A data de entrada continua só no desktop: no celular a
+                      // linha já empilha tudo, e ela vira ruído.
+                      <span className="hidden text-[11px] text-muted-foreground sm:block">
+                        {t('joined', { date: fmtDate(member.joined_at) })}
+                      </span>
                     )}
-                  </div>
-
-                  {/* Joined date stays desktop-only. The mobile row's
-                      vertical density makes the joined date noise. */}
-                  <div className="hidden sm:block text-right text-xs text-muted-foreground">
-                    {t('joined', { date: fmtDate(member.joined_at) })}
                   </div>
 
                   {/* Actions cluster. On mobile this is its own row
@@ -674,37 +696,6 @@ export function MembersTab() {
                         {tRoles(member.role)}
                       </span>
                     )}
-
-                    {/* Suspender / reativar (1064). A régua do remover:
-                        admin+, nunca o dono, nunca a si mesmo. Suspender
-                        pede confirmação; reativar é um clique. */}
-                    {canManageMembers && !isOwnerRow && !isSelf &&
-                      (suspenso ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleSuspensao(member, false)}
-                          disabled={isBusy}
-                        >
-                          {isBusy ? (
-                            <Loader2 className="size-4 animate-spin" />
-                          ) : (
-                            <UserCheck className="size-4" />
-                          )}
-                          {t('reactivate')}
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => void abrirSuspensao(member)}
-                          disabled={isBusy}
-                          className="border-amber-500/40 text-amber-700 hover:bg-amber-500/10 dark:text-amber-300"
-                        >
-                          <UserX className="size-4" />
-                          {t('suspend')}
-                        </Button>
-                      ))}
 
                     {/* Remove. Admin+ only; never on the owner row;
                         never on yourself. Pre-polish styling was
