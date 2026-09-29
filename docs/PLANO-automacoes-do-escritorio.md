@@ -256,19 +256,27 @@ o cliente de receber tudo duas vezes). Sem a etiqueta, nesta ordem:
 5. manda as **boas-vindas pelo Bancário - Jurídico** (3.1);
 6. espera 10 s, cria a **tarefa** para a equipe (3.2);
 7. move o card para **Bancário - Jurídico → Cliente Ativo**;
-8. espera **2 minutos** e **aciona a automação de Documentos** (seção 4);
-9. **por último, avisa o Atlas e a planilha** (3.3).
+8. **avisa o Atlas e a planilha** (3.3);
+9. **por último, fixa a conversa no número Bancário - Jurídico** (seção 8,
+   29/09/2026).
 
-> **Por que o aviso ao Atlas é o último passo** (antes vinha logo depois do
-> passo 2): passo que falha encerra a execução, e a trava por etiqueta impede
-> rodar de novo. Com o aviso antes, um soluço do n8n (fora do ar, fluxo
-> desativado, mais de 10 s para responder) deixaria o cliente sem
-> boas-vindas, sem o card no Jurídico ou sem os documentos — e sem como
-> repetir. Por último, uma falha dele só deixa de criar a linha no Atlas e na
-> planilha, e o resto já aconteceu; a falha aparece na conversa como
-> automação que falhou, e a linha é criada à mão. (A primeira gravação deixou
-> o aviso antes dos documentos; a verificação independente pegou e a ordem
-> foi corrigida no mesmo dia.)
+Os passos "espera 2 minutos" e "aciona a automação de Documentos" (seção 4)
+saíram na ligação de 29/09/2026, pelo operador; a de Documentos segue
+desligada.
+
+> **Por que o aviso ao Atlas vem no fim** (antes vinha logo depois do passo
+> 2): passo que falha encerra a execução, e a trava por etiqueta impede rodar
+> de novo. Com o aviso antes, um soluço do n8n (fora do ar, fluxo desativado,
+> mais de 10 s para responder) deixaria o cliente sem boas-vindas, sem o card
+> no Jurídico ou sem os documentos — e sem como repetir. No fim, uma falha
+> dele só deixa de criar a linha no Atlas e na planilha — e de fixar a
+> conversa no Jurídico, o único passo depois dele —; a falha aparece na
+> conversa como automação que falhou, a linha é criada à mão e a conversa se
+> fixa pelo número do cabeçalho. O "Fixar" ficou DEPOIS do aviso de
+> propósito: a falha dele (conexão apagada, contato sem telefone) não pode
+> tirar o cliente do Atlas. (A primeira gravação deixou o aviso antes dos
+> documentos; a verificação independente pegou e a ordem foi corrigida no
+> mesmo dia.)
 
 **3.1 — boas-vindas ao cliente** ✅ aprovado · sai pelo **Bancário - Jurídico**
 
@@ -366,7 +374,9 @@ com 10 segundos entre as mensagens e a planilha no fim.
 > ⚠️ **Ligar esta ANTES da de contrato fechado.** O motor se recusa a acionar
 > automação desligada — de propósito, para o interruptor continuar sendo o
 > freio. Com esta desligada, o contrato fechado terminaria em "falhou" no
-> último passo.
+> passo que a aciona. (29/09/2026: o operador tirou esse passo — e a espera
+> de 2 minutos — do contrato fechado ao ligá-lo; religar os documentos pede
+> o passo de volta lá.)
 
 **4.1**
 
@@ -521,7 +531,9 @@ Pelo Jurídico:
   (decisão do operador; gravado em 29/09/2026) — as boas-vindas já saem pelo
   Jurídico. É o ÚLTIMO passo, depois do envio ao n8n: passo que falha encerra
   a execução, e ali a falha dele não impede a tarefa, a mudança para Cliente
-  Ativo nem o Atlas.
+  Ativo nem o Atlas. O preço: se o envio ao n8n falhar, a conversa desse
+  cliente fica sem fixar — a equipe fixa à mão pelo número do cabeçalho (a
+  falha aparece na conversa). Ordem e motivo: seção 3.
 - Depois do aviso, cada mensagem do cliente no Comercial roda a automação de
   novo e ela para na trava da etiqueta: uma pílula cinza "barrada" por dia no
   fio, agrupada — é a forma das travas, e diz que o cliente insistiu no número
@@ -570,7 +582,8 @@ mensagem saem formatadas ("R$ 3.500,00", "30/08/2026 às 16:00h"); no webhook e
 ao gravar campo, cruas (`3500`, data ISO). O corpo do webhook passou a
 escapar cada valor — um nome com aspas quebrava o JSON inteiro.
 
-**O corpo que o CRM manda ao n8n** (o último passo do contrato fechado):
+**O corpo que o CRM manda ao n8n** (o penúltimo passo do contrato fechado;
+o último é o "Fixar a conversa no número", seção 8):
 
 ```
 {
@@ -630,7 +643,10 @@ resolvidas, o teste é o primeiro passo depois de ligar, num card de teste.
   documentos** (antes vinha logo depois do "mover"), para uma falha dele não
   impedir o resto. Escolha do implementador em 23/09, que substitui a decisão
   de 08/09 "mover para o funil Jurídico é o último passo" — o "mover" continua
-  antes da espera e dos documentos.
+  antes da espera e dos documentos. (29/09/2026: os documentos e a espera
+  saíram, e o aviso passou a PENÚLTIMO — depois dele vem o "Fixar a conversa
+  no número", seção 8, de propósito: a falha do "Fixar" não tira o cliente do
+  Atlas.)
 - **Atlas e planilha pelo n8n, não por integração própria do CRM**: o CRM
   manda os dados, o n8n formata e distribui; as chaves do Atlas e do Google
   ficam só no n8n. (23/09)
