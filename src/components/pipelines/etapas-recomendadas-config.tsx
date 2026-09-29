@@ -92,11 +92,17 @@ export function EtapasRecomendadasConfig({
                 >
                   {resumo(etapa)}
                 </span>
+                {/* ⚠️ Travado enquanto o histórico carrega: a primeira caixa
+                    mexida parte do que o automático sugere, e sem o
+                    histórico (ou com o do funil aberto antes) essa sugestão
+                    sairia vazia — a escolha à mão nasceria sem as etapas
+                    que a tela promete aproveitar (Codex, PR #340). */}
                 <button
                   type="button"
+                  disabled={historico === 'carregando'}
                   onClick={() => setAberta(estaAberta ? null : etapa.id)}
                   aria-expanded={estaAberta}
-                  className="shrink-0 rounded-md px-1.5 py-0.5 text-xs font-medium text-primary transition-colors hover:bg-card"
+                  className="shrink-0 rounded-md px-1.5 py-0.5 text-xs font-medium text-primary transition-colors hover:bg-card disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {estaAberta ? t('fechar') : t('escolher')}
                 </button>

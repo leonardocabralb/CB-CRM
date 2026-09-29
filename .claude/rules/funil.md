@@ -113,8 +113,9 @@ seção "Botão de avançar" do Gerenciar funil.
   fica no `localStorage` até uma resposta DEFINITIVA (ok, 409, 400, 404 e o
   403 `papel_insuficiente` da rota — o rebaixado a Visualizador não vê o
   "Desistir"), para a casca refazer (`useRetomarMovimentosPendentes`). Falha
-  provisória (rede, 5xx, 429, 408, 401 e o 403 genérico — `getCurrentAccount`
-  devolve Forbidden quando a LEITURA da conta falha) FICA e a página tenta de
+  provisória (rede, 5xx, 429, 408, 401, o 403 genérico — `getCurrentAccount`
+  devolve Forbidden quando a LEITURA da conta falha — e o envio sem resposta
+  em `TEMPO_MAXIMO_DO_ENVIO_MS`, a conexão travada) FICA e a página tenta de
   novo, com teto (Codex, PR #340). A retomada espera `FOLGA_DA_RETOMADA_MS`
   depois do prazo: outra aba lê a mesma fila.
 - ⚠️ **A rota só move se o card AINDA está na origem** (`.eq('stage_id', de)`);

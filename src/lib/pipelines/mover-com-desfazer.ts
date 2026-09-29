@@ -63,6 +63,9 @@ export const INTERVALO_DE_NOVA_TENTATIVA_MS = 30_000;
 /** …até este número de vezes; depois, só na volta à aba, na volta da conexão ou na abertura. */
 export const MAXIMO_DE_TENTATIVAS_NA_PAGINA = 10;
 
+/** Envio sem resposta nesse tempo vira falha provisória (a rota responde em menos de 1 s). */
+export const TEMPO_MAXIMO_DO_ENVIO_MS = 15_000;
+
 /**
  * A resposta que não decide nada: o servidor não conseguiu (5xx num deploy,
  * banco lento), mandou esperar (429, 408) ou a sessão venceu (401 — o login
@@ -302,31 +305,53 @@ async function enviar(pedido: Pendente, avisarPorToast: boolean): Promise<void> 
   emVoo.add(pedido.id);
   definirFoto(pedido.dealId, { fase: 'enviando', para: pedido.para });
 
-  let resposta: Response;
+  type Corpo = { stage_id?: unknown; status?: unknown; error?: unknown };
+  const controle = new AbortController();
+  let relogio: ReturnType<typeof setTimeout> | undefined;
+  let respondido: { resposta: Response; corpo: Corpo };
   try {
-    resposta = await ambiente.enviar(`/api/cb/negocios/${pedido.dealId}/mover`, {
-      method: 'POST',
-      // O pedido sobrevive à página: é o que faz atualizar ou fechar a aba
-      // no meio da espera ainda mover o card.
-      keepalive: true,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ de: pedido.de, para: pedido.para }),
-    });
+    respondido = await Promise.race([
+      (async () => {
+        const resposta = await ambiente.enviar(`/api/cb/negocios/${pedido.dealId}/mover`, {
+          method: 'POST',
+          // O pedido sobrevive à página: é o que faz atualizar ou fechar a
+          // aba no meio da espera ainda mover o card.
+          keepalive: true,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ de: pedido.de, para: pedido.para }),
+          signal: controle.signal,
+        });
+        // O corpo é lido ANTES de decidir se a falha é provisória: é ele que
+        // separa o 403 do papel insuficiente (definitivo) do 403 da conta
+        // que não carregou (provisório).
+        let corpo: Corpo = {};
+        try {
+          corpo = (await resposta.json()) as Corpo;
+        } catch {
+          // Corpo ilegível: decide pelo status.
+        }
+        return { resposta, corpo };
+      })(),
+      // Conexão travada (sinal ruim no celular) não rejeita: sem o prazo, o
+      // pedido ficaria "em voo" para sempre, o card girando, e nenhuma nova
+      // tentativa o mandaria de novo (Codex, PR #340).
+      new Promise<never>((_, rejeitar) => {
+        relogio = setTimeout(() => {
+          controle.abort();
+          rejeitar(new Error('tempo esgotado'));
+        }, TEMPO_MAXIMO_DO_ENVIO_MS);
+      }),
+    ]);
   } catch {
-    // Não chegou ao servidor: o pedido CONTINUA na fila.
+    // Não chegou ao servidor, ou não respondeu a tempo: o pedido CONTINUA na
+    // fila. Se ele chegou mesmo assim, a nova tentativa recebe 409 no destino
+    // e conta como feito.
     tentarDeNovoMaisTarde(pedido);
     return;
+  } finally {
+    clearTimeout(relogio);
   }
-
-  // O corpo é lido ANTES de decidir se a falha é provisória: é ele que
-  // separa o 403 do papel insuficiente (definitivo) do 403 da conta que não
-  // carregou (provisório).
-  let corpo: { stage_id?: unknown; status?: unknown; error?: unknown } = {};
-  try {
-    corpo = (await resposta.json()) as typeof corpo;
-  } catch {
-    // Corpo ilegível: decide pelo status.
-  }
+  const { resposta, corpo } = respondido;
   const papelInsuficiente = resposta.status === 403 && corpo.error === 'papel_insuficiente';
   if (ehProvisoria(resposta.status) && !papelInsuficiente) {
     tentarDeNovoMaisTarde(pedido);

@@ -17,6 +17,7 @@ import {
   type PedidoDeMovimento,
   retomarMovimentosPendentes,
   TEMPO_DO_AVISO_MS,
+  TEMPO_MAXIMO_DO_ENVIO_MS,
   tentarAgora,
 } from './mover-com-desfazer';
 
@@ -207,6 +208,29 @@ describe('a reserva no aparelho', () => {
     expect(fila()).toEqual([]);
     // A nova tentativa fez o movimento: o toast diz, porque a linha pode nem estar à vista.
     expect(sucesso).toHaveBeenCalledWith('movido');
+    expect(conclusoes[0].resultado.tipo).toBe('movido');
+  });
+
+  it('conexão TRAVADA (o envio não responde nem falha): depois do prazo vira falha provisória, e a nova tentativa manda de novo (Codex, PR #340)', async () => {
+    let sinal: AbortSignal | undefined;
+    enviar.mockImplementationOnce((_url, init) => {
+      sinal = (init as { signal?: AbortSignal }).signal;
+      return new Promise<Response>(() => {});
+    });
+    agendarMovimento(pedido(), USUARIO);
+    await esperar(ESPERA_PARA_DESFAZER_MS);
+    expect(fotoDoMovimento('negocio-1')).toEqual({ fase: 'enviando', para: 'etapa-b' });
+
+    await esperar(TEMPO_MAXIMO_DO_ENVIO_MS);
+    expect(sinal?.aborted).toBe(true);
+    // Os botões do pedido guardado voltam, em vez do card girando para sempre.
+    expect(fotoDoMovimento('negocio-1')).toEqual({ fase: 'tentando', para: 'etapa-b' });
+    expect(fila()).toHaveLength(1);
+    expect(erro).toHaveBeenCalledWith('tentando de novo');
+
+    await esperar(INTERVALO_DE_NOVA_TENTATIVA_MS);
+    expect(enviar).toHaveBeenCalledTimes(2);
+    expect(fila()).toEqual([]);
     expect(conclusoes[0].resultado.tipo).toBe('movido');
   });
 
