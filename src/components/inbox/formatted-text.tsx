@@ -12,6 +12,8 @@ import { Fragment } from "react";
 import { parseWhatsAppFormat, type NoFormatado } from "@/lib/inbox/whatsapp-format";
 import { cn } from "@/lib/utils";
 
+import { LinkDoTexto } from "./texto-com-links";
+
 function renderizar(nos: NoFormatado[], chave = ""): React.ReactNode {
   return nos.map((no, i) => {
     const k = `${chave}.${i}`;
@@ -33,6 +35,9 @@ function renderizar(nos: NoFormatado[], chave = ""): React.ReactNode {
             {no.texto}
           </code>
         );
+      // Endereço (29/09/2026): clicável, abre em aba nova.
+      case "link":
+        return <LinkDoTexto key={k} href={no.href} texto={no.texto} />;
     }
   });
 }

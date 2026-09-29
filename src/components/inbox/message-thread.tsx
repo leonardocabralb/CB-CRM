@@ -18,6 +18,7 @@ import { dividaDoContato, leituraAindaFresca, type RespostaDoResumo } from "@/li
 import { ExecutarAutomacaoDialog } from "./executar-automacao-dialog";
 import { CopiarLinkDaConversa } from "@/components/inbox/copiar-link-da-conversa";
 import { AvataresNaConversa } from "./avatares-na-conversa";
+import { FaixaDePresenca } from "./faixa-de-presenca";
 import { useQuemVeAConversa } from "@/hooks/use-conversa-aberta";
 import { intercalar, type ItemDaLinhaDoTempo } from "@/lib/lead-events/describe";
 import {
@@ -3127,6 +3128,13 @@ export function MessageThread({
         podeAgir={podeEnviar}
         resyncToken={agendadasResync}
       />
+
+      {/* Faixa PRESENÇA (963, pedido do operador em 29/09/2026): quem MAIS
+          está com esta conversa aberta, em frase, perto de onde se responde
+          — os avatares do cabeçalho eram discretos demais. Abaixo das
+          agendadas e ACIMA do aviso de número divergente, que continua
+          colado no compositor (o comentário dele diz por quê). */}
+      <FaixaDePresenca userIds={vendoAgora} profiles={profiles} />
 
       {/* ⚠️ A última mensagem do cliente chegou por um NÚMERO e a resposta
           vai sair por OUTRO — o que, no celular dele, quer dizer que a

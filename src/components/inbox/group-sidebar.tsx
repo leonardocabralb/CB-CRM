@@ -412,7 +412,7 @@ export function GroupSidebar({
             />
           ) : null}
 
-          <div className="mt-2 space-y-2">
+          <div className="mt-3 space-y-3">
             {notas.map((note) => (
               // Sem `onFixar`: nota de grupo não fixa (o índice parcial da
               // 951 exige `contact_id`, que grupo não tem).

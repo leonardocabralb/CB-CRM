@@ -47,7 +47,12 @@ export type EstadoDosCampos =
   | { status: "falhou" }
   | { status: "pronto"; todos: CustomField[]; grupos: GrupoDeCampos[] }
 
-function useCamposDaConta(contaId: string | null): {
+/**
+ * Os campos e os blocos da conta, em três estados. Também é a fonte do
+ * seletor de variáveis do construtor (`variaveis/contexto.tsx`): o mesmo
+ * recorte pela conta, pelo mesmo motivo.
+ */
+export function useCamposDaConta(contaId: string | null): {
   estado: EstadoDosCampos
   tentarDeNovo: () => void
 } {

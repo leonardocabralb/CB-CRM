@@ -479,6 +479,10 @@ O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
 - Caixa de entrada: filtro salvo é de cada membro; Encerradas não é filtro
   nem vai na visão salva; busca no corpo das mensagens desligada por padrão.
 - Ficha: um bloco de campos por vez, em menu horizontal.
+- Notas do painel: a caixa de escrever vem ANTES da fixada, e a fixada nasce
+  recolhida (29/09/2026).
+- Quem mais está com a conversa aberta: frase acima do compositor, além dos
+  avatares do cabeçalho (29/09/2026).
 - Canal: a faixa de divergência só informa, não bloqueia; cor derivada; anel
   no avatar e trilha colorida foram descartados.
 - IA: chave por PROVEDOR, uma para a conta toda — nunca por conexão
@@ -548,6 +552,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   até estar dentro do horário".
 - `.claude/rules/automacoes-abas.md` — as abas da tela de Automações (1055),
   criadas por cada conta; "Geral" é `area_id` nulo.
+- `.claude/rules/automacoes-variaveis.md` — botão "Inserir campo", editor
+  com etiquetas (o texto gravado não muda), exemplos e prévia com cliente.
 - `.claude/rules/funil.md` — card abre a conversa, ganho/perdido, título do
   card, `createDeal`, FKs compostas, concorrência do quadro.
 - `.claude/rules/funil-metricas.md` — degraus, coorte × por período,

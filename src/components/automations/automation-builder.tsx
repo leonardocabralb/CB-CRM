@@ -50,7 +50,6 @@ import {
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import {
   DropdownMenu,
@@ -95,6 +94,11 @@ import { ehGatilhoDaRegua, HORA_PADRAO_COBRANCA, HORA_PADRAO_LEMBRETE } from "@/
 import { WebhookTriggerConfig } from "@/components/automations/webhook-trigger-config"
 import { ZapSignTriggerConfig } from "@/components/automations/zapsign-trigger-config"
 import { CondicaoPorCampoFields } from "@/components/automations/condicao-por-campo-fields"
+// Seletor de variáveis (29/09/2026, CB): todo campo que aceita `{{…}}` vira
+// `CampoComVariaveis` — ver docs/PLANO-seletor-de-variaveis.md.
+import { CampoComVariaveis } from "@/components/automations/variaveis/campo-com-variaveis"
+import { useVariaveis, VariaveisProvider } from "@/components/automations/variaveis/contexto"
+import { trocarCodigos } from "@/lib/automations/variaveis/codigos"
 import {
   childPath,
   insertAt,
@@ -1314,14 +1318,16 @@ function ValoresDoModelo({
       )}
       {cabecalhoDeTexto && (
         <>
-          <div className="grid grid-cols-2 gap-2">
-            <FieldBlock label={t("templates.cabecalhoLabel")}>
-              <Input
-                value={(cfg.header_text as string) ?? ""}
-                onChange={(e) => set({ header_text: e.target.value })}
-                className="bg-muted text-foreground"
-              />
-            </FieldBlock>
+          {/* Valor e reserva EMPILHADOS (eram duas colunas): o valor virou
+              editor com etiquetas e o botão "Inserir campo", que não cabem em
+              meia largura. A reserva continua texto literal. */}
+          <div>
+            <CampoComVariaveis
+              rotulo={t("templates.cabecalhoLabel")}
+              value={(cfg.header_text as string) ?? ""}
+              onChange={(header_text) => set({ header_text })}
+              linhaUnica
+            />
             <FieldBlock label={t("templates.reservaLabel")}>
               <Input
                 value={(cfg.header_text_reserva as string) ?? ""}
@@ -1345,14 +1351,13 @@ function ValoresDoModelo({
       </FieldBlock>
       {doCorpo.map((n) => (
         <div key={n}>
-          <div className="grid grid-cols-2 gap-2">
-            <FieldBlock label={t("templates.variavelLabel", { marca: `{{${n}}}` })}>
-              <Input
-                value={valores[String(n)] ?? ""}
-                onChange={(e) => set({ variables: { ...valores, [String(n)]: e.target.value } })}
-                className="bg-muted text-foreground"
-              />
-            </FieldBlock>
+          <div>
+            <CampoComVariaveis
+              rotulo={t("templates.variavelLabel", { marca: `{{${n}}}` })}
+              value={valores[String(n)] ?? ""}
+              onChange={(texto) => set({ variables: { ...valores, [String(n)]: texto } })}
+              linhaUnica
+            />
             <FieldBlock label={t("templates.reservaLabel")}>
               <Input
                 value={reservas[String(n)] ?? ""}
@@ -1375,30 +1380,33 @@ function ValoresDoModelo({
         </div>
       ))}
       {botoesComVariavel.map(({ b, i }) => (
-        <FieldBlock key={i} label={t("templates.botaoLabel", { texto: b.text })}>
-          <Input
-            value={botoes[String(i)] ?? ""}
-            onChange={(e) => set({ button_params: { ...botoes, [String(i)]: e.target.value } })}
-            className="bg-muted text-foreground"
-          />
-          <p className="mt-1 truncate text-[11px] text-muted-foreground" title={b.url}>
-            {b.url}
-          </p>
-          {vazio(botoes[String(i)]) ? (
-            <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">
-              {t("templates.botaoSemValor")}
-            </p>
-          ) : (
-            <p className="mt-1 text-[11px] text-muted-foreground">{t("templates.botaoHint")}</p>
-          )}
-        </FieldBlock>
+        // O final do endereço sai em modo DADO e CODIFICADO no envio
+        // (`cru` + `url`): o painel mostra o valor cru, e não há bloco de
+        // prévia (ele não codifica).
+        <CampoComVariaveis
+          key={i}
+          rotulo={t("templates.botaoLabel", { texto: b.text })}
+          value={botoes[String(i)] ?? ""}
+          onChange={(texto) => set({ button_params: { ...botoes, [String(i)]: texto } })}
+          linhaUnica
+          modo="cru"
+          ajuda={
+            <>
+              <p className="mt-1 truncate text-[11px] text-muted-foreground" title={b.url}>
+                {b.url}
+              </p>
+              {vazio(botoes[String(i)]) ? (
+                <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">
+                  {t("templates.botaoSemValor")}
+                </p>
+              ) : (
+                <p className="mt-1 text-[11px] text-muted-foreground">{t("templates.botaoHint")}</p>
+              )}
+            </>
+          }
+        />
       ))}
-      {temVariavel && (
-        <>
-          <p className="mt-1 text-[11px] text-muted-foreground">{t("templates.reservaHelp")}</p>
-          <DicaDeVariaveis t={t} />
-        </>
-      )}
+      {temVariavel && <p className="mt-1 text-[11px] text-muted-foreground">{t("templates.reservaHelp")}</p>}
     </>
   )
 }
@@ -1922,17 +1930,26 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
                 onAssinaturaChange={(v) => patchTop("assinatura_personalizada", v)}
                 t={t}
               />
-              <StepList
-                steps={state.steps}
-                basePath={[]}
-                scope={{ kind: "root" }}
-                expandedId={expandedId}
-                setExpandedId={setExpandedId}
-                updateStep={updateStep}
-                addStepAt={addStepAt}
-                deleteStepAt={deleteStepAt}
-                moveStepAt={moveStepAt}
-              />
+              <VariaveisProvider
+                gatilho={state.trigger_type}
+                webhookId={
+                  state.trigger_type === "webhook_received" && typeof state.trigger_config.webhook_id === "string"
+                    ? state.trigger_config.webhook_id || null
+                    : null
+                }
+              >
+                <StepList
+                  steps={state.steps}
+                  basePath={[]}
+                  scope={{ kind: "root" }}
+                  expandedId={expandedId}
+                  setExpandedId={setExpandedId}
+                  updateStep={updateStep}
+                  addStepAt={addStepAt}
+                  deleteStepAt={deleteStepAt}
+                  moveStepAt={moveStepAt}
+                />
+              </VariaveisProvider>
             </MarcasContext.Provider>
           </ResourcesContext.Provider>
         </div>
@@ -2558,6 +2575,7 @@ function StepRenderer({
   const t = useTranslations("Automations.builder")
   // As listas da conta: o resumo do passo fechado diz o alvo pelo NOME.
   const recursos = useResources()
+  const variaveis = useVariaveis()
   const marcas = useContext(MarcasContext)
   const pendenciasDoPasso = marcas.pendencias.get(step.cid) ?? SEM_ISSUES
   const avisosDoPasso = marcas.avisos.get(step.cid) ?? SEM_ISSUES
@@ -2624,7 +2642,18 @@ function StepRenderer({
                       fim: janelaDaEspera?.fim ?? "?",
                     }) +
                     (step.step_config.somente_seg_a_sex === true ? ` · ${t("config.segASexResumo")}` : "")
-                  : previewFor(step, t, recursos)}
+                  : // O código vira o NOME do campo também no cartão fechado
+                    // ("Olá, [Primeiro nome do cliente]!"), como no editor —
+                    // ⚠️ só nos passos cujo texto o motor INTERPOLA: o corpo
+                    // dos botões e a URL do webhook saem crus, e o nome ali
+                    // prometeria uma troca que não acontece. Código com alerta
+                    // (sai em branco) fica como está.
+                    step.step_type === "send_message" || step.step_type === "send_to_number"
+                    ? trocarCodigos(previewFor(step, t, recursos), (codigo, bruto) => {
+                        const info = variaveis.resolver(codigo)
+                        return info.rotulo && !info.alerta ? `[${info.rotulo}]` : bruto
+                      })
+                    : previewFor(step, t, recursos)}
                 {/* Visível com o passo FECHADO: numa sequência de dez esperas,
                     é assim que se confere de relance quais param na resposta. */}
                 {step.step_type === "wait" && step.step_config.parar_se_responder === true
@@ -3270,14 +3299,11 @@ function EditorDeMidia({
       {kind === "audio" ? (
         <p className="text-[11px] text-muted-foreground">{t("midia.audioSemLegenda")}</p>
       ) : (
-        <FieldBlock label={t("midia.legendaLabel")}>
-          <Textarea
-            value={(cfg.caption as string) ?? ""}
-            onChange={(e) => set({ caption: e.target.value })}
-            rows={2}
-            className="bg-muted text-foreground"
-          />
-        </FieldBlock>
+        <CampoComVariaveis
+          rotulo={t("midia.legendaLabel")}
+          value={(cfg.caption as string) ?? ""}
+          onChange={(caption) => set({ caption })}
+        />
       )}
     </>
   )
@@ -3640,15 +3666,12 @@ function StepEditor({
     case "send_message":
       return (
         <>
-          <FieldBlock label={t("config.messageText")}>
-            <Textarea
-              value={(cfg.text as string) ?? ""}
-              onChange={(e) => set({ text: e.target.value })}
-              placeholder={t("config.placeholderMessageText")}
-              className="min-h-24 bg-muted text-foreground"
-            />
-            <DicaDeVariaveis t={t} />
-          </FieldBlock>
+          <CampoComVariaveis
+            rotulo={t("config.messageText")}
+            value={(cfg.text as string) ?? ""}
+            onChange={(text) => set({ text })}
+            placeholder={t("config.placeholderMessageText")}
+          />
           <CanalDeSaida
             value={canalDoPasso(cfg)}
             onChange={(id) => set({ channel_id: id })}
@@ -3775,14 +3798,17 @@ function StepEditor({
               t={t}
             />
           </FieldBlock>
-          <FieldBlock label={t("config.valueLabel")}>
-            <Input
-              value={(cfg.value as string) ?? ""}
-              onChange={(e) => set({ value: e.target.value })}
-              placeholder={t.raw("config.placeholderValue")}
-              className="bg-muted text-foreground"
-            />
-          </FieldBlock>
+          {/* O valor GRAVA dado: a prévia mostra o modo cru do motor (data
+              técnica, número sem R$), o mesmo que vai para o campo. */}
+          <CampoComVariaveis
+            rotulo={t("config.valueLabel")}
+            value={(cfg.value as string) ?? ""}
+            onChange={(value) => set({ value })}
+            placeholder={t.raw("config.placeholderValue")}
+            linhaUnica
+            modo="cru"
+            previa
+          />
         </>
       )
     case "create_deal":
@@ -3794,13 +3820,12 @@ function StepEditor({
             onChange={(patch) => set(patch)}
             t={t}
           />
-          <FieldBlock label={t("config.titleLabel")}>
-            <Input
-              value={(cfg.title as string) ?? ""}
-              onChange={(e) => set({ title: e.target.value })}
-              className="bg-muted text-foreground"
-            />
-          </FieldBlock>
+          <CampoComVariaveis
+            rotulo={t("config.titleLabel")}
+            value={(cfg.title as string) ?? ""}
+            onChange={(title) => set({ title })}
+            linhaUnica
+          />
           <FieldBlock label={t("config.valueLabel")}>
             <Input
               type="number"
@@ -4254,15 +4279,12 @@ function StepEditor({
             />
             <p className="mt-1 text-[11px] text-muted-foreground">{t("config.contactNameHint")}</p>
           </FieldBlock>
-          <FieldBlock label={t("config.messageText")}>
-            <Textarea
-              value={(cfg.text as string) ?? ""}
-              onChange={(e) => set({ text: e.target.value })}
-              placeholder={t("config.placeholderNotifyText", { nome: "{{vars.agendamento_nome}}", data: "{{vars.agendamento_data}}" })}
-              className="min-h-24 bg-muted text-foreground"
-            />
-            <DicaDeVariaveis t={t} />
-          </FieldBlock>
+          <CampoComVariaveis
+            rotulo={t("config.messageText")}
+            value={(cfg.text as string) ?? ""}
+            onChange={(text) => set({ text })}
+            placeholder={t("config.placeholderNotifyText", { nome: "{{vars.agendamento_nome}}", data: "{{vars.agendamento_data}}" })}
+          />
           <CanalDeSaida
             value={canalDoPasso(cfg)}
             onChange={(id) => set({ channel_id: id })}
@@ -4282,13 +4304,16 @@ function StepEditor({
               className="bg-muted text-foreground"
             />
           </FieldBlock>
-          <FieldBlock label={t("config.bodyTemplateLabel")}>
-            <Textarea
-              value={(cfg.body_template as string) ?? ""}
-              onChange={(e) => set({ body_template: e.target.value })}
-              className="min-h-20 bg-muted font-mono text-xs text-foreground"
-            />
-          </FieldBlock>
+          {/* Sem prévia: o motor ESCAPA cada valor para dentro do JSON, e a
+              prévia mostraria o valor cru. */}
+          <CampoComVariaveis
+            rotulo={t("config.bodyTemplateLabel")}
+            value={(cfg.body_template as string) ?? ""}
+            onChange={(body_template) => set({ body_template })}
+            modo="cru"
+            previa={false}
+            monoespacado
+          />
         </>
       )
     case "close_conversation":
@@ -4302,21 +4327,17 @@ function StepEditor({
     case "create_task":
       return (
         <>
-          <FieldBlock label={t("tarefa.tituloLabel")}>
-            <Input
-              value={(cfg.titulo as string) ?? ""}
-              onChange={(e) => set({ titulo: e.target.value })}
-              className="bg-muted text-foreground"
-            />
-            <DicaDeVariaveis t={t} />
-          </FieldBlock>
-          <FieldBlock label={t("tarefa.descricaoLabel")}>
-            <Textarea
-              value={(cfg.descricao as string) ?? ""}
-              onChange={(e) => set({ descricao: e.target.value })}
-              className="min-h-16 bg-muted text-foreground"
-            />
-          </FieldBlock>
+          <CampoComVariaveis
+            rotulo={t("tarefa.tituloLabel")}
+            value={(cfg.titulo as string) ?? ""}
+            onChange={(titulo) => set({ titulo })}
+            linhaUnica
+          />
+          <CampoComVariaveis
+            rotulo={t("tarefa.descricaoLabel")}
+            value={(cfg.descricao as string) ?? ""}
+            onChange={(descricao) => set({ descricao })}
+          />
           {/* Para quem (Fase 2.4 do plano do previdenciário). Ausente = uma
               pessoa fixa, que é o que toda tarefa gravada antes disto faz. Nos
               outros dois modos, a pessoa escolhida embaixo vira a RESERVA —
@@ -4397,33 +4418,9 @@ function StepEditor({
   }
 }
 
-/**
- * As variáveis que qualquer passo de texto aceita (977). A lista é montada
- * em código e entra no dicionário por VALOR: chaves duplas escritas no JSON
- * quebrariam o parser ICU (icu-safety.test.ts).
- */
-const VARIAVEIS_DE_TEXTO = [
-  "{{contact.name}}",
-  "{{contact.phone}}",
-  "{{contact.email}}",
-  "{{contact.company}}",
-  "{{contact.campo.<chave_do_campo>}}",
-  "{{contact.origem}}",
-  "{{conversation.link}}",
-  "{{contact.link}}",
-  "{{deal.value}}",
-  "{{deal.created_at}}",
-  "{{now}}",
-  "{{message.text}}",
-]
-
-function DicaDeVariaveis({ t }: { t: ReturnType<typeof useTranslations> }) {
-  return (
-    <p className="mt-1 text-[11px] text-muted-foreground">
-      {t("config.variaveisDeTexto", { lista: VARIAVEIS_DE_TEXTO.join("  ") })}
-    </p>
-  )
-}
+// A lista fixa de variáveis sob cada campo (`DicaDeVariaveis`, 977) deu lugar
+// ao botão "Inserir campo" (29/09/2026): o catálogo mora em
+// `src/lib/automations/variaveis/catalogo.ts`.
 
 function FieldBlock({
   label,

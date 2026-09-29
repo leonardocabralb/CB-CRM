@@ -36,6 +36,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ReunioesDoContato } from '@/components/agenda/reunioes-do-contato';
 import { ReunioesTranscritasDoContato } from '@/components/transcricoes/reunioes-transcritas-do-contato';
 import { AbaCobrancas } from '@/components/inbox/painel/aba-cobrancas';
+import { TextoComLinks } from '@/components/inbox/texto-com-links';
 import { useCobrancasDoContato } from '@/hooks/use-cobrancas-do-contato';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -970,8 +971,11 @@ export function ContactDetailView({
                           })}
                         </p>
                         <div className="flex items-start justify-between gap-2">
-                          <p className="text-sm text-muted-foreground whitespace-pre-wrap flex-1">
-                            {note.texto}
+                          {/* Endereço clicável, como nas outras telas de
+                              anotação (29/09/2026). `break-words`: um link
+                              sem espaço não pode alargar a ficha. */}
+                          <p className="text-sm text-muted-foreground whitespace-pre-wrap break-words min-w-0 flex-1">
+                            <TextoComLinks texto={note.texto} />
                           </p>
                           <button
                             onClick={() => deleteNote(note.id)}
