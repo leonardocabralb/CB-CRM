@@ -594,6 +594,12 @@ export interface Task {
   concluida_em: string | null;
   /** Leitura DO RESPONSÁVEL, alternável nos dois sentidos. */
   lida_em: string | null;
+  /**
+   * Quando o responsável ATUAL viu a tarefa pela primeira vez (1068) — a tela
+   * marca sozinha (`useVistaDaTarefa`). É registro, não estado: "marcar como
+   * não lida" não a toca; redirecionar a zera.
+   */
+  vista_em: string | null;
   importante: boolean;
   /** A tarefa de onde esta saiu. Nulo se não houve, ou se a origem foi apagada. */
   tarefa_pai_id: string | null;

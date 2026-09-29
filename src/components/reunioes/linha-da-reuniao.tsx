@@ -11,6 +11,7 @@ import { formatCurrency } from '@/lib/currency';
 import {
   comoMarcar,
   faseDaReuniao,
+  linkDeReuniao,
   type Acao,
   type MotivoDeSoRegistrar,
   type AlvosDoFunil,
@@ -47,17 +48,6 @@ function hora(iso: string): string {
 
 function dataCurta(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit', timeZone: FUSO_PADRAO });
-}
-
-/** Link de reunião que dá para abrir: só http(s). O `local` da agenda pode ser um endereço. */
-function linkDeReuniao(link: string | null): string | null {
-  if (!link) return null;
-  try {
-    const u = new URL(link);
-    return u.protocol === 'https:' || u.protocol === 'http:' ? u.toString() : null;
-  } catch {
-    return null;
-  }
 }
 
 export function LinhaDaReuniao({

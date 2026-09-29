@@ -225,10 +225,17 @@ export async function POST(request: Request) {
     // ------------------------------------------------------------
     // Grava
     // ------------------------------------------------------------
+    // Lembrete para si mesmo nasce VISTO e LIDO (1068): quem acabou de
+    // escrever a tarefa a viu. Sem isto o card da equipe contaria o próprio
+    // lembrete do gestor como "não visto".
+    const paraSiMesmo = responsavelId === ctx.userId;
+    const agora = new Date().toISOString();
+
     const admin = supabaseAdmin();
     const { data: tarefa, error } = await admin
       .from('cb_tasks')
       .insert({
+        ...(paraSiMesmo ? { vista_em: agora, lida_em: agora } : {}),
         account_id: ctx.accountId,
         contact_id: contactId,
         criador_user_id: ctx.userId,

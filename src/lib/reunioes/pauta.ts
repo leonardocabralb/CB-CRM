@@ -420,3 +420,18 @@ export function lerPauta(json: unknown): { reunioes: ReuniaoDaPauta[]; funis: Re
   }
   return { reunioes, funis };
 }
+
+/**
+ * Link de reunião que dá para abrir: só http(s). O `local` da agenda do CRM vira
+ * `link` na pauta e pode ser um endereço ("Escritório"): aberto como link, daria
+ * 404 numa aba nova. Usado pela tela de Reuniões e pela agenda do Meu dia.
+ */
+export function linkDeReuniao(link: string | null): string | null {
+  if (!link) return null;
+  try {
+    const u = new URL(link);
+    return u.protocol === 'https:' || u.protocol === 'http:' ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}

@@ -1,37 +1,24 @@
 'use client';
 
 // ============================================================
-// Os blocos que só existem na ABA: o que precisa ser corrigido, o dia até
-// agora, os negócios no funil e a agenda.
+// O bloco "o que precisa ser corrigido" (só do administrador) e as peças que
+// os blocos da aba compartilham. "O dia até agora" e "Negócios no funil"
+// saíram a pedido do operador (29/09/2026, `docs/PLANO-meu-dia-v2.md`).
 //
 // ⚠️ CADA NÚMERO DIZ DE QUEM É (decisão do operador, 12/09): há coisa que é
-// da pessoa (suas tarefas, seus negócios) e coisa que é da operação do
-// escritório (mensagens enviadas, ganhos, entregas que falharam). Misturar
-// as duas sem marca faria o operador ler o trabalho do escritório como
-// sendo o dele — e, no bloco de correções, faria o contrário: ele acharia
-// que a falha é "dele" e não ia mexer. A marca é a pastilha `De`.
+// da pessoa (suas tarefas) e coisa que é da operação do escritório (as
+// conexões, as entregas que falharam). Misturar as duas sem marca faria o
+// operador ler o trabalho do escritório como sendo o dele — e, no bloco de
+// correções, faria o contrário: ele acharia que a falha é "dele" e não ia
+// mexer. A marca é a pastilha `De`.
 // ============================================================
 
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import {
-  AlertTriangle,
-  CalendarClock,
-  CheckCircle2,
-  Kanban,
-  Send,
-  Wrench,
-} from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Wrench } from 'lucide-react';
 
-import { diaNoFuso, FUSO_PADRAO } from '@/lib/agenda/fuso';
 import type { Bloco } from '@/hooks/use-resumo-do-dia';
-import type {
-  Agenda as DadosDaAgenda,
-  Correcoes,
-  Integracoes,
-  Negocios as DadosDeNegocios,
-  Resultados as DadosDeResultados,
-} from '@/hooks/use-area-de-trabalho';
+import type { Correcoes, Integracoes } from '@/hooks/use-area-de-trabalho';
 import { useChannels } from '@/hooks/use-channels';
 import { channelLabel } from '@/lib/cb-channels/display';
 import { nomeDoContato } from '@/lib/contacts/identidade';
@@ -45,7 +32,7 @@ import {
 } from '@/lib/meu-dia/correcoes';
 import { cn } from '@/lib/utils';
 
-import { Cabecalho, ForaDoPerfil, LinkDoBloco } from './blocos-pessoais';
+import { Cabecalho } from './blocos-pessoais';
 
 /** Traduz um `Bloco<T>` numa contagem para a régua das correções. */
 function fonteDe<T>(
@@ -377,264 +364,18 @@ export function BlocoDeCorrecoes({
   );
 }
 
-export function BlocoDeResultados({
-  bloco,
-  veTarefas,
-  veFunis,
-  veContatos,
-}: {
-  bloco: Bloco<DadosDeResultados>;
-  veTarefas: boolean;
-  veFunis: boolean;
-  veContatos: boolean;
-}) {
-  const t = useTranslations('MeuDia');
-  return (
-    <section className="border-border bg-card rounded-xl border p-4 shadow-sm">
-      <Cabecalho
-        icone={<Send className="size-4" aria-hidden />}
-        titulo={t('todayTitle')}
-        direita={null}
-      />
-      {bloco.status !== 'pronto' ? (
-        <EstadoDoBlocoDaAba bloco={bloco} />
-      ) : (
-        <>
-          <dl className="mt-2 space-y-2">
-            {/* ⚠️ "Da equipe", não "suas": 948 de 956 mensagens da equipe
-                saem do celular pareado, sem autor gravado. Creditar à pessoa
-                mostraria um dia quase vazio a quem trabalhou o dia inteiro. */}
-            <LinhaDeResultado
-              rotulo={t('todayMessages')}
-              valor={bloco.dados.mensagensDoEscritorio}
-              escopo="escritorio"
-            />
-            <LinhaDeResultado
-              rotulo={t('todayTasks')}
-              valor={bloco.dados.tarefasConcluidas}
-              escopo="seu"
-              href={veTarefas ? '/tarefas' : null}
-            />
-            <LinhaDeResultado
-              rotulo={t('todayWon')}
-              valor={bloco.dados.ganhos}
-              escopo="escritorio"
-              href={veFunis ? '/pipelines' : null}
-            />
-          </dl>
-          {bloco.dados.ganhosRecentes.length > 0 && (
-            <ul className="border-border mt-3 space-y-1 border-t pt-2">
-              {bloco.dados.ganhosRecentes.map((g) => {
-                const nome = nomeDoContato(g.contato, t('unknownContact'));
-                return (
-                  <li
-                    key={g.id}
-                    className="text-muted-foreground flex items-baseline justify-between gap-3 text-xs"
-                  >
-                    {veContatos && g.contato ? (
-                      <Link
-                        href={`/contacts?contact=${encodeURIComponent(g.contato.id)}`}
-                        className="min-w-0 flex-1 truncate hover:underline"
-                      >
-                        {nome}
-                      </Link>
-                    ) : (
-                      <span className="min-w-0 flex-1 truncate">{nome}</span>
-                    )}
-                    <span className="shrink-0">
-                      {new Date(g.quando).toLocaleTimeString(undefined, {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </>
-      )}
-    </section>
-  );
-}
-
-export function BlocoDeNegocios({
-  bloco,
-  veFunis,
-}: {
-  bloco: Bloco<DadosDeNegocios>;
-  veFunis: boolean;
-}) {
-  const t = useTranslations('MeuDia');
-  return (
-    <section className="border-border bg-card rounded-xl border p-4 shadow-sm">
-      <Cabecalho
-        icone={<Kanban className="size-4" aria-hidden />}
-        titulo={t('dealsTitle')}
-        direita={
-          bloco.status === 'pronto' ? (
-            <span className="text-sm">
-              {t(bloco.dados.truncada ? 'dealsOpenAtLeast' : 'dealsOpen', {
-                count: bloco.dados.meus,
-              })}
-            </span>
-          ) : null
-        }
-      />
-      {bloco.status !== 'pronto' ? (
-        <EstadoDoBlocoDaAba bloco={bloco} />
-      ) : bloco.dados.meus === 0 &&
-        bloco.dados.semResponsavel === 0 &&
-        // ⚠️ `truncada` proíbe o vazio: com um perfil recortado por funil, a
-        // consulta pode bater no teto ANTES do filtro de escopo em JS e
-        // devolver zero com negócios seus depois do corte. "Nenhum negócio
-        // aberto com você" seria uma afirmação sobre o que não foi lido
-        // (Codex, PR #202).
-        !bloco.dados.truncada ? (
-        <p className="text-muted-foreground mt-2 text-sm">{t('dealsNone')}</p>
-      ) : (
-        <div className="mt-2">
-          {bloco.dados.valor > 0 && (
-            <p className="text-foreground text-sm font-medium">
-              {formatarValor(bloco.dados.valor)}
-              <span className="text-muted-foreground font-normal">
-                {' · '}
-                <De escopo="seu" inline />
-              </span>
-            </p>
-          )}
-          <ul className="mt-2 space-y-1.5">
-            {bloco.dados.grupos.map((g) => (
-              <li
-                key={g.chave}
-                className="flex items-baseline justify-between gap-3 text-sm"
-              >
-                <span className="min-w-0 flex-1 truncate">
-                  {g.etapaNome ?? t('stageUnknown')}
-                  <span className="text-muted-foreground">
-                    {' · '}
-                    {g.funilNome ?? t('pipelineUnknown')}
-                  </span>
-                </span>
-                <span className="text-muted-foreground shrink-0 text-xs">
-                  {t('dealsInStage', { count: g.quantidade })}
-                </span>
-              </li>
-            ))}
-          </ul>
-          {bloco.dados.semResponsavel > 0 && (
-            <p className="text-muted-foreground mt-2 text-xs">
-              {t('dealsUnassigned', { count: bloco.dados.semResponsavel })}
-              {' · '}
-              <De escopo="escritorio" inline />
-            </p>
-          )}
-          {veFunis ? (
-            <LinkDoBloco
-              href="/pipelines"
-              texto={t('openPipelines')}
-              onContinuar={NADA}
-            />
-          ) : (
-            <ForaDoPerfil />
-          )}
-        </div>
-      )}
-    </section>
-  );
-}
-
-export function BlocoDaAgenda({
-  bloco,
-  agoraMs,
-  veAgenda,
-}: {
-  bloco: Bloco<DadosDaAgenda>;
-  /** O instante do pedido — o relógio desta tela. */
-  agoraMs: number;
-  veAgenda: boolean;
-}) {
-  const t = useTranslations('MeuDia');
-  return (
-    <section className="border-border bg-card rounded-xl border p-4 shadow-sm">
-      <Cabecalho
-        icone={<CalendarClock className="size-4" aria-hidden />}
-        titulo={t('agendaTitle')}
-        direita={<De escopo="seu" />}
-      />
-      <div className="mt-2 space-y-3">
-        {bloco.status !== 'pronto' ? (
-          <EstadoDoBlocoDaAba bloco={bloco} />
-        ) : bloco.dados.reunioes.length === 0 ? (
-          <p className="text-muted-foreground text-sm">
-            {t('agendaNoneYours')}
-          </p>
-        ) : (
-          <ul className="space-y-1.5">
-            {bloco.dados.reunioes.map((r) => (
-              <li
-                key={r.id}
-                className="flex items-baseline justify-between gap-3 text-sm"
-              >
-                <span className="min-w-0 flex-1 truncate">
-                  {r.titulo}
-                  {r.contato_nome && (
-                    <span className="text-muted-foreground">
-                      {' · '}
-                      {r.contato_nome}
-                    </span>
-                  )}
-                </span>
-                <span className="text-muted-foreground shrink-0 text-xs">
-                  {quandoCurto(r.starts_at, agoraMs)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {bloco.status === 'pronto' && bloco.dados.restantes > 0 && (
-          <p className="text-muted-foreground text-xs">
-            {t('agendaAndMore', { count: bloco.dados.restantes })}
-          </p>
-        )}
-
-        {/* ⚠️ Os agendamentos do Calendly NÃO aparecem aqui, e não é
-            esquecimento: a integração grava só `invitee.created` — o
-            cancelamento é ignorado e o reagendamento insere uma linha nova
-            sem invalidar a antiga. Listá-los afirmaria reunião que não vai
-            acontecer, e o que está fora do lugar não se conserta por uma
-            tela de resumo. As entradas do Calendly que precisam de gente
-            continuam no bloco "o que precisa ser corrigido". */}
-        <p className="text-muted-foreground text-xs">{t('agendaOnlyCrm')}</p>
-
-        {veAgenda && (
-          <LinkDoBloco
-            href="/agenda"
-            texto={t('openAgenda')}
-            onContinuar={NADA}
-          />
-        )}
-      </div>
-    </section>
-  );
-}
-
 // ------------------------------------------------------------
 // Peças
 // ------------------------------------------------------------
 
-/** A aba não tem porta acima dela: navegar aqui não precisa confirmar nada. */
-const NADA = () => {};
-
 /**
  * De quem é este número.
  *
- * Pastilha discreta, não um parágrafo: ela aparece em quase toda linha, e
- * uma frase repetida seis vezes na tela vira ruído que o olho aprende a
- * pular — que é como o número perde a marca de novo.
+ * Pastilha discreta, não um parágrafo: ela aparece em mais de um bloco, e
+ * uma frase repetida na tela vira ruído que o olho aprende a pular — que é
+ * como o número perde a marca de novo.
  */
-function De({
+export function De({
   escopo,
   inline = false,
 }: {
@@ -651,38 +392,8 @@ function De({
   );
 }
 
-function LinhaDeResultado({
-  rotulo,
-  valor,
-  escopo,
-  href,
-}: {
-  rotulo: string;
-  valor: number;
-  escopo: 'seu' | 'escritorio';
-  href?: string | null;
-}) {
-  return (
-    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-      <dt className="text-muted-foreground min-w-0 text-sm">
-        {href ? (
-          <Link href={href} className="hover:underline">
-            {rotulo}
-          </Link>
-        ) : (
-          rotulo
-        )}{' '}
-        <De escopo={escopo} inline />
-      </dt>
-      <dd className="text-foreground shrink-0 text-sm font-medium tabular-nums">
-        {valor}
-      </dd>
-    </div>
-  );
-}
-
 /** O mesmo `EstadoDoBloco` dos blocos pessoais, com as chaves desta aba. */
-function EstadoDoBlocoDaAba({ bloco }: { bloco: Bloco<unknown> }) {
+export function EstadoDoBlocoDaAba({ bloco }: { bloco: Bloco<unknown> }) {
   const t = useTranslations('MeuDia');
   if (bloco.status === 'carregando') {
     return <p className="text-muted-foreground mt-2 text-sm">{t('loading')}</p>;
@@ -691,51 +402,4 @@ function EstadoDoBlocoDaAba({ bloco }: { bloco: Bloco<unknown> }) {
     return <p className="text-destructive mt-2 text-sm">{t('failed')}</p>;
   }
   return null;
-}
-
-/**
- * ⚠️ Em pt-BR fixo, como `currency.ts` e a apresentação do funil: o locale
- * do app é global e o número do escritório não muda de forma conforme o
- * navegador de quem lê.
- */
-function formatarValor(v: number): string {
-  return v.toLocaleString('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-    maximumFractionDigits: 0,
-  });
-}
-
-/**
- * "14:30" hoje, "qui. 09:00" nos outros dias — a reunião de amanhã precisa
- * dizer que é amanhã.
- *
- * ⚠️ O relógio entra por PARÂMETRO, nunca de um `new Date()` aqui dentro:
- * a função é chamada no render, e ler o relógio ali é a mesma impureza que
- * o React Compiler recusa em `Date.now()`. O instante é o do pedido, o
- * mesmo que data a saudação e as consultas.
- *
- * ⚠️ E TUDO aqui é no fuso da AGENDA (`FUSO_PADRAO`) — o dia comparado e a
- * hora escrita —, porque a janela da consulta é recortada nele e a tela de
- * Agenda exibe nele. No fuso do navegador, uma reunião das 23h em São Paulo
- * apareceria como 02h do dia seguinte para quem estivesse em UTC: o bloco
- * discordaria da Agenda para a qual ele leva, e chamaria de amanhã uma
- * reunião de hoje (Codex, PR #202).
- */
-function quandoCurto(iso: string | null, agoraMs: number): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  const mesmoDia =
-    diaNoFuso(d, FUSO_PADRAO) === diaNoFuso(new Date(agoraMs), FUSO_PADRAO);
-  const hora = d.toLocaleTimeString(undefined, {
-    timeZone: FUSO_PADRAO,
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-  if (mesmoDia) return hora;
-  const dia = d.toLocaleDateString(undefined, {
-    timeZone: FUSO_PADRAO,
-    weekday: 'short',
-  });
-  return `${dia} ${hora}`;
 }

@@ -139,11 +139,17 @@ describe('na tela, a ligação é faixa — sem ações', () => {
 });
 
 describe('quem lê content_type trata a ligação', () => {
-  it('Painel e Meu dia não contam a ligação como mensagem (a atendida é `agent`)', () => {
+  it('o Painel não conta a ligação como mensagem (a atendida é `agent`)', () => {
     const filtro = /\.neq\('content_type', 'call'\)/g;
     // Enviadas hoje e ontem, a série de conversas e o feed de atividade.
     expect(fonte('lib/dashboard/queries.ts').match(filtro) ?? []).toHaveLength(4);
-    expect(fonte('hooks/use-area-de-trabalho.ts').match(filtro) ?? []).toHaveLength(1);
+  });
+
+  it('o Meu dia não conta mensagem nenhuma desde a v2 — quem voltar a contar repete o filtro', () => {
+    // "O dia até agora" (mensagens enviadas hoje) saiu a pedido do operador
+    // (29/09/2026). Se `messages` voltar a este hook, este teste acende para
+    // lembrar do `.neq('content_type', 'call')`.
+    expect(fonte('hooks/use-area-de-trabalho.ts')).not.toMatch(/from\('messages'\)/);
   });
 
   it('o Radar lê a ligação como linha do transcrito (senão ela viraria "mídia sem texto")', () => {

@@ -1,50 +1,47 @@
 'use client';
 
 // ============================================================
-// Os blocos que só existem na ABA /meu-dia (F5) — o que precisa ser
-// corrigido, o dia até agora, os negócios no funil e a agenda.
+// Os blocos da ABA /meu-dia — o que precisa ser corrigido, as conexões, as
+// notificações, as suas tarefas e a equipe (v2, 29/09/2026:
+// `docs/PLANO-meu-dia-v2.md`). A agenda vem da pauta de reuniões
+// (`usePautaDeReunioes`), e o cartão da ENTRADA continua em
+// `use-resumo-do-dia.ts` — ninguém paga por estas consultas ao abrir o app.
 //
-// Irmão de `use-resumo-do-dia.ts`, com a MESMA disciplina e de propósito
-// SEPARADO dele: o cartão da entrada continua pedindo só os quatro blocos
-// pessoais, e ninguém paga por estas consultas ao abrir o app.
-//
-// O que se repete de lá, porque vale igual aqui:
+// A disciplina é a mesma de lá:
 //   · Cada bloco tem estado PRÓPRIO (carregando / falhou / pronto). Nunca
-//     "0" sem resposta — aqui o preço é maior: um zero de carga no bloco de
-//     correções vira "tudo em ordem" sobre uma mensagem que não saiu.
+//     "0" sem resposta — um zero de carga no bloco de correções vira "tudo em
+//     ordem" sobre uma mensagem que não saiu.
 //   · O resultado é CARIMBADO com a chave do pedido; pedido novo não vê
 //     resultado velho.
 //   · O relógio é lido UMA vez, dentro do efeito (`Date.now()` no render
 //     reprova o React Compiler; `new Date()` passa e é o mesmo erro).
-//   · Nenhum número exato sai de lista com teto: aqui quase tudo é
-//     `count: 'exact', head: true`, que não traz linha nenhuma.
+//   · Nenhum número exato sai de lista com teto: ou `count: 'exact'`, ou a
+//     leitura COMPLETA, paginada por chave.
 //
 // ⚠️ `head: true` devolve `count` NULO tanto em erro quanto — em tese — na
 // ausência de cabeçalho. Por isso o `error` é conferido ANTES, e o bloco só
-// assenta como `pronto` quando a consulta deu certo: um `count ?? 0` sem
-// olhar o erro é a forma exata de a aba dizer "nenhuma falha" no dia em que
-// a rede caiu.
+// assenta como `pronto` quando a consulta deu certo.
+//
+// ⚠️ Todo filtro "meu" é pelo `user.id` (o id do LOGIN), ESCRITO na consulta:
+// em `cb_tasks` e `conversations` a RLS deixa a conta inteira ler tudo.
 // ============================================================
 
 import { useEffect, useState } from 'react';
 
-import { diaNoFuso, FUSO_PADRAO, paraInstante } from '@/lib/agenda/fuso';
 import { startOfLocalDay } from '@/lib/dashboard/date-utils';
 import type { Bloco } from '@/hooks/use-resumo-do-dia';
-import {
-  agruparPorEtapa,
-  type GrupoDeEtapa,
-  type NegocioDoBloco,
-} from '@/lib/meu-dia/negocios';
+import type { ConversaDaConexao } from '@/lib/meu-dia/conexoes';
+import type { TarefaDaEquipe } from '@/lib/meu-dia/equipe';
 import { lerRetidas, type RetidasNaTela } from '@/lib/meu-dia/retidas';
-import { recorteDeCanais, recorteDeFunis } from '@/lib/perfis/escopo';
+import type { AvisoComContato } from '@/lib/notifications/texto-do-aviso';
+import { conversaNoEscopo, recorteDeCanais } from '@/lib/perfis/escopo';
 import type { ContextoDeAcesso } from '@/lib/perfis/tipos';
-import { somarDias } from '@/lib/tasks/prazo';
+import { diaLocal } from '@/lib/tasks/prazo';
 import { createClient } from '@/lib/supabase/client';
-import type { Meeting } from '@/types';
+import type { Conversation, Task } from '@/types';
 
 /** O mínimo para `nomeDoContato` — a mesma projeção do resto do Meu dia. */
-export interface ContatoDoGanho {
+export interface ContatoDoDia {
   id: string;
   name: string | null;
   phone: string | null;
@@ -52,18 +49,36 @@ export interface ContatoDoGanho {
   instagram_username?: string | null;
 }
 
-/** Quantas linhas cada lista da aba mostra — o número vem sempre do `count`. */
+const CONTATO =
+  'contact:contacts(id, name, phone, wa_username, instagram_username)';
+
+/** Quantas falhas de automação vêm nomeadas — o número vem do `count`. */
 const LINHAS_LISTADAS = 5;
 
-/** Teto defensivo das listas que passam por recorte em JS. */
-const TETO_DE_LINHAS = 500;
+/** Página das leituras COMPLETAS (conexões, equipe) — o teto do PostgREST. */
+const PAGINA = 1000;
+
+/**
+ * Para-choque das leituras completas: 50 páginas. Acima disso a leitura
+ * FALHA à vista, em vez de parar no meio e afirmar um número menor.
+ */
+const PAGINAS_NO_MAXIMO = 50;
+
+/** Tarefas por grupo que vêm como LINHA — o número vem do `count`. */
+const LINHAS_DE_TAREFA = 50;
+
+/** Avisos não lidos que vêm como linha. */
+const TETO_DE_AVISOS = 50;
+
+/** Teto de UUIDs por `.in()` — o PostgREST trava perto de mil valores na URL. */
+const IDS_POR_CONSULTA = 500;
 
 /** Uma automação que falhou hoje, com onde ir consertar. */
 export interface FalhaDeAutomacao {
   /** O id do log — chave de render, e o que o histórico da automação mostra. */
   id: string;
   automacao: string | null;
-  contato: ContatoDoGanho | null;
+  contato: ContatoDoDia | null;
   /**
    * A conversa do contato, quando ele tem uma.
    *
@@ -95,61 +110,6 @@ export interface Correcoes {
   falhasDeAutomacao: FalhaDeAutomacao[];
 }
 
-export interface GanhoDoDia {
-  id: string;
-  quando: string;
-  /**
-   * ⚠️ O ganho é nomeado pelo CLIENTE, não pelo título do card:
-   * `cb_lead_events.deal_id` NÃO tem FK (912 — a trilha preserva o rastro
-   * de negócio apagado), então o PostgREST não embute `deals`. `contact_id`
-   * tem FK e é o nome que o operador reconhece.
-   */
-  contato: ContatoDoGanho | null;
-}
-
-export interface Resultados {
-  /** Mensagens que a EQUIPE mandou hoje — da conta, não da pessoa (ver a nota). */
-  mensagensDoEscritorio: number;
-  /** Tarefas SUAS concluídas hoje. */
-  tarefasConcluidas: number;
-  /** Negócios que o escritório ganhou hoje. */
-  ganhos: number;
-  ganhosRecentes: GanhoDoDia[];
-}
-
-export interface Negocios {
-  grupos: GrupoDeEtapa[];
-  /** Total de negócios abertos seus (depois do recorte de funil). */
-  meus: number;
-  /** Soma dos valores dos seus abertos. */
-  valor: number;
-  /** Abertos do escritório sem responsável — o que precisa de dono. */
-  semResponsavel: number;
-  /** A consulta bateu no teto: `meus` e `valor` são um piso. */
-  truncada: boolean;
-}
-
-export interface Agenda {
-  /**
-   * Suas reuniões de hoje e amanhã, da agenda do CRM.
-   *
-   * ⚠️ SÓ `cb_meetings`. Os agendamentos do Calendly não entram: aquela
-   * tabela guarda só `invitee.created`, então uma reunião cancelada — ou a
-   * ponta velha de um reagendamento — continua lá com hora futura, e a
-   * tela afirmaria compromisso que não existe.
-   */
-  reunioes: Meeting[];
-  /**
-   * Quantas ficaram FORA do teto da lista.
-   *
-   * ⚠️ Vem do `count: 'exact'`, não de contar o array: com mais de
-   * `LINHAS_LISTADAS` reuniões em dois dias, o teto derrubava as últimas em
-   * silêncio e o bloco não dizia que havia mais — escondendo justamente o
-   * compromisso do fim do dia (Codex, PR #202).
-   */
-  restantes: number;
-}
-
 export interface Integracoes {
   calendly: number;
   webhooks: number;
@@ -161,13 +121,54 @@ export interface Integracoes {
   retidas: RetidasNaTela | null;
 }
 
+export interface Conexoes {
+  /**
+   * As conversas 1:1 ativas que têm algo a contar (não lida ou esperando),
+   * da conta INTEIRA. A conta por conexão é da tela (`contarPorConexao`),
+   * que conhece as conexões do perfil.
+   */
+  conversas: ConversaDaConexao[];
+}
+
+export interface Notificacoes {
+  /** As não lidas NO ESCOPO do perfil, a mais nova primeiro. */
+  avisos: AvisoComContato[];
+  /** Não lidas de conversas em conexões FORA do perfil — só contadas. */
+  foraDoPerfil: number;
+  /** Havia mais não lidas que `TETO_DE_AVISOS`: o número é um piso. */
+  truncada: boolean;
+}
+
+export type TarefaDoDia = Task & {
+  contact: ContatoDoDia | null;
+  /** A conversa do cliente, DERIVADA (a tarefa não guarda conversa). */
+  conversation_id: string | null;
+};
+
+export interface TarefasDoDia {
+  /** Até `LINHAS_DE_TAREFA` de cada grupo, a mais antiga primeiro. */
+  vencidas: TarefaDoDia[];
+  hoje: TarefaDoDia[];
+  /** Recebidas e ainda não vistas, com prazo DEPOIS de hoje. */
+  novas: TarefaDoDia[];
+  /** Os TOTAIS, do `count: 'exact'` — são estes que a tela afirma. */
+  totais: { vencidas: number; hoje: number; novas: number };
+}
+
+export interface Equipe {
+  /** As tarefas ABERTAS com prazo até hoje, da conta inteira, completas. */
+  tarefas: (TarefaDaEquipe & { conversation_id: string | null })[];
+}
+
 export interface AreaDeTrabalho {
   agoraMs: number;
   correcoes: Bloco<Correcoes>;
   integracoes: Bloco<Integracoes>;
-  resultados: Bloco<Resultados>;
-  negocios: Bloco<Negocios>;
-  agenda: Bloco<Agenda>;
+  conexoes: Bloco<Conexoes>;
+  notificacoes: Bloco<Notificacoes>;
+  tarefas: Bloco<TarefasDoDia>;
+  /** Só com `comEquipe`; sem ele fica em "carregando" e a tela não o lê. */
+  equipe: Bloco<Equipe>;
 }
 
 const CARREGANDO = { status: 'carregando' } as const;
@@ -177,30 +178,21 @@ const VAZIA: AreaDeTrabalho = {
   agoraMs: 0,
   correcoes: CARREGANDO,
   integracoes: CARREGANDO,
-  resultados: CARREGANDO,
-  negocios: CARREGANDO,
-  agenda: CARREGANDO,
+  conexoes: CARREGANDO,
+  notificacoes: CARREGANDO,
+  tarefas: CARREGANDO,
+  equipe: CARREGANDO,
 };
-
-/** Só o que o bloco de negócios lê — o quadro tem select próprio, bem maior. */
-const SELECT_DE_NEGOCIO =
-  'id, title, value, pipeline_id, stage_id, ' +
-  'pipeline:pipelines(id, name), stage:pipeline_stages(id, name, position)';
 
 const linhas = <T>(data: unknown): T[] => (data ?? []) as T[];
 
 export interface PedidoDaArea {
   userId: string;
-  /**
-   * ⚠️ `profiles.id`, NÃO `user.id`. `deals.assigned_to` aponta para
-   * `profiles`, ao contrário de `cb_tasks`/`conversations`/`notifications`.
-   * Ver a nota em `src/lib/meu-dia/negocios.ts`. Nulo enquanto o perfil não
-   * resolveu — e aí o bloco de negócios espera, em vez de afirmar zero.
-   */
-  profileId: string | null;
   accountId: string;
   /** A LENTE do "Ver como" — esta aba vive dentro do app. */
   ctx: ContextoDeAcesso;
+  /** Busca as tarefas da equipe (o card só de admin e de quem vê o Painel). */
+  comEquipe: boolean;
   /** Muda para consultar de novo (o "Atualizar"). */
   versao?: number;
 }
@@ -208,16 +200,43 @@ export interface PedidoDaArea {
 function chaveDoPedido(p: PedidoDaArea): string {
   return [
     p.userId,
-    p.profileId ?? '',
     p.accountId,
     p.ctx.papel ?? '',
     p.ctx.perfil?.id ?? '',
+    p.comEquipe ? 'equipe' : '',
     p.versao ?? 0,
   ].join('|');
 }
 
+type Supabase = ReturnType<typeof createClient>;
+
+/**
+ * A conversa de cada contato, numa consulta por fatia. Uma conversa por
+ * contato por conta (UNIQUE da 036); grupo não tem contato.
+ */
+async function conversaPorContato(
+  supabase: Supabase,
+  accountId: string,
+  contatos: readonly string[],
+): Promise<Map<string, string>> {
+  const mapa = new Map<string, string>();
+  const ids = [...new Set(contatos)];
+  for (let i = 0; i < ids.length; i += IDS_POR_CONSULTA) {
+    const { data, error } = await supabase
+      .from('conversations')
+      .select('id, contact_id')
+      .eq('account_id', accountId)
+      .in('contact_id', ids.slice(i, i + IDS_POR_CONSULTA));
+    if (error) throw new Error(error.message);
+    for (const c of linhas<{ id: string; contact_id: string | null }>(data)) {
+      if (c.contact_id) mapa.set(c.contact_id, c.id);
+    }
+  }
+  return mapa;
+}
+
 export function useAreaDeTrabalho(pedido: PedidoDaArea): AreaDeTrabalho {
-  const { userId, profileId, accountId, ctx } = pedido;
+  const { userId, accountId, ctx, comEquipe } = pedido;
   const chave = chaveDoPedido(pedido);
   const [estado, setEstado] = useState<{ chave: string; area: AreaDeTrabalho }>(
     () => ({ chave, area: VAZIA })
@@ -228,15 +247,11 @@ export function useAreaDeTrabalho(pedido: PedidoDaArea): AreaDeTrabalho {
     let vivo = true;
     const agora = new Date();
     const agoraMs = agora.getTime();
-    // ⚠️ São DOIS "hojes" nesta tela, e a diferença é deliberada. Aqui o
-    // dia é o de QUEM LÊ (`startOfLocalDay`, o mesmo do Painel e da régua de
-    // prazo das tarefas): "o que aconteceu hoje" é uma pergunta sobre o dia
-    // da pessoa. Já a AGENDA recorta no fuso da agenda (`FUSO_PADRAO`),
-    // porque `cb_meetings` define e exibe data naquele fuso. Unificar os
-    // dois moveria uma das duas respostas para um dia que ninguém pediu.
+    // O dia de QUEM LÊ (`startOfLocalDay`/`diaLocal`), o mesmo do Painel e da
+    // régua de prazo das tarefas: "hoje" é uma pergunta sobre o dia da pessoa.
     const inicioDoDia = startOfLocalDay(agora).toISOString();
+    const hoje = diaLocal(agora);
     const canais = recorteDeCanais(ctx);
-    const funis = recorteDeFunis(ctx);
 
     const assentar = <K extends keyof Omit<AreaDeTrabalho, 'agoraMs'>>(
       bloco: K,
@@ -298,10 +313,9 @@ export function useAreaDeTrabalho(pedido: PedidoDaArea): AreaDeTrabalho {
         // `count: 'exact'`; a lista é só o começo.
         supabase
           .from('automation_logs')
-          .select(
-            'id, contact_id, automations(name), contact:contacts(id, name, phone, wa_username, instagram_username)',
-            { count: 'exact' }
-          )
+          .select(`id, contact_id, automations(name), ${CONTATO}`, {
+            count: 'exact',
+          })
           .eq('account_id', accountId)
           .eq('desfecho', 'falhou')
           .gte('finalizado_em', inicioDoDia)
@@ -316,30 +330,16 @@ export function useAreaDeTrabalho(pedido: PedidoDaArea): AreaDeTrabalho {
         id: string;
         contact_id: string | null;
         automations: { name: string | null } | null;
-        contact: ContatoDoGanho | null;
+        contact: ContatoDoDia | null;
       }>(automacoes.data);
 
-      // A conversa de cada contato, em UMA consulta. `automation_logs` não
-      // guarda conversa; quem responde é a UNIQUE da 036.
-      const conversaPorContato = new Map<string, string>();
-      const idsDeContato = [
-        ...new Set(
-          logs.map((l) => l.contact_id).filter((id): id is string => !!id)
-        ),
-      ];
-      if (idsDeContato.length > 0) {
-        // No máximo LINHAS_LISTADAS contatos — não precisa de fatias.
-        const { data: convs } = await supabase
-          .from('conversations')
-          .select('id, contact_id')
-          .eq('account_id', accountId)
-          .in('contact_id', idsDeContato);
-        for (const c of linhas<{ id: string; contact_id: string | null }>(
-          convs
-        )) {
-          if (c.contact_id) conversaPorContato.set(c.contact_id, c.id);
-        }
-      }
+      // A conversa de cada contato. `automation_logs` não guarda conversa;
+      // quem responde é a UNIQUE da 036. No máximo LINHAS_LISTADAS contatos.
+      const conversas = await conversaPorContato(
+        supabase,
+        accountId,
+        logs.map((l) => l.contact_id).filter((id): id is string => !!id)
+      );
 
       return {
         agendadasFalharam: falharam.count ?? 0,
@@ -350,7 +350,7 @@ export function useAreaDeTrabalho(pedido: PedidoDaArea): AreaDeTrabalho {
           automacao: l.automations?.name ?? null,
           contato: l.contact ?? null,
           conversationId: l.contact_id
-            ? (conversaPorContato.get(l.contact_id) ?? null)
+            ? (conversas.get(l.contact_id) ?? null)
             : null,
         })),
       };
@@ -370,169 +370,200 @@ export function useAreaDeTrabalho(pedido: PedidoDaArea): AreaDeTrabalho {
       };
     });
 
-    carregar('resultados', async () => {
-      const [mensagens, tarefas, ganhos] = await Promise.all([
-        // ⚠️ "Da EQUIPE", não "suas": a régua de resposta humana é
-        // `sender_id` OU `from_device` (CLAUDE.md), e o celular pareado —
-        // por onde 948 de 956 mensagens da equipe saíram, medido — grava
-        // `from_device` com `sender_id` NULO. Não há autor a quem creditar
-        // a maior parte do trabalho real, então a aba credita ao escritório
-        // em vez de mostrar um dia quase vazio para quem trabalhou o dia
-        // inteiro. ⚠️ `messages` não tem `account_id`: a conta entra pelo
-        // embed `!inner`, senão o número seria de todas as contas de que a
-        // pessoa é membro.
-        supabase
-          .from('messages')
-          .select('id, conversation:conversations!inner(account_id)', {
-            count: 'exact',
-            head: true,
-          })
-          .eq('conversation.account_id', accountId)
-          .eq('sender_type', 'agent')
-          .or('sender_id.not.is.null,from_device.is.true')
-          // A ligação atendida no celular (1044) passa na régua de resposta
-          // de gente — é gente falando com o cliente —, mas não é mensagem.
-          .neq('content_type', 'call')
-          .is('deleted_at', null)
-          .gte('created_at', inicioDoDia),
-        // ⚠️ "Suas tarefas concluídas", nunca "que você concluiu": não
-        // existe `concluida_por`, e criador e admin também dão baixa.
-        supabase
-          .from('cb_tasks')
-          .select('id', { count: 'exact', head: true })
-          .eq('account_id', accountId)
-          .eq('responsavel_user_id', userId)
-          .eq('status', 'concluida')
-          .gte('concluida_em', inicioDoDia),
-        // ⚠️ Do ESCRITÓRIO: ganho carimbado por automação ou pelo gatilho
-        // da etapa (950) tem `actor_user_id` NULO, então "ganhos por mim"
-        // subcontaria em silêncio justamente quando a operação funciona.
-        supabase
-          .from('cb_lead_events')
+    carregar('conexoes', async () => {
+      // ⚠️ Leitura COMPLETA, paginada por CHAVE (`id`): o indicador AFIRMA
+      // um número, e a caixa filtrada para onde ele leva conta a lista
+      // inteira. Paginar por posição com a caixa viva (conversa nova
+      // entrando no meio) pularia ou repetiria linha.
+      //
+      // Só as linhas que contam alguma coisa (não lida OU esperando) — o
+      // resto somaria zero. Grupo e encerrada ficam de fora aqui e na régua.
+      const conversas: ConversaDaConexao[] = [];
+      let depoisDe: string | null = null;
+      for (let pagina = 0; ; pagina++) {
+        if (pagina >= PAGINAS_NO_MAXIMO) {
+          throw new Error('conversas demais para uma leitura');
+        }
+        let q = supabase
+          .from('conversations')
           .select(
-            'id, occurred_at, contact:contacts(id, name, phone, wa_username, instagram_username)',
-            { count: 'exact' }
+            'id, channel_id, status, group_id, unread_count, aguardando_desde'
           )
           .eq('account_id', accountId)
-          .eq('event_type', 'status_changed')
-          .eq('to_status', 'won')
-          .gte('occurred_at', inicioDoDia)
-          .order('occurred_at', { ascending: false })
-          .limit(LINHAS_LISTADAS),
-      ]);
-      if (mensagens.error) throw new Error(mensagens.error.message);
-      if (tarefas.error) throw new Error(tarefas.error.message);
-      if (ganhos.error) throw new Error(ganhos.error.message);
-      const linhasGanhas = linhas<{
-        id: string;
-        occurred_at: string;
-        contact: ContatoDoGanho | null;
-      }>(ganhos.data);
+          .is('group_id', null)
+          .neq('status', 'closed')
+          .or('unread_count.gt.0,aguardando_desde.not.is.null')
+          .order('id', { ascending: true })
+          .limit(PAGINA);
+        if (depoisDe) q = q.gt('id', depoisDe);
+        const { data, error } = await q;
+        if (error) throw new Error(error.message);
+        const pag = linhas<ConversaDaConexao>(data);
+        conversas.push(...pag);
+        if (pag.length < PAGINA) break;
+        depoisDe = pag[pag.length - 1].id;
+      }
+      return { conversas };
+    });
+
+    carregar('notificacoes', async () => {
+      // As NÃO LIDAS (pedido do operador, 29/09: ênfase nas notificações) —
+      // o que ainda pede atenção, e não o que chegou desde a última entrada
+      // (isso continua no cartão da entrada).
+      const { data, error, count } = await supabase
+        .from('notifications')
+        .select(
+          'id, account_id, user_id, type, title, body, conversation_id, contact_id, task_id, actor_user_id, read_at, created_at, ' +
+            'contact:contacts(name, phone, wa_username, instagram_username)',
+          { count: 'exact' }
+        )
+        .eq('user_id', userId)
+        .eq('account_id', accountId)
+        .is('read_at', null)
+        .order('created_at', { ascending: false })
+        .limit(TETO_DE_AVISOS);
+      if (error) throw new Error(error.message);
+      const avisos = linhas<AvisoComContato>(data);
+
+      // ⚠️ O recorte por conexão do PERFIL (a régua das novidades, pedido do
+      // operador de 12/09): aviso de conversa de outra conexão vira número,
+      // não linha. Aviso de tarefa não tem conversa e nunca é recortado.
+      // Conversa que não voltou CONTA como dentro — esconder por ignorância
+      // é pior que mostrar de mais.
+      const ids = [
+        ...new Set(
+          avisos
+            .map((a) => a.conversation_id)
+            .filter((id): id is string => !!id)
+        ),
+      ];
+      const conversasPorId = new Map<string, Conversation>();
+      if (ids.length > 0) {
+        const { data: convs, error: erroConversas } = await supabase
+          .from('conversations')
+          .select('id, channel_id, group_id, group:cb_groups(channel_id)')
+          .eq('account_id', accountId)
+          .in('id', ids);
+        if (erroConversas) throw new Error(erroConversas.message);
+        for (const c of linhas<Conversation>(convs)) conversasPorId.set(c.id, c);
+      }
+      const dentro: AvisoComContato[] = [];
+      let foraDoPerfil = 0;
+      for (const a of avisos) {
+        const conversa = a.conversation_id
+          ? conversasPorId.get(a.conversation_id)
+          : undefined;
+        if (conversa && !conversaNoEscopo(ctx, conversa)) foraDoPerfil++;
+        else dentro.push(a);
+      }
       return {
-        mensagensDoEscritorio: mensagens.count ?? 0,
-        tarefasConcluidas: tarefas.count ?? 0,
-        ganhos: ganhos.count ?? linhasGanhas.length,
-        ganhosRecentes: linhasGanhas.map((l) => ({
-          id: l.id,
-          quando: l.occurred_at,
-          contato: l.contact ?? null,
-        })),
+        avisos: dentro,
+        foraDoPerfil,
+        truncada: (count ?? avisos.length) > avisos.length,
       };
     });
 
-    // ⚠️ Sem o perfil resolvido não há como perguntar "meus", e as duas
-    // respostas possíveis seriam erradas: zero é a mentira do bloco vazio, e
-    // "falhou" pisca vermelho sobre algo que não falhou — nada foi
-    // perguntado ainda. O bloco fica no estado inicial (carregando) e o
-    // efeito roda de novo quando o perfil chega, porque `profileId` entra na
-    // chave do pedido.
-    if (profileId)
-      carregar('negocios', async () => {
-        const semResponsavel = () => {
-          const q = supabase
-            .from('deals')
-            .select('id', { count: 'exact', head: true })
+    carregar('tarefas', async () => {
+      // Três grupos, cada um com o seu `count`: o número vem do banco, a
+      // lista traz só o começo (mais antiga primeiro, como a tela de
+      // Tarefas). Numa consulta só, ordenada por prazo e com teto, mil
+      // vencidas empurrariam as de hoje para fora — e "0 vencem hoje" seria
+      // mentira.
+      const minhasAbertas = () =>
+        supabase
+          .from('cb_tasks')
+          .select(`*, ${CONTATO}`, { count: 'exact' })
+          .eq('account_id', accountId)
+          .eq('responsavel_user_id', userId)
+          .eq('status', 'aberta')
+          .order('vence_em', { ascending: true })
+          .order('vence_as', { ascending: true, nullsFirst: false })
+          .order('created_at', { ascending: true })
+          .limit(LINHAS_DE_TAREFA);
+      const [vencidas, deHoje, novas] = await Promise.all([
+        // A régua é o DIA de quem lê (`diaLocal`), como em /tarefas.
+        minhasAbertas().lt('vence_em', hoje),
+        minhasAbertas().eq('vence_em', hoje),
+        // Recebida e ainda não vista (1068), de prazo futuro — as de prazo
+        // até hoje já estão nos dois grupos acima.
+        minhasAbertas().gt('vence_em', hoje).is('vista_em', null),
+      ]);
+      if (vencidas.error) throw new Error(vencidas.error.message);
+      if (deHoje.error) throw new Error(deHoje.error.message);
+      if (novas.error) throw new Error(novas.error.message);
+
+      type Linha = Task & { contact: ContatoDoDia | null };
+      const [v, h, n] = [vencidas, deHoje, novas].map((r) =>
+        linhas<Linha>(r.data)
+      );
+      const conversas = await conversaPorContato(
+        supabase,
+        accountId,
+        [...v, ...h, ...n].map((t) => t.contact_id)
+      );
+      const comConversa = (l: Linha[]): TarefaDoDia[] =>
+        l.map((t) => ({
+          ...t,
+          conversation_id: conversas.get(t.contact_id) ?? null,
+        }));
+      return {
+        vencidas: comConversa(v),
+        hoje: comConversa(h),
+        novas: comConversa(n),
+        totais: {
+          vencidas: vencidas.count ?? v.length,
+          hoje: deHoje.count ?? h.length,
+          novas: novas.count ?? n.length,
+        },
+      };
+    });
+
+    if (comEquipe)
+      carregar('equipe', async () => {
+        // ⚠️ COMPLETA, paginada por chave: o card compara pessoas, e uma
+        // lista cortada no teto esconderia justamente quem está mais
+        // atrasado (a ordem por id não tem nada a ver com prazo).
+        const tarefas: TarefaDaEquipe[] = [];
+        let depoisDe: string | null = null;
+        for (let pagina = 0; ; pagina++) {
+          if (pagina >= PAGINAS_NO_MAXIMO) {
+            throw new Error('tarefas demais para uma leitura');
+          }
+          let q = supabase
+            .from('cb_tasks')
+            .select(
+              `id, titulo, vence_em, vence_as, responsavel_user_id, responsavel_nome, vista_em, contact_id, ${CONTATO}`
+            )
             .eq('account_id', accountId)
-            .is('assigned_to', null)
-            .eq('status', 'open');
-          // Lista vazia = sem recorte = todos, a convenção do projeto.
-          return funis && funis.length > 0 ? q.in('pipeline_id', funis) : q;
-        };
-        // ⚠️ O recorte de funil entra NA CONSULTA, antes do teto — e não só
-        // em `agruparPorEtapa`. Com mais de TETO_DE_LINHAS negócios seus, o
-        // corte acontece ANTES do filtro em JS: se as linhas que vieram
-        // forem todas de funis que o perfil não enxerga, o bloco fica vazio
-        // sobre trabalho que existe (Codex, PR #202). O filtro em JS
-        // continua, como segunda cerca — a consulta pode mudar, a régua não.
-        const meusNegocios = () => {
-          const q = supabase
-            .from('deals')
-            .select(SELECT_DE_NEGOCIO, { count: 'exact' })
-            .eq('account_id', accountId)
-            .eq('assigned_to', profileId)
-            .eq('status', 'open')
-            .limit(TETO_DE_LINHAS);
-          return funis && funis.length > 0 ? q.in('pipeline_id', funis) : q;
-        };
-        const [meus, orfas] = await Promise.all([
-          meusNegocios(),
-          // ⚠️ Os sem responsável passam pelo MESMO recorte de funil dos
-          // seus — aqui na consulta, porque é contagem e não há lista para
-          // filtrar depois. Sem ele, um perfil restrito ao trabalhista via
-          // "12 negócios sem responsável" do escritório inteiro e, ao
-          // seguir o link, não achava nenhum: a tela de Funis só oferece os
-          // funis visíveis (Codex, PR #202).
-          semResponsavel(),
-        ]);
-        if (meus.error) throw new Error(meus.error.message);
-        if (orfas.error) throw new Error(orfas.error.message);
-        const lista = linhas<NegocioDoBloco>(meus.data);
-        const grupos = agruparPorEtapa(lista, ctx);
+            .eq('status', 'aberta')
+            .lte('vence_em', hoje)
+            .order('id', { ascending: true })
+            .limit(PAGINA);
+          if (depoisDe) q = q.gt('id', depoisDe);
+          const { data, error } = await q;
+          if (error) throw new Error(error.message);
+          const pag = linhas<TarefaDaEquipe>(data);
+          tarefas.push(...pag);
+          if (pag.length < PAGINA) break;
+          depoisDe = pag[pag.length - 1].id;
+        }
+        const conversas = await conversaPorContato(
+          supabase,
+          accountId,
+          tarefas.map((t) => t.contact_id)
+        );
         return {
-          grupos,
-          meus: grupos.reduce((s, g) => s + g.quantidade, 0),
-          valor: grupos.reduce((s, g) => s + g.valor, 0),
-          semResponsavel: orfas.count ?? 0,
-          truncada: (meus.count ?? lista.length) > lista.length,
+          tarefas: tarefas.map((t) => ({
+            ...t,
+            conversation_id: conversas.get(t.contact_id) ?? null,
+          })),
         };
       });
-
-    carregar('agenda', async () => {
-      // Hoje e amanhã: a reunião de amanhã cedo precisa aparecer para quem
-      // olha a tela no fim da tarde.
-      //
-      // ⚠️ O recorte é no FUSO DA AGENDA (`FUSO_PADRAO`), não na meia-noite
-      // local do navegador: `cb_meetings` define e exibe data naquele fuso,
-      // e um navegador em UTC logo depois da meia-noite cortaria boa parte
-      // do dia ainda corrente em São Paulo e traria um pedaço de um dia a
-      // mais (Codex, PR #202). Aqui não muda nada enquanto todo mundo está
-      // no Brasil — muda no dia em que houver advogado em outro país, que é
-      // o mesmo motivo pelo qual `cb_availability` guarda `time` + fuso.
-      const hojeNoFuso = diaNoFuso(agora, FUSO_PADRAO);
-      const de = paraInstante(hojeNoFuso, '00:00', FUSO_PADRAO);
-      const ate = paraInstante(somarDias(hojeNoFuso, 2), '00:00', FUSO_PADRAO);
-      const { data, error, count } = await supabase
-        .from('cb_meetings')
-        .select('*', { count: 'exact' })
-        .eq('account_id', accountId)
-        .eq('owner_user_id', userId)
-        .neq('status', 'cancelada')
-        .gte('starts_at', de.toISOString())
-        .lt('starts_at', ate.toISOString())
-        .order('starts_at', { ascending: true })
-        .limit(LINHAS_LISTADAS);
-      if (error) throw new Error(error.message);
-      const lista = linhas<Meeting>(data);
-      return {
-        reunioes: lista,
-        restantes: Math.max(0, (count ?? lista.length) - lista.length),
-      };
-    });
 
     return () => {
       vivo = false;
     };
-  }, [userId, profileId, accountId, ctx, chave]);
+  }, [userId, accountId, ctx, comEquipe, chave]);
 
   return estado.chave === chave ? estado.area : VAZIA;
 }

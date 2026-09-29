@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ehOrigemDoInbox, urlDoInbox } from "./url";
+import { ehOrigemDoInbox, recorteDaUrl, urlDoInbox } from "./url";
 
 describe("urlDoInbox", () => {
   it("sem nada → /inbox, nunca /inbox?", () => {
@@ -41,6 +41,40 @@ describe("urlDoInbox", () => {
     // Parecido não é igual: a comparação é exata.
     expect(urlDoInbox({ c: "cv1", de: "Reunioes" })).toBe("/inbox?c=cv1");
     expect(urlDoInbox({ de: "reunioes&x=1" })).toBe("/inbox");
+  });
+});
+
+describe("recorte do Meu dia (`conexao` + `ver`)", () => {
+  const CANAL = "0f8e5a2c-1111-4222-8333-444455556666";
+
+  it("sai com a conexão e o número clicado", () => {
+    expect(urlDoInbox({ conexao: CANAL, ver: "nao-lidas" })).toBe(
+      `/inbox?conexao=${CANAL}&ver=nao-lidas`,
+    );
+    expect(urlDoInbox({ conexao: CANAL, ver: "em-atraso" })).toBe(
+      `/inbox?conexao=${CANAL}&ver=em-atraso`,
+    );
+    expect(urlDoInbox({ conexao: CANAL })).toBe(`/inbox?conexao=${CANAL}`);
+  });
+
+  it("⚠️ é porta de ENTRADA: c e etapa vencem, e `ver` sem conexão não sai", () => {
+    expect(urlDoInbox({ c: "cv1", conexao: CANAL, ver: "nao-lidas" })).toBe(
+      "/inbox?c=cv1",
+    );
+    expect(urlDoInbox({ etapa: "s1", conexao: CANAL })).toBe("/inbox?etapa=s1");
+    expect(urlDoInbox({ ver: "nao-lidas" })).toBe("/inbox");
+  });
+
+  it("recorteDaUrl é PARSE: conexão sem forma de id não semeia; ver estranho é ignorado", () => {
+    expect(recorteDaUrl(CANAL, "em-atraso")).toEqual({
+      conexao: CANAL,
+      ver: "em-atraso",
+    });
+    expect(recorteDaUrl(CANAL, "tudo")).toEqual({ conexao: CANAL, ver: null });
+    expect(recorteDaUrl(CANAL, null)).toEqual({ conexao: CANAL, ver: null });
+    expect(recorteDaUrl("bancario", "nao-lidas")).toBeNull();
+    expect(recorteDaUrl(null, "nao-lidas")).toBeNull();
+    expect(recorteDaUrl("", null)).toBeNull();
   });
 });
 

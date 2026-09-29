@@ -20,6 +20,7 @@
 | F2a | Relógio de atividade entre abas: depois de 4 h sem ninguém mexer, o Meu dia volta a aparecer, **sem senha** | **implementada em 12/09/2026** (branch `feat/meu-dia-fase-2`; §15) | nenhuma | a abrir |
 | F3 | Painel permanente `/meu-dia` no menu | **implementada em 12/09/2026** (mesma branch; §15) | nenhuma | a abrir |
 | F2b | Pedir a senha depois de 4 h sem atividade + login que devolve ao ponto | **descartada por ora** — o operador escolheu "volta o Meu dia, sem senha" (12/09) | — | — |
+| v2 | A aba reorganizada (29/09/2026): conexões, equipe, notificações e tarefas em destaque, agenda pela pauta, tarefa vista | plano próprio: `docs/PLANO-meu-dia-v2.md` | 1068 | — |
 
 **Ordem recomendada (revisão do coordenador, §11):** F0 → F1 → F2a → F3 → uso real por alguns dias → F2b. A F2 da v2 foi partida em duas: a volta do Meu dia é uma troca de tela comum, com a sessão viva, e sai barata; o pedido de senha é a parte delicada (encerramento ordenado, login, middleware) e merece decisão com a feature já em uso. Onde o texto abaixo diz "F2", a §7 separa o que é F2a e o que é F2b. A F4 da v1 saiu. A D4 entra na F1 (mesmo arquivo), e a D11 é conferência da F0 com a decisão no fim da F2b.
 
