@@ -119,7 +119,7 @@ export function AvancarEtapa({
           movido: t('toastMovido', nomes),
           mudou: t('toastMudou', nomes),
           falhou: t('toastFalhou', nomes),
-          semConexao: t('toastSemConexao', nomes),
+          tentandoDeNovo: t('toastTentandoDeNovo', nomes),
         },
       },
       userId,

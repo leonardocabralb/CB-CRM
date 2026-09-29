@@ -579,7 +579,7 @@
         "toastMovido": "{contato}'s deal moved to {etapa}.",
         "toastMudou": "{contato}'s deal had already changed stage; the move to {etapa} was not made.",
         "toastFalhou": "Couldn't move {contato}'s deal to {etapa}.",
-        "toastSemConexao": "No connection: {contato}'s deal will move to {etapa} as soon as the connection is back."
+        "toastTentandoDeNovo": "Couldn't move it right now: the CRM will try again, and {contato}'s deal will move to {etapa} as soon as it can."
       }
     },
     "arquivos": {

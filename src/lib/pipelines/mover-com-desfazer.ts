@@ -17,11 +17,13 @@
 //   `concluirTodosAgora`, e o pedido sai com `keepalive` — o navegador o
 //   entrega mesmo com a página indo embora.
 // ⚠️ E a RESERVA: o pedido fica no `localStorage` do aparelho desde o
-// clique até o servidor responder. Se o envio não chegou (sem internet, o
-// navegador morreu antes), `retomarMovimentosPendentes` refaz na próxima
-// abertura do app, na volta à aba e quando a conexão voltar. Refazer é
-// seguro pelo mesmo motivo de sempre: a rota só move a partir da etapa de
-// origem, e "o card já está na etapa de destino" conta como feito.
+// clique até o servidor dar uma resposta DEFINITIVA. Se o envio não chegou
+// (sem internet, o navegador morreu antes) ou a falha foi provisória (5xx
+// num deploy, tempo esgotado — Codex, PR #340), `retomarMovimentosPendentes`
+// refaz: sozinho a cada 30 s na mesma página, e na próxima abertura do app,
+// na volta à aba e quando a conexão voltar. Refazer é seguro pelo mesmo
+// motivo de sempre: a rota só move a partir da etapa de origem, e "o card já
+// está na etapa de destino" conta como feito.
 //
 // ⚠️ A retomada espera `FOLGA_DA_RETOMADA_MS` depois do prazo: outra aba
 // aberta lê o mesmo `localStorage`, e retomar um pedido ainda na janela de
@@ -49,6 +51,19 @@ export const TEMPO_DO_AVISO_MS = 2500;
  */
 export const FOLGA_DA_RETOMADA_MS = 15_000;
 
+/** Falha provisória: nova tentativa sozinha, na mesma página, a cada tanto… */
+export const INTERVALO_DE_NOVA_TENTATIVA_MS = 30_000;
+/** …até este número de vezes; depois, só na volta à aba, na volta da conexão ou na abertura. */
+export const MAXIMO_DE_TENTATIVAS_NA_PAGINA = 10;
+
+/**
+ * A resposta que não decide nada: o servidor não conseguiu (5xx num deploy,
+ * banco lento), mandou esperar (429, 408) ou a sessão venceu (401 — o login
+ * seguinte refaz). O pedido fica na fila. 400, 403 e 404 são definitivos.
+ */
+const ehProvisoria = (status: number) =>
+  status === 401 || status === 408 || status === 429 || status >= 500;
+
 const CHAVE_DA_FILA = 'cb-movimentos-pendentes:';
 
 /** Os textos já traduzidos: a retomada roda fora do React, às vezes noutra página. */
@@ -58,8 +73,8 @@ export interface TextosDoMovimento {
   /** O card já tinha saído da etapa de origem; nada foi feito. */
   mudou: string;
   falhou: string;
-  /** Sem conexão: refaz quando voltar. */
-  semConexao: string;
+  /** Falha provisória (sem rede, servidor fora): o CRM tenta de novo. */
+  tentandoDeNovo: string;
 }
 
 export interface PedidoDeMovimento {
@@ -123,8 +138,11 @@ let ambiente: Ambiente = AMBIENTE_PADRAO;
 const aguardando = new Map<string, { pedido: Pendente; relogio: ReturnType<typeof setTimeout> }>();
 // Ids de pedido com o envio no ar — a retomada não os manda de novo.
 const emVoo = new Set<string>();
-// Sem conexão: avisa uma vez por pedido, não a cada tentativa.
-const avisadosSemConexao = new Set<string>();
+// Falha provisória: avisa uma vez por pedido, não a cada tentativa, e conta
+// as tentativas automáticas desta página.
+const avisadosDaFalha = new Set<string>();
+const tentativas = new Map<string, number>();
+let relogioDaTentativa: ReturnType<typeof setTimeout> | null = null;
 // O que cada tela desenha, por negócio. Objeto novo só quando muda: é a foto
 // do `useSyncExternalStore`, que compara por identidade.
 const fotos = new Map<string, EstadoDoMovimento>();
@@ -184,13 +202,13 @@ function lerFila(usuario: string): Pendente[] {
     if (
       !texto(e.id) || !texto(e.dealId) || !texto(e.de) || !texto(e.para) ||
       typeof e.prazo !== 'number' || !Number.isFinite(e.prazo) ||
-      !texto(t.movido) || !texto(t.mudou) || !texto(t.falhou) || !texto(t.semConexao)
+      !texto(t.movido) || !texto(t.mudou) || !texto(t.falhou) || !texto(t.tentandoDeNovo)
     ) {
       return [];
     }
     return [{
       id: e.id, usuario, dealId: e.dealId, de: e.de, para: e.para, prazo: e.prazo,
-      textos: { movido: t.movido, mudou: t.mudou, falhou: t.falhou, semConexao: t.semConexao },
+      textos: { movido: t.movido, mudou: t.mudou, falhou: t.falhou, tentandoDeNovo: t.tentandoDeNovo },
     }];
   });
 }
@@ -220,6 +238,27 @@ const tirarDaFila = (usuario: string, id: string) =>
 
 // ---- O envio -------------------------------------------------
 
+/**
+ * O pedido fica na fila, e a página tenta de novo sozinha — com teto, para
+ * um servidor que falha sempre não virar um laço de pedidos a cada 30 s.
+ */
+function tentarDeNovoMaisTarde(pedido: Pendente) {
+  emVoo.delete(pedido.id);
+  definirFoto(pedido.dealId, null);
+  if (!avisadosDaFalha.has(pedido.id)) {
+    avisadosDaFalha.add(pedido.id);
+    ambiente.erro(pedido.textos.tentandoDeNovo);
+  }
+  const feitas = (tentativas.get(pedido.id) ?? 0) + 1;
+  tentativas.set(pedido.id, feitas);
+  if (feitas < MAXIMO_DE_TENTATIVAS_NA_PAGINA && !relogioDaTentativa) {
+    relogioDaTentativa = setTimeout(() => {
+      relogioDaTentativa = null;
+      retomarMovimentosPendentes(pedido.usuario);
+    }, INTERVALO_DE_NOVA_TENTATIVA_MS);
+  }
+}
+
 async function enviar(pedido: Pendente, avisarPorToast: boolean): Promise<void> {
   if (emVoo.has(pedido.id)) return;
   emVoo.add(pedido.id);
@@ -236,14 +275,12 @@ async function enviar(pedido: Pendente, avisarPorToast: boolean): Promise<void> 
       body: JSON.stringify({ de: pedido.de, para: pedido.para }),
     });
   } catch {
-    // Não chegou ao servidor. O pedido CONTINUA na fila: a retomada o refaz
-    // quando a conexão (ou o app) voltar.
-    emVoo.delete(pedido.id);
-    definirFoto(pedido.dealId, null);
-    if (!avisadosSemConexao.has(pedido.id)) {
-      avisadosSemConexao.add(pedido.id);
-      ambiente.erro(pedido.textos.semConexao);
-    }
+    // Não chegou ao servidor: o pedido CONTINUA na fila.
+    tentarDeNovoMaisTarde(pedido);
+    return;
+  }
+  if (ehProvisoria(resposta.status)) {
+    tentarDeNovoMaisTarde(pedido);
     return;
   }
 
@@ -270,7 +307,8 @@ async function enviar(pedido: Pendente, avisarPorToast: boolean): Promise<void> 
   else resultado = { tipo: 'falhou' };
 
   emVoo.delete(pedido.id);
-  avisadosSemConexao.delete(pedido.id);
+  avisadosDaFalha.delete(pedido.id);
+  tentativas.delete(pedido.id);
   tirarDaFila(pedido.usuario, pedido.id);
 
   if (resultado.tipo === 'movido') {
@@ -408,9 +446,12 @@ export function __reiniciarParaTeste(novo: Partial<Ambiente> = {}): void {
   for (const item of aguardando.values()) clearTimeout(item.relogio);
   for (const relogio of relogiosDoAviso.values()) clearTimeout(relogio);
   if (relogioDaRetomada) clearTimeout(relogioDaRetomada);
+  if (relogioDaTentativa) clearTimeout(relogioDaTentativa);
   aguardando.clear();
   emVoo.clear();
-  avisadosSemConexao.clear();
+  avisadosDaFalha.clear();
+  tentativas.clear();
+  relogioDaTentativa = null;
   fotos.clear();
   relogiosDoAviso.clear();
   assinantes.clear();

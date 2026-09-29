@@ -572,7 +572,7 @@
         "toastMovido": "Negócio de {contato} movido para {etapa}.",
         "toastMudou": "O negócio de {contato} já tinha mudado de etapa; o movimento para {etapa} não foi feito.",
         "toastFalhou": "Não foi possível mover o negócio de {contato} para {etapa}.",
-        "toastSemConexao": "Sem conexão: o negócio de {contato} vai para {etapa} assim que a conexão voltar."
+        "toastTentandoDeNovo": "Não deu para mover agora: o CRM tenta de novo, e o negócio de {contato} vai para {etapa} assim que conseguir."
       }
     },
     "arquivos": {

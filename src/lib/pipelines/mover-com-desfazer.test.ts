@@ -11,6 +11,8 @@ import {
   ESPERA_PARA_DESFAZER_MS,
   FOLGA_DA_RETOMADA_MS,
   fotoDoMovimento,
+  INTERVALO_DE_NOVA_TENTATIVA_MS,
+  MAXIMO_DE_TENTATIVAS_NA_PAGINA,
   type PedidoDeMovimento,
   retomarMovimentosPendentes,
   TEMPO_DO_AVISO_MS,
@@ -25,7 +27,7 @@ const pedido = (dealId = 'negocio-1', para = 'etapa-b'): PedidoDeMovimento => ({
   dealId,
   de: 'etapa-a',
   para,
-  textos: { movido: 'movido', mudou: 'mudou', falhou: 'falhou', semConexao: 'sem conexão' },
+  textos: { movido: 'movido', mudou: 'mudou', falhou: 'falhou', tentandoDeNovo: 'tentando de novo' },
 });
 
 type Resposta = { ok: boolean; status: number; corpo?: unknown } | 'rede';
@@ -158,36 +160,61 @@ describe('a resposta da rota', () => {
     expect(fila()).toEqual([]);
   });
 
-  it('recusa definitiva (500, 403): avisa e tira da fila — não fica tentando para sempre', async () => {
-    respostas.push({ ok: false, status: 500 });
-    agendarMovimento(pedido(), USUARIO);
-    await esperar(ESPERA_PARA_DESFAZER_MS);
-    expect(erro).toHaveBeenCalledWith('falhou');
-    expect(fila()).toEqual([]);
+  it('recusa DEFINITIVA (400, 403, 404): avisa e tira da fila — tentar de novo daria o mesmo', async () => {
+    for (const status of [400, 403, 404]) {
+      respostas.push({ ok: false, status });
+      agendarMovimento(pedido(), USUARIO);
+      await esperar(ESPERA_PARA_DESFAZER_MS);
+      expect(erro).toHaveBeenLastCalledWith('falhou');
+      expect(fila()).toEqual([]);
+    }
   });
 });
 
 describe('a reserva no aparelho', () => {
-  it('sem conexão, o pedido FICA e a retomada o refaz; o aviso sai uma vez só', async () => {
-    respostas.push('rede', 'rede');
+  it('falha PROVISÓRIA (sem rede, 5xx de um deploy): o pedido FICA, e a página tenta de novo sozinha (Codex, PR #340)', async () => {
+    respostas.push('rede', { ok: false, status: 502 }, { ok: false, status: 500 });
     agendarMovimento(pedido(), USUARIO);
     await esperar(ESPERA_PARA_DESFAZER_MS);
-    expect(erro).toHaveBeenCalledWith('sem conexão');
+    expect(erro).toHaveBeenCalledWith('tentando de novo');
     expect(fila()).toHaveLength(1);
+    expect(conclusoes).toEqual([]);
 
-    await esperar(FOLGA_DA_RETOMADA_MS);
-    retomarMovimentosPendentes(USUARIO);
-    await esperar(0);
+    await esperar(INTERVALO_DE_NOVA_TENTATIVA_MS);
     expect(enviar).toHaveBeenCalledTimes(2);
+    await esperar(INTERVALO_DE_NOVA_TENTATIVA_MS);
+    expect(enviar).toHaveBeenCalledTimes(3);
+    // O aviso sai uma vez só, não a cada tentativa.
     expect(erro).toHaveBeenCalledTimes(1);
     expect(fila()).toHaveLength(1);
 
+    await esperar(INTERVALO_DE_NOVA_TENTATIVA_MS);
+    expect(enviar).toHaveBeenCalledTimes(4);
+    expect(fila()).toEqual([]);
+    // A nova tentativa fez o movimento: o toast diz, porque a linha pode nem estar à vista.
+    expect(sucesso).toHaveBeenCalledWith('movido');
+    expect(conclusoes[0].resultado.tipo).toBe('movido');
+  });
+
+  it(`servidor que falha SEMPRE: no máximo ${MAXIMO_DE_TENTATIVAS_NA_PAGINA} tentativas sozinhas; a volta à aba ainda tenta`, async () => {
+    enviar.mockImplementation(async () => ({ ok: false, status: 500, json: async () => ({}) }) as Response);
+    agendarMovimento(pedido(), USUARIO);
+    await esperar(ESPERA_PARA_DESFAZER_MS + INTERVALO_DE_NOVA_TENTATIVA_MS * (MAXIMO_DE_TENTATIVAS_NA_PAGINA + 5));
+    expect(enviar).toHaveBeenCalledTimes(MAXIMO_DE_TENTATIVAS_NA_PAGINA);
+    expect(fila()).toHaveLength(1);
+
     retomarMovimentosPendentes(USUARIO);
     await esperar(0);
-    expect(enviar).toHaveBeenCalledTimes(3);
-    expect(fila()).toEqual([]);
-    // A retomada fez o movimento: o toast diz, porque a linha pode nem estar à vista.
-    expect(sucesso).toHaveBeenCalledWith('movido');
+    expect(enviar).toHaveBeenCalledTimes(MAXIMO_DE_TENTATIVAS_NA_PAGINA + 1);
+    expect(fila()).toHaveLength(1);
+  });
+
+  it('sessão vencida (401) também fica: o login seguinte refaz', async () => {
+    respostas.push({ ok: false, status: 401 });
+    agendarMovimento(pedido(), USUARIO);
+    await esperar(ESPERA_PARA_DESFAZER_MS);
+    expect(fila()).toHaveLength(1);
+    expect(erro).toHaveBeenCalledWith('tentando de novo');
   });
 
   it('depois de recarregar, refaz o que ficou — mas só depois da folga (a aba dona pode estar viva)', async () => {
