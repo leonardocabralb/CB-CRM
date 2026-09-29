@@ -31,6 +31,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   detectContentType,
   ehLidSemTelefone,
+  ehMensagemAuxiliar,
   isReaction,
   isSecretEncrypted,
   normalizeUpsert,
@@ -109,7 +110,11 @@ export async function receberSemTelefone(args: {
   const { db, item, rota, jaGravada } = args;
   const id = item.key?.id;
   if (!id || !ehLidSemTelefone(item.key)) return NADA;
-  if (isReaction(item.message) || isSecretEncrypted(item.message)) return NADA;
+  // Os mesmos descartes de `normalizeUpsert`: reter o que nunca vira mensagem
+  // deixaria uma "retida" eterna no Meu dia (a abertura de álbum, 1060).
+  if (isReaction(item.message) || isSecretEncrypted(item.message) || ehMensagemAuxiliar(item.message)) {
+    return NADA;
+  }
 
   const agoraMs = args.agoraMs ?? Date.now();
   const lidJid = item.key!.remoteJid!;

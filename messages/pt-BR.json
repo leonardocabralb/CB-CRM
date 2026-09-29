@@ -274,7 +274,8 @@
       "novaConversa": "Nova conversa",
       "automacaoRodando": "{n, plural, one {# automação agendada para este cliente} other {# automações agendadas para este cliente}}",
       "searchPlaceholderInMessages": "Buscar por nome, número ou mensagem...",
-      "searchInsideMessages": "Buscar também dentro das mensagens"
+      "searchInsideMessages": "Buscar também dentro das mensagens",
+      "previaNaoSuportada": "Mensagem não suportada"
     },
     "messageThread": {
       "unknownAuthor": "Desconhecido",
@@ -428,6 +429,7 @@
       "buttonReply": "Resposta de botão",
       "interactiveReply": "[Resposta interativa]",
       "unsupported": "[Tipo de mensagem não suportado]",
+      "naoSuportada": "Tipo de mensagem que o CRM ainda não mostra — veja no WhatsApp.",
       "aiBadge": "IA",
       "aiBadgeTitle": "Enviada automaticamente pelo assistente de IA",
       "iaAgente": "IA · {nome}",
@@ -455,6 +457,17 @@
       "expandVideo": "Ampliar vídeo",
       "imageAlt": "Imagem enviada",
       "motivoDaFalha": "Motivo informado pela Meta: {motivo}"
+    },
+    "cartaoDeContato": {
+      "copiarNumero": "Copiar número",
+      "numeroCopiado": "Número copiado",
+      "copiarFalhou": "Não foi possível copiar o número",
+      "conversar": "Conversar",
+      "conversarDica": "Abrir uma conversa com este número no CRM",
+      "semTelefone": "Cartão sem telefone",
+      "semNome": "Contato",
+      "vazio": "Cartão de contato sem dados legíveis",
+      "varios": "{total} contatos"
     },
     "ligacao": {
       "vozPerdida": "Ligação de voz perdida",

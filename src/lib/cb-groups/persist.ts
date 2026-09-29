@@ -17,6 +17,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { isUniqueViolation } from '@/lib/contacts/dedupe';
 import type { NormalizedGroupInbound } from '@/lib/whatsapp/transport/evolution-group-inbound';
+import { temArquivo } from '@/lib/whatsapp/transport/evolution-inbound';
 
 /** Tipos que `messages.content_type` aceita (CHECK da 906). */
 const CONTENT_TYPES_OK = new Set([
@@ -29,6 +30,8 @@ const CONTENT_TYPES_OK = new Set([
   'template',
   'interactive',
   'system',
+  // Cartão de contato (1060).
+  'contact',
 ]);
 
 /**
@@ -202,7 +205,11 @@ export async function persistGroupMessage(
   );
   if (!conversa) return null;
 
-  const temAnexo = m.contentType !== 'text' && m.contentType !== 'location';
+  // Só tipo COM arquivo passa pelo download e nasce `pending` — a MESMA régua
+  // com que o webhook decide baixar (`temArquivo`). Por lista de exclusão, a
+  // mensagem de empresa (1060) nasceria "pendente" e acenderia o botão "toque
+  // para baixar" sobre algo sem arquivo.
+  const temAnexo = temArquivo(m.contentType);
   const contentType = CONTENT_TYPES_OK.has(m.contentType) ? m.contentType : 'text';
 
   const { data: gravada, error } = await db
@@ -220,6 +227,7 @@ export async function persistGroupMessage(
       group_sender_name: m.senderName,
       mentions_us: mencionaNos(m.mentionedJids, ownLid),
       media_state: temAnexo ? 'pending' : null,
+      ...(contentType === 'contact' ? { contatos: m.contatos ?? [] } : {}),
       // Inline, e não via `stampMessageChannel`: aquele helper faz um UPDATE
       // separado para ser seguro se a migration 902 ainda não tivesse rodado.
       // Este caminho só existe a partir da 906, muito depois — então o
@@ -285,7 +293,11 @@ export async function persistGroupDeviceMessage(
   );
   if (!conversa) return null;
 
-  const temAnexo = m.contentType !== 'text' && m.contentType !== 'location';
+  // Só tipo COM arquivo passa pelo download e nasce `pending` — a MESMA régua
+  // com que o webhook decide baixar (`temArquivo`). Por lista de exclusão, a
+  // mensagem de empresa (1060) nasceria "pendente" e acenderia o botão "toque
+  // para baixar" sobre algo sem arquivo.
+  const temAnexo = temArquivo(m.contentType);
   const contentType = CONTENT_TYPES_OK.has(m.contentType) ? m.contentType : 'text';
 
   const { data: gravada, error } = await db
@@ -304,6 +316,7 @@ export async function persistGroupDeviceMessage(
       // operador e a bolha já se identifica como nossa pelo `from_device`.
       group_sender_jid: m.senderJid,
       media_state: temAnexo ? 'pending' : null,
+      ...(contentType === 'contact' ? { contatos: m.contatos ?? [] } : {}),
       channel_id: m.channelId ?? null,
       created_at: new Date(m.timestamp * 1000).toISOString(),
     })

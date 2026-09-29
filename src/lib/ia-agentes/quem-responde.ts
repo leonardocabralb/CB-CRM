@@ -83,11 +83,12 @@ function temTextoVisivel(texto: string | null): boolean {
  * diferentes = o cliente manda texto e figurinha, o turno do texto é
  * descartado pela figurinha, e a figurinha não abre turno — ninguém responde.
  *
- * Não abrem: tipo fora de `TIPOS_QUE_ABREM_TURNO` (localização, botão),
- * figurinha e texto sem nada visível — na Evolution, cartão de contato,
- * enquete e resposta de botão chegam como `text` com `content_text` nulo —,
- * e o rótulo do tipo que a Meta entrega e a rota não sabe ler
- * (`PREFIXO_DE_TIPO_NAO_SUPORTADO`), que também é gravado como `text`.
+ * Não abrem: tipo fora de `TIPOS_QUE_ABREM_TURNO` (localização, botão e,
+ * desde a 1060, o cartão de contato, `contact`, e a mensagem montada por
+ * sistema de empresa, `template` — um banco avisando do boleto), figurinha, texto sem nada
+ * visível e o rótulo do tipo que a ingestão não sabe ler
+ * (`PREFIXO_DE_TIPO_NAO_SUPORTADO`), gravado como `text` — pela Meta e, desde
+ * a 1060, também pela Evolution (enquete, vídeo redondo, evento…).
  */
 export function abreTurno(c: ConteudoDaMensagem): boolean {
   if (!TIPOS_QUE_ABREM_TURNO.has(c.tipo)) return false
