@@ -28,6 +28,7 @@ import { ExternalLink } from 'lucide-react';
 import { SeletorDeCliente } from '@/components/agenda/seletor-de-cliente';
 import { useAuth } from '@/hooks/use-auth';
 import { fetchAccountMembers, memberLabel } from '@/lib/account/members';
+import { opcoesDeResponsavel } from '@/lib/account/suspensao';
 import type {
   AccountMember,
   Contact,
@@ -351,14 +352,20 @@ export function ReuniaoForm({
                       // memberLabel, nunca full_name cru — '' escapa do ??
                       // e deixava o gatilho em branco (ledger 48h).
                       const m = membros.find((x) => x.user_id === responsavel);
-                      return m ? memberLabel(m) : (reuniao?.owner_nome ?? t('euMesmo'));
+                      if (!m) return reuniao?.owner_nome ?? t('euMesmo');
+                      return m.suspenso_em
+                        ? t('responsavelSuspenso', { name: memberLabel(m) })
+                        : memberLabel(m);
                     })()}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {membros.map((m) => (
+                  {/* 1067: suspenso não recebe reunião nova; o atual fica. */}
+                  {opcoesDeResponsavel(membros, (m) => m.user_id === responsavel).map((m) => (
                     <SelectItem key={m.user_id} value={m.user_id}>
-                      {memberLabel(m)}
+                      {m.suspenso_em
+                        ? t('responsavelSuspenso', { name: memberLabel(m) })
+                        : memberLabel(m)}
                     </SelectItem>
                   ))}
                 </SelectContent>

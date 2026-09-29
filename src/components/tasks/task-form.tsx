@@ -43,6 +43,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useMembros } from '@/hooks/use-membros';
 import type { EdicaoDeTarefa, NovaTarefa } from '@/hooks/use-acoes-da-tarefa';
 import { memberLabel } from '@/lib/account/members';
+import { membrosAtivos, opcoesDeResponsavel } from '@/lib/account/suspensao';
 import { diaLocal } from '@/lib/tasks/prazo';
 import { MAX_TITULO } from '@/lib/tasks/validar';
 import type { Task } from '@/types';
@@ -94,6 +95,10 @@ export function TaskForm({
   const [titulo, setTitulo] = useState('');
   const [descricao, setDescricao] = useState('');
   const [responsavel, setResponsavel] = useState('');
+  // 1067: quem está suspenso não recebe tarefa nova. O responsável ATUAL (na
+  // edição) continua nas opções, senão o seletor mostraria o id cru.
+  const opcoesDeMembro = opcoesDeResponsavel(membros, (m) => m.user_id === responsavel);
+  const quantosAtivos = membrosAtivos(membros).length;
   const [contatoEscolhido, setContatoEscolhido] = useState('');
   const [venceEm, setVenceEm] = useState('');
   const [venceAs, setVenceAs] = useState('');
@@ -138,10 +143,10 @@ export function TaskForm({
     // falha o campo fica VAZIO, `podeSalvar` barra e o botão de tentar de
     // novo (abaixo, no render) refaz a busca.
     if (!open || tarefa || carregandoMembros || membrosFalharam) return;
-    if (membros.length <= 1) {
+    if (quantosAtivos <= 1) {
       setResponsavel((atual) => atual || (user?.id ?? ''));
     }
-  }, [open, tarefa, carregandoMembros, membrosFalharam, membros.length, user?.id]);
+  }, [open, tarefa, carregandoMembros, membrosFalharam, quantosAtivos, user?.id]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // ⚠️ O CATÁLOGO DE CONTATOS NÃO É MAIS CARREGADO AQUI. Até 20/09/2026 este
@@ -285,7 +290,7 @@ export function TaskForm({
               <Label className="text-muted-foreground">
                 {t('fieldAssignee')}
               </Label>
-              {membros.length > 1 || carregandoMembros ? (
+              {opcoesDeMembro.length > 1 || carregandoMembros ? (
                 /* Enquanto a lista de membros CARREGA, mostrar o seletor
                    neutro desabilitado — afirmar "único membro" antes de a
                    resposta chegar seria mentira numa conta com equipe (o
@@ -299,9 +304,11 @@ export function TaskForm({
                     <SelectValue placeholder={t('assigneePlaceholder')} />
                   </SelectTrigger>
                   <SelectContent>
-                    {membros.map((m) => (
+                    {opcoesDeMembro.map((m) => (
                       <SelectItem key={m.user_id} value={m.user_id}>
-                        {memberLabel(m)}
+                        {m.suspenso_em
+                          ? t('assigneeSuspended', { name: memberLabel(m) })
+                          : memberLabel(m)}
                       </SelectItem>
                     ))}
                   </SelectContent>

@@ -13,6 +13,10 @@
 //
 //   O celular (1046) segue a mesma regra, e com barreira no banco: ver o
 //   comentário na leitura, abaixo.
+//
+//   A suspensão (1067) vem para TODOS: quem atribui trabalho precisa saber
+//   quem está fora. Quem está suspenso não chega aqui — a própria linha é
+//   invisível para ele, e `getCurrentAccount` recusa.
 // ============================================================
 
 import { NextResponse } from "next/server";
@@ -28,6 +32,8 @@ interface ProfileRow {
   avatar_url: string | null;
   account_role: string;
   created_at: string;
+  suspenso_em: string | null;
+  suspenso_por: string | null;
 }
 
 export async function GET() {
@@ -38,7 +44,9 @@ export async function GET() {
     // the caller's, so this query is naturally account-scoped.
     const { data, error } = await ctx.supabase
       .from("profiles")
-      .select("user_id, full_name, email, avatar_url, account_role, created_at")
+      .select(
+        "user_id, full_name, email, avatar_url, account_role, created_at, suspenso_em, suspenso_por",
+      )
       .eq("account_id", ctx.accountId)
       .order("created_at", { ascending: true });
 
@@ -82,6 +90,12 @@ export async function GET() {
       }
     }
 
+    // Quem suspendeu (1067) é nome de colega, que a lista já mostra; quem saiu
+    // da conta não está aqui, e aí o nome fica `null` ("não se sabe").
+    const nomePorUsuario = new Map(
+      (data as ProfileRow[]).map((row) => [row.user_id, row.full_name ?? ""]),
+    );
+
     const members: AccountMember[] = (data as ProfileRow[]).flatMap((row) => {
       // Defensive: the DB enum should never let an unknown role
       // through, but if a migration ever broadens the enum without
@@ -96,6 +110,10 @@ export async function GET() {
           role: row.account_role,
           joined_at: row.created_at,
           ...(celulares ? { celular: celulares.get(row.user_id) ?? null } : {}),
+          suspenso_em: row.suspenso_em,
+          suspenso_por_nome: row.suspenso_por
+            ? (nomePorUsuario.get(row.suspenso_por) ?? null)
+            : null,
         },
       ];
     });

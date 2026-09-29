@@ -48,6 +48,11 @@ export interface Profile {
    */
   account_role?: AccountRole;
   created_at: string;
+  /**
+   * 1067: desde quando o acesso está suspenso; `null`/ausente = ativo. Só
+   * aparece para quem LÊ a equipe (a própria linha some para o suspenso).
+   */
+  suspenso_em?: string | null;
 }
 
 // ============================================================
@@ -83,6 +88,15 @@ export interface AccountMember {
    * leitura falhou); `null` = o membro ainda não informou.
    */
   celular?: string | null;
+  /**
+   * 1067: desde quando o acesso está suspenso; `null` = ativo. Vem para
+   * QUALQUER membro — quem atribui trabalho precisa saber quem está fora.
+   * AUSENTE (rota anterior à 1067) conta como ativo: é o comportamento de
+   * antes, e esconder alguém por ignorância esconderia o responsável atual.
+   */
+  suspenso_em?: string | null;
+  /** 1067: o nome de quem suspendeu; `null` quando não se sabe (saiu da conta). */
+  suspenso_por_nome?: string | null;
 }
 
 /**

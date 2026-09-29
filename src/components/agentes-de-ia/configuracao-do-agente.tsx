@@ -25,6 +25,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { useChannels } from '@/hooks/use-channels';
 import { fetchAccountMembersOrNull, memberLabel } from '@/lib/account/members';
+import { opcoesDeResponsavel } from '@/lib/account/suspensao';
 import { AI_PROVIDER_MODELS } from '@/lib/ai/defaults';
 import type { AiProvider } from '@/lib/ai/types';
 import { LIMITES } from '@/lib/ia-agentes/agente';
@@ -431,9 +432,12 @@ export function ConfiguracaoDoAgente({
               {transferenciaForaDaEquipe ? (
                 <option value={transferirPara ?? ''}>{t('campo.foraDaEquipe')}</option>
               ) : null}
-              {(membros ?? []).map((m) => (
+              {/* 1067: suspenso não recebe conversa nova; o escolhido fica. */}
+              {opcoesDeResponsavel(membros ?? [], (m) => m.user_id === transferirPara).map((m) => (
                 <option key={m.user_id} value={m.user_id}>
-                  {memberLabel(m)}
+                  {m.suspenso_em
+                    ? t('campo.membroSuspenso', { name: memberLabel(m) })
+                    : memberLabel(m)}
                 </option>
               ))}
             </select>

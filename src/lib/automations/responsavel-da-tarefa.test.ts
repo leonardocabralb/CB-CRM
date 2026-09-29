@@ -118,3 +118,63 @@ describe('fraseDaEscolha — o que o histórico da automação diz', () => {
     )
   })
 })
+
+// 1067: membro SUSPENSO continua na conta, mas não recebe tarefa nova — ela
+// cai na reserva, e o registro diz "suspenso", nunca "saiu da conta".
+describe('escolherResponsavel — membro suspenso (1067)', () => {
+  const suspensos = new Set(['cris'])
+  const podeReceber = (id: string) => (membros.has(id) || suspensos.has(id)) && !suspensos.has(id)
+  const ehSuspenso = (id: string) => suspensos.has(id)
+
+  it('conversa atribuída a quem está suspenso: vai para a reserva, com o motivo próprio', () => {
+    const escolha = escolherResponsavel({
+      modo: 'conversa',
+      dinamico: 'cris',
+      fixo: 'ana',
+      ehMembro: podeReceber,
+      ehSuspenso,
+    })
+    expect(escolha).toEqual({ ok: true, userId: 'ana', porReserva: true, porque: 'suspenso' })
+    expect(fraseDaEscolha('conversa', escolha)).toBe(
+      'para o responsável reserva (quem está atribuído à conversa está com o acesso suspenso)'
+    )
+  })
+
+  it('sem reserva, a falha diz que está suspenso', () => {
+    const escolha = escolherResponsavel({
+      modo: 'card',
+      dinamico: 'cris',
+      fixo: null,
+      ehMembro: podeReceber,
+      ehSuspenso,
+    })
+    expect(escolha).toEqual({ ok: false, motivo: 'responsavel_saiu', porque: 'suspenso' })
+    expect(fraseDaEscolha('card', escolha)).toBe(
+      'quem está atribuído ao card está com o acesso suspenso, e o passo não tem responsável reserva'
+    )
+  })
+
+  it('responsável FIXO (ou reserva) suspenso: não recebe, e o motivo é a suspensão', () => {
+    const fixo = escolherResponsavel({ modo: 'fixo', dinamico: null, fixo: 'cris', ehMembro: podeReceber, ehSuspenso })
+    expect(fixo).toEqual({ ok: false, motivo: 'fixo_suspenso' })
+    expect(fraseDaEscolha('fixo', fixo)).toBe('responsável está com o acesso suspenso')
+
+    const reserva = escolherResponsavel({
+      modo: 'conversa',
+      dinamico: null,
+      fixo: 'cris',
+      ehMembro: podeReceber,
+      ehSuspenso,
+    })
+    expect(reserva).toEqual({ ok: false, motivo: 'fixo_suspenso', porque: 'ninguem' })
+    expect(fraseDaEscolha('conversa', reserva)).toBe(
+      'ninguém está atribuído à conversa, e o responsável reserva está com o acesso suspenso'
+    )
+  })
+
+  it('sem `ehSuspenso` (chamador antigo), tudo como antes: fora de `ehMembro` = saiu', () => {
+    expect(
+      escolherResponsavel({ modo: 'conversa', dinamico: 'cris', fixo: 'ana', ehMembro: podeReceber })
+    ).toEqual({ ok: true, userId: 'ana', porReserva: true, porque: 'saiu' })
+  })
+})

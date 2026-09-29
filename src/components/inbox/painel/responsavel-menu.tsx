@@ -34,6 +34,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { usePresence } from "@/hooks/use-presence";
 import { useRotuloDePresenca } from "@/hooks/use-rotulo-de-presenca";
+import { opcoesDeResponsavel } from "@/lib/account/suspensao";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import type { Profile } from "@/types";
@@ -95,8 +96,13 @@ export function ResponsavelMenu({
   );
 
   const atual = profiles.find((p) => p.user_id === assignedAgentId);
+  // 1067: quem está suspenso sai das opções, menos o responsável atual — que
+  // aparece marcado, para a equipe saber que precisa redistribuir.
+  const opcoes = opcoesDeResponsavel(profiles, (p) => p.user_id === assignedAgentId);
   const rotulo = assignedAgentId
-    ? (atual?.full_name ?? t("assigned"))
+    ? atual?.suspenso_em
+      ? t("assigneeSuspended", { name: atual.full_name || t("assigned") })
+      : (atual?.full_name ?? t("assigned"))
     : t("assign");
 
   return (
@@ -115,12 +121,12 @@ export function ResponsavelMenu({
         <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="border-border bg-popover">
-        {profiles.length === 0 ? (
+        {opcoes.length === 0 ? (
           <DropdownMenuItem disabled className="text-sm text-muted-foreground">
             {t("noTeammates")}
           </DropdownMenuItem>
         ) : (
-          profiles.map((p) => {
+          opcoes.map((p) => {
             const isSelected = p.user_id === assignedAgentId;
             const presence = getPresence(p.user_id);
             return (
@@ -142,7 +148,9 @@ export function ResponsavelMenu({
                   className="mr-2"
                 />
                 <span className="flex-1">
-                  {p.full_name}
+                  {p.suspenso_em
+                    ? t("assigneeSuspended", { name: p.full_name })
+                    : p.full_name}
                   {p.user_id === user?.id ? t("me") : ""}
                 </span>
                 {isSelected && <Check className="ml-2 h-3 w-3" />}

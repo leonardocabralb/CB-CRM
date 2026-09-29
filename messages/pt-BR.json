@@ -313,6 +313,7 @@
       "copyLinkFailed": "Falha ao copiar o link",
       "assignee": "Responsável",
       "assignUpdateFailed": "Falha ao atribuir a conversa",
+      "assigneeSuspended": "{name} (suspenso)",
       "channelSectionLabel": "Mensagens pelo {channel}",
       "channelMismatch": "A última mensagem chegou pelo {channel}.",
       "channelMismatchAction": "Responder por ele",
@@ -1206,6 +1207,7 @@
       "stage": "Etapa",
       "assignedTo": "Atribuído a",
       "unassigned": "Sem atribuição",
+      "assignedToSuspended": "{name} (suspenso)",
       "notes": "Observações",
       "notesPlaceholder": "Adicione observações...",
       "status": "Status",
@@ -2046,7 +2048,8 @@
       "agents": {
         "select": "Selecione um atendente…",
         "placeholder": "ID do atendente",
-        "unknown": "{id} (atendente desconhecido)"
+        "unknown": "{id} (atendente desconhecido)",
+        "suspended": "{name} (suspenso)"
       },
       "pipelines": {
         "pipelineLabel": "Funil",
@@ -2449,6 +2452,7 @@
         "handoffAssignNoName": "Membro sem nome",
         "handoffAssignChosen": "A pessoa escolhida",
         "handoffAssignGone": "Não é mais membro da conta",
+        "handoffAssignSuspended": "{name} (suspenso)",
         "handoffAssignLoading": "Carregando os membros da conta…",
         "handoffAssignLoadError": "Não foi possível carregar os membros da conta.",
         "handoffAssignGoneHelp": "A pessoa escolhida não é mais membro desta conta. Escolha outra pessoa ou \"Ninguém\" — senão o robô não ativa.",
@@ -2728,7 +2732,23 @@
       "removeFailed": "Falha ao remover o membro",
       "revokeFailed": "Falha ao revogar o convite",
       "networkError": "Não foi possível falar com o servidor",
-      "memberAlt": "Membro"
+      "memberAlt": "Membro",
+      "statusActive": "Ativo",
+      "statusSuspended": "Suspenso",
+      "suspendedSince": "desde {date}",
+      "suspendedSinceBy": "desde {date}, por {name}",
+      "suspendedCount": "{count} {count, plural, =1 {suspenso} other {suspensos}}",
+      "suspend": "Suspender",
+      "reactivate": "Reativar",
+      "suspendDialogTitle": "Suspender acesso",
+      "suspendDialogDesc": "Suspender o acesso de <bold>{name}</bold>? Até ser reativado, o acesso ao CRM fica bloqueado. Nada é apagado: conversas, tarefas e negócios continuam atribuídos, e reativar devolve o acesso como era.",
+      "suspendDialogConversas": "{count, plural, =1 {1 conversa aberta está atribuída a {name} e continua assim.} other {# conversas abertas estão atribuídas a {name} e continuam assim.}} Para redistribuir, use o filtro de responsável na caixa de entrada.",
+      "suspending": "Suspendendo...",
+      "suspendBtn": "Suspender acesso",
+      "suspendedToast": "Acesso de {name} suspenso",
+      "reactivatedToast": "Acesso de {name} reativado",
+      "suspendFailed": "Não foi possível suspender o acesso",
+      "reactivateFailed": "Não foi possível reativar o acesso"
     },
     "invite": {
       "inviteCreated": "Convite criado",
@@ -4642,6 +4662,7 @@
       "tetoInvalido": "Use um número de 1 a 100.",
       "transferirPara": "Transferir para",
       "fila": "Fila sem responsável (qualquer pessoa pode assumir)",
+      "membroSuspenso": "{name} (suspenso)",
       "foraDaEquipe": "(a pessoa saiu da equipe)",
       "foraDaEquipeDica": "Quem recebia as transferências saiu da equipe. Escolha outra pessoa, ou a fila sem responsável.",
       "equipeNaoCarregou": "Não foi possível carregar a equipe. O destino da transferência continua como está até você recarregar a página.",
@@ -5516,6 +5537,7 @@
     "statusCancelada": "Cancelada",
     "statusFalta": "Cliente não compareceu",
     "responsavel": "Responsável",
+    "responsavelSuspenso": "{name} (suspenso)",
     "euMesmo": "Eu mesmo",
     "local": "Local",
     "localPlaceholder": "Sala de reunião ou link da chamada",
@@ -5688,6 +5710,7 @@
     "fieldAssignee": "Encaminhar para",
     "assigneePlaceholder": "Escolha um colega",
     "assigneeOnlyYou": "Você (único membro desta conta)",
+    "assigneeSuspended": "{name} (suspenso)",
     "assigneeInviteHint": "Convide colegas em Configurações → Membros da equipe para encaminhar tarefas a eles.",
     "assigneeLoadFailed": "Não foi possível carregar a equipe. Tente de novo para escolher o destinatário.",
     "assigneeRetry": "Tentar de novo",
@@ -5950,6 +5973,14 @@
     "agendaAndMore": "{count, plural, =1 {e mais 1 reunião neste período} other {e mais {count} reuniões neste período}}",
     "agendaOnlyCrm": "Só a agenda do CRM. Os agendamentos do Calendly não entram aqui: a integração não registra cancelamento nem remarcação, então a lista mostraria reunião que não vai acontecer.",
     "openAgenda": "Abrir Agenda"
+  },
+  "AcessoSuspenso": {
+    "titulo": "Seu acesso está suspenso",
+    "descricao": "Um administrador suspendeu o seu acesso a este CRM.",
+    "descricaoComData": "Um administrador suspendeu o seu acesso a este CRM em {data}.",
+    "comoVoltar": "Seus dados continuam guardados. Para voltar, fale com um administrador da sua equipe.",
+    "tentarDeNovo": "Verificar de novo",
+    "sair": "Sair"
   },
   "DashboardShell": {
     "loading": "Carregando…",
