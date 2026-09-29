@@ -22,10 +22,10 @@ aba) é `docs/PLANO-meu-dia.md`; as regras vivas, `.claude/rules/meu-dia.md`.
 
 | Fase | O quê | Estado |
 | --- | --- | --- |
-| 1 | Tela: indicadores por conexão, notificações e tarefas em destaque, agenda pela pauta de reuniões, saem "Negócios no funil" e "O dia até agora" | Em andamento (branch `feat/meu-dia-v2`) |
-| 2 | Tarefa vista: coluna `vista_em` (1068), rota que marca, observador na tela, "vista/não vista" para quem pediu | Em andamento — a 1068 só se aplica com autorização do operador |
-| 3 | Card "Equipe" (admin + quem vê o Painel): vencidas e de hoje por membro, com as não vistas | Em andamento — depende da 2 |
-| 4 | O clique no indicador abre a caixa de entrada filtrada (conexão + "Não lidas" ou "Em atraso") | Em andamento |
+| 1 | Tela: indicadores por conexão, notificações e tarefas em destaque, agenda pela pauta de reuniões, saem "Negócios no funil" e "O dia até agora" | Implementada e testada no preview (29/09/2026): os números das 5 conexões bateram com o banco; "Ver como" Bancário - Geral e Gestor Geral conferidos |
+| 2 | Tarefa vista: coluna `vista_em` (1068), rota que marca, observador na tela, "vista/não vista" para quem pediu | Implementada; migration provada num Postgres 16 local (duas aplicações, cenários e controle negativo). Falta aplicar a 1068 (autorização do operador) e testar no preview |
+| 3 | Card "Equipe" (admin + quem vê o Painel): vencidas e de hoje por membro, com as não vistas | Implementada; o card aparece para Gestor Geral e some para Bancário - Geral. Os números dependem da 1068 |
+| 4 | O clique no indicador abre a caixa de entrada filtrada (conexão + "Não lidas" ou "Em atraso") | Implementada e testada: 60 em atraso e 46 não lidas abriram 60 e 46 linhas; conexão inexistente é descartada |
 
 ## Decisões do operador (29/09/2026)
 
