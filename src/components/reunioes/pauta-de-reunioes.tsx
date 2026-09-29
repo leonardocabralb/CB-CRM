@@ -433,7 +433,22 @@ export function PautaDeReunioes() {
         </div>
       ) : (
         <>
-          {falhou && <p className="text-xs text-amber-700 dark:text-amber-300">{t('recargaFalhou')}</p>}
+          {(falhou || (daRede.falhou && daRede.pauta)) && (
+            <p className="text-xs text-amber-700 dark:text-amber-300">{t('recargaFalhou')}</p>
+          )}
+
+          {/* A leitura dos 30 dias falhou sem nunca ter chegado: a rede não
+              pode sumir calada — sem o aviso, as reuniões de outros dias sem
+              resultado desapareceriam da tela (Codex, PR #339). */}
+          {semResultado === null && daRede.falhou && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+              <ShieldAlert className="h-4 w-4 shrink-0" />
+              <span className="min-w-[12rem] flex-1">{t('redeFalhou')}</span>
+              <Button size="sm" variant="outline" onClick={recarregarRede}>
+                {t('tentarDeNovo')}
+              </Button>
+            </div>
+          )}
 
           {semResultado === null ? null : semResultado.length > 0 ? (
             <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">

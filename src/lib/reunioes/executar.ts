@@ -42,9 +42,15 @@ export async function executarAcao(args: {
   const negocio = reuniao.negocio;
   let moveu = false;
 
+  // "Com proposta" SEM valor não grava nada, nem o card nem o registro
+  // (pedido do operador, 29/09/2026): o card só entra em Proposta Realizada
+  // com o valor, porque é nessa entrada que a TinTim recebe o valor do card.
+  // A tela já exige o valor; esta é a trava no ponto de escrita.
+  if (acao === 'proposta' && !(valor !== null && valor > 0)) return { desfecho: 'falhou', moveu };
+
   if (destino && negocio) {
     const novaEtapa = destino.id !== negocio.etapaId ? destino.id : undefined;
-    const novoValor = acao === 'proposta' && valor !== null ? valor : undefined;
+    const novoValor = acao === 'proposta' ? (valor as number) : undefined;
     if (novaEtapa !== undefined || novoValor !== undefined) {
       // Objeto LITERAL, só etapa e valor: chave `undefined` não vai no corpo
       // (o JSON a descarta), e o pino dos escritores de título

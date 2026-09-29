@@ -142,11 +142,15 @@ a rota `/api/cb/reunioes`, `src/components/reunioes/`. Plano:
   (`comoMarcar`): só card ABERTO anda, e o resultado de reunião ANTIGA de quem
   já tem reunião mais nova só registra (o card é da nova, e dos lembretes
   dela). Sem card, card fechado ou funil sem a marca: só registra.
-- ⚠️ **Os lembretes de reunião têm escopo só em "Reunião Agendada"**: marcar
-  a MQL 2 como "Qualificada" sem pô-la no escopo deles cala os lembretes dos
-  leads qualificados. Decisão do operador (plano).
+- ⚠️ **Os lembretes de reunião valem em "Reunião Agendada" E na MQL 2**
+  (escopo gravado em 29/09/2026, decisão do operador): o botão "Reunião
+  qualificada" leva o card para a MQL 2 antes da reunião. Lembrete de reunião
+  novo com escopo só na primeira se cala para o lead qualificado.
 - ⚠️ **Valor e etapa na MESMA escrita** ("com proposta"): o Make da iMotion
   manda à TinTim o `deal.value` do instante da entrada em Proposta Realizada.
+  Por isso o campo do valor nasce VAZIO (nunca o valor antigo do card) e
+  `executarAcao` recusa "com proposta" sem valor maior que zero, sem gravar
+  nada — o card só anda com o valor digitado (pedido do operador).
 - ⚠️ **Para onde cada botão leva é MARCA, nunca nome**: `qualificada`
   (desfecho da 1063), `compareceu`, `faltou` e o primeiro degrau `proposta`
   do funil do card. Funil sem a marca desliga o botão com a explicação. O

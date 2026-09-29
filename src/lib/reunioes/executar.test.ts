@@ -170,6 +170,21 @@ describe('executarAcao', () => {
     expect(avisarDrenagemDeFunil).not.toHaveBeenCalled();
   });
 
+  it.each([null, 0, -5])('com proposta sem valor (%s): não move o card nem registra', async (valor) => {
+    const { cliente, chamadas } = falso();
+    const r = await executarAcao({
+      supabase: cliente,
+      accountId: 'conta',
+      reuniao,
+      acao: 'proposta',
+      destino: { id: 'prop', nome: 'Proposta Realizada' },
+      valor,
+    });
+    expect(r).toEqual({ desfecho: 'falhou', moveu: false });
+    expect(chamadas).toHaveLength(0);
+    expect(avisarDrenagemDeFunil).not.toHaveBeenCalled();
+  });
+
   it('proposta só registrada guarda o valor no marco', async () => {
     const { cliente, chamadas } = falso();
     await executarAcao({ supabase: cliente, accountId: 'conta', reuniao, acao: 'proposta', destino: null, valor: 900 });

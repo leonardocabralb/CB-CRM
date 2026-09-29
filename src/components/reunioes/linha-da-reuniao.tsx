@@ -153,7 +153,11 @@ export function LinhaDaReuniao({
       {podeMarcar && (
         <>
           {botao('proposta', t('botaoProposta'), () => {
-            setValor(r.resultado?.valor ?? r.negocio?.valor ?? 0);
+            // Nunca o valor que o card JÁ tinha: a entrada em Proposta
+            // Realizada manda o valor do card à TinTim (Make da iMotion), e
+            // um Confirmar distraído enviaria um número que ninguém digitou.
+            // Só o valor desta mesma proposta, ao corrigir.
+            setValor(r.resultado?.valor ?? 0);
             setPedindoValor(true);
           })}
           {botao('sem_proposta', t('botaoSemProposta'))}

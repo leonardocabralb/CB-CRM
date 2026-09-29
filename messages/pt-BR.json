@@ -5948,6 +5948,7 @@
     "recargaFalhou": "A última atualização falhou; a pauta abaixo pode estar desatualizada.",
     "redeAcesa": "{n, plural, one {# reunião já começou e está sem resultado} other {# reuniões já começaram e estão sem resultado}}",
     "redeApagada": "Todas as reuniões que já começaram têm resultado",
+    "redeFalhou": "Não foi possível conferir as reuniões dos últimos 30 dias que estão sem resultado.",
     "deOutrosDias": "Sem resultado em outros dias ({n})",
     "filtroTodas": "Todas",
     "filtroSemResultado": "Sem resultado",

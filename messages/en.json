@@ -5948,6 +5948,7 @@
     "recargaFalhou": "The last refresh failed; the agenda below may be out of date.",
     "redeAcesa": "{n, plural, one {# meeting has started and has no outcome} other {# meetings have started and have no outcome}}",
     "redeApagada": "Every meeting that has started has an outcome",
+    "redeFalhou": "Couldn't check the last 30 days for meetings without an outcome.",
     "deOutrosDias": "Without outcome on other days ({n})",
     "filtroTodas": "All",
     "filtroSemResultado": "Without outcome",

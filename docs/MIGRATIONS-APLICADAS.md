@@ -939,6 +939,25 @@ nome da época em que foram aplicadas.
   como `template` (a IA não abre turno com ela); o caso foi repetido no
   preview — selo "Modelo" na bolha — e apagado do mesmo jeito.
 
+- **1063_cb_pauta_de_reunioes** — a marca `'qualificada'` em
+  `pipeline_stages.desfecho_da_reuniao` (o CHECK da 1058 recriado com as três)
+  e `cb_reunioes_marcos` (um registro por reunião e por marco da pauta
+  `/reunioes`: qualificada e resultado; quem marcou carimbado por gatilho
+  SECURITY DEFINER; leitura na forma da 1032, escrita `agent`, sem DELETE).
+  ADITIVA e ANTES do deploy: sem a tabela a rota da pauta responde 500. É 1063
+  porque a 1061 e a 1062 estavam tomadas por branches de outras sessões, ainda
+  não aplicadas (não preencher a lacuna). Provada num Postgres 16 descartável
+  (duas vezes, banco vazio e 9 cenários; achou o `NULL IN (…)` que passava no
+  CHECK de forma, corrigido antes). Aplicada em 29/09/2026 pela Management API
+  (histórico `20260929131013`), depois do replay verde do CI no mesmo SQL e
+  ANTES do merge do PR #339, dentro do pedido do operador (implementar, testar
+  e mesclar); conferida no catálogo (CHECK com as três marcas, RLS, três
+  políticas, `anon` sem nada, sem DELETE, carimbo fechado; a conferência chamou
+  o gatilho com dado real e se desfez). Nenhuma etapa real foi marcada
+  `qualificada`: a MQL 2 do Bancário - Comercial espera a decisão sobre o
+  escopo dos lembretes (ver `docs/PLANO-pauta-de-reunioes.md`). Teste no
+  preview num funil de teste com o card do lead autorizado, limpo no fim.
+
 ## Notas do histórico
 
 - ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a

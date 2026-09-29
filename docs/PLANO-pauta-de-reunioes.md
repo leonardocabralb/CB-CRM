@@ -59,13 +59,21 @@ pode ser revista):
 | P10 | Cada reunião só olha a trilha do SEU card e da sua janela: do início dela até o início da próxima reunião do mesmo contato | Sem o teto, o resultado da reunião B resolveria a A, anterior (revisão do PR #339). |
 | P11 | "Corrigir" reabre os botões numa reunião já resolvida | Corrigir é marcar de novo: o upsert troca o registro do mesmo marco. |
 
-**⚠️ DECISÃO DO OPERADOR, antes de ligar a qualificação** (P1 da revisão do
-PR #339, medido em 29/09/2026): os quatro lembretes de reunião (24 h, 4 h,
-1 h, 10 min) têm escopo só em "Reunião Agendada". Levar o card para a MQL 2
-os CALA para os leads qualificados. Por isso a 1063 não marca etapa nenhuma:
-o botão "Reunião qualificada" só registra até a MQL 2 ser marcada
-"Qualificada" em Gerenciar funil — e, antes disso, a MQL 2 precisa entrar no
-escopo dos quatro lembretes (aba Automações do funil).
+**Lembretes e MQL 2** (P1 da revisão do PR #339): os quatro lembretes de
+reunião (24 h, 4 h, 1 h, 10 min) tinham escopo só em "Reunião Agendada", e
+levar o card para a MQL 2 os calaria. Decisão do operador (29/09/2026): a MQL
+2 do Bancário - Comercial ENTROU no escopo dos quatro (gravado em produção no
+mesmo dia; medido antes: nenhum card em MQL 2 tinha reunião futura, então
+nada disparou atrasado). A 1063 não marca etapa nenhuma: o botão "Reunião
+qualificada" só registra até a MQL 2 ser marcada "Qualificada" em Gerenciar
+funil. ⚠️ Quem criar outro lembrete de reunião põe as duas etapas no escopo.
+
+**Proposta só com valor** (pedido do operador, 29/09/2026): a entrada em
+Proposta Realizada dispara o aviso à TinTim com o valor do card. O card só
+anda depois que o valor é digitado e confirmado, na mesma escrita que a
+etapa; o campo nasce VAZIO (nunca com o valor antigo do card — só com o da
+própria proposta, ao corrigir); e `executarAcao` recusa "com proposta" sem
+valor maior que zero, sem gravar nada.
 
 **O que fica de fora, por escrito:**
 - A reunião resolvida por outro caminho (quadro, lista, painel da conversa)
