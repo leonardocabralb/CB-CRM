@@ -7,11 +7,13 @@ import { useChannels } from "@/hooks/use-channels";
 import { useLeadEvents } from "@/hooks/use-lead-events";
 import { useExecucoesDoFio } from "@/hooks/use-execucoes-do-fio";
 import { useReunioesExternasDoContato } from "@/hooks/use-reunioes";
+import { useSituacaoDoCliente } from "@/hooks/use-situacao-do-cliente";
 import { useConversationNotes } from "@/hooks/use-conversation-notes";
 import { useApagarNota } from "@/hooks/use-apagar-nota";
 import { useFixarNota } from "@/hooks/use-fixar-nota";
 import { useCan } from "@/hooks/use-can";
 import { ScheduledBar } from "./scheduled-bar";
+import { FaixaDeSituacaoDoCliente } from "./faixa-de-situacao-do-cliente";
 import { FaixaDeInadimplencia } from "./faixa-de-inadimplencia";
 import { FaixaDeNoShow } from "./faixa-de-no-show";
 import { dividaDoContato, leituraAindaFresca, type RespostaDoResumo } from "@/lib/asaas/aviso-na-conversa";
@@ -1260,6 +1262,13 @@ export function MessageThread({
   // para a faixa acima do compositor. Grupo não tem contato, e a faixa de um
   // cliente nunca aparece na conversa de outro (o hook carimba o dono).
   const { aviso: avisoDeFalta } = useReunioesExternasDoContato(contact?.id, resyncToken);
+  // A situação do contrato pela etapa do funil (1070), para a faixa "Cliente
+  // rescindido / finalizado". Evento novo na trilha (card mudou de etapa ou
+  // de funil com a conversa aberta) relê. Grupo não tem contato.
+  const versaoDaTrilha = leadEvents.length
+    ? `${leadEvents.length}:${leadEvents[leadEvents.length - 1].id}`
+    : "0";
+  const { situacoes: situacaoDoCliente } = useSituacaoDoCliente(contact?.id, resyncToken, versaoDaTrilha);
 
   // Anotações internas (migration 918). Chaveadas pela CONVERSA, não pelo
   // contato como a trilha acima — é a única chave que existe em grupo.
@@ -3103,6 +3112,11 @@ export function MessageThread({
         onIrPara={setGaleriaAbertaEm}
         onFechar={() => setGaleriaAbertaEm(null)}
       />
+
+      {/* Faixa CLIENTE RESCINDIDO / FINALIZADO (1070, pedido do operador em
+          29/09/2026): a PRIMEIRA da pilha — é o fato que muda a conversa
+          inteira. Só informa, nunca bloqueia; cala com `null`. */}
+      <FaixaDeSituacaoDoCliente situacoes={situacaoDoCliente} />
 
       {/* Faixa INADIMPLENTE (Asaas, Fase 1b), acima da de agendadas e pelo
           mesmo motivo de morar no fio: quem vai escrever precisa esbarrar

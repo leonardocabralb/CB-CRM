@@ -613,6 +613,14 @@
       "vazioDica": "Fotos, documentos e áudios trocados aparecem aqui.",
       "verNaConversa": "Ver na conversa"
     },
+    "situacaoDoCliente": {
+      "cliente": "Cliente",
+      "rotuloRescindido": "Rescindido",
+      "rotuloFinalizado": "Finalizado",
+      "ondeRescindido": "Contrato rescindido — {funil}, etapa “{etapa}”.",
+      "ondeFinalizado": "Contrato finalizado — {funil}, etapa “{etapa}”.",
+      "dica": "Confira o histórico antes de seguir o atendimento ou oferecer um novo serviço."
+    },
     "noShow": {
       "titulo": "Possível no-show",
       "faltouNaEtapa": "este cliente foi para {etapa} em {dia}.",
@@ -1393,6 +1401,12 @@
       "ajudaReuniaoCompareceu": "“Compareceu, sem proposta”: a reunião aconteceu e não houve proposta. É o destino do botão “Sem proposta”.",
       "ajudaReuniaoFaltou": "“Faltou (no-show)”: o lead não apareceu. É o destino do botão “No show”.",
       "ajudaReuniaoProposta": "Etapas com degrau Proposta, Contrato ou Pasta / processo já contam como “compareceu, com proposta”: nelas o campo fica travado.",
+      "colunaSituacao": "Situação do cliente",
+      "stageSituacaoHint": "O que estar nesta etapa diz sobre o contrato do cliente. A conversa de quem está numa etapa marcada mostra uma faixa bem visível: “Cliente rescindido” ou “Cliente finalizado”.",
+      "situacaoNenhuma": "Situação: —",
+      "situacaoRescindido": "Rescindido",
+      "situacaoFinalizado": "Finalizado",
+      "ajudaSituacao": "Rescindido ou Finalizado: o contrato do cliente acabou. Quem está numa etapa marcada — ou saiu deste funil a partir dela, como o ex-cliente que volta pelo comercial — mostra na conversa uma faixa bem visível, para quem atende saber antes de responder. Ela apaga quando o card volta a este funil numa etapa sem marca. A faixa só informa: a conversa segue normalmente. Nas outras etapas, deixe em branco (“Situação: —”).",
       "semLead": "Nenhuma etapa está marcada como Lead: o Desempenho e a Saúde deste funil ficam sem cálculo até isso ser configurado.",
       "painel": "Painel do Desempenho e da Saúde",
       "painelDica": "Como este funil aparece nos painéis. O rótulo vale só neste funil; vazio, fica o nome padrão do degrau.",
@@ -1406,6 +1420,7 @@
       "painelCustos": "Cartões de custo (aparecem com o Meta Ads conectado)",
       "painelCustosDica": "Custo de degrau só aparece com etapa no degrau.",
       "toastStageMappedWithHistory": "Esta etapa está mapeada no funil de eficiência e tem histórico de negócios: apagá-la apagaria essa história do Desempenho. Mude o degrau para \"Não conta\" e salve antes de remover, ou mantenha a etapa.",
+      "toastStageMarkedWithHistory": "Esta etapa está marcada com a situação do cliente e tem histórico: apagá-la tiraria a faixa \"rescindido/finalizado\" dos ex-clientes que saíram dela. Mude a situação para \"—\" e salve antes de remover, ou mantenha a etapa.",
       "deletePipelineChannels": "Estas conexões colocam clientes neste funil: {channels}. Depois de apagar, elas param de criar negócios até você apontá-las para outro funil em Configurações › Conexões.",
       "toastStageIsChannelEntry": "Esta etapa é a entrada de {channels}. Escolha outra etapa de entrada em Configurações › Conexões antes de apagá-la.",
       "reuniaoQualificada": "Qualificada",

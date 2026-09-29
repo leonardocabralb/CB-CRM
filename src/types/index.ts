@@ -982,6 +982,14 @@ export interface PipelineStage {
    * `src/lib/pipelines/etapas-recomendadas.ts`.
    */
   proximas_etapas?: string[] | null;
+  /**
+   * O que ESTAR nesta etapa diz sobre o contrato do cliente (1070):
+   * 'rescindido' | 'finalizado' | null. É o que acende a faixa "Cliente
+   * rescindido / finalizado" da conversa (`src/lib/pipelines/situacao-do-cliente.ts`).
+   * Marca, nunca nome; independente de `resultado`, `degrau` e
+   * `desfecho_da_reuniao`.
+   */
+  situacao_do_cliente?: 'rescindido' | 'finalizado' | null;
   created_at: string;
 }
 

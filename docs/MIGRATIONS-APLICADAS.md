@@ -1069,6 +1069,22 @@ nome da época em que foram aplicadas.
   "Conversar" preenchido e cancelado, pulo e faixa de volta, editar pelo outro
   lado, ficha de /contatos, desvincular); a limpeza apagou as fichas e o
   CASCADE levou o vínculo restante — a tabela ficou vazia.
+- **1070_cb_situacao_do_cliente_na_etapa** — `pipeline_stages.situacao_do_cliente`
+  ('rescindido' | 'finalizado' | nula, CHECK nomeado): a marca que acende a
+  faixa "Cliente rescindido / finalizado" da conversa (PR #355, Fase 1 de
+  `docs/PLANO-integracao-atlas.md`). ADITIVA e ANTES do deploy (o app novo lê
+  e grava a coluna; o antigo a ignora). Aplicada em 29/09/2026 pela Management
+  API (histórico `20260929230658`), depois do replay verde do CI no commit
+  `c71687ac` e ANTES do merge, com autorização do operador. Conferida no
+  catálogo: coluna `text` anulável sem default, um CHECK
+  (`cb_pipeline_stages_situacao_do_cliente_check`), 51 etapas e nenhuma sobra
+  da conferência. Marcadas no mesmo dia, pela tela, "Cliente Rescindido" e
+  "Cliente Finalizado" do Bancário - Jurídico. E2E no preview com o lead de
+  teste (faixa vermelha e azul, continua acesa quando o card sai para o
+  Comercial, apaga ao voltar em "Cliente Ativo", celular e tema claro, a trava
+  de apagar etapa marcada com histórico numa etapa TEMPORÁRIA criada e apagada
+  no teste); o card voltou à etapa de origem, 7 eventos na trilha, fila
+  processada, nenhuma automação nem mensagem.
 
 ## Notas do histórico
 
