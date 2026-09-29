@@ -45,6 +45,9 @@ describe("as telas que se atualizam ao voltar", () => {
     "src/components/funil/lista-de-leads.tsx",
     "src/components/funil/desempenho.tsx",
     "src/components/funil/saude.tsx",
+    // A pauta de reuniões: o resultado de quem voltou do WhatsApp tem de
+    // aparecer sem recarregar a página.
+    "src/components/reunioes/pauta-de-reunioes.tsx",
   ])("%s chama useAoVoltarParaOApp", (caminho) => {
     expect(ler(caminho)).toContain("useAoVoltarParaOApp(");
   });
