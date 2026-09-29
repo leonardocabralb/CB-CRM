@@ -38,7 +38,9 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { MotivoDaNeutralizacao } from "@/lib/asaas/aviso-na-conversa";
@@ -46,6 +48,7 @@ import type { CbChannel } from "@/lib/cb-channels/repo";
 import {
   contarFiltrosAtivos,
   FILTROS_VAZIOS,
+  funisDoFiltro,
   funisDoRecorte,
   recorteTemDoisNiveis,
   SEM_ETAPA,
@@ -198,11 +201,10 @@ export function InboxFilters({
   const responsavelAtual = responsaveis.find(
     (p) => p.user_id === filtros.responsavelId,
   );
-  const etapaAtual = etapas.find((e) => e.id === filtros.etapaId);
 
   // ⚠️ As duas saem do módulo puro, e não de uma cópia local: a LISTA também
   // decide, lá em `conversation-list`, se o deep link `?etapa=` pode carimbar
-  // `funilId`. Divergindo, o carimbo acontece numa conta onde este seletor
+  // o funil. Divergindo, o carimbo acontece numa conta onde este seletor
   // não existe — e some com quem não tem negócio (ver `funisDoRecorte`).
   const funisDoSeletor = useMemo(
     () => funisDoRecorte(etapas, funis),
@@ -213,43 +215,85 @@ export function InboxFilters({
     [etapas, funis],
   );
 
-  // ⚠️ O funil que o PAINEL mostra é derivado, nunca só o carimbado (#26 do
-  // plano 31/08): `funilId` é escrito SÓ pelo seletor de funil, mas um filtro
-  // salvo pode gravar `etapaId` sem funil (salvo numa conta de um funil, onde
-  // o seed não carimba de propósito). Com dois níveis e `funilId` nulo, o
-  // campo Etapa não renderizava e o de Funil dizia "Qualquer funil" — a lista
-  // recortada por uma etapa que o painel não mostrava e não deixava trocar.
-  // Derivar do `etapaAtual` dá ao painel UMA fonte de verdade sem carimbar
-  // nada (carimbar é a armadilha que o CLAUDE.md proíbe).
-  const funilVisivel = filtros.funilId ?? etapaAtual?.pipeline_id ?? null;
+  // "Sem negócio" é opção DE VERDADE (`SEM_ETAPA`) e mora em `etapaIds` nas
+  // duas formas do painel: no campo Funil com dois níveis, no campo Etapa com
+  // um só — onde sempre esteve.
+  const semNegocio = filtros.etapaIds.includes(SEM_ETAPA);
 
-  // Já vêm ordenadas por `position` da consulta — a ordem das colunas do
-  // quadro, que é como o operador pensa o funil.
-  //
-  // ⚠️ O funil é re-derivado AQUI DENTRO, com deps primitivas, em vez de
-  // depender do `funilVisivel` acima: como `etapaAtual` sai de um `.find`
-  // não memoizado, o React Compiler recusa a memoização
-  // ("Existing memoization could not be preserved") e o lint vira ERRO.
-  const etapasDoFunil = useMemo(() => {
-    if (!doisNiveis) return etapas;
-    const funil =
-      filtros.funilId ??
-      etapas.find((e) => e.id === filtros.etapaId)?.pipeline_id ??
-      null;
-    return etapas.filter((e) => e.pipeline_id === funil);
-  }, [doisNiveis, etapas, filtros.funilId, filtros.etapaId]);
+  // ⚠️ Os funis que o PAINEL mostra marcados são os marcados E os DERIVADOS
+  // das etapas marcadas (#26 do plano 31/08, ver `funisDoFiltro`): uma visão
+  // salva numa conta de um funil grava a etapa sem funil, e sem derivar o
+  // campo Etapa nem aparecia — a lista recortada por uma etapa que o painel
+  // não mostrava nem deixava trocar. Derivar dá ao painel UMA fonte de
+  // verdade sem carimbar nada (carimbar é a armadilha que o CLAUDE.md
+  // proíbe).
+  const funisMarcados = useMemo(
+    () => (doisNiveis ? funisDoFiltro(filtros, etapas) : []),
+    [doisNiveis, filtros, etapas],
+  );
 
-  const nomeDoFunil = (id: string) => funis.get(id) ?? t("labelPipeline");
+  // As etapas que o campo Etapa oferece. Com dois níveis, as dos funis
+  // marcados, AGRUPADAS pelo nome do funil, na ordem do seletor de funil;
+  // com um, todas, num grupo só. Já vêm ordenadas por `position` da
+  // consulta — a ordem das colunas do quadro, que é como o operador pensa o
+  // funil.
+  const gruposDeEtapas = useMemo((): {
+    funil: { id: string; nome: string } | null;
+    etapas: PipelineStage[];
+  }[] => {
+    if (!doisNiveis) return [{ funil: null, etapas }];
+    return funisDoSeletor
+      .filter((f) => funisMarcados.includes(f.id))
+      .map((f) => ({
+        funil: f,
+        etapas: etapas.filter((e) => e.pipeline_id === f.id),
+      }))
+      .filter((g) => g.etapas.length > 0);
+  }, [doisNiveis, etapas, funisDoSeletor, funisMarcados]);
 
   /**
-   * Escolher uma etapa NUNCA escreve `funilId` — quem escreve é só o seletor
+   * Marcar uma etapa NUNCA escreve `funilIds` — quem escreve é só o seletor
    * de funil. Ver o comentário do campo em `filtros.ts`: com um funil só,
    * carimbá-lo por tabela transformaria "Qualquer etapa" (hoje: não filtro
    * por etapa) em "quem tem negócio neste funil", sumindo em silêncio com
    * quem ainda não virou negócio.
    */
-  const escolherFunil = (funilId: string | null) =>
-    mexer({ funilId, etapaId: null });
+  const alternarEtapa = (id: string) =>
+    mexer({
+      etapaIds: filtros.etapaIds.includes(id)
+        ? filtros.etapaIds.filter((x) => x !== id)
+        : [...filtros.etapaIds, id],
+    });
+
+  /**
+   * Desmarcar um funil tira as etapas DELE junto (pedido do operador,
+   * 29/09); as dos outros funis ficam. Sem isso a etapa seguiria recortando
+   * sem o funil dela na tela — e o funil DERIVADO de uma etapa nem
+   * desmarcaria: é a etapa que o mantém marcado.
+   */
+  const alternarFunil = (id: string) =>
+    funisMarcados.includes(id)
+      ? mexer({
+          funilIds: filtros.funilIds.filter((x) => x !== id),
+          etapaIds: filtros.etapaIds.filter(
+            (x) => etapas.find((e) => e.id === x)?.pipeline_id !== id,
+          ),
+        })
+      : mexer({ funilIds: [...filtros.funilIds, id] });
+
+  const rotuloDaEtapa = (id: string) => {
+    if (id === SEM_ETAPA) return t("stageNone");
+    const etapa = etapas.find((e) => e.id === id);
+    // Etapa não resolvida: o rótulo genérico do campo é o honesto —
+    // "Qualquer etapa" seria o OPOSTO do que está acontecendo.
+    if (!etapa) return t("labelStage");
+    return doisNiveis ? etapa.name : nomeDaEtapa(etapa, funis);
+  };
+  // O que o gatilho do campo Etapa resume. Com dois níveis, "Sem negócio"
+  // está no campo Funil e fica fora daqui.
+  const etapasDoResumo = doisNiveis
+    ? filtros.etapaIds.filter((id) => id !== SEM_ETAPA)
+    : filtros.etapaIds;
 
   return (
     <div className="space-y-2">
@@ -501,85 +545,86 @@ export function InboxFilters({
             </Campo>
           )}
 
-          {/* FUNIL (só com 2+ funis nomeados) e ETAPA — ver `filtros.ts`:
-              escolher etapa nunca carimba o funil; a etapa VENCE o funil. */}
+          {/* FUNIL (só com 2+ funis nomeados) e ETAPA — VÁRIOS em cada um,
+              somando com OU, como as conexões (pedido do operador, 29/09).
+              Ver `casaComAEtapa`: a etapa refina só o funil DELA, e marcar
+              etapa nunca carimba o funil. O resumo do Funil lista os nomes
+              (são poucos e curtos); o da Etapa mostra a primeira e "+N". */}
           {etapasConfiaveis && doisNiveis && (
             <Campo rotulo={t("labelPipeline")}>
-              <Escolha
-                rotulo={
-                  filtros.etapaId === SEM_ETAPA
-                    ? t("stageNone")
-                    : funilVisivel
-                      ? nomeDoFunil(funilVisivel)
-                      : t("pipelineAll")
+              <Marcaveis
+                resumo={
+                  [
+                    ...(semNegocio ? [t("stageNone")] : []),
+                    ...funisMarcados.map(
+                      (id) => funis.get(id) ?? t("labelPipeline"),
+                    ),
+                  ].join(", ") || t("pipelineAll")
                 }
-                ativo={filtros.funilId !== null || filtros.etapaId !== null}
-                opcoes={[
+                ativo={semNegocio || funisMarcados.length > 0}
+                grupos={[
                   {
-                    chave: "__todos__",
-                    texto: t("pipelineAll"),
-                    escolhido:
-                      filtros.funilId === null && filtros.etapaId === null,
-                    aoEscolher: () => escolherFunil(null),
+                    chave: "__funis__",
+                    itens: [
+                      {
+                        chave: SEM_ETAPA,
+                        texto: t("stageNone"),
+                        marcado: semNegocio,
+                        aoAlternar: () => alternarEtapa(SEM_ETAPA),
+                      },
+                      ...funisDoSeletor.map((f) => ({
+                        chave: f.id,
+                        texto: f.nome,
+                        marcado: funisMarcados.includes(f.id),
+                        aoAlternar: () => alternarFunil(f.id),
+                      })),
+                    ],
                   },
-                  {
-                    chave: SEM_ETAPA,
-                    texto: t("stageNone"),
-                    escolhido: filtros.etapaId === SEM_ETAPA,
-                    aoEscolher: () =>
-                      mexer({ funilId: null, etapaId: SEM_ETAPA }),
-                  },
-                  ...funisDoSeletor.map((f) => ({
-                    chave: f.id,
-                    texto: f.nome,
-                    escolhido: funilVisivel === f.id,
-                    aoEscolher: () => escolherFunil(f.id),
-                  })),
                 ]}
               />
             </Campo>
           )}
           {etapasConfiaveis &&
-            etapasDoFunil.length > 0 &&
-            (!doisNiveis || funilVisivel !== null) && (
+            gruposDeEtapas.some((g) => g.etapas.length > 0) && (
               <Campo rotulo={t("labelStage")}>
-                <Escolha
-                  rotulo={
-                    filtros.etapaId === null
+                <Marcaveis
+                  resumo={
+                    etapasDoResumo.length === 0
                       ? t("stageAll")
-                      : filtros.etapaId === SEM_ETAPA
-                        ? t("stageNone")
-                        : etapaAtual
-                          ? doisNiveis
-                            ? etapaAtual.name
-                            : nomeDaEtapa(etapaAtual, funis)
-                          : t("labelStage")
+                      : rotuloDaEtapa(etapasDoResumo[0])
                   }
-                  ativo={filtros.etapaId !== null}
-                  opcoes={[
-                    {
-                      chave: "__todas__",
-                      texto: t("stageAll"),
-                      escolhido: filtros.etapaId === null,
-                      aoEscolher: () => mexer({ etapaId: null }),
-                    },
-                    ...(doisNiveis
-                      ? []
-                      : [
-                          {
-                            chave: SEM_ETAPA,
-                            texto: t("stageNone"),
-                            escolhido: filtros.etapaId === SEM_ETAPA,
-                            aoEscolher: () => mexer({ etapaId: SEM_ETAPA }),
-                          },
-                        ]),
-                    ...etapasDoFunil.map((e) => ({
-                      chave: e.id,
-                      texto: doisNiveis ? e.name : nomeDaEtapa(e, funis),
-                      escolhido: filtros.etapaId === e.id,
-                      aoEscolher: () => mexer({ etapaId: e.id }),
-                    })),
-                  ]}
+                  extra={
+                    etapasDoResumo.length > 1
+                      ? `+${etapasDoResumo.length - 1}`
+                      : undefined
+                  }
+                  ativo={etapasDoResumo.length > 0}
+                  grupos={gruposDeEtapas.map((g) => ({
+                    chave: g.funil?.id ?? "__etapas__",
+                    // Com dois níveis, o nome do funil em cima das etapas
+                    // dele: dois funis costumam repetir "Lead" e "Qualificado".
+                    titulo: g.funil?.nome,
+                    itens: [
+                      // Com um funil só, "Sem negócio" mora aqui, como sempre
+                      // morou; com dois níveis, ele está no campo Funil.
+                      ...(g.funil === null
+                        ? [
+                            {
+                              chave: SEM_ETAPA,
+                              texto: t("stageNone"),
+                              marcado: semNegocio,
+                              aoAlternar: () => alternarEtapa(SEM_ETAPA),
+                            },
+                          ]
+                        : []),
+                      ...g.etapas.map((e) => ({
+                        chave: e.id,
+                        texto: doisNiveis ? e.name : nomeDaEtapa(e, funis),
+                        marcado: filtros.etapaIds.includes(e.id),
+                        aoAlternar: () => alternarEtapa(e.id),
+                      })),
+                    ],
+                  }))}
                 />
               </Campo>
             )}
@@ -786,6 +831,73 @@ interface Opcao {
   texto: string;
   escolhido: boolean;
   aoEscolher: () => void;
+}
+
+interface Marcavel {
+  chave: string;
+  texto: string;
+  marcado: boolean;
+  aoAlternar: () => void;
+}
+
+/**
+ * Um seletor de VÁRIOS valores — caixas de marcação, no formato do campo de
+ * conexões (funil e etapa, 29/09). O grupo com `titulo` ganha o nome em cima
+ * (as etapas, agrupadas pelo funil). O `extra` ("+2") fica FORA do corte do
+ * texto: com o nome longo, as reticências engoliriam justo o número que diz
+ * que há mais marcado.
+ */
+function Marcaveis({
+  resumo,
+  extra,
+  ativo,
+  grupos,
+}: {
+  resumo: string;
+  extra?: string;
+  ativo: boolean;
+  grupos: { chave: string; titulo?: string; itens: Marcavel[] }[];
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        className={cn(
+          "inline-flex h-8 w-full min-w-0 items-center justify-between gap-1 rounded-md border border-border px-2 text-xs transition-colors hover:bg-muted",
+          ativo ? "text-primary" : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        {/* `min-w-0`: item de flex nasce com `min-width: auto`, e sem ele o
+            texto empurraria o chevron para fora do gatilho. */}
+        <span className="flex min-w-0 items-center gap-1">
+          <span className="truncate">{resumo}</span>
+          {extra && <span className="shrink-0">{extra}</span>}
+        </span>
+        <ChevronDown className="h-3 w-3 shrink-0" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        className="max-h-64 w-60 overflow-y-auto border-border bg-popover"
+      >
+        {grupos.map((g) => (
+          // ⚠️ `DropdownMenuLabel` é o `Menu.GroupLabel` do base-ui: fora de
+          // um `DropdownMenuGroup` ele LANÇA, e derrubaria o painel inteiro.
+          <DropdownMenuGroup key={g.chave}>
+            {g.titulo && <DropdownMenuLabel>{g.titulo}</DropdownMenuLabel>}
+            {g.itens.map((o) => (
+              <DropdownMenuCheckboxItem
+                key={o.chave}
+                checked={o.marcado}
+                onCheckedChange={o.aoAlternar}
+                className="text-sm text-popover-foreground"
+              >
+                <span className="truncate">{o.texto}</span>
+              </DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuGroup>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
 /** Um seletor de valor único, no formato dos outros filtros do inbox. */
