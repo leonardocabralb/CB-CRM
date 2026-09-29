@@ -207,20 +207,24 @@ export function aplicarEdicao(
 ): Edicao {
   const apagando = tipo ? tipo.startsWith('delete') : novo.length < anterior.length;
 
-  // ⚠️ Texto INSERIDO DE UMA VEZ (ditado, autocompletar, alguns teclados de
+  // ⚠️ Texto que entra DE UMA VEZ (ditado, autocompletar, alguns teclados de
   // celular) vale como digitado tecla a tecla. Medido no navegador: ",5"
   // chegou num evento só, a vírgula no meio se perdeu e o 5 foi parar na
-  // parte inteira (R$ 400.005,00 no lugar de R$ 40.000,50).
-  const inserido = novo.length - anterior.length;
-  const inicio = cursor - inserido;
-  if (
-    !apagando &&
-    inserido > 1 &&
-    inicio >= 0 &&
-    novo.slice(0, inicio) + novo.slice(cursor) === anterior
-  ) {
-    let atual: Edicao = { texto: anterior, cursor: inicio };
-    for (const tecla of novo.slice(inicio, cursor)) {
+  // parte inteira (R$ 400.005,00 no lugar de R$ 40.000,50). Vale também
+  // quando ele TROCA uma seleção, como a tecla faria: a primeira substitui o
+  // trecho selecionado e as outras entram no cursor. Sem isso, "1,2" ditado
+  // sobre o "40" de R$ 40.000,00 dava R$ 12.000,00, e digitado dá
+  // R$ 1.000,20 (Codex, PR #334).
+  const trecho = trechoDigitado(anterior, novo, cursor);
+  if (!apagando && trecho && trecho.digitado.length > 1) {
+    const [primeira, ...resto] = trecho.digitado;
+    let atual = aplicarEdicao(
+      anterior,
+      anterior.slice(0, trecho.inicio) + primeira + anterior.slice(trecho.fim),
+      trecho.inicio + 1,
+      'insertText',
+    );
+    for (const tecla of resto) {
       const comTecla = atual.texto.slice(0, atual.cursor) + tecla + atual.texto.slice(atual.cursor);
       atual = aplicarEdicao(atual.texto, comTecla, atual.cursor + 1, 'insertText');
     }
@@ -239,6 +243,39 @@ export function aplicarEdicao(
   return cursor <= virgulas[0]
     ? naParteInteira(anterior, novo, cursor, virgulas[0], apagando, tipo === 'deleteContentForward')
     : nosCentavos(novo, cursor, virgulas[0]);
+}
+
+/**
+ * Onde a edição aconteceu: `anterior.slice(inicio, fim)` virou `digitado`.
+ *
+ * O cursor depois da edição fica no FIM do que entrou, então tudo o que vem
+ * depois dele é o fim intacto do texto anterior; o começo é o maior prefixo
+ * comum aos dois.
+ *
+ * ⚠️ Quando o que entrou começa pelo mesmo caractere que foi trocado, a
+ * leitura é ambígua, e o maior prefixo escolhe a MENOR troca — que pode
+ * não ser a que a pessoa fez: "90" ditado sobre o "9,0" de R$ 19,01 chega
+ * como `R$ 1901`, o mesmo texto de apagar só a vírgula. Sem a seleção de
+ * antes da edição não há como separar os dois; o resultado continua sendo
+ * um valor bem formado, e o caso pede ditado sobre um trecho que cruza a
+ * vírgula.
+ *
+ * `null` quando o que sobra depois do cursor não é o fim do texto anterior
+ * (o navegador pôs o cursor em outro lugar): a edição segue pelo caminho
+ * comum, que lê o texto inteiro.
+ */
+function trechoDigitado(
+  anterior: string,
+  novo: string,
+  cursor: number,
+): { inicio: number; fim: number; digitado: string } | null {
+  const depois = novo.slice(cursor);
+  if (!anterior.endsWith(depois)) return null;
+  const fim = anterior.length - depois.length;
+  const teto = Math.min(cursor, fim);
+  let inicio = 0;
+  while (inicio < teto && anterior[inicio] === novo[inicio]) inicio++;
+  return { inicio, fim, digitado: novo.slice(inicio, cursor) };
 }
 
 /** O campo estava vazio: o que entrou é lido do zero. */

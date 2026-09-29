@@ -253,6 +253,18 @@ describe('aplicarEdicao — digitando', () => {
     expect(comCursor(campo(aplicarEdicao(tudo, ',5', 2, 'insertText')))).toBe(rs('0,5|0'));
   });
 
+  it('texto ditado sobre um TRECHO selecionado vale como digitado sobre ele (Codex, PR #334)', () => {
+    // ⚠️ A versão anterior só reproduzia a inserção pura: "1,2" ditado
+    // sobre o "40" de R$ 40.000,00 dava R$ 12.000,00, e digitado dá
+    // R$ 1.000,20. O valor errado ia para o banco no blur.
+    const texto = rs('40.000,00');
+    const selecao: Campo = { texto, ini: rs('').length, fim: rs('40').length };
+    const novo = rs('1,2.000,00');
+    const deUmaVez = campo(aplicarEdicao(texto, novo, rs('1,2').length, 'insertText'));
+    expect(comCursor(deUmaVez)).toBe(rs('1.000,2|0'));
+    expect(comCursor(deUmaVez)).toBe(comCursor(digitar(selecao, '1,2')));
+  });
+
   it('com tudo selecionado (o foco seleciona), digitar troca o valor inteiro', () => {
     expect(comCursor(digitar(tudoSelecionado(rs('40.000,00')), '7'))).toBe(rs('7|,00'));
   });
@@ -380,14 +392,26 @@ describe('aplicarEdicao — qualquer sequência de teclas', () => {
         const tecla = () => teclas[Math.floor(acaso() * teclas.length)];
         if (r < 0.45) c = digitar(c, tecla());
         else if (r < 0.55) {
-          // Duas teclas num evento só, sobre o cursor ou a seleção.
-          const par = tecla() + tecla();
-          const novo = c.texto.slice(0, c.ini) + par + c.texto.slice(c.fim);
-          c = campo(aplicarEdicao(c.texto, novo, c.ini + par.length, 'insertText'));
-        } else if (r < 0.7) c = apagar(c);
-        else if (r < 0.8) c = apagarParaFrente(c);
-        else if (r < 0.95) c = cursorEm(c.texto, Math.floor(acaso() * (c.texto.length + 1)));
-        else c = tudoSelecionado(c.texto);
+          // Duas ou três teclas num evento só, sobre o cursor ou a seleção:
+          // tem de dar o mesmo que digitá-las uma a uma.
+          const grupo = Array.from({ length: 2 + Math.floor(acaso() * 2) }, tecla).join('');
+          const novo = c.texto.slice(0, c.ini) + grupo + c.texto.slice(c.fim);
+          const deUmaVez = campo(aplicarEdicao(c.texto, novo, c.ini + grupo.length, 'insertText'));
+          // Menos quando o grupo começa pelo caractere que troca: aí o texto
+          // que chega é ambíguo (ver `trechoDigitado`).
+          if (c.ini === c.fim || grupo[0] !== c.texto[c.ini]) {
+            expect(comCursor(deUmaVez)).toBe(comCursor(digitar(c, grupo)));
+          }
+          c = deUmaVez;
+        } else if (r < 0.68) c = apagar(c);
+        else if (r < 0.78) c = apagarParaFrente(c);
+        else if (r < 0.88) c = cursorEm(c.texto, Math.floor(acaso() * (c.texto.length + 1)));
+        else if (r < 0.95) {
+          // Um trecho qualquer selecionado.
+          const a = Math.floor(acaso() * (c.texto.length + 1));
+          const b = Math.floor(acaso() * (c.texto.length + 1));
+          c = { texto: c.texto, ini: Math.min(a, b), fim: Math.max(a, b) };
+        } else c = tudoSelecionado(c.texto);
 
         if (c.texto !== '') expect(c.texto).toMatch(FORMATO);
         expect(c.ini).toBeGreaterThanOrEqual(0);

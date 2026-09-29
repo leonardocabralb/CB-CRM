@@ -102,6 +102,11 @@ export function ValorInput({
   // de `R$ 0,00` faria "ainda não informei" parecer "vale zero", e o
   // placeholder do campo nunca mais apareceria.
   const semFoco = Number(valor) ? formatCurrency(valor) : '';
+  // O que o campo mostra. É o texto ANTERIOR de toda edição — inclusive da
+  // que chega sem o evento de foco antes (a janela sem foco do sistema não o
+  // dispara, e aí `edicao` ainda é nulo): lida contra um campo vazio, ela
+  // perderia o valor que estava na tela.
+  const exibido = editando ? edicao.texto : semFoco;
 
   const aplicar = (prox: Edicao) => {
     setEdicao(prox);
@@ -114,7 +119,7 @@ export function ValorInput({
       type="text"
       // Teclado numérico no celular sem perder a máscara.
       inputMode="decimal"
-      value={editando ? edicao.texto : semFoco}
+      value={exibido}
       disabled={disabled}
       placeholder={placeholder}
       className={className}
@@ -124,7 +129,7 @@ export function ValorInput({
         const el = e.target;
         aplicar(
           aplicarEdicao(
-            edicao?.texto ?? '',
+            exibido,
             el.value,
             el.selectionStart ?? el.value.length,
             (e.nativeEvent as InputEvent).inputType,
@@ -147,10 +152,12 @@ export function ValorInput({
         e.preventDefault();
         const el = e.currentTarget;
         const inicio = el.selectionStart ?? el.value.length;
-        aplicar(teclaDecimal(edicao?.texto ?? '', inicio, el.selectionEnd ?? inicio));
+        aplicar(teclaDecimal(exibido, inicio, el.selectionEnd ?? inicio));
       }}
       onBlur={() => {
-        const novo = parsearValor(edicao?.texto ?? '') ?? 0;
+        // `exibido`, e não `edicao?.texto ?? ''`: um blur sem edição em curso
+        // leria o campo como vazio e gravaria zero por cima do valor.
+        const novo = parsearValor(exibido) ?? 0;
         // Volta ao formato antes de avisar quem escuta: o `aoConfirmar` pode
         // recarregar a lista e desmontar isto no meio.
         setEdicao(null);
