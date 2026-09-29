@@ -25,7 +25,7 @@
 | 5 | Typebot · Abaixo de 150 mil com processo | texto 5.1 **fica para depois** | sim (sem mensagem) | — |
 | 6 | (PENDENTE) Desqualificado | não tem texto | não | só a sua palavra |
 | 7 | Funil · grava a data da proposta (**nova**) | não tem texto | **sim** | — |
-| 8 | Bancário · Cliente do Jurídico que escreve no Comercial (**nova**, seção 8) | gravados (29/09) | não | a sua ordem, combinada com a equipe |
+| 8 | Bancário · Cliente do Jurídico que escreve no Comercial (**nova**, seção 8) | gravados (29/09) | **sim** (29/09/2026, 18h17) | — |
 
 Nenhuma delas é ligada sem ordem sua. Aprovar o texto e ligar são dois
 passos — os lembretes, por exemplo, pegam na hora quem já tem reunião marcada.
@@ -469,11 +469,13 @@ está em 1.082 contatos, e 730 deles são do Trabalhista (vieram assim da
 Kommo). Nos 30 dias anteriores, 137 desses clientes escreveram no Comercial
 (68 na última semana) e 2 no Jurídico; quase 80% das respostas a eles saíram
 do celular do Comercial, não do CRM. **215 dos 374 nomes estão em
-MAIÚSCULAS** (vieram assim da Kommo): a saudação sai "Olá, NOME COMPLETO!" —
-tirar o nome da saudação é decisão do operador.
+MAIÚSCULAS** (vieram assim da Kommo): por isso a saudação é só "Olá!", sem o
+nome (decisão do operador, 29/09/2026). A boas-vindas do "Contrato fechado"
+continua com o nome.
 
 **A automação** "Bancário · Cliente do Jurídico que escreve no Comercial"
-(aba Bancário, gravada DESLIGADA em 29/09/2026, pela tela):
+(aba Bancário, gravada pela tela e **LIGADA em 29/09/2026 às 18h17**, com a
+ordem do operador):
 
 - **Gatilho:** "Nova mensagem recebida", só na conexão Bancário - Comercial.
   O número oficial da Meta fica de fora (atende o Previdenciário; nenhum
@@ -493,7 +495,7 @@ editáveis no construtor):**
 
 Pelo Comercial:
 
-> Olá, {{contact.name}}! Para agilizar o andamento do seu caso, a partir de
+> Olá! Para agilizar o andamento do seu caso, a partir de
 > agora o seu atendimento será feito pelo número do nosso time jurídico:
 > *<número do Jurídico>*.
 >
@@ -503,7 +505,7 @@ Pelo Comercial:
 
 Pelo Jurídico:
 
-> Olá, {{contact.name}}! Aqui é do time jurídico do CB Advogados.
+> Olá! Aqui é do time jurídico do CB Advogados.
 >
 > A partir de agora, este é o número oficial para tratar do seu caso. *Peço
 > que salve este contato na sua agenda.*
@@ -543,7 +545,7 @@ Pelo Jurídico:
 | 2 | Etiqueta *Transferido ao Jurídico* + a automação, DESLIGADA | ✅ gravadas pela tela (29/09/2026) |
 | 3 | "Fixar a conversa no número" no "Contrato fechado" | ✅ gravado como último passo (29/09/2026); o "Contrato fechado" seguiu ligado |
 | 4 | Teste no contato de teste (cópia com gatilho manual) | ✅ 29/09/2026: etiqueta, as duas mensagens (uma por número, entregues), conversa fixada no Jurídico; 2ª execução "barrada", sem mensagem. Cópia apagada, etiqueta retirada e conversa devolvida ao estado anterior |
-| 5 | Ligar | ordem do operador, combinada com a equipe |
+| 5 | Ligar | ✅ ligada em 29/09/2026 às 18h17, com a ordem do operador (saudação trocada para "Olá!" na mesma gravação) |
 
 ---
 
