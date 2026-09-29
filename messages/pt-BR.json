@@ -6004,6 +6004,7 @@
     "motivoCardFechado": "O card está ganho ou perdido: só registra o resultado, sem mexer nele.",
     "motivoReuniaoPosterior": "O card já é da reunião de {data} às {hora}: só registra o resultado desta.",
     "motivoSemEtapa": "Nenhuma etapa deste funil está marcada para isto (Funis → Gerenciar funil): só registra.",
+    "avisoDoBotao": "{botao}: {texto}",
     "corrigir": "Corrigir",
     "verOutrosDias": "Ver as {n} de outros dias",
     "esconderOutrosDias": "Esconder"

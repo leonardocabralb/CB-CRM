@@ -136,10 +136,22 @@ export function LinhaDaReuniao({
   };
 
   // Quando o resultado só REGISTRA (sem mover o card), a linha diz por quê —
-  // a dica do botão não aparece no toque.
-  const avisoDoResultado = (() => {
-    const plano = comoMarcar(r, 'no_show', alvos);
-    return plano.alvo ? null : t(TEXTO_DO_MOTIVO[plano.motivo], { data: r.proximaEm ? dataCurta(r.proximaEm) : '', hora: r.proximaEm ? hora(r.proximaEm) : '' });
+  // a dica do botão não aparece no toque. É POR BOTÃO: num funil com só
+  // parte dos destinos marcados (Trabalhista e Previdenciário têm Proposta e
+  // não têm No Show), "Com proposta" move e os outros dois só registram
+  // (Codex, PR #339). Os três no mesmo caso = uma frase só.
+  const avisosDoResultado = (() => {
+    const rotulos: [Acao, string][] = [
+      ['proposta', t('botaoProposta')],
+      ['sem_proposta', t('botaoSemProposta')],
+      ['no_show', t('botaoNoShow')],
+    ];
+    const soRegistram = rotulos.filter(([acao]) => !comoMarcar(r, acao, alvos).alvo).map(([acao, rotulo]) => ({ rotulo, texto: dica(acao) }));
+    if (soRegistram.length === 0) return [];
+    if (soRegistram.length === rotulos.length && soRegistram.every((a) => a.texto === soRegistram[0].texto)) {
+      return [soRegistram[0].texto];
+    }
+    return soRegistram.map((a) => t('avisoDoBotao', { botao: a.rotulo, texto: a.texto }));
   })();
 
   const botoesDoResultado = (
@@ -169,7 +181,12 @@ export function LinhaDaReuniao({
           )}
         </>
       )}
-      {podeMarcar && avisoDoResultado && <span className="w-full text-[11px] text-muted-foreground">{avisoDoResultado}</span>}
+      {podeMarcar &&
+        avisosDoResultado.map((aviso) => (
+          <span key={aviso} className="w-full text-[11px] text-muted-foreground">
+            {aviso}
+          </span>
+        ))}
     </div>
   );
 
