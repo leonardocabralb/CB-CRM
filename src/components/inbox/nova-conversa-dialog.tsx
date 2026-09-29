@@ -45,6 +45,7 @@ export function NovaConversaDialog({
   canaisFalharam,
   onRecarregarCanais,
   onAberta,
+  inicial = null,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -58,6 +59,11 @@ export function NovaConversaDialog({
   onRecarregarCanais: () => Promise<void>;
   /** Recebe o id da conversa aberta; o pai recarrega a lista e navega até ela. */
   onAberta: (conversationId: string) => void;
+  /**
+   * O número (e o nome) com que o formulário ABRE — o "Conversar" do cartão
+   * de contato (1060). Sem ele, o formulário abre vazio, como sempre.
+   */
+  inicial?: { telefone: string; nome: string | null } | null;
 }) {
   const t = useTranslations("Inbox.novaConversa");
   const tTelefone = useTranslations("Contacts.telefone");
@@ -83,13 +89,14 @@ export function NovaConversaDialog({
 
   // Zera o formulário a cada ABERTURA. Manter o número anterior faria a
   // segunda conversa nascer para o cliente da primeira se alguém desse Enter
-  // por reflexo.
+  // por reflexo. Com `inicial` (o cartão de contato), abre com o número e o
+  // nome DELE — e só dele: o pai troca o objeto a cada pedido.
   useEffect(() => {
     if (!open) return;
-    setTelefone("");
+    setTelefone(inicial?.telefone ?? "");
     setTocado(false);
-    setNome("");
-  }, [open]);
+    setNome(inicial?.nome ?? "");
+  }, [open, inicial]);
 
   // O canal fica num efeito SEPARADO de propósito: a lista pode chegar
   // DEPOIS da abertura (o `useChannels` do pai é assíncrono), e num efeito

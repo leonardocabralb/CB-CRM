@@ -1,6 +1,7 @@
 import type { AccountRole } from '@/lib/auth/roles';
 import type { InteractiveMessagePayload } from '@/lib/whatsapp/interactive';
 import type { FraseDaTranscricao } from '@/lib/tldv/leitura';
+import type { ContatoCompartilhado } from '@/lib/whatsapp/cartao-de-contato';
 
 export type {
   InteractiveMessagePayload,
@@ -612,7 +613,13 @@ export type ContentType =
    * texto — a bolha escreve a frase a partir de `ligacao` — e não tem ações
    * (responder, reagir, apagar).
    */
-  | 'call';
+  | 'call'
+  /**
+   * Cartão de contato que alguém compartilhou (1060). A bolha desenha o
+   * cartão a partir de `contatos`; `content_text` leva o resumo
+   * (`👤 Nome · +55 …`) para a prévia, a busca e a API.
+   */
+  | 'contact';
 
 /** Os detalhes de uma ligação (`messages.ligacao`, 1044). */
 export interface DetalhesDaLigacao {
@@ -677,6 +684,11 @@ export interface Message {
   template_name?: string;
   /** Só em `content_type === 'call'` (1044). Nulo em toda outra mensagem. */
   ligacao?: DetalhesDaLigacao | null;
+  /**
+   * Só em `content_type = 'contact'` (1060): os contatos do cartão. JSON de
+   * fora — leia por `lerContatosGravados`, nunca direto.
+   */
+  contatos?: ContatoCompartilhado[] | null;
   message_id?: string;
   status: MessageStatus;
   created_at: string;

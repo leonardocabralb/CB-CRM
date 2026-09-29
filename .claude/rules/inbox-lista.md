@@ -110,3 +110,5 @@ Nome, telefone, grupo e última mensagem em JS (`casaComABusca`); o corpo do his
 - ⚠️ **A recusa do telefone é load-bearing:** `findExistingContact` casa pelos 8 últimos dígitos, e um JID de grupo colado fundiria com o celular de um cliente. `telefoneDigitado` barra nos DOIS lados (tela e rota): letra e mais de 15 dígitos recusados; sem DDI ganha o 55.
 - **Reusa `findExistingContact`**: busca própria criaria segunda ficha para o número com/sem nono dígito.
 - **A rota confere POSSE do canal, não escopo de perfil** (nenhuma rota valida `canalNoEscopo` hoje).
+- **O "Conversar" do cartão de contato (1060) abre este diálogo preenchido** (`inicial`): a lista escuta o evento só com `podeAbrirConversa`, a MESMA régua do botão, e o botão da lista zera o pedido (abre vazio). Ver `.claude/rules/inbox-conversa.md`.
+- A prévia da linha troca o rótulo de tipo não suportado por frase (`tipoNaoSuportado`), como faz com a ligação.

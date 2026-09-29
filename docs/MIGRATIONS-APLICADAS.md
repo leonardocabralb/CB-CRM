@@ -915,6 +915,29 @@ nome da época em que foram aplicadas.
   trilha do lead de teste apareceu no fio e na aba Histórico sem atualizar, com o
   horário no mesmo formato do PostgREST, e foi apagada em seguida (78 eventos
   antes e depois).
+- **1060_cb_cartao_de_contato** — `messages.content_type` aceita `'contact'` (o
+  CHECK recriado com os 10 tipos de antes e o novo), a coluna `messages.contatos
+  jsonb` (só no cartão de contato; nula em toda outra mensagem) e `text/html` na
+  lista do bucket `chat-media` (`array_append`; o `file_size_limit` de 50 MiB
+  intocado). ADITIVA e ANTES do deploy: sem ela o código novo recusaria o cartão
+  (23514). O ADD CONSTRAINT validado varreu ~90 mil linhas com a trava presa
+  (`lock_timeout` de 5 s). Aplicada em 29/09/2026 pela Management API
+  (histórico `20260929120928`), depois do replay verde do CI no commit
+  `67b317a3` (o merge que pôs a 1059 antes dela) e ANTES do merge do PR #338,
+  com autorização do operador; conferida no catálogo (UM CHECK sobre
+  `content_type`, validado, com `contact`; a coluna em jsonb; o bucket com
+  `text/html` e os tipos de antes). Nasceu 1059 e foi renumerada antes de
+  qualquer aplicação (ver a 1059). Teste no preview contra o banco real, na
+  conversa do lead de teste: cinco mensagens simuladas pelo webhook local da
+  Evolution (cartão simples, cartão com dois contatos, mensagem de empresa com
+  botões e duas de tipo desconhecido) e uma abertura de álbum, que não gerou
+  linha; o cartão, o "Conversar" (abriu a "Nova conversa" preenchida, fechada
+  sem abrir conversa) e os avisos apareceram na tela. As mensagens foram
+  apagadas e a conversa voltou ao retrato de antes (658 mensagens antes e
+  depois; nenhuma automação, robô, agente de IA, aviso ou evento de funil
+  disparou). Depois da revisão, a mensagem de empresa passou a ser gravada
+  como `template` (a IA não abre turno com ela); o caso foi repetido no
+  preview — selo "Modelo" na bolha — e apagado do mesmo jeito.
 
 ## Notas do histórico
 

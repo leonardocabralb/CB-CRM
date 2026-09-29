@@ -20,6 +20,8 @@ import { cancelarEsperasPorResposta } from '@/lib/automations/parar-se-responder
 import { dispatchInboundToFlows } from '@/lib/flows/engine';
 import { aoChegarMensagemDoCliente } from '@/lib/ia-agentes/entrada';
 import { MIME_DA_FIGURINHA } from '@/lib/ia-agentes/quem-responde';
+import type { ContatoCompartilhado } from '@/lib/whatsapp/cartao-de-contato';
+import { textoParaOsMotores } from '@/lib/whatsapp/texto-para-os-motores';
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
 import {
   followConversationChannel,
@@ -67,8 +69,17 @@ export interface NormalizedInbound {
   quotedProviderId?: string | null;
   /** Unix seconds. */
   timestamp: number;
-  contentType: 'text' | 'image' | 'video' | 'audio' | 'document' | 'location';
+  /**
+   * `template` = mensagem montada por SISTEMA de empresa (modelo com botões,
+   * mensagem interativa), desde a 1060 — ver `detectContentType`.
+   */
+  contentType: 'text' | 'image' | 'video' | 'audio' | 'document' | 'location' | 'contact' | 'template';
   text: string | null;
+  /**
+   * Os contatos do cartão (1060) → `messages.contatos`. Só existe quando
+   * `contentType` é `'contact'`; `text` leva o resumo (`resumoDosContatos`).
+   */
+  contatos?: ContatoCompartilhado[];
   mediaUrl?: string | null;
   /**
    * A imagem é FIGURINHA (`stickerMessage`). Ela é gravada como `image`, e o
@@ -89,6 +100,9 @@ const ALLOWED_CONTENT_TYPES = new Set([
   'location',
   'template',
   'interactive',
+  // Cartão de contato (1060). Sem ele aqui o tipo caía em 'text' e o cartão
+  // voltava a ser uma bolha com o resumo e sem os botões.
+  'contact',
 ]);
 
 interface ContactRow {
@@ -297,6 +311,9 @@ export async function persistDeviceMessage(
       // LID — ver migration 917. NULL é o caso normal.
       remote_jid_lid: m.remoteJidLid ?? null,
       reply_to_message_id: replyToId,
+      // Só no cartão de contato: a chave ausente mantém o INSERT de sempre
+      // (e uma coluna que ainda não existisse só derrubaria o cartão).
+      ...(contentType === 'contact' ? { contatos: m.contatos ?? [] } : {}),
       from_me: true,
       from_device: true,
       // Saiu do aparelho, logo o WhatsApp já a entregou à rede. O ACK
@@ -457,6 +474,8 @@ export async function persistInboundMessage(
           // Só a figurinha tem o MIME já no insert (ver `figurinha`); o resto
           // o ganha no download, como sempre.
           ...(mimeNaChegada ? { media_type: mimeNaChegada } : {}),
+          // Os contatos do cartão (1060), só nele — ver o insert do celular.
+          ...(contentType === 'contact' ? { contatos: m.contatos ?? [] } : {}),
           message_id: m.providerMessageId,
           remote_jid: m.remoteJid ?? null,
           // Endereço para AGIR sobre a mensagem quando a conversa migrou para
@@ -509,7 +528,9 @@ export async function persistInboundMessage(
   await registrarEntrega(db, canalGravado, m.timestamp);
 
   // ---- downstream engines (parity with the Meta webhook) ----
-  const inboundText = m.text ?? '';
+  // O texto que a ingestão MONTOU (cartão de contato, mensagem de empresa)
+  // não chega ao robô nem às automações — ver `texto-para-os-motores.ts`.
+  const inboundText = textoParaOsMotores(contentType, m.text);
 
   // O cliente respondeu: as esperas marcadas "parar se o cliente responder"
   // deste contato são canceladas. ⚠️ ANTES do despacho de robôs e automações,

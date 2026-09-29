@@ -1,6 +1,7 @@
 ---
 paths:
   - "src/lib/whatsapp/transport/**"
+  - "src/lib/whatsapp/cartao-de-contato*"
   - "src/lib/whatsapp/sem-telefone/**"
   - "src/app/api/whatsapp/evolution/**"
   - "src/lib/cb-channels/evolution-admin*"
@@ -52,6 +53,52 @@ perfil. Plano vivo: `docs/PLANO-baileys-7.md`.
   (`type: 0`, sem `editedMessage`). A rota ignora o `edited` sem texto de
   propósito: o apagar-para-todos chega pelo `messages.delete`. Não tratar o
   `edited` vazio como edição.
+
+### O que virava bolha vazia (1060)
+
+`extractText`, `detectContentType` e `normalizeUpsert` (`evolution-inbound.ts`,
+pino `evolution-inbound.test.ts`). Medido em setembro de 2026: 116 bolhas
+vazias (cartão de contato, abertura de álbum, modelo de empresa, Pix, vídeo de
+Live Photo e edições cifradas de antes do descarte).
+
+- ⚠️⚠️ **Cartão de contato é `content_type = 'contact'`**, com os contatos em
+  `messages.contatos` (`cartao-de-contato.ts`, puro) e o resumo (`👤 Nome · +55
+  …`) em `content_text`: prévia, busca, Radar, contexto do agente e API leem o
+  texto; a bolha desenha pelo JSON. Nunca `'text'`: com texto visível o agente
+  de IA abriria turno com o cartão (E9, `abreTurno`). O valor depende do CHECK
+  da 1060 (do upstream: um merge que o recrie tira `'contact'` e `'call'`). Os
+  inserts gravam `contatos` SÓ no cartão (chave ausente nos outros) — 1:1,
+  celular, grupo, retida e a Meta (`contatosDaMeta`).
+- ⚠️ **Abertura de álbum (`albumMessage`) e cópia AUXILIAR
+  (`associatedChildMessage` com associação 5, 10, 12 ou 19: alta qualidade e o
+  vídeo da Live Photo) são DESCARTADAS** (`ehMensagemAuxiliar`) na rota ANTES
+  da bifurcação de grupo, em `normalizeUpsert` e em `receberSemTelefone`
+  (retida que nunca vira mensagem ficaria "retida" para sempre). As fotos do
+  álbum chegam uma a uma; a associação 1 (`MEDIA_ALBUM`) é conteúdo e é
+  desembrulhada (`INVOLUCROS`).
+- **Modelo de empresa e mensagem interativa viram texto** (corpo, rodapé,
+  botões com link ou telefone); o pedido de Pix do celular do escritório vira
+  `💠 Pix · titular · chave · valor`. A imagem de cabeçalho não é baixada.
+  ⚠️ Gravadas como `content_type = 'template'`, nunca `'text'`: quem escreveu
+  foi um SISTEMA (um banco avisando do boleto), e como `'text'` com texto
+  visível o agente de IA abriria turno e responderia ao robô do banco. A bolha
+  já tinha o selo "Modelo" para esse tipo.
+- ⚠️⚠️ **O texto MONTADO (cartão e modelo) não chega aos motores**
+  (`texto-para-os-motores.ts`, com pino lendo as duas ingestões): o robô e as
+  automações recebem `''`, como antes da 1060. Senão um robô com a palavra
+  "oi" começaria pelo nome de um cartão ("Joice") e a pergunta de um robô
+  seria respondida por um texto que ninguém digitou. Caminho novo de ingestão
+  passa o texto pela mesma função.
+- **O nome do cartão é cortado por caractere, não por unidade UTF-16**
+  (`aparar`): metade de um emoji faz o PostgREST recusar o INSERT inteiro, e o
+  cartão sumiria com a Evolution já respondida.
+- ⚠️ **Tipo que o normalizador não lê é gravado com
+  `PREFIXO_DE_TIPO_NAO_SUPORTADO`** (`textoParaGravar`), a constante da Meta: o
+  agente não abre turno com ela, e a bolha, a lista e o card do funil a trocam
+  por frase (`tipoNaoSuportado`). Ficam de fora o texto vazio de verdade e o
+  `protocolMessage` (controle, não conteúdo).
+- **Só imagem, vídeo, áudio e documento vão para o download** (`temArquivo`):
+  no 1:1 a localização disparava um download que não podia dar certo.
 
 ### Recibos: a escada e a espera
 

@@ -1107,25 +1107,47 @@ describe('os fatos da mensagem vão para o agente de IA', () => {
     )
   })
 
-  it('⚠️ E9: o tipo que a rota não sabe ler (cartão de contato) é gravado com o rótulo que a régua do agente RECUSA', async () => {
-    // A Meta entrega `contacts` (e `system`, …): a rota grava `text` com o
-    // rótulo do tipo. Sem a constante única, esse texto abria turno — e o
-    // turno do cartão DESCARTAVA o da pergunta de verdade (E10).
+  it('⚠️ E9: o cartão de contato (1060) é gravado como `contact` — tipo que a régua do agente RECUSA', async () => {
+    // Até a 1060 o cartão caía no `default` e virava o rótulo em inglês.
+    // Agora ele tem tipo próprio, fora de `TIPOS_QUE_ABREM_TURNO`: o texto
+    // visível (o resumo) não pode fazer o cartão abrir turno — o turno do
+    // cartão DESCARTARIA o da pergunta de verdade (E10).
     await runWebhook({
       id: 'wamid.CTT1',
       from: '15551230000',
       timestamp: '1700000000',
       type: 'contacts',
-      contacts: [{ name: { formatted_name: 'Fulano' }, phones: [{ phone: '+5511999990000' }] }],
+      contacts: [{ name: { formatted_name: 'Fulano' }, phones: [{ phone: '+5511999990000', wa_id: '5511999990000' }] }],
+    })
+
+    expect(h.state.upsertCalls[0].row).toMatchObject({
+      content_type: 'contact',
+      content_text: '👤 Fulano · +5511999990000',
+      contatos: [{ nome: 'Fulano', empresa: null, telefones: [{ numero: '+5511999990000', waid: '5511999990000' }] }],
+    })
+    const fatos = h.aoChegarMensagemDoCliente.mock.calls[0][0] as { tipo: string; texto: string | null; mime: string | null }
+    expect(fatos).toMatchObject({ tipo: 'contact' })
+    // As duas pontas: o que a rota GRAVOU não abre turno na régua da entrada e do turno.
+    expect(abreTurno({ tipo: fatos.tipo, texto: fatos.texto, mime: fatos.mime })).toBe(false)
+  })
+
+  it('⚠️ E9: o tipo que a rota não sabe ler é gravado com o rótulo que a régua do agente RECUSA', async () => {
+    // A Meta entrega `unsupported`, `system`, …: a rota grava `text` com o
+    // rótulo do tipo. Sem a constante única, esse texto abria turno.
+    await runWebhook({
+      id: 'wamid.UNS1',
+      from: '15551230000',
+      timestamp: '1700000000',
+      type: 'unsupported',
     })
 
     expect(h.state.upsertCalls[0].row).toMatchObject({
       content_type: 'text',
-      content_text: '[Unsupported message type: contacts]',
+      content_text: '[Unsupported message type: unsupported]',
     })
+    expect(h.state.upsertCalls[0].row).not.toHaveProperty('contatos')
     const fatos = h.aoChegarMensagemDoCliente.mock.calls[0][0] as { tipo: string; texto: string | null; mime: string | null }
-    expect(fatos).toMatchObject({ tipo: 'text', texto: '[Unsupported message type: contacts]' })
-    // As duas pontas: o que a rota GRAVOU não abre turno na régua da entrada e do turno.
+    expect(fatos).toMatchObject({ tipo: 'text', texto: '[Unsupported message type: unsupported]' })
     expect(abreTurno({ tipo: fatos.tipo, texto: fatos.texto, mime: fatos.mime })).toBe(false)
   })
 

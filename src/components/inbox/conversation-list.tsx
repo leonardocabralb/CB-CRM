@@ -80,6 +80,12 @@ import { canSendMessages, isAccountRole } from "@/lib/auth/roles";
 import { useFavoritas } from "@/hooks/use-favoritas";
 import { ehInstagram } from "@/lib/cb-channels/transporte";
 import { ehPreviaDeLigacao } from "@/lib/whatsapp/ligacoes/previa";
+import { tipoNaoSuportado } from "@/lib/inbox/tipo-nao-suportado";
+import {
+  EVENTO_CONVERSAR_COM_CONTATO,
+  lerPedidoDeConversa,
+  type PedidoDeConversa,
+} from "@/lib/inbox/conversar-com-contato";
 
 interface ConversationListProps {
   activeConversationId: string | null;
@@ -166,6 +172,9 @@ export function ConversationList({
 }: ConversationListProps) {
   const t = useTranslations("Inbox.conversationList");
   const [novaConversaAberta, setNovaConversaAberta] = useState(false);
+  // O número com que a "Nova conversa" abre quando quem pediu foi o botão
+  // "Conversar" de um cartão de contato (1060). Nulo pelo botão da lista.
+  const [pedidoDeConversa, setPedidoDeConversa] = useState<PedidoDeConversa | null>(null);
 
   // ⚠️ A busca fica SEPARADA dos filtros, e de propósito. Ela responde "onde
   // está aquela conversa" (nome, telefone, nome do grupo, texto da última
@@ -528,6 +537,24 @@ export function ConversationList({
     () => canaisDoPerfil.filter((c) => !ehInstagram(c)),
     [canaisDoPerfil],
   );
+
+  // O "Conversar" do cartão de contato (1060) mora na bolha, dentro do fio;
+  // o diálogo mora aqui. O pedido chega por evento (`conversar-com-contato.ts`)
+  // e só é atendido por quem pode abrir conversa — a MESMA régua do botão do
+  // cabeçalho logo abaixo.
+  const podeAbrirConversa =
+    !!onConversaAberta && isAccountRole(acesso.papel) && canSendMessages(acesso.papel);
+  useEffect(() => {
+    if (!podeAbrirConversa) return;
+    function aoPedirConversa(evento: Event) {
+      const pedido = lerPedidoDeConversa(evento);
+      if (!pedido) return;
+      setPedidoDeConversa(pedido);
+      setNovaConversaAberta(true);
+    }
+    window.addEventListener(EVENTO_CONVERSAR_COM_CONTATO, aoPedirConversa);
+    return () => window.removeEventListener(EVENTO_CONVERSAR_COM_CONTATO, aoPedirConversa);
+  }, [podeAbrirConversa]);
   // Cor por conexão, para a bolinha da linha. Memoizada porque o `Map` é
   // recriado a cada render e as linhas o consultam uma vez cada.
   const coresDosCanais = useMemo(() => coresPorCanal(channels), [channels]);
@@ -892,14 +919,19 @@ export function ConversationList({
           {/* Abordar um cliente é falar com ele: mesmo papel que ENVIAR, não
               o de anotar. A rota confere de novo — isto só evita oferecer ao
               `viewer` um botão que responderia 403. */}
-          {onConversaAberta && isAccountRole(acesso.papel) && canSendMessages(acesso.papel) && (
+          {podeAbrirConversa && (
             <Button
               variant="ghost"
               size="icon"
               className="h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground"
               title={t("novaConversa")}
               aria-label={t("novaConversa")}
-              onClick={() => setNovaConversaAberta(true)}
+              onClick={() => {
+                // Pelo botão da lista o formulário abre VAZIO, mesmo depois de
+                // um "Conversar" de cartão.
+                setPedidoDeConversa(null);
+                setNovaConversaAberta(true);
+              }}
             >
               <MessageSquarePlus className="h-4 w-4" />
             </Button>
@@ -918,6 +950,7 @@ export function ConversationList({
             canaisFalharam={canaisFalharam}
             onRecarregarCanais={recarregarCanais}
             onAberta={onConversaAberta}
+            inicial={pedidoDeConversa}
           />
         )}
 
@@ -1390,8 +1423,10 @@ function ConversationItem({
               <p className="truncate text-xs text-muted-foreground">
                 {ehPreviaDeLigacao(conversation.last_message_text)
                   ? tLigacao("previa")
-                  : stripWhatsAppFormat(conversation.last_message_text) ||
-                    t("noMessagesYet")}
+                  : tipoNaoSuportado(conversation.last_message_text) !== null
+                    ? t("previaNaoSuportada")
+                    : stripWhatsAppFormat(conversation.last_message_text) ||
+                      t("noMessagesYet")}
               </p>
             )}
             <div className="flex shrink-0 items-center gap-1.5">

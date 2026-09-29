@@ -49,7 +49,18 @@ export type ResultadoDaHistorica =
   | { status: 'duplicada' }
   | { status: 'falhou' };
 
-const TIPOS_ACEITOS = new Set(['text', 'image', 'document', 'audio', 'video', 'location']);
+const TIPOS_ACEITOS = new Set([
+  'text',
+  'image',
+  'document',
+  'audio',
+  'video',
+  'location',
+  'contact',
+  // Mensagem de empresa (1060): sem ele, a histórica voltava a ser `text` e
+  // o agente de IA abriria turno com ela.
+  'template',
+]);
 
 /** `messages.id` da citada, dentro da conversa. Erro vira "sem citação". */
 async function idDaCitada(
@@ -146,6 +157,8 @@ export async function gravarHistorica(
         sender_type: daEquipe ? 'agent' : 'customer',
         content_type: TIPOS_ACEITOS.has(m.contentType) ? m.contentType : 'text',
         content_text: m.text,
+        // Cartão de contato (1060), só nele — como nos inserts de `inbound-store`.
+        ...(m.contentType === 'contact' ? { contatos: m.contatos ?? [] } : {}),
         media_url: m.mediaUrl ?? null,
         message_id: m.providerMessageId,
         remote_jid: m.remoteJid ?? null,

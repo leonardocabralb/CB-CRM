@@ -4,10 +4,12 @@ import { timingSafeEqual } from 'crypto';
 
 import {
   edicaoCifrada,
+  ehMensagemAuxiliar,
   extractText,
   isReaction,
   normalizeUpsert,
   parseDeleteEvent,
+  temArquivo,
   unwrapMessage,
   type EvolutionUpsert,
 } from '@/lib/whatsapp/transport/evolution-inbound';
@@ -213,6 +215,12 @@ export async function POST(request: Request) {
             continue;
           }
 
+          // Abertura de álbum e cópia auxiliar de mídia (a Live Photo, a versão
+          // em alta qualidade): acompanham uma mensagem que chega por conta
+          // própria. Aqui, antes da bifurcação, para valer também em grupo.
+          // Ver `ehMensagemAuxiliar` (1060).
+          if (ehMensagemAuxiliar(item.message)) continue;
+
           // Edição que chega CIFRADA (Baileys 7 / Evolution 2.4 — ver
           // `isSecretEncrypted`). O texto novo não é conhecido, então o
           // máximo de verdade é carimbar `edited_at` na mensagem editada,
@@ -289,7 +297,7 @@ export async function POST(request: Request) {
                   mediaRef: item,
                 });
 
-            if (gravadaGrupo && g.contentType !== 'text' && g.contentType !== 'location') {
+            if (gravadaGrupo && temArquivo(g.contentType)) {
               semAnexo.push({
                 item,
                 contentType: g.contentType,
@@ -366,7 +374,7 @@ export async function POST(request: Request) {
             paraFoto.push(gravada.contato);
           }
 
-          if (gravada && normalized.contentType !== 'text' && !normalized.mediaUrl) {
+          if (gravada && temArquivo(normalized.contentType) && !normalized.mediaUrl) {
             semAnexo.push({
               item,
               contentType: normalized.contentType,
