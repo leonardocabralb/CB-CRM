@@ -1140,9 +1140,11 @@ retried: that notification is lost for it.
   callbacks, but `message.status_updated` is only sent when a status
   ADVANCES the stored message (sent → delivered → read, or `failed` before
   delivery): a repeated or late callback is dropped, and `sent` itself is
-  not announced, because the CRM stores the message as sent already. Two
+  not announced, because the CRM stores the message as sent already. A
+  `read` that arrives after `failed` still moves the message to `read`
+  (it proves the recipient saw it); `sent` and `delivered` do not. Two
   advances of the same message can still reach you out of order, so keep
-  the most advanced one.
+  the most advanced one, with `read` above `failed`.
 - **`deal.*`** are delivered **at least once**: the attempt is recorded,
   and a notification whose attempt did not happen — the server restarted in
   the middle, or a database read failed — is sent again by the scheduler

@@ -34,7 +34,6 @@ describe('escada de status do recibo', () => {
     for (const novo of ['sent', 'delivered', 'read'] as const) {
       expect(aceitamAvancoPara(novo)).not.toContain('failed');
     }
-    expect(aplicarRecibos('failed', ['delivered', 'read'])).toBe('failed');
   });
 });
 
@@ -49,15 +48,30 @@ describe('o recibo de falha', () => {
     expect(aplicarRecibos('sent', ['read', 'failed'])).toBe('read');
   });
 
-  it('falha que chega a tempo vale, e nada depois dela a desfaz', () => {
+  it('falha que chega a tempo vale, e nem o sent nem o delivered depois dela a desfazem', () => {
     expect(aplicarRecibos('sent', ['failed'])).toBe('failed');
-    expect(aplicarRecibos('sent', ['failed', 'delivered', 'read', 'sent'])).toBe('failed');
+    expect(aplicarRecibos('sent', ['failed', 'delivered', 'sent'])).toBe('failed');
+    expect(aplicarRecibos('failed', ['delivered'])).toBe('failed');
   });
 
-  it('para os avanços, aceitamORecibo é a própria escada', () => {
-    for (const novo of ['sent', 'delivered', 'read'] as const) {
+  it('⚠️ o read tira da falha: a sequência medida em 24–25/09/2026 termina em read', () => {
+    // O ERROR gravou primeiro, junto com os outros recibos, e o READ chegou
+    // segundos depois. Com a falha final, a bolha dizia "não entregue, envie
+    // de novo" sobre mensagem que o cliente leu e respondeu.
+    expect(aplicarRecibos('sent', ['sent', 'failed', 'delivered', 'sent', 'read'])).toBe('read');
+    expect(aplicarRecibos('failed', ['read'])).toBe('read');
+  });
+
+  it('depois do read, uma falha atrasada não volta a pintar de vermelho', () => {
+    expect(aplicarRecibos('sent', ['failed', 'read', 'failed'])).toBe('read');
+  });
+
+  it('para o sent e o delivered, aceitamORecibo é a própria escada; o read aceita também a falha', () => {
+    for (const novo of ['sent', 'delivered'] as const) {
       expect(aceitamORecibo(novo)).toEqual(aceitamAvancoPara(novo));
+      expect(aceitamORecibo(novo)).not.toContain('failed');
     }
+    expect(aceitamORecibo('read')).toEqual([...aceitamAvancoPara('read'), 'failed']);
   });
 });
 

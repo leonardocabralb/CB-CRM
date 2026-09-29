@@ -15,6 +15,7 @@ import { PortaDeEntrada } from '@/components/entrada/porta-de-entrada';
 import { ExigenciaDoCelular } from '@/components/entrada/exigencia-do-celular';
 import { useMeuCelular } from '@/hooks/use-meu-celular';
 import { useTelaAcimaDoTeclado } from '@/hooks/use-tela-acima-do-teclado';
+import { useRetomarMovimentosPendentes } from '@/hooks/use-movimento-de-etapa';
 import { ROTA_DA_TELA, TODAS_AS_TELAS } from '@/lib/perfis/catalogo';
 import { podeVerTela, telaDoCaminho } from '@/lib/perfis/visibilidade';
 
@@ -47,6 +48,13 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
   // A conversa acima do teclado do celular (ver `src/lib/celular/teclado.ts`).
   // Aqui, e não na página do inbox, porque é a casca que mede a altura.
   useTelaAcimaDoTeclado();
+
+  // O botão "avançar" do painel guarda o movimento no aparelho até o servidor
+  // confirmar; o que ficou sem resposta (a página fechou no meio da janela de
+  // desfazer, sem conexão) é refeito aqui — na casca, e não no painel, para
+  // valer em qualquer página que a pessoa abra primeiro. Ver
+  // `src/lib/pipelines/mover-com-desfazer.ts`.
+  useRetomarMovimentosPendentes(user?.id ?? null);
 
   useEffect(() => {
     if (!loading && !user) {

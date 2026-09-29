@@ -583,7 +583,23 @@
       "tabMeetings": "Meetings",
       "tabBilling": "Billing",
       "fieldSaved": "Saved",
-      "fieldSaveError": "Could not save \"{campo}\" for {cliente}."
+      "fieldSaveError": "Could not save \"{campo}\" for {cliente}.",
+      "avancar": {
+        "ou": "or",
+        "moverPara": "Move to",
+        "avancarPara": "Advance to {etapa}",
+        "movendo": "Moving to <etapa>{nome}</etapa>…",
+        "desfazer": "Undo ({segundos})",
+        "movido": "Moved to <etapa>{nome}</etapa>",
+        "desfeito": "Undone — nothing changed.",
+        "toastMovido": "{contato}'s deal moved to {etapa}.",
+        "toastMudou": "{contato}'s deal had already changed stage; the move to {etapa} was not made.",
+        "toastFalhou": "Couldn't move {contato}'s deal to {etapa}.",
+        "toastTentandoDeNovo": "Couldn't move it right now: the CRM will try again, and {contato}'s deal will move to {etapa} as soon as it can.",
+        "pendente": "Move to <etapa>{nome}</etapa> pending — the CRM is trying to finish it.",
+        "tentarAgora": "Try now",
+        "desistir": "Give up"
+      }
     },
     "arquivos": {
       "midia": "Photos and videos",
@@ -1287,7 +1303,26 @@
       "toastStageMappedWithHistory": "This stage is mapped to the efficiency funnel and has deal history: deleting it would erase that history from Performance. Set its step to \"Not counted\" and save before removing, or keep the stage.",
       "deletePipelineChannels": "These connections put clients into this pipeline: {channels}. Once deleted, they stop creating deals until you point them at another pipeline in Settings › Connections.",
       "toastStageIsChannelEntry": "This stage is the entry point for {channels}. Pick another entry stage in Settings › Connections before deleting it.",
-      "reuniaoQualificada": "Qualified"
+      "reuniaoQualificada": "Qualified",
+      "recomendadas": {
+        "titulo": "Advance button (recommended stages)",
+        "dica": "In the conversation deal card, a button moves the card to the next stage in one click, with 4 seconds to undo. Automatic: the forward stages used most in the last {dias} days (at least {minimo} moves); won or lost stages suggest nothing. Pick by hand where automatic does not fit — for example, No Show → Meeting Scheduled.",
+        "automatico": "Automatic",
+        "semSugestao": "no suggestion",
+        "carregando": "reading history…",
+        "falhou": "Couldn't read the history right now; automatic shows up in the conversation panel when it can.",
+        "nenhuma": "None — the button does not show",
+        "escolher": "Choose",
+        "fechar": "Close",
+        "modoAutomatico": "Automatic, from the last {dias} days",
+        "modoManual": "Picked by hand",
+        "modoNenhuma": "None: the button does not show",
+        "maximo": "up to {maximo}",
+        "principal": "Main",
+        "tornarPrincipal": "Make main",
+        "voltarAoAutomatico": "Back to automatic",
+        "nenhumaBotao": "None"
+      }
     },
     "automacoes": {
       "abaLeads": "Board",
