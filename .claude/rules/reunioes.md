@@ -14,6 +14,11 @@ paths:
   - "src/components/inbox/faixa-de-no-show.tsx"
   - "src/app/api/v1/meetings/**"
   - "src/lib/api/v1/meetings*"
+  - "src/lib/reunioes/**"
+  - "src/app/api/cb/reunioes/**"
+  - "src/app/*/reunioes/**"
+  - "src/components/reunioes/**"
+  - "src/hooks/use-pauta-de-reunioes.ts"
 ---
 
 # Reuniões — regras
@@ -111,6 +116,43 @@ operador: nada no card, na lista nem na aba).
 - **O aviso é calculado quando a conversa abre** (e no `resyncToken`): com
   duas reuniões futuras, o fim da primeira não o recalcula com a conversa
   aberta. Limite aceito (Codex, PR #332): o aviso atrasa, não mente.
+
+### Pauta de reuniões (1061)
+
+`/reunioes`; `src/lib/reunioes/` (`pauta.ts` e `montar.ts` puros, testados),
+a rota `/api/cb/reunioes`, `src/components/reunioes/`. Plano:
+`docs/PLANO-pauta-de-reunioes.md`.
+
+- ⚠️⚠️ **O resultado tem DUAS fontes e vence a mais recente**: o marco da
+  tela (`cb_reunioes_marcos`, por reunião) e a TRILHA do card (entrada numa
+  etapa "faltou"/"compareceu" ou de proposta em diante, DEPOIS do início). Sem
+  a trilha, a reunião resolvida no quadro fica "sem resultado" para sempre;
+  sem o marco, a do card que JÁ estava na etapa não se resolve (mover para a
+  mesma etapa não grava trilha).
+- ⚠️⚠️ **O botão move o card pelo NAVEGADOR, sob RLS** (`executar.ts`), e a
+  escrita é CERCADA pela etapa vista (`.eq('stage_id', …)`): por rota de
+  servidor a trilha e os webhooks `deal.*` diriam `system`; sem a cerca, o
+  clique levaria para trás um card que o Calendly acabou de mover.
+- ⚠️ **Valor e etapa na MESMA escrita** ("com proposta"): o Make da iMotion
+  manda à TinTim o `deal.value` do instante da entrada em Proposta Realizada.
+- ⚠️ **Para onde cada botão leva é MARCA, nunca nome**: `qualificada`
+  (desfecho da 1061), `compareceu`, `faltou` e o primeiro degrau `proposta`
+  do funil do card. Funil sem a marca desliga o botão com a explicação. O
+  aviso de possível no-show lê só `compareceu`/`faltou` — `qualificada` não
+  é comparecimento.
+- ⚠️ **A montagem do Calendly é POR CONTATO e com TODOS os agendamentos
+  dele** (`montarReunioesExternas`): a inferência do convite substituído por
+  reagendamento compara com agendamentos fora da janela, e misturar contatos
+  casaria o reagendamento de um com o convite de outro.
+- **Quem marcou é carimbado por gatilho** (`auth.uid()` e o nome do perfil),
+  nunca aceito do navegador; sem DELETE (corrigir é marcar de novo: o upsert
+  troca a linha do mesmo marco).
+- **"Desfazer" de 5 s antes de gravar; sair da tela no meio GRAVA** — quem
+  clica "No show" e abre a conversa em seguida conta com o card movido. O
+  disparo é único por (reunião, prazo) (`disparadasRef`): o efeito roda a cada
+  tique e duas vezes no modo estrito.
+- **Fora do catálogo de perfis** (visível a todos, como o Meu dia) e recortada
+  por FUNIL do perfil, pela lente (`acesso`).
 
 ### tl;dv → transcrições (987)
 

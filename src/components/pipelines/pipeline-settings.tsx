@@ -672,7 +672,7 @@ function SortableStageRow({
   onColorChange: (v: string) => void;
   onResultadoChange: (v: string | null) => void;
   onDegrauChange: (v: string | null) => void;
-  onDesfechoChange: (v: 'compareceu' | 'faltou' | null) => void;
+  onDesfechoChange: (v: PipelineStage['desfecho_da_reuniao']) => void;
   opcoesDeDegrau: { value: string; label: string }[];
   onRemove: () => void;
   colors: string[];
@@ -743,19 +743,23 @@ function SortableStageRow({
       {/* 1058: o que ENTRAR nesta etapa diz sobre a reunião — "Faltou" (a
           etapa de no-show) ou "Compareceu" (reunião feita, sem proposta). É o
           que o aviso de possível no-show da conversa lê. Independente do
-          resultado e do degrau ao lado. */}
+          resultado e do degrau ao lado. 1061: "Qualificada" é o destino do
+          botão "Reunião qualificada" da pauta de reuniões (antes da reunião;
+          o aviso de no-show não a lê como comparecimento). */}
       <select
         value={stage.desfecho_da_reuniao ?? ''}
-        onChange={(e) =>
+        onChange={(e) => {
+          const v = e.target.value;
           onDesfechoChange(
-            e.target.value === 'compareceu' || e.target.value === 'faltou' ? e.target.value : null,
-          )
-        }
+            v === 'qualificada' || v === 'compareceu' || v === 'faltou' ? v : null,
+          );
+        }}
         aria-label={t('stageReuniao')}
         title={t('stageReuniaoHint')}
         className="h-7 shrink-0 rounded-md border border-border bg-card px-1 text-xs text-foreground"
       >
         <option value="">{t('reuniaoNenhum')}</option>
+        <option value="qualificada">{t('reuniaoQualificada')}</option>
         <option value="compareceu">{t('reuniaoCompareceu')}</option>
         <option value="faltou">{t('reuniaoFaltou')}</option>
       </select>

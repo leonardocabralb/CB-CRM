@@ -13,6 +13,7 @@ import {
   Activity,
   Bell,
   Bot,
+  CalendarCheck,
   CalendarClock,
   CalendarDays,
   Crown,
@@ -121,6 +122,12 @@ const navItems: NavItem[] = [
   // acompanhamento de negócio. Reunião marcada é o compromisso que a pessoa
   // precisa ver ao abrir o sistema de manhã.
   { href: "/agenda", labelKey: "agenda", icon: CalendarDays },
+  // Logo abaixo da Agenda: a pauta das reuniões marcadas (Calendly + agenda do
+  // CRM), com os botões que movem o card. ⚠️ Fica FORA do catálogo de perfis,
+  // como `/meu-dia`: `telaDoCaminho` devolve null e o filtro abaixo deixa
+  // passar — uma tela nova no catálogo nasceria invisível para todo perfil já
+  // gravado. O recorte por funil é feito DENTRO da tela.
+  { href: "/reunioes", labelKey: "reunioes", icon: CalendarCheck },
   { href: "/pipelines", labelKey: "pipelines", icon: GitBranch },
   { href: "/broadcasts", labelKey: "broadcasts", icon: Radio },
   // Ao lado de Disparos, e não do inbox: as duas telas respondem à mesma
