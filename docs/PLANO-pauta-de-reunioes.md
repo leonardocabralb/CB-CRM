@@ -20,7 +20,7 @@ por situação ficaram para a Fase 3.
 
 | Fase | O quê | Estado |
 | --- | --- | --- |
-| 1 | Pauta do dia, botões "qualificada" e resultado, rede de segurança, volta da caixa de entrada | Em revisão (PR aberto em 29/09/2026) |
+| 1 | Pauta do dia, botões "qualificada" e resultado, rede de segurança, volta da caixa de entrada | No ar (PR #339, 29/09/2026). MQL 2 marcada "Qualificada" pelo operador no mesmo dia |
 | 2 | Grau de qualificação (de-para das faixas de dívida e atraso), sinais de pré-qualificação e de automação/IA em andamento | Não começada — depende do critério do operador |
 | 3 | IA lendo as respostas da pré-qualificação; visões de semana em grade e quadro por situação | Não começada — depende de aprovação |
 
@@ -74,6 +74,15 @@ anda depois que o valor é digitado e confirmado, na mesma escrita que a
 etapa; o campo nasce VAZIO (nunca com o valor antigo do card — só com o da
 própria proposta, ao corrigir); e `executarAcao` recusa "com proposta" sem
 valor maior que zero, sem gravar nada.
+
+**Da proposta em diante o degrau vence a marcação "Reunião"** (pedido do
+operador, 29/09/2026): ele marcou "Proposta Realizada" como "Compareceu" — a
+intuição natural —, e a tela passou a ler a entrada nela como "sem proposta",
+porque "Compareceu" é a marca da "Reunião Sem Proposta". Agora a marcação de
+etapa com degrau proposta, contrato ou pasta é ignorada por todo leitor
+(`marcaDaReuniaoQueVale`), Gerenciar funil trava o campo nessas etapas e o
+limpa ao salvar, e as três colunas de cada etapa ganharam título e o bloco "O
+que cada coluna quer dizer".
 
 **O que fica de fora, por escrito:**
 - A reunião resolvida por outro caminho (quadro, lista, painel da conversa)

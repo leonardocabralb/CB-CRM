@@ -23,7 +23,16 @@ import {
   channelsUsingStage,
 } from "@/lib/cb-channels/display";
 import type { Pipeline, PipelineStage } from "@/types";
-import { CLASSES, DEGRAUS, DEGRAUS_OPCIONAIS, ehDegrau, sugerirClasse, type Degrau } from "@/lib/funil/degraus";
+import {
+  CLASSES,
+  DEGRAUS,
+  DEGRAUS_OPCIONAIS,
+  alcancaProposta,
+  ehDegrau,
+  marcaDaReuniaoQueVale,
+  sugerirClasse,
+  type Degrau,
+} from "@/lib/funil/degraus";
 import {
   CARTOES_DE_CUSTO,
   escreverPainel,
@@ -51,6 +60,7 @@ import {
   Plus,
   GripVertical,
   AlertTriangle,
+  HelpCircle,
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -215,8 +225,10 @@ export function PipelineSettings({
       resultado: s.resultado ?? null,
       // 975: o degrau do funil de eficiência — independente do resultado.
       degrau: s.degrau ?? null,
-      // 1058: o que entrar na etapa diz sobre a reunião (aviso de no-show).
-      desfecho_da_reuniao: s.desfecho_da_reuniao ?? null,
+      // 1058/1063: o que entrar na etapa diz sobre a reunião (aviso de
+      // no-show, tela Reuniões). Da proposta em diante ela não vale — o degrau
+      // já diz "compareceu, com proposta" — e é limpa aqui.
+      desfecho_da_reuniao: marcaDaReuniaoQueVale(s.degrau, s.desfecho_da_reuniao),
       // 1065: o que o botão de avançar recomenda depois dela (NULL = automático).
       proximas_etapas: s.proximas_etapas ?? null,
     }));
@@ -360,8 +372,10 @@ export function PipelineSettings({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* 1058: `sm:max-w-2xl` (era `md`) — com o terceiro seletor por etapa
-          (Reunião), a 448 px o nome da etapa ficava com 22 px. */}
-      <DialogContent className="sm:max-w-2xl bg-popover border-border max-h-[85vh] overflow-y-auto">
+          (Reunião), a 448 px o nome da etapa ficava com 22 px. 29/09/2026:
+          `4xl`, porque os seletores ganharam largura fixa (títulos das
+          colunas) e opções que dizem o que são ("Compareceu, sem proposta"). */}
+      <DialogContent className="sm:max-w-4xl bg-popover border-border max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-popover-foreground">{t("managePipeline")}</DialogTitle>
         </DialogHeader>
@@ -427,6 +441,53 @@ export function PipelineSettings({
 
               <div className="grid gap-2">
                 <Label className="text-muted-foreground">{t("stages")}</Label>
+                {/* As três caixas de cada etapa eram só "—", "Não conta" e
+                    "Reunião: —", com a explicação num `title` que só aparece
+                    ao passar o mouse (e nunca no toque). O operador não sabia
+                    o que cada uma queria dizer (29/09/2026). */}
+                <details className="rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground">
+                  <summary className="flex cursor-pointer items-center gap-1.5 text-sm">
+                    <HelpCircle className="h-3.5 w-3.5" />
+                    {t("ajudaColunas")}
+                  </summary>
+                  <dl className="mt-2 space-y-2">
+                    <div>
+                      <dt className="font-medium text-foreground">{t("colunaResultado")}</dt>
+                      <dd>{t("ajudaResultado")}</dd>
+                    </div>
+                    <div>
+                      <dt className="font-medium text-foreground">{t("stageDegrau")}</dt>
+                      <dd>{t("ajudaFunil")}</dd>
+                    </div>
+                    <div>
+                      <dt className="font-medium text-foreground">{t("stageReuniao")}</dt>
+                      <dd>
+                        {t("ajudaReuniao")}
+                        <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                          <li>{t("ajudaReuniaoQualificada")}</li>
+                          <li>{t("ajudaReuniaoCompareceu")}</li>
+                          <li>{t("ajudaReuniaoFaltou")}</li>
+                          <li>{t("ajudaReuniaoProposta")}</li>
+                        </ul>
+                      </dd>
+                    </div>
+                  </dl>
+                </details>
+                {situacao === "pronto" && localStages.length > 0 && (
+                  // Os títulos das colunas, alinhados às caixas de cada etapa
+                  // (as larguras são as mesmas de `SortableStageRow`). No
+                  // celular a etapa quebra linha e não há como alinhar.
+                  <div
+                    aria-hidden
+                    className="hidden items-center gap-2 px-2 text-[11px] font-medium text-muted-foreground sm:flex"
+                  >
+                    <span className="flex-1 pl-12">{t("colunaEtapa")}</span>
+                    <span className={LARGURA_DO_RESULTADO}>{t("colunaResultado")}</span>
+                    <span className={LARGURA_DO_DEGRAU}>{t("stageDegrau")}</span>
+                    <span className={LARGURA_DA_REUNIAO}>{t("stageReuniao")}</span>
+                    <span className="w-6 shrink-0" />
+                  </div>
+                )}
                 {situacao === "carregando" && (
                   <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                 )}
@@ -474,6 +535,10 @@ export function PipelineSettings({
                           }}
                           onDegrauChange={(v) => {
                             const updated = [...localStages];
+                            // A marcação "Reunião" fica no rascunho mesmo com o
+                            // campo travado (degrau de proposta em diante):
+                            // voltar o degrau a devolve. Quem a limpa é o
+                            // salvar, pela régua `marcaDaReuniaoQueVale`.
                             updated[index] = { ...updated[index], degrau: v };
                             setLocalStages(updated);
                           }}
@@ -686,6 +751,13 @@ export function PipelineSettings({
   );
 }
 
+// As larguras das três caixas de cada etapa, repetidas nos títulos das
+// colunas: mudar uma sem a outra desalinha o cabeçalho. Classes LITERAIS (o
+// Tailwind não gera classe montada em tempo de execução).
+const LARGURA_DO_RESULTADO = "w-28 shrink-0";
+const LARGURA_DO_DEGRAU = "w-32 shrink-0";
+const LARGURA_DA_REUNIAO = "w-48 shrink-0";
+
 function SortableStageRow({
   stage,
   onNameChange,
@@ -723,7 +795,7 @@ function SortableStageRow({
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-2 rounded-lg border border-border bg-muted p-2"
+      className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted p-2 sm:flex-nowrap"
     >
       <button
         type="button"
@@ -738,7 +810,7 @@ function SortableStageRow({
       <Input
         value={stage.name}
         onChange={(e) => onNameChange(e.target.value)}
-        className="h-7 flex-1 border-transparent bg-transparent text-sm text-foreground focus:border-border"
+        className="h-7 min-w-[8rem] flex-1 border-transparent bg-transparent text-sm text-foreground focus:border-border"
       />
       {/* 950: o RESULTADO da etapa. Entrar nela carimba o negócio como
           ganho/perdido — por gatilho no banco, em qualquer caminho de
@@ -748,7 +820,7 @@ function SortableStageRow({
         onChange={(e) => onResultadoChange(e.target.value || null)}
         aria-label={t('stageOutcome')}
         title={t('stageOutcomeHint')}
-        className="h-7 shrink-0 rounded-md border border-border bg-card px-1 text-xs text-foreground"
+        className={`h-7 ${LARGURA_DO_RESULTADO} rounded-md border border-border bg-card px-1 text-xs text-foreground`}
       >
         <option value="">{t('outcomeNone')}</option>
         <option value="ganho">{t('outcomeWon')}</option>
@@ -763,7 +835,7 @@ function SortableStageRow({
         onChange={(e) => onDegrauChange(e.target.value || null)}
         aria-label={t('stageDegrau')}
         title={t('stageDegrauHint')}
-        className="h-7 shrink-0 rounded-md border border-border bg-card px-1 text-xs text-foreground"
+        className={`h-7 ${LARGURA_DO_DEGRAU} rounded-md border border-border bg-card px-1 text-xs text-foreground`}
       >
         {opcoesDeDegrau.map((opcao) => (
           <option key={opcao.value} value={opcao.value}>
@@ -772,28 +844,43 @@ function SortableStageRow({
         ))}
       </select>
       {/* 1058: o que ENTRAR nesta etapa diz sobre a reunião — "Faltou" (a
-          etapa de no-show) ou "Compareceu" (reunião feita, sem proposta). É o
-          que o aviso de possível no-show da conversa lê. Independente do
-          resultado e do degrau ao lado. 1063: "Qualificada" é o destino do
-          botão "Reunião qualificada" da pauta de reuniões (antes da reunião;
-          o aviso de no-show não a lê como comparecimento). */}
-      <select
-        value={stage.desfecho_da_reuniao ?? ''}
-        onChange={(e) => {
-          const v = e.target.value;
-          onDesfechoChange(
-            v === 'qualificada' || v === 'compareceu' || v === 'faltou' ? v : null,
-          );
-        }}
-        aria-label={t('stageReuniao')}
-        title={t('stageReuniaoHint')}
-        className="h-7 shrink-0 rounded-md border border-border bg-card px-1 text-xs text-foreground"
-      >
-        <option value="">{t('reuniaoNenhum')}</option>
-        <option value="qualificada">{t('reuniaoQualificada')}</option>
-        <option value="compareceu">{t('reuniaoCompareceu')}</option>
-        <option value="faltou">{t('reuniaoFaltou')}</option>
-      </select>
+          etapa de no-show) ou "Compareceu, sem proposta". É o que o aviso de
+          possível no-show da conversa e a tela Reuniões leem. 1063:
+          "Qualificada" é o destino do botão "Reunião qualificada" (antes da
+          reunião; o aviso de no-show não a lê como comparecimento).
+          ⚠️ Da proposta em diante o campo TRAVA: o degrau já diz
+          "compareceu, com proposta", e a marcação ali é ignorada por todo
+          leitor (`marcaDaReuniaoQueVale`) — marcar "Proposta Realizada" como
+          "Compareceu" fazia a tela Reuniões lê-la como "sem proposta". */}
+      {alcancaProposta(stage.degrau) ? (
+        <select
+          disabled
+          value=""
+          aria-label={t('stageReuniao')}
+          title={t('reuniaoPelaPropostaDica')}
+          className={`h-7 ${LARGURA_DA_REUNIAO} cursor-not-allowed rounded-md border border-border bg-card px-1 text-xs text-muted-foreground`}
+        >
+          <option value="">{t('reuniaoPelaProposta')}</option>
+        </select>
+      ) : (
+        <select
+          value={stage.desfecho_da_reuniao ?? ''}
+          onChange={(e) => {
+            const v = e.target.value;
+            onDesfechoChange(
+              v === 'qualificada' || v === 'compareceu' || v === 'faltou' ? v : null,
+            );
+          }}
+          aria-label={t('stageReuniao')}
+          title={t('stageReuniaoHint')}
+          className={`h-7 ${LARGURA_DA_REUNIAO} rounded-md border border-border bg-card px-1 text-xs text-foreground`}
+        >
+          <option value="">{t('reuniaoNenhum')}</option>
+          <option value="qualificada">{t('reuniaoQualificada')}</option>
+          <option value="compareceu">{t('reuniaoCompareceu')}</option>
+          <option value="faltou">{t('reuniaoFaltou')}</option>
+        </select>
+      )}
       <Button
         variant="ghost"
         size="icon-xs"

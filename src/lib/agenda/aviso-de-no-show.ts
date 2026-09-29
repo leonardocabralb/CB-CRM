@@ -1,4 +1,4 @@
-import { DEGRAUS, ehDegrau, indiceDoDegrau } from '@/lib/funil/degraus';
+import { alcancaProposta, marcaDaReuniaoQueVale } from '@/lib/funil/degraus';
 
 import { reuniaoTerminou } from './reunioes-externas';
 
@@ -70,8 +70,6 @@ export type AvisoDeNoShow =
       proxima: { inicio: string; fim: string | null };
     };
 
-const INDICE_DA_PROPOSTA = DEGRAUS.indexOf('proposta');
-
 function ms(iso: string): number {
   const v = Date.parse(iso);
   return Number.isNaN(v) ? Number.NaN : v;
@@ -80,8 +78,7 @@ function ms(iso: string): number {
 function avancou(entradas: EntradaNaEtapa[]): boolean {
   return entradas.some(
     (e) =>
-      e.desfecho === 'compareceu' ||
-      (ehDegrau(e.degrau) && indiceDoDegrau(e.degrau) >= INDICE_DA_PROPOSTA),
+      alcancaProposta(e.degrau) || marcaDaReuniaoQueVale(e.degrau, e.desfecho) === 'compareceu',
   );
 }
 
@@ -123,7 +120,11 @@ export function avisoDeNoShow(args: {
   // 1. Já faltou: a entrada mais recente numa etapa "Faltou", ou a falta
   //    registrada na agenda.
   const faltas: { em: string; etapa: string | null }[] = [
-    ...entradas.filter((e) => e.desfecho === 'faltou' && !Number.isNaN(ms(e.em))).map((e) => ({ em: e.em, etapa: e.etapa })),
+    // "Faltou" numa etapa de proposta em diante não vale: ali o degrau diz
+    // que houve proposta (`marcaDaReuniaoQueVale`).
+    ...entradas
+      .filter((e) => marcaDaReuniaoQueVale(e.degrau, e.desfecho) === 'faltou' && !Number.isNaN(ms(e.em)))
+      .map((e) => ({ em: e.em, etapa: e.etapa })),
     ...validas.filter((r) => r.desfecho === 'faltou' && reuniaoTerminou(r, agora)).map((r) => ({ em: r.inicio, etapa: null })),
   ];
   if (faltas.length > 0) {

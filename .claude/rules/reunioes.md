@@ -101,6 +101,17 @@ operador: nada no card, na lista nem na aba).
   escolhida em Gerenciar funil. MQL 2 é degrau `reuniao` e acontece ANTES da
   reunião (28 de 30 entradas, medido em 27/09/2026); deduzir pelo nome
   desligaria o aviso ao renomear "No Show".
+- ⚠️⚠️ **Da proposta em diante o DEGRAU vence a marcação**
+  (`marcaDaReuniaoQueVale`, `src/lib/funil/degraus.ts`): etapa com degrau
+  proposta, contrato ou pasta conta como "compareceu, com proposta" e a
+  marcação dela é ignorada por TODO leitor (tela Reuniões: resultado, destino
+  dos botões, qualificação, falta anterior; aviso de no-show). Em 29/09/2026 o
+  operador marcou "Proposta Realizada" como "Compareceu" (a intuição natural)
+  e a tela Reuniões passou a ler a entrada nela como "SEM proposta" —
+  "Compareceu" é a marca da "Reunião Sem Proposta". Gerenciar funil trava o
+  campo nessas etapas e limpa a marca ao salvar (no rascunho ela fica: voltar
+  o degrau a devolve).
+  Leitor novo da marcação passa pela mesma função.
 - **Só com reunião FUTURA** (Calendly, Kommo ou agenda, não desmarcada), e
   some quando ela termina. Motivo `faltou`: entrou numa etapa "Faltou" (a
   qualquer tempo) ou a agenda registrou a falta. Motivo `sem_avanco`: teve
@@ -157,7 +168,8 @@ a rota `/api/cb/reunioes`, `src/components/reunioes/`. Plano:
   nada — o card só anda com o valor digitado (pedido do operador).
 - ⚠️ **Para onde cada botão leva é MARCA, nunca nome**: `qualificada`
   (desfecho da 1063), `compareceu`, `faltou` e o primeiro degrau `proposta`
-  do funil do card. Funil sem a marca desliga o botão com a explicação. O
+  do funil do card — marca em etapa de proposta em diante não vira destino.
+  Funil sem a marca desliga o botão com a explicação. O
   aviso de possível no-show lê só `compareceu`/`faltou` — `qualificada` não
   é comparecimento.
 - ⚠️ **A montagem do Calendly é POR CONTATO e com TODOS os agendamentos
