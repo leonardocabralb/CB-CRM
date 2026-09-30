@@ -41,11 +41,24 @@ export type ResultadoDaMudanca = (typeof RESULTADOS_DA_MUDANCA)[number];
 /** As `{{vars.*}}` que a mudança entrega (sem dado pessoal: só situação, data e link). */
 export const VARIAVEIS_DA_MUDANCA = ["atlas_situacao", "atlas_situacao_anterior", "atlas_situacao_em", "atlas_link"] as const;
 
-/** A config gravada, lida com desconfiança (JSONB): só textos não vazios. */
+/** Id de funil (`pipelines.id`, uuid). */
+const ID_DE_FUNIL = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function ehIdDeFunil(v: unknown): v is string {
+  return typeof v === "string" && ID_DE_FUNIL.test(v.trim());
+}
+
+/**
+ * A config gravada, lida com desconfiança (JSONB): só textos não vazios.
+ * ⚠️ Funil só com id válido: um texto qualquer ia para o `.in("pipeline_id")`
+ * da busca dos cards, que é UMA consulta para todas as automações que casam —
+ * o Postgres recusaria o uuid e derrubaria também as automações certas
+ * (achado do Codex no #362; a ativação também recusa, em `validate.ts`).
+ */
 export function lerConfigDoGatilho(cfg: unknown): { situacoes: string[]; pipelineIds: string[] } {
   const c = (cfg ?? {}) as Partial<Record<keyof AtlasSituacaoTriggerConfig, unknown>>;
   const textos = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim() !== "").map((x) => x.trim()) : []);
-  return { situacoes: textos(c.situacoes).map((s) => s.toLowerCase()), pipelineIds: textos(c.pipeline_ids) };
+  return { situacoes: textos(c.situacoes).map((s) => s.toLowerCase()), pipelineIds: textos(c.pipeline_ids).filter(ehIdDeFunil) };
 }
 
 /** A automação escuta esta situação NOVA? (`em_negociacao` casa com `ativo`) */

@@ -1,8 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { dispararAutomacoes, type DispatchInput, type ResultadoDoDisparo } from "@/lib/automations/engine";
+import { nomeDoContato, type ContatoIdentificavel } from "@/lib/contacts/identidade";
 import type { DealStatus } from "@/types";
 
+import type { MudancaNoCartao } from "./cartao";
 import { ambienteDoAtlas, noAmbiente } from "./enderecos";
 import {
   cardDoEvento,
@@ -346,4 +348,80 @@ export async function dispararMudancas(admin: SupabaseClient, accountId: string,
     }
   }
   return { ok: true, contagem };
+}
+
+/** Quantas mudanças de situação o cartão mostra. */
+const MUDANCAS_NO_CARTAO = 20;
+
+/**
+ * As últimas mudanças de situação do gatilho (1073), deste ambiente, com a
+ * FICHA de cada uma: a fila não guarda contato, então ela sai do vínculo
+ * (deste ambiente e escritório) e o nome, da ficha.
+ *
+ * ⚠️ Só as da CONEXÃO atual (`created_at >= conectado_em`): a fila não guarda
+ * o escritório, e depois de trocar de escritório as linhas do anterior
+ * apareceriam com o resultado dele (achado do Codex no #362). Reconectar o
+ * MESMO escritório também recomeça o histórico — o que se perde é só a tela.
+ */
+export async function ultimasMudancasDoCartao(
+  admin: SupabaseClient,
+  accountId: string,
+  ambiente: string | null,
+  tenantId: string,
+  conectadoEm: string | null,
+): Promise<MudancaNoCartao[] | "db_error"> {
+  let consulta = noAmbiente(
+    admin
+      .from("cb_atlas_mudancas")
+      .select("id, atlas_client_id, situacao_anterior, situacao_nova, situacao_desde, estado, resultado, detalhe, created_at")
+      .eq("account_id", accountId),
+    ambiente,
+  );
+  if (conectadoEm) consulta = consulta.gte("created_at", conectadoEm);
+  const { data, error } = await consulta.order("created_at", { ascending: false }).limit(MUDANCAS_NO_CARTAO);
+  if (error) return "db_error";
+  const linhas = (data ?? []) as {
+    id: string;
+    atlas_client_id: string;
+    situacao_anterior: string;
+    situacao_nova: string;
+    situacao_desde: string;
+    estado: string;
+    resultado: string | null;
+    detalhe: string | null;
+    created_at: string;
+  }[];
+  if (linhas.length === 0) return [];
+  const { data: vinculos, error: erroVinculos } = await noAmbiente(
+    admin.from("cb_atlas_clientes").select("atlas_client_id, contact_id").eq("account_id", accountId).eq("atlas_tenant_id", tenantId),
+    ambiente,
+  ).in("atlas_client_id", [...new Set(linhas.map((l) => l.atlas_client_id))]);
+  if (erroVinculos) return "db_error";
+  const fichaDe = new Map(((vinculos ?? []) as { atlas_client_id: string; contact_id: string | null }[]).map((v) => [String(v.atlas_client_id), v.contact_id]));
+  const fichas = [...new Set([...fichaDe.values()].filter((id): id is string => !!id))];
+  const nomes = new Map<string, string>();
+  if (fichas.length > 0) {
+    const { data: contatos, error: erroContatos } = await admin
+      .from("contacts")
+      .select("id, name, phone, wa_username, instagram_username")
+      .eq("account_id", accountId)
+      .in("id", fichas);
+    if (erroContatos) return "db_error";
+    // O nome, senão a identidade (nunca o IGSID) — CLAUDE.md 8d.
+    for (const c of (contatos ?? []) as (ContatoIdentificavel & { id: string })[]) nomes.set(String(c.id), nomeDoContato(c, "—"));
+  }
+  return linhas.map((l) => {
+    const fichaId = fichaDe.get(String(l.atlas_client_id)) ?? null;
+    return {
+      id: l.id,
+      criadaEm: l.created_at,
+      situacaoAnterior: l.situacao_anterior,
+      situacaoNova: l.situacao_nova,
+      desde: l.situacao_desde,
+      estado: l.estado,
+      resultado: l.resultado,
+      detalhe: l.detalhe,
+      ficha: fichaId && nomes.has(fichaId) ? { id: fichaId, nome: nomes.get(fichaId)! } : null,
+    };
+  });
 }

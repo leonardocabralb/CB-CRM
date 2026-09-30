@@ -971,16 +971,22 @@ describe("Situação mudou no Atlas (1073) — o gatilho e os passos", () => {
   const codigos = (cfg: unknown) => validateTriggerForActivation("atlas_situacao_mudou", cfg).map((i) => i.codigo)
 
   it("situações e funil são obrigatórios; a config certa passa", () => {
-    expect(codigos({ situacoes: ["rescindido", "finalizado"], pipeline_ids: ["f1"] })).toEqual([])
+    expect(codigos({ situacoes: ["rescindido", "finalizado"], pipeline_ids: ["00000000-0000-4000-8000-0000000000f1"] })).toEqual([])
     expect(codigos({})).toEqual(["gatilho_atlas_sem_situacao", "gatilho_atlas_sem_funil"])
-    expect(codigos({ situacoes: [], pipeline_ids: ["f1"] })).toEqual(["gatilho_atlas_sem_situacao"])
+    expect(codigos({ situacoes: [], pipeline_ids: ["00000000-0000-4000-8000-0000000000f1"] })).toEqual(["gatilho_atlas_sem_situacao"])
     expect(codigos({ situacoes: ["rescindido"], pipeline_ids: [] })).toEqual(["gatilho_atlas_sem_funil"])
     expect(codigos({ situacoes: ["rescindido"], pipeline_ids: [""] })).toEqual(["gatilho_atlas_sem_funil"])
   })
 
+  it("id de funil malformado é recusado (derrubaria a busca dos cards de TODAS as automações do gatilho)", () => {
+    expect(codigos({ situacoes: ["rescindido"], pipeline_ids: ["x"] })).toEqual(["gatilho_atlas_sem_funil"])
+    expect(codigos({ situacoes: ["rescindido"], pipeline_ids: ["00000000-0000-4000-8000-0000000000f1", "funil-1"] })).toEqual(["gatilho_atlas_sem_funil"])
+    expect(codigos({ situacoes: ["rescindido"], pipeline_ids: [7] })).toEqual(["gatilho_atlas_sem_funil"])
+  })
+
   it("situação fora da lista do contrato é recusada (em_negociacao não é oferecida)", () => {
-    expect(codigos({ situacoes: ["em_negociacao"], pipeline_ids: ["f1"] })).toEqual(["gatilho_atlas_situacao_invalida"])
-    expect(codigos({ situacoes: ["Rescindido"], pipeline_ids: ["f1"] })).toEqual(["gatilho_atlas_situacao_invalida"])
+    expect(codigos({ situacoes: ["em_negociacao"], pipeline_ids: ["00000000-0000-4000-8000-0000000000f1"] })).toEqual(["gatilho_atlas_situacao_invalida"])
+    expect(codigos({ situacoes: ["Rescindido"], pipeline_ids: ["00000000-0000-4000-8000-0000000000f1"] })).toEqual(["gatilho_atlas_situacao_invalida"])
   })
 
   it("recusa \"Criar cliente no Atlas\" em qualquer escopo (o Atlas manda na situação)", () => {

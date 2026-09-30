@@ -748,9 +748,9 @@ describe("rodarCicloDoAtlas", () => {
     banco.tabelas.cb_atlas_clientes = [vinculo("v1", "a1")];
     banco.tabelas.cb_atlas_mudancas = [];
     banco.tabelas.automations = [
-      { id: "aut-1", account_id: CONTA, name: "Rescindido", trigger_type: "atlas_situacao_mudou", trigger_config: { situacoes: ["rescindido"], pipeline_ids: ["f1"] }, is_active: true },
+      { id: "aut-1", account_id: CONTA, name: "Rescindido", trigger_type: "atlas_situacao_mudou", trigger_config: { situacoes: ["rescindido"], pipeline_ids: ["00000000-0000-4000-8000-0000000000f1"] }, is_active: true },
     ];
-    banco.tabelas.deals = [{ id: "card-1", account_id: CONTA, contact_id: "ficha-v1", pipeline_id: "f1", status: "open" }];
+    banco.tabelas.deals = [{ id: "card-1", account_id: CONTA, contact_id: "ficha-v1", pipeline_id: "00000000-0000-4000-8000-0000000000f1", status: "open" }];
     listar = () => pagina([bruto("a1", { status: "rescindido", status_changed_at: "2026-09-30T14:00:00+00:00" })]);
     const disparos: { sincronizando: unknown }[] = [];
     await rodarCicloDoAtlas({

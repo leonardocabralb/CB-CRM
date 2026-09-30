@@ -162,6 +162,7 @@ export function criarBanco(inicial: Record<string, Linha[]> = {}, opcoesDoBanco:
         return b;
       },
       lt: (c: string, v: string) => (filtros.push((l) => typeof l[c] === "string" && (l[c] as string) < v), b),
+      gte: (c: string, v: string) => (filtros.push((l) => typeof l[c] === "string" && (l[c] as string) >= v), b),
       or: (expr: string) => (filtros.push(filtroDoOr(expr)), b),
       like: (c: string, p: string) => (filtros.push((l) => typeof l[c] === "string" && padraoParaRegex(p, "").test(l[c] as string)), b),
       ilike: (c: string, p: string) => (filtros.push((l) => typeof l[c] === "string" && padraoParaRegex(p, "i").test(l[c] as string)), b),

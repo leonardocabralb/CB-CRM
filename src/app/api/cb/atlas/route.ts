@@ -1,12 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
-import { cartaoDoAtlas, contagemVazia, type ConfigDoAtlas, type ContagemDosVinculos, type MudancaNoCartao } from "@/lib/atlas/cartao";
+import { cartaoDoAtlas, contagemVazia, type ConfigDoAtlas, type ContagemDosVinculos } from "@/lib/atlas/cartao";
 import { conectarAtlas, conferirConexao, desconectarAtlas } from "@/lib/atlas/conexao";
 import { ambienteDoAtlas, noAmbiente } from "@/lib/atlas/enderecos";
 import { CASOU_POR, ORIGENS_DO_VINCULO } from "@/lib/atlas/leitura";
+import { ultimasMudancasDoCartao } from "@/lib/atlas/mudancas";
 import { supabaseAdmin } from "@/lib/automations/admin-client";
-import { nomeDoContato, type ContatoIdentificavel } from "@/lib/contacts/identidade";
 import { requireRole, toErrorResponse } from "@/lib/auth/account";
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
 
@@ -53,7 +53,7 @@ export async function GET() {
     // As contagens só fazem sentido para a conexão DESTE ambiente.
     const vinculos = cartao.leitura && data ? await contarVinculos(admin, ctx.accountId, ambiente, String(data.atlas_tenant_id)) : null;
     if (vinculos === "db_error") return NextResponse.json({ error: "db_error" }, { status: 500 });
-    const mudancas = cartao.leitura && data ? await ultimasMudancas(admin, ctx.accountId, ambiente, String(data.atlas_tenant_id)) : null;
+    const mudancas = cartao.leitura && data ? await ultimasMudancasDoCartao(admin, ctx.accountId, ambiente, String(data.atlas_tenant_id), data.conectado_em ?? null) : null;
     if (mudancas === "db_error") return NextResponse.json({ error: "db_error" }, { status: 500 });
     return NextResponse.json({ cartao, vinculos, mudancas });
   } catch (err) {
@@ -156,74 +156,4 @@ async function contarVinculos(
   ORIGENS_DO_VINCULO.forEach((o, i) => (saida.porOrigem[o] = resto[i]!));
   CASOU_POR.forEach((c, i) => (saida.porCasamento[c] = resto[ORIGENS_DO_VINCULO.length + i]!));
   return saida;
-}
-
-/** Quantas mudanças de situação o cartão mostra. */
-const MUDANCAS_NO_CARTAO = 20;
-
-/**
- * As últimas mudanças de situação do gatilho (1073), deste ambiente, com a
- * FICHA de cada uma: a fila não guarda contato, então ela sai do vínculo
- * (deste ambiente e escritório) e o nome, da ficha.
- */
-async function ultimasMudancas(
-  admin: SupabaseClient,
-  accountId: string,
-  ambiente: string | null,
-  tenantId: string,
-): Promise<MudancaNoCartao[] | "db_error"> {
-  const { data, error } = await noAmbiente(
-    admin
-      .from("cb_atlas_mudancas")
-      .select("id, atlas_client_id, situacao_anterior, situacao_nova, situacao_desde, estado, resultado, detalhe, created_at")
-      .eq("account_id", accountId),
-    ambiente,
-  )
-    .order("created_at", { ascending: false })
-    .limit(MUDANCAS_NO_CARTAO);
-  if (error) return "db_error";
-  const linhas = (data ?? []) as {
-    id: string;
-    atlas_client_id: string;
-    situacao_anterior: string;
-    situacao_nova: string;
-    situacao_desde: string;
-    estado: string;
-    resultado: string | null;
-    detalhe: string | null;
-    created_at: string;
-  }[];
-  if (linhas.length === 0) return [];
-  const { data: vinculos, error: erroVinculos } = await noAmbiente(
-    admin.from("cb_atlas_clientes").select("atlas_client_id, contact_id").eq("account_id", accountId).eq("atlas_tenant_id", tenantId),
-    ambiente,
-  ).in("atlas_client_id", [...new Set(linhas.map((l) => l.atlas_client_id))]);
-  if (erroVinculos) return "db_error";
-  const fichaDe = new Map(((vinculos ?? []) as { atlas_client_id: string; contact_id: string | null }[]).map((v) => [String(v.atlas_client_id), v.contact_id]));
-  const fichas = [...new Set([...fichaDe.values()].filter((id): id is string => !!id))];
-  const nomes = new Map<string, string>();
-  if (fichas.length > 0) {
-    const { data: contatos, error: erroContatos } = await admin
-      .from("contacts")
-      .select("id, name, phone, wa_username, instagram_username")
-      .eq("account_id", accountId)
-      .in("id", fichas);
-    if (erroContatos) return "db_error";
-    // O nome, senão a identidade (nunca o IGSID) — CLAUDE.md 8d.
-    for (const c of (contatos ?? []) as (ContatoIdentificavel & { id: string })[]) nomes.set(String(c.id), nomeDoContato(c, "—"));
-  }
-  return linhas.map((l) => {
-    const fichaId = fichaDe.get(String(l.atlas_client_id)) ?? null;
-    return {
-      id: l.id,
-      criadaEm: l.created_at,
-      situacaoAnterior: l.situacao_anterior,
-      situacaoNova: l.situacao_nova,
-      desde: l.situacao_desde,
-      estado: l.estado,
-      resultado: l.resultado,
-      detalhe: l.detalhe,
-      ficha: fichaId && nomes.has(fichaId) ? { id: fichaId, nome: nomes.get(fichaId)! } : null,
-    };
-  });
 }

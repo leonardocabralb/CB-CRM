@@ -328,8 +328,12 @@ OBRIGATÓRIO; card fora do funil não é mexido (`sem_card`); SEM trava de
   rota manual recusam). `negocioAlvo` não muda. "Aguardar" não reconfere a
   situação (a ajuda manda mover antes). Quem voltou pelo Comercial: marcar
   os dois funis.
-- `validate.ts`: situações da lista do contrato e funil obrigatórios; recusa
-  "Criar cliente no Atlas" e "Acionar automação" (a filha driblaria) na
-  automação deste gatilho (D2). Variáveis
+- `validate.ts`: situações da lista do contrato e funil obrigatórios, com
+  id válido (`ehIdDeFunil`; o `lerConfigDoGatilho` também descarta: um id
+  malformado no `.in("pipeline_id")` derrubaria os cards de TODAS as que
+  casam); recusa "Criar cliente no Atlas" e "Acionar automação" (a filha
+  driblaria) na automação deste gatilho (D2). Variáveis
   `{{vars.atlas_*}}` saem de `variaveisDaMudanca` (sem dado pessoal). O
-  cartão mostra as 20 últimas mudanças com o resultado traduzido.
+  cartão mostra as 20 últimas mudanças DA CONEXÃO ATUAL (`created_at >=
+  conectado_em`, `ultimasMudancasDoCartao`: a fila não guarda o escritório)
+  com o resultado traduzido.

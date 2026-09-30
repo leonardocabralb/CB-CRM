@@ -4,7 +4,7 @@ import type { DispatchInput, ResultadoDoDisparo } from "@/lib/automations/engine
 
 import { criarBanco, type Banco } from "../zapsign/duble.test-helper";
 
-import { dispararMudancas, JANELA_MINIMA_DO_DISPARO_MS, MUDANCAS_POR_VEZ, RECOLHER_MUDANCA_MS, TETO_DE_TENTATIVAS } from "./mudancas";
+import { dispararMudancas, JANELA_MINIMA_DO_DISPARO_MS, MUDANCAS_POR_VEZ, RECOLHER_MUDANCA_MS, TETO_DE_TENTATIVAS, ultimasMudancasDoCartao } from "./mudancas";
 
 // ============================================================
 // O disparo do gatilho "Situação mudou no Atlas" (1073): a reivindicação
@@ -20,8 +20,8 @@ const TENANT = "t1";
 const STAGING = "https://staging.example.com/functions/v1/client-webhook";
 const AGORA = new Date("2026-09-30T15:00:00.000Z");
 const DESDE = "2026-09-30T14:00:00.000Z";
-const JURIDICO = "funil-juridico";
-const COMERCIAL = "funil-comercial";
+const JURIDICO = "00000000-0000-4000-8000-00000000a001";
+const COMERCIAL = "00000000-0000-4000-8000-00000000a002";
 
 let banco: Banco;
 let disparos: DispatchInput[];
@@ -395,5 +395,29 @@ describe("prazo, conexão e AMBIENTE", () => {
     banco.falhar.add("cb_atlas_mudancas:select");
     expect(await rodar()).toMatchObject({ ok: false, codigo: "db_error" });
     expect(disparos).toHaveLength(0);
+  });
+});
+
+describe("ultimasMudancasDoCartao — o histórico do cartão", () => {
+  it("só as mudanças da CONEXÃO atual: trocado o escritório, as do anterior não aparecem (a fila não guarda o escritório)", async () => {
+    banco.tabelas.cb_atlas_mudancas = [
+      mudanca({ id: "velha", atlas_client_id: "a-velho", created_at: "2026-09-30T10:00:00.000Z", estado: "feito", resultado: "disparado" }),
+      mudanca({ id: "nova", created_at: "2026-09-30T14:50:00.000Z" }),
+    ];
+    banco.tabelas.cb_atlas_clientes = [vinculo()];
+    banco.tabelas.contacts = [{ id: "ficha-1", account_id: CONTA, name: "Cliente Fictício", phone: null }];
+    const r = await ultimasMudancasDoCartao(banco.cliente, CONTA, null, TENANT, "2026-09-30T12:00:00.000Z");
+    expect(r === "db_error" ? r : r.map((m) => m.id)).toEqual(["nova"]);
+    // Sem a data da conexão (linha antiga), não recorta.
+    const todas = await ultimasMudancasDoCartao(banco.cliente, CONTA, null, TENANT, null);
+    expect(todas === "db_error" ? todas : todas.map((m) => m.id)).toEqual(["nova", "velha"]);
+  });
+
+  it("do AMBIENTE da instância: a linha do staging não aparece no cartão da produção", async () => {
+    banco.tabelas.cb_atlas_mudancas = [mudanca({ id: "do-staging", api_url: STAGING }), mudanca({ id: "da-producao" })];
+    banco.tabelas.cb_atlas_clientes = [vinculo()];
+    banco.tabelas.contacts = [{ id: "ficha-1", account_id: CONTA, name: "Cliente Fictício", phone: null }];
+    const r = await ultimasMudancasDoCartao(banco.cliente, CONTA, null, TENANT, null);
+    expect(r === "db_error" ? r : r.map((m) => m.id)).toEqual(["da-producao"]);
   });
 });

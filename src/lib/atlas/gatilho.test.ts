@@ -36,7 +36,7 @@ import {
 const RAIZ = path.join(__dirname, "../../..");
 const ler = (arquivo: string) => fs.readFileSync(path.join(RAIZ, arquivo), "utf8");
 
-function automacao(id: string, cfg: Record<string, unknown> = { situacoes: ["rescindido"], pipeline_ids: ["f1"] }): Automation {
+function automacao(id: string, cfg: Record<string, unknown> = { situacoes: ["rescindido"], pipeline_ids: ["00000000-0000-4000-8000-0000000000f1"] }): Automation {
   return { id, trigger_type: GATILHO_DO_ATLAS, trigger_config: cfg } as unknown as Automation;
 }
 
@@ -88,7 +88,7 @@ describe("gatilho atlas_situacao_mudou", () => {
 
 describe("casaSituacao e a config", () => {
   it("casa pela situação NOVA, com em_negociacao valendo ativo e sem diferença de caixa", () => {
-    const cfg = { situacoes: ["rescindido", "ativo"], pipeline_ids: ["f1"] };
+    const cfg = { situacoes: ["rescindido", "ativo"], pipeline_ids: ["00000000-0000-4000-8000-0000000000f1"] };
     expect(casaSituacao(cfg, "rescindido")).toBe(true);
     expect(casaSituacao(cfg, "Rescindido")).toBe(true);
     expect(casaSituacao(cfg, "em_negociacao")).toBe(true);
@@ -98,7 +98,9 @@ describe("casaSituacao e a config", () => {
 
   it("config de JSONB lida com desconfiança", () => {
     expect(lerConfigDoGatilho(null)).toEqual({ situacoes: [], pipelineIds: [] });
-    expect(lerConfigDoGatilho({ situacoes: "rescindido", pipeline_ids: [1, "", " f1 "] })).toEqual({ situacoes: [], pipelineIds: ["f1"] });
+    expect(lerConfigDoGatilho({ situacoes: "rescindido", pipeline_ids: [1, "", " 00000000-0000-4000-8000-0000000000f1 "] })).toEqual({ situacoes: [], pipelineIds: ["00000000-0000-4000-8000-0000000000f1"] });
+    // Id malformado sai: ia para o `.in("pipeline_id")` da busca dos cards de TODAS as automações.
+    expect(lerConfigDoGatilho({ situacoes: ["rescindido"], pipeline_ids: ["x", "00000000-0000-4000-8000-0000000000f1"] }).pipelineIds).toEqual(["00000000-0000-4000-8000-0000000000f1"]);
     expect(casaSituacao({ situacoes: "rescindido" }, "rescindido")).toBe(false);
   });
 });

@@ -15,7 +15,7 @@ import { ehGatilhoDaRegua, horaDeEnvioValida } from '@/lib/asaas/regua'
 import { ehMeta, ehWhatsApp } from '@/lib/cb-channels/transporte'
 import type { CbChannelKind } from '@/lib/cb-channels/repo'
 import { TIPOS_DE_CONTRATO } from '@/lib/atlas/formatar'
-import { SITUACOES_DO_GATILHO } from '@/lib/atlas/gatilho'
+import { ehIdDeFunil, SITUACOES_DO_GATILHO } from '@/lib/atlas/gatilho'
 import { GATILHO_DO_ATLAS } from './so-pelo-disparador'
 
 // ------------------------------------------------------------
@@ -704,9 +704,11 @@ export function validateTriggerForActivation(
     } else if (sit.some((v) => typeof v !== 'string' || !(SITUACOES_DO_GATILHO as readonly string[]).includes(v))) {
       issues.push({ path: 'trigger.situacoes', message: `Atlas status must be one of: ${SITUACOES_DO_GATILHO.join(', ')}`, codigo: 'gatilho_atlas_situacao_invalida' })
     }
+    // Id de funil malformado (só por chamada direta à API: o construtor lista
+    // os funis) derrubaria a busca dos cards de TODAS as automações do gatilho.
     const funis = cfg.pipeline_ids
-    if (!Array.isArray(funis) || funis.length === 0 || funis.some((v) => !nonEmpty(v))) {
-      issues.push({ path: 'trigger.pipeline_ids', message: 'choose at least one pipeline where the client card must be', codigo: 'gatilho_atlas_sem_funil' })
+    if (!Array.isArray(funis) || funis.length === 0 || funis.some((v) => !ehIdDeFunil(v))) {
+      issues.push({ path: 'trigger.pipeline_ids', message: 'choose at least one pipeline (valid ids) where the client card must be', codigo: 'gatilho_atlas_sem_funil' })
     }
   } else if (triggerType === 'deal_status_changed') {
     const st = cfg.statuses
