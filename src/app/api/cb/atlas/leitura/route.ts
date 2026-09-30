@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { LEITURA_AGORA, PRAZO_DO_LER_AGORA_MS } from "@/lib/atlas/leitura";
+import { dispararMudancas } from "@/lib/atlas/mudancas";
 import { sincronizarSituacoes } from "@/lib/atlas/situacoes";
 import { supabaseAdmin } from "@/lib/automations/admin-client";
 import { requireRole, toErrorResponse } from "@/lib/auth/account";
@@ -22,6 +23,12 @@ import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit
  * podem dobrar a leitura.
  * ⚠️ Nunca bater em `/api/cb/asaas/cron` para ler o Atlas no preview: ele
  * sincronizaria o Asaas da PRODUÇÃO e rodaria a régua.
+ *
+ * Fase 4 (1073): depois da leitura (o cadeado dela já solto), dispara as
+ * mudanças de situação enfileiradas desta conta, no MESMO prazo (o disparo
+ * garante a sua janela mínima própria quando a leitura o gastou) — as
+ * automações "Situação mudou no Atlas" rodam como no cron (`mudancas.ts`).
+ * A resposta traz o que o disparo fez (`disparo`), ou `null` se ele não rodou.
  */
 export async function POST(request: Request) {
   try {
@@ -32,11 +39,12 @@ export async function POST(request: Request) {
     if (!porConta.success) return rateLimitResponse(porConta);
 
     const corpo = (await request.json().catch(() => null)) as { completa?: unknown } | null;
-    const r = await sincronizarSituacoes(supabaseAdmin(), ctx.accountId, {
-      prazoMs: Date.now() + PRAZO_DO_LER_AGORA_MS,
-      forcarCompleta: corpo?.completa === true,
-    });
-    if (r.ok) return NextResponse.json({ ok: true, contagem: r.contagem });
+    const admin = supabaseAdmin();
+    const prazoMs = Date.now() + PRAZO_DO_LER_AGORA_MS;
+    const r = await sincronizarSituacoes(admin, ctx.accountId, { prazoMs, forcarCompleta: corpo?.completa === true });
+    const d = r.ok || r.codigo !== "nao_conectado" ? await dispararMudancas(admin, ctx.accountId, { prazoMs }) : null;
+    const disparo = d?.ok ? d.contagem : null;
+    if (r.ok) return NextResponse.json({ ok: true, contagem: r.contagem, disparo });
     const status =
       r.codigo === "db_error"
         ? 500

@@ -7,7 +7,7 @@
 // operador): assim ele marca em vermelho o passo com pendência sem depender da
 // ida ao servidor, e a marca se apaga sozinha, AO VIVO, conforme o operador
 // corrige. A régua continua sendo `validate.ts` — este módulo só junta as
-// cinco funções na mesma ordem das rotas, para a tela e o servidor não
+// seis funções na mesma ordem das rotas, para a tela e o servidor não
 // divergirem.
 //
 // ⚠️ Mudou a lista de validações de uma rota? Mude aqui também:
@@ -25,6 +25,7 @@ import { opcoesDoCampo } from '@/lib/contacts/campo-opcoes'
 import type { CampoParaCondicao } from './condicao-por-campo'
 import {
   validateAsaasReguaForActivation,
+  validateAtlasSituacaoForActivation,
   validateChannelScopeForActivation,
   validateCustomFieldConditionsForActivation,
   validateStepsForActivation,
@@ -58,7 +59,7 @@ export interface ConferenciaParaLigar {
 
 /**
  * As pendências que impedem ligar, na MESMA ordem das rotas (gatilho, passos,
- * régua do Asaas, canal, condição por campo) — a ordem é a das linhas do
+ * régua do Asaas, gatilho do Atlas, canal, condição por campo) — a ordem é a das linhas do
  * painel e do toast.
  */
 export function conferirParaLigar(a: ConferenciaParaLigar): ValidationIssue[] {
@@ -67,6 +68,7 @@ export function conferirParaLigar(a: ConferenciaParaLigar): ValidationIssue[] {
     ...validateTriggerForActivation(a.triggerType, a.triggerConfig ?? {}),
     ...validateStepsForActivation(a.steps),
     ...validateAsaasReguaForActivation(a.triggerType, a.steps),
+    ...validateAtlasSituacaoForActivation(a.triggerType, a.steps),
     ...(a.canais ? validateChannelScopeForActivation(a.steps, escopo, a.canais) : []),
     ...validateCustomFieldConditionsForActivation(a.steps, a.campos),
   ]

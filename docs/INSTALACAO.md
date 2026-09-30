@@ -653,6 +653,11 @@ leitura completa não cabe numa rodada). Sem essa permissão, o cartão
 avisa e o passo continua funcionando; o botão **Ler situações agora** lê na
 hora. A leitura exige a versão da API do Atlas que informa a data da mudança
 da situação; com a antiga, o cartão diz que a atualização está pendente.
+Com a leitura ligada, o gatilho de automação **Situação mudou no Atlas**
+roda quando a situação de um cliente vinculado MUDA (nunca na primeira
+leitura): escolha as situações e os funis onde o card do cliente precisa
+estar — sem card nesses funis, nada roda. O cartão **Atlas** mostra as
+últimas mudanças e o que as automações fizeram.
 
 **tl;dv** (transcrições de reunião na ficha): a API só existe nos planos
 **Pro e Business**, e só sai pela API a reunião de quem a ORGANIZOU com um

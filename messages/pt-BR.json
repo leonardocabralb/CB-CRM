@@ -2132,6 +2132,10 @@
           "label": "Documento assinado (ZapSign)",
           "hint": "Quando um documento do ZapSign fica completo — todos assinaram (integração em Configurações → Integrações). O cliente é achado pelo negócio do documento (contrato gerado pelo CRM) ou, no link público do modelo, pelo telefone, e-mail ou CPF de quem assinou. Nenhum contato é criado. Para mover o card, use a condição \"Negócio está na etapa…\" antes do \"Mover card\"."
         },
+        "atlas_situacao_mudou": {
+          "label": "Situação mudou no Atlas",
+          "hint": "Quando a leitura periódica do Atlas (Configurações → Integrações) vê que a situação de um cliente vinculado mudou — nunca na primeira leitura nem no vínculo novo. Escolha as situações e os funis: o card do cliente precisa estar num deles, senão nada roda e a mudança aparece no cartão Atlas. Só roda pela leitura: não aparece em “Executar automação” nem em “Acionar automação”."
+        },
         "manual": {
           "label": "Manual (só pelo botão)",
           "hint": "Nunca dispara sozinha. Ela roda quando você a executa dentro de uma conversa, pelo menu + do compositor → Executar automação."
@@ -2487,6 +2491,29 @@
         "abrirIntegracoes": "Abrir Integrações",
         "ajuda": "Procura no Atlas antes: cria o cliente, reativa o cadastro rescindido, finalizado ou inativo, ou só vincula o que está em curso. Para sem mexer no Atlas quando há dúvida (mais de um cadastro, casamento só pelo e-mail ou pelo final do telefone, cadastro suspenso). Não repete sozinho."
       },
+      "atlasGatilho": {
+        "descricao": "Dispara quando a leitura periódica do Atlas (a cada ~15 min) vê que a situação de um cliente vinculado mudou. Nunca na primeira leitura nem num vínculo novo.",
+        "abrirIntegracoes": "Ver a conexão em Integrações",
+        "situacoesLabel": "Dispara quando a situação passa a ser",
+        "situacao": {
+          "ativo": "Ativo",
+          "importado": "Importado",
+          "finalizado": "Finalizado",
+          "rescindido": "Rescindido",
+          "inativo": "Inativo",
+          "suspenso": "Suspenso"
+        },
+        "situacoesAjuda": "“Em negociação” (o valor antigo) conta como Ativo. De Importado para Ativo é o cadastro inicial, não uma mudança: não dispara.",
+        "funisLabel": "O card do cliente precisa estar num destes funis",
+        "funisCarregando": "Carregando os funis…",
+        "funisFalhou": "Não foi possível carregar os funis.",
+        "funisVazio": "A conta não tem funis.",
+        "funisApagados": "{n, plural, one {# funil escolhido foi apagado} other {# funis escolhidos foram apagados}}",
+        "tirarApagados": "Tirar os apagados",
+        "funisAjuda": "O card é o ÚNICO do cliente nestes funis, em qualquer status (ganho também). Sem card neles — o ex-cliente cujo card está noutro funil — ou com mais de um, a automação não roda e a mudança aparece no cartão Atlas de Integrações. Para alcançar o ex-cliente que voltou e cujo card está no funil de vendas, marque também esse funil.",
+        "aviso": "Mova o card antes de qualquer “Aguardar”: a espera não confere a situação no Atlas de novo ao acordar. Confira na aba Automações do funil o que roda quando o card chega à etapa de destino.",
+        "variaveisTitulo": "Variáveis da mudança"
+      },
       "asaas": {
         "diasLabel": "Dias de atraso (o marco)",
         "diasAjuda": "Dias corridos depois do vencimento. Cada marco é uma automação: 1, 5, 30… A mensagem lista todas as parcelas vencidas do cliente, não só a que cruzou este marco.",
@@ -2601,6 +2628,11 @@
           "gatilho_hora_de_envio_invalida": "Escolha a hora de envio entre 08:00 e 17:00.",
           "gatilho_dias_uteis_invalido": "Marque ou desmarque de novo a opção “Só em dia útil”.",
           "gatilho_status_invalidos": "Escolha de novo os status do gatilho: ganho, perdido ou aberto.",
+          "gatilho_atlas_sem_situacao": "Marque ao menos uma situação do Atlas no gatilho.",
+          "gatilho_atlas_situacao_invalida": "O gatilho tem uma situação do Atlas desconhecida: marque as situações de novo.",
+          "gatilho_atlas_sem_funil": "Escolha ao menos um funil onde o card do cliente precisa estar.",
+          "atlas_gatilho_com_criar_cliente": "Uma automação disparada pela situação do Atlas não pode ter “Criar cliente no Atlas”: o Atlas manda na situação, e reativar por reflexo desfaria a decisão da equipe.",
+          "atlas_gatilho_aciona_outra": "Apague este passo: uma automação disparada pela situação do Atlas não pode acionar outra — a outra rodaria com este cliente e poderia reativá-lo no Atlas.",
           "regua_com_espera": "Apague este passo de espera: na régua de cobrança, cada marco é uma automação própria.",
           "regua_aciona_outra": "Apague este passo: a mensagem da régua de cobrança tem de sair por esta automação.",
           "regua_so_texto": "Troque este passo por uma mensagem de texto: a régua de cobrança sai por conexão de QR Code.",
@@ -2610,6 +2642,7 @@
           "acionar_automacao_desligada": "A automação escolhida está desligada: quando chegar aqui, o passo falha e os passos seguintes não rodam. Ligue-a ou escolha outra.",
           "acionar_automacao_apagada": "A automação escolhida foi apagada: quando chegar aqui, o passo falha e os passos seguintes não rodam. Escolha outra.",
           "acionar_automacao_da_regua": "A automação escolhida é da régua de cobrança do Asaas, que só roda pela varredura do Asaas: quando chegar aqui, o passo falha e os passos seguintes não rodam. Escolha outra.",
+          "acionar_automacao_do_atlas": "A automação escolhida é do gatilho “Situação mudou no Atlas”, que só roda pela leitura do Atlas: quando chegar aqui, o passo falha e os passos seguintes não rodam. Escolha outra.",
           "iniciar_robo_desligado": "O robô escolhido não está ativo: quando chegar aqui, o passo falha e os passos seguintes não rodam. Ative-o ou escolha outro.",
           "iniciar_robo_apagado": "O robô escolhido foi apagado: quando chegar aqui, o passo falha e os passos seguintes não rodam. Escolha outro."
         }
@@ -2640,6 +2673,7 @@
         "asaas": "Cobrança do Asaas",
         "calendly": "Agendamento do Calendly",
         "zapsign": "Assinatura do ZapSign",
+        "atlas": "Mudança de situação no Atlas",
         "webhook": "Webhook recebido"
       },
       "fixas": {
@@ -2816,6 +2850,22 @@
         "zapsign_documento_token": {
           "rotulo": "Código do documento",
           "legenda": "O identificador do documento no ZapSign."
+        },
+        "atlas_situacao": {
+          "rotulo": "Situação nova",
+          "legenda": "A situação do cliente no Atlas depois da mudança (rescindido)."
+        },
+        "atlas_situacao_anterior": {
+          "rotulo": "Situação anterior",
+          "legenda": "A situação do cliente no Atlas antes da mudança (ativo)."
+        },
+        "atlas_situacao_em": {
+          "rotulo": "Data da mudança",
+          "legenda": "Quando a situação mudou no Atlas (30/09/2026 às 10:15h)."
+        },
+        "atlas_link": {
+          "rotulo": "Link da ficha no Atlas",
+          "legenda": "Abre a ficha do cliente no Atlas (quem abre precisa entrar no Atlas)."
         }
       },
       "resposta": {
@@ -4230,7 +4280,26 @@
         "vinculos": "Fichas vinculadas: {total}.",
         "vinculosDetalhe": "{link} pelo link da conversa, {telefone} pelo telefone, {manual} à mão, {passo} pelo passo “Criar cliente no Atlas”.",
         "apagarVinculos": "Apagar os {n} vínculos do escritório anterior e conectar",
-        "confirmarApagarVinculos": "Apagar os {n} vínculos de fichas com clientes do escritório anterior no Atlas? Nada é apagado no Atlas; as fichas ficam sem vínculo até a leitura ou o passo “Criar cliente no Atlas” as ligarem ao escritório novo."
+        "confirmarApagarVinculos": "Apagar os {n} vínculos de fichas com clientes do escritório anterior no Atlas? Nada é apagado no Atlas; as fichas ficam sem vínculo até a leitura ou o passo “Criar cliente no Atlas” as ligarem ao escritório novo.",
+        "mudancasTitulo": "Mudanças de situação",
+        "mudancasVazio": "Nenhuma mudança de situação registrada ainda.",
+        "mudancasDica": "As 20 últimas mudanças dos clientes vinculados e o que as automações “Situação mudou no Atlas” fizeram. Nada é repetido sozinho: o que falhou se confere no histórico da automação.",
+        "semFicha": "(sem ficha)",
+        "mudanca": {
+          "resultado": {
+            "disparado": "automação executada",
+            "em_espera": "em espera (Aguardar)",
+            "falhou": "falhou",
+            "sem_automacao": "sem automação",
+            "sem_card": "card fora do funil",
+            "card_ambiguo": "mais de um card",
+            "superada": "superada"
+          },
+          "estado": {
+            "pendente": "na fila",
+            "processando": "processando"
+          }
+        }
       },
       "avisoDaChave": {
         "embeddings_recusado": "Chave salva: ela gera texto, mas a OpenAI recusou a busca da base de conhecimento (embeddings). A base passa a usar só a busca por palavras — confira as permissões do projeto e salve a chave de novo.",

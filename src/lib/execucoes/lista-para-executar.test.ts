@@ -82,6 +82,18 @@ describe('separarParaExecutar', () => {
     expect(listaVazia(l)).toBe(true)
   })
 
+  it('a "Situação mudou no Atlas" (1073) fica de fora, ligada ou não: só roda pela leitura do Atlas', () => {
+    const l = separarParaExecutar(
+      [
+        automacao('Rescindido no Atlas', { trigger_type: 'atlas_situacao_mudou' }),
+        automacao('Ativo no Atlas', { trigger_type: 'atlas_situacao_mudou', is_active: false }),
+      ],
+      [],
+      '',
+    )
+    expect(listaVazia(l)).toBe(true)
+  })
+
   it('a busca vale para os dois grupos, sem acento e aparada', () => {
     const l = separarParaExecutar(
       [

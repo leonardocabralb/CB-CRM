@@ -92,6 +92,8 @@ import { createClient } from "@/lib/supabase/client"
 import { useAreasDeAutomacao } from "@/hooks/use-areas-de-automacao"
 import { areaDoFunil } from "@/lib/automations/areas"
 import { AsaasTriggerConfig } from "@/components/automations/asaas-trigger-config"
+import { AtlasTriggerConfig, semearAtlas } from "@/components/automations/atlas-trigger-config"
+import { GATILHO_DO_ATLAS, soRodaPeloDisparador } from "@/lib/automations/so-pelo-disparador"
 import { CalendlyTriggerConfig } from "@/components/automations/calendly-trigger-config"
 import { ehGatilhoDaRegua, HORA_PADRAO_COBRANCA, HORA_PADRAO_LEMBRETE } from "@/lib/asaas/regua"
 import { WebhookTriggerConfig } from "@/components/automations/webhook-trigger-config"
@@ -337,6 +339,8 @@ const TRIGGER_OPTIONS: { value: AutomationTriggerType }[] = [
   { value: "webhook_received" },
   // A assinatura completa no ZapSign (1057): call site no webhook da integração.
   { value: "zapsign_documento_assinado" },
+  // A situação mudou no Atlas (1073): call site na leitura periódica do Atlas.
+  { value: "atlas_situacao_mudou" },
   // A régua do Asaas (998): os dois têm call site na varredura do cron.
   { value: "asaas_cobranca_vencida" },
   { value: "asaas_cobranca_vence_hoje" },
@@ -1513,7 +1517,9 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
       ? { ...initial, trigger_config: semearLembrete(initial.trigger_config) }
       : ehGatilhoDaRegua(initial.trigger_type)
         ? { ...initial, trigger_config: semearRegua(initial.trigger_type, initial.trigger_config) }
-        : initial,
+        : initial.trigger_type === GATILHO_DO_ATLAS
+          ? { ...initial, trigger_config: semearAtlas(initial.trigger_config) }
+          : initial,
   )
   const [saving, setSaving] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -1935,11 +1941,14 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
                         ? semearLembrete(s.trigger_config)
                         : ehGatilhoDaRegua(tVal)
                           ? semearRegua(tVal, s.trigger_config)
-                          : s.trigger_config,
+                          : tVal === GATILHO_DO_ATLAS
+                            ? semearAtlas(s.trigger_config)
+                            : s.trigger_config,
                     // A régua do Asaas (998) não tem recorte por etapa: esconder o
                     // seletor não limpa o valor gravado (a armadilha da grade do
-                    // funil), e `stageInScope` barraria quem não tem card.
-                    stage_ids: ehGatilhoDaRegua(tVal) ? [] : s.stage_ids,
+                    // funil), e `stageInScope` barraria quem não tem card. A
+                    // "Situação mudou no Atlas" (1073) também: o card vai no contexto.
+                    stage_ids: soRodaPeloDisparador(tVal) ? [] : s.stage_ids,
                   }))
                 }
                 onConfigChange={(c) => patchTop("trigger_config", c)}
@@ -2019,7 +2028,7 @@ function TriggerCard({
   // nem dedup: cada chamada é um GET /api/cb/channels por montagem, e este
   // card monta junto com o construtor, que já busca a mesma lista. Mesmo motivo
   // que levou os fluxos a buscarem uma vez só no editor.
-  const { channels, customFields } = useResources()
+  const { channels, customFields, pipelines, carga } = useResources()
   // Só campos de data: oferecer um campo de texto aqui faria a automação
   // nascer muda, procurando hora onde não há.
   const camposDeData = useMemo(
@@ -2115,7 +2124,7 @@ function TriggerCard({
                 Escondido no gatilho de funil: ali a etapa já é a config do
                 próprio gatilho, e dois seletores de etapa no mesmo card com
                 significados diferentes é convite a erro. */}
-            {type !== "deal_stage_changed" && !ehGatilhoDaRegua(type) && (
+            {type !== "deal_stage_changed" && !soRodaPeloDisparador(type) && (
               <div>
                 <label className="mb-1 block text-xs font-medium text-muted-foreground">
                   {t("stages.scopeLabel")}
@@ -2322,6 +2331,11 @@ function TriggerCard({
             {/* Assinatura no ZapSign (1057): sem configuração — só as
                 variáveis e o que o casamento faz com o card. */}
             {type === "zapsign_documento_assinado" && <ZapSignTriggerConfig />}
+            {/* A situação mudou no Atlas (1073): quais situações e em quais
+                funis o card precisa estar. Só roda pela leitura do Atlas. */}
+            {type === GATILHO_DO_ATLAS && (
+              <AtlasTriggerConfig config={config} onChange={onConfigChange} pipelines={pipelines} estadoDosFunis={carga.pipelines} />
+            )}
             {/* "Assinar como" (998, D18): o prefixo de todo `send_message`
                 desta automação, sob o interruptor de assinatura da conta.
                 Mora na automação (uma régua são 3–4 automações e a mesma
@@ -3342,13 +3356,13 @@ function SeletorDeAutomacao({
 }) {
   const { automations, automacaoAtualId, carga } = useResources()
   // Só `run_automation` esconde a si mesma — ver a nota em `AutomationResources`.
-  // E esconde a régua do Asaas: o motor recusa acioná-la (ela só roda pela
-  // varredura, `runAutomationById`), e oferecê-la seria oferecer um passo que
+  // E esconde a régua do Asaas e a "Situação mudou no Atlas": o motor recusa
+  // acioná-las (só rodam pelo disparador delas, `runAutomationById`), e oferecê-las seria oferecer um passo que
   // sempre falha. A JÁ ESCOLHIDA fica, para o seletor não a chamar de apagada
   // — o aviso âmbar do cartão diz o que há com ela.
   const lista = acionar
     ? automations.filter(
-        (a) => a.id !== automacaoAtualId && (!ehGatilhoDaRegua(a.trigger_type) || a.id === value),
+        (a) => a.id !== automacaoAtualId && (!soRodaPeloDisparador(a.trigger_type) || a.id === value),
       )
     : automations
   const escolhida = lista.find((a) => a.id === value)

@@ -176,12 +176,12 @@ As regras de ganho/perdido e o gatilho de resultado estão em
 - ⚠️ **`GATILHOS_SEM_DISPARO`** (`trigger-meta.ts`: `time_based`,
   `conversation_assigned`) não têm call site e não ganham cartão na grade. Há
   teste amarrando a lista ao `TRIGGER_OPTIONS` do construtor.
-- ⚠️⚠️ **Os gatilhos da régua do Asaas (`asaas_cobranca_vencida`,
-  `asaas_cobranca_vence_hoje`) casam SÓ com o `automation_id` do contexto**
-  (`triggerMatches`): por tipo, a de 5 dias rodaria junto com a de 1.
-  `runAutomationById` (botão e passo `run_automation`), o diálogo de executar
-  e `POST /api/automations/engine` recusam esses gatilhos.
-- ⚠️⚠️ **Nesses dois gatilhos, `validate.ts` exige `channel_id` em todo
+- ⚠️⚠️ **Os gatilhos que só rodam pelo disparador (régua do Asaas; "Situação
+  mudou no Atlas", ver `integracoes-atlas.md`) casam SÓ com o `automation_id`
+  do contexto** (`soRodaPeloDisparador`): por tipo, a de 5 dias rodaria com a
+  de 1. `runAutomationById` (botão, agente, `run_automation`), o diálogo e
+  `POST /api/automations/engine` os recusam.
+- ⚠️⚠️ **Na régua, `validate.ts` exige `channel_id` em todo
   `send_message`/`send_media` (o MESMO, inclusive nos ramos) e pelo menos um
   `send_message`, e recusa em qualquer escopo "Aguardar", `run_automation`,
   `run_flow`, `send_template`, `send_buttons` e `send_list`.** A filha tem log

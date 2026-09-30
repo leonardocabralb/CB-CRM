@@ -2444,6 +2444,43 @@ describe('triggerMatches — a régua do Asaas (998)', () => {
   });
 });
 
+describe('Situação mudou no Atlas (1073): só roda pela leitura do Atlas', () => {
+  function doAtlas(id: string): Automation {
+    return {
+      id,
+      account_id: ACCOUNT,
+      user_id: 'u1',
+      name: 'situação',
+      trigger_type: 'atlas_situacao_mudou',
+      trigger_config: { situacoes: ['rescindido'], pipeline_ids: ['f1'] },
+      is_active: true,
+      execution_count: 0,
+      created_at: '',
+      updated_at: '',
+    };
+  }
+
+  it('⚠️ roda SÓ a automação carimbada no contexto; sem carimbo, nada roda', () => {
+    expect(triggerMatches(doAtlas('a1'), { automation_id: 'a1' })).toBe(true);
+    expect(triggerMatches(doAtlas('a2'), { automation_id: 'a1' })).toBe(false);
+    expect(triggerMatches(doAtlas('a1'), {})).toBe(false);
+  });
+
+  it('⚠️ runAutomationById recusa (o botão, o agente de IA e o run_automation passam por ele)', async () => {
+    h.state.automations = [doAtlas('a-atlas') as unknown as Record<string, unknown>];
+    const r = await runAutomationById({
+      automationId: 'a-atlas',
+      accountId: ACCOUNT,
+      contactId: 'c1',
+      context: {},
+      triggerType: 'manual',
+      rotuloDoDisparo: 'manual',
+    });
+    expect(r.ok).toBe(false);
+    expect(r.detail).toMatch(/só roda pela leitura do Atlas/);
+  });
+});
+
 describe('tag_added — conversation policy', () => {
   beforeEach(() => {
     vi.mocked(engineSendText).mockClear();

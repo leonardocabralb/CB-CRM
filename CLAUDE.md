@@ -575,7 +575,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   pelo cabeçalho, releitura, casamento sem criar contato, cadeado do disparo.
 - `.claude/rules/integracoes-atlas.md` — chave do Atlas por conta, passo
   "Criar cliente no Atlas" (procura, cria, reativa, vincula), vínculo 1:1,
-  ambiente em toda linha, leitura das situações, vínculo automático, lixeira.
+  ambiente em toda linha, leitura das situações, vínculo automático, lixeira,
+  gatilho "Situação mudou no Atlas" (fila 1073).
 - `.claude/rules/ia.md` — Radar, transcrição de áudio, chaves e modelos por
   módulo (Integrações).
 - `.claude/rules/ia-agentes.md` — o que cada agente de IA vê (acesso, blocos)

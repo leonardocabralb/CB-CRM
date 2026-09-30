@@ -7,6 +7,7 @@ import { telefonesDasConexoes } from "@/lib/zapsign/buscar";
 import { AtlasError, criarClienteAtlas, type ClienteAtlas, type ClienteDoAtlas, type ClienteListado, type CodigoDoErroAtlas, type PaginaDaListagem } from "./cliente";
 import { lerChaveDoAtlas, registrarConferencia } from "./conexao";
 import { ambienteDoAtlas, noAmbiente } from "./enderecos";
+import { dispararMudancas, type OpcoesDoDisparo } from "./mudancas";
 import {
   appUrlSegura,
   candidatosPeloLink,
@@ -26,7 +27,9 @@ import {
   TETO_CONFIRMACOES_DO_LINK,
   telefonesUnicos,
   vinculosParaConferirNaLixeira,
+  viraEvento,
   type CasouPor,
+  type DecisaoDaMudanca,
   type EstadoDaLeitura,
   type ParDoVinculo,
   type TipoDaMudanca,
@@ -82,6 +85,11 @@ import {
  *    ele casar a linha a conexão é marcada (`registrarConferencia`): o ciclo
  *    que perdeu a posse para uma reconexão não põe em erro a conexão nova.
  *
+ * 9. A Fase 4 (1073): a decisão `mudou` entra na fila `cb_atlas_mudancas`
+ *    ANTES da escrita do vínculo (`gravarDecisao`); o disparo
+ *    (`mudancas.ts`) roda DEPOIS do fechamento, pelo `rodarCicloDoAtlas` e
+ *    pela rota do "Ler agora".
+ *
  * ⚠️ Os erros NÃO avançam o cursor da página que falhou. `limite` (429) para
  * a conta sem marcar a conexão; a permissão "Listar clientes" desligada é
  * `sem_permissao_listar`, SEM `registrarConferencia` (ela é opcional, e
@@ -114,6 +122,8 @@ export interface ContagemDaLeitura {
   conflitos: number;
   conferidosNaLixeira: number;
   naLixeira: number;
+  /** Mudanças `mudou` que entraram na fila do gatilho (1073; a repetida pela sobreposição não conta). */
+  enfileiradas: number;
   mudancasCompletas: boolean;
   listagemCompleta: boolean;
   /** O ciclo parou por prazo ou pelo teto de páginas (o resto fica para o próximo). */
@@ -205,6 +215,7 @@ function contagemZerada(): ContagemDaLeitura {
     conflitos: 0,
     conferidosNaLixeira: 0,
     naLixeira: 0,
+    enfileiradas: 0,
     mudancasCompletas: false,
     listagemCompleta: false,
     interrompida: false,
@@ -294,6 +305,47 @@ async function gravarSituacao(ctx: Contexto, vinculo: VinculoLido, cliente: Pick
   return true;
 }
 
+/**
+ * Grava a decisão. A `mudou` (o evento da Fase 4, 1073) entra na FILA do
+ * gatilho ANTES da escrita do vínculo — assim a mudança nunca se perde: uma
+ * queda entre as duas é resolvida pelo disparo, que relê o vínculo e espera
+ * a escrita chegar. O 23505 é "já registrada" (a sobreposição de 5 min, dois
+ * ciclos juntos). Se a cerca de recência recusar a escrita (o passo "Criar
+ * cliente" gravou depois de a página ser pedida), a mudança sai `superada`.
+ */
+async function gravarDecisao(ctx: Contexto, vinculo: VinculoLido, cliente: Pick<ClienteDoAtlas, "id" | "status" | "appUrl" | "situacaoDesde">, decisao: DecisaoDaMudanca, pedidoEm: string): Promise<void> {
+  if (!decisao.grava) return;
+  const desde = viraEvento(decisao) && vinculo.situacao && cliente.situacaoDesde ? new Date(cliente.situacaoDesde).toISOString() : null;
+  if (desde) {
+    const { error } = await ctx.admin.from("cb_atlas_mudancas").insert({
+      account_id: ctx.accountId,
+      api_url: ctx.ambiente,
+      atlas_client_id: cliente.id,
+      situacao_anterior: vinculo.situacao,
+      situacao_nova: cliente.status,
+      situacao_desde: desde,
+      estado: "pendente",
+      tentativas: 0,
+    });
+    if (error && (error as { code?: string }).code !== "23505") throw new Error(`fila das mudanças: ${error.message}`);
+    if (!error) ctx.contagem.enfileiradas++;
+  }
+  const gravou = await gravarSituacao(ctx, vinculo, cliente, pedidoEm);
+  if (desde && !gravou) {
+    const { error } = await noAmbiente(
+      ctx.admin
+        .from("cb_atlas_mudancas")
+        .update({ estado: "feito", resultado: "superada", detalhe: "a situação foi regravada no CRM depois da leitura — nada foi disparado", processado_em: new Date().toISOString() })
+        .eq("account_id", ctx.accountId),
+      ctx.ambiente,
+    )
+      .eq("atlas_client_id", cliente.id)
+      .eq("situacao_desde", desde)
+      .eq("estado", "pendente");
+    if (error) throw new Error(`fila das mudanças (superada): ${error.message}`);
+  }
+}
+
 async function processarPagina(ctx: Contexto, clientes: ClienteListado[], pedidoEm: string): Promise<void> {
   await provarPosse(ctx);
   const naListagem = ctx.listagemIniciadaEm;
@@ -326,8 +378,7 @@ async function processarPagina(ctx: Contexto, clientes: ClienteListado[], pedido
     if (vinculo) {
       const decisao = decidirMudanca(vinculo, c, agora);
       ctx.contagem.porTipo[decisao.tipo] = (ctx.contagem.porTipo[decisao.tipo] ?? 0) + 1;
-      // A Fase 4 enfileira aqui o evento, quando `viraEvento(decisao)` e a escrita pegou.
-      if (decisao.grava) await gravarSituacao(ctx, vinculo, c, pedidoEm);
+      await gravarDecisao(ctx, vinculo, c, decisao, pedidoEm);
       continue;
     }
     if (!ctx.recentes.has(c.id) && c.sinais.uuidsDoLink.length > 0) ctx.semVinculo.set(c.id, c);
@@ -606,7 +657,7 @@ async function conferirLixeira(ctx: Contexto, completaEm: string): Promise<void>
     // Existe (a listagem o perdeu numa escrita concorrente): grava como qualquer página.
     const decisao = decidirMudanca(vinculo, lido, new Date());
     ctx.contagem.porTipo[decisao.tipo] = (ctx.contagem.porTipo[decisao.tipo] ?? 0) + 1;
-    if (decisao.grava) await gravarSituacao(ctx, vinculo, lido, pedidoEm);
+    await gravarDecisao(ctx, vinculo, lido, decisao, pedidoEm);
     const { error } = await noAmbiente(
       ctx.admin.from("cb_atlas_clientes").update({ visto_na_listagem_em: completaEm }).eq("id", vinculo.id).eq("account_id", ctx.accountId),
       ctx.ambiente,
@@ -775,7 +826,9 @@ export async function sincronizarSituacoes(admin: SupabaseClient, accountId: str
  * orçamento de `ORCAMENTO_DO_CICLO_MS` pelo relógio real — a conta que não
  * coube entra primeiro no ciclo seguinte. NUNCA lança.
  */
-export async function rodarCicloDoAtlas(opcoes: { admin?: SupabaseClient; cliente?: FabricaDeCliente; pausa?: (ms: number) => Promise<void> } = {}): Promise<void> {
+export async function rodarCicloDoAtlas(
+  opcoes: { admin?: SupabaseClient; cliente?: FabricaDeCliente; pausa?: (ms: number) => Promise<void>; disparar?: OpcoesDoDisparo["disparar"] } = {},
+): Promise<void> {
   try {
     const admin = opcoes.admin ?? supabaseAdmin();
     const ambiente = ambienteDoAtlas();
@@ -808,6 +861,19 @@ export async function rodarCicloDoAtlas(opcoes: { admin?: SupabaseClient; client
         ...(opcoes.cliente ? { cliente: opcoes.cliente } : {}),
         ...(opcoes.pausa ? { pausa: opcoes.pausa } : {}),
       });
+      // A Fase 4 (1073): as mudanças enfileiradas disparam DEPOIS do fechamento
+      // do ciclo (o cadeado da leitura já solto), com reivindicação própria —
+      // inclusive as de um ciclo anterior que o prazo não deixou disparar.
+      if (r.ok || r.codigo !== "nao_conectado") {
+        const d = await dispararMudancas(admin, accountId, {
+          prazoMs: inicio + ORCAMENTO_DO_CICLO_MS,
+          ambiente,
+          ...(opcoes.disparar ? { disparar: opcoes.disparar } : {}),
+        });
+        if (d.ok && d.contagem.reivindicadas + d.contagem.recolhidas > 0) {
+          console.log(`[atlas] mudanças da conta ${accountId}: ${d.contagem.reivindicadas} processada(s), ${d.contagem.devolvidas} devolvida(s) à fila, ${d.contagem.recolhidas} recolhida(s)`);
+        }
+      }
       if (r.ok) {
         ok++;
         const c = r.contagem;

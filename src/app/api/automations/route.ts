@@ -7,13 +7,14 @@ import { getTemplate } from '@/lib/automations/templates'
 import { insertSteps, type BuilderStepInput } from '@/lib/automations/steps-tree'
 import {
   validateAsaasReguaForActivation,
+  validateAtlasSituacaoForActivation,
   validateStepsForActivation,
   validateChannelScopeForActivation,
   validateTriggerForActivation,
   validateCustomFieldConditionsForActivation,
 } from '@/lib/automations/validate'
 import { carregarCamposParaCondicoes } from '@/lib/automations/condicao-por-campo'
-import { ehGatilhoDaRegua } from '@/lib/asaas/regua'
+import { soRodaPeloDisparador } from '@/lib/automations/so-pelo-disparador'
 import { normalizarAssinatura } from '@/lib/assinatura/assinatura'
 import { ehAreaDeOutraConta, lerIdDaArea } from '@/lib/automations/areas'
 
@@ -135,6 +136,10 @@ export async function POST(request: Request) {
         effectiveTriggerType,
         (effectiveSteps ?? []) as unknown as { step_type: string; step_config: Record<string, unknown> }[],
       ),
+      ...validateAtlasSituacaoForActivation(
+        effectiveTriggerType,
+        (effectiveSteps ?? []) as unknown as { step_type: string; step_config: Record<string, unknown> }[],
+      ),
       ...validateChannelScopeForActivation(
         (effectiveSteps ?? []) as unknown as { step_type: string; step_config: Record<string, unknown> }[],
         channelIds,
@@ -164,7 +169,8 @@ export async function POST(request: Request) {
       // A régua do Asaas (998) não tem recorte por etapa: `stageInScope` só
       // olha negócio ABERTO e devolveria falso para quem não tem card —
       // esconder o seletor não bastaria, o valor gravado continuaria valendo.
-      stage_ids: ehGatilhoDaRegua(effectiveTriggerType) ? null : stageIds && stageIds.length > 0 ? stageIds : null,
+      // NOSSO (1073): a "Situação mudou no Atlas" também — o card vai no contexto.
+      stage_ids: soRodaPeloDisparador(effectiveTriggerType) ? null : stageIds && stageIds.length > 0 ? stageIds : null,
       assinatura_personalizada: assinatura,
       area_id: areaId,
       is_active: !!is_active,

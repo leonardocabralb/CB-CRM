@@ -15,6 +15,8 @@ import { ehGatilhoDaRegua, horaDeEnvioValida } from '@/lib/asaas/regua'
 import { ehMeta, ehWhatsApp } from '@/lib/cb-channels/transporte'
 import type { CbChannelKind } from '@/lib/cb-channels/repo'
 import { TIPOS_DE_CONTRATO } from '@/lib/atlas/formatar'
+import { SITUACOES_DO_GATILHO } from '@/lib/atlas/gatilho'
+import { GATILHO_DO_ATLAS } from './so-pelo-disparador'
 
 // ------------------------------------------------------------
 // Pre-flight config validation for automations about to be activated.
@@ -691,6 +693,21 @@ export function validateTriggerForActivation(
     if (cfg.somente_dias_uteis != null && typeof cfg.somente_dias_uteis !== 'boolean') {
       issues.push({ path: 'trigger.somente_dias_uteis', message: 'business days only must be true or false', codigo: 'gatilho_dias_uteis_invalido' })
     }
+  } else if (triggerType === GATILHO_DO_ATLAS) {
+    // NOSSO (1073): "Situação mudou no Atlas". As situações são obrigatórias
+    // (sem elas nada dispara) e da lista do contrato; o FUNIL também — o
+    // disparo leva sempre o card do evento, e sem funil não há card
+    // (decisão do operador, 30/09/2026).
+    const sit = cfg.situacoes
+    if (!Array.isArray(sit) || sit.length === 0) {
+      issues.push({ path: 'trigger.situacoes', message: 'choose at least one Atlas status', codigo: 'gatilho_atlas_sem_situacao' })
+    } else if (sit.some((v) => typeof v !== 'string' || !(SITUACOES_DO_GATILHO as readonly string[]).includes(v))) {
+      issues.push({ path: 'trigger.situacoes', message: `Atlas status must be one of: ${SITUACOES_DO_GATILHO.join(', ')}`, codigo: 'gatilho_atlas_situacao_invalida' })
+    }
+    const funis = cfg.pipeline_ids
+    if (!Array.isArray(funis) || funis.length === 0 || funis.some((v) => !nonEmpty(v))) {
+      issues.push({ path: 'trigger.pipeline_ids', message: 'choose at least one pipeline where the client card must be', codigo: 'gatilho_atlas_sem_funil' })
+    }
   } else if (triggerType === 'deal_status_changed') {
     const st = cfg.statuses
     if (st != null && !Array.isArray(st)) {
@@ -804,6 +821,40 @@ export function validateAsaasReguaForActivation(
   if (!temMensagem) {
     issues.push({ path: 'steps', message: 'the Asaas collection sequence needs a text message step (send_message)', codigo: 'regua_sem_mensagem' })
   }
+  return issues
+}
+
+/**
+ * NOSSO (1073) — a regra a MAIS da "Situação mudou no Atlas": nenhum
+ * "Criar cliente no Atlas", em nenhum escopo. O Atlas manda na situação
+ * (D2): reativar por reflexo de uma mudança feita lá desfaria a decisão da
+ * equipe, e a reativação viraria outra mudança lida no ciclo seguinte.
+ * ⚠️ Nem "Acionar automação" (como a régua, `regua_aciona_outra`): a filha
+ * roda com o contato do evento e pode ter o "Criar cliente" — e ganhá-lo
+ * DEPOIS de esta ser ligada, validada só pelo gatilho dela.
+ */
+export function validateAtlasSituacaoForActivation(
+  triggerType: AutomationTriggerType | string,
+  steps: StepLike[],
+): ValidationIssue[] {
+  const issues: ValidationIssue[] = []
+  if (triggerType !== GATILHO_DO_ATLAS) return issues
+  const visitar = (lista: StepLike[], prefixo: string) => {
+    lista.forEach((s, i) => {
+      const path = `${prefixo}steps[${i}]`
+      if (s.step_type === 'atlas_criar_cliente') {
+        issues.push({ path: `${path}.step_type`, message: 'an automation triggered by an Atlas status change cannot create or reactivate the client in Atlas', codigo: 'atlas_gatilho_com_criar_cliente' })
+      }
+      if (s.step_type === 'run_automation') {
+        issues.push({ path: `${path}.step_type`, message: 'an automation triggered by an Atlas status change cannot run another automation', codigo: 'atlas_gatilho_aciona_outra' })
+      }
+      if (s.step_type === 'condition' && s.branches) {
+        if (s.branches.yes) visitar(s.branches.yes, `${path}.yes.`)
+        if (s.branches.no) visitar(s.branches.no, `${path}.no.`)
+      }
+    })
+  }
+  visitar(Array.isArray(steps) ? steps : [], '')
   return issues
 }
 

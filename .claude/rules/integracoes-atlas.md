@@ -3,6 +3,7 @@ paths:
   - "src/lib/atlas/**"
   - "src/app/api/cb/atlas/**"
   - "src/components/settings/atlas-card*"
+  - "src/components/automations/atlas-trigger-config*"
   - "src/app/api/cb/asaas/cron/**"
   - "supabase/migrations/10*_cb_atlas*.sql"
   - "supabase/migrations/atlas-10*.test.ts"
@@ -11,8 +12,9 @@ paths:
 # Integração com o Atlas Gestor — regras
 
 Vale no cliente da API do Atlas (`src/lib/atlas/`), no cartão "Atlas" de
-Integrações, no passo de automação "Criar cliente no Atlas" e na leitura
-periódica das situações (Fase 2). Plano, fases e decisões do operador:
+Integrações, no passo de automação "Criar cliente no Atlas", na leitura
+periódica das situações (Fase 2) e no gatilho "Situação mudou no Atlas"
+(Fase 4). Plano, fases e decisões do operador:
 `docs/PLANO-integracao-atlas.md`. O motor e o construtor:
 `.claude/rules/automacoes.md`.
 
@@ -215,3 +217,46 @@ periódica das situações (Fase 2). Plano, fases e decisões do operador:
   na receita de fusão (`.claude/rules/supabase.md`), como as recusas
   (CASCADE). O passo grava `crm_escreveu_em` ao criar e ao reativar; o 23505
   do MESMO par (a leitura ligou antes) é o mesmo vínculo.
+
+### O gatilho "Situação mudou no Atlas" (1073, Fase 4)
+
+`atlas_situacao_mudou`: `gatilho.ts` (puro), `mudancas.ts` (o disparo), a
+fila `cb_atlas_mudancas` (FECHADA, sem `contact_id`: fora da receita de
+fusão) e `atlas-trigger-config.tsx`. Decisões do operador (30/09): funil
+OBRIGATÓRIO; card fora do funil não é mexido (`sem_card`); SEM trava de
+"ficha velha" nem de 48 h (nem no CHECK).
+
+- ⚠️⚠️ **Só a decisão `mudou` vira evento** (`viraEvento`): nunca a primeira
+  leitura, o vínculo novo (nasce com a situação), `importado → ativo`,
+  `em_negociacao` (vale `ativo`), a correção nem a mudança sem data. A
+  `mudou` entra na fila ANTES da escrita do vínculo (`gravarDecisao`, também
+  na conferência da lixeira); 23505 = já registrada (a sobreposição); a
+  cerca de recência que recusa a escrita marca `superada` (só `pendente`).
+- ⚠️⚠️ **Dispara DEPOIS do fechamento do ciclo** (cadeado da leitura solto),
+  pelo `rodarCicloDoAtlas` e pelo "Ler agora", com reivindicação PRÓPRIA
+  (`pendente → processando`, cercada pelo estado E por `tentativas`) e
+  janela própria de 15 s (a leitura longa gasta o prazo dela). Relê o
+  vínculo (ambiente, escritório): sumiu, ficha nula, data mais nova ou outra
+  situação = `superada`. Data nula ou mais velha: ainda na situação ANTERIOR
+  = a escrita não chegou, volta SEM gastar tentativa; outra = `superada`.
+  Decide o dado, NUNCA o relógio: trava de idade poria `feito` na chave, e a
+  página relida não enfileiraria de novo. As nunca tentadas vêm primeiro
+  (`processando_desde`): a espera não trava a fila.
+- ⚠️⚠️ **Cards e conversa lidos UMA vez, ANTES de disparar qualquer
+  automação** (a união dos funis das que casam; a conversa por consulta
+  própria — `conversaDoContato` do ZapSign engole o erro). Falha aqui =
+  `pendente` (teto 3 → `falhou`). Depois do primeiro disparo nunca volta
+  (CLAUDE.md 8e); só "nada rodou e o motor recusou antes" volta.
+  `processando` há 10 min = `falhou`, nunca repete.
+- **Por automação**: o ÚNICO card do contato nos funis dela, em qualquer
+  status (a RPC move o ganho com `deal_status_fixado`); nenhum = `sem_card`,
+  mais de um = `card_ambiguo`. O disparo carimba `automation_id`
+  (`soRodaPeloDisparador`: só ela casa; botão, agente, `run_automation` e a
+  rota manual recusam). `negocioAlvo` não muda. "Aguardar" não reconfere a
+  situação (a ajuda manda mover antes). Quem voltou pelo Comercial: marcar
+  os dois funis.
+- `validate.ts`: situações da lista do contrato e funil obrigatórios; recusa
+  "Criar cliente no Atlas" e "Acionar automação" (a filha driblaria) na
+  automação deste gatilho (D2). Variáveis
+  `{{vars.atlas_*}}` saem de `variaveisDaMudanca` (sem dado pessoal). O
+  cartão mostra as 20 últimas mudanças com o resultado traduzido.

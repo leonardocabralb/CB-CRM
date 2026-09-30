@@ -39,6 +39,7 @@ import { resolveEngineChannelPreferring } from '@/lib/cb-channels/engine-send';
 import { ehWhatsApp } from '@/lib/cb-channels/transporte';
 import { alvoDeEnvio } from '@/lib/whatsapp/alvo-de-envio';
 import { ehGatilhoDaRegua, PASSOS_QUE_FALAM_COM_O_CONTATO } from '@/lib/asaas/regua';
+import { GATILHO_DO_ATLAS, soRodaPeloDisparador } from './so-pelo-disparador';
 
 /**
  * Os passos que calam o agente de IA quando rodam por causa da mensagem do
@@ -799,10 +800,15 @@ export async function runAutomationById(args: {
   // pagamento, trava o marco e monta as `{{vars.*}}`. Por aqui — o botão
   // "Executar automação" e o passo `run_automation` — ela sairia com "Olá, !
   // Consta em aberto:" e sem trava, para quem talvez já pagou.
-  if (ehGatilhoDaRegua(alvo.trigger_type)) {
+  // NOSSO (1073): a "Situação mudou no Atlas" também — sem o card do evento,
+  // `negocioAlvo` moveria o aberto mais recente, de qualquer funil.
+  if (soRodaPeloDisparador(alvo.trigger_type)) {
     return {
       ok: false,
-      detail: 'a régua de cobrança do Asaas só roda pela varredura do Asaas',
+      detail:
+        alvo.trigger_type === GATILHO_DO_ATLAS
+          ? 'a automação "Situação mudou no Atlas" só roda pela leitura do Atlas'
+          : 'a régua de cobrança do Asaas só roda pela varredura do Asaas',
     };
   }
 
@@ -3173,7 +3179,9 @@ export function triggerMatches(
   // lembrete por data — o "aconteceu?" é decidido pela varredura, fora do
   // motor, e o dispatch por tipo abriria o leque (a de 5 dias sairia junto
   // com a de 1). Disparo manual sem `automation_id` não roda nenhuma.
-  if (ehGatilhoDaRegua(automation.trigger_type)) {
+  // NOSSO (1073): a "Situação mudou no Atlas" também — a leitura casa a
+  // situação e escolhe o card POR automação (cada uma nomeia os SEUS funis).
+  if (soRodaPeloDisparador(automation.trigger_type)) {
     return ctx?.automation_id === automation.id;
   }
 
