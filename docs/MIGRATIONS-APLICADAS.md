@@ -1126,6 +1126,20 @@ nome da época em que foram aplicadas.
   1073 em produção" do operador. Conferida no catálogo: RLS ligada, nenhuma
   policy, `anon`/`authenticated` sem SELECT, `service_role` com escrita; a
   tabela vazia.
+- **1074_cb_tarefas_recorrentes** — tarefa recorrente pelo calendário:
+  `cb_tasks.repetir_a_cada_dias` (CHECK 1, 2, 5, 7, 15, 30), `serie_id` e
+  `proxima_gerada_em`; índice único "uma ativa por série" e o das irmãs;
+  `cb_tarefas_recorrentes_gerar(date, integer)`, só `service_role`. PR #366.
+  ADITIVA e ANTES do deploy. Aplicada em 30/09/2026 pela Management API
+  (histórico `20260930203904`), depois do replay verde do CI no commit
+  `e08e6ce6` e ANTES do merge, com o "pode gravar" do operador para o teste
+  em produção. A conferência chamou a função com uma tarefa real e desfez
+  (nenhuma linha ficou com recorrência). Conferida no catálogo: as 3 colunas,
+  os 2 CHECKs, os 2 índices, EXECUTE só do `service_role`; 21 tarefas
+  intactas. E2E no preview, no lead de teste: criada diária vencida ontem →
+  a geração criou a de hoje (não lida, aviso no sino) e não duplicou na 2ª
+  rodada; editar para 7 dias mudou as duas; apagar a ativa encerrou a série;
+  limpeza conferida (0 tarefas e 0 avisos de teste).
 
 ## Notas do histórico
 
