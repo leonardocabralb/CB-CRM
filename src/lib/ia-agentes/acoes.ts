@@ -35,6 +35,7 @@ import { paraInstante } from '@/lib/agenda/fuso'
 import { FUSO_DO_ESCRITORIO, instanteCanonico, TIPO_DATA } from '@/lib/contacts/campo-data'
 import { opcoesDoCampo } from '@/lib/contacts/campo-opcoes'
 import { ESPELHO_DO_EMAIL } from '@/lib/contacts/email-espelhado'
+import { ehPassoDoAtlas } from '@/lib/atlas/passos-do-atlas'
 import type { CustomField } from '@/types'
 
 import { TIPOS_DE_ACAO, type TipoDeAcao } from './agente'
@@ -859,7 +860,12 @@ export function equipePrometida(texto: string): boolean {
 export type MotivoForaDaD5 =
   | 'send_to_number'
   | 'send_webhook'
-  /** "Criar cliente no Atlas": manda os dados do cliente para outro sistema, como o webhook. */
+  /**
+   * O nó "Atlas" — as cinco ações (criar e atualizar cliente, tarefa,
+   * transcrição, onboarding): mandam dados do cliente para outro sistema,
+   * como o webhook. O código é o do "Criar cliente" (registros antigos
+   * continuam legíveis; a frase serve às cinco).
+   */
   | 'atlas_criar_cliente'
   | 'status_de_resultado'
   | 'etapa_de_resultado'
@@ -894,8 +900,8 @@ function texto(v: unknown): string | null {
 }
 
 /**
- * O passo sai da D5? Mensagem para outro número, webhook de saída, criar
- * cliente no Atlas (dado do cliente indo a outro sistema), ganho ou
+ * O passo sai da D5? Mensagem para outro número, webhook de saída, qualquer
+ * passo do nó Atlas (dado do cliente indo a outro sistema), ganho ou
  * perdido (pelo status ou por etapa com resultado — mover para ela ou criar
  * o card nela), iniciar robô (o `run_flow` não carrega origem nem contexto)
  * e preencher campo de data vigiado por lembrete (o cron dispararia aquela
@@ -903,13 +909,15 @@ function texto(v: unknown): string | null {
  * (`motivoForaDaD5`).
  */
 export function motivoDoPasso(p: PassoDaAutomacao, regua: ReguaDaD5): MotivoForaDaD5 | null {
+  // ⚠️ TODO passo do nó Atlas (`ehPassoDoAtlas`), não só o "Criar cliente":
+  // sem isto o `default: null` deixaria o agente executar automação que
+  // escreve no Atlas.
+  if (ehPassoDoAtlas(p.tipo)) return 'atlas_criar_cliente'
   switch (p.tipo) {
     case 'send_to_number':
       return 'send_to_number'
     case 'send_webhook':
       return 'send_webhook'
-    case 'atlas_criar_cliente':
-      return 'atlas_criar_cliente'
     case 'run_flow':
       return 'run_flow'
     case 'set_deal_status':

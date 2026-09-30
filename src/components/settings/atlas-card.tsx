@@ -54,6 +54,11 @@ export const CODIGOS_CONHECIDOS = [
   "fora_do_ar",
   "rede",
   "resposta_inesperada",
+  // O nó Atlas das automações (30/09/2026): nunca chegam ao `last_error`
+  // (não marcam a conexão), mas a lista da tela é fechada sobre o tipo.
+  "ambiguo",
+  "sem_admin",
+  "item_nao_encontrado",
   "atlas_error",
   "db_error",
   "nao_conectado",
@@ -70,11 +75,21 @@ export const CODIGOS_CONHECIDOS = [
 ] as const;
 
 /**
- * As permissões do Atlas que o passo usa. O texto de cada uma é o rótulo que
- * a tela do Atlas mostra (só em português: no `en.json`, o rótulo vai com a
- * tradução ao lado, como os rótulos do painel da Meta).
+ * As permissões do Atlas que os passos usam. O texto de cada uma é o rótulo
+ * que a tela do Atlas mostra (só em português: no `en.json`, o rótulo vai com
+ * a tradução ao lado, como os rótulos do painel da Meta). As três últimas são
+ * OPCIONAIS (`PERMISSOES_OPCIONAIS`, o nó Atlas): conectar não as exige, e o
+ * rótulo delas na tela do Atlas ainda não foi conferido — o texto é o que
+ * fazem mais o nome técnico (`DESCRICAO_DA_PERMISSAO_OPCIONAL`).
  */
-export const PERMISSOES_CONHECIDAS = ["read_client", "create_client", "update_client"] as const;
+export const PERMISSOES_CONHECIDAS = [
+  "read_client",
+  "create_client",
+  "update_client",
+  "create_task",
+  "create_transcript",
+  "update_onboarding",
+] as const;
 
 const CODIGOS = new Set<string>(CODIGOS_CONHECIDOS);
 const RESULTADOS = new Set<string>(RESULTADOS_DA_MUDANCA);
@@ -284,6 +299,7 @@ export function AtlasCard() {
                   />
                   <p className="text-xs text-muted-foreground">{t("atlas.chaveDica")}</p>
                   <p className="text-xs text-muted-foreground">{t("atlas.permissoesDica")}</p>
+                  <p className="text-xs text-muted-foreground">{t("atlas.permissoesOpcionaisDica")}</p>
                 </div>
                 {erro && <p className="text-xs text-destructive">{t("falha", { motivo: erro })}</p>}
                 <div className="flex flex-wrap gap-2">
@@ -317,6 +333,10 @@ export function AtlasCard() {
               </div>
               {cartao.erro && <p className="text-xs text-destructive">{t("falha", { motivo: motivo(cartao.erro) })}</p>}
               <p className="max-w-[62ch] text-xs text-muted-foreground">{t("atlas.comoFunciona")}</p>
+              {/* O nó Atlas das automações: as opcionais não são conferidas
+                  aqui (o cartão não guarda o `whoami`) — desligadas, só o
+                  passo que as usa falha, com o nome dela no motivo. */}
+              <p className="max-w-[62ch] text-xs text-muted-foreground">{t("atlas.permissoesOpcionaisDica")}</p>
               {cartao.leitura && (
                 <LeituraDasSituacoes
                   leitura={cartao.leitura}

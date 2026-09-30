@@ -35,6 +35,12 @@ export type CodigoDoErroAtlas =
   | "rede"
   /** Resposta 2xx sem o que se esperava (corpo que não é JSON, sem o id): pode ter gravado. */
   | "resposta_inesperada"
+  /** Nó Atlas: mais de um item do checklist com o mesmo texto (`ambiguous`, 422). */
+  | "ambiguo"
+  /** Nó Atlas: o escritório não tem admin ativo para receber a tarefa (`no_active_admin`, 422). */
+  | "sem_admin"
+  /** Nó Atlas: o checklist do cliente não tem o item pedido (o 404 COM a lista vigente). */
+  | "item_nao_encontrado"
   | "atlas_error";
 
 export class AtlasError extends Error {
@@ -45,7 +51,7 @@ export class AtlasError extends Error {
     public readonly status: number | null = null,
     /** Com `sem_permissao`: qual permissão do Atlas está desligada. */
     public readonly permissao: string | null = null,
-    detalhe: { codigoDoAtlas?: string | null; campos?: string[]; apiAntiga?: boolean; esperaSegundos?: number | null } = {},
+    detalhe: { codigoDoAtlas?: string | null; campos?: string[]; apiAntiga?: boolean; esperaSegundos?: number | null; comListaDeItens?: boolean } = {},
   ) {
     super(mensagem);
     this.name = "AtlasError";
@@ -53,7 +59,16 @@ export class AtlasError extends Error {
     this.campos = detalhe.campos ?? [];
     this.apiAntiga = detalhe.apiAntiga === true;
     this.esperaSegundos = detalhe.esperaSegundos ?? null;
+    this.comListaDeItens = detalhe.comListaDeItens === true;
   }
+
+  /**
+   * O corpo do erro trazia a lista `items` (o 404 do `update_onboarding_item`
+   * quando o ITEM não existe — a edge devolve o checklist vigente). Só o
+   * marcador: a lista nunca vai à mensagem nem a log. Quem decide o que ele
+   * significa é `atualizarItemDoOnboarding`, nunca o `pedir` genérico.
+   */
+  public readonly comListaDeItens: boolean;
 
   /** O `code` cru do Atlas (nunca vai à tela). */
   public readonly codigoDoAtlas: string | null;
@@ -111,6 +126,10 @@ export function codigoDoErro(status: number, codigoDoAtlas: string | null): Codi
       return "acao_desconhecida";
     case "service_unavailable":
       return "fora_do_ar";
+    case "ambiguous":
+      return "ambiguo";
+    case "no_active_admin":
+      return "sem_admin";
   }
   if (status === 401 || status === 403) return "chave_invalida";
   // ⚠️ 404 SEM o `not_found` do Atlas não é "cliente apagado": é o gateway
@@ -174,6 +193,8 @@ export interface DadosDoClienteNoAtlas {
   chatLink?: string | null;
   notes?: string | null;
   status?: string | null;
+  /** CPF ou CNPJ (o Atlas grava só os dígitos). Só o "Atualizar cliente" do nó Atlas manda. */
+  docId?: string | null;
 }
 
 export interface CriteriosDeBusca {
@@ -228,6 +249,45 @@ export interface ClienteAtlas {
   negociacoes(clientId: string): Promise<NegociacoesDoAtlas>;
   criar(dados: DadosDoClienteNoAtlas, chaveDeIdempotencia: string): Promise<ClienteDoAtlas>;
   atualizar(id: string, dados: DadosDoClienteNoAtlas, chaveDeIdempotencia: string): Promise<ClienteDoAtlas>;
+}
+
+/**
+ * As escritas do nó "Atlas" (30/09/2026), fora de `ClienteAtlas` de
+ * propósito: o "Criar cliente" (em produção) e a leitura não mudam, e os
+ * dublês deles continuam valendo. Todas mandam `Idempotency-Key`; 2xx sem o
+ * que se esperava é `resposta_inesperada` (pode ter gravado).
+ */
+export interface AcoesNoAtlas {
+  /**
+   * `update_client` com os campos do "Atualizar cliente". Irmão do
+   * `atualizar` (o da reativação, intocado): devolve também a situação
+   * ANTERIOR (`statusChange.from`), que só entra quando o Atlas a manda.
+   */
+  atualizarCliente(
+    id: string,
+    dados: DadosDoClienteNoAtlas,
+    chaveDeIdempotencia: string,
+  ): Promise<{ id: string; appUrl: string | null; situacaoAnterior?: string | null }>;
+  /** `create_task` (permissão `create_task`, opcional). */
+  criarTarefa(
+    dados: { title: string; description?: string; priority?: "normal" | "urgent"; dueDate?: string; clientId?: string },
+    chaveDeIdempotencia: string,
+  ): Promise<{ taskId: string }>;
+  /** `create_transcript` (permissão `create_transcript`, opcional): deposita, nunca analisa. */
+  enviarTranscricao(
+    dados: { clientId: string; transcript: string; notes?: string },
+    chaveDeIdempotencia: string,
+  ): Promise<{ transcriptId: string }>;
+  /**
+   * `update_onboarding_item` (permissão `update_onboarding`, opcional), pelo
+   * TEXTO do item. ⚠️ O 404 com a lista vigente (`comListaDeItens`) é o ITEM
+   * que não existe → `item_nao_encontrado`, nunca a lixeira; o 404 SEM a
+   * lista segue pelo código (`not_found` = lixeira).
+   */
+  atualizarItemDoOnboarding(
+    dados: { clientId: string; text: string; status?: string; observation?: string },
+    chaveDeIdempotencia: string,
+  ): Promise<{ status: string | null }>;
 }
 
 type Fetch = typeof fetch;
@@ -311,6 +371,16 @@ const CAMPOS_ENVIADOS = new Set([
   "statusChangedSince",
   "cursor",
   "limit",
+  // Nó Atlas (30/09/2026).
+  "docId",
+  "title",
+  "description",
+  "priority",
+  "dueDate",
+  "transcript",
+  "observation",
+  "text",
+  "itemId",
 ]);
 
 function camposRecusados(v: unknown): string[] {
@@ -341,7 +411,14 @@ export function lerIdentidade(v: unknown): IdentidadeNoAtlas {
 }
 
 /** ⚠️ Recebe o texto JÁ sem a chave: o corte de 300 viria antes e deixaria um pedaço dela. */
-function lerErro(texto: string): { codigo: string | null; mensagem: string; permissao: string | null; campos: string[]; esperaSegundos: number | null } {
+function lerErro(texto: string): {
+  codigo: string | null;
+  mensagem: string;
+  permissao: string | null;
+  campos: string[];
+  esperaSegundos: number | null;
+  comListaDeItens: boolean;
+} {
   try {
     const j: unknown = JSON.parse(texto);
     if (ehObjeto(j)) {
@@ -351,15 +428,17 @@ function lerErro(texto: string): { codigo: string | null; mensagem: string; perm
         permissao: typeof j.permission === "string" ? j.permission : null,
         campos: camposRecusados(j.fields),
         esperaSegundos: segundosOuNulo(j.retry_after_seconds),
+        // Só o marcador; a lista (textos do checklist) nunca sai daqui.
+        comListaDeItens: Array.isArray(j.items),
       };
     }
   } catch {
     /* não é JSON: vai o texto */
   }
-  return { codigo: null, mensagem: texto.slice(0, 300), permissao: null, campos: [], esperaSegundos: null };
+  return { codigo: null, mensagem: texto.slice(0, 300), permissao: null, campos: [], esperaSegundos: null, comListaDeItens: false };
 }
 
-export function criarClienteAtlas(chave: string, fetchFn: Fetch = fetch, url: string = urlDaApiDoAtlas()): ClienteAtlas {
+export function criarClienteAtlas(chave: string, fetchFn: Fetch = fetch, url: string = urlDaApiDoAtlas()): ClienteAtlas & AcoesNoAtlas {
   const limpar = (texto: string) => semSegredo(texto, chave);
 
   async function pedir(action: string, data: Record<string, unknown>, chaveDeIdempotencia?: string): Promise<unknown> {
@@ -393,6 +472,7 @@ export function criarClienteAtlas(chave: string, fetchFn: Fetch = fetch, url: st
           codigoDoAtlas: erro.codigo,
           campos: erro.campos,
           esperaSegundos: erro.esperaSegundos ?? segundosOuNulo(resposta.headers.get("retry-after")),
+          comListaDeItens: erro.comListaDeItens,
         },
       );
     }
@@ -480,6 +560,52 @@ export function criarClienteAtlas(chave: string, fetchFn: Fetch = fetch, url: st
         status: typeof dados.status === "string" ? dados.status : null,
         appUrl: ehObjeto(corpo) ? (textoOuNulo(corpo.appUrl) ?? textoOuNulo(corpo.app_url)) : null,
       };
+    },
+
+    async atualizarCliente(id, dados, chaveDeIdempotencia) {
+      const corpo = await pedir("update_client", { id, ...dados }, chaveDeIdempotencia);
+      // 2xx sem `success: true` não prova a escrita (a edge sempre o manda).
+      if (!ehObjeto(corpo) || corpo.success !== true) throw new AtlasError("resposta_inesperada", "update_client → resposta sem `success`");
+      const mudanca = ehObjeto(corpo.statusChange) ? corpo.statusChange : null;
+      return {
+        id,
+        appUrl: textoOuNulo(corpo.appUrl) ?? textoOuNulo(corpo.app_url),
+        ...(mudanca && "from" in mudanca ? { situacaoAnterior: textoOuNulo(mudanca.from) } : {}),
+      };
+    },
+
+    async criarTarefa(dados, chaveDeIdempotencia) {
+      const corpo = await pedir("create_task", { ...dados }, chaveDeIdempotencia);
+      const taskId = ehObjeto(corpo) ? textoOuNulo(corpo.taskId) : null;
+      if (!taskId) throw new AtlasError("resposta_inesperada", "create_task → resposta sem `taskId`");
+      return { taskId };
+    },
+
+    async enviarTranscricao(dados, chaveDeIdempotencia) {
+      const corpo = await pedir("create_transcript", { ...dados }, chaveDeIdempotencia);
+      const transcriptId = ehObjeto(corpo) ? textoOuNulo(corpo.transcriptId) : null;
+      if (!transcriptId) throw new AtlasError("resposta_inesperada", "create_transcript → resposta sem `transcriptId`");
+      return { transcriptId };
+    },
+
+    async atualizarItemDoOnboarding(dados, chaveDeIdempotencia) {
+      let corpo: unknown;
+      try {
+        corpo = await pedir("update_onboarding_item", { ...dados }, chaveDeIdempotencia);
+      } catch (e) {
+        // O ITEM que não existe vem 404 com a lista vigente (com ou sem
+        // `code`): nunca é o cliente na lixeira.
+        if (e instanceof AtlasError && e.status === 404 && e.comListaDeItens) {
+          throw new AtlasError("item_nao_encontrado", "update_onboarding_item → 404: item não encontrado no checklist", 404, null, {
+            codigoDoAtlas: e.codigoDoAtlas,
+          });
+        }
+        throw e;
+      }
+      if (!ehObjeto(corpo) || corpo.success !== true) {
+        throw new AtlasError("resposta_inesperada", "update_onboarding_item → resposta sem `success`");
+      }
+      return { status: ehObjeto(corpo.item) ? textoOuNulo(corpo.item.status) : null };
     },
   };
 }

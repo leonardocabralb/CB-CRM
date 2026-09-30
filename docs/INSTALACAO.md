@@ -670,6 +670,24 @@ roda quando a situação de um cliente vinculado MUDA (nunca na primeira
 leitura): escolha as situações e os funis onde o card do cliente precisa
 estar — sem card nesses funis, nada roda. O cartão **Atlas** mostra as
 últimas mudanças e o que as automações fizeram.
+No construtor de automações, o **Atlas** é um nó só (uma entrada no menu de
+adicionar), com um seletor de **Ação**: **Criar cliente** (o de cima),
+**Atualizar cliente** (situação, tipo e valor do contrato, datas, link da
+conversa, telefone, e-mail e CPF/CNPJ — só o que foi escolhido e está
+preenchido na ficha; nada no Atlas é apagado), **Criar tarefa** (vai para o
+administrador mais antigo do escritório no Atlas; sem a ficha ligada ao
+Atlas, nasce sem cliente; com o cadastro ligado marcado na lixeira do Atlas,
+o passo falha sem enviar — restaure lá e use **Conferir no Atlas** na aba
+Atlas), **Enviar transcrição de reunião** (a mais recente
+do cliente, do tl;dv ou colada na aba Reuniões, para o Diagnóstico) e
+**Atualizar item do onboarding** (pelo texto do item do checklist). As três
+últimas pedem permissões **opcionais** no Atlas — as de criar tarefas
+(`create_task`), criar transcrições (`create_transcript`) e atualizar o
+onboarding (`update_onboarding`): desligadas, só o passo que as usa
+falha, com o motivo, e a conexão continua valendo. Atualizar, transcrição e
+onboarding precisam da ficha ligada ao Atlas (rode antes o **Criar cliente**
+ou vincule na aba Atlas). Nenhuma ação repete sozinha; rodar de novo a tarefa
+ou a transcrição cria outra no Atlas.
 
 **tl;dv** (transcrições de reunião na ficha): a API só existe nos planos
 **Pro e Business**, e só sai pela API a reunião de quem a ORGANIZOU com um

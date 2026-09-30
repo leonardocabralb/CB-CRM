@@ -43,7 +43,7 @@ const citam = [...fontes(SRC)]
 describe("AMBIENTE em toda linha do Atlas (1072)", () => {
   it("a varredura acha quem cita as tabelas (senão o pino passaria vazio)", () => {
     expect(citam.map((f) => f.nome)).toEqual(
-      expect.arrayContaining(["lib/atlas/criar-cliente.ts", "lib/atlas/situacoes.ts", "lib/atlas/conexao.ts", "lib/atlas/mudancas.ts", "app/api/cb/atlas/route.ts"]),
+      expect.arrayContaining(["lib/atlas/criar-cliente.ts", "lib/atlas/acoes.ts", "lib/atlas/situacoes.ts", "lib/atlas/conexao.ts", "lib/atlas/mudancas.ts", "app/api/cb/atlas/route.ts"]),
     );
   });
 

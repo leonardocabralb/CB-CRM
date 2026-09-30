@@ -265,6 +265,19 @@ export const CODIGOS_DE_PENDENCIA = [
   'fixar_sem_conexao',
   'atlas_tipo_de_contrato_invalido',
   'atlas_campo_invalido',
+  // O nó "Atlas" (30/09/2026)
+  'atlas_situacao_invalida',
+  'atlas_atualizar_sem_campos',
+  'atlas_tarefa_sem_titulo',
+  'atlas_tarefa_prioridade_invalida',
+  'atlas_tarefa_prazo_invalido',
+  'atlas_transcricao_idade_invalida',
+  'atlas_transcricao_notas_invalido',
+  'atlas_transcricao_email_invalido',
+  'atlas_onboarding_sem_item',
+  'atlas_onboarding_item_com_variavel',
+  'atlas_onboarding_situacao_invalida',
+  'atlas_onboarding_sem_mudanca',
   'passo_desconhecido',
   // Gatilho
   'gatilho_sem_palavras',
@@ -288,6 +301,7 @@ export const CODIGOS_DE_PENDENCIA = [
   'gatilho_atlas_situacao_invalida',
   'gatilho_atlas_sem_funil',
   'atlas_gatilho_com_criar_cliente',
+  'atlas_gatilho_com_atualizar_cliente',
   'atlas_gatilho_aciona_outra',
   // Régua de cobrança do Asaas
   'regua_com_espera',

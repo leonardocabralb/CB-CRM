@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import type { AutomationStepType } from '@/types'
 import { describe, expect, it } from 'vitest'
+import { createTranslator } from 'next-intl'
 
 import { descreverPasso } from './descrever-passo'
 
@@ -235,7 +236,8 @@ const TODOS_OS_TIPOS: Record<AutomationStepType, true> = {
   run_flow: true, stop_flow: true, set_ai: true, send_media: true,
   wait: true, condition: true, send_webhook: true, close_conversation: true,
   send_to_number: true, create_task: true, pin_conversation_channel: true,
-  atlas_criar_cliente: true,
+  atlas_criar_cliente: true, atlas_atualizar_cliente: true, atlas_criar_tarefa: true,
+  atlas_enviar_transcricao: true, atlas_atualizar_onboarding: true,
 }
 const TIPOS_DE_PASSO = Object.keys(TODOS_OS_TIPOS) as AutomationStepType[]
 
@@ -275,12 +277,51 @@ const VARIANTES: Array<[string, Record<string, unknown>]> = [
   ['update_contact_field', { field: 'name' }],
   ['update_contact_field', { field: 'email' }],
   ['update_contact_field', { field: 'company' }],
+  // O nó Atlas: o "Atualizar cliente" leva a situação num ICU `select`
+  // (mesma chave; a variante é o valor).
+  ['atlas_atualizar_cliente', { situacao: 'finalizado' }],
+  ['atlas_atualizar_cliente', {}],
+  ['atlas_criar_tarefa', { titulo: 'Preparar a pasta' }],
+  ['atlas_atualizar_onboarding', { item: 'Comprovante de residência', situacao: 'done' }],
 ]
 
 function resumoDoDicionario(arquivo: string): Record<string, string> {
   const bruto = JSON.parse(readFileSync(`messages/${arquivo}`, 'utf8'))
   return bruto.Pipelines.automacoes.resumo
 }
+
+describe('descreverPasso — o nó Atlas', () => {
+  it('"Atualizar cliente" diz a situação que escreve; fora da lista (ou sem ela) cai no `other`', () => {
+    expect(descreverPasso(passo('atlas_atualizar_cliente', { situacao: 'rescindido' }))).toEqual({
+      chave: 'atlas_atualizar_cliente',
+      valores: { situacao: 'rescindido' },
+      alvoSumiu: false,
+    })
+    expect(descreverPasso(passo('atlas_atualizar_cliente', { situacao: 'em_negociacao' })).valores).toEqual({ situacao: 'nenhuma' })
+    expect(descreverPasso(passo('atlas_atualizar_cliente', {})).valores).toEqual({ situacao: 'nenhuma' })
+  })
+
+  it('tarefa pelo título e onboarding pelo item, cortados', () => {
+    expect(descreverPasso(passo('atlas_criar_tarefa', { titulo: 'Preparar a pasta de {{contact.name}}' })).valores.alvo).toBe(
+      'Preparar a pasta de {{contact.name}}',
+    )
+    expect(String(descreverPasso(passo('atlas_atualizar_onboarding', { item: 'x'.repeat(80) })).valores.alvo)).toHaveLength(40)
+  })
+
+  it.each(['pt-BR', 'en'])('o ICU do "Atualizar cliente" formata as seis situações e o vazio (%s)', (idioma) => {
+    const mensagens = JSON.parse(readFileSync(`messages/${idioma}.json`, 'utf8'))
+    const erros: string[] = []
+    const t = createTranslator({ locale: idioma, messages: mensagens, namespace: 'Pipelines.automacoes', onError: (e) => erros.push(e.message) })
+    const com = t('resumo.atlas_atualizar_cliente', { situacao: 'finalizado' })
+    const sem = t('resumo.atlas_atualizar_cliente', { situacao: 'nenhuma' })
+    expect(com.length).toBeGreaterThan(sem.length)
+    expect(sem).not.toMatch(/[{}]/)
+    for (const s of ['ativo', 'importado', 'finalizado', 'rescindido', 'inativo', 'suspenso']) {
+      expect(t('resumo.atlas_atualizar_cliente', { situacao: s })).not.toBe(sem)
+    }
+    expect(erros).toEqual([])
+  })
+})
 
 describe.each(['pt-BR.json', 'en.json'])('dicionário %s', (arquivo) => {
   const resumo = resumoDoDicionario(arquivo)

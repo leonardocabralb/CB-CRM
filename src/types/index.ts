@@ -1266,7 +1266,21 @@ export type AutomationStepType =
    * vincula o que está em curso) pela chave da CONTA — a Fase 0 de
    * docs/PLANO-integracao-atlas.md. Não fala com ninguém.
    */
-  | 'atlas_criar_cliente';
+  | 'atlas_criar_cliente'
+  /**
+   * O nó "Atlas" (30/09/2026): as outras ações de escrita da API do Atlas,
+   * uma `step_type` cada — a TELA as agrupa num nó só, com um seletor de
+   * ação (`src/lib/atlas/passos-do-atlas.ts`). Todas escrevem no cliente do
+   * VÍNCULO da ficha (a tarefa, opcionalmente). Não falam com ninguém.
+   */
+  /** Atualiza campos do cliente do Atlas ligado à ficha (nunca manda vazio). */
+  | 'atlas_atualizar_cliente'
+  /** Abre uma tarefa no Atlas (ligada ao cliente do vínculo, se houver). */
+  | 'atlas_criar_tarefa'
+  /** Deposita a transcrição mais recente da ficha no Diagnóstico do Atlas. */
+  | 'atlas_enviar_transcricao'
+  /** Muda um item do checklist de onboarding do cliente no Atlas. */
+  | 'atlas_atualizar_onboarding';
 
 export type AutomationLogStatus = 'success' | 'partial' | 'failed';
 
@@ -1849,6 +1863,66 @@ export interface AtlasCriarClienteStepConfig {
   campo_fechamento?: string | null;
 }
 
+/**
+ * "Atualizar cliente no Atlas" (nó Atlas). Cada escolha é OPCIONAL; ausente,
+ * nulo ou `false` = o campo não vai ao Atlas. ⚠️ O passo nunca manda nulo nem
+ * vazio (no `update_client`, `null` LIMPA o campo lá): fonte vazia na ficha
+ * fica fora do corpo. Booleanos ligam só com `true` (JSONB).
+ */
+export interface AtlasAtualizarClienteStepConfig {
+  /** Nulo/ausente = não muda a situação (o padrão: no CB o Atlas manda, D2). */
+  situacao?: SituacaoDoAtlas | null;
+  /** Nulo/ausente = não muda. */
+  tipo_de_contrato?: 'fixo' | 'mensal' | null;
+  /** `contractValue` = valor do card (`negocioAlvo`); sem card ou valor 0 = não muda. */
+  valor_do_card?: boolean;
+  /** `field_key` de campos de DATA da conta. */
+  campo_primeiro_contato?: string | null;
+  campo_proposta?: string | null;
+  campo_fechamento?: string | null;
+  /** `chatLink` = o link da conversa da execução. */
+  link_da_conversa?: boolean;
+  /** `phone`/`email` da ficha (só se válidos para o Atlas). */
+  telefone?: boolean;
+  email?: boolean;
+  /** `field_key` de um campo de TEXTO com CPF/CNPJ (`docId`). */
+  campo_documento?: string | null;
+}
+
+/** "Criar tarefa no Atlas" (nó Atlas). A tarefa vai ao admin mais antigo do escritório no Atlas. */
+export interface AtlasCriarTarefaStepConfig {
+  /** Com `{{…}}`. */
+  titulo: string;
+  /** Com `{{…}}`; vazia = uma frase com o nome da automação. */
+  descricao?: string;
+  /** Ausente = `normal`. */
+  prioridade?: 'normal' | 'urgent';
+  /** 0–365 = hoje + N dias no fuso do escritório; nulo = sem prazo. */
+  prazo_em_dias?: number | null;
+}
+
+/** "Enviar transcrição ao Atlas" (nó Atlas): a transcrição mais recente da ficha. */
+export interface AtlasEnviarTranscricaoStepConfig {
+  /** A reunião tem de ser das últimas N horas (1–720). Ausente = 72. */
+  idade_maxima_horas?: number;
+  /** Texto do operador que vai nas `notes`, com `{{…}}`. */
+  notas?: string;
+  /** Só `true` anexa as notas da reunião (IA do tl;dv); ausente = não. */
+  incluir_notas_da_reuniao?: boolean;
+  /** Só `true` aceita a reunião ligada à ficha pelo E-MAIL do convidado (casamento fraco). */
+  aceitar_vinculo_por_email?: boolean;
+}
+
+/** "Atualizar onboarding no Atlas" (nó Atlas): um item do checklist do cliente. */
+export interface AtlasAtualizarOnboardingStepConfig {
+  /** O texto do item como está no checklist do Atlas — LITERAL (é identidade). */
+  item: string;
+  /** Nulo/ausente = não muda a situação do item. */
+  situacao?: 'pending' | 'done' | 'blocked' | 'skipped' | null;
+  /** Com `{{…}}`; vazia depois de interpolar = não mexe na observação. */
+  observacao?: string | null;
+}
+
 export type AutomationStepConfig =
   | SendMessageStepConfig
   | SendButtonsStepConfig
@@ -1864,6 +1938,10 @@ export type AutomationStepConfig =
   | SetAiStepConfig
   | PinConversationChannelStepConfig
   | AtlasCriarClienteStepConfig
+  | AtlasAtualizarClienteStepConfig
+  | AtlasCriarTarefaStepConfig
+  | AtlasEnviarTranscricaoStepConfig
+  | AtlasAtualizarOnboardingStepConfig
   | SendMediaStepConfig
   | WaitStepConfig
   | ConditionStepConfig

@@ -625,6 +625,26 @@ vi.mock('@/lib/atlas/criar-cliente', async (original) => ({
   ...(await original<typeof import('@/lib/atlas/criar-cliente')>()),
   criarOuReativarNoAtlas: atlasMock.criarOuReativarNoAtlas,
 }));
+// O nó "Atlas" (30/09/2026): o I/O das quatro ações novas é testado em
+// `src/lib/atlas/acoes.test.ts`; aqui, a ENTRADA que o motor monta.
+const acoesMock = vi.hoisted(() => ({
+  atualizarClienteNoAtlas: vi.fn<(admin: unknown, entrada: Record<string, unknown>) => Promise<string>>(
+    async () => 'cliente atualizado no Atlas: tipo de contrato'
+  ),
+  criarTarefaNoAtlas: vi.fn<(admin: unknown, entrada: Record<string, unknown>) => Promise<string>>(
+    async () => 'tarefa criada no Atlas (pedida com o cliente ligado à ficha)'
+  ),
+  enviarTranscricaoAoAtlas: vi.fn<(admin: unknown, entrada: Record<string, unknown>) => Promise<string>>(
+    async () => 'transcrição enviada ao Atlas'
+  ),
+  atualizarOnboardingNoAtlas: vi.fn<(admin: unknown, entrada: Record<string, unknown>) => Promise<string>>(
+    async () => 'item atualizado no Atlas'
+  ),
+}));
+vi.mock('@/lib/atlas/acoes', async (original) => ({
+  ...(await original<typeof import('@/lib/atlas/acoes')>()),
+  ...acoesMock,
+}));
 
 import {
   dispararAutomacoes,
@@ -2266,6 +2286,206 @@ describe('atlas_criar_cliente — criar cliente no Atlas (Fase 0)', () => {
       context: {},
     });
     expect(atlasMock.criarOuReativarNoAtlas).not.toHaveBeenCalled();
+  });
+});
+
+describe('o nó Atlas (30/09/2026) — as quatro ações novas', () => {
+  const dataDe = (field_key: string, value: string, field_type = 'datetime') => ({
+    value,
+    custom_fields: { field_key, field_type, account_id: ACCOUNT },
+  });
+
+  function passoDoNo(step_type: string, step_config: Record<string, unknown>) {
+    return { id: 's-atlas', automation_id: 'a1', step_type, position: 0, parent_step_id: null, step_config };
+  }
+
+  async function rodar(step_type: string, step_config: Record<string, unknown>, context: Record<string, unknown> = {}) {
+    h.state.automations = [{ ...automationWithUpdateStep(), name: 'Contrato fechado' }];
+    h.state.steps = [passoDoNo(step_type, step_config)];
+    await runAutomationsForTrigger({ accountId: ACCOUNT, triggerType: 'new_message_received', contactId: 'c1', context });
+  }
+
+  const passos = () =>
+    h.state.logUpdates.flatMap((u) => (u.steps_executed as { status: string; detail?: string; step_type?: string }[] | undefined) ?? []);
+  const nenhumaAcao = () => Object.values(acoesMock).every((f) => f.mock.calls.length === 0);
+
+  beforeEach(() => {
+    for (const f of Object.values(acoesMock)) f.mockClear();
+    atlasMock.criarOuReativarNoAtlas.mockClear();
+    vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'https://crm.exemplo.com/');
+    h.state.owned = { id: 'c1', name: 'Ana Souza', phone: '5583999990000', email: 'ana@exemplo.com' };
+    h.state.esperasEnfileiradas = [];
+    h.state.catalogoDeCampos = [
+      { field_key: 'data_do_primeiro_contato', field_type: 'datetime' },
+      { field_key: 'data_da_proposta', field_type: 'datetime' },
+      { field_key: 'data_de_fechamento_do_contrato', field_type: 'datetime' },
+      { field_key: 'cpf', field_type: 'text' },
+    ];
+    h.state.erroNoCatalogoDeCampos = null;
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('PINO DE PRODUÇÃO: a config EXATA do "Contrato fechado" chama o "Criar cliente" de sempre, e nenhuma ação nova', async () => {
+    await rodar('atlas_criar_cliente', {
+      tipo_de_contrato: 'fixo',
+      campo_primeiro_contato: 'data_do_primeiro_contato',
+      campo_proposta: 'data_da_proposta',
+      campo_fechamento: 'data_de_fechamento_do_contrato',
+    });
+    expect(atlasMock.criarOuReativarNoAtlas).toHaveBeenCalledTimes(1);
+    expect(atlasMock.criarOuReativarNoAtlas.mock.calls[0][1]).toMatchObject({
+      chaveDeIdempotencia: 'log1:s-atlas',
+      tipoDeContrato: 'fixo',
+      datas: { primeiroContato: null, proposta: null, fechamento: null },
+    });
+    expect(nenhumaAcao()).toBe(true);
+  });
+
+  it('atualizar cliente: só o que foi ESCOLHIDO entra nas fontes, com os valores CRUS da ficha e a chave <logId>:<stepId>', async () => {
+    h.state.dealExistente = { id: 'd1', value: 4200, created_at: '2025-07-09T19:25:23.000Z' } as unknown as { id: string };
+    h.state.customValues = [dataDe('data_de_fechamento_do_contrato', '2026-09-29T02:10:00.000Z'), dataDe('cpf', '123.456.789-09', 'text')];
+    await rodar(
+      'atlas_atualizar_cliente',
+      {
+        situacao: 'finalizado',
+        tipo_de_contrato: 'mensal',
+        valor_do_card: true,
+        campo_fechamento: 'data_de_fechamento_do_contrato',
+        campo_proposta: 'data_da_proposta',
+        link_da_conversa: true,
+        telefone: true,
+        email: 'true',
+        campo_documento: 'cpf',
+      },
+      { conversation_id: 'conv1', deal_id: 'd1' }
+    );
+    expect(acoesMock.atualizarClienteNoAtlas).toHaveBeenCalledTimes(1);
+    expect(acoesMock.atualizarClienteNoAtlas.mock.calls[0][1]).toEqual({
+      accountId: ACCOUNT,
+      contactId: 'c1',
+      chaveDeIdempotencia: 'log1:s-atlas',
+      fontes: {
+        situacao: 'finalizado',
+        tipoDeContrato: 'mensal',
+        valorDoCard: 4200,
+        proposta: null,
+        fechamento: '2026-09-29T02:10:00.000Z',
+        linkDaConversa: 'https://crm.exemplo.com/inbox?c=conv1',
+        telefone: '5583999990000',
+        documento: '123.456.789-09',
+      },
+    });
+    expect(passos()).toContainEqual(
+      expect.objectContaining({ step_type: 'atlas_atualizar_cliente', status: 'success', detail: 'cliente atualizado no Atlas: tipo de contrato' })
+    );
+    // Não fala com o contato: nenhuma conversa criada.
+    expect(destinatarioMock.conversaDoContato).not.toHaveBeenCalled();
+  });
+
+  it('atualizar cliente: campo escolhido que sumiu do catálogo (ou de outro tipo) FALHA sem chamar', async () => {
+    await rodar('atlas_atualizar_cliente', { campo_documento: 'data_da_proposta' });
+    await rodar('atlas_atualizar_cliente', { campo_fechamento: 'cpf' });
+    await rodar('atlas_atualizar_cliente', { campo_proposta: 'campo_apagado' });
+    expect(acoesMock.atualizarClienteNoAtlas).not.toHaveBeenCalled();
+    expect(JSON.stringify(h.state.logUpdates)).toContain('(ou não é de texto)');
+    expect(JSON.stringify(h.state.logUpdates)).toContain('o campo de data \\"campo_apagado\\"');
+  });
+
+  it('atualizar cliente: leitura do CRM que falha (modo estrito) FALHA sem chamar', async () => {
+    h.state.erroNoNegocio = 'fora do ar';
+    await rodar('atlas_atualizar_cliente', { valor_do_card: true }, { deal_id: 'd1' });
+    h.state.erroNoNegocio = null;
+    h.state.erroNosValoresDoContato = 'fora do ar';
+    await rodar('atlas_atualizar_cliente', { telefone: true });
+    expect(acoesMock.atualizarClienteNoAtlas).not.toHaveBeenCalled();
+    expect(JSON.stringify(h.state.logUpdates)).toContain('a leitura dos dados do cliente no CRM falhou');
+  });
+
+  it('atualizar cliente: situação fora da lista FALHA antes de ler ou chamar', async () => {
+    await rodar('atlas_atualizar_cliente', { situacao: 'em_negociacao' });
+    expect(acoesMock.atualizarClienteNoAtlas).not.toHaveBeenCalled();
+    expect(JSON.stringify(h.state.logUpdates)).toContain('situação desconhecida');
+  });
+
+  it('criar tarefa: título e descrição INTERPOLADOS (modo mensagem), prioridade, prazo e o nome da automação', async () => {
+    h.state.dealExistente = { id: 'd1', value: 3500, created_at: '2025-07-09T19:25:23.000Z' } as unknown as { id: string };
+    await rodar(
+      'atlas_criar_tarefa',
+      { titulo: 'Preparar a pasta de {{contact.name}}', descricao: 'Valor: {{deal.value}}', prioridade: 'urgent', prazo_em_dias: null },
+      { deal_id: 'd1' }
+    );
+    const e = acoesMock.criarTarefaNoAtlas.mock.calls[0][1];
+    expect(e).toMatchObject({
+      chaveDeIdempotencia: 'log1:s-atlas',
+      titulo: 'Preparar a pasta de Ana Souza',
+      prioridade: 'urgent',
+      prazoEmDias: null,
+      nomeDaAutomacao: 'Contrato fechado',
+    });
+    expect(String(e.descricao)).toMatch(/^Valor: R\$\s?3\.500,00$/);
+  });
+
+  it('CRÍTICO: criar tarefa com leitura do contato que FALHA não manda "Preparar a pasta de " ao Atlas', async () => {
+    h.state.erroNosValoresDoContato = 'fora do ar';
+    await rodar('atlas_criar_tarefa', { titulo: 'Preparar a pasta de {{contact.name}}' });
+    expect(acoesMock.criarTarefaNoAtlas).not.toHaveBeenCalled();
+    expect(JSON.stringify(h.state.logUpdates)).toContain('criar tarefa no Atlas: a leitura dos dados do cliente no CRM falhou');
+  });
+
+  it('enviar transcrição: notas interpoladas, janela padrão 72 h e as caixas só com `true`', async () => {
+    await rodar('atlas_enviar_transcricao', { notas: 'Cliente {{contact.name}}', incluir_notas_da_reuniao: 'true' });
+    expect(acoesMock.enviarTranscricaoAoAtlas.mock.calls[0][1]).toMatchObject({
+      chaveDeIdempotencia: 'log1:s-atlas',
+      idadeMaximaHoras: 72,
+      notasDoOperador: 'Cliente Ana Souza',
+      incluirNotasDaReuniao: false,
+      aceitarVinculoPorEmail: false,
+    });
+    await rodar('atlas_enviar_transcricao', { idade_maxima_horas: 24, incluir_notas_da_reuniao: true, aceitar_vinculo_por_email: true });
+    expect(acoesMock.enviarTranscricaoAoAtlas.mock.calls[1][1]).toMatchObject({ idadeMaximaHoras: 24, incluirNotasDaReuniao: true, aceitarVinculoPorEmail: true });
+  });
+
+  it('atualizar onboarding: item aparado (literal) e observação interpolada', async () => {
+    await rodar('atlas_atualizar_onboarding', { item: ' Comprovante de residência ', situacao: 'done', observacao: 'Recebido de {{contact.name}}' });
+    expect(acoesMock.atualizarOnboardingNoAtlas.mock.calls[0][1]).toMatchObject({
+      chaveDeIdempotencia: 'log1:s-atlas',
+      item: 'Comprovante de residência',
+      situacao: 'done',
+      observacao: 'Recebido de Ana Souza',
+    });
+  });
+
+  it('⚠️ a falha da ação FALHA o passo com o motivo, e nada volta para a fila (fora de PASSOS_DE_ENVIO)', async () => {
+    acoesMock.criarTarefaNoAtlas.mockRejectedValueOnce(new Error('Atlas: o escritório no Atlas não tem administrador ativo para receber a tarefa'));
+    await rodar('atlas_criar_tarefa', { titulo: 'x' });
+    expect(passos()).toContainEqual(expect.objectContaining({ step_type: 'atlas_criar_tarefa', status: 'failed' }));
+    expect(h.state.logUpdates).toContainEqual(expect.objectContaining({ desfecho: 'falhou' }));
+    expect(h.state.esperasEnfileiradas).toHaveLength(0);
+  });
+
+  it('⚠️ execução SEM registro (espera antiga sem log_id): nenhuma ação chama o Atlas', async () => {
+    for (const [tipo, cfg] of [
+      ['atlas_atualizar_cliente', { tipo_de_contrato: 'fixo' }],
+      ['atlas_criar_tarefa', { titulo: 'x' }],
+      ['atlas_enviar_transcricao', {}],
+      ['atlas_atualizar_onboarding', { item: 'x', situacao: 'done' }],
+    ] as const) {
+      h.state.automations = [{ ...automationWithUpdateStep(), id: 'a-resume' }];
+      h.state.steps = [{ ...passoDoNo(tipo, cfg), automation_id: 'a-resume', position: 1 }];
+      await resumePendingExecution({
+        id: `espera-${tipo}`,
+        automation_id: 'a-resume',
+        account_id: ACCOUNT,
+        user_id: 'u1',
+        contact_id: 'c1',
+        log_id: null,
+        parent_step_id: null,
+        branch: null,
+        next_step_position: 1,
+        context: {},
+      });
+    }
+    expect(nenhumaAcao()).toBe(true);
   });
 });
 
