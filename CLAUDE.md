@@ -511,6 +511,9 @@ O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
 - Contatos relacionados: vínculo PAR A PAR, visto dos dois lados, com
   descrição opcional; quem edita contato vincula; faixa "Voltar para" de um
   nível só (29/09/2026).
+- Tarefa recorrente: PELO CALENDÁRIO (nasce no dia do prazo, concluída ou
+  não a anterior), contando do prazo anterior; só no formulário; avisa no
+  sino (30/09/2026).
 
 ## 13. Índice das áreas
 
@@ -595,7 +598,7 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
 - `.claude/rules/agendadas.md` — mensagem agendada, anexo e citação, tela
   `/agendadas`.
 - `.claude/rules/tarefas.md` — tarefas por cliente, `podeNaTarefa`, prazo
-  sem fuso.
+  sem fuso, tarefa recorrente (1074).
 - `.claude/rules/webhooks.md` — webhooks de entrada, formulário público
   (Typebot), webhooks de saída `deal.*`.
 - `.claude/rules/api-v1.md` — API pública, escopos, tags por nome,

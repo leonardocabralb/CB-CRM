@@ -1,8 +1,9 @@
 import { timingSafeEqual } from 'node:crypto';
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 
 import { supabaseAdmin } from '@/lib/automations/admin-client';
 import { dispararVencidas } from '@/lib/scheduled/dispatch';
+import { gerarTarefasRecorrentes } from '@/lib/tasks/gerar-recorrentes';
 
 /**
  * O worker das mensagens agendadas (migration 925).
@@ -19,6 +20,14 @@ import { dispararVencidas } from '@/lib/scheduled/dispatch';
  * ⚠️ Sem o segredo configurado a rota devolve 503 e NÃO dispara nada. É de
  * propósito: um deploy que esqueceu a variável falha alto, em vez de virar um
  * endpoint aberto que qualquer um usa para adiantar mensagens de clientes.
+ *
+ * ⚠️ Esta rota CARREGA também as TAREFAS RECORRENTES (1074,
+ * `gerarTarefasRecorrentes`): tirá-la do laço lento para de gerar as tarefas,
+ * sem erro nenhum. É esta rota, e não uma nova, porque rota nova no laço só
+ * vale depois de `docker stack deploy` à mão na VPS — o mesmo motivo que pôs
+ * o Atlas no ciclo do Asaas. Roda em `after()`, na forma de CALLBACK: começa
+ * depois da resposta, não disputa o `-m 120` do curl com o disparo, não mexe
+ * no batimento das agendadas e nunca lança.
  */
 export const maxDuration = 60;
 
@@ -39,6 +48,10 @@ export async function GET(request: Request) {
   }
 
   const admin = supabaseAdmin();
+  // As tarefas recorrentes (ver o cabeçalho): depois da resposta, com o
+  // relógio de quando rodam — o "hoje" é o do escritório no momento.
+  after(() => gerarTarefasRecorrentes(admin));
+
   try {
     const r = await dispararVencidas(admin);
 
