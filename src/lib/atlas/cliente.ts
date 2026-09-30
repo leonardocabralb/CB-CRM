@@ -17,6 +17,7 @@
 
 import { urlDaApiDoAtlas } from "./enderecos";
 import { telefoneForte, uuidsDoLink } from "./leitura";
+import { lerNegociacoes, type NegociacoesDoAtlas } from "./negociacoes";
 
 const TIMEOUT_MS = 15_000;
 
@@ -44,13 +45,14 @@ export class AtlasError extends Error {
     public readonly status: number | null = null,
     /** Com `sem_permissao`: qual permissão do Atlas está desligada. */
     public readonly permissao: string | null = null,
-    detalhe: { codigoDoAtlas?: string | null; campos?: string[]; apiAntiga?: boolean } = {},
+    detalhe: { codigoDoAtlas?: string | null; campos?: string[]; apiAntiga?: boolean; esperaSegundos?: number | null } = {},
   ) {
     super(mensagem);
     this.name = "AtlasError";
     this.codigoDoAtlas = detalhe.codigoDoAtlas ?? null;
     this.campos = detalhe.campos ?? [];
     this.apiAntiga = detalhe.apiAntiga === true;
+    this.esperaSegundos = detalhe.esperaSegundos ?? null;
   }
 
   /** O `code` cru do Atlas (nunca vai à tela). */
@@ -63,6 +65,18 @@ export class AtlasError extends Error {
    * §13). Ela pode ignorar o filtro e devolver todos: nada da página é gravado.
    */
   public readonly apiAntiga: boolean;
+  /**
+   * Com `limite` (429): quantos segundos o Atlas pediu para esperar — do
+   * `retry_after_seconds` do corpo ou, sem ele, do cabeçalho `Retry-After`
+   * (contrato §7). Nulo = o Atlas não disse.
+   */
+  public readonly esperaSegundos: number | null;
+}
+
+/** Segundos de espera legíveis (número positivo, ou texto só de dígitos); qualquer outra coisa é "não disse". */
+function segundosOuNulo(v: unknown): number | null {
+  const n = typeof v === "string" && /^\s*\d+(\.\d+)?\s*$/.test(v) ? Number(v) : v;
+  return typeof n === "number" && Number.isFinite(n) && n > 0 ? Math.ceil(n) : null;
 }
 
 /**
@@ -205,6 +219,13 @@ export interface ClienteAtlas {
   buscar(criterios: CriteriosDeBusca): Promise<{ clientes: ClienteDoAtlas[]; truncado: boolean }>;
   /** `not_found` DO ATLAS = `null` (cliente apagado lá); qualquer outra falha lança. */
   ler(id: string): Promise<ClienteDoAtlas | null>;
+  /**
+   * Bancos, contratos, propostas e acordos do cliente (`get_client_negotiations`,
+   * permissão `read_negotiations`, OPCIONAL no escritório), já pela allowlist
+   * de `negociacoes.ts`. O `not_found` (lixeira, outro escritório) LANÇA
+   * `nao_encontrado` — quem lê não apaga o vínculo por isso.
+   */
+  negociacoes(clientId: string): Promise<NegociacoesDoAtlas>;
   criar(dados: DadosDoClienteNoAtlas, chaveDeIdempotencia: string): Promise<ClienteDoAtlas>;
   atualizar(id: string, dados: DadosDoClienteNoAtlas, chaveDeIdempotencia: string): Promise<ClienteDoAtlas>;
 }
@@ -286,6 +307,7 @@ const CAMPOS_ENVIADOS = new Set([
   "notes",
   "status",
   "chatLinkIds",
+  "clientId",
   "statusChangedSince",
   "cursor",
   "limit",
@@ -319,7 +341,7 @@ export function lerIdentidade(v: unknown): IdentidadeNoAtlas {
 }
 
 /** ⚠️ Recebe o texto JÁ sem a chave: o corte de 300 viria antes e deixaria um pedaço dela. */
-function lerErro(texto: string): { codigo: string | null; mensagem: string; permissao: string | null; campos: string[] } {
+function lerErro(texto: string): { codigo: string | null; mensagem: string; permissao: string | null; campos: string[]; esperaSegundos: number | null } {
   try {
     const j: unknown = JSON.parse(texto);
     if (ehObjeto(j)) {
@@ -328,12 +350,13 @@ function lerErro(texto: string): { codigo: string | null; mensagem: string; perm
         mensagem: typeof j.error === "string" ? j.error : texto.slice(0, 300),
         permissao: typeof j.permission === "string" ? j.permission : null,
         campos: camposRecusados(j.fields),
+        esperaSegundos: segundosOuNulo(j.retry_after_seconds),
       };
     }
   } catch {
     /* não é JSON: vai o texto */
   }
-  return { codigo: null, mensagem: texto.slice(0, 300), permissao: null, campos: [] };
+  return { codigo: null, mensagem: texto.slice(0, 300), permissao: null, campos: [], esperaSegundos: null };
 }
 
 export function criarClienteAtlas(chave: string, fetchFn: Fetch = fetch, url: string = urlDaApiDoAtlas()): ClienteAtlas {
@@ -366,7 +389,11 @@ export function criarClienteAtlas(chave: string, fetchFn: Fetch = fetch, url: st
         limpar(`${action} → ${resposta.status}${erro.codigo ? ` ${erro.codigo}` : ""}: ${erro.mensagem || `HTTP ${resposta.status}`}`),
         resposta.status,
         erro.permissao,
-        { codigoDoAtlas: erro.codigo, campos: erro.campos },
+        {
+          codigoDoAtlas: erro.codigo,
+          campos: erro.campos,
+          esperaSegundos: erro.esperaSegundos ?? segundosOuNulo(resposta.headers.get("retry-after")),
+        },
       );
     }
     if (!texto) return null;
@@ -430,6 +457,14 @@ export function criarClienteAtlas(chave: string, fetchFn: Fetch = fetch, url: st
       // 200 sem cliente legível NÃO é "apagado": quem lê isso apagaria o vínculo.
       if (!lido) throw new AtlasError("resposta_inesperada", "get_client → resposta sem o cliente");
       return lido;
+    },
+
+    async negociacoes(clientId) {
+      const lidas = lerNegociacoes(await pedir("get_client_negotiations", { clientId }));
+      // 2xx sem a lista legível não é "sem negociação": a tela diria que o
+      // cliente não tem dívida nenhuma.
+      if (!lidas) throw new AtlasError("resposta_inesperada", "get_client_negotiations → resposta sem `banks` legível");
+      return lidas;
     },
 
     async criar(dados, chaveDeIdempotencia) {

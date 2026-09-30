@@ -713,6 +713,53 @@
       "semAvanco": "teve reunião em {dia} e não avançou no funil.",
       "proxima": "Nova reunião em {dia} às {hora}."
     },
+    "atlasNegociacoes": {
+      "titulo": "Negociação no Atlas",
+      "atualizar": "Atualizar a negociação",
+      "tentarDeNovo": "Tentar de novo",
+      "semNegociacao": "Nenhum banco cadastrado para este cliente no Atlas.",
+      "limite": "O Atlas pediu para esperar {segundos} s antes de ler de novo.",
+      "limiteDoCrm": "Muitas leituras em pouco tempo; aguarde {segundos} s antes de ler de novo.",
+      "listaCortada": "A lista veio cortada pelo Atlas. No total: {bancos} bancos, {contratos} contratos e {propostas} propostas.",
+      "bancoSemNome": "Banco sem nome",
+      "dividaOriginal": "Dívida original {valor}",
+      "dividaAtualizada": "atualizada {valor}",
+      "contratos": "Contratos ({n})",
+      "propostas": "Propostas ({n})",
+      "semReferencia": "Contrato sem número",
+      "titular": "Titular: {nome}",
+      "judicializado": "Judicializado",
+      "quitadoEm": "quitado em {dia}",
+      "acordo": "Acordo: {valor} sobre {divida} (desconto de {desconto})",
+      "baseEDesconto": "Dívida base {base} · desconto {desconto}",
+      "semPermissaoDica": "Um administrador do Atlas liga a permissão “Ler negociações” da chave de API.",
+      "conexaoDica": "Um administrador confere o cartão do Atlas em Configurações → Integrações.",
+      "situacaoDoContrato": {
+        "ativo": "Ativo",
+        "quitado": "Quitado",
+        "outra": "Situação não reconhecida"
+      },
+      "situacaoDaProposta": {
+        "enviada": "Enviada",
+        "recebida": "Recebida",
+        "aceita": "Aceita",
+        "recusada": "Recusada",
+        "outra": "Situação não reconhecida"
+      },
+      "tipoDaProposta": {
+        "a_vista": "À vista",
+        "parcelado": "Parcelado",
+        "outra": "Outro tipo"
+      },
+      "erro": {
+        "sem_permissao": "A leitura das negociações está desligada no Atlas.",
+        "sem_permissao_consultar": "A permissão “Consultar clientes” está desligada no Atlas.",
+        "nao_encontrado": "O cliente não foi encontrado no Atlas (pode estar na lixeira).",
+        "sem_vinculo": "Esta ficha não está vinculada a um cliente do Atlas.",
+        "conexao": "A conexão com o Atlas não está funcionando.",
+        "falhou": "Não foi possível ler as negociações no Atlas."
+      }
+    },
     "cobrancas": {
       "faixaTitulo": "Inadimplente no Asaas",
       "faixaResumo": "{parcelas, plural, one {# parcela vencida} other {# parcelas vencidas}} · {valor}",

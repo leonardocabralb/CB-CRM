@@ -45,6 +45,9 @@ function fabrica(): ClienteAtlas {
     ler: async (id: string) => (registrar("ler", id), noAtlas.get(id) ?? null),
     criar: async (d: DadosDoClienteNoAtlas, idem: string) => (registrar("criar", d, idem), { id: "novo-1", status: "ativo", appUrl: "https://app.example.com/#/clients/novo-1" }),
     atualizar: async (id: string, d: DadosDoClienteNoAtlas, idem: string) => (registrar("atualizar", id, d, idem), { id, status: "ativo", appUrl: null }),
+    negociacoes: async () => {
+      throw new Error("não usado");
+    },
   };
 }
 
