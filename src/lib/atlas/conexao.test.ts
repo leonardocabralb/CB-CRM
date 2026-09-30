@@ -34,6 +34,9 @@ function fabrica(): ClienteAtlas {
     ler: async () => null,
     criar: async () => ({ id: "x", status: null, appUrl: null }),
     atualizar: async () => ({ id: "x", status: null, appUrl: null }),
+    negociacoes: async () => {
+      throw new Error("não usado");
+    },
   };
 }
 

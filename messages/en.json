@@ -720,6 +720,53 @@
       "semAvanco": "had a meeting on {dia} and didn't move forward in the pipeline.",
       "proxima": "New meeting on {dia} at {hora}."
     },
+    "atlasNegociacoes": {
+      "titulo": "Negotiation in Atlas",
+      "atualizar": "Refresh the negotiation",
+      "tentarDeNovo": "Try again",
+      "semNegociacao": "No bank registered for this client in Atlas.",
+      "limite": "Atlas asked to wait {segundos} s before reading again.",
+      "limiteDoCrm": "Too many reads in a short time; wait {segundos} s before reading again.",
+      "listaCortada": "Atlas cut the list short. In total: {bancos} banks, {contratos} contracts and {propostas} proposals.",
+      "bancoSemNome": "Unnamed bank",
+      "dividaOriginal": "Original debt {valor}",
+      "dividaAtualizada": "updated {valor}",
+      "contratos": "Contracts ({n})",
+      "propostas": "Proposals ({n})",
+      "semReferencia": "Contract without number",
+      "titular": "Holder: {nome}",
+      "judicializado": "In court",
+      "quitadoEm": "settled on {dia}",
+      "acordo": "Settlement: {valor} on {divida} ({desconto} discount)",
+      "baseEDesconto": "Base debt {base} · discount {desconto}",
+      "semPermissaoDica": "An Atlas administrator turns on the “Read negotiations” permission of the API key.",
+      "conexaoDica": "An administrator checks the Atlas card in Settings → Integrations.",
+      "situacaoDoContrato": {
+        "ativo": "Active",
+        "quitado": "Settled",
+        "outra": "Unrecognized status"
+      },
+      "situacaoDaProposta": {
+        "enviada": "Sent",
+        "recebida": "Received",
+        "aceita": "Accepted",
+        "recusada": "Rejected",
+        "outra": "Unrecognized status"
+      },
+      "tipoDaProposta": {
+        "a_vista": "Lump sum",
+        "parcelado": "Installments",
+        "outra": "Other type"
+      },
+      "erro": {
+        "sem_permissao": "Reading negotiations is turned off in Atlas.",
+        "sem_permissao_consultar": "The “Read clients” permission is turned off in Atlas.",
+        "nao_encontrado": "The client was not found in Atlas (it may be in the trash).",
+        "sem_vinculo": "This contact is not linked to an Atlas client.",
+        "conexao": "The connection to Atlas is not working.",
+        "falhou": "Could not read the negotiations in Atlas."
+      }
+    },
     "cobrancas": {
       "faixaTitulo": "Delinquent on Asaas",
       "faixaResumo": "{parcelas, plural, one {# past-due instalment} other {# past-due instalments}} · {valor}",

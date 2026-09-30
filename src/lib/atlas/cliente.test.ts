@@ -281,3 +281,64 @@ describe("list_clients (a leitura das situações)", () => {
     expect(e.permissao).toBe("list_clients");
   });
 });
+
+describe("get_client_negotiations (Fase 3)", () => {
+  const CLIENTE = "00000000-0000-4000-8000-000000000011";
+
+  it("pede pelo `clientId`, sem Idempotency-Key, e devolve só a allowlist", async () => {
+    const f = fetchFalso({
+      status: 200,
+      corpo: { success: true, clientId: CLIENTE, truncated: false, totals: { banks: 1, contracts: 0, proposals: 0 }, banks: [{ id: "b1", bank_name: "Banco Exemplo", notes: "anotação", contracts: [], proposals: [] }] },
+    });
+    const r = await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).negociacoes(CLIENTE);
+    expect(f.pedidos[0].corpo).toEqual({ action: "get_client_negotiations", data: { clientId: CLIENTE } });
+    expect((f.pedidos[0].init.headers as Record<string, string>)["Idempotency-Key"]).toBeUndefined();
+    expect(r.banks[0]).toEqual({ id: "b1", bank_name: "Banco Exemplo", original_debt: null, updated_debt: null, contracts: [], proposals: [] });
+    expect(JSON.stringify(r)).not.toContain("anotação");
+  });
+
+  it("2xx sem `banks` legível LANÇA `resposta_inesperada` (nunca 'sem negociação')", async () => {
+    const f = fetchFalso({ status: 200, corpo: { success: true } });
+    const e = (await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).negociacoes(CLIENTE).catch((x: unknown) => x)) as AtlasError;
+    expect(e.codigo).toBe("resposta_inesperada");
+  });
+
+  it("o `not_found` (lixeira, outro escritório) LANÇA `nao_encontrado` — não é null nem 'sem negociação'", async () => {
+    const f = fetchFalso({ status: 404, corpo: { error: "Client not found", code: "not_found" } });
+    const e = (await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).negociacoes(CLIENTE).catch((x: unknown) => x)) as AtlasError;
+    expect(e.codigo).toBe("nao_encontrado");
+  });
+
+  it("a permissão desligada vem nomeada (`read_negotiations`)", async () => {
+    const f = fetchFalso({ status: 403, corpo: { error: "Permission denied", code: "permission_denied", permission: "read_negotiations" } });
+    const e = (await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).negociacoes(CLIENTE).catch((x: unknown) => x)) as AtlasError;
+    expect(e.codigo).toBe("sem_permissao");
+    expect(e.permissao).toBe("read_negotiations");
+  });
+});
+
+describe("AtlasError.esperaSegundos (429, contrato §7)", () => {
+  function fetch429(corpo: unknown, cabecalhos: Record<string, string> = {}) {
+    return (async () => new Response(JSON.stringify(corpo), { status: 429, headers: cabecalhos })) as unknown as typeof fetch;
+  }
+
+  it("vem do `retry_after_seconds` do corpo", async () => {
+    const fn = fetch429({ error: "Rate limit", code: "rate_limited", limit_per_minute: 60, current_count: 61, retry_after_seconds: 17 }, { "Retry-After": "40" });
+    const e = (await criarClienteAtlas(CHAVE, fn, URL_TESTE).whoami().catch((x: unknown) => x)) as AtlasError;
+    expect(e.codigo).toBe("limite");
+    expect(e.esperaSegundos).toBe(17);
+  });
+
+  it("sem ele, do cabeçalho `Retry-After`", async () => {
+    const fn = fetch429({ error: "Rate limit", code: "rate_limited" }, { "Retry-After": "23" });
+    const e = (await criarClienteAtlas(CHAVE, fn, URL_TESTE).whoami().catch((x: unknown) => x)) as AtlasError;
+    expect(e.esperaSegundos).toBe(23);
+  });
+
+  it("sem nenhum dos dois (ou ilegível), nulo — o Atlas não disse", async () => {
+    const fn = fetch429({ error: "Rate limit", code: "rate_limited", retry_after_seconds: "logo" }, { "Retry-After": "Wed, 30 Sep 2026 12:00:00 GMT" });
+    const e = (await criarClienteAtlas(CHAVE, fn, URL_TESTE).whoami().catch((x: unknown) => x)) as AtlasError;
+    expect(e.esperaSegundos).toBeNull();
+    expect(new AtlasError("rede", "x").esperaSegundos).toBeNull();
+  });
+});

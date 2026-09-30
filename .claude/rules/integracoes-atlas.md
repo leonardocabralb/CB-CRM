@@ -3,6 +3,7 @@ paths:
   - "src/lib/atlas/**"
   - "src/app/api/cb/atlas/**"
   - "src/components/settings/atlas-card*"
+  - "src/components/inbox/painel/negociacoes-do-atlas*"
   - "src/app/api/cb/asaas/cron/**"
   - "supabase/migrations/10*_cb_atlas*.sql"
   - "supabase/migrations/atlas-10*.test.ts"
@@ -187,6 +188,35 @@ periódica das situações e na tela (botão, faixa e aba Atlas) da Fase 2. Plan
   o evento); `not_found` = `ainda_na_lixeira`, a marca fica.
   Chaves montadas `situacao.`, `origem.`, `casouPor.`, `erro.` cobradas por
   `do-contato.test.ts`; situação desconhecida = texto de reserva.
+
+### Aba de negociação (Fase 3, `negociacoes.ts`)
+
+- **Lida NA HORA, nada gravado**: `GET /api/cb/atlas/contato/[contactId]/negociacoes`
+  (qualquer membro que vê a conversa, decisão do operador, 30/09 — pela API
+  a chave do escritório vê tudo, o recorte por time do Atlas não vale)
+  chama `get_client_negotiations` com o vínculo DESTE ambiente e escritório.
+  ⚠️⚠️ **Allowlist campo a campo** (`lerNegociacoes`, idempotente: o
+  navegador relê a resposta da rota pelo mesmo filtro): anotação, canal,
+  remetente, link, simulação, processo, a trilha e campo novo do Atlas
+  nunca passam (pino `negociacoes.test.ts`); item ilegível derruba a
+  leitura inteira, nunca some.
+- ⚠️ **Dois baldes, por usuário e POR CONTA** (20/min cada,
+  `NEGOCIACOES_POR_*`, fora de `rate-limit.ts`): a cota do Atlas é do
+  escritório, e o passo "Criar cliente" não repete um 429. O 429 do Atlas
+  traz `esperaSegundos` (`retry_after_seconds` ou `Retry-After`) e trava o
+  "Atualizar" pelo tempo pedido. ⚠️ A tela diz QUEM recusou (`EsperaPedida`):
+  o balde do CRM nunca vira "o Atlas pediu" (a equipe iria atrás do n8n).
+- ⚠️ **`read_negotiations` é OPCIONAL** (fora de `PERMISSOES_NECESSARIAS`,
+  senão as conexões atuais seriam recusadas): desligada é 403 SEM
+  `registrarConferencia`; só `read_client`, chave recusada e plano sem API
+  marcam. `not_found` (lixeira) é 404 e nunca mexe no vínculo.
+- **A seção busca só MONTADA** (a aba Atlas a monta só no vínculo fora da
+  lixeira, e a desmonta com a aba fechada), com
+  `key={contact.id}`, `cache: 'no-store'` e o carimbo `{ de }`; um pedido
+  por contato montado (o StrictMode rodaria dois). Datas por
+  `diaPorExtenso`, dinheiro por `Intl.NumberFormat(undefined, …BRL)`,
+  nulo = travessão, desconto negativo como veio; situação e tipo são chave
+  montada com reserva (`outra`). O log leva só contagens.
 
 ### O passo "Criar cliente no Atlas" (`criar-cliente.ts`)
 
