@@ -90,8 +90,9 @@ construtor: `.claude/rules/automacoes.md`.
   registros** (qualquer membro lê; o fio não mostra motivo cru): só o código
   traduzido (`motivoDaFalha`) e, na validação, os NOSSOS nomes de campo —
   nunca texto da resposta do Atlas. Falha depois de escrever no Atlas diz o
-  que já foi escrito ("o cliente foi criado no Atlas, mas…"). Chave recusada
-  marca a conexão em erro (`registrarConferencia`).
+  que já foi escrito ("o cliente foi criado no Atlas, mas…"). Chave recusada,
+  ilegível ou permissão desligada no Atlas marca a conexão em erro
+  (`registrarConferencia`), e o cartão diz o motivo; o próximo sucesso limpa.
 - **Vínculo 1:1** (`cb_atlas_clientes`): o cliente do Atlas já ligado a
   OUTRA ficha não é roubado (`ligado_a_outra_ficha`). Lido por membro (forma
   da 1032), escrito só pelo servidor; `contact_id` SET NULL — a tabela está

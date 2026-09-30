@@ -104,9 +104,14 @@ describe("lerChaveDoAtlas / desconectar / conferência", () => {
     expect(banco.tabelas.cb_atlas_config[0]).toMatchObject({ status: "erro", last_error: "chave_invalida" });
     await registrarConferencia(banco.cliente, CONTA, null);
     expect(banco.tabelas.cb_atlas_config[0]).toMatchObject({ status: "conectado", last_error: null });
-    // Outros códigos (limite, validação) não são problema da CHAVE.
+    // Outros códigos (limite, validação) não são problema da CONEXÃO.
     await registrarConferencia(banco.cliente, CONTA, "limite");
     expect(banco.tabelas.cb_atlas_config[0]).toMatchObject({ status: "conectado" });
+    // Permissão desligada no Atlas depois de conectar: o cartão tem de dizer.
+    await registrarConferencia(banco.cliente, CONTA, "sem_permissao");
+    expect(banco.tabelas.cb_atlas_config[0]).toMatchObject({ status: "erro", last_error: "sem_permissao" });
+    await registrarConferencia(banco.cliente, CONTA, null);
+    expect(banco.tabelas.cb_atlas_config[0]).toMatchObject({ status: "conectado", last_error: null });
   });
 });
 

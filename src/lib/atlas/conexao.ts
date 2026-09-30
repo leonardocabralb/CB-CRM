@@ -167,12 +167,13 @@ export async function lerChaveDoAtlas(
 }
 
 /**
- * Os códigos que dizem "a CHAVE parou de valer" — a conexão vai a erro, e o
- * cartão pede para reconectar. `chave_ilegivel` é nosso (a `ENCRYPTION_KEY`
- * mudou, a cifra estragou): sem ela aqui, o cartão diria "conectado" com
- * todo passo falhando.
+ * Os códigos que dizem "a CONEXÃO parou de servir" — ela vai a erro, e o
+ * cartão mostra o motivo. `chave_ilegivel` é nosso (a `ENCRYPTION_KEY`
+ * mudou, a cifra estragou); `sem_permissao` é a permissão desligada no Atlas
+ * DEPOIS de conectar. Sem eles aqui, o cartão diria "conectado" com todo
+ * passo falhando. O próximo sucesso limpa (a permissão religada).
  */
-const CODIGOS_DA_CHAVE: CodigoDaConexao[] = ["chave_invalida", "api_fora_do_plano", "chave_ilegivel"];
+const CODIGOS_DA_CHAVE: CodigoDaConexao[] = ["chave_invalida", "api_fora_do_plano", "chave_ilegivel", "sem_permissao"];
 
 /**
  * A chave ainda vale? Chamada por quem usou a chave: chave recusada marca a
