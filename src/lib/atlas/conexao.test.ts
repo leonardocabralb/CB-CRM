@@ -111,6 +111,16 @@ describe("conectarAtlas", () => {
     expect(banco.tabelas.cb_atlas_clientes).toHaveLength(1);
   });
 
+  it("apagar os vínculos anteriores que FALHA responde db_error (a conexão nova já vale, e o admin repete)", async () => {
+    banco.tabelas.cb_atlas_clientes = [{ id: "antigo", account_id: CONTA, api_url: null, atlas_tenant_id: "t-antigo", atlas_client_id: "c1", contact_id: "k1" }];
+    banco.falhar.add("cb_atlas_clientes:delete");
+    expect(await conectarAtlas(banco.cliente, CONTA, "u1", CHAVE, { cliente: fabrica, ambiente: null, apagarVinculosAnteriores: true })).toEqual({
+      ok: false,
+      codigo: "db_error",
+    });
+    expect(banco.tabelas.cb_atlas_config).toHaveLength(1);
+  });
+
   it("registrarConferencia com a cerca da leitura: o cadeado trocado (reconexão) não deixa o erro da chave velha marcar a conexão nova", async () => {
     await conectarAtlas(banco.cliente, CONTA, "u1", CHAVE, { cliente: fabrica, ambiente: null });
     banco.tabelas.cb_atlas_config[0].sincronizando_desde = "2026-09-30T12:00:00.000Z";

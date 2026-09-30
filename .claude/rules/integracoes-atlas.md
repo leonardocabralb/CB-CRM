@@ -134,7 +134,9 @@ periódica das situações (Fase 2). Plano, fases e decisões do operador:
   régua; sem eles, não roda) — só quando a listagem começou e terminou no
   mesmo ciclo. Marcado `origem = 'automatica'` e `casou_por`; nasce com a
   situação (nunca evento). Fica fora: ficha já ligada neste ambiente, par em
-  `cb_atlas_recusas`, cliente `recente`. 23505 = conflito, pula.
+  `cb_atlas_recusas`, cliente `recente`, e — no telefone — TODA ficha que
+  algum link citou, também a disputada (`fichasTocadas`). 23505 = conflito,
+  pula.
 - `cb_atlas_recusas` (FECHADA, sem policy): o par desvinculado à mão não
   volta pela leitura nem pelo passo.
 - ⚠️ **Lixeira**: a listagem não mostra cliente excluído; depois de uma

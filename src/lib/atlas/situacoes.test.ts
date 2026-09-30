@@ -556,6 +556,18 @@ describe("o vínculo automático", () => {
     expect(await rodar()).toMatchObject({ ok: true, contagem: { vinculadosPeloTelefone: 0, listagemCompleta: true } });
   });
 
+  it("CRÍTICO: a ficha que o LINK disputa (ambíguo) não é ligada pelo telefone a um terceiro cadastro", async () => {
+    banco.tabelas.cb_atlas_config[0] = config();
+    listar = () =>
+      pagina([
+        bruto("a-link-1", { chat_link: `https://crm.example.com/inbox?c=${CONV_1}` }),
+        bruto("a-link-2", { chat_link: `https://crm.example.com/inbox?c=${CONV_1}` }),
+        bruto("a-tel-da-ficha-link", { phone: "11 90000-0001" }),
+      ]);
+    expect(await rodar()).toMatchObject({ ok: true, contagem: { vinculadosPeloLink: 0, vinculadosPeloTelefone: 0 } });
+    expect(banco.tabelas.cb_atlas_clientes).toHaveLength(0);
+  });
+
   it("telefone de dois cadastros no Atlas não liga nenhum", async () => {
     banco.tabelas.cb_atlas_config[0] = config();
     listar = () => pagina([bruto("a1", { phone: "11 98765-4321" }), bruto("a2", { phone: "+55 (11) 98765-4321" })]);

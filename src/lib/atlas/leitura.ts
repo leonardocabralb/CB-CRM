@@ -225,9 +225,12 @@ export function candidatosPeloLink(
   clientes: { id: string; uuids: string[] }[],
   conversas: ReadonlyMap<string, string | null>,
   contatos: ReadonlySet<string>,
-): { pares: ParDoVinculo[]; ambiguos: number; comAlgumaFicha: Set<string> } {
+): { pares: ParDoVinculo[]; ambiguos: number; comAlgumaFicha: Set<string>; fichasTocadas: Set<string> } {
   const unicos: ParDoVinculo[] = [];
   const comAlgumaFicha = new Set<string>();
+  // TODA ficha que algum link citou — também as dos ambíguos: o vínculo pelo
+  // telefone não liga a um terceiro a ficha que o link disputa.
+  const fichasTocadas = new Set<string>();
   let ambiguos = 0;
   for (const c of clientes) {
     const fichas = new Set<string>();
@@ -238,6 +241,7 @@ export function candidatosPeloLink(
     }
     if (fichas.size === 0) continue;
     comAlgumaFicha.add(c.id);
+    for (const f of fichas) fichasTocadas.add(f);
     if (fichas.size > 1) {
       ambiguos++;
       continue;
@@ -248,7 +252,7 @@ export function candidatosPeloLink(
   for (const p of unicos) porFicha.set(p.contactId, (porFicha.get(p.contactId) ?? 0) + 1);
   const pares = unicos.filter((p) => porFicha.get(p.contactId) === 1);
   ambiguos += unicos.length - pares.length;
-  return { pares, ambiguos, comAlgumaFicha };
+  return { pares, ambiguos, comAlgumaFicha, fichasTocadas };
 }
 
 /**

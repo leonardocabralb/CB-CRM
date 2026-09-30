@@ -149,14 +149,19 @@ export async function conectarAtlas(
   // 4) Com a confirmação, os vínculos do escritório anterior saem SÓ DEPOIS
   //    de a conexão nova estar gravada: se a gravação falhasse (a cifra, o
   //    banco), nada teria sido apagado — é a ação que não se desfaz. Se o
-  //    apagar falhar, a conexão nova já vale e os vínculos antigos ficam
-  //    invisíveis (outro escritório); "apagar" de novo os tira.
+  //    apagar falhar, a conexão nova já vale, mas a resposta é db_error: os
+  //    vínculos velhos ocupam a chave das fichas, e "apagar" de novo os tira.
   if (opcoes.apagarVinculosAnteriores === true) {
     const { error: erroApagar } = await noAmbiente(
       admin.from("cb_atlas_clientes").delete().eq("account_id", accountId).neq("atlas_tenant_id", identidade.tenantId),
       ambiente,
     );
-    if (erroApagar) console.error("[atlas] conexão gravada, mas os vínculos do escritório anterior não saíram:", erroApagar.message);
+    // A conexão nova já vale, mas os vínculos velhos ocupam a chave das fichas:
+    // o cartão tem de dizer que falhou, para o admin repetir.
+    if (erroApagar) {
+      console.error("[atlas] conexão gravada, mas os vínculos do escritório anterior não saíram:", erroApagar.message);
+      return { ok: false, codigo: "db_error" };
+    }
   }
   return { ok: true, escritorio: identidade.escritorio };
 }
