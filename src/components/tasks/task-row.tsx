@@ -176,8 +176,11 @@ export function TaskRow({
           ) : null}
         </div>
 
+        {/* Inteira e com as quebras de linha: a descrição é o recado de quem
+            pediu ("o banco ficou de confirmar…"), e cortada em duas linhas o
+            responsável não lia o que tinha de fazer. */}
         {tarefa.descricao ? (
-          <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+          <p className="mt-0.5 whitespace-pre-wrap break-words text-xs text-muted-foreground">
             {tarefa.descricao}
           </p>
         ) : null}
