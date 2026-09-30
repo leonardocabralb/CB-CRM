@@ -313,10 +313,11 @@ export function criarClienteAtlas(chave: string, fetchFn: Fetch = fetch, url: st
       if (!ehObjeto(corpo) || !Array.isArray(corpo.clients)) {
         throw new AtlasError("resposta_inesperada", "find_clients → resposta sem `clients`");
       }
-      return {
-        clientes: corpo.clients.map(lerCliente).filter((c): c is ClienteDoAtlas => c !== null),
-        truncado: corpo.truncated === true,
-      };
+      const clientes = corpo.clients.map(lerCliente);
+      // ⚠️ Descartar o ilegível mudaria a CONTAGEM que decide: dois viram um
+      // (reativa quem pode ser outro), um vira zero (cria duplicado).
+      if (clientes.some((c) => c === null)) throw new AtlasError("resposta_inesperada", "find_clients → cliente ilegível na lista");
+      return { clientes: clientes as ClienteDoAtlas[], truncado: corpo.truncated === true };
     },
 
     async ler(id) {

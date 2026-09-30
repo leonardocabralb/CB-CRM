@@ -130,6 +130,9 @@ const h = vi.hoisted(() => ({
     // (com a definição embutida) — é por eles que a interpolação de
     // `{{contact.campo.*}}` passa.
     customValues: [] as Record<string, unknown>[],
+    /** O catálogo de campos da conta que o passo do Atlas confere (`field_key, field_type`). */
+    catalogoDeCampos: [] as { field_key: string; field_type: string }[],
+    erroNoCatalogoDeCampos: null as string | null,
     /** Preenchido, a leitura dos valores do contato (`contact_custom_values`, lista) devolve este erro. */
     erroNosValoresDoContato: null as string | null,
     // A guarda de `fecharLog` (985) pergunta se sobrou espera VIVA deste log.
@@ -225,6 +228,14 @@ vi.mock('./admin-client', () => {
       return { data: state.membros, error: null };
     }
     if (table === 'custom_fields') {
+      // O passo do Atlas confere os campos de data escolhidos no CATÁLOGO da
+      // conta (lista por `field_key`), com a conta no filtro.
+      if (ops.colunas === 'field_key, field_type') {
+        if (state.erroNoCatalogoDeCampos) return { data: null, error: { message: state.erroNoCatalogoDeCampos } };
+        const pediuConta = ops.filters.some(([op, k, v]) => op === 'eq' && k === 'account_id' && v === ACCOUNT);
+        const chaves = (ops.filters.find(([op, k]) => op === 'in' && k === 'field_key')?.[2] ?? []) as string[];
+        return { data: pediuConta ? state.catalogoDeCampos.filter((c) => chaves.includes(c.field_key)) : [], error: null };
+      }
       // A condição por campo (2.10) lê SÓ o tipo — e a conta tem de estar no
       // filtro: sem ela, o campo de outra conta viraria oráculo.
       if (ops.colunas === 'field_type') {
@@ -2090,6 +2101,13 @@ describe('atlas_criar_cliente — criar cliente no Atlas (Fase 0)', () => {
     h.state.owned = { id: 'c1', name: 'Ana Souza', phone: '5583999990000', email: 'ana@exemplo.com' };
     // Não é zerada no `beforeEach` de fora.
     h.state.esperasEnfileiradas = [];
+    h.state.catalogoDeCampos = [
+      { field_key: 'data_do_primeiro_contato', field_type: 'datetime' },
+      { field_key: 'data_da_proposta', field_type: 'datetime' },
+      { field_key: 'data_de_fechamento_do_contrato', field_type: 'datetime' },
+      { field_key: 'origem_da_divida', field_type: 'text' },
+    ];
+    h.state.erroNoCatalogoDeCampos = null;
   });
   afterEach(() => vi.unstubAllEnvs());
 
@@ -2172,6 +2190,22 @@ describe('atlas_criar_cliente — criar cliente no Atlas (Fase 0)', () => {
   it('campo escolhido sem valor na ficha vai nulo (o Atlas usa a reserva)', async () => {
     await rodar({ campo_fechamento: 'data_de_fechamento_do_contrato' });
     expect((entrada()?.datas as Record<string, unknown>).fechamento).toBeNull();
+  });
+
+  it('⚠️ campo escolhido que SUMIU do catálogo (ou não é de data) FALHA o passo — a reserva viraria data errada no Atlas', async () => {
+    await rodar({ campo_fechamento: 'campo_apagado' });
+    expect(atlasMock.criarOuReativarNoAtlas).not.toHaveBeenCalled();
+    expect(JSON.stringify(h.state.logUpdates)).toContain('o campo de data \\"campo_apagado\\" escolhido no passo não existe mais');
+    atlasMock.criarOuReativarNoAtlas.mockClear();
+    await rodar({ campo_proposta: 'origem_da_divida' });
+    expect(atlasMock.criarOuReativarNoAtlas).not.toHaveBeenCalled();
+  });
+
+  it('leitura do catálogo de campos que falha FALHA o passo sem chamar o Atlas', async () => {
+    h.state.erroNoCatalogoDeCampos = 'fora do ar';
+    await rodar({ campo_fechamento: 'data_de_fechamento_do_contrato' });
+    expect(atlasMock.criarOuReativarNoAtlas).not.toHaveBeenCalled();
+    expect(JSON.stringify(h.state.logUpdates)).toContain('a leitura dos campos de data falhou');
   });
 
   it('o detalhe diz o que aconteceu no Atlas (reativado)', async () => {

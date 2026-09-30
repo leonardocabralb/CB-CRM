@@ -2542,6 +2542,34 @@ async function runStep(
       if (!dados.contato)
         throw new Error('criar cliente no Atlas: a ficha do cliente não foi encontrada nesta conta');
 
+      // ⚠️ Campo ESCOLHIDO que sumiu do catálogo (apagado, ou mudou de tipo)
+      // FALHA o passo: tratado como "não escolhido", o Atlas receberia a
+      // reserva (criação do card, o dia de hoje) como se fosse a data certa.
+      // Campo que existe mas está vazio NA FICHA segue para a reserva.
+      const chavesEscolhidas = [...new Set(
+        [cfg.campo_primeiro_contato, cfg.campo_proposta, cfg.campo_fechamento]
+          .map((k) => (typeof k === 'string' ? k.trim() : ''))
+          .filter(Boolean)
+      )];
+      if (chavesEscolhidas.length > 0) {
+        const { data: defs, error: erroDoCatalogo } = await db
+          .from('custom_fields')
+          .select('field_key, field_type')
+          .eq('account_id', args.automation.account_id)
+          .in('field_key', chavesEscolhidas);
+        if (erroDoCatalogo)
+          throw new Error('criar cliente no Atlas: a leitura dos campos de data falhou; nada foi enviado ao Atlas');
+        const deData = new Set(
+          ((defs ?? []) as { field_key: string; field_type: string }[])
+            .filter((d) => d.field_type === TIPO_DATA)
+            .map((d) => d.field_key)
+        );
+        const sumido = chavesEscolhidas.find((k) => !deData.has(k));
+        if (sumido)
+          throw new Error(
+            `criar cliente no Atlas: o campo de data "${sumido}" escolhido no passo não existe mais nesta conta (ou não é de data); ajuste o passo — nada foi enviado ao Atlas`
+          );
+      }
       const campo = (chave: string | null | undefined): string | null => {
         const k = typeof chave === 'string' ? chave.trim() : '';
         return (k && dados.camposCru[k]) || null;

@@ -171,7 +171,10 @@ export async function lerChaveDoAtlas(
  * cartão mostra o motivo. `chave_ilegivel` é nosso (a `ENCRYPTION_KEY`
  * mudou, a cifra estragou); `sem_permissao` é a permissão desligada no Atlas
  * DEPOIS de conectar. Sem eles aqui, o cartão diria "conectado" com todo
- * passo falhando. O próximo sucesso limpa (a permissão religada).
+ * passo falhando. O próximo sucesso limpa — menos `sem_permissao`, que só
+ * sai com sucesso de ESCRITA (ou reconectando, que refaz o `whoami`): a
+ * permissão desligada pode ser a de Criar/Atualizar, e uma execução que só
+ * leu e vinculou não prova nada sobre ela.
  */
 const CODIGOS_DA_CHAVE: CodigoDaConexao[] = ["chave_invalida", "api_fora_do_plano", "chave_ilegivel", "sem_permissao"];
 
@@ -185,6 +188,7 @@ export async function registrarConferencia(
   accountId: string,
   codigo: CodigoDoErroAtlas | "chave_ilegivel" | null,
   ambiente: string | null = ambienteDoAtlas(),
+  opcoes: { escreveu?: boolean } = {},
 ): Promise<void> {
   const agora = new Date().toISOString();
   if (codigo !== null && !CODIGOS_DA_CHAVE.includes(codigo)) return;
@@ -197,7 +201,8 @@ export async function registrarConferencia(
     codigo === null ? await daConexao({ conferido_em: agora }) : await daConexao({ status: "erro", last_error: codigo, updated_at: agora });
   if (error) console.error("[atlas] não foi possível registrar a conferência da chave:", error.message);
   if (codigo === null) {
-    const { error: erroLimpeza } = await daConexao({ status: "conectado", last_error: null, updated_at: agora }).in("last_error", CODIGOS_DA_CHAVE);
+    const limpaveis = opcoes.escreveu ? CODIGOS_DA_CHAVE : CODIGOS_DA_CHAVE.filter((c) => c !== "sem_permissao");
+    const { error: erroLimpeza } = await daConexao({ status: "conectado", last_error: null, updated_at: agora }).in("last_error", limpaveis);
     if (erroLimpeza) console.error("[atlas] não foi possível limpar o aviso da chave:", erroLimpeza.message);
   }
 }

@@ -301,7 +301,7 @@ export async function criarOuReativarNoAtlas(
       ? await admin.from("cb_atlas_clientes").update(linhaPropria ? lido : { ...lido, origem }).eq("id", linha)
       : await admin.from("cb_atlas_clientes").insert({ ...lido, origem });
     if (erroGravar) throw new Error(escrito ? "o vínculo não foi gravado no CRM" : "o vínculo com o Atlas não foi gravado no CRM");
-    await registrarConferencia(admin, accountId, null);
+    await registrarConferencia(admin, accountId, null, undefined, { escreveu: escrito !== null });
     return resultado;
   } catch (e) {
     const motivo = e instanceof AtlasError ? motivoDaFalha(e) : e instanceof Error ? e.message : String(e);

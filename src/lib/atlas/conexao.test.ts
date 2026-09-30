@@ -110,7 +110,10 @@ describe("lerChaveDoAtlas / desconectar / conferência", () => {
     // Permissão desligada no Atlas depois de conectar: o cartão tem de dizer.
     await registrarConferencia(banco.cliente, CONTA, "sem_permissao");
     expect(banco.tabelas.cb_atlas_config[0]).toMatchObject({ status: "erro", last_error: "sem_permissao" });
+    // Sucesso só de LEITURA não prova a permissão de escrever: o aviso fica.
     await registrarConferencia(banco.cliente, CONTA, null);
+    expect(banco.tabelas.cb_atlas_config[0]).toMatchObject({ status: "erro", last_error: "sem_permissao" });
+    await registrarConferencia(banco.cliente, CONTA, null, null, { escreveu: true });
     expect(banco.tabelas.cb_atlas_config[0]).toMatchObject({ status: "conectado", last_error: null });
   });
 });

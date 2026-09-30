@@ -142,13 +142,19 @@ describe("leitura das respostas", () => {
     });
   });
 
+  it("CRÍTICO: um cliente ilegível na lista do find_clients FALHA a busca (descartá-lo mudaria a contagem que decide)", async () => {
+    const f = fetchFalso({ status: 200, corpo: { success: true, truncated: false, clients: [{ id: "c1", status: "ativo" }, { semId: true }] } });
+    const e = (await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).buscar({ email: "cliente@example.com" }).catch((x: unknown) => x)) as AtlasError;
+    expect(e.codigo).toBe("resposta_inesperada");
+  });
+
   it("find_clients: cada cliente com id, status e app_url; truncated vem junto", async () => {
     const f = fetchFalso({
       status: 200,
       corpo: {
         success: true,
         truncated: true,
-        clients: [{ id: "c1", status: "rescindido", app_url: "https://app.example.com/#/clients/c1", matched_by: ["phone", 7, "chat_link"] }, { semId: true }],
+        clients: [{ id: "c1", status: "rescindido", app_url: "https://app.example.com/#/clients/c1", matched_by: ["phone", 7, "chat_link"] }],
       },
     });
     expect(await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).buscar({ email: "cliente@example.com" })).toEqual({

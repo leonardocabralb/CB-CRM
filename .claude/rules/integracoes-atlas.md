@@ -72,6 +72,12 @@ construtor: `.claude/rules/automacoes.md`.
   velho sai). 404 do gateway (sem o código, endereço errado) e 200 sem o
   cliente LANÇAM: apagar o vínculo por eles recriaria o cliente (CLAUDE.md
   8b). 2xx sem o que se esperava é `resposta_inesperada` — pode ter gravado.
+  Cliente ILEGÍVEL na lista do `find_clients` também: descartá-lo mudaria a
+  contagem que decide (dois viram um e reativa; um vira zero e cria).
+- ⚠️ **Campo de data ESCOLHIDO no passo que sumiu do catálogo** (apagado ou
+  mudou de tipo) FALHA o passo; só o campo vazio NA FICHA cai na reserva
+  (criação do card, o dia de hoje) — senão a reserva iria ao Atlas como se
+  fosse a data certa.
 - **Nunca repete sozinho**: fica FORA de `PASSOS_DE_ENVIO` (criar pode ter
   acontecido com tempo esgotado). As escritas levam `Idempotency-Key`
   `<logId>:<stepId>:criar|reativar`; rodar de novo por gente acha o cliente
@@ -93,7 +99,9 @@ construtor: `.claude/rules/automacoes.md`.
   nunca texto da resposta do Atlas. Falha depois de escrever no Atlas diz o
   que já foi escrito ("o cliente foi criado no Atlas, mas…"). Chave recusada,
   ilegível ou permissão desligada no Atlas marca a conexão em erro
-  (`registrarConferencia`), e o cartão diz o motivo; o próximo sucesso limpa.
+  (`registrarConferencia`), e o cartão diz o motivo; o próximo sucesso limpa
+  — menos `sem_permissao`, que só sai com sucesso de ESCRITA ou reconectando
+  (a permissão desligada pode ser a de Criar/Atualizar).
 - **Vínculo 1:1** (`cb_atlas_clientes`): o cliente do Atlas já ligado a
   OUTRA ficha não é roubado (`ligado_a_outra_ficha`). Lido por membro (forma
   da 1032), escrito só pelo servidor; `contact_id` SET NULL — a tabela está
