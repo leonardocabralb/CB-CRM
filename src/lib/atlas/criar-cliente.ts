@@ -252,6 +252,14 @@ export async function criarOuReativarNoAtlas(
         const novo = dadosParaCriar(dados);
         // O Atlas exige o nome: sem ele, recusaria com "validação" genérica.
         if (!novo.name) throw new Error("a ficha do cliente não tem nome; preencha o nome e rode de novo — nada foi enviado ao Atlas");
+        // ⚠️ Só cria o que a busca ACHA de novo (link da conversa, telefone ou
+        // e-mail): se o vínculo falhar depois, rodar de novo reencontra o
+        // cliente em vez de criar outro (a chave de idempotência muda por execução).
+        if (!novo.chatLink && !telefoneParaBusca(entrada.contato.telefone) && !novo.email) {
+          throw new Error(
+            "a ficha não tem conversa, telefone nem e-mail para o Atlas achar este cliente de novo; preencha o telefone ou o e-mail e rode de novo — nada foi enviado ao Atlas",
+          );
+        }
         cliente = await atlas.criar(novo, `${entrada.chaveDeIdempotencia}:criar`);
         escrito = "criado";
         origem = "criada";

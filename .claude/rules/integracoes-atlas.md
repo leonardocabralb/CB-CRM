@@ -77,6 +77,9 @@ construtor: `.claude/rules/automacoes.md`.
   pelo link da conversa e não duplica. Duas execuções SIMULTÂNEAS do mesmo
   contato não se enxergam e podem criar dois cadastros (a segunda falha no
   vínculo, com o motivo): conhecido, não tratado, como o `create_deal`.
+- ⚠️ **Só cria o que a busca reencontra** (link da conversa, telefone ou
+  e-mail válidos): sem nenhum, o passo PARA — se o vínculo falhasse depois,
+  a nova execução (outra chave de idempotência) criaria um segundo cadastro.
 - **O formato é o do n8n** (`formatar.ts`): telefone com DDI e o nono dígito
   (`telefoneCanonico`), estado pelo DDD SÓ de número brasileiro, datas
   `aaaa-mm-dd` no fuso do escritório (nunca `toISOString().slice`), valor do

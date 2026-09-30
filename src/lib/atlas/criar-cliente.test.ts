@@ -224,6 +224,16 @@ describe("criarOuReativarNoAtlas", () => {
     expect(chamadas.map((c) => c.metodo)).toEqual(["buscar"]);
   });
 
+  it("sem conversa, telefone válido nem e-mail válido: NÃO cria (a busca não o reencontraria, e rodar de novo duplicaria)", async () => {
+    await expect(
+      rodar(entrada({ contato: { nome: "Cliente Exemplo", telefone: "12345", email: "nao tem" }, linkDaConversa: null, conversaDaExecucao: null })),
+    ).rejects.toThrow("não tem conversa, telefone nem e-mail");
+    expect(chamadas.some((c) => c.metodo === "criar")).toBe(false);
+    // Só o telefone basta.
+    await rodar(entrada({ contato: { nome: "Cliente Exemplo", telefone: "5511987654321", email: null }, linkDaConversa: null, conversaDaExecucao: null }));
+    expect(chamadas.some((c) => c.metodo === "criar")).toBe(true);
+  });
+
   it("critério que o Atlas recusaria (e-mail sem @, telefone curto) fica fora da busca; o link vai sempre", async () => {
     await rodar(entrada({ contato: { nome: "Cliente Exemplo", telefone: "12345", email: "nao tem" } }));
     const busca = chamadas.find((c) => c.metodo === "buscar")!.args[0] as CriteriosDeBusca;
