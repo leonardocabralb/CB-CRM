@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { decrypt, encrypt } from "@/lib/whatsapp/encryption";
 
 import { AtlasError, criarClienteAtlas, type ClienteAtlas, type CodigoDoErroAtlas } from "./cliente";
-import { ambienteDoAtlas } from "./enderecos";
+import { ambienteDoAtlas, noAmbiente } from "./enderecos";
 
 /**
  * Conectar e desconectar o Atlas — o I/O da conexão (`cb_atlas_config`, 1071).
@@ -14,9 +14,19 @@ import { ambienteDoAtlas } from "./enderecos";
  * A chave nunca volta por rota nenhuma, nem mascarada.
  *
  * ⚠️ Chave de OUTRO escritório do Atlas é RECUSADA enquanto houver fichas
- * ligadas a clientes do escritório anterior (`outro_escritorio`): os ids são
- * de lá, e o botão e a faixa apontariam para cliente alheio. A saída hoje é
- * apagar esses vínculos à mão (pendência da Fase 2 no plano).
+ * ligadas, NESTE ambiente, a clientes do escritório anterior
+ * (`outro_escritorio`, com quantos): os ids são de lá, e o botão e a faixa
+ * apontariam para cliente alheio. A saída é o admin confirmar no cartão
+ * (`apagarVinculosAnteriores`): os vínculos do escritório anterior DESTE
+ * ambiente são apagados, e a conexão segue. Vínculos de teste do staging não
+ * barram a conexão de verdade (e vice-versa).
+ *
+ * ⚠️ Conectar ZERA o estado da leitura das situações (1072): o cursor do
+ * Atlas vale em qualquer ambiente, e um cursor ou um `situacoes_lidas_ate`
+ * herdado do staging (ou do escritório anterior) faria a produção pular, em
+ * silêncio, a primeira listagem completa. Um ciclo em curso perde a cerca de
+ * posse e para na próxima prova dela (`situacoes.ts`: cada página, vínculo
+ * automático e escrita da lixeira a provam antes).
  *
  * ⚠️ AMBIENTE (`api_url`, ver `enderecos.ts`): a instância apontada para
  * outro Atlas (o staging, no preview que grava no banco da produção) não
@@ -59,14 +69,29 @@ function decifrar(texto: unknown): string | null {
 
 export type ResultadoDaConexao =
   | { ok: true; escritorio: string | null }
-  | { ok: false; codigo: CodigoDaConexao; faltando?: string[] };
+  | { ok: false; codigo: CodigoDaConexao; faltando?: string[]; vinculosAnteriores?: number };
+
+/** O estado da leitura das situações (1072), zerado a cada conexão. */
+export const ESTADO_DA_LEITURA_ZERADO = {
+  sincronizando_desde: null,
+  last_sync_attempt_at: null,
+  last_sync_at: null,
+  situacoes_lidas_ate: null,
+  mudancas_desde: null,
+  mudancas_cursor: null,
+  mudancas_iniciada_em: null,
+  listagem_completa_em: null,
+  listagem_iniciada_em: null,
+  listagem_cursor: null,
+  sync_erro: null,
+} as const;
 
 export async function conectarAtlas(
   admin: SupabaseClient,
   accountId: string,
   userId: string,
   chave: string,
-  opcoes: { cliente?: FabricaDeCliente; ambiente?: string | null } = {},
+  opcoes: { cliente?: FabricaDeCliente; ambiente?: string | null; apagarVinculosAnteriores?: boolean } = {},
 ): Promise<ResultadoDaConexao> {
   const ambiente = opcoes.ambiente === undefined ? ambienteDoAtlas() : opcoes.ambiente;
 
@@ -90,17 +115,17 @@ export async function conectarAtlas(
   const faltando = PERMISSOES_NECESSARIAS.filter((p) => identidade.permissoes[p] !== true);
   if (faltando.length > 0) return { ok: false, codigo: "permissoes_faltando", faltando };
 
-  // 2) Os vínculos que já existem são deste escritório?
-  const { data: alheio, error: erroVinculos } = await admin
-    .from("cb_atlas_clientes")
-    .select("id")
-    .eq("account_id", accountId)
-    .neq("atlas_tenant_id", identidade.tenantId)
-    .limit(1);
-  if (erroVinculos) return { ok: false, codigo: "db_error" };
-  if ((alheio ?? []).length > 0) return { ok: false, codigo: "outro_escritorio" };
+  // 2) Os vínculos que já existem NESTE ambiente são deste escritório? Sem a
+  //    confirmação do admin, vínculo do escritório anterior RECUSA a conexão.
+  if (opcoes.apagarVinculosAnteriores !== true) {
+    const alheios = admin.from("cb_atlas_clientes").select("id", { count: "exact", head: true }).eq("account_id", accountId).neq("atlas_tenant_id", identidade.tenantId);
+    const { count, error: erroVinculos } = await noAmbiente(alheios, ambiente);
+    // Sem a contagem não se sabe: falha fechada (nunca "nenhum vínculo alheio").
+    if (erroVinculos || typeof count !== "number") return { ok: false, codigo: "db_error" };
+    if (count > 0) return { ok: false, codigo: "outro_escritorio", vinculosAnteriores: count };
+  }
 
-  // 3) Grava cifrado.
+  // 3) Grava cifrado, com a leitura das situações do zero.
   const agora = new Date().toISOString();
   const { error } = await admin.from("cb_atlas_config").upsert(
     {
@@ -115,10 +140,24 @@ export async function conectarAtlas(
       conferido_em: agora,
       created_by: userId,
       updated_at: agora,
+      ...ESTADO_DA_LEITURA_ZERADO,
     },
     { onConflict: "account_id" },
   );
   if (error) return { ok: false, codigo: "db_error" };
+
+  // 4) Com a confirmação, os vínculos do escritório anterior saem SÓ DEPOIS
+  //    de a conexão nova estar gravada: se a gravação falhasse (a cifra, o
+  //    banco), nada teria sido apagado — é a ação que não se desfaz. Se o
+  //    apagar falhar, a conexão nova já vale e os vínculos antigos ficam
+  //    invisíveis (outro escritório); "apagar" de novo os tira.
+  if (opcoes.apagarVinculosAnteriores === true) {
+    const { error: erroApagar } = await noAmbiente(
+      admin.from("cb_atlas_clientes").delete().eq("account_id", accountId).neq("atlas_tenant_id", identidade.tenantId),
+      ambiente,
+    );
+    if (erroApagar) console.error("[atlas] conexão gravada, mas os vínculos do escritório anterior não saíram:", erroApagar.message);
+  }
   return { ok: true, escritorio: identidade.escritorio };
 }
 
@@ -189,13 +228,20 @@ export async function registrarConferencia(
   accountId: string,
   codigo: CodigoDoErroAtlas | "chave_ilegivel" | null,
   ambiente: string | null = ambienteDoAtlas(),
+  /**
+   * A cerca de posse da leitura periódica (`sincronizando_desde` = o carimbo
+   * do cadeado): uma reconexão no meio zera o cadeado, e o erro da chave VELHA
+   * não marca a conexão NOVA.
+   */
+  cerca: { sincronizandoDesde: string } | null = null,
 ): Promise<void> {
   const agora = new Date().toISOString();
   if (codigo !== null && !CODIGOS_DA_CHAVE.includes(codigo)) return;
   // Só a conexão DESTE ambiente: o staging recusando uma chave não marca a de verdade.
   const daConexao = (patch: Record<string, unknown>) => {
     const q = admin.from("cb_atlas_config").update(patch).eq("account_id", accountId);
-    return ambiente === null ? q.is("api_url", null) : q.eq("api_url", ambiente);
+    const noAmb = ambiente === null ? q.is("api_url", null) : q.eq("api_url", ambiente);
+    return cerca ? noAmb.eq("sincronizando_desde", cerca.sincronizandoDesde) : noAmb;
   };
   const { error } =
     codigo === null ? await daConexao({ conferido_em: agora }) : await daConexao({ status: "erro", last_error: codigo, updated_at: agora });

@@ -4215,9 +4215,29 @@
           "permissoes_faltando": "API permissions are missing in Atlas",
           "resposta_inesperada": "Atlas replied in an unexpected format (its API may be being updated)",
           "outro_ambiente": "the stored connection belongs to another Atlas environment (test × production); this environment neither uses nor replaces it. Disconnect it in the environment where it was made",
-          "chave_mal_colada": "the pasted key looks incomplete or has a space in the middle; copy it again, in full"
+          "chave_mal_colada": "the pasted key looks incomplete or has a space in the middle; copy it again, in full",
+          "sem_permissao_listar": "the List Clients (Listar Clientes) permission is off in Atlas (the status sync needs it; the “Create client” step does not)",
+          "api_antiga": "the Atlas API does not report when the status changed yet (update pending in Atlas)",
+          "em_curso": "a sync is already running; wait a moment",
+          "cadeado_perdido": "the sync was interrupted by another one (a reconnection or another process); try again"
         },
-        "semMotivo": "could not finish right now; try again shortly"
+        "semMotivo": "could not finish right now; try again shortly",
+        "ambienteDeTeste": "Test environment",
+        "leituraTitulo": "Status sync",
+        "leituraUltima": "Last sync: {quando}.",
+        "leituraNunca": "Client statuses have not been read from Atlas yet.",
+        "leituraAtrasada": "The sync is late (the scheduler reads every ~15 minutes).",
+        "leituraErro": "The last sync failed: {motivo}.",
+        "leituraDica": "Every ~15 minutes the CRM reads each client status in Atlas (active, terminated, finished…) and links the contact to the Atlas client on its own by the conversation link, when only one record and only one contact match. By the full phone number, it links only in the daily full read, and only for offices with up to ~900 clients. For this, turn on the List Clients (Listar Clientes) permission in Atlas.",
+        "lerAgora": "Sync statuses now",
+        "lendo": "Syncing…",
+        "lidoOk": "Sync done: {clientes} clients read, {vinculados} contacts linked now.",
+        "lidoParcial": "Partial sync: {clientes} clients read, {vinculados} contacts linked now; the rest follows in the next cycle.",
+        "leituraMuitoSeguida": "a sync was just requested; wait a minute",
+        "vinculos": "Linked contacts: {total}.",
+        "vinculosDetalhe": "{link} by the conversation link, {telefone} by phone, {manual} by hand, {passo} by the “Create client in Atlas” step.",
+        "apagarVinculos": "Delete the {n} links to the previous office and connect",
+        "confirmarApagarVinculos": "Delete the {n} links between contacts and clients of the previous office in Atlas? Nothing is deleted in Atlas; the contacts stay unlinked until the sync or the “Create client in Atlas” step links them to the new office."
       },
       "avisoDaChave": {
         "embeddings_recusado": "Key saved: it generates text, but OpenAI refused the knowledge-base search (embeddings). The knowledge base now uses keyword search only — check the project's permissions and save the key again.",

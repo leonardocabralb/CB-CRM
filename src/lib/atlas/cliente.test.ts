@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { AtlasError, MARCA_DE_SEGREDO, codigoDoErro, criarClienteAtlas, lerIdentidade } from "./cliente";
+import { AtlasError, MARCA_DE_SEGREDO, codigoDoErro, criarClienteAtlas, lerIdentidade, lerPaginaDaListagem } from "./cliente";
 import { API_DO_ATLAS, ambienteDoAtlas, urlDaApiDoAtlas } from "./enderecos";
 
 // Chave de TESTE — nenhuma chave real do Atlas.
@@ -178,5 +178,106 @@ describe("o endereço", () => {
     expect(ambienteDoAtlas("http://atlas.example.com/x")).toBeNull();
     expect(ambienteDoAtlas(API_DO_ATLAS)).toBeNull();
     expect(ambienteDoAtlas(URL_TESTE)).toBe(URL_TESTE);
+  });
+});
+
+describe("list_clients (a leitura das situações)", () => {
+  const UUID_CONVERSA = "00000000-0000-4000-8000-0000000000c1";
+  const cliente = (parcial: Record<string, unknown> = {}) => ({
+    id: "00000000-0000-4000-8000-000000000011",
+    name: "Cliente Exemplo",
+    doc_id: "00000000000",
+    email: "cliente@example.com",
+    phone: "11 98765-4321",
+    status: "rescindido",
+    notes: "anotação da equipe",
+    chat_link: `https://crm.example.com/inbox?c=${UUID_CONVERSA.toUpperCase()}`,
+    status_changed_at: "2026-05-30T14:00:00+00:00",
+    app_url: "https://app.example.com/#/clients/00000000-0000-4000-8000-000000000011",
+    ...parcial,
+  });
+
+  it("o pedido: statusChangedSince, cursor e limit no corpo; leitura sem Idempotency-Key", async () => {
+    const f = fetchFalso({ status: 200, corpo: { success: true, clients: [], hasMore: false, nextCursor: null } });
+    await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).listar({ statusChangedSince: "2026-09-30T12:00:00.000Z", cursor: "abc", limit: 100 });
+    expect(f.pedidos[0].corpo).toEqual({ action: "list_clients", data: { limit: 100, statusChangedSince: "2026-09-30T12:00:00.000Z", cursor: "abc" } });
+    expect((f.pedidos[0].init.headers as Record<string, string>)["Idempotency-Key"]).toBeUndefined();
+    const g = fetchFalso({ status: 200, corpo: { success: true, clients: [], hasMore: false, nextCursor: null } });
+    await criarClienteAtlas(CHAVE, g.fn, URL_TESTE).listar({ cursor: null, limit: 100 });
+    expect(g.pedidos[0].corpo.data).toEqual({ limit: 100 });
+  });
+
+  it("CRÍTICO: do cliente só saem id, situação, data, app_url e os SINAIS (uuids do link, telefone canônico) — nada de nome, CPF, e-mail ou texto do link", async () => {
+    const f = fetchFalso({ status: 200, corpo: { success: true, clients: [cliente()], hasMore: true, nextCursor: "prox" } });
+    const pagina = await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).listar({ limit: 100 });
+    expect(pagina).toEqual({
+      clientes: [
+        {
+          id: "00000000-0000-4000-8000-000000000011",
+          status: "rescindido",
+          situacaoDesde: "2026-05-30T14:00:00.000Z",
+          appUrl: "https://app.example.com/#/clients/00000000-0000-4000-8000-000000000011",
+          sinais: { uuidsDoLink: [UUID_CONVERSA], telefoneCanonico: "5511987654321" },
+        },
+      ],
+      nextCursor: "prox",
+      hasMore: true,
+    });
+    const texto = JSON.stringify(pagina);
+    for (const dado of ["Cliente Exemplo", "cliente@example.com", "anotação", "crm.example.com", "11 98765-4321"]) expect(texto).not.toContain(dado);
+  });
+
+  it("data desconhecida vem nula; telefone fraco (sem DDD, lixo) não vira sinal", () => {
+    const pagina = lerPaginaDaListagem({
+      clients: [cliente({ status_changed_at: null, phone: "98765-4321", chat_link: null }), cliente({ id: "c2", status_changed_at: "não é data", phone: "ramal 45" })],
+      hasMore: false,
+    });
+    expect(pagina.clientes.map((c) => [c.situacaoDesde, c.sinais.telefoneCanonico, c.sinais.uuidsDoLink])).toEqual([
+      [null, null, []],
+      [null, null, [UUID_CONVERSA]],
+    ]);
+  });
+
+  it("CRÍTICO: cliente SEM a chave status_changed_at = API ANTIGA (ignoraria o filtro): lança, marcado", () => {
+    const semChave = cliente();
+    delete (semChave as Record<string, unknown>).status_changed_at;
+    const e = (() => {
+      try {
+        lerPaginaDaListagem({ clients: [cliente({ id: "c0" }), semChave], hasMore: false });
+      } catch (x) {
+        return x as AtlasError;
+      }
+    })();
+    expect(e).toBeInstanceOf(AtlasError);
+    expect(e!.codigo).toBe("resposta_inesperada");
+    expect(e!.apiAntiga).toBe(true);
+  });
+
+  it("cliente ilegível, lista ausente ou hasMore sem cursor: resposta_inesperada (sem apiAntiga)", () => {
+    for (const corpo of [{ clients: [cliente(), { semId: true }], hasMore: false }, { success: true }, { clients: [], hasMore: true, nextCursor: null }]) {
+      try {
+        lerPaginaDaListagem(corpo);
+        throw new Error("não lançou");
+      } catch (x) {
+        expect((x as AtlasError).codigo).toBe("resposta_inesperada");
+        expect((x as AtlasError).apiAntiga).toBe(false);
+      }
+    }
+  });
+
+  it("get_client lê o status_changed_at; sem a chave, a data fica AUSENTE (não nula)", async () => {
+    const f = fetchFalso({ status: 200, corpo: { success: true, client: cliente() } });
+    expect(await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).ler("c1")).toMatchObject({ situacaoDesde: "2026-05-30T14:00:00.000Z" });
+    const antigo = cliente();
+    delete (antigo as Record<string, unknown>).status_changed_at;
+    const g = fetchFalso({ status: 200, corpo: { success: true, client: antigo } });
+    expect(await criarClienteAtlas(CHAVE, g.fn, URL_TESTE).ler("c1")).not.toHaveProperty("situacaoDesde");
+  });
+
+  it("permissão Listar desligada vem como sem_permissao com a permissão nomeada", async () => {
+    const f = fetchFalso({ status: 403, corpo: { error: "Permission denied: list_clients is disabled", code: "permission_denied", permission: "list_clients" } });
+    const e = (await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).listar({ limit: 100 }).catch((x: unknown) => x)) as AtlasError;
+    expect(e.codigo).toBe("sem_permissao");
+    expect(e.permissao).toBe("list_clients");
   });
 });

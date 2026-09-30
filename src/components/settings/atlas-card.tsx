@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { CartaoDoAtlas } from "@/lib/atlas/cartao";
+import type { CartaoDoAtlas, ContagemDosVinculos } from "@/lib/atlas/cartao";
 import { cn } from "@/lib/utils";
 
 import { SettingsChip } from "./settings-chip";
@@ -20,6 +20,13 @@ import { SettingsChip } from "./settings-chip";
  * prova pelo `whoami` do Atlas, confere as permissões e a guarda cifrada.
  *
  * Mesmo esqueleto do `zapsign-card.tsx`: só admin chega aqui.
+ *
+ * Fase 2 (1072): a seção "Leitura das situações" (a última leitura, o erro
+ * DELA — separado do erro da conexão —, "Ler situações agora") e as fichas
+ * vinculadas por origem; o selo "Ambiente de teste" quando a instância
+ * aponta para outro Atlas (a URL nunca aparece); e, na recusa
+ * `outro_escritorio`, apagar os vínculos do escritório anterior (com
+ * confirmação) e conectar.
  */
 
 /**
@@ -50,6 +57,11 @@ export const CODIGOS_CONHECIDOS = [
   "permissoes_faltando",
   "outro_ambiente",
   "chave_mal_colada",
+  // A leitura das situações (`situacoes.ts`, `CodigoDaLeitura`).
+  "sem_permissao_listar",
+  "api_antiga",
+  "em_curso",
+  "cadeado_perdido",
 ] as const;
 
 /**
@@ -65,6 +77,9 @@ const PERMISSOES = new Set<string>(PERMISSOES_CONHECIDAS);
 export function AtlasCard() {
   const t = useTranslations("Settings.integracoes");
   const [cartao, setCartao] = useState<CartaoDoAtlas | null>(null);
+  const [vinculos, setVinculos] = useState<ContagemDosVinculos | null>(null);
+  const [anteriores, setAnteriores] = useState<number | null>(null);
+  const [lendo, setLendo] = useState(false);
   const [falhou, setFalhou] = useState(false);
   const [aberto, setAberto] = useState(false);
   const [chave, setChave] = useState("");
@@ -87,9 +102,10 @@ export function AtlasCard() {
     try {
       const res = await fetch("/api/cb/atlas");
       if (!res.ok) throw new Error(String(res.status));
-      const corpo = (await res.json()) as { cartao: CartaoDoAtlas };
+      const corpo = (await res.json()) as { cartao: CartaoDoAtlas; vinculos: ContagemDosVinculos | null };
       if (vivoRef.current) {
         setCartao(corpo.cartao);
+        setVinculos(corpo.vinculos ?? null);
         setFalhou(false);
       }
     } catch {
@@ -107,18 +123,23 @@ export function AtlasCard() {
     };
   }, [carregar]);
 
-  const conectar = async () => {
+  // `apagarVinculosAnteriores`: o admin confirmou apagar as fichas ligadas ao
+  // escritório ANTERIOR (só deste ambiente) para conectar a chave de outro.
+  const conectar = async (apagarVinculosAnteriores = false) => {
+    if (apagarVinculosAnteriores && !window.confirm(t("atlas.confirmarApagarVinculos", { n: anteriores ?? 0 }))) return;
     setSalvando(true);
     setErro(null);
+    setAnteriores(null);
     try {
       const res = await fetch("/api/cb/atlas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chave }),
+        body: JSON.stringify({ chave, apagarVinculosAnteriores }),
       });
-      const corpo = (await res.json().catch(() => ({}))) as { error?: string; faltando?: string[] };
+      const corpo = (await res.json().catch(() => ({}))) as { error?: string; faltando?: string[]; vinculosAnteriores?: number };
       if (!res.ok) {
         const codigo = corpo.error ?? "atlas_error";
+        if (codigo === "outro_escritorio" && typeof corpo.vinculosAnteriores === "number") setAnteriores(corpo.vinculosAnteriores);
         setErro(
           codigo === "permissoes_faltando" && corpo.faltando?.length
             ? t("atlas.faltando", { permissoes: corpo.faltando.map(nomeDaPermissao).join(", ") })
@@ -160,6 +181,30 @@ export function AtlasCard() {
     }
   };
 
+  // "Ler situações agora": a mesma leitura do agendador, só desta conta.
+  const lerAgora = async () => {
+    if (lendo) return;
+    setLendo(true);
+    try {
+      const res = await fetch("/api/cb/atlas/leitura", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const corpo = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        contagem?: { clientes: number; vinculadosPeloLink: number; vinculadosPeloTelefone: number; interrompida: boolean };
+      };
+      if (res.ok && corpo.contagem) {
+        const c = corpo.contagem;
+        const valores = { clientes: c.clientes, vinculados: c.vinculadosPeloLink + c.vinculadosPeloTelefone };
+        toast.success(c.interrompida ? t("atlas.lidoParcial", valores) : t("atlas.lidoOk", valores));
+      } else if (res.status === 429 && corpo.error !== "limite") toast.error(t("falha", { motivo: t("atlas.leituraMuitoSeguida") }));
+      else toast.error(t("falha", { motivo: corpo.error ? motivo(corpo.error) : t("atlas.semMotivo") }));
+      await carregar();
+    } catch {
+      toast.error(t("falha", { motivo: t("atlas.semMotivo") }));
+    } finally {
+      if (vivoRef.current) setLendo(false);
+    }
+  };
+
   const desconectar = async () => {
     if (desconectando) return;
     if (!window.confirm(t("atlas.confirmarDesconectar"))) return;
@@ -198,6 +243,7 @@ export function AtlasCard() {
       <button type="button" onClick={() => setAberto((a) => !a)} aria-expanded={aberto} className="flex w-full items-center gap-3 p-4 text-left">
         <Scale className="size-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">Atlas</span>
+        {cartao?.ambienteDeTeste && <SettingsChip variant="warn">{t("atlas.ambienteDeTeste")}</SettingsChip>}
         <SettingsChip variant={variante}>{rotuloDoChip}</SettingsChip>
         <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", aberto && "rotate-180")} />
       </button>
@@ -231,10 +277,15 @@ export function AtlasCard() {
                   <p className="text-xs text-muted-foreground">{t("atlas.permissoesDica")}</p>
                 </div>
                 {erro && <p className="text-xs text-destructive">{t("falha", { motivo: erro })}</p>}
-                <div>
+                <div className="flex flex-wrap gap-2">
                   <Button type="button" size="sm" onClick={() => void conectar()} disabled={salvando || !chave.trim()}>
                     {salvando ? t("atlas.conectando") : t("atlas.conectar")}
                   </Button>
+                  {anteriores !== null && anteriores > 0 && (
+                    <Button type="button" size="sm" variant="outline" onClick={() => void conectar(true)} disabled={salvando || !chave.trim()}>
+                      {t("atlas.apagarVinculos", { n: anteriores })}
+                    </Button>
+                  )}
                 </div>
               </div>
             </>
@@ -257,10 +308,68 @@ export function AtlasCard() {
               </div>
               {cartao.erro && <p className="text-xs text-destructive">{t("falha", { motivo: motivo(cartao.erro) })}</p>}
               <p className="max-w-[62ch] text-xs text-muted-foreground">{t("atlas.comoFunciona")}</p>
+              {cartao.leitura && (
+                <LeituraDasSituacoes
+                  leitura={cartao.leitura}
+                  vinculos={vinculos}
+                  lendo={lendo}
+                  onLerAgora={() => void lerAgora()}
+                  motivo={motivo}
+                />
+              )}
             </>
           )}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * A seção "Leitura das situações" (fora do componente: definida dentro, ela
+ * remontaria a cada render). As datas pelo idioma do navegador.
+ */
+function LeituraDasSituacoes({
+  leitura,
+  vinculos,
+  lendo,
+  onLerAgora,
+  motivo,
+}: {
+  leitura: NonNullable<CartaoDoAtlas["leitura"]>;
+  vinculos: ContagemDosVinculos | null;
+  lendo: boolean;
+  onLerAgora: () => void;
+  motivo: (codigo: string) => string;
+}) {
+  const t = useTranslations("Settings.integracoes");
+  const quando = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
+  const pelaAutomacao = vinculos ? vinculos.porOrigem.criada + vinculos.porOrigem.reativada + vinculos.porOrigem.encontrada : 0;
+  return (
+    <div className="space-y-2 border-t border-border pt-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-medium text-foreground">{t("atlas.leituraTitulo")}</p>
+        <Button type="button" variant="outline" size="sm" onClick={onLerAgora} disabled={lendo}>
+          {lendo ? t("atlas.lendo") : t("atlas.lerAgora")}
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {leitura.ultimaEm ? t("atlas.leituraUltima", { quando: quando(leitura.ultimaEm) }) : t("atlas.leituraNunca")}
+        {leitura.ultimaEm && leitura.velha && !leitura.erro ? ` ${t("atlas.leituraAtrasada")}` : ""}
+      </p>
+      {leitura.erro && <p className="text-xs text-destructive">{t("atlas.leituraErro", { motivo: motivo(leitura.erro) })}</p>}
+      {vinculos && (
+        <p className="text-xs text-muted-foreground">
+          {t("atlas.vinculos", { total: vinculos.total })}{" "}
+          {t("atlas.vinculosDetalhe", {
+            link: vinculos.porCasamento.chat_link,
+            telefone: vinculos.porCasamento.telefone,
+            manual: vinculos.porOrigem.manual,
+            passo: pelaAutomacao,
+          })}
+        </p>
+      )}
+      <p className="max-w-[62ch] text-xs text-muted-foreground">{t("atlas.leituraDica")}</p>
     </div>
   );
 }

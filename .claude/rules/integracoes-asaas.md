@@ -125,6 +125,9 @@ o CRM só lê. O lado do MOTOR da régua (gatilhos `asaas_*` que casam só pelo
   relê o `command` do agendador: vale só depois de `docker stack deploy`
   manual com o `crm.env` (raiz, seção 10). O rodízio é por
   `last_sync_attempt_at`, carimbado ANTES de qualquer trabalho.
+- ⚠️ **A rota `cb/asaas/cron` carrega também a leitura do Atlas em
+  `after()`** (`rodarCicloDoAtlas`, `integracoes-atlas.md`): tirá-la do laço
+  cala o Atlas, e a autenticação continua sendo a única coisa antes dela.
 
 ### Cliente HTTP (`cliente.ts`)
 

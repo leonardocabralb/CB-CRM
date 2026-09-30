@@ -70,6 +70,8 @@ passou na máquina). Por isso:
   contra ele.
 - ⚠️⚠️ O CI NÃO relê o `command` do agendador: mudar um laço só vale depois de
   `docker stack deploy` manual na VPS, com o `crm.env` carregado.
+- ⚠️ A rota `cb/asaas/cron` carrega a leitura do Atlas em `after()`
+  (`integracoes-atlas.md`): tirá-la do laço lento cala o Atlas junto.
 
 ### Ambiente do contêiner
 - O `docker-stack.yml` passa o ambiente por `environment:` EXPLÍCITO, sem

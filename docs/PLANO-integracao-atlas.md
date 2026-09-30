@@ -30,8 +30,8 @@ qualquer um que também use o Atlas, **só pela API pública do Atlas**, com
 | Fase | O quê | Depende de | Estado |
 |---|---|---|---|
 | 1 | Faixa "Cliente rescindido / finalizado" pela MARCA da etapa (sem Atlas) | nada | **No ar** (PR #355, 29/09/2026): 1070 aplicada, etapas do CB marcadas, e2e no preview feito |
-| 0 | Conectar pela chave + passo "Criar cliente no Atlas" (reativa quem já existe) no lugar da perna do Atlas no n8n | Prioridade 1 da API do Atlas em staging: `whoami` e códigos de erro JÁ estão (29/09); falta `find_clients` e `app_url` | **Em curso** (branch `feat/atlas-fase-0`, migration 1071) |
-| 2 | Vínculo contato ↔ cliente do Atlas + botão "Abrir no Atlas" + faixa também pela situação do Atlas | Fase 0; Prioridade 2 do Atlas (link direto abre a ficha) | Planejada |
+| 0 | Conectar pela chave + passo "Criar cliente no Atlas" (reativa quem já existe) no lugar da perna do Atlas no n8n | Prioridade 1 da API do Atlas em staging | **No `main`** (PR #356, 30/09/2026; 1071) |
+| 2 | Vínculo contato ↔ cliente do Atlas + botão "Abrir no Atlas" + faixa também pela situação do Atlas | Fase 0; a API nova do Atlas em produção (promoção pelo Dev) | **Em curso**: PR A (servidor, 1072, branch `feat/atlas-fase-2-leitura`); PR B (tela) depois dele |
 | 3 | Aba "Atlas" com o histórico de negociação | Prioridade 3 do Atlas (leitura de negociação com permissão própria) | Planejada |
 | 4 | Mover o card por automação quando a situação muda no Atlas | Fase 2 | Planejada |
 
@@ -167,21 +167,27 @@ Depois da revisão do PR #356:
   vinculado; o motivo manda conferir e acertar o telefone lá. É o "liga
   sozinho só com sinal forte" das Fases 2–4, aplicado já aqui.
 
-**Pendências conhecidas da Fase 0:** trocar o Atlas de ESCRITÓRIO (outra
-chave, outro `tenant`) exige apagar os vínculos à mão — sem tela ainda
-(Fase 2); duas execuções simultâneas do mesmo contato podem criar dois
+**Pendências conhecidas da Fase 0:** ~~trocar o Atlas de ESCRITÓRIO exige
+apagar os vínculos à mão~~ — resolvido no PR A da Fase 2 (o cartão oferece
+apagar os vínculos do escritório anterior, com confirmação); duas execuções simultâneas do mesmo contato podem criar dois
 cadastros (a segunda falha no vínculo, com o motivo), como o `create_deal`;
 trocar de escritório NO MEIO de uma execução (o admin conecta outra chave
 enquanto o passo roda) pode deixar um cliente órfão no escritório antigo —
 corrida rara sobre uma troca que já é excepcional, sem trava (achado do
 Codex, 30/09).
 
-**Pergunta ao operador (D3 × a etiqueta):** na "Contrato fechado" tudo mora
-no ramo "NÃO tem a etiqueta Cliente Fechado"; o ramo SIM está vazio e 1.082
-fichas já têm a etiqueta. O ex-cliente que fecha contrato novo cai no ramo
-vazio: nem o Atlas, nem as boas-vindas, nem a ida ao Jurídico rodam. Sugestão:
-pôr o passo do Atlas também no ramo SIM (ele REATIVA), e decidir o que mais
-deve rodar para quem volta.
+**D3 × a etiqueta — DECIDIDO (operador, 30/09/2026):** na "Contrato fechado"
+tudo mora no ramo "NÃO tem a etiqueta Cliente Fechado"; o ramo SIM está vazio
+e 1.082 fichas já têm a etiqueta. **O ramo SIM fica vazio**: a contratação de
+um serviço novo por quem já é cliente é feita direto pelo Jurídico, e a
+automação só roda na primeira contratação. O passo "Criar cliente no Atlas"
+entra só como ÚLTIMO passo do ramo NÃO. Consequências: o CRM não reativa no
+Atlas quem volta (a equipe reativa lá, D2); a leitura da Fase 2 vê o
+`ativo` em até ~20 min e a linha do Atlas na faixa apaga; na Fase 4, uma
+automação "Situação mudou no Atlas → ativo" marcando os DOIS funis
+(Bancário - Jurídico e Comercial — o único card de quem volta está no
+Comercial) devolve o card ao Jurídico. Pendente: a planilha "Controle
+Clientes" deve receber quem volta? Hoje não recebe.
 
 - Corte no CB no mesmo dia: o passo entra, o nó do Atlas sai do n8n, o
   webhook fica só para a planilha (D5).
@@ -192,14 +198,64 @@ operador:** a mensagem de boas-vindas ainda tem o texto literal
 Jurídico" ficou DEPOIS do webhook (se o webhook falhar, não fixa). O passo
 nativo entra por último.
 
+## Fase 2 — leitura das situações e vínculo (em curso)
+
+**Decisões do operador (30/09/2026):**
+
+1. **Vínculo automático pelo TELEFONE: sim**, só com o telefone completo e
+   ÚNICO dos dois lados (régua do telefone digitado, grafia canônica, 12
+   dígitos ou mais; os números das conexões pela mesma régua — sem eles, o
+   vínculo pelo telefone não roda no ciclo), marcado `casou_por = telefone`.
+2. **Vínculo manual: só administradores** (PR B).
+3. **Faixa: suspenso (âmbar) e inativo (cinza) também acendem** (PR B;
+   `SITUACOES_NA_FAIXA` já nasce no PR A).
+4. **Fase 4: só a trava "card fora do funil"** — sem a de "ficha velha" e sem
+   a de 48 h. `crm_escreveu_em` é gravado, sem trava.
+5. **`importado → ativo`** é o cadastro inicial (grava, nunca é evento);
+   **`em_negociacao`** compara como `ativo` (gravado como veio).
+6. **A leitura roda num `after()` da rota `cb/asaas/cron`** (laço lento),
+   sem mudar o `docker-stack.yml` e sem `stack deploy`.
+
+**PR A (servidor, 1072):** o AMBIENTE em toda linha de vínculo e de recusa
+(`noAmbiente`, pino `ambiente.chamadores.test.ts`; chaves 1:1 por ambiente,
+NULLS NOT DISTINCT); a leitura (`situacoes.ts` + `leitura.ts`: cadeado com
+cerca de posse, passo das mudanças e listagem completa com cursores
+próprios, `decidirMudanca`, vínculo automático pelo link e pelo telefone,
+recusas, lixeira marcada e nunca apagada, erros por código em `sync_erro`);
+o passo "Criar cliente" com ambiente, recusa, `crm_escreveu_em` e a lixeira
+que PARA; reconectar zera a leitura e oferece apagar os vínculos do
+escritório anterior; o cartão com "Leitura das situações", "Ler situações
+agora", as fichas vinculadas por origem e o selo "Ambiente de teste".
+
+**Para ligar:** aplicar a 1072 ANTES do deploy (aditiva) — com o "pode
+gravar". Na produção nada lê até a API do Atlas ser promovida: com a API
+antiga, o cartão mostra `api_antiga` e nada é gravado.
+
+**Medir contra o PostgREST real (antes do merge):** o `.or()` com `lt` sobre
+timestamptz (cadeado e cerca de recência), a chave `NULLS NOT DISTINCT` pelo
+INSERT (23505 de verdade com `api_url` nulo), o índice parcial da ficha, o
+`count: 'exact', head: true` com `.not('contact_id','is',null)`, e `.in()`
+com 100 ids.
+
+**Limites conhecidos:** o vínculo pelo telefone só roda quando a listagem
+completa começa e termina no mesmo ciclo — na prática a diária, que divide
+as 10 páginas com as mudanças (escritório com mais de ~900 clientes fica só
+com o link); fora dessa listagem, o vínculo pelo link só liga depois de o
+`find_clients` confirmar que só UM cadastro aponta para a ficha (até 5 por
+ciclo; ficha com mais de 9 conversas espera a listagem inteira); a lixeira
+confere 5 vínculos por ciclo. A janela entre `provarPosse` e a escrita do
+vínculo automático (milissegundos) segue aberta a uma reconexão com outro
+escritório: o vínculo gravado ali seria do escritório antigo.
+
 ## Fases 2 a 4 — resumo do desenho
 
 - **Vínculo** 1:1 (um cliente do Atlas por ficha): liga sozinho só com sinal
   forte (o link do próprio CRM gravado no Atlas; telefone igual e único dos
   dois lados); o resto, colando o link da ficha do Atlas no painel.
 - **Situação do Atlas** lida no laço lento do agendador (~15 min), pelas
-  listas "rescindidos" e "finalizados"; a faixa passa a dizer a fonte ("no
-  Atlas" ou "no funil") e mostra o último valor com a data se o Atlas cair.
+  MUDANÇAS desde a última leitura (`statusChangedSince`) e por uma listagem
+  completa diária; a faixa passa a dizer a fonte ("no Atlas" ou "no funil")
+  e mostra o último valor com a data se o Atlas cair.
 - **Mover o card** (Fase 4): o gatilho novo passa o card certo à automação
   (o "Mover card" sozinho pega o card aberto mais recente de QUALQUER funil e
   arrastaria o card novo do Comercial de um ex-cliente que voltou). Nunca

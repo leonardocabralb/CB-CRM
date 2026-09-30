@@ -3,16 +3,18 @@ paths:
   - "src/lib/atlas/**"
   - "src/app/api/cb/atlas/**"
   - "src/components/settings/atlas-card*"
-  - "supabase/migrations/1071_cb_atlas.sql"
-  - "supabase/migrations/atlas-1071.test.ts"
+  - "src/app/api/cb/asaas/cron/**"
+  - "supabase/migrations/10*_cb_atlas*.sql"
+  - "supabase/migrations/atlas-10*.test.ts"
 ---
 
 # Integração com o Atlas Gestor — regras
 
 Vale no cliente da API do Atlas (`src/lib/atlas/`), no cartão "Atlas" de
-Integrações e no passo de automação "Criar cliente no Atlas". Plano, fases e
-decisões do operador: `docs/PLANO-integracao-atlas.md`. O motor e o
-construtor: `.claude/rules/automacoes.md`.
+Integrações, no passo de automação "Criar cliente no Atlas" e na leitura
+periódica das situações (Fase 2). Plano, fases e decisões do operador:
+`docs/PLANO-integracao-atlas.md`. O motor e o construtor:
+`.claude/rules/automacoes.md`.
 
 ### A chave e a conexão (1071)
 
@@ -30,11 +32,18 @@ construtor: `.claude/rules/automacoes.md`.
 - **Conectar = `whoami`**, que não grava nada no Atlas. Nunca sondar
   permissão com ação de escrita: dependeria da ordem de validação de OUTRO
   produto e, se ela mudar, cada conexão criaria um cliente vazio.
-- ⚠️ **Chave de outro escritório é RECUSADA** (`outro_escritorio`) enquanto
-  houver ficha ligada a cliente do escritório anterior: os ids são de lá.
+- ⚠️ **Chave de outro escritório é RECUSADA** (`outro_escritorio`, com
+  `vinculosAnteriores`) enquanto houver ficha ligada, NESTE ambiente, a
+  cliente do escritório anterior: os ids são de lá. O cartão oferece "Apagar
+  os N vínculos do escritório anterior e conectar" (confirmação;
+  `apagarVinculosAnteriores`, só depois do `whoami` provar a chave nova).
   Desconectar apaga só a conexão; os vínculos ficam para o mesmo escritório
-  reconectado. Trocar de escritório exige apagar os vínculos à mão (sem tela:
-  pendência no plano).
+  reconectado.
+- ⚠️⚠️ **Conectar ZERA o estado da leitura** (`ESTADO_DA_LEITURA_ZERADO`,
+  1072): o cursor do Atlas vale em qualquer ambiente, e um cursor ou um
+  `situacoes_lidas_ate` herdado do staging (ou do escritório anterior) faria
+  a produção pular a primeira listagem completa sem erro. O ciclo em curso
+  perde a cerca de posse e para na próxima prova dela (a seção abaixo).
 - **O endereço é constante do produto** (`API_DO_ATLAS`); `ATLAS_API_URL`
   (servidor, só https) aponta para outro AMBIENTE do Atlas (o staging).
 - ⚠️⚠️ **A conexão guarda o ambiente** (`cb_atlas_config.api_url`, nulo = o
@@ -42,8 +51,97 @@ construtor: `.claude/rules/automacoes.md`.
   8b): a instância de teste não conecta por cima nem desconecta a conexão de
   outro ambiente (`outro_ambiente`), nenhuma lê a chave do outro, e o staging
   recusando uma chave não marca a de verdade em erro. A de verdade substitui
-  ou apaga uma de teste esquecida. Vínculos criados no teste ficam (a
-  produção os relê pelo `get_client`: `not_found` → procura de novo).
+  ou apaga uma de teste esquecida.
+
+### Ambiente em toda linha (1072)
+
+- ⚠️⚠️ **`cb_atlas_clientes` e `cb_atlas_recusas` guardam o ambiente**
+  (`api_url`, nulo = o Atlas de verdade), e TODA consulta e escrita delas
+  passa por `noAmbiente(query, amb)` (`enderecos.ts`); INSERT grava `api_url:
+  ambienteDoAtlas()`. O staging tem o MESMO id de escritório e ids copiados:
+  sem a cerca, a leitura do preview escreveria por cima dos vínculos reais.
+  Pino default-deny `ambiente.chamadores.test.ts` (por arquivo: a consulta
+  nova num arquivo que já tem a cerca fica para a revisão).
+- As chaves 1:1 são POR AMBIENTE, `NULLS NOT DISTINCT` (nulo é um ambiente):
+  `(account_id, api_url, atlas_client_id)` e, parcial (`contact_id IS NOT
+  NULL`, as órfãs convivem), `(account_id, api_url, contact_id)`. Não servem
+  de alvo de upsert (o parcial nunca serve): INSERT + 23505.
+- Vínculo de OUTRO escritório (mesmo ambiente) é invisível à leitura e ao
+  passo (`atlas_tenant_id` da conexão), mas ocupa a chave da ficha: por isso
+  conectar outro escritório exige apagá-lo.
+
+### Leitura das situações (1072, `situacoes.ts` + `leitura.ts`)
+
+- ⚠️⚠️ **Roda num `after()` da rota `cb/asaas/cron`** (laço lento, ~15 min;
+  forma de CALLBACK, depois do laço do Asaas — pino em `route.test.ts`):
+  tirar a rota do laço cala o Atlas. "Ler situações agora" no cartão
+  (`/api/cb/atlas/leitura`, admin, só a conta, ~45 s, balde POR CONTA
+  `LEITURA_AGORA`). Nunca bater no cron do Asaas pelo preview.
+- **Cadeado** `sincronizando_desde` (`UPDATE … RETURNING` cercado, carimba
+  `last_sync_attempt_at` — o rodízio); toda escrita na conexão leva a posse e
+  confere a linha (zero = `cadeado_perdido`, para), e cada página, cada
+  vínculo automático e cada escrita da lixeira a PROVAM logo antes
+  (`provarPosse`), e o vínculo automático também DEPOIS (a prova que falha
+  apaga a linha recém-gravada): sem isso, o ciclo que perdeu a conta para
+  "Apagar os N vínculos e conectar" gravaria vínculo do escritório antigo,
+  que ocupa a chave da ficha. A marca na conexão (`registrarConferencia`) vai
+  com a MESMA cerca de posse, antes do fechamento: a chave velha recusada não
+  põe a conexão nova em erro. Chave ilegível ANTES do cadeado (sem cerca) não
+  escreve nada — quem marca é o passo e o "Conferir de novo". Recolhimento de
+  10 min, com teste cobrando a margem sobre prazo + timeout.
+- **Dois passos, cada um com cursor PRÓPRIO gravado a cada página**:
+  mudanças (`statusChangedSince` = última leitura − 5 min, fixo em
+  `mudancas_desde` até a varredura acabar; acabou → `situacoes_lidas_ate` =
+  quando a VARREDURA começou, `mudancas_iniciada_em` — o início do último
+  ciclo perderia quem ela pulou por ser `recente`) e listagem completa (a primeira, a diária das 03:00, a em
+  curso; acabou → `listagem_completa_em` = quando COMEÇOU). Teto de 10
+  páginas e pausa de 3 s: a cota (60/min) é do escritório, e o passo "Criar
+  cliente" não repete um 429. Prazo pelo relógio REAL.
+- **Escritório com mais de ~900 clientes**: a diária divide as 10 páginas
+  com as mudanças e nunca cabe num ciclo — o telefone não liga, e o link só
+  pela confirmação. O cartão e a INSTALACAO dizem isso.
+- ⚠️ **Nada de dado pessoal do Atlas no banco**: o parser do `list_clients`
+  (`lerPaginaDaListagem`) devolve só id, situação, `status_changed_at`,
+  `app_url` e dois sinais em memória (uuids do `chat_link`, telefone
+  canônico). Cliente ilegível ou página sem `status_changed_at` (a API
+  ANTIGA, `api_antiga`) param sem gravar nada.
+- **`decidirMudanca`**: `recente` (< 2 min: não grava — a sobreposição relê;
+  fecha a corrida com o passo), `antiga`, `igual` (`em_negociacao` compara
+  como `ativo`, gravado como veio), `primeira` (inclusive `importado →
+  ativo`), `mudou_sem_data`, `corrigida`, `mudou` — só esta é evento
+  (`viraEvento`, Fase 4). Escrita UMA linha por vez, cercada por recência
+  (`situacao_lida_em` anterior ao PEDIDO da página).
+- **Erros**: nenhum avança o cursor da página. `limite` não marca a conexão;
+  "Listar clientes" desligada é `sem_permissao_listar` (em `sync_erro`, SEM
+  `registrarConferencia`: a permissão é opcional); chave recusada e plano sem
+  API marcam; `sem_permissao` do `get_client` (lixeira) e do `find_clients`
+  (confirmação do link) marca — "Consultar" é obrigatória. `sync_erro` é separado de `last_error`.
+
+### Vínculo automático, recusa e lixeira
+
+- **Pelo link da conversa**, só em ciclo sem falha: os uuids do `chat_link`
+  acham a dona da conversa (grupo não tem) ou a ficha direto; UMA ficha por
+  cliente e UM cliente por ficha, senão ambíguo (ninguém liga). ⚠️ A
+  unicidade vale contra o escritório INTEIRO: na listagem completa que
+  começou e terminou no ciclo, contra todos os clientes dela (ligados e
+  recentes também disputam a ficha); fora dela, a página não prova nada (o
+  ex-cliente tem o cadastro velho e o novo com o mesmo link, e só um muda),
+  e o par só liga se o `find_clients` pela ficha e pelas conversas dela achar
+  SÓ ele (até 5 por ciclo; ficha com mais de 9 conversas espera a listagem
+  inteira). **Pelo telefone** (decisão do operador, 30/09): `telefoneDigitado` →
+  `telefoneCanonico`, 12 dígitos ou mais, único na listagem INTEIRA e em
+  `contacts.telefone_canonico`, fora os números das conexões (pela mesma
+  régua; sem eles, não roda) — só quando a listagem começou e terminou no
+  mesmo ciclo. Marcado `origem = 'automatica'` e `casou_por`; nasce com a
+  situação (nunca evento). Fica fora: ficha já ligada neste ambiente, par em
+  `cb_atlas_recusas`, cliente `recente`. 23505 = conflito, pula.
+- `cb_atlas_recusas` (FECHADA, sem policy): o par desvinculado à mão não
+  volta pela leitura nem pelo passo.
+- ⚠️ **Lixeira**: a listagem não mostra cliente excluído; depois de uma
+  listagem completa, os vínculos que ela não viu (`visto_na_listagem_em`)
+  são relidos, no máximo 5 por ciclo. Só o `not_found` do Atlas marca
+  `excluido_no_atlas_em` — o vínculo NUNCA é apagado (restaurável por 7
+  dias); o cliente que volta na página limpa a marca.
 
 ### O passo "Criar cliente no Atlas" (`criar-cliente.ts`)
 
@@ -68,10 +166,15 @@ construtor: `.claude/rules/automacoes.md`.
   OUTRA ficha → em curso, devolve `ligado_a_outra_ficha` sem gravar nada;
   encerrado, PARA (provável ficha duplicada: fundir pela receita). Vínculo
   órfão (a ficha antiga foi apagada) é adotado.
-- ⚠️ **Só o `not_found` DO ATLAS é "apagado"** (`ler` → null, o vínculo
-  velho sai). 404 do gateway (sem o código, endereço errado) e 200 sem o
-  cliente LANÇAM: apagar o vínculo por eles recriaria o cliente (CLAUDE.md
-  8b). 2xx sem o que se esperava é `resposta_inesperada` — pode ter gravado.
+- ⚠️⚠️ **Vínculo com o cliente na LIXEIRA do Atlas PARA o passo** (`ler` →
+  null, o `not_found` do Atlas): o vínculo NÃO sai e ganha
+  `excluido_no_atlas_em`, e o motivo manda restaurar lá ou desvincular. A
+  busca não enxerga a lixeira: procurar criaria um segundo cadastro (contra a
+  D3). Vínculo de OUTRO escritório conta como sem vínculo e fica (só a
+  reconexão confirmada o apaga). O único candidato forte RECUSADO para esta
+  ficha (`cb_atlas_recusas`) também PARA. 404 do gateway (sem o código,
+  endereço errado) e 200 sem o cliente LANÇAM (CLAUDE.md 8b). 2xx sem o que
+  se esperava é `resposta_inesperada` — pode ter gravado.
   Cliente ILEGÍVEL na lista do `find_clients` também: descartá-lo mudaria a
   contagem que decide (dois viram um e reativa; um vira zero e cria).
 - ⚠️ **Campo de data ESCOLHIDO no passo que sumiu do catálogo** (apagado ou
@@ -107,4 +210,6 @@ construtor: `.claude/rules/automacoes.md`.
 - **Vínculo 1:1** (`cb_atlas_clientes`): o cliente do Atlas já ligado a
   OUTRA ficha não é roubado (`ligado_a_outra_ficha`). Lido por membro (forma
   da 1032), escrito só pelo servidor; `contact_id` SET NULL — a tabela está
-  na receita de fusão (`.claude/rules/supabase.md`).
+  na receita de fusão (`.claude/rules/supabase.md`), como as recusas
+  (CASCADE). O passo grava `crm_escreveu_em` ao criar e ao reativar; o 23505
+  do MESMO par (a leitura ligou antes) é o mesmo vínculo.

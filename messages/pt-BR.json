@@ -4208,9 +4208,29 @@
           "permissoes_faltando": "faltam permissões da API no Atlas",
           "resposta_inesperada": "o Atlas respondeu num formato inesperado (a API dele pode estar em atualização)",
           "outro_ambiente": "a conexão guardada é de outro ambiente do Atlas (teste × produção); este ambiente não a usa nem a troca. Desconecte no ambiente em que ela foi feita",
-          "chave_mal_colada": "a chave colada parece incompleta ou com espaço no meio; copie de novo, inteira"
+          "chave_mal_colada": "a chave colada parece incompleta ou com espaço no meio; copie de novo, inteira",
+          "sem_permissao_listar": "a permissão Listar Clientes está desligada no Atlas (a leitura das situações precisa dela; o passo “Criar cliente” não)",
+          "api_antiga": "a API do Atlas ainda não informa a data da mudança da situação (atualização pendente no Atlas)",
+          "em_curso": "uma leitura já está em curso; espere um instante",
+          "cadeado_perdido": "a leitura foi interrompida por outra (uma reconexão ou outro processo); tente de novo"
         },
-        "semMotivo": "não foi possível concluir agora; tente de novo em instantes"
+        "semMotivo": "não foi possível concluir agora; tente de novo em instantes",
+        "ambienteDeTeste": "Ambiente de teste",
+        "leituraTitulo": "Leitura das situações",
+        "leituraUltima": "Última leitura: {quando}.",
+        "leituraNunca": "As situações ainda não foram lidas do Atlas.",
+        "leituraAtrasada": "A leitura está atrasada (o agendador lê a cada ~15 minutos).",
+        "leituraErro": "A última leitura falhou: {motivo}.",
+        "leituraDica": "A cada ~15 minutos o CRM lê no Atlas a situação de cada cliente (ativo, rescindido, finalizado…) e liga sozinho a ficha ao cliente do Atlas pelo link da conversa, quando só um cadastro e só uma ficha casam. Pelo telefone completo, liga só na leitura completa diária, e só em escritório com até ~900 clientes. Para isso, ligue no Atlas a permissão Listar Clientes.",
+        "lerAgora": "Ler situações agora",
+        "lendo": "Lendo…",
+        "lidoOk": "Leitura feita: {clientes} clientes lidos, {vinculados} fichas vinculadas agora.",
+        "lidoParcial": "Leitura parcial: {clientes} clientes lidos, {vinculados} fichas vinculadas agora; o resto segue no próximo ciclo.",
+        "leituraMuitoSeguida": "a leitura acabou de ser pedida; espere um minuto",
+        "vinculos": "Fichas vinculadas: {total}.",
+        "vinculosDetalhe": "{link} pelo link da conversa, {telefone} pelo telefone, {manual} à mão, {passo} pelo passo “Criar cliente no Atlas”.",
+        "apagarVinculos": "Apagar os {n} vínculos do escritório anterior e conectar",
+        "confirmarApagarVinculos": "Apagar os {n} vínculos de fichas com clientes do escritório anterior no Atlas? Nada é apagado no Atlas; as fichas ficam sem vínculo até a leitura ou o passo “Criar cliente no Atlas” as ligarem ao escritório novo."
       },
       "avisoDaChave": {
         "embeddings_recusado": "Chave salva: ela gera texto, mas a OpenAI recusou a busca da base de conhecimento (embeddings). A base passa a usar só a busca por palavras — confira as permissões do projeto e salve a chave de novo.",

@@ -372,7 +372,7 @@ um espelho com pino lendo o SQL. Mudou um lado, muda o outro.
 - CASCADE (some sem aviso): `conversations` (e TODAS as mensagens),
   `contact_tags`, `contact_custom_values`, `cb_tasks`, `cb_conversation_notes`,
   `cb_automation_reminders`, `cb_contatos_relacionados` (1069, pelas DUAS
-  pontas).
+  pontas), `cb_atlas_recusas` (1072).
 - SET NULL (fica órfão): `deals`, `cb_lead_events`, `cb_calendly_eventos`,
   `cb_meetings`, `cb_reunioes_transcritas`, `cb_asaas_clientes`,
   `cb_asaas_regua_envios`, `cb_automation_events`, `cb_webhook_eventos`,
@@ -392,9 +392,11 @@ um espelho com pino lendo o SQL. Mudou um lado, muda o outro.
   TODAS as contas e agrupa por grafia exata (não vê as duas grafias do nono
   dígito).
 - **Receita de fusão**: reapontar TODAS as referências do perdedor para o
-  sobrevivente (as 18 do SET NULL e as 7 do CASCADE; `contact_tags`,
-  `contact_custom_values` e `cb_atlas_clientes` (1:1) com `NOT EXISTS`, por
-  serem únicas por contato;
+  sobrevivente (as 18 do SET NULL e as 8 do CASCADE; `contact_tags`,
+  `contact_custom_values` e `cb_atlas_clientes` (1:1, POR AMBIENTE: o `NOT
+  EXISTS` compara também `api_url IS NOT DISTINCT FROM`) com `NOT EXISTS`,
+  por serem únicas por contato; `cb_atlas_recusas` com `NOT EXISTS` por
+  `(account_id, api_url, contact_id, atlas_client_id)`;
   `cb_contatos_relacionados` nas duas colunas, pulando o par que viraria
   repetido ou o sobrevivente ligado a si mesmo — o CASCADE leva o resto) →
   mover os campos que faltam na ficha sobrevivente — `wa_user_id`/`wa_username`/
