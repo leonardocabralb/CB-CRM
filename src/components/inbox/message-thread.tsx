@@ -3118,8 +3118,13 @@ export function MessageThread({
           no `border-t` do aviso de número ou do compositor, e as duas caixas
           viram uma só. Faixa arredondada nova entra AQUI, sem `mb-*` próprio
           (somaria 16 px entre duas faixas). `empty:hidden`: com todas caladas,
-          o bloco não deixa uma tira vazia. */}
-      <div className="pb-2 empty:hidden">
+          o bloco não deixa uma tira vazia.
+          ⚠️ `min-h-0 overflow-y-auto`: com a tela baixa (teclado do celular,
+          agendadas abertas), o fio já encolheu a zero e é o bloco que tem de
+          ceder. Sem os dois, ele mede o conteúdo inteiro e empurra o
+          compositor para fora da casca (Codex, #360); com eles, as faixas
+          rolam e o compositor fica. */}
+      <div className="min-h-0 overflow-y-auto pb-2 empty:hidden">
       {/* Faixa CLIENTE RESCINDIDO / FINALIZADO (1070, pedido do operador em
           29/09/2026): a PRIMEIRA da pilha — é o fato que muda a conversa
           inteira. Só informa, nunca bloqueia; cala com `null`. */}

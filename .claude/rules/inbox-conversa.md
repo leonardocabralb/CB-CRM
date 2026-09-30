@@ -98,7 +98,9 @@ ficha em `.claude/rules/campos-e-nome.md`.
   COLADO no compositor. A de no-show vem do hook que carimba o contato dono do
   aviso: a de um cliente nunca aparece na conversa de outro. As ARREDONDADAS
   moram num bloco `pb-2 empty:hidden` (cada uma só com `mt-2`): fora dele, ou
-  sem ele, a última encosta no `border-t` de baixo.
+  sem ele, a última encosta no `border-t` de baixo. ⚠️ O bloco leva
+  `min-h-0 overflow-y-auto`: na tela baixa o fio já está em zero, e sem os
+  dois o bloco empurra o compositor para fora da casca.
 
 ### O salto da busca dentro do fio roda em JS, e isso tem prazo de validade
 
