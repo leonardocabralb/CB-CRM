@@ -210,8 +210,8 @@ periódica das situações e na tela (botão, faixa e aba Atlas) da Fase 2. Plan
   senão as conexões atuais seriam recusadas): desligada é 403 SEM
   `registrarConferencia`; só `read_client`, chave recusada e plano sem API
   marcam. `not_found` (lixeira) é 404 e nunca mexe no vínculo.
-- **A seção busca só MONTADA** (quem a monta — a aba Atlas, montagem
-  pendente no plano — a desmonta com a aba fechada), com
+- **A seção busca só MONTADA** (a aba Atlas a monta só no vínculo fora da
+  lixeira, e a desmonta com a aba fechada), com
   `key={contact.id}`, `cache: 'no-store'` e o carimbo `{ de }`; um pedido
   por contato montado (o StrictMode rodaria dois). Datas por
   `diaPorExtenso`, dinheiro por `Intl.NumberFormat(undefined, …BRL)`,

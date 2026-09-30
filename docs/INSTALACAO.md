@@ -660,7 +660,11 @@ administrador liga a ficha à mão colando o link da ficha do cliente no Atlas
 (ou desfaz um vínculo errado — a leitura não volta a ligá-lo sozinha).
 Cliente mandado para a lixeira do Atlas aparece na aba como "na lixeira";
 restaurado lá, o administrador toca em **Conferir no Atlas** (sem isso, o
-CRM percebe na próxima leitura completa).
+CRM percebe na próxima leitura completa). **Ler negociações** é opcional:
+ligada, a aba Atlas da conversa mostra os bancos, contratos, propostas e
+acordos do cliente, lidos na hora no Atlas e nunca guardados no CRM
+(qualquer membro que vê a conversa os vê). Desligada, a seção avisa que a
+leitura está desligada e o resto segue funcionando.
 
 **tl;dv** (transcrições de reunião na ficha): a API só existe nos planos
 **Pro e Business**, e só sai pela API a reunião de quem a ORGANIZOU com um

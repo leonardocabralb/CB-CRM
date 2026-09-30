@@ -32,7 +32,7 @@ qualquer um que também use o Atlas, **só pela API pública do Atlas**, com
 | 1 | Faixa "Cliente rescindido / finalizado" pela MARCA da etapa (sem Atlas) | nada | **No ar** (PR #355, 29/09/2026): 1070 aplicada, etapas do CB marcadas, e2e no preview feito |
 | 0 | Conectar pela chave + passo "Criar cliente no Atlas" (reativa quem já existe) no lugar da perna do Atlas no n8n | Prioridade 1 da API do Atlas em staging | **No `main`** (PR #356, 30/09/2026; 1071) |
 | 2 | Vínculo contato ↔ cliente do Atlas + botão "Abrir no Atlas" + faixa também pela situação do Atlas | Fase 0; a API nova do Atlas em produção (promoção pelo Dev) | **Em curso**: PR A (servidor, 1072) no `main` (#357); PR B (tela, sem migration, branch `feat/atlas-fase-2-tela`) em revisão |
-| 3 | Aba "Atlas" com o histórico de negociação | Prioridade 3 do Atlas (leitura de negociação com permissão própria); a aba do PR B para a montagem | **Em curso**: PR C (branch `feat/atlas-fase-3-negociacao`, sem migration) — rota, allowlist e a seção `negociacoes-do-atlas.tsx`; a montagem na aba Atlas (uma linha em `aba-atlas.tsx`) entra depois do PR B |
+| 3 | Aba "Atlas" com o histórico de negociação | Prioridade 3 do Atlas (leitura de negociação com permissão própria); a aba do PR B | **Em curso**: PR C (branch `feat/atlas-fase-3-negociacao`, sem migration, depois do B) — rota, allowlist e a seção `negociacoes-do-atlas.tsx`, montada na aba Atlas |
 | 4 | Mover o card por automação quando a situação muda no Atlas | Fase 2 | Planejada |
 
 A ordem 1 → 0 é de propósito: a Fase 0 depende da API nova do Atlas, e a
@@ -288,16 +288,6 @@ escritório: o vínculo gravado ali seria do escritório antigo.
   Cobranças (decisão do operador, 30/09/2026). `read_negotiations` é opcional
   e não marca a conexão; baldes de 20/min por usuário e por conta. Regras:
   `.claude/rules/integracoes-atlas.md`, "Aba de negociação".
-  **Pendente (PR C sem a montagem):** a seção não aparece em tela nenhuma
-  até a linha `<NegociacoesDoAtlas key={contact.id} contactId={contact.id} />`
-  entrar na `aba-atlas.tsx` (PR B). O ideal é mesclar o C depois do B, com a
-  linha incluída no rebase. Se o C sair antes, a montagem leva junto este
-  parágrafo para a `docs/INSTALACAO.md`, depois de "a atualização está
-  pendente" no bloco do Atlas: "**Ler negociações** é opcional: ligada, a
-  aba Atlas da conversa mostra os bancos, contratos, propostas e acordos do
-  cliente, lidos na hora no Atlas e nunca guardados no CRM (qualquer membro
-  que vê a conversa os vê). Desligada, a seção avisa que a leitura está
-  desligada e o resto segue funcionando." E2E: antes da promoção da API do
-  Atlas a produção nem conecta (sem `whoami`), então o esperado ali é o
-  estado "A conexão com o Atlas não está funcionando", nunca uma frase de
-  "ação não suportada" (esse estado não existe).
+  Montada na aba Atlas (no vínculo fora da lixeira), com o PR C empilhado
+  sobre o B. Antes da promoção da API do Atlas a produção nem conectava (sem
+  `whoami`): não há estado de "ação não suportada".
