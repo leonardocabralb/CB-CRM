@@ -492,6 +492,9 @@ O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
   grade; as antigas não mudam (18/09/2026).
 - Asaas: o CRM cria a ficha, com nome fixado; ligar a régua não é
   retroativo.
+- Atlas: vincular/desvincular à mão só admin; a faixa acende também com
+  suspenso e inativo; a linha do Atlas aparece a todos (sem recorte de
+  perfil); o Atlas "ativo" NÃO apaga a linha do funil (30/09/2026).
 - Cartão de contato: aparece como cartão, com Copiar e Conversar (a "Nova
   conversa" já preenchida); `.html` recebido é guardado e oferecido para
   baixar (28/09/2026).
@@ -576,7 +579,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
 - `.claude/rules/integracoes-atlas.md` — chave do Atlas por conta, passo
   "Criar cliente no Atlas" (procura, cria, reativa, vincula), vínculo 1:1,
   ambiente em toda linha, leitura das situações, vínculo automático, lixeira,
-  gatilho "Situação mudou no Atlas" (fila 1073).
+  vínculo à mão (admin), faixa com a fonte, aba Atlas, gatilho "Situação
+  mudou no Atlas" (fila 1073).
 - `.claude/rules/ia.md` — Radar, transcrição de áudio, chaves e modelos por
   módulo (Integrações).
 - `.claude/rules/ia-agentes.md` — o que cada agente de IA vê (acesso, blocos)

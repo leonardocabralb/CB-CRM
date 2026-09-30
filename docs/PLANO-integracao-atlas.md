@@ -31,7 +31,7 @@ qualquer um que também use o Atlas, **só pela API pública do Atlas**, com
 |---|---|---|---|
 | 1 | Faixa "Cliente rescindido / finalizado" pela MARCA da etapa (sem Atlas) | nada | **No ar** (PR #355, 29/09/2026): 1070 aplicada, etapas do CB marcadas, e2e no preview feito |
 | 0 | Conectar pela chave + passo "Criar cliente no Atlas" (reativa quem já existe) no lugar da perna do Atlas no n8n | Prioridade 1 da API do Atlas em staging | **No `main`** (PR #356, 30/09/2026; 1071) |
-| 2 | Vínculo contato ↔ cliente do Atlas + botão "Abrir no Atlas" + faixa também pela situação do Atlas | Fase 0; a API nova do Atlas em produção (promoção pelo Dev) | **Em curso**: PR A (servidor, 1072, branch `feat/atlas-fase-2-leitura`); PR B (tela) depois dele |
+| 2 | Vínculo contato ↔ cliente do Atlas + botão "Abrir no Atlas" + faixa também pela situação do Atlas | Fase 0; a API nova do Atlas em produção (promoção pelo Dev) | **Em curso**: PR A (servidor, 1072) no `main` (#357); PR B (tela, sem migration, branch `feat/atlas-fase-2-tela`) em revisão |
 | 3 | Aba "Atlas" com o histórico de negociação | Prioridade 3 do Atlas (leitura de negociação com permissão própria) | Planejada |
 | 4 | Mover o card por automação quando a situação muda no Atlas | Fase 2 | **Em curso**: PR D (`feat/atlas-fase-4-gatilho`, 1073) |
 
@@ -215,6 +215,11 @@ nativo entra por último.
    **`em_negociacao`** compara como `ativo` (gravado como veio).
 6. **A leitura roda num `after()` da rota `cb/asaas/cron`** (laço lento),
    sem mudar o `docker-stack.yml` e sem `stack deploy`.
+7. **A linha do Atlas na faixa aparece a todos** que veem a conversa, sem
+   recorte de perfil (PR B).
+8. **O Atlas "ativo" NÃO apaga a linha do funil**: as duas fontes aparecem,
+   cada uma com a sua (PR B) — ao contrário da sugestão do mapa, de o Atlas
+   vencer enquanto a leitura estivesse fresca.
 
 **PR A (servidor, 1072):** o AMBIENTE em toda linha de vínculo e de recusa
 (`noAmbiente`, pino `ambiente.chamadores.test.ts`; chaves 1:1 por ambiente,
@@ -226,6 +231,24 @@ o passo "Criar cliente" com ambiente, recusa, `crm_escreveu_em` e a lixeira
 que PARA; reconectar zera a leitura e oferece apagar os vínculos do
 escritório anterior; o cartão com "Leitura das situações", "Ler situações
 agora", as fichas vinculadas por origem e o selo "Ambiente de teste".
+
+**PR B (tela, sem migration):** `GET /api/cb/atlas/contato/[contactId]`
+(qualquer membro, só banco, `velha` calculada no servidor, balde próprio de
+120/min — o fio e o painel leem juntos a cada troca de conversa) e
+`useAtlasDoContato` no fio, no painel e na ficha de /contatos; o círculo
+"Abrir no Atlas" no cabeçalho do painel e o botão na ficha e na aba; a faixa
+junta funil e Atlas com a FONTE em cada linha (`juntarSituacoes`; suspenso
+âmbar, inativo cinza; sem botão); a aba Atlas (depois de Relacionados) com a
+situação, o "desde", a origem e — só admin — vincular colando o link da
+ficha ou desvincular gravando a recusa (`PUT …/vinculo`, `vinculo.ts`).
+Decisão de tela: no painel de 360 px a aba some para quem não vincula
+quando a ficha não tem vínculo — decidida pela última leitura (sem piscar
+na troca) e mantida na falha. Medido no e2e (30/09): 10 gatilhos de ~30 px
+cabem sem número, mas cada número aceso soma ~28 px e, com dois, a fileira
+passava dos 360 px e cortava o Histórico (já acontecia no `main` com 9
+abas); a fileira do painel passou a quebrar linha (`flex-wrap`). Na lixeira, o admin tem "Conferir no
+Atlas" (restaurar lá não muda a data, e só a listagem completa tiraria a
+marca).
 
 **Para ligar:** aplicar a 1072 ANTES do deploy (aditiva) — com o "pode
 gravar". Na produção nada lê até a API do Atlas ser promovida: com a API

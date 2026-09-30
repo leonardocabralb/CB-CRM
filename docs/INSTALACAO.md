@@ -653,6 +653,14 @@ leitura completa não cabe numa rodada). Sem essa permissão, o cartão
 avisa e o passo continua funcionando; o botão **Ler situações agora** lê na
 hora. A leitura exige a versão da API do Atlas que informa a data da mudança
 da situação; com a antiga, o cartão diz que a atualização está pendente.
+Na conversa, a faixa acima do compositor passa a dizer também "rescindido,
+finalizado, suspenso ou inativo **no Atlas**", ao lado do que diz a etapa do
+funil; o painel ganha o botão **Abrir no Atlas** e a aba **Atlas**, onde um
+administrador liga a ficha à mão colando o link da ficha do cliente no Atlas
+(ou desfaz um vínculo errado — a leitura não volta a ligá-lo sozinha).
+Cliente mandado para a lixeira do Atlas aparece na aba como "na lixeira";
+restaurado lá, o administrador toca em **Conferir no Atlas** (sem isso, o
+CRM percebe na próxima leitura completa).
 Com a leitura ligada, o gatilho de automação **Situação mudou no Atlas**
 roda quando a situação de um cliente vinculado MUDA (nunca na primeira
 leitura): escolha as situações e os funis onde o card do cliente precisa
