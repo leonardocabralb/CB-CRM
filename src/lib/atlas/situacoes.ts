@@ -721,7 +721,13 @@ export async function sincronizarSituacoes(admin: SupabaseClient, accountId: str
     return { ok: false, codigo: erro, contagem: ctx.contagem };
   }
 
-  // 8) O fechamento, com a posse.
+  // 8) A conferência da chave, ANTES de soltar o cadeado e com a MESMA cerca
+  //    de posse: depois do fechamento, uma reconexão no meio deixaria o erro
+  //    da chave velha marcar a conexão nova.
+  if (erro === null && ctx.chamouOAtlas) await registrarConferencia(admin, accountId, null, ambiente, { sincronizandoDesde: posse });
+  if (marca !== null) await registrarConferencia(admin, accountId, marca, ambiente, { sincronizandoDesde: posse });
+
+  // 9) O fechamento, com a posse.
   const { data: fechou, error: erroFecho } = await noAmbiente(
     admin
       .from("cb_atlas_config")
@@ -741,10 +747,6 @@ export async function sincronizarSituacoes(admin: SupabaseClient, accountId: str
     console.warn(`[atlas] leitura da conta ${accountId}: o fechamento não achou o cadeado (cadeado_perdido)`);
     return { ok: false, codigo: "cadeado_perdido", contagem: ctx.contagem };
   }
-  // Só agora, com a posse provada pelo fechamento: a chave provou que vale
-  // (limpa só o aviso da CHAVE, nunca o `sem_permissao`), ou a falha marca.
-  if (erro === null && ctx.chamouOAtlas) await registrarConferencia(admin, accountId, null, ambiente);
-  if (marca !== null) await registrarConferencia(admin, accountId, marca, ambiente);
   return erro === null ? { ok: true, contagem: ctx.contagem } : { ok: false, codigo: erro, contagem: ctx.contagem };
 }
 

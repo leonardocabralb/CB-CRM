@@ -1098,6 +1098,24 @@ nome da época em que foram aplicadas.
   operador. Conferida no catálogo: RLS ligada nas duas, `authenticated` só com
   SELECT no vínculo e nada na conexão, `anon` sem nada, uma policy (a do
   vínculo), as 10 restrições, `api_url` anulável; as duas tabelas vazias.
+- **1072_cb_atlas_leitura_e_vinculo** — o estado da leitura periódica em
+  `cb_atlas_config` (cadeado, cursores das mudanças e da listagem, erro da
+  leitura); `cb_atlas_clientes` com o AMBIENTE (`api_url`), as chaves 1:1 por
+  ambiente (`NULLS NOT DISTINCT`, a do contato parcial), a data da mudança, o
+  motivo do casamento, a lixeira e a última listagem; `cb_atlas_recusas`
+  fechada (sem policy). PR #357, Fase 2 de `docs/PLANO-integracao-atlas.md`.
+  ADITIVA e ANTES do deploy. Aplicada em 30/09/2026 pela Management API
+  (histórico `20260930120654`), depois do replay verde do CI no commit
+  `f3673d73` e ANTES do merge, com a autorização do operador. Conferida no
+  catálogo: as colunas novas, os três índices únicos NULLS NOT DISTINCT (o do
+  contato parcial), RLS nas três tabelas, uma policy só (a de leitura do
+  vínculo), `authenticated` sem nada na conexão e nas recusas; as três tabelas
+  vazias. E2E no preview contra o staging (chave do CB, ambiente separado):
+  154 vínculos automáticos (1 pelo link, 153 pelo telefone), todos com o
+  `api_url` do staging; a mudança lida; o passo reativou pelo vínculo do
+  ambiente; a limpeza apagou as 154 linhas do staging.
+
+## Notas do histórico
 
 - ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.

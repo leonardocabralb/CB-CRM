@@ -115,20 +115,15 @@ export async function conectarAtlas(
   const faltando = PERMISSOES_NECESSARIAS.filter((p) => identidade.permissoes[p] !== true);
   if (faltando.length > 0) return { ok: false, codigo: "permissoes_faltando", faltando };
 
-  // 2) Os vínculos que já existem NESTE ambiente são deste escritório? Com a
-  //    confirmação do admin, os do escritório anterior saem antes.
-  if (opcoes.apagarVinculosAnteriores === true) {
-    const { error } = await noAmbiente(
-      admin.from("cb_atlas_clientes").delete().eq("account_id", accountId).neq("atlas_tenant_id", identidade.tenantId),
-      ambiente,
-    );
-    if (error) return { ok: false, codigo: "db_error" };
+  // 2) Os vínculos que já existem NESTE ambiente são deste escritório? Sem a
+  //    confirmação do admin, vínculo do escritório anterior RECUSA a conexão.
+  if (opcoes.apagarVinculosAnteriores !== true) {
+    const alheios = admin.from("cb_atlas_clientes").select("id", { count: "exact", head: true }).eq("account_id", accountId).neq("atlas_tenant_id", identidade.tenantId);
+    const { count, error: erroVinculos } = await noAmbiente(alheios, ambiente);
+    // Sem a contagem não se sabe: falha fechada (nunca "nenhum vínculo alheio").
+    if (erroVinculos || typeof count !== "number") return { ok: false, codigo: "db_error" };
+    if (count > 0) return { ok: false, codigo: "outro_escritorio", vinculosAnteriores: count };
   }
-  const alheios = admin.from("cb_atlas_clientes").select("id", { count: "exact", head: true }).eq("account_id", accountId).neq("atlas_tenant_id", identidade.tenantId);
-  const { count, error: erroVinculos } = await noAmbiente(alheios, ambiente);
-  // Sem a contagem não se sabe: falha fechada (nunca "nenhum vínculo alheio").
-  if (erroVinculos || typeof count !== "number") return { ok: false, codigo: "db_error" };
-  if (count > 0) return { ok: false, codigo: "outro_escritorio", vinculosAnteriores: count };
 
   // 3) Grava cifrado, com a leitura das situações do zero.
   const agora = new Date().toISOString();
@@ -150,6 +145,19 @@ export async function conectarAtlas(
     { onConflict: "account_id" },
   );
   if (error) return { ok: false, codigo: "db_error" };
+
+  // 4) Com a confirmação, os vínculos do escritório anterior saem SÓ DEPOIS
+  //    de a conexão nova estar gravada: se a gravação falhasse (a cifra, o
+  //    banco), nada teria sido apagado — é a ação que não se desfaz. Se o
+  //    apagar falhar, a conexão nova já vale e os vínculos antigos ficam
+  //    invisíveis (outro escritório); "apagar" de novo os tira.
+  if (opcoes.apagarVinculosAnteriores === true) {
+    const { error: erroApagar } = await noAmbiente(
+      admin.from("cb_atlas_clientes").delete().eq("account_id", accountId).neq("atlas_tenant_id", identidade.tenantId),
+      ambiente,
+    );
+    if (erroApagar) console.error("[atlas] conexão gravada, mas os vínculos do escritório anterior não saíram:", erroApagar.message);
+  }
   return { ok: true, escritorio: identidade.escritorio };
 }
 
@@ -220,13 +228,20 @@ export async function registrarConferencia(
   accountId: string,
   codigo: CodigoDoErroAtlas | "chave_ilegivel" | null,
   ambiente: string | null = ambienteDoAtlas(),
+  /**
+   * A cerca de posse da leitura periódica (`sincronizando_desde` = o carimbo
+   * do cadeado): uma reconexão no meio zera o cadeado, e o erro da chave VELHA
+   * não marca a conexão NOVA.
+   */
+  cerca: { sincronizandoDesde: string } | null = null,
 ): Promise<void> {
   const agora = new Date().toISOString();
   if (codigo !== null && !CODIGOS_DA_CHAVE.includes(codigo)) return;
   // Só a conexão DESTE ambiente: o staging recusando uma chave não marca a de verdade.
   const daConexao = (patch: Record<string, unknown>) => {
     const q = admin.from("cb_atlas_config").update(patch).eq("account_id", accountId);
-    return ambiente === null ? q.is("api_url", null) : q.eq("api_url", ambiente);
+    const noAmb = ambiente === null ? q.is("api_url", null) : q.eq("api_url", ambiente);
+    return cerca ? noAmb.eq("sincronizando_desde", cerca.sincronizandoDesde) : noAmb;
   };
   const { error } =
     codigo === null ? await daConexao({ conferido_em: agora }) : await daConexao({ status: "erro", last_error: codigo, updated_at: agora });

@@ -101,6 +101,25 @@ describe("conectarAtlas", () => {
     expect(banco.tabelas.cb_atlas_clientes.map((v) => v.id)).toEqual(["deste", "teste", "outra-conta"]);
   });
 
+  it("CRÍTICO: a conexão nova que NÃO grava não apaga os vínculos do escritório anterior (apagar é o último passo)", async () => {
+    banco.tabelas.cb_atlas_clientes = [{ id: "antigo", account_id: CONTA, api_url: null, atlas_tenant_id: "t-antigo", atlas_client_id: "c1", contact_id: "k1" }];
+    banco.falhar.add("cb_atlas_config:upsert");
+    expect(await conectarAtlas(banco.cliente, CONTA, "u1", CHAVE, { cliente: fabrica, ambiente: null, apagarVinculosAnteriores: true })).toEqual({
+      ok: false,
+      codigo: "db_error",
+    });
+    expect(banco.tabelas.cb_atlas_clientes).toHaveLength(1);
+  });
+
+  it("registrarConferencia com a cerca da leitura: o cadeado trocado (reconexão) não deixa o erro da chave velha marcar a conexão nova", async () => {
+    await conectarAtlas(banco.cliente, CONTA, "u1", CHAVE, { cliente: fabrica, ambiente: null });
+    banco.tabelas.cb_atlas_config[0].sincronizando_desde = "2026-09-30T12:00:00.000Z";
+    await registrarConferencia(banco.cliente, CONTA, "chave_invalida", null, { sincronizandoDesde: "2026-09-30T11:00:00.000Z" });
+    expect(banco.tabelas.cb_atlas_config[0]).toMatchObject({ status: "conectado", last_error: null });
+    await registrarConferencia(banco.cliente, CONTA, "chave_invalida", null, { sincronizandoDesde: "2026-09-30T12:00:00.000Z" });
+    expect(banco.tabelas.cb_atlas_config[0]).toMatchObject({ status: "erro", last_error: "chave_invalida" });
+  });
+
   it("CRÍTICO: apagar só depois de a chave provar quem é (chave recusada não apaga nada)", async () => {
     banco.tabelas.cb_atlas_clientes = [{ id: "antigo", account_id: CONTA, atlas_tenant_id: "t-antigo", atlas_client_id: "c1", contact_id: "k1" }];
     identidade = new AtlasError("chave_invalida", "403", 403);
