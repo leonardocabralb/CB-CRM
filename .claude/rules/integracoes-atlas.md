@@ -6,13 +6,16 @@ paths:
   - "src/app/api/cb/asaas/cron/**"
   - "supabase/migrations/10*_cb_atlas*.sql"
   - "supabase/migrations/atlas-10*.test.ts"
+  - "src/hooks/use-atlas*"
+  - "src/components/inbox/abrir-no-atlas*"
+  - "src/components/inbox/painel/aba-atlas*"
 ---
 
 # Integração com o Atlas Gestor — regras
 
 Vale no cliente da API do Atlas (`src/lib/atlas/`), no cartão "Atlas" de
-Integrações, no passo de automação "Criar cliente no Atlas" e na leitura
-periódica das situações (Fase 2). Plano, fases e decisões do operador:
+Integrações, no passo de automação "Criar cliente no Atlas", na leitura
+periódica das situações e na tela (botão, faixa e aba Atlas) da Fase 2. Plano, fases e decisões do operador:
 `docs/PLANO-integracao-atlas.md`. O motor e o construtor:
 `.claude/rules/automacoes.md`.
 
@@ -144,6 +147,46 @@ periódica das situações (Fase 2). Plano, fases e decisões do operador:
   são relidos, no máximo 5 por ciclo. Só o `not_found` do Atlas marca
   `excluido_no_atlas_em` — o vínculo NUNCA é apagado (restaurável por 7
   dias); o cliente que volta na página limpa a marca.
+
+### A tela: botão, faixa e aba Atlas (PR B da Fase 2)
+
+- **Uma rota só de banco** (`GET /api/cb/atlas/contato/[contactId]`, qualquer
+  membro, balde próprio `LEITURA_DO_CONTATO` de 120/min — o fio e o painel leem
+  juntos a cada troca de conversa, e o `execucao` de 30/min cortava a faixa):
+  nunca chama o Atlas. A forma e o parser
+  moram em `do-contato.ts` (puro, o hook o importa); `velha` é calculada no
+  SERVIDOR e `appUrl` só sai `https:` com o id (vira `href`). Cerca de conta,
+  ambiente e escritório; conexão de outro ambiente = `conectado: false`.
+- **`useAtlasDoContato`** (molde `useCobrancasDoContato`, carimbo `{ de }`,
+  `conectado` da CONTA que sobrevive à troca), em TRÊS lugares: o fio (a
+  faixa), o painel (botão e aba) e a ficha de /contatos. Relê a cada 5 min, ao
+  voltar à aba e no `cb:atlas-mudou` (`aviso.ts`) que a aba emite.
+- ⚠️ **A faixa junta as fontes em `juntarSituacoes`** (`situacao-na-faixa.ts`):
+  cada fonte cala sozinha (hooks separados, nunca o mesmo `Promise.all`); a
+  linha do Atlas só com vínculo fora da lixeira e situação em
+  `SITUACOES_NA_FAIXA`; o Atlas "ativo" NÃO apaga a linha do funil; a do
+  Atlas aparece a todos (sem recorte de perfil). Sem botão na faixa (D7).
+- ⚠️ **Vincular/desvincular à mão: só admin** — `requireRole('admin')` no
+  `PUT …/vinculo`, `useCan("edit-settings")` na tela (`vinculo.ts`). O id sai
+  do link (`idDoLink`: `#/clients/<uuid>`, `?tab=` ou o uuid solto); o que se
+  grava sai da RESPOSTA do `get_client` (outro escritório dá `not_found`). Os
+  conflitos locais vêm ANTES do Atlas (a cota); ficha com vínculo do
+  escritório anterior = `outro_escritorio`. Desvincular grava a RECUSA
+  ANTES de apagar o vínculo; vincular apaga a recusa do par.
+- **A aba no painel** (depois de Relacionados) some sem Atlas e — pela
+  largura dos 360 px — para quem não vincula quando a ficha não tem
+  vínculo; na ficha de /contatos aparece a todos. A fileira do painel
+  QUEBRA linha (`flex-wrap`): com números acesos, o Histórico ficava cortado.
+  ⚠️ `abaAtlasNoPainel` decide pela `ultimaLeitura` do hook (na carga, a do
+  contato ANTERIOR: sem ela a aba piscava entre fichas vinculadas) e a
+  mantém na FALHA (o "Tentar de novo", nunca a aba sumida).
+- **Lixeira na aba**: restaurar no Atlas não muda o `status_changed_at`, e
+  só a listagem completa limparia a marca. O admin tem "Conferir no Atlas"
+  (o `PUT ligar` com o id do vínculo): o par já ligado NA LIXEIRA relê o
+  `get_client` e tira SÓ a marca (a situação fica para a leitura, que decide
+  o evento); `not_found` = `ainda_na_lixeira`, a marca fica.
+  Chaves montadas `situacao.`, `origem.`, `casouPor.`, `erro.` cobradas por
+  `do-contato.test.ts`; situação desconhecida = texto de reserva.
 
 ### O passo "Criar cliente no Atlas" (`criar-cliente.ts`)
 

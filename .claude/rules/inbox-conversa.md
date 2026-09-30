@@ -92,7 +92,9 @@ ficha em `.claude/rules/campos-e-nome.md`.
   etapa — por funil, a atual ou a de onde o ÚNICO card saiu, porque ele viaja
   do Jurídico ao Comercial quando o ex-cliente volta; recorte do perfil
   derivado no render; só informa; cala com `null`; relê a cada evento da
-  trilha; texto `text-foreground`, cor só na borda, ícone e pastilha), inadimplência do Asaas,
+  trilha; texto `text-foreground`, cor só na borda, ícone e pastilha; mais a
+  linha do ATLAS — suspenso e inativo também —, cada linha com a FONTE, "no
+  funil …" ou "no Atlas desde …": `juntarSituacoes`, `integracoes-atlas.md`), inadimplência do Asaas,
   possível no-show (`FaixaDeNoShow`, regra em `.claude/rules/reunioes.md`),
   agendadas, presença (`FaixaDePresenca`) e o número divergente, que fica
   COLADO no compositor. A de no-show vem do hook que carimba o contato dono do

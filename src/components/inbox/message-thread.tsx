@@ -8,6 +8,8 @@ import { useLeadEvents } from "@/hooks/use-lead-events";
 import { useExecucoesDoFio } from "@/hooks/use-execucoes-do-fio";
 import { useReunioesExternasDoContato } from "@/hooks/use-reunioes";
 import { useSituacaoDoCliente } from "@/hooks/use-situacao-do-cliente";
+import { useAtlasDoContato } from "@/hooks/use-atlas-do-contato";
+import { juntarSituacoes } from "@/lib/atlas/situacao-na-faixa";
 import { useConversationNotes } from "@/hooks/use-conversation-notes";
 import { useApagarNota } from "@/hooks/use-apagar-nota";
 import { useFixarNota } from "@/hooks/use-fixar-nota";
@@ -1268,7 +1270,12 @@ export function MessageThread({
   const versaoDaTrilha = leadEvents.length
     ? `${leadEvents.length}:${leadEvents[leadEvents.length - 1].id}`
     : "0";
-  const { situacoes: situacaoDoCliente } = useSituacaoDoCliente(contact?.id, resyncToken, versaoDaTrilha);
+  const { situacoes: situacaoNoFunil } = useSituacaoDoCliente(contact?.id, resyncToken, versaoDaTrilha);
+  // A situação lida no Atlas (Fase 2), a OUTRA fonte da mesma faixa, num hook
+  // à parte: cada fonte cala sozinha (a falha de uma não apaga a outra). A
+  // junção, com a fonte em cada linha, é pura (`juntarSituacoes`).
+  const { dados: atlasDoContato } = useAtlasDoContato(contact?.id, resyncToken);
+  const situacaoDoCliente = juntarSituacoes(situacaoNoFunil, atlasDoContato?.vinculo ?? null);
 
   // Anotações internas (migration 918). Chaveadas pela CONVERSA, não pelo
   // contato como a trilha acima — é a única chave que existe em grupo.
@@ -3127,7 +3134,8 @@ export function MessageThread({
       <div className="min-h-0 overflow-y-auto pb-2 empty:hidden">
       {/* Faixa CLIENTE RESCINDIDO / FINALIZADO (1070, pedido do operador em
           29/09/2026): a PRIMEIRA da pilha — é o fato que muda a conversa
-          inteira. Só informa, nunca bloqueia; cala com `null`. */}
+          inteira. Só informa, nunca bloqueia; cala com `null`. Desde a Fase 2
+          do Atlas, junta o funil e o Atlas, cada linha com a fonte. */}
       <FaixaDeSituacaoDoCliente situacoes={situacaoDoCliente} />
 
       {/* Faixa INADIMPLENTE (Asaas, Fase 1b), acima da de agendadas e pelo
