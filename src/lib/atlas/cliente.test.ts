@@ -342,3 +342,93 @@ describe("AtlasError.esperaSegundos (429, contrato §7)", () => {
     expect(new AtlasError("rede", "x").esperaSegundos).toBeNull();
   });
 });
+
+// ------------------------------------------------------------
+// O nó "Atlas" (30/09/2026): as escritas novas.
+// ------------------------------------------------------------
+
+describe("as escritas do nó Atlas", () => {
+  const cabecalho = (p: { init: RequestInit }, nome: string) => (p.init.headers as Record<string, string>)[nome];
+
+  it("create_task: a ação, o corpo, a Idempotency-Key e o `taskId`; 2xx sem ele é resposta_inesperada", async () => {
+    const f = fetchFalso({ status: 200, corpo: { success: true, taskId: "tarefa-1" } });
+    const dados = { title: "Preparar a pasta", description: "Conferir", priority: "urgent" as const, dueDate: "2026-10-02", clientId: "c9" };
+    expect(await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).criarTarefa(dados, "log:passo:tarefa")).toEqual({ taskId: "tarefa-1" });
+    expect(f.pedidos[0].corpo).toEqual({ action: "create_task", data: dados });
+    expect(cabecalho(f.pedidos[0], "Idempotency-Key")).toBe("log:passo:tarefa");
+    const g = fetchFalso({ status: 200, corpo: { success: true } });
+    const e = (await criarClienteAtlas(CHAVE, g.fn, URL_TESTE).criarTarefa(dados, "k-00000001").catch((x: unknown) => x)) as AtlasError;
+    expect(e.codigo).toBe("resposta_inesperada");
+  });
+
+  it("create_transcript: a ação e o `transcriptId`", async () => {
+    const f = fetchFalso({ status: 200, corpo: { success: true, transcriptId: "tr-1" } });
+    const dados = { clientId: "c9", transcript: "texto", notes: "notas" };
+    expect(await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).enviarTranscricao(dados, "log:passo:transcricao")).toEqual({ transcriptId: "tr-1" });
+    expect(f.pedidos[0].corpo).toEqual({ action: "create_transcript", data: dados });
+    const g = fetchFalso({ status: 200, corpo: {} });
+    expect(((await criarClienteAtlas(CHAVE, g.fn, URL_TESTE).enviarTranscricao(dados, "k-00000001").catch((x: unknown) => x)) as AtlasError).codigo).toBe(
+      "resposta_inesperada",
+    );
+  });
+
+  it("update_onboarding_item: lê só a situação do item; 2xx sem `success` é resposta_inesperada", async () => {
+    const f = fetchFalso({ status: 200, corpo: { success: true, item: { id: "i1", text: "Comprovante", status: "done", observation: "x" } } });
+    const dados = { clientId: "c9", text: "Comprovante", status: "done" };
+    expect(await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).atualizarItemDoOnboarding(dados, "log:passo:onboarding")).toEqual({ status: "done" });
+    expect(f.pedidos[0].corpo).toEqual({ action: "update_onboarding_item", data: dados });
+    const g = fetchFalso({ status: 200, corpo: { success: false } });
+    expect(((await criarClienteAtlas(CHAVE, g.fn, URL_TESTE).atualizarItemDoOnboarding(dados, "k-00000001").catch((x: unknown) => x)) as AtlasError).codigo).toBe(
+      "resposta_inesperada",
+    );
+  });
+
+  it("CRÍTICO: o 404 COM a lista de itens é o ITEM que falta (nunca a lixeira), com ou sem `code`; a lista nunca vai à mensagem", async () => {
+    for (const corpo of [
+      { success: false, error: "Onboarding item not found", items: [{ id: "i1", text: "RG do cônjuge Fulano" }] },
+      { success: false, error: "Onboarding item not found", code: "not_found", items: [] },
+    ]) {
+      const f = fetchFalso({ status: 404, corpo });
+      const e = (await criarClienteAtlas(CHAVE, f.fn, URL_TESTE)
+        .atualizarItemDoOnboarding({ clientId: "c9", text: "Comprovante" }, "k-00000001")
+        .catch((x: unknown) => x)) as AtlasError;
+      expect(e.codigo).toBe("item_nao_encontrado");
+      expect(e.message).not.toContain("Fulano");
+    }
+    // O 404 do cliente (sem a lista) segue pelo código: `not_found` = lixeira.
+    const g = fetchFalso({ status: 404, corpo: { error: "Client not found", code: "not_found" } });
+    const e = (await criarClienteAtlas(CHAVE, g.fn, URL_TESTE)
+      .atualizarItemDoOnboarding({ clientId: "c9", text: "Comprovante" }, "k-00000001")
+      .catch((x: unknown) => x)) as AtlasError;
+    expect(e.codigo).toBe("nao_encontrado");
+  });
+
+  it("update_client do nó: a situação anterior só quando o Atlas manda o `statusChange`", async () => {
+    const f = fetchFalso({ status: 200, corpo: { success: true, clientId: "c9", statusChange: { from: "rescindido", to: "finalizado" }, appUrl: "https://app.example.com/#/clients/c9" } });
+    expect(await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).atualizarCliente("c9", { status: "finalizado" }, "k-00000001")).toEqual({
+      id: "c9",
+      appUrl: "https://app.example.com/#/clients/c9",
+      situacaoAnterior: "rescindido",
+    });
+    expect(f.pedidos[0].corpo).toEqual({ action: "update_client", data: { id: "c9", status: "finalizado" } });
+    const g = fetchFalso({ status: 200, corpo: { success: true, clientId: "c9", statusChange: null } });
+    expect(await criarClienteAtlas(CHAVE, g.fn, URL_TESTE).atualizarCliente("c9", { contractType: "fixo" }, "k-00000001")).toEqual({ id: "c9", appUrl: null });
+    const h = fetchFalso({ status: 200, corpo: { clientId: "c9" } });
+    expect(((await criarClienteAtlas(CHAVE, h.fn, URL_TESTE).atualizarCliente("c9", {}, "k-00000001").catch((x: unknown) => x)) as AtlasError).codigo).toBe(
+      "resposta_inesperada",
+    );
+  });
+
+  it("os códigos novos: `ambiguous` e `no_active_admin`", () => {
+    expect(codigoDoErro(422, "ambiguous")).toBe("ambiguo");
+    expect(codigoDoErro(422, "no_active_admin")).toBe("sem_admin");
+    // Sem `code` (a API de antes), o 422 segue genérico.
+    expect(codigoDoErro(422, null)).toBe("atlas_error");
+  });
+
+  it("validação: os nomes NOVOS do nó também chegam ao motivo (só nomes nossos)", async () => {
+    const f = fetchFalso({ status: 400, corpo: { error: "x", code: "validation_error", fields: ["dueDate", "docId", "observation", "campo_do_atlas"] } });
+    const e = (await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).criarTarefa({ title: "t" }, "k-00000001").catch((x: unknown) => x)) as AtlasError;
+    expect(e.campos).toEqual(["dueDate", "docId", "observation"]);
+  });
+});

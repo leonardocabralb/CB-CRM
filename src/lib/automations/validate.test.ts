@@ -1018,3 +1018,80 @@ describe("Situação mudou no Atlas (1073) — o gatilho e os passos", () => {
     expect(validateAtlasSituacaoForActivation("manual", [acionar])).toEqual([])
   })
 })
+
+describe("o nó Atlas (30/09/2026) — a forma de cada ação", () => {
+  const passo = (step_type: string, step_config: Record<string, unknown>) => ({ step_type, step_config })
+  const codigos = (step_type: string, step_config: Record<string, unknown>) =>
+    validateStepsForActivation([passo(step_type, step_config)]).map((i) => i.codigo)
+
+  it("PINO DE PRODUÇÃO: a config EXATA do \"Contrato fechado\" passa sem pendência", () => {
+    expect(
+      validateStepsForActivation([
+        passo("atlas_criar_cliente", {
+          tipo_de_contrato: "fixo",
+          campo_primeiro_contato: "data_do_primeiro_contato",
+          campo_proposta: "data_da_proposta",
+          campo_fechamento: "data_de_fechamento_do_contrato",
+        }),
+      ]),
+    ).toEqual([])
+  })
+
+  it("atualizar cliente: ao menos um campo; situação da lista (sem em_negociacao); tipo e campos na forma", () => {
+    expect(codigos("atlas_atualizar_cliente", {})).toEqual(["atlas_atualizar_sem_campos"])
+    // Booleano de JSONB só com `true`.
+    expect(codigos("atlas_atualizar_cliente", { valor_do_card: "true", telefone: 1 })).toEqual(["atlas_atualizar_sem_campos"])
+    expect(codigos("atlas_atualizar_cliente", { valor_do_card: true })).toEqual([])
+    expect(codigos("atlas_atualizar_cliente", { campo_documento: "cpf" })).toEqual([])
+    expect(codigos("atlas_atualizar_cliente", { situacao: "finalizado" })).toEqual([])
+    expect(codigos("atlas_atualizar_cliente", { situacao: "em_negociacao" })).toEqual(["atlas_situacao_invalida"])
+    expect(codigos("atlas_atualizar_cliente", { situacao: null, tipo_de_contrato: "anual", email: true })).toEqual(["atlas_tipo_de_contrato_invalido"])
+    expect(codigos("atlas_atualizar_cliente", { campo_fechamento: 42, email: true })).toEqual(["atlas_campo_invalido"])
+  })
+
+  it("criar tarefa: título obrigatório; prioridade normal/urgente; prazo inteiro 0–365 ou nulo", () => {
+    expect(codigos("atlas_criar_tarefa", { titulo: "Preparar a pasta", prioridade: "normal", prazo_em_dias: 0 })).toEqual([])
+    expect(codigos("atlas_criar_tarefa", { titulo: "x", prazo_em_dias: null })).toEqual([])
+    expect(codigos("atlas_criar_tarefa", { titulo: "  " })).toEqual(["atlas_tarefa_sem_titulo"])
+    expect(codigos("atlas_criar_tarefa", { titulo: "x", prioridade: "alta" })).toEqual(["atlas_tarefa_prioridade_invalida"])
+    for (const prazo of [-1, 366, 1.5, "2"]) expect(codigos("atlas_criar_tarefa", { titulo: "x", prazo_em_dias: prazo }), String(prazo)).toEqual(["atlas_tarefa_prazo_invalido"])
+  })
+
+  it("enviar transcrição: janela inteira 1–720; as caixas só booleanas", () => {
+    expect(codigos("atlas_enviar_transcricao", { idade_maxima_horas: 72, incluir_notas_da_reuniao: true })).toEqual([])
+    expect(codigos("atlas_enviar_transcricao", {})).toEqual([])
+    expect(codigos("atlas_enviar_transcricao", { idade_maxima_horas: 0 })).toEqual(["atlas_transcricao_idade_invalida"])
+    expect(codigos("atlas_enviar_transcricao", { idade_maxima_horas: 721 })).toEqual(["atlas_transcricao_idade_invalida"])
+    expect(codigos("atlas_enviar_transcricao", { incluir_notas_da_reuniao: "true" })).toEqual(["atlas_transcricao_notas_invalido"])
+    expect(codigos("atlas_enviar_transcricao", { aceitar_vinculo_por_email: 1 })).toEqual(["atlas_transcricao_email_invalido"])
+  })
+
+  it("onboarding: item literal obrigatório; situação da lista; muda a situação ou escreve observação", () => {
+    expect(codigos("atlas_atualizar_onboarding", { item: "Comprovante", situacao: "done" })).toEqual([])
+    expect(codigos("atlas_atualizar_onboarding", { item: "Comprovante", situacao: null, observacao: "Recebido {{now}}" })).toEqual([])
+    expect(codigos("atlas_atualizar_onboarding", { item: "", situacao: "done" })).toEqual(["atlas_onboarding_sem_item"])
+    expect(codigos("atlas_atualizar_onboarding", { item: "{{contact.name}}", situacao: "done" })).toEqual(["atlas_onboarding_item_com_variavel"])
+    expect(codigos("atlas_atualizar_onboarding", { item: "x", situacao: "feito" })).toEqual(["atlas_onboarding_situacao_invalida"])
+    expect(codigos("atlas_atualizar_onboarding", { item: "x", observacao: "  " })).toEqual(["atlas_onboarding_sem_mudanca"])
+  })
+
+  it("o gatilho do Atlas recusa \"Atualizar cliente\" (também dentro de ramo) e aceita tarefa, transcrição e onboarding", () => {
+    const atualizar = passo("atlas_atualizar_cliente", { tipo_de_contrato: "fixo" })
+    expect(validateAtlasSituacaoForActivation("atlas_situacao_mudou", [atualizar]).map((i) => [i.path, i.codigo])).toEqual([
+      ["steps[0].step_type", "atlas_gatilho_com_atualizar_cliente"],
+    ])
+    expect(
+      validateAtlasSituacaoForActivation("atlas_situacao_mudou", [
+        { step_type: "condition", step_config: {}, branches: { yes: [], no: [atualizar] } },
+      ]).map((i) => i.path),
+    ).toEqual(["steps[0].no.steps[0].step_type"])
+    expect(
+      validateAtlasSituacaoForActivation("atlas_situacao_mudou", [
+        passo("atlas_criar_tarefa", { titulo: "x" }),
+        passo("atlas_enviar_transcricao", {}),
+        passo("atlas_atualizar_onboarding", { item: "x", situacao: "done" }),
+      ]),
+    ).toEqual([])
+    expect(validateAtlasSituacaoForActivation("manual", [atualizar])).toEqual([])
+  })
+})

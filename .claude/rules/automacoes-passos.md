@@ -22,7 +22,8 @@ do plano do previdenciário, 26/09/2026) e no "Fixar a conversa no número". As 
 `parametros-do-modelo.ts`, `responsavel-da-tarefa.ts`, `janela-da-meta.ts`,
 `hora-do-dia.ts` e `condicao-por-campo.ts`, em `src/lib/automations/`.
 O resto do motor: `.claude/rules/automacoes.md`; o mapa da janela por número:
-`.claude/rules/canal-na-conversa.md`.
+`.claude/rules/canal-na-conversa.md`. O nó "Atlas" (cinco ações, uma entrada
+no menu): `.claude/rules/integracoes-atlas-acoes.md`.
 
 ### Enviar modelo (`send_template`)
 

@@ -16,6 +16,13 @@ import { ehMeta, ehWhatsApp } from '@/lib/cb-channels/transporte'
 import type { CbChannelKind } from '@/lib/cb-channels/repo'
 import { TIPOS_DE_CONTRATO } from '@/lib/atlas/formatar'
 import { ehIdDeFunil, SITUACOES_DO_GATILHO } from '@/lib/atlas/gatilho'
+import {
+  IDADE_MAXIMA_DA_TRANSCRICAO_H,
+  PRAZO_MAXIMO_DA_TAREFA,
+  PRIORIDADES_DA_TAREFA,
+  SITUACOES_DO_ONBOARDING,
+  SITUACOES_ESCREVIVEIS,
+} from '@/lib/atlas/passos-do-atlas'
 import { GATILHO_DO_ATLAS } from './so-pelo-disparador'
 
 // ------------------------------------------------------------
@@ -462,6 +469,126 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
         }
       }
       break
+    // O nó "Atlas" (30/09/2026): só a FORMA. Conexão, vínculo e permissões
+    // são do motor, na hora (podem mudar depois de a automação ser ligada).
+    case 'atlas_atualizar_cliente': {
+      if (c.situacao !== undefined && c.situacao !== null && !(SITUACOES_ESCREVIVEIS as readonly unknown[]).includes(c.situacao)) {
+        issues.push({
+          path: `${path}.situacao`,
+          message: `Atlas status must be one of: ${SITUACOES_ESCREVIVEIS.join(', ')} (or empty)`,
+          codigo: 'atlas_situacao_invalida',
+        })
+      }
+      if (
+        c.tipo_de_contrato !== undefined &&
+        c.tipo_de_contrato !== null &&
+        !(TIPOS_DE_CONTRATO as readonly unknown[]).includes(c.tipo_de_contrato)
+      ) {
+        issues.push({
+          path: `${path}.tipo_de_contrato`,
+          message: 'contract type must be "fixo" or "mensal" (or empty)',
+          codigo: 'atlas_tipo_de_contrato_invalido',
+        })
+      }
+      const camposDoAtualizar = ['campo_primeiro_contato', 'campo_proposta', 'campo_fechamento', 'campo_documento'] as const
+      for (const campo of camposDoAtualizar) {
+        const v = c[campo]
+        if (v !== undefined && v !== null && typeof v !== 'string') {
+          issues.push({
+            path: `${path}.${campo}`,
+            message: 'field must be a custom field key or empty',
+            codigo: 'atlas_campo_invalido',
+          })
+        }
+      }
+      // Booleano de JSONB liga só com `true` (CLAUDE.md 8c).
+      const algum =
+        nonEmpty(c.situacao) ||
+        nonEmpty(c.tipo_de_contrato) ||
+        c.valor_do_card === true ||
+        c.link_da_conversa === true ||
+        c.telefone === true ||
+        c.email === true ||
+        camposDoAtualizar.some((campo) => nonEmpty(c[campo]))
+      if (!algum) {
+        issues.push({ path: `${path}`, message: 'choose at least one field to update in Atlas', codigo: 'atlas_atualizar_sem_campos' })
+      }
+      break
+    }
+    case 'atlas_criar_tarefa':
+      if (!nonEmpty(c.titulo)) {
+        issues.push({ path: `${path}.titulo`, message: 'task title is required', codigo: 'atlas_tarefa_sem_titulo' })
+      }
+      if (c.prioridade !== undefined && !(PRIORIDADES_DA_TAREFA as readonly unknown[]).includes(c.prioridade)) {
+        issues.push({ path: `${path}.prioridade`, message: 'priority must be "normal" or "urgent"', codigo: 'atlas_tarefa_prioridade_invalida' })
+      }
+      if (
+        c.prazo_em_dias !== undefined &&
+        c.prazo_em_dias !== null &&
+        !(Number.isInteger(c.prazo_em_dias) && (c.prazo_em_dias as number) >= 0 && (c.prazo_em_dias as number) <= PRAZO_MAXIMO_DA_TAREFA)
+      ) {
+        issues.push({
+          path: `${path}.prazo_em_dias`,
+          message: `due date must be a whole number of days from 0 to ${PRAZO_MAXIMO_DA_TAREFA} (or empty)`,
+          codigo: 'atlas_tarefa_prazo_invalido',
+        })
+      }
+      break
+    case 'atlas_enviar_transcricao':
+      if (
+        c.idade_maxima_horas !== undefined &&
+        !(Number.isInteger(c.idade_maxima_horas) && (c.idade_maxima_horas as number) >= 1 && (c.idade_maxima_horas as number) <= IDADE_MAXIMA_DA_TRANSCRICAO_H)
+      ) {
+        issues.push({
+          path: `${path}.idade_maxima_horas`,
+          message: `transcript window must be a whole number of hours from 1 to ${IDADE_MAXIMA_DA_TRANSCRICAO_H}`,
+          codigo: 'atlas_transcricao_idade_invalida',
+        })
+      }
+      if (c.incluir_notas_da_reuniao !== undefined && typeof c.incluir_notas_da_reuniao !== 'boolean') {
+        issues.push({
+          path: `${path}.incluir_notas_da_reuniao`,
+          message: 'incluir_notas_da_reuniao must be true or false',
+          codigo: 'atlas_transcricao_notas_invalido',
+        })
+      }
+      if (c.aceitar_vinculo_por_email !== undefined && typeof c.aceitar_vinculo_por_email !== 'boolean') {
+        issues.push({
+          path: `${path}.aceitar_vinculo_por_email`,
+          message: 'aceitar_vinculo_por_email must be true or false',
+          codigo: 'atlas_transcricao_email_invalido',
+        })
+      }
+      break
+    case 'atlas_atualizar_onboarding': {
+      const item = typeof c.item === 'string' ? c.item.trim() : ''
+      if (!item) {
+        issues.push({ path: `${path}.item`, message: 'onboarding checklist item is required', codigo: 'atlas_onboarding_sem_item' })
+      } else if (item.includes('{{')) {
+        // O item é IDENTIDADE (o Atlas casa pelo texto): não aceita variável.
+        issues.push({
+          path: `${path}.item`,
+          message: 'onboarding checklist item must be literal text (no variables)',
+          codigo: 'atlas_onboarding_item_com_variavel',
+        })
+      }
+      const semSituacao = c.situacao === undefined || c.situacao === null
+      if (!semSituacao && !(SITUACOES_DO_ONBOARDING as readonly unknown[]).includes(c.situacao)) {
+        issues.push({
+          path: `${path}.situacao`,
+          message: `onboarding item status must be one of: ${SITUACOES_DO_ONBOARDING.join(', ')} (or empty)`,
+          codigo: 'atlas_onboarding_situacao_invalida',
+        })
+      }
+      if (semSituacao && !nonEmpty(c.observacao)) {
+        issues.push({
+          path: `${path}.observacao`,
+          message: 'choose the item status or write an observation',
+          codigo: 'atlas_onboarding_sem_mudanca',
+        })
+      }
+      break
+    }
     case 'send_to_number': {
       // O número que o OPERADOR digita no construtor passa pela régua das
       // telas (`telefoneDigitado`, a mesma do motor desde a Fase 3-III):
@@ -828,7 +955,8 @@ export function validateAsaasReguaForActivation(
 
 /**
  * NOSSO (1073) — a regra a MAIS da "Situação mudou no Atlas": nenhum
- * "Criar cliente no Atlas", em nenhum escopo. O Atlas manda na situação
+ * "Criar cliente no Atlas" nem "Atualizar cliente no Atlas" (nó Atlas), em
+ * nenhum escopo. O Atlas manda na situação
  * (D2): reativar por reflexo de uma mudança feita lá desfaria a decisão da
  * equipe, e a reativação viraria outra mudança lida no ciclo seguinte.
  * ⚠️ Nem "Acionar automação" (como a régua, `regua_aciona_outra`): a filha
@@ -846,6 +974,13 @@ export function validateAtlasSituacaoForActivation(
       const path = `${prefixo}steps[${i}]`
       if (s.step_type === 'atlas_criar_cliente') {
         issues.push({ path: `${path}.step_type`, message: 'an automation triggered by an Atlas status change cannot create or reactivate the client in Atlas', codigo: 'atlas_gatilho_com_criar_cliente' })
+      }
+      // O nó Atlas (30/09/2026): "Atualizar cliente" INTEIRO, com ou sem
+      // situação — sem ela ainda grava o cadastro por reflexo e, se alguém
+      // escolher a situação depois, vira laço. Tarefa, transcrição e
+      // onboarding não mudam a situação e ficam permitidos.
+      if (s.step_type === 'atlas_atualizar_cliente') {
+        issues.push({ path: `${path}.step_type`, message: 'an automation triggered by an Atlas status change cannot update the client in Atlas', codigo: 'atlas_gatilho_com_atualizar_cliente' })
       }
       if (s.step_type === 'run_automation') {
         issues.push({ path: `${path}.step_type`, message: 'an automation triggered by an Atlas status change cannot run another automation', codigo: 'atlas_gatilho_aciona_outra' })

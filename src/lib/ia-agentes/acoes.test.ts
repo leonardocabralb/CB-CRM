@@ -585,6 +585,11 @@ describe('a régua da D5 nas automações', () => {
     expect(motivoDoPasso(passo('send_to_number'), REGUA)).toBe('send_to_number')
     expect(motivoDoPasso(passo('send_webhook'), REGUA)).toBe('send_webhook')
     expect(motivoDoPasso(passo('atlas_criar_cliente'), REGUA)).toBe('atlas_criar_cliente')
+    // O nó Atlas (30/09/2026): TODA ação escreve no Atlas — o `default: null`
+    // deixaria o agente executar as quatro novas.
+    for (const tipo of ['atlas_atualizar_cliente', 'atlas_criar_tarefa', 'atlas_enviar_transcricao', 'atlas_atualizar_onboarding']) {
+      expect(motivoDoPasso(passo(tipo), REGUA), tipo).toBe('atlas_criar_cliente')
+    }
     expect(motivoDoPasso(passo('run_flow'), REGUA)).toBe('run_flow')
     expect(motivoDoPasso(passo('set_deal_status', { status: 'won' }), REGUA)).toBe('status_de_resultado')
     expect(motivoDoPasso(passo('set_deal_status', { status: 'lost' }), REGUA)).toBe('status_de_resultado')

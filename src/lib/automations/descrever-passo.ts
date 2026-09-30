@@ -1,4 +1,7 @@
 import type {
+  AtlasAtualizarClienteStepConfig,
+  AtlasAtualizarOnboardingStepConfig,
+  AtlasCriarTarefaStepConfig,
   AutomationRefStepConfig,
   AutomationStepType,
   ConditionStepConfig,
@@ -18,6 +21,7 @@ import type {
 import { formatarTelefone, telefoneDigitado } from '@/lib/contacts/telefone'
 import { rotuloDaJanela } from './hora-do-dia'
 import { operadorDaCondicao, operadorPedeValor } from './condicao-por-campo'
+import { SITUACOES_ESCREVIVEIS } from '@/lib/atlas/passos-do-atlas'
 
 /**
  * "O que esta automação FAZ", em uma linha — o texto em negrito do cartão da
@@ -215,13 +219,32 @@ export function descreverPasso(passo: PassoResumivel, nomes: NomesConhecidos = {
       // carrega membros — e um id cru ali seria lido como se fosse o nome.
       return simples(recortar((cfg as unknown as CreateTaskStepConfig).titulo))
 
+    // O nó "Atlas" (30/09/2026). O "Atualizar cliente" diz a SITUAÇÃO que
+    // escreve (é o que pesa: muda o grupo do cliente no Atlas), por ICU
+    // `select` — a lista é fechada e o rótulo é do dicionário. Situação fora
+    // da lista (a ativação a recusa) cai no `other`, sem ela.
+    case 'atlas_atualizar_cliente': {
+      const s = (cfg as unknown as AtlasAtualizarClienteStepConfig).situacao
+      return {
+        chave: tipo,
+        valores: { situacao: typeof s === 'string' && (SITUACOES_ESCREVIVEIS as readonly string[]).includes(s) ? s : 'nenhuma' },
+        alvoSumiu: false,
+      }
+    }
+    case 'atlas_criar_tarefa':
+      return simples(recortar((cfg as unknown as AtlasCriarTarefaStepConfig).titulo))
+    case 'atlas_atualizar_onboarding':
+      // O ITEM: é o que distingue dois passos de onboarding no mesmo quadro.
+      return simples(recortar((cfg as unknown as AtlasAtualizarOnboardingStepConfig).item))
+
     default:
       // send_buttons, send_list, assign_conversation, stop_flow,
       // send_webhook, close_conversation — o tipo já diz o suficiente.
       // pin_conversation_channel também: o nome da conexão pediria
       // `nomes.canais`, que nenhuma tela que resume passo carrega — e o id cru
       // ou "(apagado)" sobre conexão viva seriam piores que a frase sem ele.
-      // atlas_criar_cliente também: o tipo já diz o que o passo faz.
+      // atlas_criar_cliente e atlas_enviar_transcricao também: o tipo já
+      // diz o que o passo faz.
       return simples()
   }
 }

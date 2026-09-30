@@ -34,6 +34,7 @@ qualquer um que também use o Atlas, **só pela API pública do Atlas**, com
 | 2 | Vínculo contato ↔ cliente do Atlas + botão "Abrir no Atlas" + faixa também pela situação do Atlas | Fase 0; a API nova do Atlas em produção (promoção pelo Dev) | **No `main`**: PR A (servidor, 1072, #357 e #358) e PR B (tela, sem migration, #361, 30/09/2026; e2e no preview contra o staging) |
 | 3 | Aba "Atlas" com o histórico de negociação | Prioridade 3 do Atlas (leitura de negociação com permissão própria); a aba do PR B | **No `main`** (PR #363, 30/09/2026; sem migration): bancos, contratos, propostas e acordos lidos na hora na aba Atlas; allowlist campo a campo; e2e no preview (staging) |
 | 4 | Mover o card por automação quando a situação muda no Atlas | Fase 2 | **Em curso**: PR D (`feat/atlas-fase-4-gatilho`, 1073) |
+| 5 | O nó "Atlas" no construtor: uma entrada, seletor de ação, e as escritas novas (atualizar cliente, tarefa, transcrição, onboarding) | Fases 0 e 2 (o vínculo); as permissões opcionais no Atlas | **Em curso**: `feat/atlas-passo-em-destaque` (sem migration) |
 
 A ordem 1 → 0 é de propósito: a Fase 0 depende da API nova do Atlas, e a
 Fase 1 não depende de nada (decisão do operador, 29/09/2026).
@@ -299,6 +300,49 @@ sem prazo enquanto o vínculo segue na situação anterior (sem trava de
 idade; as nunca tentadas passam na frente, e a fila não trava); o
 "Aguardar" não reconfere a situação ao acordar; mudanças de uma conta desconectada ficam na fila até reconectar (e
 então disparam, sem trava de idade, por decisão do operador).
+
+## Fase 5 — o nó "Atlas" (em curso, sem migration)
+
+**Decisão do operador (30/09/2026):** o CRM é vendido a outros escritórios;
+em vez de um passo só, UM nó "Atlas" no construtor, com um seletor de AÇÃO
+com tudo o que a API do Atlas deixa escrever. Cada ação é um `step_type`
+próprio (`atlas_criar_cliente` fica INTOCADO — está ligado no "Contrato
+fechado"); a tela os agrupa. Regras: `.claude/rules/integracoes-atlas-acoes.md`.
+
+**Decidido na implementação (a confirmar com o operador):**
+- tarefa sem vínculo nasce SEM cliente (o alvo é a equipe do Atlas); com o
+  vínculo na lixeira, falha (o sucesso de atualizar, transcrição ou
+  onboarding no mesmo cliente tira a marca, como o "Conferir no Atlas");
+- "Atualizar cliente" oferece as seis situações do contrato §8 (decisão do
+  operador), mas `ativo`/`importado` releem o cliente e PARAM no suspenso
+  (a trava do "Criar"); o gatilho do Atlas recusa o passo inteiro;
+- transcrição: a mais recente da ficha; a ligada pelo e-mail do convidado só
+  com a caixa "Aceitar reunião ligada pelo e-mail" (padrão desligado);
+- chave de idempotência por execução (`<logId>:<stepId>:<ação>`): rodar de
+  novo duplica tarefa e transcrição no Atlas.
+
+**Pendências (perguntas ao operador):**
+1. Tarefa sem vínculo sem cliente, e a lixeira falhando — confirma?
+2. Transcrição: manter a chave por execução, ou deduplicar por reunião
+   (`<automationId>:<stepId>:transcricao:<reuniaoId>`; o mesmo id com notas
+   diferentes daria 409 `idempotency_conflict`)?
+3. Os rótulos exatos, na tela do Atlas, das três permissões opcionais e das
+   quatro situações do item do onboarding (hoje provisórios). Até lá, o
+   motivo da falha, o cartão e a INSTALACAO citam a permissão pelo que ela
+   faz e pelo nome técnico (`create_task`…); conferido, o rótulo entra em
+   `ROTULO_DA_PERMISSAO` e nos dicionários.
+4. "Atualizar cliente" com telefone, e-mail e documento — manter?
+5. `importado` (e `ativo`) na lista do "Atualizar" — manter?
+6. Transcrição ligada pelo e-mail: o padrão restritivo serve?
+
+**Limites conhecidos:** o cartão diz quais permissões são opcionais, mas não
+quais estão ligadas (pediria guardar o `whoami`); várias ações do Atlas
+seguidas numa retomada pelo cron somam até 15 s cada contra o teto de 50 s
+do laço rápido (não medido); gatilho → "Mover card" → automação de etapa com
+"Atualizar cliente (situação)" reescreve por reflexo (não vira laço).
+
+**E2e (staging):** o Escritório Teste está com transcrições e onboarding
+DESLIGADOS (contrato §12): o operador os liga para testar essas duas ações.
 
 ## Fases 2 a 4 — resumo do desenho
 

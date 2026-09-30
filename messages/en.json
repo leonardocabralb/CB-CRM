@@ -641,8 +641,8 @@
       "cancelar": "Cancel",
       "desvinculado": "Link with Atlas removed.",
       "naLixeira": "This client’s record is in the Atlas trash (seen on {quando}).",
-      "naLixeiraDica": "Restore it in Atlas (within 7 days) and tap “Check in Atlas”, or unlink it. Meanwhile, the “Create client in Atlas” step stops on this contact.",
-      "naLixeiraDicaPecaAoAdmin": "Once it is restored in Atlas (within 7 days), the CRM notices it on the next full read or when an administrator checks it here. Meanwhile, the “Create client in Atlas” step stops on this contact.",
+      "naLixeiraDica": "Restore it in Atlas (within 7 days) and tap “Check in Atlas”, or unlink it. Meanwhile, the “Create client” and “Create task” actions of the Atlas automation node stop on this contact.",
+      "naLixeiraDicaPecaAoAdmin": "Once it is restored in Atlas (within 7 days), the CRM notices it on the next full read, when an administrator checks it here, or when another Atlas action succeeds on this client. Meanwhile, the “Create client” and “Create task” actions of the Atlas automation node stop on this contact.",
       "conferirNoAtlas": "Check in Atlas",
       "conferindo": "Checking…",
       "foraDaLixeira": "The client is back from the Atlas trash.",
@@ -1664,7 +1664,11 @@
         "send_to_number": "Notify number: {alvo}",
         "create_task": "Create task: {alvo}",
         "pin_conversation_channel": "Pin the conversation to a number",
-        "atlas_criar_cliente": "Create the client in Atlas"
+        "atlas_criar_cliente": "Create the client in Atlas",
+        "atlas_atualizar_cliente": "Update the client in Atlas{situacao, select, ativo { (status: Active)} importado { (status: Imported)} finalizado { (status: Closed out)} rescindido { (status: Terminated)} inativo { (status: Inactive)} suspenso { (status: Suspended)} other {}}",
+        "atlas_criar_tarefa": "Create task in Atlas: {alvo}",
+        "atlas_enviar_transcricao": "Send the meeting transcript to Atlas",
+        "atlas_atualizar_onboarding": "Onboarding in Atlas: {alvo}"
       },
       "cancelar": "Cancel",
       "salvar": "Save",
@@ -2213,7 +2217,11 @@
         "send_to_number": "Notify a number",
         "create_task": "Create task",
         "pin_conversation_channel": "Pin conversation to a number",
-        "atlas_criar_cliente": "Create client in Atlas"
+        "atlas_criar_cliente": "Create client in Atlas",
+        "atlas_atualizar_cliente": "Update client in Atlas",
+        "atlas_criar_tarefa": "Create task in Atlas",
+        "atlas_enviar_transcricao": "Send transcript to Atlas",
+        "atlas_atualizar_onboarding": "Update onboarding in Atlas"
       },
       "triggers": {
         "new_message_received": {
@@ -2629,7 +2637,68 @@
         "conexaoErro": "The Atlas connection has a problem, and the step may fail.",
         "conexaoNaoSei": "The step uses the Atlas key connected in Settings → Integrations.",
         "abrirIntegracoes": "Open Integrations",
-        "ajuda": "It searches Atlas first: it creates the client, reactivates a terminated, closed-out or inactive record, or just links one in progress. It stops without touching Atlas when in doubt (more than one record, a match only by e-mail or by the end of the phone, a suspended record). It never retries on its own."
+        "ajuda": "It searches Atlas first: it creates the client, reactivates a terminated, closed-out or inactive record, or just links one in progress. It stops without touching Atlas when in doubt (more than one record, a match only by e-mail or by the end of the phone, a suspended record). It never retries on its own.",
+        "no": "Atlas",
+        "acaoLabel": "Action",
+        "acao": {
+          "criarCliente": "Create client",
+          "atualizarCliente": "Update client",
+          "criarTarefa": "Create task",
+          "enviarTranscricao": "Send meeting transcript",
+          "atualizarOnboarding": "Update onboarding item"
+        },
+        "trocarAcaoConfirma": "Switching the action switches what is set up in this step. Going back to this action before leaving the screen restores its setup; saving with the other action erases it. Continue?",
+        "naoMudar": "— don’t change —",
+        "situacaoLabel": "Status",
+        "situacaoHelp": "In Atlas, the team decides the status; change it here only if the firm uses the CRM for that. Active or Imported do not reopen a suspended record (the step stops). An automation of the “Atlas status changed” trigger cannot have this step.",
+        "valorDoCardLabel": "Contract value = card value",
+        "valorDoCardHelp": "No card, or a card worth 0: the value in Atlas does not change.",
+        "datasHelp": "Empty field on the contact: the date in Atlas does not change (no fallbacks, unlike “Create client”).",
+        "linkLabel": "Conversation link",
+        "telefoneLabel": "Contact phone",
+        "emailLabel": "Contact e-mail",
+        "documentoLabel": "Document (CPF/CNPJ)",
+        "documentoHelp": "A text field on the contact holding the CPF or CNPJ. Filled with anything else, the step fails without sending anything.",
+        "campoDeTextoSumiu": "Deleted field (or not a text field)",
+        "atualizarAjuda": "Updates the client linked to this contact (Atlas tab). Only what was chosen and is filled on the contact is sent: nothing in Atlas is erased. Without the contact linked to Atlas, the step fails without sending anything. It never retries on its own.",
+        "tarefaTituloLabel": "Task title",
+        "tarefaDescricaoLabel": "Description",
+        "prioridadeLabel": "Priority",
+        "prioridadeNormal": "Normal",
+        "prioridadeUrgente": "Urgent",
+        "prazoLabel": "Due in (days from today)",
+        "semPrazoLabel": "No due date",
+        "tarefaAjuda": "In Atlas, the task goes to the firm’s oldest administrator (the API does not pick an assignee) and stores only the due day. With the contact linked to Atlas, it is requested with the client; without, it is created with no client. With the linked client marked as in the Atlas trash, the step fails without sending: restore it there and use “Check in Atlas” on the Atlas tab. Running again creates another task.",
+        "transcricaoFonte": "Sends this client’s most recent meeting transcript (from tl;dv or pasted in the Meetings tab) to Atlas’s Diagnosis, for meetings in the last {horas} h. If it is still pending, has no transcript or is outside the window, the step fails — it never sends another meeting instead.",
+        "janelaLabel": "Window (hours)",
+        "notasLabel": "Notes (optional)",
+        "incluirNotasLabel": "Include the meeting notes (tl;dv summary)",
+        "aceitarEmailLabel": "Accept a meeting linked by the guest’s e-mail",
+        "aceitarEmailHelp": "tl;dv links the meeting to the contact by the invited guest’s e-mail — a spouse sharing the e-mail matches just the same. Unchecked, only a meeting linked by hand (or pasted in the Meetings tab) is sent.",
+        "transcricaoCopia": "The API does not prevent copies: running again sends another copy to the Diagnosis. Needs the contact linked to Atlas.",
+        "itemLabel": "Checklist item",
+        "itemPlaceholder": "E.g.: Proof of address",
+        "itemHelp": "The text must match the onboarding checklist in Atlas (case does not matter). No inserted fields: the text is what identifies the item.",
+        "situacaoDoItemLabel": "Item status",
+        "observacaoLabel": "Note (optional)",
+        "onboarding": {
+          "situacao": {
+            "pending": "Pending",
+            "done": "Done",
+            "blocked": "Blocked",
+            "skipped": "Not applicable"
+          }
+        },
+        "nadaEscolhido": "Nothing chosen",
+        "transcricaoResumo": "The most recent in the last {horas} h",
+        "semTitulo": "No title",
+        "semItem": "No item",
+        "resumoValor": "Card value",
+        "resumoDatas": "Dates",
+        "resumoLink": "Link",
+        "resumoTelefone": "Phone",
+        "resumoEmail": "E-mail",
+        "resumoDocumento": "Document"
       },
       "atlasGatilho": {
         "descricao": "Fires when the periodic Atlas reading (every ~15 min) sees that a linked client’s status changed. Never on the first reading nor on a new link.",
@@ -2681,6 +2750,7 @@
       "kindCondition": "Condition",
       "kindWait": "Wait",
       "kindAction": "Action",
+      "integracaoAtlas": "Atlas integration",
       "pendencias": {
         "titulo": "{count, plural, one {To turn this on, resolve # pending item} other {To turn this on, resolve # pending items}}",
         "atencao": "Heads-up (does not block turning on)",
@@ -2784,7 +2854,20 @@
           "acionar_automacao_da_regua": "The chosen automation belongs to the Asaas collection sequence, which only runs from the Asaas sweep: when this step is reached it fails and the following steps do not run. Choose another.",
           "acionar_automacao_do_atlas": "The chosen automation uses the “Atlas status changed” trigger, which only runs from the Atlas reading: when this step is reached it fails and the following steps do not run. Choose another.",
           "iniciar_robo_desligado": "The chosen bot is not active: when this step is reached it fails and the following steps do not run. Activate it or choose another.",
-          "iniciar_robo_apagado": "The chosen bot was deleted: when this step is reached it fails and the following steps do not run. Choose another."
+          "iniciar_robo_apagado": "The chosen bot was deleted: when this step is reached it fails and the following steps do not run. Choose another.",
+          "atlas_situacao_invalida": "Choose the Atlas status again (or “— don’t change —”).",
+          "atlas_atualizar_sem_campos": "Choose at least one field to update in Atlas.",
+          "atlas_tarefa_sem_titulo": "Write the Atlas task title.",
+          "atlas_tarefa_prioridade_invalida": "Choose the priority: normal or urgent.",
+          "atlas_tarefa_prazo_invalido": "The due date is a whole number of days, from 0 to 365 (or no due date).",
+          "atlas_transcricao_idade_invalida": "The transcript window is a whole number of hours, from 1 to 720.",
+          "atlas_transcricao_notas_invalido": "Tick the meeting notes box again.",
+          "atlas_transcricao_email_invalido": "Tick the box for meetings linked by e-mail again.",
+          "atlas_onboarding_sem_item": "Write the checklist item as it appears in Atlas.",
+          "atlas_onboarding_item_com_variavel": "The checklist item does not accept inserted fields: write the item text.",
+          "atlas_onboarding_situacao_invalida": "Choose the item status again (or “— don’t change —”).",
+          "atlas_onboarding_sem_mudanca": "Choose the item status or write a note.",
+          "atlas_gatilho_com_atualizar_cliente": "An automation triggered by an Atlas status change cannot have “Update client in Atlas”: Atlas owns the status, and updating by reflex can loop."
         }
       },
       "previa": {
@@ -4376,7 +4459,10 @@
         "permissao": {
           "read_client": "Consultar Clientes (read clients)",
           "create_client": "Criar Clientes (create clients)",
-          "update_client": "Atualizar Clientes (update clients)"
+          "update_client": "Atualizar Clientes (update clients)",
+          "create_task": "create tasks (create_task)",
+          "create_transcript": "create transcripts (create_transcript)",
+          "update_onboarding": "update onboarding (update_onboarding)"
         },
         "motivo": {
           "chave_invalida": "Atlas rejected the key (check it was copied in full, or generate a new one)",
@@ -4402,7 +4488,10 @@
           "sem_permissao_listar": "the List Clients (Listar Clientes) permission is off in Atlas (the status sync needs it; the “Create client” step does not)",
           "api_antiga": "the Atlas API does not report when the status changed yet (update pending in Atlas)",
           "em_curso": "a sync is already running; wait a moment",
-          "cadeado_perdido": "the sync was interrupted by another one (a reconnection or another process); try again"
+          "cadeado_perdido": "the sync was interrupted by another one (a reconnection or another process); try again",
+          "ambiguo": "more than one item with the same text in the client’s checklist in Atlas",
+          "sem_admin": "the firm has no active administrator in Atlas to receive the task",
+          "item_nao_encontrado": "the client’s checklist in Atlas does not have the requested item"
         },
         "semMotivo": "could not finish right now; try again shortly",
         "ambienteDeTeste": "Test environment",
@@ -4439,7 +4528,8 @@
             "pendente": "queued",
             "processando": "processing"
           }
-        }
+        },
+        "permissoesOpcionaisDica": "Optional, only for the Atlas node in automations: the permissions to create tasks (create_task), create transcripts (create_transcript) and update onboarding (update_onboarding). Turned off, only the step that uses them fails, with the reason; the connection keeps working."
       },
       "avisoDaChave": {
         "embeddings_recusado": "Key saved: it generates text, but OpenAI refused the knowledge-base search (embeddings). The knowledge base now uses keyword search only — check the project's permissions and save the key again.",
