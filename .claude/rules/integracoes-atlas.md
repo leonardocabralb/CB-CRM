@@ -81,12 +81,14 @@ periódica das situações (Fase 2). Plano, fases e decisões do operador:
   `last_sync_attempt_at` — o rodízio); toda escrita na conexão leva a posse e
   confere a linha (zero = `cadeado_perdido`, para), e cada página, cada
   vínculo automático e cada escrita da lixeira a PROVAM logo antes
-  (`provarPosse`): sem isso, o ciclo que perdeu a conta para "Apagar os N
-  vínculos e conectar" gravaria vínculo do escritório antigo, que ocupa a
-  chave da ficha. A marca na conexão (`registrarConferencia`) só vai DEPOIS
-  do fechamento cercado: a chave velha recusada não põe a conexão nova em
-  erro. Recolhimento de 10 min, com teste cobrando a margem sobre prazo +
-  timeout.
+  (`provarPosse`), e o vínculo automático também DEPOIS (a prova que falha
+  apaga a linha recém-gravada): sem isso, o ciclo que perdeu a conta para
+  "Apagar os N vínculos e conectar" gravaria vínculo do escritório antigo,
+  que ocupa a chave da ficha. A marca na conexão (`registrarConferencia`) vai
+  com a MESMA cerca de posse, antes do fechamento: a chave velha recusada não
+  põe a conexão nova em erro. Chave ilegível ANTES do cadeado (sem cerca) não
+  escreve nada — quem marca é o passo e o "Conferir de novo". Recolhimento de
+  10 min, com teste cobrando a margem sobre prazo + timeout.
 - **Dois passos, cada um com cursor PRÓPRIO gravado a cada página**:
   mudanças (`statusChangedSince` = última leitura − 5 min, fixo em
   `mudancas_desde` até a varredura acabar; acabou → `situacoes_lidas_ate` =

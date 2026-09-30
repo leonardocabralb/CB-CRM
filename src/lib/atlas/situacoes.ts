@@ -414,11 +414,17 @@ async function descartados(ctx: Contexto, pares: ParDoVinculo[]): Promise<ParDoV
   return semDescartados(pares, ligadas, recusas);
 }
 
-/** O vínculo automático nasce COM a situação lida: nunca vira evento. 23505 = outro ligou antes. */
+/**
+ * O vínculo automático nasce COM a situação lida: nunca vira evento. 23505 =
+ * outro ligou antes. ⚠️ A prova de posse ANTES e DEPOIS: uma reconexão com
+ * outro escritório entre a prova e o INSERT (que apaga os vínculos antigos)
+ * deixaria este, com o escritório velho, ocupando a chave da ficha — a prova
+ * de depois que falha o APAGA antes de parar o ciclo.
+ */
 async function inserirVinculo(ctx: Contexto, cliente: ClienteListado, contactId: string, casouPor: CasouPor): Promise<void> {
   await provarPosse(ctx);
   const agora = new Date().toISOString();
-  const { error } = await ctx.admin.from("cb_atlas_clientes").insert({
+  const { data: inserido, error } = await ctx.admin.from("cb_atlas_clientes").insert({
     account_id: ctx.accountId,
     api_url: ctx.ambiente,
     atlas_tenant_id: ctx.tenantId,
@@ -432,8 +438,18 @@ async function inserirVinculo(ctx: Contexto, cliente: ClienteListado, contactId:
     casou_por: casouPor,
     visto_na_listagem_em: ctx.vistosNaListagem.has(cliente.id) ? ctx.listagemIniciadaEm : null,
     updated_at: agora,
-  });
+  }).select("id");
   if (!error) {
+    try {
+      await provarPosse(ctx);
+    } catch (perdeu) {
+      const ids = ((inserido ?? []) as { id: string }[]).map((l) => l.id);
+      if (ids.length > 0) {
+        const { error: erroDesfazer } = await ctx.admin.from("cb_atlas_clientes").delete().in("id", ids).eq("account_id", ctx.accountId);
+        if (erroDesfazer) console.error("[atlas] vínculo gravado depois de perder o cadeado e não desfeito:", erroDesfazer.message);
+      }
+      throw perdeu;
+    }
     if (casouPor === "chat_link") ctx.contagem.vinculadosPeloLink++;
     else ctx.contagem.vinculadosPeloTelefone++;
     return;
@@ -633,9 +649,11 @@ export async function sincronizarSituacoes(admin: SupabaseClient, accountId: str
     // Sem conexão, ou a de OUTRO ambiente (o preview contra o staging): calado.
     if (conexao.codigo === "nao_conectado" || conexao.codigo === "outro_ambiente") return { ok: false, codigo: "nao_conectado" };
     if (conexao.codigo === "chave_ilegivel") {
-      await registrarConferencia(admin, accountId, "chave_ilegivel", ambiente);
-      const { error } = await noAmbiente(admin.from("cb_atlas_config").update({ sync_erro: "chave_ilegivel" }).eq("account_id", accountId), ambiente);
-      if (error) console.error("[atlas] não foi possível gravar o erro da leitura:", error.message);
+      // SEM escrita: antes do cadeado não há cerca, e uma reconexão no meio
+      // levaria o "ilegível" da chave velha para a conexão NOVA. Quem marca a
+      // conexão é o passo "Criar cliente" e o "Conferir de novo" (que leem a
+      // chave e escrevem na hora); a leitura só registra no log.
+      console.warn(`[atlas] leitura da conta ${accountId}: a chave guardada não pôde ser decifrada`);
       return { ok: false, codigo: "chave_ilegivel" };
     }
     console.error(`[atlas] leitura da conta ${accountId}: a conexão não pôde ser lida`);

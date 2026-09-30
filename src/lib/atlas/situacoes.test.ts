@@ -296,6 +296,27 @@ describe("o cadeado", () => {
     expect(await rodar()).toMatchObject({ ok: false, codigo: "cadeado_perdido" });
     expect(banco.tabelas.cb_atlas_clientes).toHaveLength(0);
   });
+
+  it("CRÍTICO: reconexão com OUTRO escritório ENTRE a prova de posse e o INSERT: o vínculo gravado com o escritório velho é desfeito", async () => {
+    banco.tabelas.cb_atlas_config[0] = config(jaLido);
+    listar = () => pagina([bruto("a-link", { chat_link: `https://crm.example.com/inbox?c=${CONV_1}` })]);
+    buscar = acha("a-link");
+    const de = banco.cliente.from.bind(banco.cliente);
+    (banco.cliente as unknown as { from: (t: string) => Record<string, unknown> }).from = (t: string) => {
+      const b = de(t) as unknown as Record<string, (...a: unknown[]) => unknown>;
+      if (t === "cb_atlas_clientes") {
+        const inserir = b.insert;
+        b.insert = (v: unknown) => {
+          // O admin confirma "Apagar os vínculos do escritório anterior e conectar" bem aqui.
+          Object.assign(banco.tabelas.cb_atlas_config[0], { atlas_tenant_id: "t2", sincronizando_desde: null, situacoes_lidas_ate: null });
+          return inserir(v);
+        };
+      }
+      return b;
+    };
+    expect(await rodar()).toMatchObject({ ok: false, codigo: "cadeado_perdido" });
+    expect(banco.tabelas.cb_atlas_clientes).toHaveLength(0);
+  });
 });
 
 describe("o passo das mudanças", () => {
@@ -613,10 +634,12 @@ describe("AMBIENTE: a leitura do staging (preview) nunca toca a produção", () 
     expect(banco.tabelas.cb_atlas_config[0]).toMatchObject({ sincronizando_desde: null, last_sync_attempt_at: null });
   });
 
-  it("chave que não decifra: marca a conexão e o erro da leitura", async () => {
+  it("chave que não decifra: a leitura para SEM escrever (antes do cadeado não há cerca contra a reconexão)", async () => {
     banco.tabelas.cb_atlas_config[0] = config({ api_key: "estragada" });
+    const antes = { ...banco.tabelas.cb_atlas_config[0] };
     expect(await rodar()).toEqual({ ok: false, codigo: "chave_ilegivel" });
-    expect(banco.tabelas.cb_atlas_config[0]).toMatchObject({ status: "erro", last_error: "chave_ilegivel", sync_erro: "chave_ilegivel" });
+    expect(pedidos).toHaveLength(0);
+    expect(banco.tabelas.cb_atlas_config[0]).toEqual(antes);
   });
 });
 
