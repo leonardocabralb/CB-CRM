@@ -106,6 +106,12 @@ describe("o carimbo { de } — nada do contato anterior", () => {
     expect(proximoEstado(deA, FICHA_B, { tipo: "limite", espera })).toEqual({ de: FICHA_B, negociacoes: null, erro: null, espera });
   });
 
+  it("429 depois de um ERRO: o erro velho sai (a última resposta só disse 'espere')", () => {
+    const comErro = proximoEstado(ESTADO_INICIAL, FICHA_A, { tipo: "erro", erro: "sem_permissao" });
+    const espera = { segundos: 30, origem: "crm" } as const;
+    expect(proximoEstado(comErro, FICHA_A, { tipo: "limite", espera })).toEqual({ de: FICHA_A, negociacoes: null, erro: null, espera });
+  });
+
   it("erro troca a negociação (a lixeira não mostra a lista velha como atual)", () => {
     const deA = proximoEstado(ESTADO_INICIAL, FICHA_A, { tipo: "ok", negociacoes: NEGOCIACAO });
     expect(proximoEstado(deA, FICHA_A, { tipo: "erro", erro: "nao_encontrado" })).toEqual({ de: FICHA_A, negociacoes: null, erro: "nao_encontrado", espera: null });

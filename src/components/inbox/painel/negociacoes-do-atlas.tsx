@@ -171,13 +171,15 @@ export const ESTADO_INICIAL: EstadoDasNegociacoes = { de: null, negociacoes: nul
 /**
  * Puro: o estado depois de uma resposta PARA `de`. No 429 a negociação já
  * mostrada DESTE contato fica (continua valendo; só não foi relida); a de
- * outro contato nunca.
+ * outro contato nunca. O ERRO anterior sai no 429: a última resposta só
+ * disse "espere" — mantê-lo mostraria uma falha que pode já estar
+ * resolvida (a permissão religada) ao lado da espera, e depois dela.
  */
 export function proximoEstado(atual: EstadoDasNegociacoes, de: string, r: ResultadoDasNegociacoes): EstadoDasNegociacoes {
   if (r.tipo === "ok") return { de, negociacoes: r.negociacoes, erro: null, espera: null };
   if (r.tipo === "erro") return { de, negociacoes: null, erro: r.erro, espera: null };
   const mesmo = atual.de === de;
-  return { de, negociacoes: mesmo ? atual.negociacoes : null, erro: mesmo ? atual.erro : null, espera: r.espera };
+  return { de, negociacoes: mesmo ? atual.negociacoes : null, erro: null, espera: r.espera };
 }
 
 /** Puro: o que o render pode mostrar para ESTE contato (o carimbo contra a prop). */
