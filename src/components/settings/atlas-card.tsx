@@ -411,7 +411,10 @@ function MudancasDeSituacao({ mudancas }: { mudancas: MudancaNoCartao[] }) {
           {mudancas.map((m) => (
             <li key={m.id} className="min-w-0 text-xs">
               <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-                <span className="text-muted-foreground">{quando(m.criadaEm)}</span>
+                {/* Quando a situação MUDOU no Atlas (`status_changed_at`), não
+                    quando o CRM a enfileirou: depois de uma queda ou de um
+                    período desconectado, as duas se afastam horas. */}
+                <span className="text-muted-foreground">{quando(m.desde)}</span>
                 <span className="min-w-0 truncate font-medium text-foreground">{m.ficha?.nome ?? t("atlas.semFicha")}</span>
                 <span className="text-foreground">
                   {m.situacaoAnterior} → {m.situacaoNova}
