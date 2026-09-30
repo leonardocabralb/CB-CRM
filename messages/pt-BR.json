@@ -2485,7 +2485,7 @@
         "conexaoErro": "A conexão com o Atlas está com problema, e o passo pode falhar.",
         "conexaoNaoSei": "O passo usa a chave do Atlas conectada em Configurações → Integrações.",
         "abrirIntegracoes": "Abrir Integrações",
-        "ajuda": "Procura no Atlas antes: cria o cliente, reativa o cadastro rescindido ou finalizado, ou só vincula o que está em curso. Para sem mexer no Atlas quando há dúvida (mais de um cadastro, casamento só pelo e-mail ou pelo final do telefone, contrato suspenso). Não repete sozinho."
+        "ajuda": "Procura no Atlas antes: cria o cliente, reativa o cadastro rescindido, finalizado ou inativo, ou só vincula o que está em curso. Para sem mexer no Atlas quando há dúvida (mais de um cadastro, casamento só pelo e-mail ou pelo final do telefone, cadastro suspenso). Não repete sozinho."
       },
       "asaas": {
         "diasLabel": "Dias de atraso (o marco)",
@@ -4178,7 +4178,7 @@
         "semEscritorio": "Conectado ao Atlas.",
         "desconectar": "Desconectar",
         "confirmarDesconectar": "Desconectar o Atlas? O passo \"Criar cliente no Atlas\" das automações passa a falhar até uma chave ser colada de novo. Os vínculos das fichas com os clientes do Atlas ficam guardados.",
-        "comoFunciona": "Na automação de contrato fechado, ponha o passo \"Criar cliente no Atlas\" por último. Ele procura o cliente no Atlas pelo link da conversa, pelo telefone e pelo e-mail: não achando, cria; achando um cadastro rescindido ou finalizado, reativa o mesmo cadastro; achando um ativo, só vincula. Ele para, sem mexer no Atlas, quando acha mais de um cadastro, quando o cadastro casa só pelo e-mail ou pelo final do telefone, ou quando está suspenso ou inativo lá.",
+        "comoFunciona": "Na automação de contrato fechado, ponha o passo \"Criar cliente no Atlas\" por último. Ele procura o cliente no Atlas pelo link da conversa, pelo telefone e pelo e-mail: não achando, cria; achando um cadastro rescindido, finalizado ou inativo, reativa o mesmo cadastro; achando um ativo, só vincula. Ele para, sem mexer no Atlas, quando acha mais de um cadastro, quando o cadastro casa só pelo e-mail ou pelo final do telefone, ou quando está suspenso lá.",
         "faltando": "No Atlas, ligue as permissões: {permissoes}.",
         "permissao": {
           "read_client": "Consultar Clientes",

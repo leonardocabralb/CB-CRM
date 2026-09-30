@@ -196,13 +196,18 @@ describe("criarOuReativarNoAtlas", () => {
     expect(banco.tabelas.cb_atlas_clientes ?? []).toHaveLength(0);
   });
 
-  it("suspenso ou inativo no Atlas: para (o Atlas manda no contrato), nem pela busca nem pelo vínculo", async () => {
+  it("suspenso no Atlas: para (a equipe suspendeu lá), nem pela busca nem pelo vínculo", async () => {
     achados = { clientes: [{ id: "s1", status: "suspenso", appUrl: null, casouPor: ["chat_link"] }], truncado: false };
     await expect(rodar()).rejects.toThrow("no Atlas está suspenso");
-    banco.tabelas.cb_atlas_clientes = [{ id: "v1", account_id: CONTA, contact_id: FICHA, atlas_tenant_id: "t1", atlas_client_id: "i1", origem: "criada" }];
-    noAtlas.set("i1", { id: "i1", status: "inativo", appUrl: null });
-    await expect(rodar()).rejects.toThrow("no Atlas está inativo");
+    banco.tabelas.cb_atlas_clientes = [{ id: "v1", account_id: CONTA, contact_id: FICHA, atlas_tenant_id: "t1", atlas_client_id: "s2", origem: "criada" }];
+    noAtlas.set("s2", { id: "s2", status: "suspenso", appUrl: null });
+    await expect(rodar()).rejects.toThrow("no Atlas está suspenso");
     expect(chamadas.some((c) => c.metodo === "atualizar")).toBe(false);
+  });
+
+  it("inativo no Atlas: REATIVA o mesmo cadastro, como rescindido e finalizado (decisão do operador)", async () => {
+    achados = { clientes: [{ id: "i1", status: "inativo", appUrl: null, casouPor: ["chat_link"] }], truncado: false };
+    expect(await rodar()).toEqual({ acao: "reativado", atlasClientId: "i1", situacaoAnterior: "inativo" });
   });
 
   it("CRÍTICO: rescindido já ligado a OUTRA ficha — para ANTES de reativar (não grava o contrato desta no cadastro da outra)", async () => {

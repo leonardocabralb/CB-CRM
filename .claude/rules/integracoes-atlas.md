@@ -53,11 +53,12 @@ construtor: `.claude/rules/automacoes.md`.
   ficha, pelo telefone e pelo e-mail (critério que
   o Atlas recusaria — e-mail sem @, telefone com menos de 10 dígitos — fica
   fora: derrubaria a busca inteira). `decisao.ts`: nada → criar; UM
-  rescindido ou finalizado → REATIVAR o mesmo cadastro (D3: nunca criar outro
-  para quem volta); UM em curso → só vincular (D2: o Atlas manda no
-  contrato); PARA com motivo, sem escrever, quando há mais de um (ou a lista
-  veio cortada), quando está inativo ou suspenso (a equipe pausou lá), ou
-  quando o casamento é FRACO.
+  rescindido, finalizado ou inativo → REATIVAR o mesmo cadastro (D3: nunca
+  criar outro para quem volta; inativo por decisão do operador, 30/09); UM
+  em curso → só vincular (D2: o Atlas manda no contrato); PARA com motivo,
+  sem escrever, quando há mais de um (ou a lista veio cortada), quando está
+  SUSPENSO (a equipe suspendeu lá, de propósito), ou quando o casamento é
+  FRACO.
 - ⚠️⚠️ **Só casamento FORTE age sozinho** (`matched_by` com `chat_link`,
   `phone` ou `doc_id`): `phone_last8` (telefone guardado sem DDD) e `email`
   casam pessoas diferentes (cônjuge com o mesmo e-mail), e reativar gravaria

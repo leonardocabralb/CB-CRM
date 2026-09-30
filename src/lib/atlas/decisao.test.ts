@@ -10,14 +10,14 @@ describe("decidir", () => {
     expect(decidir([])).toEqual({ acao: "criar" });
   });
 
-  it("um rescindido ou finalizado, casado forte: REATIVAR o mesmo cadastro (D3)", () => {
-    for (const s of ["rescindido", "finalizado", "Rescindido", " FINALIZADO "]) {
+  it("um rescindido, finalizado ou inativo, casado forte: REATIVAR o mesmo cadastro (D3)", () => {
+    for (const s of ["rescindido", "finalizado", "inativo", "Rescindido", " FINALIZADO ", "Inativo"]) {
       expect(decidir([c(s)]).acao).toBe("reativar");
     }
   });
 
-  it("um inativo ou suspenso: PARA — o Atlas pausou o contrato e a equipe decide lá (D2)", () => {
-    for (const s of ["inativo", "suspenso", "Suspenso"]) {
+  it("um suspenso: PARA — a equipe suspendeu no Atlas e decide lá (D2)", () => {
+    for (const s of ["suspenso", "Suspenso", " SUSPENSO "]) {
       expect(decidir([c(s)]).acao).toBe("pausado");
     }
   });
@@ -57,8 +57,10 @@ describe("pela situação (o cliente do VÍNCULO: já é desta ficha, sem casame
 
   it("ignora espaço e caixa; nulo não é encerrado nem pausado", () => {
     expect(estaEncerrado(" FINALIZADO ")).toBe(true);
-    expect(estaEncerrado("inativo")).toBe(false);
-    expect(estaPausado(" Inativo")).toBe(true);
+    expect(estaEncerrado("inativo")).toBe(true);
+    expect(estaEncerrado("suspenso")).toBe(false);
+    expect(estaPausado(" Suspenso")).toBe(true);
+    expect(estaPausado("inativo")).toBe(false);
     expect(estaEncerrado(null)).toBe(false);
     expect(estaPausado(null)).toBe(false);
   });

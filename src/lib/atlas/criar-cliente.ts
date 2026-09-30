@@ -17,7 +17,7 @@ import { dadosParaCriar, dadosParaReativar, emailParaAtlas, telefoneParaBusca, t
  *    Atlas prova isso), PROCURA pelo link das conversas do CRM, pelo telefone
  *    e pelo e-mail.
  * 3. Decide (`decisao.ts`): criar, reativar (D3), só vincular, ou PARAR
- *    (mais de um, casamento fraco, contrato suspenso no Atlas).
+ *    (mais de um, casamento fraco, cadastro SUSPENSO no Atlas).
  * 4. ⚠️ ANTES de escrever no Atlas, confere que o cadastro achado não é de
  *    OUTRA ficha do CRM: reativar o cadastro alheio gravaria o contrato desta
  *    pessoa no da outra, e o vínculo 1:1 nem poderia registrar.

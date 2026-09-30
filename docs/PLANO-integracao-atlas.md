@@ -158,10 +158,10 @@ encerrado: o passo PARA antes de reativar — provável ficha duplicada); sem
 conexão, o passo FALHA com motivo (não há aviso ao ligar a automação).
 Depois da revisão do PR #356:
 
-- **Inativo e suspenso NÃO são reativados**: o passo para e pede que a
-  equipe reative no Atlas (D2). O contrato pedido ao Atlas já dizia que,
-  para esses dois, a reativação é proposta que o operador confirma — só
-  rescindido e finalizado entram na D3 sem pergunta.
+- **Inativo é reativado; suspenso PARA** (decisão do operador, 30/09/2026):
+  inativo é cliente parado, e o contrato novo o traz de volta como
+  rescindido e finalizado (D3); suspenso é decisão da equipe no Atlas, e o
+  passo para e pede que ela reative lá (D2).
 - **Casamento fraco para**: um cadastro que casa SÓ pelo e-mail ou pelos 8
   últimos dígitos (telefone guardado no Atlas sem DDD) não é reativado nem
   vinculado; o motivo manda conferir e acertar o telefone lá. É o "liga

@@ -637,10 +637,10 @@ administrador do escritório gera a chave em *Configurações → Integrações
 no Atlas sem gravar nada lá e a guarda cifrada; ela não volta à tela. Na
 automação de contrato fechado, ponha o passo **Criar cliente no Atlas** por
 último: ele procura o cliente no Atlas (pelo link da conversa, telefone e
-e-mail) e cria, reativa o cadastro de quem estava rescindido ou finalizado,
+e-mail) e cria, reativa o cadastro de quem estava rescindido, finalizado ou inativo,
 ou só vincula quem já está ativo. Não cria outro cadastro para quem o Atlas
 acha por esses dados; quando há dúvida (mais de um cadastro, casamento só pelo
-e-mail ou pelo final do telefone, contrato suspenso ou inativo), para sem
+e-mail ou pelo final do telefone, cadastro suspenso no Atlas), para sem
 mexer no Atlas e diz o motivo no histórico da automação. A chave é do
 escritório inteiro: uma por conta do CRM.
 
