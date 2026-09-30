@@ -3113,6 +3113,13 @@ export function MessageThread({
         onFechar={() => setGaleriaAbertaEm(null)}
       />
 
+      {/* As faixas ARREDONDADAS moram neste bloco: cada uma abre com `mt-2`,
+          e o `pb-2` dá à última o mesmo respiro embaixo — sem ele ela encosta
+          no `border-t` do aviso de número ou do compositor, e as duas caixas
+          viram uma só. Faixa arredondada nova entra AQUI, sem `mb-*` próprio
+          (somaria 16 px entre duas faixas). `empty:hidden`: com todas caladas,
+          o bloco não deixa uma tira vazia. */}
+      <div className="pb-2 empty:hidden">
       {/* Faixa CLIENTE RESCINDIDO / FINALIZADO (1070, pedido do operador em
           29/09/2026): a PRIMEIRA da pilha — é o fato que muda a conversa
           inteira. Só informa, nunca bloqueia; cala com `null`. */}
@@ -3149,6 +3156,7 @@ export function MessageThread({
           agendadas e ACIMA do aviso de número divergente, que continua
           colado no compositor (o comentário dele diz por quê). */}
       <FaixaDePresenca userIds={vendoAgora} profiles={profiles} />
+      </div>
 
       {/* ⚠️ A última mensagem do cliente chegou por um NÚMERO e a resposta
           vai sair por OUTRO — o que, no celular dele, quer dizer que a
