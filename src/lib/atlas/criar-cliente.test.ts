@@ -54,6 +54,7 @@ function entrada(parcial: Partial<EntradaDoPassoAtlas> = {}): EntradaDoPassoAtla
     negocio: { valor: 5000, criadoEm: "2026-05-10T15:00:00.000Z" },
     datas: { primeiroContato: null, proposta: null, fechamento: null },
     linkDaConversa: "https://crm.example.com/inbox?c=conv-1",
+    conversaDaExecucao: "conv-1",
     tipoDeContrato: "fixo",
     agora: new Date("2026-09-29T15:00:00.000Z"),
     ...parcial,
@@ -88,8 +89,8 @@ describe("criarOuReativarNoAtlas", () => {
     const r = await rodar();
     expect(r).toEqual({ acao: "criado", atlasClientId: "novo-1" });
     const busca = chamadas.find((c) => c.metodo === "buscar")!.args[0] as CriteriosDeBusca;
-    // Procura pelas conversas DESTA ficha e pelo id dela (o link antigo de ficha).
-    expect(busca.chatLinkIds).toEqual(["conv-1", "conv-2", FICHA]);
+    // Procura pela conversa da execução, pelo id da ficha (o link antigo de ficha) e pelas outras conversas DELA.
+    expect(busca.chatLinkIds).toEqual(["conv-1", FICHA, "conv-2"]);
     expect(busca.phone).toBe("5511987654321");
     const criar = chamadas.find((c) => c.metodo === "criar")!;
     expect(criar.args[1]).toBe("log-1:passo-1:criar");
@@ -228,13 +229,28 @@ describe("criarOuReativarNoAtlas", () => {
     const busca = chamadas.find((c) => c.metodo === "buscar")!.args[0] as CriteriosDeBusca;
     expect(busca.phone).toBeNull();
     expect(busca.email).toBeNull();
-    expect(busca.chatLinkIds).toEqual(["conv-1", "conv-2", FICHA]);
+    expect(busca.chatLinkIds).toEqual(["conv-1", FICHA, "conv-2"]);
     expect((chamadas.find((c) => c.metodo === "criar")!.args[0] as DadosDoClienteNoAtlas).email).toBeNull();
   });
 
   it("validação recusada: o motivo nomeia os NOSSOS campos", async () => {
     falha = new AtlasError("validacao", "400", 400, null, { codigoDoAtlas: "validation_error", campos: ["email", "phone"] });
     await expect(rodar()).rejects.toThrow("o Atlas recusou os dados do cliente (validação: email, phone)");
+  });
+
+  it("a conversa da execução entra na busca mesmo quando a ficha tem mais de 9 conversas (teto do Atlas: 10 ids)", async () => {
+    banco.tabelas.conversations = Array.from({ length: 12 }, (_, i) => ({ id: `antiga-${i}`, account_id: CONTA, contact_id: FICHA }));
+    await rodar(entrada({ conversaDaExecucao: "atual" }));
+    const busca = chamadas.find((c) => c.metodo === "buscar")!.args[0] as CriteriosDeBusca;
+    expect(busca.chatLinkIds).toHaveLength(10);
+    expect(busca.chatLinkIds!.slice(0, 2)).toEqual(["atual", FICHA]);
+  });
+
+  it("chave que não decifra (ENCRYPTION_KEY trocada): falha E marca a conexão em erro, para o cartão pedir reconexão", async () => {
+    banco.tabelas.cb_atlas_config[0].api_key = "estragada";
+    await expect(rodar()).rejects.toThrow("não pôde ser lida");
+    expect(banco.tabelas.cb_atlas_config[0]).toMatchObject({ status: "erro", last_error: "chave_ilegivel" });
+    expect(chamadas).toHaveLength(0);
   });
 
   it("conexão feita em OUTRO ambiente do Atlas (o staging, no preview): falha sem mandar a chave", async () => {

@@ -2568,6 +2568,7 @@ async function runStep(
           fechamento: campo(cfg.campo_fechamento),
         },
         linkDaConversa: link || null,
+        conversaDaExecucao: dados.conversationId || null,
         tipoDeContrato,
         agora: new Date(),
       });

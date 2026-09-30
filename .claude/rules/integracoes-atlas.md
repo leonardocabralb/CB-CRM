@@ -49,7 +49,8 @@ construtor: `.claude/rules/automacoes.md`.
 
 - ⚠️⚠️ **Procura antes de escrever** (o n8n criava sempre): o vínculo que já
   existe manda (relê o cliente); sem ele, `find_clients` pelo link das
-  conversas do CRM + o id da ficha, pelo telefone e pelo e-mail (critério que
+  conversas do CRM (a da execução primeiro: o Atlas aceita 10 ids) + o id da
+  ficha, pelo telefone e pelo e-mail (critério que
   o Atlas recusaria — e-mail sem @, telefone com menos de 10 dígitos — fica
   fora: derrubaria a busca inteira). `decisao.ts`: nada → criar; UM
   rescindido ou finalizado → REATIVAR o mesmo cadastro (D3: nunca criar outro

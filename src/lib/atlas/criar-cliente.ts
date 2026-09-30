@@ -45,6 +45,8 @@ export interface EntradaDoPassoAtlas {
   negocio: { valor: number | null; criadoEm: string | null } | null;
   datas: { primeiroContato: string | null; proposta: string | null; fechamento: string | null };
   linkDaConversa: string | null;
+  /** A conversa desta execução (a do link): SEMPRE entra na busca, mesmo com mais de 9. */
+  conversaDaExecucao: string | null;
   tipoDeContrato: TipoDeContrato;
   agora: Date;
 }
@@ -157,7 +159,10 @@ export async function criarOuReativarNoAtlas(
   const { accountId, contactId } = entrada;
 
   const conexao = await lerChaveDoAtlas(admin, accountId);
-  if (!conexao.ok) throw new Error(MOTIVO_DA_CONEXAO[conexao.codigo]);
+  if (!conexao.ok) {
+    if (conexao.codigo === "chave_ilegivel") await registrarConferencia(admin, accountId, "chave_ilegivel");
+    throw new Error(MOTIVO_DA_CONEXAO[conexao.codigo]);
+  }
   const atlas = (opcoes.cliente ?? ((c) => criarClienteAtlas(c)))(conexao.chave);
 
   const dados: EntradaDoCliente = {
@@ -207,10 +212,13 @@ export async function criarOuReativarNoAtlas(
     //    (derrubaria a busca inteira); o link das conversas vai sempre.
     if (decisao === null) {
       const conversas = await conversasDoContato(admin, accountId, contactId);
+      // O Atlas aceita 10 ids: a conversa desta execução (a do `chatLink`) e a
+      // ficha vão PRIMEIRO; as mais antigas completam.
+      const ids = [entrada.conversaDaExecucao, contactId, ...conversas].filter((x): x is string => !!x);
       const achados = await atlas.buscar({
         phone: telefoneParaBusca(entrada.contato.telefone),
         email: emailParaAtlas(entrada.contato.email),
-        chatLinkIds: [...conversas, contactId],
+        chatLinkIds: [...new Set(ids)].slice(0, 10),
       });
       decisao = decidir(achados.clientes, achados.truncado);
 

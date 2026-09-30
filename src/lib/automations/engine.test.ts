@@ -2129,6 +2129,7 @@ describe('atlas_criar_cliente — criar cliente no Atlas (Fase 0)', () => {
         fechamento: '2026-09-29T02:10:00.000Z',
       },
       linkDaConversa: 'https://crm.exemplo.com/inbox?c=conv1',
+      conversaDaExecucao: 'conv1',
       tipoDeContrato: 'mensal',
       agora: expect.any(Date),
     });
@@ -2155,6 +2156,7 @@ describe('atlas_criar_cliente — criar cliente no Atlas (Fase 0)', () => {
       negocio: null,
       datas: { primeiroContato: null, proposta: null, fechamento: null },
       linkDaConversa: null,
+      conversaDaExecucao: null,
       tipoDeContrato: 'fixo',
     });
     // Nenhuma conversa criada: o passo não fala com o contato.

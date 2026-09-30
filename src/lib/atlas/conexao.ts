@@ -166,8 +166,13 @@ export async function lerChaveDoAtlas(
   return { ok: true, chave, tenantId: String(data.atlas_tenant_id) };
 }
 
-/** Os códigos que dizem "a CHAVE parou de valer" — a conexão vai a erro. */
-const CODIGOS_DA_CHAVE: CodigoDoErroAtlas[] = ["chave_invalida", "api_fora_do_plano"];
+/**
+ * Os códigos que dizem "a CHAVE parou de valer" — a conexão vai a erro, e o
+ * cartão pede para reconectar. `chave_ilegivel` é nosso (a `ENCRYPTION_KEY`
+ * mudou, a cifra estragou): sem ela aqui, o cartão diria "conectado" com
+ * todo passo falhando.
+ */
+const CODIGOS_DA_CHAVE: CodigoDaConexao[] = ["chave_invalida", "api_fora_do_plano", "chave_ilegivel"];
 
 /**
  * A chave ainda vale? Chamada por quem usou a chave: chave recusada marca a
@@ -177,7 +182,7 @@ const CODIGOS_DA_CHAVE: CodigoDoErroAtlas[] = ["chave_invalida", "api_fora_do_pl
 export async function registrarConferencia(
   admin: SupabaseClient,
   accountId: string,
-  codigo: CodigoDoErroAtlas | null,
+  codigo: CodigoDoErroAtlas | "chave_ilegivel" | null,
   ambiente: string | null = ambienteDoAtlas(),
 ): Promise<void> {
   const agora = new Date().toISOString();
