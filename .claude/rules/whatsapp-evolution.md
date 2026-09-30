@@ -49,6 +49,19 @@ perfil. Plano vivo: `docs/PLANO-baileys-7.md`.
   item (virava bolha vazia) e a rota carimba `edited_at` na mensagem alvo,
   MANTENDO o texto antigo. O texto novo não existe do nosso lado: antes de
   "consertar" a bolha, ler `isSecretEncrypted`/`edicaoCifrada`.
+- ⚠️⚠️ **Sessão legada `session-<telefone>.99` derruba a conversa INTEIRA do
+  contato.** A Baileys 6 gravou o aparelho HOSPEDADO da Meta (aparelho 99, de
+  conta comercial com IA da Meta ou API oficial) como aparelho comum. Na rc13,
+  `handleMessage` chama `migrateSession(telefone→LID)` antes de decifrar; com a
+  `device-list-<telefone>` trazendo "99" (gravada no 1º ENVIO pela Baileys 7),
+  ela gera `<lid>:99@lid` e `jidToSignalProtocolAddress` lança. A mensagem é
+  descartada ANTES da tabela `Message` e do webhook — as do cliente e as cópias
+  das respostas da equipe pelo celular. Assinatura no log: `"error":{}` +
+  "transaction failed, rolling back" + "error in handling message". O CRM não
+  vê nada; o master da Baileys tem o mesmo código. Conserto, cuidados (apagar
+  junto as sessões de telefone de quem tem `lid-mapping`, senão a migração
+  sobrescreve as LID vivas) e o veneno nos backups de 09/09:
+  `docs/INFRA-VPS.md` §8 (30/09) e `docs/PLANO-baileys-7.md` 9.8.
 - ⚠️ **Todo `protocolMessage` vira `messages.edited`**, inclusive a revogação
   (`type: 0`, sem `editedMessage`). A rota ignora o `edited` sem texto de
   propósito: o apagar-para-todos chega pelo `messages.delete`. Não tratar o

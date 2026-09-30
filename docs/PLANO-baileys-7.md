@@ -59,6 +59,7 @@ abaixo. Nada foi deixado implícito de propósito.
 | 10/09 09:55 | Operador: mensagens do celular com 1 ✓. Medido: o recibo chega ao CRM ANTES da mensagem — corrida da rota, anterior à 2.4 (~⅓ das mensagens do celular desde 20/08) → espera na rota (PR #191) | 5.9, 9.6 |
 | 16/09 11:55 | Operador: mensagem de 11:24 apareceu às 11:53. Medido: Bancário-Comercial 26–30 min atrasada com a saúde VERDE; restart drenou 16 min em 1 min. O CRM ganhou o 3º eixo da saúde — a fronteira de entrega (migration 1002, PR #220) | 5.10 |
 | 17/09 12:39 | **1003 aplicada** (Management API, histórico `20260917153917`) e **imagem `-foto` no ar** (`docker service update`, stop-first, 17 s; 4 conexões `open`, migrations em dia). Primeira amostra "depois": carimbo 12:41:49 → gravada 12:41:49 (0,0 min). Última "antes" com a 1003: celular 12:12:45 → 12:39:38 (26,9 min) | 5.10, 9.7 |
+| 30/09 | Uma conversa inteira descartada desde ~10/09 (cliente com aparelho hospedado da Meta): sessão legada `session-<tel>.99` da Baileys 6 + `migrateSession` da rc13. 8 campos apagados do Redis db 8 com autorização; verificação em 07/10 | 9.8 |
 | 17/09 10:00–12:30 | **Causa raiz do atraso, provada por três vias**: `profilePicture(received.key.remoteJid)` — a foto de perfil consultada pelo LID, que o WhatsApp não responde — esperada dentro do `concatMap` do `BaileysMessageProcessor`, com os 60 s de `defaultQueryTimeoutMs` da Baileys 7. 1 msg/min por conexão. Patch na imagem (`-foto`), migration 1003 (instrumento) e protocolo de verificação | 5.10, 9.7 |
 
 ### 0.3 O que NÃO foi feito (e é o próximo trabalho)
@@ -1221,6 +1222,59 @@ silenciado pelo nível de log em produção — o cronômetro no endpoint provou
 4 min o que o log não mostrava. ⚠️ `127.0.0.1:8080` no host não alcança a rede
 overlay: o curl sai por `https://api.cbadvogados.com`.
 
+#### 9.8 Registro — a sessão legada `.99` e a conversa que parou de chegar (30/09/2026, BRT)
+
+**Queixa do operador:** nada de um cliente (conta comercial com a IA da Meta)
+aparecia no CRM, nem as respostas da equipe pelo celular na conversa dele.
+Última mensagem dele no CRM: 09/09 19:13, já sob a Baileys 7.
+
+**Medido (só leitura; logs, banco `evolution`, Redis db 8/9, Supabase):**
+- A mensagem morre DENTRO da Baileys: não chega à tabela `Message` nem ao
+  webhook. Nos logs de 29–30/09, todas as 10 linhas `error in handling message`
+  são dessa conversa (do aparelho 0 e do 2 dele, e as cópias das respostas do
+  escritório com `recipient=<lid dele>`), cada uma precedida de
+  `{"error":{},"msg":"transaction failed, rolling back"}`. As falhas de outros
+  contatos são `SessionError` e seguem para `failed to decrypt message`
+  (retentativa), outro fenômeno.
+- Causa (rc13, conferida byte a byte com o tarball do npm): `handleMessage`
+  (`messages-recv.js` ~1266) chama `storeLIDPNMappings` e
+  `migrateSession(alt, primaryJid)` antes de decifrar e sem catch próprio. A
+  `migrateSession` (`libsignal.js` ~204) só age se existir
+  `device-list-<telefone>`; para cada `session-<telefone>.<n>` guardada, o
+  aparelho 99 vira `<tel>:99@hosted`, o `transferDevice` o leva a `<lid>:99@lid`
+  e o `jidToSignalProtocolAddress` lança "Unexpected non-hosted device JID with
+  device 99" (o pino grava o Error como `{}`). Reproduzido em memória com o
+  código real da imagem e números fictícios: mesmo erro, mesma linha de log.
+- `session-<tel>.99` só a Baileys 6 grava (`ProtocolAddress(user, device)`
+  sem tratar hosted; a rc13 exige `_128`/`_129` para o 99). As do cliente
+  nasceram num envio do CRM em 09/09, ainda na 6.x (RDBs de 17:04, 18:24 e 18:53
+  já as têm; o db 9 é a foto das 21:10, já com 2 h de rc13). A `device-list`
+  com "99" nasceu num envio pela rc13 (`messages-send.js` ~261, só o envio
+  grava device-list de terceiros): a reação do CRM de 10/09 (provável) ou o
+  texto de 29/09. Envio normal, não defeito de PR.
+- A seção 2.1 já listava um `.99` legado antes da troca, e o 3.2 recusou a
+  purga do Plano B (seção 11), confiando na migração automática (4.5). A purga
+  teria evitado o caso.
+- Grupo de controle na mesma instância: 3 contatos com aparelho 99 na
+  `device-list`, `lid-mapping` e sessões LID (`_129.99` inclusive) e NENHUMA
+  sessão de telefone — o estado pós-conserto — recebem normalmente (~1 s).
+- Nenhum PR do CRM nem patch da imagem (#184, #221, lidfix) toca esse caminho.
+
+**Conserto (30/09, 10:09 BRT, autorizado):** um `HDEL` no db 8 com 8
+campos (os 5 `.99` legados de 4 contatos e as 3 sessões de telefone dos 2 com
+`lid-mapping`). Variante recusada: apagar só os `.99` — a migração passaria a
+copiar as sessões de telefone de 09/09 por cima das LID vivas (reproduzido).
+Pré-checagem da janela do cache de 5 min, backup campo a campo em `/root/backups/redis-8campos-20260930T124041Z/`,
+sem reinício. Os outros 3 contatos só não quebravam porque o CRM ainda não
+tinha enviado nada a eles pela rc13.
+
+**Depois:** verificação de uma semana em 07/10/2026. Pendentes: as mensagens
+recusadas (NACK) não voltam — só no celular; relatar o defeito à Baileys
+(`migrateSession` devia levar o `.99` a `hosted.lid` ou ignorá-lo); classe
+latente sem erro: contatos com sessão de telefone + `lid-mapping` +
+`device-list` têm a sessão LID sobrescrita uma vez na próxima mensagem (falha e
+retentativa em 1–2 s), comportamento da Baileys independente do conserto.
+
 #### 9.1 Registro da execução da Fase 0 (09/09/2026, 17:04–17:30)
 
 - **Prova de restauração** (`evolution_ensaio`, 0 avisos do `pg_restore`), comparando o mesmo corte:
@@ -1266,6 +1320,8 @@ overlay: o curl sai por `https://api.cbadvogados.com`.
 - [x] Migration 1003 aplicada em produção — 17/09 12:39:17 BRT, histórico `20260917153917`
 - [x] Rollout da imagem `-foto` — **FEITO em 17/09 12:39:37 BRT** (não repetir: `docker service inspect evolution_evolution` mostra `…citacao-foto@sha256:a7d56788…`); custo medido em 5.10
 - [ ] **Verificação em ≥ 3 dias** (a partir de 21/09; consultas A e B do 5.10) → registrar o "depois" em 9.7 e fechar, ou abrir a "solução 3" se houver pico em 5 s
+- [x] Sessões legadas `session-<tel>.99` (conversa inteira descartada): 8 campos apagados do db 8 em 30/09 (9.8)
+- [ ] Verificação de uma semana do conserto do 9.8 (07/10/2026) e, com o ok do operador, apagar o backup dos 8 campos
 - [ ] Ajuste 5 (`GROUP_UPDATE`) + Ressincronizar nas 4 conexões
 - [ ] `/root/evolution.yaml` atualizado (imagem por digest, `TELEMETRY_ENABLED`)
 - [ ] Docs e `CLAUDE.md` atualizados (5.6); `EVOLUTION-LID-FIX.md` marcado obsoleto

@@ -396,6 +396,37 @@ o `stack deploy` manual descrito no `DEPLOY-VPS.md`.
 
 ## 8. Histórico de incidentes
 
+### 2026-09-30 — sessão legada `.99` descartava toda mensagem de um cliente
+
+**Sintoma.** Nenhuma mensagem de um cliente da Bancário - Comercial (conta
+comercial que usa a IA da Meta) chegava ao CRM desde ~10/09, nem as respostas
+da equipe pelo celular na conversa dele. O resto da conexão, normal.
+
+**Causa.** A Baileys 6 (2.3.2) gravou a sessão do aparelho HOSPEDADO dele
+(aparelho 99) no formato de telefone, `session-<telefone>.99`, no hash
+`evolution:instance:<id>` do Redis db 8. Na Baileys 7.0.0-rc13, o
+`handleMessage` chama `migrateSession(telefone→LID)` antes de decifrar; quando a
+`device-list-<telefone>` traz "99" (ela é gravada no primeiro ENVIO pela
+Baileys 7 — aqui, um envio normal do CRM), a migração gera `<lid>:99@lid`,
+`jidToSignalProtocolAddress` lança e a mensagem leva NACK, antes da tabela
+`Message` e do webhook. Log: `{"error":{},"msg":"transaction failed, rolling
+back"}` seguido de `error in handling message` com o nó cru. O master e a rc14
+da Baileys têm o mesmo código. Detalhe e reprodução: `PLANO-baileys-7.md`, 9.8.
+
+**Conserto (30/09/2026, 10:09 BRT, autorizado pelo operador).** Um `HDEL` no
+db 8 com 8 campos do hash da Bancário - Comercial: os 5 `session-<n>.99` legados
+(de 4 contatos) e as 3 sessões de telefone (`.0`/`.2`) dos 2 contatos que já têm
+`lid-mapping` — só a `migrateSession` as lia, e ela as copiaria por cima das
+sessões LID em uso. Sem reinício. Backup campo a campo, root-only, em
+`/root/backups/redis-8campos-20260930T124041Z/` (restauração: `HSET` campo a campo, nunca o hash
+inteiro). As mensagens recusadas não voltam: só existem no celular.
+
+⚠️ **Os backups de 09/09 (Redis db 9 e `/root/backups/redis-20260909-*.rdb`)
+contêm os `.99` legados.** Restaurá-los recoloca o defeito (além de voltar no
+tempo todas as sessões). Depois de qualquer restauração, varrer cada hash
+`evolution:instance:*` por campos `^session-[0-9]+\.99$` e tratá-los como
+acima. Verificação de uma semana marcada para 07/10/2026.
+
 ### 2026-09-09 — upgrade da Evolution para 2.4 (Baileys 7)
 
 Planejado e executado em `docs/PLANO-baileys-7.md`: 2 paradas de ~1 min
