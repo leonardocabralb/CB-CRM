@@ -5,6 +5,7 @@ import { cartaoDoAtlas, contagemVazia, type ConfigDoAtlas, type ContagemDosVincu
 import { conectarAtlas, conferirConexao, desconectarAtlas } from "@/lib/atlas/conexao";
 import { ambienteDoAtlas, noAmbiente } from "@/lib/atlas/enderecos";
 import { CASOU_POR, ORIGENS_DO_VINCULO } from "@/lib/atlas/leitura";
+import { ultimasMudancasDoCartao } from "@/lib/atlas/mudancas";
 import { supabaseAdmin } from "@/lib/automations/admin-client";
 import { requireRole, toErrorResponse } from "@/lib/auth/account";
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
@@ -15,7 +16,8 @@ import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit
  * GET — o estado da conexão e de qual escritório do Atlas é a chave, a
  *   LEITURA das situações (última, erro, listagem completa) e as fichas
  *   vinculadas por origem e por `casou_por` (1072), deste ambiente e deste
- *   escritório. `ambienteDeTeste` acende o selo — a URL nunca sai.
+ *   escritório, e as 20 últimas MUDANÇAS de situação do gatilho (1073), com o
+ *   resultado. `ambienteDeTeste` acende o selo — a URL nunca sai.
  *   ⚠️ A chave NÃO sai daqui: a linha é lida com service role SEM a coluna.
  * POST — `{ chave, apagarVinculosAnteriores? }` conecta (ou troca a chave):
  *   prova pelo `whoami` do Atlas, que não grava nada lá; recusa com
@@ -51,7 +53,9 @@ export async function GET() {
     // As contagens só fazem sentido para a conexão DESTE ambiente.
     const vinculos = cartao.leitura && data ? await contarVinculos(admin, ctx.accountId, ambiente, String(data.atlas_tenant_id)) : null;
     if (vinculos === "db_error") return NextResponse.json({ error: "db_error" }, { status: 500 });
-    return NextResponse.json({ cartao, vinculos });
+    const mudancas = cartao.leitura && data ? await ultimasMudancasDoCartao(admin, ctx.accountId, ambiente, String(data.atlas_tenant_id), data.conectado_em ?? null) : null;
+    if (mudancas === "db_error") return NextResponse.json({ error: "db_error" }, { status: 500 });
+    return NextResponse.json({ cartao, vinculos, mudancas });
   } catch (err) {
     return toErrorResponse(err);
   }

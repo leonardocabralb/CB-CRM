@@ -658,7 +658,138 @@ describe("AMBIENTE: a leitura do staging (preview) nunca toca a produção", () 
   });
 });
 
+describe("Fase 4 (1073): a decisão `mudou` entra na fila do gatilho", () => {
+  beforeEach(() => {
+    banco.tabelas.cb_atlas_config[0] = config(jaLido);
+    banco.tabelas.cb_atlas_mudancas = [];
+  });
+  const mudou = () => bruto("a1", { status: "rescindido", status_changed_at: "2026-09-30T14:00:00+00:00" });
+
+  it("CRÍTICO: enfileira ANTES de gravar o vínculo, com a situação anterior, a nova e a data — sem dado pessoal", async () => {
+    banco.tabelas.cb_atlas_clientes = [vinculo("v1", "a1")];
+    listar = () => pagina([mudou()]);
+    const r = await rodar();
+    expect(r).toMatchObject({ ok: true, contagem: { enfileiradas: 1, gravados: 1 } });
+    expect(banco.tabelas.cb_atlas_mudancas).toHaveLength(1);
+    expect(banco.tabelas.cb_atlas_mudancas[0]).toMatchObject({
+      account_id: CONTA,
+      api_url: null,
+      atlas_client_id: "a1",
+      situacao_anterior: "ativo",
+      situacao_nova: "rescindido",
+      situacao_desde: "2026-09-30T14:00:00.000Z",
+    });
+    expect(JSON.stringify(banco.tabelas.cb_atlas_mudancas)).not.toMatch(/Cliente a1|@example\.com|ficha-/);
+    expect(banco.tabelas.cb_atlas_clientes[0]).toMatchObject({ situacao: "rescindido" });
+  });
+
+  it("a página relida (a escrita do vínculo caiu antes): o 23505 é 'já registrada', grava o vínculo e a mudança SEGUE pendente", async () => {
+    // O vínculo ainda na situação anterior prova que a escrita não chegou —
+    // numa sobreposição com a escrita já feita, a releitura daria `igual`.
+    banco.tabelas.cb_atlas_clientes = [vinculo("v1", "a1")];
+    banco.tabelas.cb_atlas_mudancas = [{ id: "m1", account_id: CONTA, api_url: null, atlas_client_id: "a1", situacao_desde: "2026-09-30T14:00:00.000Z", estado: "pendente" }];
+    const comUnico = criarBanco(banco.tabelas, {
+      unicos: { cb_atlas_mudancas: [{ colunas: ["account_id", "api_url", "atlas_client_id", "situacao_desde"] }] },
+    });
+    banco = comUnico;
+    listar = () => pagina([mudou()]);
+    const r = await rodar();
+    expect(r).toMatchObject({ ok: true, contagem: { enfileiradas: 0, gravados: 1 } });
+    expect(banco.tabelas.cb_atlas_mudancas).toHaveLength(1);
+    expect(banco.tabelas.cb_atlas_mudancas[0]).toMatchObject({ estado: "pendente" });
+    expect(banco.tabelas.cb_atlas_clientes[0]).toMatchObject({ situacao: "rescindido", situacao_desde: "2026-09-30T14:00:00.000Z" });
+  });
+
+  it("CRÍTICO: reconexão com OUTRO escritório no meio da página, antes de enfileirar: a mudança do escritório velho NÃO entra na fila", async () => {
+    banco.tabelas.cb_atlas_clientes = [vinculo("v1", "a1")];
+    let listou = false;
+    listar = () => {
+      listou = true;
+      return pagina([mudou()]);
+    };
+    const de = banco.cliente.from.bind(banco.cliente);
+    (banco.cliente as unknown as { from: (t: string) => Record<string, unknown> }).from = (t: string) => {
+      const b = de(t) as unknown as Record<string, (...a: unknown[]) => unknown>;
+      if (t === "cb_atlas_clientes" && listou) {
+        const ler = b.select;
+        b.select = (...a: unknown[]) => {
+          // A página já provou a posse; o admin conecta o escritório B bem aqui.
+          Object.assign(banco.tabelas.cb_atlas_config[0], { atlas_tenant_id: "t2", sincronizando_desde: null, situacoes_lidas_ate: null });
+          return ler(...a);
+        };
+      }
+      return b;
+    };
+    expect(await rodar()).toMatchObject({ ok: false, codigo: "cadeado_perdido" });
+    expect(banco.tabelas.cb_atlas_mudancas).toHaveLength(0);
+  });
+
+  it("a cerca de recência recusou a escrita (o passo gravou depois): a mudança sai superada", async () => {
+    banco.tabelas.cb_atlas_clientes = [vinculo("v1", "a1")];
+    listar = () => {
+      const p = pagina([mudou()]);
+      Object.assign(banco.tabelas.cb_atlas_clientes[0], { situacao_lida_em: new Date(AGORA.getTime() + 1000).toISOString() });
+      return p;
+    };
+    await rodar();
+    expect(banco.tabelas.cb_atlas_mudancas[0]).toMatchObject({ estado: "feito", resultado: "superada" });
+  });
+
+  it("nunca na primeira leitura, no cadastro inicial, na correção nem sem data", async () => {
+    banco.tabelas.cb_atlas_clientes = [
+      vinculo("v-primeira", "a-primeira", { situacao: null }),
+      vinculo("v-importado", "a-importado", { situacao: "importado" }),
+      vinculo("v-corrigida", "a-corrigida", { created_at: "2026-09-30T14:30:00.000Z" }),
+      vinculo("v-sem-data", "a-sem-data"),
+      vinculo("v-negociacao", "a-negociacao"),
+    ];
+    listar = () =>
+      pagina([
+        bruto("a-primeira", { status: "rescindido", status_changed_at: "2026-09-30T14:00:00+00:00" }),
+        bruto("a-importado", { status: "ativo", status_changed_at: "2026-09-30T14:00:00+00:00" }),
+        bruto("a-corrigida", { status: "rescindido", status_changed_at: "2026-09-30T14:00:00+00:00" }),
+        bruto("a-sem-data", { status: "rescindido", status_changed_at: null }),
+        // `em_negociacao` vale `ativo`: não é mudança.
+        bruto("a-negociacao", { status: "em_negociacao", status_changed_at: "2026-09-30T14:00:00+00:00" }),
+      ]);
+    const r = await rodar();
+    expect(r.ok).toBe(true);
+    expect(banco.tabelas.cb_atlas_mudancas).toHaveLength(0);
+  });
+
+  it("o cliente relido na conferência da lixeira também enfileira a mudança", async () => {
+    banco.tabelas.cb_atlas_clientes = [vinculo("v1", "a1")];
+    ler = (id) => ({ id, status: "finalizado", appUrl: null, situacaoDesde: "2026-09-30T14:00:00.000Z" });
+    await rodar();
+    expect(banco.tabelas.cb_atlas_mudancas).toHaveLength(1);
+    expect(banco.tabelas.cb_atlas_mudancas[0]).toMatchObject({ situacao_nova: "finalizado" });
+  });
+});
+
 describe("rodarCicloDoAtlas", () => {
+  it("Fase 4: depois da leitura de cada conta, dispara as mudanças enfileiradas (o cadeado da leitura já solto)", async () => {
+    banco.tabelas.cb_atlas_config = [config(jaLido)];
+    banco.tabelas.cb_atlas_clientes = [vinculo("v1", "a1")];
+    banco.tabelas.cb_atlas_mudancas = [];
+    banco.tabelas.automations = [
+      { id: "aut-1", account_id: CONTA, name: "Rescindido", trigger_type: "atlas_situacao_mudou", trigger_config: { situacoes: ["rescindido"], pipeline_ids: ["00000000-0000-4000-8000-0000000000f1"] }, is_active: true },
+    ];
+    banco.tabelas.deals = [{ id: "card-1", account_id: CONTA, contact_id: "ficha-v1", pipeline_id: "00000000-0000-4000-8000-0000000000f1", status: "open" }];
+    listar = () => pagina([bruto("a1", { status: "rescindido", status_changed_at: "2026-09-30T14:00:00+00:00" })]);
+    const disparos: { sincronizando: unknown }[] = [];
+    await rodarCicloDoAtlas({
+      admin: banco.cliente,
+      cliente: fabrica,
+      pausa: async () => {},
+      disparar: async () => {
+        disparos.push({ sincronizando: banco.tabelas.cb_atlas_config[0].sincronizando_desde });
+        return { candidatas: 1, foraDoEscopo: 0, executadas: 1, comFalha: 0, emEspera: 0 };
+      },
+    });
+    expect(disparos).toEqual([{ sincronizando: null }]);
+    expect(banco.tabelas.cb_atlas_mudancas[0]).toMatchObject({ estado: "feito", resultado: "disparado" });
+  });
+
   it("roda as contas DESTE ambiente e nunca lança", async () => {
     banco.tabelas.cb_atlas_config = [config(jaLido), config({ ...jaLido, account_id: "conta-staging", api_url: STAGING })];
     await rodarCicloDoAtlas({ admin: banco.cliente, cliente: fabrica, pausa: async () => {} });

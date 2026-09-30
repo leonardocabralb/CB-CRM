@@ -66,3 +66,11 @@ describe("cartão do Atlas", () => {
     });
   });
 });
+
+describe("mudanças de situação no cartão", () => {
+  it("a hora mostrada é a da MUDANÇA no Atlas (`desde`), nunca a da entrada na fila (`criadaEm`)", () => {
+    const semComentarios = doCartao.replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(/\/\/.*$/gm, "");
+    expect(semComentarios).toMatch(/quando\(m\.desde\)/);
+    expect(semComentarios).not.toMatch(/quando\(m\.criadaEm\)/);
+  });
+});

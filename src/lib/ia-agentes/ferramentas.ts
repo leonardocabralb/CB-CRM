@@ -21,7 +21,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-import { ehGatilhoDaRegua } from '@/lib/asaas/regua'
+import { soRodaPeloDisparador } from '@/lib/automations/so-pelo-disparador'
 import { TIPO_DATA } from '@/lib/contacts/campo-data'
 
 import {
@@ -375,7 +375,8 @@ export async function lerCatalogoDeFerramentas(db: SupabaseClient, accountId: st
       .sort(porNome),
     membros: membros.map((m) => ({ userId: m.user_id, nome: nomeDoMembro(m) })).sort(porNome),
     automacoes: automacoes
-      .filter((a) => !ehGatilhoDaRegua(a.trigger_type))
+      // A régua do Asaas e a "Situação mudou no Atlas" só rodam pelo disparador delas.
+      .filter((a) => !soRodaPeloDisparador(a.trigger_type))
       .map((a) => ({ id: a.id, nome: a.name, foraDaD5: motivoForaDaD5(a.id, passosDe, regua) }))
       .sort(porNome),
   }
@@ -499,7 +500,7 @@ export async function opcoesDoAgente(
         )
         const motivos = await motivosForaDaD5(db, accountId, automacoes)
         opcoes.executar_automacao = linhas
-          .filter((l) => !ehGatilhoDaRegua(l.trigger_type) && !motivos.get(l.id))
+          .filter((l) => !soRodaPeloDisparador(l.trigger_type) && !motivos.get(l.id))
           .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
           .map((l) => ({ id: l.id, nome: l.name }))
       }),

@@ -11,11 +11,12 @@ import {
   validateStepsForActivation,
   validateChannelScopeForActivation,
   validateAsaasReguaForActivation,
+  validateAtlasSituacaoForActivation,
   validateTriggerForActivation,
   validateCustomFieldConditionsForActivation,
 } from '@/lib/automations/validate'
 import { carregarCamposParaCondicoes } from '@/lib/automations/condicao-por-campo'
-import { ehGatilhoDaRegua } from '@/lib/asaas/regua'
+import { soRodaPeloDisparador } from '@/lib/automations/so-pelo-disparador'
 import { normalizarAssinatura } from '@/lib/assinatura/assinatura'
 import { ehAreaDeOutraConta, lerIdDaArea } from '@/lib/automations/areas'
 
@@ -139,7 +140,8 @@ export async function PATCH(
     !Array.isArray(body.steps) && Object.keys(update).length > 0 && Object.keys(update).every((k) => k === 'area_id')
   // Gatilho da régua do Asaas (998): sem recorte por etapa — trocar o gatilho
   // pela tela não limpa o valor gravado (a armadilha da grade do funil).
-  if (ehGatilhoDaRegua((update.trigger_type ?? existing.trigger_type) as string)) update.stage_ids = null
+  // NOSSO (1073): a "Situação mudou no Atlas" também (o card vai no contexto).
+  if (soRodaPeloDisparador((update.trigger_type ?? existing.trigger_type) as string)) update.stage_ids = null
   if (willBeActive && !soOrganiza) {
     const mergedTriggerType = (update.trigger_type ?? existing.trigger_type) as string
     const mergedTriggerConfig = update.trigger_config ?? existing.trigger_config
@@ -158,6 +160,7 @@ export async function PATCH(
       ...validateTriggerForActivation(mergedTriggerType, mergedTriggerConfig),
       ...validateStepsForActivation(mergedSteps),
       ...validateAsaasReguaForActivation(mergedTriggerType, mergedSteps),
+      ...validateAtlasSituacaoForActivation(mergedTriggerType, mergedSteps),
       ...validateChannelScopeForActivation(
         mergedSteps,
         (('channel_ids' in update

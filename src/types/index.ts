@@ -1191,6 +1191,17 @@ export type AutomationTriggerType =
    */
   | 'zapsign_documento_assinado'
   /**
+   * NOSSO (1073, Fase 4 de docs/PLANO-integracao-atlas.md): a situação de um
+   * cliente VINCULADO mudou no Atlas. Quem decide "aconteceu?" é a leitura
+   * periódica (`src/lib/atlas/mudancas.ts`), que carimba `automation_id` e o
+   * card (`deal_id` + `deal_status_fixado`, o único card do contato nos funis
+   * da config) no contexto — como a régua do Asaas, só roda pelo disparador:
+   * `runAutomationById`, "Executar automação", o agente de IA,
+   * `run_automation` e `POST /api/automations/engine` o recusam
+   * (`soRodaPeloDisparador`). Os dados entram em `{{vars.atlas_*}}`.
+   */
+  | 'atlas_situacao_mudou'
+  /**
    * NUNCA dispara sozinho — só pelo botão "Executar automação" do menu + da
    * conversa (955). O dispatch é uma consulta `.eq('trigger_type', …)` pelo
    * tipo do EVENTO, e nenhum evento carrega este; `runAutomationById`, que é
@@ -1405,10 +1416,26 @@ export interface AsaasCobrancaTriggerConfig {
   somente_dias_uteis?: boolean;
 }
 
+/** As situações do Atlas que o gatilho oferece (contrato §8; `em_negociacao` vale `ativo`). */
+export type SituacaoDoAtlas = 'ativo' | 'importado' | 'finalizado' | 'rescindido' | 'inativo' | 'suspenso';
+
+/**
+ * NOSSO — config do gatilho `atlas_situacao_mudou` (1073). `situacoes`: para
+ * quais situações NOVAS a mudança dispara (≥ 1). `pipeline_ids`: os funis
+ * onde o card do cliente precisa ESTAR — OBRIGATÓRIO (≥ 1): o disparo leva
+ * sempre o card no contexto, e sem card no funil (ou com mais de um) a
+ * automação não roda e a mudança registra `sem_card`/`card_ambiguo`.
+ */
+export interface AtlasSituacaoTriggerConfig {
+  situacoes: SituacaoDoAtlas[];
+  pipeline_ids: string[];
+}
+
 export type AutomationTriggerConfig =
   | Record<string, never>
   | AsaasVenceHojeTriggerConfig
   | AsaasCobrancaTriggerConfig
+  | AtlasSituacaoTriggerConfig
   | KeywordMatchTriggerConfig
   | TagTriggerConfig
   | TimeBasedTriggerConfig

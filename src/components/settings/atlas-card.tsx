@@ -8,7 +8,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { CartaoDoAtlas, ContagemDosVinculos } from "@/lib/atlas/cartao";
+import type { CartaoDoAtlas, ContagemDosVinculos, MudancaNoCartao } from "@/lib/atlas/cartao";
+import { ESTADOS_NA_FILA, RESULTADOS_DA_MUDANCA } from "@/lib/atlas/gatilho";
 import { cn } from "@/lib/utils";
 
 import { SettingsChip } from "./settings-chip";
@@ -27,6 +28,10 @@ import { SettingsChip } from "./settings-chip";
  * aponta para outro Atlas (a URL nunca aparece); e, na recusa
  * `outro_escritorio`, apagar os vínculos do escritório anterior (com
  * confirmação) e conectar.
+ *
+ * Fase 4 (1073): "Mudanças de situação" — as 20 últimas da fila do gatilho
+ * "Situação mudou no Atlas", com a ficha, "anterior → nova" e o resultado
+ * traduzido (`atlas.mudanca.resultado.<r>`, chave montada — há teste).
  */
 
 /**
@@ -72,12 +77,15 @@ export const CODIGOS_CONHECIDOS = [
 export const PERMISSOES_CONHECIDAS = ["read_client", "create_client", "update_client"] as const;
 
 const CODIGOS = new Set<string>(CODIGOS_CONHECIDOS);
+const RESULTADOS = new Set<string>(RESULTADOS_DA_MUDANCA);
+const NA_FILA = new Set<string>(ESTADOS_NA_FILA);
 const PERMISSOES = new Set<string>(PERMISSOES_CONHECIDAS);
 
 export function AtlasCard() {
   const t = useTranslations("Settings.integracoes");
   const [cartao, setCartao] = useState<CartaoDoAtlas | null>(null);
   const [vinculos, setVinculos] = useState<ContagemDosVinculos | null>(null);
+  const [mudancas, setMudancas] = useState<MudancaNoCartao[] | null>(null);
   const [anteriores, setAnteriores] = useState<number | null>(null);
   const [lendo, setLendo] = useState(false);
   const [falhou, setFalhou] = useState(false);
@@ -102,10 +110,11 @@ export function AtlasCard() {
     try {
       const res = await fetch("/api/cb/atlas");
       if (!res.ok) throw new Error(String(res.status));
-      const corpo = (await res.json()) as { cartao: CartaoDoAtlas; vinculos: ContagemDosVinculos | null };
+      const corpo = (await res.json()) as { cartao: CartaoDoAtlas; vinculos: ContagemDosVinculos | null; mudancas?: MudancaNoCartao[] | null };
       if (vivoRef.current) {
         setCartao(corpo.cartao);
         setVinculos(corpo.vinculos ?? null);
+        setMudancas(corpo.mudancas ?? null);
         setFalhou(false);
       }
     } catch {
@@ -317,6 +326,7 @@ export function AtlasCard() {
                   motivo={motivo}
                 />
               )}
+              {cartao.leitura && mudancas && <MudancasDeSituacao mudancas={mudancas} />}
             </>
           )}
         </div>
@@ -370,6 +380,64 @@ function LeituraDasSituacoes({
         </p>
       )}
       <p className="max-w-[62ch] text-xs text-muted-foreground">{t("atlas.leituraDica")}</p>
+    </div>
+  );
+}
+
+/**
+ * "Mudanças de situação" (1073): as 20 últimas da fila do gatilho. O
+ * resultado é chave montada com reserva (código fora da lista = o próprio
+ * código, nunca a chave crua); o detalhe (uma linha por automação) vem do
+ * servidor, como no cartão do ZapSign.
+ */
+function MudancasDeSituacao({ mudancas }: { mudancas: MudancaNoCartao[] }) {
+  const t = useTranslations("Settings.integracoes");
+  const quando = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
+  const rotulo = (m: MudancaNoCartao) =>
+    m.resultado
+      ? RESULTADOS.has(m.resultado)
+        ? t(`atlas.mudanca.resultado.${m.resultado}` as Parameters<typeof t>[0])
+        : m.resultado
+      : NA_FILA.has(m.estado)
+        ? t(`atlas.mudanca.estado.${m.estado}` as Parameters<typeof t>[0])
+        : m.estado;
+  return (
+    <div className="space-y-2 border-t border-border pt-3">
+      <p className="text-sm font-medium text-foreground">{t("atlas.mudancasTitulo")}</p>
+      {mudancas.length === 0 ? (
+        <p className="text-xs text-muted-foreground">{t("atlas.mudancasVazio")}</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {mudancas.map((m) => (
+            <li key={m.id} className="min-w-0 text-xs">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+                {/* Quando a situação MUDOU no Atlas (`status_changed_at`), não
+                    quando o CRM a enfileirou: depois de uma queda ou de um
+                    período desconectado, as duas se afastam horas. */}
+                <span className="text-muted-foreground">{quando(m.desde)}</span>
+                <span className="min-w-0 truncate font-medium text-foreground">{m.ficha?.nome ?? t("atlas.semFicha")}</span>
+                <span className="text-foreground">
+                  {m.situacaoAnterior} → {m.situacaoNova}
+                </span>
+                <span
+                  className={cn(
+                    "rounded border px-1.5 py-px",
+                    m.resultado === "disparado"
+                      ? "border-emerald-500/40 text-emerald-700"
+                      : m.resultado === "falhou"
+                        ? "border-red-500/40 text-red-700"
+                        : "border-border text-muted-foreground",
+                  )}
+                >
+                  {rotulo(m)}
+                </span>
+              </div>
+              {m.detalhe && <p className="mt-0.5 whitespace-pre-line break-words text-[11px] text-muted-foreground">{m.detalhe}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="max-w-[62ch] text-xs text-muted-foreground">{t("atlas.mudancasDica")}</p>
     </div>
   );
 }

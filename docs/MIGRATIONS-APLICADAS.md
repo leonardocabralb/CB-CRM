@@ -1114,6 +1114,18 @@ nome da época em que foram aplicadas.
   154 vínculos automáticos (1 pelo link, 153 pelo telefone), todos com o
   `api_url` do staging; a mudança lida; o passo reativou pelo vínculo do
   ambiente; a limpeza apagou as 154 linhas do staging.
+- **1073_cb_atlas_mudancas** — `cb_atlas_mudancas`, a fila das mudanças de
+  situação que disparam o gatilho "Situação mudou no Atlas" (chave única
+  conta + AMBIENTE + cliente + data da mudança, `NULLS NOT DISTINCT`; estado
+  e resultado por CHECK, sem `antiga` nem `suspeita_ficha_velha` — as travas
+  que o operador recusou; RLS sem policy, fechada a `anon`/`authenticated`).
+  PR #362, Fase 4 de `docs/PLANO-integracao-atlas.md`. ADITIVA e ANTES do
+  deploy. Aplicada em 30/09/2026 pela Management API (histórico
+  `20260930150643`), depois do replay verde do CI no commit `3aa929ab` (SQL
+  inalterado desde o `f68a2354`) e ANTES do merge, com "aplique a migration
+  1073 em produção" do operador. Conferida no catálogo: RLS ligada, nenhuma
+  policy, `anon`/`authenticated` sem SELECT, `service_role` com escrita; a
+  tabela vazia.
 
 ## Notas do histórico
 

@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 /**
  * Um Supabase EM MEMÓRIA para os testes do ZapSign: tabelas como listas,
  * com os filtros que o módulo usa (`eq`, `in`, `is`, `or`, `like`, `ilike`,
- * `lt`, `not(…, 'is', null)`, `limit`) e as escritas (`insert`, `upsert` com
+ * `lt`, `not(…, 'is', null)`, `order`, `limit`) e as escritas (`insert`, `upsert` com
  * `onConflict` e `ignoreDuplicates`, `update`, `delete`). Como o PostgREST,
  * o UPDATE e o upsert só escrevem as colunas PRESENTES.
  *
@@ -71,6 +71,8 @@ export function criarBanco(inicial: Record<string, Linha[]> = {}, opcoesDoBanco:
     let valores: Linha | Linha[] | null = null;
     let opcoes: { onConflict?: string; ignoreDuplicates?: boolean } = {};
     let limite: number | null = null;
+    /** As ordens do SELECT, na ordem das chamadas (a primeira manda). */
+    const ordens: { coluna: string; asc: boolean; nulosPrimeiro: boolean }[] = [];
     let unico = false;
     let contar = false;
     let cabeca = false;
@@ -94,7 +96,25 @@ export function criarBanco(inicial: Record<string, Linha[]> = {}, opcoesDoBanco:
       const t = tabelas[nome];
       const casa = (l: Linha) => filtros.every((f) => f(l));
       let afetadas: Linha[] = [];
-      if (op === "select") afetadas = t.filter(casa);
+      if (op === "select") {
+        afetadas = t.filter(casa);
+        // Como o Postgres: nulo é o MAIOR valor (vem por último no crescente,
+        // primeiro no decrescente), salvo `nullsFirst` explícito. Estável.
+        if (ordens.length > 0) {
+          afetadas = [...afetadas].sort((a, b) => {
+            for (const o of ordens) {
+              const va = a[o.coluna] ?? null;
+              const vb = b[o.coluna] ?? null;
+              if (va === vb) continue;
+              if (va === null) return o.nulosPrimeiro ? -1 : 1;
+              if (vb === null) return o.nulosPrimeiro ? 1 : -1;
+              const cmp = (va as string | number) < (vb as string | number) ? -1 : 1;
+              return o.asc ? cmp : -cmp;
+            }
+            return 0;
+          });
+        }
+      }
       if (op === "update") {
         afetadas = t.filter(casa);
         for (const l of afetadas) Object.assign(l, valores);
@@ -142,10 +162,17 @@ export function criarBanco(inicial: Record<string, Linha[]> = {}, opcoesDoBanco:
         return b;
       },
       lt: (c: string, v: string) => (filtros.push((l) => typeof l[c] === "string" && (l[c] as string) < v), b),
+      gte: (c: string, v: string) => (filtros.push((l) => typeof l[c] === "string" && (l[c] as string) >= v), b),
       or: (expr: string) => (filtros.push(filtroDoOr(expr)), b),
       like: (c: string, p: string) => (filtros.push((l) => typeof l[c] === "string" && padraoParaRegex(p, "").test(l[c] as string)), b),
       ilike: (c: string, p: string) => (filtros.push((l) => typeof l[c] === "string" && padraoParaRegex(p, "i").test(l[c] as string)), b),
-      order: () => b,
+      order: (c: string, o: { ascending?: boolean; nullsFirst?: boolean; referencedTable?: string; foreignTable?: string } = {}) => {
+        // A ordem de uma tabela EMBUTIDA não reordena as linhas de cima.
+        if (o.referencedTable || o.foreignTable) return b;
+        const asc = o.ascending !== false;
+        ordens.push({ coluna: c, asc, nulosPrimeiro: o.nullsFirst ?? !asc });
+        return b;
+      },
       range: () => b,
       limit: (n: number) => ((limite = n), b),
       maybeSingle: async () => ((unico = true), executar()),

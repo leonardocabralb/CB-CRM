@@ -665,6 +665,11 @@ ligada, a aba Atlas da conversa mostra os bancos, contratos, propostas e
 acordos do cliente, lidos na hora no Atlas e nunca guardados no CRM
 (qualquer membro que vê a conversa os vê). Desligada, a seção avisa que a
 leitura está desligada e o resto segue funcionando.
+Com a leitura ligada, o gatilho de automação **Situação mudou no Atlas**
+roda quando a situação de um cliente vinculado MUDA (nunca na primeira
+leitura): escolha as situações e os funis onde o card do cliente precisa
+estar — sem card nesses funis, nada roda. O cartão **Atlas** mostra as
+últimas mudanças e o que as automações fizeram.
 
 **tl;dv** (transcrições de reunião na ficha): a API só existe nos planos
 **Pro e Business**, e só sai pela API a reunião de quem a ORGANIZOU com um

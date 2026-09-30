@@ -53,7 +53,7 @@ export const PREFIXO_DO_CAMPO = 'contact.campo.';
 export const PREFIXO_DO_EVENTO = 'vars.';
 
 /** As famílias de gatilho que entregam `{{vars.*}}` ao motor. */
-export type FamiliaDoEvento = 'asaas' | 'calendly' | 'zapsign' | 'webhook';
+export type FamiliaDoEvento = 'asaas' | 'calendly' | 'zapsign' | 'atlas' | 'webhook';
 
 export function familiaDoEvento(tipoDoGatilho: string): FamiliaDoEvento | null {
   switch (tipoDoGatilho) {
@@ -64,6 +64,8 @@ export function familiaDoEvento(tipoDoGatilho: string): FamiliaDoEvento | null {
       return 'calendly';
     case 'zapsign_documento_assinado':
       return 'zapsign';
+    case 'atlas_situacao_mudou':
+      return 'atlas';
     case 'webhook_received':
       return 'webhook';
     default:
@@ -98,7 +100,9 @@ export function gatilhoTrazCard(tipoDoGatilho: string): boolean {
   return (
     tipoDoGatilho === 'deal_stage_changed' ||
     tipoDoGatilho === 'deal_status_changed' ||
-    tipoDoGatilho === 'zapsign_documento_assinado'
+    tipoDoGatilho === 'zapsign_documento_assinado' ||
+    // A mudança de situação do Atlas (1073) leva SEMPRE o card do evento.
+    tipoDoGatilho === 'atlas_situacao_mudou'
   );
 }
 

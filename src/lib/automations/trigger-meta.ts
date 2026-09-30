@@ -71,6 +71,12 @@ export const TRIGGER_META: Record<AutomationTriggerType, TriggerMeta> = {
     label: 'Asaas — due today',
     pillClass: 'border-rose-500/30 bg-rose-500/10 text-rose-300',
   },
+  // NOSSO (1073): a leitura periódica do Atlas é o call site — fica FORA de
+  // `GATILHOS_SEM_DISPARO` (a grade do funil desenha a chegada do "Mover card").
+  atlas_situacao_mudou: {
+    label: 'Atlas — status changed',
+    pillClass: 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300',
+  },
   manual: {
     label: 'Manual',
     pillClass: 'border-zinc-500/30 bg-zinc-500/10 text-zinc-300',

@@ -31,9 +31,9 @@ qualquer um que também use o Atlas, **só pela API pública do Atlas**, com
 |---|---|---|---|
 | 1 | Faixa "Cliente rescindido / finalizado" pela MARCA da etapa (sem Atlas) | nada | **No ar** (PR #355, 29/09/2026): 1070 aplicada, etapas do CB marcadas, e2e no preview feito |
 | 0 | Conectar pela chave + passo "Criar cliente no Atlas" (reativa quem já existe) no lugar da perna do Atlas no n8n | Prioridade 1 da API do Atlas em staging | **No `main`** (PR #356, 30/09/2026; 1071) |
-| 2 | Vínculo contato ↔ cliente do Atlas + botão "Abrir no Atlas" + faixa também pela situação do Atlas | Fase 0; a API nova do Atlas em produção (promoção pelo Dev) | **Em curso**: PR A (servidor, 1072) no `main` (#357); PR B (tela, sem migration, branch `feat/atlas-fase-2-tela`) em revisão |
-| 3 | Aba "Atlas" com o histórico de negociação | Prioridade 3 do Atlas (leitura de negociação com permissão própria); a aba do PR B | **Em curso**: PR C (branch `feat/atlas-fase-3-negociacao`, sem migration, depois do B) — rota, allowlist e a seção `negociacoes-do-atlas.tsx`, montada na aba Atlas |
-| 4 | Mover o card por automação quando a situação muda no Atlas | Fase 2 | Planejada |
+| 2 | Vínculo contato ↔ cliente do Atlas + botão "Abrir no Atlas" + faixa também pela situação do Atlas | Fase 0; a API nova do Atlas em produção (promoção pelo Dev) | **No `main`**: PR A (servidor, 1072, #357 e #358) e PR B (tela, sem migration, #361, 30/09/2026; e2e no preview contra o staging) |
+| 3 | Aba "Atlas" com o histórico de negociação | Prioridade 3 do Atlas (leitura de negociação com permissão própria); a aba do PR B | **No `main`** (PR #363, 30/09/2026; sem migration): bancos, contratos, propostas e acordos lidos na hora na aba Atlas; allowlist campo a campo; e2e no preview (staging) |
+| 4 | Mover o card por automação quando a situação muda no Atlas | Fase 2 | **Em curso**: PR D (`feat/atlas-fase-4-gatilho`, 1073) |
 
 A ordem 1 → 0 é de propósito: a Fase 0 depende da API nova do Atlas, e a
 Fase 1 não depende de nada (decisão do operador, 29/09/2026).
@@ -269,6 +269,36 @@ ciclo; ficha com mais de 9 conversas espera a listagem inteira); a lixeira
 confere 5 vínculos por ciclo. A janela entre `provarPosse` e a escrita do
 vínculo automático (milissegundos) segue aberta a uma reconexão com outro
 escritório: o vínculo gravado ali seria do escritório antigo.
+
+## Fase 4 — gatilho "Situação mudou no Atlas" (em curso, PR D)
+
+**O que entra:** a fila `cb_atlas_mudancas` (1073, fechada, sem
+`contact_id`); a leitura enfileira a decisão `mudou` antes de gravar o
+vínculo; o disparo (`src/lib/atlas/mudancas.ts`) roda depois do fechamento
+do ciclo e no "Ler agora", relê o vínculo, lê cards e conversa UMA vez e
+dispara cada automação que casa com o ÚNICO card do cliente nos funis dela
+(`automation_id` + `deal_id` + `deal_status_fixado`). O gatilho só roda pelo
+disparador (`soRodaPeloDisparador`, como a régua do Asaas). O construtor
+oferece situações e funis (obrigatório) e as `{{vars.atlas_*}}`; o cartão
+mostra as 20 últimas mudanças com o resultado. Regras:
+`.claude/rules/integracoes-atlas.md`.
+
+**Para ligar:** aplicar a 1073 ANTES do deploy (aditiva), com o "pode
+gravar". Nada dispara sem automação ligada deste gatilho.
+
+**Medir contra o PostgREST real (antes do merge):** o INSERT na fila com
+`api_url` nulo (23505 de verdade pela chave `NULLS NOT DISTINCT`), o UPDATE
+`superada` por `.eq('situacao_desde', <ISO>)` sobre timestamptz, a
+reivindicação cercada por `estado` + `tentativas`, o recolhimento por
+`.lt('processando_desde', …)` e a seleção por
+`.order('processando_desde', { nullsFirst: true })` (as nunca tentadas
+primeiro).
+
+**Limites conhecidos:** a mudança cuja escrita no vínculo não chega espera
+sem prazo enquanto o vínculo segue na situação anterior (sem trava de
+idade; as nunca tentadas passam na frente, e a fila não trava); o
+"Aguardar" não reconfere a situação ao acordar; mudanças de uma conta desconectada ficam na fila até reconectar (e
+então disparam, sem trava de idade, por decisão do operador).
 
 ## Fases 2 a 4 — resumo do desenho
 

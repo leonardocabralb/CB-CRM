@@ -8,7 +8,8 @@ import { describe, expect, it } from "vitest";
 //
 // O preview contra o STAGING do Atlas grava no banco da PRODUÇÃO (CLAUDE.md
 // 8b), e o staging tem o mesmo id de escritório e ids copiados dos reais.
-// Uma consulta a `cb_atlas_clientes` ou `cb_atlas_recusas` sem a cerca de
+// Uma consulta a `cb_atlas_clientes`, `cb_atlas_recusas` ou `cb_atlas_mudancas`
+// (a fila do gatilho da Fase 4, 1073) sem a cerca de
 // ambiente (`noAmbiente`, `enderecos.ts`) deixaria a leitura do preview
 // escrever por cima dos vínculos reais — ou a produção religar pelo que o
 // teste gravou. Todo arquivo de `src/` que cita uma das duas tabelas chama
@@ -20,7 +21,7 @@ import { describe, expect, it } from "vitest";
 // ============================================================
 
 const SRC = path.join(__dirname, "../..");
-const TABELAS = /\bcb_atlas_(clientes|recusas)\b/;
+const TABELAS = /\bcb_atlas_(clientes|recusas|mudancas)\b/;
 
 /** Arquivo que cita as tabelas SEM a cerca, e por quê. Hoje, nenhum. */
 const EXCECOES: Record<string, string> = {};
@@ -41,10 +42,12 @@ const citam = [...fontes(SRC)]
 
 describe("AMBIENTE em toda linha do Atlas (1072)", () => {
   it("a varredura acha quem cita as tabelas (senão o pino passaria vazio)", () => {
-    expect(citam.map((f) => f.nome)).toEqual(expect.arrayContaining(["lib/atlas/criar-cliente.ts", "lib/atlas/situacoes.ts", "lib/atlas/conexao.ts"]));
+    expect(citam.map((f) => f.nome)).toEqual(
+      expect.arrayContaining(["lib/atlas/criar-cliente.ts", "lib/atlas/situacoes.ts", "lib/atlas/conexao.ts", "lib/atlas/mudancas.ts", "app/api/cb/atlas/route.ts"]),
+    );
   });
 
-  it("CRÍTICO: todo arquivo que cita cb_atlas_clientes/cb_atlas_recusas chama noAmbiente(", () => {
+  it("CRÍTICO: todo arquivo que cita cb_atlas_clientes/cb_atlas_recusas/cb_atlas_mudancas chama noAmbiente(", () => {
     const semCerca = citam.filter((f) => !f.texto.includes("noAmbiente(") && !(f.nome in EXCECOES)).map((f) => f.nome);
     expect(semCerca).toEqual([]);
   });

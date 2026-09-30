@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   validateAsaasReguaForActivation,
+  validateAtlasSituacaoForActivation,
   validateChannelScopeForActivation,
   validateCustomFieldConditionsForActivation,
   validateStepsForActivation,
@@ -965,3 +966,55 @@ describe("atlas_criar_cliente — criar cliente no Atlas", () => {
     ]);
   });
 });
+
+describe("Situação mudou no Atlas (1073) — o gatilho e os passos", () => {
+  const codigos = (cfg: unknown) => validateTriggerForActivation("atlas_situacao_mudou", cfg).map((i) => i.codigo)
+
+  it("situações e funil são obrigatórios; a config certa passa", () => {
+    expect(codigos({ situacoes: ["rescindido", "finalizado"], pipeline_ids: ["00000000-0000-4000-8000-0000000000f1"] })).toEqual([])
+    expect(codigos({})).toEqual(["gatilho_atlas_sem_situacao", "gatilho_atlas_sem_funil"])
+    expect(codigos({ situacoes: [], pipeline_ids: ["00000000-0000-4000-8000-0000000000f1"] })).toEqual(["gatilho_atlas_sem_situacao"])
+    expect(codigos({ situacoes: ["rescindido"], pipeline_ids: [] })).toEqual(["gatilho_atlas_sem_funil"])
+    expect(codigos({ situacoes: ["rescindido"], pipeline_ids: [""] })).toEqual(["gatilho_atlas_sem_funil"])
+  })
+
+  it("id de funil malformado é recusado (derrubaria a busca dos cards de TODAS as automações do gatilho)", () => {
+    expect(codigos({ situacoes: ["rescindido"], pipeline_ids: ["x"] })).toEqual(["gatilho_atlas_sem_funil"])
+    expect(codigos({ situacoes: ["rescindido"], pipeline_ids: ["00000000-0000-4000-8000-0000000000f1", "funil-1"] })).toEqual(["gatilho_atlas_sem_funil"])
+    expect(codigos({ situacoes: ["rescindido"], pipeline_ids: [7] })).toEqual(["gatilho_atlas_sem_funil"])
+  })
+
+  it("situação fora da lista do contrato é recusada (em_negociacao não é oferecida)", () => {
+    expect(codigos({ situacoes: ["em_negociacao"], pipeline_ids: ["00000000-0000-4000-8000-0000000000f1"] })).toEqual(["gatilho_atlas_situacao_invalida"])
+    expect(codigos({ situacoes: ["Rescindido"], pipeline_ids: ["00000000-0000-4000-8000-0000000000f1"] })).toEqual(["gatilho_atlas_situacao_invalida"])
+  })
+
+  it("recusa \"Criar cliente no Atlas\" em qualquer escopo (o Atlas manda na situação)", () => {
+    const criar = { step_type: "atlas_criar_cliente", step_config: {} }
+    const mover = { step_type: "move_deal_stage", step_config: { pipeline_id: "f1", stage_id: "e1" } }
+    expect(validateAtlasSituacaoForActivation("atlas_situacao_mudou", [mover])).toEqual([])
+    expect(validateAtlasSituacaoForActivation("atlas_situacao_mudou", [mover, criar]).map((i) => [i.path, i.codigo])).toEqual([
+      ["steps[1].step_type", "atlas_gatilho_com_criar_cliente"],
+    ])
+    expect(
+      validateAtlasSituacaoForActivation("atlas_situacao_mudou", [
+        { step_type: "condition", step_config: {}, branches: { yes: [], no: [criar] } },
+      ]).map((i) => i.path),
+    ).toEqual(["steps[0].no.steps[0].step_type"])
+    // Os outros gatilhos continuam podendo criar o cliente.
+    expect(validateAtlasSituacaoForActivation("manual", [criar])).toEqual([])
+  })
+
+  it("recusa \"Acionar automação\" em qualquer escopo: a filha driblaria a recusa do \"Criar cliente\" (D2)", () => {
+    const acionar = { step_type: "run_automation", step_config: { automation_id: "filha" } }
+    expect(validateAtlasSituacaoForActivation("atlas_situacao_mudou", [acionar]).map((i) => [i.path, i.codigo])).toEqual([
+      ["steps[0].step_type", "atlas_gatilho_aciona_outra"],
+    ])
+    expect(
+      validateAtlasSituacaoForActivation("atlas_situacao_mudou", [
+        { step_type: "condition", step_config: {}, branches: { yes: [acionar], no: [] } },
+      ]).map((i) => [i.path, i.codigo]),
+    ).toEqual([["steps[0].yes.steps[0].step_type", "atlas_gatilho_aciona_outra"]])
+    expect(validateAtlasSituacaoForActivation("manual", [acionar])).toEqual([])
+  })
+})

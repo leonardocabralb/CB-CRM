@@ -45,6 +45,24 @@ export interface CartaoDoAtlas {
   leitura: LeituraNoCartao | null;
 }
 
+/**
+ * Uma mudança de situação da fila do gatilho (1073), como o cartão a mostra:
+ * as 20 últimas da conta, deste ambiente. `resultado` nulo = ainda na fila
+ * (`estado` diz se pendente ou processando). A ficha sai do vínculo (a fila
+ * não guarda contato); nula = sem vínculo (apagado) ou ficha apagada.
+ */
+export interface MudancaNoCartao {
+  id: string;
+  criadaEm: string;
+  situacaoAnterior: string;
+  situacaoNova: string;
+  desde: string;
+  estado: string;
+  resultado: string | null;
+  detalhe: string | null;
+  ficha: { id: string; nome: string } | null;
+}
+
 /** As fichas vinculadas (com ficha, deste ambiente e escritório), por como nasceram. */
 export interface ContagemDosVinculos {
   total: number;
