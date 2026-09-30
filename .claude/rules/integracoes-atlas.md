@@ -75,7 +75,8 @@ construtor: `.claude/rules/automacoes.md`.
   Cliente ILEGÍVEL na lista do `find_clients` também: descartá-lo mudaria a
   contagem que decide (dois viram um e reativa; um vira zero e cria).
 - ⚠️ **Campo de data ESCOLHIDO no passo que sumiu do catálogo** (apagado ou
-  mudou de tipo) FALHA o passo; só o campo vazio NA FICHA cai na reserva
+  mudou de tipo), ou PREENCHIDO com o que não é data, FALHA o passo; só o
+  campo vazio NA FICHA cai na reserva
   (criação do card, o dia de hoje) — senão a reserva iria ao Atlas como se
   fosse a data certa.
 - **Nunca repete sozinho**: fica FORA de `PASSOS_DE_ENVIO` (criar pode ter
@@ -100,8 +101,9 @@ construtor: `.claude/rules/automacoes.md`.
   que já foi escrito ("o cliente foi criado no Atlas, mas…"). Chave recusada,
   ilegível ou permissão desligada no Atlas marca a conexão em erro
   (`registrarConferencia`), e o cartão diz o motivo; o próximo sucesso limpa
-  — menos `sem_permissao`, que só sai com sucesso de ESCRITA ou reconectando
-  (a permissão desligada pode ser a de Criar/Atualizar).
+  — menos `sem_permissao`: um sucesso prova só a permissão que usou. Ele sai
+  pelo "Conferir de novo" do cartão (`PATCH /api/cb/atlas`, refaz o `whoami`
+  com a chave guardada) ou reconectando.
 - **Vínculo 1:1** (`cb_atlas_clientes`): o cliente do Atlas já ligado a
   OUTRA ficha não é roubado (`ligado_a_outra_ficha`). Lido por membro (forma
   da 1032), escrito só pelo servidor; `contact_id` SET NULL — a tabela está

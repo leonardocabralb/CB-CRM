@@ -256,6 +256,14 @@ describe("criarOuReativarNoAtlas", () => {
     expect((chamadas.find((c) => c.metodo === "criar")!.args[0] as DadosDoClienteNoAtlas).email).toBeNull();
   });
 
+  it("data PREENCHIDA que não é data PARA o passo (a reserva iria ao Atlas como data certa); vazia segue", async () => {
+    await expect(rodar(entrada({ datas: { primeiroContato: null, proposta: "semana que vem", fechamento: null } }))).rejects.toThrow(
+      "a data da proposta na ficha não é uma data válida",
+    );
+    expect(chamadas).toHaveLength(0);
+    expect(await rodar(entrada({ datas: { primeiroContato: "  ", proposta: null, fechamento: null } }))).toMatchObject({ acao: "criado" });
+  });
+
   it("validação recusada: o motivo nomeia os NOSSOS campos", async () => {
     falha = new AtlasError("validacao", "400", 400, null, { codigoDoAtlas: "validation_error", campos: ["email", "phone"] });
     await expect(rodar()).rejects.toThrow("o Atlas recusou os dados do cliente (validação: email, phone)");

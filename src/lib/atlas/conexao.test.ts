@@ -11,7 +11,7 @@ vi.mock("@/lib/whatsapp/encryption", () => ({
 import { criarBanco, type Banco } from "../zapsign/duble.test-helper";
 
 import { AtlasError, type ClienteAtlas, type IdentidadeNoAtlas } from "./cliente";
-import { conectarAtlas, desconectarAtlas, lerChaveDoAtlas, registrarConferencia } from "./conexao";
+import { conectarAtlas, conferirConexao, desconectarAtlas, lerChaveDoAtlas, registrarConferencia } from "./conexao";
 
 // Chave de TESTE — nenhuma chave real do Atlas.
 const CHAVE = "sk_teste_0000000000000000000000000000";
@@ -110,11 +110,37 @@ describe("lerChaveDoAtlas / desconectar / conferência", () => {
     // Permissão desligada no Atlas depois de conectar: o cartão tem de dizer.
     await registrarConferencia(banco.cliente, CONTA, "sem_permissao");
     expect(banco.tabelas.cb_atlas_config[0]).toMatchObject({ status: "erro", last_error: "sem_permissao" });
-    // Sucesso só de LEITURA não prova a permissão de escrever: o aviso fica.
+    // Nenhum sucesso de passo prova as TRÊS permissões: o aviso fica até "Conferir de novo".
     await registrarConferencia(banco.cliente, CONTA, null);
     expect(banco.tabelas.cb_atlas_config[0]).toMatchObject({ status: "erro", last_error: "sem_permissao" });
-    await registrarConferencia(banco.cliente, CONTA, null, null, { escreveu: true });
+  });
+
+  it("Conferir de novo: refaz o whoami com a chave guardada — permissão religada limpa o aviso; ainda desligada, mantém e diz qual", async () => {
+    await conectarAtlas(banco.cliente, CONTA, "u1", CHAVE, { cliente: fabrica });
+    await registrarConferencia(banco.cliente, CONTA, "sem_permissao");
+    identidade = { ...(identidade as IdentidadeNoAtlas), permissoes: { ...TODAS, create_client: false } };
+    expect(await conferirConexao(banco.cliente, CONTA, { cliente: fabrica, ambiente: null })).toEqual({
+      ok: false,
+      codigo: "permissoes_faltando",
+      faltando: ["create_client"],
+    });
+    expect(banco.tabelas.cb_atlas_config[0]).toMatchObject({ status: "erro", last_error: "sem_permissao" });
+    identidade = { ...(identidade as IdentidadeNoAtlas), permissoes: { ...TODAS } };
+    expect(await conferirConexao(banco.cliente, CONTA, { cliente: fabrica, ambiente: null })).toEqual({ ok: true, escritorio: "Escritório Exemplo" });
     expect(banco.tabelas.cb_atlas_config[0]).toMatchObject({ status: "conectado", last_error: null });
+    // Chave recusada ao conferir: vai a erro com o motivo.
+    identidade = new AtlasError("chave_invalida", "403", 403);
+    expect(await conferirConexao(banco.cliente, CONTA, { cliente: fabrica, ambiente: null })).toEqual({ ok: false, codigo: "chave_invalida" });
+    expect(banco.tabelas.cb_atlas_config[0]).toMatchObject({ status: "erro", last_error: "chave_invalida" });
+  });
+
+  it("Conferir de novo sem conexão, ou de outro ambiente: não chama o Atlas", async () => {
+    expect(await conferirConexao(banco.cliente, CONTA, { cliente: fabrica, ambiente: null })).toEqual({ ok: false, codigo: "nao_conectado" });
+    await conectarAtlas(banco.cliente, CONTA, "u1", CHAVE, { cliente: fabrica, ambiente: null });
+    expect(await conferirConexao(banco.cliente, CONTA, { cliente: fabrica, ambiente: "https://staging.example.com/x" })).toEqual({
+      ok: false,
+      codigo: "outro_ambiente",
+    });
   });
 });
 

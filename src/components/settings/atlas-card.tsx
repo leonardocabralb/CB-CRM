@@ -70,6 +70,7 @@ export function AtlasCard() {
   const [chave, setChave] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [desconectando, setDesconectando] = useState(false);
+  const [conferindo, setConferindo] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const vivoRef = useRef(true);
   const cartaoRef = useRef<CartaoDoAtlas | null>(null);
@@ -133,6 +134,29 @@ export function AtlasCard() {
       if (vivoRef.current) setErro(t("atlas.semMotivo"));
     } finally {
       if (vivoRef.current) setSalvando(false);
+    }
+  };
+
+  // "Conferir de novo": o whoami com a chave guardada — a saída do aviso de
+  // permissão desligada sem colar a chave outra vez (o Atlas a mostra uma vez só).
+  const conferir = async () => {
+    if (conferindo) return;
+    setConferindo(true);
+    try {
+      const res = await fetch("/api/cb/atlas", { method: "PATCH" });
+      const corpo = (await res.json().catch(() => ({}))) as { error?: string; faltando?: string[] };
+      if (res.ok) toast.success(t("atlas.conferidoOk"));
+      else
+        toast.error(
+          corpo.error === "permissoes_faltando" && corpo.faltando?.length
+            ? t("atlas.faltando", { permissoes: corpo.faltando.map(nomeDaPermissao).join(", ") })
+            : t("falha", { motivo: corpo.error ? motivo(corpo.error) : t("atlas.semMotivo") }),
+        );
+      await carregar();
+    } catch {
+      toast.error(t("falha", { motivo: t("atlas.semMotivo") }));
+    } finally {
+      if (vivoRef.current) setConferindo(false);
     }
   };
 
@@ -220,9 +244,16 @@ export function AtlasCard() {
                 <div className="text-muted-foreground">
                   {cartao.escritorio ? t("atlas.escritorio", { nome: cartao.escritorio }) : t("atlas.semEscritorio")}
                 </div>
-                <Button type="button" variant="outline" size="sm" onClick={() => void desconectar()} disabled={desconectando}>
-                  {t("atlas.desconectar")}
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  {cartao.estado === "erro" && (
+                    <Button type="button" variant="outline" size="sm" onClick={() => void conferir()} disabled={conferindo}>
+                      {conferindo ? t("atlas.conferindo") : t("atlas.conferir")}
+                    </Button>
+                  )}
+                  <Button type="button" variant="outline" size="sm" onClick={() => void desconectar()} disabled={desconectando}>
+                    {t("atlas.desconectar")}
+                  </Button>
+                </div>
               </div>
               {cartao.erro && <p className="text-xs text-destructive">{t("falha", { motivo: motivo(cartao.erro) })}</p>}
               <p className="max-w-[62ch] text-xs text-muted-foreground">{t("atlas.comoFunciona")}</p>

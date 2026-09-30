@@ -171,12 +171,13 @@ export async function lerChaveDoAtlas(
  * cartão mostra o motivo. `chave_ilegivel` é nosso (a `ENCRYPTION_KEY`
  * mudou, a cifra estragou); `sem_permissao` é a permissão desligada no Atlas
  * DEPOIS de conectar. Sem eles aqui, o cartão diria "conectado" com todo
- * passo falhando. O próximo sucesso limpa — menos `sem_permissao`, que só
- * sai com sucesso de ESCRITA (ou reconectando, que refaz o `whoami`): a
- * permissão desligada pode ser a de Criar/Atualizar, e uma execução que só
- * leu e vinculou não prova nada sobre ela.
+ * passo falhando. O próximo sucesso limpa — menos `sem_permissao`: um
+ * sucesso prova só a permissão que ele usou (vincular prova Consultar;
+ * reativar, Atualizar), nunca as três. Esse aviso só sai por `conferirConexao`
+ * (o botão "Conferir de novo" do cartão, que refaz o `whoami`) ou reconectando.
  */
 const CODIGOS_DA_CHAVE: CodigoDaConexao[] = ["chave_invalida", "api_fora_do_plano", "chave_ilegivel", "sem_permissao"];
+const LIMPOS_POR_SUCESSO = CODIGOS_DA_CHAVE.filter((c) => c !== "sem_permissao");
 
 /**
  * A chave ainda vale? Chamada por quem usou a chave: chave recusada marca a
@@ -188,7 +189,6 @@ export async function registrarConferencia(
   accountId: string,
   codigo: CodigoDoErroAtlas | "chave_ilegivel" | null,
   ambiente: string | null = ambienteDoAtlas(),
-  opcoes: { escreveu?: boolean } = {},
 ): Promise<void> {
   const agora = new Date().toISOString();
   if (codigo !== null && !CODIGOS_DA_CHAVE.includes(codigo)) return;
@@ -201,8 +201,50 @@ export async function registrarConferencia(
     codigo === null ? await daConexao({ conferido_em: agora }) : await daConexao({ status: "erro", last_error: codigo, updated_at: agora });
   if (error) console.error("[atlas] não foi possível registrar a conferência da chave:", error.message);
   if (codigo === null) {
-    const limpaveis = opcoes.escreveu ? CODIGOS_DA_CHAVE : CODIGOS_DA_CHAVE.filter((c) => c !== "sem_permissao");
-    const { error: erroLimpeza } = await daConexao({ status: "conectado", last_error: null, updated_at: agora }).in("last_error", limpaveis);
+    const { error: erroLimpeza } = await daConexao({ status: "conectado", last_error: null, updated_at: agora }).in("last_error", LIMPOS_POR_SUCESSO);
     if (erroLimpeza) console.error("[atlas] não foi possível limpar o aviso da chave:", erroLimpeza.message);
   }
+}
+
+/**
+ * "Conferir de novo" (o cartão, admin): refaz o `whoami` com a chave GUARDADA
+ * — nada é gravado no Atlas — e reescreve o estado da conexão deste ambiente.
+ * É a única saída do `sem_permissao` sem colar a chave outra vez (o Atlas a
+ * mostra uma vez só).
+ */
+export async function conferirConexao(
+  admin: SupabaseClient,
+  accountId: string,
+  opcoes: { cliente?: FabricaDeCliente; ambiente?: string | null } = {},
+): Promise<ResultadoDaConexao> {
+  const ambiente = opcoes.ambiente === undefined ? ambienteDoAtlas() : opcoes.ambiente;
+  const conexao = await lerChaveDoAtlas(admin, accountId, ambiente);
+  if (!conexao.ok) {
+    if (conexao.codigo === "chave_ilegivel") await registrarConferencia(admin, accountId, "chave_ilegivel", ambiente);
+    return { ok: false, codigo: conexao.codigo };
+  }
+  const agora = new Date().toISOString();
+  const daConexao = (patch: Record<string, unknown>) => {
+    const q = admin.from("cb_atlas_config").update(patch).eq("account_id", accountId);
+    return ambiente === null ? q.is("api_url", null) : q.eq("api_url", ambiente);
+  };
+  let identidade;
+  try {
+    identidade = await fabricaDe(opcoes)(conexao.chave).whoami();
+  } catch (e) {
+    await registrarConferencia(admin, accountId, codigoDe(e), ambiente);
+    return { ok: false, codigo: codigoDe(e) };
+  }
+  const faltando = PERMISSOES_NECESSARIAS.filter((p) => identidade.permissoes[p] !== true);
+  // Escritório trocado por trás da mesma chave não acontece (a chave é DELE); ainda assim, não se afirma "ok" sobre outro tenant.
+  if (identidade.tenantId !== conexao.tenantId) {
+    const { error } = await daConexao({ status: "erro", last_error: "outro_escritorio", updated_at: agora });
+    return error ? { ok: false, codigo: "db_error" } : { ok: false, codigo: "outro_escritorio" };
+  }
+  const { error } =
+    faltando.length > 0
+      ? await daConexao({ status: "erro", last_error: "sem_permissao", conferido_em: agora, updated_at: agora })
+      : await daConexao({ status: "conectado", last_error: null, escritorio: identidade.escritorio, conferido_em: agora, updated_at: agora });
+  if (error) return { ok: false, codigo: "db_error" };
+  return faltando.length > 0 ? { ok: false, codigo: "permissoes_faltando", faltando } : { ok: true, escritorio: identidade.escritorio };
 }

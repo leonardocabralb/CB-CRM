@@ -5,7 +5,7 @@ import { NOME_DO_APP } from "@/lib/marca";
 import { AtlasError, criarClienteAtlas, type ClienteAtlas, type ClienteDoAtlas } from "./cliente";
 import { codigoDe, lerChaveDoAtlas, registrarConferencia } from "./conexao";
 import { decidir, decidirPelaSituacao, type Decisao } from "./decisao";
-import { dadosParaCriar, dadosParaReativar, emailParaAtlas, telefoneParaBusca, type EntradaDoCliente, type TipoDeContrato } from "./formatar";
+import { dadosParaCriar, dadosParaReativar, diaParaAtlas, emailParaAtlas, telefoneParaBusca, type EntradaDoCliente, type TipoDeContrato } from "./formatar";
 
 /**
  * O passo de automação "Criar cliente no Atlas" (Fase 0 de
@@ -158,6 +158,20 @@ export async function criarOuReativarNoAtlas(
 ): Promise<ResultadoDoPassoAtlas> {
   const { accountId, contactId } = entrada;
 
+  // ⚠️ Valor PREENCHIDO que não é data (texto antigo, lixo) PARA o passo: tratado
+  // como vazio, a reserva (criação do card, o dia de hoje) iria ao Atlas como
+  // se fosse a data certa. Só o campo VAZIO cai na reserva.
+  for (const [chave, nome] of [
+    ["primeiroContato", "do primeiro contato"],
+    ["proposta", "da proposta"],
+    ["fechamento", "de fechamento"],
+  ] as const) {
+    const bruto = entrada.datas[chave];
+    if (bruto && bruto.trim() !== "" && diaParaAtlas(bruto) === null) {
+      throw new Error(`a data ${nome} na ficha não é uma data válida; corrija o campo e rode de novo — nada foi enviado ao Atlas`);
+    }
+  }
+
   const conexao = await lerChaveDoAtlas(admin, accountId);
   if (!conexao.ok) {
     if (conexao.codigo === "chave_ilegivel") await registrarConferencia(admin, accountId, "chave_ilegivel");
@@ -301,7 +315,7 @@ export async function criarOuReativarNoAtlas(
       ? await admin.from("cb_atlas_clientes").update(linhaPropria ? lido : { ...lido, origem }).eq("id", linha)
       : await admin.from("cb_atlas_clientes").insert({ ...lido, origem });
     if (erroGravar) throw new Error(escrito ? "o vínculo não foi gravado no CRM" : "o vínculo com o Atlas não foi gravado no CRM");
-    await registrarConferencia(admin, accountId, null, undefined, { escreveu: escrito !== null });
+    await registrarConferencia(admin, accountId, null);
     return resultado;
   } catch (e) {
     const motivo = e instanceof AtlasError ? motivoDaFalha(e) : e instanceof Error ? e.message : String(e);
