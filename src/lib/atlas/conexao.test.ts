@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/whatsapp/encryption", () => ({
@@ -11,7 +14,7 @@ vi.mock("@/lib/whatsapp/encryption", () => ({
 import { criarBanco, type Banco } from "../zapsign/duble.test-helper";
 
 import { AtlasError, type ClienteAtlas, type IdentidadeNoAtlas } from "./cliente";
-import { conectarAtlas, conferirConexao, desconectarAtlas, lerChaveDoAtlas, registrarConferencia } from "./conexao";
+import { conectarAtlas, conferirConexao, desconectarAtlas, ESTADO_DA_LEITURA_ZERADO, lerChaveDoAtlas, registrarConferencia } from "./conexao";
 
 // Chave de TESTE — nenhuma chave real do Atlas.
 const CHAVE = "sk_teste_0000000000000000000000000000";
@@ -26,6 +29,7 @@ function fabrica(): ClienteAtlas {
       if (identidade instanceof AtlasError) throw identidade;
       return identidade;
     },
+    listar: async () => ({ clientes: [], nextCursor: null, hasMore: false }),
     buscar: async () => ({ clientes: [], truncado: false }),
     ler: async () => null,
     criar: async () => ({ id: "x", status: null, appUrl: null }),
@@ -65,11 +69,79 @@ describe("conectarAtlas", () => {
     expect(c.status).toBe("conectado");
   });
 
-  it("chave de OUTRO escritório do Atlas não herda os vínculos de outro", async () => {
+  it("chave de OUTRO escritório do Atlas não herda os vínculos de outro (e diz quantos são)", async () => {
     banco.tabelas.cb_atlas_clientes = [{ id: "v1", account_id: CONTA, atlas_tenant_id: "t-antigo", atlas_client_id: "c1", contact_id: "k1" }];
-    expect(await conectarAtlas(banco.cliente, CONTA, "u1", CHAVE, { cliente: fabrica })).toEqual({ ok: false, codigo: "outro_escritorio" });
+    expect(await conectarAtlas(banco.cliente, CONTA, "u1", CHAVE, { cliente: fabrica, ambiente: null })).toEqual({
+      ok: false,
+      codigo: "outro_escritorio",
+      vinculosAnteriores: 1,
+    });
     banco.tabelas.cb_atlas_clientes[0].atlas_tenant_id = "t1";
-    expect((await conectarAtlas(banco.cliente, CONTA, "u1", CHAVE, { cliente: fabrica })).ok).toBe(true);
+    expect((await conectarAtlas(banco.cliente, CONTA, "u1", CHAVE, { cliente: fabrica, ambiente: null })).ok).toBe(true);
+  });
+
+  it("outro_escritorio olha só os vínculos do MESMO ambiente: os de teste do staging não barram a produção", async () => {
+    const STAGING = "https://staging.example.com/functions/v1/client-webhook";
+    banco.tabelas.cb_atlas_clientes = [{ id: "v1", account_id: CONTA, api_url: STAGING, atlas_tenant_id: "t-teste", atlas_client_id: "c1", contact_id: "k1" }];
+    expect((await conectarAtlas(banco.cliente, CONTA, "u1", CHAVE, { cliente: fabrica, ambiente: null })).ok).toBe(true);
+    // E a instância de teste enxerga os DELA.
+    banco.tabelas.cb_atlas_config = [];
+    expect(await conectarAtlas(banco.cliente, CONTA, "u1", CHAVE, { cliente: fabrica, ambiente: STAGING })).toMatchObject({ codigo: "outro_escritorio" });
+  });
+
+  it("apagarVinculosAnteriores (confirmado no cartão): apaga SÓ os do escritório anterior deste ambiente e conecta", async () => {
+    const STAGING = "https://staging.example.com/functions/v1/client-webhook";
+    banco.tabelas.cb_atlas_clientes = [
+      { id: "antigo", account_id: CONTA, api_url: null, atlas_tenant_id: "t-antigo", atlas_client_id: "c1", contact_id: "k1" },
+      { id: "deste", account_id: CONTA, api_url: null, atlas_tenant_id: "t1", atlas_client_id: "c2", contact_id: "k2" },
+      { id: "teste", account_id: CONTA, api_url: STAGING, atlas_tenant_id: "t-antigo", atlas_client_id: "c3", contact_id: "k3" },
+      { id: "outra-conta", account_id: "conta-2", api_url: null, atlas_tenant_id: "t-antigo", atlas_client_id: "c4", contact_id: "k4" },
+    ];
+    expect((await conectarAtlas(banco.cliente, CONTA, "u1", CHAVE, { cliente: fabrica, ambiente: null, apagarVinculosAnteriores: true })).ok).toBe(true);
+    expect(banco.tabelas.cb_atlas_clientes.map((v) => v.id)).toEqual(["deste", "teste", "outra-conta"]);
+  });
+
+  it("CRÍTICO: apagar só depois de a chave provar quem é (chave recusada não apaga nada)", async () => {
+    banco.tabelas.cb_atlas_clientes = [{ id: "antigo", account_id: CONTA, atlas_tenant_id: "t-antigo", atlas_client_id: "c1", contact_id: "k1" }];
+    identidade = new AtlasError("chave_invalida", "403", 403);
+    await conectarAtlas(banco.cliente, CONTA, "u1", CHAVE, { cliente: fabrica, ambiente: null, apagarVinculosAnteriores: true });
+    expect(banco.tabelas.cb_atlas_clientes).toHaveLength(1);
+  });
+
+  it("CRÍTICO: reconectar ZERA o estado da leitura (um cursor herdado de outro ambiente pularia clientes em silêncio)", async () => {
+    banco.tabelas.cb_atlas_config = [
+      {
+        account_id: CONTA,
+        api_key: "cifrado:velha",
+        api_url: null,
+        atlas_tenant_id: "t1",
+        sincronizando_desde: "2026-09-30T10:00:00.000Z",
+        last_sync_attempt_at: "2026-09-30T10:00:00.000Z",
+        last_sync_at: "2026-09-30T09:00:00.000Z",
+        situacoes_lidas_ate: "2026-09-30T09:00:00.000Z",
+        mudancas_desde: "2026-09-30T08:55:00.000Z",
+        mudancas_cursor: "cursor-velho",
+        mudancas_iniciada_em: "2026-09-30T08:59:00.000Z",
+        listagem_completa_em: "2026-09-30T03:00:00.000Z",
+        listagem_iniciada_em: "2026-09-30T03:00:00.000Z",
+        listagem_cursor: "outro-cursor",
+        sync_erro: "limite",
+      },
+    ];
+    expect((await conectarAtlas(banco.cliente, CONTA, "u1", CHAVE, { cliente: fabrica, ambiente: null })).ok).toBe(true);
+    expect(banco.tabelas.cb_atlas_config[0]).toMatchObject({ api_key: `cifrado:${CHAVE}`, ...ESTADO_DA_LEITURA_ZERADO });
+    // Colhido da 1072: toda coluna NOVA do estado da leitura em `cb_atlas_config` é zerada.
+    const sql = readFileSync(join(process.cwd(), "supabase/migrations/1072_cb_atlas_leitura_e_vinculo.sql"), "utf8");
+    const bloco = sql.slice(sql.indexOf("ALTER TABLE cb_atlas_config"), sql.indexOf(";", sql.indexOf("ALTER TABLE cb_atlas_config")));
+    const colunas = [...bloco.matchAll(/ADD COLUMN IF NOT EXISTS (\w+)/g)].map((m) => m[1]);
+    expect(colunas).toContain("mudancas_iniciada_em");
+    expect(Object.keys(ESTADO_DA_LEITURA_ZERADO).sort()).toEqual(colunas.sort());
+  });
+
+  it("a contagem dos vínculos alheios que falha é db_error, nunca 'nenhum'", async () => {
+    banco.falhar.add("cb_atlas_clientes:select");
+    expect(await conectarAtlas(banco.cliente, CONTA, "u1", CHAVE, { cliente: fabrica, ambiente: null })).toEqual({ ok: false, codigo: "db_error" });
+    expect(banco.tabelas.cb_atlas_config ?? []).toHaveLength(0);
   });
 
   it("falha do banco é db_error, nunca conectado", async () => {

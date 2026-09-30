@@ -38,6 +38,9 @@ function fabrica(): ClienteAtlas {
     whoami: async () => {
       throw new Error("não usado");
     },
+    listar: async () => {
+      throw new Error("não usado");
+    },
     buscar: async (c: CriteriosDeBusca) => (registrar("buscar", c), achados),
     ler: async (id: string) => (registrar("ler", id), noAtlas.get(id) ?? null),
     criar: async (d: DadosDoClienteNoAtlas, idem: string) => (registrar("criar", d, idem), { id: "novo-1", status: "ativo", appUrl: "https://app.example.com/#/clients/novo-1" }),
@@ -151,11 +154,95 @@ describe("criarOuReativarNoAtlas", () => {
     expect(banco.tabelas.cb_atlas_clientes[0]).toMatchObject({ origem: "criada", situacao: "ativo" });
   });
 
-  it("vínculo com cliente apagado no Atlas: o vínculo velho sai e o passo procura de novo", async () => {
-    banco.tabelas.cb_atlas_clientes = [{ id: "v1", account_id: CONTA, contact_id: FICHA, atlas_tenant_id: "t1", atlas_client_id: "sumido", origem: "criada" }];
-    expect(await rodar()).toEqual({ acao: "criado", atlasClientId: "novo-1" });
-    expect(chamadas.map((c) => c.metodo)).toEqual(["ler", "buscar", "criar"]);
-    expect(banco.tabelas.cb_atlas_clientes.map((v) => v.atlas_client_id)).toEqual(["novo-1"]);
+  it("CRÍTICO: vínculo com o cliente na LIXEIRA do Atlas: PARA sem apagar o vínculo nem procurar (a busca não vê a lixeira e criaria outro)", async () => {
+    banco.tabelas.cb_atlas_clientes = [{ id: "v1", account_id: CONTA, contact_id: FICHA, atlas_tenant_id: "t1", atlas_client_id: "sumido", origem: "criada", excluido_no_atlas_em: null }];
+    await expect(rodar()).rejects.toThrow("está na lixeira do Atlas; restaure lá (até 7 dias) ou desvincule na aba Atlas");
+    expect(chamadas.map((c) => c.metodo)).toEqual(["ler"]);
+    expect(banco.tabelas.cb_atlas_clientes).toEqual([expect.objectContaining({ id: "v1", atlas_client_id: "sumido", contact_id: FICHA })]);
+    const marcadoEm = banco.tabelas.cb_atlas_clientes[0].excluido_no_atlas_em;
+    expect(typeof marcadoEm).toBe("string");
+    // Rodar de novo mantém o PRIMEIRO instante em que foi visto na lixeira.
+    await expect(rodar()).rejects.toThrow("lixeira");
+    expect(banco.tabelas.cb_atlas_clientes[0].excluido_no_atlas_em).toBe(marcadoEm);
+  });
+
+  it("vínculo de OUTRO escritório: conta como sem vínculo, NÃO é apagado, e o passo procura", async () => {
+    banco.tabelas.cb_atlas_clientes = [{ id: "v-antigo", account_id: CONTA, contact_id: FICHA, atlas_tenant_id: "t-antigo", atlas_client_id: "de-la", origem: "criada" }];
+    achados = { clientes: [{ id: "ativo-1", status: "ativo", appUrl: null, casouPor: ["chat_link"] }], truncado: false };
+    await rodar();
+    expect(chamadas.map((c) => c.metodo)).toEqual(["buscar"]);
+    expect(banco.tabelas.cb_atlas_clientes.map((v) => v.id)).toContain("v-antigo");
+  });
+
+  it("CRÍTICO: o único candidato forte foi DESVINCULADO desta ficha à mão: para sem escrever no Atlas", async () => {
+    banco.tabelas.cb_atlas_recusas = [{ id: "r1", account_id: CONTA, api_url: null, contact_id: FICHA, atlas_client_id: "antigo-1" }];
+    achados = { clientes: [{ id: "antigo-1", status: "rescindido", appUrl: null, casouPor: ["chat_link"] }], truncado: false };
+    await expect(rodar()).rejects.toThrow("foi desvinculado dela à mão; vincule o certo na aba Atlas");
+    expect(chamadas.map((c) => c.metodo)).toEqual(["buscar"]);
+    expect(banco.tabelas.cb_atlas_clientes ?? []).toHaveLength(0);
+    // A recusa de OUTRA ficha (ou de outro ambiente) não pesa aqui.
+    banco.tabelas.cb_atlas_recusas = [
+      { id: "r2", account_id: CONTA, api_url: null, contact_id: "ficha-2", atlas_client_id: "antigo-1" },
+      { id: "r3", account_id: CONTA, api_url: "https://staging.example.com/x", contact_id: FICHA, atlas_client_id: "antigo-1" },
+    ];
+    expect(await rodar()).toMatchObject({ acao: "reativado" });
+  });
+
+  it("crm_escreveu_em ao CRIAR e ao REATIVAR (nunca ao só vincular); a data da mudança quando o Atlas a manda", async () => {
+    await rodar();
+    expect(banco.tabelas.cb_atlas_clientes[0]).toMatchObject({ api_url: null, crm_escreveu_em: expect.any(String) });
+    expect(banco.tabelas.cb_atlas_clientes[0]).not.toHaveProperty("situacao_desde");
+
+    banco.tabelas.cb_atlas_clientes = [];
+    achados = { clientes: [{ id: "ativo-1", status: "ativo", appUrl: null, casouPor: ["phone"], situacaoDesde: "2026-05-30T14:00:00.000Z" }], truncado: false };
+    await rodar();
+    expect(banco.tabelas.cb_atlas_clientes[0]).toMatchObject({ origem: "encontrada", situacao_desde: "2026-05-30T14:00:00.000Z" });
+    expect(banco.tabelas.cb_atlas_clientes[0]).not.toHaveProperty("crm_escreveu_em");
+
+    banco.tabelas.cb_atlas_clientes = [];
+    achados = { clientes: [{ id: "antigo-1", status: "rescindido", appUrl: null, casouPor: ["chat_link"] }], truncado: false };
+    await rodar();
+    expect(banco.tabelas.cb_atlas_clientes[0]).toMatchObject({ origem: "reativada", crm_escreveu_em: expect.any(String) });
+  });
+
+  it("a leitura periódica ligou ESTE MESMO par um instante antes (23505): é o mesmo vínculo, e o passo não falha", async () => {
+    const unico = criarBanco(
+      {
+        cb_atlas_config: banco.tabelas.cb_atlas_config,
+        conversations: banco.tabelas.conversations,
+        cb_atlas_clientes: [],
+      },
+      { unicos: { cb_atlas_clientes: [{ colunas: ["account_id", "api_url", "contact_id"], onde: (l) => l.contact_id != null }] } },
+    );
+    // A corrida: o vínculo automático entra ENTRE a leitura do vínculo e o INSERT do passo.
+    const original = unico.cliente.from.bind(unico.cliente);
+    let lidas = 0;
+    (unico.cliente as unknown as { from: (t: string) => unknown }).from = (t: string) => {
+      if (t === "cb_atlas_clientes" && ++lidas === 3) {
+        unico.tabelas.cb_atlas_clientes.push({ id: "auto", account_id: CONTA, api_url: null, contact_id: FICHA, atlas_tenant_id: "t1", atlas_client_id: "ativo-1", origem: "automatica", casou_por: "chat_link" });
+      }
+      return original(t);
+    };
+    achados = { clientes: [{ id: "ativo-1", status: "ativo", appUrl: null, casouPor: ["chat_link"] }], truncado: false };
+    expect(await criarOuReativarNoAtlas(unico.cliente, entrada(), { cliente: fabrica })).toEqual({ acao: "vinculado", atlasClientId: "ativo-1", situacao: "ativo" });
+    expect(unico.tabelas.cb_atlas_clientes).toEqual([expect.objectContaining({ id: "auto", origem: "automatica", situacao: "ativo" })]);
+  });
+
+  it("AMBIENTE: a instância de teste não enxerga nem toca o vínculo da produção (e o dela nasce marcado)", async () => {
+    const STAGING = "https://staging.example.com/functions/v1/client-webhook";
+    vi.stubEnv("ATLAS_API_URL", STAGING);
+    try {
+      banco.tabelas.cb_atlas_config[0].api_url = STAGING;
+      banco.tabelas.cb_atlas_clientes = [{ id: "v-prod", account_id: CONTA, api_url: null, contact_id: FICHA, atlas_tenant_id: "t1", atlas_client_id: "c-prod", origem: "criada" }];
+      expect(await rodar()).toEqual({ acao: "criado", atlasClientId: "novo-1" });
+      expect(chamadas.map((c) => c.metodo)).toEqual(["buscar", "criar"]);
+      expect(banco.tabelas.cb_atlas_clientes).toEqual([
+        expect.objectContaining({ id: "v-prod", api_url: null, atlas_client_id: "c-prod" }),
+        expect.objectContaining({ api_url: STAGING, atlas_client_id: "novo-1", origem: "criada" }),
+      ]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("cliente do Atlas já ligado a OUTRA ficha do CRM: não rouba o vínculo", async () => {

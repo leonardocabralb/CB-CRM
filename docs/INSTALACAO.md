@@ -642,7 +642,17 @@ ou só vincula quem já está ativo. Não cria outro cadastro para quem o Atlas
 acha por esses dados; quando há dúvida (mais de um cadastro, casamento só pelo
 e-mail ou pelo final do telefone, cadastro suspenso no Atlas), para sem
 mexer no Atlas e diz o motivo no histórico da automação. A chave é do
-escritório inteiro: uma por conta do CRM.
+escritório inteiro: uma por conta do CRM. Ligue também **Listar clientes**
+para a **leitura das situações**: a cada ~15 minutos, pelo mesmo agendador
+das outras integrações (sem rota nova nem ajuste na VPS), o CRM lê no Atlas
+a situação de cada cliente (ativo, rescindido, finalizado…) e liga sozinho a
+ficha ao cliente do Atlas pelo link da conversa, quando só um cadastro e só
+uma ficha casam. Pelo telefone completo, a ligação só acontece na leitura
+completa diária, e só em escritório com até ~900 clientes (acima disso, a
+leitura completa não cabe numa rodada). Sem essa permissão, o cartão
+avisa e o passo continua funcionando; o botão **Ler situações agora** lê na
+hora. A leitura exige a versão da API do Atlas que informa a data da mudança
+da situação; com a antiga, o cartão diz que a atualização está pendente.
 
 **tl;dv** (transcrições de reunião na ficha): a API só existe nos planos
 **Pro e Business**, e só sai pela API a reunião de quem a ORGANIZOU com um

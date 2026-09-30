@@ -5,6 +5,7 @@ import { NOME_DO_APP } from "@/lib/marca";
 import { AtlasError, criarClienteAtlas, type ClienteAtlas, type ClienteDoAtlas } from "./cliente";
 import { codigoDe, lerChaveDoAtlas, registrarConferencia } from "./conexao";
 import { decidir, decidirPelaSituacao, type Decisao } from "./decisao";
+import { ambienteDoAtlas, noAmbiente } from "./enderecos";
 import { dadosParaCriar, dadosParaReativar, diaParaAtlas, emailParaAtlas, telefoneParaBusca, type EntradaDoCliente, type TipoDeContrato } from "./formatar";
 
 /**
@@ -12,12 +13,16 @@ import { dadosParaCriar, dadosParaReativar, diaParaAtlas, emailParaAtlas, telefo
  * docs/PLANO-integracao-atlas.md) — o I/O, fora do motor para ser testável.
  *
  * 1. A chave da conta (`cb_atlas_config`), do MESMO ambiente. Sem ela, FALHA.
- * 2. O vínculo que já existe (`cb_atlas_clientes`) vale: relê o cliente no
- *    Atlas. Sem vínculo (ou com o cliente apagado lá — só o `not_found` do
- *    Atlas prova isso), PROCURA pelo link das conversas do CRM, pelo telefone
- *    e pelo e-mail.
+ * 2. O vínculo que já existe (`cb_atlas_clientes`, DESTE ambiente e deste
+ *    escritório) vale: relê o cliente no Atlas. ⚠️ Com o `not_found` do Atlas
+ *    (a LIXEIRA, restaurável por 7 dias — a busca não a enxerga), PARA sem
+ *    apagar o vínculo, e marca `excluido_no_atlas_em`: procurar criaria um
+ *    segundo cadastro (contra a D3). Vínculo de OUTRO escritório conta como
+ *    sem vínculo e fica (quem o apaga é a reconexão confirmada). Sem vínculo,
+ *    PROCURA pelo link das conversas do CRM, pelo telefone e pelo e-mail.
  * 3. Decide (`decisao.ts`): criar, reativar (D3), só vincular, ou PARAR
- *    (mais de um, casamento fraco, cadastro SUSPENSO no Atlas).
+ *    (mais de um, casamento fraco, cadastro SUSPENSO no Atlas, ou o único
+ *    candidato forte foi DESVINCULADO desta ficha à mão — `cb_atlas_recusas`).
  * 4. ⚠️ ANTES de escrever no Atlas, confere que o cadastro achado não é de
  *    OUTRA ficha do CRM: reativar o cadastro alheio gravaria o contrato desta
  *    pessoa no da outra, e o vínculo 1:1 nem poderia registrar.
@@ -132,17 +137,35 @@ async function conversasDoContato(admin: SupabaseClient, accountId: string, cont
   return (data ?? []).map((c) => String(c.id));
 }
 
-/** A linha de vínculo que já aponta para este cliente do Atlas (de qualquer ficha, ou órfã). */
-async function donoDoCliente(admin: SupabaseClient, accountId: string, atlasClientId: string): Promise<{ id: string; contact_id: string | null } | null> {
-  const { data, error } = await admin
-    .from("cb_atlas_clientes")
-    .select("id, contact_id")
-    .eq("account_id", accountId)
-    .eq("atlas_client_id", atlasClientId)
-    .maybeSingle();
+/** A linha de vínculo que já aponta para este cliente do Atlas, neste ambiente (de qualquer ficha, ou órfã). */
+async function donoDoCliente(
+  admin: SupabaseClient,
+  accountId: string,
+  ambiente: string | null,
+  atlasClientId: string,
+): Promise<{ id: string; contact_id: string | null } | null> {
+  const { data, error } = await noAmbiente(
+    admin.from("cb_atlas_clientes").select("id, contact_id").eq("account_id", accountId).eq("atlas_client_id", atlasClientId),
+    ambiente,
+  ).maybeSingle();
   if (error) throw new Error("não foi possível ler o vínculo com o Atlas no CRM");
   return data ? { id: String(data.id), contact_id: data.contact_id ? String(data.contact_id) : null } : null;
 }
+
+/** Gente desvinculou este cliente do Atlas DESTA ficha (a recusa, 1072)? */
+async function parRecusado(admin: SupabaseClient, accountId: string, ambiente: string | null, contactId: string, atlasClientId: string): Promise<boolean> {
+  const { data, error } = await noAmbiente(
+    admin.from("cb_atlas_recusas").select("id").eq("account_id", accountId).eq("contact_id", contactId).eq("atlas_client_id", atlasClientId),
+    ambiente,
+  ).limit(1);
+  if (error) throw new Error("não foi possível ler as recusas de vínculo com o Atlas no CRM");
+  return (data ?? []).length > 0;
+}
+
+const MOTIVO_NA_LIXEIRA =
+  "o cadastro ligado a esta ficha está na lixeira do Atlas; restaure lá (até 7 dias) ou desvincule na aba Atlas e rode de novo — nada foi alterado no Atlas";
+const MOTIVO_RECUSADO =
+  "o cadastro do Atlas que casa com esta ficha foi desvinculado dela à mão; vincule o certo na aba Atlas e rode de novo — nada foi alterado no Atlas";
 
 const MOTIVO_DA_CONEXAO = {
   nao_conectado: "o Atlas não está conectado (Configurações → Integrações)",
@@ -172,9 +195,11 @@ export async function criarOuReativarNoAtlas(
     }
   }
 
-  const conexao = await lerChaveDoAtlas(admin, accountId);
+  // O ambiente do Atlas desta instância (1072): toda consulta e escrita de vínculo leva a cerca.
+  const ambiente = ambienteDoAtlas();
+  const conexao = await lerChaveDoAtlas(admin, accountId, ambiente);
   if (!conexao.ok) {
-    if (conexao.codigo === "chave_ilegivel") await registrarConferencia(admin, accountId, "chave_ilegivel");
+    if (conexao.codigo === "chave_ilegivel") await registrarConferencia(admin, accountId, "chave_ilegivel", ambiente);
     throw new Error(MOTIVO_DA_CONEXAO[conexao.codigo]);
   }
   const atlas = (opcoes.cliente ?? ((c) => criarClienteAtlas(c)))(conexao.chave);
@@ -197,13 +222,11 @@ export async function criarOuReativarNoAtlas(
   // O que JÁ foi escrito no Atlas: falha depois disso diz, para ninguém rodar de novo às cegas.
   let escrito: "criado" | "reativado" | null = null;
   try {
-    // 1) O vínculo que já existe.
-    const { data: vinculo, error: erroVinculo } = await admin
-      .from("cb_atlas_clientes")
-      .select("id, atlas_client_id, atlas_tenant_id")
-      .eq("account_id", accountId)
-      .eq("contact_id", contactId)
-      .maybeSingle();
+    // 1) O vínculo que já existe, NESTE ambiente (a chave 1:1 é por ambiente).
+    const { data: vinculo, error: erroVinculo } = await noAmbiente(
+      admin.from("cb_atlas_clientes").select("id, atlas_client_id, atlas_tenant_id").eq("account_id", accountId).eq("contact_id", contactId),
+      ambiente,
+    ).maybeSingle();
     if (erroVinculo) throw new Error("não foi possível ler o vínculo com o Atlas no CRM");
 
     let decisao: Decisao | null = null;
@@ -213,17 +236,28 @@ export async function criarOuReativarNoAtlas(
     let linhaPropria = false;
     if (vinculo && vinculo.atlas_tenant_id === conexao.tenantId) {
       const lido = await atlas.ler(String(vinculo.atlas_client_id));
-      if (lido) {
-        decisao = decidirPelaSituacao(lido);
-        linha = String(vinculo.id);
-        linhaPropria = true;
+      if (!lido) {
+        // ⚠️ O `not_found` do Atlas é a LIXEIRA (restaurável por 7 dias), que a
+        // busca não enxerga: procurar criaria um SEGUNDO cadastro. Para, sem
+        // apagar o vínculo, e marca quando foi visto lá (o primeiro instante fica).
+        const { error } = await noAmbiente(
+          admin
+            .from("cb_atlas_clientes")
+            .update({ excluido_no_atlas_em: new Date().toISOString() })
+            .eq("id", vinculo.id)
+            .eq("account_id", accountId)
+            .is("excluido_no_atlas_em", null),
+          ambiente,
+        );
+        if (error) console.error("[atlas] não foi possível marcar o vínculo na lixeira:", error.message);
+        throw new Error(MOTIVO_NA_LIXEIRA);
       }
+      decisao = decidirPelaSituacao(lido);
+      linha = String(vinculo.id);
+      linhaPropria = true;
     }
-    if (vinculo && decisao === null) {
-      // O Atlas disse `not_found` (ou o vínculo é de outro escritório): o vínculo velho sai.
-      const { error } = await admin.from("cb_atlas_clientes").delete().eq("id", vinculo.id);
-      if (error) throw new Error("não foi possível limpar o vínculo antigo com o Atlas");
-    }
+    // Vínculo de OUTRO escritório: conta como sem vínculo e FICA (só a
+    // reconexão confirmada no cartão o apaga).
 
     // 2) Sem vínculo: procura. Critério que o Atlas recusaria fica de fora
     //    (derrubaria a busca inteira); o link das conversas vai sempre.
@@ -239,12 +273,14 @@ export async function criarOuReativarNoAtlas(
       });
       decisao = decidir(achados.clientes, achados.truncado);
 
-      // 3) O cadastro achado já é de OUTRA ficha? Antes de qualquer escrita.
+      // 3) O único candidato forte foi desvinculado DESTA ficha à mão? O
+      //    cadastro achado já é de OUTRA ficha? Antes de qualquer escrita.
       if (decisao.acao === "reativar" || decisao.acao === "vincular") {
-        const dono = await donoDoCliente(admin, accountId, decisao.cliente.id);
+        if (await parRecusado(admin, accountId, ambiente, contactId, decisao.cliente.id)) throw new Error(MOTIVO_RECUSADO);
+        const dono = await donoDoCliente(admin, accountId, ambiente, decisao.cliente.id);
         if (dono?.contact_id && dono.contact_id !== contactId) {
           if (decisao.acao === "vincular") {
-            await registrarConferencia(admin, accountId, null);
+            await registrarConferencia(admin, accountId, null, ambiente);
             return { acao: "ligado_a_outra_ficha", atlasClientId: decisao.cliente.id, situacao: decisao.cliente.status };
           }
           throw new Error(
@@ -299,27 +335,41 @@ export async function criarOuReativarNoAtlas(
         break;
     }
 
-    // 5) O vínculo 1:1.
+    // 5) O vínculo 1:1, neste ambiente. `crm_escreveu_em` quando o CRM
+    //    escreveu a situação no Atlas (criar, reativar); a data da mudança
+    //    só quando o Atlas a mandou.
     const agora = new Date().toISOString();
-    const lido = {
+    const lido: Record<string, unknown> = {
       account_id: accountId,
+      api_url: ambiente,
       contact_id: contactId,
       atlas_tenant_id: conexao.tenantId,
       atlas_client_id: cliente.id,
       app_url: cliente.appUrl,
       situacao: cliente.status,
       situacao_lida_em: agora,
+      excluido_no_atlas_em: null,
       updated_at: agora,
     };
-    const { error: erroGravar } = linha
-      ? await admin.from("cb_atlas_clientes").update(linhaPropria ? lido : { ...lido, origem }).eq("id", linha)
+    if (cliente.situacaoDesde !== undefined) lido.situacao_desde = cliente.situacaoDesde;
+    if (escrito) lido.crm_escreveu_em = agora;
+    const atualizar = (id: string, patch: Record<string, unknown>) =>
+      noAmbiente(admin.from("cb_atlas_clientes").update(patch).eq("id", id).eq("account_id", accountId), ambiente);
+    let { error: erroGravar } = linha
+      ? await atualizar(linha, linhaPropria ? lido : { ...lido, origem })
       : await admin.from("cb_atlas_clientes").insert({ ...lido, origem });
+    if (erroGravar && !linha && (erroGravar as { code?: string }).code === "23505") {
+      // A leitura periódica pode ter ligado ESTE MESMO par um instante antes
+      // (vínculo automático): é o mesmo vínculo, e ele fica com a origem dele.
+      const ja = await donoDoCliente(admin, accountId, ambiente, cliente.id);
+      if (ja?.contact_id === contactId) ({ error: erroGravar } = await atualizar(ja.id, lido));
+    }
     if (erroGravar) throw new Error(escrito ? "o vínculo não foi gravado no CRM" : "o vínculo com o Atlas não foi gravado no CRM");
-    await registrarConferencia(admin, accountId, null);
+    await registrarConferencia(admin, accountId, null, ambiente);
     return resultado;
   } catch (e) {
     const motivo = e instanceof AtlasError ? motivoDaFalha(e) : e instanceof Error ? e.message : String(e);
-    if (e instanceof AtlasError) await registrarConferencia(admin, accountId, codigoDe(e));
+    if (e instanceof AtlasError) await registrarConferencia(admin, accountId, codigoDe(e), ambiente);
     if (escrito) throw new Error(`o cliente foi ${escrito} no Atlas, mas ${motivo}`);
     throw e instanceof AtlasError ? new Error(`Atlas: ${motivo}`) : e;
   }

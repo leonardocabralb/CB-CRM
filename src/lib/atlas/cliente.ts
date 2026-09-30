@@ -16,6 +16,7 @@
  */
 
 import { urlDaApiDoAtlas } from "./enderecos";
+import { telefoneForte, uuidsDoLink } from "./leitura";
 
 const TIMEOUT_MS = 15_000;
 
@@ -43,18 +44,25 @@ export class AtlasError extends Error {
     public readonly status: number | null = null,
     /** Com `sem_permissao`: qual permissão do Atlas está desligada. */
     public readonly permissao: string | null = null,
-    detalhe: { codigoDoAtlas?: string | null; campos?: string[] } = {},
+    detalhe: { codigoDoAtlas?: string | null; campos?: string[]; apiAntiga?: boolean } = {},
   ) {
     super(mensagem);
     this.name = "AtlasError";
     this.codigoDoAtlas = detalhe.codigoDoAtlas ?? null;
     this.campos = detalhe.campos ?? [];
+    this.apiAntiga = detalhe.apiAntiga === true;
   }
 
   /** O `code` cru do Atlas (nunca vai à tela). */
   public readonly codigoDoAtlas: string | null;
   /** Com `validacao`: os NOSSOS campos que o Atlas recusou (só os nomes). */
   public readonly campos: string[];
+  /**
+   * Com `resposta_inesperada`: a API do Atlas ainda é a ANTIGA (a listagem
+   * veio sem `status_changed_at` — a produção antes da promoção, contrato
+   * §13). Ela pode ignorar o filtro e devolver todos: nada da página é gravado.
+   */
+  public readonly apiAntiga: boolean;
 }
 
 /**
@@ -126,6 +134,12 @@ export interface ClienteDoAtlas {
   status: string | null;
   appUrl: string | null;
   /**
+   * Quando a situação mudou no Atlas (`status_changed_at`, ISO), `null` =
+   * o Atlas não sabe. AUSENTE (`undefined`) = a chave nem veio: a API
+   * antiga, que não a conhece.
+   */
+  situacaoDesde?: string | null;
+  /**
    * Só no `find_clients`: POR QUE casou (`chat_link`, `phone`, `phone_last8`,
    * `email`, `doc_id`). Ausente = o Atlas não disse (o passo não age sozinho).
    */
@@ -155,8 +169,38 @@ export interface CriteriosDeBusca {
   chatLinkIds?: string[];
 }
 
+/**
+ * Um cliente da LISTAGEM (`list_clients`), já reduzido ao que o CRM guarda e
+ * usa: o id, a situação, a data, o `app_url` e dois SINAIS para o vínculo
+ * automático, que ficam só em memória — os uuids do link da conversa e o
+ * telefone canônico. ⚠️ Nome, CPF, e-mail e o texto do link NUNCA saem do
+ * parser (`lerPaginaDaListagem`).
+ */
+export interface ClienteListado {
+  id: string;
+  status: string | null;
+  situacaoDesde: string | null;
+  appUrl: string | null;
+  sinais: { uuidsDoLink: string[]; telefoneCanonico: string | null };
+}
+
+export interface PaginaDaListagem {
+  clientes: ClienteListado[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+export interface FiltroDaListagem {
+  /** ISO com fuso, inclusivo: só quem MUDOU de situação desde então (data desconhecida fica fora). */
+  statusChangedSince?: string | null;
+  cursor?: string | null;
+  limit: number;
+}
+
 export interface ClienteAtlas {
   whoami(): Promise<IdentidadeNoAtlas>;
+  /** Uma página do `list_clients` (permissão `list_clients`, opcional no escritório). */
+  listar(filtro: FiltroDaListagem): Promise<PaginaDaListagem>;
   /** Todos os que casam (teto do Atlas); `truncado` = havia mais. */
   buscar(criterios: CriteriosDeBusca): Promise<{ clientes: ClienteDoAtlas[]; truncado: boolean }>;
   /** `not_found` DO ATLAS = `null` (cliente apagado lá); qualquer outra falha lança. */
@@ -175,12 +219,55 @@ function textoOuNulo(v: unknown): string | null {
   return typeof v === "string" && v.trim() !== "" ? v : null;
 }
 
+/** Um instante ISO legível, normalizado; qualquer outra coisa é "não se sabe". */
+function instanteOuNulo(v: unknown): string | null {
+  if (typeof v !== "string" || v.trim() === "") return null;
+  const t = Date.parse(v);
+  return Number.isNaN(t) ? null : new Date(t).toISOString();
+}
+
 /** Um cliente como o Atlas o devolve (`get_client`, `find_clients`, `list_clients`). */
 export function lerCliente(v: unknown): ClienteDoAtlas | null {
   if (!ehObjeto(v) || typeof v.id !== "string" || v.id === "") return null;
   const cliente: ClienteDoAtlas = { id: v.id, status: textoOuNulo(v.status), appUrl: textoOuNulo(v.app_url) ?? textoOuNulo(v.appUrl) };
+  if ("status_changed_at" in v) cliente.situacaoDesde = instanteOuNulo(v.status_changed_at);
   if (Array.isArray(v.matched_by)) cliente.casouPor = v.matched_by.filter((m): m is string => typeof m === "string");
   return cliente;
+}
+
+/**
+ * Uma página do `list_clients`, reduzida a `ClienteListado`. LANÇA
+ * `resposta_inesperada`:
+ * - sem a lista, ou com um cliente ilegível (descartá-lo esconderia uma
+ *   mudança — como no `find_clients`);
+ * - com `hasMore` e sem `nextCursor` (o ciclo releria a mesma página);
+ * - ⚠️ com um cliente SEM a chave `status_changed_at`: é a API ANTIGA
+ *   (`apiAntiga`), que ignora o `statusChangedSince` e devolveria todos como
+ *   se tivessem mudado. Nada da página é gravado.
+ */
+export function lerPaginaDaListagem(corpo: unknown): PaginaDaListagem {
+  if (!ehObjeto(corpo) || !Array.isArray(corpo.clients)) {
+    throw new AtlasError("resposta_inesperada", "list_clients → resposta sem `clients`");
+  }
+  const clientes: ClienteListado[] = [];
+  for (const bruto of corpo.clients) {
+    const lido = lerCliente(bruto);
+    if (!lido || !ehObjeto(bruto)) throw new AtlasError("resposta_inesperada", "list_clients → cliente ilegível na lista");
+    if (lido.situacaoDesde === undefined) {
+      throw new AtlasError("resposta_inesperada", "list_clients → cliente sem `status_changed_at` (API antiga)", null, null, { apiAntiga: true });
+    }
+    clientes.push({
+      id: lido.id,
+      status: lido.status,
+      situacaoDesde: lido.situacaoDesde,
+      appUrl: lido.appUrl,
+      sinais: { uuidsDoLink: uuidsDoLink(bruto.chat_link), telefoneCanonico: telefoneForte(bruto.phone) },
+    });
+  }
+  const hasMore = corpo.hasMore === true;
+  const nextCursor = textoOuNulo(corpo.nextCursor);
+  if (hasMore && !nextCursor) throw new AtlasError("resposta_inesperada", "list_clients → `hasMore` sem `nextCursor`");
+  return { clientes, nextCursor: hasMore ? nextCursor : null, hasMore };
 }
 
 /** Os nomes de campo que o CRM MANDA — só estes vão ao motivo da falha de validação. */
@@ -199,6 +286,9 @@ const CAMPOS_ENVIADOS = new Set([
   "notes",
   "status",
   "chatLinkIds",
+  "statusChangedSince",
+  "cursor",
+  "limit",
 ]);
 
 function camposRecusados(v: unknown): string[] {
@@ -302,6 +392,13 @@ export function criarClienteAtlas(chave: string, fetchFn: Fetch = fetch, url: st
   return {
     async whoami() {
       return lerIdentidade(await pedir("whoami", {}));
+    },
+
+    async listar(filtro) {
+      const data: Record<string, unknown> = { limit: filtro.limit };
+      if (filtro.statusChangedSince) data.statusChangedSince = filtro.statusChangedSince;
+      if (filtro.cursor) data.cursor = filtro.cursor;
+      return lerPaginaDaListagem(await pedir("list_clients", data));
     },
 
     async buscar(criterios) {
