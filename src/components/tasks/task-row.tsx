@@ -26,6 +26,7 @@ import {
   MoreVertical,
   Pencil,
   Plus,
+  Repeat,
   Star,
   Trash2,
   User,
@@ -166,6 +167,15 @@ export function TaskRow({
             <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-300">
               <Star className="size-3 fill-current" />
               {t('chipImportant')}
+            </span>
+          ) : null}
+
+          {/* Toda tarefa de uma série que ainda repete (1074) — a ativa e as
+              anteriores. Série encerrada perde a etiqueta em todas. */}
+          {tarefa.repetir_a_cada_dias ? (
+            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              <Repeat className="size-3" />
+              {t('repeatEvery', { dias: tarefa.repetir_a_cada_dias })}
             </span>
           ) : null}
 

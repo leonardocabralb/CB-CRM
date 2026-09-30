@@ -606,6 +606,18 @@ export interface Task {
   /** Congelado: sobrevive à exclusão da origem, que é `ON DELETE SET NULL`. */
   tarefa_pai_titulo: string | null;
   tipo: TaskKind;
+  /**
+   * Repetição pelo calendário (1074): 1, 2, 5, 7, 15 ou 30 dias, igual em toda
+   * a série; nulo = não repete. A próxima nasce sozinha no dia do prazo dela.
+   */
+  repetir_a_cada_dias: number | null;
+  /** O id da primeira tarefa da série. Nulo em tarefa que nunca repetiu. */
+  serie_id: string | null;
+  /**
+   * Quando a próxima foi gerada a partir desta. Nulo + `repetir_a_cada_dias`
+   * preenchido = esta é a ATIVA da série (apagá-la encerra a repetição).
+   */
+  proxima_gerada_em: string | null;
   created_at: string;
   updated_at: string;
 }
