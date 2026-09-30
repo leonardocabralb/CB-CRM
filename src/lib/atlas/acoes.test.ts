@@ -11,6 +11,8 @@ vi.mock("@/lib/whatsapp/encryption", () => ({
   },
 }));
 
+import { MAX_DESCRICAO } from "@/lib/tasks/validar";
+
 import { criarBanco, type Banco } from "../zapsign/duble.test-helper";
 
 import {
@@ -421,6 +423,12 @@ describe("criarTarefaNoAtlas", () => {
     await criarTarefaNoAtlas(banco.cliente, entrada({ descricao: "   " }), opcoes);
     expect(dados().description).toMatch(/^Aberta pela automação "Contrato fechado" no .+/);
     await expect(criarTarefaNoAtlas(banco.cliente, entrada({ titulo: "  " }), opcoes)).rejects.toThrow("o título da tarefa ficou vazio");
+  });
+
+  it("a descrição de RESERVA também passa pelo teto (o nome da automação não tem limite)", async () => {
+    await criarTarefaNoAtlas(banco.cliente, entrada({ descricao: "", nomeDaAutomacao: "n".repeat(5000) }), opcoes);
+    expect(String(dados().description).length).toBeLessThanOrEqual(MAX_DESCRICAO);
+    expect(String(dados().description).endsWith("…")).toBe(true);
   });
 
   it("título acima de 200 é cortado com reticência", async () => {

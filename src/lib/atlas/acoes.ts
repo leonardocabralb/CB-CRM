@@ -506,7 +506,8 @@ export async function criarTarefaNoAtlas(admin: SupabaseClient, entrada: Entrada
   const dados: Parameters<AcoesNoAtlas["criarTarefa"]>[0] = {
     title: recortarUtf16(titulo, MAX_TITULO),
     // Sem descrição, o Atlas grava o inglês "Created via API".
-    description: descricao ? recortarUtf16(descricao, MAX_DESCRICAO) : `Aberta pela automação "${entrada.nomeDaAutomacao}" no ${NOME_DO_APP}`,
+    // O nome da automação não tem teto: a reserva passa pelo MESMO corte (Codex, #365).
+    description: recortarUtf16(descricao || `Aberta pela automação "${entrada.nomeDaAutomacao}" no ${NOME_DO_APP}`, MAX_DESCRICAO),
     priority: entrada.prioridade,
   };
   // O dia no fuso do escritório (a régua do `create_task` do CRM), nunca
