@@ -12,8 +12,8 @@
  *   que erra das 21h à meia-noite); primeiro contato cai na criação do card,
  *   fechamento cai em "agora", proposta não tem reserva;
  * - valor do card em número (0 sem card), contrato "fixo" por padrão;
- * - vazio vai `null`, nunca `''`; e-mail que não parece e-mail também (o
- *   Atlas recusaria o cadastro inteiro).
+ * - vazio vai `null`, nunca `''`; e-mail que não parece e-mail e telefone
+ *   com menos de 10 dígitos também (o Atlas recusaria o cadastro inteiro).
  */
 
 import { FUSO_PADRAO, diaNoFuso } from "@/lib/agenda/fuso";
@@ -126,7 +126,8 @@ export function dadosParaCriar(e: EntradaDoCliente): DadosDoClienteNoAtlas {
   return {
     name: textoOuNulo(e.nome),
     email: emailParaAtlas(e.email),
-    phone: telefoneParaAtlas(e.telefone),
+    // A MESMA régua da busca: telefone curto o Atlas recusaria, e com ele o cadastro inteiro.
+    phone: telefoneParaBusca(e.telefone),
     state: ufDoTelefone(e.telefone),
     contractType: e.tipoDeContrato,
     contractValue: typeof e.valor === "number" && Number.isFinite(e.valor) ? e.valor : 0,

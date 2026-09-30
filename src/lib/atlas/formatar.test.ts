@@ -92,6 +92,13 @@ describe("dadosParaCriar", () => {
     expect([d.firstContactDate, d.proposalDate, d.closingDate]).toEqual(["2026-01-02", "2026-02-03", "2026-03-04"]);
   });
 
+  it("telefone curto e e-mail que não é e-mail vão nulos (o Atlas recusaria o cadastro inteiro)", () => {
+    const d = dadosParaCriar(entrada({ telefone: "12345", email: "nao tem" }));
+    expect(d.phone).toBeNull();
+    expect(d.state).toBeNull();
+    expect(d.email).toBeNull();
+  });
+
   it("vazio vai nulo, nunca ''; sem card, valor 0", () => {
     const d = dadosParaCriar(entrada({ nome: "  ", email: "", telefone: null, linkDaConversa: null, valor: null, cardCriadoEm: null }));
     expect(d.name).toBeNull();
