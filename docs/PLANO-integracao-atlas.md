@@ -242,9 +242,11 @@ junta funil e Atlas com a FONTE em cada linha (`juntarSituacoes`; suspenso
 situação, o "desde", a origem e — só admin — vincular colando o link da
 ficha ou desvincular gravando a recusa (`PUT …/vinculo`, `vinculo.ts`).
 Decisão de tela: no painel de 360 px a aba some para quem não vincula
-quando a ficha não tem vínculo (a fileira não quebra linha) — decidida pela
-última leitura (sem piscar na troca) e mantida na falha; medir no e2e a
-360 e a 375 px com números acesos. Na lixeira, o admin tem "Conferir no
+quando a ficha não tem vínculo — decidida pela última leitura (sem piscar
+na troca) e mantida na falha. Medido no e2e (30/09): 10 gatilhos de ~30 px
+cabem sem número, mas cada número aceso soma ~28 px e, com dois, a fileira
+passava dos 360 px e cortava o Histórico (já acontecia no `main` com 9
+abas); a fileira do painel passou a quebrar linha (`flex-wrap`). Na lixeira, o admin tem "Conferir no
 Atlas" (restaurar lá não muda a data, e só a listagem completa tiraria a
 marca).
 

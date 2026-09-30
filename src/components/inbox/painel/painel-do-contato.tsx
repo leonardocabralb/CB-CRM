@@ -266,9 +266,9 @@ export function PainelDoContato({
   // O Atlas (Fase 2): o botão "Abrir no Atlas" do cabeçalho precisa do
   // vínculo antes de a aba abrir. O hook carimba o dono (`{ de }`).
   const atlas = useAtlasDoContato(contact?.id ?? null, resyncToken);
-  // ⚠️ A aba Atlas é a 10ª num painel de 360 px sem quebra de linha: com
-  // números acesos (Tarefas, Cobranças, Automações, Relacionados) a fileira
-  // passa da largura. Para quem não vincula (não-admin) e a ficha não tem
+  // ⚠️ A aba Atlas é a 10ª num painel de 360 px: com números acesos
+  // (Tarefas, Cobranças, Automações, Relacionados) a fileira quebra em
+  // duas linhas. Para quem não vincula (não-admin) e a ficha não tem
   // vínculo, a aba não tem o que fazer — some (o desenho da Fase 2, "se não
   // couber"). O admin a vê sempre; o vínculo e a FALHA a mostram a todos.
   // ⚠️ Pela `ultimaLeitura` (durante a carga, a do contato anterior), nunca
@@ -1104,8 +1104,13 @@ export function PainelDoContato({
       >
         {/* Ordem definida pelo operador (2026-08-29): Principal, Notas,
             Tarefas, Traqueamento, e o Histórico POR ÚLTIMO — é a aba de
-            auditoria, a que menos se abre no atendimento. */}
-        <TabsList className="border-border bg-muted/30 w-full shrink-0 justify-start gap-x-1 rounded-none border-b px-2 py-1 group-data-horizontal/tabs:h-auto [&>button]:h-8 [&>button]:flex-1">
+            auditoria, a que menos se abre no atendimento.
+            ⚠️ `flex-wrap`: são 10 gatilhos em 360 px, e cada número aceso
+            (Tarefas, Cobranças, Automações, Relacionados) soma ~28 px — com
+            dois já passava da largura (medido no preview) e o Histórico,
+            o último, ficava cortado fora do painel. Quebrando, vai para
+            uma segunda linha. */}
+        <TabsList className="border-border bg-muted/30 w-full shrink-0 flex-wrap justify-start gap-x-1 gap-y-1 rounded-none border-b px-2 py-1 group-data-horizontal/tabs:h-auto [&>button]:h-8 [&>button]:flex-1">
           <AbaDeIcone value="principal" label={tSidebar('tabMain')}>
             <User className="h-4 w-4" />
           </AbaDeIcone>

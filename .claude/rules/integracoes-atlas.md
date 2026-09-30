@@ -174,8 +174,9 @@ periódica das situações e na tela (botão, faixa e aba Atlas) da Fase 2. Plan
   escritório anterior = `outro_escritorio`. Desvincular grava a RECUSA
   ANTES de apagar o vínculo; vincular apaga a recusa do par.
 - **A aba no painel** (depois de Relacionados) some sem Atlas e — pela
-  largura dos 360 px sem quebra — para quem não vincula quando a ficha não
-  tem vínculo; na ficha de /contatos (quebra linha) aparece a todos.
+  largura dos 360 px — para quem não vincula quando a ficha não tem
+  vínculo; na ficha de /contatos aparece a todos. A fileira do painel
+  QUEBRA linha (`flex-wrap`): com números acesos, o Histórico ficava cortado.
   ⚠️ `abaAtlasNoPainel` decide pela `ultimaLeitura` do hook (na carga, a do
   contato ANTERIOR: sem ela a aba piscava entre fichas vinculadas) e a
   mantém na FALHA (o "Tentar de novo", nunca a aba sumida).
