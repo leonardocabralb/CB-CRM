@@ -1249,7 +1249,13 @@ export type AutomationStepType =
    * Comercial → Jurídico — o envio pelo Jurídico não muda o número da
    * conversa. Não fala com ninguém.
    */
-  | 'pin_conversation_channel';
+  | 'pin_conversation_channel'
+  /**
+   * Cria o cliente no Atlas Gestor (ou reativa o cadastro encerrado, ou só
+   * vincula o que está em curso) pela chave da CONTA — a Fase 0 de
+   * docs/PLANO-integracao-atlas.md. Não fala com ninguém.
+   */
+  | 'atlas_criar_cliente';
 
 export type AutomationLogStatus = 'success' | 'partial' | 'failed';
 
@@ -1800,6 +1806,22 @@ export interface PinConversationChannelStepConfig {
   channel_id: string;
 }
 
+/**
+ * "Criar cliente no Atlas". Os três `campo_*` são `custom_fields.field_key`
+ * de campos de DATA da conta, escolhidos pelo operador; nulo/ausente = não
+ * usar (primeiro contato cai na criação do card, fechamento em "agora",
+ * proposta fica sem). ⚠️ A chave do Atlas NUNCA vem aqui: qualquer membro lê
+ * a automação e duplicar copia o `step_config` — ela é da conta
+ * (`cb_atlas_config`, cifrada).
+ */
+export interface AtlasCriarClienteStepConfig {
+  /** Ausente = `'fixo'`. */
+  tipo_de_contrato?: 'fixo' | 'mensal';
+  campo_primeiro_contato?: string | null;
+  campo_proposta?: string | null;
+  campo_fechamento?: string | null;
+}
+
 export type AutomationStepConfig =
   | SendMessageStepConfig
   | SendButtonsStepConfig
@@ -1814,6 +1836,7 @@ export type AutomationStepConfig =
   | RunFlowStepConfig
   | SetAiStepConfig
   | PinConversationChannelStepConfig
+  | AtlasCriarClienteStepConfig
   | SendMediaStepConfig
   | WaitStepConfig
   | ConditionStepConfig

@@ -602,6 +602,18 @@ const canalMock = vi.hoisted(() => ({
   ),
 }));
 vi.mock('@/lib/cb-channels/engine-send', () => canalMock);
+// "Criar cliente no Atlas": o I/O (chave, busca, criar, reativar, vínculo) é
+// testado em `src/lib/atlas/criar-cliente.test.ts`; aqui, a ENTRADA que o
+// motor monta e o que ele faz com o resultado e com a falha.
+const atlasMock = vi.hoisted(() => ({
+  criarOuReativarNoAtlas: vi.fn<(admin: unknown, entrada: Record<string, unknown>) => Promise<unknown>>(
+    async () => ({ acao: 'criado', atlasClientId: 'atl-1' })
+  ),
+}));
+vi.mock('@/lib/atlas/criar-cliente', async (original) => ({
+  ...(await original<typeof import('@/lib/atlas/criar-cliente')>()),
+  criarOuReativarNoAtlas: atlasMock.criarOuReativarNoAtlas,
+}));
 
 import {
   dispararAutomacoes,
@@ -2032,6 +2044,192 @@ describe('pin_conversation_channel — fixar a conversa no número (Comercial �
     expect(escritasNaConversa()).toHaveLength(0);
     expect(h.state.fromCalls).not.toContain('cb_channels');
     expect(JSON.stringify(h.state.logUpdates)).toContain('nenhuma conexão escolhida');
+  });
+});
+
+describe('atlas_criar_cliente — criar cliente no Atlas (Fase 0)', () => {
+  const dataDe = (field_key: string, value: string, account_id = ACCOUNT) => ({
+    value,
+    custom_fields: { field_key, field_type: 'datetime', account_id },
+  });
+
+  function passoAtlas(step_config: Record<string, unknown>) {
+    return {
+      id: 's-atlas',
+      automation_id: 'a1',
+      step_type: 'atlas_criar_cliente',
+      position: 0,
+      parent_step_id: null,
+      step_config,
+    };
+  }
+
+  async function rodar(step_config: Record<string, unknown>, context: Record<string, unknown> = {}) {
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [passoAtlas(step_config)];
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context,
+    });
+  }
+
+  function passos() {
+    return h.state.logUpdates.flatMap(
+      (u) => (u.steps_executed as { status: string; detail?: string }[] | undefined) ?? []
+    );
+  }
+
+  const entrada = () => atlasMock.criarOuReativarNoAtlas.mock.calls.at(-1)?.[1];
+
+  beforeEach(() => {
+    atlasMock.criarOuReativarNoAtlas.mockReset();
+    atlasMock.criarOuReativarNoAtlas.mockResolvedValue({ acao: 'criado', atlasClientId: 'atl-1' });
+    vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'https://crm.exemplo.com/');
+    h.state.owned = { id: 'c1', name: 'Ana Souza', phone: '5583999990000', email: 'ana@exemplo.com' };
+    // Não é zerada no `beforeEach` de fora.
+    h.state.esperasEnfileiradas = [];
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('CRÍTICO: monta a entrada pelas leituras do motor — ficha, card, campos de data CRUS, link da conversa e a chave <logId>:<stepId>', async () => {
+    h.state.dealExistente = {
+      id: 'd1',
+      value: 3500.5,
+      created_at: '2025-07-09T19:25:23.000003+00:00',
+    } as unknown as { id: string };
+    h.state.customValues = [
+      dataDe('data_do_primeiro_contato', '2026-09-01T12:00:00.000Z'),
+      dataDe('data_da_proposta', '2026-09-10T13:30:00.000Z'),
+      dataDe('data_de_fechamento_do_contrato', '2026-09-29T02:10:00.000Z'),
+      // Mesma chave, OUTRA conta: nunca entra.
+      dataDe('campo_de_outra_conta', '2020-01-01T00:00:00.000Z', 'acct-2'),
+    ];
+    await rodar(
+      {
+        tipo_de_contrato: 'mensal',
+        campo_primeiro_contato: 'data_do_primeiro_contato',
+        campo_proposta: ' data_da_proposta ',
+        campo_fechamento: 'data_de_fechamento_do_contrato',
+      },
+      { conversation_id: 'conv1', deal_id: 'd1' }
+    );
+
+    expect(atlasMock.criarOuReativarNoAtlas).toHaveBeenCalledTimes(1);
+    expect(entrada()).toEqual({
+      accountId: ACCOUNT,
+      contactId: 'c1',
+      chaveDeIdempotencia: 'log1:s-atlas',
+      contato: { nome: 'Ana Souza', telefone: '5583999990000', email: 'ana@exemplo.com' },
+      negocio: { valor: 3500.5, criadoEm: '2025-07-09T19:25:23.000003+00:00' },
+      datas: {
+        primeiroContato: '2026-09-01T12:00:00.000Z',
+        proposta: '2026-09-10T13:30:00.000Z',
+        fechamento: '2026-09-29T02:10:00.000Z',
+      },
+      linkDaConversa: 'https://crm.exemplo.com/inbox?c=conv1',
+      tipoDeContrato: 'mensal',
+      agora: expect.any(Date),
+    });
+    // O card é LIDO pelo id do contexto e pela conta.
+    expect(
+      h.state.dealSelects.some(
+        (f) =>
+          f.some(([op, k, v]) => op === 'eq' && k === 'id' && v === 'd1') &&
+          f.some(([op, k, v]) => op === 'eq' && k === 'account_id' && v === ACCOUNT)
+      )
+    ).toBe(true);
+    expect(passos()).toContainEqual(
+      expect.objectContaining({ step_type: 'atlas_criar_cliente', status: 'success', detail: 'cliente criado no Atlas' })
+    );
+  });
+
+  it('sem campos escolhidos, sem card e sem conversa: datas, negócio e link vão nulos; contrato fixo por padrão', async () => {
+    h.state.customValues = [dataDe('data_do_primeiro_contato', '2026-09-01T12:00:00.000Z')];
+    h.state.owned = { id: 'c1', name: 'Ana Souza', phone: '', email: '' };
+    await rodar({});
+
+    expect(entrada()).toMatchObject({
+      contato: { nome: 'Ana Souza', telefone: null, email: null },
+      negocio: null,
+      datas: { primeiroContato: null, proposta: null, fechamento: null },
+      linkDaConversa: null,
+      tipoDeContrato: 'fixo',
+    });
+    // Nenhuma conversa criada: o passo não fala com o contato.
+    expect(destinatarioMock.conversaDoContato).not.toHaveBeenCalled();
+  });
+
+  it('sem conversa no contexto, o link é o da conversa MAIS ANTIGA do contato (como o {{conversation.link}})', async () => {
+    h.state.conversasDoContato = [{ id: 'conv-antiga' }];
+    await rodar({});
+    expect(entrada()?.linkDaConversa).toBe('https://crm.exemplo.com/inbox?c=conv-antiga');
+  });
+
+  it('campo escolhido sem valor na ficha vai nulo (o Atlas usa a reserva)', async () => {
+    await rodar({ campo_fechamento: 'data_de_fechamento_do_contrato' });
+    expect((entrada()?.datas as Record<string, unknown>).fechamento).toBeNull();
+  });
+
+  it('o detalhe diz o que aconteceu no Atlas (reativado)', async () => {
+    atlasMock.criarOuReativarNoAtlas.mockResolvedValue({
+      acao: 'reativado',
+      atlasClientId: 'atl-1',
+      situacaoAnterior: 'rescindido',
+    });
+    await rodar({});
+    expect(passos()).toContainEqual(
+      expect.objectContaining({ status: 'success', detail: 'cadastro reativado no Atlas (estava rescindido)' })
+    );
+  });
+
+  it('⚠️ a falha do Atlas FALHA o passo com o motivo, e a execução termina', async () => {
+    atlasMock.criarOuReativarNoAtlas.mockRejectedValue(
+      new Error('o Atlas não está conectado (Configurações → Integrações)')
+    );
+    await rodar({});
+    expect(passos()).toContainEqual(
+      expect.objectContaining({
+        step_type: 'atlas_criar_cliente',
+        status: 'failed',
+        detail: 'o Atlas não está conectado (Configurações → Integrações)',
+      })
+    );
+    expect(h.state.logUpdates).toContainEqual(expect.objectContaining({ desfecho: 'falhou' }));
+    // Fora de PASSOS_DE_ENVIO: nada volta para a fila.
+    expect(h.state.esperasEnfileiradas).toHaveLength(0);
+  });
+
+  it('⚠️ leitura do CRM que falha FALHA o passo sem chamar o Atlas (o vazio viraria dado gravado lá)', async () => {
+    h.state.erroNoNegocio = 'fora do ar';
+    await rodar({}, { deal_id: 'd1' });
+    expect(atlasMock.criarOuReativarNoAtlas).not.toHaveBeenCalled();
+    expect(JSON.stringify(h.state.logUpdates)).toContain('a leitura dos dados do cliente no CRM falhou');
+  });
+
+  it('tipo de contrato desconhecido: FALHA antes de ler ou chamar', async () => {
+    await rodar({ tipo_de_contrato: 'anual' });
+    expect(atlasMock.criarOuReativarNoAtlas).not.toHaveBeenCalled();
+    expect(JSON.stringify(h.state.logUpdates)).toContain('tipo de contrato desconhecido');
+  });
+
+  it('⚠️ execução SEM registro (espera antiga sem log_id): não chama o Atlas', async () => {
+    h.state.automations = [{ ...automationWithUpdateStep(), id: 'a-resume' }];
+    h.state.steps = [{ ...passoAtlas({}), automation_id: 'a-resume', position: 1 }];
+    await resumePendingExecution({
+      id: 'espera-sem-log',
+      automation_id: 'a-resume',
+      account_id: ACCOUNT,
+      user_id: 'u1',
+      contact_id: 'c1',
+      log_id: null,
+      parent_step_id: null,
+      branch: null,
+      next_step_position: 1,
+      context: {},
+    });
+    expect(atlasMock.criarOuReativarNoAtlas).not.toHaveBeenCalled();
   });
 });
 

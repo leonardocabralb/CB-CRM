@@ -235,6 +235,7 @@ const TODOS_OS_TIPOS: Record<AutomationStepType, true> = {
   run_flow: true, stop_flow: true, set_ai: true, send_media: true,
   wait: true, condition: true, send_webhook: true, close_conversation: true,
   send_to_number: true, create_task: true, pin_conversation_channel: true,
+  atlas_criar_cliente: true,
 }
 const TIPOS_DE_PASSO = Object.keys(TODOS_OS_TIPOS) as AutomationStepType[]
 

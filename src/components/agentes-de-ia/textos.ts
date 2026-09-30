@@ -202,6 +202,7 @@ export function rotuloDoTipoDoCampo(t: ReturnType<typeof useTranslations>, tipo:
 export const CODIGOS_DA_D5 = [
   'send_to_number',
   'send_webhook',
+  'atlas_criar_cliente',
   'status_de_resultado',
   'etapa_de_resultado',
   'run_flow',

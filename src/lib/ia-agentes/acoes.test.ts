@@ -584,6 +584,7 @@ describe('a régua da D5 nas automações', () => {
   it('cada passo fora da D5 tem o seu código', () => {
     expect(motivoDoPasso(passo('send_to_number'), REGUA)).toBe('send_to_number')
     expect(motivoDoPasso(passo('send_webhook'), REGUA)).toBe('send_webhook')
+    expect(motivoDoPasso(passo('atlas_criar_cliente'), REGUA)).toBe('atlas_criar_cliente')
     expect(motivoDoPasso(passo('run_flow'), REGUA)).toBe('run_flow')
     expect(motivoDoPasso(passo('set_deal_status', { status: 'won' }), REGUA)).toBe('status_de_resultado')
     expect(motivoDoPasso(passo('set_deal_status', { status: 'lost' }), REGUA)).toBe('status_de_resultado')

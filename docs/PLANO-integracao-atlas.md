@@ -29,8 +29,8 @@ qualquer um que também use o Atlas, **só pela API pública do Atlas**, com
 
 | Fase | O quê | Depende de | Estado |
 |---|---|---|---|
-| 1 | Faixa "Cliente rescindido / finalizado" pela MARCA da etapa (sem Atlas) | nada | **Pronta para o merge** (PR #355): 1070 aplicada, etapas do CB marcadas, e2e no preview feito (29/09/2026) |
-| 0 | Conectar pela chave + passo "Criar cliente no Atlas" (reativa quem já existe) no lugar da perna do Atlas no n8n | Prioridade 1 da API do Atlas (testar a chave, buscar cliente, códigos de erro) em staging | Aguardando o Atlas |
+| 1 | Faixa "Cliente rescindido / finalizado" pela MARCA da etapa (sem Atlas) | nada | **No ar** (PR #355, 29/09/2026): 1070 aplicada, etapas do CB marcadas, e2e no preview feito |
+| 0 | Conectar pela chave + passo "Criar cliente no Atlas" (reativa quem já existe) no lugar da perna do Atlas no n8n | Prioridade 1 da API do Atlas em staging: `whoami` e códigos de erro JÁ estão (29/09); falta `find_clients` e `app_url` | **Em curso** (branch `feat/atlas-fase-0`, migration 1071) |
 | 2 | Vínculo contato ↔ cliente do Atlas + botão "Abrir no Atlas" + faixa também pela situação do Atlas | Fase 0; Prioridade 2 do Atlas (link direto abre a ficha) | Planejada |
 | 3 | Aba "Atlas" com o histórico de negociação | Prioridade 3 do Atlas (leitura de negociação com permissão própria) | Planejada |
 | 4 | Mover o card por automação quando a situação muda no Atlas | Fase 2 | Planejada |
@@ -117,20 +117,50 @@ apagada; Gerenciar funil a 820 px sem rolagem lateral. Limpeza conferida no
 banco: o card voltou a MQL 1 com o mesmo valor, 7 eventos na trilha, fila
 processada sem erro, nenhuma automação nem mensagem.
 
-## Fase 0 — "Criar cliente no Atlas" (quando a Prioridade 1 do Atlas chegar)
+## Fase 0 — "Criar cliente no Atlas"
 
-- Cartão "Atlas" em Integrações (admin): colar a chave, testar sem gravar
-  nada, guardar cifrada (`ENCRYPTION_KEY`); endereço da API por configuração
-  (staging para teste, produção no ar).
-- Passo novo de automação, o ÚLTIMO da automação de contrato fechado:
-  1. procura o cliente no Atlas (link da conversa do CRM, telefone, e-mail);
-  2. não achou → cria, com os mesmos campos e regras que o n8n usa hoje
-     (telefone com o 9, UF pela sigla do DDD — tabela nova no CRM —, datas
-     `aaaa-mm-dd` no fuso do escritório, contrato "fixo", valor do card, link
-     da conversa, nota "Enviado pelo CRM em …");
-  3. achou rescindido/finalizado → reativa (D3); achou ativo → só vincula;
-     achou mais de um → para e mostra;
-  4. guarda o id do Atlas no CRM; falha fica visível na execução.
+**Medido no staging do Atlas (29/09/2026, chave de teste do operador):**
+`whoami` responde (escritório, plano, permissões, `appBaseUrl`); os erros
+trazem `code` (`unknown_action`, `validation_error` com `fields`,
+`not_found`); id malformado dá 400. AINDA NÃO: `find_clients`, `app_url` nas
+respostas, `status_changed_at`, filtro por lista de status e a leitura de
+negociação. ⚠️ O staging tem o MESMO id de escritório do CB em produção
+(cópia dos dados reais): teste olha forma e contagem, nunca dado de cliente.
+
+**Desenho (branch `feat/atlas-fase-0`):**
+
+- **1071**: `cb_atlas_config` (uma linha por conta, chave CIFRADA, FECHADA ao
+  navegador, com o escritório e o `atlas_tenant_id` do `whoami`) e
+  `cb_atlas_clientes` (o vínculo 1:1 ficha ↔ cliente do Atlas, sem dado
+  pessoal, LIDO por membro na forma da 1032 — a Fase 2 lê daqui —, escrito
+  só pelo servidor, `contact_id` SET NULL, na receita de fusão).
+- **`src/lib/atlas/`**: `cliente.ts` (a API, erro vira código),
+  `enderecos.ts` (constante do produto + `ATLAS_API_URL` para o staging),
+  `conexao.ts` (conectar pelo `whoami`, exigindo Consultar/Criar/Atualizar
+  clientes; recusa chave de OUTRO escritório com vínculos gravados),
+  `formatar.ts` (o formato do n8n), `decisao.ts` (criar / reativar /
+  vincular / ambíguo), `criar-cliente.ts` (o passo, testável fora do motor).
+- **Cartão "Atlas"** em Integrações (`/api/cb/atlas`, admin): cola a chave,
+  mostra o escritório; nenhuma chave volta.
+- **Passo `atlas_criar_cliente`** (último da automação de contrato
+  fechado): config com o tipo de contrato (fixo/mensal) e os três campos de
+  data ESCOLHIDOS pelo operador (o CRM é vendido: as chaves dos campos do CB
+  não são cravadas no código). Fora de `PASSOS_DE_ENVIO`; fora do que o agente
+  de IA executa (manda dado para fora, como o webhook).
+
+**Decisões tomadas por mim (defaults, para o operador conferir):**
+estado pelo DDD só de número brasileiro (o n8n dava "SP" a número dos EUA);
+a reativação não mexe em nome, telefone, e-mail nem nota do Atlas; o cliente
+do Atlas já ligado a OUTRA ficha não é roubado; sem conexão, o passo FALHA
+com motivo (não há aviso ao ligar a automação).
+
+**Pergunta ao operador (D3 × a etiqueta):** na "Contrato fechado" tudo mora
+no ramo "NÃO tem a etiqueta Cliente Fechado"; o ramo SIM está vazio e 1.082
+fichas já têm a etiqueta. O ex-cliente que fecha contrato novo cai no ramo
+vazio: nem o Atlas, nem as boas-vindas, nem a ida ao Jurídico rodam. Sugestão:
+pôr o passo do Atlas também no ramo SIM (ele REATIVA), e decidir o que mais
+deve rodar para quem volta.
+
 - Corte no CB no mesmo dia: o passo entra, o nó do Atlas sai do n8n, o
   webhook fica só para a planilha (D5).
 

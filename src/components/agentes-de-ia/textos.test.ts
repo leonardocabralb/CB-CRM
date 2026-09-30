@@ -176,6 +176,7 @@ describe('as listas da tela cobrem os códigos do servidor (F4)', () => {
     const doServidor: Record<MotivoForaDaD5, true> = {
       send_to_number: true,
       send_webhook: true,
+      atlas_criar_cliente: true,
       status_de_resultado: true,
       etapa_de_resultado: true,
       run_flow: true,

@@ -1523,7 +1523,8 @@
         "close_conversation": "Encerrar a conversa",
         "send_to_number": "Avisar o número: {alvo}",
         "create_task": "Criar tarefa: {alvo}",
-        "pin_conversation_channel": "Fixar a conversa num número"
+        "pin_conversation_channel": "Fixar a conversa num número",
+        "atlas_criar_cliente": "Criar o cliente no Atlas"
       },
       "cancelar": "Cancelar",
       "salvar": "Salvar",
@@ -2071,7 +2072,8 @@
         "send_media": "Enviar arquivo",
         "send_to_number": "Avisar um número",
         "create_task": "Criar tarefa",
-        "pin_conversation_channel": "Fixar a conversa no número"
+        "pin_conversation_channel": "Fixar a conversa no número",
+        "atlas_criar_cliente": "Criar cliente no Atlas"
       },
       "triggers": {
         "new_message_received": {
@@ -2465,6 +2467,26 @@
         "reservaHint": "Obrigatório. Quando ninguém estiver atribuído (ou quem estava saiu da conta), a tarefa vai para esta pessoa, e o histórico da automação diz por quê.",
         "cardHint": "Hoje o responsável pelo card só é definido à mão, no formulário do negócio. Sem ele, a tarefa vai para a pessoa abaixo."
       },
+      "atlas": {
+        "tipoLabel": "Tipo de contrato",
+        "tipoFixo": "Fixo",
+        "tipoMensal": "Mensal",
+        "primeiroContatoLabel": "Data do primeiro contato",
+        "primeiroContatoHelp": "Sem campo: a data em que o card foi criado.",
+        "propostaLabel": "Data da proposta",
+        "propostaHelp": "Sem campo: vai em branco.",
+        "fechamentoLabel": "Data de fechamento do contrato",
+        "fechamentoHelp": "Sem campo: o dia em que o passo roda.",
+        "naoUsar": "— não usar —",
+        "campoSumiu": "Campo apagado (ou que não é de data)",
+        "semCamposDeData": "A conta ainda não tem campo de data.",
+        "conexaoConectado": "Atlas conectado: o passo usa a chave do escritório.",
+        "conexaoNaoConectado": "O Atlas não está conectado, e o passo vai falhar até que esteja.",
+        "conexaoErro": "A conexão com o Atlas está com problema, e o passo pode falhar.",
+        "conexaoNaoSei": "O passo usa a chave do Atlas conectada em Configurações → Integrações.",
+        "abrirIntegracoes": "Abrir Integrações",
+        "ajuda": "Procura no Atlas antes: cria o cliente, reativa o cadastro encerrado ou só vincula o que está em curso. Não repete sozinho."
+      },
       "asaas": {
         "diasLabel": "Dias de atraso (o marco)",
         "diasAjuda": "Dias corridos depois do vencimento. Cada marco é uma automação: 1, 5, 30… A mensagem lista todas as parcelas vencidas do cliente, não só a que cruzou este marco.",
@@ -2560,6 +2582,8 @@
           "tarefa_prazo_invalido": "Escolha um prazo entre 0 e 365 dias.",
           "tarefa_hora_invalida": "Escreva a hora da tarefa no formato HH:MM.",
           "fixar_sem_conexao": "Escolha o número em que a conversa fica fixada.",
+          "atlas_tipo_de_contrato_invalido": "Escolha o tipo de contrato: fixo ou mensal.",
+          "atlas_campo_invalido": "Escolha de novo o campo de data na lista (ou “— não usar —”).",
           "passo_desconhecido": "Este tipo de passo não existe mais: apague o passo.",
           "gatilho_sem_palavras": "Escreva pelo menos uma palavra-chave.",
           "gatilho_palavra_vazia": "Apague as palavras-chave em branco.",
@@ -4140,6 +4164,47 @@
           "cpf": "CPF"
         }
       },
+      "atlas": {
+        "carregando": "Carregando…",
+        "desc": "Conecte o Atlas Gestor para o CRM criar o cliente no Atlas quando o contrato fechar — ou reativar o cadastro de quem volta — já com o link da conversa. A chave é do escritório: um administrador a gera no Atlas (Configurações → Integrações (API)) e a cola aqui uma vez.",
+        "campoChave": "Chave da API do Atlas",
+        "chaveVazia": "Cole a chave que o Atlas mostrou (começa com sk_)",
+        "chaveDica": "O Atlas mostra a chave uma vez só, ao gerar. Ela é guardada cifrada e não volta a aparecer aqui.",
+        "permissoesDica": "No Atlas, na mesma tela, deixe ligadas as permissões Consultar clientes, Criar clientes e Atualizar clientes.",
+        "conectar": "Conectar",
+        "conectando": "Conferindo a chave…",
+        "conectado": "Atlas conectado.",
+        "escritorio": "Conectado ao escritório {nome} no Atlas.",
+        "semEscritorio": "Conectado ao Atlas.",
+        "desconectar": "Desconectar",
+        "confirmarDesconectar": "Desconectar o Atlas? O passo \"Criar cliente no Atlas\" das automações passa a falhar até uma chave ser colada de novo. Os vínculos das fichas com os clientes do Atlas ficam guardados.",
+        "comoFunciona": "Na automação de contrato fechado, ponha o passo \"Criar cliente no Atlas\" por último. Ele procura o cliente no Atlas pelo link da conversa, pelo telefone e pelo e-mail: não achando, cria; achando um cadastro rescindido ou finalizado, reativa o mesmo cadastro; achando um ativo, só vincula.",
+        "faltando": "No Atlas, ligue as permissões: {permissoes}.",
+        "permissao": {
+          "read_client": "Consultar clientes",
+          "create_client": "Criar clientes",
+          "update_client": "Atualizar clientes"
+        },
+        "motivo": {
+          "chave_invalida": "o Atlas recusou a chave (confira se foi copiada inteira, ou gere outra)",
+          "api_fora_do_plano": "o plano do escritório no Atlas não inclui a API",
+          "sem_permissao": "uma permissão da API está desligada no Atlas",
+          "validacao": "o Atlas recusou os dados enviados",
+          "nao_encontrado": "o Atlas não encontrou o que foi pedido",
+          "limite": "o Atlas pediu para esperar (limite de pedidos por minuto); tente de novo em instantes",
+          "limite_do_plano": "o escritório atingiu o limite de clientes do plano no Atlas",
+          "idempotencia": "o Atlas ainda está processando um pedido igual",
+          "acao_desconhecida": "a API do Atlas ainda não tem esta função (atualização pendente no Atlas)",
+          "fora_do_ar": "o Atlas não respondeu; tente de novo em instantes",
+          "rede": "não foi possível falar com o Atlas; tente de novo em instantes",
+          "atlas_error": "o Atlas devolveu um erro",
+          "db_error": "não foi possível gravar a conexão; tente de novo",
+          "nao_conectado": "o Atlas não está conectado",
+          "chave_ilegivel": "a chave guardada não pôde ser lida; cole a chave de novo",
+          "outro_escritorio": "esta chave é de outro escritório do Atlas, e há fichas ligadas a clientes do escritório anterior",
+          "permissoes_faltando": "faltam permissões da API no Atlas"
+        }
+      },
       "avisoDaChave": {
         "embeddings_recusado": "Chave salva: ela gera texto, mas a OpenAI recusou a busca da base de conhecimento (embeddings). A base passa a usar só a busca por palavras — confira as permissões do projeto e salve a chave de novo.",
         "embeddings_nao_conferido": "Chave salva, mas não foi possível conferir se ela serve à busca da base de conhecimento (embeddings). Se a busca falhar, salve a chave de novo.",
@@ -5306,6 +5371,7 @@
       "foraDaD5": {
         "send_to_number": "manda mensagem para outro número",
         "send_webhook": "envia dados para fora do CRM (webhook)",
+        "atlas_criar_cliente": "envia dados do cliente ao Atlas",
         "status_de_resultado": "marca o negócio como ganho ou perdido",
         "etapa_de_resultado": "move o card para etapa de ganho ou perdido",
         "run_flow": "inicia um robô (fluxo)",

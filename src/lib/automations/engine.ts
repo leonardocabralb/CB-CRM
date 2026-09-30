@@ -24,6 +24,7 @@ import type {
   RunFlowStepConfig,
   SetAiStepConfig,
   PinConversationChannelStepConfig,
+  AtlasCriarClienteStepConfig,
   SendMediaStepConfig,
   SendToNumberStepConfig,
   CalendlyTriggerConfig,
@@ -132,6 +133,8 @@ import {
 import { janelaDaMetaAberta } from './janela-da-meta';
 import { campoAtendeACondicao, ehIdDeCampo, operadorDaCondicao } from './condicao-por-campo';
 import { avaliarHoraDoDia, esperaPeloHorario } from './hora-do-dia';
+import { criarOuReativarNoAtlas, detalheDoResultado } from '@/lib/atlas/criar-cliente';
+import { TIPOS_DE_CONTRATO, type TipoDeContrato } from '@/lib/atlas/formatar';
 
 /** O motivo do `send_to_number` recusado, na frase que o registro mostra. */
 const POR_QUE_O_NUMERO_NAO_SERVE: Record<MotivoDoTelefone, string> = {
@@ -2488,6 +2491,90 @@ async function runStep(
     }
 
     // ------------------------------------------------------------
+    // Criar cliente no Atlas (Fase 0 de docs/PLANO-integracao-atlas.md) — o
+    // último passo do contrato fechado. O I/O (chave da conta, busca, criar,
+    // reativar, vínculo) mora em `@/lib/atlas/criar-cliente`; aqui só se junta
+    // a entrada, pelas MESMAS leituras de `{{contact.*}}`, `{{deal.*}}` e
+    // `{{conversation.link}}`.
+    //
+    // ⚠️ Fora de PASSOS_DE_ENVIO, como o `send_webhook`: criar no Atlas pode
+    // ter acontecido mesmo com tempo esgotado. A falha LANÇA e encerra a
+    // execução; quem roda de novo é gente, e a busca no Atlas não duplica.
+    // ⚠️ Leitura do CRM que falha FALHA o passo (modo `estrito`): no texto
+    // interpolado ela vira vazio, mas aqui o vazio viraria dado gravado noutro
+    // sistema (valor 0, data de "agora").
+    // ------------------------------------------------------------
+    case 'atlas_criar_cliente': {
+      const cfg = step.step_config as AtlasCriarClienteStepConfig;
+      if (!args.contactId)
+        throw new Error('criar cliente no Atlas: a execução não tem um contato');
+      const tipo = cfg.tipo_de_contrato ?? 'fixo';
+      if (!(TIPOS_DE_CONTRATO as readonly string[]).includes(tipo))
+        throw new Error('criar cliente no Atlas: tipo de contrato desconhecido');
+      const tipoDeContrato = tipo as TipoDeContrato;
+
+      // Sem registro não há chave de idempotência estável: nada vai ao Atlas.
+      // Na PRÉVIA (`triggerEvent: 'previa'`) diz o que faria; fora dela, a
+      // execução sem registro (espera antiga sem `log_id`) FALHA — "feito"
+      // sobre um cliente que não foi criado seria mentira.
+      if (!args.logId) {
+        if (args.triggerEvent === 'previa') {
+          return `prévia: criaria o cliente no Atlas (ou reativaria o cadastro encerrado), contrato ${tipoDeContrato} — nada foi enviado`;
+        }
+        throw new Error(
+          'criar cliente no Atlas: a execução não tem registro (sem chave de idempotência); nada foi enviado ao Atlas'
+        );
+      }
+
+      let dados: DadosDoContato;
+      let negocio: DadosDoNegocio | null;
+      try {
+        [dados, negocio] = await Promise.all([
+          carregarDadosDoContato(args, { estrito: true }),
+          carregarNegocio(args, { estrito: true }),
+        ]);
+      } catch (err) {
+        console.error('[automations] atlas_criar_cliente: leitura do CRM falhou', err);
+        throw new Error(
+          'criar cliente no Atlas: a leitura dos dados do cliente no CRM falhou; nada foi enviado ao Atlas'
+        );
+      }
+      if (!dados.contato)
+        throw new Error('criar cliente no Atlas: a ficha do cliente não foi encontrada nesta conta');
+
+      const campo = (chave: string | null | undefined): string | null => {
+        const k = typeof chave === 'string' ? chave.trim() : '';
+        return (k && dados.camposCru[k]) || null;
+      };
+      const link = dados.conversationId
+        ? linkDoCrm(urlDoInbox({ c: dados.conversationId }))
+        : '';
+
+      const resultado = await criarOuReativarNoAtlas(db, {
+        accountId: args.automation.account_id,
+        contactId: args.contactId,
+        chaveDeIdempotencia: `${args.logId}:${step.id}`,
+        contato: {
+          nome: dados.contato.name || null,
+          telefone: dados.contato.phone || null,
+          email: dados.contato.email || null,
+        },
+        negocio: negocio
+          ? { valor: negocio.value, criadoEm: negocio.created_at }
+          : null,
+        datas: {
+          primeiroContato: campo(cfg.campo_primeiro_contato),
+          proposta: campo(cfg.campo_proposta),
+          fechamento: campo(cfg.campo_fechamento),
+        },
+        linkDaConversa: link || null,
+        tipoDeContrato,
+        agora: new Date(),
+      });
+      return detalheDoResultado(resultado);
+    }
+
+    // ------------------------------------------------------------
     // Abrir tarefa para a equipe.
     //
     // ⚠️ ESPELHA `POST /api/cb/tasks`, e as três razões daquela rota valem
@@ -3546,10 +3633,11 @@ function dadosDoContato(args: ExecuteArgs): Promise<DadosDoContato> {
 }
 
 /**
- * ⚠️ `estrito` é SÓ da prévia do construtor (`valoresParaPrevia`): leitura que
- * falha LANÇA, e a rota responde 500 — senão a prévia pintaria "vazio, sairia
- * em branco" num campo que tem valor. O ENVIO não passa o parâmetro e segue
- * como sempre: leitura que falha vira variável vazia e o passo segue.
+ * ⚠️ `estrito` é da prévia do construtor (`valoresParaPrevia`) e do passo
+ * "Criar cliente no Atlas": leitura que falha LANÇA — a rota responde 500 e
+ * o passo falha, senão a prévia pintaria "vazio, sairia em branco" num campo
+ * que tem valor, e o Atlas gravaria o vazio. O ENVIO não passa o parâmetro e
+ * segue como sempre: leitura que falha vira variável vazia e o passo segue.
  */
 async function carregarDadosDoContato(
   args: ExecuteArgs,
@@ -3682,7 +3770,7 @@ export interface DadosDoNegocio {
  */
 async function carregarNegocio(
   args: ExecuteArgs,
-  // ⚠️ Só a prévia passa `estrito` (ver `carregarDadosDoContato`).
+  // ⚠️ Só a prévia e o passo do Atlas passam `estrito` (ver `carregarDadosDoContato`).
   { estrito = false }: { estrito?: boolean } = {}
 ): Promise<DadosDoNegocio | null> {
   const db = supabaseAdmin();
