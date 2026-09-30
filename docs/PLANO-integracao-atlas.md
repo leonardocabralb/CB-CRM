@@ -170,7 +170,11 @@ Depois da revisão do PR #356:
 **Pendências conhecidas da Fase 0:** trocar o Atlas de ESCRITÓRIO (outra
 chave, outro `tenant`) exige apagar os vínculos à mão — sem tela ainda
 (Fase 2); duas execuções simultâneas do mesmo contato podem criar dois
-cadastros (a segunda falha no vínculo, com o motivo), como o `create_deal`.
+cadastros (a segunda falha no vínculo, com o motivo), como o `create_deal`;
+trocar de escritório NO MEIO de uma execução (o admin conecta outra chave
+enquanto o passo roda) pode deixar um cliente órfão no escritório antigo —
+corrida rara sobre uma troca que já é excepcional, sem trava (achado do
+Codex, 30/09).
 
 **Pergunta ao operador (D3 × a etiqueta):** na "Contrato fechado" tudo mora
 no ramo "NÃO tem a etiqueta Cliente Fechado"; o ramo SIM está vazio e 1.082
