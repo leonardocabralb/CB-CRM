@@ -2485,7 +2485,7 @@
         "conexaoErro": "A conexão com o Atlas está com problema, e o passo pode falhar.",
         "conexaoNaoSei": "O passo usa a chave do Atlas conectada em Configurações → Integrações.",
         "abrirIntegracoes": "Abrir Integrações",
-        "ajuda": "Procura no Atlas antes: cria o cliente, reativa o cadastro encerrado ou só vincula o que está em curso. Não repete sozinho."
+        "ajuda": "Procura no Atlas antes: cria o cliente, reativa o cadastro rescindido ou finalizado, ou só vincula o que está em curso. Para sem mexer no Atlas quando há dúvida (mais de um cadastro, casamento só pelo e-mail ou pelo final do telefone, contrato suspenso). Não repete sozinho."
       },
       "asaas": {
         "diasLabel": "Dias de atraso (o marco)",
@@ -4170,7 +4170,7 @@
         "campoChave": "Chave da API do Atlas",
         "chaveVazia": "Cole a chave que o Atlas mostrou (começa com sk_)",
         "chaveDica": "O Atlas mostra a chave uma vez só, ao gerar. Ela é guardada cifrada e não volta a aparecer aqui.",
-        "permissoesDica": "No Atlas, na mesma tela, deixe ligadas as permissões Consultar clientes, Criar clientes e Atualizar clientes.",
+        "permissoesDica": "No Atlas, na mesma aba, deixe ligadas as permissões Consultar Clientes, Criar Clientes e Atualizar Clientes.",
         "conectar": "Conectar",
         "conectando": "Conferindo a chave…",
         "conectado": "Atlas conectado.",
@@ -4178,12 +4178,12 @@
         "semEscritorio": "Conectado ao Atlas.",
         "desconectar": "Desconectar",
         "confirmarDesconectar": "Desconectar o Atlas? O passo \"Criar cliente no Atlas\" das automações passa a falhar até uma chave ser colada de novo. Os vínculos das fichas com os clientes do Atlas ficam guardados.",
-        "comoFunciona": "Na automação de contrato fechado, ponha o passo \"Criar cliente no Atlas\" por último. Ele procura o cliente no Atlas pelo link da conversa, pelo telefone e pelo e-mail: não achando, cria; achando um cadastro rescindido ou finalizado, reativa o mesmo cadastro; achando um ativo, só vincula.",
+        "comoFunciona": "Na automação de contrato fechado, ponha o passo \"Criar cliente no Atlas\" por último. Ele procura o cliente no Atlas pelo link da conversa, pelo telefone e pelo e-mail: não achando, cria; achando um cadastro rescindido ou finalizado, reativa o mesmo cadastro; achando um ativo, só vincula. Ele para, sem mexer no Atlas, quando acha mais de um cadastro, quando o cadastro casa só pelo e-mail ou pelo final do telefone, ou quando está suspenso ou inativo lá.",
         "faltando": "No Atlas, ligue as permissões: {permissoes}.",
         "permissao": {
-          "read_client": "Consultar clientes",
-          "create_client": "Criar clientes",
-          "update_client": "Atualizar clientes"
+          "read_client": "Consultar Clientes",
+          "create_client": "Criar Clientes",
+          "update_client": "Atualizar Clientes"
         },
         "motivo": {
           "chave_invalida": "o Atlas recusou a chave (confira se foi copiada inteira, ou gere outra)",
@@ -4202,8 +4202,12 @@
           "nao_conectado": "o Atlas não está conectado",
           "chave_ilegivel": "a chave guardada não pôde ser lida; cole a chave de novo",
           "outro_escritorio": "esta chave é de outro escritório do Atlas, e há fichas ligadas a clientes do escritório anterior",
-          "permissoes_faltando": "faltam permissões da API no Atlas"
-        }
+          "permissoes_faltando": "faltam permissões da API no Atlas",
+          "resposta_inesperada": "o Atlas respondeu num formato inesperado (a API dele pode estar em atualização)",
+          "outro_ambiente": "a conexão guardada é de outro ambiente do Atlas (teste × produção); este ambiente não a usa nem a troca. Desconecte no ambiente em que ela foi feita",
+          "chave_mal_colada": "a chave colada parece incompleta ou com espaço no meio; copie de novo, inteira"
+        },
+        "semMotivo": "não foi possível concluir agora; tente de novo em instantes"
       },
       "avisoDaChave": {
         "embeddings_recusado": "Chave salva: ela gera texto, mas a OpenAI recusou a busca da base de conhecimento (embeddings). A base passa a usar só a busca por palavras — confira as permissões do projeto e salve a chave de novo.",

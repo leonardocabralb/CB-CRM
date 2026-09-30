@@ -2492,7 +2492,7 @@
         "conexaoErro": "The Atlas connection has a problem, and the step may fail.",
         "conexaoNaoSei": "The step uses the Atlas key connected in Settings → Integrations.",
         "abrirIntegracoes": "Open Integrations",
-        "ajuda": "It searches Atlas first: it creates the client, reactivates a closed record, or just links one in progress. It never retries on its own."
+        "ajuda": "It searches Atlas first: it creates the client, reactivates a terminated or closed-out record, or just links one in progress. It stops without touching Atlas when in doubt (more than one record, a match only by e-mail or by the end of the phone, a suspended contract). It never retries on its own."
       },
       "asaas": {
         "diasLabel": "Days overdue (the milestone)",
@@ -4173,11 +4173,11 @@
       },
       "atlas": {
         "carregando": "Loading…",
-        "desc": "Connect Atlas Gestor so the CRM creates the client in Atlas when a contract closes — or reactivates the record of a returning client — with the conversation link already in it. The key belongs to the firm: an administrator generates it in Atlas (Settings → Integrations (API)) and pastes it here once.",
+        "desc": "Connect Atlas Gestor so the CRM creates the client in Atlas when a contract closes — or reactivates the record of a returning client — with the conversation link already in it. The key belongs to the firm: an administrator generates it in Atlas (Configurações → Integrações (API), i.e. Settings → Integrations (API)) and pastes it here once.",
         "campoChave": "Atlas API key",
         "chaveVazia": "Paste the key Atlas showed (starts with sk_)",
         "chaveDica": "Atlas shows the key only once, when it is generated. It is stored encrypted and never shown here again.",
-        "permissoesDica": "In Atlas, on the same screen, keep the Read clients, Create clients and Update clients permissions on.",
+        "permissoesDica": "In Atlas, on the same tab, keep these permissions on: Consultar Clientes, Criar Clientes and Atualizar Clientes (read, create and update clients).",
         "conectar": "Connect",
         "conectando": "Checking the key…",
         "conectado": "Atlas connected.",
@@ -4185,12 +4185,12 @@
         "semEscritorio": "Connected to Atlas.",
         "desconectar": "Disconnect",
         "confirmarDesconectar": "Disconnect Atlas? The \"Create client in Atlas\" automation step will fail until a key is pasted again. The links between contacts and Atlas clients are kept.",
-        "comoFunciona": "In the contract-closed automation, put the \"Create client in Atlas\" step last. It looks the client up in Atlas by the conversation link, the phone and the e-mail: when nothing is found, it creates; when it finds a terminated or closed-out record, it reactivates that same record; when it finds an active one, it only links it.",
+        "comoFunciona": "In the contract-closed automation, put the \"Create client in Atlas\" step last. It looks the client up in Atlas by the conversation link, the phone and the e-mail: when nothing is found, it creates; when it finds a terminated or closed-out record, it reactivates that same record; when it finds an active one, it only links it. It stops, without touching Atlas, when it finds more than one record, when the record matches only by e-mail or by the end of the phone number, or when it is suspended or inactive there.",
         "faltando": "In Atlas, turn on the permissions: {permissoes}.",
         "permissao": {
-          "read_client": "Read clients",
-          "create_client": "Create clients",
-          "update_client": "Update clients"
+          "read_client": "Consultar Clientes (read clients)",
+          "create_client": "Criar Clientes (create clients)",
+          "update_client": "Atualizar Clientes (update clients)"
         },
         "motivo": {
           "chave_invalida": "Atlas rejected the key (check it was copied in full, or generate a new one)",
@@ -4209,8 +4209,12 @@
           "nao_conectado": "Atlas is not connected",
           "chave_ilegivel": "the stored key could not be read; paste the key again",
           "outro_escritorio": "this key belongs to another Atlas firm, and there are contacts linked to clients of the previous firm",
-          "permissoes_faltando": "API permissions are missing in Atlas"
-        }
+          "permissoes_faltando": "API permissions are missing in Atlas",
+          "resposta_inesperada": "Atlas replied in an unexpected format (its API may be being updated)",
+          "outro_ambiente": "the stored connection belongs to another Atlas environment (test × production); this environment neither uses nor replaces it. Disconnect it in the environment where it was made",
+          "chave_mal_colada": "the pasted key looks incomplete or has a space in the middle; copy it again, in full"
+        },
+        "semMotivo": "could not finish right now; try again shortly"
       },
       "avisoDaChave": {
         "embeddings_recusado": "Key saved: it generates text, but OpenAI refused the knowledge-base search (embeddings). The knowledge base now uses keyword search only — check the project's permissions and save the key again.",

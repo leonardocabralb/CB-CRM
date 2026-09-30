@@ -27,6 +27,10 @@ describe('1071 — Atlas', () => {
     expect(CODIGO).not.toMatch(/GRANT[^;]*ON TABLE cb_atlas_config TO (authenticated|anon)/);
   });
 
+  it('a conexão guarda o AMBIENTE do Atlas, nulo = o de verdade (o preview grava neste banco)', () => {
+    expect(CODIGO).toMatch(/\n\s+api_url\s+text,\n/);
+  });
+
   it('o vínculo: o membro só lê, pela forma da 1032', () => {
     expect(CODIGO).toContain('REVOKE ALL ON TABLE cb_atlas_clientes FROM PUBLIC, anon, authenticated;');
     expect(CODIGO).toContain('GRANT SELECT ON TABLE cb_atlas_clientes TO authenticated;');

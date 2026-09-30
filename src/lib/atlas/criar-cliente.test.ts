@@ -101,7 +101,7 @@ describe("criarOuReativarNoAtlas", () => {
   });
 
   it("achado RESCINDIDO: reativa o MESMO cadastro (D3), nunca cria outro", async () => {
-    achados = { clientes: [{ id: "antigo-1", status: "rescindido", appUrl: "https://app.example.com/#/clients/antigo-1" }], truncado: false };
+    achados = { clientes: [{ id: "antigo-1", status: "rescindido", appUrl: "https://app.example.com/#/clients/antigo-1", casouPor: ["chat_link"] }], truncado: false };
     const r = await rodar();
     expect(r).toEqual({ acao: "reativado", atlasClientId: "antigo-1", situacaoAnterior: "rescindido" });
     expect(chamadas.some((c) => c.metodo === "criar")).toBe(false);
@@ -114,7 +114,7 @@ describe("criarOuReativarNoAtlas", () => {
   });
 
   it("achado ATIVO: só vincula — nada é escrito no Atlas", async () => {
-    achados = { clientes: [{ id: "ativo-1", status: "ativo", appUrl: null }], truncado: false };
+    achados = { clientes: [{ id: "ativo-1", status: "ativo", appUrl: null, casouPor: ["phone"] }], truncado: false };
     expect(await rodar()).toEqual({ acao: "vinculado", atlasClientId: "ativo-1", situacao: "ativo" });
     expect(chamadas.map((c) => c.metodo)).toEqual(["buscar"]);
     expect(banco.tabelas.cb_atlas_clientes[0]).toMatchObject({ origem: "encontrada" });
@@ -128,7 +128,7 @@ describe("criarOuReativarNoAtlas", () => {
       ],
       truncado: false,
     };
-    await expect(rodar()).rejects.toThrow("há 2 cadastros no Atlas");
+    await expect(rodar()).rejects.toThrow("há 2 cadastros no Atlas que podem ser deste cliente");
     expect(chamadas.map((c) => c.metodo)).toEqual(["buscar"]);
     expect(banco.tabelas.cb_atlas_clientes ?? []).toHaveLength(0);
   });
@@ -151,7 +151,7 @@ describe("criarOuReativarNoAtlas", () => {
 
   it("cliente do Atlas já ligado a OUTRA ficha do CRM: não rouba o vínculo", async () => {
     banco.tabelas.cb_atlas_clientes = [{ id: "v2", account_id: CONTA, contact_id: "ficha-2", atlas_tenant_id: "t1", atlas_client_id: "ativo-1", origem: "encontrada" }];
-    achados = { clientes: [{ id: "ativo-1", status: "ativo", appUrl: null }], truncado: false };
+    achados = { clientes: [{ id: "ativo-1", status: "ativo", appUrl: null, casouPor: ["phone"] }], truncado: false };
     expect(await rodar()).toEqual({ acao: "ligado_a_outra_ficha", atlasClientId: "ativo-1", situacao: "ativo" });
     expect(banco.tabelas.cb_atlas_clientes).toEqual([expect.objectContaining({ contact_id: "ficha-2" })]);
   });
@@ -172,5 +172,74 @@ describe("criarOuReativarNoAtlas", () => {
   it("o vínculo que não grava depois de o Atlas ter sido escrito diz o que aconteceu", async () => {
     banco.falhar.add("cb_atlas_clientes:insert");
     await expect(rodar()).rejects.toThrow("o cliente foi criado no Atlas, mas o vínculo não foi gravado no CRM");
+    achados = { clientes: [{ id: "antigo-1", status: "rescindido", appUrl: null, casouPor: ["chat_link"] }], truncado: false };
+    await expect(rodar()).rejects.toThrow("o cliente foi reativado no Atlas, mas o vínculo não foi gravado no CRM");
+  });
+
+  it("CRÍTICO: casado só pelo e-mail ou pelo final do telefone — para SEM escrever no Atlas", async () => {
+    achados = { clientes: [{ id: "de-outra-pessoa", status: "rescindido", appUrl: null, casouPor: ["email"] }], truncado: false };
+    await expect(rodar()).rejects.toThrow("casa com este cliente só pelo e-mail");
+    achados = { clientes: [{ id: "de-outra-pessoa", status: "ativo", appUrl: null, casouPor: ["phone_last8"] }], truncado: false };
+    await expect(rodar()).rejects.toThrow("só pelo final do telefone");
+    achados = { clientes: [{ id: "de-outra-pessoa", status: "ativo", appUrl: null }], truncado: false };
+    await expect(rodar()).rejects.toThrow("nada foi alterado no Atlas");
+    expect(chamadas.map((c) => c.metodo)).toEqual(["buscar", "buscar", "buscar"]);
+    expect(banco.tabelas.cb_atlas_clientes ?? []).toHaveLength(0);
+  });
+
+  it("suspenso ou inativo no Atlas: para (o Atlas manda no contrato), nem pela busca nem pelo vínculo", async () => {
+    achados = { clientes: [{ id: "s1", status: "suspenso", appUrl: null, casouPor: ["chat_link"] }], truncado: false };
+    await expect(rodar()).rejects.toThrow("no Atlas está suspenso");
+    banco.tabelas.cb_atlas_clientes = [{ id: "v1", account_id: CONTA, contact_id: FICHA, atlas_tenant_id: "t1", atlas_client_id: "i1", origem: "criada" }];
+    noAtlas.set("i1", { id: "i1", status: "inativo", appUrl: null });
+    await expect(rodar()).rejects.toThrow("no Atlas está inativo");
+    expect(chamadas.some((c) => c.metodo === "atualizar")).toBe(false);
+  });
+
+  it("CRÍTICO: rescindido já ligado a OUTRA ficha — para ANTES de reativar (não grava o contrato desta no cadastro da outra)", async () => {
+    banco.tabelas.cb_atlas_clientes = [{ id: "v2", account_id: CONTA, contact_id: "ficha-2", atlas_tenant_id: "t1", atlas_client_id: "antigo-1", origem: "criada" }];
+    achados = { clientes: [{ id: "antigo-1", status: "rescindido", appUrl: null, casouPor: ["phone"] }], truncado: false };
+    await expect(rodar()).rejects.toThrow("já está ligado a outra ficha do CRM");
+    expect(chamadas.map((c) => c.metodo)).toEqual(["buscar"]);
+    expect(banco.tabelas.cb_atlas_clientes).toEqual([expect.objectContaining({ contact_id: "ficha-2" })]);
+  });
+
+  it("vínculo ÓRFÃO (a ficha antiga foi apagada): esta ficha o adota, sem linha nova", async () => {
+    banco.tabelas.cb_atlas_clientes = [{ id: "v3", account_id: CONTA, contact_id: null, atlas_tenant_id: "t1", atlas_client_id: "antigo-1", origem: "criada" }];
+    achados = { clientes: [{ id: "antigo-1", status: "finalizado", appUrl: null, casouPor: ["chat_link"] }], truncado: false };
+    expect(await rodar()).toMatchObject({ acao: "reativado", atlasClientId: "antigo-1" });
+    expect(banco.tabelas.cb_atlas_clientes).toEqual([expect.objectContaining({ id: "v3", contact_id: FICHA, origem: "reativada" })]);
+  });
+
+  it("CRÍTICO: falha ao reler o cliente do vínculo (não é o `not_found` do Atlas) mantém o vínculo", async () => {
+    banco.tabelas.cb_atlas_clientes = [{ id: "v1", account_id: CONTA, contact_id: FICHA, atlas_tenant_id: "t1", atlas_client_id: "c9", origem: "criada" }];
+    falha = new AtlasError("atlas_error", "get_client → 404 NOT_FOUND", 404);
+    await expect(rodar()).rejects.toThrow("Atlas: o Atlas devolveu um erro");
+    expect(banco.tabelas.cb_atlas_clientes).toHaveLength(1);
+  });
+
+  it("ficha sem nome: não cria (o Atlas recusaria com 'validação' genérica)", async () => {
+    await expect(rodar(entrada({ contato: { nome: "  ", telefone: "5511987654321", email: null } }))).rejects.toThrow("não tem nome");
+    expect(chamadas.map((c) => c.metodo)).toEqual(["buscar"]);
+  });
+
+  it("critério que o Atlas recusaria (e-mail sem @, telefone curto) fica fora da busca; o link vai sempre", async () => {
+    await rodar(entrada({ contato: { nome: "Cliente Exemplo", telefone: "12345", email: "nao tem" } }));
+    const busca = chamadas.find((c) => c.metodo === "buscar")!.args[0] as CriteriosDeBusca;
+    expect(busca.phone).toBeNull();
+    expect(busca.email).toBeNull();
+    expect(busca.chatLinkIds).toEqual(["conv-1", "conv-2", FICHA]);
+    expect((chamadas.find((c) => c.metodo === "criar")!.args[0] as DadosDoClienteNoAtlas).email).toBeNull();
+  });
+
+  it("validação recusada: o motivo nomeia os NOSSOS campos", async () => {
+    falha = new AtlasError("validacao", "400", 400, null, { codigoDoAtlas: "validation_error", campos: ["email", "phone"] });
+    await expect(rodar()).rejects.toThrow("o Atlas recusou os dados do cliente (validação: email, phone)");
+  });
+
+  it("conexão feita em OUTRO ambiente do Atlas (o staging, no preview): falha sem mandar a chave", async () => {
+    banco.tabelas.cb_atlas_config[0].api_url = "https://staging.example.com/functions/v1/client-webhook";
+    await expect(rodar()).rejects.toThrow("é de outro ambiente do Atlas");
+    expect(chamadas).toHaveLength(0);
   });
 });

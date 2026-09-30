@@ -137,9 +137,11 @@ negociação. ⚠️ O staging tem o MESMO id de escritório do CB em produção
 - **`src/lib/atlas/`**: `cliente.ts` (a API, erro vira código),
   `enderecos.ts` (constante do produto + `ATLAS_API_URL` para o staging),
   `conexao.ts` (conectar pelo `whoami`, exigindo Consultar/Criar/Atualizar
-  clientes; recusa chave de OUTRO escritório com vínculos gravados),
-  `formatar.ts` (o formato do n8n), `decisao.ts` (criar / reativar /
-  vincular / ambíguo), `criar-cliente.ts` (o passo, testável fora do motor).
+  clientes; recusa chave de OUTRO escritório com vínculos gravados; guarda o
+  AMBIENTE — o preview contra o staging não troca, apaga nem usa a conexão
+  de verdade), `formatar.ts` (o formato do n8n), `decisao.ts` (criar /
+  reativar / vincular / parar), `criar-cliente.ts` (o passo, testável fora do
+  motor).
 - **Cartão "Atlas"** em Integrações (`/api/cb/atlas`, admin): cola a chave,
   mostra o escritório; nenhuma chave volta.
 - **Passo `atlas_criar_cliente`** (último da automação de contrato
@@ -151,8 +153,24 @@ negociação. ⚠️ O staging tem o MESMO id de escritório do CB em produção
 **Decisões tomadas por mim (defaults, para o operador conferir):**
 estado pelo DDD só de número brasileiro (o n8n dava "SP" a número dos EUA);
 a reativação não mexe em nome, telefone, e-mail nem nota do Atlas; o cliente
-do Atlas já ligado a OUTRA ficha não é roubado; sem conexão, o passo FALHA
-com motivo (não há aviso ao ligar a automação).
+do Atlas já ligado a OUTRA ficha não é roubado (em curso: nada muda;
+encerrado: o passo PARA antes de reativar — provável ficha duplicada); sem
+conexão, o passo FALHA com motivo (não há aviso ao ligar a automação).
+Depois da revisão do PR #356:
+
+- **Inativo e suspenso NÃO são reativados**: o passo para e pede que a
+  equipe reative no Atlas (D2). O contrato pedido ao Atlas já dizia que,
+  para esses dois, a reativação é proposta que o operador confirma — só
+  rescindido e finalizado entram na D3 sem pergunta.
+- **Casamento fraco para**: um cadastro que casa SÓ pelo e-mail ou pelos 8
+  últimos dígitos (telefone guardado no Atlas sem DDD) não é reativado nem
+  vinculado; o motivo manda conferir e acertar o telefone lá. É o "liga
+  sozinho só com sinal forte" das Fases 2–4, aplicado já aqui.
+
+**Pendências conhecidas da Fase 0:** trocar o Atlas de ESCRITÓRIO (outra
+chave, outro `tenant`) exige apagar os vínculos à mão — sem tela ainda
+(Fase 2); duas execuções simultâneas do mesmo contato podem criar dois
+cadastros (a segunda falha no vínculo, com o motivo), como o `create_deal`.
 
 **Pergunta ao operador (D3 × a etiqueta):** na "Contrato fechado" tudo mora
 no ramo "NÃO tem a etiqueta Cliente Fechado"; o ramo SIM está vazio e 1.082

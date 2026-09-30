@@ -109,3 +109,54 @@ describe("lerChaveDoAtlas / desconectar / conferência", () => {
     expect(banco.tabelas.cb_atlas_config[0]).toMatchObject({ status: "conectado" });
   });
 });
+
+// ⚠️ O preview grava no banco da PRODUÇÃO (CLAUDE.md 8b): apontado para o
+// staging do Atlas, ele não pode trocar, apagar nem usar a conexão de verdade.
+describe("ambiente do Atlas (a instância de teste × a conexão de verdade)", () => {
+  const STAGING = "https://staging.example.com/functions/v1/client-webhook";
+  const DE_VERDADE = { account_id: CONTA, api_key: `cifrado:${CHAVE}`, api_url: null, atlas_tenant_id: "t1", status: "conectado", last_error: null };
+
+  it("CRÍTICO: a instância de teste NÃO conecta por cima da conexão de verdade (nem chama o Atlas)", async () => {
+    banco.tabelas.cb_atlas_config = [{ ...DE_VERDADE }];
+    let chamou = false;
+    const espiao = () => ({ ...fabrica(), whoami: async () => ((chamou = true), identidade as IdentidadeNoAtlas) });
+    expect(await conectarAtlas(banco.cliente, CONTA, "u1", "sk_outra_000000000000000000000", { cliente: espiao, ambiente: STAGING })).toEqual({
+      ok: false,
+      codigo: "outro_ambiente",
+    });
+    expect(chamou).toBe(false);
+    expect(banco.tabelas.cb_atlas_config).toEqual([expect.objectContaining({ api_key: `cifrado:${CHAVE}`, api_url: null })]);
+  });
+
+  it("sem conexão, a instância de teste conecta e marca o ambiente; a de verdade substitui a de teste esquecida", async () => {
+    expect((await conectarAtlas(banco.cliente, CONTA, "u1", CHAVE, { cliente: fabrica, ambiente: STAGING })).ok).toBe(true);
+    expect(banco.tabelas.cb_atlas_config[0].api_url).toBe(STAGING);
+    expect((await conectarAtlas(banco.cliente, CONTA, "u1", CHAVE, { cliente: fabrica, ambiente: null })).ok).toBe(true);
+    expect(banco.tabelas.cb_atlas_config[0].api_url).toBeNull();
+  });
+
+  it("CRÍTICO: a instância de teste não DESCONECTA a de verdade; a de verdade apaga qualquer uma", async () => {
+    banco.tabelas.cb_atlas_config = [{ ...DE_VERDADE }];
+    expect(await desconectarAtlas(banco.cliente, CONTA, STAGING)).toEqual({ ok: false, codigo: "outro_ambiente" });
+    expect(banco.tabelas.cb_atlas_config).toHaveLength(1);
+    banco.tabelas.cb_atlas_config[0].api_url = STAGING;
+    expect(await desconectarAtlas(banco.cliente, CONTA, null)).toEqual({ ok: true });
+    expect(banco.tabelas.cb_atlas_config).toHaveLength(0);
+  });
+
+  it("a chave de um ambiente nunca é lida para o outro", async () => {
+    banco.tabelas.cb_atlas_config = [{ ...DE_VERDADE }];
+    expect(await lerChaveDoAtlas(banco.cliente, CONTA, STAGING)).toEqual({ ok: false, codigo: "outro_ambiente" });
+    expect((await lerChaveDoAtlas(banco.cliente, CONTA, null)).ok).toBe(true);
+    banco.tabelas.cb_atlas_config[0].api_url = STAGING;
+    expect(await lerChaveDoAtlas(banco.cliente, CONTA, null)).toEqual({ ok: false, codigo: "outro_ambiente" });
+  });
+
+  it("o staging recusando uma chave não marca em erro a conexão de verdade", async () => {
+    banco.tabelas.cb_atlas_config = [{ ...DE_VERDADE }];
+    await registrarConferencia(banco.cliente, CONTA, "chave_invalida", STAGING);
+    expect(banco.tabelas.cb_atlas_config[0]).toMatchObject({ status: "conectado", last_error: null });
+    await registrarConferencia(banco.cliente, CONTA, "chave_invalida", null);
+    expect(banco.tabelas.cb_atlas_config[0]).toMatchObject({ status: "erro", last_error: "chave_invalida" });
+  });
+});

@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { decrypt, encrypt } from "@/lib/whatsapp/encryption";
 
 import { AtlasError, criarClienteAtlas, type ClienteAtlas, type CodigoDoErroAtlas } from "./cliente";
+import { ambienteDoAtlas } from "./enderecos";
 
 /**
  * Conectar e desconectar o Atlas — o I/O da conexão (`cb_atlas_config`, 1071).
@@ -12,9 +13,15 @@ import { AtlasError, criarClienteAtlas, type ClienteAtlas, type CodigoDoErroAtla
  * Atlas" usa estão ligadas no escritório, e só então gravar a chave CIFRADA.
  * A chave nunca volta por rota nenhuma, nem mascarada.
  *
- * ⚠️ Chave de OUTRO escritório do Atlas não reaproveita os vínculos já
- * gravados (`cb_atlas_clientes.atlas_tenant_id`): os ids de cliente são do
- * escritório antigo, e o botão e a faixa apontariam para cliente alheio.
+ * ⚠️ Chave de OUTRO escritório do Atlas é RECUSADA enquanto houver fichas
+ * ligadas a clientes do escritório anterior (`outro_escritorio`): os ids são
+ * de lá, e o botão e a faixa apontariam para cliente alheio. A saída hoje é
+ * apagar esses vínculos à mão (pendência da Fase 2 no plano).
+ *
+ * ⚠️ AMBIENTE (`api_url`, ver `enderecos.ts`): a instância apontada para
+ * outro Atlas (o staging, no preview que grava no banco da produção) não
+ * conecta por cima nem desconecta a conexão de outro ambiente
+ * (`outro_ambiente`), e a chave de um ambiente nunca é mandada ao outro.
  */
 
 /** O que o passo usa: procurar (Consultar), criar e reativar. */
@@ -26,7 +33,10 @@ export type CodigoDaConexao =
   | "nao_conectado"
   | "chave_ilegivel"
   | "outro_escritorio"
-  | "permissoes_faltando";
+  | "permissoes_faltando"
+  | "outro_ambiente"
+  /** A rota recusa a cola antes de falar com o Atlas (tamanho, espaço no meio). */
+  | "chave_mal_colada";
 
 type FabricaDeCliente = (chave: string) => ClienteAtlas;
 
@@ -56,8 +66,19 @@ export async function conectarAtlas(
   accountId: string,
   userId: string,
   chave: string,
-  opcoes: { cliente?: FabricaDeCliente } = {},
+  opcoes: { cliente?: FabricaDeCliente; ambiente?: string | null } = {},
 ): Promise<ResultadoDaConexao> {
+  const ambiente = opcoes.ambiente === undefined ? ambienteDoAtlas() : opcoes.ambiente;
+
+  // 0) A instância de TESTE não grava por cima da conexão de outro ambiente
+  //    (a do Atlas de verdade, no banco que o preview compartilha). A de
+  //    verdade pode substituir uma de teste esquecida.
+  if (ambiente !== null) {
+    const { data: atual, error } = await admin.from("cb_atlas_config").select("api_url").eq("account_id", accountId).maybeSingle();
+    if (error) return { ok: false, codigo: "db_error" };
+    if (atual && (atual.api_url ?? null) !== ambiente) return { ok: false, codigo: "outro_ambiente" };
+  }
+
   // 1) A chave vale? De qual escritório é? O que ele deixa fazer?
   let identidade;
   try {
@@ -85,6 +106,7 @@ export async function conectarAtlas(
     {
       account_id: accountId,
       api_key: encrypt(chave),
+      api_url: ambiente,
       atlas_tenant_id: identidade.tenantId,
       escritorio: identidade.escritorio,
       status: "conectado",
@@ -100,12 +122,23 @@ export async function conectarAtlas(
   return { ok: true, escritorio: identidade.escritorio };
 }
 
-/** Apaga a conexão. Os VÍNCULOS ficam: reconectar o mesmo escritório os reaproveita. */
+/**
+ * Apaga a conexão. Os VÍNCULOS ficam: reconectar o mesmo escritório os
+ * reaproveita. A instância de teste só apaga a conexão do PRÓPRIO ambiente.
+ */
 export async function desconectarAtlas(
   admin: SupabaseClient,
   accountId: string,
+  ambiente: string | null = ambienteDoAtlas(),
 ): Promise<{ ok: true } | { ok: false; codigo: CodigoDaConexao }> {
-  const { error } = await admin.from("cb_atlas_config").delete().eq("account_id", accountId);
+  if (ambiente !== null) {
+    const { data: atual, error } = await admin.from("cb_atlas_config").select("api_url").eq("account_id", accountId).maybeSingle();
+    if (error) return { ok: false, codigo: "db_error" };
+    if (atual && (atual.api_url ?? null) !== ambiente) return { ok: false, codigo: "outro_ambiente" };
+  }
+  let apagar = admin.from("cb_atlas_config").delete().eq("account_id", accountId);
+  if (ambiente !== null) apagar = apagar.eq("api_url", ambiente);
+  const { error } = await apagar;
   if (error) return { ok: false, codigo: "db_error" };
   return { ok: true };
 }
@@ -114,15 +147,20 @@ export async function desconectarAtlas(
 export async function lerChaveDoAtlas(
   admin: SupabaseClient,
   accountId: string,
-): Promise<{ ok: true; chave: string; tenantId: string } | { ok: false; codigo: "nao_conectado" | "db_error" | "chave_ilegivel" }> {
+  ambiente: string | null = ambienteDoAtlas(),
+): Promise<
+  { ok: true; chave: string; tenantId: string } | { ok: false; codigo: "nao_conectado" | "db_error" | "chave_ilegivel" | "outro_ambiente" }
+> {
   const { data, error } = await admin
     .from("cb_atlas_config")
-    .select("api_key, atlas_tenant_id")
+    .select("api_key, api_url, atlas_tenant_id")
     .eq("account_id", accountId)
     .maybeSingle();
   // Erro de leitura NÃO é "desconectado" (CLAUDE.md 8b).
   if (error) return { ok: false, codigo: "db_error" };
   if (!data) return { ok: false, codigo: "nao_conectado" };
+  // A chave do staging nunca vai à API de verdade, nem o contrário.
+  if ((data.api_url ?? null) !== ambiente) return { ok: false, codigo: "outro_ambiente" };
   const chave = decifrar(data.api_key);
   if (!chave) return { ok: false, codigo: "chave_ilegivel" };
   return { ok: true, chave, tenantId: String(data.atlas_tenant_id) };
@@ -136,20 +174,24 @@ const CODIGOS_DA_CHAVE: CodigoDoErroAtlas[] = ["chave_invalida", "api_fora_do_pl
  * conexão em erro; sucesso carimba `conferido_em` e limpa SÓ esses códigos.
  * Nunca lança.
  */
-export async function registrarConferencia(admin: SupabaseClient, accountId: string, codigo: CodigoDoErroAtlas | null): Promise<void> {
+export async function registrarConferencia(
+  admin: SupabaseClient,
+  accountId: string,
+  codigo: CodigoDoErroAtlas | null,
+  ambiente: string | null = ambienteDoAtlas(),
+): Promise<void> {
   const agora = new Date().toISOString();
   if (codigo !== null && !CODIGOS_DA_CHAVE.includes(codigo)) return;
+  // Só a conexão DESTE ambiente: o staging recusando uma chave não marca a de verdade.
+  const daConexao = (patch: Record<string, unknown>) => {
+    const q = admin.from("cb_atlas_config").update(patch).eq("account_id", accountId);
+    return ambiente === null ? q.is("api_url", null) : q.eq("api_url", ambiente);
+  };
   const { error } =
-    codigo === null
-      ? await admin.from("cb_atlas_config").update({ conferido_em: agora }).eq("account_id", accountId)
-      : await admin.from("cb_atlas_config").update({ status: "erro", last_error: codigo, updated_at: agora }).eq("account_id", accountId);
+    codigo === null ? await daConexao({ conferido_em: agora }) : await daConexao({ status: "erro", last_error: codigo, updated_at: agora });
   if (error) console.error("[atlas] não foi possível registrar a conferência da chave:", error.message);
   if (codigo === null) {
-    const { error: erroLimpeza } = await admin
-      .from("cb_atlas_config")
-      .update({ status: "conectado", last_error: null, updated_at: agora })
-      .eq("account_id", accountId)
-      .in("last_error", CODIGOS_DA_CHAVE);
+    const { error: erroLimpeza } = await daConexao({ status: "conectado", last_error: null, updated_at: agora }).in("last_error", CODIGOS_DA_CHAVE);
     if (erroLimpeza) console.error("[atlas] não foi possível limpar o aviso da chave:", erroLimpeza.message);
   }
 }

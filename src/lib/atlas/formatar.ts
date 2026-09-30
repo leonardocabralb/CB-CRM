@@ -12,7 +12,8 @@
  *   que erra das 21h à meia-noite); primeiro contato cai na criação do card,
  *   fechamento cai em "agora", proposta não tem reserva;
  * - valor do card em número (0 sem card), contrato "fixo" por padrão;
- * - vazio vai `null`, nunca `''`.
+ * - vazio vai `null`, nunca `''`; e-mail que não parece e-mail também (o
+ *   Atlas recusaria o cadastro inteiro).
  */
 
 import { FUSO_PADRAO, diaNoFuso } from "@/lib/agenda/fuso";
@@ -63,6 +64,22 @@ export function telefoneParaAtlas(telefone: string | null | undefined): string |
   return t === "" ? null : t;
 }
 
+/**
+ * O telefone como CRITÉRIO do `find_clients`: com menos de 10 dígitos o
+ * Atlas responde `validation_error` e derruba o passo inteiro — melhor
+ * procurar só pelo link e pelo e-mail.
+ */
+export function telefoneParaBusca(telefone: string | null | undefined): string | null {
+  const t = telefoneParaAtlas(telefone);
+  return t && /^\d{10,15}$/.test(t) ? t : null;
+}
+
+/** E-mail que se parece com e-mail (a ficha aceita qualquer texto); senão, `null`. */
+export function emailParaAtlas(email: string | null | undefined): string | null {
+  const e = (email ?? "").trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) ? e : null;
+}
+
 /** A sigla do estado pelo DDD — só de número brasileiro; senão, `null`. */
 export function ufDoTelefone(telefone: string | null | undefined): string | null {
   const t = telefoneCanonico(telefone);
@@ -108,7 +125,7 @@ export interface EntradaDoCliente {
 export function dadosParaCriar(e: EntradaDoCliente): DadosDoClienteNoAtlas {
   return {
     name: textoOuNulo(e.nome),
-    email: textoOuNulo(e.email),
+    email: emailParaAtlas(e.email),
     phone: telefoneParaAtlas(e.telefone),
     state: ufDoTelefone(e.telefone),
     contractType: e.tipoDeContrato,

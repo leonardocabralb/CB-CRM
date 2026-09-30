@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { AtlasError, MARCA_DE_SEGREDO, codigoDoErro, criarClienteAtlas, lerIdentidade } from "./cliente";
-import { API_DO_ATLAS, urlDaApiDoAtlas } from "./enderecos";
+import { API_DO_ATLAS, ambienteDoAtlas, urlDaApiDoAtlas } from "./enderecos";
 
 // Chave de TESTE — nenhuma chave real do Atlas.
 const CHAVE = "sk_teste_0000000000000000000000000000";
@@ -62,7 +62,10 @@ describe("os erros", () => {
 
   it("sem code, cai pelo status", () => {
     expect(codigoDoErro(401, null)).toBe("chave_invalida");
-    expect(codigoDoErro(404, null)).toBe("nao_encontrado");
+    // 404 SEM o `not_found` do Atlas é o gateway (endereço errado, função fora do ar), nunca "apagado".
+    expect(codigoDoErro(404, null)).toBe("atlas_error");
+    expect(codigoDoErro(404, "NOT_FOUND")).toBe("atlas_error");
+    expect(codigoDoErro(404, "not_found")).toBe("nao_encontrado");
     expect(codigoDoErro(429, null)).toBe("limite");
     expect(codigoDoErro(503, null)).toBe("fora_do_ar");
     expect(codigoDoErro(400, null)).toBe("atlas_error");
@@ -78,6 +81,26 @@ describe("os erros", () => {
     expect(e.message).toContain(MARCA_DE_SEGREDO);
   });
 
+  it("a chave que atravessa o corte de 300 caracteres também sai (limpa ANTES de cortar)", async () => {
+    const f = fetchFalso({ status: 502, corpo: `${"x".repeat(280)}${CHAVE} mais texto` });
+    const e = (await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).whoami().catch((x: unknown) => x)) as AtlasError;
+    expect(e.codigo).toBe("fora_do_ar");
+    expect(e.message).not.toContain(CHAVE.slice(0, 12));
+  });
+
+  it("validação: guarda só os NOSSOS nomes de campo recusados", async () => {
+    const f = fetchFalso({
+      status: 400,
+      corpo: { error: "Validation failed", code: "validation_error", fields: { email: "formato inválido", "<script>": "x", phone: "curto" } },
+    });
+    const e = (await criarClienteAtlas(CHAVE, f.fn, URL_TESTE)
+      .criar({ name: "Cliente Exemplo" }, "k")
+      .catch((x: unknown) => x)) as AtlasError;
+    expect(e.codigo).toBe("validacao");
+    expect(e.codigoDoAtlas).toBe("validation_error");
+    expect(e.campos).toEqual(["email", "phone"]);
+  });
+
   it("rede vira 'rede'", async () => {
     const f = fetchFalso(new Error(`connect ECONNREFUSED com ${CHAVE}`));
     const e = (await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).whoami().catch((x: unknown) => x)) as AtlasError;
@@ -85,9 +108,25 @@ describe("os erros", () => {
     expect(e.message).not.toContain(CHAVE);
   });
 
-  it("get_client com 404 é 'não existe' (null), não erro", async () => {
+  it("get_client com o `not_found` do Atlas é 'não existe' (null), não erro", async () => {
     const f = fetchFalso({ status: 404, corpo: { error: "Client not found", code: "not_found" } });
     expect(await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).ler("00000000-0000-4000-8000-000000000001")).toBeNull();
+  });
+
+  it("CRÍTICO: 404 do gateway (sem o `not_found`) e 200 sem cliente LANÇAM — quem lê null apagaria o vínculo", async () => {
+    const gateway = fetchFalso({ status: 404, corpo: { code: "NOT_FOUND", message: "Requested function was not found" } });
+    const e1 = (await criarClienteAtlas(CHAVE, gateway.fn, URL_TESTE).ler("c1").catch((x: unknown) => x)) as AtlasError;
+    expect(e1).toBeInstanceOf(AtlasError);
+    expect(e1.codigo).toBe("atlas_error");
+    const vazio = fetchFalso({ status: 200, corpo: { success: true } });
+    const e2 = (await criarClienteAtlas(CHAVE, vazio.fn, URL_TESTE).ler("c1").catch((x: unknown) => x)) as AtlasError;
+    expect(e2.codigo).toBe("resposta_inesperada");
+  });
+
+  it("2xx sem o id do cliente criado é 'resposta_inesperada' (pode ter gravado), nunca 'erro' comum", async () => {
+    const f = fetchFalso({ status: 200, corpo: { success: true } });
+    const e = (await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).criar({ name: "Cliente Exemplo" }, "k").catch((x: unknown) => x)) as AtlasError;
+    expect(e.codigo).toBe("resposta_inesperada");
   });
 });
 
@@ -106,10 +145,14 @@ describe("leitura das respostas", () => {
   it("find_clients: cada cliente com id, status e app_url; truncated vem junto", async () => {
     const f = fetchFalso({
       status: 200,
-      corpo: { success: true, truncated: true, clients: [{ id: "c1", status: "rescindido", app_url: "https://app.example.com/#/clients/c1" }, { semId: true }] },
+      corpo: {
+        success: true,
+        truncated: true,
+        clients: [{ id: "c1", status: "rescindido", app_url: "https://app.example.com/#/clients/c1", matched_by: ["phone", 7, "chat_link"] }, { semId: true }],
+      },
     });
     expect(await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).buscar({ email: "cliente@example.com" })).toEqual({
-      clientes: [{ id: "c1", status: "rescindido", appUrl: "https://app.example.com/#/clients/c1" }],
+      clientes: [{ id: "c1", status: "rescindido", appUrl: "https://app.example.com/#/clients/c1", casouPor: ["phone", "chat_link"] }],
       truncado: true,
     });
   });
@@ -122,5 +165,12 @@ describe("o endereço", () => {
     expect(urlDaApiDoAtlas("http://atlas.example.com/x")).toBe(API_DO_ATLAS);
     expect(urlDaApiDoAtlas("isto não é url")).toBe(API_DO_ATLAS);
     expect(urlDaApiDoAtlas(URL_TESTE)).toBe(URL_TESTE);
+  });
+
+  it("o ambiente: nulo = o Atlas de verdade (inclusive a variável com o próprio endereço do produto)", () => {
+    expect(ambienteDoAtlas(undefined)).toBeNull();
+    expect(ambienteDoAtlas("http://atlas.example.com/x")).toBeNull();
+    expect(ambienteDoAtlas(API_DO_ATLAS)).toBeNull();
+    expect(ambienteDoAtlas(URL_TESTE)).toBe(URL_TESTE);
   });
 });

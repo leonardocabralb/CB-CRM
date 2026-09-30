@@ -23,7 +23,9 @@ import { SettingsChip } from "./settings-chip";
  */
 
 /**
- * ⚠️ Lista FECHADA: código fora dela cai no texto genérico. Código novo em
+ * ⚠️ Lista FECHADA: código fora dela (o 429 e o 401/403 do próprio CRM, um
+ * 500) cai no texto NEUTRO `atlas.semMotivo` — nunca "o Atlas devolveu um
+ * erro", que mandaria o admin procurar o problema no Atlas. Código novo em
  * `cliente.ts`/`conexao.ts`/`cartao.ts` entra aqui E nos dois dicionários
  * (`atlas.motivo.<código>`, chave montada — há teste cobrando).
  */
@@ -39,15 +41,22 @@ export const CODIGOS_CONHECIDOS = [
   "acao_desconhecida",
   "fora_do_ar",
   "rede",
+  "resposta_inesperada",
   "atlas_error",
   "db_error",
   "nao_conectado",
   "chave_ilegivel",
   "outro_escritorio",
   "permissoes_faltando",
+  "outro_ambiente",
+  "chave_mal_colada",
 ] as const;
 
-/** As permissões do Atlas que o passo usa — o nome como a tela do Atlas mostra. */
+/**
+ * As permissões do Atlas que o passo usa. O texto de cada uma é o rótulo que
+ * a tela do Atlas mostra (só em português: no `en.json`, o rótulo vai com a
+ * tradução ao lado, como os rótulos do painel da Meta).
+ */
 export const PERMISSOES_CONHECIDAS = ["read_client", "create_client", "update_client"] as const;
 
 const CODIGOS = new Set<string>(CODIGOS_CONHECIDOS);
@@ -70,7 +79,7 @@ export function AtlasCard() {
     CODIGOS.has(codigo)
       ? // chave montada: `atlas.motivo.<codigo>` — lista fechada acima
         t(`atlas.motivo.${codigo}` as Parameters<typeof t>[0])
-      : t("atlas.motivo.atlas_error");
+      : t("atlas.semMotivo");
   const nomeDaPermissao = (p: string) => (PERMISSOES.has(p) ? t(`atlas.permissao.${p}` as Parameters<typeof t>[0]) : p);
 
   const carregar = useCallback(async () => {
@@ -119,6 +128,9 @@ export function AtlasCard() {
       setChave("");
       toast.success(t("atlas.conectado"));
       await carregar();
+    } catch {
+      // Rede caiu no meio: o botão voltaria calado.
+      if (vivoRef.current) setErro(t("atlas.semMotivo"));
     } finally {
       if (vivoRef.current) setSalvando(false);
     }
@@ -131,10 +143,13 @@ export function AtlasCard() {
     try {
       const res = await fetch("/api/cb/atlas", { method: "DELETE" });
       if (!res.ok) {
-        toast.error(t("salvarFalhou"));
+        const corpo = (await res.json().catch(() => ({}))) as { error?: string };
+        toast.error(corpo.error && CODIGOS.has(corpo.error) ? t("falha", { motivo: motivo(corpo.error) }) : t("salvarFalhou"));
         return;
       }
       await carregar();
+    } catch {
+      toast.error(t("salvarFalhou"));
     } finally {
       if (vivoRef.current) setDesconectando(false);
     }

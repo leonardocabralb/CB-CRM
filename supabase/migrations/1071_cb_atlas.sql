@@ -44,6 +44,11 @@ CREATE TABLE IF NOT EXISTS cb_atlas_config (
   account_id       uuid PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
   -- A chave da API do Atlas, CIFRADA (`encrypt()`); nunca sai por rota.
   api_key          text NOT NULL,
+  -- O AMBIENTE do Atlas em que a conexão nasceu: nulo = o Atlas de verdade;
+  -- o endereço = outro (`ATLAS_API_URL`, o staging no preview, que grava
+  -- neste mesmo banco). O app não usa a chave de um ambiente no outro, e a
+  -- instância de teste não sobrescreve nem apaga a conexão de verdade.
+  api_url          text,
   -- O que o `whoami` do Atlas disse ao conectar: de qual escritório é a chave.
   atlas_tenant_id  uuid NOT NULL,
   escritorio       text,
