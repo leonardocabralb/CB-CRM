@@ -574,6 +574,9 @@ export async function enviarTranscricaoAoAtlas(admin: SupabaseClient, entrada: E
       .eq("account_id", accountId)
       .eq("contact_id", contactId)
       .gte("realizada_em", desde)
+      // ⚠️ Teto no AGORA: a transcrição colada à mão aceita data futura, e a
+      // "mais recente" seria ela, não a reunião que aconteceu (Codex, #365).
+      .lte("realizada_em", entrada.agora.toISOString())
       .order("realizada_em", { ascending: false })
       .limit(5);
     // Erro de leitura nunca vira "não há transcrição" (CLAUDE.md 8b).

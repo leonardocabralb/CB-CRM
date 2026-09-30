@@ -485,6 +485,12 @@ describe("enviarTranscricaoAoAtlas", () => {
     expect(r).not.toContain("Transcrição da reunião");
   });
 
+  it("CRÍTICO: transcrição com data FUTURA (colada à mão) não passa na frente da reunião que aconteceu", async () => {
+    banco.tabelas.cb_reunioes_transcritas = [reuniao(), reuniao({ id: "futura", realizada_em: "2026-10-05T13:00:00.000Z", texto: "reunião que ainda não aconteceu" })];
+    await enviarTranscricaoAoAtlas(banco.cliente, entrada(), opcoes);
+    expect(enviado().transcript).toBe("Transcrição da reunião");
+  });
+
   it("notas da reunião: só com `true`", async () => {
     banco.tabelas.cb_reunioes_transcritas = [reuniao()];
     await enviarTranscricaoAoAtlas(banco.cliente, entrada({ incluirNotasDaReuniao: false, notasDoOperador: "" }), opcoes);
