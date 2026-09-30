@@ -173,6 +173,8 @@ describe("os sinais do vínculo automático", () => {
       { atlasClientId: "atlas-1", contactId: "ficha-a" },
       { atlasClientId: "atlas-6", contactId: "ficha-e" },
     ]);
+    // As fichas DISPUTADAS (b, c, d) também ficam reservadas: o telefone não as liga a um terceiro.
+    expect([...r.fichasTocadas].sort()).toEqual(["ficha-a", "ficha-b", "ficha-c", "ficha-d", "ficha-e"]);
     expect(r.ambiguos).toBe(3);
     expect([...r.comAlgumaFicha].sort()).toEqual(["atlas-1", "atlas-3", "atlas-4", "atlas-5", "atlas-6"]);
   });

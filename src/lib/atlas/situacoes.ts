@@ -507,14 +507,15 @@ async function vincularPeloLink(ctx: Contexto): Promise<void> {
     if (erroFichas) throw new Error(`fichas do link: ${erroFichas.message}`);
     for (const f of (fichas ?? []) as { id: string }[]) contatos.add(String(f.id));
   }
-  const { pares, ambiguos, comAlgumaFicha } = candidatosPeloLink(
+  const { pares, ambiguos, comAlgumaFicha, fichasTocadas } = candidatosPeloLink(
     base.map((c) => ({ id: c.id, uuids: c.sinais.uuidsDoLink })),
     conversas,
     contatos,
   );
   ctx.contagem.ambiguos += ambiguos;
   ctx.comFichaPeloLink = comAlgumaFicha;
-  ctx.fichasDoLink = new Set(pares.map((p) => p.contactId));
+  // Reservadas para o telefone: TODA ficha que o link citou, aceita ou disputada.
+  ctx.fichasDoLink = fichasTocadas;
   for (const p of await descartados(
     ctx,
     pares.filter((p) => ctx.semVinculo.has(p.atlasClientId)),
