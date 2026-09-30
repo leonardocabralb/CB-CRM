@@ -386,6 +386,38 @@ describe("validateTriggerForActivation", () => {
     }
   });
 
+  it("não repetir por N horas: inteiro de 1 a 720, só nos gatilhos por mensagem", () => {
+    // Inválido seria prazo que a tela mostra e o motor ignora (`horasSemRepetir`
+    // devolve null): o aviso sairia a cada mensagem.
+    for (const valor of [1, 24, 720, undefined, null]) {
+      expect(
+        validateTriggerForActivation("new_message_received", { nao_repetir_horas: valor }),
+      ).toEqual([]);
+    }
+    for (const valor of [0, 1.5, 721, "24", -3]) {
+      expect(
+        validateTriggerForActivation("new_message_received", { nao_repetir_horas: valor }),
+      ).toEqual([
+        {
+          path: "trigger.nao_repetir_horas",
+          message: "nao_repetir_horas must be a whole number from 1 to 720",
+          codigo: "gatilho_nao_repetir_invalido",
+        },
+      ]);
+    }
+    // Junto da config própria do gatilho.
+    expect(
+      validateTriggerForActivation("keyword_match", { keywords: ["oi"], nao_repetir_horas: 0 }).map(
+        (i) => i.path,
+      ),
+    ).toEqual(["trigger.nao_repetir_horas"]);
+    // A chave que sobrou da troca de gatilho: o motor a ignora, a tela a
+    // esconde — não é pendência.
+    expect(
+      validateTriggerForActivation("tag_added", { tag_id: "t1", nao_repetir_horas: 0 }),
+    ).toEqual([]);
+  });
+
   it("accepts a valid keyword_match config", () => {
     expect(
       validateTriggerForActivation("keyword_match", {
