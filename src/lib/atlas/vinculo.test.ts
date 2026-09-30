@@ -44,6 +44,7 @@ function fabrica(): ClienteAtlas {
     buscar: nao,
     criar: nao,
     atualizar: nao,
+    negociacoes: nao,
     ler: async (id: string) => {
       lidos.push(id);
       if (falha) throw falha;

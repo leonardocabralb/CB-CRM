@@ -37,6 +37,7 @@ import { CASOU_POR, ORIGENS_DO_VINCULO } from "@/lib/atlas/leitura";
 import { cn } from "@/lib/utils";
 
 import { AbrirNoAtlas } from "../abrir-no-atlas";
+import { NegociacoesDoAtlas } from "./negociacoes-do-atlas";
 import { TituloDeSecao } from "./titulo-de-secao";
 
 type T = ReturnType<typeof useTranslations<"Inbox.atlas">>;
@@ -308,6 +309,10 @@ export function AbaAtlas({
       <p className={cn("px-1 text-[11px]", v.velha ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground/70")}>
         {lida ? (v.velha ? t("leituraAntiga", { quando: lida }) : t("dadosDe", { quando: lida })) : t("leituraNunca")}
       </p>
+      {/* A negociação (Fase 3): lida NA HORA no Atlas, só com o vínculo fora
+          da lixeira (lá o Atlas responde `not_found`). Montada só com a aba
+          aberta: é a montagem que dispara a leitura. */}
+      <NegociacoesDoAtlas key={contactId} contactId={contactId} />
     </div>
   );
 }

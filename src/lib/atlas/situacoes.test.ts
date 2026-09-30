@@ -84,6 +84,9 @@ function fabrica(): ClienteAtlas {
       lidos.push(id);
       return ler(id);
     },
+    negociacoes: async () => {
+      throw new Error("não usado");
+    },
   };
 }
 

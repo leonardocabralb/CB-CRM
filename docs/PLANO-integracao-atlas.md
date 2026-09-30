@@ -31,8 +31,8 @@ qualquer um que também use o Atlas, **só pela API pública do Atlas**, com
 |---|---|---|---|
 | 1 | Faixa "Cliente rescindido / finalizado" pela MARCA da etapa (sem Atlas) | nada | **No ar** (PR #355, 29/09/2026): 1070 aplicada, etapas do CB marcadas, e2e no preview feito |
 | 0 | Conectar pela chave + passo "Criar cliente no Atlas" (reativa quem já existe) no lugar da perna do Atlas no n8n | Prioridade 1 da API do Atlas em staging | **No `main`** (PR #356, 30/09/2026; 1071) |
-| 2 | Vínculo contato ↔ cliente do Atlas + botão "Abrir no Atlas" + faixa também pela situação do Atlas | Fase 0; a API nova do Atlas em produção (promoção pelo Dev) | **Em curso**: PR A (servidor, 1072) no `main` (#357); PR B (tela, sem migration, branch `feat/atlas-fase-2-tela`) em revisão |
-| 3 | Aba "Atlas" com o histórico de negociação | Prioridade 3 do Atlas (leitura de negociação com permissão própria) | Planejada |
+| 2 | Vínculo contato ↔ cliente do Atlas + botão "Abrir no Atlas" + faixa também pela situação do Atlas | Fase 0; a API nova do Atlas em produção (promoção pelo Dev) | **No `main`**: PR A (servidor, 1072, #357 e #358) e PR B (tela, sem migration, #361, 30/09/2026; e2e no preview contra o staging) |
+| 3 | Aba "Atlas" com o histórico de negociação | Prioridade 3 do Atlas (leitura de negociação com permissão própria); a aba do PR B | **No `main`** (PR #363, 30/09/2026; sem migration): bancos, contratos, propostas e acordos lidos na hora na aba Atlas; allowlist campo a campo; e2e no preview (staging) |
 | 4 | Mover o card por automação quando a situação muda no Atlas | Fase 2 | **Em curso**: PR D (`feat/atlas-fase-4-gatilho`, 1073) |
 
 A ordem 1 → 0 é de propósito: a Fase 0 depende da API nova do Atlas, e a
@@ -314,4 +314,10 @@ então disparam, sem trava de idade, por decisão do operador).
   arrastaria o card novo do Comercial de um ex-cliente que voltou). Nunca
   dispara na primeira vez que o CRM vê o cliente.
 - **Aba de negociação** (Fase 3): só leitura na hora, sem guardar valores no
-  CRM; sem texto livre.
+  CRM; sem texto livre. Visível a qualquer membro que vê a conversa, como as
+  Cobranças (decisão do operador, 30/09/2026). `read_negotiations` é opcional
+  e não marca a conexão; baldes de 20/min por usuário e por conta. Regras:
+  `.claude/rules/integracoes-atlas.md`, "Aba de negociação".
+  Montada na aba Atlas (no vínculo fora da lixeira), com o PR C empilhado
+  sobre o B. Antes da promoção da API do Atlas a produção nem conectava (sem
+  `whoami`): não há estado de "ação não suportada".
