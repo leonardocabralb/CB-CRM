@@ -175,18 +175,22 @@ export async function dispararMudancas(admin: SupabaseClient, accountId: string,
   const lista = (pendentes ?? []) as MudancaNaFila[];
   if (lista.length === 0) return { ok: true, contagem };
 
-  // As automações ligadas do gatilho, UMA leitura para todas as mudanças.
-  const { data: automacoes, error: erroAutomacoes } = await admin
-    .from("automations")
-    .select("id, name, trigger_config")
-    .eq("account_id", accountId)
-    .eq("trigger_type", GATILHO_DO_ATLAS)
-    .eq("is_active", true);
-  if (erroAutomacoes) {
-    console.error(`[atlas] disparo das mudanças da conta ${accountId}: as automações não puderam ser lidas:`, erroAutomacoes.message);
-    return { ok: false, codigo: "db_error", contagem };
-  }
-  const ligadas = (automacoes ?? []) as AutomacaoDoGatilho[];
+  // As automações ligadas do gatilho, relidas POR MUDANÇA, logo antes do
+  // casamento: lidas uma vez para o lote, a edição feita por um admin no
+  // meio dele (outra situação, outro funil) casaria a mudança seguinte pela
+  // config VELHA — e o motor, que aceita a automação do disparador só pelo
+  // `automation_id`, rodaria os passos atuais (achado do Codex no #362).
+  // Mudança é rara: a consulta a mais é barata. Falha = volta à fila.
+  const lerLigadas = async (): Promise<AutomacaoDoGatilho[]> => {
+    const { data, error } = await admin
+      .from("automations")
+      .select("id, name, trigger_config")
+      .eq("account_id", accountId)
+      .eq("trigger_type", GATILHO_DO_ATLAS)
+      .eq("is_active", true);
+    if (error) throw new FalhaDeLeitura(`as automações não puderam ser lidas: ${error.message}`);
+    return (data ?? []) as AutomacaoDoGatilho[];
+  };
 
   for (const m of lista) {
     if (Date.now() >= prazoMs) break;
@@ -269,8 +273,8 @@ export async function dispararMudancas(admin: SupabaseClient, accountId: string,
       }
       const contactId = v.contact_id;
 
-      // 5) As automações que escutam esta situação.
-      const casam = ligadas.filter((a) => casaSituacao(a.trigger_config, m.situacao_nova));
+      // 5) As automações que escutam esta situação (relidas agora).
+      const casam = (await lerLigadas()).filter((a) => casaSituacao(a.trigger_config, m.situacao_nova));
       if (casam.length === 0) {
         await concluir("sem_automacao", `nenhuma automação ativa escuta a situação "${situacaoComparavel(m.situacao_nova)}"`);
         continue;

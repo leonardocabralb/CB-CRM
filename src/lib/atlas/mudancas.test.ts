@@ -119,6 +119,20 @@ describe("dispararMudancas — o caminho feliz", () => {
     expect(fila()[0].detalhe).toContain("Automação aut-jur: executada");
   });
 
+  it("CRÍTICO: a config é relida POR MUDANÇA — o admin tira a situação no meio do lote e a mudança seguinte não roda", async () => {
+    fila().push(mudanca({ id: "m2", atlas_client_id: "a2", created_at: "2026-09-30T14:51:00.000Z" }));
+    banco.tabelas.cb_atlas_clientes.push(vinculo({ id: "v2", atlas_client_id: "a2", contact_id: "ficha-2" }));
+    banco.tabelas.deals.push({ id: "card-2", account_id: CONTA, contact_id: "ficha-2", pipeline_id: JURIDICO, status: "open" });
+    resposta = () => {
+      // Salvo no construtor enquanto o lote roda: a automação passa a escutar só "finalizado".
+      banco.tabelas.automations[0].trigger_config = { situacoes: ["finalizado"], pipeline_ids: [JURIDICO] };
+      return rodou();
+    };
+    await rodar();
+    expect(disparos).toHaveLength(1);
+    expect(fila().find((m) => m.id === "m2")).toMatchObject({ estado: "feito", resultado: "sem_automacao" });
+  });
+
   it("ex-cliente que voltou pelo Comercial: com os DOIS funis marcados, o card do Comercial é o do evento", async () => {
     banco.tabelas.deals = [{ id: "card-com", account_id: CONTA, contact_id: "ficha-1", pipeline_id: COMERCIAL, status: "open" }];
     banco.tabelas.cb_atlas_clientes[0].situacao = "ativo";

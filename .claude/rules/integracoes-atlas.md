@@ -316,6 +316,9 @@ OBRIGATÓRIO; card fora do funil não é mexido (`sem_card`); SEM trava de
   Decide o dado, NUNCA o relógio: trava de idade poria `feito` na chave, e a
   página relida não enfileiraria de novo. As nunca tentadas vêm primeiro
   (`processando_desde`): a espera não trava a fila.
+- As automações ligadas são relidas POR MUDANÇA, logo antes do casamento
+  (a edição no meio do lote casaria pela config velha; o motor aceita a do
+  disparador só pelo `automation_id`).
 - ⚠️⚠️ **Cards e conversa lidos UMA vez, ANTES de disparar qualquer
   automação** (a união dos funis das que casam; a conversa por consulta
   própria — `conversaDoContato` do ZapSign engole o erro). Falha aqui =
