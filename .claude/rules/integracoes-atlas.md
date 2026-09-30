@@ -303,7 +303,8 @@ OBRIGATÓRIO; card fora do funil não é mexido (`sem_card`); SEM trava de
   leitura, o vínculo novo (nasce com a situação), `importado → ativo`,
   `em_negociacao` (vale `ativo`), a correção nem a mudança sem data. A
   `mudou` entra na fila ANTES da escrita do vínculo (`gravarDecisao`, também
-  na conferência da lixeira); 23505 = já registrada (a sobreposição); a
+  na conferência da lixeira), com a POSSE provada logo antes (reconexão com
+  outro escritório no meio da página); 23505 = já registrada (a sobreposição); a
   cerca de recência que recusa a escrita marca `superada` (só `pendente`).
 - ⚠️⚠️ **Dispara DEPOIS do fechamento do ciclo** (cadeado da leitura solto),
   pelo `rodarCicloDoAtlas` e pelo "Ler agora", com reivindicação PRÓPRIA

@@ -700,6 +700,30 @@ describe("Fase 4 (1073): a decisão `mudou` entra na fila do gatilho", () => {
     expect(banco.tabelas.cb_atlas_clientes[0]).toMatchObject({ situacao: "rescindido", situacao_desde: "2026-09-30T14:00:00.000Z" });
   });
 
+  it("CRÍTICO: reconexão com OUTRO escritório no meio da página, antes de enfileirar: a mudança do escritório velho NÃO entra na fila", async () => {
+    banco.tabelas.cb_atlas_clientes = [vinculo("v1", "a1")];
+    let listou = false;
+    listar = () => {
+      listou = true;
+      return pagina([mudou()]);
+    };
+    const de = banco.cliente.from.bind(banco.cliente);
+    (banco.cliente as unknown as { from: (t: string) => Record<string, unknown> }).from = (t: string) => {
+      const b = de(t) as unknown as Record<string, (...a: unknown[]) => unknown>;
+      if (t === "cb_atlas_clientes" && listou) {
+        const ler = b.select;
+        b.select = (...a: unknown[]) => {
+          // A página já provou a posse; o admin conecta o escritório B bem aqui.
+          Object.assign(banco.tabelas.cb_atlas_config[0], { atlas_tenant_id: "t2", sincronizando_desde: null, situacoes_lidas_ate: null });
+          return ler(...a);
+        };
+      }
+      return b;
+    };
+    expect(await rodar()).toMatchObject({ ok: false, codigo: "cadeado_perdido" });
+    expect(banco.tabelas.cb_atlas_mudancas).toHaveLength(0);
+  });
+
   it("a cerca de recência recusou a escrita (o passo gravou depois): a mudança sai superada", async () => {
     banco.tabelas.cb_atlas_clientes = [vinculo("v1", "a1")];
     listar = () => {

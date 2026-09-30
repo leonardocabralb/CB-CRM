@@ -317,6 +317,12 @@ async function gravarDecisao(ctx: Contexto, vinculo: VinculoLido, cliente: Pick<
   if (!decisao.grava) return;
   const desde = viraEvento(decisao) && vinculo.situacao && cliente.situacaoDesde ? new Date(cliente.situacaoDesde).toISOString() : null;
   if (desde) {
+    // ⚠️ A posse, logo antes: a prova da página foi no começo dela, e uma
+    // reconexão com OUTRO escritório no meio deixaria esta mudança do
+    // escritório anterior na fila da conexão nova (achado do Codex no #362;
+    // o disparo não a moveria — o vínculo relido é do escritório atual —,
+    // mas o cartão a mostraria). Mudança é rara: a escrita a mais é barata.
+    await provarPosse(ctx);
     const { error } = await ctx.admin.from("cb_atlas_mudancas").insert({
       account_id: ctx.accountId,
       api_url: ctx.ambiente,
