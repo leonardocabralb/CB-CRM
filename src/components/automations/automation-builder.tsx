@@ -47,7 +47,9 @@ import {
   CircleAlert,
   TriangleAlert,
   Pin,
+  UserPlus,
 } from "lucide-react"
+import Link from "next/link"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -267,6 +269,9 @@ const STEP_META: Record<AutomationStepType, StepMeta> = {
   // Não fala com ninguém: muda por qual número a conversa corre, como o
   // `set_ai` muda quem responde — mesma borda.
   pin_conversation_channel: { label: "pin_conversation_channel", icon: Pin, border: "border-l-violet-500" },
+  // Não fala com ninguém: cria (ou reativa) o cliente no Atlas — mesma borda
+  // dos passos que mexem em outras peças, não em quem conversa.
+  atlas_criar_cliente: { label: "atlas_criar_cliente", icon: UserPlus, border: "border-l-violet-500" },
 }
 
 const ADDABLE_STEPS: AutomationStepType[] = [
@@ -294,6 +299,7 @@ const ADDABLE_STEPS: AutomationStepType[] = [
   "close_conversation",
   "send_to_number",
   "create_task",
+  "atlas_criar_cliente",
 ]
 
 /**
@@ -425,6 +431,10 @@ function blankConfig(type: AutomationStepType): Record<string, unknown> {
     // cobra a escolha (`fixar_sem_conexao`).
     case "pin_conversation_channel":
       return { channel_id: "" }
+    // Contrato fixo e nenhum campo de data: o Atlas recebe as reservas de
+    // sempre (primeiro contato = criação do card; fechamento = agora).
+    case "atlas_criar_cliente":
+      return { tipo_de_contrato: "fixo" }
     // Prazo HOJE por padrão, e sem hora: a tarefa que uma automação abre é
     // quase sempre "faça isso agora" (o contrato fechou). Nascer com prazo
     // distante faria o passo, aceito sem abrir a config, criar tarefa que não
@@ -3567,6 +3577,175 @@ function FixarConversaFields({
 }
 
 /**
+ * A conexão do Atlas vista do construtor, pelo cartão de Integrações
+ * (`GET /api/cb/atlas`, só admin). ⚠️ Qualquer resposta que não é 200 (membro
+ * sem admin, limite, rede) é "não sei" — nunca "não conectado".
+ */
+type ConexaoDoAtlasNaTela = "carregando" | "conectado" | "nao_conectado" | "erro" | "nao_sei"
+
+function useConexaoDoAtlas(): ConexaoDoAtlasNaTela {
+  const [estado, setEstado] = useState<ConexaoDoAtlasNaTela>("carregando")
+  useEffect(() => {
+    let vivo = true
+    void (async () => {
+      let lido: ConexaoDoAtlasNaTela = "nao_sei"
+      try {
+        const res = await fetch("/api/cb/atlas", { cache: "no-store" })
+        if (res.ok) {
+          const corpo = (await res.json()) as { cartao?: { estado?: unknown } } | null
+          const e = corpo?.cartao?.estado
+          if (e === "conectado" || e === "nao_conectado" || e === "erro") lido = e
+        }
+      } catch {
+        // Rede: "não sei".
+      }
+      if (vivo) setEstado(lido)
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [])
+  return estado
+}
+
+/**
+ * Um campo de DATA da conta para o passo do Atlas, gravado pela `field_key`
+ * (a chave que o motor lê em `camposCru`). "— não usar —" sempre existe: sem
+ * campo, o Atlas recebe a reserva de sempre (a ajuda diz qual). A chave
+ * gravada que a lista não traz fica como opção — "apagado" só com a lista
+ * CARREGADA; carregando ou falhando, `ListaSemEscolha` e o valor intacto.
+ */
+function CampoDeDataDoAtlas({
+  rotulo,
+  ajuda,
+  value,
+  onChange,
+  campos,
+  estado,
+  t,
+}: {
+  rotulo: string
+  ajuda: string
+  value: unknown
+  onChange: (chave: string | null) => void
+  campos: CustomField[]
+  estado: EstadoDaLista
+  t: ReturnType<typeof useTranslations>
+}) {
+  const gravado = typeof value === "string" ? value.trim() : ""
+  const conhecido = !gravado || campos.some((f) => f.field_key === gravado)
+  return (
+    <FieldBlock label={rotulo}>
+      {estado === "pronto" ? (
+        <select
+          value={gravado}
+          onChange={(e) => onChange(e.target.value || null)}
+          className={SELECT_CLASS}
+        >
+          <option value="">{t("atlas.naoUsar")}</option>
+          {campos.map((f) => (
+            <option key={f.id} value={f.field_key}>
+              {f.field_name}
+            </option>
+          ))}
+          {!conhecido && <option value={gravado}>{t("atlas.campoSumiu")}</option>}
+        </select>
+      ) : (
+        <ListaSemEscolha estado={estado} vazio={t("atlas.naoUsar")} t={t} />
+      )}
+      <p className="mt-1 text-[11px] text-muted-foreground">{ajuda}</p>
+    </FieldBlock>
+  )
+}
+
+/**
+ * "Criar cliente no Atlas" (Fase 0 de docs/PLANO-integracao-atlas.md): o tipo
+ * de contrato e os três campos de data que vão ao Atlas. ⚠️ A chave do Atlas
+ * NUNCA passa por aqui — é da conta, em Integrações; esta tela só diz se ela
+ * está conectada. Os campos são os de DATA da CONTA (recortados por
+ * `accountId`, nunca só pela RLS).
+ */
+function AtlasCriarClienteFields({
+  cfg,
+  set,
+  t,
+}: {
+  cfg: Record<string, unknown>
+  set: (patch: Record<string, unknown>) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const { customFields, carga } = useResources()
+  const { accountId } = useAuth()
+  const conexao = useConexaoDoAtlas()
+  const camposDeData = useMemo(
+    () =>
+      accountId
+        ? customFields.filter((f) => f.account_id === accountId && f.field_type === TIPO_DATA)
+        : [],
+    [customFields, accountId],
+  )
+  const estado: EstadoDaLista = accountId ? carga.customFields : "carregando"
+  const tipo = cfg.tipo_de_contrato === "mensal" ? "mensal" : "fixo"
+  return (
+    <>
+      {conexao === "nao_conectado" || conexao === "erro" ? (
+        <p className="mb-2 text-xs text-amber-700 dark:text-amber-300">
+          {conexao === "nao_conectado" ? t("atlas.conexaoNaoConectado") : t("atlas.conexaoErro")}{" "}
+          <Link href="/settings?tab=integracoes" className="underline">
+            {t("atlas.abrirIntegracoes")}
+          </Link>
+        </p>
+      ) : (
+        <p className="mb-2 text-[11px] text-muted-foreground">
+          {conexao === "conectado" ? t("atlas.conexaoConectado") : t("atlas.conexaoNaoSei")}
+        </p>
+      )}
+      <FieldBlock label={t("atlas.tipoLabel")}>
+        <select
+          value={tipo}
+          onChange={(e) => set({ tipo_de_contrato: e.target.value })}
+          className={SELECT_CLASS}
+        >
+          <option value="fixo">{t("atlas.tipoFixo")}</option>
+          <option value="mensal">{t("atlas.tipoMensal")}</option>
+        </select>
+      </FieldBlock>
+      <CampoDeDataDoAtlas
+        rotulo={t("atlas.primeiroContatoLabel")}
+        ajuda={t("atlas.primeiroContatoHelp")}
+        value={cfg.campo_primeiro_contato}
+        onChange={(chave) => set({ campo_primeiro_contato: chave })}
+        campos={camposDeData}
+        estado={estado}
+        t={t}
+      />
+      <CampoDeDataDoAtlas
+        rotulo={t("atlas.propostaLabel")}
+        ajuda={t("atlas.propostaHelp")}
+        value={cfg.campo_proposta}
+        onChange={(chave) => set({ campo_proposta: chave })}
+        campos={camposDeData}
+        estado={estado}
+        t={t}
+      />
+      <CampoDeDataDoAtlas
+        rotulo={t("atlas.fechamentoLabel")}
+        ajuda={t("atlas.fechamentoHelp")}
+        value={cfg.campo_fechamento}
+        onChange={(chave) => set({ campo_fechamento: chave })}
+        campos={camposDeData}
+        estado={estado}
+        t={t}
+      />
+      {estado === "pronto" && camposDeData.length === 0 && (
+        <p className="mb-2 text-[11px] text-muted-foreground">{t("atlas.semCamposDeData")}</p>
+      )}
+      <p className="text-[11px] text-muted-foreground">{t("atlas.ajuda")}</p>
+    </>
+  )
+}
+
+/**
  * A janela de horário — dois campos de hora e a caixa "só de segunda a
  * sexta", tudo no FUSO DO ESCRITÓRIO (o motor lê por `hora-do-dia.ts`; o
  * contêiner roda em UTC). Serve a DOIS passos, com textos próprios (`para`):
@@ -4383,6 +4562,8 @@ function StepEditor({
           t={t}
         />
       )
+    case "atlas_criar_cliente":
+      return <AtlasCriarClienteFields cfg={cfg} set={set} t={t} />
     case "create_task":
       return (
         <>
@@ -4627,6 +4808,10 @@ function previewFor(
       const id = step.step_config.channel_id
       return (typeof id === "string" && id && recursos.channels.find((c) => c.id === id)?.label) || ""
     }
+    case "atlas_criar_cliente":
+      return `${t("atlas.tipoLabel")}: ${
+        step.step_config.tipo_de_contrato === "mensal" ? t("atlas.tipoMensal") : t("atlas.tipoFixo")
+      }`
     default:
       return ""
   }

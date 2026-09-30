@@ -203,7 +203,7 @@ Volta para `main` por PR no CB-CRM.
 - `profiles.id` ≠ `profiles.user_id`: `deals.assigned_to` guarda
   `profiles.id`; `cb_tasks`, `conversations` e `notifications` guardam o id
   do LOGIN. Trocar dá 0 linhas, sem erro.
-- Apagar contato leva conversa e mensagens (CASCADE) e deixa ~17 tabelas com
+- Apagar contato leva conversa e mensagens (CASCADE) e deixa ~18 tabelas com
   ponteiro nulo (card em branco no Kanban). Fundir fichas = a receita de
   `.claude/rules/supabase.md`; `merge_duplicate_contacts` não serve.
 - Negócio só nasce por `createDeal` no servidor (exceção: formulário do
@@ -573,6 +573,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   ficha criada pelo CRM, cadeado do ciclo, webhook, régua.
 - `.claude/rules/integracoes-zapsign.md` — assinatura move o card: webhook
   pelo cabeçalho, releitura, casamento sem criar contato, cadeado do disparo.
+- `.claude/rules/integracoes-atlas.md` — chave do Atlas por conta, passo
+  "Criar cliente no Atlas" (procura, cria, reativa, vincula), vínculo 1:1.
 - `.claude/rules/ia.md` — Radar, transcrição de áudio, chaves e modelos por
   módulo (Integrações).
 - `.claude/rules/ia-agentes.md` — o que cada agente de IA vê (acesso, blocos)

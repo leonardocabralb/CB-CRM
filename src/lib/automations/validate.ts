@@ -14,6 +14,7 @@ import {
 import { ehGatilhoDaRegua, horaDeEnvioValida } from '@/lib/asaas/regua'
 import { ehMeta, ehWhatsApp } from '@/lib/cb-channels/transporte'
 import type { CbChannelKind } from '@/lib/cb-channels/repo'
+import { TIPOS_DE_CONTRATO } from '@/lib/atlas/formatar'
 
 // ------------------------------------------------------------
 // Pre-flight config validation for automations about to be activated.
@@ -431,6 +432,32 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       // as conexões da conta, em `validateChannelScopeForActivation`.
       if (!nonEmpty(c.channel_id)) {
         issues.push({ path: `${path}.channel_id`, message: 'connection is required', codigo: 'fixar_sem_conexao' })
+      }
+      break
+    case 'atlas_criar_cliente':
+      // Só a FORMA: nada é obrigatório (sem campo de data, o Atlas recebe as
+      // reservas de sempre). Que o Atlas está conectado é do motor, na hora —
+      // a conexão pode cair depois de a automação ser ligada.
+      if (
+        c.tipo_de_contrato !== undefined &&
+        c.tipo_de_contrato !== null &&
+        !(TIPOS_DE_CONTRATO as readonly unknown[]).includes(c.tipo_de_contrato)
+      ) {
+        issues.push({
+          path: `${path}.tipo_de_contrato`,
+          message: 'contract type must be "fixo" or "mensal"',
+          codigo: 'atlas_tipo_de_contrato_invalido',
+        })
+      }
+      for (const campo of ['campo_primeiro_contato', 'campo_proposta', 'campo_fechamento'] as const) {
+        const v = c[campo]
+        if (v !== undefined && v !== null && typeof v !== 'string') {
+          issues.push({
+            path: `${path}.${campo}`,
+            message: 'date field must be a custom field key or empty',
+            codigo: 'atlas_campo_invalido',
+          })
+        }
       }
       break
     case 'send_to_number': {

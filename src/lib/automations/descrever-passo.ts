@@ -221,6 +221,7 @@ export function descreverPasso(passo: PassoResumivel, nomes: NomesConhecidos = {
       // pin_conversation_channel também: o nome da conexão pediria
       // `nomes.canais`, que nenhuma tela que resume passo carrega — e o id cru
       // ou "(apagado)" sobre conexão viva seriam piores que a frase sem ele.
+      // atlas_criar_cliente também: o tipo já diz o que o passo faz.
       return simples()
   }
 }

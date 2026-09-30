@@ -1085,8 +1085,19 @@ nome da época em que foram aplicadas.
   de apagar etapa marcada com histórico numa etapa TEMPORÁRIA criada e apagada
   no teste); o card voltou à etapa de origem, 7 eventos na trilha, fila
   processada, nenhuma automação nem mensagem.
-
-## Notas do histórico
+- **1071_cb_atlas** — `cb_atlas_config` (a chave da API do Atlas, CIFRADA, uma
+  por conta, com `api_url` = o ambiente do Atlas em que a conexão nasceu, nulo
+  = o de verdade; RLS sem policy, fechada a `anon`/`authenticated`) e
+  `cb_atlas_clientes` (o vínculo 1:1 ficha ↔ cliente do Atlas; leitura na
+  forma da 1032, escrita só pelo servidor; FK composta com
+  `ON DELETE SET NULL (contact_id)`). PR #356, Fase 0 de
+  `docs/PLANO-integracao-atlas.md`. ADITIVA e ANTES do deploy. Aplicada em
+  30/09/2026 pela Management API (histórico `20260930093505`), depois do
+  replay verde do CI em todos os commits da branch (o SQL é o do `c7a12b35`,
+  inalterado até o `6fce4bf5`) e ANTES do merge, com a autorização explícita do
+  operador. Conferida no catálogo: RLS ligada nas duas, `authenticated` só com
+  SELECT no vínculo e nada na conexão, `anon` sem nada, uma policy (a do
+  vínculo), as 10 restrições, `api_url` anulável; as duas tabelas vazias.
 
 - ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.

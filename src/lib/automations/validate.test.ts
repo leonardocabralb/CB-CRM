@@ -920,3 +920,48 @@ describe("pin_conversation_channel — fixar a conversa no número", () => {
     expect(validateChannelScopeForActivation([fixar("ch-apagada")], null, CONTAS)).toEqual([]);
   });
 });
+
+describe("atlas_criar_cliente — criar cliente no Atlas", () => {
+  const atlas = (step_config: Record<string, unknown>) => ({ step_type: "atlas_criar_cliente", step_config });
+
+  it("nada é obrigatório: vazio, só o tipo, ou os três campos passam", () => {
+    expect(validateStepsForActivation([atlas({})])).toEqual([]);
+    expect(validateStepsForActivation([atlas({ tipo_de_contrato: "fixo" })])).toEqual([]);
+    expect(
+      validateStepsForActivation([
+        atlas({
+          tipo_de_contrato: "mensal",
+          campo_primeiro_contato: "data_do_primeiro_contato",
+          campo_proposta: null,
+          campo_fechamento: "data_de_fechamento_do_contrato",
+        }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("tipo de contrato fora de fixo/mensal é recusado, com código próprio — inclusive dentro de um ramo", () => {
+    expect(validateStepsForActivation([atlas({ tipo_de_contrato: "anual" })])).toEqual([
+      {
+        path: "steps[0].tipo_de_contrato",
+        message: 'contract type must be "fixo" or "mensal"',
+        codigo: "atlas_tipo_de_contrato_invalido",
+      },
+    ]);
+    const noRamo = validateStepsForActivation([
+      {
+        step_type: "condition",
+        step_config: { subject: "tag_presence", operand: "t1" },
+        branches: { yes: [], no: [atlas({ tipo_de_contrato: "" })] },
+      },
+    ]);
+    expect(noRamo.map((i) => i.path)).toEqual(["steps[0].no.steps[0].tipo_de_contrato"]);
+  });
+
+  it("campo que não é texto nem nulo é recusado, um por campo", () => {
+    const issues = validateStepsForActivation([atlas({ campo_proposta: 42, campo_fechamento: { x: 1 } })]);
+    expect(issues).toEqual([
+      { path: "steps[0].campo_proposta", message: "date field must be a custom field key or empty", codigo: "atlas_campo_invalido" },
+      { path: "steps[0].campo_fechamento", message: "date field must be a custom field key or empty", codigo: "atlas_campo_invalido" },
+    ]);
+  });
+});

@@ -104,6 +104,7 @@ export function criarBanco(inicial: Record<string, Linha[]> = {}): Banco {
       update: (v: Linha) => ((op = "update"), (valores = v), b),
       delete: () => ((op = "delete"), b),
       eq: (c: string, v: unknown) => (filtros.push((l) => l[c] === v), b),
+      neq: (c: string, v: unknown) => (filtros.push((l) => l[c] !== v), b),
       in: (c: string, vs: unknown[]) => (filtros.push((l) => vs.includes(l[c])), b),
       is: (c: string, v: null) => (filtros.push((l) => (l[c] ?? null) === v), b),
       or: (expr: string) => (filtros.push(filtroDoOr(expr)), b),

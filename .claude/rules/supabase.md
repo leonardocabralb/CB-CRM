@@ -53,7 +53,7 @@ UPDATE/INSERT/DELETE fora do app, saiba o que ele aciona:
   **DELETE em `pipeline_stages`** tira a etapa das automações e zera
   `default_stage_id` das conexões; card na etapa bloqueia.
 - **`accounts`** INSERT semeia o campo "E-mail".
-- Apagar CONTATO leva conversa e mensagens e deixa 17 tabelas com ponteiro
+- Apagar CONTATO leva conversa e mensagens e deixa 18 tabelas com ponteiro
   nulo — ver "APAGAR CONTATO". Fundir fichas: só pela receita.
 
 ## Carga em lote e importação
@@ -378,8 +378,8 @@ um espelho com pino lendo o SQL. Mudou um lado, muda o outro.
   `cb_asaas_regua_envios`, `cb_automation_events`, `cb_webhook_eventos`,
   `automation_logs`, `automation_pending_executions`, `broadcast_recipients`,
   `flow_runs`, `notifications`, `cb_reunioes_da_kommo`, `cb_zapsign_eventos`,
-  `cb_zapsign_documentos` (as duas também com `deal_id` SET NULL). Card sem
-  contato renderiza em BRANCO no Kanban.
+  `cb_zapsign_documentos` (as duas também com `deal_id` SET NULL),
+  `cb_atlas_clientes` (1071). Card sem contato renderiza em BRANCO no Kanban.
 - ⚠️ Fora das duas listas: `cb_mensagens_sem_telefone` não tem `contact_id`.
   O payload da retida (texto do cliente) sobrevive a apagar o contato, até
   num pedido de exclusão (ver `whatsapp-evolution.md`).
@@ -392,8 +392,9 @@ um espelho com pino lendo o SQL. Mudou um lado, muda o outro.
   TODAS as contas e agrupa por grafia exata (não vê as duas grafias do nono
   dígito).
 - **Receita de fusão**: reapontar TODAS as referências do perdedor para o
-  sobrevivente (as 17 do SET NULL e as 7 do CASCADE; `contact_tags` e
-  `contact_custom_values` com `NOT EXISTS`, por serem únicas por contato;
+  sobrevivente (as 18 do SET NULL e as 7 do CASCADE; `contact_tags`,
+  `contact_custom_values` e `cb_atlas_clientes` (1:1) com `NOT EXISTS`, por
+  serem únicas por contato;
   `cb_contatos_relacionados` nas duas colunas, pulando o par que viraria
   repetido ou o sobrevivente ligado a si mesmo — o CASCADE leva o resto) →
   mover os campos que faltam na ficha sobrevivente — `wa_user_id`/`wa_username`/

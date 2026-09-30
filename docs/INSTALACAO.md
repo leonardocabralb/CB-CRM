@@ -630,6 +630,20 @@ de chave `cpf`) de quem assinou — nenhum contato é criado. Para mover o
 card, crie a automação na aba Automações do funil com a condição
 "Negócio está na etapa…" antes do "Mover card".
 
+**Atlas Gestor** (cliente do contrato fechado vai para o Atlas): um
+administrador do escritório gera a chave em *Configurações → Integrações
+(API)* do Atlas, liga ali as permissões **Consultar**, **Criar** e
+**Atualizar clientes**, e cola a chave no cartão **Atlas**. O CRM a confere
+no Atlas sem gravar nada lá e a guarda cifrada; ela não volta à tela. Na
+automação de contrato fechado, ponha o passo **Criar cliente no Atlas** por
+último: ele procura o cliente no Atlas (pelo link da conversa, telefone e
+e-mail) e cria, reativa o cadastro de quem estava rescindido, finalizado ou inativo,
+ou só vincula quem já está ativo. Não cria outro cadastro para quem o Atlas
+acha por esses dados; quando há dúvida (mais de um cadastro, casamento só pelo
+e-mail ou pelo final do telefone, cadastro suspenso no Atlas), para sem
+mexer no Atlas e diz o motivo no histórico da automação. A chave é do
+escritório inteiro: uma por conta do CRM.
+
 **tl;dv** (transcrições de reunião na ficha): a API só existe nos planos
 **Pro e Business**, e só sai pela API a reunião de quem a ORGANIZOU com um
 desses planos. Gere a chave em *Settings → Personal Settings → API Keys*.

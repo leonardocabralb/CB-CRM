@@ -53,6 +53,8 @@ services:
       # Ajuste fino do assistente de IA.
       AI_REQUEST_TIMEOUT_MS: ${AI_REQUEST_TIMEOUT_MS:-}
       AI_CONTEXT_MESSAGE_LIMIT: ${AI_CONTEXT_MESSAGE_LIMIT:-}
+      # Atlas Gestor: vazio = a API de produção do Atlas (só se troca para testar).
+      ATLAS_API_URL: ${ATLAS_API_URL:-}
     networks:
       - CBAdvNet
     deploy:

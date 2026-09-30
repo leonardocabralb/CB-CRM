@@ -859,6 +859,8 @@ export function equipePrometida(texto: string): boolean {
 export type MotivoForaDaD5 =
   | 'send_to_number'
   | 'send_webhook'
+  /** "Criar cliente no Atlas": manda os dados do cliente para outro sistema, como o webhook. */
+  | 'atlas_criar_cliente'
   | 'status_de_resultado'
   | 'etapa_de_resultado'
   | 'run_flow'
@@ -892,7 +894,8 @@ function texto(v: unknown): string | null {
 }
 
 /**
- * O passo sai da D5? Mensagem para outro número, webhook de saída, ganho ou
+ * O passo sai da D5? Mensagem para outro número, webhook de saída, criar
+ * cliente no Atlas (dado do cliente indo a outro sistema), ganho ou
  * perdido (pelo status ou por etapa com resultado — mover para ela ou criar
  * o card nela), iniciar robô (o `run_flow` não carrega origem nem contexto)
  * e preencher campo de data vigiado por lembrete (o cron dispararia aquela
@@ -905,6 +908,8 @@ export function motivoDoPasso(p: PassoDaAutomacao, regua: ReguaDaD5): MotivoFora
       return 'send_to_number'
     case 'send_webhook':
       return 'send_webhook'
+    case 'atlas_criar_cliente':
+      return 'atlas_criar_cliente'
     case 'run_flow':
       return 'run_flow'
     case 'set_deal_status':

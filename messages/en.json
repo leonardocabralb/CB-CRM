@@ -1530,7 +1530,8 @@
         "close_conversation": "Close the conversation",
         "send_to_number": "Notify number: {alvo}",
         "create_task": "Create task: {alvo}",
-        "pin_conversation_channel": "Pin the conversation to a number"
+        "pin_conversation_channel": "Pin the conversation to a number",
+        "atlas_criar_cliente": "Create the client in Atlas"
       },
       "cancelar": "Cancel",
       "salvar": "Save",
@@ -2078,7 +2079,8 @@
         "send_media": "Send file",
         "send_to_number": "Notify a number",
         "create_task": "Create task",
-        "pin_conversation_channel": "Pin conversation to a number"
+        "pin_conversation_channel": "Pin conversation to a number",
+        "atlas_criar_cliente": "Create client in Atlas"
       },
       "triggers": {
         "new_message_received": {
@@ -2472,6 +2474,26 @@
         "reservaHint": "Required. When no one is assigned (or whoever was left the account), the task goes to this person, and the automation history says why.",
         "cardHint": "Today the deal's assignee is only set by hand, in the deal form. Without one, the task goes to the person below."
       },
+      "atlas": {
+        "tipoLabel": "Contract type",
+        "tipoFixo": "Fixed",
+        "tipoMensal": "Monthly",
+        "primeiroContatoLabel": "First contact date",
+        "primeiroContatoHelp": "Without a field: the date the card was created.",
+        "propostaLabel": "Proposal date",
+        "propostaHelp": "Without a field: sent empty.",
+        "fechamentoLabel": "Contract closing date",
+        "fechamentoHelp": "Without a field: the day the step runs.",
+        "naoUsar": "— don’t use —",
+        "campoSumiu": "Deleted field (or not a date field)",
+        "semCamposDeData": "The account has no date field yet.",
+        "conexaoConectado": "Atlas is connected: the step uses the office’s key.",
+        "conexaoNaoConectado": "Atlas is not connected, and the step will fail until it is.",
+        "conexaoErro": "The Atlas connection has a problem, and the step may fail.",
+        "conexaoNaoSei": "The step uses the Atlas key connected in Settings → Integrations.",
+        "abrirIntegracoes": "Open Integrations",
+        "ajuda": "It searches Atlas first: it creates the client, reactivates a terminated, closed-out or inactive record, or just links one in progress. It stops without touching Atlas when in doubt (more than one record, a match only by e-mail or by the end of the phone, a suspended record). It never retries on its own."
+      },
       "asaas": {
         "diasLabel": "Days overdue (the milestone)",
         "diasAjuda": "Calendar days after the due date. Each milestone is its own automation: 1, 5, 30… The message lists every overdue instalment of the customer, not only the one crossing this milestone.",
@@ -2567,6 +2589,8 @@
           "tarefa_prazo_invalido": "Choose a due date between 0 and 365 days.",
           "tarefa_hora_invalida": "Write the task time as HH:MM.",
           "fixar_sem_conexao": "Choose the number the conversation gets pinned to.",
+          "atlas_tipo_de_contrato_invalido": "Choose the contract type: fixed or monthly.",
+          "atlas_campo_invalido": "Choose the date field again from the list (or “— don’t use —”).",
           "passo_desconhecido": "This step type no longer exists: delete the step.",
           "gatilho_sem_palavras": "Write at least one keyword.",
           "gatilho_palavra_vazia": "Remove the blank keywords.",
@@ -4147,6 +4171,54 @@
           "cpf": "CPF"
         }
       },
+      "atlas": {
+        "carregando": "Loading…",
+        "desc": "Connect Atlas Gestor so the CRM creates the client in Atlas when a contract closes — or reactivates the record of a returning client — with the conversation link already in it. The key belongs to the firm: an administrator generates it in Atlas (Configurações → Integrações (API), i.e. Settings → Integrations (API)) and pastes it here once.",
+        "campoChave": "Atlas API key",
+        "chaveVazia": "Paste the key Atlas showed (starts with sk_)",
+        "chaveDica": "Atlas shows the key only once, when it is generated. It is stored encrypted and never shown here again.",
+        "permissoesDica": "In Atlas, on the same tab, keep these permissions on: Consultar Clientes, Criar Clientes and Atualizar Clientes (read, create and update clients).",
+        "conectar": "Connect",
+        "conectando": "Checking the key…",
+        "conectado": "Atlas connected.",
+        "escritorio": "Connected to the {nome} firm in Atlas.",
+        "semEscritorio": "Connected to Atlas.",
+        "desconectar": "Disconnect",
+        "conferir": "Check again",
+        "conferindo": "Checking…",
+        "conferidoOk": "Connection checked: the key and the permissions are fine.",
+        "confirmarDesconectar": "Disconnect Atlas? The \"Create client in Atlas\" automation step will fail until a key is pasted again. The links between contacts and Atlas clients are kept.",
+        "comoFunciona": "In the contract-closed automation, put the \"Create client in Atlas\" step last. It looks the client up in Atlas by the conversation link, the phone and the e-mail: when nothing is found, it creates; when it finds a terminated, closed-out or inactive record, it reactivates that same record; when it finds an active one, it only links it. It stops, without touching Atlas, when it finds more than one record, when the record matches only by e-mail or by the end of the phone number, or when it is suspended there.",
+        "faltando": "In Atlas, turn on the permissions: {permissoes}.",
+        "permissao": {
+          "read_client": "Consultar Clientes (read clients)",
+          "create_client": "Criar Clientes (create clients)",
+          "update_client": "Atualizar Clientes (update clients)"
+        },
+        "motivo": {
+          "chave_invalida": "Atlas rejected the key (check it was copied in full, or generate a new one)",
+          "api_fora_do_plano": "the firm’s Atlas plan does not include the API",
+          "sem_permissao": "an API permission is turned off in Atlas",
+          "validacao": "Atlas rejected the data sent",
+          "nao_encontrado": "Atlas did not find what was requested",
+          "limite": "Atlas asked to wait (requests per minute limit); try again shortly",
+          "limite_do_plano": "the firm reached the client limit of its Atlas plan",
+          "idempotencia": "Atlas is still processing an identical request",
+          "acao_desconhecida": "the Atlas API does not have this function yet (pending update in Atlas)",
+          "fora_do_ar": "Atlas did not respond; try again shortly",
+          "rede": "could not reach Atlas; try again shortly",
+          "atlas_error": "Atlas returned an error",
+          "db_error": "could not save the connection; try again",
+          "nao_conectado": "Atlas is not connected",
+          "chave_ilegivel": "the stored key could not be read; paste the key again",
+          "outro_escritorio": "this key belongs to another Atlas firm, and there are contacts linked to clients of the previous firm",
+          "permissoes_faltando": "API permissions are missing in Atlas",
+          "resposta_inesperada": "Atlas replied in an unexpected format (its API may be being updated)",
+          "outro_ambiente": "the stored connection belongs to another Atlas environment (test × production); this environment neither uses nor replaces it. Disconnect it in the environment where it was made",
+          "chave_mal_colada": "the pasted key looks incomplete or has a space in the middle; copy it again, in full"
+        },
+        "semMotivo": "could not finish right now; try again shortly"
+      },
       "avisoDaChave": {
         "embeddings_recusado": "Key saved: it generates text, but OpenAI refused the knowledge-base search (embeddings). The knowledge base now uses keyword search only — check the project's permissions and save the key again.",
         "embeddings_nao_conferido": "Key saved, but it could not be checked for the knowledge-base search (embeddings). If the search fails, save the key again.",
@@ -5313,6 +5385,7 @@
       "foraDaD5": {
         "send_to_number": "it sends a message to another number",
         "send_webhook": "it sends data out of the CRM (webhook)",
+        "atlas_criar_cliente": "it sends client data to Atlas",
         "status_de_resultado": "it marks the deal as won or lost",
         "etapa_de_resultado": "it moves the card to a won or lost stage",
         "run_flow": "it starts a chatbot flow",
