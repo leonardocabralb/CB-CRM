@@ -140,7 +140,15 @@ describe("criarOuReativarNoAtlas", () => {
     expect(await rodar()).toEqual({ acao: "reativado", atlasClientId: "c9", situacaoAnterior: "finalizado" });
     expect(chamadas.map((c) => c.metodo)).toEqual(["ler", "atualizar"]);
     expect(banco.tabelas.cb_atlas_clientes).toHaveLength(1);
-    expect(banco.tabelas.cb_atlas_clientes[0]).toMatchObject({ origem: "reativada", situacao: "ativo" });
+    // A situação é a nova; a ORIGEM é como o vínculo nasceu, e não muda a cada execução.
+    expect(banco.tabelas.cb_atlas_clientes[0]).toMatchObject({ origem: "encontrada", situacao: "ativo" });
+  });
+
+  it("rodar de novo com o vínculo desta ficha só atualiza a situação lida, sem trocar a origem", async () => {
+    banco.tabelas.cb_atlas_clientes = [{ id: "v1", account_id: CONTA, contact_id: FICHA, atlas_tenant_id: "t1", atlas_client_id: "c9", origem: "criada" }];
+    noAtlas.set("c9", { id: "c9", status: "ativo", appUrl: null });
+    expect(await rodar()).toEqual({ acao: "vinculado", atlasClientId: "c9", situacao: "ativo" });
+    expect(banco.tabelas.cb_atlas_clientes[0]).toMatchObject({ origem: "criada", situacao: "ativo" });
   });
 
   it("vínculo com cliente apagado no Atlas: o vínculo velho sai e o passo procura de novo", async () => {

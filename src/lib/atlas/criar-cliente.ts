@@ -195,11 +195,14 @@ export async function criarOuReativarNoAtlas(
     let decisao: Decisao | null = null;
     /** A linha de `cb_atlas_clientes` a atualizar no fim (a desta ficha, ou a órfã do cliente achado). */
     let linha: string | null = null;
+    /** A linha é o vínculo DESTA ficha: a `origem` (como ele NASCEU) não muda a cada execução. */
+    let linhaPropria = false;
     if (vinculo && vinculo.atlas_tenant_id === conexao.tenantId) {
       const lido = await atlas.ler(String(vinculo.atlas_client_id));
       if (lido) {
         decisao = decidirPelaSituacao(lido);
         linha = String(vinculo.id);
+        linhaPropria = true;
       }
     }
     if (vinculo && decisao === null) {
@@ -284,7 +287,7 @@ export async function criarOuReativarNoAtlas(
 
     // 5) O vínculo 1:1.
     const agora = new Date().toISOString();
-    const valores = {
+    const lido = {
       account_id: accountId,
       contact_id: contactId,
       atlas_tenant_id: conexao.tenantId,
@@ -292,12 +295,11 @@ export async function criarOuReativarNoAtlas(
       app_url: cliente.appUrl,
       situacao: cliente.status,
       situacao_lida_em: agora,
-      origem,
       updated_at: agora,
     };
     const { error: erroGravar } = linha
-      ? await admin.from("cb_atlas_clientes").update(valores).eq("id", linha)
-      : await admin.from("cb_atlas_clientes").insert(valores);
+      ? await admin.from("cb_atlas_clientes").update(linhaPropria ? lido : { ...lido, origem }).eq("id", linha)
+      : await admin.from("cb_atlas_clientes").insert({ ...lido, origem });
     if (erroGravar) throw new Error(escrito ? "o vínculo não foi gravado no CRM" : "o vínculo com o Atlas não foi gravado no CRM");
     await registrarConferencia(admin, accountId, null);
     return resultado;
