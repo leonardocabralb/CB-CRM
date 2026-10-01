@@ -30,6 +30,10 @@
  * ⚠️ O portão vê CAMINHO, não significado: uma área sem a doc tocada pede a
  * decisão; a doc tocada não prova que o texto certo mudou. E arquivo novo de
  * contrato fora destes globs passa calado — achou um, acrescente-o aqui.
+ * Arquivo que muda toda semana por OUTROS motivos (ex.: `ia-agentes/turno.ts`)
+ * não entra no glob, senão a declaração vira rotina: a promessa que a doc faz
+ * sobre ele vira um pino perto do código (`src/lib/webhooks/
+ * origem-dos-escritores.test.ts`, a origem da passagem entre agentes).
  */
 
 import { execFileSync } from 'node:child_process'
