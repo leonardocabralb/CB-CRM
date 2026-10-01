@@ -1296,7 +1296,18 @@ export type AutomationStepType =
 
 export type AutomationLogStatus = 'success' | 'partial' | 'failed';
 
-export interface KeywordMatchTriggerConfig {
+/**
+ * "Não repetir para o mesmo contato por N horas" (30/09/2026): vale nos
+ * gatilhos por mensagem (`aceitaNaoRepetir`), junto de qualquer outra
+ * config deles. Ausente = roda a cada disparo. Ver
+ * `automations/nao-repetir.ts`.
+ */
+export interface NaoRepetirTriggerConfig {
+  /** Inteiro de 1 a 720. */
+  nao_repetir_horas?: number;
+}
+
+export interface KeywordMatchTriggerConfig extends NaoRepetirTriggerConfig {
   keywords: string[];
   /**
    * `contains` (the default) is a raw substring test, so a short keyword
@@ -1320,7 +1331,7 @@ export interface TimeBasedTriggerConfig {
   timezone?: string;
 }
 
-export interface InteractiveReplyTriggerConfig {
+export interface InteractiveReplyTriggerConfig extends NaoRepetirTriggerConfig {
   /** Button / list-row ids to match, exact. Any one matching fires. */
   reply_ids: string[];
 }
@@ -1459,6 +1470,7 @@ export interface AtlasSituacaoTriggerConfig {
 
 export type AutomationTriggerConfig =
   | Record<string, never>
+  | NaoRepetirTriggerConfig
   | AsaasVenceHojeTriggerConfig
   | AsaasCobrancaTriggerConfig
   | AtlasSituacaoTriggerConfig

@@ -565,7 +565,7 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   conversa: interrompidas na aba, o que não rodou, texto do motor traduzido.
 - `.claude/rules/automacoes-passos.md` — valores do "Enviar modelo", tarefa
   pelo responsável, condições da janela de 24h e da hora do dia, "Aguardar
-  até estar dentro do horário".
+  até estar dentro do horário", "Não repetir por N horas" do gatilho.
 - `.claude/rules/automacoes-abas.md` — as abas da tela de Automações (1055),
   criadas por cada conta; "Geral" é `area_id` nulo.
 - `.claude/rules/automacoes-variaveis.md` — botão "Inserir campo", editor

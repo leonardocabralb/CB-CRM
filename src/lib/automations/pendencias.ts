@@ -289,6 +289,7 @@ export const CODIGOS_DE_PENDENCIA = [
   'gatilho_resposta_vazia',
   'gatilho_etapas_invalidas',
   'gatilho_parar_ao_sair_invalido',
+  'gatilho_nao_repetir_invalido',
   'gatilho_evento_invalido',
   'gatilho_reagendamento_invalido',
   'gatilho_webhook_invalido',

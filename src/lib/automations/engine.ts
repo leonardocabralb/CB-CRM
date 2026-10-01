@@ -44,6 +44,7 @@ import { ehWhatsApp } from '@/lib/cb-channels/transporte';
 import { alvoDeEnvio } from '@/lib/whatsapp/alvo-de-envio';
 import { ehGatilhoDaRegua, PASSOS_QUE_FALAM_COM_O_CONTATO } from '@/lib/asaas/regua';
 import { GATILHO_DO_ATLAS, soRodaPeloDisparador } from './so-pelo-disparador';
+import { rodouNoPrazo } from './nao-repetir';
 
 /**
  * Os passos que calam o agente de IA quando rodam por causa da mensagem do
@@ -286,7 +287,7 @@ export interface DispatchInput {
 export interface ResultadoDoDisparo {
   /** Automações ativas deste gatilho na conta. */
   candidatas: number;
-  /** Barradas por conexão, etapa ou pela config do gatilho. */
+  /** Barradas por conexão, etapa, pela config do gatilho ou pelo prazo de "não repetir". */
   foraDoEscopo: number;
   /** Chegaram a rodar (têm linha em `automation_logs`). */
   executadas: number;
@@ -474,6 +475,17 @@ export async function dispararAutomacoes(
           r.comFalha += 1;
           continue;
         }
+      }
+      // "Não repetir para o mesmo contato por N horas" (`nao-repetir.ts`):
+      // o último recorte, porque é o único que custa uma consulta a cada
+      // mensagem. Dentro do prazo — ou com a leitura falhando — sai como
+      // "fora do escopo", sem registro: era a linha "parou numa condição" a
+      // cada mensagem que isto existe para acabar.
+      if (
+        (await rodouNoPrazo({ db, automation, contactId: input.contactId })) !== 'livre'
+      ) {
+        r.foraDoEscopo += 1;
+        continue;
       }
       if (input.antesDeExecutar && !preparou) {
         preparou = true;

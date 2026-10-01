@@ -96,6 +96,7 @@ import { areaDoFunil } from "@/lib/automations/areas"
 import { AsaasTriggerConfig } from "@/components/automations/asaas-trigger-config"
 import { AtlasTriggerConfig, semearAtlas } from "@/components/automations/atlas-trigger-config"
 import { GATILHO_DO_ATLAS, soRodaPeloDisparador } from "@/lib/automations/so-pelo-disparador"
+import { aceitaNaoRepetir, HORAS_SEM_REPETIR_MAX } from "@/lib/automations/nao-repetir"
 import {
   IDADE_MAXIMA_DA_TRANSCRICAO_H,
   IDADE_PADRAO_DA_TRANSCRICAO_H,
@@ -2201,6 +2202,45 @@ function TriggerCard({
                   onChange={onStageIdsChange}
                   vazioLabel={t("stages.scopeHelpAll")}
                 />
+              </div>
+            )}
+            {/* "Não repetir para o mesmo contato por N horas"
+                (`nao-repetir.ts`): só nos gatilhos por mensagem. Em branco
+                tira a chave (roda a cada mensagem). O que se digita é o que
+                se salva: 0, fração ou texto vindo da API aparecem como são e
+                viram pendência, nunca outro número. */}
+            {aceitaNaoRepetir(type) && (
+              <div>
+                <label
+                  htmlFor="nao-repetir-horas"
+                  className="mb-1 block text-xs font-medium text-muted-foreground"
+                >
+                  {t("naoRepetir.label")}
+                </label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="nao-repetir-horas"
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={HORAS_SEM_REPETIR_MAX}
+                    step={1}
+                    placeholder={t("naoRepetir.placeholder")}
+                    value={config.nao_repetir_horas == null ? "" : String(config.nao_repetir_horas)}
+                    onChange={(e) => {
+                      const resto = { ...config }
+                      delete resto.nao_repetir_horas
+                      onConfigChange(
+                        e.target.value === ""
+                          ? resto
+                          : { ...resto, nao_repetir_horas: Number(e.target.value) },
+                      )
+                    }}
+                    className="w-24 bg-muted text-foreground"
+                  />
+                  <span className="text-xs text-muted-foreground">{t("naoRepetir.unidade")}</span>
+                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">{t("naoRepetir.help")}</p>
               </div>
             )}
             {type === "keyword_match" && (

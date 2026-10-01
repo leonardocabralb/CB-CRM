@@ -484,8 +484,9 @@ ficha — o campo já existia e estava vazio em todos os contatos.
 ## Seção 8 — Cliente do Bancário no número do Jurídico (NOVO, 29/09/2026)
 
 Pedido do operador: o cliente do Bancário que ainda escreve no número do
-**Comercial** recebe, UMA vez, o aviso de que o atendimento passou para o
-número do **Jurídico** — e uma mensagem por lá, para salvar o contato. O
+**Comercial** recebe o aviso de que o atendimento passou para o número do
+**Jurídico** — e uma mensagem por lá, para salvar o contato. Era UMA vez; desde
+30/09/2026, de novo a cada 24 h em que ele volta ao Comercial (abaixo). O
 histórico já está no CRM: a conversa é uma só, com os dois números.
 **Nenhum impacto no Trabalhista.**
 
@@ -518,6 +519,30 @@ ordem do operador):
 - **Quem assume:** nada automático (decisão do operador) — a conversa fica
   aberta, sem responsável, para o time do Jurídico.
 
+**Repetição a cada 24 h (pedido do operador, 30/09/2026).** No primeiro dia
+ligada, a automação rodou 68 vezes: 21 avisos (21 clientes, todos
+concluídos) e 47 "parou numa condição" de 11 clientes — um deles gerou 31. A
+trava da etiqueta era uma condição DENTRO dos passos, e o registro nasce antes
+do primeiro passo: cada mensagem seguinte virava uma linha no registro. E o
+operador quer o aviso de novo quando o cliente volta ao Comercial num outro
+dia. O desenho novo:
+
+- **Opção nova no gatilho: "Não repetir para o mesmo contato por 24 horas"**
+  (`nao-repetir.ts`, conferida junto com os recortes de número e etapa).
+  Dentro das 24 h, a mensagem do cliente no Comercial não vira registro
+  nenhum; depois, a automação roda de novo. O prazo conta do início do último
+  aviso, inclusive do que falhou (o envio pode ter saído).
+- **24 horas corridas desde o último aviso** (recomendação aceita): o
+  cliente avisado às 18h que escreve às 9h do dia seguinte não recebe de
+  novo.
+- **A etiqueta deixa de ser trava e vira escolha de texto:** no "Não" (nunca
+  avisado), tudo como antes; no "Sim" (já avisado), a mesma mensagem pelo
+  Comercial, um LEMBRETE pelo Jurídico (texto abaixo) e a fixação da conversa.
+  Os dois ramos fazem alguma coisa, então nenhuma execução aparece como
+  "parou numa condição".
+- **Ordem obrigatória:** o código da opção no ar ANTES de mexer na automação.
+  Com o ramo "Sim" preenchido e sem o prazo, o aviso sairia a cada mensagem.
+
 **Textos (gravados como aqui, com o número real no lugar do marcador;
 editáveis no construtor):**
 
@@ -541,6 +566,18 @@ Pelo Jurídico:
 > Estou transferindo o seu caso para um dos nossos advogados, que vai dar
 > andamento e falar com você por aqui.
 
+Pelo Jurídico, na REPETIÇÃO (ramo "Sim"; texto do operador, 30/09/2026 — o
+do Comercial repete o de cima):
+
+> Olá! Recebemos a sua mensagem e vamos seguir com você por aqui, pelo número
+> do time jurídico do CB Advogados.
+>
+> Já encaminhei a sua solicitação para um dos nossos advogados, que em breve
+> vai te retornar.
+>
+> Se ainda não salvou, *salve este contato na sua agenda* para falar com a
+> gente sempre por este número.
+
 **Limites conhecidos:**
 
 - A trava de etapa só enxerga card ABERTO. O cliente que chega pelo
@@ -552,19 +589,20 @@ Pelo Jurídico:
   Ativo nem o Atlas. O preço: se o envio ao n8n falhar, a conversa desse
   cliente fica sem fixar — a equipe fixa à mão pelo número do cabeçalho (a
   falha aparece na conversa). Ordem e motivo: seção 3.
-- Depois do aviso, cada mensagem do cliente no Comercial roda a automação de
-  novo e ela para na trava da etiqueta: uma pílula cinza "barrada" por dia no
-  fio, agrupada — é a forma das travas, e diz que o cliente insistiu no número
-  antigo.
-- **A etiqueta vem ANTES dos envios, de propósito, e isso tem preço** (achado
-  do Codex, PR #354): se um envio ou a fixação falhar, a etiqueta já está lá e
-  a automação não tenta de novo sozinha. A falha aparece na conversa
-  (automação que falhou); para repetir, tirar a etiqueta "Transferido ao
-  Jurídico" do contato — a próxima mensagem dele no Comercial roda tudo de
-  novo. A recusa passageira da Evolution já é repetida pelo motor (até 3
-  vezes). Etiqueta no FIM trocaria isso por aviso em dobro: entre o primeiro
-  envio e a etiqueta passam uns 4 s (medido na primeira execução real), e
-  quem manda duas mensagens nesse intervalo receberia tudo duas vezes.
+- ~~Depois do aviso, cada mensagem do cliente no Comercial roda a automação
+  de novo e ela para na trava da etiqueta~~ — substituído em 30/09/2026 pelo
+  prazo de 24 h: dentro dele, a mensagem não vira registro nem pílula no fio.
+  Quem insiste no número antigo continua visível pela faixa de divergência.
+- **Aviso que falha espera o prazo** (desde 30/09/2026): a execução com falha
+  CONTA para as 24 h — o envio pode ter saído, e repetir mandaria duas vezes.
+  A falha aparece na conversa; a equipe fala com o cliente pelo Jurídico à mão
+  (o "Executar automação" recusa, porque a conversa já está fixada no
+  Jurídico e a automação é restrita ao Comercial). A recusa passageira da
+  Evolution já é repetida pelo motor (até 3 vezes). Tirar a etiqueta NÃO
+  repete mais nada: ela só escolhe entre o texto completo e o lembrete.
+- **Aviso em dobro:** o prazo é conferido antes do registro, sem trava — duas
+  mensagens do cliente em milissegundos passam as duas (a mesma janela da
+  trava por etiqueta de antes).
 - A faixa "A última mensagem chegou pelo Bancário - Comercial — Responder por
   ele" aparece quando esses clientes escrevem no Comercial: o botão devolve a
   conversa ao Comercial. A equipe responde pelo Jurídico e deixa o botão.
@@ -585,6 +623,8 @@ Pelo Jurídico:
 | 3 | "Fixar a conversa no número" no "Contrato fechado" | ✅ gravado como último passo (29/09/2026); o "Contrato fechado" seguiu ligado |
 | 4 | Teste no contato de teste (cópia com gatilho manual) | ✅ 29/09/2026: etiqueta, as duas mensagens (uma por número, entregues), conversa fixada no Jurídico; 2ª execução "barrada", sem mensagem. Cópia apagada, etiqueta retirada e conversa devolvida ao estado anterior |
 | 5 | Ligar | ✅ ligada em 29/09/2026 às 18h17, com a ordem do operador (saudação trocada para "Olá!" na mesma gravação) |
+| 6 | Opção "Não repetir para o mesmo contato por N horas" no gatilho | ⏳ código em PR (30/09/2026); publicar antes da fase 7 |
+| 7 | Na automação: prazo de 24 h + ramo "Sim" (Comercial igual, lembrete pelo Jurídico, fixar) | ⏳ depois da fase 6 no ar, com o "pode gravar" do operador |
 
 ---
 
