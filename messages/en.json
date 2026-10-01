@@ -2501,6 +2501,12 @@
         "campoDaFichaHelp": "Reads the value on the contact record when this step runs. “is” and “contains” ignore upper and lower case; accents count. If the read fails, the condition answers “no” and the run log says it was not checked."
       },
       "delete": "Delete",
+      "naoRepetir": {
+        "label": "Don't repeat for the same contact for",
+        "unidade": "hours",
+        "placeholder": "always",
+        "help": "Once the automation runs for a contact, their next messages within this period don't fire it again — and don't show up in the log. The period counts from the start of the last run, including one that failed. Leave blank to run on every message. Up to 720 hours (30 days). Running it by hand ignores the period."
+      },
       "stages": {
         "triggerLabel": "Entered this stage",
         "triggerHelpAll": "With no stage picked it runs for any stage.",
@@ -2831,6 +2837,7 @@
           "gatilho_resposta_vazia": "Remove the blank replies.",
           "gatilho_etapas_invalidas": "Choose the trigger stages again.",
           "gatilho_parar_ao_sair_invalido": "Tick or untick the “Stop if the card leaves this stage” option again.",
+          "gatilho_nao_repetir_invalido": "Enter a whole number of hours from 1 to 720 in “Don't repeat for the same contact for” — or leave it blank.",
           "gatilho_evento_invalido": "Choose the Calendly event type again.",
           "gatilho_reagendamento_invalido": "Tick or untick the “Ignore reschedules” option again.",
           "gatilho_webhook_invalido": "Choose the webhook that triggers the automation again.",

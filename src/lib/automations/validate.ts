@@ -24,6 +24,7 @@ import {
   SITUACOES_ESCREVIVEIS,
 } from '@/lib/atlas/passos-do-atlas'
 import { GATILHO_DO_ATLAS } from './so-pelo-disparador'
+import { aceitaNaoRepetir, HORAS_SEM_REPETIR_MAX, horasSemRepetirValidas } from './nao-repetir'
 
 // ------------------------------------------------------------
 // Pre-flight config validation for automations about to be activated.
@@ -697,6 +698,22 @@ export function validateTriggerForActivation(
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = []
   const cfg = (triggerConfig ?? {}) as Record<string, unknown>
+
+  // "Não repetir por N horas" (`nao-repetir.ts`): só onde a tela o oferece.
+  // Nos outros gatilhos a chave pode sobrar da troca de gatilho, e o motor a
+  // ignora. Inválido (texto, 0, fração, acima do teto) seria prazo que a tela
+  // mostra e o motor não aplica.
+  if (
+    aceitaNaoRepetir(triggerType) &&
+    cfg.nao_repetir_horas != null &&
+    !horasSemRepetirValidas(cfg.nao_repetir_horas)
+  ) {
+    issues.push({
+      path: 'trigger.nao_repetir_horas',
+      message: `nao_repetir_horas must be a whole number from 1 to ${HORAS_SEM_REPETIR_MAX}`,
+      codigo: 'gatilho_nao_repetir_invalido',
+    })
+  }
 
   if (triggerType === 'keyword_match') {
     const k = cfg.keywords

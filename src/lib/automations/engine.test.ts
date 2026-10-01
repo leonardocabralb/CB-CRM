@@ -116,6 +116,12 @@ const h = vi.hoisted(() => ({
     }[],
     upsertCalls: [] as { table: string; payload: unknown }[],
     logInserts: [] as Record<string, unknown>[],
+    /** "Não repetir por N horas" (30/09/2026): as execuções que a consulta do prazo acha. */
+    execucoesNoPrazo: [] as { id: string }[],
+    /** Preenchido, a consulta do prazo devolve este erro. */
+    erroNoPrazo: null as string | null,
+    /** Os filtros de cada consulta do prazo. */
+    leiturasDoPrazo: [] as [string, string, unknown][][],
     logUpdates: [] as Record<string, unknown>[],
     /** Filtros de cada update em `automation_logs` — a cerca de não-regressão. */
     updateFiltros: [] as [string, string, unknown][][],
@@ -405,6 +411,13 @@ vi.mock('./admin-client', () => {
         // ("ninguém acrescentou desde que li") e lê o RETURNING para saber se
         // venceu. Os demais updates ignoram o retorno.
         return { data: [{ id: 'log1' }], error: null };
+      }
+      // A consulta do prazo de "não repetir" (`nao-repetir.ts`): a ÚNICA
+      // leitura do registro que pede só o `id`.
+      if (ops.colunas === 'id') {
+        state.leiturasDoPrazo.push([...ops.filters, ...(ops.recorte ?? [])]);
+        if (state.erroNoPrazo) return { data: null, error: { message: state.erroNoPrazo } };
+        return { data: state.execucoesNoPrazo, error: null };
       }
       // ⚠️ O que já estava GRAVADO em `steps_executed` antes desta chamada.
       // Configurável porque é a única forma de encenar uma execução que
@@ -698,6 +711,9 @@ beforeEach(() => {
   h.state.updateCalls = [];
   h.state.upsertCalls = [];
   h.state.logInserts = [];
+  h.state.execucoesNoPrazo = [];
+  h.state.erroNoPrazo = null;
+  h.state.leiturasDoPrazo = [];
   h.state.logUpdates = [];
   h.state.updateFiltros = [];
   h.state.historicoDoLog = [];
@@ -3255,6 +3271,102 @@ describe('dispararAutomacoes — o gancho antesDeExecutar', () => {
     expect(r.executadas).toBe(1);
     expect(h.state.updateCalls).toHaveLength(1);
     erro.mockRestore();
+  });
+});
+
+describe('dispararAutomacoes — não repetir para o mesmo contato por N horas (30/09/2026)', () => {
+  // O aviso "o seu atendimento passou para o Jurídico": dentro do prazo, a
+  // mensagem seguinte do cliente não pode virar registro nenhum — era a linha
+  // "parou numa condição" a cada mensagem que a opção existe para acabar.
+  const comPrazo = (horas: unknown = 24) => ({
+    ...automationWithUpdateStep(),
+    trigger_config: { nao_repetir_horas: horas },
+  });
+  function disparar(antesDeExecutar?: () => Promise<void>) {
+    h.state.owned = { id: 'c1' };
+    h.state.steps = [updateStep()];
+    return dispararAutomacoes({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: { message_text: 'oi' },
+      antesDeExecutar,
+    });
+  }
+
+  it('CRÍTICO: rodou no prazo → fora do escopo, SEM registro, sem passo e sem o gancho', async () => {
+    h.state.automations = [comPrazo()];
+    h.state.execucoesNoPrazo = [{ id: 'log-de-ontem' }];
+    const gancho = vi.fn(async () => {});
+    const r = await disparar(gancho);
+    expect(r).toMatchObject({ candidatas: 1, foraDoEscopo: 1, executadas: 0 });
+    expect(h.state.logInserts).toHaveLength(0);
+    expect(h.state.updateCalls).toHaveLength(0);
+    expect(gancho).not.toHaveBeenCalled();
+  });
+
+  it('nada no prazo → roda, e a pergunta foi por esta automação e este contato', async () => {
+    h.state.automations = [comPrazo()];
+    const r = await disparar();
+    expect(r).toMatchObject({ foraDoEscopo: 0, executadas: 1 });
+    expect(h.state.logInserts).toHaveLength(1);
+    expect(h.state.leiturasDoPrazo).toHaveLength(1);
+    expect(h.state.leiturasDoPrazo[0]).toEqual(
+      expect.arrayContaining([
+        ['eq', 'automation_id', 'a1'],
+        ['eq', 'account_id', ACCOUNT],
+        ['eq', 'contact_id', 'c1'],
+      ])
+    );
+  });
+
+  it('CRÍTICO: leitura do prazo que falha DESCARTA (falha fechada), sem registro', async () => {
+    h.state.automations = [comPrazo()];
+    h.state.erroNoPrazo = 'banco fora';
+    const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const r = await disparar();
+    expect(r).toMatchObject({ foraDoEscopo: 1, executadas: 0 });
+    expect(h.state.logInserts).toHaveLength(0);
+    erro.mockRestore();
+  });
+
+  it('sem a opção, nem pergunta: roda a cada mensagem, como antes', async () => {
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.execucoesNoPrazo = [{ id: 'log-de-ontem' }];
+    const r = await disparar();
+    expect(r.executadas).toBe(1);
+    expect(h.state.leiturasDoPrazo).toHaveLength(0);
+  });
+
+  it('o recorte de número vem ANTES: automação de outro número nem consulta o prazo', async () => {
+    h.state.automations = [{ ...comPrazo(), channel_ids: ['outro-canal'] }];
+    h.state.owned = { id: 'c1' };
+    const r = await dispararAutomacoes({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: { message_text: 'oi', channel_id: 'este-canal' },
+    });
+    expect(r.foraDoEscopo).toBe(1);
+    expect(h.state.leiturasDoPrazo).toHaveLength(0);
+  });
+
+  it('"Executar automação" (runAutomationById) ignora o prazo: é pedido explícito', async () => {
+    h.state.owned = { id: 'c1' };
+    h.state.automations = [comPrazo()];
+    h.state.steps = [updateStep()];
+    h.state.execucoesNoPrazo = [{ id: 'log-de-ontem' }];
+    const r = await runAutomationById({
+      automationId: 'a1',
+      accountId: ACCOUNT,
+      contactId: 'c1',
+      context: {},
+      triggerType: 'new_message_received',
+      rotuloDoDisparo: 'manual',
+    });
+    expect(r.ok).toBe(true);
+    expect(h.state.logInserts).toHaveLength(1);
+    expect(h.state.leiturasDoPrazo).toHaveLength(0);
   });
 });
 

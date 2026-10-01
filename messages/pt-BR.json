@@ -2494,6 +2494,12 @@
         "campoDaFichaHelp": "Lê o valor na ficha do cliente na hora deste passo. “é” e “contém” não diferenciam maiúsculas e minúsculas; o acento conta. Se a leitura falhar, a condição responde “não” e o registro da execução diz que não conferiu."
       },
       "delete": "Excluir",
+      "naoRepetir": {
+        "label": "Não repetir para o mesmo contato por",
+        "unidade": "horas",
+        "placeholder": "sempre",
+        "help": "Depois que a automação roda para um contato, as próximas mensagens dele dentro deste prazo não a disparam de novo — e não aparecem no registro. O prazo conta do início da última execução, inclusive da que falhou. Em branco, roda a cada mensagem. Até 720 horas (30 dias). Executar à mão ignora o prazo."
+      },
       "stages": {
         "triggerLabel": "Entrou nesta etapa",
         "triggerHelpAll": "Sem etapa escolhida, vale para qualquer etapa.",
@@ -2824,6 +2830,7 @@
           "gatilho_resposta_vazia": "Apague as respostas em branco.",
           "gatilho_etapas_invalidas": "Escolha de novo as etapas do gatilho.",
           "gatilho_parar_ao_sair_invalido": "Marque ou desmarque de novo a opção “Interromper se o card sair desta etapa”.",
+          "gatilho_nao_repetir_invalido": "Escreva um número inteiro de horas, de 1 a 720, em “Não repetir para o mesmo contato por” — ou deixe em branco.",
           "gatilho_evento_invalido": "Escolha de novo o tipo de evento do Calendly.",
           "gatilho_reagendamento_invalido": "Marque ou desmarque de novo a opção “Ignorar reagendamentos”.",
           "gatilho_webhook_invalido": "Escolha de novo o webhook que dispara a automação.",
