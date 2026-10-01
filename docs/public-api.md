@@ -92,6 +92,14 @@ may be reworded.
 | 404    | `not_found`    | No such resource                                 |
 | 500    | `internal`     | Server error                                     |
 
+`404` always means the resource does not exist **in this account**. A
+failure on our side — the database timing out, for instance — is a
+`500 internal`, never a `404`: a false "not found" would make your flow
+create the thing again. Retry a `500`. The same goes for the key: if the
+CRM cannot read it at that moment, the answer is `500`, not `401` — retry
+instead of rotating the key. An `{id}` in the path that is not a UUID is a
+`400 bad_request`, on every endpoint.
+
 ## Rate limits
 
 Requests are limited **per key**: **120 requests per minute**. On a
@@ -895,6 +903,8 @@ Read one meeting. Scope: `meetings:read`.
 List internal conversation notes, newest first. Scope: `notes:read`.
 Paginated. Optional filters: `?conversation_id=`, `?contact_id=`.
 Notes are internal to the team — they are never sent to the customer.
+Notes on **group** conversations are not listed: groups stay out of this
+API, as in [`GET /api/v1/conversations`](#get-apiv1conversations).
 
 ### `POST /api/v1/notes`
 
@@ -905,8 +915,9 @@ conversation (each contact has at most one). `texto` is required
 conversation yet — typically one created through `POST /api/v1/contacts`
 and never messaged — returns `409` with code
 `contact_without_conversation` (a lead that arrived by an incoming webhook
-or a Calendly booking already has one, even before writing). Response:
-`201` with the note.
+or a Calendly booking already has one, even before writing). A group
+conversation's `conversation_id` is a `404`, like any conversation outside
+this account. Response: `201` with the note.
 
 ## Pagination
 
