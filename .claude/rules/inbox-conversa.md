@@ -309,9 +309,11 @@ comum no meio das mensagens (ícone cinza sobre bolha cinza).
   bolha**: o `bg-muted/50` de antes sumia no cinza do cliente. Assim as cores de
   dentro valem nos dois lados do fio e nos temas; no escuro o cartão fica mais
   fundo que a bolha, como no WhatsApp.
-- ⚠️ **Nenhum dos dois tem largura mínima fixa**: o `min-w-[13rem]` passava
-  do teto de 75% da bolha num fio estreito (320 px, painel dividido) e a
-  conversa inteira rolava para o lado (Codex, #371).
+- ⚠️ **Nada na bolha tem largura FIXA que não encolha.** Cartões sem `min-w`;
+  imagem e vídeo com o teto fixo no INVÓLUCRO (`max-w-60`) e `max-w-full`
+  neles; quadros de carga como o player (`w-64 max-w-full`). Senão, num fio
+  estreito (320 px; 1280 px com o painel aberto = fio de 305 px) a peça vaza o
+  teto de 75% e a conversa rola para o lado (Codex #371; medido 01/10/2026).
 - **Selo do documento = extensão sobre a cor da família** (`tipoDoDocumento`,
   `src/lib/media/tipo-de-documento.ts`): PDF vermelho, planilha verde, texto
   azul. Os tons passam de 4,5 com o branco; os `-600` de verde, laranja e
