@@ -226,6 +226,40 @@ jobs:
         run: supabase db query --local --file supabase/ci/verify-schema.sql
 
   # ------------------------------------------------------------
+  # Em PR — a doc de integração acompanha o contrato?
+  # ------------------------------------------------------------
+  # O PR que mexe na API v1, nos avisos (webhooks enviados), nos webhooks
+  # recebidos, no MCP ou no que automação/robô/agente de IA faz que a doc
+  # descreve, sem tocar a doc daquela área, reprova aqui — a não ser que um
+  # commit do PR declare `Doc-inalterada: <motivo>`. O porquê e as áreas
+  # estão no cabeçalho de `scripts/doc-acompanha.mjs`.
+  #
+  # ⚠️ FORA do `needs` do deploy, de propósito: este job só roda em PR, e
+  # job pulado dentro de `needs` pula quem depende dele — o push no main
+  # deixaria de publicar.
+  documentacao:
+    name: A doc acompanha o contrato
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # O diff e as MENSAGENS dos commits do PR: no clone raso não há
+          # base para comparar nem os commits onde mora a declaração.
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      # Só módulos nativos do Node: sem `npm ci`.
+      - name: A doc de integração acompanha o contrato
+        env:
+          BASE: ${{ github.base_ref }}
+        run: node scripts/doc-acompanha.mjs "origin/$BASE"
+
+  # ------------------------------------------------------------
   # Etapa 3 — publicar
   # ------------------------------------------------------------
   # ⚠️ Só no main, e só depois de `verificar` passar. Em PR os

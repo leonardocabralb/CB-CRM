@@ -186,6 +186,16 @@ then sends.
 > integration must not open deals, don't send through this endpoint for
 > those contacts.
 
+> **Other side effects** — the same as a send from the CRM screens:
+> - a **closed** conversation reopens, with no one assigned (the API is not
+>   a team member);
+> - a robot (flow) running for the contact is **paused** — someone stepped
+>   in;
+> - if the account signs its messages (*Settings → Message signature*),
+>   text messages and media captions sent here are signed with the **name
+>   for automatic messages**, and the stored `content_text` includes the
+>   signature.
+
 ```bash
 curl -X POST https://your-crm.example.com/api/v1/messages \
   -H "Authorization: Bearer wacrm_live_xxx" \
@@ -193,9 +203,9 @@ curl -X POST https://your-crm.example.com/api/v1/messages \
   -d '{ "to": "+14155550123", "type": "text", "text": "Hi 👋" }'
 ```
 
-`type` is `text` (default), `template`, or a media kind (`image` /
-`video` / `document` / `audio`). Media needs `media_url` (and optional
-`filename`); `text` doubles as the caption. `template` needs a
+`type` is `text` (default), `template`, `interactive`, or a media kind
+(`image` / `video` / `document` / `audio`). Media needs `media_url` (and
+optional `filename`); `text` doubles as the caption. `template` needs a
 `template` object:
 
 ```jsonc
@@ -205,7 +215,7 @@ curl -X POST https://your-crm.example.com/api/v1/messages \
   "template": {
     "name": "order_update",
     "language": "en_US",
-    "params": ["A123"]        // positional body vars, or a structured object
+    "params": ["A123"]        // positional body vars, or a structured object (below)
   },
   "reply_to_message_id": "<uuid>",  // optional; must be in the same conversation
   "channel_id": "<uuid>",           // optional; which number to send FROM
@@ -213,12 +223,64 @@ curl -X POST https://your-crm.example.com/api/v1/messages \
 }
 ```
 
+`params` is either a list — the body variables `{{1}}`, `{{2}}`… in order —
+or an object, for templates with more than body variables:
+
+```jsonc
+"params": {
+  "body": ["Maria"],                          // body {{1}}, {{2}}…
+  "headerText": "July",                       // a text header's {{1}}
+  "headerMediaUrl": "https://…/invoice.pdf",  // replaces the header's media (or "headerMediaId")
+  "buttonParams": { "0": "abc123" }           // by button position (0 = first): a URL button's {{1}}, a copy-code button's code
+}
+```
+
+The object form needs a template the CRM has synced from Meta — it reads
+the template to place each value; for a template the CRM doesn't know, send
+the list.
+
+`interactive` sends reply buttons or a list — **official Meta numbers
+only** (a QR-code number answers `not_supported`). It takes an
+`interactive_payload`:
+
+```jsonc
+// Reply buttons: 1–3
+{ "to": "+14155550123", "type": "interactive",
+  "interactive_payload": {
+    "kind": "buttons",
+    "body": "Can we talk tomorrow?",       // required, ≤ 1024 chars
+    "header": "Scheduling",                // optional, ≤ 60
+    "footer": "Tap an option",             // optional, ≤ 60
+    "buttons": [                           // id: unique; title: ≤ 20 chars
+      { "id": "yes", "title": "Yes" },
+      { "id": "no", "title": "No" }
+    ] } }
+
+// A list: 1–10 rows in total
+{ "to": "+14155550123", "type": "interactive",
+  "interactive_payload": {
+    "kind": "list",
+    "body": "Which area is it about?",
+    "button_label": "See the areas",       // ≤ 20 chars
+    "sections": [ { "title": "Areas", "rows": [
+      { "id": "banking", "title": "Banking", "description": "Loans and cards" } // title ≤ 24, description ≤ 72
+    ] } ] } }
+```
+
+When the customer taps an option, their reply is listed in
+[the conversation's messages](#get-apiv1conversationsidmessages) with
+`content_type: "interactive"` and `interactive_reply_id` set to the `id`
+you gave that button or row.
+
 `name` names the contact when this call creates it. For a contact that
 already exists it **also replaces the name**, unless that name is marked
-as fixed in the CRM (a name chosen on purpose rather than taken from the
-WhatsApp profile — typed by someone, or set by an integration or an
-automation); to rename a contact on purpose, use
-`PATCH /api/v1/contacts/{id}`.
+as **fixed** in the CRM — a name chosen on purpose rather than taken from
+the WhatsApp profile: typed by someone in the CRM screens, or set by the
+Calendly booking, the Asaas integration, an automation or a robot.
+⚠️ A name written through this API is **not** fixed — neither this `name`
+nor the one in [`PATCH /api/v1/contacts/{id}`](#get--patch-apiv1contactsid):
+the contact's next WhatsApp message can bring back their WhatsApp profile
+name.
 
 Response (201):
 
@@ -241,7 +303,13 @@ Domain error codes beyond the table above:
 - `not_supported` (400) — the number can't send this: a template or an
   interactive message through a QR-code (`evolution`) number, or any
   message through an Instagram connection.
-- `meta_error` (502) — the request reached Meta and it rejected the send.
+- `meta_error` (502) — the send to Meta failed, and `message` carries the
+  reason. Usually Meta **refused** it (an invalid number, the 24-hour
+  window closed, a template problem…) and nothing went out. But the same
+  code covers a call that broke on the way — a network error, Meta
+  unavailable — when the message **may** have gone out without the CRM
+  recording it. Retry only when the reason is a refusal, or the customer
+  can get it twice.
 - `evolution_rejected` (502) — a QR-code number's server refused the send;
   nothing went out.
 - `evolution_error` (502) — a QR-code number timed out or failed: the
@@ -259,7 +327,9 @@ List contacts, newest first. Scope: `contacts:read`. Paginated (see
 [Pagination](#pagination)). Optional filters: `?search=` (a
 case-insensitive substring of the name or the phone, matched literally —
 `%`, `_`, `*`, commas and parentheses are plain characters) and
-`?tag=<tagId>`. The `tag` filter takes only a tag **id**
+`?tag=<tagId>`. The phone is stored as digits only (see
+[Phone numbers](#phone-numbers)), so search it by digits: `8198874` finds
+`5581988745316`, while `+55 (81)` finds nothing. The `tag` filter takes only a tag **id**
 (from `GET /api/v1/tags`) — unlike the write endpoints below, a tag name
 there is a `400 bad_request`.
 
@@ -267,8 +337,10 @@ there is a `400 bad_request`.
 {
   "data": [
     {
-      "id": "…", "phone": "+14155550123", "name": "Jane Doe",
+      "id": "…", "phone": "14155550123", "name": "Jane Doe",
       "email": null, "company": "Acme", "avatar_url": null,
+      "instagram_id": null, "instagram_username": null,
+      "whatsapp_user_id": null, "whatsapp_username": null,
       "tags": [{ "id": "…", "name": "vip", "color": "#3b82f6" }],
       "created_at": "…", "updated_at": "…"
     }
@@ -280,7 +352,11 @@ there is a `400 bad_request`.
 > **Instagram (since migration 989):** a contact that only exists on
 > Instagram Direct has `phone: null` and carries `instagram_id` (the IGSID)
 > and `instagram_username` instead. Both fields are present on every
-> contact object (`null` for WhatsApp-only contacts). `POST /contacts`
+> contact object of the contacts endpoints and of the `deal.*` webhook
+> events (`null` for WhatsApp-only contacts) — but **not** on the contact
+> embedded in a conversation (`GET /api/v1/conversations`), where an
+> Instagram contact comes with `phone: null` and no Instagram id: read it
+> with `GET /api/v1/contacts/{id}`. `POST /contacts`
 > still requires `phone` — Instagram contacts are created by the Direct
 > webhook, never by the API.
 
@@ -360,6 +436,12 @@ not a UUID returns `400 bad_request` (here and on `/custom-fields` and
 > every other tag the contact had — unless you send `"tags_mode": "add"`.
 > To add AND drop individual tags in one call, use
 > `POST /api/v1/contacts/{id}/tags` below.
+
+> ⚠️ A `name` written here is **not fixed**: when the contact sends their
+> next WhatsApp message, the CRM may replace it with their WhatsApp profile
+> name — as it does with any name nobody chose. Names typed in the CRM
+> screens, or set by the Calendly booking, the Asaas integration, an
+> automation or a robot, are fixed and never replaced that way.
 
 ### `POST /api/v1/contacts/{id}/tags`
 
@@ -541,6 +623,20 @@ and `?contact_id=`. Each conversation embeds its contact (`id`, `phone`,
 `name`, `email`, `company`, `whatsapp_user_id`, `whatsapp_username`) +
 tags. Group conversations are not listed.
 
+```jsonc
+{
+  "id": "…", "contact_id": "…",
+  "channel_id": "…",              // the number the conversation is on; null = the account default
+  "status": "open",               // open | pending | closed
+  "assigned_agent_id": "…",       // the assignee's USER id (the IDs tab lists it), or null
+  "last_message_text": "…", "last_message_at": "…",
+  "unread_count": 0,
+  "created_at": "…", "updated_at": "…",
+  "contact": { "id": "…", "phone": "5581988745316", "name": "…", "email": null, "company": null,
+               "whatsapp_user_id": null, "whatsapp_username": null, "tags": [] }
+}
+```
+
 ### `GET /api/v1/conversations/{id}`
 
 Read one conversation. Scope: `conversations:read`. `404` if it belongs
@@ -553,6 +649,23 @@ Paginated. Each message includes its `direction` (`inbound` /
 `outbound`), `status` (delivery state), `whatsapp_message_id`, and
 `content_*`. The conversation is verified to belong to your account
 first (`404` otherwise).
+
+```jsonc
+{
+  "id": "…", "conversation_id": "…",
+  "channel_id": "…",              // the number it came in or went out on
+  "direction": "inbound",         // inbound (from the contact) | outbound
+  "sender_type": "customer",      // customer | agent (the team, the paired phone, this API) | bot (automations, robots, AI agents)
+  "content_type": "text",         // text | image | video | audio | document | location | template | interactive | call | contact…
+  "content_text": "Hi 👋",
+  "media_url": null, "template_name": null,
+  "whatsapp_message_id": "wamid.…",
+  "status": "read",               // sending | sent | delivered | read | failed
+  "reply_to_message_id": null,    // the message this one quotes
+  "interactive_reply_id": null,   // on a customer's tap (content_type "interactive"): the id of the button or row
+  "created_at": "…"
+}
+```
 
 **WhatsApp calls** are listed here too (WhatsApp connections by QR code
 only), with `content_type: "call"` and `content_text: null`. A call nobody
@@ -609,8 +722,14 @@ every call to this endpoint failed with `500 Failed to create broadcast`
 
 Recipients are capped at **1000 per request** — split larger sends.
 Phone numbers outside the [rule](#phone-numbers) are dropped and counted
-as `rejected`. Response
-(202):
+as `rejected`. A number with no contact yet gets one, as
+`POST /api/v1/contacts` would create it. Recipients that resolve to the
+**same contact** — the same number twice, or two spellings of it — are
+messaged once, and the extra ones are dropped **without** being counted:
+`accepted + rejected` can be less than the number of recipients you sent.
+`total_recipients` and `accepted` are both the number of contacts the
+campaign will message. If no recipient is usable, the call fails with
+`400 bad_request` and nothing is created. Response (202):
 
 ```json
 {
@@ -740,9 +859,11 @@ Create a task about a contact, assigned to a team member. Scope:
 }
 ```
 
-The assignee is notified in-app (unless the task lands on the API's
-own audit user). Replies and sub-tasks (`tarefa_pai_id`) are
-dashboard-only. Response: `201` with the task.
+The task is recorded as created by the **account owner** — the API's
+author, the same one stamped on everything this API creates. The assignee
+is notified in-app, except when the assignee is the owner (a task one
+creates for oneself doesn't notify). Replies, sub-tasks (`tarefa_pai_id`)
+and recurrence are dashboard-only. Response: `201` with the task.
 
 ### `GET /api/v1/tasks/{id}`
 
@@ -783,6 +904,15 @@ not follow the conversation later). Domain error codes: `no_channel`
 `not_supported` (409 — see below).
 Response: `201` with the scheduled message.
 
+**When it goes out**, the message counts as written by the **account
+owner** (the API's author), as if the owner had scheduled it on screen:
+with the signature on (*Settings → Message signature*), it is signed with
+the owner's name; it pauses the conversation's AI agent, as a reply from
+the team does; and a closed conversation reopens assigned to the owner.
+Like [`POST /api/v1/messages`](#post-apiv1messages), it can open the
+contact's deal (`source: "channel"`). A robot (flow) running for the contact
+is **not** paused — nobody is at the keyboard when it fires.
+
 **Contacts without a phone number (WhatsApp usernames).** When a
 customer has adopted a WhatsApp username, Meta may deliver their
 messages with no phone number at all — only a business-scoped user ID.
@@ -808,6 +938,15 @@ List the account's pipelines with their stages (ordered by
 `position`). Scope: `deals:read`. Not paginated. Every id returned
 here is a valid `pipeline_id` / `stage_id` for the deal endpoints.
 
+```jsonc
+{ "data": [ { "id": "…", "name": "Comercial", "created_at": "…",
+  "stages": [ { "id": "…", "name": "Lead", "position": 0, "color": "#3b82f6" } ] } ] }
+```
+
+Which stages are marked *won* or *lost* (see
+[Stages with an outcome](#get--patch-apiv1dealsid)) is **not** in this
+response: *Settings → API → IDs* shows it next to each stage.
+
 ### `GET /api/v1/deals`
 
 List deals, newest first. Scope: `deals:read`. Paginated. Optional
@@ -829,7 +968,37 @@ this CRM operates in reais), and no `channel_id` (that column means
 moves between pipelines. A contact that already has a deal (open or
 closed, any pipeline) returns `409` with code
 `contact_already_has_deal` — move the existing deal with
-`PATCH /api/v1/deals/{id}` instead. Response: `201` with the deal.
+`PATCH /api/v1/deals/{id}` instead. A contact or pipeline that is not in
+this account is a `404 not_found`, and a stage outside that pipeline is a
+`400 stage_not_found`. Response: `201` with the deal.
+
+**The title you send is kept.** A card's title normally follows its
+contact's name — renaming the contact retitles their most recent open
+card. A `title` written through this API (required here, optional in
+`PATCH`) is **fixed**: the card keeps it when the contact is renamed (only
+a Calendly booking still retitles it).
+
+A deal object (`GET /api/v1/deals`, `GET /api/v1/deals/{id}` and the
+`deal` of the `deal.*` webhook events):
+
+```jsonc
+{
+  "id": "…", "pipeline_id": "…", "stage_id": "…",
+  "contact_id": "…",           // null for a card with no contact
+  "conversation_id": "…",      // the conversation the card was born from; null when created by hand or by this API
+  "channel_id": "…",           // the number the customer ARRIVED through (historical); null when created by hand or by this API
+  "title": "Maria Exemplo",
+  "value": 1500, "currency": "BRL",
+  "status": "open",            // open | won | lost
+  "source": "manual",          // how the card was CREATED: manual (CRM screens or this API) | channel | automation
+  "expected_close_date": null,
+  "created_at": "…", "updated_at": "…"
+}
+```
+
+`source` here is how the card was **created**; the `source` of a `deal.*`
+webhook event is who caused **that** change (see
+[Delivery payload](#delivery-payload)).
 
 ### `GET` / `PATCH /api/v1/deals/{id}`
 
@@ -840,7 +1009,8 @@ accepts `title`, `value`, `status`, and stage moves:
   stage must belong to it — `stage_not_found` otherwise);
 - `pipeline_id` **plus** `stage_id` transfers it to another pipeline
   in one operation. `pipeline_id` without `stage_id` is rejected: the
-  current stage belongs to the old pipeline.
+  current stage belongs to the old pipeline. A `pipeline_id` that is not
+  in this account is a `404 not_found`.
 
 Stage/pipeline/status changes are recorded in the account's activity
 trail automatically.
@@ -870,7 +1040,7 @@ Create a meeting. Scope: `meetings:write`.
   "titulo": "Reunião de alinhamento",          // required, ≤ 200 chars
   "starts_at": "2026-09-01T14:00:00-03:00",    // required — MUST carry a timezone offset
   "ends_at": "2026-09-01T15:00:00-03:00",      // required, after starts_at, ≤ 24h long
-  "owner_user_id": "<uuid>",                   // optional — defaults to the API audit user
+  "owner_user_id": "<uuid>",                   // optional — defaults to the account owner
   "contact_id": "<uuid>",                      // optional — internal meetings have none
   "tipo": "outra",                             // optional: onboarding | atualizacao | outra
   "status": "agendada",                        // optional
@@ -882,9 +1052,10 @@ Timestamps **must include the timezone offset** (`Z` or `±HH:MM`) —
 without it "14:00" would silently shift by the server's UTC offset.
 Overlapping meetings for the same owner return `409` with code
 `overlap`. A malformed `owner_user_id` is a `400` (never a silent
-fallback), and if the account has no resolvable default owner the
-call returns `409` with code `no_default_owner` — pass
-`owner_user_id` explicitly. Response: `201` with the meeting.
+fallback), and if the account owner is not a member with a profile (so
+there is no default owner) the call returns `409` with code
+`no_default_owner` — pass `owner_user_id` explicitly. Response: `201`
+with the meeting.
 
 ### `GET /api/v1/meetings/{id}`
 
@@ -984,8 +1155,8 @@ decide what to do with those — dropping them silently drops exactly the
 new leads.
 
 The `deal.*` events fire for **every** way a card moves: dragging on the
-board, the deal form, the list view, the conversation side panel,
-automations and this API. They do **not** fire for bulk data migrations
+board, the deal form, the list view, the conversation side panel, the
+meetings agenda, automations, robots, AI agents and this API. They do **not** fire for bulk data migrations
 (which load history with the database triggers switched off), and deleting
 a deal emits nothing. One drag can emit **two** events: moving an existing
 card into a stage marked "won"/"lost" changes the stage *and* the status.
@@ -1085,20 +1256,24 @@ events whose `deal` already shows the final stage. `source` tells who caused
 the change:
 
 - `user` — someone in the CRM screens (board, deal form, list view,
-  conversation side panel);
+  conversation side panel, meetings agenda);
 - `channel` — the connection's pipeline routing opened the card. That
   happens on the contact's **first message** *or* on the team's **first
   send** to them — from the CRM screens, from the paired phone, or through
   `POST /api/v1/messages` — so `channel` does not mean "inbound lead";
-- `automation` — an automation's "Create Deal", "Move deal to stage" or
-  "Mark won or lost" step, or a robot's (flow's) "Move card" block
-  (which also creates the card when the contact has none) — including an
+- `automation` — an automation, a robot or an AI agent: an automation's
+  "Create Deal", "Move deal to stage" or "Mark won or lost" step, a robot's
+  (flow's) "Move card" block (which also creates the card when the contact
+  has none), or an AI agent's "Move the deal" tool — including an
   automation that one of your API calls set off (a tag applied through this
-  API, for instance);
+  API, for instance). The Calendly, ZapSign and Atlas integrations move
+  cards only through automations, so their moves come as `automation` too;
 - `api` — deal writes through this API (`POST`/`PATCH /api/v1/deals`);
-- `system` — anything else done without a signed-in user (a fix run
-  straight in the database, for instance). Before migration `1040` this
-  value also covered the API and the automations' move/mark steps.
+- `system` — anything else done without a signed-in user: a fix run
+  straight in the database, for instance, or an AI agent **handing the
+  conversation over** to another AI agent, which moves the card to that
+  agent's stage. Before migration `1040` this value also covered the API
+  and the automations' move/mark steps.
 
 ⚠️ If your flow reacts to `deal.stage_changed` by moving the card through
 this API, that move emits another event (`source: "api"`): filter `api`
