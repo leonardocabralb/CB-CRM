@@ -399,6 +399,8 @@
       "noteSaveError": "Não foi possível salvar a anotação.",
       "noteMentionHint": "Digite @ para mencionar um colega",
       "noteMentionFailed": "Anotação salva, mas não foi possível avisar quem você mencionou.",
+      "noteReplyFailed": "Resposta salva, mas não foi possível avisar quem escreveu na anotação.",
+      "noteReplyGone": "A anotação que você estava respondendo foi apagada.",
       "fromLibrary": "Do acervo",
       "acervoError": "Não foi possível preparar o arquivo do acervo.",
       "solteParaAnexar": "Solte aqui para anexar",
@@ -1025,7 +1027,12 @@
       "expand": "Ver a anotação inteira",
       "collapse": "Recolher anotação",
       "pinError": "Não foi possível fixar a nota.",
-      "verNaConversa": "Ver na conversa"
+      "verNaConversa": "Ver na conversa",
+      "replied": "{autor} respondeu:",
+      "reply": "Responder",
+      "cancelReply": "Cancelar resposta",
+      "originalUnavailable": "Anotação indisponível",
+      "goToOriginal": "Ver a anotação respondida"
     },
     "scheduled": {
       "sectionTitle": "Agendadas",
@@ -6743,6 +6750,8 @@
     "newsTooMany": "São avisos demais para resumir aqui — abra as notificações.",
     "newsMentions": "{count, plural, =1 {1 menção a você} other {{count} menções a você}}",
     "newsMentionsAtLeast": "{count, plural, =1 {pelo menos 1 menção a você} other {pelo menos {count} menções a você}}",
+    "newsReplies": "{count, plural, =1 {1 resposta a anotação} other {{count} respostas a anotações}}",
+    "newsRepliesAtLeast": "{count, plural, =1 {pelo menos 1 resposta a anotação} other {pelo menos {count} respostas a anotações}}",
     "newsTasks": "{count, plural, =1 {1 tarefa encaminhada ou respondida} other {{count} tarefas encaminhadas ou respondidas}}",
     "newsTasksAtLeast": "{count, plural, =1 {pelo menos 1 tarefa encaminhada ou respondida} other {pelo menos {count} tarefas encaminhadas ou respondidas}}",
     "newsConversations": "{count, plural, =1 {1 conversa atribuída a você} other {{count} conversas atribuídas a você}}",

@@ -25,7 +25,7 @@
 // exige `contact_id NOT NULL` — fixação é conceito da ficha do cliente.
 // ============================================================
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import {
@@ -40,7 +40,7 @@ import { CopiarLinkDaConversa } from "@/components/inbox/copiar-link-da-conversa
 import { FotoAmpliavel } from "@/components/inbox/painel/foto-ampliavel";
 import { ResponsavelMenu } from "@/components/inbox/painel/responsavel-menu";
 
-import type { CbGroup, Message, Conversation } from "@/types";
+import type { CbGroup, Message, Conversation, ConversationNote } from "@/types";
 import { useApagarNota } from "@/hooks/use-apagar-nota";
 import { useAuth } from "@/hooks/use-auth";
 import { useCan } from "@/hooks/use-can";
@@ -113,6 +113,19 @@ export function GroupSidebar({
   // Autor OU admin, a mesma régua do fio e do painel — é a policy da 918.
   const podeAdministrar = useCan("manage-members");
   const { apagarNota } = useApagarNota(removerNotaLocal, recarregarNotas);
+  // Responder a uma anotação (1075) — o mesmo do painel do contato,
+  // carimbado com a conversa pelo mesmo motivo.
+  const [respondendo, setRespondendo] = useState<{
+    de: string;
+    nota: ConversationNote;
+  } | null>(null);
+  if (respondendo && respondendo.de !== conversationId) setRespondendo(null);
+  const notaRespondida =
+    respondendo && respondendo.de === conversationId ? respondendo.nota : null;
+  const notasPorId = useMemo(
+    () => new Map(notas.map((n) => [n.id, n])),
+    [notas],
+  );
 
   const [editandoApelido, setEditandoApelido] = useState(false);
   const [apelido, setApelido] = useState("");
@@ -409,6 +422,8 @@ export function GroupSidebar({
               listaParaBaixo
               autoFocus={false}
               onSaved={acrescentarNota}
+              respondendoA={notaRespondida}
+              onLimparResposta={() => setRespondendo(null)}
             />
           ) : null}
 
@@ -424,6 +439,14 @@ export function GroupSidebar({
                 onVerNaConversa={
                   onIrParaItemDoFio
                     ? () => onIrParaItemDoFio({ tipo: "nota", id: note.id })
+                    : undefined
+                }
+                respondida={
+                  note.resposta_de ? (notasPorId.get(note.resposta_de) ?? null) : null
+                }
+                onResponder={
+                  conversationId
+                    ? () => setRespondendo({ de: conversationId, nota: note })
                     : undefined
                 }
               />

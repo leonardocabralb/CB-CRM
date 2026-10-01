@@ -272,6 +272,7 @@ describe('intercalar', () => {
     texto: 'anotação',
     mencionados: [],
     fixada_em: null,
+    resposta_de: null,
     created_at,
   });
 

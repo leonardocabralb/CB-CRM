@@ -16,7 +16,14 @@ import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { formatDistanceToNow } from 'date-fns';
-import { AtSign, Bell, ListTodo, Reply, UserPlus } from 'lucide-react';
+import {
+  AtSign,
+  Bell,
+  ListTodo,
+  MessageSquareReply,
+  Reply,
+  UserPlus,
+} from 'lucide-react';
 
 import type { Bloco } from '@/hooks/use-resumo-do-dia';
 import type { Notificacoes } from '@/hooks/use-area-de-trabalho';
@@ -41,6 +48,7 @@ const AVISOS_NA_LISTA = 8;
 const ICONE: Record<Notification['type'], typeof Bell> = {
   conversation_assigned: UserPlus,
   note_mention: AtSign,
+  note_reply: MessageSquareReply,
   task_assigned: ListTodo,
   task_reply: Reply,
 };

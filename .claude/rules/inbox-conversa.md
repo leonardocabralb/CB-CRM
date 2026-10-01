@@ -6,6 +6,7 @@ paths:
   - "src/components/inbox/contact-sidebar.tsx"
   - "src/components/inbox/group-sidebar.tsx"
   - "src/components/inbox/cartao-de-nota.tsx"
+  - "src/components/inbox/citacao-da-nota.tsx"
   - "src/components/inbox/cartao-de-contato.tsx"
   - "src/lib/inbox/conversar-com-contato*"
   - "src/lib/inbox/tipo-nao-suportado*"
@@ -321,30 +322,11 @@ O WhatsApp quase nunca anuncia a falha; este vermelho é INFERIDO.
   do navegador. Aba nova com `noopener noreferrer`; cor HERDADA com
   sublinhado (a mesma peça vai na bolha violeta).
 
-### Anotação interna: são QUATRO telas
+### Anotação interna e resposta à anotação
 
-`src/hooks/use-apagar-nota.ts` e `src/components/inbox/cartao-de-nota.tsx`.
-
-- ⚠️⚠️ **Apagar SEMPRE pelo `useApagarNota`**: a policy é "autor OU admin", e
-  RLS que barra DELETE devolve 0 linhas sem erro — sem o `count`, a nota some
-  da tela e volta na próxima abertura.
-- ⚠️ **`podeApagar` = `author_user_id === user.id || useCan('manage-members')`**,
-  igual nas telas; divergir mostra lixeira que a RLS recusa.
-- ⚠️ **Nota de GRUPO não fixa** (o índice parcial exige `contact_id`): sem
-  `onFixar` o alfinete não aparece. Quem monta a aba decide, e também o
-  `sticky`.
-- ⚠️ **Aba Notas do painel (decisão do operador, 29/09/2026): caixa de
-  escrever PRIMEIRO, fixada logo abaixo, RECOLHIDA** (`destaque` no
-  `CartaoDeNota`: duas linhas, seta só com texto cortado de verdade, aberta
-  com teto e rolagem própria). Presa e inteira, uma nota longa cobria a
-  lista toda. O sticky respeita o padding do `TabsContent`: `-top-4` + faixa
-  `bg-card`, senão a lista aparece por cima do cartão. Pino
-  `cartao-de-nota.test.tsx`.
-- **`contact-detail-view` tem `deleteNote` próprio, de propósito**: distingue
-  "proibido" de "falhou".
-- **A frase do autor é `Inbox.note.wrote` nas quatro telas.**
-- Quem levar o `InternalNoteBox` a uma tela nova põe a entrada dela em
-  `ESCRITA_DA_TELA` como `viewer` (anotar conta como operação; ver a raiz).
+Moram em `.claude/rules/anotacoes.md` (as quatro telas, apagar, fixar, a
+aba Notas do painel e a resposta da 1075). Os links clicáveis na anotação
+ficam acima, em "Links clicáveis".
 
 ### Cabeçalho do fio, painel lateral e aba Arquivos
 

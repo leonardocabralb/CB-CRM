@@ -19,7 +19,7 @@
 
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { AtSign, ListTodo, UserPlus } from 'lucide-react';
+import { AtSign, ListTodo, MessageSquareReply, UserPlus } from 'lucide-react';
 
 import type {
   Bloco,
@@ -110,7 +110,7 @@ export function Novidades({
 }) {
   const t = useTranslations('ResumoDoDia');
   if (bloco.status !== 'pronto') return <EstadoDoBloco bloco={bloco} />;
-  const { mencoes, tarefas, conversas, total, foraDoPerfil, truncada } =
+  const { mencoes, respostas, tarefas, conversas, total, foraDoPerfil, truncada } =
     bloco.dados;
   // A régua da D8 também aqui: o número aparece, o conteúdo não.
   const fora =
@@ -152,6 +152,14 @@ export function Novidades({
             <AtSign className="size-3.5" aria-hidden />
             {t(truncada ? 'newsMentionsAtLeast' : 'newsMentions', {
               count: mencoes,
+            })}
+          </span>
+        )}
+        {respostas > 0 && (
+          <span className={cn(chip, 'bg-primary/10 text-primary')}>
+            <MessageSquareReply className="size-3.5" aria-hidden />
+            {t(truncada ? 'newsRepliesAtLeast' : 'newsReplies', {
+              count: respostas,
             })}
           </span>
         )}
