@@ -344,9 +344,11 @@ function MediaImage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadImage]);
 
+  // `max-w-full` nos quadros de erro e de carga: largura fixa que encolhe com
+  // a bolha, o mesmo par do player de áudio (`w-64 max-w-full`).
   if (error) {
     return (
-      <div className="flex h-40 w-60 items-center justify-center rounded-lg bg-muted">
+      <div className="flex h-40 w-60 max-w-full items-center justify-center rounded-lg bg-muted">
         <ImageOff className="h-8 w-8 text-muted-foreground" />
       </div>
     );
@@ -354,7 +356,7 @@ function MediaImage({
 
   if (loading) {
     return (
-      <div className="flex h-40 w-60 items-center justify-center rounded-lg bg-muted">
+      <div className="flex h-40 w-60 max-w-full items-center justify-center rounded-lg bg-muted">
         <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
       </div>
     );
@@ -362,17 +364,25 @@ function MediaImage({
 
   return (
     <>
+      {/* ⚠️ O teto de 15rem mora no INVÓLUCRO (`max-w-60` no botão) e a
+          imagem só leva `max-w-full`. Com o teto na própria imagem, ela não
+          encolhia com a bolha: num fio estreito — celular de 320 px, ou o
+          computador de 1280 px com o painel do contato aberto (fio de 305 px)
+          — a imagem de 231 px passava do teto de 75% da bolha e a conversa
+          inteira rolava para o lado. O percentual sozinho não basta: no
+          cálculo da largura natural ele vale como "sem teto", e é o teto FIXO
+          do botão que mantém a bolha justa na imagem no fio largo. */}
       <button
         type="button"
         onClick={() => (onAmpliar ? onAmpliar() : setAmpliada(true))}
         title={tv("open")}
         aria-label={tv("open")}
-        className="block cursor-zoom-in rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="block max-w-60 cursor-zoom-in rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <img
           src={src ?? ""}
           alt={alt}
-          className="max-h-64 max-w-60 rounded-lg object-cover"
+          className="max-h-64 max-w-full rounded-lg object-cover"
           onError={() => setError(true)}
         />
       </button>
@@ -558,11 +568,15 @@ function MessageContent({
       return (
         <div>
           {message.media_url ? (
-            <video
-              src={message.media_url}
-              controls
-              className="max-h-64 max-w-60 rounded-lg"
-            />
+            // O mesmo par da imagem: teto fixo no invólucro, `max-w-full` no
+            // vídeo — senão ele vaza a bolha num fio estreito.
+            <div className="max-w-60">
+              <video
+                src={message.media_url}
+                controls
+                className="max-h-64 max-w-full rounded-lg"
+              />
+            </div>
           ) : (
             <MediaPendente message={message} label={t("video")} t={t} />
           )}
