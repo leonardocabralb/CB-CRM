@@ -280,7 +280,8 @@ When the customer taps an option, their reply is listed in
 `content_type: "interactive"` and `interactive_reply_id` set to the `id`
 you gave that button or row.
 
-`name` names the contact when this call creates it. For a contact that
+`name` (trimmed; an empty or blank one is ignored) names the contact when
+this call creates it. For a contact that
 already exists it **also replaces the name**, unless that name is marked
 as **fixed** in the CRM — a name chosen on purpose rather than taken from
 the WhatsApp profile: typed by someone in the CRM screens, or set by the
