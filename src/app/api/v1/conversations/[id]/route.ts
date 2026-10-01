@@ -4,7 +4,8 @@
 // ============================================================
 
 import { requireApiKey } from '@/lib/auth/api-context';
-import { ok, fail, toApiErrorResponse } from '@/lib/api/v1/respond';
+import { ok, fail, badRequest, toApiErrorResponse } from '@/lib/api/v1/respond';
+import { ehUuid } from '@/lib/tasks/validar';
 import {
   CONVERSATION_SELECT,
   normalizeConversation,
@@ -19,6 +20,9 @@ export async function GET(
   try {
     const ctx = await requireApiKey(request, 'conversations:read');
     const { id } = await params;
+    // NOSSO: id malformado é 400, como nas outras rotas `{id}` da v1 — sem
+    // isto o 22P02 do PostgREST saía 500, e o integrador repetiria.
+    if (!ehUuid(id)) throw badRequest("'id' must be a UUID");
 
     const { data, error } = await ctx.supabase
       .from('conversations')

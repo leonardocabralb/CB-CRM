@@ -151,3 +151,23 @@ describe('POST /api/v1/messages — o canal pedido', () => {
     expect(h.sendMessageToConversation).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('POST /api/v1/messages — o `name` (a régua das rotas de contato)', () => {
+  // Cru, "Maria " criava a ficha com o espaço, e um "  " trocava o nome do
+  // contato existente (sem nome fixado) por brancos.
+  it.each([
+    ['  Maria Exemplo  ', 'Maria Exemplo'],
+    ['   ', null],
+    ['', null],
+    [undefined, null],
+  ])('name %j chega ao achar-ou-criar como %j', async (name, esperado) => {
+    const r = await post({ to: '+5581988745316', text: 'oi', ...(name === undefined ? {} : { name }) });
+    expect(r.status).toBe(201);
+    expect(h.resolveConversationByPhone).toHaveBeenCalledWith(
+      expect.anything(),
+      'conta-1',
+      '+5581988745316',
+      esperado
+    );
+  });
+});

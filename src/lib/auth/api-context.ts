@@ -39,7 +39,7 @@ import { clienteDaApi } from '@/lib/api/v1/cliente-da-api';
 import { findActiveKeyByHash, touchLastUsed } from '@/lib/api-keys/store';
 import { hashApiKey, looksLikeApiKey } from '@/lib/api-keys/keys';
 import { hasScope, type ApiScope } from '@/lib/api-keys/scopes';
-import { forbidden, rateLimited, unauthorized } from '@/lib/api/v1/respond';
+import { ApiError, forbidden, rateLimited, unauthorized } from '@/lib/api/v1/respond';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 
 export interface ApiKeyContext {
@@ -82,6 +82,8 @@ function extractKey(request: Request): string | null {
  *   401 unauthorized — no key, malformed, unknown, revoked, expired
  *   403 forbidden    — valid key without the required scope
  *   429 rate_limited — per-key budget exhausted
+ *   500 internal     — the key could not be READ (database failure) —
+ *                      NOSSO: never a 401, which would read as "revoked"
  *
  * On success, bumps `last_used_at` (fire-and-forget) and returns the
  * account context.
@@ -95,7 +97,15 @@ export async function requireApiKey(
     throw unauthorized();
   }
 
-  const row = await findActiveKeyByHash(hashApiKey(presented));
+  let row: Awaited<ReturnType<typeof findActiveKeyByHash>>;
+  try {
+    row = await findActiveKeyByHash(hashApiKey(presented));
+  } catch {
+    // ⚠️ NOSSO: a leitura da chave FALHOU (o banco), não a chave. 401 aqui
+    // diria ao integrador "revogada" — ele trocaria a chave ou desligaria a
+    // integração por um soluço que passa sozinho.
+    throw new ApiError('internal', 'Could not verify the API key right now; retry', 500);
+  }
   if (!row) {
     // Covers unknown, revoked, and expired keys alike — we don't
     // distinguish them on the wire so a probe can't learn whether a

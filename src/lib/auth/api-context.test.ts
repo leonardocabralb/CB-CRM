@@ -86,6 +86,19 @@ describe("requireApiKey", () => {
     );
   });
 
+  // NOSSO: a leitura da chave que FALHA (o banco) não é chave inválida. Com
+  // 401, o integrador concluía "revogada" e trocava a chave ou desligava a
+  // integração por um soluço que passa sozinho.
+  it("500s — never 401 — when the key lookup itself fails", async () => {
+    findActiveKeyByHash.mockRejectedValue(new Error("API key lookup failed"));
+    await expectApiError(
+      requireApiKey(reqWith(`Bearer ${KEY}`)),
+      "internal",
+      500,
+    );
+    expect(touchLastUsed).not.toHaveBeenCalled();
+  });
+
   it("returns a context for a valid key with no scope required", async () => {
     findActiveKeyByHash.mockResolvedValue(row());
     const ctx = await requireApiKey(reqWith(`Bearer ${KEY}`));
