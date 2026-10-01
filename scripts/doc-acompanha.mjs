@@ -31,10 +31,12 @@
  * decisão; a doc tocada não prova que o texto certo mudou. E arquivo novo de
  * contrato fora destes globs passa calado — achou um, acrescente-o aqui.
  * Arquivo que muda toda semana por OUTROS motivos (`automations/engine.ts`,
- * `ia-agentes/turno.ts`) não entra no glob, senão a declaração vira rotina: a
- * promessa que a doc faz sobre ele vira um pino perto do código
- * (`src/lib/webhooks/origem-dos-escritores.test.ts`: com que `source` cada um
- * move o card).
+ * `ia-agentes/turno.ts`, os caminhos de ingestão) não entra no glob, senão a
+ * declaração vira rotina: a promessa que a doc faz sobre ele vira um pino
+ * perto do código — `src/lib/webhooks/origem-dos-escritores.chamadores.test.ts`
+ * (TODO escritor de `deals`, com a `source` que produz) e
+ * `disparos-de-aviso.chamadores.test.ts` (quem emite cada aviso, e em que
+ * ordem).
  */
 
 import { execFileSync } from 'node:child_process'
@@ -60,6 +62,8 @@ export const AREAS = [
       'src/lib/whatsapp/broadcast-core.ts',
       'src/lib/scheduled/dispatch.ts',
       'src/lib/contacts/telefone.ts',
+      // O limite por chave (120/min) que a referência crava.
+      'src/lib/rate-limit.ts',
     ],
     docs: ['docs/public-api.md'],
   },

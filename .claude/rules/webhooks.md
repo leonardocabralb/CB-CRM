@@ -217,7 +217,10 @@ e `reentregar-eventos-de-funil.ts` (E/S), a coleta em `drain-events.ts`.
   RPC com cadeia vazia, que ainda carimba); a PASSAGEM entre agentes
   (`[[PASSAR:n]]`, UPDATE direto em service role em `ia-agentes/turno.ts`) sai
   `system` — a doc diz as duas. Escritor novo de etapa/status = a lista da doc
-  muda junto. O cabeçalho vem do `clienteDaApi` das rotas v1
+  muda junto: o inventário EXATO de quem escreve em `deals`, com a origem de
+  cada um, é `src/lib/webhooks/origem-dos-escritores.chamadores.test.ts`, e
+  quem emite cada aviso de mensagem/conversa (e em que ordem),
+  `disparos-de-aviso.chamadores.test.ts`. O cabeçalho vem do `clienteDaApi` das rotas v1
   e chega pela GUC `request.headers`, lida num bloco com EXCEPTION (um
   `::jsonb` malformado fora dele derrubaria toda escrita em `deals`). Rota v1
   que escreva por `supabaseAdmin()` sai `system` (há pino).
