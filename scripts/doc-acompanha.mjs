@@ -64,6 +64,13 @@ export const AREAS = [
       'src/lib/contacts/telefone.ts',
       // O limite por chave (120/min) que a referência crava.
       'src/lib/rate-limit.ts',
+      // A forma do que o `POST /messages` aceita e a referência descreve: a
+      // mensagem interativa (esquema e limites) e o objeto de
+      // `template.params`. Mudam pouco (4 PRs em setembro, somados).
+      'src/lib/whatsapp/interactive.ts',
+      'src/lib/whatsapp/meta-api.ts',
+      'src/lib/whatsapp/template-send-builder.ts',
+      'src/lib/whatsapp/template-body.ts',
     ],
     docs: ['docs/public-api.md'],
   },
