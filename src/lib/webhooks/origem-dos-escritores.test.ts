@@ -3,25 +3,31 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 // ============================================================
-// A ORIGEM (`source`) que a doc pública promete para os agentes de IA,
-// amarrada ao fonte.
+// A ORIGEM (`source`) que a doc pública promete para quem move card fora das
+// telas e da API, amarrada ao fonte.
 //
 // `docs/public-api.md`, `docs/webhooks.md` e a aba Documentação
 // (`Settings.documentacao.avisos.regra.negocio`, nos dois dicionários) dizem
 // ao integrador:
-//   - a ferramenta "Mover o card" dos agentes chega como `automation` — ela
-//     move pela RPC `cb_atualizar_negocio`, que carimba `cb.cadeia` (mesmo
-//     com a cadeia vazia), e o gatilho da 1040 lê a cadeia antes de tudo;
+//   - os passos "Criar negócio", "Mover card de etapa" e "Marcar ganho ou
+//     perdido" das AUTOMAÇÕES chegam como `automation` — o motor cria por
+//     `createDeal` com `source: 'automation'` e move/marca pela RPC
+//     `cb_atualizar_negocio`, que carimba `cb.cadeia`; o gatilho da 1040 lê a
+//     cadeia e o `source` antes de tudo. O motor não escreve em `deals` por
+//     fora disso;
+//   - a ferramenta "Mover o card" dos AGENTES DE IA também chega como
+//     `automation` (a mesma RPC, com a cadeia vazia, que ainda carimba);
 //   - a PASSAGEM entre agentes (`[[PASSAR:n]]`) chega como `system` — ela
 //     move por UPDATE direto, em service role: sem `auth.uid()`, sem cadeia
 //     e sem o cabeçalho da API, o gatilho cai na sobra.
 //
 // O portão `scripts/doc-acompanha.mjs` vigia `executar-acoes.ts` por
-// caminho, mas NÃO `ia-agentes/turno.ts`: ele muda toda semana por outros
-// motivos, e vigiá-lo inteiro faria do `Doc-inalterada` rotina. A promessa
-// da passagem mora aqui (achado do Codex no PR #368): trocar o UPDATE pela
-// RPC — ou a RPC por um UPDATE — muda o `source` que o n8n recebe sem erro
-// nenhum. Reprovou? Atualize as três docs acima e este pino no mesmo PR.
+// caminho, mas NÃO `automations/engine.ts` nem `ia-agentes/turno.ts`: os
+// dois mudam toda semana por outros motivos, e vigiá-los inteiros faria do
+// `Doc-inalterada` rotina. A promessa mora aqui (achados do Codex no PR
+// #368): trocar o mecanismo de um escritor muda o `source` que o n8n
+// recebe sem erro nenhum. Reprovou? Atualize as três docs acima e este pino
+// no mesmo PR.
 // ============================================================
 
 const src = path.join(__dirname, '..', '..');
@@ -42,6 +48,28 @@ function funcao(texto: string, nome: string): string {
   const fim = resto.slice(1).search(/\n(?:export )?(?:async )?function |\n(?:export )?const /);
   return fim > -1 ? resto.slice(0, fim + 1) : resto;
 }
+
+/** Escrita direta em `deals` (UPDATE/INSERT/UPSERT), aspas simples ou duplas. */
+const ESCRITA_DIRETA = /\.from\(['"]deals['"]\)\s*\.(update|insert|upsert)\(/;
+
+describe('a origem que a doc promete para os passos das automações', () => {
+  const motor = fonte('lib/automations/engine.ts');
+
+  it('o motor não escreve em `deals` por fora da RPC e do createDeal', () => {
+    expect(motor).not.toMatch(ESCRITA_DIRETA);
+  });
+
+  it('"Mover card de etapa" e "Marcar ganho ou perdido" passam pela RPC que carimba a cadeia', () => {
+    expect(motor).toContain("rpc('cb_atualizar_negocio'");
+  });
+
+  it('"Criar negócio" cria com `source: \'automation\'`', () => {
+    const i = motor.indexOf('createDeal(');
+    expect(i, 'createDeal não encontrado no motor').toBeGreaterThan(-1);
+    const chamada = motor.slice(i, motor.indexOf('});', i));
+    expect(chamada).toContain("source: 'automation'");
+  });
+});
 
 describe('a origem que a doc promete para os agentes de IA', () => {
   it('a PASSAGEM entre agentes move o card por UPDATE direto (chega `system`)', () => {

@@ -1,5 +1,6 @@
 import { execSync } from 'node:child_process'
-import { matchesGlob } from 'node:path'
+import { readFileSync } from 'node:fs'
+import { join, matchesGlob } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { AREAS, avaliar, ehTeste, motivoDeclarado, RAIZ } from './doc-acompanha.mjs'
@@ -13,7 +14,12 @@ import { AREAS, avaliar, ehTeste, motivoDeclarado, RAIZ } from './doc-acompanha.
 // mudança de contrato passaria a exigir a declaração, e ela viraria rotina).
 // ============================================================
 
-type Area = { nome: string; contrato: string[]; docs: string[] }
+type Area = {
+  nome: string
+  contrato: string[]
+  docs: string[]
+  conteudo?: { arquivos: string; padrao: RegExp }
+}
 
 const versionados: string[] = execSync('git ls-files', {
   cwd: RAIZ,
@@ -33,6 +39,16 @@ describe('as áreas apontam para o que existe', () => {
     for (const doc of area.docs) {
       it(`${area.nome}: o documento ${doc} existe`, () => {
         expect(versionados).toContain(doc)
+      })
+    }
+    const conteudo = area.conteudo
+    if (conteudo) {
+      // Função renomeada no banco deixaria o padrão casando o vazio.
+      it(`${area.nome}: o padrão de conteúdo casa algum arquivo versionado`, () => {
+        const casam = versionados.filter(
+          (c) => matchesGlob(c, conteudo.arquivos) && conteudo.padrao.test(readFileSync(join(RAIZ, c), 'utf8'))
+        )
+        expect(casam.length).toBeGreaterThan(0)
       })
     }
   }
@@ -94,6 +110,25 @@ describe('avaliar', () => {
     expect(motivoDeclarado(['Doc-inalterada:'])).toBeNull()
     expect(motivoDeclarado(['doc-inalterada: refatoração interna'])).toBeNull()
     expect(motivoDeclarado(['Veja Doc-inalterada: refatoração interna'])).toBeNull()
+  })
+
+  it('migration que redefine a origem dos avisos é contrato — pelo CONTEÚDO', () => {
+    const migration = 'supabase/migrations/1099_cb_exemplo.sql'
+    const redefine = avaliar({
+      arquivos: [migration],
+      mensagens: [],
+      ler: () => 'CREATE OR REPLACE FUNCTION public.cb_enfileira_evento_de_funil() RETURNS trigger …',
+    })
+    expect(redefine.ok).toBe(false)
+    expect(redefine.pendentes.map((p: { nome: string }) => p.nome)).toEqual([
+      'Avisos do CRM (webhooks enviados)',
+    ])
+
+    const outra = avaliar({ arquivos: [migration], mensagens: [], ler: () => 'CREATE TABLE exemplo (id uuid);' })
+    expect(outra.tocadas).toEqual([])
+
+    // Sem leitor (ou arquivo apagado), conteúdo nenhum casa.
+    expect(avaliar({ arquivos: [migration], mensagens: [] }).tocadas).toEqual([])
   })
 
   it('a doc acompanha também a mudança de automação que ela descreve', () => {

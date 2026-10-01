@@ -30,13 +30,15 @@
  * ⚠️ O portão vê CAMINHO, não significado: uma área sem a doc tocada pede a
  * decisão; a doc tocada não prova que o texto certo mudou. E arquivo novo de
  * contrato fora destes globs passa calado — achou um, acrescente-o aqui.
- * Arquivo que muda toda semana por OUTROS motivos (ex.: `ia-agentes/turno.ts`)
- * não entra no glob, senão a declaração vira rotina: a promessa que a doc faz
- * sobre ele vira um pino perto do código (`src/lib/webhooks/
- * origem-dos-escritores.test.ts`, a origem da passagem entre agentes).
+ * Arquivo que muda toda semana por OUTROS motivos (`automations/engine.ts`,
+ * `ia-agentes/turno.ts`) não entra no glob, senão a declaração vira rotina: a
+ * promessa que a doc faz sobre ele vira um pino perto do código
+ * (`src/lib/webhooks/origem-dos-escritores.test.ts`: com que `source` cada um
+ * move o card).
  */
 
 import { execFileSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { dirname, join, matchesGlob } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -64,6 +66,14 @@ export const AREAS = [
   {
     nome: 'Avisos do CRM (webhooks enviados)',
     contrato: ['src/lib/webhooks/**'],
+    // A ORIGEM (`source`) dos `deal.*` nasce no BANCO: o gatilho da fila do
+    // funil (1040) e a RPC das automações (1031). Migration que redefine um
+    // dos dois muda o que o integrador recebe; é cobrada pelo CONTEÚDO,
+    // porque cada migration é um arquivo novo.
+    conteudo: {
+      arquivos: 'supabase/migrations/*.sql',
+      padrao: /cb_enfileira_evento_de_funil|cb_atualizar_negocio/,
+    },
     docs: ['docs/public-api.md', 'docs/webhooks.md'],
   },
   {
@@ -107,14 +117,27 @@ export function motivoDeclarado(mensagens) {
 }
 
 /**
- * Puro. `arquivos`: os caminhos mudados (relativos à raiz); `mensagens`: as
- * mensagens dos commits. Devolve as áreas tocadas (com `ok` por área), as
- * pendentes, o motivo declarado e o veredito.
+ * `arquivos`: os caminhos mudados (relativos à raiz); `mensagens`: as
+ * mensagens dos commits; `ler`: o conteúdo de um caminho (`null` se não há —
+ * arquivo apagado), só para as áreas com regra de `conteudo`. Devolve as
+ * áreas tocadas (com `ok` por área), as pendentes, o motivo declarado e o
+ * veredito.
+ *
+ * @param {{
+ *   arquivos: string[],
+ *   mensagens: string[],
+ *   areas?: typeof AREAS,
+ *   ler?: (caminho: string) => string | null,
+ * }} entrada
  */
-export function avaliar({ arquivos, mensagens, areas = AREAS }) {
+export function avaliar({ arquivos, mensagens, areas = AREAS, ler = () => null }) {
   const tocadas = []
   for (const area of areas) {
-    const casados = arquivos.filter((a) => !ehTeste(a) && area.contrato.some((g) => matchesGlob(a, g)))
+    const porConteudo = (a) =>
+      !!area.conteudo && matchesGlob(a, area.conteudo.arquivos) && area.conteudo.padrao.test(ler(a) ?? '')
+    const casados = arquivos.filter(
+      (a) => !ehTeste(a) && (area.contrato.some((g) => matchesGlob(a, g)) || porConteudo(a))
+    )
     if (casados.length === 0) continue
     const docTocada = area.docs.some((d) => arquivos.includes(d))
     tocadas.push({ nome: area.nome, casados, docs: area.docs, ok: docTocada })
@@ -144,8 +167,15 @@ function main() {
     ]),
   ].sort()
   const mensagens = git('log', '--format=%B%x00', `${base}..HEAD`).split('\0')
+  const ler = (caminho) => {
+    try {
+      return readFileSync(join(RAIZ, caminho), 'utf8')
+    } catch {
+      return null // apagado no diff
+    }
+  }
 
-  const r = avaliar({ arquivos, mensagens })
+  const r = avaliar({ arquivos, mensagens, ler })
   if (r.tocadas.length === 0) {
     console.log('Nenhum contrato de integração mudou: nada a cobrar da doc.')
     return
