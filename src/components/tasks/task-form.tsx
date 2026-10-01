@@ -11,6 +11,9 @@
 // ⚠️ RESPONDER NÃO MOSTRA DESTINATÁRIO, de propósito: a resposta volta para
 // quem pediu, e é o SERVIDOR que decide isso (ver a rota). Um seletor aqui
 // prometeria uma escolha que a rota ignora.
+//
+// Nem "Repetir" (1074): a resposta é a devolutiva de UMA tarefa, e a rota
+// recusa resposta que repete.
 // ============================================================
 
 import { useEffect, useState } from 'react';
@@ -45,7 +48,7 @@ import type { EdicaoDeTarefa, NovaTarefa } from '@/hooks/use-acoes-da-tarefa';
 import { memberLabel } from '@/lib/account/members';
 import { membrosAtivos, opcoesDeResponsavel } from '@/lib/account/suspensao';
 import { diaLocal } from '@/lib/tasks/prazo';
-import { MAX_TITULO } from '@/lib/tasks/validar';
+import { INTERVALOS_DE_REPETICAO, MAX_TITULO } from '@/lib/tasks/validar';
 import type { Task } from '@/types';
 
 export interface TaskFormProps {
@@ -63,6 +66,9 @@ export interface TaskFormProps {
   editar: (t: Task, campos: EdicaoDeTarefa) => Promise<void>;
   salvando?: boolean;
 }
+
+/** Valor do seletor para "não repete" (os outros são os dias, em texto). */
+const NAO_REPETE = 'nunca';
 
 export function TaskForm({
   open,
@@ -86,6 +92,8 @@ export function TaskForm({
 
   const editando = !!tarefa;
   const respondendo = tipo === 'resposta';
+  // Nem ao responder, nem ao editar uma resposta (a rota recusa as duas).
+  const mostrarRepetir = !respondendo && tarefa?.tipo !== 'resposta';
   /**
    * Criação GLOBAL (página de Tarefas): sem cliente vindo por prop nem
    * herdado de um pai, o formulário mesmo oferece o seletor de contato.
@@ -103,6 +111,8 @@ export function TaskForm({
   const [venceEm, setVenceEm] = useState('');
   const [venceAs, setVenceAs] = useState('');
   const [importante, setImportante] = useState(false);
+  const [repetir, setRepetir] = useState(NAO_REPETE);
+  const repetirEmDias = repetir === NAO_REPETE ? null : Number(repetir);
 
   // Repõe os campos toda vez que a caixa abre. Sem isto, fechar sem salvar e
   // reabrir para outro cliente traria o rascunho anterior — e a tarefa sairia
@@ -120,6 +130,11 @@ export function TaskForm({
       setVenceAs(tarefa?.vence_as?.slice(0, 5) ?? '');
       setImportante(tarefa?.importante ?? false);
       setResponsavel(tarefa?.responsavel_user_id ?? '');
+      setRepetir(
+        tarefa?.repetir_a_cada_dias
+          ? String(tarefa.repetir_a_cada_dias)
+          : NAO_REPETE,
+      );
       setContatoEscolhido('');
     }
     // ⚠️ SÓ por abertura/tarefa — `membros` fica FORA destas deps de
@@ -180,6 +195,12 @@ export function TaskForm({
         ...(responsavel && responsavel !== tarefa.responsavel_user_id
           ? { responsavel_user_id: responsavel }
           : {}),
+        // Só quando mudou: a rota aplica à SÉRIE inteira (1074). O `?? null`
+        // cobre a linha lida sem a coluna (app no ar antes da migration):
+        // sem ele, TODA edição mandaria "não repete" e daria 500.
+        ...(mostrarRepetir && repetirEmDias !== (tarefa.repetir_a_cada_dias ?? null)
+          ? { repetir_a_cada_dias: repetirEmDias }
+          : {}),
       });
       onOpenChange(false);
       return;
@@ -198,6 +219,9 @@ export function TaskForm({
       importante,
       tarefa_pai_id: tarefaPai?.id,
       tipo,
+      ...(mostrarRepetir && repetirEmDias !== null
+        ? { repetir_a_cada_dias: repetirEmDias }
+        : {}),
     });
     if (nova) onOpenChange(false);
   }
@@ -384,6 +408,41 @@ export function TaskForm({
               </p>
             </div>
           </div>
+
+          {mostrarRepetir ? (
+            <div className="space-y-2">
+              <Label className="text-muted-foreground">
+                {t('fieldRepeat')}
+              </Label>
+              <Select
+                value={repetir}
+                onValueChange={(v) => setRepetir(v ?? NAO_REPETE)}
+              >
+                <SelectTrigger aria-label={t('fieldRepeat')}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NAO_REPETE}>{t('repeatNever')}</SelectItem>
+                  {INTERVALOS_DE_REPETICAO.map((dias) => (
+                    <SelectItem key={dias} value={String(dias)}>
+                      {t('repeatEvery', { dias })}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {/* Na edição de uma série, o aviso de que a mudança vale para
+                  todas; ao ligar, como a próxima nasce (pelo calendário). */}
+              {tarefa?.repetir_a_cada_dias ? (
+                <p className="text-muted-foreground text-xs">
+                  {t('repeatHintSeries')}
+                </p>
+              ) : repetirEmDias !== null ? (
+                <p className="text-muted-foreground text-xs">
+                  {t('repeatHint')}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
 
           {!editando ? (
             <label className="text-muted-foreground flex items-center gap-2 text-sm">

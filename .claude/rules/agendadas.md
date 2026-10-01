@@ -28,6 +28,10 @@ anexos, em `.claude/rules/midia.md`. O texto antigo, com a história, está em
   `/api/cb/scheduled/cron` (laço do `docker-stack.yml`). Sem ele a tabela só
   enche — o destino de `broadcasts.scheduled_at`, viva e sem leitor desde a
   001.
+- ⚠️ **A rota carrega também as TAREFAS RECORRENTES** (1074,
+  `after(() => gerarTarefasRecorrentes(admin))`): tirá-la do laço, ou tirar a
+  chamada, para de gerar as tarefas sem erro nenhum. Pino
+  `tarefas-recorrentes-1074.test.ts`; o resto em `.claude/rules/tarefas.md`.
 - **Agendar não passa pela janela de desfazer.** O desvio é a primeira coisa do
   `handleSend` (e do `sendDraft`, para anexo), antes de qualquer
   `setPendente`: a janela tem três saídas que disparam na hora (trocar de
