@@ -3,6 +3,7 @@
 import { Fragment, useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { useModoAnonimo } from "@/hooks/use-modo-anonimo";
 import { useChannels } from "@/hooks/use-channels";
 import { useLeadEvents } from "@/hooks/use-lead-events";
 import { useExecucoesDoFio } from "@/hooks/use-execucoes-do-fio";
@@ -468,6 +469,26 @@ const STATUS_OPTIONS: {
 const DOODLE_BG_CLASSES =
   "bg-background bg-[url('/inbox-doodle.svg')] bg-repeat";
 
+/**
+ * Zera as não lidas da conversa no banco; o tempo real leva o zero à lista e
+ * ao contador do menu. Os dois chamadores — ver e responder — passam pelo
+ * modo anônimo (`.claude/rules/modo-anonimo.md`).
+ *
+ * ⚠️ Sem filtro `unread_count > 0`, de propósito: o UPDATE incondicional
+ * devolve pelo tempo real o zero que derruba `hasUnread`. Com o filtro, uma
+ * cópia velha na tela (o banco já em zero) não receberia evento nenhum,
+ * `hasUnread` ficaria `true` e a mensagem seguinte não re-rodaria o efeito.
+ */
+function zerarNaoLidas(conversationId: string) {
+  createClient()
+    .from("conversations")
+    .update({ unread_count: 0 })
+    .eq("id", conversationId)
+    .then(({ error }) => {
+      if (error) console.error("Failed to reset unread_count:", error);
+    });
+}
+
 export function MessageThread({
   conversation,
   contact,
@@ -492,6 +513,12 @@ export function MessageThread({
   const tActions = useTranslations("Inbox.actions");
 
   const { user, profile, assinaturaAtiva } = useAuth();
+  /**
+   * Modo anônimo (decisão do operador, 01/10/2026): VER não zera as não
+   * lidas da equipe; RESPONDER zera (`marcarEnviada`). A presença quem cala é
+   * a página, dona da seleção.
+   */
+  const { ativo: modoAnonimo } = useModoAnonimo();
 
   /**
    * O nome com que ESTA pessoa assina, ou null. Só para desenhar a bolha
@@ -1230,17 +1257,14 @@ export function MessageThread({
   //
   // Guarding on hasUnread prevents the eq-update loop: once unread_count
   // is 0 the condition is false, so no further UPDATE is issued.
+  //
+  // ⚠️ No modo anônimo, ver não zera — e `modoAnonimo` nas dependências é
+  // load-bearing: desligar o modo com a conversa aberta re-roda o efeito e
+  // zera na hora, como se ela tivesse acabado de ser aberta.
   useEffect(() => {
-    if (!conversationId || !hasUnread) return;
-    const supabase = createClient();
-    supabase
-      .from("conversations")
-      .update({ unread_count: 0 })
-      .eq("id", conversationId)
-      .then(({ error }) => {
-        if (error) console.error("Failed to reset unread_count:", error);
-      });
-  }, [conversationId, hasUnread]);
+    if (!conversationId || !hasUnread || modoAnonimo) return;
+    zerarNaoLidas(conversationId);
+  }, [conversationId, hasUnread, modoAnonimo]);
 
   // Trilha de atividade do lead (migration 912) — mudança de funil, etapa,
   // status e tags aparecem intercaladas na conversa. `resyncToken` entra como
@@ -1669,9 +1693,19 @@ export function MessageThread({
    * "enviada" e deixavam o texto otimista de pé até o realtime chegar —
    * então uma legenda assinada aparecia sem o nome por segundos. A rota
    * devolve `content_text` para todos eles desde a 923.
+   *
+   * ⚠️ E é aqui, depois de o servidor CONFIRMAR o envio, que responder zera
+   * as não lidas no modo anônimo (decisão do operador, 01/10/2026: ver não
+   * zera, responder sim). `conversationIdDoEnvio` é obrigatório para todo
+   * caminho de envio trazer a conversa para a qual a mensagem SAIU — a
+   * tela pode já estar noutra quando a resposta do servidor chega.
    */
   const marcarEnviada = useCallback(
-    (tempId: string, payload: { content_text?: unknown; channel_id?: unknown }) => {
+    (
+      tempId: string,
+      payload: { content_text?: unknown; channel_id?: unknown },
+      conversationIdDoEnvio: string,
+    ) => {
       onUpdateMessage(tempId, {
         status: "sent",
         ...(typeof payload?.content_text === "string"
@@ -1683,8 +1717,9 @@ export function MessageThread({
           ? { channel_id: payload.channel_id }
           : {}),
       });
+      if (modoAnonimo) zerarNaoLidas(conversationIdDoEnvio);
     },
-    [onUpdateMessage],
+    [onUpdateMessage, modoAnonimo],
   );
 
   const handleSend = useCallback(
@@ -1778,7 +1813,7 @@ export function MessageThread({
         // realtime chegasse — parecendo que o sistema reescreveu o que ele
         // escreveu. Trocar aqui, na mesma resposta, faz a assinatura
         // aparecer de uma vez.
-        marcarEnviada(tempId, payload);
+        marcarEnviada(tempId, payload, conversation.id);
       } catch (err) {
         console.error("Failed to send message:", err);
         const reason = err instanceof Error ? err.message : t("networkError");
@@ -1892,7 +1927,7 @@ export function MessageThread({
         }
 
         // `data` e a resposta; `payload` aqui e o CORPO da requisicao.
-        marcarEnviada(tempId, data);
+        marcarEnviada(tempId, data, conversation.id);
         return true;
       } catch (err) {
         console.error("Failed to send media:", err);
@@ -1969,7 +2004,7 @@ export function MessageThread({
         }
 
         // `data` e a resposta; `payload` aqui e o payload interativo.
-        marcarEnviada(tempId, data);
+        marcarEnviada(tempId, data, conversation.id);
       } catch (err) {
         console.error("Failed to send interactive message:", err);
         const reason = err instanceof Error ? err.message : t("networkError");
@@ -2086,7 +2121,7 @@ export function MessageThread({
           return;
         }
 
-        marcarEnviada(tempId, payload);
+        marcarEnviada(tempId, payload, conversation.id);
       } catch (err) {
         console.error("Failed to send template:", err);
         const reason = err instanceof Error ? err.message : t("networkError");

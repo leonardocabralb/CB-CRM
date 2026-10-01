@@ -16,6 +16,7 @@ import {
   navegacaoAoAbrir,
 } from "@/lib/inbox/voltar-no-celular";
 import { useMarcarConversaAberta } from "@/hooks/use-conversa-aberta";
+import { useModoAnonimo } from "@/hooks/use-modo-anonimo";
 import { useInadimplencia } from "@/hooks/use-inadimplencia";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { ConversaForaDaArea } from "@/components/inbox/conversa-fora-da-area";
@@ -115,9 +116,16 @@ function InboxPageInner() {
   const [activeConversation, setActiveConversation] =
     useState<Conversation | null>(null);
   const [activeContact, setActiveContact] = useState<Contact | null>(null);
+  // A conversa que ESTE membro está lendo para a equipe: a que aparece na
+  // presença e a que zera as não lidas. No modo anônimo (decisão do
+  // operador, 01/10/2026) nenhuma — o administrador vê o fio sem deixar
+  // rastro. Os espelhos da lista abaixo usam a MESMA régua; o fio aplica a
+  // dele no banco (`.claude/rules/modo-anonimo.md`).
+  const { ativo: modoAnonimo } = useModoAnonimo();
+  const conversaLida = modoAnonimo ? null : (activeConversation?.id ?? null);
   // Presença por conversa (963): marca no banco qual conversa ESTE membro
   // está vendo — a página é a dona da seleção, então o escritor mora aqui.
-  useMarcarConversaAberta(activeConversation?.id ?? null);
+  useMarcarConversaAberta(conversaLida);
   const [messages, setMessages] = useState<Message[]>([]);
   /**
    * De QUAL conversa é o array `messages` acima. `null` = ainda não chegou.
@@ -514,8 +522,9 @@ function InboxPageInner() {
         if (knownConvIdsRef.current.has(newMsg.conversation_id)) {
           // Hora e prévia só AVANÇAM (`comMensagemNova`): a lista reordena
           // por elas, e a mensagem de carimbo antigo puxaria a linha para
-          // baixo.
-          const aberta = activeConversation?.id === newMsg.conversation_id;
+          // baixo. A não lida fica em zero só na conversa LIDA — no modo
+          // anônimo, a aberta continua contando, como no banco.
+          const aberta = conversaLida === newMsg.conversation_id;
           setConversations((prev) =>
             prev.map((c) =>
               c.id === newMsg.conversation_id
@@ -540,7 +549,7 @@ function InboxPageInner() {
         );
       }
     },
-    [activeConversation, hydrateConversation]
+    [activeConversation, conversaLida, hydrateConversation]
   );
 
   // Handle realtime conversation events
@@ -574,14 +583,16 @@ function InboxPageInner() {
           // RIGHT NOW, so any positive value would just flicker the badge
           // back on for the ~100ms it takes for the reset effect's server
           // UPDATE to round-trip. Non-active convs take the value as-is.
-          const isActive = activeConversation?.id === conv.id;
+          // ⚠️ "Lendo" é `conversaLida`: no modo anônimo ninguém zera a
+          // conversa aberta, e suprimir aqui afirmaria "lida" sobre ela.
+          const lida = conversaLida === conv.id;
           setConversations((prev) =>
             prev.map((c) =>
               c.id === conv.id
                 ? {
                     ...c,
                     ...conv,
-                    unread_count: isActive ? 0 : conv.unread_count,
+                    unread_count: lida ? 0 : conv.unread_count,
                   }
                 : c,
             ),
@@ -602,7 +613,7 @@ function InboxPageInner() {
         }
       }
     },
-    [activeConversation, hydrateConversation]
+    [activeConversation, conversaLida, hydrateConversation]
   );
 
   // Subscribe to realtime. The `isConnected` flag below feeds the
@@ -764,8 +775,13 @@ function InboxPageInner() {
           // ⚠️ MESMA guarda de escopo do clique (Fase 3): deep link de
           // notificação pode apontar conversa de outra área — o fio não
           // monta, o servidor não zera, e zerar só o espelho local mentiria
-          // "lida" até o próximo reload. Achado da revisão fria.
-          if (conversaNoEscopo(acesso, match) && match.unread_count > 0) {
+          // "lida" até o próximo reload. Achado da revisão fria. Pelo mesmo
+          // motivo, nada no modo anônimo: o fio não zera no banco.
+          if (
+            !modoAnonimo &&
+            conversaNoEscopo(acesso, match) &&
+            match.unread_count > 0
+          ) {
             setConversations((prev) =>
               prev.map((c) =>
                 c.id === match.id ? { ...c, unread_count: 0 } : c,
@@ -775,7 +791,7 @@ function InboxPageInner() {
         }
       }
     },
-    [deepLinkConvId, activeConversation?.id, acesso]
+    [deepLinkConvId, activeConversation?.id, acesso, modoAnonimo]
   );
 
   const handleSelectConversation = useCallback(
@@ -808,8 +824,9 @@ function InboxPageInner() {
       // ⚠️ Conversa fora do perfil NÃO zera o contador — nem aqui nem no
       // servidor (o reset de verdade mora no MessageThread, que não monta
       // para ela). Zerar só o espelho local mentiria "lida" numa conversa
-      // que ninguém leu, até o próximo reload desmentir.
-      if (!bloqueadaAoSelecionar) {
+      // que ninguém leu, até o próximo reload desmentir. Pelo mesmo motivo,
+      // nada no modo anônimo: o fio não zera no banco.
+      if (!bloqueadaAoSelecionar && !modoAnonimo) {
         setConversations((prev) =>
           prev.map((c) =>
             c.id === conv.id && c.unread_count > 0
@@ -858,7 +875,7 @@ function InboxPageInner() {
         router.replace(urlDaConversa, { scroll: false });
       }
     },
-    [activeConversation?.id, router, de, acesso, ehDesktop]
+    [activeConversation?.id, router, de, acesso, ehDesktop, modoAnonimo]
   );
 
   /**
