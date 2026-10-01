@@ -33,6 +33,15 @@ describe('tipoDoDocumento', () => {
     expect(tipoDoDocumento(undefined, 'application/octet-stream')).toEqual({ rotulo: '', familia: 'outro' });
   });
 
+  it('o .bin do nome sintetizado não é tipo: ícone genérico, ou o MIME quando há', () => {
+    expect(tipoDoDocumento('whatsapp-document-20261001-120000.bin', null)).toEqual({ rotulo: '', familia: 'outro' });
+    expect(tipoDoDocumento('whatsapp-document-20261001-120000.bin', 'application/octet-stream')).toEqual({
+      rotulo: '',
+      familia: 'outro',
+    });
+    expect(tipoDoDocumento('arquivo.bin', 'application/pdf')).toEqual({ rotulo: 'PDF', familia: 'pdf' });
+  });
+
   it('extensão longa demais para o selo não vira rótulo', () => {
     expect(tipoDoDocumento('copia.backup', null)).toEqual({ rotulo: '', familia: 'outro' });
     expect(tipoDoDocumento('copia.backup', 'application/pdf')).toEqual({ rotulo: 'PDF', familia: 'pdf' });

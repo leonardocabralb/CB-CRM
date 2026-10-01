@@ -58,6 +58,11 @@ export interface TipoDeDocumento {
  * O nome vem primeiro porque é o que o operador lê ao lado do selo: um
  * `contrato.pdf` gravado como `application/octet-stream` diz PDF nos dois
  * lugares. Extensão longa demais para o selo (`.backup`) não vira rótulo.
+ *
+ * ⚠️ `.bin` não é tipo: é a extensão que `mediaFilename` SINTETIZA quando
+ * nada revela o tipo (`whatsapp-document-<carimbo>.bin`, documento sem nome
+ * declarado e sem nome no endereço). Lida como extensão, o selo diria "BIN"
+ * onde o certo é o ícone genérico (Codex, PR #371).
  */
 export function tipoDoDocumento(
   nome: string | null | undefined,
@@ -65,7 +70,8 @@ export function tipoDoDocumento(
 ): TipoDeDocumento {
   const doNome = nome?.trim().match(EXTENSAO_DO_NOME)?.[1]?.toLowerCase();
   const doMime = extensionForMime(mime);
-  const extensao = doNome ?? (doMime === "bin" ? "" : doMime);
+  const extensao =
+    doNome && doNome !== "bin" ? doNome : doMime === "bin" ? "" : doMime;
   return {
     rotulo: extensao.toUpperCase(),
     familia: FAMILIA_POR_EXTENSAO[extensao] ?? "outro",
