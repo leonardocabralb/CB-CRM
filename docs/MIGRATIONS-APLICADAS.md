@@ -1140,6 +1140,23 @@ nome da época em que foram aplicadas.
   a geração criou a de hoje (não lida, aviso no sino) e não duplicou na 2ª
   rodada; editar para 7 dias mudou as duas; apagar a ativa encerrou a série;
   limpeza conferida (0 tarefas e 0 avisos de teste).
+- **1075_cb_resposta_na_anotacao** — resposta à anotação interna:
+  `cb_conversation_notes.resposta_de` com FK composta `(resposta_de,
+  conversation_id)` e `ON DELETE SET NULL (resposta_de)` (alvo: o índice único
+  `(id, conversation_id)`), índice parcial em `resposta_de`, e `note_reply` no
+  `notifications_type_check`. PR #369. ADITIVA e ANTES do deploy. Aplicada em
+  01/10/2026 pela Management API (histórico `20261001160525`), depois do
+  replay verde do CI no commit `23fca5d2` e ANTES do merge, com "aplique a
+  1075 em produção" do operador. A conferência gravou e desfez (P1075) a prova
+  com uma conversa real: nenhuma sobra. Conferida no catálogo: a coluna, a FK
+  com `SET NULL (resposta_de)`, os 2 índices, os 5 tipos do sino; 597
+  anotações intactas. E2E no preview, no lead de teste: anotação → Responder
+  no fio (caixa com a citação) → resposta gravada com `resposta_de`; a
+  citação salta até a original; resposta da resposta pela aba Notas; o X
+  desfaz a citação e mantém o texto; apagar a original manteve a resposta,
+  que virou anotação comum na tela pelo tempo real; nenhum aviso (resposta à
+  própria anotação). Limpeza conferida: 5 anotações no lead (as de antes), 0
+  avisos, 668 mensagens (nada enviado no teste do teclado).
 
 ## Notas do histórico
 
