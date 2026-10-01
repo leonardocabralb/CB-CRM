@@ -60,7 +60,7 @@ export interface ConversationCreatedData {
  * `system`.
  *
  * - `user`: uma pessoa, nas telas do CRM (arrastar, formulário, lista,
- *   painel da conversa) — escrita sob RLS, com sessão;
+ *   painel da conversa, pauta de reuniões) — escrita sob RLS, com sessão;
  * - `channel`: o roteador da conexão (`routeContactToPipeline`) abriu o
  *   card. ⚠️ NÃO é "lead que chegou": ele roda nos DOIS sentidos — na
  *   primeira mensagem do cliente E no primeiro envio da equipe (a tela, o
@@ -71,15 +71,22 @@ export interface ConversationCreatedData {
  *   ganho ou perdido" de uma automação, e o bloco "Mover card de etapa" de um
  *   ROBÔ (1053: move pela mesma RPC, com a cadeia `flow:<id>`, e cria o card
  *   com `source: 'automation'`) — inclusive a que um pedido da API disparou
- *   (a cadeia e o `source` são conferidos ANTES do cabeçalho);
+ *   (a cadeia e o `source` são conferidos ANTES do cabeçalho). A ferramenta
+ *   "Mover o card" dos agentes de IA também (`executar-acoes.ts`: a mesma RPC,
+ *   com a cadeia vazia, que ainda carimba);
  * - `api`: a API pública de negócios (`POST`/`PATCH /api/v1/deals`), pelo
  *   cliente próprio das rotas v1 (`src/lib/api/v1/cliente-da-api.ts`). É o
  *   que o integrador filtra para não reagir ao PRÓPRIO movimento — não corta
  *   o laço que atravessa uma automação do CRM (ela sai `automation`, e a
  *   escrita pela API começa uma cadeia nova, que `fechaCiclo` não liga);
  * - `system`: a sobra — escrita em service role fora desses caminhos (SQL à
- *   mão, por exemplo). Até a 1040 este valor misturava a API com os passos
- *   "Mover"/"Marcar" das automações.
+ *   mão, por exemplo, e a PASSAGEM de um agente de IA a outro, que move o
+ *   card por UPDATE direto em `ia-agentes/turno.ts`). Até a 1040 este valor
+ *   misturava a API com os passos "Mover"/"Marcar" das automações.
+ *
+ * ⚠️ Escritor novo de etapa/status muda o que esta lista promete: a doc
+ * pública (`docs/public-api.md`, `docs/webhooks.md`) e a aba Documentação
+ * (`Settings.documentacao.avisos.regra.negocio`) mudam no mesmo PR.
  */
 export type DealEventSource = 'user' | 'channel' | 'automation' | 'api' | 'system';
 

@@ -213,7 +213,8 @@ propaganda) não abre card, nem quando a equipe responde; se for cliente, o
 card é criado à mão.
 
 Os três `deal.*` valem para **todo** jeito de mexer no card: arrastar no
-quadro, formulário, lista, painel da conversa, automações e a API. O aviso
+quadro, formulário, lista, painel da conversa, pauta de reuniões,
+automações, robôs, agentes de IA e a API. O aviso
 leva o negócio, o funil e a etapa (com nome e id), a etapa de onde o card
 saiu, o contato com etiquetas e campos personalizados, e quem causou a
 mudança (`source`). O formato completo, com exemplo, está em
@@ -225,11 +226,14 @@ mudança (`source`). O formato completo, com exemplo, está em
   da equipe (pela tela, pelo celular pareado ou por `POST /api/v1/messages`),
   então não quer dizer "lead que chegou"; `automation` são os passos
   "Criar negócio", "Mover card de etapa" e "Marcar ganho ou perdido" das
-  automações e o bloco "Mover card de etapa" dos robôs (que também cria o
-  card quando o contato não tem nenhum); `api` é a API de negócios (`POST`/`PATCH /api/v1/deals`) —
+  automações, o bloco "Mover card de etapa" dos robôs (que também cria o
+  card quando o contato não tem nenhum) e a ferramenta "Mover o card" dos
+  agentes de IA — Calendly, ZapSign e Atlas só movem card por automação,
+  então chegam assim também; `api` é a API de negócios (`POST`/`PATCH /api/v1/deals`) —
   filtre esse valor se o seu fluxo mover o card pela API, senão ele reage ao
-  próprio movimento —; e `system` é o resto (uma correção feita direto no
-  banco, por exemplo). Até a migration `1040`, `system` misturava a API com
+  próprio movimento —; e `system` é o resto: uma correção feita direto no
+  banco, por exemplo, ou um agente de IA **passando a conversa** a outro
+  agente, o que leva o card à etapa dele. Até a migration `1040`, `system` misturava a API com
   os passos de mover e marcar das automações: quem filtrava `system` troca
   o filtro para `api`.
   ⚠️ O filtro **não** corta o laço que passa por uma automação do CRM: se

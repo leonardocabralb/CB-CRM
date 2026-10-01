@@ -17,11 +17,19 @@ paths:
   - "src/app/*/settings/**"
   - "src/lib/rate-limit*"
   - "src/app/api/account/api-keys/**"
+  - "scripts/doc-acompanha*"
 ---
 
 # API pública (v1) e Configurações → API — regras
 
-Vale ao mexer nas rotas `/api/v1`, nas chaves e escopos, na doc pública (`docs/public-api.md`, `docs/mcp.md`, `mcp-server/`) e na seção API de Configurações. A régua de "mesma etiqueta" (`chaveDeTag`) e a criação de etiqueta sem duplicata estão em `.claude/rules/contatos.md`; os avisos de saída `deal.*`, em `.claude/rules/webhooks.md`. Mudou o comportamento de uma rota? A doc pública muda no mesmo PR — o integrador lê a doc, não o código.
+Vale ao mexer nas rotas `/api/v1`, nas chaves e escopos, na doc pública (`docs/public-api.md`, `docs/mcp.md`, `mcp-server/`) e na seção API de Configurações. A régua de "mesma etiqueta" (`chaveDeTag`) e a criação de etiqueta sem duplicata estão em `.claude/rules/contatos.md`; os avisos de saída `deal.*`, em `.claude/rules/webhooks.md`. Mudou o comportamento de uma rota? A doc pública muda no mesmo PR — o integrador lê a doc, não o código. Quem cobra é o job `documentacao` do CI (`scripts/doc-acompanha.mjs`, seção 11 do CLAUDE.md): contrato tocado sem a doc da área reprova, salvo `Doc-inalterada: <motivo>` num commit. O portão vê CAMINHO, não texto — a doc tocada não prova que o trecho certo mudou, e o "Doc-inalterada" é afirmação de quem leu a doc.
+
+### Comportamentos que a doc pública registra (mudar = decisão + doc junto)
+
+- ⚠️ **Nome escrito pela API NÃO fica fixado** (o `PATCH /contacts/{id}` e o `name` do `POST /messages`): a próxima mensagem do cliente pode trazer o nome do perfil do WhatsApp. É o manifesto de `nome-fixado.chamadores.test.ts` ("sem marca, sem decisão do operador"); a doc diz isso. Mudar é decisão do operador, e a doc muda junto.
+- ⚠️ **`title` mandado pela API FIXA o título do card** (obrigatório no `POST /deals`, opcional no `PATCH`): o card deixa de seguir o nome da ficha. Está na doc.
+- ⚠️ **`meta_error` mistura recusa e entrega incerta** (qualquer exceção no envio à Meta, rede incluída): a doc manda repetir só quando o motivo é recusa.
+- **A agendada pela API conta como o DONO escrevendo** (`created_by` = dono): assina com o nome dele, pausa o agente de IA (gatilho da 1049) e reabre atribuindo a ele. O `POST /messages` não (sem `sender_id`). Está na doc; mudar é decisão do operador.
 
 ### API pública: escopo E rota, sempre em par
 
