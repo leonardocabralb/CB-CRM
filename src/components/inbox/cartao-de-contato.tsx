@@ -31,12 +31,14 @@ import {
 import { FormattedText } from "./formatted-text";
 
 /**
- * Botão sobre a bolha. O fundo claro translúcido se lê nos dois lados do fio
- * (a bolha do cliente é `bg-muted`; a da equipe, `bg-primary`) — é o mesmo
- * par do botão "toque para baixar" do anexo de grupo.
+ * Botão sobre o CARTÃO, não sobre a bolha: o cartão tem superfície própria
+ * (`bg-card`), então as cores valem iguais nos dois lados do fio e nos temas
+ * de destaque. Copiar é discreto; "Conversar" leva a cor do destaque — é a
+ * ação do cartão, e o que faz o operador notar que ali há um contato no meio
+ * das mensagens (pedido do operador, 01/10/2026).
  */
 const BOTAO =
-  "inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md bg-background/60 text-xs font-medium text-foreground hover:bg-background";
+  "inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 function LinhaDoTelefone({
   telefone,
@@ -72,7 +74,7 @@ function LinhaDoTelefone({
         onClick={copiar}
         aria-label={t("copiarNumero")}
         title={copiado ? t("numeroCopiado") : t("copiarNumero")}
-        className={`${BOTAO} w-7`}
+        className={`${BOTAO} w-7 text-muted-foreground hover:bg-muted hover:text-foreground`}
       >
         {copiado ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
       </button>
@@ -81,7 +83,7 @@ function LinhaDoTelefone({
           type="button"
           onClick={() => pedirConversaComContato({ telefone: numeroDoWhatsApp, nome: nome || null })}
           title={t("conversarDica")}
-          className={`${BOTAO} px-2`}
+          className={`${BOTAO} bg-primary px-2.5 text-primary-foreground hover:bg-primary-hover`}
         >
           <MessageSquarePlus className="h-3.5 w-3.5" />
           {t("conversar")}
@@ -104,7 +106,7 @@ function UmContato({
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center gap-2">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-background/60 text-muted-foreground">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary">
           <UserRound className="h-5 w-5" />
         </span>
         {/* `min-w-0` para o `truncate` valer dentro do flex. */}
@@ -113,7 +115,7 @@ function UmContato({
             {titulo}
           </p>
           {contato.empresa && (
-            <p className="truncate text-xs opacity-80" title={contato.empresa}>
+            <p className="truncate text-xs text-muted-foreground" title={contato.empresa}>
               {contato.empresa}
             </p>
           )}
@@ -132,7 +134,7 @@ function UmContato({
           ))}
         </ul>
       ) : (
-        <p className="text-xs opacity-80">{t("semTelefone")}</p>
+        <p className="text-xs text-muted-foreground">{t("semTelefone")}</p>
       )}
     </div>
   );
@@ -152,15 +154,17 @@ export function CartaoDeContato({ message }: { message: Message }) {
 
   return (
     // Largura mínima para os botões caberem ao lado do número; o teto é o da
-    // bolha (`max-w-full` lá).
-    <div className="flex min-w-[13rem] flex-col gap-2">
+    // bolha (`max-w-full` lá). A superfície própria (`bg-card`) é a mesma do
+    // cartão de documento: sobre o cinza da bolha do cliente, o cartão se
+    // distingue de uma mensagem de texto.
+    <div className="flex min-w-[13rem] flex-col gap-2 rounded-xl bg-card p-2.5 text-card-foreground ring-1 ring-border">
       {contatos.length > 1 && (
-        <p className="text-xs font-medium opacity-80">
+        <p className="text-xs font-medium text-muted-foreground">
           {t("varios", { total: contatos.length })}
         </p>
       )}
       {contatos.map((contato, i) => (
-        <div key={i} className={i > 0 ? "border-t border-current/15 pt-2" : undefined}>
+        <div key={i} className={i > 0 ? "border-t border-border pt-2" : undefined}>
           <UmContato contato={contato} podeConversar={podeConversar} t={t} />
         </div>
       ))}
