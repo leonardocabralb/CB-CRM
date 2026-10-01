@@ -158,7 +158,10 @@ export async function POST(request: Request) {
       ctx.supabase,
       ctx.accountId,
       to,
-      typeof body.name === 'string' ? body.name : null
+      // NOSSO: aparado, e texto vazio = ausente — a mesma régua das rotas de
+      // contato (26/09/2026). Cru, "Maria " criava a ficha com o espaço, e um
+      // "  " trocava o nome do perfil do contato existente por brancos.
+      typeof body.name === 'string' ? body.name.trim() || null : null
     );
 
     // Canal explícito (multi-canal). Sem isto o número remetente é
