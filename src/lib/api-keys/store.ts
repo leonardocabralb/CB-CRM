@@ -30,6 +30,11 @@ export interface ApiKeyRow {
  * callers never have to re-check liveness. Uses the service-role
  * client (RLS-bypassing); the hash is the only credential, so this
  * is the moment that establishes the caller's account.
+ *
+ * ⚠️ NOSSO: a leitura que FALHA lança, em vez de devolver null. Null é
+ * "chave inválida" — o integrador recebia 401 num soluço do banco, e quem
+ * recebe 401 troca a chave ou desliga a integração. `requireApiKey`
+ * converte o lançamento em 500.
  */
 export async function findActiveKeyByHash(
   hash: string
@@ -42,7 +47,7 @@ export async function findActiveKeyByHash(
 
   if (error) {
     console.error('[api-keys/store] lookup error:', error.message);
-    return null;
+    throw new Error('API key lookup failed');
   }
   if (!data) return null;
 

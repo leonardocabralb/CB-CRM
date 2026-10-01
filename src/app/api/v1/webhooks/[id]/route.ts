@@ -15,6 +15,7 @@ import {
   serializeWebhookEndpoint,
   normalizeWebhookUrl,
 } from '@/lib/webhooks/endpoints';
+import { ehUuid } from '@/lib/tasks/validar';
 
 export async function GET(
   request: Request,
@@ -23,6 +24,8 @@ export async function GET(
   try {
     const ctx = await requireApiKey(request, 'webhooks:manage');
     const { id } = await params;
+    // NOSSO: id malformado é 400 (o 22P02 do PostgREST saía 500).
+    if (!ehUuid(id)) return fail('bad_request', "'id' must be a UUID", 400);
 
     const { data, error } = await ctx.supabase
       .from('webhook_endpoints')
@@ -50,6 +53,8 @@ export async function PATCH(
   try {
     const ctx = await requireApiKey(request, 'webhooks:manage');
     const { id } = await params;
+    // NOSSO: id malformado é 400 (o 22P02 do PostgREST saía 500).
+    if (!ehUuid(id)) return fail('bad_request', "'id' must be a UUID", 400);
 
     const body = (await request.json().catch(() => null)) as Record<
       string,
@@ -124,6 +129,8 @@ export async function DELETE(
   try {
     const ctx = await requireApiKey(request, 'webhooks:manage');
     const { id } = await params;
+    // NOSSO: id malformado é 400 (o 22P02 do PostgREST saía 500).
+    if (!ehUuid(id)) return fail('bad_request', "'id' must be a UUID", 400);
 
     const { data, error } = await ctx.supabase
       .from('webhook_endpoints')

@@ -158,3 +158,32 @@ describe('pipeline: o replay não pode ficar preso ao GHCR', () => {
     );
   });
 });
+
+describe('pipeline: a doc de integração acompanha o contrato (só em PR)', () => {
+  // O job que cobra a doc no PR (`scripts/doc-acompanha.mjs`). Três jeitos de
+  // ele parecer vivo e não estar: rodar sem histórico (a base não existe no
+  // clone raso e o diff sai vazio ou quebra), rodar fora de PR, ou entrar no
+  // `needs` do deploy — onde, pulado no push do main, pularia a publicação.
+  const jobDaDoc = () => {
+    const i = yml.indexOf('\n  documentacao:');
+    expect(i, 'job documentacao não encontrado').toBeGreaterThan(-1);
+    const resto = yml.slice(i + 1);
+    const j = resto.slice(1).search(/\n {2}[a-z_-]+:\n/);
+    return j > 0 ? resto.slice(0, j + 1) : resto;
+  };
+
+  it('roda o portão contra a base do PR, com o histórico inteiro', () => {
+    const job = jobDaDoc();
+    expect(job).toContain('node scripts/doc-acompanha.mjs');
+    expect(job).toContain('fetch-depth: 0');
+    expect(job).toContain('github.base_ref');
+  });
+
+  it('só em pull request', () => {
+    expect(jobDaDoc()).toContain("if: github.event_name == 'pull_request'");
+  });
+
+  it('não segura o deploy', () => {
+    expect(jobDoDeploy()).not.toMatch(/needs: \[[^\]]*documentacao/);
+  });
+});

@@ -431,8 +431,13 @@ dentro, exceções e testes de chave montada: `.claude/rules/i18n.md`.
 
 ## 11. Integrações externas
 
-- Mexeu em integração externa → atualize a doc visível (`docs/`, ajuda na
-  tela) NA MESMA PASSADA. Doc obsoleta é bug latente.
+- **A DOC ACOMPANHA O CONTRATO, no MESMO PR:** mudou a API v1, os
+  webhooks, o MCP, uma integração ou o que automação, robô ou agente de IA
+  faz que a doc descreve → `docs/public-api.md`, `docs/webhooks.md`,
+  `docs/mcp.md`, a aba Configurações → API → Documentação e a ajuda na tela
+  mudam junto (quem integra lê a doc, não o código). O job `documentacao`
+  do CI (`scripts/doc-acompanha.mjs`) cobra; sem doc, só com
+  `Doc-inalterada: <motivo>` num commit.
 - `META_APP_SECRET` valida o HMAC do webhook da Meta (sem ele, recusa tudo)
   e aceita vários segredos separados por vírgula SEM ESPAÇO: com `a, b` no
   `crm.env`, o `set -a` faz a variável SUMIR e todo webhook da Meta vira 401
@@ -653,6 +658,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
 - [ ] Schema: as regras da seção 7 (número, banco vazio, ordem de aplicação).
 - [ ] Nada de `.env.local` no commit (`git status`).
 - [ ] `npm run typecheck`, `npm run lint` e `npm run test`.
+- [ ] Contrato de integração mudou: doc junto (seção 11;
+  `node scripts/doc-acompanha.mjs`).
 - [ ] Nota nova no lugar certo, e o teto respeitado.
 
 ## 15. Não faça
