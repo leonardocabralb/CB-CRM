@@ -300,6 +300,26 @@ O WhatsApp quase nunca anuncia a falha; este vermelho é INFERIDO.
 - **Áudio não mostra nome** (o WhatsApp manda um id hexadecimal): mostra a
   transcrição quando pronta.
 
+### Documento e cartão de contato em destaque; o fundo do fio (01/10/2026)
+
+Pedido do operador: sem miniatura, o documento e o cartão passavam por texto
+comum no meio das mensagens (ícone cinza sobre bolha cinza).
+
+- ⚠️ **Os dois têm superfície PRÓPRIA (`bg-card` + anel), nunca um tom da
+  bolha**: o `bg-muted/50` de antes sumia no cinza do cliente. Assim as cores de
+  dentro valem nos dois lados do fio e nos temas; no escuro o cartão fica mais
+  fundo que a bolha, como no WhatsApp.
+- ⚠️ **Nenhum dos dois tem largura mínima fixa**: o `min-w-[13rem]` passava
+  do teto de 75% da bolha num fio estreito (320 px, painel dividido) e a
+  conversa inteira rolava para o lado (Codex, #371).
+- **Selo do documento = extensão sobre a cor da família** (`tipoDoDocumento`,
+  `src/lib/media/tipo-de-documento.ts`): PDF vermelho, planilha verde, texto
+  azul. Os tons passam de 4,5 com o branco; os `-600` de verde, laranja e
+  âmbar, não.
+- **"Conversar" é o único botão preenchido do cartão**; o copiar é discreto.
+- **O desenho do fundo está a 15%** (`public/inbox-doodle.svg`, era 22%):
+  meio-termo escolhido pelo operador entre o de antes e um de 8%.
+
 ### Links clicáveis na bolha e na anotação (29/09/2026)
 
 `src/lib/inbox/links-no-texto.ts` e `src/components/inbox/texto-com-links.tsx`

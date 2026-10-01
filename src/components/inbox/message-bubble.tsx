@@ -36,6 +36,7 @@ import { AvisoDeLigacao } from "./aviso-de-ligacao";
 import { CartaoDeContato } from "./cartao-de-contato";
 import { tipoNaoSuportado } from "@/lib/inbox/tipo-nao-suportado";
 import { urlParaAbrirAnexo } from "@/lib/media/abrir-anexo";
+import { tipoDoDocumento, type FamiliaDeDocumento } from "@/lib/media/tipo-de-documento";
 import { InteractivePreview } from "@/components/interactive/interactive-preview";
 import { useNomeDoAgenteDeIa } from "@/components/agentes-de-ia/nomes-dos-agentes";
 import { useTranslations } from "next-intl";
@@ -257,6 +258,40 @@ function nomeDeArquivo(message: Message): string | undefined {
   // arquivo com nome gravado (achado do Codex no PR #101).
   if (!message.media_url) return nomeDeclarado(message) ?? undefined;
   return mediaFilename(message) || undefined;
+}
+
+/**
+ * Cor do selo por família. Classes LITERAIS (o Tailwind não gera classe
+ * montada), e os tons escolhidos para o branco do rótulo passar de 4,5 de
+ * contraste: por isso `emerald-700`, `orange-700` e `amber-700`, e não os 600.
+ */
+const COR_DO_SELO: Record<FamiliaDeDocumento, string> = {
+  pdf: "bg-red-600",
+  planilha: "bg-emerald-700",
+  texto: "bg-blue-600",
+  apresentacao: "bg-orange-700",
+  compactado: "bg-amber-700",
+  outro: "bg-slate-500",
+};
+
+/**
+ * O selo colorido com a extensão ("PDF", "XLSX"), como no WhatsApp: é o que
+ * faz o documento saltar aos olhos no meio das mensagens, já que ele não tem
+ * miniatura. Sem extensão conhecida, o ícone genérico no selo cinza.
+ */
+function SeloDoDocumento({ nome, mime }: { nome: string; mime?: string | null }) {
+  const { rotulo, familia } = tipoDoDocumento(nome, mime);
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "flex h-9 w-8 shrink-0 items-center justify-center rounded-md text-[9px] font-bold leading-none tracking-wide text-white",
+        COR_DO_SELO[familia],
+      )}
+    >
+      {rotulo || <FileText className="h-4 w-4" />}
+    </span>
+  );
 }
 
 function MediaImage({
@@ -582,13 +617,21 @@ function MessageContent({
             href={urlParaAbrirAnexo(message.media_url, message.media_type, nome)}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2 text-sm hover:bg-muted"
+            // Cartão com superfície PRÓPRIA (`bg-card`), não um tom da bolha:
+            // sobre o cinza do cliente o `bg-muted/50` de antes sumia, e o
+            // documento passava por texto comum no meio das mensagens (pedido
+            // do operador, 01/10/2026). Com superfície própria, o selo e o nome
+            // se leem igual nos dois lados do fio — inclusive na bolha violeta.
+            // ⚠️ Sem largura mínima fixa: num fio estreito (celular de 320 px,
+            // painel dividido) o `min-w` passava do teto de 75% da bolha e a
+            // conversa inteira rolava para o lado (Codex, PR #371).
+            className="flex items-center gap-2.5 rounded-xl bg-card p-2 pr-3 text-sm text-card-foreground ring-1 ring-border transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />
+            <SeloDoDocumento nome={nome} mime={message.media_type} />
             {/* `min-w-0` é o que deixa o `truncate` funcionar dentro do flex:
                 sem ele o item nasce com `min-width: auto` e o nome longo
                 estica a bolha em vez de ser cortado. */}
-            <span className="min-w-0 truncate" title={nome}>
+            <span className="min-w-0 flex-1 truncate font-medium" title={nome}>
               {nome}
             </span>
           </a>
