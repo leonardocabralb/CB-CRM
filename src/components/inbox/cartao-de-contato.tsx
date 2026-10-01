@@ -153,11 +153,13 @@ export function CartaoDeContato({ message }: { message: Message }) {
   }
 
   return (
-    // Largura mínima para os botões caberem ao lado do número; o teto é o da
-    // bolha (`max-w-full` lá). A superfície própria (`bg-card`) é a mesma do
-    // cartão de documento: sobre o cinza da bolha do cliente, o cartão se
-    // distingue de uma mensagem de texto.
-    <div className="flex min-w-[13rem] flex-col gap-2 rounded-xl bg-card p-2.5 text-card-foreground ring-1 ring-border">
+    // A superfície própria (`bg-card`) é a mesma do cartão de documento: sobre
+    // o cinza da bolha do cliente, o cartão se distingue de uma mensagem de
+    // texto. ⚠️ Sem largura mínima fixa: o `min-w-[13rem]` que havia aqui
+    // passava do teto de 75% da bolha num fio estreito (celular de 320 px,
+    // painel dividido), e a conversa inteira rolava para o lado (Codex, PR
+    // #371). No aperto, o número trunca (`min-w-0`) e os botões ficam.
+    <div className="flex flex-col gap-2 rounded-xl bg-card p-2.5 text-card-foreground ring-1 ring-border">
       {contatos.length > 1 && (
         <p className="text-xs font-medium text-muted-foreground">
           {t("varios", { total: contatos.length })}

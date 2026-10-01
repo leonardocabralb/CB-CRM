@@ -622,7 +622,10 @@ function MessageContent({
             // documento passava por texto comum no meio das mensagens (pedido
             // do operador, 01/10/2026). Com superfície própria, o selo e o nome
             // se leem igual nos dois lados do fio — inclusive na bolha violeta.
-            className="flex min-w-[13rem] items-center gap-2.5 rounded-xl bg-card p-2 pr-3 text-sm text-card-foreground ring-1 ring-border transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            // ⚠️ Sem largura mínima fixa: num fio estreito (celular de 320 px,
+            // painel dividido) o `min-w` passava do teto de 75% da bolha e a
+            // conversa inteira rolava para o lado (Codex, PR #371).
+            className="flex items-center gap-2.5 rounded-xl bg-card p-2 pr-3 text-sm text-card-foreground ring-1 ring-border transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <SeloDoDocumento nome={nome} mime={message.media_type} />
             {/* `min-w-0` é o que deixa o `truncate` funcionar dentro do flex:
