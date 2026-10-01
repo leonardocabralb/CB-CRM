@@ -118,23 +118,28 @@ export function motivoDeclarado(mensagens) {
 
 /**
  * `arquivos`: os caminhos mudados (relativos à raiz); `mensagens`: as
- * mensagens dos commits; `ler`: o conteúdo de um caminho (`null` se não há —
- * arquivo apagado), só para as áreas com regra de `conteudo`. Devolve as
- * áreas tocadas (com `ok` por área), as pendentes, o motivo declarado e o
- * veredito.
+ * mensagens dos commits; `ler` e `lerNaBase`: o conteúdo de um caminho no
+ * HEAD e na base (`null` se não existe ali), só para as áreas com regra de
+ * `conteudo`. As DUAS versões contam: a migration APAGADA, ou a função
+ * tirada dela, também muda a origem — lida só no HEAD, passaria calada
+ * (achado do Codex no PR #368). Devolve as áreas tocadas (com `ok` por
+ * área), as pendentes, o motivo declarado e o veredito.
  *
  * @param {{
  *   arquivos: string[],
  *   mensagens: string[],
  *   areas?: typeof AREAS,
  *   ler?: (caminho: string) => string | null,
+ *   lerNaBase?: (caminho: string) => string | null,
  * }} entrada
  */
-export function avaliar({ arquivos, mensagens, areas = AREAS, ler = () => null }) {
+export function avaliar({ arquivos, mensagens, areas = AREAS, ler = () => null, lerNaBase = () => null }) {
   const tocadas = []
   for (const area of areas) {
     const porConteudo = (a) =>
-      !!area.conteudo && matchesGlob(a, area.conteudo.arquivos) && area.conteudo.padrao.test(ler(a) ?? '')
+      !!area.conteudo &&
+      matchesGlob(a, area.conteudo.arquivos) &&
+      (area.conteudo.padrao.test(ler(a) ?? '') || area.conteudo.padrao.test(lerNaBase(a) ?? ''))
     const casados = arquivos.filter(
       (a) => !ehTeste(a) && (area.contrato.some((g) => matchesGlob(a, g)) || porConteudo(a))
     )
@@ -174,8 +179,22 @@ function main() {
       return null // apagado no diff
     }
   }
+  // A versão de onde o PR partiu (a mesma régua do `base...HEAD` do diff).
+  const pontoDePartida = git('merge-base', base, 'HEAD').trim()
+  const lerNaBase = (caminho) => {
+    try {
+      return execFileSync('git', ['show', `${pontoDePartida}:${caminho}`], {
+        cwd: RAIZ,
+        encoding: 'utf8',
+        maxBuffer: 64 * 1024 * 1024,
+        stdio: ['ignore', 'pipe', 'ignore'],
+      })
+    } catch {
+      return null // arquivo novo no PR
+    }
+  }
 
-  const r = avaliar({ arquivos, mensagens, ler })
+  const r = avaliar({ arquivos, mensagens, ler, lerNaBase })
   if (r.tocadas.length === 0) {
     console.log('Nenhum contrato de integração mudou: nada a cobrar da doc.')
     return

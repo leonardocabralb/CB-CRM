@@ -127,8 +127,24 @@ describe('avaliar', () => {
     const outra = avaliar({ arquivos: [migration], mensagens: [], ler: () => 'CREATE TABLE exemplo (id uuid);' })
     expect(outra.tocadas).toEqual([])
 
-    // Sem leitor (ou arquivo apagado), conteúdo nenhum casa.
+    // Sem leitor, conteúdo nenhum casa.
     expect(avaliar({ arquivos: [migration], mensagens: [] }).tocadas).toEqual([])
+  })
+
+  it('a migration APAGADA (ou a função tirada dela) também conta — pela versão da base', () => {
+    const migration = 'supabase/migrations/1040_cb_origem_api_e_aviso_duravel_do_funil.sql'
+    const naBase = 'CREATE OR REPLACE FUNCTION public.cb_atualizar_negocio(p_deal_id uuid) …'
+    const apagada = avaliar({ arquivos: [migration], mensagens: [], ler: () => null, lerNaBase: () => naBase })
+    expect(apagada.pendentes.map((p: { nome: string }) => p.nome)).toEqual([
+      'Avisos do CRM (webhooks enviados)',
+    ])
+    const esvaziada = avaliar({
+      arquivos: [migration],
+      mensagens: [],
+      ler: () => '-- a função saiu daqui',
+      lerNaBase: () => naBase,
+    })
+    expect(esvaziada.ok).toBe(false)
   })
 
   it('a doc acompanha também a mudança de automação que ela descreve', () => {
