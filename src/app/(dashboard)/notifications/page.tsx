@@ -14,6 +14,7 @@ import {
   CheckCheck,
   ListTodo,
   Loader2,
+  MessageSquareReply,
   Reply,
   UserPlus,
 } from "lucide-react";
@@ -30,6 +31,8 @@ import { useTranslations } from "next-intl";
 const TYPE_ICON: Record<Notification["type"], typeof Bell> = {
   conversation_assigned: UserPlus,
   note_mention: AtSign,
+  // Resposta a uma anotação (1075): leva à conversa, como a menção.
+  note_reply: MessageSquareReply,
   // Tarefas (944). O clique leva a `/tarefas` — ver `handleClick`.
   task_assigned: ListTodo,
   task_reply: Reply,

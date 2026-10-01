@@ -37,6 +37,7 @@ import { ReunioesDoContato } from '@/components/agenda/reunioes-do-contato';
 import { ReunioesTranscritasDoContato } from '@/components/transcricoes/reunioes-transcritas-do-contato';
 import { AbaCobrancas } from '@/components/inbox/painel/aba-cobrancas';
 import { TextoComLinks } from '@/components/inbox/texto-com-links';
+import { CitacaoDaNota } from '@/components/inbox/citacao-da-nota';
 import { useCobrancasDoContato } from '@/hooks/use-cobrancas-do-contato';
 import { ContatosRelacionados } from '@/components/contacts/contatos-relacionados';
 import { useContatosRelacionados } from '@/hooks/use-contatos-relacionados';
@@ -995,10 +996,21 @@ export function ContactDetailView({
                             na outra. Queda para "Alguém da equipe" quando o
                             autor saiu da conta (`autor_nome` congelado). */}
                         <p className="text-foreground mb-1 text-[11px] font-semibold">
-                          {tNote('wrote', {
+                          {tNote(note.resposta_de ? 'replied' : 'wrote', {
                             autor: note.autor_nome || tNote('unknownAuthor'),
                           })}
                         </p>
+                        {/* Resposta a outra anotação (1075): a respondida
+                            citada, como no inbox. Responder fica no inbox,
+                            onde a anotação nasce na conversa. */}
+                        {note.resposta_de && (
+                          <CitacaoDaNota
+                            original={
+                              notes.find((n) => n.id === note.resposta_de) ?? null
+                            }
+                            className="text-foreground mb-1.5"
+                          />
+                        )}
                         <div className="flex items-start justify-between gap-2">
                           {/* Endereço clicável, como nas outras telas de
                               anotação (29/09/2026). `break-words`: um link

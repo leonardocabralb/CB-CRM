@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { createClient } from '@/lib/supabase/server'
 import { canWriteNotes, isAccountRole } from '@/lib/auth/roles'
+import { quemAvisarDaResposta, type NotaDaConversa } from '@/lib/notes/resposta'
 
 /**
  * Criação de anotação interna (migration 918).
@@ -39,6 +40,9 @@ const MAX_TEXTO = 4000
  * número existe para o array não chegar sem tamanho no `.in(...)`.
  */
 const MAX_MENCOES = 50
+
+/** Página da leitura de quem avisar da resposta (1075): o teto do PostgREST. */
+const PAGINA_DA_CONVERSA = 1000
 
 /** Forma de UUID — o que o Postgres aceita em `uuid`. */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -82,11 +86,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { conversation_id, contact_id, texto, mencionados } = (body ?? {}) as {
+  const { conversation_id, contact_id, texto, mencionados, resposta_de } = (body ??
+    {}) as {
     conversation_id?: unknown
     contact_id?: unknown
     texto?: unknown
     mencionados?: unknown
+    /** A anotação que esta responde (1075). Ausente = anotação comum. */
+    resposta_de?: unknown
   }
 
   // Aceita os dois caminhos de entrada. O inbox sabe a conversa; a ficha do
@@ -106,6 +113,11 @@ export async function POST(request: Request) {
   }
   if (texto.length > MAX_TEXTO) {
     return NextResponse.json({ error: 'Note is too long' }, { status: 400 })
+  }
+  const respostaDe =
+    resposta_de === undefined || resposta_de === null ? null : resposta_de
+  if (respostaDe !== null && (typeof respostaDe !== 'string' || !UUID.test(respostaDe))) {
+    return NextResponse.json({ error: 'resposta_de must be a UUID' }, { status: 400 })
   }
 
   const pedidos = Array.isArray(mencionados)
@@ -182,6 +194,56 @@ export async function POST(request: Request) {
       .filter((id) => id !== user.id)
   }
 
+  // 1075: a resposta. A respondida é lida com o cliente DO USUÁRIO (RLS) e
+  // tem de ser DESTA conversa — a FK composta recusaria outra, mas aqui a
+  // recusa sai com nome. Erro de leitura é 500, nunca "não encontrada".
+  const daConversa: NotaDaConversa[] = []
+  // Como `mencoesOk`: `false` só quando havia a quem avisar e algo falhou.
+  let respostaOk = true
+  if (respostaDe) {
+    const { data: respondida, error: erroRespondida } = await supabase
+      .from('cb_conversation_notes')
+      .select('id')
+      .eq('id', respostaDe)
+      .eq('conversation_id', conversa.id)
+      .eq('account_id', accountId)
+      .maybeSingle()
+    if (erroRespondida) {
+      return NextResponse.json({ error: erroRespondida.message }, { status: 500 })
+    }
+    if (!respondida) {
+      // Apagada enquanto a pessoa escrevia. Quem chama traduz o código.
+      return NextResponse.json({ error: 'REPLIED_NOTE_NOT_FOUND' }, { status: 409 })
+    }
+    // Só para saber QUEM avisar: falhar aqui não derruba a resposta, só o
+    // aviso (e a tela diz isso). ⚠️ TODAS as anotações da conversa, em
+    // páginas por CHAVE (`id`): o PostgREST corta em 1000 sem avisar, e a
+    // respondida (recente, na tela) ficaria fora — ninguém seria avisado e a
+    // resposta diria que avisou (Codex, #369). Por chave, e não por posição,
+    // porque a conversa recebe anotação enquanto se lê.
+    let depoisDe: string | null = null
+    for (;;) {
+      let pagina = supabase
+        .from('cb_conversation_notes')
+        .select('id, resposta_de, author_user_id')
+        .eq('conversation_id', conversa.id)
+        .eq('account_id', accountId)
+        .order('id', { ascending: true })
+        .limit(PAGINA_DA_CONVERSA)
+      if (depoisDe) pagina = pagina.gt('id', depoisDe)
+      const { data: lote, error: erroNotas } = await pagina
+      if (erroNotas) {
+        console.error('[POST /api/cb/notes] falha ao ler a conversa da anotação:', erroNotas.message)
+        respostaOk = false
+        break
+      }
+      const linhas = (lote ?? []) as NotaDaConversa[]
+      daConversa.push(...linhas)
+      if (linhas.length < PAGINA_DA_CONVERSA) break
+      depoisDe = linhas[linhas.length - 1].id
+    }
+  }
+
   const admin = supabaseAdmin()
   const { data: nota, error } = await admin
     .from('cb_conversation_notes')
@@ -198,11 +260,17 @@ export async function POST(request: Request) {
       autor_nome: autorNome,
       texto: texto.trim(),
       mencionados: validos,
+      // Só quando é resposta: anotação comum não depende da coluna da 1075.
+      ...(respostaDe ? { resposta_de: respostaDe } : {}),
     })
     .select('*')
     .single()
 
   if (error) {
+    // A respondida sumiu entre a conferência e o insert: a FK da 1075 recusa.
+    if (respostaDe && error.code === '23503') {
+      return NextResponse.json({ error: 'REPLIED_NOTE_NOT_FOUND' }, { status: 409 })
+    }
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
@@ -238,12 +306,60 @@ export async function POST(request: Request) {
     }
   }
 
+  // 1075: o aviso da RESPOSTA — ao autor da respondida e a quem já escreveu
+  // na conversa dela (decisão do operador). Quem foi mencionado nesta mesma
+  // resposta já recebeu o `note_mention` acima e não ganha um segundo.
+  if (respostaDe && respostaOk) {
+    const candidatos = quemAvisarDaResposta(daConversa, respostaDe, user.id, validos)
+    if (candidatos.length > 0) {
+      // ⚠️ Conferido contra a conta, como a menção: o autor de uma anotação
+      // antiga pode ter saído do escritório (o profile vai para outra conta),
+      // e o aviso levaria a ele o texto de um caso que ele não vê mais.
+      const { data: daConta, error: erroConta } = await supabase
+        .from('profiles')
+        .select('user_id')
+        .eq('account_id', accountId)
+        .in('user_id', candidatos)
+      if (erroConta) {
+        console.error('[POST /api/cb/notes] falha ao validar quem avisar da resposta:', erroConta.message)
+        respostaOk = false
+      }
+      const membros = new Set((daConta ?? []).map((m) => m.user_id as string))
+      const autorDaRespondida =
+        daConversa.find((n) => n.id === respostaDe)?.author_user_id ?? null
+      const destinatarios = candidatos.filter((id) => membros.has(id))
+      if (destinatarios.length > 0) {
+        const { error: erroSino } = await admin.from('notifications').insert(
+          destinatarios.map((destinatario) => ({
+            account_id: accountId,
+            user_id: destinatario,
+            type: 'note_reply',
+            conversation_id: conversa.id,
+            contact_id: conversa.contact_id ?? null,
+            actor_user_id: user.id,
+            // Texto cru, como o da menção (ver a nota lá em cima).
+            title:
+              destinatario === autorDaRespondida
+                ? `${autorNome ?? 'Alguém da equipe'} respondeu à sua anotação`
+                : `${autorNome ?? 'Alguém da equipe'} respondeu numa anotação em que você escreveu`,
+            body: texto.trim().slice(0, 280),
+          })),
+        )
+        if (erroSino) {
+          console.error('[POST /api/cb/notes] falha ao notificar a resposta:', erroSino.message)
+          respostaOk = false
+        }
+      }
+    }
+  }
+
   // 201 mesmo quando o aviso falhou — a anotação existe, e é ela que importa.
   // Mas `mencoesNotificadas` vai junto para a tela poder dizer "salvei, só não
   // consegui avisar", em vez de deixar quem escreveu supondo que o colega foi
   // chamado. Só é `false` quando havia menção para entregar e algo falhou.
+  // `respostaNotificada` é o mesmo sinal para o aviso da resposta (1075).
   return NextResponse.json(
-    { note: nota, mencoesNotificadas: mencoesOk },
+    { note: nota, mencoesNotificadas: mencoesOk, respostaNotificada: respostaOk },
     { status: 201 },
   )
 }

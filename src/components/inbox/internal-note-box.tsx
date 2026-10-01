@@ -12,6 +12,7 @@ import {
 } from 'react';
 import { toast } from 'sonner';
 
+import { CitacaoDaNota } from '@/components/inbox/citacao-da-nota';
 import { Button } from '@/components/ui/button';
 import { fetchAccountMembers, memberLabel } from '@/lib/account/members';
 import { membrosAtivos } from '@/lib/account/suspensao';
@@ -45,6 +46,8 @@ export function InternalNoteBox({
   onClose,
   listaParaBaixo = false,
   autoFocus = true,
+  respondendoA = null,
+  onLimparResposta,
 }: {
   conversationId: string;
   onSaved?: (nota: ConversationNote) => void;
@@ -67,6 +70,17 @@ export function InternalNoteBox({
    * operador ("anotar") e o foco é o esperado.
    */
   autoFocus?: boolean;
+  /**
+   * A anotação que esta vai RESPONDER (1075), citada em cima da caixa. O
+   * estado é de quem monta (fio ou painel); a caixa só o mostra e o manda.
+   */
+  respondendoA?: ConversationNote | null;
+  /**
+   * Desiste de responder (o X da citação) e é chamado depois de salvar: na
+   * aba Notas a caixa fica montada, e a próxima anotação não pode sair como
+   * resposta. O texto escrito fica.
+   */
+  onLimparResposta?: () => void;
 }) {
   const t = useTranslations('Inbox.composer');
 
@@ -117,6 +131,14 @@ export function InternalNoteBox({
     el.focus();
     el.setSelectionRange(el.value.length, el.value.length);
   }, [autoFocus]);
+
+  // Tocar em "Responder" é pedir para escrever: o foco vai para a caixa, que
+  // na aba Notas já estava montada (sem o efeito de montagem acima).
+  const respondidaId = respondendoA?.id ?? null;
+  useEffect(() => {
+    if (!respondidaId) return;
+    areaRef.current?.focus();
+  }, [respondidaId]);
 
   const mudarTexto = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -174,10 +196,18 @@ export function InternalNoteBox({
           texto: limpo,
           // Derivado do texto, não de quem foi clicado — ver `mentions.ts`.
           mencionados: mencionadosNoTexto(limpo, membros),
+          resposta_de: respondendoA?.id,
         }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
+        // A respondida foi apagada enquanto a pessoa escrevia: a citação
+        // sai, o texto fica — salvar de novo grava como anotação comum.
+        if (json?.error === 'REPLIED_NOTE_NOT_FOUND') {
+          toast.error(t('noteReplyGone'));
+          onLimparResposta?.();
+          return;
+        }
         toast.error(json?.error || t('noteSaveError'));
         return;
       }
@@ -186,15 +216,28 @@ export function InternalNoteBox({
       // tela precisa saber se o fulano foi mesmo chamado.
       if (json?.mencoesNotificadas === false)
         toast.warning(t('noteMentionFailed'));
+      if (json?.respostaNotificada === false)
+        toast.warning(t('noteReplyFailed'));
       onSaved?.(json.note as ConversationNote);
       setTexto('');
+      onLimparResposta?.();
       onClose?.();
     } catch {
       toast.error(t('noteSaveError'));
     } finally {
       setSalvando(false);
     }
-  }, [texto, salvando, conversationId, membros, onSaved, onClose, t]);
+  }, [
+    texto,
+    salvando,
+    conversationId,
+    membros,
+    respondendoA?.id,
+    onSaved,
+    onLimparResposta,
+    onClose,
+    t,
+  ]);
 
   const tecla = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -243,6 +286,14 @@ export function InternalNoteBox({
         <span className="font-semibold">{t('noteBoxTitle')}</span>{' '}
         <span className="opacity-80">{t('noteBoxHint')}</span>
       </p>
+
+      {respondendoA && (
+        <CitacaoDaNota
+          original={respondendoA}
+          onCancelar={onLimparResposta}
+          className="mb-2 text-amber-950 dark:text-amber-50"
+        />
+      )}
 
       <div className="relative">
         {/* A lista sobe, e não desce: a caixa fica colada no rodapé da tela,

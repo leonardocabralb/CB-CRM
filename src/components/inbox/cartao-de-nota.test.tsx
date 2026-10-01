@@ -28,6 +28,7 @@ const NOTA: ConversationNote = {
   author_user_id: 'autor-1',
   autor_nome: 'Fulana de Tal',
   texto: TEXTO,
+  resposta_de: null,
   mencionados: [],
   fixada_em: null,
   created_at: '2026-09-29T15:42:00Z',

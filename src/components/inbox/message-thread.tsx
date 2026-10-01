@@ -1314,6 +1314,30 @@ export function MessageThread({
     [notas],
   );
   const podeAdministrar = useCan("manage-members");
+  const podeAnotar = useCan("write-notes");
+  /**
+   * Responder a uma anotação (1075): o "Responder" da nota no fio abre a
+   * caixa de anotação do COMPOSITOR com a respondida citada, como a citação
+   * de mensagem. ⚠️ Carimbado com a conversa e comparado no render (efeito
+   * passivo, seção 8c da raiz): a thread não remonta na troca, e a citação de
+   * um cliente não pode aparecer na caixa de outro. E ZERADO ao sair da
+   * conversa, no render (o ajuste de estado por prop do React, sem efeito):
+   * na volta (A → B → A) a citação esquecida reapareceria e a próxima
+   * anotação sairia como resposta sem ninguém pedir.
+   */
+  const [respondendo, setRespondendo] = useState<{
+    de: string;
+    nota: ConversationNote;
+  } | null>(null);
+  if (respondendo && respondendo.de !== conversationId) setRespondendo(null);
+  const notaRespondida =
+    respondendo && respondendo.de === conversationId ? respondendo.nota : null;
+  const limparNotaRespondida = useCallback(() => setRespondendo(null), []);
+  /** A respondida de cada resposta, para a citação (as notas já carregadas). */
+  const notasPorId = useMemo(
+    () => new Map(notas.map((n) => [n.id, n])),
+    [notas],
+  );
   // Agendadas (925): a faixa acima do compositor e o compositor são
   // irmãos aqui, então o contador que os liga mora nesta tela mesmo.
   const podeEnviar = useCan("send-messages");
@@ -1597,6 +1621,10 @@ export function MessageThread({
   const [saltoDaCitacao, setSaltoDaCitacao] = useState<SaltoPontual | null>(null);
   const irParaCitada = useCallback((id: string) => {
     setSaltoDaCitacao((s) => ({ tipo: "mensagem", id, n: (s?.n ?? 0) + 1 }));
+  }, []);
+  // A citação da anotação respondida (1075) usa o MESMO salto, com alvo nota.
+  const irParaNota = useCallback((id: string) => {
+    setSaltoDaCitacao((s) => ({ tipo: "nota", id, n: (s?.n ?? 0) + 1 }));
   }, []);
   const destaqueDaCitacao = useSaltoPontual(
     saltoDaCitacao,
@@ -2906,18 +2934,33 @@ export function MessageThread({
                     // checagem do TypeScript, então um item de nota cairia no
                     // ramo de mensagem e derrubaria o fio inteiro em runtime.
                     if (item.nota) {
+                      const nota = item.nota;
+                      const respondidaId = nota.resposta_de;
                       return (
                         <LinhaDoFio
                           key={item.chave}
                           tipo="nota"
                           id={item.nota.id}
                           destacada={
-                            destaqueDoPainel?.tipo === "nota" &&
-                            destaqueDoPainel.id === item.nota.id
+                            (destaqueDoPainel?.tipo === "nota" &&
+                              destaqueDoPainel.id === item.nota.id) ||
+                            (destaqueDaCitacao?.tipo === "nota" &&
+                              destaqueDaCitacao.id === item.nota.id)
                           }
                         >
                         <NoteLine
                           nota={item.nota}
+                          respondida={
+                            respondidaId ? (notasPorId.get(respondidaId) ?? null) : null
+                          }
+                          onIrParaRespondida={
+                            respondidaId ? () => irParaNota(respondidaId) : undefined
+                          }
+                          onResponder={
+                            podeAnotar && conversationId
+                              ? () => setRespondendo({ de: conversationId, nota })
+                              : undefined
+                          }
                           podeApagar={
                             item.nota.author_user_id === user?.id || podeAdministrar
                           }
@@ -3238,6 +3281,8 @@ export function MessageThread({
           )
         }
         onNoteCreated={acrescentarNotaDaConversa}
+        notaRespondida={notaRespondida}
+        onLimparNotaRespondida={limparNotaRespondida}
         onScheduled={() => setAgendadasResync((n) => n + 1)}
         onExecutarAutomacao={
           !ehGrupo && contact ? () => setExecutarAberto(true) : undefined

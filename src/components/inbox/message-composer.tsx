@@ -239,6 +239,13 @@ interface MessageComposerProps {
    */
   onNoteCreated?: (nota: ConversationNote) => void;
   /**
+   * Responder a uma anotação (1075): o "Responder" do fio abre a caixa de
+   * anotação com esta citada. O estado é do FIO (carimbado com a conversa);
+   * fechar a caixa ou salvar chama `onLimparNotaRespondida`.
+   */
+  notaRespondida?: ConversationNote | null;
+  onLimparNotaRespondida?: () => void;
+  /**
    * Agendou uma mensagem (migration 925). O pai usa para mandar a faixa
    * AGENDADAS, logo acima, recarregar a lista.
    */
@@ -275,6 +282,8 @@ export function MessageComposer({
   replyTo,
   onClearReply,
   onNoteCreated,
+  notaRespondida = null,
+  onLimparNotaRespondida,
   onScheduled,
   onExecutarAutomacao,
 }: MessageComposerProps) {
@@ -290,6 +299,8 @@ export function MessageComposer({
   const [text, setText] = useState("");
   const [drafting, setDrafting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // A caixa tinha o foco quando o dedo encostou no Enviar (ver o botão).
+  const focoNaCaixaRef = useRef(false);
   // Aparelho de toque: a dica da caixa não fala de Shift+Enter, que o teclado
   // do celular não tem (e lá o retorno pula linha — ver `enterEnvia`).
   const toque = useMediaQuery(MIDIA_DE_TOQUE);
@@ -394,7 +405,18 @@ export function MessageComposer({
   // do `InternalNoteBox` — este arquivo é do upstream, e cada linha nossa a
   // mais é superfície de conflito no merge.
   const [anotando, setAnotando] = useState(false);
-  const fecharNota = useCallback(() => setAnotando(false), []);
+  // Responder a uma anotação (1075) também abre a caixa, já com a citação.
+  const caixaDeNotaAberta = anotando || notaRespondida !== null;
+  const fecharNota = useCallback(() => {
+    setAnotando(false);
+    onLimparNotaRespondida?.();
+  }, [onLimparNotaRespondida]);
+  // Desistir da citação (o X, ou a respondida apagada) mantém a caixa aberta,
+  // com o texto: vira anotação comum.
+  const desistirDaResposta = useCallback(() => {
+    setAnotando(true);
+    onLimparNotaRespondida?.();
+  }, [onLimparNotaRespondida]);
   // Agendar (925). Data e hora em campos separados, como no seletor que o
   // operador desenhou — e é a dupla que `comporHorario` (testada) recebe.
   const [dataAg, setDataAg] = useState("");
@@ -1562,11 +1584,13 @@ export function MessageComposer({
           ⚠️ Ela tem <textarea> PRÓPRIA, nunca a do compositor: o
           `handleKeyDown` de lá manda Enter para `handleSend`, e a anotação
           sairia como mensagem para o cliente. */}
-      {anotando && (
+      {caixaDeNotaAberta && (
         <InternalNoteBox
           conversationId={conversationId}
           onSaved={onNoteCreated}
           onClose={fecharNota}
+          respondendoA={notaRespondida}
+          onLimparResposta={desistirDaResposta}
         />
       )}
 
@@ -1786,10 +1810,10 @@ export function MessageComposer({
               variant="ghost"
               size="sm"
               title={t("internalNote")}
-              onClick={() => setAnotando((v) => !v)}
+              onClick={() => (caixaDeNotaAberta ? fecharNota() : setAnotando(true))}
               className={cn(
                 "h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-amber-600",
-                anotando && "text-amber-600",
+                caixaDeNotaAberta && "text-amber-600",
               )}
             >
               <StickyNote className="h-4 w-4" />
@@ -1878,7 +1902,24 @@ export function MessageComposer({
             canAct={!readOnly}
             gateReason="sendMessages"
             disabled={!text.trim() || sessionExpired || agendando}
-            onClick={handleSend}
+            // ⚠️ O TECLADO FICA ABERTO ao enviar, como no WhatsApp (pedido do
+            // operador, 01/10/2026). Tocar no botão tirava o foco da caixa e
+            // o celular recolhia o teclado a cada mensagem. O `mousedown` sem
+            // ação padrão não move o foco (o truque dos botões de formatação);
+            // e, se o aparelho tirou o foco mesmo assim, o clique o devolve
+            // DENTRO do gesto — fora dele o iPhone não reabre o teclado. Só
+            // devolve a quem estava na caixa: enviar com o teclado fechado não
+            // o abre.
+            onPointerDown={() => {
+              focoNaCaixaRef.current = document.activeElement === textareaRef.current;
+            }}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              const manter = focoNaCaixaRef.current;
+              focoNaCaixaRef.current = false;
+              void handleSend();
+              if (manter) textareaRef.current?.focus();
+            }}
             // O rótulo muda junto com a etiqueta: o mesmo botão faz coisas
             // diferentes, e quem passa o mouse tem de saber qual.
             title={quandoAg ? tAgendadas("scheduleAction") : undefined}

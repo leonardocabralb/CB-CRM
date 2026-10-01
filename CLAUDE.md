@@ -547,7 +547,9 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
 - `.claude/rules/inbox-lista.md` — duas abas, atraso de resposta, filtros e
   filtros salvos, busca em duas metades, nova conversa.
 - `.claude/rules/inbox-conversa.md` — fio e rolagem, salto da busca,
-  compositor, fila de anexos, anotação interna, player de áudio, painel.
+  compositor, fila de anexos, player de áudio, painel.
+- `.claude/rules/anotacoes.md` — anotação interna nas quatro telas, apagar e
+  fixar, resposta à anotação (1075) e o aviso a quem já escreveu nela.
 - `.claude/rules/midia.md` — dois tetos de tamanho, `too_large`, nome do
   anexo, acervo de mídias.
 - `.claude/rules/celular.md` — teclado virtual, voltar pelo histórico, app

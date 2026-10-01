@@ -406,6 +406,8 @@
       "noteSaveError": "Could not save the note.",
       "noteMentionHint": "Type @ to mention a teammate",
       "noteMentionFailed": "Note saved, but the mentioned teammates could not be notified.",
+      "noteReplyFailed": "Reply saved, but the people in the note thread could not be notified.",
+      "noteReplyGone": "The note you were replying to was deleted.",
       "fromLibrary": "From library",
       "acervoError": "Could not prepare the library file.",
       "solteParaAnexar": "Drop here to attach",
@@ -1032,7 +1034,12 @@
       "expand": "Show the whole note",
       "collapse": "Collapse note",
       "pinError": "Could not pin the note.",
-      "verNaConversa": "Show in conversation"
+      "verNaConversa": "Show in conversation",
+      "replied": "{autor} replied:",
+      "reply": "Reply",
+      "cancelReply": "Cancel reply",
+      "originalUnavailable": "Note unavailable",
+      "goToOriginal": "Show the replied note"
     },
     "scheduled": {
       "sectionTitle": "Scheduled",
@@ -6743,6 +6750,8 @@
     "newsTooMany": "Too many notifications to summarize here — open Notifications.",
     "newsMentions": "{count, plural, =1 {1 mention of you} other {{count} mentions of you}}",
     "newsMentionsAtLeast": "{count, plural, =1 {at least 1 mention of you} other {at least {count} mentions of you}}",
+    "newsReplies": "{count, plural, =1 {1 reply to a note} other {{count} replies to notes}}",
+    "newsRepliesAtLeast": "{count, plural, =1 {at least 1 reply to a note} other {at least {count} replies to notes}}",
     "newsTasks": "{count, plural, =1 {1 task sent or answered to you} other {{count} tasks sent or answered to you}}",
     "newsTasksAtLeast": "{count, plural, =1 {at least 1 task sent or answered to you} other {at least {count} tasks sent or answered to you}}",
     "newsConversations": "{count, plural, =1 {1 conversation assigned to you} other {{count} conversations assigned to you}}",

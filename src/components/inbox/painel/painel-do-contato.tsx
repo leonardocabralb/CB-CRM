@@ -74,6 +74,7 @@ import { formatCurrency } from '@/lib/currency';
 import { cn } from '@/lib/utils';
 import type {
   Contact,
+  ConversationNote,
   CustomField,
   Deal,
   DealStatus,
@@ -534,6 +535,29 @@ export function PainelDoContato({
     () => (notaFixada ? notes.filter((n) => n.id !== notaFixada.id) : notes),
     [notes, notaFixada]
   );
+
+  /**
+   * Responder a uma anotação (1075): a caixa do topo da aba ganha a
+   * respondida citada. ⚠️ Carimbado com a conversa e comparado no render: a
+   * caixa remonta pela `key`, este estado não — a citação de um cliente
+   * apareceria na caixa do seguinte. E zerado ao sair da conversa, no
+   * render (como no fio): na volta, a próxima anotação sairia como resposta.
+   */
+  const [respondendo, setRespondendo] = useState<{
+    de: string;
+    nota: ConversationNote;
+  } | null>(null);
+  if (respondendo && respondendo.de !== conversationId) setRespondendo(null);
+  const notaRespondida =
+    respondendo && respondendo.de === conversationId ? respondendo.nota : null;
+  const notasPorId = useMemo(
+    () => new Map(notas.map((n) => [n.id, n])),
+    [notas]
+  );
+  const respondidaDe = (nota: ConversationNote) =>
+    nota.resposta_de ? (notasPorId.get(nota.resposta_de) ?? null) : null;
+  const responderA = (nota: ConversationNote) =>
+    conversationId ? () => setRespondendo({ de: conversationId, nota }) : undefined;
 
   const fetchContactData = useCallback(async () => {
     if (!contact) return;
@@ -1631,6 +1655,8 @@ export function PainelDoContato({
                 if (nota.conversation_id === conversationId)
                   acrescentarNota(nota);
               }}
+              respondendoA={notaRespondida}
+              onLimparResposta={() => setRespondendo(null)}
             />
           ) : null}
 
@@ -1661,6 +1687,8 @@ export function PainelDoContato({
                     ? () => onIrParaItemDoFio({ tipo: 'nota', id: notaFixada.id })
                     : undefined
                 }
+                respondida={respondidaDe(notaFixada)}
+                onResponder={responderA(notaFixada)}
               />
             </div>
           )}
@@ -1687,6 +1715,8 @@ export function PainelDoContato({
                     ? () => onIrParaItemDoFio({ tipo: 'nota', id: note.id })
                     : undefined
                 }
+                respondida={respondidaDe(note)}
+                onResponder={responderA(note)}
               />
             ))}
           </div>

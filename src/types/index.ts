@@ -304,6 +304,12 @@ export interface ConversationNote {
    * rota `/api/cb/notes/[id]` (UPDATE segue revogado no navegador).
    */
   fixada_em: string | null;
+  /**
+   * A anotação que esta RESPONDE (1075), da mesma conversa; pode ser outra
+   * resposta. NULL = anotação comum — ou resposta cuja respondida foi apagada
+   * (`ON DELETE SET NULL`): ela segue como anotação comum.
+   */
+  resposta_de: string | null;
   created_at: string;
 }
 
@@ -505,14 +511,18 @@ export interface Conversation {
 /**
  * ⚠️ Espelha o CHECK de `notifications.type`. Alargar aqui sem alargar o
  * banco (ou o contrário) só aparece em runtime, como violação de constraint.
- * Os literais vivem na 027 (`conversation_assigned`), na 919 (`note_mention`)
- * e na 944 (`task_assigned`, `task_reply`).
+ * Os literais vivem na 027 (`conversation_assigned`), na 919 (`note_mention`),
+ * na 944 (`task_assigned`, `task_reply`) e na 1075 (`note_reply`).
  *
  * ⚠️ Não confundir com o `'conversation_assigned'` homônimo mais abaixo neste
  * arquivo, que é gatilho de AUTOMAÇÃO. São coisas diferentes com o mesmo nome.
  */
 export type NotificationType =
-  'conversation_assigned' | 'note_mention' | 'task_assigned' | 'task_reply';
+  | 'conversation_assigned'
+  | 'note_mention'
+  | 'note_reply'
+  | 'task_assigned'
+  | 'task_reply';
 
 export interface Notification {
   id: string;
