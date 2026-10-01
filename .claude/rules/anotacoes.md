@@ -57,7 +57,9 @@ apagar a respondida), `src/lib/notes/resposta.ts` (pino `resposta.test.ts`) e
   pelo sino cai vendo a resposta. A citação é do que foi tocado (pode ser
   outra resposta); no fio ela salta até a respondida (`irParaNota`).
 - ⚠️ **O aviso `note_reply` vai ao autor da respondida e a quem já escreveu
-  na conversa dela** (subindo por `resposta_de`); quem responde, nunca; quem
+  na conversa dela** (subindo por `resposta_de`, com a conversa lida
+  INTEIRA em páginas por `id` — o teto de 1000 cortava a respondida
+  recente); quem responde, nunca; quem
   foi mencionado na mesma resposta recebe só o `note_mention`. Conferido
   contra a conta, como a menção. `respostaNotificada: false` vira aviso na
   tela.

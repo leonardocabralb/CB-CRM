@@ -67,9 +67,15 @@ function resolver(tabela: string, filtros: Filtro[], modo: 'uma' | 'lista') {
     return { data: nota && eq('conversation_id') === CONVERSA ? { id: nota.id } : null, error: null };
   }
   if (tabela === 'cb_conversation_notes') {
-    return estado.erroDaConversaDaNota
-      ? { data: null, error: { message: 'falhou' } }
-      : { data: estado.notas, error: null };
+    if (estado.erroDaConversaDaNota) return { data: null, error: { message: 'falhou' } };
+    // Como o PostgREST: ordem por id, `gt` da página anterior e o teto do `limit`.
+    const depois = filtros.find((f) => f.op === 'gt')?.val as string | undefined;
+    const teto = (filtros.find((f) => f.op === 'limit')?.val as number | undefined) ?? 1000;
+    const ordenadas = [...estado.notas].sort((a, b) => a.id.localeCompare(b.id));
+    return {
+      data: ordenadas.filter((n) => !depois || n.id > depois).slice(0, Math.min(teto, 1000)),
+      error: null,
+    };
   }
   throw new Error(`tabela inesperada: ${tabela}`);
 }
@@ -80,8 +86,9 @@ function consulta(tabela: string) {
     select: () => builder,
     eq: (col: string, val: unknown) => (filtros.push({ op: 'eq', col, val }), builder),
     in: (col: string, val: unknown) => (filtros.push({ op: 'in', col, val }), builder),
+    gt: (col: string, val: unknown) => (filtros.push({ op: 'gt', col, val }), builder),
     order: () => builder,
-    limit: () => builder,
+    limit: (n: number) => (filtros.push({ op: 'limit', col: '', val: n }), builder),
     maybeSingle: () => Promise.resolve(resolver(tabela, filtros, 'uma')),
     then: (ok: (v: unknown) => unknown, falha: (e: unknown) => unknown) =>
       Promise.resolve(resolver(tabela, filtros, 'lista')).then(ok, falha),
@@ -220,6 +227,19 @@ describe('POST /api/cb/notes — resposta à anotação (1075)', () => {
     expect(res.status).toBe(201);
     expect(await res.json()).toMatchObject({ respostaNotificada: false });
     expect(estado.avisos).toEqual([]);
+  });
+
+  it('a respondida depois das primeiras 1000 anotações ainda avisa (lê em páginas)', async () => {
+    // 1500 anotações de um colega que saiu, com id ANTES da respondida.
+    for (let i = 0; i < 1500; i++) {
+      const sufixo = String(i).padStart(12, '0');
+      estado.notas.push({ id: `b1000000-0000-4000-8000-${sufixo}`, resposta_de: null, author_user_id: null });
+    }
+    const RECENTE = 'f0000000-0000-4000-8000-000000000001';
+    estado.notas.push({ id: RECENTE, resposta_de: null, author_user_id: CAIO });
+    const res = await POST(pedido({ resposta_de: RECENTE }));
+    expect(await res.json()).toMatchObject({ respostaNotificada: true });
+    expect(estado.avisos.map((a) => a.user_id)).toEqual([CAIO]);
   });
 
   it('anotação comum não leva a coluna da 1075 nem avisa ninguém', async () => {

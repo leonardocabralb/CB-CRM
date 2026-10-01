@@ -41,6 +41,9 @@ const MAX_TEXTO = 4000
  */
 const MAX_MENCOES = 50
 
+/** Página da leitura de quem avisar da resposta (1075): o teto do PostgREST. */
+const PAGINA_DA_CONVERSA = 1000
+
 /** Forma de UUID — o que o Postgres aceita em `uuid`. */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -194,7 +197,7 @@ export async function POST(request: Request) {
   // 1075: a resposta. A respondida é lida com o cliente DO USUÁRIO (RLS) e
   // tem de ser DESTA conversa — a FK composta recusaria outra, mas aqui a
   // recusa sai com nome. Erro de leitura é 500, nunca "não encontrada".
-  let daConversa: NotaDaConversa[] = []
+  const daConversa: NotaDaConversa[] = []
   // Como `mencoesOk`: `false` só quando havia a quem avisar e algo falhou.
   let respostaOk = true
   if (respostaDe) {
@@ -213,19 +216,32 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'REPLIED_NOTE_NOT_FOUND' }, { status: 409 })
     }
     // Só para saber QUEM avisar: falhar aqui não derruba a resposta, só o
-    // aviso (e a tela diz isso). Na ordem em que foram escritas.
-    const { data: notasDaConversa, error: erroNotas } = await supabase
-      .from('cb_conversation_notes')
-      .select('id, resposta_de, author_user_id')
-      .eq('conversation_id', conversa.id)
-      .eq('account_id', accountId)
-      .order('created_at', { ascending: true })
-      .limit(1000)
-    if (erroNotas) {
-      console.error('[POST /api/cb/notes] falha ao ler a conversa da anotação:', erroNotas.message)
-      respostaOk = false
+    // aviso (e a tela diz isso). ⚠️ TODAS as anotações da conversa, em
+    // páginas por CHAVE (`id`): o PostgREST corta em 1000 sem avisar, e a
+    // respondida (recente, na tela) ficaria fora — ninguém seria avisado e a
+    // resposta diria que avisou (Codex, #369). Por chave, e não por posição,
+    // porque a conversa recebe anotação enquanto se lê.
+    let depoisDe: string | null = null
+    for (;;) {
+      let pagina = supabase
+        .from('cb_conversation_notes')
+        .select('id, resposta_de, author_user_id')
+        .eq('conversation_id', conversa.id)
+        .eq('account_id', accountId)
+        .order('id', { ascending: true })
+        .limit(PAGINA_DA_CONVERSA)
+      if (depoisDe) pagina = pagina.gt('id', depoisDe)
+      const { data: lote, error: erroNotas } = await pagina
+      if (erroNotas) {
+        console.error('[POST /api/cb/notes] falha ao ler a conversa da anotação:', erroNotas.message)
+        respostaOk = false
+        break
+      }
+      const linhas = (lote ?? []) as NotaDaConversa[]
+      daConversa.push(...linhas)
+      if (linhas.length < PAGINA_DA_CONVERSA) break
+      depoisDe = linhas[linhas.length - 1].id
     }
-    daConversa = (notasDaConversa ?? []) as NotaDaConversa[]
   }
 
   const admin = supabaseAdmin()
