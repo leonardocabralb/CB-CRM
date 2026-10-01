@@ -21,7 +21,10 @@ Vale ao mexer nos webhooks de ENTRADA (a porta `/api/cb/entrada/[token]`,
 Configurações → Webhooks e no dreno da fila do funil (`drain-events.ts`). A API
 v1 está em `.claude/rules/api-v1.md`; o motor, em
 `.claude/rules/automacoes.md`. Doc do operador: `docs/webhooks.md`; plano e
-configuração do escritório: `docs/PLANO-webhooks-de-entrada.md`.
+configuração do escritório: `docs/PLANO-webhooks-de-entrada.md`. Mudou o que
+a doc descreve (eventos, envelope, entrega, `source`, a porta de entrada)? A
+doc muda no MESMO PR — o job `documentacao` do CI cobra
+(`scripts/doc-acompanha.mjs`, seção 11 do CLAUDE.md).
 
 ### Webhooks de entrada (982)
 
@@ -209,7 +212,12 @@ e `reentregar-eventos-de-funil.ts` (E/S), a coleta em `drain-events.ts`.
   Cadeia antes do cabeçalho: o que uma automação faz é `automation` mesmo
   dentro de um pedido da API. O bloco "Mover card" do ROBÔ (1053) também sai
   `automation` (a RPC com a cadeia `flow:<id>`; a criação com `source:
-  'automation'`) — a doc pública e os dois dicionários dizem isso. O cabeçalho vem do `clienteDaApi` das rotas v1
+  'automation'`) — a doc pública e os dois dicionários dizem isso. A
+  ferramenta "Mover o card" dos AGENTES DE IA também (`executar-acoes.ts`: a
+  RPC com cadeia vazia, que ainda carimba); a PASSAGEM entre agentes
+  (`[[PASSAR:n]]`, UPDATE direto em service role em `ia-agentes/turno.ts`) sai
+  `system` — a doc diz as duas. Escritor novo de etapa/status = a lista da doc
+  muda junto. O cabeçalho vem do `clienteDaApi` das rotas v1
   e chega pela GUC `request.headers`, lida num bloco com EXCEPTION (um
   `::jsonb` malformado fora dele derrubaria toda escrita em `deals`). Rota v1
   que escreva por `supabaseAdmin()` sai `system` (há pino).
