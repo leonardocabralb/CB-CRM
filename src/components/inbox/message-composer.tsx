@@ -175,6 +175,12 @@ interface MediaDraft {
   path: string;
   filename: string;
   caption: string;
+  /**
+   * O MIME do arquivo anexado do computador (ausente na nota de voz e na
+   * cópia do acervo, que não levam tipo só do QR code). É por ele que o envio
+   * confere de novo se o anexo ainda cabe na conexão de agora (`sendDraft`).
+   */
+  mime?: string;
 }
 
 /** Um item da fila, pronto para virar mensagem. */
@@ -1080,7 +1086,14 @@ export function MessageComposer({
         }
         // ⚠️ ACRESCENTA à fila (não substitui): o compositor passou a levar
         // vários anexos, e cada um vira uma mensagem.
-        const item = novoDraft({ kind, mediaUrl: publicUrl, path, filename: file.name, caption: "" });
+        const item = novoDraft({
+          kind,
+          mediaUrl: publicUrl,
+          path,
+          filename: file.name,
+          caption: "",
+          mime: file.type,
+        });
         setDrafts((atual) => [...atual, item]);
         setSelecionado((atual) => atual ?? item.id);
       } catch (err) {
@@ -1374,6 +1387,15 @@ export function MessageComposer({
     // — que iteraria sobre a MESMA fila capturada e mandaria todos os anexos
     // de novo ao cliente (achado do Codex no PR #144).
     if (drafts.length === 0 || busy || enviandoFilaRef.current !== 0) return;
+    // ⚠️ A conexão pode ter mudado DEPOIS de o anexo entrar na fila — o
+    // seletor do cabeçalho, ou a conversa solta que segue o número do cliente
+    // (Codex, PR #376): o que só sai pelo QR code é conferido de novo, contra
+    // a conexão de AGORA, antes de enviar OU de agendar. Fica na fila: a
+    // pessoa tira o arquivo ou volta para uma conexão por QR code.
+    if (drafts.some((d) => d.mime !== undefined && tipoDoArquivo(d.mime, porQrCode) === null)) {
+      toast.error(t("anexoSoNoQrCode"));
+      return;
+    }
     // ⚠️ A POSSE é também a GERAÇÃO que cancela este laço. O compositor NÃO
     // remonta na troca de conversa e cada item da fila é um `await`: sem
     // cancelar, trocar de cliente no meio de uma fila de cinco deixava o laço
@@ -1462,7 +1484,7 @@ export function MessageComposer({
         setEnviandoFila(false);
       }
     }
-  }, [drafts, busy, onSendMedia, replyTo?.id, onClearReply, quandoAg, agendar]);
+  }, [drafts, busy, onSendMedia, replyTo?.id, onClearReply, quandoAg, agendar, porQrCode, t]);
 
   /** Descarta UM item — recolhe o objeto, que subiu e não foi enviado. */
   const discardDraft = useCallback(

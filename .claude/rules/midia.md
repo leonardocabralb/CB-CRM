@@ -116,7 +116,9 @@ teto. A bolha, a fila de anexos do compositor e o player de áudio estão em
   Office e .txt, conferida na doc dela): pelo número oficial — ou com a lista
   de conexões ainda carregando — o `.html` passaria no compositor e a Meta o
   recusaria depois do envio. As três portas do compositor leem o MESMO
-  `porQrCode` (pino `arquivo-solto.chamadores.test.ts`).
+  `porQrCode`, e o envio da fila (`sendDraft`, antes de enviar OU agendar)
+  confere de novo pelo `mime` do item: a conexão pode mudar com o `.html` já
+  anexado (Codex, PR #376). Pino `arquivo-solto.chamadores.test.ts`.
 - ⚠️⚠️ **O MIME é NORMALIZADO antes de subir** (`arquivoParaEnviar`), não só
   antes de comparar: `uploadAccountMedia` manda `file.type` como
   `contentType`, e o bucket tem lista EXATA (023) — `image/png;

@@ -36,6 +36,19 @@ describe("compositor × arquivo-solto", () => {
     expect(fonte).not.toMatch(/escolherArquivos\([^,)]*,[^,)]*\)/);
   });
 
+  it("⚠️ a fila confere DE NOVO na hora de enviar ou agendar (Codex, PR #376)", () => {
+    // A conexão pode mudar com o .html já na fila (seletor do cabeçalho, ou a
+    // conversa solta que segue o cliente): sem a conferência, ele sairia pela
+    // Meta, que o recusa.
+    expect(fonte).toMatch(/mime: file\.type,/);
+    expect(fonte).toMatch(
+      /const sendDraft = useCallback\(async \(\) => \{[\s\S]{0,900}?if \(drafts\.some\(\(d\) => d\.mime !== undefined && tipoDoArquivo\(d\.mime, porQrCode\) === null\)\) \{\s*toast\.error\(t\("anexoSoNoQrCode"\)\);\s*return;\s*\}/,
+    );
+    // E vem ANTES do desvio do agendamento (agendar também leva o anexo).
+    const corpo = fonte.slice(fonte.indexOf("const sendDraft = useCallback"));
+    expect(corpo.indexOf('t("anexoSoNoQrCode")')).toBeLessThan(corpo.indexOf("if (quandoAg) {"));
+  });
+
   it("o aviso de recusa lista o que ESTA conexão aceita", () => {
     expect(fonte).toMatch(
       /porQrCode\s*\?\s*t\("arquivoNaoSuportadoQrCode", \{ n: r\.recusados \}\)\s*:\s*t\("arquivoNaoSuportado", \{ n: r\.recusados \}\)/,
