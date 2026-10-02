@@ -108,8 +108,15 @@ teto. A bolha, a fila de anexos do compositor e o player de áudio estão em
 ### MIME e upload
 
 - ⚠️⚠️ **A lista de MIMEs aceitos é UMA** (`MIMES_ACEITOS`, `arquivo-solto.ts`),
-  e o `accept=` dos seletores deriva dela (`ACEITE_DO_SELETOR`). Duas listas
+  e o `accept=` dos seletores deriva dela (`aceiteDoSeletor`). Duas listas
   divergem, e o arquivo aceito por uma porta falha só no envio, longe da causa.
+- ⚠️⚠️ **A página `.html` (`MIMES_SO_POR_QR_CODE`) só entra nas conexões por QR
+  code, com o transporte CONHECIDO** (`mimesAceitos(porQrCode)`; decisão do
+  operador, 02/10/2026). `MIMES_ACEITOS` é a lista da API oficial da Meta (PDF,
+  Office e .txt, conferida na doc dela): pelo número oficial — ou com a lista
+  de conexões ainda carregando — o `.html` passaria no compositor e a Meta o
+  recusaria depois do envio. As três portas do compositor leem o MESMO
+  `porQrCode` (pino `arquivo-solto.chamadores.test.ts`).
 - ⚠️⚠️ **O MIME é NORMALIZADO antes de subir** (`arquivoParaEnviar`), não só
   antes de comparar: `uploadAccountMedia` manda `file.type` como
   `contentType`, e o bucket tem lista EXATA (023) — `image/png;
@@ -120,7 +127,8 @@ teto. A bolha, a fila de anexos do compositor e o player de áudio estão em
   Storage com "erro de upload"; só na migration faz a tela recusar arquivo que
   o WhatsApp aceita. Os dois, sempre — menos os tipos SÓ DE ENTRADA, que o
   bucket aceita e a lista de envio não: GIF, QuickTime, 3gp e Opus (042) e
-  `text/html` (1060).
+  `text/html` (1060 — que o compositor também ENVIA nas conexões por QR code
+  desde 02/10/2026; o acervo, não).
 - ⚠️ **`.html` recebido é guardado (1060, decisão do operador) e oferecido para
   BAIXAR, nunca aberto a partir do Storage**: `urlParaAbrirAnexo`
   (`abrir-anexo.ts`) põe `?download=` na bolha e na aba Arquivos. Link novo

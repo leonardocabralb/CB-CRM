@@ -506,7 +506,8 @@ O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
   perfil); o Atlas "ativo" NÃO apaga a linha do funil (30/09/2026).
 - Cartão de contato: aparece como cartão, com Copiar e Conversar (a "Nova
   conversa" já preenchida); `.html` recebido é guardado e oferecido para
-  baixar (28/09/2026). Documento e cartão em destaque na bolha (superfície
+  baixar (28/09/2026); ENVIAR `.html`, só nas conexões por QR code — a Meta o
+  recusa (02/10/2026). Documento e cartão em destaque na bolha (superfície
   própria, selo do tipo); desenho do fundo do fio a 15% (01/10/2026).
 - Instagram: robô não responde no Direct; unificar fichas é manual; o que a
   API não cobre fica inacessível na conversa.

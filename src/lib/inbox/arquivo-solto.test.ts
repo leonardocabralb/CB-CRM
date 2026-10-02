@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  ACEITE_DO_SELETOR,
+  aceiteDoSeletor,
   arquivoParaEnviar,
   colagemEhAnexo,
   escolherArquivos,
   MAX_ANEXOS,
+  MIMES_ACEITOS,
   mimeNormalizado,
   nomeParaColagem,
   tipoDoArquivo,
@@ -40,10 +41,44 @@ describe("tipoDoArquivo", () => {
   });
 
   it("o `accept` dos seletores sai da MESMA lista", () => {
-    for (const mime of ACEITE_DO_SELETOR.document.split(",")) {
-      expect(tipoDoArquivo(mime)).toBe("document");
+    for (const porQrCode of [false, true]) {
+      for (const mime of aceiteDoSeletor(porQrCode).document.split(",")) {
+        expect(tipoDoArquivo(mime, porQrCode)).toBe("document");
+      }
     }
-    expect(ACEITE_DO_SELETOR.image).toContain("image/png");
+    expect(aceiteDoSeletor(false).image).toContain("image/png");
+  });
+});
+
+describe("página .html — só nas conexões por QR code (decisão do operador, 02/10/2026)", () => {
+  it("pela conexão por QR code, o .html é documento", () => {
+    expect(tipoDoArquivo("text/html", true)).toBe("document");
+    expect(tipoDoArquivo("text/html; charset=utf-8", true)).toBe("document");
+    expect(aceiteDoSeletor(true).document.split(",")).toContain("text/html");
+  });
+
+  it("⚠️ pelo número oficial — e com o transporte desconhecido — não: a Meta o recusaria depois do envio", () => {
+    expect(tipoDoArquivo("text/html", false)).toBeNull();
+    // O padrão é o ESTRITO: quem não disser a conexão não abre a porta.
+    expect(tipoDoArquivo("text/html")).toBeNull();
+    expect(aceiteDoSeletor(false).document.split(",")).not.toContain("text/html");
+  });
+
+  it("a lista estrita continua sendo a da API oficial, e o QR code só SOMA", () => {
+    expect(MIMES_ACEITOS.document).not.toContain("text/html");
+    const qr = aceiteDoSeletor(true);
+    const oficial = aceiteDoSeletor(false);
+    expect(qr.image).toBe(oficial.image);
+    expect(qr.video).toBe(oficial.video);
+    for (const mime of oficial.document.split(",")) expect(qr.document.split(",")).toContain(mime);
+  });
+
+  it("arrastar e colar seguem a mesma porta do seletor", () => {
+    const html = arquivo("pagina.html", "text/html");
+    expect(escolherArquivos([html], 0, true)).toMatchObject({ recusados: 0, excedentes: 0 });
+    expect(escolherArquivos([html], 0, true).aceitos).toEqual([html]);
+    expect(escolherArquivos([html], 0, false)).toMatchObject({ aceitos: [], recusados: 1 });
+    expect(escolherArquivos([html])).toMatchObject({ aceitos: [], recusados: 1 });
   });
 });
 
