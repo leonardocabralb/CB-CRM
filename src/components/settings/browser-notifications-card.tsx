@@ -65,7 +65,9 @@ export function BrowserNotificationsCard({ className }: { className?: string }) 
   const t = useTranslations('Settings.browserNotifications');
   const { preferencia, gravar } = usePreferenciaDeAviso();
   const { profile, profileLoading, perfilDeAcesso } = useAuth();
-  const { channels } = useChannels();
+  // `falhou` é lido: com a lista vazia por FALHA, a lista some, e quem
+  // desmarcou uma conexão não teria como religá-la nem saberia por quê.
+  const { channels, falhou: conexoesFalharam, recarregar: recarregarConexoes } = useChannels();
   // ⚠️ As conexões do perfil pelo contexto REAL, como o ouvinte decide: quem
   // recebe o aviso é quem está logado, nunca a lente do "Ver como".
   const conexoes = profileLoading
@@ -218,6 +220,19 @@ export function BrowserNotificationsCard({ className }: { className?: string }) 
                     </SelectContent>
                   </Select>
                 </div>
+
+                {conexoesFalharam && (
+                  <p className="text-xs text-destructive">
+                    {t('connectionsUnavailable')}{' '}
+                    <button
+                      type="button"
+                      onClick={() => void recarregarConexoes()}
+                      className="underline underline-offset-2"
+                    >
+                      {t('connectionsRetry')}
+                    </button>
+                  </p>
+                )}
 
                 {mostraConexoes && (
                   <div className="space-y-1.5">

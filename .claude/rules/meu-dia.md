@@ -260,8 +260,10 @@ na casca e o cartão em *Seu perfil*. Pino estrutural:
   solta segue a mensagem); conversa sem canal passa. O cartão lista as
   conexões do perfil pelo contexto REAL, só com o perfil carregado, e esconde
   a lista com menos de 2 — menos quando uma delas está desmarcada (escondida,
-  ninguém a religaria). Por filtro salvo, não: mistura etiqueta, funil e
-  etapa, e editar um filtro mudaria quem recebe aviso.
+  ninguém a religaria); a lista que FALHOU ao carregar (`falhou` do
+  `useChannels`) diz isso, com "Tentar de novo", nunca some calada. Por filtro
+  salvo, não: mistura etiqueta, funil e etapa, e editar um filtro mudaria quem
+  recebe aviso.
 - ⚠️ **O ouvinte monta UMA vez, na casca, e só com `!entradaPendente`** (como
   o `PresenceHeartbeat`): é efeito que a porta segura.
 - ⚠️ **Conversa ilegível = silêncio**: sem ela não se sabe se é grupo ou de

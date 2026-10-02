@@ -168,6 +168,11 @@ describe('cartão de notificação do navegador × ouvinte', () => {
     );
     // A caixa MARCADA é a que avisa; o que se guarda são as desmarcadas.
     expect(cartao).toMatch(/checked=\{!preferencia\.silenciadas\.includes\(c\.id\)\}/);
+    // Lista vazia por FALHA não some calada (Codex, PR #374): quem desmarcou
+    // uma conexão ficaria sem como religá-la. A falha aparece, com a saída.
+    expect(cartao).toMatch(/falhou: conexoesFalharam, recarregar: recarregarConexoes \} = useChannels\(\)/);
+    expect(cartao).toMatch(/\{conexoesFalharam && \(/);
+    expect(cartao).toMatch(/onClick=\{\(\) => void recarregarConexoes\(\)\}/);
   });
 
   it('aparelho de toque não liga o aviso (sem service worker o construtor lança)', () => {
