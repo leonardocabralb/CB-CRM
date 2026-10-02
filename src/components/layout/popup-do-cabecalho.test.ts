@@ -53,10 +53,8 @@ function doCabecalho(): string[] {
   return [...vistos];
 }
 
-/** Cada abertura de `<PopoverContent`/`<DropdownMenuContent` até o `>` que a fecha. */
-function aberturas(fonte: string): string[] {
-  return [...fonte.matchAll(/<(PopoverContent|DropdownMenuContent)\b[\s\S]*?\n\s*>/g)].map((m) => m[0]);
-}
+/** Quantas vezes `trecho` aparece no fonte. */
+const contar = (fonte: string, trecho: RegExp) => (fonte.match(trecho) ?? []).length;
 
 describe("popup do cabeçalho", () => {
   it("o lado nunca inverte (e não cai para o eixo de lado)", () => {
@@ -75,16 +73,18 @@ describe("popup do cabeçalho", () => {
     const comPopup: string[] = [];
     let total = 0;
     for (const arquivo of doCabecalho()) {
-      const desteArquivo = aberturas(ler(arquivo));
-      if (desteArquivo.length > 0) comPopup.push(arquivo);
-      for (const abertura of desteArquivo) {
-        total += 1;
-        expect(abertura, arquivo).toMatch(/collisionAvoidance=\{ABRE_PARA_BAIXO\}/);
-        // A altura pelo espaço que o base-ui mede abaixo do gatilho (desconta a
-        // faixa do "Ver como" — Codex, PR #375), com PISO: a mesma medição
-        // torta que fazia o lado inverter encolheria o menu até sumir.
-        expect(abertura, arquivo).toContain("max-h-[max(var(--available-height),16rem)]");
-      }
+      const fonte = ler(arquivo);
+      // Por CONTAGEM, em qualquer formatação (Codex, PR #375: o casamento da
+      // abertura de várias linhas não enxergava um popup escrito numa só).
+      const popups = contar(fonte, /<(PopoverContent|DropdownMenuContent)\b/g);
+      if (popups === 0) continue;
+      comPopup.push(arquivo);
+      total += popups;
+      expect(contar(fonte, /collisionAvoidance=\{ABRE_PARA_BAIXO\}/g), arquivo).toBe(popups);
+      // A altura pelo espaço que o base-ui mede abaixo do gatilho (desconta a
+      // faixa do "Ver como" — Codex, PR #375), com PISO: a mesma medição
+      // torta que fazia o lado inverter encolheria o menu até sumir.
+      expect(contar(fonte, /max-h-\[max\(var\(--available-height\),16rem\)\]/g), arquivo).toBe(popups);
     }
     // Menu da conta, conexões e agendador. Mudou? Conferir o popup novo e
     // atualizar a conta — é a prova de que a varredura o enxergou.
