@@ -116,13 +116,20 @@ function InboxPageInner() {
   const [activeConversation, setActiveConversation] =
     useState<Conversation | null>(null);
   const [activeContact, setActiveContact] = useState<Contact | null>(null);
+  // Fora do perfil o fio NEM MONTA: o cartão `ConversaForaDaArea` o
+  // substitui (e a ficha some). Uma régua só para o cartão, a ficha e a
+  // conversa lida abaixo — três cópias divergiriam.
+  const foraDoPerfil =
+    activeConversation !== null && !conversaNoEscopo(acesso, activeConversation);
   // A conversa que ESTE membro está lendo para a equipe: a que aparece na
-  // presença e a que zera as não lidas. No modo anônimo (decisão do
-  // operador, 01/10/2026) nenhuma — o administrador vê o fio sem deixar
-  // rastro. Os espelhos da lista abaixo usam a MESMA régua; o fio aplica a
-  // dele no banco (`.claude/rules/modo-anonimo.md`).
+  // presença e a que zera as não lidas. Nenhuma no modo anônimo (decisão do
+  // operador, 01/10/2026: o administrador vê o fio sem deixar rastro) nem
+  // fora do perfil (quem vê o cartão de bloqueio não está lendo nada). Os
+  // espelhos da lista abaixo usam a MESMA régua; o fio aplica a dele no
+  // banco (`.claude/rules/modo-anonimo.md`).
   const { ativo: modoAnonimo } = useModoAnonimo();
-  const conversaLida = modoAnonimo ? null : (activeConversation?.id ?? null);
+  const conversaLida =
+    modoAnonimo || foraDoPerfil ? null : (activeConversation?.id ?? null);
   // Presença por conversa (963): marca no banco qual conversa ESTE membro
   // está vendo — a página é a dona da seleção, então o escritor mora aqui.
   useMarcarConversaAberta(conversaLida);
@@ -1220,7 +1227,7 @@ function InboxPageInner() {
           )}
           inert={fundoInerte}
         >
-          {activeConversation && !conversaNoEscopo(acesso, activeConversation) ? (
+          {foraDoPerfil ? (
             // Fora do perfil: o cartão SUBSTITUI o fio inteiro. Substituir em
             // vez de embrulhar é load-bearing — montar o MessageThread
             // buscaria as mensagens E zeraria as não-lidas no servidor, e a
@@ -1301,7 +1308,7 @@ function InboxPageInner() {
           tabIndex={-1}
         >
           <div className="h-full w-full lg:w-[360px]">
-            {activeConversation && !conversaNoEscopo(acesso, activeConversation) ? (
+            {foraDoPerfil ? (
               // Fora do perfil: nada de ficha. A LINHA da lista é pública por
               // decisão do operador; a ficha traz anotações internas,
               // negócios e histórico — conteúdo de outra área.

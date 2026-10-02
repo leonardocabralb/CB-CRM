@@ -22,7 +22,9 @@ estado em `useModoAnonimo`; pinos `modo-anonimo.test.ts` e
 `modo-anonimo.chamadores.test.ts`. A presença em si: `inbox-conversa.md`.
 
 - ⚠️⚠️ **Todo caminho que zera as não lidas ou marca a presença passa pelo
-  modo.** A página deriva `conversaLida` (nula no modo) e a usa no escritor da
+  modo.** A página deriva `conversaLida` — nula no modo e FORA DO PERFIL
+  (`foraDoPerfil`, a mesma variável do cartão `ConversaForaDaArea` e da ficha
+  que some: quem vê o bloqueio não está lendo) — e a usa no escritor da
   presença (`useMarcarConversaAberta(conversaLida)`) e nos dois espelhos da
   lista do tempo real (UPDATE da conversa e `comMensagemNova`); o clique e o
   link (`?c=`) conferem `!modoAnonimo` antes de esvaziar o espelho; o fio grava

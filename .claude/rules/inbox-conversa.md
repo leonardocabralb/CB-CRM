@@ -68,7 +68,8 @@ ficha em `.claude/rules/campos-e-nome.md`.
   arquivo do upstream está em `docs/MERGE-UPSTREAM.md`.
 - ⚠️ **Conversa fora das conexões do perfil: `ConversaForaDaArea` SUBSTITUI o
   `<MessageThread>`, nunca o embrulha.** Montado, o fio buscaria as mensagens e
-  zeraria as não lidas em nome de quem nem pode responder.
+  zeraria as não lidas em nome de quem nem pode responder. A página também
+  não marca presença nem zera o espelho da lista por ela (`foraDoPerfil`).
 
 ### O fio: rolagem, linha do tempo e faixas
 
@@ -405,7 +406,8 @@ O vínculo e a aba: `.claude/rules/contatos.md`. Aqui, o pulo entre conversas.
   resposta atrasada não pode vencer a intenção nova.
 - **A página do inbox é a dona da seleção** (`useMarcarConversaAberta`); o
   cabeçalho mostra `<AvataresNaConversa>` por `useQuemVeAConversa`. O
-  escritor recebe `conversaLida`, nula no modo anônimo (`modo-anonimo.md`).
+  escritor recebe `conversaLida`, nula no modo anônimo e fora do perfil
+  (`modo-anonimo.md`).
 - **Decisão do operador (29/09/2026): a presença também sai em FRASE acima do
   compositor** (`<FaixaDePresenca>`, os mesmos `vendoAgora` e roster dos
   avatares): é na hora de responder que importa. Verde, nunca as cores da

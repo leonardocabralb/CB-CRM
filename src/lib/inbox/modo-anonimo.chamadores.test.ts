@@ -108,11 +108,23 @@ describe('modo anônimo: quem zera as não lidas', () => {
     ).toHaveLength(envios);
   });
 
+  it('a conversa LIDA some no modo e fora do perfil — a régua do cartão de bloqueio', () => {
+    const p = fonte(PAGINA);
+    expect(p).toMatch(
+      /const foraDoPerfil =\s*activeConversation !== null && !conversaNoEscopo\(acesso, activeConversation\);/,
+    );
+    expect(p).toMatch(
+      /const conversaLida =\s*modoAnonimo \|\| foraDoPerfil \? null : \(activeConversation\?\.id \?\? null\);/,
+    );
+    // O cartão que SUBSTITUI o fio e a ficha que some usam a MESMA variável:
+    // uma cópia inline divergiria, e a presença ou a lista contariam como
+    // lida uma conversa que a tela mostra bloqueada (ou o contrário).
+    expect(ocorrencias(p, '{foraDoPerfil ? (')).toBe(2);
+    expect(p).not.toMatch(/activeConversation && !conversaNoEscopo\(acesso, activeConversation\)/);
+  });
+
   it('a página só esvazia o espelho da lista fora do modo', () => {
     const p = fonte(PAGINA);
-    expect(p).toContain(
-      'const conversaLida = modoAnonimo ? null : (activeConversation?.id ?? null);',
-    );
     expect(ocorrencias(p, '{ ...c, unread_count: 0 }')).toBe(2);
     expect(p).toContain('if (!bloqueadaAoSelecionar && !modoAnonimo) {');
     expect(p).toMatch(/!modoAnonimo &&\s*conversaNoEscopo\(acesso, match\) &&/);
