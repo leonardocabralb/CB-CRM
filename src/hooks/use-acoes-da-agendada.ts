@@ -34,8 +34,14 @@ export interface AcoesDaAgendada {
  * @param aoMudar Chamado depois de cada ação, com sucesso ou não — é o que
  *   refaz a lista de quem chamou. Sempre chamado: uma falha também muda o que
  *   está no banco (a linha pode ter virado `failed` com motivo novo).
+ * @param aoEnviar Chamado só quando o "Executar agora" SAIU (o servidor
+ *   confirmou). O fio o usa para o modo anônimo: enviar de dentro da
+ *   conversa é responder, e responder zera as não lidas.
  */
-export function useAcoesDaAgendada(aoMudar: () => void): AcoesDaAgendada {
+export function useAcoesDaAgendada(
+  aoMudar: () => void,
+  aoEnviar?: () => void,
+): AcoesDaAgendada {
   const t = useTranslations('Inbox.scheduled');
   const [ocupada, setOcupada] = useState<string | null>(null);
 
@@ -47,8 +53,12 @@ export function useAcoesDaAgendada(aoMudar: () => void): AcoesDaAgendada {
           method: 'POST',
         });
         const json = (await res.json()) as { error?: string };
-        if (!res.ok) toast.error(json.error ?? t('sendNowFailed'));
-        else toast.success(t('sentNow'));
+        if (!res.ok) {
+          toast.error(json.error ?? t('sendNowFailed'));
+        } else {
+          toast.success(t('sentNow'));
+          aoEnviar?.();
+        }
       } catch {
         toast.error(t('sendNowFailed'));
       } finally {
@@ -56,7 +66,7 @@ export function useAcoesDaAgendada(aoMudar: () => void): AcoesDaAgendada {
         aoMudar();
       }
     },
-    [t, aoMudar],
+    [t, aoMudar, aoEnviar],
   );
 
   const cancelar = useCallback(

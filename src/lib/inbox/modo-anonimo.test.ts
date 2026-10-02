@@ -46,11 +46,21 @@ describe('modoAnonimoAtivo', () => {
     expect(modoAnonimoAtivo('u-ex-admin', 'u-ex-admin', 'agent')).toBe(false);
   });
 
-  it('sem sessão ou com o papel carregando, desligado', () => {
+  it('sem sessão, desligado — mesmo sem nada guardado', () => {
     expect(modoAnonimoAtivo('u-admin', null, 'admin')).toBe(false);
     expect(modoAnonimoAtivo('u-admin', undefined, 'admin')).toBe(false);
-    expect(modoAnonimoAtivo('u-admin', 'u-admin', null)).toBe(false);
-    // `null === undefined` é falso, mas a régua não pode depender disso.
+    // Sem a guarda da sessão, `null === null` ligaria o modo para ninguém.
+    expect(modoAnonimoAtivo(null, null, 'admin')).toBe(false);
     expect(modoAnonimoAtivo(null, undefined, 'admin')).toBe(false);
+  });
+
+  it('papel desconhecido (perfil não carregou) mantém o modo de quem o ligou', () => {
+    // O erro não pode virar rastro: desligado, o admin abriria a conversa
+    // zerando as não lidas que pediu para preservar.
+    expect(modoAnonimoAtivo('u-admin', 'u-admin', null)).toBe(true);
+    expect(modoAnonimoAtivo('u-admin', 'u-admin', undefined)).toBe(true);
+    // Mas nunca o de OUTRA pessoa, nem sem nada guardado.
+    expect(modoAnonimoAtivo('u-admin', 'u-outro', null)).toBe(false);
+    expect(modoAnonimoAtivo(null, 'u-admin', null)).toBe(false);
   });
 });

@@ -3239,6 +3239,11 @@ export function MessageThread({
         conversationId={conversation.id}
         podeAgir={podeEnviar}
         resyncToken={agendadasResync}
+        // "Executar agora" de dentro da conversa é RESPONDER: no modo
+        // anônimo zera, como os quatro envios do compositor.
+        aoEnviarAgora={
+          modoAnonimo ? () => zerarNaoLidas(conversation.id) : undefined
+        }
       />
 
       {/* Faixa PRESENÇA (963, pedido do operador em 29/09/2026): quem MAIS

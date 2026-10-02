@@ -33,16 +33,20 @@ export function podeUsarModoAnonimo(
 
 /**
  * O modo vale AGORA para esta pessoa? Só com a chave guardada pelo PRÓPRIO
- * login e o papel real de administrador: chave plantada à mão por um
- * atendente é ignorada (a mesma régua da lente "Ver como"), e quem deixou de
- * ser admin perde o modo sem precisar desligá-lo.
+ * login. Com o papel CONHECIDO, só administrador: chave plantada à mão por
+ * um atendente é ignorada (a mesma régua da lente "Ver como"), e quem deixou
+ * de ser admin perde o modo sem precisar desligá-lo.
+ *
+ * ⚠️ Papel DESCONHECIDO (o perfil não carregou: a casca segue com o alerta
+ * de conta) mantém o modo de quem o ligou. O erro não pode virar rastro:
+ * cair em "desligado" faria o admin abrir a conversa zerando as não lidas
+ * que ele pediu para preservar. O cabeçalho oferece o desligar nesse caso.
  */
 export function modoAnonimoAtivo(
   guardado: string | null,
   userId: string | null | undefined,
   papelReal: AccountRole | null | undefined,
 ): boolean {
-  return (
-    Boolean(userId) && guardado === userId && podeUsarModoAnonimo(papelReal)
-  );
+  if (!userId || guardado !== userId) return false;
+  return papelReal == null || podeUsarModoAnonimo(papelReal);
 }

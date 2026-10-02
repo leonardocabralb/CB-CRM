@@ -81,6 +81,9 @@ export function Header({ onOpenSidebar }: HeaderProps) {
   // tela enquanto ele vale — é o que impede esquecê-lo ligado. Regra:
   // `.claude/rules/modo-anonimo.md`.
   const modoAnonimo = useModoAnonimo();
+  // Ligar é de admin; DESLIGAR, sempre: com o papel desconhecido o modo
+  // segue valendo (`modoAnonimoAtivo`), e o item tem de estar lá para isso.
+  const mostraModoAnonimo = modoAnonimo.disponivel || modoAnonimo.ativo;
   const titleKey = getPageTitleKey(pathname);
 
   const initial =
@@ -151,7 +154,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
           // o item do modo anônimo, a dica quebrava em quatro linhas.
           className={cn(
             "min-w-56 bg-popover text-popover-foreground ring-border",
-            modoAnonimo.disponivel && "w-72",
+            mostraModoAnonimo && "w-72",
           )}
         >
           <div className="px-2 py-1.5">
@@ -165,7 +168,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
           <DropdownMenuSeparator className="bg-border" />
           {/* O item fica no menu mesmo durante a lente "Ver como": o modo é
               da pessoa REAL, como a presença e as escritas dela. */}
-          {modoAnonimo.disponivel && (
+          {mostraModoAnonimo && (
             <>
               <DropdownMenuCheckboxItem
                 checked={modoAnonimo.ativo}

@@ -15,13 +15,21 @@ import path from 'node:path';
 
 const raiz = path.join(__dirname, '..', '..');
 
-/** Fonte sem comentários — os arquivos citam os nomes ao EXPLICAR as
- *  decisões, e checar prosa faria o teste acusar a própria documentação. */
+function cru(relativo: string): string {
+  return fs.readFileSync(path.join(raiz, relativo), 'utf8');
+}
+
+/**
+ * Fonte sem comentários — os arquivos citam os nomes ao EXPLICAR as
+ * decisões, e checar prosa faria o teste acusar a própria documentação.
+ * ⚠️ Só tira comentário que COMEÇA depois de espaço, `{` ou `(`: o corte
+ * ingênuo tomava o `/*` de `"image/*"` por comentário e engolia o código até
+ * o próximo `*\/` — escondendo justamente o que um pino de contagem procura.
+ */
 function fonte(relativo: string): string {
-  return fs
-    .readFileSync(path.join(raiz, relativo), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/\/\/.*$/gm, '');
+  return cru(relativo)
+    .replace(/(^|[\s{(])\/\*[\s\S]*?\*\//g, '$1')
+    .replace(/(^|\s)\/\/.*$/gm, '$1');
 }
 
 function arquivosDoCodigo(dir: string): string[] {
@@ -31,7 +39,7 @@ function arquivosDoCodigo(dir: string): string[] {
     if (entrada.isDirectory()) {
       achados.push(...arquivosDoCodigo(caminho));
     } else if (/\.tsx?$/.test(entrada.name) && !/\.test\.tsx?$/.test(entrada.name)) {
-      achados.push(caminho);
+      achados.push(path.relative(raiz, caminho).split(path.sep).join('/'));
     }
   }
   return achados;
@@ -58,32 +66,46 @@ const QUEM_ZERA: Record<string, string> = {
 
 describe('modo anônimo: quem zera as não lidas', () => {
   it('o inventário de quem zera é exatamente a lista conferida', () => {
-    const zera = /unread_count\s*:\s*0\b|unread_count\s*:\s*[\w.?]+\s*\?\s*0\s*:/;
+    // Fonte CRU (comentário que cite um zero só pede uma olhada), chave com
+    // ou sem aspas, objeto (`unread_count: 0`), ternário (`x ? 0 :`) e SQL em
+    // texto (`unread_count = 0`).
+    const zera = /["'`]?\bunread_count["'`]?\s*(?::|=)\s*(?:0\b|[\w.?]+\s*\?\s*0\s*:)/;
     const achados = arquivosDoCodigo(raiz)
-      .filter((arquivo) => zera.test(fonte(path.relative(raiz, arquivo))))
-      .map((arquivo) => path.relative(raiz, arquivo).split(path.sep).join('/'))
+      .filter((relativo) => zera.test(cru(relativo)))
       .sort();
     expect(achados).toEqual(Object.keys(QUEM_ZERA).sort());
   });
 
-  it('o fio grava o zero num lugar só, e ver não zera no modo', () => {
+  it('o fio grava o zero num lugar só, e cada chamada passa pelo modo', () => {
     const f = fonte(FIO);
     expect(ocorrencias(f, '.update({ unread_count: 0 })')).toBe(1);
-    expect(f).toContain('if (!conversationId || !hasUnread || modoAnonimo) return;');
-    // Sem o `modoAnonimo` nas dependências, desligar o modo com a conversa
-    // aberta não a zeraria até chegar outra mensagem.
+    // Definição + as TRÊS chamadas abaixo. Chamada nova, sem guarda, muda a
+    // conta — e um efeito "zera ao abrir" a mais passaria por todo o resto.
+    expect(ocorrencias(f, 'zerarNaoLidas(')).toBe(4);
+    expect(f).toContain('function zerarNaoLidas(conversationId: string)');
+    // Ver: só fora do modo. Sem o `modoAnonimo` nas dependências, desligar o
+    // modo com a conversa aberta não a zeraria até chegar outra mensagem.
+    expect(f).toMatch(
+      /if \(!conversationId \|\| !hasUnread \|\| modoAnonimo\) return;\s*zerarNaoLidas\(conversationId\);/,
+    );
     expect(f).toContain('}, [conversationId, hasUnread, modoAnonimo]);');
+    // Responder pelo compositor e "Executar agora" da agendada: só no modo.
+    expect(f).toContain('if (modoAnonimo) zerarNaoLidas(conversationIdDoEnvio);');
+    expect(f).toMatch(
+      /aoEnviarAgora=\{\s*modoAnonimo \? \(\) => zerarNaoLidas\(conversation\.id\) : undefined\s*\}/,
+    );
   });
 
-  it('responder zera no modo, depois de o servidor confirmar o envio', () => {
+  it('todo envio do compositor confirma por `marcarEnviada`, com a conversa do envio', () => {
     const f = fonte(FIO);
-    expect(f).toContain('if (modoAnonimo) zerarNaoLidas(conversationIdDoEnvio);');
-    // Os quatro caminhos de envio (texto, anexo, interativa e modelo) passam
-    // a conversa para a qual a mensagem SAIU.
-    expect(ocorrencias(f, 'marcarEnviada(tempId, ')).toBe(4);
+    // Um 5º caminho que chame a rota sem passar por `marcarEnviada` não
+    // zeraria ao responder no modo — a conta dos dois lados acusa.
+    const envios = ocorrencias(f, 'fetch("/api/whatsapp/send"');
+    expect(envios).toBe(4);
+    expect(ocorrencias(f, 'marcarEnviada(tempId, ')).toBe(envios);
     expect(
       f.match(/marcarEnviada\(tempId, (?:payload|data), conversation\.id\);/g),
-    ).toHaveLength(4);
+    ).toHaveLength(envios);
   });
 
   it('a página só esvazia o espelho da lista fora do modo', () => {
@@ -105,10 +127,15 @@ describe('modo anônimo: quem zera as não lidas', () => {
 describe('modo anônimo: a presença na conversa', () => {
   it('o único escritor da presença é a página, com a conversa LIDA', () => {
     const escritores = arquivosDoCodigo(raiz)
-      .map((arquivo) => path.relative(raiz, arquivo).split(path.sep).join('/'))
       .filter((relativo) => relativo !== 'hooks/use-conversa-aberta.ts')
       .filter((relativo) => fonte(relativo).includes('useMarcarConversaAberta('));
     expect(escritores).toEqual([PAGINA]);
     expect(fonte(PAGINA)).toContain('useMarcarConversaAberta(conversaLida);');
+    // E a RPC que grava a presença só é CHAMADA pelo hook (o nome aparece em
+    // comentário noutros arquivos).
+    const rpc = arquivosDoCodigo(raiz).filter((relativo) =>
+      /rpc\(\s*["'`]cb_marcar_conversa_aberta["'`]/.test(cru(relativo)),
+    );
+    expect(rpc).toEqual(['hooks/use-conversa-aberta.ts']);
   });
 });
