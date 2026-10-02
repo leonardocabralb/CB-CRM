@@ -488,6 +488,8 @@ O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
   recolhida (29/09/2026).
 - Quem mais está com a conversa aberta: frase acima do compositor, além dos
   avatares do cabeçalho (29/09/2026).
+- Modo anônimo, só de admin, no menu do nome: abrir não zera as não lidas nem
+  mostra a presença; responder zera; dura até desligar (01/10/2026).
 - Canal: a faixa de divergência só informa, não bloqueia; cor derivada; anel
   no avatar e trilha colorida foram descartados.
 - IA: chave por PROVEDOR, uma para a conta toda — nunca por conexão
@@ -551,6 +553,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   compositor, fila de anexos, player de áudio, painel.
 - `.claude/rules/anotacoes.md` — anotação interna nas quatro telas, apagar e
   fixar, resposta à anotação (1075) e o aviso a quem já escreveu nela.
+- `.claude/rules/modo-anonimo.md` — o admin lê sem zerar as não lidas nem
+  aparecer na presença: quem zera, responder zera, papel real, pastilha.
 - `.claude/rules/midia.md` — dois tetos de tamanho, `too_large`, nome do
   anexo, acervo de mídias.
 - `.claude/rules/celular.md` — teclado virtual, voltar pelo histórico, app

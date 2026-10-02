@@ -115,7 +115,10 @@ Irmã da faixa do fio, não substituta. `src/hooks/use-agendadas-da-conta.ts`,
 
 - ⚠️ **"Executar agora" e "Cancelar" moram no HOOK, não na tela.** Elas mandam
   mensagem a cliente e apagam registro; duas cópias divergindo na guarda
-  (`podeDispararAgora`) fazem o cliente receber duas vezes.
+  (`podeDispararAgora`) fazem o cliente receber duas vezes. O 2º parâmetro
+  (`aoEnviar`) roda só quando o "Executar agora" SAIU: a faixa do fio o usa
+  para o modo anônimo zerar as não lidas (`modo-anonimo.md`); a tela global
+  não passa nada.
 - ⚠️ **São TRÊS consultas.** Fila e acervo têm ordens opostas, e numa consulta
   só com teto o `ORDER BY` errado engoliria um dos dois inteiro. **Só as
   enviadas paginam**: a falha de meses atrás ainda espera decisão, e a

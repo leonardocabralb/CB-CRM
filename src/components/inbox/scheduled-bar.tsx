@@ -31,6 +31,8 @@ interface ScheduledBarProps {
   podeAgir: boolean;
   /** Sinal externo para refazer a busca (agendou pelo compositor). */
   resyncToken?: number;
+  /** O "Executar agora" saiu: o fio zera as não lidas no modo anônimo. */
+  aoEnviarAgora?: () => void;
 }
 
 /**
@@ -50,6 +52,7 @@ export function ScheduledBar({
   conversationId,
   podeAgir,
   resyncToken,
+  aoEnviarAgora,
 }: ScheduledBarProps) {
   const t = useTranslations("Inbox.scheduled");
   const { agendadas, ultimaEntradaEm, falhou, recarregar } =
@@ -58,7 +61,10 @@ export function ScheduledBar({
   // ⚠️ As ações moram fora desta faixa desde a Fase C: a tela global usa as
   // MESMAS. Duas cópias divergiriam justamente nas guardas que impedem o
   // cliente de receber a mensagem duas vezes.
-  const { ocupada, enviarAgora, cancelar } = useAcoesDaAgendada(recarregar);
+  const { ocupada, enviarAgora, cancelar } = useAcoesDaAgendada(
+    recarregar,
+    aoEnviarAgora,
+  );
   // P4.3 pediu o canal no card. Só aparece com 2+ números: num só ele não
   // informa nada e ocupa a linha que carrega o texto da mensagem.
   const { channels } = useChannels();

@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
-import { LogOut, Menu, Settings as SettingsIcon, User } from "lucide-react";
+import { useModoAnonimo } from "@/hooks/use-modo-anonimo";
+import { EyeOff, LogOut, Menu, Settings as SettingsIcon, User } from "lucide-react";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import {
   Avatar,
   AvatarFallback,
@@ -11,6 +14,7 @@ import {
 } from "@/components/ui/avatar";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
@@ -72,6 +76,14 @@ export function Header({ onOpenSidebar }: HeaderProps) {
   const t = useTranslations("Header");
   const pathname = usePathname();
   const { profile, signOut } = useAuth();
+  // Modo anônimo (decisão do operador, 01/10/2026): o interruptor mora no
+  // menu do nome, e a pastilha escura ao lado do nome fica acesa em TODA
+  // tela enquanto ele vale — é o que impede esquecê-lo ligado. Regra:
+  // `.claude/rules/modo-anonimo.md`.
+  const modoAnonimo = useModoAnonimo();
+  // Ligar é de admin; DESLIGAR, sempre: com o papel desconhecido o modo
+  // segue valendo (`modoAnonimoAtivo`), e o item tem de estar lá para isso.
+  const mostraModoAnonimo = modoAnonimo.disponivel || modoAnonimo.ativo;
   const titleKey = getPageTitleKey(pathname);
 
   const initial =
@@ -105,7 +117,11 @@ export function Header({ onOpenSidebar }: HeaderProps) {
         <DropdownMenu>
         <DropdownMenuTrigger
           className="flex items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted/70 focus:bg-muted/70 focus:outline-none data-popup-open:bg-muted/70 sm:gap-3 sm:pl-1 sm:pr-3"
-          aria-label={t("openAccountMenu")}
+          aria-label={
+            modoAnonimo.ativo
+              ? t("openAccountMenuAnonimo")
+              : t("openAccountMenu")
+          }
         >
           <Avatar className="size-8">
             {profile?.avatar_url ? (
@@ -121,11 +137,25 @@ export function Header({ onOpenSidebar }: HeaderProps) {
           <span className="hidden text-sm font-medium text-foreground sm:inline">
             {profile?.full_name ?? t("defaultUser")}
           </span>
+          {/* Escura (`foreground`), e não violeta/âmbar/verde: essas já
+              dizem outra coisa na tela (situação da conversa, presença). No
+              celular o nome some e fica só o olho riscado. */}
+          {modoAnonimo.ativo && (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-foreground px-2 py-0.5 text-xs font-semibold text-background">
+              <EyeOff className="size-3.5" aria-hidden="true" />
+              <span className="hidden sm:inline">{t("modoAnonimoAtivo")}</span>
+            </span>
+          )}
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
           sideOffset={6}
-          className="min-w-56 bg-popover text-popover-foreground ring-border"
+          // O primitivo mede o menu pelo gatilho (`w-(--anchor-width)`): com
+          // o item do modo anônimo, a dica quebrava em quatro linhas.
+          className={cn(
+            "min-w-56 bg-popover text-popover-foreground ring-border",
+            mostraModoAnonimo && "w-72",
+          )}
         >
           <div className="px-2 py-1.5">
             <p className="truncate text-sm font-medium text-foreground">
@@ -136,6 +166,30 @@ export function Header({ onOpenSidebar }: HeaderProps) {
             </p>
           </div>
           <DropdownMenuSeparator className="bg-border" />
+          {/* O item fica no menu mesmo durante a lente "Ver como": o modo é
+              da pessoa REAL, como a presença e as escritas dela. */}
+          {mostraModoAnonimo && (
+            <>
+              <DropdownMenuCheckboxItem
+                checked={modoAnonimo.ativo}
+                onCheckedChange={(ligar) => {
+                  if (!modoAnonimo.definir(ligar)) {
+                    toast.error(t("modoAnonimoFalhou"));
+                  }
+                }}
+                className="text-popover-foreground focus:bg-accent focus:text-accent-foreground"
+              >
+                <EyeOff className="size-4" />
+                <span className="flex min-w-0 flex-col">
+                  <span>{t("modoAnonimo")}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {t("modoAnonimoDica")}
+                  </span>
+                </span>
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuSeparator className="bg-border" />
+            </>
+          )}
           <DropdownMenuItem
             render={
               <Link
