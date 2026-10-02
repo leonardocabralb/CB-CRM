@@ -219,13 +219,13 @@ export function ChannelHealthIndicator({ className }: { className?: string }) {
           ))
         )}
       </PopoverTrigger>
-      {/* Sempre para baixo, com a altura pela tela: no app do iPhone abria
+      {/* Sempre para baixo, com piso na altura: no app do iPhone abria
           para cima, cortado (`popup-do-cabecalho.ts`). */}
       <PopoverContent
         align="end"
         sideOffset={8}
         collisionAvoidance={ABRE_PARA_BAIXO}
-        className="max-h-[calc(var(--altura-visivel,100dvh)-5rem)] w-80 overflow-y-auto"
+        className="max-h-[max(var(--available-height),16rem)] w-80 overflow-y-auto"
       >
         <p className="px-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {t('title')}

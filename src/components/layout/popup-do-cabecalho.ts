@@ -11,10 +11,13 @@
 // errada naquele aparelho. Por isso as duas travas andam juntas:
 // - o lado não inverte (`ABRE_PARA_BAIXO`): no topo da tela, "para cima" nunca
 //   é a resposta certa;
-// - a altura máxima sai da TELA (`--altura-visivel`, a mesma da casca, com
-//   queda em `100dvh`), nunca da `--available-height` que o base-ui calcula
-//   com a mesma medição torta — presa a ela, o menu encolheria até sumir.
-//   A classe é escrita à mão em cada popup (classe do Tailwind é literal).
+// - a altura máxima é a `--available-height` do base-ui (o espaço abaixo do
+//   gatilho — desconta a faixa do "Ver como", que empurra o cabeçalho para
+//   baixo: um teto fixo pela tela deixava o fim da lista fora dela, Codex no
+//   PR #375) com PISO de 16rem (`max-h-[max(var(--available-height),16rem)]`):
+//   a mesma medição torta que fazia o lado inverter encolheria o menu até
+//   sumir. A classe é escrita à mão em cada popup (classe do Tailwind é
+//   literal).
 // ============================================================
 
 /** O lado nunca inverte; a largura ainda se ajusta à tela. */

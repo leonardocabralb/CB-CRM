@@ -46,9 +46,10 @@ describe("popup do cabeçalho", () => {
       for (const abertura of aberturas(ler(arquivo))) {
         total += 1;
         expect(abertura, arquivo).toMatch(/collisionAvoidance=\{ABRE_PARA_BAIXO\}/);
-        // A altura pela TELA, nunca pela `--available-height` do base-ui (a
-        // mesma medição torta que fazia o lado inverter).
-        expect(abertura, arquivo).toContain("max-h-[calc(var(--altura-visivel,100dvh)-5rem)]");
+        // A altura pelo espaço que o base-ui mede abaixo do gatilho (desconta a
+        // faixa do "Ver como" — Codex, PR #375), com PISO: a mesma medição
+        // torta que fazia o lado inverter encolheria o menu até sumir.
+        expect(abertura, arquivo).toContain("max-h-[max(var(--available-height),16rem)]");
       }
     }
     // Menu da conta, conexões e agendador.

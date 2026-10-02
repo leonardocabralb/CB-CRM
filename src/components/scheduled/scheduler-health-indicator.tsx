@@ -60,13 +60,13 @@ export function SchedulerHealthIndicator() {
         )}
       </PopoverTrigger>
 
-      {/* Sempre para baixo, com a altura pela tela: no app do iPhone os
+      {/* Sempre para baixo, com piso na altura: no app do iPhone os
           popups do cabeçalho abriam para cima, cortados (`popup-do-cabecalho.ts`). */}
       <PopoverContent
         align="end"
         sideOffset={8}
         collisionAvoidance={ABRE_PARA_BAIXO}
-        className="max-h-[calc(var(--altura-visivel,100dvh)-5rem)] w-80 overflow-y-auto"
+        className="max-h-[max(var(--available-height),16rem)] w-80 overflow-y-auto"
       >
         <p className="flex items-center gap-1.5 px-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {daAutomacao ? (

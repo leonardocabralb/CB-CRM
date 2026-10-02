@@ -151,13 +151,13 @@ export function Header({ onOpenSidebar }: HeaderProps) {
         <DropdownMenuContent
           align="end"
           sideOffset={6}
-          // Sempre para baixo, com a altura pela tela: no app do iPhone o
+          // Sempre para baixo, com piso na altura: no app do iPhone o
           // menu abria para cima, cortado (`popup-do-cabecalho.ts`).
           collisionAvoidance={ABRE_PARA_BAIXO}
           // O primitivo mede o menu pelo gatilho (`w-(--anchor-width)`): com
           // o item do modo anônimo, a dica quebrava em quatro linhas.
           className={cn(
-            "max-h-[calc(var(--altura-visivel,100dvh)-5rem)] min-w-56 bg-popover text-popover-foreground ring-border",
+            "max-h-[max(var(--available-height),16rem)] min-w-56 bg-popover text-popover-foreground ring-border",
             mostraModoAnonimo && "w-72",
           )}
         >
