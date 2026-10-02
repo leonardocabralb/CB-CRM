@@ -64,7 +64,7 @@ import {
   type EstiloFormatacao,
 } from "@/lib/inbox/whatsapp-format";
 import {
-  ACEITE_DO_SELETOR,
+  aceiteDoSeletor,
   arquivoParaEnviar,
   colagemEhAnexo,
   escolherArquivos,
@@ -163,17 +163,6 @@ interface ReplyDraft {
   preview: string;
 }
 
-// Mirrors the chat-media bucket's allowed_mime_types (migration 023) for
-// the file picker so unsupported files are rejected before upload rather
-// than failing with a confusing Storage error. Audio has no picker — it's
-// captured via the recorder.
-/**
- * ⚠️ Vem de `arquivo-solto.ts`, que é a MESMA lista usada por quem arrasta
- * ou cola arquivo. Duas listas divergiriam, e o sintoma seria um arquivo
- * aceito por uma porta e recusado pela outra.
- */
-const PICKER_ACCEPT = ACEITE_DO_SELETOR;
-
 interface MediaDraft {
   /**
    * Identidade do item na fila — `path` serviria, mas ele é dado do Storage
@@ -186,6 +175,12 @@ interface MediaDraft {
   path: string;
   filename: string;
   caption: string;
+  /**
+   * O MIME do arquivo anexado do computador (ausente na nota de voz e na
+   * cópia do acervo, que não levam tipo só do QR code). É por ele que o envio
+   * confere de novo se o anexo ainda cabe na conexão de agora (`sendDraft`).
+   */
+  mime?: string;
 }
 
 /** Um item da fila, pronto para virar mensagem. */
@@ -295,6 +290,14 @@ export function MessageComposer({
   // das rotas); a frase sai de `mensagemDaInterativa`.
   const tValidacao = useTranslations("Interactive.validacao");
   const tUpload = useTranslations("Upload");
+  // Os tipos de anexo aceitos (`arquivo-solto.ts`), a MESMA lista para o
+  // `accept=` dos seletores e para quem arrasta ou cola — duas listas
+  // divergiriam. A página `.html` só nas conexões por QR code, e só com o
+  // transporte CONHECIDO: pelo número oficial a Meta a recusaria depois do
+  // envio (decisão do operador, 02/10/2026). Áudio não tem seletor: sai do
+  // gravador.
+  const porQrCode = transporteConhecido && ehEvolution(channelKind);
+  const aceite = aceiteDoSeletor(porQrCode);
 
   const [text, setText] = useState("");
   const [drafting, setDrafting] = useState(false);
@@ -1083,7 +1086,14 @@ export function MessageComposer({
         }
         // ⚠️ ACRESCENTA à fila (não substitui): o compositor passou a levar
         // vários anexos, e cada um vira uma mensagem.
-        const item = novoDraft({ kind, mediaUrl: publicUrl, path, filename: file.name, caption: "" });
+        const item = novoDraft({
+          kind,
+          mediaUrl: publicUrl,
+          path,
+          filename: file.name,
+          caption: "",
+          mime: file.type,
+        });
         setDrafts((atual) => [...atual, item]);
         setSelecionado((atual) => atual ?? item.id);
       } catch (err) {
@@ -1108,12 +1118,12 @@ export function MessageComposer({
         // com parâmetro (`image/png; charset=binary`) — que o bucket, de lista
         // exata, recusa. Ver `arquivoParaEnviar`.
         const arquivo = arquivoParaEnviar(bruto);
-        const tipo = tipoDoArquivo(arquivo.type);
+        const tipo = tipoDoArquivo(arquivo.type, porQrCode);
         if (!tipo) continue;
         await stageUpload(tipo, arquivo);
       }
     },
-    [stageUpload],
+    [stageUpload, porQrCode],
   );
 
   /**
@@ -1124,9 +1134,16 @@ export function MessageComposer({
   const receberArquivos = useCallback(
     (arquivos: readonly File[]) => {
       if (readOnly || sessionExpired || busy) return;
-      const r = escolherArquivos(arquivos, draftsRef.current.length);
+      const r = escolherArquivos(arquivos, draftsRef.current.length, porQrCode);
       // Cada descarte tem seu aviso: o operador precisa saber o que NÃO foi.
-      if (r.recusados > 0) toast.error(t("arquivoNaoSuportado", { n: r.recusados }));
+      // A lista do aviso é a desta conexão (a página .html só no QR code).
+      if (r.recusados > 0) {
+        toast.error(
+          porQrCode
+            ? t("arquivoNaoSuportadoQrCode", { n: r.recusados })
+            : t("arquivoNaoSuportado", { n: r.recusados }),
+        );
+      }
       if (r.excedentes > 0) toast.error(t("tetoDeAnexos", { max: MAX_ANEXOS, n: r.excedentes }));
       if (r.aceitos.length === 0) return;
       // ⚠️ Um de cada vez, com `await` dentro de `stageUploads`: dez uploads
@@ -1134,7 +1151,7 @@ export function MessageComposer({
       // conclusão, não a que a pessoa soltou.
       void stageUploads(r.aceitos);
     },
-    [readOnly, sessionExpired, busy, stageUploads, t],
+    [readOnly, sessionExpired, busy, stageUploads, t, porQrCode],
   );
 
   /**
@@ -1370,6 +1387,15 @@ export function MessageComposer({
     // — que iteraria sobre a MESMA fila capturada e mandaria todos os anexos
     // de novo ao cliente (achado do Codex no PR #144).
     if (drafts.length === 0 || busy || enviandoFilaRef.current !== 0) return;
+    // ⚠️ A conexão pode ter mudado DEPOIS de o anexo entrar na fila — o
+    // seletor do cabeçalho, ou a conversa solta que segue o número do cliente
+    // (Codex, PR #376): o que só sai pelo QR code é conferido de novo, contra
+    // a conexão de AGORA, antes de enviar OU de agendar. Fica na fila: a
+    // pessoa tira o arquivo ou volta para uma conexão por QR code.
+    if (drafts.some((d) => d.mime !== undefined && tipoDoArquivo(d.mime, porQrCode) === null)) {
+      toast.error(t("anexoSoNoQrCode"));
+      return;
+    }
     // ⚠️ A POSSE é também a GERAÇÃO que cancela este laço. O compositor NÃO
     // remonta na troca de conversa e cada item da fila é um `await`: sem
     // cancelar, trocar de cliente no meio de uma fila de cinco deixava o laço
@@ -1458,7 +1484,7 @@ export function MessageComposer({
         setEnviandoFila(false);
       }
     }
-  }, [drafts, busy, onSendMedia, replyTo?.id, onClearReply, quandoAg, agendar]);
+  }, [drafts, busy, onSendMedia, replyTo?.id, onClearReply, quandoAg, agendar, porQrCode, t]);
 
   /** Descarta UM item — recolhe o objeto, que subiu e não foi enviado. */
   const discardDraft = useCallback(
@@ -1598,7 +1624,7 @@ export function MessageComposer({
       <input
         ref={imageInputRef}
         type="file"
-        accept={PICKER_ACCEPT.image}
+        accept={aceite.image}
         multiple
         className="hidden"
         onChange={(e) => {
@@ -1609,7 +1635,7 @@ export function MessageComposer({
       <input
         ref={videoInputRef}
         type="file"
-        accept={PICKER_ACCEPT.video}
+        accept={aceite.video}
         multiple
         className="hidden"
         onChange={(e) => {
@@ -1620,7 +1646,7 @@ export function MessageComposer({
       <input
         ref={documentInputRef}
         type="file"
-        accept={PICKER_ACCEPT.document}
+        accept={aceite.document}
         multiple
         className="hidden"
         onChange={(e) => {
