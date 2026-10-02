@@ -22,6 +22,7 @@
 
 import { useTranslations } from 'next-intl';
 
+import { ABRE_PARA_BAIXO } from '@/components/layout/popup-do-cabecalho';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useChannelHealth, type ChannelHealth, type HealthTone } from '@/hooks/use-channel-health';
 import { formatChannelPhone } from '@/lib/cb-channels/display';
@@ -218,7 +219,14 @@ export function ChannelHealthIndicator({ className }: { className?: string }) {
           ))
         )}
       </PopoverTrigger>
-      <PopoverContent align="end" sideOffset={8} className="w-80">
+      {/* Sempre para baixo, com a altura pela tela: no app do iPhone abria
+          para cima, cortado (`popup-do-cabecalho.ts`). */}
+      <PopoverContent
+        align="end"
+        sideOffset={8}
+        collisionAvoidance={ABRE_PARA_BAIXO}
+        className="max-h-[calc(var(--altura-visivel,100dvh)-5rem)] w-80 overflow-y-auto"
+      >
         <p className="px-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {t('title')}
         </p>

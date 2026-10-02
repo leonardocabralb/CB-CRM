@@ -3,6 +3,7 @@
 import { AlertTriangle, CalendarClock, Zap } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
+import { ABRE_PARA_BAIXO } from '@/components/layout/popup-do-cabecalho';
 import {
   Popover,
   PopoverContent,
@@ -59,7 +60,14 @@ export function SchedulerHealthIndicator() {
         )}
       </PopoverTrigger>
 
-      <PopoverContent align="end" sideOffset={8} className="w-80">
+      {/* Sempre para baixo, com a altura pela tela: no app do iPhone os
+          popups do cabeçalho abriam para cima, cortados (`popup-do-cabecalho.ts`). */}
+      <PopoverContent
+        align="end"
+        sideOffset={8}
+        collisionAvoidance={ABRE_PARA_BAIXO}
+        className="max-h-[calc(var(--altura-visivel,100dvh)-5rem)] w-80 overflow-y-auto"
+      >
         <p className="flex items-center gap-1.5 px-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {daAutomacao ? (
             <Zap className="h-3.5 w-3.5" />

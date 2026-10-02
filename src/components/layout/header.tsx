@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ModeToggle } from "@/components/layout/mode-toggle";
+import { ABRE_PARA_BAIXO } from "@/components/layout/popup-do-cabecalho";
 import { ChannelHealthIndicator } from "@/components/channels/channel-health-indicator";
 import { SchedulerHealthIndicator } from "@/components/scheduled/scheduler-health-indicator";
 
@@ -150,10 +151,13 @@ export function Header({ onOpenSidebar }: HeaderProps) {
         <DropdownMenuContent
           align="end"
           sideOffset={6}
+          // Sempre para baixo, com a altura pela tela: no app do iPhone o
+          // menu abria para cima, cortado (`popup-do-cabecalho.ts`).
+          collisionAvoidance={ABRE_PARA_BAIXO}
           // O primitivo mede o menu pelo gatilho (`w-(--anchor-width)`): com
           // o item do modo anônimo, a dica quebrava em quatro linhas.
           className={cn(
-            "min-w-56 bg-popover text-popover-foreground ring-border",
+            "max-h-[calc(var(--altura-visivel,100dvh)-5rem)] min-w-56 bg-popover text-popover-foreground ring-border",
             mostraModoAnonimo && "w-72",
           )}
         >
