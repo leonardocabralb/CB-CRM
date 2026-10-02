@@ -5446,6 +5446,11 @@
         "minhas_e_sem_responsavel": "Conversations assigned to you or unassigned",
         "minhas": "Only conversations assigned to you"
       },
+      "connectionsLabel": "Connections that alert",
+      "connectionsDesc": "Uncheck the connections that shouldn't alert you. A new connection starts checked.",
+      "connectionsNone": "No connection checked: no alert will arrive.",
+      "connectionsUnavailable": "Could not load your connections, so the choice of which ones alert can't be shown right now.",
+      "connectionsRetry": "Try again",
       "showTextLabel": "Show the message text",
       "showTextDesc": "Off: the alert only says who wrote — useful when others can see your screen.",
       "scopeNote": "Only the connections in your access profile. Group messages never alert.",

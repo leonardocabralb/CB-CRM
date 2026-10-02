@@ -42,10 +42,11 @@ import { cn } from '@/lib/utils';
 /** Sentinela do item "todos" — o Select trabalha com string. */
 const ALL = '__all__';
 
-function ChannelRow({ channel }: { channel: CbChannel }) {
+/** Bolinha do estado + nome + telefone: a linha de um canal numa lista. */
+export function ChannelRow({ channel, className }: { channel: CbChannel; className?: string }) {
   const telefone = identidadeDoCanal(channel);
   return (
-    <span className="flex min-w-0 items-center gap-2">
+    <span className={cn('flex min-w-0 items-center gap-2', className)}>
       <span
         aria-hidden="true"
         className={cn(
