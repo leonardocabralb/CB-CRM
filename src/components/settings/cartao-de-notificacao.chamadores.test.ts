@@ -153,6 +153,23 @@ describe('cartão de notificação do navegador × ouvinte', () => {
     expect(inbox).toMatch(/if \(conversaAbertaRef\.current === id\) return;\s*conversaRecemAbertaRef\.current = id;/);
   });
 
+  it('"Conexões que avisam": o ouvinte respeita a lista, e o cartão lista as conexões do perfil REAL', () => {
+    // Pedido do operador (02/10/2026). Sem as desmarcadas na régua, a lista
+    // do cartão seria enfeite: a pessoa desmarca e o aviso vem do mesmo jeito.
+    const hook = semComentarios(ler('hooks/use-browser-notifications.ts'));
+    expect(hook).toMatch(/quais: pref\.quais,\s*silenciadas: pref\.silenciadas,/);
+    // O cartão lista pelo contexto REAL (quem recebe o aviso é quem está
+    // logado, nunca a lente do "Ver como") e só com o perfil carregado:
+    // durante a carga o contexto diz "sem restrição".
+    const cartao = semComentarios(ler('components/settings/browser-notifications-card.tsx'));
+    expect(cartao).not.toMatch(/\bacesso\b/);
+    expect(cartao).toMatch(
+      /const conexoes = profileLoading\s*\?\s*\[\]\s*:\s*canaisVisiveis\(\{ papel: profile\?\.account_role \?\? null, perfil: perfilDeAcesso \}, channels\);/,
+    );
+    // A caixa MARCADA é a que avisa; o que se guarda são as desmarcadas.
+    expect(cartao).toMatch(/checked=\{!preferencia\.silenciadas\.includes\(c\.id\)\}/);
+  });
+
   it('aparelho de toque não liga o aviso (sem service worker o construtor lança)', () => {
     const hook = semComentarios(ler('hooks/use-browser-notifications.ts'));
     expect(hook).toMatch(/if \(!avisoPossivelNoAparelho\(\)\) return;/);

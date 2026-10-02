@@ -5439,6 +5439,9 @@
         "minhas_e_sem_responsavel": "Conversas atribuídas a você ou sem responsável",
         "minhas": "Só as conversas atribuídas a você"
       },
+      "connectionsLabel": "Conexões que avisam",
+      "connectionsDesc": "Desmarque as conexões que não devem gerar aviso para você. Uma conexão nova já começa marcada.",
+      "connectionsNone": "Nenhuma conexão marcada: nenhum aviso vai chegar.",
       "showTextLabel": "Mostrar o texto da mensagem",
       "showTextDesc": "Desligado, o aviso diz só quem escreveu — útil quando outras pessoas veem a sua tela.",
       "scopeNote": "Só as conexões do seu perfil de acesso. Mensagem de grupo nunca gera aviso.",

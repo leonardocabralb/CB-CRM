@@ -5,6 +5,7 @@ import { Bell, BellRing, CircleAlert, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTranslations } from 'next-intl';
 
+import { ChannelRow } from '@/components/channels/channel-select';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -13,6 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -21,9 +23,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { useAuth } from '@/hooks/use-auth';
 import { usePreferenciaDeAviso } from '@/hooks/use-browser-notifications';
+import { useChannels } from '@/hooks/use-channels';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { MIDIA_DE_TOQUE } from '@/lib/celular/teclado';
+import { canaisVisiveis } from '@/lib/perfis/escopo';
 import {
   BROWSER_NOTIFY_CHANGE_EVENT,
   getNotificationPermission,
@@ -53,11 +58,29 @@ const serverPermission = (): BrowserNotifyPermission => 'unsupported';
  * A permissão do navegador é a porta de verdade, então a chave aparece
  * desligada sempre que ela falta. Portado na Fase 8 do plano do merge do
  * upstream: a preferência é POR PESSOA neste navegador, e a pessoa escolhe
- * QUAIS conversas avisam e se o aviso mostra o texto (decisão P2).
+ * QUAIS conversas avisam e se o aviso mostra o texto (decisão P2) — e, desde
+ * 02/10/2026, de quais CONEXÕES do perfil quer aviso.
  */
 export function BrowserNotificationsCard({ className }: { className?: string }) {
   const t = useTranslations('Settings.browserNotifications');
   const { preferencia, gravar } = usePreferenciaDeAviso();
+  const { profile, profileLoading, perfilDeAcesso } = useAuth();
+  const { channels } = useChannels();
+  // ⚠️ As conexões do perfil pelo contexto REAL, como o ouvinte decide: quem
+  // recebe o aviso é quem está logado, nunca a lente do "Ver como".
+  const conexoes = profileLoading
+    ? []
+    : canaisVisiveis({ papel: profile?.account_role ?? null, perfil: perfilDeAcesso }, channels);
+  // A lista some com menos de 2 conexões (não decide nada) — menos quando uma
+  // delas está desmarcada: escondida, ninguém a religaria.
+  const mostraConexoes =
+    conexoes.length >= 2 || conexoes.some((c) => preferencia.silenciadas.includes(c.id));
+  const nenhumaConexaoAvisa =
+    conexoes.length > 0 && conexoes.every((c) => preferencia.silenciadas.includes(c.id));
+  const alternarConexao = (id: string, avisa: boolean) => {
+    const outras = preferencia.silenciadas.filter((s) => s !== id);
+    gravar({ ...preferencia, silenciadas: avisa ? outras : [...outras, id] });
+  };
   const permission = useSyncExternalStore(
     subscribePermission,
     getNotificationPermission,
@@ -195,6 +218,33 @@ export function BrowserNotificationsCard({ className }: { className?: string }) 
                     </SelectContent>
                   </Select>
                 </div>
+
+                {mostraConexoes && (
+                  <div className="space-y-1.5">
+                    <p className="text-sm font-medium text-foreground">{t('connectionsLabel')}</p>
+                    <p className="text-xs text-muted-foreground">{t('connectionsDesc')}</p>
+                    <div className="grid grid-cols-1 gap-1.5">
+                      {conexoes.map((c) => (
+                        <label
+                          key={c.id}
+                          className="flex cursor-pointer items-center gap-2 rounded-md border border-border px-2 py-1.5 text-sm text-foreground hover:bg-muted"
+                        >
+                          <Checkbox
+                            checked={!preferencia.silenciadas.includes(c.id)}
+                            onCheckedChange={(avisa) => alternarConexao(c.id, avisa)}
+                          />
+                          <ChannelRow channel={c} className="flex-1" />
+                        </label>
+                      ))}
+                    </div>
+                    {nenhumaConexaoAvisa && (
+                      <p className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                        <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
+                        <span>{t('connectionsNone')}</span>
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between gap-4">
                   <div className="min-w-0">

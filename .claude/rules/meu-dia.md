@@ -252,6 +252,16 @@ na casca e o cartão em *Seu perfil*. Pino estrutural:
 - ⚠️ **O contexto é o REAL** (`{ papel: profile.account_role, perfil:
   perfilDeAcesso }`), nunca `acesso`: quem simula pelo "Ver como" continua
   sendo quem recebe o aviso.
+- ⚠️ **"Conexões que avisam" (pedido do operador, 02/10/2026) guarda as
+  DESMARCADAS (`silenciadas`), nunca as marcadas**: conexão nova nasce
+  avisando, e a apagada ou que saiu do perfil não cala ninguém — com a lista
+  do que avisa, quem marcou só o número depois trocado ficaria sem aviso, sem
+  saber. `silencioDoAviso` decide pelo MESMO canal do recorte do perfil (a
+  solta segue a mensagem); conversa sem canal passa. O cartão lista as
+  conexões do perfil pelo contexto REAL, só com o perfil carregado, e esconde
+  a lista com menos de 2 — menos quando uma delas está desmarcada (escondida,
+  ninguém a religaria). Por filtro salvo, não: mistura etiqueta, funil e
+  etapa, e editar um filtro mudaria quem recebe aviso.
 - ⚠️ **O ouvinte monta UMA vez, na casca, e só com `!entradaPendente`** (como
   o `PresenceHeartbeat`): é efeito que a porta segura.
 - ⚠️ **Conversa ilegível = silêncio**: sem ela não se sabe se é grupo ou de

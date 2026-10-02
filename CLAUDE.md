@@ -490,6 +490,8 @@ O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
   avatares do cabeçalho (29/09/2026).
 - Modo anônimo, só de admin, no menu do nome: abrir não zera as não lidas nem
   mostra a presença; responder zera; dura até desligar (01/10/2026).
+- Notificação do navegador: cada pessoa escolhe as conexões que avisam (todas
+  marcadas por padrão); filtro salvo não decide aviso (02/10/2026).
 - Canal: a faixa de divergência só informa, não bloqueia; cor derivada; anel
   no avatar e trilha colorida foram descartados.
 - IA: chave por PROVEDOR, uma para a conta toda — nunca por conexão
