@@ -268,6 +268,11 @@ const VARIANTES: Array<[string, Record<string, unknown>]> = [
   ['wait', { modo: 'horario', janela: '08:00-21:00', somente_seg_a_sex: true }],
   ['wait', { modo: 'horario', janela: '08:00-21:00', parar_se_responder: true }],
   ['wait', { modo: 'horario', janela: '08:00-21:00', somente_seg_a_sex: true, parar_se_responder: true }],
+  // "Aguardar N sem conversa" (03/10/2026): uma chave por unidade.
+  ['wait', { modo: 'sem_conversa', amount: 15, unit: 'seconds' }],
+  ['wait', { modo: 'sem_conversa', amount: 15, unit: 'minutes' }],
+  ['wait', { modo: 'sem_conversa', amount: 15, unit: 'hours' }],
+  ['wait', { modo: 'sem_conversa', amount: 15, unit: 'days' }],
   // Condição por CAMPO PERSONALIZADO (2.10): uma chave por operador.
   ['condition', { subject: 'custom_field', operand: 'cf1', operator: 'equals', value: 'x' }],
   ['condition', { subject: 'custom_field', operand: 'cf1', operator: 'contains', value: 'x' }],

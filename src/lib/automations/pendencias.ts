@@ -239,6 +239,7 @@ export const CODIGOS_DE_PENDENCIA = [
   'espera_unidade_invalida',
   'espera_dias_uteis_invalido',
   'espera_parar_se_responder_invalido',
+  'espera_sem_conversa_com_resposta',
   'condicao_sem_criterio',
   'condicao_sem_texto',
   'condicao_sem_valor',

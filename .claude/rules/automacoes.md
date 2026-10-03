@@ -348,7 +348,7 @@ rotas em `/api/cb/execucoes`. A presença por conversa está em
   alguém decidir por escrito. `send_webhook` fica fora (o n8n pode já ter
   criado o registro). Pino: `retentativa.test.ts`.
 - ⚠️ **Volta para a fila do "Aguardar" na posição do PRÓPRIO passo** (o
-  "Aguardar" enfileira `position + 1`); o contador mora no `context`.
+  "Aguardar" comum enfileira `position + 1`); o contador mora no `context`.
 - ⚠️⚠️ **O contador é amarrado à POSIÇÃO (`{ pos, n }`)**: um número solto
   deixaria o próximo passo a falhar nascer no teto, sem retentativa.
 - ⚠️ **O teto (3 tentativas; 30 s e depois 5 min) é testado ANTES do tipo do

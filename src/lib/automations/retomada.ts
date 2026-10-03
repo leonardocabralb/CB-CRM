@@ -26,7 +26,9 @@
 // ⚠️ A chave NÃO é tirada do contexto na retomada (ao contrário da marca do
 // "parar se responder"): os dois estacionamentos a REESCREVEM sempre, e só a
 // retomada a lê — do contexto GRAVADO da linha que ela mesma está retomando.
-// Uma cópia velha viajando no contexto vivo nunca chega a ser lida.
+// Uma cópia velha viajando no contexto vivo nunca chega a ser lida. A outra
+// leitora é o "Aguardar sem conversa" (`ehRecontagemDaEspera`), e só DENTRO de
+// uma retomada (`esperaEmCurso`): é a mesma chave da linha retomada.
 //
 // Espera gravada por código anterior (sem a chave) retoma pela posição, como
 // sempre foi — só a conferência do ramo apagado vale para ela.
@@ -128,9 +130,10 @@ export function decidirRetomada(
   ) {
     return { tipo: 'parar', motivo: MOTIVO_PASSO_MOVIDO, passoId: gravado.id };
   }
-  // O "Aguardar" enfileira a posição SEGUINTE (+1); a retentativa, a do
-  // próprio passo (+0). O deslocamento gravado viaja intacto: o que muda é só
-  // onde o passo está agora.
+  // O "Aguardar" enfileira a posição SEGUINTE (+1); a retentativa e o
+  // "Aguardar sem conversa" (que se reconfere ao acordar, `sem-conversa.ts`),
+  // a do próprio passo (+0). O deslocamento gravado viaja intacto: o que muda
+  // é só onde o passo está agora.
   return {
     tipo: 'segue',
     posicao: agora.position + (espera.next_step_position - gravado.pos),

@@ -109,6 +109,7 @@ import {
   MOTIVO_RESPOSTA_DESCONHECIDA,
   clienteRespondeuDesde,
   contextoDaEspera,
+  esperaParaSeResponder,
   semMarcaDeResposta,
 } from './parar-se-responder';
 import {
@@ -140,6 +141,12 @@ import {
 import { janelaDaMetaAberta } from './janela-da-meta';
 import { campoAtendeACondicao, ehIdDeCampo, operadorDaCondicao } from './condicao-por-campo';
 import { avaliarHoraDoDia, esperaPeloHorario } from './hora-do-dia';
+import {
+  decidirSemConversa,
+  ehRecontagemDaEspera,
+  MOTIVO_CONVERSA_NAO_CONFERIDA,
+  ultimaMensagemDoContato,
+} from './sem-conversa';
 import { criarOuReativarNoAtlas, detalheDoResultado } from '@/lib/atlas/criar-cliente';
 import { TIPOS_DE_CONTRATO, type TipoDeContrato } from '@/lib/atlas/formatar';
 import {
@@ -1220,7 +1227,63 @@ async function executeStepsFrom(
       // valendo durante esta espera). Regra em `hora-do-dia.ts`.
       let retomaEm: Date;
       let detalhe: string;
-      if (cfg.modo === 'horario') {
+      // Onde a retomada continua: o passo SEGUINTE, como sempre — menos no
+      // "sem conversa", que acorda EM SI MESMO para se reconferir.
+      let proximaPosicao = step.position + 1;
+      // "Parar se o cliente responder" não vale no "sem conversa" (ele
+      // recomeça a contagem a cada mensagem; a ativação recusa a combinação):
+      // a marca não vai para a fila (`contextoDaEspera`) nem para o registro.
+      const pararSeResponder = esperaParaSeResponder(cfg);
+      if (cfg.modo === 'sem_conversa') {
+        // NOSSO (03/10/2026): "Aguardar N sem conversa". Na chegada espera N;
+        // ao acordar (a retomada roda este passo de novo), lê a última
+        // mensagem da conversa e segue só com N de silêncio desde ela — senão
+        // estaciona de novo até completar. Regra em `sem-conversa.ts`.
+        const recontagem = ehRecontagemDaEspera(args.context, step.id, args.esperaEmCurso);
+        // O MESMO instante na leitura (que deixa de fora a de histórico datada
+        // depois dele) e na decisão.
+        const agoraDaEspera = new Date();
+        let ultima: Date | null = null;
+        if (recontagem) {
+          const lida = await ultimaMensagemDoContato(
+            db,
+            args.automation.account_id,
+            args.contactId,
+            agoraDaEspera
+          );
+          if (lida === 'erro') {
+            results.push({
+              step_id: step.id,
+              step_type: step.step_type,
+              status: 'failed',
+              detail: MOTIVO_CONVERSA_NAO_CONFERIDA,
+            });
+            status = 'failed';
+            errorMessage = MOTIVO_CONVERSA_NAO_CONFERIDA;
+            break;
+          }
+          ultima = lida;
+        }
+        const decisao = decidirSemConversa({
+          amount: cfg.amount,
+          unit: cfg.unit,
+          duracaoMs: waitMs(cfg),
+          agora: agoraDaEspera,
+          recontagem: recontagem ? { ultima } : null,
+        });
+        if (decisao.tipo === 'segue') {
+          results.push({
+            step_id: step.id,
+            step_type: step.step_type,
+            status: 'success',
+            detail: decisao.nota,
+          });
+          continue;
+        }
+        retomaEm = decisao.ate;
+        detalhe = decisao.nota;
+        proximaPosicao = step.position;
+      } else if (cfg.modo === 'horario') {
         const decisao = esperaPeloHorario(cfg, new Date());
         if (decisao.tipo === 'invalida') {
           // A ativação já recusa a janela que o motor não lê; config gravada
@@ -1271,13 +1334,14 @@ async function executeStepsFrom(
           log_id: args.logId,
           parent_step_id: args.parentStepId,
           branch: args.branch,
-          next_step_position: step.position + 1,
+          next_step_position: proximaPosicao,
           // ⚠️ A decisão "parar se o cliente responder" é escrita a CADA
           // estacionamento — marca ou limpa —, nunca herdada: o contexto é
           // copiado de ponta a ponta da execução, e a marca de uma espera
           // vazaria para as seguintes. Ver `parar-se-responder.ts`.
           // E QUAL passo estacionou (NOSSO, 26/09/2026): é por ele que a
-          // retomada acha o lugar certo depois de uma edição (`retomada.ts`).
+          // retomada acha o lugar certo depois de uma edição (`retomada.ts`)
+          // — e o "sem conversa" se reconhece ao acordar (`sem-conversa.ts`).
           context: comPassoDaFila(contextoDaEspera(args.context, cfg, step.id), step),
           run_at: retomaEm.toISOString(),
         }
@@ -1315,10 +1379,7 @@ async function executeStepsFrom(
         step_id: step.id,
         step_type: step.step_type,
         status: 'success',
-        detail:
-          cfg.parar_se_responder === true
-            ? `${detalhe} (para se o cliente responder)`
-            : detalhe,
+        detail: pararSeResponder ? `${detalhe} (para se o cliente responder)` : detalhe,
       });
       status = 'partial';
       await appendResults(args.logId, results, status, errorMessage);

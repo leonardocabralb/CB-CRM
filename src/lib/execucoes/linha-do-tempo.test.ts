@@ -176,4 +176,31 @@ describe('montarLinhaDoTempo', () => {
       expect(linha.naoRetoma).toBeUndefined()
     })
   })
+
+  describe('"Aguardar sem conversa" (03/10/2026): estaciona no PRÓPRIO passo e se reconfere', () => {
+    const SEM_CONVERSA = [
+      passo('w0', 0, 'wait', { step_config: { modo: 'sem_conversa', amount: 15, unit: 'days' } }),
+      passo('m1', 1, 'move_deal_stage', { step_config: {} }),
+    ]
+    const naPropriaPosicao = {
+      next_step_position: 0,
+      parent_step_id: null,
+      branch: null,
+      passo_da_fila: { id: 'w0', pos: 0 },
+    }
+
+    it('a própria espera NÃO aparece de novo como próxima (diria "mais 15 dias" depois desta)', () => {
+      const linha = montarLinhaDoTempo({ passos: SEM_CONVERSA, espera: naPropriaPosicao, executados: [] })
+      expect(linha.proximos.map((p) => p.id)).toEqual(['m1'])
+    })
+
+    it('a retentativa, também +0, continua listando o passo: ali ele roda de novo de verdade', () => {
+      const linha = montarLinhaDoTempo({
+        passos: [passo('s0', 0), passo('s1', 1)],
+        espera: { next_step_position: 0, parent_step_id: null, branch: null, passo_da_fila: { id: 's0', pos: 0 } },
+        executados: [],
+      })
+      expect(linha.proximos.map((p) => p.id)).toEqual(['s0', 's1'])
+    })
+  })
 })

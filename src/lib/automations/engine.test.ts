@@ -84,6 +84,13 @@ const h = vi.hoisted(() => ({
     /** Mensagens do CLIENTE gravadas depois de a espera ser estacionada. */
     respostasDesde: [] as { id: string }[],
     erroNasRespostas: null as string | null,
+    /**
+     * A última mensagem da conversa que o "Aguardar sem conversa" lê (03/10/2026):
+     * pelo relógio do BANCO (`gravada_em`) e, sem ele, pelo da carga (`created_at`).
+     */
+    ultimasDoBanco: [] as { gravada_em: string }[],
+    ultimasSemCarimbo: [] as { created_at: string }[],
+    erroNaUltimaMensagem: null as string | null,
     /** Status gravados na fila (`markPending`), na ordem. */
     statusDaFila: [] as unknown[],
     /**
@@ -225,6 +232,17 @@ vi.mock('./admin-client', () => {
       return { data: state.conversasDoContato.length > 0 ? state.conversasDoContato : null, error: null };
     }
     if (table === 'messages') {
+      // O "Aguardar sem conversa" pede SÓ o instante da última mensagem.
+      if (ops.colunas === 'gravada_em' || ops.colunas === 'created_at') {
+        if (state.erroNaUltimaMensagem) return { data: null, error: { message: state.erroNaUltimaMensagem } };
+        if (ops.colunas === 'gravada_em') return { data: state.ultimasDoBanco, error: null };
+        // O teto `created_at <= agora` aplicado como o banco aplicaria.
+        const teto = (ops.recorte ?? []).find(([op, k]) => op === 'lte' && k === 'created_at')?.[2];
+        const dentro = state.ultimasSemCarimbo.filter(
+          (m) => typeof teto !== 'string' || new Date(m.created_at).getTime() <= new Date(teto).getTime()
+        );
+        return { data: dentro, error: null };
+      }
       if (state.erroNasRespostas) return { data: null, error: { message: state.erroNasRespostas } };
       return { data: state.respostasDesde, error: null };
     }
@@ -554,6 +572,8 @@ vi.mock('./admin-client', () => {
       // pinos medem é o payload do update, não o filtro do PostgREST.
       or: (expr: string) => (ops.filters.push(['or', 'expr', expr]), b),
       gte: (k: string, v: unknown) => (ops.recorte.push(['gte', k, v]), b),
+      // O "Aguardar sem conversa" deixa de fora a de histórico datada no futuro.
+      lte: (k: string, v: unknown) => (ops.recorte.push(['lte', k, v]), b),
       gt: (k: string, v: unknown) => (ops.filters.push(['gt', k, v]), b),
       is: (k: string, v: unknown) => (ops.recorte.push(['is', k, v]), b),
       order: () => b,
@@ -756,6 +776,9 @@ beforeEach(() => {
   h.state.leiturasDoCampo = [];
   h.state.respostasDesde = [];
   h.state.erroNasRespostas = null;
+  h.state.ultimasDoBanco = [];
+  h.state.ultimasSemCarimbo = [];
+  h.state.erroNaUltimaMensagem = null;
   h.state.ultimoMovimento = null;
   h.state.statusDaFila = [];
   h.state.interrompida = false;
@@ -5958,6 +5981,169 @@ describe('Aguardar até estar dentro do horário (B6a, 26/09/2026)', () => {
       await roda('2026-09-26T01:40:00Z', { modo, janela: '08:00-21:00' });
       expect(h.state.esperasEnfileiradas[0]?.run_at).toBe('2026-09-26T02:40:00.000Z');
     }
+  });
+});
+
+describe('Aguardar N sem conversa (03/10/2026)', () => {
+  // "15 dias depois da ÚLTIMA troca de mensagens, de qualquer lado": estaciona
+  // na posição do PRÓPRIO passo e, ao acordar, se reconfere pela última
+  // mensagem da conversa. Instantes UTC explícitos (Brasília = UTC-3).
+  afterEach(() => vi.useRealTimers());
+
+  const espera = (config: Record<string, unknown> = {}, id = 'esp-sc', position = 0) => ({
+    id,
+    automation_id: 'a1',
+    step_type: 'wait',
+    position,
+    parent_step_id: null,
+    step_config: { modo: 'sem_conversa', amount: 15, unit: 'days', ...config },
+  });
+  const depois = (position = 1) => ({ ...sendStep({ text: 'depois da espera' }), id: 'depois', position });
+
+  function prepara(agoraIso: string, steps: Record<string, unknown>[]) {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(agoraIso));
+    vi.mocked(engineSendText).mockClear();
+    h.state.esperasEnfileiradas = [];
+    h.state.owned = { id: 'c1' };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = steps;
+    h.state.conversasDoContato = [{ id: 'conv1' }];
+  }
+
+  async function chega(agoraIso: string, config: Record<string, unknown> = {}) {
+    prepara(agoraIso, [espera(config), depois()]);
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: { conversation_id: 'conv1' },
+    });
+  }
+
+  /** A espera como o próprio passo a estacionou: posição dele (+0) e ele em `_passo_da_fila`. */
+  const estacionada = (stepId = 'esp-sc', pos = 0, proxima = pos) => ({
+    id: 'pend-sc',
+    automation_id: 'a1',
+    account_id: ACCOUNT,
+    user_id: 'u1',
+    contact_id: 'c1',
+    log_id: 'log-sc',
+    parent_step_id: null,
+    branch: null,
+    next_step_position: proxima,
+    context: comPassoDaFila({ conversation_id: 'conv1' }, { id: stepId, position: pos }),
+    created_at: '2026-10-03T17:20:00Z',
+  });
+
+  it('na CHEGADA estaciona N inteiro, na posição do PRÓPRIO passo, e o passo seguinte não roda', async () => {
+    // Mensagem velha na conversa: na chegada ela nem é lida — o card que acabou
+    // de entrar na etapa espera N inteiro.
+    h.state.ultimasDoBanco = [{ gravada_em: '2026-08-01T12:00:00Z' }];
+    await chega('2026-10-03T17:20:00Z');
+
+    expect(vi.mocked(engineSendText)).not.toHaveBeenCalled();
+    expect(h.state.esperasEnfileiradas).toHaveLength(1);
+    const fila = h.state.esperasEnfileiradas[0];
+    expect(fila.run_at).toBe('2026-10-18T17:20:00.000Z');
+    expect(fila.next_step_position).toBe(0);
+    expect((fila.context as Record<string, unknown>)._passo_da_fila).toEqual({ id: 'esp-sc', pos: 0 });
+    expect(JSON.stringify(h.state.logUpdates)).toContain('15 dias sem conversa: aguarda até 18/10 14:20');
+  });
+
+  it('"parar se o cliente responder" gravado neste modo é ignorado: sem marca na fila, sem sufixo no registro', async () => {
+    await chega('2026-10-03T17:20:00Z', { parar_se_responder: true });
+
+    const contexto = h.state.esperasEnfileiradas[0]?.context as Record<string, unknown>;
+    expect(contexto._parar_se_responder).toBeUndefined();
+    expect(JSON.stringify(h.state.logUpdates)).not.toContain('para se o cliente responder');
+  });
+
+  it('ao ACORDAR com conversa há menos de N: estaciona de novo até N depois da última mensagem', async () => {
+    prepara('2026-10-18T17:20:00Z', [espera(), depois()]);
+    h.state.ultimasDoBanco = [{ gravada_em: '2026-10-10T12:00:00Z' }];
+
+    await resumePendingExecution(estacionada());
+
+    expect(vi.mocked(engineSendText)).not.toHaveBeenCalled();
+    expect(h.state.esperasEnfileiradas).toHaveLength(1);
+    expect(h.state.esperasEnfileiradas[0].run_at).toBe('2026-10-25T12:00:00.000Z');
+    expect(h.state.esperasEnfileiradas[0].next_step_position).toBe(0);
+    expect(JSON.stringify(h.state.logUpdates)).toContain('houve conversa em 10/10 09:00; aguarda até 25/10 09:00');
+    // A espera que acordou é concluída; a nova segue na fila.
+    expect(h.state.statusDaFila).toContain('done');
+  });
+
+  it('ao ACORDAR com N de silêncio desde a última mensagem: segue para o passo seguinte', async () => {
+    prepara('2026-10-18T17:20:00Z', [espera(), depois()]);
+    h.state.ultimasDoBanco = [{ gravada_em: '2026-10-01T12:00:00Z' }];
+
+    await resumePendingExecution(estacionada());
+
+    expect(h.state.esperasEnfileiradas).toHaveLength(0);
+    expect(vi.mocked(engineSendText).mock.calls[0]?.[0]?.text).toBe('depois da espera');
+    expect(JSON.stringify(h.state.logUpdates)).toContain('sem conversa desde 01/10 09:00 (15 dias); segue');
+  });
+
+  it('ao ACORDAR sem mensagem nenhuma na conversa: segue', async () => {
+    prepara('2026-10-18T17:20:00Z', [espera(), depois()]);
+    h.state.ultimasDoBanco = [];
+
+    await resumePendingExecution(estacionada());
+
+    expect(vi.mocked(engineSendText).mock.calls[0]?.[0]?.text).toBe('depois da espera');
+  });
+
+  it('mensagem de HISTÓRICO datada no futuro não segura a espera: sem ela, vale a última de verdade', async () => {
+    // Relógio errado na carga: contada como agora, cada despertar estacionaria
+    // N de novo até a data passar (Codex, PR #383).
+    prepara('2026-10-18T17:20:00Z', [espera(), depois()]);
+    h.state.ultimasDoBanco = [{ gravada_em: '2026-10-01T12:00:00Z' }];
+    h.state.ultimasSemCarimbo = [{ created_at: '2027-10-01T12:00:00Z' }];
+
+    await resumePendingExecution(estacionada());
+
+    expect(h.state.esperasEnfileiradas).toHaveLength(0);
+    expect(vi.mocked(engineSendText).mock.calls[0]?.[0]?.text).toBe('depois da espera');
+    expect(JSON.stringify(h.state.logUpdates)).toContain('sem conversa desde 01/10 09:00 (15 dias); segue');
+  });
+
+  it('leitura da conversa que FALHA: o passo falha visível, nada sai e nada volta à fila', async () => {
+    prepara('2026-10-18T17:20:00Z', [espera(), depois()]);
+    h.state.erroNaUltimaMensagem = 'timeout';
+
+    await resumePendingExecution(estacionada());
+
+    expect(vi.mocked(engineSendText)).not.toHaveBeenCalled();
+    expect(h.state.esperasEnfileiradas).toHaveLength(0);
+    expect(JSON.stringify(h.state.logUpdates)).toContain('não consegui ler a última mensagem da conversa');
+    expect(desfechoGravado()?.desfecho).toBe('falhou');
+  });
+
+  it('a retomada de OUTRA espera que chega a este passo é CHEGADA: estaciona N, sem ler a conversa', async () => {
+    const tempo = {
+      id: 'esp-tempo',
+      automation_id: 'a1',
+      step_type: 'wait',
+      position: 0,
+      parent_step_id: null,
+      step_config: { amount: 1, unit: 'hours' },
+    };
+    prepara('2026-10-18T17:20:00Z', [tempo, espera({}, 'esp-sc', 1), depois(2)]);
+    // Mensagem velha: se a passagem fosse lida como recontagem, seguiria.
+    h.state.ultimasDoBanco = [{ gravada_em: '2026-08-01T12:00:00Z' }];
+
+    // A espera de 1 h estacionou com a posição SEGUINTE (+1) e ela mesma no contexto.
+    await resumePendingExecution(estacionada('esp-tempo', 0, 1));
+
+    expect(vi.mocked(engineSendText)).not.toHaveBeenCalled();
+    expect(h.state.esperasEnfileiradas).toHaveLength(1);
+    expect(h.state.esperasEnfileiradas[0].run_at).toBe('2026-11-02T17:20:00.000Z');
+    expect(h.state.esperasEnfileiradas[0].next_step_position).toBe(1);
+    expect((h.state.esperasEnfileiradas[0].context as Record<string, unknown>)._passo_da_fila).toEqual({
+      id: 'esp-sc',
+      pos: 1,
+    });
   });
 });
 

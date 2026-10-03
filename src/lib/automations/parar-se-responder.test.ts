@@ -6,6 +6,7 @@ import {
   DETALHE_DA_INTERRUPCAO,
   cancelarEsperasPorResposta,
   contextoDaEspera,
+  esperaParaSeResponder,
   semMarcaDeResposta,
   clienteRespondeuDesde,
 } from './parar-se-responder';
@@ -40,6 +41,16 @@ describe('contextoDaEspera — o que vai para a fila', () => {
     const herdado = { [CHAVE_PARAR_SE_RESPONDER]: 'esp-velha' };
     const r = contextoDaEspera(herdado, { parar_se_responder: true }, 'esp-nova');
     expect((r as Record<string, unknown>)[CHAVE_PARAR_SE_RESPONDER]).toBe('esp-nova');
+  });
+
+  it('⚠️ o "Aguardar sem conversa" (03/10/2026) nunca leva a marca, nem com a caixa gravada', () => {
+    // Ele recomeça a contagem a cada mensagem: parar na primeira o desmentiria.
+    const herdado = { conversation_id: 'conv-1', [CHAVE_PARAR_SE_RESPONDER]: 'esp-velha' };
+    const r = contextoDaEspera(herdado, { modo: 'sem_conversa', parar_se_responder: true }, 'esp-sc');
+    expect(r).toEqual({ conversation_id: 'conv-1' });
+    expect(esperaParaSeResponder({ modo: 'sem_conversa', parar_se_responder: true })).toBe(false);
+    expect(esperaParaSeResponder({ modo: 'horario', parar_se_responder: true })).toBe(true);
+    expect(esperaParaSeResponder({ parar_se_responder: true })).toBe(true);
   });
 
   it('⚠️ só o booleano true liga', () => {

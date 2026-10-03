@@ -2807,6 +2807,11 @@ function StepRenderer({
                 {step.step_type === "wait" && step.step_config.parar_se_responder === true
                   ? ` · ${t("config.pararSeResponderResumo")}`
                   : ""}
+                {/* "Aguardar 15 dias" e "Aguardar 15 dias sem conversa" são
+                    esperas diferentes: o fechado tem de dizer qual. */}
+                {step.step_type === "wait" && step.step_config.modo === "sem_conversa"
+                  ? ` · ${t("config.esperaSemConversaResumo")}`
+                  : ""}
               </div>
             </div>
             <ChevronDown
@@ -4699,29 +4704,47 @@ function StepEditor({
       // sexta" — sem isso, uma espera por tempo carregaria recorte que não vale
       // — e GRAVA o 1 h que os campos mostram quando não havia valor (senão a
       // tela diria "1 hora" e a ativação recusaria "amount must be > 0").
+      // "Aguardar N sem conversa" (NOSSO, 03/10/2026): `modo: "sem_conversa"`
+      // + `amount`/`unit`. A contagem recomeça a cada mensagem da conversa
+      // (`automations/sem-conversa.ts`), então "parar se o cliente responder"
+      // não vale: trocar para este modo DESMARCA a caixa (a ativação recusaria
+      // as duas juntas) e a caixa some.
       const porHorario = cfg.modo === "horario"
+      const semConversa = cfg.modo === "sem_conversa"
+      const tempoAtual = {
+        amount: typeof cfg.amount === "number" ? cfg.amount : 1,
+        unit: typeof cfg.unit === "string" ? cfg.unit : "hours",
+      }
       return (
         <div className="grid grid-cols-2 gap-2">
           <div className="col-span-2">
             <FieldBlock label={t("config.esperaModoLabel")}>
               <select
-                value={porHorario ? "horario" : "tempo"}
+                value={porHorario ? "horario" : semConversa ? "sem_conversa" : "tempo"}
                 onChange={(e) =>
                   set(
                     e.target.value === "horario"
                       ? { modo: "horario", janela: typeof cfg.janela === "string" ? cfg.janela : "" }
-                      : {
-                          modo: undefined,
-                          janela: undefined,
-                          somente_seg_a_sex: undefined,
-                          amount: typeof cfg.amount === "number" ? cfg.amount : 1,
-                          unit: typeof cfg.unit === "string" ? cfg.unit : "hours",
-                        },
+                      : e.target.value === "sem_conversa"
+                        ? {
+                            modo: "sem_conversa",
+                            janela: undefined,
+                            somente_seg_a_sex: undefined,
+                            parar_se_responder: undefined,
+                            ...tempoAtual,
+                          }
+                        : {
+                            modo: undefined,
+                            janela: undefined,
+                            somente_seg_a_sex: undefined,
+                            ...tempoAtual,
+                          },
                   )
                 }
                 className={SELECT_CLASS}
               >
                 <option value="tempo">{t("config.esperaModoTempo")}</option>
+                <option value="sem_conversa">{t("config.esperaModoSemConversa")}</option>
                 <option value="horario">{t("config.esperaModoHorario")}</option>
               </select>
             </FieldBlock>
@@ -4768,27 +4791,37 @@ function StepEditor({
                   <option value="days">{t("config.units.days")}</option>
                 </select>
               </FieldBlock>
+              {semConversa && (
+                <p className="col-span-2 text-[11px] text-muted-foreground">
+                  {t("config.esperaSemConversaHelp")}
+                </p>
+              )}
             </>
           )}
           {/* "Pausar: até a mensagem recebida / cronômetro" do Kommo. Marcada,
               a resposta do cliente DURANTE esta espera cancela o resto da
               automação para ele (`parar-se-responder.ts`). ⚠️ `=== true`, como
               o motor: valor truthy que não é booleano não pode aparecer
-              marcado aqui e ser ignorado lá. */}
-          <label className="col-span-2 flex items-start gap-2 text-xs text-foreground">
-            <input
-              type="checkbox"
-              checked={cfg.parar_se_responder === true}
-              onChange={(e) => set({ parar_se_responder: e.target.checked })}
-              className="mt-0.5 size-4 accent-primary"
-            />
-            <span>
-              {t("config.pararSeResponderLabel")}
-              <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                {t("config.pararSeResponderHelp")}
+              marcado aqui e ser ignorado lá. Some no "sem conversa", que
+              recomeça a contagem a cada mensagem em vez de parar — menos
+              quando veio marcada de fora: a pendência manda desmarcá-la, e
+              ela tem de estar à vista para isso. */}
+          {(!semConversa || cfg.parar_se_responder === true) && (
+            <label className="col-span-2 flex items-start gap-2 text-xs text-foreground">
+              <input
+                type="checkbox"
+                checked={cfg.parar_se_responder === true}
+                onChange={(e) => set({ parar_se_responder: e.target.checked })}
+                className="mt-0.5 size-4 accent-primary"
+              />
+              <span>
+                {t("config.pararSeResponderLabel")}
+                <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                  {t("config.pararSeResponderHelp")}
+                </span>
               </span>
-            </span>
-          </label>
+            </label>
+          )}
         </div>
       )
     }

@@ -1670,8 +1670,14 @@ export interface WaitStepConfig {
    * no fuso do escritório). Ausente (ou `'tempo'`) = a espera por
    * `amount`/`unit` de sempre. No modo horário, `amount`/`unit` continuam
    * gravados (voltar para "por um tempo" devolve o valor) e são IGNORADOS.
+   *
+   * `'sem_conversa'` = "Aguardar N sem conversa" (03/10/2026): segue só
+   * depois de `amount`/`unit` sem NENHUMA mensagem na conversa do contato, de
+   * qualquer lado; cada mensagem recomeça a contagem. Estaciona na posição do
+   * PRÓPRIO passo e se reconfere ao acordar (`automations/sem-conversa.ts`).
+   * `parar_se_responder` não vale neste modo (a ativação recusa).
    */
-  modo?: 'tempo' | 'horario';
+  modo?: 'tempo' | 'horario' | 'sem_conversa';
   /** `"HH:mm-HH:mm"`, o formato do operando da condição "Hora do dia". */
   janela?: string;
   /** Só de segunda a sexta. Só o booleano `true` liga. */
