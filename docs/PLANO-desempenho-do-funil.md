@@ -12,8 +12,8 @@ altura da tela) e **fases 1 e 2**. A fase 3 fica para depois de medir de novo.
 | Fase | O quê | Estado |
 | ---- | ----- | ------ |
 | 0 | Estudo e medição na produção | ✅ concluída (03/10) |
-| 1 | Quadro: colunas com rolagem própria, barra fixa, lote de 20 com carga ao rolar | ✅ código e medição (03/10); falta revisão e merge |
-| 2 | Lista, Desempenho e Saúde: RPC das trajetórias paginada por chave | ⏳ |
+| 1 | Quadro: colunas com rolagem própria, barra fixa, lote de 20 com carga ao rolar | ✅ no `main` (#381, 03/10; Codex limpo) |
+| 2 | Lista, Desempenho e Saúde: RPC das trajetórias paginada por chave | ✅ 1078 aplicada e medida na tela (03/10); #382 |
 | 3 | (opcional) Não buscar o quadro fora da vista Quadro; lista enxuta numa viagem | ⏸ decidir depois da medição das fases 1–2 |
 
 ## Fase 0 — o que a medição mostrou (03/10/2026)
@@ -96,6 +96,32 @@ pedir por chave. A função antiga fica até nenhuma versão no ar a usar.
 **Pronto quando:** as três vistas mostram os MESMOS números de antes (mesmo
 funil, mesmo período) e o tempo de carga cai — estimativa: Saúde ~0,7 s,
 Lista/Desempenho ~0,6 s.
+
+**Como ficou (03/10/2026).** `cb_funil_trajetorias_por_chave` (1078): o
+recorte de `deal_id` e o `LIMIT` entram ANTES das subconsultas caras, e a
+coluna `restantes` (contada antes do `LIMIT`) fecha o laço sem `count`. O
+`carregar.ts` divide o espaço de ids em quatro faixas disjuntas e as pede em
+paralelo, cada uma paginada pela chave. A 975 fica no banco (serve a versão
+no ar durante o deploy); o pino `trajetorias-por-chave-1078.test.ts` exige o
+MESMO texto de recorte nas duas.
+
+**Prova.**
+- Postgres 16 descartável (esqueleto com os índices da produção, 6.000
+  negócios aleatórios em 3 funis, transferências e eventos de tipo que não
+  conta): a 1078 aplicada duas vezes, e em 45 casos (3 funis × 5 períodos ×
+  páginas de 1000, 250 e 7) a união das faixas é IDÊNTICA à 975, coluna por
+  coluna; `restantes` anda exatamente o tamanho de cada página; o papel
+  `authenticated` executa.
+- Produção, só leitura (corpo como consulta, sem RLS): uma faixa inteira do
+  Trabalhista (895 negócios, 12 meses) custa 122 ms; o funil inteiro, que a
+  975 recalculava a cada página, 347 ms.
+- Na tela, depois de aplicar a 1078 (03/10/2026; Trabalhista, build de
+  produção da branch × produção com o código antigo, no mesmo minuto): o
+  texto das três vistas é IDÊNTICO (Desempenho e Saúde letra por letra;
+  Lista "31 de 31"), e o tempo até a última página chegar caiu — Saúde 2,3 s
+  → 0,7–0,9 s, Desempenho 1,7 s → 0,4–0,5 s, Lista 1,3 s → 0,5–0,6 s. Cada
+  faixa veio numa página só (882–958 linhas). No `next dev` cada faixa sai
+  duas vezes (o StrictMode monta o efeito duas vezes): medir no build.
 
 ## Fase 3 — opcional
 
