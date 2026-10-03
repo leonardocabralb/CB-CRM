@@ -294,8 +294,14 @@ export function LinhaDaReuniao({
         <div className="min-w-0 space-y-1.5">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="truncate text-sm font-medium">{r.contato?.nome ?? t('semContato')}</span>
-            {r.reagendamento && (
-              <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{t('reagendamento')}</span>
+            {r.remarcadaDe ? (
+              <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                {t('remarcadaNaFicha', { data: dataCurta(r.remarcadaDe), hora: hora(r.remarcadaDe) })}
+              </span>
+            ) : (
+              r.reagendamento && (
+                <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{t('reagendamento')}</span>
+              )
             )}
             {r.qualificada && fase !== 'antes' && !r.resultado && (
               <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] text-primary">{t('qualificada')}</span>

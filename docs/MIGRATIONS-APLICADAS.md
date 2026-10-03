@@ -1157,6 +1157,16 @@ nome da época em que foram aplicadas.
   que virou anotação comum na tela pelo tempo real; nenhum aviso (resposta à
   própria anotação). Limpeza conferida: 5 anotações no lead (as de antes), 0
   avisos, 668 mensagens (nada enviado no teste do teclado).
+- **1076_cb_indice_dos_valores_por_campo** — índice
+  `contact_custom_values (custom_field_id)`: a pauta de reuniões lê "Data e
+  Hora Reunião" de todos os contatos, e o único índice começava pelo contato
+  (P2 do Codex). PR #377. ADITIVA (nenhum código depende dele). Aplicada em
+  03/10/2026 pela Management API (histórico `20261003142516`), depois do
+  replay verde do CI no commit `6a2a10af` e ANTES do merge, com o "pode
+  gravar" do operador. Conferida num Postgres 16 descartável (banco vazio,
+  duas vezes, planejador usando o índice com 50 mil linhas) e na produção: o
+  índice no catálogo, e o `EXPLAIN ANALYZE` da consulta da pauta com `Index
+  Scan` nele — de 8,2 ms (varredura de 8.663 linhas) para 3,0 ms.
 
 ## Notas do histórico
 

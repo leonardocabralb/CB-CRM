@@ -6938,6 +6938,7 @@
     "recorteVazio": "Nenhuma reunião neste recorte.",
     "semContato": "Contato sem ficha",
     "reagendamento": "Reagendamento",
+    "remarcadaNaFicha": "Remarcada na ficha (no Calendly: {data}, {hora})",
     "qualificada": "Qualificada",
     "ganho": "ganho",
     "perdido": "perdido",

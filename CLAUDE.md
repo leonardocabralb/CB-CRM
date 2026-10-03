@@ -465,6 +465,8 @@ O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
   pé (26/09/2026).
 - Card: título = nome da pessoa, sem prefixo de conexão; o Calendly renomeia
   até título escrito à mão e fixa o nome da ficha.
+- Reuniões: "Data e Hora Reunião" mais nova que todo agendamento remarca a
+  última reunião do Calendly na pauta (03/10/2026).
 - Abrir conversa não cria negócio (o card nasce no primeiro envio).
 - Número de empresa (mandou mensagem de sistema, `template`) não vira card
   sozinho, nem pela resposta da equipe; cliente assim, card à mão (29/09/2026).
