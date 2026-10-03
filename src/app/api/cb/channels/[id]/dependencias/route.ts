@@ -160,11 +160,14 @@ export async function GET(
     );
 
     const [esperas, conversas, fixadas, agendadas, modelos, grupos] = await Promise.all([
+      // `running` também: o cron REIVINDICA a espera (pending → running)
+      // antes de retomar, e a retomada pode demorar — é a mesma régua de
+      // "execução viva" do motor (Codex, PR #379).
       db
         .from('automation_pending_executions')
         .select('id', { count: 'exact', head: true })
         .eq('account_id', conta)
-        .eq('status', 'pending')
+        .in('status', ['pending', 'running'])
         .eq('context->>channel_id', id),
       db
         .from('conversations')

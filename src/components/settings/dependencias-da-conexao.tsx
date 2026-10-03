@@ -9,13 +9,18 @@
  * nome — e, numa conexão por QR Code, o lembrete de que trocar o CHIP é
  * "Reparear" (a conexão fica, e nada disto quebra).
  *
- * ⚠️ O estado é CARIMBADO com a conexão e a tentativa que o produziram: o
- * diálogo troca de conexão sem desmontar, e o primeiro render depois da troca
- * ainda teria a lista da anterior (efeito passivo, CLAUDE.md 8c). Falha não
- * vira "nada depende": diz que não deu para conferir, com "Tentar de novo".
+ * A leitura é do HOOK, no painel: é ele que segura o botão "Remover"
+ * enquanto a lista carrega (Codex, PR #379) — clicado antes, removeria sem
+ * mostrar nada do que esta tela existe para mostrar. Na FALHA o botão volta:
+ * a conexão quebrada não pode ficar sem saída, e o aviso diz o que se perde.
+ *
+ * ⚠️ O estado é CARIMBADO com a conexão, a ABERTURA do diálogo e a tentativa
+ * que o produziram: o diálogo troca de conexão sem desmontar, e reabrir a
+ * mesma conexão mostraria a lista da abertura anterior (efeito passivo,
+ * CLAUDE.md 8c). Falha não vira "nada depende".
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 
 import type { DependenciasDaConexao, ItemDependente } from '@/lib/cb-channels/dependencias';
@@ -24,19 +29,28 @@ import { ehEvolution, ehMeta } from '@/lib/cb-channels/transporte';
 /** Nomes por linha; o resto vira "e mais N". */
 const NOMES_POR_LINHA = 6;
 
-type Lido = { de: string; tentativa: number; deps: DependenciasDaConexao | null };
+export type EstadoDasDependencias =
+  | { estado: 'carregando' }
+  | { estado: 'falhou'; tentarDeNovo: () => void }
+  | { estado: 'pronto'; deps: DependenciasDaConexao };
 
-export function ListaDeDependencias({ canal }: { canal: { id: string; kind: string } }) {
-  const t = useTranslations('Settings.channels.dependencias');
+type Lido = { de: string; abertura: number; tentativa: number; deps: DependenciasDaConexao | null };
+
+/**
+ * Lê o que depende da conexão do diálogo aberto. `canalId` nulo = diálogo
+ * fechado (não lê nada). `abertura` muda a cada vez que o diálogo abre.
+ */
+export function useDependenciasDaConexao(canalId: string | null, abertura: number): EstadoDasDependencias {
   const [tentativa, setTentativa] = useState(0);
   const [lido, setLido] = useState<Lido | null>(null);
 
   useEffect(() => {
+    if (!canalId) return;
     let vivo = true;
-    const carimbo = { de: canal.id, tentativa };
+    const carimbo = { de: canalId, abertura, tentativa };
     (async () => {
       try {
-        const res = await fetch(`/api/cb/channels/${canal.id}/dependencias`, { cache: 'no-store' });
+        const res = await fetch(`/api/cb/channels/${canalId}/dependencias`, { cache: 'no-store' });
         if (!vivo) return;
         if (!res.ok) {
           setLido({ ...carimbo, deps: null });
@@ -51,9 +65,25 @@ export function ListaDeDependencias({ canal }: { canal: { id: string; kind: stri
     return () => {
       vivo = false;
     };
-  }, [canal.id, tentativa]);
+  }, [canalId, abertura, tentativa]);
 
-  const atual = lido && lido.de === canal.id && lido.tentativa === tentativa ? lido : null;
+  const tentarDeNovo = useCallback(() => setTentativa((n) => n + 1), []);
+  const atual =
+    canalId && lido && lido.de === canalId && lido.abertura === abertura && lido.tentativa === tentativa
+      ? lido
+      : null;
+  if (!atual) return { estado: 'carregando' };
+  return atual.deps ? { estado: 'pronto', deps: atual.deps } : { estado: 'falhou', tentarDeNovo };
+}
+
+export function ListaDeDependencias({
+  canal,
+  dependencias,
+}: {
+  canal: { id: string; kind: string };
+  dependencias: EstadoDasDependencias;
+}) {
+  const t = useTranslations('Settings.channels.dependencias');
 
   // "(já desligada)" para automação; "(já desligado)" para robô e agente.
   const nomes = (itens: ItemDependente[], masculino = false) => {
@@ -67,7 +97,7 @@ export function ListaDeDependencias({ canal }: { canal: { id: string; kind: stri
   };
 
   const linhas: { chave: string; texto: string; nomes?: string; grave?: boolean }[] = [];
-  const deps = atual?.deps;
+  const deps = dependencias.estado === 'pronto' ? dependencias.deps : null;
   if (deps) {
     if (deps.agendadasNaFila > 0)
       linhas.push({ chave: 'agendadas', texto: t('agendadas', { n: deps.agendadasNaFila }), grave: true });
@@ -130,14 +160,14 @@ export function ListaDeDependencias({ canal }: { canal: { id: string; kind: stri
         </p>
       )}
 
-      {!atual ? (
+      {dependencias.estado === 'carregando' ? (
         <p className="rounded-md bg-muted/50 p-2 text-xs text-muted-foreground">{t('carregando')}</p>
-      ) : !deps ? (
+      ) : dependencias.estado === 'falhou' ? (
         <p className="rounded-md border border-destructive/40 p-2 text-xs text-destructive">
           {t('falhou')}{' '}
           <button
             type="button"
-            onClick={() => setTentativa((n) => n + 1)}
+            onClick={dependencias.tentarDeNovo}
             className="font-medium text-foreground underline underline-offset-2"
           >
             {t('tentarDeNovo')}

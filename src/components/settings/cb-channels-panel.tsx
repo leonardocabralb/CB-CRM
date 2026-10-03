@@ -71,7 +71,7 @@ import { SettingsPanelHead } from './settings-panel-head';
 import { ehEvolution, ehInstagram, ehMeta, ehWhatsApp } from '@/lib/cb-channels/transporte';
 import { InstagramGlyph } from '@/components/channels/instagram-glyph';
 import { formatChannelPhone, identidadeDoCanal } from '@/lib/cb-channels/display';
-import { ListaDeDependencias } from './dependencias-da-conexao';
+import { ListaDeDependencias, useDependenciasDaConexao } from './dependencias-da-conexao';
 import {
   AVISO_DE_VENCIMENTO_DIAS,
   CAMINHO_DO_WEBHOOK,
@@ -255,6 +255,9 @@ export function CbChannelsPanel() {
   const [pipelinesCarregados, setPipelinesCarregados] = useState(false);
 
   const [confirmDelete, setConfirmDelete] = useState<CbChannel | null>(null);
+  /** Conta as aberturas do "Remover": cada uma relê o que depende da conexão. */
+  const [aberturaDoRemover, setAberturaDoRemover] = useState(0);
+  const dependencias = useDependenciasDaConexao(confirmDelete?.id ?? null, aberturaDoRemover);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   /** Sucessor escolhido quando o canal a remover é o padrão. */
   const [successorId, setSuccessorId] = useState('');
@@ -1298,6 +1301,7 @@ export function CbChannelsPanel() {
                       disabled={deletingId === channel.id}
                       onClick={() => {
                         setConfirmDelete(channel);
+                        setAberturaDoRemover((n) => n + 1);
                         setSuccessorId(
                           sucessoresDe(channel)[0]?.id ?? '',
                         );
@@ -2211,7 +2215,9 @@ export function CbChannelsPanel() {
                 que o gatilho da 903 desliga, os passos que ficam sem número,
                 os robôs, os agentes de IA, os filtros. E, no QR Code, que
                 trocar o chip é "Reparear", não remover. */}
-            {confirmDelete && <ListaDeDependencias canal={confirmDelete} />}
+            {confirmDelete && (
+              <ListaDeDependencias canal={confirmDelete} dependencias={dependencias} />
+            )}
 
             {/* O funil desta conexão para de receber. `default_pipeline_id` é
                 a coluna dela, então some junto com a linha — e o roteamento
@@ -2278,6 +2284,10 @@ export function CbChannelsPanel() {
               variant="destructive"
               disabled={
                 deletingId !== null ||
+                // Antes de a lista chegar, remover seria às cegas — a tela
+                // existe para mostrá-la (Codex, PR #379). Na FALHA o botão
+                // volta: conexão quebrada não pode ficar sem saída.
+                dependencias.estado === 'carregando' ||
                 // Última conexão da conta: o servidor recusa (409), então o
                 // botão não deve nem prometer.
                 (confirmDelete?.is_default === true &&
