@@ -51,8 +51,9 @@ describe('decidirSemConversa', () => {
     });
   });
 
-  it('mensagem com o relógio do aparelho ADIANTADO conta como agora: nunca segue antes, nunca espera além de N', () => {
-    for (const adiantada of [60_000, 365 * DIA]) {
+  it('mensagem um instante À FRENTE do relógio do app (o do banco adiantado) conta como agora', () => {
+    // A de histórico com data no futuro não chega aqui (a leitura a deixa de fora).
+    for (const adiantada of [800, 60_000]) {
       const d = decidirSemConversa({ ...base, recontagem: { ultima: new Date(AGORA.getTime() + adiantada) } });
       expect(d.tipo).toBe('espera');
       if (d.tipo !== 'espera') return;
@@ -103,6 +104,7 @@ describe('ultimaMensagemDoContato', () => {
           eq: (...a: unknown[]) => (ops.push(['eq', ...a]), q),
           in: (...a: unknown[]) => (ops.push(['in', ...a]), q),
           is: (...a: unknown[]) => (ops.push(['is', ...a]), q),
+          lte: (...a: unknown[]) => (ops.push(['lte', ...a]), q),
           not: (...a: unknown[]) => (ops.push(['not', ...a]), q),
           order: (...a: unknown[]) => (ops.push(['order', ...a]), q),
           limit: (...a: unknown[]) => (ops.push(['limit', ...a]), q),
@@ -122,7 +124,7 @@ describe('ultimaMensagemDoContato', () => {
       { data: [{ gravada_em: '2026-10-01T12:00:00+00:00' }], error: null },
       vazio,
     ]);
-    const r = await ultimaMensagemDoContato(db, 'acct-1', 'c1');
+    const r = await ultimaMensagemDoContato(db, 'acct-1', 'c1', AGORA);
     expect(r).toEqual(new Date('2026-10-01T12:00:00Z'));
     expect(chamadas[0].ops).toEqual(
       expect.arrayContaining([
@@ -139,10 +141,13 @@ describe('ultimaMensagemDoContato', () => {
         ['limit', 1],
       ])
     );
-    // A sem `gravada_em` (carga de histórico) entra pelo relógio dela.
+    // A sem `gravada_em` (carga de histórico) entra pelo relógio dela — e a
+    // datada DEPOIS de agora fica de fora (relógio errado na carga): contá-la
+    // como agora a cada despertar adiaria a espera até a data passar.
     expect(chamadas[2].ops).toEqual(
       expect.arrayContaining([
         ['is', 'gravada_em', null],
+        ['lte', 'created_at', AGORA.toISOString()],
         ['order', 'created_at', { ascending: false }],
       ])
     );
@@ -156,24 +161,24 @@ describe('ultimaMensagemDoContato', () => {
       { data: [{ gravada_em: '2026-09-20T12:00:00+00:00' }], error: null },
       { data: [{ created_at: '2026-09-25T12:00:00+00:00' }], error: null },
     ]);
-    expect(await ultimaMensagemDoContato(db, 'acct-1', 'c1')).toEqual(new Date('2026-09-25T12:00:00Z'));
+    expect(await ultimaMensagemDoContato(db, 'acct-1', 'c1', AGORA)).toEqual(new Date('2026-09-25T12:00:00Z'));
   });
 
   it('sem conversa, ou conversa sem mensagem: null', async () => {
-    expect(await ultimaMensagemDoContato(banco([{ data: [], error: null }]).db, 'acct-1', 'c1')).toBeNull();
-    expect(await ultimaMensagemDoContato(banco([conversas, vazio, vazio]).db, 'acct-1', 'c1')).toBeNull();
-    expect(await ultimaMensagemDoContato(banco([]).db, 'acct-1', null)).toBeNull();
+    expect(await ultimaMensagemDoContato(banco([{ data: [], error: null }]).db, 'acct-1', 'c1', AGORA)).toBeNull();
+    expect(await ultimaMensagemDoContato(banco([conversas, vazio, vazio]).db, 'acct-1', 'c1', AGORA)).toBeNull();
+    expect(await ultimaMensagemDoContato(banco([]).db, 'acct-1', null, AGORA)).toBeNull();
   });
 
   it('leitura que falha é "erro", nunca "sem mensagem"', async () => {
     expect(
-      await ultimaMensagemDoContato(banco([{ data: null, error: { message: 'x' } }]).db, 'acct-1', 'c1')
+      await ultimaMensagemDoContato(banco([{ data: null, error: { message: 'x' } }]).db, 'acct-1', 'c1', AGORA)
     ).toBe('erro');
     expect(
-      await ultimaMensagemDoContato(banco([conversas, { data: null, error: { message: 'y' } }, vazio]).db, 'acct-1', 'c1')
+      await ultimaMensagemDoContato(banco([conversas, { data: null, error: { message: 'y' } }, vazio]).db, 'acct-1', 'c1', AGORA)
     ).toBe('erro');
     expect(
-      await ultimaMensagemDoContato(banco([conversas, vazio, { data: null, error: { message: 'z' } }]).db, 'acct-1', 'c1')
+      await ultimaMensagemDoContato(banco([conversas, vazio, { data: null, error: { message: 'z' } }]).db, 'acct-1', 'c1', AGORA)
     ).toBe('erro');
   });
 });

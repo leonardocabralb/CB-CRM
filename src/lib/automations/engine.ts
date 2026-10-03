@@ -1240,9 +1240,17 @@ async function executeStepsFrom(
         // mensagem da conversa e segue só com N de silêncio desde ela — senão
         // estaciona de novo até completar. Regra em `sem-conversa.ts`.
         const recontagem = ehRecontagemDaEspera(args.context, step.id, args.esperaEmCurso);
+        // O MESMO instante na leitura (que deixa de fora a de histórico datada
+        // depois dele) e na decisão.
+        const agoraDaEspera = new Date();
         let ultima: Date | null = null;
         if (recontagem) {
-          const lida = await ultimaMensagemDoContato(db, args.automation.account_id, args.contactId);
+          const lida = await ultimaMensagemDoContato(
+            db,
+            args.automation.account_id,
+            args.contactId,
+            agoraDaEspera
+          );
           if (lida === 'erro') {
             results.push({
               step_id: step.id,
@@ -1260,7 +1268,7 @@ async function executeStepsFrom(
           amount: cfg.amount,
           unit: cfg.unit,
           duracaoMs: waitMs(cfg),
-          agora: new Date(),
+          agora: agoraDaEspera,
           recontagem: recontagem ? { ultima } : null,
         });
         if (decisao.tipo === 'segue') {

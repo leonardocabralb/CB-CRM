@@ -235,7 +235,13 @@ vi.mock('./admin-client', () => {
       // O "Aguardar sem conversa" pede SÓ o instante da última mensagem.
       if (ops.colunas === 'gravada_em' || ops.colunas === 'created_at') {
         if (state.erroNaUltimaMensagem) return { data: null, error: { message: state.erroNaUltimaMensagem } };
-        return { data: ops.colunas === 'gravada_em' ? state.ultimasDoBanco : state.ultimasSemCarimbo, error: null };
+        if (ops.colunas === 'gravada_em') return { data: state.ultimasDoBanco, error: null };
+        // O teto `created_at <= agora` aplicado como o banco aplicaria.
+        const teto = (ops.recorte ?? []).find(([op, k]) => op === 'lte' && k === 'created_at')?.[2];
+        const dentro = state.ultimasSemCarimbo.filter(
+          (m) => typeof teto !== 'string' || new Date(m.created_at).getTime() <= new Date(teto).getTime()
+        );
+        return { data: dentro, error: null };
       }
       if (state.erroNasRespostas) return { data: null, error: { message: state.erroNasRespostas } };
       return { data: state.respostasDesde, error: null };
@@ -566,6 +572,8 @@ vi.mock('./admin-client', () => {
       // pinos medem é o payload do update, não o filtro do PostgREST.
       or: (expr: string) => (ops.filters.push(['or', 'expr', expr]), b),
       gte: (k: string, v: unknown) => (ops.recorte.push(['gte', k, v]), b),
+      // O "Aguardar sem conversa" deixa de fora a de histórico datada no futuro.
+      lte: (k: string, v: unknown) => (ops.recorte.push(['lte', k, v]), b),
       gt: (k: string, v: unknown) => (ops.filters.push(['gt', k, v]), b),
       is: (k: string, v: unknown) => (ops.recorte.push(['is', k, v]), b),
       order: () => b,
@@ -6084,6 +6092,20 @@ describe('Aguardar N sem conversa (03/10/2026)', () => {
     await resumePendingExecution(estacionada());
 
     expect(vi.mocked(engineSendText).mock.calls[0]?.[0]?.text).toBe('depois da espera');
+  });
+
+  it('mensagem de HISTÓRICO datada no futuro não segura a espera: sem ela, vale a última de verdade', async () => {
+    // Relógio errado na carga: contada como agora, cada despertar estacionaria
+    // N de novo até a data passar (Codex, PR #383).
+    prepara('2026-10-18T17:20:00Z', [espera(), depois()]);
+    h.state.ultimasDoBanco = [{ gravada_em: '2026-10-01T12:00:00Z' }];
+    h.state.ultimasSemCarimbo = [{ created_at: '2027-10-01T12:00:00Z' }];
+
+    await resumePendingExecution(estacionada());
+
+    expect(h.state.esperasEnfileiradas).toHaveLength(0);
+    expect(vi.mocked(engineSendText).mock.calls[0]?.[0]?.text).toBe('depois da espera');
+    expect(JSON.stringify(h.state.logUpdates)).toContain('sem conversa desde 01/10 09:00 (15 dias); segue');
   });
 
   it('leitura da conversa que FALHA: o passo falha visível, nada sai e nada volta à fila', async () => {

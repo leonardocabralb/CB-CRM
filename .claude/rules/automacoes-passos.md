@@ -149,7 +149,9 @@ e encerra em vez de recomeçar. `sem-conversa.ts` (puro + a leitura).
   celular, robô, ligação, apagada), em todas as conversas do contato na
   conta: a mensagem do celular não passa pelo motor, só a leitura a vê.
   Pelo `gravada_em` (relógio do BANCO); `created_at` só na sem ele (carga):
-  pelo do aparelho, celular adiantado prenderia a espera até aquela data.
+  pelo do aparelho, celular adiantado prenderia a espera até aquela data. A
+  de carga datada no FUTURO fica de fora (`lte` na leitura): contada como
+  agora, cada despertar adiaria N de novo até a data passar.
 - **"Parar se o cliente responder" não vale**: o motor ignora a caixa
   (`esperaParaSeResponder`: sem marca na fila), a ativação recusa a combinação
   (`espera_sem_conversa_com_resposta`) e o construtor a esconde — menos
@@ -169,8 +171,11 @@ e encerra em vez de recomeçar. `sem-conversa.ts` (puro + a leitura).
   lê como "por um tempo" e retoma pelo próprio passo — espera N de novo e
   segue. A contagem pela conversa se perde; nada quebra.
 - **E2E no preview**: a espera estacionada pelo código local é retomada pelo
-  agendador da VPS (mesmo banco) com o código do `main`: ganhar a corrida
-  chamando o cron LOCAL a cada segundo (o claim é atômico, não roda em dobro).
+  agendador da VPS (mesmo banco) com o código do `main`. Ganhar a corrida
+  reivindicando SÓ as esperas da automação de teste (o `UPDATE`
+  pending→running do claim, filtrado pelo `automation_id`) e chamando a
+  `resumePendingExecution` da branch por script (jiti). O cron LOCAL em laço
+  também ganha, mas retoma as esperas de clientes reais com o código da branch.
 
 ### Condição "Campo personalizado da ficha" (`custom_field`, 2.10)
 

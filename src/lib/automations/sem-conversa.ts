@@ -110,9 +110,11 @@ export function decidirSemConversa(args: {
     };
   }
   if (!recontagem.ultima) return { tipo: 'segue', nota: 'nenhuma mensagem na conversa; segue' };
-  // Defesa: a leitura já usa o relógio do banco na mensagem ao vivo, mas a sem
-  // `gravada_em` (carga de histórico) traz o relógio de quem a gravou. Mensagem
-  // "do futuro" conta como agora — no pior caso, N a partir de agora.
+  // A mensagem ao vivo traz o relógio do BANCO (`gravada_em`), e o do servidor
+  // do app pode estar um instante atrás: a que acabou de chegar sai "do futuro"
+  // por milissegundos e conta como agora. No despertar seguinte ela já ficou no
+  // passado — sem laço. A de histórico com data no futuro nem chega aqui: a
+  // leitura a deixa de fora (ver `ultimaMensagemDoContato`).
   const ultima = recontagem.ultima.getTime() > agora.getTime() ? agora : recontagem.ultima;
   const limite = new Date(ultima.getTime() + duracaoMs);
   if (limite.getTime() <= agora.getTime()) {
@@ -151,11 +153,18 @@ function instanteLido(linha: unknown, coluna: 'gravada_em' | 'created_at'): Date
  * adiantada gravaria a mensagem "no futuro", e cada despertar a releria e
  * estacionaria de novo até essa data passar — a régua da segunda linha do
  * "parar se responder" (`clienteRespondeuDesde`) é a mesma.
+ *
+ * ⚠️ A de histórico com data DEPOIS de `agora` fica de fora (Codex, PR #383):
+ * histórico é passado, e a data no futuro é relógio errado na carga. Contá-la
+ * como agora a cada despertar adiaria a espera N de novo a cada vez, até a data
+ * passar (um ano à frente = um ano preso). Fora dela, vale a mais recente das
+ * outras. Em 03/10/2026 não havia nenhuma linha assim na base.
  */
 export async function ultimaMensagemDoContato(
   db: SupabaseClient,
   accountId: string,
   contactId: string | null,
+  agora: Date,
 ): Promise<Date | null | 'erro'> {
   if (!contactId) return null;
   try {
@@ -183,6 +192,7 @@ export async function ultimaMensagemDoContato(
         .select('created_at')
         .in('conversation_id', ids)
         .is('gravada_em', null)
+        .lte('created_at', agora.toISOString())
         .order('created_at', { ascending: false })
         .limit(1),
     ]);
