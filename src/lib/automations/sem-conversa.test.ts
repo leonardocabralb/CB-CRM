@@ -51,12 +51,13 @@ describe('decidirSemConversa', () => {
     });
   });
 
-  it('mensagem com o relógio do aparelho adiantado: espera até N depois dela, nunca segue antes', () => {
-    const ultima = new Date(AGORA.getTime() + 60_000);
-    const d = decidirSemConversa({ ...base, recontagem: { ultima } });
-    expect(d.tipo).toBe('espera');
-    if (d.tipo !== 'espera') return;
-    expect(d.ate.getTime()).toBe(ultima.getTime() + 15 * DIA);
+  it('mensagem com o relógio do aparelho ADIANTADO conta como agora: nunca segue antes, nunca espera além de N', () => {
+    for (const adiantada of [60_000, 365 * DIA]) {
+      const d = decidirSemConversa({ ...base, recontagem: { ultima: new Date(AGORA.getTime() + adiantada) } });
+      expect(d.tipo).toBe('espera');
+      if (d.tipo !== 'espera') return;
+      expect(d.ate.getTime()).toBe(AGORA.getTime() + 15 * DIA);
+    }
   });
 
   it('singular e outras unidades na nota', () => {

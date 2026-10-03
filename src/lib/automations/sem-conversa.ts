@@ -109,8 +109,11 @@ export function decidirSemConversa(args: {
       nota: `${duracao} sem conversa: aguarda até ${quandoNoEscritorio(ate, fuso)}`,
     };
   }
-  const { ultima } = recontagem;
-  if (!ultima) return { tipo: 'segue', nota: 'nenhuma mensagem na conversa; segue' };
+  if (!recontagem.ultima) return { tipo: 'segue', nota: 'nenhuma mensagem na conversa; segue' };
+  // `created_at` é o relógio do APARELHO (Evolution): um celular com a data
+  // adiantada gravaria a mensagem "no futuro" e empurraria a espera para lá.
+  // Mensagem do futuro conta como agora — no pior caso, N a partir de agora.
+  const ultima = recontagem.ultima.getTime() > agora.getTime() ? agora : recontagem.ultima;
   const limite = new Date(ultima.getTime() + duracaoMs);
   if (limite.getTime() <= agora.getTime()) {
     return {
