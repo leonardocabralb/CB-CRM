@@ -6938,6 +6938,7 @@
     "recorteVazio": "No meetings match this filter.",
     "semContato": "Contact without a record",
     "reagendamento": "Rescheduled",
+    "remarcadaNaFicha": "Moved on the contact (in Calendly: {data}, {hora})",
     "qualificada": "Qualified",
     "ganho": "won",
     "perdido": "lost",

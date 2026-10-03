@@ -176,6 +176,18 @@ a rota `/api/cb/reunioes`, `src/components/reunioes/`. Plano:
   dele** (`montarReunioesExternas`): a inferência do convite substituído por
   reagendamento compara com agendamentos fora da janela, e misturar contatos
   casaria o reagendamento de um com o convite de outro.
+- ⚠️⚠️ **A FICHA REMARCA a última reunião do Calendly** (decisão do operador,
+  03/10/2026): o Calendly só remarca pelo Google Agenda a reunião FUTURA; a
+  que já passou o operador move no Google e acerta à mão "Data e Hora
+  Reunião" (o que os lembretes leem). A rota lê o campo de TODOS os contatos
+  (o remarcado para a janela tem o agendamento fora dela) e `montarPauta`
+  leva a reunião para a data da ficha, com a MESMA chave (o marco antigo não
+  conta: é anterior ao início) e `remarcadaDe`. Só quando a ficha é MAIS NOVA
+  que todo agendamento do contato — cancelados e substituídos inclusos — e
+  que a agenda do CRM: igual é o caso de todo dia (Calendly e iMotion gravam
+  o mesmo instante), e o cancelamento não apaga o campo. Sem reunião do
+  Calendly de pé, a ficha sozinha não vira reunião. Aviso de no-show e aba
+  Reuniões da ficha seguem só com o Calendly.
 - **Quem marcou é carimbado por gatilho** (`auth.uid()` e o nome do perfil),
   nunca aceito do navegador; sem DELETE (corrigir é marcar de novo: o upsert
   troca a linha do mesmo marco).

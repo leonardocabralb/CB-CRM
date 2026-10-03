@@ -39,6 +39,7 @@ function dados(p: Partial<DadosDaPauta>): DadosDaPauta {
     campos: new Map([['c1', { divida: 'Maior que 500 mil reais', atraso: null, origem: 'Apenas CPF' }]]),
     trilha: new Map(),
     marcos: new Map(),
+    datasDaFicha: new Map(),
     ...p,
   };
 }
@@ -240,6 +241,159 @@ describe('montarPauta — a próxima reunião do contato', () => {
     );
     expect(reunioes.map((r) => r.reuniaoId)).toEqual(['a']);
     expect(reunioes[0].proximaEm).toBe('2026-11-10T17:00:00.000Z');
+  });
+});
+
+describe('montarPauta — remarcada pela ficha ("Data e Hora Reunião")', () => {
+  // A reunião do Calendly passou (no show), o operador a moveu no Google
+  // Agenda — o Calendly não remarca reunião passada — e acertou a ficha.
+  const calendly = [
+    cal({ id: 'r1', inicio: '2026-10-01T19:45:00Z', fim: '2026-10-01T20:15:00Z', recebido_em: '2026-09-29T10:00:00Z' }),
+  ];
+  const ficha = new Map([['c1', '2026-10-02T19:00:00.000Z']]);
+  // O dia em Brasília: 03:00 UTC até 02:59:59.999 do dia seguinte.
+  const diaDe = (iso: string) => {
+    const de = new Date(`${iso}T03:00:00Z`);
+    return { de, ate: new Date(de.getTime() + 24 * 60 * 60_000 - 1) };
+  };
+
+  it('a reunião vai para o dia da ficha, com a mesma chave, a duração e o horário do Calendly à vista', () => {
+    const { reunioes } = montarPauta(dados({ janela: diaDe('2026-10-02'), calendly, datasDaFicha: ficha }));
+    expect(reunioes).toHaveLength(1);
+    expect(reunioes[0]).toMatchObject({
+      chave: 'calendly:r1',
+      origem: 'calendly',
+      reuniaoId: 'r1',
+      inicio: '2026-10-02T19:00:00.000Z',
+      fim: '2026-10-02T19:30:00.000Z',
+      remarcadaDe: '2026-10-01T19:45:00.000Z',
+      reagendamento: true,
+      proximaEm: null,
+    });
+  });
+
+  it('e sai do dia do Calendly', () => {
+    const { reunioes } = montarPauta(dados({ janela: diaDe('2026-10-01'), calendly, datasDaFicha: ficha }));
+    expect(reunioes).toEqual([]);
+  });
+
+  it('ficha IGUAL ao agendamento (o caso de todo dia) não remarca', () => {
+    const { reunioes } = montarPauta(
+      dados({ janela: diaDe('2026-10-01'), calendly, datasDaFicha: new Map([['c1', '2026-10-01T19:45:00.000Z']]) }),
+    );
+    expect(reunioes.map((r) => [r.inicio, r.remarcadaDe])).toEqual([['2026-10-01T19:45:00.000Z', null]]);
+  });
+
+  it('ficha MAIS ANTIGA que o último agendamento não remarca', () => {
+    const { reunioes } = montarPauta(
+      dados({ janela: diaDe('2026-10-01'), calendly, datasDaFicha: new Map([['c1', '2026-09-20T13:00:00.000Z']]) }),
+    );
+    expect(reunioes.map((r) => r.remarcadaDe)).toEqual([null]);
+  });
+
+  it('a data de um agendamento CANCELADO (o cancelamento não apaga a ficha) não arrasta a reunião anterior', () => {
+    const { reunioes } = montarPauta(
+      dados({
+        janela: diaDe('2026-10-01'),
+        calendly: [
+          ...calendly,
+          // Agendado depois e cancelado pelo cliente: a ficha ficou com a data dele.
+          cal({ id: 'desistiu', inicio: '2026-10-05T13:00:00Z', recebido_em: '2026-10-01T21:00:00Z' }),
+        ],
+        cancelados: new Set(['uri-desistiu']),
+        datasDaFicha: new Map([['c1', '2026-10-05T13:00:00.000Z']]),
+      }),
+    );
+    expect(reunioes.map((r) => [r.reuniaoId, r.inicio, r.remarcadaDe])).toEqual([['r1', '2026-10-01T19:45:00.000Z', null]]);
+  });
+
+  it('reunião da agenda do CRM depois da data da ficha: não remarca', () => {
+    const { reunioes } = montarPauta(
+      dados({
+        janela: diaDe('2026-10-01'),
+        calendly,
+        datasDaFicha: ficha,
+        agenda: [
+          {
+            id: 'm1',
+            contact_id: 'c1',
+            conversation_id: null,
+            titulo: 'Retorno',
+            local: null,
+            starts_at: '2026-10-03T17:00:00+00:00',
+            ends_at: null,
+            status: 'agendada',
+            created_at: '2026-10-01T09:00:00Z',
+          },
+        ],
+      }),
+    );
+    expect(reunioes.map((r) => [r.reuniaoId, r.remarcadaDe])).toEqual([['r1', null]]);
+  });
+
+  it('contato sem reunião do Calendly não ganha reunião só pela ficha', () => {
+    const { reunioes } = montarPauta(
+      dados({ janela: diaDe('2026-10-02'), calendly: [], datasDaFicha: new Map([['c2', '2026-10-02T19:00:00.000Z']]) }),
+    );
+    expect(reunioes).toEqual([]);
+  });
+
+  it('só a ÚLTIMA reunião do contato anda; a anterior segue no lugar e vai até o horário do Calendly', () => {
+    const { reunioes } = montarPauta(
+      dados({
+        janela: { de: new Date('2026-09-20T03:00:00Z'), ate: new Date('2026-10-04T02:59:00Z') },
+        calendly: [
+          cal({ id: 'antes', inicio: '2026-09-22T14:00:00Z', fim: null, recebido_em: '2026-09-20T10:00:00Z' }),
+          ...calendly,
+        ],
+        datasDaFicha: ficha,
+      }),
+    );
+    expect(reunioes.map((r) => [r.reuniaoId, r.inicio, r.proximaEm])).toEqual([
+      ['antes', '2026-09-22T14:00:00.000Z', '2026-10-01T19:45:00.000Z'],
+      ['r1', '2026-10-02T19:00:00.000Z', null],
+    ]);
+  });
+
+  it('o resultado marcado ou movido ANTES do horário novo não resolve a remarcada; o depois, sim', () => {
+    const negocios = [
+      { id: 'd1', contact_id: 'c1', pipeline_id: 'banc', stage_id: 'noshow', value: 0, status: 'open', created_at: '2026-09-01T00:00:00Z' },
+    ];
+    const marcoAntigo = {
+      origem: 'calendly' as const,
+      reuniao_id: 'r1',
+      marco: 'resultado' as const,
+      resultado: 'no_show' as const,
+      valor: null,
+      registrado_por_nome: 'Leo',
+      registrado_em: '2026-10-01T20:00:00Z',
+    };
+    // O no show do horário do Calendly (pelo quadro e pela tela).
+    const noShowDoCalendly = { em: '2026-10-01T20:05:00Z', dealId: 'd1', etapaId: 'noshow', etapa: 'No Show', por: 'Bia' };
+    const antes = montarPauta(
+      dados({
+        janela: diaDe('2026-10-02'),
+        calendly,
+        datasDaFicha: ficha,
+        negocios,
+        marcos: new Map([['calendly:r1', [marcoAntigo]]]),
+        trilha: new Map([['c1', [noShowDoCalendly]]]),
+      }),
+    ).reunioes[0];
+    expect(antes.resultado).toBeNull();
+    expect(antes.faltouAntes?.em).toBe('2026-10-01T20:05:00Z');
+
+    const depois = montarPauta(
+      dados({
+        janela: diaDe('2026-10-02'),
+        calendly,
+        datasDaFicha: ficha,
+        negocios,
+        marcos: new Map([['calendly:r1', [{ ...marcoAntigo, resultado: 'sem_proposta' as const, registrado_em: '2026-10-02T19:40:00Z' }]]]),
+        trilha: new Map([['c1', [noShowDoCalendly]]]),
+      }),
+    ).reunioes[0];
+    expect(depois.resultado).toMatchObject({ tipo: 'sem_proposta', fonte: 'tela' });
   });
 });
 

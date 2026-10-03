@@ -62,6 +62,12 @@ export interface DadosDaPauta {
   trilha: ReadonlyMap<string, EntradaDaTrilha[]>;
   /** Chave `${origem}:${reuniao_id}`. */
   marcos: ReadonlyMap<string, LinhaDoMarco[]>;
+  /**
+   * O campo "Data e Hora Reunião" de cada contato, já canônico
+   * (`instanteCanonico`). É o que os lembretes leem; aqui ele REMARCA a última
+   * reunião do Calendly (ver "remarcada pela ficha" em `montarPauta`).
+   */
+  datasDaFicha: ReadonlyMap<string, string>;
 }
 
 function ms(iso: string | null | undefined): number | null {
@@ -139,7 +145,10 @@ export function montarPauta(d: DadosDaPauta): { reunioes: ReuniaoDaPauta[]; funi
 
   const reunioes: ReuniaoDaPauta[] = [];
   const completar = (
-    base: Pick<ReuniaoDaPauta, 'origem' | 'reuniaoId' | 'inicio' | 'fim' | 'evento' | 'link' | 'reagendamento'>,
+    base: Pick<
+      ReuniaoDaPauta,
+      'origem' | 'reuniaoId' | 'inicio' | 'fim' | 'evento' | 'link' | 'reagendamento' | 'remarcadaDe'
+    >,
     contactId: string | null,
     desde: string | null,
     conversaDaLinha: string | null,
@@ -176,6 +185,34 @@ export function montarPauta(d: DadosDaPauta): { reunioes: ReuniaoDaPauta[]; funi
     });
   };
 
+  const deAgenda = d.agenda.filter((a) => a.status !== 'cancelada' && ms(a.starts_at) !== null);
+  for (const a of deAgenda) anotarInicio(a.contact_id, a.starts_at);
+
+  // REMARCADA PELA FICHA. O operador move no Google Agenda a reunião que JÁ
+  // PASSOU (o Calendly só remarca a futura, e aí avisa o CRM) e acerta à mão o
+  // campo "Data e Hora Reunião", que os lembretes leem. Pedido do operador
+  // (03/10/2026): a pauta acompanha o campo. A ÚLTIMA reunião de pé do
+  // Calendly do contato vai para a data da ficha — a mesma chave, então o
+  // marco da tela continua servindo (o registrado antes do horário novo não
+  // conta, como na agenda que muda de data).
+  //
+  // ⚠️ Só remarca quando a data da ficha é MAIS NOVA que todo agendamento do
+  // contato, inclusive os cancelados e os substituídos, e que a agenda do CRM:
+  // - no caso comum o Calendly (e a iMotion, ~1 s depois) grava no campo o
+  //   MESMO instante do agendamento — igual não é mais novo;
+  // - o cancelamento não apaga o campo (1013): a data de um agendamento
+  //   desistido é igual à dele e não arrasta a reunião anterior para ela.
+  // Contato sem reunião de pé no Calendly não ganha reunião só pela ficha:
+  // não há o que remarcar, nem chave para o marco.
+  const ultimoAgendamento = new Map<string, number>();
+  const anotarAgendamento = (contactId: string | null, inicio: string | null) => {
+    const v = ms(inicio);
+    if (!contactId || v === null) return;
+    ultimoAgendamento.set(contactId, Math.max(ultimoAgendamento.get(contactId) ?? -Infinity, v));
+  };
+  for (const l of d.calendly) anotarAgendamento(l.contact_id, l.inicio);
+  for (const a of deAgenda) anotarAgendamento(a.contact_id, a.starts_at);
+
   // Calendly: a montagem (cancelamento e reagendamento) é POR CONTATO — a
   // inferência do convite substituído compara agendamentos do mesmo cliente,
   // e misturar contatos casaria o reagendamento de um com o convite de outro.
@@ -186,30 +223,50 @@ export function montarPauta(d: DadosDaPauta): { reunioes: ReuniaoDaPauta[]; funi
     lista.push(l);
     porContato.set(k, lista);
   }
-  const deCalendly: { r: ReuniaoExterna; linha: LinhaDoCalendlyDaPauta }[] = [];
+  const deCalendly: { r: ReuniaoExterna; linha: LinhaDoCalendlyDaPauta; remarcadaPara: number | null }[] = [];
   for (const linhas of porContato.values()) {
     const porId = new Map(linhas.map((l) => [l.id, l]));
+    const dePe: (typeof deCalendly)[number][] = [];
     for (const r of montarReunioesExternas(linhas, d.cancelados, [])) {
       const linha = porId.get(r.id);
       if (r.desmarcada !== null || !linha) continue;
       anotarInicio(linha.contact_id, r.inicio);
-      deCalendly.push({ r, linha });
+      dePe.push({ r, linha, remarcadaPara: null });
     }
+    const contactId = linhas[0]?.contact_id ?? null;
+    const daFicha = contactId ? ms(d.datasDaFicha.get(contactId)) : null;
+    const ultimo = contactId ? ultimoAgendamento.get(contactId) : undefined;
+    if (daFicha !== null && ultimo !== undefined && daFicha > ultimo && dePe.length > 0) {
+      const maisNova = dePe.reduce((a, b) => ((ms(b.r.inicio) ?? -Infinity) > (ms(a.r.inicio) ?? -Infinity) ? b : a));
+      maisNova.remarcadaPara = daFicha;
+      // Os DOIS inícios contam como fronteira da "próxima reunião": o original
+      // fecha a janela da trilha da reunião anterior (o no show do horário do
+      // Calendly não a resolve), e o da ficha, a de quem caiu no meio.
+      anotarInicio(contactId, new Date(daFicha).toISOString());
+    }
+    deCalendly.push(...dePe);
   }
-  const deAgenda = d.agenda.filter((a) => a.status !== 'cancelada' && ms(a.starts_at) !== null);
-  for (const a of deAgenda) anotarInicio(a.contact_id, a.starts_at);
 
-  for (const { r, linha } of deCalendly) {
-    if (!dentro(r.inicio, d.janela)) continue;
+  for (const { r, linha, remarcadaPara } of deCalendly) {
+    const inicio = remarcadaPara === null ? r.inicio : new Date(remarcadaPara).toISOString();
+    if (!dentro(inicio, d.janela)) continue;
+    // A duração do agendamento acompanha o horário novo.
+    const inicioMs = ms(r.inicio);
+    const fimMs = ms(r.fim);
+    const fim =
+      remarcadaPara === null || inicioMs === null || fimMs === null
+        ? r.fim
+        : new Date(remarcadaPara + (fimMs - inicioMs)).toISOString();
     completar(
       {
         origem: 'calendly',
         reuniaoId: r.id,
-        inicio: r.inicio,
-        fim: r.fim,
+        inicio,
+        fim,
         evento: r.evento,
         link: r.link,
-        reagendamento: r.reagendamento,
+        reagendamento: r.reagendamento || remarcadaPara !== null,
+        remarcadaDe: remarcadaPara === null ? null : r.inicio,
       },
       linha.contact_id,
       linha.recebido_em,
@@ -232,6 +289,7 @@ export function montarPauta(d: DadosDaPauta): { reunioes: ReuniaoDaPauta[]; funi
         evento: comAlgo(a.titulo),
         link: comAlgo(a.local),
         reagendamento: false,
+        remarcadaDe: null,
       },
       a.contact_id,
       a.created_at,

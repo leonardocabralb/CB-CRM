@@ -295,6 +295,12 @@ export interface ReuniaoDaPauta {
   /** É o horário novo de um reagendamento. */
   reagendamento: boolean;
   /**
+   * O horário do CALENDLY quando a ficha ("Data e Hora Reunião") remarcou a
+   * reunião para `inicio` (ver `montarPauta`); nulo = o horário é o do
+   * agendamento.
+   */
+  remarcadaDe: string | null;
+  /**
    * Início da PRÓXIMA reunião (não desmarcada) do mesmo contato, em qualquer
    * data; nulo = esta é a última. Com ela, o card já é da reunião seguinte.
    */

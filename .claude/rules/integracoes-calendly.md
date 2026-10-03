@@ -284,6 +284,10 @@ evento cancelado.
   nunca grava ali: sobrescreveria um agendamento real e dispararia lembrete
   sobre reunião passada. As reuniões da Kommo moram numa tabela própria e
   fechada (1036).
+- **A pauta (`/reunioes`, Meu dia) também lê o campo**: data MAIS NOVA que
+  todo agendamento do contato remarca a última reunião do Calendly (a
+  remarcação à mão de reunião que já passou). Gravar ali data que não é
+  reunião a faria aparecer na pauta (`.claude/rules/reunioes.md`).
 
 ### O gatilho e a grade
 

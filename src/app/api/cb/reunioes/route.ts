@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { supabaseAdmin } from '@/lib/automations/admin-client';
 import { getCurrentAccount, toErrorResponse } from '@/lib/auth/account';
+import { instanteCanonico } from '@/lib/contacts/campo-data';
 import { identidadeDoContato, type ContatoIdentificavel } from '@/lib/contacts/identidade';
 import { DEGRAUS, ehDegrau, indiceDoDegrau } from '@/lib/funil/degraus';
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
@@ -22,6 +23,8 @@ const PAGINA = 1000;
 
 const CAMPOS = { tamanho_da_divida: 'divida', tempo_de_atraso: 'atraso', origem_da_divida: 'origem' } as const;
 type ChaveDoCampo = keyof typeof CAMPOS;
+/** "Data e Hora Reunião": a data que os lembretes leem e que remarca a reunião na pauta (`montarPauta`). */
+const CAMPO_DA_REUNIAO = 'data_e_hora_reuniao';
 
 function lotes<T>(lista: T[]): T[][] {
   const saida: T[][] = [];
@@ -43,7 +46,8 @@ function marcaDaEtapa(v: unknown): MarcaDaEtapa | null {
 /**
  * GET /api/cb/reunioes?de=<ISO>&ate=<ISO> — a pauta de reuniões da tela
  * `/reunioes` (plano: `docs/PLANO-pauta-de-reunioes.md`): as reuniões do
- * Calendly e da agenda do CRM que começam na janela, cada uma com o contato, a
+ * Calendly e da agenda do CRM que começam na janela (a do Calendly na data da
+ * ficha, quando a ficha a remarcou), cada uma com o contato, a
  * conversa, o card, o que o formulário deixou na ficha (dívida, atraso,
  * origem), se foi marcada qualificada, o resultado e se o lead já faltou antes.
  * Mais, por funil, para qual etapa cada botão leva o card.
@@ -104,11 +108,59 @@ export async function GET(request: Request) {
 
     const linhasDaJanela = (naJanela.data ?? []) as unknown as LinhaDoCalendlyDaPauta[];
     const linhasDaAgenda = (agenda.data ?? []) as LinhaDaAgenda[];
+
+    // 1b. A data da FICHA de todos os contatos: ela remarca a última reunião do
+    //     Calendly (`montarPauta`). Toda, e não só a da janela: o contato cuja
+    //     reunião do Calendly está na janela pode ter sido remarcado para FORA
+    //     dela, e o remarcado PARA a janela tem o agendamento fora dela. O
+    //     valor é TEXT (formas diferentes do mesmo instante): a janela se
+    //     confere aqui, pelo instante canônico, nunca no SQL.
+    const datasDaFicha = new Map<string, string>();
+    const campoDaReuniao = await admin
+      .from('custom_fields')
+      .select('id')
+      .eq('account_id', conta)
+      .eq('field_key', CAMPO_DA_REUNIAO);
+    if (campoDaReuniao.error) throw new Error(`campo da reunião: ${campoDaReuniao.error.message}`);
+    const idsDoCampo = ((campoDaReuniao.data ?? []) as { id: string }[]).map((c) => c.id);
+    if (idsDoCampo.length > 0) {
+      // Paginada pela CHAVE: o Calendly e a iMotion gravam no campo a qualquer
+      // momento, e a página por posição pularia linha.
+      let depoisDe: string | null = null;
+      for (;;) {
+        let consulta = admin
+          .from('contact_custom_values')
+          .select('id, contact_id, value, contacts!inner(account_id)')
+          .in('custom_field_id', idsDoCampo)
+          .eq('contacts.account_id', conta)
+          .order('id')
+          .limit(PAGINA);
+        if (depoisDe) consulta = consulta.gt('id', depoisDe);
+        const { data, error } = await consulta;
+        if (error) throw new Error(`datas da ficha: ${error.message}`);
+        const linhas = (data ?? []) as { id: string; contact_id: string; value: string | null }[];
+        for (const l of linhas) {
+          const instante = instanteCanonico(l.value);
+          if (instante) datasDaFicha.set(l.contact_id, instante);
+        }
+        if (linhas.length < PAGINA) break;
+        depoisDe = linhas[linhas.length - 1].id;
+      }
+    }
+    const remarcadosParaAJanela = [...datasDaFicha]
+      .filter(([, instante]) => {
+        const v = Date.parse(instante);
+        return v >= de.getTime() && v <= ate.getTime();
+      })
+      .map(([contactId]) => contactId);
+
     const contatos = [
       ...new Set(
-        [...linhasDaJanela.map((l) => l.contact_id), ...linhasDaAgenda.map((a) => a.contact_id)].filter(
-          (id): id is string => typeof id === 'string',
-        ),
+        [
+          ...linhasDaJanela.map((l) => l.contact_id),
+          ...linhasDaAgenda.map((a) => a.contact_id),
+          ...remarcadosParaAJanela,
+        ].filter((id): id is string => typeof id === 'string'),
       ),
     ];
 
@@ -324,6 +376,7 @@ export async function GET(request: Request) {
       campos: valores,
       trilha,
       marcos,
+      datasDaFicha,
     });
     return NextResponse.json(pauta);
   } catch (err) {

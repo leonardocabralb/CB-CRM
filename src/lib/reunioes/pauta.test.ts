@@ -295,6 +295,7 @@ function reuniao(p: Partial<ReuniaoDaPauta>): ReuniaoDaPauta {
     evento: null,
     link: null,
     reagendamento: false,
+    remarcadaDe: null,
     proximaEm: null,
     contato: { id: 'c1', nome: 'Ana' },
     conversaId: 'v1',
