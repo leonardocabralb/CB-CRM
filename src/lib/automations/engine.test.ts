@@ -4201,6 +4201,15 @@ describe('retentativa de passo que falhou (13/09/2026)', () => {
     expect(desfechoGravado()?.desfecho).toBe('falhou');
   });
 
+  it('⚠️ número SEM WhatsApp (400 com exists: false) não volta para a fila — não muda em minutos', async () => {
+    await avisoQueFalha(
+      new EvolutionApiError('number 5511900000000 is not on WhatsApp', 400, true)
+    );
+
+    expect(h.state.esperasEnfileiradas).toHaveLength(0);
+    expect(desfechoGravado()?.desfecho).toBe('falhou');
+  });
+
   it('⚠️ erro que não é do provedor não volta para a fila — não melhora sozinho', async () => {
     await avisoQueFalha(new Error('contact phone invalid: null'));
 

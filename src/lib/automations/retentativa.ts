@@ -95,14 +95,22 @@ export interface PedidoDeRetentativa {
    * O que o PROVEDOR respondeu, ou `null` quando o erro não veio dele —
    * configuração, banco, contato sem telefone. Nesses casos não se repete:
    * o erro é determinístico e vai acontecer igual na próxima vez.
+   *
+   * `semWhatsApp`: a recusa foi "o número não tem WhatsApp"
+   * (`EvolutionApiError.semWhatsApp`).
    */
-  provedor: { recusou: boolean } | null;
+  provedor: { recusou: boolean; semWhatsApp: boolean } | null;
 }
 
 export type Retentativa =
   | {
       repetir: false;
-      motivo: 'teto' | 'passo' | 'nao_e_do_provedor' | 'entrega_incerta';
+      motivo:
+        | 'teto'
+        | 'passo'
+        | 'nao_e_do_provedor'
+        | 'entrega_incerta'
+        | 'sem_whatsapp';
     }
   | { repetir: true; esperaMs: number };
 
@@ -121,6 +129,16 @@ export function decidirRetentativa(p: PedidoDeRetentativa): Retentativa {
   }
   if (!p.provedor.recusou) {
     return { repetir: false, motivo: 'entrega_incerta' };
+  }
+  // ⚠️ A recusa "o número não tem WhatsApp" (400 com `exists: false`) é a
+  // exceção do 4xx: a resposta vem do próprio WhatsApp (a consulta
+  // `onWhatsApp` que a Evolution faz antes de enviar) e não muda em 30 s nem
+  // em 5 min.
+  // Repetir só adiava o aviso e calava o agente de IA à toa. O soluço de
+  // conexão que a retentativa cobre chega com OUTRO texto ("Connection
+  // Closed"), também como 400.
+  if (p.provedor.semWhatsApp) {
+    return { repetir: false, motivo: 'sem_whatsapp' };
   }
 
   // `tentativa` é 1 na primeira falha, e a primeira espera é a do índice 0.

@@ -13,8 +13,8 @@ import {
 import { EvolutionApiError } from '@/lib/whatsapp/transport/evolution-client';
 import { MetaApiError } from '@/lib/whatsapp/meta-api';
 
-const recusou = { recusou: true };
-const incerto = { recusou: false };
+const recusou = { recusou: true, semWhatsApp: false };
+const incerto = { recusou: false, semWhatsApp: false };
 
 describe('decidirRetentativa', () => {
   it('repete o envio que o provedor RECUSOU — nada saiu', () => {
@@ -35,6 +35,18 @@ describe('decidirRetentativa', () => {
         provedor: incerto,
       })
     ).toEqual({ repetir: false, motivo: 'entrega_incerta' });
+  });
+
+  it('⚠️ NÃO repete a recusa "o número não tem WhatsApp" — não muda em minutos', () => {
+    for (const tentativa of [1, 2]) {
+      expect(
+        decidirRetentativa({
+          stepType: 'send_message',
+          tentativa,
+          provedor: { recusou: true, semWhatsApp: true },
+        })
+      ).toEqual({ repetir: false, motivo: 'sem_whatsapp' });
+    }
   });
 
   it('⚠️ NÃO repete erro que não veio do provedor — configuração não melhora sozinha', () => {

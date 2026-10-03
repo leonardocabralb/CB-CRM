@@ -954,6 +954,7 @@
         "webhookBloqueado": "address not allowed (internal network or invalid)",
         "tarefaCriada": "task created: {tarefa}",
         "conexaoCaiu": "the WhatsApp connection dropped during the send",
+        "semWhatsApp": "number {numero} is not on WhatsApp: nothing was sent",
         "tentativa": "refused: retry scheduled {segundos} s later (attempt {n} of {de})",
         "desistiu": "gave up after {n} attempts",
         "naoRepetiu": "didn't try again: the run had already been interrupted"

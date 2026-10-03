@@ -947,6 +947,7 @@
         "webhookBloqueado": "endereço não permitido (rede interna ou inválido)",
         "tarefaCriada": "tarefa criada: {tarefa}",
         "conexaoCaiu": "a conexão do WhatsApp caiu durante o envio",
+        "semWhatsApp": "o número {numero} não tem WhatsApp: nada foi enviado",
         "tentativa": "recusado: nova tentativa agendada para {segundos} s depois (tentativa {n} de {de})",
         "desistiu": "desistiu depois de {n} tentativas",
         "naoRepetiu": "não tentou de novo: a execução já tinha sido interrompida"

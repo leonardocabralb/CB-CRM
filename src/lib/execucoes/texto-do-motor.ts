@@ -85,6 +85,8 @@ const PADROES: Padrao[] = [
   { re: /^conversation closed$/, ler: () => null },
   { re: /^tarefa criada \((.+)\)$/, ler: (m) => frase('tarefaCriada', { tarefa: m[1] }) },
   { re: /^(?:Error: )?Connection Closed$/i, ler: () => frase('conexaoCaiu') },
+  // A frase é do `throwError` de `evolution-client.ts` (400 com `exists: false`).
+  { re: /^number (\S+) is not on WhatsApp$/, ler: (m) => frase('semWhatsApp', { numero: m[1] }) },
 ]
 
 /** A nota entre parênteses da condição ("hora no escritório: dom 18:57") já é português. */
@@ -160,6 +162,7 @@ export const CHAVES_DO_MOTOR = [
   'webhookBloqueado',
   'tarefaCriada',
   'conexaoCaiu',
+  'semWhatsApp',
   'tentativa',
   'desistiu',
   'naoRepetiu',
