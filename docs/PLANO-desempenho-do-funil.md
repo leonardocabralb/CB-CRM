@@ -12,8 +12,8 @@ altura da tela) e **fases 1 e 2**. A fase 3 fica para depois de medir de novo.
 | Fase | O quê | Estado |
 | ---- | ----- | ------ |
 | 0 | Estudo e medição na produção | ✅ concluída (03/10) |
-| 1 | Quadro: colunas com rolagem própria, barra fixa, lote de 20 com carga ao rolar | ✅ código e medição (03/10); falta revisão e merge |
-| 2 | Lista, Desempenho e Saúde: RPC das trajetórias paginada por chave | ✅ código e prova (03/10); falta aplicar a 1078, revisão e merge |
+| 1 | Quadro: colunas com rolagem própria, barra fixa, lote de 20 com carga ao rolar | ✅ no `main` (#381, 03/10; Codex limpo) |
+| 2 | Lista, Desempenho e Saúde: RPC das trajetórias paginada por chave | ✅ 1078 aplicada e medida na tela (03/10); #382 |
 | 3 | (opcional) Não buscar o quadro fora da vista Quadro; lista enxuta numa viagem | ⏸ decidir depois da medição das fases 1–2 |
 
 ## Fase 0 — o que a medição mostrou (03/10/2026)
@@ -115,8 +115,13 @@ MESMO texto de recorte nas duas.
 - Produção, só leitura (corpo como consulta, sem RLS): uma faixa inteira do
   Trabalhista (895 negócios, 12 meses) custa 122 ms; o funil inteiro, que a
   975 recalculava a cada página, 347 ms.
-- Falta a medição na tela depois de aplicar (antes: Lista ~1,75 s,
-  Desempenho ~1,6 s, Saúde ~2,35 s).
+- Na tela, depois de aplicar a 1078 (03/10/2026; Trabalhista, build de
+  produção da branch × produção com o código antigo, no mesmo minuto): o
+  texto das três vistas é IDÊNTICO (Desempenho e Saúde letra por letra;
+  Lista "31 de 31"), e o tempo até a última página chegar caiu — Saúde 2,3 s
+  → 0,7–0,9 s, Desempenho 1,7 s → 0,4–0,5 s, Lista 1,3 s → 0,5–0,6 s. Cada
+  faixa veio numa página só (882–958 linhas). No `next dev` cada faixa sai
+  duas vezes (o StrictMode monta o efeito duas vezes): medir no build.
 
 ## Fase 3 — opcional
 

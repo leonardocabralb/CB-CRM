@@ -1178,6 +1178,19 @@ nome da época em que foram aplicadas.
   numa conta real: nenhuma sobra (0 conexões e 0 robôs "1077:"; 7 conexões e
   2 robôs ativos, como antes). Provada antes num Postgres 16 descartável:
   aplica duas vezes; sem o gatilho, e com ele como AFTER, a prova acusa.
+- **1078_cb_trajetorias_por_chave** — função `cb_funil_trajetorias_por_chave`
+  (SECURITY INVOKER, fechada a anon): a mesma leitura da 975 paginada por
+  CHAVE (faixa de `deal_id` e `LIMIT` antes das subconsultas caras, coluna
+  `restantes`). Lista, Desempenho e Saúde passam a lê-la em quatro faixas em
+  paralelo; a 975 FICA (a versão no ar durante o deploy). PR #382. ADITIVA e
+  ANTES do merge. Aplicada em 03/10/2026 pela Management API (histórico
+  `20261003203605`), depois do CI verde no commit `e44ba931`, com "aplique a
+  migration 1078 em produção" do operador. Conferida: função no catálogo, a
+  975 de pé, anon sem EXECUTE, authenticated e service_role com. Provada antes
+  num Postgres 16 descartável (aplica duas vezes; 45 casos idênticos à 975).
+  Na tela (Trabalhista, build de produção × produção no mesmo minuto): texto
+  idêntico nas três vistas; Saúde 2,3 s → 0,7–0,9 s, Desempenho 1,7 s →
+  0,4–0,5 s, Lista 1,3 s → 0,5–0,6 s.
 
 ## Notas do histórico
 
