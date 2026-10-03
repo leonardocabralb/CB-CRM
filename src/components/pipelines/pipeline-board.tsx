@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
@@ -48,16 +48,44 @@ import { urlDoInbox } from "@/lib/inbox/url";
  * provável é o app ser morto pelo sistema — a tela principal do funil deixa
  * de abrir. Em 22/09/2026, depois da primeira carga da Kommo, ele tinha 3.673.
  *
- * 100 POR COLUNA, no molde da lista de leads (`funil/lista-de-leads.tsx`,
- * que usa o mesmo número para a tabela inteira). Com as colunas de um funil
- * real isso dá algumas centenas de cards no primeiro desenho — a faixa que
- * a produção já prova hoje —, contra os 8.400 de uma coluna sem teto.
+ * ⚠️ 20 POR COLUNA, e a coluna pede o lote seguinte SOZINHA quando o fim
+ * dela chega perto da tela (`StageColumn`, `IntersectionObserver`; o botão
+ * fica como reserva). Eram 100 até 03/10/2026: o Trabalhista abria com 580
+ * cards de uma vez, uma página de 20.500 px e 13 mil elementos, e a
+ * montagem prendia o navegador por 0,3–0,5 s num Mac rápido (medido na
+ * produção) — a "travada" ao entrar no funil, e cada arrasto recalculava o
+ * layout daquilo tudo. Com 20, ~230 cards; numa coluna de 600 px cabem uns
+ * cinco, então o lote cobre algumas telas de rolagem.
  *
  * Sem biblioteca de virtualização, de propósito: o "carregar mais" é uma
  * linha de estado, e virtualizar DENTRO de um `DndContext` (cada card é um
  * `useDraggable`, a coluna é um `useDroppable`) é outra obra.
  */
-export const CARDS_POR_COLUNA = 100;
+export const CARDS_POR_COLUNA = 20;
+
+/**
+ * Quanto antes do fim da coluna o lote seguinte é pedido. O conteúdo do
+ * lote vem do banco (~0,3 s); com folga de algumas alturas de card, ele
+ * costuma chegar antes de o operador alcançar o fim.
+ */
+const FOLGA_DA_CARGA_AO_ROLAR = "0px 0px 600px 0px";
+
+/**
+ * A rolagem vertical de cada coluna (id da etapa → `scrollTop`), lida do
+ * DOM do quadro — as duas saídas para o inbox gravam no retorno (o quadro e
+ * o link do formulário, que mora na página e não tem os refs das colunas).
+ * Só entra coluna rolada. Abaixo de `lg` a lista não rola (a página rola) e
+ * tudo dá zero.
+ */
+export function rolagemDasColunas(quadro: HTMLElement | null): Record<string, number> {
+  const saida: Record<string, number> = {};
+  if (!quadro) return saida;
+  for (const lista of quadro.querySelectorAll<HTMLElement>("[data-coluna]")) {
+    const etapa = lista.dataset.coluna;
+    if (etapa && lista.scrollTop > 0) saida[etapa] = Math.round(lista.scrollTop);
+  }
+  return saida;
+}
 
 /**
  * Os cards que a coluna desenha: os `limite` primeiros, mais o card que
@@ -276,6 +304,7 @@ export function PipelineBoard({
         pipelineId,
         scrollLeft: quadro?.scrollLeft ?? 0,
         scrollTop: quadro?.closest("main")?.scrollTop ?? 0,
+        rolagemDasColunas: rolagemDasColunas(quadro),
         // ⚠️ Os tetos viajam junto com a rolagem: quem abriu a conversa a
         // partir do card 150 volta, sem eles, para um quadro de 100 — o card
         // de origem não existe e o `scrollTop` é grampeado pela altura menor.
@@ -345,13 +374,19 @@ export function PipelineBoard({
         // ⚠️ `behavior: "instant"` é obrigatório: `.pipeline-scroll` tem
         // `scroll-behavior: smooth` no styled-jsx abaixo, e restaurar
         // obedecendo o CSS viraria uma varredura animada a cada volta.
-        quadroRef.current?.scrollTo({
+        const quadro = quadroRef.current;
+        quadro?.scrollTo({
           left: retorno.scrollLeft,
           behavior: "instant",
         });
-        quadroRef.current
+        quadro
           ?.closest("main")
           ?.scrollTo({ top: retorno.scrollTop, behavior: "instant" });
+        // De `lg` para cima quem rola é cada coluna (ver `rolagemDasColunas`).
+        for (const lista of quadro?.querySelectorAll<HTMLElement>("[data-coluna]") ?? []) {
+          const topo = retorno.rolagemDasColunas[lista.dataset.coluna ?? ""];
+          if (topo) lista.scrollTo({ top: topo, behavior: "instant" });
+        }
         aplicadoRef.current = true;
       });
     });
@@ -400,6 +435,10 @@ export function PipelineBoard({
     setActiveDealId(null);
   }
 
+  // O card solto só interessa à coluna em que ele está: passado a todas, a
+  // troca dele redesenhava as treze colunas a cada soltura.
+  const etapaDoSolto = recemSolto ? deals.find((d) => d.id === recemSolto)?.stage_id : undefined;
+
   return (
     <DndContext
       sensors={sensors}
@@ -413,10 +452,19 @@ export function PipelineBoard({
           Disabled on lg+ where snapping would interfere with the
           natural layout. The board can still overflow horizontally on
           lg+ once a pipeline has many stages (columns keep a 260px
-          min-width), so a thin scrollbar stays visible on desktop. */}
+          min-width), so a thin scrollbar stays visible on desktop.
+
+          ⚠️ De `lg` para cima o quadro tem a ALTURA DA TELA (`lg:flex-1`
+          dentro da página em coluna, ver `pipelines/page.tsx`) e cada
+          coluna rola sozinha: com a altura da coluna mais comprida, a barra
+          horizontal ficava no fim da página (16–20 mil px no funil real) e
+          só quem rolava até lá conseguia andar de lado com o mouse (pedido
+          do operador, 03/10/2026). O piso (`lg:min-h-80`) segura a tela
+          baixa: abaixo dele a página volta a rolar, em vez de colunas da
+          espessura de um card. Abaixo de `lg` nada mudou: a página rola. */}
       <div
         ref={quadroRef}
-        className="pipeline-scroll flex snap-x snap-mandatory gap-3 overflow-x-auto pb-4 lg:snap-none"
+        className="pipeline-scroll flex snap-x snap-mandatory gap-3 overflow-x-auto pb-4 lg:min-h-80 lg:flex-1 lg:snap-none"
       >
         {sortedStages.map((stage) => {
           const stageDeals = dealsByStage.get(stage.id) ?? [];
@@ -435,7 +483,7 @@ export function PipelineBoard({
               channels={channels}
               esperasPorContato={esperasPorContato}
               limite={limitesDoFunil[stage.id] ?? CARDS_POR_COLUNA}
-              recemSolto={recemSolto}
+              recemSolto={etapaDoSolto === stage.id ? recemSolto : null}
               onMostrarMais={mostrarMais}
               onFaltaConteudo={onFaltaConteudo}
               onAddDeal={onAddDeal}
@@ -489,10 +537,16 @@ export function PipelineBoard({
             scrollbar-width: none;
           }
         }
+        /* A barra horizontal é o caminho de quem usa mouse sem gesto de
+           lado: a cor da borda (cinza-claro sobre o fundo claro) quase não
+           se via, por isso o polegar sai do texto secundário. Com
+           scrollbar-color declarado, o Chrome ignora os pseudo-elementos
+           -webkit abaixo (ficam para o Safari). */
         @media (hover: hover) and (pointer: fine) {
           .pipeline-scroll {
             scrollbar-width: thin;
-            scrollbar-color: var(--border) transparent;
+            scrollbar-color: color-mix(in oklab, var(--muted-foreground) 55%, transparent)
+              transparent;
           }
           .pipeline-scroll::-webkit-scrollbar {
             height: 8px;
@@ -501,7 +555,7 @@ export function PipelineBoard({
             background: transparent;
           }
           .pipeline-scroll::-webkit-scrollbar-thumb {
-            background-color: var(--border);
+            background-color: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
             border-radius: 9999px;
           }
           .pipeline-scroll::-webkit-scrollbar-thumb:hover {
@@ -513,7 +567,11 @@ export function PipelineBoard({
   );
 }
 
-function StageColumn({
+// `memo`: o quadro redesenha ao pegar e soltar um card (`activeDealId`,
+// `recemSolto`) e ao chegarem canais e esperas, e sem ele as treze colunas
+// remontavam a lista inteira a cada vez. ⚠️ O projeto NÃO roda o React
+// Compiler (só as regras dele no lint): nada é memoizado sozinho.
+const StageColumn = memo(function StageColumn({
   stage,
   deals,
   totalValue,
@@ -539,7 +597,7 @@ function StageColumn({
   channels: CbChannel[];
   /** Quantos cards desta coluna desenhar — ver `CARDS_POR_COLUNA`. */
   limite: number;
-  /** O último card solto no quadro (pode ser de outra coluna). */
+  /** O último card solto no quadro, só quando ele está NESTA coluna. */
   recemSolto: string | null;
   onMostrarMais: (stageId: string) => void;
   onFaltaConteudo: (ids: string[], funil: string) => void;
@@ -574,6 +632,46 @@ function StageColumn({
     if (faltam) onFaltaConteudo(faltam.split(","), stage.pipeline_id);
   }, [faltam, deals, stage.pipeline_id, onFaltaConteudo]);
 
+  /**
+   * O lote seguinte sai SOZINHO quando o botão do fim da coluna chega a
+   * `FOLGA_DA_CARGA_AO_ROLAR` da área visível. O botão continua lá: é a
+   * reserva de quem usa teclado e do navegador que não entrega o
+   * `IntersectionObserver` (aba em segundo plano).
+   *
+   * ⚠️ A raiz é quem ROLA: de `lg` para cima, a própria lista; abaixo, o
+   * `<main>`. Com a raiz implícita (a janela) a folga não valeria dentro de
+   * uma rolagem aninhada, e o lote só sairia com o fim já na tela.
+   *
+   * ⚠️ `limite` nas dependências: o observador é refeito depois de cada
+   * lote, e a primeira leitura dele pede o próximo se o fim AINDA estiver
+   * dentro da folga (a coluna enche até passar dela, e para).
+   */
+  const listaRef = useRef<HTMLDivElement | null>(null);
+  const ligarLista = useCallback(
+    (el: HTMLDivElement | null) => {
+      listaRef.current = el;
+      setNodeRef(el);
+    },
+    [setNodeRef],
+  );
+  const maisRef = useRef<HTMLButtonElement>(null);
+  const temMais = escondidos > 0;
+  useEffect(() => {
+    const botao = maisRef.current;
+    const lista = listaRef.current;
+    if (!temMais || !botao || !lista || typeof IntersectionObserver === "undefined") return;
+    const raiz =
+      getComputedStyle(lista).overflowY === "visible" ? lista.closest("main") : lista;
+    const observador = new IntersectionObserver(
+      (entradas) => {
+        if (entradas.some((e) => e.isIntersecting)) onMostrarMais(stage.id);
+      },
+      { root: raiz, rootMargin: FOLGA_DA_CARGA_AO_ROLAR },
+    );
+    observador.observe(botao);
+    return () => observador.disconnect();
+  }, [temMais, limite, stage.id, onMostrarMais]);
+
   return (
     // On mobile each column is `w-[85vw]` (with a reasonable min/max)
     // so the next column's edge peeks in — a "there's more here" hint.
@@ -581,7 +679,10 @@ function StageColumn({
     // restore the flex-1 share-the-row behavior. The droppable ref is
     // on the inner messages region below — intentionally NOT here, so
     // a drag over the column header doesn't highlight the whole column.
-    <div className="flex w-[85vw] min-w-[260px] max-w-[320px] shrink-0 snap-start flex-col rounded-xl border border-border bg-card/60 p-4 lg:w-auto lg:max-w-none lg:flex-1 lg:basis-[260px] lg:shrink lg:snap-none">
+    // De `lg` para cima a coluna tem a altura do quadro (`lg:min-h-0`) e só
+    // a LISTA rola: cabeçalho (nome, contagem, valor) e "Adicionar negócio"
+    // ficam parados à vista.
+    <div className="flex w-[85vw] min-w-[260px] max-w-[320px] shrink-0 snap-start flex-col rounded-xl border border-border bg-card/60 p-4 lg:min-h-0 lg:w-auto lg:max-w-none lg:flex-1 lg:basis-[260px] lg:shrink lg:snap-none">
       {/* 3px colored top border — sits above the column's padding */}
       <div
         className="-mx-4 -mt-4 h-[3px] rounded-t-xl"
@@ -636,9 +737,15 @@ function StageColumn({
         {formatCurrency(totalValue)}
       </p>
 
+      {/* A lista rola sozinha de `lg` para cima (`data-coluna` é por onde o
+          retorno do inbox mede e restaura a rolagem dela). A margem negativa
+          com o mesmo recuo dá espaço à sombra e ao salto do card no hover,
+          que o `overflow` cortaria rente, e põe a barra vertical no recuo
+          da coluna. */}
       <div
-        ref={setNodeRef}
-        className={`mt-3 flex flex-1 flex-col gap-2 rounded-lg transition-all ${
+        ref={ligarLista}
+        data-coluna={stage.id}
+        className={`mt-3 flex flex-1 flex-col gap-2 rounded-lg transition-all lg:-mx-2 lg:min-h-0 lg:overflow-y-auto lg:px-2 lg:py-1 lg:[scrollbar-width:thin] ${
           isOver
             ? "bg-primary/5 outline outline-2 outline-dashed outline-primary outline-offset-2"
             : ""
@@ -672,8 +779,9 @@ function StageColumn({
         {/* Dentro da área de soltura, de propósito: quem arrasta até o fim
             de uma coluna cheia solta em cima deste botão, e fora dela o
             gesto cairia no vão entre o quadro e "Adicionar negócio". */}
-        {escondidos > 0 && (
+        {temMais && (
           <button
+            ref={maisRef}
             type="button"
             onClick={() => onMostrarMais(stage.id)}
             className="w-full rounded-lg py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -696,9 +804,13 @@ function StageColumn({
       </Button>
     </div>
   );
-}
+});
 
-function DraggableDealCard({
+// `memo`: com props estáveis (o board usa `useCallback` nos handlers), o card
+// que não mudou nem chama o `useDraggable` quando a coluna redesenha. Ele
+// ainda redesenha quando o arrasto muda o contexto do dnd-kit (pegar, trocar
+// de coluna, soltar) — o `DealCard` dentro, também `memo`, segura o resto.
+const DraggableDealCard = memo(function DraggableDealCard({
   deal,
   stage,
   campos,
@@ -738,7 +850,7 @@ function DraggableDealCard({
       />
     </div>
   );
-}
+});
 
 /**
  * O card desenhado cujo conteúdo ainda não chegou: no lugar certo, com o

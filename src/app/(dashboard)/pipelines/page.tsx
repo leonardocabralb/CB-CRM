@@ -14,6 +14,7 @@ import type {
 import {
   PipelineBoard,
   idsDesenhados,
+  rolagemDasColunas,
   type TetosDoQuadro,
 } from "@/components/pipelines/pipeline-board";
 import { PipelineSettings } from "@/components/pipelines/pipeline-settings";
@@ -197,6 +198,7 @@ function PipelinesPageInner() {
       pipelineId: selectedPipelineId,
       scrollLeft: quadroRef.current?.scrollLeft ?? 0,
       scrollTop: quadroRef.current?.closest("main")?.scrollTop ?? 0,
+      rolagemDasColunas: rolagemDasColunas(quadroRef.current),
       limites: tetos.funil === selectedPipelineId ? tetos.porEtapa : {},
     });
   }, [selectedPipelineId]);
@@ -1014,7 +1016,19 @@ function PipelinesPageInner() {
   }
 
   return (
-    <div className="space-y-6">
+    // ⚠️ No Quadro, de `lg` para cima, a página vira uma coluna da ALTURA do
+    // `<main>` e o quadro fica com o que sobra (`lg:flex-1` no
+    // `.pipeline-scroll`): as colunas rolam sozinhas e a barra horizontal do
+    // quadro fica no rodapé da tela, à vista — ver `pipeline-board.tsx`. As
+    // outras vistas (Lista, Desempenho, Saúde, Automações) seguem rolando a
+    // página.
+    <div
+      className={
+        vista === "leads" && pipelines.length > 0
+          ? "space-y-6 lg:flex lg:h-full lg:flex-col"
+          : "space-y-6"
+      }
+    >
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">

@@ -56,6 +56,7 @@ describe("desserializarRetorno — registro de sessionStorage é entrada não co
       pipelineId: "p1",
       scrollLeft: 0,
       scrollTop: 0,
+      rolagemDasColunas: {},
       limites: {},
       em: AGORA,
     });
@@ -69,6 +70,7 @@ describe("desserializarRetorno — registro de sessionStorage é entrada não co
       pipelineId: "p1",
       scrollLeft: 320,
       scrollTop: 1024,
+      rolagemDasColunas: {},
       limites: {},
       em: AGORA,
     });
@@ -113,6 +115,40 @@ describe("desserializarRetorno — registro de sessionStorage é entrada não co
     for (const lixo of ["x", 7, null, true]) {
       const lido = desserializarRetorno(registro({ limites: lixo }), AGORA);
       expect(lido?.limites).toEqual({});
+    }
+  });
+
+  // ------------------------------------------------------------
+  // A rolagem POR COLUNA: de `lg` para cima o quadro tem a altura da tela e
+  // cada coluna rola sozinha, então o `scrollTop` do `<main>` fica em zero.
+  // ------------------------------------------------------------
+
+  it("a rolagem de cada coluna sobrevive à ida e volta, arredondada", () => {
+    const lido = desserializarRetorno(
+      registro({ rolagemDasColunas: { etapa1: 1840, etapa2: 512.6 } }),
+      AGORA,
+    );
+    expect(lido?.rolagemDasColunas).toEqual({ etapa1: 1840, etapa2: 513 });
+  });
+
+  it("registro da versão anterior, sem o campo, volta com o mapa VAZIO", () => {
+    expect(desserializarRetorno(registro(), AGORA)?.rolagemDasColunas).toEqual({});
+  });
+
+  it("rolagem estragada cai sozinha, sem derrubar o registro nem as outras colunas", () => {
+    const lido = desserializarRetorno(
+      registro({
+        rolagemDasColunas: { boa: 300, texto: "300", zero: 0, negativa: -4, nan: NaN, "": 90 },
+        limites: { boa: 40 },
+      }),
+      AGORA,
+    );
+    expect(lido?.rolagemDasColunas).toEqual({ boa: 300 });
+    expect(lido?.limites).toEqual({ boa: 40 });
+    for (const lixo of ["x", 7, null, true]) {
+      expect(
+        desserializarRetorno(registro({ rolagemDasColunas: lixo }), AGORA)?.rolagemDasColunas,
+      ).toEqual({});
     }
   });
 });

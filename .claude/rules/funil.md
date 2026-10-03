@@ -70,6 +70,13 @@ funis. As métricas (Lista, Desempenho, Saúde, Meta Ads) estão em
   nasce na PÁGINA: o link "ver conversa" do formulário grava o mesmo retorno
   (props `origemFunil`/`aoIrParaConversa` do `DealForm`; o painel do inbox não
   as passa).
+- ⚠️ **De `lg` para cima o quadro tem a ALTURA DA TELA e cada coluna rola
+  sozinha** (operador, 03/10/2026: a barra horizontal ficava no fim de 20 mil
+  px). Só no Quadro a página é `lg:flex lg:h-full lg:flex-col`; a coluna
+  desenha `CARDS_POR_COLUNA` (20) e pede o lote seguinte por
+  `IntersectionObserver` com a RAIZ em quem rola (a lista; abaixo de `lg`, o
+  `<main>`); o retorno grava `rolagemDasColunas` (`[data-coluna]`). O React
+  Compiler NÃO está ligado: `StageColumn`/`DraggableDealCard` são `memo` à mão.
 - **Sem realtime no quadro, por desenho**: não lidas e última mensagem são foto
   da carga. Os canais são buscados UMA vez no board (`useChannels` no card
   custava um GET por card) e o `DealCard` é `memo` com handlers `useCallback`

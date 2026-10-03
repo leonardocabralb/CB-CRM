@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { CARDS_POR_COLUNA, cardsDaColuna, idsDesenhados } from "./pipeline-board";
+import {
+  CARDS_POR_COLUNA,
+  cardsDaColuna,
+  idsDesenhados,
+  rolagemDasColunas,
+} from "./pipeline-board";
 
 /**
  * O teto POR COLUNA do quadro do funil.
@@ -60,8 +65,8 @@ describe("cardsDaColuna", () => {
     expect(visiveis.map((d) => d.id)).toEqual(["d200", "d0", "d1", "d2"]);
   });
 
-  it("o teto inicial é o mesmo número que a lista de leads usa", () => {
-    expect(CARDS_POR_COLUNA).toBe(100);
+  it("o lote inicial é de 20 por coluna (eram 100: o Trabalhista abria com 580 cards de uma vez)", () => {
+    expect(CARDS_POR_COLUNA).toBe(20);
   });
 });
 
@@ -72,10 +77,10 @@ describe("idsDesenhados — o que a carga baixa por completo", () => {
   it("os primeiros de cada etapa até o teto, na ordem da lista", () => {
     const lista = [...naEtapa("a", 150), ...naEtapa("b", 3)];
     const ids = idsDesenhados(lista, {});
-    expect(ids).toHaveLength(103);
+    expect(ids).toHaveLength(CARDS_POR_COLUNA + 3);
     expect(ids.slice(0, 2)).toEqual(["a-0", "a-1"]);
-    expect(ids).toContain("a-99");
-    expect(ids).not.toContain("a-100");
+    expect(ids).toContain(`a-${CARDS_POR_COLUNA - 1}`);
+    expect(ids).not.toContain(`a-${CARDS_POR_COLUNA}`);
     expect(ids).toContain("b-2");
   });
 
@@ -92,5 +97,31 @@ describe("idsDesenhados — o que a carga baixa por completo", () => {
       { id: "3", stage_id: "a" },
     ];
     expect(idsDesenhados(lista, { a: 1, b: 1 })).toEqual(["1", "2"]);
+  });
+});
+
+describe("rolagemDasColunas — o que o retorno do inbox grava de cada coluna", () => {
+  // O ambiente dos testes é `node`: um dublê com o pedaço do DOM que a
+  // função usa (as listas marcadas com `data-coluna`).
+  const quadro = (listas: { coluna?: string; scrollTop: number }[]) =>
+    ({
+      querySelectorAll: () => listas.map((l) => ({ dataset: { coluna: l.coluna }, scrollTop: l.scrollTop })),
+    }) as unknown as HTMLElement;
+
+  it("só as colunas roladas, arredondadas", () => {
+    expect(
+      rolagemDasColunas(
+        quadro([
+          { coluna: "a", scrollTop: 0 },
+          { coluna: "b", scrollTop: 1840.4 },
+          { coluna: "c", scrollTop: 96 },
+        ]),
+      ),
+    ).toEqual({ b: 1840, c: 96 });
+  });
+
+  it("sem quadro (desmontado) ou lista sem etapa → nada", () => {
+    expect(rolagemDasColunas(null)).toEqual({});
+    expect(rolagemDasColunas(quadro([{ scrollTop: 300 }]))).toEqual({});
   });
 });
