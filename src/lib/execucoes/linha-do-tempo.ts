@@ -127,12 +127,22 @@ export function montarLinhaDoTempo(args: {
   )
   if (retomada.tipo === 'parar') return { feitos, proximos: [], naoRetoma: true }
 
+  // ⚠️ O "Aguardar sem conversa" (03/10/2026) estaciona no PRÓPRIO passo (+0)
+  // e, ao acordar, só se reconfere: segue ou estaciona de novo. Listá-lo como
+  // próximo diria "mais N" depois desta espera — que é ela mesma. A retentativa
+  // também é +0, mas ali o passo roda de verdade de novo e continua na lista.
+  const reconfere =
+    agora?.step_type === 'wait' &&
+    (agora.step_config as { modo?: unknown } | null | undefined)?.modo === 'sem_conversa' &&
+    agora.position === retomada.posicao
+  const inicio = reconfere ? retomada.posicao + 1 : retomada.posicao
+
   const proximos: ItemDaLinha[] = passos
     .filter(
       (p) =>
         p.parent_step_id === espera.parent_step_id &&
         p.branch === espera.branch &&
-        p.position >= retomada.posicao,
+        p.position >= inicio,
     )
     .sort((a, b) => a.position - b.position)
     .map((p) => {

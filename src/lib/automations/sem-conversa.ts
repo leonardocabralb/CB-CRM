@@ -110,9 +110,9 @@ export function decidirSemConversa(args: {
     };
   }
   if (!recontagem.ultima) return { tipo: 'segue', nota: 'nenhuma mensagem na conversa; segue' };
-  // `created_at` é o relógio do APARELHO (Evolution): um celular com a data
-  // adiantada gravaria a mensagem "no futuro" e empurraria a espera para lá.
-  // Mensagem do futuro conta como agora — no pior caso, N a partir de agora.
+  // Defesa: a leitura já usa o relógio do banco na mensagem ao vivo, mas a sem
+  // `gravada_em` (carga de histórico) traz o relógio de quem a gravou. Mensagem
+  // "do futuro" conta como agora — no pior caso, N a partir de agora.
   const ultima = recontagem.ultima.getTime() > agora.getTime() ? agora : recontagem.ultima;
   const limite = new Date(ultima.getTime() + duracaoMs);
   if (limite.getTime() <= agora.getTime()) {
@@ -128,15 +128,29 @@ export function decidirSemConversa(args: {
   };
 }
 
+/** O instante de uma coluna de data lida, ou `null`; `'erro'` se veio ilegível. */
+function instanteLido(linha: unknown, coluna: 'gravada_em' | 'created_at'): Date | null | 'erro' {
+  const valor = (linha as Record<string, unknown> | undefined)?.[coluna];
+  if (typeof valor !== 'string') return null;
+  const instante = new Date(valor);
+  return Number.isNaN(instante.getTime()) ? 'erro' : instante;
+}
+
 /**
  * O instante da última mensagem trocada com o contato, em qualquer conversa
- * dele na conta (o relógio da mensagem, `created_at`). `null` = nenhuma;
- * `'erro'` = não deu para ler. Nunca lança.
+ * dele na conta. `null` = nenhuma; `'erro'` = não deu para ler. Nunca lança.
  *
  * Toda linha de `messages` conta, de propósito: é "a última troca de
  * mensagens, de qualquer uma das partes" — cliente, equipe pelo CRM e pelo
  * celular, robô, ligação, mensagem apagada depois. Grupo não entra (a conversa
  * de grupo não tem `contact_id`).
+ *
+ * ⚠️ O RELÓGIO DO BANCO (`gravada_em`, 1003) para toda mensagem gravada ao vivo;
+ * o do aparelho (`created_at`) só para a que não tem `gravada_em` (a carga de
+ * histórico e o que é anterior à 1003). Pelo `created_at`, um celular com a data
+ * adiantada gravaria a mensagem "no futuro", e cada despertar a releria e
+ * estacionaria de novo até essa data passar — a régua da segunda linha do
+ * "parar se responder" (`clienteRespondeuDesde`) é a mesma.
  */
 export async function ultimaMensagemDoContato(
   db: SupabaseClient,
@@ -156,20 +170,33 @@ export async function ultimaMensagemDoContato(
     }
     const ids = (conversas ?? []).map((c) => (c as { id: string }).id);
     if (ids.length === 0) return null;
-    const { data, error } = await db
-      .from('messages')
-      .select('created_at')
-      .in('conversation_id', ids)
-      .order('created_at', { ascending: false })
-      .limit(1);
-    if (error) {
-      console.error('[automations] sem-conversa: leitura das mensagens falhou:', error.message);
+    const [aoVivo, semCarimbo] = await Promise.all([
+      db
+        .from('messages')
+        .select('gravada_em')
+        .in('conversation_id', ids)
+        .not('gravada_em', 'is', null)
+        .order('gravada_em', { ascending: false })
+        .limit(1),
+      db
+        .from('messages')
+        .select('created_at')
+        .in('conversation_id', ids)
+        .is('gravada_em', null)
+        .order('created_at', { ascending: false })
+        .limit(1),
+    ]);
+    const erro = aoVivo.error ?? semCarimbo.error;
+    if (erro) {
+      console.error('[automations] sem-conversa: leitura das mensagens falhou:', erro.message);
       return 'erro';
     }
-    const valor = (data?.[0] as { created_at?: unknown } | undefined)?.created_at;
-    if (typeof valor !== 'string') return null;
-    const instante = new Date(valor);
-    return Number.isNaN(instante.getTime()) ? 'erro' : instante;
+    const a = instanteLido(aoVivo.data?.[0], 'gravada_em');
+    const b = instanteLido(semCarimbo.data?.[0], 'created_at');
+    if (a === 'erro' || b === 'erro') return 'erro';
+    if (!a) return b;
+    if (!b) return a;
+    return a.getTime() >= b.getTime() ? a : b;
   } catch (err) {
     console.error('[automations] sem-conversa: leitura estourou:', err);
     return 'erro';

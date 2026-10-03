@@ -84,8 +84,12 @@ const h = vi.hoisted(() => ({
     /** Mensagens do CLIENTE gravadas depois de a espera ser estacionada. */
     respostasDesde: [] as { id: string }[],
     erroNasRespostas: null as string | null,
-    /** A última mensagem da conversa que o "Aguardar sem conversa" lê (03/10/2026). */
-    ultimasMensagens: [] as { created_at: string }[],
+    /**
+     * A última mensagem da conversa que o "Aguardar sem conversa" lê (03/10/2026):
+     * pelo relógio do BANCO (`gravada_em`) e, sem ele, pelo da carga (`created_at`).
+     */
+    ultimasDoBanco: [] as { gravada_em: string }[],
+    ultimasSemCarimbo: [] as { created_at: string }[],
     erroNaUltimaMensagem: null as string | null,
     /** Status gravados na fila (`markPending`), na ordem. */
     statusDaFila: [] as unknown[],
@@ -229,9 +233,9 @@ vi.mock('./admin-client', () => {
     }
     if (table === 'messages') {
       // O "Aguardar sem conversa" pede SÓ o instante da última mensagem.
-      if (ops.colunas === 'created_at') {
+      if (ops.colunas === 'gravada_em' || ops.colunas === 'created_at') {
         if (state.erroNaUltimaMensagem) return { data: null, error: { message: state.erroNaUltimaMensagem } };
-        return { data: state.ultimasMensagens, error: null };
+        return { data: ops.colunas === 'gravada_em' ? state.ultimasDoBanco : state.ultimasSemCarimbo, error: null };
       }
       if (state.erroNasRespostas) return { data: null, error: { message: state.erroNasRespostas } };
       return { data: state.respostasDesde, error: null };
@@ -764,7 +768,8 @@ beforeEach(() => {
   h.state.leiturasDoCampo = [];
   h.state.respostasDesde = [];
   h.state.erroNasRespostas = null;
-  h.state.ultimasMensagens = [];
+  h.state.ultimasDoBanco = [];
+  h.state.ultimasSemCarimbo = [];
   h.state.erroNaUltimaMensagem = null;
   h.state.ultimoMovimento = null;
   h.state.statusDaFila = [];
@@ -6026,7 +6031,7 @@ describe('Aguardar N sem conversa (03/10/2026)', () => {
   it('na CHEGADA estaciona N inteiro, na posição do PRÓPRIO passo, e o passo seguinte não roda', async () => {
     // Mensagem velha na conversa: na chegada ela nem é lida — o card que acabou
     // de entrar na etapa espera N inteiro.
-    h.state.ultimasMensagens = [{ created_at: '2026-08-01T12:00:00Z' }];
+    h.state.ultimasDoBanco = [{ gravada_em: '2026-08-01T12:00:00Z' }];
     await chega('2026-10-03T17:20:00Z');
 
     expect(vi.mocked(engineSendText)).not.toHaveBeenCalled();
@@ -6048,7 +6053,7 @@ describe('Aguardar N sem conversa (03/10/2026)', () => {
 
   it('ao ACORDAR com conversa há menos de N: estaciona de novo até N depois da última mensagem', async () => {
     prepara('2026-10-18T17:20:00Z', [espera(), depois()]);
-    h.state.ultimasMensagens = [{ created_at: '2026-10-10T12:00:00Z' }];
+    h.state.ultimasDoBanco = [{ gravada_em: '2026-10-10T12:00:00Z' }];
 
     await resumePendingExecution(estacionada());
 
@@ -6063,7 +6068,7 @@ describe('Aguardar N sem conversa (03/10/2026)', () => {
 
   it('ao ACORDAR com N de silêncio desde a última mensagem: segue para o passo seguinte', async () => {
     prepara('2026-10-18T17:20:00Z', [espera(), depois()]);
-    h.state.ultimasMensagens = [{ created_at: '2026-10-01T12:00:00Z' }];
+    h.state.ultimasDoBanco = [{ gravada_em: '2026-10-01T12:00:00Z' }];
 
     await resumePendingExecution(estacionada());
 
@@ -6074,7 +6079,7 @@ describe('Aguardar N sem conversa (03/10/2026)', () => {
 
   it('ao ACORDAR sem mensagem nenhuma na conversa: segue', async () => {
     prepara('2026-10-18T17:20:00Z', [espera(), depois()]);
-    h.state.ultimasMensagens = [];
+    h.state.ultimasDoBanco = [];
 
     await resumePendingExecution(estacionada());
 
@@ -6104,7 +6109,7 @@ describe('Aguardar N sem conversa (03/10/2026)', () => {
     };
     prepara('2026-10-18T17:20:00Z', [tempo, espera({}, 'esp-sc', 1), depois(2)]);
     // Mensagem velha: se a passagem fosse lida como recontagem, seguiria.
-    h.state.ultimasMensagens = [{ created_at: '2026-08-01T12:00:00Z' }];
+    h.state.ultimasDoBanco = [{ gravada_em: '2026-08-01T12:00:00Z' }];
 
     // A espera de 1 h estacionou com a posição SEGUINTE (+1) e ela mesma no contexto.
     await resumePendingExecution(estacionada('esp-tempo', 0, 1));

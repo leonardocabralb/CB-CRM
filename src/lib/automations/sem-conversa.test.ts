@@ -102,6 +102,8 @@ describe('ultimaMensagemDoContato', () => {
           select: (...a: unknown[]) => (ops.push(['select', ...a]), q),
           eq: (...a: unknown[]) => (ops.push(['eq', ...a]), q),
           in: (...a: unknown[]) => (ops.push(['in', ...a]), q),
+          is: (...a: unknown[]) => (ops.push(['is', ...a]), q),
+          not: (...a: unknown[]) => (ops.push(['not', ...a]), q),
           order: (...a: unknown[]) => (ops.push(['order', ...a]), q),
           limit: (...a: unknown[]) => (ops.push(['limit', ...a]), q),
           then: (resolve: (r: Resposta) => unknown) => resolve(respostas.shift() as Resposta),
@@ -111,11 +113,14 @@ describe('ultimaMensagemDoContato', () => {
     };
     return { db: db as never, chamadas };
   }
+  const conversas = { data: [{ id: 'conv-1' }, { id: 'conv-2' }], error: null };
+  const vazio = { data: [], error: null };
 
-  it('lê as conversas do contato NA CONTA e a mensagem mais recente delas, de qualquer lado', async () => {
+  it('lê as conversas do contato NA CONTA e a mensagem mais recente, pelo relógio do BANCO, de qualquer lado', async () => {
     const { db, chamadas } = banco([
-      { data: [{ id: 'conv-1' }, { id: 'conv-2' }], error: null },
-      { data: [{ created_at: '2026-10-01T12:00:00+00:00' }], error: null },
+      conversas,
+      { data: [{ gravada_em: '2026-10-01T12:00:00+00:00' }], error: null },
+      vazio,
     ]);
     const r = await ultimaMensagemDoContato(db, 'acct-1', 'c1');
     expect(r).toEqual(new Date('2026-10-01T12:00:00Z'));
@@ -129,26 +134,34 @@ describe('ultimaMensagemDoContato', () => {
     expect(chamadas[1].ops).toEqual(
       expect.arrayContaining([
         ['in', 'conversation_id', ['conv-1', 'conv-2']],
-        ['order', 'created_at', { ascending: false }],
+        ['not', 'gravada_em', 'is', null],
+        ['order', 'gravada_em', { ascending: false }],
         ['limit', 1],
       ])
     );
+    // A sem `gravada_em` (carga de histórico) entra pelo relógio dela.
+    expect(chamadas[2].ops).toEqual(
+      expect.arrayContaining([
+        ['is', 'gravada_em', null],
+        ['order', 'created_at', { ascending: false }],
+      ])
+    );
     // Nenhum recorte por quem mandou: cliente, equipe, robô e ligação contam.
-    expect(chamadas[1].ops.filter((o) => o[0] === 'eq')).toEqual([]);
+    expect([...chamadas[1].ops, ...chamadas[2].ops].filter((o) => o[0] === 'eq')).toEqual([]);
+  });
+
+  it('a mais recente das duas vale: a importada mais nova que a última ao vivo vence', async () => {
+    const { db } = banco([
+      conversas,
+      { data: [{ gravada_em: '2026-09-20T12:00:00+00:00' }], error: null },
+      { data: [{ created_at: '2026-09-25T12:00:00+00:00' }], error: null },
+    ]);
+    expect(await ultimaMensagemDoContato(db, 'acct-1', 'c1')).toEqual(new Date('2026-09-25T12:00:00Z'));
   });
 
   it('sem conversa, ou conversa sem mensagem: null', async () => {
     expect(await ultimaMensagemDoContato(banco([{ data: [], error: null }]).db, 'acct-1', 'c1')).toBeNull();
-    expect(
-      await ultimaMensagemDoContato(
-        banco([
-          { data: [{ id: 'conv-1' }], error: null },
-          { data: [], error: null },
-        ]).db,
-        'acct-1',
-        'c1'
-      )
-    ).toBeNull();
+    expect(await ultimaMensagemDoContato(banco([conversas, vazio, vazio]).db, 'acct-1', 'c1')).toBeNull();
     expect(await ultimaMensagemDoContato(banco([]).db, 'acct-1', null)).toBeNull();
   });
 
@@ -157,14 +170,10 @@ describe('ultimaMensagemDoContato', () => {
       await ultimaMensagemDoContato(banco([{ data: null, error: { message: 'x' } }]).db, 'acct-1', 'c1')
     ).toBe('erro');
     expect(
-      await ultimaMensagemDoContato(
-        banco([
-          { data: [{ id: 'conv-1' }], error: null },
-          { data: null, error: { message: 'y' } },
-        ]).db,
-        'acct-1',
-        'c1'
-      )
+      await ultimaMensagemDoContato(banco([conversas, { data: null, error: { message: 'y' } }, vazio]).db, 'acct-1', 'c1')
+    ).toBe('erro');
+    expect(
+      await ultimaMensagemDoContato(banco([conversas, vazio, { data: null, error: { message: 'z' } }]).db, 'acct-1', 'c1')
     ).toBe('erro');
   });
 });

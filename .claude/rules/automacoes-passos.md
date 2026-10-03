@@ -146,9 +146,10 @@ e encerra em vez de recomeçar. `sem-conversa.ts` (puro + a leitura).
   mensagem**: a chegada não lê a conversa (espera N inteiro); ao acordar,
   segue com N de silêncio desde a última, senão estaciona até `última + N`.
 - ⚠️ **Toda linha de `messages` conta** (cliente, equipe pelo CRM e pelo
-  celular, robô, ligação, apagada), pelo `created_at`, em todas as conversas
-  do contato na conta: a mensagem do celular não passa pelo motor, só a
-  leitura da conversa a vê.
+  celular, robô, ligação, apagada), em todas as conversas do contato na
+  conta: a mensagem do celular não passa pelo motor, só a leitura a vê.
+  Pelo `gravada_em` (relógio do BANCO); `created_at` só na sem ele (carga):
+  pelo do aparelho, celular adiantado prenderia a espera até aquela data.
 - **"Parar se o cliente responder" não vale**: o motor ignora a caixa
   (`esperaParaSeResponder`: sem marca na fila), a ativação recusa a combinação
   (`espera_sem_conversa_com_resposta`) e o construtor a esconde — menos
@@ -158,6 +159,12 @@ e encerra em vez de recomeçar. `sem-conversa.ts` (puro + a leitura).
 - Resumo `wait_sem_conversa_<unidade>` nos dois dicionários; o registro sai
   em português, no fuso do escritório ("houve conversa em 10/10 09:00;
   aguarda até 25/10 09:00"), e o "Já rodou" o mostra como está.
+- **A aba Automações da conversa** não lista a própria espera como próxima
+  (`linha-do-tempo.ts`): ela só se reconfere ao acordar.
+- **Limites aceitos**: trocar o modo com a execução parada (sem conversa →
+  tempo) espera N a mais; com gatilho de MENSAGEM, cada mensagem abre uma
+  execução e todas convergem em `última + N` — usar "Não repetir por N
+  horas" ou gatilho de etapa.
 - **Rollback do deploy** com automação ligada neste modo: o motor antigo o
   lê como "por um tempo" e retoma pelo próprio passo — espera N de novo e
   segue. A contagem pela conversa se perde; nada quebra.
