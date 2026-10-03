@@ -51,11 +51,19 @@ export interface EvolutionMessageKey {
   previousRemoteJid?: string;
 }
 
+/**
+ * ⚠️ `message` não é só texto: no envio a número sem WhatsApp a Evolution 2.x
+ * responde 400 com `response.message` = `[{ jid, exists: false, number }]` (o
+ * resultado da consulta `onWhatsApp`), e um `join` cru dava "[object Object]".
+ */
 interface EvolutionErrorBody {
-  message?: string | string[];
+  message?: unknown;
   error?: string;
-  response?: { message?: string | string[] };
+  response?: { message?: unknown };
 }
+
+/** Teto do item de erro que não reconhecemos, serializado em JSON. */
+const TETO_DO_ITEM_DE_ERRO = 200;
 
 /**
  * Resposta do apagar-para-todos. A Evolution devolve a MENSAGEM DE
@@ -77,10 +85,17 @@ interface EvolutionSendResponse {
 
 export class EvolutionApiError extends Error {
   readonly status: number;
-  constructor(message: string, status: number) {
+  /**
+   * A Evolution recusou porque o destino NÃO TEM WhatsApp (`exists: false`).
+   * É recusa (4xx, nada saiu) que não muda em minutos: a retentativa das
+   * automações não a repete (`retentativa.ts`).
+   */
+  readonly semWhatsApp: boolean;
+  constructor(message: string, status: number, semWhatsApp = false) {
     super(message);
     this.name = 'EvolutionApiError';
     this.status = status;
+    this.semWhatsApp = semWhatsApp;
   }
 }
 
@@ -220,17 +235,45 @@ export class EvolutionClient {
     return (text ? JSON.parse(text) : {}) as T;
   }
 
+  /**
+   * ⚠️ O texto vira `automation_logs.steps_executed[].detail` (o "Já rodou"),
+   * a coluna `error` da agendada e o `message` do `evolution_rejected` da API
+   * v1. A frase do número sem WhatsApp é lida por `texto-do-motor.ts`
+   * (`semWhatsApp`): mudou aqui, muda lá.
+   */
   private async throwError(response: Response): Promise<never> {
     let message = `Evolution API error: ${response.status}`;
+    let semWhatsApp = false;
     try {
       const data = (await response.json()) as EvolutionErrorBody;
       const raw = data.response?.message ?? data.message ?? data.error;
-      if (Array.isArray(raw)) message = raw.join('; ');
-      else if (raw) message = raw;
+      const itens = raw == null ? [] : Array.isArray(raw) ? raw : [raw];
+      const texto = itens
+        .map((item: unknown) => {
+          if (typeof item === 'string') return item;
+          const r = item as { exists?: unknown; number?: unknown; jid?: unknown } | null;
+          if (r?.exists === false) {
+            semWhatsApp = true;
+            const numero =
+              typeof r.number === 'string' && r.number
+                ? r.number
+                : typeof r.jid === 'string'
+                  ? r.jid.split('@')[0]
+                  : '';
+            if (numero) return `number ${numero} is not on WhatsApp`;
+          }
+          const json = JSON.stringify(item) ?? String(item);
+          return json.length > TETO_DO_ITEM_DE_ERRO
+            ? `${json.slice(0, TETO_DO_ITEM_DE_ERRO)}…`
+            : json;
+        })
+        .filter(Boolean)
+        .join('; ');
+      if (texto) message = texto;
     } catch {
       // body wasn't JSON — keep the status fallback
     }
-    throw new EvolutionApiError(message, response.status);
+    throw new EvolutionApiError(message, response.status, semWhatsApp);
   }
 
   private extractId(res: EvolutionSendResponse): string {

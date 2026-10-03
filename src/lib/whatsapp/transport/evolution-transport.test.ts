@@ -176,3 +176,78 @@ describe('EvolutionClient.sendText', () => {
     });
   });
 });
+
+// O texto do erro vira o `detail` do passo no "Já rodou". A Evolution 2.x
+// responde ao envio para número sem WhatsApp com um OBJETO em
+// `response.message`, e o `join` cru gravava "[object Object]".
+describe('EvolutionClient: texto do erro da Evolution', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const client = () =>
+    new EvolutionClient({ baseUrl: 'https://evo.example.com', apikey: 'k', instance: 'crm' });
+
+  async function erroDoEnvio(corpo: string, status = 400): Promise<EvolutionApiError> {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(corpo, { status })));
+    const err = await client()
+      .sendText({ number: '5511900000000', text: 'oi' })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(EvolutionApiError);
+    return err as EvolutionApiError;
+  }
+
+  it('número sem WhatsApp (exists: false): frase legível e a marca semWhatsApp', async () => {
+    const err = await erroDoEnvio(
+      JSON.stringify({
+        status: 400,
+        error: 'Bad Request',
+        response: {
+          message: [{ jid: '5511900000000@s.whatsapp.net', exists: false, number: '5511900000000' }],
+        },
+      })
+    );
+    expect(err.message).toBe('number 5511900000000 is not on WhatsApp');
+    expect(err.status).toBe(400);
+    expect(err.semWhatsApp).toBe(true);
+  });
+
+  it('exists: false sem `number` tira o número do jid', async () => {
+    const err = await erroDoEnvio(
+      JSON.stringify({ response: { message: [{ jid: '5511900000001@s.whatsapp.net', exists: false }] } })
+    );
+    expect(err.message).toBe('number 5511900000001 is not on WhatsApp');
+    expect(err.semWhatsApp).toBe(true);
+  });
+
+  it('texto puro continua como veio (lista ou não), sem a marca', async () => {
+    const lista = await erroDoEnvio(
+      JSON.stringify({ status: 400, error: 'Bad Request', response: { message: ['Error: Connection Closed'] } })
+    );
+    expect(lista.message).toBe('Error: Connection Closed');
+    expect(lista.semWhatsApp).toBe(false);
+
+    const solto = await erroDoEnvio(JSON.stringify({ message: 'Unauthorized' }), 401);
+    expect(solto.message).toBe('Unauthorized');
+    expect(solto.status).toBe(401);
+    expect(solto.semWhatsApp).toBe(false);
+  });
+
+  it('objeto desconhecido vira JSON com teto, nunca "[object Object]"', async () => {
+    const err = await erroDoEnvio(
+      JSON.stringify({ response: { message: [{ campo: 'x'.repeat(500) }] } })
+    );
+    expect(err.message).not.toContain('[object Object]');
+    expect(err.message.startsWith('{"campo":"xxx')).toBe(true);
+    expect(err.message).toHaveLength(201); // 200 + '…'
+    expect(err.message.endsWith('…')).toBe(true);
+    expect(err.semWhatsApp).toBe(false);
+  });
+
+  it('corpo que não é JSON (ou vazio) fica no status', async () => {
+    expect((await erroDoEnvio('Bad Gateway', 502)).message).toBe('Evolution API error: 502');
+    expect((await erroDoEnvio(JSON.stringify({ response: { message: [] } }))).message).toBe(
+      'Evolution API error: 400'
+    );
+  });
+});

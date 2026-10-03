@@ -1430,7 +1430,10 @@ async function executeStepsFrom(
       // falhar igual daqui a cinco minutos.
       const provedor =
         err instanceof EvolutionApiError
-          ? { recusou: err.status >= 400 && err.status < 500 }
+          ? {
+              recusou: err.status >= 400 && err.status < 500,
+              semWhatsApp: err.semWhatsApp,
+            }
           : null;
       const tentativa = tentativasJaFeitas(args.context, step.position) + 1;
       const decisao = decidirRetentativa({

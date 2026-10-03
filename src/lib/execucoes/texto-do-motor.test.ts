@@ -49,6 +49,9 @@ describe('lerTextoDoMotor', () => {
       { chave: 'webhookBloqueado', valores: {} },
     ])
     expect(lerTextoDoMotor('Error: Connection Closed')).toEqual([{ chave: 'conexaoCaiu', valores: {} }])
+    expect(lerTextoDoMotor('number 5511900000000 is not on WhatsApp')).toEqual([
+      { chave: 'semWhatsApp', valores: { numero: '5511900000000' } },
+    ])
   })
 
   it('a condição diz o ramo, e a nota (já em português) vem junto', () => {
@@ -136,6 +139,7 @@ describe('as frases nos dois dicionários (chave montada)', () => {
       'send_webhook: destination not allowed',
       'tarefa criada (a)',
       'Connection Closed',
+      'number 1 is not on WhatsApp',
       'a — tentativa 1 de 3; nova tentativa em 30s',
       'a — desisti depois de 3 tentativas',
       'a — não reenfileirada: a execução já foi interrompida',

@@ -334,8 +334,8 @@ rotas em `/api/cb/execucoes`. A presença por conversa está em
 `executeStepsFrom`. A régua é o ERRO, nunca o tipo do passo.
 
 - ⚠️⚠️ **Só repete falha do PROVEDOR num passo de ENVIO, com RECUSA COMPROVADA
-  (4xx).** Erro do próprio motor (configuração, banco, contato sem telefone)
-  nunca volta: repetir erro determinístico só adia o aviso.
+  (4xx)**, menos o número sem WhatsApp (`semWhatsApp`). Erro do motor
+  (configuração, banco) nunca volta: repetir o determinístico só adia o aviso.
 - ⚠️⚠️ **4xx × 5xx não é burocracia**: "recusou" (nada saiu) e "tempo esgotado"
   (pode ter saído) têm o mesmo texto, e repetir o segundo manda a mensagem
   DUAS vezes. Quem responde é `EvolutionApiError.status`, que chega inteiro ao
