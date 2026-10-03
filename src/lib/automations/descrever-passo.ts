@@ -183,6 +183,16 @@ export function descreverPasso(passo: PassoResumivel, nomes: NomesConhecidos = {
           alvoSumiu: false,
         }
       }
+      // "Aguardar N sem conversa" (03/10/2026): chave própria — "Aguardar 15
+      // dias" e "Aguardar 15 dias sem conversa" são passos diferentes na grade.
+      // Sem o sufixo da resposta: a caixa não vale neste modo (`sem-conversa.ts`).
+      if (w.modo === 'sem_conversa') {
+        return {
+          chave: `wait_sem_conversa_${w.unit ?? 'hours'}`,
+          valores: { quantidade: Number(w.amount ?? 0) },
+          alvoSumiu: false,
+        }
+      }
       return {
         chave: `wait_${w.unit ?? 'hours'}${sufixo}`,
         valores: { quantidade: Number(w.amount ?? 0) },

@@ -309,8 +309,23 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       break
     case 'wait':
       // Ausente = "por um tempo", o de sempre (toda espera já gravada).
-      if (c.modo !== undefined && c.modo !== 'tempo' && c.modo !== 'horario') {
-        issues.push({ path: `${path}.modo`, message: 'wait modo must be "tempo" or "horario"', codigo: 'espera_modo_invalido' })
+      if (c.modo !== undefined && c.modo !== 'tempo' && c.modo !== 'horario' && c.modo !== 'sem_conversa') {
+        issues.push({
+          path: `${path}.modo`,
+          message: 'wait modo must be "tempo", "horario" or "sem_conversa"',
+          codigo: 'espera_modo_invalido',
+        })
+      }
+      // NOSSO (03/10/2026): "Aguardar N sem conversa" recomeça a contagem a
+      // cada mensagem; "parar se o cliente responder" encerraria a automação
+      // na primeira. As duas juntas não querem dizer nada — o motor ignora a
+      // caixa nesse modo, e a ativação não deixa a tela prometer o contrário.
+      if (c.modo === 'sem_conversa' && c.parar_se_responder === true) {
+        issues.push({
+          path: `${path}.parar_se_responder`,
+          message: 'wait "sem_conversa" restarts on every message: "parar_se_responder" does not apply',
+          codigo: 'espera_sem_conversa_com_resposta',
+        })
       }
       if (c.modo === 'horario') {
         // "Aguardar até estar dentro do horário": a janela é a mesma da

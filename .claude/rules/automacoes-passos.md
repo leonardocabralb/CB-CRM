@@ -8,6 +8,7 @@ paths:
   - "src/lib/automations/responsavel-da-tarefa*"
   - "src/lib/automations/janela-da-meta*"
   - "src/lib/automations/hora-do-dia*"
+  - "src/lib/automations/sem-conversa*"
   - "src/lib/automations/condicao-por-campo*"
   - "src/lib/automations/nao-repetir*"
   - "src/components/automations/automation-builder.tsx"
@@ -19,10 +20,12 @@ paths:
 Vale ao mexer no "Enviar modelo", no "Criar tarefa" pelo responsável, nas
 condições "Janela de 24h da Meta aberta", "Hora do dia" e "Campo
 personalizado da ficha", no "Aguardar até estar dentro do horário" (Fase 2
-do plano do previdenciário, 26/09/2026), no "Fixar a conversa no número" e na opção
+do plano do previdenciário, 26/09/2026), no "Aguardar N sem conversa"
+(03/10/2026), no "Fixar a conversa no número" e na opção
 "Não repetir para o mesmo contato por N horas" do gatilho. As regras são puras e testadas:
 `parametros-do-modelo.ts`, `responsavel-da-tarefa.ts`, `janela-da-meta.ts`,
-`hora-do-dia.ts` e `condicao-por-campo.ts`, em `src/lib/automations/`.
+`hora-do-dia.ts`, `sem-conversa.ts` e `condicao-por-campo.ts`, em
+`src/lib/automations/`.
 O resto do motor: `.claude/rules/automacoes.md`; o mapa da janela por número:
 `.claude/rules/canal-na-conversa.md`. O nó "Atlas" (cinco ações, uma entrada
 no menu): `.claude/rules/integracoes-atlas-acoes.md`.
@@ -126,6 +129,41 @@ segue dali (`Aguardar 1 h → Aguardar o horário → lembrete → …`).
 - Resumo: chaves `wait_horario[_seg_a_sex][_ou_resposta]` nos dois
   dicionários (cobradas por `descrever-passo.test.ts`). A régua do Asaas
   continua recusando todo "Aguardar", este incluso.
+
+### "Aguardar N sem conversa" (`wait` com `modo: 'sem_conversa'`, 03/10/2026)
+
+Pedido do operador (funil Trabalhista): o card das etapas de demissão vai à
+Recuperação "15 dias depois da ÚLTIMA troca de mensagens, de qualquer lado".
+O "Aguardar" comum conta do início, e o "parar se responder" só vê o CLIENTE
+e encerra em vez de recomeçar. `sem-conversa.ts` (puro + a leitura).
+
+- ⚠️⚠️ **Estaciona na posição do PRÓPRIO passo** (o +0 da retentativa, que
+  `decidirRetomada` já trata) e, ao acordar, RODA DE NOVO: a recontagem se
+  reconhece por `esperaEmCurso` + `_passo_da_fila.id` = o passo
+  (`ehRecontagemDaEspera`); sem os dois, é CHEGADA. No +1 do comum, a
+  reconferência nunca rodaria.
+- **Prazo = N a partir do mais recente entre a chegada e a última
+  mensagem**: a chegada não lê a conversa (espera N inteiro); ao acordar,
+  segue com N de silêncio desde a última, senão estaciona até `última + N`.
+- ⚠️ **Toda linha de `messages` conta** (cliente, equipe pelo CRM e pelo
+  celular, robô, ligação, apagada), pelo `created_at`, em todas as conversas
+  do contato na conta: a mensagem do celular não passa pelo motor, só a
+  leitura da conversa a vê.
+- **"Parar se o cliente responder" não vale**: o motor ignora a caixa
+  (`esperaParaSeResponder`: sem marca na fila), a ativação recusa a combinação
+  (`espera_sem_conversa_com_resposta`) e o construtor a esconde — menos
+  quando veio marcada de fora, para ser desmarcada.
+- ⚠️ **Leitura que falha FALHA o passo** (`MOTIVO_CONVERSA_NAO_CONFERIDA`),
+  visível: seguir agiria sobre quem pode estar conversando.
+- Resumo `wait_sem_conversa_<unidade>` nos dois dicionários; o registro sai
+  em português, no fuso do escritório ("houve conversa em 10/10 09:00;
+  aguarda até 25/10 09:00"), e o "Já rodou" o mostra como está.
+- **Rollback do deploy** com automação ligada neste modo: o motor antigo o
+  lê como "por um tempo" e retoma pelo próprio passo — espera N de novo e
+  segue. A contagem pela conversa se perde; nada quebra.
+- **E2E no preview**: a espera estacionada pelo código local é retomada pelo
+  agendador da VPS (mesmo banco) com o código do `main`: ganhar a corrida
+  chamando o cron LOCAL a cada segundo (o claim é atômico, não roda em dobro).
 
 ### Condição "Campo personalizado da ficha" (`custom_field`, 2.10)
 

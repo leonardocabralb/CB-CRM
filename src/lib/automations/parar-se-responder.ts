@@ -64,19 +64,30 @@ export function semMarcaDeResposta<T extends object>(context: T): T {
 }
 
 /**
- * O contexto a gravar na fila quando um "Aguardar" estaciona.
+ * Esta espera para se o cliente responder?
  *
  * ⚠️ Só o booleano `true` liga (`"true"` e `1` são truthy em JS e chegam de
  * JSONB gravado por qualquer versão): ligar por engano PARA a sequência de
  * um cliente em silêncio — o modo de falha que ninguém vê.
+ *
+ * ⚠️ E nunca no "Aguardar N sem conversa" (NOSSO, 03/10/2026, `sem-conversa.ts`):
+ * ele RECOMEÇA a contagem a cada mensagem; parar na primeira o desmentiria. A
+ * ativação recusa a combinação, e config gravada por fora cai aqui.
  */
+export function esperaParaSeResponder(
+  cfg: { parar_se_responder?: unknown; modo?: unknown } | null | undefined
+): boolean {
+  return cfg?.parar_se_responder === true && cfg?.modo !== 'sem_conversa';
+}
+
+/** O contexto a gravar na fila quando um "Aguardar" estaciona (a marca por `esperaParaSeResponder`). */
 export function contextoDaEspera<T extends object>(
   context: T,
-  cfg: { parar_se_responder?: unknown } | null | undefined,
+  cfg: { parar_se_responder?: unknown; modo?: unknown } | null | undefined,
   stepId: string
 ): T {
   const limpo = semMarcaDeResposta(context);
-  if (cfg?.parar_se_responder !== true) return limpo;
+  if (!esperaParaSeResponder(cfg)) return limpo;
   return { ...limpo, [CHAVE_PARAR_SE_RESPONDER]: stepId };
 }
 

@@ -117,6 +117,30 @@ describe("validateStepsForActivation", () => {
     ]);
   });
 
+  it("wait sem conversa (03/10/2026): tempo obrigatório, e \"parar se responder\" não combina", () => {
+    const semConversa = (config: Record<string, unknown>) => ({
+      step_type: "wait",
+      step_config: { modo: "sem_conversa", ...config },
+    });
+    const issues = validateStepsForActivation([
+      semConversa({ amount: 15, unit: "days" }),
+      semConversa({ amount: 15, unit: "days", parar_se_responder: false }),
+      // Recomeça a cada mensagem: "parar se o cliente responder" não quer dizer nada aqui.
+      semConversa({ amount: 15, unit: "days", parar_se_responder: true }),
+      // O tempo vale como no modo "por um tempo".
+      semConversa({ amount: 0, unit: "days" }),
+      semConversa({ amount: 15, unit: "weeks" }),
+      semConversa({}),
+    ]);
+    expect(issues.map((i) => [i.path, i.codigo])).toEqual([
+      ["steps[2].parar_se_responder", "espera_sem_conversa_com_resposta"],
+      ["steps[3].amount", "espera_sem_tempo"],
+      ["steps[4].unit", "espera_unidade_invalida"],
+      ["steps[5].amount", "espera_sem_tempo"],
+      ["steps[5].unit", "espera_unidade_invalida"],
+    ]);
+  });
+
   it("validates webhook URLs", () => {
     const good = validateStepsForActivation([
       {
