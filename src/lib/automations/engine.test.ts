@@ -36,6 +36,13 @@ const h = vi.hoisted(() => ({
     conversaLida: {} as Record<string, unknown>,
     /** A conexão que "Fixar a conversa no número" acha em `cb_channels` (só pela conta `acct-1`). */
     canalDaConta: null as { id: string; label: string; kind: string } | null,
+    /**
+     * As conexões que a leitura dos NÚMEROS acha (`{{channel.<id>.phone}}`,
+     * `.in('id', …)`), com a conta de cada uma: só voltam as da conta do filtro.
+     */
+    conexoesDaConta: [] as { id: string; kind: string; display_phone: string | null; conta: string }[],
+    /** Preenchido, a leitura dos números das conexões devolve este erro. */
+    erroNasConexoes: null as string | null,
     /** Preenchido, a LEITURA de `deals` devolve este erro (18/09). */
     erroNoNegocio: null as string | null,
     /**
@@ -289,6 +296,16 @@ vi.mock('./admin-client', () => {
       // A conexão só volta quando o filtro de CONTA casa: a leitura que o
       // esquecer enxergaria a conexão de outra conta, e o teste vê isso.
       const conta = ops.filters.find(([op, k]) => op === 'eq' && k === 'account_id')?.[2];
+      const ids = ops.filters.find(([op, k]) => op === 'in' && k === 'id')?.[2] as string[] | undefined;
+      if (ids) {
+        if (state.erroNasConexoes) return { data: null, error: { message: state.erroNasConexoes } };
+        return {
+          data: state.conexoesDaConta
+            .filter((c) => c.conta === conta && ids.includes(c.id))
+            .map(({ id, kind, display_phone }) => ({ id, kind, display_phone })),
+          error: null,
+        };
+      }
       const id = ops.filters.find(([op, k]) => op === 'eq' && k === 'id')?.[2];
       const c = state.canalDaConta;
       return { data: c && conta === 'acct-1' && id === c.id ? c : null, error: null };
@@ -698,6 +715,8 @@ beforeEach(() => {
   h.state.rpcStatusGravado = 'open';
   h.state.conversaLida = {};
   h.state.canalDaConta = null;
+  h.state.conexoesDaConta = [];
+  h.state.erroNasConexoes = null;
   h.state.dealSelects = [];
   h.state.dealInserts = [];
   h.state.automations = [];
@@ -1565,6 +1584,61 @@ describe('send_message — canal de saída por passo', () => {
       { channel_id: 'ch-pessoal' }
     );
     expect(args?.preferredChannelId).toBe('ch-pessoal');
+  });
+});
+
+// ------------------------------------------------------------
+// O NÚMERO de uma conexão no texto (`{{channel.<id>.phone}}`, 03/10/2026): o
+// chip trocado pelo "Reparear" troca o número na mensagem sem ninguém editar
+// a automação. Conexão que não resolve FALHA o passo: nada sai sem o número.
+// ------------------------------------------------------------
+
+describe('send_message — o número de uma conexão no texto', () => {
+  const JUR = '11111111-2222-4333-8444-555555555555';
+  const OFICIAL = '66666666-7777-4888-9999-000000000000';
+  const codigo = (id: string) => `{{channel.${id.replace(/-/g, '_')}.phone}}`;
+  beforeEach(() => vi.mocked(engineSendText).mockClear());
+
+  it('CRÍTICO: troca pelo número ATUAL da conexão, formatado como na tela', async () => {
+    h.state.conexoesDaConta = [
+      { id: JUR, kind: 'evolution', display_phone: '559690000016', conta: ACCOUNT },
+      { id: OFICIAL, kind: 'meta', display_phone: '+55 11 5000-0001', conta: ACCOUNT },
+    ];
+    const args = await dispararEnvio(
+      { text: `Jurídico: ${codigo(JUR)}. Oficial: ${codigo(OFICIAL)}.` },
+      {}
+    );
+    expect(args?.text).toBe('Jurídico: (96) 9000-0016. Oficial: (11) 5000-0001.');
+  });
+
+  it('a leitura leva a CONTA: conexão de outra conta não empresta o número, e nada sai', async () => {
+    h.state.conexoesDaConta = [{ id: JUR, kind: 'evolution', display_phone: '559690000016', conta: 'outra-conta' }];
+    await dispararEnvio({ text: `Fale com ${codigo(JUR)}` }, {});
+    expect(engineSendText).not.toHaveBeenCalled();
+    expect(JSON.stringify(h.state.logUpdates)).toContain('não existe mais nesta conta ou ainda não tem número');
+  });
+
+  it.each([
+    ['apagada', []],
+    ['sem número ainda (Evolution antes do QR)', [{ id: JUR, kind: 'evolution', display_phone: null, conta: ACCOUNT }]],
+    ['do Instagram (não tem número)', [{ id: JUR, kind: 'instagram', display_phone: null, conta: ACCOUNT }]],
+  ])('⚠️ conexão %s: o passo FALHA antes de enviar', async (_caso, conexoes) => {
+    h.state.conexoesDaConta = conexoes;
+    await dispararEnvio({ text: `Fale com ${codigo(JUR)}` }, {});
+    expect(engineSendText).not.toHaveBeenCalled();
+    expect(JSON.stringify(h.state.logUpdates)).toContain(JUR);
+  });
+
+  it('⚠️ a leitura que falha não vira texto sem o número: o passo FALHA', async () => {
+    h.state.erroNasConexoes = 'conexões fora do ar';
+    await dispararEnvio({ text: `Fale com ${codigo(JUR)}` }, {});
+    expect(engineSendText).not.toHaveBeenCalled();
+    expect(JSON.stringify(h.state.logUpdates)).toContain('a leitura das conexões falhou');
+  });
+
+  it('texto sem o número de conexão não lê `cb_channels`', async () => {
+    await dispararEnvio({ text: 'oi {{channel.id}}' }, { channel_id: 'ch-1' });
+    expect(h.state.fromCalls).not.toContain('cb_channels');
   });
 });
 
@@ -6340,12 +6414,26 @@ describe('seletor de variáveis — o espelho do motor', () => {
       'channel.nome',
       'conversation.id',
       'message.x',
+      // O número de UMA conexão (03/10/2026): só a forma exata, com o id em `_`.
+      'channel.11111111_2222_4333_8444_555555555555.phone',
+      'channel.11111111_2222_4333_8444_555555555555.phone.x',
+      'channel.11111111_2222_4333_8444_555555555555',
+      'channel.11111111-2222-4333-8444-555555555555.phone',
+      'channel.11111111_2222_4333_8444_555555555555.name',
     ];
+    const conexoes = new Map([['11111111-2222-4333-8444-555555555555', '559690000016']]);
     for (const codigo of codigos) {
-      const valor = valorDaVariavel(codigo, args, dados, negocio, {});
+      const valor = valorDaVariavel(codigo, args, dados, negocio, {}, conexoes);
       if (classificarCodigo(codigo).tipo === 'vazio') expect(valor, codigo).toBe('');
       else expect(valor, codigo).not.toBe('');
     }
+  });
+
+  it('o número da conexão: formatado na mensagem, só dígitos no dado', () => {
+    const codigo = 'channel.11111111_2222_4333_8444_555555555555.phone';
+    const conexoes = new Map([['11111111-2222-4333-8444-555555555555', '+55 11 5000-0001']]);
+    expect(valorDaVariavel(codigo, args, dados, negocio, {}, conexoes)).toBe('(11) 5000-0001');
+    expect(valorDaVariavel(codigo, args, dados, negocio, { cru: true }, conexoes)).toBe('551150000001');
   });
 });
 

@@ -48,6 +48,7 @@ UPDATE/INSERT/DELETE fora do app, saiba o que ele aciona:
   e retomada da IA e descarta os turnos dela (`cb_ia_turnos`, 1049).
   Despausar à mão (`ai_autoreply_disabled` → false) religa a IA na conversa.
 - **DELETE em `cb_channels`** solta os pinos, tira a conexão das automações,
+  desliga (`draft`) o robô ativo restrito a ela (1077),
   dobra a janela em `sem_carimbo` e anula `messages.channel_id`; agendada que
   aponta para ela BLOQUEIA (FK RESTRICT da 925 — a rota limpa o acervo antes).
   **DELETE em `pipeline_stages`** tira a etapa das automações e zera

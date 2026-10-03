@@ -14,6 +14,8 @@
  * teste `catalogo.test.ts` lê os dois dicionários).
  */
 
+import { conexaoDoCodigo } from './conexao';
+
 export type GrupoFixo = 'contato' | 'negocio' | 'conversa' | 'data' | 'mensagem';
 
 export interface VariavelFixa {
@@ -112,6 +114,8 @@ export type ClasseDoCodigo =
   | { tipo: 'campo'; chave: string }
   /** `vars.<nome>` — o que o evento do gatilho entrega. */
   | { tipo: 'evento'; nome: string }
+  /** `channel.<id>.phone` — o número de UMA conexão da conta (`conexao.ts`). */
+  | { tipo: 'conexao'; id: string }
   /** O motor devolve VAZIO para este código, sempre. */
   | { tipo: 'vazio' };
 
@@ -133,7 +137,11 @@ export function classificarCodigo(codigo: string): ClasseDoCodigo {
   if (ns === 'deal') return prop === 'value' || prop === 'created_at' ? fixa(`deal.${prop}`) : { tipo: 'vazio' };
   if (ns === 'message') return prop === 'text' ? fixa('message.text') : { tipo: 'vazio' };
   if (ns === 'vars') return prop ? { tipo: 'evento', nome: prop } : { tipo: 'vazio' };
-  if (ns === 'channel') return prop === 'id' ? fixa('channel.id') : { tipo: 'vazio' };
+  if (ns === 'channel') {
+    const conexao = conexaoDoCodigo(codigo);
+    if (conexao) return { tipo: 'conexao', id: conexao };
+    return prop === 'id' ? fixa('channel.id') : { tipo: 'vazio' };
+  }
   if (ns === 'contact') {
     if (prop === 'campo') return { tipo: 'campo', chave: partes.slice(2).join('.') };
     return prop ? fixa(`contact.${prop}`) : { tipo: 'vazio' };

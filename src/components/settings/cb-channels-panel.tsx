@@ -70,7 +70,8 @@ import { invalidarCacheDeCanais } from '@/hooks/use-channels';
 import { SettingsPanelHead } from './settings-panel-head';
 import { ehEvolution, ehInstagram, ehMeta, ehWhatsApp } from '@/lib/cb-channels/transporte';
 import { InstagramGlyph } from '@/components/channels/instagram-glyph';
-import { identidadeDoCanal } from '@/lib/cb-channels/display';
+import { formatChannelPhone, identidadeDoCanal } from '@/lib/cb-channels/display';
+import { ListaDeDependencias } from './dependencias-da-conexao';
 import {
   AVISO_DE_VENCIMENTO_DIAS,
   CAMINHO_DO_WEBHOOK,
@@ -783,7 +784,19 @@ export function CbChannelsPanel() {
         if (payload.connected) {
           setQrConnected(true);
           setQrImage(null);
-          toast.success(t('connectedToast'));
+          // "Reparear" com OUTRO chip (o caminho para trocar o número): a
+          // tela confirma a troca e diz que nada desta conexão precisa ser
+          // refeito. `numeroAnterior` só vem quando havia um e mudou.
+          const antes = formatChannelPhone(payload.numeroAnterior);
+          const agora = formatChannelPhone(payload.channel?.display_phone);
+          if (antes && agora) {
+            toast.success(t('numeroTrocadoToast', { antes, agora }), {
+              description: t('numeroTrocadoDescricao'),
+              duration: 15000,
+            });
+          } else {
+            toast.success(t('connectedToast'));
+          }
           void load();
         } else if (payload.qr) {
           setQrImage(payload.qr);
@@ -2109,6 +2122,12 @@ export function CbChannelsPanel() {
           <div className="rounded-md bg-muted/50 p-3 text-sm text-muted-foreground">
             {t('restartKeepsData')}
           </div>
+          {/* Trocar o chip é AQUI (decisão do operador, 03/10/2026): a conexão
+              fica, e tudo que aponta para ela segue valendo. Remover e criar
+              outra desliga automações e deixa passos sem número. */}
+          <div className="rounded-md bg-muted/50 p-3 text-sm text-muted-foreground">
+            {t('restartTrocaDeChip')}
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmRestart(null)}>
               {t('cancel')}
@@ -2128,7 +2147,8 @@ export function CbChannelsPanel() {
           if (!open) setConfirmDelete(null);
         }}
       >
-        <DialogContent>
+        {/* Rola: a lista do que depende da conexão pode passar da tela. */}
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {confirmDelete ? t('deleteConfirmTitle', { label: confirmDelete.label }) : ''}
@@ -2150,12 +2170,11 @@ export function CbChannelsPanel() {
               {t('deleteKeepsHistory')}
             </p>
 
-            {/* Efeito colateral que nada na tela avisava: o trigger
-                `cb_channels_drop_from_automations` (903) tira o canal do
-                escopo e DESATIVA a automação que só valia para ele. */}
-            <p className="rounded-md bg-muted/50 p-2 text-xs text-muted-foreground">
-              {t('deleteDisablesAutomations')}
-            </p>
+            {/* O que depende desta conexão, com nome (03/10/2026): a automação
+                que o gatilho da 903 desliga, os passos que ficam sem número,
+                os robôs, os agentes de IA, os filtros. E, no QR Code, que
+                trocar o chip é "Reparear", não remover. */}
+            {confirmDelete && <ListaDeDependencias canal={confirmDelete} />}
 
             {/* O funil desta conexão para de receber. `default_pipeline_id` é
                 a coluna dela, então some junto com a linha — e o roteamento

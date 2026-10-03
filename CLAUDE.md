@@ -516,7 +516,8 @@ O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
 - Conversa ENCERRADA quando nasce sem o cliente ter escrito: webhook de
   entrada (21/09/2026) e passo de envio da automação para ficha sem conversa
   (27/09/2026). Calendly e `send_to_number` a criam aberta.
-- Evolution: voltar de versão da imagem está descartado.
+- Evolution: voltar de versão da imagem está descartado. Trocar o chip de um
+  número é "Reparear" a mesma conexão, nunca remover e criar outra (03/10/2026).
 - Celular: no toque o Enter pula linha; o app instalado abre em `/inbox`.
 - "Sair" do menu sai só deste aparelho; 4 h inativo reabre o Meu dia, sem
   senha.
@@ -549,7 +550,7 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
 - `.claude/rules/whatsapp-envio.md` — núcleo de envio, entrega incerta,
   modelos da Meta por WABA, `resolveTemplateRow`, escopo da conversa.
 - `.claude/rules/canais.md` — peças de UI de canal, escopo vazio = todos,
-  saúde das conexões, atraso de entrega (`lagging`).
+  saúde das conexões, atraso de entrega (`lagging`), trocar o número.
 - `.claude/rules/canal-na-conversa.md` — qual número nesta conversa, cor do
   canal, faixa de divergência, janela de 24h por número, ampulheta.
 - `.claude/rules/inbox-lista.md` — duas abas, atraso de resposta, filtros e

@@ -5,6 +5,7 @@ paths:
   - "src/hooks/use-channels*"
   - "src/hooks/use-channel-health*"
   - "src/components/settings/cb-channels-panel.tsx"
+  - "src/components/settings/dependencias-da-conexao.tsx"
   - "src/app/api/cb/channels/**"
 ---
 
@@ -27,6 +28,17 @@ Vale ao mexer em `src/lib/cb-channels/`, nos componentes e hooks de canal, no pa
 - **`channelsUsingPipeline`/`channelsUsingStage` (`display.ts`) dizem que conexão depende de qual funil ou etapa.** Apagar funil ou etapa zera `default_pipeline_id`/`default_stage_id` por SET NULL e o roteamento para em silêncio: caminho novo de exclusão avisa.
 - ⚠️ **O DELETE de conexão (`/api/cb/channels/[id]`) barra ANTES de qualquer passo destrutivo quando há agendada na FILA** (`pending`/`sending`, 409 `scheduled_pending`): a FK da 925 é RESTRICT, e estourando no fim a instância da Evolution já teria sido destruída e o padrão promovido. O acervo (`sent`/`failed`) é apagado SÓ com o filtro de status — a agendada criada no meio estoura a RESTRICT em vez de sumir. Apagar a conexão PADRÃO exige sucessor NOMEADO no corpo (`promote_to`, escolhido na tela, e de WhatsApp): promover em silêncio faria o escritório disparar por outro número sem pedir. Sem outro WhatsApp, 409 `last_channel` (quem clica está tentando consertar — "Reparear").
 - **`cb_channels` está na publicação realtime com LISTA FIXA de colunas** (909): coluna nova não viaja no payload. `use-channel-health` assina e só refaz a sonda; quem precisar LER coluna nova do payload reescreve a entrada na publicação.
+
+### Trocar o número: "Reparear" na MESMA conexão, nunca remover e recriar (03/10/2026)
+
+Decisão do operador. Tudo aponta para a CONEXÃO (`cb_channels.id`), não para o número: escopo e passos das automações, robôs, agentes de IA, filtros salvos, esperas, conversas, funil de entrada, padrão da conta. O "Reparear" (`/restart` → `/connect`) pareia a mesma instância com o chip novo e grava o `display_phone` novo — nada precisa ser refeito.
+
+- ⚠️ **Na Meta não há QR: número novo = `phone_number_id` novo = conexão NOVA** (o PATCH só renomeia e roteia; o POST só atualiza a linha com o MESMO `phone_number_id`). O que dependia da antiga se refaz à mão — a tela de remover lista o quê. Modelos são da WABA: outra WABA, modelos aprovados de novo.
+- ⚠️ **`own_lid` é aprendido UMA vez, sobre nulo** (`aprenderNossoLid`, sincronização dos grupos). A `/connect` o ZERA quando o número muda (`trocouDeNumero`, `troca-de-numero.ts`), senão a ligação do aparelho novo deixa de ser "do escritório" e a menção em grupo não acende. A resposta leva `numeroAnterior` (só quando havia um e mudou) e a tela confirma a troca.
+- **Número no TEXTO da automação: `{{channel.<id com _>.phone}}`** (`automacoes-variaveis.md`), nunca escrito à mão — acompanha a troca de chip.
+- ⚠️ **A tela de remover lista o que depende, com nome** (`GET /api/cb/channels/[id]/dependencias`, classificação em `dependencias.ts`, `ListaDeDependencias`). Lê em SERVICE ROLE cercada pela conta: filtros salvos são de cada membro e a fila das automações é service-role only — pela sessão, voltariam zero com cara de certo. Leitura que falha é 500 e a tela diz "não deu para conferir", nunca "nada depende". `citaAConexao` acha o id no `step_config`/config do nó nas DUAS formas (com `-` e com `_`, a da variável). Gatilho novo que mexe em referência à conexão no DELETE: a classificação muda junto.
+- ⚠️ **Robô restrito à conexão apagada vai a `draft` (1077, BEFORE DELETE)**: o SET NULL da FK o deixaria CURINGA (`channel_id` nulo = todo número em `findEntryFlow`). Num AFTER, o SET NULL já teria rodado e o robô não seria achado.
+- **Grupos são do NÚMERO**: o chip novo não está nos grupos do velho; `cb_groups` da conexão param de receber. Nenhum código resolve isso.
 
 ### Saúde das conexões: TRÊS eixos, e o terceiro é "está entregando EM DIA?" (1002)
 

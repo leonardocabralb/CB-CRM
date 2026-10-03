@@ -47,6 +47,15 @@ interpolação: `.claude/rules/automacoes.md`, seção "Variáveis".
 - **O nome no cartão fechado só em `send_message`/`send_to_number`**: o corpo
   dos botões e a URL do webhook NÃO são interpolados, e o nome ali prometeria
   uma troca que não acontece.
+- ⚠️⚠️ **O número de UMA conexão: `{{channel.<id com _>.phone}}`**
+  (`variaveis/conexao.ts`, 03/10/2026). O id vai com `_` porque a régua do
+  motor só aceita `[\w.]` — com `-`, o código sairia cru para o cliente.
+  Motor e tela usam `numeroDaConexao` (mensagem "(DD) NNNN-NNNN", dado só
+  dígitos). FALHA FECHADA no envio (`numerosDasConexoes`): conexão apagada,
+  de outra conta, Instagram ou sem número PARA o passo — "fale com o
+  Jurídico no " sem número é pior que o passo parado. Na tela a origem é
+  `conta` (igual para todo cliente, sem cliente escolhido); lista de conexões
+  que não chegou não afirma nada.
 - **`{{deal.*}}` nos gatilhos que trazem o card do EVENTO**
   (`gatilhoTrazCard`): o envio usa o card do evento; a prévia, sem evento,
   usa o de `negocioAlvo`. Com mais de um card no cliente, a prévia marca
