@@ -101,8 +101,9 @@ export const DealCard = memo(function DealCard({
   const resumo = conversa?.resumo ?? null;
 
   const etiquetas = campos.etiquetas ? (deal.contact?.tags ?? []) : [];
-  // Sem useMemo aqui de propósito: o React Compiler (ativo no projeto) já
-  // memoiza este componente e recusava preservar o memo manual.
+  // Sem useMemo aqui de propósito: o lint do React Compiler recusava
+  // preservar o memo manual. ⚠️ O compilador em si NÃO está ligado (nada no
+  // `next.config.ts`): quem segura o redesenho é o `memo` do componente.
   const ultimaMensagem =
     campos.ultimaMensagem && resumo?.last_message_text
       ? ehPreviaDeLigacao(resumo.last_message_text)

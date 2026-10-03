@@ -24,8 +24,19 @@ export interface RetornoDoFunil {
   pipelineId: string;
   /** Do `.pipeline-scroll` (eixo horizontal do quadro). */
   scrollLeft: number;
-  /** Do `<main>` do dashboard (único scroll vertical da página). */
+  /**
+   * Do `<main>` do dashboard: a rolagem vertical da PÁGINA, que é a do quadro
+   * abaixo de `lg` (celular e tablet em pé).
+   */
   scrollTop: number;
+  /**
+   * A rolagem vertical de CADA coluna (id da etapa → `scrollTop` da lista).
+   * De `lg` para cima o quadro tem a altura da tela e cada coluna rola
+   * sozinha (ver `pipeline-board.tsx`), então o `scrollTop` do `<main>` fica
+   * em zero e não diz onde o operador estava. Só as colunas roladas entram;
+   * vazio é o caso comum.
+   */
+  rolagemDasColunas: Record<string, number>;
   /**
    * Quantos cards cada coluna estava mostrando (id da etapa → teto).
    *
@@ -77,6 +88,23 @@ function limitesOuVazio(valor: unknown): Record<string, number> {
 }
 
 /**
+ * A rolagem por coluna, com a mesma desconfiança dos tetos: só número finito
+ * e positivo (arredondado — `scrollTop` pode vir fracionário), e a coluna
+ * estragada cai sozinha.
+ */
+function rolagensOuVazio(valor: unknown): Record<string, number> {
+  if (typeof valor !== "object" || valor === null) return {};
+  const saida: Record<string, number> = {};
+  for (const [etapa, topo] of Object.entries(valor as Record<string, unknown>)) {
+    if (Object.keys(saida).length >= MAX_COLUNAS_GUARDADAS) break;
+    if (!etapa) continue;
+    const arredondado = Math.round(numeroOuZero(topo));
+    if (arredondado > 0) saida[etapa] = arredondado;
+  }
+  return saida;
+}
+
+/**
  * Desserialização defensiva: registro estranho ou VENCIDO vira `null`, nunca
  * exceção. `agora` entra por parâmetro para o módulo continuar puro/testável.
  */
@@ -96,6 +124,7 @@ export function desserializarRetorno(
       pipelineId: objeto.pipelineId,
       scrollLeft: numeroOuZero(objeto.scrollLeft),
       scrollTop: numeroOuZero(objeto.scrollTop),
+      rolagemDasColunas: rolagensOuVazio(objeto.rolagemDasColunas),
       limites: limitesOuVazio(objeto.limites),
       em: objeto.em,
     };
@@ -120,7 +149,8 @@ export function desserializarRetorno(
  * expandir outra coluna o registro velho estava desatualizado (Codex, PR
  * #231, 1ª e 2ª rodadas). Hoje a página recebe os tetos do quadro por ref e
  * as duas saídas passam o valor de verdade; exigi-lo faz o compilador cobrar
- * de quem criar a terceira.
+ * de quem criar a terceira. `rolagemDasColunas` é obrigatória pelo mesmo
+ * motivo (as duas saídas a medem com `rolagemDasColunas` do quadro).
  */
 export function gravarRetorno(retorno: Omit<RetornoDoFunil, "em">): void {
   try {
