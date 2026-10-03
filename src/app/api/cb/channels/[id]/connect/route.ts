@@ -23,6 +23,7 @@ import {
   reaplicarWebhook,
 } from '@/lib/cb-channels/evolution-admin';
 import { ehEvolution } from '@/lib/cb-channels/transporte';
+import { trocouDeNumero } from '@/lib/cb-channels/troca-de-numero';
 
 /** A UI faz polling enquanto o QR está na tela (~12/min a 5s). 60/min dá
  *  folga para recarregar e para dois admins pareando ao mesmo tempo. */
@@ -127,7 +128,17 @@ export async function POST(
       return NextResponse.json({ connected: false, qr: res.qrBase64 ?? null, webhookError });
     }
 
-    // Conectou.
+    // Conectou. Com OUTRO chip (o "Reparear" é o caminho para trocar o
+    // número), o LID do aparelho velho sai junto e é reaprendido — ver
+    // `troca-de-numero.ts`.
+    //
+    // ⚠️ `numeroPendente`: aberta, mas a Evolution ainda não gravou o número
+    // do pareamento novo (o `ownerJid` dela é o do chip ANTERIOR por alguns
+    // segundos). O status vira `connected` (é verdade), o número NÃO é
+    // gravado (seria o velho) e a resposta pede à tela que consulte de novo.
+    // O aviso `connection.update` também grava o número
+    // (`registrarNumeroDoAviso`).
+    const trocou = trocouDeNumero(channel.display_phone, res.ownerPhone);
     const { data: updated, error } = await ctx.supabase
       .from('cb_channels')
       .update({
@@ -135,6 +146,7 @@ export async function POST(
         connected_at: new Date().toISOString(),
         last_error: null,
         ...(res.ownerPhone ? { display_phone: res.ownerPhone } : {}),
+        ...(trocou ? { own_lid: null } : {}),
       })
       .eq('id', channel.id)
       .eq('account_id', ctx.accountId)
@@ -163,7 +175,13 @@ export async function POST(
         .eq('account_id', ctx.accountId);
     }
 
-    return NextResponse.json({ connected: true, qr: null, channel: updated, webhookError });
+    if (res.numeroPendente) {
+      return NextResponse.json({ connected: false, qr: null, numeroPendente: true, webhookError });
+    }
+
+    // O número de antes, quando havia um e mudou: a tela confirma a troca.
+    const numeroAnterior = trocou && channel.display_phone ? channel.display_phone : null;
+    return NextResponse.json({ connected: true, qr: null, channel: updated, webhookError, numeroAnterior });
   } catch (err) {
     return toErrorResponse(err);
   }

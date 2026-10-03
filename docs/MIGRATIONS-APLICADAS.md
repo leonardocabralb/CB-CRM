@@ -1167,6 +1167,17 @@ nome da época em que foram aplicadas.
   duas vezes, planejador usando o índice com 50 mil linhas) e na produção: o
   índice no catálogo, e o `EXPLAIN ANALYZE` da consulta da pauta com `Index
   Scan` nele — de 8,2 ms (varredura de 8.663 linhas) para 3,0 ms.
+- **1077_cb_robo_da_conexao_apagada** — gatilho BEFORE DELETE
+  `cb_channels_desliga_robos` (`cb_desliga_robos_da_conexao`, SECURITY
+  DEFINER, fechada a anon/authenticated): o robô ATIVO restrito à conexão
+  apagada vai a `draft`, em vez de o SET NULL da FK o deixar curinga em todos
+  os números. PR #379. ADITIVA e ANTES do merge. Aplicada em 03/10/2026 pela
+  Management API (histórico `20261003173807`), depois do replay verde do CI no
+  commit `2df604ed`, com "aplique a migration 1077 em produção" do operador. A
+  conferência gravou e desfez (P1077) a prova com conexão e robôs de teste
+  numa conta real: nenhuma sobra (0 conexões e 0 robôs "1077:"; 7 conexões e
+  2 robôs ativos, como antes). Provada antes num Postgres 16 descartável:
+  aplica duas vezes; sem o gatilho, e com ele como AFTER, a prova acusa.
 
 ## Notas do histórico
 

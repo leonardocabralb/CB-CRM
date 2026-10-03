@@ -53,6 +53,21 @@ describe('classificarCodigo — a régua do motor', () => {
     expect(classificarCodigo('contact.campo.a.b')).toEqual({ tipo: 'campo', chave: 'a.b' });
   });
 
+  it('o número de UMA conexão: só a forma exata; `channel.id` continua a conexão do disparo', () => {
+    expect(classificarCodigo('channel.11111111_2222_4333_8444_555555555555.phone')).toEqual({
+      tipo: 'conexao',
+      id: '11111111-2222-4333-8444-555555555555',
+    });
+    expect(classificarCodigo('channel.id')).toMatchObject({ tipo: 'fixa', variavel: { codigo: 'channel.id' } });
+    for (const vazio of [
+      'channel.11111111_2222_4333_8444_555555555555',
+      'channel.11111111_2222_4333_8444_555555555555.phone.x',
+      'channel.11111111_2222_4333_8444_555555555555.name',
+    ]) {
+      expect(classificarCodigo(vazio), vazio).toEqual({ tipo: 'vazio' });
+    }
+  });
+
   it('a prévia do cliente pede só as fixas que não são do evento', () => {
     expect(CODIGOS_DO_CLIENTE).not.toContain('message.text');
     expect(CODIGOS_DO_CLIENTE).not.toContain('channel.id');
@@ -118,7 +133,16 @@ describe('nomes e legendas nos dois dicionários (chave montada)', () => {
     });
 
     it(`${idioma}: todo grupo tem título`, () => {
-      const grupos = [...new Set(VARIAVEIS_FIXAS.map((v) => v.grupo)), 'campos', 'asaas', 'calendly', 'zapsign', 'atlas', 'webhook'];
+      const grupos = [
+        ...new Set(VARIAVEIS_FIXAS.map((v) => v.grupo)),
+        'campos',
+        'conexoes',
+        'asaas',
+        'calendly',
+        'zapsign',
+        'atlas',
+        'webhook',
+      ];
       for (const g of grupos) {
         expect(typeof texto(arvore, `grupos.${g}`), `${idioma} grupos.${g}`).toBe('string');
       }

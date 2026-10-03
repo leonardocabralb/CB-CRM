@@ -41,6 +41,7 @@ import { supabaseAdmin } from './admin-client';
 import { conversaDoContato, resolverDestinatario } from './destinatario';
 import { resolveEngineChannelPreferring } from '@/lib/cb-channels/engine-send';
 import { ehWhatsApp } from '@/lib/cb-channels/transporte';
+import { conexaoDoCodigo, conexoesDoTexto, numeroDaConexao } from './variaveis/conexao';
 import { alvoDeEnvio } from '@/lib/whatsapp/alvo-de-envio';
 import { ehGatilhoDaRegua, PASSOS_QUE_FALAM_COM_O_CONTATO } from '@/lib/asaas/regua';
 import { GATILHO_DO_ATLAS, soRodaPeloDisparador } from './so-pelo-disparador';
@@ -4049,9 +4050,46 @@ async function interpolarParaOAtlas(
   }
   if (citaContato && !dados?.contato)
     throw new Error(`${passo}: a ficha do cliente não foi encontrada nesta conta`);
+  const conexoes = await numerosDasConexoes(textos, args);
   return textos.map((t) =>
-    t ? t.replace(RE_VARIAVEL, (_, key) => valorDaVariavel(String(key), args, dados, negocio, {})) : ''
+    t ? t.replace(RE_VARIAVEL, (_, key) => valorDaVariavel(String(key), args, dados, negocio, {}, conexoes)) : ''
   );
+}
+
+/**
+ * Os números das conexões que os textos citam (`{{channel.<id>.phone}}`,
+ * `variaveis/conexao.ts`), por id. `null` quando nenhum texto cita.
+ *
+ * ⚠️ FALHA FECHADA, ao contrário de `{{contact.*}}`: "o atendimento passa ao
+ * número " sem o número é pior que o passo parado — a falha aparece na
+ * conversa e no registro. Conexão apagada, de outra conta, do Instagram (não
+ * tem número) ou ainda sem número (Evolution antes do QR), e a leitura que
+ * falha: o passo para antes de enviar ou gravar.
+ */
+async function numerosDasConexoes(
+  textos: string[],
+  args: ExecuteArgs
+): Promise<Map<string, string> | null> {
+  const ids = [...new Set(textos.flatMap((t) => (t ? conexoesDoTexto(t) : [])))];
+  if (ids.length === 0) return null;
+  const { data, error } = await supabaseAdmin()
+    .from('cb_channels')
+    .select('id, kind, display_phone')
+    .eq('account_id', args.automation.account_id)
+    .in('id', ids);
+  if (error)
+    throw new Error(`número da conexão: a leitura das conexões falhou: ${error.message}`);
+  const numeros = new Map<string, string>();
+  for (const c of (data ?? []) as { id: string; kind: string; display_phone: string | null }[]) {
+    const numero = numeroDaConexao(c.display_phone, true);
+    if (ehWhatsApp(c) && numero) numeros.set(c.id, c.display_phone as string);
+  }
+  const faltam = ids.filter((id) => !numeros.has(id));
+  if (faltam.length > 0)
+    throw new Error(
+      `número da conexão: o texto cita uma conexão que não existe mais nesta conta ou ainda não tem número (${faltam.join(', ')}); o passo parou antes de enviar`
+    );
+  return numeros;
 }
 
 export interface DadosDoNegocio {
@@ -4248,8 +4286,10 @@ async function interpolate(
     : opcoes.negocio
       ? await (opcoes.negocio.lido ??= carregarNegocio(args))
       : await carregarNegocio(args);
+  // Lança quando falta o número de uma conexão citada (`numerosDasConexoes`).
+  const conexoes = await numerosDasConexoes([s], args);
   return s.replace(RE_VARIAVEL, (_, key) => {
-    const valor = valorDaVariavel(String(key), args, dados, negocio, opcoes);
+    const valor = valorDaVariavel(String(key), args, dados, negocio, opcoes, conexoes);
     if (opcoes.json) return JSON.stringify(valor).slice(1, -1);
     return opcoes.url ? encodeURIComponent(valor) : valor;
   });
@@ -4265,10 +4305,17 @@ export function valorDaVariavel(
   args: ExecuteArgs,
   dados: DadosDoContato | null,
   negocio: DadosDoNegocio | null,
-  opcoes: { cru?: boolean }
+  opcoes: { cru?: boolean },
+  /** `display_phone` por id das conexões citadas (`numerosDasConexoes`). */
+  conexoes: ReadonlyMap<string, string> | null = null
 ): string {
   const partes = key.split('.');
   const [ns, prop] = partes;
+  // O número de UMA conexão (`{{channel.<id>.phone}}`, `variaveis/conexao.ts`).
+  // Quem envia carrega os números ANTES e falha quando falta um; aqui o
+  // ausente só sai em branco para quem chama sem o mapa.
+  const conexao = ns === 'channel' ? conexaoDoCodigo(key) : null;
+  if (conexao) return numeroDaConexao(conexoes?.get(conexao), opcoes.cru === true);
   // O instante do passo. É o que grava "quando o card entrou na etapa" num
   // campo de data (a data da proposta), sem depender de gente.
   if (ns === 'now' && prop === undefined) {
@@ -4351,7 +4398,9 @@ export function valorDaVariavel(
  * guardar a senha do gov.br). ⚠️ Leitura que falha LANÇA (modo `estrito`):
  * no envio ela vira variável vazia, mas aqui a tela afirmaria "sairia em
  * branco" sobre um campo que tem valor. `vars.*`, `message.text` e
- * `channel.id` são do EVENTO e não existem aqui — a tela usa o exemplo. Além
+ * `channel.id` são do EVENTO e não existem aqui — a tela usa o exemplo. O
+ * número de uma conexão (`channel.<id>.phone`) é da CONTA: a tela o calcula
+ * da lista de conexões por `numeroDaConexao`, e aqui sairia vazio. Além
  * dos `codigos` pedidos, devolve todo `contact.campo.<chave>` que o contato
  * tem preenchido.
  *

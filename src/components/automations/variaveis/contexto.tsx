@@ -12,7 +12,10 @@
  *   funções reais (`exemplos.ts`), com o nome do cliente escolhido;
  * - `{{vars.*}}` do webhook de entrada: o último acionamento REAL (a mesma
  *   leitura que o cartão do gatilho faz);
- * - `message.text` e `channel.id`: do evento, sem valor na prévia.
+ * - `message.text` e `channel.id`: do evento, sem valor na prévia;
+ * - o número de uma conexão (`channel.<id>.phone`): da CONTA, igual para todo
+ *   cliente — sai da lista de conexões pela mesma função do envio
+ *   (`numeroDaConexao`), sem cliente escolhido.
  *
  * ⚠️ Os estados são CARIMBADOS com a entrada que os produziu (`de`) e
  * comparados com a do render atual: o primeiro render depois de trocar de
@@ -24,7 +27,10 @@ import { useTranslations } from "next-intl"
 
 import { useCamposDaConta } from "@/components/automations/condicao-por-campo-fields"
 import { useAuth } from "@/hooks/use-auth"
+import { useChannels } from "@/hooks/use-channels"
 import { hasMinRole } from "@/lib/auth/roles"
+import { codigoDoNumeroDaConexao, numeroDaConexao } from "@/lib/automations/variaveis/conexao"
+import { ehWhatsApp } from "@/lib/cb-channels/transporte"
 import {
   classificarCodigo,
   familiaDoEvento,
@@ -64,9 +70,11 @@ export interface GrupoDoPainel {
  * - `card`: valor de `{{deal.*}}` do card mais recente, num gatilho que traz
  *   o card do EVENTO e com o cliente tendo mais de um card — pode ser outro;
  * - `evento`: só existe no disparo, sem valor na prévia;
- * - `nenhum`: o motor deixa este código em branco, sempre.
+ * - `conta`: o número de uma conexão — igual para todo cliente;
+ * - `nenhum`: o motor deixa este código em branco (ou, no número de uma
+ *   conexão que não resolve, PARA o passo — a etiqueta diz qual).
  */
-export type OrigemDoValor = "cliente" | "exemplo" | "ultimo" | "card" | "evento" | "nenhum"
+export type OrigemDoValor = "cliente" | "exemplo" | "ultimo" | "card" | "evento" | "conta" | "nenhum"
 
 export interface ValorParaMostrar {
   texto: string
@@ -161,6 +169,11 @@ export function VariaveisProvider({
   const podePrevia = accountRole !== null && hasMinRole(accountRole, "admin")
   const familia = familiaDoEvento(gatilho)
   const [agora] = useState(() => new Date())
+  // As conexões da conta, para o NÚMERO de cada uma. Lista que não chegou (ou
+  // falhou) não afirma nada: o grupo não aparece e a etiqueta fica no código —
+  // "não sei" nunca vira "a conexão não existe".
+  const { channels, loading: canaisCarregando, falhou: canaisFalharam } = useChannels()
+  const conexoes = canaisCarregando || canaisFalharam ? null : channels
 
   // --- A prévia do cliente ---
   const [contatoDaPrevia, setContatoDaPrevia] = useState("")
@@ -310,11 +323,19 @@ export function VariaveisProvider({
                 : familiaComExemplo(familia) !== null && familiaDoNome(c.nome) === familia
             return { rotulo, legenda, alerta: doGatilho ? null : t("alerta.eventoDeOutroGatilho") }
           }
+          case "conexao": {
+            if (!conexoes) return { rotulo: null }
+            const canal = conexoes.find((x) => x.id === c.id)
+            if (!canal) return { rotulo: null, alerta: t("alerta.conexaoInexistente") }
+            const rotulo = t("conexao.rotulo", { nome: canal.label })
+            const numero = ehWhatsApp(canal) ? numeroDaConexao(canal.display_phone, false) : ""
+            return numero ? { rotulo, legenda: numero } : { rotulo, alerta: t("alerta.conexaoSemNumero") }
+          }
           case "vazio":
             return { rotulo: null, alerta: t("alerta.vazio") }
         }
       },
-    [t, gatilho, familia, campos, rotuloDoEvento],
+    [t, gatilho, familia, campos, rotuloDoEvento, conexoes],
   )
 
   const grupos = useMemo<GrupoDoPainel[]>(() => {
@@ -351,6 +372,19 @@ export function VariaveisProvider({
       // O texto recebido só existe nos gatilhos de mensagem.
       if (grupo === "mensagem" && !gatilhoDeMensagem(gatilho)) continue
       lista.push({ id: grupo, titulo: t(`grupos.${grupo}`), itens: fixos(grupo) })
+      // O número de cada conexão logo depois da conversa (onde está o "Id da
+      // conexão" do disparo). Só WhatsApp com número: o Instagram não tem, e a
+      // conexão por QR Code só sabe o dela depois de pareada.
+      if (grupo === "conversa" && conexoes) {
+        const itens = conexoes
+          .filter((canal) => ehWhatsApp(canal) && numeroDaConexao(canal.display_phone, false) !== "")
+          .map((canal) => ({
+            codigo: codigoDoNumeroDaConexao(canal.id),
+            rotulo: t("conexao.rotulo", { nome: canal.label }),
+            legenda: t("conexao.legenda"),
+          }))
+        if (itens.length > 0) lista.push({ id: "conexoes", titulo: t("grupos.conexoes"), itens })
+      }
       // Os campos da ficha logo depois do contato: é onde o operador os procura.
       if (grupo === "contato" && campos.status === "pronto") {
         for (const bloco of agruparCampos(campos.todos, campos.grupos)) {
@@ -367,7 +401,7 @@ export function VariaveisProvider({
       }
     }
     return lista
-  }, [t, familia, gatilho, campos, ultimo])
+  }, [t, familia, gatilho, campos, ultimo, conexoes])
 
   const notaDoEvento = useMemo<NotaDoEvento | null>(
     () =>
@@ -410,11 +444,18 @@ export function VariaveisProvider({
           const v = exemplos?.[c.nome]
           return v === undefined ? null : { texto: v, origem: "exemplo" }
         }
+        case "conexao": {
+          if (!conexoes) return null
+          const canal = conexoes.find((x) => x.id === c.id)
+          const numero = canal && ehWhatsApp(canal) ? numeroDaConexao(canal.display_phone, modo === "cru") : ""
+          // Sem número o envio PARA o passo: `nenhum` leva o motivo da etiqueta ao âmbar.
+          return numero ? { texto: numero, origem: "conta" } : { texto: "", origem: "nenhum" }
+        }
         case "vazio":
           return { texto: "", origem: "nenhum" }
       }
     },
-    [valoresDoCliente, familia, ultimo, exemplos, cardIncerto],
+    [valoresDoCliente, familia, ultimo, exemplos, cardIncerto, conexoes],
   )
 
   const camposEstado = campos.status

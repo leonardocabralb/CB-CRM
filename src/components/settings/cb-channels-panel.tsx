@@ -70,7 +70,8 @@ import { invalidarCacheDeCanais } from '@/hooks/use-channels';
 import { SettingsPanelHead } from './settings-panel-head';
 import { ehEvolution, ehInstagram, ehMeta, ehWhatsApp } from '@/lib/cb-channels/transporte';
 import { InstagramGlyph } from '@/components/channels/instagram-glyph';
-import { identidadeDoCanal } from '@/lib/cb-channels/display';
+import { formatChannelPhone, identidadeDoCanal } from '@/lib/cb-channels/display';
+import { ListaDeDependencias, useDependenciasDaConexao } from './dependencias-da-conexao';
 import {
   AVISO_DE_VENCIMENTO_DIAS,
   CAMINHO_DO_WEBHOOK,
@@ -126,6 +127,39 @@ interface StageOption {
 type AddStep = 'choose' | 'evolution' | 'meta' | 'instagram';
 
 const POLL_MS = 5_000;
+
+/**
+ * Consultas seguidas com a conexão aberta e o número ainda não gravado pela
+ * Evolution (`numeroPendente`) antes de a tela parar de esperar: 6 × 5 s.
+ * O normal é UMA (segundos); sem o teto, uma Evolution que nunca grava
+ * prenderia o diálogo do QR. O aviso `connection.update` grava o número
+ * depois, por conta própria.
+ */
+const MAX_NUMERO_PENDENTE = 6;
+
+/**
+ * O aviso de "conectou". Com OUTRO chip (o "Reparear" é o caminho para trocar
+ * o número), confirma a troca e diz que nada desta conexão precisa ser
+ * refeito — `numeroAnterior` só vem quando havia um e mudou. Senão, o texto
+ * de quem chamou. Fora do componente para não entrar nas dependências do
+ * laço do QR.
+ */
+function avisarConexao(
+  t: ReturnType<typeof useTranslations>,
+  payload: { numeroAnterior?: string | null; channel?: { display_phone?: string | null } | null },
+  textoPadrao: string,
+) {
+  const antes = formatChannelPhone(payload.numeroAnterior);
+  const agora = formatChannelPhone(payload.channel?.display_phone);
+  if (antes && agora) {
+    toast.success(t('numeroTrocadoToast', { antes, agora }), {
+      description: t('numeroTrocadoDescricao'),
+      duration: 15000,
+    });
+  } else {
+    toast.success(textoPadrao);
+  }
+}
 
 const STATUS_DOT: Record<CbChannel['status'], string> = {
   connected: 'bg-emerald-500',
@@ -221,6 +255,9 @@ export function CbChannelsPanel() {
   const [pipelinesCarregados, setPipelinesCarregados] = useState(false);
 
   const [confirmDelete, setConfirmDelete] = useState<CbChannel | null>(null);
+  /** Conta as aberturas do "Remover": cada uma relê o que depende da conexão. */
+  const [aberturaDoRemover, setAberturaDoRemover] = useState(0);
+  const dependencias = useDependenciasDaConexao(confirmDelete?.id ?? null, aberturaDoRemover);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   /** Sucessor escolhido quando o canal a remover é o padrão. */
   const [successorId, setSuccessorId] = useState('');
@@ -319,6 +356,7 @@ export function CbChannelsPanel() {
     setQrConnected(false);
     setQrError(null);
     avisouWebhookRef.current = false;
+    pendentesRef.current = 0;
   };
 
   /**
@@ -380,11 +418,14 @@ export function CbChannelsPanel() {
       if (payload.webhookError) {
         toast.warning(t('webhookRepairFailed'), { description: payload.webhookError });
       } else {
-        toast.success(t('resyncedToast'));
+        // Uma troca de chip que o diálogo do QR não viu (fechado cedo) é
+        // confirmada aqui.
+        avisarConexao(t, payload, t('resyncedToast'));
       }
       // A conexão pode ter caído entre a listagem e o clique. Aí o gesto
-      // certo passa a ser parear, e o QR é o caminho.
-      if (!payload.connected) openQrFor(channelId, payload.qr ?? null);
+      // certo passa a ser parear, e o QR é o caminho. `numeroPendente` é
+      // conexão ABERTA (a Evolution só não gravou o número ainda): sem QR.
+      if (!payload.connected && !payload.numeroPendente) openQrFor(channelId, payload.qr ?? null);
       void load();
     } catch {
       toast.error(t('networkError'));
@@ -748,6 +789,8 @@ export function CbChannelsPanel() {
   qrChannelIdRef.current = qrChannelId;
   /** Trava do aviso de webhook: um por abertura do diálogo, não um por tick. */
   const avisouWebhookRef = useRef(false);
+  /** Respostas seguidas com o número ainda não gravado (ver `MAX_NUMERO_PENDENTE`). */
+  const pendentesRef = useRef(0);
 
   useEffect(() => {
     if (!qrChannelId || qrConnected) return;
@@ -780,10 +823,20 @@ export function CbChannelsPanel() {
           // aparece.
           toast.warning(t('webhookRepairFailed'), { description: payload.webhookError });
         }
-        if (payload.connected) {
+        if (payload.numeroPendente) {
+          // Aberta, mas a Evolution ainda não gravou o número do chip novo
+          // (segundos): espera a próxima consulta, com teto.
+          pendentesRef.current += 1;
+          if (pendentesRef.current >= MAX_NUMERO_PENDENTE) {
+            setQrConnected(true);
+            setQrImage(null);
+            toast.success(t('connectedToast'), { description: t('numeroPendenteDescricao') });
+            void load();
+          }
+        } else if (payload.connected) {
           setQrConnected(true);
           setQrImage(null);
-          toast.success(t('connectedToast'));
+          avisarConexao(t, payload, t('connectedToast'));
           void load();
         } else if (payload.qr) {
           setQrImage(payload.qr);
@@ -1248,6 +1301,7 @@ export function CbChannelsPanel() {
                       disabled={deletingId === channel.id}
                       onClick={() => {
                         setConfirmDelete(channel);
+                        setAberturaDoRemover((n) => n + 1);
                         setSuccessorId(
                           sucessoresDe(channel)[0]?.id ?? '',
                         );
@@ -2109,6 +2163,12 @@ export function CbChannelsPanel() {
           <div className="rounded-md bg-muted/50 p-3 text-sm text-muted-foreground">
             {t('restartKeepsData')}
           </div>
+          {/* Trocar o chip é AQUI (decisão do operador, 03/10/2026): a conexão
+              fica, e tudo que aponta para ela segue valendo. Remover e criar
+              outra desliga automações e deixa passos sem número. */}
+          <div className="rounded-md bg-muted/50 p-3 text-sm text-muted-foreground">
+            {t('restartTrocaDeChip')}
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmRestart(null)}>
               {t('cancel')}
@@ -2128,7 +2188,8 @@ export function CbChannelsPanel() {
           if (!open) setConfirmDelete(null);
         }}
       >
-        <DialogContent>
+        {/* Rola: a lista do que depende da conexão pode passar da tela. */}
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {confirmDelete ? t('deleteConfirmTitle', { label: confirmDelete.label }) : ''}
@@ -2150,12 +2211,13 @@ export function CbChannelsPanel() {
               {t('deleteKeepsHistory')}
             </p>
 
-            {/* Efeito colateral que nada na tela avisava: o trigger
-                `cb_channels_drop_from_automations` (903) tira o canal do
-                escopo e DESATIVA a automação que só valia para ele. */}
-            <p className="rounded-md bg-muted/50 p-2 text-xs text-muted-foreground">
-              {t('deleteDisablesAutomations')}
-            </p>
+            {/* O que depende desta conexão, com nome (03/10/2026): a automação
+                que o gatilho da 903 desliga, os passos que ficam sem número,
+                os robôs, os agentes de IA, os filtros. E, no QR Code, que
+                trocar o chip é "Reparear", não remover. */}
+            {confirmDelete && (
+              <ListaDeDependencias canal={confirmDelete} dependencias={dependencias} />
+            )}
 
             {/* O funil desta conexão para de receber. `default_pipeline_id` é
                 a coluna dela, então some junto com a linha — e o roteamento
@@ -2222,6 +2284,10 @@ export function CbChannelsPanel() {
               variant="destructive"
               disabled={
                 deletingId !== null ||
+                // Antes de a lista chegar, remover seria às cegas — a tela
+                // existe para mostrá-la (Codex, PR #379). Na FALHA o botão
+                // volta: conexão quebrada não pode ficar sem saída.
+                dependencias.estado === 'carregando' ||
                 // Última conexão da conta: o servidor recusa (409), então o
                 // botão não deve nem prometer.
                 (confirmDelete?.is_default === true &&
