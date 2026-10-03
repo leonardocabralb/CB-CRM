@@ -77,11 +77,16 @@
     "settings": "Settings",
     "openMenu": "Open menu",
     "openAccountMenu": "Open account menu",
+    "openAccountMenuAnonimo": "Open account menu (incognito mode on)",
     "defaultUser": "User",
     "defaultAvatar": "Avatar",
     "menuProfile": "Profile",
     "menuSettings": "Settings",
     "menuSignOut": "Sign out",
+    "modoAnonimo": "Incognito mode",
+    "modoAnonimoDica": "Opening conversations doesn't clear their unread count or show you in them. Replying clears it.",
+    "modoAnonimoAtivo": "Incognito",
+    "modoAnonimoFalhou": "This browser wouldn't save incognito mode. Nothing changed.",
     "scheduled": "Scheduled messages",
     "flows": "Flows",
     "aiAgents": "AI Agents",
@@ -406,10 +411,14 @@
       "noteSaveError": "Could not save the note.",
       "noteMentionHint": "Type @ to mention a teammate",
       "noteMentionFailed": "Note saved, but the mentioned teammates could not be notified.",
+      "noteReplyFailed": "Reply saved, but the people in the note thread could not be notified.",
+      "noteReplyGone": "The note you were replying to was deleted.",
       "fromLibrary": "From library",
       "acervoError": "Could not prepare the library file.",
       "solteParaAnexar": "Drop here to attach",
-      "arquivoNaoSuportado": "{n, plural, =1 {1 file is not supported by WhatsApp and was left out} other {# files are not supported by WhatsApp and were left out}}. Accepts images (PNG, JPG, WebP), video (MP4, 3GP), PDF, Word, Excel, PowerPoint and text.",
+      "arquivoNaoSuportado": "{n, plural, =1 {1 file is not supported by WhatsApp and was left out} other {# files are not supported by WhatsApp and were left out}}. Accepts images (PNG, JPG, WebP), video (MP4, 3GP), PDF, Word, Excel, PowerPoint and text. HTML pages only on QR code connections.",
+      "anexoSoNoQrCode": "HTML pages only go out through QR code connections, and this conversation now replies through another one. Remove the file from the queue or switch back to a QR code connection.",
+      "arquivoNaoSuportadoQrCode":"{n, plural, =1 {1 file is not supported by WhatsApp and was left out} other {# files are not supported by WhatsApp and were left out}}. Accepts images (PNG, JPG, WebP), video (MP4, 3GP), PDF, Word, Excel, PowerPoint, text and HTML pages.",
       "tetoDeAnexos": "{n, plural, =1 {1 file was left out} other {# files were left out}}: at most {max} attachments at a time.",
       "removeAllAttachments": "Remove all",
       "addCaptionFor": "Caption for {arquivo}",
@@ -589,6 +598,7 @@
       "tabMeetings": "Meetings",
       "tabBilling": "Billing",
       "tabRelated": "Related",
+      "tabAtlas": "Atlas",
       "fieldSaved": "Saved",
       "fieldSaveError": "Could not save \"{campo}\" for {cliente}.",
       "avancar": {
@@ -620,12 +630,96 @@
       "vazioDica": "Photos, documents and audio shared here will show up.",
       "verNaConversa": "Show in conversation"
     },
+    "atlas": {
+      "titulo": "Client in Atlas",
+      "abrirNoAtlas": "Open in Atlas",
+      "erroCarregar": "Could not load the link with Atlas.",
+      "tentarDeNovo": "Try again",
+      "naoConectado": "Atlas is not connected.",
+      "naoConectadoDica": "An administrator connects it in Settings → Integrations.",
+      "semVinculo": "This contact is not linked to an Atlas client.",
+      "semVinculoDica": "The status sync links it on its own by the conversation link or by the phone. To link it now, paste the link of the client’s record in Atlas.",
+      "semVinculoPecaAoAdmin": "To link it by hand, ask an administrator.",
+      "colarLink": "Link of the record in Atlas",
+      "colarLinkPlaceholder": "https://…/#/clients/…",
+      "vincular": "Link",
+      "vinculando": "Linking…",
+      "vinculado": "Contact linked to the Atlas client.",
+      "desvincular": "Unlink",
+      "confirmarDesvincular": "Unlink this contact from the Atlas client? Nothing changes in Atlas, and neither the status sync nor the “Create client in Atlas” step will link it to this client again on their own.",
+      "cancelar": "Cancel",
+      "desvinculado": "Link with Atlas removed.",
+      "naLixeira": "This client’s record is in the Atlas trash (seen on {quando}).",
+      "naLixeiraDica": "Restore it in Atlas (within 7 days) and tap “Check in Atlas”, or unlink it. Meanwhile, the “Create client” and “Create task” actions of the Atlas automation node stop on this contact.",
+      "naLixeiraDicaPecaAoAdmin": "Once it is restored in Atlas (within 7 days), the CRM notices it on the next full read, when an administrator checks it here, or when another Atlas action succeeds on this client. Meanwhile, the “Create client” and “Create task” actions of the Atlas automation node stop on this contact.",
+      "conferirNoAtlas": "Check in Atlas",
+      "conferindo": "Checking…",
+      "foraDaLixeira": "The client is back from the Atlas trash.",
+      "situacaoNaoLida": "Status not read yet",
+      "situacaoOutra": "Other status ({situacao})",
+      "desde": "since {dia}",
+      "desdeDesconhecido": "date of the change unknown",
+      "origemOutra": "Link of unknown origin",
+      "dadosDe": "Status read on {quando}.",
+      "leituraAntiga": "Status read on {quando} — the Atlas sync is behind.",
+      "leituraNunca": "The status has not been read from Atlas yet.",
+      "erroGenerico": "Could not finish right now; try again in a moment.",
+      "situacao": {
+        "ativo": "Active",
+        "importado": "Imported (awaiting registration)",
+        "finalizado": "Closed out",
+        "rescindido": "Terminated",
+        "inativo": "Inactive",
+        "suspenso": "Suspended"
+      },
+      "origem": {
+        "criada": "Created in Atlas by the “Create client in Atlas” step",
+        "reativada": "Reactivated in Atlas by the “Create client in Atlas” step",
+        "encontrada": "Found in Atlas by the “Create client in Atlas” step",
+        "manual": "Linked by hand",
+        "automatica": "Linked automatically by the sync"
+      },
+      "casouPor": {
+        "chat_link": "by the conversation link",
+        "telefone": "by the phone"
+      },
+      "erro": {
+        "link_invalido": "The pasted text is not the link of an Atlas record. Copy the address of the client’s record (…/#/clients/…).",
+        "contato_nao_encontrado": "This contact was not found.",
+        "nao_conectado": "Atlas is not connected (Settings → Integrations).",
+        "outro_ambiente": "The saved Atlas connection belongs to another environment (test × production).",
+        "chave_ilegivel": "The saved Atlas key could not be read; reconnect in Settings → Integrations.",
+        "chave_invalida": "Atlas rejected the key; reconnect in Settings → Integrations.",
+        "api_fora_do_plano": "The firm’s Atlas plan does not include the API.",
+        "sem_permissao": "The Read Clients permission is turned off in Atlas.",
+        "nao_encontrado": "This client was not found in this firm’s Atlas (or it is in the trash).",
+        "limite": "Atlas asked to wait (requests per minute limit); try again in a moment.",
+        "indisponivel": "Atlas did not respond; try again in a moment.",
+        "ja_vinculado": "This contact is already linked to another Atlas client; unlink it first.",
+        "ligado_a_outra_ficha": "This Atlas client is already linked to another CRM contact (likely a duplicate contact).",
+        "outro_escritorio": "This contact is linked to a client of the previous Atlas firm; delete those links in the Atlas card under Settings → Integrations.",
+        "ainda_na_lixeira": "The client is still in the Atlas trash; restore it there and check again.",
+        "sem_vinculo": "This contact is not linked to an Atlas client.",
+        "db_error": "Could not save; try again."
+      }
+    },
     "situacaoDoCliente": {
       "cliente": "Client",
       "rotuloRescindido": "Terminated",
       "rotuloFinalizado": "Closed out",
-      "ondeRescindido": "Contract terminated — {funil}, stage “{etapa}”.",
-      "ondeFinalizado": "Contract closed out — {funil}, stage “{etapa}”.",
+      "rotuloSuspenso": "Suspended",
+      "rotuloInativo": "Inactive",
+      "noAtlasRescindido": "Contract terminated in Atlas since {desde}.",
+      "noAtlasRescindidoSemData": "Contract terminated in Atlas.",
+      "noAtlasFinalizado": "Contract closed out in Atlas since {desde}.",
+      "noAtlasFinalizadoSemData": "Contract closed out in Atlas.",
+      "noAtlasSuspenso": "Client suspended in Atlas since {desde}.",
+      "noAtlasSuspensoSemData": "Client suspended in Atlas.",
+      "noAtlasInativo": "Client inactive in Atlas since {desde}.",
+      "noAtlasInativoSemData": "Client inactive in Atlas.",
+      "lidoNoAtlasEm": "Status read from Atlas on {quando}.",
+      "ondeRescindido": "Contract terminated in the {funil} pipeline, stage “{etapa}”.",
+      "ondeFinalizado": "Contract closed out in the {funil} pipeline, stage “{etapa}”.",
       "dica": "Check the history before carrying on or offering a new service."
     },
     "noShow": {
@@ -634,6 +728,53 @@
       "faltouNaAgenda": "this client missed the meeting on {dia}.",
       "semAvanco": "had a meeting on {dia} and didn't move forward in the pipeline.",
       "proxima": "New meeting on {dia} at {hora}."
+    },
+    "atlasNegociacoes": {
+      "titulo": "Negotiation in Atlas",
+      "atualizar": "Refresh the negotiation",
+      "tentarDeNovo": "Try again",
+      "semNegociacao": "No bank registered for this client in Atlas.",
+      "limite": "Atlas asked to wait {segundos} s before reading again.",
+      "limiteDoCrm": "Too many reads in a short time; wait {segundos} s before reading again.",
+      "listaCortada": "Atlas cut the list short. In total: {bancos} banks, {contratos} contracts and {propostas} proposals.",
+      "bancoSemNome": "Unnamed bank",
+      "dividaOriginal": "Original debt {valor}",
+      "dividaAtualizada": "updated {valor}",
+      "contratos": "Contracts ({n})",
+      "propostas": "Proposals ({n})",
+      "semReferencia": "Contract without number",
+      "titular": "Holder: {nome}",
+      "judicializado": "In court",
+      "quitadoEm": "settled on {dia}",
+      "acordo": "Settlement: {valor} on {divida} ({desconto} discount)",
+      "baseEDesconto": "Base debt {base} · discount {desconto}",
+      "semPermissaoDica": "An Atlas administrator turns on the “Read negotiations” permission of the API key.",
+      "conexaoDica": "An administrator checks the Atlas card in Settings → Integrations.",
+      "situacaoDoContrato": {
+        "ativo": "Active",
+        "quitado": "Settled",
+        "outra": "Unrecognized status"
+      },
+      "situacaoDaProposta": {
+        "enviada": "Sent",
+        "recebida": "Received",
+        "aceita": "Accepted",
+        "recusada": "Rejected",
+        "outra": "Unrecognized status"
+      },
+      "tipoDaProposta": {
+        "a_vista": "Lump sum",
+        "parcelado": "Installments",
+        "outra": "Other type"
+      },
+      "erro": {
+        "sem_permissao": "Reading negotiations is turned off in Atlas.",
+        "sem_permissao_consultar": "The “Read clients” permission is turned off in Atlas.",
+        "nao_encontrado": "The client was not found in Atlas (it may be in the trash).",
+        "sem_vinculo": "This contact is not linked to an Atlas client.",
+        "conexao": "The connection to Atlas is not working.",
+        "falhou": "Could not read the negotiations in Atlas."
+      }
     },
     "cobrancas": {
       "faixaTitulo": "Delinquent on Asaas",
@@ -900,7 +1041,12 @@
       "expand": "Show the whole note",
       "collapse": "Collapse note",
       "pinError": "Could not pin the note.",
-      "verNaConversa": "Show in conversation"
+      "verNaConversa": "Show in conversation",
+      "replied": "{autor} replied:",
+      "reply": "Reply",
+      "cancelReply": "Cancel reply",
+      "originalUnavailable": "Note unavailable",
+      "goToOriginal": "Show the replied note"
     },
     "scheduled": {
       "sectionTitle": "Scheduled",
@@ -1124,6 +1270,7 @@
         "tasks": "Tasks",
         "billing": "Billing",
         "related": "Related",
+        "atlas": "Atlas",
         "tags": "Tags"
       },
       "unnamed": "Unknown",
@@ -1531,7 +1678,11 @@
         "send_to_number": "Notify number: {alvo}",
         "create_task": "Create task: {alvo}",
         "pin_conversation_channel": "Pin the conversation to a number",
-        "atlas_criar_cliente": "Create the client in Atlas"
+        "atlas_criar_cliente": "Create the client in Atlas",
+        "atlas_atualizar_cliente": "Update the client in Atlas{situacao, select, ativo { (status: Active)} importado { (status: Imported)} finalizado { (status: Closed out)} rescindido { (status: Terminated)} inativo { (status: Inactive)} suspenso { (status: Suspended)} other {}}",
+        "atlas_criar_tarefa": "Create task in Atlas: {alvo}",
+        "atlas_enviar_transcricao": "Send the meeting transcript to Atlas",
+        "atlas_atualizar_onboarding": "Onboarding in Atlas: {alvo}"
       },
       "cancelar": "Cancel",
       "salvar": "Save",
@@ -2080,7 +2231,11 @@
         "send_to_number": "Notify a number",
         "create_task": "Create task",
         "pin_conversation_channel": "Pin conversation to a number",
-        "atlas_criar_cliente": "Create client in Atlas"
+        "atlas_criar_cliente": "Create client in Atlas",
+        "atlas_atualizar_cliente": "Update client in Atlas",
+        "atlas_criar_tarefa": "Create task in Atlas",
+        "atlas_enviar_transcricao": "Send transcript to Atlas",
+        "atlas_atualizar_onboarding": "Update onboarding in Atlas"
       },
       "triggers": {
         "new_message_received": {
@@ -2138,6 +2293,10 @@
         "zapsign_documento_assinado": {
           "label": "Document signed (ZapSign)",
           "hint": "When a ZapSign document is complete — everyone has signed (integration in Settings → Integrations). The customer is matched by the document's deal (contract generated by the CRM) or, for the template's public link, by the signer's phone, e-mail or CPF. No contact is created. To move the card, add the condition \"Deal is in stage…\" before \"Move card\"."
+        },
+        "atlas_situacao_mudou": {
+          "label": "Atlas status changed",
+          "hint": "When the periodic Atlas reading (Settings → Integrations) sees that a linked client’s status changed — never on the first reading nor on a new link. Choose the statuses and the pipelines: the client’s card must be in one of them, otherwise nothing runs and the change shows on the Atlas card. Runs only from the reading: not offered in “Run automation” nor in “Run another automation”."
         },
         "manual": {
           "label": "Manual (button only)",
@@ -2356,6 +2515,12 @@
         "campoDaFichaHelp": "Reads the value on the contact record when this step runs. “is” and “contains” ignore upper and lower case; accents count. If the read fails, the condition answers “no” and the run log says it was not checked."
       },
       "delete": "Delete",
+      "naoRepetir": {
+        "label": "Don't repeat for the same contact for",
+        "unidade": "hours",
+        "placeholder": "always",
+        "help": "Once the automation runs for a contact, their next messages within this period don't fire it again — and don't show up in the log. The period counts from the start of the last run, including one that failed. Leave blank to run on every message. Up to 720 hours (30 days). Running it by hand ignores the period."
+      },
       "stages": {
         "triggerLabel": "Entered this stage",
         "triggerHelpAll": "With no stage picked it runs for any stage.",
@@ -2492,7 +2657,91 @@
         "conexaoErro": "The Atlas connection has a problem, and the step may fail.",
         "conexaoNaoSei": "The step uses the Atlas key connected in Settings → Integrations.",
         "abrirIntegracoes": "Open Integrations",
-        "ajuda": "It searches Atlas first: it creates the client, reactivates a terminated, closed-out or inactive record, or just links one in progress. It stops without touching Atlas when in doubt (more than one record, a match only by e-mail or by the end of the phone, a suspended record). It never retries on its own."
+        "ajuda": "It searches Atlas first: it creates the client, reactivates a terminated, closed-out or inactive record, or just links one in progress. It stops without touching Atlas when in doubt (more than one record, a match only by e-mail or by the end of the phone, a suspended record). It never retries on its own.",
+        "no": "Atlas",
+        "acaoLabel": "Action",
+        "acao": {
+          "criarCliente": "Create client",
+          "atualizarCliente": "Update client",
+          "criarTarefa": "Create task",
+          "enviarTranscricao": "Send meeting transcript",
+          "atualizarOnboarding": "Update onboarding item"
+        },
+        "trocarAcaoConfirma": "Switching the action switches what is set up in this step. Going back to this action before leaving the screen restores its setup; saving with the other action erases it. Continue?",
+        "naoMudar": "— don’t change —",
+        "situacaoLabel": "Status",
+        "situacaoHelp": "In Atlas, the team decides the status; change it here only if the firm uses the CRM for that. Active or Imported do not reopen a suspended record (the step stops). An automation of the “Atlas status changed” trigger cannot have this step.",
+        "valorDoCardLabel": "Contract value = card value",
+        "valorDoCardHelp": "No card, or a card worth 0: the value in Atlas does not change.",
+        "datasHelp": "Empty field on the contact: the date in Atlas does not change (no fallbacks, unlike “Create client”).",
+        "linkLabel": "Conversation link",
+        "telefoneLabel": "Contact phone",
+        "emailLabel": "Contact e-mail",
+        "documentoLabel": "Document (CPF/CNPJ)",
+        "documentoHelp": "A text field on the contact holding the CPF or CNPJ. Filled with anything else, the step fails without sending anything.",
+        "campoDeTextoSumiu": "Deleted field (or not a text field)",
+        "atualizarAjuda": "Updates the client linked to this contact (Atlas tab). Only what was chosen and is filled on the contact is sent: nothing in Atlas is erased. Without the contact linked to Atlas, the step fails without sending anything. It never retries on its own.",
+        "tarefaTituloLabel": "Task title",
+        "tarefaDescricaoLabel": "Description",
+        "prioridadeLabel": "Priority",
+        "prioridadeNormal": "Normal",
+        "prioridadeUrgente": "Urgent",
+        "prazoLabel": "Due in (days from today)",
+        "semPrazoLabel": "No due date",
+        "tarefaAjuda": "In Atlas, the task goes to the firm’s oldest administrator (the API does not pick an assignee) and stores only the due day. With the contact linked to Atlas, it is requested with the client; without, it is created with no client. With the linked client marked as in the Atlas trash, the step fails without sending: restore it there and use “Check in Atlas” on the Atlas tab. Running again creates another task.",
+        "transcricaoFonte": "Sends this client’s most recent meeting transcript (from tl;dv or pasted in the Meetings tab) to Atlas’s Diagnosis, for meetings in the last {horas} h. If it is still pending, has no transcript or is outside the window, the step fails — it never sends another meeting instead.",
+        "janelaLabel": "Window (hours)",
+        "notasLabel": "Notes (optional)",
+        "incluirNotasLabel": "Include the meeting notes (tl;dv summary)",
+        "aceitarEmailLabel": "Accept a meeting linked by the guest’s e-mail",
+        "aceitarEmailHelp": "tl;dv links the meeting to the contact by the invited guest’s e-mail — a spouse sharing the e-mail matches just the same. Unchecked, only a meeting linked by hand (or pasted in the Meetings tab) is sent.",
+        "transcricaoCopia": "The API does not prevent copies: running again sends another copy to the Diagnosis. Needs the contact linked to Atlas.",
+        "itemLabel": "Checklist item",
+        "itemPlaceholder": "E.g.: Proof of address",
+        "itemHelp": "The text must match the onboarding checklist in Atlas (case does not matter). No inserted fields: the text is what identifies the item.",
+        "situacaoDoItemLabel": "Item status",
+        "observacaoLabel": "Note (optional)",
+        "onboarding": {
+          "situacao": {
+            "pending": "Pending",
+            "done": "Done",
+            "blocked": "Blocked",
+            "skipped": "Not applicable"
+          }
+        },
+        "nadaEscolhido": "Nothing chosen",
+        "transcricaoResumo": "The most recent in the last {horas} h",
+        "semTitulo": "No title",
+        "semItem": "No item",
+        "resumoValor": "Card value",
+        "resumoDatas": "Dates",
+        "resumoLink": "Link",
+        "resumoTelefone": "Phone",
+        "resumoEmail": "E-mail",
+        "resumoDocumento": "Document"
+      },
+      "atlasGatilho": {
+        "descricao": "Fires when the periodic Atlas reading (every ~15 min) sees that a linked client’s status changed. Never on the first reading nor on a new link.",
+        "abrirIntegracoes": "See the connection in Integrations",
+        "situacoesLabel": "Fires when the status becomes",
+        "situacao": {
+          "ativo": "Active",
+          "importado": "Imported",
+          "finalizado": "Finished",
+          "rescindido": "Terminated",
+          "inativo": "Inactive",
+          "suspenso": "Suspended"
+        },
+        "situacoesAjuda": "“Em negociação” (the legacy value) counts as Active. Imported to Active is the initial registration, not a change: it does not fire.",
+        "funisLabel": "The client’s card must be in one of these pipelines",
+        "funisCarregando": "Loading pipelines…",
+        "funisFalhou": "The pipelines could not be loaded.",
+        "funisVazio": "The account has no pipelines.",
+        "funisApagados": "{n, plural, one {# chosen pipeline was deleted} other {# chosen pipelines were deleted}}",
+        "tirarApagados": "Remove the deleted ones",
+        "funisAjuda": "The card is the client’s ONLY card in these pipelines, in any status (won included). With no card in them — the former client whose card is in another pipeline — or with more than one, the automation does not run and the change shows on the Atlas card in Integrations. To reach a former client who came back and whose card is in the sales pipeline, also check that pipeline.",
+        "aviso": "Move the card before any “Wait”: the wait does not check the Atlas status again when it wakes up. Check the pipeline’s Automations tab for what runs when the card reaches the target stage.",
+        "variaveisTitulo": "Change variables"
       },
       "asaas": {
         "diasLabel": "Days overdue (the milestone)",
@@ -2521,6 +2770,7 @@
       "kindCondition": "Condition",
       "kindWait": "Wait",
       "kindAction": "Action",
+      "integracaoAtlas": "Atlas integration",
       "pendencias": {
         "titulo": "{count, plural, one {To turn this on, resolve # pending item} other {To turn this on, resolve # pending items}}",
         "atencao": "Heads-up (does not block turning on)",
@@ -2601,6 +2851,7 @@
           "gatilho_resposta_vazia": "Remove the blank replies.",
           "gatilho_etapas_invalidas": "Choose the trigger stages again.",
           "gatilho_parar_ao_sair_invalido": "Tick or untick the “Stop if the card leaves this stage” option again.",
+          "gatilho_nao_repetir_invalido": "Enter a whole number of hours from 1 to 720 in “Don't repeat for the same contact for” — or leave it blank.",
           "gatilho_evento_invalido": "Choose the Calendly event type again.",
           "gatilho_reagendamento_invalido": "Tick or untick the “Ignore reschedules” option again.",
           "gatilho_webhook_invalido": "Choose the webhook that triggers the automation again.",
@@ -2608,6 +2859,11 @@
           "gatilho_hora_de_envio_invalida": "Choose a send time between 08:00 and 17:00.",
           "gatilho_dias_uteis_invalido": "Tick or untick the “Business days only” option again.",
           "gatilho_status_invalidos": "Choose the trigger statuses again: won, lost or open.",
+          "gatilho_atlas_sem_situacao": "Check at least one Atlas status in the trigger.",
+          "gatilho_atlas_situacao_invalida": "The trigger has an unknown Atlas status: check the statuses again.",
+          "gatilho_atlas_sem_funil": "Choose at least one pipeline where the client’s card must be.",
+          "atlas_gatilho_com_criar_cliente": "An automation triggered by an Atlas status change cannot have “Create client in Atlas”: Atlas owns the status, and reactivating by reflex would undo the team’s decision.",
+          "atlas_gatilho_aciona_outra": "Delete this step: an automation triggered by an Atlas status change cannot run another one — it would run with this client and could reactivate them in Atlas.",
           "regua_com_espera": "Delete this wait step: in the collection sequence, each milestone is its own automation.",
           "regua_aciona_outra": "Delete this step: the collection message must be sent by this automation.",
           "regua_so_texto": "Replace this step with a text message: the collection sequence sends through a QR Code connection.",
@@ -2617,8 +2873,22 @@
           "acionar_automacao_desligada": "The chosen automation is turned off: when this step is reached it fails and the following steps do not run. Turn it on or choose another.",
           "acionar_automacao_apagada": "The chosen automation was deleted: when this step is reached it fails and the following steps do not run. Choose another.",
           "acionar_automacao_da_regua": "The chosen automation belongs to the Asaas collection sequence, which only runs from the Asaas sweep: when this step is reached it fails and the following steps do not run. Choose another.",
+          "acionar_automacao_do_atlas": "The chosen automation uses the “Atlas status changed” trigger, which only runs from the Atlas reading: when this step is reached it fails and the following steps do not run. Choose another.",
           "iniciar_robo_desligado": "The chosen bot is not active: when this step is reached it fails and the following steps do not run. Activate it or choose another.",
-          "iniciar_robo_apagado": "The chosen bot was deleted: when this step is reached it fails and the following steps do not run. Choose another."
+          "iniciar_robo_apagado": "The chosen bot was deleted: when this step is reached it fails and the following steps do not run. Choose another.",
+          "atlas_situacao_invalida": "Choose the Atlas status again (or “— don’t change —”).",
+          "atlas_atualizar_sem_campos": "Choose at least one field to update in Atlas.",
+          "atlas_tarefa_sem_titulo": "Write the Atlas task title.",
+          "atlas_tarefa_prioridade_invalida": "Choose the priority: normal or urgent.",
+          "atlas_tarefa_prazo_invalido": "The due date is a whole number of days, from 0 to 365 (or no due date).",
+          "atlas_transcricao_idade_invalida": "The transcript window is a whole number of hours, from 1 to 720.",
+          "atlas_transcricao_notas_invalido": "Tick the meeting notes box again.",
+          "atlas_transcricao_email_invalido": "Tick the box for meetings linked by e-mail again.",
+          "atlas_onboarding_sem_item": "Write the checklist item as it appears in Atlas.",
+          "atlas_onboarding_item_com_variavel": "The checklist item does not accept inserted fields: write the item text.",
+          "atlas_onboarding_situacao_invalida": "Choose the item status again (or “— don’t change —”).",
+          "atlas_onboarding_sem_mudanca": "Choose the item status or write a note.",
+          "atlas_gatilho_com_atualizar_cliente": "An automation triggered by an Atlas status change cannot have “Update client in Atlas”: Atlas owns the status, and updating by reflex can loop."
         }
       },
       "previa": {
@@ -2647,6 +2917,7 @@
         "asaas": "Asaas charge",
         "calendly": "Calendly booking",
         "zapsign": "ZapSign signature",
+        "atlas": "Atlas status change",
         "webhook": "Received webhook"
       },
       "fixas": {
@@ -2823,6 +3094,22 @@
         "zapsign_documento_token": {
           "rotulo": "Document code",
           "legenda": "The document identifier in ZapSign."
+        },
+        "atlas_situacao": {
+          "rotulo": "New status",
+          "legenda": "The client’s Atlas status after the change (rescindido)."
+        },
+        "atlas_situacao_anterior": {
+          "rotulo": "Previous status",
+          "legenda": "The client’s Atlas status before the change (ativo)."
+        },
+        "atlas_situacao_em": {
+          "rotulo": "Change date",
+          "legenda": "When the status changed in Atlas (30/09/2026 às 10:15h)."
+        },
+        "atlas_link": {
+          "rotulo": "Atlas record link",
+          "legenda": "Opens the client’s record in Atlas (whoever opens it must sign in to Atlas)."
         }
       },
       "resposta": {
@@ -4193,7 +4480,10 @@
         "permissao": {
           "read_client": "Consultar Clientes (read clients)",
           "create_client": "Criar Clientes (create clients)",
-          "update_client": "Atualizar Clientes (update clients)"
+          "update_client": "Atualizar Clientes (update clients)",
+          "create_task": "create tasks (create_task)",
+          "create_transcript": "create transcripts (create_transcript)",
+          "update_onboarding": "update onboarding (update_onboarding)"
         },
         "motivo": {
           "chave_invalida": "Atlas rejected the key (check it was copied in full, or generate a new one)",
@@ -4215,9 +4505,52 @@
           "permissoes_faltando": "API permissions are missing in Atlas",
           "resposta_inesperada": "Atlas replied in an unexpected format (its API may be being updated)",
           "outro_ambiente": "the stored connection belongs to another Atlas environment (test × production); this environment neither uses nor replaces it. Disconnect it in the environment where it was made",
-          "chave_mal_colada": "the pasted key looks incomplete or has a space in the middle; copy it again, in full"
+          "chave_mal_colada": "the pasted key looks incomplete or has a space in the middle; copy it again, in full",
+          "sem_permissao_listar": "the List Clients (Listar Clientes) permission is off in Atlas (the status sync needs it; the “Create client” step does not)",
+          "api_antiga": "the Atlas API does not report when the status changed yet (update pending in Atlas)",
+          "em_curso": "a sync is already running; wait a moment",
+          "cadeado_perdido": "the sync was interrupted by another one (a reconnection or another process); try again",
+          "ambiguo": "more than one item with the same text in the client’s checklist in Atlas",
+          "sem_admin": "the firm has no active administrator in Atlas to receive the task",
+          "item_nao_encontrado": "the client’s checklist in Atlas does not have the requested item"
         },
-        "semMotivo": "could not finish right now; try again shortly"
+        "semMotivo": "could not finish right now; try again shortly",
+        "ambienteDeTeste": "Test environment",
+        "leituraTitulo": "Status sync",
+        "leituraUltima": "Last sync: {quando}.",
+        "leituraNunca": "Client statuses have not been read from Atlas yet.",
+        "leituraAtrasada": "The sync is late (the scheduler reads every ~15 minutes).",
+        "leituraErro": "The last sync failed: {motivo}.",
+        "leituraDica": "Every ~15 minutes the CRM reads each client status in Atlas (active, terminated, finished…) and links the contact to the Atlas client on its own by the conversation link, when only one record and only one contact match. By the full phone number, it links only in the daily full read, and only for offices with up to ~900 clients. For this, turn on the List Clients (Listar Clientes) permission in Atlas.",
+        "lerAgora": "Sync statuses now",
+        "lendo": "Syncing…",
+        "lidoOk": "Sync done: {clientes} clients read, {vinculados} contacts linked now.",
+        "lidoParcial": "Partial sync: {clientes} clients read, {vinculados} contacts linked now; the rest follows in the next cycle.",
+        "leituraMuitoSeguida": "a sync was just requested; wait a minute",
+        "vinculos": "Linked contacts: {total}.",
+        "vinculosDetalhe": "{link} by the conversation link, {telefone} by phone, {manual} by hand, {passo} by the “Create client in Atlas” step.",
+        "apagarVinculos": "Delete the {n} links to the previous office and connect",
+        "confirmarApagarVinculos": "Delete the {n} links between contacts and clients of the previous office in Atlas? Nothing is deleted in Atlas; the contacts stay unlinked until the sync or the “Create client in Atlas” step links them to the new office.",
+        "mudancasTitulo": "Status changes",
+        "mudancasVazio": "No status change recorded yet.",
+        "mudancasDica": "The last 20 changes of linked clients and what the “Atlas status changed” automations did. Nothing is repeated on its own: what failed is checked in the automation history.",
+        "semFicha": "(no contact)",
+        "mudanca": {
+          "resultado": {
+            "disparado": "automation ran",
+            "em_espera": "waiting (Wait step)",
+            "falhou": "failed",
+            "sem_automacao": "no automation",
+            "sem_card": "card outside the pipeline",
+            "card_ambiguo": "more than one card",
+            "superada": "superseded"
+          },
+          "estado": {
+            "pendente": "queued",
+            "processando": "processing"
+          }
+        },
+        "permissoesOpcionaisDica": "Optional, only for the Atlas node in automations: the permissions to create tasks (create_task), create transcripts (create_transcript) and update onboarding (update_onboarding). Turned off, only the step that uses them fails, with the reason; the connection keeps working."
       },
       "avisoDaChave": {
         "embeddings_recusado": "Key saved: it generates text, but OpenAI refused the knowledge-base search (embeddings). The knowledge base now uses keyword search only — check the project's permissions and save the key again.",
@@ -5008,7 +5341,7 @@
         "receber1": "Use the <b>Webhook</b> node, POST method, and under <b>Respond</b> pick <b>Immediately</b>: the CRM waits at most {segundos} seconds for the answer.",
         "receber2": "Register the <b>Production URL</b> in the CRM and click <b>Publish</b> — saving without publishing does not put the new version live. What arrives shows in the <b>Executions</b> tab.",
         "receber3": "<b>Send test</b> (in <enviados>Webhooks → Outgoing</enviados>) posts to the registered URL — the Production URL: with the flow published, it shows in <b>Executions</b>, not in “Listen for test event”, which only listens on the <b>Test URL</b>, for 120 seconds. To see it in Listen, register a second endpoint with the Test URL, click Listen and Send test within that window, then delete the endpoint: outside the window it answers 404 to real notifications and ends up switched off.",
-        "servidor": "n8n on your own server: set the public address in <code>N8N_WEBHOOK_URL</code> (n8n 2.30 and later) or in <code>WEBHOOK_URL</code> (earlier versions; newer ones still read it). Without it the URL comes out with <code>localhost</code>, and the CRM refuses it."
+        "servidor": "n8n on your own server: set the public address in <code>N8N_WEBHOOK_URL</code> (n8n 2.35 and later) or in <code>WEBHOOK_URL</code> (earlier versions; newer ones still read it). Without it the URL comes out with <code>localhost</code>, and the CRM refuses it."
       },
       "make": {
         "chamarTitulo": "Calling the API",
@@ -5029,7 +5362,7 @@
           "desliga": "{falhas} consecutive failures switch the endpoint off, and the counter belongs to the ENDPOINT, not to the event: a backlog of deal notifications (with the scheduler down, for instance) goes out at once and, if your system is down at that moment, it alone can add up to {falhas} — switching off the message notifications along with it. Turn it back on in the Outgoing tab; that resets the counter.",
           "repeticao": "Order is not guaranteed — the one exception: for the message that opens a conversation, <code>conversation.created</code> arrives before <code>message.received</code>. On deal events, the envelope <code>id</code> (equal to <code>data.event_id</code>) is stable, and dropping repeats by it is REQUIRED: a deal notification cut short by a server restart goes out again, with the same <code>id</code>.",
           "teste": "The Send test button sends fictitious data with <code>\"test\": true</code>: filter it out of production flows.",
-          "negocio": "On deal events, <code>deal</code> is the deal AS OF DELIVERY and <code>stage</code> is the stage of THIS move — read <code>stage</code>, not <code>deal.stage_id</code>. <code>assignee</code> is the owner and <code>contact</code> carries tags and <code>custom_fields</code>. <code>source</code> says who caused it: <code>user</code> (someone in the CRM screens), <code>channel</code> (the connection opened the card on the first message, from the client or from the team), <code>automation</code> (the automations' “Create Deal”, “Move deal to stage” and “Mark won or lost” steps, and the robots' “Move card” block), <code>api</code> (the deals API: creating and moving with a key) or <code>system</code> (anything else, such as a fix made straight in the database). <code>channel_id</code> is the number of the contact's conversation at that moment, and comes empty when they have not talked through any connection yet — an incoming-webhook (Typebot) or Calendly lead who has not written, a contact created by the API, a card with no contact. If you filter by number, decide what to do with these.",
+          "negocio": "On deal events, <code>deal</code> is the deal AS OF DELIVERY and <code>stage</code> is the stage of THIS move — read <code>stage</code>, not <code>deal.stage_id</code>. <code>assignee</code> is the owner and <code>contact</code> carries tags and <code>custom_fields</code>. <code>source</code> says who caused it: <code>user</code> (someone in the CRM screens), <code>channel</code> (the connection opened the card on the first message, from the client or from the team), <code>automation</code> (the automations' “Create Deal”, “Move deal to stage” and “Mark won or lost” steps, the robots' “Move card” block and the AI agents' “Move the deal” tool; Calendly, ZapSign and Atlas move cards through automations), <code>api</code> (the deals API: creating and moving with a key) or <code>system</code> (anything else: a fix made straight in the database, or an AI agent handing the conversation over to another one, which moves the card to that agent's stage). <code>channel_id</code> is the number of the contact's conversation at that moment, and comes empty when they have not talked through any connection yet — an incoming-webhook (Typebot) or Calendly lead who has not written, a contact created by the API, a card with no contact. If you filter by number, decide what to do with these.",
           "atraso": "A late notification still goes out, with the real time of the fact in <code>occurred_at</code>.",
           "doisAvisos": "Moving a card into a stage marked won or lost produces two notifications: stage changed and status changed. A card CREATED in such a stage, though, is born with that status and produces only <code>deal.created</code>: if you wait for “won”, also check <code>deal.status</code> on that notification.",
           "migracao": "Bulk data migration loads produce no notification."
@@ -5115,6 +5448,11 @@
         "minhas_e_sem_responsavel": "Conversations assigned to you or unassigned",
         "minhas": "Only conversations assigned to you"
       },
+      "connectionsLabel": "Connections that alert",
+      "connectionsDesc": "Uncheck the connections that shouldn't alert you. A new connection starts checked.",
+      "connectionsNone": "No connection checked: no alert will arrive.",
+      "connectionsUnavailable": "Could not load your connections, so the choice of which ones alert can't be shown right now.",
+      "connectionsRetry": "Try again",
       "showTextLabel": "Show the message text",
       "showTextDesc": "Off: the alert only says who wrote — useful when others can see your screen.",
       "scopeNote": "Only the connections in your access profile. Group messages never alert.",
@@ -6283,6 +6621,11 @@
     "fieldDueTime": "Time",
     "dueTimeOptional": "Optional",
     "fieldImportant": "Mark as important",
+    "fieldRepeat": "Repeat",
+    "repeatNever": "Does not repeat",
+    "repeatEvery": "{dias, plural, one {Every day} other {Every # days}}",
+    "repeatHint": "The next task is created automatically on its due date, with a bell notification.",
+    "repeatHintSeries": "Changing the repetition applies to every task in this series.",
     "cancel": "Cancel",
     "save": "Save",
     "create": "Create task",
@@ -6296,6 +6639,7 @@
     "showDone": "Show {count} done",
     "openCount": "{count, plural, =1 {1 open task} other {# open tasks}}",
     "deleteConfirm": "Delete \"{titulo}\"? This cannot be undone.",
+    "deleteConfirmRecurring": "Delete \"{titulo}\"? It is the latest task of a repetition: deleting it ends the repetition, and no new one will be created. This cannot be undone.",
     "contactSearchHint": "Type at least 2 letters to search.",
     "contactSearchFailed": "The search failed. Type again to retry.",
     "contactSearchMore": "Showing the first {count}. Keep typing to narrow it down.",
@@ -6418,6 +6762,8 @@
     "newsTooMany": "Too many notifications to summarize here — open Notifications.",
     "newsMentions": "{count, plural, =1 {1 mention of you} other {{count} mentions of you}}",
     "newsMentionsAtLeast": "{count, plural, =1 {at least 1 mention of you} other {at least {count} mentions of you}}",
+    "newsReplies": "{count, plural, =1 {1 reply to a note} other {{count} replies to notes}}",
+    "newsRepliesAtLeast": "{count, plural, =1 {at least 1 reply to a note} other {at least {count} replies to notes}}",
     "newsTasks": "{count, plural, =1 {1 task sent or answered to you} other {{count} tasks sent or answered to you}}",
     "newsTasksAtLeast": "{count, plural, =1 {at least 1 task sent or answered to you} other {at least {count} tasks sent or answered to you}}",
     "newsConversations": "{count, plural, =1 {1 conversation assigned to you} other {{count} conversations assigned to you}}",

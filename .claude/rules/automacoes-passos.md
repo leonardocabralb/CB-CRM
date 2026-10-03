@@ -9,6 +9,7 @@ paths:
   - "src/lib/automations/janela-da-meta*"
   - "src/lib/automations/hora-do-dia*"
   - "src/lib/automations/condicao-por-campo*"
+  - "src/lib/automations/nao-repetir*"
   - "src/components/automations/automation-builder.tsx"
   - "src/components/automations/condicao-por-campo-fields*"
 ---
@@ -18,11 +19,13 @@ paths:
 Vale ao mexer no "Enviar modelo", no "Criar tarefa" pelo responsável, nas
 condições "Janela de 24h da Meta aberta", "Hora do dia" e "Campo
 personalizado da ficha", no "Aguardar até estar dentro do horário" (Fase 2
-do plano do previdenciário, 26/09/2026) e no "Fixar a conversa no número". As regras são puras e testadas:
+do plano do previdenciário, 26/09/2026), no "Fixar a conversa no número" e na opção
+"Não repetir para o mesmo contato por N horas" do gatilho. As regras são puras e testadas:
 `parametros-do-modelo.ts`, `responsavel-da-tarefa.ts`, `janela-da-meta.ts`,
 `hora-do-dia.ts` e `condicao-por-campo.ts`, em `src/lib/automations/`.
 O resto do motor: `.claude/rules/automacoes.md`; o mapa da janela por número:
-`.claude/rules/canal-na-conversa.md`.
+`.claude/rules/canal-na-conversa.md`. O nó "Atlas" (cinco ações, uma entrada
+no menu): `.claude/rules/integracoes-atlas-acoes.md`.
 
 ### Enviar modelo (`send_template`)
 
@@ -182,6 +185,35 @@ que escreve no Comercial é avisado e passa a ser atendido pelo Jurídico.
 - O registro diz o NOME do número (`conversa fixada no número "…"`): o motor
   já leu a conexão para a recusa. O resumo do cartão (`descrever-passo.ts`)
   fica sem o nome — nenhuma tela que resume passo carrega `nomes.canais`.
+
+### "Não repetir para o mesmo contato por N horas" (`trigger_config.nao_repetir_horas`)
+
+A troca Comercial → Jurídico (30/09/2026): o aviso sai de novo depois de
+24 h, e a mensagem do cliente dentro do prazo não vira registro.
+`nao-repetir.ts` (puro + a consulta).
+
+- ⚠️⚠️ **É um RECORTE de `dispararAutomacoes`, depois de número, gatilho e
+  etapa, antes do gancho `antesDeExecutar`**: dentro do prazo sai "fora do
+  escopo", SEM registro. Condição nos passos não serve para isto: o registro
+  nasce antes do primeiro passo, e cada mensagem virava "parou numa
+  condição" (um cliente gerou 31 num dia).
+- ⚠️ **O prazo conta do `created_at` da última execução que não foi
+  `barrada`**: `falhou` e a que ainda roda (desfecho nulo) CONTAM — o envio
+  que falhou pode ter saído. Índice `(automation_id, created_at DESC)`.
+- ⚠️ **Leitura que falha DESCARTA o disparo** (falha fechada, com
+  `console.error`): rodar às cegas repetiria o aviso; a próxima mensagem
+  pergunta de novo.
+- ⚠️ **Só no disparo automático**: `runAutomationById` ("Executar
+  automação", agente, "Acionar automação") ignora o prazo, e a execução dele
+  CONTA para o prazo seguinte.
+- **Só nos gatilhos por mensagem** (`aceitaNaoRepetir`: nova mensagem,
+  palavra-chave, resposta de botão), default-deny. A chave sobra ao trocar o
+  gatilho no construtor; motor, tela e validação a ignoram nos outros.
+- **Inteiro de 1 a 720** (`horasSemRepetirValidas`) na ativação; no motor,
+  inválido = sem prazo, nunca outro número. Na tela, em branco tira a chave.
+- **Conhecido, não tratado:** ler-e-depois-registrar, sem trava — duas
+  mensagens em POSTs simultâneos passam as duas (milissegundos; a mesma
+  janela da trava por etiqueta que isto substituiu).
 
 # Ficha sem conversa (27/09/2026, #322)
 

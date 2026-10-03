@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   validateAsaasReguaForActivation,
+  validateAtlasSituacaoForActivation,
   validateChannelScopeForActivation,
   validateCustomFieldConditionsForActivation,
   validateStepsForActivation,
@@ -383,6 +384,38 @@ describe("validateTriggerForActivation", () => {
         }).map((i) => i.path),
       ).toEqual(["trigger.parar_ao_sair"]);
     }
+  });
+
+  it("não repetir por N horas: inteiro de 1 a 720, só nos gatilhos por mensagem", () => {
+    // Inválido seria prazo que a tela mostra e o motor ignora (`horasSemRepetir`
+    // devolve null): o aviso sairia a cada mensagem.
+    for (const valor of [1, 24, 720, undefined, null]) {
+      expect(
+        validateTriggerForActivation("new_message_received", { nao_repetir_horas: valor }),
+      ).toEqual([]);
+    }
+    for (const valor of [0, 1.5, 721, "24", -3]) {
+      expect(
+        validateTriggerForActivation("new_message_received", { nao_repetir_horas: valor }),
+      ).toEqual([
+        {
+          path: "trigger.nao_repetir_horas",
+          message: "nao_repetir_horas must be a whole number from 1 to 720",
+          codigo: "gatilho_nao_repetir_invalido",
+        },
+      ]);
+    }
+    // Junto da config própria do gatilho.
+    expect(
+      validateTriggerForActivation("keyword_match", { keywords: ["oi"], nao_repetir_horas: 0 }).map(
+        (i) => i.path,
+      ),
+    ).toEqual(["trigger.nao_repetir_horas"]);
+    // A chave que sobrou da troca de gatilho: o motor a ignora, a tela a
+    // esconde — não é pendência.
+    expect(
+      validateTriggerForActivation("tag_added", { tag_id: "t1", nao_repetir_horas: 0 }),
+    ).toEqual([]);
   });
 
   it("accepts a valid keyword_match config", () => {
@@ -965,3 +998,132 @@ describe("atlas_criar_cliente — criar cliente no Atlas", () => {
     ]);
   });
 });
+
+describe("Situação mudou no Atlas (1073) — o gatilho e os passos", () => {
+  const codigos = (cfg: unknown) => validateTriggerForActivation("atlas_situacao_mudou", cfg).map((i) => i.codigo)
+
+  it("situações e funil são obrigatórios; a config certa passa", () => {
+    expect(codigos({ situacoes: ["rescindido", "finalizado"], pipeline_ids: ["00000000-0000-4000-8000-0000000000f1"] })).toEqual([])
+    expect(codigos({})).toEqual(["gatilho_atlas_sem_situacao", "gatilho_atlas_sem_funil"])
+    expect(codigos({ situacoes: [], pipeline_ids: ["00000000-0000-4000-8000-0000000000f1"] })).toEqual(["gatilho_atlas_sem_situacao"])
+    expect(codigos({ situacoes: ["rescindido"], pipeline_ids: [] })).toEqual(["gatilho_atlas_sem_funil"])
+    expect(codigos({ situacoes: ["rescindido"], pipeline_ids: [""] })).toEqual(["gatilho_atlas_sem_funil"])
+  })
+
+  it("id de funil malformado é recusado (derrubaria a busca dos cards de TODAS as automações do gatilho)", () => {
+    expect(codigos({ situacoes: ["rescindido"], pipeline_ids: ["x"] })).toEqual(["gatilho_atlas_sem_funil"])
+    expect(codigos({ situacoes: ["rescindido"], pipeline_ids: ["00000000-0000-4000-8000-0000000000f1", "funil-1"] })).toEqual(["gatilho_atlas_sem_funil"])
+    expect(codigos({ situacoes: ["rescindido"], pipeline_ids: [7] })).toEqual(["gatilho_atlas_sem_funil"])
+  })
+
+  it("situação fora da lista do contrato é recusada (em_negociacao não é oferecida)", () => {
+    expect(codigos({ situacoes: ["em_negociacao"], pipeline_ids: ["00000000-0000-4000-8000-0000000000f1"] })).toEqual(["gatilho_atlas_situacao_invalida"])
+    expect(codigos({ situacoes: ["Rescindido"], pipeline_ids: ["00000000-0000-4000-8000-0000000000f1"] })).toEqual(["gatilho_atlas_situacao_invalida"])
+  })
+
+  it("recusa \"Criar cliente no Atlas\" em qualquer escopo (o Atlas manda na situação)", () => {
+    const criar = { step_type: "atlas_criar_cliente", step_config: {} }
+    const mover = { step_type: "move_deal_stage", step_config: { pipeline_id: "f1", stage_id: "e1" } }
+    expect(validateAtlasSituacaoForActivation("atlas_situacao_mudou", [mover])).toEqual([])
+    expect(validateAtlasSituacaoForActivation("atlas_situacao_mudou", [mover, criar]).map((i) => [i.path, i.codigo])).toEqual([
+      ["steps[1].step_type", "atlas_gatilho_com_criar_cliente"],
+    ])
+    expect(
+      validateAtlasSituacaoForActivation("atlas_situacao_mudou", [
+        { step_type: "condition", step_config: {}, branches: { yes: [], no: [criar] } },
+      ]).map((i) => i.path),
+    ).toEqual(["steps[0].no.steps[0].step_type"])
+    // Os outros gatilhos continuam podendo criar o cliente.
+    expect(validateAtlasSituacaoForActivation("manual", [criar])).toEqual([])
+  })
+
+  it("recusa \"Acionar automação\" em qualquer escopo: a filha driblaria a recusa do \"Criar cliente\" (D2)", () => {
+    const acionar = { step_type: "run_automation", step_config: { automation_id: "filha" } }
+    expect(validateAtlasSituacaoForActivation("atlas_situacao_mudou", [acionar]).map((i) => [i.path, i.codigo])).toEqual([
+      ["steps[0].step_type", "atlas_gatilho_aciona_outra"],
+    ])
+    expect(
+      validateAtlasSituacaoForActivation("atlas_situacao_mudou", [
+        { step_type: "condition", step_config: {}, branches: { yes: [acionar], no: [] } },
+      ]).map((i) => [i.path, i.codigo]),
+    ).toEqual([["steps[0].yes.steps[0].step_type", "atlas_gatilho_aciona_outra"]])
+    expect(validateAtlasSituacaoForActivation("manual", [acionar])).toEqual([])
+  })
+})
+
+describe("o nó Atlas (30/09/2026) — a forma de cada ação", () => {
+  const passo = (step_type: string, step_config: Record<string, unknown>) => ({ step_type, step_config })
+  const codigos = (step_type: string, step_config: Record<string, unknown>) =>
+    validateStepsForActivation([passo(step_type, step_config)]).map((i) => i.codigo)
+
+  it("PINO DE PRODUÇÃO: a config EXATA do \"Contrato fechado\" passa sem pendência", () => {
+    expect(
+      validateStepsForActivation([
+        passo("atlas_criar_cliente", {
+          tipo_de_contrato: "fixo",
+          campo_primeiro_contato: "data_do_primeiro_contato",
+          campo_proposta: "data_da_proposta",
+          campo_fechamento: "data_de_fechamento_do_contrato",
+        }),
+      ]),
+    ).toEqual([])
+  })
+
+  it("atualizar cliente: ao menos um campo; situação da lista (sem em_negociacao); tipo e campos na forma", () => {
+    expect(codigos("atlas_atualizar_cliente", {})).toEqual(["atlas_atualizar_sem_campos"])
+    // Booleano de JSONB só com `true`.
+    expect(codigos("atlas_atualizar_cliente", { valor_do_card: "true", telefone: 1 })).toEqual(["atlas_atualizar_sem_campos"])
+    expect(codigos("atlas_atualizar_cliente", { valor_do_card: true })).toEqual([])
+    expect(codigos("atlas_atualizar_cliente", { campo_documento: "cpf" })).toEqual([])
+    expect(codigos("atlas_atualizar_cliente", { situacao: "finalizado" })).toEqual([])
+    expect(codigos("atlas_atualizar_cliente", { situacao: "em_negociacao" })).toEqual(["atlas_situacao_invalida"])
+    expect(codigos("atlas_atualizar_cliente", { situacao: null, tipo_de_contrato: "anual", email: true })).toEqual(["atlas_tipo_de_contrato_invalido"])
+    expect(codigos("atlas_atualizar_cliente", { campo_fechamento: 42, email: true })).toEqual(["atlas_campo_invalido"])
+  })
+
+  it("criar tarefa: título obrigatório; prioridade normal/urgente; prazo inteiro 0–365 ou nulo", () => {
+    expect(codigos("atlas_criar_tarefa", { titulo: "Preparar a pasta", prioridade: "normal", prazo_em_dias: 0 })).toEqual([])
+    expect(codigos("atlas_criar_tarefa", { titulo: "x", prazo_em_dias: null })).toEqual([])
+    expect(codigos("atlas_criar_tarefa", { titulo: "  " })).toEqual(["atlas_tarefa_sem_titulo"])
+    expect(codigos("atlas_criar_tarefa", { titulo: "x", prioridade: "alta" })).toEqual(["atlas_tarefa_prioridade_invalida"])
+    for (const prazo of [-1, 366, 1.5, "2"]) expect(codigos("atlas_criar_tarefa", { titulo: "x", prazo_em_dias: prazo }), String(prazo)).toEqual(["atlas_tarefa_prazo_invalido"])
+  })
+
+  it("enviar transcrição: janela inteira 1–720; as caixas só booleanas", () => {
+    expect(codigos("atlas_enviar_transcricao", { idade_maxima_horas: 72, incluir_notas_da_reuniao: true })).toEqual([])
+    expect(codigos("atlas_enviar_transcricao", {})).toEqual([])
+    expect(codigos("atlas_enviar_transcricao", { idade_maxima_horas: 0 })).toEqual(["atlas_transcricao_idade_invalida"])
+    expect(codigos("atlas_enviar_transcricao", { idade_maxima_horas: 721 })).toEqual(["atlas_transcricao_idade_invalida"])
+    expect(codigos("atlas_enviar_transcricao", { incluir_notas_da_reuniao: "true" })).toEqual(["atlas_transcricao_notas_invalido"])
+    expect(codigos("atlas_enviar_transcricao", { aceitar_vinculo_por_email: 1 })).toEqual(["atlas_transcricao_email_invalido"])
+  })
+
+  it("onboarding: item literal obrigatório; situação da lista; muda a situação ou escreve observação", () => {
+    expect(codigos("atlas_atualizar_onboarding", { item: "Comprovante", situacao: "done" })).toEqual([])
+    expect(codigos("atlas_atualizar_onboarding", { item: "Comprovante", situacao: null, observacao: "Recebido {{now}}" })).toEqual([])
+    expect(codigos("atlas_atualizar_onboarding", { item: "", situacao: "done" })).toEqual(["atlas_onboarding_sem_item"])
+    expect(codigos("atlas_atualizar_onboarding", { item: "{{contact.name}}", situacao: "done" })).toEqual(["atlas_onboarding_item_com_variavel"])
+    expect(codigos("atlas_atualizar_onboarding", { item: "x", situacao: "feito" })).toEqual(["atlas_onboarding_situacao_invalida"])
+    expect(codigos("atlas_atualizar_onboarding", { item: "x", observacao: "  " })).toEqual(["atlas_onboarding_sem_mudanca"])
+  })
+
+  it("o gatilho do Atlas recusa \"Atualizar cliente\" (também dentro de ramo) e aceita tarefa, transcrição e onboarding", () => {
+    const atualizar = passo("atlas_atualizar_cliente", { tipo_de_contrato: "fixo" })
+    expect(validateAtlasSituacaoForActivation("atlas_situacao_mudou", [atualizar]).map((i) => [i.path, i.codigo])).toEqual([
+      ["steps[0].step_type", "atlas_gatilho_com_atualizar_cliente"],
+    ])
+    expect(
+      validateAtlasSituacaoForActivation("atlas_situacao_mudou", [
+        { step_type: "condition", step_config: {}, branches: { yes: [], no: [atualizar] } },
+      ]).map((i) => i.path),
+    ).toEqual(["steps[0].no.steps[0].step_type"])
+    expect(
+      validateAtlasSituacaoForActivation("atlas_situacao_mudou", [
+        passo("atlas_criar_tarefa", { titulo: "x" }),
+        passo("atlas_enviar_transcricao", {}),
+        passo("atlas_atualizar_onboarding", { item: "x", situacao: "done" }),
+      ]),
+    ).toEqual([])
+    expect(validateAtlasSituacaoForActivation("manual", [atualizar])).toEqual([])
+  })
+})

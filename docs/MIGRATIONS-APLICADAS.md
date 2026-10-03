@@ -1098,6 +1098,67 @@ nome da época em que foram aplicadas.
   operador. Conferida no catálogo: RLS ligada nas duas, `authenticated` só com
   SELECT no vínculo e nada na conexão, `anon` sem nada, uma policy (a do
   vínculo), as 10 restrições, `api_url` anulável; as duas tabelas vazias.
+- **1072_cb_atlas_leitura_e_vinculo** — o estado da leitura periódica em
+  `cb_atlas_config` (cadeado, cursores das mudanças e da listagem, erro da
+  leitura); `cb_atlas_clientes` com o AMBIENTE (`api_url`), as chaves 1:1 por
+  ambiente (`NULLS NOT DISTINCT`, a do contato parcial), a data da mudança, o
+  motivo do casamento, a lixeira e a última listagem; `cb_atlas_recusas`
+  fechada (sem policy). PR #357, Fase 2 de `docs/PLANO-integracao-atlas.md`.
+  ADITIVA e ANTES do deploy. Aplicada em 30/09/2026 pela Management API
+  (histórico `20260930120654`), depois do replay verde do CI no commit
+  `f3673d73` e ANTES do merge, com a autorização do operador. Conferida no
+  catálogo: as colunas novas, os três índices únicos NULLS NOT DISTINCT (o do
+  contato parcial), RLS nas três tabelas, uma policy só (a de leitura do
+  vínculo), `authenticated` sem nada na conexão e nas recusas; as três tabelas
+  vazias. E2E no preview contra o staging (chave do CB, ambiente separado):
+  154 vínculos automáticos (1 pelo link, 153 pelo telefone), todos com o
+  `api_url` do staging; a mudança lida; o passo reativou pelo vínculo do
+  ambiente; a limpeza apagou as 154 linhas do staging.
+- **1073_cb_atlas_mudancas** — `cb_atlas_mudancas`, a fila das mudanças de
+  situação que disparam o gatilho "Situação mudou no Atlas" (chave única
+  conta + AMBIENTE + cliente + data da mudança, `NULLS NOT DISTINCT`; estado
+  e resultado por CHECK, sem `antiga` nem `suspeita_ficha_velha` — as travas
+  que o operador recusou; RLS sem policy, fechada a `anon`/`authenticated`).
+  PR #362, Fase 4 de `docs/PLANO-integracao-atlas.md`. ADITIVA e ANTES do
+  deploy. Aplicada em 30/09/2026 pela Management API (histórico
+  `20260930150643`), depois do replay verde do CI no commit `3aa929ab` (SQL
+  inalterado desde o `f68a2354`) e ANTES do merge, com "aplique a migration
+  1073 em produção" do operador. Conferida no catálogo: RLS ligada, nenhuma
+  policy, `anon`/`authenticated` sem SELECT, `service_role` com escrita; a
+  tabela vazia.
+- **1074_cb_tarefas_recorrentes** — tarefa recorrente pelo calendário:
+  `cb_tasks.repetir_a_cada_dias` (CHECK 1, 2, 5, 7, 15, 30), `serie_id` e
+  `proxima_gerada_em`; índice único "uma ativa por série" e o das irmãs;
+  `cb_tarefas_recorrentes_gerar(date, integer)`, só `service_role`. PR #366.
+  ADITIVA e ANTES do deploy. Aplicada em 30/09/2026 pela Management API
+  (histórico `20260930203904`), depois do replay verde do CI no commit
+  `e08e6ce6` e ANTES do merge, com o "pode gravar" do operador para o teste
+  em produção. A conferência chamou a função com uma tarefa real e desfez
+  (nenhuma linha ficou com recorrência). Conferida no catálogo: as 3 colunas,
+  os 2 CHECKs, os 2 índices, EXECUTE só do `service_role`; 21 tarefas
+  intactas. E2E no preview, no lead de teste: criada diária vencida ontem →
+  a geração criou a de hoje (não lida, aviso no sino) e não duplicou na 2ª
+  rodada; editar para 7 dias mudou as duas; apagar a ativa encerrou a série;
+  limpeza conferida (0 tarefas e 0 avisos de teste).
+- **1075_cb_resposta_na_anotacao** — resposta à anotação interna:
+  `cb_conversation_notes.resposta_de` com FK composta `(resposta_de,
+  conversation_id)` e `ON DELETE SET NULL (resposta_de)` (alvo: o índice único
+  `(id, conversation_id)`), índice parcial em `resposta_de`, e `note_reply` no
+  `notifications_type_check`. PR #369. ADITIVA e ANTES do deploy. Aplicada em
+  01/10/2026 pela Management API (histórico `20261001160525`), depois do
+  replay verde do CI no commit `23fca5d2` e ANTES do merge, com "aplique a
+  1075 em produção" do operador. A conferência gravou e desfez (P1075) a prova
+  com uma conversa real: nenhuma sobra. Conferida no catálogo: a coluna, a FK
+  com `SET NULL (resposta_de)`, os 2 índices, os 5 tipos do sino; 597
+  anotações intactas. E2E no preview, no lead de teste: anotação → Responder
+  no fio (caixa com a citação) → resposta gravada com `resposta_de`; a
+  citação salta até a original; resposta da resposta pela aba Notas; o X
+  desfaz a citação e mantém o texto; apagar a original manteve a resposta,
+  que virou anotação comum na tela pelo tempo real; nenhum aviso (resposta à
+  própria anotação). Limpeza conferida: 5 anotações no lead (as de antes), 0
+  avisos, 668 mensagens (nada enviado no teste do teclado).
+
+## Notas do histórico
 
 - ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.

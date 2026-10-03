@@ -19,6 +19,7 @@ import { useCallback, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
+import { ehAtivaDaSerie } from '@/lib/tasks/recorrencia';
 import type { Task } from '@/types';
 
 /** Os campos que a edição aceita. Ausente = não mexe. */
@@ -28,6 +29,8 @@ export interface EdicaoDeTarefa {
   vence_em?: string;
   vence_as?: string | null;
   responsavel_user_id?: string;
+  /** Vale para a série inteira (1074). `null` = parar de repetir. */
+  repetir_a_cada_dias?: number | null;
 }
 
 /** O que o formulário manda para criar. */
@@ -41,6 +44,8 @@ export interface NovaTarefa {
   importante?: boolean;
   tarefa_pai_id?: string;
   tipo?: 'tarefa' | 'resposta';
+  /** Repetição pelo calendário (1074). Ausente ou `null` = não repete. */
+  repetir_a_cada_dias?: number | null;
 }
 
 export interface AcoesDaTarefa {
@@ -174,7 +179,12 @@ export function useAcoesDaTarefa(aoMudar: () => void): AcoesDaTarefa {
       // apagar é irreversível e mora num menu onde o item vizinho é inofensivo
       // — sem a pergunta, um clique 20px abaixo do pretendido some com a
       // tarefa de outra pessoa sem deixar rastro na tela.
-      if (!window.confirm(t('deleteConfirm', { titulo: tarefa.titulo }))) return;
+      // A ativa de uma série leva a repetição junto (1074): dito ANTES, porque
+      // depois do clique a próxima simplesmente não nasce, sem aviso nenhum.
+      const pergunta = ehAtivaDaSerie(tarefa)
+        ? t('deleteConfirmRecurring', { titulo: tarefa.titulo })
+        : t('deleteConfirm', { titulo: tarefa.titulo });
+      if (!window.confirm(pergunta)) return;
       setOcupada(tarefa.id);
       try {
         const res = await fetch(`/api/cb/tasks/${tarefa.id}`, { method: 'DELETE' });

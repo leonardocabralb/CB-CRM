@@ -99,7 +99,7 @@ describe('pino: as mesmas validações das rotas de automação', () => {
 
   it('criar, editar e a conferência da tela chamam o mesmo conjunto', () => {
     const daTela = nomes('src/lib/automations/conferir-para-ligar.ts')
-    expect(daTela.size).toBe(5)
+    expect(daTela.size).toBe(6)
     expect(nomes('src/app/api/automations/route.ts')).toEqual(daTela)
     expect(nomes('src/app/api/automations/[id]/route.ts')).toEqual(daTela)
   })

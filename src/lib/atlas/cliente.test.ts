@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { AtlasError, MARCA_DE_SEGREDO, codigoDoErro, criarClienteAtlas, lerIdentidade } from "./cliente";
+import { AtlasError, MARCA_DE_SEGREDO, codigoDoErro, criarClienteAtlas, lerIdentidade, lerPaginaDaListagem } from "./cliente";
 import { API_DO_ATLAS, ambienteDoAtlas, urlDaApiDoAtlas } from "./enderecos";
 
 // Chave de TESTE — nenhuma chave real do Atlas.
@@ -178,5 +178,257 @@ describe("o endereço", () => {
     expect(ambienteDoAtlas("http://atlas.example.com/x")).toBeNull();
     expect(ambienteDoAtlas(API_DO_ATLAS)).toBeNull();
     expect(ambienteDoAtlas(URL_TESTE)).toBe(URL_TESTE);
+  });
+});
+
+describe("list_clients (a leitura das situações)", () => {
+  const UUID_CONVERSA = "00000000-0000-4000-8000-0000000000c1";
+  const cliente = (parcial: Record<string, unknown> = {}) => ({
+    id: "00000000-0000-4000-8000-000000000011",
+    name: "Cliente Exemplo",
+    doc_id: "00000000000",
+    email: "cliente@example.com",
+    phone: "11 98765-4321",
+    status: "rescindido",
+    notes: "anotação da equipe",
+    chat_link: `https://crm.example.com/inbox?c=${UUID_CONVERSA.toUpperCase()}`,
+    status_changed_at: "2026-05-30T14:00:00+00:00",
+    app_url: "https://app.example.com/#/clients/00000000-0000-4000-8000-000000000011",
+    ...parcial,
+  });
+
+  it("o pedido: statusChangedSince, cursor e limit no corpo; leitura sem Idempotency-Key", async () => {
+    const f = fetchFalso({ status: 200, corpo: { success: true, clients: [], hasMore: false, nextCursor: null } });
+    await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).listar({ statusChangedSince: "2026-09-30T12:00:00.000Z", cursor: "abc", limit: 100 });
+    expect(f.pedidos[0].corpo).toEqual({ action: "list_clients", data: { limit: 100, statusChangedSince: "2026-09-30T12:00:00.000Z", cursor: "abc" } });
+    expect((f.pedidos[0].init.headers as Record<string, string>)["Idempotency-Key"]).toBeUndefined();
+    const g = fetchFalso({ status: 200, corpo: { success: true, clients: [], hasMore: false, nextCursor: null } });
+    await criarClienteAtlas(CHAVE, g.fn, URL_TESTE).listar({ cursor: null, limit: 100 });
+    expect(g.pedidos[0].corpo.data).toEqual({ limit: 100 });
+  });
+
+  it("CRÍTICO: do cliente só saem id, situação, data, app_url e os SINAIS (uuids do link, telefone canônico) — nada de nome, CPF, e-mail ou texto do link", async () => {
+    const f = fetchFalso({ status: 200, corpo: { success: true, clients: [cliente()], hasMore: true, nextCursor: "prox" } });
+    const pagina = await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).listar({ limit: 100 });
+    expect(pagina).toEqual({
+      clientes: [
+        {
+          id: "00000000-0000-4000-8000-000000000011",
+          status: "rescindido",
+          situacaoDesde: "2026-05-30T14:00:00.000Z",
+          appUrl: "https://app.example.com/#/clients/00000000-0000-4000-8000-000000000011",
+          sinais: { uuidsDoLink: [UUID_CONVERSA], telefoneCanonico: "5511987654321" },
+        },
+      ],
+      nextCursor: "prox",
+      hasMore: true,
+    });
+    const texto = JSON.stringify(pagina);
+    for (const dado of ["Cliente Exemplo", "cliente@example.com", "anotação", "crm.example.com", "11 98765-4321"]) expect(texto).not.toContain(dado);
+  });
+
+  it("data desconhecida vem nula; telefone fraco (sem DDD, lixo) não vira sinal", () => {
+    const pagina = lerPaginaDaListagem({
+      clients: [cliente({ status_changed_at: null, phone: "98765-4321", chat_link: null }), cliente({ id: "c2", status_changed_at: "não é data", phone: "ramal 45" })],
+      hasMore: false,
+    });
+    expect(pagina.clientes.map((c) => [c.situacaoDesde, c.sinais.telefoneCanonico, c.sinais.uuidsDoLink])).toEqual([
+      [null, null, []],
+      [null, null, [UUID_CONVERSA]],
+    ]);
+  });
+
+  it("CRÍTICO: cliente SEM a chave status_changed_at = API ANTIGA (ignoraria o filtro): lança, marcado", () => {
+    const semChave = cliente();
+    delete (semChave as Record<string, unknown>).status_changed_at;
+    const e = (() => {
+      try {
+        lerPaginaDaListagem({ clients: [cliente({ id: "c0" }), semChave], hasMore: false });
+      } catch (x) {
+        return x as AtlasError;
+      }
+    })();
+    expect(e).toBeInstanceOf(AtlasError);
+    expect(e!.codigo).toBe("resposta_inesperada");
+    expect(e!.apiAntiga).toBe(true);
+  });
+
+  it("cliente ilegível, lista ausente ou hasMore sem cursor: resposta_inesperada (sem apiAntiga)", () => {
+    for (const corpo of [{ clients: [cliente(), { semId: true }], hasMore: false }, { success: true }, { clients: [], hasMore: true, nextCursor: null }]) {
+      try {
+        lerPaginaDaListagem(corpo);
+        throw new Error("não lançou");
+      } catch (x) {
+        expect((x as AtlasError).codigo).toBe("resposta_inesperada");
+        expect((x as AtlasError).apiAntiga).toBe(false);
+      }
+    }
+  });
+
+  it("get_client lê o status_changed_at; sem a chave, a data fica AUSENTE (não nula)", async () => {
+    const f = fetchFalso({ status: 200, corpo: { success: true, client: cliente() } });
+    expect(await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).ler("c1")).toMatchObject({ situacaoDesde: "2026-05-30T14:00:00.000Z" });
+    const antigo = cliente();
+    delete (antigo as Record<string, unknown>).status_changed_at;
+    const g = fetchFalso({ status: 200, corpo: { success: true, client: antigo } });
+    expect(await criarClienteAtlas(CHAVE, g.fn, URL_TESTE).ler("c1")).not.toHaveProperty("situacaoDesde");
+  });
+
+  it("permissão Listar desligada vem como sem_permissao com a permissão nomeada", async () => {
+    const f = fetchFalso({ status: 403, corpo: { error: "Permission denied: list_clients is disabled", code: "permission_denied", permission: "list_clients" } });
+    const e = (await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).listar({ limit: 100 }).catch((x: unknown) => x)) as AtlasError;
+    expect(e.codigo).toBe("sem_permissao");
+    expect(e.permissao).toBe("list_clients");
+  });
+});
+
+describe("get_client_negotiations (Fase 3)", () => {
+  const CLIENTE = "00000000-0000-4000-8000-000000000011";
+
+  it("pede pelo `clientId`, sem Idempotency-Key, e devolve só a allowlist", async () => {
+    const f = fetchFalso({
+      status: 200,
+      corpo: { success: true, clientId: CLIENTE, truncated: false, totals: { banks: 1, contracts: 0, proposals: 0 }, banks: [{ id: "b1", bank_name: "Banco Exemplo", notes: "anotação", contracts: [], proposals: [] }] },
+    });
+    const r = await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).negociacoes(CLIENTE);
+    expect(f.pedidos[0].corpo).toEqual({ action: "get_client_negotiations", data: { clientId: CLIENTE } });
+    expect((f.pedidos[0].init.headers as Record<string, string>)["Idempotency-Key"]).toBeUndefined();
+    expect(r.banks[0]).toEqual({ id: "b1", bank_name: "Banco Exemplo", original_debt: null, updated_debt: null, contracts: [], proposals: [] });
+    expect(JSON.stringify(r)).not.toContain("anotação");
+  });
+
+  it("2xx sem `banks` legível LANÇA `resposta_inesperada` (nunca 'sem negociação')", async () => {
+    const f = fetchFalso({ status: 200, corpo: { success: true } });
+    const e = (await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).negociacoes(CLIENTE).catch((x: unknown) => x)) as AtlasError;
+    expect(e.codigo).toBe("resposta_inesperada");
+  });
+
+  it("o `not_found` (lixeira, outro escritório) LANÇA `nao_encontrado` — não é null nem 'sem negociação'", async () => {
+    const f = fetchFalso({ status: 404, corpo: { error: "Client not found", code: "not_found" } });
+    const e = (await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).negociacoes(CLIENTE).catch((x: unknown) => x)) as AtlasError;
+    expect(e.codigo).toBe("nao_encontrado");
+  });
+
+  it("a permissão desligada vem nomeada (`read_negotiations`)", async () => {
+    const f = fetchFalso({ status: 403, corpo: { error: "Permission denied", code: "permission_denied", permission: "read_negotiations" } });
+    const e = (await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).negociacoes(CLIENTE).catch((x: unknown) => x)) as AtlasError;
+    expect(e.codigo).toBe("sem_permissao");
+    expect(e.permissao).toBe("read_negotiations");
+  });
+});
+
+describe("AtlasError.esperaSegundos (429, contrato §7)", () => {
+  function fetch429(corpo: unknown, cabecalhos: Record<string, string> = {}) {
+    return (async () => new Response(JSON.stringify(corpo), { status: 429, headers: cabecalhos })) as unknown as typeof fetch;
+  }
+
+  it("vem do `retry_after_seconds` do corpo", async () => {
+    const fn = fetch429({ error: "Rate limit", code: "rate_limited", limit_per_minute: 60, current_count: 61, retry_after_seconds: 17 }, { "Retry-After": "40" });
+    const e = (await criarClienteAtlas(CHAVE, fn, URL_TESTE).whoami().catch((x: unknown) => x)) as AtlasError;
+    expect(e.codigo).toBe("limite");
+    expect(e.esperaSegundos).toBe(17);
+  });
+
+  it("sem ele, do cabeçalho `Retry-After`", async () => {
+    const fn = fetch429({ error: "Rate limit", code: "rate_limited" }, { "Retry-After": "23" });
+    const e = (await criarClienteAtlas(CHAVE, fn, URL_TESTE).whoami().catch((x: unknown) => x)) as AtlasError;
+    expect(e.esperaSegundos).toBe(23);
+  });
+
+  it("sem nenhum dos dois (ou ilegível), nulo — o Atlas não disse", async () => {
+    const fn = fetch429({ error: "Rate limit", code: "rate_limited", retry_after_seconds: "logo" }, { "Retry-After": "Wed, 30 Sep 2026 12:00:00 GMT" });
+    const e = (await criarClienteAtlas(CHAVE, fn, URL_TESTE).whoami().catch((x: unknown) => x)) as AtlasError;
+    expect(e.esperaSegundos).toBeNull();
+    expect(new AtlasError("rede", "x").esperaSegundos).toBeNull();
+  });
+});
+
+// ------------------------------------------------------------
+// O nó "Atlas" (30/09/2026): as escritas novas.
+// ------------------------------------------------------------
+
+describe("as escritas do nó Atlas", () => {
+  const cabecalho = (p: { init: RequestInit }, nome: string) => (p.init.headers as Record<string, string>)[nome];
+
+  it("create_task: a ação, o corpo, a Idempotency-Key e o `taskId`; 2xx sem ele é resposta_inesperada", async () => {
+    const f = fetchFalso({ status: 200, corpo: { success: true, taskId: "tarefa-1" } });
+    const dados = { title: "Preparar a pasta", description: "Conferir", priority: "urgent" as const, dueDate: "2026-10-02", clientId: "c9" };
+    expect(await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).criarTarefa(dados, "log:passo:tarefa")).toEqual({ taskId: "tarefa-1" });
+    expect(f.pedidos[0].corpo).toEqual({ action: "create_task", data: dados });
+    expect(cabecalho(f.pedidos[0], "Idempotency-Key")).toBe("log:passo:tarefa");
+    const g = fetchFalso({ status: 200, corpo: { success: true } });
+    const e = (await criarClienteAtlas(CHAVE, g.fn, URL_TESTE).criarTarefa(dados, "k-00000001").catch((x: unknown) => x)) as AtlasError;
+    expect(e.codigo).toBe("resposta_inesperada");
+  });
+
+  it("create_transcript: a ação e o `transcriptId`", async () => {
+    const f = fetchFalso({ status: 200, corpo: { success: true, transcriptId: "tr-1" } });
+    const dados = { clientId: "c9", transcript: "texto", notes: "notas" };
+    expect(await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).enviarTranscricao(dados, "log:passo:transcricao")).toEqual({ transcriptId: "tr-1" });
+    expect(f.pedidos[0].corpo).toEqual({ action: "create_transcript", data: dados });
+    const g = fetchFalso({ status: 200, corpo: {} });
+    expect(((await criarClienteAtlas(CHAVE, g.fn, URL_TESTE).enviarTranscricao(dados, "k-00000001").catch((x: unknown) => x)) as AtlasError).codigo).toBe(
+      "resposta_inesperada",
+    );
+  });
+
+  it("update_onboarding_item: lê só a situação do item; 2xx sem `success` é resposta_inesperada", async () => {
+    const f = fetchFalso({ status: 200, corpo: { success: true, item: { id: "i1", text: "Comprovante", status: "done", observation: "x" } } });
+    const dados = { clientId: "c9", text: "Comprovante", status: "done" };
+    expect(await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).atualizarItemDoOnboarding(dados, "log:passo:onboarding")).toEqual({ status: "done" });
+    expect(f.pedidos[0].corpo).toEqual({ action: "update_onboarding_item", data: dados });
+    const g = fetchFalso({ status: 200, corpo: { success: false } });
+    expect(((await criarClienteAtlas(CHAVE, g.fn, URL_TESTE).atualizarItemDoOnboarding(dados, "k-00000001").catch((x: unknown) => x)) as AtlasError).codigo).toBe(
+      "resposta_inesperada",
+    );
+  });
+
+  it("CRÍTICO: o 404 COM a lista de itens é o ITEM que falta (nunca a lixeira), com ou sem `code`; a lista nunca vai à mensagem", async () => {
+    for (const corpo of [
+      { success: false, error: "Onboarding item not found", items: [{ id: "i1", text: "RG do cônjuge Fulano" }] },
+      { success: false, error: "Onboarding item not found", code: "not_found", items: [] },
+    ]) {
+      const f = fetchFalso({ status: 404, corpo });
+      const e = (await criarClienteAtlas(CHAVE, f.fn, URL_TESTE)
+        .atualizarItemDoOnboarding({ clientId: "c9", text: "Comprovante" }, "k-00000001")
+        .catch((x: unknown) => x)) as AtlasError;
+      expect(e.codigo).toBe("item_nao_encontrado");
+      expect(e.message).not.toContain("Fulano");
+    }
+    // O 404 do cliente (sem a lista) segue pelo código: `not_found` = lixeira.
+    const g = fetchFalso({ status: 404, corpo: { error: "Client not found", code: "not_found" } });
+    const e = (await criarClienteAtlas(CHAVE, g.fn, URL_TESTE)
+      .atualizarItemDoOnboarding({ clientId: "c9", text: "Comprovante" }, "k-00000001")
+      .catch((x: unknown) => x)) as AtlasError;
+    expect(e.codigo).toBe("nao_encontrado");
+  });
+
+  it("update_client do nó: a situação anterior só quando o Atlas manda o `statusChange`", async () => {
+    const f = fetchFalso({ status: 200, corpo: { success: true, clientId: "c9", statusChange: { from: "rescindido", to: "finalizado" }, appUrl: "https://app.example.com/#/clients/c9" } });
+    expect(await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).atualizarCliente("c9", { status: "finalizado" }, "k-00000001")).toEqual({
+      id: "c9",
+      appUrl: "https://app.example.com/#/clients/c9",
+      situacaoAnterior: "rescindido",
+    });
+    expect(f.pedidos[0].corpo).toEqual({ action: "update_client", data: { id: "c9", status: "finalizado" } });
+    const g = fetchFalso({ status: 200, corpo: { success: true, clientId: "c9", statusChange: null } });
+    expect(await criarClienteAtlas(CHAVE, g.fn, URL_TESTE).atualizarCliente("c9", { contractType: "fixo" }, "k-00000001")).toEqual({ id: "c9", appUrl: null });
+    const h = fetchFalso({ status: 200, corpo: { clientId: "c9" } });
+    expect(((await criarClienteAtlas(CHAVE, h.fn, URL_TESTE).atualizarCliente("c9", {}, "k-00000001").catch((x: unknown) => x)) as AtlasError).codigo).toBe(
+      "resposta_inesperada",
+    );
+  });
+
+  it("os códigos novos: `ambiguous` e `no_active_admin`", () => {
+    expect(codigoDoErro(422, "ambiguous")).toBe("ambiguo");
+    expect(codigoDoErro(422, "no_active_admin")).toBe("sem_admin");
+    // Sem `code` (a API de antes), o 422 segue genérico.
+    expect(codigoDoErro(422, null)).toBe("atlas_error");
+  });
+
+  it("validação: os nomes NOVOS do nó também chegam ao motivo (só nomes nossos)", async () => {
+    const f = fetchFalso({ status: 400, corpo: { error: "x", code: "validation_error", fields: ["dueDate", "docId", "observation", "campo_do_atlas"] } });
+    const e = (await criarClienteAtlas(CHAVE, f.fn, URL_TESTE).criarTarefa({ title: "t" }, "k-00000001").catch((x: unknown) => x)) as AtlasError;
+    expect(e.campos).toEqual(["dueDate", "docId", "observation"]);
   });
 });

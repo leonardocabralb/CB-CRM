@@ -90,3 +90,38 @@ visível na tela do RESPONSÁVEL (Tarefas, ficha, conversa, Meu dia); o card
   `[&>button]:flex-none` na `TabsList`), a seção na barra da conversa, o item
   "Tarefas" com etiqueta realtime no menu, o deep link `?contact=` e o bucket
   `tarefa` do rate limit.
+
+### Tarefa RECORRENTE (1074): pelo calendário
+
+Decisões do operador (30/09/2026): a próxima nasce SOZINHA no dia do prazo
+dela, concluída ou não a anterior (as atrasadas se acumulam); o intervalo
+(1, 2, 5, 7, 15 ou 30 dias) conta do PRAZO ANTERIOR; só o formulário da tela
+oferece (API v1, automação e agente de IA não); cada nova avisa no sino.
+
+- **A série é um grupo de tarefas comuns** com o mesmo `serie_id` (o id da
+  primeira). A ATIVA é a mais recente — `repetir_a_cada_dias` preenchido e
+  `proxima_gerada_em` nulo (`ehAtivaDaSerie`) — e é o MOLDE da próxima
+  (título, descrição, hora, cliente, responsável). Editar a ativa muda as
+  próximas; editar uma antiga muda só ela. O índice único
+  `cb_tasks_uma_ativa_por_serie` garante uma ativa por série.
+- ⚠️ **Quem gera é o banco** (`cb_tarefas_recorrentes_gerar`, numa transação:
+  carimba a ativa e insere a próxima; `FOR UPDATE … SKIP LOCKED`), chamado
+  pelo ciclo das AGENDADAS em `after()` (`src/lib/tasks/gerar-recorrentes.ts`)
+  — rota de cron própria exigiria `docker stack deploy` à mão. O "hoje" vai
+  do app (`diaNoFuso(FUSO_PADRAO)`): o banco em UTC erraria das 21h à
+  meia-noite. Dias com o agendador parado não despejam as perdidas: sai só a
+  da data mais recente da grade `prazo + k·N`.
+- ⚠️ **Mudar o intervalo ou desligar vale para a SÉRIE inteira** (só as que
+  ainda repetem), gravado ANTES da linha. Ligar numa tarefa que não repete
+  cria uma série NOVA com ela de ativa. Resposta (`tipo: 'resposta'`) não
+  repete: a rota recusa e o formulário esconde o campo.
+- ⚠️ **Apagar a ativa ENCERRA a série**: `proxima_gerada_em` é carimbo, não FK
+  — com ponteiro `SET NULL`, a anterior voltaria a ser ativa e a rotina
+  recriaria a tarefa apagada. A rota tira a repetição das irmãs antes de
+  apagar (a etiqueta "Repete" não sobra) e a tela avisa na confirmação.
+- **Responsável que saiu ou está suspenso PAUSA a série** (a função exige
+  membro ativo da conta): volta a gerar quando alguém redireciona a ativa ou
+  a suspensão acaba.
+- A nova nasce não lida e não vista, com aviso `task_assigned` ("Tarefa
+  recorrente para hoje", ator = quem criou a série) — inclusive no lembrete
+  para si mesmo: ninguém acabou de escrevê-la.

@@ -31,6 +31,7 @@ export async function GET(
   try {
     const ctx = await requireApiKey(request, 'deals:read');
     const { id } = await params;
+    if (!ehUuid(id)) throw badRequest("'id' must be a UUID");
 
     const { data, error } = await ctx.supabase
       .from('deals')
@@ -39,7 +40,13 @@ export async function GET(
       .eq('account_id', ctx.accountId)
       .maybeSingle();
 
-    if (error || !data) return fail('not_found', 'Deal not found', 404);
+    // ⚠️ Erro de banco NÃO é "não encontrado" (regra da v1): o 404 falso
+    // faria o integrador criar o card de novo.
+    if (error) {
+      console.error('[api/v1/deals/:id] read error:', error);
+      return fail('internal', 'Failed to read deal', 500);
+    }
+    if (!data) return fail('not_found', 'Deal not found', 404);
     return ok(serializeDeal(data as Record<string, unknown>));
   } catch (err) {
     return toApiErrorResponse(err);
@@ -53,6 +60,7 @@ export async function PATCH(
   try {
     const ctx = await requireApiKey(request, 'deals:write');
     const { id } = await params;
+    if (!ehUuid(id)) throw badRequest("'id' must be a UUID");
 
     const body = (await request.json().catch(() => null)) as {
       title?: unknown;
@@ -69,7 +77,13 @@ export async function PATCH(
       .eq('id', id)
       .eq('account_id', ctx.accountId)
       .maybeSingle();
-    if (readErr || !atual) return fail('not_found', 'Deal not found', 404);
+    // Erro de banco NÃO é "não encontrado" — o 404 vinha ANTES de qualquer
+    // escrita, e o integrador concluiria que o card sumiu.
+    if (readErr) {
+      console.error('[api/v1/deals/:id] read error:', readErr);
+      return fail('internal', 'Failed to read deal', 500);
+    }
+    if (!atual) return fail('not_found', 'Deal not found', 404);
 
     const update: Record<string, unknown> = {};
 

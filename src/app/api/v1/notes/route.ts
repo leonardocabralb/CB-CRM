@@ -4,6 +4,7 @@
 // GET  (scope: notes:read)  — keyset-paginated list. Filters:
 //        `?conversation_id=`, `?contact_id=`.
 // POST (scope: notes:write) — create a note on a conversation.
+// Conversa de GRUPO fica fora dos dois verbos (regra da v1).
 //
 // The write mirrors the dashboard route (`/api/cb/notes`): the
 // conversation is resolved server-side (pass `conversation_id`, or
@@ -74,7 +75,13 @@ export async function GET(request: Request) {
     let query = ctx.supabase
       .from('cb_conversation_notes')
       .select('*')
-      .eq('account_id', ctx.accountId);
+      .eq('account_id', ctx.accountId)
+      // ⚠️ Grupo fica fora da v1 (as conversas de grupo já não aparecem nela):
+      // a anotação de conversa de grupo tem `contact_id` NULO por desenho
+      // (918 — grupo não tem contato), e é isso que a recorta, sem embed na
+      // conversa. Medido em 01/10/2026: nenhuma anotação 1:1 tem
+      // `contact_id` nulo.
+      .not('contact_id', 'is', null);
 
     if (conversationId) query = query.eq('conversation_id', conversationId);
     if (contactId) query = query.eq('contact_id', contactId);
@@ -135,7 +142,11 @@ export async function POST(request: Request) {
     const busca = ctx.supabase
       .from('conversations')
       .select('id, contact_id')
-      .eq('account_id', ctx.accountId);
+      .eq('account_id', ctx.accountId)
+      // Conversa de grupo é "não encontrada" para a v1, como no
+      // `GET /conversations/{id}`. (Pelo contato nunca casaria: grupo não
+      // tem contato.)
+      .is('group_id', null);
     const { data: conversa, error: conversaErr } = porConversa
       ? await busca.eq('id', body.conversation_id as string).maybeSingle()
       : await busca.eq('contact_id', body.contact_id as string).maybeSingle();

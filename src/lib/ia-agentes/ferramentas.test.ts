@@ -105,6 +105,8 @@ const AUTO_DA_TAG_QUENTE = uuid(48)
 const AUTO_COM_ESPERA = uuid(49)
 /** Etiqueta TAG_QUENTE: a automação da etiqueta não conta na D5 da executada. */
 const AUTO_QUE_ETIQUETA = uuid(50)
+/** "Situação mudou no Atlas" (1073): só roda pela leitura do Atlas, como a régua. */
+const AUTO_ATLAS = uuid(51)
 
 function tabelas(): Record<string, Linha[]> {
   const funil = { account_id: CONTA, name: 'Bancário' }
@@ -136,6 +138,7 @@ function tabelas(): Record<string, Linha[]> {
       { id: AUTO_DE_OUTRA, name: 'De outra', account_id: OUTRA, is_active: true, trigger_type: 'tag_added', trigger_config: {} },
       { id: AUTO_DESLIGADA, name: 'Desligada', account_id: CONTA, is_active: false, trigger_type: 'tag_added', trigger_config: {} },
       { id: AUTO_REGUA, name: 'Régua 5 dias', account_id: CONTA, is_active: true, trigger_type: 'asaas_cobranca_vencida', trigger_config: {} },
+      { id: AUTO_ATLAS, name: 'Situação Atlas', account_id: CONTA, is_active: true, trigger_type: 'atlas_situacao_mudou', trigger_config: {} },
       {
         id: LEMBRETE,
         name: 'Lembrete',
@@ -338,7 +341,7 @@ describe('opcoesDoAgente — o que o pedido lista', () => {
       preencher_campo: { campos: [CAMPO_TEXTO, CAMPO_DATA_VIGIADO] },
       // A suspensa (1067) está ligada no agente, mas não vira opção do turno.
       criar_tarefa: { membros: [MEMBRO, MEMBRO_SUSPENSO] },
-      executar_automacao: { automacoes: [AUTO_LIMPA, AUTO_DESLIGADA, AUTO_REGUA, AUTO_DE_OUTRA] },
+      executar_automacao: { automacoes: [AUTO_LIMPA, AUTO_DESLIGADA, AUTO_REGUA, AUTO_ATLAS, AUTO_DE_OUTRA] },
     })
     expect(o).toEqual({
       mover_etapa: [{ id: ETAPA_PROPOSTA, nome: 'Bancário · Proposta' }],

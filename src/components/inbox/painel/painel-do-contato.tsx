@@ -40,6 +40,10 @@ import { AbaArquivos } from '@/components/inbox/painel/aba-arquivos';
 import { AbaCobrancas } from '@/components/inbox/painel/aba-cobrancas';
 import { TituloDeSecao } from '@/components/inbox/painel/titulo-de-secao';
 import { useCobrancasDoContato } from '@/hooks/use-cobrancas-do-contato';
+import { AbaAtlas } from '@/components/inbox/painel/aba-atlas';
+import { AbrirNoAtlas } from '@/components/inbox/abrir-no-atlas';
+import { useAtlasDoContato } from '@/hooks/use-atlas-do-contato';
+import { abaAtlasNoPainel } from '@/lib/atlas/do-contato';
 import { separarParcelas } from '@/lib/asaas/aviso-na-conversa';
 import { ReunioesDoContato } from '@/components/agenda/reunioes-do-contato';
 import { ReunioesTranscritasDoContato } from '@/components/transcricoes/reunioes-transcritas-do-contato';
@@ -70,6 +74,7 @@ import { formatCurrency } from '@/lib/currency';
 import { cn } from '@/lib/utils';
 import type {
   Contact,
+  ConversationNote,
   CustomField,
   Deal,
   DealStatus,
@@ -99,6 +104,7 @@ import {
   Maximize2,
   PanelRightClose,
   Pencil,
+  Scale,
   Settings2,
   Users,
   Zap,
@@ -258,6 +264,24 @@ export function PainelDoContato({
   // Contatos relacionados (1069). No TOPO pelo mesmo motivo: a etiqueta da
   // aba mostra quantos são antes de a aba abrir.
   const relacionados = useContatosRelacionados(contact?.id ?? null, resyncToken);
+  // O Atlas (Fase 2): o botão "Abrir no Atlas" do cabeçalho precisa do
+  // vínculo antes de a aba abrir. O hook carimba o dono (`{ de }`).
+  const atlas = useAtlasDoContato(contact?.id ?? null, resyncToken);
+  // ⚠️ A aba Atlas é a 10ª num painel de 360 px: com números acesos
+  // (Tarefas, Cobranças, Automações, Relacionados) a fileira quebra em
+  // duas linhas. Para quem não vincula (não-admin) e a ficha não tem
+  // vínculo, a aba não tem o que fazer — some (o desenho da Fase 2, "se não
+  // couber"). O admin a vê sempre; o vínculo e a FALHA a mostram a todos.
+  // ⚠️ Pela `ultimaLeitura` (durante a carga, a do contato anterior), nunca
+  // pelo `dados` do contato atual: nulo na carga, a aba piscava a cada troca
+  // entre fichas vinculadas (`abaAtlasNoPainel`).
+  // O gate de vincular é o `requireRole('admin')` da rota, pela lente "Ver como".
+  const podeVincularNoAtlas = useCan('edit-settings');
+  const mostrarAbaAtlas = abaAtlasNoPainel({
+    conectado: atlas.conectado,
+    podeVincular: podeVincularNoAtlas,
+    ultimaLeitura: atlas.ultimaLeitura,
+  });
   const vencidasDoAsaas = useMemo(
     () =>
       cobrancas.dados?.conectado
@@ -511,6 +535,29 @@ export function PainelDoContato({
     () => (notaFixada ? notes.filter((n) => n.id !== notaFixada.id) : notes),
     [notes, notaFixada]
   );
+
+  /**
+   * Responder a uma anotação (1075): a caixa do topo da aba ganha a
+   * respondida citada. ⚠️ Carimbado com a conversa e comparado no render: a
+   * caixa remonta pela `key`, este estado não — a citação de um cliente
+   * apareceria na caixa do seguinte. E zerado ao sair da conversa, no
+   * render (como no fio): na volta, a próxima anotação sairia como resposta.
+   */
+  const [respondendo, setRespondendo] = useState<{
+    de: string;
+    nota: ConversationNote;
+  } | null>(null);
+  if (respondendo && respondendo.de !== conversationId) setRespondendo(null);
+  const notaRespondida =
+    respondendo && respondendo.de === conversationId ? respondendo.nota : null;
+  const notasPorId = useMemo(
+    () => new Map(notas.map((n) => [n.id, n])),
+    [notas]
+  );
+  const respondidaDe = (nota: ConversationNote) =>
+    nota.resposta_de ? (notasPorId.get(nota.resposta_de) ?? null) : null;
+  const responderA = (nota: ConversationNote) =>
+    conversationId ? () => setRespondendo({ de: conversationId, nota }) : undefined;
 
   const fetchContactData = useCallback(async () => {
     if (!contact) return;
@@ -1039,6 +1086,10 @@ export function PainelDoContato({
         {conversationId && (
           <CopiarLinkDaConversa conversationId={conversationId} variante="circulo" />
         )}
+        {/* "Abrir no Atlas" (Fase 2): a ficha do cliente no Atlas, numa aba
+            nova, para todos. Só com vínculo deste contato e endereço
+            `https:` — senão não se desenha. */}
+        <AbrirNoAtlas appUrl={atlas.dados?.vinculo?.appUrl} variante="circulo" />
       </CabecalhoDoPainel>
 
       {/* RESPONSÁVEL (pedido do operador, 03/09): saiu do cabeçalho do fio
@@ -1062,7 +1113,13 @@ export function PainelDoContato({
           TabsList vem sob prefixo de variante, e `flex-1`/`h-[calc(100%-1px)]`
           do TabsTrigger se comportam mal em contêiner estreito. */}
       <Tabs
-        value={abaPedida ?? abaLocal}
+        // A aba Atlas aberta num cliente SEM vínculo, para quem não vincula:
+        // o gatilho sumiu, então a Principal — derivado no render, a escolha
+        // fica (o próximo cliente vinculado volta a abri-la).
+        value={
+          abaPedida ??
+          (abaLocal === 'atlas' && !mostrarAbaAtlas && !atlas.carregando ? 'principal' : abaLocal)
+        }
         onValueChange={(v) => {
           setAbaLocal(v);
           if (abaPedida) aoConsumirAba?.();
@@ -1071,8 +1128,13 @@ export function PainelDoContato({
       >
         {/* Ordem definida pelo operador (2026-08-29): Principal, Notas,
             Tarefas, Traqueamento, e o Histórico POR ÚLTIMO — é a aba de
-            auditoria, a que menos se abre no atendimento. */}
-        <TabsList className="border-border bg-muted/30 w-full shrink-0 justify-start gap-x-1 rounded-none border-b px-2 py-1 group-data-horizontal/tabs:h-auto [&>button]:h-8 [&>button]:flex-1">
+            auditoria, a que menos se abre no atendimento.
+            ⚠️ `flex-wrap`: são 10 gatilhos em 360 px, e cada número aceso
+            (Tarefas, Cobranças, Automações, Relacionados) soma ~28 px — com
+            dois já passava da largura (medido no preview) e o Histórico,
+            o último, ficava cortado fora do painel. Quebrando, vai para
+            uma segunda linha. */}
+        <TabsList className="border-border bg-muted/30 w-full shrink-0 flex-wrap justify-start gap-x-1 gap-y-1 rounded-none border-b px-2 py-1 group-data-horizontal/tabs:h-auto [&>button]:h-8 [&>button]:flex-1">
           <AbaDeIcone value="principal" label={tSidebar('tabMain')}>
             <User className="h-4 w-4" />
           </AbaDeIcone>
@@ -1145,6 +1207,15 @@ export function PainelDoContato({
           >
             <Users className="h-4 w-4" />
           </AbaDeIcone>
+          {/* Atlas (Fase 2): depois de Relacionados e antes do Histórico (que
+              é sempre o último). Some numa conta sem Atlas (`conectado`, da
+              CONTA, guardado pelo hook entre contatos) e — pela largura —
+              para quem não vincula quando a ficha não tem vínculo. */}
+          {mostrarAbaAtlas && (
+            <AbaDeIcone value="atlas" label={tSidebar('tabAtlas')}>
+              <Scale className="h-4 w-4" />
+            </AbaDeIcone>
+          )}
           <AbaDeIcone value="historico" label={tSidebar('tabHistory')}>
             <History className="h-4 w-4" />
           </AbaDeIcone>
@@ -1584,6 +1655,8 @@ export function PainelDoContato({
                 if (nota.conversation_id === conversationId)
                   acrescentarNota(nota);
               }}
+              respondendoA={notaRespondida}
+              onLimparResposta={() => setRespondendo(null)}
             />
           ) : null}
 
@@ -1614,6 +1687,8 @@ export function PainelDoContato({
                     ? () => onIrParaItemDoFio({ tipo: 'nota', id: notaFixada.id })
                     : undefined
                 }
+                respondida={respondidaDe(notaFixada)}
+                onResponder={responderA(notaFixada)}
               />
             </div>
           )}
@@ -1640,6 +1715,8 @@ export function PainelDoContato({
                     ? () => onIrParaItemDoFio({ tipo: 'nota', id: note.id })
                     : undefined
                 }
+                respondida={respondidaDe(note)}
+                onResponder={responderA(note)}
               />
             ))}
           </div>
@@ -1747,6 +1824,23 @@ export function PainelDoContato({
                   }
                 : undefined
             }
+          />
+        </TabsContent>
+
+        {/* ---- Atlas (Fase 2): a situação no Atlas, "Abrir no Atlas" e, para
+             administradores, vincular colando o link ou desvincular. Dados do
+             hook no topo; `key` com o contato: o link colado é rascunho. ---- */}
+        <TabsContent
+          value="atlas"
+          className="min-h-0 flex-1 overflow-y-auto p-4"
+        >
+          <AbaAtlas
+            key={contact.id}
+            contactId={contact.id}
+            dados={atlas.dados}
+            carregando={atlas.carregando}
+            falhou={atlas.falhou}
+            recarregar={atlas.recarregar}
           />
         </TabsContent>
 

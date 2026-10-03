@@ -17,9 +17,11 @@
 // ⚠️ A régua do Asaas (998) fica FORA dos dois grupos, ligada ou não: ela só
 // roda pela varredura, e mostrá-la entre as desligadas convidaria a ligá-la
 // para executar à mão — o que a rota também recusa (`runAutomationById`).
+// NOSSO (1073): a "Situação mudou no Atlas" também (`soRodaPeloDisparador`):
+// só roda pela leitura do Atlas, que escolhe o card do evento.
 // ============================================================
 
-import { ehGatilhoDaRegua } from '@/lib/asaas/regua'
+import { soRodaPeloDisparador } from '@/lib/automations/so-pelo-disparador'
 import { semAcento } from '@/lib/inbox/busca-em-mensagens'
 
 export interface AutomacaoParaExecutar {
@@ -77,7 +79,7 @@ export function separarParaExecutar(
   const robosDesligados: ItemDesligado[] = []
 
   for (const a of automacoes) {
-    if (ehGatilhoDaRegua(a.trigger_type) || !casa(a.name)) continue
+    if (soRodaPeloDisparador(a.trigger_type) || !casa(a.name)) continue
     if (a.is_active === true) lista.automacoes.push(a)
     else lista.desligadas.push({ tipo: 'automacao', automacao: a })
   }

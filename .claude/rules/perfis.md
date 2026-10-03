@@ -133,6 +133,8 @@ Troca de LENTE no navegador, e só nele (`simulacao.ts`, o override no
   é `startsWith`: página pública não pode começar com prefixo protegido.
 - Rótulo do menu e do cabeçalho é chave montada: pino `rotulo-do-menu.test.ts`
   cobra `Sidebar.<labelKey>` e `Header.<título>` nos dois dicionários.
+- O "Modo anônimo" do menu do nome segue o papel REAL, de propósito (a lente
+  não o esconde nem o desliga): `.claude/rules/modo-anonimo.md`.
 
 ### Membros e posse da conta
 - Com perfil atribuído, o papel SEGUE o `papel_base` do perfil (962):

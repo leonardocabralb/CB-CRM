@@ -16,6 +16,8 @@
 export interface Novidades {
   /** `note_mention` — a pessoa foi citada numa anotação interna. */
   mencoes: number;
+  /** `note_reply` — alguém respondeu a uma anotação da pessoa (1075). */
+  respostas: number;
   /** `task_assigned` + `task_reply` — tarefa encaminhada ou respondida. */
   tarefas: number;
   /** `conversation_assigned`. */
@@ -34,8 +36,8 @@ export interface Novidades {
 export interface AvisoDoResumo {
   type: NotificationType;
   /**
-   * A conversa do aviso. `note_mention` e `conversation_assigned` a trazem
-   * (919 e o gatilho da 027); `task_assigned`/`task_reply` são NULAS de
+   * A conversa do aviso. `note_mention`, `note_reply` e
+   * `conversation_assigned` a trazem (919, 1075 e o gatilho da 027); `task_assigned`/`task_reply` são NULAS de
    * propósito — o destino delas é a tarefa, e tarefa não tem conexão
    * nenhuma (`cb_tasks` guarda só o contato). Por isso aviso de tarefa
    * NUNCA é recortado por conexão.
@@ -58,6 +60,7 @@ export function resumirNovidades(
 ): Novidades {
   const saida: Novidades = {
     mencoes: 0,
+    respostas: 0,
     tarefas: 0,
     conversas: 0,
     total: 0,
@@ -72,6 +75,7 @@ export function resumirNovidades(
       continue;
     }
     if (a.type === 'note_mention') saida.mencoes++;
+    else if (a.type === 'note_reply') saida.respostas++;
     else if (a.type === 'task_assigned' || a.type === 'task_reply')
       saida.tarefas++;
     else if (a.type === 'conversation_assigned') saida.conversas++;

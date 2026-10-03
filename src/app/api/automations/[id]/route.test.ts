@@ -229,6 +229,25 @@ describe('PATCH /api/automations/[id] — qualquer admin da conta', () => {
     expect(automacao('auto-1')?.name).toBe('Lembrete de reunião')
   })
 
+  it('"Situação mudou no Atlas" (1073): sem recorte de etapa — o valor gravado é zerado, como na régua', async () => {
+    const a = automacao('auto-1')!
+    a.stage_ids = ['etapa-velha']
+    const res = await PATCH(
+      corpo({ trigger_type: 'atlas_situacao_mudou', trigger_config: { situacoes: ['rescindido'], pipeline_ids: ['f1'] } }),
+      params('auto-1'),
+    )
+    expect(res.status).toBe(200)
+    expect(automacao('auto-1')).toMatchObject({ trigger_type: 'atlas_situacao_mudou', stage_ids: null })
+  })
+
+  it('"Situação mudou no Atlas" ativa sem funil é recusada (o card vai sempre no contexto)', async () => {
+    const res = await PATCH(corpo({ is_active: true, trigger_type: 'atlas_situacao_mudou', trigger_config: { situacoes: ['rescindido'], pipeline_ids: [] } }), params('auto-1'))
+    expect(res.status).toBe(400)
+    const { issues } = (await res.json()) as { issues: { codigo?: string }[] }
+    expect(issues.map((i) => i.codigo)).toContain('gatilho_atlas_sem_funil')
+    expect(automacao('auto-1')?.trigger_type).toBe('manual')
+  })
+
   it('aba em forma inválida é 400 e nada muda', async () => {
     const res = await PATCH(corpo({ area_id: 'Tributário' }), params('auto-1'))
     expect(res.status).toBe(400)

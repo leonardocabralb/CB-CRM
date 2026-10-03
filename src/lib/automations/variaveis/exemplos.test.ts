@@ -43,6 +43,14 @@ describe('exemplosDoGatilho', () => {
     expect(v.zapsign_assinado_em).toBe('29/09/2026 às 13:00h');
   });
 
+  it('mudança de situação do Atlas: situação, data e link, sem dado pessoal', () => {
+    const v = exemplosDoGatilho('atlas_situacao_mudou', { agora: AGORA, nome: 'Ana Lima' })!;
+    expect(Object.keys(v).sort()).toEqual([...NOMES_DO_EVENTO.atlas].sort());
+    for (const nome of NOMES_DO_EVENTO.atlas) expect(v[nome], nome).not.toBe('');
+    expect(v.atlas_situacao_em).toBe('29/09/2026 às 13:00h');
+    expect(JSON.stringify(v)).not.toContain('Ana Lima');
+  });
+
   it('o nome do cliente da prévia entra no lugar do fictício', () => {
     expect(exemplosDoGatilho('asaas_cobranca_vencida', { agora: AGORA, nome: 'leonardo cabral' })!.cliente_primeiro_nome).toBe(
       'Leonardo',

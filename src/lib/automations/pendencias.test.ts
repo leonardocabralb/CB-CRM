@@ -204,6 +204,7 @@ describe('avisosDaAutomacao', () => {
       { id: 'ligada', is_active: true },
       { id: 'desligada', is_active: false },
       { id: 'regua', is_active: false, trigger_type: 'asaas_cobranca_vencida' },
+      { id: 'atlas', is_active: true, trigger_type: 'atlas_situacao_mudou' },
     ],
     robos: [
       { id: 'ativo', status: 'active' },
@@ -228,6 +229,11 @@ describe('avisosDaAutomacao', () => {
     expect(avisos.map((a) => [a.path, a.codigo])).toEqual([
       ['steps[0].automation_id', 'acionar_automacao_da_regua'],
     ])
+  })
+
+  it('acionar a "Situação mudou no Atlas" avisa (ela só roda pela leitura do Atlas), mesmo ligada', () => {
+    const avisos = avisosDaAutomacao([acionar('a', 'atlas')], referencias)
+    expect(avisos.map((a) => [a.path, a.codigo])).toEqual([['steps[0].automation_id', 'acionar_automacao_do_atlas']])
   })
 
   it('iniciar robô em rascunho, arquivado ou apagado; o ativo não avisa', () => {

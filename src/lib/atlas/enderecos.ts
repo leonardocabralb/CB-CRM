@@ -36,3 +36,19 @@ export function ambienteDoAtlas(env: string | undefined = process.env.ATLAS_API_
 export function urlDaApiDoAtlas(env: string | undefined = process.env.ATLAS_API_URL): string {
   return ambienteDoAtlas(env) ?? API_DO_ATLAS;
 }
+
+/**
+ * A cerca de AMBIENTE numa consulta (1072): `api_url IS NULL` para o Atlas de
+ * verdade, `api_url = <endereço>` para o outro. Vale em TODA consulta e
+ * escrita de `cb_atlas_clientes` e `cb_atlas_recusas` (e da conexão, quando
+ * ela filtra pelo ambiente): o preview contra o staging grava no banco da
+ * PRODUÇÃO, e sem a cerca a leitura de um ambiente escreveria por cima dos
+ * vínculos do outro. Pino: `ambiente.chamadores.test.ts`.
+ */
+export function noAmbiente<Q>(consulta: Q, ambiente: string | null): Q {
+  // Os filtros do PostgREST devolvem o PRÓPRIO construtor (`this`). Sem
+  // restrição no genérico, de propósito: casar as assinaturas genéricas do
+  // construtor estoura a instanciação de tipos do TypeScript (TS2589).
+  const q = consulta as unknown as { is(coluna: string, valor: null): Q; eq(coluna: string, valor: string): Q };
+  return ambiente === null ? q.is("api_url", null) : q.eq("api_url", ambiente);
+}

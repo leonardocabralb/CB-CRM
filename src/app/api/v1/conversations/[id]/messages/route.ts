@@ -7,7 +7,8 @@
 // ============================================================
 
 import { requireApiKey } from '@/lib/auth/api-context';
-import { okList, fail, toApiErrorResponse } from '@/lib/api/v1/respond';
+import { okList, fail, badRequest, toApiErrorResponse } from '@/lib/api/v1/respond';
+import { ehUuid } from '@/lib/tasks/validar';
 import {
   parseListParams,
   keysetFilter,
@@ -23,10 +24,13 @@ export async function GET(
   try {
     const ctx = await requireApiKey(request, 'messages:read');
     const { id } = await params;
+    // NOSSO: id malformado é 400 aqui, e não o 22P02 do PostgREST — é o que
+    // deixa o erro da consulta abaixo significar só falha do banco.
+    if (!ehUuid(id)) throw badRequest("'id' must be a UUID");
     const { limit, cursor } = parseListParams(request);
 
     // Gate on account ownership of the conversation first.
-    const { data: conv } = await ctx.supabase
+    const { data: conv, error: convErr } = await ctx.supabase
       .from('conversations')
       .select('id')
       .eq('id', id)
@@ -35,6 +39,12 @@ export async function GET(
       // histórico dele também não. Este gate é o que impede o vazamento.
       .is('group_id', null)
       .maybeSingle();
+    // ⚠️ NOSSO: o upstream descarta o `error`, e um soluço do banco virava
+    // "conversa não encontrada" (regra da v1: erro de banco nunca é 404).
+    if (convErr) {
+      console.error('[api/v1/messages] conversation lookup error:', convErr);
+      return fail('internal', 'Failed to read conversation', 500);
+    }
     if (!conv) return fail('not_found', 'Conversation not found', 404);
 
     let query = ctx.supabase

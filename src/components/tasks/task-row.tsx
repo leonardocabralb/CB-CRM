@@ -26,6 +26,7 @@ import {
   MoreVertical,
   Pencil,
   Plus,
+  Repeat,
   Star,
   Trash2,
   User,
@@ -169,6 +170,15 @@ export function TaskRow({
             </span>
           ) : null}
 
+          {/* Toda tarefa de uma série que ainda repete (1074) — a ativa e as
+              anteriores. Série encerrada perde a etiqueta em todas. */}
+          {tarefa.repetir_a_cada_dias ? (
+            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              <Repeat className="size-3" />
+              {t('repeatEvery', { dias: tarefa.repetir_a_cada_dias })}
+            </span>
+          ) : null}
+
           {naoLida ? (
             <span className="rounded-full border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-primary">
               {t('chipUnread')}
@@ -176,8 +186,11 @@ export function TaskRow({
           ) : null}
         </div>
 
+        {/* Inteira e com as quebras de linha: a descrição é o recado de quem
+            pediu ("o banco ficou de confirmar…"), e cortada em duas linhas o
+            responsável não lia o que tinha de fazer. */}
         {tarefa.descricao ? (
-          <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+          <p className="mt-0.5 whitespace-pre-wrap break-words text-xs text-muted-foreground">
             {tarefa.descricao}
           </p>
         ) : null}

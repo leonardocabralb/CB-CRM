@@ -431,8 +431,13 @@ dentro, exceções e testes de chave montada: `.claude/rules/i18n.md`.
 
 ## 11. Integrações externas
 
-- Mexeu em integração externa → atualize a doc visível (`docs/`, ajuda na
-  tela) NA MESMA PASSADA. Doc obsoleta é bug latente.
+- **A DOC ACOMPANHA O CONTRATO, no MESMO PR:** mudou a API v1, os
+  webhooks, o MCP, uma integração ou o que automação, robô ou agente de IA
+  faz que a doc descreve → `docs/public-api.md`, `docs/webhooks.md`,
+  `docs/mcp.md`, a aba Configurações → API → Documentação e a ajuda na tela
+  mudam junto (quem integra lê a doc, não o código). O job `documentacao`
+  do CI (`scripts/doc-acompanha.mjs`) cobra; sem doc, só com
+  `Doc-inalterada: <motivo>` num commit.
 - `META_APP_SECRET` valida o HMAC do webhook da Meta (sem ele, recusa tudo)
   e aceita vários segredos separados por vírgula SEM ESPAÇO: com `a, b` no
   `crm.env`, o `set -a` faz a variável SUMIR e todo webhook da Meta vira 401
@@ -483,6 +488,10 @@ O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
   recolhida (29/09/2026).
 - Quem mais está com a conversa aberta: frase acima do compositor, além dos
   avatares do cabeçalho (29/09/2026).
+- Modo anônimo, só de admin, no menu do nome: abrir não zera as não lidas nem
+  mostra a presença; responder zera; dura até desligar (01/10/2026).
+- Notificação do navegador: cada pessoa escolhe as conexões que avisam (todas
+  marcadas por padrão); filtro salvo não decide aviso (02/10/2026).
 - Canal: a faixa de divergência só informa, não bloqueia; cor derivada; anel
   no avatar e trilha colorida foram descartados.
 - IA: chave por PROVEDOR, uma para a conta toda — nunca por conexão
@@ -492,9 +501,14 @@ O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
   grade; as antigas não mudam (18/09/2026).
 - Asaas: o CRM cria a ficha, com nome fixado; ligar a régua não é
   retroativo.
+- Atlas: vincular/desvincular à mão só admin; a faixa acende também com
+  suspenso e inativo; a linha do Atlas aparece a todos (sem recorte de
+  perfil); o Atlas "ativo" NÃO apaga a linha do funil (30/09/2026).
 - Cartão de contato: aparece como cartão, com Copiar e Conversar (a "Nova
   conversa" já preenchida); `.html` recebido é guardado e oferecido para
-  baixar (28/09/2026).
+  baixar (28/09/2026); ENVIAR `.html`, só nas conexões por QR code — a Meta o
+  recusa (02/10/2026). Documento e cartão em destaque na bolha (superfície
+  própria, selo do tipo); desenho do fundo do fio a 15% (01/10/2026).
 - Instagram: robô não responde no Direct; unificar fichas é manual; o que a
   API não cobre fica inacessível na conversa.
 - Conversa ENCERRADA quando nasce sem o cliente ter escrito: webhook de
@@ -508,6 +522,9 @@ O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
 - Contatos relacionados: vínculo PAR A PAR, visto dos dois lados, com
   descrição opcional; quem edita contato vincula; faixa "Voltar para" de um
   nível só (29/09/2026).
+- Tarefa recorrente: PELO CALENDÁRIO (nasce no dia do prazo, concluída ou
+  não a anterior), contando do prazo anterior; só no formulário; avisa no
+  sino (30/09/2026).
 
 ## 13. Índice das áreas
 
@@ -536,7 +553,11 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
 - `.claude/rules/inbox-lista.md` — duas abas, atraso de resposta, filtros e
   filtros salvos, busca em duas metades, nova conversa.
 - `.claude/rules/inbox-conversa.md` — fio e rolagem, salto da busca,
-  compositor, fila de anexos, anotação interna, player de áudio, painel.
+  compositor, fila de anexos, player de áudio, painel.
+- `.claude/rules/anotacoes.md` — anotação interna nas quatro telas, apagar e
+  fixar, resposta à anotação (1075) e o aviso a quem já escreveu nela.
+- `.claude/rules/modo-anonimo.md` — o admin lê sem zerar as não lidas nem
+  aparecer na presença: quem zera, responder zera, papel real, pastilha.
 - `.claude/rules/midia.md` — dois tetos de tamanho, `too_large`, nome do
   anexo, acervo de mídias.
 - `.claude/rules/celular.md` — teclado virtual, voltar pelo histórico, app
@@ -554,7 +575,7 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   conversa: interrompidas na aba, o que não rodou, texto do motor traduzido.
 - `.claude/rules/automacoes-passos.md` — valores do "Enviar modelo", tarefa
   pelo responsável, condições da janela de 24h e da hora do dia, "Aguardar
-  até estar dentro do horário".
+  até estar dentro do horário", "Não repetir por N horas" do gatilho.
 - `.claude/rules/automacoes-abas.md` — as abas da tela de Automações (1055),
   criadas por cada conta; "Geral" é `area_id` nulo.
 - `.claude/rules/automacoes-variaveis.md` — botão "Inserir campo", editor
@@ -573,8 +594,14 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   ficha criada pelo CRM, cadeado do ciclo, webhook, régua.
 - `.claude/rules/integracoes-zapsign.md` — assinatura move o card: webhook
   pelo cabeçalho, releitura, casamento sem criar contato, cadeado do disparo.
-- `.claude/rules/integracoes-atlas.md` — chave do Atlas por conta, passo
-  "Criar cliente no Atlas" (procura, cria, reativa, vincula), vínculo 1:1.
+- `.claude/rules/integracoes-atlas.md` — chave do Atlas por conta, nó
+  Atlas: "Criar cliente" (procura, cria, reativa, vincula), vínculo 1:1,
+  ambiente em toda linha, leitura das situações, vínculo automático, lixeira,
+  vínculo à mão (admin), faixa com a fonte, aba Atlas, gatilho "Situação
+  mudou no Atlas" (fila 1073).
+- `.claude/rules/integracoes-atlas-acoes.md` — o nó Atlas do construtor (uma
+  entrada, seletor de ação, memória da troca) e as ações novas: atualizar
+  cliente, tarefa, transcrição, onboarding, permissões opcionais.
 - `.claude/rules/ia.md` — Radar, transcrição de áudio, chaves e modelos por
   módulo (Integrações).
 - `.claude/rules/ia-agentes.md` — o que cada agente de IA vê (acesso, blocos)
@@ -586,7 +613,7 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
 - `.claude/rules/agendadas.md` — mensagem agendada, anexo e citação, tela
   `/agendadas`.
 - `.claude/rules/tarefas.md` — tarefas por cliente, `podeNaTarefa`, prazo
-  sem fuso.
+  sem fuso, tarefa recorrente (1074).
 - `.claude/rules/webhooks.md` — webhooks de entrada, formulário público
   (Typebot), webhooks de saída `deal.*`.
 - `.claude/rules/api-v1.md` — API pública, escopos, tags por nome,
@@ -639,6 +666,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
 - [ ] Schema: as regras da seção 7 (número, banco vazio, ordem de aplicação).
 - [ ] Nada de `.env.local` no commit (`git status`).
 - [ ] `npm run typecheck`, `npm run lint` e `npm run test`.
+- [ ] Contrato de integração mudou: doc junto (seção 11;
+  `node scripts/doc-acompanha.mjs`).
 - [ ] Nota nova no lugar certo, e o teto respeitado.
 
 ## 15. Não faça

@@ -28,6 +28,10 @@ anexos, em `.claude/rules/midia.md`. O texto antigo, com a história, está em
   `/api/cb/scheduled/cron` (laço do `docker-stack.yml`). Sem ele a tabela só
   enche — o destino de `broadcasts.scheduled_at`, viva e sem leitor desde a
   001.
+- ⚠️ **A rota carrega também as TAREFAS RECORRENTES** (1074,
+  `after(() => gerarTarefasRecorrentes(admin))`): tirá-la do laço, ou tirar a
+  chamada, para de gerar as tarefas sem erro nenhum. Pino
+  `tarefas-recorrentes-1074.test.ts`; o resto em `.claude/rules/tarefas.md`.
 - **Agendar não passa pela janela de desfazer.** O desvio é a primeira coisa do
   `handleSend` (e do `sendDraft`, para anexo), antes de qualquer
   `setPendente`: a janela tem três saídas que disparam na hora (trocar de
@@ -111,7 +115,10 @@ Irmã da faixa do fio, não substituta. `src/hooks/use-agendadas-da-conta.ts`,
 
 - ⚠️ **"Executar agora" e "Cancelar" moram no HOOK, não na tela.** Elas mandam
   mensagem a cliente e apagam registro; duas cópias divergindo na guarda
-  (`podeDispararAgora`) fazem o cliente receber duas vezes.
+  (`podeDispararAgora`) fazem o cliente receber duas vezes. O 2º parâmetro
+  (`aoEnviar`) roda só quando o "Executar agora" SAIU: a faixa do fio o usa
+  para o modo anônimo zerar as não lidas (`modo-anonimo.md`); a tela global
+  não passa nada.
 - ⚠️ **São TRÊS consultas.** Fila e acervo têm ordens opostas, e numa consulta
   só com teto o `ORDER BY` errado engoliria um dos dois inteiro. **Só as
   enviadas paginam**: a falha de meses atrás ainda espera decisão, e a

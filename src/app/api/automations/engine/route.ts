@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
-import { ehGatilhoDaRegua } from '@/lib/asaas/regua'
+import { soRodaPeloDisparador } from '@/lib/automations/so-pelo-disparador'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import type { AutomationTriggerType } from '@/types'
 
@@ -27,9 +27,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'trigger_type required' }, { status: 400 })
   }
   // A régua do Asaas (998) só roda pela varredura: por aqui sairia sem
-  // reconfirmar o pagamento, sem trava e com as `{{vars.*}}` vazias.
-  if (ehGatilhoDaRegua(body.trigger_type)) {
-    return NextResponse.json({ error: 'the Asaas collection sequence only runs from the Asaas sweep' }, { status: 400 })
+  // reconfirmar o pagamento, sem trava e com as `{{vars.*}}` vazias. NOSSO
+  // (1073): a "Situação mudou no Atlas" só roda pela leitura do Atlas (sem o
+  // card do evento, o "Mover card" pegaria o aberto mais recente).
+  if (soRodaPeloDisparador(body.trigger_type)) {
+    return NextResponse.json({ error: 'this trigger only runs from its own dispatcher (Asaas sweep or Atlas reading)' }, { status: 400 })
   }
 
   await runAutomationsForTrigger({

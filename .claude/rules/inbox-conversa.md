@@ -6,6 +6,7 @@ paths:
   - "src/components/inbox/contact-sidebar.tsx"
   - "src/components/inbox/group-sidebar.tsx"
   - "src/components/inbox/cartao-de-nota.tsx"
+  - "src/components/inbox/citacao-da-nota.tsx"
   - "src/components/inbox/cartao-de-contato.tsx"
   - "src/lib/inbox/conversar-com-contato*"
   - "src/lib/inbox/tipo-nao-suportado*"
@@ -67,7 +68,8 @@ ficha em `.claude/rules/campos-e-nome.md`.
   arquivo do upstream está em `docs/MERGE-UPSTREAM.md`.
 - ⚠️ **Conversa fora das conexões do perfil: `ConversaForaDaArea` SUBSTITUI o
   `<MessageThread>`, nunca o embrulha.** Montado, o fio buscaria as mensagens e
-  zeraria as não lidas em nome de quem nem pode responder.
+  zeraria as não lidas em nome de quem nem pode responder. A página também
+  não marca presença nem zera o espelho da lista por ela (`foraDoPerfil`).
 
 ### O fio: rolagem, linha do tempo e faixas
 
@@ -92,11 +94,17 @@ ficha em `.claude/rules/campos-e-nome.md`.
   etapa — por funil, a atual ou a de onde o ÚNICO card saiu, porque ele viaja
   do Jurídico ao Comercial quando o ex-cliente volta; recorte do perfil
   derivado no render; só informa; cala com `null`; relê a cada evento da
-  trilha; texto `text-foreground`, cor só na borda, ícone e pastilha), inadimplência do Asaas,
+  trilha; texto `text-foreground`, cor só na borda, ícone e pastilha; mais a
+  linha do ATLAS — suspenso e inativo também —, cada linha com a FONTE, "no
+  funil …" ou "no Atlas desde …": `juntarSituacoes`, `integracoes-atlas.md`), inadimplência do Asaas,
   possível no-show (`FaixaDeNoShow`, regra em `.claude/rules/reunioes.md`),
   agendadas, presença (`FaixaDePresenca`) e o número divergente, que fica
   COLADO no compositor. A de no-show vem do hook que carimba o contato dono do
-  aviso: a de um cliente nunca aparece na conversa de outro.
+  aviso: a de um cliente nunca aparece na conversa de outro. As ARREDONDADAS
+  moram num bloco `pb-2 empty:hidden` (cada uma só com `mt-2`): fora dele, ou
+  sem ele, a última encosta no `border-t` de baixo. ⚠️ O bloco leva
+  `min-h-0 overflow-y-auto`: na tela baixa o fio já está em zero, e sem os
+  dois o bloco empurra o compositor para fora da casca.
 
 ### O salto da busca dentro do fio roda em JS, e isso tem prazo de validade
 
@@ -185,7 +193,9 @@ destaque e ↑/↓ em `message-thread.tsx`.
 `src/lib/inbox/arquivo-solto.ts` e `message-composer.tsx`.
 
 - ⚠️⚠️ **A lista de MIMEs é UMA** (`MIMES_ACEITOS`; o `accept=` deriva dela em
-  `ACEITE_DO_SELETOR`): duas listas divergiriam e o arquivo falharia só no envio.
+  `aceiteDoSeletor`): duas listas divergiriam e o arquivo falharia só no envio.
+  A página `.html` só nas conexões por QR code, com o transporte conhecido
+  (`porQrCode`, o mesmo nas três portas; `.claude/rules/midia.md`).
 - ⚠️⚠️ **O MIME é NORMALIZADO antes de SUBIR** (`arquivoParaEnviar`): o bucket
   tem lista exata, e `image/png; charset=binary` era recusado. Outro caminho de
   upload repete a normalização.
@@ -293,6 +303,28 @@ O WhatsApp quase nunca anuncia a falha; este vermelho é INFERIDO.
 - **Áudio não mostra nome** (o WhatsApp manda um id hexadecimal): mostra a
   transcrição quando pronta.
 
+### Documento e cartão de contato em destaque; o fundo do fio (01/10/2026)
+
+Pedido do operador: sem miniatura, o documento e o cartão passavam por texto
+comum no meio das mensagens (ícone cinza sobre bolha cinza).
+
+- ⚠️ **Os dois têm superfície PRÓPRIA (`bg-card` + anel), nunca um tom da
+  bolha**: o `bg-muted/50` de antes sumia no cinza do cliente. Assim as cores de
+  dentro valem nos dois lados do fio e nos temas; no escuro o cartão fica mais
+  fundo que a bolha, como no WhatsApp.
+- ⚠️ **Nada na bolha tem largura FIXA que não encolha.** Cartões sem `min-w`;
+  imagem e vídeo com o teto fixo no INVÓLUCRO (`max-w-60`) e `max-w-full`
+  neles; quadros de carga como o player (`w-64 max-w-full`). Senão, num fio
+  estreito (320 px; 1280 px com o painel aberto = fio de 305 px) a peça vaza o
+  teto de 75% e a conversa rola para o lado (Codex #371; medido 01/10/2026).
+- **Selo do documento = extensão sobre a cor da família** (`tipoDoDocumento`,
+  `src/lib/media/tipo-de-documento.ts`): PDF vermelho, planilha verde, texto
+  azul. Os tons passam de 4,5 com o branco; os `-600` de verde, laranja e
+  âmbar, não.
+- **"Conversar" é o único botão preenchido do cartão**; o copiar é discreto.
+- **O desenho do fundo está a 15%** (`public/inbox-doodle.svg`, era 22%):
+  meio-termo escolhido pelo operador entre o de antes e um de 8%.
+
 ### Links clicáveis na bolha e na anotação (29/09/2026)
 
 `src/lib/inbox/links-no-texto.ts` e `src/components/inbox/texto-com-links.tsx`
@@ -315,30 +347,11 @@ O WhatsApp quase nunca anuncia a falha; este vermelho é INFERIDO.
   do navegador. Aba nova com `noopener noreferrer`; cor HERDADA com
   sublinhado (a mesma peça vai na bolha violeta).
 
-### Anotação interna: são QUATRO telas
+### Anotação interna e resposta à anotação
 
-`src/hooks/use-apagar-nota.ts` e `src/components/inbox/cartao-de-nota.tsx`.
-
-- ⚠️⚠️ **Apagar SEMPRE pelo `useApagarNota`**: a policy é "autor OU admin", e
-  RLS que barra DELETE devolve 0 linhas sem erro — sem o `count`, a nota some
-  da tela e volta na próxima abertura.
-- ⚠️ **`podeApagar` = `author_user_id === user.id || useCan('manage-members')`**,
-  igual nas telas; divergir mostra lixeira que a RLS recusa.
-- ⚠️ **Nota de GRUPO não fixa** (o índice parcial exige `contact_id`): sem
-  `onFixar` o alfinete não aparece. Quem monta a aba decide, e também o
-  `sticky`.
-- ⚠️ **Aba Notas do painel (decisão do operador, 29/09/2026): caixa de
-  escrever PRIMEIRO, fixada logo abaixo, RECOLHIDA** (`destaque` no
-  `CartaoDeNota`: duas linhas, seta só com texto cortado de verdade, aberta
-  com teto e rolagem própria). Presa e inteira, uma nota longa cobria a
-  lista toda. O sticky respeita o padding do `TabsContent`: `-top-4` + faixa
-  `bg-card`, senão a lista aparece por cima do cartão. Pino
-  `cartao-de-nota.test.tsx`.
-- **`contact-detail-view` tem `deleteNote` próprio, de propósito**: distingue
-  "proibido" de "falhou".
-- **A frase do autor é `Inbox.note.wrote` nas quatro telas.**
-- Quem levar o `InternalNoteBox` a uma tela nova põe a entrada dela em
-  `ESCRITA_DA_TELA` como `viewer` (anotar conta como operação; ver a raiz).
+Moram em `.claude/rules/anotacoes.md` (as quatro telas, apagar, fixar, a
+aba Notas do painel e a resposta da 1075). Os links clicáveis na anotação
+ficam acima, em "Links clicáveis".
 
 ### Cabeçalho do fio, painel lateral e aba Arquivos
 
@@ -394,7 +407,9 @@ O vínculo e a aba: `.claude/rules/contatos.md`. Aqui, o pulo entre conversas.
 - ⚠️ **O escritor serializa as RPCs numa fila**: na troca rápida de conversa, a
   resposta atrasada não pode vencer a intenção nova.
 - **A página do inbox é a dona da seleção** (`useMarcarConversaAberta`); o
-  cabeçalho mostra `<AvataresNaConversa>` por `useQuemVeAConversa`.
+  cabeçalho mostra `<AvataresNaConversa>` por `useQuemVeAConversa`. O
+  escritor recebe `conversaLida`, nula no modo anônimo e fora do perfil
+  (`modo-anonimo.md`).
 - **Decisão do operador (29/09/2026): a presença também sai em FRASE acima do
   compositor** (`<FaixaDePresenca>`, os mesmos `vendoAgora` e roster dos
   avatares): é na hora de responder que importa. Verde, nunca as cores da

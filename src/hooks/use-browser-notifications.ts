@@ -32,9 +32,10 @@ import { MIDIA_DE_TOQUE } from "@/lib/celular/teclado";
 
 // ⚠️ Este arquivo veio do original (#516) e foi PORTADO na Fase 8 do plano do
 // merge do upstream: a preferência é POR PESSOA, a régua de quem recebe
-// aviso é a nossa (`silencioDoAviso`: perfil, grupo, "quais conversas",
-// mensagem antiga) e o título sai de `nomeDoContato`. Um merge que traga a
-// versão dele crua devolve o aviso de grupo e de conexão fora do perfil.
+// aviso é a nossa (`silencioDoAviso`: perfil, grupo, conexões silenciadas,
+// "quais conversas", mensagem antiga) e o título sai de `nomeDoContato`. Um
+// merge que traga a versão dele crua devolve o aviso de grupo e de conexão
+// fora do perfil.
 
 const semServidor = () => null;
 
@@ -240,6 +241,7 @@ export function useBrowserNotifications(): void {
         ctx,
         userId,
         quais: pref.quais,
+        silenciadas: pref.silenciadas,
         agoraMs: Date.now(),
       });
       // Mensagem que chegou até a última vez que a pessoa ABRIU esta conversa

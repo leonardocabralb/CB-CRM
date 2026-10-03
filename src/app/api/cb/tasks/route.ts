@@ -19,6 +19,7 @@
 // pessoa no sistema.
 // ============================================================
 
+import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 
 import { supabaseAdmin } from '@/lib/automations/admin-client';
@@ -33,6 +34,7 @@ import {
   ehUuid,
   normalizarDescricao,
   normalizarHora,
+  normalizarRepeticao,
   normalizarTitulo,
 } from '@/lib/tasks/validar';
 
@@ -64,6 +66,7 @@ export async function POST(request: Request) {
       importante?: unknown;
       tarefa_pai_id?: unknown;
       tipo?: unknown;
+      repetir_a_cada_dias?: unknown;
     } | null;
     if (!body) {
       return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
@@ -101,6 +104,27 @@ export async function POST(request: Request) {
     }
 
     const tipo = body.tipo === 'resposta' ? 'resposta' : 'tarefa';
+
+    // Repetição pelo calendário (1074). Ausente = não repete; fora da lista é
+    // recusado, nunca rebaixado a "não repete" em silêncio.
+    const repetir =
+      body.repetir_a_cada_dias === undefined
+        ? null
+        : normalizarRepeticao(body.repetir_a_cada_dias);
+    if (repetir === undefined) {
+      return NextResponse.json(
+        { error: 'repetir_a_cada_dias must be one of 1, 2, 5, 7, 15, 30' },
+        { status: 400 },
+      );
+    }
+    // A resposta é a devolutiva de UMA tarefa, para quem pediu: repeti-la não
+    // responde a nada. O formulário nem oferece o campo ao responder.
+    if (tipo === 'resposta' && repetir !== null) {
+      return NextResponse.json(
+        { error: 'a reply cannot repeat' },
+        { status: 400 },
+      );
+    }
     const paiId = body.tarefa_pai_id;
     if (paiId !== undefined && paiId !== null && !ehUuid(paiId)) {
       return NextResponse.json({ error: 'tarefa_pai_id is malformed' }, { status: 400 });
@@ -231,11 +255,17 @@ export async function POST(request: Request) {
     const paraSiMesmo = responsavelId === ctx.userId;
     const agora = new Date().toISOString();
 
+    // A primeira da série é a própria série: o id nasce aqui para ir também
+    // em `serie_id` no MESMO insert (o CHECK da 1074 exige série a quem repete).
+    const id = randomUUID();
+
     const admin = supabaseAdmin();
     const { data: tarefa, error } = await admin
       .from('cb_tasks')
       .insert({
+        id,
         ...(paraSiMesmo ? { vista_em: agora, lida_em: agora } : {}),
+        ...(repetir !== null ? { repetir_a_cada_dias: repetir, serie_id: id } : {}),
         account_id: ctx.accountId,
         contact_id: contactId,
         criador_user_id: ctx.userId,

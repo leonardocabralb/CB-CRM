@@ -4,6 +4,7 @@ import { montarVariaveis, somarDias } from '@/lib/asaas/regua';
 import { EVENTO_AGENDADO } from '@/lib/calendly/payload';
 import { variaveisDoAgendamento } from '@/lib/calendly/variaveis';
 import { variaveisDoDocumento } from '@/lib/zapsign/variaveis';
+import { variaveisDaMudanca } from '@/lib/atlas/gatilho';
 
 /**
  * O EXEMPLO das `{{vars.*}}` de cada gatilho, para o botão "Inserir campo" e a
@@ -14,7 +15,7 @@ import { variaveisDoDocumento } from '@/lib/zapsign/variaveis';
  * ⚠️⚠️ Condição do operador (29/09/2026): o exemplo NÃO pode pedir manutenção
  * quando o código mudar. Por isso nada aqui é texto pronto — cada exemplo sai
  * das MESMAS funções que montam as variáveis do envio (`montarVariaveis`,
- * `variaveisDoAgendamento`, `variaveisDoDocumento`), alimentadas com dados
+ * `variaveisDoAgendamento`, `variaveisDoDocumento`, `variaveisDaMudanca`), alimentadas com dados
  * fictícios. Mudou o formato de uma linha de parcela, o exemplo muda junto;
  * variável nova aparece sozinha (e `catalogo.test.ts` cobra o nome e a
  * legenda dela nos dois dicionários). O que é fixo aqui é só a ENTRADA, e o
@@ -152,12 +153,24 @@ export function exemplosDoGatilho(
         {},
         fuso,
       );
+    case 'atlas_situacao_mudou':
+      // Situação e data, sem dado pessoal (o gatilho não entrega nome nem telefone).
+      return variaveisDaMudanca(
+        {
+          anterior: 'ativo',
+          nova: 'rescindido',
+          desde: agora.toISOString(),
+          appUrl: 'https://app.exemplo.com/#/clients/00000000-0000-4000-8000-000000000000',
+          atlasClientId: '00000000-0000-4000-8000-000000000000',
+        },
+        fuso,
+      );
     default:
       return null;
   }
 }
 
-export type FamiliaComExemplo = 'asaas' | 'calendly' | 'zapsign';
+export type FamiliaComExemplo = 'asaas' | 'calendly' | 'zapsign' | 'atlas';
 
 /**
  * Os NOMES das variáveis de cada família, colhidos das próprias funções que as
@@ -168,4 +181,5 @@ export const NOMES_DO_EVENTO: Readonly<Record<FamiliaComExemplo, readonly string
   asaas: Object.keys(exemplosDoGatilho('asaas_cobranca_vencida', { agora: new Date(0) }) ?? {}),
   calendly: Object.keys(exemplosDoGatilho('calendly_booking', { agora: new Date(0) }) ?? {}),
   zapsign: Object.keys(exemplosDoGatilho('zapsign_documento_assinado', { agora: new Date(0) }) ?? {}),
+  atlas: Object.keys(exemplosDoGatilho('atlas_situacao_mudou', { agora: new Date(0) }) ?? {}),
 };

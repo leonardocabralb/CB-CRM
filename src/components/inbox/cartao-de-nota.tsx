@@ -6,11 +6,13 @@ import {
   Locate,
   Pin,
   PinOff,
+  Reply,
   Trash2,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 
+import { CitacaoDaNota } from '@/components/inbox/citacao-da-nota';
 import { TextoComLinks } from '@/components/inbox/texto-com-links';
 import { cn } from '@/lib/utils';
 import type { ConversationNote } from '@/types';
@@ -49,6 +51,10 @@ import type { ConversationNote } from '@/types';
  * mais alto que a área visível esconderia o próprio fim. Quem monta passa
  * `key={nota.id}`: aberta/recolhida é estado da leitura DESTA anotação, e a
  * próxima fixada nasceria aberta sem o remonte.
+ *
+ * RESPOSTA (1075): a mesma citação e o mesmo "Responder" da `NoteLine`. Na
+ * aba a resposta fica onde foi escrita, com a respondida citada em cima
+ * (decisão do operador); a caixa de escrever é a do topo da aba.
  */
 export function CartaoDeNota({
   nota,
@@ -59,6 +65,8 @@ export function CartaoDeNota({
   fixando = false,
   onFixar,
   onVerNaConversa,
+  respondida,
+  onResponder,
 }: {
   nota: ConversationNote;
   /** Autor ou admin — quem decide de verdade é a RLS; isto só esconde o botão. */
@@ -80,6 +88,13 @@ export function CartaoDeNota({
    * `/contatos` não tem fio ao lado).
    */
   onVerNaConversa?: () => void;
+  /**
+   * A anotação que esta responde, achada na lista da aba (1075). Só vale
+   * com `nota.resposta_de`; `null` = não está na lista.
+   */
+  respondida?: ConversationNote | null;
+  /** Ausente = sem botão Responder (a ficha de `/contatos`). */
+  onResponder?: () => void;
 }) {
   const t = useTranslations('Inbox.note');
   const tSidebar = useTranslations('Inbox.sidebar');
@@ -123,7 +138,9 @@ export function CartaoDeNota({
               equipe" quando o autor saiu da conta. Na fixada também: a
               informação não pode sumir só porque a nota foi fixada. */}
           <p className="text-foreground text-xs font-semibold break-words">
-            {t('wrote', { autor: nota.autor_nome || t('unknownAuthor') })}
+            {t(nota.resposta_de ? 'replied' : 'wrote', {
+              autor: nota.autor_nome || t('unknownAuthor'),
+            })}
           </p>
           <p className="text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11px]">
             {destaque && (
@@ -220,6 +237,12 @@ export function CartaoDeNota({
             ))}
         </span>
       </div>
+      {nota.resposta_de && (
+        <CitacaoDaNota
+          original={respondida ?? null}
+          className="text-foreground mt-2"
+        />
+      )}
       <p
         ref={textoRef}
         className={cn(
@@ -237,6 +260,18 @@ export function CartaoDeNota({
             nota é o caso comum. */}
         <TextoComLinks texto={nota.texto} />
       </p>
+      {onResponder && (
+        <div className="mt-1 flex justify-end">
+          <button
+            type="button"
+            onClick={onResponder}
+            className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-xs font-medium transition-colors"
+          >
+            <Reply className="h-3.5 w-3.5" />
+            {t('reply')}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -48,6 +48,8 @@ import {
   TriangleAlert,
   Pin,
   UserPlus,
+  UserPen,
+  ListChecks,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -92,6 +94,22 @@ import { createClient } from "@/lib/supabase/client"
 import { useAreasDeAutomacao } from "@/hooks/use-areas-de-automacao"
 import { areaDoFunil } from "@/lib/automations/areas"
 import { AsaasTriggerConfig } from "@/components/automations/asaas-trigger-config"
+import { AtlasTriggerConfig, semearAtlas } from "@/components/automations/atlas-trigger-config"
+import { GATILHO_DO_ATLAS, soRodaPeloDisparador } from "@/lib/automations/so-pelo-disparador"
+import { aceitaNaoRepetir, HORAS_SEM_REPETIR_MAX } from "@/lib/automations/nao-repetir"
+import {
+  IDADE_MAXIMA_DA_TRANSCRICAO_H,
+  IDADE_PADRAO_DA_TRANSCRICAO_H,
+  PASSOS_FORA_DO_GATILHO_DO_ATLAS,
+  PRAZO_MAXIMO_DA_TAREFA,
+  SITUACOES_DO_ONBOARDING,
+  TIPO_TEXTO,
+  ehPassoDoAtlas,
+  trocaApagaAlgo,
+  trocarAcao,
+  type MemoriaDasAcoes,
+  type PassoDoAtlas,
+} from "@/lib/atlas/passos-do-atlas"
 import { CalendlyTriggerConfig } from "@/components/automations/calendly-trigger-config"
 import { ehGatilhoDaRegua, HORA_PADRAO_COBRANCA, HORA_PADRAO_LEMBRETE } from "@/lib/asaas/regua"
 import { WebhookTriggerConfig } from "@/components/automations/webhook-trigger-config"
@@ -269,10 +287,35 @@ const STEP_META: Record<AutomationStepType, StepMeta> = {
   // Não fala com ninguém: muda por qual número a conversa corre, como o
   // `set_ai` muda quem responde — mesma borda.
   pin_conversation_channel: { label: "pin_conversation_channel", icon: Pin, border: "border-l-violet-500" },
-  // Não fala com ninguém: cria (ou reativa) o cliente no Atlas — mesma borda
-  // dos passos que mexem em outras peças, não em quem conversa.
-  atlas_criar_cliente: { label: "atlas_criar_cliente", icon: UserPlus, border: "border-l-violet-500" },
+  // Vem da INTEGRAÇÃO com o Atlas (pedido do operador, 30/09/2026): borda,
+  // ícone e selo próprios (`ehPassoDeIntegracao`), para quem lê a automação
+  // ver de longe que este passo escreve num sistema de fora. As cinco ações
+  // do nó Atlas (`PASSOS_DO_ATLAS`) — e SÓ elas — usam o laranja.
+  atlas_criar_cliente: { label: "atlas_criar_cliente", icon: UserPlus, border: "border-l-orange-500" },
+  atlas_atualizar_cliente: { label: "atlas_atualizar_cliente", icon: UserPen, border: "border-l-orange-500" },
+  atlas_criar_tarefa: { label: "atlas_criar_tarefa", icon: ListTodo, border: "border-l-orange-500" },
+  atlas_enviar_transcricao: { label: "atlas_enviar_transcricao", icon: FileText, border: "border-l-orange-500" },
+  atlas_atualizar_onboarding: { label: "atlas_atualizar_onboarding", icon: ListChecks, border: "border-l-orange-500" },
 }
+
+/**
+ * Os passos que vêm de uma integração externa ganham destaque no cartão e no
+ * menu de adicionar. Hoje só os do nó Atlas; o selo diz "Integração Atlas".
+ * ⚠️ Classes LITERAIS (o Tailwind não gera classe montada) e sem `dark:` (o
+ * variant está inerte): a MESMA cor vale nos dois temas, e nenhum laranja
+ * translúcido passa 4,5:1 nos dois (texto de 10 px). Medido pela fórmula da
+ * WCAG: o laranja-600 dava 3,2 no claro; o 700, 3,2 no escuro. Por isso o
+ * SELO tem fundo SÓLIDO (laranja-700 com texto branco: 5,2 nos dois, porque
+ * não depende do tema). O ÍCONE é gráfico (piso 3:1): o laranja-600 sobre o
+ * tom de 15% dá 3,0 no claro e 4,3 no escuro. Pino com a conta em
+ * `passo-de-integracao.test.ts`.
+ */
+function ehPassoDeIntegracao(tipo: AutomationStepType): boolean {
+  return ehPassoDoAtlas(tipo)
+}
+const ICONE_DE_INTEGRACAO = "bg-orange-500/15 text-orange-600"
+const SELO_DE_INTEGRACAO =
+  "shrink-0 rounded bg-orange-700 px-1.5 text-[10px] font-semibold uppercase leading-4 tracking-wide text-white"
 
 const ADDABLE_STEPS: AutomationStepType[] = [
   "send_message",
@@ -299,6 +342,9 @@ const ADDABLE_STEPS: AutomationStepType[] = [
   "close_conversation",
   "send_to_number",
   "create_task",
+  // O nó "Atlas": UMA entrada no menu ("Atlas"), que nasce "Criar cliente"
+  // (ou "Criar tarefa" na automação do gatilho do Atlas); as outras ações se
+  // escolhem DENTRO do passo (`AtlasPassoFields`).
   "atlas_criar_cliente",
 ]
 
@@ -337,6 +383,8 @@ const TRIGGER_OPTIONS: { value: AutomationTriggerType }[] = [
   { value: "webhook_received" },
   // A assinatura completa no ZapSign (1057): call site no webhook da integração.
   { value: "zapsign_documento_assinado" },
+  // A situação mudou no Atlas (1073): call site na leitura periódica do Atlas.
+  { value: "atlas_situacao_mudou" },
   // A régua do Asaas (998): os dois têm call site na varredura do cron.
   { value: "asaas_cobranca_vencida" },
   { value: "asaas_cobranca_vence_hoje" },
@@ -435,6 +483,19 @@ function blankConfig(type: AutomationStepType): Record<string, unknown> {
     // sempre (primeiro contato = criação do card; fechamento = agora).
     case "atlas_criar_cliente":
       return { tipo_de_contrato: "fixo" }
+    // O nó Atlas (30/09/2026). "Atualizar" nasce sem nada escolhido (a
+    // ativação cobra um campo; a situação, por padrão, NÃO vai: no CB o Atlas
+    // manda nela). Tarefa com prazo hoje, como o `create_task`. Transcrição
+    // das últimas 72 h, com as notas da reunião. Onboarding: "feito", o uso
+    // típico ("documento recebido").
+    case "atlas_atualizar_cliente":
+      return {}
+    case "atlas_criar_tarefa":
+      return { titulo: "", prioridade: "normal", prazo_em_dias: 0 }
+    case "atlas_enviar_transcricao":
+      return { idade_maxima_horas: IDADE_PADRAO_DA_TRANSCRICAO_H, incluir_notas_da_reuniao: true }
+    case "atlas_atualizar_onboarding":
+      return { item: "", situacao: "done" }
     // Prazo HOJE por padrão, e sem hora: a tarefa que uma automação abre é
     // quase sempre "faça isso agora" (o contrato fechou). Nascer com prazo
     // distante faria o passo, aceito sem abrir a config, criar tarefa que não
@@ -465,6 +526,12 @@ interface AutomationResources {
    * do PR #206).
    */
   reguaDoAsaas: boolean
+  /**
+   * O gatilho em edição é o "Situação mudou no Atlas"? O nó Atlas esconde as
+   * ações que a ativação recusa nele (`PASSOS_FORA_DO_GATILHO_DO_ATLAS`), e
+   * o menu de adicionar faz o nó nascer "Criar tarefa".
+   */
+  gatilhoDoAtlas: boolean
   tags: TagRecord[]
   members: AccountMember[]
   templates: MessageTemplate[]
@@ -556,6 +623,7 @@ interface PipelineStageOption {
 
 const ResourcesContext = createContext<AutomationResources>({
   reguaDoAsaas: false,
+  gatilhoDoAtlas: false,
   tags: [],
   members: [],
   templates: [],
@@ -712,7 +780,7 @@ function issuesDaResposta(body: unknown): ValidationIssue[] {
  */
 function useRecursosDaAutomacao(
   automacaoAtualId: string | undefined,
-): Omit<AutomationResources, "reguaDoAsaas"> {
+): Omit<AutomationResources, "reguaDoAsaas" | "gatilhoDoAtlas"> {
   const [tags, setTags] = useState<TagRecord[]>([])
   const [members, setMembers] = useState<AccountMember[]>([])
   const [templates, setTemplates] = useState<MessageTemplate[]>([])
@@ -1513,7 +1581,9 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
       ? { ...initial, trigger_config: semearLembrete(initial.trigger_config) }
       : ehGatilhoDaRegua(initial.trigger_type)
         ? { ...initial, trigger_config: semearRegua(initial.trigger_type, initial.trigger_config) }
-        : initial,
+        : initial.trigger_type === GATILHO_DO_ATLAS
+          ? { ...initial, trigger_config: semearAtlas(initial.trigger_config) }
+          : initial,
   )
   const [saving, setSaving] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -1896,7 +1966,11 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
         <div className="absolute inset-0 bg-[radial-gradient(circle,var(--border)_1px,transparent_1px)] [background-size:20px_20px] pointer-events-none" />
         <div className="relative mx-auto flex max-w-2xl flex-col items-center gap-0 px-4 py-10">
           <ResourcesContext.Provider
-            value={{ ...recursosCarregados, reguaDoAsaas: ehGatilhoDaRegua(state.trigger_type) }}
+            value={{
+              ...recursosCarregados,
+              reguaDoAsaas: ehGatilhoDaRegua(state.trigger_type),
+              gatilhoDoAtlas: state.trigger_type === GATILHO_DO_ATLAS,
+            }}
           >
             <MarcasContext.Provider value={marcas}>
               <PainelDePendencias
@@ -1935,11 +2009,14 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
                         ? semearLembrete(s.trigger_config)
                         : ehGatilhoDaRegua(tVal)
                           ? semearRegua(tVal, s.trigger_config)
-                          : s.trigger_config,
+                          : tVal === GATILHO_DO_ATLAS
+                            ? semearAtlas(s.trigger_config)
+                            : s.trigger_config,
                     // A régua do Asaas (998) não tem recorte por etapa: esconder o
                     // seletor não limpa o valor gravado (a armadilha da grade do
-                    // funil), e `stageInScope` barraria quem não tem card.
-                    stage_ids: ehGatilhoDaRegua(tVal) ? [] : s.stage_ids,
+                    // funil), e `stageInScope` barraria quem não tem card. A
+                    // "Situação mudou no Atlas" (1073) também: o card vai no contexto.
+                    stage_ids: soRodaPeloDisparador(tVal) ? [] : s.stage_ids,
                   }))
                 }
                 onConfigChange={(c) => patchTop("trigger_config", c)}
@@ -2019,7 +2096,7 @@ function TriggerCard({
   // nem dedup: cada chamada é um GET /api/cb/channels por montagem, e este
   // card monta junto com o construtor, que já busca a mesma lista. Mesmo motivo
   // que levou os fluxos a buscarem uma vez só no editor.
-  const { channels, customFields } = useResources()
+  const { channels, customFields, pipelines, carga } = useResources()
   // Só campos de data: oferecer um campo de texto aqui faria a automação
   // nascer muda, procurando hora onde não há.
   const camposDeData = useMemo(
@@ -2115,7 +2192,7 @@ function TriggerCard({
                 Escondido no gatilho de funil: ali a etapa já é a config do
                 próprio gatilho, e dois seletores de etapa no mesmo card com
                 significados diferentes é convite a erro. */}
-            {type !== "deal_stage_changed" && !ehGatilhoDaRegua(type) && (
+            {type !== "deal_stage_changed" && !soRodaPeloDisparador(type) && (
               <div>
                 <label className="mb-1 block text-xs font-medium text-muted-foreground">
                   {t("stages.scopeLabel")}
@@ -2125,6 +2202,45 @@ function TriggerCard({
                   onChange={onStageIdsChange}
                   vazioLabel={t("stages.scopeHelpAll")}
                 />
+              </div>
+            )}
+            {/* "Não repetir para o mesmo contato por N horas"
+                (`nao-repetir.ts`): só nos gatilhos por mensagem. Em branco
+                tira a chave (roda a cada mensagem). O que se digita é o que
+                se salva: 0, fração ou texto vindo da API aparecem como são e
+                viram pendência, nunca outro número. */}
+            {aceitaNaoRepetir(type) && (
+              <div>
+                <label
+                  htmlFor="nao-repetir-horas"
+                  className="mb-1 block text-xs font-medium text-muted-foreground"
+                >
+                  {t("naoRepetir.label")}
+                </label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="nao-repetir-horas"
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={HORAS_SEM_REPETIR_MAX}
+                    step={1}
+                    placeholder={t("naoRepetir.placeholder")}
+                    value={config.nao_repetir_horas == null ? "" : String(config.nao_repetir_horas)}
+                    onChange={(e) => {
+                      const resto = { ...config }
+                      delete resto.nao_repetir_horas
+                      onConfigChange(
+                        e.target.value === ""
+                          ? resto
+                          : { ...resto, nao_repetir_horas: Number(e.target.value) },
+                      )
+                    }}
+                    className="w-24 bg-muted text-foreground"
+                  />
+                  <span className="text-xs text-muted-foreground">{t("naoRepetir.unidade")}</span>
+                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">{t("naoRepetir.help")}</p>
               </div>
             )}
             {type === "keyword_match" && (
@@ -2322,6 +2438,11 @@ function TriggerCard({
             {/* Assinatura no ZapSign (1057): sem configuração — só as
                 variáveis e o que o casamento faz com o card. */}
             {type === "zapsign_documento_assinado" && <ZapSignTriggerConfig />}
+            {/* A situação mudou no Atlas (1073): quais situações e em quais
+                funis o card precisa estar. Só roda pela leitura do Atlas. */}
+            {type === GATILHO_DO_ATLAS && (
+              <AtlasTriggerConfig config={config} onChange={onConfigChange} pipelines={pipelines} estadoDosFunis={carga.pipelines} />
+            )}
             {/* "Assinar como" (998, D18): o prefixo de todo `send_message`
                 desta automação, sob o interruptor de assinatura da conta.
                 Mora na automação (uma régua são 3–4 automações e a mesma
@@ -2646,12 +2767,20 @@ function StepRenderer({
             className="flex w-full items-center gap-3 px-4 py-3 text-left"
           >
             <GripVertical className="h-4 w-4 flex-shrink-0 text-muted-foreground" aria-hidden />
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted text-muted-foreground">
+            <div
+              className={cn(
+                "flex h-8 w-8 items-center justify-center rounded-md",
+                ehPassoDeIntegracao(step.step_type) ? ICONE_DE_INTEGRACAO : "bg-muted text-muted-foreground",
+              )}
+            >
               <Icon className="h-4 w-4" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                {isCondition ? t("kindCondition") : step.step_type === "wait" ? t("kindWait") : t("kindAction")}
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                  {isCondition ? t("kindCondition") : step.step_type === "wait" ? t("kindWait") : t("kindAction")}
+                </span>
+                {ehPassoDeIntegracao(step.step_type) && <span className={SELO_DE_INTEGRACAO}>{t("integracaoAtlas")}</span>}
               </div>
               <div className="truncate text-sm font-medium text-foreground">{t(`steps.${meta.label}`)}</div>
               <div className="truncate text-[11px] text-muted-foreground">
@@ -2805,6 +2934,7 @@ function BranchColumn({
 
 function AddButton({ onPick }: { onPick: (t: AutomationStepType) => void }) {
   const t = useTranslations("Automations.builder")
+  const { gatilhoDoAtlas } = useResources()
   return (
     <div className="relative flex flex-col items-center">
       <div className="h-4 w-[2px] bg-border" aria-hidden />
@@ -2821,10 +2951,16 @@ function AddButton({ onPick }: { onPick: (t: AutomationStepType) => void }) {
         >
           {ADDABLE_STEPS.map((tp) => {
             const Icon = STEP_META[tp].icon
+            // O nó Atlas: UMA entrada, "Atlas". Nasce "Criar cliente" (a ação
+            // que as outras pressupõem), ou "Criar tarefa" onde o gatilho do
+            // Atlas recusa escrever no cadastro.
+            const escolhido: AutomationStepType =
+              ehPassoDoAtlas(tp) && gatilhoDoAtlas ? "atlas_criar_tarefa" : tp
             return (
-              <DropdownMenuItem key={tp} onClick={() => onPick(tp)}>
-                <Icon className="h-4 w-4" />
-                {t(`steps.${STEP_META[tp].label}`)}
+              <DropdownMenuItem key={tp} onClick={() => onPick(escolhido)}>
+                <Icon className={cn("h-4 w-4", ehPassoDeIntegracao(tp) && "text-orange-600")} />
+                {ehPassoDoAtlas(tp) ? t("atlas.no") : t(`steps.${STEP_META[tp].label}`)}
+                {ehPassoDeIntegracao(tp) && <span className={cn(SELO_DE_INTEGRACAO, "ml-auto")}>{t("integracaoAtlas")}</span>}
               </DropdownMenuItem>
             )
           })}
@@ -3342,13 +3478,13 @@ function SeletorDeAutomacao({
 }) {
   const { automations, automacaoAtualId, carga } = useResources()
   // Só `run_automation` esconde a si mesma — ver a nota em `AutomationResources`.
-  // E esconde a régua do Asaas: o motor recusa acioná-la (ela só roda pela
-  // varredura, `runAutomationById`), e oferecê-la seria oferecer um passo que
+  // E esconde a régua do Asaas e a "Situação mudou no Atlas": o motor recusa
+  // acioná-las (só rodam pelo disparador delas, `runAutomationById`), e oferecê-las seria oferecer um passo que
   // sempre falha. A JÁ ESCOLHIDA fica, para o seletor não a chamar de apagada
   // — o aviso âmbar do cartão diz o que há com ela.
   const lista = acionar
     ? automations.filter(
-        (a) => a.id !== automacaoAtualId && (!ehGatilhoDaRegua(a.trigger_type) || a.id === value),
+        (a) => a.id !== automacaoAtualId && (!soRodaPeloDisparador(a.trigger_type) || a.id === value),
       )
     : automations
   const escolhida = lista.find((a) => a.id === value)
@@ -3623,14 +3759,18 @@ function CampoDeDataDoAtlas({
   campos,
   estado,
   t,
+  rotuloSumiu,
 }: {
   rotulo: string
-  ajuda: string
+  /** Sem ajuda própria (o "Atualizar cliente" põe uma só para os três). */
+  ajuda?: string
   value: unknown
   onChange: (chave: string | null) => void
   campos: CustomField[]
   estado: EstadoDaLista
   t: ReturnType<typeof useTranslations>
+  /** O campo gravado que a lista não traz (o do documento é de TEXTO). */
+  rotuloSumiu?: string
 }) {
   const gravado = typeof value === "string" ? value.trim() : ""
   const conhecido = !gravado || campos.some((f) => f.field_key === gravado)
@@ -3648,12 +3788,12 @@ function CampoDeDataDoAtlas({
               {f.field_name}
             </option>
           ))}
-          {!conhecido && <option value={gravado}>{t("atlas.campoSumiu")}</option>}
+          {!conhecido && <option value={gravado}>{rotuloSumiu ?? t("atlas.campoSumiu")}</option>}
         </select>
       ) : (
         <ListaSemEscolha estado={estado} vazio={t("atlas.naoUsar")} t={t} />
       )}
-      <p className="mt-1 text-[11px] text-muted-foreground">{ajuda}</p>
+      {ajuda && <p className="mt-1 text-[11px] text-muted-foreground">{ajuda}</p>}
     </FieldBlock>
   )
 }
@@ -3676,7 +3816,6 @@ function AtlasCriarClienteFields({
 }) {
   const { customFields, carga } = useResources()
   const { accountId } = useAuth()
-  const conexao = useConexaoDoAtlas()
   const camposDeData = useMemo(
     () =>
       accountId
@@ -3688,18 +3827,6 @@ function AtlasCriarClienteFields({
   const tipo = cfg.tipo_de_contrato === "mensal" ? "mensal" : "fixo"
   return (
     <>
-      {conexao === "nao_conectado" || conexao === "erro" ? (
-        <p className="mb-2 text-xs text-amber-700 dark:text-amber-300">
-          {conexao === "nao_conectado" ? t("atlas.conexaoNaoConectado") : t("atlas.conexaoErro")}{" "}
-          <Link href="/settings?tab=integracoes" className="underline">
-            {t("atlas.abrirIntegracoes")}
-          </Link>
-        </p>
-      ) : (
-        <p className="mb-2 text-[11px] text-muted-foreground">
-          {conexao === "conectado" ? t("atlas.conexaoConectado") : t("atlas.conexaoNaoSei")}
-        </p>
-      )}
       <FieldBlock label={t("atlas.tipoLabel")}>
         <select
           value={tipo}
@@ -3743,6 +3870,399 @@ function AtlasCriarClienteFields({
       <p className="text-[11px] text-muted-foreground">{t("atlas.ajuda")}</p>
     </>
   )
+}
+
+/**
+ * A memória das ações de cada passo do nó Atlas NESTA tela, por `cid` (ver
+ * `trocarAcao`). Fora do componente: o editor desmonta ao fechar o cartão, e
+ * a memória tem de sobreviver a isso. O `cid` nasce a cada carga da tela.
+ */
+const MEMORIA_DO_NO_ATLAS = new Map<string, MemoriaDasAcoes>()
+
+/**
+ * O nó "Atlas" (decisão do operador, 30/09/2026): a linha da conexão, o
+ * seletor de AÇÃO e o formulário da ação. Cada ação é um `step_type` próprio;
+ * trocar de ação troca o tipo e a config (a de antes volta se o operador
+ * voltar a ela), e MANTÉM `cid` e `id` — a identidade do passo.
+ *
+ * ⚠️ Nenhum formulário do nó escreve na config ao MONTAR (sem `useEffect`
+ * que chama `set`/`onChange`): abrir o "Contrato fechado" não pode mudar o
+ * passo que roda em produção. Os padrões vêm do `blankConfig` e da leitura
+ * (`=== true`, `?? padrão`). Pino em `passo-de-integracao.test.ts`.
+ */
+function AtlasPassoFields({
+  step,
+  onChange,
+  t,
+}: {
+  step: BuilderStep
+  onChange: (s: BuilderStep) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const { gatilhoDoAtlas } = useResources()
+  const conexao = useConexaoDoAtlas()
+  const cfg = step.step_config
+  const set = (patch: Record<string, unknown>) => onChange({ ...step, step_config: { ...cfg, ...patch } })
+  const acao = step.step_type as PassoDoAtlas
+  // Na automação do gatilho do Atlas, somem as ações que a ativação recusa
+  // nela (a já escolhida fica, para o seletor não mentir sobre o passo).
+  const oferecida = (a: PassoDoAtlas) =>
+    a === acao || !gatilhoDoAtlas || !PASSOS_FORA_DO_GATILHO_DO_ATLAS.includes(a)
+
+  const trocar = (novo: PassoDoAtlas) => {
+    if (novo === acao) return
+    if (trocaApagaAlgo(cfg, blankConfig(acao)) && !window.confirm(t("atlas.trocarAcaoConfirma"))) return
+    const r = trocarAcao({ tipo: acao, config: cfg }, novo, MEMORIA_DO_NO_ATLAS.get(step.cid) ?? {}, blankConfig)
+    MEMORIA_DO_NO_ATLAS.set(step.cid, r.memoria)
+    onChange({ ...step, step_type: novo, step_config: r.config })
+  }
+
+  return (
+    <>
+      {conexao === "nao_conectado" || conexao === "erro" ? (
+        <p className="mb-2 text-xs text-amber-700 dark:text-amber-300">
+          {conexao === "nao_conectado" ? t("atlas.conexaoNaoConectado") : t("atlas.conexaoErro")}{" "}
+          <Link href="/settings?tab=integracoes" className="underline">
+            {t("atlas.abrirIntegracoes")}
+          </Link>
+        </p>
+      ) : (
+        <p className="mb-2 text-[11px] text-muted-foreground">
+          {conexao === "conectado" ? t("atlas.conexaoConectado") : t("atlas.conexaoNaoSei")}
+        </p>
+      )}
+      <FieldBlock label={t("atlas.acaoLabel")}>
+        <select value={acao} onChange={(e) => trocar(e.target.value as PassoDoAtlas)} className={SELECT_CLASS}>
+          {oferecida("atlas_criar_cliente") && <option value="atlas_criar_cliente">{t("atlas.acao.criarCliente")}</option>}
+          {oferecida("atlas_atualizar_cliente") && (
+            <option value="atlas_atualizar_cliente">{t("atlas.acao.atualizarCliente")}</option>
+          )}
+          {oferecida("atlas_criar_tarefa") && <option value="atlas_criar_tarefa">{t("atlas.acao.criarTarefa")}</option>}
+          {oferecida("atlas_enviar_transcricao") && (
+            <option value="atlas_enviar_transcricao">{t("atlas.acao.enviarTranscricao")}</option>
+          )}
+          {oferecida("atlas_atualizar_onboarding") && (
+            <option value="atlas_atualizar_onboarding">{t("atlas.acao.atualizarOnboarding")}</option>
+          )}
+        </select>
+      </FieldBlock>
+      {acao === "atlas_criar_cliente" ? (
+        <AtlasCriarClienteFields cfg={cfg} set={set} t={t} />
+      ) : acao === "atlas_atualizar_cliente" ? (
+        <AtlasAtualizarClienteFields cfg={cfg} set={set} t={t} />
+      ) : acao === "atlas_criar_tarefa" ? (
+        <AtlasCriarTarefaFields cfg={cfg} set={set} t={t} />
+      ) : acao === "atlas_enviar_transcricao" ? (
+        <AtlasEnviarTranscricaoFields cfg={cfg} set={set} t={t} />
+      ) : (
+        <AtlasAtualizarOnboardingFields cfg={cfg} set={set} t={t} />
+      )}
+    </>
+  )
+}
+
+/** Uma caixa do nó Atlas: marcada só com `true` (JSONB); desmarcar TIRA a chave. */
+function CaixaDoAtlas({
+  rotulo,
+  ajuda,
+  marcada,
+  onChange,
+}: {
+  rotulo: string
+  ajuda?: string
+  marcada: boolean
+  onChange: (v: true | undefined) => void
+}) {
+  return (
+    <label className="mb-2 flex items-start gap-2 text-xs text-foreground">
+      <input
+        type="checkbox"
+        checked={marcada}
+        onChange={(e) => onChange(e.target.checked ? true : undefined)}
+        className="mt-0.5 size-4 accent-primary"
+      />
+      <span>
+        {rotulo}
+        {ajuda && <span className="mt-0.5 block text-[11px] text-muted-foreground">{ajuda}</span>}
+      </span>
+    </label>
+  )
+}
+
+/**
+ * "Atualizar cliente no Atlas": cada campo é uma ESCOLHA; o que está vazio na
+ * ficha fica de fora (nunca apaga nada no Atlas). A situação é opcional e,
+ * por padrão, não vai (no CB quem decide é a equipe no Atlas).
+ */
+function AtlasAtualizarClienteFields({
+  cfg,
+  set,
+  t,
+}: {
+  cfg: Record<string, unknown>
+  set: (patch: Record<string, unknown>) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const { customFields, carga } = useResources()
+  const { accountId } = useAuth()
+  const daConta = useMemo(
+    () => (accountId ? customFields.filter((f) => f.account_id === accountId) : []),
+    [customFields, accountId],
+  )
+  const camposDeData = useMemo(() => daConta.filter((f) => f.field_type === TIPO_DATA), [daConta])
+  const camposDeTexto = useMemo(() => daConta.filter((f) => f.field_type === TIPO_TEXTO), [daConta])
+  const estado: EstadoDaLista = accountId ? carga.customFields : "carregando"
+  const situacao = typeof cfg.situacao === "string" ? cfg.situacao : ""
+  const tipo = cfg.tipo_de_contrato === "fixo" || cfg.tipo_de_contrato === "mensal" ? cfg.tipo_de_contrato : ""
+  return (
+    <>
+      <FieldBlock label={t("atlas.situacaoLabel")}>
+        <select value={situacao} onChange={(e) => set({ situacao: e.target.value || null })} className={SELECT_CLASS}>
+          <option value="">{t("atlas.naoMudar")}</option>
+          <option value="ativo">{t("atlasGatilho.situacao.ativo")}</option>
+          <option value="importado">{t("atlasGatilho.situacao.importado")}</option>
+          <option value="finalizado">{t("atlasGatilho.situacao.finalizado")}</option>
+          <option value="rescindido">{t("atlasGatilho.situacao.rescindido")}</option>
+          <option value="inativo">{t("atlasGatilho.situacao.inativo")}</option>
+          <option value="suspenso">{t("atlasGatilho.situacao.suspenso")}</option>
+        </select>
+        <p className="mt-1 text-[11px] text-muted-foreground">{t("atlas.situacaoHelp")}</p>
+      </FieldBlock>
+      <FieldBlock label={t("atlas.tipoLabel")}>
+        <select value={tipo} onChange={(e) => set({ tipo_de_contrato: e.target.value || null })} className={SELECT_CLASS}>
+          <option value="">{t("atlas.naoMudar")}</option>
+          <option value="fixo">{t("atlas.tipoFixo")}</option>
+          <option value="mensal">{t("atlas.tipoMensal")}</option>
+        </select>
+      </FieldBlock>
+      <CaixaDoAtlas
+        rotulo={t("atlas.valorDoCardLabel")}
+        ajuda={t("atlas.valorDoCardHelp")}
+        marcada={cfg.valor_do_card === true}
+        onChange={(v) => set({ valor_do_card: v })}
+      />
+      <CampoDeDataDoAtlas
+        rotulo={t("atlas.primeiroContatoLabel")}
+        value={cfg.campo_primeiro_contato}
+        onChange={(chave) => set({ campo_primeiro_contato: chave })}
+        campos={camposDeData}
+        estado={estado}
+        t={t}
+      />
+      <CampoDeDataDoAtlas
+        rotulo={t("atlas.propostaLabel")}
+        value={cfg.campo_proposta}
+        onChange={(chave) => set({ campo_proposta: chave })}
+        campos={camposDeData}
+        estado={estado}
+        t={t}
+      />
+      <CampoDeDataDoAtlas
+        rotulo={t("atlas.fechamentoLabel")}
+        value={cfg.campo_fechamento}
+        onChange={(chave) => set({ campo_fechamento: chave })}
+        campos={camposDeData}
+        estado={estado}
+        t={t}
+      />
+      <p className="mb-2 text-[11px] text-muted-foreground">{t("atlas.datasHelp")}</p>
+      <CaixaDoAtlas
+        rotulo={t("atlas.linkLabel")}
+        marcada={cfg.link_da_conversa === true}
+        onChange={(v) => set({ link_da_conversa: v })}
+      />
+      <CaixaDoAtlas
+        rotulo={t("atlas.telefoneLabel")}
+        marcada={cfg.telefone === true}
+        onChange={(v) => set({ telefone: v })}
+      />
+      <CaixaDoAtlas rotulo={t("atlas.emailLabel")} marcada={cfg.email === true} onChange={(v) => set({ email: v })} />
+      <CampoDeDataDoAtlas
+        rotulo={t("atlas.documentoLabel")}
+        ajuda={t("atlas.documentoHelp")}
+        value={cfg.campo_documento}
+        onChange={(chave) => set({ campo_documento: chave })}
+        campos={camposDeTexto}
+        estado={estado}
+        t={t}
+        rotuloSumiu={t("atlas.campoDeTextoSumiu")}
+      />
+      <p className="text-[11px] text-muted-foreground">{t("atlas.atualizarAjuda")}</p>
+    </>
+  )
+}
+
+/** "Criar tarefa no Atlas": vai ao admin mais antigo do escritório (a API não escolhe responsável). */
+function AtlasCriarTarefaFields({
+  cfg,
+  set,
+  t,
+}: {
+  cfg: Record<string, unknown>
+  set: (patch: Record<string, unknown>) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const semPrazo = cfg.prazo_em_dias === null
+  return (
+    <>
+      <CampoComVariaveis
+        rotulo={t("atlas.tarefaTituloLabel")}
+        value={(cfg.titulo as string) ?? ""}
+        onChange={(titulo) => set({ titulo })}
+        linhaUnica
+      />
+      <CampoComVariaveis
+        rotulo={t("atlas.tarefaDescricaoLabel")}
+        value={(cfg.descricao as string) ?? ""}
+        onChange={(descricao) => set({ descricao })}
+        previa={false}
+      />
+      <div className="grid grid-cols-2 gap-3">
+        <FieldBlock label={t("atlas.prioridadeLabel")}>
+          <select
+            value={cfg.prioridade === "urgent" ? "urgent" : "normal"}
+            onChange={(e) => set({ prioridade: e.target.value })}
+            className={SELECT_CLASS}
+          >
+            <option value="normal">{t("atlas.prioridadeNormal")}</option>
+            <option value="urgent">{t("atlas.prioridadeUrgente")}</option>
+          </select>
+        </FieldBlock>
+        <FieldBlock label={t("atlas.prazoLabel")}>
+          <Input
+            type="number"
+            min={0}
+            max={PRAZO_MAXIMO_DA_TAREFA}
+            disabled={semPrazo}
+            value={semPrazo ? "" : Number(cfg.prazo_em_dias ?? 0)}
+            onChange={(e) => set({ prazo_em_dias: Number(e.target.value) })}
+            className="bg-muted text-foreground"
+          />
+        </FieldBlock>
+      </div>
+      <CaixaDoAtlas
+        rotulo={t("atlas.semPrazoLabel")}
+        marcada={semPrazo}
+        // Desmarcar volta a HOJE (0), o padrão do passo.
+        onChange={(v) => set({ prazo_em_dias: v ? null : 0 })}
+      />
+      <p className="text-[11px] text-muted-foreground">{t("atlas.tarefaAjuda")}</p>
+    </>
+  )
+}
+
+/**
+ * "Enviar transcrição ao Atlas": a transcrição é a da reunião mais recente
+ * DESTE cliente (tl;dv ou colada na aba Reuniões) — o texto do passo vai só
+ * nas notas. Rodar de novo envia outra cópia (a API não deduplica).
+ */
+function AtlasEnviarTranscricaoFields({
+  cfg,
+  set,
+  t,
+}: {
+  cfg: Record<string, unknown>
+  set: (patch: Record<string, unknown>) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const horas = Number(cfg.idade_maxima_horas ?? IDADE_PADRAO_DA_TRANSCRICAO_H)
+  return (
+    <>
+      <p className="mb-2 text-[11px] text-muted-foreground">{t("atlas.transcricaoFonte", { horas })}</p>
+      <FieldBlock label={t("atlas.janelaLabel")}>
+        <Input
+          type="number"
+          min={1}
+          max={IDADE_MAXIMA_DA_TRANSCRICAO_H}
+          value={horas}
+          onChange={(e) => set({ idade_maxima_horas: Number(e.target.value) })}
+          className="bg-muted text-foreground"
+        />
+      </FieldBlock>
+      <CampoComVariaveis
+        rotulo={t("atlas.notasLabel")}
+        value={(cfg.notas as string) ?? ""}
+        onChange={(notas) => set({ notas })}
+        previa={false}
+      />
+      <CaixaDoAtlas
+        rotulo={t("atlas.incluirNotasLabel")}
+        marcada={cfg.incluir_notas_da_reuniao === true}
+        onChange={(v) => set({ incluir_notas_da_reuniao: v === true })}
+      />
+      <CaixaDoAtlas
+        rotulo={t("atlas.aceitarEmailLabel")}
+        ajuda={t("atlas.aceitarEmailHelp")}
+        marcada={cfg.aceitar_vinculo_por_email === true}
+        onChange={(v) => set({ aceitar_vinculo_por_email: v })}
+      />
+      <p className="text-[11px] text-amber-700 dark:text-amber-300">{t("atlas.transcricaoCopia")}</p>
+    </>
+  )
+}
+
+/** "Atualizar onboarding no Atlas": o item pelo TEXTO do checklist (literal, é identidade). */
+function AtlasAtualizarOnboardingFields({
+  cfg,
+  set,
+  t,
+}: {
+  cfg: Record<string, unknown>
+  set: (patch: Record<string, unknown>) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const situacao = typeof cfg.situacao === "string" ? cfg.situacao : ""
+  return (
+    <>
+      <FieldBlock label={t("atlas.itemLabel")}>
+        <Input
+          value={(cfg.item as string) ?? ""}
+          onChange={(e) => set({ item: e.target.value })}
+          placeholder={t("atlas.itemPlaceholder")}
+          className="bg-muted text-foreground"
+        />
+        <p className="mt-1 text-[11px] text-muted-foreground">{t("atlas.itemHelp")}</p>
+      </FieldBlock>
+      <FieldBlock label={t("atlas.situacaoDoItemLabel")}>
+        <select value={situacao} onChange={(e) => set({ situacao: e.target.value || null })} className={SELECT_CLASS}>
+          <option value="">{t("atlas.naoMudar")}</option>
+          {SITUACOES_DO_ONBOARDING.map((s) => (
+            // Chave MONTADA, colhida da lista (teste em `passos-do-atlas.test.ts`).
+            <option key={s} value={s}>
+              {t(`atlas.onboarding.situacao.${s}`)}
+            </option>
+          ))}
+        </select>
+      </FieldBlock>
+      <CampoComVariaveis
+        rotulo={t("atlas.observacaoLabel")}
+        value={(cfg.observacao as string) ?? ""}
+        onChange={(observacao) => set({ observacao })}
+        previa={false}
+      />
+    </>
+  )
+}
+
+/** O resumo do "Atualizar cliente" fechado: o que foi escolhido, pelos NOSSOS rótulos. */
+function resumoDoAtualizarNoAtlas(cfg: Record<string, unknown>, t: ReturnType<typeof useTranslations>): string {
+  const partes: string[] = []
+  const s = cfg.situacao
+  if (s === "ativo") partes.push(`${t("atlas.situacaoLabel")}: ${t("atlasGatilho.situacao.ativo")}`)
+  else if (s === "importado") partes.push(`${t("atlas.situacaoLabel")}: ${t("atlasGatilho.situacao.importado")}`)
+  else if (s === "finalizado") partes.push(`${t("atlas.situacaoLabel")}: ${t("atlasGatilho.situacao.finalizado")}`)
+  else if (s === "rescindido") partes.push(`${t("atlas.situacaoLabel")}: ${t("atlasGatilho.situacao.rescindido")}`)
+  else if (s === "inativo") partes.push(`${t("atlas.situacaoLabel")}: ${t("atlasGatilho.situacao.inativo")}`)
+  else if (s === "suspenso") partes.push(`${t("atlas.situacaoLabel")}: ${t("atlasGatilho.situacao.suspenso")}`)
+  if (cfg.tipo_de_contrato === "fixo" || cfg.tipo_de_contrato === "mensal") partes.push(t("atlas.tipoLabel"))
+  if (cfg.valor_do_card === true) partes.push(t("atlas.resumoValor"))
+  if ([cfg.campo_primeiro_contato, cfg.campo_proposta, cfg.campo_fechamento].some((c) => typeof c === "string" && c.trim()))
+    partes.push(t("atlas.resumoDatas"))
+  if (cfg.link_da_conversa === true) partes.push(t("atlas.resumoLink"))
+  if (cfg.telefone === true) partes.push(t("atlas.resumoTelefone"))
+  if (cfg.email === true) partes.push(t("atlas.resumoEmail"))
+  if (typeof cfg.campo_documento === "string" && cfg.campo_documento.trim()) partes.push(t("atlas.resumoDocumento"))
+  return partes.length > 0 ? recortar(partes.join(" · "), 60) : t("atlas.nadaEscolhido")
 }
 
 /**
@@ -4562,8 +5082,13 @@ function StepEditor({
           t={t}
         />
       )
+    // O nó Atlas: as cinco ações num editor só, com o seletor de ação.
     case "atlas_criar_cliente":
-      return <AtlasCriarClienteFields cfg={cfg} set={set} t={t} />
+    case "atlas_atualizar_cliente":
+    case "atlas_criar_tarefa":
+    case "atlas_enviar_transcricao":
+    case "atlas_atualizar_onboarding":
+      return <AtlasPassoFields step={step} onChange={onChange} t={t} />
     case "create_task":
       return (
         <>
@@ -4812,6 +5337,24 @@ function previewFor(
       return `${t("atlas.tipoLabel")}: ${
         step.step_config.tipo_de_contrato === "mensal" ? t("atlas.tipoMensal") : t("atlas.tipoFixo")
       }`
+    case "atlas_atualizar_cliente":
+      return resumoDoAtualizarNoAtlas(step.step_config, t)
+    case "atlas_criar_tarefa":
+      return recortar(typeof step.step_config.titulo === "string" ? step.step_config.titulo : "") || t("atlas.semTitulo")
+    case "atlas_enviar_transcricao":
+      return t("atlas.transcricaoResumo", {
+        horas: Number(step.step_config.idade_maxima_horas ?? IDADE_PADRAO_DA_TRANSCRICAO_H),
+      })
+    case "atlas_atualizar_onboarding": {
+      const item = recortar(typeof step.step_config.item === "string" ? step.step_config.item : "")
+      const s = step.step_config.situacao
+      const situacao =
+        typeof s === "string" && (SITUACOES_DO_ONBOARDING as readonly string[]).includes(s)
+          ? t(`atlas.onboarding.situacao.${s}`)
+          : null
+      if (!item) return t("atlas.semItem")
+      return situacao ? `${item} → ${situacao}` : item
+    }
     default:
       return ""
   }

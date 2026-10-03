@@ -8,6 +8,7 @@ import {
   limitar,
   resumirConversas,
   resumirFila,
+  resumirNovidades,
 } from './contagens';
 
 const AGORA = Date.parse('2026-09-12T12:00:00Z');
@@ -217,5 +218,18 @@ describe('limitar', () => {
     expect(limitar([1, 2], 5)).toEqual({ itens: [1, 2], restantes: 0 });
     expect(limitar([])).toEqual({ itens: [], restantes: 0 });
     expect(TETO_DE_ITENS).toBe(5);
+  });
+});
+
+describe('resumirNovidades (avisos por tipo)', () => {
+  it('conta a resposta a anotação (1075) à parte e no total', () => {
+    const r = resumirNovidades(
+      [{ type: 'note_reply' }, { type: 'note_mention' }, { type: 'note_reply' }],
+      new Map(),
+      DONO
+    );
+    expect(r.respostas).toBe(2);
+    expect(r.mencoes).toBe(1);
+    expect(r.total).toBe(3);
   });
 });

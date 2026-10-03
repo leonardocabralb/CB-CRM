@@ -31,6 +31,11 @@ Vale ao mexer na altura da casca, no fio e no compositor em aparelho de toque, n
 - ⚠️ **Encolher o fio pela base esconderia as últimas mensagens:** um `ResizeObserver` no contêiner mantém no fim quem estava colado no fim (a dependência é a CONVERSA: o contêiner só existe com conversa aberta).
 - ⚠️⚠️ **Letra de 16 px em todo campo de aparelho de toque, numa regra FORA de camada no `globals.css`:** abaixo disso o iPhone amplia a tela ao tocar no campo e não desfaz. Movida para `@layer base`, perderia para o `text-sm` (`@layer utilities`) e o zoom voltaria sem erro. A consulta é `MIDIA_DE_TOQUE`, a mesma do código (há teste).
 - **No toque, o retorno pula linha e só o botão envia** (`enterEnvia`, decisão do operador): o teclado do celular não tem Shift+Enter. A dica troca para `typeMessagePlaceholderTouch`, via `useMediaQuery(MIDIA_DE_TOQUE)`.
+- ⚠️ **Enviar NÃO recolhe o teclado** (pedido do operador, 01/10/2026, como
+  no WhatsApp): o Enviar do compositor tem `onMouseDown` com `preventDefault`
+  (o foco não sai da caixa) e devolve o foco no `onClick`, dentro do gesto,
+  a quem estava na caixa (`focoNaCaixaRef`, lido no `onPointerDown`). Botão
+  novo que "envia" e deve manter o teclado repete o par.
 - **Arrastar a conversa para BAIXO recolhe o teclado** (`arrastoRecolheTeclado`, o gesto do WhatsApp); para cima não — é quem continua escrevendo. Mora no `onTouchMove` do contêiner, junto do `liberarSalto`.
 
 ### Voltar da conversa pelo HISTÓRICO, no celular

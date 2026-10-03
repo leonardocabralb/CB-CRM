@@ -164,6 +164,8 @@ export const ESCRITA_DA_SECAO: Record<SecaoId, AccountRole> = {
   fields: "admin", // policies `custom_fields_*` / `tags_*` (017) e da 966
   assinatura: "admin", // grava em `accounts`; a tela usa canEditSettings
   members: "admin", // canManageMembers
+  // + /api/cb/atlas* (cartão e "Ler agora"; o vínculo à mão da aba Atlas,
+  // também admin, mora no inbox/contatos, que seguem `viewer` pela anotação)
   integracoes: "admin", // /api/cb/ia/chaves, /api/cb/ia/radar, /api/cb/integracoes/status
   api: "admin", // /api/account/api-keys
   webhooks: "admin", // requireRole("admin") em todas as rotas /api/cb/webhooks*

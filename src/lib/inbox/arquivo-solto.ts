@@ -3,15 +3,18 @@
  * dentro da conversa, ou colado com Ctrl+V (o print de tela é o caso que o
  * operador pediu). Puro: decide o que fazer com o que veio, sem tocar em DOM.
  *
- * ⚠️ Os tipos aceitos são os MESMOS do seletor de anexo (`PICKER_ACCEPT`), e
- * moram aqui para não existirem em duas listas: um arquivo que o seletor
+ * ⚠️ Os tipos aceitos são os MESMOS do seletor de anexo (`aceiteDoSeletor`),
+ * e moram aqui para não existirem em duas listas: um arquivo que o seletor
  * recusa não pode entrar pela porta de trás e falhar só no envio, quando o
  * WhatsApp o rejeita.
  */
 
 export type TipoDeAnexo = "image" | "video" | "document";
 
-/** Mesma lista que alimenta o `accept` dos três seletores do compositor. */
+/**
+ * A lista ESTRITA (a da API oficial da Meta), que vale em toda conexão; as
+ * por QR code somam `MIMES_SO_POR_QR_CODE` (`mimesAceitos`).
+ */
 export const MIMES_ACEITOS: Record<TipoDeAnexo, readonly string[]> = {
   image: ["image/png", "image/jpeg", "image/webp"],
   video: ["video/mp4", "video/3gpp"],
@@ -27,12 +30,37 @@ export const MIMES_ACEITOS: Record<TipoDeAnexo, readonly string[]> = {
   ],
 };
 
-/** O `accept=` de cada seletor, derivado da lista acima. */
-export const ACEITE_DO_SELETOR: Record<TipoDeAnexo, string> = {
-  image: MIMES_ACEITOS.image.join(","),
-  video: MIMES_ACEITOS.video.join(","),
-  document: MIMES_ACEITOS.document.join(","),
-};
+/**
+ * Documento que SÓ as conexões por QR code (Evolution) enviam: a página
+ * `.html`. A lista de cima é a da API oficial da Meta (conferida na doc da
+ * Meta em 02/10/2026: PDF, Word, Excel, PowerPoint e .txt), e pelo número
+ * oficial a Meta recusaria o `.html` depois do envio; pelo QR code o WhatsApp
+ * aceita qualquer arquivo como documento. Decisão do operador (02/10/2026):
+ * enviar `.html` nas conexões por QR code, as de hoje e as que vierem. O
+ * bucket aceita `text/html` desde a 1060 (que abriu só a ENTRADA).
+ */
+export const MIMES_SO_POR_QR_CODE: readonly string[] = ["text/html"];
+
+/**
+ * A lista de cada seletor PARA ESTA CONVERSA. `porQrCode` só é `true` com o
+ * transporte CONHECIDO e Evolution: enquanto a lista de conexões não chega, ou
+ * na conexão oficial, vale a lista estrita — um `.html` aceito ali só falharia
+ * depois, na Meta, longe da causa.
+ */
+export function mimesAceitos(porQrCode: boolean): Record<TipoDeAnexo, readonly string[]> {
+  if (!porQrCode) return MIMES_ACEITOS;
+  return { ...MIMES_ACEITOS, document: [...MIMES_ACEITOS.document, ...MIMES_SO_POR_QR_CODE] };
+}
+
+/** O `accept=` de cada seletor, derivado da MESMA lista. */
+export function aceiteDoSeletor(porQrCode: boolean): Record<TipoDeAnexo, string> {
+  const lista = mimesAceitos(porQrCode);
+  return {
+    image: lista.image.join(","),
+    video: lista.video.join(","),
+    document: lista.document.join(","),
+  };
+}
 
 /**
  * Em qual dos três seletores este arquivo se encaixa? `null` = nenhum, e aí
@@ -43,11 +71,15 @@ export const ACEITE_DO_SELETOR: Record<TipoDeAnexo, string> = {
  * sistemas anexam (`image/png; charset=binary` aparece em colagem de
  * certos aplicativos).
  */
-export function tipoDoArquivo(mime: string | null | undefined): TipoDeAnexo | null {
+export function tipoDoArquivo(
+  mime: string | null | undefined,
+  porQrCode = false,
+): TipoDeAnexo | null {
   const limpo = mimeNormalizado(mime);
   if (!limpo) return null;
+  const lista = mimesAceitos(porQrCode);
   for (const tipo of ["image", "video", "document"] as const) {
-    if (MIMES_ACEITOS[tipo].includes(limpo)) return tipo;
+    if (lista[tipo].includes(limpo)) return tipo;
   }
   return null;
 }
@@ -128,11 +160,12 @@ export interface ArquivosRecebidos {
 export function escolherArquivos(
   arquivos: readonly File[],
   jaAnexados = 0,
+  porQrCode = false,
 ): ArquivosRecebidos {
   const aceitos: File[] = [];
   let recusados = 0;
   for (const arquivo of arquivos) {
-    if (tipoDoArquivo(arquivo.type) === null) recusados += 1;
+    if (tipoDoArquivo(arquivo.type, porQrCode) === null) recusados += 1;
     else aceitos.push(arquivo);
   }
   const vagas = Math.max(0, MAX_ANEXOS - jaAnexados);

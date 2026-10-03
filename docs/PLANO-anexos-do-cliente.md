@@ -340,6 +340,12 @@ payload cru guardado para consultar — a sonda é um log das chaves do
 a maior parte da dor ("não consigo distinguir os documentos"); a miniatura é
 conforto. Decidir A/B/C com o custo já sabido, e não antes.
 
+**01/10/2026 — um paliativo; a miniatura segue em aberto.** O operador contou
+que o documento se perdia no meio das mensagens, sem miniatura. A bolha ganhou
+cartão com superfície própria e selo colorido da extensão (PDF vermelho,
+planilha verde, Word azul; `tipoDoDocumento`). A medição e a decisão acima
+continuam valendo para a miniatura de verdade.
+
 ---
 
 ## Fase 5 — Anotações em grupo *(bônus opcional)*

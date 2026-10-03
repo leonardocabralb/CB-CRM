@@ -8,7 +8,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { CartaoDoAtlas } from "@/lib/atlas/cartao";
+import type { CartaoDoAtlas, ContagemDosVinculos, MudancaNoCartao } from "@/lib/atlas/cartao";
+import { ESTADOS_NA_FILA, RESULTADOS_DA_MUDANCA } from "@/lib/atlas/gatilho";
 import { cn } from "@/lib/utils";
 
 import { SettingsChip } from "./settings-chip";
@@ -20,6 +21,17 @@ import { SettingsChip } from "./settings-chip";
  * prova pelo `whoami` do Atlas, confere as permissões e a guarda cifrada.
  *
  * Mesmo esqueleto do `zapsign-card.tsx`: só admin chega aqui.
+ *
+ * Fase 2 (1072): a seção "Leitura das situações" (a última leitura, o erro
+ * DELA — separado do erro da conexão —, "Ler situações agora") e as fichas
+ * vinculadas por origem; o selo "Ambiente de teste" quando a instância
+ * aponta para outro Atlas (a URL nunca aparece); e, na recusa
+ * `outro_escritorio`, apagar os vínculos do escritório anterior (com
+ * confirmação) e conectar.
+ *
+ * Fase 4 (1073): "Mudanças de situação" — as 20 últimas da fila do gatilho
+ * "Situação mudou no Atlas", com a ficha, "anterior → nova" e o resultado
+ * traduzido (`atlas.mudanca.resultado.<r>`, chave montada — há teste).
  */
 
 /**
@@ -42,6 +54,11 @@ export const CODIGOS_CONHECIDOS = [
   "fora_do_ar",
   "rede",
   "resposta_inesperada",
+  // O nó Atlas das automações (30/09/2026): nunca chegam ao `last_error`
+  // (não marcam a conexão), mas a lista da tela é fechada sobre o tipo.
+  "ambiguo",
+  "sem_admin",
+  "item_nao_encontrado",
   "atlas_error",
   "db_error",
   "nao_conectado",
@@ -50,21 +67,42 @@ export const CODIGOS_CONHECIDOS = [
   "permissoes_faltando",
   "outro_ambiente",
   "chave_mal_colada",
+  // A leitura das situações (`situacoes.ts`, `CodigoDaLeitura`).
+  "sem_permissao_listar",
+  "api_antiga",
+  "em_curso",
+  "cadeado_perdido",
 ] as const;
 
 /**
- * As permissões do Atlas que o passo usa. O texto de cada uma é o rótulo que
- * a tela do Atlas mostra (só em português: no `en.json`, o rótulo vai com a
- * tradução ao lado, como os rótulos do painel da Meta).
+ * As permissões do Atlas que os passos usam. O texto de cada uma é o rótulo
+ * que a tela do Atlas mostra (só em português: no `en.json`, o rótulo vai com
+ * a tradução ao lado, como os rótulos do painel da Meta). As três últimas são
+ * OPCIONAIS (`PERMISSOES_OPCIONAIS`, o nó Atlas): conectar não as exige, e o
+ * rótulo delas na tela do Atlas ainda não foi conferido — o texto é o que
+ * fazem mais o nome técnico (`DESCRICAO_DA_PERMISSAO_OPCIONAL`).
  */
-export const PERMISSOES_CONHECIDAS = ["read_client", "create_client", "update_client"] as const;
+export const PERMISSOES_CONHECIDAS = [
+  "read_client",
+  "create_client",
+  "update_client",
+  "create_task",
+  "create_transcript",
+  "update_onboarding",
+] as const;
 
 const CODIGOS = new Set<string>(CODIGOS_CONHECIDOS);
+const RESULTADOS = new Set<string>(RESULTADOS_DA_MUDANCA);
+const NA_FILA = new Set<string>(ESTADOS_NA_FILA);
 const PERMISSOES = new Set<string>(PERMISSOES_CONHECIDAS);
 
 export function AtlasCard() {
   const t = useTranslations("Settings.integracoes");
   const [cartao, setCartao] = useState<CartaoDoAtlas | null>(null);
+  const [vinculos, setVinculos] = useState<ContagemDosVinculos | null>(null);
+  const [mudancas, setMudancas] = useState<MudancaNoCartao[] | null>(null);
+  const [anteriores, setAnteriores] = useState<number | null>(null);
+  const [lendo, setLendo] = useState(false);
   const [falhou, setFalhou] = useState(false);
   const [aberto, setAberto] = useState(false);
   const [chave, setChave] = useState("");
@@ -87,9 +125,11 @@ export function AtlasCard() {
     try {
       const res = await fetch("/api/cb/atlas");
       if (!res.ok) throw new Error(String(res.status));
-      const corpo = (await res.json()) as { cartao: CartaoDoAtlas };
+      const corpo = (await res.json()) as { cartao: CartaoDoAtlas; vinculos: ContagemDosVinculos | null; mudancas?: MudancaNoCartao[] | null };
       if (vivoRef.current) {
         setCartao(corpo.cartao);
+        setVinculos(corpo.vinculos ?? null);
+        setMudancas(corpo.mudancas ?? null);
         setFalhou(false);
       }
     } catch {
@@ -107,18 +147,23 @@ export function AtlasCard() {
     };
   }, [carregar]);
 
-  const conectar = async () => {
+  // `apagarVinculosAnteriores`: o admin confirmou apagar as fichas ligadas ao
+  // escritório ANTERIOR (só deste ambiente) para conectar a chave de outro.
+  const conectar = async (apagarVinculosAnteriores = false) => {
+    if (apagarVinculosAnteriores && !window.confirm(t("atlas.confirmarApagarVinculos", { n: anteriores ?? 0 }))) return;
     setSalvando(true);
     setErro(null);
+    setAnteriores(null);
     try {
       const res = await fetch("/api/cb/atlas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chave }),
+        body: JSON.stringify({ chave, apagarVinculosAnteriores }),
       });
-      const corpo = (await res.json().catch(() => ({}))) as { error?: string; faltando?: string[] };
+      const corpo = (await res.json().catch(() => ({}))) as { error?: string; faltando?: string[]; vinculosAnteriores?: number };
       if (!res.ok) {
         const codigo = corpo.error ?? "atlas_error";
+        if (codigo === "outro_escritorio" && typeof corpo.vinculosAnteriores === "number") setAnteriores(corpo.vinculosAnteriores);
         setErro(
           codigo === "permissoes_faltando" && corpo.faltando?.length
             ? t("atlas.faltando", { permissoes: corpo.faltando.map(nomeDaPermissao).join(", ") })
@@ -160,6 +205,30 @@ export function AtlasCard() {
     }
   };
 
+  // "Ler situações agora": a mesma leitura do agendador, só desta conta.
+  const lerAgora = async () => {
+    if (lendo) return;
+    setLendo(true);
+    try {
+      const res = await fetch("/api/cb/atlas/leitura", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const corpo = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        contagem?: { clientes: number; vinculadosPeloLink: number; vinculadosPeloTelefone: number; interrompida: boolean };
+      };
+      if (res.ok && corpo.contagem) {
+        const c = corpo.contagem;
+        const valores = { clientes: c.clientes, vinculados: c.vinculadosPeloLink + c.vinculadosPeloTelefone };
+        toast.success(c.interrompida ? t("atlas.lidoParcial", valores) : t("atlas.lidoOk", valores));
+      } else if (res.status === 429 && corpo.error !== "limite") toast.error(t("falha", { motivo: t("atlas.leituraMuitoSeguida") }));
+      else toast.error(t("falha", { motivo: corpo.error ? motivo(corpo.error) : t("atlas.semMotivo") }));
+      await carregar();
+    } catch {
+      toast.error(t("falha", { motivo: t("atlas.semMotivo") }));
+    } finally {
+      if (vivoRef.current) setLendo(false);
+    }
+  };
+
   const desconectar = async () => {
     if (desconectando) return;
     if (!window.confirm(t("atlas.confirmarDesconectar"))) return;
@@ -198,6 +267,7 @@ export function AtlasCard() {
       <button type="button" onClick={() => setAberto((a) => !a)} aria-expanded={aberto} className="flex w-full items-center gap-3 p-4 text-left">
         <Scale className="size-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">Atlas</span>
+        {cartao?.ambienteDeTeste && <SettingsChip variant="warn">{t("atlas.ambienteDeTeste")}</SettingsChip>}
         <SettingsChip variant={variante}>{rotuloDoChip}</SettingsChip>
         <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", aberto && "rotate-180")} />
       </button>
@@ -229,12 +299,18 @@ export function AtlasCard() {
                   />
                   <p className="text-xs text-muted-foreground">{t("atlas.chaveDica")}</p>
                   <p className="text-xs text-muted-foreground">{t("atlas.permissoesDica")}</p>
+                  <p className="text-xs text-muted-foreground">{t("atlas.permissoesOpcionaisDica")}</p>
                 </div>
                 {erro && <p className="text-xs text-destructive">{t("falha", { motivo: erro })}</p>}
-                <div>
+                <div className="flex flex-wrap gap-2">
                   <Button type="button" size="sm" onClick={() => void conectar()} disabled={salvando || !chave.trim()}>
                     {salvando ? t("atlas.conectando") : t("atlas.conectar")}
                   </Button>
+                  {anteriores !== null && anteriores > 0 && (
+                    <Button type="button" size="sm" variant="outline" onClick={() => void conectar(true)} disabled={salvando || !chave.trim()}>
+                      {t("atlas.apagarVinculos", { n: anteriores })}
+                    </Button>
+                  )}
                 </div>
               </div>
             </>
@@ -257,10 +333,131 @@ export function AtlasCard() {
               </div>
               {cartao.erro && <p className="text-xs text-destructive">{t("falha", { motivo: motivo(cartao.erro) })}</p>}
               <p className="max-w-[62ch] text-xs text-muted-foreground">{t("atlas.comoFunciona")}</p>
+              {/* O nó Atlas das automações: as opcionais não são conferidas
+                  aqui (o cartão não guarda o `whoami`) — desligadas, só o
+                  passo que as usa falha, com o nome dela no motivo. */}
+              <p className="max-w-[62ch] text-xs text-muted-foreground">{t("atlas.permissoesOpcionaisDica")}</p>
+              {cartao.leitura && (
+                <LeituraDasSituacoes
+                  leitura={cartao.leitura}
+                  vinculos={vinculos}
+                  lendo={lendo}
+                  onLerAgora={() => void lerAgora()}
+                  motivo={motivo}
+                />
+              )}
+              {cartao.leitura && mudancas && <MudancasDeSituacao mudancas={mudancas} />}
             </>
           )}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * A seção "Leitura das situações" (fora do componente: definida dentro, ela
+ * remontaria a cada render). As datas pelo idioma do navegador.
+ */
+function LeituraDasSituacoes({
+  leitura,
+  vinculos,
+  lendo,
+  onLerAgora,
+  motivo,
+}: {
+  leitura: NonNullable<CartaoDoAtlas["leitura"]>;
+  vinculos: ContagemDosVinculos | null;
+  lendo: boolean;
+  onLerAgora: () => void;
+  motivo: (codigo: string) => string;
+}) {
+  const t = useTranslations("Settings.integracoes");
+  const quando = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
+  const pelaAutomacao = vinculos ? vinculos.porOrigem.criada + vinculos.porOrigem.reativada + vinculos.porOrigem.encontrada : 0;
+  return (
+    <div className="space-y-2 border-t border-border pt-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-medium text-foreground">{t("atlas.leituraTitulo")}</p>
+        <Button type="button" variant="outline" size="sm" onClick={onLerAgora} disabled={lendo}>
+          {lendo ? t("atlas.lendo") : t("atlas.lerAgora")}
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {leitura.ultimaEm ? t("atlas.leituraUltima", { quando: quando(leitura.ultimaEm) }) : t("atlas.leituraNunca")}
+        {leitura.ultimaEm && leitura.velha && !leitura.erro ? ` ${t("atlas.leituraAtrasada")}` : ""}
+      </p>
+      {leitura.erro && <p className="text-xs text-destructive">{t("atlas.leituraErro", { motivo: motivo(leitura.erro) })}</p>}
+      {vinculos && (
+        <p className="text-xs text-muted-foreground">
+          {t("atlas.vinculos", { total: vinculos.total })}{" "}
+          {t("atlas.vinculosDetalhe", {
+            link: vinculos.porCasamento.chat_link,
+            telefone: vinculos.porCasamento.telefone,
+            manual: vinculos.porOrigem.manual,
+            passo: pelaAutomacao,
+          })}
+        </p>
+      )}
+      <p className="max-w-[62ch] text-xs text-muted-foreground">{t("atlas.leituraDica")}</p>
+    </div>
+  );
+}
+
+/**
+ * "Mudanças de situação" (1073): as 20 últimas da fila do gatilho. O
+ * resultado é chave montada com reserva (código fora da lista = o próprio
+ * código, nunca a chave crua); o detalhe (uma linha por automação) vem do
+ * servidor, como no cartão do ZapSign.
+ */
+function MudancasDeSituacao({ mudancas }: { mudancas: MudancaNoCartao[] }) {
+  const t = useTranslations("Settings.integracoes");
+  const quando = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
+  const rotulo = (m: MudancaNoCartao) =>
+    m.resultado
+      ? RESULTADOS.has(m.resultado)
+        ? t(`atlas.mudanca.resultado.${m.resultado}` as Parameters<typeof t>[0])
+        : m.resultado
+      : NA_FILA.has(m.estado)
+        ? t(`atlas.mudanca.estado.${m.estado}` as Parameters<typeof t>[0])
+        : m.estado;
+  return (
+    <div className="space-y-2 border-t border-border pt-3">
+      <p className="text-sm font-medium text-foreground">{t("atlas.mudancasTitulo")}</p>
+      {mudancas.length === 0 ? (
+        <p className="text-xs text-muted-foreground">{t("atlas.mudancasVazio")}</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {mudancas.map((m) => (
+            <li key={m.id} className="min-w-0 text-xs">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+                {/* Quando a situação MUDOU no Atlas (`status_changed_at`), não
+                    quando o CRM a enfileirou: depois de uma queda ou de um
+                    período desconectado, as duas se afastam horas. */}
+                <span className="text-muted-foreground">{quando(m.desde)}</span>
+                <span className="min-w-0 truncate font-medium text-foreground">{m.ficha?.nome ?? t("atlas.semFicha")}</span>
+                <span className="text-foreground">
+                  {m.situacaoAnterior} → {m.situacaoNova}
+                </span>
+                <span
+                  className={cn(
+                    "rounded border px-1.5 py-px",
+                    m.resultado === "disparado"
+                      ? "border-emerald-500/40 text-emerald-700"
+                      : m.resultado === "falhou"
+                        ? "border-red-500/40 text-red-700"
+                        : "border-border text-muted-foreground",
+                  )}
+                >
+                  {rotulo(m)}
+                </span>
+              </div>
+              {m.detalhe && <p className="mt-0.5 whitespace-pre-line break-words text-[11px] text-muted-foreground">{m.detalhe}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="max-w-[62ch] text-xs text-muted-foreground">{t("atlas.mudancasDica")}</p>
     </div>
   );
 }

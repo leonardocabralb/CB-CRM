@@ -1,10 +1,11 @@
 'use client';
 
 import { format } from 'date-fns';
-import { Pin, PinOff, Trash2 } from 'lucide-react';
+import { Pin, PinOff, Reply, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
+import { CitacaoDaNota } from '@/components/inbox/citacao-da-nota';
 import { TextoComLinks } from '@/components/inbox/texto-com-links';
 import { cn } from '@/lib/utils';
 import type { ConversationNote } from '@/types';
@@ -20,8 +21,12 @@ import type { ConversationNote } from '@/types';
  * Diferente da linha de evento do lead (`LeadEventLine`, discreta e
  * centralizada): a anotação é ato de gente, tem autor e precisa ser lida.
  *
- * Fica fora do `MessageActions` — não se responde, não se reage e não se
- * encaminha uma anotação. O mesmo padrão do aviso de sistema de grupo.
+ * Fica fora do `MessageActions` — não se reage nem se encaminha uma
+ * anotação. O mesmo padrão do aviso de sistema de grupo.
+ *
+ * RESPONDER (1075, pedido do operador): botão próprio, embaixo, sem hover
+ * (no toque não existe). A resposta é outra anotação, desenhada onde foi
+ * escrita, com a respondida citada em cima (`CitacaoDaNota`).
  *
  * O alfinete (951) fixa esta anotação no topo da conversa. Ele só aparece
  * quando quem renderiza passa o `onFixar` — nota de GRUPO não fixa, porque a
@@ -34,6 +39,9 @@ export function NoteLine({
   fixada = false,
   fixando = false,
   onFixar,
+  respondida,
+  onIrParaRespondida,
+  onResponder,
 }: {
   nota: ConversationNote;
   podeApagar: boolean;
@@ -44,6 +52,15 @@ export function NoteLine({
   fixando?: boolean;
   /** Ausente = a fixação não é oferecida nesta anotação. */
   onFixar?: (fixar: boolean) => void;
+  /**
+   * A anotação que esta responde, achada na lista do fio (1075). Só vale
+   * quando `nota.resposta_de` existe; `null` = não está na lista.
+   */
+  respondida?: ConversationNote | null;
+  /** Toque na citação: leva o fio até a respondida. */
+  onIrParaRespondida?: () => void;
+  /** Ausente = sem botão Responder (quem não anota). */
+  onResponder?: () => void;
 }) {
   const t = useTranslations('Inbox.note');
   const [confirmando, setConfirmando] = useState(false);
@@ -53,7 +70,9 @@ export function NoteLine({
       <div className="w-full max-w-[85%] rounded-lg border border-amber-300/60 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-700/50 dark:bg-amber-950/40 dark:text-amber-50">
         <div className="mb-1 flex items-baseline justify-between gap-2">
           <span className="text-xs font-semibold">
-            {t('wrote', { autor: nota.autor_nome || t('unknownAuthor') })}
+            {t(nota.resposta_de ? 'replied' : 'wrote', {
+              autor: nota.autor_nome || t('unknownAuthor'),
+            })}
           </span>
           <span className="flex shrink-0 items-center gap-1.5">
             <span className="text-[10px] opacity-70">
@@ -113,9 +132,28 @@ export function NoteLine({
               ))}
           </span>
         </div>
+        {nota.resposta_de && (
+          <CitacaoDaNota
+            original={respondida ?? null}
+            onIr={onIrParaRespondida}
+            className="mb-1.5"
+          />
+        )}
         <p className="whitespace-pre-wrap break-words">
           <TextoComLinks texto={nota.texto} />
         </p>
+        {onResponder && (
+          <div className="mt-1 flex justify-end">
+            <button
+              type="button"
+              onClick={onResponder}
+              className="flex items-center gap-1 text-[11px] font-medium opacity-70 transition-opacity hover:opacity-100"
+            >
+              <Reply className="h-3 w-3" />
+              {t('reply')}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

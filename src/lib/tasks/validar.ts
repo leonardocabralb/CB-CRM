@@ -108,6 +108,33 @@ export function normalizarDescricao(valor: unknown): string | null | undefined {
   return t;
 }
 
+/**
+ * Os intervalos de repetição que o operador pediu (1074), em dias.
+ *
+ * ⚠️ ESPELHO do CHECK `cb_tasks_repetir_ck` da 1074 — o pino
+ * `tarefas-recorrentes-1074.test.ts` compara os dois. Intervalo novo aqui sem
+ * migration seria recusado pelo banco com 500 na cara de quem salvou.
+ */
+export const INTERVALOS_DE_REPETICAO = [1, 2, 5, 7, 15, 30] as const;
+
+export type IntervaloDeRepeticao = (typeof INTERVALOS_DE_REPETICAO)[number];
+
+/**
+ * O intervalo de repetição do corpo do pedido.
+ *
+ * Mesma distinção de `normalizarHora`: `null` é "não repete" (valor legítimo)
+ * e `undefined` é "malformado, recuse". Colapsar os dois faria um intervalo
+ * fora da lista virar, em silêncio, uma tarefa que não repete.
+ */
+export function normalizarRepeticao(
+  valor: unknown,
+): IntervaloDeRepeticao | null | undefined {
+  if (valor === null) return null;
+  return (INTERVALOS_DE_REPETICAO as readonly unknown[]).includes(valor)
+    ? (valor as IntervaloDeRepeticao)
+    : undefined;
+}
+
 /** Forma de UUID — o que o Postgres aceita em `uuid`. Igual à rota de notas. */
 export const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

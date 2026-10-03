@@ -3,11 +3,14 @@
 import { Fragment, useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { useModoAnonimo } from "@/hooks/use-modo-anonimo";
 import { useChannels } from "@/hooks/use-channels";
 import { useLeadEvents } from "@/hooks/use-lead-events";
 import { useExecucoesDoFio } from "@/hooks/use-execucoes-do-fio";
 import { useReunioesExternasDoContato } from "@/hooks/use-reunioes";
 import { useSituacaoDoCliente } from "@/hooks/use-situacao-do-cliente";
+import { useAtlasDoContato } from "@/hooks/use-atlas-do-contato";
+import { juntarSituacoes } from "@/lib/atlas/situacao-na-faixa";
 import { useConversationNotes } from "@/hooks/use-conversation-notes";
 import { useApagarNota } from "@/hooks/use-apagar-nota";
 import { useFixarNota } from "@/hooks/use-fixar-nota";
@@ -466,6 +469,26 @@ const STATUS_OPTIONS: {
 const DOODLE_BG_CLASSES =
   "bg-background bg-[url('/inbox-doodle.svg')] bg-repeat";
 
+/**
+ * Zera as não lidas da conversa no banco; o tempo real leva o zero à lista e
+ * ao contador do menu. Os dois chamadores — ver e responder — passam pelo
+ * modo anônimo (`.claude/rules/modo-anonimo.md`).
+ *
+ * ⚠️ Sem filtro `unread_count > 0`, de propósito: o UPDATE incondicional
+ * devolve pelo tempo real o zero que derruba `hasUnread`. Com o filtro, uma
+ * cópia velha na tela (o banco já em zero) não receberia evento nenhum,
+ * `hasUnread` ficaria `true` e a mensagem seguinte não re-rodaria o efeito.
+ */
+function zerarNaoLidas(conversationId: string) {
+  createClient()
+    .from("conversations")
+    .update({ unread_count: 0 })
+    .eq("id", conversationId)
+    .then(({ error }) => {
+      if (error) console.error("Failed to reset unread_count:", error);
+    });
+}
+
 export function MessageThread({
   conversation,
   contact,
@@ -490,6 +513,12 @@ export function MessageThread({
   const tActions = useTranslations("Inbox.actions");
 
   const { user, profile, assinaturaAtiva } = useAuth();
+  /**
+   * Modo anônimo (decisão do operador, 01/10/2026): VER não zera as não
+   * lidas da equipe; RESPONDER zera (`marcarEnviada`). A presença quem cala é
+   * a página, dona da seleção.
+   */
+  const { ativo: modoAnonimo } = useModoAnonimo();
 
   /**
    * O nome com que ESTA pessoa assina, ou null. Só para desenhar a bolha
@@ -1228,17 +1257,14 @@ export function MessageThread({
   //
   // Guarding on hasUnread prevents the eq-update loop: once unread_count
   // is 0 the condition is false, so no further UPDATE is issued.
+  //
+  // ⚠️ No modo anônimo, ver não zera — e `modoAnonimo` nas dependências é
+  // load-bearing: desligar o modo com a conversa aberta re-roda o efeito e
+  // zera na hora, como se ela tivesse acabado de ser aberta.
   useEffect(() => {
-    if (!conversationId || !hasUnread) return;
-    const supabase = createClient();
-    supabase
-      .from("conversations")
-      .update({ unread_count: 0 })
-      .eq("id", conversationId)
-      .then(({ error }) => {
-        if (error) console.error("Failed to reset unread_count:", error);
-      });
-  }, [conversationId, hasUnread]);
+    if (!conversationId || !hasUnread || modoAnonimo) return;
+    zerarNaoLidas(conversationId);
+  }, [conversationId, hasUnread, modoAnonimo]);
 
   // Trilha de atividade do lead (migration 912) — mudança de funil, etapa,
   // status e tags aparecem intercaladas na conversa. `resyncToken` entra como
@@ -1268,7 +1294,12 @@ export function MessageThread({
   const versaoDaTrilha = leadEvents.length
     ? `${leadEvents.length}:${leadEvents[leadEvents.length - 1].id}`
     : "0";
-  const { situacoes: situacaoDoCliente } = useSituacaoDoCliente(contact?.id, resyncToken, versaoDaTrilha);
+  const { situacoes: situacaoNoFunil } = useSituacaoDoCliente(contact?.id, resyncToken, versaoDaTrilha);
+  // A situação lida no Atlas (Fase 2), a OUTRA fonte da mesma faixa, num hook
+  // à parte: cada fonte cala sozinha (a falha de uma não apaga a outra). A
+  // junção, com a fonte em cada linha, é pura (`juntarSituacoes`).
+  const { dados: atlasDoContato } = useAtlasDoContato(contact?.id, resyncToken);
+  const situacaoDoCliente = juntarSituacoes(situacaoNoFunil, atlasDoContato?.vinculo ?? null);
 
   // Anotações internas (migration 918). Chaveadas pela CONVERSA, não pelo
   // contato como a trilha acima — é a única chave que existe em grupo.
@@ -1307,6 +1338,30 @@ export function MessageThread({
     [notas],
   );
   const podeAdministrar = useCan("manage-members");
+  const podeAnotar = useCan("write-notes");
+  /**
+   * Responder a uma anotação (1075): o "Responder" da nota no fio abre a
+   * caixa de anotação do COMPOSITOR com a respondida citada, como a citação
+   * de mensagem. ⚠️ Carimbado com a conversa e comparado no render (efeito
+   * passivo, seção 8c da raiz): a thread não remonta na troca, e a citação de
+   * um cliente não pode aparecer na caixa de outro. E ZERADO ao sair da
+   * conversa, no render (o ajuste de estado por prop do React, sem efeito):
+   * na volta (A → B → A) a citação esquecida reapareceria e a próxima
+   * anotação sairia como resposta sem ninguém pedir.
+   */
+  const [respondendo, setRespondendo] = useState<{
+    de: string;
+    nota: ConversationNote;
+  } | null>(null);
+  if (respondendo && respondendo.de !== conversationId) setRespondendo(null);
+  const notaRespondida =
+    respondendo && respondendo.de === conversationId ? respondendo.nota : null;
+  const limparNotaRespondida = useCallback(() => setRespondendo(null), []);
+  /** A respondida de cada resposta, para a citação (as notas já carregadas). */
+  const notasPorId = useMemo(
+    () => new Map(notas.map((n) => [n.id, n])),
+    [notas],
+  );
   // Agendadas (925): a faixa acima do compositor e o compositor são
   // irmãos aqui, então o contador que os liga mora nesta tela mesmo.
   const podeEnviar = useCan("send-messages");
@@ -1591,6 +1646,10 @@ export function MessageThread({
   const irParaCitada = useCallback((id: string) => {
     setSaltoDaCitacao((s) => ({ tipo: "mensagem", id, n: (s?.n ?? 0) + 1 }));
   }, []);
+  // A citação da anotação respondida (1075) usa o MESMO salto, com alvo nota.
+  const irParaNota = useCallback((id: string) => {
+    setSaltoDaCitacao((s) => ({ tipo: "nota", id, n: (s?.n ?? 0) + 1 }));
+  }, []);
   const destaqueDaCitacao = useSaltoPontual(
     saltoDaCitacao,
     scrollRef,
@@ -1634,9 +1693,19 @@ export function MessageThread({
    * "enviada" e deixavam o texto otimista de pé até o realtime chegar —
    * então uma legenda assinada aparecia sem o nome por segundos. A rota
    * devolve `content_text` para todos eles desde a 923.
+   *
+   * ⚠️ E é aqui, depois de o servidor CONFIRMAR o envio, que responder zera
+   * as não lidas no modo anônimo (decisão do operador, 01/10/2026: ver não
+   * zera, responder sim). `conversationIdDoEnvio` é obrigatório para todo
+   * caminho de envio trazer a conversa para a qual a mensagem SAIU — a
+   * tela pode já estar noutra quando a resposta do servidor chega.
    */
   const marcarEnviada = useCallback(
-    (tempId: string, payload: { content_text?: unknown; channel_id?: unknown }) => {
+    (
+      tempId: string,
+      payload: { content_text?: unknown; channel_id?: unknown },
+      conversationIdDoEnvio: string,
+    ) => {
       onUpdateMessage(tempId, {
         status: "sent",
         ...(typeof payload?.content_text === "string"
@@ -1648,8 +1717,9 @@ export function MessageThread({
           ? { channel_id: payload.channel_id }
           : {}),
       });
+      if (modoAnonimo) zerarNaoLidas(conversationIdDoEnvio);
     },
-    [onUpdateMessage],
+    [onUpdateMessage, modoAnonimo],
   );
 
   const handleSend = useCallback(
@@ -1743,7 +1813,7 @@ export function MessageThread({
         // realtime chegasse — parecendo que o sistema reescreveu o que ele
         // escreveu. Trocar aqui, na mesma resposta, faz a assinatura
         // aparecer de uma vez.
-        marcarEnviada(tempId, payload);
+        marcarEnviada(tempId, payload, conversation.id);
       } catch (err) {
         console.error("Failed to send message:", err);
         const reason = err instanceof Error ? err.message : t("networkError");
@@ -1857,7 +1927,7 @@ export function MessageThread({
         }
 
         // `data` e a resposta; `payload` aqui e o CORPO da requisicao.
-        marcarEnviada(tempId, data);
+        marcarEnviada(tempId, data, conversation.id);
         return true;
       } catch (err) {
         console.error("Failed to send media:", err);
@@ -1934,7 +2004,7 @@ export function MessageThread({
         }
 
         // `data` e a resposta; `payload` aqui e o payload interativo.
-        marcarEnviada(tempId, data);
+        marcarEnviada(tempId, data, conversation.id);
       } catch (err) {
         console.error("Failed to send interactive message:", err);
         const reason = err instanceof Error ? err.message : t("networkError");
@@ -2051,7 +2121,7 @@ export function MessageThread({
           return;
         }
 
-        marcarEnviada(tempId, payload);
+        marcarEnviada(tempId, payload, conversation.id);
       } catch (err) {
         console.error("Failed to send template:", err);
         const reason = err instanceof Error ? err.message : t("networkError");
@@ -2899,18 +2969,33 @@ export function MessageThread({
                     // checagem do TypeScript, então um item de nota cairia no
                     // ramo de mensagem e derrubaria o fio inteiro em runtime.
                     if (item.nota) {
+                      const nota = item.nota;
+                      const respondidaId = nota.resposta_de;
                       return (
                         <LinhaDoFio
                           key={item.chave}
                           tipo="nota"
                           id={item.nota.id}
                           destacada={
-                            destaqueDoPainel?.tipo === "nota" &&
-                            destaqueDoPainel.id === item.nota.id
+                            (destaqueDoPainel?.tipo === "nota" &&
+                              destaqueDoPainel.id === item.nota.id) ||
+                            (destaqueDaCitacao?.tipo === "nota" &&
+                              destaqueDaCitacao.id === item.nota.id)
                           }
                         >
                         <NoteLine
                           nota={item.nota}
+                          respondida={
+                            respondidaId ? (notasPorId.get(respondidaId) ?? null) : null
+                          }
+                          onIrParaRespondida={
+                            respondidaId ? () => irParaNota(respondidaId) : undefined
+                          }
+                          onResponder={
+                            podeAnotar && conversationId
+                              ? () => setRespondendo({ de: conversationId, nota })
+                              : undefined
+                          }
                           podeApagar={
                             item.nota.author_user_id === user?.id || podeAdministrar
                           }
@@ -3113,9 +3198,22 @@ export function MessageThread({
         onFechar={() => setGaleriaAbertaEm(null)}
       />
 
+      {/* As faixas ARREDONDADAS moram neste bloco: cada uma abre com `mt-2`,
+          e o `pb-2` dá à última o mesmo respiro embaixo — sem ele ela encosta
+          no `border-t` do aviso de número ou do compositor, e as duas caixas
+          viram uma só. Faixa arredondada nova entra AQUI, sem `mb-*` próprio
+          (somaria 16 px entre duas faixas). `empty:hidden`: com todas caladas,
+          o bloco não deixa uma tira vazia.
+          ⚠️ `min-h-0 overflow-y-auto`: com a tela baixa (teclado do celular,
+          agendadas abertas), o fio já encolheu a zero e é o bloco que tem de
+          ceder. Sem os dois, ele mede o conteúdo inteiro e empurra o
+          compositor para fora da casca (Codex, #360); com eles, as faixas
+          rolam e o compositor fica. */}
+      <div className="min-h-0 overflow-y-auto pb-2 empty:hidden">
       {/* Faixa CLIENTE RESCINDIDO / FINALIZADO (1070, pedido do operador em
           29/09/2026): a PRIMEIRA da pilha — é o fato que muda a conversa
-          inteira. Só informa, nunca bloqueia; cala com `null`. */}
+          inteira. Só informa, nunca bloqueia; cala com `null`. Desde a Fase 2
+          do Atlas, junta o funil e o Atlas, cada linha com a fonte. */}
       <FaixaDeSituacaoDoCliente situacoes={situacaoDoCliente} />
 
       {/* Faixa INADIMPLENTE (Asaas, Fase 1b), acima da de agendadas e pelo
@@ -3141,6 +3239,11 @@ export function MessageThread({
         conversationId={conversation.id}
         podeAgir={podeEnviar}
         resyncToken={agendadasResync}
+        // "Executar agora" de dentro da conversa é RESPONDER: no modo
+        // anônimo zera, como os quatro envios do compositor.
+        aoEnviarAgora={
+          modoAnonimo ? () => zerarNaoLidas(conversation.id) : undefined
+        }
       />
 
       {/* Faixa PRESENÇA (963, pedido do operador em 29/09/2026): quem MAIS
@@ -3149,6 +3252,7 @@ export function MessageThread({
           agendadas e ACIMA do aviso de número divergente, que continua
           colado no compositor (o comentário dele diz por quê). */}
       <FaixaDePresenca userIds={vendoAgora} profiles={profiles} />
+      </div>
 
       {/* ⚠️ A última mensagem do cliente chegou por um NÚMERO e a resposta
           vai sair por OUTRO — o que, no celular dele, quer dizer que a
@@ -3217,6 +3321,8 @@ export function MessageThread({
           )
         }
         onNoteCreated={acrescentarNotaDaConversa}
+        notaRespondida={notaRespondida}
+        onLimparNotaRespondida={limparNotaRespondida}
         onScheduled={() => setAgendadasResync((n) => n + 1)}
         onExecutarAutomacao={
           !ehGrupo && contact ? () => setExecutarAberto(true) : undefined

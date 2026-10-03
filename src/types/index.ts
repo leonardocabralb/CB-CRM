@@ -304,6 +304,12 @@ export interface ConversationNote {
    * rota `/api/cb/notes/[id]` (UPDATE segue revogado no navegador).
    */
   fixada_em: string | null;
+  /**
+   * A anotação que esta RESPONDE (1075), da mesma conversa; pode ser outra
+   * resposta. NULL = anotação comum — ou resposta cuja respondida foi apagada
+   * (`ON DELETE SET NULL`): ela segue como anotação comum.
+   */
+  resposta_de: string | null;
   created_at: string;
 }
 
@@ -505,14 +511,18 @@ export interface Conversation {
 /**
  * ⚠️ Espelha o CHECK de `notifications.type`. Alargar aqui sem alargar o
  * banco (ou o contrário) só aparece em runtime, como violação de constraint.
- * Os literais vivem na 027 (`conversation_assigned`), na 919 (`note_mention`)
- * e na 944 (`task_assigned`, `task_reply`).
+ * Os literais vivem na 027 (`conversation_assigned`), na 919 (`note_mention`),
+ * na 944 (`task_assigned`, `task_reply`) e na 1075 (`note_reply`).
  *
  * ⚠️ Não confundir com o `'conversation_assigned'` homônimo mais abaixo neste
  * arquivo, que é gatilho de AUTOMAÇÃO. São coisas diferentes com o mesmo nome.
  */
 export type NotificationType =
-  'conversation_assigned' | 'note_mention' | 'task_assigned' | 'task_reply';
+  | 'conversation_assigned'
+  | 'note_mention'
+  | 'note_reply'
+  | 'task_assigned'
+  | 'task_reply';
 
 export interface Notification {
   id: string;
@@ -606,6 +616,18 @@ export interface Task {
   /** Congelado: sobrevive à exclusão da origem, que é `ON DELETE SET NULL`. */
   tarefa_pai_titulo: string | null;
   tipo: TaskKind;
+  /**
+   * Repetição pelo calendário (1074): 1, 2, 5, 7, 15 ou 30 dias, igual em toda
+   * a série; nulo = não repete. A próxima nasce sozinha no dia do prazo dela.
+   */
+  repetir_a_cada_dias: number | null;
+  /** O id da primeira tarefa da série. Nulo em tarefa que nunca repetiu. */
+  serie_id: string | null;
+  /**
+   * Quando a próxima foi gerada a partir desta. Nulo + `repetir_a_cada_dias`
+   * preenchido = esta é a ATIVA da série (apagá-la encerra a repetição).
+   */
+  proxima_gerada_em: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -1191,6 +1213,17 @@ export type AutomationTriggerType =
    */
   | 'zapsign_documento_assinado'
   /**
+   * NOSSO (1073, Fase 4 de docs/PLANO-integracao-atlas.md): a situação de um
+   * cliente VINCULADO mudou no Atlas. Quem decide "aconteceu?" é a leitura
+   * periódica (`src/lib/atlas/mudancas.ts`), que carimba `automation_id` e o
+   * card (`deal_id` + `deal_status_fixado`, o único card do contato nos funis
+   * da config) no contexto — como a régua do Asaas, só roda pelo disparador:
+   * `runAutomationById`, "Executar automação", o agente de IA,
+   * `run_automation` e `POST /api/automations/engine` o recusam
+   * (`soRodaPeloDisparador`). Os dados entram em `{{vars.atlas_*}}`.
+   */
+  | 'atlas_situacao_mudou'
+  /**
    * NUNCA dispara sozinho — só pelo botão "Executar automação" do menu + da
    * conversa (955). O dispatch é uma consulta `.eq('trigger_type', …)` pelo
    * tipo do EVENTO, e nenhum evento carrega este; `runAutomationById`, que é
@@ -1255,11 +1288,36 @@ export type AutomationStepType =
    * vincula o que está em curso) pela chave da CONTA — a Fase 0 de
    * docs/PLANO-integracao-atlas.md. Não fala com ninguém.
    */
-  | 'atlas_criar_cliente';
+  | 'atlas_criar_cliente'
+  /**
+   * O nó "Atlas" (30/09/2026): as outras ações de escrita da API do Atlas,
+   * uma `step_type` cada — a TELA as agrupa num nó só, com um seletor de
+   * ação (`src/lib/atlas/passos-do-atlas.ts`). Todas escrevem no cliente do
+   * VÍNCULO da ficha (a tarefa, opcionalmente). Não falam com ninguém.
+   */
+  /** Atualiza campos do cliente do Atlas ligado à ficha (nunca manda vazio). */
+  | 'atlas_atualizar_cliente'
+  /** Abre uma tarefa no Atlas (ligada ao cliente do vínculo, se houver). */
+  | 'atlas_criar_tarefa'
+  /** Deposita a transcrição mais recente da ficha no Diagnóstico do Atlas. */
+  | 'atlas_enviar_transcricao'
+  /** Muda um item do checklist de onboarding do cliente no Atlas. */
+  | 'atlas_atualizar_onboarding';
 
 export type AutomationLogStatus = 'success' | 'partial' | 'failed';
 
-export interface KeywordMatchTriggerConfig {
+/**
+ * "Não repetir para o mesmo contato por N horas" (30/09/2026): vale nos
+ * gatilhos por mensagem (`aceitaNaoRepetir`), junto de qualquer outra
+ * config deles. Ausente = roda a cada disparo. Ver
+ * `automations/nao-repetir.ts`.
+ */
+export interface NaoRepetirTriggerConfig {
+  /** Inteiro de 1 a 720. */
+  nao_repetir_horas?: number;
+}
+
+export interface KeywordMatchTriggerConfig extends NaoRepetirTriggerConfig {
   keywords: string[];
   /**
    * `contains` (the default) is a raw substring test, so a short keyword
@@ -1283,7 +1341,7 @@ export interface TimeBasedTriggerConfig {
   timezone?: string;
 }
 
-export interface InteractiveReplyTriggerConfig {
+export interface InteractiveReplyTriggerConfig extends NaoRepetirTriggerConfig {
   /** Button / list-row ids to match, exact. Any one matching fires. */
   reply_ids: string[];
 }
@@ -1405,10 +1463,27 @@ export interface AsaasCobrancaTriggerConfig {
   somente_dias_uteis?: boolean;
 }
 
+/** As situações do Atlas que o gatilho oferece (contrato §8; `em_negociacao` vale `ativo`). */
+export type SituacaoDoAtlas = 'ativo' | 'importado' | 'finalizado' | 'rescindido' | 'inativo' | 'suspenso';
+
+/**
+ * NOSSO — config do gatilho `atlas_situacao_mudou` (1073). `situacoes`: para
+ * quais situações NOVAS a mudança dispara (≥ 1). `pipeline_ids`: os funis
+ * onde o card do cliente precisa ESTAR — OBRIGATÓRIO (≥ 1): o disparo leva
+ * sempre o card no contexto, e sem card no funil (ou com mais de um) a
+ * automação não roda e a mudança registra `sem_card`/`card_ambiguo`.
+ */
+export interface AtlasSituacaoTriggerConfig {
+  situacoes: SituacaoDoAtlas[];
+  pipeline_ids: string[];
+}
+
 export type AutomationTriggerConfig =
   | Record<string, never>
+  | NaoRepetirTriggerConfig
   | AsaasVenceHojeTriggerConfig
   | AsaasCobrancaTriggerConfig
+  | AtlasSituacaoTriggerConfig
   | KeywordMatchTriggerConfig
   | TagTriggerConfig
   | TimeBasedTriggerConfig
@@ -1822,6 +1897,66 @@ export interface AtlasCriarClienteStepConfig {
   campo_fechamento?: string | null;
 }
 
+/**
+ * "Atualizar cliente no Atlas" (nó Atlas). Cada escolha é OPCIONAL; ausente,
+ * nulo ou `false` = o campo não vai ao Atlas. ⚠️ O passo nunca manda nulo nem
+ * vazio (no `update_client`, `null` LIMPA o campo lá): fonte vazia na ficha
+ * fica fora do corpo. Booleanos ligam só com `true` (JSONB).
+ */
+export interface AtlasAtualizarClienteStepConfig {
+  /** Nulo/ausente = não muda a situação (o padrão: no CB o Atlas manda, D2). */
+  situacao?: SituacaoDoAtlas | null;
+  /** Nulo/ausente = não muda. */
+  tipo_de_contrato?: 'fixo' | 'mensal' | null;
+  /** `contractValue` = valor do card (`negocioAlvo`); sem card ou valor 0 = não muda. */
+  valor_do_card?: boolean;
+  /** `field_key` de campos de DATA da conta. */
+  campo_primeiro_contato?: string | null;
+  campo_proposta?: string | null;
+  campo_fechamento?: string | null;
+  /** `chatLink` = o link da conversa da execução. */
+  link_da_conversa?: boolean;
+  /** `phone`/`email` da ficha (só se válidos para o Atlas). */
+  telefone?: boolean;
+  email?: boolean;
+  /** `field_key` de um campo de TEXTO com CPF/CNPJ (`docId`). */
+  campo_documento?: string | null;
+}
+
+/** "Criar tarefa no Atlas" (nó Atlas). A tarefa vai ao admin mais antigo do escritório no Atlas. */
+export interface AtlasCriarTarefaStepConfig {
+  /** Com `{{…}}`. */
+  titulo: string;
+  /** Com `{{…}}`; vazia = uma frase com o nome da automação. */
+  descricao?: string;
+  /** Ausente = `normal`. */
+  prioridade?: 'normal' | 'urgent';
+  /** 0–365 = hoje + N dias no fuso do escritório; nulo = sem prazo. */
+  prazo_em_dias?: number | null;
+}
+
+/** "Enviar transcrição ao Atlas" (nó Atlas): a transcrição mais recente da ficha. */
+export interface AtlasEnviarTranscricaoStepConfig {
+  /** A reunião tem de ser das últimas N horas (1–720). Ausente = 72. */
+  idade_maxima_horas?: number;
+  /** Texto do operador que vai nas `notes`, com `{{…}}`. */
+  notas?: string;
+  /** Só `true` anexa as notas da reunião (IA do tl;dv); ausente = não. */
+  incluir_notas_da_reuniao?: boolean;
+  /** Só `true` aceita a reunião ligada à ficha pelo E-MAIL do convidado (casamento fraco). */
+  aceitar_vinculo_por_email?: boolean;
+}
+
+/** "Atualizar onboarding no Atlas" (nó Atlas): um item do checklist do cliente. */
+export interface AtlasAtualizarOnboardingStepConfig {
+  /** O texto do item como está no checklist do Atlas — LITERAL (é identidade). */
+  item: string;
+  /** Nulo/ausente = não muda a situação do item. */
+  situacao?: 'pending' | 'done' | 'blocked' | 'skipped' | null;
+  /** Com `{{…}}`; vazia depois de interpolar = não mexe na observação. */
+  observacao?: string | null;
+}
+
 export type AutomationStepConfig =
   | SendMessageStepConfig
   | SendButtonsStepConfig
@@ -1837,6 +1972,10 @@ export type AutomationStepConfig =
   | SetAiStepConfig
   | PinConversationChannelStepConfig
   | AtlasCriarClienteStepConfig
+  | AtlasAtualizarClienteStepConfig
+  | AtlasCriarTarefaStepConfig
+  | AtlasEnviarTranscricaoStepConfig
+  | AtlasAtualizarOnboardingStepConfig
   | SendMediaStepConfig
   | WaitStepConfig
   | ConditionStepConfig

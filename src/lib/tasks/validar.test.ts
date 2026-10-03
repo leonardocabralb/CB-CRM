@@ -7,6 +7,7 @@ import {
   MAX_TITULO,
   normalizarDescricao,
   normalizarHora,
+  normalizarRepeticao,
   normalizarTitulo,
 } from './validar';
 
@@ -136,5 +137,23 @@ describe('ehUuid', () => {
     expect(ehUuid('nao-e-uuid')).toBe(false);
     expect(ehUuid('')).toBe(false);
     expect(ehUuid(null)).toBe(false);
+  });
+});
+
+describe('normalizarRepeticao', () => {
+  it('aceita os seis intervalos do operador', () => {
+    for (const n of [1, 2, 5, 7, 15, 30]) expect(normalizarRepeticao(n)).toBe(n);
+  });
+
+  it('null é "não repete", um valor legítimo', () => {
+    expect(normalizarRepeticao(null)).toBeNull();
+  });
+
+  it('recusa (undefined) o que não é da lista — nunca vira "não repete" em silêncio', () => {
+    expect(normalizarRepeticao(3)).toBeUndefined();
+    expect(normalizarRepeticao(0)).toBeUndefined();
+    expect(normalizarRepeticao('7')).toBeUndefined();
+    expect(normalizarRepeticao(7.5)).toBeUndefined();
+    expect(normalizarRepeticao(undefined)).toBeUndefined();
   });
 });

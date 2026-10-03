@@ -37,9 +37,13 @@ import { ReunioesDoContato } from '@/components/agenda/reunioes-do-contato';
 import { ReunioesTranscritasDoContato } from '@/components/transcricoes/reunioes-transcritas-do-contato';
 import { AbaCobrancas } from '@/components/inbox/painel/aba-cobrancas';
 import { TextoComLinks } from '@/components/inbox/texto-com-links';
+import { CitacaoDaNota } from '@/components/inbox/citacao-da-nota';
 import { useCobrancasDoContato } from '@/hooks/use-cobrancas-do-contato';
 import { ContatosRelacionados } from '@/components/contacts/contatos-relacionados';
 import { useContatosRelacionados } from '@/hooks/use-contatos-relacionados';
+import { AbaAtlas } from '@/components/inbox/painel/aba-atlas';
+import { AbrirNoAtlas } from '@/components/inbox/abrir-no-atlas';
+import { useAtlasDoContato } from '@/hooks/use-atlas-do-contato';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -111,6 +115,8 @@ export function ContactDetailView({
   // Contatos relacionados (1069) — a MESMA aba do painel da conversa. Aqui o
   // nome vira link para a conversa na caixa de entrada.
   const relacionados = useContatosRelacionados(open ? contactId : null);
+  // O Atlas (Fase 2) — a MESMA aba e o mesmo botão do painel da conversa.
+  const atlas = useAtlasDoContato(open ? contactId : null);
 
   // Send template — lets the business initiate (or re-open) a conversation
   // with this contact by sending an approved template. The send route
@@ -734,6 +740,8 @@ export function ContactDetailView({
                     className="h-8 w-44"
                   />
                 )}
+                {/* "Abrir no Atlas" (Fase 2): só com vínculo desta ficha. */}
+                <AbrirNoAtlas appUrl={atlas.dados?.vinculo?.appUrl} variante="botao" />
               </div>
             </SheetHeader>
 
@@ -832,6 +840,17 @@ export function ContactDetailView({
                 >
                   {t('tabs.related')}
                 </TabsTrigger>
+                {/* Atlas (Fase 2): só com o Atlas conectado (sinal da conta,
+                    guardado pelo hook). Aqui a fileira quebra linha, então a
+                    aba aparece a todos — o recorte pela largura é do painel. */}
+                {atlas.conectado !== false && (
+                  <TabsTrigger
+                    value="atlas"
+                    className="data-active:bg-muted data-active:text-primary text-muted-foreground"
+                  >
+                    {t('tabs.atlas')}
+                  </TabsTrigger>
+                )}
                 <TabsTrigger
                   value="history"
                   className="data-active:bg-muted data-active:text-primary text-muted-foreground"
@@ -977,10 +996,21 @@ export function ContactDetailView({
                             na outra. Queda para "Alguém da equipe" quando o
                             autor saiu da conta (`autor_nome` congelado). */}
                         <p className="text-foreground mb-1 text-[11px] font-semibold">
-                          {tNote('wrote', {
+                          {tNote(note.resposta_de ? 'replied' : 'wrote', {
                             autor: note.autor_nome || tNote('unknownAuthor'),
                           })}
                         </p>
+                        {/* Resposta a outra anotação (1075): a respondida
+                            citada, como no inbox. Responder fica no inbox,
+                            onde a anotação nasce na conversa. */}
+                        {note.resposta_de && (
+                          <CitacaoDaNota
+                            original={
+                              notes.find((n) => n.id === note.resposta_de) ?? null
+                            }
+                            className="text-foreground mb-1.5"
+                          />
+                        )}
                         <div className="flex items-start justify-between gap-2">
                           {/* Endereço clicável, como nas outras telas de
                               anotação (29/09/2026). `break-words`: um link
@@ -1176,6 +1206,22 @@ export function ContactDetailView({
                     accountId={accountId}
                     relacionados={relacionados}
                     podeEditar={podeEditar}
+                  />
+                ) : null}
+              </TabsContent>
+
+              {/* Atlas (Fase 2): o mesmo componente do painel da conversa. O
+                  MESMO `contactId` do hook; `key` com ele: o link colado é
+                  rascunho. */}
+              <TabsContent value="atlas" className="flex-1 overflow-y-auto px-4 py-3">
+                {contactId ? (
+                  <AbaAtlas
+                    key={contactId}
+                    contactId={contactId}
+                    dados={atlas.dados}
+                    carregando={atlas.carregando}
+                    falhou={atlas.falhou}
+                    recarregar={atlas.recarregar}
                   />
                 ) : null}
               </TabsContent>

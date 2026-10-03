@@ -25,11 +25,13 @@ import {
   RATE_LIMITS,
 } from '@/lib/rate-limit';
 import { podeNaTarefa, type AcaoDeTarefa } from '@/lib/tasks/permissoes';
+import { ehAtivaDaSerie } from '@/lib/tasks/recorrencia';
 import {
   ehDataValida,
   ehUuid,
   normalizarDescricao,
   normalizarHora,
+  normalizarRepeticao,
   normalizarTitulo,
 } from '@/lib/tasks/validar';
 import type { Task } from '@/types';
@@ -87,6 +89,7 @@ export async function PATCH(
       vence_em?: unknown;
       vence_as?: unknown;
       responsavel_user_id?: unknown;
+      repetir_a_cada_dias?: unknown;
     } | null;
     if (!body || !ehPedido(body.acao)) {
       return NextResponse.json({ error: 'acao is required' }, { status: 400 });
@@ -119,6 +122,9 @@ export async function PATCH(
     // Preenchido só quando a edição troca o responsável — é o único caminho
     // deste arquivo que precisa tocar o sino.
     let avisarNovoResponsavel: string | null = null;
+    // Preenchido quando a edição muda a repetição de uma série que JÁ repete:
+    // vale para todas as tarefas dela, não só para esta linha (1074).
+    let repeticaoDaSerie: { serieId: string; valor: number | null } | null = null;
 
     switch (acao) {
       case 'marcar-lida':
@@ -245,6 +251,40 @@ export async function PATCH(
           }
         }
 
+        // ------------------------------------------------------------
+        // Repetição (1074)
+        // ------------------------------------------------------------
+        // ⚠️ MUDAR OU DESLIGAR VALE PARA A SÉRIE INTEIRA: é a ativa (a mais
+        // recente) que gera a próxima, e quem edita uma ocorrência antiga para
+        // "Não repete" espera que a repetição pare — mexer só nesta linha
+        // deixaria a ativa repetindo. Ligar numa tarefa que não repete faz
+        // dela a ativa de uma série NOVA, com o prazo dela como ponto de
+        // partida.
+        if (body.repetir_a_cada_dias !== undefined) {
+          const novo = normalizarRepeticao(body.repetir_a_cada_dias);
+          if (novo === undefined) {
+            return NextResponse.json(
+              { error: 'repetir_a_cada_dias must be one of 1, 2, 5, 7, 15, 30' },
+              { status: 400 },
+            );
+          }
+          if (novo !== null && tarefa.tipo === 'resposta') {
+            return NextResponse.json({ error: 'a reply cannot repeat' }, { status: 400 });
+          }
+          // `?? null`: lida antes da 1074 aplicada, a coluna nem vem na linha —
+          // e `null !== undefined` gravaria a coluna que não existe (500).
+          const atual = tarefa.repetir_a_cada_dias ?? null;
+          if (novo !== atual) {
+            patch.repetir_a_cada_dias = novo;
+            if (atual === null) {
+              patch.serie_id = tarefa.id;
+              patch.proxima_gerada_em = null;
+            } else if (tarefa.serie_id) {
+              repeticaoDaSerie = { serieId: tarefa.serie_id, valor: novo };
+            }
+          }
+        }
+
         if (Object.keys(patch).length === 0) {
           return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
         }
@@ -253,6 +293,23 @@ export async function PATCH(
     }
 
     const admin = supabaseAdmin();
+
+    // A série ANTES da linha: falhando aqui, nada mudou; na ordem inversa, a
+    // linha diria "Não repete" com a ativa da série ainda repetindo. Só as que
+    // repetem: as que já pararam (de uma série religada depois) ficam paradas.
+    if (repeticaoDaSerie) {
+      const { error: erroSerie } = await admin
+        .from('cb_tasks')
+        .update({ repetir_a_cada_dias: repeticaoDaSerie.valor })
+        .eq('account_id', ctx.accountId)
+        .eq('serie_id', repeticaoDaSerie.serieId)
+        .not('repetir_a_cada_dias', 'is', null);
+      if (erroSerie) {
+        console.error('[PATCH /api/cb/tasks] série não atualizou:', erroSerie.message);
+        return NextResponse.json({ error: erroSerie.message }, { status: 500 });
+      }
+    }
+
     const { data: atualizada, error } = await admin
       .from('cb_tasks')
       .update(patch)
@@ -338,6 +395,23 @@ export async function DELETE(
     }
 
     const admin = supabaseAdmin();
+
+    // ⚠️ APAGAR A ATIVA ENCERRA A SÉRIE (1074): ela é o molde da próxima, e a
+    // anterior já foi carimbada — ninguém mais gera. A repetição sai também
+    // das irmãs ANTES de apagar, senão a etiqueta "Repete" ficaria nelas
+    // afirmando uma repetição que acabou. A tela avisa antes do clique.
+    if (ehAtivaDaSerie(tarefa) && tarefa.serie_id) {
+      const { error: erroSerie } = await admin
+        .from('cb_tasks')
+        .update({ repetir_a_cada_dias: null })
+        .eq('account_id', ctx.accountId)
+        .eq('serie_id', tarefa.serie_id);
+      if (erroSerie) {
+        console.error('[DELETE /api/cb/tasks] série não encerrou:', erroSerie.message);
+        return NextResponse.json({ error: erroSerie.message }, { status: 500 });
+      }
+    }
+
     // ⚠️ As tarefas que saíram desta NÃO são apagadas junto: a FK é
     // `ON DELETE SET NULL`, e o título da origem já está congelado em
     // `tarefa_pai_titulo`, então a derivada continua dizendo de onde veio.

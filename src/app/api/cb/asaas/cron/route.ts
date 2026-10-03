@@ -1,7 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 
 import { sincronizarAsaas } from "@/lib/asaas/sincronizar";
+import { rodarCicloDoAtlas } from "@/lib/atlas/situacoes";
 import { varrerRegua } from "@/lib/asaas/varrer-regua";
 import { origemPublica } from "@/lib/asaas/webhook";
 import { cuidarDoWebhook } from "@/lib/asaas/webhook-asaas";
@@ -26,6 +27,23 @@ import { supabaseAdmin } from "@/lib/automations/admin-client";
  * webhook (Fase 2) e a RÉGUA de cobrança (Fase 3, `varrerRegua`) — os dois
  * só dentro do orçamento; o que não coube roda no ciclo seguinte, dentro da
  * mesma janela de envio.
+ *
+ * ⚠️ Esta rota CARREGA também a leitura das situações do ATLAS
+ * (`rodarCicloDoAtlas`, Fase 2 de docs/PLANO-integracao-atlas.md): tirá-la
+ * do laço cala o Atlas junto, sem erro nenhum (o cartão Atlas mostra a data
+ * da última leitura). É esta rota, e não uma nova, porque é NOSSA, é a
+ * última do laço lento e já tem a cadência de ~15 min — rota nova no laço
+ * exigiria `docker stack deploy` à mão na VPS.
+ * O LUGAR é logo depois das duas saídas da autenticação, antes de qualquer
+ * outro `return` (a leitura das contas do Asaas que falha sai com 500 e não
+ * pode calar o Atlas), com pino em `route.test.ts`.
+ * A FORMA é de callback — `after(() => rodarCicloDoAtlas())`, nunca a
+ * promessa já começada (`after(rodarRedeDosTurnos())` do laço rápido): o
+ * ciclo do Atlas só COMEÇA depois que esta resposta sai, isto é, depois do
+ * laço do Asaas (até ~110 s), e corre durante o `sleep 900` do agendador,
+ * sem disputar com o `-m 120` do curl nem com a cota de ninguém. O `after`
+ * roda mesmo quando a resposta falha. O ciclo tem orçamento próprio
+ * (`ORCAMENTO_DO_CICLO_MS`, 60 s) e cadeado por conta, e nunca lança.
  */
 export const maxDuration = 120;
 
@@ -42,6 +60,9 @@ export async function GET(request: Request) {
   if (suppliedBuf.length !== expectedBuf.length || !timingSafeEqual(suppliedBuf, expectedBuf)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // A leitura do Atlas (ver o cabeçalho): depois da resposta, calada em erro.
+  after(() => rodarCicloDoAtlas());
 
   const admin = supabaseAdmin();
   const inicio = Date.now();

@@ -46,6 +46,7 @@ function decide(over: {
   created_at?: string;
   gravada_em?: string | null;
   canalDaMensagem?: string | null;
+  silenciadas?: string[];
 } = {}) {
   return silencioDoAviso({
     mensagem: {
@@ -57,6 +58,7 @@ function decide(over: {
     ctx: over.ctx ?? RESTRITO,
     userId: EU,
     quais: over.quais ?? "todas",
+    silenciadas: over.silenciadas ?? [],
     agoraMs: AGORA,
   });
 }
@@ -80,6 +82,24 @@ describe("lerPreferencia — parse, nunca `as`", () => {
     expect(lerPreferencia('{"quais":"minhas"}').quais).toBe("minhas");
     expect(lerPreferencia('{"mostrarTexto":false}').mostrarTexto).toBe(false);
     expect(lerPreferencia('{"mostrarTexto":0}').mostrarTexto).toBe(true);
+  });
+
+  it("silenciadas: só ids em texto; ausente ou torto vira nenhuma (todas avisam)", () => {
+    expect(PREFERENCIA_PADRAO.silenciadas).toEqual([]);
+    expect(lerPreferencia('{"ativo":true}').silenciadas).toEqual([]);
+    expect(lerPreferencia('{"silenciadas":"canal-a"}').silenciadas).toEqual([]);
+    expect(lerPreferencia('{"silenciadas":{"0":"canal-a"}}').silenciadas).toEqual([]);
+    expect(lerPreferencia('{"silenciadas":["canal-a",1,null,"",{"id":"x"},"canal-b"]}').silenciadas).toEqual([
+      "canal-a",
+      "canal-b",
+    ]);
+    // A preferência gravada antes da lista (sem a chave) continua igual.
+    expect(lerPreferencia('{"ativo":true,"quais":"minhas","mostrarTexto":false}')).toEqual({
+      ativo: true,
+      quais: "minhas",
+      mostrarTexto: false,
+      silenciadas: [],
+    });
   });
 
   it("a chave é POR PESSOA (a do original era global)", () => {
@@ -151,10 +171,10 @@ describe("silencioDoAviso — quem recebe o aviso (P2)", () => {
     expect(JANELA_DA_ATRIBUICAO_MS).toBe(LIMITE_DE_ATRASO_MS);
   });
 
-  it("só o \"não é sua\" espera a atribuição (perfil, grupo e antiga não mudam com ela)", () => {
+  it("só o \"não é sua\" espera a atribuição (perfil, grupo, conexão silenciada e antiga não mudam com ela)", () => {
     expect(esperaAtribuicao("nao_e_sua")).toBe(true);
     expect(esperaAtribuicao(null)).toBe(false);
-    for (const s of ["sem_caixa_de_entrada", "grupo", "fora_do_perfil", "antiga"] as const) {
+    for (const s of ["sem_caixa_de_entrada", "grupo", "fora_do_perfil", "conexao_silenciada", "antiga"] as const) {
       expect(esperaAtribuicao(s)).toBe(false);
     }
   });
@@ -181,6 +201,61 @@ describe("silencioDoAviso — quem recebe o aviso (P2)", () => {
 
   it("'todas': a de outra pessoa também avisa", () => {
     expect(decide({ quais: "todas", conversa: { assigned_agent_id: OUTRO } })).toBeNull();
+  });
+});
+
+describe("silencioDoAviso — \"Conexões que avisam\" (a escolha da pessoa, 02/10/2026)", () => {
+  it("a conexão desmarcada não avisa; as outras do perfil, sim", () => {
+    const sem = { ctx: DONO, silenciadas: ["canal-b"] };
+    expect(decide({ ...sem, conversa: { channel_id: "canal-b" } })).toBe("conexao_silenciada");
+    expect(decide({ ...sem, conversa: { channel_id: "canal-a" } })).toBeNull();
+  });
+
+  it("nada desmarcado = todas avisam (o padrão, e a preferência gravada antes da lista)", () => {
+    expect(decide({ ctx: DONO, conversa: { channel_id: "canal-b" }, silenciadas: [] })).toBeNull();
+  });
+
+  it("id que não existe mais (conexão apagada) não cala ninguém", () => {
+    expect(decide({ ctx: DONO, conversa: { channel_id: "canal-novo" }, silenciadas: ["canal-apagado"] })).toBeNull();
+  });
+
+  it("decide pelo MESMO canal do recorte do perfil: a solta segue a mensagem, a fixada fica com o dela", () => {
+    // Solta: o `follow` troca o canal depois do INSERT; vale o da mensagem.
+    expect(
+      decide({ ctx: DONO, conversa: { channel_id: "canal-a" }, canalDaMensagem: "canal-b", silenciadas: ["canal-b"] }),
+    ).toBe("conexao_silenciada");
+    expect(
+      decide({ ctx: DONO, conversa: { channel_id: "canal-b" }, canalDaMensagem: "canal-a", silenciadas: ["canal-b"] }),
+    ).toBeNull();
+    // Fixada: manda o canal dela, venha a mensagem por onde vier.
+    expect(
+      decide({
+        ctx: DONO,
+        conversa: { channel_id: "canal-a", channel_pinned: true },
+        canalDaMensagem: "canal-b",
+        silenciadas: ["canal-b"],
+      }),
+    ).toBeNull();
+  });
+
+  it("conversa sem canal nenhum passa (não se esconde por ignorância, como no perfil)", () => {
+    expect(decide({ ctx: DONO, conversa: { channel_id: null }, silenciadas: ["canal-a"] })).toBeNull();
+  });
+
+  it("grupo e fora do perfil continuam com o motivo deles", () => {
+    expect(decide({ conversa: { group_id: "g1" }, silenciadas: ["canal-a"] })).toBe("grupo");
+    expect(decide({ conversa: { channel_id: "canal-b" }, silenciadas: ["canal-b"] })).toBe("fora_do_perfil");
+  });
+
+  it("a desmarcada não ESPERA atribuição: nem a conversa atribuída a mim avisa", () => {
+    const s = decide({
+      ctx: DONO,
+      quais: "minhas",
+      conversa: { channel_id: "canal-b", assigned_agent_id: EU },
+      silenciadas: ["canal-b"],
+    });
+    expect(s).toBe("conexao_silenciada");
+    expect(esperaAtribuicao(s)).toBe(false);
   });
 });
 

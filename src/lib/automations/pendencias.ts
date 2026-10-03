@@ -32,6 +32,7 @@
 
 import type { ValidationIssue } from './validate'
 import { ehGatilhoDaRegua } from '@/lib/asaas/regua'
+import { GATILHO_DO_ATLAS } from './so-pelo-disparador'
 
 /** O mínimo da árvore do construtor que este módulo precisa. */
 export interface NoDaArvore<T> {
@@ -264,6 +265,19 @@ export const CODIGOS_DE_PENDENCIA = [
   'fixar_sem_conexao',
   'atlas_tipo_de_contrato_invalido',
   'atlas_campo_invalido',
+  // O nó "Atlas" (30/09/2026)
+  'atlas_situacao_invalida',
+  'atlas_atualizar_sem_campos',
+  'atlas_tarefa_sem_titulo',
+  'atlas_tarefa_prioridade_invalida',
+  'atlas_tarefa_prazo_invalido',
+  'atlas_transcricao_idade_invalida',
+  'atlas_transcricao_notas_invalido',
+  'atlas_transcricao_email_invalido',
+  'atlas_onboarding_sem_item',
+  'atlas_onboarding_item_com_variavel',
+  'atlas_onboarding_situacao_invalida',
+  'atlas_onboarding_sem_mudanca',
   'passo_desconhecido',
   // Gatilho
   'gatilho_sem_palavras',
@@ -275,6 +289,7 @@ export const CODIGOS_DE_PENDENCIA = [
   'gatilho_resposta_vazia',
   'gatilho_etapas_invalidas',
   'gatilho_parar_ao_sair_invalido',
+  'gatilho_nao_repetir_invalido',
   'gatilho_evento_invalido',
   'gatilho_reagendamento_invalido',
   'gatilho_webhook_invalido',
@@ -282,6 +297,13 @@ export const CODIGOS_DE_PENDENCIA = [
   'gatilho_hora_de_envio_invalida',
   'gatilho_dias_uteis_invalido',
   'gatilho_status_invalidos',
+  // Situação mudou no Atlas (1073)
+  'gatilho_atlas_sem_situacao',
+  'gatilho_atlas_situacao_invalida',
+  'gatilho_atlas_sem_funil',
+  'atlas_gatilho_com_criar_cliente',
+  'atlas_gatilho_com_atualizar_cliente',
+  'atlas_gatilho_aciona_outra',
   // Régua de cobrança do Asaas
   'regua_com_espera',
   'regua_aciona_outra',
@@ -293,6 +315,7 @@ export const CODIGOS_DE_PENDENCIA = [
   'acionar_automacao_desligada',
   'acionar_automacao_apagada',
   'acionar_automacao_da_regua',
+  'acionar_automacao_do_atlas',
   'iniciar_robo_desligado',
   'iniciar_robo_apagado',
 ] as const
@@ -381,6 +404,13 @@ export function avisosDaAutomacao<T extends NoComConfig<T>>(
             message:
               'a automação acionada é da régua de cobrança do Asaas, que só roda pela varredura: o passo falha e os seguintes não rodam',
             codigo: 'acionar_automacao_da_regua',
+          })
+        } else if (alvo && alvo.trigger_type === GATILHO_DO_ATLAS) {
+          avisos.push({
+            path: `${path}.automation_id`,
+            message:
+              'a automação acionada é do gatilho "Situação mudou no Atlas", que só roda pela leitura do Atlas: o passo falha e os seguintes não rodam',
+            codigo: 'acionar_automacao_do_atlas',
           })
         } else if (alvo && alvo.is_active !== true) {
           avisos.push({

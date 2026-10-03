@@ -14,7 +14,8 @@ import { podeVerTela } from "@/lib/perfis/visibilidade";
 //   o admin, e é ele quem recebe o aviso);
 // - grupo fica de fora (mensagem de grupo é conversa da equipe inteira, e um
 //   grupo movimentado enterraria o aviso de cliente);
-// - a pessoa desliga e CONFIGURA: quais conversas e se o texto aparece.
+// - a pessoa desliga e CONFIGURA: quais conversas, quais conexões (02/10/2026)
+//   e se o texto aparece.
 //
 // E um recorte que o original não precisa: mensagem ANTIGA gravada agora
 // (a carga do histórico da Kommo, a fala recuperada horas depois pela 1010)
@@ -36,12 +37,21 @@ export interface PreferenciaDeAviso {
   quais: QuaisConversas;
   /** Desligado, o aviso diz só QUEM escreveu (tela à vista de outras pessoas). */
   mostrarTexto: boolean;
+  /**
+   * As conexões DESMARCADAS em "Conexões que avisam" (pedido do operador,
+   * 02/10/2026). ⚠️ Guarda o que NÃO avisa, nunca o que avisa: a conexão nova
+   * já nasce avisando, e a que foi apagada ou saiu do perfil não cala
+   * ninguém. Com a lista do que avisa, quem marcou só o número que depois foi
+   * trocado ficaria sem aviso nenhum, sem saber.
+   */
+  silenciadas: string[];
 }
 
 export const PREFERENCIA_PADRAO: PreferenciaDeAviso = {
   ativo: false,
   quais: "todas",
   mostrarTexto: true,
+  silenciadas: [],
 };
 
 /**
@@ -82,6 +92,9 @@ export function lerPreferencia(texto: string | null): PreferenciaDeAviso {
       : PREFERENCIA_PADRAO.quais,
     mostrarTexto:
       typeof o.mostrarTexto === "boolean" ? o.mostrarTexto : PREFERENCIA_PADRAO.mostrarTexto,
+    silenciadas: Array.isArray(o.silenciadas)
+      ? o.silenciadas.filter((id): id is string => typeof id === "string" && id !== "")
+      : PREFERENCIA_PADRAO.silenciadas,
   };
 }
 
@@ -129,6 +142,7 @@ export type SilencioDoAviso =
   | "sem_caixa_de_entrada"
   | "grupo"
   | "fora_do_perfil"
+  | "conexao_silenciada"
   | "nao_e_sua"
   | "antiga";
 
@@ -144,9 +158,11 @@ export function silencioDoAviso(args: {
   ctx: ContextoDeAcesso;
   userId: string;
   quais: QuaisConversas;
+  /** As conexões que a pessoa desmarcou (`PreferenciaDeAviso.silenciadas`). */
+  silenciadas: readonly string[];
   agoraMs: number;
 }): SilencioDoAviso | null {
-  const { mensagem, conversa, ctx, userId, quais, agoraMs } = args;
+  const { mensagem, conversa, ctx, userId, quais, silenciadas, agoraMs } = args;
 
   // O clique leva à caixa de entrada: perfil sem ela cairia na TelaBloqueada.
   if (!podeVerTela(ctx, "inbox")) return "sem_caixa_de_entrada";
@@ -163,11 +179,15 @@ export function silencioDoAviso(args: {
       : (mensagem.channel_id ?? conversa.channel_id ?? null);
   const comCanal = { ...conversa, channel_id: canal };
   if (!conversaNoEscopo(ctx, comCanal as Conversation)) return "fora_do_perfil";
+  // A escolha da PESSOA dentro do perfil ("Conexões que avisam"), pelo MESMO
+  // canal do recorte de cima. Conversa sem canal nenhum passa, como no perfil.
+  if (canal !== null && silenciadas.includes(canal)) return "conexao_silenciada";
 
   // ⚠️ A ANTIGA vem antes do "não é sua": este vira espera pela atribuição
   // (a mensagem estaciona), e uma carga de histórico em conversas de outra
   // pessoa estacionaria uma mensagem por conversa sem nenhuma poder avisar
-  // (Codex, PR #289). Perfil, grupo e antiga são os silêncios definitivos.
+  // (Codex, PR #289). Perfil, grupo, conexão silenciada e antiga são os
+  // silêncios definitivos.
   const carimbo = Date.parse(mensagem.created_at);
   const gravada = mensagem.gravada_em ? Date.parse(mensagem.gravada_em) : NaN;
   const referencia = Number.isNaN(gravada) ? agoraMs : gravada;
@@ -185,8 +205,8 @@ export function silencioDoAviso(args: {
 
 /**
  * O silêncio pode virar aviso se a conversa for atribuída a quem recebe?
- * Só o "não é sua": perfil, grupo e mensagem antiga não mudam com a
- * atribuição.
+ * Só o "não é sua": perfil, grupo, conexão silenciada e mensagem antiga não
+ * mudam com a atribuição.
  */
 export function esperaAtribuicao(silencio: SilencioDoAviso | null): boolean {
   return silencio === "nao_e_sua";

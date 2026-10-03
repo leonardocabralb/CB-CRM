@@ -4,6 +4,7 @@ paths:
   - "src/app/globals.css"
   - "src/components/settings/copiar.tsx"
   - "src/hooks/use-theme*"
+  - "src/components/layout/popup-do-cabecalho*"
 ---
 
 # UI — regras
@@ -74,6 +75,19 @@ compositor no celular, em `.claude/rules/inbox-conversa.md`.
   acende a barra com UMA linha. Use `el.offsetHeight - el.clientHeight`
   (medido com `height: auto`), como `message-composer.tsx` — o único autosize
   do repo.
+
+### Popup preso ao cabeçalho abre SEMPRE para baixo
+
+- ⚠️ **Menu da conta, conexões e agendador: `collisionAvoidance={ABRE_PARA_BAIXO}`
+  e `max-h-[max(var(--available-height),16rem)]`**
+  (`src/components/layout/popup-do-cabecalho.ts`). No app instalado no iPhone
+  eles abriam para CIMA, cortados (relato de 02/10/2026; o Chrome do
+  computador não reproduz): o base-ui mediu a área visível errado. O PISO de
+  16rem impede o menu de encolher até sumir com a mesma medição; teto fixo
+  pela tela, não — a faixa do "Ver como" empurra o cabeçalho e o fim da lista
+  sairia da tela (Codex, PR #375). Os primitivos `dropdown-menu`/`popover`
+  repassam a prop (vieram do upstream). Popup novo no cabeçalho: pino
+  `popup-do-cabecalho.test.ts`.
 
 ### Tema e fontes
 

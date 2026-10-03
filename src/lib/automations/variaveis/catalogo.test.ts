@@ -4,6 +4,7 @@ import en from '../../../../messages/en.json';
 import ptBR from '../../../../messages/pt-BR.json';
 import { VARIAVEIS_DO_AGENDAMENTO } from '@/lib/calendly/variaveis';
 import { VARIAVEIS_DO_DOCUMENTO } from '@/lib/zapsign/variaveis';
+import { VARIAVEIS_DA_MUDANCA } from '@/lib/atlas/gatilho';
 
 import {
   classificarCodigo,
@@ -65,6 +66,7 @@ describe('classificarCodigo — a régua do motor', () => {
     expect(familiaDoEvento('calendly_booking')).toBe('calendly');
     expect(familiaDoEvento('zapsign_documento_assinado')).toBe('zapsign');
     expect(familiaDoEvento('webhook_received')).toBe('webhook');
+    expect(familiaDoEvento('atlas_situacao_mudou')).toBe('atlas');
     expect(familiaDoEvento('deal_stage_changed')).toBeNull();
     expect(gatilhoDeMensagem('keyword_match')).toBe(true);
     // Só a ingestão de mensagem o despacha, com `message_text` no contexto.
@@ -76,6 +78,8 @@ describe('classificarCodigo — a régua do motor', () => {
     expect(gatilhoTrazCard('deal_stage_changed')).toBe(true);
     expect(gatilhoTrazCard('deal_status_changed')).toBe(true);
     expect(gatilhoTrazCard('zapsign_documento_assinado')).toBe(true);
+    // A mudança de situação do Atlas leva SEMPRE o card do evento (1073).
+    expect(gatilhoTrazCard('atlas_situacao_mudou')).toBe(true);
     expect(gatilhoTrazCard('manual')).toBe(false);
     expect(gatilhoTrazCard('calendly_booking')).toBe(false);
   });
@@ -85,6 +89,7 @@ describe('as variáveis de evento vêm do código que as produz', () => {
   it('o Calendly e o ZapSign produzem exatamente as variáveis que os cartões do gatilho listam', () => {
     expect([...NOMES_DO_EVENTO.calendly].sort()).toEqual([...VARIAVEIS_DO_AGENDAMENTO].sort());
     expect([...NOMES_DO_EVENTO.zapsign].sort()).toEqual([...VARIAVEIS_DO_DOCUMENTO].sort());
+    expect([...NOMES_DO_EVENTO.atlas].sort()).toEqual([...VARIAVEIS_DA_MUDANCA].sort());
   });
 
   it('o Asaas tem as variáveis da régua', () => {
@@ -113,7 +118,7 @@ describe('nomes e legendas nos dois dicionários (chave montada)', () => {
     });
 
     it(`${idioma}: todo grupo tem título`, () => {
-      const grupos = [...new Set(VARIAVEIS_FIXAS.map((v) => v.grupo)), 'campos', 'asaas', 'calendly', 'zapsign', 'webhook'];
+      const grupos = [...new Set(VARIAVEIS_FIXAS.map((v) => v.grupo)), 'campos', 'asaas', 'calendly', 'zapsign', 'atlas', 'webhook'];
       for (const g of grupos) {
         expect(typeof texto(arvore, `grupos.${g}`), `${idioma} grupos.${g}`).toBe('string');
       }

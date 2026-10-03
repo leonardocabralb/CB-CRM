@@ -9,7 +9,8 @@
 // ============================================================
 
 import { requireApiKey } from '@/lib/auth/api-context';
-import { ok, fail, toApiErrorResponse } from '@/lib/api/v1/respond';
+import { ok, fail, badRequest, toApiErrorResponse } from '@/lib/api/v1/respond';
+import { ehUuid } from '@/lib/tasks/validar';
 
 export async function GET(
   request: Request,
@@ -18,6 +19,8 @@ export async function GET(
   try {
     const ctx = await requireApiKey(request, 'broadcasts:send');
     const { id } = await params;
+    // NOSSO: id malformado é 400 (o 22P02 do PostgREST saía 500).
+    if (!ehUuid(id)) throw badRequest("'id' must be a UUID");
 
     const { data, error } = await ctx.supabase
       .from('broadcasts')

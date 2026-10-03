@@ -25,6 +25,10 @@ import type {
   SetAiStepConfig,
   PinConversationChannelStepConfig,
   AtlasCriarClienteStepConfig,
+  AtlasAtualizarClienteStepConfig,
+  AtlasCriarTarefaStepConfig,
+  AtlasEnviarTranscricaoStepConfig,
+  AtlasAtualizarOnboardingStepConfig,
   SendMediaStepConfig,
   SendToNumberStepConfig,
   CalendlyTriggerConfig,
@@ -39,6 +43,8 @@ import { resolveEngineChannelPreferring } from '@/lib/cb-channels/engine-send';
 import { ehWhatsApp } from '@/lib/cb-channels/transporte';
 import { alvoDeEnvio } from '@/lib/whatsapp/alvo-de-envio';
 import { ehGatilhoDaRegua, PASSOS_QUE_FALAM_COM_O_CONTATO } from '@/lib/asaas/regua';
+import { GATILHO_DO_ATLAS, soRodaPeloDisparador } from './so-pelo-disparador';
+import { rodouNoPrazo } from './nao-repetir';
 
 /**
  * Os passos que calam o agente de IA quando rodam por causa da mensagem do
@@ -135,6 +141,23 @@ import { campoAtendeACondicao, ehIdDeCampo, operadorDaCondicao } from './condica
 import { avaliarHoraDoDia, esperaPeloHorario } from './hora-do-dia';
 import { criarOuReativarNoAtlas, detalheDoResultado } from '@/lib/atlas/criar-cliente';
 import { TIPOS_DE_CONTRATO, type TipoDeContrato } from '@/lib/atlas/formatar';
+import {
+  atualizarClienteNoAtlas,
+  atualizarOnboardingNoAtlas,
+  criarTarefaNoAtlas,
+  enviarTranscricaoAoAtlas,
+  type FontesDoAtualizar,
+} from '@/lib/atlas/acoes';
+import {
+  IDADE_MAXIMA_DA_TRANSCRICAO_H,
+  IDADE_PADRAO_DA_TRANSCRICAO_H,
+  PRAZO_MAXIMO_DA_TAREFA,
+  PRIORIDADES_DA_TAREFA,
+  SITUACOES_DO_ONBOARDING,
+  SITUACOES_ESCREVIVEIS,
+  TIPO_TEXTO,
+  type SituacaoDoOnboarding,
+} from '@/lib/atlas/passos-do-atlas';
 
 /** O motivo do `send_to_number` recusado, na frase que o registro mostra. */
 const POR_QUE_O_NUMERO_NAO_SERVE: Record<MotivoDoTelefone, string> = {
@@ -264,7 +287,7 @@ export interface DispatchInput {
 export interface ResultadoDoDisparo {
   /** Automações ativas deste gatilho na conta. */
   candidatas: number;
-  /** Barradas por conexão, etapa ou pela config do gatilho. */
+  /** Barradas por conexão, etapa, pela config do gatilho ou pelo prazo de "não repetir". */
   foraDoEscopo: number;
   /** Chegaram a rodar (têm linha em `automation_logs`). */
   executadas: number;
@@ -452,6 +475,17 @@ export async function dispararAutomacoes(
           r.comFalha += 1;
           continue;
         }
+      }
+      // "Não repetir para o mesmo contato por N horas" (`nao-repetir.ts`):
+      // o último recorte, porque é o único que custa uma consulta a cada
+      // mensagem. Dentro do prazo — ou com a leitura falhando — sai como
+      // "fora do escopo", sem registro: era a linha "parou numa condição" a
+      // cada mensagem que isto existe para acabar.
+      if (
+        (await rodouNoPrazo({ db, automation, contactId: input.contactId })) !== 'livre'
+      ) {
+        r.foraDoEscopo += 1;
+        continue;
       }
       if (input.antesDeExecutar && !preparou) {
         preparou = true;
@@ -799,10 +833,15 @@ export async function runAutomationById(args: {
   // pagamento, trava o marco e monta as `{{vars.*}}`. Por aqui — o botão
   // "Executar automação" e o passo `run_automation` — ela sairia com "Olá, !
   // Consta em aberto:" e sem trava, para quem talvez já pagou.
-  if (ehGatilhoDaRegua(alvo.trigger_type)) {
+  // NOSSO (1073): a "Situação mudou no Atlas" também — sem o card do evento,
+  // `negocioAlvo` moveria o aberto mais recente, de qualquer funil.
+  if (soRodaPeloDisparador(alvo.trigger_type)) {
     return {
       ok: false,
-      detail: 'a régua de cobrança do Asaas só roda pela varredura do Asaas',
+      detail:
+        alvo.trigger_type === GATILHO_DO_ATLAS
+          ? 'a automação "Situação mudou no Atlas" só roda pela leitura do Atlas'
+          : 'a régua de cobrança do Asaas só roda pela varredura do Asaas',
     };
   }
 
@@ -2604,6 +2643,212 @@ async function runStep(
     }
 
     // ------------------------------------------------------------
+    // O nó "Atlas" (30/09/2026): as outras quatro ações de escrita da API
+    // do Atlas. O I/O (conexão, vínculo, lixeira, permissão opcional, motivo)
+    // mora em `@/lib/atlas/acoes`; aqui só se junta a entrada.
+    //
+    // ⚠️ Fora de PASSOS_DE_ENVIO, como o "Criar cliente": a escrita pode ter
+    // acontecido mesmo com tempo esgotado. Não criam conversa, não reabrem,
+    // não mexem no card. Sem registro (`logId`) não há chave de idempotência:
+    // a prévia diz o que faria, e fora dela o passo FALHA.
+    // ⚠️ Leitura do CRM em modo `estrito` (`interpolarParaOAtlas` e as
+    // leituras do "Atualizar"): o vazio de uma leitura que falhou viraria
+    // dado gravado no Atlas ("Preparar a pasta de ").
+    // ------------------------------------------------------------
+    case 'atlas_atualizar_cliente': {
+      const cfg = step.step_config as AtlasAtualizarClienteStepConfig;
+      if (!args.contactId)
+        throw new Error('atualizar cliente no Atlas: a execução não tem um contato');
+      const situacao = cfg.situacao ?? null;
+      if (situacao !== null && !(SITUACOES_ESCREVIVEIS as readonly string[]).includes(situacao))
+        throw new Error('atualizar cliente no Atlas: situação desconhecida');
+      const tipo = cfg.tipo_de_contrato ?? null;
+      if (tipo !== null && !(TIPOS_DE_CONTRATO as readonly string[]).includes(tipo))
+        throw new Error('atualizar cliente no Atlas: tipo de contrato desconhecido');
+      const chave = (k: unknown) => (typeof k === 'string' ? k.trim() : '');
+      const datas = {
+        primeiroContato: chave(cfg.campo_primeiro_contato),
+        proposta: chave(cfg.campo_proposta),
+        fechamento: chave(cfg.campo_fechamento),
+      };
+      const documento = chave(cfg.campo_documento);
+      const querValor = cfg.valor_do_card === true;
+      const querLink = cfg.link_da_conversa === true;
+      const querTelefone = cfg.telefone === true;
+      const querEmail = cfg.email === true;
+      const querFicha =
+        querLink || querTelefone || querEmail || !!documento || Object.values(datas).some(Boolean);
+
+      if (!args.logId) {
+        if (args.triggerEvent === 'previa') {
+          return 'prévia: atualizaria o cliente ligado à ficha no Atlas — nada foi enviado';
+        }
+        throw new Error(
+          'atualizar cliente no Atlas: a execução não tem registro (sem chave de idempotência); nada foi enviado ao Atlas'
+        );
+      }
+
+      let dados: DadosDoContato | null = null;
+      let negocio: DadosDoNegocio | null = null;
+      try {
+        [dados, negocio] = await Promise.all([
+          querFicha ? carregarDadosDoContato(args, { estrito: true }) : Promise.resolve(null),
+          querValor ? carregarNegocio(args, { estrito: true }) : Promise.resolve(null),
+        ]);
+      } catch (err) {
+        console.error('[automations] atlas_atualizar_cliente: leitura do CRM falhou', err);
+        throw new Error(
+          'atualizar cliente no Atlas: a leitura dos dados do cliente no CRM falhou; nada foi enviado ao Atlas'
+        );
+      }
+      if (querFicha && !dados?.contato)
+        throw new Error('atualizar cliente no Atlas: a ficha do cliente não foi encontrada nesta conta');
+
+      // ⚠️ Campo ESCOLHIDO que sumiu do catálogo (apagado, ou mudou de tipo:
+      // data ≠ `datetime`, documento ≠ texto) FALHA o passo, como no "Criar".
+      const deData = [...new Set(Object.values(datas).filter(Boolean))];
+      const escolhidos = [...new Set([...deData, ...(documento ? [documento] : [])])];
+      if (escolhidos.length > 0) {
+        const { data: defs, error: erroDoCatalogo } = await db
+          .from('custom_fields')
+          .select('field_key, field_type')
+          .eq('account_id', args.automation.account_id)
+          .in('field_key', escolhidos);
+        if (erroDoCatalogo)
+          throw new Error('atualizar cliente no Atlas: a leitura dos campos da ficha falhou; nada foi enviado ao Atlas');
+        const tipoDe = new Map(
+          ((defs ?? []) as { field_key: string; field_type: string }[]).map((d) => [d.field_key, d.field_type])
+        );
+        const dataSumida = deData.find((k) => tipoDe.get(k) !== TIPO_DATA);
+        if (dataSumida)
+          throw new Error(
+            `atualizar cliente no Atlas: o campo de data "${dataSumida}" escolhido no passo não existe mais nesta conta (ou não é de data); ajuste o passo — nada foi enviado ao Atlas`
+          );
+        if (documento && tipoDe.get(documento) !== TIPO_TEXTO)
+          throw new Error(
+            `atualizar cliente no Atlas: o campo do documento "${documento}" escolhido no passo não existe mais nesta conta (ou não é de texto); ajuste o passo — nada foi enviado ao Atlas`
+          );
+      }
+
+      const cru = (k: string): string | null => (dados?.camposCru[k] ?? '') || null;
+      const fontes: FontesDoAtualizar = {
+        situacao,
+        tipoDeContrato: tipo as TipoDeContrato | null,
+        ...(querValor ? { valorDoCard: negocio?.value ?? null } : {}),
+        ...(datas.primeiroContato ? { primeiroContato: cru(datas.primeiroContato) } : {}),
+        ...(datas.proposta ? { proposta: cru(datas.proposta) } : {}),
+        ...(datas.fechamento ? { fechamento: cru(datas.fechamento) } : {}),
+        ...(querLink
+          ? { linkDaConversa: dados?.conversationId ? linkDoCrm(urlDoInbox({ c: dados.conversationId })) : null }
+          : {}),
+        ...(querTelefone ? { telefone: dados?.contato?.phone || null } : {}),
+        ...(querEmail ? { email: dados?.contato?.email || null } : {}),
+        ...(documento ? { documento: cru(documento) } : {}),
+      };
+      return atualizarClienteNoAtlas(db, {
+        accountId: args.automation.account_id,
+        contactId: args.contactId,
+        chaveDeIdempotencia: `${args.logId}:${step.id}`,
+        fontes,
+      });
+    }
+
+    case 'atlas_criar_tarefa': {
+      const cfg = step.step_config as AtlasCriarTarefaStepConfig;
+      if (!args.contactId)
+        throw new Error('criar tarefa no Atlas: a execução não tem um contato');
+      const prioridade = cfg.prioridade ?? 'normal';
+      if (!(PRIORIDADES_DA_TAREFA as readonly string[]).includes(prioridade))
+        throw new Error('criar tarefa no Atlas: prioridade desconhecida');
+      const prazo = cfg.prazo_em_dias ?? null;
+      if (prazo !== null && !(Number.isInteger(prazo) && prazo >= 0 && prazo <= PRAZO_MAXIMO_DA_TAREFA))
+        throw new Error('criar tarefa no Atlas: prazo inválido');
+      if (!args.logId) {
+        if (args.triggerEvent === 'previa') return 'prévia: criaria uma tarefa no Atlas — nada foi enviado';
+        throw new Error(
+          'criar tarefa no Atlas: a execução não tem registro (sem chave de idempotência); nada foi enviado ao Atlas'
+        );
+      }
+      const [titulo, descricao] = await interpolarParaOAtlas(
+        [cfg.titulo ?? '', cfg.descricao ?? ''],
+        args,
+        'criar tarefa no Atlas'
+      );
+      return criarTarefaNoAtlas(db, {
+        accountId: args.automation.account_id,
+        contactId: args.contactId,
+        chaveDeIdempotencia: `${args.logId}:${step.id}`,
+        titulo,
+        descricao,
+        prioridade: prioridade as 'normal' | 'urgent',
+        prazoEmDias: prazo,
+        nomeDaAutomacao: args.automation.name ?? '',
+        agora: new Date(),
+      });
+    }
+
+    case 'atlas_enviar_transcricao': {
+      const cfg = step.step_config as AtlasEnviarTranscricaoStepConfig;
+      if (!args.contactId)
+        throw new Error('enviar transcrição ao Atlas: a execução não tem um contato');
+      const horas = cfg.idade_maxima_horas ?? IDADE_PADRAO_DA_TRANSCRICAO_H;
+      if (!(Number.isInteger(horas) && horas >= 1 && horas <= IDADE_MAXIMA_DA_TRANSCRICAO_H))
+        throw new Error('enviar transcrição ao Atlas: janela da transcrição inválida');
+      if (!args.logId) {
+        if (args.triggerEvent === 'previa') {
+          return `prévia: enviaria ao Atlas a transcrição mais recente das últimas ${horas} h — nada foi enviado`;
+        }
+        throw new Error(
+          'enviar transcrição ao Atlas: a execução não tem registro (sem chave de idempotência); nada foi enviado ao Atlas'
+        );
+      }
+      const [notas] = await interpolarParaOAtlas([cfg.notas ?? ''], args, 'enviar transcrição ao Atlas');
+      return enviarTranscricaoAoAtlas(db, {
+        accountId: args.automation.account_id,
+        contactId: args.contactId,
+        chaveDeIdempotencia: `${args.logId}:${step.id}`,
+        idadeMaximaHoras: horas,
+        notasDoOperador: notas,
+        // Booleano de JSONB liga só com `true` (CLAUDE.md 8c).
+        incluirNotasDaReuniao: cfg.incluir_notas_da_reuniao === true,
+        aceitarVinculoPorEmail: cfg.aceitar_vinculo_por_email === true,
+        agora: new Date(),
+      });
+    }
+
+    case 'atlas_atualizar_onboarding': {
+      const cfg = step.step_config as AtlasAtualizarOnboardingStepConfig;
+      if (!args.contactId)
+        throw new Error('atualizar onboarding no Atlas: a execução não tem um contato');
+      const item = typeof cfg.item === 'string' ? cfg.item.trim() : '';
+      if (!item) throw new Error('atualizar onboarding no Atlas: o passo não diz qual item do checklist');
+      const situacao = cfg.situacao ?? null;
+      if (situacao !== null && !(SITUACOES_DO_ONBOARDING as readonly string[]).includes(situacao))
+        throw new Error('atualizar onboarding no Atlas: situação do item desconhecida');
+      if (!args.logId) {
+        if (args.triggerEvent === 'previa') {
+          return `prévia: atualizaria o item "${item}" do onboarding no Atlas — nada foi enviado`;
+        }
+        throw new Error(
+          'atualizar onboarding no Atlas: a execução não tem registro (sem chave de idempotência); nada foi enviado ao Atlas'
+        );
+      }
+      const [observacao] = await interpolarParaOAtlas(
+        [typeof cfg.observacao === 'string' ? cfg.observacao : ''],
+        args,
+        'atualizar onboarding no Atlas'
+      );
+      return atualizarOnboardingNoAtlas(db, {
+        accountId: args.automation.account_id,
+        contactId: args.contactId,
+        chaveDeIdempotencia: `${args.logId}:${step.id}`,
+        item,
+        situacao: situacao as SituacaoDoOnboarding | null,
+        observacao,
+      });
+    }
+
+    // ------------------------------------------------------------
     // Abrir tarefa para a equipe.
     //
     // ⚠️ ESPELHA `POST /api/cb/tasks`, e as três razões daquela rota valem
@@ -3173,7 +3418,9 @@ export function triggerMatches(
   // lembrete por data — o "aconteceu?" é decidido pela varredura, fora do
   // motor, e o dispatch por tipo abriria o leque (a de 5 dias sairia junto
   // com a de 1). Disparo manual sem `automation_id` não roda nenhuma.
-  if (ehGatilhoDaRegua(automation.trigger_type)) {
+  // NOSSO (1073): a "Situação mudou no Atlas" também — a leitura casa a
+  // situação e escolhe o card POR automação (cada uma nomeia os SEUS funis).
+  if (soRodaPeloDisparador(automation.trigger_type)) {
     return ctx?.automation_id === automation.id;
   }
 
@@ -3773,6 +4020,39 @@ function linkDoCrm(caminho: string): string {
 const RE_VARIAVEL = /\{\{\s*([\w.]+)\s*\}\}/g;
 const RE_CITA_CONTATO = /\{\{\s*(contact|conversation)\./;
 const RE_CITA_NEGOCIO = /\{\{\s*deal\./;
+
+/**
+ * O `interpolate` dos textos que o nó "Atlas" GRAVA noutro sistema (título e
+ * descrição da tarefa, notas da transcrição, observação do onboarding), em
+ * modo mensagem (são para gente) e ESTRITO: o `interpolate` comum transforma
+ * a leitura que falhou em vazio, e aqui o vazio iria ao Atlas ("Preparar a
+ * pasta de "). Lê o contato e o negócio UMA vez, e só se algum texto os cita;
+ * falhou = o passo FALHA sem chamar o Atlas.
+ */
+async function interpolarParaOAtlas(
+  textos: string[],
+  args: ExecuteArgs,
+  passo: string
+): Promise<string[]> {
+  const citaContato = textos.some((t) => RE_CITA_CONTATO.test(t));
+  const citaNegocio = textos.some((t) => RE_CITA_NEGOCIO.test(t));
+  let dados: DadosDoContato | null = null;
+  let negocio: DadosDoNegocio | null = null;
+  try {
+    [dados, negocio] = await Promise.all([
+      citaContato ? carregarDadosDoContato(args, { estrito: true }) : Promise.resolve(null),
+      citaNegocio ? carregarNegocio(args, { estrito: true }) : Promise.resolve(null),
+    ]);
+  } catch (err) {
+    console.error(`[automations] ${passo}: leitura do CRM falhou`, err);
+    throw new Error(`${passo}: a leitura dos dados do cliente no CRM falhou; nada foi enviado ao Atlas`);
+  }
+  if (citaContato && !dados?.contato)
+    throw new Error(`${passo}: a ficha do cliente não foi encontrada nesta conta`);
+  return textos.map((t) =>
+    t ? t.replace(RE_VARIAVEL, (_, key) => valorDaVariavel(String(key), args, dados, negocio, {})) : ''
+  );
+}
 
 export interface DadosDoNegocio {
   value: number | null;

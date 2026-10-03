@@ -14,8 +14,9 @@ import { PERMISSOES_CONHECIDAS } from "./atlas-card";
 //
 // A lista de códigos da tela (`CODIGOS_CONHECIDOS`) é FECHADA: código que a
 // conexão devolve e que não está nela cai no texto genérico. As listas são
-// COLHIDAS do código (os tipos `CodigoDoErroAtlas` e `CodigoDaConexao`),
-// nunca digitadas aqui.
+// COLHIDAS do código (os tipos `CodigoDoErroAtlas`, `CodigoDaConexao` e
+// `CodigoDaLeitura` — o erro da leitura das situações, 1072), nunca
+// digitadas aqui.
 // ============================================================
 
 const raiz = path.join(__dirname, "../../..");
@@ -32,6 +33,7 @@ const conhecidos = [...(doCartao.match(/CODIGOS_CONHECIDOS = \[([\s\S]*?)\] as c
 const emitidos = [
   ...literaisDoTipo(ler("src/lib/atlas/cliente.ts"), "CodigoDoErroAtlas"),
   ...literaisDoTipo(ler("src/lib/atlas/conexao.ts"), "CodigoDaConexao"),
+  ...literaisDoTipo(ler("src/lib/atlas/situacoes.ts"), "CodigoDaLeitura"),
 ];
 
 function dicionario(arquivo: string) {
@@ -42,6 +44,8 @@ describe("cartão do Atlas", () => {
   it("a colheita achou os códigos (senão o teste abaixo passaria vazio)", () => {
     expect(conhecidos.length).toBeGreaterThan(5);
     expect(emitidos.length).toBeGreaterThan(5);
+    expect(emitidos).toContain("sem_permissao_listar");
+    expect(emitidos).toContain("api_antiga");
   });
 
   it("CRÍTICO: todo código que a conexão devolve está na lista da tela", () => {
@@ -60,5 +64,13 @@ describe("cartão do Atlas", () => {
     it("toda permissão tem nome", () => {
       expect(PERMISSOES_CONHECIDAS.filter((p) => typeof a.permissao?.[p] !== "string")).toEqual([]);
     });
+  });
+});
+
+describe("mudanças de situação no cartão", () => {
+  it("a hora mostrada é a da MUDANÇA no Atlas (`desde`), nunca a da entrada na fila (`criadaEm`)", () => {
+    const semComentarios = doCartao.replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(/\/\/.*$/gm, "");
+    expect(semComentarios).toMatch(/quando\(m\.desde\)/);
+    expect(semComentarios).not.toMatch(/quando\(m\.criadaEm\)/);
   });
 });

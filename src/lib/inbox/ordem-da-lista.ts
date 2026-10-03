@@ -78,7 +78,9 @@ export function ordenarComoOBanco<T extends Ordenavel>(lista: readonly T[]): T[]
  * `last_message_at` nesses casos, então a tela também não.
  *
  * `aberta`: é a conversa que a pessoa está lendo agora — a não lida fica em
- * zero (a página zera no banco logo em seguida).
+ * zero (a página zera no banco logo em seguida). No modo anônimo a página
+ * passa `false` para a conversa aberta: ninguém a zera, e a lista conta como
+ * o banco (`conversaLida`, `.claude/rules/modo-anonimo.md`).
  */
 export function comMensagemNova<C extends Conversation>(
   conversa: C,

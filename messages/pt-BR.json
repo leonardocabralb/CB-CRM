@@ -77,11 +77,16 @@
     "settings": "Configurações",
     "openMenu": "Abrir menu",
     "openAccountMenu": "Abrir menu da conta",
+    "openAccountMenuAnonimo": "Abrir menu da conta (modo anônimo ligado)",
     "defaultUser": "Usuário",
     "defaultAvatar": "Avatar",
     "menuProfile": "Perfil",
     "menuSettings": "Configurações",
     "menuSignOut": "Sair",
+    "modoAnonimo": "Modo anônimo",
+    "modoAnonimoDica": "Abrir conversas não zera as não lidas nem mostra você na conversa. Responder zera.",
+    "modoAnonimoAtivo": "Anônimo",
+    "modoAnonimoFalhou": "Este navegador não deixou guardar o modo anônimo. Nada mudou.",
     "scheduled": "Mensagens agendadas",
     "flows": "Fluxos",
     "aiAgents": "Agentes de IA",
@@ -399,10 +404,14 @@
       "noteSaveError": "Não foi possível salvar a anotação.",
       "noteMentionHint": "Digite @ para mencionar um colega",
       "noteMentionFailed": "Anotação salva, mas não foi possível avisar quem você mencionou.",
+      "noteReplyFailed": "Resposta salva, mas não foi possível avisar quem escreveu na anotação.",
+      "noteReplyGone": "A anotação que você estava respondendo foi apagada.",
       "fromLibrary": "Do acervo",
       "acervoError": "Não foi possível preparar o arquivo do acervo.",
       "solteParaAnexar": "Solte aqui para anexar",
-      "arquivoNaoSuportado": "{n, plural, =1 {1 arquivo não é suportado pelo WhatsApp e ficou de fora} other {# arquivos não são suportados pelo WhatsApp e ficaram de fora}}. Aceita imagem (PNG, JPG, WebP), vídeo (MP4, 3GP), PDF, Word, Excel, PowerPoint e texto.",
+      "arquivoNaoSuportado": "{n, plural, =1 {1 arquivo não é suportado pelo WhatsApp e ficou de fora} other {# arquivos não são suportados pelo WhatsApp e ficaram de fora}}. Aceita imagem (PNG, JPG, WebP), vídeo (MP4, 3GP), PDF, Word, Excel, PowerPoint e texto. Página HTML, só nas conexões por QR code.",
+      "anexoSoNoQrCode": "Página HTML só sai pelas conexões por QR code, e esta conversa agora responde por outra. Tire o arquivo da fila ou volte para uma conexão por QR code.",
+      "arquivoNaoSuportadoQrCode":"{n, plural, =1 {1 arquivo não é suportado pelo WhatsApp e ficou de fora} other {# arquivos não são suportados pelo WhatsApp e ficaram de fora}}. Aceita imagem (PNG, JPG, WebP), vídeo (MP4, 3GP), PDF, Word, Excel, PowerPoint, texto e página HTML.",
       "tetoDeAnexos": "{n, plural, =1 {1 arquivo ficou de fora} other {# arquivos ficaram de fora}}: são no máximo {max} anexos por vez.",
       "removeAllAttachments": "Remover todos",
       "addCaptionFor": "Legenda de {arquivo}",
@@ -582,6 +591,7 @@
       "tabMeetings": "Reuniões",
       "tabBilling": "Cobranças",
       "tabRelated": "Relacionados",
+      "tabAtlas": "Atlas",
       "fieldSaved": "Salvo",
       "fieldSaveError": "Não foi possível salvar \"{campo}\" em {cliente}.",
       "avancar": {
@@ -613,12 +623,96 @@
       "vazioDica": "Fotos, documentos e áudios trocados aparecem aqui.",
       "verNaConversa": "Ver na conversa"
     },
+    "atlas": {
+      "titulo": "Cliente no Atlas",
+      "abrirNoAtlas": "Abrir no Atlas",
+      "erroCarregar": "Não foi possível carregar o vínculo com o Atlas.",
+      "tentarDeNovo": "Tentar de novo",
+      "naoConectado": "O Atlas não está conectado.",
+      "naoConectadoDica": "Um administrador conecta em Configurações → Integrações.",
+      "semVinculo": "Esta ficha não está ligada a um cliente do Atlas.",
+      "semVinculoDica": "A leitura das situações liga sozinha pelo link da conversa ou pelo telefone. Para ligar agora, cole o link da ficha do cliente no Atlas.",
+      "semVinculoPecaAoAdmin": "Para ligar à mão, peça a um administrador.",
+      "colarLink": "Link da ficha no Atlas",
+      "colarLinkPlaceholder": "https://…/#/clients/…",
+      "vincular": "Vincular",
+      "vinculando": "Vinculando…",
+      "vinculado": "Ficha ligada ao cliente do Atlas.",
+      "desvincular": "Desvincular",
+      "confirmarDesvincular": "Desvincular esta ficha do cliente do Atlas? Nada muda no Atlas, e a leitura e o passo “Criar cliente no Atlas” não voltam a ligá-la a este cliente sozinhos.",
+      "cancelar": "Cancelar",
+      "desvinculado": "Vínculo com o Atlas desfeito.",
+      "naLixeira": "O cadastro deste cliente está na lixeira do Atlas (visto em {quando}).",
+      "naLixeiraDica": "Restaure no Atlas (até 7 dias) e toque em “Conferir no Atlas”, ou desvincule. Enquanto isso, as ações “Criar cliente” e “Criar tarefa” do nó Atlas das automações param nesta ficha.",
+      "naLixeiraDicaPecaAoAdmin": "Restaurado no Atlas (até 7 dias), o CRM percebe na próxima leitura completa, quando um administrador conferir aqui ou quando outra ação do Atlas der certo neste cliente. Enquanto isso, as ações “Criar cliente” e “Criar tarefa” do nó Atlas das automações param nesta ficha.",
+      "conferirNoAtlas": "Conferir no Atlas",
+      "conferindo": "Conferindo…",
+      "foraDaLixeira": "O cliente voltou da lixeira do Atlas.",
+      "situacaoNaoLida": "Situação ainda não lida",
+      "situacaoOutra": "Outra situação ({situacao})",
+      "desde": "desde {dia}",
+      "desdeDesconhecido": "data da mudança desconhecida",
+      "origemOutra": "Vínculo de origem desconhecida",
+      "dadosDe": "Situação lida em {quando}.",
+      "leituraAntiga": "Situação lida em {quando} — a leitura do Atlas está atrasada.",
+      "leituraNunca": "A situação ainda não foi lida do Atlas.",
+      "erroGenerico": "Não foi possível concluir agora; tente de novo em instantes.",
+      "situacao": {
+        "ativo": "Ativo",
+        "importado": "Importado (aguardando cadastro)",
+        "finalizado": "Finalizado",
+        "rescindido": "Rescindido",
+        "inativo": "Inativo",
+        "suspenso": "Suspenso"
+      },
+      "origem": {
+        "criada": "Criado no Atlas pelo passo “Criar cliente no Atlas”",
+        "reativada": "Reativado no Atlas pelo passo “Criar cliente no Atlas”",
+        "encontrada": "Encontrado no Atlas pelo passo “Criar cliente no Atlas”",
+        "manual": "Ligado à mão",
+        "automatica": "Ligado sozinho pela leitura"
+      },
+      "casouPor": {
+        "chat_link": "pelo link da conversa",
+        "telefone": "pelo telefone"
+      },
+      "erro": {
+        "link_invalido": "O texto colado não é o link de uma ficha do Atlas. Copie o endereço da ficha do cliente (…/#/clients/…).",
+        "contato_nao_encontrado": "Esta ficha não foi encontrada.",
+        "nao_conectado": "O Atlas não está conectado (Configurações → Integrações).",
+        "outro_ambiente": "A conexão do Atlas guardada é de outro ambiente (teste × produção).",
+        "chave_ilegivel": "A chave do Atlas guardada não pôde ser lida; reconecte em Configurações → Integrações.",
+        "chave_invalida": "O Atlas recusou a chave; reconecte em Configurações → Integrações.",
+        "api_fora_do_plano": "O plano do escritório no Atlas não inclui a API.",
+        "sem_permissao": "A permissão Consultar Clientes está desligada no Atlas.",
+        "nao_encontrado": "Não achei este cliente no Atlas deste escritório (ou ele está na lixeira).",
+        "ainda_na_lixeira": "O cliente continua na lixeira do Atlas; restaure lá e confira de novo.",
+        "limite": "O Atlas pediu para esperar (limite de pedidos por minuto); tente de novo em instantes.",
+        "indisponivel": "O Atlas não respondeu; tente de novo em instantes.",
+        "ja_vinculado": "Esta ficha já está ligada a outro cliente do Atlas; desvincule antes.",
+        "ligado_a_outra_ficha": "Este cliente do Atlas já está ligado a outra ficha do CRM (provável ficha duplicada).",
+        "outro_escritorio": "Esta ficha está ligada a um cliente do escritório anterior do Atlas; apague esses vínculos no cartão Atlas de Configurações → Integrações.",
+        "sem_vinculo": "Esta ficha não está ligada a um cliente do Atlas.",
+        "db_error": "Não foi possível gravar; tente de novo."
+      }
+    },
     "situacaoDoCliente": {
       "cliente": "Cliente",
       "rotuloRescindido": "Rescindido",
       "rotuloFinalizado": "Finalizado",
-      "ondeRescindido": "Contrato rescindido — {funil}, etapa “{etapa}”.",
-      "ondeFinalizado": "Contrato finalizado — {funil}, etapa “{etapa}”.",
+      "rotuloSuspenso": "Suspenso",
+      "rotuloInativo": "Inativo",
+      "noAtlasRescindido": "Contrato rescindido no Atlas desde {desde}.",
+      "noAtlasRescindidoSemData": "Contrato rescindido no Atlas.",
+      "noAtlasFinalizado": "Contrato finalizado no Atlas desde {desde}.",
+      "noAtlasFinalizadoSemData": "Contrato finalizado no Atlas.",
+      "noAtlasSuspenso": "Cliente suspenso no Atlas desde {desde}.",
+      "noAtlasSuspensoSemData": "Cliente suspenso no Atlas.",
+      "noAtlasInativo": "Cliente inativo no Atlas desde {desde}.",
+      "noAtlasInativoSemData": "Cliente inativo no Atlas.",
+      "lidoNoAtlasEm": "Situação lida no Atlas em {quando}.",
+      "ondeRescindido": "Contrato rescindido no funil {funil}, etapa “{etapa}”.",
+      "ondeFinalizado": "Contrato finalizado no funil {funil}, etapa “{etapa}”.",
       "dica": "Confira o histórico antes de seguir o atendimento ou oferecer um novo serviço."
     },
     "noShow": {
@@ -627,6 +721,53 @@
       "faltouNaAgenda": "este cliente faltou à reunião de {dia}.",
       "semAvanco": "teve reunião em {dia} e não avançou no funil.",
       "proxima": "Nova reunião em {dia} às {hora}."
+    },
+    "atlasNegociacoes": {
+      "titulo": "Negociação no Atlas",
+      "atualizar": "Atualizar a negociação",
+      "tentarDeNovo": "Tentar de novo",
+      "semNegociacao": "Nenhum banco cadastrado para este cliente no Atlas.",
+      "limite": "O Atlas pediu para esperar {segundos} s antes de ler de novo.",
+      "limiteDoCrm": "Muitas leituras em pouco tempo; aguarde {segundos} s antes de ler de novo.",
+      "listaCortada": "A lista veio cortada pelo Atlas. No total: {bancos} bancos, {contratos} contratos e {propostas} propostas.",
+      "bancoSemNome": "Banco sem nome",
+      "dividaOriginal": "Dívida original {valor}",
+      "dividaAtualizada": "atualizada {valor}",
+      "contratos": "Contratos ({n})",
+      "propostas": "Propostas ({n})",
+      "semReferencia": "Contrato sem número",
+      "titular": "Titular: {nome}",
+      "judicializado": "Judicializado",
+      "quitadoEm": "quitado em {dia}",
+      "acordo": "Acordo: {valor} sobre {divida} (desconto de {desconto})",
+      "baseEDesconto": "Dívida base {base} · desconto {desconto}",
+      "semPermissaoDica": "Um administrador do Atlas liga a permissão “Ler negociações” da chave de API.",
+      "conexaoDica": "Um administrador confere o cartão do Atlas em Configurações → Integrações.",
+      "situacaoDoContrato": {
+        "ativo": "Ativo",
+        "quitado": "Quitado",
+        "outra": "Situação não reconhecida"
+      },
+      "situacaoDaProposta": {
+        "enviada": "Enviada",
+        "recebida": "Recebida",
+        "aceita": "Aceita",
+        "recusada": "Recusada",
+        "outra": "Situação não reconhecida"
+      },
+      "tipoDaProposta": {
+        "a_vista": "À vista",
+        "parcelado": "Parcelado",
+        "outra": "Outro tipo"
+      },
+      "erro": {
+        "sem_permissao": "A leitura das negociações está desligada no Atlas.",
+        "sem_permissao_consultar": "A permissão “Consultar clientes” está desligada no Atlas.",
+        "nao_encontrado": "O cliente não foi encontrado no Atlas (pode estar na lixeira).",
+        "sem_vinculo": "Esta ficha não está vinculada a um cliente do Atlas.",
+        "conexao": "A conexão com o Atlas não está funcionando.",
+        "falhou": "Não foi possível ler as negociações no Atlas."
+      }
     },
     "cobrancas": {
       "faixaTitulo": "Inadimplente no Asaas",
@@ -893,7 +1034,12 @@
       "expand": "Ver a anotação inteira",
       "collapse": "Recolher anotação",
       "pinError": "Não foi possível fixar a nota.",
-      "verNaConversa": "Ver na conversa"
+      "verNaConversa": "Ver na conversa",
+      "replied": "{autor} respondeu:",
+      "reply": "Responder",
+      "cancelReply": "Cancelar resposta",
+      "originalUnavailable": "Anotação indisponível",
+      "goToOriginal": "Ver a anotação respondida"
     },
     "scheduled": {
       "sectionTitle": "Agendadas",
@@ -1117,6 +1263,7 @@
         "tasks": "Tarefas",
         "billing": "Cobranças",
         "related": "Relacionados",
+        "atlas": "Atlas",
         "tags": "Etiquetas"
       },
       "unnamed": "Desconhecido",
@@ -1524,7 +1671,11 @@
         "send_to_number": "Avisar o número: {alvo}",
         "create_task": "Criar tarefa: {alvo}",
         "pin_conversation_channel": "Fixar a conversa num número",
-        "atlas_criar_cliente": "Criar o cliente no Atlas"
+        "atlas_criar_cliente": "Criar o cliente no Atlas",
+        "atlas_atualizar_cliente": "Atualizar o cliente no Atlas{situacao, select, ativo { (situação: Ativo)} importado { (situação: Importado)} finalizado { (situação: Finalizado)} rescindido { (situação: Rescindido)} inativo { (situação: Inativo)} suspenso { (situação: Suspenso)} other {}}",
+        "atlas_criar_tarefa": "Criar tarefa no Atlas: {alvo}",
+        "atlas_enviar_transcricao": "Enviar a transcrição da reunião ao Atlas",
+        "atlas_atualizar_onboarding": "Onboarding no Atlas: {alvo}"
       },
       "cancelar": "Cancelar",
       "salvar": "Salvar",
@@ -2073,7 +2224,11 @@
         "send_to_number": "Avisar um número",
         "create_task": "Criar tarefa",
         "pin_conversation_channel": "Fixar a conversa no número",
-        "atlas_criar_cliente": "Criar cliente no Atlas"
+        "atlas_criar_cliente": "Criar cliente no Atlas",
+        "atlas_atualizar_cliente": "Atualizar cliente no Atlas",
+        "atlas_criar_tarefa": "Criar tarefa no Atlas",
+        "atlas_enviar_transcricao": "Enviar transcrição ao Atlas",
+        "atlas_atualizar_onboarding": "Atualizar onboarding no Atlas"
       },
       "triggers": {
         "new_message_received": {
@@ -2131,6 +2286,10 @@
         "zapsign_documento_assinado": {
           "label": "Documento assinado (ZapSign)",
           "hint": "Quando um documento do ZapSign fica completo — todos assinaram (integração em Configurações → Integrações). O cliente é achado pelo negócio do documento (contrato gerado pelo CRM) ou, no link público do modelo, pelo telefone, e-mail ou CPF de quem assinou. Nenhum contato é criado. Para mover o card, use a condição \"Negócio está na etapa…\" antes do \"Mover card\"."
+        },
+        "atlas_situacao_mudou": {
+          "label": "Situação mudou no Atlas",
+          "hint": "Quando a leitura periódica do Atlas (Configurações → Integrações) vê que a situação de um cliente vinculado mudou — nunca na primeira leitura nem no vínculo novo. Escolha as situações e os funis: o card do cliente precisa estar num deles, senão nada roda e a mudança aparece no cartão Atlas. Só roda pela leitura: não aparece em “Executar automação” nem em “Acionar automação”."
         },
         "manual": {
           "label": "Manual (só pelo botão)",
@@ -2349,6 +2508,12 @@
         "campoDaFichaHelp": "Lê o valor na ficha do cliente na hora deste passo. “é” e “contém” não diferenciam maiúsculas e minúsculas; o acento conta. Se a leitura falhar, a condição responde “não” e o registro da execução diz que não conferiu."
       },
       "delete": "Excluir",
+      "naoRepetir": {
+        "label": "Não repetir para o mesmo contato por",
+        "unidade": "horas",
+        "placeholder": "sempre",
+        "help": "Depois que a automação roda para um contato, as próximas mensagens dele dentro deste prazo não a disparam de novo — e não aparecem no registro. O prazo conta do início da última execução, inclusive da que falhou. Em branco, roda a cada mensagem. Até 720 horas (30 dias). Executar à mão ignora o prazo."
+      },
       "stages": {
         "triggerLabel": "Entrou nesta etapa",
         "triggerHelpAll": "Sem etapa escolhida, vale para qualquer etapa.",
@@ -2485,7 +2650,91 @@
         "conexaoErro": "A conexão com o Atlas está com problema, e o passo pode falhar.",
         "conexaoNaoSei": "O passo usa a chave do Atlas conectada em Configurações → Integrações.",
         "abrirIntegracoes": "Abrir Integrações",
-        "ajuda": "Procura no Atlas antes: cria o cliente, reativa o cadastro rescindido, finalizado ou inativo, ou só vincula o que está em curso. Para sem mexer no Atlas quando há dúvida (mais de um cadastro, casamento só pelo e-mail ou pelo final do telefone, cadastro suspenso). Não repete sozinho."
+        "ajuda": "Procura no Atlas antes: cria o cliente, reativa o cadastro rescindido, finalizado ou inativo, ou só vincula o que está em curso. Para sem mexer no Atlas quando há dúvida (mais de um cadastro, casamento só pelo e-mail ou pelo final do telefone, cadastro suspenso). Não repete sozinho.",
+        "no": "Atlas",
+        "acaoLabel": "Ação",
+        "acao": {
+          "criarCliente": "Criar cliente",
+          "atualizarCliente": "Atualizar cliente",
+          "criarTarefa": "Criar tarefa",
+          "enviarTranscricao": "Enviar transcrição de reunião",
+          "atualizarOnboarding": "Atualizar item do onboarding"
+        },
+        "trocarAcaoConfirma": "Trocar a ação troca o que está configurado neste passo. Voltar para esta ação antes de sair da tela devolve a configuração dela; salvar com a outra ação a apaga. Continuar?",
+        "naoMudar": "— não mudar —",
+        "situacaoLabel": "Situação",
+        "situacaoHelp": "No Atlas, quem decide a situação é a equipe; mude aqui só se o escritório usa o CRM para isso. Ativo ou Importado não reabrem cadastro suspenso (o passo para). Uma automação do gatilho “Situação mudou no Atlas” não pode ter este passo.",
+        "valorDoCardLabel": "Valor do contrato = valor do card",
+        "valorDoCardHelp": "Sem card, ou card com valor 0: o valor no Atlas não muda.",
+        "datasHelp": "Campo vazio na ficha: a data no Atlas não muda (sem as reservas do “Criar cliente”).",
+        "linkLabel": "Link da conversa",
+        "telefoneLabel": "Telefone da ficha",
+        "emailLabel": "E-mail da ficha",
+        "documentoLabel": "Documento (CPF/CNPJ)",
+        "documentoHelp": "Um campo de texto da ficha com o CPF ou o CNPJ. Preenchido com outra coisa, o passo falha sem enviar nada.",
+        "campoDeTextoSumiu": "Campo apagado (ou que não é de texto)",
+        "atualizarAjuda": "Atualiza o cliente ligado a esta ficha (aba Atlas). Só vai o que foi escolhido e está preenchido na ficha: nada no Atlas é apagado. Sem a ficha ligada ao Atlas, o passo falha sem enviar nada. Não repete sozinho.",
+        "tarefaTituloLabel": "Título da tarefa",
+        "tarefaDescricaoLabel": "Descrição",
+        "prioridadeLabel": "Prioridade",
+        "prioridadeNormal": "Normal",
+        "prioridadeUrgente": "Urgente",
+        "prazoLabel": "Prazo (dias a partir de hoje)",
+        "semPrazoLabel": "Sem prazo",
+        "tarefaAjuda": "No Atlas, a tarefa vai para o administrador mais antigo do escritório (a API não escolhe responsável) e grava só o dia do prazo. Com a ficha ligada ao Atlas, ela é pedida com o cliente; sem, nasce sem cliente. Com o cadastro ligado marcado na lixeira do Atlas, o passo falha sem enviar: restaure lá e use “Conferir no Atlas” na aba Atlas. Rodar de novo cria outra tarefa.",
+        "transcricaoFonte": "Envia ao Diagnóstico do Atlas a transcrição da reunião mais recente deste cliente (do tl;dv ou colada na aba Reuniões), de reunião das últimas {horas} h. Se ela ainda estiver pendente, sem transcrição ou fora da janela, o passo falha — nunca manda outra reunião no lugar.",
+        "janelaLabel": "Janela (horas)",
+        "notasLabel": "Notas (opcional)",
+        "incluirNotasLabel": "Incluir as notas da reunião (resumo do tl;dv)",
+        "aceitarEmailLabel": "Aceitar reunião ligada pelo e-mail do convidado",
+        "aceitarEmailHelp": "O tl;dv liga a reunião à ficha pelo e-mail de quem foi convidado — o cônjuge com o mesmo e-mail casa igual. Desmarcado, só vai a reunião ligada à mão (ou colada na aba Reuniões).",
+        "transcricaoCopia": "A API não evita cópia: rodar de novo envia outra cópia ao Diagnóstico. Precisa da ficha ligada ao Atlas.",
+        "itemLabel": "Item do checklist",
+        "itemPlaceholder": "Ex.: Comprovante de residência",
+        "itemHelp": "O texto tem de ser igual ao do checklist de onboarding no Atlas (maiúsculas não contam). Sem campo inserido: o texto é o que identifica o item.",
+        "situacaoDoItemLabel": "Situação do item",
+        "observacaoLabel": "Observação (opcional)",
+        "onboarding": {
+          "situacao": {
+            "pending": "Pendente",
+            "done": "Feito",
+            "blocked": "Travado",
+            "skipped": "Não se aplica"
+          }
+        },
+        "nadaEscolhido": "Nada escolhido",
+        "transcricaoResumo": "A mais recente das últimas {horas} h",
+        "semTitulo": "Sem título",
+        "semItem": "Sem item",
+        "resumoValor": "Valor do card",
+        "resumoDatas": "Datas",
+        "resumoLink": "Link",
+        "resumoTelefone": "Telefone",
+        "resumoEmail": "E-mail",
+        "resumoDocumento": "Documento"
+      },
+      "atlasGatilho": {
+        "descricao": "Dispara quando a leitura periódica do Atlas (a cada ~15 min) vê que a situação de um cliente vinculado mudou. Nunca na primeira leitura nem num vínculo novo.",
+        "abrirIntegracoes": "Ver a conexão em Integrações",
+        "situacoesLabel": "Dispara quando a situação passa a ser",
+        "situacao": {
+          "ativo": "Ativo",
+          "importado": "Importado",
+          "finalizado": "Finalizado",
+          "rescindido": "Rescindido",
+          "inativo": "Inativo",
+          "suspenso": "Suspenso"
+        },
+        "situacoesAjuda": "“Em negociação” (o valor antigo) conta como Ativo. De Importado para Ativo é o cadastro inicial, não uma mudança: não dispara.",
+        "funisLabel": "O card do cliente precisa estar num destes funis",
+        "funisCarregando": "Carregando os funis…",
+        "funisFalhou": "Não foi possível carregar os funis.",
+        "funisVazio": "A conta não tem funis.",
+        "funisApagados": "{n, plural, one {# funil escolhido foi apagado} other {# funis escolhidos foram apagados}}",
+        "tirarApagados": "Tirar os apagados",
+        "funisAjuda": "O card é o ÚNICO do cliente nestes funis, em qualquer status (ganho também). Sem card neles — o ex-cliente cujo card está noutro funil — ou com mais de um, a automação não roda e a mudança aparece no cartão Atlas de Integrações. Para alcançar o ex-cliente que voltou e cujo card está no funil de vendas, marque também esse funil.",
+        "aviso": "Mova o card antes de qualquer “Aguardar”: a espera não confere a situação no Atlas de novo ao acordar. Confira na aba Automações do funil o que roda quando o card chega à etapa de destino.",
+        "variaveisTitulo": "Variáveis da mudança"
       },
       "asaas": {
         "diasLabel": "Dias de atraso (o marco)",
@@ -2514,6 +2763,7 @@
       "kindCondition": "Condição",
       "kindWait": "Espera",
       "kindAction": "Ação",
+      "integracaoAtlas": "Integração Atlas",
       "pendencias": {
         "titulo": "{count, plural, one {Para ligar, falta resolver # pendência} other {Para ligar, falta resolver # pendências}}",
         "atencao": "Atenção (não impede ligar)",
@@ -2594,6 +2844,7 @@
           "gatilho_resposta_vazia": "Apague as respostas em branco.",
           "gatilho_etapas_invalidas": "Escolha de novo as etapas do gatilho.",
           "gatilho_parar_ao_sair_invalido": "Marque ou desmarque de novo a opção “Interromper se o card sair desta etapa”.",
+          "gatilho_nao_repetir_invalido": "Escreva um número inteiro de horas, de 1 a 720, em “Não repetir para o mesmo contato por” — ou deixe em branco.",
           "gatilho_evento_invalido": "Escolha de novo o tipo de evento do Calendly.",
           "gatilho_reagendamento_invalido": "Marque ou desmarque de novo a opção “Ignorar reagendamentos”.",
           "gatilho_webhook_invalido": "Escolha de novo o webhook que dispara a automação.",
@@ -2601,6 +2852,11 @@
           "gatilho_hora_de_envio_invalida": "Escolha a hora de envio entre 08:00 e 17:00.",
           "gatilho_dias_uteis_invalido": "Marque ou desmarque de novo a opção “Só em dia útil”.",
           "gatilho_status_invalidos": "Escolha de novo os status do gatilho: ganho, perdido ou aberto.",
+          "gatilho_atlas_sem_situacao": "Marque ao menos uma situação do Atlas no gatilho.",
+          "gatilho_atlas_situacao_invalida": "O gatilho tem uma situação do Atlas desconhecida: marque as situações de novo.",
+          "gatilho_atlas_sem_funil": "Escolha ao menos um funil onde o card do cliente precisa estar.",
+          "atlas_gatilho_com_criar_cliente": "Uma automação disparada pela situação do Atlas não pode ter “Criar cliente no Atlas”: o Atlas manda na situação, e reativar por reflexo desfaria a decisão da equipe.",
+          "atlas_gatilho_aciona_outra": "Apague este passo: uma automação disparada pela situação do Atlas não pode acionar outra — a outra rodaria com este cliente e poderia reativá-lo no Atlas.",
           "regua_com_espera": "Apague este passo de espera: na régua de cobrança, cada marco é uma automação própria.",
           "regua_aciona_outra": "Apague este passo: a mensagem da régua de cobrança tem de sair por esta automação.",
           "regua_so_texto": "Troque este passo por uma mensagem de texto: a régua de cobrança sai por conexão de QR Code.",
@@ -2610,8 +2866,22 @@
           "acionar_automacao_desligada": "A automação escolhida está desligada: quando chegar aqui, o passo falha e os passos seguintes não rodam. Ligue-a ou escolha outra.",
           "acionar_automacao_apagada": "A automação escolhida foi apagada: quando chegar aqui, o passo falha e os passos seguintes não rodam. Escolha outra.",
           "acionar_automacao_da_regua": "A automação escolhida é da régua de cobrança do Asaas, que só roda pela varredura do Asaas: quando chegar aqui, o passo falha e os passos seguintes não rodam. Escolha outra.",
+          "acionar_automacao_do_atlas": "A automação escolhida é do gatilho “Situação mudou no Atlas”, que só roda pela leitura do Atlas: quando chegar aqui, o passo falha e os passos seguintes não rodam. Escolha outra.",
           "iniciar_robo_desligado": "O robô escolhido não está ativo: quando chegar aqui, o passo falha e os passos seguintes não rodam. Ative-o ou escolha outro.",
-          "iniciar_robo_apagado": "O robô escolhido foi apagado: quando chegar aqui, o passo falha e os passos seguintes não rodam. Escolha outro."
+          "iniciar_robo_apagado": "O robô escolhido foi apagado: quando chegar aqui, o passo falha e os passos seguintes não rodam. Escolha outro.",
+          "atlas_situacao_invalida": "Escolha de novo a situação do Atlas (ou “— não mudar —”).",
+          "atlas_atualizar_sem_campos": "Escolha ao menos um campo para atualizar no Atlas.",
+          "atlas_tarefa_sem_titulo": "Escreva o título da tarefa do Atlas.",
+          "atlas_tarefa_prioridade_invalida": "Escolha a prioridade: normal ou urgente.",
+          "atlas_tarefa_prazo_invalido": "O prazo é um número inteiro de dias, de 0 a 365 (ou sem prazo).",
+          "atlas_transcricao_idade_invalida": "A janela da transcrição é um número inteiro de horas, de 1 a 720.",
+          "atlas_transcricao_notas_invalido": "Marque de novo a caixa das notas da reunião.",
+          "atlas_transcricao_email_invalido": "Marque de novo a caixa da reunião ligada pelo e-mail.",
+          "atlas_onboarding_sem_item": "Escreva o item do checklist como está no Atlas.",
+          "atlas_onboarding_item_com_variavel": "O item do checklist não aceita campo inserido: escreva o texto do item.",
+          "atlas_onboarding_situacao_invalida": "Escolha de novo a situação do item (ou “— não mudar —”).",
+          "atlas_onboarding_sem_mudanca": "Escolha a situação do item ou escreva uma observação.",
+          "atlas_gatilho_com_atualizar_cliente": "Uma automação disparada pela situação do Atlas não pode ter “Atualizar cliente no Atlas”: o Atlas manda na situação, e atualizar por reflexo pode virar laço."
         }
       },
       "previa": {
@@ -2640,6 +2910,7 @@
         "asaas": "Cobrança do Asaas",
         "calendly": "Agendamento do Calendly",
         "zapsign": "Assinatura do ZapSign",
+        "atlas": "Mudança de situação no Atlas",
         "webhook": "Webhook recebido"
       },
       "fixas": {
@@ -2816,6 +3087,22 @@
         "zapsign_documento_token": {
           "rotulo": "Código do documento",
           "legenda": "O identificador do documento no ZapSign."
+        },
+        "atlas_situacao": {
+          "rotulo": "Situação nova",
+          "legenda": "A situação do cliente no Atlas depois da mudança (rescindido)."
+        },
+        "atlas_situacao_anterior": {
+          "rotulo": "Situação anterior",
+          "legenda": "A situação do cliente no Atlas antes da mudança (ativo)."
+        },
+        "atlas_situacao_em": {
+          "rotulo": "Data da mudança",
+          "legenda": "Quando a situação mudou no Atlas (30/09/2026 às 10:15h)."
+        },
+        "atlas_link": {
+          "rotulo": "Link da ficha no Atlas",
+          "legenda": "Abre a ficha do cliente no Atlas (quem abre precisa entrar no Atlas)."
         }
       },
       "resposta": {
@@ -4186,7 +4473,10 @@
         "permissao": {
           "read_client": "Consultar Clientes",
           "create_client": "Criar Clientes",
-          "update_client": "Atualizar Clientes"
+          "update_client": "Atualizar Clientes",
+          "create_task": "criar tarefas (create_task)",
+          "create_transcript": "criar transcrições (create_transcript)",
+          "update_onboarding": "atualizar o onboarding (update_onboarding)"
         },
         "motivo": {
           "chave_invalida": "o Atlas recusou a chave (confira se foi copiada inteira, ou gere outra)",
@@ -4208,9 +4498,52 @@
           "permissoes_faltando": "faltam permissões da API no Atlas",
           "resposta_inesperada": "o Atlas respondeu num formato inesperado (a API dele pode estar em atualização)",
           "outro_ambiente": "a conexão guardada é de outro ambiente do Atlas (teste × produção); este ambiente não a usa nem a troca. Desconecte no ambiente em que ela foi feita",
-          "chave_mal_colada": "a chave colada parece incompleta ou com espaço no meio; copie de novo, inteira"
+          "chave_mal_colada": "a chave colada parece incompleta ou com espaço no meio; copie de novo, inteira",
+          "sem_permissao_listar": "a permissão Listar Clientes está desligada no Atlas (a leitura das situações precisa dela; o passo “Criar cliente” não)",
+          "api_antiga": "a API do Atlas ainda não informa a data da mudança da situação (atualização pendente no Atlas)",
+          "em_curso": "uma leitura já está em curso; espere um instante",
+          "cadeado_perdido": "a leitura foi interrompida por outra (uma reconexão ou outro processo); tente de novo",
+          "ambiguo": "há mais de um item com o mesmo texto no checklist do cliente no Atlas",
+          "sem_admin": "o escritório no Atlas não tem administrador ativo para receber a tarefa",
+          "item_nao_encontrado": "o checklist do cliente no Atlas não tem o item pedido"
         },
-        "semMotivo": "não foi possível concluir agora; tente de novo em instantes"
+        "semMotivo": "não foi possível concluir agora; tente de novo em instantes",
+        "ambienteDeTeste": "Ambiente de teste",
+        "leituraTitulo": "Leitura das situações",
+        "leituraUltima": "Última leitura: {quando}.",
+        "leituraNunca": "As situações ainda não foram lidas do Atlas.",
+        "leituraAtrasada": "A leitura está atrasada (o agendador lê a cada ~15 minutos).",
+        "leituraErro": "A última leitura falhou: {motivo}.",
+        "leituraDica": "A cada ~15 minutos o CRM lê no Atlas a situação de cada cliente (ativo, rescindido, finalizado…) e liga sozinho a ficha ao cliente do Atlas pelo link da conversa, quando só um cadastro e só uma ficha casam. Pelo telefone completo, liga só na leitura completa diária, e só em escritório com até ~900 clientes. Para isso, ligue no Atlas a permissão Listar Clientes.",
+        "lerAgora": "Ler situações agora",
+        "lendo": "Lendo…",
+        "lidoOk": "Leitura feita: {clientes} clientes lidos, {vinculados} fichas vinculadas agora.",
+        "lidoParcial": "Leitura parcial: {clientes} clientes lidos, {vinculados} fichas vinculadas agora; o resto segue no próximo ciclo.",
+        "leituraMuitoSeguida": "a leitura acabou de ser pedida; espere um minuto",
+        "vinculos": "Fichas vinculadas: {total}.",
+        "vinculosDetalhe": "{link} pelo link da conversa, {telefone} pelo telefone, {manual} à mão, {passo} pelo passo “Criar cliente no Atlas”.",
+        "apagarVinculos": "Apagar os {n} vínculos do escritório anterior e conectar",
+        "confirmarApagarVinculos": "Apagar os {n} vínculos de fichas com clientes do escritório anterior no Atlas? Nada é apagado no Atlas; as fichas ficam sem vínculo até a leitura ou o passo “Criar cliente no Atlas” as ligarem ao escritório novo.",
+        "mudancasTitulo": "Mudanças de situação",
+        "mudancasVazio": "Nenhuma mudança de situação registrada ainda.",
+        "mudancasDica": "As 20 últimas mudanças dos clientes vinculados e o que as automações “Situação mudou no Atlas” fizeram. Nada é repetido sozinho: o que falhou se confere no histórico da automação.",
+        "semFicha": "(sem ficha)",
+        "mudanca": {
+          "resultado": {
+            "disparado": "automação executada",
+            "em_espera": "em espera (Aguardar)",
+            "falhou": "falhou",
+            "sem_automacao": "sem automação",
+            "sem_card": "card fora do funil",
+            "card_ambiguo": "mais de um card",
+            "superada": "superada"
+          },
+          "estado": {
+            "pendente": "na fila",
+            "processando": "processando"
+          }
+        },
+        "permissoesOpcionaisDica": "Opcionais, só para o nó Atlas das automações: as permissões de criar tarefas (create_task), criar transcrições (create_transcript) e atualizar o onboarding (update_onboarding). Desligadas, só o passo que as usa falha, com o motivo; a conexão continua valendo."
       },
       "avisoDaChave": {
         "embeddings_recusado": "Chave salva: ela gera texto, mas a OpenAI recusou a busca da base de conhecimento (embeddings). A base passa a usar só a busca por palavras — confira as permissões do projeto e salve a chave de novo.",
@@ -5001,7 +5334,7 @@
         "receber1": "Use o nó <b>Webhook</b>, método POST, e em <b>Respond</b> escolha <b>Immediately</b>: o CRM espera no máximo {segundos} segundos pela resposta.",
         "receber2": "Cadastre no CRM a <b>Production URL</b> e clique em <b>Publish</b> — salvar sem publicar não põe a versão nova no ar. O que chega aparece na aba <b>Executions</b>.",
         "receber3": "O <b>Enviar teste</b> (em <enviados>Webhooks → Enviados</enviados>) posta na URL cadastrada — a Production URL: com o fluxo publicado, ele aparece em <b>Executions</b>, e não no “Listen for test event”, que só escuta a <b>Test URL</b>, por 120 segundos. Para vê-lo no Listen, cadastre um segundo endereço com a Test URL, clique em Listen e em Enviar teste dentro desse prazo e apague o endereço em seguida: fora da janela ele responde 404 aos avisos reais e acaba desligado.",
-        "servidor": "n8n no seu próprio servidor: ponha o endereço público em <code>N8N_WEBHOOK_URL</code> (n8n 2.30 em diante) ou em <code>WEBHOOK_URL</code> (versões anteriores; as novas ainda a leem). Sem isso a URL sai com <code>localhost</code>, e o CRM a recusa."
+        "servidor": "n8n no seu próprio servidor: ponha o endereço público em <code>N8N_WEBHOOK_URL</code> (n8n 2.35 em diante) ou em <code>WEBHOOK_URL</code> (versões anteriores; as novas ainda a leem). Sem isso a URL sai com <code>localhost</code>, e o CRM a recusa."
       },
       "make": {
         "chamarTitulo": "Chamar a API",
@@ -5022,7 +5355,7 @@
           "desliga": "{falhas} falhas seguidas desligam o endereço, e o contador é do ENDEREÇO, não do evento: uma fila de avisos de negócio represada (com o agendador parado, por exemplo) sai de uma vez e, se o seu sistema estiver fora do ar nessa hora, ela sozinha pode somar as {falhas} — desligando junto os avisos de mensagem. Religue na aba Enviados; isso zera o contador.",
           "repeticao": "Não há ordem garantida — a única exceção: na mensagem que abre a conversa, <code>conversation.created</code> chega antes de <code>message.received</code>. Nos eventos de negócio, o <code>id</code> do envelope (igual a <code>data.event_id</code>) é estável, e descartar repetição por ele é OBRIGATÓRIO: um aviso de negócio interrompido por um reinício do servidor sai de novo, com o mesmo <code>id</code>.",
           "teste": "O botão Enviar teste manda dados fictícios com <code>\"test\": true</code>: filtre-os nos fluxos de produção.",
-          "negocio": "Nos eventos de negócio, <code>deal</code> é o negócio NA HORA DO ENVIO e <code>stage</code> é a etapa DESTE movimento — leia <code>stage</code>, não <code>deal.stage_id</code>. <code>assignee</code> é o responsável e <code>contact</code> traz etiquetas e <code>custom_fields</code>. <code>source</code> diz quem causou: <code>user</code> (alguém nas telas do CRM), <code>channel</code> (a conexão abriu o card na primeira mensagem, do cliente ou da equipe), <code>automation</code> (os passos “Criar negócio”, “Mover card de etapa” e “Marcar ganho ou perdido” das automações, e o bloco “Mover card de etapa” dos robôs), <code>api</code> (a API de negócios: criar e mover pela chave) ou <code>system</code> (o resto, como uma correção feita direto no banco). <code>channel_id</code> é o número da conversa do contato naquele momento, e vem vazio quando ele ainda não conversou por nenhuma conexão — lead de webhook recebido (Typebot) ou do Calendly que ainda não escreveu, ficha criada pela API, card sem contato. Quem filtra por número decide o que fazer com esses.",
+          "negocio": "Nos eventos de negócio, <code>deal</code> é o negócio NA HORA DO ENVIO e <code>stage</code> é a etapa DESTE movimento — leia <code>stage</code>, não <code>deal.stage_id</code>. <code>assignee</code> é o responsável e <code>contact</code> traz etiquetas e <code>custom_fields</code>. <code>source</code> diz quem causou: <code>user</code> (alguém nas telas do CRM), <code>channel</code> (a conexão abriu o card na primeira mensagem, do cliente ou da equipe), <code>automation</code> (os passos “Criar negócio”, “Mover card de etapa” e “Marcar ganho ou perdido” das automações, o bloco “Mover card de etapa” dos robôs e a ferramenta “Mover o card” dos agentes de IA; Calendly, ZapSign e Atlas movem por automação), <code>api</code> (a API de negócios: criar e mover pela chave) ou <code>system</code> (o resto: uma correção feita direto no banco, ou um agente de IA passando a conversa a outro, o que leva o card à etapa dele). <code>channel_id</code> é o número da conversa do contato naquele momento, e vem vazio quando ele ainda não conversou por nenhuma conexão — lead de webhook recebido (Typebot) ou do Calendly que ainda não escreveu, ficha criada pela API, card sem contato. Quem filtra por número decide o que fazer com esses.",
           "atraso": "Aviso atrasado sai mesmo assim, com a hora real do fato em <code>occurred_at</code>.",
           "doisAvisos": "Levar um card a uma etapa marcada como ganho ou perdido gera dois avisos: mudou de etapa e mudou de status. Já o card CRIADO numa etapa assim nasce com esse status e gera só <code>deal.created</code>: quem espera o “ganho” confere também o <code>deal.status</code> desse aviso.",
           "migracao": "Carga em massa de migração de dados não gera aviso."
@@ -5108,6 +5441,11 @@
         "minhas_e_sem_responsavel": "Conversas atribuídas a você ou sem responsável",
         "minhas": "Só as conversas atribuídas a você"
       },
+      "connectionsLabel": "Conexões que avisam",
+      "connectionsDesc": "Desmarque as conexões que não devem gerar aviso para você. Uma conexão nova já começa marcada.",
+      "connectionsNone": "Nenhuma conexão marcada: nenhum aviso vai chegar.",
+      "connectionsUnavailable": "Não foi possível carregar as suas conexões, então a escolha de quais avisam não pode ser mostrada agora.",
+      "connectionsRetry": "Tentar de novo",
       "showTextLabel": "Mostrar o texto da mensagem",
       "showTextDesc": "Desligado, o aviso diz só quem escreveu — útil quando outras pessoas veem a sua tela.",
       "scopeNote": "Só as conexões do seu perfil de acesso. Mensagem de grupo nunca gera aviso.",
@@ -6283,6 +6621,11 @@
     "fieldDueTime": "Hora",
     "dueTimeOptional": "Opcional",
     "fieldImportant": "Marcar como importante",
+    "fieldRepeat": "Repetir",
+    "repeatNever": "Não repete",
+    "repeatEvery": "{dias, plural, one {Todo dia} other {A cada # dias}}",
+    "repeatHint": "A próxima tarefa nasce sozinha no dia do prazo dela, com aviso no sino.",
+    "repeatHintSeries": "Mudar a repetição vale para todas as tarefas desta série.",
     "cancel": "Cancelar",
     "save": "Salvar",
     "create": "Criar tarefa",
@@ -6296,6 +6639,7 @@
     "showDone": "Ver {count} concluída(s)",
     "openCount": "{count, plural, =1 {1 tarefa aberta} other {# tarefas abertas}}",
     "deleteConfirm": "Excluir \"{titulo}\"? Isso não pode ser desfeito.",
+    "deleteConfirmRecurring": "Excluir \"{titulo}\"? É a tarefa mais recente de uma repetição: excluí-la encerra a repetição, e nenhuma nova será criada. Isso não pode ser desfeito.",
     "contactSearchHint": "Digite ao menos 2 letras para buscar.",
     "contactSearchFailed": "A busca falhou. Digite de novo para tentar.",
     "contactSearchMore": "Mostrando os {count} primeiros. Continue digitando para afinar.",
@@ -6418,6 +6762,8 @@
     "newsTooMany": "São avisos demais para resumir aqui — abra as notificações.",
     "newsMentions": "{count, plural, =1 {1 menção a você} other {{count} menções a você}}",
     "newsMentionsAtLeast": "{count, plural, =1 {pelo menos 1 menção a você} other {pelo menos {count} menções a você}}",
+    "newsReplies": "{count, plural, =1 {1 resposta a anotação} other {{count} respostas a anotações}}",
+    "newsRepliesAtLeast": "{count, plural, =1 {pelo menos 1 resposta a anotação} other {pelo menos {count} respostas a anotações}}",
     "newsTasks": "{count, plural, =1 {1 tarefa encaminhada ou respondida} other {{count} tarefas encaminhadas ou respondidas}}",
     "newsTasksAtLeast": "{count, plural, =1 {pelo menos 1 tarefa encaminhada ou respondida} other {pelo menos {count} tarefas encaminhadas ou respondidas}}",
     "newsConversations": "{count, plural, =1 {1 conversa atribuída a você} other {{count} conversas atribuídas a você}}",

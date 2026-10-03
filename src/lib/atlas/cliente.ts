@@ -16,6 +16,8 @@
  */
 
 import { urlDaApiDoAtlas } from "./enderecos";
+import { telefoneForte, uuidsDoLink } from "./leitura";
+import { lerNegociacoes, type NegociacoesDoAtlas } from "./negociacoes";
 
 const TIMEOUT_MS = 15_000;
 
@@ -33,6 +35,12 @@ export type CodigoDoErroAtlas =
   | "rede"
   /** Resposta 2xx sem o que se esperava (corpo que não é JSON, sem o id): pode ter gravado. */
   | "resposta_inesperada"
+  /** Nó Atlas: mais de um item do checklist com o mesmo texto (`ambiguous`, 422). */
+  | "ambiguo"
+  /** Nó Atlas: o escritório não tem admin ativo para receber a tarefa (`no_active_admin`, 422). */
+  | "sem_admin"
+  /** Nó Atlas: o checklist do cliente não tem o item pedido (o 404 COM a lista vigente). */
+  | "item_nao_encontrado"
   | "atlas_error";
 
 export class AtlasError extends Error {
@@ -43,18 +51,47 @@ export class AtlasError extends Error {
     public readonly status: number | null = null,
     /** Com `sem_permissao`: qual permissão do Atlas está desligada. */
     public readonly permissao: string | null = null,
-    detalhe: { codigoDoAtlas?: string | null; campos?: string[] } = {},
+    detalhe: { codigoDoAtlas?: string | null; campos?: string[]; apiAntiga?: boolean; esperaSegundos?: number | null; comListaDeItens?: boolean } = {},
   ) {
     super(mensagem);
     this.name = "AtlasError";
     this.codigoDoAtlas = detalhe.codigoDoAtlas ?? null;
     this.campos = detalhe.campos ?? [];
+    this.apiAntiga = detalhe.apiAntiga === true;
+    this.esperaSegundos = detalhe.esperaSegundos ?? null;
+    this.comListaDeItens = detalhe.comListaDeItens === true;
   }
+
+  /**
+   * O corpo do erro trazia a lista `items` (o 404 do `update_onboarding_item`
+   * quando o ITEM não existe — a edge devolve o checklist vigente). Só o
+   * marcador: a lista nunca vai à mensagem nem a log. Quem decide o que ele
+   * significa é `atualizarItemDoOnboarding`, nunca o `pedir` genérico.
+   */
+  public readonly comListaDeItens: boolean;
 
   /** O `code` cru do Atlas (nunca vai à tela). */
   public readonly codigoDoAtlas: string | null;
   /** Com `validacao`: os NOSSOS campos que o Atlas recusou (só os nomes). */
   public readonly campos: string[];
+  /**
+   * Com `resposta_inesperada`: a API do Atlas ainda é a ANTIGA (a listagem
+   * veio sem `status_changed_at` — a produção antes da promoção, contrato
+   * §13). Ela pode ignorar o filtro e devolver todos: nada da página é gravado.
+   */
+  public readonly apiAntiga: boolean;
+  /**
+   * Com `limite` (429): quantos segundos o Atlas pediu para esperar — do
+   * `retry_after_seconds` do corpo ou, sem ele, do cabeçalho `Retry-After`
+   * (contrato §7). Nulo = o Atlas não disse.
+   */
+  public readonly esperaSegundos: number | null;
+}
+
+/** Segundos de espera legíveis (número positivo, ou texto só de dígitos); qualquer outra coisa é "não disse". */
+function segundosOuNulo(v: unknown): number | null {
+  const n = typeof v === "string" && /^\s*\d+(\.\d+)?\s*$/.test(v) ? Number(v) : v;
+  return typeof n === "number" && Number.isFinite(n) && n > 0 ? Math.ceil(n) : null;
 }
 
 /**
@@ -89,6 +126,10 @@ export function codigoDoErro(status: number, codigoDoAtlas: string | null): Codi
       return "acao_desconhecida";
     case "service_unavailable":
       return "fora_do_ar";
+    case "ambiguous":
+      return "ambiguo";
+    case "no_active_admin":
+      return "sem_admin";
   }
   if (status === 401 || status === 403) return "chave_invalida";
   // ⚠️ 404 SEM o `not_found` do Atlas não é "cliente apagado": é o gateway
@@ -126,6 +167,12 @@ export interface ClienteDoAtlas {
   status: string | null;
   appUrl: string | null;
   /**
+   * Quando a situação mudou no Atlas (`status_changed_at`, ISO), `null` =
+   * o Atlas não sabe. AUSENTE (`undefined`) = a chave nem veio: a API
+   * antiga, que não a conhece.
+   */
+  situacaoDesde?: string | null;
+  /**
    * Só no `find_clients`: POR QUE casou (`chat_link`, `phone`, `phone_last8`,
    * `email`, `doc_id`). Ausente = o Atlas não disse (o passo não age sozinho).
    */
@@ -146,6 +193,8 @@ export interface DadosDoClienteNoAtlas {
   chatLink?: string | null;
   notes?: string | null;
   status?: string | null;
+  /** CPF ou CNPJ (o Atlas grava só os dígitos). Só o "Atualizar cliente" do nó Atlas manda. */
+  docId?: string | null;
 }
 
 export interface CriteriosDeBusca {
@@ -155,14 +204,90 @@ export interface CriteriosDeBusca {
   chatLinkIds?: string[];
 }
 
+/**
+ * Um cliente da LISTAGEM (`list_clients`), já reduzido ao que o CRM guarda e
+ * usa: o id, a situação, a data, o `app_url` e dois SINAIS para o vínculo
+ * automático, que ficam só em memória — os uuids do link da conversa e o
+ * telefone canônico. ⚠️ Nome, CPF, e-mail e o texto do link NUNCA saem do
+ * parser (`lerPaginaDaListagem`).
+ */
+export interface ClienteListado {
+  id: string;
+  status: string | null;
+  situacaoDesde: string | null;
+  appUrl: string | null;
+  sinais: { uuidsDoLink: string[]; telefoneCanonico: string | null };
+}
+
+export interface PaginaDaListagem {
+  clientes: ClienteListado[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+export interface FiltroDaListagem {
+  /** ISO com fuso, inclusivo: só quem MUDOU de situação desde então (data desconhecida fica fora). */
+  statusChangedSince?: string | null;
+  cursor?: string | null;
+  limit: number;
+}
+
 export interface ClienteAtlas {
   whoami(): Promise<IdentidadeNoAtlas>;
+  /** Uma página do `list_clients` (permissão `list_clients`, opcional no escritório). */
+  listar(filtro: FiltroDaListagem): Promise<PaginaDaListagem>;
   /** Todos os que casam (teto do Atlas); `truncado` = havia mais. */
   buscar(criterios: CriteriosDeBusca): Promise<{ clientes: ClienteDoAtlas[]; truncado: boolean }>;
   /** `not_found` DO ATLAS = `null` (cliente apagado lá); qualquer outra falha lança. */
   ler(id: string): Promise<ClienteDoAtlas | null>;
+  /**
+   * Bancos, contratos, propostas e acordos do cliente (`get_client_negotiations`,
+   * permissão `read_negotiations`, OPCIONAL no escritório), já pela allowlist
+   * de `negociacoes.ts`. O `not_found` (lixeira, outro escritório) LANÇA
+   * `nao_encontrado` — quem lê não apaga o vínculo por isso.
+   */
+  negociacoes(clientId: string): Promise<NegociacoesDoAtlas>;
   criar(dados: DadosDoClienteNoAtlas, chaveDeIdempotencia: string): Promise<ClienteDoAtlas>;
   atualizar(id: string, dados: DadosDoClienteNoAtlas, chaveDeIdempotencia: string): Promise<ClienteDoAtlas>;
+}
+
+/**
+ * As escritas do nó "Atlas" (30/09/2026), fora de `ClienteAtlas` de
+ * propósito: o "Criar cliente" (em produção) e a leitura não mudam, e os
+ * dublês deles continuam valendo. Todas mandam `Idempotency-Key`; 2xx sem o
+ * que se esperava é `resposta_inesperada` (pode ter gravado).
+ */
+export interface AcoesNoAtlas {
+  /**
+   * `update_client` com os campos do "Atualizar cliente". Irmão do
+   * `atualizar` (o da reativação, intocado): devolve também a situação
+   * ANTERIOR (`statusChange.from`), que só entra quando o Atlas a manda.
+   */
+  atualizarCliente(
+    id: string,
+    dados: DadosDoClienteNoAtlas,
+    chaveDeIdempotencia: string,
+  ): Promise<{ id: string; appUrl: string | null; situacaoAnterior?: string | null }>;
+  /** `create_task` (permissão `create_task`, opcional). */
+  criarTarefa(
+    dados: { title: string; description?: string; priority?: "normal" | "urgent"; dueDate?: string; clientId?: string },
+    chaveDeIdempotencia: string,
+  ): Promise<{ taskId: string }>;
+  /** `create_transcript` (permissão `create_transcript`, opcional): deposita, nunca analisa. */
+  enviarTranscricao(
+    dados: { clientId: string; transcript: string; notes?: string },
+    chaveDeIdempotencia: string,
+  ): Promise<{ transcriptId: string }>;
+  /**
+   * `update_onboarding_item` (permissão `update_onboarding`, opcional), pelo
+   * TEXTO do item. ⚠️ O 404 com a lista vigente (`comListaDeItens`) é o ITEM
+   * que não existe → `item_nao_encontrado`, nunca a lixeira; o 404 SEM a
+   * lista segue pelo código (`not_found` = lixeira).
+   */
+  atualizarItemDoOnboarding(
+    dados: { clientId: string; text: string; status?: string; observation?: string },
+    chaveDeIdempotencia: string,
+  ): Promise<{ status: string | null }>;
 }
 
 type Fetch = typeof fetch;
@@ -175,12 +300,55 @@ function textoOuNulo(v: unknown): string | null {
   return typeof v === "string" && v.trim() !== "" ? v : null;
 }
 
+/** Um instante ISO legível, normalizado; qualquer outra coisa é "não se sabe". */
+function instanteOuNulo(v: unknown): string | null {
+  if (typeof v !== "string" || v.trim() === "") return null;
+  const t = Date.parse(v);
+  return Number.isNaN(t) ? null : new Date(t).toISOString();
+}
+
 /** Um cliente como o Atlas o devolve (`get_client`, `find_clients`, `list_clients`). */
 export function lerCliente(v: unknown): ClienteDoAtlas | null {
   if (!ehObjeto(v) || typeof v.id !== "string" || v.id === "") return null;
   const cliente: ClienteDoAtlas = { id: v.id, status: textoOuNulo(v.status), appUrl: textoOuNulo(v.app_url) ?? textoOuNulo(v.appUrl) };
+  if ("status_changed_at" in v) cliente.situacaoDesde = instanteOuNulo(v.status_changed_at);
   if (Array.isArray(v.matched_by)) cliente.casouPor = v.matched_by.filter((m): m is string => typeof m === "string");
   return cliente;
+}
+
+/**
+ * Uma página do `list_clients`, reduzida a `ClienteListado`. LANÇA
+ * `resposta_inesperada`:
+ * - sem a lista, ou com um cliente ilegível (descartá-lo esconderia uma
+ *   mudança — como no `find_clients`);
+ * - com `hasMore` e sem `nextCursor` (o ciclo releria a mesma página);
+ * - ⚠️ com um cliente SEM a chave `status_changed_at`: é a API ANTIGA
+ *   (`apiAntiga`), que ignora o `statusChangedSince` e devolveria todos como
+ *   se tivessem mudado. Nada da página é gravado.
+ */
+export function lerPaginaDaListagem(corpo: unknown): PaginaDaListagem {
+  if (!ehObjeto(corpo) || !Array.isArray(corpo.clients)) {
+    throw new AtlasError("resposta_inesperada", "list_clients → resposta sem `clients`");
+  }
+  const clientes: ClienteListado[] = [];
+  for (const bruto of corpo.clients) {
+    const lido = lerCliente(bruto);
+    if (!lido || !ehObjeto(bruto)) throw new AtlasError("resposta_inesperada", "list_clients → cliente ilegível na lista");
+    if (lido.situacaoDesde === undefined) {
+      throw new AtlasError("resposta_inesperada", "list_clients → cliente sem `status_changed_at` (API antiga)", null, null, { apiAntiga: true });
+    }
+    clientes.push({
+      id: lido.id,
+      status: lido.status,
+      situacaoDesde: lido.situacaoDesde,
+      appUrl: lido.appUrl,
+      sinais: { uuidsDoLink: uuidsDoLink(bruto.chat_link), telefoneCanonico: telefoneForte(bruto.phone) },
+    });
+  }
+  const hasMore = corpo.hasMore === true;
+  const nextCursor = textoOuNulo(corpo.nextCursor);
+  if (hasMore && !nextCursor) throw new AtlasError("resposta_inesperada", "list_clients → `hasMore` sem `nextCursor`");
+  return { clientes, nextCursor: hasMore ? nextCursor : null, hasMore };
 }
 
 /** Os nomes de campo que o CRM MANDA — só estes vão ao motivo da falha de validação. */
@@ -199,6 +367,20 @@ const CAMPOS_ENVIADOS = new Set([
   "notes",
   "status",
   "chatLinkIds",
+  "clientId",
+  "statusChangedSince",
+  "cursor",
+  "limit",
+  // Nó Atlas (30/09/2026).
+  "docId",
+  "title",
+  "description",
+  "priority",
+  "dueDate",
+  "transcript",
+  "observation",
+  "text",
+  "itemId",
 ]);
 
 function camposRecusados(v: unknown): string[] {
@@ -229,7 +411,14 @@ export function lerIdentidade(v: unknown): IdentidadeNoAtlas {
 }
 
 /** ⚠️ Recebe o texto JÁ sem a chave: o corte de 300 viria antes e deixaria um pedaço dela. */
-function lerErro(texto: string): { codigo: string | null; mensagem: string; permissao: string | null; campos: string[] } {
+function lerErro(texto: string): {
+  codigo: string | null;
+  mensagem: string;
+  permissao: string | null;
+  campos: string[];
+  esperaSegundos: number | null;
+  comListaDeItens: boolean;
+} {
   try {
     const j: unknown = JSON.parse(texto);
     if (ehObjeto(j)) {
@@ -238,15 +427,18 @@ function lerErro(texto: string): { codigo: string | null; mensagem: string; perm
         mensagem: typeof j.error === "string" ? j.error : texto.slice(0, 300),
         permissao: typeof j.permission === "string" ? j.permission : null,
         campos: camposRecusados(j.fields),
+        esperaSegundos: segundosOuNulo(j.retry_after_seconds),
+        // Só o marcador; a lista (textos do checklist) nunca sai daqui.
+        comListaDeItens: Array.isArray(j.items),
       };
     }
   } catch {
     /* não é JSON: vai o texto */
   }
-  return { codigo: null, mensagem: texto.slice(0, 300), permissao: null, campos: [] };
+  return { codigo: null, mensagem: texto.slice(0, 300), permissao: null, campos: [], esperaSegundos: null, comListaDeItens: false };
 }
 
-export function criarClienteAtlas(chave: string, fetchFn: Fetch = fetch, url: string = urlDaApiDoAtlas()): ClienteAtlas {
+export function criarClienteAtlas(chave: string, fetchFn: Fetch = fetch, url: string = urlDaApiDoAtlas()): ClienteAtlas & AcoesNoAtlas {
   const limpar = (texto: string) => semSegredo(texto, chave);
 
   async function pedir(action: string, data: Record<string, unknown>, chaveDeIdempotencia?: string): Promise<unknown> {
@@ -276,7 +468,12 @@ export function criarClienteAtlas(chave: string, fetchFn: Fetch = fetch, url: st
         limpar(`${action} → ${resposta.status}${erro.codigo ? ` ${erro.codigo}` : ""}: ${erro.mensagem || `HTTP ${resposta.status}`}`),
         resposta.status,
         erro.permissao,
-        { codigoDoAtlas: erro.codigo, campos: erro.campos },
+        {
+          codigoDoAtlas: erro.codigo,
+          campos: erro.campos,
+          esperaSegundos: erro.esperaSegundos ?? segundosOuNulo(resposta.headers.get("retry-after")),
+          comListaDeItens: erro.comListaDeItens,
+        },
       );
     }
     if (!texto) return null;
@@ -302,6 +499,13 @@ export function criarClienteAtlas(chave: string, fetchFn: Fetch = fetch, url: st
   return {
     async whoami() {
       return lerIdentidade(await pedir("whoami", {}));
+    },
+
+    async listar(filtro) {
+      const data: Record<string, unknown> = { limit: filtro.limit };
+      if (filtro.statusChangedSince) data.statusChangedSince = filtro.statusChangedSince;
+      if (filtro.cursor) data.cursor = filtro.cursor;
+      return lerPaginaDaListagem(await pedir("list_clients", data));
     },
 
     async buscar(criterios) {
@@ -335,6 +539,14 @@ export function criarClienteAtlas(chave: string, fetchFn: Fetch = fetch, url: st
       return lido;
     },
 
+    async negociacoes(clientId) {
+      const lidas = lerNegociacoes(await pedir("get_client_negotiations", { clientId }));
+      // 2xx sem a lista legível não é "sem negociação": a tela diria que o
+      // cliente não tem dívida nenhuma.
+      if (!lidas) throw new AtlasError("resposta_inesperada", "get_client_negotiations → resposta sem `banks` legível");
+      return lidas;
+    },
+
     async criar(dados, chaveDeIdempotencia) {
       return clienteDaResposta("create_client", await pedir("create_client", { ...dados }, chaveDeIdempotencia));
     },
@@ -348,6 +560,52 @@ export function criarClienteAtlas(chave: string, fetchFn: Fetch = fetch, url: st
         status: typeof dados.status === "string" ? dados.status : null,
         appUrl: ehObjeto(corpo) ? (textoOuNulo(corpo.appUrl) ?? textoOuNulo(corpo.app_url)) : null,
       };
+    },
+
+    async atualizarCliente(id, dados, chaveDeIdempotencia) {
+      const corpo = await pedir("update_client", { id, ...dados }, chaveDeIdempotencia);
+      // 2xx sem `success: true` não prova a escrita (a edge sempre o manda).
+      if (!ehObjeto(corpo) || corpo.success !== true) throw new AtlasError("resposta_inesperada", "update_client → resposta sem `success`");
+      const mudanca = ehObjeto(corpo.statusChange) ? corpo.statusChange : null;
+      return {
+        id,
+        appUrl: textoOuNulo(corpo.appUrl) ?? textoOuNulo(corpo.app_url),
+        ...(mudanca && "from" in mudanca ? { situacaoAnterior: textoOuNulo(mudanca.from) } : {}),
+      };
+    },
+
+    async criarTarefa(dados, chaveDeIdempotencia) {
+      const corpo = await pedir("create_task", { ...dados }, chaveDeIdempotencia);
+      const taskId = ehObjeto(corpo) ? textoOuNulo(corpo.taskId) : null;
+      if (!taskId) throw new AtlasError("resposta_inesperada", "create_task → resposta sem `taskId`");
+      return { taskId };
+    },
+
+    async enviarTranscricao(dados, chaveDeIdempotencia) {
+      const corpo = await pedir("create_transcript", { ...dados }, chaveDeIdempotencia);
+      const transcriptId = ehObjeto(corpo) ? textoOuNulo(corpo.transcriptId) : null;
+      if (!transcriptId) throw new AtlasError("resposta_inesperada", "create_transcript → resposta sem `transcriptId`");
+      return { transcriptId };
+    },
+
+    async atualizarItemDoOnboarding(dados, chaveDeIdempotencia) {
+      let corpo: unknown;
+      try {
+        corpo = await pedir("update_onboarding_item", { ...dados }, chaveDeIdempotencia);
+      } catch (e) {
+        // O ITEM que não existe vem 404 com a lista vigente (com ou sem
+        // `code`): nunca é o cliente na lixeira.
+        if (e instanceof AtlasError && e.status === 404 && e.comListaDeItens) {
+          throw new AtlasError("item_nao_encontrado", "update_onboarding_item → 404: item não encontrado no checklist", 404, null, {
+            codigoDoAtlas: e.codigoDoAtlas,
+          });
+        }
+        throw e;
+      }
+      if (!ehObjeto(corpo) || corpo.success !== true) {
+        throw new AtlasError("resposta_inesperada", "update_onboarding_item → resposta sem `success`");
+      }
+      return { status: ehObjeto(corpo.item) ? textoOuNulo(corpo.item.status) : null };
     },
   };
 }

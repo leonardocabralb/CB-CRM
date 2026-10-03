@@ -642,7 +642,52 @@ ou só vincula quem já está ativo. Não cria outro cadastro para quem o Atlas
 acha por esses dados; quando há dúvida (mais de um cadastro, casamento só pelo
 e-mail ou pelo final do telefone, cadastro suspenso no Atlas), para sem
 mexer no Atlas e diz o motivo no histórico da automação. A chave é do
-escritório inteiro: uma por conta do CRM.
+escritório inteiro: uma por conta do CRM. Ligue também **Listar clientes**
+para a **leitura das situações**: a cada ~15 minutos, pelo mesmo agendador
+das outras integrações (sem rota nova nem ajuste na VPS), o CRM lê no Atlas
+a situação de cada cliente (ativo, rescindido, finalizado…) e liga sozinho a
+ficha ao cliente do Atlas pelo link da conversa, quando só um cadastro e só
+uma ficha casam. Pelo telefone completo, a ligação só acontece na leitura
+completa diária, e só em escritório com até ~900 clientes (acima disso, a
+leitura completa não cabe numa rodada). Sem essa permissão, o cartão
+avisa e o passo continua funcionando; o botão **Ler situações agora** lê na
+hora. A leitura exige a versão da API do Atlas que informa a data da mudança
+da situação; com a antiga, o cartão diz que a atualização está pendente.
+Na conversa, a faixa acima do compositor passa a dizer também "rescindido,
+finalizado, suspenso ou inativo **no Atlas**", ao lado do que diz a etapa do
+funil; o painel ganha o botão **Abrir no Atlas** e a aba **Atlas**, onde um
+administrador liga a ficha à mão colando o link da ficha do cliente no Atlas
+(ou desfaz um vínculo errado — a leitura não volta a ligá-lo sozinha).
+Cliente mandado para a lixeira do Atlas aparece na aba como "na lixeira";
+restaurado lá, o administrador toca em **Conferir no Atlas** (sem isso, o
+CRM percebe na próxima leitura completa). **Ler negociações** é opcional:
+ligada, a aba Atlas da conversa mostra os bancos, contratos, propostas e
+acordos do cliente, lidos na hora no Atlas e nunca guardados no CRM
+(qualquer membro que vê a conversa os vê). Desligada, a seção avisa que a
+leitura está desligada e o resto segue funcionando.
+Com a leitura ligada, o gatilho de automação **Situação mudou no Atlas**
+roda quando a situação de um cliente vinculado MUDA (nunca na primeira
+leitura): escolha as situações e os funis onde o card do cliente precisa
+estar — sem card nesses funis, nada roda. O cartão **Atlas** mostra as
+últimas mudanças e o que as automações fizeram.
+No construtor de automações, o **Atlas** é um nó só (uma entrada no menu de
+adicionar), com um seletor de **Ação**: **Criar cliente** (o de cima),
+**Atualizar cliente** (situação, tipo e valor do contrato, datas, link da
+conversa, telefone, e-mail e CPF/CNPJ — só o que foi escolhido e está
+preenchido na ficha; nada no Atlas é apagado), **Criar tarefa** (vai para o
+administrador mais antigo do escritório no Atlas; sem a ficha ligada ao
+Atlas, nasce sem cliente; com o cadastro ligado marcado na lixeira do Atlas,
+o passo falha sem enviar — restaure lá e use **Conferir no Atlas** na aba
+Atlas), **Enviar transcrição de reunião** (a mais recente
+do cliente, do tl;dv ou colada na aba Reuniões, para o Diagnóstico) e
+**Atualizar item do onboarding** (pelo texto do item do checklist). As três
+últimas pedem permissões **opcionais** no Atlas — as de criar tarefas
+(`create_task`), criar transcrições (`create_transcript`) e atualizar o
+onboarding (`update_onboarding`): desligadas, só o passo que as usa
+falha, com o motivo, e a conexão continua valendo. Atualizar, transcrição e
+onboarding precisam da ficha ligada ao Atlas (rode antes o **Criar cliente**
+ou vincule na aba Atlas). Nenhuma ação repete sozinha; rodar de novo a tarefa
+ou a transcrição cria outra no Atlas.
 
 **tl;dv** (transcrições de reunião na ficha): a API só existe nos planos
 **Pro e Business**, e só sai pela API a reunião de quem a ORGANIZOU com um

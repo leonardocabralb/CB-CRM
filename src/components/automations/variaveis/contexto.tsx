@@ -133,12 +133,12 @@ type ValoresDoCliente = Record<string, { mensagem: string; cru: string }>
 const ORDEM_DOS_GRUPOS_FIXOS: readonly GrupoFixo[] = ["contato", "negocio", "conversa", "data", "mensagem"]
 
 function familiaComExemplo(f: FamiliaDoEvento | null): FamiliaComExemplo | null {
-  return f === "asaas" || f === "calendly" || f === "zapsign" ? f : null
+  return f === "asaas" || f === "calendly" || f === "zapsign" || f === "atlas" ? f : null
 }
 
 /** A família que conhece este nome de variável (para dar nome à etiqueta fora do gatilho dela). */
 function familiaDoNome(nome: string): FamiliaComExemplo | null {
-  for (const f of ["asaas", "calendly", "zapsign"] as const) {
+  for (const f of ["asaas", "calendly", "zapsign", "atlas"] as const) {
     if (NOMES_DO_EVENTO[f].includes(nome)) return f
   }
   return null

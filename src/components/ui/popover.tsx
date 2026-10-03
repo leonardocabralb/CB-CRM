@@ -19,11 +19,14 @@ function PopoverContent({
   alignOffset = 0,
   side = "bottom",
   sideOffset = 4,
+  collisionAvoidance,
   ...props
 }: PopoverPrimitive.Popup.Props &
   Pick<
     PopoverPrimitive.Positioner.Props,
-    "align" | "alignOffset" | "side" | "sideOffset"
+    // `collisionAvoidance` é NOSSO: o popup do cabeçalho não pode inverter
+    // para cima (`ABRE_PARA_BAIXO`, `src/components/layout/popup-do-cabecalho.ts`).
+    "align" | "alignOffset" | "side" | "sideOffset" | "collisionAvoidance"
   >) {
   return (
     <PopoverPrimitive.Portal>
@@ -32,6 +35,7 @@ function PopoverContent({
         alignOffset={alignOffset}
         side={side}
         sideOffset={sideOffset}
+        collisionAvoidance={collisionAvoidance}
         className="isolate z-50"
       >
         <PopoverPrimitive.Popup
