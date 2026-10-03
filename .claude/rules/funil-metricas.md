@@ -28,7 +28,8 @@ o texto antigo está em `git show f5879b3f:CLAUDE.md`.
 `pipeline_stages.degrau` ∈ {lead, mql, reuniao, proposta, contrato, pasta,
 perda, NULL} (`pasta` desde a 1054). `src/lib/funil/` é puro e testado;
 `carregar.ts` é o único com I/O (o laço paginado da RPC
-`cb_funil_trajetorias`). O seletor por etapa mora em `pipeline-settings.tsx`.
+`cb_funil_trajetorias_por_chave`, 1078). O seletor por etapa mora em
+`pipeline-settings.tsx`.
 
 - ⚠️⚠️ **NEGÓCIO TRANSFERIDO PARA OUTRO FUNIL CONTINUA CONTANDO NO FUNIL DE
   ORIGEM, com a última etapa que teve lá** (decisão do operador, 03/09/2026: "fechou
@@ -50,7 +51,11 @@ perda, NULL} (`pasta` desde a 1054). `src/lib/funil/` é puro e testado;
 - ⚠️ **Alcance é MONOTÔNICO** (`degrauMaximo`): pular de Lead para Proposta
   alcança MQL e Reunião. Perda não alcança nada; entrar direto em perda É
   entrada.
-- ⚠️ **Paginar a RPC** (`order('deal_id')` + `range` + `count: 'exact'`);
+- ⚠️ **A RPC é paginada por CHAVE** (1078): quatro faixas de `deal_id` em
+  paralelo, cada página pede o último id recebido, `restantes` fecha o laço.
+  A 975 por OFFSET recalculava o funil inteiro a cada página (Saúde do
+  Trabalhista ~2,35 s); ela fica no banco, mas o recorte das duas é o MESMO
+  texto (pino `trajetorias-por-chave-1078.test.ts`): mudou uma, muda a outra.
   `null` = "não confie", nunca lista parcial. ⚠️ Mas o `created_at` da RPC é
   NULÁVEL (`deals.created_at` também é), e `lerLinha` aceita: exigi-lo fazia
   UMA linha derrubar a carga inteira, e as três vistas ficavam em "falhou"

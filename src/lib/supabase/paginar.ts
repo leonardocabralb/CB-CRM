@@ -44,11 +44,11 @@
  * ⚠️ Recorte que MUDA enquanto se lê pede `buscarPorChave`, não este laço —
  * ver lá.
  *
- * ⚠️ `src/lib/funil/carregar.ts` tem uma cópia deste laço e NÃO foi migrada
- * de propósito: ela faz o parse de cada linha (`lerLinha`) dentro do laço e
- * descarta a carga no primeiro desvio de forma, o que é uma garantia a mais
- * que este módulo não oferece. Quem for unificar os dois precisa resolver
- * isso antes — e tem teste próprio dos dois lados para se apoiar.
+ * ⚠️ `src/lib/funil/carregar.ts` NÃO usa este laço: desde a 1078 ela pagina
+ * a RPC das trajetórias por CHAVE (`deal_id`), em quatro faixas disjuntas em
+ * paralelo — o caminho rápido que o item 5 acima aponta —, e faz o parse de
+ * cada linha (`lerLinha`) dentro do laço, descartando a carga no primeiro
+ * desvio de forma.
  */
 
 export const PAGINA = 1000;

@@ -8,8 +8,9 @@ import type { LinhaDeTrajetoria } from "@/lib/funil/trajetoria";
 import { createClient } from "@/lib/supabase/client";
 
 /**
- * As trajetórias de um funil num intervalo — a RPC `cb_funil_trajetorias`
- * (975), paginada por `carregarTrajetorias`.
+ * As trajetórias de um funil num intervalo — a RPC
+ * `cb_funil_trajetorias_por_chave` (1078), paginada por chave em quatro faixas
+ * por `carregarTrajetorias`.
  *
  * `carregando` é DERIVADO (a chave do pedido vigente ≠ a chave do resultado
  * que está no estado), nunca um `setState` síncrono dentro do efeito — a
