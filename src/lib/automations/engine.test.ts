@@ -1599,7 +1599,7 @@ describe('send_message — o número de uma conexão no texto', () => {
   const codigo = (id: string) => `{{channel.${id.replace(/-/g, '_')}.phone}}`;
   beforeEach(() => vi.mocked(engineSendText).mockClear());
 
-  it('CRÍTICO: troca pelo número ATUAL da conexão, formatado como na tela', async () => {
+  it('CRÍTICO: troca pelo número ATUAL da conexão, formatado como na tela (o JID sem o nono dígito sai com ele)', async () => {
     h.state.conexoesDaConta = [
       { id: JUR, kind: 'evolution', display_phone: '559690000016', conta: ACCOUNT },
       { id: OFICIAL, kind: 'meta', display_phone: '+55 11 5000-0001', conta: ACCOUNT },
@@ -1608,7 +1608,7 @@ describe('send_message — o número de uma conexão no texto', () => {
       { text: `Jurídico: ${codigo(JUR)}. Oficial: ${codigo(OFICIAL)}.` },
       {}
     );
-    expect(args?.text).toBe('Jurídico: (96) 9000-0016. Oficial: (11) 5000-0001.');
+    expect(args?.text).toBe('Jurídico: (96) 99000-0016. Oficial: (11) 5000-0001.');
   });
 
   it('a leitura leva a CONTA: conexão de outra conta não empresta o número, e nada sai', async () => {

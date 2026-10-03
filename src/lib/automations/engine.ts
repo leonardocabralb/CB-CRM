@@ -4398,7 +4398,9 @@ export function valorDaVariavel(
  * guardar a senha do gov.br). ⚠️ Leitura que falha LANÇA (modo `estrito`):
  * no envio ela vira variável vazia, mas aqui a tela afirmaria "sairia em
  * branco" sobre um campo que tem valor. `vars.*`, `message.text` e
- * `channel.id` são do EVENTO e não existem aqui — a tela usa o exemplo. Além
+ * `channel.id` são do EVENTO e não existem aqui — a tela usa o exemplo. O
+ * número de uma conexão (`channel.<id>.phone`) é da CONTA: a tela o calcula
+ * da lista de conexões por `numeroDaConexao`, e aqui sairia vazio. Além
  * dos `codigos` pedidos, devolve todo `contact.campo.<chave>` que o contato
  * tem preenchido.
  *

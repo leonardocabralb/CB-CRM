@@ -50,8 +50,10 @@ interpolação: `.claude/rules/automacoes.md`, seção "Variáveis".
 - ⚠️⚠️ **O número de UMA conexão: `{{channel.<id com _>.phone}}`**
   (`variaveis/conexao.ts`, 03/10/2026). O id vai com `_` porque a régua do
   motor só aceita `[\w.]` — com `-`, o código sairia cru para o cliente.
-  Motor e tela usam `numeroDaConexao` (mensagem "(DD) NNNN-NNNN", dado só
-  dígitos). FALHA FECHADA no envio (`numerosDasConexoes`): conexão apagada,
+  Motor e tela usam `numeroDaConexao`, pela grafia CANÔNICA: o JID de
+  celular antigo vem sem o nono dígito, e sai COM ele (o número que liga);
+  mensagem formatada, dado só dígitos. FALHA FECHADA no envio
+  (`numerosDasConexoes`): conexão apagada,
   de outra conta, Instagram ou sem número PARA o passo — "fale com o
   Jurídico no " sem número é pior que o passo parado. Na tela a origem é
   `conta` (igual para todo cliente, sem cliente escolhido); lista de conexões

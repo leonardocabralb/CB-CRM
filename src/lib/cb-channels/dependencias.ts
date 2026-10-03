@@ -84,8 +84,11 @@ export function ordemDaLista(a: ItemDependente, b: ItemDependente): number {
 }
 
 /**
- * As automações que dependem da conexão, cada uma UMA vez, no balde mais
- * grave: a que vai ser desligada não se repete em "com passo".
+ * As automações que dependem da conexão. A que vai ser DESLIGADA não se
+ * repete em "com passo" (desligada, o passo não roda). A que só PERDE este
+ * número (o escopo tem outros) aparece também em "com passo" quando um passo
+ * dela usa a conexão: ela continua rodando pelos outros números, e é aí que o
+ * passo falha ("fale no {{número do Jurídico}}" num disparo pelo Comercial).
  */
 export function automacoesQueDependem(
   canalId: string,
@@ -98,12 +101,14 @@ export function automacoesQueDependem(
   const passo: ItemDependente[] = [];
   for (const a of automacoes) {
     const escopo = a.channel_ids ?? [];
-    if (escopo.includes(canalId)) {
-      // Mesma régua do gatilho da 903: sobrar escopo vazio = desligar.
-      (escopo.every((c) => c === canalId) ? desligadas : perdem).push(item(a.id, a.name, a.is_active));
-    } else if (comPasso.has(a.id)) {
-      passo.push(item(a.id, a.name, a.is_active));
+    // Mesma régua do gatilho da 903: sobrar escopo vazio = desligar.
+    const desliga = escopo.includes(canalId) && escopo.every((c) => c === canalId);
+    if (desliga) {
+      desligadas.push(item(a.id, a.name, a.is_active));
+      continue;
     }
+    if (escopo.includes(canalId)) perdem.push(item(a.id, a.name, a.is_active));
+    if (comPasso.has(a.id)) passo.push(item(a.id, a.name, a.is_active));
   }
   return {
     automacoesDesligadas: desligadas.sort(ordemDaLista),

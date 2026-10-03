@@ -4776,6 +4776,7 @@
       "connectedToast": "Number connected.",
       "numeroTrocadoToast": "Connected with the new number: {agora} (it was {antes}).",
       "numeroTrocadoDescricao": "This connection's automations, bots, filters and conversations keep working. Outside the CRM (ads, website, Typebot, business cards), replace the number by hand.",
+      "numeroPendenteDescricao": "Evolution hasn't confirmed this SIM's number yet. It shows up on the connection shortly; if it doesn't, use “Resync”.",
       "deleted": "{label} was removed.",
       "loadFailed": "Could not load the connections.",
       "createFailed": "Could not create the connection.",

@@ -17,7 +17,7 @@
  * as MESMAS funções, então a prévia não diverge do que sai.
  */
 
-import { formatarTelefone } from '@/lib/contacts/telefone';
+import { formatarTelefone, telefoneCanonico } from '@/lib/contacts/telefone';
 
 import { codigosDoTexto } from './codigos';
 
@@ -50,15 +50,21 @@ export function conexoesDoTexto(texto: string): string[] {
 }
 
 /**
- * O número como sai. Na mensagem, a forma de `formatarTelefone` — "(96)
- * 9000-0016", a mesma de toda tela do CRM. No dado (`cru`: "Atualizar campo",
- * corpo do webhook), só os dígitos com o DDI. O `display_phone` da Meta já
- * chega formatado ("+55 11 5000-0001") e o da Evolution em dígitos: os dois
- * passam pelos dígitos. Sem número, vazio — quem envia não deixa chegar aqui
- * (`numerosDasConexoes` falha antes).
+ * O número como sai: o que o cliente consegue salvar E ligar.
+ *
+ * ⚠️ Pela grafia CANÔNICA (`telefoneCanonico`): o `display_phone` da
+ * Evolution é o JID, e o JID de celular antigo (DDD 31 em diante) vem SEM o
+ * nono dígito — "(96) 9000-0016" não liga; "(96) 99000-0016" sim. Fixo
+ * (começa em 2–5) fica como está. O da Meta já chega formatado ("+55 11
+ * 5000-0001") e passa pelos dígitos.
+ *
+ * Na mensagem, a forma de `formatarTelefone`, a mesma de toda tela do CRM. No
+ * dado (`cru`: "Atualizar campo", corpo do webhook), só os dígitos com o DDI.
+ * Sem número, vazio — quem envia não deixa chegar aqui (`numerosDasConexoes`
+ * falha antes).
  */
 export function numeroDaConexao(displayPhone: string | null | undefined, cru: boolean): string {
-  const digitos = (displayPhone ?? '').replace(/\D/g, '');
-  if (!digitos) return '';
-  return cru ? digitos : formatarTelefone(digitos);
+  const canonico = telefoneCanonico(displayPhone);
+  if (!canonico) return '';
+  return cru ? canonico : formatarTelefone(canonico);
 }

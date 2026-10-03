@@ -4769,6 +4769,7 @@
       "connectedToast": "Número conectado.",
       "numeroTrocadoToast": "Conectado com o número novo: {agora} (antes era {antes}).",
       "numeroTrocadoDescricao": "Automações, robôs, filtros e conversas desta conexão continuam valendo. Fora do CRM (anúncios, site, Typebot, cartões), troque o número à mão.",
+      "numeroPendenteDescricao": "A Evolution ainda não confirmou o número deste chip. Ele aparece na conexão em instantes; se não aparecer, use “Ressincronizar”.",
       "deleted": "{label} foi removido.",
       "loadFailed": "Não foi possível carregar as conexões.",
       "createFailed": "Não foi possível criar a conexão.",

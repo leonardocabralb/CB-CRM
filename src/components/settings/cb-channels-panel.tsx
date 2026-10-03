@@ -128,6 +128,39 @@ type AddStep = 'choose' | 'evolution' | 'meta' | 'instagram';
 
 const POLL_MS = 5_000;
 
+/**
+ * Consultas seguidas com a conexão aberta e o número ainda não gravado pela
+ * Evolution (`numeroPendente`) antes de a tela parar de esperar: 6 × 5 s.
+ * O normal é UMA (segundos); sem o teto, uma Evolution que nunca grava
+ * prenderia o diálogo do QR. O aviso `connection.update` grava o número
+ * depois, por conta própria.
+ */
+const MAX_NUMERO_PENDENTE = 6;
+
+/**
+ * O aviso de "conectou". Com OUTRO chip (o "Reparear" é o caminho para trocar
+ * o número), confirma a troca e diz que nada desta conexão precisa ser
+ * refeito — `numeroAnterior` só vem quando havia um e mudou. Senão, o texto
+ * de quem chamou. Fora do componente para não entrar nas dependências do
+ * laço do QR.
+ */
+function avisarConexao(
+  t: ReturnType<typeof useTranslations>,
+  payload: { numeroAnterior?: string | null; channel?: { display_phone?: string | null } | null },
+  textoPadrao: string,
+) {
+  const antes = formatChannelPhone(payload.numeroAnterior);
+  const agora = formatChannelPhone(payload.channel?.display_phone);
+  if (antes && agora) {
+    toast.success(t('numeroTrocadoToast', { antes, agora }), {
+      description: t('numeroTrocadoDescricao'),
+      duration: 15000,
+    });
+  } else {
+    toast.success(textoPadrao);
+  }
+}
+
 const STATUS_DOT: Record<CbChannel['status'], string> = {
   connected: 'bg-emerald-500',
   connecting: 'bg-amber-500',
@@ -320,6 +353,7 @@ export function CbChannelsPanel() {
     setQrConnected(false);
     setQrError(null);
     avisouWebhookRef.current = false;
+    pendentesRef.current = 0;
   };
 
   /**
@@ -381,11 +415,14 @@ export function CbChannelsPanel() {
       if (payload.webhookError) {
         toast.warning(t('webhookRepairFailed'), { description: payload.webhookError });
       } else {
-        toast.success(t('resyncedToast'));
+        // Uma troca de chip que o diálogo do QR não viu (fechado cedo) é
+        // confirmada aqui.
+        avisarConexao(t, payload, t('resyncedToast'));
       }
       // A conexão pode ter caído entre a listagem e o clique. Aí o gesto
-      // certo passa a ser parear, e o QR é o caminho.
-      if (!payload.connected) openQrFor(channelId, payload.qr ?? null);
+      // certo passa a ser parear, e o QR é o caminho. `numeroPendente` é
+      // conexão ABERTA (a Evolution só não gravou o número ainda): sem QR.
+      if (!payload.connected && !payload.numeroPendente) openQrFor(channelId, payload.qr ?? null);
       void load();
     } catch {
       toast.error(t('networkError'));
@@ -749,6 +786,8 @@ export function CbChannelsPanel() {
   qrChannelIdRef.current = qrChannelId;
   /** Trava do aviso de webhook: um por abertura do diálogo, não um por tick. */
   const avisouWebhookRef = useRef(false);
+  /** Respostas seguidas com o número ainda não gravado (ver `MAX_NUMERO_PENDENTE`). */
+  const pendentesRef = useRef(0);
 
   useEffect(() => {
     if (!qrChannelId || qrConnected) return;
@@ -781,22 +820,20 @@ export function CbChannelsPanel() {
           // aparece.
           toast.warning(t('webhookRepairFailed'), { description: payload.webhookError });
         }
-        if (payload.connected) {
+        if (payload.numeroPendente) {
+          // Aberta, mas a Evolution ainda não gravou o número do chip novo
+          // (segundos): espera a próxima consulta, com teto.
+          pendentesRef.current += 1;
+          if (pendentesRef.current >= MAX_NUMERO_PENDENTE) {
+            setQrConnected(true);
+            setQrImage(null);
+            toast.success(t('connectedToast'), { description: t('numeroPendenteDescricao') });
+            void load();
+          }
+        } else if (payload.connected) {
           setQrConnected(true);
           setQrImage(null);
-          // "Reparear" com OUTRO chip (o caminho para trocar o número): a
-          // tela confirma a troca e diz que nada desta conexão precisa ser
-          // refeito. `numeroAnterior` só vem quando havia um e mudou.
-          const antes = formatChannelPhone(payload.numeroAnterior);
-          const agora = formatChannelPhone(payload.channel?.display_phone);
-          if (antes && agora) {
-            toast.success(t('numeroTrocadoToast', { antes, agora }), {
-              description: t('numeroTrocadoDescricao'),
-              duration: 15000,
-            });
-          } else {
-            toast.success(t('connectedToast'));
-          }
+          avisarConexao(t, payload, t('connectedToast'));
           void load();
         } else if (payload.qr) {
           setQrImage(payload.qr);

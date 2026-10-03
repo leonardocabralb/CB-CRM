@@ -24,6 +24,7 @@ import {
   robosQueDependem,
   type DependenciasDaConexao,
 } from '@/lib/cb-channels/dependencias';
+import { lerFiltroSalvo } from '@/lib/inbox/filtros-salvos';
 import { buscarPaginado, type RespostaDaPagina } from '@/lib/supabase/paginar';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -146,12 +147,19 @@ export async function GET(
           .range(de, ate),
     );
 
-    const [filtros, esperas, conversas, fixadas, agendadas, modelos, grupos] = await Promise.all([
+    // Os filtros salvos pela MESMA leitura da caixa de entrada
+    // (`lerFiltroSalvo`): ela aceita o formato antigo (`canalId`, uma conexão
+    // só) além de `canalIds` — contar só a lista esqueceria os antigos.
+    const filtrosSalvos = await todas<{ filtros: unknown }>('filtros salvos', (de, ate) =>
       db
         .from('cb_inbox_saved_filters')
-        .select('id', { count: 'exact', head: true })
+        .select('filtros', { count: 'exact' })
         .eq('account_id', conta)
-        .contains('filtros', { canalIds: [id] }),
+        .order('id')
+        .range(de, ate),
+    );
+
+    const [esperas, conversas, fixadas, agendadas, modelos, grupos] = await Promise.all([
       db
         .from('automation_pending_executions')
         .select('id', { count: 'exact', head: true })
@@ -193,7 +201,7 @@ export async function GET(
       agentes: agentes
         .map((a) => ({ id: a.id, nome: a.nome ?? '', ativo: a.ativo === true }))
         .sort(ordemDaLista),
-      filtrosSalvos: contagem('filtros salvos', filtros),
+      filtrosSalvos: filtrosSalvos.filter((f) => lerFiltroSalvo(f.filtros).canalIds.includes(id)).length,
       esperas: contagem('execuções em andamento', esperas),
       conversas: contagem('conversas', conversas),
       conversasFixadas: contagem('conversas fixadas', fixadas),

@@ -28,7 +28,17 @@ describe('automacoesQueDependem', () => {
     channel_ids,
   });
 
-  it('cada automação UMA vez, no balde mais grave', () => {
+  it('⚠️ escopo em DOIS números com passo que usa este: aparece nas duas linhas (continua rodando pelo outro, e o passo falha)', () => {
+    const r = automacoesQueDependem(
+      CANAL,
+      [a('duas-com-passo', [OUTRO, CANAL])],
+      [{ automation_id: 'duas-com-passo', step_config: { text: `Fale no {{${codigoDoNumeroDaConexao(CANAL)}}}` } }],
+    );
+    expect(r.automacoesPerdemONumero.map((x) => x.id)).toEqual(['duas-com-passo']);
+    expect(r.automacoesComPasso.map((x) => x.id)).toEqual(['duas-com-passo']);
+  });
+
+  it('a que vai ser desligada não se repete em "com passo"', () => {
     const r = automacoesQueDependem(
       CANAL,
       [

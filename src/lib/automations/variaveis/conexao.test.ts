@@ -44,9 +44,17 @@ describe('o código do número da conexão', () => {
 
 describe('o número como sai', () => {
   it('Evolution (dígitos): formatado na mensagem, dígitos no dado', () => {
-    expect(numeroDaConexao('559690000016', false)).toBe('(96) 9000-0016');
     expect(numeroDaConexao('5596990000016', false)).toBe('(96) 99000-0016');
-    expect(numeroDaConexao('559690000016', true)).toBe('559690000016');
+    expect(numeroDaConexao('5596990000016', true)).toBe('5596990000016');
+  });
+
+  it('⚠️ o JID de celular antigo vem SEM o nono dígito: sai COM ele (o número que liga)', () => {
+    expect(numeroDaConexao('559690000016', false)).toBe('(96) 99000-0016');
+    expect(numeroDaConexao('559690000016', true)).toBe('5596990000016');
+  });
+
+  it('fixo (começa em 2–5) não ganha o nono dígito', () => {
+    expect(numeroDaConexao('559632000016', false)).toBe('(96) 3200-0016');
   });
 
   it('Meta (já formatado pela Meta): passa pelos dígitos', () => {

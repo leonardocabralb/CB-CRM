@@ -26,6 +26,7 @@ import {
   type ProvisionResult,
   type WebhookConfig,
 } from '@/lib/whatsapp/transport/evolution-provision';
+import { numeroDoPareamento } from './troca-de-numero';
 import {
   motivoParaRecusar,
   segredoDoHeader,
@@ -112,17 +113,12 @@ function normalizeState(raw?: string): 'open' | 'connecting' | 'close' {
   return raw === 'open' || raw === 'connecting' ? raw : 'close';
 }
 
-/** `5511999999999@s.whatsapp.net` → `5511999999999`. */
-function phoneFromJid(jid: unknown): string | undefined {
-  if (typeof jid !== 'string') return undefined;
-  const digits = jid.split('@')[0]?.split(':')[0];
-  return digits && /^\d+$/.test(digits) ? digits : undefined;
-}
-
 interface RawInstance {
   name?: string;
   instanceName?: string;
   ownerJid?: string;
+  /** Gravado JUNTO com o `ownerJid` do pareamento novo — ver `numeroDoPareamento`. */
+  connectionStatus?: string;
   instance?: { instanceName?: string };
 }
 
@@ -135,6 +131,12 @@ export async function channelConnectionState(instanceName: string): Promise<{
   state: 'open' | 'connecting' | 'close';
   qrBase64?: string;
   ownerPhone?: string;
+  /**
+   * Aberta, mas a Evolution ainda não gravou o número do pareamento novo (o
+   * `ownerJid` lido é o do chip anterior): quem pergunta espera a próxima
+   * consulta. Ver `numeroDoPareamento` (`troca-de-numero.ts`).
+   */
+  numeroPendente?: boolean;
 }> {
   const { baseUrl, apikey } = evolutionGlobalConfig();
   const client = new EvolutionClient({ baseUrl, apikey, instance: instanceName });
@@ -153,10 +155,12 @@ export async function channelConnectionState(instanceName: string): Promise<{
               instanceName,
           )
         : undefined;
-      ownerPhone = phoneFromJid(row?.ownerJid);
+      const lido = numeroDoPareamento(row);
+      if (lido.pendente) return { state, numeroPendente: true };
+      ownerPhone = lido.numero;
     } catch {
-      // Melhor-esforço: o número também chega pelo CONNECTION_UPDATE do
-      // webhook (Fase 3); não bloquear a conexão por causa dele.
+      // Melhor-esforço: o número também chega pelo `connection.update` do
+      // webhook (`registrarNumeroDoAviso`); não bloquear a conexão por ele.
     }
     return { state, ownerPhone };
   }

@@ -131,6 +131,13 @@ export async function POST(
     // Conectou. Com OUTRO chip (o "Reparear" é o caminho para trocar o
     // número), o LID do aparelho velho sai junto e é reaprendido — ver
     // `troca-de-numero.ts`.
+    //
+    // ⚠️ `numeroPendente`: aberta, mas a Evolution ainda não gravou o número
+    // do pareamento novo (o `ownerJid` dela é o do chip ANTERIOR por alguns
+    // segundos). O status vira `connected` (é verdade), o número NÃO é
+    // gravado (seria o velho) e a resposta pede à tela que consulte de novo.
+    // O aviso `connection.update` também grava o número
+    // (`registrarNumeroDoAviso`).
     const trocou = trocouDeNumero(channel.display_phone, res.ownerPhone);
     const { data: updated, error } = await ctx.supabase
       .from('cb_channels')
@@ -166,6 +173,10 @@ export async function POST(
           updated_at: new Date().toISOString(),
         })
         .eq('account_id', ctx.accountId);
+    }
+
+    if (res.numeroPendente) {
+      return NextResponse.json({ connected: false, qr: null, numeroPendente: true, webhookError });
     }
 
     // O número de antes, quando havia um e mudou: a tela confirma a troca.

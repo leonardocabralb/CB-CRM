@@ -45,6 +45,7 @@ import {
 } from '@/lib/cb-groups/system-events';
 import { atualizarPreviaDaConversa } from '@/lib/inbox/conversation-preview';
 import { resolveInboundEvolutionChannel } from '@/lib/cb-channels/resolve-inbound';
+import { numeroDoAvisoDeConexao, registrarNumeroDoAviso } from '@/lib/cb-channels/troca-de-numero';
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
 import { EvolutionClient } from '@/lib/whatsapp/transport/evolution-client';
 import { marcarAnexoGrandeDemais } from '@/lib/whatsapp/anexo-grande';
@@ -862,6 +863,12 @@ export async function POST(request: Request) {
           chErr.message,
         );
       }
+      // O número pareado (`wuid`) chega neste aviso, DEPOIS de a Evolution
+      // gravá-lo: é a via que não lê o número do chip anterior — e a que
+      // registra o chip novo quando ninguém está olhando o QR. Mudou → o LID
+      // do aparelho velho sai (`troca-de-numero.ts`).
+      const numero = numeroDoAvisoDeConexao(body.data);
+      if (numero) await registrarNumeroDoAviso(supabaseAdmin(), instance, numero);
     });
     return NextResponse.json({ ok: true });
   }
