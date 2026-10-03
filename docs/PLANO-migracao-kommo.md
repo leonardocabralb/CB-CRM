@@ -1173,7 +1173,7 @@ as contagens e as regras. Esta seção é o índice.
 | 24 | **Quais automações podem estar LIGADAS na janela da carga** | nenhuma · só as que não são de etapa | nenhuma automação de etapa e nenhuma com "Aguardar" ativa. Hoje as 8 estão desligadas — conferir na véspera |
 | 26 | **Régua do Asaas** | desligar durante a carga e o ciclo seguinte · deixar como está | a carga liga clientes que hoje estão em "Sem ficha"; eles nunca passaram pela curadoria dos 38 da lista de exceção |
 | 27 | **Reuniões históricas da Kommo** (1.199 com data) | só o campo "Data e Hora Reunião" (uma por contato — perde as repetidas) · linhas sintéticas em `cb_calendly_eventos` (fiel, mas inventa registro num log de integração) | ✅ **DECIDIDA em 22/09/2026 pelo operador: só como histórico**, numa terceira forma — tabela própria e fechada (`cb_reunioes_da_kommo`, 1036), sem tocar no campo do Calendly nem no log dele, só datas passadas, nada disparado. Ver "As reuniões históricas da Kommo — 22/09/2026" |
-| 14 | **O corte** | — | quais entradas religar primeiro (n8n/Typebot → webhooks de entrada da 982), quem substitui os 5 webhooks de conversão, quanto tempo os dois convivem, quando a equipe para de mover card na Kommo |
+| 14 | **O corte** | — | ✅ **Feito por área:** Bancário em 27/09, Trabalhista em 03/10 (seção "O corte"). Seguem pendentes as entradas e saídas da fase 5 (Typebot, os 5 webhooks de conversão) |
 | 28 | **Onde a carga vive** | `scripts/kommo/` · módulo em `src/lib/migracao/` chamado por script | em `src/` ela herda de graça os pinos de dono durável e nome fixado, que hoje NÃO a alcançam (trava 8) |
 
 ### Consertos de código antes da carga (não são decisões)
@@ -1286,14 +1286,18 @@ em "falhou". A margem caiu de ~90× para ~3×.
       Comercial, com a paginação de 100 do PR #231 segurando o render).
 - [ ] **5. Religar entradas e saídas** — formulários e Typebot passam a chamar
       o CB CRM (webhooks de entrada da 982), e os 5 webhooks de conversão
-      ganham substituto, antes do corte. **Continua pendente** — a carga rodou
-      antes dela de propósito: ela é reexecutável, e o delta do dia do corte é
-      uma segunda passada.
+      ganham substituto, antes do corte. **Em parte:** desde 25/09 o Make da
+      agência cria o lead de formulário direto no CRM pela API v1 (Trabalhista
+      › Entrada Anuncios; Bancário › Lead - Type e Forms). Typebot e os
+      webhooks de conversão seguem pendentes.
 - [x] **6. Carga — FEITA em 21/09/2026**, no recorte que o operador fechou no
       mesmo dia. Detalhes e números na seção "A carga — 21/09/2026".
 - [x] **7. Conferência — FEITA**, no banco e na tela. Mesma seção.
 - [ ] **8. Desligar** — a equipe para de usar a Kommo; revogar token e chave
-      secreta da integração.
+      secreta da integração. **Em parte:** o Bancário parou em 27/09 e o
+      Trabalhista em 03/10, cada um com o seu delta (seção "O corte"), e a
+      Kommo foi desconectada dos números dos dois setores. Falta remover as
+      integrações no painel da Kommo (seção "Credenciais").
 
 **Ordem em relação às Fases 7 e 8 do funil comercial:** a Fase 7 (ciclo de
 vendas) pode vir depois — ela lê a trilha que já estará lá — e serve bem como
@@ -1379,12 +1383,12 @@ desfazer é lê-lo de trás para frente, na ordem da receita de fusão do CLAUDE
 
 ## Credenciais
 
-`KOMMO_TOKEN` e `KOMMO_API_BASE` no `.env.local` (gitignored). ⚠️ O token
-**expira em 30/09/2026** — faltam **10 dias** em 20/09, e a fase 5 não termina
-antes. Gerar um novo na integração da Kommo é pré-requisito da remedição, não
-só da carga. Ele foi colado num chat durante o levantamento de 02/09 —
-**revogar na Kommo ao fim da migração**, junto com a chave secreta da
-integração.
+`KOMMO_TOKEN` e `KOMMO_API_BASE` no `.env.local` (gitignored). O token de 02/09
+venceu em 30/09/2026. Em 03/10 um token novo da MESMA integração voltou 401 mesmo
+íntegro; uma integração privada NOVA resolveu, e o token dela (válido até
+31/03/2027) está no `.env.local`. Os dois tokens e as chaves secretas das duas
+integrações passaram por chat — **remover as duas integrações no painel da
+Kommo**: a antiga já, a nova ao fim da migração.
 
 ## A carga — 21/09/2026
 
@@ -1757,6 +1761,72 @@ e `titulo_fixado_em`, nome e `nome_fixado_em`) com o `set_updated_at` de
 
 ⚠️ **Todo delta futuro da Kommo tem de seguir esta regra.** O `carga.py`
 original usa o nome do CONTATO para a ficha e para o título.
+
+## O corte — Bancário (27/09) e Trabalhista (03/10/2026)
+
+A decisão 14 se resolveu por ÁREA: cada setor parou de usar a Kommo num dia, e
+no mesmo dia um delta trouxe o que tinha mudado lá desde a cópia usada na carga
+(19/09 22:28:47Z). Os dois rodaram fora do repositório (leem dado de cliente),
+CALADOS (gatilhos USER de `deals` e `contact_tags` desligados dentro da
+transação), com ensaio antes e tudo no `livro_razao`.
+
+### Bancário — 27/09/2026
+
+- O Bancário - Comercial foi desconectado da Kommo pelo operador; a confirmação
+  e os lembretes do agendamento passaram ao CRM. O Make tinha parado de
+  escrever na Kommo em 25/09.
+- Gravado numa transação: 23 cards que já tinham vindo da Kommo movidos; 92
+  cards nascidos no CRM movidos e ligados ao lead (55 do recorte e 37 que a
+  Kommo deu como perdidos, marcados perdidos por decisão do operador); 1 pessoa
+  e card criados; 9 anotações; 6 valores de proposta. 269 eventos retroativos;
+  0 automação, mensagem, robô ou aviso.
+- Etiquetas ficaram fora do pedido. Depois do delta, a etiqueta de área
+  (Bancário/Trabalhista) foi repassada por um lote próprio, que gravou
+  `tag_added` retroativos (ver o ⚠️ abaixo).
+
+### Trabalhista — 03/10/2026
+
+- O setor passou a usar só o CRM. O delta de 27/09, recortado ao funil
+  Trabalhista, achou 316 leads mexidos na Kommo desde a cópia.
+- Gravado: 8 cards que já tinham vindo da Kommo movidos (10 eventos); 45 cards
+  nascidos no CRM movidos e ligados ao lead (94 eventos; 35 deles para perda);
+  163 etiquetas acrescentadas — só as 8 da seção 7 do de-para e `kommo`, que
+  passou também às fichas do delta de 27/09 (ele tinha ido com
+  `etiquetas: []`). Livro-razão: 53 `alterou deals` e 163 `criou contact_tags`.
+  0 automação, trilha não retroativa, aviso, gatilho desligado ou card datado
+  de hoje; a 2ª passada deu 0/0/0.
+- **Decisão do operador:** a perda que a triagem da Kommo deu a card nascido no
+  CRM é aplicada, menos quando o card nasceu depois da decisão ou o cliente
+  escreveu depois dela com a conversa aberta (3 ficaram).
+- ⚠️ Na Kommo, "Não respondeu 1ª mensagem" é etapa de ESPERA (aberta); o de-para
+  a leva a "Não Respondeu", que aqui é coluna de perda. A equipe fazia a
+  triagem da "Etapa de entrada" toda manhã.
+- **Conversas: nada a migrar.** 99,3% das 5.802 mensagens de chat que a Kommo
+  registrou no Trabalhista entre 21/09 e 03/10 já estavam no CRM, recebidas
+  pelas duas conexões do setor. As 3 anotações do intervalo já tinham vindo em
+  27/09.
+- **Entrada:** dos 35 leads que chegaram à Kommo do Trabalhista depois de
+  27/09, 33 já tinham card no CRM; nenhum era de formulário.
+- O robô da Kommo que saudava no Trabalhista - Comercial ("Somos um
+  escritório…", 3 s depois do cliente) foi desconectado pelo operador no mesmo
+  dia.
+
+### O que vale para quem mexer depois
+
+- ⚠️⚠️ **`cb_kommo_carregar_lote` (1035) recusa contato que tenha `tag_added`
+  retroativo.** A conferência de pós-voo conta TODO evento retroativo dos
+  contatos do lote sem `to_pipeline_id`, e evento de etiqueta nunca tem funil.
+  Em 03/10, 11 desses (do lote da etiqueta de área) derrubaram o ensaio. O
+  corte do Trabalhista fez à mão o ramo "card existente" do lote (trava, foto
+  no livro-razão, eventos, etiquetas), conferido por `xmin`. Quem precisar do
+  lote de novo: ou à mão, ou migration nova que restrinja a conferência aos
+  `event_type` de funil.
+- ⚠️ **Não rodar mais delta da Kommo nas áreas cortadas.** Depois do corte a
+  equipe move os cards no CRM, e a Kommo deixou de ser a fonte.
+- O card movido pelo delta fica com `deals.created_at` = a data do lead na
+  Kommo e com duas criações na trilha (a do CRM e a retroativa), como na carga.
+- Fora dos dois cortes: 7 leads de outros funis (Jurídico, Onboarding,
+  Pré-vendas) mexidos na Kommo depois de 27/09.
 
 ## Notas que viviam no CLAUDE.md: o histórico do WhatsApp e as migrations da carga
 
