@@ -129,19 +129,25 @@ export function montarPauta(d: DadosDaPauta): { reunioes: ReuniaoDaPauta[]; funi
   // o que diz qual é a próxima. Montada antes, para a janela não esconder a
   // reunião seguinte que cai fora dela.
   const iniciosPorContato = new Map<string, number[]>();
-  const anotarInicio = (contactId: string | null, inicio: string) => {
+  // O horário do Calendly que a ficha remarcou: NÃO é reunião (a tela não o
+  // cita como "a próxima"), mas fecha a janela da trilha da reunião anterior —
+  // o no show daquele horário não a resolve.
+  const cortesPorContato = new Map<string, number[]>();
+  const anotarEm = (mapa: Map<string, number[]>, contactId: string | null, inicio: string) => {
     const v = ms(inicio);
     if (!contactId || v === null) return;
-    const lista = iniciosPorContato.get(contactId) ?? [];
+    const lista = mapa.get(contactId) ?? [];
     lista.push(v);
-    iniciosPorContato.set(contactId, lista);
+    mapa.set(contactId, lista);
   };
-  const proximaDepoisDe = (contactId: string | null, inicio: string): string | null => {
+  const anotarInicio = (contactId: string | null, inicio: string) => anotarEm(iniciosPorContato, contactId, inicio);
+  const seguinteDe = (mapa: Map<string, number[]>, contactId: string | null, inicio: string): number | null => {
     const v = ms(inicio);
     if (!contactId || v === null) return null;
-    const seguintes = (iniciosPorContato.get(contactId) ?? []).filter((x) => x > v);
-    return seguintes.length > 0 ? new Date(Math.min(...seguintes)).toISOString() : null;
+    const seguintes = (mapa.get(contactId) ?? []).filter((x) => x > v);
+    return seguintes.length > 0 ? Math.min(...seguintes) : null;
   };
+  const isoOuNulo = (v: number | null): string | null => (v === null ? null : new Date(v).toISOString());
 
   const reunioes: ReuniaoDaPauta[] = [];
   const completar = (
@@ -158,7 +164,14 @@ export function montarPauta(d: DadosDaPauta): { reunioes: ReuniaoDaPauta[]; funi
     const entradas = contactId ? (d.trilha.get(contactId) ?? []) : [];
     const n = contactId ? negocioDoContato(negociosPorContato.get(contactId) ?? [], base.inicio) : null;
     const conversa = contactId ? d.conversas.get(contactId) : undefined;
-    const proximaEm = proximaDepoisDe(contactId, base.inicio);
+    const proxima = seguinteDe(iniciosPorContato, contactId, base.inicio);
+    const corte = seguinteDe(cortesPorContato, contactId, base.inicio);
+    const proximaEm = isoOuNulo(proxima);
+    // A trilha desta reunião vai até a próxima reunião OU até o horário do
+    // Calendly que a ficha remarcou, o que vier antes.
+    const ateDaTrilha = isoOuNulo(
+      proxima === null ? corte : corte === null ? proxima : Math.min(proxima, corte),
+    );
     const dealId = n?.id ?? null;
     reunioes.push({
       ...base,
@@ -178,8 +191,8 @@ export function montarPauta(d: DadosDaPauta): { reunioes: ReuniaoDaPauta[]; funi
           }
         : null,
       qualificacao: (contactId ? d.campos.get(contactId) : undefined) ?? { divida: null, atraso: null, origem: null },
-      qualificada: qualificacaoDaReuniao({ desde, ate: proximaEm, dealId, marcos, entradas, etapas: etapaPorId }),
-      resultado: resultadoDaReuniao({ inicio: base.inicio, ate: proximaEm, dealId, marcos, entradas, etapas: etapaPorId }),
+      qualificada: qualificacaoDaReuniao({ desde, ate: ateDaTrilha, dealId, marcos, entradas, etapas: etapaPorId }),
+      resultado: resultadoDaReuniao({ inicio: base.inicio, ate: ateDaTrilha, dealId, marcos, entradas, etapas: etapaPorId }),
       faltouAntes: faltouAntes({ inicio: base.inicio, entradas, etapas: etapaPorId }),
       aguardandoDesde: conversa?.aguardando_desde ?? null,
     });
@@ -230,7 +243,6 @@ export function montarPauta(d: DadosDaPauta): { reunioes: ReuniaoDaPauta[]; funi
     for (const r of montarReunioesExternas(linhas, d.cancelados, [])) {
       const linha = porId.get(r.id);
       if (r.desmarcada !== null || !linha) continue;
-      anotarInicio(linha.contact_id, r.inicio);
       dePe.push({ r, linha, remarcadaPara: null });
     }
     const contactId = linhas[0]?.contact_id ?? null;
@@ -239,10 +251,15 @@ export function montarPauta(d: DadosDaPauta): { reunioes: ReuniaoDaPauta[]; funi
     if (daFicha !== null && ultimo !== undefined && daFicha > ultimo && dePe.length > 0) {
       const maisNova = dePe.reduce((a, b) => ((ms(b.r.inicio) ?? -Infinity) > (ms(a.r.inicio) ?? -Infinity) ? b : a));
       maisNova.remarcadaPara = daFicha;
-      // Os DOIS inícios contam como fronteira da "próxima reunião": o original
-      // fecha a janela da trilha da reunião anterior (o no show do horário do
-      // Calendly não a resolve), e o da ficha, a de quem caiu no meio.
-      anotarInicio(contactId, new Date(daFicha).toISOString());
+    }
+    for (const x of dePe) {
+      if (x.remarcadaPara === null) {
+        anotarInicio(x.linha.contact_id, x.r.inicio);
+      } else {
+        // A próxima reunião é a da ficha; o horário do Calendly só corta a trilha.
+        anotarInicio(x.linha.contact_id, new Date(x.remarcadaPara).toISOString());
+        anotarEm(cortesPorContato, x.linha.contact_id, x.r.inicio);
+      }
     }
     deCalendly.push(...dePe);
   }

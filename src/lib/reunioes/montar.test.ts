@@ -338,7 +338,7 @@ describe('montarPauta — remarcada pela ficha ("Data e Hora Reunião")', () => 
     expect(reunioes).toEqual([]);
   });
 
-  it('só a ÚLTIMA reunião do contato anda; a anterior segue no lugar e vai até o horário do Calendly', () => {
+  it('só a ÚLTIMA reunião do contato anda; a anterior tem como próxima a da FICHA, e a trilha dela para no horário do Calendly', () => {
     const { reunioes } = montarPauta(
       dados({
         janela: { de: new Date('2026-09-20T03:00:00Z'), ate: new Date('2026-10-04T02:59:00Z') },
@@ -347,12 +347,21 @@ describe('montarPauta — remarcada pela ficha ("Data e Hora Reunião")', () => 
           ...calendly,
         ],
         datasDaFicha: ficha,
+        negocios: [
+          { id: 'd1', contact_id: 'c1', pipeline_id: 'banc', stage_id: 'noshow', value: 0, status: 'open', created_at: '2026-09-01T00:00:00Z' },
+        ],
+        // O no show do horário do Calendly (01/10), antes da data da ficha.
+        trilha: new Map([['c1', [{ em: '2026-10-01T20:05:00Z', dealId: 'd1', etapaId: 'noshow', etapa: 'No Show', por: 'Bia' }]]]),
       }),
     );
+    // A tela cita a reunião de 02/10 como a próxima (Codex, PR #377), nunca o
+    // horário de 01/10 que a ficha remarcou…
     expect(reunioes.map((r) => [r.reuniaoId, r.inicio, r.proximaEm])).toEqual([
-      ['antes', '2026-09-22T14:00:00.000Z', '2026-10-01T19:45:00.000Z'],
+      ['antes', '2026-09-22T14:00:00.000Z', '2026-10-02T19:00:00.000Z'],
       ['r1', '2026-10-02T19:00:00.000Z', null],
     ]);
+    // …mas o no show daquele horário não resolve a reunião anterior.
+    expect(reunioes[0].resultado).toBeNull();
   });
 
   it('o resultado marcado ou movido ANTES do horário novo não resolve a remarcada; o depois, sim', () => {

@@ -185,7 +185,9 @@ a rota `/api/cb/reunioes`, `src/components/reunioes/`. Plano:
   conta: é anterior ao início) e `remarcadaDe`. Só quando a ficha é MAIS NOVA
   que todo agendamento do contato — cancelados e substituídos inclusos — e
   que a agenda do CRM: igual é o caso de todo dia (Calendly e iMotion gravam
-  o mesmo instante), e o cancelamento não apaga o campo. Sem reunião do
+  o mesmo instante), e o cancelamento não apaga o campo. O horário do
+  Calendly remarcado vira só CORTE da trilha da reunião anterior: a
+  `proximaEm` que a tela cita é a da ficha (Codex, PR #377). Sem reunião do
   Calendly de pé, a ficha sozinha não vira reunião. Aviso de no-show e aba
   Reuniões da ficha seguem só com o Calendly.
 - **Quem marcou é carimbado por gatilho** (`auth.uid()` e o nome do perfil),
