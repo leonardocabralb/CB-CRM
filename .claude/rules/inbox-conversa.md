@@ -406,9 +406,10 @@ O vínculo e a aba: `.claude/rules/contatos.md`. Aqui, o pulo entre conversas.
   e avatar discordam sobre a mesma pessoa.
 - ⚠️ **O escritor serializa as RPCs numa fila**: na troca rápida de conversa, a
   resposta atrasada não pode vencer a intenção nova.
-- **A página do inbox é a dona da seleção** (`useMarcarConversaAberta`); o
-  cabeçalho mostra `<AvataresNaConversa>` por `useQuemVeAConversa`. O
-  escritor recebe `conversaLida`, nula no modo anônimo e fora do perfil
+- **Quem monta o fio é o dono da seleção** (`useMarcarConversaAberta`): a
+  página do inbox e o painel da pauta de reuniões (`conversa-em-painel.tsx`);
+  o cabeçalho mostra `<AvataresNaConversa>` por `useQuemVeAConversa`. Os dois
+  escritores recebem `conversaLida`, nula no modo anônimo e fora do perfil
   (`modo-anonimo.md`).
 - **Decisão do operador (29/09/2026): a presença também sai em FRASE acima do
   compositor** (`<FaixaDePresenca>`, os mesmos `vendoAgora` e roster dos

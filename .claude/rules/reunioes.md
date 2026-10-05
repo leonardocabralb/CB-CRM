@@ -206,7 +206,19 @@ a rota `/api/cb/reunioes`, `src/components/reunioes/`. Plano:
   "Voltar às reuniões" — decisão do operador: no celular a caixa já é tela
   cheia. "Abrir na caixa de entrada" e o nome no cabeçalho do fio levam ao
   caminho antigo. A presença e o zero das não lidas seguem as regras de
-  `.claude/rules/modo-anonimo.md`.
+  `.claude/rules/modo-anonimo.md`. É CONSULTA RÁPIDA (ver se qualificou,
+  compareceu, justificou; talvez responder; voltar) — o operador pediu sem
+  complexidade.
+- ⚠️ **Fechar o painel DESMONTA o fio e o compositor perde o que tinha**
+  (texto, anexo na fila, gravação; a pendente do "desfazer" sai na hora). Por
+  isso o Esc e o clique fora NÃO fecham com texto digitado (compositor ou
+  anotação), e o Esc que algo de dentro já usou (busca na conversa, lista de
+  @menção, caixa de anotação, visualizador de mídia) também não: o base-ui
+  fecha pelo `onKeyDown` do popup sem olhar `defaultPrevented`. O X fecha
+  sempre. Limites aceitos: anexo na fila e gravação em curso não seguram o
+  fechamento (o compositor, do upstream, não os marca no HTML); o aviso do
+  navegador não sabe da conversa do painel (só lê `/inbox?c=`); "Conversar"
+  do cartão de contato não faz nada ali; ← → da galeria não andam.
 
 ### tl;dv → transcrições (987)
 

@@ -50,10 +50,11 @@ compositor no celular, em `.claude/rules/inbox-conversa.md`.
 - ⚠️ **Prefixe só o `max-w`, NUNCA o `w-full` junto.** Prefixado, o `w-full`
   vence o `data-[side=right]:w-3/4` e, abaixo de `sm`, o painel vira tela
   cheia, sem fundo para fechar tocando fora — no celular, a única saída.
-- ⚠️ **São QUATRO os `SheetContent` do repo**: `contact-detail-view.tsx`,
-  `pipelines/deal-form.tsx` e os DOIS de `flows/flow-canvas.tsx`. Todos com o
-  `max-w` prefixado; quem criar um novo repete o padrão, senão painéis irmãos
-  abrem com larguras diferentes.
+- ⚠️ **São CINCO os `SheetContent` do repo**: `contact-detail-view.tsx`,
+  `pipelines/deal-form.tsx`, os DOIS de `flows/flow-canvas.tsx` e
+  `inbox/conversa-em-painel.tsx` (a conversa sobre a pauta, `sm:max-w-2xl`).
+  Todos com o `max-w` prefixado; quem criar um novo repete o padrão, senão
+  painéis irmãos abrem com larguras diferentes.
 - ⚠️ **`<ScrollArea>` dentro de `flex-col` precisa de `min-h-0`, sempre.**
   Filho de flex nasce com `min-height: auto` e o Root do base-ui não põe
   `overflow`: o painel CRESCE em vez de rolar, o conteúdo é cortado por um

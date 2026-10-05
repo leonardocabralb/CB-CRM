@@ -170,3 +170,17 @@ describe('modo anônimo: a presença na conversa', () => {
     expect(rpc).toEqual(['hooks/use-conversa-aberta.ts']);
   });
 });
+
+describe('modo anônimo: quem monta o fio', () => {
+  it('o fio só monta onde a régua da página está escrita', () => {
+    // Montar o `MessageThread` já ZERA as não lidas (o efeito mora nele), e o
+    // inventário de quem zera não acusa uma tela nova que só o monte: o zero
+    // continua no fio. Tela nova que monte o fio decide a régua (modo
+    // anônimo, fora do perfil, presença) e entra nesta lista.
+    const montadores = arquivosDoCodigo(raiz)
+      .filter((relativo) => relativo !== FIO)
+      .filter((relativo) => /<MessageThread\b/.test(fonte(relativo)))
+      .sort();
+    expect(montadores).toEqual([PAGINA, PAINEL].sort());
+  });
+});
