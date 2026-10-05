@@ -271,9 +271,9 @@ describe('estadoDaFalhaDaMeta — "fora do ar" TRAVA o compositor, então só co
     const { MetaApiError } = await import('@/lib/whatsapp/meta-api');
     // O que o `fetch` do Node lança quando nem chegou à Meta.
     expect(estadoDaFalhaDaMeta(new TypeError('fetch failed'))).toBeNull();
-    const prazo = new Error('sem resposta');
-    prazo.name = 'PrazoDaSondaEsgotado';
-    expect(estadoDaFalhaDaMeta(prazo)).toBeNull();
+    // O que o `fetch` lança quando o `AbortSignal.timeout` da sonda vence.
+    expect(estadoDaFalhaDaMeta(new DOMException('timeout', 'TimeoutError'))).toBeNull();
+    expect(estadoDaFalhaDaMeta(new DOMException('abort', 'AbortError'))).toBeNull();
     expect(estadoDaFalhaDaMeta(new MetaApiError('x', { httpStatus: 429 }))).toBeNull();
     expect(estadoDaFalhaDaMeta(new MetaApiError('x', { httpStatus: 503 }))).toBeNull();
   });

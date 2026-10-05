@@ -228,7 +228,8 @@ export function estadoDaFalhaDoInstagram(err: unknown): 'close' | null {
  *  · limite de chamadas e erro passageiro, que a Meta devolve com HTTP 400 e
  *    se reconhecem pelo CÓDIGO — a classificação é a de `explainMetaError`
  *    (`limite`/`temporario`), a mesma da tela de Conexões;
- *  · o `fetch` que nem chegou (`TypeError: fetch failed`) e o nosso prazo.
+ *  · o `fetch` que nem chegou (`TypeError: fetch failed`) e o prazo da
+ *    sonda, que CANCELA a chamada (`AbortSignal.timeout`: `TimeoutError`).
  * Outro erro (o `decrypt` do token, bug nosso) segue acusando.
  */
 export function estadoDaFalhaDaMeta(err: unknown): 'close' | null {
@@ -238,31 +239,11 @@ export function estadoDaFalhaDaMeta(err: unknown): 'close' | null {
     return motivo === 'limite' || motivo === 'temporario' ? null : 'close';
   }
   if (err instanceof TypeError && err.message === 'fetch failed') return null;
-  if (err instanceof Error && err.name === PRAZO_ESGOTADO) return null;
+  // `DOMException` do sinal — pelo NOME, sem `instanceof`, que varia entre
+  // ambientes.
+  const nome = (err as { name?: unknown } | null)?.name;
+  if (nome === 'TimeoutError' || nome === 'AbortError') return null;
   return 'close';
-}
-
-const PRAZO_ESGOTADO = 'PrazoDaSondaEsgotado';
-
-/**
- * O verify da Meta não tem prazo próprio (`meta-api.ts` é do upstream), e a
- * sonda da conta inteira espera por ele: sem teto, uma Graph API pendurada
- * congelava a faixa e a trava da conversa no último estado por minutos.
- */
-async function comPrazo<T>(promessa: Promise<T>, ms: number): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const prazo = new Promise<never>((_, rejeitar) => {
-    timer = setTimeout(() => {
-      const err = new Error(`sem resposta em ${ms} ms`);
-      err.name = PRAZO_ESGOTADO;
-      rejeitar(err);
-    }, ms);
-  });
-  try {
-    return await Promise.race([promessa, prazo]);
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 /** O pior tom de um conjunto — é o que o glifo colapsado mostra. */
@@ -438,13 +419,17 @@ export async function probeChannels(
       } else {
         try {
           await comCache(`meta:${c.phone_number_id}`, TTL_META_MS, async () => {
-            await comPrazo(
-              verifyPhoneNumber({
-                phoneNumberId: c.phone_number_id!,
-                accessToken: decrypt(c.access_token!),
-              }),
-              PROBE_TIMEOUT_MS,
-            );
+            // ⚠️ O prazo CANCELA a chamada (sinal), não só larga a espera:
+            // largada, a requisição pendurada seguia viva, e a sonda seguinte
+            // abria outra — durante uma Graph API travada, uma por sonda,
+            // acumulando (Codex, PR #386). Sem prazo nenhum (antes), a sonda
+            // da conta inteira esperava minutos e congelava a trava da
+            // conversa.
+            await verifyPhoneNumber({
+              phoneNumberId: c.phone_number_id!,
+              accessToken: decrypt(c.access_token!),
+              signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+            });
             return true;
           });
           estadoVivo = 'open';
