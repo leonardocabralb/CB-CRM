@@ -236,7 +236,8 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
   depois era recusado. A bolha pedia "envie de novo" sobre mensagem lida. O
   `sent` e o `delivered` NÃO tiram da falha: dizem que o servidor ou o
   aparelho recebeu, não que conseguiu mostrar (o ERROR dos links em Android
-  era isso).
+  era isso). Na Evolution, o ERROR de REENVIO a aparelho secundário
+  (`remoteJid` sem "@") nem vira falha (05/10/2026): `whatsapp-evolution.md`.
 - ⚠️ **Espera da linha**: o recibo pode chegar ANTES da mensagem gravada
   (`aplicarReciboQuandoAMensagemExistir`). Evolution espera até ~30 s; Meta, 7 s
   (`pausasDoReciboDaMeta`), e `sent` e recibo de DISPARO não esperam. Recibo de

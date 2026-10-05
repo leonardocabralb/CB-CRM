@@ -121,6 +121,28 @@ function ackToStatus(
   return null;
 }
 
+// ⚠️ O ERROR de um REENVIO a um aparelho SECUNDÁRIO do cliente não é falha da
+// mensagem (decisão do operador, 05/10/2026). Quando o WhatsApp Web, o
+// computador ou o segundo celular do cliente pede a mensagem de novo, a
+// Baileys 7 reenvia só para ele, e o servidor às vezes recusa esse reenvio
+// (ack com `error="479"`). O celular principal já recebeu: o DELIVERY_ACK
+// chega meio segundo depois. Medido de 08/09 a 05/10/2026 em duas conexões,
+// só em envio endereçado pelo telefone: 53 ERROR assim, 50 com entrega
+// confirmada — e, quando o ERROR chegava primeiro, a bolha dizia "não
+// entregue, envie de novo" sobre mensagem entregue. Os 8 ERROR do envio
+// PRINCIPAL do mesmo período nunca foram entregues: esses seguem `failed`.
+//
+// Como se distingue: o ack do reenvio vem do JID do APARELHO
+// (`<lid>:26@lid`), e a Evolution 2.4 o corta com `replace(/:.*$/, '')`, que
+// leva o `@lid` junto — o webhook chega com `remoteJid` SEM "@". O do envio
+// principal mantém o "@". O ":" cobre uma Evolution que um dia corrija o
+// corte e mantenha o aparelho. Se ela passar a mandar só `<lid>@lid`, volta o
+// falso "não entregue" — nunca uma falha real escondida.
+function ehErroDeAparelhoSecundario(remoteJid: unknown): boolean {
+  if (typeof remoteJid !== 'string' || remoteJid === '') return false;
+  return !remoteJid.includes('@') || remoteJid.includes(':');
+}
+
 interface EvolutionWebhookBody {
   event?: string;
   instance?: string;
@@ -613,9 +635,18 @@ export async function POST(request: Request) {
   }
 
   if (event === 'messages.update') {
-    const d = (body.data ?? {}) as { keyId?: string; status?: unknown; fromMe?: unknown };
+    const d = (body.data ?? {}) as {
+      keyId?: string;
+      status?: unknown;
+      fromMe?: unknown;
+      remoteJid?: unknown;
+    };
     const status = ackToStatus(d.status);
     const keyId = d.keyId;
+    if (status === 'failed' && ehErroDeAparelhoSecundario(d.remoteJid)) {
+      console.info(`[evolution/webhook] ERROR de aparelho secundário ignorado: ${keyId}`);
+      return NextResponse.json({ ok: true });
+    }
     if (keyId && status) {
       after(async () => {
         // Só toca nossas mensagens de saída (message_id === keyId). NÃO

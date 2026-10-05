@@ -137,15 +137,16 @@ const upsert = {
   },
 };
 
-const recibo = (status: string, fromMe = true) => ({
+// O `remoteJid` do recibo é o do CHAT (com "@"); o do ERROR de reenvio a um
+// aparelho secundário chega sem "@" (ver o último bloco).
+const recibo = (status: string, fromMe = true, remoteJid = '100000000000000@lid') => ({
   event: 'messages.update',
   instance: INSTANCIA,
-  data: { keyId: KEY_ID, remoteJid: '100000000000000@lid', fromMe, status },
+  data: { keyId: KEY_ID, remoteJid, fromMe, status },
 });
 
-/** Entrega um webhook ao `POST` e devolve o trabalho que ele deixou no `after()`. */
-async function receber(corpo: unknown) {
-  const antes = h.estado.after.length;
+/** Entrega um webhook ao `POST`. */
+async function postar(corpo: unknown) {
   await POST(
     new Request('http://localhost/api/whatsapp/evolution/webhook', {
       method: 'POST',
@@ -153,6 +154,12 @@ async function receber(corpo: unknown) {
       body: JSON.stringify(corpo),
     }),
   );
+}
+
+/** Entrega um webhook ao `POST` e devolve o trabalho que ele deixou no `after()`. */
+async function receber(corpo: unknown) {
+  const antes = h.estado.after.length;
+  await postar(corpo);
   const novos = h.estado.after.slice(antes);
   expect(novos).toHaveLength(1);
   return novos[0];
@@ -247,6 +254,10 @@ describe('recibo que chega antes da mensagem — a rota inteira', () => {
   });
 });
 
+// O ERROR do envio PRINCIPAL (`remoteJid` com "@") e a escada. Os três de
+// 24–25/09 eram, soube-se em 05/10/2026, ERROR de reenvio a um aparelho
+// secundário, que hoje nem chegam ao UPDATE (bloco seguinte); a regra do READ
+// continua valendo para o ERROR que chega aqui.
 describe('o ERROR que chega junto com os outros recibos', () => {
   beforeEach(() => {
     // A mensagem que o atendente mandou pelo CRM: a linha nasce `sent`.
@@ -292,5 +303,71 @@ describe('o ERROR que chega junto com os outros recibos', () => {
 
     expect(situacao()).toBe('read');
     expect(anunciados()).toEqual(['failed', 'read']);
+  });
+});
+
+describe('o ERROR de reenvio a um aparelho secundário do cliente (05/10/2026)', () => {
+  // O ack do reenvio vem do JID do aparelho (`<lid>:26@lid`), e a Evolution
+  // 2.4 o corta com `replace(/:.*$/, '')`: o aviso chega com o LID sem "@".
+  const DO_APARELHO = '100000000000000';
+
+  beforeEach(() => {
+    h.estado.tabelas.messages.push({
+      id: 'msg-1',
+      conversation_id: 'conv-1',
+      message_id: KEY_ID,
+      sender_type: 'agent',
+      status: 'sent',
+      conversations: { account_id: 'conta-1' },
+    });
+  });
+
+  const situacao = () => h.estado.tabelas.messages[0].status;
+  const anunciados = () => h.estado.disparos.map((d) => d.status);
+
+  /** Entrega o webhook e devolve quantos trabalhos ele deixou no `after()`. */
+  async function trabalhosDeixados(corpo: unknown) {
+    const antes = h.estado.after.length;
+    await postar(corpo);
+    return h.estado.after.length - antes;
+  }
+
+  it('⚠️ o medido em 05/10: o ERROR do aparelho chega antes do DELIVERY_ACK e não pinta de vermelho', async () => {
+    expect(await trabalhosDeixados(recibo('ERROR', true, DO_APARELHO))).toBe(0);
+    expect(situacao()).toBe('sent');
+
+    // Meio segundo depois, o celular principal confirma.
+    await (await receber(recibo('DELIVERY_ACK')))();
+    expect(situacao()).toBe('delivered');
+    expect(h.estado.updates).toEqual([1]);
+    expect(anunciados()).toEqual(['delivered']);
+  });
+
+  it('se a Evolution um dia mantiver o aparelho no JID, o ERROR continua ignorado', async () => {
+    expect(await trabalhosDeixados(recibo('ERROR', true, `${DO_APARELHO}:26@lid`))).toBe(0);
+    expect(situacao()).toBe('sent');
+    expect(anunciados()).toEqual([]);
+  });
+
+  it('o recibo de ENTREGA vindo do aparelho (sem "@") continua valendo', async () => {
+    await (await receber(recibo('DELIVERY_ACK', true, DO_APARELHO)))();
+    expect(situacao()).toBe('delivered');
+  });
+
+  it('o ERROR do envio principal (com "@") segue marcando a falha', async () => {
+    await (await receber(recibo('ERROR')))();
+    expect(situacao()).toBe('failed');
+    expect(anunciados()).toEqual(['failed']);
+  });
+
+  it('aviso de ERROR sem remoteJid: vale a regra antiga, falha', async () => {
+    await (
+      await receber({
+        event: 'messages.update',
+        instance: INSTANCIA,
+        data: { keyId: KEY_ID, fromMe: true, status: 'ERROR' },
+      })
+    )();
+    expect(situacao()).toBe('failed');
   });
 });
