@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useModoAnonimo } from "@/hooks/use-modo-anonimo";
 import { useChannels } from "@/hooks/use-channels";
+import { useChannelHealth } from "@/hooks/use-channel-health";
 import { useLeadEvents } from "@/hooks/use-lead-events";
 import { useExecucoesDoFio } from "@/hooks/use-execucoes-do-fio";
 import { useReunioesExternasDoContato } from "@/hooks/use-reunioes";
@@ -24,6 +25,8 @@ import { ExecutarAutomacaoDialog } from "./executar-automacao-dialog";
 import { CopiarLinkDaConversa } from "@/components/inbox/copiar-link-da-conversa";
 import { AvataresNaConversa } from "./avatares-na-conversa";
 import { FaixaDePresenca } from "./faixa-de-presenca";
+import { FaixaDeConexao } from "./faixa-de-conexao";
+import { avisoDaConexao } from "@/lib/inbox/aviso-da-conexao";
 import { useQuemVeAConversa } from "@/hooks/use-conversa-aberta";
 import { intercalar, type ItemDaLinhaDoTempo } from "@/lib/lead-events/describe";
 import {
@@ -91,6 +94,7 @@ import {
   Search,
   ChevronUp,
   CornerUpLeft,
+  WifiOff,
   X,
 } from "lucide-react";
 import { nomeDoGrupo } from "@/lib/cb-groups/display";
@@ -127,7 +131,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ehEvolution } from "@/lib/cb-channels/transporte";
+import { ehEvolution, ehInstagram } from "@/lib/cb-channels/transporte";
+import { vivaParaEnviar } from "@/lib/cb-channels/viva-para-enviar";
 import { IconeDoTransporte } from "@/components/channels/transporte-icone";
 import { identidadeDoContato, nomeDoContato } from "@/lib/contacts/identidade";
 import { alvoDeEnvio } from "@/lib/whatsapp/alvo-de-envio";
@@ -812,6 +817,16 @@ export function MessageThread({
     falhou: canaisFalharam,
   } = useChannels();
 
+  // A SAÚDE das conexões, para a faixa de conexão fora do ar e a trava do
+  // compositor — ver `aviso-da-conexao.ts`. É a MESMA sonda do glifo do
+  // cabeçalho, não uma segunda: o hook guarda uma por aba (ver o cabeçalho
+  // de `use-channel-health.ts` — com duas, a rota batia no teto de chamadas).
+  const {
+    channels: saudeDosCanais,
+    loading: saudeCarregando,
+    falhou: saudeFalhou,
+  } = useChannelHealth();
+
   const channelsById = useMemo(() => {
     const map = new Map<string, CbChannel>();
     for (const c of channels) map.set(c.id, c);
@@ -846,6 +861,22 @@ export function MessageThread({
   // no número oficial, sem esta guarda a regra aplicava a janela da Meta ao
   // grupo — e, contada por número, trancava o compositor de todo grupo.
   const ehGrupo = !!conversation?.group_id;
+
+  // A conexão por onde a resposta SAI está de pé? (decisão do operador,
+  // 05/10/2026). É o `activeChannel` — TAMBÉM no grupo: o núcleo de envio
+  // resolve pelo `conversations.channel_id` (nulo no grupo que ninguém
+  // fixou) e cai no padrão, nunca no `cb_groups.channel_id`. `activeChannel`
+  // nulo (canais carregando) cala a faixa, como a de número divergente.
+  // Mora ANTES do retorno antecipado: o envio de modelo confere a trava.
+  const avisoDeConexao = avisoDaConexao({
+    canalId: activeChannel?.id ?? null,
+    ehGrupo,
+    saude: saudeDosCanais,
+    carregando: saudeCarregando,
+    falhou: saudeFalhou,
+  });
+  // Fora do ar TRAVA o compositor (escolha do operador); âmbar só avisa.
+  const conexaoForaDoAr = avisoDeConexao?.tipo === "fora_do_ar";
 
   /**
    * ⚠️ Enquanto os canais não chegam, o transporte é DESCONHECIDO — e
@@ -2070,6 +2101,12 @@ export function MessageThread({
       },
     ) => {
       if (!conversation) return;
+      // O seletor de modelos podia estar aberto quando a sonda viu a conexão
+      // cair: o botão dele não sabe da trava do compositor.
+      if (conexaoForaDoAr) {
+        toast.error(t("conexaoForaDoArTitulo", { channel: activeChannel?.label ?? "" }));
+        return;
+      }
 
       const renderedBody = renderTemplateBody(template.body_text, values.body);
       const tempId = `temp-${Date.now()}`;
@@ -2131,10 +2168,12 @@ export function MessageThread({
     },
     [
       conversation,
+      conexaoForaDoAr,
       publicarMensagemOtimista,
       onUpdateMessage,
       marcarEnviada,
       activeChannel?.id,
+      activeChannel?.label,
       t,
     ],
   );
@@ -2441,6 +2480,38 @@ export function MessageThread({
     }) ?? "",
   );
 
+  // A marca "Fora do ar" no menu de números: a mesma cautela da faixa — a
+  // lista de uma sonda que falhou é a VELHA, e não autoriza afirmar.
+  const canaisForaDoAr = new Set(
+    saudeFalhou ? [] : saudeDosCanais.filter((c) => c.tone === "down").map((c) => c.id),
+  );
+  // A saída que a faixa vermelha aponta é o seletor do cabeçalho — só quando
+  // ele oferece um número que de fato serve: outro, que a sonda PROVA que
+  // envia (`vivaParaEnviar`, a régua da cobrança do Asaas: "não está fora do
+  // ar" não basta — reconectando ou sem configuração não envia; Codex, #386),
+  // de WhatsApp, que alcança este contato. No GRUPO, só o número que RECEBE o
+  // grupo (`cb_groups.channel_id`): é o único que se sabe membro dele, e outro
+  // número por QR Code de pé falharia no envio (Codex, #386). Conversa do
+  // Instagram não tem número para onde trocar.
+  const canaisQueEnviam = new Set(
+    saudeFalhou ? [] : saudeDosCanais.filter(vivaParaEnviar).map((c) => c.id),
+  );
+  const canalDoGrupo = grupo?.channel_id ?? null;
+  const podeTrocarNumero =
+    !ehInstagram(activeChannel) &&
+    (ehGrupo
+      ? canalDoGrupo !== null &&
+        canalDoGrupo !== activeChannel?.id &&
+        channelsById.has(canalDoGrupo) &&
+        canaisQueEnviam.has(canalDoGrupo)
+      : channels.some(
+          (c) =>
+            c.id !== activeChannel?.id &&
+            canaisQueEnviam.has(c.id) &&
+            !ehInstagram(c) &&
+            !canaisQueNaoAlcancam.has(c.id),
+        ));
+
   const displayName = ehGrupo
     ? nomeDoGrupo(grupo, t("groupNoName"))
     : nomeDoContato(contact, "");
@@ -2635,6 +2706,16 @@ export function MessageThread({
                 <span className="hidden max-w-[8rem] truncate sm:inline">
                   {activeChannel.label}
                 </span>
+                {/* O número de saída está fora do ar: a marca vermelha fica
+                    no gatilho mesmo no celular (onde o nome some), porque é
+                    por ele que se troca de número. Vale no grupo também: o
+                    gatilho mostra justamente o número de saída. */}
+                {conexaoForaDoAr && (
+                  <span className="inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap rounded-sm bg-red-600 px-1 text-[10px] font-semibold leading-4 text-white">
+                    <WifiOff aria-hidden="true" className="h-2.5 w-2.5" />
+                    <span className="sr-only sm:not-sr-only">{t("canalForaDoAr")}</span>
+                  </span>
+                )}
                 <ChevronDown className="h-3 w-3" />
               </DropdownMenuTrigger>
               {/* Largura pelo CONTEÚDO, não pela do gatilho (o padrão do
@@ -2683,6 +2764,11 @@ export function MessageThread({
                         {identidade && (
                           <span className="text-muted-foreground text-xs whitespace-nowrap tabular-nums">
                             {identidade}
+                          </span>
+                        )}
+                        {canaisForaDoAr.has(c.id) && (
+                          <span className="text-xs font-semibold text-red-600">
+                            {t("canalForaDoAr")}
                           </span>
                         )}
                       </span>
@@ -3262,7 +3348,8 @@ export function MessageThread({
           texto.
 
           Fica colado no compositor de propósito — é o último lugar por onde
-          o olho passa antes de digitar. Informativo, não bloqueante: com 2
+          o olho passa antes de digitar (só a faixa de conexão fora do ar,
+          mais grave, fica entre os dois). Informativo, não bloqueante: com 2
           casos em 90 conversas, confirmar a cada envio custaria um clique
           em toda conversa mista para prevenir um erro que a faixa já torna
           visível.
@@ -3296,11 +3383,19 @@ export function MessageThread({
         </div>
       )}
 
+      {/* A conexão desta conversa está FORA DO AR (vermelha, e o compositor
+          abaixo trava) ou de pé mas surda/atrasada (âmbar, só aviso).
+          Decisão do operador (05/10/2026): colada no compositor — vem DEPOIS
+          da de número divergente porque é a mais grave, e é a que explica
+          por que a caixa de texto está desabilitada. */}
+      <FaixaDeConexao aviso={avisoDeConexao} podeTrocarNumero={podeTrocarNumero} />
+
       {/* Composer — canal Evolution não tem janela de 24h (sessionExpired
           neutralizado) nem templates/interativas (channelKind esconde). */}
       <MessageComposer
         conversationId={conversation.id}
         sessionExpired={janelaDe24h ? sessionInfo.expired : false}
+        conexaoForaDoAr={conexaoForaDoAr}
         channelKind={activeChannel?.kind ?? null}
         transporteConhecido={!canaisCarregando && !canaisFalharam}
         onSend={handleSend}
@@ -3346,6 +3441,7 @@ export function MessageThread({
           // aceitaria (ledger 48h). O dialog não desabilita nada quando o
           // canal é nulo — o mesmo fail-open, nas duas camadas.
           channelId={conversation.channel_id ?? null}
+          conexaoForaDoAr={conexaoForaDoAr}
         />
       )}
 

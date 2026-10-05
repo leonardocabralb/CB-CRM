@@ -54,6 +54,12 @@ interface ExecutarAutomacaoDialogProps {
   contactName: string;
   /** Canal da conversa (`conversations.channel_id`); null = desconhecido. */
   channelId: string | null;
+  /**
+   * A conexão de saída da conversa está FORA DO AR (`aviso-da-conexao.ts`).
+   * O menu + que abre este diálogo já trava junto com o compositor; isto
+   * cobre o diálogo que JÁ estava aberto quando a sonda virou (Codex, #386).
+   */
+  conexaoForaDoAr?: boolean;
 }
 
 export function ExecutarAutomacaoDialog({
@@ -62,6 +68,7 @@ export function ExecutarAutomacaoDialog({
   conversationId,
   contactName,
   channelId,
+  conexaoForaDoAr = false,
 }: ExecutarAutomacaoDialogProps) {
   const t = useTranslations("Inbox.execucoes.executar");
 
@@ -162,7 +169,7 @@ export function ExecutarAutomacaoDialog({
   }
 
   async function executar() {
-    if (!selecao) return;
+    if (!selecao || conexaoForaDoAr) return;
     setExecutando(true);
     try {
       const res = await fetch("/api/cb/execucoes/executar", {
@@ -262,6 +269,11 @@ export function ExecutarAutomacaoDialog({
               {t("confirmarTexto", { nome: selecao.nome, contato: contactName })}
             </p>
             <p className="text-muted-foreground text-xs">{t("avisoEnvio")}</p>
+            {conexaoForaDoAr && (
+              <p role="alert" className="text-xs font-medium text-red-700 dark:text-red-300">
+                {t("conexaoForaDoAr")}
+              </p>
+            )}
             <div className="flex justify-end gap-2">
               <Button
                 variant="ghost"
@@ -271,7 +283,11 @@ export function ExecutarAutomacaoDialog({
               >
                 {t("voltar")}
               </Button>
-              <Button size="sm" disabled={executando} onClick={() => void executar()}>
+              <Button
+                size="sm"
+                disabled={executando || conexaoForaDoAr}
+                onClick={() => void executar()}
+              >
                 {executando ? (
                   <Loader2 className="size-3.5 animate-spin" />
                 ) : (

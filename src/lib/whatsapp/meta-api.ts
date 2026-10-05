@@ -127,6 +127,13 @@ async function throwMetaError(response: Response, fallback: string): Promise<nev
 export interface VerifyPhoneNumberArgs {
   phoneNumberId: string
   accessToken: string
+  /**
+   * NOSSO: a sonda de saúde (`cb-channels/health.ts`) CANCELA a chamada no
+   * prazo dela. Só parar de esperar deixava a requisição pendurada viva, e
+   * cada sonda seguinte abria outra durante uma Graph API travada (Codex,
+   * PR #386).
+   */
+  signal?: AbortSignal
 }
 
 /**
@@ -136,10 +143,11 @@ export interface VerifyPhoneNumberArgs {
 export async function verifyPhoneNumber(
   args: VerifyPhoneNumberArgs
 ): Promise<MetaPhoneInfo> {
-  const { phoneNumberId, accessToken } = args
+  const { phoneNumberId, accessToken, signal } = args
   const url = `${META_API_BASE}/${phoneNumberId}?fields=id,display_phone_number,verified_name,quality_rating`
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
+    signal,
   })
   if (!response.ok) {
     await throwMetaError(response, `Meta API error: ${response.status}`)

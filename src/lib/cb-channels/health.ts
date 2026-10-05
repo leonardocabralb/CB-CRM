@@ -25,7 +25,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { EvolutionClient } from '@/lib/whatsapp/transport/evolution-client';
 import { evolutionGlobalConfig } from '@/lib/whatsapp/transport/evolution-provision';
-import { verifyPhoneNumber } from '@/lib/whatsapp/meta-api';
+import { MetaApiError, verifyPhoneNumber } from '@/lib/whatsapp/meta-api';
+import { explainMetaError } from '@/lib/whatsapp/meta-error-explain';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { ehUrlAlcancavel } from './webhook-url';
 import type { CbChannelStatus, CbChannelKind } from './repo';
@@ -217,6 +218,34 @@ export function estadoDaFalhaDoInstagram(err: unknown): 'close' | null {
   return 'close';
 }
 
+/**
+ * O mesmo para o verify do número da Meta. Antes, QUALQUER erro dava `close`
+ * — e desde que "fora do ar" TRAVA o compositor da conversa
+ * (`aviso-da-conexao.ts`, 05/10/2026), um tropeço da Graph API travaria o
+ * número oficial. Só a RESPOSTA da Meta que fala do número ou do token
+ * (revogado, sem permissão, número restrito) prova queda. São "não sei":
+ *  · 5xx e 429;
+ *  · limite de chamadas e erro passageiro, que a Meta devolve com HTTP 400 e
+ *    se reconhecem pelo CÓDIGO — a classificação é a de `explainMetaError`
+ *    (`limite`/`temporario`), a mesma da tela de Conexões;
+ *  · o `fetch` que nem chegou (`TypeError: fetch failed`) e o prazo da
+ *    sonda, que CANCELA a chamada (`AbortSignal.timeout`: `TimeoutError`).
+ * Outro erro (o `decrypt` do token, bug nosso) segue acusando.
+ */
+export function estadoDaFalhaDaMeta(err: unknown): 'close' | null {
+  if (err instanceof MetaApiError) {
+    if (err.httpStatus === 429 || err.httpStatus >= 500) return null;
+    const { motivo } = explainMetaError(err, 'verify_number');
+    return motivo === 'limite' || motivo === 'temporario' ? null : 'close';
+  }
+  if (err instanceof TypeError && err.message === 'fetch failed') return null;
+  // `DOMException` do sinal — pelo NOME, sem `instanceof`, que varia entre
+  // ambientes.
+  const nome = (err as { name?: unknown } | null)?.name;
+  if (nome === 'TimeoutError' || nome === 'AbortError') return null;
+  return 'close';
+}
+
 /** O pior tom de um conjunto — é o que o glifo colapsado mostra. */
 export function piorTom(tons: HealthTone[]): HealthTone {
   const ordem: HealthTone[] = ['down', 'warn', 'unknown', 'ok'];
@@ -390,21 +419,29 @@ export async function probeChannels(
       } else {
         try {
           await comCache(`meta:${c.phone_number_id}`, TTL_META_MS, async () => {
+            // ⚠️ O prazo CANCELA a chamada (sinal), não só larga a espera:
+            // largada, a requisição pendurada seguia viva, e a sonda seguinte
+            // abria outra — durante uma Graph API travada, uma por sonda,
+            // acumulando (Codex, PR #386). Sem prazo nenhum (antes), a sonda
+            // da conta inteira esperava minutos e congelava a trava da
+            // conversa.
             await verifyPhoneNumber({
               phoneNumberId: c.phone_number_id!,
               accessToken: decrypt(c.access_token!),
+              signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
             });
             return true;
           });
           estadoVivo = 'open';
         } catch (err) {
-          // A Meta responde 401/190 com token revogado. Qualquer erro dela
-          // significa que não dá para enviar por este número.
+          // A Meta responde 401/190 com token revogado: não dá para enviar
+          // por este número. Rede fora ou 5xx dela não dizem nada sobre o
+          // número — ver `estadoDaFalhaDaMeta`.
           console.warn(
             '[health] canal Meta não validou:',
             err instanceof Error ? err.message : err,
           );
-          estadoVivo = 'close';
+          estadoVivo = estadoDaFalhaDaMeta(err);
         }
       }
     } else if (ehInstagram(c)) {

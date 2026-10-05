@@ -4,6 +4,7 @@ import { diaNoFuso, FUSO_PADRAO } from "@/lib/agenda/fuso";
 import { dispararAutomacoes, type ResultadoDoDisparo } from "@/lib/automations/engine";
 import { loadStepsTree } from "@/lib/automations/steps-tree";
 import { probeChannels } from "@/lib/cb-channels/health";
+import { vivaParaEnviar } from "@/lib/cb-channels/viva-para-enviar";
 import { isUniqueViolation } from "@/lib/contacts/dedupe";
 import { isValidE164, sanitizePhoneForMeta } from "@/lib/whatsapp/phone-utils";
 
@@ -227,6 +228,11 @@ async function reguaAindaLigada(admin: SupabaseClient, accountId: string): Promi
   return data?.regua_ativa === true;
 }
 
+// "Viva" é `vivaParaEnviar` (`cb-channels/viva-para-enviar.ts`, a MESMA régua
+// que a conversa usa para oferecer outro número), reexportada para quem a
+// importava daqui.
+export { vivaParaEnviar };
+
 /**
  * id da conexão → viva? `null` quando a SONDA falhou (a Evolution não
  * respondeu): aí ninguém é candidato neste ciclo — mandar por uma conexão
@@ -234,37 +240,6 @@ async function reguaAindaLigada(admin: SupabaseClient, accountId: string): Promi
  * sem travar, o ciclo seguinte tenta dentro da janela — e o resultado DIZ
  * que foi a sonda, não a conexão (revisão adversarial do PR #206).
  */
-/**
- * Puro: a sonda confirma que a conexão ENVIA? `ok` = o provedor respondeu
- * `open` (ou o registro está fresco); `warn` só serve quando o detalhe é o
- * WEBHOOK (a instância está aberta — o CRM é que está surdo, e isso não
- * impede o envio). `pairing`, `stale` e `lastError` NÃO provam nada: travar
- * o marco e tentar por elas deixava a trava em `falhou` com a mensagem sem
- * sair, e a trava única impedia o ciclo seguinte de tentar (Codex, 2ª rodada
- * do PR #206).
- */
-export function vivaParaEnviar(c: { tone: string; detail: string | null }): boolean {
-  return c.tone === "ok" || (c.tone === "warn" && ENVIA_MESMO_EM_AMARELO.has(c.detail ?? ""));
-}
-
-/**
- * Os amarelos que NÃO dizem nada sobre ENVIAR.
- *
- * ⚠️ `lagging` (1002) entrou aqui, e a razão é a mesma do `webhook`: os dois
- * descrevem a ENTRADA. Atraso de entrega mede quanto o WhatsApp demorou para
- * passar a mensagem do cliente à Evolution; o envio é outra direção — uma
- * chamada nossa ao provedor, que não espera nada daquela fila. Deixar
- * `lagging` de fora fazia a régua pular a conexão e NÃO cobrar ninguém por
- * ela: no episódio de 16/09/2026, que durou a manhã toda, as cobranças do
- * dia teriam sido silenciosamente adiadas por uma latência de entrada
- * (Codex, PR #220).
- *
- * `pairing`, `stale` e `lastError` continuam FORA — elas não provam que o
- * envio sai, e travar o marco por elas deixava a trava em `falhou` com a
- * mensagem sem sair.
- */
-const ENVIA_MESMO_EM_AMARELO = new Set(["webhook", "lagging"]);
-
 async function saudePadrao(admin: SupabaseClient, accountId: string): Promise<Map<string, boolean> | null> {
   const mapa = new Map<string, boolean>();
   try {
