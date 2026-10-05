@@ -18,10 +18,16 @@
 //
 // ⚠️ "O acervo está vazio" antes da primeira resposta já mordeu (953):
 // `carregou` nasce false e o estado vazio só aparece depois dela.
+//
+// NOSSO (1079): a barra das ÁREAS da tela de Automações (1055) e a estrela das
+// FAVORITAS de quem usa (pessoais), que sobem para o topo. A barra só entra
+// com as áreas LIDAS e havendo pelo menos uma (só "Todas" e "Geral" não
+// separam nada); a leitura das áreas que falha some com a barra, sem derrubar
+// a lista.
 // ============================================================
 
 import { useEffect, useMemo, useState } from "react";
-import { Bot, Loader2, Play, Search, Zap } from "lucide-react";
+import { Bot, Loader2, Play, Search, Star, Zap } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
@@ -33,15 +39,41 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { BarraDeAbas } from "@/components/automations/abas-de-automacao";
 import { createClient } from "@/lib/supabase/client";
 import { semAcento } from "@/lib/inbox/busca-em-mensagens";
+import { ABA_GERAL, ordenarAreas, type AreaDeAutomacao } from "@/lib/automations/areas";
 import {
+  contagemDasAbas,
   listaVazia,
   separarParaExecutar,
   type AutomacaoParaExecutar,
   type RoboParaExecutar,
 } from "@/lib/execucoes/lista-para-executar";
 import { avisarExecucoesMudaram } from "@/hooks/use-execucoes-do-contato";
+import { useAutomacoesFavoritas } from "@/hooks/use-automacoes-favoritas";
+import { cn } from "@/lib/utils";
+
+// A área escolhida fica lembrada NESTE aparelho, à parte da tela de
+// Automações (storage que falha só volta para "Todas").
+const CHAVE_DA_ABA = "cb-executar-automacao-aba";
+
+function lerAbaGuardada(): string | null {
+  try {
+    return window.localStorage.getItem(CHAVE_DA_ABA);
+  } catch {
+    return null;
+  }
+}
+
+function guardarAba(aba: string | null) {
+  try {
+    if (aba) window.localStorage.setItem(CHAVE_DA_ABA, aba);
+    else window.localStorage.removeItem(CHAVE_DA_ABA);
+  } catch {
+    // sem storage, a área só não é lembrada
+  }
+}
 
 type Selecao =
   | { tipo: "automacao"; id: string; nome: string }
@@ -71,6 +103,7 @@ export function ExecutarAutomacaoDialog({
   conexaoForaDoAr = false,
 }: ExecutarAutomacaoDialogProps) {
   const t = useTranslations("Inbox.execucoes.executar");
+  const tFav = useTranslations("Automations.favoritas");
 
   const [automacoes, setAutomacoes] = useState<AutomacaoParaExecutar[]>([]);
   const [robos, setRobos] = useState<RoboParaExecutar[]>([]);
@@ -79,6 +112,23 @@ export function ExecutarAutomacaoDialog({
   const [busca, setBusca] = useState("");
   const [selecao, setSelecao] = useState<Selecao | null>(null);
   const [executando, setExecutando] = useState(false);
+  // `null` = não sei (carregando, ou a leitura falhou): sem barra.
+  const [areas, setAreas] = useState<AreaDeAutomacao[] | null>(null);
+  // `null` = "Todas". Lida no primeiro render: o diálogo só desenha aberto,
+  // no navegador (o portal não vai no HTML do servidor).
+  const [aba, setAba] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : lerAbaGuardada(),
+  );
+  const { favoritas, falhou: favoritasFalharam, alternar } = useAutomacoesFavoritas(open);
+
+  function escolherAba(nova: string | null) {
+    setAba(nova);
+    guardarAba(nova);
+  }
+
+  async function alternarFavorita(id: string) {
+    if (!(await alternar(id))) toast.error(tFav("falhouSalvar"));
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -99,9 +149,11 @@ export function ExecutarAutomacaoDialog({
       // ordem de nome, as desligadas do começo do alfabeto empurrariam para
       // fora do teto automações que dá para executar. Assim o que roda chega
       // como chegava antes; as desligadas vêm à parte, só para serem vistas.
-      const colunasDaAutomacao = "id, name, description, channel_ids, trigger_type, is_active";
+      const colunasDaAutomacao =
+        "id, name, description, channel_ids, trigger_type, is_active, area_id";
       const colunasDoRobo = "id, name, channel_id, status";
-      const [autosLigadas, autosDesligadas, robosAtivos, robosInativos] = await Promise.all([
+      const [autosLigadas, autosDesligadas, robosAtivos, robosInativos, leituraDasAreas] =
+        await Promise.all([
         supabase
           .from("automations")
           .select(colunasDaAutomacao)
@@ -123,8 +175,16 @@ export function ExecutarAutomacaoDialog({
           .select(colunasDoRobo)
           .or("status.is.null,status.neq.active")
           .order("name"),
+        supabase.from("cb_areas_de_automacao").select("id, nome, posicao"),
       ]);
       if (cancelado) return;
+      // À parte da lista: sem as áreas, a janela funciona como antes.
+      if (leituraDasAreas.error) {
+        console.error("[executar] áreas não carregaram:", leituraDasAreas.error.message);
+        setAreas(null);
+      } else {
+        setAreas(ordenarAreas((leituraDasAreas.data ?? []) as AreaDeAutomacao[]));
+      }
       const falha =
         autosLigadas.error ?? autosDesligadas.error ?? robosAtivos.error ?? robosInativos.error;
       if (falha) {
@@ -153,9 +213,24 @@ export function ExecutarAutomacaoDialog({
   // `{{vars.*}}` vazias, sem reconfirmar o pagamento e sem trava — a rota
   // também recusa (`runAutomationById`), mas oferecer o botão seria mentir.
   // Ela sai dos DOIS grupos dentro de `separarParaExecutar`.
+  const idsDasAreas = useMemo(() => new Set((areas ?? []).map((x) => x.id)), [areas]);
+  const comAbas = areas !== null && areas.length > 0;
+  // Área guardada que não existe mais (apagada) volta para "Todas"; sem a
+  // barra na tela, nenhum recorte invisível.
+  const abaVigente =
+    comAbas && aba !== null && (aba === ABA_GERAL || idsDasAreas.has(aba)) ? aba : null;
   const lista = useMemo(
-    () => separarParaExecutar(automacoes, robos, busca),
-    [automacoes, robos, busca],
+    () =>
+      separarParaExecutar(automacoes, robos, busca, {
+        aba: abaVigente,
+        idsDasAreas,
+        favoritas,
+      }),
+    [automacoes, robos, busca, abaVigente, idsDasAreas, favoritas],
+  );
+  const contagem = useMemo(
+    () => contagemDasAbas(automacoes, robos, busca, areas ?? []),
+    [automacoes, robos, busca, areas],
   );
 
   // Falha ABERTA, como o motor: canal da conversa desconhecido (pré-903)
@@ -210,45 +285,87 @@ export function ExecutarAutomacaoDialog({
 
   // `bloqueio` preenchido = a linha aparece desabilitada, com o motivo (fora
   // do canal da conversa, ou desligada). Sem `onClick` nesse caso: o item
-  // desligado não abre nem a confirmação.
+  // desligado não abre nem a confirmação. A estrela (só automação, e só com
+  // as favoritas LIDAS) fica clicável mesmo na bloqueada: desfavoritar a
+  // desligada também é preciso. Botão IRMÃO do principal, nunca dentro dele.
   function LinhaDeItem({
     icone,
     nome,
     descricao,
     bloqueio,
     onClick,
+    favoritaId,
   }: {
     icone: React.ReactNode;
     nome: string;
     descricao?: string | null;
     bloqueio: string | null;
     onClick?: () => void;
+    favoritaId?: string;
   }) {
+    const ehFavorita = favoritaId !== undefined && favoritas?.has(favoritaId) === true;
     return (
-      <button
-        type="button"
-        disabled={bloqueio !== null}
-        onClick={onClick}
-        className="border-border bg-muted/40 hover:border-primary/50 hover:bg-muted flex w-full items-center gap-2 rounded-md border p-2.5 text-left disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border disabled:hover:bg-muted/40"
+      <div
+        className={cn(
+          "border-border bg-muted/40 flex w-full items-center rounded-md border",
+          bloqueio === null && "hover:border-primary/50 hover:bg-muted",
+        )}
       >
-        {icone}
-        <span className="min-w-0 flex-1">
-          <span className="text-foreground block truncate text-sm font-medium">
-            {nome}
+        <button
+          type="button"
+          disabled={bloqueio !== null}
+          onClick={onClick}
+          className="flex min-w-0 flex-1 items-center gap-2 p-2.5 text-left disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {icone}
+          <span className="min-w-0 flex-1">
+            <span className="text-foreground block truncate text-sm font-medium">
+              {nome}
+            </span>
+            {/* Bloqueada, o MOTIVO ocupa a linha de baixo — é a informação
+                que decide, a descrição pode esperar. */}
+            {bloqueio !== null ? (
+              <span className="text-muted-foreground block text-xs">
+                {bloqueio}
+              </span>
+            ) : descricao ? (
+              <span className="text-muted-foreground block truncate text-xs">
+                {descricao}
+              </span>
+            ) : null}
           </span>
-          {/* Bloqueada, o MOTIVO ocupa a linha de baixo — é a informação
-              que decide, a descrição pode esperar. */}
-          {bloqueio !== null ? (
-            <span className="text-muted-foreground block text-xs">
-              {bloqueio}
-            </span>
-          ) : descricao ? (
-            <span className="text-muted-foreground block truncate text-xs">
-              {descricao}
-            </span>
-          ) : null}
-        </span>
-      </button>
+        </button>
+        {favoritaId !== undefined && favoritas !== null && (
+          <button
+            type="button"
+            onClick={() => void alternarFavorita(favoritaId)}
+            aria-pressed={ehFavorita}
+            aria-label={ehFavorita ? tFav("desmarcar") : tFav("marcar")}
+            title={ehFavorita ? tFav("desmarcar") : tFav("marcar")}
+            className="text-muted-foreground hover:text-foreground mr-1 flex size-8 shrink-0 items-center justify-center rounded-md"
+          >
+            <Star
+              className={cn(
+                "size-4",
+                ehFavorita && "fill-amber-400 text-amber-500",
+              )}
+            />
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  function LinhaDeAutomacao({ a }: { a: AutomacaoParaExecutar }) {
+    return (
+      <LinhaDeItem
+        icone={<Zap className="text-primary h-4 w-4 shrink-0" />}
+        nome={a.name}
+        descricao={a.description}
+        bloqueio={automacaoForaDoCanal(a) ? t("foraDoCanal") : null}
+        onClick={() => setSelecao({ tipo: "automacao", id: a.id, nome: a.name })}
+        favoritaId={a.id}
+      />
     );
   }
 
@@ -309,6 +426,21 @@ export function ExecutarAutomacaoDialog({
               />
             </div>
 
+            {comAbas && (
+              <BarraDeAbas
+                areas={areas}
+                contagem={contagem.contagem}
+                total={contagem.total}
+                aba={abaVigente}
+                onAba={escolherAba}
+                podeGerenciar={false}
+                onGerenciar={() => {}}
+              />
+            )}
+            {favoritasFalharam && favoritas === null && (
+              <p className="text-muted-foreground text-xs">{tFav("falhouCarregar")}</p>
+            )}
+
             <div className="max-h-[55vh] space-y-4 overflow-y-auto">
               {!carregou ? (
                 <div className="flex justify-center py-8">
@@ -322,26 +454,28 @@ export function ExecutarAutomacaoDialog({
                 /* Só quando NENHUM dos grupos tem resultado: a busca que
                    acha apenas uma desligada mostra a desligada, não "nada". */
                 <p className="text-muted-foreground py-8 text-center text-sm">
-                  {termo ? t("nadaNaBusca") : t("nadaDisponivel")}
+                  {termo ? t("nadaNaBusca") : abaVigente !== null ? t("nadaNaAba") : t("nadaDisponivel")}
                 </p>
               ) : (
                 <>
+                  {lista.favoritas.length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="text-muted-foreground flex items-center gap-1 text-xs font-semibold uppercase">
+                        <Star className="size-3 fill-amber-400 text-amber-500" />
+                        {tFav("grupo")}
+                      </p>
+                      {lista.favoritas.map((a) => (
+                        <LinhaDeAutomacao key={a.id} a={a} />
+                      ))}
+                    </div>
+                  )}
                   {lista.automacoes.length > 0 && (
                     <div className="space-y-1.5">
                       <p className="text-muted-foreground text-xs font-semibold uppercase">
                         {t("grupoAutomacoes")}
                       </p>
                       {lista.automacoes.map((a) => (
-                        <LinhaDeItem
-                          key={a.id}
-                          icone={<Zap className="text-primary h-4 w-4 shrink-0" />}
-                          nome={a.name}
-                          descricao={a.description}
-                          bloqueio={automacaoForaDoCanal(a) ? t("foraDoCanal") : null}
-                          onClick={() =>
-                            setSelecao({ tipo: "automacao", id: a.id, nome: a.name })
-                          }
-                        />
+                        <LinhaDeAutomacao key={a.id} a={a} />
                       ))}
                     </div>
                   )}
@@ -380,6 +514,7 @@ export function ExecutarAutomacaoDialog({
                             icone={<Zap className="text-primary h-4 w-4 shrink-0" />}
                             nome={d.automacao.name}
                             bloqueio={t("motivoAutomacaoDesligada")}
+                            favoritaId={d.automacao.id}
                           />
                         ) : (
                           <LinhaDeItem

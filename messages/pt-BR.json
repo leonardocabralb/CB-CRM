@@ -882,6 +882,7 @@
         "motivoRoboArquivado": "Arquivado — ative na tela de Fluxos para executar.",
         "nadaDisponivel": "Nenhuma automação ou robô ativo para executar.",
         "nadaNaBusca": "Nada casa com a busca.",
+        "nadaNaAba": "Nada nesta área. Escolha outra acima.",
         "erroCarregar": "Não deu para carregar a lista. Feche e tente de novo.",
         "foraDoCanal": "Não vale para o número desta conversa.",
         "foraDaEtapa": "Este contato não está numa etapa em que a automação vale.",
@@ -3177,6 +3178,13 @@
         "cardDoEvento": "card do evento?",
         "cardDoEventoAjuda": "O cliente tem {n} cards: na prévia vale o mais recente, e no disparo vale o card do evento, que pode ser outro."
       }
+    },
+    "favoritas": {
+      "grupo": "Favoritas",
+      "marcar": "Favoritar",
+      "desmarcar": "Tirar das favoritas",
+      "falhouSalvar": "Não deu para salvar a favorita. Tente de novo.",
+      "falhouCarregar": "Suas favoritas não carregaram agora."
     }
   },
   "Flows": {
