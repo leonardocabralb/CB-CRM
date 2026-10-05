@@ -264,3 +264,39 @@ describe('estadoDaFalhaDoInstagram — rede fora não é queda', () => {
     expect(estadoDaFalhaDoInstagram(new Error('boom'))).toBe('close');
   });
 });
+
+describe('estadoDaFalhaDaMeta — "fora do ar" TRAVA o compositor, então só com prova', () => {
+  it('rede fora, prazo, 5xx e 429 da Meta = "não sei" (null)', async () => {
+    const { estadoDaFalhaDaMeta } = await import('./health');
+    const { MetaApiError } = await import('@/lib/whatsapp/meta-api');
+    // O que o `fetch` do Node lança quando nem chegou à Meta.
+    expect(estadoDaFalhaDaMeta(new TypeError('fetch failed'))).toBeNull();
+    const prazo = new Error('sem resposta');
+    prazo.name = 'PrazoDaSondaEsgotado';
+    expect(estadoDaFalhaDaMeta(prazo)).toBeNull();
+    expect(estadoDaFalhaDaMeta(new MetaApiError('x', { httpStatus: 429 }))).toBeNull();
+    expect(estadoDaFalhaDaMeta(new MetaApiError('x', { httpStatus: 503 }))).toBeNull();
+  });
+
+  it('limite de chamadas e erro passageiro chegam com HTTP 400: o CÓDIGO decide', async () => {
+    const { estadoDaFalhaDaMeta } = await import('./health');
+    const { MetaApiError } = await import('@/lib/whatsapp/meta-api');
+    for (const code of [4, 17, 32, 613, 80007, 130429]) {
+      expect(estadoDaFalhaDaMeta(new MetaApiError('x', { httpStatus: 400, code }))).toBeNull();
+    }
+    for (const code of [1, 2, 131000]) {
+      expect(estadoDaFalhaDaMeta(new MetaApiError('x', { httpStatus: 400, code }))).toBeNull();
+    }
+  });
+
+  it('resposta 4xx da Meta sobre o número ou o token = caiu', async () => {
+    const { estadoDaFalhaDaMeta } = await import('./health');
+    const { MetaApiError } = await import('@/lib/whatsapp/meta-api');
+    expect(estadoDaFalhaDaMeta(new MetaApiError('x', { httpStatus: 401, code: 190 }))).toBe('close');
+    expect(estadoDaFalhaDaMeta(new MetaApiError('x', { httpStatus: 400, code: 100 }))).toBe('close');
+    // Bug nosso (o decrypt do token, que lança `TypeError` sem a chave):
+    // melhor acusar do que esconder.
+    expect(estadoDaFalhaDaMeta(new Error('boom'))).toBe('close');
+    expect(estadoDaFalhaDaMeta(new TypeError('The first argument must be of type string'))).toBe('close');
+  });
+});

@@ -7,6 +7,8 @@ paths:
   - "src/lib/inbox/ordem-do-fio*"
   - "src/lib/inbox/janela-24h*"
   - "src/lib/inbox/selo-da-janela*"
+  - "src/lib/inbox/aviso-da-conexao*"
+  - "src/components/inbox/faixa-de-conexao.tsx"
   - "src/lib/cb-channels/cores*"
 ---
 
@@ -14,8 +16,9 @@ paths:
 
 Vale no fio (`message-thread.tsx`, `message-bubble.tsx`), na linha da lista
 (`conversation-list.tsx`) e nos módulos puros `canais-do-fio.ts`, `cores.ts`,
-`janela-24h.ts` e `selo-da-janela.ts`. Responde duas perguntas: por qual NÚMERO
-esta conversa corre, e a janela de 24h da Meta está aberta nele? A UI de canal
+`janela-24h.ts`, `selo-da-janela.ts` e `aviso-da-conexao.ts`. Responde três
+perguntas: por qual NÚMERO esta conversa corre, ele está DE PÉ, e a janela de
+24h da Meta está aberta nele? A UI de canal
 em geral (peças, escopo vazio = todos, saúde das conexões) está em
 `.claude/rules/canais.md`. O texto antigo, com a história, está em
 `git show f5879b3f:CLAUDE.md`.
@@ -89,6 +92,57 @@ bolinha antes do nome na lista.
 - **O gatilho do seletor do cabeçalho mostra a bolinha, não o ícone de
   transporte** (que segue no menu): numa conta só de Evolution o ícone é igual
   em todas as linhas; a cor amarra o cabeçalho aos rótulos das bolhas.
+
+### O número da conversa está FORA DO AR: faixa vermelha e compositor TRAVADO
+
+`aviso-da-conexao.ts` (puro, pino `aviso-da-conexao.test.ts`), a
+`FaixaDeConexao` colada no compositor, a pastilha "Fora do ar" no seletor de
+número (gatilho e menu) e a prop `conexaoForaDoAr` do compositor. Decisão do
+operador (05/10/2026, depois de a Bancário - Comercial cair sem ninguém ver):
+não reverter sem perguntar.
+
+- ⚠️⚠️ **Vermelha (`tone === 'down'`) TRAVA o que sai para o cliente**: texto,
+  anexo (inclusive a fila já montada: `sendDraft` e o Enviar do
+  `MediaDraftPreview`), voz, agendar, modelo e o menu +. A anotação interna
+  fica livre. **Âmbar** (`detail` `webhook` = não recebe, ou `lagging` =
+  atrasada) só avisa — o mesmo lado do `ENVIA_MESMO_EM_AMARELO`. `pairing`,
+  `stale` e `lastError` não acendem nada: transitórios, a faixa piscaria a
+  cada reconexão. É o oposto da faixa de divergência (só informa) de
+  propósito: lá a mensagem chega, aqui não sai.
+- ⚠️⚠️ **Sonda carregando ou que FALHOU = sem faixa e SEM trava.** Na falha,
+  `useChannelHealth` guarda a lista BOA anterior; afirmar "fora do ar" a
+  partir dela travaria o compositor sobre informação velha. Por isso a sonda
+  é UMA por aba e agrupa a rajada do realtime (`canais.md`): com uma por
+  leitor, a rota batia no teto de 40/min, o 429 virava `falhou` e a faixa
+  sumia no meio da queda.
+- ⚠️⚠️ **O número é o de SAÍDA, o `activeChannel` — também no GRUPO.** O
+  núcleo de envio resolve pelo `conversations.channel_id` (nulo no grupo que
+  ninguém fixou) e cai no padrão da conta; o `cb_groups.channel_id` é por onde
+  o grupo CHEGA. Travar pelo número do grupo deixava a conversa presa sem saída
+  (fixar outro número não o muda) e calava a queda do número que de fato envia.
+  No grupo só o vermelho: o âmbar fala da entrada, e a medição de atraso já
+  deixa grupo de fora (`canais.md`).
+- ⚠️ **"Troque o número no seletor" só com um número que SERVE**
+  (`podeTrocarNumero`): outro, de pé, de WhatsApp, que alcança o contato
+  (`canaisQueNaoAlcancam`); no grupo, por QR Code. Conversa do Instagram, não.
+- ⚠️ **Lê o `tone`/`detail` do servidor (`toneFor`), nunca reavalia a régua.**
+  O pino colhe os motivos do próprio `toneFor`: renomear um lá apaga a faixa.
+- ⚠️ **`conexaoForaDoAr` não é `sessionExpired`**: a fila de anexos NÃO trava
+  pela janela (o fio recusa no disparo) e a dica da janela oferece o modelo;
+  com a conexão caída nem o modelo sai, e a dica cala. Diálogo que já estava
+  aberto quando a sonda virou confere de novo no enviar (`handleSendTemplate`
+  no fio, `sendInteractive` no compositor).
+- **A trava é da TELA.** A rota de envio não consulta a saúde: um envio
+  disparado antes da sonda seguinte segue e falha como antes. Ficam livres o
+  "Executar agora" da agendada, reagir, editar e apagar no fio, e as automações
+  do motor (o "Executar automação" do menu + trava junto com o menu).
+- **A volta destrava com atraso:** a rota guarda o `fetchInstances` por 15 s, e
+  a sonda pedida pelo realtime ainda pode responder "fora" (e regravar
+  `disconnected` por cima do `connected` do webhook) até o tique seguinte —
+  ~30–45 s depois de a conexão voltar.
+- **Não vê a conexão "aberta" que parou de receber sem erro** (02/10/2026: o
+  provedor diz `open`, o webhook aponta para cá e a medição de atraso
+  envelhece). Esse é outro alarme ("nada chega há tempo demais").
 
 ### A janela de 24h da Meta é POR NÚMERO (`janela-24h.ts`)
 

@@ -95,8 +95,9 @@ function entradaInvalida(code: string | undefined): boolean {
  *
  * O `status` do canal pedido NÃO é conferido, de propósito: ele é um sinal
  * RUIDOSO e pode estar VELHO. Quem grava `disconnected` num canal Meta é a
- * sonda de saúde (`cb-channels/health.ts`), a QUALQUER erro da Meta — um tempo
- * esgotado incluído — e só quando há um admin com o app aberto (a RLS barra o
+ * sonda de saúde (`cb-channels/health.ts`), quando a Meta RESPONDE com erro
+ * sobre o número ou o token (rede, prazo, limite e erro passageiro ficam de
+ * fora: `estadoDaFalhaDaMeta`), e só quando há um admin com o app aberto (a RLS barra o
  * UPDATE dos outros papéis); o canal também pode NASCER `disconnected` quando
  * o registro falha. Recusar por essa coluna barraria disparo legítimo por um
  * soluço de minutos atrás. A falha real (token revogado) aparece no envio, e

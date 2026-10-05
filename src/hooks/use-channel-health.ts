@@ -1,7 +1,7 @@
 'use client';
 
 // ============================================================
-// A saúde das conexões, para o cabeçalho.
+// A saúde das conexões, para o cabeçalho, a conversa e o Meu dia.
 //
 // Dois mecanismos, e cada um cobre o que o outro não vê:
 //
@@ -10,12 +10,28 @@
 //    a tela ficaria verde para sempre.
 //  · REALTIME — o webhook `connection.update` já grava `cb_channels`, e a
 //    tabela entrou na publicação na 909. Uma queda avisada pelo provedor
-//    vira vermelho em menos de um segundo em vez de esperar o ciclo.
+//    dispara a sonda em cerca de um segundo em vez de esperar o ciclo. ⚠️ A
+//    rota guarda o `fetchInstances` da Evolution por 15 s (`health.ts`):
+//    com o cache quente, a sonda ainda responde o estado de antes, e a volta
+//    da conexão pode levar até o tique seguinte (~30–45 s) para destravar.
+//
+// ⚠️⚠️ UMA sonda por ABA, compartilhada por quem lê (o estado mora no
+// módulo, e `useSyncExternalStore` o entrega). Desde que a conversa trava o
+// compositor com a conexão fora do ar (`aviso-da-conexao.ts`, 05/10/2026), o
+// cabeçalho e o fio leem a saúde ao mesmo tempo; com uma instância por
+// leitor, cada UPDATE virava uma busca POR LEITOR, e a rota tem teto de
+// 40/min por pessoa. Medido no preview: 18 buscas em 23 s com dois leitores.
+// No teto, a rota responde 429, `falhou` sobe e a faixa vermelha some e
+// volta — o compositor destravaria no meio da queda.
+//
+// ⚠️ A RAJADA do realtime vira UMA busca (`AGRUPAR_REALTIME_MS`): a sonda
+// grava uma linha por conexão (o frescor de todas vence junto), e cada linha
+// é um evento. Antes era uma busca por evento.
 //
 // Aba oculta não pede nada: o indicador só importa para quem está olhando.
 // ============================================================
 
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 
 import { createClient } from '@/lib/supabase/client';
 import type { CbChannelKind } from '@/lib/cb-channels/repo';
@@ -46,12 +62,14 @@ export interface ChannelHealth {
 const POLL_MS = 30_000;
 /** Depois de uma falha, espaça — servidor fora do ar não melhora em 30s. */
 const BACKOFF_MAX_MS = 5 * 60_000;
+/** Eventos do realtime dentro desta janela viram UMA busca. */
+export const AGRUPAR_REALTIME_MS = 1_000;
 
 export interface SaudeDosCanais {
   channels: ChannelHealth[];
   loading: boolean;
   /**
-   * A última conferência não respondeu — erro de rede, 5xx, ou o
+   * A última conferência não respondeu — erro de rede, 5xx, 429, ou o
    * `{ unavailable: true }` da janela pré-migration.
    *
    * ⚠️ Existe porque lista vazia aqui tem DOIS significados: "nenhuma
@@ -60,122 +78,163 @@ export interface SaudeDosCanais {
    * mas o bloco "o que precisa ser corrigido" do Meu dia AFIRMA "tudo em
    * ordem" a partir desse zero, e afirmar isso sobre uma sonda que falhou
    * é o oposto do que aquele bloco existe para fazer (Codex, PR #202).
+   * Com a falha, `channels` continua sendo a última lista BOA (velha).
    */
   falhou: boolean;
   /** Confere agora — o "Atualizar" da aba /meu-dia. */
   recarregar: () => void;
 }
 
-export function useChannelHealth(): SaudeDosCanais {
-  const [channels, setChannels] = useState<ChannelHealth[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [falhou, setFalhou] = useState(false);
-  /** Nome próprio do canal realtime desta instância — ver a nota no efeito. */
-  const instancia = useId();
-  const falhasRef = useRef(0);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const vivoRef = useRef(true);
-  /** A primeira busca ignora a visibilidade da aba — ver `tick`. */
-  const primeiraRef = useRef(true);
+type Estado = Pick<SaudeDosCanais, 'channels' | 'loading' | 'falhou'>;
 
-  const buscar = useCallback(async () => {
-    try {
-      const res = await fetch('/api/cb/channels/health', { cache: 'no-store' });
-      if (!res.ok) {
-        falhasRef.current++;
-        if (vivoRef.current) setFalhou(true);
-        return;
-      }
-      const payload = await res.json();
-      if (!vivoRef.current) return;
-      falhasRef.current = 0;
-      // `unavailable` é 200 com lista vazia (tabela ou coluna ausente): o
-      // indicador some, e quem AFIRMA a partir do zero precisa saber que a
-      // pergunta não foi respondida.
-      setFalhou(payload.unavailable === true);
-      setChannels((payload.channels ?? []) as ChannelHealth[]);
-    } catch {
-      // Silêncio deliberado para o INDICADOR, igual ao `use-channels`: conta
-      // sem canais, deploy anterior à migration ou rede caindo devolvem lista
-      // vazia, e lista vazia esconde o indicador. Nenhuma tela quebra por
-      // isso — mas o sinalizador sobe, para quem afirma a partir do zero.
-      falhasRef.current++;
-      if (vivoRef.current) setFalhou(true);
-    } finally {
-      if (vivoRef.current) setLoading(false);
+const INICIAL: Estado = { channels: [], loading: true, falhou: false };
+
+// ------------------------------------------------------------
+// O estado da aba. Vive enquanto houver ao menos um leitor; o último a sair
+// desliga tudo e zera, para quem voltar não ver lista velha como atual.
+// ------------------------------------------------------------
+let estado: Estado = INICIAL;
+const leitores = new Set<() => void>();
+/**
+ * Cada ligação ganha um número; resposta de uma ligação anterior (o leitor
+ * saiu com a busca no ar, ou o StrictMode montou duas vezes) é descartada.
+ */
+let geracao = 0;
+let falhas = 0;
+let desligar: (() => void) | null = null;
+
+function publicar(novo: Partial<Estado>) {
+  estado = { ...estado, ...novo };
+  for (const avisar of leitores) avisar();
+}
+
+async function buscar(minha: number) {
+  try {
+    const res = await fetch('/api/cb/channels/health', { cache: 'no-store' });
+    if (minha !== geracao) return;
+    if (!res.ok) {
+      falhas++;
+      publicar({ falhou: true, loading: false });
+      return;
     }
-  }, []);
+    const payload = await res.json();
+    if (minha !== geracao) return;
+    falhas = 0;
+    // `unavailable` é 200 com lista vazia (tabela ou coluna ausente): o
+    // indicador some, e quem AFIRMA a partir do zero precisa saber que a
+    // pergunta não foi respondida.
+    publicar({
+      falhou: payload.unavailable === true,
+      channels: (payload.channels ?? []) as ChannelHealth[],
+      loading: false,
+    });
+  } catch {
+    // Silêncio deliberado para o INDICADOR, igual ao `use-channels`: conta
+    // sem canais, deploy anterior à migration ou rede caindo devolvem lista
+    // vazia, e lista vazia esconde o indicador. Nenhuma tela quebra por
+    // isso — mas o sinalizador sobe, para quem afirma a partir do zero.
+    if (minha !== geracao) return;
+    falhas++;
+    publicar({ falhou: true, loading: false });
+  }
+}
+
+function ligar() {
+  const minha = ++geracao;
+  falhas = 0;
+  estado = INICIAL;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let agrupando: ReturnType<typeof setTimeout> | null = null;
+  let primeira = true;
 
   // Laço de polling. Reagenda a si mesmo em vez de usar setInterval: assim o
   // backoff funciona e duas respostas lentas não empilham requisições.
-  useEffect(() => {
-    vivoRef.current = true;
+  const tick = async () => {
+    // ⚠️ A PRIMEIRA busca sempre roda, mesmo com a aba oculta. Abrir o CRM
+    // em nova aba em segundo plano — coisa de todo dia — entrega
+    // `visibilityState: 'hidden'` no primeiro render; pular aqui deixava o
+    // indicador vazio até alguém focar a aba, e sem nunca sair do estado de
+    // carregamento. Só o POLLING seguinte é que respeita a aba oculta.
+    if (primeira || document.visibilityState === 'visible') {
+      primeira = false;
+      await buscar(minha);
+    }
+    if (minha !== geracao) return;
+    const espera = Math.min(POLL_MS * 2 ** falhas, BACKOFF_MAX_MS);
+    timer = setTimeout(tick, espera);
+  };
+  void tick();
 
-    const agendar = () => {
-      const espera = Math.min(POLL_MS * 2 ** falhasRef.current, BACKOFF_MAX_MS);
-      timerRef.current = setTimeout(tick, espera);
-    };
-    const tick = async () => {
-      // ⚠️ A PRIMEIRA busca sempre roda, mesmo com a aba oculta. Abrir o CRM
-      // em nova aba em segundo plano — coisa de todo dia — entrega
-      // `visibilityState: 'hidden'` no primeiro render; pular aqui deixava o
-      // indicador vazio até alguém focar a aba, e sem nunca sair do estado de
-      // carregamento (o `setLoading(false)` mora dentro de `buscar`).
-      // Só o POLLING seguinte é que respeita a aba oculta.
-      if (primeiraRef.current || document.visibilityState === 'visible') {
-        primeiraRef.current = false;
-        await buscar();
-      }
-      if (vivoRef.current) agendar();
-    };
-
-    void tick();
-
-    // Voltar para a aba é o momento em que o dado velho mais engana — o
-    // operador olha o indicador justamente aí.
-    const aoVoltar = () => {
-      if (document.visibilityState === 'visible') void buscar();
-    };
-    document.addEventListener('visibilitychange', aoVoltar);
-    window.addEventListener('focus', aoVoltar);
-
-    return () => {
-      vivoRef.current = false;
-      if (timerRef.current) clearTimeout(timerRef.current);
-      document.removeEventListener('visibilitychange', aoVoltar);
-      window.removeEventListener('focus', aoVoltar);
-    };
-  }, [buscar]);
+  // Voltar para a aba é o momento em que o dado velho mais engana — o
+  // operador olha o indicador justamente aí.
+  const aoVoltar = () => {
+    if (document.visibilityState === 'visible') void buscar(minha);
+  };
+  document.addEventListener('visibilitychange', aoVoltar);
+  window.addEventListener('focus', aoVoltar);
 
   // Realtime: o webhook grava `cb_channels` e nós refazemos a sonda. Não
   // aplicamos o payload direto de propósito — ele traz `status` cru, e a cor
   // depende também do frescor, que só a rota sabe compor.
   //
-  // ⚠️⚠️ O nome do canal leva o `useId()`, NUNCA um literal fixo. O
-  // supabase-js guarda os canais por NOME: com duas instâncias deste hook
-  // vivas ao mesmo tempo — o indicador do cabeçalho e a aba /meu-dia — a
-  // segunda reencontra o canal que a primeira já assinou e estoura
-  // "cannot add 'postgres_changes' callbacks for realtime:… after
-  // 'subscribe()'", derrubando a PÁGINA inteira para o error boundary.
-  // Medido no preview em 13/09/2026, na primeira abertura da aba; nenhum
-  // teste pega (não há render aqui), e o hook funcionou por meses porque só
-  // existia um consumidor. É o mesmo `useId()` de `use-reunioes.ts`.
-  useEffect(() => {
-    const supabase = createClient();
-    const canal = supabase
-      .channel(`cb-channels-health:${instancia}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'cb_channels' },
-        () => {
-          if (document.visibilityState === 'visible') void buscar();
-        }
-      )
-      .subscribe();
-    return () => {
-      void supabase.removeChannel(canal);
-    };
-  }, [buscar, instancia]);
+  // ⚠️ O nome do canal leva a GERAÇÃO: o supabase-js guarda os canais por
+  // NOME, e religar (o StrictMode desmonta e remonta; o último leitor sai e
+  // outro chega) com o nome do canal anterior ainda registrado estoura
+  // "cannot add 'postgres_changes' callbacks … after 'subscribe()'",
+  // derrubando a PÁGINA inteira para o error boundary (medido em
+  // 13/09/2026, quando eram duas instâncias com o mesmo nome).
+  const supabase = createClient();
+  const canal = supabase
+    .channel(`cb-channels-health:${minha}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'cb_channels' }, () => {
+      if (document.visibilityState !== 'visible') return;
+      // Já há uma busca marcada: ela pega este UPDATE também.
+      if (agrupando) return;
+      agrupando = setTimeout(() => {
+        agrupando = null;
+        void buscar(minha);
+      }, AGRUPAR_REALTIME_MS);
+    })
+    .subscribe();
 
-  return { channels, loading, falhou, recarregar: buscar };
+  desligar = () => {
+    if (timer) clearTimeout(timer);
+    if (agrupando) clearTimeout(agrupando);
+    document.removeEventListener('visibilitychange', aoVoltar);
+    window.removeEventListener('focus', aoVoltar);
+    void supabase.removeChannel(canal);
+  };
+}
+
+/**
+ * Assinatura do `useSyncExternalStore`: o primeiro leitor liga, o último
+ * desliga. Leitor que chega com a última sonda FALHADA pergunta de novo: era o
+ * que a instância própria do Meu dia fazia ao abrir, e sem isso o bloco
+ * mostraria "não deu para conferir" até o próximo tique do backoff (até 5 min).
+ */
+export function assinarSaudeDosCanais(avisar: () => void): () => void {
+  leitores.add(avisar);
+  if (leitores.size === 1) ligar();
+  else if (estado.falhou) void buscar(geracao);
+  return () => {
+    leitores.delete(avisar);
+    if (leitores.size > 0) return;
+    geracao++;
+    desligar?.();
+    desligar = null;
+    estado = INICIAL;
+  };
+}
+
+export function lerSaudeDosCanais(): Estado {
+  return estado;
+}
+
+function recarregar() {
+  if (leitores.size > 0) void buscar(geracao);
+}
+
+export function useChannelHealth(): SaudeDosCanais {
+  const atual = useSyncExternalStore(assinarSaudeDosCanais, lerSaudeDosCanais, () => INICIAL);
+  return { ...atual, recarregar };
 }

@@ -25,7 +25,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { EvolutionClient } from '@/lib/whatsapp/transport/evolution-client';
 import { evolutionGlobalConfig } from '@/lib/whatsapp/transport/evolution-provision';
-import { verifyPhoneNumber } from '@/lib/whatsapp/meta-api';
+import { MetaApiError, verifyPhoneNumber } from '@/lib/whatsapp/meta-api';
+import { explainMetaError } from '@/lib/whatsapp/meta-error-explain';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { ehUrlAlcancavel } from './webhook-url';
 import type { CbChannelStatus, CbChannelKind } from './repo';
@@ -217,6 +218,53 @@ export function estadoDaFalhaDoInstagram(err: unknown): 'close' | null {
   return 'close';
 }
 
+/**
+ * O mesmo para o verify do número da Meta. Antes, QUALQUER erro dava `close`
+ * — e desde que "fora do ar" TRAVA o compositor da conversa
+ * (`aviso-da-conexao.ts`, 05/10/2026), um tropeço da Graph API travaria o
+ * número oficial. Só a RESPOSTA da Meta que fala do número ou do token
+ * (revogado, sem permissão, número restrito) prova queda. São "não sei":
+ *  · 5xx e 429;
+ *  · limite de chamadas e erro passageiro, que a Meta devolve com HTTP 400 e
+ *    se reconhecem pelo CÓDIGO — a classificação é a de `explainMetaError`
+ *    (`limite`/`temporario`), a mesma da tela de Conexões;
+ *  · o `fetch` que nem chegou (`TypeError: fetch failed`) e o nosso prazo.
+ * Outro erro (o `decrypt` do token, bug nosso) segue acusando.
+ */
+export function estadoDaFalhaDaMeta(err: unknown): 'close' | null {
+  if (err instanceof MetaApiError) {
+    if (err.httpStatus === 429 || err.httpStatus >= 500) return null;
+    const { motivo } = explainMetaError(err, 'verify_number');
+    return motivo === 'limite' || motivo === 'temporario' ? null : 'close';
+  }
+  if (err instanceof TypeError && err.message === 'fetch failed') return null;
+  if (err instanceof Error && err.name === PRAZO_ESGOTADO) return null;
+  return 'close';
+}
+
+const PRAZO_ESGOTADO = 'PrazoDaSondaEsgotado';
+
+/**
+ * O verify da Meta não tem prazo próprio (`meta-api.ts` é do upstream), e a
+ * sonda da conta inteira espera por ele: sem teto, uma Graph API pendurada
+ * congelava a faixa e a trava da conversa no último estado por minutos.
+ */
+async function comPrazo<T>(promessa: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const prazo = new Promise<never>((_, rejeitar) => {
+    timer = setTimeout(() => {
+      const err = new Error(`sem resposta em ${ms} ms`);
+      err.name = PRAZO_ESGOTADO;
+      rejeitar(err);
+    }, ms);
+  });
+  try {
+    return await Promise.race([promessa, prazo]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** O pior tom de um conjunto — é o que o glifo colapsado mostra. */
 export function piorTom(tons: HealthTone[]): HealthTone {
   const ordem: HealthTone[] = ['down', 'warn', 'unknown', 'ok'];
@@ -390,21 +438,25 @@ export async function probeChannels(
       } else {
         try {
           await comCache(`meta:${c.phone_number_id}`, TTL_META_MS, async () => {
-            await verifyPhoneNumber({
-              phoneNumberId: c.phone_number_id!,
-              accessToken: decrypt(c.access_token!),
-            });
+            await comPrazo(
+              verifyPhoneNumber({
+                phoneNumberId: c.phone_number_id!,
+                accessToken: decrypt(c.access_token!),
+              }),
+              PROBE_TIMEOUT_MS,
+            );
             return true;
           });
           estadoVivo = 'open';
         } catch (err) {
-          // A Meta responde 401/190 com token revogado. Qualquer erro dela
-          // significa que não dá para enviar por este número.
+          // A Meta responde 401/190 com token revogado: não dá para enviar
+          // por este número. Rede fora ou 5xx dela não dizem nada sobre o
+          // número — ver `estadoDaFalhaDaMeta`.
           console.warn(
             '[health] canal Meta não validou:',
             err instanceof Error ? err.message : err,
           );
-          estadoVivo = 'close';
+          estadoVivo = estadoDaFalhaDaMeta(err);
         }
       }
     } else if (ehInstagram(c)) {

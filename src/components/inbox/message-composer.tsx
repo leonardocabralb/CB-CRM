@@ -192,6 +192,14 @@ interface MessageComposerProps {
   conversationId: string;
   sessionExpired: boolean;
   /**
+   * A conexão por onde a resposta sai está FORA DO AR (`aviso-da-conexao.ts`;
+   * decisão do operador, 05/10/2026): trava tudo o que sai para o cliente —
+   * texto, anexo, voz, agendar, modelo, interativa —, como a janela fechada.
+   * A anotação interna continua livre (não sai daqui). A faixa vermelha logo
+   * acima, no fio, diz por quê.
+   */
+  conexaoForaDoAr?: boolean;
+  /**
    * Tipo do canal ativo da conversa (multi-canal). Canal 'evolution' (não
    * oficial, Baileys) não tem templates nem mensagens interativas — os dois
    * atalhos somem. A janela de 24h também não existe lá, mas isso o pai já
@@ -268,6 +276,7 @@ const OPUS_ENCODER_PATH = "/opus/encoderWorker.min.js";
 export function MessageComposer({
   conversationId,
   sessionExpired,
+  conexaoForaDoAr = false,
   channelKind = null,
   transporteConhecido = true,
   onSend,
@@ -503,7 +512,10 @@ export function MessageComposer({
   };
 
   // Media (like free-form text) is only allowed inside the 24h window.
-  const inputsDisabled = readOnly || sessionExpired;
+  // Conexão fora do ar trava o mesmo conjunto: nada disso sairia.
+  const inputsDisabled = readOnly || sessionExpired || conexaoForaDoAr;
+  /** A caixa de texto e o Enviar: travados pela janela OU pela conexão. */
+  const envioTravado = sessionExpired || conexaoForaDoAr;
 
   const clearTimer = useCallback(() => {
     if (timerRef.current !== null) {
@@ -722,7 +734,7 @@ export function MessageComposer({
 
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();
-    if (!trimmed || sessionExpired) return;
+    if (!trimmed || envioTravado) return;
 
     // ⚠️ DESVIO ANTES DE QUALQUER COISA. Com hora no campo, esta mensagem
     // não passa pela janela de desfazer nem pelo despachante — vai para a
@@ -761,7 +773,7 @@ export function MessageComposer({
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
-  }, [text, sessionExpired, replyTo?.id, liberarPendente, quandoAg, agendar]);
+  }, [text, envioTravado, replyTo?.id, liberarPendente, quandoAg, agendar]);
 
   // Trocar de conversa solta a pendente na hora.
   //
@@ -976,6 +988,12 @@ export function MessageComposer({
   );
 
   const sendInteractive = useCallback(() => {
+    // O construtor podia estar aberto quando a conexão caiu: ele não sabe da
+    // trava, e o rascunho fica nele para sair quando ela voltar.
+    if (conexaoForaDoAr) {
+      toast.error(t("conexaoForaDoArPlaceholder"));
+      return;
+    }
     const result = validateInteractivePayload(interactivePayload);
     if (!result.ok) {
       toast.error(mensagemDaInterativa(result, tValidacao));
@@ -984,7 +1002,7 @@ export function MessageComposer({
     onSendInteractive(interactivePayload, replyTo?.id);
     setInteractiveOpen(false);
     onClearReply?.();
-  }, [interactivePayload, onSendInteractive, replyTo?.id, onClearReply, tValidacao]);
+  }, [conexaoForaDoAr, t, interactivePayload, onSendInteractive, replyTo?.id, onClearReply, tValidacao]);
 
   // Persist the current builder payload as a reusable interactive snippet.
   const saveAsQuickReply = useCallback(async () => {
@@ -1133,7 +1151,7 @@ export function MessageComposer({
    */
   const receberArquivos = useCallback(
     (arquivos: readonly File[]) => {
-      if (readOnly || sessionExpired || busy) return;
+      if (readOnly || envioTravado || busy) return;
       const r = escolherArquivos(arquivos, draftsRef.current.length, porQrCode);
       // Cada descarte tem seu aviso: o operador precisa saber o que NÃO foi.
       // A lista do aviso é a desta conexão (a página .html só no QR code).
@@ -1151,7 +1169,7 @@ export function MessageComposer({
       // conclusão, não a que a pessoa soltou.
       void stageUploads(r.aceitos);
     },
-    [readOnly, sessionExpired, busy, stageUploads, t, porQrCode],
+    [readOnly, envioTravado, busy, stageUploads, t, porQrCode],
   );
 
   /**
@@ -1396,6 +1414,9 @@ export function MessageComposer({
       toast.error(t("anexoSoNoQrCode"));
       return;
     }
+    // A conexão caiu com o anexo já na fila: ele FICA (o botão está travado e
+    // a faixa vermelha diz por quê), para sair quando ela voltar.
+    if (conexaoForaDoAr) return;
     // ⚠️ A POSSE é também a GERAÇÃO que cancela este laço. O compositor NÃO
     // remonta na troca de conversa e cada item da fila é um `await`: sem
     // cancelar, trocar de cliente no meio de uma fila de cinco deixava o laço
@@ -1484,7 +1505,7 @@ export function MessageComposer({
         setEnviandoFila(false);
       }
     }
-  }, [drafts, busy, onSendMedia, replyTo?.id, onClearReply, quandoAg, agendar, porQrCode, t]);
+  }, [drafts, busy, conexaoForaDoAr, onSendMedia, replyTo?.id, onClearReply, quandoAg, agendar, porQrCode, t]);
 
   /** Descarta UM item — recolhe o objeto, que subiu e não foi enviado. */
   const discardDraft = useCallback(
@@ -1589,7 +1610,10 @@ export function MessageComposer({
           />
         </div>
       )}
-      {sessionExpired && (
+      {/* Com a conexão fora do ar, o modelo também não sairia: a dica da
+          janela (que oferece o modelo como saída) cala, e fala a faixa
+          vermelha do fio. */}
+      {sessionExpired && !conexaoForaDoAr && (
         <div className="mb-2 flex items-center justify-between rounded-lg bg-amber-500/10 px-3 py-2">
           <p className="text-xs text-amber-400">
             {t("sessionExpiredHint")}
@@ -1672,6 +1696,7 @@ export function MessageComposer({
           ag={ag}
           agendando={agendando}
           inputsDisabled={inputsDisabled}
+          conexaoForaDoAr={conexaoForaDoAr}
           tAgendadas={tAgendadas}
           t={t}
         />
@@ -1799,6 +1824,7 @@ export function MessageComposer({
               size="sm"
               canAct={!readOnly}
               gateReason="sendMessages"
+              disabled={conexaoForaDoAr}
               title={readOnly ? undefined : t("sendTemplate")}
               className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-foreground"
               onClick={onOpenTemplates}
@@ -1865,13 +1891,15 @@ export function MessageComposer({
             placeholder={
               readOnly
                 ? t("readOnlyPlaceholder")
-                : sessionExpired
-                  ? t("sessionExpiredPlaceholder")
-                  : toque
-                    ? t("typeMessagePlaceholderTouch")
-                    : t("typeMessagePlaceholder")
+                : conexaoForaDoAr
+                  ? t("conexaoForaDoArPlaceholder")
+                  : sessionExpired
+                    ? t("sessionExpiredPlaceholder")
+                    : toque
+                      ? t("typeMessagePlaceholderTouch")
+                      : t("typeMessagePlaceholder")
             }
-            disabled={sessionExpired || readOnly}
+            disabled={envioTravado || readOnly}
             rows={1}
             // Textarea keeps its own inline title — the GatedButton
             // wrapping pattern doesn't apply to non-button inputs.
@@ -1879,7 +1907,7 @@ export function MessageComposer({
             title={readOnly ? t("readOnlyTitle") : undefined}
             className={cn(
               "order-first flex-1 basis-full resize-none rounded-xl border border-border bg-muted px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-primary/50 sm:order-none sm:basis-0",
-              (sessionExpired || readOnly) && "cursor-not-allowed opacity-50"
+              (envioTravado || readOnly) && "cursor-not-allowed opacity-50"
             )}
           />
 
@@ -1927,7 +1955,7 @@ export function MessageComposer({
             size="sm"
             canAct={!readOnly}
             gateReason="sendMessages"
-            disabled={!text.trim() || sessionExpired || agendando}
+            disabled={!text.trim() || envioTravado || agendando}
             // ⚠️ O TECLADO FICA ABERTO ao enviar, como no WhatsApp (pedido do
             // operador, 01/10/2026). Tocar no botão tirava o foco da caixa e
             // o celular recolhia o teclado a cada mensagem. O `mousedown` sem
@@ -2086,6 +2114,7 @@ function MediaDraftPreview({
   ag,
   agendando,
   inputsDisabled,
+  conexaoForaDoAr,
   tAgendadas,
   t,
 }: {
@@ -2102,6 +2131,11 @@ function MediaDraftPreview({
   ag: Agendamento;
   agendando: boolean;
   inputsDisabled: boolean;
+  /**
+   * Trava o Enviar da fila. ⚠️ Não é o `inputsDisabled`: com a janela de 24h
+   * fechada este botão segue como sempre foi (o fio recusa no disparo).
+   */
+  conexaoForaDoAr: boolean;
   tAgendadas: ReturnType<typeof useTranslations>;
   t: ReturnType<typeof useTranslations>;
 }) {
@@ -2225,7 +2259,7 @@ function MediaDraftPreview({
           size="sm"
           canAct={!readOnly}
           gateReason="sendMessages"
-          disabled={busy || agendando}
+          disabled={busy || agendando || conexaoForaDoAr}
           onClick={onSend}
           // O mesmo botão faz coisas diferentes conforme a hora esteja
           // escolhida ou não — e quem passa o mouse tem de saber qual.
