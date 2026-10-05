@@ -6699,6 +6699,17 @@
     "body": "It showed up in your search or notifications, but it is outside the connections of your access profile. If you need it, ask the account administrator.",
     "back": "Back to my conversations"
   },
+  "ConversaEmPainel": {
+    "titulo": "Conversation",
+    "abrirNaCaixa": "Open in inbox",
+    "fechar": "Close",
+    "carregando": "Loading the conversation…",
+    "falhou": "Couldn't load the conversation.",
+    "tentarDeNovo": "Try again",
+    "naoEncontrada": "This conversation wasn't found.",
+    "foraDaAreaTitulo": "This conversation belongs to another area",
+    "foraDaAreaCorpo": "It is outside the connections of your access profile. If you need it, ask the account administrator."
+  },
   "PerfisPanel": {
     "title": "Access profiles",
     "description": "Who sees what. Each member gets a profile, and the profile defines role, screens and area (connections and pipelines).",

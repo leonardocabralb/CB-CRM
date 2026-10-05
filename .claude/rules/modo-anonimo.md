@@ -8,6 +8,7 @@ paths:
   - "src/components/layout/header.tsx"
   - "src/app/*/inbox/page.tsx"
   - "src/components/inbox/message-thread.tsx"
+  - "src/components/inbox/conversa-em-painel.tsx"
   - "src/lib/inbox/ordem-da-lista*"
 ---
 
@@ -32,6 +33,12 @@ estado em `useModoAnonimo`; pinos `modo-anonimo.test.ts` e
   próximo reload. O pino faz o INVENTÁRIO de quem zera: arquivo novo reprova
   até alguém decidir se ele roda quando a pessoa só LÊ (abrir conversa por
   uma tela nova, pelo Meu dia).
+- ⚠️ **O fio fora da caixa de entrada repete a régua da página.** O painel
+  lateral (`conversa-em-painel.tsx`, a conversa por cima da pauta de
+  reuniões) é o SEGUNDO escritor da presença: deriva `foraDoPerfil` e
+  `conversaLida` com as mesmas linhas, e fora do perfil não monta o fio. O
+  pino cobra as duas cópias; tela nova que monte o `MessageThread` entra no
+  inventário do mesmo jeito.
 - ⚠️ **Responder zera em `marcarEnviada`, depois de o servidor confirmar**, na
   conversa PARA a qual a mensagem saiu (`conversationIdDoEnvio`, parâmetro
   obrigatório; o pino casa cada `fetch` da rota de envio com um
