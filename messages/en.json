@@ -1116,6 +1116,7 @@
       "attachment_video": "Video",
       "attachment_audio": "Audio",
       "attachment_document": "Document",
+      "watchVideo": "Watch video",
       "replyingTo": "Replying to: {trecho}",
       "quotedDeleted": "The quoted message was deleted — this will go out without the quote.",
       "quotedWasLost": "Sent without the quote: the quoted message had been deleted."
@@ -6451,6 +6452,8 @@
     "emptyFiltered": "No scheduled messages in this state.",
     "loadMore": "Load more sent",
     "openConversation": "Open the conversation",
+    "expandText": "Click to read the whole message",
+    "collapseText": "Click to collapse the message",
     "groupNoName": "Unnamed group",
     "unknownRecipient": "Unnamed contact",
     "conversationUnavailable": "Conversation not loaded"

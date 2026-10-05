@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
+import { FormattedText } from '@/components/inbox/formatted-text';
 import { AnexoECitacao } from '@/components/scheduled/anexo-e-citacao';
 import { useAcoesDaAgendada } from '@/hooks/use-acoes-da-agendada';
 import {
@@ -84,6 +85,15 @@ export default function AgendadasPage() {
   const { channels } = useChannels();
   const podeAgir = useCan('send-messages');
   const [situacao, setSituacao] = useState<Situacao>('todas');
+  // Linhas com o texto aberto inteiro (o padrão corta em 2 linhas).
+  const [abertas, setAbertas] = useState<ReadonlySet<string>>(new Set());
+  const alternarTexto = useCallback((id: string) => {
+    setAbertas((atual) => {
+      const nova = new Set(atual);
+      if (!nova.delete(id)) nova.add(id);
+      return nova;
+    });
+  }, []);
 
   const mostrarCanal = channels.length > 1;
 
@@ -279,9 +289,47 @@ export default function AgendadasPage() {
                       </Link>
                     )}
                   </div>
-                  <p className="mt-0.5 line-clamp-2 whitespace-pre-wrap break-words text-xs text-muted-foreground">
-                    {a.body}
-                  </p>
+                  {/* Com a formatação e os links clicáveis da bolha. Corta em
+                      2 linhas; o clique no texto abre inteiro e fecha de novo.
+                      ⚠️ O texto NÃO é botão (nem `<button>` nem
+                      `role="button"`): ele tem links, e controle interativo
+                      dentro de botão some para o leitor de tela (Codex,
+                      #387). O clique no texto é atalho de mouse e toque;
+                      teclado e leitor de tela usam o botão irmão, que só
+                      aparece com foco. Clique no link abre o link, sem
+                      alternar. */}
+                  {a.body && (
+                    <>
+                      <div
+                        id={`texto-${a.id}`}
+                        title={abertas.has(a.id) ? t('collapseText') : t('expandText')}
+                        onClick={(e) => {
+                          if ((e.target as HTMLElement).closest('a')) return;
+                          // Quem arrastou para COPIAR o texto não quer recolher.
+                          if (window.getSelection()?.toString()) return;
+                          alternarTexto(a.id);
+                        }}
+                        className="mt-0.5 cursor-pointer"
+                      >
+                        <FormattedText
+                          texto={a.body}
+                          className={cn(
+                            'text-xs text-muted-foreground',
+                            !abertas.has(a.id) && 'line-clamp-2',
+                          )}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        aria-expanded={abertas.has(a.id)}
+                        aria-controls={`texto-${a.id}`}
+                        onClick={() => alternarTexto(a.id)}
+                        className="sr-only rounded text-[10px] text-muted-foreground underline focus-visible:not-sr-only focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {abertas.has(a.id) ? t('collapseText') : t('expandText')}
+                      </button>
+                    </>
+                  )}
                   <AnexoECitacao
                     agendada={a}
                     citada={
