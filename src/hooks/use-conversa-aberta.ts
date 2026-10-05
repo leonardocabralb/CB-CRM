@@ -3,8 +3,9 @@
 // ============================================================
 // Presença por conversa (956) — as duas metades.
 //
-//   useMarcarConversaAberta  — ESCRITOR. Mora na página do inbox (dona da
-//     conversa selecionada): marca a troca na hora e rebate a cada
+//   useMarcarConversaAberta  — ESCRITOR. Mora em quem monta o fio (a
+//     página do inbox e o painel da pauta de reuniões, donos da conversa
+//     selecionada): marca a troca na hora e rebate a cada
 //     HEARTBEAT_MS. As RPCs saem por uma FILA serializada — troca rápida de
 //     conversa dispararia rpc(null)/rpc(novo) em paralelo, e a ordem de
 //     chegada decidiria o estado final; com a fila, quem decide é a ordem
