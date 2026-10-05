@@ -7,10 +7,15 @@
 // abre o fio por cima da pauta, para ler e responder sem ir à caixa de
 // entrada e voltar a cada cliente. É o MESMO `MessageThread` da caixa de
 // entrada, intocado: o fio grava tudo sozinho (envio, situação, canal, o zero
-// das não lidas, o modo anônimo). Este componente faz só o papel da página do
-// inbox — carrega a conversa, guarda as mensagens, ouve o tempo real e marca
-// a presença. Ficha, etiquetas e funil ficam na caixa de entrada: o botão
-// "Abrir na caixa de entrada" e o nome no cabeçalho do fio levam para lá.
+// das não lidas, o modo anônimo). Este componente faz a parte da página do
+// inbox que o fio precisa — carrega a conversa, guarda as mensagens, ouve o
+// tempo real e marca a presença. Ficha, etiquetas e funil ficam na caixa de
+// entrada: o botão "Abrir na caixa de entrada" e o nome no cabeçalho do fio
+// levam para lá. É uma CONSULTA RÁPIDA (ler as últimas, talvez responder,
+// voltar), e o que a página faz além disso ficou de fora de propósito: o
+// aviso do navegador não sabe desta conversa (só lê `/inbox?c=`), o
+// "Conversar" do cartão de contato não tem quem o ouça aqui, e as setas da
+// galeria não andam (o popup do base-ui as segura).
 //
 // No celular quem chama NÃO usa o painel: lá a caixa de entrada já ocupa a
 // tela inteira, e o painel seria a mesma tela, mais apertada (decisão do
@@ -43,6 +48,23 @@ import { conversaNoEscopo } from "@/lib/perfis/escopo";
 import { createClient } from "@/lib/supabase/client";
 import type { Conversation, Message } from "@/types";
 
+/**
+ * Há texto digitado no painel — no compositor ou na caixa de anotação, cada
+ * um com a SUA `<textarea>`? A busca na conversa é `<input>` e fica de fora:
+ * o termo não é trabalho a perder.
+ *
+ * ⚠️ Só o texto. O anexo na fila e a gravação em curso SUBSTITUEM a caixa do
+ * compositor e não deixam marca estável no HTML; olhá-los pediria mexer no
+ * compositor (arquivo do upstream). Limite aceito: a consulta rápida da pauta
+ * responde por texto, e o X segue sendo a saída para quem anexou.
+ */
+function temTextoEscrito(corpo: HTMLElement | null): boolean {
+  if (!corpo) return false;
+  return Array.from(corpo.querySelectorAll("textarea")).some(
+    (campo) => campo.value.trim() !== "",
+  );
+}
+
 interface ConversaEmPainelProps {
   /** A conversa do painel; continua preenchida durante a animação de fechar. */
   conversaId: string | null;
@@ -66,16 +88,36 @@ export function ConversaEmPainel({
       open={aberto}
       onOpenChange={(abrir, detalhes) => {
         if (abrir) return;
-        // ⚠️ O visualizador de mídia da bolha (`media-viewer.tsx`) é um
-        // overlay PRÓPRIO, sem portal, que fecha no Esc ouvindo a janela — e
-        // o Esc chega antes ao painel. Sem esta guarda, fechar a foto fechava
-        // a conversa junto. `allowPropagation` deixa o Esc seguir até ele.
+        // Fechar DESMONTA o fio, e o compositor perde o que tinha: texto,
+        // anexos da fila, gravação em curso (a pendente do "desfazer" sai na
+        // hora). Por isso o Esc e o clique fora só fecham quando não há nada
+        // a perder; o X fecha sempre — é a saída escolhida.
+        const corpo = corpoRef.current;
+        if (detalhes.reason === "escape-key") {
+          // ⚠️ O visualizador de mídia da bolha (`media-viewer.tsx`) é um
+          // overlay PRÓPRIO, sem portal, que fecha no Esc ouvindo a janela —
+          // e o Esc chega antes ao painel. Sem esta guarda, fechar a foto
+          // fechava a conversa junto. `allowPropagation` deixa o Esc seguir.
+          if (corpo?.querySelector('[role="dialog"][aria-modal="true"]')) {
+            detalhes.cancel();
+            detalhes.allowPropagation();
+            return;
+          }
+          // ⚠️ Esc que algo de dentro já usou — fechar a busca na conversa,
+          // a lista de @menção, a caixa de anotação. O base-ui fecha pelo
+          // `onKeyDown` do próprio popup sem olhar `defaultPrevented`: sem
+          // esta guarda, fechar a busca fechava o painel junto.
+          if (detalhes.event.defaultPrevented) {
+            detalhes.cancel();
+            return;
+          }
+        }
         if (
-          detalhes.reason === "escape-key" &&
-          corpoRef.current?.querySelector('[role="dialog"][aria-modal="true"]')
+          (detalhes.reason === "escape-key" ||
+            detalhes.reason === "outside-press") &&
+          temTextoEscrito(corpo)
         ) {
           detalhes.cancel();
-          detalhes.allowPropagation();
           return;
         }
         aoFechar();
@@ -170,7 +212,9 @@ function ConversaCarregada({
   // conversa, a situação — não chega de outro jeito, e o painel seguiria
   // enviando pelo `channel_id` velho, recusado a cada tentativa (Codex, PR
   // #385). Releitura que falha ou não acha mantém a conversa à vista: só a
-  // carga inicial vira aviso.
+  // carga inicial vira aviso — e a releitura que ACERTA depois de uma carga
+  // inicial que falhou tira o aviso da tela (senão ele ficava preso até o
+  // "Tentar de novo", com a presença já marcada por trás).
   const carregouRef = useRef(false);
   useEffect(() => {
     let cancelado = false;
@@ -191,6 +235,7 @@ function ConversaCarregada({
           return;
         }
         carregouRef.current = true;
+        setFalha(null);
         setConversation(normalizeConversation(data));
       });
     return () => {
