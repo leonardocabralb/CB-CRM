@@ -342,9 +342,9 @@ comum no meio das mensagens (ícone cinza sobre bolha cinza).
   `new URL` confere o esquema.
 - **A anotação passa só por `TextoComLinks`**, sem a formatação do WhatsApp
   (asterisco na nota fica asterisco), nas quatro telas e na faixa fixada.
-- ⚠️ **`LinkDoTexto` para o `onContextMenu`**: a linha da mensagem troca o
-  botão direito e o toque longo pela barra de ações; sobre o link, o menu é o
-  do navegador. Aba nova com `noopener noreferrer`; cor HERDADA com
+- ⚠️ **`LinkDoTexto` para o `onContextMenu`** e leva `data-menu-do-navegador`
+  (o toque longo: `celular.md`): a linha da mensagem troca o botão direito e o
+  toque longo pela barra de ações; sobre o link, o menu é o do navegador. Aba nova com `noopener noreferrer`; cor HERDADA com
   sublinhado (a mesma peça vai na bolha violeta).
 
 ### Anotação interna e resposta à anotação

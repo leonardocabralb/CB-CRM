@@ -21,6 +21,9 @@ import { partirEmLinks } from '@/lib/inbox/links-no-texto';
  * ⚠️ `onContextMenu` para aqui: a linha da mensagem (`message-actions.tsx`)
  * troca o menu do botão direito — e o toque longo do celular — pela barra de
  * ações. Sobre um link, o menu tem de ser o do navegador ("copiar endereço").
+ * O toque longo a linha mede sozinha (o iPhone não manda `contextmenu`): ela
+ * pula quem está dentro de `data-menu-do-navegador`, e o `touch-callout`
+ * devolve aqui o menu que a linha desliga no toque.
  */
 export function LinkDoTexto({ href, texto }: { href: string; texto: string }) {
   return (
@@ -29,8 +32,9 @@ export function LinkDoTexto({ href, texto }: { href: string; texto: string }) {
       target="_blank"
       rel="noopener noreferrer"
       title={href}
+      data-menu-do-navegador=""
       onContextMenu={(e) => e.stopPropagation()}
-      className="underline underline-offset-2 hover:opacity-80"
+      className="underline underline-offset-2 hover:opacity-80 [-webkit-touch-callout:default]"
     >
       {texto}
     </a>
