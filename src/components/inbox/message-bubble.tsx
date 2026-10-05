@@ -279,7 +279,7 @@ const COR_DO_SELO: Record<FamiliaDeDocumento, string> = {
  * faz o documento saltar aos olhos no meio das mensagens, já que ele não tem
  * miniatura. Sem extensão conhecida, o ícone genérico no selo cinza.
  */
-function SeloDoDocumento({ nome, mime }: { nome: string; mime?: string | null }) {
+export function SeloDoDocumento({ nome, mime }: { nome: string; mime?: string | null }) {
   const { rotulo, familia } = tipoDoDocumento(nome, mime);
   return (
     <span

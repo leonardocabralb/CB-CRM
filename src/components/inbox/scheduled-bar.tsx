@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { FormattedText } from "@/components/inbox/formatted-text";
 import { AnexoECitacao } from "@/components/scheduled/anexo-e-citacao";
 import { useAcoesDaAgendada } from "@/hooks/use-acoes-da-agendada";
 import { useAgendadas } from "@/hooks/use-agendadas";
@@ -160,9 +161,12 @@ export function ScheduledBar({
                 </div>
 
                 <div className="min-w-0 flex-1">
-                  <p className="whitespace-pre-wrap break-words text-xs text-foreground">
-                    {a.body}
-                  </p>
+                  {/* Com a formatação e os links clicáveis da bolha: é a
+                      prévia do que o cliente vai ver. */}
+                  <FormattedText
+                    texto={a.body}
+                    className="text-xs text-foreground"
+                  />
                   <AnexoECitacao
                     agendada={a}
                     citada={
