@@ -6442,6 +6442,8 @@
     "emptyFiltered": "No scheduled messages in this state.",
     "loadMore": "Load more sent",
     "openConversation": "Open the conversation",
+    "expandText": "Click to read the whole message",
+    "collapseText": "Click to collapse the message",
     "groupNoName": "Unnamed group",
     "unknownRecipient": "Unnamed contact",
     "conversationUnavailable": "Conversation not loaded"

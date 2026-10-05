@@ -6435,6 +6435,8 @@
     "emptyFiltered": "Nenhuma mensagem agendada nesta situação.",
     "loadMore": "Carregar mais enviadas",
     "openConversation": "Abrir a conversa",
+    "expandText": "Clique para ler a mensagem inteira",
+    "collapseText": "Clique para recolher a mensagem",
     "groupNoName": "Grupo sem nome",
     "unknownRecipient": "Contato sem nome",
     "conversationUnavailable": "Conversa não carregada"

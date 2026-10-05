@@ -85,6 +85,15 @@ export default function AgendadasPage() {
   const { channels } = useChannels();
   const podeAgir = useCan('send-messages');
   const [situacao, setSituacao] = useState<Situacao>('todas');
+  // Linhas com o texto aberto inteiro (o padrão corta em 2 linhas).
+  const [abertas, setAbertas] = useState<ReadonlySet<string>>(new Set());
+  const alternarTexto = useCallback((id: string) => {
+    setAbertas((atual) => {
+      const nova = new Set(atual);
+      if (!nova.delete(id)) nova.add(id);
+      return nova;
+    });
+  }, []);
 
   const mostrarCanal = channels.length > 1;
 
@@ -280,11 +289,40 @@ export default function AgendadasPage() {
                       </Link>
                     )}
                   </div>
-                  {/* Com a formatação e os links clicáveis da bolha. */}
-                  <FormattedText
-                    texto={a.body}
-                    className="mt-0.5 line-clamp-2 text-xs text-muted-foreground"
-                  />
+                  {/* Com a formatação e os links clicáveis da bolha. Corta em
+                      2 linhas; o clique abre o texto inteiro e fecha de novo.
+                      ⚠️ `div` com papel de botão, não `<button>`: o texto tem
+                      links, e `<a>` dentro de `<button>` é inválido. Clique
+                      no link abre o link, sem alternar. */}
+                  {a.body && (
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={abertas.has(a.id)}
+                      title={abertas.has(a.id) ? t('collapseText') : t('expandText')}
+                      onClick={(e) => {
+                        if ((e.target as HTMLElement).closest('a')) return;
+                        // Quem arrastou para COPIAR o texto não quer recolher.
+                        if (window.getSelection()?.toString()) return;
+                        alternarTexto(a.id);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.target !== e.currentTarget) return;
+                        if (e.key !== 'Enter' && e.key !== ' ') return;
+                        e.preventDefault();
+                        alternarTexto(a.id);
+                      }}
+                      className="mt-0.5 cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <FormattedText
+                        texto={a.body}
+                        className={cn(
+                          'text-xs text-muted-foreground',
+                          !abertas.has(a.id) && 'line-clamp-2',
+                        )}
+                      />
+                    </div>
+                  )}
                   <AnexoECitacao
                     agendada={a}
                     citada={
