@@ -64,6 +64,22 @@ describe('AnexoECitacao — prévia do anexo', () => {
     expect(html).toContain(`href="${URL_DO_BUCKET}.html?download=pagina.html"`);
   });
 
+  it('página .html sem nome (API v1) também vai para baixar, pelo caminho', () => {
+    const html = desenhar('document', null, '.html');
+    expect(html).toMatch(/href="[^"]*\.html\?download=[^"]+"/);
+  });
+
+  it('nome de PDF sobre um .html no bucket: quem decide é o caminho', () => {
+    const html = desenhar('document', 'contrato.pdf', '.html');
+    expect(html).toMatch(/href="[^"]*\.html\?download=[^"]+"/);
+  });
+
+  it('documento sem nome mostra o nome do caminho, não "Documento"', () => {
+    const html = desenhar('document', null, '.pdf');
+    expect(html).toContain('arquivo.pdf');
+    expect(html).toContain(`href="${URL_DO_BUCKET}.pdf"`);
+  });
+
   it('foto: miniatura num botão que amplia', () => {
     const html = desenhar('image', null, '.jpg');
     expect(html).toMatch(/<button[^>]*aria-label="Ampliar imagem"/);

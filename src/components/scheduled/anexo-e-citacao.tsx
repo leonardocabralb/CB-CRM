@@ -21,7 +21,7 @@ import { MediaViewer } from '@/components/inbox/media-viewer';
 import { PlayerDeAudio } from '@/components/inbox/player-de-audio';
 import { buildReplyPreview } from '@/components/inbox/reply-quote';
 import type { Citada } from '@/hooks/use-citadas-da-agendada';
-import { urlParaAbrirAnexo } from '@/lib/media/abrir-anexo';
+import { ehPaginaHtml, urlParaAbrirAnexo } from '@/lib/media/abrir-anexo';
 import { basenameFromUrl } from '@/lib/media/filename';
 import { citacaoAindaVale, temAnexo } from '@/lib/scheduled/midia';
 import type { Message, ScheduledMessage } from '@/types';
@@ -136,6 +136,11 @@ function PreviaDoAnexo({
   const tv = useTranslations('Inbox.mediaViewer');
   const [ampliada, setAmpliada] = useState(false);
   const [quebrada, setQuebrada] = useState(false);
+  // O nome que o CAMINHO no bucket carrega (`buildMediaPath` o monta com o
+  // nome e a extensão do arquivo). `media_filename` só vem no documento do
+  // compositor: foto e vídeo não o gravam, e a API v1 aceita documento sem.
+  const doCaminho = basenameFromUrl(url) || null;
+  const nomeDoArquivo = nome ?? doCaminho;
 
   if (kind === 'audio') {
     // Fora de bolha: lê contra o fundo do cartão, como a bolha do cliente.
@@ -143,12 +148,22 @@ function PreviaDoAnexo({
   }
 
   if (kind === 'document') {
-    const rotulo = nome ?? t('attachment_document');
+    const rotulo = nomeDoArquivo ?? t('attachment_document');
     return (
       <a
         // Página .html vai para BAIXAR, nunca abrir a partir do nosso Storage
         // (1060, `abrir-anexo.ts`). PDF abre no leitor do navegador.
-        href={urlParaAbrirAnexo(url, null, nome)}
+        // ⚠️ Quem decide se é página é o CAMINHO (o que o Storage serve),
+        // não só o nome: o nome vem de quem agendou (a API v1 aceita
+        // qualquer um, ou nenhum), e "contrato.pdf" sobre um `.html` abriria
+        // a página direto do nosso Storage.
+        href={urlParaAbrirAnexo(
+          url,
+          null,
+          ehPaginaHtml(null, doCaminho) && !ehPaginaHtml(null, nomeDoArquivo)
+            ? doCaminho
+            : nomeDoArquivo,
+        )}
         target="_blank"
         rel="noopener noreferrer"
         title={rotulo}
@@ -200,10 +215,8 @@ function PreviaDoAnexo({
           src={url}
           video={video}
           alt={t(video ? 'attachment_video' : 'attachment_image')}
-          // Foto e vídeo agendados não gravam `media_filename`: o nome (com a
-          // extensão certa) sai do caminho no bucket, que `buildMediaPath`
-          // monta com ele. Sem isso o Baixar salvaria PNG e vídeo como `.jpg`.
-          fileName={nome ?? (basenameFromUrl(url) || undefined)}
+          // Sem o nome do caminho, o Baixar salvaria PNG e vídeo como `.jpg`.
+          fileName={nomeDoArquivo ?? undefined}
           onClose={() => setAmpliada(false)}
         />
       )}
