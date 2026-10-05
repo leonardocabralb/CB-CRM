@@ -5,9 +5,13 @@ paths:
   - "src/components/automations/abas-de-automacao*"
   - "src/app/(dashboard)/automations/page.tsx"
   - "supabase/migrations/1055_cb_areas_de_automacao*"
+  - "src/components/inbox/executar-automacao-dialog*"
+  - "src/lib/execucoes/lista-para-executar*"
+  - "src/hooks/use-automacoes-favoritas*"
+  - "supabase/migrations/1079_cb_automacoes_favoritas*"
 ---
 
-# Automações — as abas da tela (1055)
+# Automações — as abas da tela (1055) e as favoritas (1079)
 
 Pedido do operador (27/09/2026): separar a lista de automações por área, e
 cada instalação cria as SUAS abas (o CRM vai ser vendido: um escritório tem
@@ -36,3 +40,23 @@ conta) e `automations.area_id`. O que morde código novo:
   como sugestão no seletor do cabeçalho do construtor.
 - **Duplicar copia `area_id`**; o PATCH trata `area_id` ausente como "não
   mexe" e `null` como "Geral".
+
+### A janela "Executar automação" e as favoritas (1079)
+
+Pedido do operador (05/10/2026): a janela da conversa filtra pelas mesmas
+abas, e cada pessoa marca automações com estrela para que fiquem no topo.
+
+- ⚠️ **A favorita é DE CADA PESSOA** (decisão do operador): tabela de junção
+  `cb_automacoes_favoritas` com `user_id = auth.uid()` nas policies, como as
+  conversas favoritas (924). Nunca coluna em `automations` (seria da conta).
+  Estrela na janela e nos cartões da tela; qualquer membro marca as suas.
+- ⚠️ **Com uma aba escolhida, os ROBÔS saem** (não têm área; decisão do
+  operador: só em "Todas"). A favorita LIGADA sobe para o grupo do topo; a
+  desligada fica em "Desligadas" (com a estrela, para poder desmarcar).
+- **Favoritas `null` = não sei**: sem estrela e sem grupo do topo, com o
+  aviso. Estrela apagada sobre favorita que não carregou seria afirmação.
+- **A barra da janela só entra com as áreas LIDAS e pelo menos uma**; a
+  leitura das áreas que falha some com a barra sem derrubar a lista. Os
+  números são os da busca de agora (`contagemDasAbas`): a busca que só acha
+  algo noutra aba diz onde está.
+- A aba escolhida na janela é lembrada no aparelho, à parte da tela.

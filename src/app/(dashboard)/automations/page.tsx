@@ -18,6 +18,7 @@ import {
   Loader2,
   FolderInput,
   Check,
+  Star,
 } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/client"
@@ -56,6 +57,7 @@ import { useAuth } from "@/hooks/use-auth"
 import { useAreasDeAutomacao } from "@/hooks/use-areas-de-automacao"
 import { ABA_GERAL, abaDaAutomacao, contarPorAba, type AreaDeAutomacao } from "@/lib/automations/areas"
 import { BarraDeAbas, GerenciarAbasDialog } from "@/components/automations/abas-de-automacao"
+import { useAutomacoesFavoritas } from "@/hooks/use-automacoes-favoritas"
 
 // A aba escolhida fica lembrada NESTE aparelho (conveniência de quem usa;
 // storage que falha só volta para "Todas").
@@ -114,6 +116,9 @@ export default function AutomationsPage() {
   // o servidor e o navegador desenham a mesma coisa).
   const [aba, setAba] = useState<string | null>(lerAbaGuardada)
   const [gerenciando, setGerenciando] = useState(false)
+  // As MINHAS favoritas (1079): sobem para o topo de cada aba e de cada grupo.
+  const tFav = useTranslations("Automations.favoritas")
+  const { favoritas, falhou: favoritasFalharam, alternar: alternarFavorita } = useAutomacoesFavoritas()
 
   function escolherAba(nova: string | null) {
     setAba(nova)
@@ -255,10 +260,14 @@ export default function AutomationsPage() {
   // Aba guardada que não existe mais (apagada) volta para "Todas".
   const abaVigente =
     abas === null || aba === null || aba === ABA_GERAL || idsDasAbas.has(aba) ? aba : null
-  const visiveis =
+  // Favoritas primeiro; o resto na ordem de sempre (o sort é estável).
+  const favoritasPrimeiro = (lista: Automation[]) =>
+    favoritas ? [...lista].sort((a, b) => Number(favoritas.has(b.id)) - Number(favoritas.has(a.id))) : lista
+  const visiveis = favoritasPrimeiro(
     abas && abaVigente !== null
       ? noCanal.filter((a) => abaDaAutomacao(a.area_id, idsDasAbas) === abaVigente)
-      : noCanal
+      : noCanal,
+  )
   const contagem = contarPorAba(noCanal, abas ?? [])
   // O diálogo conta TODAS: "N automações voltam para Geral" ao apagar uma aba
   // não pode depender do filtro de canal que está na tela.
@@ -268,7 +277,7 @@ export default function AutomationsPage() {
   const grupos: { id: string; nome: string; itens: Automation[] }[] | null =
     abas && abas.length > 0 && abaVigente === null
       ? [{ id: ABA_GERAL, nome: tAbas("geral") }, ...abas.map((x) => ({ id: x.id, nome: x.nome }))]
-          .map((g) => ({ ...g, itens: noCanal.filter((a) => abaDaAutomacao(a.area_id, idsDasAbas) === g.id) }))
+          .map((g) => ({ ...g, itens: visiveis.filter((a) => abaDaAutomacao(a.area_id, idsDasAbas) === g.id) }))
           .filter((g) => g.itens.length > 0)
       : null
 
@@ -318,6 +327,9 @@ export default function AutomationsPage() {
       )}
       {abasFalharam && abas === null && (
         <p className="text-xs text-muted-foreground">{tAbas("carregarFalhou")}</p>
+      )}
+      {favoritasFalharam && favoritas === null && (
+        <p className="text-xs text-muted-foreground">{tFav("falhouCarregar")}</p>
       )}
 
       {showTemplates && (
@@ -382,6 +394,10 @@ export default function AutomationsPage() {
                     abas={abas}
                     podeMover={canCreate}
                     onMover={(areaId) => moverParaAba(a, areaId)}
+                    favorita={favoritas ? favoritas.has(a.id) : null}
+                    onFavorita={async () => {
+                      if (!(await alternarFavorita(a.id))) toast.error(tFav("falhouSalvar"))
+                    }}
                     onToggle={(next) => toggleActive(a, next)}
                     onEdit={() => router.push(`/automations/${a.id}/edit`)}
                     onDuplicate={() => duplicate(a)}
@@ -448,6 +464,8 @@ function AutomationCard({
   abas,
   podeMover,
   onMover,
+  favorita,
+  onFavorita,
   onToggle,
   onEdit,
   onDuplicate,
@@ -461,6 +479,9 @@ function AutomationCard({
   abas: AreaDeAutomacao[] | null
   podeMover: boolean
   onMover: (areaId: string | null) => void
+  /** `null` = as favoritas não foram lidas (a estrela não aparece). */
+  favorita: boolean | null
+  onFavorita: () => void
   onToggle: (next: boolean) => void
   onEdit: () => void
   onDuplicate: () => void
@@ -471,6 +492,7 @@ function AutomationCard({
   const meta = triggerMeta(automation.trigger_type)
   const tGatilhos = useTranslations("Automations.builder.triggers")
   const tAbas = useTranslations("Automations.list.abas")
+  const tFav = useTranslations("Automations.favoritas")
   const atual = automation.area_id ?? null
   return (
     <li className="rounded-xl border border-border bg-card transition-colors hover:border-border">
@@ -530,6 +552,19 @@ function AutomationCard({
         </button>
 
         <div className="flex items-center gap-3">
+          {/* Pessoal (1079): qualquer membro marca as suas, sem guarda de papel. */}
+          {favorita !== null && (
+            <button
+              type="button"
+              onClick={onFavorita}
+              aria-pressed={favorita}
+              aria-label={favorita ? tFav("desmarcar") : tFav("marcar")}
+              title={favorita ? tFav("desmarcar") : tFav("marcar")}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <Star className={cn("h-4 w-4", favorita && "fill-amber-400 text-amber-500")} />
+            </button>
+          )}
           <Switch
             checked={automation.is_active}
             onCheckedChange={(v) => onToggle(!!v)}

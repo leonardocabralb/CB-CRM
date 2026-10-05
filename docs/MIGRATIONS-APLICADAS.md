@@ -1191,6 +1191,16 @@ nome da época em que foram aplicadas.
   Na tela (Trabalhista, build de produção × produção no mesmo minuto): texto
   idêntico nas três vistas; Saúde 2,3 s → 0,7–0,9 s, Desempenho 1,7 s →
   0,4–0,5 s, Lista 1,3 s → 0,5–0,6 s.
+- **1079_cb_automacoes_favoritas** — tabela `cb_automacoes_favoritas`
+  (favorita de CADA membro, PK `(user_id, automation_id)`, FK composta com
+  CASCADE) e o índice único `automations_id_conta (id, account_id)`, alvo da
+  FK. Leitura na forma da 1032; INSERT/DELETE por `auth.uid()`; sem UPDATE;
+  anon sem nada. PR #389. ADITIVA e ANTES do merge. Aplicada em 05/10/2026
+  pelo conector (histórico `20261005175711`), depois do replay verde do CI no
+  commit `38711368`, com "pode gravar" do operador. Conferida: 3 policies,
+  anon sem SELECT, authenticated sem UPDATE, tabela vazia. E2E no preview:
+  marcar e desmarcar pela tela e pela janela gravou e apagou a linha (0 no
+  fim).
 
 ## Notas do histórico
 

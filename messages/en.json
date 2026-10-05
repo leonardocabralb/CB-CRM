@@ -889,6 +889,7 @@
         "motivoRoboArquivado": "Archived — activate it in Flows to run it.",
         "nadaDisponivel": "No active automation or bot to run.",
         "nadaNaBusca": "Nothing matches your search.",
+        "nadaNaAba": "Nothing in this area. Pick another one above.",
         "erroCarregar": "Couldn't load the list. Close and try again.",
         "foraDoCanal": "Not available for this conversation's number.",
         "foraDaEtapa": "This contact is not in a stage where this automation applies.",
@@ -3184,6 +3185,13 @@
         "cardDoEvento": "event card?",
         "cardDoEventoAjuda": "The customer has {n} cards: the preview uses the newest, and when it runs the event’s card counts, which may be another one."
       }
+    },
+    "favoritas": {
+      "grupo": "Favorites",
+      "marcar": "Add to favorites",
+      "desmarcar": "Remove from favorites",
+      "falhouSalvar": "Couldn't save the favorite. Try again.",
+      "falhouCarregar": "Your favorites didn't load right now."
     }
   },
   "Flows": {
