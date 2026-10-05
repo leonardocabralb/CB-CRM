@@ -132,6 +132,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ehEvolution, ehInstagram } from "@/lib/cb-channels/transporte";
+import { vivaParaEnviar } from "@/lib/cb-channels/viva-para-enviar";
 import { IconeDoTransporte } from "@/components/channels/transporte-icone";
 import { identidadeDoContato, nomeDoContato } from "@/lib/contacts/identidade";
 import { alvoDeEnvio } from "@/lib/whatsapp/alvo-de-envio";
@@ -2485,15 +2486,20 @@ export function MessageThread({
     saudeFalhou ? [] : saudeDosCanais.filter((c) => c.tone === "down").map((c) => c.id),
   );
   // A saída que a faixa vermelha aponta é o seletor do cabeçalho — só quando
-  // ele oferece um número que de fato serve: outro, de pé, de WhatsApp, que
-  // alcança este contato (no grupo, por QR Code: a Meta não entrega grupo).
-  // Conversa do Instagram não tem número para onde trocar.
+  // ele oferece um número que de fato serve: outro, que a sonda PROVA que
+  // envia (`vivaParaEnviar`, a régua da cobrança do Asaas: "não está fora do
+  // ar" não basta — reconectando ou sem configuração não envia; Codex, #386),
+  // de WhatsApp, que alcança este contato (no grupo, por QR Code: a Meta não
+  // entrega grupo). Conversa do Instagram não tem número para onde trocar.
+  const canaisQueEnviam = new Set(
+    saudeFalhou ? [] : saudeDosCanais.filter(vivaParaEnviar).map((c) => c.id),
+  );
   const podeTrocarNumero =
     !ehInstagram(activeChannel) &&
     channels.some(
       (c) =>
         c.id !== activeChannel?.id &&
-        !canaisForaDoAr.has(c.id) &&
+        canaisQueEnviam.has(c.id) &&
         (ehGrupo
           ? ehEvolution(c)
           : !ehInstagram(c) && !canaisQueNaoAlcancam.has(c.id)),

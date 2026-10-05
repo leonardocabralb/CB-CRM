@@ -123,8 +123,11 @@ não reverter sem perguntar.
   No grupo só o vermelho: o âmbar fala da entrada, e a medição de atraso já
   deixa grupo de fora (`canais.md`).
 - ⚠️ **"Troque o número no seletor" só com um número que SERVE**
-  (`podeTrocarNumero`): outro, de pé, de WhatsApp, que alcança o contato
-  (`canaisQueNaoAlcancam`); no grupo, por QR Code. Conversa do Instagram, não.
+  (`podeTrocarNumero`): outro que a sonda PROVA que envia (`vivaParaEnviar`,
+  `cb-channels/viva-para-enviar.ts`, a MESMA régua da cobrança do Asaas —
+  reconectando ou sem configuração não serve; Codex, #386), de WhatsApp, que
+  alcança o contato (`canaisQueNaoAlcancam`); no grupo, por QR Code. Conversa
+  do Instagram, não.
 - ⚠️ **Lê o `tone`/`detail` do servidor (`toneFor`), nunca reavalia a régua.**
   O pino colhe os motivos do próprio `toneFor`: renomear um lá apaga a faixa.
 - ⚠️ **`conexaoForaDoAr` não é `sessionExpired`**: a fila de anexos NÃO trava

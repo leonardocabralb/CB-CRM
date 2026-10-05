@@ -294,7 +294,8 @@ o CRM só lê. O lado do MOTOR da régua (gatilhos `asaas_*` que casam só pelo
 - ⚠️ **A conexão falha FECHADA** (D19): a varredura confere a do primeiro envio
   (`primeiroEnvio`, que entra nos ramos) e pula SEM travar a automação cuja
   conexão não resolve e a candidata desconectada (a sonda que falha conta igual
-  — `sondaFalhou`). "Viva" é `vivaParaEnviar`: `ok`, ou os amarelos de ENTRADA
+  — `sondaFalhou`). "Viva" é `vivaParaEnviar` (`cb-channels/viva-para-enviar.ts`,
+  a mesma régua da conversa): `ok`, ou os amarelos de ENTRADA
   (`ENVIA_MESMO_EM_AMARELO` = `webhook`, `lagging` — atraso de entrega não
   impede enviar, senão a régua não cobrava ninguém por aquela conexão);
   `pairing`/`stale`/`lastError` não provam envio. Amarelo novo decide por
