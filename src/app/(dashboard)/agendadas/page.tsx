@@ -290,38 +290,45 @@ export default function AgendadasPage() {
                     )}
                   </div>
                   {/* Com a formatação e os links clicáveis da bolha. Corta em
-                      2 linhas; o clique abre o texto inteiro e fecha de novo.
-                      ⚠️ `div` com papel de botão, não `<button>`: o texto tem
-                      links, e `<a>` dentro de `<button>` é inválido. Clique
-                      no link abre o link, sem alternar. */}
+                      2 linhas; o clique no texto abre inteiro e fecha de novo.
+                      ⚠️ O texto NÃO é botão (nem `<button>` nem
+                      `role="button"`): ele tem links, e controle interativo
+                      dentro de botão some para o leitor de tela (Codex,
+                      #387). O clique no texto é atalho de mouse e toque;
+                      teclado e leitor de tela usam o botão irmão, que só
+                      aparece com foco. Clique no link abre o link, sem
+                      alternar. */}
                   {a.body && (
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      aria-expanded={abertas.has(a.id)}
-                      title={abertas.has(a.id) ? t('collapseText') : t('expandText')}
-                      onClick={(e) => {
-                        if ((e.target as HTMLElement).closest('a')) return;
-                        // Quem arrastou para COPIAR o texto não quer recolher.
-                        if (window.getSelection()?.toString()) return;
-                        alternarTexto(a.id);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.target !== e.currentTarget) return;
-                        if (e.key !== 'Enter' && e.key !== ' ') return;
-                        e.preventDefault();
-                        alternarTexto(a.id);
-                      }}
-                      className="mt-0.5 cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <FormattedText
-                        texto={a.body}
-                        className={cn(
-                          'text-xs text-muted-foreground',
-                          !abertas.has(a.id) && 'line-clamp-2',
-                        )}
-                      />
-                    </div>
+                    <>
+                      <div
+                        id={`texto-${a.id}`}
+                        title={abertas.has(a.id) ? t('collapseText') : t('expandText')}
+                        onClick={(e) => {
+                          if ((e.target as HTMLElement).closest('a')) return;
+                          // Quem arrastou para COPIAR o texto não quer recolher.
+                          if (window.getSelection()?.toString()) return;
+                          alternarTexto(a.id);
+                        }}
+                        className="mt-0.5 cursor-pointer"
+                      >
+                        <FormattedText
+                          texto={a.body}
+                          className={cn(
+                            'text-xs text-muted-foreground',
+                            !abertas.has(a.id) && 'line-clamp-2',
+                          )}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        aria-expanded={abertas.has(a.id)}
+                        aria-controls={`texto-${a.id}`}
+                        onClick={() => alternarTexto(a.id)}
+                        className="sr-only rounded text-[10px] text-muted-foreground underline focus-visible:not-sr-only focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {abertas.has(a.id) ? t('collapseText') : t('expandText')}
+                      </button>
+                    </>
                   )}
                   <AnexoECitacao
                     agendada={a}
