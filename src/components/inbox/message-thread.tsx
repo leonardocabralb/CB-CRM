@@ -3434,6 +3434,7 @@ export function MessageThread({
           // aceitaria (ledger 48h). O dialog não desabilita nada quando o
           // canal é nulo — o mesmo fail-open, nas duas camadas.
           channelId={conversation.channel_id ?? null}
+          conexaoForaDoAr={conexaoForaDoAr}
         />
       )}
 

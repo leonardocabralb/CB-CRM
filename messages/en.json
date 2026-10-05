@@ -895,6 +895,7 @@
         "inativa": "It has been turned off in the meantime.",
         "confirmarTexto": "Run \"{nome}\" for {contato}?",
         "avisoEnvio": "This can send real messages to the client right away.",
+        "conexaoForaDoAr": "This conversation's connection is down: the automation can't run right now.",
         "voltar": "Back",
         "executar": "Run",
         "roboIniciado": "Bot started for this client.",

@@ -134,7 +134,9 @@ não reverter sem perguntar.
   pela janela (o fio recusa no disparo) e a dica da janela oferece o modelo;
   com a conexão caída nem o modelo sai, e a dica cala. Diálogo que já estava
   aberto quando a sonda virou confere de novo no enviar (`handleSendTemplate`
-  no fio, `sendInteractive` no compositor).
+  no fio, `sendInteractive` no compositor, a prop `conexaoForaDoAr` do
+  `ExecutarAutomacaoDialog`; Codex, #386). Diálogo NOVO que envia a partir da
+  conversa repete a conferência.
 - **A trava é da TELA.** A rota de envio não consulta a saúde: um envio
   disparado antes da sonda seguinte segue e falha como antes. Ficam livres o
   "Executar agora" da agendada, reagir, editar e apagar no fio, e as automações

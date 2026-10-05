@@ -888,6 +888,7 @@
         "inativa": "Foi desligada nesse meio tempo.",
         "confirmarTexto": "Executar \"{nome}\" para {contato}?",
         "avisoEnvio": "Isso pode enviar mensagens reais ao cliente agora.",
+        "conexaoForaDoAr": "A conexão desta conversa está fora do ar: a automação não pode rodar agora.",
         "voltar": "Voltar",
         "executar": "Executar",
         "roboIniciado": "Robô iniciado para este cliente.",
