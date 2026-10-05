@@ -1099,6 +1099,7 @@
       "attachment_video": "Vídeo",
       "attachment_audio": "Áudio",
       "attachment_document": "Documento",
+      "watchVideo": "Assistir ao vídeo",
       "replyingTo": "Respondendo: {trecho}",
       "quotedDeleted": "A mensagem citada foi apagada — vai sair sem a citação.",
       "quotedWasLost": "Saiu sem a citação: a mensagem citada tinha sido apagada."

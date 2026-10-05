@@ -6,15 +6,28 @@
 // Peça própria porque as duas telas mostram a mesma linha — a faixa dentro da
 // conversa e a tela global — e o aviso que ela carrega é o tipo de coisa que,
 // escrita duas vezes, passa a existir só numa delas.
+//
+// O anexo se PRÉ-VISUALIZA aqui (pedido do operador, 05/10/2026): o áudio
+// toca no mesmo player do fio, o documento abre numa aba, foto e vídeo abrem
+// no visualizador do fio. Sem isso, "Áudio" na fila não dizia o que ia sair.
 // ============================================================
 
-import { AlertTriangle, CornerUpLeft, FileText, Mic, Video } from 'lucide-react';
+import { useState } from 'react';
+import { AlertTriangle, CornerUpLeft, ImageOff, Play } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
+import { SeloDoDocumento } from '@/components/inbox/message-bubble';
+import { MediaViewer } from '@/components/inbox/media-viewer';
+import { PlayerDeAudio } from '@/components/inbox/player-de-audio';
 import { buildReplyPreview } from '@/components/inbox/reply-quote';
 import type { Citada } from '@/hooks/use-citadas-da-agendada';
+import { urlParaAbrirAnexo } from '@/lib/media/abrir-anexo';
 import { citacaoAindaVale, temAnexo } from '@/lib/scheduled/midia';
 import type { Message, ScheduledMessage } from '@/types';
+
+/** Superfície própria, a mesma do documento na bolha: lê igual nas duas telas. */
+const CARTAO =
+  'flex max-w-full items-center gap-2 rounded-lg bg-card p-1.5 pr-2.5 text-xs text-card-foreground ring-1 ring-border transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
 type LinhaComExtras = Pick<
   ScheduledMessage,
@@ -55,31 +68,11 @@ export function AnexoECitacao({
   return (
     <div className="mt-1 space-y-1">
       {comAnexo && (
-        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-          {/* ⚠️ Miniatura só na FOTO, e não é enfeite: "Foto" sozinho não
-              responde a pergunta que o operador faz olhando a fila — QUAL
-              foto está marcada para sair. Nos outros tipos a miniatura não
-              existiria mesmo, e o nome do documento já responde. */}
-          {agendada.media_kind === 'image' ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={agendada.media_url!}
-              alt={t('attachment_image')}
-              className="h-8 w-8 shrink-0 rounded object-cover"
-            />
-          ) : agendada.media_kind === 'video' ? (
-            <Video className="h-3 w-3 shrink-0" />
-          ) : agendada.media_kind === 'audio' ? (
-            <Mic className="h-3 w-3 shrink-0" />
-          ) : (
-            <FileText className="h-3 w-3 shrink-0" />
-          )}
-          <span className="truncate">
-            {agendada.media_kind === 'document' && agendada.media_filename
-              ? agendada.media_filename
-              : t(`attachment_${agendada.media_kind}`)}
-          </span>
-        </div>
+        <PreviaDoAnexo
+          url={agendada.media_url!}
+          kind={agendada.media_kind!}
+          nome={agendada.media_filename}
+        />
       )}
 
       {agendada.reply_to_message_id && (agendada.status === 'sent' || citadaCarregada) && (
@@ -119,5 +112,97 @@ export function AnexoECitacao({
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * O anexo da agendada, pronto para conferir ANTES de sair.
+ *
+ * As peças são as do fio, de propósito: o player é o mesmo (velocidade
+ * lembrada, um áudio por vez) e o visualizador é o nosso, com giro e zoom.
+ * A URL é a pública do bucket, derivada do caminho pela rota (932).
+ */
+function PreviaDoAnexo({
+  url,
+  kind,
+  nome,
+}: {
+  url: string;
+  kind: NonNullable<ScheduledMessage['media_kind']>;
+  nome: string | null;
+}) {
+  const t = useTranslations('Inbox.scheduled');
+  const tv = useTranslations('Inbox.mediaViewer');
+  const [ampliada, setAmpliada] = useState(false);
+  const [quebrada, setQuebrada] = useState(false);
+
+  if (kind === 'audio') {
+    // Fora de bolha: lê contra o fundo do cartão, como a bolha do cliente.
+    return <PlayerDeAudio src={url} naBolhaDaEquipe={false} />;
+  }
+
+  if (kind === 'document') {
+    const rotulo = nome ?? t('attachment_document');
+    return (
+      <a
+        // Página .html vai para BAIXAR, nunca abrir a partir do nosso Storage
+        // (1060, `abrir-anexo.ts`). PDF abre no leitor do navegador.
+        href={urlParaAbrirAnexo(url, null, nome)}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={rotulo}
+        className={`${CARTAO} w-fit`}
+      >
+        <SeloDoDocumento nome={rotulo} />
+        <span className="min-w-0 flex-1 truncate font-medium">{rotulo}</span>
+      </a>
+    );
+  }
+
+  const video = kind === 'video';
+  const rotulo = video ? t('watchVideo') : tv('open');
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setAmpliada(true)}
+        title={rotulo}
+        aria-label={rotulo}
+        className={`${CARTAO} w-fit cursor-zoom-in`}
+      >
+        {/* ⚠️ A miniatura da FOTO não é enfeite: "Foto" sozinho não responde
+            a pergunta que o operador faz olhando a fila — QUAL foto está
+            marcada para sair. */}
+        {video ? (
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-muted">
+            <Play className="ml-0.5 h-4 w-4 fill-current" />
+          </span>
+        ) : quebrada ? (
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-muted">
+            <ImageOff className="h-4 w-4 text-muted-foreground" />
+          </span>
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={url}
+            alt={t('attachment_image')}
+            onError={() => setQuebrada(true)}
+            className="h-10 w-10 shrink-0 rounded object-cover"
+          />
+        )}
+        <span className="min-w-0 truncate font-medium">
+          {t(video ? 'attachment_video' : 'attachment_image')}
+        </span>
+      </button>
+      {ampliada && (
+        <MediaViewer
+          src={url}
+          video={video}
+          alt={t(video ? 'attachment_video' : 'attachment_image')}
+          fileName={nome ?? undefined}
+          onClose={() => setAmpliada(false)}
+        />
+      )}
+    </>
   );
 }

@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
+import { FormattedText } from '@/components/inbox/formatted-text';
 import { AnexoECitacao } from '@/components/scheduled/anexo-e-citacao';
 import { useAcoesDaAgendada } from '@/hooks/use-acoes-da-agendada';
 import {
@@ -279,9 +280,11 @@ export default function AgendadasPage() {
                       </Link>
                     )}
                   </div>
-                  <p className="mt-0.5 line-clamp-2 whitespace-pre-wrap break-words text-xs text-muted-foreground">
-                    {a.body}
-                  </p>
+                  {/* Com a formatação e os links clicáveis da bolha. */}
+                  <FormattedText
+                    texto={a.body}
+                    className="mt-0.5 line-clamp-2 text-xs text-muted-foreground"
+                  />
                   <AnexoECitacao
                     agendada={a}
                     citada={
