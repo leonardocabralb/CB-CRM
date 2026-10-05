@@ -34,8 +34,17 @@ describe('TextoComLinks — a anotação', () => {
   it('www ganha https no href e fica como foi escrito na tela', () => {
     const html = renderToStaticMarkup(<TextoComLinks texto="site www.x.com.br." />);
     expect(html).toBe(
-      'site <a href="https://www.x.com.br" target="_blank" rel="noopener noreferrer" title="https://www.x.com.br" class="underline underline-offset-2 hover:opacity-80">www.x.com.br</a>.'
+      'site <a href="https://www.x.com.br" target="_blank" rel="noopener noreferrer" title="https://www.x.com.br" data-menu-do-navegador="" class="underline underline-offset-2 hover:opacity-80 [-webkit-touch-callout:default]">www.x.com.br</a>.'
     );
+  });
+
+  // O toque longo da linha da mensagem (`message-actions.tsx`) pula quem está
+  // dentro de `data-menu-do-navegador`: sem a marca, segurar o link no
+  // celular abriria a barra de ações em vez do "copiar endereço".
+  it('o link leva a marca que devolve o menu do navegador no toque longo', () => {
+    const [a] = ancoras(renderToStaticMarkup(<TextoComLinks texto="https://x.com.br" />));
+    expect(a).toContain('data-menu-do-navegador=""');
+    expect(a).toContain('[-webkit-touch-callout:default]');
   });
 
   it('a anotação NÃO ganha a formatação do WhatsApp — asterisco fica asterisco', () => {

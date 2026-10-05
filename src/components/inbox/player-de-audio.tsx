@@ -145,9 +145,12 @@ async function decodificarOnda(src: string): Promise<Onda | null> {
  * distância na horizontal, ou no toque curto (menos que o toque longo, que
  * abre o menu da mensagem). Sem isto, rolar uma conversa cheia de áudios no
  * celular ia pulando a posição de cada um que o dedo atravessasse.
+ *
+ * ⚠️ `TOQUE_LONGO_MS` é o MESMO do `message-actions.tsx`: com o da barra
+ * menor, soltar o dedo no intervalo entre os dois abria a barra E pulava.
  */
 const ARRASTE_MINIMO_PX = 8;
-const TOQUE_LONGO_MS = 500;
+export const TOQUE_LONGO_MS = 500;
 
 /** Salto das setas do teclado, em segundos. */
 const SALTO_DO_TECLADO = 5;

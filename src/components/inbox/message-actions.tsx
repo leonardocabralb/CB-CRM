@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   CornerUpLeft,
   Copy,
@@ -22,10 +22,22 @@ import type { Message } from "@/types";
 import { useTranslations } from "next-intl";
 import { ehEvolution } from "@/lib/cb-channels/transporte";
 import type { CbChannelKind } from "@/lib/cb-channels/repo";
+import { TOQUE_LONGO_MS } from "./player-de-audio";
 
 // WhatsApp's own quick-reaction bar starts with these six. Picking the same
 // set keeps the affordance familiar without pulling in a 300KB emoji library.
 const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+
+/** Quanto o dedo anda antes de o toque virar rolagem (e a barra não abrir). */
+const TOLERANCIA_DO_TOQUE_PX = 10;
+/** Do topo da barra ao dedo: a altura dela no toque (40) e uma folga. */
+const ACIMA_DO_DEDO_PX = 56;
+
+// No toque os botões da barra crescem: com 20 px, acertar um sem tocar o
+// vizinho era sorte.
+const BOTAO =
+  "flex h-5 w-5 items-center justify-center rounded-full text-popover-foreground pointer-coarse:h-8 pointer-coarse:w-8";
+const ICONE = "h-3.5 w-3.5 pointer-coarse:h-[18px] pointer-coarse:w-[18px]";
 
 interface MessageActionsProps {
   message: Message;
@@ -133,19 +145,125 @@ export function MessageActions({
     !message.delete_requested_at &&
     message.content_type === "text";
 
-  // Touch devices have no hover. Long-press fires `contextmenu`; we capture
-  // it, suppress the native menu, and pin the toolbar open until the user
-  // interacts elsewhere.
+  // Touch devices have no hover: long-press (or right-click) pins the toolbar
+  // open until the user interacts elsewhere.
   const [touchOpen, setTouchOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const linhaRef = useRef<HTMLDivElement>(null);
+  const bolhaRef = useRef<HTMLDivElement>(null);
+  // Aberta pelo toque, a barra fica logo ACIMA DO DEDO (px a partir do topo
+  // da bolha); nula, no lugar de sempre, acima da bolha.
+  const [topoNoToque, setTopoNoToque] = useState<number | null>(null);
 
   const isAgent =
     message.sender_type === "agent" || message.sender_type === "bot";
 
-  const handleContextMenu = (e: React.MouseEvent) => {
-    e.preventDefault();
+  // ⚠️⚠️ O toque longo é medido AQUI, não pelo `contextmenu`: o Safari do
+  // iPhone não dispara `contextmenu` no toque longo, e o `hover:` do Tailwind 4
+  // só vale com `(hover: hover)` — no iPhone a barra não abria por caminho
+  // nenhum (relato do operador, 05/10/2026).
+  const toqueRef = useRef<{
+    x: number;
+    y: number;
+    timer: ReturnType<typeof setTimeout>;
+  } | null>(null);
+  const abriuNoToqueRef = useRef(false);
+
+  const soltarToque = () => {
+    if (toqueRef.current) clearTimeout(toqueRef.current.timer);
+    toqueRef.current = null;
+  };
+
+  useEffect(
+    () => () => {
+      if (toqueRef.current) clearTimeout(toqueRef.current.timer);
+    },
+    [],
+  );
+
+  const abrirPeloToque = () => {
+    const toque = toqueRef.current;
+    if (!toque) return;
+    soltarToque();
+    abriuNoToqueRef.current = true;
+    // Acima do dedo, e não no topo da bolha: numa mensagem comprida (o aviso
+    // do Typebot) o topo costuma estar fora da tela, e a barra abria onde
+    // ninguém a via. Mensagem curta: acima dela, como sempre.
+    const caixa = bolhaRef.current?.getBoundingClientRect();
+    const topo = caixa ? toque.y - caixa.top - ACIMA_DO_DEDO_PX : 0;
+    setTopoNoToque(topo > 0 ? topo : null);
     setTouchOpen(true);
   };
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    // O Android dispara `contextmenu` no toque longo, antes do nosso prazo:
+    // ele só adianta o toque que já está em curso.
+    if (toqueRef.current) {
+      abrirPeloToque();
+      return;
+    }
+    setTopoNoToque(null);
+    setTouchOpen(true);
+  };
+
+  const aoTocar = (e: React.TouchEvent) => {
+    soltarToque();
+    abriuNoToqueRef.current = false;
+    // Dois dedos é pinça de zoom, não toque longo.
+    if (e.touches.length !== 1) return;
+    // Sobre o link do texto o menu é o do navegador (`LinkDoTexto`), como no
+    // botão direito.
+    if (
+      e.target instanceof Element &&
+      e.target.closest("[data-menu-do-navegador]")
+    ) {
+      return;
+    }
+    const { clientX: x, clientY: y } = e.touches[0];
+    toqueRef.current = {
+      x,
+      y,
+      timer: setTimeout(abrirPeloToque, TOQUE_LONGO_MS),
+    };
+  };
+
+  // O dedo que anda está ROLANDO o fio: a barra não abre.
+  const aoMoverODedo = (e: React.TouchEvent) => {
+    const toque = toqueRef.current;
+    const dedo = e.touches[0];
+    if (!toque || !dedo) return;
+    if (
+      Math.hypot(dedo.clientX - toque.x, dedo.clientY - toque.y) >
+      TOLERANCIA_DO_TOQUE_PX
+    ) {
+      soltarToque();
+    }
+  };
+
+  const aoSoltarODedo = (e: React.TouchEvent) => {
+    soltarToque();
+    // O dedo que abriu a barra não CLICA ao subir: sem isto, soltar sobre a
+    // foto abria o visualizador, sobre o documento o abria e sobre a citação
+    // saltava no fio. `preventDefault` no `touchend` cancela o clique.
+    if (abriuNoToqueRef.current) {
+      abriuNoToqueRef.current = false;
+      e.preventDefault();
+    }
+  };
+
+  // Aberta pelo toque (ou pelo botão direito), a barra fecha no próximo toque
+  // FORA da linha — nada ganha o foco no toque longo, e o `onBlur` sozinho a
+  // deixava aberta para sempre. Tocar noutra mensagem fecha esta.
+  useEffect(() => {
+    if (!touchOpen) return;
+    const aoTocarFora = (e: PointerEvent) => {
+      if (e.target instanceof Node && linhaRef.current?.contains(e.target)) return;
+      setTouchOpen(false);
+    };
+    document.addEventListener("pointerdown", aoTocarFora);
+    return () => document.removeEventListener("pointerdown", aoTocarFora);
+  }, [touchOpen]);
 
   const handleCopy = async () => {
     const text = message.content_text ?? "";
@@ -195,35 +313,55 @@ export function MessageActions({
   // in the row no longer reveals the toolbar.
   return (
     <div
+      ref={linhaRef}
       className={cn(
         "flex w-full",
         isAgent ? "justify-end" : "justify-start",
+        // No toque, segurar a mensagem é abrir a BARRA, como no WhatsApp: sem
+        // isto o iPhone selecionava o texto e abria o menu dele (ou o "salvar
+        // imagem") por cima. Copiar é o botão da barra. O link do texto
+        // devolve o menu do navegador (`LinkDoTexto`).
+        "pointer-coarse:select-none pointer-coarse:[-webkit-touch-callout:none]",
       )}
       onContextMenu={handleContextMenu}
       onBlur={() => setTouchOpen(false)}
+      onTouchStart={aoTocar}
+      onTouchMove={aoMoverODedo}
+      onTouchEnd={aoSoltarODedo}
+      onTouchCancel={soltarToque}
     >
       {/* `min-w-0` lets this flex child actually respect the 75% cap.
        *  Default `min-width: auto` lets content (a long quote preview,
        *  an unbroken URL) push past the cap and shove the row past
        *  100%, which used to bleed across into the contact-sidebar
        *  area. See issue #165. */}
-      <div className="group/actions relative min-w-0 max-w-[75%]">
+      <div ref={bolhaRef} className="group/actions relative min-w-0 max-w-[75%]">
         {children}
       <div
         data-touch-open={touchOpen || pickerOpen ? "true" : undefined}
+        // Não depende de `touchOpen`: o toque no emoji (fora da linha, no
+        // popover) fecha o `touchOpen`, e a barra pularia de volta ao topo
+        // com o seletor ancorado nela — o dedo erraria o emoji.
+        style={topoNoToque !== null ? { top: topoNoToque } : undefined}
         className={cn(
           "absolute -top-3 z-10 flex h-7 items-center gap-0.5 rounded-full border border-border bg-popover/95 px-1 shadow-md backdrop-blur-sm transition-opacity",
+          // Acima da bolha no toque: com a altura do dedo, no `-top-3` ela
+          // cobria a primeira linha da mensagem que se quer responder.
+          "pointer-coarse:-top-9 pointer-coarse:h-10 pointer-coarse:gap-1 pointer-coarse:px-1.5",
           "opacity-0 group-hover/actions:opacity-100 group-focus-within/actions:opacity-100",
           "data-[touch-open=true]:opacity-100",
+          // Invisível, a barra não recebe toque: tocar no alto da bolha
+          // acionava às cegas o reagir ou o responder.
+          "pointer-events-none group-hover/actions:pointer-events-auto group-focus-within/actions:pointer-events-auto data-[touch-open=true]:pointer-events-auto",
           isAgent ? "right-3" : "left-3",
         )}
       >
         <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
           <PopoverTrigger
-            className="flex h-5 w-5 items-center justify-center rounded-full text-popover-foreground hover:bg-muted hover:text-foreground"
+            className={cn(BOTAO, "hover:bg-muted hover:text-foreground")}
             aria-label={t("react")}
           >
-            <SmilePlus className="h-3.5 w-3.5" />
+            <SmilePlus className={ICONE} />
           </PopoverTrigger>
           <PopoverContent
             className="flex w-auto flex-row gap-1 p-1.5"
@@ -245,27 +383,27 @@ export function MessageActions({
         <button
           type="button"
           onClick={handleReply}
-          className="flex h-5 w-5 items-center justify-center rounded-full text-popover-foreground hover:bg-muted hover:text-foreground"
+          className={cn(BOTAO, "hover:bg-muted hover:text-foreground")}
           aria-label={t("reply")}
         >
-          <CornerUpLeft className="h-3.5 w-3.5" />
+          <CornerUpLeft className={ICONE} />
         </button>
         <button
           type="button"
           onClick={handleCopy}
-          className="flex h-5 w-5 items-center justify-center rounded-full text-popover-foreground hover:bg-muted hover:text-foreground"
+          className={cn(BOTAO, "hover:bg-muted hover:text-foreground")}
           aria-label={t("copyText")}
         >
-          <Copy className="h-3.5 w-3.5" />
+          <Copy className={ICONE} />
         </button>
         {podeBaixar && (
           <button
             type="button"
             onClick={() => void handleDownload()}
-            className="flex h-5 w-5 items-center justify-center rounded-full text-popover-foreground hover:bg-muted hover:text-foreground"
+            className={cn(BOTAO, "hover:bg-muted hover:text-foreground")}
             aria-label={t("download")}
           >
-            <Download className="h-3.5 w-3.5" />
+            <Download className={ICONE} />
           </button>
         )}
         {podeEditar && (
@@ -275,10 +413,10 @@ export function MessageActions({
               onEdit!();
               setTouchOpen(false);
             }}
-            className="flex h-5 w-5 items-center justify-center rounded-full text-popover-foreground hover:bg-muted hover:text-foreground"
+            className={cn(BOTAO, "hover:bg-muted hover:text-foreground")}
             aria-label={t("edit")}
           >
-            <Pencil className="h-3.5 w-3.5" />
+            <Pencil className={ICONE} />
           </button>
         )}
         {podeApagar && (
@@ -288,10 +426,10 @@ export function MessageActions({
               onDelete!();
               setTouchOpen(false);
             }}
-            className="flex h-5 w-5 items-center justify-center rounded-full text-popover-foreground hover:bg-destructive/15 hover:text-destructive"
+            className={cn(BOTAO, "hover:bg-destructive/15 hover:text-destructive")}
             aria-label={t("deleteForEveryone")}
           >
-            <Trash2 className="h-3.5 w-3.5" />
+            <Trash2 className={ICONE} />
           </button>
         )}
       </div>
