@@ -22,6 +22,7 @@ import { PlayerDeAudio } from '@/components/inbox/player-de-audio';
 import { buildReplyPreview } from '@/components/inbox/reply-quote';
 import type { Citada } from '@/hooks/use-citadas-da-agendada';
 import { urlParaAbrirAnexo } from '@/lib/media/abrir-anexo';
+import { basenameFromUrl } from '@/lib/media/filename';
 import { citacaoAindaVale, temAnexo } from '@/lib/scheduled/midia';
 import type { Message, ScheduledMessage } from '@/types';
 
@@ -199,7 +200,10 @@ function PreviaDoAnexo({
           src={url}
           video={video}
           alt={t(video ? 'attachment_video' : 'attachment_image')}
-          fileName={nome ?? undefined}
+          // Foto e vídeo agendados não gravam `media_filename`: o nome (com a
+          // extensão certa) sai do caminho no bucket, que `buildMediaPath`
+          // monta com ele. Sem isso o Baixar salvaria PNG e vídeo como `.jpg`.
+          fileName={nome ?? (basenameFromUrl(url) || undefined)}
           onClose={() => setAmpliada(false)}
         />
       )}
