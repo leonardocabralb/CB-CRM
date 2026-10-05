@@ -199,6 +199,14 @@ a rota `/api/cb/reunioes`, `src/components/reunioes/`. Plano:
   tique e duas vezes no modo estrito.
 - **Fora do catálogo de perfis** (visível a todos, como o Meu dia) e recortada
   por FUNIL do perfil, pela lente (`acesso`).
+- **"Abrir conversa" abre um PAINEL por cima da pauta no computador**
+  (`conversa-em-painel.tsx`, pedido do operador, 05/10/2026): o mesmo fio da
+  caixa de entrada, sem a ficha; o dia e o "Desfazer" seguem de pé. Abaixo de
+  `64rem` (a régua do inbox) segue indo à caixa de entrada com a faixa
+  "Voltar às reuniões" — decisão do operador: no celular a caixa já é tela
+  cheia. "Abrir na caixa de entrada" e o nome no cabeçalho do fio levam ao
+  caminho antigo. A presença e o zero das não lidas seguem as regras de
+  `.claude/rules/modo-anonimo.md`.
 
 ### tl;dv → transcrições (987)
 

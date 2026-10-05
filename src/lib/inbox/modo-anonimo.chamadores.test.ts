@@ -51,6 +51,13 @@ function ocorrencias(texto: string, agulha: string): number {
 
 const PAGINA = 'app/(dashboard)/inbox/page.tsx';
 const FIO = 'components/inbox/message-thread.tsx';
+/**
+ * O fio num painel lateral, fora da caixa de entrada (pauta de reuniões,
+ * 05/10/2026). Monta o MESMO `MessageThread` — o zero das não lidas segue
+ * sendo dele — e é o segundo dono de seleção: escreve a presença com a mesma
+ * régua da página.
+ */
+const PAINEL = 'components/inbox/conversa-em-painel.tsx';
 
 /**
  * Todo lugar que ZERA as não lidas, com o porquê de ele respeitar o modo.
@@ -137,12 +144,24 @@ describe('modo anônimo: quem zera as não lidas', () => {
 });
 
 describe('modo anônimo: a presença na conversa', () => {
-  it('o único escritor da presença é a página, com a conversa LIDA', () => {
+  it('os escritores da presença são os donos da seleção, com a conversa LIDA', () => {
     const escritores = arquivosDoCodigo(raiz)
       .filter((relativo) => relativo !== 'hooks/use-conversa-aberta.ts')
-      .filter((relativo) => fonte(relativo).includes('useMarcarConversaAberta('));
-    expect(escritores).toEqual([PAGINA]);
+      .filter((relativo) => fonte(relativo).includes('useMarcarConversaAberta('))
+      .sort();
+    expect(escritores).toEqual([PAGINA, PAINEL].sort());
     expect(fonte(PAGINA)).toContain('useMarcarConversaAberta(conversaLida);');
+    // O painel com a MESMA régua da página: nula no modo e fora do perfil.
+    const p = fonte(PAINEL);
+    expect(p).toContain('useMarcarConversaAberta(conversaLida);');
+    expect(p).toMatch(
+      /const foraDoPerfil =\s*conversation !== null && !conversaNoEscopo\(acesso, conversation\);/,
+    );
+    expect(p).toMatch(
+      /const conversaLida =\s*modoAnonimo \|\| foraDoPerfil \? null : \(conversation\?\.id \?\? null\);/,
+    );
+    // E fora do perfil o fio não monta: ele zeraria as não lidas.
+    expect(p).toMatch(/if \(foraDoPerfil\) \{\s*return \(/);
     // E a RPC que grava a presença só é CHAMADA pelo hook (o nome aparece em
     // comentário noutros arquivos).
     const rpc = arquivosDoCodigo(raiz).filter((relativo) =>

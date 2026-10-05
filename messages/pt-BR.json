@@ -6699,6 +6699,17 @@
     "body": "Ela apareceu na sua busca ou nas notificações, mas está fora das conexões do seu perfil de acesso. Se você precisa dela, fale com o administrador da conta.",
     "back": "Voltar às minhas conversas"
   },
+  "ConversaEmPainel": {
+    "titulo": "Conversa",
+    "abrirNaCaixa": "Abrir na caixa de entrada",
+    "fechar": "Fechar",
+    "carregando": "Carregando a conversa…",
+    "falhou": "Não foi possível carregar a conversa.",
+    "tentarDeNovo": "Tentar de novo",
+    "naoEncontrada": "Esta conversa não foi encontrada.",
+    "foraDaAreaTitulo": "Esta conversa é de outra área",
+    "foraDaAreaCorpo": "Ela está fora das conexões do seu perfil de acesso. Se você precisa dela, fale com o administrador da conta."
+  },
   "PerfisPanel": {
     "title": "Perfis de acesso",
     "description": "Quem vê o quê. Cada membro recebe um perfil, e o perfil define papel, telas e área (conexões e funis).",

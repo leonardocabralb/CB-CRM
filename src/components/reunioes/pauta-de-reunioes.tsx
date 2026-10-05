@@ -6,11 +6,13 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { ChevronLeft, ChevronRight, Loader2, ShieldAlert, ShieldCheck } from 'lucide-react';
 
+import { ConversaEmPainel } from '@/components/inbox/conversa-em-painel';
 import { LinhaDaReuniao, type MarcacaoPendente } from '@/components/reunioes/linha-da-reuniao';
 import { Button } from '@/components/ui/button';
 import { useAoVoltarParaOApp } from '@/hooks/use-ao-voltar-para-o-app';
 import { useAuth } from '@/hooks/use-auth';
 import { useCan } from '@/hooks/use-can';
+import { useMediaQuery } from '@/hooks/use-media-query';
 import { usePautaDeReunioes } from '@/hooks/use-pauta-de-reunioes';
 import { diaNoFuso, FUSO_PADRAO, paraInstante } from '@/lib/agenda/fuso';
 import { gradeDaSemana, somarDias } from '@/lib/agenda/grade';
@@ -309,10 +311,24 @@ export function PautaDeReunioes() {
     });
   };
 
+  const irParaConversa = (conversaId: string) => {
+    guardarRetornoDaPauta(`/reunioes?dia=${dia}`);
+    router.push(urlDoInbox({ c: conversaId, de: 'reunioes' }));
+  };
+
+  // No computador a conversa abre num painel por cima da pauta: ler e
+  // responder sem perder o dia à vista nem o "Desfazer" em curso (pedido do
+  // operador, 05/10/2026). No celular segue indo à caixa de entrada, que lá
+  // já ocupa a tela inteira. A régua do "computador" é a da caixa de entrada.
+  const ehDesktop = useMediaQuery('(min-width: 64rem)');
+  // A conversa fica no estado depois de fechar: o painel ainda a mostra
+  // durante a animação de saída.
+  const [painel, setPainel] = useState<{ conversaId: string; aberto: boolean } | null>(null);
+
   const abrirConversa = (r: ReuniaoDaPauta) => {
     if (!r.conversaId) return;
-    guardarRetornoDaPauta(`/reunioes?dia=${dia}`);
-    router.push(urlDoInbox({ c: r.conversaId, de: 'reunioes' }));
+    if (ehDesktop) setPainel({ conversaId: r.conversaId, aberto: true });
+    else irParaConversa(r.conversaId);
   };
 
   const pendenteDaLinha = (chave: string): MarcacaoPendente | null => {
@@ -511,6 +527,13 @@ export function PautaDeReunioes() {
           </section>
         </>
       )}
+
+      <ConversaEmPainel
+        conversaId={painel?.conversaId ?? null}
+        aberto={painel?.aberto ?? false}
+        aoFechar={() => setPainel((p) => (p ? { ...p, aberto: false } : p))}
+        aoAbrirNaCaixa={irParaConversa}
+      />
     </div>
   );
 }
