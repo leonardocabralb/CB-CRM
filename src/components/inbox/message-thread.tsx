@@ -2489,21 +2489,28 @@ export function MessageThread({
   // ele oferece um número que de fato serve: outro, que a sonda PROVA que
   // envia (`vivaParaEnviar`, a régua da cobrança do Asaas: "não está fora do
   // ar" não basta — reconectando ou sem configuração não envia; Codex, #386),
-  // de WhatsApp, que alcança este contato (no grupo, por QR Code: a Meta não
-  // entrega grupo). Conversa do Instagram não tem número para onde trocar.
+  // de WhatsApp, que alcança este contato. No GRUPO, só o número que RECEBE o
+  // grupo (`cb_groups.channel_id`): é o único que se sabe membro dele, e outro
+  // número por QR Code de pé falharia no envio (Codex, #386). Conversa do
+  // Instagram não tem número para onde trocar.
   const canaisQueEnviam = new Set(
     saudeFalhou ? [] : saudeDosCanais.filter(vivaParaEnviar).map((c) => c.id),
   );
+  const canalDoGrupo = grupo?.channel_id ?? null;
   const podeTrocarNumero =
     !ehInstagram(activeChannel) &&
-    channels.some(
-      (c) =>
-        c.id !== activeChannel?.id &&
-        canaisQueEnviam.has(c.id) &&
-        (ehGrupo
-          ? ehEvolution(c)
-          : !ehInstagram(c) && !canaisQueNaoAlcancam.has(c.id)),
-    );
+    (ehGrupo
+      ? canalDoGrupo !== null &&
+        canalDoGrupo !== activeChannel?.id &&
+        channelsById.has(canalDoGrupo) &&
+        canaisQueEnviam.has(canalDoGrupo)
+      : channels.some(
+          (c) =>
+            c.id !== activeChannel?.id &&
+            canaisQueEnviam.has(c.id) &&
+            !ehInstagram(c) &&
+            !canaisQueNaoAlcancam.has(c.id),
+        ));
 
   const displayName = ehGrupo
     ? nomeDoGrupo(grupo, t("groupNoName"))

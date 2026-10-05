@@ -126,7 +126,8 @@ não reverter sem perguntar.
   (`podeTrocarNumero`): outro que a sonda PROVA que envia (`vivaParaEnviar`,
   `cb-channels/viva-para-enviar.ts`, a MESMA régua da cobrança do Asaas —
   reconectando ou sem configuração não serve; Codex, #386), de WhatsApp, que
-  alcança o contato (`canaisQueNaoAlcancam`); no grupo, por QR Code. Conversa
+  alcança o contato (`canaisQueNaoAlcancam`). No grupo, só o
+  `cb_groups.channel_id` — o único número que se sabe MEMBRO do grupo. Conversa
   do Instagram, não.
 - ⚠️ **Lê o `tone`/`detail` do servidor (`toneFor`), nunca reavalia a régua.**
   O pino colhe os motivos do próprio `toneFor`: renomear um lá apaga a faixa.

@@ -36,9 +36,10 @@ export function FaixaDeConexao({
 }: {
   aviso: AvisoDaConexao | null;
   /**
-   * O seletor de número do cabeçalho oferece OUTRO número que serve (de pé,
-   * de WhatsApp, que alcança este contato; no grupo, por QR Code). Sem ele, a
-   * frase não manda trocar para onde não há.
+   * O seletor de número do cabeçalho oferece OUTRO número que serve (que a
+   * sonda prova que envia, de WhatsApp, que alcança este contato; no grupo, o
+   * número que recebe o grupo). Sem ele, a frase não manda trocar para onde
+   * não há.
    */
   podeTrocarNumero: boolean;
 }) {
