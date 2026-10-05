@@ -130,6 +130,20 @@ Live Photo e edições cifradas de antes do descarte).
   de novo por até ~30 s; linha que existe e não avança é recibo velho, e ele
   desiste; recibo de mensagem RECEBIDA não espera. Quem escrever outro
   consumidor de recibo repete a espera — o UPDATE solto perde em silêncio.
+- ⚠️⚠️ **O ERROR de REENVIO a um aparelho secundário NÃO é falha** (decisão
+  do operador, 05/10/2026). O WhatsApp Web, o computador ou o 2º celular do
+  cliente pede a mensagem de novo, a Baileys reenvia só para ele e o servidor
+  recusa (ack `error="479"`), mas o celular principal já recebeu (DELIVERY_ACK
+  meio segundo depois). Só acontece em envio endereçado pelo TELEFONE (zero
+  pelo LID). O ack vem do JID do aparelho (`<lid>:26@lid`), e a Evolution o
+  corta com `replace(/:.*$/, '')`, levando o `@lid` junto: o `remoteJid` do
+  webhook chega SEM "@". `ehErroDeAparelhoSecundario` (rota) descarta esse
+  ERROR antes do UPDATE; o do envio principal (com "@") segue `failed`. De
+  08/09 a 05/10: 8 de 8 do envio principal nunca entregues, 50 de 53 do
+  aparelho entregues. Se a Evolution mudar o corte, volta o falso "não
+  entregue" — nunca uma falha real escondida. Pino: `route.recibo.test.ts`.
+  Medir: log da Evolution (`Update messages`, `messageStubParameters`) e
+  `MessageUpdate.remoteJid` sem "@" no banco dela.
 - **A rota da META tem a mesma escada e a mesma espera** (`recibo-da-meta.ts`),
   com três diferenças de propósito: espera de 7 s
   (`PAUSAS_DO_RECIBO_DA_META_MS`), porque a maioria dos recibos que chegam lá

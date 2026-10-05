@@ -79,6 +79,10 @@ export const ACEITA_FALHA: readonly StatusDeEntrega[] = ['sending', 'sent'];
  * da falha: dizem que o servidor ou o aparelho recebeu, não que conseguiu
  * mostrar — o ERROR dos links com prévia de anúncio em Android era o aparelho
  * recebendo sem conseguir exibir (docs/PLANO-link-sem-previa.md).
+ *
+ * O ERROR de REENVIO a um aparelho secundário do cliente nem chega aqui: a
+ * rota da Evolution o descarta antes (`ehErroDeAparelhoSecundario`,
+ * 05/10/2026). Os três de 24–25/09 eram desse tipo.
  */
 export function aceitamORecibo(recibo: StatusDoRecibo): readonly StatusDeEntrega[] {
   if (recibo === 'failed') return ACEITA_FALHA;
