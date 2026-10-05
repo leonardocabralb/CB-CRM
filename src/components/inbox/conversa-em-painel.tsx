@@ -165,6 +165,13 @@ function ConversaCarregada({
   const [resyncToken, setResyncToken] = useState(0);
   const { resumo: inadimplencia } = useInadimplencia(resyncToken);
 
+  // A conversa é relida também a cada resync (reconexão, volta à aba, botão
+  // atualizar): o que mudou nela com o tempo real caído — o número da
+  // conversa, a situação — não chega de outro jeito, e o painel seguiria
+  // enviando pelo `channel_id` velho, recusado a cada tentativa (Codex, PR
+  // #385). Releitura que falha ou não acha mantém a conversa à vista: só a
+  // carga inicial vira aviso.
+  const carregouRef = useRef(false);
   useEffect(() => {
     let cancelado = false;
     createClient()
@@ -176,19 +183,20 @@ function ConversaCarregada({
         if (cancelado) return;
         if (error) {
           console.error("[conversa-em-painel] carga falhou:", error.message);
-          setFalha("erro");
+          if (!carregouRef.current) setFalha("erro");
           return;
         }
         if (!data) {
-          setFalha("nao_encontrada");
+          if (!carregouRef.current) setFalha("nao_encontrada");
           return;
         }
+        carregouRef.current = true;
         setConversation(normalizeConversation(data));
       });
     return () => {
       cancelado = true;
     };
-  }, [conversaId, tentativa]);
+  }, [conversaId, tentativa, resyncToken]);
 
   // A régua da caixa de entrada, as duas linhas iguais às da página (pino
   // `modo-anonimo.chamadores.test.ts`): fora do perfil o fio NEM MONTA — ele
