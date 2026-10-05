@@ -11,6 +11,8 @@ paths:
   - "src/lib/marca.ts"
   - "src/components/inbox/message-composer.tsx"
   - "src/components/inbox/message-thread.tsx"
+  - "src/components/inbox/message-actions*"
+  - "src/components/inbox/texto-com-links.tsx"
   - "src/app/*/inbox/**"
   - "src/lib/inbox/voltar-no-celular*"
 ---
@@ -37,6 +39,18 @@ Vale ao mexer na altura da casca, no fio e no compositor em aparelho de toque, n
   a quem estava na caixa (`focoNaCaixaRef`, lido no `onPointerDown`). Botão
   novo que "envia" e deve manter o teclado repete o par.
 - **Arrastar a conversa para BAIXO recolhe o teclado** (`arrastoRecolheTeclado`, o gesto do WhatsApp); para cima não — é quem continua escrevendo. Mora no `onTouchMove` do contêiner, junto do `liberarSalto`.
+
+### Segurar a mensagem abre a barra de ações (05/10/2026)
+
+`src/components/inbox/message-actions.tsx` (pino `message-actions.test.tsx`). No iPhone não havia como responder, copiar nem reagir (relato do operador).
+
+- ⚠️⚠️ **O toque longo é medido pela LINHA (`onTouchStart`/`Move`/`End`/`Cancel`), nunca só pelo `contextmenu`:** o Safari do iPhone não dispara `contextmenu` no toque longo, e o `hover:` do Tailwind 4 só vale com `(hover: hover)`. A barra crua do upstream (só `onContextMenu`) devolve o defeito sem conflito (`docs/MERGE-UPSTREAM.md`).
+- **O prazo é o `TOQUE_LONGO_MS` do player de áudio (500 ms), importado:** menor que o dele, soltar o dedo entre os dois abria a barra E pulava o áudio. O dedo que anda mais de 10 px está rolando: a barra não abre.
+- ⚠️ **O dedo que abriu a barra não clica ao subir** (`preventDefault` no `touchend`): abriria a foto ou o documento, ou saltaria para a citação.
+- **No toque a linha é `select-none` e sem `-webkit-touch-callout`**, como no WhatsApp (segurar seleciona a MENSAGEM; copiar é o botão; trecho de texto não se seleciona no celular). Sem isso o iPhone abria o menu dele por cima da barra. O link do texto devolve o do navegador: `data-menu-do-navegador` (a linha pula o toque que nasce nele) + `[-webkit-touch-callout:default]` em `LinkDoTexto`.
+- ⚠️ **Aberta pelo toque, a barra fica ACIMA DO DEDO** (`topoNoToque`; mensagem curta: acima da bolha): numa mensagem comprida o topo da bolha costuma estar fora da tela, e a barra abria onde ninguém a via. O `top` NÃO depende de `touchOpen`: o toque no emoji (no popover, fora da linha) o fecha, e a barra pularia com o seletor ancorado nela. No Android o `contextmenu` chega antes do prazo e só ADIANTA o toque em curso (`abrirPeloToque`).
+- **Fecha no `pointerdown` fora da linha:** nada ganha o foco no toque longo, e o `onBlur` sozinho a deixava aberta. Invisível, a barra é `pointer-events-none` (o toque no alto da bolha acionava reagir/responder às cegas). No toque, botões de 32 px.
+- O preview prova a lógica (`resize_window` mobile + `TouchEvent` sintético), não o Safari: a palavra final é o iPhone, depois do deploy.
 
 ### Voltar da conversa pelo HISTÓRICO, no celular
 
