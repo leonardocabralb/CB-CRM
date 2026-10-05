@@ -45,7 +45,7 @@ import {
 } from '@/lib/whatsapp/transport';
 import { EvolutionApiError } from '@/lib/whatsapp/transport/evolution-client';
 import { resolveChannelForConversation } from '@/lib/cb-channels/resolve';
-import { stampMessageChannel } from '@/lib/cb-channels/stamp';
+import { preencherCanalDaConversa, stampMessageChannel } from '@/lib/cb-channels/stamp';
 import { supabaseAdmin } from '@/lib/flows/admin-client';
 import { routeContactToPipeline } from '@/lib/cb-channels/pipeline-routing';
 import { reopenClosedConversation } from '@/lib/conversations/reopen';
@@ -901,6 +901,14 @@ export async function sendMessageToConversation(
   // client do dashboard) e best-effort/deploy-safe. NULL no fallback
   // whatsapp_config → no-op.
   await stampMessageChannel(supabaseAdmin(), messageRecord.id, channel.channelId);
+  // A conversa SEM número (primeiro contato pela ficha, API v1 por telefone)
+  // fica com o número por onde esta saiu — o padrão da conta, quando ninguém
+  // escolheu. Sem isso, marcar outra conexão como padrão trocaria o número de
+  // todas essas conversas em silêncio. A que já tem número não muda
+  // (stamp.ts); grupo fica de fora (o número dele é `cb_groups.channel_id`).
+  if (!ehGrupo) {
+    await preencherCanalDaConversa(supabaseAdmin(), accountId, conversationId, channel.channelId);
+  }
 
   // Pause any active Flow run for this contact — the agent stepping in
   // is the strongest "yield, human is here" signal. Best-effort.

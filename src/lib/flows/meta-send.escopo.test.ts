@@ -24,6 +24,7 @@ vi.mock('./admin-client', () => ({
       const chain: Record<string, unknown> = {
         select: () => chain,
         eq: (k: string, v: unknown) => (filtros.push([k, v]), chain),
+        is: (k: string, v: unknown) => (filtros.push([`is:${k}`, v]), chain),
         maybeSingle: async () => {
           if (tabela === 'contacts') return { data: { id: 'contact-1', phone: '+5583988887777' }, error: null }
           if (tabela === 'conversations') {
@@ -41,8 +42,9 @@ vi.mock('./admin-client', () => ({
           h.mensagens.push(row)
           return { select: () => ({ single: async () => ({ data: { id: 'msg-1' }, error: null }) }) }
         },
-        update: () => {
-          h.previas.push(filtros)
+        update: (row: Record<string, unknown>) => {
+          // Só a PRÉVIA: o número da conversa sem número é outro UPDATE.
+          if ('last_message_text' in row) h.previas.push(filtros)
           return chain
         },
         then: (ok: (v: unknown) => unknown) => Promise.resolve({ data: null, error: null }).then(ok),

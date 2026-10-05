@@ -64,7 +64,10 @@ vi.mock('@/lib/cb-channels/engine-send', () => ({
   evolutionTransportFor: vi.fn(),
   evolutionRemoteJid: vi.fn(() => null),
 }))
-vi.mock('@/lib/cb-channels/stamp', () => ({ stampMessageChannel: vi.fn(async () => {}) }))
+vi.mock('@/lib/cb-channels/stamp', () => ({
+  stampMessageChannel: vi.fn(async () => {}),
+  preencherCanalDaConversa: vi.fn(async () => {}),
+}))
 vi.mock('@/lib/whatsapp/encryption', () => ({ decrypt: (v: string) => v }))
 
 const sendTemplateMessage = vi.fn<(args: Record<string, unknown>) => Promise<{ messageId: string }>>(

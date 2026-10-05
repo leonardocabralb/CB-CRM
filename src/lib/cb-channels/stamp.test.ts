@@ -5,6 +5,7 @@ import {
   stampMessageChannel,
   followConversationChannel,
   pinConversationChannel,
+  preencherCanalDaConversa,
   gravarComCanal,
   violouFkDoCanal,
 } from './stamp';
@@ -30,6 +31,12 @@ function makeDb(result: { error?: unknown } = {}) {
         },
         eq: (col: string, val: unknown) => {
           filters[col] = val;
+          return builder;
+        },
+        // `.is(col, null)` registrado como `is:<col>` para não se confundir
+        // com um `.eq(col, null)` — que no PostgREST nunca casa.
+        is: (col: string, val: unknown) => {
+          filters[`is:${col}`] = val;
           return builder;
         },
         then: (resolve: (v: { error: unknown }) => void) => {
@@ -94,6 +101,44 @@ describe('followConversationChannel', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const db = makeDb({ error: { message: 'column channel_pinned does not exist' } });
     await expect(followConversationChannel(db, 'c1', 'ch1')).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalled();
+  });
+});
+
+// ------------------------------------------------------------
+// preencherCanalDaConversa: o ENVIO só preenche a conversa que ainda não tem
+// número. A cerca vai no próprio UPDATE — enviar pelo Jurídico não pode tirar
+// do Comercial a conversa que já corre por ele, e grupo nunca ganha número.
+// ------------------------------------------------------------
+describe('preencherCanalDaConversa', () => {
+  it('channelId null → no-op (fallback de transição)', async () => {
+    const db = makeDb();
+    await preencherCanalDaConversa(db, 'acct', 'c1', null);
+    expect(db.calls).toHaveLength(0);
+  });
+
+  it('UPDATE só na conversa 1:1 da conta que ainda está sem número, sem fixar', async () => {
+    const db = makeDb();
+    await preencherCanalDaConversa(db, 'acct', 'c1', 'ch1');
+    expect(db.calls).toEqual([
+      {
+        table: 'conversations',
+        // Sem `channel_pinned`: a conversa continua seguindo o cliente.
+        payload: { channel_id: 'ch1' },
+        filters: {
+          id: 'c1',
+          account_id: 'acct',
+          'is:channel_id': null,
+          'is:group_id': null,
+        },
+      },
+    ]);
+  });
+
+  it('erro no update → engolido, não lança (a mensagem já saiu)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const db = makeDb({ error: { message: 'boom' } });
+    await expect(preencherCanalDaConversa(db, 'acct', 'c1', 'ch1')).resolves.toBeUndefined();
     expect(warn).toHaveBeenCalled();
   });
 });
