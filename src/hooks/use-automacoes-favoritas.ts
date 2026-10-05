@@ -51,6 +51,10 @@ export function useAutomacoesFavoritas(ativo = true): {
         if (cancelado) return
         if (error) {
           console.error("[automacoes] favoritas não carregaram:", error.message)
+          // Descarta a leitura ANTERIOR (Codex, #389): a janela relê a cada
+          // abertura, e a releitura que falha deixaria as estrelas velhas
+          // valendo como atuais, com o aviso escondido.
+          setLidas(null)
           setFalhou(true)
           return
         }
