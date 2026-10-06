@@ -527,6 +527,9 @@ export async function analisarConversaReivindicada(
     .gte('created_at', janelaInicio.toISOString())
     .is('deleted_at', null)
     .neq('content_type', 'system')
+    // A tentativa do robô que NÃO saiu (1080) não é fala da equipe: nem
+    // responde a pendência, nem entra na transcrição.
+    .eq('nao_saiu', false)
     .order('created_at', { ascending: false })
     .limit(TETO_MENSAGENS_JANELA)
   if (msgErr) throw new Error(`falha lendo mensagens: ${msgErr.message}`)

@@ -27,6 +27,8 @@ export async function buildConversationContext(
     .select('sender_type, content_text')
     .eq('conversation_id', conversationId)
     .eq('content_type', 'text')
+    // CB (1080): a tentativa do robô que não saiu o cliente nunca leu.
+    .eq('nao_saiu', false)
     .order('created_at', { ascending: false })
     .limit(limit)
 

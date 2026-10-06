@@ -80,7 +80,11 @@ const meta = vi.hoisted(() => ({
   sendTextMessage: vi.fn(),
   sendTemplateMessage: vi.fn(),
 }))
-vi.mock('@/lib/whatsapp/meta-api', () => meta)
+// As classes de erro são as REAIS: `envio-que-falhou.ts` classifica a falha por elas.
+vi.mock('@/lib/whatsapp/meta-api', async (original) => ({
+  ...(await original<typeof import('@/lib/whatsapp/meta-api')>()),
+  ...meta,
+}))
 // Botão e lista delegam para os fluxos (coberto em `meta-send.test.ts`).
 vi.mock('@/lib/flows/meta-send', () => ({
   engineSendInteractiveButtons: vi.fn(),

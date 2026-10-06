@@ -29,6 +29,7 @@ import { supabaseAdmin } from './admin-client'
 import { aplicarAssinatura } from '@/lib/assinatura/assinatura'
 import { nomeAutomaticoParaAssinar } from '@/lib/assinatura/resolver'
 import { ehEvolution, ehInstagram } from '@/lib/cb-channels/transporte'
+import { falhouAoEnviar, type AoFalhar } from '@/lib/whatsapp/envio-que-falhou'
 import type { ResolvedChannel } from '@/lib/cb-channels/resolve'
 
 // ------------------------------------------------------------
@@ -95,6 +96,12 @@ interface SendTextEngineArgs {
    * É o que o turno do agente usa para separar `falhou` de `incerto`.
    */
   antesDoProvedor?: () => void
+  /**
+   * Quem decide QUANDO a tentativa que falhou vira bolha "não enviada" no fio
+   * (o motor de automações, que retenta — `envio-que-falhou.ts`). Ausente =
+   * grava na hora (robô e agente de IA não retentam).
+   */
+  aoFalhar?: AoFalhar
 }
 
 /**
@@ -130,6 +137,43 @@ function exigirWhatsApp(channel: ResolvedChannel): void {
   if (ehInstagram(channel)) {
     throw new Error('flows and automations do not send on Instagram channels (v1)')
   }
+}
+
+/**
+ * O token da conexão Meta, ANTES da tentativa: conexão incompleta é
+ * configuração (nada foi tentado), não falha do provedor. Na Evolution, vazio.
+ */
+function tokenDaMeta(channel: ResolvedChannel): string {
+  if (ehEvolution(channel)) return ''
+  if (!channel.phone_number_id || !channel.access_token) {
+    throw new Error('WhatsApp (Meta) connection is incomplete for this account')
+  }
+  return decrypt(channel.access_token)
+}
+
+/**
+ * As variantes do nono dígito na Meta (só para TELEFONE: o BSUID tem uma
+ * grafia só). Recusa de destinatário (131030) tenta a próxima; outro erro, ou
+ * a última recusa, sobe. Devolve a variante que entregou.
+ */
+async function comVariantes(
+  alvo: string,
+  ehTelefone: boolean,
+  enviar: (destino: string) => Promise<void>,
+): Promise<string> {
+  const variants = ehTelefone ? phoneVariants(alvo) : [alvo]
+  let lastError: unknown = null
+  for (const v of variants) {
+    try {
+      await enviar(v)
+      return v
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (!isRecipientNotAllowedError(msg)) throw err
+      lastError = err
+    }
+  }
+  throw lastError
 }
 
 /**
@@ -204,56 +248,68 @@ export async function engineSendText(
   // inválido falham aqui, com o motivo.
   const { alvo, ehTelefone } = alvoDoRobo(contact, channel)
 
+  // Conexão incompleta (o token da Meta, o transporte da Evolution) é
+  // CONFIGURAÇÃO, não tentativa: falha antes de dar número à conversa, antes
+  // do `antesDoProvedor` e sem bolha (Codex, #392).
+  const accessToken = tokenDaMeta(channel)
+  const transport = ehEvolution(channel) ? evolutionTransportFor(channel) : null
+  // A TENTATIVA por esta conexão: a conversa SEM número passa a ser dela já
+  // aqui, mesmo que o provedor recuse — ela aparece no filtro da conexão por
+  // onde se tentou (decisão do operador, 06/10/2026). A que já tem número não
+  // muda (stamp.ts).
+  await preencherCanalDaConversa(db, args.accountId, args.conversationId, channel.channelId)
+
   let waMessageId = ''
   let workingPhone = alvo
   let outboundRemoteJid: string | null = null
 
-  if (ehEvolution(channel)) {
-    // Texto sai pelo transport da Evolution (Baileys) — sem janela de 24h.
-    // `alvo` é telefone aqui: `alvoDoRobo` recusa o BSUID fora da Meta.
-    const transport = evolutionTransportFor(channel)
-    args.antesDoProvedor?.()
-    const res = await transport.sendText({ to: alvo, text: textoFinal })
-    waMessageId = res.providerMessageId
-    outboundRemoteJid = evolutionRemoteJid(alvo)
-  } else {
-    if (!channel.phone_number_id || !channel.access_token) {
-      throw new Error('WhatsApp (Meta) connection is incomplete for this account')
-    }
-    const accessToken = decrypt(channel.access_token)
-    args.antesDoProvedor?.()
-
-    const attempt = async (phone: string): Promise<string> => {
-      const r = await sendTextMessage({
-        phoneNumberId: channel.phone_number_id!,
-        accessToken,
-        to: phone,
-        text: textoFinal,
-      })
-      return r.messageId
-    }
-
-    // Variantes do nono dígito só para TELEFONE: o BSUID tem uma grafia só.
-    const variants = ehTelefone ? phoneVariants(alvo) : [alvo]
-    let lastError: unknown = null
-    for (const v of variants) {
-      try {
-        waMessageId = await attempt(v)
-        workingPhone = v
-        lastError = null
-        break
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        if (!isRecipientNotAllowedError(msg)) throw err
-        lastError = err
+  args.antesDoProvedor?.()
+  try {
+    // `transport` existe só na Evolution (montado acima, fora da tentativa).
+    if (transport) {
+      // Texto sai pelo transport da Evolution (Baileys) — sem janela de 24h.
+      // `alvo` é telefone aqui: `alvoDoRobo` recusa o BSUID fora da Meta.
+      const res = await transport.sendText({ to: alvo, text: textoFinal })
+      waMessageId = res.providerMessageId
+      outboundRemoteJid = evolutionRemoteJid(alvo)
+    } else {
+      const attempt = async (phone: string): Promise<string> => {
+        const r = await sendTextMessage({
+          phoneNumberId: channel.phone_number_id!,
+          accessToken,
+          to: phone,
+          text: textoFinal,
+        })
+        return r.messageId
       }
+      workingPhone = await comVariantes(alvo, ehTelefone, async (v) => {
+        waMessageId = await attempt(v)
+      })
     }
-    if (lastError) throw lastError
+  } catch (err) {
+    // O provedor recusou (ou não respondeu): a tentativa vira bolha "não
+    // enviada" no fio (`envio-que-falhou.ts`). O erro segue CRU.
+    await falhouAoEnviar(
+      db,
+      {
+        accountId: args.accountId,
+        conversationId: args.conversationId,
+        canalId: channel.channelId,
+        contentType: 'text',
+        texto: textoFinal,
+        previa: textoFinal,
+        aiGenerated: args.aiGenerated ?? false,
+        iaAgenteId: args.iaAgenteId ?? null,
+      },
+      err,
+      args.aoFalhar,
+    )
+    throw err
+  }
 
-    // ⚠️ Só com TELEFONE: o BSUID jamais vai para `contacts.phone`.
-    if (ehTelefone && workingPhone !== alvo) {
-      await db.from('contacts').update({ phone: workingPhone }).eq('id', contact.id)
-    }
+  // ⚠️ Só com TELEFONE: o BSUID jamais vai para `contacts.phone`.
+  if (ehTelefone && workingPhone !== alvo) {
+    await db.from('contacts').update({ phone: workingPhone }).eq('id', contact.id)
   }
 
   if (args.aoSair) {
@@ -268,7 +324,7 @@ export async function engineSendText(
   // conexão apagada no meio): o "desta conexão" do contexto do agente e o
   // gatilho AFTER INSERT da 972 leem a linha como ela nasce — um UPDATE
   // depois, de melhor esforço, deixava a fala do agente sem conexão.
-  const { resultado: gravacao, canal: canalGravado } = await gravarComCanal(channel.channelId, (canal) =>
+  const { resultado: gravacao } = await gravarComCanal(channel.channelId, (canal) =>
     db
       .from('messages')
       .insert({
@@ -295,11 +351,6 @@ export async function engineSendText(
   if (gravacao.error && gravacao.error.code !== '23505') {
     throw new EnviadaSemRegistroError(waMessageId, gravacao.error.message ?? 'erro desconhecido')
   }
-  // A conversa sem número fica com o número por onde esta saiu; a que já tem
-  // número não muda (stamp.ts). Também depois do 23505: o eco gravou a linha,
-  // mas não toca no número da conversa.
-  await preencherCanalDaConversa(db, args.accountId, args.conversationId, canalGravado)
-
   await db
     .from('conversations')
     .update({
@@ -327,6 +378,8 @@ interface SendMediaEngineArgs {
   /** Canal de saida preferido (passo/no do operador, ou o canal do RUN).
    *  Ausente = canal atual da conversa — o comportamento de antes. */
   preferredChannelId?: string | null
+  /** Ver `SendTextEngineArgs.aoFalhar`. */
+  aoFalhar?: AoFalhar
 }
 
 /**
@@ -384,74 +437,79 @@ export async function engineSendMedia(
   exigirWhatsApp(channel)
   const { alvo, ehTelefone } = alvoDoRobo(contact, channel)
 
-  let waMessageId = ''
-  let workingPhone = alvo
-  let outboundRemoteJid: string | null = null
-
-  if (ehEvolution(channel)) {
-    // Mídia sai pelo transport da Evolution (aceita URL pública). `alvo` é
-    // telefone aqui: `alvoDoRobo` recusa o BSUID fora da Meta.
-    const transport = evolutionTransportFor(channel)
-    const res = await transport.sendMedia({
-      to: alvo,
-      kind: args.kind,
-      media: args.link,
-      caption: legendaFinal,
-      filename: args.filename,
-    })
-    waMessageId = res.providerMessageId
-    outboundRemoteJid = evolutionRemoteJid(alvo)
-  } else {
-    if (!channel.phone_number_id || !channel.access_token) {
-      throw new Error('WhatsApp (Meta) connection is incomplete for this account')
-    }
-    const accessToken = decrypt(channel.access_token)
-
-    const attempt = async (phone: string): Promise<string> => {
-      const r = await sendMediaMessage({
-        phoneNumberId: channel.phone_number_id!,
-        accessToken,
-        to: phone,
-        kind: args.kind,
-        link: args.link,
-        caption: legendaFinal,
-        filename: args.filename,
-      })
-      return r.messageId
-    }
-
-    // Variantes do nono dígito só para TELEFONE: o BSUID tem uma grafia só.
-    const variants = ehTelefone ? phoneVariants(alvo) : [alvo]
-    let lastError: unknown = null
-    for (const v of variants) {
-      try {
-        waMessageId = await attempt(v)
-        workingPhone = v
-        lastError = null
-        break
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        if (!isRecipientNotAllowedError(msg)) throw err
-        lastError = err
-      }
-    }
-    if (lastError) throw lastError
-
-    // ⚠️ Só com TELEFONE: o BSUID jamais vai para `contacts.phone`.
-    if (ehTelefone && workingPhone !== alvo) {
-      await db.from('contacts').update({ phone: workingPhone }).eq('id', contact.id)
-    }
-  }
-
   // content_type='image'|'video'|'document' — these are already in the
   // messages_content_type_check constraint (migration 001 + 010).
   // content_text carries the caption (or empty) so the conversation
   // list preview shows something meaningful when the user glances at it.
-    // ⚠️ `legendaFinal`, não `args.caption`: a linha gravada leva a legenda
+  // ⚠️ `legendaFinal`, não `args.caption`: a linha gravada leva a legenda
   // ASSINADA, e a prévia lia a crua. A lista de conversas e o fio mostravam
   // textos diferentes para a mesma mensagem. O `engineSendText` logo acima já
   // usava o texto final — as duas funções do mesmo arquivo discordavam.
-const preview = legendaFinal?.trim() || `[${args.kind}]`
+  const preview = legendaFinal?.trim() || `[${args.kind}]`
+
+  // Conexão incompleta é configuração (ver `engineSendText`). E a TENTATIVA
+  // dá à conversa SEM número o número desta conexão (06/10/2026).
+  const accessToken = tokenDaMeta(channel)
+  const transport = ehEvolution(channel) ? evolutionTransportFor(channel) : null
+  await preencherCanalDaConversa(db, args.accountId, args.conversationId, channel.channelId)
+
+  let waMessageId = ''
+  let workingPhone = alvo
+  let outboundRemoteJid: string | null = null
+
+  try {
+    if (transport) {
+      // Mídia sai pelo transport da Evolution (aceita URL pública). `alvo` é
+      // telefone aqui: `alvoDoRobo` recusa o BSUID fora da Meta.
+      const res = await transport.sendMedia({
+        to: alvo,
+        kind: args.kind,
+        media: args.link,
+        caption: legendaFinal,
+        filename: args.filename,
+      })
+      waMessageId = res.providerMessageId
+      outboundRemoteJid = evolutionRemoteJid(alvo)
+    } else {
+      workingPhone = await comVariantes(alvo, ehTelefone, async (v) => {
+        const r = await sendMediaMessage({
+          phoneNumberId: channel.phone_number_id!,
+          accessToken,
+          to: v,
+          kind: args.kind,
+          link: args.link,
+          caption: legendaFinal,
+          filename: args.filename,
+        })
+        waMessageId = r.messageId
+      })
+    }
+  } catch (err) {
+    // A tentativa vira bolha "não enviada" no fio (`envio-que-falhou.ts`). O
+    // erro segue CRU (a retentativa decide por ele).
+    await falhouAoEnviar(
+      db,
+      {
+        accountId: args.accountId,
+        conversationId: args.conversationId,
+        canalId: channel.channelId,
+        contentType: args.kind,
+        texto: legendaFinal ?? null,
+        previa: preview,
+        mediaUrl: args.link,
+        mediaFilename: args.kind === 'document' ? (args.filename ?? null) : null,
+      },
+      err,
+      args.aoFalhar,
+    )
+    throw err
+  }
+
+  // ⚠️ Só com TELEFONE: o BSUID jamais vai para `contacts.phone`.
+  if (ehTelefone && workingPhone !== alvo) {
+    await db.from('contacts').update({ phone: workingPhone }).eq('id', contact.id)
+  }
+
   const { data: insertedMsg, error: msgErr } = await db
     .from('messages')
     .insert({
@@ -483,7 +541,6 @@ const preview = legendaFinal?.trim() || `[${args.kind}]`
 
   // Carimbo de canal (Fase 3) — best-effort; NULL no fallback → no-op.
   if (insertedMsg) await stampMessageChannel(db, insertedMsg.id, channel.channelId)
-  await preencherCanalDaConversa(db, args.accountId, args.conversationId, channel.channelId)
 
   await db
     .from('conversations')
@@ -510,6 +567,8 @@ interface SendInteractiveButtonsEngineArgs {
   /** Canal de saida preferido (passo/no do operador, ou o canal do RUN).
    *  Ausente = canal atual da conversa — o comportamento de antes. */
   preferredChannelId?: string | null
+  /** Ver `SendTextEngineArgs.aoFalhar`. */
+  aoFalhar?: AoFalhar
 }
 
 interface SendInteractiveListEngineArgs {
@@ -525,6 +584,8 @@ interface SendInteractiveListEngineArgs {
   /** Canal de saida preferido (passo/no do operador, ou o canal do RUN).
    *  Ausente = canal atual da conversa — o comportamento de antes. */
   preferredChannelId?: string | null
+  /** Ver `SendTextEngineArgs.aoFalhar`. */
+  aoFalhar?: AoFalhar
 }
 
 /**
@@ -602,13 +663,42 @@ async function sendInteractiveViaMeta(
       'interactive messages (buttons/lists) are not supported on the Evolution (unofficial) channel',
     )
   }
-  if (!channel.phone_number_id || !channel.access_token) {
-    throw new Error('WhatsApp (Meta) connection is incomplete for this account')
-  }
+  const accessToken = tokenDaMeta(channel)
   // Aqui o canal é da Meta: o alvo é o telefone ou, sem ele, o BSUID.
   const { alvo, ehTelefone } = alvoDoRobo(contact, channel)
 
-  const accessToken = decrypt(channel.access_token)
+  // Persist the bot's prompt to the messages table so it appears in
+  // the inbox. content_type='interactive' is supported as of
+  // migration 010; sender_type='bot' distinguishes flow sends from
+  // manual agent sends (the conversation list preview will pick up
+  // last_message_text as a sensible summary).
+  //
+  // We do NOT set interactive_reply_id here — that column is reserved
+  // for the customer's tap on this message, populated by the webhook
+  // when their reply arrives. We DO persist the structured payload so
+  // the inbox thread re-renders the buttons/rows the bot sent (round-
+  // trip), matching the composer + automation send paths.
+  // Montado ANTES do envio: é também o que a bolha "não enviada" mostra.
+  const interactivePayload: InteractiveMessagePayload =
+    input.kind === 'buttons'
+      ? {
+          kind: 'buttons',
+          body: input.bodyText,
+          header: input.headerText,
+          footer: input.footerText,
+          buttons: input.buttons,
+        }
+      : {
+          kind: 'list',
+          body: input.bodyText,
+          header: input.headerText,
+          footer: input.footerText,
+          button_label: input.buttonLabel,
+          sections: input.sections,
+        }
+
+  // A TENTATIVA dá à conversa SEM número o número desta conexão (06/10/2026).
+  await preencherCanalDaConversa(db, input.accountId, input.conversationId, channel.channelId)
 
   const attempt = async (phone: string): Promise<string> => {
     if (input.kind === 'buttons') {
@@ -639,58 +729,36 @@ async function sendInteractiveViaMeta(
   // Same phone-variant retry as automations/meta-send.ts. Numbers
   // registered with/without a trunk 0 + Meta's sandbox quirks all
   // need this to reliably land a message.
-  // Variantes do nono dígito só para TELEFONE: o BSUID tem uma grafia só.
-  const variants = ehTelefone ? phoneVariants(alvo) : [alvo]
-  let workingPhone = alvo
   let waMessageId = ''
-  let lastError: unknown = null
-  for (const v of variants) {
-    try {
+  let workingPhone = alvo
+  try {
+    workingPhone = await comVariantes(alvo, ehTelefone, async (v) => {
       waMessageId = await attempt(v)
-      workingPhone = v
-      lastError = null
-      break
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      if (!isRecipientNotAllowedError(msg)) throw err
-      lastError = err
-    }
+    })
+  } catch (err) {
+    // A tentativa vira bolha "não enviada" no fio (`envio-que-falhou.ts`). O
+    // erro segue CRU (a retentativa decide por ele).
+    await falhouAoEnviar(
+      db,
+      {
+        accountId: input.accountId,
+        conversationId: input.conversationId,
+        canalId: channel.channelId,
+        contentType: 'interactive',
+        texto: input.bodyText,
+        previa: input.bodyText,
+        interactivePayload,
+      },
+      err,
+      input.aoFalhar,
+    )
+    throw err
   }
-  if (lastError) throw lastError
 
   // ⚠️ Só com TELEFONE: o BSUID jamais vai para `contacts.phone`.
   if (ehTelefone && workingPhone !== alvo) {
     await db.from('contacts').update({ phone: workingPhone }).eq('id', contact.id)
   }
-
-  // Persist the bot's prompt to the messages table so it appears in
-  // the inbox. content_type='interactive' is supported as of
-  // migration 010; sender_type='bot' distinguishes flow sends from
-  // manual agent sends (the conversation list preview will pick up
-  // last_message_text as a sensible summary).
-  //
-  // We do NOT set interactive_reply_id here — that column is reserved
-  // for the customer's tap on this message, populated by the webhook
-  // when their reply arrives. We DO persist the structured payload so
-  // the inbox thread re-renders the buttons/rows the bot sent (round-
-  // trip), matching the composer + automation send paths.
-  const interactivePayload: InteractiveMessagePayload =
-    input.kind === 'buttons'
-      ? {
-          kind: 'buttons',
-          body: input.bodyText,
-          header: input.headerText,
-          footer: input.footerText,
-          buttons: input.buttons,
-        }
-      : {
-          kind: 'list',
-          body: input.bodyText,
-          header: input.headerText,
-          footer: input.footerText,
-          button_label: input.buttonLabel,
-          sections: input.sections,
-        }
 
   const { data: insertedMsg, error: msgErr } = await db
     .from('messages')
@@ -711,7 +779,6 @@ async function sendInteractiveViaMeta(
 
   // Carimbo de canal (Fase 3) — best-effort; NULL no fallback → no-op.
   if (insertedMsg) await stampMessageChannel(db, insertedMsg.id, channel.channelId)
-  await preencherCanalDaConversa(db, input.accountId, input.conversationId, channel.channelId)
 
   await db
     .from('conversations')

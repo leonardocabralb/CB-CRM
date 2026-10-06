@@ -37,6 +37,9 @@ paths:
   - "src/components/interactive/**"
   - "src/lib/whatsapp/wa-identity*"
   - "src/lib/whatsapp/waba-pairing*"
+  - "src/lib/whatsapp/envio-que-falhou*"
+  - "src/lib/inbox/falha-do-envio*"
+  - "src/lib/inbox/nao-saiu*"
 ---
 
 # Envio pelo WhatsApp — regras
@@ -142,6 +145,20 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
   nunca repete). Embrulhar em `new Error(msg)` desliga a retentativa em
   silêncio (`retentativa.ts` só reconhece a classe). Regra em
   `.claude/rules/automacoes.md` ("retentativa").
+- ⚠️⚠️ **A tentativa do robô que NÃO saiu vira bolha "não enviada" no fio**
+  (decisão do operador, 06/10/2026; `envio-que-falhou.ts`, 1080): a linha
+  `bot`, `failed`, `nao_saiu = true`, sem `message_id`, com o motivo como
+  CÓDIGO em `error_title` (`falha-do-envio.ts`; `incerto` quando pode ter
+  saído). Só a falha do PROVEDOR (o `try` cerca só a chamada a ele); antes
+  dela, nada vai ao fio. A conversa SEM número ganha o da conexão ANTES da
+  chamada (`preencherCanalDaConversa`), também na recusa. O motor passa
+  `aoFalhar` e grava só quando DESISTE (fora da retentativa: uma bolha por
+  tentativa daria três); robô e agente de IA gravam na hora. ⚠️ Não é fala:
+  todo leitor que pergunta "alguém falou?" filtra `.eq('nao_saiu', false)`
+  (Aguardar sem conversa, contexto e turno da IA, Radar, painel), e as quatro
+  funções do banco também. Leitor novo entra no pino
+  `src/lib/inbox/nao-saiu.chamadores.test.ts`. O envio de GENTE não grava
+  bolha (a otimista falha na tela).
 - ⚠️ **O contrato de falha é o NOSSO** (`send_interactive_failed`; a
   re-pergunta que falha ENCERRA o run): libera o contato na hora e deixa a
   falha visível, ao preço de perder o fluxo num erro transitório. O do

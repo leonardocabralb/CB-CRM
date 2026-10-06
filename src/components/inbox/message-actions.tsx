@@ -85,6 +85,10 @@ export function MessageActions({
   // `temp-…`) e a mensagem que falhou no envio não têm um — sem ele a
   // Evolution não tem o que apagar, e o botão só produziria erro.
   const existeNoWhatsApp = !!message.message_id && !message.id.startsWith("temp-");
+  // A tentativa do robô que NÃO saiu (1080): o cliente nunca a recebeu —
+  // reagir falharia, e responder citaria no CRM o que ele não viu. Copiar
+  // fica (é como se reenvia à mão).
+  const naoSaiu = message.nao_saiu === true;
   const podeMexer =
     podeAgir &&
     existeNoWhatsApp &&
@@ -356,38 +360,42 @@ export function MessageActions({
           isAgent ? "right-3" : "left-3",
         )}
       >
-        <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
-          <PopoverTrigger
+        {!naoSaiu && (
+          <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+            <PopoverTrigger
+              className={cn(BOTAO, "hover:bg-muted hover:text-foreground")}
+              aria-label={t("react")}
+            >
+              <SmilePlus className={ICONE} />
+            </PopoverTrigger>
+            <PopoverContent
+              className="flex w-auto flex-row gap-1 p-1.5"
+              sideOffset={6}
+            >
+              {QUICK_EMOJIS.map((e) => (
+                <button
+                  key={e}
+                  type="button"
+                  onClick={() => handlePickEmoji(e)}
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-lg leading-none transition-transform hover:scale-125 hover:bg-muted"
+                  aria-label={t("reactWith", { emoji: e })}
+                >
+                  {e}
+                </button>
+              ))}
+            </PopoverContent>
+          </Popover>
+        )}
+        {!naoSaiu && (
+          <button
+            type="button"
+            onClick={handleReply}
             className={cn(BOTAO, "hover:bg-muted hover:text-foreground")}
-            aria-label={t("react")}
+            aria-label={t("reply")}
           >
-            <SmilePlus className={ICONE} />
-          </PopoverTrigger>
-          <PopoverContent
-            className="flex w-auto flex-row gap-1 p-1.5"
-            sideOffset={6}
-          >
-            {QUICK_EMOJIS.map((e) => (
-              <button
-                key={e}
-                type="button"
-                onClick={() => handlePickEmoji(e)}
-                className="flex h-8 w-8 items-center justify-center rounded-full text-lg leading-none transition-transform hover:scale-125 hover:bg-muted"
-                aria-label={t("reactWith", { emoji: e })}
-              >
-                {e}
-              </button>
-            ))}
-          </PopoverContent>
-        </Popover>
-        <button
-          type="button"
-          onClick={handleReply}
-          className={cn(BOTAO, "hover:bg-muted hover:text-foreground")}
-          aria-label={t("reply")}
-        >
-          <CornerUpLeft className={ICONE} />
-        </button>
+            <CornerUpLeft className={ICONE} />
+          </button>
+        )}
         <button
           type="button"
           onClick={handleCopy}

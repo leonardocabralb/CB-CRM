@@ -403,6 +403,9 @@ async function haSaidaDoRoboDepois(db: SupabaseClient, turno: LinhaDoTurno, gati
     .eq('sender_type', 'bot')
     .is('ia_agente_id', null)
     .is('deleted_at', null)
+    // A automação que TENTOU e não saiu (1080) não respondeu ninguém — a
+    // mesma régua da reserva (`cb_ia_reservar_envio`).
+    .eq('nao_saiu', false)
     .gt('gravada_em', gatilho.gravada_em)
     .limit(1)
   if (error) throw new Error(`leitura de resposta do robô falhou: ${error.message}`)
@@ -673,6 +676,9 @@ async function prepararMidias(
     .eq('conversation_id', turno.conversation_id)
     .eq('channel_id', turno.canal_id)
     .is('deleted_at', null)
+    // A MESMA janela de `lerConversaDaConexao`: sem isto, as tentativas que
+    // não saíram (1080) empurrariam a do contexto para trás desta.
+    .eq('nao_saiu', false)
     .order('created_at', { ascending: false })
     .limit(aiContextMessageLimit())
   if (error) throw new Error(`leitura das mídias falhou: ${error.message}`)

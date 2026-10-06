@@ -113,16 +113,25 @@ const preencherCanalDaConversa = vi.hoisted(() =>
 vi.mock('@/lib/cb-channels/stamp', () => ({
   stampMessageChannel: vi.fn(async () => {}),
   preencherCanalDaConversa,
+  // A bolha "não enviada" grava pelo `gravarComCanal` (só repassa o canal).
+  gravarComCanal: async (
+    canal: string | null,
+    gravar: (c: string | null) => PromiseLike<unknown>,
+  ) => ({ resultado: await gravar(canal), canal }),
 }))
 
 vi.mock('@/lib/whatsapp/encryption', () => ({
   decrypt: (v: string) => v,
 }))
 
+// As classes de erro REAIS: `envio-que-falhou.ts` classifica a falha por elas.
+import { MetaApiError } from '@/lib/whatsapp/meta-api'
+
 const sendTextMessage = vi.fn<(args: { text?: string }) => Promise<{ messageId: string }>>(
   async () => ({ messageId: 'wamid.texto' }),
 )
-vi.mock('@/lib/whatsapp/meta-api', () => ({
+vi.mock('@/lib/whatsapp/meta-api', async (original) => ({
+  ...(await original<typeof import('@/lib/whatsapp/meta-api')>()),
   sendTextMessage: (a: { text?: string }) => sendTextMessage(a),
   sendTemplateMessage: vi.fn(async () => ({ messageId: 'wamid.tpl' })),
 }))
@@ -223,5 +232,38 @@ describe('a conversa sem número ganha o número por onde a automação falou', 
     // cerca `channel_id IS NULL` vive no helper, nunca na prévia.
     await engineSendText(ARGS)
     expect(h.conversas.every((u) => !('channel_id' in u))).toBe(true)
+  })
+})
+
+// A bolha "não enviada" (06/10/2026): o provedor recusou e nada saiu.
+describe('a tentativa que o provedor recusou', () => {
+  const RECUSA = new MetaApiError('(#131047) Re-engagement message', { httpStatus: 400, code: 131047 })
+
+  it('sem aoFalhar: vira a bolha no fio (failed, nao_saiu, o texto ASSINADO) e o erro sobe cru', async () => {
+    sendTextMessage.mockRejectedValueOnce(RECUSA)
+    await expect(engineSendText(ARGS)).rejects.toBe(RECUSA)
+    expect(h.mensagens).toEqual([
+      expect.objectContaining({
+        sender_type: 'bot',
+        status: 'failed',
+        nao_saiu: true,
+        error_title: 'recusado',
+        error_code: 131047,
+        channel_id: 'canal-1',
+      }),
+    ])
+    expect(String(h.mensagens[0].content_text)).toContain('CB Advogados')
+    // A conversa já tinha ganhado o número na TENTATIVA, antes do provedor.
+    expect(preencherCanalDaConversa).toHaveBeenCalled()
+  })
+
+  it('com aoFalhar (o motor, que retenta): entrega o rascunho e NÃO grava', async () => {
+    sendTextMessage.mockRejectedValueOnce(RECUSA)
+    const aoFalhar = vi.fn()
+    await expect(engineSendText({ ...ARGS, aoFalhar })).rejects.toBe(RECUSA)
+    expect(aoFalhar).toHaveBeenCalledWith(
+      expect.objectContaining({ conversationId: 'conv-1', canalId: 'canal-1', contentType: 'text' }),
+    )
+    expect(h.mensagens).toEqual([])
   })
 })

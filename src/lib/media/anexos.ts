@@ -104,13 +104,15 @@ function tipoDoAnexo(contentType: ContentType): TipoDeAnexo | null {
  * - ⚠️ mensagem APAGADA. O fio a substitui por "Esta mensagem foi apagada",
  *   e o arquivo continua no bucket — listá-la aqui ressuscitaria, numa aba
  *   nova, exatamente o que alguém pediu para sumir da conversa.
+ * - ⚠️ a tentativa do robô que NÃO saiu (1080): tem `media_url` (a cópia do
+ *   acervo), mas o cliente nunca a recebeu — listada aqui, sairia "Enviado".
  */
 export function coletarAnexos(messages: Message[]): Anexo[] {
   const anexos: Anexo[] = [];
 
   for (const message of messages) {
     const tipo = tipoDoAnexo(message.content_type);
-    if (!tipo || !message.media_url || message.deleted_at) continue;
+    if (!tipo || !message.media_url || message.deleted_at || message.nao_saiu === true) continue;
 
     const nome = mediaFilename(message);
     // A legenda só é legenda quando diz algo além do nome. No caminho da

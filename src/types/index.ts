@@ -772,6 +772,12 @@ export interface Message {
   error_code?: number | null;
   error_title?: string | null;
   error_details?: string | null;
+  /**
+   * O ROBÔ tentou e nada saiu (1080): a bolha "não enviada". Não é fala de
+   * ninguém — quem pergunta "alguém falou?" filtra por ela
+   * (`src/lib/inbox/nao-saiu.chamadores.test.ts`).
+   */
+  nao_saiu?: boolean;
   /** Canal (cb_channels) por onde esta mensagem entrou/saiu. Migration 902. */
   channel_id?: string | null;
   /**

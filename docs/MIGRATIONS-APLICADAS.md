@@ -1201,6 +1201,21 @@ nome da época em que foram aplicadas.
   anon sem SELECT, authenticated sem UPDATE, tabela vazia. E2E no preview:
   marcar e desmarcar pela tela e pela janela gravou e apagou a linha (0 no
   fim).
+- **1080_cb_envio_que_nao_saiu** — coluna `messages.nao_saiu boolean NOT NULL
+  DEFAULT false` (a tentativa do robô que NÃO saiu, gravada como bolha "não
+  enviada" no fio) e as quatro funções que perguntam "alguém falou?"
+  recriadas com o corpo vigente mais `NOT nao_saiu`:
+  `cb_marcar_aguardando_resposta`, `cb_mensagem_apagada_recalcula_espera`,
+  `cb_assentar_mensagem_historica` e `cb_ia_reservar_envio` (fechadas a
+  public/anon/authenticated, abertas ao service_role). Gatilhos intocados.
+  PR #392. ADITIVA e ANTES do deploy (os leitores filtram
+  `.eq('nao_saiu', false)`; sem a coluna o PostgREST recusa). Aplicada em
+  06/10/2026 pela Management API (histórico `20261006175435`), depois do
+  replay verde do CI no commit `1781c0db`, com "pode gravar a 1080" do
+  operador. Conferida: coluna boolean NOT NULL DEFAULT false, as quatro
+  funções com `nao_saiu` e ACL só `postgres`/`service_role`, nenhuma linha
+  marcada, nenhum resto da conferência (233 conversas elegíveis: os três
+  cenários rodaram e se desfizeram).
 
 ## Notas do histórico
 

@@ -184,6 +184,8 @@ export async function ultimaMensagemDoContato(
         .from('messages')
         .select('gravada_em')
         .in('conversation_id', ids)
+        // A tentativa do robô que NÃO saiu (1080) não é conversa.
+        .eq('nao_saiu', false)
         .not('gravada_em', 'is', null)
         .order('gravada_em', { ascending: false })
         .limit(1),
@@ -191,6 +193,7 @@ export async function ultimaMensagemDoContato(
         .from('messages')
         .select('created_at')
         .in('conversation_id', ids)
+        .eq('nao_saiu', false)
         .is('gravada_em', null)
         .lte('created_at', agora.toISOString())
         .order('created_at', { ascending: false })

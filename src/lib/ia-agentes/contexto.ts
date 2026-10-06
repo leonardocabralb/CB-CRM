@@ -148,6 +148,8 @@ export async function lerConversaDaConexao(
     .eq('conversation_id', args.conversationId)
     .eq('channel_id', args.canalId)
     .is('deleted_at', null)
+    // O que NÃO saiu (1080) o cliente nunca leu: o agente não pode "lembrar".
+    .eq('nao_saiu', false)
     .order('created_at', { ascending: false })
     .limit(args.limite ?? aiContextMessageLimit())
   if (error) throw new Error(`[ia-agentes] leitura da conversa falhou: ${error.message}`)

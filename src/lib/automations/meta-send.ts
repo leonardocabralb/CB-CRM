@@ -24,6 +24,7 @@ import {
 import { supabaseAdmin } from './admin-client'
 import { faltaNoModelo, recortarAoModelo, type ParametrosDoModelo } from './parametros-do-modelo'
 import { aplicarAssinatura } from '@/lib/assinatura/assinatura'
+import { falhouAoEnviar, type AoFalhar } from '@/lib/whatsapp/envio-que-falhou'
 import { nomeAutomaticoParaAssinar, nomePersonalizadoParaAssinar } from '@/lib/assinatura/resolver'
 import { ehEvolution, ehInstagram } from '@/lib/cb-channels/transporte'
 
@@ -60,6 +61,11 @@ interface SendTextArgs {
    * nome automático, como sempre.
    */
   assinarComo?: string | null
+  /**
+   * Quem decide QUANDO a tentativa que falhou vira bolha "não enviada" no fio:
+   * o motor, que retenta (`envio-que-falhou.ts`). Ausente = grava na hora.
+   */
+  aoFalhar?: AoFalhar
 }
 
 interface SendTemplateArgs {
@@ -78,6 +84,8 @@ interface SendTemplateArgs {
    */
   messageParams?: ParametrosDoModelo
   preferredChannelId?: string | null
+  /** Ver `SendTextArgs.aoFalhar`. */
+  aoFalhar?: AoFalhar
 }
 
 export async function engineSendText(args: SendTextArgs): Promise<{ whatsapp_message_id: string }> {
@@ -97,6 +105,8 @@ interface SendInteractiveArgs {
   contactId: string
   payload: InteractiveMessagePayload
   preferredChannelId?: string | null
+  /** Ver `SendTextArgs.aoFalhar`. */
+  aoFalhar?: AoFalhar
 }
 
 /**
@@ -121,8 +131,8 @@ interface SendInteractiveArgs {
 export async function engineSendInteractive(
   args: SendInteractiveArgs,
 ): Promise<{ whatsapp_message_id: string }> {
-  const { payload, accountId, userId, conversationId, contactId, preferredChannelId } = args
-  const common = { accountId, userId, conversationId, contactId, preferredChannelId }
+  const { payload, accountId, userId, conversationId, contactId, preferredChannelId, aoFalhar } = args
+  const common = { accountId, userId, conversationId, contactId, preferredChannelId, aoFalhar }
   if (payload.kind === 'buttons') {
     return engineSendInteractiveButtons({
       ...common,
@@ -272,92 +282,131 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     if (falta) throw new Error(`send_template: ${falta}`)
   }
 
-  let waMessageId = ''
-  let workingPhone = alvo
-  let outboundRemoteJid: string | null = null
-
-  if (ehEvolution(channel)) {
-    // Texto sai pelo transport da Evolution (Baileys) — sem janela de 24h.
-    // `alvo` é telefone aqui: `alvoDoRobo` recusa o BSUID fora da Meta.
-    const transport = evolutionTransportFor(channel)
-    const res = await transport.sendText({ to: alvo, text: textoFinal! })
-    waMessageId = res.providerMessageId
-    outboundRemoteJid = evolutionRemoteJid(alvo)
-  } else {
-    if (!channel.phone_number_id || !channel.access_token) {
-      throw new Error('WhatsApp (Meta) connection is incomplete for this account')
-    }
-    const accessToken = decrypt(channel.access_token)
-
-    const attempt = async (phone: string): Promise<string> => {
-      if (input.kind === 'template') {
-        // Com os valores estruturados, a LINHA do modelo vai junto: é ela que
-        // faz o cabeçalho de mídia guardado e os botões chegarem à Meta. Sem
-        // linha local (conta que não sincronizou), fica o caminho "só corpo".
-        const r = await sendTemplateMessage({
-          phoneNumberId: channel.phone_number_id!,
-          accessToken,
-          to: phone,
-          templateName: input.templateName,
-          language: input.language,
-          params: input.params,
-          ...(input.messageParams
-            ? {
-                template: templateRow ?? undefined,
-                messageParams: recortarAoModelo(templateRow, input.messageParams),
-              }
-            : {}),
-        })
-        return r.messageId
-      }
-      const r = await sendTextMessage({
-        phoneNumberId: channel.phone_number_id!,
-        accessToken,
-        to: phone,
-        text: textoFinal!,
-      })
-      return r.messageId
-    }
-
-    // Same phone-variant retry as /api/whatsapp/send — Meta sandbox and
-    // numbers registered with/without a trunk 0 both require this to
-    // reliably land a message. Só para TELEFONE: o BSUID tem uma grafia só.
-    const variants = ehTelefone ? phoneVariants(alvo) : [alvo]
-    let lastError: unknown = null
-    for (const v of variants) {
-      try {
-        waMessageId = await attempt(v)
-        workingPhone = v
-        lastError = null
-        break
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        if (!isRecipientNotAllowedError(msg)) throw err
-        lastError = err
-      }
-    }
-    if (lastError) throw lastError
-
-    // ⚠️ Só com TELEFONE: o BSUID jamais vai para `contacts.phone`.
-    if (ehTelefone && workingPhone !== alvo) {
-      await db.from('contacts').update({ phone: workingPhone }).eq('id', contact.id)
-    }
-  }
-
-  // Persist the sent message so it appears in the inbox with a real
-  // provider message id. sender_type='bot' distinguishes automation sends
-  // from manual agent sends.
-  const content_type = input.kind === 'template' ? 'template' : 'text'
-  // O que o cliente recebeu, nos dois casos:
+  // O que o cliente recebe, nos dois casos:
   //  - texto  -> o ASSINADO (nosso `textoFinal`, P1.5), nao o cru `input.text`
   //  - modelo -> o corpo SUBSTITUIDO (upstream #483); antes ficava null e a
   //              bolha do template nascia vazia no inbox
+  // Calculado ANTES do envio: é também o que a bolha "não enviada" mostra.
+  const content_type = input.kind === 'template' ? 'template' : 'text'
   const content_text =
     input.kind === 'text'
       ? textoFinal
       : templateContentText(templateRow, input.params ?? [])
   const template_name = input.kind === 'template' ? input.templateName : null
+  const previa =
+    input.kind === 'template'
+      ? (content_text ?? `[template:${input.templateName}]`)
+      : textoFinal!
 
+  // Conexão Meta incompleta é CONFIGURAÇÃO, não tentativa: falha antes de
+  // dar número à conversa e sem bolha.
+  let accessToken = ''
+  if (!ehEvolution(channel)) {
+    if (!channel.phone_number_id || !channel.access_token) {
+      throw new Error('WhatsApp (Meta) connection is incomplete for this account')
+    }
+    accessToken = decrypt(channel.access_token)
+  }
+  // O transporte da Evolution também é configuração (Codex, #392).
+  const transport = ehEvolution(channel) ? evolutionTransportFor(channel) : null
+
+  // A TENTATIVA por esta conexão: a conversa SEM número passa a ser dela já
+  // aqui, mesmo que o provedor recuse — ela aparece no filtro da conexão por
+  // onde se tentou (decisão do operador, 06/10/2026). A que já tem número não
+  // muda (stamp.ts).
+  await preencherCanalDaConversa(db, input.accountId, input.conversationId, channel.channelId)
+
+  let waMessageId = ''
+  let workingPhone = alvo
+  let outboundRemoteJid: string | null = null
+
+  try {
+    // `transport` existe só na Evolution (montado acima, fora da tentativa).
+    if (transport) {
+      // Texto sai pelo transport da Evolution (Baileys) — sem janela de 24h.
+      // `alvo` é telefone aqui: `alvoDoRobo` recusa o BSUID fora da Meta.
+      const res = await transport.sendText({ to: alvo, text: textoFinal! })
+      waMessageId = res.providerMessageId
+      outboundRemoteJid = evolutionRemoteJid(alvo)
+    } else {
+      const attempt = async (phone: string): Promise<string> => {
+        if (input.kind === 'template') {
+          // Com os valores estruturados, a LINHA do modelo vai junto: é ela que
+          // faz o cabeçalho de mídia guardado e os botões chegarem à Meta. Sem
+          // linha local (conta que não sincronizou), fica o caminho "só corpo".
+          const r = await sendTemplateMessage({
+            phoneNumberId: channel.phone_number_id!,
+            accessToken,
+            to: phone,
+            templateName: input.templateName,
+            language: input.language,
+            params: input.params,
+            ...(input.messageParams
+              ? {
+                  template: templateRow ?? undefined,
+                  messageParams: recortarAoModelo(templateRow, input.messageParams),
+                }
+              : {}),
+          })
+          return r.messageId
+        }
+        const r = await sendTextMessage({
+          phoneNumberId: channel.phone_number_id!,
+          accessToken,
+          to: phone,
+          text: textoFinal!,
+        })
+        return r.messageId
+      }
+
+      // Same phone-variant retry as /api/whatsapp/send — Meta sandbox and
+      // numbers registered with/without a trunk 0 both require this to
+      // reliably land a message. Só para TELEFONE: o BSUID tem uma grafia só.
+      const variants = ehTelefone ? phoneVariants(alvo) : [alvo]
+      let lastError: unknown = null
+      for (const v of variants) {
+        try {
+          waMessageId = await attempt(v)
+          workingPhone = v
+          lastError = null
+          break
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          if (!isRecipientNotAllowedError(msg)) throw err
+          lastError = err
+        }
+      }
+      if (lastError) throw lastError
+    }
+  } catch (err) {
+    // O provedor recusou (ou não respondeu): a tentativa vira bolha "não
+    // enviada" no fio — agora, ou quando o motor desistir (`aoFalhar`, por
+    // causa da retentativa). O erro segue CRU: a retentativa decide por ele.
+    await falhouAoEnviar(
+      db,
+      {
+        accountId: input.accountId,
+        conversationId: input.conversationId,
+        canalId: channel.channelId,
+        contentType: content_type,
+        texto: content_text,
+        previa,
+        templateName: template_name,
+      },
+      err,
+      input.aoFalhar,
+    )
+    throw err
+  }
+
+  // ⚠️ Só com TELEFONE: o BSUID jamais vai para `contacts.phone`.
+  if (ehTelefone && workingPhone !== alvo) {
+    await db.from('contacts').update({ phone: workingPhone }).eq('id', contact.id)
+  }
+
+  // Persist the sent message so it appears in the inbox with a real
+  // provider message id. sender_type='bot' distinguishes automation sends
+  // from manual agent sends.
   const { data: insertedMsg, error: msgErr } = await db
     .from('messages')
     .insert({
@@ -382,17 +431,11 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
 
   // Carimbo de canal (Fase 3) — best-effort; NULL no fallback → no-op.
   if (insertedMsg) await stampMessageChannel(db, insertedMsg.id, channel.channelId)
-  // A conversa que nasceu sem número (Calendly, ficha da API) fica com o
-  // número por onde esta saiu; a que já tem número não muda (stamp.ts).
-  await preencherCanalDaConversa(db, input.accountId, input.conversationId, channel.channelId)
 
   await db
     .from('conversations')
     .update({
-      last_message_text:
-        input.kind === 'template'
-          ? (content_text ?? `[template:${input.templateName}]`)
-          : textoFinal!,
+      last_message_text: previa,
       last_message_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })

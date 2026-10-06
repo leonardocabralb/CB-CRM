@@ -227,7 +227,7 @@ a opção `telefoneResolvido` de `normalizeUpsert` e a tabela
   `historica.chamadores.test.ts` e `inbound-store.chamadores.test.ts`
   (default-deny de quem chama `persistInboundMessage`/`persistDeviceMessage`,
   que são o pacote inteiro). Mensagem gravada com carimbo antigo passa por
-  `cb_assentar_mensagem_historica` (vigente na 1011) — ver
+  `cb_assentar_mensagem_historica` (vigente na 1080) — ver
   `.claude/rules/ingestao.md`.
 - ⚠️⚠️ **A religação roda DEPOIS de todos os itens do lote** (`paraReligar`,
   um por LID), nunca dentro do laço: ~6 idas ao banco por retida atrasariam —

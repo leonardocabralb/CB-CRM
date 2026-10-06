@@ -151,8 +151,12 @@ describe('ultimaMensagemDoContato', () => {
         ['order', 'created_at', { ascending: false }],
       ])
     );
-    // Nenhum recorte por quem mandou: cliente, equipe, robô e ligação contam.
-    expect([...chamadas[1].ops, ...chamadas[2].ops].filter((o) => o[0] === 'eq')).toEqual([]);
+    // Nenhum recorte por quem mandou: cliente, equipe, robô e ligação contam —
+    // só a tentativa do robô que NÃO saiu (1080) fica de fora, nas duas.
+    expect([...chamadas[1].ops, ...chamadas[2].ops].filter((o) => o[0] === 'eq')).toEqual([
+      ['eq', 'nao_saiu', false],
+      ['eq', 'nao_saiu', false],
+    ]);
   });
 
   it('a mais recente das duas vale: a importada mais nova que a última ao vivo vence', async () => {

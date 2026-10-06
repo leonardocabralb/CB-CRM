@@ -104,6 +104,11 @@ import {
   tentativasJaFeitas,
 } from './retentativa';
 import {
+  registrarEnvioQueFalhou,
+  type AoFalhar,
+  type RascunhoDoEnvio,
+} from '@/lib/whatsapp/envio-que-falhou';
+import {
   CHAVE_PARAR_SE_RESPONDER,
   DETALHE_DA_INTERRUPCAO,
   MOTIVO_RESPOSTA_DESCONHECIDA,
@@ -1386,6 +1391,12 @@ async function executeStepsFrom(
       return status;
     }
 
+    // A tentativa de envio que falhar (o rascunho que o remetente entrega por
+    // `aoFalhar`) só vira bolha "não enviada" no fio quando o motor DESISTE
+    // dela — no `catch` abaixo, fora da retentativa. Uma bolha por tentativa
+    // poria três "não enviada" para a mesma mensagem (`envio-que-falhou.ts`).
+    const falhaDoPasso: FalhaDoPasso = {};
+
     try {
       if (step.step_type === 'condition') {
         const cfg = step.step_config as ConditionStepConfig;
@@ -1461,7 +1472,7 @@ async function executeStepsFrom(
         continue;
       }
 
-      const detail = await runStep(step, args);
+      const detail = await runStep(step, args, falhaDoPasso);
       results.push({
         step_id: step.id,
         step_type: step.step_type,
@@ -1535,6 +1546,11 @@ async function executeStepsFrom(
         );
 
         if (!erroDaFila && !reenfileirada) {
+          // Ninguém vai tentar de novo: a tentativa fica no fio como "não
+          // enviada".
+          if (falhaDoPasso.rascunho) {
+            await registrarEnvioQueFalhou(db, falhaDoPasso.rascunho, err);
+          }
           results.push({
             step_id: step.id,
             step_type: step.step_type,
@@ -1569,6 +1585,14 @@ async function executeStepsFrom(
           '[automations] não consegui enfileirar a retentativa:',
           erroDaFila.message
         );
+      }
+
+      // O motor DESISTIU deste passo: a tentativa que falhou vira bolha "não
+      // enviada" no fio, e a conversa sobe na lista (decisão do operador,
+      // 06/10/2026). Só quando o remetente chegou ao PROVEDOR — erro antes
+      // dele (configuração, contato sem telefone) fica só no registro.
+      if (falhaDoPasso.rascunho) {
+        await registrarEnvioQueFalhou(db, falhaDoPasso.rascunho, err);
       }
 
       // ⚠️ Falha SEM recusa comprovada (tempo esgotado, 5xx, qualquer erro
@@ -1641,11 +1665,20 @@ async function executeStepsFrom(
   return status === 'success' && ramoEmEspera ? 'partial' : status;
 }
 
+/** O rascunho da tentativa de envio que falhou, por passo (`runStep` → `catch`). */
+type FalhaDoPasso = { rascunho?: RascunhoDoEnvio };
+
 async function runStep(
   step: AutomationStep,
-  args: ExecuteArgs
+  args: ExecuteArgs,
+  falha: FalhaDoPasso
 ): Promise<string> {
   const db = supabaseAdmin();
+  // Os remetentes entregam aqui o rascunho da tentativa que falhou; quem
+  // grava (ou não, se vai tentar de novo) é o `catch` de `executeStepsFrom`.
+  const aoFalhar: AoFalhar = (rascunho) => {
+    falha.rascunho = rascunho;
+  };
 
   switch (step.step_type) {
     case 'send_message': {
@@ -1677,6 +1710,7 @@ async function runStep(
         }
       }
       const { whatsapp_message_id } = await engineSendText({
+        aoFalhar,
         accountId: args.automation.account_id,
         userId: args.automation.user_id,
         conversationId,
@@ -1709,6 +1743,7 @@ async function runStep(
         criarSeFaltar: true,
       });
       const { whatsapp_message_id } = await engineSendInteractive({
+        aoFalhar,
         accountId: args.automation.account_id,
         userId: args.automation.user_id,
         conversationId,
@@ -1741,6 +1776,7 @@ async function runStep(
         interpolate(texto, args, { ...o, negocio: negocioDoPasso })
       );
       const { whatsapp_message_id } = await engineSendTemplate({
+        aoFalhar,
         preferredChannelId: stepChannel(cfg, args),
         accountId: args.automation.account_id,
         userId: args.automation.user_id,
@@ -2389,6 +2425,7 @@ async function runStep(
           : (await interpolate(cfg.caption ?? '', args)) || undefined;
 
       const { whatsapp_message_id } = await engineSendMedia({
+        aoFalhar,
         accountId: args.automation.account_id,
         userId: args.automation.user_id,
         conversationId,
@@ -2480,6 +2517,7 @@ async function runStep(
       }
 
       const { whatsapp_message_id } = await engineSendText({
+        aoFalhar,
         accountId,
         userId: args.automation.user_id,
         conversationId: destino.conversationId,

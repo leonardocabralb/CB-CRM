@@ -83,7 +83,11 @@ const meta = vi.hoisted(() => ({
   sendInteractiveButtons: vi.fn(),
   sendInteractiveList: vi.fn(),
 }))
-vi.mock('@/lib/whatsapp/meta-api', () => meta)
+// As classes de erro são as REAIS: `envio-que-falhou.ts` classifica a falha por elas.
+vi.mock('@/lib/whatsapp/meta-api', async (original) => ({
+  ...(await original<typeof import('@/lib/whatsapp/meta-api')>()),
+  ...meta,
+}))
 
 import {
   engineSendInteractiveButtons,
@@ -181,7 +185,11 @@ describe('robô (fluxo e IA): o alvo por BSUID', () => {
       await expect(e.enviar()).rejects.toThrow(/131030/)
       expect(e.provedor).toHaveBeenCalledTimes(1)
       expect(h.contatosAtualizados).toEqual([])
-      expect(h.mensagens).toEqual([])
+      // A única linha é a bolha "não enviada" (06/10/2026): nada saiu.
+      expect(h.mensagens).toEqual([
+        expect.objectContaining({ status: 'failed', nao_saiu: true, sender_type: 'bot' }),
+      ])
+      expect(h.mensagens[0]).not.toHaveProperty('message_id')
     })
 
     it(`${e.nome}: com telefone E BSUID, o telefone é o alvo`, async () => {
@@ -271,28 +279,76 @@ describe('robô: o nome do documento enviado fica na mensagem', () => {
 // alcança) ficava nula depois do envio do robô: o filtro por conexão da caixa
 // a escondia, e a resposta da equipe saía pelo padrão da conta. O robô só
 // PREENCHE — a cerca `channel_id IS NULL` vai no próprio UPDATE, para não
-// tirar do Comercial a conversa que já corre por ele.
-describe('robô: a conversa sem número ganha o número por onde a mensagem saiu', () => {
+// tirar do Comercial a conversa que já corre por ele. E preenche na
+// TENTATIVA, antes do provedor: a conversa aparece no filtro da conexão
+// por onde se tentou mesmo quando o provedor recusa (06/10/2026).
+describe('robô: a conversa sem número ganha o número da conexão da tentativa', () => {
+  const CERCA = {
+    row: { channel_id: 'canal-meta' },
+    filtros: [
+      ['id', 'conv-1'],
+      ['account_id', 'acc-1'],
+      ['is:channel_id', null],
+      ['is:group_id', null],
+    ],
+  }
   for (const e of ENVIOS) {
     it(`${e.nome}: preenche só a conversa 1:1 da conta ainda sem número, sem fixar`, async () => {
       await e.enviar()
-      expect(h.numerosDaConversa).toEqual([
-        {
-          row: { channel_id: 'canal-meta' },
-          filtros: [
-            ['id', 'conv-1'],
-            ['account_id', 'acc-1'],
-            ['is:channel_id', null],
-            ['is:group_id', null],
-          ],
-        },
+      expect(h.numerosDaConversa).toEqual([CERCA])
+    })
+
+    it(`${e.nome}: envio RECUSADO pelo provedor também dá o número, e a tentativa vira bolha`, async () => {
+      e.provedor.mockRejectedValue(new Error(RECUSA_131030))
+      await expect(e.enviar()).rejects.toThrow(/131030/)
+      // Antes do provedor e, de novo (idempotente), ao gravar a bolha.
+      expect(h.numerosDaConversa.length).toBeGreaterThan(0)
+      for (const n of h.numerosDaConversa) expect(n).toEqual(CERCA)
+      expect(h.mensagens).toEqual([
+        expect.objectContaining({ status: 'failed', nao_saiu: true, channel_id: 'canal-meta' }),
       ])
     })
 
-    it(`${e.nome}: envio recusado pelo provedor não mexe no número`, async () => {
-      e.provedor.mockRejectedValue(new Error(RECUSA_131030))
-      await expect(e.enviar()).rejects.toThrow(/131030/)
+    it(`${e.nome}: erro ANTES do provedor (contato sem destino) não dá número nem bolha`, async () => {
+      h.contato = { id: 'contact-1', phone: null, wa_user_id: null }
+      await expect(e.enviar()).rejects.toThrow()
+      expect(e.provedor).not.toHaveBeenCalled()
       expect(h.numerosDaConversa).toEqual([])
+      expect(h.mensagens).toEqual([])
     })
   }
+})
+
+// Codex (#392): conexão Evolution com configuração quebrada (chave que não
+// decifra, instância sem endereço) é CONFIGURAÇÃO — nada foi tentado. O
+// transporte é montado ANTES do `antesDoProvedor` e fora do `try` da
+// tentativa: sem bolha, sem número, e o turno da IA não lê "incerto".
+describe('robô: transporte da Evolution quebrado não é tentativa', () => {
+  it('texto: lança, sem bolha, sem número e sem antesDoProvedor', async () => {
+    h.canal = CANAL_EVOLUTION
+    h.contato = { id: 'contact-1', phone: '+5583988887777', wa_user_id: null }
+    const { evolutionTransportFor } = await import('@/lib/cb-channels/engine-send')
+    vi.mocked(evolutionTransportFor).mockImplementationOnce(() => {
+      throw new Error('bad decrypt')
+    })
+    const antesDoProvedor = vi.fn()
+    await expect(engineSendText({ ...BASE, text: 'oi', antesDoProvedor })).rejects.toThrow(/bad decrypt/)
+    expect(antesDoProvedor).not.toHaveBeenCalled()
+    expect(h.mensagens).toEqual([])
+    expect(h.numerosDaConversa).toEqual([])
+  })
+
+  it('mídia: idem', async () => {
+    h.canal = CANAL_EVOLUTION
+    h.contato = { id: 'contact-1', phone: '+5583988887777', wa_user_id: null }
+    const { evolutionTransportFor } = await import('@/lib/cb-channels/engine-send')
+    vi.mocked(evolutionTransportFor).mockImplementationOnce(() => {
+      throw new Error('bad decrypt')
+    })
+    await expect(engineSendMedia({ ...BASE, kind: 'image', link: 'https://x.test/a.jpg' })).rejects.toThrow(
+      /bad decrypt/,
+    )
+    expect(h.mensagens).toEqual([])
+    expect(h.numerosDaConversa).toEqual([])
+  })
 })

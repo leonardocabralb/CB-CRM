@@ -128,7 +128,8 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
   a conversa para o número por onde a EQUIPE falou: sem ele o CRM responderia
   pelo canal padrão.
 - ⚠️ **Saída: `preencherCanalDaConversa`** (os dois `meta-send.ts`, o
-  núcleo e o eco da IA): a conversa SEM número ganha o do envio, e só ela (cerca
+  núcleo e o eco da IA): a conversa SEM número ganha o da TENTATIVA, antes do
+  provedor, e só ela (cerca
   `channel_id IS NULL` no UPDATE; grupo fora). Sem ele a do Calendly e a que
   o motor cria ficavam nulas: o filtro por conexão as escondia e a resposta
   saía pelo padrão. Pino default-deny de quem insere em `messages`:

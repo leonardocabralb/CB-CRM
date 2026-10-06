@@ -40,7 +40,8 @@ UPDATE/INSERT/DELETE fora do app, saiba o que ele aciona:
   dispara a automação `tag_added`: essa sai do código (`tag-events.ts`).
 - **`messages`** AFTER INSERT → `conversations.aguardando_desde` (972, pela
   ORDEM DE INSERÇÃO) e `janela_meta` (993); `gravada_em` nasce `now()`. UPDATE
-  de `deleted_at` recalcula a espera. Mensagem de GENTE com `gravada_em`
+  de `deleted_at` recalcula a espera. A linha `nao_saiu` (1080, a tentativa
+  do robô) não responde: as quatro perguntas "alguém falou?" a ignoram. Mensagem de GENTE com `gravada_em`
   pausa a IA da conversa (1049, `ia_pausada_por = 'gente'`).
 - **`conversations`**: encerrar limpa a espera; atribuir (`assigned_agent_id`
   novo, não nulo, por outra pessoa ou por SQL) cria aviso no sino do
@@ -360,10 +361,12 @@ um espelho com pino lendo o SQL. Mudou um lado, muda o outro.
   `selo-da-janela.test.ts` compara lista e fio. Só avança; conexão oficial
   apagada dobra a chave em `sem_carimbo`.
 - **Espera (972)**: 1ª fala de cliente sem resposta preenche; resposta de GENTE
-  (`sender_id` OU `from_device`) e encerrar limpam; grupo nunca; broadcast e
-  robô não limpam. Mensagem apagada recalcula — com um defeito conhecido: a
+  (`sender_id` OU `from_device`), a do agente de IA que SAIU (1049; a
+  `nao_saiu` não, 1080) e encerrar limpam; grupo nunca; broadcast e robô não
+  limpam. Mensagem apagada recalcula — com um defeito conhecido: a
   fórmula não sabe que encerrar limpou a espera.
-- **`cb_assentar_mensagem_historica` (vigente: 1011)**: todo caminho que grava
+- **`cb_assentar_mensagem_historica` (vigente: 1080 — o corpo da 1011, o ramo
+  da IA da 1049 e o `NOT nao_saiu`)**: todo caminho que grava
   mensagem com `created_at` no passado a chama (a recuperada da 1010 e a
   ligação da 1044, quando já há mensagem depois dela); ela desfaz só o que ESTA
   mensagem estragou, a partir da espera de ANTES do insert (`p_espera_antes`).

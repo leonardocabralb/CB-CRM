@@ -96,6 +96,9 @@ export async function lerMensagensDepois(
     .from('messages')
     .select('sender_type, ia_agente_id, gravada_em')
     .eq('conversation_id', args.conversationId)
+    // A tentativa que NÃO saiu (1080) não para a série nem conta como a
+    // retomada anterior — a mesma régua da reserva (`cb_ia_reservar_envio`).
+    .eq('nao_saiu', false)
     .gt('gravada_em', args.ancoraGravadaEm)
     .order('gravada_em', { ascending: true })
     .limit(MENSAGENS_DEPOIS_LIDAS)
