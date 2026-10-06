@@ -62,6 +62,8 @@ abaixo. Nada foi deixado implícito de propósito.
 | 30/09 | Uma conversa inteira descartada desde ~10/09 (cliente com aparelho hospedado da Meta): sessão legada `session-<tel>.99` da Baileys 6 + `migrateSession` da rc13. 8 campos apagados do Redis db 8 com autorização; verificação em 07/10 | 9.8 |
 | 17/09 10:00–12:30 | **Causa raiz do atraso, provada por três vias**: `profilePicture(received.key.remoteJid)` — a foto de perfil consultada pelo LID, que o WhatsApp não responde — esperada dentro do `concatMap` do `BaileysMessageProcessor`, com os 60 s de `defaultQueryTimeoutMs` da Baileys 7. 1 msg/min por conexão. Patch na imagem (`-foto`), migration 1003 (instrumento) e protocolo de verificação | 5.10, 9.7 |
 
+| 06/10 | Sessão duplicada no "Parear" da Bancário-Comercial (laço 440: o connect do diálogo de QR na janela de 3 s da reconexão automática), `isDeleting` preso depois do "Reparear", e um 408 (rede) que apagou a credencial da Trabalhista-Jurídico. Terceiro patch da imagem (`sessao-unica-e-reconexao.patch`) e "fechada confirmada" no CRM — PR `fix/pareamento-sem-sessao-duplicada`; a imagem nova espera a troca com o operador | `docs/INFRA-VPS.md` §8 (06/10), `docker/evolution-cb/README.md` |
+
 ### 0.3 O que NÃO foi feito (e é o próximo trabalho)
 
 - A **Fase 1** inteira (seção 6.2): trocar a imagem, ativar a licença, conferir as 4 conexões, rodar T1–T22, observar 48 h.

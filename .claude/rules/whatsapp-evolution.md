@@ -22,9 +22,11 @@ Operação da VPS e da imagem (digests, rollback, stack, backup): leia
 
 ### Baileys 7 / Evolution 2.4
 
-A produção roda a NOSSA imagem da Evolution 2.4 (Baileys 7.0.0-rc13), com
-dois patches em `docker/evolution-cb/`: a citação do cliente e a foto de
-perfil. Plano vivo: `docs/PLANO-baileys-7.md`.
+A produção roda a NOSSA imagem da Evolution 2.4 (Baileys 7.0.0-rc13), com os
+patches de `docker/evolution-cb/`: a citação do cliente, a foto de perfil e
+(desde 06/10/2026, a trocar com o operador) a sessão única com a reconexão —
+qual imagem está no ar é o `docs/INFRA-VPS.md` que diz. Plano vivo:
+`docs/PLANO-baileys-7.md`.
 
 - ⚠️ **Voltar de versão da imagem está DESCARTADO** (decisão do operador): a
   2.4 foi escolhida para acabar com o "Aguardando mensagem" — a Baileys 6 não
@@ -66,6 +68,41 @@ perfil. Plano vivo: `docs/PLANO-baileys-7.md`.
   (`type: 0`, sem `editedMessage`). A rota ignora o `edited` sem texto de
   propósito: o apagar-para-todos chega pelo `messages.delete`. Não tratar o
   `edited` vazio como edição.
+
+### Pareamento: um socket por instância (06/10/2026)
+
+O ciclo de conexão da 2.4 (`e273b904`) e o 3º patch
+(`docker/evolution-cb/sessao-unica-e-reconexao.patch`; o defeito, medido, no
+README de lá e em `docs/INFRA-VPS.md` §8). O lado do CRM está em
+`.claude/rules/canais.md`.
+
+- ⚠️⚠️ **`GET /instance/connect` com o estado em MEMÓRIA `close` abre um
+  socket novo e não fecha o anterior; em `connecting` só devolve o QR
+  guardado; em `open`, o estado.** Depois de toda queda que ela mesma
+  reconecta (515 logo após ler o QR, 440, 428) a memória fica ~3 s em `close`
+  com a reconexão agendada: um connect ali faz DOIS sockets com a mesma
+  credencial, que se derrubam em laço (`conflict type=replaced` → 440). Sem o
+  patch, nada do lado da Evolution impede. Caminho novo que chame
+  `client.connect()` passa por `channelConnectionState`/`repairChannelPairing`
+  (`evolution-admin.ts`), nunca direto.
+- ⚠️ **O `connectionState` (memória) e o `connectionStatus` do banco dela
+  divergem**: o banco é o que `fetchInstances` e a saúde do CRM leem, e um
+  socket extra pode gravar `connecting` lá por cima de uma conexão que funciona.
+- ⚠️ **Logout liga `isDeleting`, e sem o patch nada o desliga**: a instância
+  que passou por um "Reparear" não reconecta mais sozinha até o contêiner
+  reiniciar, e o `POST /instance/restart` a deixa fechada.
+- ⚠️ **408 apaga a credencial** sem o patch (`codesToNotReconnect` →
+  `logout.instance` → `cleaningUp` apaga a `Session`). Com o patch, 408 de
+  socket PAREADO reconecta; pareado = `creds.account` (gravado no
+  pair-success), nunca `creds.me` (o código de pareamento o preenche antes).
+- ⚠️ **As chaves Signal não moram com a credencial**: com
+  `DATABASE_SAVE_DATA_INSTANCE=true` e `CACHE_REDIS_SAVE_INSTANCES=false` (o
+  nosso), a credencial fica na `Session` do Postgres e as chaves no hash
+  `evolution:instance:<id>` do Redis db 8. O `removeCreds` do logout apaga os
+  dois; o `cleaningUp` original só a `Session` — o patch apaga o hash junto.
+- ⚠️ **Pareamento NOVO não traz o intervalo em que a conexão ficou fora**
+  (`syncFullHistory=false`): o que o número recebeu sem credencial fica só no
+  celular.
 
 ### O que virava bolha vazia (1060)
 

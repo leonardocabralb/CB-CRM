@@ -396,6 +396,56 @@ o `stack deploy` manual descrito no `DEPLOY-VPS.md`.
 
 ## 8. Histórico de incidentes
 
+### 2026-10-06 — sessão duplicada no pareamento, `isDeleting` preso e 408 que desfaz o pareamento
+
+Três defeitos da Evolution 2.4 (`e273b904`), vistos no mesmo dia.
+
+**1. Laço 440 na Bancário - Comercial.** O número voltou da suspensão de 24 h
+e foi reconectado pelo diálogo de QR do CRM.
+- O diálogo chama `/connect` a cada 5 s fora de `open`, e `GET /instance/connect`
+  com a memória em `close` SEMPRE abre um socket novo, sem fechar o anterior.
+- Logo depois da leitura do QR (o 515) e a cada 440, a Evolution fica 3 s em
+  `close` com a reconexão agendada. O connect do CRM nessa janela abriu o
+  segundo socket com a mesma credencial: `conflict type=replaced` → 440 →
+  reconecta, em laço.
+- O "Reparear" cortou o laço, porque o logout liga `isDeleting`. Mas nada o
+  desliga: depois disso nenhuma queda reconectava sozinha. Um socket extra de QR
+  ainda gravou `connecting` no banco dela, e o CRM mostrou "aguardando leitura
+  do QR Code" sobre uma conexão que enviava e recebia.
+- Curado às 14:28 BRT com o reinício do contêiner (`docker service update
+  --force evolution_evolution`, 14 s, fila em ~1 s nas 3 conexões; as 3 com
+  credencial voltaram em ~10 s, sem QR).
+
+**2. A Trabalhista e Previdenciário - Jurídico caiu às 14:05 BRT com 408**
+(tempo esgotado de rede) e não voltou.
+- 408 está em `codesToNotReconnect`, e esse ramo emite `logout.instance`. O
+  `cleaningUp` apagou a linha `Session` (as credenciais: `DATABASE_SAVE_DATA_INSTANCE=true`,
+  `CACHE_REDIS_SAVE_INSTANCES=false`) e DEIXOU o hash de chaves Signal
+  `evolution:instance:<id>` no Redis db 8.
+- Duas leituras de QR depois disso abriram e foram desfeitas pelo lado do WhatsApp
+  (`conflict type=device_removed`, 2 e 7 min depois; o celular avisava "não foi
+  possível conectar" já na leitura). O hash foi apagado às
+  14:46 BRT, com autorização (cópias: `backup:evolution:instance:<id>:20261006T174610Z`
+  no db 9 e `/root/backups/redis-juridico-trabalhista-20261006T174610Z.txt`).
+- A relação entre as chaves velhas e a remoção não está provada; o pareamento
+  seguinte fica para depois do deploy do CRM.
+- Mensagens recebidas pelo número enquanto ele estava fora não chegam ao CRM:
+  a instância não sincroniza histórico (`syncFullHistory=false`).
+
+**Conserto.**
+- Imagem: `docker/evolution-cb/sessao-unica-e-reconexao.patch` (um socket por
+  instância, `isDeleting` zerado no connect, 408 com pareamento reconecta,
+  logout que sempre desloga e zera o QR, limpeza que leva as chaves junto).
+- CRM: só pede QR com a instância fechada CONFIRMADA (duas leituras, 6 s entre
+  elas), uma operação por instância, o laço do QR encadeado, e o Reparear para
+  se o logout falhar com a sessão aberta.
+- A troca da imagem, com a fila vazia e o operador ciente, é um passo à parte.
+  Até ela, valem os avisos da §9.
+
+Backup do dia: `/root/backups/evolution-20261006T172735Z.dump` (banco `evolution`)
+e `/root/backups/evolution-log-20261006T172735Z.txt` (o log do contêiner antigo,
+desde 12:44 BRT, com o defeito).
+
 ### 2026-09-30 — sessão legada `.99` descartava toda mensagem de um cliente
 
 **Sintoma.** Nenhuma mensagem de um cliente da Bancário - Comercial (conta
@@ -512,6 +562,21 @@ espere chegar uma mensagem nova.
 - `POST /instance/restart/<instância>` (a API da Evolution) segue como
   PALIATIVO do atraso de entrega: drena a fila (16 min em 1 min, medido em
   16/09), não tira a causa. Causa e conserto: `docs/PLANO-baileys-7.md`, 5.10.
+- ⚠️ **Até a imagem com `sessao-unica-e-reconexao.patch` entrar** (o patch está
+  em `docker/evolution-cb/` desde 06/10/2026; a imagem em produção ainda tem só
+  os dois primeiros):
+  - toda instância que passou por um logout (o "Reparear") desde a subida do
+    contêiner fica com `isDeleting` ligado. Nela, queda nenhuma reconecta
+    sozinha, e o `POST /instance/restart` a deixa FECHADA (o restart derruba o
+    socket e conta com a reconexão automática). Só o reinício do contêiner zera;
+  - um 408 (queda de rede de mais de ~35 s, o keepalive) desfaz o pareamento de
+    vez, e a conexão pede QR novo;
+  - antes de ler um QR numa instância cuja credencial foi apagada por uma queda,
+    o hash `evolution:instance:<id>` do db 8 fica com as chaves do aparelho
+    morto (ver §8, 06/10).
+  Depois da troca: conferir no log `Reconnect skipped`, `Ignoring connection.update
+  from a superseded socket` e `createClient superseded` quando houver
+  repareamento, e atualizar a imagem vigente na §4 e em `ops/vps/evolution-stack.yml`.
 - ⚠️ **Voltar de versão da imagem está DESCARTADO por decisão do operador**:
   a atual foi escolhida para resolver o "Aguardando mensagem" (mensagens que
   não chegavam ao cliente). O rollback curto é o digest anterior, no mesmo
