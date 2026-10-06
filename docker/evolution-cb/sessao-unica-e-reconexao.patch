@@ -20,7 +20,7 @@ index 4d468059..08089bd0 100644
      }
  
 diff --git a/src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts b/src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts
-index f2b09a5d..f2acfecd 100644
+index f2b09a5d..f2a9a722 100644
 --- a/src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts
 +++ b/src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts
 @@ -264,6 +264,12 @@ export class BaileysStartupService extends ChannelStartupService {
@@ -55,12 +55,13 @@ index f2b09a5d..f2acfecd 100644
  
      const db = this.configService.get<Database>('DATABASE');
      const cache = this.configService.get<CacheConf>('CACHE');
-@@ -517,8 +528,17 @@ export class BaileysStartupService extends ChannelStartupService {
+@@ -517,8 +528,18 @@ export class BaileysStartupService extends ChannelStartupService {
        // a follow-up loggedOut is the expected restart signal — not an actual
        // logout — so reconnect anyway.
        const recentStream515 = Date.now() - this._lastStream515At < BaileysStartupService.STREAM_515_RECONNECT_GRACE_MS;
-+      // 408 is also Baileys' "Connection was lost" (keepalive) and the handshake timeout. On a
-+      // PAIRED socket that is a network drop, and the no-reconnect branch below emits
++      // 408 is also Baileys' "Connection was lost" (keepalive), the handshake timeout and any
++      // connection error (E… codes: DNS, refused, timed out). On a PAIRED socket that is a
++      // network drop, and the no-reconnect branch below emits
 +      // 'logout.instance', whose cleanup deletes the Session (the creds): the pairing was lost
 +      // for good. Only the end of the QR codes (408 with no pairing yet) must stop here.
 +      // `creds.account` is set only by pair-success; `creds.me` is not proof (requestPairingCode
@@ -74,8 +75,18 @@ index f2b09a5d..f2acfecd 100644
  
        this.logger.info({
          message: 'Connection closed, evaluating reconnection',
-@@ -530,8 +550,19 @@ export class BaileysStartupService extends ChannelStartupService {
+@@ -528,10 +549,29 @@ export class BaileysStartupService extends ChannelStartupService {
+       });
+ 
        if (shouldReconnect) {
++        // The DB status is what fetchInstances reads (and what clients show). Left at 'open', a
++        // paired socket that keeps failing to reconnect (network down: 408 after 408) looks
++        // healthy for the whole outage; the 'open' branch below writes 'open' again.
++        await this.prismaRepository.instance.update({
++          where: { id: this.instanceId },
++          data: { connectionStatus: 'connecting' },
++        });
++
          // Add 3 second delay before reconnection to prevent rapid reconnection loops
          this.logger.info('Reconnecting in 3 seconds...');
 +        const generation = this.socketGeneration;
@@ -95,7 +106,7 @@ index f2b09a5d..f2acfecd 100644
          }, 3000);
        } else {
          this.logger.info(`Skipping reconnection for status code ${statusCode} (code is in codesToNotReconnect list)`);
-@@ -698,7 +729,9 @@ export class BaileysStartupService extends ChannelStartupService {
+@@ -698,7 +738,9 @@ export class BaileysStartupService extends ChannelStartupService {
    }
  
    private async createClient(number?: string): Promise<WASocket> {
@@ -106,7 +117,7 @@ index f2b09a5d..f2acfecd 100644
  
      if (number) {
        this.phoneNumber = number;
-@@ -762,8 +795,8 @@ export class BaileysStartupService extends ChannelStartupService {
+@@ -762,8 +804,8 @@ export class BaileysStartupService extends ChannelStartupService {
        logger: P({ level: this.logBaileys }),
        printQRInTerminal: false,
        auth: {
@@ -117,7 +128,7 @@ index f2b09a5d..f2acfecd 100644
        },
        msgRetryCounterCache: this.msgRetryCounterCache,
        generateHighQualityLinkPreview: true,
-@@ -803,6 +836,23 @@ export class BaileysStartupService extends ChannelStartupService {
+@@ -803,6 +845,23 @@ export class BaileysStartupService extends ChannelStartupService {
        },
      };
  
@@ -141,7 +152,7 @@ index f2b09a5d..f2acfecd 100644
      this.endSession = false;
  
      this.client = makeWASocket(socketConfig);
-@@ -811,7 +861,7 @@ export class BaileysStartupService extends ChannelStartupService {
+@@ -811,7 +870,7 @@ export class BaileysStartupService extends ChannelStartupService {
        useVoiceCallsBaileys(this.localSettings.wavoipToken, this.client, this.connectionStatus.state as any, true);
      }
  
@@ -150,7 +161,7 @@ index f2b09a5d..f2acfecd 100644
  
      this.client.ws.on('CB:call', (packet) => {
        console.log('CB:call', packet);
-@@ -838,6 +888,11 @@ export class BaileysStartupService extends ChannelStartupService {
+@@ -838,6 +897,11 @@ export class BaileysStartupService extends ChannelStartupService {
  
    public async connectToWhatsapp(number?: string): Promise<WASocket> {
      try {
@@ -162,7 +173,7 @@ index f2b09a5d..f2acfecd 100644
        this.loadChatwoot();
        this.loadSettings();
        this.loadWebhook();
-@@ -2118,7 +2173,7 @@ export class BaileysStartupService extends ChannelStartupService {
+@@ -2118,7 +2182,7 @@ export class BaileysStartupService extends ChannelStartupService {
      },
    };
  
@@ -171,7 +182,7 @@ index f2b09a5d..f2acfecd 100644
      this.client.ev.process(async (events) => {
        this.eventProcessingQueue = this.eventProcessingQueue.then(async () => {
          try {
-@@ -2145,11 +2200,25 @@ export class BaileysStartupService extends ChannelStartupService {
+@@ -2145,11 +2209,25 @@ export class BaileysStartupService extends ChannelStartupService {
                this.sendDataWebhook(Events.CALL, call);
              }
  

@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ============================================================
-// POST /api/cb/channels/[id]/restart — o logout que falha com a sessão
-// aberta (`SessaoAindaDePe`) vira 502 com a frase, sem o prefixo, e NADA é
-// gravado: o repareamento parou antes do connect, a conexão segue como está.
+// POST /api/cb/channels/[id]/restart — o logout que não pegou
+// (`SessaoAindaDePe`, `LogoutNaoPegou`) vira 502 com a frase, sem o prefixo, e
+// NADA é gravado: o repareamento parou antes do connect, a sessão segue de pé.
+// A falha DEPOIS do logout (`FalhaDepoisDoLogout`) grava 'connecting' e
+// responde 200 sem QR: o número já caiu, e o diálogo pede o QR de novo.
 // ============================================================
 
 const estado = vi.hoisted(() => ({
@@ -50,13 +52,22 @@ vi.mock('@/lib/cb-channels/repo', () => ({
   CB_CHANNEL_SAFE_COLUMNS: 'id',
 }));
 
-vi.mock('@/lib/cb-channels/evolution-admin', async (original) => ({
-  SessaoAindaDePe: (await original<typeof import('@/lib/cb-channels/evolution-admin')>())
-    .SessaoAindaDePe,
-  repairChannelPairing: vi.fn(),
-}));
+vi.mock('@/lib/cb-channels/evolution-admin', async (original) => {
+  const real = await original<typeof import('@/lib/cb-channels/evolution-admin')>();
+  return {
+    SessaoAindaDePe: real.SessaoAindaDePe,
+    LogoutNaoPegou: real.LogoutNaoPegou,
+    FalhaDepoisDoLogout: real.FalhaDepoisDoLogout,
+    repairChannelPairing: vi.fn(),
+  };
+});
 
-import { repairChannelPairing, SessaoAindaDePe } from '@/lib/cb-channels/evolution-admin';
+import {
+  FalhaDepoisDoLogout,
+  LogoutNaoPegou,
+  repairChannelPairing,
+  SessaoAindaDePe,
+} from '@/lib/cb-channels/evolution-admin';
 import { POST } from './route';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -78,6 +89,26 @@ describe('POST /restart', () => {
     expect(json.error).toBe(new SessaoAindaDePe().message);
     expect(json.error).not.toMatch(/^Erro da Evolution/);
     expect(estado.updates).toEqual([]);
+  });
+
+  it('logout que não pegou (a sessão antiga voltou) → 502 com a frase, e nada gravado', async () => {
+    reparar.mockRejectedValue(new LogoutNaoPegou());
+    const res = await POST(pedido(), params);
+    expect(res.status).toBe(502);
+    expect((await res.json()).error).toBe(new LogoutNaoPegou().message);
+    expect(estado.updates).toEqual([]);
+  });
+
+  it('falha DEPOIS do logout → 200 sem QR e a conexão em connecting (o diálogo pede o QR)', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    reparar.mockRejectedValue(new FalhaDepoisDoLogout(new Error('timeout')));
+    const res = await POST(pedido(), params);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ qr: null, pairingCode: null });
+    expect(estado.updates[0]).toEqual({
+      tabela: 'cb_channels',
+      linha: { status: 'connecting', last_error: null },
+    });
   });
 
   it('outro erro da Evolution → 502 com o prefixo, e nada gravado', async () => {

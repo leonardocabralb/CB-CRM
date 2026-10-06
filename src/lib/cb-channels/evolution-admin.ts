@@ -149,10 +149,12 @@ export interface EstadoDaConexao {
 // abrir socket; com 'open', nada a fazer.
 //
 // Por isso 'close' não conecta de imediato: espera `ESPERA_FECHADA_MS`, lê de
-// novo e só chama `connect` se continuar 'close'. A espera cobre os 3 s da
-// reconexão automática mais os awaits de `createClient` antes do 'connecting'.
-// Ela só ESTREITA a janela (quem decide abrir socket é a Evolution, relendo o
-// estado no pedido); o conserto de raiz é da imagem.
+// novo e só chama `connect` se continuar 'close'. A espera folga os 3 s da
+// reconexão automática mais os awaits de `createClient`, mas NÃO cobre tudo: o
+// 'connecting' só chega à memória quando a fila de eventos da Evolution (serial,
+// com as mensagens do socket anterior) o processa, e com entrada represada isso
+// passa de 6 s. Ela só ESTREITA a janela (quem decide abrir socket é a
+// Evolution, relendo o estado no pedido); o conserto de raiz é da imagem.
 // ------------------------------------------------------------
 
 /** Espera, depois de ler 'close', antes de ler de novo e só então pedir o QR. */
@@ -341,15 +343,49 @@ export async function reaplicarWebhook(
   });
 }
 
-/** O logout do repareamento falhou e a sessão continua aberta: nada foi pedido depois. */
+/**
+ * O logout do repareamento lançou e a sessão ainda aparece aberta: nenhum QR
+ * foi pedido. "Nada foi alterado" seria falso — num tempo esgotado do nosso
+ * lado a Evolution pode já ter começado o logout.
+ */
 export class SessaoAindaDePe extends Error {
   constructor() {
     super(
-      'A Evolution não confirmou o logout e a sessão continua de pé; nada foi alterado. Tente de novo.',
+      'Não deu para confirmar o logout: a sessão ainda aparece aberta e nenhum QR foi pedido. Confira a conexão em instantes ou tente de novo.',
     );
     this.name = 'SessaoAindaDePe';
   }
 }
+
+/**
+ * O logout respondeu, mas a sessão voltou a abrir sozinha: o pareamento
+ * antigo segue valendo (a imagem sem o 3º patch responde "already
+ * disconnected" sem deslogar quando a memória dela diz 'close' — por exemplo,
+ * nos 3 s de cada volta do laço 440). Nenhum QR foi pedido.
+ */
+export class LogoutNaoPegou extends Error {
+  constructor() {
+    super(
+      'A Evolution respondeu ao logout, mas a sessão voltou a abrir com o pareamento antigo; nenhum QR foi pedido. Tente de novo em alguns segundos.',
+    );
+    this.name = 'LogoutNaoPegou';
+  }
+}
+
+/**
+ * O logout pegou, mas o QR não veio (a leitura ou o connect falhou depois
+ * dele): o número JÁ está fora do ar. A rota grava 'connecting' e abre o
+ * diálogo, cujo laço pede o QR de novo.
+ */
+export class FalhaDepoisDoLogout extends Error {
+  constructor(causa: unknown) {
+    super(causa instanceof Error ? causa.message : String(causa));
+    this.name = 'FalhaDepoisDoLogout';
+  }
+}
+
+/** Repareamento em curso por instância (ver `repairChannelPairing`). Por réplica, como `emCurso`. */
+const reparoEmCurso = new Map<string, Promise<{ qrBase64?: string; pairingCode?: string }>>();
 
 /**
  * REPAREAMENTO: derruba a sessão do aparelho e devolve um QR novo.
@@ -378,37 +414,60 @@ export class SessaoAindaDePe extends Error {
  * `SessaoAindaDePe` e não pede QR nenhum. Com outro estado (instância já
  * deslogada também devolve erro), segue.
  *
- * O QR vem pelo MESMO caminho da consulta (`estadoOuQr`): logo depois do
- * logout o estado é 'close', e o `connect` só sai depois de fechada
- * confirmada. Antes, o connect saía colado ao logout, e o diálogo pedia
- * outro um segundo depois.
+ * Depois do logout, espera `ESPERA_FECHADA_MS` e lê o estado UMA vez: 'open'
+ * quer dizer que o logout não pegou e a sessão antiga voltou sozinha
+ * (`LogoutNaoPegou`, sem QR); 'close' ou 'connecting' (um socket novo, já
+ * sem a credencial, mostrando QR), aí sim `connect`. Antes, o connect saía
+ * colado ao logout, e o diálogo pedia outro um segundo depois. Falha a partir
+ * daqui vira `FalhaDepoisDoLogout`: o número já caiu, e a rota abre o diálogo.
  *
  * Uma consulta em curso nesta instância (o diálogo aberto noutra aba)
  * termina ANTES do logout, e a que chegar durante o repareamento recebe a
  * promessa dele (`umaPorInstancia`): nenhum connect corre junto com o logout.
+ * Dois repareamentos simultâneos (duas abas, dois admins) recebem a MESMA
+ * promessa (`reparoEmCurso`): o segundo logout derrubaria o pareamento que o
+ * primeiro acabou de produzir.
  */
-export async function repairChannelPairing(instanceName: string): Promise<{
+export function repairChannelPairing(instanceName: string): Promise<{
   qrBase64?: string;
   pairingCode?: string;
 }> {
+  const atual = reparoEmCurso.get(instanceName);
+  if (atual) return atual;
+  const promessa = reparar(instanceName).finally(() => {
+    if (reparoEmCurso.get(instanceName) === promessa) reparoEmCurso.delete(instanceName);
+  });
+  reparoEmCurso.set(instanceName, promessa);
+  return promessa;
+}
+
+async function reparar(instanceName: string): Promise<{ qrBase64?: string; pairingCode?: string }> {
   for (let atual = emCurso.get(instanceName); atual; atual = emCurso.get(instanceName)) {
     await atual.catch(() => undefined);
   }
 
   const res = await umaPorInstancia(instanceName, async () => {
     const client = clienteDaInstancia(instanceName);
-    let lido: EstadoDaInstancia | null = null;
     try {
       await client.logout();
     } catch (err) {
-      lido = await lerEstado(client);
+      const lido = await lerEstado(client);
       if (lido === 'open') throw new SessaoAindaDePe();
       console.warn(
         `[cb-channels] logout no repareamento falhou com a instância em '${lido}' (seguindo para o QR):`,
         err instanceof Error ? err.message : err,
       );
     }
-    return estadoOuQr(client, instanceName, lido ?? (await lerEstado(client)));
+    try {
+      await esperar(ESPERA_FECHADA_MS);
+      const depois = await lerEstado(client);
+      if (depois === 'open') throw new LogoutNaoPegou();
+      const conn = await client.connect();
+      return { state: depois, qrBase64: conn.base64, pairingCode: conn.pairingCode };
+    } catch (err) {
+      if (err instanceof LogoutNaoPegou) throw err;
+      throw new FalhaDepoisDoLogout(err);
+    }
   });
   return { qrBase64: res.qrBase64, pairingCode: res.pairingCode };
 }

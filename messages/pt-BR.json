@@ -4694,7 +4694,7 @@
       "setDefaultFailed": "Não foi possível tornar este canal o padrão.",
       "noNumberYet": "Número ainda não pareado",
       "status_disconnected": "Desconectado",
-      "status_connecting": "Aguardando pareamento",
+      "status_connecting": "Conectando",
       "status_connected": "Conectado",
       "lastError": "Último erro: {error}",
       "connect": "Parear",

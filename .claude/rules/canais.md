@@ -55,16 +55,27 @@ duplica a sessão: `.claude/rules/whatsapp-evolution.md`, "Pareamento".
 - ⚠️ **Uma operação de estado/QR por instância** (`umaPorInstancia`, Map no
   módulo): duas abas ou dois admins recebem a mesma promessa. É por RÉPLICA
   (`replicas: 1`). O Reparear espera a que estiver em curso antes do logout.
-- ⚠️⚠️ **Logout que falhou + connect = sessão duplicada.** O Reparear lê o
-  estado quando o logout lança: `open` → `SessaoAindaDePe` (502, nada gravado),
-  sem connect.
+- ⚠️⚠️ **Logout que não pegou + connect = sessão duplicada.** O Reparear lê o
+  estado quando o logout lança (`open` → `SessaoAindaDePe`) e, depois do
+  logout, espera `ESPERA_FECHADA_MS` e lê de novo (`open` = a sessão antiga
+  voltou → `LogoutNaoPegou`): 502, nada gravado, sem connect. Falha DEPOIS do
+  logout (`FalhaDepoisDoLogout`) grava `connecting` e abre o diálogo sem QR —
+  o número já caiu. Dois Reparear simultâneos dividem a mesma promessa
+  (`reparoEmCurso`): o segundo logout derrubaria o pareamento do primeiro.
+- ⚠️ **Sem o 3º patch da imagem, o diálogo é quem termina o Reparear** (o
+  `isDeleting` impede o 515 de reconectar): fechá-lo antes de "Número
+  conectado" deixa a conexão parada em `close` com credencial válida. E o
+  Reparear de instância que a Evolution já dá como `close` não desloga e pode
+  religar o chip antigo. Os dois somem com a imagem nova (`docs/INFRA-VPS.md`
+  §9).
 - ⚠️ **O laço do QR é `setTimeout` ENCADEADO, nunca `setInterval`**: a rota leva
   mais de 5 s com a instância fechada, e com intervalo duas consultas corriam
   juntas. Pino: `cb-channels-panel.laco-do-qr.test.ts`.
 - **O webhook é reaplicado UMA vez por abertura do diálogo** (corpo
   `{ reaplicarWebhook }` da `/connect`; só `false` pula — sem corpo reaplica,
   que é a tela aberta antes do deploy) e no "Ressincronizar".
-- ⚠️ **`detail_pairing` é "conectando ao WhatsApp", não "aguardando o QR"**:
+- ⚠️ **`detail_pairing` é "conectando ao WhatsApp" e `status_connecting` é
+  "Conectando", nunca "aguardando o QR"/"aguardando pareamento"**:
   `connecting` também é a reconexão sozinha com a credencial válida, e o texto
   antigo levava o operador a abrir o QR (e a duplicar a sessão) numa conexão
   que funcionava.

@@ -49,15 +49,21 @@ produção (`e273b904`, build de 14/07/2026), com estas diferenças:
      QR guardado (o connect seguinte podia devolver o QR do pareamento anterior)
      e deixa de parar no `close` em memória: só instância inexistente responde
      "already disconnected", porque `close` em memória não prova que não há
-     socket nem credencial.
+     socket nem credencial. ⚠️ Com o socket já morto, esse logout apaga a
+     credencial sem avisar o WhatsApp: o aparelho antigo continua listado em
+     "Aparelhos conectados" no celular (conta no limite de 4) e se remove à mão.
    - **Uma queda de rede com 408 desfazia o pareamento.** O 408 está em
      `codesToNotReconnect`, e o ramo que não reconecta emite `logout.instance`,
      cuja limpeza apaga a linha `Session` (as credenciais). Na Baileys, 408 é
-     também o keepalive perdido ("Connection was lost") e o tempo esgotado do
-     handshake: aconteceu às 14:05 BRT numa conexão de produção. Com o socket
+     também o keepalive perdido ("Connection was lost", ~35 s), o tempo
+     esgotado do handshake e qualquer erro de conexão `E…` (DNS, recusada) numa
+     reconexão: aconteceu às 14:05 BRT numa conexão de produção. Com o socket
      pareado (`creds.account`, gravado só no pair-success — `creds.me` não
      prova, o código de pareamento o preenche antes), o 408 reconecta como os
-     outros; sem pareamento (fim dos QR) continua como estava.
+     outros; sem pareamento (fim dos QR) continua como estava. Toda reconexão
+     agora grava `connecting` no banco antes do timer: sem isso, uma queda de
+     rede longa (408 atrás de 408) ficava `open` no banco — que é o que o
+     `fetchInstances` e a saúde do CRM leem — durante a queda inteira.
    - **A limpeza que apaga as credenciais deixava as chaves.** Com o auth state
      no Prisma e o Redis ligado (`CACHE_REDIS_SAVE_INSTANCES=false`, o nosso),
      as credenciais ficam na linha `Session` e as chaves Signal (sessões,
@@ -69,8 +75,12 @@ produção (`e273b904`, build de 14/07/2026), com estas diferenças:
      hash junto, como o `removeCreds` do logout já fazia.
 
    Três arquivos (`whatsapp.baileys.service.ts`, `instance.controller.ts` e
-   `monitor.service.ts`), +91/−15 linhas. As três partes vão juntas: zerar o `isDeleting` sem o filtro
-   de geração deixaria o 408 de um socket de QR extra apagar o pareamento novo.
+   `monitor.service.ts`), +100/−15 linhas. As partes vão juntas: zerar o
+   `isDeleting` sem o filtro de geração deixaria o 408 de um socket de QR extra
+   apagar o pareamento novo. Limites conhecidos: o filtro vale quando o evento
+   SAI da fila — um `open` cujo handler já estava em curso (ele espera a foto de
+   perfil) quando o socket foi superado ainda grava; e um connect que chegue de
+   FORA do CRM no meio de um logout (o `/manager`) não é serializado com ele.
    O `develop` do upstream em 06/10/2026 ainda é o `e273b904`; há PRs abertos e
    não mesclados para pedaços disso (#2560, #2655, #2656, #2732), nenhum com o
    filtro de geração.

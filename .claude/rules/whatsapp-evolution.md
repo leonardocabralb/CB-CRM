@@ -23,8 +23,9 @@ Operação da VPS e da imagem (digests, rollback, stack, backup): leia
 ### Baileys 7 / Evolution 2.4
 
 A produção roda a NOSSA imagem da Evolution 2.4 (Baileys 7.0.0-rc13), com os
-patches de `docker/evolution-cb/`: a citação do cliente, a foto de perfil e
-(desde 06/10/2026, a trocar com o operador) a sessão única com a reconexão —
+patches de `docker/evolution-cb/`. NO AR: a citação do cliente e a foto de
+perfil. O 3º (sessão única com a reconexão, 06/10/2026) está na pasta e ESPERA
+a troca da imagem com o operador — até ela, valem os avisos sem o patch abaixo;
 qual imagem está no ar é o `docs/INFRA-VPS.md` que diz. Plano vivo:
 `docs/PLANO-baileys-7.md`.
 
@@ -98,8 +99,12 @@ README de lá e em `docs/INFRA-VPS.md` §8). O lado do CRM está em
 - ⚠️ **As chaves Signal não moram com a credencial**: com
   `DATABASE_SAVE_DATA_INSTANCE=true` e `CACHE_REDIS_SAVE_INSTANCES=false` (o
   nosso), a credencial fica na `Session` do Postgres e as chaves no hash
-  `evolution:instance:<id>` do Redis db 8. O `removeCreds` do logout apaga os
-  dois; o `cleaningUp` original só a `Session` — o patch apaga o hash junto.
+  `evolution:instance:<id>` do Redis db 8. O logout apaga os dois (o
+  `removeCreds`, o hash; o `logoutInstance`, a `Session`); o `cleaningUp`
+  original só a `Session` — o patch apaga o hash junto.
+- ⚠️ **Reconexão não grava estado no banco dela** sem o patch: numa queda
+  longa o `connectionStatus` fica `open`. Com o patch, toda reconexão grava
+  `connecting` antes do timer.
 - ⚠️ **Pareamento NOVO não traz o intervalo em que a conexão ficou fora**
   (`syncFullHistory=false`): o que o número recebeu sem credencial fica só no
   celular.

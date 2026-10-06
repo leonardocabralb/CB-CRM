@@ -569,14 +569,27 @@ espere chegar uma mensagem nova.
     contêiner fica com `isDeleting` ligado. Nela, queda nenhuma reconecta
     sozinha, e o `POST /instance/restart` a deixa FECHADA (o restart derruba o
     socket e conta com a reconexão automática). Só o reinício do contêiner zera;
-  - um 408 (queda de rede de mais de ~35 s, o keepalive) desfaz o pareamento de
-    vez, e a conexão pede QR novo;
+  - um 408 desfaz o pareamento de vez, e a conexão pede QR novo. 408 é o
+    keepalive perdido (~35 s sem resposta) E qualquer erro de rede, DNS ou
+    tempo esgotado do handshake numa reconexão de rotina — não precisa de queda
+    longa;
+  - depois do "Reparear", quem completa o pareamento é o DIÁLOGO aberto (o 515
+    da leitura do QR não reconecta sozinho): manter o diálogo aberto até
+    "Número conectado". Fechado antes, a conexão fica parada em "Conectando" —
+    "Parear" de novo;
+  - "Reparear" numa instância que a Evolution já dá como fechada não desloga
+    (ela responde "already disconnected") e pode religar o chip ANTIGO sem QR.
+    Para trocar de chip, reiniciar o contêiner antes (com a fila vazia);
   - antes de ler um QR numa instância cuja credencial foi apagada por uma queda,
     o hash `evolution:instance:<id>` do db 8 fica com as chaves do aparelho
     morto (ver §8, 06/10).
   Depois da troca: conferir no log `Reconnect skipped`, `Ignoring connection.update
   from a superseded socket` e `createClient superseded` quando houver
   repareamento, e atualizar a imagem vigente na §4 e em `ops/vps/evolution-stack.yml`.
+  Com a imagem nova, o logout SEMPRE apaga credencial e chaves, mesmo com o
+  socket já morto — e aí o WhatsApp não é avisado: depois de um Reparear,
+  conferir "Aparelhos conectados" no celular e remover o aparelho antigo (conta
+  no limite de 4).
 - ⚠️ **Voltar de versão da imagem está DESCARTADO por decisão do operador**:
   a atual foi escolhida para resolver o "Aguardando mensagem" (mensagens que
   não chegavam ao cliente). O rollback curto é o digest anterior, no mesmo

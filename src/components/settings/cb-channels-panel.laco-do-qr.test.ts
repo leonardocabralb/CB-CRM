@@ -21,11 +21,26 @@ const codigo = fonte.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/g
 describe('laço do QR do painel de Conexões', () => {
   it('não usa setInterval: a próxima consulta só depois de a anterior terminar', () => {
     expect(codigo).not.toMatch(/setInterval\s*\(/);
-    expect(codigo).toMatch(/timer = setTimeout\(\(\) => void tick\(\), POLL_MS\)/);
+    // A ORDEM é o que garante: dentro do tick, o agendamento fica no `finally`
+    // que vem DEPOIS do `await fetch(` — agendado antes do await, a consulta
+    // lenta (8 s com a instância fechada) se sobrepõe à seguinte de novo.
+    const tick = codigo.indexOf('const tick = async () => {');
+    expect(tick).toBeGreaterThan(-1);
+    const doTick = codigo.slice(tick, codigo.indexOf('void tick();', tick));
+    const agendamentos = [...doTick.matchAll(/setTimeout\(/g)];
+    expect(agendamentos).toHaveLength(1);
+    const fetchEm = doTick.indexOf('await fetch(');
+    const finallyEm = doTick.indexOf('} finally {', fetchEm);
+    const agendaEm = doTick.indexOf('timer = setTimeout(() => void tick(), POLL_MS)');
+    expect(fetchEm).toBeGreaterThan(-1);
+    expect(finallyEm).toBeGreaterThan(fetchEm);
+    expect(agendaEm).toBeGreaterThan(finallyEm);
   });
 
   it('toda chamada a /connect manda o corpo com reaplicarWebhook', () => {
-    const chamadas = [...codigo.matchAll(/fetch\(`\/api\/cb\/channels\/\$\{\w+\}\/connect`([\s\S]*?)\);/g)];
+    // Qualquer expressão no `${…}` (um `${channel.id}` novo não pode escapar).
+    const chamadas = [...codigo.matchAll(/fetch\(`\/api\/cb\/channels\/\$\{[^}]+\}\/connect`([\s\S]*?)\);/g)];
+    expect(codigo.match(/\/connect`/g)?.length).toBe(chamadas.length);
     expect(chamadas.length).toBeGreaterThanOrEqual(2);
     for (const [, opcoes] of chamadas) {
       expect(opcoes).toMatch(/body: JSON\.stringify\(\{ reaplicarWebhook: /);

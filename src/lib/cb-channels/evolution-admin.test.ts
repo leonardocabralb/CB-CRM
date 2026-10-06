@@ -8,6 +8,7 @@ const evo = vi.hoisted(() => ({
   chamadas: [] as string[],
   falhaDoLogout: null as Error | null,
   falhaDoEstado: null as Error | null,
+  falhaDoConnect: null as Error | null,
   qr: { base64: 'data:image/png;base64,QR', pairingCode: 'ABCD-1234' } as {
     base64?: string;
     pairingCode?: string;
@@ -26,6 +27,7 @@ vi.mock('@/lib/whatsapp/transport/evolution-client', () => ({
     }
     async connect() {
       evo.chamadas.push('connect');
+      if (evo.falhaDoConnect) throw evo.falhaDoConnect;
       return evo.qr;
     }
     async logout() {
@@ -44,6 +46,8 @@ import {
   channelConnectionState,
   ESPERA_FECHADA_MS,
   evolutionWebhookConfig,
+  FalhaDepoisDoLogout,
+  LogoutNaoPegou,
   repairChannelPairing,
   SessaoAindaDePe,
   slugDoRotulo,
@@ -145,6 +149,7 @@ describe('channelConnectionState', () => {
     evo.chamadas = [];
     evo.falhaDoLogout = null;
     evo.falhaDoEstado = null;
+    evo.falhaDoConnect = null;
     evo.instancias = [];
   });
 
@@ -257,6 +262,7 @@ describe('repairChannelPairing', () => {
     evo.chamadas = [];
     evo.falhaDoLogout = null;
     evo.falhaDoEstado = null;
+    evo.falhaDoConnect = null;
     evo.instancias = [];
     vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
@@ -266,7 +272,7 @@ describe('repairChannelPairing', () => {
     evo.estados = ['open'];
     const promessa = repairChannelPairing('inst-a');
     await expect(promessa).rejects.toBeInstanceOf(SessaoAindaDePe);
-    await expect(promessa).rejects.toThrow(/não confirmou o logout/);
+    await expect(promessa).rejects.toThrow(/Não deu para confirmar o logout/);
     expect(evo.chamadas).toEqual(['logout', 'connectionState']);
   });
 
@@ -284,17 +290,54 @@ describe('repairChannelPairing', () => {
     expect(evo.chamadas).toEqual(['logout', 'connectionState', 'connectionState', 'connect']);
   });
 
-  it('logout ok → connect depois da fechada confirmada, com o pairingCode preservado', async () => {
-    evo.estados = ['close', 'close'];
+  it('logout ok → espera, lê UMA vez e só então o connect, com o pairingCode preservado', async () => {
+    evo.estados = ['close'];
     const promessa = repairChannelPairing('inst-a');
     await vi.advanceTimersByTimeAsync(ESPERA_FECHADA_MS - 1);
-    expect(evo.chamadas).toEqual(['logout', 'connectionState']);
+    expect(evo.chamadas).toEqual(['logout']);
     await vi.advanceTimersByTimeAsync(1);
     await expect(promessa).resolves.toEqual({
       qrBase64: 'data:image/png;base64,QR',
       pairingCode: 'ABCD-1234',
     });
-    expect(evo.chamadas).toEqual(['logout', 'connectionState', 'connectionState', 'connect']);
+    expect(evo.chamadas).toEqual(['logout', 'connectionState', 'connect']);
+  });
+
+  it("logout ok, mas a sessão antiga voltou ('open') → LogoutNaoPegou e NENHUM connect", async () => {
+    evo.estados = ['open'];
+    const promessa = repairChannelPairing('inst-a');
+    const verificacao = expect(promessa).rejects.toBeInstanceOf(LogoutNaoPegou);
+    await vi.advanceTimersByTimeAsync(ESPERA_FECHADA_MS);
+    await verificacao;
+    expect(evo.chamadas).toEqual(['logout', 'connectionState']);
+  });
+
+  it("logout ok e um socket novo já mostrando QR ('connecting') → o connect devolve esse QR", async () => {
+    evo.estados = ['connecting'];
+    const promessa = repairChannelPairing('inst-a');
+    await vi.advanceTimersByTimeAsync(ESPERA_FECHADA_MS);
+    await expect(promessa).resolves.toMatchObject({ qrBase64: 'data:image/png;base64,QR' });
+    expect(evo.chamadas).toEqual(['logout', 'connectionState', 'connect']);
+  });
+
+  it('falha depois de um logout ok → FalhaDepoisDoLogout (o número já caiu)', async () => {
+    evo.estados = ['close'];
+    evo.falhaDoConnect = new Error('timeout');
+    const promessa = repairChannelPairing('inst-a');
+    const verificacao = expect(promessa).rejects.toBeInstanceOf(FalhaDepoisDoLogout);
+    await vi.advanceTimersByTimeAsync(ESPERA_FECHADA_MS);
+    await verificacao;
+    await expect(promessa).rejects.toThrow('timeout');
+  });
+
+  it('dois repareamentos simultâneos → a MESMA promessa: um logout só', async () => {
+    evo.estados = ['close'];
+    const a = repairChannelPairing('inst-a');
+    const b = repairChannelPairing('inst-a');
+    expect(b).toBe(a);
+    await vi.advanceTimersByTimeAsync(ESPERA_FECHADA_MS);
+    await Promise.all([a, b]);
+    expect(evo.chamadas.filter((c) => c === 'logout')).toHaveLength(1);
   });
 
   it('a consulta em curso termina ANTES do logout, e a que chega durante o repareamento recebe a promessa dele', async () => {

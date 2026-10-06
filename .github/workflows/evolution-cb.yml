@@ -72,6 +72,8 @@ jobs:
           ! grep -qF 'this.instance.authState = await this.defineAuthState();' "$BAILEYS" || exit 1
           # Dentro do método; texto fixo (index), sem regex, para valer igual em qualquer awk.
           awk 'index($0, "public async connectToWhatsapp(number") {f=1} f && index($0, "this.isDeleting = false;") {ok=1; exit} f && index($0, "this.loadChatwoot();") {exit} END {exit !ok}' "$BAILEYS"
+          # A reconexão grava 'connecting' no banco antes do timer (senão a queda pareada fica 'open').
+          awk 'index($0, "if (shouldReconnect) {") {f=1} f && index($0, "connectionStatus: '"'"'connecting'"'"'") {ok=1; exit} f && index($0, "Reconnecting in 3 seconds") {exit} END {exit !ok}' "$BAILEYS"
           awk 'index($0, "public async logoutInstance() {") {f=1} f && index($0, "this.instance.qrcode = { count: 0 };") {ok=1; exit} f && index($0, "public async getProfileName()") {exit} END {exit !ok}' "$BAILEYS"
           grep -qF 'if (!this.waMonitor.waInstances[instanceName]) {' src/api/controllers/instance.controller.ts
           ! grep -qF "instance.state === 'close'" src/api/controllers/instance.controller.ts || exit 1

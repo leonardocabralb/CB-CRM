@@ -4701,7 +4701,7 @@
       "setDefaultFailed": "Could not make this channel the default.",
       "noNumberYet": "Number not paired yet",
       "status_disconnected": "Disconnected",
-      "status_connecting": "Waiting for pairing",
+      "status_connecting": "Connecting",
       "status_connected": "Connected",
       "lastError": "Last error: {error}",
       "connect": "Pair",
