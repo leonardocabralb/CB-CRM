@@ -99,8 +99,11 @@ describe('assumirEcoDoTurno', () => {
     b.tabelas.messages.push({ id: 'msg-envio', conversation_id: 'conv-1', message_id: ID, sender_type: 'bot' })
     expect(await assumir()).toBe(true)
     expect(b.tabelas.messages).toHaveLength(1)
-    expect(b.escritas.filter((e) => e.tabela === 'conversations')).toEqual([])
     expect(b.tabelas.conversations[0].last_message_text).toBe('pergunta do cliente')
+    expect(b.tabelas.conversations[0]).not.toHaveProperty('last_message_at')
+    // O número, sim: o processo do envio pode ter morrido entre o INSERT e o
+    // preenchimento (Codex, #391). Preencher a nula é idempotente.
+    expect(b.tabelas.conversations[0].channel_id).toBe('canal-1')
   })
 
   it('id que não é de turno: `false` (o caminho de sempre) e nada escrito', async () => {
