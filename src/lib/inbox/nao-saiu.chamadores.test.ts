@@ -32,7 +32,7 @@ const LEITORES: [string, number][] = [
   ['lib/automations/sem-conversa.ts', 2],
   ['lib/ia-agentes/contexto.ts', 1],
   ['lib/ai/context.ts', 1],
-  ['lib/ia-agentes/turno.ts', 1],
+  ['lib/ia-agentes/turno.ts', 2],
   ['lib/ia-agentes/retomada-fatos.ts', 1],
   ['lib/cb-radar/worker.ts', 1],
   ['hooks/use-radar.ts', 1],
@@ -46,6 +46,10 @@ describe('quem pergunta "alguém falou?" ignora a tentativa que não saiu', () =
       expect((f.match(/\.eq\(\s*['"]nao_saiu['"]\s*,\s*false\s*\)/g) ?? []).length).toBe(n);
     });
   }
+
+  it('a aba Arquivos não lista o anexo que não saiu (sairia "Enviado")', () => {
+    expect(fonte('lib/media/anexos.ts')).toMatch(/message\.nao_saiu === true\) continue/);
+  });
 
   it('a "origem do contato" pula a tentativa ao achar a primeira mensagem', () => {
     expect(fonte('components/inbox/painel/origem-do-contato.tsx')).toMatch(/m\.nao_saiu !== true/);

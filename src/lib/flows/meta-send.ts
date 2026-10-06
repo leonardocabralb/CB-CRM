@@ -248,9 +248,11 @@ export async function engineSendText(
   // inválido falham aqui, com o motivo.
   const { alvo, ehTelefone } = alvoDoRobo(contact, channel)
 
-  // Conexão Meta incompleta é CONFIGURAÇÃO, não tentativa: falha antes de dar
-  // número à conversa e sem bolha.
+  // Conexão incompleta (o token da Meta, o transporte da Evolution) é
+  // CONFIGURAÇÃO, não tentativa: falha antes de dar número à conversa, antes
+  // do `antesDoProvedor` e sem bolha (Codex, #392).
   const accessToken = tokenDaMeta(channel)
+  const transport = ehEvolution(channel) ? evolutionTransportFor(channel) : null
   // A TENTATIVA por esta conexão: a conversa SEM número passa a ser dela já
   // aqui, mesmo que o provedor recuse — ela aparece no filtro da conexão por
   // onde se tentou (decisão do operador, 06/10/2026). A que já tem número não
@@ -263,10 +265,10 @@ export async function engineSendText(
 
   args.antesDoProvedor?.()
   try {
-    if (ehEvolution(channel)) {
+    // `transport` existe só na Evolution (montado acima, fora da tentativa).
+    if (transport) {
       // Texto sai pelo transport da Evolution (Baileys) — sem janela de 24h.
       // `alvo` é telefone aqui: `alvoDoRobo` recusa o BSUID fora da Meta.
-      const transport = evolutionTransportFor(channel)
       const res = await transport.sendText({ to: alvo, text: textoFinal })
       waMessageId = res.providerMessageId
       outboundRemoteJid = evolutionRemoteJid(alvo)
@@ -445,9 +447,10 @@ export async function engineSendMedia(
   // usava o texto final — as duas funções do mesmo arquivo discordavam.
   const preview = legendaFinal?.trim() || `[${args.kind}]`
 
-  // Conexão Meta incompleta é configuração (ver `tokenDaMeta`). E a TENTATIVA
+  // Conexão incompleta é configuração (ver `engineSendText`). E a TENTATIVA
   // dá à conversa SEM número o número desta conexão (06/10/2026).
   const accessToken = tokenDaMeta(channel)
+  const transport = ehEvolution(channel) ? evolutionTransportFor(channel) : null
   await preencherCanalDaConversa(db, args.accountId, args.conversationId, channel.channelId)
 
   let waMessageId = ''
@@ -455,10 +458,9 @@ export async function engineSendMedia(
   let outboundRemoteJid: string | null = null
 
   try {
-    if (ehEvolution(channel)) {
+    if (transport) {
       // Mídia sai pelo transport da Evolution (aceita URL pública). `alvo` é
       // telefone aqui: `alvoDoRobo` recusa o BSUID fora da Meta.
-      const transport = evolutionTransportFor(channel)
       const res = await transport.sendMedia({
         to: alvo,
         kind: args.kind,

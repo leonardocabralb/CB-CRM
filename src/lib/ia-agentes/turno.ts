@@ -676,6 +676,9 @@ async function prepararMidias(
     .eq('conversation_id', turno.conversation_id)
     .eq('channel_id', turno.canal_id)
     .is('deleted_at', null)
+    // A MESMA janela de `lerConversaDaConexao`: sem isto, as tentativas que
+    // não saíram (1080) empurrariam a do contexto para trás desta.
+    .eq('nao_saiu', false)
     .order('created_at', { ascending: false })
     .limit(aiContextMessageLimit())
   if (error) throw new Error(`leitura das mídias falhou: ${error.message}`)

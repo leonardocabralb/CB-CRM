@@ -307,6 +307,8 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     }
     accessToken = decrypt(channel.access_token)
   }
+  // O transporte da Evolution também é configuração (Codex, #392).
+  const transport = ehEvolution(channel) ? evolutionTransportFor(channel) : null
 
   // A TENTATIVA por esta conexão: a conversa SEM número passa a ser dela já
   // aqui, mesmo que o provedor recuse — ela aparece no filtro da conexão por
@@ -319,10 +321,10 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   let outboundRemoteJid: string | null = null
 
   try {
-    if (ehEvolution(channel)) {
+    // `transport` existe só na Evolution (montado acima, fora da tentativa).
+    if (transport) {
       // Texto sai pelo transport da Evolution (Baileys) — sem janela de 24h.
       // `alvo` é telefone aqui: `alvoDoRobo` recusa o BSUID fora da Meta.
-      const transport = evolutionTransportFor(channel)
       const res = await transport.sendText({ to: alvo, text: textoFinal! })
       waMessageId = res.providerMessageId
       outboundRemoteJid = evolutionRemoteJid(alvo)

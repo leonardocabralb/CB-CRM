@@ -476,6 +476,7 @@
       "botBadgeTitle": "Enviada automaticamente por uma automação ou fluxo — não foi escrita por uma pessoa",
       "naoEntregue": "Não entregue — o destinatário não recebeu. Envie de novo.",
       "naoEntregueComMotivo": "Não entregue — o destinatário não recebeu. Veja o motivo abaixo antes de enviar de novo.",
+      "naoSaiuMotivo": "Motivo: {motivo}",
       "naoSaiu": {
         "conexao_fora_do_ar": "Não enviada — a conexão estava fora do ar. Envie de novo quando ela voltar, ou por outro número.",
         "sem_whatsapp": "Não enviada — este número não tem WhatsApp.",

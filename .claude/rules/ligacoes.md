@@ -87,7 +87,7 @@ obrigações gerais de caminho de entrada estão em `.claude/rules/ingestao.md`.
   atendida que veio em seguida — fio na ordem trocada e "em atraso" aceso
   sobre cliente atendido. Se já há mensagem depois da ligação, a bolha é
   HISTÓRIA: não reabre, não sobe a conversa, não segue o canal, e chama
-  `cb_assentar_mensagem_historica` (1011), que acerta a espera e a não lida
+  `cb_assentar_mensagem_historica` (vigente: 1080), que acerta a espera e a não lida
   pela hora real — o gatilho da 972 decide pela ORDEM DE INSERÇÃO. A espera de
   antes e o "há mensagem depois?" são lidos ANTES do insert, e a pergunta se
   REPETE logo depois da reabertura (colada no insert): uma resposta gravada no

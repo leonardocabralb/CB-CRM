@@ -318,3 +318,37 @@ describe('robô: a conversa sem número ganha o número da conexão da tentativa
     })
   }
 })
+
+// Codex (#392): conexão Evolution com configuração quebrada (chave que não
+// decifra, instância sem endereço) é CONFIGURAÇÃO — nada foi tentado. O
+// transporte é montado ANTES do `antesDoProvedor` e fora do `try` da
+// tentativa: sem bolha, sem número, e o turno da IA não lê "incerto".
+describe('robô: transporte da Evolution quebrado não é tentativa', () => {
+  it('texto: lança, sem bolha, sem número e sem antesDoProvedor', async () => {
+    h.canal = CANAL_EVOLUTION
+    h.contato = { id: 'contact-1', phone: '+5583988887777', wa_user_id: null }
+    const { evolutionTransportFor } = await import('@/lib/cb-channels/engine-send')
+    vi.mocked(evolutionTransportFor).mockImplementationOnce(() => {
+      throw new Error('bad decrypt')
+    })
+    const antesDoProvedor = vi.fn()
+    await expect(engineSendText({ ...BASE, text: 'oi', antesDoProvedor })).rejects.toThrow(/bad decrypt/)
+    expect(antesDoProvedor).not.toHaveBeenCalled()
+    expect(h.mensagens).toEqual([])
+    expect(h.numerosDaConversa).toEqual([])
+  })
+
+  it('mídia: idem', async () => {
+    h.canal = CANAL_EVOLUTION
+    h.contato = { id: 'contact-1', phone: '+5583988887777', wa_user_id: null }
+    const { evolutionTransportFor } = await import('@/lib/cb-channels/engine-send')
+    vi.mocked(evolutionTransportFor).mockImplementationOnce(() => {
+      throw new Error('bad decrypt')
+    })
+    await expect(engineSendMedia({ ...BASE, kind: 'image', link: 'https://x.test/a.jpg' })).rejects.toThrow(
+      /bad decrypt/,
+    )
+    expect(h.mensagens).toEqual([])
+    expect(h.numerosDaConversa).toEqual([])
+  })
+})

@@ -483,6 +483,7 @@
       "botBadgeTitle": "Sent automatically by an automation or flow — not written by a person",
       "naoEntregue": "Not delivered — the recipient did not receive this. Send it again.",
       "naoEntregueComMotivo": "Not delivered — the recipient did not receive this. Check the reason below before sending it again.",
+      "naoSaiuMotivo": "Reason: {motivo}",
       "naoSaiu": {
         "conexao_fora_do_ar": "Not sent — the connection was down. Send it again when it is back, or from another number.",
         "sem_whatsapp": "Not sent — this number is not on WhatsApp.",

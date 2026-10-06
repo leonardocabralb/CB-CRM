@@ -1094,7 +1094,7 @@ export function MessageBubble({
             className="aviso-falha mt-0.5 line-clamp-2 text-[10px] leading-tight !text-muted-foreground"
             title={message.error_details}
           >
-            {t("motivoDaFalha", { motivo: message.error_details })}
+            {t("naoSaiuMotivo", { motivo: message.error_details })}
           </p>
         )}
         {semConfirmacao && (

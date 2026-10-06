@@ -41,8 +41,10 @@ describe('a frase de cada motivo existe nos DOIS dicionários', () => {
         expect(typeof bloco[m], `${arquivo}: Inbox.bubble.naoSaiu.${m}`).toBe('string');
         expect(bloco[m].trim().length).toBeGreaterThan(0);
       }
-      // A frase do "recusado" manda ler o motivo da linha de baixo.
-      expect(typeof d?.Inbox?.bubble?.motivoDaFalha).toBe('string');
+      // A frase do "recusado" manda ler o motivo da linha de baixo — neutra:
+      // a recusa pode ser da Evolution, não "informada pela Meta".
+      expect(d?.Inbox?.bubble?.naoSaiuMotivo).toMatch(/\{motivo\}/);
+      expect(d?.Inbox?.bubble?.naoSaiuMotivo).not.toMatch(/Meta/);
     });
   }
 });
