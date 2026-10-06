@@ -2513,8 +2513,9 @@ async function runStep(
     // Fixar a conversa num número (o seletor do cabeçalho do fio, pela
     // automação) — a troca de número Comercial → Jurídico.
     //
-    // ⚠️ Enviar pelo Jurídico NÃO muda o número da conversa (`sendViaMeta` só
-    // grava a prévia), e a mensagem seguinte do cliente pelo Comercial a puxa
+    // ⚠️ Enviar pelo Jurídico NÃO muda o número da conversa que já corre pelo
+    // Comercial (`sendViaMeta` só preenche a conversa SEM número), e a mensagem
+    // seguinte do cliente pelo Comercial a puxa
     // de volta (`followConversationChannel`): a resposta dada pelo CRM sairia
     // pelo Comercial, desmentindo o aviso. Fixada, ela fica no número
     // escolhido até alguém soltar ("Automático" no cabeçalho), e a faixa de

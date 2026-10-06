@@ -81,16 +81,29 @@ describe('assumirEcoDoTurno', () => {
 
     expect(b.tabelas.conversations[0]).toMatchObject({ last_message_text: TEXTO })
     expect(typeof b.tabelas.conversations[0].last_message_at).toBe('string')
+    // A conversa SEM número fica com o do turno, sem fixar — como o envio faria
+    // (o processo do envio pode ter morrido antes do INSERT; Codex, #391).
+    expect(b.tabelas.conversations[0].channel_id).toBe('canal-1')
+    expect(b.tabelas.conversations[0]).not.toHaveProperty('channel_pinned')
     // Nenhuma RPC (nada de fila, de pausa, de reabertura).
     expect(b.rpcs).toEqual([])
+  })
+
+  it('a conversa que JÁ tem número não muda: o eco só preenche a nula', async () => {
+    b.tabelas.conversations[0].channel_id = 'canal-do-cliente'
+    expect(await assumir()).toBe(true)
+    expect(b.tabelas.conversations[0].channel_id).toBe('canal-do-cliente')
   })
 
   it('o INSERT do envio chegou no meio (23505): `true`, nada gravado de novo e a prévia fica com o envio', async () => {
     b.tabelas.messages.push({ id: 'msg-envio', conversation_id: 'conv-1', message_id: ID, sender_type: 'bot' })
     expect(await assumir()).toBe(true)
     expect(b.tabelas.messages).toHaveLength(1)
-    expect(b.escritas.filter((e) => e.tabela === 'conversations')).toEqual([])
     expect(b.tabelas.conversations[0].last_message_text).toBe('pergunta do cliente')
+    expect(b.tabelas.conversations[0]).not.toHaveProperty('last_message_at')
+    // O número, sim: o processo do envio pode ter morrido entre o INSERT e o
+    // preenchimento (Codex, #391). Preencher a nula é idempotente.
+    expect(b.tabelas.conversations[0].channel_id).toBe('canal-1')
   })
 
   it('id que não é de turno: `false` (o caminho de sempre) e nada escrito', async () => {

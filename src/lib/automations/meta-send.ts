@@ -11,7 +11,7 @@ import {
   evolutionTransportFor,
   evolutionRemoteJid,
 } from '@/lib/cb-channels/engine-send'
-import { stampMessageChannel } from '@/lib/cb-channels/stamp'
+import { preencherCanalDaConversa, stampMessageChannel } from '@/lib/cb-channels/stamp'
 import {
   phoneVariants,
   isRecipientNotAllowedError,
@@ -382,6 +382,9 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
 
   // Carimbo de canal (Fase 3) — best-effort; NULL no fallback → no-op.
   if (insertedMsg) await stampMessageChannel(db, insertedMsg.id, channel.channelId)
+  // A conversa que nasceu sem número (Calendly, ficha da API) fica com o
+  // número por onde esta saiu; a que já tem número não muda (stamp.ts).
+  await preencherCanalDaConversa(db, input.accountId, input.conversationId, channel.channelId)
 
   await db
     .from('conversations')

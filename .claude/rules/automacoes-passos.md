@@ -213,9 +213,10 @@ ausente = `equals`), `value`.
 A troca de número Comercial → Jurídico (29/09/2026): o cliente do Bancário
 que escreve no Comercial é avisado e passa a ser atendido pelo Jurídico.
 
-- ⚠️⚠️ **Enviar por um número NÃO muda o número da conversa**: `sendViaMeta`
-  só grava a prévia, e a mensagem seguinte do cliente pelo número antigo a
-  puxa de volta (`followConversationChannel`, conversa solta). Sem este passo,
+- ⚠️⚠️ **Enviar por um número NÃO muda o número da conversa que já tem um**:
+  o envio só PREENCHE a nula (`preencherCanalDaConversa`, cerca `channel_id
+  IS NULL` no UPDATE; `ingestao.md`), e a mensagem seguinte do cliente pelo
+  número antigo a puxa de volta (`followConversationChannel`, conversa solta). Sem este passo,
   a resposta dada pelo CRM depois do aviso sairia pelo Comercial. Fixada
   (`channel_pinned`), ela fica no número até alguém escolher "Automático" no
   cabeçalho, e a faixa de divergência aparece quando o cliente escreve por

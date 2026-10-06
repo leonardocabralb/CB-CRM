@@ -107,8 +107,12 @@ vi.mock('@/lib/cb-channels/engine-send', () => ({
   evolutionRemoteJid: vi.fn(() => null),
 }))
 
+const preencherCanalDaConversa = vi.hoisted(() =>
+  vi.fn<(...args: unknown[]) => Promise<void>>(async () => {}),
+)
 vi.mock('@/lib/cb-channels/stamp', () => ({
   stampMessageChannel: vi.fn(async () => {}),
+  preencherCanalDaConversa,
 }))
 
 vi.mock('@/lib/whatsapp/encryption', () => ({
@@ -161,6 +165,7 @@ describe('conversa de OUTRA conta (upstream #589)', () => {
     expect(sendTextMessage).not.toHaveBeenCalled()
     expect(h.mensagens).toEqual([])
     expect(h.conversas).toEqual([])
+    expect(preencherCanalDaConversa).not.toHaveBeenCalled()
   })
 
   it('a prévia da conversa é atualizada com o recorte de conta', async () => {
@@ -202,5 +207,21 @@ describe('regressão de merge: a automação grava o texto ASSINADO', () => {
     // resolução futura, a bolha some da marcação de automação no inbox.
     await engineSendText(ARGS)
     expect(h.mensagens[0]?.sender_type).toBe('bot')
+  })
+})
+
+describe('a conversa sem número ganha o número por onde a automação falou', () => {
+  it('preenche com o canal do envio, na conta e na conversa do envio', async () => {
+    await engineSendText(ARGS)
+    expect(preencherCanalDaConversa).toHaveBeenCalledTimes(1)
+    const [, conta, conversa, canal] = preencherCanalDaConversa.mock.calls[0]
+    expect([conta, conversa, canal]).toEqual(['acc-1', 'conv-1', 'canal-1'])
+  })
+
+  it('a prévia NÃO carrega o número: trocar o de quem já tem é só pelo pino', async () => {
+    // Enviar pelo Jurídico não muda a conversa que corre pelo Comercial — a
+    // cerca `channel_id IS NULL` vive no helper, nunca na prévia.
+    await engineSendText(ARGS)
+    expect(h.conversas.every((u) => !('channel_id' in u))).toBe(true)
   })
 })

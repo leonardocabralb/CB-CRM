@@ -23,6 +23,8 @@ const h = vi.hoisted(() => ({
   canal: null as Record<string, unknown> | null,
   mensagens: [] as Record<string, unknown>[],
   contatosAtualizados: [] as Record<string, unknown>[],
+  /** UPDATEs de `conversations` que gravam o número (não a prévia). */
+  numerosDaConversa: [] as { row: Record<string, unknown>; filtros: [string, unknown][] }[],
 }))
 
 vi.mock('./admin-client', () => ({
@@ -32,6 +34,7 @@ vi.mock('./admin-client', () => ({
       const chain: Record<string, unknown> = {
         select: () => chain,
         eq: (k: string, v: unknown) => (filtros.push([k, v]), chain),
+        is: (k: string, v: unknown) => (filtros.push([`is:${k}`, v]), chain),
         maybeSingle: async () => {
           if (tabela === 'contacts') return { data: h.contato, error: null }
           if (tabela === 'conversations') {
@@ -45,6 +48,7 @@ vi.mock('./admin-client', () => ({
         },
         update: (row: Record<string, unknown>) => {
           if (tabela === 'contacts') h.contatosAtualizados.push(row)
+          if (tabela === 'conversations' && 'channel_id' in row) h.numerosDaConversa.push({ row, filtros })
           return chain
         },
         then: (ok: (v: unknown) => unknown) => Promise.resolve({ data: null, error: null }).then(ok),
@@ -153,6 +157,7 @@ beforeEach(() => {
   h.canal = CANAL_META
   h.mensagens = []
   h.contatosAtualizados = []
+  h.numerosDaConversa = []
   for (const f of Object.values(meta)) {
     f.mockReset()
     f.mockResolvedValue({ messageId: 'wamid.ok' })
@@ -260,4 +265,34 @@ describe('robô: o nome do documento enviado fica na mensagem', () => {
     await engineSendMedia({ ...BASE, kind: 'document', link: 'https://x.test/b.pdf' })
     for (const m of h.mensagens) expect(m).not.toHaveProperty('media_filename')
   })
+})
+
+// A conversa que nasce sem número (Calendly, a ficha da API que o motor
+// alcança) ficava nula depois do envio do robô: o filtro por conexão da caixa
+// a escondia, e a resposta da equipe saía pelo padrão da conta. O robô só
+// PREENCHE — a cerca `channel_id IS NULL` vai no próprio UPDATE, para não
+// tirar do Comercial a conversa que já corre por ele.
+describe('robô: a conversa sem número ganha o número por onde a mensagem saiu', () => {
+  for (const e of ENVIOS) {
+    it(`${e.nome}: preenche só a conversa 1:1 da conta ainda sem número, sem fixar`, async () => {
+      await e.enviar()
+      expect(h.numerosDaConversa).toEqual([
+        {
+          row: { channel_id: 'canal-meta' },
+          filtros: [
+            ['id', 'conv-1'],
+            ['account_id', 'acc-1'],
+            ['is:channel_id', null],
+            ['is:group_id', null],
+          ],
+        },
+      ])
+    })
+
+    it(`${e.nome}: envio recusado pelo provedor não mexe no número`, async () => {
+      e.provedor.mockRejectedValue(new Error(RECUSA_131030))
+      await expect(e.enviar()).rejects.toThrow(/131030/)
+      expect(h.numerosDaConversa).toEqual([])
+    })
+  }
 })

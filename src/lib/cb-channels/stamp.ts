@@ -127,6 +127,46 @@ export async function followConversationChannel(
 }
 
 /**
+ * A conversa SEM número ganha o número por onde a NOSSA mensagem acabou de
+ * sair — e só ela. Para os envios (robô, automação, núcleo de envio), que
+ * NÃO seguem o cliente: enviar pelo Jurídico não muda a conversa que já corre
+ * pelo Comercial (é o passo "Fixar a conversa no número" que muda), então a
+ * cerca `channel_id IS NULL` vai NO PRÓPRIO UPDATE, nunca numa leitura antes.
+ *
+ * Sem isto, a conversa que nasce sem número (a do Calendly, a que o motor cria
+ * para a ficha da API, a do primeiro contato pela ficha) ficava nula depois
+ * do envio: o filtro por conexão da caixa a escondia (`canalDaConversa`), e a
+ * resposta da equipe saía pelo padrão da conta — outro número no celular do
+ * cliente. Sem pino (`channel_pinned` intocado): a conversa segue o cliente.
+ *
+ * Grupo fica de fora (`group_id IS NULL`): o número do grupo é o de
+ * `cb_groups.channel_id`, e a coluna da conversa é nula por desenho. No-op com
+ * `channelId` nulo (fallback de transição). Melhor esforço: a mensagem já
+ * saiu, e a falha vira aviso, como em {@link followConversationChannel}.
+ */
+export async function preencherCanalDaConversa(
+  db: SupabaseClient,
+  accountId: string,
+  conversationId: string,
+  channelId: string | null,
+): Promise<void> {
+  if (!channelId) return;
+  const { error } = await db
+    .from('conversations')
+    .update({ channel_id: channelId })
+    .eq('id', conversationId)
+    .eq('account_id', accountId)
+    .is('channel_id', null)
+    .is('group_id', null);
+  if (error) {
+    console.warn(
+      '[cb-channels] preencher o número da conversa falhou (ignorado):',
+      error.message,
+    );
+  }
+}
+
+/**
  * FIXA o canal da conversa por escolha explícita (API pública, seletor do
  * inbox, primeiro contato pela ficha). Diferente de
  * {@link followConversationChannel}, que só acompanha o cliente enquanto

@@ -635,7 +635,7 @@ tags. Group conversations are not listed.
 ```jsonc
 {
   "id": "…", "contact_id": "…",
-  "channel_id": "…",              // the number the conversation is on; null = the account default
+  "channel_id": "…",              // the number the conversation is on; null = none yet (replies use the account default)
   "status": "open",               // open | pending | closed
   "assigned_agent_id": "…",       // the assignee's USER id (the IDs tab lists it), or null
   "last_message_text": "…", "last_message_at": "…",
@@ -806,7 +806,9 @@ through an `evolution` number fails with `not_supported`.
 - **Omitted** — the message goes out on the number the conversation is
   already on, falling back to the account default. Note this "follows the
   customer": if they last wrote to a different number of yours, the reply
-  goes out from that one.
+  goes out from that one. A conversation that was on **no** number yet
+  (`channel_id: null`) stays on the number this message went out on —
+  not pinned, so it keeps following the customer.
 - **Set** — the message goes out from that number *and* pins the
   conversation to it, so the customer's reply comes back to the same
   number they saw. An id that isn't a channel of your account returns

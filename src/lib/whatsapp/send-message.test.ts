@@ -268,13 +268,30 @@ vi.mock('@/lib/assinatura/resolver', () => ({
   nomeParaAssinar: vi.fn(async () => null),
 }));
 
+// As escritas de melhor esforço do núcleo (carimbo da mensagem, número da
+// conversa sem número, pausa do robô) saem por este cliente; cada UPDATE é
+// registrado com os filtros, `.is` separado de `.eq`.
+const escritasDoAdmin = vi.hoisted(() => ({
+  updates: [] as {
+    tabela: string;
+    row: Record<string, unknown>;
+    filtros: [string, string, unknown][];
+  }[],
+}));
 vi.mock('@/lib/flows/admin-client', () => ({
-  // Only used for the best-effort "pause active flow run" write.
   supabaseAdmin: () => ({
-    from: () => ({
-      update: () => ({
-        eq: () => ({ eq: () => ({ eq: async () => ({ error: null }) }) }),
-      }),
+    from: (tabela: string) => ({
+      update: (row: Record<string, unknown>) => {
+        const filtros: [string, string, unknown][] = [];
+        escritasDoAdmin.updates.push({ tabela, row, filtros });
+        const chain: Record<string, unknown> = {
+          eq: (k: string, v: unknown) => (filtros.push(['eq', k, v]), chain),
+          is: (k: string, v: unknown) => (filtros.push(['is', k, v]), chain),
+          then: (ok: (v: unknown) => unknown) =>
+            Promise.resolve({ error: null }).then(ok),
+        };
+        return chain;
+      },
     }),
   }),
 }));
@@ -413,6 +430,33 @@ describe('sendMessageToConversation — template persistence (#483)', () => {
     expect(captured.conversation?.last_message_text).toBe(
       'Your order A123 ships on Friday'
     );
+  });
+
+  it('a conversa SEM número fica com o número por onde saiu, sem fixar', async () => {
+    escritasDoAdmin.updates = [];
+    await sendMessageToConversation(sendPathDb([TEMPLATE_ROW], {}), 'acct-1', {
+      conversationId: 'cv-1',
+      messageType: 'template',
+      templateName: 'order_update',
+      templateParams: ['A123', 'Friday'],
+    });
+    const preenche = escritasDoAdmin.updates.filter(
+      (u) => u.tabela === 'conversations' && 'channel_id' in u.row
+    );
+    expect(preenche).toEqual([
+      {
+        tabela: 'conversations',
+        // Sem `channel_pinned`: a conversa continua seguindo o cliente.
+        row: { channel_id: 'canal-1' },
+        filtros: [
+          ['eq', 'id', 'cv-1'],
+          ['eq', 'account_id', 'acct-1'],
+          // A cerca: a conversa que JÁ tem número não muda.
+          ['is', 'channel_id', null],
+          ['is', 'group_id', null],
+        ],
+      },
+    ]);
   });
 
   it('reads body values out of the structured params shape too', async () => {

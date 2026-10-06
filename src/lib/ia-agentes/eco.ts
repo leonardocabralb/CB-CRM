@@ -21,7 +21,10 @@
 // do que a ingestão faz. Nenhum motor (robô, automações, IA), nada de funil,
 // reabertura, `cancelarEsperasPorResposta`, `followConversationChannel` nem
 // `registrarEntrega` — o envio do robô também não faz nenhum deles. Pino
-// lendo este fonte em `eco.test.ts` (importações em lista fechada).
+// lendo este fonte em `eco.test.ts` (importações em lista fechada). Do envio,
+// faz a prévia e `preencherCanalDaConversa` (a conversa SEM número fica com o
+// do turno), este também no 23505: o processo do envio pode ter morrido antes
+// do INSERT ou antes de preencher (Codex, #391).
 //
 // ⚠️ A invariante da rota: se algo aqui falhar, vale o caminho de SEMPRE (a
 // mensagem do celular). A pausa não acontece nem assim — o gatilho da 1049
@@ -38,7 +41,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-import { gravarComCanal } from '@/lib/cb-channels/stamp'
+import { gravarComCanal, preencherCanalDaConversa } from '@/lib/cb-channels/stamp'
 import {
   detectContentType,
   extractText,
@@ -100,6 +103,24 @@ function carimboDoItem(item: EvolutionUpsert): string | null {
 }
 
 /**
+ * O número da conversa SEM número, como o envio faria. Idempotente (só a nula
+ * muda) e nunca lança: a resposta já está no fio, e uma falha aqui não pode
+ * virar `false` — a rota a gravaria de novo como mensagem do celular.
+ */
+async function preencherNumero(
+  db: SupabaseClient,
+  accountId: string,
+  conversationId: string,
+  canal: string | null,
+): Promise<void> {
+  try {
+    await preencherCanalDaConversa(db, accountId, conversationId, canal)
+  } catch (err) {
+    console.error('[ia-agentes/eco] preencher o número da conversa falhou:', err instanceof Error ? err.message : err)
+  }
+}
+
+/**
  * Chamada pela rota DEPOIS da espera do `jaGravada`, com a linha ainda
  * ausente: o id é a resposta de um turno DESTA conta? Se for, grava o eco como
  * a resposta do agente, na conversa do TURNO, e atualiza a prévia como o envio
@@ -120,11 +141,12 @@ export async function assumirEcoDoTurno(
   const texto = extractText(item.message)
   const tipo = detectContentType(item.message)
   const carimbo = carimboDoItem(item)
+  let canalGravado: string | null = null
 
   try {
     // O canal do TURNO, que é o que o envio grava (`exigirCanal`: saiu por
     // ele). É o mesmo da instância que devolveu o eco.
-    const { resultado } = await gravarComCanal(turno.canal_id, (canal) =>
+    const { resultado, canal: canalDaLinha } = await gravarComCanal(turno.canal_id, (canal) =>
       db
         .from('messages')
         .insert({
@@ -152,12 +174,18 @@ export async function assumirEcoDoTurno(
     )
     if (resultado.error) {
       // 23505 = o INSERT do envio chegou entre a espera e aqui: a linha é a
-      // dele, e a prévia também (`engineSendText` a atualiza).
-      if (resultado.error.code === '23505') return true
+      // dele, e a prévia também (`engineSendText` a atualiza). O número, não:
+      // o processo do envio pode ter morrido entre o INSERT e o preenchimento
+      // (Codex, #391) — e preencher a nula de novo não muda nada.
+      if (resultado.error.code === '23505') {
+        await preencherNumero(db, args.accountId, turno.conversation_id, turno.canal_id)
+        return true
+      }
       // Só código e mensagem: o `details` do PostgREST traz a linha recusada.
       console.error('[ia-agentes/eco] gravar o eco como resposta do agente falhou:', resultado.error.code, resultado.error.message)
       return false
     }
+    canalGravado = canalDaLinha
   } catch (err) {
     console.error('[ia-agentes/eco] gravar o eco falhou:', err instanceof Error ? err.message : err)
     return false
@@ -167,6 +195,8 @@ export async function assumirEcoDoTurno(
     '[ia-agentes/eco] a resposta do agente chegou pelo eco antes do registro do envio; gravada como do agente.',
     JSON.stringify({ messageId: args.providerMessageId, conversationId: turno.conversation_id }),
   )
+
+  await preencherNumero(db, args.accountId, turno.conversation_id, canalGravado)
 
   // A prévia, como o envio faria. Melhor esforço: a mensagem já está no fio.
   try {

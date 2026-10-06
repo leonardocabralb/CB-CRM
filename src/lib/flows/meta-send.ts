@@ -15,7 +15,11 @@ import {
   evolutionTransportFor,
   evolutionRemoteJid,
 } from '@/lib/cb-channels/engine-send'
-import { gravarComCanal, stampMessageChannel } from '@/lib/cb-channels/stamp'
+import {
+  gravarComCanal,
+  preencherCanalDaConversa,
+  stampMessageChannel,
+} from '@/lib/cb-channels/stamp'
 import {
   phoneVariants,
   isRecipientNotAllowedError,
@@ -264,7 +268,7 @@ export async function engineSendText(
   // conexão apagada no meio): o "desta conexão" do contexto do agente e o
   // gatilho AFTER INSERT da 972 leem a linha como ela nasce — um UPDATE
   // depois, de melhor esforço, deixava a fala do agente sem conexão.
-  const { resultado: gravacao } = await gravarComCanal(channel.channelId, (canal) =>
+  const { resultado: gravacao, canal: canalGravado } = await gravarComCanal(channel.channelId, (canal) =>
     db
       .from('messages')
       .insert({
@@ -291,6 +295,10 @@ export async function engineSendText(
   if (gravacao.error && gravacao.error.code !== '23505') {
     throw new EnviadaSemRegistroError(waMessageId, gravacao.error.message ?? 'erro desconhecido')
   }
+  // A conversa sem número fica com o número por onde esta saiu; a que já tem
+  // número não muda (stamp.ts). Também depois do 23505: o eco gravou a linha,
+  // mas não toca no número da conversa.
+  await preencherCanalDaConversa(db, args.accountId, args.conversationId, canalGravado)
 
   await db
     .from('conversations')
@@ -475,6 +483,7 @@ const preview = legendaFinal?.trim() || `[${args.kind}]`
 
   // Carimbo de canal (Fase 3) — best-effort; NULL no fallback → no-op.
   if (insertedMsg) await stampMessageChannel(db, insertedMsg.id, channel.channelId)
+  await preencherCanalDaConversa(db, args.accountId, args.conversationId, channel.channelId)
 
   await db
     .from('conversations')
@@ -702,6 +711,7 @@ async function sendInteractiveViaMeta(
 
   // Carimbo de canal (Fase 3) — best-effort; NULL no fallback → no-op.
   if (insertedMsg) await stampMessageChannel(db, insertedMsg.id, channel.channelId)
+  await preencherCanalDaConversa(db, input.accountId, input.conversationId, channel.channelId)
 
   await db
     .from('conversations')

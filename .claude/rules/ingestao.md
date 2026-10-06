@@ -127,6 +127,12 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
 - **`followConversationChannel`** nos quatro, e na ligação. No celular pareado é o que aponta
   a conversa para o número por onde a EQUIPE falou: sem ele o CRM responderia
   pelo canal padrão.
+- ⚠️ **Saída: `preencherCanalDaConversa`** (os dois `meta-send.ts`, o
+  núcleo e o eco da IA): a conversa SEM número ganha o do envio, e só ela (cerca
+  `channel_id IS NULL` no UPDATE; grupo fora). Sem ele a do Calendly e a que
+  o motor cria ficavam nulas: o filtro por conexão as escondia e a resposta
+  saía pelo padrão. Pino default-deny de quem insere em `messages`:
+  `canal-da-conversa.chamadores.test.ts`.
 - ⚠️⚠️ **Nome do perfil do WhatsApp**: o UPDATE que troca o nome leva
   `.is('nome_fixado_em', null)` DENTRO do UPDATE (a busca não traz a coluna),
   em três arquivos: webhook da Meta, `inbound-store.ts` e
