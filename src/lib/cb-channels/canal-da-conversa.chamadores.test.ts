@@ -49,14 +49,15 @@ const SAIDA = [
   'lib/automations/meta-send.ts',
   'lib/flows/meta-send.ts',
   'lib/whatsapp/send-message.ts',
+  // O eco grava a fala que o TURNO enviou quando o processo do envio morreu
+  // antes do INSERT: aí ele é o único que grava, e faz o que o envio faria.
+  'lib/ia-agentes/eco.ts',
 ];
 
 const FORA: Record<string, string> = {
   'lib/cb-groups/persist.ts':
     'grupo: `conversations.channel_id` é nulo por desenho; o número é `cb_groups.channel_id`',
   'lib/cb-groups/system-events.ts': 'aviso de sistema do grupo — mesmo motivo',
-  'lib/ia-agentes/eco.ts':
-    'o eco grava a fala que o TURNO enviou; o envio do turno (`engineSendText`) segue depois do 23505 e preenche',
   'lib/whatsapp/sem-telefone/historica.ts':
     'modo `historica`: só o fio, nunca a conversa — a mensagem mais nova que a fez histórica já passou pela entrada ou pela saída',
 };

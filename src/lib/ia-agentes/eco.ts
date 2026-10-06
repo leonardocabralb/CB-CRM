@@ -21,7 +21,10 @@
 // do que a ingestão faz. Nenhum motor (robô, automações, IA), nada de funil,
 // reabertura, `cancelarEsperasPorResposta`, `followConversationChannel` nem
 // `registrarEntrega` — o envio do robô também não faz nenhum deles. Pino
-// lendo este fonte em `eco.test.ts` (importações em lista fechada).
+// lendo este fonte em `eco.test.ts` (importações em lista fechada). Do envio,
+// faz a prévia e `preencherCanalDaConversa` (a conversa SEM número fica com o
+// do turno): quando o processo do envio morreu antes do INSERT, este é o
+// único que grava (Codex, #391).
 //
 // ⚠️ A invariante da rota: se algo aqui falhar, vale o caminho de SEMPRE (a
 // mensagem do celular). A pausa não acontece nem assim — o gatilho da 1049
@@ -38,7 +41,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-import { gravarComCanal } from '@/lib/cb-channels/stamp'
+import { gravarComCanal, preencherCanalDaConversa } from '@/lib/cb-channels/stamp'
 import {
   detectContentType,
   extractText,
@@ -120,11 +123,12 @@ export async function assumirEcoDoTurno(
   const texto = extractText(item.message)
   const tipo = detectContentType(item.message)
   const carimbo = carimboDoItem(item)
+  let canalGravado: string | null = null
 
   try {
     // O canal do TURNO, que é o que o envio grava (`exigirCanal`: saiu por
     // ele). É o mesmo da instância que devolveu o eco.
-    const { resultado } = await gravarComCanal(turno.canal_id, (canal) =>
+    const { resultado, canal: canalDaLinha } = await gravarComCanal(turno.canal_id, (canal) =>
       db
         .from('messages')
         .insert({
@@ -158,6 +162,7 @@ export async function assumirEcoDoTurno(
       console.error('[ia-agentes/eco] gravar o eco como resposta do agente falhou:', resultado.error.code, resultado.error.message)
       return false
     }
+    canalGravado = canalDaLinha
   } catch (err) {
     console.error('[ia-agentes/eco] gravar o eco falhou:', err instanceof Error ? err.message : err)
     return false
@@ -167,6 +172,15 @@ export async function assumirEcoDoTurno(
     '[ia-agentes/eco] a resposta do agente chegou pelo eco antes do registro do envio; gravada como do agente.',
     JSON.stringify({ messageId: args.providerMessageId, conversationId: turno.conversation_id }),
   )
+
+  // O número da conversa SEM número, como o envio faria (no 23505 acima quem
+  // gravou foi o envio, e ele preenche). Melhor esforço: a mensagem já está no
+  // fio, e uma falha aqui não pode virar `false` (a rota a gravaria de novo).
+  try {
+    await preencherCanalDaConversa(db, args.accountId, turno.conversation_id, canalGravado)
+  } catch (err) {
+    console.error('[ia-agentes/eco] preencher o número da conversa falhou:', err instanceof Error ? err.message : err)
+  }
 
   // A prévia, como o envio faria. Melhor esforço: a mensagem já está no fio.
   try {
