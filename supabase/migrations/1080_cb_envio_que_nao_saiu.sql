@@ -454,11 +454,11 @@ BEGIN
                             channel_id, nao_saiu)
         VALUES (v_conv, 'bot', 'text', '__conferencia_1080__', 'failed', v_canal, true)
         RETURNING id INTO v_do_robo;
+      -- Turno de RESPOSTA: \`tentativa\`/\`tentativas\` nulos (o CHECK do tipo, 1056).
       INSERT INTO cb_ia_turnos (account_id, conversation_id, canal_id, ia_agente_id, deal_id, stage_id,
-                                mensagem_gatilho_id, mensagem_inicial_id, status, rodando_desde,
-                                tipo, tentativa, tentativas)
+                                mensagem_gatilho_id, mensagem_inicial_id, status, rodando_desde, tipo)
         VALUES (v_conta, v_conv, v_canal, v_agente, v_deal, v_etapa, v_ultima, v_ultima, 'rodando', now(),
-                'resposta', 1, 1)
+                'resposta')
         RETURNING id, rodando_desde INTO v_turno, v_desde;
       v_res := public.cb_ia_reservar_envio(v_turno, v_desde);
       IF v_res <> 'ok' THEN

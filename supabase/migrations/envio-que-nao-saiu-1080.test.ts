@@ -5,8 +5,9 @@ import path from 'node:path';
 // ============================================================
 // 1080 — `messages.nao_saiu` e as quatro perguntas "alguém falou?" do banco
 // que passam a ignorá-la. Provada num Postgres 16 descartável (06/10/2026):
-// esqueleto das tabelas com as quatro funções VIGENTES (1049/1056, os corpos
-// conferidos byte a byte contra a produção), a 1080 aplicada duas vezes num
+// esqueleto das tabelas com as RESTRIÇÕES REAIS (CHECKs, PKs, índices únicos e
+// FKs compostas lidos da produção) e as quatro funções VIGENTES (1049/1056, os
+// corpos conferidos byte a byte contra a produção), a 1080 aplicada duas vezes num
 // banco VAZIO (a conferência pula) e uma com dados (a conferência passa pelos
 // três cenários e se desfaz sem rastro); dois mutantes — o teto sem a cerca e
 // o gatilho do "em atraso" sem ela — reprovam. Estes pinos seguram a FORMA.
@@ -103,5 +104,15 @@ describe('1080 — a conferência', () => {
     expect(compacto).toContain("v_res <> 'robo_falou'");
     expect(compacto).toContain("v_res <> 'teto'");
     expect(compacto).toContain('public.cb_assentar_mensagem_historica(');
+  });
+
+  it('o turno da conferência é de RESPOSTA sem tentativa/tentativas (o CHECK do tipo, 1056)', () => {
+    // A primeira versão inseria `'resposta', 1, 1` e o CHECK real derrubaria a
+    // aplicação em produção — o esqueleto sem o CHECK passava verde.
+    const i = compacto.indexOf('insert into cb_ia_turnos');
+    expect(i).toBeGreaterThan(-1);
+    const insert = compacto.slice(i, compacto.indexOf(';', i));
+    expect(insert).toContain("'resposta'");
+    expect(insert).not.toContain('tentativa');
   });
 });
