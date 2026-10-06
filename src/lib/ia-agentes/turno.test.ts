@@ -47,6 +47,8 @@ interface Banco {
 
 const DATA_ISO = /^\d{4}-\d\d-\d\dT/
 const temValor = (v: unknown) => v !== null && v !== undefined
+/** O DEFAULT das colunas NOT NULL que os fixtures omitem — como o banco gravaria. */
+const PADRAO_DO_BANCO: Linha = { nao_saiu: false }
 
 function comparar(a: unknown, b: unknown): number {
   if (typeof a === 'string' && typeof b === 'string') {
@@ -69,7 +71,7 @@ function itemDoOr(item: string): (l: Linha) => boolean {
 function filtro(metodo: string, args: unknown[]): ((l: Linha) => boolean) | null {
   const [c, v] = args as [string, unknown]
   switch (metodo) {
-    case 'eq': return (l) => temValor(l[c]) && l[c] === v
+    case 'eq': return (l) => { const x = l[c] ?? PADRAO_DO_BANCO[c]; return temValor(x) && x === v }
     case 'neq': return (l) => temValor(l[c]) && l[c] !== v
     case 'is': return (l) => (l[c] ?? null) === v
     case 'in': return (l) => (v as unknown[]).includes(l[c])

@@ -637,6 +637,13 @@ export async function sendMessageToConversation(
       instance: channel.instance_name,
       apikey: decrypt(channel.api_key),
     });
+    // A TENTATIVA por esta conexão dá à conversa SEM número o número dela,
+    // também quando o provedor recusa (decisão do operador, 06/10/2026): a
+    // conversa aparece no filtro da conexão por onde se tentou. A que já tem
+    // número não muda (stamp.ts); grupo fica de fora (`cb_groups.channel_id`).
+    if (!ehGrupo) {
+      await preencherCanalDaConversa(supabaseAdmin(), accountId, conversationId, channel.channelId);
+    }
     try {
       const res = isMediaKind
         ? await transport.sendMedia({
@@ -756,6 +763,14 @@ export async function sendMessageToConversation(
       });
       return result.messageId;
     };
+
+    // A TENTATIVA por esta conexão dá à conversa SEM número o número dela,
+    // também quando o provedor recusa (decisão do operador, 06/10/2026): a
+    // conversa aparece no filtro da conexão por onde se tentou. A que já tem
+    // número não muda (stamp.ts); grupo fica de fora (`cb_groups.channel_id`).
+    if (!ehGrupo) {
+      await preencherCanalDaConversa(supabaseAdmin(), accountId, conversationId, channel.channelId);
+    }
 
     // Send via Meta — retry across phone-number variants if Meta rejects
     // with "recipient not in allowed list"; persist a working variant
@@ -901,14 +916,6 @@ export async function sendMessageToConversation(
   // client do dashboard) e best-effort/deploy-safe. NULL no fallback
   // whatsapp_config → no-op.
   await stampMessageChannel(supabaseAdmin(), messageRecord.id, channel.channelId);
-  // A conversa SEM número (primeiro contato pela ficha, API v1 por telefone)
-  // fica com o número por onde esta saiu — o padrão da conta, quando ninguém
-  // escolheu. Sem isso, marcar outra conexão como padrão trocaria o número de
-  // todas essas conversas em silêncio. A que já tem número não muda
-  // (stamp.ts); grupo fica de fora (o número dele é `cb_groups.channel_id`).
-  if (!ehGrupo) {
-    await preencherCanalDaConversa(supabaseAdmin(), accountId, conversationId, channel.channelId);
-  }
 
   // Pause any active Flow run for this contact — the agent stepping in
   // is the strongest "yield, human is here" signal. Best-effort.

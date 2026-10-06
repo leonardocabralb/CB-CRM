@@ -57,7 +57,7 @@ describe('o DISPATCH confere a estadia antes de criar a execução (7ª rodada)'
     const laco = motor.indexOf('for (const step of steps as AutomationStep[])', inicio)
     expect(laco).toBeGreaterThan(-1)
     const confere = motor.indexOf('cardSaiuDaEtapa(', laco)
-    const roda = motor.indexOf('runStep(step, args)', laco)
+    const roda = motor.indexOf('runStep(step, args', laco)
     expect(confere).toBeGreaterThan(-1)
     expect(roda).toBeGreaterThan(-1)
     expect(confere).toBeLessThan(roda)

@@ -683,6 +683,17 @@ answered is `inbound`; a call answered on one of the office's phones is
 message id — it can't be replied to, reacted to or deleted. The CRM does not
 carry call audio: the row only records that the call happened.
 
+**A message an automation, robot or AI agent tried to send and that did not
+go out** (the connection was down, the number is not on WhatsApp, WhatsApp
+refused it) is listed too, so the conversation shows the attempt: an
+`outbound` row from `bot`, `status: "failed"` and `whatsapp_message_id:
+null` — nothing reached the contact. It is the only `failed` row without a
+WhatsApp id: a message that went out and was not delivered keeps its
+`whatsapp_message_id`. Its `channel_id` is the number the send was tried
+on. An attempt that failed with an uncertain outcome (a timeout) is listed the
+same way, but it may have reached the contact — check before sending it
+again.
+
 **Contact cards** (a contact someone shared on WhatsApp) are listed with
 `content_type: "contact"`. `content_text` carries one line per shared contact,
 in the form `👤 Name · +55 85 90000-0000` (the phone numbers, when the card has
@@ -807,8 +818,9 @@ through an `evolution` number fails with `not_supported`.
   already on, falling back to the account default. Note this "follows the
   customer": if they last wrote to a different number of yours, the reply
   goes out from that one. A conversation that was on **no** number yet
-  (`channel_id: null`) stays on the number this message went out on —
-  not pinned, so it keeps following the customer.
+  (`channel_id: null`) stays on the number this message was sent on —
+  even if WhatsApp refuses it — not pinned, so it keeps following the
+  customer.
 - **Set** — the message goes out from that number *and* pins the
   conversation to it, so the customer's reply comes back to the same
   number they saw. An id that isn't a channel of your account returns

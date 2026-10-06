@@ -178,6 +178,9 @@ async function respostasDepoisDaPendencia(
     .in('conversation_id', ids)
     .or(RESPOSTA_QUE_FECHA_A_PENDENCIA)
     .is('deleted_at', null)
+    // A resposta do agente que NÃO saiu (1080) não fecha a pendência — a
+    // mesma régua do "em atraso" no banco.
+    .eq('nao_saiu', false)
     .gte('created_at', desde)
     .order('created_at', { ascending: false })
     .limit(TETO_RESPOSTAS);

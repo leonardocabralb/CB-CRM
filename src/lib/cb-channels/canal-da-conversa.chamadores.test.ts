@@ -15,10 +15,11 @@ import path from 'node:path';
 // cliente.
 //
 //  - ENTRADA: a conversa SEGUE o cliente (`followConversationChannel`).
-//  - SAÍDA: a conversa sem número ganha o número por onde a nossa mensagem
-//    saiu, e só ela (`preencherCanalDaConversa`, a cerca `channel_id IS NULL`
-//    no próprio UPDATE). Uma chamada por INSERT: o arquivo que ganhar um
-//    remetente novo sem a chamada reprova pela contagem.
+//  - SAÍDA: a conversa sem número ganha o número da conexão por onde a nossa
+//    mensagem foi TENTADA — antes do provedor, então também quando ele recusa
+//    (06/10/2026) —, e só ela (`preencherCanalDaConversa`, a cerca
+//    `channel_id IS NULL` no próprio UPDATE). Ao menos uma chamada por INSERT:
+//    o arquivo que ganhar um remetente novo sem a chamada reprova pela contagem.
 //  - FORA: com o motivo escrito.
 // ============================================================
 
@@ -52,6 +53,8 @@ const SAIDA = [
   // O eco grava a fala que o TURNO enviou quando o processo do envio morreu
   // antes do INSERT: aí ele é o único que grava, e faz o que o envio faria.
   'lib/ia-agentes/eco.ts',
+  // A bolha "não enviada" do robô: a tentativa que o provedor recusou.
+  'lib/whatsapp/envio-que-falhou.ts',
 ];
 
 const FORA: Record<string, string> = {
@@ -100,7 +103,7 @@ describe('quem grava mensagem deixa a conversa 1:1 com número', () => {
   for (const arquivo of SAIDA) {
     it(`${arquivo} (saída) preenche o número da conversa a cada INSERT, e nunca segue o cliente`, () => {
       const f = fonte(arquivo);
-      expect(contar(f, /preencherCanalDaConversa\(/g)).toBe(contar(f, INSERE_MENSAGEM));
+      expect(contar(f, /preencherCanalDaConversa\(/g)).toBeGreaterThanOrEqual(contar(f, INSERE_MENSAGEM));
       // Seguir o cliente num envio NOSSO tiraria do Comercial a conversa que
       // corre por ele só porque a automação falou pelo Jurídico.
       expect(f).not.toContain('followConversationChannel(');

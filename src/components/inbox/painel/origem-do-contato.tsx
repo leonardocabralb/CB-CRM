@@ -44,7 +44,9 @@ export function OrigemDoContato({
   // Só afirma sobre a primeira mensagem com a carga concluída; até lá o
   // bloco mostra só a data de cadastro, que é do contato.
   const respondeu = !carregando;
-  const primeira = respondeu && messages.length > 0 ? messages[0] : null;
+  // A tentativa do robô que NÃO saiu (1080) não é a primeira conversa: o
+  // cliente nunca a recebeu.
+  const primeira = respondeu ? (messages.find((m) => m.nao_saiu !== true) ?? null) : null;
   const origem = origemDoContato(
     contact,
     primeira

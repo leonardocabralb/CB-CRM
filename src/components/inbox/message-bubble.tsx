@@ -26,6 +26,7 @@ import {
 import { corDoRemetente, podeBaixarAnexo } from "@/lib/cb-groups/display";
 import { mediaFilename, nomeDeclarado } from "@/lib/media/filename";
 import { motivoNaBolha } from "@/lib/inbox/motivo-da-falha";
+import { envioQueNaoSaiu } from "@/lib/inbox/falha-do-envio";
 import { format } from "date-fns";
 import { ReplyQuote } from "./reply-quote";
 import { FormattedText } from "./formatted-text";
@@ -770,7 +771,13 @@ export function MessageBubble({
    * descreve entrega nenhuma. Sem a guarda de `isAgent`, um valor estranho
    * numa mensagem do cliente pintaria a bolha dele de vermelho.
    */
-  const naoEntregue = isAgent && message.status === "failed";
+  /**
+   * O robô TENTOU e nada saiu (06/10/2026): sem `message_id`, com o motivo
+   * nosso em `error_title` (`falha-do-envio.ts`). Frase própria: "não
+   * entregue" afirmaria que saiu.
+   */
+  const naoSaiu = envioQueNaoSaiu(message);
+  const naoEntregue = isAgent && message.status === "failed" && !naoSaiu;
   /** O porquê, quando a Meta o deu (1039). Nulo na Evolution e no histórico. */
   const motivo = naoEntregue ? motivoNaBolha(message) : null;
   /**
@@ -779,8 +786,8 @@ export function MessageBubble({
    * que não chegou, 23/09/2026). Mesmo balão vermelho, frase diferente: aqui
    * a certeza é menor, e a frase diz "provavelmente".
    */
-  const semConfirmacao = isAgent && !naoEntregue && naoConfirmada;
-  const alertaDeEntrega = naoEntregue || semConfirmacao;
+  const semConfirmacao = isAgent && !naoEntregue && !naoSaiu && naoConfirmada;
+  const alertaDeEntrega = naoEntregue || semConfirmacao || naoSaiu !== null;
   // Quem falou, só em grupo e só do lado de quem recebeu: numa mensagem
   // nossa o nome seria o do próprio operador, que a bolha já identifica pelo
   // lado em que está.
@@ -1066,6 +1073,28 @@ export function MessageBubble({
             title={motivo}
           >
             {t("motivoDaFalha", { motivo })}
+          </p>
+        )}
+        {naoSaiu && (
+          <p
+            className="aviso-falha mt-1 flex items-center gap-1 text-[11px] font-medium !text-destructive"
+            title={message.error_details ?? undefined}
+          >
+            {naoSaiu === "incerto" ? (
+              <AlertTriangle className="h-3 w-3 shrink-0" />
+            ) : (
+              <XCircle className="h-3 w-3 shrink-0" />
+            )}
+            {t(`naoSaiu.${naoSaiu}`)}
+          </p>
+        )}
+        {/* "Recusado" sem mais: o porquê do provedor, como o da Meta acima. */}
+        {naoSaiu === "recusado" && message.error_details && (
+          <p
+            className="aviso-falha mt-0.5 line-clamp-2 text-[10px] leading-tight !text-muted-foreground"
+            title={message.error_details}
+          >
+            {t("motivoDaFalha", { motivo: message.error_details })}
           </p>
         )}
         {semConfirmacao && (

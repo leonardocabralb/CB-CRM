@@ -40,7 +40,8 @@ UPDATE/INSERT/DELETE fora do app, saiba o que ele aciona:
   dispara a automação `tag_added`: essa sai do código (`tag-events.ts`).
 - **`messages`** AFTER INSERT → `conversations.aguardando_desde` (972, pela
   ORDEM DE INSERÇÃO) e `janela_meta` (993); `gravada_em` nasce `now()`. UPDATE
-  de `deleted_at` recalcula a espera. Mensagem de GENTE com `gravada_em`
+  de `deleted_at` recalcula a espera. A linha `nao_saiu` (1080, a tentativa
+  do robô) não responde: as quatro perguntas "alguém falou?" a ignoram. Mensagem de GENTE com `gravada_em`
   pausa a IA da conversa (1049, `ia_pausada_por = 'gente'`).
 - **`conversations`**: encerrar limpa a espera; atribuir (`assigned_agent_id`
   novo, não nulo, por outra pessoa ou por SQL) cria aviso no sino do

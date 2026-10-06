@@ -306,7 +306,9 @@ export async function loadConversationsSeries(
         .select(`created_at, sender_type, ${EMBED_SEM_GRUPO}`)
         .gte('created_at', start)
         // Ligação (1044) não é mensagem trocada.
-        .neq('content_type', 'call'),
+        .neq('content_type', 'call')
+        // CB (1080): nem a tentativa do robô que não saiu.
+        .eq('nao_saiu', false),
     ),
     channelId,
   ).order('created_at', { ascending: true })
@@ -412,7 +414,9 @@ export async function loadResponseTime(
       db
         .from('messages')
         .select(`conversation_id, sender_type, created_at, ${EMBED_SEM_GRUPO}`)
-        .gte('created_at', fourteenDaysAgo),
+        .gte('created_at', fourteenDaysAgo)
+        // CB (1080): a tentativa do robô que não saiu não respondeu ninguém.
+        .eq('nao_saiu', false),
     ),
     channelId,
   )

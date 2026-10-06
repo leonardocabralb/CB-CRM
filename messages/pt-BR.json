@@ -476,6 +476,12 @@
       "botBadgeTitle": "Enviada automaticamente por uma automação ou fluxo — não foi escrita por uma pessoa",
       "naoEntregue": "Não entregue — o destinatário não recebeu. Envie de novo.",
       "naoEntregueComMotivo": "Não entregue — o destinatário não recebeu. Veja o motivo abaixo antes de enviar de novo.",
+      "naoSaiu": {
+        "conexao_fora_do_ar": "Não enviada — a conexão estava fora do ar. Envie de novo quando ela voltar, ou por outro número.",
+        "sem_whatsapp": "Não enviada — este número não tem WhatsApp.",
+        "recusado": "Não enviada — o WhatsApp recusou o envio. Veja o motivo abaixo.",
+        "incerto": "Envio incerto — pode ter chegado ao cliente. Confira com ele antes de enviar de novo."
+      },
       "naoConfirmada": "Não confirmada — o destinatário provavelmente não recebeu. Envie de novo ou confirme com ele.",
       "naoConfirmadaDica": "O WhatsApp do destinatário não confirmou esta mensagem, embora tenha confirmado outra enviada depois dela (pelo CRM ou pelo celular) ou ele tenha escrito depois dela.",
       "download": "Baixar",

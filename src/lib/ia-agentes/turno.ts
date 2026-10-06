@@ -403,6 +403,9 @@ async function haSaidaDoRoboDepois(db: SupabaseClient, turno: LinhaDoTurno, gati
     .eq('sender_type', 'bot')
     .is('ia_agente_id', null)
     .is('deleted_at', null)
+    // A automação que TENTOU e não saiu (1080) não respondeu ninguém — a
+    // mesma régua da reserva (`cb_ia_reservar_envio`).
+    .eq('nao_saiu', false)
     .gt('gravada_em', gatilho.gravada_em)
     .limit(1)
   if (error) throw new Error(`leitura de resposta do robô falhou: ${error.message}`)

@@ -629,6 +629,14 @@ vi.mock('./admin-client', () => {
 import { EvolutionApiError } from '@/lib/whatsapp/transport/evolution-client';
 import { MetaApiError } from '@/lib/whatsapp/meta-api';
 
+// A bolha "não enviada" (06/10/2026): o motor grava a tentativa que falhou só
+// quando DESISTE do passo. O que ela grava é testado em
+// `envio-que-falhou.test.ts`; aqui, QUANDO o motor a chama.
+const bolhaMock = vi.hoisted(() => ({
+  registrarEnvioQueFalhou: vi.fn<(...a: unknown[]) => Promise<void>>(async () => {}),
+}));
+vi.mock('@/lib/whatsapp/envio-que-falhou', () => bolhaMock);
+
 vi.mock('./meta-send', () => ({
   engineSendText: vi.fn(async () => ({ whatsapp_message_id: 'm1' })),
   engineSendTemplate: vi.fn(async () => ({ whatsapp_message_id: 'm1' })),
@@ -4271,6 +4279,87 @@ describe('retentativa de passo que falhou (13/09/2026)', () => {
     expect(h.state.esperasEnfileiradas).toHaveLength(0);
     expect(desfechoGravado()?.desfecho).toBe('falhou');
     expect(horaDeFimGravada()).toBeTruthy();
+  });
+
+  // ------------------------------------------------------------
+  // A bolha "não enviada" (06/10/2026): o remetente entrega o rascunho da
+  // tentativa (`aoFalhar`) e o motor só o grava quando DESISTE — uma bolha
+  // por tentativa poria três "não enviada" para a mesma mensagem.
+  // ------------------------------------------------------------
+  describe('a bolha da tentativa que não saiu', () => {
+    const RASCUNHO = {
+      accountId: ACCOUNT,
+      conversationId: 'conv-cliente',
+      canalId: 'canal-x',
+      contentType: 'text',
+      texto: 'oi',
+      previa: 'oi',
+    };
+
+    beforeEach(() => bolhaMock.registrarEnvioQueFalhou.mockClear());
+
+    /** O remetente chegou ao PROVEDOR: entrega o rascunho e lança o erro dele. */
+    async function tentativaQueFalha(erro: unknown, context: Record<string, unknown> = {}) {
+      vi.mocked(engineSendText).mockImplementationOnce(async (a) => {
+        a.aoFalhar?.(RASCUNHO);
+        throw erro;
+      });
+      h.state.owned = { id: 'c1' };
+      h.state.automations = [automationWithUpdateStep()];
+      h.state.steps = [passoAvisar({ phone: '5583980000016', text: 'oi' })];
+      await runAutomationsForTrigger({
+        accountId: ACCOUNT,
+        triggerType: 'new_message_received',
+        contactId: 'c1',
+        context: { conversation_id: 'conv-cliente', ...context },
+      });
+    }
+
+    it('vai tentar de novo: NÃO grava a bolha (ainda)', async () => {
+      await tentativaQueFalha(new EvolutionApiError('Error: Connection Closed', 400));
+      expect(h.state.esperasEnfileiradas).toHaveLength(1);
+      expect(bolhaMock.registrarEnvioQueFalhou).not.toHaveBeenCalled();
+    });
+
+    it('desistiu no teto: grava UMA bolha, com o rascunho e o erro do provedor', async () => {
+      const erro = new EvolutionApiError('Error: Connection Closed', 400);
+      await tentativaQueFalha(erro, { _tentativa: { pos: 0, n: 2 } });
+      expect(bolhaMock.registrarEnvioQueFalhou).toHaveBeenCalledTimes(1);
+      const [, rascunho, err] = bolhaMock.registrarEnvioQueFalhou.mock.calls[0];
+      expect(rascunho).toEqual(RASCUNHO);
+      expect(err).toBe(erro);
+    });
+
+    it('falha que nunca repete (entrega incerta, sem WhatsApp): grava na hora', async () => {
+      await tentativaQueFalha(new EvolutionApiError('timeout', 504));
+      await tentativaQueFalha(new EvolutionApiError('not on WhatsApp', 400, true));
+      expect(bolhaMock.registrarEnvioQueFalhou).toHaveBeenCalledTimes(2);
+    });
+
+    it('a execução foi interrompida DURANTE a tentativa (a fila recusa a retentativa): grava a bolha', async () => {
+      vi.mocked(engineSendText).mockImplementationOnce(async (a) => {
+        a.aoFalhar?.(RASCUNHO);
+        // O operador parou a automação enquanto o provedor respondia.
+        h.state.interrompida = true;
+        throw new EvolutionApiError('Error: Connection Closed', 400);
+      });
+      h.state.owned = { id: 'c1' };
+      h.state.automations = [automationWithUpdateStep()];
+      h.state.steps = [passoAvisar({ phone: '5583980000016', text: 'oi' })];
+      await runAutomationsForTrigger({
+        accountId: ACCOUNT,
+        triggerType: 'new_message_received',
+        contactId: 'c1',
+        context: { conversation_id: 'conv-cliente' },
+      });
+      expect(h.state.esperasEnfileiradas).toHaveLength(0);
+      expect(bolhaMock.registrarEnvioQueFalhou).toHaveBeenCalledTimes(1);
+    });
+
+    it('erro ANTES do provedor (sem rascunho): nada vai para o fio', async () => {
+      await avisoQueFalha(new Error('contact phone invalid: null'));
+      expect(bolhaMock.registrarEnvioQueFalhou).not.toHaveBeenCalled();
+    });
   });
 });
 
