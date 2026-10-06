@@ -174,18 +174,3 @@ export async function provisionEvolutionInstance(args: {
 
   return { baseUrl, instanceName, instanceApiKey, state, qrBase64, pairingCode };
 }
-
-/** Poll just the connection state (+ a QR if still pairing). */
-export async function evolutionConnectionState(
-  instanceName: string
-): Promise<{ state: 'open' | 'connecting' | 'close'; qrBase64?: string }> {
-  const { baseUrl, apikey } = evolutionGlobalConfig();
-  const client = new EvolutionClient({ baseUrl, apikey, instance: instanceName });
-
-  const stateRes = await client.connectionState();
-  const state = normalizeState(stateRes.instance?.state ?? stateRes.state);
-  if (state === 'open') return { state };
-
-  const conn = await client.connect();
-  return { state, qrBase64: conn.base64 };
-}

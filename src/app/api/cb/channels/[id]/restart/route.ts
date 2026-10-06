@@ -6,7 +6,8 @@
 // `channelConnectionState` retorna cedo quando a Evolution responde 'open'
 // (evolution-admin.ts), então uma instância que se diz conectada e não
 // entrega nada só é CONFIRMADA — o estado mentiroso é inclusive regravado no
-// banco. Aqui o ciclo é forçado: logout → QR novo.
+// banco. Aqui o ciclo é forçado: logout → fechada confirmada → QR novo
+// (`repairChannelPairing`; o logout que falha com a sessão aberta para tudo).
 //
 // Custo, dito em voz alta na UI antes de chamar: o número fica MUDO até
 // alguém escanear o QR no celular. Nada se perde no CRM — `logout` não toca
@@ -22,7 +23,7 @@ import {
   getChannelWithSecrets,
   CB_CHANNEL_SAFE_COLUMNS,
 } from '@/lib/cb-channels/repo';
-import { repairChannelPairing } from '@/lib/cb-channels/evolution-admin';
+import { repairChannelPairing, SessaoAindaDePe } from '@/lib/cb-channels/evolution-admin';
 import { ehEvolution } from '@/lib/cb-channels/transporte';
 
 export async function POST(
@@ -58,10 +59,17 @@ export async function POST(
       );
     }
 
+    // ⚠️ `SessaoAindaDePe`: o logout falhou e a sessão segue aberta, e o
+    // repareamento parou ANTES do connect (logout que falhou + connect = a
+    // sessão duplicada). Nada mudou na Evolution, então nada é gravado aqui;
+    // a frase já diz o que houve, sem o prefixo.
     let res;
     try {
       res = await repairChannelPairing(channel.instance_name);
     } catch (err) {
+      if (err instanceof SessaoAindaDePe) {
+        return NextResponse.json({ error: err.message }, { status: 502 });
+      }
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
       return NextResponse.json({ error: `Erro da Evolution: ${message}` }, { status: 502 });
     }

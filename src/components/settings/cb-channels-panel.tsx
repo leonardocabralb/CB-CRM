@@ -11,8 +11,14 @@
 // o link legado ?tab=whatsapp é remapeado para cá em settings-sections.ts.
 //
 // LAÇO DO QR: o QR expira a cada ~45s e é regenerado sozinho, então o
-// diálogo consulta `/connect` a cada 5s; cada resposta traz o QR vigente
-// e, ao parear, o canal já conectado.
+// diálogo consulta `/connect` em laço; cada resposta traz o QR vigente e,
+// ao parear, o canal já conectado. A próxima consulta só é agendada quando
+// a anterior TERMINA (setTimeout encadeado, `POLL_MS` entre o fim de uma e
+// o início da outra): a rota pode levar mais de 5 s (com a instância
+// fechada ela espera `ESPERA_FECHADA_MS` antes de pedir o QR), e com
+// `setInterval` duas consultas corriam juntas — dois connects na Evolution
+// abrem duas sessões com a mesma credencial (06/10/2026). Só a PRIMEIRA
+// consulta de cada abertura reaplica o webhook (`reaplicarWebhook: true`).
 //
 // PRÉ-MIGRATION: GET /api/cb/channels devolve { unavailable: true } quando
 // a tabela cb_channels ainda não existe — o painel mostra o aviso de
@@ -357,6 +363,7 @@ export function CbChannelsPanel() {
     setQrError(null);
     avisouWebhookRef.current = false;
     pendentesRef.current = 0;
+    reaplicarWebhookRef.current = true;
   };
 
   /**
@@ -407,7 +414,11 @@ export function CbChannelsPanel() {
   const ressincronizar = async (channelId: string) => {
     setResyncing(channelId);
     try {
-      const res = await fetch(`/api/cb/channels/${channelId}/connect`, { method: 'POST' });
+      const res = await fetch(`/api/cb/channels/${channelId}/connect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reaplicarWebhook: true }),
+      });
       const payload = await res.json();
       if (!res.ok) {
         toast.error(payload.error || t('connectFailed'));
@@ -784,29 +795,42 @@ export function CbChannelsPanel() {
     }
   };
 
-  // Laço de pareamento. Ref para o id, senão o intervalo lê o valor velho.
+  // Laço de pareamento. Ref para o id, senão o timer lê o valor velho.
   const qrChannelIdRef = useRef<string | null>(null);
   qrChannelIdRef.current = qrChannelId;
   /** Trava do aviso de webhook: um por abertura do diálogo, não um por tick. */
   const avisouWebhookRef = useRef(false);
   /** Respostas seguidas com o número ainda não gravado (ver `MAX_NUMERO_PENDENTE`). */
   const pendentesRef = useRef(0);
+  /**
+   * A próxima consulta reaplica o webhook. Ligado a cada abertura do diálogo
+   * (`openQrFor`) e desligado pela primeira resposta que a rota processou:
+   * uma que falhou antes (rede, 429) deixa a próxima tentar de novo.
+   */
+  const reaplicarWebhookRef = useRef(true);
 
   useEffect(() => {
     if (!qrChannelId || qrConnected) return;
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
 
     const tick = async () => {
       const id = qrChannelIdRef.current;
       if (!id) return;
+      let concluiu = false;
       try {
-        const res = await fetch(`/api/cb/channels/${id}/connect`, { method: 'POST' });
+        const res = await fetch(`/api/cb/channels/${id}/connect`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reaplicarWebhook: reaplicarWebhookRef.current }),
+        });
         const payload = await res.json();
         if (cancelled) return;
         if (!res.ok) {
           setQrError(payload.error || t('connectFailed'));
           return;
         }
+        reaplicarWebhookRef.current = false;
         setQrError(null);
         // A reaplicação do webhook é best-effort na rota, mas o operador
         // precisa saber quando ela não pegou: sem os eventos, exclusão e
@@ -828,12 +852,14 @@ export function CbChannelsPanel() {
           // (segundos): espera a próxima consulta, com teto.
           pendentesRef.current += 1;
           if (pendentesRef.current >= MAX_NUMERO_PENDENTE) {
+            concluiu = true;
             setQrConnected(true);
             setQrImage(null);
             toast.success(t('connectedToast'), { description: t('numeroPendenteDescricao') });
             void load();
           }
         } else if (payload.connected) {
+          concluiu = true;
           setQrConnected(true);
           setQrImage(null);
           avisarConexao(t, payload, t('connectedToast'));
@@ -843,14 +869,17 @@ export function CbChannelsPanel() {
         }
       } catch {
         if (!cancelled) setQrError(t('networkError'));
+      } finally {
+        // ENCADEADO: a próxima só depois desta terminar. Diálogo fechado ou
+        // trocado de canal (`cancelled`) e pareamento concluído não agendam.
+        if (!cancelled && !concluiu) timer = setTimeout(() => void tick(), POLL_MS);
       }
     };
 
     void tick();
-    const timer = setInterval(tick, POLL_MS);
     return () => {
       cancelled = true;
-      clearInterval(timer);
+      if (timer) clearTimeout(timer);
     };
   }, [qrChannelId, qrConnected, load, t]);
 

@@ -6,8 +6,15 @@
 // e é regenerado sozinho). Quando conecta, grava o número pareado em
 // `cb_channels.display_phone`.
 //
-// É POST porque tem efeito: quando a instância está fechada, consultar
-// dispara a reconexão do lado da Evolution.
+// É POST porque tem efeito: com a instância fechada CONFIRMADA (lida
+// 'close' duas vezes, com `ESPERA_FECHADA_MS` entre as leituras), consultar
+// pede o QR, e a Evolution abre uma sessão nova. Fechada por um instante é
+// a Evolution reconectando sozinha, e um pedido ali duplicava a sessão
+// (`evolution-admin.ts`).
+//
+// Corpo opcional `{ reaplicarWebhook?: boolean }`: só `false` pula a
+// reaplicação do webhook. Sem corpo, ou corpo inválido, reaplica — é o que
+// faz a tela aberta antes do deploy, que não manda corpo.
 // ============================================================
 
 import { NextResponse } from 'next/server';
@@ -51,6 +58,16 @@ function origemDoPedido(request: Request): string | undefined {
   const proto =
     request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim() || 'https';
   return `${proto}://${host}`;
+}
+
+/** Só `{ reaplicarWebhook: false }` desliga; o resto (sem corpo, inválido) reaplica. */
+async function querReaplicarWebhook(request: Request): Promise<boolean> {
+  try {
+    const corpo = (await request.json()) as { reaplicarWebhook?: unknown } | null;
+    return corpo?.reaplicarWebhook !== false;
+  } catch {
+    return true;
+  }
 }
 
 export async function POST(
@@ -101,12 +118,18 @@ export async function POST(
     // ninguém lê. Este é o único caminho que conserta a assinatura de
     // eventos, e o operador precisa saber quando ele não pegou — senão a
     // exclusão feita pelo cliente segue invisível e ninguém descobre.
+    //
+    // UMA vez por abertura do diálogo do QR (a primeira consulta manda
+    // `true`, as seguintes `false`) e no "Ressincronizar": antes, eram 12
+    // `webhook/set` por minuto com o diálogo aberto.
     let webhookError: string | null = null;
-    try {
-      await reaplicarWebhook(channel.instance_name, origemDoPedido(_request));
-    } catch (err) {
-      webhookError = err instanceof Error ? err.message : String(err);
-      console.warn('[cb/channels/connect] não foi possível reaplicar o webhook:', webhookError);
+    if (await querReaplicarWebhook(_request)) {
+      try {
+        await reaplicarWebhook(channel.instance_name, origemDoPedido(_request));
+      } catch (err) {
+        webhookError = err instanceof Error ? err.message : String(err);
+        console.warn('[cb/channels/connect] não foi possível reaplicar o webhook:', webhookError);
+      }
     }
 
     let res;

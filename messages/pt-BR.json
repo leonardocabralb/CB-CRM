@@ -6316,7 +6316,7 @@
     "tone_down": "Fora do ar",
     "tone_unknown": "Sem configuração",
     "detail_stale": "sem confirmação há tempo demais",
-    "detail_pairing": "aguardando leitura do QR Code",
+    "detail_pairing": "conectando ao WhatsApp",
     "detail_closed": "desconectada no servidor",
     "detail_disconnected": "desconectada",
     "detail_webhook": "conectada, mas o CRM não está recebendo",
