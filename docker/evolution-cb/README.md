@@ -75,7 +75,7 @@ produção (`e273b904`, build de 14/07/2026), com estas diferenças:
      hash junto, como o `removeCreds` do logout já fazia.
 
    Três arquivos (`whatsapp.baileys.service.ts`, `instance.controller.ts` e
-   `monitor.service.ts`), +100/−15 linhas. As partes vão juntas: zerar o
+   `monitor.service.ts`), +105/−15 linhas. As partes vão juntas: zerar o
    `isDeleting` sem o filtro de geração deixaria o 408 de um socket de QR extra
    apagar o pareamento novo. Limites conhecidos: o filtro vale quando o evento
    SAI da fila — um `open` cujo handler já estava em curso (ele espera a foto de
