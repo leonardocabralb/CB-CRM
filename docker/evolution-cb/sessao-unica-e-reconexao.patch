@@ -1,0 +1,238 @@
+diff --git a/src/api/controllers/instance.controller.ts b/src/api/controllers/instance.controller.ts
+index 4d468059..08089bd0 100644
+--- a/src/api/controllers/instance.controller.ts
++++ b/src/api/controllers/instance.controller.ts
+@@ -440,11 +440,12 @@ export class InstanceController {
+   }
+ 
+   public async logout({ instanceName }: InstanceDto) {
+-    const { instance } = await this.connectionState({ instanceName });
+-
+-    // Idempotente: se já está desconectada, retorna sucesso silenciosamente.
++    // Idempotente: instância inexistente retorna sucesso silenciosamente.
+     // Evita falhar o fluxo de delete do painel, que sempre chama logout antes do delete.
+-    if (instance.state === 'close') {
++    // An in-memory 'close' no longer returns early: it does not prove there is no live socket
++    // nor stored creds (e.g. the 3 s before a reconnect), and a logout must always remove them.
++    // logoutInstance() tolerates a dead or missing socket.
++    if (!this.waMonitor.waInstances[instanceName]) {
+       return { status: 'SUCCESS', error: false, response: { message: 'Instance was already disconnected' } };
+     }
+ 
+diff --git a/src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts b/src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts
+index f2b09a5d..00b2554e 100644
+--- a/src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts
++++ b/src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts
+@@ -264,6 +264,12 @@ export class BaileysStartupService extends ChannelStartupService {
+   private logBaileys = this.configService.get<Log>('LOG').BAILEYS;
+   private eventProcessingQueue: Promise<void> = Promise.resolve();
+   private _lastStream515At = 0;
++  // One live socket per instance. Bumped for every socket created and on logout:
++  // events from a socket whose generation is no longer current (superseded by a
++  // newer one, or logged out) must not move the instance state, schedule a
++  // reconnect or save creds — they used to, and two sockets with the same creds
++  // kick each other forever (stream:error conflict/replaced → 440 → reconnect).
++  private socketGeneration = 0;
+ 
+   // Cumulative history sync counters (reset on new sync or completion)
+   private historySyncMessageCount = 0;
+@@ -294,6 +300,8 @@ export class BaileysStartupService extends ChannelStartupService {
+     // Mark instance as deleting to prevent reconnection attempts.
+     this.isDeleting = true;
+     this.endSession = true;
++    // Pending reconnect timers and the events of the socket being logged out are stale from here on.
++    this.socketGeneration++;
+ 
+     this.messageProcessor.onDestroy();
+ 
+@@ -321,6 +329,9 @@ export class BaileysStartupService extends ChannelStartupService {
+     // observes the post-logout state immediately, even if the DB update below
+     // is delayed.
+     this.stateConnection = { state: 'close', statusReason: 401 };
++    // The connect that follows a logout returns qrCode 2 s after creating the socket, often
++    // before the new QR exists: it must not serve the QR (or the count) of the old pairing.
++    this.instance.qrcode = { count: 0 };
+ 
+     const db = this.configService.get<Database>('DATABASE');
+     const cache = this.configService.get<CacheConf>('CACHE');
+@@ -517,8 +528,18 @@ export class BaileysStartupService extends ChannelStartupService {
+       // a follow-up loggedOut is the expected restart signal — not an actual
+       // logout — so reconnect anyway.
+       const recentStream515 = Date.now() - this._lastStream515At < BaileysStartupService.STREAM_515_RECONNECT_GRACE_MS;
++      // 408 is also Baileys' "Connection was lost" (keepalive), the handshake timeout and any
++      // connection error (E… codes: DNS, refused, timed out). On a PAIRED socket that is a
++      // network drop, and the no-reconnect branch below emits
++      // 'logout.instance', whose cleanup deletes the Session (the creds): the pairing was lost
++      // for good. Only the end of the QR codes (408 with no pairing yet) must stop here.
++      // `creds.account` is set only by pair-success; `creds.me` is not proof (requestPairingCode
++      // sets it before pairing).
++      const isPaired = !!this.client?.authState?.creds?.account;
+       const shouldReconnect =
+-        !codesToNotReconnect.includes(statusCode) || (statusCode === DisconnectReason.loggedOut && recentStream515);
++        !codesToNotReconnect.includes(statusCode) ||
++        (statusCode === DisconnectReason.loggedOut && recentStream515) ||
++        (statusCode === DisconnectReason.timedOut && isPaired);
+ 
+       this.logger.info({
+         message: 'Connection closed, evaluating reconnection',
+@@ -528,10 +549,34 @@ export class BaileysStartupService extends ChannelStartupService {
+       });
+ 
+       if (shouldReconnect) {
++        // The DB status is what fetchInstances reads (and what clients show). Left at 'open', a
++        // paired socket that keeps failing to reconnect (network down: 408 after 408) looks
++        // healthy for the whole outage; the 'open' branch below writes 'open' again.
++        // Best-effort: a failed write must never keep the reconnect timer below from being set.
++        try {
++          await this.prismaRepository.instance.update({
++            where: { id: this.instanceId },
++            data: { connectionStatus: 'connecting' },
++          });
++        } catch (error) {
++          this.logger.warn({ message: 'Could not persist connecting before reconnecting', error });
++        }
++
+         // Add 3 second delay before reconnection to prevent rapid reconnection loops
+         this.logger.info('Reconnecting in 3 seconds...');
++        const generation = this.socketGeneration;
+         setTimeout(async () => {
+-          await this.connectToWhatsapp(this.phoneNumber);
++          // A logout, a delete or an explicit GET /instance/connect may have happened
++          // in these 3 s; reconnecting on top of it opens a second socket with the same creds.
++          if (this.isDeleting || this.endSession || generation !== this.socketGeneration) {
++            this.logger.info('Reconnect skipped: instance logged out/ended or a newer socket already exists');
++            return;
++          }
++          try {
++            await this.connectToWhatsapp(this.phoneNumber);
++          } catch {
++            // already logged by connectToWhatsapp; do not leak an unhandled rejection from the timer
++          }
+         }, 3000);
+       } else {
+         this.logger.info(`Skipping reconnection for status code ${statusCode} (code is in codesToNotReconnect list)`);
+@@ -698,7 +743,9 @@ export class BaileysStartupService extends ChannelStartupService {
+   }
+ 
+   private async createClient(number?: string): Promise<WASocket> {
+-    this.instance.authState = await this.defineAuthState();
++    // A logout or another createClient finishing during the awaits below supersedes this call.
++    const generationAtStart = this.socketGeneration;
++    const authState = await this.defineAuthState();
+ 
+     if (number) {
+       this.phoneNumber = number;
+@@ -762,8 +809,8 @@ export class BaileysStartupService extends ChannelStartupService {
+       logger: P({ level: this.logBaileys }),
+       printQRInTerminal: false,
+       auth: {
+-        creds: this.instance.authState.state.creds,
+-        keys: makeCacheableSignalKeyStore(this.instance.authState.state.keys, P({ level: 'error' }) as any),
++        creds: authState.state.creds,
++        keys: makeCacheableSignalKeyStore(authState.state.keys, P({ level: 'error' }) as any),
+       },
+       msgRetryCounterCache: this.msgRetryCounterCache,
+       generateHighQualityLinkPreview: true,
+@@ -803,6 +850,23 @@ export class BaileysStartupService extends ChannelStartupService {
+       },
+     };
+ 
++    if (generationAtStart !== this.socketGeneration) {
++      this.logger.info('createClient superseded by a logout or a newer socket; not opening another socket');
++      return this.client;
++    }
++
++    // From here to eventHandler() nothing awaits: the previous socket is retired and
++    // the new one installed atomically, so there is never more than one live socket.
++    const previous = this.client;
++    const generation = ++this.socketGeneration;
++
++    if (previous) {
++      // end() is idempotent (Baileys keeps a `closed` flag): a socket that already died is a no-op.
++      // Its 'close' arrives later, with the old generation, and is ignored by eventHandler.
++      previous.end(new Error('Superseded by a new connection')).catch(() => undefined);
++    }
++
++    this.instance.authState = authState;
+     this.endSession = false;
+ 
+     this.client = makeWASocket(socketConfig);
+@@ -811,7 +875,7 @@ export class BaileysStartupService extends ChannelStartupService {
+       useVoiceCallsBaileys(this.localSettings.wavoipToken, this.client, this.connectionStatus.state as any, true);
+     }
+ 
+-    this.eventHandler();
++    this.eventHandler(generation);
+ 
+     this.client.ws.on('CB:call', (packet) => {
+       console.log('CB:call', packet);
+@@ -838,6 +902,11 @@ export class BaileysStartupService extends ChannelStartupService {
+ 
+   public async connectToWhatsapp(number?: string): Promise<WASocket> {
+     try {
++      // An explicit connect after DELETE /instance/logout must reconnect by itself again
++      // (e.g. the 515 restart right after the QR is scanned). The reconnect timer only
++      // gets here after checking isDeleting itself.
++      this.isDeleting = false;
++
+       this.loadChatwoot();
+       this.loadSettings();
+       this.loadWebhook();
+@@ -2118,7 +2187,7 @@ export class BaileysStartupService extends ChannelStartupService {
+     },
+   };
+ 
+-  private eventHandler() {
++  private eventHandler(generation: number) {
+     this.client.ev.process(async (events) => {
+       this.eventProcessingQueue = this.eventProcessingQueue.then(async () => {
+         try {
+@@ -2145,11 +2214,25 @@ export class BaileysStartupService extends ChannelStartupService {
+               this.sendDataWebhook(Events.CALL, call);
+             }
+ 
++            // Messages are still processed (they were delivered and acked to this socket);
++            // only state and creds belong to the current socket.
++            const isCurrentSocket = generation === this.socketGeneration;
++
+             if (events['connection.update']) {
+-              this.connectionUpdate(events['connection.update']);
++              if (isCurrentSocket) {
++                this.connectionUpdate(events['connection.update']);
++              } else {
++                this.logger.info({
++                  message: 'Ignoring connection.update from a superseded socket',
++                  connection: events['connection.update'].connection,
++                  hasQr: !!events['connection.update'].qr,
++                  generation,
++                  currentGeneration: this.socketGeneration,
++                });
++              }
+             }
+ 
+-            if (events['creds.update']) {
++            if (events['creds.update'] && isCurrentSocket) {
+               this.instance.authState.saveCreds();
+             }
+ 
+diff --git a/src/api/services/monitor.service.ts b/src/api/services/monitor.service.ts
+index f327e4a7..af586daa 100644
+--- a/src/api/services/monitor.service.ts
++++ b/src/api/services/monitor.service.ts
+@@ -176,8 +176,14 @@ export class WAMonitoringService {
+       }
+     }
+ 
+-    if (this.redis.REDIS.ENABLED && this.redis.REDIS.SAVE_INSTANCES) {
+-      await this.cache.delete(instanceName);
++    if (this.redis.REDIS.ENABLED) {
++      if (this.redis.REDIS.SAVE_INSTANCES) {
++        await this.cache.delete(instanceName);
++      }
++      // With the Prisma auth state and Redis on (SAVE_INSTANCES=false) the creds live in the
++      // Session row deleted above, but the Signal keys (sessions, pre-keys, sender-key memory)
++      // live in this hash. Without the creds they belong to a dead identity, and the next
++      // pairing would inherit them. logoutInstance's removeCreds already drops this hash.
+       if (instanceDbId) {
+         await this.cache.delete(instanceDbId);
+       }

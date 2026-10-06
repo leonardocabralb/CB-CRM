@@ -109,7 +109,9 @@ export function provisionChannelInstance(args: {
   return provisionEvolutionInstance(args);
 }
 
-function normalizeState(raw?: string): 'open' | 'connecting' | 'close' {
+type EstadoDaInstancia = 'open' | 'connecting' | 'close';
+
+function normalizeState(raw?: string): EstadoDaInstancia {
   return raw === 'open' || raw === 'connecting' ? raw : 'close';
 }
 
@@ -122,14 +124,10 @@ interface RawInstance {
   instance?: { instanceName?: string };
 }
 
-/**
- * Estado da conexão de uma instância + (quando conectada) o número
- * pareado, para gravar em `cb_channels.display_phone`. Quando ainda não
- * conectou, devolve o QR atual.
- */
-export async function channelConnectionState(instanceName: string): Promise<{
-  state: 'open' | 'connecting' | 'close';
+export interface EstadoDaConexao {
+  state: EstadoDaInstancia;
   qrBase64?: string;
+  pairingCode?: string;
   ownerPhone?: string;
   /**
    * Aberta, mas a Evolution ainda não gravou o número do pareamento novo (o
@@ -137,37 +135,122 @@ export async function channelConnectionState(instanceName: string): Promise<{
    * consulta. Ver `numeroDoPareamento` (`troca-de-numero.ts`).
    */
   numeroPendente?: boolean;
-}> {
+}
+
+// ------------------------------------------------------------
+// QR SÓ DEPOIS DE "FECHADA CONFIRMADA" — a sessão duplicada de 06/10/2026
+//
+// Na Evolution 2.4, `GET /instance/connect` com o estado em memória 'close'
+// SEMPRE abre um socket novo e nunca fecha o anterior. Depois de uma queda
+// que ela mesma reconecta (440, 515, 428…) o estado fica 'close' por 3 s e a
+// reconexão já está agendada: um connect nosso nessa janela cria um SEGUNDO
+// socket com as mesmas credenciais, e os dois se derrubam (conflict/replaced
+// → 440 → reconecta) em laço. Com 'connecting' ela devolve o QR vigente sem
+// abrir socket; com 'open', nada a fazer.
+//
+// Por isso 'close' não conecta de imediato: espera `ESPERA_FECHADA_MS`, lê de
+// novo e só chama `connect` se continuar 'close'. A espera folga os 3 s da
+// reconexão automática mais os awaits de `createClient`, mas NÃO cobre tudo: o
+// 'connecting' só chega à memória quando a fila de eventos da Evolution (serial,
+// com as mensagens do socket anterior) o processa, e com entrada represada isso
+// passa de 6 s. Ela só ESTREITA a janela (quem decide abrir socket é a
+// Evolution, relendo o estado no pedido); o conserto de raiz é da imagem.
+// ------------------------------------------------------------
+
+/** Espera, depois de ler 'close', antes de ler de novo e só então pedir o QR. */
+export const ESPERA_FECHADA_MS = 6_000;
+
+function esperar(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * UMA operação de estado/QR por instância de cada vez. Quem chega com outra
+ * em curso recebe a MESMA promessa: o laço do QR em duas abas, ou dois admins,
+ * não somam connects. A entrada sai quando a promessa assenta (sucesso ou
+ * erro). ⚠️ É por RÉPLICA: o CRM roda com `replicas: 1` (docker-stack.yml);
+ * com mais réplicas, cada uma teria o próprio Map.
+ */
+const emCurso = new Map<string, Promise<EstadoDaConexao>>();
+
+function umaPorInstancia(
+  instanceName: string,
+  trabalho: () => Promise<EstadoDaConexao>,
+): Promise<EstadoDaConexao> {
+  const atual = emCurso.get(instanceName);
+  if (atual) return atual;
+  const promessa: Promise<EstadoDaConexao> = trabalho().finally(() => {
+    if (emCurso.get(instanceName) === promessa) emCurso.delete(instanceName);
+  });
+  emCurso.set(instanceName, promessa);
+  return promessa;
+}
+
+function clienteDaInstancia(instanceName: string): EvolutionClient {
   const { baseUrl, apikey } = evolutionGlobalConfig();
-  const client = new EvolutionClient({ baseUrl, apikey, instance: instanceName });
+  return new EvolutionClient({ baseUrl, apikey, instance: instanceName });
+}
 
-  const stateRes = await client.connectionState();
-  const state = normalizeState(stateRes.instance?.state ?? stateRes.state);
+async function lerEstado(client: EvolutionClient): Promise<EstadoDaInstancia> {
+  const res = await client.connectionState();
+  return normalizeState(res.instance?.state ?? res.state);
+}
 
-  if (state === 'open') {
-    let ownerPhone: string | undefined;
-    try {
-      const list = (await client.fetchInstances()) as RawInstance[];
-      const row = Array.isArray(list)
-        ? list.find(
-            (it) =>
-              (it?.name ?? it?.instanceName ?? it?.instance?.instanceName) ===
-              instanceName,
-          )
-        : undefined;
-      const lido = numeroDoPareamento(row);
-      if (lido.pendente) return { state, numeroPendente: true };
-      ownerPhone = lido.numero;
-    } catch {
-      // Melhor-esforço: o número também chega pelo `connection.update` do
-      // webhook (`registrarNumeroDoAviso`); não bloquear a conexão por ele.
-    }
-    return { state, ownerPhone };
+/** Conexão aberta: o número pareado, ou `numeroPendente`. */
+async function numeroDaInstancia(
+  client: EvolutionClient,
+  instanceName: string,
+): Promise<EstadoDaConexao> {
+  try {
+    const list = (await client.fetchInstances()) as RawInstance[];
+    const row = Array.isArray(list)
+      ? list.find(
+          (it) =>
+            (it?.name ?? it?.instanceName ?? it?.instance?.instanceName) ===
+            instanceName,
+        )
+      : undefined;
+    const lido = numeroDoPareamento(row);
+    if (lido.pendente) return { state: 'open', numeroPendente: true };
+    return { state: 'open', ownerPhone: lido.numero };
+  } catch {
+    // Melhor-esforço: o número também chega pelo `connection.update` do
+    // webhook (`registrarNumeroDoAviso`); não bloquear a conexão por ele.
+    return { state: 'open' };
   }
+}
 
-  // Ainda pareando — devolve o QR vigente.
+/**
+ * A partir do estado LIDO: 'open' → o número; 'connecting' → o QR vigente
+ * (sem socket novo); 'close' → espera, lê de novo e só pede o QR se
+ * continuar fechada.
+ */
+async function estadoOuQr(
+  client: EvolutionClient,
+  instanceName: string,
+  lido: EstadoDaInstancia,
+): Promise<EstadoDaConexao> {
+  let state = lido;
+  if (state === 'close') {
+    await esperar(ESPERA_FECHADA_MS);
+    state = await lerEstado(client);
+  }
+  if (state === 'open') return numeroDaInstancia(client, instanceName);
   const conn = await client.connect();
-  return { state, qrBase64: conn.base64 };
+  return { state, qrBase64: conn.base64, pairingCode: conn.pairingCode };
+}
+
+/**
+ * Estado da conexão de uma instância + (quando conectada) o número
+ * pareado, para gravar em `cb_channels.display_phone`. Quando ainda não
+ * conectou, devolve o QR atual — com 'close', só depois de fechada
+ * CONFIRMADA (ver o bloco acima).
+ */
+export function channelConnectionState(instanceName: string): Promise<EstadoDaConexao> {
+  return umaPorInstancia(instanceName, async () => {
+    const client = clienteDaInstancia(instanceName);
+    return estadoOuQr(client, instanceName, await lerEstado(client));
+  });
 }
 
 /**
@@ -261,6 +344,50 @@ export async function reaplicarWebhook(
 }
 
 /**
+ * O logout do repareamento lançou e a sessão ainda aparece aberta: nenhum QR
+ * foi pedido. "Nada foi alterado" seria falso — num tempo esgotado do nosso
+ * lado a Evolution pode já ter começado o logout.
+ */
+export class SessaoAindaDePe extends Error {
+  constructor() {
+    super(
+      'Não deu para confirmar o logout: a sessão ainda aparece aberta e nenhum QR foi pedido. Confira a conexão em instantes ou tente de novo.',
+    );
+    this.name = 'SessaoAindaDePe';
+  }
+}
+
+/**
+ * O logout respondeu, mas a sessão voltou a abrir sozinha: o pareamento
+ * antigo segue valendo (a imagem sem o 3º patch responde "already
+ * disconnected" sem deslogar quando a memória dela diz 'close' — por exemplo,
+ * nos 3 s de cada volta do laço 440). Nenhum QR foi pedido.
+ */
+export class LogoutNaoPegou extends Error {
+  constructor() {
+    super(
+      'A Evolution respondeu ao logout, mas a sessão voltou a abrir com o pareamento antigo; nenhum QR foi pedido. Tente de novo em alguns segundos.',
+    );
+    this.name = 'LogoutNaoPegou';
+  }
+}
+
+/**
+ * O logout pegou, mas o QR não veio (a leitura ou o connect falhou depois
+ * dele): o número JÁ está fora do ar. A rota grava 'connecting' e abre o
+ * diálogo, cujo laço pede o QR de novo.
+ */
+export class FalhaDepoisDoLogout extends Error {
+  constructor(causa: unknown) {
+    super(causa instanceof Error ? causa.message : String(causa));
+    this.name = 'FalhaDepoisDoLogout';
+  }
+}
+
+/** Repareamento em curso por instância (ver `repairChannelPairing`). Por réplica, como `emCurso`. */
+const reparoEmCurso = new Map<string, Promise<{ qrBase64?: string; pairingCode?: string }>>();
+
+/**
  * REPAREAMENTO: derruba a sessão do aparelho e devolve um QR novo.
  *
  * É o degrau acima de "Ressincronizar". A diferença importa:
@@ -281,25 +408,67 @@ export async function reaplicarWebhook(
  * restrita ao canal (trigger `cb_channels_drop_from_automations`, 903) e
  * levaria junto o funil padrão da conexão.
  *
- * O `logout` engole o próprio erro: instância já deslogada devolve erro e
- * mesmo assim queremos seguir para o `connect`, que é o que produz o QR.
+ * ⚠️⚠️ LOGOUT QUE FALHOU + CONNECT = SESSÃO DUPLICADA. Se o `logout` lançar,
+ * o estado é lido: ainda 'open' quer dizer que a credencial segue valendo, e
+ * um `connect` por cima abriria um segundo socket com ela — então lança
+ * `SessaoAindaDePe` e não pede QR nenhum. Com outro estado (instância já
+ * deslogada também devolve erro), segue.
+ *
+ * Depois do logout, espera `ESPERA_FECHADA_MS` e lê o estado UMA vez: 'open'
+ * quer dizer que o logout não pegou e a sessão antiga voltou sozinha
+ * (`LogoutNaoPegou`, sem QR); 'close' ou 'connecting' (um socket novo, já
+ * sem a credencial, mostrando QR), aí sim `connect`. Antes, o connect saía
+ * colado ao logout, e o diálogo pedia outro um segundo depois. Falha a partir
+ * daqui vira `FalhaDepoisDoLogout`: o número já caiu, e a rota abre o diálogo.
+ *
+ * Uma consulta em curso nesta instância (o diálogo aberto noutra aba)
+ * termina ANTES do logout, e a que chegar durante o repareamento recebe a
+ * promessa dele (`umaPorInstancia`): nenhum connect corre junto com o logout.
+ * Dois repareamentos simultâneos (duas abas, dois admins) recebem a MESMA
+ * promessa (`reparoEmCurso`): o segundo logout derrubaria o pareamento que o
+ * primeiro acabou de produzir.
  */
-export async function repairChannelPairing(instanceName: string): Promise<{
+export function repairChannelPairing(instanceName: string): Promise<{
   qrBase64?: string;
   pairingCode?: string;
 }> {
-  const { baseUrl, apikey } = evolutionGlobalConfig();
-  const client = new EvolutionClient({ baseUrl, apikey, instance: instanceName });
+  const atual = reparoEmCurso.get(instanceName);
+  if (atual) return atual;
+  const promessa = reparar(instanceName).finally(() => {
+    if (reparoEmCurso.get(instanceName) === promessa) reparoEmCurso.delete(instanceName);
+  });
+  reparoEmCurso.set(instanceName, promessa);
+  return promessa;
+}
 
-  try {
-    await client.logout();
-  } catch (err) {
-    console.warn(
-      '[cb-channels] logout no repareamento falhou (seguindo para o QR):',
-      err instanceof Error ? err.message : err,
-    );
+async function reparar(instanceName: string): Promise<{ qrBase64?: string; pairingCode?: string }> {
+  for (let atual = emCurso.get(instanceName); atual; atual = emCurso.get(instanceName)) {
+    await atual.catch(() => undefined);
   }
 
-  const conn = await client.connect();
-  return { qrBase64: conn.base64, pairingCode: conn.pairingCode };
+  const res = await umaPorInstancia(instanceName, async () => {
+    const client = clienteDaInstancia(instanceName);
+    try {
+      await client.logout();
+    } catch (err) {
+      const lido = await lerEstado(client);
+      if (lido === 'open') throw new SessaoAindaDePe();
+      console.warn(
+        `[cb-channels] logout no repareamento falhou com a instância em '${lido}' (seguindo para o QR):`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+    try {
+      await esperar(ESPERA_FECHADA_MS);
+      const depois = await lerEstado(client);
+      if (depois === 'open') throw new LogoutNaoPegou();
+      const conn = await client.connect();
+      return { state: depois, qrBase64: conn.base64, pairingCode: conn.pairingCode };
+    } catch (err) {
+      if (err instanceof LogoutNaoPegou) throw err;
+      throw new FalhaDepoisDoLogout(err);
+    }
+  });
+  return { qrBase64: res.qrBase64, pairingCode: res.pairingCode };
 }
+

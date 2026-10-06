@@ -2,8 +2,9 @@ name: evolution-cb
 
 # Constrói a nossa imagem da Evolution 2.4 (develop) a partir de um commit
 # fixo do upstream, com os patches de docker/evolution-cb/ (a citação do
-# cliente e a foto de perfil que travava a fila de entrada) e o prisma.config.ts
-# dentro da imagem. Ver docker/evolution-cb/README.md e docs/PLANO-baileys-7.md (P10, 5.10).
+# cliente, a foto de perfil que travava a fila de entrada e a sessão única com
+# a reconexão depois do logout e do 408) e o prisma.config.ts dentro da imagem.
+# Ver docker/evolution-cb/README.md e docs/PLANO-baileys-7.md (P10, 5.10).
 
 on:
   workflow_dispatch:
@@ -15,7 +16,7 @@ on:
       tag:
         description: 'Tag de saída'
         required: true
-        default: '2.4.0-e273b904-citacao-foto'
+        default: '2.4.0-e273b904-citacao-foto-sessao'
 
 env:
   IMAGE: ghcr.io/leonardocabralb/evolution-api-cb
@@ -40,12 +41,14 @@ jobs:
         run: |
           set -euo pipefail
           cd upstream
-          # Nesta ordem: o segundo foi gerado sobre o primeiro (regiões distintas
+          # Nesta ordem: cada um foi gerado sobre os anteriores (regiões distintas
           # do mesmo arquivo; `git apply` tolera o deslocamento de linhas).
           git apply --check ../docker/evolution-cb/2708-citacao.patch
           git apply ../docker/evolution-cb/2708-citacao.patch
           git apply --check ../docker/evolution-cb/foto-de-perfil-por-telefone-com-teto.patch
           git apply ../docker/evolution-cb/foto-de-perfil-por-telefone-com-teto.patch
+          git apply --check ../docker/evolution-cb/sessao-unica-e-reconexao.patch
+          git apply ../docker/evolution-cb/sessao-unica-e-reconexao.patch
           test -f prisma.config.ts
           # builder: o arquivo entra junto com o resto do fonte
           sed -i 's#^COPY ./tsup.config.ts ./$#COPY ./tsup.config.ts ./\nCOPY ./prisma.config.ts ./#' Dockerfile
@@ -54,8 +57,28 @@ jobs:
           grep -c 'prisma.config.ts' Dockerfile | grep -qx 2
           grep -q 'quotedContext' src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts
           # A foto de perfil sai pelo telefone resolvido e com teto; a forma antiga (pelo LID, sem teto) não pode sobrar.
+          # As negativas levam `|| exit 1`: sob `set -e`, um `! cmd` sozinho nunca para o passo.
           grep -q 'profilePicture(messageRaw.key.remoteJid, 5_000)' src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts
-          ! grep -q 'profilePicture(received.key.remoteJid)' src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts
+          ! grep -q 'profilePicture(received.key.remoteJid)' src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts || exit 1
+          # Sessão única: um socket por instância (geração), o timer de 3 s confere a geração,
+          # o connect zera o isDeleting, 408 com pareamento reconecta, o logout zera o QR e
+          # não para mais no 'close' em memória. Sem pipe (grep -q sob pipefail dá trava falsa).
+          BAILEYS=src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts
+          grep -qF 'private socketGeneration = 0;' "$BAILEYS"
+          grep -qF 'this.eventHandler(generation);' "$BAILEYS"
+          grep -qF 'generation !== this.socketGeneration' "$BAILEYS"
+          grep -qF "if (events['creds.update'] && isCurrentSocket) {" "$BAILEYS"
+          grep -qF '(statusCode === DisconnectReason.timedOut && isPaired)' "$BAILEYS"
+          ! grep -qF 'this.instance.authState = await this.defineAuthState();' "$BAILEYS" || exit 1
+          # Dentro do método; texto fixo (index), sem regex, para valer igual em qualquer awk.
+          awk 'index($0, "public async connectToWhatsapp(number") {f=1} f && index($0, "this.isDeleting = false;") {ok=1; exit} f && index($0, "this.loadChatwoot();") {exit} END {exit !ok}' "$BAILEYS"
+          # A reconexão grava 'connecting' no banco antes do timer (senão a queda pareada fica 'open').
+          awk 'index($0, "if (shouldReconnect) {") {f=1} f && index($0, "connectionStatus: '"'"'connecting'"'"'") {ok=1; exit} f && index($0, "Reconnecting in 3 seconds") {exit} END {exit !ok}' "$BAILEYS"
+          awk 'index($0, "public async logoutInstance() {") {f=1} f && index($0, "this.instance.qrcode = { count: 0 };") {ok=1; exit} f && index($0, "public async getProfileName()") {exit} END {exit !ok}' "$BAILEYS"
+          grep -qF 'if (!this.waMonitor.waInstances[instanceName]) {' src/api/controllers/instance.controller.ts
+          ! grep -qF "instance.state === 'close'" src/api/controllers/instance.controller.ts || exit 1
+          # A limpeza que apaga as creds (Session) apaga também as chaves Signal do Redis.
+          awk 'index($0, "public async cleaningUp(instanceName") {f=1} f && index($0, "if (this.redis.REDIS.ENABLED) {") {ok=1; exit} f && index($0, "public async cleaningStoreData(") {exit} END {exit !ok}' src/api/services/monitor.service.ts
           echo "patches e Dockerfile ok"
 
       - name: Log in to GHCR
@@ -87,9 +110,9 @@ jobs:
             echo '${{ env.IMAGE }}:${{ inputs.tag }}@${{ steps.build.outputs.digest }}'
             echo '```'
             echo
-            echo 'Na VPS, com o serviço a 0 e a foto final tirada (docs/PLANO-baileys-7.md, 6.2):'
+            echo 'Na VPS, SÓ com a fila de entrada vazia em TODAS as conexões (CLAUDE.md, seção 10; docs/INFRA-VPS.md, §9), com o serviço em stop-first. Sem mount: o prisma.config.ts já vem na imagem.'
             echo
             echo '```'
-            echo 'docker service update --image ${{ env.IMAGE }}:${{ inputs.tag }}@${{ steps.build.outputs.digest }} --mount-rm /evolution/prisma.config.ts evolution_evolution'
+            echo 'docker service update --image ${{ env.IMAGE }}:${{ inputs.tag }}@${{ steps.build.outputs.digest }} evolution_evolution'
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

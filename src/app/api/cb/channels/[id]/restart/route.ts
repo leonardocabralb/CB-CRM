@@ -6,7 +6,8 @@
 // `channelConnectionState` retorna cedo quando a Evolution responde 'open'
 // (evolution-admin.ts), então uma instância que se diz conectada e não
 // entrega nada só é CONFIRMADA — o estado mentiroso é inclusive regravado no
-// banco. Aqui o ciclo é forçado: logout → QR novo.
+// banco. Aqui o ciclo é forçado: logout → fechada confirmada → QR novo
+// (`repairChannelPairing`; o logout que falha com a sessão aberta para tudo).
 //
 // Custo, dito em voz alta na UI antes de chamar: o número fica MUDO até
 // alguém escanear o QR no celular. Nada se perde no CRM — `logout` não toca
@@ -22,7 +23,12 @@ import {
   getChannelWithSecrets,
   CB_CHANNEL_SAFE_COLUMNS,
 } from '@/lib/cb-channels/repo';
-import { repairChannelPairing } from '@/lib/cb-channels/evolution-admin';
+import {
+  FalhaDepoisDoLogout,
+  LogoutNaoPegou,
+  repairChannelPairing,
+  SessaoAindaDePe,
+} from '@/lib/cb-channels/evolution-admin';
 import { ehEvolution } from '@/lib/cb-channels/transporte';
 
 export async function POST(
@@ -58,12 +64,25 @@ export async function POST(
       );
     }
 
-    let res;
+    // ⚠️ `SessaoAindaDePe` (o logout falhou e a sessão segue aberta) e
+    // `LogoutNaoPegou` (a sessão antiga voltou sozinha): o repareamento parou
+    // ANTES do connect (logout que não pegou + connect = a sessão duplicada).
+    // A sessão segue de pé, então nada é gravado; a frase diz o que houve, sem
+    // o prefixo. `FalhaDepoisDoLogout`: o número JÁ caiu e só o QR não veio —
+    // segue gravando 'connecting' e abre o diálogo sem QR, cujo laço o pede.
+    let res: { qrBase64?: string; pairingCode?: string };
     try {
       res = await repairChannelPairing(channel.instance_name);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Erro desconhecido';
-      return NextResponse.json({ error: `Erro da Evolution: ${message}` }, { status: 502 });
+      if (err instanceof SessaoAindaDePe || err instanceof LogoutNaoPegou) {
+        return NextResponse.json({ error: err.message }, { status: 502 });
+      }
+      if (!(err instanceof FalhaDepoisDoLogout)) {
+        const message = err instanceof Error ? err.message : 'Erro desconhecido';
+        return NextResponse.json({ error: `Erro da Evolution: ${message}` }, { status: 502 });
+      }
+      console.warn('[cb/channels/restart] logout feito, o QR não veio (o diálogo pede de novo):', err.message);
+      res = {};
     }
 
     // 'connecting' é a verdade, não um chute otimista: o logout REALMENTE
