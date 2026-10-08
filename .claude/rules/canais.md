@@ -62,12 +62,14 @@ duplica a sessão: `.claude/rules/whatsapp-evolution.md`, "Pareamento".
   logout (`FalhaDepoisDoLogout`) grava `connecting` e abre o diálogo sem QR —
   o número já caiu. Dois Reparear simultâneos dividem a mesma promessa
   (`reparoEmCurso`): o segundo logout derrubaria o pareamento do primeiro.
-- ⚠️ **Sem o 3º patch da imagem, o diálogo é quem termina o Reparear** (o
-  `isDeleting` impede o 515 de reconectar): fechá-lo antes de "Número
-  conectado" deixa a conexão parada em `close` com credencial válida. E o
-  Reparear de instância que a Evolution já dá como `close` não desloga e pode
-  religar o chip antigo. Os dois somem com a imagem nova (`docs/INFRA-VPS.md`
-  §9).
+- ⚠️ **Na imagem SEM o 3º patch (o rollback), o diálogo é quem termina o
+  Reparear** (o `isDeleting` impede o 515 de reconectar): fechá-lo antes de
+  "Número conectado" deixa a conexão parada em `close` com credencial válida. E
+  o Reparear de instância que a Evolution já dá como `close` não desloga e pode
+  religar o chip antigo. A imagem em produção desde 08/10/2026 tem o patch
+  (`docs/INFRA-VPS.md` §9). Provado em produção em 06/10: o "Parear" de uma
+  conexão sem credencial, pelo CRM corrigido, abriu um socket só (515 →
+  reconexão em 3 s → `open`).
 - ⚠️ **O laço do QR é `setTimeout` ENCADEADO, nunca `setInterval`**: a rota leva
   mais de 5 s com a instância fechada, e com intervalo duas consultas corriam
   juntas. Pino: `cb-channels-panel.laco-do-qr.test.ts`.
