@@ -23,11 +23,10 @@ Operação da VPS e da imagem (digests, rollback, stack, backup): leia
 ### Baileys 7 / Evolution 2.4
 
 A produção roda a NOSSA imagem da Evolution 2.4 (Baileys 7.0.0-rc13), com os
-patches de `docker/evolution-cb/`. NO AR: a citação do cliente e a foto de
-perfil. O 3º (sessão única com a reconexão, 06/10/2026) está na pasta e ESPERA
-a troca da imagem com o operador — até ela, valem os avisos sem o patch abaixo;
-qual imagem está no ar é o `docs/INFRA-VPS.md` que diz. Plano vivo:
-`docs/PLANO-baileys-7.md`.
+três patches de `docker/evolution-cb/`: a citação do cliente, a foto de perfil
+e (no ar desde 08/10/2026) a sessão única com a reconexão. Os avisos "sem o
+patch" abaixo valem para a imagem de rollback; qual imagem está no ar é o
+`docs/INFRA-VPS.md` que diz. Plano vivo: `docs/PLANO-baileys-7.md`.
 
 - ⚠️ **Voltar de versão da imagem está DESCARTADO** (decisão do operador): a
   2.4 foi escolhida para acabar com o "Aguardando mensagem" — a Baileys 6 não
@@ -105,9 +104,13 @@ README de lá e em `docs/INFRA-VPS.md` §8). O lado do CRM está em
 - ⚠️ **Reconexão não grava estado no banco dela** sem o patch: numa queda
   longa o `connectionStatus` fica `open`. Com o patch, toda reconexão grava
   `connecting` antes do timer.
-- ⚠️ **Pareamento NOVO não traz o intervalo em que a conexão ficou fora**
-  (`syncFullHistory=false`): o que o número recebeu sem credencial fica só no
-  celular.
+- ⚠️ **Pareamento NOVO traz o histórico RECENTE só para o banco DA EVOLUTION**
+  (`syncType` 0 e 3 chegam mesmo com `syncFullHistory=false`; medido em 06/10:
+  ~23 mil mensagens em 1 min, depois de o celular aceitar o aparelho — nas
+  tentativas que ele recusou, nada veio). O CRM não assina esse evento: o
+  intervalo em que a conexão ficou fora entra à mão, pela receita da 1033 (o
+  lote `queda-trabalhista-juridico-2026-10-06`). ⚠️ A Evolution guarda cada
+  mensagem do histórico DUAS vezes: deduplicar por `key.id` antes de importar.
 
 ### O que virava bolha vazia (1060)
 

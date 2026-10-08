@@ -155,7 +155,7 @@ Todos apontam para `82.25.76.63` e entram pelo `websecure`.
 | `postgres` | `postgres_postgres` | `postgres:14` | 1 |
 | `redis` | `redis_redis` | `redis:latest` | 1 |
 | `pgvector` | `pgvector_pgvector` | `pgvector/pgvector:pg16` | 1 |
-| `evolution` | `evolution_evolution` | `ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao-foto` (por digest) | 1 |
+| `evolution` | `evolution_evolution` | `ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao-foto-sessao` (por digest) | 1 |
 | `crm` | `crm_crm` | `ghcr.io/leonardocabralb/cb-crm:<sha>` | 1 |
 | `crm` | `crm_agendador` | `curlimages/curl:8.11.1` | 1 |
 | `n8n` | `n8n_n8n_editor` / `_webhook` / `_worker` | `n8nio/n8n:latest` | 1 / 1 / 1 |
@@ -163,17 +163,21 @@ Todos apontam para `82.25.76.63` e entram pelo `websecure`.
 | `portainer` | `portainer_portainer` / `_agent` | `portainer/*` | 1 / global |
 | `openclaw` | `openclaw_openclaw-gateway` | `ghcr.io/openclaw/openclaw:latest` | 1 |
 
-⚠️ **A Evolution é uma IMAGEM NOSSA**, não a oficial — desde **17/09/2026
-12:39**: `ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao-foto@sha256:a7d56788ba127de3c7f759e57addf97bb54c71fedb1e955ab60d672753924126`
+⚠️ **A Evolution é uma IMAGEM NOSSA**, não a oficial — desde **08/10/2026
+10:41 BRT**: `ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao-foto-sessao@sha256:f73197c61fe2ea227df45d6117f101fddd1f2f367709b1817389dba6a3c43805`
 (Evolution **2.4.0** / Baileys **7.0.0-rc13**, construída pelo workflow
 `.github/workflows/evolution-cb.yml` a partir do commit `e273b904` do
-`develop` oficial, com DOIS patches — a citação do cliente e a foto de perfil
-que travava a fila de entrada em 1 msg/min (`docs/PLANO-baileys-7.md`, 5.10) —
-e o `prisma.config.ts` dentro — ver `docker/evolution-cb/README.md`). De
-09/09 21:11 a 17/09 12:39 rodou a `…-citacao@sha256:dc0f4e8b12de706414609464131b4099de5f0dd29d16bd011b74206089ff1adf`
-(só o primeiro patch), que é o **rollback curto** de hoje: mesmo commit, mesmas
-migrations, `docker service update --image <ela> evolution_evolution`, sem
-mount — e devolve o teto de 1 msg/min. ⚠️ Qualquer troca de imagem só com a
+`develop` oficial, com TRÊS patches — a citação do cliente, a foto de perfil
+que travava a fila de entrada em 1 msg/min (`docs/PLANO-baileys-7.md`, 5.10) e
+a sessão única com a reconexão depois do logout e do 408 (§8, 06/10) — e o
+`prisma.config.ts` dentro — ver `docker/evolution-cb/README.md`). De 17/09
+12:39 a 08/10 10:41 rodou a `…-citacao-foto@sha256:a7d56788ba127de3c7f759e57addf97bb54c71fedb1e955ab60d672753924126`
+(os dois primeiros patches), que é o **rollback curto** de hoje: mesmo commit,
+mesmas migrations, `docker service update --image <ela> evolution_evolution`,
+sem mount — e devolve os defeitos de sessão da §8 (06/10). Um passo atrás, a
+`…-citacao@sha256:dc0f4e8b12de706414609464131b4099de5f0dd29d16bd011b74206089ff1adf`
+(só o primeiro patch; 09/09 21:11 a 17/09 12:39) devolve também o teto de 1
+msg/min. ⚠️ Qualquer troca de imagem só com a
 fronteira de entrega da 1002 em ~0 s em todas as conexões: a Baileys confirma
 a mensagem ao servidor ANTES do handler, e o que está na fila em memória morre
 com o contêiner (medido em 17/09). O pacote no GHCR é **público**: a VPS o
@@ -429,8 +433,10 @@ e foi reconectado pelo diálogo de QR do CRM.
   no db 9 e `/root/backups/redis-juridico-trabalhista-20261006T174610Z.txt`).
 - A relação entre as chaves velhas e a remoção não está provada; o pareamento
   seguinte fica para depois do deploy do CRM.
-- Mensagens recebidas pelo número enquanto ele estava fora não chegam ao CRM:
-  a instância não sincroniza histórico (`syncFullHistory=false`).
+- Mensagens recebidas pelo número enquanto ele estava fora não chegam ao CRM
+  sozinhas: o histórico recente que o celular manda num pareamento novo vai só
+  para o banco da Evolution (o CRM não assina o evento) e se importa à mão (ver
+  "Depois", abaixo).
 
 **Conserto.**
 - Imagem: `docker/evolution-cb/sessao-unica-e-reconexao.patch` (um socket por
@@ -439,12 +445,26 @@ e foi reconectado pelo diálogo de QR do CRM.
 - CRM: só pede QR com a instância fechada CONFIRMADA (duas leituras, 6 s entre
   elas), uma operação por instância, o laço do QR encadeado, e o Reparear para
   se o logout falhar com a sessão aberta.
-- A troca da imagem, com a fila vazia e o operador ciente, é um passo à parte.
-  Até ela, valem os avisos da §9.
+- A troca da imagem, com a fila vazia e o operador ciente, foi um passo à parte
+  (abaixo).
 
 Backup do dia: `/root/backups/evolution-20261006T172735Z.dump` (banco `evolution`)
 e `/root/backups/evolution-log-20261006T172735Z.txt` (o log do contêiner antigo,
 desde 12:44 BRT, com o defeito).
+
+**Depois (06–08/10).**
+- 06/10 16:19 BRT: a Jurídico foi pareada PELO "Parear" do CRM já corrigido (um
+  socket, 515 → reconexão em 3 s → `open`, sem 440 nem `device_removed`). O
+  celular mandou o histórico recente, e as 45 mensagens do intervalo (14:21–16:19,
+  8 conversas, 5 mídias) foram importadas em 08/10 pela receita da 1033, lote
+  `queda-trabalhista-juridico-2026-10-06`.
+- 08/10 10:41 BRT: imagem trocada para a `…-citacao-foto-sessao@sha256:f73197c6…`
+  (§4), com a fila em ~1–2 s nas 4 conexões, `docker service update --image`
+  stop-first, 11 s de troca; as 4 voltaram `open` sozinhas, sem QR, migrations em
+  dia, licença ativa. Antes: log (`/root/backups/evolution-log-20261008T134109Z.txt`),
+  dump do banco (`/root/backups/evolution-20261008T134109Z.dump`) e cópia dos 4
+  hashes de chaves no db 9 (`backup:evolution:instance:<id>:20261008T134109Z`);
+  `/root/evolution-stack.yml` atualizado (cópia anterior em `/root/backups/`).
 
 ### 2026-09-30 — sessão legada `.99` descartava toda mensagem de um cliente
 
@@ -518,11 +538,11 @@ Movido do `CLAUDE.md` em 24/09/2026 (a seção "Baileys 7 / Evolution 2.4"),
 sem reescrever. É estado que envelhece: confira com `docker service inspect`
 antes de agir. O que foi medido e decidido está em `docs/PLANO-baileys-7.md`.
 
-- Operação (estado em 17/09/2026 12:39 BRT): a imagem é a NOSSA,
-  `ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao-foto@sha256:a7d56788…`
+- Operação (estado em 08/10/2026 10:41 BRT): a imagem é a NOSSA,
+  `ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao-foto-sessao@sha256:f73197c6…`
   (commit `e273b904` do `develop` + patch da citação do cliente + patch da
-  foto de perfil + `prisma.config.ts` dentro — `docker/evolution-cb/`), SEMPRE
-  por digest; `TELEMETRY_ENABLED=false`;
+  foto de perfil + patch da sessão única + `prisma.config.ts` dentro —
+  `docker/evolution-cb/`), SEMPRE por digest; `TELEMETRY_ENABLED=false`;
   a licença está ativa (tabela `RuntimeConfig` do banco `evolution`); a stack
   completa está em `ops/vps/evolution-stack.yml` (= `/root/evolution-stack.yml`,
   segredos em `/root/evolution.env`), e `docker stack deploy` da Evolution só
@@ -531,13 +551,15 @@ antes de agir. O que foi medido e decidido está em `docs/PLANO-baileys-7.md`.
   compartilhado com outros serviços); o log da Evolution morre no reinício do
   contêiner; o cron `docker image prune -af` apaga as imagens de rollback na
   madrugada seguinte (são públicas, voltam com `pull`).
-  ⚠️ **Desde 17/09/2026 12:39 BRT a imagem carrega DOIS patches** (o da
-  citação e o da foto de perfil que travava a fila de entrada — ver o
-  `docs/PLANO-baileys-7.md`, 5.10 e a seção 16). Trocada por `docker service update
-  --image …@sha256:a7d56788…` (stop-first: 17 s de troca, as 4 conexões
-  voltaram `open` em < 1 min, `prisma migrate deploy` sem pendência). Rollback
-  = o digest anterior, `…citacao@sha256:dc0f4e8b…` (mesmo commit, mesmas
-  migrations). O `.yml` da stack acompanha o digest. ⚠️⚠️ **Trocar o
+  ⚠️ **Desde 08/10/2026 10:41 BRT a imagem carrega TRÊS patches** (o da
+  citação; o da foto de perfil que travava a fila de entrada — ver o
+  `docs/PLANO-baileys-7.md`, 5.10 e a seção 16; e o da sessão única com a
+  reconexão — §8, 06/10). Trocada por `docker service update --image
+  …@sha256:f73197c6…` (stop-first: 11 s de troca, as 4 conexões voltaram `open`
+  sozinhas, `prisma migrate deploy` sem pendência; a anterior, a `-foto`, entrou
+  em 17/09 do mesmo jeito, em 17 s). Rollback = o digest anterior,
+  `…citacao-foto@sha256:a7d56788…` (mesmo commit, mesmas migrations; devolve os
+  avisos sem o patch, abaixo). O `.yml` da stack acompanha o digest. ⚠️⚠️ **Trocar o
   contêiner com a fila de entrada represada PERDE a fila para o CRM** (a
   Baileys acka ao servidor ANTES do handler; medido em 17/09: os ~27 min
   represados da Bancário-Comercial ficaram só no celular). Reinício de
@@ -562,9 +584,8 @@ espere chegar uma mensagem nova.
 - `POST /instance/restart/<instância>` (a API da Evolution) segue como
   PALIATIVO do atraso de entrega: drena a fila (16 min em 1 min, medido em
   16/09), não tira a causa. Causa e conserto: `docs/PLANO-baileys-7.md`, 5.10.
-- ⚠️ **Até a imagem com `sessao-unica-e-reconexao.patch` entrar** (o patch está
-  em `docker/evolution-cb/` desde 06/10/2026; a imagem em produção ainda tem só
-  os dois primeiros):
+- ⚠️ **Na imagem SEM `sessao-unica-e-reconexao.patch`** (a de antes de 08/10/2026
+  10:41 BRT — o rollback curto acima — ou qualquer outra que o perca):
   - toda instância que passou por um logout (o "Reparear") desde a subida do
     contêiner fica com `isDeleting` ligado. Nela, queda nenhuma reconecta
     sozinha, e o `POST /instance/restart` a deixa FECHADA (o restart derruba o
@@ -583,13 +604,15 @@ espere chegar uma mensagem nova.
   - antes de ler um QR numa instância cuja credencial foi apagada por uma queda,
     o hash `evolution:instance:<id>` do db 8 fica com as chaves do aparelho
     morto (ver §8, 06/10).
-  Depois da troca: conferir no log `Reconnect skipped`, `Ignoring connection.update
-  from a superseded socket` e `createClient superseded` quando houver
-  repareamento, e atualizar a imagem vigente na §4 e em `ops/vps/evolution-stack.yml`.
-  Com a imagem nova, o logout SEMPRE apaga credencial e chaves, mesmo com o
-  socket já morto — e aí o WhatsApp não é avisado: depois de um Reparear,
-  conferir "Aparelhos conectados" no celular e remover o aparelho antigo (conta
-  no limite de 4).
+  Com o patch (a imagem de hoje): o primeiro repareamento depois da troca é a
+  prova em produção — procurar no log `Reconnect skipped`, `Ignoring
+  connection.update from a superseded socket` e `createClient superseded`. O
+  logout SEMPRE apaga credencial e chaves, mesmo com o socket já morto — e aí o
+  WhatsApp não é avisado: depois de um Reparear, conferir "Aparelhos conectados"
+  no celular e remover o aparelho antigo (conta no limite de 4). ⚠️ A imagem de
+  rollback (`…-foto@sha256:a7d56788…`) ficou sem contêiner e o
+  `docker image prune -af` da madrugada a apaga: rollback = `docker pull` antes
+  (pública) — segurá-la com um contêiner parado é a P12, decisão do operador.
 - ⚠️ **Voltar de versão da imagem está DESCARTADO por decisão do operador**:
   a atual foi escolhida para resolver o "Aguardando mensagem" (mensagens que
   não chegavam ao cliente). O rollback curto é o digest anterior, no mesmo

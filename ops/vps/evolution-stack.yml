@@ -13,7 +13,7 @@ version: "3.8"
 
 services:
   evolution:
-    image: ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao-foto@sha256:a7d56788ba127de3c7f759e57addf97bb54c71fedb1e955ab60d672753924126
+    image: ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao-foto-sessao@sha256:f73197c61fe2ea227df45d6117f101fddd1f2f367709b1817389dba6a3c43805
     env_file:
       - /root/evolution.env
     volumes:
