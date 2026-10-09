@@ -200,7 +200,10 @@ a rota `/api/cb/reunioes`, `src/components/reunioes/`. Plano:
   1. A reagendada não é "a próxima" de quem começa DEPOIS do Reagendar dela
      (a substituta, inclusive a ANTECIPADA pelo link manual, ficaria só
      registrando). Para quem já tinha começado, ela segue a próxima: o card é
-     dela. Na faixa, ela não é a próxima citada (`deVerdade`).
+     dela. Na faixa, ela não é a próxima citada (`deVerdade`). Só sai se o
+     resultado FINAL continua Reagendar (Codex): corrigida pelo quadro, volta
+     a ser fronteira — por isso a conta vai da mais nova para a mais antiga
+     (`calcularVizinhancas`).
   2. A ENTRADA em etapa "Reagendar" só vale até o agendamento de outra reunião
      feito depois do início desta (`ateDoReagendar`; na faixa, `agendadaEm`):
      depois, é o Reagendar antes do horário da outra, e resolvia a anterior

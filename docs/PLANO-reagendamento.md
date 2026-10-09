@@ -222,7 +222,9 @@ frente). Sem código.
   integração e na revisão independente do PR #395, regras em
   `.claude/rules/reunioes.md`): (1) a reagendada não é "a próxima" de quem
   começa depois do Reagendar dela — a reunião que o cliente ANTECIPOU pelo
-  link manual ficava só registrando; (2) a entrada em "Reagendar" só vale
+  link manual ficava só registrando —, e só enquanto o resultado final dela
+  continua Reagendar (corrigida pelo quadro, volta a ser fronteira; Codex);
+  (2) a entrada em "Reagendar" só vale
   para uma reunião até o agendamento da seguinte — senão o Reagendar da nova
   resolvia a anterior por cima do no show dela; (3) a reagendada fecha a
   trilha no agendamento da substituta — senão herdava o no show ou a proposta
