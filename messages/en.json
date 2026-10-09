@@ -1831,7 +1831,7 @@
         "reunioes": {
           "titulo": "Meetings",
           "notaPorPeriodo": "Bookings = leads that reached {degrau} in the period; no-show = each entry into a stage marked “No-show” in the period. The stage marked “Reschedule” is a work queue and does not count. Flow ratio: the rate can go above 100%.",
-          "notaPorEntrada": "Of the leads that entered in the period: who reached {degrau} and each of their entries into a stage marked “No-show”. The stage marked “Reschedule” is a work queue and does not count.",
+          "notaPorEntrada": "Of the leads that entered in the period: who reached {degrau} and each of their entries into a stage marked “No-show”. The stage marked “Reschedule” is a work queue and does not count. Each entry counts: the rate can go above 100%.",
           "agendamentos": "Bookings",
           "agendamentosDesc": "reached {degrau}",
           "noShows": "No-shows",

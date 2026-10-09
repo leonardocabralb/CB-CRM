@@ -263,14 +263,19 @@ custo (`no_show`). Plano: Fase 4 de `docs/PLANO-reagendamento.md`.
   (`Classificacao.etapasDeFalta`, pela marca que VALE — `marcaDaReuniaoQueVale`)
   NESTE funil; quem faltou duas vezes são dois. **Agendamentos** = quem
   alcançou o degrau reunião (o cartão do funil, `agendamentosDe`). **Taxa** =
-  no-shows ÷ agendamentos (`taxaDeNoShow`; sem agendamento, `null`). Por
-  período é razão de fluxo e pode passar de 100%; na coorte, todas as entradas
-  dos leads que entraram no período.
+  no-shows ÷ agendamentos (`taxaDeNoShow`; sem agendamento, `null`). Pode
+  passar de 100% nos DOIS modos (cada entrada conta; por período é também
+  fluxo); na coorte, todas as entradas dos leads que entraram no período.
 - ⚠️ **A etapa "Reagendar" é FILA DE TRABALHO, fora da conta**: quem faltou e
   foi para lá continua com o no-show; quem avisou antes e foi direto para lá
   nunca entrou no No Show.
-- Só no funil com etapa "Faltou" (a seção, a tabela e o cartão de custo).
-  No-show no período é atividade (`periodoSemAtividade`).
+- Só no funil que mede no-show (`funilMedeNoShow`: etapa "Faltou" E degrau
+  reunião mapeado — sem ele, "agendamentos" viria só de quem pulou para a
+  proposta): a seção, a tabela e o cartão de custo. No-show no período é
+  atividade (`periodoSemAtividade`).
+- Limite aceito: o No Show por engano, corrigido depois (pela pauta ou pelo
+  quadro), continua contado — a entrada aconteceu. É o preço de contar pela
+  transição.
 
 ### CSV
 

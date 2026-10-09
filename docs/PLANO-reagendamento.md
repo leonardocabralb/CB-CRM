@@ -375,6 +375,6 @@ com as chaves nos dois dicionários.
   qualquer mudança de etapa.
 - **Lembrete**: só para se o card sair de Reunião Agendada/MQL 2 — é o botão
   que o tira. Card que fica onde está continua recebendo lembrete.
-- **Medida (Fase 4)**: a régua do resultado é a da pauta; mudar uma sem a
-  outra faria a pauta e o Desempenho discordarem sobre a mesma reunião. A
-  conta usa a função da pauta, nunca uma cópia.
+- **Medida (Fase 4, refeita)**: a medida NÃO depende da pauta — conta as
+  entradas do card nas etapas marcadas "Faltou" (o mesmo resumo do funil).
+  O No Show por engano, corrigido depois, continua contado (limite aceito).

@@ -39,6 +39,7 @@ import {
   type CartaoDeCusto,
   cartoesDeCustoNaTela,
   estadoDoDegrau,
+  funilMedeNoShow,
   lerPainel,
   rotuloDoDegrau as rotuloNoPainel,
 } from "@/lib/funil/painel";
@@ -80,8 +81,8 @@ import { SeletorDePeriodo } from "./seletor-de-periodo";
  *   quais degraus aparecem (o que "não se aplica" some; o esquecido sai
  *   tracejado) e quais cartões de custo. As cores e a grade estão em
  *   `src/lib/funil/cores.ts`.
- * - A seção REUNIÕES (`reunioes-do-periodo.tsx`, 09/10/2026) só no funil com
- *   etapa marcada "Faltou": agendamentos, no-shows e a taxa, pelas
+ * - A seção REUNIÕES (`reunioes-do-periodo.tsx`, 09/10/2026) só no funil que
+ *   mede no-show (`funilMedeNoShow`): agendamentos, no-shows e a taxa, pelas
  *   TRANSIÇÕES do card, no mesmo resumo (`noShows`, `taxaDeNoShow`).
  */
 
@@ -544,8 +545,8 @@ export function Desempenho({
           </section>
 
           {/* Reuniões: agendamentos, no-shows e a taxa, pelas transições do card
-              (só no funil com etapa marcada "Faltou"). */}
-          {classificacao.etapasDeFalta.size > 0 && (
+              (só no funil que mede no-show: etapa "Faltou" e degrau reunião). */}
+          {funilMedeNoShow(classificacao, painel) && (
             <ReunioesDoPeriodo
               atual={atual}
               anterior={resumoAnterior}

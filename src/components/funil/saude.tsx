@@ -15,7 +15,7 @@ import { agendamentosDe, taxaDeNoShow } from "@/lib/funil/coorte";
 import { corDaTransicao } from "@/lib/funil/cores";
 import { custosMensais } from "@/lib/funil/custos";
 import { classificarEtapas, type Degrau } from "@/lib/funil/degraus";
-import { cartoesDeCustoNaTela, lerPainel, rotuloDoDegrau as rotuloNoPainel } from "@/lib/funil/painel";
+import { cartoesDeCustoNaTela, funilMedeNoShow, lerPainel, rotuloDoDegrau as rotuloNoPainel } from "@/lib/funil/painel";
 import { inicioDoMesLocal } from "@/lib/funil/periodo";
 import { periodoSemAtividade } from "@/lib/funil/por-periodo";
 import { COORTE_PEQUENA, coortesMensais, linhasDoMapa, type TransicaoDoHistorico } from "@/lib/funil/saude";
@@ -51,7 +51,7 @@ import { SeletorDeModo } from "./seletor-de-modo";
  * (`custosMensais` → `custosDoResumo`) e os mesmos cartões que o painel do
  * funil mostra. As cores das linhas estão em `src/lib/funil/cores.ts`.
  *
- * REUNIÕES (09/10/2026), só no funil com etapa marcada "Faltou":
+ * REUNIÕES (09/10/2026), só no funil que mede no-show (`funilMedeNoShow`):
  * agendamentos, no-shows e a taxa de cada mês, do MESMO resumo do mês
  * (`noShows`, `taxaDeNoShow`) — a conta do Desempenho, pelas transições do
  * card. O custo por no-show está na tabela de custos.
@@ -251,8 +251,8 @@ export function Saude({
       </section>
 
       {/* Reuniões por mês: agendamentos, no-shows e a taxa, pelas transições do
-          card (só no funil com etapa marcada "Faltou"). */}
-      {classificacao.etapasDeFalta.size > 0 && (
+          card (só no funil que mede no-show: etapa "Faltou" e degrau reunião). */}
+      {funilMedeNoShow(classificacao, painel) && (
         <section className="rounded-xl border border-border bg-card p-4">
           <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
             {tDesempenho("reunioes.titulo")}{" "}

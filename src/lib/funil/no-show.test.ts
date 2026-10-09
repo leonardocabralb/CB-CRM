@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { agendamentosDe, comparar, resumoDoPeriodo, taxaDeNoShow } from "./coorte";
 import { custosDoResumo } from "./custos";
 import { classificarEtapas, type EtapaMinima } from "./degraus";
-import { cartoesDeCustoNaTela, lerPainel } from "./painel";
+import { cartoesDeCustoNaTela, funilMedeNoShow, lerPainel } from "./painel";
 import type { Intervalo } from "./periodo";
 import { periodoSemAtividade, resumoPorPeriodo } from "./por-periodo";
 import { fatosDoNegocio, type LinhaDeTrajetoria, type PassoDoTrajeto } from "./trajetoria";
@@ -212,6 +212,18 @@ describe("o custo por no-show", () => {
     expect(cartoesDeCustoNaTela(C, lerPainel({ custos_ocultos: ["no_show"] }))).not.toContain("no_show");
     const semFalta = classificarEtapas(ETAPAS.map((e) => ({ ...e, desfecho_da_reuniao: null })));
     expect(cartoesDeCustoNaTela(semFalta, lerPainel({}))).not.toContain("no_show");
+  });
+
+  it("⚠️ funil com etapa 'Faltou' mas SEM degrau reunião não mede no-show (agendamentos viriam só de quem pulou para a proposta)", () => {
+    const semReuniao = classificarEtapas([
+      etapa("lead", 0, "lead"),
+      etapa("no-show", 1, null, "faltou"),
+      etapa("proposta", 2, "proposta"),
+    ]);
+    expect(semReuniao.etapasDeFalta.size).toBe(1);
+    expect(funilMedeNoShow(semReuniao, lerPainel({}))).toBe(false);
+    expect(cartoesDeCustoNaTela(semReuniao, lerPainel({}))).not.toContain("no_show");
+    expect(funilMedeNoShow(C, lerPainel({}))).toBe(true);
   });
 
   it("vem logo depois do custo por reunião", () => {

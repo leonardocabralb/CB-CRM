@@ -298,9 +298,10 @@ export function agendamentosDe(resumo: ResumoDoPeriodo): number {
 
 /**
  * Taxa de no-show = no-shows ÷ agendamentos (decisão do operador,
- * 09/10/2026). Nulo sem agendamento ("—", nunca 0%). Por período é razão de
- * FLUXO, como as outras taxas: o no-show deste mês pode ser de reunião
- * agendada no mês passado, e cada entrada conta — pode passar de 100%.
+ * 09/10/2026). Nulo sem agendamento ("—", nunca 0%). Pode passar de 100% nos
+ * DOIS modos: cada entrada conta (quem faltou duas vezes são dois); por
+ * período, ainda, é razão de FLUXO (o no-show deste mês pode ser de reunião
+ * agendada no mês passado).
  */
 export function taxaDeNoShow(resumo: ResumoDoPeriodo): number | null {
   const agendamentos = agendamentosDe(resumo);

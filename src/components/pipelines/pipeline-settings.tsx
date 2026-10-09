@@ -873,8 +873,8 @@ function SortableStageRow({
           "Qualificada" é o destino do botão "Reunião qualificada" (antes da
           reunião; o aviso de no-show não a lê como comparecimento). 1081:
           "Reagendar" é o destino do botão "Reagendar" (antes e depois do
-          início): o cliente avisou que não vai e pediu nova data — não é
-          falta, e nem o "Já faltou" nem o aviso de no-show a leem assim.
+          início): fila de trabalho de quem quer remarcar — não é falta nem
+          métrica, e nem o "Já faltou" nem o aviso de no-show a leem assim.
           ⚠️ Da proposta em diante o campo TRAVA: o degrau já diz
           "compareceu, com proposta", e a marcação ali é ignorada por todo
           leitor (`marcaDaReuniaoQueVale`) — marcar "Proposta Realizada" como

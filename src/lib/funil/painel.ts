@@ -172,14 +172,24 @@ export function degrausNaTela(classificacao: Classificacao, painel: PainelDoFuni
  * escondeu e, os de degrau, só com o degrau MAPEADO — custo por reunião num
  * funil sem reunião seria sempre "—", e o tracejado do funil já avisa o
  * esquecimento. Investimento, CAC e custo dos perdidos não dependem de
- * degrau; o custo por no-show depende de etapa marcada "Faltou".
+ * degrau; o custo por no-show depende de `funilMedeNoShow`.
  */
+/**
+ * O funil mede no-show? Etapa marcada "Faltou" (`etapasDeFalta`) E o degrau
+ * reunião MAPEADO — os agendamentos são quem o alcançou; sem ele, o número
+ * viria só de quem pulou para a proposta, com cara de agendamento. Vale para
+ * a seção do Desempenho, a tabela da Saúde e o custo por no-show.
+ */
+export function funilMedeNoShow(classificacao: Classificacao, painel: PainelDoFunil): boolean {
+  return classificacao.etapasDeFalta.size > 0 && estadoDoDegrau("reuniao", classificacao, painel) === "mapeado";
+}
+
 export function cartoesDeCustoNaTela(classificacao: Classificacao, painel: PainelDoFunil): CartaoDeCusto[] {
   return CARTOES_DE_CUSTO.filter((c) => {
     if (painel.custosOcultos.includes(c)) return false;
-    // Custo por no-show só no funil com etapa marcada "Faltou": nos outros
-    // seria sempre "—".
-    if (c === "no_show") return classificacao.etapasDeFalta.size > 0;
+    // Custo por no-show só no funil que mede no-show: nos outros seria
+    // sempre "—".
+    if (c === "no_show") return funilMedeNoShow(classificacao, painel);
     const degrau = degrauDoCartao(c);
     return degrau === null || estadoDoDegrau(degrau, classificacao, painel) === "mapeado";
   });

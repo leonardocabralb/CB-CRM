@@ -1824,7 +1824,7 @@
         "reunioes": {
           "titulo": "Reuniões",
           "notaPorPeriodo": "Agendamentos = quem chegou a {degrau} no período; no-show = cada entrada numa etapa marcada “Faltou” no período. A etapa marcada “Reagendar” é fila de trabalho e não entra na conta. Razão de fluxo: a taxa pode passar de 100%.",
-          "notaPorEntrada": "Dos leads que entraram no período: quem chegou a {degrau} e cada entrada deles numa etapa marcada “Faltou”. A etapa marcada “Reagendar” é fila de trabalho e não entra na conta.",
+          "notaPorEntrada": "Dos leads que entraram no período: quem chegou a {degrau} e cada entrada deles numa etapa marcada “Faltou”. A etapa marcada “Reagendar” é fila de trabalho e não entra na conta. Cada entrada conta: a taxa pode passar de 100%.",
           "agendamentos": "Agendamentos",
           "agendamentosDesc": "chegaram a {degrau}",
           "noShows": "No-shows",

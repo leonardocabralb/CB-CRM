@@ -998,9 +998,10 @@ export interface PipelineStage {
    * comparecimento: o aviso de no-show a lê como nula, nunca como
    * "compareceu".
    *
-   * 'reagendar' (1081) é a etapa do botão "Reagendar" da pauta: o cliente
-   * AVISOU que não vai e pediu nova data. Não é falta: nem "Já faltou" nem a
-   * faixa de possível no-show a leem como "faltou".
+   * 'reagendar' (1081) é a etapa do botão "Reagendar" da pauta: FILA DE
+   * TRABALHO de quem demonstrou interesse em remarcar. Não é falta (nem "Já
+   * faltou" nem a faixa de possível no-show a leem assim) e fica fora das
+   * métricas (decisão do operador, 09/10/2026).
    *
    * ⚠️ Em etapa de degrau proposta, contrato ou pasta a marcação NÃO vale — o
    * degrau já diz "compareceu, com proposta". Leia sempre por

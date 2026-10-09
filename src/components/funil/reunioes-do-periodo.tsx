@@ -31,7 +31,7 @@ import {
  * - A etapa "Reagendar" é fila de trabalho interna e NÃO entra na conta.
  *
  * O custo por no-show é um cartão de custo como os outros (`custosDoResumo`).
- * Só aparece no funil com etapa marcada "Faltou" (`etapasDeFalta`).
+ * Só aparece no funil que mede no-show (`funilMedeNoShow`).
  */
 
 type Bom = "subir" | "descer";
