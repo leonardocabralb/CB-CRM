@@ -144,6 +144,14 @@ operador: nada no card, na lista nem na aba).
 a rota `/api/cb/reunioes`, `src/components/reunioes/`. Plano:
 `docs/PLANO-pauta-de-reunioes.md`.
 
+- ⚠️⚠️ **A CARGA é uma só para as duas rotas** (`carregar.ts`): a pauta e o
+  resumo do Desempenho (`/api/cb/reunioes/resumo`, o comparecimento por funil
+  — `.claude/rules/funil-metricas.md`). Leitura nova da pauta entra lá, senão
+  as duas telas discordam sobre a mesma reunião. O que pode passar de 1000
+  linhas (reuniões da janela, data da ficha, histórico e negócios de cada
+  lote de contatos, trilha, passos do negócio) pagina pela CHAVE (`paginarPorChave`); a pauta limita a janela a 120 dias,
+  o resumo não ("Total").
+
 - ⚠️⚠️ **O resultado tem DUAS fontes e vence a mais recente**: o marco da
   tela (`cb_reunioes_marcos`, por reunião) e a TRILHA do card (entrada numa
   etapa "faltou"/"compareceu"/"reagendar" ou de proposta em diante, DEPOIS do

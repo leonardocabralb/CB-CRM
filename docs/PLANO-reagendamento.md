@@ -30,7 +30,7 @@ Regras da área: `.claude/rules/reunioes.md`, `.claude/rules/funil.md` e
 | 1 | Este plano: levantamento, desenho e as decisões do operador | Concluída (09/10/2026) |
 | 2 | Reagendar no código: migration, pauta, Meu dia, Gerenciar funil, faixa de possível no-show | PR #395: 1081 aplicada em produção (09/10/2026), teste no preview e revisão do Codex feitos; no ar com o merge |
 | 3 | Configuração pelo operador: criar a etapa, marcar, ajustar o botão de avançar | Feita em 09/10/2026 pela tela (preview no banco de produção): etapa "Reagendar" no Bancário - Comercial (degrau reunião, marca Reagendar) e o botão de avançar |
-| 4 | Medida de comparecimento no Desempenho | Não começada — PR próprio, depois da Fase 2 |
+| 4 | Medida de comparecimento no Desempenho | Implementada na branch `feat/comparecimento-no-desempenho` (09/10/2026), conferida no preview contra o banco; espera revisão e o OK do operador para o merge |
 
 ## Decisões do operador (09/10/2026)
 
@@ -283,6 +283,44 @@ com as chaves nos dois dicionários.
 - As reuniões históricas da Kommo (1036) não entram: não têm resultado.
 - "Total" lê todas as reuniões desde 08/09/2026: medir o tempo de carga antes
   do merge (hoje ~140 agendamentos por mês).
+
+**O que mudou em relação ao planejado** (na implementação, branch
+`feat/comparecimento-no-desempenho`):
+
+- **A rota devolve uma linha por reunião, não contagens**: `{ inicio, funil,
+  resultado }` de cada reunião que já começou — nenhum dado do cliente. A
+  conta por funil e por período é do navegador (`comparecimento.ts`), com UMA
+  carga para o período e o anterior, como as trajetórias do Desempenho.
+  `de` e `ate` são opcionais (sem `de` = desde o começo; sem `ate` = agora);
+  só admin; o limite de pedidos é o da pauta, com chave própria (sem mexer em
+  `rate-limit.ts`, que é contrato da API).
+- **A carga saiu para `src/lib/reunioes/carregar.ts`** sem mudar o resultado
+  da pauta (conferido no preview: a resposta da rota da pauta na produção e na
+  branch tem o MESMO hash em duas janelas, 25 e 112 reuniões). As reuniões da
+  janela e a trilha passaram a paginar pela CHAVE (antes: estourava em 1000;
+  a trilha ia por posição). A leitura nova `carregarPassosDosNegocios` dá o
+  funil do card no início da reunião (`funilNoInstante`).
+- **O aviso de 28/09 no "Total" não entrou**: data fixa do escritório no
+  produto. O "N sem resultado" do cabeçalho mostra o mesmo fato.
+- **Com reunião no período, a nota "Nada aconteceu neste funil" some**
+  (no modo por período; com as reuniões carregando ela também não afirma).
+- **Com período anterior e sem variação** (zero lá, taxa sem denominador), o
+  cartão diz o valor de lá ("0 no período anterior"), nunca "sem período
+  anterior". No-show que sobe sai em vermelho; reagendar é neutro.
+- **Números de 09/10/2026** (Bancário - Comercial, conferidos contra a pauta):
+  "Este mês" 28 reuniões — 9 compareceram (6 com proposta), 17 no-show,
+  0 reagendaram, 2 sem resultado, comparecimento 34,6%; "Total" 110 reuniões,
+  todas no Comercial no dia (36 sem resultado, quase todas de antes de 28/09).
+  Carga em modo dev: Total ~3,6 s, Este ano ~2,9 s, Este mês ~1,9 s.
+- **Limite visto no teste**: o "Reagendar" de setembro no histórico é do lead
+  de teste — a entrada do card dele na etapa "Reagendar" (teste da Fase 2)
+  resolveu a reunião antiga dele, que não tinha reunião seguinte. É a regra
+  da pauta (o resultado não congela); ver a pergunta ao operador no PR.
+- **Limite herdado da pauta** (revisão independente): o card da reunião é o
+  que a pauta escolhe (`negocioDoContato`, o aberto mais novo que já existia
+  no início). Contato com dois cards abertos em funis diferentes conta no
+  funil do mais novo; mudar isso muda a pauta (decisão do operador). Em
+  09/10/2026 nenhum contato tinha dois cards.
 
 ## Ordem
 

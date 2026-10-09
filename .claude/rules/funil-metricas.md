@@ -8,6 +8,7 @@ paths:
   - "src/hooks/use-trajetorias*"
   - "src/hooks/use-modo-de-contagem*"
   - "src/hooks/use-gastos-de-anuncios*"
+  - "src/hooks/use-reunioes-do-desempenho*"
   - "src/components/pipelines/pipeline-settings.tsx"
   - "src/components/pipelines/pipeline-analytics.tsx"
   - "src/lib/csv*"
@@ -247,6 +248,39 @@ coorte ("por mês de entrada") fica sob demanda.
 - A recarga ao voltar para o app (`useTrajetorias` que PISCA, gasto dos
   anúncios junto, catálogo da Lista em silêncio) está em
   `.claude/rules/ao-voltar.md`.
+
+### Reuniões no Desempenho (comparecimento, D4/D5 de 09/10/2026)
+
+`src/lib/funil/comparecimento.ts` (puro), `reunioes-do-periodo.tsx`,
+`use-reunioes-do-desempenho.ts` e a rota `GET /api/cb/reunioes/resumo` (só
+admin). Plano: Fase 4 de `docs/PLANO-reagendamento.md`.
+
+- ⚠️⚠️ **O resultado é o da PAUTA, nunca uma cópia**: a rota roda a mesma
+  carga e a mesma régua de `/reunioes` (`carregarDadosDaPauta` →
+  `montarPauta`). Régua própria faria as duas telas discordarem sobre a mesma
+  reunião.
+- ⚠️⚠️ **A reunião conta no funil em que o card estava NO INÍCIO dela**
+  (`funilNoInstante`: a última entrada `deal_created`/`stage_changed`/
+  `pipeline_changed` até ali, por `occurred_at`), nunca o
+  `negocio.pipelineId` de hoje — o cliente que fechou e foi para o Jurídico
+  sumiria do Comercial. Sem card no início = fora de todo funil (a seção diz
+  quantas).
+- **Pela DATA DA REUNIÃO nos dois modos** (reunião é evento, não coorte), só
+  as que já começaram, `[desde, ate)`.
+- ⚠️ **Comparecimento = compareceram ÷ (compareceram + no-show)**:
+  reagendadas e sem resultado ficam FORA e aparecem à parte; sem denominador
+  é `null` ("—"). Com período anterior e sem variação (zero lá, taxa sem
+  denominador), o cartão mostra o valor de lá, nunca "sem período anterior".
+- Só no funil com etapa marcada Compareceu/Faltou/Reagendar
+  (`funilMedeComparecimento`, pela marca que VALE); nos outros nem busca.
+  Com reunião no período, a nota "Nada aconteceu neste funil" some (e não
+  afirma com as reuniões carregando).
+- A rota devolve só `{ inicio, funil, resultado }`: nenhum dado do cliente.
+- Limites: o resultado não congela (entrada tardia em etapa de resultado muda
+  reunião antiga, como na pauta); a reunião substituída no Calendly sai com o
+  Reagendar dela; o card é o que a PAUTA escolhe (`negocioDoContato`: o
+  aberto mais novo que já existia no início) — contato com dois cards
+  abertos em funis diferentes conta no do mais novo (em 09/10/2026, nenhum).
 
 ### CSV
 

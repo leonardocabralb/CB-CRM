@@ -1826,7 +1826,25 @@
           "semGasto": "No spend in this period on this pipeline's campaigns."
         },
         "periodoPorAtividade": "Counts what happened in the period (each lead once per step)",
-        "semAtividade": "Nothing happened in this pipeline in the period: no lead entered, advanced or was lost."
+        "semAtividade": "Nothing happened in this pipeline in the period: no lead entered, advanced or was lost.",
+        "reunioes": {
+          "titulo": "Meetings",
+          "carregando": "Loading the meetings…",
+          "noAnterior": "{valor} in the previous period",
+          "noPeriodo": "{n} meeting(s) in the period",
+          "semResultado": "{n} without a result",
+          "nota": "By the meeting date, in both modes, in the pipeline the card was in on the day. Attendance rate = attended ÷ (attended + no-show); rescheduled meetings and those without a result are left out.",
+          "falhou": "Couldn't load the meetings.",
+          "compareceram": "Attended",
+          "comProposta": "{n} with a proposal",
+          "noShow": "No-show",
+          "noShowDesc": "didn't show up and didn't warn",
+          "reagendaram": "Rescheduled",
+          "reagendaramDesc": "warned and asked for a new date",
+          "comparecimento": "Attendance rate",
+          "comparecimentoDesc": "attended ÷ (attended + no-show)",
+          "foraDeFunil": "{n} meeting(s) in the period had no card on the day and don't count in any pipeline."
+        }
       },
       "cartoesDeCusto": {
         "investimento": "Spend",

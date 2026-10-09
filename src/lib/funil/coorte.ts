@@ -264,7 +264,8 @@ export interface Comparacao {
   transicoes: (Pick<Transicao, "de" | "para"> & DeltaDeTaxa)[];
 }
 
-function contagem(atual: number, anterior: number | null): DeltaDeContagem {
+/** Também do comparecimento (`comparecimento.ts`): a MESMA variação dos outros cartões. */
+export function contagem(atual: number, anterior: number | null): DeltaDeContagem {
   return {
     atual,
     anterior,
@@ -272,7 +273,7 @@ function contagem(atual: number, anterior: number | null): DeltaDeContagem {
   };
 }
 
-function taxa(atual: number | null, anterior: number | null): DeltaDeTaxa {
+export function taxa(atual: number | null, anterior: number | null): DeltaDeTaxa {
   return {
     atual,
     anterior,
