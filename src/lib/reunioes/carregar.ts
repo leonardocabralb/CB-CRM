@@ -18,7 +18,8 @@ import type { PassoDeFunil } from './resumo';
  *
  * ⚠️ O que pode passar de 1000 linhas (o PostgREST corta sem avisar) é
  * paginado pela CHAVE (`paginarPorChave`): as reuniões da janela — o resumo
- * pede "Total" — , a data da ficha da conta inteira e a trilha. Por posição, a
+ * pede "Total" —, a data da ficha da conta inteira, o histórico (agenda,
+ * Calendly e negócios) de cada lote de contatos e a trilha. Por posição, a
  * escrita concorrente (o Calendly, a iMotion, quem move o card) pula ou repete
  * linha.
  */
@@ -175,29 +176,37 @@ export async function carregarDadosDaPauta(
   // E TODA a agenda do CRM desses contatos: a próxima reunião de um contato
   // (que decide se o card ainda é desta reunião) pode cair fora da janela.
   const agendaPorId = new Map(linhasDaAgenda.map((a) => [a.id, a]));
+  // Pela CHAVE também: no "Total" do resumo os contatos podem ser a conta
+  // inteira, e um lote com mil agendamentos antigos estourava (Codex, PR #396).
   for (const ids of lotes(contatos)) {
-    const { data, error } = await admin
-      .from('cb_meetings')
-      .select(SELECT_DA_AGENDA)
-      .eq('account_id', conta)
-      .neq('status', 'cancelada')
-      .in('contact_id', ids)
-      .limit(PAGINA);
-    if (error) throw new Error(`agenda dos contatos: ${error.message}`);
-    if ((data ?? []).length >= PAGINA) throw new Error('reuniões da agenda demais para uma leitura');
-    for (const a of (data ?? []) as LinhaDaAgenda[]) agendaPorId.set(a.id, a);
+    const linhas = await paginarPorChave<LinhaDaAgenda>('agenda dos contatos', (depoisDe) => {
+      let q = admin
+        .from('cb_meetings')
+        .select(SELECT_DA_AGENDA)
+        .eq('account_id', conta)
+        .neq('status', 'cancelada')
+        .in('contact_id', ids)
+        .order('id')
+        .limit(PAGINA);
+      if (depoisDe) q = q.gt('id', depoisDe);
+      return q;
+    });
+    for (const a of linhas) agendaPorId.set(a.id, a);
   }
   for (const ids of lotes(contatos)) {
-    const { data, error } = await admin
-      .from('cb_calendly_eventos')
-      .select(SELECT_DO_CALENDLY)
-      .eq('account_id', conta)
-      .eq('evento', 'invitee.created')
-      .in('contact_id', ids)
-      .limit(PAGINA);
-    if (error) throw new Error(`calendly dos contatos: ${error.message}`);
-    if ((data ?? []).length >= PAGINA) throw new Error('agendamentos demais para uma leitura');
-    calendly.push(...((data ?? []) as unknown as LinhaDoCalendlyDaPauta[]));
+    const linhas = await paginarPorChave<LinhaDoCalendlyDaPauta>('calendly dos contatos', (depoisDe) => {
+      let q = admin
+        .from('cb_calendly_eventos')
+        .select(SELECT_DO_CALENDLY)
+        .eq('account_id', conta)
+        .eq('evento', 'invitee.created')
+        .in('contact_id', ids)
+        .order('id')
+        .limit(PAGINA);
+      if (depoisDe) q = q.gt('id', depoisDe);
+      return q;
+    });
+    calendly.push(...linhas);
   }
   const cancelados = new Set<string>();
   for (const uris of lotes([...new Set(calendly.map((l) => l.invitee_uri))])) {
@@ -272,12 +281,17 @@ export async function carregarDadosDaPauta(
         .eq('account_id', conta)
         .is('group_id', null)
         .in('contact_id', ids),
-      admin
-        .from('deals')
-        .select('id, contact_id, pipeline_id, stage_id, value, status, created_at')
-        .eq('account_id', conta)
-        .in('contact_id', ids)
-        .limit(PAGINA),
+      paginarPorChave<LinhaDoNegocio>('negócios', (depoisDe) => {
+        let q = admin
+          .from('deals')
+          .select('id, contact_id, pipeline_id, stage_id, value, status, created_at')
+          .eq('account_id', conta)
+          .in('contact_id', ids)
+          .order('id')
+          .limit(PAGINA);
+        if (depoisDe) q = q.gt('id', depoisDe);
+        return q;
+      }),
       campoPorId.size > 0
         ? admin
             .from('contact_custom_values')
@@ -289,8 +303,6 @@ export async function carregarDadosDaPauta(
     ]);
     if (c.error) throw new Error(`contatos: ${c.error.message}`);
     if (conv.error) throw new Error(`conversas: ${conv.error.message}`);
-    if (deals.error) throw new Error(`negócios: ${deals.error.message}`);
-    if ((deals.data ?? []).length >= PAGINA) throw new Error('negócios demais para uma leitura');
     if (vals.error) throw new Error(`campos: ${vals.error.message}`);
 
     // O nome, senão o telefone, senão o `@` (ficha só do Instagram ou só com
@@ -301,7 +313,7 @@ export async function carregarDadosDaPauta(
     for (const x of (conv.data ?? []) as { id: string; contact_id: string; aguardando_desde: string | null }[]) {
       conversas.set(x.contact_id, { id: x.id, aguardando_desde: x.aguardando_desde });
     }
-    negocios.push(...((deals.data ?? []) as LinhaDoNegocio[]));
+    negocios.push(...deals);
     for (const v of (vals.data ?? []) as { contact_id: string; custom_field_id: string; value: string | null }[]) {
       const chave = campoPorId.get(v.custom_field_id);
       const texto = v.value?.trim();

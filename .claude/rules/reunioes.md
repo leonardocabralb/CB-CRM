@@ -148,8 +148,8 @@ a rota `/api/cb/reunioes`, `src/components/reunioes/`. Plano:
   resumo do Desempenho (`/api/cb/reunioes/resumo`, o comparecimento por funil
   — `.claude/rules/funil-metricas.md`). Leitura nova da pauta entra lá, senão
   as duas telas discordam sobre a mesma reunião. O que pode passar de 1000
-  linhas (reuniões da janela, data da ficha, trilha, passos do negócio)
-  pagina pela CHAVE (`paginarPorChave`); a pauta limita a janela a 120 dias,
+  linhas (reuniões da janela, data da ficha, histórico e negócios de cada
+  lote de contatos, trilha, passos do negócio) pagina pela CHAVE (`paginarPorChave`); a pauta limita a janela a 120 dias,
   o resumo não ("Total").
 
 - ⚠️⚠️ **O resultado tem DUAS fontes e vence a mais recente**: o marco da

@@ -161,6 +161,42 @@ describe('carregarDadosDaPauta — paginação pela CHAVE', () => {
     expect(dados.datasDaFicha.has('contato-alheio')).toBe(false);
   });
 
+  it('o HISTÓRICO de um lote de contatos com mais de 1000 agendamentos, reuniões e negócios vem inteiro ("Total"; antes estourava)', async () => {
+    const contato = 'contato-1';
+    const banco = criarBanco({
+      cb_calendly_eventos: Array.from({ length: 1200 }, (_, i) =>
+        agendamento(i + 1, new Date(Date.UTC(2026, 0, 1) + i * 3_600_000).toISOString(), { contact_id: contato }),
+      ).concat([agendamento(9000, '2026-10-02T14:00:00Z', { contact_id: contato })]),
+      cb_meetings: Array.from({ length: 1100 }, (_, i) => ({
+        id: uuid(i + 1, 'a'),
+        account_id: CONTA,
+        contact_id: contato,
+        conversation_id: null,
+        titulo: 'Reunião',
+        local: null,
+        starts_at: new Date(Date.UTC(2025, 0, 1) + i * 3_600_000).toISOString(),
+        ends_at: null,
+        status: 'agendada',
+        created_at: '2024-12-01T10:00:00Z',
+      })),
+      deals: Array.from({ length: 1050 }, (_, i) => ({
+        id: uuid(i + 1, 'b'),
+        account_id: CONTA,
+        contact_id: contato,
+        pipeline_id: COMERCIAL,
+        stage_id: 'etapa-agendada',
+        value: 0,
+        status: 'lost',
+        created_at: '2025-01-01T10:00:00Z',
+      })),
+      pipeline_stages: etapasDoFunil(),
+    });
+    const dados = await carregarDadosDaPauta(banco.cliente, CONTA, JANELA);
+    expect(dados.calendly).toHaveLength(1201);
+    expect(dados.agenda).toHaveLength(1100);
+    expect(dados.negocios).toHaveLength(1050);
+  });
+
   it('a etapa de outra conta não entra (cerca pelo funil)', async () => {
     const banco = criarBanco({ pipeline_stages: etapasDoFunil() });
     const dados = await carregarDadosDaPauta(banco.cliente, CONTA, JANELA);
