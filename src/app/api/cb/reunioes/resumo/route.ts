@@ -41,14 +41,15 @@ export async function GET(request: Request) {
     const agora = new Date();
     const de = deCru === null ? DESDE_O_COMECO : instanteDoParametro(deCru);
     const pedido = ateCru === null ? agora : instanteDoParametro(ateCru);
-    if (!de || !pedido || (ateCru !== null && pedido <= de)) {
-      return NextResponse.json({ error: 'janela_invalida' }, { status: 400 });
-    }
+    if (!de || !pedido) return NextResponse.json({ error: 'janela_invalida' }, { status: 400 });
+    // Janela que ainda não começou: não há reunião começada nela — é resposta,
+    // não ignorância. Vem ANTES da conferência do fim: o período personalizado
+    // só com "De" no futuro manda como fim o de hoje (`fimDoIntervalo`), e
+    // recusar viraria "não foi possível carregar" para sempre.
+    if (de >= agora) return NextResponse.json({ reunioes: [] });
+    if (ateCru !== null && pedido <= de) return NextResponse.json({ error: 'janela_invalida' }, { status: 400 });
     // Só o que já começou: a carga vai até o menor entre o fim pedido e agora.
     const ate = pedido < agora ? pedido : agora;
-    // Janela que ainda não começou: não há reunião começada nela — é resposta,
-    // não ignorância.
-    if (ate <= de) return NextResponse.json({ reunioes: [] });
 
     const admin = supabaseAdmin();
     const dados = await carregarDadosDaPauta(admin, ctx.accountId, { de, ate });

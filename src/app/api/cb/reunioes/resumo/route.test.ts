@@ -105,6 +105,12 @@ describe('GET /api/cb/reunioes/resumo', () => {
     expect(r).toEqual({ status: 200, body: { reunioes: [] } });
   });
 
+  it('personalizado só com "De" no futuro (o fim que chega é o de hoje): lista vazia, nunca 400', async () => {
+    const de = new Date(Date.now() + 20 * 86_400_000).toISOString();
+    const ate = new Date(Date.now() + 86_400_000).toISOString();
+    expect(await pedir(`?de=${encodeURIComponent(de)}&ate=${encodeURIComponent(ate)}`)).toEqual({ status: 200, body: { reunioes: [] } });
+  });
+
   it('instante sem fuso, ou fim antes do começo: 400', async () => {
     expect((await pedir('?de=2026-09-01T00:00:00')).status).toBe(400);
     expect((await pedir('?ate=2026-09-01')).status).toBe(400);

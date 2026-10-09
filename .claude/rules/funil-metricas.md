@@ -278,7 +278,9 @@ admin). Plano: Fase 4 de `docs/PLANO-reagendamento.md`.
 - A rota devolve só `{ inicio, funil, resultado }`: nenhum dado do cliente.
 - Limites: o resultado não congela (entrada tardia em etapa de resultado muda
   reunião antiga, como na pauta); a reunião substituída no Calendly sai com o
-  Reagendar dela.
+  Reagendar dela; o card é o que a PAUTA escolhe (`negocioDoContato`: o
+  aberto mais novo que já existia no início) — contato com dois cards
+  abertos em funis diferentes conta no do mais novo (em 09/10/2026, nenhum).
 
 ### CSV
 

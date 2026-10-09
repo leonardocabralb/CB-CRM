@@ -114,6 +114,53 @@ describe('carregarDadosDaPauta — paginação pela CHAVE', () => {
     expect(dados.trilha.get(contato)).toHaveLength(1200);
   });
 
+  it('mais de 1000 reuniões da AGENDA na janela: todas, sem as canceladas nem as de outra conta', async () => {
+    const reuniao = (n: number, extra: Record<string, unknown> = {}) => ({
+      id: uuid(n, 'a'),
+      account_id: CONTA,
+      contact_id: null,
+      conversation_id: null,
+      titulo: 'Reunião',
+      local: null,
+      starts_at: new Date(JANELA.de.getTime() + n * 60_000).toISOString(),
+      ends_at: null,
+      status: 'agendada',
+      created_at: '2026-09-25T10:00:00Z',
+      ...extra,
+    });
+    const banco = criarBanco({
+      cb_meetings: [
+        ...Array.from({ length: 1200 }, (_, i) => reuniao(i + 1)),
+        ...Array.from({ length: 5 }, (_, i) => reuniao(5000 + i, { status: 'cancelada' })),
+        reuniao(6000, { account_id: OUTRA }),
+      ],
+      pipeline_stages: etapasDoFunil(),
+    });
+    const dados = await carregarDadosDaPauta(banco.cliente, CONTA, JANELA);
+    expect(dados.agenda).toHaveLength(1200);
+    expect(dados.agenda.some((a) => a.status === 'cancelada' || a.id === uuid(6000, 'a'))).toBe(false);
+  });
+
+  it('a data da FICHA de mais de 1000 contatos vem inteira (a cerca é pelo contato da conta)', async () => {
+    const banco = criarBanco({
+      custom_fields: [{ id: 'campo-data', account_id: CONTA, field_key: 'data_e_hora_reuniao' }],
+      contact_custom_values: [
+        ...Array.from({ length: 1100 }, (_, i) => ({
+          id: uuid(i + 1, 'd'),
+          contact_id: `contato-${i + 1}`,
+          custom_field_id: 'campo-data',
+          value: '2026-08-01T13:00:00.000Z',
+          'contacts.account_id': CONTA,
+        })),
+        { id: uuid(9000, 'd'), contact_id: 'contato-alheio', custom_field_id: 'campo-data', value: '2026-08-01T13:00:00.000Z', 'contacts.account_id': OUTRA },
+      ],
+      pipeline_stages: etapasDoFunil(),
+    });
+    const dados = await carregarDadosDaPauta(banco.cliente, CONTA, JANELA);
+    expect(dados.datasDaFicha.size).toBe(1100);
+    expect(dados.datasDaFicha.has('contato-alheio')).toBe(false);
+  });
+
   it('a etapa de outra conta não entra (cerca pelo funil)', async () => {
     const banco = criarBanco({ pipeline_stages: etapasDoFunil() });
     const dados = await carregarDadosDaPauta(banco.cliente, CONTA, JANELA);

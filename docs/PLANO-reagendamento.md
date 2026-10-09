@@ -316,6 +316,11 @@ com as chaves nos dois dicionários.
   de teste — a entrada do card dele na etapa "Reagendar" (teste da Fase 2)
   resolveu a reunião antiga dele, que não tinha reunião seguinte. É a regra
   da pauta (o resultado não congela); ver a pergunta ao operador no PR.
+- **Limite herdado da pauta** (revisão independente): o card da reunião é o
+  que a pauta escolhe (`negocioDoContato`, o aberto mais novo que já existia
+  no início). Contato com dois cards abertos em funis diferentes conta no
+  funil do mais novo; mudar isso muda a pauta (decisão do operador). Em
+  09/10/2026 nenhum contato tinha dois cards.
 
 ## Ordem
 

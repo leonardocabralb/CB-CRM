@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import type { ReuniaoDoResumo } from "@/lib/reunioes/resumo";
@@ -127,5 +130,25 @@ describe("funilMedeComparecimento", () => {
 
   it("⚠️ marca em etapa de proposta em diante não vale (marcaDaReuniaoQueVale)", () => {
     expect(funilMedeComparecimento([{ degrau: "proposta", desfecho_da_reuniao: "compareceu" }])).toBe(false);
+  });
+});
+
+describe("o pedido das reuniões no Desempenho (pino de fonte)", () => {
+  const desempenho = readFileSync(join(process.cwd(), "src/components/funil/desempenho.tsx"), "utf8");
+
+  it("⚠️ a janela do pedido é ESTÁVEL no dia: meias-noites (fimDoIntervalo), nunca o relógio corrido", () => {
+    // `agora` muda a cada render: na chave do hook, o Desempenho pediria as
+    // reuniões sem parar.
+    expect(desempenho).toContain("const fimDaCarga = fimDoIntervalo(intervalo, agora);");
+    expect(desempenho).toMatch(/de: \(anterior\?\.desde \?\? intervalo\.desde\)\?\.toISOString\(\) \?\? null,\s*ate: fimDaCarga\?\.toISOString\(\) \?\? null,/);
+    expect(desempenho).not.toMatch(/agora\.toISOString\(\)|Date\.now\(\)/);
+  });
+
+  it("só busca no funil que mede comparecimento, com as etapas DESTE funil", () => {
+    expect(desempenho).toContain("const medeComparecimento = etapasCarregadas && funilMedeComparecimento(stages);");
+  });
+
+  it("a nota \"Nada aconteceu\" não afirma com reunião no período nem com as reuniões carregando", () => {
+    expect(desempenho).toContain("{vazio && (!porPeriodo || reunioesNoPeriodo === 0) && (");
   });
 });
