@@ -1597,6 +1597,7 @@
       "painelCustosDica": "A step's cost only shows when the step has a stage.",
       "toastStageMappedWithHistory": "This stage is mapped to the efficiency funnel and has deal history: deleting it would erase that history from Performance. Set its step to \"Not counted\" and save before removing, or keep the stage.",
       "toastStageMarkedWithHistory": "This stage is marked with a client status and has history: deleting it would remove the \"terminated/closed out\" banner from former clients who left it. Set its status to \"—\" and save before removing, or keep the stage.",
+      "toastStageMeetingMarkWithHistory": "This stage has a \"Meeting\" mark and has history: deleting it would remove the no-shows counted in it from Performance and the outcomes recorded through it from the Meetings screen. Set its mark to \"Meeting: —\" and save before removing, or keep the stage.",
       "deletePipelineChannels": "These connections put clients into this pipeline: {channels}. Once deleted, they stop creating deals until you point them at another pipeline in Settings › Connections.",
       "toastStageIsChannelEntry": "This stage is the entry point for {channels}. Pick another entry stage in Settings › Connections before deleting it.",
       "reuniaoQualificada": "Qualified",

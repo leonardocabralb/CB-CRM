@@ -283,7 +283,10 @@ export interface FatosDoNegocio {
    * entrada conta — quem faltou duas vezes no mês são dois no-shows. A etapa
    * "Reagendar" é fila de trabalho interna e não entra: quem faltou e foi
    * depois para Reagendar continua com o no-show; quem avisou antes e foi
-   * direto para lá nunca entrou no No Show.
+   * direto para lá nunca entrou no No Show. A semente da 912 (`deal_created`
+   * `retroativo`: a FOTO da etapa de cada card antigo, datada pela criação)
+   * não é entrada observada e fica fora (Codex, PR #397); a trilha da Kommo
+   * (`stage_changed` `retroativo`) é transição de verdade e conta.
    */
   entradasEmFalta: Date[];
 }
@@ -369,7 +372,12 @@ export function fatosDoNegocio(
     situacao: situacaoDe(classeAtual, degrauMaximo),
     alcancouContrato: degrauMaximo !== null && degrauMaximo >= INDICE_DO_CONTRATO,
     entradasEmFalta: aqui
-      .filter((p) => p.etapa !== null && classificacao.etapasDeFalta.has(p.etapa))
+      .filter(
+        (p) =>
+          p.etapa !== null &&
+          classificacao.etapasDeFalta.has(p.etapa) &&
+          !(p.tipo === "deal_created" && p.origem === "retroativo"),
+      )
       .map((p) => new Date(p.em)),
   };
 }

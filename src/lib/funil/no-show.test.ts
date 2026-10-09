@@ -123,6 +123,18 @@ describe("entradasEmFalta: cada entrada do card numa etapa 'Faltou', NESTE funil
     ]);
     expect(f.entradasEmFalta).toHaveLength(1);
   });
+
+  it("a semente da 912 (a FOTO do card antigo) não é no-show; a trilha da Kommo é", () => {
+    const [semente, kommo] = fatosDe([
+      negocio("caio", [{ ...p("no-show", "2026-07-01T10:00:00-03:00"), tipo: "deal_created", origem: "retroativo" }]),
+      negocio("davi", [
+        { ...p("lead", "2026-07-01T10:00:00-03:00"), tipo: "deal_created", origem: "retroativo" },
+        { ...p("no-show", "2026-07-03T10:00:00-03:00"), origem: "retroativo" },
+      ]),
+    ]);
+    expect(semente.entradasEmFalta).toEqual([]);
+    expect(kommo.entradasEmFalta).toHaveLength(1);
+  });
 });
 
 describe("no resumo: os dois modos, a taxa e a comparação", () => {

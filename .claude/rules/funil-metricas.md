@@ -79,7 +79,9 @@ perda, NULL} (`pasta` desde a 1054). `src/lib/funil/` é puro e testado;
 - ⚠️ **Apagar etapa MAPEADA com histórico é barrado na tela de Funis.** O
   mapeamento é lido sobre a história inteira (remapear reescreve o passado, de
   propósito), e etapa apagada tira da coorte quem só passou por ela — "zero
-  negócios na etapa" não protege. Saída: "Não conta", salvar, remover.
+  negócios na etapa" não protege. Saída: "Não conta", salvar, remover. O
+  mesmo vale para a etapa com marcação "Reunião" (o no-show conta as entradas
+  nela; a pauta resolve reuniões pela trilha dela): saída "Reunião: —".
 - Os rótulos PADRÃO dos degraus são chave MONTADA
   (`Pipelines.funil.degraus.<c>`); `degraus.test.ts` cobra os dois
   dicionários. O rótulo LIVRE do funil (abaixo) não passa pelo dicionário.
@@ -266,6 +268,10 @@ custo (`no_show`). Plano: Fase 4 de `docs/PLANO-reagendamento.md`.
   no-shows ÷ agendamentos (`taxaDeNoShow`; sem agendamento, `null`). Pode
   passar de 100% nos DOIS modos (cada entrada conta; por período é também
   fluxo); na coorte, todas as entradas dos leads que entraram no período.
+  ⚠️ A semente da 912 (`deal_created` `retroativo`: a FOTO da etapa de cada
+  card antigo, datada pela criação) NÃO conta; a trilha da Kommo
+  (`stage_changed` `retroativo`) conta. Em 09/10/2026 nenhuma semente estava
+  em etapa "Faltou" (as 176 entradas eram transições).
 - ⚠️ **A etapa "Reagendar" é FILA DE TRABALHO, fora da conta**: quem faltou e
   foi para lá continua com o no-show; quem avisou antes e foi direto para lá
   nunca entrou no No Show.

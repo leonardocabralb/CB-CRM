@@ -1590,6 +1590,7 @@
       "painelCustosDica": "Custo de degrau só aparece com etapa no degrau.",
       "toastStageMappedWithHistory": "Esta etapa está mapeada no funil de eficiência e tem histórico de negócios: apagá-la apagaria essa história do Desempenho. Mude o degrau para \"Não conta\" e salve antes de remover, ou mantenha a etapa.",
       "toastStageMarkedWithHistory": "Esta etapa está marcada com a situação do cliente e tem histórico: apagá-la tiraria a faixa \"rescindido/finalizado\" dos ex-clientes que saíram dela. Mude a situação para \"—\" e salve antes de remover, ou mantenha a etapa.",
+      "toastStageMeetingMarkWithHistory": "Esta etapa tem a marcação \"Reunião\" e tem histórico: apagá-la tiraria do Desempenho os no-shows contados nela e da tela Reuniões os resultados registrados por ela. Mude a marcação para \"Reunião: —\" e salve antes de remover, ou mantenha a etapa.",
       "deletePipelineChannels": "Estas conexões colocam clientes neste funil: {channels}. Depois de apagar, elas param de criar negócios até você apontá-las para outro funil em Configurações › Conexões.",
       "toastStageIsChannelEntry": "Esta etapa é a entrada de {channels}. Escolha outra etapa de entrada em Configurações › Conexões antes de apagá-la.",
       "reuniaoQualificada": "Qualificada",
