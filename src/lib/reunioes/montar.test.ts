@@ -64,6 +64,8 @@ describe('montarPauta', () => {
       link: 'https://meet.google.com/abc',
     });
     expect(funis.banc.qualificada).toEqual({ id: 'mql2', nome: 'MQL 2' });
+    // Funil sem etapa marcada "Reagendar": o botão fica sem destino.
+    expect(funis.banc.reagendar).toBeNull();
   });
 
   it('cancelado e convite substituído por reagendamento NÃO entram; o reagendamento sim', () => {
@@ -242,6 +244,72 @@ describe('montarPauta — a próxima reunião do contato', () => {
     expect(reunioes.map((r) => r.reuniaoId)).toEqual(['a']);
     expect(reunioes[0].proximaEm).toBe('2026-11-10T17:00:00.000Z');
   });
+
+  describe('a reunião com Reagendar pelo marco não é "a próxima" (1081)', () => {
+    // O cliente pediu para reagendar a de 02/10 e ANTECIPOU pelo link manual
+    // para 30/09; a de 02/10 segue de pé no Calendly (outro tipo de evento,
+    // a inferência de convite substituído não a pega).
+    const COM_REAGENDAR: EtapaDoFunil[] = [
+      ...ETAPAS,
+      { id: 'reag', pipelineId: 'banc', nome: 'Reagendar', posicao: 7, degrau: 'reuniao', marca: 'reagendar' },
+    ];
+    const base = (marcos: DadosDaPauta['marcos']) =>
+      dados({
+        etapas: COM_REAGENDAR,
+        calendly: [
+          cal({ id: 'antiga', inicio: '2026-10-02T14:00:00Z', fim: '2026-10-02T14:30:00Z', recebido_em: '2026-09-25T10:00:00Z' }),
+          cal({
+            id: 'nova',
+            event_type_uri: 'outro-tipo',
+            inicio: '2026-09-30T14:00:00Z',
+            fim: '2026-09-30T14:30:00Z',
+            recebido_em: '2026-09-29T10:00:00Z',
+          }),
+        ],
+        negocios: [
+          { id: 'd1', contact_id: 'c1', pipeline_id: 'banc', stage_id: 'reag', value: 0, status: 'open', created_at: '2026-09-01T00:00:00Z' },
+        ],
+        marcos,
+      });
+    const reagendada = new Map([
+      [
+        'calendly:antiga',
+        [
+          {
+            origem: 'calendly' as const,
+            reuniao_id: 'antiga',
+            marco: 'resultado' as const,
+            resultado: 'reagendar' as const,
+            valor: null,
+            registrado_por_nome: 'Bia',
+            registrado_em: '2026-09-28T12:00:00Z',
+            inicio: '2026-10-02T14:00:00Z',
+          },
+        ],
+      ],
+    ]);
+
+    it('sem o marco, a antiga é a próxima da nova e o botão da nova só registra', () => {
+      const nova = montarPauta(base(new Map())).reunioes.find((r) => r.reuniaoId === 'nova');
+      expect(nova?.proximaEm).toBe('2026-10-02T14:00:00.000Z');
+    });
+
+    it('com o Reagendar da antiga, a nova não tem próxima (o card é dela) e a antiga segue resolvida', () => {
+      const { reunioes } = montarPauta(base(reagendada));
+      const nova = reunioes.find((r) => r.reuniaoId === 'nova');
+      const antiga = reunioes.find((r) => r.reuniaoId === 'antiga');
+      expect(nova?.proximaEm).toBeNull();
+      expect(antiga?.resultado?.tipo).toBe('reagendar');
+    });
+
+    it('o Reagendar de OUTRO horário (marco antigo) não tira a reunião da conta', () => {
+      const outroHorario = new Map([
+        ['calendly:antiga', reagendada.get('calendly:antiga')!.map((m) => ({ ...m, inicio: '2026-10-01T14:00:00Z' }))],
+      ]);
+      const nova = montarPauta(base(outroHorario)).reunioes.find((r) => r.reuniaoId === 'nova');
+      expect(nova?.proximaEm).toBe('2026-10-02T14:00:00.000Z');
+    });
+  });
 });
 
 describe('montarPauta — remarcada pela ficha ("Data e Hora Reunião")', () => {
@@ -403,6 +471,93 @@ describe('montarPauta — remarcada pela ficha ("Data e Hora Reunião")', () => 
       }),
     ).reunioes[0];
     expect(depois.resultado).toMatchObject({ tipo: 'sem_proposta', fonte: 'tela' });
+  });
+
+  // O Reagendar (1081) vale ANTES do horário, mas só para o horário em que foi
+  // gravado: a remarcação pela ficha reaproveita a MESMA chave, e o Reagendar
+  // do horário do Calendly não pode resolver o horário novo.
+  describe('Reagendar (1081)', () => {
+    const etapas: EtapaDoFunil[] = [
+      ...ETAPAS,
+      { id: 'reag', pipelineId: 'banc', nome: 'Reagendar', posicao: 7, degrau: 'reuniao', marca: 'reagendar' },
+    ];
+    const negocios = [
+      { id: 'd1', contact_id: 'c1', pipeline_id: 'banc', stage_id: 'reag', value: 0, status: 'open', created_at: '2026-09-01T00:00:00Z' },
+    ];
+    const reagendou = (inicio: string, registrado_em: string) => ({
+      origem: 'calendly' as const,
+      reuniao_id: 'r1',
+      marco: 'resultado' as const,
+      resultado: 'reagendar' as const,
+      valor: null,
+      registrado_por_nome: 'Leo',
+      registrado_em,
+      inicio,
+    });
+    // O clique levou o card para a etapa Reagendar antes do horário do Calendly.
+    const entrouNaReagendar = { em: '2026-10-01T15:00:05Z', dealId: 'd1', etapaId: 'reag', etapa: 'Reagendar', por: 'Leo' };
+
+    it('Reagendar gravado para o horário do CALENDLY: a reunião no horário da ficha fica SEM resultado', () => {
+      for (const registrado_em of [
+        // O cliente avisou antes do horário do Calendly…
+        '2026-10-01T15:00:00Z',
+        // …ou depois dele e antes do horário da ficha.
+        '2026-10-01T20:00:00Z',
+      ]) {
+        const [r] = montarPauta(
+          dados({
+            janela: diaDe('2026-10-02'),
+            calendly,
+            datasDaFicha: ficha,
+            etapas,
+            negocios,
+            // Como o PostgREST devolve o timestamptz.
+            marcos: new Map([['calendly:r1', [reagendou('2026-10-01T19:45:00+00:00', registrado_em)]]]),
+            trilha: new Map([['c1', [entrouNaReagendar]]]),
+          }),
+        ).reunioes;
+        expect(r.inicio).toBe('2026-10-02T19:00:00.000Z');
+        expect(r.remarcadaDe).toBe('2026-10-01T19:45:00.000Z');
+        expect(r.resultado).toBeNull();
+      }
+    });
+
+    it('Reagendar gravado para o horário da FICHA (antes dele): a reunião remarcada fica "reagendar"', () => {
+      const [r] = montarPauta(
+        dados({
+          janela: diaDe('2026-10-02'),
+          calendly,
+          datasDaFicha: ficha,
+          etapas,
+          negocios,
+          marcos: new Map([['calendly:r1', [reagendou('2026-10-02T19:00:00+00:00', '2026-10-02T12:00:00Z')]]]),
+          trilha: new Map([['c1', [entrouNaReagendar]]]),
+        }),
+      ).reunioes;
+      expect(r.inicio).toBe('2026-10-02T19:00:00.000Z');
+      expect(r.resultado).toEqual({
+        tipo: 'reagendar',
+        em: '2026-10-02T12:00:00Z',
+        por: 'Leo',
+        fonte: 'tela',
+        etapa: null,
+        valor: null,
+      });
+    });
+
+    it('a passagem pela etapa Reagendar não acende "Já faltou" no horário novo', () => {
+      const [r] = montarPauta(
+        dados({
+          janela: diaDe('2026-10-02'),
+          calendly,
+          datasDaFicha: ficha,
+          etapas,
+          negocios,
+          trilha: new Map([['c1', [entrouNaReagendar]]]),
+        }),
+      ).reunioes;
+      expect(r.faltouAntes).toBeNull();
+    });
   });
 });
 

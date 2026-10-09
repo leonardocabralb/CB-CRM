@@ -40,7 +40,7 @@ function instanteDoParametro(v: string | null): Date | null {
 }
 
 function marcaDaEtapa(v: unknown): MarcaDaEtapa | null {
-  return v === 'qualificada' || v === 'compareceu' || v === 'faltou' ? v : null;
+  return v === 'qualificada' || v === 'compareceu' || v === 'faltou' || v === 'reagendar' ? v : null;
 }
 
 /**
@@ -351,7 +351,7 @@ export async function GET(request: Request) {
     for (const ids of lotes([...new Set(idsDasReunioes)])) {
       const { data, error } = await admin
         .from('cb_reunioes_marcos')
-        .select('origem, reuniao_id, marco, resultado, valor, registrado_por_nome, registrado_em')
+        .select('origem, reuniao_id, marco, resultado, valor, registrado_por_nome, registrado_em, inicio')
         .eq('account_id', conta)
         .in('reuniao_id', ids);
       if (error) throw new Error(`marcos: ${error.message}`);

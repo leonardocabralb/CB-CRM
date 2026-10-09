@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  RESULTADOS,
   alvosDoFunil,
   comoMarcar,
+  ehResultado,
   faltouAntes,
   faseDaReuniao,
   lerPauta,
   linkDeReuniao,
+  marcoValeParaAReuniao,
   pendentes,
   qualificacaoDaReuniao,
   resultadoDaEtapa,
@@ -31,11 +34,19 @@ const ETAPAS: EtapaDoFunil[] = [
 ];
 const POR_ID = new Map(ETAPAS.map((e) => [e.id, e]));
 
+// O mesmo funil com a etapa da Fase 3 de `docs/PLANO-reagendamento.md`: a
+// "Reagendar", marcada "Reagendar" (1081). Nome e posição são do operador.
+const COM_REAGENDAR: EtapaDoFunil[] = [
+  ...ETAPAS,
+  { id: 'reag', pipelineId: 'banc', nome: 'Reagendar', posicao: 10, degrau: 'reuniao', marca: 'reagendar' },
+];
+const POR_ID_R = new Map(COM_REAGENDAR.map((e) => [e.id, e]));
+
 const entrada = (em: string, etapaId: string, por: string | null = 'Ana', dealId: string | null = 'd1'): EntradaDaTrilha => ({
   em,
   dealId,
   etapaId,
-  etapa: POR_ID.get(etapaId)?.nome ?? null,
+  etapa: POR_ID_R.get(etapaId)?.nome ?? null,
   por,
 });
 
@@ -65,32 +76,56 @@ describe('resultadoDaEtapa', () => {
   it('o degrau de proposta VENCE a marcação: "Proposta Realizada" marcada "Compareceu" continua com proposta', () => {
     // Foi o que aconteceu em produção em 29/09/2026: a intuição "quem recebeu
     // proposta compareceu" marcava a etapa, e a entrada nela virava "sem proposta".
-    for (const marca of ['compareceu', 'faltou', 'qualificada'] as const) {
+    for (const marca of ['compareceu', 'faltou', 'qualificada', 'reagendar'] as const) {
       expect(resultadoDaEtapa({ degrau: 'proposta', marca })).toBe('proposta');
       expect(resultadoDaEtapa({ degrau: 'contrato', marca })).toBe('proposta');
     }
+  });
+  it('reagendar → reagendar (em etapa de degrau reunião ou sem degrau); da proposta em diante, o degrau vence', () => {
+    expect(resultadoDaEtapa(POR_ID_R.get('reag'))).toBe('reagendar');
+    expect(resultadoDaEtapa({ degrau: null, marca: 'reagendar' })).toBe('reagendar');
+    expect(resultadoDaEtapa({ degrau: 'proposta', marca: 'reagendar' })).toBe('proposta');
+    expect(resultadoDaEtapa({ degrau: 'pasta', marca: 'reagendar' })).toBe('proposta');
+  });
+});
+
+describe('RESULTADOS', () => {
+  it('na ordem dos botões depois do início (D1): com proposta, sem proposta, reagendar, no show', () => {
+    expect(RESULTADOS).toEqual(['proposta', 'sem_proposta', 'reagendar', 'no_show']);
+    expect(ehResultado('reagendar')).toBe(true);
+    expect(ehResultado('reagendada')).toBe(false);
   });
 });
 
 describe('alvosDoFunil', () => {
   it('cada botão leva à etapa MARCADA do funil do card, nunca de outro funil', () => {
-    expect(alvosDoFunil(ETAPAS, 'banc')).toEqual({
+    expect(alvosDoFunil(COM_REAGENDAR, 'banc')).toEqual({
       qualificada: { id: 'mql2', nome: 'MQL 2 - Reunião Qualificada' },
       proposta: { id: 'prop', nome: 'Proposta Realizada' },
       sem_proposta: { id: 'semprop', nome: 'Reunião Sem Proposta' },
+      reagendar: { id: 'reag', nome: 'Reagendar' },
       no_show: { id: 'noshow', nome: 'No Show' },
     });
-    const trab = alvosDoFunil(ETAPAS, 'trab');
+    const trab = alvosDoFunil(COM_REAGENDAR, 'trab');
     expect(trab.proposta).toEqual({ id: 'outro-prop', nome: 'Proposta' });
     expect(trab.qualificada).toBeNull();
+    expect(trab.reagendar).toBeNull();
     expect(trab.no_show).toBeNull();
+  });
+  it('funil sem etapa marcada "Reagendar" (o de hoje, antes da Fase 3): o botão não tem destino', () => {
+    expect(alvosDoFunil(ETAPAS, 'banc').reagendar).toBeNull();
+    // Nunca pelo nome: uma etapa chamada "Reagendar" sem a marca não é destino.
+    const soPeloNome = [...ETAPAS, { id: 'reag', pipelineId: 'banc', nome: 'Reagendar', posicao: 10, degrau: 'reuniao', marca: null }];
+    expect(alvosDoFunil(soPeloNome, 'banc').reagendar).toBeNull();
   });
   it('duas etapas com a mesma marca: vale a de menor posição', () => {
     const etapas = [
-      ...ETAPAS,
+      ...COM_REAGENDAR,
       { id: 'noshow2', pipelineId: 'banc', nome: 'No Show 2', posicao: 1, degrau: null, marca: 'faltou' as const },
+      { id: 'reag2', pipelineId: 'banc', nome: 'Remarcar', posicao: 2, degrau: 'reuniao', marca: 'reagendar' as const },
     ];
     expect(alvosDoFunil(etapas, 'banc').no_show?.id).toBe('noshow2');
+    expect(alvosDoFunil(etapas, 'banc').reagendar).toEqual({ id: 'reag2', nome: 'Remarcar' });
   });
   it('marcação numa etapa de proposta em diante não vira destino de botão', () => {
     // Só a Proposta Realizada marcada (sem a Reunião Sem Proposta): o botão
@@ -100,11 +135,13 @@ describe('alvosDoFunil', () => {
       { id: 'prop', pipelineId: 'x', nome: 'Proposta Realizada', posicao: 1, degrau: 'proposta', marca: 'compareceu' },
       { id: 'contrato', pipelineId: 'x', nome: 'Contrato', posicao: 2, degrau: 'contrato', marca: 'faltou' },
       { id: 'pasta', pipelineId: 'x', nome: 'Pasta', posicao: 3, degrau: 'pasta', marca: 'qualificada' },
+      { id: 'contrato2', pipelineId: 'x', nome: 'Contrato 2', posicao: 4, degrau: 'contrato', marca: 'reagendar' },
     ];
     expect(alvosDoFunil(etapas, 'x')).toEqual({
       qualificada: null,
       proposta: { id: 'prop', nome: 'Proposta Realizada' },
       sem_proposta: null,
+      reagendar: null,
       no_show: null,
     });
   });
@@ -245,6 +282,152 @@ describe('resultadoDaReuniao', () => {
   });
 });
 
+describe('marcoValeParaAReuniao', () => {
+  const inicio = '2026-09-29T14:00:00Z';
+
+  it('proposta, sem proposta e no show só valem gravados a partir do início — mesmo com o `inicio` gravado', () => {
+    for (const resultado of ['proposta', 'sem_proposta', 'no_show'] as const) {
+      expect(marcoValeParaAReuniao({ resultado, registrado_em: '2026-09-29T13:59:59Z', inicio }, inicio)).toBe(false);
+      expect(marcoValeParaAReuniao({ resultado, registrado_em: '2026-09-29T14:00:00Z', inicio }, inicio)).toBe(true);
+      expect(marcoValeParaAReuniao({ resultado, registrado_em: '2026-09-29T14:10:00Z', inicio: null }, inicio)).toBe(true);
+      expect(marcoValeParaAReuniao({ resultado, registrado_em: '2026-09-28T10:00:00Z' }, inicio)).toBe(false);
+    }
+  });
+
+  it('reagendar gravado para ESTE horário vale ANTES do início (D1), com o instante em qualquer forma', () => {
+    const antes = '2026-09-28T10:00:00Z';
+    for (const doMarco of [
+      '2026-09-29T14:00:00Z',
+      // Como o PostgREST devolve o timestamptz.
+      '2026-09-29T14:00:00+00:00',
+      '2026-09-29T14:00:00.000Z',
+      '2026-09-29T14:00:00.000000+00:00',
+      '2026-09-29 14:00:00+00',
+      '2026-09-29T11:00:00-03:00',
+    ]) {
+      expect(marcoValeParaAReuniao({ resultado: 'reagendar', registrado_em: antes, inicio: doMarco }, inicio)).toBe(true);
+    }
+    // A reunião também pode vir com milissegundos (a remarcada pela ficha sai de `toISOString`).
+    expect(marcoValeParaAReuniao({ resultado: 'reagendar', registrado_em: antes, inicio: '2026-09-29T14:00:00+00:00' }, '2026-09-29T14:00:00.000Z')).toBe(true);
+    // E continua valendo depois do início.
+    expect(marcoValeParaAReuniao({ resultado: 'reagendar', registrado_em: '2026-09-29T14:20:00Z', inicio }, inicio)).toBe(true);
+  });
+
+  it('um milissegundo de diferença já é OUTRO horário', () => {
+    expect(
+      marcoValeParaAReuniao({ resultado: 'reagendar', registrado_em: '2026-09-28T10:00:00Z', inicio: '2026-09-29T14:00:00.001Z' }, inicio),
+    ).toBe(false);
+  });
+
+  it('reagendar gravado para OUTRO horário (a ficha remarcou a reunião) não vale — nem gravado entre o horário antigo e o novo', () => {
+    const antigo = '2026-10-01T19:45:00Z';
+    const novo = '2026-10-02T19:00:00.000Z';
+    // Avisou antes do horário antigo.
+    expect(marcoValeParaAReuniao({ resultado: 'reagendar', registrado_em: '2026-10-01T15:00:00Z', inicio: antigo }, novo)).toBe(false);
+    // Gravado DEPOIS do início antigo e antes do novo: a exceção do Reagendar
+    // não o salva — o horário dele é outro.
+    expect(marcoValeParaAReuniao({ resultado: 'reagendar', registrado_em: '2026-10-01T20:00:00Z', inicio: antigo }, novo)).toBe(false);
+    // Gravado depois do início NOVO, mas pela tela que ainda via o horário
+    // antigo: o marco fala de outro horário (a tela recarrega e a pessoa marca
+    // de novo).
+    expect(marcoValeParaAReuniao({ resultado: 'reagendar', registrado_em: '2026-10-02T19:30:00Z', inicio: antigo }, novo)).toBe(false);
+  });
+
+  it('reagendar SEM `inicio` (marco anterior à 1081) segue a regra de sempre', () => {
+    expect(marcoValeParaAReuniao({ resultado: 'reagendar', registrado_em: '2026-09-28T10:00:00Z', inicio: null }, inicio)).toBe(false);
+    expect(marcoValeParaAReuniao({ resultado: 'reagendar', registrado_em: '2026-09-28T10:00:00Z' }, inicio)).toBe(false);
+    expect(marcoValeParaAReuniao({ resultado: 'reagendar', registrado_em: '2026-09-29T14:05:00Z', inicio: null }, inicio)).toBe(true);
+  });
+
+  it('data que não se lê não vale', () => {
+    expect(marcoValeParaAReuniao({ resultado: 'reagendar', registrado_em: 'ontem', inicio }, inicio)).toBe(false);
+    expect(marcoValeParaAReuniao({ resultado: 'reagendar', registrado_em: '2026-09-28T10:00:00Z', inicio: 'amanhã' }, inicio)).toBe(false);
+    expect(marcoValeParaAReuniao({ resultado: 'no_show', registrado_em: '2026-09-29T14:05:00Z' }, 'hoje')).toBe(false);
+  });
+});
+
+describe('resultadoDaReuniao — Reagendar (1081)', () => {
+  const inicio = '2026-09-29T14:00:00Z';
+  const reagendou = (registrado_em: string, doMarco: string | null = '2026-09-29T14:00:00+00:00') =>
+    marco({ resultado: 'reagendar', registrado_em, inicio: doMarco });
+
+  it('Reagendar ANTES do início, para este horário: resolve (fonte tela), e a reunião sai da rede antes do horário', () => {
+    const r = resultadoDaReuniao({
+      inicio,
+      ate: null,
+      dealId: 'd1',
+      marcos: [reagendou('2026-09-28T16:00:00Z')],
+      // O mesmo clique levou o card para a etapa — antes do início, a trilha não conta.
+      entradas: [entrada('2026-09-28T16:00:01Z', 'reag', 'Leo')],
+      etapas: POR_ID_R,
+    });
+    expect(r).toEqual({ tipo: 'reagendar', em: '2026-09-28T16:00:00Z', por: 'Leo', fonte: 'tela', etapa: null, valor: null });
+    expect(faseDaReuniao(reuniao({ inicio, resultado: r }), new Date('2026-09-28T17:00:00Z'))).toBe('com_resultado');
+    expect(pendentes([reuniao({ inicio, resultado: r })], new Date('2026-09-29T15:00:00Z'))).toEqual([]);
+  });
+
+  it('a entrada na etapa Reagendar ANTES do início não resolve: o quadro antes da hora pede a confirmação na pauta', () => {
+    const r = resultadoDaReuniao({
+      inicio,
+      ate: null,
+      dealId: 'd1',
+      marcos: [],
+      entradas: [entrada('2026-09-28T16:00:00Z', 'reag')],
+      etapas: POR_ID_R,
+    });
+    expect(r).toBeNull();
+    expect(faseDaReuniao(reuniao({ inicio, resultado: r }), new Date('2026-09-28T17:00:00Z'))).toBe('antes');
+  });
+
+  it('a entrada na etapa Reagendar DEPOIS do início resolve (fonte funil)', () => {
+    const r = resultadoDaReuniao({
+      inicio,
+      ate: null,
+      dealId: 'd1',
+      marcos: [],
+      entradas: [entrada('2026-09-29T14:05:00Z', 'reag', 'Bia')],
+      etapas: POR_ID_R,
+    });
+    expect(r).toEqual({ tipo: 'reagendar', em: '2026-09-29T14:05:00Z', por: 'Bia', fonte: 'funil', etapa: 'Reagendar', valor: null });
+  });
+
+  it('vence o MAIS RECENTE: Reagendar antes do horário e, depois do início, No Show pelo quadro → no show', () => {
+    const r = resultadoDaReuniao({
+      inicio,
+      ate: null,
+      dealId: 'd1',
+      marcos: [reagendou('2026-09-28T16:00:00Z')],
+      entradas: [entrada('2026-09-29T14:15:00Z', 'noshow', 'Bia')],
+      etapas: POR_ID_R,
+    });
+    expect(r).toMatchObject({ tipo: 'no_show', fonte: 'funil', por: 'Bia' });
+  });
+
+  it('e o contrário: No Show pelo quadro e, depois, Reagendar na pauta → reagendar', () => {
+    const r = resultadoDaReuniao({
+      inicio,
+      ate: null,
+      dealId: 'd1',
+      marcos: [reagendou('2026-09-29T14:30:00Z')],
+      entradas: [entrada('2026-09-29T14:15:00Z', 'noshow', 'Bia')],
+      etapas: POR_ID_R,
+    });
+    expect(r).toMatchObject({ tipo: 'reagendar', fonte: 'tela' });
+  });
+
+  it('Reagendar gravado para o horário ANTIGO não resolve a reunião remarcada', () => {
+    const r = resultadoDaReuniao({
+      inicio,
+      ate: null,
+      dealId: 'd1',
+      marcos: [reagendou('2026-09-28T09:00:00Z', '2026-09-28T14:00:00Z')],
+      entradas: [],
+      etapas: POR_ID_R,
+    });
+    expect(r).toBeNull();
+  });
+});
+
 describe('qualificacaoDaReuniao', () => {
   it('entrada na etapa qualificada a partir do agendamento conta; antes, não', () => {
     const desde = '2026-09-28T10:00:00Z';
@@ -282,6 +465,11 @@ describe('faltouAntes', () => {
         etapas: POR_ID,
       }),
     ).toEqual({ em: '2026-09-15T10:00:00Z', etapa: 'No Show' });
+  });
+  it('o Reagendar NÃO é falta: não acende "Já faltou" (D2)', () => {
+    expect(
+      faltouAntes({ inicio: '2026-09-29T14:00:00Z', entradas: [entrada('2026-09-20T10:00:00Z', 'reag')], etapas: POR_ID_R }),
+    ).toBeNull();
   });
 });
 
@@ -367,6 +555,35 @@ describe('comoMarcar', () => {
     const semMql = alvosDoFunil(ETAPAS.filter((e) => e.id !== 'mql2'), 'banc');
     expect(comoMarcar({ negocio: { ...n, status: 'open' }, proximaEm: null }, 'qualificada', semMql).motivo).toBe('sem_etapa');
   });
+
+  describe('Reagendar (1081)', () => {
+    const comReagendar = alvosDoFunil(COM_REAGENDAR, 'banc');
+    const aberto = { ...n, status: 'open' as const };
+
+    it('card aberto e etapa marcada: move para a Reagendar', () => {
+      expect(comoMarcar({ negocio: aberto, proximaEm: null }, 'reagendar', comReagendar)).toEqual({
+        alvo: { id: 'reag', nome: 'Reagendar' },
+        motivo: null,
+      });
+    });
+
+    it('com reunião POSTERIOR do contato, só registra (o card é da seguinte, e dos lembretes dela)', () => {
+      expect(comoMarcar({ negocio: aberto, proximaEm: '2026-10-02T14:00:00Z' }, 'reagendar', comReagendar)).toEqual({
+        alvo: null,
+        motivo: 'reuniao_posterior',
+      });
+    });
+
+    it('sem card ou card fechado: só registra', () => {
+      expect(comoMarcar({ negocio: null, proximaEm: null }, 'reagendar', comReagendar)).toEqual({ alvo: null, motivo: 'sem_card' });
+      expect(comoMarcar({ negocio: { ...n, status: 'lost' }, proximaEm: null }, 'reagendar', comReagendar).motivo).toBe('card_fechado');
+    });
+
+    it('funil sem a etapa marcada "Reagendar" (ou sem destinos): só registra', () => {
+      expect(comoMarcar({ negocio: aberto, proximaEm: null }, 'reagendar', alvos)).toEqual({ alvo: null, motivo: 'sem_etapa' });
+      expect(comoMarcar({ negocio: aberto, proximaEm: null }, 'reagendar', null)).toEqual({ alvo: null, motivo: 'sem_etapa' });
+    });
+  });
 });
 
 describe('lerPauta', () => {
@@ -383,7 +600,21 @@ describe('lerPauta', () => {
       funis: { banc: { qualificada: { id: 'mql2', nome: 'MQL 2' }, proposta: { id: 1 }, sem_proposta: null } },
     });
     expect(lido?.reunioes).toHaveLength(1);
-    expect(lido?.funis.banc).toEqual({ qualificada: { id: 'mql2', nome: 'MQL 2' }, proposta: null, sem_proposta: null, no_show: null });
+    expect(lido?.funis.banc).toEqual({
+      qualificada: { id: 'mql2', nome: 'MQL 2' },
+      proposta: null,
+      sem_proposta: null,
+      reagendar: null,
+      no_show: null,
+    });
+  });
+  it('lê o destino do Reagendar', () => {
+    const lido = lerPauta({
+      reunioes: [],
+      funis: { banc: { reagendar: { id: 'reag', nome: 'Reagendar' }, no_show: { id: 'noshow', nome: 'No Show' } } },
+    });
+    expect(lido?.funis.banc.reagendar).toEqual({ id: 'reag', nome: 'Reagendar' });
+    expect(lido?.funis.banc.no_show).toEqual({ id: 'noshow', nome: 'No Show' });
   });
 });
 

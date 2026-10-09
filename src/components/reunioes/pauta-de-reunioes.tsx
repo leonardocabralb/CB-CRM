@@ -75,8 +75,9 @@ function rotuloDoDia(dia: string): { semana: string; data: string } {
  * A semana à vista em cima (dias com contagem e pendências), a REDE DE
  * SEGURANÇA (reuniões de outros dias que já começaram e estão sem resultado)
  * e a lista do dia escolhido, com os botões:
- * - antes da reunião: "Reunião qualificada";
- * - depois que ela começa: com proposta (pede o valor), sem proposta, no show.
+ * - antes da reunião: "Reunião qualificada" e "Reagendar" (1081);
+ * - depois que ela começa: com proposta (pede o valor), sem proposta,
+ *   reagendar, no show.
  *
  * ⚠️ Cada botão espera `ESPERA_DO_DESFAZER_S` segundos com "Desfazer" antes de
  * mover o card: mover dispara as automações da etapa e o aviso à TinTim na

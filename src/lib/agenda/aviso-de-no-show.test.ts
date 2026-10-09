@@ -117,6 +117,90 @@ describe('avisoDeNoShow', () => {
   });
 });
 
+// D2 de docs/PLANO-reagendamento.md (09/10/2026): a reunião que terminou em
+// Reagendar não aconteceu — não é "reunião anterior" nem falta.
+describe('avisoDeNoShow — Reagendar (1081)', () => {
+  const REAGENDAR = { etapa: 'Reagendar', desfecho: 'reagendar' as const };
+  const base = { entradas: [] as EntradaNaEtapa[], temValorNoCard: false, agora: AGORA };
+
+  it('a reunião reagendada pelo marco da pauta sai do sem_avanco', () => {
+    expect(avisoDeNoShow({ ...base, reunioes: [reuniao(ANTIGA.inicio, { reagendada: true }), NOVA] })).toBeNull();
+  });
+
+  it('a FUTURA reagendada pelo marco não é "a próxima": a faixa cita a seguinte, ou some sem outra', () => {
+    const faltou = [entrada('2026-09-15T14:00:00Z', { etapa: 'No Show', desfecho: 'faltou' })];
+    const morta = reuniao(NOVA.inicio, { fim: NOVA.fim, reagendada: true });
+    const depois = reuniao('2026-10-20T13:00:00Z');
+    expect(avisoDeNoShow({ ...base, entradas: faltou, reunioes: [ANTIGA, morta, depois] })?.proxima).toEqual({
+      inicio: depois.inicio,
+      fim: depois.fim,
+    });
+    expect(avisoDeNoShow({ ...base, entradas: faltou, reunioes: [ANTIGA, morta] })).toBeNull();
+  });
+
+  it('sem o marco, a mesma reunião continua contando (controle)', () => {
+    expect(avisoDeNoShow({ ...base, reunioes: [reuniao(ANTIGA.inicio, { reagendada: false }), NOVA] })?.motivo).toBe('sem_avanco');
+  });
+
+  it('com outra reunião anterior de pé, o sem_avanco cita ESSA, nunca a reagendada', () => {
+    const maisAntiga = reuniao('2026-09-01T13:00:00Z');
+    expect(
+      avisoDeNoShow({ ...base, reunioes: [maisAntiga, reuniao(ANTIGA.inicio, { reagendada: true }), NOVA] }),
+    ).toEqual({ motivo: 'sem_avanco', em: maisAntiga.inicio, proxima: { inicio: NOVA.inicio, fim: NOVA.fim } });
+  });
+
+  it('a entrada numa etapa "Reagendar" dentro da janela da reunião a tira do sem_avanco', () => {
+    // Janela [início da ANTIGA, início da NOVA — futura]: no instante do início
+    // e dias depois (a equipe moveu o card bem mais tarde).
+    for (const em of [ANTIGA.inicio, '2026-09-27T14:00:00Z']) {
+      expect(avisoDeNoShow({ ...base, reunioes: [ANTIGA, NOVA], entradas: [entrada(em, REAGENDAR)] })).toBeNull();
+    }
+  });
+
+  it('a entrada ANTES do início da reunião não a tira (o quadro antes da hora não resolve a reunião)', () => {
+    const antes = entrada('2026-09-15T12:59:00Z', REAGENDAR);
+    expect(avisoDeNoShow({ ...base, reunioes: [ANTIGA, NOVA], entradas: [antes] })?.motivo).toBe('sem_avanco');
+  });
+
+  it('a janela fecha no início da próxima reunião válida, mesmo que ela também já tenha passado', () => {
+    const segunda = reuniao('2026-09-20T13:00:00Z');
+    // Reagendou a SEGUNDA (no início dela ou depois): a ANTIGA continua contando.
+    for (const em of [segunda.inicio, '2026-09-20T13:10:00Z']) {
+      expect(avisoDeNoShow({ ...base, reunioes: [ANTIGA, segunda, NOVA], entradas: [entrada(em, REAGENDAR)] })).toMatchObject({
+        motivo: 'sem_avanco',
+        em: ANTIGA.inicio,
+      });
+    }
+    // Reagendou as duas: não sobra reunião anterior.
+    const ambas = [entrada('2026-09-15T13:10:00Z', REAGENDAR), entrada('2026-09-20T13:10:00Z', REAGENDAR)];
+    expect(avisoDeNoShow({ ...base, reunioes: [ANTIGA, segunda, NOVA], entradas: ambas })).toBeNull();
+  });
+
+  it('reunião desmarcada não fecha a janela da anterior', () => {
+    const cancelada = reuniao('2026-09-18T13:00:00Z', { desmarcada: true });
+    const reagendou = entrada('2026-09-19T10:00:00Z', REAGENDAR);
+    expect(avisoDeNoShow({ ...base, reunioes: [ANTIGA, cancelada, NOVA], entradas: [reagendou] })).toBeNull();
+  });
+
+  it('"Reagendar" marcado numa etapa de proposta em diante não vale como reagendar — mas ali já houve avanço', () => {
+    const proposta = entrada('2026-09-15T14:00:00Z', { etapa: 'Proposta Realizada', degrau: 'proposta', desfecho: 'reagendar' });
+    expect(avisoDeNoShow({ ...base, reunioes: [ANTIGA, NOVA], entradas: [proposta] })).toBeNull();
+  });
+
+  it('a falta continua vencendo, mesmo com a reunião reagendada', () => {
+    expect(
+      avisoDeNoShow({ ...base, reunioes: [reuniao(ANTIGA.inicio, { reagendada: true }), NOVA], entradas: [NO_SHOW, entrada('2026-09-15T13:10:00Z', REAGENDAR)] }),
+    ).toMatchObject({ motivo: 'faltou', em: NO_SHOW.em, etapa: 'No Show' });
+  });
+
+  it('Reagendar nunca vira "faltou"', () => {
+    const reagendou = entrada('2026-09-15T13:10:00Z', REAGENDAR);
+    expect(avisoDeNoShow({ ...base, reunioes: [ANTIGA, NOVA], entradas: [reagendou] })).toBeNull();
+    // Sem a reunião anterior (só a futura), também nada: a entrada sozinha não é falta.
+    expect(avisoDeNoShow({ ...base, reunioes: [NOVA], entradas: [reagendou] })).toBeNull();
+  });
+});
+
 describe('lerAvisoDeNoShow', () => {
   const proxima = { inicio: '2026-09-30T13:00:00.000Z', fim: '2026-09-30T13:30:00.000Z' };
 

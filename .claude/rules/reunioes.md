@@ -117,6 +117,11 @@ operador: nada no card, na lista nem na aba).
   qualquer tempo) ou a agenda registrou a falta. Motivo `sem_avanco`: teve
   reunião que já terminou e NUNCA avançou (degrau proposta/contrato/pasta,
   etapa "Compareceu", agenda "Realizada" ou card com valor).
+- ⚠️ **`sem_avanco` ignora a reunião que terminou em Reagendar** (1081,
+  decisão do operador, 09/10/2026): o marco da pauta do MESMO horário, ou a
+  entrada numa etapa `reagendar` entre o início e a próxima reunião — a régua
+  da pauta. Quem avisou e pediu nova data não teve reunião sem avanço. O
+  Reagendar nunca acende `faltou` (o motivo lê só a marca "Faltou").
 - ⚠️ **O aviso é tão bom quanto o funil**: enquanto a equipe move os cards na
   Kommo, o CRM não vê as faltas recentes e `sem_avanco` pode acusar quem
   compareceu. Por isso o texto é FACTUAL ("foi para No Show em…"), nunca
@@ -136,10 +141,10 @@ a rota `/api/cb/reunioes`, `src/components/reunioes/`. Plano:
 
 - ⚠️⚠️ **O resultado tem DUAS fontes e vence a mais recente**: o marco da
   tela (`cb_reunioes_marcos`, por reunião) e a TRILHA do card (entrada numa
-  etapa "faltou"/"compareceu" ou de proposta em diante, DEPOIS do início). Sem
-  a trilha, a reunião resolvida no quadro fica "sem resultado" para sempre;
-  sem o marco, a do card que JÁ estava na etapa não se resolve (mover para a
-  mesma etapa não grava trilha).
+  etapa "faltou"/"compareceu"/"reagendar" ou de proposta em diante, DEPOIS do
+  início). Sem a trilha, a reunião resolvida no quadro fica "sem resultado"
+  para sempre; sem o marco, a do card que JÁ estava na etapa não se resolve
+  (mover para a mesma etapa não grava trilha).
 - ⚠️⚠️ **A trilha de cada reunião é recortada pelo CARD dela e pela janela
   `[início, início da próxima reunião do contato)`** (`proximaEm`, de QUALQUER
   data — a rota lê a agenda e o Calendly inteiros dos contatos). Sem o teto, o
@@ -167,11 +172,34 @@ a rota `/api/cb/reunioes`, `src/components/reunioes/`. Plano:
   `executarAcao` recusa "com proposta" sem valor maior que zero, sem gravar
   nada — o card só anda com o valor digitado (pedido do operador).
 - ⚠️ **Para onde cada botão leva é MARCA, nunca nome**: `qualificada`
-  (desfecho da 1063), `compareceu`, `faltou` e o primeiro degrau `proposta`
-  do funil do card — marca em etapa de proposta em diante não vira destino.
-  Funil sem a marca desliga o botão com a explicação. O
-  aviso de possível no-show lê só `compareceu`/`faltou` — `qualificada` não
-  é comparecimento.
+  (desfecho da 1063), `compareceu`, `reagendar` (1081), `faltou` e o primeiro
+  degrau `proposta` do funil do card — marca em etapa de proposta em diante
+  não vira destino. Funil sem a marca desliga o botão com a explicação. O
+  aviso de possível no-show lê `compareceu`/`faltou` como comparecimento —
+  `qualificada` não é, e `reagendar` só tira a reunião do `sem_avanco`.
+- ⚠️⚠️ **"Reagendar" (1081) aparece ANTES do horário (ao lado de "Reunião
+  qualificada") e DEPOIS** (decisão do operador, 09/10/2026): o cliente
+  AVISOU que não vai e pediu nova data, e o card tem de sair de Reunião
+  Agendada na hora (os lembretes param). O resultado `reagendar` NÃO é falta:
+  não acende "Já faltou" nem a faixa de possível no-show. O marco grava o
+  início que a tela via (`cb_reunioes_marcos.inicio`), e o Reagendar gravado
+  antes do horário só vale para ESSE horário (`marcoValeParaAReuniao`): a
+  remarcação pela ficha reaproveita a MESMA reunião, e o Reagendar do horário
+  antigo resolveria o novo. Marco sem `inicio` (anterior à 1081) segue a regra
+  de sempre. A TRILHA continua valendo só depois do início (ela não sabe de
+  qual horário a entrada era): mover o card pelo quadro antes da hora não
+  resolve a reunião, e a pauta pede a confirmação na hora (o card já está
+  lá). "Corrigir" só depois do início: antes, o resultado novo não valeria e
+  o upsert do mesmo marco apagaria o Reagendar sem nada no lugar. Limite
+  aceito: o cliente que desiste de reagendar antes da hora segue "pediu para
+  reagendar" até a reunião começar (mover o card de volta não apaga o marco).
+  Plano: `docs/PLANO-reagendamento.md`.
+- ⚠️ **A reunião com Reagendar pelo MARCO não é "a próxima" de ninguém**
+  (`reagendadaPeloMarco`, `montarPauta`; `deVerdade` no aviso): ela não vai
+  acontecer. Contada, a reunião que o cliente ANTECIPOU pelo link manual (a
+  antiga segue de pé no Calendly) ficava só registrando ("o card já é da
+  reunião de…"), com a trilha cortada, e a faixa citava uma reunião morta. Só
+  o marco: a trilha depende da janela, que depende da próxima.
 - ⚠️ **A montagem do Calendly é POR CONTATO e com TODOS os agendamentos
   dele** (`montarReunioesExternas`): a inferência do convite substituído por
   reagendamento compara com agendamentos fora da janela, e misturar contatos

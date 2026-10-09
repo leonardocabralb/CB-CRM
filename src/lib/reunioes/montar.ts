@@ -3,6 +3,7 @@ import { montarReunioesExternas, type LinhaDoCalendly, type ReuniaoExterna } fro
 import {
   alvosDoFunil,
   faltouAntes,
+  marcoValeParaAReuniao,
   qualificacaoDaReuniao,
   resultadoDaReuniao,
   type AlvosDoFunil,
@@ -148,6 +149,17 @@ export function montarPauta(d: DadosDaPauta): { reunioes: ReuniaoDaPauta[]; funi
     return seguintes.length > 0 ? Math.min(...seguintes) : null;
   };
   const isoOuNulo = (v: number | null): string | null => (v === null ? null : new Date(v).toISOString());
+  // ⚠️ A reunião com Reagendar registrado na pauta para ESTE horário (1081)
+  // não é "a próxima" de ninguém: o cliente avisou que ela não vai acontecer
+  // (D2 de `docs/PLANO-reagendamento.md`). Contada, a reunião nova marcada
+  // para ANTES dela (o cliente antecipou pelo link manual, e a antiga segue de
+  // pé no Calendly) ficava com os botões só registrando ("o card já é da
+  // reunião de…") e a trilha cortada. Só o marco: a trilha depende da janela,
+  // que depende justamente da próxima.
+  const reagendadaPeloMarco = (chave: string, inicio: string): boolean =>
+    (d.marcos.get(chave) ?? []).some(
+      (m) => m.marco === 'resultado' && m.resultado === 'reagendar' && marcoValeParaAReuniao(m, inicio),
+    );
 
   const reunioes: ReuniaoDaPauta[] = [];
   const completar = (
@@ -199,7 +211,9 @@ export function montarPauta(d: DadosDaPauta): { reunioes: ReuniaoDaPauta[]; funi
   };
 
   const deAgenda = d.agenda.filter((a) => a.status !== 'cancelada' && ms(a.starts_at) !== null);
-  for (const a of deAgenda) anotarInicio(a.contact_id, a.starts_at);
+  for (const a of deAgenda) {
+    if (!reagendadaPeloMarco(`agenda:${a.id}`, a.starts_at)) anotarInicio(a.contact_id, a.starts_at);
+  }
 
   // REMARCADA PELA FICHA. O operador move no Google Agenda a reunião que JÁ
   // PASSOU (o Calendly só remarca a futura, e aí avisa o CRM) e acerta à mão o
@@ -253,11 +267,13 @@ export function montarPauta(d: DadosDaPauta): { reunioes: ReuniaoDaPauta[]; funi
       maisNova.remarcadaPara = daFicha;
     }
     for (const x of dePe) {
+      const chave = `calendly:${x.r.id}`;
       if (x.remarcadaPara === null) {
-        anotarInicio(x.linha.contact_id, x.r.inicio);
+        if (!reagendadaPeloMarco(chave, x.r.inicio)) anotarInicio(x.linha.contact_id, x.r.inicio);
       } else {
         // A próxima reunião é a da ficha; o horário do Calendly só corta a trilha.
-        anotarInicio(x.linha.contact_id, new Date(x.remarcadaPara).toISOString());
+        const daFicha = new Date(x.remarcadaPara).toISOString();
+        if (!reagendadaPeloMarco(chave, daFicha)) anotarInicio(x.linha.contact_id, daFicha);
         anotarEm(cortesPorContato, x.linha.contact_id, x.r.inicio);
       }
     }
