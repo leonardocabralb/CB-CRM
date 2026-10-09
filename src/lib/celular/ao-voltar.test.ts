@@ -52,12 +52,13 @@ describe("as telas que se atualizam ao voltar", () => {
     expect(ler(caminho)).toContain("useAoVoltarParaOApp(");
   });
 
-  it.each(["src/components/funil/desempenho.tsx", "src/components/funil/saude.tsx"])(
+  it.each(["src/components/funil/saude.tsx"])(
     "%s recarrega as trajetórias E o gasto dos anúncios juntos",
     (caminho) => {
       // Só as trajetórias misturava as contagens novas com o gasto velho, e
       // os custos saíam errados (Codex, merge do PR #216; a Saúde ganhou
-      // custos na 1054).
+      // custos na 1054). O Desempenho, que recarrega também as reuniões, tem
+      // o pino próprio abaixo.
       expect(ler(caminho)).toMatch(/useAoVoltarParaOApp\(\(\) => \{\s*recarregar\(\);\s*anuncios\.recarregar\(\);\s*\}\);/);
     },
   );
@@ -179,11 +180,12 @@ describe("as visões do funil recarregam também o que não é trajetória (Code
   const lista = ler("src/components/funil/lista-de-leads.tsx");
   const canais = ler("src/hooks/use-channels.ts");
 
-  it("o Desempenho recarrega as trajetórias E o gasto dos anúncios", () => {
+  it("o Desempenho recarrega as trajetórias, o gasto dos anúncios E as reuniões", () => {
     // Só as trajetórias misturava leads novos com o gasto de antes da
-    // sincronização: custo por lead e CAC errados até trocar de tela.
+    // sincronização: custo por lead e CAC errados até trocar de tela. As
+    // reuniões (Fase 4 do Reagendar) também afirmam números e vão junto.
     expect(desempenho).toMatch(
-      /useAoVoltarParaOApp\(\(\) => \{\s*recarregar\(\);\s*anuncios\.recarregar\(\);\s*\}\);/,
+      /useAoVoltarParaOApp\(\(\) => \{\s*recarregar\(\);\s*anuncios\.recarregar\(\);\s*reunioes\.recarregar\(\);\s*\}\);/,
     );
     // A versão entra NA CHAVE: sem ela, o resultado velho continuaria vigente.
     expect(gastos).toContain('const chave = `${dias.desde ?? ""}|${dias.ate ?? ""}|${versao}`;');

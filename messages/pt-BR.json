@@ -1819,7 +1819,25 @@
           "semGasto": "Nenhum gasto neste período nas campanhas deste funil."
         },
         "periodoPorAtividade": "Conta o que aconteceu no período (cada lead uma vez por degrau)",
-        "semAtividade": "Nada aconteceu neste funil no período: nenhum lead entrou, avançou ou foi perdido."
+        "semAtividade": "Nada aconteceu neste funil no período: nenhum lead entrou, avançou ou foi perdido.",
+        "reunioes": {
+          "titulo": "Reuniões",
+          "carregando": "Carregando as reuniões…",
+          "noAnterior": "{valor} no período anterior",
+          "noPeriodo": "{n} reunião(ões) no período",
+          "semResultado": "{n} sem resultado",
+          "nota": "Pela data da reunião, nos dois modos, no funil em que o card estava no dia. Comparecimento = compareceram ÷ (compareceram + no-show); reagendadas e sem resultado ficam fora da conta.",
+          "falhou": "Não foi possível carregar as reuniões.",
+          "compareceram": "Compareceram",
+          "comProposta": "{n} com proposta",
+          "noShow": "No-show",
+          "noShowDesc": "não vieram e não avisaram",
+          "reagendaram": "Reagendaram",
+          "reagendaramDesc": "avisaram e pediram nova data",
+          "comparecimento": "Comparecimento",
+          "comparecimentoDesc": "compareceram ÷ (compareceram + no-show)",
+          "foraDeFunil": "{n} reunião(ões) do período sem card no dia não entram em funil nenhum."
+        }
       },
       "cartoesDeCusto": {
         "investimento": "Investimento",

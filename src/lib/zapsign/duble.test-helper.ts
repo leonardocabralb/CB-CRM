@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 /**
  * Um Supabase EM MEMÓRIA para os testes do ZapSign: tabelas como listas,
  * com os filtros que o módulo usa (`eq`, `in`, `is`, `or`, `like`, `ilike`,
- * `lt`, `not(…, 'is', null)`, `order`, `limit`) e as escritas (`insert`, `upsert` com
+ * `lt`, `gt`, `not(…, 'is', null)`, `order`, `limit`) e as escritas (`insert`, `upsert` com
  * `onConflict` e `ignoreDuplicates`, `update`, `delete`). Como o PostgREST,
  * o UPDATE e o upsert só escrevem as colunas PRESENTES.
  *
@@ -162,6 +162,7 @@ export function criarBanco(inicial: Record<string, Linha[]> = {}, opcoesDoBanco:
         return b;
       },
       lt: (c: string, v: string) => (filtros.push((l) => typeof l[c] === "string" && (l[c] as string) < v), b),
+      gt: (c: string, v: string) => (filtros.push((l) => typeof l[c] === "string" && (l[c] as string) > v), b),
       gte: (c: string, v: string) => (filtros.push((l) => typeof l[c] === "string" && (l[c] as string) >= v), b),
       lte: (c: string, v: string) => (filtros.push((l) => typeof l[c] === "string" && (l[c] as string) <= v), b),
       or: (expr: string) => (filtros.push(filtroDoOr(expr)), b),

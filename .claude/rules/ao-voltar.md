@@ -99,7 +99,9 @@ uma hora atrás, sem aviso. A caixa de entrada tem o seu próprio mecanismo
   os custos por mês desde a 1054): o gasto dos anúncios
   (`useGastosDeAnuncios.recarregar`, com a versão DENTRO da chave) — só as
   trajetórias misturava leads novos com gasto velho, e custo por lead e CAC
-  saíam errados. Pino em `ao-voltar.test.ts`. Lista: o catálogo de campos, blocos e perfis
+  saíam errados. No Desempenho, também as reuniões do comparecimento
+  (`useReunioesDoDesempenho.recarregar`, versão na chave: pisca). Pino em
+  `ao-voltar.test.ts`. Lista: o catálogo de campos, blocos e perfis
   (`versaoDoCatalogo`) e as conexões, EM SILÊNCIO, por serem rótulos — a
   recarga do catálogo que falha mantém o que está na tela (vazio tiraria as
   colunas de campo), e as conexões usam o `recarregarEmSilencio` do
