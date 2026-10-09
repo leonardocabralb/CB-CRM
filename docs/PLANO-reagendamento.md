@@ -28,8 +28,8 @@ Regras da área: `.claude/rules/reunioes.md`, `.claude/rules/funil.md` e
 | Fase | O quê | Estado |
 | --- | --- | --- |
 | 1 | Este plano: levantamento, desenho e as decisões do operador | Concluída (09/10/2026) |
-| 2 | Reagendar no código: migration, pauta, Meu dia, Gerenciar funil, faixa de possível no-show | Implementada na branch `feat/reagendar-na-pauta`; falta teste no preview, revisão do Codex e merge |
-| 3 | Configuração pelo operador: criar a etapa, marcar, ajustar o botão de avançar | Não começada — depois do deploy da Fase 2 |
+| 2 | Reagendar no código: migration, pauta, Meu dia, Gerenciar funil, faixa de possível no-show | PR #395: 1081 aplicada em produção (09/10/2026), teste no preview e revisão do Codex feitos; no ar com o merge |
+| 3 | Configuração pelo operador: criar a etapa, marcar, ajustar o botão de avançar | Feita em 09/10/2026 pela tela (preview no banco de produção): etapa "Reagendar" no Bancário - Comercial (degrau reunião, marca Reagendar) e o botão de avançar |
 | 4 | Medida de comparecimento no Desempenho | Não começada — PR próprio, depois da Fase 2 |
 
 ## Decisões do operador (09/10/2026)
