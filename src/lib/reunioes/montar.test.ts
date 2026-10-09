@@ -379,6 +379,30 @@ describe('montarPauta — o Reagendar e as reuniões vizinhas (revisão do PR #3
     expect(a?.proximaEm).toBeNull();
   });
 
+  it('a reagendada CORRIGIDA depois pelo quadro volta a ser fronteira: a entrada dela não cai na anterior (Codex)', () => {
+    // Reagendar em X (02/10) gravado em 28/09; Z (30/09) já estava agendada e
+    // começa DEPOIS do Reagendar. Depois do horário de X o card vai para No
+    // Show pelo quadro: o resultado final de X é no show, não reagendar.
+    const { reunioes } = montarPauta(
+      dados({
+        janela: janelaLarga,
+        etapas: COM_REAGENDAR,
+        calendly: [
+          cal({ id: 'z', inicio: '2026-09-30T14:00:00Z', fim: '2026-09-30T14:30:00Z', recebido_em: '2026-09-21T10:00:00Z' }),
+          cal({ id: 'x', event_type_uri: 'outro', inicio: '2026-10-02T14:00:00Z', fim: '2026-10-02T14:30:00Z', recebido_em: '2026-09-22T10:00:00Z' }),
+        ],
+        negocios: [card],
+        marcos: new Map([['calendly:x', [marco('x', 'reagendar', '2026-09-28T12:00:00Z', '2026-10-02T14:00:00Z')]]]),
+        trilha: new Map([['c1', [{ em: '2026-10-02T14:20:00Z', dealId: 'd1', etapaId: 'noshow', etapa: 'No Show', por: 'Bia' }]]]),
+      }),
+    );
+    const z = reunioes.find((r) => r.reuniaoId === 'z');
+    const x = reunioes.find((r) => r.reuniaoId === 'x');
+    expect(x?.resultado?.tipo).toBe('no_show');
+    expect(z?.proximaEm).toBe('2026-10-02T14:00:00.000Z');
+    expect(z?.resultado).toBeNull();
+  });
+
   it('a reunião REAGENDADA não herda o desfecho da substituta antecipada; sem substituta, a trilha ainda a resolve', () => {
     const base = (comSubstituta: boolean, entrada: { em: string; etapaId: string; etapa: string }) =>
       montarPauta(
