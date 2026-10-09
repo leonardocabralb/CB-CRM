@@ -98,7 +98,12 @@ export function marcaDaReuniaoQueVale<M extends string>(degrau: string | null | 
   return alcancaProposta(degrau) ? null : (marca ?? null);
 }
 
-export type EtapaMinima = Pick<PipelineStage, "id" | "name" | "position" | "degrau">;
+/**
+ * O que o funil de eficiência lê de cada etapa. `desfecho_da_reuniao` (1058) é
+ * opcional: só a contagem de no-show (`etapasDeFalta`) o usa.
+ */
+export type EtapaMinima = Pick<PipelineStage, "id" | "name" | "position" | "degrau"> &
+  Partial<Pick<PipelineStage, "desfecho_da_reuniao">>;
 
 export interface Classificacao {
   /** etapa → classe, SÓ das etapas mapeadas (sem degrau = ausente). */
@@ -115,6 +120,13 @@ export interface Classificacao {
   configurado: boolean;
   /** todas as etapas do funil, por id (nome/posição para rótulo e ordem). */
   etapas: Map<string, EtapaMinima>;
+  /**
+   * As etapas marcadas "Faltou" — a marca que VALE (`marcaDaReuniaoQueVale`:
+   * da proposta em diante ela é ignorada). Cada ENTRADA do card numa delas é
+   * um no-show (decisão do operador, 09/10/2026). Vazio = o funil não mede
+   * no-show, e a tela não mostra a seção nem o custo por no-show.
+   */
+  etapasDeFalta: ReadonlySet<string>;
 }
 
 /**
@@ -146,6 +158,9 @@ export function classificarEtapas(etapas: readonly EtapaMinima[]): Classificacao
     faltando: DEGRAUS.filter((d) => porClasse[d].length === 0 && !DEGRAUS_OPCIONAIS.includes(d)),
     configurado: porClasse.lead.length > 0,
     etapas: new Map(ordenadas.map((e) => [e.id, e])),
+    etapasDeFalta: new Set(
+      ordenadas.filter((e) => marcaDaReuniaoQueVale(e.degrau, e.desfecho_da_reuniao) === "faltou").map((e) => e.id),
+    ),
   };
 }
 

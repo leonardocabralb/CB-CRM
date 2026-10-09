@@ -56,7 +56,9 @@ import type { FatosDoNegocio } from "./trajetoria";
  * de outro mês, e a taxa PODE PASSAR DE 100% (5 contratos de reuniões de
  * agosto, 2 reuniões em setembro = 250%). Decisão do operador (18/09/2026):
  * mostrar como é, com a nota na tela. Quem precisa da conversão rigorosa usa
- * o modo por mês de entrada, onde nenhuma taxa passa de 100%. NÃO "consertar"
+ * o modo por mês de entrada, onde nenhuma taxa passa de 100% (menos a de
+ * no-show, em que cada entrada conta: dois no-shows de um agendamento são
+ * 200%, nos dois modos). NÃO "consertar"
  * com `Math.min(1, …)`: o número cortado afirmaria uma conversão que não houve.
  *
  * ⚠️ A RPC devolve a trajetória INTEIRA de todo negócio com evento no
@@ -135,6 +137,12 @@ export function resumoPorPeriodo(
     valorFechado,
     ticketMedio: emPe.length > 0 ? valorFechado / emPe.length : null,
     entradasPorDia: entradasPorDia(entrantes, intervalo, agora),
+    // Cada entrada numa etapa "Faltou" que aconteceu no período, venha o lead
+    // de quando vier (fluxo, como o resto deste modo).
+    noShows: fatos.reduce(
+      (soma, f) => soma + f.entradasEmFalta.filter((d) => dentroDoIntervalo(d, intervalo)).length,
+      0,
+    ),
   };
 }
 
@@ -153,13 +161,14 @@ export function resumoNoModo(
 
 /**
  * Houve ALGO no período? No modo por período "nenhum lead entrou" não quer
- * dizer tela vazia — contrato e perda de lead antigo contam. A nota de
- * período vazio só aparece quando nada aconteceu.
+ * dizer tela vazia — contrato, perda e no-show de lead antigo contam. A nota
+ * de período vazio só aparece quando nada aconteceu.
  */
 export function periodoSemAtividade(resumo: ResumoDoPeriodo): boolean {
   return (
     resumo.entradas === 0 &&
     resumo.perdidos === 0 &&
+    resumo.noShows === 0 &&
     resumo.porDegrau.every((d) => d.alcancaram === 0)
   );
 }

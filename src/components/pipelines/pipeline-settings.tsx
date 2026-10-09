@@ -335,14 +335,25 @@ export function PipelineSettings({
     // etapa de onde o card SAIU do funil (`situacao-do-cliente.ts`); apagar a
     // etapa marcada apagaria a faixa de todo ex-cliente que saiu dela (Codex,
     // PR #355). Tirar a marca antes é a saída explícita — e consciente.
+    // O mesmo para a marcação "Reunião": o no-show do Desempenho e da Saúde
+    // conta as entradas na etapa "Faltou", e a pauta resolve reuniões pela
+    // trilha da etapa marcada — apagá-la sumiria com os dois (Codex, PR #397).
     const etapa = localStages.find((s) => s.id === stageId);
-    if (etapa?.degrau || etapa?.situacao_do_cliente) {
+    if (etapa?.degrau || etapa?.situacao_do_cliente || etapa?.desfecho_da_reuniao) {
       const { count: eventos, error: erroTrilha } = await supabase
         .from("cb_lead_events")
         .select("id", { count: "exact", head: true })
         .or(`to_stage_id.eq.${stageId},from_stage_id.eq.${stageId}`);
       if (erroTrilha || (eventos ?? 0) > 0) {
-        toast.error(t(etapa.degrau ? "toastStageMappedWithHistory" : "toastStageMarkedWithHistory"));
+        toast.error(
+          t(
+            etapa.degrau
+              ? "toastStageMappedWithHistory"
+              : etapa.situacao_do_cliente
+                ? "toastStageMarkedWithHistory"
+                : "toastStageMeetingMarkWithHistory",
+          ),
+        );
         return;
       }
     }
@@ -873,8 +884,8 @@ function SortableStageRow({
           "Qualificada" é o destino do botão "Reunião qualificada" (antes da
           reunião; o aviso de no-show não a lê como comparecimento). 1081:
           "Reagendar" é o destino do botão "Reagendar" (antes e depois do
-          início): o cliente avisou que não vai e pediu nova data — não é
-          falta, e nem o "Já faltou" nem o aviso de no-show a leem assim.
+          início): fila de trabalho de quem quer remarcar — não é falta nem
+          métrica, e nem o "Já faltou" nem o aviso de no-show a leem assim.
           ⚠️ Da proposta em diante o campo TRAVA: o degrau já diz
           "compareceu, com proposta", e a marcação ali é ignorada por todo
           leitor (`marcaDaReuniaoQueVale`) — marcar "Proposta Realizada" como

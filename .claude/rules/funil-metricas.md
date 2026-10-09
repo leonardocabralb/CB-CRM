@@ -8,7 +8,6 @@ paths:
   - "src/hooks/use-trajetorias*"
   - "src/hooks/use-modo-de-contagem*"
   - "src/hooks/use-gastos-de-anuncios*"
-  - "src/hooks/use-reunioes-do-desempenho*"
   - "src/components/pipelines/pipeline-settings.tsx"
   - "src/components/pipelines/pipeline-analytics.tsx"
   - "src/lib/csv*"
@@ -80,7 +79,9 @@ perda, NULL} (`pasta` desde a 1054). `src/lib/funil/` é puro e testado;
 - ⚠️ **Apagar etapa MAPEADA com histórico é barrado na tela de Funis.** O
   mapeamento é lido sobre a história inteira (remapear reescreve o passado, de
   propósito), e etapa apagada tira da coorte quem só passou por ela — "zero
-  negócios na etapa" não protege. Saída: "Não conta", salvar, remover.
+  negócios na etapa" não protege. Saída: "Não conta", salvar, remover. O
+  mesmo vale para a etapa com marcação "Reunião" (o no-show conta as entradas
+  nela; a pauta resolve reuniões pela trilha dela): saída "Reunião: —".
 - Os rótulos PADRÃO dos degraus são chave MONTADA
   (`Pipelines.funil.degraus.<c>`); `degraus.test.ts` cobra os dois
   dicionários. O rótulo LIVRE do funil (abaixo) não passa pelo dicionário.
@@ -142,7 +143,8 @@ com teste); jsonb com `rotulos`, `nao_se_aplica`, `custos_ocultos`.
 
 `src/lib/funil/custos.ts`: investimento ÷ entradas (lead), ÷ quem alcançou o
 degrau (mql, reunião, proposta, pasta), ÷ `fechados` (contrato ASSINADO), ÷
-`fechadosAgora` (CAC, contrato em pé), e custo por lead × entrantes perdidos.
+`fechadosAgora` (CAC, contrato em pé), ÷ no-shows (`no_show`, só no funil com
+etapa "Faltou") e custo por lead × entrantes perdidos.
 A MESMA função no Desempenho (período) e na Saúde (`custosMensais`, mês a
 mês, com o gasto do mês): cópia divergiria. Sem denominador = `null` ("—").
 Números de custo são das vistas de admin.
@@ -249,38 +251,37 @@ coorte ("por mês de entrada") fica sob demanda.
   anúncios junto, catálogo da Lista em silêncio) está em
   `.claude/rules/ao-voltar.md`.
 
-### Reuniões no Desempenho (comparecimento, D4/D5 de 09/10/2026)
+### No-show no Desempenho e na Saúde (decisão do operador, 09/10/2026)
 
-`src/lib/funil/comparecimento.ts` (puro), `reunioes-do-periodo.tsx`,
-`use-reunioes-do-desempenho.ts` e a rota `GET /api/cb/reunioes/resumo` (só
-admin). Plano: Fase 4 de `docs/PLANO-reagendamento.md`.
+A seção "Reuniões" do Desempenho (`reunioes-do-periodo.tsx`) e a tabela mês a
+mês da Saúde: agendamentos, no-shows e a taxa; o custo por no-show é cartão de
+custo (`no_show`). Plano: Fase 4 de `docs/PLANO-reagendamento.md`.
 
-- ⚠️⚠️ **O resultado é o da PAUTA, nunca uma cópia**: a rota roda a mesma
-  carga e a mesma régua de `/reunioes` (`carregarDadosDaPauta` →
-  `montarPauta`). Régua própria faria as duas telas discordarem sobre a mesma
-  reunião.
-- ⚠️⚠️ **A reunião conta no funil em que o card estava NO INÍCIO dela**
-  (`funilNoInstante`: a última entrada `deal_created`/`stage_changed`/
-  `pipeline_changed` até ali, por `occurred_at`), nunca o
-  `negocio.pipelineId` de hoje — o cliente que fechou e foi para o Jurídico
-  sumiria do Comercial. Sem card no início = fora de todo funil (a seção diz
-  quantas).
-- **Pela DATA DA REUNIÃO nos dois modos** (reunião é evento, não coorte), só
-  as que já começaram, `[desde, ate)`.
-- ⚠️ **Comparecimento = compareceram ÷ (compareceram + no-show)**:
-  reagendadas e sem resultado ficam FORA e aparecem à parte; sem denominador
-  é `null` ("—"). Com período anterior e sem variação (zero lá, taxa sem
-  denominador), o cartão mostra o valor de lá, nunca "sem período anterior".
-- Só no funil com etapa marcada Compareceu/Faltou/Reagendar
-  (`funilMedeComparecimento`, pela marca que VALE); nos outros nem busca.
-  Com reunião no período, a nota "Nada aconteceu neste funil" some (e não
-  afirma com as reuniões carregando).
-- A rota devolve só `{ inicio, funil, resultado }`: nenhum dado do cliente.
-- Limites: o resultado não congela (entrada tardia em etapa de resultado muda
-  reunião antiga, como na pauta); a reunião substituída no Calendly sai com o
-  Reagendar dela; o card é o que a PAUTA escolhe (`negocioDoContato`: o
-  aberto mais novo que já existia no início) — contato com dois cards
-  abertos em funis diferentes conta no do mais novo (em 09/10/2026, nenhum).
+- ⚠️⚠️ **Conta pelas TRANSIÇÕES do card, no MESMO resumo** (`noShows` em
+  `ResumoDoPeriodo`, `entradasEmFalta` nos fatos): nada de conta própria de
+  reunião. A primeira versão (#396) contava reunião a reunião pela régua da
+  pauta e o operador a trocou por esta: mais simples, e a falta não some.
+- **No-show = cada ENTRADA numa etapa marcada "Faltou"**
+  (`Classificacao.etapasDeFalta`, pela marca que VALE — `marcaDaReuniaoQueVale`)
+  NESTE funil; quem faltou duas vezes são dois. **Agendamentos** = quem
+  alcançou o degrau reunião (o cartão do funil, `agendamentosDe`). **Taxa** =
+  no-shows ÷ agendamentos (`taxaDeNoShow`; sem agendamento, `null`). Pode
+  passar de 100% nos DOIS modos (cada entrada conta; por período é também
+  fluxo); na coorte, todas as entradas dos leads que entraram no período.
+  ⚠️ A semente da 912 (`deal_created` `retroativo`: a FOTO da etapa de cada
+  card antigo, datada pela criação) NÃO conta; a trilha da Kommo
+  (`stage_changed` `retroativo`) conta. Em 09/10/2026 nenhuma semente estava
+  em etapa "Faltou" (as 176 entradas eram transições).
+- ⚠️ **A etapa "Reagendar" é FILA DE TRABALHO, fora da conta**: quem faltou e
+  foi para lá continua com o no-show; quem avisou antes e foi direto para lá
+  nunca entrou no No Show.
+- Só no funil que mede no-show (`funilMedeNoShow`: etapa "Faltou" E degrau
+  reunião mapeado — sem ele, "agendamentos" viria só de quem pulou para a
+  proposta): a seção, a tabela e o cartão de custo. No-show no período é
+  atividade (`periodoSemAtividade`).
+- Limite aceito: o No Show por engano, corrigido depois (pela pauta ou pelo
+  quadro), continua contado — a entrada aconteceu. É o preço de contar pela
+  transição.
 
 ### CSV
 

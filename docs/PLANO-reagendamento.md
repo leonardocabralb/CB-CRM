@@ -30,7 +30,7 @@ Regras da área: `.claude/rules/reunioes.md`, `.claude/rules/funil.md` e
 | 1 | Este plano: levantamento, desenho e as decisões do operador | Concluída (09/10/2026) |
 | 2 | Reagendar no código: migration, pauta, Meu dia, Gerenciar funil, faixa de possível no-show | PR #395: 1081 aplicada em produção (09/10/2026), teste no preview e revisão do Codex feitos; no ar com o merge |
 | 3 | Configuração pelo operador: criar a etapa, marcar, ajustar o botão de avançar | Feita em 09/10/2026 pela tela (preview no banco de produção): etapa "Reagendar" no Bancário - Comercial (degrau reunião, marca Reagendar) e o botão de avançar |
-| 4 | Medida de comparecimento no Desempenho | Implementada na branch `feat/comparecimento-no-desempenho` (09/10/2026), conferida no preview contra o banco; espera revisão e o OK do operador para o merge |
+| 4 | Medida de no-show no Desempenho e na Saúde | Primeira versão (contagem reunião a reunião) mesclada no #396; REFEITA pelas transições do card por decisão do operador (09/10/2026, branch `feat/no-show-por-transicao`), conferida no preview contra o banco |
 
 ## Decisões do operador (09/10/2026)
 
@@ -239,6 +239,28 @@ frente). Sem código.
 
 ## Fase 4 — a medida de comparecimento no Desempenho (D4, D5)
 
+> ⚠️ **Refeita por decisão do operador (09/10/2026).** O desenho abaixo (contar
+> reunião a reunião pela régua da pauta) foi implementado no #396 e trocado no
+> mesmo dia, a pedido do operador ("não deixar o fluxo muito complexo"):
+>
+> - **A etapa "Reagendar" é FILA DE TRABALHO interna** — quem demonstrou
+>   interesse em remarcar, para a equipe mandar mensagem e ligar até o novo
+>   agendamento. Não é resultado de reunião e **fica fora das métricas**.
+> - **Conta pelas TRANSIÇÕES do card**, no mesmo resumo do funil: no-show =
+>   **cada entrada** numa etapa marcada "Faltou"; agendamentos = quem alcançou
+>   o degrau reunião; **taxa = no-shows ÷ agendamentos**; **custo por
+>   no-show** = investimento ÷ no-shows (cartão de custo, também na Saúde).
+> - No Desempenho, a seção "Reuniões" com os três cartões; na Saúde, a tabela
+>   mês a mês. A rota `/api/cb/reunioes/resumo` e a conta reunião a reunião
+>   saíram; a carga da pauta em `carregar.ts` (com a paginação pela chave)
+>   ficou.
+> - A pauta (`/reunioes`) não muda: o botão "Reagendar" só move o card para a
+>   fila.
+>
+> Medido em 09/10/2026 (Bancário - Comercial): outubro até o dia 9 — 38
+> agendamentos, 29 no-shows, 76,3%; julho 83, agosto 5 e setembro 25
+> no-shows, os mesmos números contados direto na trilha.
+
 **O que aparece.** No Desempenho de cada funil, uma seção "Reuniões", pelo
 período escolhido e comparada com o período anterior, como os outros cartões:
 
@@ -353,6 +375,6 @@ com as chaves nos dois dicionários.
   qualquer mudança de etapa.
 - **Lembrete**: só para se o card sair de Reunião Agendada/MQL 2 — é o botão
   que o tira. Card que fica onde está continua recebendo lembrete.
-- **Medida (Fase 4)**: a régua do resultado é a da pauta; mudar uma sem a
-  outra faria a pauta e o Desempenho discordarem sobre a mesma reunião. A
-  conta usa a função da pauta, nunca uma cópia.
+- **Medida (Fase 4, refeita)**: a medida NÃO depende da pauta — conta as
+  entradas do card nas etapas marcadas "Faltou" (o mesmo resumo do funil).
+  O No Show por engano, corrigido depois, continua contado (limite aceito).

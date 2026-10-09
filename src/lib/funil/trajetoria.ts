@@ -276,6 +276,19 @@ export interface FatosDoNegocio {
    * igualdade tiraria quem chegou à pasta da conta de contratos.
    */
   alcancouContrato: boolean;
+  /**
+   * Cada ENTRADA do negócio, NESTE funil, numa etapa marcada "Faltou"
+   * (`Classificacao.etapasDeFalta`), em ordem cronológica. Decisão do
+   * operador (09/10/2026): o no-show se conta pela TRANSIÇÃO do card, e cada
+   * entrada conta — quem faltou duas vezes no mês são dois no-shows. A etapa
+   * "Reagendar" é fila de trabalho interna e não entra: quem faltou e foi
+   * depois para Reagendar continua com o no-show; quem avisou antes e foi
+   * direto para lá nunca entrou no No Show. A semente da 912 (`deal_created`
+   * `retroativo`: a FOTO da etapa de cada card antigo, datada pela criação)
+   * não é entrada observada e fica fora (Codex, PR #397); a trilha da Kommo
+   * (`stage_changed` `retroativo`) é transição de verdade e conta.
+   */
+  entradasEmFalta: Date[];
 }
 
 function instante(iso: string): number {
@@ -358,6 +371,14 @@ export function fatosDoNegocio(
     perdidoDesde,
     situacao: situacaoDe(classeAtual, degrauMaximo),
     alcancouContrato: degrauMaximo !== null && degrauMaximo >= INDICE_DO_CONTRATO,
+    entradasEmFalta: aqui
+      .filter(
+        (p) =>
+          p.etapa !== null &&
+          classificacao.etapasDeFalta.has(p.etapa) &&
+          !(p.tipo === "deal_created" && p.origem === "retroativo"),
+      )
+      .map((p) => new Date(p.em)),
   };
 }
 

@@ -104,6 +104,12 @@ export interface ResumoDoPeriodo {
   ticketMedio: number | null;
   /** densa quando o intervalo tem `desde`; esparsa (só dias com lead) no Total. */
   entradasPorDia: EntradasNoDia[];
+  /**
+   * NO-SHOWS: entradas numa etapa marcada "Faltou" (`entradasEmFalta`; cada
+   * entrada conta). Por período, as que aconteceram no período; na coorte,
+   * todas as dos leads que entraram nele. A taxa é `taxaDeNoShow`.
+   */
+  noShows: number;
 }
 
 export function coorteDoPeriodo(
@@ -196,6 +202,7 @@ export function resumoDoPeriodo(
     valorFechado,
     ticketMedio: emPe.length > 0 ? valorFechado / emPe.length : null,
     entradasPorDia: entradasPorDia(coorte, intervalo, agora),
+    noShows: coorte.reduce((soma, f) => soma + f.entradasEmFalta.length, 0),
   };
 }
 
@@ -260,12 +267,15 @@ export interface Comparacao {
   entradas: DeltaDeContagem;
   fechados: DeltaDeContagem;
   perdidos: DeltaDeContagem;
+  /** quem alcançou o degrau reunião — os AGENDAMENTOS da seção de no-show. */
+  agendamentos: DeltaDeContagem;
+  noShows: DeltaDeContagem;
+  taxaDeNoShow: DeltaDeTaxa;
   global: DeltaDeTaxa | null;
   transicoes: (Pick<Transicao, "de" | "para"> & DeltaDeTaxa)[];
 }
 
-/** Também do comparecimento (`comparecimento.ts`): a MESMA variação dos outros cartões. */
-export function contagem(atual: number, anterior: number | null): DeltaDeContagem {
+function contagem(atual: number, anterior: number | null): DeltaDeContagem {
   return {
     atual,
     anterior,
@@ -273,12 +283,29 @@ export function contagem(atual: number, anterior: number | null): DeltaDeContage
   };
 }
 
-export function taxa(atual: number | null, anterior: number | null): DeltaDeTaxa {
+function taxa(atual: number | null, anterior: number | null): DeltaDeTaxa {
   return {
     atual,
     anterior,
     pp: atual !== null && anterior !== null ? (atual - anterior) * 100 : null,
   };
+}
+
+/** Os AGENDAMENTOS: quem alcançou o degrau reunião no resumo (o cartão "Reunião" do funil). */
+export function agendamentosDe(resumo: ResumoDoPeriodo): number {
+  return resumo.porDegrau.find((d) => d.degrau === "reuniao")?.alcancaram ?? 0;
+}
+
+/**
+ * Taxa de no-show = no-shows ÷ agendamentos (decisão do operador,
+ * 09/10/2026). Nulo sem agendamento ("—", nunca 0%). Pode passar de 100% nos
+ * DOIS modos: cada entrada conta (quem faltou duas vezes são dois); por
+ * período, ainda, é razão de FLUXO (o no-show deste mês pode ser de reunião
+ * agendada no mês passado).
+ */
+export function taxaDeNoShow(resumo: ResumoDoPeriodo): number | null {
+  const agendamentos = agendamentosDe(resumo);
+  return agendamentos > 0 ? resumo.noShows / agendamentos : null;
 }
 
 /** Atual × anterior. `anterior` nulo (Total) devolve deltas nulos. */
@@ -287,6 +314,9 @@ export function comparar(atual: ResumoDoPeriodo, anterior: ResumoDoPeriodo | nul
     entradas: contagem(atual.entradas, anterior?.entradas ?? null),
     fechados: contagem(atual.fechados, anterior?.fechados ?? null),
     perdidos: contagem(atual.perdidos, anterior?.perdidos ?? null),
+    agendamentos: contagem(agendamentosDe(atual), anterior ? agendamentosDe(anterior) : null),
+    noShows: contagem(atual.noShows, anterior?.noShows ?? null),
+    taxaDeNoShow: taxa(taxaDeNoShow(atual), anterior ? taxaDeNoShow(anterior) : null),
     global: atual.global
       ? taxa(atual.global.taxa, anterior?.global?.taxa ?? null)
       : null,

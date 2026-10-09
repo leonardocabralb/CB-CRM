@@ -144,14 +144,11 @@ operador: nada no card, na lista nem na aba).
 a rota `/api/cb/reunioes`, `src/components/reunioes/`. Plano:
 `docs/PLANO-pauta-de-reunioes.md`.
 
-- ⚠️⚠️ **A CARGA é uma só para as duas rotas** (`carregar.ts`): a pauta e o
-  resumo do Desempenho (`/api/cb/reunioes/resumo`, o comparecimento por funil
-  — `.claude/rules/funil-metricas.md`). Leitura nova da pauta entra lá, senão
-  as duas telas discordam sobre a mesma reunião. O que pode passar de 1000
-  linhas (reuniões da janela, data da ficha, histórico e negócios de cada
-  lote de contatos, trilha, passos do negócio) pagina pela CHAVE (`paginarPorChave`); a pauta limita a janela a 120 dias,
-  o resumo não ("Total").
-
+- ⚠️ **A carga da pauta mora em `carregar.ts`** (a rota só valida e monta). O
+  que pode passar de 1000 linhas (reuniões da janela, data da ficha, histórico
+  e negócios de cada lote de contatos, trilha) pagina pela CHAVE
+  (`paginarPorChave`). As métricas de no-show NÃO saem daqui: são do funil,
+  pelas transições do card (`.claude/rules/funil-metricas.md`).
 - ⚠️⚠️ **O resultado tem DUAS fontes e vence a mais recente**: o marco da
   tela (`cb_reunioes_marcos`, por reunião) e a TRILHA do card (entrada numa
   etapa "faltou"/"compareceu"/"reagendar" ou de proposta em diante, DEPOIS do
@@ -191,10 +188,11 @@ a rota `/api/cb/reunioes`, `src/components/reunioes/`. Plano:
   aviso de possível no-show lê `compareceu`/`faltou` como comparecimento —
   `qualificada` não é, e `reagendar` só tira a reunião do `sem_avanco`.
 - ⚠️⚠️ **"Reagendar" (1081) aparece ANTES do horário (ao lado de "Reunião
-  qualificada") e DEPOIS** (decisão do operador, 09/10/2026): o cliente
-  AVISOU que não vai e pediu nova data, e o card tem de sair de Reunião
-  Agendada na hora (os lembretes param). O resultado `reagendar` NÃO é falta:
-  não acende "Já faltou" nem a faixa de possível no-show. O marco grava o
+  qualificada") e DEPOIS** (decisão do operador, 09/10/2026): a etapa é FILA
+  DE TRABALHO de quem demonstrou interesse em remarcar (a equipe fica em cima
+  até o novo agendamento), e o card sai de Reunião Agendada na hora (os
+  lembretes param). O resultado `reagendar` NÃO é falta: não acende "Já
+  faltou" nem a faixa de possível no-show — e fica fora das métricas. O marco grava o
   início que a tela via (`cb_reunioes_marcos.inicio`), e o Reagendar gravado
   antes do horário só vale para ESSE horário (`marcoValeParaAReuniao`): a
   remarcação pela ficha reaproveita a MESMA reunião, e o Reagendar do horário

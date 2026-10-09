@@ -1567,8 +1567,8 @@
       "ajudaReuniao": "O que entrar na etapa diz sobre a reunião. A tela Reuniões usa isto para saber para onde cada botão leva o card e para ler o resultado de quem foi movido pelo quadro; o aviso de possível no-show da conversa também.",
       "ajudaReuniaoQualificada": "“Qualificada”: a reunião ainda vai acontecer e o lead foi qualificado (a MQL 2). É o destino do botão “Reunião qualificada”.",
       "ajudaReuniaoCompareceu": "“Compareceu, sem proposta”: a reunião aconteceu e não houve proposta. É o destino do botão “Sem proposta”.",
-      "ajudaReuniaoReagendar": "“Reagendar”: o cliente avisou que não vai e pediu nova data. Não conta como falta. É o destino do botão “Reagendar”, que aparece antes e depois do horário da reunião.",
-      "ajudaReuniaoFaltou": "“Faltou (no-show)”: o lead não apareceu. É o destino do botão “No show”.",
+      "ajudaReuniaoReagendar": "“Reagendar”: fila de trabalho de quem demonstrou interesse em remarcar — a equipe fica em cima até o novo agendamento. Não conta como falta e não entra nas métricas. É o destino do botão “Reagendar”, que aparece antes e depois do horário da reunião.",
+      "ajudaReuniaoFaltou": "“Faltou (no-show)”: o lead não apareceu. É o destino do botão “No show”. Cada entrada numa etapa assim conta como no-show no Desempenho e na Saúde.",
       "ajudaReuniaoProposta": "Etapas com degrau Proposta, Contrato ou Pasta / processo já contam como “compareceu, com proposta”: nelas o campo fica travado.",
       "colunaSituacao": "Situação do cliente",
       "stageSituacaoHint": "O que estar nesta etapa diz sobre o contrato do cliente. A conversa de quem está numa etapa marcada mostra uma faixa bem visível: “Cliente rescindido” ou “Cliente finalizado”.",
@@ -1590,6 +1590,7 @@
       "painelCustosDica": "Custo de degrau só aparece com etapa no degrau.",
       "toastStageMappedWithHistory": "Esta etapa está mapeada no funil de eficiência e tem histórico de negócios: apagá-la apagaria essa história do Desempenho. Mude o degrau para \"Não conta\" e salve antes de remover, ou mantenha a etapa.",
       "toastStageMarkedWithHistory": "Esta etapa está marcada com a situação do cliente e tem histórico: apagá-la tiraria a faixa \"rescindido/finalizado\" dos ex-clientes que saíram dela. Mude a situação para \"—\" e salve antes de remover, ou mantenha a etapa.",
+      "toastStageMeetingMarkWithHistory": "Esta etapa tem a marcação \"Reunião\" e tem histórico: apagá-la tiraria do Desempenho os no-shows contados nela e da tela Reuniões os resultados registrados por ela. Mude a marcação para \"Reunião: —\" e salve antes de remover, ou mantenha a etapa.",
       "deletePipelineChannels": "Estas conexões colocam clientes neste funil: {channels}. Depois de apagar, elas param de criar negócios até você apontá-las para outro funil em Configurações › Conexões.",
       "toastStageIsChannelEntry": "Esta etapa é a entrada de {channels}. Escolha outra etapa de entrada em Configurações › Conexões antes de apagá-la.",
       "reuniaoQualificada": "Qualificada",
@@ -1809,6 +1810,7 @@
           "porContratoAssinado": "investimento ÷ {n} contrato(s) alcançado(s)",
           "porPerdido": "custo por lead × perdidos",
           "porPerdidoNoPeriodo": "custo por lead × leads do período já perdidos",
+          "porNoShow": "investimento ÷ {n} no-show(s)",
           "semFunil": "{valor} em {n} campanha(s) sem funil atribuído no período — atribua em Integrações para o custo por lead ficar certo.",
           "naoConectado": "Conecte o Meta Ads em Integrações para ver investimento, custo por lead e CAC.",
           "falhou": "Não foi possível ler o investimento em anúncios agora. Os números de custo ficam de fora até a próxima tentativa.",
@@ -1822,21 +1824,15 @@
         "semAtividade": "Nada aconteceu neste funil no período: nenhum lead entrou, avançou ou foi perdido.",
         "reunioes": {
           "titulo": "Reuniões",
-          "carregando": "Carregando as reuniões…",
-          "noAnterior": "{valor} no período anterior",
-          "noPeriodo": "{n} reunião(ões) no período",
-          "semResultado": "{n} sem resultado",
-          "nota": "Pela data da reunião, nos dois modos, no funil em que o card estava no dia. Comparecimento = compareceram ÷ (compareceram + no-show); reagendadas e sem resultado ficam fora da conta.",
-          "falhou": "Não foi possível carregar as reuniões.",
-          "compareceram": "Compareceram",
-          "comProposta": "{n} com proposta",
-          "noShow": "No-show",
-          "noShowDesc": "não vieram e não avisaram",
-          "reagendaram": "Reagendaram",
-          "reagendaramDesc": "avisaram e pediram nova data",
-          "comparecimento": "Comparecimento",
-          "comparecimentoDesc": "compareceram ÷ (compareceram + no-show)",
-          "foraDeFunil": "{n} reunião(ões) do período sem card no dia não entram em funil nenhum."
+          "notaPorPeriodo": "Agendamentos = quem chegou a {degrau} no período; no-show = cada entrada numa etapa marcada “Faltou” no período. A etapa marcada “Reagendar” é fila de trabalho e não entra na conta. Razão de fluxo: a taxa pode passar de 100%.",
+          "notaPorEntrada": "Dos leads que entraram no período: quem chegou a {degrau} e cada entrada deles numa etapa marcada “Faltou”. A etapa marcada “Reagendar” é fila de trabalho e não entra na conta. Cada entrada conta: a taxa pode passar de 100%.",
+          "agendamentos": "Agendamentos",
+          "agendamentosDesc": "chegaram a {degrau}",
+          "noShows": "No-shows",
+          "noShowsDesc": "entradas numa etapa marcada “Faltou”",
+          "taxa": "Taxa de no-show",
+          "taxaDesc": "no-shows ÷ agendamentos",
+          "noAnterior": "{valor} no período anterior"
         }
       },
       "cartoesDeCusto": {
@@ -1845,7 +1841,8 @@
         "porDegrau": "Custo por {degrau}",
         "contrato": "Custo por contrato assinado",
         "cac": "CAC (contrato em pé)",
-        "perdidos": "Custo dos perdidos"
+        "perdidos": "Custo dos perdidos",
+        "noShow": "Custo por no-show"
       },
       "saude": {
         "periodo": "Últimos {meses} meses, pelo mês de entrada no funil",
@@ -1868,6 +1865,9 @@
           "emAberto": "{n} em aberto",
           "pequena": "menos de {minimo} leads: taxa pouco confiável",
           "pequenaPorPeriodo": "taxa sobre menos de {minimo} no mês: pouco confiável"
+        },
+        "reunioes": {
+          "subtitulo": "mês a mês, últimos {meses} meses"
         },
         "custos": {
           "titulo": "Custos por mês",

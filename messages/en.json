@@ -1574,8 +1574,8 @@
       "ajudaReuniao": "What entering the stage says about the meeting. The Meetings screen uses it to know where each button moves the card and to read the outcome of cards moved on the board; the possible no-show warning in the conversation does too.",
       "ajudaReuniaoQualificada": "“Qualified”: the meeting is still ahead and the lead was qualified (MQL 2). It is where the “Meeting qualified” button goes.",
       "ajudaReuniaoCompareceu": "“Attended, no proposal”: the meeting happened and there was no proposal. It is where the “No proposal” button goes.",
-      "ajudaReuniaoReagendar": "“Reschedule”: the customer said they will not make it and asked for a new date. It does not count as a no-show. It is where the “Reschedule” button goes, shown both before and after the meeting time.",
-      "ajudaReuniaoFaltou": "“No-show”: the lead did not show up. It is where the “No-show” button goes.",
+      "ajudaReuniaoReagendar": "“Reschedule”: a work queue for leads who showed interest in rebooking — the team follows up until the new booking. It does not count as a no-show and stays out of the metrics. It is where the “Reschedule” button goes, shown both before and after the meeting time.",
+      "ajudaReuniaoFaltou": "“No-show”: the lead did not show up. It is where the “No-show” button goes. Each entry into such a stage counts as a no-show in Performance and Health.",
       "ajudaReuniaoProposta": "Stages with the Proposal, Contract or Case filed step already count as “attended, with a proposal”: the field is locked on them.",
       "colunaSituacao": "Client status",
       "stageSituacaoHint": "What being in this stage says about the client’s contract. The conversation of anyone in a marked stage shows a prominent banner: “Client terminated” or “Client closed out”.",
@@ -1597,6 +1597,7 @@
       "painelCustosDica": "A step's cost only shows when the step has a stage.",
       "toastStageMappedWithHistory": "This stage is mapped to the efficiency funnel and has deal history: deleting it would erase that history from Performance. Set its step to \"Not counted\" and save before removing, or keep the stage.",
       "toastStageMarkedWithHistory": "This stage is marked with a client status and has history: deleting it would remove the \"terminated/closed out\" banner from former clients who left it. Set its status to \"—\" and save before removing, or keep the stage.",
+      "toastStageMeetingMarkWithHistory": "This stage has a \"Meeting\" mark and has history: deleting it would remove the no-shows counted in it from Performance and the outcomes recorded through it from the Meetings screen. Set its mark to \"Meeting: —\" and save before removing, or keep the stage.",
       "deletePipelineChannels": "These connections put clients into this pipeline: {channels}. Once deleted, they stop creating deals until you point them at another pipeline in Settings › Connections.",
       "toastStageIsChannelEntry": "This stage is the entry point for {channels}. Pick another entry stage in Settings › Connections before deleting it.",
       "reuniaoQualificada": "Qualified",
@@ -1816,6 +1817,7 @@
           "porContratoAssinado": "spend ÷ {n} contract(s) reached",
           "porPerdido": "cost per lead × lost",
           "porPerdidoNoPeriodo": "cost per lead × this period's leads already lost",
+          "porNoShow": "spend ÷ {n} no-show(s)",
           "semFunil": "{valor} in {n} campaign(s) without a pipeline in the period — assign them in Integrations so cost per lead is right.",
           "naoConectado": "Connect Meta Ads in Integrations to see spend, cost per lead and CAC.",
           "falhou": "Could not read ad spend right now. Cost figures stay out until the next attempt.",
@@ -1829,21 +1831,15 @@
         "semAtividade": "Nothing happened in this pipeline in the period: no lead entered, advanced or was lost.",
         "reunioes": {
           "titulo": "Meetings",
-          "carregando": "Loading the meetings…",
-          "noAnterior": "{valor} in the previous period",
-          "noPeriodo": "{n} meeting(s) in the period",
-          "semResultado": "{n} without a result",
-          "nota": "By the meeting date, in both modes, in the pipeline the card was in on the day. Attendance rate = attended ÷ (attended + no-show); rescheduled meetings and those without a result are left out.",
-          "falhou": "Couldn't load the meetings.",
-          "compareceram": "Attended",
-          "comProposta": "{n} with a proposal",
-          "noShow": "No-show",
-          "noShowDesc": "didn't show up and didn't warn",
-          "reagendaram": "Rescheduled",
-          "reagendaramDesc": "warned and asked for a new date",
-          "comparecimento": "Attendance rate",
-          "comparecimentoDesc": "attended ÷ (attended + no-show)",
-          "foraDeFunil": "{n} meeting(s) in the period had no card on the day and don't count in any pipeline."
+          "notaPorPeriodo": "Bookings = leads that reached {degrau} in the period; no-show = each entry into a stage marked “No-show” in the period. The stage marked “Reschedule” is a work queue and does not count. Flow ratio: the rate can go above 100%.",
+          "notaPorEntrada": "Of the leads that entered in the period: who reached {degrau} and each of their entries into a stage marked “No-show”. The stage marked “Reschedule” is a work queue and does not count. Each entry counts: the rate can go above 100%.",
+          "agendamentos": "Bookings",
+          "agendamentosDesc": "reached {degrau}",
+          "noShows": "No-shows",
+          "noShowsDesc": "entries into a stage marked “No-show”",
+          "taxa": "No-show rate",
+          "taxaDesc": "no-shows ÷ bookings",
+          "noAnterior": "{valor} in the previous period"
         }
       },
       "cartoesDeCusto": {
@@ -1852,7 +1848,8 @@
         "porDegrau": "Cost per {degrau}",
         "contrato": "Cost per signed contract",
         "cac": "CAC (standing contract)",
-        "perdidos": "Cost of lost leads"
+        "perdidos": "Cost of lost leads",
+        "noShow": "Cost per no-show"
       },
       "saude": {
         "periodo": "Last {meses} months, by funnel entry month",
@@ -1875,6 +1872,9 @@
           "emAberto": "{n} open",
           "pequena": "fewer than {minimo} leads: rate not reliable",
           "pequenaPorPeriodo": "rate over fewer than {minimo} in the month: not reliable"
+        },
+        "reunioes": {
+          "subtitulo": "month by month, last {meses} months"
         },
         "custos": {
           "titulo": "Costs per month",
