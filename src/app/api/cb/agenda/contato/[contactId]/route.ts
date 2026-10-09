@@ -132,6 +132,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ con
     // Calendly e a agenda do CRM têm marco; a Kommo, nunca. O marco vale para
     // a reunião pela MESMA régua da pauta (`marcoValeParaAReuniao`): o
     // Reagendar gravado para um horário não resolve o horário novo.
+    // ⚠️ Aqui o horário é o do Calendly, sem a remarcação pela ficha da pauta:
+    // o Reagendar do horário do Calendly continua valendo depois que a ficha
+    // remarcou a reunião (limite aceito, `.claude/rules/reunioes.md`).
     const linhasDaAgenda = (agenda.data ?? []) as { id: string; starts_at: string; ends_at: string; status: string; created_at: string }[];
     // Quando cada agendamento do Calendly chegou: fecha a janela da entrada em
     // "Reagendar" da reunião anterior (`avisoDeNoShow`).

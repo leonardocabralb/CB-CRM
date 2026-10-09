@@ -121,7 +121,12 @@ operador: nada no card, na lista nem na aba).
   decisão do operador, 09/10/2026): o marco da pauta do MESMO horário, ou a
   entrada numa etapa `reagendar` entre o início e a próxima reunião — a régua
   da pauta. Quem avisou e pediu nova data não teve reunião sem avanço. O
-  Reagendar nunca acende `faltou` (o motivo lê só a marca "Faltou").
+  Reagendar nunca acende `faltou` (o motivo lê só a marca "Faltou"). Limite
+  aceito (Codex, PR #395): a faixa segue só o Calendly, sem a remarcação pela
+  ficha, então o Reagendar do horário do Calendly vale ali mesmo depois que a
+  ficha remarcou a reunião, e a faixa some em vez de acompanhar o horário
+  novo. Raro (a reunião FUTURA se remarca pelo Calendly) e do lado seguro:
+  faixa a menos, nunca acusação.
 - ⚠️ **O aviso é tão bom quanto o funil**: enquanto a equipe move os cards na
   Kommo, o CRM não vê as faltas recentes e `sem_avanco` pode acusar quem
   compareceu. Por isso o texto é FACTUAL ("foi para No Show em…"), nunca
