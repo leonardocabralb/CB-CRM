@@ -3,6 +3,7 @@ import { montarReunioesExternas, type LinhaDoCalendly, type ReuniaoExterna } fro
 import {
   alvosDoFunil,
   faltouAntes,
+  marcoValeParaAReuniao,
   qualificacaoDaReuniao,
   resultadoDaReuniao,
   type AlvosDoFunil,
@@ -70,6 +71,26 @@ export interface DadosDaPauta {
   datasDaFicha: ReadonlyMap<string, string>;
 }
 
+/** Uma reunião de pé do contato, como as vizinhas a enxergam (em ms). */
+interface ReuniaoDePe {
+  chave: string;
+  inicio: number;
+  /** Quando foi agendada (Calendly: `recebido_em`; agenda: `created_at`). */
+  agendadaEm: number | null;
+  /** Quando a pauta gravou o Reagendar para este horário (1081, pelo marco); nulo = não foi. */
+  reagendadaEm: number | null;
+}
+
+/** A vizinhança de uma reunião (ms): ver `calcularVizinhancas` em `montarPauta`. */
+interface Vizinhanca {
+  proxima: number | null;
+  anterior: number | null;
+  /** Onde fecha a trilha da reunião. */
+  ate: number | null;
+  /** Onde fecha a janela da ENTRADA em "Reagendar" (`resultadoDaReuniao`). */
+  ateDoReagendar: number | null;
+}
+
 function ms(iso: string | null | undefined): number | null {
   if (!iso) return null;
   const v = Date.parse(iso);
@@ -126,28 +147,115 @@ export function montarPauta(d: DadosDaPauta): { reunioes: ReuniaoDaPauta[]; funi
   }
 
   // Toda reunião de pé (não desmarcada) de cada contato, em QUALQUER data: é
-  // o que diz qual é a próxima. Montada antes, para a janela não esconder a
-  // reunião seguinte que cai fora dela.
-  const iniciosPorContato = new Map<string, number[]>();
+  // o que diz qual é a próxima e a anterior. Montada antes, para a janela não
+  // esconder a reunião vizinha que cai fora dela.
+  const dePePorContato = new Map<string, ReuniaoDePe[]>();
   // O horário do Calendly que a ficha remarcou: NÃO é reunião (a tela não o
   // cita como "a próxima"), mas fecha a janela da trilha da reunião anterior —
   // o no show daquele horário não a resolve.
   const cortesPorContato = new Map<string, number[]>();
-  const anotarEm = (mapa: Map<string, number[]>, contactId: string | null, inicio: string) => {
+  const anotarCorte = (contactId: string | null, inicio: string) => {
     const v = ms(inicio);
     if (!contactId || v === null) return;
-    const lista = mapa.get(contactId) ?? [];
+    const lista = cortesPorContato.get(contactId) ?? [];
     lista.push(v);
-    mapa.set(contactId, lista);
+    cortesPorContato.set(contactId, lista);
   };
-  const anotarInicio = (contactId: string | null, inicio: string) => anotarEm(iniciosPorContato, contactId, inicio);
-  const seguinteDe = (mapa: Map<string, number[]>, contactId: string | null, inicio: string): number | null => {
+  // Quando o Reagendar da pauta foi gravado para ESTE horário (1081); nulo =
+  // não foi. Pelo MARCO: é ele que sabe de qual horário o Reagendar é.
+  const marcoDoReagendarEm = (chave: string, inicio: string): number | null => {
+    const m = (d.marcos.get(chave) ?? []).find(
+      (x) => x.marco === 'resultado' && x.resultado === 'reagendar' && marcoValeParaAReuniao(x, inicio),
+    );
+    return m ? ms(m.registrado_em) : null;
+  };
+  const anotarDePe = (contactId: string | null, chave: string, inicio: string, agendadaEm: string | null) => {
     const v = ms(inicio);
-    if (!contactId || v === null) return null;
-    const seguintes = (mapa.get(contactId) ?? []).filter((x) => x > v);
-    return seguintes.length > 0 ? Math.min(...seguintes) : null;
+    if (!contactId || v === null) return;
+    const lista = dePePorContato.get(contactId) ?? [];
+    lista.push({ chave, inicio: v, agendadaEm: ms(agendadaEm), reagendadaEm: marcoDoReagendarEm(chave, inicio) });
+    dePePorContato.set(contactId, lista);
   };
+  const menor = (xs: (number | null)[]): number | null => {
+    const v = xs.filter((x): x is number => x !== null);
+    return v.length > 0 ? Math.min(...v) : null;
+  };
+  const maior = (xs: number[]): number | null => (xs.length > 0 ? Math.max(...xs) : null);
   const isoOuNulo = (v: number | null): string | null => (v === null ? null : new Date(v).toISOString());
+
+  // A VIZINHANÇA de cada reunião de pé: a próxima e a anterior do contato e
+  // onde fecha a trilha dela. ⚠️ O Reagendar antes do horário (1081) mexe nas
+  // vizinhas, e as regras saíram da revisão do PR #395 (Codex e revisor):
+  // 1. A reagendada não vai acontecer: não é "a próxima" de quem começa DEPOIS
+  //    do Reagendar dela (a substituta, inclusive a ANTECIPADA pelo link
+  //    manual, ficaria só registrando, com a trilha cortada). Para quem já
+  //    tinha começado, segue a próxima: o card é dela.
+  // 2. Ela só sai da conta se o resultado FINAL dela continua Reagendar: a
+  //    corrigida depois pelo quadro (No Show, Proposta) volta a ser fronteira,
+  //    senão a entrada dela cairia na reunião anterior.
+  // 3. A reagendada fecha a trilha no agendamento da SUBSTITUTA (agendada
+  //    depois do Reagendar): senão herdava o no show ou a proposta dela.
+  // 4. A ENTRADA em "Reagendar" só vale até o agendamento de outra reunião
+  //    feito depois do início desta: dali em diante é o Reagendar ANTES do
+  //    horário da outra, e resolveria esta por cima do no show dela.
+  // A próxima de uma reunião só depende das POSTERIORES: por isso a conta vai
+  // da mais nova para a mais antiga, sem ciclo. A anterior (só para
+  // `comoMarcar`) sai numa segunda volta, com o resultado de todas.
+  const vizinhancas = new Map<string, Vizinhanca>();
+  const calcularVizinhancas = () => {
+    for (const [contactId, lista] of dePePorContato) {
+      const entradas = d.trilha.get(contactId) ?? [];
+      const negocios = negociosPorContato.get(contactId) ?? [];
+      const cortes = cortesPorContato.get(contactId) ?? [];
+      // Quando a reunião foi reagendada, se o resultado FINAL dela é Reagendar.
+      const reagendadaDeFato = new Map<string, number | null>();
+      for (const x of [...lista].sort((a, b) => b.inicio - a.inicio)) {
+        const outras = lista.filter((y) => y.chave !== x.chave);
+        const proxima = menor(
+          outras
+            .filter((y) => {
+              if (y.inicio <= x.inicio) return false;
+              const em = reagendadaDeFato.get(y.chave) ?? null;
+              return !(em !== null && x.inicio > em);
+            })
+            .map((y) => y.inicio),
+        );
+        // Até a próxima reunião OU o horário do Calendly que a ficha remarcou.
+        let ate = menor([proxima, menor(cortes.filter((c) => c > x.inicio))]);
+        if (x.reagendadaEm !== null) {
+          const depois = x.reagendadaEm;
+          ate = menor([ate, menor(outras.filter((y) => y.agendadaEm !== null && y.agendadaEm > depois).map((y) => y.agendadaEm))]);
+        }
+        const ateDoReagendar = menor([
+          ate,
+          menor(outras.filter((y) => y.agendadaEm !== null && y.agendadaEm > x.inicio).map((y) => y.agendadaEm)),
+        ]);
+        const v: Vizinhanca = { proxima, anterior: null, ate, ateDoReagendar };
+        vizinhancas.set(x.chave, v);
+        const inicio = new Date(x.inicio).toISOString();
+        const resultado = resultadoDaReuniao({
+          inicio,
+          ate: isoOuNulo(ate),
+          ateDoReagendar: isoOuNulo(ateDoReagendar),
+          dealId: negocioDoContato(negocios, inicio)?.id ?? null,
+          marcos: d.marcos.get(x.chave) ?? [],
+          entradas,
+          etapas: etapaPorId,
+        });
+        reagendadaDeFato.set(x.chave, x.reagendadaEm !== null && resultado?.tipo === 'reagendar' ? x.reagendadaEm : null);
+      }
+      for (const x of lista) {
+        const v = vizinhancas.get(x.chave);
+        if (v) {
+          v.anterior = maior(
+            lista
+              .filter((y) => y.chave !== x.chave && y.inicio < x.inicio && (reagendadaDeFato.get(y.chave) ?? null) === null)
+              .map((y) => y.inicio),
+          );
+        }
+      }
+    }
+  };
 
   const reunioes: ReuniaoDaPauta[] = [];
   const completar = (
@@ -164,19 +272,15 @@ export function montarPauta(d: DadosDaPauta): { reunioes: ReuniaoDaPauta[]; funi
     const entradas = contactId ? (d.trilha.get(contactId) ?? []) : [];
     const n = contactId ? negocioDoContato(negociosPorContato.get(contactId) ?? [], base.inicio) : null;
     const conversa = contactId ? d.conversas.get(contactId) : undefined;
-    const proxima = seguinteDe(iniciosPorContato, contactId, base.inicio);
-    const corte = seguinteDe(cortesPorContato, contactId, base.inicio);
-    const proximaEm = isoOuNulo(proxima);
-    // A trilha desta reunião vai até a próxima reunião OU até o horário do
-    // Calendly que a ficha remarcou, o que vier antes.
-    const ateDaTrilha = isoOuNulo(
-      proxima === null ? corte : corte === null ? proxima : Math.min(proxima, corte),
-    );
+    // Sem contato não há vizinha nem trilha: só o marco resolve.
+    const v = vizinhancas.get(chave) ?? { proxima: null, anterior: null, ate: null, ateDoReagendar: null };
+    const ateDaTrilha = isoOuNulo(v.ate);
     const dealId = n?.id ?? null;
     reunioes.push({
       ...base,
       chave,
-      proximaEm,
+      proximaEm: isoOuNulo(v.proxima),
+      anteriorEm: isoOuNulo(v.anterior),
       contato: contactId ? { id: contactId, nome: d.contatos.get(contactId) ?? null } : null,
       conversaId: conversa?.id ?? conversaDaLinha,
       negocio: n
@@ -192,14 +296,22 @@ export function montarPauta(d: DadosDaPauta): { reunioes: ReuniaoDaPauta[]; funi
         : null,
       qualificacao: (contactId ? d.campos.get(contactId) : undefined) ?? { divida: null, atraso: null, origem: null },
       qualificada: qualificacaoDaReuniao({ desde, ate: ateDaTrilha, dealId, marcos, entradas, etapas: etapaPorId }),
-      resultado: resultadoDaReuniao({ inicio: base.inicio, ate: ateDaTrilha, dealId, marcos, entradas, etapas: etapaPorId }),
+      resultado: resultadoDaReuniao({
+        inicio: base.inicio,
+        ate: ateDaTrilha,
+        ateDoReagendar: isoOuNulo(v.ateDoReagendar),
+        dealId,
+        marcos,
+        entradas,
+        etapas: etapaPorId,
+      }),
       faltouAntes: faltouAntes({ inicio: base.inicio, entradas, etapas: etapaPorId }),
       aguardandoDesde: conversa?.aguardando_desde ?? null,
     });
   };
 
   const deAgenda = d.agenda.filter((a) => a.status !== 'cancelada' && ms(a.starts_at) !== null);
-  for (const a of deAgenda) anotarInicio(a.contact_id, a.starts_at);
+  for (const a of deAgenda) anotarDePe(a.contact_id, `agenda:${a.id}`, a.starts_at, a.created_at);
 
   // REMARCADA PELA FICHA. O operador move no Google Agenda a reunião que JÁ
   // PASSOU (o Calendly só remarca a futura, e aí avisa o CRM) e acerta à mão o
@@ -253,16 +365,21 @@ export function montarPauta(d: DadosDaPauta): { reunioes: ReuniaoDaPauta[]; funi
       maisNova.remarcadaPara = daFicha;
     }
     for (const x of dePe) {
+      const chave = `calendly:${x.r.id}`;
       if (x.remarcadaPara === null) {
-        anotarInicio(x.linha.contact_id, x.r.inicio);
+        anotarDePe(x.linha.contact_id, chave, x.r.inicio, x.linha.recebido_em);
       } else {
-        // A próxima reunião é a da ficha; o horário do Calendly só corta a trilha.
-        anotarInicio(x.linha.contact_id, new Date(x.remarcadaPara).toISOString());
-        anotarEm(cortesPorContato, x.linha.contact_id, x.r.inicio);
+        // A próxima reunião é a da ficha; o horário do Calendly só corta a
+        // trilha. O agendamento continua o do Calendly (a ficha não diz quando
+        // foi remarcada).
+        anotarDePe(x.linha.contact_id, chave, new Date(x.remarcadaPara).toISOString(), x.linha.recebido_em);
+        anotarCorte(x.linha.contact_id, x.r.inicio);
       }
     }
     deCalendly.push(...dePe);
   }
+
+  calcularVizinhancas();
 
   for (const { r, linha, remarcadaPara } of deCalendly) {
     const inicio = remarcadaPara === null ? r.inicio : new Date(remarcadaPara).toISOString();

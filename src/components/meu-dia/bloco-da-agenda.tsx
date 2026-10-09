@@ -218,14 +218,7 @@ function LinhaDaReuniao({
             </span>
           )}
           {r.resultado && (
-            <span
-              className={cn(
-                'rounded px-1 py-px text-[11px]',
-                r.resultado.tipo === 'no_show'
-                  ? 'bg-destructive/10 text-destructive'
-                  : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-              )}
-            >
+            <span className={cn('rounded px-1 py-px text-[11px]', corDoResultado(r.resultado.tipo))}>
               {rotuloDoResultado(r.resultado.tipo, tReunioes)}
             </span>
           )}
@@ -246,14 +239,42 @@ function LinhaDaReuniao({
   );
 }
 
-/** Três chamadas LITERAIS: o portão de i18n só enxerga chave literal. */
+/**
+ * Chamadas LITERAIS (o portão de i18n só enxerga chave literal), num switch
+ * EXAUSTIVO: resultado novo sem rótulo não compila — até a 1081 o que não era
+ * proposta caía em "no show" por padrão.
+ */
 function rotuloDoResultado(
   tipo: Resultado,
   t: ReturnType<typeof useTranslations<'Reunioes'>>
 ): string {
-  if (tipo === 'proposta') return t('resultadoProposta');
-  if (tipo === 'sem_proposta') return t('resultadoSemProposta');
-  return t('resultadoNoShow');
+  switch (tipo) {
+    case 'proposta':
+      return t('resultadoProposta');
+    case 'sem_proposta':
+      return t('resultadoSemProposta');
+    case 'reagendar':
+      return t('resultadoReagendar');
+    case 'no_show':
+      return t('resultadoNoShow');
+  }
+}
+
+/**
+ * Falta em vermelho, comparecimento em verde. O Reagendar é NEUTRO (1081): o
+ * cliente avisou e pediu nova data — não é falta (D2 de
+ * `docs/PLANO-reagendamento.md`) nem comparecimento. Classes literais.
+ */
+function corDoResultado(tipo: Resultado): string {
+  switch (tipo) {
+    case 'proposta':
+    case 'sem_proposta':
+      return 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300';
+    case 'reagendar':
+      return 'bg-muted text-muted-foreground';
+    case 'no_show':
+      return 'bg-destructive/10 text-destructive';
+  }
 }
 
 /** A aba não tem porta acima dela: navegar daqui não confirma nada. */

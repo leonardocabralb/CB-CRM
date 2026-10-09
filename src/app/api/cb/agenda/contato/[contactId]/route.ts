@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 
-import { avisoDeNoShow, type DesfechoDaReuniao } from '@/lib/agenda/aviso-de-no-show';
+import { avisoDeNoShow, type EntradaNaEtapa } from '@/lib/agenda/aviso-de-no-show';
 import { montarReunioesExternas, type LinhaDaKommo, type LinhaDoCalendly } from '@/lib/agenda/reunioes-externas';
 import { supabaseAdmin } from '@/lib/automations/admin-client';
 import { getCurrentAccount, toErrorResponse } from '@/lib/auth/account';
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
+import { marcoValeParaAReuniao, type LinhaDoMarco } from '@/lib/reunioes/pauta';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -82,7 +83,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ con
     const [agenda, trilha, comValor] = await Promise.all([
       admin
         .from('cb_meetings')
-        .select('starts_at, ends_at, status')
+        .select('id, starts_at, ends_at, status, created_at')
         .eq('account_id', ctx.accountId)
         .eq('contact_id', contactId),
       admin
@@ -109,7 +110,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ con
     // com o embutido nulo em vez de sumir) — a mesma forma, sem apelido, de
     // `/api/cb/execucoes` e das ferramentas dos agentes de IA.
     const idsDasEtapas = [...new Set(entradasCruas.map((e) => e.to_stage_id))];
-    const etapas = new Map<string, { degrau: string | null; desfecho: DesfechoDaReuniao | null }>();
+    const etapas = new Map<string, { degrau: string | null; desfecho: EntradaNaEtapa['desfecho'] }>();
     if (idsDasEtapas.length > 0) {
       const { data, error } = await admin
         .from('pipeline_stages')
@@ -118,21 +119,59 @@ export async function GET(_request: Request, { params }: { params: Promise<{ con
         .eq('pipelines.account_id', ctx.accountId);
       if (error) throw new Error(`etapas: ${error.message}`);
       for (const e of (data ?? []) as { id: string; degrau: string | null; desfecho_da_reuniao: string | null }[]) {
+        const d = e.desfecho_da_reuniao;
         etapas.set(e.id, {
           degrau: e.degrau,
-          desfecho: e.desfecho_da_reuniao === 'compareceu' || e.desfecho_da_reuniao === 'faltou' ? e.desfecho_da_reuniao : null,
+          desfecho: d === 'compareceu' || d === 'faltou' || d === 'reagendar' ? d : null,
         });
       }
     }
 
+    // O "Reagendar" da pauta (1081): a reunião que terminou nele não conta
+    // como reunião anterior (D2 de `docs/PLANO-reagendamento.md`). Só o
+    // Calendly e a agenda do CRM têm marco; a Kommo, nunca. O marco vale para
+    // a reunião pela MESMA régua da pauta (`marcoValeParaAReuniao`): o
+    // Reagendar gravado para um horário não resolve o horário novo.
+    // ⚠️ Aqui o horário é o do Calendly, sem a remarcação pela ficha da pauta:
+    // o Reagendar do horário do Calendly continua valendo depois que a ficha
+    // remarcou a reunião (limite aceito, `.claude/rules/reunioes.md`).
+    const linhasDaAgenda = (agenda.data ?? []) as { id: string; starts_at: string; ends_at: string; status: string; created_at: string }[];
+    // Quando cada agendamento do Calendly chegou: fecha a janela da entrada em
+    // "Reagendar" da reunião anterior (`avisoDeNoShow`).
+    const recebidoEm = new Map(linhas.map((l) => [l.id, l.recebido_em]));
+    const idsDasReunioes = [...reunioes.filter((r) => r.origem === 'calendly').map((r) => r.id), ...linhasDaAgenda.map((m) => m.id)];
+    let reagendamentos: Pick<LinhaDoMarco, 'origem' | 'reuniao_id' | 'resultado' | 'registrado_em' | 'inicio'>[] = [];
+    if (idsDasReunioes.length > 0) {
+      const { data, error } = await admin
+        .from('cb_reunioes_marcos')
+        .select('origem, reuniao_id, resultado, registrado_em, inicio')
+        .eq('account_id', ctx.accountId)
+        .eq('marco', 'resultado')
+        .eq('resultado', 'reagendar')
+        .in('reuniao_id', idsDasReunioes);
+      if (error) throw new Error(`marcos: ${error.message}`);
+      reagendamentos = (data ?? []) as typeof reagendamentos;
+    }
+    const reagendada = (origem: LinhaDoMarco['origem'], id: string, inicio: string) =>
+      reagendamentos.some((m) => m.origem === origem && m.reuniao_id === id && marcoValeParaAReuniao(m, inicio));
+
     const aviso = avisoDeNoShow({
       reunioes: [
-        ...reunioes.map((r) => ({ inicio: r.inicio, fim: r.fim, desmarcada: r.desmarcada !== null, desfecho: null })),
-        ...((agenda.data ?? []) as { starts_at: string; ends_at: string; status: string }[]).map((m) => ({
+        ...reunioes.map((r) => ({
+          inicio: r.inicio,
+          fim: r.fim,
+          desmarcada: r.desmarcada !== null,
+          desfecho: null,
+          reagendada: r.origem === 'calendly' && reagendada('calendly', r.id, r.inicio),
+          agendadaEm: r.origem === 'calendly' ? (recebidoEm.get(r.id) ?? null) : null,
+        })),
+        ...linhasDaAgenda.map((m) => ({
           inicio: m.starts_at,
           fim: m.ends_at,
           desmarcada: m.status === 'cancelada',
           desfecho: m.status === 'falta' ? ('faltou' as const) : m.status === 'realizada' ? ('compareceu' as const) : null,
+          reagendada: reagendada('agenda', m.id, m.starts_at),
+          agendadaEm: m.created_at,
         })),
       ],
       entradas: entradasCruas.map((e) => ({

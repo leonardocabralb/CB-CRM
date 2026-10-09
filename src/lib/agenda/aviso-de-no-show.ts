@@ -16,12 +16,21 @@ import { reuniaoTerminou } from './reunioes-externas';
  * 1. `faltou` — o card já entrou numa etapa marcada "Faltou" em Gerenciar
  *    funil (`pipeline_stages.desfecho_da_reuniao`, 1058), ou a agenda do CRM
  *    registrou "Cliente não compareceu". Vale a qualquer tempo, mesmo depois de
- *    ter avançado: é o "movido para o no-show alguma outra vez" do pedido.
+ *    ter avançado: é o "movido para o no-show alguma outra vez" do pedido. A
+ *    marca "Reagendar" (1081) nunca é falta.
  * 2. `sem_avanco` — teve reunião que já terminou (Calendly, agenda ou a da
  *    Kommo), não desmarcada, e o lead NUNCA avançou. Avançar (D2 do plano) =
  *    entrar numa etapa com degrau de proposta ou depois (proposta, contrato,
  *    pasta), numa etapa marcada "Compareceu" (a "Reunião Sem Proposta"), ter
  *    reunião da agenda marcada "Realizada", ou ter card com valor.
+ *    ⚠️ A reunião que terminou em REAGENDAR não conta como reunião anterior:
+ *    o cliente avisou e pediu nova data, ela não aconteceu (decisão do
+ *    operador, 09/10/2026, D2 de `docs/PLANO-reagendamento.md`). Terminou em
+ *    Reagendar = o marco da pauta para aquele horário (`reagendada`, conferido
+ *    pela rota), ou o card entrou numa etapa marcada "Reagendar" entre o
+ *    início dela e o início da próxima reunião do contato — a MESMA janela da
+ *    pauta (`resultadoDaReuniao`, `src/lib/reunioes/pauta.ts`). Sem outra
+ *    reunião anterior, não há aviso.
  *
  * ⚠️ MQL 2 NÃO é avanço: medido em 27/09/2026, 28 das 30 entradas nela
  * acontecem ANTES da reunião. É por isso que o comparecimento vem de uma
@@ -42,6 +51,17 @@ export interface ReuniaoDoAviso {
   desmarcada: boolean;
   /** O que a agenda do CRM registrou (`cb_meetings.status`). Nulo = nada. */
   desfecho: DesfechoDaReuniao | null;
+  /**
+   * A pauta registrou "Reagendar" para ESTE horário (`cb_reunioes_marcos`,
+   * 1081), já conferido pela rota com `marcoValeParaAReuniao`. Ausente = não.
+   */
+  reagendada?: boolean;
+  /**
+   * Quando foi agendada (Calendly: `recebido_em`; agenda: `created_at`); nulo
+   * ou ausente = não se sabe (Kommo). Fecha a janela da ENTRADA em
+   * "Reagendar" da reunião anterior (ver `avisoDeNoShow`).
+   */
+  agendadaEm?: string | null;
 }
 
 /** Uma entrada do card numa etapa, pela trilha (`cb_lead_events`). */
@@ -51,7 +71,7 @@ export interface EntradaNaEtapa {
   etapa: string | null;
   /** O degrau e a marcação ATUAIS da etapa (nulos se ela foi apagada). */
   degrau: string | null;
-  desfecho: DesfechoDaReuniao | null;
+  desfecho: DesfechoDaReuniao | 'reagendar' | null;
 }
 
 export type AvisoDeNoShow =
@@ -112,7 +132,11 @@ export function avisoDeNoShow(args: {
   const { reunioes, entradas, temValorNoCard, agora } = args;
 
   const validas = reunioes.filter((r) => !r.desmarcada && !Number.isNaN(ms(r.inicio)));
-  const futuras = validas.filter((r) => !reuniaoTerminou(r, agora)).sort((a, b) => ms(a.inicio) - ms(b.inicio));
+  // A reunião com Reagendar registrado não vai acontecer (D2): não é "a
+  // próxima" que a faixa cita, nem fecha a janela de outra — a mesma régua
+  // de `montarPauta`.
+  const deVerdade = validas.filter((r) => r.reagendada !== true);
+  const futuras = deVerdade.filter((r) => !reuniaoTerminou(r, agora)).sort((a, b) => ms(a.inicio) - ms(b.inicio));
   const proximaReuniao = futuras[0];
   if (!proximaReuniao) return null;
   const proxima = { inicio: proximaReuniao.inicio, fim: proximaReuniao.fim };
@@ -132,8 +156,25 @@ export function avisoDeNoShow(args: {
     return { motivo: 'faltou', em: ultima.em, etapa: ultima.etapa, proxima };
   }
 
-  // 2. Marcou antes e não avançou.
-  const anteriores = validas.filter((r) => reuniaoTerminou(r, agora));
+  // 2. Marcou antes e não avançou. A reunião que terminou em Reagendar não
+  //    aconteceu (D2): fica de fora pelo marco da pauta ou pela entrada numa
+  //    etapa "Reagendar" na janela `[início, início da próxima reunião)` —
+  //    qualquer data; sem próxima, `Math.min()` vazio é Infinity (sem teto).
+  const inicios = deVerdade.map((r) => ms(r.inicio));
+  // ⚠️ E fecha também no AGENDAMENTO de outra reunião feito depois do início
+  // desta (a reagendada inclusive): dali em diante a entrada em "Reagendar" é
+  // o botão ANTES do horário da outra, e tiraria esta do sem_avanco (revisão
+  // do PR #395) — a mesma régua de `montarPauta`.
+  const agendamentos = validas.map((r) => ms(r.agendadaEm ?? '')).filter((v) => !Number.isNaN(v));
+  const anteriores = deVerdade.filter((r) => {
+    if (!reuniaoTerminou(r, agora)) return false;
+    const desde = ms(r.inicio);
+    const ate = Math.min(...inicios.filter((v) => v > desde), ...agendamentos.filter((v) => v > desde));
+    return !entradas.some((e) => {
+      const em = ms(e.em);
+      return marcaDaReuniaoQueVale(e.degrau, e.desfecho) === 'reagendar' && em >= desde && em < ate;
+    });
+  });
   if (anteriores.length === 0) return null;
   if (temValorNoCard || avancou(entradas) || anteriores.some((r) => r.desfecho === 'compareceu')) return null;
   const ultima = anteriores.reduce((a, b) => (ms(b.inicio) > ms(a.inicio) ? b : a));

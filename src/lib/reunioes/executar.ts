@@ -91,6 +91,9 @@ export async function executarAcao(args: {
       marco,
       resultado: marco === 'resultado' ? acao : null,
       valor: acao === 'proposta' ? valor : null,
+      // O horário que a tela via (1081): o Reagendar gravado antes dele só
+      // vale enquanto a reunião continuar nesse horário (`marcoValeParaAReuniao`).
+      inicio: reuniao.inicio,
     },
     { onConflict: 'account_id,origem,reuniao_id,marco' },
   );

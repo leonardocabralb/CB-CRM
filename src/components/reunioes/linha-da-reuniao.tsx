@@ -29,16 +29,24 @@ export interface MarcacaoPendente {
   restanteS: number;
 }
 
-const ROTULO_DO_RESULTADO: Record<Resultado, 'resultadoProposta' | 'resultadoSemProposta' | 'resultadoNoShow'> = {
+const ROTULO_DO_RESULTADO: Record<
+  Resultado,
+  'resultadoProposta' | 'resultadoSemProposta' | 'resultadoReagendar' | 'resultadoNoShow'
+> = {
   proposta: 'resultadoProposta',
   sem_proposta: 'resultadoSemProposta',
+  reagendar: 'resultadoReagendar',
   no_show: 'resultadoNoShow',
 };
 
-const TEXTO_DO_MOTIVO: Record<MotivoDeSoRegistrar, 'motivoSemCard' | 'motivoCardFechado' | 'motivoReuniaoPosterior' | 'motivoSemEtapa'> = {
+const TEXTO_DO_MOTIVO: Record<
+  MotivoDeSoRegistrar,
+  'motivoSemCard' | 'motivoCardFechado' | 'motivoReuniaoPosterior' | 'motivoReuniaoAnterior' | 'motivoSemEtapa'
+> = {
   sem_card: 'motivoSemCard',
   card_fechado: 'motivoCardFechado',
   reuniao_posterior: 'motivoReuniaoPosterior',
+  reuniao_anterior: 'motivoReuniaoAnterior',
   sem_etapa: 'motivoSemEtapa',
 };
 
@@ -90,10 +98,12 @@ export function LinhaDaReuniao({
 
   /** O que o botão faz, dito na dica: leva o card para X, ou só registra (e por quê). */
   const dica = (acao: Acao): string => {
-    const plano = comoMarcar(r, acao, alvos);
-    return plano.alvo
-      ? t('levaPara', { etapa: plano.alvo.nome })
-      : t(TEXTO_DO_MOTIVO[plano.motivo], { data: r.proximaEm ? dataCurta(r.proximaEm) : '', hora: r.proximaEm ? hora(r.proximaEm) : '' });
+    const plano = comoMarcar(r, acao, alvos, agora);
+    if (plano.alvo) return t('levaPara', { etapa: plano.alvo.nome });
+    // A reunião citada: a seguinte (o card já é dela) ou, no Reagendar, a
+    // anterior que ainda vai acontecer (1081).
+    const citada = plano.motivo === 'reuniao_anterior' ? r.anteriorEm : r.proximaEm;
+    return t(TEXTO_DO_MOTIVO[plano.motivo], { data: citada ? dataCurta(citada) : '', hora: citada ? hora(citada) : '' });
   };
 
   const botao = (acao: Acao, rotulo: string, onClick?: () => void, destaque = false) => (
@@ -128,21 +138,24 @@ export function LinhaDaReuniao({
   // Quando o resultado só REGISTRA (sem mover o card), a linha diz por quê —
   // a dica do botão não aparece no toque. É POR BOTÃO: num funil com só
   // parte dos destinos marcados (Trabalhista e Previdenciário têm Proposta e
-  // não têm No Show), "Com proposta" move e os outros dois só registram
-  // (Codex, PR #339). Os três no mesmo caso = uma frase só.
-  const avisosDoResultado = (() => {
-    const rotulos: [Acao, string][] = [
-      ['proposta', t('botaoProposta')],
-      ['sem_proposta', t('botaoSemProposta')],
-      ['no_show', t('botaoNoShow')],
-    ];
-    const soRegistram = rotulos.filter(([acao]) => !comoMarcar(r, acao, alvos).alvo).map(([acao, rotulo]) => ({ rotulo, texto: dica(acao) }));
+  // não têm No Show), "Com proposta" move e os outros só registram (Codex,
+  // PR #339). Todos os botões à vista no mesmo caso = uma frase só. Vale
+  // depois do início (os quatro do resultado) e antes dele ("Reunião
+  // qualificada" e "Reagendar").
+  const avisosDosBotoes = (rotulos: [Acao, string][]): string[] => {
+    const soRegistram = rotulos.filter(([acao]) => !comoMarcar(r, acao, alvos, agora).alvo).map(([acao, rotulo]) => ({ rotulo, texto: dica(acao) }));
     if (soRegistram.length === 0) return [];
     if (soRegistram.length === rotulos.length && soRegistram.every((a) => a.texto === soRegistram[0].texto)) {
       return [soRegistram[0].texto];
     }
     return soRegistram.map((a) => t('avisoDoBotao', { botao: a.rotulo, texto: a.texto }));
-  })();
+  };
+  const avisosDoResultado = avisosDosBotoes([
+    ['proposta', t('botaoProposta')],
+    ['sem_proposta', t('botaoSemProposta')],
+    ['reagendar', t('botaoReagendar')],
+    ['no_show', t('botaoNoShow')],
+  ]);
 
   const botoesDoResultado = (
     <div className="flex flex-wrap items-center gap-2">
@@ -163,6 +176,7 @@ export function LinhaDaReuniao({
             setPedindoValor(true);
           })}
           {botao('sem_proposta', t('botaoSemProposta'))}
+          {botao('reagendar', t('botaoReagendar'))}
           {botao('no_show', t('botaoNoShow'))}
           {corrigindo && (
             <Button size="sm" variant="ghost" onClick={() => setCorrigindo(false)}>
@@ -238,13 +252,22 @@ export function LinhaDaReuniao({
       res.tipo === 'proposta' && res.valor !== null
         ? t('resultadoPropostaComValor', { valor: formatCurrency(res.valor) })
         : t(ROTULO_DO_RESULTADO[res.tipo]);
+    // ⚠️ "Corrigir" só depois que a reunião COMEÇA. Antes dela o único
+    // resultado possível é o Reagendar (1081, vale antes do horário), e
+    // corrigir abriria os botões de depois do início: o que se gravasse agora
+    // seria anterior ao início e não valeria (`marcoValeParaAReuniao`) — a
+    // reunião perderia o resultado com o card já movido. Limite aceito: se o
+    // cliente desiste de reagendar antes da hora, mover o card de volta NÃO
+    // apaga o registro — a reunião segue "pediu para reagendar" até começar,
+    // e aí o "Corrigir" troca o resultado.
+    const comecou = Date.parse(r.inicio) <= agora.getTime();
     acoes = (
       <span className="inline-flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
         <CheckCircle2 className="h-3.5 w-3.5 text-green-700 dark:text-green-300" />
         {res.fonte === 'tela'
           ? t('resultadoRegistrado', { oQue, por: res.por ?? t('alguem'), hora: hora(res.em) })
           : t('resultadoPeloFunil', { oQue, etapa: res.etapa ?? '—', por: res.por ?? t('sistema') })}
-        {podeMarcar && (
+        {podeMarcar && comecou && (
           <button
             type="button"
             className="font-medium text-foreground underline underline-offset-2"
@@ -256,7 +279,12 @@ export function LinhaDaReuniao({
       </span>
     );
   } else if (fase === 'antes') {
-    const planoDaQualificacao = comoMarcar(r, 'qualificada', alvos);
+    // Antes do início: "Reunião qualificada" e "Reagendar" (1081, D1 de
+    // `docs/PLANO-reagendamento.md`): o cliente avisa que não vai e pede nova
+    // data, e o card sai de Reunião Agendada na hora — os lembretes param.
+    const botoesDeAntes: [Acao, string][] = [['reagendar', t('botaoReagendar')]];
+    if (!r.qualificada) botoesDeAntes.unshift(['qualificada', t('botaoQualificada')]);
+    const avisosDeAntes = avisosDosBotoes(botoesDeAntes);
     acoes = (
       <div className="flex flex-wrap items-center gap-2">
         {r.qualificada ? (
@@ -267,12 +295,14 @@ export function LinhaDaReuniao({
         ) : podeMarcar ? (
           botao('qualificada', t('botaoQualificada'), undefined, true)
         ) : null}
+        {podeMarcar && botao('reagendar', t('botaoReagendar'))}
         <span className="text-xs text-muted-foreground">{t('resultadoAbreAs', { hora: hora(r.inicio) })}</span>
-        {podeMarcar && !r.qualificada && !planoDaQualificacao.alvo && (
-          <span className="w-full text-[11px] text-muted-foreground">
-            {t(TEXTO_DO_MOTIVO[planoDaQualificacao.motivo], { data: '', hora: '' })}
-          </span>
-        )}
+        {podeMarcar &&
+          avisosDeAntes.map((aviso) => (
+            <span key={aviso} className="w-full text-[11px] text-muted-foreground">
+              {aviso}
+            </span>
+          ))}
       </div>
     );
   } else {

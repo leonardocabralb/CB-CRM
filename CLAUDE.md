@@ -466,7 +466,8 @@ O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
 - Card: título = nome da pessoa, sem prefixo de conexão; o Calendly renomeia
   até título escrito à mão e fixa o nome da ficha.
 - Reuniões: "Data e Hora Reunião" mais nova que todo agendamento remarca a
-  última reunião do Calendly na pauta (03/10/2026).
+  última reunião do Calendly na pauta (03/10/2026). Reagendar não é falta:
+  botão antes e depois do horário, sem faixa de no-show (09/10/2026).
 - Abrir conversa não cria negócio (o card nasce no primeiro envio).
 - Número de empresa (mandou mensagem de sistema, `template`) não vira card
   sozinho, nem pela resposta da equipe; cliente assim, card à mão (29/09/2026).
@@ -597,11 +598,9 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   ficha criada pelo CRM, cadeado do ciclo, webhook, régua.
 - `.claude/rules/integracoes-zapsign.md` — assinatura move o card: webhook
   pelo cabeçalho, releitura, casamento sem criar contato, cadeado do disparo.
-- `.claude/rules/integracoes-atlas.md` — chave do Atlas por conta, nó
-  Atlas: "Criar cliente" (procura, cria, reativa, vincula), vínculo 1:1,
-  ambiente em toda linha, leitura das situações, vínculo automático, lixeira,
-  vínculo à mão (admin), faixa com a fonte, aba Atlas, gatilho "Situação
-  mudou no Atlas" (fila 1073).
+- `.claude/rules/integracoes-atlas.md` — chave por conta, "Criar cliente",
+  vínculo 1:1 (automático e à mão), ambiente, situações, lixeira, faixa, aba
+  Atlas, gatilho "Situação mudou no Atlas" (1073).
 - `.claude/rules/integracoes-atlas-acoes.md` — o nó Atlas do construtor (uma
   entrada, seletor de ação, memória da troca) e as ações novas: atualizar
   cliente, tarefa, transcrição, onboarding, permissões opcionais.
@@ -611,8 +610,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   e a base de conhecimento por agente (1052); a resposta cortada pelo teto.
 - `.claude/rules/ia-retomada.md` — a retomada do agente quando o cliente não
   responde (1056): a fila, a cadência, o que a para e os lembretes.
-- `.claude/rules/reunioes.md` — agenda (EXCLUDE, fuso), tl;dv e
-  transcrições.
+- `.claude/rules/reunioes.md` — agenda (EXCLUDE, fuso), pauta e Reagendar
+  (1081), aviso de no-show, tl;dv e transcrições.
 - `.claude/rules/agendadas.md` — mensagem agendada, anexo e citação, tela
   `/agendadas`.
 - `.claude/rules/tarefas.md` — tarefas por cliente, `podeNaTarefa`, prazo

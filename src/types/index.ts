@@ -998,11 +998,15 @@ export interface PipelineStage {
    * comparecimento: o aviso de no-show a lê como nula, nunca como
    * "compareceu".
    *
+   * 'reagendar' (1081) é a etapa do botão "Reagendar" da pauta: o cliente
+   * AVISOU que não vai e pediu nova data. Não é falta: nem "Já faltou" nem a
+   * faixa de possível no-show a leem como "faltou".
+   *
    * ⚠️ Em etapa de degrau proposta, contrato ou pasta a marcação NÃO vale — o
    * degrau já diz "compareceu, com proposta". Leia sempre por
    * `marcaDaReuniaoQueVale` (`src/lib/funil/degraus.ts`), nunca o campo cru.
    */
-  desfecho_da_reuniao?: 'qualificada' | 'compareceu' | 'faltou' | null;
+  desfecho_da_reuniao?: 'qualificada' | 'compareceu' | 'faltou' | 'reagendar' | null;
   /**
    * As etapas que o botão "avançar" do painel recomenda depois desta, na
    * ordem — a primeira é o botão principal (1065). NULL = automático (para a

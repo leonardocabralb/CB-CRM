@@ -476,6 +476,7 @@ export function PipelineSettings({
                         <ul className="mt-1 list-disc space-y-0.5 pl-4">
                           <li>{t("ajudaReuniaoQualificada")}</li>
                           <li>{t("ajudaReuniaoCompareceu")}</li>
+                          <li>{t("ajudaReuniaoReagendar")}</li>
                           <li>{t("ajudaReuniaoFaltou")}</li>
                           <li>{t("ajudaReuniaoProposta")}</li>
                         </ul>
@@ -870,7 +871,10 @@ function SortableStageRow({
           etapa de no-show) ou "Compareceu, sem proposta". É o que o aviso de
           possível no-show da conversa e a tela Reuniões leem. 1063:
           "Qualificada" é o destino do botão "Reunião qualificada" (antes da
-          reunião; o aviso de no-show não a lê como comparecimento).
+          reunião; o aviso de no-show não a lê como comparecimento). 1081:
+          "Reagendar" é o destino do botão "Reagendar" (antes e depois do
+          início): o cliente avisou que não vai e pediu nova data — não é
+          falta, e nem o "Já faltou" nem o aviso de no-show a leem assim.
           ⚠️ Da proposta em diante o campo TRAVA: o degrau já diz
           "compareceu, com proposta", e a marcação ali é ignorada por todo
           leitor (`marcaDaReuniaoQueVale`) — marcar "Proposta Realizada" como
@@ -891,7 +895,7 @@ function SortableStageRow({
           onChange={(e) => {
             const v = e.target.value;
             onDesfechoChange(
-              v === 'qualificada' || v === 'compareceu' || v === 'faltou' ? v : null,
+              v === 'qualificada' || v === 'compareceu' || v === 'reagendar' || v === 'faltou' ? v : null,
             );
           }}
           aria-label={t('stageReuniao')}
@@ -901,6 +905,7 @@ function SortableStageRow({
           <option value="">{t('reuniaoNenhum')}</option>
           <option value="qualificada">{t('reuniaoQualificada')}</option>
           <option value="compareceu">{t('reuniaoCompareceu')}</option>
+          <option value="reagendar">{t('reuniaoReagendar')}</option>
           <option value="faltou">{t('reuniaoFaltou')}</option>
         </select>
       )}

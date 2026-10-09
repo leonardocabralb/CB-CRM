@@ -24,6 +24,9 @@ por situação ficaram para a Fase 3.
 | 2 | Grau de qualificação (de-para das faixas de dívida e atraso), sinais de pré-qualificação e de automação/IA em andamento | Não começada — depende do critério do operador |
 | 3 | IA lendo as respostas da pré-qualificação; visões de semana em grade e quadro por situação | Não começada — depende de aprovação |
 
+O botão **"Reagendar"** (o cliente avisou que não vai e pediu nova data; antes
+e depois do horário, 1081) tem plano próprio: `docs/PLANO-reagendamento.md`.
+
 ## Fase 1 — o que foi feito
 
 **Arquivos:**

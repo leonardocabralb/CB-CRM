@@ -7,8 +7,10 @@ import { alcancaProposta, marcaDaReuniaoQueVale } from '@/lib/funil/degraus';
  * Pedido do operador (28/09/2026): antes da reunião, "Reunião qualificada"
  * leva o card para a etapa marcada como tal (a MQL 2 do Bancário - Comercial);
  * depois que ela COMEÇA, o resultado — com proposta (pede o valor), sem
- * proposta ou no show. A etapa funciona como REDE DE SEGURANÇA: toda reunião
- * que já começou tem de terminar com resultado.
+ * proposta, reagendar ou no show. O "Reagendar" (1081, 09/10/2026) aparece
+ * também ANTES: o cliente avisa que não vai e pede nova data. A etapa funciona
+ * como REDE DE SEGURANÇA: toda reunião que já começou tem de terminar com
+ * resultado.
  *
  * Puro. Quem junta os dados é a rota `/api/cb/reunioes`; quem escreve é a
  * tela (a mudança de etapa vai do navegador, sob RLS, para a trilha e as
@@ -25,12 +27,17 @@ import { alcancaProposta, marcaDaReuniaoQueVale } from '@/lib/funil/degraus';
  */
 
 export type OrigemDaReuniao = 'calendly' | 'agenda';
-export type Resultado = 'proposta' | 'sem_proposta' | 'no_show';
+/**
+ * `reagendar` (1081): o cliente AVISOU que não vai e pediu nova data. Não é
+ * falta (decisão do operador, 09/10/2026): não acende "Já faltou" nem a faixa
+ * de possível no-show. Plano: `docs/PLANO-reagendamento.md`.
+ */
+export type Resultado = 'proposta' | 'sem_proposta' | 'reagendar' | 'no_show';
 export type Marco = 'qualificada' | 'resultado';
-export type MarcaDaEtapa = 'qualificada' | 'compareceu' | 'faltou';
+export type MarcaDaEtapa = 'qualificada' | 'compareceu' | 'faltou' | 'reagendar';
 export type Acao = 'qualificada' | Resultado;
 
-export const RESULTADOS: readonly Resultado[] = ['proposta', 'sem_proposta', 'no_show'];
+export const RESULTADOS: readonly Resultado[] = ['proposta', 'sem_proposta', 'reagendar', 'no_show'];
 
 export function ehResultado(v: unknown): v is Resultado {
   return typeof v === 'string' && (RESULTADOS as readonly string[]).includes(v);
@@ -67,6 +74,12 @@ export interface LinhaDoMarco {
   valor: number | null;
   registrado_por_nome: string | null;
   registrado_em: string;
+  /**
+   * O início da reunião que a tela via ao gravar (1081); nulo nos marcos
+   * anteriores. É o que deixa o Reagendar valer ANTES do horário sem resolver
+   * o horário novo de uma reunião remarcada (ver `marcoValeParaAReuniao`).
+   */
+  inicio?: string | null;
 }
 
 /** Qualificação ou resultado já registrados, e por onde. */
@@ -103,9 +116,10 @@ function ms(iso: string | null | undefined): number | null {
  * O resultado que ENTRAR nesta etapa quer dizer. Degrau de proposta ou
  * depois (contrato, pasta) → com proposta, e ele VENCE a marcação "Reunião"
  * da etapa (`marcaDaReuniaoQueVale`); `faltou` → no show; `compareceu` → sem
- * proposta. É a mesma régua de "avançou" do aviso de possível no-show
- * (`aviso-de-no-show.ts`), e pelo mesmo motivo a MQL 2 NÃO conta: medido em
- * 27/09/2026, 28 das 30 entradas nela acontecem ANTES da reunião.
+ * proposta; `reagendar` → reagendar. É a mesma régua de "avançou" do aviso de
+ * possível no-show (`aviso-de-no-show.ts`), e pelo mesmo motivo a MQL 2 NÃO
+ * conta: medido em 27/09/2026, 28 das 30 entradas nela acontecem ANTES da
+ * reunião.
  */
 export function resultadoDaEtapa(etapa: Pick<EtapaDoFunil, 'degrau' | 'marca'> | undefined): Resultado | null {
   if (!etapa) return null;
@@ -113,6 +127,7 @@ export function resultadoDaEtapa(etapa: Pick<EtapaDoFunil, 'degrau' | 'marca'> |
   const marca = marcaDe(etapa);
   if (marca === 'faltou') return 'no_show';
   if (marca === 'compareceu') return 'sem_proposta';
+  if (marca === 'reagendar') return 'reagendar';
   return null;
 }
 
@@ -140,8 +155,37 @@ export function alvosDoFunil(etapas: EtapaDoFunil[], pipelineId: string): AlvosD
     qualificada: primeira((e) => marcaDe(e) === 'qualificada'),
     proposta: primeira((e) => e.degrau === 'proposta'),
     sem_proposta: primeira((e) => marcaDe(e) === 'compareceu'),
+    reagendar: primeira((e) => marcaDe(e) === 'reagendar'),
     no_show: primeira((e) => marcaDe(e) === 'faltou'),
   };
+}
+
+/** Os dois textos dizem o MESMO instante? (formas diferentes: `Z`, `+00:00`, microssegundos). */
+function mesmoInstante(a: string, b: string): boolean {
+  const x = ms(a);
+  return x !== null && x === ms(b);
+}
+
+/**
+ * O marco de resultado vale para a reunião que começa em `inicio`?
+ *
+ * - Os resultados de sempre só valem gravados DEPOIS do início: a tela só os
+ *   oferece a partir dele, e a reunião da agenda (ou a remarcada pela ficha)
+ *   pode ter mudado de horário depois de marcada.
+ * - ⚠️ O `reagendar` vale também ANTES do início (decisão do operador, D1 de
+ *   `docs/PLANO-reagendamento.md`: o cliente avisa antes, e o card tem de sair
+ *   de Reunião Agendada para os lembretes pararem) — mas só para o horário em
+ *   que foi gravado (`inicio`, 1081). A remarcação pela ficha reaproveita a
+ *   MESMA reunião com outro início: sem essa conferência, o Reagendar do
+ *   horário antigo resolveria o novo. Marco sem `inicio` (anterior à 1081)
+ *   cai na regra de sempre.
+ */
+export function marcoValeParaAReuniao(m: Pick<LinhaDoMarco, 'resultado' | 'registrado_em' | 'inicio'>, inicio: string): boolean {
+  const inicioMs = ms(inicio);
+  const em = ms(m.registrado_em);
+  if (inicioMs === null || em === null) return false;
+  if (m.resultado === 'reagendar' && m.inicio) return mesmoInstante(m.inicio, inicio);
+  return em >= inicioMs;
 }
 
 /** O mais recente de uma lista de registros (por `em`); nulo se vazia. */
@@ -200,6 +244,15 @@ export function resultadoDaReuniao(args: {
   inicio: string;
   /** Início da próxima reunião do mesmo contato; nulo = não há. */
   ate: string | null;
+  /**
+   * ⚠️ Onde termina a janela da ENTRADA numa etapa "Reagendar" (1081); nulo
+   * ou ausente = `ate`. O Reagendar vale ANTES do horário, então a entrada que
+   * o botão gera numa reunião nova cai dentro da janela da reunião ANTERIOR:
+   * sem este corte (o agendamento de outra reunião depois do início desta,
+   * `montarPauta`), o Reagendar da nova resolvia a anterior por cima do no
+   * show dela (revisão do PR #395).
+   */
+  ateDoReagendar?: string | null;
   dealId: string | null;
   marcos: LinhaDoMarco[];
   entradas: EntradaDaTrilha[];
@@ -207,15 +260,16 @@ export function resultadoDaReuniao(args: {
 }): RegistroDoResultado | null {
   const inicio = ms(args.inicio);
   if (inicio === null) return null;
+  const fimDoReagendar = ms(args.ateDoReagendar ?? null);
   const candidatos: RegistroDoResultado[] = [];
 
   for (const m of args.marcos) {
     if (m.marco !== 'resultado' || !ehResultado(m.resultado)) continue;
     // Resultado registrado ANTES do início não é desta reunião: a da agenda do
     // CRM pode ter mudado de data depois de marcada (a tela só oferece o
-    // resultado a partir do início).
-    const em = ms(m.registrado_em);
-    if (em === null || em < inicio) continue;
+    // resultado a partir do início). A exceção é o Reagendar do MESMO
+    // horário (`marcoValeParaAReuniao`).
+    if (!marcoValeParaAReuniao(m, args.inicio)) continue;
     candidatos.push({
       tipo: m.resultado,
       em: m.registrado_em,
@@ -228,6 +282,7 @@ export function resultadoDaReuniao(args: {
   for (const e of entradasDaReuniao(args.entradas, inicio, ms(args.ate), args.dealId)) {
     const tipo = resultadoDaEtapa(args.etapas.get(e.etapaId));
     if (!tipo) continue;
+    if (tipo === 'reagendar' && fimDoReagendar !== null && (ms(e.em) ?? Infinity) >= fimDoReagendar) continue;
     candidatos.push({ tipo, em: e.em, por: e.por, fonte: 'funil', etapa: e.etapa, valor: null });
   }
   return maisRecente(candidatos);
@@ -305,6 +360,12 @@ export interface ReuniaoDaPauta {
    * data; nulo = esta é a última. Com ela, o card já é da reunião seguinte.
    */
   proximaEm: string | null;
+  /**
+   * Início da reunião de pé ANTERIOR mais recente do mesmo contato, sem
+   * Reagendar (1081); nulo = não há. Se ela ainda não começou, o card é DELA
+   * (e dos lembretes dela): o Reagendar desta só registra (`comoMarcar`).
+   */
+  anteriorEm: string | null;
   contato: { id: string; nome: string | null } | null;
   conversaId: string | null;
   /** O card do contato: o aberto mais recente, senão o mais recente. */
@@ -332,6 +393,7 @@ export type Fase = 'antes' | 'sem_resultado' | 'com_resultado';
 /**
  * ⚠️ O resultado abre no INÍCIO da reunião, não no fim (pedido do operador:
  * "após esse horário começar") — o no show se decide nos primeiros minutos.
+ * O Reagendar gravado antes do horário já deixa a reunião `com_resultado`.
  */
 export function faseDaReuniao(r: Pick<ReuniaoDaPauta, 'inicio' | 'resultado'>, agora: Date): Fase {
   if (r.resultado) return 'com_resultado';
@@ -360,7 +422,7 @@ export function pendentes(reunioes: ReuniaoDaPauta[], agora: Date): ReuniaoDaPau
 }
 
 /** Por que o botão só REGISTRA, sem mover o card. */
-export type MotivoDeSoRegistrar = 'sem_card' | 'card_fechado' | 'reuniao_posterior' | 'sem_etapa';
+export type MotivoDeSoRegistrar = 'sem_card' | 'card_fechado' | 'reuniao_posterior' | 'reuniao_anterior' | 'sem_etapa';
 
 /**
  * O que um botão faz nesta reunião: move o card para `alvo`, ou só registra
@@ -375,17 +437,27 @@ export type MotivoDeSoRegistrar = 'sem_card' | 'card_fechado' | 'reuniao_posteri
  * - `reuniao_posterior`: o contato já tem reunião MAIS NOVA; o card é dela
  *   (o Calendly o levou para "Reunião Agendada"), e mover pelo resultado da
  *   reunião antiga tiraria a nova da etapa — e dos lembretes.
+ * - `reuniao_anterior` (só o Reagendar, 1081): o contato tem reunião ANTERIOR
+ *   que ainda não começou; o card é dela. Antes da 1081 nenhum resultado abria
+ *   antes do início, e não havia como alcançar este caso. O cliente que
+ *   antecipou pelo link manual: o Reagendar da reunião antiga, clicado na
+ *   véspera da nova, tirava o card de Reunião Agendada e calava os lembretes
+ *   da reunião que vai acontecer (revisão do PR #395).
  * - `sem_etapa`: nenhuma etapa do funil do card tem a marca (a MQL 2 só é
  *   destino depois de marcada "Qualificada" em Gerenciar funil).
  */
 export function comoMarcar(
-  r: Pick<ReuniaoDaPauta, 'negocio' | 'proximaEm'>,
+  r: Pick<ReuniaoDaPauta, 'negocio' | 'proximaEm' | 'anteriorEm'>,
   acao: Acao,
   alvos: AlvosDoFunil | null,
+  agora: Date,
 ): { alvo: AlvoDaAcao; motivo: null } | { alvo: null; motivo: MotivoDeSoRegistrar } {
   if (!r.negocio) return { alvo: null, motivo: 'sem_card' };
   if (r.negocio.status !== 'open') return { alvo: null, motivo: 'card_fechado' };
   if (acao !== 'qualificada' && r.proximaEm !== null) return { alvo: null, motivo: 'reuniao_posterior' };
+  if (acao === 'reagendar' && r.anteriorEm !== null && (ms(r.anteriorEm) ?? -Infinity) > agora.getTime()) {
+    return { alvo: null, motivo: 'reuniao_anterior' };
+  }
   const alvo = alvos?.[acao] ?? null;
   return alvo ? { alvo, motivo: null } : { alvo: null, motivo: 'sem_etapa' };
 }
@@ -421,6 +493,7 @@ export function lerPauta(json: unknown): { reunioes: ReuniaoDaPauta[]; funis: Re
       qualificada: alvo(a.qualificada),
       proposta: alvo(a.proposta),
       sem_proposta: alvo(a.sem_proposta),
+      reagendar: alvo(a.reagendar),
       no_show: alvo(a.no_show),
     };
   }

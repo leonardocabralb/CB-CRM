@@ -72,6 +72,7 @@ const reuniao: ReuniaoDaPauta = {
   reagendamento: false,
   remarcadaDe: null,
   proximaEm: null,
+  anteriorEm: null,
   contato: { id: 'c1', nome: 'Ana' },
   conversaId: 'v1',
   negocio: { id: 'd1', pipelineId: 'banc', pipelineNome: null, etapaId: 'agendada', etapaNome: null, valor: 0, status: 'open' },
@@ -229,5 +230,101 @@ describe('executarAcao', () => {
     await executarAcao({ supabase: cliente, accountId: 'conta', reuniao, acao: 'proposta', destino: null, valor: 900 });
     expect(chamadas).toHaveLength(1);
     expect(chamadas[0].valor).toMatchObject({ marco: 'resultado', resultado: 'proposta', valor: 900 });
+  });
+
+  // O marco grava o início que a tela via (1081): é o que deixa o Reagendar
+  // valer antes do horário só para ESSE horário (`marcoValeParaAReuniao`).
+  it.each(['qualificada', 'proposta', 'sem_proposta', 'reagendar', 'no_show'] as const)(
+    'o marco de %s leva o início da reunião que a tela via',
+    async (acao) => {
+      const { cliente, chamadas } = falso();
+      const remarcada = { ...reuniao, inicio: '2026-10-02T19:00:00.000Z', remarcadaDe: '2026-10-01T19:45:00Z' };
+      const r = await executarAcao({
+        supabase: cliente,
+        accountId: 'conta',
+        reuniao: remarcada,
+        acao,
+        destino: null,
+        valor: acao === 'proposta' ? 900 : null,
+      });
+      expect(r.desfecho).toBe('ok');
+      const upsert = chamadas.find((c) => c.op === 'upsert');
+      expect(upsert?.valor).toMatchObject({ inicio: '2026-10-02T19:00:00.000Z' });
+      // O que viaja é o JSON: a chave tem de sair no corpo.
+      expect(JSON.parse(JSON.stringify(upsert?.valor))).toHaveProperty('inicio', '2026-10-02T19:00:00.000Z');
+    },
+  );
+
+  it('reagendar: move o card para o destino com a cerca de etapa e status; o marco é resultado reagendar, sem valor', async () => {
+    const { cliente, chamadas } = falso();
+    const r = await executarAcao({
+      supabase: cliente,
+      accountId: 'conta',
+      reuniao,
+      acao: 'reagendar',
+      destino: { id: 'reag', nome: 'Reagendar' },
+      // Um valor que sobrou no campo não vai nem para o card nem para o marco.
+      valor: 500,
+    });
+    expect(r).toEqual({ desfecho: 'ok', moveu: true });
+    expect(chamadas.map((c) => c.op)).toEqual(['update', 'upsert']);
+    expect(JSON.parse(JSON.stringify(chamadas[0].valor))).toEqual({ stage_id: 'reag' });
+    expect(chamadas[0]).toMatchObject({
+      tabela: 'deals',
+      filtros: [
+        ['id', 'd1'],
+        ['stage_id', 'agendada'],
+        ['status', 'open'],
+      ],
+    });
+    expect(chamadas[1]).toMatchObject({
+      tabela: 'cb_reunioes_marcos',
+      valor: {
+        account_id: 'conta',
+        origem: 'calendly',
+        reuniao_id: 'r1',
+        marco: 'resultado',
+        resultado: 'reagendar',
+        valor: null,
+        inicio: '2026-09-29T14:00:00Z',
+      },
+      opcoes: { onConflict: 'account_id,origem,reuniao_id,marco' },
+    });
+    expect(avisarDrenagemDeFunil).toHaveBeenCalledTimes(1);
+  });
+
+  it('reagendar com o card JÁ na etapa (movido pelo quadro antes da hora): a mesma cerca por leitura, e o marco confirma', async () => {
+    const { cliente, chamadas } = falso();
+    const r = await executarAcao({
+      supabase: cliente,
+      accountId: 'conta',
+      reuniao: { ...reuniao, negocio: { ...reuniao.negocio!, etapaId: 'reag' } },
+      acao: 'reagendar',
+      destino: { id: 'reag', nome: 'Reagendar' },
+      valor: null,
+    });
+    expect(r).toEqual({ desfecho: 'ok', moveu: false });
+    expect(chamadas.map((c) => c.op)).toEqual(['select', 'upsert']);
+    expect(chamadas[0].filtros).toEqual([
+      ['id', 'd1'],
+      ['stage_id', 'reag'],
+      ['status', 'open'],
+    ]);
+    expect(chamadas[1].valor).toMatchObject({ marco: 'resultado', resultado: 'reagendar', valor: null, inicio: '2026-09-29T14:00:00Z' });
+    expect(avisarDrenagemDeFunil).not.toHaveBeenCalled();
+  });
+
+  it('reagendar com o card movido por outro depois da carga (zero linhas): card_mudou, sem marco', async () => {
+    const { cliente, chamadas } = falso({ linhasDoUpdate: 0 });
+    const r = await executarAcao({
+      supabase: cliente,
+      accountId: 'conta',
+      reuniao,
+      acao: 'reagendar',
+      destino: { id: 'reag', nome: 'Reagendar' },
+      valor: null,
+    });
+    expect(r).toEqual({ desfecho: 'card_mudou', moveu: false });
+    expect(chamadas.map((c) => c.op)).toEqual(['update']);
   });
 });
