@@ -135,6 +135,12 @@ export function resumoPorPeriodo(
     valorFechado,
     ticketMedio: emPe.length > 0 ? valorFechado / emPe.length : null,
     entradasPorDia: entradasPorDia(entrantes, intervalo, agora),
+    // Cada entrada numa etapa "Faltou" que aconteceu no período, venha o lead
+    // de quando vier (fluxo, como o resto deste modo).
+    noShows: fatos.reduce(
+      (soma, f) => soma + f.entradasEmFalta.filter((d) => dentroDoIntervalo(d, intervalo)).length,
+      0,
+    ),
   };
 }
 
@@ -153,13 +159,14 @@ export function resumoNoModo(
 
 /**
  * Houve ALGO no período? No modo por período "nenhum lead entrou" não quer
- * dizer tela vazia — contrato e perda de lead antigo contam. A nota de
- * período vazio só aparece quando nada aconteceu.
+ * dizer tela vazia — contrato, perda e no-show de lead antigo contam. A nota
+ * de período vazio só aparece quando nada aconteceu.
  */
 export function periodoSemAtividade(resumo: ResumoDoPeriodo): boolean {
   return (
     resumo.entradas === 0 &&
     resumo.perdidos === 0 &&
+    resumo.noShows === 0 &&
     resumo.porDegrau.every((d) => d.alcancaram === 0)
   );
 }

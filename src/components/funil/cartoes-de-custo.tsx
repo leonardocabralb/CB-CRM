@@ -9,6 +9,7 @@ import {
   Trophy,
   UserCheck,
   UserMinus,
+  UserX,
   Wallet,
   type LucideIcon,
 } from "lucide-react";
@@ -30,6 +31,7 @@ export const ICONE_DO_CARTAO: Record<CartaoDeCusto, LucideIcon> = {
   lead: Wallet,
   mql: UserCheck,
   reuniao: CalendarCheck,
+  no_show: UserX,
   proposta: Send,
   contrato: FileSignature,
   cac: Trophy,
@@ -53,6 +55,8 @@ export function useRotuloDoCartaoDeCusto(
         return t("cac");
       case "perdidos":
         return t("perdidos");
+      case "no_show":
+        return t("noShow");
       case "mql":
       case "reuniao":
       case "proposta":

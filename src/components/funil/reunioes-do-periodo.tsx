@@ -1,34 +1,40 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { ArrowDown, ArrowUp, Loader2, Minus } from "lucide-react";
+import { ArrowDown, ArrowUp, Minus } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import {
   formatarPercentual,
   formatarPp,
   formatarVariacao,
+  noMeioDaFrase,
   sinalArredondado,
 } from "@/lib/funil/apresentacao";
-import { compararReunioes, contarReunioes, reunioesForaDeFunil } from "@/lib/funil/comparecimento";
-import type { DeltaDeContagem, DeltaDeTaxa } from "@/lib/funil/coorte";
-import type { Intervalo } from "@/lib/funil/periodo";
-import type { ReuniaoDoResumo } from "@/lib/reunioes/resumo";
+import {
+  agendamentosDe,
+  type Comparacao,
+  type DeltaDeContagem,
+  type DeltaDeTaxa,
+  type ResumoDoPeriodo,
+  taxaDeNoShow,
+} from "@/lib/funil/coorte";
 
 /**
- * A seção "Reuniões" do Desempenho (Fase 4 de `docs/PLANO-reagendamento.md`):
- * compareceram, no-show, reagendaram e a taxa de comparecimento do período,
- * contra o anterior. Toda a conta mora em `src/lib/funil/comparecimento.ts`
- * (regra em `.claude/rules/funil-metricas.md`); aqui só apresentação.
+ * A seção "Reuniões" do Desempenho: agendamentos, no-shows e a taxa de
+ * no-show do período, contra o anterior. Decisão do operador (09/10/2026):
+ * conta pelas TRANSIÇÕES do card, como o resto do funil — sem conta própria
+ * de reunião.
  *
- * - Conta pela DATA DA REUNIÃO nos dois modos (reunião é evento, não coorte),
- *   no funil em que o card estava NO DIA dela — a nota da seção diz isso.
- * - Taxa sem denominador é "—" (`formatarPercentual(null)`), nunca 0%.
- * - Sem as linhas (carga ou falha) não há número nenhum: "não sei" nunca vira
- *   zero.
+ * - Agendamentos = quem alcançou o degrau reunião (o cartão do funil).
+ * - No-show = cada ENTRADA numa etapa marcada "Faltou" (`entradasEmFalta`).
+ * - Taxa = no-shows ÷ agendamentos (`taxaDeNoShow`); sem agendamento, "—".
+ * - A etapa "Reagendar" é fila de trabalho interna e NÃO entra na conta.
+ *
+ * O custo por no-show é um cartão de custo como os outros (`custosDoResumo`).
+ * Só aparece no funil com etapa marcada "Faltou" (`etapasDeFalta`).
  */
 
-type Bom = "subir" | "descer" | "neutro";
+type Bom = "subir" | "descer";
 
 interface Delta {
   sinal: number;
@@ -36,37 +42,31 @@ interface Delta {
 }
 
 /** A linha de baixo do cartão: a variação, ou o que se sabe sem ela. */
-type Comparacao = { delta: Delta } | { semDelta: string };
+type LinhaDaComparacao = { delta: Delta } | { semDelta: string };
 
 export function ReunioesDoPeriodo({
-  funilId,
-  linhas,
-  carregando,
-  falhou,
-  onTentarDeNovo,
-  intervalo,
+  atual,
   anterior,
+  comparacao,
+  porPeriodo,
+  rotuloDaReuniao,
 }: {
-  funilId: string;
-  linhas: ReuniaoDoResumo[] | null;
-  carregando: boolean;
-  falhou: boolean;
-  onTentarDeNovo: () => void;
-  intervalo: Intervalo;
-  anterior: Intervalo | null;
+  atual: ResumoDoPeriodo;
+  /** nulo = sem período anterior (Total). */
+  anterior: ResumoDoPeriodo | null;
+  comparacao: Comparacao;
+  porPeriodo: boolean;
+  /** o rótulo do degrau reunião NESTE funil (o livre, se houver). */
+  rotuloDaReuniao: string;
 }) {
   const t = useTranslations("Pipelines.funil.desempenho");
+  const degrau = noMeioDaFrase(rotuloDaReuniao);
 
-  // Só há número com as linhas DESTE pedido na mão.
-  const prontas = carregando || falhou ? null : linhas;
-  const atual = prontas ? contarReunioes(prontas, funilId, intervalo) : null;
-
-  // A seta sai do valor ARREDONDADO, o mesmo que o texto escreve (como os
-  // outros cartões do Desempenho).
   // Sem variação há dois casos, e a frase diz qual: não há período anterior
   // (Total), ou há e a variação não existe (zero lá, taxa sem denominador) —
-  // aí o cartão mostra o valor de lá, nunca "sem período anterior".
-  const deContagem = (d: DeltaDeContagem): Comparacao =>
+  // aí o cartão mostra o valor de lá, nunca "sem período anterior". A seta
+  // sai do valor ARREDONDADO, o mesmo que o texto escreve.
+  const deContagem = (d: DeltaDeContagem): LinhaDaComparacao =>
     d.variacao !== null
       ? {
           delta: {
@@ -75,85 +75,45 @@ export function ReunioesDoPeriodo({
           },
         }
       : { semDelta: d.anterior === null ? t("cards.semAnterior") : t("reunioes.noAnterior", { valor: String(d.anterior) }) };
-  const deTaxa = (d: DeltaDeTaxa, temAnterior: boolean): Comparacao =>
+  const deTaxa = (d: DeltaDeTaxa): LinhaDaComparacao =>
     d.pp !== null
       ? { delta: { sinal: sinalArredondado(d.pp, 1), texto: t("cards.vsAnterior", { delta: formatarPp(d.pp) ?? "" }) } }
-      : { semDelta: temAnterior ? t("reunioes.noAnterior", { valor: formatarPercentual(d.anterior) }) : t("cards.semAnterior") };
-
-  let corpo: ReactNode;
-  if (falhou && !carregando) {
-    corpo = (
-      <div className="flex flex-col items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
-        {t("reunioes.falhou")}
-        <button type="button" onClick={onTentarDeNovo} className="underline hover:text-foreground">
-          {t("tentarDeNovo")}
-        </button>
-      </div>
-    );
-  } else if (!prontas || !atual) {
-    // Carregando — ou linhas nulas sem falha, que também é "não sei".
-    corpo = (
-      <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        {t("reunioes.carregando")}
-      </div>
-    );
-  } else {
-    const ant = anterior ? contarReunioes(prontas, funilId, anterior) : null;
-    const cmp = compararReunioes(atual, ant);
-    const foraDeFunil = reunioesForaDeFunil(prontas, intervalo);
-    corpo = (
-      <>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <CartaoDeReuniao
-            titulo={t("reunioes.compareceram")}
-            valor={String(atual.compareceram)}
-            subtitulo={t("reunioes.comProposta", { n: atual.comProposta })}
-            comparacao={deContagem(cmp.compareceram)}
-            bom="subir"
-          />
-          <CartaoDeReuniao
-            titulo={t("reunioes.noShow")}
-            valor={String(atual.noShow)}
-            subtitulo={t("reunioes.noShowDesc")}
-            comparacao={deContagem(cmp.noShow)}
-            bom="descer"
-          />
-          <CartaoDeReuniao
-            titulo={t("reunioes.reagendaram")}
-            valor={String(atual.reagendaram)}
-            subtitulo={t("reunioes.reagendaramDesc")}
-            comparacao={deContagem(cmp.reagendaram)}
-            bom="neutro"
-          />
-          <CartaoDeReuniao
-            titulo={t("reunioes.comparecimento")}
-            valor={formatarPercentual(atual.comparecimento)}
-            subtitulo={t("reunioes.comparecimentoDesc")}
-            comparacao={deTaxa(cmp.comparecimento, ant !== null)}
-            bom="subir"
-          />
-        </div>
-        {foraDeFunil > 0 && (
-          <p className="mt-3 text-xs text-muted-foreground">{t("reunioes.foraDeFunil", { n: foraDeFunil })}</p>
-        )}
-      </>
-    );
-  }
+      : {
+          semDelta:
+            anterior === null ? t("cards.semAnterior") : t("reunioes.noAnterior", { valor: formatarPercentual(d.anterior) }),
+        };
 
   return (
     <section className="rounded-xl border border-border bg-card p-4">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("reunioes.titulo")}</h3>
-        {atual && (
-          <span className="text-xs text-muted-foreground">
-            {t("reunioes.noPeriodo", { n: atual.reunioes })}
-            {atual.semResultado > 0 && ` · ${t("reunioes.semResultado", { n: atual.semResultado })}`}
-          </span>
-        )}
       </div>
-      <p className="mb-3 text-[11px] text-muted-foreground">{t("reunioes.nota")}</p>
-      {corpo}
+      <p className="mb-3 text-[11px] text-muted-foreground">
+        {porPeriodo ? t("reunioes.notaPorPeriodo", { degrau }) : t("reunioes.notaPorEntrada", { degrau })}
+      </p>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+        <CartaoDeReuniao
+          titulo={t("reunioes.agendamentos")}
+          valor={String(agendamentosDe(atual))}
+          subtitulo={t("reunioes.agendamentosDesc", { degrau })}
+          comparacao={deContagem(comparacao.agendamentos)}
+          bom="subir"
+        />
+        <CartaoDeReuniao
+          titulo={t("reunioes.noShows")}
+          valor={String(atual.noShows)}
+          subtitulo={t("reunioes.noShowsDesc")}
+          comparacao={deContagem(comparacao.noShows)}
+          bom="descer"
+        />
+        <CartaoDeReuniao
+          titulo={t("reunioes.taxa")}
+          valor={formatarPercentual(taxaDeNoShow(atual))}
+          subtitulo={t("reunioes.taxaDesc")}
+          comparacao={deTaxa(comparacao.taxaDeNoShow)}
+          bom="descer"
+        />
+      </div>
     </section>
   );
 }
@@ -168,39 +128,55 @@ function CartaoDeReuniao({
   titulo: string;
   valor: string;
   subtitulo: string;
-  comparacao: Comparacao;
-  /** a direção BOA do número: no-show que sobe é ruim; reagendar não é bom nem ruim */
+  comparacao: LinhaDaComparacao;
+  /** a direção BOA do número: no-show (e a taxa) que sobe é ruim */
   bom: Bom;
 }) {
-  const delta = "delta" in comparacao ? comparacao.delta : null;
+  if ("semDelta" in comparacao) {
+    return (
+      <Moldura titulo={titulo} valor={valor} subtitulo={subtitulo}>
+        <div className="mt-1 text-xs text-muted-foreground">{comparacao.semDelta}</div>
+      </Moldura>
+    );
+  }
+  const { sinal, texto } = comparacao.delta;
   // Classes LITERAIS: classe montada não é gerada pelo Tailwind.
-  const tom =
-    delta === null || delta.sinal === 0 || bom === "neutro"
-      ? "text-muted-foreground"
-      : (bom === "subir" ? delta.sinal > 0 : delta.sinal < 0)
-        ? "text-primary"
-        : "text-red-400";
+  const tom = sinal === 0 ? "text-muted-foreground" : (bom === "subir" ? sinal > 0 : sinal < 0) ? "text-primary" : "text-red-400";
   return (
-    <div className="rounded-lg border border-border bg-muted/40 p-3">
+    <Moldura titulo={titulo} valor={valor} subtitulo={subtitulo}>
+      <div className={`mt-1 flex items-center gap-1 text-xs ${tom}`}>
+        {sinal > 0 ? (
+          <ArrowUp className="h-3.5 w-3.5" aria-hidden />
+        ) : sinal < 0 ? (
+          <ArrowDown className="h-3.5 w-3.5" aria-hidden />
+        ) : (
+          <Minus className="h-3.5 w-3.5" aria-hidden />
+        )}
+        <span className="tabular-nums">{texto}</span>
+      </div>
+    </Moldura>
+  );
+}
+
+function Moldura({
+  titulo,
+  valor,
+  subtitulo,
+  children,
+}: {
+  titulo: string;
+  valor: string;
+  subtitulo: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="min-w-0 rounded-lg border border-border bg-muted/40 p-3">
       <div className="truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground" title={titulo}>
         {titulo}
       </div>
       <div className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{valor}</div>
       <div className="mt-1 text-xs text-muted-foreground">{subtitulo}</div>
-      {"semDelta" in comparacao ? (
-        <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">{comparacao.semDelta}</div>
-      ) : delta === null ? null : (
-        <div className={`mt-1 flex items-center gap-1 text-xs ${tom}`}>
-          {delta.sinal > 0 ? (
-            <ArrowUp className="h-3.5 w-3.5" aria-hidden />
-          ) : delta.sinal < 0 ? (
-            <ArrowDown className="h-3.5 w-3.5" aria-hidden />
-          ) : (
-            <Minus className="h-3.5 w-3.5" aria-hidden />
-          )}
-          <span className="tabular-nums">{delta.texto}</span>
-        </div>
-      )}
+      {children}
     </div>
   );
 }

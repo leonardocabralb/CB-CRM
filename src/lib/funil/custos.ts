@@ -30,7 +30,9 @@ import type { CoorteMensal } from "./saude";
  *    (pasta é fechamento — `ehFechamento`);
  *  - `perdidos`  = custo por lead × os ENTRANTES do período já perdidos
  *    (`perdidosDosEntrantes`, nunca `perdidos` — ver a regra do "custo dos
- *    perdidos").
+ *    perdidos");
+ *  - `no_show`   = ÷ `noShows`, cada entrada numa etapa "Faltou" no modo
+ *    escolhido (pedido do operador, 09/10/2026).
  *
  * Sem denominador = `null` (a tela escreve "—"), nunca zero nem infinito.
  */
@@ -49,6 +51,7 @@ export function custosDoResumo(investimento: number, resumo: ResumoDoPeriodo): C
     lead: base.custoPorLead,
     mql: porDegrau("mql"),
     reuniao: porDegrau("reuniao"),
+    no_show: dividir(investimento, resumo.noShows),
     proposta: porDegrau("proposta"),
     contrato: dividir(investimento, resumo.fechados),
     cac: base.cac,

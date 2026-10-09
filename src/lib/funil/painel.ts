@@ -42,6 +42,7 @@ export const CARTOES_DE_CUSTO = [
   "lead",
   "mql",
   "reuniao",
+  "no_show",
   "proposta",
   "contrato",
   "cac",
@@ -171,11 +172,14 @@ export function degrausNaTela(classificacao: Classificacao, painel: PainelDoFuni
  * escondeu e, os de degrau, só com o degrau MAPEADO — custo por reunião num
  * funil sem reunião seria sempre "—", e o tracejado do funil já avisa o
  * esquecimento. Investimento, CAC e custo dos perdidos não dependem de
- * degrau.
+ * degrau; o custo por no-show depende de etapa marcada "Faltou".
  */
 export function cartoesDeCustoNaTela(classificacao: Classificacao, painel: PainelDoFunil): CartaoDeCusto[] {
   return CARTOES_DE_CUSTO.filter((c) => {
     if (painel.custosOcultos.includes(c)) return false;
+    // Custo por no-show só no funil com etapa marcada "Faltou": nos outros
+    // seria sempre "—".
+    if (c === "no_show") return classificacao.etapasDeFalta.size > 0;
     const degrau = degrauDoCartao(c);
     return degrau === null || estadoDoDegrau(degrau, classificacao, painel) === "mapeado";
   });

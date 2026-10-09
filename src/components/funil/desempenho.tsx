@@ -19,7 +19,6 @@ import { MetricCard } from "@/components/dashboard/metric-card";
 import { Button } from "@/components/ui/button";
 import { useGastosDeAnuncios } from "@/hooks/use-gastos-de-anuncios";
 import { useModoDeContagem } from "@/hooks/use-modo-de-contagem";
-import { useReunioesDoDesempenho } from "@/hooks/use-reunioes-do-desempenho";
 import { useTrajetorias } from "@/hooks/use-trajetorias";
 import { useAoVoltarParaOApp } from "@/hooks/use-ao-voltar-para-o-app";
 import { formatCurrency } from "@/lib/currency";
@@ -32,7 +31,6 @@ import {
   paraPontosPercentuais,
   sinalArredondado,
 } from "@/lib/funil/apresentacao";
-import { contarReunioes, funilMedeComparecimento } from "@/lib/funil/comparecimento";
 import { comparar } from "@/lib/funil/coorte";
 import { TINTA_DO_DEGRAU, gradeDoFunil } from "@/lib/funil/cores";
 import { custosDoResumo } from "@/lib/funil/custos";
@@ -46,7 +44,6 @@ import {
 } from "@/lib/funil/painel";
 import {
   duracaoEmDias,
-  fimDoIntervalo,
   intervaloDoPreset,
   periodoAnterior,
   type Personalizado,
@@ -83,9 +80,9 @@ import { SeletorDePeriodo } from "./seletor-de-periodo";
  *   quais degraus aparecem (o que "não se aplica" some; o esquecido sai
  *   tracejado) e quais cartões de custo. As cores e a grade estão em
  *   `src/lib/funil/cores.ts`.
- * - A seção REUNIÕES (Fase 4 do Reagendar, `reunioes-do-periodo.tsx`) só no
- *   funil que mede comparecimento: conta pela DATA DA REUNIÃO nos dois modos,
- *   com carga própria pela rota `/api/cb/reunioes/resumo`.
+ * - A seção REUNIÕES (`reunioes-do-periodo.tsx`, 09/10/2026) só no funil com
+ *   etapa marcada "Faltou": agendamentos, no-shows e a taxa, pelas
+ *   TRANSIÇÕES do card, no mesmo resumo (`noShows`, `taxaDeNoShow`).
  */
 
 export function Desempenho({
@@ -123,33 +120,16 @@ export function Desempenho({
   });
   // Fase 4: o gasto em anúncios do período (campanhas → funil), sob RLS.
   const anuncios = useGastosDeAnuncios(intervalo);
-  // Fase 4 do Reagendar: as reuniões dos dois períodos, pela rota (só admin),
-  // e só no funil que mede comparecimento (nos outros, zeros teriam cara de
-  // medida). Os instantes ficam estáveis dentro do dia — `anterior.desde` e
-  // `intervalo.desde` são meia-noite local, e o fim aberto é a meia-noite de
-  // amanhã —, então a chave do pedido não muda a cada render.
-  const medeComparecimento = etapasCarregadas && funilMedeComparecimento(stages);
-  const fimDaCarga = fimDoIntervalo(intervalo, agora);
-  const reunioes = useReunioesDoDesempenho(
-    medeComparecimento
-      ? {
-          de: (anterior?.desde ?? intervalo.desde)?.toISOString() ?? null,
-          ate: fimDaCarga?.toISOString() ?? null,
-        }
-      : null,
-  );
   // O app instalado no celular não tem botão de recarregar: voltar para ele
   // depois de um tempo fora refaz as trajetórias E o gasto, com o
   // `recarregar` comum, que pisca o carregando — é relatório, afirma
   // números, e afirmar sobre número velho é pior que piscar (a escolha do
   // Meu dia). ⚠️ Os DOIS juntos: só as trajetórias misturava os leads novos
   // com o gasto de antes da sincronização, e o custo por lead e o CAC saíam
-  // errados até trocar de tela ou de período (Codex, merge do PR #216). As
-  // reuniões também afirmam números (comparecimento, no-show): vão JUNTO.
+  // errados até trocar de tela ou de período (Codex, merge do PR #216).
   useAoVoltarParaOApp(() => {
     recarregar();
     anuncios.recarregar();
-    reunioes.recarregar();
   });
 
   const classificacao = classificarEtapas(stages);
@@ -228,15 +208,6 @@ export function Desempenho({
   // Por período, "nenhum lead entrou" não é tela vazia: contrato e perda de
   // lead antigo contam. A nota só aparece quando NADA aconteceu.
   const vazio = porPeriodo ? periodoSemAtividade(atual) : atual.entradas === 0;
-  // Reunião no período também é atividade: com ela, "Nada aconteceu neste
-  // funil" seria falso — e com as reuniões ainda carregando (ou na falha),
-  // `null`, a nota também não afirma. Na coorte a nota ("nenhum lead
-  // entrou") segue verdadeira com reunião e fica.
-  const reunioesNoPeriodo = !medeComparecimento
-    ? 0
-    : reunioes.linhas
-      ? contarReunioes(reunioes.linhas, pipeline.id, intervalo).reunioes
-      : null;
 
   const investimento = gastoDoPeriodo(anuncios.gastos, anuncios.campanhas, pipeline.id, diasDoPeriodo(intervalo, agora));
   // Toda a conta dos custos mora em `custosDoResumo` (a mesma da Saúde). O
@@ -259,6 +230,8 @@ export function Desempenho({
         return t("investimento.porContrato");
       case "perdidos":
         return porPeriodo ? t("investimento.porPerdidoNoPeriodo") : t("investimento.porPerdido");
+      case "no_show":
+        return t("investimento.porNoShow", { n: atual.noShows });
       case "mql":
       case "reuniao":
       case "proposta":
@@ -322,7 +295,7 @@ export function Desempenho({
         </div>
       ) : (
         <>
-          {vazio && (!porPeriodo || reunioesNoPeriodo === 0) && (
+          {vazio && (
             <p className="rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
               {porPeriodo ? t("semAtividade") : t("semCoorte")}
             </p>
@@ -570,16 +543,15 @@ export function Desempenho({
             </div>
           </section>
 
-          {/* Reuniões (Fase 4 do Reagendar): compareceram, no-show, reagendaram e a taxa, pela data da reunião. */}
-          {medeComparecimento && (
+          {/* Reuniões: agendamentos, no-shows e a taxa, pelas transições do card
+              (só no funil com etapa marcada "Faltou"). */}
+          {classificacao.etapasDeFalta.size > 0 && (
             <ReunioesDoPeriodo
-              funilId={pipeline.id}
-              linhas={reunioes.linhas}
-              carregando={reunioes.carregando}
-              falhou={reunioes.falhou}
-              onTentarDeNovo={reunioes.recarregar}
-              intervalo={intervalo}
-              anterior={anterior}
+              atual={atual}
+              anterior={resumoAnterior}
+              comparacao={comparacao}
+              porPeriodo={porPeriodo}
+              rotuloDaReuniao={rotuloDoDegrau("reuniao")}
             />
           )}
 

@@ -10,7 +10,8 @@ import { useModoDeContagem } from "@/hooks/use-modo-de-contagem";
 import { useTrajetorias } from "@/hooks/use-trajetorias";
 import { useAoVoltarParaOApp } from "@/hooks/use-ao-voltar-para-o-app";
 import { formatCurrency, formatCurrencyShort } from "@/lib/currency";
-import { formatarPercentual, paraPontosPercentuais } from "@/lib/funil/apresentacao";
+import { formatarPercentual, noMeioDaFrase, paraPontosPercentuais } from "@/lib/funil/apresentacao";
+import { agendamentosDe, taxaDeNoShow } from "@/lib/funil/coorte";
 import { corDaTransicao } from "@/lib/funil/cores";
 import { custosMensais } from "@/lib/funil/custos";
 import { classificarEtapas, type Degrau } from "@/lib/funil/degraus";
@@ -49,6 +50,11 @@ import { SeletorDeModo } from "./seletor-de-modo";
  * sobre as contagens do mês, com a MESMA conta do Desempenho
  * (`custosMensais` → `custosDoResumo`) e os mesmos cartões que o painel do
  * funil mostra. As cores das linhas estão em `src/lib/funil/cores.ts`.
+ *
+ * REUNIÕES (09/10/2026), só no funil com etapa marcada "Faltou":
+ * agendamentos, no-shows e a taxa de cada mês, do MESMO resumo do mês
+ * (`noShows`, `taxaDeNoShow`) — a conta do Desempenho, pelas transições do
+ * card. O custo por no-show está na tabela de custos.
  */
 
 const MESES = 12;
@@ -243,6 +249,68 @@ export function Saude({
           {porPeriodo ? t("fontePorPeriodo", { funil: pipeline.name }) : t("fonte", { funil: pipeline.name })}
         </p>
       </section>
+
+      {/* Reuniões por mês: agendamentos, no-shows e a taxa, pelas transições do
+          card (só no funil com etapa marcada "Faltou"). */}
+      {classificacao.etapasDeFalta.size > 0 && (
+        <section className="rounded-xl border border-border bg-card p-4">
+          <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {tDesempenho("reunioes.titulo")}{" "}
+            <span className="font-normal normal-case">· {t("reunioes.subtitulo", { meses: MESES })}</span>
+          </h3>
+          <div className="overflow-x-auto">
+            <table className="w-full border-separate border-spacing-1 text-xs">
+              <thead>
+                <tr>
+                  <th className="w-44 text-left font-medium text-muted-foreground" />
+                  {meses.map((m) => (
+                    <th key={m.chave} className="px-1 py-1 text-center font-medium text-muted-foreground">
+                      {m.rotulo}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th className="whitespace-nowrap pr-2 text-left font-medium text-foreground">
+                    {tDesempenho("reunioes.agendamentos")}
+                  </th>
+                  {coortes.map((c) => (
+                    <td key={c.chave} className="rounded-md bg-muted/40 px-1 py-2 text-center tabular-nums text-foreground">
+                      {agendamentosDe(c.resumo)}
+                    </td>
+                  ))}
+                </tr>
+                <tr>
+                  <th className="whitespace-nowrap pr-2 text-left font-medium text-foreground">
+                    {tDesempenho("reunioes.noShows")}
+                  </th>
+                  {coortes.map((c) => (
+                    <td key={c.chave} className="rounded-md bg-muted/40 px-1 py-2 text-center tabular-nums text-foreground">
+                      {c.resumo.noShows}
+                    </td>
+                  ))}
+                </tr>
+                <tr>
+                  <th className="whitespace-nowrap pr-2 text-left font-medium text-foreground">
+                    {tDesempenho("reunioes.taxa")}
+                  </th>
+                  {coortes.map((c) => (
+                    <td key={c.chave} className="rounded-md bg-muted/40 px-1 py-2 text-center tabular-nums text-foreground">
+                      {formatarPercentual(taxaDeNoShow(c.resumo))}
+                    </td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-3 text-[11px] text-muted-foreground">
+            {porPeriodo
+              ? tDesempenho("reunioes.notaPorPeriodo", { degrau: noMeioDaFrase(rotuloDoDegrau("reuniao")) })
+              : tDesempenho("reunioes.notaPorEntrada", { degrau: noMeioDaFrase(rotuloDoDegrau("reuniao")) })}
+          </p>
+        </section>
+      )}
 
       {/* Custos por mês (6.4). Gasto que falhou ou não coube NÃO vira número
           (a regra do `useGastosDeAnuncios`); sem integração, a linha que

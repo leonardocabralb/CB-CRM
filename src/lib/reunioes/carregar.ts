@@ -6,22 +6,18 @@ import { DEGRAUS, ehDegrau, indiceDoDegrau } from '@/lib/funil/degraus';
 
 import type { DadosDaPauta, LinhaDaAgenda, LinhaDoCalendlyDaPauta, LinhaDoNegocio } from './montar';
 import type { EntradaDaTrilha, EtapaDoFunil, LinhaDoMarco, MarcaDaEtapa } from './pauta';
-import type { PassoDeFunil } from './resumo';
 
 /**
- * A CARGA da pauta de reuniões: tudo o que `montarPauta` precisa, lido com o
- * service role e cercado pela conta em TODA consulta. Serve às duas rotas —
- * a pauta (`/api/cb/reunioes`, a tela `/reunioes`) e o resumo do Desempenho
- * (`/api/cb/reunioes/resumo`) —, para as duas verem as MESMAS reuniões com o
- * MESMO resultado. Erro de leitura LANÇA (a rota responde 500, nunca lista
- * vazia).
+ * A CARGA da pauta de reuniões (`/api/cb/reunioes`, a tela `/reunioes`):
+ * tudo o que `montarPauta` precisa, lido com o service role e cercado pela
+ * conta em TODA consulta. Erro de leitura LANÇA (a rota responde 500, nunca
+ * lista vazia).
  *
  * ⚠️ O que pode passar de 1000 linhas (o PostgREST corta sem avisar) é
- * paginado pela CHAVE (`paginarPorChave`): as reuniões da janela — o resumo
- * pede "Total" —, a data da ficha da conta inteira, o histórico (agenda,
- * Calendly e negócios) de cada lote de contatos e a trilha. Por posição, a
- * escrita concorrente (o Calendly, a iMotion, quem move o card) pula ou repete
- * linha.
+ * paginado pela CHAVE (`paginarPorChave`): as reuniões da janela, a data da
+ * ficha da conta inteira, o histórico (agenda, Calendly e negócios) de cada
+ * lote de contatos e a trilha. Por posição, a escrita concorrente (o
+ * Calendly, a iMotion, quem move o card) pula ou repete linha.
  */
 
 /** Ids por `.in()`: a lista vai na URL do PostgREST. */
@@ -78,7 +74,7 @@ async function paginarPorChave<T extends { id: string }>(rotulo: string, pagina:
 /**
  * As reuniões que começam na janela `[de, ate]` (Calendly e agenda do CRM) e
  * tudo o que a pauta precisa delas. A janela é da ROTA (a pauta limita a 120
- * dias; o resumo aceita desde o começo).
+ * dias).
  */
 export async function carregarDadosDaPauta(
   admin: SupabaseClient,
@@ -176,8 +172,8 @@ export async function carregarDadosDaPauta(
   // E TODA a agenda do CRM desses contatos: a próxima reunião de um contato
   // (que decide se o card ainda é desta reunião) pode cair fora da janela.
   const agendaPorId = new Map(linhasDaAgenda.map((a) => [a.id, a]));
-  // Pela CHAVE também: no "Total" do resumo os contatos podem ser a conta
-  // inteira, e um lote com mil agendamentos antigos estourava (Codex, PR #396).
+  // Pela CHAVE também: um lote de contatos antigos pode ter mil agendamentos
+  // (Codex, PR #396).
   for (const ids of lotes(contatos)) {
     const linhas = await paginarPorChave<LinhaDaAgenda>('agenda dos contatos', (depoisDe) => {
       let q = admin
@@ -396,44 +392,4 @@ export async function carregarDadosDaPauta(
     marcos,
     datasDaFicha,
   };
-}
-
-/**
- * As ENTRADAS de cada negócio num funil (`deal_created`, `stage_changed`,
- * `pipeline_changed`), com o funil de destino: é de onde o resumo do
- * Desempenho tira o funil do card no início da reunião (`funilNoInstante`).
- * A trilha da pauta não serve: ela só lê as etapas marcadas e as de proposta
- * em diante, e não traz o funil. `status_changed` fica de fora (repete a etapa
- * em que o card já estava).
- */
-export async function carregarPassosDosNegocios(
-  admin: SupabaseClient,
-  conta: string,
-  dealIds: readonly string[],
-): Promise<Map<string, PassoDeFunil[]>> {
-  const passos = new Map<string, PassoDeFunil[]>();
-  for (const ids of lotes([...new Set(dealIds)])) {
-    const linhas = await paginarPorChave<{ id: string; deal_id: string | null; occurred_at: string; to_pipeline_id: string | null }>(
-      'passos dos negócios',
-      (depoisDe) => {
-        let q = admin
-          .from('cb_lead_events')
-          .select('id, deal_id, occurred_at, to_pipeline_id')
-          .eq('account_id', conta)
-          .in('deal_id', ids)
-          .in('event_type', ['deal_created', 'stage_changed', 'pipeline_changed'])
-          .order('id')
-          .limit(PAGINA);
-        if (depoisDe) q = q.gt('id', depoisDe);
-        return q;
-      },
-    );
-    for (const l of linhas) {
-      if (!l.deal_id) continue;
-      const lista = passos.get(l.deal_id) ?? [];
-      lista.push({ id: l.id, em: l.occurred_at, funil: l.to_pipeline_id });
-      passos.set(l.deal_id, lista);
-    }
-  }
-  return passos;
 }

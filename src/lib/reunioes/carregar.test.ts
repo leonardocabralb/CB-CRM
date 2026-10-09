@@ -1,17 +1,15 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
 import { describe, expect, it } from 'vitest';
 
-import { criarBanco, type Banco } from '@/lib/zapsign/duble.test-helper';
+import { criarBanco } from '@/lib/zapsign/duble.test-helper';
 
-import { carregarDadosDaPauta, carregarPassosDosNegocios, instanteDoParametro } from './carregar';
+import { carregarDadosDaPauta, instanteDoParametro } from './carregar';
 import { montarPauta } from './montar';
-import { reunioesDoResumo } from './resumo';
 
 // ============================================================
-// A CARGA da pauta (as duas rotas: a pauta e o resumo do Desempenho). O dublê
-// imita a forma SUPOSTA do PostgREST — aqui ele prova a paginação pela chave
-// (o PostgREST corta em 1000 sem avisar), a cerca de conta e o encanamento até
-// o resultado. Dados fictícios.
+// A CARGA da pauta (`/api/cb/reunioes`). O dublê imita a forma SUPOSTA do
+// PostgREST — aqui ele prova a paginação pela chave (o PostgREST corta em
+// 1000 sem avisar), a cerca de conta e o encanamento até o resultado. Dados
+// fictícios.
 // ============================================================
 
 const CONTA = 'conta-1';
@@ -51,18 +49,6 @@ function etapasDoFunil() {
     // Etapa de OUTRA conta com a mesma marca: não pode entrar.
     { id: 'etapa-alheia', pipeline_id: 'funil-alheio', name: 'No Show', position: 2, degrau: 'reuniao', desfecho_da_reuniao: 'faltou', 'pipelines.account_id': OUTRA },
   ];
-}
-
-/** O cliente que conta quantas vezes cada tabela foi lida. */
-function contando(banco: Banco): { cliente: SupabaseClient; leituras: Record<string, number> } {
-  const leituras: Record<string, number> = {};
-  const cliente = {
-    from: (tabela: string) => {
-      leituras[tabela] = (leituras[tabela] ?? 0) + 1;
-      return banco.cliente.from(tabela);
-    },
-  } as unknown as SupabaseClient;
-  return { cliente, leituras };
 }
 
 describe('instanteDoParametro', () => {
@@ -161,7 +147,7 @@ describe('carregarDadosDaPauta — paginação pela CHAVE', () => {
     expect(dados.datasDaFicha.has('contato-alheio')).toBe(false);
   });
 
-  it('o HISTÓRICO de um lote de contatos com mais de 1000 agendamentos, reuniões e negócios vem inteiro ("Total"; antes estourava)', async () => {
+  it('o HISTÓRICO de um lote de contatos com mais de 1000 agendamentos, reuniões e negócios vem inteiro (antes estourava)', async () => {
     const contato = 'contato-1';
     const banco = criarBanco({
       cb_calendly_eventos: Array.from({ length: 1200 }, (_, i) =>
@@ -210,41 +196,8 @@ describe('carregarDadosDaPauta — paginação pela CHAVE', () => {
   });
 });
 
-describe('carregarPassosDosNegocios', () => {
-  it('as entradas de cada negócio com o funil de destino, paginadas, sem status_changed nem outra conta', async () => {
-    const muitos = Array.from({ length: 1100 }, (_, i) => ({
-      id: uuid(i + 1, 'f'),
-      account_id: CONTA,
-      deal_id: 'negocio-1',
-      event_type: 'stage_changed',
-      occurred_at: new Date(Date.UTC(2026, 8, 1) + i * 60_000).toISOString(),
-      to_pipeline_id: COMERCIAL,
-    }));
-    const banco = criarBanco({
-      cb_lead_events: [
-        ...muitos,
-        { id: uuid(5000, 'f'), account_id: CONTA, deal_id: 'negocio-1', event_type: 'pipeline_changed', occurred_at: '2026-10-05T10:00:00Z', to_pipeline_id: JURIDICO },
-        { id: uuid(5001, 'f'), account_id: CONTA, deal_id: 'negocio-1', event_type: 'status_changed', occurred_at: '2026-10-06T10:00:00Z', to_pipeline_id: JURIDICO },
-        { id: uuid(5002, 'f'), account_id: OUTRA, deal_id: 'negocio-1', event_type: 'stage_changed', occurred_at: '2026-10-06T10:00:00Z', to_pipeline_id: 'funil-alheio' },
-        { id: uuid(5003, 'f'), account_id: CONTA, deal_id: 'negocio-2', event_type: 'deal_created', occurred_at: '2026-09-02T10:00:00Z', to_pipeline_id: COMERCIAL },
-      ],
-    });
-    const passos = await carregarPassosDosNegocios(banco.cliente, CONTA, ['negocio-1', 'negocio-2', 'negocio-1']);
-    expect(passos.get('negocio-1')).toHaveLength(1101);
-    expect(passos.get('negocio-1')?.some((p) => p.funil === 'funil-alheio')).toBe(false);
-    expect(passos.get('negocio-2')).toEqual([{ id: uuid(5003, 'f'), em: '2026-09-02T10:00:00Z', funil: COMERCIAL }]);
-  });
-
-  it('sem negócio, nenhuma leitura', async () => {
-    const banco = criarBanco({});
-    const { cliente, leituras } = contando(banco);
-    expect((await carregarPassosDosNegocios(cliente, CONTA, [])).size).toBe(0);
-    expect(leituras.cb_lead_events).toBeUndefined();
-  });
-});
-
-describe('carga → pauta → resumo: a MESMA régua da pauta', () => {
-  it('o no show pela trilha conta no funil do DIA (o card foi para o Jurídico depois)', async () => {
+describe('carga → pauta', () => {
+  it('a carga entrega à pauta a trilha do card: o No Show depois do início resolve a reunião', async () => {
     const contato = 'contato-1';
     const banco = criarBanco({
       cb_calendly_eventos: [agendamento(1, '2026-10-02T14:00:00Z', { contact_id: contato })],
@@ -262,14 +215,8 @@ describe('carga → pauta → resumo: a MESMA régua da pauta', () => {
     const { reunioes } = montarPauta(dados);
     expect(reunioes).toHaveLength(1);
     expect(reunioes[0].resultado?.tipo).toBe('no_show');
-    // A pauta mostra o card como está HOJE…
+    // A pauta mostra o card como está HOJE.
     expect(reunioes[0].negocio?.pipelineId).toBe(JURIDICO);
-
-    const passos = await carregarPassosDosNegocios(banco.cliente, CONTA, ['negocio-1']);
-    // …e o resumo conta no funil em que ele estava NA REUNIÃO.
-    expect(reunioesDoResumo(reunioes, passos, new Date('2026-10-09T15:00:00Z'))).toEqual([
-      { inicio: '2026-10-02T14:00:00.000Z', funil: COMERCIAL, resultado: 'no_show' },
-    ]);
   });
 
   it('o marco de outra conta para a mesma reunião não conta', async () => {

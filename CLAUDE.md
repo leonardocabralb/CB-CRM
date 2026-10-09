@@ -466,8 +466,9 @@ O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
 - Card: título = nome da pessoa, sem prefixo de conexão; o Calendly renomeia
   até título escrito à mão e fixa o nome da ficha.
 - Reuniões: "Data e Hora Reunião" mais nova que todo agendamento remarca a
-  última reunião do Calendly na pauta (03/10/2026). Reagendar não é falta:
-  botão antes e depois do horário, sem faixa de no-show (09/10/2026).
+  última reunião do Calendly na pauta (03/10/2026). Reagendar é fila de
+  trabalho, não falta nem métrica: botão antes e depois do horário, sem faixa
+  de no-show; no-show = cada entrada no No Show ÷ agendamentos (09/10/2026).
 - Abrir conversa não cria negócio (o card nasce no primeiro envio).
 - Número de empresa (mandou mensagem de sistema, `template`) não vira card
   sozinho, nem pela resposta da equipe; cliente assim, card à mão (29/09/2026).
@@ -601,9 +602,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
 - `.claude/rules/integracoes-atlas.md` — chave por conta, "Criar cliente",
   vínculo 1:1 (automático e à mão), ambiente, situações, lixeira, faixa, aba
   Atlas, gatilho "Situação mudou no Atlas" (1073).
-- `.claude/rules/integracoes-atlas-acoes.md` — o nó Atlas do construtor (uma
-  entrada, seletor de ação, memória da troca) e as ações novas: atualizar
-  cliente, tarefa, transcrição, onboarding, permissões opcionais.
+- `.claude/rules/integracoes-atlas-acoes.md` — o nó Atlas do construtor e as
+  ações: atualizar cliente, tarefa, transcrição, onboarding.
 - `.claude/rules/ia.md` — Radar, transcrição de áudio, chaves e modelos por
   módulo (Integrações).
 - `.claude/rules/ia-agentes.md` — o que cada agente de IA vê (acesso, blocos)
