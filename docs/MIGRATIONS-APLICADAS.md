@@ -1216,6 +1216,18 @@ nome da época em que foram aplicadas.
   funções com `nao_saiu` e ACL só `postgres`/`service_role`, nenhuma linha
   marcada, nenhum resto da conferência (233 conversas elegíveis: os três
   cenários rodaram e se desfizeram).
+- **1081_cb_reagendar_na_pauta** — a marca `reagendar` no CHECK de
+  `pipeline_stages.desfecho_da_reuniao` (sem tirar as três de antes), o
+  resultado `reagendar` (sem valor) no CHECK de forma
+  `cb_reunioes_marcos_forma_ck`, e a coluna `cb_reunioes_marcos.inicio
+  timestamptz` NULÁVEL (o horário a que o marco se refere). PR #395. ADITIVA e
+  ANTES do deploy (a pauta, a aba Reuniões e a faixa de no-show selecionam
+  `inicio`; todo botão da pauta o grava). Aplicada em 09/10/2026 pela
+  Management API (histórico `20261009163452`), depois do replay verde do CI
+  no commit `66c722d5`, com "aplique a migration 1081 em produção" do
+  operador. Conferida: os dois CHECKs com `reagendar`, a coluna nulável;
+  antes, num Postgres 16 local, aplicada duas vezes e com os cenários
+  (reagendar sem valor passa, com valor e inventado não).
 
 ## Notas do histórico
 
