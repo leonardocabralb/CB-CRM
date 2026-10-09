@@ -7071,6 +7071,7 @@
     "motivoSemCard": "No card in the pipeline: only records the outcome.",
     "motivoCardFechado": "The card is won or lost: only records the outcome, without touching it.",
     "motivoReuniaoPosterior": "The card already belongs to the meeting on {data} at {hora}: only records this one’s outcome.",
+    "motivoReuniaoAnterior": "The card belongs to the meeting on {data} at {hora}, which has not happened yet: only records this one’s reschedule.",
     "motivoSemEtapa": "No stage of this pipeline is marked for this (Pipelines → Manage pipeline): only records.",
     "avisoDoBotao": "{botao}: {texto}",
     "corrigir": "Correct",

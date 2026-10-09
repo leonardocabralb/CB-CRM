@@ -39,10 +39,14 @@ const ROTULO_DO_RESULTADO: Record<
   no_show: 'resultadoNoShow',
 };
 
-const TEXTO_DO_MOTIVO: Record<MotivoDeSoRegistrar, 'motivoSemCard' | 'motivoCardFechado' | 'motivoReuniaoPosterior' | 'motivoSemEtapa'> = {
+const TEXTO_DO_MOTIVO: Record<
+  MotivoDeSoRegistrar,
+  'motivoSemCard' | 'motivoCardFechado' | 'motivoReuniaoPosterior' | 'motivoReuniaoAnterior' | 'motivoSemEtapa'
+> = {
   sem_card: 'motivoSemCard',
   card_fechado: 'motivoCardFechado',
   reuniao_posterior: 'motivoReuniaoPosterior',
+  reuniao_anterior: 'motivoReuniaoAnterior',
   sem_etapa: 'motivoSemEtapa',
 };
 
@@ -94,10 +98,12 @@ export function LinhaDaReuniao({
 
   /** O que o botão faz, dito na dica: leva o card para X, ou só registra (e por quê). */
   const dica = (acao: Acao): string => {
-    const plano = comoMarcar(r, acao, alvos);
-    return plano.alvo
-      ? t('levaPara', { etapa: plano.alvo.nome })
-      : t(TEXTO_DO_MOTIVO[plano.motivo], { data: r.proximaEm ? dataCurta(r.proximaEm) : '', hora: r.proximaEm ? hora(r.proximaEm) : '' });
+    const plano = comoMarcar(r, acao, alvos, agora);
+    if (plano.alvo) return t('levaPara', { etapa: plano.alvo.nome });
+    // A reunião citada: a seguinte (o card já é dela) ou, no Reagendar, a
+    // anterior que ainda vai acontecer (1081).
+    const citada = plano.motivo === 'reuniao_anterior' ? r.anteriorEm : r.proximaEm;
+    return t(TEXTO_DO_MOTIVO[plano.motivo], { data: citada ? dataCurta(citada) : '', hora: citada ? hora(citada) : '' });
   };
 
   const botao = (acao: Acao, rotulo: string, onClick?: () => void, destaque = false) => (
@@ -137,7 +143,7 @@ export function LinhaDaReuniao({
   // depois do início (os quatro do resultado) e antes dele ("Reunião
   // qualificada" e "Reagendar").
   const avisosDosBotoes = (rotulos: [Acao, string][]): string[] => {
-    const soRegistram = rotulos.filter(([acao]) => !comoMarcar(r, acao, alvos).alvo).map(([acao, rotulo]) => ({ rotulo, texto: dica(acao) }));
+    const soRegistram = rotulos.filter(([acao]) => !comoMarcar(r, acao, alvos, agora).alvo).map(([acao, rotulo]) => ({ rotulo, texto: dica(acao) }));
     if (soRegistram.length === 0) return [];
     if (soRegistram.length === rotulos.length && soRegistram.every((a) => a.texto === soRegistram[0].texto)) {
       return [soRegistram[0].texto];

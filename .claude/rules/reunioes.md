@@ -194,12 +194,25 @@ a rota `/api/cb/reunioes`, `src/components/reunioes/`. Plano:
   aceito: o cliente que desiste de reagendar antes da hora segue "pediu para
   reagendar" até a reunião começar (mover o card de volta não apaga o marco).
   Plano: `docs/PLANO-reagendamento.md`.
-- ⚠️ **A reunião com Reagendar pelo MARCO não é "a próxima" de ninguém**
-  (`reagendadaPeloMarco`, `montarPauta`; `deVerdade` no aviso): ela não vai
-  acontecer. Contada, a reunião que o cliente ANTECIPOU pelo link manual (a
-  antiga segue de pé no Calendly) ficava só registrando ("o card já é da
-  reunião de…"), com a trilha cortada, e a faixa citava uma reunião morta. Só
-  o marco: a trilha depende da janela, que depende da próxima.
+- ⚠️⚠️ **O Reagendar antes do horário mexe nas VIZINHAS** (`montarPauta`,
+  revisão do PR #395); as quatro regras, todas pelo MARCO (`reagendadaEm`; a
+  trilha depende da janela, que depende das vizinhas):
+  1. A reagendada não é "a próxima" de quem começa DEPOIS do Reagendar dela
+     (a substituta, inclusive a ANTECIPADA pelo link manual, ficaria só
+     registrando). Para quem já tinha começado, ela segue a próxima: o card é
+     dela. Na faixa, ela não é a próxima citada (`deVerdade`).
+  2. A ENTRADA em etapa "Reagendar" só vale até o agendamento de outra reunião
+     feito depois do início desta (`ateDoReagendar`; na faixa, `agendadaEm`):
+     depois, é o Reagendar antes do horário da outra, e resolvia a anterior
+     por cima do no show dela.
+  3. A reagendada fecha a trilha no agendamento da SUBSTITUTA: senão herdava
+     o no show ou a proposta dela.
+  4. Com reunião ANTERIOR de pé que ainda não começou, o Reagendar só
+     registra (`reuniao_anterior`, `anteriorEm`): o card e os lembretes são
+     dela.
+  Limite aceito: "No show" → "Corrigir" → "Reagendar" deixa a entrada em No
+  Show na trilha, e "Já faltou"/faixa `faltou` acendem (corrigir pede ligar a
+  entrada à reunião).
 - ⚠️ **A montagem do Calendly é POR CONTATO e com TODOS os agendamentos
   dele** (`montarReunioesExternas`): a inferência do convite substituído por
   reagendamento compara com agendamentos fora da janela, e misturar contatos

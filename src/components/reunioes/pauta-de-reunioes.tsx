@@ -295,7 +295,7 @@ export function PautaDeReunioes() {
 
   const marcar = (r: ReuniaoDaPauta, acao: Acao, valor: number | null) => {
     const alvos = r.negocio ? (funis[r.negocio.pipelineId] ?? null) : null;
-    const destino = comoMarcar(r, acao, alvos).alvo;
+    const destino = comoMarcar(r, acao, alvos, agora).alvo;
     fotoRef.current.set(r.chave, r);
     setPendentesLocais((antes) => ({
       ...antes,

@@ -56,6 +56,12 @@ export interface ReuniaoDoAviso {
    * 1081), já conferido pela rota com `marcoValeParaAReuniao`. Ausente = não.
    */
   reagendada?: boolean;
+  /**
+   * Quando foi agendada (Calendly: `recebido_em`; agenda: `created_at`); nulo
+   * ou ausente = não se sabe (Kommo). Fecha a janela da ENTRADA em
+   * "Reagendar" da reunião anterior (ver `avisoDeNoShow`).
+   */
+  agendadaEm?: string | null;
 }
 
 /** Uma entrada do card numa etapa, pela trilha (`cb_lead_events`). */
@@ -155,10 +161,15 @@ export function avisoDeNoShow(args: {
   //    etapa "Reagendar" na janela `[início, início da próxima reunião)` —
   //    qualquer data; sem próxima, `Math.min()` vazio é Infinity (sem teto).
   const inicios = deVerdade.map((r) => ms(r.inicio));
+  // ⚠️ E fecha também no AGENDAMENTO de outra reunião feito depois do início
+  // desta (a reagendada inclusive): dali em diante a entrada em "Reagendar" é
+  // o botão ANTES do horário da outra, e tiraria esta do sem_avanco (revisão
+  // do PR #395) — a mesma régua de `montarPauta`.
+  const agendamentos = validas.map((r) => ms(r.agendadaEm ?? '')).filter((v) => !Number.isNaN(v));
   const anteriores = deVerdade.filter((r) => {
     if (!reuniaoTerminou(r, agora)) return false;
     const desde = ms(r.inicio);
-    const ate = Math.min(...inicios.filter((v) => v > desde));
+    const ate = Math.min(...inicios.filter((v) => v > desde), ...agendamentos.filter((v) => v > desde));
     return !entradas.some((e) => {
       const em = ms(e.em);
       return marcaDaReuniaoQueVale(e.degrau, e.desfecho) === 'reagendar' && em >= desde && em < ate;

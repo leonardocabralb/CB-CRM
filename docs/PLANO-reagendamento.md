@@ -218,12 +218,19 @@ frente). Sem código.
   não era proposta nem sem proposta caía em "no show".
 - **Pino da migration**: `supabase/migrations/reagendar-na-pauta-1081.test.ts`,
   ao lado do da 1063.
-- **A reunião com Reagendar pelo marco não é "a próxima"** (acrescentado na
-  integração): `montarPauta` não a conta no `proximaEm` de outra reunião, e a
-  faixa de no-show não a cita nem fecha janela com ela. Sem isso, a reunião
-  que o cliente ANTECIPOU pelo link manual (a antiga segue de pé no Calendly)
-  ficava só registrando, com a trilha cortada. Só o marco: a trilha depende
-  da janela, que depende da próxima.
+- **O Reagendar antes do horário e as reuniões vizinhas** (acrescentado na
+  integração e na revisão independente do PR #395, regras em
+  `.claude/rules/reunioes.md`): (1) a reagendada não é "a próxima" de quem
+  começa depois do Reagendar dela — a reunião que o cliente ANTECIPOU pelo
+  link manual ficava só registrando; (2) a entrada em "Reagendar" só vale
+  para uma reunião até o agendamento da seguinte — senão o Reagendar da nova
+  resolvia a anterior por cima do no show dela; (3) a reagendada fecha a
+  trilha no agendamento da substituta — senão herdava o no show ou a proposta
+  dela; (4) com reunião anterior que ainda não começou, o Reagendar só
+  registra (`reuniao_anterior`) — senão calava os lembretes dela. A faixa de
+  no-show segue as mesmas réguas (a rota passa `agendadaEm`).
+- **Limite aceito**: "No show" → "Corrigir" → "Reagendar" deixa "Já faltou" e
+  a faixa `faltou` acesos (a entrada em No Show fica na trilha).
 - **Limite aceito**: o cliente que desiste de reagendar ANTES da hora segue
   "pediu para reagendar" até a reunião começar — mover o card de volta não
   apaga o marco; na hora, "Corrigir" troca o resultado.

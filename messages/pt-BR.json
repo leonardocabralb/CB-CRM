@@ -7071,6 +7071,7 @@
     "motivoSemCard": "Sem card no funil: só registra o resultado.",
     "motivoCardFechado": "O card está ganho ou perdido: só registra o resultado, sem mexer nele.",
     "motivoReuniaoPosterior": "O card já é da reunião de {data} às {hora}: só registra o resultado desta.",
+    "motivoReuniaoAnterior": "O card é da reunião de {data} às {hora}, que ainda vai acontecer: só registra o Reagendar desta.",
     "motivoSemEtapa": "Nenhuma etapa deste funil está marcada para isto (Funis → Gerenciar funil): só registra.",
     "avisoDoBotao": "{botao}: {texto}",
     "corrigir": "Corrigir",

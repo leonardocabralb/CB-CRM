@@ -244,6 +244,15 @@ export function resultadoDaReuniao(args: {
   inicio: string;
   /** Início da próxima reunião do mesmo contato; nulo = não há. */
   ate: string | null;
+  /**
+   * ⚠️ Onde termina a janela da ENTRADA numa etapa "Reagendar" (1081); nulo
+   * ou ausente = `ate`. O Reagendar vale ANTES do horário, então a entrada que
+   * o botão gera numa reunião nova cai dentro da janela da reunião ANTERIOR:
+   * sem este corte (o agendamento de outra reunião depois do início desta,
+   * `montarPauta`), o Reagendar da nova resolvia a anterior por cima do no
+   * show dela (revisão do PR #395).
+   */
+  ateDoReagendar?: string | null;
   dealId: string | null;
   marcos: LinhaDoMarco[];
   entradas: EntradaDaTrilha[];
@@ -251,6 +260,7 @@ export function resultadoDaReuniao(args: {
 }): RegistroDoResultado | null {
   const inicio = ms(args.inicio);
   if (inicio === null) return null;
+  const fimDoReagendar = ms(args.ateDoReagendar ?? null);
   const candidatos: RegistroDoResultado[] = [];
 
   for (const m of args.marcos) {
@@ -272,6 +282,7 @@ export function resultadoDaReuniao(args: {
   for (const e of entradasDaReuniao(args.entradas, inicio, ms(args.ate), args.dealId)) {
     const tipo = resultadoDaEtapa(args.etapas.get(e.etapaId));
     if (!tipo) continue;
+    if (tipo === 'reagendar' && fimDoReagendar !== null && (ms(e.em) ?? Infinity) >= fimDoReagendar) continue;
     candidatos.push({ tipo, em: e.em, por: e.por, fonte: 'funil', etapa: e.etapa, valor: null });
   }
   return maisRecente(candidatos);
@@ -349,6 +360,12 @@ export interface ReuniaoDaPauta {
    * data; nulo = esta é a última. Com ela, o card já é da reunião seguinte.
    */
   proximaEm: string | null;
+  /**
+   * Início da reunião de pé ANTERIOR mais recente do mesmo contato, sem
+   * Reagendar (1081); nulo = não há. Se ela ainda não começou, o card é DELA
+   * (e dos lembretes dela): o Reagendar desta só registra (`comoMarcar`).
+   */
+  anteriorEm: string | null;
   contato: { id: string; nome: string | null } | null;
   conversaId: string | null;
   /** O card do contato: o aberto mais recente, senão o mais recente. */
@@ -405,7 +422,7 @@ export function pendentes(reunioes: ReuniaoDaPauta[], agora: Date): ReuniaoDaPau
 }
 
 /** Por que o botão só REGISTRA, sem mover o card. */
-export type MotivoDeSoRegistrar = 'sem_card' | 'card_fechado' | 'reuniao_posterior' | 'sem_etapa';
+export type MotivoDeSoRegistrar = 'sem_card' | 'card_fechado' | 'reuniao_posterior' | 'reuniao_anterior' | 'sem_etapa';
 
 /**
  * O que um botão faz nesta reunião: move o card para `alvo`, ou só registra
@@ -420,17 +437,27 @@ export type MotivoDeSoRegistrar = 'sem_card' | 'card_fechado' | 'reuniao_posteri
  * - `reuniao_posterior`: o contato já tem reunião MAIS NOVA; o card é dela
  *   (o Calendly o levou para "Reunião Agendada"), e mover pelo resultado da
  *   reunião antiga tiraria a nova da etapa — e dos lembretes.
+ * - `reuniao_anterior` (só o Reagendar, 1081): o contato tem reunião ANTERIOR
+ *   que ainda não começou; o card é dela. Antes da 1081 nenhum resultado abria
+ *   antes do início, e não havia como alcançar este caso. O cliente que
+ *   antecipou pelo link manual: o Reagendar da reunião antiga, clicado na
+ *   véspera da nova, tirava o card de Reunião Agendada e calava os lembretes
+ *   da reunião que vai acontecer (revisão do PR #395).
  * - `sem_etapa`: nenhuma etapa do funil do card tem a marca (a MQL 2 só é
  *   destino depois de marcada "Qualificada" em Gerenciar funil).
  */
 export function comoMarcar(
-  r: Pick<ReuniaoDaPauta, 'negocio' | 'proximaEm'>,
+  r: Pick<ReuniaoDaPauta, 'negocio' | 'proximaEm' | 'anteriorEm'>,
   acao: Acao,
   alvos: AlvosDoFunil | null,
+  agora: Date,
 ): { alvo: AlvoDaAcao; motivo: null } | { alvo: null; motivo: MotivoDeSoRegistrar } {
   if (!r.negocio) return { alvo: null, motivo: 'sem_card' };
   if (r.negocio.status !== 'open') return { alvo: null, motivo: 'card_fechado' };
   if (acao !== 'qualificada' && r.proximaEm !== null) return { alvo: null, motivo: 'reuniao_posterior' };
+  if (acao === 'reagendar' && r.anteriorEm !== null && (ms(r.anteriorEm) ?? -Infinity) > agora.getTime()) {
+    return { alvo: null, motivo: 'reuniao_anterior' };
+  }
   const alvo = alvos?.[acao] ?? null;
   return alvo ? { alvo, motivo: null } : { alvo: null, motivo: 'sem_etapa' };
 }

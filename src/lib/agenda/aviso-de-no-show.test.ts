@@ -127,6 +127,22 @@ describe('avisoDeNoShow — Reagendar (1081)', () => {
     expect(avisoDeNoShow({ ...base, reunioes: [reuniao(ANTIGA.inicio, { reagendada: true }), NOVA] })).toBeNull();
   });
 
+  it('a entrada em "Reagendar" depois do AGENDAMENTO da reunião seguinte é dela, não da anterior (revisão do PR #395)', () => {
+    // Z terminou sem avanço; A agendada em 30/09 para 02/10 e reagendada em
+    // 01/10 (o card entrou em Reagendar antes do início da A); B em 10/10.
+    const z = reuniao('2026-09-29T14:00:00Z', { fim: '2026-09-29T14:30:00Z', agendadaEm: '2026-09-25T10:00:00Z' });
+    const a = reuniao('2026-10-02T14:00:00Z', { fim: '2026-10-02T14:30:00Z', agendadaEm: '2026-09-30T10:00:00Z', reagendada: true });
+    const b = reuniao('2026-10-10T14:00:00Z', { fim: '2026-10-10T14:30:00Z', agendadaEm: '2026-10-05T10:00:00Z' });
+    const depois = new Date('2026-10-06T10:00:00Z');
+    expect(
+      avisoDeNoShow({ ...base, agora: depois, reunioes: [z, a, b], entradas: [entrada('2026-10-01T12:00:01Z', REAGENDAR)] }),
+    ).toEqual({ motivo: 'sem_avanco', em: z.inicio, proxima: { inicio: b.inicio, fim: b.fim } });
+    // Antes do agendamento da A, a mesma entrada ainda é da Z.
+    expect(
+      avisoDeNoShow({ ...base, agora: depois, reunioes: [z, a, b], entradas: [entrada('2026-09-29T20:00:00Z', REAGENDAR)] }),
+    ).toBeNull();
+  });
+
   it('a FUTURA reagendada pelo marco não é "a próxima": a faixa cita a seguinte, ou some sem outra', () => {
     const faltou = [entrada('2026-09-15T14:00:00Z', { etapa: 'No Show', desfecho: 'faltou' })];
     const morta = reuniao(NOVA.inicio, { fim: NOVA.fim, reagendada: true });

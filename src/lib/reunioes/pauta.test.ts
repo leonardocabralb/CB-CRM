@@ -473,6 +473,9 @@ describe('faltouAntes', () => {
   });
 });
 
+/** O instante do clique nos testes de `comoMarcar` (o Reagendar compara com a reunião anterior). */
+const AGORA_DO_CLIQUE = new Date('2026-09-28T12:00:00Z');
+
 function reuniao(p: Partial<ReuniaoDaPauta>): ReuniaoDaPauta {
   return {
     chave: 'calendly:r1',
@@ -485,6 +488,7 @@ function reuniao(p: Partial<ReuniaoDaPauta>): ReuniaoDaPauta {
     reagendamento: false,
     remarcadaDe: null,
     proximaEm: null,
+    anteriorEm: null,
     contato: { id: 'c1', nome: 'Ana' },
     conversaId: 'v1',
     negocio: null,
@@ -533,27 +537,27 @@ describe('comoMarcar', () => {
   const alvos = alvosDoFunil(ETAPAS, 'banc');
 
   it('card aberto, sem reunião posterior e com etapa marcada: move', () => {
-    expect(comoMarcar({ negocio: { ...n, status: 'open' }, proximaEm: null }, 'no_show', alvos)).toEqual({
+    expect(comoMarcar({ negocio: { ...n, status: 'open' }, proximaEm: null, anteriorEm: null }, 'no_show', alvos, AGORA_DO_CLIQUE)).toEqual({
       alvo: { id: 'noshow', nome: 'No Show' },
       motivo: null,
     });
   });
 
   it('sem card, card ganho ou PERDIDO: só registra (o perdido reabriria pela 1031)', () => {
-    expect(comoMarcar({ negocio: null, proximaEm: null }, 'no_show', alvos)).toEqual({ alvo: null, motivo: 'sem_card' });
-    expect(comoMarcar({ negocio: { ...n, status: 'won' }, proximaEm: null }, 'no_show', alvos).motivo).toBe('card_fechado');
-    expect(comoMarcar({ negocio: { ...n, status: 'lost' }, proximaEm: null }, 'no_show', alvos).motivo).toBe('card_fechado');
+    expect(comoMarcar({ negocio: null, proximaEm: null, anteriorEm: null }, 'no_show', alvos, AGORA_DO_CLIQUE)).toEqual({ alvo: null, motivo: 'sem_card' });
+    expect(comoMarcar({ negocio: { ...n, status: 'won' }, proximaEm: null, anteriorEm: null }, 'no_show', alvos, AGORA_DO_CLIQUE).motivo).toBe('card_fechado');
+    expect(comoMarcar({ negocio: { ...n, status: 'lost' }, proximaEm: null, anteriorEm: null }, 'no_show', alvos, AGORA_DO_CLIQUE).motivo).toBe('card_fechado');
   });
 
   it('com reunião POSTERIOR do contato, o resultado só registra (o card é da seguinte); a qualificação ainda move', () => {
-    const r = { negocio: { ...n, status: 'open' as const }, proximaEm: '2026-10-02T14:00:00Z' };
-    expect(comoMarcar(r, 'no_show', alvos).motivo).toBe('reuniao_posterior');
-    expect(comoMarcar(r, 'qualificada', alvos).alvo?.id).toBe('mql2');
+    const r = { negocio: { ...n, status: 'open' as const }, proximaEm: '2026-10-02T14:00:00Z', anteriorEm: null };
+    expect(comoMarcar(r, 'no_show', alvos, AGORA_DO_CLIQUE).motivo).toBe('reuniao_posterior');
+    expect(comoMarcar(r, 'qualificada', alvos, AGORA_DO_CLIQUE).alvo?.id).toBe('mql2');
   });
 
   it('funil sem a etapa marcada: só registra', () => {
     const semMql = alvosDoFunil(ETAPAS.filter((e) => e.id !== 'mql2'), 'banc');
-    expect(comoMarcar({ negocio: { ...n, status: 'open' }, proximaEm: null }, 'qualificada', semMql).motivo).toBe('sem_etapa');
+    expect(comoMarcar({ negocio: { ...n, status: 'open' }, proximaEm: null, anteriorEm: null }, 'qualificada', semMql, AGORA_DO_CLIQUE).motivo).toBe('sem_etapa');
   });
 
   describe('Reagendar (1081)', () => {
@@ -561,27 +565,41 @@ describe('comoMarcar', () => {
     const aberto = { ...n, status: 'open' as const };
 
     it('card aberto e etapa marcada: move para a Reagendar', () => {
-      expect(comoMarcar({ negocio: aberto, proximaEm: null }, 'reagendar', comReagendar)).toEqual({
+      expect(comoMarcar({ negocio: aberto, proximaEm: null, anteriorEm: null }, 'reagendar', comReagendar, AGORA_DO_CLIQUE)).toEqual({
         alvo: { id: 'reag', nome: 'Reagendar' },
         motivo: null,
       });
     });
 
     it('com reunião POSTERIOR do contato, só registra (o card é da seguinte, e dos lembretes dela)', () => {
-      expect(comoMarcar({ negocio: aberto, proximaEm: '2026-10-02T14:00:00Z' }, 'reagendar', comReagendar)).toEqual({
+      expect(comoMarcar({ negocio: aberto, proximaEm: '2026-10-02T14:00:00Z', anteriorEm: null }, 'reagendar', comReagendar, AGORA_DO_CLIQUE)).toEqual({
         alvo: null,
         motivo: 'reuniao_posterior',
       });
     });
 
     it('sem card ou card fechado: só registra', () => {
-      expect(comoMarcar({ negocio: null, proximaEm: null }, 'reagendar', comReagendar)).toEqual({ alvo: null, motivo: 'sem_card' });
-      expect(comoMarcar({ negocio: { ...n, status: 'lost' }, proximaEm: null }, 'reagendar', comReagendar).motivo).toBe('card_fechado');
+      expect(comoMarcar({ negocio: null, proximaEm: null, anteriorEm: null }, 'reagendar', comReagendar, AGORA_DO_CLIQUE)).toEqual({ alvo: null, motivo: 'sem_card' });
+      expect(comoMarcar({ negocio: { ...n, status: 'lost' }, proximaEm: null, anteriorEm: null }, 'reagendar', comReagendar, AGORA_DO_CLIQUE).motivo).toBe('card_fechado');
     });
 
     it('funil sem a etapa marcada "Reagendar" (ou sem destinos): só registra', () => {
-      expect(comoMarcar({ negocio: aberto, proximaEm: null }, 'reagendar', alvos)).toEqual({ alvo: null, motivo: 'sem_etapa' });
-      expect(comoMarcar({ negocio: aberto, proximaEm: null }, 'reagendar', null)).toEqual({ alvo: null, motivo: 'sem_etapa' });
+      expect(comoMarcar({ negocio: aberto, proximaEm: null, anteriorEm: null }, 'reagendar', alvos, AGORA_DO_CLIQUE)).toEqual({ alvo: null, motivo: 'sem_etapa' });
+      expect(comoMarcar({ negocio: aberto, proximaEm: null, anteriorEm: null }, 'reagendar', null, AGORA_DO_CLIQUE)).toEqual({ alvo: null, motivo: 'sem_etapa' });
+    });
+
+    it('com reunião ANTERIOR que ainda não começou, o Reagendar só registra (o card e os lembretes são dela)', () => {
+      // O cliente antecipou: a anterior é amanhã; a reunião antiga, depois.
+      const amanha = new Date(AGORA_DO_CLIQUE.getTime() + 24 * 3600_000).toISOString();
+      expect(comoMarcar({ negocio: aberto, proximaEm: null, anteriorEm: amanha }, 'reagendar', comReagendar, AGORA_DO_CLIQUE)).toEqual({
+        alvo: null,
+        motivo: 'reuniao_anterior',
+      });
+      // Quando a anterior já começou (ou passou), o card volta a andar.
+      const ontem = new Date(AGORA_DO_CLIQUE.getTime() - 24 * 3600_000).toISOString();
+      expect(comoMarcar({ negocio: aberto, proximaEm: null, anteriorEm: ontem }, 'reagendar', comReagendar, AGORA_DO_CLIQUE).alvo?.id).toBe('reag');
+      // Só o Reagendar: a qualificação segue como era.
+      expect(comoMarcar({ negocio: aberto, proximaEm: null, anteriorEm: amanha }, 'qualificada', comReagendar, AGORA_DO_CLIQUE).alvo?.id).toBe('mql2');
     });
   });
 });

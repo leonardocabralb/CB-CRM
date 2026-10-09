@@ -312,6 +312,97 @@ describe('montarPauta — a próxima reunião do contato', () => {
   });
 });
 
+describe('montarPauta — o Reagendar e as reuniões vizinhas (revisão do PR #395)', () => {
+  const COM_REAGENDAR: EtapaDoFunil[] = [
+    ...ETAPAS,
+    { id: 'reag', pipelineId: 'banc', nome: 'Reagendar', posicao: 7, degrau: 'reuniao', marca: 'reagendar' },
+    { id: 'prop', pipelineId: 'banc', nome: 'Proposta Realizada', posicao: 8, degrau: 'proposta', marca: null },
+  ];
+  const card = { id: 'd1', contact_id: 'c1', pipeline_id: 'banc', stage_id: 'reag', value: 0, status: 'open', created_at: '2026-09-01T00:00:00Z' };
+  const marco = (reuniao: string, resultado: 'no_show' | 'reagendar', em: string, inicio: string) => ({
+    origem: 'calendly' as const,
+    reuniao_id: reuniao,
+    marco: 'resultado' as const,
+    resultado,
+    valor: null,
+    registrado_por_nome: 'Bia',
+    registrado_em: em,
+    inicio,
+  });
+  const janelaLarga = { de: new Date('2026-09-20T03:00:00Z'), ate: new Date('2026-10-20T02:59:00Z') };
+
+  it('o Reagendar da reunião NOVA, clicado antes do horário dela, não resolve a ANTERIOR (o no show dela fica)', () => {
+    // Z em 29/09: no show registrado. O cliente remarca A (agendada em 30/09)
+    // para 02/10 e, em 01/10, avisa que não vai: Reagendar na A, e o card
+    // entra em Reagendar ANTES do início da A — dentro da janela da Z.
+    const { reunioes } = montarPauta(
+      dados({
+        janela: janelaLarga,
+        etapas: COM_REAGENDAR,
+        calendly: [
+          cal({ id: 'z', inicio: '2026-09-29T14:00:00Z', fim: '2026-09-29T14:30:00Z', recebido_em: '2026-09-25T10:00:00Z' }),
+          cal({ id: 'a', event_type_uri: 'outro', inicio: '2026-10-02T14:00:00Z', fim: '2026-10-02T14:30:00Z', recebido_em: '2026-09-30T10:00:00Z' }),
+        ],
+        negocios: [card],
+        marcos: new Map([
+          ['calendly:z', [marco('z', 'no_show', '2026-09-29T14:15:00Z', '2026-09-29T14:00:00Z')]],
+          ['calendly:a', [marco('a', 'reagendar', '2026-10-01T12:00:00Z', '2026-10-02T14:00:00Z')]],
+        ]),
+        trilha: new Map([['c1', [{ em: '2026-10-01T12:00:05Z', dealId: 'd1', etapaId: 'reag', etapa: 'Reagendar', por: 'Bia' }]]]),
+      }),
+    );
+    const z = reunioes.find((r) => r.reuniaoId === 'z');
+    const a = reunioes.find((r) => r.reuniaoId === 'a');
+    expect(z?.resultado?.tipo).toBe('no_show');
+    // A Z já tinha começado quando o Reagendar da A foi gravado: a A segue
+    // sendo a próxima dela, e o "Corrigir" da Z só registra (o card é da A).
+    expect(z?.proximaEm).toBe('2026-10-02T14:00:00.000Z');
+    expect(a?.resultado?.tipo).toBe('reagendar');
+    expect(a?.anteriorEm).toBe('2026-09-29T14:00:00.000Z');
+  });
+
+  it('a reunião ANTERIOR que ainda não começou é a "anteriorEm" da posterior (o Reagendar dela só registra)', () => {
+    // A em 15/10 (agendada em 01/10); o cliente antecipou B para 12/10.
+    const { reunioes } = montarPauta(
+      dados({
+        janela: janelaLarga,
+        etapas: COM_REAGENDAR,
+        calendly: [
+          cal({ id: 'a', inicio: '2026-10-15T14:00:00Z', fim: '2026-10-15T14:30:00Z', recebido_em: '2026-10-01T10:00:00Z' }),
+          cal({ id: 'b', event_type_uri: 'outro', inicio: '2026-10-12T14:00:00Z', fim: '2026-10-12T14:30:00Z', recebido_em: '2026-10-10T10:00:00Z' }),
+        ],
+        negocios: [{ ...card, stage_id: 'agendada' }],
+      }),
+    );
+    const a = reunioes.find((r) => r.reuniaoId === 'a');
+    expect(a?.anteriorEm).toBe('2026-10-12T14:00:00.000Z');
+    expect(a?.proximaEm).toBeNull();
+  });
+
+  it('a reunião REAGENDADA não herda o desfecho da substituta antecipada; sem substituta, a trilha ainda a resolve', () => {
+    const base = (comSubstituta: boolean, entrada: { em: string; etapaId: string; etapa: string }) =>
+      montarPauta(
+        dados({
+          janela: janelaLarga,
+          etapas: COM_REAGENDAR,
+          calendly: [
+            cal({ id: 'a', inicio: '2026-10-15T14:00:00Z', fim: '2026-10-15T14:30:00Z', recebido_em: '2026-10-01T10:00:00Z' }),
+            ...(comSubstituta
+              ? [cal({ id: 'b', event_type_uri: 'outro', inicio: '2026-10-12T14:00:00Z', fim: '2026-10-12T14:30:00Z', recebido_em: '2026-10-10T10:00:00Z' })]
+              : []),
+          ],
+          negocios: [card],
+          marcos: new Map([['calendly:a', [marco('a', 'reagendar', '2026-10-09T12:00:00Z', '2026-10-15T14:00:00Z')]]]),
+          trilha: new Map([['c1', [{ ...entrada, dealId: 'd1', por: 'Bia' }]]]),
+        }),
+      ).reunioes.find((r) => r.reuniaoId === 'a');
+    // O no show da B registrado tarde (16/10, depois do horário da A).
+    expect(base(true, { em: '2026-10-16T09:00:00Z', etapaId: 'noshow', etapa: 'No Show' })?.resultado?.tipo).toBe('reagendar');
+    // Sem substituta, o cliente acabou vindo e o card foi para Proposta pelo quadro.
+    expect(base(false, { em: '2026-10-15T15:00:00Z', etapaId: 'prop', etapa: 'Proposta Realizada' })?.resultado?.tipo).toBe('proposta');
+  });
+});
+
 describe('montarPauta — remarcada pela ficha ("Data e Hora Reunião")', () => {
   // A reunião do Calendly passou (no show), o operador a moveu no Google
   // Agenda — o Calendly não remarca reunião passada — e acertou a ficha.

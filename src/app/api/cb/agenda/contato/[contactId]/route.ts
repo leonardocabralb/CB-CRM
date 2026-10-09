@@ -83,7 +83,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ con
     const [agenda, trilha, comValor] = await Promise.all([
       admin
         .from('cb_meetings')
-        .select('id, starts_at, ends_at, status')
+        .select('id, starts_at, ends_at, status, created_at')
         .eq('account_id', ctx.accountId)
         .eq('contact_id', contactId),
       admin
@@ -132,7 +132,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ con
     // Calendly e a agenda do CRM têm marco; a Kommo, nunca. O marco vale para
     // a reunião pela MESMA régua da pauta (`marcoValeParaAReuniao`): o
     // Reagendar gravado para um horário não resolve o horário novo.
-    const linhasDaAgenda = (agenda.data ?? []) as { id: string; starts_at: string; ends_at: string; status: string }[];
+    const linhasDaAgenda = (agenda.data ?? []) as { id: string; starts_at: string; ends_at: string; status: string; created_at: string }[];
+    // Quando cada agendamento do Calendly chegou: fecha a janela da entrada em
+    // "Reagendar" da reunião anterior (`avisoDeNoShow`).
+    const recebidoEm = new Map(linhas.map((l) => [l.id, l.recebido_em]));
     const idsDasReunioes = [...reunioes.filter((r) => r.origem === 'calendly').map((r) => r.id), ...linhasDaAgenda.map((m) => m.id)];
     let reagendamentos: Pick<LinhaDoMarco, 'origem' | 'reuniao_id' | 'resultado' | 'registrado_em' | 'inicio'>[] = [];
     if (idsDasReunioes.length > 0) {
@@ -157,6 +160,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ con
           desmarcada: r.desmarcada !== null,
           desfecho: null,
           reagendada: r.origem === 'calendly' && reagendada('calendly', r.id, r.inicio),
+          agendadaEm: r.origem === 'calendly' ? (recebidoEm.get(r.id) ?? null) : null,
         })),
         ...linhasDaAgenda.map((m) => ({
           inicio: m.starts_at,
@@ -164,6 +168,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ con
           desmarcada: m.status === 'cancelada',
           desfecho: m.status === 'falta' ? ('faltou' as const) : m.status === 'realizada' ? ('compareceu' as const) : null,
           reagendada: reagendada('agenda', m.id, m.starts_at),
+          agendadaEm: m.created_at,
         })),
       ],
       entradas: entradasCruas.map((e) => ({

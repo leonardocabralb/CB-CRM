@@ -72,6 +72,7 @@ const reuniao: ReuniaoDaPauta = {
   reagendamento: false,
   remarcadaDe: null,
   proximaEm: null,
+  anteriorEm: null,
   contato: { id: 'c1', nome: 'Ana' },
   conversaId: 'v1',
   negocio: { id: 'd1', pipelineId: 'banc', pipelineNome: null, etapaId: 'agendada', etapaNome: null, valor: 0, status: 'open' },

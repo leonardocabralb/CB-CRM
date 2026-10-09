@@ -16,10 +16,14 @@
 --      horário novo, e sem saber de qual horário o registro é, o Reagendar do
 --      horário antigo resolveria o novo. NULÁVEL: os marcos antigos não o têm.
 --
--- ⚠️ ADITIVA, e vai ANTES do deploy: o app novo seleciona `inicio` ao montar a
--- pauta e grava 'reagendar' — sem a migration, a pauta inteira volta 500 e o
--- botão é recusado pelo CHECK. O app ANTIGO não lê a coluna, e o upsert dele
--- (sem ela no corpo) a deixa como está.
+-- ⚠️ ADITIVA, e vai ANTES do deploy. Sem ela, o app novo quebra em TRÊS
+-- lugares: a pauta e a agenda do Meu dia (o select de `inicio`) e a aba
+-- Reuniões + a faixa de possível no-show de TODA conversa aberta (a rota
+-- `/api/cb/agenda/contato` lê os marcos com `inicio`) voltam 500; e TODO
+-- botão da pauta, não só o Reagendar, manda `inicio` no upsert — o PostgREST
+-- recusa a coluna depois que o card já andou, e "Reunião qualificada", "Com
+-- proposta" e "No show" terminam em "registro falhou". O app ANTIGO não lê a
+-- coluna, e o upsert dele (sem ela no corpo) a deixa como está.
 --
 -- Tabelas pequenas (dezenas de etapas, dezenas de marcos): o ADD CONSTRAINT
 -- valida as linhas na hora. `lock_timeout` para não enfileirar leituras do
