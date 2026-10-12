@@ -70,7 +70,7 @@ Legenda de **Já temos?**: *sim+* = temos, e mais forte; *sim* = equivalente;
 | **#589**, parte 2 | Editar/apagar modelo da Meta só para admin, com a conta também nas escritas | parcial | **Portar 3 linhas**: `.eq('account_id', …)` nas três escritas. O teste deles entra e passa 5/5 contra a nossa rota (medido) | Guarda de papel: `src/app/api/whatsapp/templates/[id]/route.ts:89,285` (`barrarPorPapel` admin); leitura por conta `:105,292`. Faltam: escritas só por `id` em `:191`, `:214`, `:327`. Sem caminho explorável hoje (cliente da sessão; em produção as policies de UPDATE e DELETE de `message_templates` exigem admin da conta) |
 | **#607** | Middleware redireciona o deslogado de `/flows`, `/agents`, `/notifications` | não | **Trazer adaptado**: acrescentar os três e a nossa `/tarefas` ao `protectedPaths` | `src/middleware.ts:80` não tem os quatro. Hoje quem manda ao login é a casca do cliente (`dashboard-shell.tsx:61-65`), sem vazamento de dado. O `middleware.test.ts` deles entra inteiro, lê a pasta `(dashboard)` e reprova 4 testes contra o nosso middleware (medido); com os quatro caminhos, passa |
 | **#626** (GHSA-8wxh-rv3x-hxvm) | Respostas de página fora de cache compartilhado (`private, no-store`) | não | **Trazer adaptado**: nosso `next.config.ts` inteiro + o valor novo, deixando `opus/` e `inbox-doodle.svg` fora da regra | `next.config.ts:160-167` ainda tem o valor antigo; medido em produção por GET público: páginas e redirects de login saem `public, max-age=0, s-maxage=300, stale-while-revalidate=86400`. O teste deles (`src/next-config.test.ts`) entra inteiro e reprova 7 de 10 contra o nosso config (medido) |
-| **#628**, 043 | Policies de SELECT do Storage restritas | sim (0900) | **Apagar** a migration | Catálogo de produção (12/10): 3 policies de SELECT em `storage.objects`, todas `authenticated`; nenhuma para `public`/`anon`. Predicados da `0900_cb_storage_restringe_listagem.sql:39-79` |
+| **#628**, 043 | Policies de SELECT do Storage restritas | **parcial** (0900): `chat-media` e `flow-media` iguais; **`avatars` não** | **Apagar** a 043 e **portar o predicado do avatar** em migration NOSSA (o maior número do `main` + 1): a leitura do bucket `avatars` passa de "qualquer autenticado" para "a pasta do próprio login" | `0900_cb_storage_restringe_listagem.sql:41-44` cria `"Avatars are readable by authenticated users"` com `using (bucket_id = 'avatars')`; a 043 exige também `auth.uid()::text = (storage.foldername(name))[1]`, o predicado que a `0008:41-42` já usa na escrita. Produção (12/10): a policy é a da 0900; o bucket é público e está com 0 objeto. O app só faz `upload` na própria pasta e `getPublicUrl` (`src/components/settings/profile-form.tsx:126-139`); nenhum `list`/`download` em `src/`. Achado da segunda revisão (seção 9) |
 | **#628**, 044 | `REVOKE EXECUTE` de `anon`/`authenticated` em seis funções SECURITY DEFINER internas | sim+ (0915, 1037, 1049, 1066) | **Apagar** a migration | Produção (`has_function_privilege`): `_bcast_bump`, `recompute_broadcast_counts`, `claim_ai_reply_slot`, `record_webhook_failure`, `merge_duplicate_contacts`, `merge_duplicate_conversations` — anon e authenticated sem EXECUTE, service_role com |
 | **#628**, asserções | Quatro asserções novas no `supabase/ci/verify-schema.sql` | parcial | **Voltar ao nosso arquivo** e portar as asserções ADAPTADAS (nossos nomes de policy; só anon/authenticated nas funções; sem o bloco da 045) | O arquivo mescla SOZINHO. As nossas (964, 1030, 1039) ficam, mas as novas exigem os nomes de policy da 043 e o CHECK/índice da 045: sem as migrations deles, o replay reprova e o deploy trava |
 
@@ -185,7 +185,13 @@ nenhuma decisão da seção 8.
    - `src/middleware.ts`: `/flows`, `/agents`, `/notifications` e `/tarefas` no
      `protectedPaths` (#607);
    - `src/app/api/whatsapp/templates/[id]/route.ts`: a conta nas três escritas
-     (#589).
+     (#589);
+   - migration nossa trocando a policy de leitura do bucket `avatars` pela
+     pasta do próprio login (#628). É RESTRITIVA, mas nenhuma versão do app lê
+     avatar de outra pessoa pela API (a tela usa a URL pública), então a ordem
+     em relação ao deploy é indiferente. ⚠️ O bucket é público: a policy fecha
+     a LISTAGEM (enumerar as pastas `<user_id>/…`), não o arquivo de quem já
+     conhece o endereço.
 3. **Branch de integração** pela receita da §1 do `docs/MERGE-UPSTREAM.md`
    (merge real, que fecha a ancestralidade em `27c6bdf4`), resolvida por
    arquivo inteiro conforme a seção 5: retomada do disparo, os 34 arquivos de
@@ -197,9 +203,9 @@ nenhuma decisão da seção 8.
    merge toca `rate-limit.ts`, `meta-api.ts`, `template-send-builder.ts` e
    `ssrf.ts`, que o job `documentacao` trata como contrato).
 
-Nenhuma migration entra por este caminho. Se algum item da seção 8 pedir
-migration, o número é o maior do `main` + 1, conferido na hora (a 1082 foi
-aplicada em 12/10/2026).
+Nenhuma das quatro migrations do original entra. Entra UMA nossa (a do
+avatar, no PR 2); se algum item da seção 8 pedir outra, o número é o maior do
+`main` + 1, conferido na hora (a 1082 foi aplicada em 12/10/2026).
 
 ## 5. Resolução proposta por arquivo
 
@@ -396,12 +402,16 @@ Notas sobre as resoluções que mais pesam:
   ambiente ou teste vermelho.
 - `src/types/index.ts` volta ao `main`: o único trecho do original nele é do
   #636.
+- A `043_storage_scoped_select.sql` é apagada, mas NÃO inteira no conteúdo: o
+  predicado de dono na leitura do `avatars` é portado numa migration nossa
+  (seção 2.1). As outras duas policies dela já são as da 0900.
 
 ## 6. A lista da §6 do `docs/MERGE-UPSTREAM.md` neste merge
 
 Acionados: **1** (`ko/pt/es.json` voltam), **7** (`agentRules: false`), **8**
 (quatro migrations de 3 dígitos — nenhuma se renumera crua), **9** (a 043
-recria policies de leitura; apagada, nada entra), **10** (dicionários por
+recria policies de leitura; apagada, só o predicado do avatar entra, por
+migration nossa), **10** (dicionários por
 união), **13** (32 mesclados sozinhos), **15** (as linhas da §4).
 
 Não acionados: 2, 3, 4, 5, 6, 11, 12 e 14 (o typecheck da árvore simulada só
@@ -480,3 +490,16 @@ O que a conferência corrigiu:
   `service_role` em banco vazio (ninguém rodou o replay); o peso do dicionário
   no pacote do cliente (nenhum build medido); a fatia da tradução nos arquivos
   de IA (depende da decisão sobre o `getT`).
+
+### Segunda revisão (Codex, PR #401)
+
+Rodada 1, sobre `78b17538`: um achado, confirmado no código e no catálogo de
+produção.
+
+- **O "já temos" da 043 estava incompleto.** A conferência interna comparou os
+  predicados de `chat-media` e `flow-media` (iguais aos da 0900) e deu a 043
+  por coberta; no `avatars` a 0900 deixa a leitura para qualquer autenticado,
+  sem o predicado de dono que a 043 acrescenta. A revisão temática do banco
+  tinha visto a diferença e a tratado como opcional; o plano a achatou em
+  "sim". Corrigido na seção 2.1 e na seção 4. Em produção o bucket está vazio,
+  então nada foi exposto.
