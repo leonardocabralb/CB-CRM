@@ -67,7 +67,9 @@ import { salvarValoresDoContato } from '@/lib/contacts/custom-values';
 import {
   agruparCampos,
   chaveDoBloco,
+  naOrdemDeQuemVe,
 } from '@/lib/contacts/grupos-de-campos';
+import { lerOrdemDosBlocos } from '@/lib/contacts/ordem-dos-blocos';
 import { useAuth } from '@/hooks/use-auth';
 import { ValorInput } from '@/components/valor/valor-input';
 import { formatCurrency } from '@/lib/currency';
@@ -361,6 +363,20 @@ export function PainelDoContato({
   const [resetNegocio, setResetNegocio] = useState(0);
 
   /**
+   * A ordem em que ESTA PESSOA vê os blocos (1082). `null` = não tem ordem
+   * própria (ou ainda não carregou): vale a da conta. É de quem olha, não do
+   * cliente — por isso atravessa a troca de contato, como `blocoAtivo`.
+   */
+  const [ordemPessoal, setOrdemPessoal] = useState<string[] | null>(null);
+  // Primitivos nas dependências: o objeto `user` troca de identidade a cada
+  // renovação de sessão, e recarregaria a ficha inteira à toa.
+  const userId = user?.id ?? null;
+  const donoDaOrdem = useMemo(
+    () => (userId && accountId ? { userId, accountId } : null),
+    [userId, accountId]
+  );
+
+  /**
    * Os BLOCOS da seção CAMPOS (966). Substituíram o recorte por categoria da
    * 949: até aqui os gerais ficavam nesta aba e os de traqueamento numa aba
    * própria (o megafone), o que dava ao operador uma divisão fixa de duas
@@ -373,8 +389,8 @@ export function PainelDoContato({
    * quem precisa vê-lo é o catálogo, para poder soltar campo dentro.
    */
   const blocos = useMemo(
-    () => agruparCampos(customFields, grupos),
-    [customFields, grupos]
+    () => naOrdemDeQuemVe(agruparCampos(customFields, grupos), ordemPessoal),
+    [customFields, grupos, ordemPessoal]
   );
 
   /**
@@ -387,6 +403,9 @@ export function PainelDoContato({
    * mostrando uma aba selecionada — sem nada explicando. Caindo no primeiro,
    * a tela sempre mostra alguma coisa. A escolha ATRAVESSA a troca de contato
    * de propósito: é preferência de quem olha, não dado do cliente.
+   *
+   * O "primeiro" é o da ordem de QUEM OLHA (1082): é assim que quem atende o
+   * trabalhista abre a ficha já no bloco Trabalhista.
    */
   const [blocoAtivo, setBlocoAtivo] = useState<string | null>(null);
   const blocoVisivel =
@@ -580,6 +599,7 @@ export function PainelDoContato({
       etapasRes,
       tarefasRes,
       gruposRes,
+      ordemRes,
     ] = await Promise.all([
       supabase
         .from('deals')
@@ -616,6 +636,10 @@ export function PainelDoContato({
         .select('*')
         .order('posicao')
         .order('nome'),
+      // A ordem em que EU vejo os blocos (1082). Vem na mesma leva de
+      // propósito: chegando depois, as pastilhas pulariam de lugar com a
+      // ficha já na tela. Nunca rejeita (ver `lerOrdemDosBlocos`).
+      lerOrdemDosBlocos(supabase, donoDaOrdem),
     ]);
 
     // Resposta atrasada de OUTRO contato (ou de um refetch disparado antes
@@ -657,11 +681,13 @@ export function PainelDoContato({
     // Idem para os BLOCOS (966): falhando, `agruparCampos` joga todo campo no
     // bloco Geral — a ficha perde a divisão, mas nenhum campo some.
     if (gruposRes.data) setGrupos(gruposRes.data as GrupoDeCampos[]);
+    // E para a ordem pessoal: "não sei" mantém a que já estava na tela.
+    if (ordemRes.sabe) setOrdemPessoal(ordemRes.ordem);
     if (funisRes.data) setPipelines(funisVisiveis(acesso, funisRes.data));
     if (etapasRes.data) setAllStages(etapasRes.data as PipelineStage[]);
     if (!tarefasRes.error) setTarefasAbertas(tarefasRes.count ?? 0);
     setDadosProntos(true);
-  }, [contact, tSidebar, acesso]);
+  }, [contact, tSidebar, acesso, donoDaOrdem]);
 
   // Load on contact change. setDeals/setTags run inside async
   // Supabase callbacks, not synchronously in the effect body.
@@ -1586,6 +1612,10 @@ export function PainelDoContato({
                     chaveVisivel={chaveVisivel}
                     onEscolher={setBlocoAtivo}
                     rotuloDoGeral={tCampos('groupGeneral')}
+                    ordem={{
+                      propria: ordemPessoal !== null,
+                      aoMudar: setOrdemPessoal,
+                    }}
                   />
                   {/* ⚠️ A `key` INCLUI o contato — é load-bearing. Sem ela o
                       React reusa a instância ao trocar de cliente, o rascunho
