@@ -16,7 +16,9 @@ import { salvarValoresDoContato } from '@/lib/contacts/custom-values';
 import {
   agruparCampos,
   chaveDoBloco,
+  naOrdemDeQuemVe,
 } from '@/lib/contacts/grupos-de-campos';
+import { lerOrdemDosBlocos } from '@/lib/contacts/ordem-dos-blocos';
 import { CampoComSalvamento } from '@/components/contacts/campo-com-salvamento';
 import { MenuDeBlocos } from '@/components/contacts/menu-de-blocos';
 import { toast } from 'sonner';
@@ -103,7 +105,7 @@ export function ContactDetailView({
   const supabase = createClient();
   // `accountId` saiu com o insert direto: a anotação agora nasce na rota,
   // que resolve a conta no servidor a partir da sessão.
-  const { acesso, accountId } = useAuth();
+  const { acesso, accountId, user } = useAuth();
 
   const [contact, setContact] = useState<Contact | null>(null);
   const [loading, setLoading] = useState(false);
@@ -180,9 +182,22 @@ export function ContactDetailView({
    * no primeiro, em vez de deixar a aba vazia com uma pastilha acesa.
    */
   const [blocoAtivo, setBlocoAtivo] = useState<string | null>(null);
+  /**
+   * A ordem em que ESTA PESSOA vê os blocos (1082) — a mesma do painel da
+   * conversa. `null` = sem ordem própria: vale a da conta. O "primeiro" que
+   * abre é o da ordem dela.
+   */
+  const [ordemPessoal, setOrdemPessoal] = useState<string[] | null>(null);
+  // Primitivos nas dependências: o objeto `user` troca de identidade a cada
+  // renovação de sessão, e recarregaria os campos à toa.
+  const userId = user?.id ?? null;
+  const donoDaOrdem = useMemo(
+    () => (userId && accountId ? { userId, accountId } : null),
+    [userId, accountId]
+  );
   const blocosDaFicha = useMemo(
-    () => agruparCampos(customFields, grupos),
-    [customFields, grupos]
+    () => naOrdemDeQuemVe(agruparCampos(customFields, grupos), ordemPessoal),
+    [customFields, grupos, ordemPessoal]
   );
   const blocoVisivel =
     blocosDaFicha.find(
@@ -298,7 +313,7 @@ export function ContactDetailView({
     const alvo = contactId;
     setLoadingCustom(true);
 
-    const [fieldsRes, valuesRes, gruposRes] = await Promise.all([
+    const [fieldsRes, valuesRes, gruposRes, ordemRes] = await Promise.all([
       supabase
         .from('custom_fields')
         .select('*')
@@ -313,6 +328,10 @@ export function ContactDetailView({
         .select('*')
         .order('posicao')
         .order('nome'),
+      // A ordem em que EU vejo os blocos (1082), na mesma leva: chegando
+      // depois, as pastilhas pulariam de lugar com a aba já na tela. Nunca
+      // rejeita, e a falha dela não derruba a aba (cai na ordem da conta).
+      lerOrdemDosBlocos(supabase, donoDaOrdem),
     ]);
 
     // ⚠️ O caso mais caro da ficha: sem isto os VALORES de A entram no
@@ -329,6 +348,8 @@ export function ContactDetailView({
     // Falhando, `agruparCampos` joga tudo no bloco Geral: a ficha perde a
     // divisão, mas nenhum campo some.
     if (gruposRes.data) setGrupos(gruposRes.data as GrupoDeCampos[]);
+    // "Não sei" mantém a ordem que já estava na tela.
+    if (ordemRes.sabe) setOrdemPessoal(ordemRes.ordem);
     if (valuesRes.data) {
       const map: Record<string, string> = {};
       valuesRes.data.forEach((v) => {
@@ -337,7 +358,7 @@ export function ContactDetailView({
       setCustomValues({ de: alvo, mapa: map });
     }
     setLoadingCustom(false);
-  }, [contactId, supabase]);
+  }, [contactId, supabase, donoDaOrdem]);
 
   const fetchDeals = useCallback(async () => {
     if (!contactId) return;
@@ -1074,6 +1095,10 @@ export function ContactDetailView({
                       chaveVisivel={chaveVisivel}
                       onEscolher={setBlocoAtivo}
                       rotuloDoGeral={tCampos('groupGeneral')}
+                      ordem={{
+                        propria: ordemPessoal !== null,
+                        aoMudar: setOrdemPessoal,
+                      }}
                     />
                     {/* ⚠️ A `key` INCLUI o contato — ver o cabeçalho do
                         `CampoComSalvamento`: sem ela o React reusa a

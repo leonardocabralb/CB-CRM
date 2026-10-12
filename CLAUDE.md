@@ -487,7 +487,8 @@ O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
 - Calendly: a ficha do cliente nasce do agendamento (08/09/2026).
 - Caixa de entrada: filtro salvo é de cada membro; Encerradas não é filtro
   nem vai na visão salva; busca no corpo das mensagens desligada por padrão.
-- Ficha: um bloco de campos por vez, em menu horizontal.
+- Ficha: um bloco de campos por vez, em menu horizontal, na ordem de cada
+  pessoa (12/10/2026).
 - Notas do painel: a caixa de escrever vem ANTES da fixada, e a fixada nasce
   recolhida (29/09/2026).
 - Quem mais está com a conversa aberta: frase acima do compositor, além dos
@@ -689,11 +690,11 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
 ## 16. Comandos úteis
 
 ```bash
-nvm use              # Node do .nvmrc (22) — antes de tudo
-npm run dev          # desenvolvimento (localhost:3000)
-npm run build        # build de produção
-npm run lint         # eslint
-npm run typecheck    # tsc --noEmit
-npm run test         # vitest
-npm run format       # prettier --write
+nvm use  # Node do .nvmrc (22) — antes de tudo
+npm run dev  # desenvolvimento (localhost:3000)
+npm run build  # build de produção
+npm run lint  # eslint
+npm run typecheck  # tsc --noEmit
+npm run test  # vitest
+npm run format  # prettier --write
 ```

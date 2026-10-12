@@ -4,7 +4,11 @@ import {
   agruparCampos,
   ordenarCampos,
   chaveDoBloco,
+  lerOrdemPessoal,
+  mesmaOrdem,
   moverCampo,
+  moverChave,
+  naOrdemDeQuemVe,
   ordenarGrupos,
   posicoesDoBloco,
 } from "./grupos-de-campos";
@@ -291,5 +295,131 @@ describe("posicoesDoBloco", () => {
     expect(posicoesDoBloco([campo({ id: "a", grupo_id: "b" })], null)).toEqual([
       { id: "a", grupo_id: null, posicao: 0 },
     ]);
+  });
+});
+
+describe("lerOrdemPessoal", () => {
+  it("devolve a lista de chaves como veio", () => {
+    expect(lerOrdemPessoal(["g2", "geral", "g1"])).toEqual(["g2", "geral", "g1"]);
+  });
+
+  it("o que não é lista de texto vira 'sem ordem própria'", () => {
+    expect(lerOrdemPessoal(null)).toBeNull();
+    expect(lerOrdemPessoal(undefined)).toBeNull();
+    expect(lerOrdemPessoal("g1,g2")).toBeNull();
+    expect(lerOrdemPessoal({ 0: "g1" })).toBeNull();
+    expect(lerOrdemPessoal([])).toBeNull();
+  });
+
+  it("descarta item que não é texto, vazio ou repetido — e fica com o resto", () => {
+    expect(lerOrdemPessoal(["g1", 7, null, "", "g1", "geral"])).toEqual([
+      "g1",
+      "geral",
+    ]);
+    expect(lerOrdemPessoal([1, 2, null])).toBeNull();
+  });
+});
+
+describe("naOrdemDeQuemVe", () => {
+  const blocos = agruparCampos(
+    [
+      campo({ id: "solto", grupo_id: null, posicao: 0 }),
+      campo({ id: "b", grupo_id: "banc", posicao: 0 }),
+      campo({ id: "t", grupo_id: "trab", posicao: 0 }),
+      campo({ id: "p", grupo_id: "prev", posicao: 0 }),
+    ],
+    [
+      grupo({ id: "banc", nome: "Bancário", posicao: 0 }),
+      grupo({ id: "trab", nome: "Trabalhista", posicao: 1 }),
+      grupo({ id: "prev", nome: "Previdenciário", posicao: 2 }),
+    ]
+  );
+  const chaves = (lista: typeof blocos) =>
+    lista.map((b) => chaveDoBloco(b.grupo?.id ?? null));
+
+  it("sem ordem própria, fica a ordem da conta — com o Geral primeiro", () => {
+    expect(chaves(naOrdemDeQuemVe(blocos, null))).toEqual([
+      "geral",
+      "banc",
+      "trab",
+      "prev",
+    ]);
+    expect(naOrdemDeQuemVe(blocos, [])).toBe(blocos);
+  });
+
+  it("a ordem da pessoa manda — inclusive pondo um bloco À FRENTE do Geral", () => {
+    // É o pedido: quem atende o trabalhista abre a ficha no bloco Trabalhista.
+    expect(
+      chaves(naOrdemDeQuemVe(blocos, ["trab", "prev", "geral", "banc"]))
+    ).toEqual(["trab", "prev", "geral", "banc"]);
+  });
+
+  it("bloco que a pessoa ainda não posicionou entra no FIM, na ordem da conta", () => {
+    // Criado depois de ela arrumar a ordem. No começo, um bloco novo de outra
+    // área passaria a ser o que abre na ficha de quem já tinha escolhido.
+    expect(chaves(naOrdemDeQuemVe(blocos, ["trab"]))).toEqual([
+      "trab",
+      "geral",
+      "banc",
+      "prev",
+    ]);
+  });
+
+  it("chave de bloco que não existe mais é ignorada, sem derrubar o resto", () => {
+    // Não há FK no array: bloco apagado (ou sem campo, que a ficha esconde)
+    // continua na lista gravada.
+    expect(
+      chaves(naOrdemDeQuemVe(blocos, ["apagado", "prev", "outro-morto", "banc"]))
+    ).toEqual(["prev", "banc", "geral", "trab"]);
+  });
+
+  it("lista só com chaves mortas devolve a ordem da conta", () => {
+    expect(naOrdemDeQuemVe(blocos, ["morto-1", "morto-2"])).toBe(blocos);
+  });
+
+  it("chave repetida conta uma vez só — nenhum bloco aparece duas vezes", () => {
+    const lista = naOrdemDeQuemVe(blocos, ["prev", "prev", "trab"]);
+    expect(chaves(lista)).toEqual(["prev", "trab", "geral", "banc"]);
+  });
+
+  it("não perde nem inventa bloco, e não muda a lista recebida", () => {
+    const antes = chaves(blocos);
+    const lista = naOrdemDeQuemVe(blocos, ["prev", "banc"]);
+    expect(chaves(blocos)).toEqual(antes);
+    expect([...chaves(lista)].sort()).toEqual([...antes].sort());
+    // Os campos de cada bloco viajam intocados: aqui só muda a ordem dos blocos.
+    expect(lista[0].campos.map((c) => c.id)).toEqual(["p"]);
+  });
+});
+
+describe("moverChave", () => {
+  const lista = ["geral", "banc", "trab"];
+
+  it("sobe e desce uma casa", () => {
+    expect(moverChave(lista, "banc", -1)).toEqual(["banc", "geral", "trab"]);
+    expect(moverChave(lista, "banc", 1)).toEqual(["geral", "trab", "banc"]);
+  });
+
+  it("na ponta devolve null — o clique não vira mudança a salvar", () => {
+    expect(moverChave(lista, "geral", -1)).toBeNull();
+    expect(moverChave(lista, "trab", 1)).toBeNull();
+  });
+
+  it("chave que não está na lista devolve null", () => {
+    expect(moverChave(lista, "prev", 1)).toBeNull();
+  });
+
+  it("não muda a lista recebida", () => {
+    moverChave(lista, "banc", -1);
+    expect(lista).toEqual(["geral", "banc", "trab"]);
+  });
+});
+
+describe("mesmaOrdem", () => {
+  it("compara item a item, na posição", () => {
+    expect(mesmaOrdem(["a", "b"], ["a", "b"])).toBe(true);
+    expect(mesmaOrdem(["a", "b"], ["b", "a"])).toBe(false);
+    expect(mesmaOrdem(["a"], ["a", "b"])).toBe(false);
+    expect(mesmaOrdem([], [])).toBe(true);
   });
 });

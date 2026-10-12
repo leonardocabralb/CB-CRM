@@ -192,3 +192,101 @@ export function posicoesDoBloco(
     posicao: i,
   }));
 }
+
+// ============================================================
+// A ordem PESSOAL dos blocos (migration 1082).
+//
+// A ordem acima é a da CONTA: vale para o catálogo, para os seletores de
+// campo do construtor e para quem nunca arrumou a sua. Na FICHA (painel da
+// conversa e /contatos), cada pessoa pode pôr os blocos na ordem dela — e,
+// como só um bloco aparece por vez, o primeiro é o que já abre. Decisão do
+// operador (12/10/2026): é por pessoa, não por perfil, porque um perfil pode
+// cobrir duas áreas.
+//
+// ⚠️ Aqui o "Geral" deixa de ser sempre o primeiro: na ordem de quem vê ele
+// é um bloco como os outros. No catálogo (`agruparCampos` cru) ele continua
+// no topo.
+// ============================================================
+
+/**
+ * A lista gravada em `cb_ordem_dos_blocos.ordem`, lida como dado de fora.
+ *
+ * ⚠️ PARSE, nunca `as string[]`: é coluna que o navegador escreve, e um item
+ * que não é texto faria o `Map.get` da ordenação nunca casar — a pessoa veria
+ * a ordem da conta sem pista do porquê. Devolve `null` para "sem ordem
+ * própria", que é também o que a linha ausente significa.
+ */
+export function lerOrdemPessoal(valor: unknown): string[] | null {
+  if (!Array.isArray(valor)) return null;
+  const chaves: string[] = [];
+  for (const item of valor) {
+    if (typeof item !== 'string' || item === '' || chaves.includes(item)) continue;
+    chaves.push(item);
+  }
+  return chaves.length > 0 ? chaves : null;
+}
+
+/**
+ * Os blocos na ordem de quem está olhando.
+ *
+ * - Sem ordem própria (`null`): a da conta, intocada.
+ * - Chave que não é de nenhum bloco à vista é IGNORADA: bloco apagado, ou que
+ *   ficou sem campo (a ficha esconde bloco vazio). Não há FK no array, então
+ *   é a leitura que resolve contra os blocos vivos.
+ * - Bloco que a pessoa ainda não posicionou (criado depois de ela arrumar a
+ *   ordem) entra no FIM, na ordem da conta. No começo, um bloco novo de outra
+ *   área passaria a ser o que ABRE na ficha de todo mundo que já escolheu.
+ */
+export function naOrdemDeQuemVe(
+  blocos: BlocoDeCampos[],
+  ordem: readonly string[] | null
+): BlocoDeCampos[] {
+  if (!ordem || ordem.length === 0) return blocos;
+
+  const porChave = new Map(
+    blocos.map((b) => [chaveDoBloco(b.grupo?.id ?? null), b])
+  );
+  const postos = new Set<string>();
+  const naFrente: BlocoDeCampos[] = [];
+  for (const chave of ordem) {
+    const bloco = porChave.get(chave);
+    if (!bloco || postos.has(chave)) continue;
+    postos.add(chave);
+    naFrente.push(bloco);
+  }
+  if (naFrente.length === 0) return blocos;
+
+  return [
+    ...naFrente,
+    ...blocos.filter((b) => !postos.has(chaveDoBloco(b.grupo?.id ?? null))),
+  ];
+}
+
+/**
+ * Sobe (`-1`) ou desce (`1`) uma chave na lista — o gesto das setas do
+ * "Minha ordem".
+ *
+ * Devolve `null` quando não há o que fazer (a chave não está na lista, ou já
+ * está na ponta), para o chamador não tratar um clique sem efeito como
+ * mudança a salvar.
+ */
+export function moverChave(
+  chaves: readonly string[],
+  chave: string,
+  passo: -1 | 1
+): string[] | null {
+  const de = chaves.indexOf(chave);
+  const para = de + passo;
+  if (de < 0 || para < 0 || para >= chaves.length) return null;
+  const copia = [...chaves];
+  [copia[de], copia[para]] = [copia[para], copia[de]];
+  return copia;
+}
+
+/** Duas ordens são a mesma? (o "Salvar" só acende quando o rascunho mudou.) */
+export function mesmaOrdem(
+  a: readonly string[],
+  b: readonly string[]
+): boolean {
+  return a.length === b.length && a.every((chave, i) => chave === b[i]);
+}

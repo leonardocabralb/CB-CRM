@@ -9,6 +9,9 @@ paths:
   - "src/components/settings/fields-and-tags-panel.tsx"
   - "src/lib/contacts/salvamento-de-campo*"
   - "src/lib/contacts/grupos-de-campos*"
+  - "src/lib/contacts/ordem-dos-blocos*"
+  - "src/components/contacts/menu-de-blocos*"
+  - "src/components/contacts/ordem-dos-blocos*"
   - "src/lib/contacts/nome-fixado*"
   - "src/lib/contacts/email-espelhado*"
 ---
@@ -69,15 +72,17 @@ nas duas telas. Pino: `salvamento-de-campo.test.ts`.
 
 `cb_grupos_de_campos` (nome + posição), `custom_fields.grupo_id`/`posicao`,
 `grupos-de-campos.ts` (puro, testado) e o catálogo com arrastar em
-`custom-fields-manager.tsx`. O operador define a ordem, e ela vale para TODO
-cliente.
+`custom-fields-manager.tsx`. O operador define a ordem DA CONTA, que vale
+para todo cliente; na ficha, a ordem dos BLOCOS é de cada pessoa (1082, mais
+abaixo).
 
 - ⚠️⚠️ **Na ficha aparece UM bloco por vez**, num menu horizontal de pastilhas
   (decisão do operador). É o ponto da feature: empilhar os blocos organiza e
   não reduz nada. O menu SOME com menos de dois blocos; o bloco à vista é
   resolvido NO RENDER (`blocos.find(...) ?? blocos[0]`), nunca guardado por
   efeito — bloco apagado deixaria a seção em branco com uma pastilha acesa.
-- ⚠️ **`grupo_id` NULO é o bloco "Geral", sempre primeiro.** Não tem linha no
+- ⚠️ **`grupo_id` NULO é o bloco "Geral", sempre primeiro na ordem da
+  CONTA** (na de cada pessoa ele é um bloco como os outros). Não tem linha no
   banco: não se renomeia nem se arrasta, e o rótulo sai do dicionário
   (`Contacts.customFields.groupGeneral`). ⚠️ Ele some quando vazio SÓ nas
   telas de LEITURA (`incluirVazios: false`). **No CATÁLOGO fica, mesmo
@@ -131,6 +136,40 @@ cliente.
 - **A altura da lista do catálogo é PROP** (`alturaDaLista`): o `DialogContent`
   do projeto não tem teto de altura, e lista alta no diálogo de Contatos sairia
   da viewport sem barra.
+
+### A ordem dos blocos na ficha é de CADA PESSOA (1082)
+
+`cb_ordem_dos_blocos` (uma linha por pessoa em cada conta; `ordem text[]` com
+as chaves dos blocos — o id do grupo, ou `geral`), `naOrdemDeQuemVe` e
+`lerOrdemPessoal` em `grupos-de-campos.ts` (puros), `ordem-dos-blocos.ts` (a
+ida e a volta) e `<OrdemDosBlocos>`, o botão no fim do `MenuDeBlocos`. Decisão
+do operador (12/10/2026): por PESSOA, não por perfil — um perfil pode cobrir
+duas áreas. Como a ficha mostra um bloco por vez, o primeiro da ordem é o que
+ABRE.
+
+- ⚠️⚠️ **Só ORGANIZA as duas fichas** (painel da conversa e /contatos).
+  Catálogo, seletores de campo do construtor e do robô, colunas do funil,
+  "IDs da conta" e API seguem na ordem da conta; nenhum motor lê a tabela, e
+  nada aqui toca `custom_fields`. Mover campo de bloco também não muda id,
+  chave nem valor: API, Calendly e automações acham o campo por id ou chave.
+- ⚠️ **A leitura vem NA MESMA LEVA dos campos** (`Promise.all` das duas
+  telas): chegando depois, as pastilhas pulariam de lugar com a ficha já na
+  tela. `lerOrdemDosBlocos` nunca rejeita, e `sabe: false` ("não sei": sem
+  sessão ou leitura que falhou) MANTÉM a ordem que estava — trocá-la pela da
+  conta por causa de uma falha moveria tudo sem ninguém ter mexido.
+- ⚠️ **Sem FK no array**: chave de bloco apagado (ou sem campo, que a ficha
+  esconde) é ignorada na leitura; bloco que a pessoa ainda não posicionou
+  entra no FIM (no começo, um bloco novo de outra área passaria a abrir a
+  ficha de quem já escolheu); lista só de chaves mortas = ordem da conta.
+- **Voltar ao padrão é APAGAR a linha** (o CHECK recusa lista vazia): "tem
+  ordem própria" é uma pergunta só. O DELETE de zero linhas MEDE se a linha
+  ainda existe.
+- ⚠️ **Setas com rascunho e "Salvar", não arrastar nem gravar a cada clique**:
+  o menu mora na coluna estreita e no celular, e várias escritas seguidas na
+  mesma linha chegam fora de ordem. O rascunho é reconciliado com os blocos NO
+  RENDER (bloco apagado ou criado com a janela aberta).
+- **O `onConflict` do upsert é a PK da 1082** (pino em
+  `ordem-dos-blocos.test.ts`): divergindo, toda gravação falha com 42P10.
 
 ### O campo "E-mail" espelha `contacts.email` (1000/1001) — o lado da tela
 

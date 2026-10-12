@@ -22,8 +22,15 @@
 // com `cn()`. O mesmo widget, dois tamanhos de fonte, sem ninguém decidir
 // isso. As duas telas editam o MESMO dado; divergir na aparência é o
 // primeiro passo para divergir no comportamento.
+//
+// ⚠️ A ORDEM DAS PASTILHAS É DE QUEM OLHA (1082). Quem chama entrega os
+// blocos já por `naOrdemDeQuemVe`, e o botão do fim da fileira
+// (`<OrdemDosBlocos>`) é onde a pessoa arruma a dela. Ele some junto com o
+// menu (menos de dois blocos não têm ordem a escolher) e fica de fora quando
+// `ordem` não vem.
 // ============================================================
 
+import { OrdemDosBlocos } from "@/components/contacts/ordem-dos-blocos";
 import { chaveDoBloco, type BlocoDeCampos } from "@/lib/contacts/grupos-de-campos";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +39,7 @@ export function MenuDeBlocos({
   chaveVisivel,
   onEscolher,
   rotuloDoGeral,
+  ordem,
 }: {
   blocos: BlocoDeCampos[];
   /** A chave do bloco à vista — resolvida NO RENDER por quem chama. */
@@ -43,11 +51,20 @@ export function MenuDeBlocos({
    * dicionário, e o tradutor é de quem chama.
    */
   rotuloDoGeral: string;
+  /**
+   * A ordem pessoal (1082): `propria` diz se a pessoa já tem a dela gravada,
+   * `aoMudar` recebe a ordem nova depois de salva (`null` = voltou ao padrão
+   * da conta). Sem a prop, o botão "Minha ordem" não aparece.
+   */
+  ordem?: {
+    propria: boolean;
+    aoMudar: (ordem: string[] | null) => void;
+  };
 }) {
   if (blocos.length < 2) return null;
 
   return (
-    <div className="flex flex-wrap gap-1">
+    <div className="flex flex-wrap items-center gap-1">
       {blocos.map((bloco) => {
         const chave = chaveDoBloco(bloco.grupo?.id ?? null);
         const ativo = chave === chaveVisivel;
@@ -67,6 +84,14 @@ export function MenuDeBlocos({
           </button>
         );
       })}
+      {ordem && (
+        <OrdemDosBlocos
+          blocos={blocos}
+          rotuloDoGeral={rotuloDoGeral}
+          propria={ordem.propria}
+          aoMudar={ordem.aoMudar}
+        />
+      )}
     </div>
   );
 }
