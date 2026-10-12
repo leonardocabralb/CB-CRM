@@ -130,40 +130,46 @@ describe("gravarOrdemDosBlocos", () => {
 });
 
 describe("apagarOrdemDosBlocos", () => {
-  it("apagou a linha: sucesso, sem segunda consulta", async () => {
-    const { supabase, from } = clienteFalso([{ data: [{ user_id: "u-1" }], error: null }]);
+  it("apaga só a linha do dono, nesta conta", async () => {
+    const { supabase, chamadas, from } = clienteFalso([{ data: null, error: null }]);
     expect(await apagarOrdemDosBlocos(supabase, DONO)).toBe(true);
     expect(from).toHaveBeenCalledTimes(1);
+    expect(chamadas[0].some((p) => p.metodo === "delete")).toBe(true);
+    const filtros = chamadas[0].filter((p) => p.metodo === "eq").map((p) => p.args);
+    expect(filtros).toEqual([
+      ["user_id", "u-1"],
+      ["account_id", "a-1"],
+    ]);
   });
 
-  it("zero linhas e a linha NÃO existe mais: já era o padrão — sucesso", async () => {
-    const { supabase, from } = clienteFalso([
-      { data: [], error: null },
-      { data: null, error: null },
-    ]);
+  it("sem linha para apagar já É o padrão — sucesso, sem segunda consulta", async () => {
+    // DELETE e SELECT têm o mesmo recorte na 1082: reler não distinguiria
+    // "não existe" de "não vejo mais" (Codex, PR #400). O limite está escrito
+    // no módulo.
+    const { supabase, from } = clienteFalso([{ data: null, error: null }]);
     expect(await apagarOrdemDosBlocos(supabase, DONO)).toBe(true);
-    expect(from).toHaveBeenCalledTimes(2);
-  });
-
-  it("zero linhas e a linha AINDA existe (a RLS barrou): falha", async () => {
-    const { supabase } = clienteFalso([
-      { data: [], error: null },
-      { data: { user_id: "u-1" }, error: null },
-    ]);
-    expect(await apagarOrdemDosBlocos(supabase, DONO)).toBe(false);
-  });
-
-  it("zero linhas e a conferência falha: 'não sei' é falha, nunca palpite", async () => {
-    const { supabase } = clienteFalso([
-      { data: [], error: null },
-      { data: null, error: { message: "fora do ar" } },
-    ]);
-    expect(await apagarOrdemDosBlocos(supabase, DONO)).toBe(false);
+    expect(from).toHaveBeenCalledTimes(1);
   });
 
   it("erro no DELETE é falha", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const { supabase } = clienteFalso([{ data: null, error: { message: "42501" } }]);
     expect(await apagarOrdemDosBlocos(supabase, DONO)).toBe(false);
+  });
+
+  it("o DELETE e o SELECT da 1082 têm o MESMO recorte de membro", () => {
+    // É o que sustenta "zero linhas = sem ordem própria": se um dia o DELETE
+    // ficar mais restrito que a leitura, a linha visível que não se apaga
+    // passaria por sucesso — e aí a conferência tem de voltar.
+    const sql = fs.readFileSync(
+      path.join(process.cwd(), "supabase/migrations/1082_cb_ordem_dos_blocos.sql"),
+      "utf8",
+    );
+    const corpo = (nome: string) =>
+      sql.slice(sql.indexOf(`CREATE POLICY cb_ordem_dos_blocos_${nome}`)).split(";")[0];
+    expect(corpo("select")).toMatch(/user_id = \(SELECT auth\.uid\(\)\)/);
+    expect(corpo("select")).toContain("cb_contas_do_usuario()");
+    expect(corpo("delete")).toContain("user_id = auth.uid() AND is_account_member(account_id)");
+    expect(corpo("delete")).not.toMatch(/'(admin|agent|owner)'/);
   });
 });

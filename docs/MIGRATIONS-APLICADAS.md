@@ -1228,6 +1228,20 @@ nome da época em que foram aplicadas.
   operador. Conferida: os dois CHECKs com `reagendar`, a coluna nulável;
   antes, num Postgres 16 local, aplicada duas vezes e com os cenários
   (reagendar sem valor passa, com valor e inventado não).
+- **1082_cb_ordem_dos_blocos** — tabela `cb_ordem_dos_blocos` (uma linha por
+  pessoa em cada conta; `ordem text[]` com as chaves dos blocos de campos, na
+  ordem em que ELA os vê na ficha), RLS "só a minha" (leitura na forma da
+  1032; insert, update e delete com `user_id = auth.uid()` e membro da conta),
+  nada para `anon`. PR #400. ADITIVA e ANTES do deploy (sem ela a ficha cai na
+  ordem da conta, mas "Salvar" a ordem responde erro). Aplicada em 12/10/2026
+  pela Management API (histórico `20261012114446`), depois do replay verde do
+  CI no commit `a75a1411`, com "aplique a migration" do operador. Conferida:
+  RLS ligada, as quatro policies, `anon` sem leitura, tabela vazia; antes, num
+  Postgres 16 local, aplicada duas vezes e com dez cenários pela RLS (upsert
+  do dono, outro membro não lê/troca/apaga, suspenso e quem não é da conta não
+  gravam, lista vazia recusada, CASCADE do login). No preview: salvar (upsert
+  201), recarregar já na ordem pessoal e "Voltar ao padrão" (DELETE 204),
+  tabela de volta a zero linhas.
 
 ## Notas do histórico
 

@@ -84,33 +84,34 @@ export async function gravarOrdemDosBlocos(
 }
 
 /**
- * Volta à ordem da conta: APAGA a minha linha. `false` = não sei se apagou.
+ * Volta à ordem da conta: APAGA a minha linha. `false` = o banco recusou.
  *
- * ⚠️ Zero linhas tem dois significados — já não havia ordem própria (outra
- * aba voltou ao padrão antes) ou a RLS barrou —, e o motivo é MEDIDO: a
- * linha ainda existe?
+ * ⚠️ ZERO LINHAS É SUCESSO, e não há como medir mais do que isso daqui. O
+ * DELETE e o SELECT desta tabela têm o MESMO recorte (a linha é minha E eu
+ * sou membro da conta), então "apaguei zero" só acontece quando eu não vejo
+ * linha nenhuma — porque ela não existe (outra aba já voltou ao padrão) ou
+ * porque perdi o acesso à conta com a tela aberta. Uma releitura responderia
+ * "sem linha" nos dois casos (Codex, PR #400), e é exatamente isso que a
+ * ficha passa a mostrar: a ordem da conta, a mesma de qualquer recarga.
+ *
+ * LIMITE CONHECIDO: quem é suspenso ou removido com a ficha aberta e clica
+ * "Voltar ao padrão" nos segundos antes de a tela de acesso suspenso entrar
+ * vê a ordem da conta, mas a linha fica — e a ordem antiga volta se o acesso
+ * for devolvido. Separar os dois casos exigiria uma função SECURITY DEFINER
+ * só para isto.
  */
 export async function apagarOrdemDosBlocos(
   supabase: SupabaseClient,
   dono: DonoDaOrdem
 ): Promise<boolean> {
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from(TABELA)
     .delete()
     .eq('user_id', dono.userId)
-    .eq('account_id', dono.accountId)
-    .select('user_id');
+    .eq('account_id', dono.accountId);
   if (error) {
     console.error('[campos] a ordem dos blocos não foi apagada:', error.message);
     return false;
   }
-  if ((data ?? []).length > 0) return true;
-
-  const depois = await supabase
-    .from(TABELA)
-    .select('user_id')
-    .eq('user_id', dono.userId)
-    .eq('account_id', dono.accountId)
-    .maybeSingle();
-  return !depois.error && depois.data === null;
+  return true;
 }

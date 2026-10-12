@@ -162,8 +162,11 @@ ABRE.
   entra no FIM (no começo, um bloco novo de outra área passaria a abrir a
   ficha de quem já escolheu); lista só de chaves mortas = ordem da conta.
 - **Voltar ao padrão é APAGAR a linha** (o CHECK recusa lista vazia): "tem
-  ordem própria" é uma pergunta só. O DELETE de zero linhas MEDE se a linha
-  ainda existe.
+  ordem própria" é uma pergunta só. ⚠️ DELETE de zero linhas é SUCESSO: o
+  DELETE e o SELECT têm o mesmo recorte de membro, então reler não separa
+  "não existe" de "perdi o acesso" (limite escrito em `apagarOrdemDosBlocos`;
+  pino lendo as duas policies). DELETE mais restrito que a leitura devolve a
+  conferência.
 - ⚠️ **Setas com rascunho e "Salvar", não arrastar nem gravar a cada clique**:
   o menu mora na coluna estreita e no celular, e várias escritas seguidas na
   mesma linha chegam fora de ordem. O rascunho é reconciliado com os blocos NO
