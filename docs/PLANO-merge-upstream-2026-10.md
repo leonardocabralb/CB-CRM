@@ -81,9 +81,9 @@ Legenda de **Já temos?**: *sim+* = temos, e mais forte; *sim* = equivalente;
 | **#554** | Salvar a config do WhatsApp sem verify token mantém o guardado | sim | Nada a trazer. `whatsapp/config/route.ts`: nosso inteiro | O POST deles conserta rota que aposentamos (410) e tela que nenhum arquivo importa. No caminho real, `src/app/api/cb/channels/route.ts:385,444` só gravam `verify_token` quando veio valor |
 | **#597**, `/auth/callback` e `/reset-password` | Cria as duas rotas e passa os links de e-mail pela origem do app | sim+ (PR #254) | Nada a trazer. Conflitos (add/add): nosso inteiro. **Apagar** `src/lib/auth/callback.ts` e o teste (entram sozinhos, código morto) | `src/app/auth/callback/route.ts:40-65`; `src/lib/auth/destino-seguro.ts:38-73`. Sem variável de ambiente nova do lado deles |
 | **#597**, `token_hash` | Link de recuperação que vale em outro aparelho | não | **Decisão do operador** (seção 8, item 5) | O nosso callback lê só `code` (PKCE). Trade-off: o `token_hash` deixa de prender o link ao navegador que pediu |
-| **#597**, signup | Cadastro passa `emailRedirectTo` pelo callback | não se aplica | **Descartar**: nosso inteiro | O lado deles apaga o ramo `if (inviteToken) { cadastrarPorConvite… }` — o cadastro por convite (decisão de 22/09/2026). Pino `src/lib/auth/cadastro-por-convite.test.ts` |
+| **#597**, signup | Cadastro passa `emailRedirectTo` pelo callback | **parcial** | **Nosso inteiro + porte de 1 linha**: `emailRedirectTo` no ramo SEM convite. O arquivo deles não entra | O lado deles apaga o ramo `if (inviteToken) { cadastrarPorConvite… }` — o cadastro por convite (decisão de 22/09/2026; pino `src/lib/auth/cadastro-por-convite.test.ts`). Mas o nosso ramo público (`src/app/(auth)/signup/page.tsx:176-184`) chama `signUp` sem `emailRedirectTo`: com cadastro aberto e confirmação de e-mail ligada, o link do e-mail vai para o Site URL do Supabase e não passa pelo nosso callback. Pela decisão de 22/09 o cadastro público fica fechado na nossa produção (não reconferido nesta revisão), então nada muda para nós; vale para outra instalação. Achado da segunda revisão (seção 9) |
 | **#597**, login e doc | Aviso `?error=link_*` no login; `docs/auth-emails.md` | sim (por outro caminho) | **Descartar**: `login/page.tsx` e `forgot-password/page.tsx` voltam ao `main`; **apagar** a doc e levar três notas dela para `docs/INSTALACAO.md` | O nosso callback só manda falha para `/forgot-password?erro=link`; nada em `src/` emite `/login?error=`. A doc está em inglês, cita o produto original e descreve o fluxo DELES |
-| **#630**, público | Público do disparo paginado acima de 1.000 | sim+ (PR #269) | Nada a trazer. Hook, passo 2 e passo 4: nosso inteiro. **Apagar** `src/lib/broadcast-audience.ts` e o teste (código morto) | `src/hooks/use-broadcast-sending.ts:403-458,698-718,1082-1095`; `src/lib/supabase/paginar.ts`; pinos `.paginacao.test.ts` e `.contagem.test.ts` |
+| **#630**, público | Público do disparo paginado acima de 1.000 | sim+ (PR #269), **até 25.000 linhas por leitura** | Nada a trazer. Hook, passo 2 e passo 4: nosso inteiro. **Apagar** `src/lib/broadcast-audience.ts` e o teste (código morto). **Limite conhecido:** acima de 25.000 o nosso RECUSA o disparo com aviso (falha fechada); o deles lê sem teto. Subir `MAX_PAGINAS` é mudança de uma constante, a fazer quando a base se aproximar (hoje 5.718 contatos) | `src/hooks/use-broadcast-sending.ts:403-458,698-718,1082-1095`; `src/lib/supabase/paginar.ts:56-57` (o teto) e `:93-170`; o aviso do teto em `step2-select-audience.tsx:537` e `use-broadcast-sending.ts:160`; pinos `.paginacao.test.ts` e `.contagem.test.ts`. O teto é achado da segunda revisão (seção 9) |
 | **#630**, retomada | Retomada do disparo lê a sobra real acima de 1.000 | **não** | **Trazer**: a mesclagem do Git serve em `broadcast-resume.ts` (mantém `resolveMetaChannel` e o 5º parâmetro de `resolveTemplateRow`); `paged-query.ts` inteiro; no teste, nosso + porte do dublê | Nosso `src/lib/whatsapp/broadcast-resume.ts:160-167` lê sem `range` nem `count`. Medir a consulta nova contra o PostgREST real antes do merge (regra 8b) |
 | **#636** | Automação "aguardar a resposta do cliente" depois de Enviar botões/lista | não (temos o INVERSO: "parar se o cliente responder") | **Descartar neste merge**. Se o operador quiser o recurso (seção 8, item 3), é frente própria, no nosso desenho | Os seis arquivos conflitam e ficam nossos. O desenho deles insere direto na fila (o pino `parar-se-responder.chamadores.test.ts` exige `cb_estacionar_espera`), usa status que os nossos cancelamentos não enxergam e só liga o webhook da Meta. Uso hoje: botão e lista só saem pelo número oficial; em produção, 0 passos de botão/lista em 62 automações |
 | **#636**, 045 | Recria o CHECK de status da fila de automações | — | **Apagar** | A lista deles não tem `cancelled`, que o nosso motor grava em 12 pontos. Ver a seção 3 |
@@ -186,6 +186,8 @@ nenhuma decisão da seção 8.
      `protectedPaths` (#607);
    - `src/app/api/whatsapp/templates/[id]/route.ts`: a conta nas três escritas
      (#589);
+   - `src/app/(auth)/signup/page.tsx`: `emailRedirectTo` pelo nosso callback
+     no ramo SEM convite (#597), como o `forgot-password` já faz;
    - migration nossa trocando a policy de leitura do bucket `avatars` pela
      pasta do próprio login (#628). É RESTRITIVA, mas nenhuma versão do app lê
      avatar de outra pessoa pela API (a tela usa a URL pública), então a ordem
@@ -503,3 +505,17 @@ produção.
   tinha visto a diferença e a tratado como opcional; o plano a achatou em
   "sim". Corrigido na seção 2.1 e na seção 4. Em produção o bucket está vazio,
   então nada foi exposto.
+
+Rodada 2, sobre `a6302273`: dois achados, os dois com o fato confirmado no
+código.
+
+- **O signup não era "não se aplica".** O arquivo deles continua de fora (apaga
+  o cadastro por convite), mas o nosso ramo sem convite chama `signUp` sem
+  `emailRedirectTo`. Aceito: porte de uma linha, no PR 2 (seções 2.2 e 4). Não
+  muda nada na nossa produção, onde o cadastro público é fechado.
+- **O "sim+" do público do disparo tem teto.** A nossa leitura para em 25.000
+  linhas e recusa o disparo; a do original não tem teto. O fato procede; a
+  PROPOSTA fica a mesma (o hook é o nosso, `broadcast-audience.ts` sai): o teto
+  é falha fechada escolhida de propósito — a leitura roda no navegador, contra
+  uma tabela que muda —, e trocar pelo laço sem teto deles desfaria a leitura
+  por chave. Registrado como limite conhecido na seção 2.2.
