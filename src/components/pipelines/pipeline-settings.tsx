@@ -126,7 +126,7 @@ export function PipelineSettings({
   const rotuloPadrao = (classe: string) => tFunil(`degraus.${classe}` as Parameters<typeof tFunil>[0]);
   const rotuloDoDegrau = (d: Degrau) => normalizarRotulo(painel.rotulos[d]) ?? rotuloPadrao(d);
   const rotuloDoCartao = useRotuloDoCartaoDeCusto(rotuloDoDegrau);
-  // 1088: "Desqualificação" logo abaixo de "Perda" — é a etapa de perda com
+  // 1091: "Desqualificação" logo abaixo de "Perda" — é a etapa de perda com
   // a marca de desqualificação, escolhida no MESMO seletor (a marca não
   // existe fora da perda; o CHECK do banco também a recusa).
   const opcoesDeDegrau = [
@@ -240,7 +240,7 @@ export function PipelineSettings({
       proximas_etapas: s.proximas_etapas ?? null,
       // 1070: o que estar nela diz sobre o contrato (faixa da conversa).
       situacao_do_cliente: s.situacao_do_cliente ?? null,
-      // 1088: desqualificação — só vale na perda (o CHECK recusa o resto).
+      // 1091: desqualificação — só vale na perda (o CHECK recusa o resto).
       desqualificacao: desqualificacaoQueVale(s.degrau, s.desqualificacao),
     }));
 
@@ -574,7 +574,7 @@ export function PipelineSettings({
                             // campo travado (degrau de proposta em diante):
                             // voltar o degrau a devolve. Quem a limpa é o
                             // salvar, pela régua `marcaDaReuniaoQueVale`.
-                            // 1088: "Desqualificação" é a perda COM a marca;
+                            // 1091: "Desqualificação" é a perda COM a marca;
                             // qualquer outra escolha a tira no mesmo gesto.
                             updated[index] =
                               v === DEGRAU_DE_DESQUALIFICACAO
@@ -796,7 +796,7 @@ export function PipelineSettings({
   );
 }
 
-// O valor da opção "Desqualificação" no seletor de degrau (1088): não é um
+// O valor da opção "Desqualificação" no seletor de degrau (1091): não é um
 // degrau — vira `degrau = 'perda'` + `desqualificacao = true` no rascunho.
 const DEGRAU_DE_DESQUALIFICACAO = "perda:desqualificacao";
 

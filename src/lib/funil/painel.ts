@@ -35,7 +35,7 @@ import {
  * Os cartões de custo, na ordem da tela. `contrato` é o "custo por contrato
  * ASSINADO" (investimento ÷ quem alcançou contrato — C1), e fica ao lado do
  * `cac` de sempre, que divide pelo contrato EM PÉ: num funil com "Contrato
- * sem pasta" os dois se separam com o tempo. `desqualificado` (1088) fica ao
+ * sem pasta" os dois se separam com o tempo. `desqualificado` (1091) fica ao
  * lado do custo por qualificado (`mql`): é a comparação que o operador pediu.
  */
 export const CARTOES_DE_CUSTO = [
@@ -187,7 +187,7 @@ export function funilMedeNoShow(classificacao: Classificacao, painel: PainelDoFu
 }
 
 /**
- * O funil separa a desqualificação (1088)? Alguma etapa de perda marcada
+ * O funil separa a desqualificação (1091)? Alguma etapa de perda marcada
  * "desqualificação". Sem ela, o custo por desqualificado seria sempre "—".
  */
 export function funilMedeDesqualificacao(classificacao: Classificacao): boolean {

@@ -99,7 +99,7 @@ export function marcaDaReuniaoQueVale<M extends string>(degrau: string | null | 
 }
 
 /**
- * A marca "desqualificação" (`pipeline_stages.desqualificacao`, 1088) que
+ * A marca "desqualificação" (`pipeline_stages.desqualificacao`, 1091) que
  * VALE: só em etapa de degrau `perda` — desqualificar é um tipo de perda. O
  * banco já recusa a marca fora dela (CHECK); a régua existe para o rascunho
  * da tela, onde o degrau muda antes de salvar, e para dado lido de quem não
@@ -111,7 +111,7 @@ export function desqualificacaoQueVale(degrau: string | null | undefined, marca:
 
 /**
  * O que o funil de eficiência lê de cada etapa. `desfecho_da_reuniao` (1058) e
- * `desqualificacao` (1088) são opcionais: só as contagens de no-show
+ * `desqualificacao` (1091) são opcionais: só as contagens de no-show
  * (`etapasDeFalta`) e de desqualificados (`etapasDeDesqualificacao`) os usam.
  */
 export type EtapaMinima = Pick<PipelineStage, "id" | "name" | "position" | "degrau"> &

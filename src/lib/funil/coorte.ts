@@ -111,7 +111,7 @@ export interface ResumoDoPeriodo {
    */
   noShows: number;
   /**
-   * DESQUALIFICADOS (1088): CARDS com entrada numa etapa de desqualificação
+   * DESQUALIFICADOS (1091): CARDS com entrada numa etapa de desqualificação
    * (`entradasEmDesqualificacao`; o mesmo card duas vezes é um só). Por
    * período, quem entrou numa delas no período; na coorte, os leads que
    * entraram no período e foram desqualificados em algum momento.

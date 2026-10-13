@@ -11,7 +11,7 @@ import { periodoSemAtividade, resumoPorPeriodo } from "./por-periodo";
 import { fatosDoNegocio, type LinhaDeTrajetoria, type PassoDoTrajeto } from "./trajetoria";
 
 /**
- * O CUSTO POR DESQUALIFICADO (1088; pedido do operador, 13/10/2026):
+ * O CUSTO POR DESQUALIFICADO (1091; pedido do operador, 13/10/2026):
  *
  *  - a etapa de desqualificação é uma etapa de PERDA marcada em Gerenciar
  *    funil — "Perdido" e "Não Respondeu" são perda e não são
@@ -178,7 +178,7 @@ describe("o cartão", () => {
 });
 
 describe("a migration e o código concordam", () => {
-  const sql = readFileSync("supabase/migrations/1088_cb_etapa_de_desqualificacao.sql", "utf-8");
+  const sql = readFileSync("supabase/migrations/1091_cb_etapa_de_desqualificacao.sql", "utf-8");
 
   it("o CHECK prende a marca à perda, e com IS NOT DISTINCT FROM (com `=`, degrau nulo passaria)", () => {
     expect(sql).toMatch(/CHECK \(NOT desqualificacao OR degrau IS NOT DISTINCT FROM 'perda'\)/);

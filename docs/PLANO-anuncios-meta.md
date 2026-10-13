@@ -18,7 +18,7 @@
 | 1 | Catálogo dos anúncios por ID (anúncio → conjunto → campanha) e conserto das duas armadilhas da sincronização | — |
 | 2 | Origem do lead por card: registro da chegada, pelos caminhos de hoje, e carga das fichas | — |
 | 3 | Origem nas conexões por QR code (Evolution) | depois da medição |
-| 4 | Custo por desqualificado no Desempenho e na Saúde | ⏳ em PR (migration `1088`, provada num Postgres local; falta aplicar e marcar as etapas) |
+| 4 | Custo por desqualificado no Desempenho e na Saúde | ⏳ em PR (migration `1091`, provada num Postgres local; falta aplicar e marcar as etapas) |
 
 Base: PR #407 (cartão pede só o token; selo Ativa/Pausada), mesclado em
 13/10/2026 (`19c8bd35`).

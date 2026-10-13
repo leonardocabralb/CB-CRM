@@ -1,5 +1,5 @@
 -- ============================================================
--- 1088 — Quais etapas de PERDA são de DESQUALIFICAÇÃO
+-- 1091 — Quais etapas de PERDA são de DESQUALIFICAÇÃO
 --
 -- Plano: docs/PLANO-anuncios-meta.md, Fase 4. Pedido do operador
 -- (13/10/2026): o "custo por desqualificado" ao lado do custo por
@@ -50,7 +50,7 @@ ALTER TABLE public.pipeline_stages
   CHECK (NOT desqualificacao OR degrau IS NOT DISTINCT FROM 'perda');
 
 COMMENT ON COLUMN public.pipeline_stages.desqualificacao IS
-  'Etapa de perda que é DESQUALIFICAÇÃO (1088): cada card que entra nela conta no custo por desqualificado do Desempenho e da Saúde. Só vale com degrau perda (CHECK).';
+  'Etapa de perda que é DESQUALIFICAÇÃO (1091): cada card que entra nela conta no custo por desqualificado do Desempenho e da Saúde. Só vale com degrau perda (CHECK).';
 
 -- ------------------------------------------------------------
 -- Conferência — o resultado, nunca a intenção
@@ -70,10 +70,10 @@ BEGIN
      AND table_name = 'pipeline_stages'
      AND column_name = 'desqualificacao';
   IF v_tipo IS DISTINCT FROM 'boolean' THEN
-    RAISE EXCEPTION '1088: pipeline_stages.desqualificacao ausente ou com tipo % (esperado boolean).', v_tipo;
+    RAISE EXCEPTION '1091: pipeline_stages.desqualificacao ausente ou com tipo % (esperado boolean).', v_tipo;
   END IF;
   IF v_nulo IS DISTINCT FROM 'NO' OR v_padrao IS DISTINCT FROM 'false' THEN
-    RAISE EXCEPTION '1088: desqualificacao deveria ser NOT NULL DEFAULT false (nullable %, default %).', v_nulo, v_padrao;
+    RAISE EXCEPTION '1091: desqualificacao deveria ser NOT NULL DEFAULT false (nullable %, default %).', v_nulo, v_padrao;
   END IF;
 
   SELECT count(*) INTO v_quantos
@@ -82,7 +82,7 @@ BEGIN
      AND contype = 'c'
      AND pg_get_constraintdef(oid) ~ 'desqualificacao';
   IF v_quantos <> 1 THEN
-    RAISE EXCEPTION '1088: % CHECK(s) sobre desqualificacao (esperado 1).', v_quantos;
+    RAISE EXCEPTION '1091: % CHECK(s) sobre desqualificacao (esperado 1).', v_quantos;
   END IF;
 
   -- O COMPORTAMENTO, sem dado: uma etapa num funil que não existe. O CHECK é
@@ -92,42 +92,42 @@ BEGIN
   BEGIN
     BEGIN
       INSERT INTO public.pipeline_stages (pipeline_id, name, degrau, desqualificacao)
-      VALUES (gen_random_uuid(), 'conferencia_1088', 'perda', true);
+      VALUES (gen_random_uuid(), 'conferencia_1091', 'perda', true);
       v_estado := 'gravou';
     EXCEPTION
       WHEN check_violation THEN v_estado := 'check';
       WHEN foreign_key_violation THEN v_estado := 'fk';
     END;
     IF v_estado = 'check' THEN
-      RAISE EXCEPTION '1088: o CHECK recusa a marca numa etapa de perda.';
+      RAISE EXCEPTION '1091: o CHECK recusa a marca numa etapa de perda.';
     END IF;
 
     BEGIN
       INSERT INTO public.pipeline_stages (pipeline_id, name, degrau, desqualificacao)
-      VALUES (gen_random_uuid(), 'conferencia_1088', 'mql', true);
+      VALUES (gen_random_uuid(), 'conferencia_1091', 'mql', true);
       v_estado := 'gravou';
     EXCEPTION
       WHEN check_violation THEN v_estado := 'check';
       WHEN foreign_key_violation THEN v_estado := 'fk';
     END;
     IF v_estado <> 'check' THEN
-      RAISE EXCEPTION '1088: o CHECK deixou passar a marca fora da perda (%).', v_estado;
+      RAISE EXCEPTION '1091: o CHECK deixou passar a marca fora da perda (%).', v_estado;
     END IF;
 
     BEGIN
       INSERT INTO public.pipeline_stages (pipeline_id, name, desqualificacao)
-      VALUES (gen_random_uuid(), 'conferencia_1088', true);
+      VALUES (gen_random_uuid(), 'conferencia_1091', true);
       v_estado := 'gravou';
     EXCEPTION
       WHEN check_violation THEN v_estado := 'check';
       WHEN foreign_key_violation THEN v_estado := 'fk';
     END;
     IF v_estado <> 'check' THEN
-      RAISE EXCEPTION '1088: o CHECK deixou passar a marca em etapa sem degrau (%).', v_estado;
+      RAISE EXCEPTION '1091: o CHECK deixou passar a marca em etapa sem degrau (%).', v_estado;
     END IF;
 
-    RAISE EXCEPTION USING ERRCODE = 'P1088', MESSAGE = 'desfaz a conferência';
+    RAISE EXCEPTION USING ERRCODE = 'P1091', MESSAGE = 'desfaz a conferência';
   EXCEPTION
-    WHEN SQLSTATE 'P1088' THEN NULL;
+    WHEN SQLSTATE 'P1091' THEN NULL;
   END;
 END $$;

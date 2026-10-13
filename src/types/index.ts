@@ -1031,7 +1031,7 @@ export interface PipelineStage {
    */
   situacao_do_cliente?: 'rescindido' | 'finalizado' | null;
   /**
-   * Etapa de perda que é DESQUALIFICAÇÃO (1088): cada card que ENTRA nela é
+   * Etapa de perda que é DESQUALIFICAÇÃO (1091): cada card que ENTRA nela é
    * um desqualificado — o divisor do "custo por desqualificado". Só vale com
    * `degrau = 'perda'` (CHECK no banco); leia por
    * `desqualificacaoQueVale` (`src/lib/funil/degraus.ts`).

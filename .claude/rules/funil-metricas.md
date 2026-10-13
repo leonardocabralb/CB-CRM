@@ -283,7 +283,7 @@ custo (`no_show`). Plano: Fase 4 de `docs/PLANO-reagendamento.md`.
   quadro), continua contado — a entrada aconteceu. É o preço de contar pela
   transição.
 
-### Custo por desqualificado (1088; pedido do operador, 13/10/2026)
+### Custo por desqualificado (1091; pedido do operador, 13/10/2026)
 
 - **Desqualificação é uma PERDA marcada** (`pipeline_stages.desqualificacao`):
   "Perdido" e "Não Respondeu" também são `perda`, e por isso o "custo dos

@@ -291,7 +291,7 @@ export interface FatosDoNegocio {
   entradasEmFalta: Date[];
   /**
    * Cada ENTRADA do negócio, NESTE funil, numa etapa de desqualificação
-   * (`Classificacao.etapasDeDesqualificacao`, 1088), em ordem cronológica. O
+   * (`Classificacao.etapasDeDesqualificacao`, 1091), em ordem cronológica. O
    * resumo conta CARDS, não entradas: o lead desqualificado duas vezes é um
    * desqualificado. ⚠️ Diferente do no-show, a semente da 912 (`deal_created`
    * `retroativo`) CONTA: desqualificar é estado de perda, e a perda já lê a
