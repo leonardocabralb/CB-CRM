@@ -16,6 +16,10 @@ import { useConversationNotes } from "@/hooks/use-conversation-notes";
 import { useApagarNota } from "@/hooks/use-apagar-nota";
 import { useFixarNota } from "@/hooks/use-fixar-nota";
 import { useCan } from "@/hooks/use-can";
+import { usePossiveisDuplicatas } from "@/hooks/use-possiveis-duplicatas";
+import { FaixaDePossivelDuplicata } from "@/components/contacts/faixa-de-possivel-duplicata";
+import { CompararFichasDialog } from "@/components/contacts/comparar-fichas-dialog";
+import type { Candidata } from "@/lib/contacts/duplicatas";
 import { ScheduledBar } from "./scheduled-bar";
 import { FaixaDeSituacaoDoCliente } from "./faixa-de-situacao-do-cliente";
 import { FaixaDeInadimplencia } from "./faixa-de-inadimplencia";
@@ -225,6 +229,14 @@ interface MessageThreadProps {
    * a faixa cala, sem afirmar "em dia".
    */
   inadimplencia?: RespostaDoResumo | null;
+  /**
+   * Abrir a conversa de OUTRA ficha a partir do fio — o "Abrir conversa" do
+   * "Comparar" da possível duplicata (1084). É o mesmo pulo da aba
+   * Relacionados (`handleAbrirConversaRelacionada` da página: seleção +
+   * faixa "Voltar para"); nunca `router.push` daqui, que deixaria o fio na
+   * conversa antiga. Sem ele, o botão não aparece.
+   */
+  onAbrirConversaRelacionada?: (conversaId: string) => void;
 }
 
 /**
@@ -511,6 +523,7 @@ export function MessageThread({
   termoDaBusca = "",
   saltoPedido = null,
   inadimplencia = null,
+  onAbrirConversaRelacionada,
 }: MessageThreadProps) {
   const t = useTranslations("Inbox.messageThread");
   const tTimer = useTranslations("Inbox.sessionTimer");
@@ -1331,6 +1344,16 @@ export function MessageThread({
   // junção, com a fonte em cada linha, é pura (`juntarSituacoes`).
   const { dados: atlasDoContato } = useAtlasDoContato(contact?.id, resyncToken);
   const situacaoDoCliente = juntarSituacoes(situacaoNoFunil, atlasDoContato?.vinculo ?? null);
+  // A possível duplicata (1084), para a faixa acima do compositor: as fichas
+  // que parecem ser a mesma pessoa desta, conferidas pelo banco na hora.
+  // Grupo não tem contato. Todos veem; decidir é de admin (D1).
+  const duplicatas = usePossiveisDuplicatas(contact?.id, resyncToken);
+  const podeDecidirDuplicata = useCan("decide-duplicates");
+  // O "Comparar" aberto, CARIMBADO com o contato: trocar de conversa com o
+  // diálogo aberto o fecha no próprio render (sem efeito de limpeza).
+  const [comparando, setComparando] = useState<{ de: string; candidata: Candidata } | null>(null);
+  const candidataEmComparacao =
+    comparando && contact && comparando.de === contact.id ? comparando.candidata : null;
 
   // Anotações internas (migration 918). Chaveadas pela CONVERSA, não pelo
   // contato como a trilha acima — é a única chave que existe em grupo.
@@ -3276,6 +3299,18 @@ export function MessageThread({
       />
       )}
 
+      {/* O "Comparar" da possível duplicata (1084). `key` pela candidata: o
+          formulário de "ligar" é rascunho e não sobrevive à troca. */}
+      <CompararFichasDialog
+        key={candidataEmComparacao?.contatoId ?? "nenhuma"}
+        contatoId={contact?.id ?? null}
+        candidata={candidataEmComparacao}
+        aoFechar={() => setComparando(null)}
+        podeDecidir={podeDecidirDuplicata}
+        acoes={duplicatas}
+        aoAbrirConversa={onAbrirConversaRelacionada}
+      />
+
       {/* Overlay de tela cheia — só monta com um anexo aberto. */}
       <GaleriaDoFio
         messages={messages}
@@ -3316,6 +3351,20 @@ export function MessageThread({
           reunião nova e já faltou, ou marcou antes e não avançou. Some quando
           a reunião nova termina; cala com `null`. */}
       <FaixaDeNoShow aviso={avisoDeFalta} agora={agoraDaBadge} />
+
+      {/* Faixa POSSÍVEL DUPLICATA (1084, pedido do operador em 13/10/2026):
+          esta ficha parece ser a mesma pessoa de outra — o formulário com
+          um telefone, o agendamento com outro. Abaixo das que mudam a
+          conversa (situação, dívida, no-show), porque é arrumação de cadastro;
+          o "Comparar" abre as duas lado a lado. Cala com `null`. */}
+      <FaixaDePossivelDuplicata
+        candidatas={duplicatas.candidatas}
+        podeDecidir={podeDecidirDuplicata}
+        aoComparar={(candidata) => {
+          if (contact) setComparando({ de: contact.id, candidata });
+        }}
+        className="mx-3 mt-2"
+      />
 
       {/* Faixa AGENDADAS (925), colada no compositor e dentro do fio.
           ⚠️ Fica AQUI, e não na ficha lateral: quem abre a conversa precisa

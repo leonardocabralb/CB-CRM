@@ -1252,6 +1252,9 @@ function InboxPageInner() {
             termoDaBusca={termoDaBusca}
             saltoPedido={saltoPedido}
             inadimplencia={inadimplencia}
+            // O "Abrir conversa" do "Comparar" da possível duplicata (1084):
+            // o mesmo pulo da aba Relacionados, com a faixa "Voltar para".
+            onAbrirConversaRelacionada={handleAbrirConversaRelacionada}
           />
           )}
         </div>

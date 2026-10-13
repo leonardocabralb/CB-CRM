@@ -376,7 +376,8 @@ um espelho com pino lendo o SQL. Mudou um lado, muda o outro.
 - CASCADE (some sem aviso): `conversations` (e TODAS as mensagens),
   `contact_tags`, `contact_custom_values`, `cb_tasks`, `cb_conversation_notes`,
   `cb_automation_reminders`, `cb_contatos_relacionados` (1069, pelas DUAS
-  pontas), `cb_atlas_recusas` (1072).
+  pontas), `cb_atlas_recusas` (1072), `cb_duplicatas_descartadas` (1084,
+  pelas DUAS pontas).
 - SET NULL (fica órfão): `deals`, `cb_lead_events`, `cb_calendly_eventos`,
   `cb_meetings`, `cb_reunioes_transcritas`, `cb_asaas_clientes`,
   `cb_asaas_regua_envios`, `cb_automation_events`, `cb_webhook_eventos`,
@@ -402,9 +403,17 @@ um espelho com pino lendo o SQL. Mudou um lado, muda o outro.
   por serem únicas por contato; `cb_atlas_recusas` com `NOT EXISTS` por
   `(account_id, api_url, contact_id, atlas_client_id)`;
   `cb_contatos_relacionados` nas duas colunas, pulando o par que viraria
-  repetido ou o sobrevivente ligado a si mesmo — o CASCADE leva o resto) →
+  repetido ou o sobrevivente ligado a si mesmo — o CASCADE leva o resto;
+  `cb_duplicatas_descartadas` igual, mas o par é ORDENADO (`contato_menor <
+  contato_maior`): regravar menor/maior, nunca só trocar o id) →
   mover os campos que faltam na ficha sobrevivente — `wa_user_id`/`wa_username`/
   `wa_parent_user_id` (o BSUID) ZERADOS no perdedor ANTES de gravados no
   sobrevivente, senão o índice único por conta (1038) recusa — → apagar o negócio duplicado
   EXPLICITAMENTE → só então apagar o contato. Tabela nova com `contact_id`
   entra na receita no MESMO PR (não há pino).
+- Medido na fusão de 13/10/2026: UPDATE em `contact_tags` NÃO aciona a trilha
+  (o gatilho é INSERT/DELETE) — a etiqueta que falta passa por UPDATE com
+  `NOT EXISTS`, sem linha nova; a repetida sai no CASCADE, e na cascata do
+  contato o gatilho de etiqueta e o do e-mail (1000) saem SEM gravar. A
+  conversa é UMA por ficha (036): a do perdedor não se reaponta quando o
+  sobrevivente já tem a sua — ou sai no CASCADE, ou tem as mensagens movidas.

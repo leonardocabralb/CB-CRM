@@ -177,6 +177,22 @@ export function canDeleteContacts(role: AccountRole): boolean {
   return hasMinRole(role, "admin");
 }
 
+/**
+ * Owner / admin: DECIDIR uma possível duplicata — "não é duplicata" ou
+ * "pessoas diferentes, mas ligadas" (1084).
+ *
+ * Decisão do operador (2026-10-13, D1 de docs/PLANO-fichas-duplicadas.md):
+ * todos VEEM o aviso e comparam as fichas; decidir é de admin, na régua de
+ * apagar contato — a fase 2 (unir) apaga uma das fichas.
+ *
+ * ⚠️ Tem par no banco: as policies de INSERT e DELETE de
+ * `cb_duplicatas_descartadas` exigem admin. Sem os dois lados, a tela
+ * esconderia o botão e um `.insert()` do navegador ainda gravaria.
+ */
+export function canDecideDuplicates(role: AccountRole): boolean {
+  return hasMinRole(role, "admin");
+}
+
 /** Owner only: irreversible destructive operations. */
 export function canDeleteAccount(role: AccountRole): boolean {
   return role === "owner";

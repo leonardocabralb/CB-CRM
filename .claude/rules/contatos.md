@@ -12,6 +12,8 @@ paths:
   - "src/components/settings/tag-manager.tsx"
   - "src/lib/whatsapp/phone-utils*"
   - "src/hooks/use-contatos-relacionados*"
+  - "src/hooks/use-possiveis-duplicatas*"
+  - "src/hooks/use-comparacao-de-fichas*"
 ---
 
 # Contatos — regras
@@ -180,6 +182,36 @@ todos: num merge, fica o nosso.
 - **Na ficha de /contatos o nome é link para `/inbox?c=`; no inbox, a página
   abre a conversa e liga a faixa "Voltar para"** (`inbox-conversa.md`). O
   "Conversar" (contato sem conversa) só existe no inbox: o diálogo mora lá.
+
+### Possível duplicata (1084)
+A mesma pessoa em duas fichas (formulário com um telefone, agendamento com
+outro). `cb_possiveis_duplicatas` (RPC), `src/lib/contacts/duplicatas.ts`
+(puro, testado), `use-possiveis-duplicatas.ts`, `use-comparacao-de-fichas.ts`,
+`faixa-de-possivel-duplicata.tsx` e `comparar-fichas-dialog.tsx`. Decisões do
+operador, medição e fases: `docs/PLANO-fichas-duplicadas.md`.
+- ⚠️⚠️ **Conferida NA HORA, nunca guardada**: a RPC calcula os pares da ficha
+  aberta. Nada de gatilho em `contacts` (a ingestão não paga) nem lista que
+  envelhece. É `SECURITY INVOKER`: a RLS de `contacts` é a cerca.
+- ⚠️⚠️ **Só sinais fortes, com os números da medição** (pino
+  `possiveis-duplicatas-1084.test.ts`): mesmo e-mail (em até 3 fichas);
+  telefone a um dígito + mesmo primeiro nome; criadas em até 2 min + mesmo
+  primeiro nome, FORA de lote (> 10 fichas em volta = importação, 12,5 mil
+  pares falsos). Nome SOZINHO nunca — 385 nomes repetidos na base.
+- **Todos veem, só admin decide** (D1): `canDecideDuplicates`/
+  `useCan('decide-duplicates')` na tela, policy de INSERT/DELETE de
+  `cb_duplicatas_descartadas` no banco, e o poder no editor de perfis
+  (`PODERES`). "Pessoas diferentes, mas ligadas" grava o vínculo da 1069; o
+  par ligado ou descartado sai do aviso.
+- **As escritas recebem as DUAS fichas** (o "Desfazer" do toast pode chegar
+  com o operador noutra conversa). O par descartado é ORDENADO em
+  minúsculas (`parOrdenado`): o uuid do banco ordena pelo hexadecimal.
+- **A faixa mora no fio** (bloco de faixas, depois do no-show) **e no
+  formulário do card aberto pelo QUADRO** (`origemFunil`): o card sem conversa
+  abre o formulário. No painel do inbox o formulário não a mostra (o fio já
+  mostra). O "Comparar" respeita o PERFIL: card de funil e conversa de conexão
+  fora do escopo não aparecem.
+- **Unir é a fase 2** (D5): o diálogo diz que a união ainda não é feita ali,
+  sem botão desabilitado.
 
 ### API v1 de contatos
 - `getContactById` ESTOURA em erro de banco: erro não é 404 (o integrador
