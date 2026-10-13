@@ -10,6 +10,7 @@ import {
   type CandidataGravada,
   type FichaDaCandidata,
 } from '@/lib/contacts/duplicatas';
+import { avisarRelacionadosMudaram, EVENTO_RELACIONADOS } from '@/lib/contacts/aviso-de-relacionados';
 import { descricaoParaGravar, desfechoDoErro, type DesfechoDaEscrita } from '@/lib/contacts/relacionados';
 import { createClient } from '@/lib/supabase/client';
 
@@ -18,7 +19,7 @@ const COLUNAS_DA_FICHA = 'id, name, phone, wa_username, instagram_username, crea
 
 type Cliente = ReturnType<typeof createClient>;
 
-/** RPC → fichas + conversas das candidatas. NULO = alguma leitura falhou. */
+/** RPC → fichas das candidatas. NULO = alguma leitura falhou. */
 async function lerCandidatas(supabase: Cliente, contatoId: string): Promise<Candidata[] | null> {
   const { data, error } = await supabase.rpc('cb_possiveis_duplicatas', { p_contato: contatoId });
   if (error || !data) {
@@ -29,19 +30,12 @@ async function lerCandidatas(supabase: Cliente, contatoId: string): Promise<Cand
   const ids = linhas.map((l) => l.outro_id);
   if (ids.length === 0) return [];
 
-  const [fichas, conversas] = await Promise.all([
-    supabase.from('contacts').select(COLUNAS_DA_FICHA).in('id', ids),
-    supabase.from('conversations').select('id, contact_id, channel_id').in('contact_id', ids),
-  ]);
-  if (fichas.error || conversas.error) {
-    console.error('[possiveis-duplicatas] leitura falhou:', (fichas.error ?? conversas.error)?.message);
+  const fichas = await supabase.from('contacts').select(COLUNAS_DA_FICHA).in('id', ids);
+  if (fichas.error) {
+    console.error('[possiveis-duplicatas] leitura falhou:', fichas.error.message);
     return null;
   }
-  return montarCandidatas(
-    linhas,
-    (fichas.data ?? []) as FichaDaCandidata[],
-    (conversas.data ?? []) as { id: string; contact_id: string | null; channel_id: string | null }[],
-  );
+  return montarCandidatas(linhas, (fichas.data ?? []) as FichaDaCandidata[]);
 }
 
 export interface EstadoDasDuplicatas {
@@ -95,6 +89,13 @@ export function usePossiveisDuplicatas(
       vivo = false;
     };
   }, [contactId, nonce, resyncToken]);
+
+  // O par ligado sai do aviso, e o desvinculado volta: a aba Relacionados
+  // (outra árvore) avisa quando grava, e este hook relê.
+  useEffect(() => {
+    window.addEventListener(EVENTO_RELACIONADOS, recarregar);
+    return () => window.removeEventListener(EVENTO_RELACIONADOS, recarregar);
+  }, [recarregar]);
 
   const descartar = useCallback(
     async (contatoId: string, outroContatoId: string): Promise<DesfechoDaEscrita> => {
@@ -159,13 +160,14 @@ export function usePossiveisDuplicatas(
       // INSERT barrado pela RLS ESTOURA (42501), ao contrário de UPDATE/DELETE.
       if (error) {
         const desfecho = desfechoDoErro(error);
-        if (desfecho === 'ja-vinculados') recarregar();
+        if (desfecho === 'ja-vinculados') avisarRelacionadosMudaram();
         return desfecho;
       }
-      recarregar();
+      // A aba Relacionados e esta faixa (inclusive esta) relêem pelo aviso.
+      avisarRelacionadosMudaram();
       return 'ok';
     },
-    [accountId, recarregar],
+    [accountId],
   );
 
   const doContatoAtual = !!contactId && estado.de === contactId;

@@ -1255,14 +1255,30 @@ nome da época em que foram aplicadas.
   três policies, o índice, a expressão do acento com o escape intacto (`\u0300`
   como texto) e a RPC achando os pares reais medidos no plano. ⚠️ Medida em
   produção como `authenticated`: 289 ms por chamada (o primeiro nome calculado
-  para a conta inteira) — consertada pela 1086.
+  para a conta inteira) — consertada pela 1086. ⚠️ O ARQUIVO mudou depois de
+  aplicado, só no comentário e nas constantes da conferência do primeiro nome
+  (dois nomes de clientes reais trocados por fictícios da mesma forma, repo
+  público): o que ela cria no banco é o mesmo. Nunca reaplicar por isso.
 - **1086_cb_duplicatas_sem_varredura** — `CREATE OR REPLACE` da RPC da 1084
   com o MESMO resultado e sem varrer a conta: candidatas por índice atrás de
   CTE `MATERIALIZED`, o telefone vizinho por igualdade (`unnest`), a janela de
   ±2 min calculada na ficha. Num Postgres 16 local com 6 mil fichas, como
   `authenticated`: 49 ms (1084) → 3,5 ms; os cenários da 1084 passam com ela.
-  PENDENTE: replay verde do CI e "aplique a migration 1086 em produção". (A
-  1085 é de outra frente: sentinela do WhatsApp.)
+  Aplicada em 13/10/2026 pela Management API (histórico `20261013172136`),
+  depois do replay verde do CI no commit `01c6a5d7`, com "aplique a migration
+  1086 em produção" do operador. Conferida: INVOKER, `search_path`, o corpo
+  novo, EXECUTE só de `authenticated` e `service_role`; nas 20 fichas com
+  chance de par, as MESMAS 20 linhas da 1084 (assinatura md5 igual, foto
+  tirada antes de aplicar). Medida em produção como `authenticated` (média de
+  10): ficha comum 16 ms (a 1084, 289 ms); ficha de lote 177 ms — consertada
+  pela 1087. (A 1085 é de outra frente: sentinela do WhatsApp.)
+- **1087_cb_duplicatas_fora_do_lote** — `CREATE OR REPLACE` da RPC com o
+  MESMO resultado: a ficha conta as fichas em volta DELA (±1 min, até 11) e,
+  com mais de 10 (lote), não busca candidatas pelo horário; a contagem do par
+  para na 11ª. Num Postgres 16 local com 8 mil fichas e um lote de 2 mil em
+  90 s, como `authenticated` (média de 50): ficha de lote 52 ms → 3,3 ms,
+  ficha comum igual; a base inteira devolve as mesmas 14 linhas nas duas.
+  PENDENTE: replay verde do CI e "aplique a migration 1087 em produção".
 
 ## Notas do histórico
 

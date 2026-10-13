@@ -94,14 +94,27 @@ decide. Esta é a FASE 1: detectar e avisar. Unir é a fase 2.
 | Fase | O quê | Estado |
 | --- | --- | --- |
 | 1 | Migration 1084 (RPC, tabela das decisões, índice) + pino + prova num Postgres descartável | [x] Provada num Postgres 16 (esqueleto + 1069; aplicada duas vezes e com dados; ~20 cenários de sinal e de permissão). Aplicada em produção em 13/10/2026 (histórico `20261013163655`) depois do CI verde no `cee7af70`. A RPC acha em produção os pares medidos. ⚠️ Medida como `authenticated`: **289 ms** por chamada — o planejador calculava o primeiro nome da conta inteira. |
-| 1b | Migration 1086: a mesma RPC sem varrer a conta | [x] Candidatas por índice atrás de CTE `MATERIALIZED`, vizinho do telefone por igualdade (`unnest`), janela calculada na ficha. Postgres 16 local com 6 mil fichas: 49 ms → **3,5 ms**, os cenários da 1084 passam. [ ] CI verde [ ] aplicar em produção (autorização própria) |
-| 2 | Módulo puro + hook + faixa na conversa | [x] código e testes; [ ] preview |
-| 3 | Diálogo "Comparar" + decisões do admin | [x] código; [ ] preview |
-| 4 | Faixa no formulário do card | [x] código; [ ] preview |
-| 5 | Regras, revisão, preview, PR | PR #403 (rascunho); regras de contatos e de fusão, CLAUDE.md (seção 12), MERGE-UPSTREAM. [ ] preview [ ] revisão |
+| 1b | Migration 1086: a mesma RPC sem varrer a conta | [x] Candidatas por índice atrás de CTE `MATERIALIZED`, vizinho do telefone por igualdade (`unnest`), janela calculada na ficha. Postgres 16 local com 6 mil fichas: 49 ms → **3,5 ms**, os cenários da 1084 passam. [x] CI verde (`01c6a5d7`) [x] aplicada em produção em 13/10/2026 (histórico `20261013172136`): nas 20 fichas com chance de par, as mesmas 20 linhas da 1084. Em produção, como `authenticated`: ficha comum **16 ms** (era 289); ficha de LOTE **177 ms** — 3.874 das 5.784 fichas nasceram numa importação de 3 min. |
+| 1c | Migration 1087: a ficha de lote não busca par pelo horário | [x] A ficha conta as fichas em volta dela (±1 min, até 11); com mais de 10, nenhum par passaria. Postgres 16 local com um lote de 2 mil: 52 ms → **3,3 ms**, ficha comum igual, a base inteira com o mesmo resultado da 1086. [ ] CI verde [ ] aplicar em produção (autorização própria) [ ] conferir a base inteira em produção (a mesma foto) |
+| 2 | Módulo puro + hook + faixa na conversa | [x] código e testes; [x] preview (13/10, ficha gêmea FICTÍCIA do lead de teste, apagada no fim) |
+| 3 | Diálogo "Comparar" + decisões do admin | [x] código; [x] preview: as duas colunas, "Não é duplicata" + "Desfazer" do aviso, "Pessoas diferentes, mas ligadas" (o vínculo aparece nos Contatos relacionados) |
+| 4 | Faixa no formulário do card | [x] código; [x] preview (o "Comparar" abre por cima do formulário) |
+| 5 | Regras, revisão, preview, PR | PR #403 (rascunho); regras de contatos e de fusão, CLAUDE.md (seção 12), MERGE-UPSTREAM. [x] preview (como admin; a visão de quem não é admin fica no teste da faixa) [x] revisão independente (13/10): nomes reais na conferência da 1084 trocados por fictícios; 1087; o "Comparar" que reabria sozinho (componente único que remonta por ficha); faixa e aba Relacionados sincronizadas; rótulos de falha, ligação e telefone; rodapé no celular. [ ] preview das correções |
 | Fase 2 (futura) | Unir: operação única no servidor, só admin; telefone e e-mail secundários guardados e usados na busca; id antigo respondendo na API (o Make de quem integra desliga no 1º erro) | não começada |
 
 ## Limites conhecidos
+
+- "Pessoas diferentes, mas ligadas" grava o vínculo de Relacionados, que é
+  de `agent` (1069): o atendente que liga as fichas pela aba também tira o
+  par do aviso. Só o botão do "Comparar" é de admin.
+- Ordem de merge: a 1083 (histórico da conversa) e a 1085 (sentinela) são de
+  outras branches e já estão aplicadas. Quem instala e atualiza por
+  `supabase db push` recusa número abaixo do maior aplicado: mesclar os PRs
+  delas ANTES deste (a nossa produção não usa `db push`).
+- `cb_primeiro_nome` aplica `lower()` antes de decompor: num banco com
+  LC_CTYPE "C" puro, a letra maiúscula acentuada não desce, e a conferência
+  da 1084 aborta. Produção e replay usam UTF-8 com ICU; mudar exige migration
+  nova (a 1084 está aplicada).
 
 - O quadro do funil não marca o card: o aviso aparece ao abrir (D3).
 - Importação em lote não usa o sinal de horário (lote = mais de 10 fichas

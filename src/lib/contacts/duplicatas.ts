@@ -35,14 +35,11 @@ export interface Candidata {
   contatoId: string;
   /**
    * NULO quando a ficha não veio na leitura (apagada entre a RPC e a busca).
-   * A faixa mostra um travessão em vez de sumir com a linha.
+   * A faixa diz "Ficha não encontrada", com o "Comparar" desabilitado, em vez
+   * de sumir com a linha.
    */
   ficha: FichaDaCandidata | null;
   motivos: MotivoDaDuplicata[];
-  /** A conversa da outra ficha (uma por contato, 036). NULO = nunca conversou. */
-  conversaId: string | null;
-  /** A conexão dessa conversa — o recorte do perfil decide se ela aparece. */
-  conversaCanalId: string | null;
 }
 
 /**
@@ -67,31 +64,21 @@ export function lerMotivos(bruto: unknown): MotivoDaDuplicata[] {
 }
 
 /**
- * Junta as leituras (RPC, fichas, conversas) na lista da faixa, na ordem da
- * RPC (a mais forte primeiro). Linha sem NENHUM motivo legível sai: aviso
- * sem motivo não diz nada a ninguém.
+ * Junta as leituras (RPC e fichas) na lista da faixa, na ordem da RPC (a
+ * mais forte primeiro). Linha sem NENHUM motivo legível sai: aviso sem
+ * motivo não diz nada a ninguém. A conversa da outra ficha é lida só no
+ * "Comparar", com o recorte do perfil.
  */
-export function montarCandidatas(
-  linhas: CandidataGravada[],
-  fichas: FichaDaCandidata[],
-  conversas: { id: string; contact_id: string | null; channel_id: string | null }[],
-): Candidata[] {
+export function montarCandidatas(linhas: CandidataGravada[], fichas: FichaDaCandidata[]): Candidata[] {
   const fichaPorId = new Map(fichas.map((f) => [f.id, f]));
-  const conversaPorContato = new Map<string, { id: string; channel_id: string | null }>();
-  for (const c of conversas) {
-    if (c.contact_id) conversaPorContato.set(c.contact_id, { id: c.id, channel_id: c.channel_id });
-  }
   const candidatas: Candidata[] = [];
   for (const linha of linhas) {
     const motivos = lerMotivos(linha.motivos);
     if (motivos.length === 0) continue;
-    const conversa = conversaPorContato.get(linha.outro_id) ?? null;
     candidatas.push({
       contatoId: linha.outro_id,
       ficha: fichaPorId.get(linha.outro_id) ?? null,
       motivos,
-      conversaId: conversa?.id ?? null,
-      conversaCanalId: conversa?.channel_id ?? null,
     });
   }
   return candidatas;

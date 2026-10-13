@@ -36,27 +36,26 @@ describe("lerMotivos", () => {
 });
 
 describe("montarCandidatas", () => {
-  it("junta ficha e conversa por contato, na ordem da RPC", () => {
+  it("junta a ficha por contato, na ordem da RPC", () => {
     const lista = montarCandidatas(
       [
         { outro_id: "b", motivos: [{ tipo: "mesmo_email" }] },
         { outro_id: "a", motivos: [{ tipo: "criadas_juntas", segundos: 24 }] },
       ],
       [ficha("a", "Andre"), ficha("b", "Bia")],
-      [{ id: "conv-b", contact_id: "b", channel_id: "canal-1" }],
     );
     expect(lista.map((c) => c.contatoId)).toEqual(["b", "a"]);
-    expect(lista[0]).toMatchObject({ conversaId: "conv-b", conversaCanalId: "canal-1", ficha: { name: "Bia" } });
-    expect(lista[1]).toMatchObject({ conversaId: null, conversaCanalId: null, ficha: { name: "Andre" } });
+    expect(lista[0]).toMatchObject({ ficha: { name: "Bia" }, motivos: [{ tipo: "mesmo_email" }] });
+    expect(lista[1]).toMatchObject({ ficha: { name: "Andre" }, motivos: [{ tipo: "criadas_juntas", segundos: 24 }] });
   });
 
   it("ficha que não veio na leitura fica com `ficha` nula — a linha não some", () => {
-    const [c] = montarCandidatas([{ outro_id: "x", motivos: [{ tipo: "mesmo_email" }] }], [], []);
+    const [c] = montarCandidatas([{ outro_id: "x", motivos: [{ tipo: "mesmo_email" }] }], []);
     expect(c).toMatchObject({ contatoId: "x", ficha: null });
   });
 
   it("linha sem nenhum motivo legível sai da lista", () => {
-    expect(montarCandidatas([{ outro_id: "x", motivos: [{ tipo: "outro" }] }], [ficha("x", "X")], [])).toEqual([]);
+    expect(montarCandidatas([{ outro_id: "x", motivos: [{ tipo: "outro" }] }], [ficha("x", "X")])).toEqual([]);
   });
 });
 

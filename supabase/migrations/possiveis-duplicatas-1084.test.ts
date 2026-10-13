@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 // ============================================================
-// 1084 + 1086 — possível duplicata: a mesma pessoa em duas fichas.
+// 1084 + 1086 + 1087 — possível duplicata: a mesma pessoa em duas fichas.
 //
 // O que este pino segura:
 // - a RPC é SECURITY INVOKER: a RLS de `contacts` é a cerca (um DEFINER
@@ -17,6 +17,10 @@ import path from 'node:path';
 //   `MATERIALIZED`, e o telefone vizinho é procurado por IGUALDADE
 //   (`unnest`) — a 1084, com o nome numa junção e `= ANY (lista)`, levava
 //   289 ms em produção;
+// - a ficha que nasceu num LOTE não busca candidatas pelo horário (1087): a
+//   ficha conta as fichas em volta DELA (±1 min, parando na 11ª) e, com mais
+//   de 10, nenhum par passaria — a 1086 trazia o lote inteiro (3,9 mil fichas
+//   em produção) para concluir isso, a 177 ms por ficha;
 // - o par descartado e o par já ligado em Relacionados saem do aviso;
 // - decidir é de ADMIN, com a autoria de quem grava; ler é de qualquer
 //   membro, na forma da 1032; a decisão não se edita;
@@ -77,9 +81,13 @@ function cte(nome: string): string {
   throw new Error(`CTE ${nome} sem fim`);
 }
 
-describe('1084 + 1086 — possível duplicata', () => {
-  it('a última definição da RPC é a da 1086 (redefiniu? atualize este pino)', () => {
-    expect(definicoes).toEqual(['1084_cb_possiveis_duplicatas.sql', '1086_cb_duplicatas_sem_varredura.sql']);
+describe('1084 + 1086 + 1087 — possível duplicata', () => {
+  it('a última definição da RPC é a da 1087 (redefiniu? atualize este pino)', () => {
+    expect(definicoes).toEqual([
+      '1084_cb_possiveis_duplicatas.sql',
+      '1086_cb_duplicatas_sem_varredura.sql',
+      '1087_cb_duplicatas_fora_do_lote.sql',
+    ]);
   });
 
   it('trava antes de criar e liga a RLS da tabela das decisões', () => {
@@ -110,7 +118,18 @@ describe('1084 + 1086 — possível duplicata', () => {
     expect(cte('eu')).toMatch(/c\.created_at\s*\+\s*interval\s+'2 minutes'\s+AS\s+janela_ate/i);
     const horario = cte('por_horario');
     expect(horario.match(/interval\s+'1 minute'/gi)?.length).toBe(2);
-    expect(horario).toMatch(/\+\s*interval\s+'1 minute'\)\s*<=\s*10/i);
+    // A contagem do par para na 11ª: passar de 10 já reprova.
+    expect(horario).toMatch(/\+\s*interval\s+'1 minute'\s+LIMIT\s+11\)\s+AS\s+t\)\s*<=\s*10/i);
+  });
+
+  it('a ficha de LOTE não busca candidatas pelo horário (1087), com a mesma régua do par', () => {
+    // As fichas em volta DELA (±1 min), até 11 — a janela de qualquer par a contém.
+    const eu = cte('eu');
+    expect(eu).toMatch(
+      /x\.created_at\s+BETWEEN\s+c\.created_at\s*-\s*interval\s+'1 minute'\s+AND\s+c\.created_at\s*\+\s*interval\s+'1 minute'\s+LIMIT\s+11\)\s+AS\s+t\)\s+AS\s+em_volta/i,
+    );
+    // Mais de 10 em volta = lote: as candidatas do horário nem são buscadas.
+    expect(cte('da_mesma_hora')).toMatch(/eu\.em_volta\s*<=\s*10/i);
   });
 
   it('sem varrer a conta: candidatas por índice, atrás da cerca, e o vizinho por IGUALDADE', () => {

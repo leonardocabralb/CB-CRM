@@ -23,7 +23,7 @@ import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { intervaloEntreAsFichas, type Candidata, type MotivoDaDuplicata } from "@/lib/contacts/duplicatas";
 import { identidadeDoContato, nomeDoContato } from "@/lib/contacts/identidade";
-import { formatarTelefone } from "@/lib/contacts/telefone";
+import { formatarTelefone, telefoneCanonico } from "@/lib/contacts/telefone";
 import { cn } from "@/lib/utils";
 
 type T = ReturnType<typeof useTranslations<"Duplicatas">>;
@@ -62,13 +62,17 @@ export function textoDosMotivos(t: T, motivos: MotivoDaDuplicata[]): string {
   return partes.join(" · ");
 }
 
-/** O telefone formatado, senão o `@`, senão nada — nunca o IGSID nem o BSUID. */
+/**
+ * O telefone formatado, senão o `@`, senão nada — nunca o IGSID nem o BSUID.
+ * Pela grafia CANÔNICA: ficha antiga gravada com pontuação ("+55 83 …")
+ * sairia "++55" direto no formatador.
+ */
 export function identidadeLegivel(c: {
   phone: string | null;
   wa_username?: string | null;
   instagram_username?: string | null;
 }): string | null {
-  if (c.phone) return formatarTelefone(c.phone);
+  if (c.phone) return formatarTelefone(telefoneCanonico(c.phone));
   return identidadeDoContato(c);
 }
 

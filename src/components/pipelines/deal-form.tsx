@@ -6,11 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
-import { useCan } from "@/hooks/use-can";
-import { usePossiveisDuplicatas } from "@/hooks/use-possiveis-duplicatas";
-import { FaixaDePossivelDuplicata } from "@/components/contacts/faixa-de-possivel-duplicata";
-import { CompararFichasDialog } from "@/components/contacts/comparar-fichas-dialog";
-import type { Candidata } from "@/lib/contacts/duplicatas";
+import { AvisoDePossivelDuplicata } from "@/components/contacts/aviso-de-possivel-duplicata";
 import { escritaDoTituloManual } from "@/lib/deals/titulo-do-card";
 import { DEFAULT_CURRENCY } from "@/lib/currency";
 import { ValorInput } from "@/components/valor/valor-input";
@@ -119,12 +115,6 @@ export function DealForm({
   // formulário de anúncio. No painel do inbox o fio já mostra a faixa.
   const router = useRouter();
   const contatoDaFaixa = open && origemFunil && contactId ? contactId : null;
-  const duplicatas = usePossiveisDuplicatas(contatoDaFaixa);
-  const podeDecidirDuplicata = useCan("decide-duplicates");
-  // Carimbado com o contato: trocar o contato do negócio fecha o "Comparar".
-  const [comparando, setComparando] = useState<{ de: string; candidata: Candidata } | null>(null);
-  const candidataEmComparacao =
-    comparando && contatoDaFaixa && comparando.de === contatoDaFaixa ? comparando.candidata : null;
 
   // Reset the form fields every time the sheet opens on a new deal. This is
   // a legitimate prop-driven sync; the rule is over-cautious here, hence the
@@ -448,32 +438,20 @@ export function DealForm({
                 </Link>
               )}
 
+              {/* Dentro da árvore do Sheet de propósito: o "Comparar" é um
+                  diálogo ANINHADO, e o base-ui não briga pelo foco. Fechar o
+                  formulário desmonta o aviso (nada reabre sozinho). */}
               {contatoDaFaixa && (
-                <>
-                  <FaixaDePossivelDuplicata
-                    candidatas={duplicatas.candidatas}
-                    podeDecidir={podeDecidirDuplicata}
-                    aoComparar={(candidata) => setComparando({ de: contatoDaFaixa, candidata })}
-                    className="mt-1"
-                  />
-                  {/* Dentro da árvore do Sheet de propósito: o base-ui reconhece
-                      o diálogo ANINHADO e não briga pelo foco. `key` pela
-                      candidata (o "ligar" é rascunho). */}
-                  <CompararFichasDialog
-                    key={candidataEmComparacao?.contatoId ?? "nenhuma"}
-                    contatoId={contatoDaFaixa}
-                    candidata={candidataEmComparacao}
-                    aoFechar={() => setComparando(null)}
-                    podeDecidir={podeDecidirDuplicata}
-                    acoes={duplicatas}
-                    aoAbrirConversa={(conversaId) => {
-                      // A jornada do funil: o retorno de rolagem e a faixa
-                      // "Voltar ao funil", como o link "ver conversa".
-                      aoIrParaConversa?.();
-                      router.push(urlDoInbox({ c: conversaId, de: "funil" }));
-                    }}
-                  />
-                </>
+                <AvisoDePossivelDuplicata
+                  contatoId={contatoDaFaixa}
+                  aoAbrirConversa={(conversaId) => {
+                    // A jornada do funil: o retorno de rolagem e a faixa
+                    // "Voltar ao funil", como o link "ver conversa".
+                    aoIrParaConversa?.();
+                    router.push(urlDoInbox({ c: conversaId, de: "funil" }));
+                  }}
+                  className="mt-1"
+                />
               )}
             </div>
 

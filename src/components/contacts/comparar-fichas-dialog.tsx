@@ -45,6 +45,8 @@ import { formatarData, TIPO_DATA } from "@/lib/contacts/campo-data";
 import type { Candidata } from "@/lib/contacts/duplicatas";
 import { nomeDoContato } from "@/lib/contacts/identidade";
 import { TETO_DA_DESCRICAO, type DesfechoDaEscrita } from "@/lib/contacts/relacionados";
+import { envioQueNaoSaiu } from "@/lib/inbox/falha-do-envio";
+import { tipoNaoSuportado } from "@/lib/inbox/tipo-nao-suportado";
 import { canalNoEscopo, funilNoEscopo } from "@/lib/perfis/escopo";
 
 import { identidadeLegivel, textoDosMotivos } from "./faixa-de-possivel-duplicata";
@@ -72,10 +74,19 @@ function remetente(t: T, m: MensagemComparada): string {
   return t("remetenteAutomacao");
 }
 
-/** "não saiu" quando a tentativa falhou — o caso do número sem WhatsApp é o que denuncia a ficha errada. */
+/**
+ * A falha do envio, pela régua da bolha (`envioQueNaoSaiu`, 1080): o número
+ * sem WhatsApp é o que denuncia a ficha errada, então o rótulo não pode
+ * exagerar. "Não saiu" só quando não saiu MESMO; o envio incerto pode ter
+ * chegado; a falha de RECIBO (`failed` sem `nao_saiu`) saiu e não foi
+ * entregue — e é assim que a Meta mostra o número sem WhatsApp.
+ */
 function falhaDoEnvio(t: T, m: MensagemComparada): string | null {
-  if (!m.nao_saiu && m.status !== "failed") return null;
-  return m.error_title === "sem_whatsapp" ? t("naoSaiuSemWhatsapp") : t("naoSaiu");
+  const motivo = envioQueNaoSaiu({ nao_saiu: m.nao_saiu === true, error_title: m.error_title });
+  if (motivo === "sem_whatsapp") return t("naoSaiuSemWhatsapp");
+  if (motivo === "incerto") return t("envioIncerto");
+  if (motivo !== null) return t("naoSaiu");
+  return m.status === "failed" ? t("naoEntregue") : null;
 }
 
 function ColunaDaFicha({
@@ -92,6 +103,8 @@ function ColunaDaFicha({
   aoAbrirConversa?: (conversaId: string) => void;
 }) {
   const { acesso } = useAuth();
+  const tLigacao = useTranslations("Inbox.ligacao");
+  const tLista = useTranslations("Inbox.conversationList");
   if (!ficha) {
     return (
       <section className="min-w-0 rounded-lg border border-border p-3">
@@ -105,6 +118,7 @@ function ColunaDaFicha({
   const cardsOcultos = ficha.cards.length - cardsVisiveis.length;
   const conversaVisivel =
     ficha.conversa !== null && (ficha.conversa.channel_id === null || canalNoEscopo(acesso, ficha.conversa.channel_id));
+  const identidade = identidadeLegivel(ficha);
 
   return (
     <section className="min-w-0 space-y-3 rounded-lg border border-border p-3" data-ficha={ficha.id}>
@@ -115,8 +129,10 @@ function ColunaDaFicha({
       </div>
 
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
-        <dt className="text-muted-foreground">{t("telefone")}</dt>
-        <dd className="break-words">{identidadeLegivel(ficha) ?? t("vazio")}</dd>
+        {/* A ficha só do Instagram ou só-BSUID não tem telefone: o `@` vai
+            com o rótulo certo. */}
+        <dt className="text-muted-foreground">{!ficha.phone && identidade ? t("usuario") : t("telefone")}</dt>
+        <dd className="break-words">{identidade ?? t("vazio")}</dd>
         <dt className="text-muted-foreground">{t("email")}</dt>
         <dd className="break-all">{ficha.email ?? t("vazio")}</dd>
       </dl>
@@ -212,7 +228,15 @@ function ColunaDaFicha({
                     {falha && <span className="font-medium text-red-600"> · {falha}</span>}
                   </p>
                   <p className="line-clamp-3 break-words">
-                    {m.deleted_at ? t("vazio") : m.content_text?.trim() || t("anexo")}
+                    {/* A ligação (1044) e o tipo não suportado têm rótulo
+                        próprio, como na lista — nunca "Anexo". */}
+                    {m.deleted_at
+                      ? t("vazio")
+                      : m.content_type === "call"
+                        ? tLigacao("previa")
+                        : tipoNaoSuportado(m.content_text) !== null
+                          ? tLista("previaNaoSuportada")
+                          : m.content_text?.trim() || t("anexo")}
                   </p>
                 </li>
               );
@@ -342,6 +366,8 @@ export function CompararFichasDialog({
           </div>
         )}
 
+        {/* No celular o rodapé é `flex-col-reverse`: o texto e o campo levam
+            `order-last` para ficar EM CIMA dos botões, não embaixo. */}
         <DialogFooter className="min-w-0 sm:items-center">
           {!podeDecidir ? (
             <p className="text-xs text-muted-foreground sm:mr-auto">{t("soAdmin")}</p>
@@ -354,7 +380,7 @@ export function CompararFichasDialog({
                 onChange={(e) => setDescricao(e.target.value)}
                 placeholder={t("descricaoDoVinculo")}
                 aria-label={t("descricaoDoVinculo")}
-                className="sm:mr-auto sm:max-w-sm"
+                className="order-last sm:order-none sm:mr-auto sm:max-w-sm"
               />
               <Button type="button" variant="outline" disabled={gravando} onClick={() => setLigando(false)}>
                 {t("cancelar")}
@@ -365,7 +391,9 @@ export function CompararFichasDialog({
             </>
           ) : (
             <>
-              <p className="text-xs text-muted-foreground sm:mr-auto sm:max-w-md">{t("uniaoDepois")}</p>
+              <p className="order-last text-xs text-muted-foreground sm:order-none sm:mr-auto sm:max-w-md">
+                {t("uniaoDepois")}
+              </p>
               <Button
                 type="button"
                 variant="outline"

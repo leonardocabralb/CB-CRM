@@ -185,9 +185,12 @@ export function canDeleteContacts(role: AccountRole): boolean {
  * todos VEEM o aviso e comparam as fichas; decidir é de admin, na régua de
  * apagar contato — a fase 2 (unir) apaga uma das fichas.
  *
- * ⚠️ Tem par no banco: as policies de INSERT e DELETE de
+ * ⚠️ "Não é duplicata" tem par no banco: as policies de INSERT e DELETE de
  * `cb_duplicatas_descartadas` exigem admin. Sem os dois lados, a tela
  * esconderia o botão e um `.insert()` do navegador ainda gravaria.
+ * "Ligadas" NÃO tem: grava o vínculo de Relacionados (1069), que é de
+ * `agent` no banco e na aba — um atendente que liga as fichas pela aba
+ * também tira o par do aviso. Só o botão do "Comparar" é de admin.
  */
 export function canDecideDuplicates(role: AccountRole): boolean {
   return hasMinRole(role, "admin");

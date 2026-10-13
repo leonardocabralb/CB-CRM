@@ -139,6 +139,8 @@ obrigações gerais de caminho de entrada estão em `.claude/rules/ingestao.md`.
   todo tipo sem texto; a lista, o card do funil e o tempo real
   (`comMensagemNova`) o trocam por "📞 Ligação" (`ehPreviaDeLigacao`).
 - Radar (`textoDe` do worker): a ligação é linha do transcrito.
+- "Comparar" da possível duplicata (`comparar-fichas-dialog.tsx`, 1084): a
+  ligação sai como "📞 Ligação" (`Inbox.ligacao.previa`), nunca "Anexo".
 - Agente de IA (1049): a ligação não abre turno (`abreTurno` só aceita
   `TIPOS_QUE_ABREM_TURNO`) e, sem texto, fica fora do contexto que ele lê
   (`ia-agentes/contexto.ts`). A ATENDIDA pausa o agente da conversa
