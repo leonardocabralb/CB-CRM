@@ -48,6 +48,13 @@ estado em `useModoAnonimo`; pinos `modo-anonimo.test.ts` e
   também é resposta (`aoEnviarAgora` da `ScheduledBar`); na tela `/agendadas`
   não zera, como fora do modo. Agendar, reagir, anotar e executar automação
   não zeram; enviar pela ficha de `/contatos` também não.
+- **"Marcar como lida", no cabeçalho do fio (13/10/2026), zera TAMBÉM no
+  modo**: é gesto, não leitura (e é no modo que ele aparece — fora dele, ver
+  já zerou). "Marcar como não lida" grava 1, cercado no 0 (`marcarComoNaoLida`
+  relê quando nada muda: já não lida ou RLS), e a página FECHA a conversa
+  (`onMarcadaNaoLida`) — aberta, o fio a zeraria de novo. Os dois só para
+  `send-messages` (a policy de UPDATE exige `agent`). A não lida é UMA por
+  conversa: marcar vale para a equipe toda.
 - **A lista aprende o zero da resposta e do desligar pelo TEMPO REAL**
   (aceito): evento perdido deixa o número até o resync da reconexão, e a
   resposta do próprio admin pisca a linha (+1 de `comMensagemNova`) até o

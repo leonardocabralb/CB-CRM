@@ -924,6 +924,29 @@ function InboxPageInner() {
   }, [limparConversaAberta, router, de]);
 
   /**
+   * "Marcar como não lida" já gravou no banco (o fio grava). Aqui: a bolinha
+   * na lista e a conversa FECHADA — aberta, o fio a zeraria de novo na hora.
+   *
+   * ⚠️ O espelho vem ANTES de fechar e sobe para 1 no mínimo: o UPDATE do
+   * tempo real pode chegar enquanto ela ainda é a `conversaLida`, e aí o
+   * handler espelha 0 (suprime a bolinha da conversa que se está lendo).
+   * Esta escrita, depois dele ou não, deixa a lista dizendo "não lida".
+   */
+  const handleMarcadaNaoLida = useCallback(
+    (conversationId: string) => {
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === conversationId
+            ? { ...c, unread_count: Math.max(c.unread_count ?? 0, 1) }
+            : c,
+        ),
+      );
+      handleCloseConversation();
+    },
+    [handleCloseConversation],
+  );
+
+  /**
    * Abre, pela aba Relacionados do painel (1069), a conversa de outro contato
    * — e liga a faixa que volta para esta.
    *
@@ -1246,6 +1269,7 @@ function InboxPageInner() {
             onAssignChange={handleAssignChange}
             onChannelChange={handleChannelChange}
             onBack={handleCloseConversation}
+            onMarcadaNaoLida={handleMarcadaNaoLida}
             onOpenContactPanel={handleAbrirPainelDoContato}
             resyncToken={resyncToken}
             onRefresh={handleManualRefresh}

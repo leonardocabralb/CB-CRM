@@ -86,9 +86,15 @@ describe('modo anônimo: quem zera as não lidas', () => {
   it('o fio grava o zero num lugar só, e cada chamada passa pelo modo', () => {
     const f = fonte(FIO);
     expect(ocorrencias(f, '.update({ unread_count: 0 })')).toBe(1);
-    // Definição + as TRÊS chamadas abaixo. Chamada nova, sem guarda, muda a
+    // Definição + as QUATRO chamadas abaixo. Chamada nova, sem guarda, muda a
     // conta — e um efeito "zera ao abrir" a mais passaria por todo o resto.
-    expect(ocorrencias(f, 'zerarNaoLidas(')).toBe(4);
+    expect(ocorrencias(f, 'zerarNaoLidas(')).toBe(5);
+    // "Marcar como lida" (13/10/2026): GESTO, não leitura — zera em qualquer
+    // modo, mas só pelo botão do cabeçalho (`handleMarcarLeitura`), nunca ao
+    // abrir. No modo anônimo é justamente onde ele aparece (fora dele, ver já
+    // zerou).
+    expect(f).toMatch(/if \(hasUnread\) \{\s*const ok = await zerarNaoLidas\(id\);/);
+    expect(f).toContain('onClick={() => void handleMarcarLeitura()}');
     expect(f).toContain('function zerarNaoLidas(conversationId: string)');
     // Ver: só fora do modo. Sem o `modoAnonimo` nas dependências, desligar o
     // modo com a conversa aberta não a zeraria até chegar outra mensagem.
