@@ -16,10 +16,10 @@
 
 | Fase | Escopo | Estado |
 | --- | --- | --- |
-| **1** | Migration 1083 (tipos novos na trilha + gatilho por instrução) | ✅ feita — 15 cenários num Postgres 16 descartável, aplicada 3× (idempotente; a 3ª com dado: a conferência chama os gatilhos e desfaz sem rastro). **Aplicada em produção** em 13/10/2026, 16:52 UTC (histórico `20261013165224`), antes do merge |
+| **1** | Migration 1083 (tipos novos na trilha + gatilho por instrução) | ✅ feita — 15 cenários num Postgres 16 descartável, aplicada 3× (idempotente; a 3ª com dado: a conferência chama os gatilhos e desfaz sem rastro). **Aplicada em produção** em 13/10/2026, 16:52 UTC (histórico `20261013165224`), antes do merge. Codex P1 no mesmo dia: os nomes da trilha passaram a sair só da conta da conversa (`eb82b464`; as duas funções reaplicadas em produção, 16 cenários locais) |
 | **2** | Quem/de onde nas escritas do servidor (`marcarOrigem`) + pino | ✅ feita — 14 escritores marcados; pino default-deny com teste de mutação |
 | **3** | Linhas no fio e no Histórico da ficha (texto, ícone, dicionários) | ✅ feita |
-| **4** | e2e no preview com a 1083 aplicada (precisa da autorização do operador) | a fazer |
+| **4** | e2e no preview com a 1083 aplicada (precisa da autorização do operador) | ✅ feita (13/10, com o OK do operador) — na conversa de teste: Pendente, Aberta, tirar e pôr responsável, Encerrar, uma mensagem real de teste pelo compositor (reabriu e atribuiu a quem enviou) e Encerrar de novo. As 7 linhas apareceram no fio e na aba Histórico da ficha, conferidas contra o banco; a conversa voltou a encerrada e sem responsável. O caminho da service role (a via no cabeçalho) se confere nas linhas reais depois do deploy |
 | **5** | PR, revisão do Codex, merge com o operador | a fazer |
 
 **Medido (13/10/2026, Postgres 16 local):** custo do gatilho de UPDATE no
@@ -147,6 +147,10 @@ declara a origem ou entra na lista com o motivo.
   encerrada · pelo sistema"; o desfazer dela apaga a conversa mas não essa
   linha da trilha.
 - Ação feita por SQL à mão sai "pelo sistema".
+- O envio pelo compositor (`/api/whatsapp/send`) grava com a SESSÃO de quem
+  envia: a reabertura sai "por <pessoa>", sem `via` (o banco lê a pessoa pelo
+  login e não olha o cabeçalho). É o que se quer; a `via: 'envio'` só aparece
+  quando o mesmo núcleo roda com a service role.
 - **Na janela entre a 1083 e o deploy do #402** (o código antigo no ar): os
   gatilhos já gravam, mas a aba Histórico da ficha mostra o tipo cru
   (`conversation_status_changed`) e as escritas do servidor saem "pelo

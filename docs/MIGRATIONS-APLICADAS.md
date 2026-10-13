@@ -1260,7 +1260,19 @@ nome da época em que foram aplicadas.
   gatilhos por instrução e ligados, as três funções com ACL só
   `postgres`/`service_role`, nenhum resto da conferência (zero linhas
   `conversation_%` na trilha logo depois). Antes, num Postgres 16 local,
-  aplicada 3× e com 15 cenários.
+  aplicada 3× e com 15 cenários. **Corrigida no mesmo dia, antes do merge**
+  (Codex P1 no #402): todo nome que vai para a trilha (pessoa, responsável,
+  contato) passou a sair só da conta da conversa. O arquivo foi emendado no
+  commit `eb82b464`, e a produção recebeu, pela Management API e com "pode
+  gravar a correção" do operador, só as duas funções de gatilho
+  (`CREATE OR REPLACE`, sem tocar tabela nem gatilho) e a conferência, que
+  ganhou o caso (f), o responsável de outra conta. Por isso o `statements`
+  do histórico `20261013165224` ainda guarda a versão anterior das duas
+  funções; o schema é o do arquivo. Conferida: as duas recortam a conta, não
+  sobrou o `ORDER BY` antigo, ACL intacta (`postgres`/`service_role`) e
+  nenhuma linha com responsável de fora da conta. Antes, localmente, o
+  mesmo recorte foi aplicado sobre a versão anterior e passou nos 16
+  cenários.
 
 ## Notas do histórico
 
