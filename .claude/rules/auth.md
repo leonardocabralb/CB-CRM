@@ -129,4 +129,6 @@ operador).
   `/marcar/<token>`, nunca `/agendar/<token>`: o cliente, sem login, cairia na
   tela de login.
 - Tela nova do painel entra em `protectedPaths` (foi assim com `/meu-dia` e
-  `/radar`); as rotas de senha e de convite ficam fora.
+  `/radar`); as rotas de senha e de convite ficam fora. Pino
+  `src/middleware.test.ts` (do original, #607): lê a pasta `(dashboard)` e
+  reprova a tela que faltar.

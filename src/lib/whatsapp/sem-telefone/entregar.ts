@@ -74,7 +74,10 @@ export async function entregarRecuperada(args: {
     const r = await gravarHistorica(db, m, conversationId, {
       // A `tardia` ainda é a última da conversa: reabre, prévia e posição —
       // ENTRE o insert e o acerto da espera (ver `tardia.ts`).
-      antesDeAssentar: modo === 'tardia' ? () => refletirComoUltima(db, conversationId) : undefined,
+      antesDeAssentar:
+        modo === 'tardia'
+          ? () => refletirComoUltima(db, conversationId, m.fromMe ? 'celular' : 'cliente')
+          : undefined,
     });
     return r.status === 'gravada' ? { status: 'gravada', modo, messageId: r.messageId } : r;
   }

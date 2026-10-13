@@ -13,6 +13,7 @@
 // duplicá-la produziria duas ordens diferentes para o mesmo fio.
 // ============================================================
 
+import { VIAS, type ViaDaConversa } from '@/lib/conversations/origem-da-escrita';
 import type { ItemDeExecucao } from '@/lib/execucoes/desfecho';
 import type { ConversationNote, LeadEvent, LeadEventType } from '@/types';
 
@@ -58,7 +59,19 @@ const TIPOS_NA_CONVERSA: ReadonlySet<LeadEventType> = new Set([
   'status_changed',
   'tag_added',
   'tag_removed',
+  // Quem abriu, encerrou, deixou pendente ou trocou o responsável (1083):
+  // pedido do operador, DENTRO da conversa.
+  'conversation_status_changed',
+  'conversation_assigned',
 ]);
+
+/**
+ * Vias em que a conversa nasce da MENSAGEM de alguém: a primeira bolha já
+ * diz quem começou, e a linha "Conversa iniciada" cairia logo DEPOIS dela (o
+ * carimbo da mensagem é o do aparelho, anterior ao INSERT da conversa). Fica
+ * no Histórico da ficha, que não esconde nada.
+ */
+const VIAS_DA_MENSAGEM: ReadonlySet<ViaDaConversa> = new Set(['cliente', 'celular', 'ligacao']);
 
 export function apareceNaConversa(evento: LeadEvent): boolean {
   // Linha reconstruída pela migration não é fato observado: mostrá-la no meio
@@ -66,7 +79,31 @@ export function apareceNaConversa(evento: LeadEvent): boolean {
   // antes da primeira mensagem sem que ninguém tenha visto isso acontecer.
   // Ela vale como registro, e é lá que fica.
   if (evento.reconstructed) return false;
+  if (ehCriacaoDaConversa(evento)) {
+    const via = viaDoEvento(evento);
+    if (via && VIAS_DA_MENSAGEM.has(via)) return false;
+  }
   return TIPOS_NA_CONVERSA.has(evento.event_type);
+}
+
+/** A linha que diz que a conversa NASCEU (1083: `from_status` nulo). */
+function ehCriacaoDaConversa(evento: LeadEvent): boolean {
+  return evento.event_type === 'conversation_status_changed' && evento.from_status === null;
+}
+
+/**
+ * Texto de `details` (JSONB de fora): só string não vazia vale. O gatilho
+ * grava ids e nomes como texto; qualquer outra coisa é linha mexida à mão.
+ */
+function textoDoDetalhe(evento: LeadEvent, chave: string): string | null {
+  const valor = evento.details?.[chave];
+  return typeof valor === 'string' && valor.trim() !== '' ? valor : null;
+}
+
+/** De onde veio a escrita (1083), só se for uma das vias conhecidas. */
+export function viaDoEvento(evento: LeadEvent): ViaDaConversa | null {
+  const via = textoDoDetalhe(evento, 'via');
+  return via && (VIAS as readonly string[]).includes(via) ? (via as ViaDaConversa) : null;
 }
 
 /** Chave de i18n do texto da linha. */
@@ -82,7 +119,61 @@ export function chaveDoTexto(evento: LeadEvent): string {
     if (evento.to_status === 'lost') return 'statusLost';
     return 'statusReopened';
   }
+  if (evento.event_type === 'conversation_status_changed') {
+    const de = evento.from_status;
+    const para = evento.to_status;
+    if (de === null) {
+      if (para === 'closed') return 'conversationCreatedClosed';
+      if (para === 'pending') return 'conversationCreatedPending';
+      return 'conversationStarted';
+    }
+    if (para === 'closed') return 'conversationClosed';
+    if (de === 'closed') return para === 'pending' ? 'conversationReopenedPending' : 'conversationReopened';
+    if (para === 'pending') return 'conversationPending';
+    return 'conversationOpened';
+  }
+  if (evento.event_type === 'conversation_assigned') {
+    // Pelo ID, não pelo nome: o nome falta quando o membro já saiu da conta.
+    if (!textoDoDetalhe(evento, 'para_responsavel_id')) return 'conversationUnassigned';
+    if (!textoDoDetalhe(evento, 'de_responsavel_id')) return 'conversationAssigned';
+    return 'conversationReassigned';
+  }
   return evento.event_type;
+}
+
+/** Nomes do responsável de antes e de depois, congelados pelo gatilho (1083). */
+export function responsaveisDoEvento(evento: LeadEvent): { de: string | null; para: string | null } {
+  return {
+    de: textoDoDetalhe(evento, 'de_responsavel'),
+    para: textoDoDetalhe(evento, 'para_responsavel'),
+  };
+}
+
+/**
+ * O responsável que mudou JUNTO com a situação — uma linha só para um fato
+ * só (encerrar solta o responsável; o robô deixa pendente com alguém).
+ *
+ * - Encerrada: "(estava com Bruno)", a pergunta que motivou a 1083 ("quem
+ *   estava atendendo quando fecharam?").
+ * - Aberta/pendente/criada com alguém: "e atribuída a Ana".
+ * - ⚠️ Quando o responsável É quem agiu, nada: quem reabre enviando fica
+ *   responsável por regra, e "Conversa reaberta e atribuída a Ana · por
+ *   Ana" diria duas vezes a mesma coisa.
+ */
+export function complementoDoResponsavel(
+  evento: LeadEvent,
+): { chave: 'suffixWasWith' | 'suffixAssignedTo'; nome: string | null } | null {
+  if (evento.event_type !== 'conversation_status_changed') return null;
+  // `=== true`: booleano vindo de JSONB (`"true"` e `1` são truthy).
+  const mudou = evento.details?.responsavel_mudou === true || ehCriacaoDaConversa(evento);
+  if (!mudou) return null;
+  const deId = textoDoDetalhe(evento, 'de_responsavel_id');
+  const paraId = textoDoDetalhe(evento, 'para_responsavel_id');
+  const { de, para } = responsaveisDoEvento(evento);
+  if (evento.to_status === 'closed') {
+    return deId && deId !== evento.actor_user_id ? { chave: 'suffixWasWith', nome: de } : null;
+  }
+  return paraId && paraId !== evento.actor_user_id ? { chave: 'suffixAssignedTo', nome: para } : null;
 }
 
 /**
@@ -90,11 +181,59 @@ export function chaveDoTexto(evento: LeadEvent): string {
  * quando existe, ganha de qualquer nome atual, porque a trilha responde
  * "quem era" e não "quem é". Sem ator, cai na origem.
  */
-export function chaveDoAutor(evento: LeadEvent): {
-  chave: 'actorPerson' | 'actorChannel' | 'actorAutomation' | 'actorSystem' | 'actorReconstructed';
-  nome: string | null;
-} {
+export type ChaveDoAutor =
+  | 'actorPerson'
+  | 'actorChannel'
+  | 'actorAutomation'
+  | 'actorSystem'
+  | 'actorReconstructed'
+  // As vias da trilha da conversa (1083), lidas de `details.via`.
+  | 'actorCustomer'
+  | 'actorPhone'
+  | 'actorCall'
+  | 'actorApi'
+  | 'actorAutomationNamed'
+  | 'actorBilling'
+  | 'actorFlow'
+  | 'actorFlowNamed'
+  | 'actorAgent'
+  | 'actorAgentNamed'
+  | 'actorScheduling'
+  | 'actorIntegration';
+
+export function chaveDoAutor(evento: LeadEvent): { chave: ChaveDoAutor; nome: string | null } {
   if (evento.actor_label) return { chave: 'actorPerson', nome: evento.actor_label };
+
+  // A via (1083) é mais precisa que a origem: "pelo cliente" em vez de "pela
+  // conexão", "pela API" em vez de "pelo sistema". Sem via, a origem decide,
+  // como na 912.
+  const ref = textoDoDetalhe(evento, 'ref_nome');
+  switch (viaDoEvento(evento)) {
+    case 'cliente':
+      return { chave: 'actorCustomer', nome: null };
+    case 'celular':
+      return { chave: 'actorPhone', nome: null };
+    case 'ligacao':
+      return { chave: 'actorCall', nome: null };
+    case 'api':
+      return { chave: 'actorApi', nome: null };
+    case 'automacao':
+      return ref ? { chave: 'actorAutomationNamed', nome: ref } : { chave: 'actorAutomation', nome: null };
+    case 'regua':
+      return ref ? { chave: 'actorAutomationNamed', nome: ref } : { chave: 'actorBilling', nome: null };
+    case 'robo':
+      return ref ? { chave: 'actorFlowNamed', nome: ref } : { chave: 'actorFlow', nome: null };
+    case 'agente':
+      return ref ? { chave: 'actorAgentNamed', nome: ref } : { chave: 'actorAgent', nome: null };
+    case 'agendamento':
+      return { chave: 'actorScheduling', nome: null };
+    case 'webhook':
+      return { chave: 'actorIntegration', nome: null };
+    // `envio` sem ator (a pessoa já não é da conta) e sem via: cai na origem.
+    default:
+      break;
+  }
+
   switch (evento.origin) {
     case 'conexao':
       return { chave: 'actorChannel', nome: evento.channel_label };

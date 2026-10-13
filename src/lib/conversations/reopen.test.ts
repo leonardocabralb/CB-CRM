@@ -14,7 +14,10 @@ interface Recorded {
   payload: Record<string, unknown> | null
   filters: [string, unknown][]
   count?: string
+  headers: [string, string][]
 }
+
+const CLIENTE = { via: 'cliente' } as const
 
 /**
  * Chainable stub shaped like the bit of postgrest this touches. `linhas` é o
@@ -26,7 +29,7 @@ function stubClient(error: { message: string } | null = null, linhas = 1) {
 
   const client = {
     from(table: string) {
-      const rec: Recorded = { table, payload: null, filters: [] }
+      const rec: Recorded = { table, payload: null, filters: [], headers: [] }
       calls.push(rec)
       const builder = {
         update(payload: Record<string, unknown>, opts?: { count?: string }) {
@@ -36,6 +39,10 @@ function stubClient(error: { message: string } | null = null, linhas = 1) {
         },
         eq(column: string, value: unknown) {
           rec.filters.push([column, value])
+          return builder
+        },
+        setHeader(nome: string, valor: string) {
+          rec.headers.push([nome, valor])
           return builder
         },
         then(onFulfilled: (v: { error: unknown; count: number | null }) => unknown) {
@@ -53,7 +60,7 @@ describe('reopenClosedConversation', () => {
   it('flips a closed conversation back to open', async () => {
     const { client, calls } = stubClient()
 
-    const reopened = await reopenClosedConversation(client, { id: 'conv-1' })
+    const reopened = await reopenClosedConversation(client, { id: 'conv-1' }, CLIENTE)
 
     expect(reopened).toBe(true)
     expect(calls).toHaveLength(1)
@@ -68,7 +75,7 @@ describe('reopenClosedConversation', () => {
     // encerrar a conversa de novo no meio delas.
     const { client, calls } = stubClient()
 
-    await reopenClosedConversation(client, { id: 'conv-1' })
+    await reopenClosedConversation(client, { id: 'conv-1' }, CLIENTE)
 
     expect(calls[0].filters).toEqual([
       ['id', 'conv-1'],
@@ -85,7 +92,7 @@ describe('reopenClosedConversation', () => {
     const { client, calls } = stubClient()
     const lidaAberta = { id: 'conv-1', status: 'open' }
 
-    expect(await reopenClosedConversation(client, lidaAberta)).toBe(true)
+    expect(await reopenClosedConversation(client, lidaAberta, CLIENTE)).toBe(true)
     expect(calls).toHaveLength(1)
     expect(calls[0].filters).toContainEqual(['status', 'closed'])
   })
@@ -93,7 +100,7 @@ describe('reopenClosedConversation', () => {
   it('conversa que o banco diz aberta/pendente: o UPDATE não casa e devolve false', async () => {
     const { client, calls } = stubClient(null, 0)
 
-    expect(await reopenClosedConversation(client, { id: 'conv-1' })).toBe(false)
+    expect(await reopenClosedConversation(client, { id: 'conv-1' }, CLIENTE)).toBe(false)
     expect(calls).toHaveLength(1)
     // `count` pedido ao PostgREST: é ele que separa "reabri" de "já estava aberta".
     expect(calls[0].count).toBe('exact')
@@ -106,7 +113,7 @@ describe('reopenClosedConversation', () => {
     const { client } = stubClient({ message: 'permission denied' })
 
     await expect(
-      reopenClosedConversation(client, { id: 'conv-1' }),
+      reopenClosedConversation(client, { id: 'conv-1' }, CLIENTE),
     ).resolves.toBe(false)
 
     expect(spy).toHaveBeenCalled()
@@ -121,7 +128,7 @@ describe('reopenClosedConversation — quem reabre fica responsável (2026-09-02
     await reopenClosedConversation(
       client,
       { id: 'conv-1' },
-      { assignTo: 'user-ana' },
+      { assignTo: 'user-ana', via: 'envio' },
     )
 
     expect(calls).toHaveLength(1)
@@ -144,17 +151,17 @@ describe('reopenClosedConversation — quem reabre fica responsável (2026-09-02
       await reopenClosedConversation(
         client,
         { id: 'conv-1' },
-        { assignTo },
+        { assignTo, via: 'api' },
       )
 
       expect(calls[0].payload).toMatchObject({ assigned_agent_id: null })
     },
   )
 
-  it('sem `opts` nenhum também zera o responsável (os caminhos do cliente)', async () => {
+  it('o caminho do cliente (sem assignTo) também zera o responsável', async () => {
     const { client, calls } = stubClient()
 
-    await reopenClosedConversation(client, { id: 'conv-1' })
+    await reopenClosedConversation(client, { id: 'conv-1' }, CLIENTE)
 
     expect(calls[0].payload).toMatchObject({ status: 'open', assigned_agent_id: null })
   })
@@ -170,7 +177,7 @@ describe('reopenClosedConversation — quem reabre fica responsável (2026-09-02
     const reabriu = await reopenClosedConversation(
       client,
       { id: 'conv-1' },
-      { assignTo: 'user-ana' },
+      { assignTo: 'user-ana', via: 'envio' },
     )
 
     expect(reabriu).toBe(false)
@@ -188,9 +195,38 @@ describe('reopenClosedConversation — a marca de espera (972) não é tocada', 
     // banco (Codex, PR #238); quem mantém a marca é o gatilho da 972.
     const { client, calls } = stubClient()
 
-    await reopenClosedConversation(client, { id: 'conv-1' }, { assignTo: 'user-ana' })
-    await reopenClosedConversation(client, { id: 'conv-2' })
+    await reopenClosedConversation(client, { id: 'conv-1' }, { assignTo: 'user-ana', via: 'envio' })
+    await reopenClosedConversation(client, { id: 'conv-2' }, CLIENTE)
 
     for (const c of calls) expect(c.payload).not.toHaveProperty('aguardando_desde')
+  })
+})
+
+describe('reopenClosedConversation — quem reabriu vai para a trilha (1083)', () => {
+  it('o cliente: só o x-cb-via, sem ator', async () => {
+    const { client, calls } = stubClient()
+
+    await reopenClosedConversation(client, { id: 'conv-1' }, CLIENTE)
+
+    expect(calls[0].headers).toEqual([['x-cb-via', 'cliente']])
+  })
+
+  it('o envio pelo CRM: quem enviou vai como ator', async () => {
+    const { client, calls } = stubClient()
+
+    await reopenClosedConversation(client, { id: 'conv-1' }, { via: 'envio', assignTo: 'user-ana' })
+
+    expect(calls[0].headers).toEqual([
+      ['x-cb-via', 'envio'],
+      ['x-cb-ator', 'user-ana'],
+    ])
+  })
+
+  it('assignTo fora do envio NÃO vira ator (só o envio fala por uma pessoa)', async () => {
+    const { client, calls } = stubClient()
+
+    await reopenClosedConversation(client, { id: 'conv-1' }, { via: 'celular', assignTo: 'user-ana' })
+
+    expect(calls[0].headers).toEqual([['x-cb-via', 'celular']])
   })
 })

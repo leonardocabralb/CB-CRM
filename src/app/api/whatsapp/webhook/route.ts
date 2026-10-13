@@ -12,6 +12,7 @@ import {
 import { fichaQueVenceu, findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { fichaQueVenceuPorBsuid } from '@/lib/contacts/bsuid'
 import { reopenClosedConversation } from '@/lib/conversations/reopen'
+import { marcarOrigem } from '@/lib/conversations/origem-da-escrita'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { routeContactToPipeline } from '@/lib/cb-channels/pipeline-routing'
 import { dispararAutomacoes, etapaTemQuemFale } from '@/lib/automations/engine'
@@ -1159,7 +1160,7 @@ async function processMessage(
   // de gravar, antes do bump, do canal e da entrega: o encerramento que cair
   // entre a mensagem e a reabertura é desfeito por ela, então essa janela
   // tem de ser uma ida ao banco, não quatro (Codex, PR #238). Ver `reopen.ts`.
-  await reopenClosedConversation(supabaseAdmin(), conversation)
+  await reopenClosedConversation(supabaseAdmin(), conversation, { via: 'cliente' })
 
   // Update conversation. The unread bump is done DB-side (migration 040's
   // bump_conversation_on_inbound) rather than as a read-modify-write of the
@@ -1961,13 +1962,15 @@ async function findOrCreateConversation(
 
   // Create new conversation. Same tenancy + audit split as
   // findOrCreateContact above.
-  const { data: newConv, error: createError } = await supabaseAdmin()
-    .from('conversations')
-    .insert({
+  const { data: newConv, error: createError } = await marcarOrigem(
+    supabaseAdmin().from('conversations').insert({
       account_id: accountId,
       user_id: configOwnerUserId,
       contact_id: contactId,
-    })
+    }),
+    // A trilha da conversa (1083): quem abriu foi o cliente escrevendo.
+    { via: 'cliente' },
+  )
     .select()
     .single()
 

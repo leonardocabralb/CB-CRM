@@ -2149,7 +2149,14 @@ export type LeadEventType =
   | 'status_changed'
   | 'deal_deleted'
   | 'tag_added'
-  | 'tag_removed';
+  | 'tag_removed'
+  /**
+   * Situação da conversa (1083): `from_status` → `to_status`; na CRIAÇÃO,
+   * `from_status` nulo. Responsável que mudou junto mora em `details`.
+   */
+  | 'conversation_status_changed'
+  /** Só o responsável mudou (1083): de/para em `details`. */
+  | 'conversation_assigned';
 
 /**
  * De onde partiu a mudança. `sistema` é escrita server-side sem ator

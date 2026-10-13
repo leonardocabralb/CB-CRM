@@ -97,6 +97,7 @@ async function recolherOrfaos(db: SupabaseClient): Promise<void> {
         conversationId: o.conversation_id,
         contactId: (conv as { contact_id?: string | null } | null)?.contact_id ?? null,
         nomeDoAgente: agente?.nome ?? 'IA',
+        agenteId: agente?.id ?? o.ia_agente_id,
         transferirPara: agente?.transferirPara ?? null,
         motivo: 'incerto',
       })

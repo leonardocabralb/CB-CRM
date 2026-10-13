@@ -1,13 +1,18 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
+import { VIAS } from '@/lib/conversations/origem-da-escrita';
 import {
   apareceNaConversa,
   chaveDoAutor,
   chaveDoTexto,
+  complementoDoResponsavel,
   direcaoDoMovimento,
   intercalar,
   juntarEventos,
   ordenarPorTempo,
+  viaDoEvento,
 } from './describe';
 import type { LeadEvent, ConversationNote } from '@/types';
 
@@ -399,5 +404,240 @@ describe('intercalar', () => {
     const itens = intercalar([], [], [], [execucao('2026-07-27T18:00:00+00:00', 3)]);
     expect(itens).toHaveLength(1);
     expect(itens[0].execucao?.vezes).toBe(3);
+  });
+});
+
+// ============================================================
+// A trilha da CONVERSA (1083): quem abriu, encerrou, deixou pendente ou
+// trocou o responsável.
+// ============================================================
+
+const ANA = '00000000-0000-4000-8000-000000000002';
+const BRUNO = '00000000-0000-4000-8000-000000000001';
+
+function daConversa(patch: Partial<LeadEvent>): LeadEvent {
+  return evento({
+    deal_id: null,
+    conversation_id: 'conv-1',
+    event_type: 'conversation_status_changed',
+    origin: 'sistema',
+    ...patch,
+  });
+}
+
+describe('conversa (1083) — o que aparece no fio', () => {
+  it('mudança de situação e de responsável aparecem', () => {
+    expect(apareceNaConversa(daConversa({ from_status: 'open', to_status: 'closed' }))).toBe(true);
+    expect(apareceNaConversa(daConversa({ event_type: 'conversation_assigned' }))).toBe(true);
+  });
+
+  it.each(['cliente', 'celular', 'ligacao'])(
+    'criação pela mensagem (%s) fica só no Histórico: a primeira bolha já diz quem começou',
+    (via) => {
+      expect(apareceNaConversa(daConversa({ from_status: null, to_status: 'open', details: { via } }))).toBe(false);
+    },
+  );
+
+  it('criação por automação, webhook ou pessoa aparece ("criada já encerrada" explica o Encerradas)', () => {
+    expect(
+      apareceNaConversa(daConversa({ from_status: null, to_status: 'closed', details: { via: 'webhook' } })),
+    ).toBe(true);
+    expect(
+      apareceNaConversa(
+        daConversa({ from_status: null, to_status: 'open', actor_label: 'Ana', details: { via: 'envio' } }),
+      ),
+    ).toBe(true);
+  });
+
+  it('reabrir pelo cliente aparece (não é criação)', () => {
+    expect(
+      apareceNaConversa(daConversa({ from_status: 'closed', to_status: 'open', details: { via: 'cliente' } })),
+    ).toBe(true);
+  });
+});
+
+describe('conversa (1083) — a frase da situação', () => {
+  it.each([
+    [null, 'open', 'conversationStarted'],
+    [null, 'closed', 'conversationCreatedClosed'],
+    [null, 'pending', 'conversationCreatedPending'],
+    ['open', 'closed', 'conversationClosed'],
+    ['pending', 'closed', 'conversationClosed'],
+    ['closed', 'open', 'conversationReopened'],
+    ['closed', 'pending', 'conversationReopenedPending'],
+    ['open', 'pending', 'conversationPending'],
+    ['pending', 'open', 'conversationOpened'],
+  ] as const)('%s → %s = %s', (de, para, chave) => {
+    expect(chaveDoTexto(daConversa({ from_status: de, to_status: para }))).toBe(chave);
+  });
+
+  it('responsável: pelo ID, não pelo nome (o nome falta quando o membro saiu)', () => {
+    const atribuida = daConversa({ event_type: 'conversation_assigned', details: { para_responsavel_id: ANA } });
+    const trocada = daConversa({
+      event_type: 'conversation_assigned',
+      details: { de_responsavel_id: BRUNO, para_responsavel_id: ANA },
+    });
+    const solta = daConversa({ event_type: 'conversation_assigned', details: { de_responsavel_id: BRUNO } });
+    expect(chaveDoTexto(atribuida)).toBe('conversationAssigned');
+    expect(chaveDoTexto(trocada)).toBe('conversationReassigned');
+    expect(chaveDoTexto(solta)).toBe('conversationUnassigned');
+  });
+});
+
+describe('conversa (1083) — o responsável que mudou junto', () => {
+  const fechou = (patch: Partial<LeadEvent>) =>
+    daConversa({
+      from_status: 'open',
+      to_status: 'closed',
+      details: { responsavel_mudou: true, de_responsavel_id: BRUNO, de_responsavel: 'Bruno' },
+      ...patch,
+    });
+
+  it('quem encerrou NÃO era o responsável: "(estava com Bruno)"', () => {
+    expect(complementoDoResponsavel(fechou({ actor_user_id: ANA, actor_label: 'Ana' }))).toEqual({
+      chave: 'suffixWasWith',
+      nome: 'Bruno',
+    });
+  });
+
+  it('o próprio responsável encerrou: nada a acrescentar', () => {
+    expect(complementoDoResponsavel(fechou({ actor_user_id: BRUNO, actor_label: 'Bruno' }))).toBeNull();
+  });
+
+  it('a automação encerrou a de alguém: "(estava com …)"', () => {
+    expect(complementoDoResponsavel(fechou({ details: { ...fechou({}).details, via: 'automacao' } }))).toEqual({
+      chave: 'suffixWasWith',
+      nome: 'Bruno',
+    });
+  });
+
+  it('o robô deixou pendente com a Ana: "e atribuída a Ana"', () => {
+    const robo = daConversa({
+      from_status: 'open',
+      to_status: 'pending',
+      details: { via: 'robo', responsavel_mudou: true, para_responsavel_id: ANA, para_responsavel: 'Ana' },
+    });
+    expect(complementoDoResponsavel(robo)).toEqual({ chave: 'suffixAssignedTo', nome: 'Ana' });
+  });
+
+  it('reabrir enviando atribui a quem enviou: não repete o nome', () => {
+    const envio = daConversa({
+      from_status: 'closed',
+      to_status: 'open',
+      actor_user_id: ANA,
+      actor_label: 'Ana',
+      details: { via: 'envio', responsavel_mudou: true, para_responsavel_id: ANA, para_responsavel: 'Ana' },
+    });
+    expect(complementoDoResponsavel(envio)).toBeNull();
+  });
+
+  it('o cliente reabriu (o responsável velho foi solto): nada a acrescentar', () => {
+    const cliente = daConversa({
+      from_status: 'closed',
+      to_status: 'open',
+      details: { via: 'cliente', responsavel_mudou: true, de_responsavel_id: BRUNO, de_responsavel: 'Bruno' },
+    });
+    expect(complementoDoResponsavel(cliente)).toBeNull();
+  });
+
+  it('booleano de JSONB só vale com === true ("true" de texto não liga)', () => {
+    expect(
+      complementoDoResponsavel(fechou({ details: { responsavel_mudou: 'true', de_responsavel_id: BRUNO } })),
+    ).toBeNull();
+  });
+
+  it('mudança só de responsável não ganha complemento (a frase já diz tudo)', () => {
+    expect(
+      complementoDoResponsavel(
+        daConversa({ event_type: 'conversation_assigned', details: { responsavel_mudou: true } }),
+      ),
+    ).toBeNull();
+  });
+});
+
+describe('conversa (1083) — quem fez', () => {
+  it('a pessoa ganha de qualquer via', () => {
+    expect(chaveDoAutor(daConversa({ actor_label: 'Ana', details: { via: 'envio' } }))).toEqual({
+      chave: 'actorPerson',
+      nome: 'Ana',
+    });
+  });
+
+  it.each([
+    ['cliente', 'actorCustomer'],
+    ['celular', 'actorPhone'],
+    ['ligacao', 'actorCall'],
+    ['api', 'actorApi'],
+    ['automacao', 'actorAutomation'],
+    ['regua', 'actorBilling'],
+    ['robo', 'actorFlow'],
+    ['agente', 'actorAgent'],
+    ['agendamento', 'actorScheduling'],
+    ['webhook', 'actorIntegration'],
+  ] as const)('via %s sem nome = %s', (via, chave) => {
+    expect(chaveDoAutor(daConversa({ details: { via } })).chave).toBe(chave);
+  });
+
+  it.each([
+    ['automacao', 'actorAutomationNamed'],
+    ['regua', 'actorAutomationNamed'],
+    ['robo', 'actorFlowNamed'],
+    ['agente', 'actorAgentNamed'],
+  ] as const)('via %s com o nome congelado = %s', (via, chave) => {
+    expect(chaveDoAutor(daConversa({ details: { via, ref_nome: 'Follow-up' } }))).toEqual({ chave, nome: 'Follow-up' });
+  });
+
+  it('envio sem pessoa (saiu da conta) e via desconhecida caem na origem', () => {
+    expect(chaveDoAutor(daConversa({ details: { via: 'envio' } })).chave).toBe('actorSystem');
+    expect(chaveDoAutor(daConversa({ details: { via: 'hacker' } })).chave).toBe('actorSystem');
+    expect(viaDoEvento(daConversa({ details: { via: 'hacker' } }))).toBeNull();
+  });
+});
+
+describe('conversa (1083) — toda chave que a leitura devolve existe nos DOIS dicionários', () => {
+  // Chave montada escapa dos portões estáticos (CLAUDE.md, seção 9): a lista
+  // é COLHIDA da própria leitura, varrendo as combinações, nunca digitada.
+  const dicionario = (arquivo: string) =>
+    JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'messages', arquivo), 'utf8'))
+      .LeadEvents as Record<string, string>;
+
+  const chaves = new Set<string>();
+  const situacoes = [null, 'open', 'pending', 'closed'];
+  for (const de of situacoes) {
+    for (const para of ['open', 'pending', 'closed']) {
+      if (de === para) continue;
+      const e = daConversa({
+        from_status: de,
+        to_status: para,
+        details: { responsavel_mudou: true, de_responsavel_id: BRUNO, para_responsavel_id: ANA },
+      });
+      chaves.add(chaveDoTexto(e));
+      const c = complementoDoResponsavel(e);
+      if (c) chaves.add(c.chave);
+    }
+  }
+  for (const details of [{ para_responsavel_id: ANA }, { de_responsavel_id: BRUNO, para_responsavel_id: ANA }, { de_responsavel_id: BRUNO }]) {
+    chaves.add(chaveDoTexto(daConversa({ event_type: 'conversation_assigned', details })));
+  }
+  for (const via of [...VIAS, 'nenhuma']) {
+    chaves.add(chaveDoAutor(daConversa({ details: { via } })).chave);
+    chaves.add(chaveDoAutor(daConversa({ details: { via, ref_nome: 'X' } })).chave);
+  }
+  for (const origin of ['usuario', 'conexao', 'automacao', 'sistema', 'retroativo'] as const) {
+    chaves.add(chaveDoAutor(evento({ origin })).chave);
+  }
+
+  for (const arquivo of ['en.json', 'pt-BR.json']) {
+    it(`${arquivo} tem as ${chaves.size} chaves`, () => {
+      const lido = dicionario(arquivo);
+      const faltam = [...chaves].filter((c) => typeof lido[c] !== 'string');
+      expect(faltam).toEqual([]);
+    });
+  }
+
+  it('a varredura alcança os dois complementos e todas as frases da conversa', () => {
+    for (const c of ['suffixWasWith', 'suffixAssignedTo', 'conversationStarted', 'conversationOpened']) {
+      expect(chaves).toContain(c);
+    }
   });
 });

@@ -70,14 +70,14 @@ export async function middleware(request: NextRequest) {
   }
 
   // Protected pages - redirect to login if not authenticated
-  // (`/flows`, `/agents` e `/notifications` ainda faltam aqui — omissão
-  // acumulada, coberta pelo shell do cliente + RLS; corrigir à parte.)
+  // Toda pasta de `src/app/(dashboard)/` entra aqui: o `middleware.test.ts`
+  // (do original, #607) lê a pasta e reprova a que faltar.
   //
   // ⚠️ `/agenda` cobre `/agendadas` DE GRAÇA, porque o teste é `startsWith` —
   // e é por isso mesmo que a página pública de auto-agendamento da Fase 2 vai
   // se chamar `/marcar/<token>`, nunca `/agendar/<token>`: esta linha mandaria
   // o cliente, que não tem login, para a tela de login.
-  const protectedPaths = ['/dashboard', '/meu-dia', '/radar', '/inbox', '/contacts', '/agenda', '/reunioes', '/pipelines', '/broadcasts', '/automations', '/settings']
+  const protectedPaths = ['/dashboard', '/meu-dia', '/radar', '/inbox', '/contacts', '/agenda', '/reunioes', '/pipelines', '/broadcasts', '/automations', '/flows', '/agents', '/notifications', '/tarefas', '/settings']
   if (!user && protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'

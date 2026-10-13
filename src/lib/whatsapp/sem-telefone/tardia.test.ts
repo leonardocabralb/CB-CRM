@@ -28,7 +28,7 @@ describe('refletirComoUltima — a recuperada TARDIA ainda é a última da conve
 
   it('conversa ENCERRADA: reabre SEM responsável, troca a prévia e sobe na lista', async () => {
     const b = criarBanco({ conversations: [conversa()], messages: [mensagem()] });
-    await refletirComoUltima(b.db, 'conv-1');
+    await refletirComoUltima(b.db, 'conv-1', 'cliente');
     const c = b.tabelas.conversations[0];
     expect(c.status).toBe('open');
     // O dono antigo NÃO volta: cliente e celular pareado reabrem sem responsável.
@@ -42,7 +42,7 @@ describe('refletirComoUltima — a recuperada TARDIA ainda é a última da conve
       conversations: [conversa({ status: 'open', assigned_agent_id: 'ana' })],
       messages: [mensagem()],
     });
-    await refletirComoUltima(b.db, 'conv-1');
+    await refletirComoUltima(b.db, 'conv-1', 'cliente');
     expect(b.tabelas.conversations[0]).toMatchObject({
       status: 'open',
       assigned_agent_id: 'ana',
@@ -52,7 +52,7 @@ describe('refletirComoUltima — a recuperada TARDIA ainda é a última da conve
 
   it('PENDENTE continua pendente (aberta ↔ pendente não é assunto de reabertura)', async () => {
     const b = criarBanco({ conversations: [conversa({ status: 'pending' })], messages: [mensagem()] });
-    await refletirComoUltima(b.db, 'conv-1');
+    await refletirComoUltima(b.db, 'conv-1', 'cliente');
     expect(b.tabelas.conversations[0].status).toBe('pending');
   });
 
@@ -68,7 +68,7 @@ describe('refletirComoUltima — a recuperada TARDIA ainda é a última da conve
         mensagem({ id: 'm-nova', content_text: 'e mais uma coisa', created_at: '2026-09-18T19:30:00.000Z' }),
       ],
     });
-    await refletirComoUltima(b.db, 'conv-1');
+    await refletirComoUltima(b.db, 'conv-1', 'cliente');
     expect(b.tabelas.conversations[0].last_message_text).toBe('e mais uma coisa');
   });
 
@@ -77,26 +77,26 @@ describe('refletirComoUltima — a recuperada TARDIA ainda é a última da conve
       conversations: [conversa({ status: 'open' })],
       messages: [mensagem({ content_text: null, content_type: 'audio' })],
     });
-    await refletirComoUltima(b.db, 'conv-1');
+    await refletirComoUltima(b.db, 'conv-1', 'cliente');
     expect(b.tabelas.conversations[0].last_message_text).toBe('[audio]');
   });
 
   it('conversa que não existe (apagada no meio): não escreve nada', async () => {
     const b = criarBanco({ conversations: [], messages: [mensagem()] });
-    await refletirComoUltima(b.db, 'conv-1');
+    await refletirComoUltima(b.db, 'conv-1', 'cliente');
     expect(b.escritas).toEqual([]);
   });
 
   it('NUNCA lança — nem com erro de banco, nem com o cliente do banco estourando', async () => {
     const b = criarBanco({ conversations: [conversa()], messages: [mensagem()] });
     b.falhas.conversations = { message: 'timeout' };
-    await expect(refletirComoUltima(b.db, 'conv-1')).resolves.toBeUndefined();
+    await expect(refletirComoUltima(b.db, 'conv-1', 'cliente')).resolves.toBeUndefined();
 
     const quebrado = {
       from: () => {
         throw new Error('rede fora');
       },
     } as never;
-    await expect(refletirComoUltima(quebrado, 'conv-1')).resolves.toBeUndefined();
+    await expect(refletirComoUltima(quebrado, 'conv-1', 'cliente')).resolves.toBeUndefined();
   });
 });

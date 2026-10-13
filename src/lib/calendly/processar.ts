@@ -170,7 +170,9 @@ export async function processarAgendamento(
   let fichaNova = false;
   if (!resolvido) {
     try {
-      const destino = await resolverDestinatario(admin, accountId, agendamento.telefone, agendamento.nome);
+      const destino = await resolverDestinatario(admin, accountId, agendamento.telefone, agendamento.nome, {
+        origem: { via: "agendamento" },
+      });
       resolvido = destino.contactId;
       conversaDaFichaNova = destino.conversationId;
       fichaNova = destino.criouContato;
@@ -227,7 +229,10 @@ export async function processarAgendamento(
   let avisoDaConversa: string | null = null;
   if (!conversa) {
     try {
-      conversa = { id: await conversaDoContato(admin, accountId, contactId), channel_id: null };
+      conversa = {
+        id: await conversaDoContato(admin, accountId, contactId, { origem: { via: "agendamento" } }),
+        channel_id: null,
+      };
     } catch (e) {
       const motivo = e instanceof Error ? e.message : "erro";
       console.error("[calendly] não foi possível criar a conversa do cliente:", motivo);

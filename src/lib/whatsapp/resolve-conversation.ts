@@ -25,6 +25,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { fichaQueVenceu, findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
 import { telefoneDigitado } from '@/lib/contacts/telefone';
 import { SendMessageError } from '@/lib/whatsapp/send-message';
+import { marcarOrigem } from '@/lib/conversations/origem-da-escrita';
 import {
   resolveAuditUserId,
   ContactError,
@@ -215,13 +216,15 @@ async function findOrCreateConversationRow(
     return existing[0].id;
   }
 
-  const { data: newConv, error: convErr } = await db
-    .from('conversations')
-    .insert({
+  // A trilha da conversa (1083): quem abriu foi a API (POST /v1/messages).
+  const { data: newConv, error: convErr } = await marcarOrigem(
+    db.from('conversations').insert({
       account_id: accountId,
       user_id: ownerUserId,
       contact_id: contactId,
-    })
+    }),
+    { via: 'api' }
+  )
     .select('id')
     .single();
 

@@ -4,16 +4,23 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   ArrowLeftRight,
+  CircleCheck,
   CircleDot,
+  Clock,
+  MessageCircle,
+  MessageCirclePlus,
   Plus,
+  RotateCcw,
   Tag as TagIcon,
   Trash2,
   Trophy,
   Undo2,
+  UserCheck,
+  UserX,
   XCircle,
 } from 'lucide-react';
 
-import { direcaoDoMovimento } from '@/lib/lead-events/describe';
+import { chaveDoTexto, direcaoDoMovimento } from '@/lib/lead-events/describe';
 import type { LeadEvent } from '@/types';
 
 /**
@@ -48,6 +55,29 @@ export function LeadEventIcon({
       return <TagIcon className={className} />;
     case 'tag_removed':
       return <TagIcon className={className} />;
+    // A conversa (1083): a mesma régua do texto decide o símbolo.
+    case 'conversation_status_changed':
+      switch (chaveDoTexto(evento)) {
+        case 'conversationStarted':
+        case 'conversationCreatedClosed':
+        case 'conversationCreatedPending':
+          return <MessageCirclePlus className={className} />;
+        case 'conversationClosed':
+          return <CircleCheck className={className} />;
+        case 'conversationReopened':
+        case 'conversationReopenedPending':
+          return <RotateCcw className={className} />;
+        case 'conversationPending':
+          return <Clock className={className} />;
+        default:
+          return <MessageCircle className={className} />;
+      }
+    case 'conversation_assigned':
+      return chaveDoTexto(evento) === 'conversationUnassigned' ? (
+        <UserX className={className} />
+      ) : (
+        <UserCheck className={className} />
+      );
     default:
       return <CircleDot className={className} />;
   }

@@ -1910,7 +1910,7 @@ describe('ficha sem conversa — os passos de envio criam a conversa (27/09/2026
       expect.anything(),
       ACCOUNT,
       'c1',
-      { conversaNovaEncerrada: true }
+      { conversaNovaEncerrada: true, origem: { via: 'automacao', ref: expect.any(String) } }
     );
     expect(vi.mocked(engineSendText).mock.calls[0]?.[0]).toMatchObject({
       conversationId: 'conv-criada',
@@ -1935,7 +1935,7 @@ describe('ficha sem conversa — os passos de envio criam a conversa (27/09/2026
       expect.anything(),
       ACCOUNT,
       'c1',
-      { conversaNovaEncerrada: true }
+      { conversaNovaEncerrada: true, origem: { via: 'automacao', ref: expect.any(String) } }
     );
     const sender =
       tipo === 'send_template' ? engineSendTemplate : engineSendInteractive;
@@ -2867,7 +2867,7 @@ describe('tag_added — conversation policy', () => {
       expect.anything(),
       ACCOUNT,
       'c1',
-      { conversaNovaEncerrada: true }
+      { conversaNovaEncerrada: true, origem: { via: 'automacao', ref: expect.any(String) } }
     );
     expect(vi.mocked(engineSendText).mock.calls[0]?.[0]).toMatchObject({
       conversationId: 'conv-criada',
@@ -3051,7 +3051,8 @@ describe('send_to_number — aviso para a equipe', () => {
       expect.anything(),
       ACCOUNT,
       '5583980000016',
-      'Leonardo'
+      'Leonardo',
+      { origem: { via: 'automacao', ref: expect.any(String) } }
     );
     const args = vi.mocked(engineSendText).mock.calls[0]?.[0];
     expect(args?.conversationId).toBe('conv-equipe');
