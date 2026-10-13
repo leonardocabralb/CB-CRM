@@ -697,9 +697,11 @@ O webhook é opcional (o cartão mostra a URL; eventos `MeetingReady` e
 agendador.
 
 **Meta Ads** (investimento e custo por lead no painel do funil): no
-Gerenciador de Negócios, *Configurações do negócio → Usuários do sistema →
-Gerar token*, com a permissão `ads_read` e sem validade. Depois, ligue cada
-campanha a um funil no cartão.
+Gerenciador de Negócios, *Configurações do negócio → Usuários do sistema*,
+atribua a conta de anúncios ao usuário (basta ver desempenho) e use *Gerar
+token*, com a permissão `ads_read` e sem validade. No cartão, cole o token,
+clique em *Buscar contas* e escolha a conta entre as que o token enxerga.
+Depois, ligue cada campanha a um funil no cartão.
 
 **Assistente de IA, Radar e transcrição de áudio**: a chave de OpenAI,
 Anthropic ou Google Gemini vai em *Configurações → Integrações*. A

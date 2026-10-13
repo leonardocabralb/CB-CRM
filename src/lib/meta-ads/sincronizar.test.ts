@@ -79,6 +79,7 @@ function dubleDoAdmin(existentes: LinhaDeGasto[]): { admin: SupabaseClient; regi
 
 function clienteFalso(gastos: { campaignId: string; dia: string; gasto: number }[]): ClienteMeta {
   return {
+    contas: async () => [{ id: "act_1", nome: "CB", moeda: "BRL", ativa: true }],
     conta: async () => ({ id: "act_1", nome: "CB", moeda: "BRL" }),
     campanhas: async () => [{ id: "c1", nome: "Campanha 1", status: "ACTIVE" }],
     gastos: async () => gastos,

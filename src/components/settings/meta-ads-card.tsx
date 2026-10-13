@@ -9,15 +9,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { CampanhaDoMetaAds, CartaoDoMetaAds } from "@/lib/meta-ads/cartao";
+import type { ContaDisponivel } from "@/lib/meta-ads/cliente";
 import { cn } from "@/lib/utils";
 
-import { SettingsChip } from "./settings-chip";
+import { SettingsChip, StatusDot, type ChipVariant } from "./settings-chip";
 
 /**
  * O cartão "Meta Ads" da aba Integrações (Fase 4 do funil comercial).
- * Conecta a conta de anúncios (id + token de usuário de sistema, testado e
- * guardado cifrado pela rota), mostra a última sincronização e a tabela
- * campanha → funil — é essa atribuição que amarra o gasto ao Desempenho.
+ * Conecta a conta de anúncios (token de usuário de sistema → as contas que
+ * ele enxerga → a escolhida; o token é testado e guardado cifrado pela
+ * rota), mostra a última sincronização e a tabela campanha → funil — é essa
+ * atribuição que amarra o gasto ao Desempenho.
  *
  * Só admin chega aqui (a aba inteira é admin). Nenhum token volta da rota;
  * o campo do token nasce vazio sempre.
@@ -46,8 +48,13 @@ export function MetaAdsCard() {
   const [dados, setDados] = useState<Resposta | null>(null);
   const [falhou, setFalhou] = useState(false);
   const [aberto, setAberto] = useState(false);
-  const [adAccountId, setAdAccountId] = useState("");
   const [token, setToken] = useState("");
+  // ⚠️ A lista é DO TOKEN que a buscou (carimbo `de`): trocado o token — ou
+  // editado enquanto a busca corria —, ela deixa de valer no mesmo render,
+  // sem esperar limpeza, e conectar uma conta de outro token fica impossível.
+  const [lista, setLista] = useState<{ de: string; contas: ContaDisponivel[] } | null>(null);
+  const [contaEscolhida, setContaEscolhida] = useState("");
+  const [buscando, setBuscando] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [sincronizando, setSincronizando] = useState(false);
   // Sem trava, dois cliques mandam dois DELETE: o segundo responde sobre uma
@@ -66,6 +73,20 @@ export function MetaAdsCard() {
       ? // chave montada: `metaAds.motivo.<codigo>` — lista fechada acima
         t(`metaAds.motivo.${codigo}` as Parameters<typeof t>[0])
       : t("metaAds.motivo.meta_error");
+
+  // O `status` da campanha na Meta → selo da tabela: verde ativa, âmbar
+  // pausada, neutro o resto. Chaves literais (sem montar), para os portões
+  // de i18n enxergarem; status que a Meta inventar depois aparece cru.
+  const statusDaCampanha = (status: string | null): readonly [ChipVariant, string] =>
+    status === "ACTIVE"
+      ? ["ok", t("metaAds.statusAtiva")]
+      : status === "PAUSED"
+        ? ["warn", t("metaAds.statusPausada")]
+        : status === "ARCHIVED"
+          ? ["muted", t("metaAds.statusArquivada")]
+          : status === "DELETED"
+            ? ["muted", t("metaAds.statusExcluida")]
+            : ["muted", status ?? "—"];
 
   const carregar = useCallback(async () => {
     try {
@@ -95,6 +116,36 @@ export function MetaAdsCard() {
     };
   }, [carregar]);
 
+  const tokenLimpo = token.trim();
+  const contas = lista && lista.de === tokenLimpo ? lista.contas : null;
+  const escolhida = contas?.some((c) => c.id === contaEscolhida) ? contaEscolhida : "";
+
+  const buscarContas = async () => {
+    const de = tokenLimpo;
+    setBuscando(true);
+    setErro(null);
+    try {
+      const res = await fetch("/api/cb/meta-ads/contas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ access_token: de }),
+      });
+      const corpo = (await res.json().catch(() => ({}))) as { contas?: ContaDisponivel[]; error?: string };
+      if (!vivoRef.current) return;
+      if (!res.ok || !Array.isArray(corpo.contas)) {
+        setErro(motivo(corpo.error ?? "meta_error"));
+        return;
+      }
+      setLista({ de, contas: corpo.contas });
+      // Uma conta só: já vem escolhida. Mais de uma: o operador escolhe.
+      setContaEscolhida(corpo.contas.length === 1 ? corpo.contas[0].id : "");
+    } catch {
+      if (vivoRef.current) setErro(motivo("rede"));
+    } finally {
+      if (vivoRef.current) setBuscando(false);
+    }
+  };
+
   const conectar = async () => {
     setSalvando(true);
     setErro(null);
@@ -102,7 +153,7 @@ export function MetaAdsCard() {
       const res = await fetch("/api/cb/meta-ads/config", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ad_account_id: adAccountId, access_token: token }),
+        body: JSON.stringify({ ad_account_id: escolhida, access_token: tokenLimpo }),
       });
       const corpo = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
@@ -110,6 +161,7 @@ export function MetaAdsCard() {
         return;
       }
       setToken("");
+      setLista(null);
       toast.success(t("metaAds.conectado"));
       // a primeira sincronização (90 dias) roda em `after()` na rota
       setTimeout(() => void carregar(), 2500);
@@ -227,32 +279,57 @@ export function MetaAdsCard() {
               <p className="max-w-[62ch] text-muted-foreground">{t("metaAds.desc")}</p>
               <div className="grid gap-3 sm:max-w-md">
                 <div className="space-y-1">
-                  <Label htmlFor="meta-ads-conta">{t("metaAds.campoConta")}</Label>
-                  <Input
-                    id="meta-ads-conta"
-                    value={adAccountId}
-                    onChange={(e) => setAdAccountId(e.target.value)}
-                    placeholder="act_1234567890"
-                    autoComplete="off"
-                  />
-                </div>
-                <div className="space-y-1">
                   <Label htmlFor="meta-ads-token">{t("metaAds.campoToken")}</Label>
                   <Input
                     id="meta-ads-token"
                     type="password"
                     value={token}
-                    onChange={(e) => setToken(e.target.value)}
+                    onChange={(e) => {
+                      setToken(e.target.value);
+                      setErro(null);
+                    }}
                     placeholder={t("metaAds.tokenVazio")}
                     autoComplete="off"
                   />
                   <p className="text-xs text-muted-foreground">{t("metaAds.tokenDica")}</p>
                 </div>
+                {contas && contas.length === 0 && (
+                  <p className="text-xs text-amber-600">{t("metaAds.semContas")}</p>
+                )}
+                {contas && contas.length > 0 && (
+                  <div className="space-y-1">
+                    <Label htmlFor="meta-ads-conta">{t("metaAds.campoConta")}</Label>
+                    <select
+                      id="meta-ads-conta"
+                      value={escolhida}
+                      onChange={(e) => setContaEscolhida(e.target.value)}
+                      className="h-8 w-full min-w-0 rounded-lg border border-input bg-card px-2 text-sm text-foreground"
+                    >
+                      {escolhida === "" && (
+                        <option value="" disabled>
+                          {t("metaAds.escolherConta")}
+                        </option>
+                      )}
+                      {contas.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {`${c.nome} (${c.id}) · ${c.moeda}${c.ativa ? "" : ` · ${t("metaAds.contaInativa")}`}`}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-muted-foreground">{t("metaAds.contasDoToken", { n: contas.length })}</p>
+                  </div>
+                )}
                 {erro && <p className="text-xs text-destructive">{t("falha", { motivo: erro })}</p>}
                 <div>
-                  <Button type="button" size="sm" onClick={() => void conectar()} disabled={salvando || !adAccountId || !token}>
-                    {salvando ? t("metaAds.conectando") : t("metaAds.conectar")}
-                  </Button>
+                  {contas && contas.length > 0 ? (
+                    <Button type="button" size="sm" onClick={() => void conectar()} disabled={salvando || !escolhida}>
+                      {salvando ? t("metaAds.conectando") : t("metaAds.conectar")}
+                    </Button>
+                  ) : (
+                    <Button type="button" size="sm" onClick={() => void buscarContas()} disabled={buscando || !tokenLimpo}>
+                      {buscando ? t("metaAds.buscandoContas") : t("metaAds.buscarContas")}
+                    </Button>
+                  )}
                 </div>
               </div>
             </>
@@ -296,29 +373,44 @@ export function MetaAdsCard() {
                       </tr>
                     </thead>
                     <tbody>
-                      {dados.campanhas.map((c) => (
-                        <tr key={c.id} className="border-t border-border">
-                          <td className="max-w-[24rem] truncate py-1.5 pr-2" title={c.nome}>
-                            {c.nome}
-                          </td>
-                          <td className="py-1.5 pr-2 text-muted-foreground">{c.status_meta ?? "—"}</td>
-                          <td className="py-1.5">
-                            <select
-                              value={c.pipeline_id ?? ""}
-                              onChange={(e) => void atribuir(c, e.target.value || null)}
-                              aria-label={t("metaAds.colFunil")}
-                              className="h-7 rounded-md border border-border bg-card px-1 text-xs text-foreground"
+                      {dados.campanhas.map((c) => {
+                        const [variante, rotulo] = statusDaCampanha(c.status_meta);
+                        const ativa = c.status_meta === "ACTIVE";
+                        return (
+                          <tr key={c.id} className="border-t border-border">
+                            <td
+                              className={cn(
+                                "max-w-[24rem] truncate py-1.5 pr-2",
+                                ativa ? "font-medium text-foreground" : "text-muted-foreground",
+                              )}
+                              title={c.nome}
                             >
-                              <option value="">{t("metaAds.semFunilOpcao")}</option>
-                              {dados.funis.map((f) => (
-                                <option key={f.id} value={f.id}>
-                                  {f.name}
-                                </option>
-                              ))}
-                            </select>
-                          </td>
-                        </tr>
-                      ))}
+                              {c.nome}
+                            </td>
+                            <td className="py-1.5 pr-2">
+                              <SettingsChip variant={variante}>
+                                {ativa && <StatusDot />}
+                                {rotulo}
+                              </SettingsChip>
+                            </td>
+                            <td className="py-1.5">
+                              <select
+                                value={c.pipeline_id ?? ""}
+                                onChange={(e) => void atribuir(c, e.target.value || null)}
+                                aria-label={t("metaAds.colFunil")}
+                                className="h-7 rounded-md border border-border bg-card px-1 text-xs text-foreground"
+                              >
+                                <option value="">{t("metaAds.semFunilOpcao")}</option>
+                                {dados.funis.map((f) => (
+                                  <option key={f.id} value={f.id}>
+                                    {f.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
