@@ -136,9 +136,13 @@ export function MetaAdsCard() {
         setErro(motivo(corpo.error ?? "meta_error"));
         return;
       }
-      setLista({ de, contas: corpo.contas });
-      // Uma conta só: já vem escolhida. Mais de uma: o operador escolhe.
-      setContaEscolhida(corpo.contas.length === 1 ? corpo.contas[0].id : "");
+      const novas = corpo.contas;
+      setLista({ de, contas: novas });
+      // Buscando de novo, a escolha feita continua se a conta ainda veio.
+      // Senão: uma conta só já vem escolhida; mais de uma, o operador escolhe.
+      setContaEscolhida((atual) =>
+        novas.some((c) => c.id === atual) ? atual : novas.length === 1 ? novas[0].id : "",
+      );
     } catch {
       if (vivoRef.current) setErro(motivo("rede"));
     } finally {
@@ -320,16 +324,25 @@ export function MetaAdsCard() {
                   </div>
                 )}
                 {erro && <p className="text-xs text-destructive">{t("falha", { motivo: erro })}</p>}
-                <div>
-                  {contas && contas.length > 0 ? (
+                {/* "Buscar contas" fica mesmo com a lista na tela: a conta
+                    atribuída na Meta DEPOIS da busca só aparece buscando de
+                    novo, e o campo do id digitado não existe mais (Codex,
+                    PR #407). */}
+                <div className="flex flex-wrap gap-2">
+                  {contas && contas.length > 0 && (
                     <Button type="button" size="sm" onClick={() => void conectar()} disabled={salvando || !escolhida}>
                       {salvando ? t("metaAds.conectando") : t("metaAds.conectar")}
                     </Button>
-                  ) : (
-                    <Button type="button" size="sm" onClick={() => void buscarContas()} disabled={buscando || !tokenLimpo}>
-                      {buscando ? t("metaAds.buscandoContas") : t("metaAds.buscarContas")}
-                    </Button>
                   )}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={contas && contas.length > 0 ? "outline" : "default"}
+                    onClick={() => void buscarContas()}
+                    disabled={buscando || salvando || !tokenLimpo}
+                  >
+                    {buscando ? t("metaAds.buscandoContas") : t("metaAds.buscarContas")}
+                  </Button>
                 </div>
               </div>
             </>
