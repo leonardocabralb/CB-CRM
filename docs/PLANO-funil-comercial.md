@@ -877,6 +877,10 @@ INSERT/UPDATE/DELETE de `authenticated`, como `cb_tasks`):
   /act_<id>?fields=name,currency` e a primeira página de campanhas); falha
   volta como CÓDIGO (`token_invalido`, `sem_permissao`,
   `conta_nao_encontrada`), nunca a mensagem crua da Meta.
+- `POST contas` (13/10/2026, pedido do operador) — o cartão pede só o
+  token: a rota lista as contas que ele enxerga (`/me/adaccounts`), sem
+  gravar, e o operador escolhe uma antes do `PUT config`. O campo do
+  `act_…` digitado saiu.
 - `DELETE config` — desconecta (apaga a config; campanhas e gastos ficam,
   para o histórico do Desempenho não sumir).
 - `PATCH campanhas/[id]` — só `pipeline_id`, por allowlist (como
