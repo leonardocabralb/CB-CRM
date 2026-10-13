@@ -217,15 +217,32 @@ CONHECIDAS = ('transaction failed, rolling back', 'error in handling message', '
               'Bad MAC', 'No session', 'No matching sessions', 'PreKeyError', 'SessionError')
 
 
-def mascarar(texto, tamanho=140):
+TAG = re.compile(r'\s*(\[[^\]\s]{1,40}\])\s*')
+EMAIL = re.compile(r'[\w.+-]+@[\w-]+(\.[\w-]+)+')
+ERRO_NOMEADO = re.compile(r'\s*((?:[A-Z]\w*)?Error\b.*)')
+
+
+def assinatura(texto, tamanho=120):
+    """O TIPO da linha, nunca o conteúdo (a coleta fica 90 dias em disco).
+    Corta no primeiro '{' ou '[' — objeto e lista impressos, por onde vem o
+    nó cru da mensagem (o caso do "error in handling message") —, troca todo
+    trecho entre aspas por <…>, apaga e-mail e mascara chave, id, blob e
+    número. Uma etiqueta de abertura do app (`[radar]`) é mantida."""
     if SESSAO.search(texto):
         return '[linha com chave de sessão omitida]'
+    prefixo = ''
+    m = TAG.match(texto)
+    if m:
+        prefixo, texto = m.group(1) + ' ', texto[m.end():]
     texto = VALOR.sub(r'\1\2<omitido>', texto)
+    texto = re.split(r'[{\[]', texto, 1)[0]
+    texto = re.sub(r'"[^"]*"?|\'[^\']*\'?|`[^`]*`?', '<…>', texto)
+    texto = EMAIL.sub('<email>', texto)
     texto = re.sub(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', '<uuid>', texto)
     texto = re.sub(r'[0-9A-Fa-f]{16,}', '<id>', texto)
     texto = re.sub(r'[A-Za-z0-9+/_=-]{24,}', '<blob>', texto)
     texto = re.sub(r'\d{4,}', '#', texto)
-    return re.sub(r'\s+', ' ', texto).strip()[:tamanho]
+    return (prefixo + re.sub(r'\s+', ' ', texto).strip())[:tamanho]
 
 
 def arquivos_de_log(conteiner):
@@ -268,8 +285,7 @@ def coletar_evolution(evo, desde, ate):
     primeiro = ultimo = None
     historico = collections.deque(maxlen=14)
     pendente = None
-    sem_texto = None
-    falta = 0
+    sem_texto = None  # (nível, componente) de um ERROR/WARN cujo texto vem na linha seguinte
     for instante, s in linhas_do_log(arquivos_de_log(evo), desde, ate):
         linhas += 1
         primeiro = primeiro or instante
@@ -292,27 +308,28 @@ def coletar_evolution(evo, desde, ate):
             if inst and rj:
                 pendente = (inst[-1], 'aparelho' if rj[-1] else 'principal')
         if sem_texto is not None:
-            conteudo = s.strip().strip('{[,').strip()
-            if conteudo:
-                assinaturas[sem_texto[0] + '\t' + mascarar(sem_texto[1] + ': ' + conteudo)] += 1
-                sem_texto = None
+            # Só entra a linha seguinte que for o NOME de um erro ("Error:
+            # Connection Closed"); objeto impresso (o nó da mensagem) nunca.
+            nivel_anterior, componente_anterior = sem_texto
+            sem_texto = None
+            erro = ERRO_NOMEADO.match(s)
+            if erro:
+                assinaturas[nivel_anterior + '\t' + componente_anterior + ': ' + assinatura(erro.group(1))] += 1
                 continue
-            falta -= 1
-            if falta <= 0:
-                assinaturas[sem_texto[0] + '\t' + sem_texto[1] + ': (sem texto)'] += 1
-                sem_texto = None
+            assinaturas[nivel_anterior + '\t' + componente_anterior + ': (objeto omitido)'] += 1
         nivel = None
         m = re.search(r'\s(ERROR|WARN)\s+\[([^\]]+)\]\s*\[[^\]]*\]\s*(.*)', s)
         if m:
-            nivel, texto = m.group(1), m.group(2) + ': ' + m.group(3)
+            nivel, componente = m.group(1), assinatura(m.group(2), 60)
             if m.group(3).strip() in ('', '{', '['):
-                sem_texto, falta = (m.group(1), m.group(2)), 3
+                sem_texto = (nivel, componente)
                 continue
+            texto = componente + ': ' + assinatura(m.group(3))
         else:
             m = re.match(r'\s*\{"level":(\d+).*"msg":"([^"]*)"', s)
             if m and int(m.group(1)) >= 40:
                 nivel = 'baileys-' + ('erro' if int(m.group(1)) >= 50 else 'aviso')
-                texto = m.group(2)
+                texto = assinatura(m.group(2))
         if nivel is None:
             for conhecida in CONHECIDAS:
                 if conhecida in s:
@@ -320,7 +337,7 @@ def coletar_evolution(evo, desde, ate):
                     break
         if nivel is None:
             continue
-        assinaturas[nivel + '\t' + mascarar(texto)] += 1
+        assinaturas[nivel + '\t' + texto] += 1
     return {'linhas': linhas, 'cobertura': [primeiro, ultimo], 'descartadas': descartadas,
             'assinaturas': dict(assinaturas.most_common(60)), 'recibos': dict(recibos)}
 
@@ -340,7 +357,7 @@ def coletar_app(nome_do_servico, desde, ate):
             linhas += 1
             if not re.search(r'error|failed|falhou|warn|\[evolution/webhook\]|\[send-message\]|ignorad|curl', s, re.I):
                 continue
-            contagem[mascarar(s, 160)] += 1
+            contagem[assinatura(s, 160)] += 1
     return {'linhas': linhas, 'assinaturas': dict(contagem.most_common(60))}
 
 
@@ -362,15 +379,8 @@ class Achados:
         self.normais.add(chave)
 
 
-def situacao_instantanea(pg):
-    """O que pode piscar e por isso é conferido duas vezes: conexão, réplica,
-    memória."""
-    instancias = {}
-    for nome, status, codigo, desde in psql(pg, '''
-        select "name", "connectionStatus", coalesce("disconnectionReasonCode"::text, ''),
-               coalesce(to_char("disconnectionAt", 'YYYY-MM-DD"T"HH24:MI:SS'), '')
-        from "Instance";'''):
-        instancias[nome] = {'status': status, 'codigo': codigo, 'desde': desde}
+def situacao_do_servidor():
+    """Réplicas e memória: o que se mede sem o banco da Evolution."""
     replicas = {}
     for linha in rodar(['docker', 'service', 'ls', '--format', '{{.Name}} {{.Replicas}}']).splitlines():
         partes = linha.split()
@@ -382,49 +392,58 @@ def situacao_instantanea(pg):
         for linha in fh:
             if linha.startswith('MemAvailable:'):
                 memoria_mb = int(linha.split()[1]) // 1024
-    return {'instancias': instancias, 'replicas': replicas, 'memoria_mb': memoria_mb}
+    return {'replicas': replicas, 'memoria_mb': memoria_mb}
 
 
-def suspeitas(sit, producao):
+def situacao_das_conexoes(pg):
+    """{instância: situação} da tabela "Instance"; None = o banco não respondeu
+    (e então nada sobre conexão é afirmado, nem problema nem normal)."""
+    if pg is None:
+        return None
+    try:
+        linhas = psql(pg, '''
+            select "name", "connectionStatus", coalesce("disconnectionReasonCode"::text, ''),
+                   coalesce(to_char("disconnectionAt", 'YYYY-MM-DD"T"HH24:MI:SS'), '')
+            from "Instance";''')
+    except (RuntimeError, subprocess.TimeoutExpired):
+        return None
+    return {nome: {'status': status, 'codigo': codigo, 'desde': desde}
+            for nome, status, codigo, desde in linhas}
+
+
+def suspeitas(servidor, conexoes, producao):
     s = set()
-    for canal in producao:
-        inst = sit['instancias'].get(canal['instance_name'])
-        if inst and inst['status'] != 'open':
-            s.add('conexao:' + canal['instance_name'])
-    for servico, (rodando, esperado) in sit['replicas'].items():
+    for servico, (rodando, esperado) in servidor['replicas'].items():
         if rodando != esperado:
             s.add('replica:' + servico)
-    if sit['memoria_mb'] is not None and sit['memoria_mb'] < MEMORIA_MINIMA_MB:
+    if servidor['memoria_mb'] is not None and servidor['memoria_mb'] < MEMORIA_MINIMA_MB:
         s.add('memoria')
+    if conexoes is not None:
+        for canal in producao:
+            inst = conexoes.get(canal['instance_name'])
+            # Instância que sumiu do servidor (apagada ou renomeada) é conexão
+            # inutilizável — nunca motivo para tirar o canal da conta.
+            if inst is None or inst['status'] != 'open':
+                s.add('conexao:' + canal['instance_name'])
     return s
 
 
-def checar(pg, rd, canais, achados, simular):
-    producao = [c for c in canais if 'teste' not in ((c.get('label') or '') + (c.get('instance_name') or '')).lower()]
-    contas = sorted({c['account_id'] for c in producao})
-
-    # 1. Conexão, réplica e memória: a suspeita só vira problema se continuar
-    # depois de RECHECAGEM_S (deploy do CRM, reconexão de rotina).
-    sit = situacao_instantanea(pg)
-    producao = [c for c in producao if c['instance_name'] in sit['instancias']]
-    primeira = suspeitas(sit, producao)
+def checar_servidor_e_conexoes(pg, producao, contas, achados):
+    """Réplica, memória, disco e conexão. Roda MESMO com o banco da Evolution
+    fora — é justamente quando o Postgres parado precisa de aviso. A suspeita
+    só vira problema se continuar depois de RECHECAGEM_S (deploy do CRM,
+    reconexão de rotina). Devolve a situação das conexões (None = o banco não
+    respondeu)."""
+    servidor = situacao_do_servidor()
+    conexoes = situacao_das_conexoes(pg)
+    primeira = suspeitas(servidor, conexoes, producao)
     if primeira:
         time.sleep(RECHECAGEM_S)
-        sit = situacao_instantanea(pg)
-    persistentes = primeira & suspeitas(sit, producao)
-    for canal in producao:
-        chave = 'conexao:' + canal['instance_name']
-        inst = sit['instancias'][canal['instance_name']]
-        if chave in persistentes:
-            desde = de_iso(inst['desde']) if inst['desde'] else None
-            codigo = inst['codigo']
-            motivo = ' (código %s%s)' % (codigo, ': deslogada ou suspensa' if codigo == '401' else '') if codigo else ''
-            corpo = ('Desconectada desde %s%s.' % (quando(desde), motivo) if desde
-                     else 'Situação "%s" no servidor do WhatsApp.' % inst['status'])
-            achados.problema(chave, 'WhatsApp fora do ar: ' + canal['label'], corpo + ' Veja Configurações → Conexões.', [canal['account_id']])
-        elif inst['status'] == 'open':
-            achados.normal(chave)
-    for servico, (rodando, esperado) in sit['replicas'].items():
+        servidor = situacao_do_servidor()
+        conexoes = situacao_das_conexoes(pg)
+    persistentes = primeira & suspeitas(servidor, conexoes, producao)
+
+    for servico, (rodando, esperado) in servidor['replicas'].items():
         chave = 'replica:' + servico
         if chave in persistentes:
             achados.problema(chave, 'Serviço parado no servidor: ' + servico,
@@ -433,11 +452,10 @@ def checar(pg, rd, canais, achados, simular):
             achados.normal(chave)
     if 'memoria' in persistentes:
         achados.problema('memoria', 'Memória do servidor quase no fim',
-                         '%d MB livres, e o servidor não tem swap.' % sit['memoria_mb'], contas)
-    elif sit['memoria_mb'] is not None:
+                         '%d MB livres, e o servidor não tem swap.' % servidor['memoria_mb'], contas)
+    elif servidor['memoria_mb'] is not None and servidor['memoria_mb'] >= MEMORIA_MINIMA_MB:
         achados.normal('memoria')
 
-    # 2. Disco.
     st = os.statvfs('/')
     usado = (st.f_blocks - st.f_bfree) * st.f_frsize
     livre = st.f_bavail * st.f_frsize
@@ -448,6 +466,35 @@ def checar(pg, rd, canais, achados, simular):
     else:
         achados.normal('disco')
 
+    if conexoes is None:
+        achados.nao_medido.append('banco da Evolution não respondeu: conexões e mensagens não medidas')
+        return None
+    for canal in producao:
+        chave = 'conexao:' + canal['instance_name']
+        inst = conexoes.get(canal['instance_name'])
+        if chave in persistentes:
+            if inst is None:
+                corpo = ('A conexão existe no CRM, mas a instância "%s" não existe no servidor do WhatsApp '
+                         '(apagada ou renomeada). Se ela não é mais usada, apague-a em Configurações → Conexões.'
+                         % canal['instance_name'])
+            else:
+                desde = de_iso(inst['desde']) if inst['desde'] else None
+                codigo = inst['codigo']
+                motivo = (' (código %s%s)' % (codigo, ': deslogada ou suspensa' if codigo == '401' else '')
+                          if codigo else '')
+                corpo = ('Desconectada desde %s%s.' % (quando(desde), motivo) if desde
+                         else 'Situação "%s" no servidor do WhatsApp.' % inst['status'])
+                corpo += ' Veja Configurações → Conexões.'
+            achados.problema(chave, 'WhatsApp fora do ar: ' + canal['label'], corpo, [canal['account_id']])
+        elif inst is not None and inst['status'] == 'open':
+            achados.normal(chave)
+    return conexoes
+
+
+def checar_mensagens(pg, producao, conexoes, achados):
+    """O que depende do banco da Evolution: tráfego, o que o CRM não gravou e
+    falha real de entrega — só nas conexões cuja instância existe."""
+    producao = [c for c in producao if c['instance_name'] in conexoes]
     if not producao:
         achados.nao_medido.append('nenhuma conexão de produção casou CRM × Evolution')
         return
@@ -473,7 +520,7 @@ def checar(pg, rd, canais, achados, simular):
         chave = 'sem_entrada:' + nome
         if entrada > 0:
             achados.normal(chave)
-        elif horario_util and saida >= SAIDAS_MINIMAS and sit['instancias'][nome]['status'] == 'open':
+        elif horario_util and saida >= SAIDAS_MINIMAS and conexoes[nome]['status'] == 'open':
             achados.problema(chave, 'WhatsApp sem receber: ' + canal['label'],
                              'Nenhuma mensagem de cliente nas últimas %d h, e %d saíram por ela. '
                              'A conexão aparece ativa.' % (JANELA_SEM_ENTRADA_H, saida), [canal['account_id']])
@@ -540,8 +587,10 @@ def checar(pg, rd, canais, achados, simular):
         else:
             achados.normal(chave)
 
-    # 6. Sessão legada '.99' (INFRA-VPS §8): uma vez por dia, ou sempre no --simular.
-    if rd and (simular or local.hour == HORA_DA_VARREDURA_99):
+
+def checar_sessoes_99(rd, contas, achados, simular):
+    """Sessão legada '.99' (INFRA-VPS §8): uma vez por dia, ou sempre no --simular."""
+    if rd and (simular or AGORA.astimezone(BRT).hour == HORA_DA_VARREDURA_99):
         legadas = 0
         chaves = rodar(['docker', 'exec', rd, 'redis-cli', '-n', '8', '--scan', '--pattern', 'evolution:instance:*']).split()
         for chave_redis in chaves:
@@ -709,17 +758,24 @@ def main():
     rd = (conteineres('redis_redis') or [None])[0]
     estado = ler_estado()
 
-    # Checagens.
-    if pg is None:
-        achados.nao_medido.append('contêiner do Postgres não encontrado')
-    elif canais:
+    # Checagens. Cada parte falha sozinha: uma que quebra não cala as outras
+    # nem a coleta. Postgres parado aparece como réplica faltando (`docker
+    # service ls`), não como checagem pulada.
+    producao = [c for c in canais if 'teste' not in ((c.get('label') or '') + c['instance_name']).lower()]
+    conexoes = None
+    try:
+        conexoes = checar_servidor_e_conexoes(pg, producao, contas_de_producao, achados)
+    except Exception as e:
+        achados.nao_medido.append('servidor e conexões: ' + sem_segredo(e))
+    if conexoes is not None and producao:
         try:
-            checar(pg, rd, canais, achados, simular)
-        except Exception as e:  # uma checagem que quebra não derruba a coleta
-            achados.nao_medido.append('checagens: ' + sem_segredo(e))
-    if evo is None:
-        achados.problema('replica:evolution_evolution', 'Serviço parado no servidor: evolution_evolution',
-                         'Nenhum contêiner da Evolution rodando.', contas_de_producao)
+            checar_mensagens(pg, producao, conexoes, achados)
+        except Exception as e:
+            achados.nao_medido.append('mensagens: ' + sem_segredo(e))
+    try:
+        checar_sessoes_99(rd, contas_de_producao, achados, simular)
+    except Exception as e:
+        achados.nao_medido.append("sessões '.99': " + sem_segredo(e))
 
     # Coleta dos logs, desde a execução anterior (no máximo COLETA_MAXIMA_H).
     ate = iso(AGORA)[:19]

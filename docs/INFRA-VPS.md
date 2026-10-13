@@ -700,7 +700,7 @@ arquivos abaixo por ssh).
 | `/etc/cron.d/saude-whatsapp` | `5 * * * *`, com `nice -n 10 timeout 300` (a execução leva ~10 s) |
 | `/root/saude-whatsapp/sentinela.py` | cópia do versionado (700) |
 | `/root/saude-whatsapp/estado.json` | problemas ativos, último aviso de cada um e até onde a coleta leu |
-| `/root/saude-whatsapp/coleta/AAAA-MM-DD.jsonl` | uma linha por execução: assinaturas MASCARADAS dos logs da Evolution, do CRM e do agendador, e os recibos ERROR por (conexão, tipo, código). Apagadas depois de 90 dias |
+| `/root/saude-whatsapp/coleta/AAAA-MM-DD.jsonl` | uma linha por execução: o TIPO de cada linha de erro/aviso dos logs da Evolution, do CRM e do agendador, com contagem, e os recibos ERROR por (conexão, tipo, código). Nunca o conteúdo: a assinatura corta no primeiro `{`/`[` (o nó cru da mensagem vem por aí), troca o que está entre aspas por `<…>`, apaga e-mail e mascara número, id e chave; objeto impresso na linha seguinte a um ERROR vira `(objeto omitido)`. Apagadas depois de 90 dias |
 | `/root/saude-whatsapp/sentinela.log` | uma linha por execução; aparado acima de 2 MB |
 
 **O que lê:** o banco `evolution` (`Instance`, `Message`, `MessageUpdate`);
@@ -717,7 +717,7 @@ Nunca imprime segredo, telefone nem conteúdo de mensagem.
 
 | Chave | Acende quando | Normaliza quando |
 |---|---|---|
-| `conexao:<instância>` | `connectionStatus` ≠ `open`, conferido de novo 60 s depois | `open` |
+| `conexao:<instância>` | `connectionStatus` ≠ `open`, ou a instância nem existe mais no servidor (apagada ou renomeada), conferido de novo 60 s depois | `open` |
 | `sem_entrada:<instância>` | dia útil, janela de 2 h inteira entre 8h e 20h: 0 mensagem de cliente e ≥ 5 nossas saindo | chegou mensagem de cliente nas últimas 2 h |
 | `nao_gravadas:<instância>` | ≥ 3 mensagens de cliente (1:1, com conteúdo, fora `@lid`) mais novas que `cb_channels.entrega_carimbo_em` + 90 s e com mais de 10 min | < 3 |
 | `falhas:<instância>` | ≥ 3 ERROR do envio PRINCIPAL em 1:1 sem entrega em 24 h | < 3 |
@@ -735,6 +735,11 @@ histórico: disparou 3 vezes, 2 delas no incidente de 16/09 (a fila de entrada
 presa). Sem a exigência de saídas, dispararia em todo dia parado e em todo
 feriado. O log da Evolution cobria só ~6 h nesse dia (rotação de 10m × 3 com o
 log em VERBOSE): por isso a coleta é de hora em hora.
+
+**Cada parte falha sozinha.** Réplica, memória, disco e conexão rodam mesmo
+com o banco da Evolution fora (o Postgres parado aparece como
+`replica:postgres_postgres`, não como checagem pulada); sem o banco, conexão e
+mensagens ficam `NÃO MEDIDO` — nunca "normalizou".
 
 **Limites conhecidos.** A VPS inteira fora do ar não avisa (a sentinela roda
 nela). Sem o `/root/crm.env` (ou com a service role vazia, §10), a coleta
