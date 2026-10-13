@@ -16,7 +16,7 @@
 
 | Fase | Escopo | Estado |
 | --- | --- | --- |
-| **1** | Migration 1083 (tipos novos na trilha + gatilho por instrução) | ✅ feita — 15 cenários num Postgres 16 descartável, aplicada 3× (idempotente; a 3ª com dado: a conferência chama os gatilhos e desfaz sem rastro) |
+| **1** | Migration 1083 (tipos novos na trilha + gatilho por instrução) | ✅ feita — 15 cenários num Postgres 16 descartável, aplicada 3× (idempotente; a 3ª com dado: a conferência chama os gatilhos e desfaz sem rastro). **Aplicada em produção** em 13/10/2026, 16:52 UTC (histórico `20261013165224`), antes do merge |
 | **2** | Quem/de onde nas escritas do servidor (`marcarOrigem`) + pino | ✅ feita — 14 escritores marcados; pino default-deny com teste de mutação |
 | **3** | Linhas no fio e no Histórico da ficha (texto, ícone, dicionários) | ✅ feita |
 | **4** | e2e no preview com a 1083 aplicada (precisa da autorização do operador) | a fazer |
@@ -147,3 +147,9 @@ declara a origem ou entra na lista com o motivo.
   encerrada · pelo sistema"; o desfazer dela apaga a conversa mas não essa
   linha da trilha.
 - Ação feita por SQL à mão sai "pelo sistema".
+- **Na janela entre a 1083 e o deploy do #402** (o código antigo no ar): os
+  gatilhos já gravam, mas a aba Histórico da ficha mostra o tipo cru
+  (`conversation_status_changed`) e as escritas do servidor saem "pelo
+  sistema", porque ninguém manda o `x-cb-via` ainda. No fio, o tipo
+  desconhecido não aparece. Some com o deploy; as linhas do SERVIDOR gravadas
+  na janela continuam "pelo sistema" (as da tela já levam a pessoa da sessão).
