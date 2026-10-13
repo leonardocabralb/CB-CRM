@@ -115,7 +115,7 @@ passou na máquina). Por isso:
 
 ### Sentinela do WhatsApp (`ops/vps/saude-whatsapp/`)
 - Cron de hora em hora NA VPS (`docs/INFRA-VPS.md` §12): só lê e avisa no
-  sino (`whatsapp_alert`, 1084). ⚠️ O CI NÃO a publica: mudou o
+  sino (`whatsapp_alert`, 1085). ⚠️ O CI NÃO a publica: mudou o
   `sentinela.py`, copie para `/root/saude-whatsapp/` e confira com
   `--simular` (não grava nada). Mudou limiar ou aviso, atualize a tabela da
   §12 no mesmo PR.

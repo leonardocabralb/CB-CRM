@@ -79,7 +79,7 @@ export function resumirNovidades(
     else if (a.type === 'task_assigned' || a.type === 'task_reply')
       saida.tarefas++;
     else if (a.type === 'conversation_assigned') saida.conversas++;
-    // `whatsapp_alert` (1084) é saúde do servidor, não novidade de trabalho:
+    // `whatsapp_alert` (1085) é saúde do servidor, não novidade de trabalho:
     // aparece no sino e no bloco de notificações, fora destas contagens.
     else continue;
     saida.total++;

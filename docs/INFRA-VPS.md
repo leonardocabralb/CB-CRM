@@ -709,7 +709,7 @@ do `crm_agendador` (inclusive os parados, enquanto o Docker os guardar); o
 Redis db 8 (`HKEYS` dos hashes `evolution:instance:*`, uma vez por dia, às 10h
 de Brasília); `/proc/meminfo` e o disco; e, pelo PostgREST com a service role
 do `/root/crm.env`, `cb_channels` e `profiles`. **O que grava:** só
-`/root/saude-whatsapp` e linhas `whatsapp_alert` em `notifications` (1084).
+`/root/saude-whatsapp` e linhas `whatsapp_alert` em `notifications` (1085).
 Nunca imprime segredo, telefone nem conteúdo de mensagem.
 
 **Os avisos** (só conexões que casam CRM × Evolution e cujo rótulo não tem

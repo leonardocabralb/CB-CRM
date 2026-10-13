@@ -1242,6 +1242,16 @@ nome da época em que foram aplicadas.
   gravam, lista vazia recusada, CASCADE do login). No preview: salvar (upsert
   201), recarregar já na ordem pessoal e "Voltar ao padrão" (DELETE 204),
   tabela de volta a zero linhas.
+- **1085_cb_aviso_da_sentinela** — `whatsapp_alert` no CHECK de
+  `notifications.type` (os cinco tipos antigos reescritos junto): o aviso que
+  a sentinela da VPS grava no sino (`docs/INFRA-VPS.md` §12). Nasceu 1084 e foi
+  renumerada antes de aplicar: a 1083 (`historico_da_conversa`) e a 1084
+  (`possiveis_duplicatas`) são de outras sessões. ADITIVA e ANTES do deploy.
+  Aplicada em 13/10/2026 pela Management API (histórico `20261013163840`), com
+  "pode gravar" do operador — ⚠️ ANTES do replay do CI (o PR ainda não estava
+  aberto); provada antes num Postgres 16 local, aplicada duas vezes (aceita
+  `whatsapp_alert`, mantém os antigos, recusa tipo desconhecido). Conferida:
+  CHECK com os seis tipos, as 87 notificações intactas.
 
 ## Notas do histórico
 

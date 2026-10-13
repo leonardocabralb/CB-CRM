@@ -512,10 +512,10 @@ export interface Conversation {
  * ⚠️ Espelha o CHECK de `notifications.type`. Alargar aqui sem alargar o
  * banco (ou o contrário) só aparece em runtime, como violação de constraint.
  * Os literais vivem na 027 (`conversation_assigned`), na 919 (`note_mention`),
- * na 944 (`task_assigned`, `task_reply`), na 1075 (`note_reply`) e na 1084
+ * na 944 (`task_assigned`, `task_reply`), na 1075 (`note_reply`) e na 1085
  * (`whatsapp_alert`).
  *
- * `whatsapp_alert` (1084) é gravado por um monitor de FORA do app, com a
+ * `whatsapp_alert` (1085) é gravado por um monitor de FORA do app, com a
  * service role, para os owner/admin da conta: título e corpo já escritos, sem
  * conversa nem tarefa (o clique só marca lido). Na nossa instalação, a
  * sentinela de `ops/vps/saude-whatsapp/` (`docs/INFRA-VPS.md`).

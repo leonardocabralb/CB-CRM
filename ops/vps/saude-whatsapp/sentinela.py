@@ -14,7 +14,7 @@ Cada execução:
    mensagem que a Evolution recebeu e o CRM não gravou; mensagem descartada
    antes do banco da Evolution (o caso da sessão '.99'); falha real de
    entrega; sessão legada '.99'; serviço sem réplica; disco; memória.
-3. AVISO: problema NOVO vira notificação 'whatsapp_alert' (1084) para quem é
+3. AVISO: problema NOVO vira notificação 'whatsapp_alert' (1085) para quem é
    owner/admin da conta, gravada pelo PostgREST com a service role do
    /root/crm.env. Um aviso por problema, lembrete a cada 24 h enquanto durar
    e "Normalizou" quando passa.

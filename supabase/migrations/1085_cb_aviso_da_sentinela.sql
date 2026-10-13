@@ -1,5 +1,5 @@
 -- ============================================================
--- 1084 — O sino aceita o aviso de saúde do WhatsApp (`whatsapp_alert`).
+-- 1085 — O sino aceita o aviso de saúde do WhatsApp (`whatsapp_alert`).
 --
 -- Pedido do operador (13/10/2026): um monitor de fora do app (na instalação
 -- de referência, uma rotina de hora em hora no servidor da Evolution) avisa
@@ -43,14 +43,14 @@ BEGIN
    WHERE conrelid = 'public.notifications'::regclass
      AND conname = 'notifications_type_check';
   IF def IS NULL THEN
-    RAISE EXCEPTION '1084: notifications_type_check sumiu.';
+    RAISE EXCEPTION '1085: notifications_type_check sumiu.';
   END IF;
   IF def NOT LIKE '%whatsapp_alert%' THEN
-    RAISE EXCEPTION '1084: notifications_type_check não conhece whatsapp_alert (def=%)', def;
+    RAISE EXCEPTION '1085: notifications_type_check não conhece whatsapp_alert (def=%)', def;
   END IF;
   IF def NOT LIKE '%conversation_assigned%' OR def NOT LIKE '%note_mention%'
      OR def NOT LIKE '%note_reply%' OR def NOT LIKE '%task_assigned%'
      OR def NOT LIKE '%task_reply%' THEN
-    RAISE EXCEPTION '1084: notifications_type_check PERDEU tipo antigo (def=%)', def;
+    RAISE EXCEPTION '1085: notifications_type_check PERDEU tipo antigo (def=%)', def;
   END IF;
 END $$;

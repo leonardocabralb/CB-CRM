@@ -233,7 +233,7 @@ describe('resumirNovidades (avisos por tipo)', () => {
     expect(r.total).toBe(3);
   });
 
-  it('o aviso de saúde do WhatsApp (1084) não é novidade de trabalho: fica fora das contagens', () => {
+  it('o aviso de saúde do WhatsApp (1085) não é novidade de trabalho: fica fora das contagens', () => {
     const r = resumirNovidades(
       [{ type: 'whatsapp_alert' }, { type: 'note_mention' }],
       new Map(),

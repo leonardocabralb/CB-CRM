@@ -37,7 +37,7 @@ const TYPE_ICON: Record<Notification["type"], typeof Bell> = {
   // Tarefas (944). O clique leva a `/tarefas` — ver `handleClick`.
   task_assigned: ListTodo,
   task_reply: Reply,
-  // Saúde do WhatsApp (1084), gravado por um monitor de fora do app. Sem
+  // Saúde do WhatsApp (1085), gravado por um monitor de fora do app. Sem
   // conversa nem tarefa: o clique só marca lido.
   whatsapp_alert: TriangleAlert,
 };
