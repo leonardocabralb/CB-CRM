@@ -289,6 +289,16 @@ export interface FatosDoNegocio {
    * (`stage_changed` `retroativo`) é transição de verdade e conta.
    */
   entradasEmFalta: Date[];
+  /**
+   * Cada ENTRADA do negócio, NESTE funil, numa etapa de desqualificação
+   * (`Classificacao.etapasDeDesqualificacao`, 1091), em ordem cronológica. O
+   * resumo conta CARDS, não entradas: o lead desqualificado duas vezes é um
+   * desqualificado. ⚠️ Diferente do no-show, a semente da 912 (`deal_created`
+   * `retroativo`) CONTA: desqualificar é estado de perda, e a perda já lê a
+   * semente (`perdidoDesde`) — sem ela, o card antigo que estava em
+   * "Desqualificado" seria perdido e não desqualificado ao mesmo tempo.
+   */
+  entradasEmDesqualificacao: Date[];
 }
 
 function instante(iso: string): number {
@@ -378,6 +388,9 @@ export function fatosDoNegocio(
           classificacao.etapasDeFalta.has(p.etapa) &&
           !(p.tipo === "deal_created" && p.origem === "retroativo"),
       )
+      .map((p) => new Date(p.em)),
+    entradasEmDesqualificacao: aqui
+      .filter((p) => p.etapa !== null && classificacao.etapasDeDesqualificacao.has(p.etapa))
       .map((p) => new Date(p.em)),
   };
 }

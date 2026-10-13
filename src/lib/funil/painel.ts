@@ -35,12 +35,14 @@ import {
  * Os cartões de custo, na ordem da tela. `contrato` é o "custo por contrato
  * ASSINADO" (investimento ÷ quem alcançou contrato — C1), e fica ao lado do
  * `cac` de sempre, que divide pelo contrato EM PÉ: num funil com "Contrato
- * sem pasta" os dois se separam com o tempo.
+ * sem pasta" os dois se separam com o tempo. `desqualificado` (1091) fica ao
+ * lado do custo por qualificado (`mql`): é a comparação que o operador pediu.
  */
 export const CARTOES_DE_CUSTO = [
   "investimento",
   "lead",
   "mql",
+  "desqualificado",
   "reuniao",
   "no_show",
   "proposta",
@@ -184,12 +186,21 @@ export function funilMedeNoShow(classificacao: Classificacao, painel: PainelDoFu
   return classificacao.etapasDeFalta.size > 0 && estadoDoDegrau("reuniao", classificacao, painel) === "mapeado";
 }
 
+/**
+ * O funil separa a desqualificação (1091)? Alguma etapa de perda marcada
+ * "desqualificação". Sem ela, o custo por desqualificado seria sempre "—".
+ */
+export function funilMedeDesqualificacao(classificacao: Classificacao): boolean {
+  return classificacao.etapasDeDesqualificacao.size > 0;
+}
+
 export function cartoesDeCustoNaTela(classificacao: Classificacao, painel: PainelDoFunil): CartaoDeCusto[] {
   return CARTOES_DE_CUSTO.filter((c) => {
     if (painel.custosOcultos.includes(c)) return false;
-    // Custo por no-show só no funil que mede no-show: nos outros seria
-    // sempre "—".
+    // Custo por no-show só no funil que mede no-show, e por desqualificado só
+    // no que marca a desqualificação: nos outros seriam sempre "—".
     if (c === "no_show") return funilMedeNoShow(classificacao, painel);
+    if (c === "desqualificado") return funilMedeDesqualificacao(classificacao);
     const degrau = degrauDoCartao(c);
     return degrau === null || estadoDoDegrau(degrau, classificacao, painel) === "mapeado";
   });

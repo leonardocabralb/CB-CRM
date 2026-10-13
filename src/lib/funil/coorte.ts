@@ -110,6 +110,13 @@ export interface ResumoDoPeriodo {
    * todas as dos leads que entraram nele. A taxa é `taxaDeNoShow`.
    */
   noShows: number;
+  /**
+   * DESQUALIFICADOS (1091): CARDS com entrada numa etapa de desqualificação
+   * (`entradasEmDesqualificacao`; o mesmo card duas vezes é um só). Por
+   * período, quem entrou numa delas no período; na coorte, os leads que
+   * entraram no período e foram desqualificados em algum momento.
+   */
+  desqualificados: number;
 }
 
 export function coorteDoPeriodo(
@@ -203,6 +210,7 @@ export function resumoDoPeriodo(
     ticketMedio: emPe.length > 0 ? valorFechado / emPe.length : null,
     entradasPorDia: entradasPorDia(coorte, intervalo, agora),
     noShows: coorte.reduce((soma, f) => soma + f.entradasEmFalta.length, 0),
+    desqualificados: coorte.filter((f) => f.entradasEmDesqualificacao.length > 0).length,
   };
 }
 
