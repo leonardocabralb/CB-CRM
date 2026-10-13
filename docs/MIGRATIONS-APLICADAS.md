@@ -1320,7 +1320,13 @@ nome da época em que foram aplicadas.
   para na 11ª. Num Postgres 16 local com 8 mil fichas e um lote de 2 mil em
   90 s, como `authenticated` (média de 50): ficha de lote 52 ms → 3,3 ms,
   ficha comum igual; a base inteira devolve as mesmas 14 linhas nas duas.
-  PENDENTE: replay verde do CI e "aplique a migration 1087 em produção".
+  Aplicada em 13/10/2026 pela Management API (histórico `20261013175900`),
+  depois do CI verde no commit `b2bad097`, com "aplique a migration 1087 em
+  produção" do operador. Conferida: o corpo novo, INVOKER, EXECUTE só de
+  `authenticated` e `service_role`; a RPC sobre a base INTEIRA (5.786 fichas,
+  o que com a 1086 estourava o tempo) devolve as mesmas 20 linhas da foto
+  tirada antes da 1086 (assinatura md5 igual). Medida em produção como
+  `authenticated` (média de 10): ficha de lote 177 → 9 ms; ficha comum 8 ms.
 
 ## Notas do histórico
 

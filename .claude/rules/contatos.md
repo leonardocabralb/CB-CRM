@@ -200,7 +200,7 @@ operador, medição e fases: `docs/PLANO-fichas-duplicadas.md`.
   levava 289 ms em produção a cada conversa aberta (a 1086, 16 ms).
 - ⚠️⚠️ **Ficha de LOTE não busca par pelo horário** (1087): 2/3 da base
   nasceram numa importação (3,9 mil fichas em 3 min), e a 1086 trazia o lote
-  inteiro para concluir "lote" (177 ms por ficha). A ficha conta as fichas em
+  inteiro para concluir "lote" (177 ms por ficha; a 1087, 9 ms). A ficha conta as fichas em
   volta DELA (±1 min, parando na 11ª): toda janela de par a contém, então
   mais de 10 ali reprova qualquer par. Quem mexer na régua do lote mexe nas
   duas contagens juntas.
