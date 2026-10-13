@@ -1337,6 +1337,20 @@ nome da época em que foram aplicadas.
   o que com a 1089 estourava o tempo) devolve as mesmas 20 linhas da foto
   tirada antes da 1089 (assinatura md5 igual). Medida em produção como
   `authenticated` (média de 10): ficha de lote 177 → 9 ms; ficha comum 8 ms.
+- **1091_cb_etapa_de_desqualificacao** — `pipeline_stages.desqualificacao`
+  (boolean NOT NULL DEFAULT false) e o CHECK que a prende à perda (`NOT
+  desqualificacao OR degrau IS NOT DISTINCT FROM 'perda'`): a etapa de perda
+  que conta no custo por desqualificado (PR #409). Nasceu 1088 e foi
+  renumerada antes de aplicar: a 1088–1090 são das fichas duplicadas (PR
+  #403). ADITIVA e ANTES do deploy. Provada num Postgres 16 local, aplicada
+  duas vezes (trocar ou tirar o degrau sem desmarcar é recusado; o upsert sem
+  a coluna não mexe na marca). Aplicada em 13/10/2026 pela Management API
+  (histórico `20261013184846`), depois do replay verde no commit `83f73e59`,
+  com "pode aplicar a 1088 e fazer o merge" do operador. Conferida: coluna
+  boolean NOT NULL DEFAULT false, o CHECK, 0 de 53 etapas marcadas. Depois,
+  a pedido do operador, marcadas pela tela de Gerenciar funil (o teste de
+  ponta a ponta): "Desqualificado" no Bancário - Comercial e no Previdenciário
+  - Comercial, "Desqualificado - Sem Direito" no Trabalhista - Comercial.
 
 ## Notas do histórico
 
