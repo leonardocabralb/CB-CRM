@@ -167,6 +167,7 @@
       "ariaLabel": "Valor do funil por etapa"
     },
     "responseTimeChart": {
+      "avgMinutes": "Média em minutos",
       "title": "Tempo médio da primeira resposta",
       "description": "Minutos para responder à primeira mensagem sem resposta do cliente, por dia da semana",
       "target": "meta {minutes}min",
@@ -554,6 +555,9 @@
       "you": "Você"
     },
     "templatePicker": {
+      "urlButtonVarLabel": "Botão de URL \"{text}\" — valor para {var}",
+      "bodyVarLabel": "Corpo {var}",
+      "headerVarLabel": "Cabeçalho {var}",
       "sendTemplate": "Enviar modelo",
       "fillPlaceholders": "Preencha os campos variáveis para gerar este modelo. A Meta exige que todas as variáveis sejam preenchidas.",
       "pickTemplate": "Escolha um modelo aprovado do WhatsApp para enviar a este contato.",
@@ -1241,6 +1245,8 @@
       "selectContact": "Selecionar {name}"
     },
     "form": {
+      "notLinkedToAccount": "Seu perfil não está vinculado a uma conta.",
+      "notAuthenticated": "Não autenticado",
       "addTitle": "Adicionar contato",
       "addDesc": "Crie um novo contato. O nome é obrigatório.",
       "editTitle": "Editar contato",
@@ -1529,6 +1535,7 @@
       "contactSearchMore": "Mostrando os {count} primeiros. Continue digitando para afinar."
     },
     "settings": {
+      "pickColor": "Escolher a cor {color}",
       "managePipeline": "Gerenciar funil",
       "deletePipeline": "Excluir funil",
       "deletePipelineDesc": "Todos os negócios deste funil são apagados junto com ele. Não é possível desfazer.",
@@ -2030,6 +2037,7 @@
       "unknownError": "erro desconhecido"
     },
     "new": {
+      "broadcastFailed": "Falha no disparo",
       "title": "Novo Disparo",
       "subtitle": "Crie e envie uma mensagem de disparo para seus contatos.",
       "steps": {
@@ -2092,6 +2100,8 @@
         "tentarDeNovo": "Tentar de novo"
       },
       "personalize": {
+        "sampleCompany": "Empresa Exemplo Ltda.",
+        "sampleName": "João Silva",
         "title": "Personalizar Variáveis",
         "subtitle": "Associe as variáveis do modelo a campos do contato ou informe valores fixos.",
         "headerImage": "Imagem do Cabeçalho",
@@ -3307,6 +3317,7 @@
       "canvasView": "Canvas",
       "listView": "Lista",
       "form": {
+        "optionN": "Opção {n}",
         "advancesTo": "Avança para",
         "textToCustomer": "Texto enviado ao cliente",
         "promptToCustomer": "Pergunta enviada ao cliente",
@@ -4913,6 +4924,8 @@
       "radarPrivacyWarning": "Ao ligar, o conteúdo das conversas deste número passa a ser enviado ao provedor de IA configurado na conta (chave própria). Use chave do plano pago do provedor e confirme a política de sigilo do escritório."
     },
     "profile": {
+      "fullNamePlaceholder": "Maria Souza",
+      "avatarAlt": "Avatar",
       "title": "Seu perfil",
       "description": "Como você aparece no sistema. Seu avatar e seu nome aparecem no cabeçalho, na barra lateral e em qualquer lugar onde a equipe vê você.",
       "changePhoto": "Alterar foto",
@@ -4965,6 +4978,7 @@
       "unknownError": "Erro desconhecido"
     },
     "appearance": {
+      "themeId": "ID do tema: {id}",
       "title": "Aparência",
       "description": "Defina o modo e a cor de destaque usados em todo o app. Salvo neste dispositivo — teste, a mudança é imediata.",
       "mode": "Modo",
@@ -6383,11 +6397,36 @@
     "statusReopened": "Negócio reaberto",
     "tagAdded": "Etiqueta {tag} aplicada",
     "tagRemoved": "Etiqueta {tag} removida",
+    "conversationStarted": "Conversa iniciada",
+    "conversationCreatedClosed": "Conversa criada já encerrada",
+    "conversationCreatedPending": "Conversa criada como pendente",
+    "conversationClosed": "Conversa encerrada",
+    "conversationReopened": "Conversa reaberta",
+    "conversationReopenedPending": "Conversa reaberta como pendente",
+    "conversationPending": "Conversa marcada como pendente",
+    "conversationOpened": "Conversa marcada como aberta",
+    "conversationAssigned": "Conversa atribuída a {to}",
+    "conversationReassigned": "Responsável trocado de {from} para {to}",
+    "conversationUnassigned": "Conversa ficou sem responsável (estava com {from})",
+    "suffixWasWith": "(estava com {name})",
+    "suffixAssignedTo": "e atribuída a {name}",
     "actorPerson": "por {name}",
     "actorChannel": "pela conexão {name}",
     "actorAutomation": "por uma automação",
     "actorSystem": "pelo sistema",
-    "actorReconstructed": "registro retroativo"
+    "actorReconstructed": "registro retroativo",
+    "actorCustomer": "pelo cliente",
+    "actorPhone": "pela equipe, pelo celular",
+    "actorCall": "por uma ligação",
+    "actorApi": "pela API",
+    "actorAutomationNamed": "pela automação {name}",
+    "actorBilling": "pela régua de cobrança",
+    "actorFlow": "pelo robô",
+    "actorFlowNamed": "pelo robô {name}",
+    "actorAgent": "por um agente de IA",
+    "actorAgentNamed": "pelo agente de IA {name}",
+    "actorScheduling": "pelo agendamento",
+    "actorIntegration": "por uma integração"
   },
   "Radar": {
     "title": "Radar do atendimento",
@@ -7084,6 +7123,9 @@
   "Upload": {
     "semSessao": "Sua sessão expirou. Entre de novo para enviar o arquivo.",
     "semConta": "Não foi possível identificar a sua conta."
+  },
+  "UiPrimitives": {
+    "close": "Fechar"
   },
   "Toaster": {
     "rotulo": "Notificações"

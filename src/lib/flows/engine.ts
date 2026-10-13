@@ -46,6 +46,7 @@ import { removeContactTag } from "@/lib/contacts/tag-write";
 import { legendaDoEnvio, prepararMidiaDoNo } from "./midia-do-no";
 import { moverCardDoNo, payloadDoMoverCard } from "./mover-card";
 import { atribuicaoDoHandoff, membroEscolhidoNoHandoff } from "./atribuir-no-handoff";
+import { marcarOrigem } from "@/lib/conversations/origem-da-escrita";
 import {
   destinoDaResposta,
   gravarRespostaNaFicha,
@@ -585,10 +586,11 @@ async function executeHandoff(
     : null;
   convUpdate.assigned_agent_id = atribuicao?.userId ?? null;
   if (run.conversation_id) {
-    await db
-      .from("conversations")
-      .update(convUpdate)
-      .eq("id", run.conversation_id);
+    // A trilha da conversa (1083) diz que foi ESTE robô que passou para gente.
+    await marcarOrigem(
+      db.from("conversations").update(convUpdate).eq("id", run.conversation_id),
+      { via: "robo", ref: run.flow_id },
+    );
   }
   await logEvent(db, run.id, "handoff", node.node_key, {
     note: cfg.note ?? null,
@@ -1360,10 +1362,13 @@ async function handleReplyForActiveRun(
   }
   if (action.type === "handoff") {
     if (run.conversation_id) {
-      await db
-        .from("conversations")
-        .update({ status: "pending", updated_at: new Date().toISOString() })
-        .eq("id", run.conversation_id);
+      await marcarOrigem(
+        db
+          .from("conversations")
+          .update({ status: "pending", updated_at: new Date().toISOString() })
+          .eq("id", run.conversation_id),
+        { via: "robo", ref: run.flow_id },
+      );
     }
     await logEvent(db, run.id, "handoff", run.current_node_key, {
       reason: "fallback_exhausted",

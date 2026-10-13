@@ -7,6 +7,7 @@ import { fichaQueVenceu, findExistingContact, isUniqueViolation } from '@/lib/co
 import { marcaDoNomeManual } from '@/lib/contacts/nome-fixado'
 import { telefoneDigitado } from '@/lib/contacts/telefone'
 import { pinConversationChannel } from '@/lib/cb-channels/stamp'
+import { marcarOrigem } from '@/lib/conversations/origem-da-escrita'
 
 /**
  * Abrir conversa com um número, a partir do CRM.
@@ -169,7 +170,7 @@ export async function POST(request: Request) {
   }
 
   // ---- Conversa: uma por contato (UNIQUE da 036) ----
-  const conversa = await resolverConversa(admin, accountId, donoDaConta, achado.contato.id)
+  const conversa = await resolverConversa(admin, accountId, donoDaConta, achado.contato.id, user.id)
   if ('erro' in conversa) {
     return NextResponse.json(
       {
@@ -267,6 +268,11 @@ async function resolverConversa(
   /** Dono da conta — ver o comentário no chamador (FK com CASCADE). */
   donoDaConta: string,
   contactId: string,
+  /**
+   * Quem abriu a Nova conversa. A escrita é da service role (sem sessão no
+   * banco), e é por aqui que a trilha da conversa (1083) diz "por Ana".
+   */
+  quemAbriu: string,
 ): Promise<{ id: string } | { erro: 'LOOKUP_FAILED' | 'CREATE_FAILED' }> {
   const buscar = async (): Promise<{ id: string | null; falhou: boolean }> => {
     // ⚠️ O `error` era descartado (M15 do plano): um blip nesta consulta
@@ -288,9 +294,12 @@ async function resolverConversa(
   if (existente.falhou) return { erro: 'LOOKUP_FAILED' }
   if (existente.id) return { id: existente.id }
 
-  const { data: nova, error } = await admin
-    .from('conversations')
-    .insert({ account_id: accountId, user_id: donoDaConta, contact_id: contactId })
+  const { data: nova, error } = await marcarOrigem(
+    admin
+      .from('conversations')
+      .insert({ account_id: accountId, user_id: donoDaConta, contact_id: contactId }),
+    { via: 'envio', ator: quemAbriu },
+  )
     .select('id')
     .single()
 

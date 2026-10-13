@@ -31,6 +31,15 @@ compositor no celular, em `.claude/rules/inbox-conversa.md`.
   vai como FUNÇÃO em `<SelectValue>` — é o que `channel-select.tsx` faz para
   mostrar só o nome do canal.
 
+### `Dialog` e `Sheet` falam pelo dicionário
+
+O "Fechar" do X (texto para leitor de tela) sai de `UiPrimitives.close` por
+`useTranslations` dentro do primitivo (#625 do original). Todo `DialogContent`
+e `SheetContent` precisa do `NextIntlClientProvider` acima (o `layout.tsx` o
+põe na raiz): fora dele o hook LANÇA ("context from `NextIntlClientProvider`
+was not found") assim que o popup renderiza — vale para teste que monte um
+diálogo aberto.
+
 ### Três armadilhas de layout
 
 - ⚠️⚠️ **O tailwind-merge só desempata classes com o MESMO prefixo de

@@ -189,6 +189,7 @@ export async function PATCH(
             last_submitted_at: new Date().toISOString(),
           })
           .eq('id', id)
+          .eq('account_id', accountId)
         return NextResponse.json({ error: message }, { status: 502 })
       }
     }
@@ -212,6 +213,7 @@ export async function PATCH(
         last_submitted_at: new Date().toISOString(),
       })
       .eq('id', id)
+      .eq('account_id', accountId)
       .select()
       .single()
 
@@ -325,6 +327,7 @@ export async function DELETE(
       .from('message_templates')
       .delete()
       .eq('id', id)
+      .eq('account_id', accountId)
     if (delErr) {
       return NextResponse.json(
         {

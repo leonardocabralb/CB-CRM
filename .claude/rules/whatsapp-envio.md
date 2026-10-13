@@ -295,7 +295,14 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
   contatos onde havia milhares e ignorava a exclusão. "Todos os contatos" é
   lido POR CHAVE (`buscarPorChave`): por OFFSET, ficha criada no meio da
   leitura repetia um destinatário, e o modelo pago chegava em dobro. Pinos
-  `use-broadcast-sending.contagem.test.ts` e `.paginacao.test.ts`.
+  `use-broadcast-sending.contagem.test.ts` e `.paginacao.test.ts`. O
+  `paged-query.ts` (do original) pagina por POSIÇÃO e sem teto: dele, só o
+  `chunk` tem uso.
+- ⚠️ **A retomada (`broadcast-resume.ts`, #630) lê UMA página de 1.000 por
+  pedido**, das linhas mais antigas. Nos escopos "falhos" e "todos", a linha
+  que falha de novo volta à frente: se as 1.000 primeiras não enviam, a
+  retomada não passa delas (limite conhecido,
+  `docs/PLANO-merge-upstream-2026-10.md`).
 - ⚠️⚠️ **`create_broadcast_with_recipients` tem UMA assinatura: NOVE
   parâmetros, `p_template_params JSONB`** (lista de listas) e RETURNING
   qualificado (1030). Com `JSONB[]`, o `json_to_record` do PostgREST fazia um

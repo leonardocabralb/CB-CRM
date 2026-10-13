@@ -1,5 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import { marcarOrigem, type ViaDaConversa } from './origem-da-escrita'
+
 /**
  * Devolve à caixa de entrada uma conversa encerrada em que alguém acabou de
  * falar — o cliente OU a equipe (decisão do operador, 2026-09-02).
@@ -108,6 +110,12 @@ import type { SupabaseClient } from '@supabase/supabase-js'
  * `status = 'closed'` — um envio numa conversa aberta não rouba a
  * atribuição de quem está com ela (há teste cobrando o filtro).
  *
+ * `via`: QUEM reabriu, para a trilha da conversa (1083) — "Conversa reaberta
+ * · pelo cliente" ou "· por Ana". Obrigatória: cada chamador sabe se é o
+ * cliente, o celular pareado, a ligação ou o envio pelo CRM, e esquecer
+ * faria a linha dizer "pelo sistema". No envio (`'envio'`), `assignTo` é a
+ * pessoa que enviou e vai junto como ator.
+ *
  * Devolve `true` quando a conversa foi de fato reaberta (a contagem de
  * linhas do UPDATE), `false` quando já estava aberta/pendente ou a escrita
  * falhou. Nenhum chamador usa o retorno hoje.
@@ -118,7 +126,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 export async function reopenClosedConversation(
   db: SupabaseClient,
   conversation: { id: string },
-  opts: { assignTo?: string | null } = {},
+  opts: { via: ViaDaConversa; assignTo?: string | null },
 ): Promise<boolean> {
   const patch: Record<string, unknown> = {
     status: 'open',
@@ -126,14 +134,17 @@ export async function reopenClosedConversation(
     updated_at: new Date().toISOString(),
   }
 
-  const { error, count } = await db
-    .from('conversations')
-    .update(patch, { count: 'exact' })
-    .eq('id', conversation.id)
-    // A ÚNICA pergunta "está encerrada?" — atômica, na linha de agora. Sob
-    // READ COMMITTED, se outra transação estiver mexendo na linha, o UPDATE
-    // espera e reavalia o filtro na versão nova.
-    .eq('status', 'closed')
+  const { error, count } = await marcarOrigem(
+    db
+      .from('conversations')
+      .update(patch, { count: 'exact' })
+      .eq('id', conversation.id)
+      // A ÚNICA pergunta "está encerrada?" — atômica, na linha de agora. Sob
+      // READ COMMITTED, se outra transação estiver mexendo na linha, o UPDATE
+      // espera e reavalia o filtro na versão nova.
+      .eq('status', 'closed'),
+    { via: opts.via, ator: opts.via === 'envio' ? (opts.assignTo ?? null) : null },
+  )
 
   if (error) {
     // Best-effort, como a atualização da conversa que precede isto: uma

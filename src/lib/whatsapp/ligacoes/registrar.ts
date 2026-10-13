@@ -364,7 +364,9 @@ async function gravarNoFio(
   // DURÁVEL da conta, pelo mesmo helper do aviso do Calendly. Lança em falha.
   let destino: Awaited<ReturnType<typeof resolverDestinatario>>;
   try {
-    destino = await resolverDestinatario(db, rota.accountId, telefone);
+    destino = await resolverDestinatario(db, rota.accountId, telefone, undefined, {
+      origem: { via: 'ligacao' },
+    });
   } catch (err) {
     await falhou(db, linha.id, `ficha ou conversa: ${mensagemDe(err)}`);
     return;
@@ -438,7 +440,7 @@ async function gravarNoFio(
     // LOGO DEPOIS de gravar (ver `reopen.ts`): a janela entre gravar e reabrir é
     // onde um encerramento posterior seria atropelado. Sem responsável, como a
     // mensagem do cliente e a do celular pareado.
-    await reopenClosedConversation(db, { id: destino.conversationId });
+    await reopenClosedConversation(db, { id: destino.conversationId }, { via: 'ligacao' });
     ehHistorica = await haMensagemDepois(db, destino.conversationId, carimbo, mensagem.id as string);
   }
 

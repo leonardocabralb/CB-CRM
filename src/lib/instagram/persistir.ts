@@ -328,7 +328,8 @@ async function gravarMensagem(
     db,
     ctx.accountId,
     ctx.ownerUserId,
-    contato.id
+    contato.id,
+    ev.ehEco ? 'celular' : 'cliente'
   );
   if (!conv) return { resultado: 'falhou' };
   const conversation = conv.conversation;
@@ -407,7 +408,7 @@ async function gravarMensagem(
   // app do Instagram. Sem responsável: quem reabre por aqui não é membro.
   // LOGO DEPOIS de gravar a primeira linha (antes dos anexos extras e do
   // bump). Ver `reopen.ts`.
-  await reopenClosedConversation(db, { id: conversation.id });
+  await reopenClosedConversation(db, { id: conversation.id }, { via: ev.ehEco ? 'celular' : 'cliente' });
 
   for (let i = 1; i < arquivos.length; i++) {
     const extra = await salvarMidia(arquivos[i], `${ev.mid}#${i + 1}`);
