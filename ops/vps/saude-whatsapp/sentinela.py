@@ -658,8 +658,12 @@ def conferir_gravacao(pg, crm, nomes, por_nome, achados):
             lista = sorted(ids)
             for i in range(0, len(lista), 100):
                 lote = lista[i:i + 100]
-                for linha in crm.ler('messages?select=message_id&message_id=in.(%s)'
-                                     % urllib.parse.quote(','.join(lote), safe=',')):
+                # Na conexão DA mensagem: `message_id` só é único por conversa
+                # (0040), e a mesma mensagem entre duas conexões do CRM existe
+                # nas duas — achada na outra, esconderia a que faltou aqui.
+                for linha in crm.ler('messages?select=message_id&channel_id=eq.%s&message_id=in.(%s)'
+                                     % (urllib.parse.quote(canal['id']),
+                                        urllib.parse.quote(','.join(lote), safe=','))):
                     gravadas.add(linha.get('message_id'))
             faltando = [ids[m] for m in lista if m not in gravadas]
             if len(faltando) >= NAO_GRAVADAS_MINIMAS:
@@ -702,12 +706,15 @@ def checar_sessoes_99(rd, contas, achados, simular, estado):
             if cursor == '0':
                 break
     if legadas > 0:
+        # Não marca o dia como feito: com sessão legada a varredura repete a
+        # cada hora (barata, por HSCAN) e o problema segue aceso até sumir —
+        # senão um aviso que o sino recusasse só voltaria amanhã.
         achados.problema('sessao99', 'Sessão antiga que derruba conversas',
                          "%d sessões legadas '.99' no servidor do WhatsApp: a conversa do contato para de chegar."
                          % legadas, contas)
     else:
         achados.normal('sessao99')
-    estado['sessao99_ok_em'] = hoje
+        estado['sessao99_ok_em'] = hoje
 
 
 # --------------------------------------------------------------------------
