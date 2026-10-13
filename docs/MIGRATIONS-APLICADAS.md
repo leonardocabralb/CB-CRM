@@ -1242,6 +1242,27 @@ nome da época em que foram aplicadas.
   gravam, lista vazia recusada, CASCADE do login). No preview: salvar (upsert
   201), recarregar já na ordem pessoal e "Voltar ao padrão" (DELETE 204),
   tabela de volta a zero linhas.
+- **1084_cb_possiveis_duplicatas** — a RPC `cb_possiveis_duplicatas(uuid)`
+  (SECURITY INVOKER) e as auxiliares `cb_primeiro_nome(text)` e
+  `cb_vizinhos_do_telefone(text)`; a tabela `cb_duplicatas_descartadas` (par
+  ordenado; leitura na forma da 1032, INSERT/DELETE de admin com a autoria de
+  quem grava, sem UPDATE, nada para `anon`); o índice
+  `idx_contacts_conta_criacao (account_id, created_at)`. PR #403. ADITIVA e
+  ANTES do deploy (a faixa chama a RPC). Aplicada em 13/10/2026 pela
+  Management API (histórico `20261013163655`), depois do replay verde do CI no
+  commit `cee7af70`, com "aplique a migration 1084 em produção" do operador.
+  Conferida: as três funções INVOKER, `anon` sem EXECUTE, RLS ligada com as
+  três policies, o índice, a expressão do acento com o escape intacto (`\u0300`
+  como texto) e a RPC achando os pares reais medidos no plano. ⚠️ Medida em
+  produção como `authenticated`: 289 ms por chamada (o primeiro nome calculado
+  para a conta inteira) — consertada pela 1086.
+- **1086_cb_duplicatas_sem_varredura** — `CREATE OR REPLACE` da RPC da 1084
+  com o MESMO resultado e sem varrer a conta: candidatas por índice atrás de
+  CTE `MATERIALIZED`, o telefone vizinho por igualdade (`unnest`), a janela de
+  ±2 min calculada na ficha. Num Postgres 16 local com 6 mil fichas, como
+  `authenticated`: 49 ms (1084) → 3,5 ms; os cenários da 1084 passam com ela.
+  PENDENTE: replay verde do CI e "aplique a migration 1086 em produção". (A
+  1085 é de outra frente: sentinela do WhatsApp.)
 
 ## Notas do histórico
 

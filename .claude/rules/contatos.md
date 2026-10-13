@@ -192,6 +192,11 @@ operador, medição e fases: `docs/PLANO-fichas-duplicadas.md`.
 - ⚠️⚠️ **Conferida NA HORA, nunca guardada**: a RPC calcula os pares da ficha
   aberta. Nada de gatilho em `contacts` (a ingestão não paga) nem lista que
   envelhece. É `SECURITY INVOKER`: a RLS de `contacts` é a cerca.
+- ⚠️⚠️ **Sem varrer a conta** (1086): candidatas por índice atrás de CTE
+  `MATERIALIZED`, o telefone vizinho por IGUALDADE (`unnest`, nunca `= ANY
+  (lista)`), a janela calculada na ficha (sob RLS, conta com função não
+  LEAKPROOF não vira condição de índice). A 1084, com o nome numa junção,
+  levava 289 ms em produção a cada conversa aberta.
 - ⚠️⚠️ **Só sinais fortes, com os números da medição** (pino
   `possiveis-duplicatas-1084.test.ts`): mesmo e-mail (em até 3 fichas);
   telefone a um dígito + mesmo primeiro nome; criadas em até 2 min + mesmo
