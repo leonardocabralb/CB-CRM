@@ -6,18 +6,22 @@ do CRM. Instalação, arquivos e como desligar: docs/INFRA-VPS.md, seção 12.
 
 Cada execução:
 1. COLETA: lê o log da Evolution, o do CRM e o do agendador desde a execução
-   anterior e guarda só CONTAGENS de assinaturas MASCARADAS em
-   coleta/AAAA-MM-DD.jsonl. O log da Evolution cobre ~2 dias e o do CRM some a
-   cada deploy: a varredura semanal lê estes arquivos.
-2. CHECAGENS, só leitura (banco da Evolution, Docker, Redis e a fronteira de
-   entrega do CRM): conexão fora de 'open'; conexão aberta sem receber;
-   mensagem que a Evolution recebeu e o CRM não gravou; mensagem descartada
-   antes do banco da Evolution (o caso da sessão '.99'); falha real de
-   entrega; sessão legada '.99'; serviço sem réplica; disco; memória.
+   anterior (inclusive o dos contêineres parados) e guarda só o TIPO de cada
+   linha de erro/aviso, com contagem, em coleta/AAAA-MM-DD.jsonl. O log da
+   Evolution cobre poucas horas (~6 h em 13/10/2026) e o do CRM some a cada
+   deploy: a varredura semanal lê estes arquivos.
+2. CHECAGENS, só leitura (banco da Evolution em transação read-only, Docker,
+   Redis e o PostgREST do CRM): serviço sem réplica, memória, disco e
+   conexão rodam MESMO sem o banco; conexão aberta sem receber, mensagem que
+   a Evolution recebeu e o CRM não gravou (conferida pelo id), falha real de
+   entrega, mensagem descartada antes do banco da Evolution (o caso da sessão
+   '.99') e sessão legada '.99'. Medição que falha 3 vezes seguidas também
+   vira aviso ("a sentinela não consegue medir").
 3. AVISO: problema NOVO vira notificação 'whatsapp_alert' (1085) para quem é
    owner/admin da conta, gravada pelo PostgREST com a service role do
    /root/crm.env. Um aviso por problema, lembrete a cada 24 h enquanto durar
-   e "Normalizou" quando passa.
+   e "Normalizou" quando passa; evento (mensagem descartada) no máximo a cada
+   6 h, guardado para a próxima execução se o sino recusar.
 
 Escreve SÓ em /root/saude-whatsapp e na tabela notifications. Nunca imprime
 segredo, telefone nem conteúdo de mensagem.
@@ -35,6 +39,7 @@ import collections
 import datetime
 import fcntl
 import glob
+import http.client
 import json
 import os
 import re
@@ -42,6 +47,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 PASTA = '/root/saude-whatsapp'
@@ -61,6 +67,15 @@ INTERVALO_DE_EVENTO_H = 6
 DIAS_DE_COLETA = 90
 COLETA_MAXIMA_H = 26
 RECHECAGEM_S = 60
+# Medição que falha (banco fora, consulta quebrada) em N execuções seguidas
+# vira aviso: "não medido" calado no log local é a sentinela cega.
+CEGA_DEPOIS_DE = 3
+
+# Os serviços de que o WhatsApp e o CRM dependem. Os outros do Swarm (n8n,
+# Typebot, Portainer…) ficam só na varredura semanal: um serviço de terceiros
+# em laço viraria aviso diário no sino do CRM.
+SERVICOS_VIGIADOS = ('crm_crm', 'crm_agendador', 'evolution_evolution',
+                     'postgres_postgres', 'redis_redis', 'traefik_traefik')
 
 # "Aberta sem receber": em dia útil, com a janela de 2 h inteira entre 8h e
 # 20h, nenhuma mensagem de cliente e pelo menos 5 nossas saindo pela conexão.
@@ -69,12 +84,13 @@ RECHECAGEM_S = 60
 # saídas, a regra dispararia em todo dia parado e em todo feriado.
 JANELA_SEM_ENTRADA_H = 2
 SAIDAS_MINIMAS = 5
-# "A Evolution recebeu e o CRM não gravou": mensagens de cliente mais novas
-# que a fronteira de entrega do CRM (`cb_channels.entrega_carimbo_em`, 1002)
-# + 90 s — a gravação dela é espaçada de 60 s —, com mais de 10 min de idade.
-NAO_GRAVADAS_MINIMAS = 3
-FOLGA_DA_FRONTEIRA_S = 90
+# "A Evolution recebeu e o CRM não gravou": as mensagens de cliente das
+# últimas 2 h (com mais de 10 min) conferidas PELO ID em `messages.message_id`
+# — exato, e pega também a perda parcial que a fronteira de entrega (1002)
+# não vê.
+JANELA_DE_CONFERENCIA_H = 2
 IDADE_MINIMA_S = 600
+NAO_GRAVADAS_MINIMAS = 3
 FALHAS_MINIMAS = 3
 DISCO_MAXIMO = 85
 MEMORIA_MINIMA_MB = 300
@@ -109,14 +125,22 @@ def iso(dt):
 
 
 def de_iso(texto):
+    """Instante gravado por esta sentinela ou pelo banco, sempre em UTC."""
     return datetime.datetime.strptime(texto[:19], '%Y-%m-%dT%H:%M:%S').replace(tzinfo=UTC)
 
 
-def quando(dt, com_dia=True):
+def quando(dt):
+    """'13:36' hoje; '12/10 às 13:36' noutro dia (horário de Brasília)."""
     local = dt.astimezone(BRT)
-    if com_dia and local.date() != AGORA.astimezone(BRT).date():
+    if local.date() != AGORA.astimezone(BRT).date():
         return local.strftime('%d/%m às %H:%M')
     return local.strftime('%H:%M')
+
+
+def quando_com_preposicao(dt):
+    """'às 13:36' hoje; 'em 12/10 às 13:36' noutro dia."""
+    texto = quando(dt)
+    return ('em ' + texto) if '/' in texto else ('às ' + texto)
 
 
 def rodar(args, timeout=60, entrada=None):
@@ -145,9 +169,11 @@ def conteineres(nome, todos=False):
 
 
 def psql(pg, sql):
+    """Consulta no banco `evolution`, numa transação SÓ DE LEITURA."""
     saida = rodar(['docker', 'exec', '-i', pg, 'psql', '-U', 'postgres', '-d', 'evolution',
-                   '-At', '-F', SEP, '-v', 'ON_ERROR_STOP=1', '-f', '-'],
-                  timeout=90, entrada=sql.encode('utf-8'))
+                   '-q', '-At', '-F', SEP, '-v', 'ON_ERROR_STOP=1', '-f', '-'],
+                  timeout=90,
+                  entrada=('set default_transaction_read_only = on;\n' + sql).encode('utf-8'))
     return [linha.split(SEP) for linha in saida.splitlines() if linha]
 
 
@@ -178,8 +204,12 @@ class Crm:
     def __init__(self, env):
         self.base = env['NEXT_PUBLIC_SUPABASE_URL'].rstrip('/') + '/rest/v1/'
         self.chave = env['SUPABASE_SERVICE_ROLE_KEY']
+        if not self.chave or not env['NEXT_PUBLIC_SUPABASE_URL']:
+            raise RuntimeError('URL do Supabase ou service role vazia no crm.env')
 
     def pedir(self, metodo, caminho, corpo=None):
+        """(status, dados). Erro de REDE devolve status 0 — nunca lança: um
+        aviso já gravado nesta execução não pode se perder do estado."""
         dados = None if corpo is None else json.dumps(corpo).encode('utf-8')
         req = urllib.request.Request(self.base + caminho, data=dados, method=metodo, headers={
             'apikey': self.chave,
@@ -195,6 +225,8 @@ class Crm:
                 return r.status, (json.loads(texto) if texto else None)
         except urllib.error.HTTPError as e:
             return e.code, sem_segredo(e.read().decode('utf-8', 'replace'))
+        except (urllib.error.URLError, OSError, http.client.HTTPException, ValueError) as e:
+            return 0, 'erro de rede: %s' % type(e).__name__
 
     def ler(self, caminho):
         status, dados = self.pedir('GET', caminho)
@@ -204,19 +236,19 @@ class Crm:
 
 
 # --------------------------------------------------------------------------
-# Coleta dos logs (só contagens mascaradas)
+# Coleta dos logs (só o TIPO de cada linha, com contagem)
 # --------------------------------------------------------------------------
 
 ANSI = re.compile(r'\x1b\[[0-9;]*m')
-# Linha com material de sessão (chaves Signal): descartada inteira.
-SESSAO = re.compile(r'privKey|noiseKey|advSecretKey|signedIdentityKey|signedPreKey|"private"', re.I)
+# Linha com material de sessão (chaves Signal, Buffer impresso): descartada
+# inteira — inclusive o formato do util.inspect (`private: <Buffer …>`).
+SESSAO = re.compile(r'privKey|noiseKey|advSecretKey|signedIdentityKey|signedPreKey|\bprivate\b|'
+                    r'rootKey|chainKey|keyData|pubKey|macKey|encKey|<Buffer', re.I)
 VALOR = re.compile(r'(apikey|api_key|token|secret|password|senha|authorization|bearer)(["\'\s:=]+)([^\s"\',}]+)', re.I)
 CONHECIDAS = ('transaction failed, rolling back', 'error in handling message', 'failed to decrypt message',
               'Connection Closed', 'Stream Errored', 'connection errored', 'restart required', 'logged out',
               'Message ignored with messageStubParameters', 'Original message not found for update',
               'Bad MAC', 'No session', 'No matching sessions', 'PreKeyError', 'SessionError')
-
-
 TAG = re.compile(r'\s*(\[[^\]\s]{1,40}\])\s*')
 EMAIL = re.compile(r'[\w.+-]+@[\w-]+(\.[\w-]+)+')
 ERRO_NOMEADO = re.compile(r'\s*((?:[A-Z]\w*)?Error\b.*)')
@@ -245,15 +277,29 @@ def assinatura(texto, tamanho=120):
     return (prefixo + re.sub(r'\s+', ' ', texto).strip())[:tamanho]
 
 
-def arquivos_de_log(conteiner):
-    caminho = rodar(['docker', 'inspect', '-f', '{{.LogPath}}', conteiner]).strip()
-    if not caminho:
-        return []
+def arquivos_de_log(nome_do_servico, desde):
+    """Os json-file de TODOS os contêineres do serviço (o parado guarda o log
+    de antes do reinício ou do deploy), menos os que não mudam desde `desde`."""
+    corte = de_iso(desde).timestamp()
+    arquivos = []
+    for conteiner in conteineres(nome_do_servico, todos=True):
+        try:
+            caminho = rodar(['docker', 'inspect', '-f', '{{.LogPath}}', conteiner]).strip()
+        except RuntimeError:
+            continue
+        if not caminho:
+            continue
 
-    def ordem(p):
-        fim = p.rsplit('.', 1)[1]
-        return -int(fim) if fim.isdigit() else 0
-    return sorted(glob.glob(caminho + '*'), key=ordem)
+        def ordem(p):
+            fim = p.rsplit('.', 1)[1]
+            return -int(fim) if fim.isdigit() else 0
+        for nome in sorted(glob.glob(caminho + '*'), key=ordem):
+            try:
+                if os.path.getmtime(nome) >= corte:
+                    arquivos.append(nome)
+            except OSError:
+                continue
+    return arquivos
 
 
 def linhas_do_log(arquivos, desde, ate):
@@ -275,23 +321,35 @@ def linhas_do_log(arquivos, desde, ate):
                 yield instante, ANSI.sub('', obj.get('log', ''))
 
 
-def coletar_evolution(evo, desde, ate):
-    """As assinaturas do log da Evolution — a mesma leitura da seção 5 do
-    vps-saude.sh, com os recibos ERROR por (conexão, tipo, código)."""
+def coletar_evolution(desde, ate):
+    """As assinaturas do log da Evolution — a leitura da seção 5 do
+    vps-saude.sh —, os recibos ERROR por (conexão, tipo, código) e as
+    mensagens DESCARTADAS antes do banco ("error in handling message")."""
     assinaturas = collections.Counter()
     recibos = collections.Counter()
     descartadas = 0
+    # A linha do "error in handling message" não diz a instância: a provável é
+    # a do prefixo "[Evolution API] [<instância>]" mais próximo antes dela
+    # ('?' se nenhum). Heurística — o aviso diz "provável".
+    descartadas_por_instancia = collections.Counter()
     linhas = 0
     primeiro = ultimo = None
     historico = collections.deque(maxlen=14)
     pendente = None
     sem_texto = None  # (nível, componente) de um ERROR/WARN cujo texto vem na linha seguinte
-    for instante, s in linhas_do_log(arquivos_de_log(evo), desde, ate):
+    for instante, s in linhas_do_log(arquivos_de_log('evolution_evolution', desde), desde, ate):
         linhas += 1
         primeiro = primeiro or instante
         ultimo = instante
         if 'error in handling message' in s:
             descartadas += 1
+            provavel = '?'
+            for anterior in reversed(historico):
+                achou = re.findall(r'\[Evolution API\]\s*\[([A-Za-z0-9 _-]+)\]', anterior)
+                if achou:
+                    provavel = achou[-1].strip()
+                    break
+            descartadas_por_instancia[provavel] += 1
         historico.append(s)
         if pendente is not None:
             m = re.search(r'"(\d{3})"', s)
@@ -339,25 +397,20 @@ def coletar_evolution(evo, desde, ate):
             continue
         assinaturas[nivel + '\t' + texto] += 1
     return {'linhas': linhas, 'cobertura': [primeiro, ultimo], 'descartadas': descartadas,
+            'descartadas_por_instancia': dict(descartadas_por_instancia),
             'assinaturas': dict(assinaturas.most_common(60)), 'recibos': dict(recibos)}
 
 
 def coletar_app(nome_do_servico, desde, ate):
     """Falhas e avisos do log de um serviço do CRM (crm_crm, crm_agendador) —
-    a leitura da seção 6 do vps-saude.sh. Lê também os contêineres parados
-    (o de antes do deploy), enquanto o Docker os guardar."""
+    a leitura da seção 6 do vps-saude.sh."""
     contagem = collections.Counter()
     linhas = 0
-    for conteiner in conteineres(nome_do_servico, todos=True):
-        try:
-            arquivos = arquivos_de_log(conteiner)
-        except RuntimeError:
+    for _instante, s in linhas_do_log(arquivos_de_log(nome_do_servico, desde), desde, ate):
+        linhas += 1
+        if not re.search(r'error|failed|falhou|warn|\[evolution/webhook\]|\[send-message\]|ignorad|curl', s, re.I):
             continue
-        for _instante, s in linhas_do_log(arquivos, desde, ate):
-            linhas += 1
-            if not re.search(r'error|failed|falhou|warn|\[evolution/webhook\]|\[send-message\]|ignorad|curl', s, re.I):
-                continue
-            contagem[assinatura(s, 160)] += 1
+        contagem[assinatura(s, 160)] += 1
     return {'linhas': linhas, 'assinaturas': dict(contagem.most_common(60))}
 
 
@@ -367,26 +420,29 @@ def coletar_app(nome_do_servico, desde, ate):
 
 class Achados:
     def __init__(self):
-        self.problemas = {}   # chave -> {titulo, corpo, contas, evento}
+        self.problemas = {}   # chave -> {titulo, corpo, contas, evento, dados}
         self.normais = set()  # chaves medidas e em ordem (para "Normalizou")
         self.nao_medido = []  # o que falhou ao medir, com o motivo
 
-    def problema(self, chave, titulo, corpo, contas, evento=False):
-        self.problemas[chave] = {'titulo': titulo, 'corpo': corpo,
-                                 'contas': sorted(contas), 'evento': evento}
+    def problema(self, chave, titulo, corpo, contas, evento=False, dados=None):
+        self.problemas[chave] = {'titulo': titulo, 'corpo': corpo, 'contas': sorted(contas),
+                                 'evento': evento, 'dados': dados or {}}
 
     def normal(self, chave):
         self.normais.add(chave)
 
 
 def situacao_do_servidor():
-    """Réplicas e memória: o que se mede sem o banco da Evolution."""
+    """Réplicas dos serviços vigiados e memória: o que se mede sem o banco.
+    Serviço vigiado que nem aparece no `docker service ls` conta como parado."""
     replicas = {}
     for linha in rodar(['docker', 'service', 'ls', '--format', '{{.Name}} {{.Replicas}}']).splitlines():
         partes = linha.split()
-        if len(partes) >= 2 and '/' in partes[1]:
+        if len(partes) >= 2 and partes[0] in SERVICOS_VIGIADOS and '/' in partes[1]:
             rodando, esperado = partes[1].split('/', 1)
-            replicas[partes[0]] = (rodando, esperado)
+            replicas[partes[0]] = (rodando, esperado.split()[0])
+    for servico in SERVICOS_VIGIADOS:
+        replicas.setdefault(servico, ('0', 'serviço ausente'))
     memoria_mb = None
     with open('/proc/meminfo') as fh:
         for linha in fh:
@@ -446,8 +502,9 @@ def checar_servidor_e_conexoes(pg, producao, contas, achados):
     for servico, (rodando, esperado) in servidor['replicas'].items():
         chave = 'replica:' + servico
         if chave in persistentes:
-            achados.problema(chave, 'Serviço parado no servidor: ' + servico,
-                             '%s de %s réplicas rodando.' % (rodando, esperado), contas)
+            corpo = ('O serviço não existe mais no Swarm.' if esperado == 'serviço ausente'
+                     else '%s de %s réplicas rodando.' % (rodando, esperado))
+            achados.problema(chave, 'Serviço parado no servidor: ' + servico, corpo, contas)
         elif rodando == esperado:
             achados.normal(chave)
     if 'memoria' in persistentes:
@@ -491,7 +548,7 @@ def checar_servidor_e_conexoes(pg, producao, contas, achados):
     return conexoes
 
 
-def checar_mensagens(pg, producao, conexoes, achados):
+def checar_mensagens(pg, crm, producao, conexoes, achados):
     """O que depende do banco da Evolution: tráfego, o que o CRM não gravou e
     falha real de entrega — só nas conexões cuja instância existe."""
     producao = [c for c in producao if c['instance_name'] in conexoes]
@@ -501,7 +558,7 @@ def checar_mensagens(pg, producao, conexoes, achados):
     nomes = ', '.join(literal(c['instance_name']) for c in producao)
     por_nome = {c['instance_name']: c for c in producao}
 
-    # 3. Aberta sem receber (só se decide em horário útil; normaliza a qualquer hora).
+    # 1. Aberta sem receber (só se decide em horário útil; normaliza a qualquer hora).
     trafego = {nome: (int(e), int(s)) for nome, e, s in psql(pg, '''
         select i."name",
                count(*) filter (where not (m.key->>'fromMe')::boolean),
@@ -525,47 +582,21 @@ def checar_mensagens(pg, producao, conexoes, achados):
                              'Nenhuma mensagem de cliente nas últimas %d h, e %d saíram por ela. '
                              'A conexão aparece ativa.' % (JANELA_SEM_ENTRADA_H, saida), [canal['account_id']])
 
-    # 4. A Evolution recebeu e o CRM não gravou.
-    fronteiras = []
-    for nome, canal in por_nome.items():
-        carimbo = canal.get('entrega_carimbo_em')
-        if carimbo:
-            limite = int(de_iso(carimbo).timestamp()) + FOLGA_DA_FRONTEIRA_S
-            fronteiras.append('(%s, %d)' % (literal(nome), limite))
-    if fronteiras:
-        tipos = ', '.join(literal(t) for t in TIPOS_SEM_CONTEUDO)
-        faltando = {nome: (int(n), int(primeira_ts)) for nome, n, primeira_ts in psql(pg, '''
-            with fronteira(nome, limite) as (values %s)
-            select f.nome, count(*), min(m."messageTimestamp")
-            from fronteira f
-            join "Instance" i on i."name" = f.nome
-            join "Message" m on m."instanceId" = i.id
-            where not (m.key->>'fromMe')::boolean
-              and m."messageTimestamp" > f.limite
-              and m."messageTimestamp" < extract(epoch from now()) - %d
-              and m."messageTimestamp" > extract(epoch from now() - interval '24 hours')
-              and coalesce(m.key->>'remoteJid', '') not like '%%@lid'
-              and coalesce(m."messageType", '') not in (%s)
-              and %s
-            group by 1;''' % (', '.join(fronteiras), IDADE_MINIMA_S, tipos, FILTRO_1A1))}
-        for nome, canal in por_nome.items():
-            if not canal.get('entrega_carimbo_em'):
-                continue
-            chave = 'nao_gravadas:' + nome
-            n, primeira_ts = faltando.get(nome, (0, 0))
-            if n >= NAO_GRAVADAS_MINIMAS:
-                desde = datetime.datetime.fromtimestamp(primeira_ts, UTC)
-                achados.problema(chave, 'Mensagens não chegam ao CRM: ' + canal['label'],
-                                 '%d mensagens de cliente chegaram ao WhatsApp desde %s e não foram '
-                                 'gravadas no CRM.' % (n, quando(desde)), [canal['account_id']])
-            else:
-                achados.normal(chave)
+    # 2. A Evolution recebeu e o CRM não gravou — conferido PELO ID. Falha
+    # aqui não pula a checagem 3.
+    try:
+        conferir_gravacao(pg, crm, nomes, por_nome, achados)
+    except Exception as e:
+        achados.nao_medido.append('conferência por id: ' + sem_segredo(e))
 
-    # 5. Falha real de entrega (ERROR do envio PRINCIPAL, em 1:1, sem entrega).
+    # 3. Falha real de entrega: ERROR do envio PRINCIPAL em 1:1, sem entrega. A
+    # mesma régua do CRM (`ehErroDeAparelhoSecundario`): remoteJid sem "@" OU
+    # com ":" é reenvio a aparelho secundário, não falha.
     falhas = {nome: int(n) for nome, n in psql(pg, '''
         with x as (
           select i."name" as nome, m.id,
-                 bool_or(u.status = 'ERROR' and u."remoteJid" like '%%@%%') as principal,
+                 bool_or(u.status = 'ERROR' and u."remoteJid" like '%%@%%'
+                         and u."remoteJid" not like '%%:%%') as principal,
                  bool_or(u.status in ('DELIVERY_ACK', 'READ', 'PLAYED')) as chegou
           from "Message" m
           join "Instance" i on i.id = m."instanceId"
@@ -588,20 +619,78 @@ def checar_mensagens(pg, producao, conexoes, achados):
             achados.normal(chave)
 
 
+def conferir_gravacao(pg, crm, nomes, por_nome, achados):
+    """Mensagens de cliente das últimas JANELA_DE_CONFERENCIA_H horas (com mais
+    de IDADE_MINIMA_S) que a Evolution tem e `messages.message_id` não."""
+    if crm is not None:
+        tipos = ', '.join(literal(t) for t in TIPOS_SEM_CONTEUDO)
+        candidatas = collections.defaultdict(dict)
+        for nome, mid, ts in psql(pg, '''
+            select i."name", m.key->>'id', m."messageTimestamp"
+            from "Message" m join "Instance" i on i.id = m."instanceId"
+            where i."name" in (%s)
+              and not (m.key->>'fromMe')::boolean
+              and m."messageTimestamp" > extract(epoch from now() - interval '%d hours')
+              and m."messageTimestamp" < extract(epoch from now()) - %d
+              -- Fora só o LID SEM telefone (o CRM retém, 1010). A 2.4 manda
+              -- quase tudo com o LID em remoteJid e o telefone em remoteJidAlt.
+              and not (coalesce(m.key->>'remoteJid', '') like '%%@lid'
+                       and coalesce(m.key->>'remoteJidAlt', '') not like '%%@s.whatsapp.net')
+              and coalesce(m."messageType", '') not in (%s)
+              and %s
+              and m.key->>'id' ~ '^[A-Za-z0-9]+$';''' % (
+                nomes, JANELA_DE_CONFERENCIA_H, IDADE_MINIMA_S, tipos, FILTRO_1A1)):
+            candidatas[nome][mid] = int(ts)  # a Evolution guarda a do histórico DUAS vezes
+        for nome, canal in por_nome.items():
+            ids = candidatas.get(nome, {})
+            chave = 'nao_gravadas:' + nome
+            gravadas = set()
+            lista = sorted(ids)
+            for i in range(0, len(lista), 100):
+                lote = lista[i:i + 100]
+                for linha in crm.ler('messages?select=message_id&message_id=in.(%s)'
+                                     % urllib.parse.quote(','.join(lote), safe=',')):
+                    gravadas.add(linha.get('message_id'))
+            faltando = [ids[m] for m in lista if m not in gravadas]
+            if len(faltando) >= NAO_GRAVADAS_MINIMAS:
+                achados.problema(chave, 'Mensagens não chegam ao CRM: ' + canal['label'],
+                                 '%d mensagens de cliente chegaram ao WhatsApp entre %s e %s e não estão no CRM.'
+                                 % (len(faltando), quando(datetime.datetime.fromtimestamp(min(faltando), UTC)),
+                                    quando(datetime.datetime.fromtimestamp(max(faltando), UTC))),
+                                 [canal['account_id']])
+            elif lista and not faltando:
+                # Normaliza só com PROVA de que o CRM voltou a gravar: chegou
+                # mensagem na janela e todas estão lá. Conexão quieta (janela
+                # vazia) ou perda abaixo do limite não decidem nada — senão o
+                # tempo "curaria" a perda sozinho.
+                achados.normal(chave)
+
+
 def checar_sessoes_99(rd, contas, achados, simular):
-    """Sessão legada '.99' (INFRA-VPS §8): uma vez por dia, ou sempre no --simular."""
-    if rd and (simular or AGORA.astimezone(BRT).hour == HORA_DA_VARREDURA_99):
-        legadas = 0
-        chaves = rodar(['docker', 'exec', rd, 'redis-cli', '-n', '8', '--scan', '--pattern', 'evolution:instance:*']).split()
-        for chave_redis in chaves:
-            campos = rodar(['docker', 'exec', rd, 'redis-cli', '-n', '8', 'HKEYS', chave_redis], timeout=120)
-            legadas += sum(1 for c in campos.splitlines() if re.match(r'^session-[0-9]+\.99$', c))
-        if legadas > 0:
-            achados.problema('sessao99', 'Sessão antiga que derruba conversas',
-                             "%d sessões legadas '.99' no servidor do WhatsApp: a conversa do contato para de chegar." % legadas,
-                             contas)
-        else:
-            achados.normal('sessao99')
+    """Sessão legada '.99' (INFRA-VPS §8): uma vez por dia, ou sempre no
+    --simular. HSCAN com MATCH, nunca HKEYS: o Redis é compartilhado e os
+    hashes de chaves Signal são grandes."""
+    if not rd or not (simular or AGORA.astimezone(BRT).hour == HORA_DA_VARREDURA_99):
+        return
+    legadas = 0
+    for chave_redis in rodar(['docker', 'exec', rd, 'redis-cli', '-n', '8', '--scan',
+                              '--pattern', 'evolution:instance:*']).split():
+        cursor = '0'
+        for _volta in range(100000):
+            saida = rodar(['docker', 'exec', rd, 'redis-cli', '-n', '8', 'HSCAN', chave_redis, cursor,
+                           'MATCH', 'session-*.99', 'COUNT', '1000'], timeout=60).splitlines()
+            if not saida:
+                break
+            cursor = saida[0].strip()
+            legadas += sum(1 for campo in saida[1:] if re.match(r'^session-[0-9]+\.99$', campo))
+            if cursor == '0':
+                break
+    if legadas > 0:
+        achados.problema('sessao99', 'Sessão antiga que derruba conversas',
+                         "%d sessões legadas '.99' no servidor do WhatsApp: a conversa do contato para de chegar."
+                         % legadas, contas)
+    else:
+        achados.normal('sessao99')
 
 
 # --------------------------------------------------------------------------
@@ -627,6 +716,30 @@ def gravar_json(caminho, dados):
     os.replace(temporario, caminho)
 
 
+def texto_das_descartadas(dados, rotulos):
+    """O log não diz de quem é a mensagem descartada (cliente, grupo, conexão
+    de teste): o texto não afirma — dá a conexão PROVÁVEL pelo log."""
+    partes = ['%s (%d)' % ('não identificada' if inst == '?' else rotulos.get(inst, inst), n)
+              for inst, n in sorted(dados['por_instancia'].items())]
+    return ('%d mensagem(ns) recebida(s) descartada(s) pela Evolution antes de chegar ao CRM desde %s '
+            '(erro ao decifrar ou processar). Conexão provável pelo log: %s. Elas não aparecem em '
+            'conversa nenhuma.' % (dados['n'], quando(de_iso(dados['desde'])), ', '.join(partes)))
+
+
+def juntar_eventos_pendentes(estado, achados, rotulos):
+    """Evento que o sino recusou numa execução anterior volta agora, somado ao
+    desta (o log daquela janela não será relido)."""
+    for chave, pendente in sorted((estado.get('eventos_pendentes') or {}).items()):
+        atual = ((achados.problemas.get(chave) or {}).get('dados') or {})
+        por_instancia = collections.Counter(pendente['dados'].get('por_instancia') or {})
+        por_instancia.update(atual.get('por_instancia') or {})
+        dados = {'n': pendente['dados'].get('n', 0) + atual.get('n', 0),
+                 'desde': pendente['dados'].get('desde') or iso(AGORA),
+                 'por_instancia': dict(por_instancia)}
+        achados.problema(chave, pendente['titulo'], texto_das_descartadas(dados, rotulos),
+                         pendente['contas'], evento=True, dados=dados)
+
+
 def decidir(estado, achados):
     """Os avisos desta execução: (chave, motivo, titulo, corpo, contas)."""
     ativos = estado.get('ativos', {})
@@ -647,19 +760,23 @@ def decidir(estado, achados):
                            p['corpo'] + ' Desde %s.' % quando(de_iso(atual['desde'])), p['contas']))
     for chave, atual in sorted(ativos.items()):
         if chave in achados.normais and chave not in achados.problemas:
-            avisos.append((chave, 'resolvido', 'Normalizou — ' + atual['titulo'],
-                           'Voltou ao normal às %s (o problema começou %s).' % (
-                               quando(AGORA, com_dia=False), quando(de_iso(atual['desde']))),
-                           atual['contas']))
+            corpo = 'Voltou ao normal %s; tinha começado %s.' % (
+                quando_com_preposicao(AGORA), quando_com_preposicao(de_iso(atual['desde'])))
+            if chave.startswith('nao_gravadas:'):
+                corpo += (' As mensagens que faltaram NÃO entram sozinhas no CRM: '
+                          'precisam ser importadas à mão.')
+            avisos.append((chave, 'resolvido', 'Normalizou — ' + atual['titulo'], corpo, atual['contas']))
     return avisos
 
 
-def aplicar(estado, achados, enviados):
+def aplicar(estado, achados, avisos, enviados):
     ativos = estado.setdefault('ativos', {})
     eventos = estado.setdefault('eventos', {})
+    pendentes = estado.setdefault('eventos_pendentes', {})
     for chave, motivo in enviados:
         if motivo == 'evento':
             eventos[chave] = iso(AGORA)
+            pendentes.pop(chave, None)
         elif motivo == 'novo':
             p = achados.problemas[chave]
             ativos[chave] = {'desde': iso(AGORA), 'avisado_em': iso(AGORA),
@@ -668,12 +785,21 @@ def aplicar(estado, achados, enviados):
             ativos[chave]['avisado_em'] = iso(AGORA)
         elif motivo == 'resolvido':
             ativos.pop(chave, None)
+    # Evento que devia ir ao sino e não foi fica guardado para a próxima.
+    for chave, motivo, titulo, _corpo, contas in avisos:
+        if motivo == 'evento' and (chave, motivo) not in enviados:
+            p = achados.problemas[chave]
+            pendentes[chave] = {'titulo': titulo, 'contas': contas, 'dados': p['dados']}
 
 
 def enviar(crm, admins, avisos):
     """Grava os avisos no sino. Devolve [(chave, motivo)] dos que entraram;
     o que falhar fica para a próxima execução (o estado não muda)."""
     enviados = []
+    if crm is None:
+        if avisos:
+            print('  %d aviso(s) sem CRM para gravar' % len(avisos))
+        return enviados
     for chave, motivo, titulo, corpo, contas in avisos:
         linhas = [{'account_id': conta, 'user_id': uid, 'type': TIPO_DO_AVISO,
                    'title': titulo[:200], 'body': corpo[:500]}
@@ -697,6 +823,23 @@ def administradores(crm):
     return por_conta
 
 
+def vigiar_a_propria_medicao(estado, achados, contas):
+    """"Não medido" calado no log local é a sentinela cega: depois de
+    CEGA_DEPOIS_DE execuções seguidas, vira aviso. Sem o CRM não há como
+    avisar — esse caso fica só no sentinela.log."""
+    motivos = [m for m in achados.nao_medido if not m.startswith('CRM:')]
+    cega = estado.setdefault('cega', {})
+    if not motivos:
+        estado['cega'] = {}
+        achados.normal('sentinela_cega')
+        return
+    cega['seguidas'] = cega.get('seguidas', 0) + 1
+    cega.setdefault('desde', iso(AGORA))
+    if cega['seguidas'] >= CEGA_DEPOIS_DE:
+        achados.problema('sentinela_cega', 'A sentinela do WhatsApp não consegue medir',
+                         ('Desde %s: ' % quando(de_iso(cega['desde']))) + '; '.join(motivos)[:300], contas)
+
+
 # --------------------------------------------------------------------------
 # Execução
 # --------------------------------------------------------------------------
@@ -717,6 +860,14 @@ def arrumar_a_casa():
         pass
 
 
+def primeiro_conteiner(nome, achados):
+    try:
+        return (conteineres(nome) or [None])[0]
+    except (RuntimeError, OSError, subprocess.TimeoutExpired) as e:
+        achados.nao_medido.append('docker: ' + sem_segredo(e))
+        return None
+
+
 def main():
     simular = '--simular' in sys.argv
     teste = '--teste-aviso' in sys.argv
@@ -732,70 +883,73 @@ def main():
             return 0
 
     achados = Achados()
-    crm = Crm(ler_env(CRM_ENV))
-    # Sem o CRM não há a quem avisar, mas a coleta dos logs segue: é ela que
-    # não pode ter buraco.
-    canais, admins = [], {}
+    # Sem o CRM (crm.env ausente, chave vazia, rede) não há a quem avisar, mas
+    # a coleta dos logs segue: é ela que não pode ter buraco.
+    crm, canais, admins = None, [], {}
     try:
-        canais = crm.ler('cb_channels?select=id,account_id,label,instance_name,entrega_carimbo_em'
+        crm = Crm(ler_env(CRM_ENV))
+        canais = crm.ler('cb_channels?select=id,account_id,label,instance_name'
                          '&kind=eq.evolution&instance_name=not.is.null')
         admins = administradores(crm)
     except Exception as e:
         achados.nao_medido.append('CRM: ' + sem_segredo(e))
-    contas_de_producao = sorted({c['account_id'] for c in canais
-                                 if 'teste' not in ((c.get('label') or '') + c['instance_name']).lower()})
+    producao = [c for c in canais if 'teste' not in ((c.get('label') or '') + c['instance_name']).lower()]
+    contas = sorted({c['account_id'] for c in producao})
 
     if teste:
         enviados = enviar(crm, admins, [('teste', 'evento', 'Teste da sentinela do WhatsApp',
                                          'Se você está vendo isto, os avisos do servidor chegam ao sino.',
-                                         contas_de_producao)])
+                                         contas)])
         print('%s aviso de teste: %s%s' % (iso(AGORA), 'gravado' if enviados else 'FALHOU',
                                            ' (' + ' | '.join(achados.nao_medido) + ')' if achados.nao_medido else ''))
         return 0 if enviados else 1
 
-    pg = (conteineres('postgres_postgres') or [None])[0]
-    evo = (conteineres('evolution_evolution') or [None])[0]
-    rd = (conteineres('redis_redis') or [None])[0]
+    pg = primeiro_conteiner('postgres_postgres', achados)
+    rd = primeiro_conteiner('redis_redis', achados)
     estado = ler_estado()
 
     # Checagens. Cada parte falha sozinha: uma que quebra não cala as outras
     # nem a coleta. Postgres parado aparece como réplica faltando (`docker
     # service ls`), não como checagem pulada.
-    producao = [c for c in canais if 'teste' not in ((c.get('label') or '') + c['instance_name']).lower()]
     conexoes = None
     try:
-        conexoes = checar_servidor_e_conexoes(pg, producao, contas_de_producao, achados)
+        conexoes = checar_servidor_e_conexoes(pg, producao, contas, achados)
     except Exception as e:
         achados.nao_medido.append('servidor e conexões: ' + sem_segredo(e))
     if conexoes is not None and producao:
         try:
-            checar_mensagens(pg, producao, conexoes, achados)
+            checar_mensagens(pg, crm, producao, conexoes, achados)
         except Exception as e:
             achados.nao_medido.append('mensagens: ' + sem_segredo(e))
     try:
-        checar_sessoes_99(rd, contas_de_producao, achados, simular)
+        checar_sessoes_99(rd, contas, achados, simular)
     except Exception as e:
         achados.nao_medido.append("sessões '.99': " + sem_segredo(e))
 
     # Coleta dos logs, desde a execução anterior (no máximo COLETA_MAXIMA_H).
+    # Ou entra inteira, ou não entra: linha parcial seria contada duas vezes
+    # quando a janela for relida.
     ate = iso(AGORA)[:19]
     piso = iso(AGORA - datetime.timedelta(hours=COLETA_MAXIMA_H))[:19]
     desde = max(estado.get('coletado_ate', piso)[:19], piso)
     registro = {'execucao': iso(AGORA), 'janela': [desde + 'Z', ate + 'Z']}
     coleta_ok = False
     try:
-        registro['evolution'] = coletar_evolution(evo, desde, ate) if evo else None
-        registro['crm'] = coletar_app('crm_crm', desde, ate)
-        registro['agendador'] = coletar_app('crm_agendador', desde, ate)
+        coleta = {'evolution': coletar_evolution(desde, ate),
+                  'crm': coletar_app('crm_crm', desde, ate),
+                  'agendador': coletar_app('crm_agendador', desde, ate)}
+        registro.update(coleta)
         coleta_ok = True
     except Exception as e:
         achados.nao_medido.append('coleta: ' + sem_segredo(e))
-    descartadas = (registro.get('evolution') or {}).get('descartadas', 0)
-    if descartadas:
+    rotulos = {c['instance_name']: (c.get('label') or c['instance_name']) for c in canais}
+    if coleta_ok and registro['evolution']['descartadas']:
+        dados = {'n': registro['evolution']['descartadas'], 'desde': desde + 'Z',
+                 'por_instancia': registro['evolution']['descartadas_por_instancia']}
         achados.problema('descartadas', 'WhatsApp descartou mensagens recebidas',
-                         '%d mensagem(ns) de cliente descartada(s) antes de chegar ao CRM desde %s '
-                         '(sessão de criptografia de um contato).' % (descartadas, quando(de_iso(desde))),
-                         contas_de_producao, evento=True)
+                         texto_das_descartadas(dados, rotulos), contas, evento=True, dados=dados)
+    juntar_eventos_pendentes(estado, achados, rotulos)
+    vigiar_a_propria_medicao(estado, achados, contas)
 
     avisos = decidir(estado, achados)
     registro['problemas'] = sorted(achados.problemas)
@@ -817,7 +971,7 @@ def main():
         return 0
 
     enviados = enviar(crm, admins, avisos)
-    aplicar(estado, achados, enviados)
+    aplicar(estado, achados, avisos, enviados)
     registro['avisos'] = [list(e) for e in enviados]
     if coleta_ok:
         estado['coletado_ate'] = ate + 'Z'

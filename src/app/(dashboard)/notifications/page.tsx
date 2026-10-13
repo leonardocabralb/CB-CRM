@@ -293,7 +293,14 @@ export default function NotificationsPage() {
                       )}
                     </div>
                     {texto.corpo && (
-                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                      <p
+                        className={cn(
+                          "mt-0.5 text-xs text-muted-foreground",
+                          // O aviso de saúde não abre nada ao clicar: o
+                          // diagnóstico inteiro tem de caber aqui.
+                          n.type === "whatsapp_alert" ? "line-clamp-3" : "truncate",
+                        )}
+                      >
                         {texto.corpo}
                       </p>
                     )}

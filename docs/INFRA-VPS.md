@@ -706,9 +706,10 @@ arquivos abaixo por ssh).
 **O que lê:** o banco `evolution` (`Instance`, `Message`, `MessageUpdate`);
 `docker service ls`; o json-file dos contêineres da Evolution, do `crm_crm` e
 do `crm_agendador` (inclusive os parados, enquanto o Docker os guardar); o
-Redis db 8 (`HKEYS` dos hashes `evolution:instance:*`, uma vez por dia, às 10h
-de Brasília); `/proc/meminfo` e o disco; e, pelo PostgREST com a service role
-do `/root/crm.env`, `cb_channels` e `profiles`. **O que grava:** só
+Redis db 8 (`HSCAN … MATCH 'session-*.99'` nos hashes `evolution:instance:*`,
+uma vez por dia, às 10h de Brasília); `/proc/meminfo` e o disco; e, pelo
+PostgREST com a service role do `/root/crm.env`, `cb_channels`, `profiles` e
+`messages.message_id` (a conferência por id). **O que grava:** só
 `/root/saude-whatsapp` e linhas `whatsapp_alert` em `notifications` (1085).
 Nunca imprime segredo, telefone nem conteúdo de mensagem.
 
@@ -719,12 +720,13 @@ Nunca imprime segredo, telefone nem conteúdo de mensagem.
 |---|---|---|
 | `conexao:<instância>` | `connectionStatus` ≠ `open`, ou a instância nem existe mais no servidor (apagada ou renomeada), conferido de novo 60 s depois | `open` |
 | `sem_entrada:<instância>` | dia útil, janela de 2 h inteira entre 8h e 20h: 0 mensagem de cliente e ≥ 5 nossas saindo | chegou mensagem de cliente nas últimas 2 h |
-| `nao_gravadas:<instância>` | ≥ 3 mensagens de cliente (1:1, com conteúdo, fora `@lid`) mais novas que `cb_channels.entrega_carimbo_em` + 90 s e com mais de 10 min | < 3 |
-| `falhas:<instância>` | ≥ 3 ERROR do envio PRINCIPAL em 1:1 sem entrega em 24 h | < 3 |
-| `descartadas` | "error in handling message" no log da Evolution (mensagem descartada antes do banco: o caso da §8, 30/09) | é evento: no máximo um aviso a cada 6 h |
-| `sessao99` | campo `session-<n>.99` em algum hash (§8) | 0 |
-| `replica:<serviço>` | réplicas rodando ≠ esperadas, conferido de novo 60 s depois | iguais |
+| `nao_gravadas:<instância>` | ≥ 3 mensagens de cliente (1:1, com conteúdo, fora o LID SEM telefone) das últimas 2 h, com mais de 10 min, que a Evolution tem e `messages.message_id` não — conferidas PELO ID (pega também a perda parcial) | só com PROVA: chegou mensagem na janela e todas estão no CRM (conexão quieta não decide nada). O "Normalizou" lembra que as que faltaram precisam ser importadas à mão |
+| `falhas:<instância>` | ≥ 3 ERROR do envio PRINCIPAL em 1:1 sem entrega em 24 h (a régua do CRM: `remoteJid` com "@" e sem ":") | < 3 |
+| `descartadas` | "error in handling message" no log da Evolution (mensagem descartada antes do banco: o caso da §8, 30/09). O log não diz de quem é: o aviso traz a conexão PROVÁVEL | é evento: no máximo um aviso a cada 6 h; se o sino recusar, fica em `eventos_pendentes` e vai na execução seguinte, somado |
+| `sessao99` | campo `session-<n>.99` em algum hash (§8), por `HSCAN … MATCH` (nunca `HKEYS`: o Redis é compartilhado) | 0 |
+| `replica:<serviço>` | só os vigiados — `crm_crm`, `crm_agendador`, `evolution_evolution`, `postgres_postgres`, `redis_redis`, `traefik_traefik` — com réplicas rodando ≠ esperadas, ou ausentes do Swarm, conferido de novo 60 s depois. Os outros serviços (n8n, Typebot…) ficam na semanal | iguais |
 | `disco` / `memoria` | disco > 85% / `MemAvailable` < 300 MB (conferida de novo) | abaixo do limite |
+| `sentinela_cega` | alguma medição falhou ("não medido") em 3 execuções seguidas — sem isto, a sentinela cega só deixaria uma linha no `sentinela.log` | uma execução sem "não medido" |
 
 Um aviso por problema novo, um lembrete ("Continua — …") a cada 24 h enquanto
 durar e um "Normalizou — …" quando passa. Aviso que o PostgREST recusa não
@@ -739,13 +741,20 @@ log em VERBOSE): por isso a coleta é de hora em hora.
 **Cada parte falha sozinha.** Réplica, memória, disco e conexão rodam mesmo
 com o banco da Evolution fora (o Postgres parado aparece como
 `replica:postgres_postgres`, não como checagem pulada); sem o banco, conexão e
-mensagens ficam `NÃO MEDIDO` — nunca "normalizou".
+mensagens ficam `NÃO MEDIDO` — nunca "normalizou". Sem o `crm.env` (ou com o
+Supabase fora) a coleta segue. Erro de rede ao gravar o aviso não derruba a
+execução (o aviso fica para a seguinte). A coleta entra inteira ou não entra
+(linha parcial seria contada duas vezes). As consultas ao banco da Evolution
+rodam em transação só de leitura.
 
 **Limites conhecidos.** A VPS inteira fora do ar não avisa (a sentinela roda
 nela). Sem o `/root/crm.env` (ou com a service role vazia, §10), a coleta
 continua, mas o aviso não sai: o `sentinela.log` registra `NÃO MEDIDO: CRM`.
-O log de um contêiner que reiniciou some com ele: a hora em que isso
-acontece pode faltar na coleta.
+O log de um contêiner REMOVIDO some com ele (o parado o Docker guarda no
+histórico de tarefas, e a coleta o lê). O `sem_entrada` não tem histerese:
+numa conexão de pouco volume pode alternar entre aviso e "Normalizou"; e os
+feriados em dia útil não estão no calendário (a exigência de ≥ 5 saídas é o
+que os cala).
 
 **Comandos** (na VPS):
 
