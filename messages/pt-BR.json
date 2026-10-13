@@ -1583,7 +1583,7 @@
       "colunaResultado": "Resultado",
       "ajudaColunas": "O que cada coluna quer dizer",
       "ajudaResultado": "Ganho ou Perdido. O card que entra na etapa é marcado assim automaticamente. Ganho continua ganho quando sai da etapa; perdido que vai para uma etapa sem resultado volta a ficar aberto. Nas etapas do meio do funil, deixe em branco (“Resultado: —”).",
-      "ajudaFunil": "Em que degrau do Desempenho a etapa conta (Lead → MQL → Reunião → Proposta → Contrato → Pasta / processo, ou Perda). Várias etapas podem contar no mesmo degrau; “Não conta” fica fora das métricas. A primeira etapa com o degrau Proposta é para onde o botão “Com proposta” da tela Reuniões leva o card.",
+      "ajudaFunil": "Em que degrau do Desempenho a etapa conta (Lead → MQL → Reunião → Proposta → Contrato → Pasta / processo, ou Perda). Várias etapas podem contar no mesmo degrau; “Não conta” fica fora das métricas. A primeira etapa com o degrau Proposta é para onde o botão “Com proposta” da tela Reuniões leva o card. “Desqualificação” é uma Perda: marque assim a etapa onde o lead é desqualificado — é ela que conta no custo por desqualificado (“Perdido” e “Não respondeu” ficam como Perda).",
       "ajudaReuniao": "O que entrar na etapa diz sobre a reunião. A tela Reuniões usa isto para saber para onde cada botão leva o card e para ler o resultado de quem foi movido pelo quadro; o aviso de possível no-show da conversa também.",
       "ajudaReuniaoQualificada": "“Qualificada”: a reunião ainda vai acontecer e o lead foi qualificado (a MQL 2). É o destino do botão “Reunião qualificada”.",
       "ajudaReuniaoCompareceu": "“Compareceu, sem proposta”: a reunião aconteceu e não houve proposta. É o destino do botão “Sem proposta”.",
