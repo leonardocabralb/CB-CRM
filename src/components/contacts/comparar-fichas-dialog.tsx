@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// "COMPARAR" — as duas fichas de uma possível duplicata lado a lado (1084).
+// "COMPARAR" — as duas fichas de uma possível duplicata lado a lado (1088).
 //
 // Pedido do operador (13/10/2026): abrir os dois cards com as informações e
 // as conversas, um ao lado do outro, para conferir se são a mesma pessoa e

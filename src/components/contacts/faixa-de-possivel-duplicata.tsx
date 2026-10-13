@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// A faixa "POSSÍVEL DUPLICATA" (1084, docs/PLANO-fichas-duplicadas.md).
+// A faixa "POSSÍVEL DUPLICATA" (1088, docs/PLANO-fichas-duplicadas.md).
 //
 // Mora em dois lugares: no bloco de faixas acima do compositor da conversa
 // (o card do funil ABRE a conversa) e no formulário do card (o card SEM
@@ -32,7 +32,7 @@ type T = ReturnType<typeof useTranslations<"Duplicatas">>;
  * Os motivos do par numa frase: "mesmo e-mail · telefone com um dígito de
  * diferença · mesmo primeiro nome". O primeiro nome entra UMA vez, no fim,
  * quando algum motivo dependeu dele (telefone e horário nunca valem sozinhos
- * — a regra da 1084). Chaves LITERAIS, para o portão de i18n contar.
+ * — a regra da 1088). Chaves LITERAIS, para o portão de i18n contar.
  */
 export function textoDosMotivos(t: T, motivos: MotivoDaDuplicata[]): string {
   const partes: string[] = [];

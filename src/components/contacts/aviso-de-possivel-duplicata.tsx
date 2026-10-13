@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// O AVISO de possível duplicata (1084) inteiro: a faixa, o "Comparar" e qual
+// O AVISO de possível duplicata (1088) inteiro: a faixa, o "Comparar" e qual
 // candidata está aberta. Mora no fio da conversa e no formulário do card
 // aberto pelo quadro — os dois montam só isto.
 //

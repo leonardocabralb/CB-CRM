@@ -151,7 +151,8 @@ UPDATE/INSERT/DELETE fora do app, saiba o que ele aciona:
   aplicada.
 - Lacunas não se preenchem (não existem 938/939 nem 1025–1029).
 - Arquivo ≠ versão aplicada em alguns casos (1033 aplicada como 1027; 1034/1035
-  como 1025/1026; 906 registrada como 904; 037 e 947 sem registro). Nunca
+  como 1025/1026; 906 registrada como 904; 1088–1090 como 1084/1086/1087; 037 e
+  947 sem registro). Nunca
   reaplicar por isso. Para saber se algo está aplicado, consulte o SCHEMA.
 - Instalação que atualiza por `supabase db push` com histórico por PREFIXO de
   3 dígitos: `scripts/reparar-historico-de-migrations.sql` (só versão de
@@ -379,7 +380,7 @@ um espelho com pino lendo o SQL. Mudou um lado, muda o outro.
 - CASCADE (some sem aviso): `conversations` (e TODAS as mensagens),
   `contact_tags`, `contact_custom_values`, `cb_tasks`, `cb_conversation_notes`,
   `cb_automation_reminders`, `cb_contatos_relacionados` (1069, pelas DUAS
-  pontas), `cb_atlas_recusas` (1072), `cb_duplicatas_descartadas` (1084,
+  pontas), `cb_atlas_recusas` (1072), `cb_duplicatas_descartadas` (1088,
   pelas DUAS pontas).
 - SET NULL (fica órfão): `deals`, `cb_lead_events`, `cb_calendly_eventos`,
   `cb_meetings`, `cb_reunioes_transcritas`, `cb_asaas_clientes`,

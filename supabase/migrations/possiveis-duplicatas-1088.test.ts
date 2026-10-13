@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 // ============================================================
-// 1084 + 1086 + 1087 — possível duplicata: a mesma pessoa em duas fichas.
+// 1088 + 1089 + 1090 — possível duplicata: a mesma pessoa em duas fichas.
 //
 // O que este pino segura:
 // - a RPC é SECURITY INVOKER: a RLS de `contacts` é a cerca (um DEFINER
@@ -13,13 +13,13 @@ import path from 'node:path';
 //   fichas. Mudar um deles sem medir de novo enche a tela de alarme falso;
 // - nome SOZINHO nunca é sinal: o primeiro nome só é conferido nas
 //   candidatas que o telefone ou o horário trouxeram;
-// - SEM VARRER A CONTA (1086): as candidatas saem por índice, atrás de CTE
+// - SEM VARRER A CONTA (1089): as candidatas saem por índice, atrás de CTE
 //   `MATERIALIZED`, e o telefone vizinho é procurado por IGUALDADE
-//   (`unnest`) — a 1084, com o nome numa junção e `= ANY (lista)`, levava
+//   (`unnest`) — a 1088, com o nome numa junção e `= ANY (lista)`, levava
 //   289 ms em produção;
-// - a ficha que nasceu num LOTE não busca candidatas pelo horário (1087): a
+// - a ficha que nasceu num LOTE não busca candidatas pelo horário (1090): a
 //   ficha conta as fichas em volta DELA (±1 min, parando na 11ª) e, com mais
-//   de 10, nenhum par passaria — a 1086 trazia o lote inteiro (3,9 mil fichas
+//   de 10, nenhum par passaria — a 1089 trazia o lote inteiro (3,9 mil fichas
 //   em produção) para concluir isso, a 177 ms por ficha;
 // - o par descartado e o par já ligado em Relacionados saem do aviso;
 // - decidir é de ADMIN, com a autoria de quem grava; ler é de qualquer
@@ -39,8 +39,8 @@ const semComentarios = (texto: string) =>
     .map((linha) => linha.replace(/--.*$/, ''))
     .join('\n');
 
-const sql1084 = fs.readFileSync(path.join(__dirname, '1084_cb_possiveis_duplicatas.sql'), 'utf8');
-const base = semComentarios(sql1084);
+const sql1088 = fs.readFileSync(path.join(__dirname, '1088_cb_possiveis_duplicatas.sql'), 'utf8');
+const base = semComentarios(sql1088);
 
 /** As migrations que (re)definem a RPC, em ordem de nome (a ordem do replay). */
 const definicoes = fs
@@ -81,12 +81,12 @@ function cte(nome: string): string {
   throw new Error(`CTE ${nome} sem fim`);
 }
 
-describe('1084 + 1086 + 1087 — possível duplicata', () => {
-  it('a última definição da RPC é a da 1087 (redefiniu? atualize este pino)', () => {
+describe('1088 + 1089 + 1090 — possível duplicata', () => {
+  it('a última definição da RPC é a da 1090 (redefiniu? atualize este pino)', () => {
     expect(definicoes).toEqual([
-      '1084_cb_possiveis_duplicatas.sql',
-      '1086_cb_duplicatas_sem_varredura.sql',
-      '1087_cb_duplicatas_fora_do_lote.sql',
+      '1088_cb_possiveis_duplicatas.sql',
+      '1089_cb_duplicatas_sem_varredura.sql',
+      '1090_cb_duplicatas_fora_do_lote.sql',
     ]);
   });
 
@@ -122,7 +122,7 @@ describe('1084 + 1086 + 1087 — possível duplicata', () => {
     expect(horario).toMatch(/\+\s*interval\s+'1 minute'\s+LIMIT\s+11\)\s+AS\s+t\)\s*<=\s*10/i);
   });
 
-  it('a ficha de LOTE não busca candidatas pelo horário (1087), com a mesma régua do par', () => {
+  it('a ficha de LOTE não busca candidatas pelo horário (1090), com a mesma régua do par', () => {
     // As fichas em volta DELA (±1 min), até 11 — a janela de qualquer par a contém.
     const eu = cte('eu');
     expect(eu).toMatch(
@@ -142,7 +142,7 @@ describe('1084 + 1086 + 1087 — possível duplicata', () => {
     expect(vizinhas).toMatch(/o\.telefone_canonico\s*=\s*v\.tel/i);
     // O predicado do índice parcial do telefone canônico (1024).
     expect(vizinhas).toMatch(/o\.telefone_canonico\s*<>\s*''/i);
-    // A forma lenta da 1084 não volta.
+    // A forma lenta da 1088 não volta.
     expect(corpo).not.toMatch(/=\s*ANY\s*\(\s*(?:eu\.vizinhos|public\.cb_vizinhos_do_telefone)/i);
     // A janela é comparada nua (timestamp), sem conta dentro da condição.
     expect(cte('da_mesma_hora')).toMatch(/o\.created_at\s+BETWEEN\s+eu\.janela_de\s+AND\s+eu\.janela_ate/i);
@@ -213,7 +213,7 @@ describe('1084 + 1086 + 1087 — possível duplicata', () => {
 
   it('o primeiro nome tira o acento DEPOIS de decompor (NFD), como a régua de etiqueta', () => {
     expect(base).toMatch(/normalize\(lower\(coalesce\(p_nome,\s*''\)\),\s*NFD\)/i);
-    expect(sql1084).toContain("'[\\u0300-\\u036f]'");
+    expect(sql1088).toContain("'[\\u0300-\\u036f]'");
     expect(base).toMatch(/length\(s\.t\)\s*>=\s*3/i);
   });
 });

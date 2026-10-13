@@ -34,7 +34,7 @@ export type CanAction =
   | "view-reports"
   /** Apagar contato — destrutivo: leva conversa e mensagens junto. */
   | "delete-contacts"
-  /** Decidir uma possível duplicata (1084): "não é duplicata" ou "ligadas". */
+  /** Decidir uma possível duplicata (1088): "não é duplicata" ou "ligadas". */
   | "decide-duplicates";
 
 /**

@@ -44,7 +44,7 @@ export interface EstadoDasDuplicatas {
   carregando: boolean;
   recarregar: () => void;
   /**
-   * "Não é duplicata" (admin, 1084): o par sai do aviso nos dois sentidos.
+   * "Não é duplicata" (admin, 1088): o par sai do aviso nos dois sentidos.
    *
    * ⚠️ As escritas recebem as DUAS fichas, nunca leem o contato do render:
    * o "Desfazer" do toast pode ser clicado depois de o operador já estar em
@@ -58,7 +58,7 @@ export interface EstadoDasDuplicatas {
 }
 
 /**
- * As fichas que parecem ser a mesma pessoa DESTA (1084), conferidas na hora
+ * As fichas que parecem ser a mesma pessoa DESTA (1088), conferidas na hora
  * pelo banco (`cb_possiveis_duplicatas`). A faixa "Possível duplicata" da
  * conversa e do formulário do card.
  *

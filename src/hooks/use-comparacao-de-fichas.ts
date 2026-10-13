@@ -160,7 +160,7 @@ async function lerComparacao(supabase: Cliente, ids: string[]): Promise<FichaCom
 }
 
 /**
- * As duas fichas do "Comparar" (1084). Só lê com o diálogo ABERTO.
+ * As duas fichas do "Comparar" (1088). Só lê com o diálogo ABERTO.
  *
  * ⚠️ Carimbo `{ de, fichas }` com a chave do PAR: trocar de candidata com o
  * diálogo aberto não mostra, nem por um render, as fichas do par anterior.

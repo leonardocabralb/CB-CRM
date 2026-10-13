@@ -183,7 +183,7 @@ todos: num merge, fica o nosso.
   abre a conversa e liga a faixa "Voltar para"** (`inbox-conversa.md`). O
   "Conversar" (contato sem conversa) só existe no inbox: o diálogo mora lá.
 
-### Possível duplicata (1084)
+### Possível duplicata (1088)
 A mesma pessoa em duas fichas (formulário com um telefone, agendamento com
 outro). `cb_possiveis_duplicatas` (RPC), `src/lib/contacts/duplicatas.ts`
 (puro, testado), `use-possiveis-duplicatas.ts`, `use-comparacao-de-fichas.ts`,
@@ -193,19 +193,19 @@ operador, medição e fases: `docs/PLANO-fichas-duplicadas.md`.
 - ⚠️⚠️ **Conferida NA HORA, nunca guardada**: a RPC calcula os pares da ficha
   aberta. Nada de gatilho em `contacts` (a ingestão não paga) nem lista que
   envelhece. É `SECURITY INVOKER`: a RLS de `contacts` é a cerca.
-- ⚠️⚠️ **Sem varrer a conta** (1086): candidatas por índice atrás de CTE
+- ⚠️⚠️ **Sem varrer a conta** (1089): candidatas por índice atrás de CTE
   `MATERIALIZED`, o telefone vizinho por IGUALDADE (`unnest`, nunca `= ANY
   (lista)`), a janela calculada na ficha (sob RLS, conta com função não
-  LEAKPROOF não vira condição de índice). A 1084, com o nome numa junção,
-  levava 289 ms em produção a cada conversa aberta (a 1086, 16 ms).
-- ⚠️⚠️ **Ficha de LOTE não busca par pelo horário** (1087): 2/3 da base
-  nasceram numa importação (3,9 mil fichas em 3 min), e a 1086 trazia o lote
-  inteiro para concluir "lote" (177 ms por ficha; a 1087, 9 ms). A ficha conta as fichas em
+  LEAKPROOF não vira condição de índice). A 1088, com o nome numa junção,
+  levava 289 ms em produção a cada conversa aberta (a 1089, 16 ms).
+- ⚠️⚠️ **Ficha de LOTE não busca par pelo horário** (1090): 2/3 da base
+  nasceram numa importação (3,9 mil fichas em 3 min), e a 1089 trazia o lote
+  inteiro para concluir "lote" (177 ms por ficha; a 1090, 9 ms). A ficha conta as fichas em
   volta DELA (±1 min, parando na 11ª): toda janela de par a contém, então
   mais de 10 ali reprova qualquer par. Quem mexer na régua do lote mexe nas
   duas contagens juntas.
 - ⚠️⚠️ **Só sinais fortes, com os números da medição** (pino
-  `possiveis-duplicatas-1084.test.ts`): mesmo e-mail (em até 3 fichas);
+  `possiveis-duplicatas-1088.test.ts`): mesmo e-mail (em até 3 fichas);
   telefone a um dígito + mesmo primeiro nome; criadas em até 2 min + mesmo
   primeiro nome, FORA de lote (> 10 fichas em volta = importação, 12,5 mil
   pares falsos). Nome SOZINHO nunca — 385 nomes repetidos na base.

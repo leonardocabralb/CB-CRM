@@ -238,7 +238,7 @@ interface MessageThreadProps {
   inadimplencia?: RespostaDoResumo | null;
   /**
    * Abrir a conversa de OUTRA ficha a partir do fio — o "Abrir conversa" do
-   * "Comparar" da possível duplicata (1084). É o mesmo pulo da aba
+   * "Comparar" da possível duplicata (1088). É o mesmo pulo da aba
    * Relacionados (`handleAbrirConversaRelacionada` da página: seleção +
    * faixa "Voltar para"); nunca `router.push` daqui, que deixaria o fio na
    * conversa antiga. Sem ele, o botão não aparece.
@@ -3428,7 +3428,7 @@ export function MessageThread({
           a reunião nova termina; cala com `null`. */}
       <FaixaDeNoShow aviso={avisoDeFalta} agora={agoraDaBadge} />
 
-      {/* Faixa POSSÍVEL DUPLICATA (1084, pedido do operador em 13/10/2026):
+      {/* Faixa POSSÍVEL DUPLICATA (1088, pedido do operador em 13/10/2026):
           esta ficha parece ser a mesma pessoa de outra — o formulário com
           um telefone, o agendamento com outro. Abaixo das que mudam a
           conversa (situação, dívida, no-show), porque é arrumação de cadastro;

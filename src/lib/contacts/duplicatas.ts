@@ -1,5 +1,5 @@
 // ============================================================
-// Possível duplicata (1084): a regra pura do lado da tela.
+// Possível duplicata (1088): a regra pura do lado da tela.
 //
 // QUEM decide que duas fichas parecem a mesma pessoa é o banco
 // (`cb_possiveis_duplicatas`, conferida na hora em que a conversa ou o card

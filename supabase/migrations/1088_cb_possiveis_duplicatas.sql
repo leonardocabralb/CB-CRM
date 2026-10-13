@@ -1,5 +1,12 @@
 -- ============================================================
--- 1084 — POSSÍVEL DUPLICATA: a mesma pessoa em duas fichas
+-- 1088 — POSSÍVEL DUPLICATA: a mesma pessoa em duas fichas
+--
+-- ⚠️ Aplicada na produção do CB como `1084_cb_possiveis_duplicatas`
+-- (13/10/2026) e RENUMERADA para 1088 antes do merge, com o OK do operador:
+-- com o número antigo ela ficava abaixo da 1085, que entrou antes no main, e
+-- quem atualiza por `supabase db push` a teria recusada (Codex, PR #403). O
+-- schema é o mesmo; nada roda de novo. O mesmo vale para a 1089 (aplicada
+-- como 1086) e a 1090 (aplicada como 1087).
 --
 -- Pedido do operador em 13/10/2026. Plano, decisões e a medição que escolheu
 -- os sinais: `docs/PLANO-fichas-duplicadas.md`.
@@ -152,7 +159,7 @@ CREATE INDEX IF NOT EXISTS cb_duplicatas_descartadas_maior_idx
   ON public.cb_duplicatas_descartadas (contato_maior);
 
 COMMENT ON TABLE public.cb_duplicatas_descartadas IS
-  'Par de fichas que um admin conferiu e decidiu NÃO ser a mesma pessoa (1084). Tira o par do aviso de possível duplicata.';
+  'Par de fichas que um admin conferiu e decidiu NÃO ser a mesma pessoa (1088). Tira o par do aviso de possível duplicata.';
 
 ALTER TABLE public.cb_duplicatas_descartadas ENABLE ROW LEVEL SECURITY;
 
@@ -201,7 +208,7 @@ CREATE INDEX IF NOT EXISTS idx_contacts_conta_criacao
 -- enxerga (outra conta) não existe para a função — a RLS corta.
 --
 -- ⚠️ A janela de 2 min, o teto de 10 fichas do lote e o teto de 3 fichas por
--- e-mail são ESPELHO do plano e do teste (`possiveis-duplicatas-1084.test.ts`
+-- e-mail são ESPELHO do plano e do teste (`possiveis-duplicatas-1088.test.ts`
 -- lê este arquivo): mudar aqui sem medir de novo é chutar.
 CREATE OR REPLACE FUNCTION public.cb_possiveis_duplicatas(p_contato uuid)
 RETURNS TABLE (outro_id uuid, motivos jsonb)
@@ -309,64 +316,64 @@ DECLARE
   v_viz text[];
 BEGIN
   IF public.cb_primeiro_nome('Fulano_detal') IS DISTINCT FROM 'fulano' THEN
-    RAISE EXCEPTION '1084: primeiro nome de "Fulano_detal" deveria ser "fulano"';
+    RAISE EXCEPTION '1088: primeiro nome de "Fulano_detal" deveria ser "fulano"';
   END IF;
   IF public.cb_primeiro_nome('Ândréa Souza') IS DISTINCT FROM 'andrea' THEN
-    RAISE EXCEPTION '1084: o acento precomposto não saiu do primeiro nome';
+    RAISE EXCEPTION '1088: o acento precomposto não saiu do primeiro nome';
   END IF;
   IF public.cb_primeiro_nome(E'A\u0301NDREA Souza') IS DISTINCT FROM 'andrea' THEN
-    RAISE EXCEPTION '1084: o acento decomposto (NFD) não saiu do primeiro nome';
+    RAISE EXCEPTION '1088: o acento decomposto (NFD) não saiu do primeiro nome';
   END IF;
   IF public.cb_primeiro_nome(E'\U0001FAE6 Fulana Teste') IS DISTINCT FROM 'fulana' THEN
-    RAISE EXCEPTION '1084: o emoji antes do nome deveria ser pulado';
+    RAISE EXCEPTION '1088: o emoji antes do nome deveria ser pulado';
   END IF;
   IF public.cb_primeiro_nome('Jo') IS NOT NULL
      OR public.cb_primeiro_nome('5511999990000') IS NOT NULL
      OR public.cb_primeiro_nome('') IS NOT NULL
      OR public.cb_primeiro_nome(NULL) IS NOT NULL THEN
-    RAISE EXCEPTION '1084: nome curto, número ou vazio não podem virar primeiro nome';
+    RAISE EXCEPTION '1088: nome curto, número ou vazio não podem virar primeiro nome';
   END IF;
 
   v_viz := public.cb_vizinhos_do_telefone('5511987654321');
   IF NOT ('551198765432' = ANY (v_viz)) THEN
-    RAISE EXCEPTION '1084: faltou o vizinho com um dígito a menos';
+    RAISE EXCEPTION '1088: faltou o vizinho com um dígito a menos';
   END IF;
   IF NOT ('55119876543210' = ANY (v_viz)) THEN
-    RAISE EXCEPTION '1084: faltou o vizinho com um dígito a mais';
+    RAISE EXCEPTION '1088: faltou o vizinho com um dígito a mais';
   END IF;
   IF NOT ('5511987654320' = ANY (v_viz)) THEN
-    RAISE EXCEPTION '1084: faltou o vizinho com um dígito trocado';
+    RAISE EXCEPTION '1088: faltou o vizinho com um dígito trocado';
   END IF;
   IF NOT ('5511897654321' = ANY (v_viz)) THEN
-    RAISE EXCEPTION '1084: faltou o vizinho com dois dígitos invertidos';
+    RAISE EXCEPTION '1088: faltou o vizinho com dois dígitos invertidos';
   END IF;
   IF '5511987654321' = ANY (v_viz) THEN
-    RAISE EXCEPTION '1084: o próprio número não pode ser vizinho de si mesmo';
+    RAISE EXCEPTION '1088: o próprio número não pode ser vizinho de si mesmo';
   END IF;
   -- O "9 a mais" digitado: 14 dígitos que, sem o 9 sobrando, são o número certo.
   IF NOT ('5548999801234' = ANY (public.cb_vizinhos_do_telefone('55489999801234'))) THEN
-    RAISE EXCEPTION '1084: o 9 a mais não acha o número certo';
+    RAISE EXCEPTION '1088: o 9 a mais não acha o número certo';
   END IF;
   IF cardinality(public.cb_vizinhos_do_telefone('123')) <> 0
      OR cardinality(public.cb_vizinhos_do_telefone(NULL)) <> 0 THEN
-    RAISE EXCEPTION '1084: o que não é telefone não tem vizinho';
+    RAISE EXCEPTION '1088: o que não é telefone não tem vizinho';
   END IF;
 
   IF (SELECT count(*) FROM pg_constraint
        WHERE conrelid = 'public.cb_duplicatas_descartadas'::regclass
          AND contype = 'f' AND confrelid = 'public.contacts'::regclass
          AND confdeltype = 'c') <> 2 THEN
-    RAISE EXCEPTION '1084: as duas FKs para contacts têm de ser ON DELETE CASCADE';
+    RAISE EXCEPTION '1088: as duas FKs para contacts têm de ser ON DELETE CASCADE';
   END IF;
 
   IF has_table_privilege('anon', 'public.cb_duplicatas_descartadas', 'SELECT') THEN
-    RAISE EXCEPTION '1084: anon não pode ler cb_duplicatas_descartadas';
+    RAISE EXCEPTION '1088: anon não pode ler cb_duplicatas_descartadas';
   END IF;
   IF NOT has_table_privilege('authenticated', 'public.cb_duplicatas_descartadas', 'INSERT') THEN
-    RAISE EXCEPTION '1084: authenticated precisa de INSERT (a RLS decide quem)';
+    RAISE EXCEPTION '1088: authenticated precisa de INSERT (a RLS decide quem)';
   END IF;
   IF has_table_privilege('authenticated', 'public.cb_duplicatas_descartadas', 'UPDATE') THEN
-    RAISE EXCEPTION '1084: a decisão não se edita — authenticated sem UPDATE';
+    RAISE EXCEPTION '1088: a decisão não se edita — authenticated sem UPDATE';
   END IF;
 
   IF EXISTS (
@@ -374,26 +381,26 @@ BEGIN
      WHERE schemaname = 'public' AND tablename = 'cb_duplicatas_descartadas'
        AND cmd = 'SELECT' AND qual NOT LIKE '%cb_contas_do_usuario%'
   ) THEN
-    RAISE EXCEPTION '1084: a policy de leitura tem de ter a forma da 1032';
+    RAISE EXCEPTION '1088: a policy de leitura tem de ter a forma da 1032';
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies
      WHERE schemaname = 'public' AND tablename = 'cb_duplicatas_descartadas'
        AND cmd = 'INSERT' AND with_check LIKE '%admin%'
   ) THEN
-    RAISE EXCEPTION '1084: decidir é de admin (D1) — a policy de INSERT não diz';
+    RAISE EXCEPTION '1088: decidir é de admin (D1) — a policy de INSERT não diz';
   END IF;
 
   IF has_function_privilege('anon', 'public.cb_possiveis_duplicatas(uuid)', 'EXECUTE') THEN
-    RAISE EXCEPTION '1084: anon não pode chamar cb_possiveis_duplicatas';
+    RAISE EXCEPTION '1088: anon não pode chamar cb_possiveis_duplicatas';
   END IF;
   IF NOT has_function_privilege('authenticated', 'public.cb_possiveis_duplicatas(uuid)', 'EXECUTE')
      OR NOT has_function_privilege('authenticated', 'public.cb_primeiro_nome(text)', 'EXECUTE')
      OR NOT has_function_privilege('authenticated', 'public.cb_vizinhos_do_telefone(text)', 'EXECUTE') THEN
-    RAISE EXCEPTION '1084: authenticated precisa chamar a RPC e as duas auxiliares (INVOKER)';
+    RAISE EXCEPTION '1088: authenticated precisa chamar a RPC e as duas auxiliares (INVOKER)';
   END IF;
   IF (SELECT prosecdef FROM pg_proc WHERE oid = 'public.cb_possiveis_duplicatas(uuid)'::regprocedure) THEN
-    RAISE EXCEPTION '1084: a RPC tem de ser SECURITY INVOKER — a RLS de contacts é a cerca';
+    RAISE EXCEPTION '1088: a RPC tem de ser SECURITY INVOKER — a RLS de contacts é a cerca';
   END IF;
 END $$;
 
@@ -406,9 +413,9 @@ DECLARE
 BEGIN
   SELECT id INTO v_id FROM public.contacts ORDER BY created_at DESC LIMIT 1;
   IF v_id IS NULL THEN
-    RAISE NOTICE '1084: banco sem fichas, nada a perguntar.';
+    RAISE NOTICE '1088: banco sem fichas, nada a perguntar.';
     RETURN;
   END IF;
   SELECT count(*) INTO v_n FROM public.cb_possiveis_duplicatas(v_id);
-  RAISE NOTICE '1084: a RPC respondeu sobre a ficha mais nova: % candidata(s).', v_n;
+  RAISE NOTICE '1088: a RPC respondeu sobre a ficha mais nova: % candidata(s).', v_n;
 END $$;

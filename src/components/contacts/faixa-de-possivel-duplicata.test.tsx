@@ -10,7 +10,7 @@ import type { Candidata } from "@/lib/contacts/duplicatas";
 import { FaixaDePossivelDuplicata } from "./faixa-de-possivel-duplicata";
 
 // ============================================================
-// A faixa "Possível duplicata" (1084). Todos veem e comparam; só o admin
+// A faixa "Possível duplicata" (1088). Todos veem e comparam; só o admin
 // decide (D1) — e quem não é admin precisa LER isso na faixa, em vez de abrir
 // o "Comparar" esperando um botão que não vai achar. Dados fictícios.
 // ============================================================

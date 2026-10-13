@@ -93,7 +93,7 @@ export const PODERES: readonly {
   // de Funis e a de Contatos NÃO deixavam evidentes.
   { id: "view-reports", permite: canViewReports },
   { id: "delete-contacts", permite: canDeleteContacts },
-  // 1084 (13/10/2026): todos veem o aviso de possível duplicata; decidir é
+  // 1088 (13/10/2026): todos veem o aviso de possível duplicata; decidir é
   // de admin, como apagar contato.
   { id: "decide-duplicates", permite: canDecideDuplicates },
   { id: "manage-automations", permite: canManageAutomations },

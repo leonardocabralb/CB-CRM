@@ -110,7 +110,7 @@ export function DealForm({
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  // A possível duplicata (1084). Só no formulário aberto pelo QUADRO
+  // A possível duplicata (1088). Só no formulário aberto pelo QUADRO
   // (`origemFunil`): é lá que o card SEM conversa cai — o caso da ficha de
   // formulário de anúncio. No painel do inbox o fio já mostra a faixa.
   const router = useRouter();
