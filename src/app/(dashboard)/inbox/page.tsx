@@ -931,6 +931,10 @@ function InboxPageInner() {
    * tempo real pode chegar enquanto ela ainda é a `conversaLida`, e aí o
    * handler espelha 0 (suprime a bolinha da conversa que se está lendo).
    * Esta escrita, depois dele ou não, deixa a lista dizendo "não lida".
+   *
+   * ⚠️ Só FECHA se ela ainda é a aberta (`conversaAbertaRef`, Codex no
+   * #405): quem marca A e já clica em B antes de a gravação voltar teria B
+   * fechada pela resposta atrasada de A. O espelho de A vale do mesmo jeito.
    */
   const handleMarcadaNaoLida = useCallback(
     (conversationId: string) => {
@@ -941,7 +945,7 @@ function InboxPageInner() {
             : c,
         ),
       );
-      handleCloseConversation();
+      if (conversaAbertaRef.current === conversationId) handleCloseConversation();
     },
     [handleCloseConversation],
   );

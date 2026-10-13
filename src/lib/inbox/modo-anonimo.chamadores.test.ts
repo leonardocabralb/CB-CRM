@@ -98,8 +98,11 @@ describe('modo anônimo: quem zera as não lidas', () => {
     expect(f).toContain('function zerarNaoLidas(conversationId: string)');
     // Ver: só fora do modo. Sem o `modoAnonimo` nas dependências, desligar o
     // modo com a conversa aberta não a zeraria até chegar outra mensagem.
+    // A 2ª guarda: o "Marcar como não lida" EM CURSO nesta conversa (Codex,
+    // #405) — sem ela, o 1 que o tempo real traz antes da resposta seria
+    // zerado aqui e o gesto se desfaria.
     expect(f).toMatch(
-      /if \(!conversationId \|\| !hasUnread \|\| modoAnonimo\) return;\s*zerarNaoLidas\(conversationId\);/,
+      /if \(!conversationId \|\| !hasUnread \|\| modoAnonimo\) return;\s*if \(naoLidaEmCursoRef\.current === conversationId\) return;\s*zerarNaoLidas\(conversationId\);/,
     );
     expect(f).toContain('}, [conversationId, hasUnread, modoAnonimo]);');
     // Responder pelo compositor e "Executar agora" da agendada: só no modo.

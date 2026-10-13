@@ -1304,8 +1304,15 @@ export function MessageThread({
   // ⚠️ No modo anônimo, ver não zera — e `modoAnonimo` nas dependências é
   // load-bearing: desligar o modo com a conversa aberta re-roda o efeito e
   // zera na hora, como se ela tivesse acabado de ser aberta.
+  //
+  // ⚠️ E não zera a conversa com "Marcar como não lida" EM CURSO
+  // (`naoLidaEmCursoRef`, Codex no #405): o tempo real pode trazer o 1 antes
+  // de a gravação voltar, a página o copia para a conversa aberta, e este
+  // zero desfaria o gesto — que fecharia a conversa já lida de novo.
+  const naoLidaEmCursoRef = useRef<string | null>(null);
   useEffect(() => {
     if (!conversationId || !hasUnread || modoAnonimo) return;
+    if (naoLidaEmCursoRef.current === conversationId) return;
     zerarNaoLidas(conversationId);
   }, [conversationId, hasUnread, modoAnonimo]);
 
@@ -1434,11 +1441,15 @@ export function MessageThread({
         const ok = await zerarNaoLidas(id);
         if (!ok) toast.error(t("marcarComoLidaFalhou"));
       } else {
+        naoLidaEmCursoRef.current = id;
         const ok = await marcarComoNaoLida(createClient(), id);
         if (ok) onMarcadaNaoLida?.(id);
         else toast.error(t("marcarComoNaoLidaFalhou"));
       }
     } finally {
+      // Depois do `onMarcadaNaoLida`: a página já fechou a conversa (ou o
+      // operador já está noutra), e o zero automático volta a valer.
+      if (naoLidaEmCursoRef.current === id) naoLidaEmCursoRef.current = null;
       setMarcandoLeitura(false);
     }
   }, [conversation, hasUnread, marcandoLeitura, onMarcadaNaoLida, t]);
