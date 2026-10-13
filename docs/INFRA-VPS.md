@@ -740,8 +740,9 @@ normalização o encerra. O que deixou de ser vigiado (conexão apagada do CRM)
 sai em silêncio.
 
 **Quem recebe.** O aviso de uma conexão (`conexao:`, `sem_entrada:`,
-`nao_gravadas:`, `falhas:`) vai só aos owner/admin da conta DONA dela, do
-primeiro aviso ao "Normalizou". Os do servidor (réplica, memória, disco,
+`nao_gravadas:`, `falhas:`) vai só aos owner/admin da conta DONA dela (a da
+medição mais recente; nunca somada a um dono anterior), do primeiro aviso ao
+"Normalizou". Os do servidor (réplica, memória, disco,
 `sessao99`, `descartadas`, `sentinela_cega`) vão a toda conta com conexão de
 produção. Em 13/10/2026 só a conta do escritório tinha conexão de produção: as
 outras duas contas com conexão na Evolution só têm conexão de teste.

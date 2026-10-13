@@ -801,12 +801,13 @@ def decidir(estado, achados, contas_atuais, vigiaveis):
     avisos = []
 
     def destino(chave, *listas):
-        # Somar as contas de agora ao aviso de uma conexão o mandaria aos
-        # admins de OUTRA conta, com o nome e o incidente da conexão.
-        contas = set().union(*[set(lista or []) for lista in listas])
-        if not chave.startswith(PREFIXOS_DA_CONEXAO):
-            contas |= set(contas_atuais)
-        return sorted(contas)
+        # Aviso de uma conexão vai só à conta DONA dela: a da medição de agora
+        # (a primeira lista com conta) ou, sem medição, a guardada. Somar as
+        # contas de agora — ou o dono antigo de uma instância recriada noutra
+        # conta — o mandaria aos admins de OUTRA conta, com o nome e o incidente.
+        if chave.startswith(PREFIXOS_DA_CONEXAO):
+            return sorted(next((lista for lista in listas if lista), []))
+        return sorted(set(contas_atuais).union(*[set(lista or []) for lista in listas]))
 
     for chave, p in sorted(achados.problemas.items()):
         if p['evento']:
@@ -863,7 +864,10 @@ def aplicar(estado, achados, enviados):
             continue
         atual = ativos.setdefault(chave, {'desde': iso(AGORA), 'avisado_em': None})
         atual['titulo'], atual['corpo'] = p['titulo'], p['corpo']
-        atual['contas'] = sorted(set(atual.get('contas') or []) | set(p['contas']))
+        if chave.startswith(PREFIXOS_DA_CONEXAO):
+            atual['contas'] = sorted(p['contas'])  # o dono de AGORA, nunca somado ao antigo
+        else:
+            atual['contas'] = sorted(set(atual.get('contas') or []) | set(p['contas']))
         atual.pop('normalizou_em', None)  # voltou antes de o "Normalizou" entrar
     for chave, motivo in enviados:
         if motivo == 'evento':
