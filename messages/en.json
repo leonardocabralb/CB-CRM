@@ -6778,7 +6778,6 @@
       "cards": "Deals",
       "semCards": "No deals",
       "cardsForaDoPerfil": "{count, plural, one {# deal in a pipeline outside your profile} other {# deals in pipelines outside your profile}}",
-      "statusAberto": "open",
       "statusGanho": "won",
       "statusPerdido": "lost",
       "conversa": "Conversation",

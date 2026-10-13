@@ -51,10 +51,19 @@ import { identidadeLegivel, textoDosMotivos } from "./faixa-de-possivel-duplicat
 
 type T = ReturnType<typeof useTranslations<"Duplicatas.comparacao">>;
 
-function rotuloDoStatus(t: T, status: string | null): string {
-  if (status === "won") return t("statusGanho");
-  if (status === "lost") return t("statusPerdido");
-  return t("statusAberto");
+/** Sem acento e em minúsculas — `\p{Mn}`, nunca `\p{Diacritic}` (inbox-conversa.md). */
+function semAcento(texto: string): string {
+  return texto.normalize("NFD").replace(/\p{Mn}/gu, "").toLowerCase();
+}
+
+/**
+ * "ganho"/"perdido" ao lado da etapa — só quando a etapa não diz isso
+ * sozinha ("Perdido · perdido" era ruído). Card aberto não leva rótulo.
+ */
+function statusParaMostrar(t: T, status: string | null, etapa: string | null): string | null {
+  if (status !== "won" && status !== "lost") return null;
+  const rotulo = status === "won" ? t("statusGanho") : t("statusPerdido");
+  return etapa && semAcento(etapa).includes(semAcento(rotulo)) ? null : rotulo;
 }
 
 function remetente(t: T, m: MensagemComparada): string {
@@ -155,11 +164,15 @@ function ColunaDaFicha({
           <p className="text-xs text-muted-foreground">{t("semCards")}</p>
         ) : (
           <ul className="mt-1 space-y-0.5 text-xs">
-            {cardsVisiveis.map((c) => (
-              <li key={c.id} className="break-words">
-                {c.funil ?? t("vazio")} · {c.etapa ?? t("vazio")} · {rotuloDoStatus(t, c.status)}
-              </li>
-            ))}
+            {cardsVisiveis.map((c) => {
+              const status = statusParaMostrar(t, c.status, c.etapa);
+              return (
+                <li key={c.id} className="break-words">
+                  {c.funil ?? t("vazio")} · {c.etapa ?? t("vazio")}
+                  {status && ` · ${status}`}
+                </li>
+              );
+            })}
             {cardsOcultos > 0 && (
               <li className="text-muted-foreground">{t("cardsForaDoPerfil", { count: cardsOcultos })}</li>
             )}
@@ -262,6 +275,8 @@ export function CompararFichasDialog({
     }
     aoFechar();
     toast.success(t("toastDescartada"), {
+      // Os 4 s do padrão somem antes de a pessoa achar o "Desfazer".
+      duration: 10_000,
       action: {
         label: t("toastDesfazer"),
         onClick: () => {

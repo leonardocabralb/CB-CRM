@@ -6778,7 +6778,6 @@
       "cards": "Cards",
       "semCards": "Nenhum card",
       "cardsForaDoPerfil": "{count, plural, one {# card num funil fora do seu perfil} other {# cards em funis fora do seu perfil}}",
-      "statusAberto": "aberto",
       "statusGanho": "ganho",
       "statusPerdido": "perdido",
       "conversa": "Conversa",
