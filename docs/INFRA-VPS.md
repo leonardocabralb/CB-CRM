@@ -732,7 +732,9 @@ Um aviso por problema novo, um lembrete ("Continua — …") a cada 24 h enquant
 durar e um "Normalizou — …" quando passa. Todo problema entra em `ativos` no
 momento em que é VISTO, avisado ou não (`avisado_em` nulo = o sino ainda não
 recebeu): o aviso recusado sai na execução seguinte e, se o problema já
-passou, vira "Aconteceu e já normalizou — …". Problema avisado e sem medição
+passou, vira "Aconteceu e já normalizou — …". Do mesmo jeito, a normalização
+vista fica guardada (`normalizou_em`) até o "Normalizou" entrar: sem isso, uma
+hora sem medição decisiva voltaria a afirmar o problema. Problema avisado e sem medição
 nova (conexão quieta, banco fora) também ganha o lembrete — só a prova de
 normalização o encerra. O que deixou de ser vigiado (conexão apagada do CRM)
 sai em silêncio.

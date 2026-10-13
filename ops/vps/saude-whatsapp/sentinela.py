@@ -786,6 +786,9 @@ def decidir(estado, achados, contas_atuais, vigiaveis):
       medido ou não; se já normalizou, vira "Aconteceu e já normalizou";
     - avisado e sem medição nova (conexão quieta, banco fora) → lembrete de
       24 h do mesmo jeito: só a PROVA de normalização encerra;
+    - normalização vista e não avisada (o sino recusou) → guardada em
+      `normalizou_em` e reenviada mesmo sem medição nova (conexão quieta, `.99`
+      já varrido no dia): a prova já veio, e o problema não volta a ser afirmado;
     - o que deixou de ser vigiado (conexão apagada do CRM, serviço fora da
       lista) sai em silêncio — senão lembraria para sempre. `vigiaveis` None
       = não se sabe (CRM fora): nada sai.
@@ -826,8 +829,9 @@ def decidir(estado, achados, contas_atuais, vigiaveis):
             avisos.append((chave, 'esquecido', '', '', []))
             continue
         contas = destino(chave, atual.get('contas'))
-        if chave in achados.normais:
-            fim, inicio = quando_com_preposicao(AGORA), quando_com_preposicao(de_iso(atual['desde']))
+        if chave in achados.normais or atual.get('normalizou_em'):
+            voltou = de_iso(atual['normalizou_em']) if atual.get('normalizou_em') else AGORA
+            fim, inicio = quando_com_preposicao(voltou), quando_com_preposicao(de_iso(atual['desde']))
             if atual.get('avisado_em'):
                 motivo, titulo = 'resolvido', 'Normalizou — ' + atual['titulo']
                 corpo = 'Voltou ao normal %s; tinha começado %s.' % (fim, inicio)
@@ -860,6 +864,7 @@ def aplicar(estado, achados, enviados):
         atual = ativos.setdefault(chave, {'desde': iso(AGORA), 'avisado_em': None})
         atual['titulo'], atual['corpo'] = p['titulo'], p['corpo']
         atual['contas'] = sorted(set(atual.get('contas') or []) | set(p['contas']))
+        atual.pop('normalizou_em', None)  # voltou antes de o "Normalizou" entrar
     for chave, motivo in enviados:
         if motivo == 'evento':
             eventos[chave] = iso(AGORA)
@@ -869,6 +874,11 @@ def aplicar(estado, achados, enviados):
                 ativos[chave]['avisado_em'] = iso(AGORA)
         elif motivo in ('resolvido', 'passou', 'esquecido'):
             ativos.pop(chave, None)
+    # Normalização vista cujo aviso não entrou (o sino recusou) fica guardada,
+    # com a hora em que foi vista, até entrar.
+    for chave in achados.normais:
+        if chave in ativos and chave not in achados.problemas:
+            ativos[chave].setdefault('normalizou_em', iso(AGORA))
     # Evento que não foi ao sino nesta execução — recusado, ou dentro do
     # intervalo de 6 h — fica guardado (já somado) para a próxima.
     for chave, p in achados.problemas.items():
