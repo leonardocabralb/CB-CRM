@@ -49,7 +49,7 @@ SET LOCAL lock_timeout = '5s';
 -- 1) O primeiro nome — a régua de "mesmo nome" dos sinais 2 e 3
 -- ------------------------------------------------------------
 -- A primeira sequência de letras do nome, sem acento, em minúsculas, com 3
--- letras ou mais. "Ismael_centofante" → "ismael"; "🫦 Manu Souza" → "manu";
+-- letras ou mais. "Fulano_detal" → "fulano"; "🫦 Fulana Teste" → "fulana";
 -- emoji sozinho, número e nome curto ("Jo") → NULO, e NULO não casa com nada.
 --
 -- ⚠️ `normalize(…, NFD)` ANTES de apagar os sinais combinantes, como a régua
@@ -308,8 +308,8 @@ DO $$
 DECLARE
   v_viz text[];
 BEGIN
-  IF public.cb_primeiro_nome('Ismael_centofante') IS DISTINCT FROM 'ismael' THEN
-    RAISE EXCEPTION '1084: primeiro nome de "Ismael_centofante" deveria ser "ismael"';
+  IF public.cb_primeiro_nome('Fulano_detal') IS DISTINCT FROM 'fulano' THEN
+    RAISE EXCEPTION '1084: primeiro nome de "Fulano_detal" deveria ser "fulano"';
   END IF;
   IF public.cb_primeiro_nome('Ândréa Souza') IS DISTINCT FROM 'andrea' THEN
     RAISE EXCEPTION '1084: o acento precomposto não saiu do primeiro nome';
@@ -317,7 +317,7 @@ BEGIN
   IF public.cb_primeiro_nome(E'A\u0301NDREA Souza') IS DISTINCT FROM 'andrea' THEN
     RAISE EXCEPTION '1084: o acento decomposto (NFD) não saiu do primeiro nome';
   END IF;
-  IF public.cb_primeiro_nome(E'\U0001FAE6 Manu Souza') IS DISTINCT FROM 'manu' THEN
+  IF public.cb_primeiro_nome(E'\U0001FAE6 Fulana Teste') IS DISTINCT FROM 'fulana' THEN
     RAISE EXCEPTION '1084: o emoji antes do nome deveria ser pulado';
   END IF;
   IF public.cb_primeiro_nome('Jo') IS NOT NULL
