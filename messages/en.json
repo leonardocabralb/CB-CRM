@@ -1576,7 +1576,8 @@
       "outcomeWon": "Won",
       "outcomeLost": "Lost",
       "stageDegrau": "Efficiency funnel",
-      "stageDegrauHint": "Which step of the efficiency funnel this stage maps to. Several stages may map to the same step; a stage without a step is not counted in Performance.",
+      "stageDegrauHint": "Which step of the efficiency funnel this stage maps to. Several stages may map to the same step; a stage without a step is not counted in Performance. \"Disqualified\" is a lost step: it marks the stage where the lead is disqualified, and it is what counts in the cost per disqualified lead.",
+      "degrauPerdaDesqualificacao": "Disqualified",
       "stageReuniao": "Meeting",
       "stageReuniaoHint": "What entering this stage says about the meeting. The Meetings screen uses it to move the card and to read the outcome; the possible no-show warning in the conversation does too. Stages from proposal onwards already count as “attended, with a proposal”.",
       "reuniaoNenhum": "Meeting: —",
@@ -1837,6 +1838,7 @@
           "porPerdido": "cost per lead × lost",
           "porPerdidoNoPeriodo": "cost per lead × this period's leads already lost",
           "porNoShow": "spend ÷ {n} no-show(s)",
+          "porDesqualificado": "spend ÷ {n} disqualified",
           "semFunil": "{valor} in {n} campaign(s) without a pipeline in the period — assign them in Integrations so cost per lead is right.",
           "naoConectado": "Connect Meta Ads in Integrations to see spend, cost per lead and CAC.",
           "falhou": "Could not read ad spend right now. Cost figures stay out until the next attempt.",
@@ -1868,7 +1870,8 @@
         "contrato": "Cost per signed contract",
         "cac": "CAC (standing contract)",
         "perdidos": "Cost of lost leads",
-        "noShow": "Cost per no-show"
+        "noShow": "Cost per no-show",
+        "desqualificado": "Cost per disqualified lead"
       },
       "saude": {
         "periodo": "Last {meses} months, by funnel entry month",

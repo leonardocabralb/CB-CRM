@@ -32,7 +32,11 @@ import type { CoorteMensal } from "./saude";
  *    (`perdidosDosEntrantes`, nunca `perdidos` — ver a regra do "custo dos
  *    perdidos");
  *  - `no_show`   = ÷ `noShows`, cada entrada numa etapa "Faltou" no modo
- *    escolhido (pedido do operador, 09/10/2026).
+ *    escolhido (pedido do operador, 09/10/2026);
+ *  - `desqualificado` = ÷ `desqualificados`, os CARDS que entraram numa
+ *    etapa de desqualificação no modo escolhido (1088; pedido do operador,
+ *    13/10/2026). Não é o "custo dos perdidos": esse soma toda perda
+ *    (desqualificado, perdido, sem resposta) e multiplica pelo custo por lead.
  *
  * Sem denominador = `null` (a tela escreve "—"), nunca zero nem infinito.
  */
@@ -50,6 +54,7 @@ export function custosDoResumo(investimento: number, resumo: ResumoDoPeriodo): C
     investimento,
     lead: base.custoPorLead,
     mql: porDegrau("mql"),
+    desqualificado: dividir(investimento, resumo.desqualificados),
     reuniao: porDegrau("reuniao"),
     no_show: dividir(investimento, resumo.noShows),
     proposta: porDegrau("proposta"),

@@ -233,6 +233,8 @@ export function Desempenho({
         return porPeriodo ? t("investimento.porPerdidoNoPeriodo") : t("investimento.porPerdido");
       case "no_show":
         return t("investimento.porNoShow", { n: atual.noShows });
+      case "desqualificado":
+        return t("investimento.porDesqualificado", { n: atual.desqualificados });
       case "mql":
       case "reuniao":
       case "proposta":

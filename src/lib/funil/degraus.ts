@@ -99,11 +99,23 @@ export function marcaDaReuniaoQueVale<M extends string>(degrau: string | null | 
 }
 
 /**
- * O que o funil de eficiência lê de cada etapa. `desfecho_da_reuniao` (1058) é
- * opcional: só a contagem de no-show (`etapasDeFalta`) o usa.
+ * A marca "desqualificação" (`pipeline_stages.desqualificacao`, 1088) que
+ * VALE: só em etapa de degrau `perda` — desqualificar é um tipo de perda. O
+ * banco já recusa a marca fora dela (CHECK); a régua existe para o rascunho
+ * da tela, onde o degrau muda antes de salvar, e para dado lido de quem não
+ * a conhece. `=== true`: o valor pode chegar ausente.
+ */
+export function desqualificacaoQueVale(degrau: string | null | undefined, marca: boolean | null | undefined): boolean {
+  return degrau === "perda" && marca === true;
+}
+
+/**
+ * O que o funil de eficiência lê de cada etapa. `desfecho_da_reuniao` (1058) e
+ * `desqualificacao` (1088) são opcionais: só as contagens de no-show
+ * (`etapasDeFalta`) e de desqualificados (`etapasDeDesqualificacao`) os usam.
  */
 export type EtapaMinima = Pick<PipelineStage, "id" | "name" | "position" | "degrau"> &
-  Partial<Pick<PipelineStage, "desfecho_da_reuniao">>;
+  Partial<Pick<PipelineStage, "desfecho_da_reuniao" | "desqualificacao">>;
 
 export interface Classificacao {
   /** etapa → classe, SÓ das etapas mapeadas (sem degrau = ausente). */
@@ -127,6 +139,13 @@ export interface Classificacao {
    * no-show, e a tela não mostra a seção nem o custo por no-show.
    */
   etapasDeFalta: ReadonlySet<string>;
+  /**
+   * As etapas de perda marcadas "desqualificação" (`desqualificacaoQueVale`).
+   * Cada CARD que entra numa delas é um desqualificado (pedido do operador,
+   * 13/10/2026). Vazio = o funil não separa desqualificação, e o custo por
+   * desqualificado não aparece.
+   */
+  etapasDeDesqualificacao: ReadonlySet<string>;
 }
 
 /**
@@ -160,6 +179,9 @@ export function classificarEtapas(etapas: readonly EtapaMinima[]): Classificacao
     etapas: new Map(ordenadas.map((e) => [e.id, e])),
     etapasDeFalta: new Set(
       ordenadas.filter((e) => marcaDaReuniaoQueVale(e.degrau, e.desfecho_da_reuniao) === "faltou").map((e) => e.id),
+    ),
+    etapasDeDesqualificacao: new Set(
+      ordenadas.filter((e) => desqualificacaoQueVale(e.degrau, e.desqualificacao)).map((e) => e.id),
     ),
   };
 }

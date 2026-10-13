@@ -28,6 +28,7 @@ import {
   DEGRAUS,
   DEGRAUS_OPCIONAIS,
   alcancaProposta,
+  desqualificacaoQueVale,
   ehDegrau,
   marcaDaReuniaoQueVale,
   sugerirClasse,
@@ -125,12 +126,17 @@ export function PipelineSettings({
   const rotuloPadrao = (classe: string) => tFunil(`degraus.${classe}` as Parameters<typeof tFunil>[0]);
   const rotuloDoDegrau = (d: Degrau) => normalizarRotulo(painel.rotulos[d]) ?? rotuloPadrao(d);
   const rotuloDoCartao = useRotuloDoCartaoDeCusto(rotuloDoDegrau);
+  // 1088: "Desqualificação" logo abaixo de "Perda" — é a etapa de perda com
+  // a marca de desqualificação, escolhida no MESMO seletor (a marca não
+  // existe fora da perda; o CHECK do banco também a recusa).
   const opcoesDeDegrau = [
     { value: "", label: tFunil("degraus.nenhum") },
-    ...CLASSES.map((classe) => ({
-      value: classe,
-      label: ehDegrau(classe) ? rotuloDoDegrau(classe) : rotuloPadrao(classe),
-    })),
+    ...CLASSES.flatMap((classe) => {
+      const opcao = { value: classe, label: ehDegrau(classe) ? rotuloDoDegrau(classe) : rotuloPadrao(classe) };
+      return classe === "perda"
+        ? [opcao, { value: DEGRAU_DE_DESQUALIFICACAO, label: t("degrauPerdaDesqualificacao") }]
+        : [opcao];
+    }),
   ];
 
   /**
@@ -234,6 +240,8 @@ export function PipelineSettings({
       proximas_etapas: s.proximas_etapas ?? null,
       // 1070: o que estar nela diz sobre o contrato (faixa da conversa).
       situacao_do_cliente: s.situacao_do_cliente ?? null,
+      // 1088: desqualificação — só vale na perda (o CHECK recusa o resto).
+      desqualificacao: desqualificacaoQueVale(s.degrau, s.desqualificacao),
     }));
 
     const abertura = aberturaRef.current;
@@ -566,7 +574,12 @@ export function PipelineSettings({
                             // campo travado (degrau de proposta em diante):
                             // voltar o degrau a devolve. Quem a limpa é o
                             // salvar, pela régua `marcaDaReuniaoQueVale`.
-                            updated[index] = { ...updated[index], degrau: v };
+                            // 1088: "Desqualificação" é a perda COM a marca;
+                            // qualquer outra escolha a tira no mesmo gesto.
+                            updated[index] =
+                              v === DEGRAU_DE_DESQUALIFICACAO
+                                ? { ...updated[index], degrau: "perda", desqualificacao: true }
+                                : { ...updated[index], degrau: v, desqualificacao: false };
                             setLocalStages(updated);
                           }}
                           onDesfechoChange={(v) => {
@@ -783,6 +796,10 @@ export function PipelineSettings({
   );
 }
 
+// O valor da opção "Desqualificação" no seletor de degrau (1088): não é um
+// degrau — vira `degrau = 'perda'` + `desqualificacao = true` no rascunho.
+const DEGRAU_DE_DESQUALIFICACAO = "perda:desqualificacao";
+
 // As larguras das quatro caixas de cada etapa, repetidas nos títulos das
 // colunas: mudar uma sem a outra desalinha o cabeçalho. Classes LITERAIS (o
 // Tailwind não gera classe montada em tempo de execução).
@@ -866,7 +883,9 @@ function SortableStageRow({
           etapas podem apontar para o mesmo degrau; sem degrau, a etapa não
           conta no Desempenho. Independente do resultado ao lado. */}
       <select
-        value={stage.degrau ?? ''}
+        value={
+          desqualificacaoQueVale(stage.degrau, stage.desqualificacao) ? DEGRAU_DE_DESQUALIFICACAO : (stage.degrau ?? '')
+        }
         onChange={(e) => onDegrauChange(e.target.value || null)}
         aria-label={t('stageDegrau')}
         title={t('stageDegrauHint')}

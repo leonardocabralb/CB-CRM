@@ -143,6 +143,10 @@ export function resumoPorPeriodo(
       (soma, f) => soma + f.entradasEmFalta.filter((d) => dentroDoIntervalo(d, intervalo)).length,
       0,
     ),
+    // O CARD que entrou numa etapa de desqualificação no período, venha o
+    // lead de quando vier — uma vez só, ainda que tenha entrado duas.
+    desqualificados: fatos.filter((f) => f.entradasEmDesqualificacao.some((d) => dentroDoIntervalo(d, intervalo)))
+      .length,
   };
 }
 
@@ -161,7 +165,8 @@ export function resumoNoModo(
 
 /**
  * Houve ALGO no período? No modo por período "nenhum lead entrou" não quer
- * dizer tela vazia — contrato, perda e no-show de lead antigo contam. A nota
+ * dizer tela vazia — contrato, perda, no-show e desqualificação de lead
+ * antigo contam. A nota
  * de período vazio só aparece quando nada aconteceu.
  */
 export function periodoSemAtividade(resumo: ResumoDoPeriodo): boolean {
@@ -169,6 +174,7 @@ export function periodoSemAtividade(resumo: ResumoDoPeriodo): boolean {
     resumo.entradas === 0 &&
     resumo.perdidos === 0 &&
     resumo.noShows === 0 &&
+    resumo.desqualificados === 0 &&
     resumo.porDegrau.every((d) => d.alcancaram === 0)
   );
 }

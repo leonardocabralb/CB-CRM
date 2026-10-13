@@ -1569,7 +1569,8 @@
       "outcomeWon": "Ganho",
       "outcomeLost": "Perdido",
       "stageDegrau": "Funil de eficiência",
-      "stageDegrauHint": "A que degrau do funil de eficiência esta etapa corresponde. Várias etapas podem apontar para o mesmo degrau; etapa sem degrau não conta no Desempenho.",
+      "stageDegrauHint": "A que degrau do funil de eficiência esta etapa corresponde. Várias etapas podem apontar para o mesmo degrau; etapa sem degrau não conta no Desempenho. \"Desqualificação\" é uma perda: marca a etapa onde o lead é desqualificado, e é ela que conta no custo por desqualificado.",
+      "degrauPerdaDesqualificacao": "Desqualificação",
       "stageReuniao": "Reunião",
       "stageReuniaoHint": "O que entrar nesta etapa diz sobre a reunião. A tela Reuniões usa para levar o card e ler o resultado; o aviso de possível no-show da conversa também. Etapas de proposta em diante já contam como “compareceu, com proposta”.",
       "reuniaoNenhum": "Reunião: —",
@@ -1830,6 +1831,7 @@
           "porPerdido": "custo por lead × perdidos",
           "porPerdidoNoPeriodo": "custo por lead × leads do período já perdidos",
           "porNoShow": "investimento ÷ {n} no-show(s)",
+          "porDesqualificado": "investimento ÷ {n} desqualificado(s)",
           "semFunil": "{valor} em {n} campanha(s) sem funil atribuído no período — atribua em Integrações para o custo por lead ficar certo.",
           "naoConectado": "Conecte o Meta Ads em Integrações para ver investimento, custo por lead e CAC.",
           "falhou": "Não foi possível ler o investimento em anúncios agora. Os números de custo ficam de fora até a próxima tentativa.",
@@ -1861,7 +1863,8 @@
         "contrato": "Custo por contrato assinado",
         "cac": "CAC (contrato em pé)",
         "perdidos": "Custo dos perdidos",
-        "noShow": "Custo por no-show"
+        "noShow": "Custo por no-show",
+        "desqualificado": "Custo por desqualificado"
       },
       "saude": {
         "periodo": "Últimos {meses} meses, pelo mês de entrada no funil",

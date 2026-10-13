@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Ban,
   CalendarCheck,
   FileSignature,
   FolderCheck,
@@ -30,6 +31,7 @@ export const ICONE_DO_CARTAO: Record<CartaoDeCusto, LucideIcon> = {
   investimento: Megaphone,
   lead: Wallet,
   mql: UserCheck,
+  desqualificado: Ban,
   reuniao: CalendarCheck,
   no_show: UserX,
   proposta: Send,
@@ -57,6 +59,8 @@ export function useRotuloDoCartaoDeCusto(
         return t("perdidos");
       case "no_show":
         return t("noShow");
+      case "desqualificado":
+        return t("desqualificado");
       case "mql":
       case "reuniao":
       case "proposta":

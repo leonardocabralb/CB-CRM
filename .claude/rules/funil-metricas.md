@@ -283,6 +283,20 @@ custo (`no_show`). Plano: Fase 4 de `docs/PLANO-reagendamento.md`.
   quadro), continua contado — a entrada aconteceu. É o preço de contar pela
   transição.
 
+### Custo por desqualificado (1088; pedido do operador, 13/10/2026)
+
+- **Desqualificação é uma PERDA marcada** (`pipeline_stages.desqualificacao`):
+  "Perdido" e "Não Respondeu" também são `perda`, e por isso o "custo dos
+  perdidos" não serve. A marca só vale com `degrau = 'perda'`
+  (`desqualificacaoQueVale`; CHECK com `IS NOT DISTINCT FROM` — com `=`, o
+  degrau nulo passaria). Em Gerenciar funil ela é a opção "Desqualificação"
+  do seletor de degrau, que vira perda + marca; outra escolha tira a marca.
+- **Conta CARDS** (`desqualificados`), nunca entradas: por período, quem
+  entrou numa etapa marcada no período; na coorte, os entrantes
+  desqualificados. ⚠️ Diferente do no-show, a semente da 912 CONTA (a perda
+  já a lê pelo `perdidoDesde`). O cartão (`desqualificado`, ao lado do `mql`)
+  só aparece no funil com etapa marcada (`funilMedeDesqualificacao`).
+
 ### CSV
 
 - ⚠️ **Aspas NÃO protegem contra fórmula.** O Excel tira a citação e AVALIA o
