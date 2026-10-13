@@ -1273,6 +1273,17 @@ nome da época em que foram aplicadas.
   nenhuma linha com responsável de fora da conta. Antes, localmente, o
   mesmo recorte foi aplicado sobre a versão anterior e passou nos 16
   cenários.
+- **1085_cb_aviso_da_sentinela** — `whatsapp_alert` no CHECK de
+  `notifications.type` (os cinco tipos antigos reescritos junto): o aviso que
+  a sentinela da VPS grava no sino (`docs/INFRA-VPS.md` §12). Nasceu 1084 e foi
+  renumerada antes de aplicar: a 1083 (`historico_da_conversa`) e a 1084
+  (`possiveis_duplicatas`) são de outras sessões. ADITIVA e ANTES do deploy.
+  Aplicada em 13/10/2026 pela Management API (histórico `20261013163840`), com
+  "pode gravar" do operador — ⚠️ ANTES do replay do CI (o PR ainda não estava
+  aberto); provada antes num Postgres 16 local, aplicada duas vezes (aceita
+  `whatsapp_alert`, mantém os antigos, recusa tipo desconhecido). O replay do
+  CI no PR #404 passou depois, em todos os commits. Conferida: CHECK com os
+  seis tipos, as 87 notificações intactas.
 
 ## Notas do histórico
 

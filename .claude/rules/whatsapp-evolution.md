@@ -40,6 +40,11 @@ patch" abaixo valem para a imagem de rollback; qual imagem está no ar é o
   2.3.7 o perde. `lidJidFromKey` (`evolution-inbound.ts`) lê os três lugares.
   Ler só um faz `remote_jid_lid` nascer nulo, e apagar/editar pelo celular em
   conversa LID deixa de fazer efeito. Pino: `evolution-inbound.test.ts`.
+  ⚠️ No BANCO da Evolution (`Message.key`, o que a sentinela e as ferramentas
+  da VPS leem) é o inverso: 2.923 de 2.985 recebidas em 7 dias (13/10/2026)
+  com o LID em `remoteJid` e o telefone em `remoteJidAlt`. LID SEM telefone
+  (as retidas da 1010) = `remoteJid` `@lid` sem `remoteJidAlt` de telefone —
+  filtrar só por `remoteJid like '%@lid'` tira quase tudo.
 - ⚠️ **O nosso LID em grupo vem de `senderLid` (`lidDoRemetente`), nunca de
   `senderJid`.** `remetenteDoGrupo` prefere o telefone, e `aprenderNossoLid`
   só aceita `@lid`: pelo `senderJid` ele nunca mais aprenderia.

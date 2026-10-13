@@ -16,6 +16,7 @@ import {
   Loader2,
   MessageSquareReply,
   Reply,
+  TriangleAlert,
   UserPlus,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
@@ -36,6 +37,9 @@ const TYPE_ICON: Record<Notification["type"], typeof Bell> = {
   // Tarefas (944). O clique leva a `/tarefas` — ver `handleClick`.
   task_assigned: ListTodo,
   task_reply: Reply,
+  // Saúde do WhatsApp (1085), gravado por um monitor de fora do app. Sem
+  // conversa nem tarefa: o clique só marca lido.
+  whatsapp_alert: TriangleAlert,
 };
 
 export default function NotificationsPage() {
@@ -289,7 +293,14 @@ export default function NotificationsPage() {
                       )}
                     </div>
                     {texto.corpo && (
-                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                      <p
+                        className={cn(
+                          "mt-0.5 text-xs text-muted-foreground",
+                          // O aviso de saúde não abre nada ao clicar: o
+                          // diagnóstico inteiro tem de caber aqui.
+                          n.type === "whatsapp_alert" ? "line-clamp-3" : "truncate",
+                        )}
+                      >
                         {texto.corpo}
                       </p>
                     )}

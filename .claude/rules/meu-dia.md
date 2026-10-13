@@ -171,6 +171,14 @@ para a aba (`/meu-dia`, sem janela na URL: a aba não repete as novidades).
   "em dia" só com a lista de membros respondida (`emDia: null` = não sei).
 - **Notificações: as NÃO LIDAS** (a janela "desde a última entrada" ficou no
   cartão), clique pela `rotaDoAviso`, recorte por conexão do perfil.
+- ⚠️ **`whatsapp_alert` (1085) é escrito de FORA do app**: a sentinela da VPS
+  (`docs/INFRA-VPS.md` §12) grava pelo PostgREST, com a service role, para
+  owner/admin, título e corpo prontos e SEM conversa nem tarefa — o clique só
+  marca lido (no sino e no Meu dia, onde a linha vira botão sem navegação:
+  sem ele os avisos se acumulariam), e o corpo aparece em até 3 linhas
+  (`line-clamp-3`, não `truncate`): o diagnóstico não está em lugar nenhum
+  além dali. Não entra nas contagens do resumo (`resumirNovidades`): é saúde
+  do servidor, não novidade de trabalho.
 - **Suas tarefas: vencidas, de hoje e NOVAS** (não vistas, prazo futuro), cada
   grupo com `count: 'exact'`; aparecer aqui conta como vista (`tarefas.md`).
 

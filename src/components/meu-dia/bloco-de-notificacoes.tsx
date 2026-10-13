@@ -22,6 +22,7 @@ import {
   ListTodo,
   MessageSquareReply,
   Reply,
+  TriangleAlert,
   UserPlus,
 } from 'lucide-react';
 
@@ -51,6 +52,7 @@ const ICONE: Record<Notification['type'], typeof Bell> = {
   note_reply: MessageSquareReply,
   task_assigned: ListTodo,
   task_reply: Reply,
+  whatsapp_alert: TriangleAlert,
 };
 
 export function BlocoDeNotificacoes({
@@ -81,7 +83,9 @@ export function BlocoDeNotificacoes({
   // navegação demore um instante.
   const [abertos, setAbertos] = useState<ReadonlySet<string>>(new Set());
 
-  const abrir = (aviso: AvisoComContato, rota: string) => {
+  /** `rota` nula = só marca lido (o aviso de saúde do WhatsApp, 1085, não
+   *  leva a lugar nenhum — sem isto ele se acumularia aqui para sempre). */
+  const abrir = (aviso: AvisoComContato, rota: string | null) => {
     setAbertos((a) => new Set(a).add(aviso.id));
     // Marca lida como o sino faz: a própria linha, sob RLS (a policy deixa
     // cada um marcar os seus). Falha não segura a navegação — o aviso volta
@@ -96,7 +100,7 @@ export function BlocoDeNotificacoes({
           console.warn('[Meu dia] não consegui marcar o aviso:', error.message);
         }
       });
-    router.push(rota);
+    if (rota) router.push(rota);
   };
 
   const pronto = bloco.status === 'pronto' ? bloco.dados : null;
@@ -149,6 +153,7 @@ export function BlocoDeNotificacoes({
                 const rota = rotaDoAviso(aviso);
                 const destino =
                   rota && (aviso.task_id ? veTarefas : veInbox) ? rota : null;
+                const saude = aviso.type === 'whatsapp_alert';
                 const conteudo = (
                   <>
                     <span className="bg-primary/10 text-primary mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md">
@@ -159,7 +164,12 @@ export function BlocoDeNotificacoes({
                         {texto.titulo}
                       </span>
                       {texto.corpo && (
-                        <span className="text-muted-foreground block truncate text-xs">
+                        <span
+                          className={cn(
+                            'text-muted-foreground block text-xs',
+                            saude ? 'line-clamp-3' : 'truncate'
+                          )}
+                        >
                           {texto.corpo}
                         </span>
                       )}
@@ -175,7 +185,7 @@ export function BlocoDeNotificacoes({
                 const classes = 'flex w-full items-start gap-2.5 rounded-md p-1.5 text-left';
                 return (
                   <li key={aviso.id}>
-                    {destino ? (
+                    {destino || saude ? (
                       <button
                         type="button"
                         onClick={() => abrir(aviso, destino)}
