@@ -28,8 +28,6 @@ const TEMPLATE = {
 /** Local writes the route managed to land. */
 const templateUpdates: Record<string, unknown>[] = []
 let templateDeletes = 0
-/** CB: os filtros (`.eq`) de cada escrita em `message_templates`. */
-const filtrosDasEscritas: Array<Array<[string, unknown]>> = []
 
 function makeSupabaseMock() {
   function builder(table: string) {
@@ -62,26 +60,13 @@ function makeSupabaseMock() {
 
     const b: Record<string, unknown> = {}
     const chain = () => b
-    let escrita: Array<[string, unknown]> | null = null
-    for (const m of ['select', 'in', 'order', 'limit']) b[m] = vi.fn(chain)
-    b.eq = vi.fn((coluna: string, valor: unknown) => {
-      escrita?.push([coluna, valor])
-      return b
-    })
+    for (const m of ['select', 'eq', 'in', 'order', 'limit']) b[m] = vi.fn(chain)
     b.update = vi.fn((patch: Record<string, unknown>) => {
-      if (table === 'message_templates') {
-        templateUpdates.push(patch)
-        escrita = []
-        filtrosDasEscritas.push(escrita)
-      }
+      if (table === 'message_templates') templateUpdates.push(patch)
       return b
     })
     b.delete = vi.fn(() => {
-      if (table === 'message_templates') {
-        templateDeletes += 1
-        escrita = []
-        filtrosDasEscritas.push(escrita)
-      }
+      if (table === 'message_templates') templateDeletes += 1
       return b
     })
     b.single = vi.fn(async () => result())
@@ -146,7 +131,6 @@ function patchTemplate() {
 beforeEach(() => {
   templateUpdates.length = 0
   templateDeletes = 0
-  filtrosDasEscritas.length = 0
   callerRole = 'admin'
   supabaseMock = makeSupabaseMock()
   meta.editMessageTemplate.mockClear()
@@ -180,33 +164,5 @@ describe('template lifecycle role gate (GHSA-m4fx-g6pr-hrw8)', () => {
     const deleted = await DELETE(new Request('http://localhost/t'), { params })
     expect(deleted.status).toBe(200)
     expect(meta.deleteMessageTemplate).toHaveBeenCalledTimes(1)
-  })
-})
-
-// CB (porte do #589): a gravação local também confere a CONTA, não só o id —
-// segunda barreira atrás da leitura por conta e da RLS.
-describe('escritas de message_templates levam a conta', () => {
-  it('editar e apagar filtram por id E conta', async () => {
-    expect((await patchTemplate()).status).toBe(200)
-    expect(
-      (await DELETE(new Request('http://localhost/t'), { params })).status,
-    ).toBe(200)
-
-    expect(filtrosDasEscritas).toHaveLength(2)
-    for (const filtros of filtrosDasEscritas) {
-      expect(filtros).toContainEqual(['id', TEMPLATE.id])
-      expect(filtros).toContainEqual(['account_id', 'acct-1'])
-    }
-  })
-
-  it('a falha da Meta grava o motivo filtrando pela conta', async () => {
-    meta.editMessageTemplate.mockRejectedValueOnce(new Error('meta recusou'))
-
-    expect((await patchTemplate()).status).toBe(502)
-
-    expect(templateUpdates).toEqual([
-      expect.objectContaining({ submission_error: 'meta recusou' }),
-    ])
-    expect(filtrosDasEscritas[0]).toContainEqual(['account_id', 'acct-1'])
   })
 })

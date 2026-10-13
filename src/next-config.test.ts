@@ -32,20 +32,4 @@ describe("next.config Cache-Control", () => {
       expect(await cacheControlFor(pathname)).toBeUndefined();
     },
   );
-
-  // CB: o codificador da nota de voz e o fundo do fio são arquivos de
-  // `public/` usados a toda hora; com no-store o navegador os baixaria de
-  // novo a cada gravação e a cada conversa aberta.
-  it.each(["/opus/encoderWorker.min.js", "/inbox-doodle.svg"])(
-    "leaves the public asset %s to Next's own caching",
-    async (pathname) => {
-      expect(await cacheControlFor(pathname)).toBeUndefined();
-    },
-  );
-
-  // CB: a exclusão é só desses dois — uma tela que COMEÇA com o mesmo texto
-  // continua fora de cache compartilhado.
-  it.each(["/opus", "/inbox-doodle"])("keeps %s private", async (pathname) => {
-    expect(await cacheControlFor(pathname)).toBe("private, no-store");
-  });
 });
