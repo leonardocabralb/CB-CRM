@@ -131,19 +131,16 @@ const nextConfig: NextConfig = {
    *     the correct production headers for hashed assets.
    *   - /api/*          — no-store. API responses are per-user and
    *     must never be shared across requests at the edge.
-   *   - Everything else — public, brief s-maxage + generous
-   *     stale-while-revalidate. The edge serves instantly from cache
-   *     for the first 5 min, then returns cached content while
-   *     refreshing in the background for up to 24 h. A deploy's
-   *     chunk-hash drift self-heals within ~5 min with no user-
-   *     visible latency.
-   *
-   *   Note: dynamic dashboard routes (/inbox, /contacts, /pipelines,
-   *   /broadcasts, etc.) are server-rendered per request — Next.js
-   *   and Supabase auth already prevent them from being served
-   *   from a shared cache. The s-maxage here is a ceiling; Next.js
-   *   and auth middleware still set `private` / `no-store` for
-   *   per-user responses.
+   *   - Everything else — private, no-store (upstream #626,
+   *     GHSA-8wxh-rv3x-hxvm). This value REPLACES the one Next would
+   *     set: the old `public, s-maxage=300` let a shared cache keep a
+   *     signed-in page or a login redirect for 5 min and serve it to
+   *     someone else. Pinned by `src/next-config.test.ts`.
+   *   - Two files of `public/` stay out of the no-store rule (Next's
+   *     own `public, max-age=0` applies, revalidated by ETag): the
+   *     voice-note encoder (`opus/`, ~380 KB, loaded on every
+   *     recording) and the chat background (`inbox-doodle.svg`).
+   *     Under no-store the browser would download them again each time.
    *
    * Security headers are appended via a separate catch-all rule
    * below — Next.js merges headers from every matching rule, so
@@ -157,14 +154,9 @@ const nextConfig: NextConfig = {
         headers: [{ key: "Cache-Control", value: "no-store" }],
       },
       {
-        source: "/:path((?!_next/static|_next/image|api).*)",
-        headers: [
-          {
-            key: "Cache-Control",
-            value:
-              "public, max-age=0, s-maxage=300, stale-while-revalidate=86400",
-          },
-        ],
+        source:
+          "/:path((?!_next/static|_next/image|api|opus/|inbox-doodle\\.svg).*)",
+        headers: [{ key: "Cache-Control", value: "private, no-store" }],
       },
       {
         // Security headers on every response, including /_next/static

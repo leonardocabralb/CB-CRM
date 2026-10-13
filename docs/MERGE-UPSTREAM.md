@@ -311,6 +311,45 @@ assistente de broadcast — 1 PR, o único desde o merge anterior):
   merge vai trazê-la de volta. Pino:
   `src/hooks/use-broadcast-sending.dono-do-csv.test.ts`.
 
+### 3.4 A rodada de 2026-10: SEM merge, porte manual
+
+Upstream `aee1b01f..27c6bdf4` (61 commits, 22 PRs, 159 arquivos; o PR #399,
+fechado sem merge em 13/10/2026). Inventário completo e motivos em
+`docs/PLANO-merge-upstream-2026-10.md` (seção "Decisão" e seção 5).
+
+- ⚠️ **A ancestralidade NÃO andou: continua em `aee1b01f`.** O próximo merge
+  traz de novo estes 61 commits, somados aos novos. O que entrou por porte:
+  dependências, #626, #607, #589 parte 2, `emailRedirectTo` do #597, a
+  retomada do #630 com o `paged-query.ts` e os textos das telas do #625.
+- ⚠️ **O porte NÃO encurta o próximo merge.** Ensaio refeito sobre a branch
+  do porte (`git merge-tree`, 13/10/2026): os MESMOS 80 conflitos do ensaio
+  sobre o `main`. O ganho é outro: 12 arquivos ficaram byte a byte iguais aos
+  do original e entram sem surpresa; os 8 portados que conflitam já
+  conflitavam e se resolvem pelo nosso inteiro, porque o trecho do original
+  já está nele (dependências e dicionários, pela união). Por isso os casos NOSSOS dos testes do original moram em arquivo
+  próprio (`src/next-config.excecoes.test.ts`,
+  `templates/[id]/route.conta.test.ts`): dentro do teste deles, viravam dois
+  conflitos add/add a mais.
+- ⚠️ **Dicionários:** as 15 chaves do porte entraram no TOPO de cada objeto;
+  no original estão no fim. Juntar os dois lados as DUPLICA fora de bloco de
+  conflito (`chaves-duplicadas.test.ts` acusa): `messages/*.json` se resolvem
+  pela união por script (§6, item 10), nunca bloco a bloco.
+- **Descartar de novo no próximo merge:** as migrations 043 a 046 (a 045 recria
+  o CHECK da fila SEM `cancelled`; a 046, os de provedor SEM `gemini` —
+  renumeradas cruas, o replay fica verde e a produção quebra), o #636
+  ("aguardar resposta"), o #609 (provedor compatível com a OpenAI:
+  `openai-compatible.ts` e teste, `auto-reply.test.ts`), `src/lib/auth/callback.ts`
+  e teste, `src/lib/broadcast-audience.ts` e teste, `docs/auth-emails.md`, e
+  as asserções do `supabase/ci/verify-schema.sql` que exigem os nomes das
+  migrations deles.
+- **O tradutor de servidor deles (`getT` + alias `@app-messages`) não conhece
+  `pt-BR`** e o alias do Vitest (`new URL(...).pathname`) quebra em pasta com
+  espaço no caminho. Não foi trazido; se um merge o trouxer, ler a seção 2.3
+  do plano antes.
+- O único conflito que se resolveria pelo lado DELES é
+  `src/lib/webhooks/ssrf.ts` (o nosso é idêntico ao do #588; o deles só
+  acrescenta o 2º parâmetro opcional do #609).
+
 ## 4. Arquivos do upstream com trechos NOSSOS
 
 ⚠️ **Vários arquivos do upstream ganharam mudanças NOSSAS para o multi-canal —
@@ -534,7 +573,12 @@ upstream sobrescrevê-los:
 | `src/components/inbox/message-bubble.tsx`, `message-actions.tsx`, `src/types/index.ts` e `messages/en.json` (envio que não saiu, 06/10/2026) | na bolha, `naoSaiu` (`envioQueNaoSaiu`, NOSSO em `src/lib/inbox/falha-do-envio.ts`) com a frase `Inbox.bubble.naoSaiu.<motivo>` e o detalhe do "recusado"; o "Não entregue" fica para a falha de RECIBO; no menu, reagir e responder somem no que não saiu (copiar fica); `Message.nao_saiu`. Pinos `falha-do-envio.test.ts` (as frases nos dois dicionários) e `nao-saiu.chamadores.test.ts` |
 | `src/lib/ai/context.ts`, `src/lib/dashboard/queries.ts` (série e tempo de resposta) e `docs/public-api.md` (envio que não saiu, 06/10/2026) | `.eq('nao_saiu', false)` (1080): a tentativa do robô que não saiu não entra no histórico do rascunho de IA nem nos gráficos; na doc, a linha `bot`/`failed` sem `whatsapp_message_id` da listagem de mensagens. Pino `nao-saiu.chamadores.test.ts` |
 | `src/components/contacts/contact-detail-view.tsx` (966 e 1082, 12/10/2026) | os BLOCOS de campos na aba de campos personalizados: `agruparCampos` + `<MenuDeBlocos>` (um bloco por vez) e, desde a 1082, a ORDEM PESSOAL — o estado `ordemPessoal`, o `lerOrdemDosBlocos` dentro do `Promise.all` de `fetchCustomFields` (na mesma leva dos campos, senão as pastilhas pulam de lugar), `naOrdemDeQuemVe` por cima do agrupamento e a prop `ordem` do menu. A aba crua do upstream lista os campos numa coluna só, em ordem alfabética: num merge, fica a nossa |
-| `src/types/index.ts`, `src/app/(dashboard)/notifications/page.tsx` (1085, 13/10/2026) | o tipo de aviso `whatsapp_alert` em `NotificationType` e o ícone dele (`TriangleAlert`) no `TYPE_ICON` — o aviso que a sentinela da VPS grava no sino (`docs/INFRA-VPS.md` §12). Um merge que traga a união ou o mapa crus do upstream quebra o typecheck do Meu dia, que é exaustivo |
+| `next.config.ts` (#626 portado, 13/10/2026) | o `private, no-store` do original com DUAS exclusões nossas na regra: `opus/` (o codificador da nota de voz, ~380 KB) e `inbox-doodle.svg` (o fundo do fio), que ficam com o `public, max-age=0` do Next, revalidado por ETag. A regra crua do original faz o navegador baixar o gravador a cada nota de voz. Pino NOSSO: `src/next-config.excecoes.test.ts` (o `next-config.test.ts` é o do original, igual) |
+| `src/middleware.ts` (#607 portado, 13/10/2026) | a lista do `protectedPaths` é a NOSSA (`/meu-dia`, `/radar`, `/agenda`, `/reunioes`, `/tarefas`, além das do original). O `middleware.test.ts` do original lê a pasta `(dashboard)` e reprova a tela que faltar |
+| `src/lib/whatsapp/broadcast-resume.ts` e o teste | a retomada sai pelo canal da CAMPANHA (`resolveMetaChannel` com `broadcasts.channel_id`) e passa o `channelId` a `resolveTemplateRow`; no teste, o dublê responde `cb_channels`. O original resolve pelo espelho `whatsapp_config` |
+| `src/app/(auth)/signup/page.tsx` | o ramo do cadastro por CONVITE (`cadastrarPorConvite`, decisão de 22/09/2026); o original o apaga. Pino `src/lib/auth/cadastro-por-convite.test.ts` |
+| `src/app/(auth)/forgot-password/page.tsx` | o aviso `?erro=link` (link vencido ou já usado, mandado pelo NOSSO `/auth/callback`); o original avisa no login por `?error=link_*` |
+| `src/types/index.ts`, `src/app/(dashboard)/notifications/page.tsx` (1085, 13/10/2026) | o tipo de aviso `whatsapp_alert` em `NotificationType` e o ícone dele (`TriangleAlert`) no `TYPE_ICON`, com o corpo em `line-clamp-3` — o aviso que a sentinela da VPS grava no sino (`docs/INFRA-VPS.md` §12). Um merge que traga a união ou o mapa crus do upstream quebra o typecheck do Meu dia, que é exaustivo |
 
 ## 5. Migrations do original: a história das renumerações
 

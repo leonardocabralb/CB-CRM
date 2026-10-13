@@ -59,6 +59,11 @@ passou na máquina). Por isso:
   `AGENTS.md` rastreado — que o `CLAUDE.md` importa — e toda worktree com dev
   server fica suja. Merge que traga o arquivo cru do upstream tira a linha; o
   sintoma é ` M AGENTS.md` sozinho no `git status`.
+- Páginas saem com `Cache-Control: private, no-store` (#626 do original):
+  `public` deixaria um cache compartilhado servir a página de uma pessoa a
+  outra. Exceções: `opus/` e `inbox-doodle.svg`, senão o navegador baixa o
+  gravador a cada nota de voz. Arquivo novo de `public/` usado a toda hora
+  entra na exceção. Pino `src/next-config.test.ts`.
 
 ### Agendador: nada dispara sozinho
 - O serviço `agendador` do `docker-stack.yml` bate nas rotas de cron em dois
