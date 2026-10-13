@@ -76,6 +76,10 @@ CEGA_DEPOIS_DE = 3
 # em laço viraria aviso diário no sino do CRM.
 SERVICOS_VIGIADOS = ('crm_crm', 'crm_agendador', 'evolution_evolution',
                      'postgres_postgres', 'redis_redis', 'traefik_traefik')
+# Chaves de UMA conexão (o prefixo + a instância): o aviso vai só à conta dona
+# dela. As outras chaves são do servidor e vão a toda conta com conexão de
+# produção.
+PREFIXOS_DA_CONEXAO = ('conexao:', 'sem_entrada:', 'nao_gravadas:', 'falhas:')
 
 # "Aberta sem receber": em dia útil, com a janela de 2 h inteira entre 8h e
 # 20h, nenhuma mensagem de cliente e pelo menos 5 nossas saindo pela conexão.
@@ -785,15 +789,21 @@ def decidir(estado, achados, contas_atuais, vigiaveis):
     - o que deixou de ser vigiado (conexão apagada do CRM, serviço fora da
       lista) sai em silêncio — senão lembraria para sempre. `vigiaveis` None
       = não se sabe (CRM fora): nada sai.
-    Os destinatários são sempre somados aos de agora (aviso guardado com o CRM
-    fora não fica sem destino)."""
+    Destinatários: o aviso de uma conexão vai só à conta dona dela; o do
+    servidor, às contas de agora somadas às guardadas (aviso guardado com o
+    CRM fora não fica sem destino)."""
     ativos = estado.get('ativos', {})
     eventos = estado.get('eventos', {})
     lembrete = datetime.timedelta(hours=LEMBRETE_H)
     avisos = []
 
-    def destino(*listas):
-        return sorted(set(contas_atuais).union(*[set(lista or []) for lista in listas]))
+    def destino(chave, *listas):
+        # Somar as contas de agora ao aviso de uma conexão o mandaria aos
+        # admins de OUTRA conta, com o nome e o incidente da conexão.
+        contas = set().union(*[set(lista or []) for lista in listas])
+        if not chave.startswith(PREFIXOS_DA_CONEXAO):
+            contas |= set(contas_atuais)
+        return sorted(contas)
 
     for chave, p in sorted(achados.problemas.items()):
         if p['evento']:
@@ -804,18 +814,18 @@ def decidir(estado, achados, contas_atuais, vigiaveis):
             continue
         atual = ativos.get(chave) or {}
         if not atual.get('avisado_em'):
-            avisos.append((chave, 'novo', p['titulo'], p['corpo'], destino(p['contas'], atual.get('contas'))))
+            avisos.append((chave, 'novo', p['titulo'], p['corpo'], destino(chave, p['contas'], atual.get('contas'))))
         elif AGORA - de_iso(atual['avisado_em']) >= lembrete:
             avisos.append((chave, 'lembrete', 'Continua — ' + p['titulo'],
                            p['corpo'] + ' Desde %s.' % quando(de_iso(atual['desde'])),
-                           destino(p['contas'], atual.get('contas'))))
+                           destino(chave, p['contas'], atual.get('contas'))))
     for chave, atual in sorted(ativos.items()):
         if chave in achados.problemas:
             continue
         if vigiaveis is not None and chave not in vigiaveis:
             avisos.append((chave, 'esquecido', '', '', []))
             continue
-        contas = destino(atual.get('contas'))
+        contas = destino(chave, atual.get('contas'))
         if chave in achados.normais:
             fim, inicio = quando_com_preposicao(AGORA), quando_com_preposicao(de_iso(atual['desde']))
             if atual.get('avisado_em'):
@@ -1035,7 +1045,7 @@ def main():
     if crm is not None and not any(m.startswith('CRM:') for m in achados.nao_medido):
         vigiaveis = {'disco', 'memoria', 'sessao99', 'sentinela_cega'} | {'replica:' + s for s in SERVICOS_VIGIADOS}
         for canal in producao:
-            for prefixo in ('conexao:', 'sem_entrada:', 'nao_gravadas:', 'falhas:'):
+            for prefixo in PREFIXOS_DA_CONEXAO:
                 vigiaveis.add(prefixo + canal['instance_name'])
 
     avisos = decidir(estado, achados, contas, vigiaveis)

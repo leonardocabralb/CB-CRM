@@ -713,8 +713,8 @@ PostgREST com a service role do `/root/crm.env`, `cb_channels`, `profiles` e
 `/root/saude-whatsapp` e linhas `whatsapp_alert` em `notifications` (1085).
 Nunca imprime segredo, telefone nem conteúdo de mensagem.
 
-**Os avisos** (só conexões que casam CRM × Evolution e cujo rótulo não tem
-"teste"):
+**Os avisos** (só conexões que casam CRM × Evolution e cujo rótulo ou
+instância não tem "teste"):
 
 | Chave | Acende quando | Normaliza quando |
 |---|---|---|
@@ -736,6 +736,13 @@ passou, vira "Aconteceu e já normalizou — …". Problema avisado e sem mediç
 nova (conexão quieta, banco fora) também ganha o lembrete — só a prova de
 normalização o encerra. O que deixou de ser vigiado (conexão apagada do CRM)
 sai em silêncio.
+
+**Quem recebe.** O aviso de uma conexão (`conexao:`, `sem_entrada:`,
+`nao_gravadas:`, `falhas:`) vai só aos owner/admin da conta DONA dela, do
+primeiro aviso ao "Normalizou". Os do servidor (réplica, memória, disco,
+`sessao99`, `descartadas`, `sentinela_cega`) vão a toda conta com conexão de
+produção. Em 13/10/2026 só a conta do escritório tinha conexão de produção: as
+outras duas contas com conexão na Evolution só têm conexão de teste.
 
 **Calibragem (13/10/2026).** O `sem_entrada` foi medido contra 5 semanas de
 histórico: disparou 3 vezes, 2 delas no incidente de 16/09 (a fila de entrada
@@ -760,7 +767,9 @@ O log de um contêiner REMOVIDO some com ele (o parado o Docker guarda no
 histórico de tarefas, e a coleta o lê). O `sem_entrada` não tem histerese:
 numa conexão de pouco volume pode alternar entre aviso e "Normalizou"; e os
 feriados em dia útil não estão no calendário (a exigência de ≥ 5 saídas é o
-que os cala).
+que os cala). Os avisos do servidor podem citar conexão de outra conta (o
+`descartadas` traz a conexão provável, e a `sentinela_cega` o erro da
+medição): uma segunda conta com conexão de produção pede revisão disso.
 
 **Comandos** (na VPS):
 
