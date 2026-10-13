@@ -66,7 +66,7 @@ describe("processarAcionamento — o telefone do lead", () => {
       "conta-1",
       esperado,
       "Maria",
-      { conversaNovaEncerrada: true }
+      { conversaNovaEncerrada: true, origem: { via: "webhook" } }
     );
   });
 

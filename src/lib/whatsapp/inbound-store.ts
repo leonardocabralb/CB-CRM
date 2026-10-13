@@ -15,6 +15,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { fichaQueVenceu, findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
 import { routeContactToPipeline } from '@/lib/cb-channels/pipeline-routing';
 import { reopenClosedConversation } from '@/lib/conversations/reopen';
+import { marcarOrigem } from '@/lib/conversations/origem-da-escrita';
 import { dispararAutomacoes, etapaTemQuemFale } from '@/lib/automations/engine';
 import { cancelarEsperasPorResposta } from '@/lib/automations/parar-se-responder';
 import { dispatchInboundToFlows } from '@/lib/flows/engine';
@@ -169,7 +170,9 @@ export async function findOrCreateConversation(
   db: SupabaseClient,
   accountId: string,
   ownerUserId: string,
-  contactId: string
+  contactId: string,
+  /** Quem abriu a conversa nova — a trilha da conversa (1083). */
+  via: 'cliente' | 'celular'
 ): Promise<{ conversation: { id: string; unread_count?: number }; created: boolean } | null> {
   const { data: rows, error } = await db
     .from('conversations')
@@ -185,9 +188,12 @@ export async function findOrCreateConversation(
   }
   if (rows && rows.length > 0) return { conversation: rows[0], created: false };
 
-  const { data: created, error: createError } = await db
-    .from('conversations')
-    .insert({ account_id: accountId, user_id: ownerUserId, contact_id: contactId })
+  const { data: created, error: createError } = await marcarOrigem(
+    db
+      .from('conversations')
+      .insert({ account_id: accountId, user_id: ownerUserId, contact_id: contactId }),
+    { via }
+  )
     .select()
     .single();
 
@@ -289,7 +295,8 @@ export async function persistDeviceMessage(
     db,
     m.accountId,
     m.configOwnerUserId,
-    contactOutcome.contact.id
+    contactOutcome.contact.id,
+    'celular'
   );
   if (!convResult) return null;
   const conversation = convResult.conversation;
@@ -335,7 +342,7 @@ export async function persistDeviceMessage(
   // (`sender_id` nulo), só um advogado digitando. LOGO DEPOIS de gravar: a
   // janela até aqui decide qual encerramento a reabertura desfaz. Ver
   // `reopen.ts`.
-  await reopenClosedConversation(db, conversation);
+  await reopenClosedConversation(db, conversation, { via: 'celular' });
 
   await db
     .from('conversations')
@@ -421,7 +428,8 @@ export async function persistInboundMessage(
     db,
     m.accountId,
     m.configOwnerUserId,
-    contact.id
+    contact.id,
+    'cliente'
   );
   if (!convResult) return null;
   const conversation = convResult.conversation;
@@ -504,7 +512,7 @@ export async function persistInboundMessage(
   // O cliente escreveu de novo numa conversa encerrada: ela volta à caixa de
   // entrada (paridade com o webhook da Meta — até 2026-09-02 só ele reabria,
   // e produção roda Evolution). LOGO DEPOIS de gravar. Ver `reopen.ts`.
-  await reopenClosedConversation(db, conversation);
+  await reopenClosedConversation(db, conversation, { via: 'cliente' });
 
   await db
     .from('conversations')

@@ -164,6 +164,7 @@ import {
 import { lerBloqueiosDaRetomada, lerFimDaJanelaMeta, lerMensagensDepois } from './retomada-fatos'
 import { comNotaDaRetomada, lerRespostaDaRetomada, type ParadaDaResposta } from './retomada-resposta'
 import { textosDaPassagem, textosDaTransferencia, type MotivoDeTransferencia } from './textos-do-servidor'
+import { marcarOrigem } from '@/lib/conversations/origem-da-escrita'
 
 /** A linha de `cb_ia_turnos` que o claim devolve. */
 export interface LinhaDoTurno {
@@ -301,6 +302,8 @@ export async function transferirParaGente(
     conversationId: string
     contactId: string | null
     nomeDoAgente: string
+    /** O agente que transfere — a trilha da conversa (1083) o nomeia. */
+    agenteId?: string | null
     transferirPara: string | null
     motivo: MotivoDeTransferencia
     /** Na `reuniao_nao_marcada` (F5): o código da recusa ou da falha, que a nota diz. */
@@ -335,12 +338,15 @@ export async function transferirParaGente(
         .maybeSingle()
       if (membro) {
         // Só quando ninguém é responsável: nunca tirar a conversa de alguém.
-        await db
-          .from('conversations')
-          .update({ assigned_agent_id: args.transferirPara })
-          .eq('id', args.conversationId)
-          .eq('account_id', args.accountId)
-          .is('assigned_agent_id', null)
+        await marcarOrigem(
+          db
+            .from('conversations')
+            .update({ assigned_agent_id: args.transferirPara })
+            .eq('id', args.conversationId)
+            .eq('account_id', args.accountId)
+            .is('assigned_agent_id', null),
+          { via: 'agente', ref: args.agenteId ?? null }
+        )
       }
     }
 
@@ -1333,6 +1339,7 @@ async function conduzir(
       conversationId: turno.conversation_id,
       contactId,
       nomeDoAgente: agente.nome,
+      agenteId: agente.id,
       transferirPara: agente.transferirPara,
       motivo: 'reuniao_nao_marcada',
       codigoDaReuniao,
@@ -1365,6 +1372,7 @@ async function conduzir(
       conversationId: turno.conversation_id,
       contactId,
       nomeDoAgente: agente.nome,
+      agenteId: agente.id,
       transferirPara: agente.transferirPara,
       motivo: 'agente_passou',
     })
@@ -1923,6 +1931,7 @@ async function encerrar(
     conversationId: turno.conversation_id,
     contactId: andamento.contactId,
     nomeDoAgente: andamento.agente.nome,
+    agenteId: andamento.agente.id,
     transferirPara: andamento.agente.transferirPara,
     motivo,
   })

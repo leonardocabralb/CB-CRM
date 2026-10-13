@@ -153,7 +153,7 @@ describe('ligação PERDIDA: tocou e ninguém atendeu', () => {
     ]);
     // Reabre LOGO DEPOIS de gravar; depois a posição, o canal e o funil.
     expect(ordem).toEqual(['reabre', 'rpc:bump_conversation_on_inbound', 'segue', 'funil']);
-    expect(reopenClosedConversation).toHaveBeenCalledWith(banco.db, { id: 'conversa-1' });
+    expect(reopenClosedConversation).toHaveBeenCalledWith(banco.db, { id: 'conversa-1' }, { via: 'ligacao' });
     expect(followConversationChannel).toHaveBeenCalledWith(banco.db, 'conversa-1', CANAL);
     expect(routeContactToPipeline).toHaveBeenCalledWith({
       db: banco.db,
@@ -163,7 +163,9 @@ describe('ligação PERDIDA: tocou e ninguém atendeu', () => {
       contactName: 'Cliente Teste',
       conversationId: 'conversa-1',
     });
-    expect(resolverDestinatario).toHaveBeenCalledWith(banco.db, CONTA, TELEFONE);
+    expect(resolverDestinatario).toHaveBeenCalledWith(banco.db, CONTA, TELEFONE, undefined, {
+      origem: { via: 'ligacao' },
+    });
 
     expect(ligacao()).toMatchObject({
       desfecho: 'perdida',
@@ -421,7 +423,9 @@ describe('o que NÃO vira bolha', () => {
     await registrar(evento('offer', { telefoneInformado: '5583977770001@s.whatsapp.net' }));
     await registrar(evento('terminate'));
 
-    expect(resolverDestinatario).toHaveBeenCalledWith(banco.db, CONTA, '5583977770001');
+    expect(resolverDestinatario).toHaveBeenCalledWith(banco.db, CONTA, '5583977770001', undefined, {
+      origem: { via: 'ligacao' },
+    });
     expect(ligacao()).toMatchObject({ desfecho: 'perdida', detalhe: 'telefone pelo whatsapp' });
   });
 

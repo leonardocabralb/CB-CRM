@@ -1242,6 +1242,37 @@ nome da época em que foram aplicadas.
   gravam, lista vazia recusada, CASCADE do login). No preview: salvar (upsert
   201), recarregar já na ordem pessoal e "Voltar ao padrão" (DELETE 204),
   tabela de volta a zero linhas.
+- **1083_cb_historico_da_conversa** — dois tipos novos na trilha
+  `cb_lead_events` (`conversation_status_changed`, `conversation_assigned`; os
+  CHECKs de tipo e de forma recriados) e dois gatilhos POR INSTRUÇÃO em
+  `conversations` (`cb_conversa_criada_na_trilha`, AFTER INSERT;
+  `cb_conversa_mudou_na_trilha`, AFTER UPDATE; tabelas de transição) que gravam
+  quem abriu, encerrou, deixou pendente ou trocou o responsável. Quem/de onde
+  sai de `cb_quem_mexeu_na_conversa()`: a sessão da pessoa, ou os cabeçalhos
+  `x-cb-via`/`x-cb-ator`/`x-cb-ref`, aceitos só do `service_role`. As três
+  funções são SECURITY DEFINER e fechadas a public/anon/authenticated. PR #402.
+  ADITIVA e ANTES do deploy: o código antigo continua funcionando; até o
+  deploy, a aba Histórico da ficha mostra o tipo novo cru, e as escritas do
+  servidor saem "pelo sistema" (sem cabeçalho). Aplicada em 13/10/2026 pela
+  Management API (histórico `20261013165224`), antes do merge, depois do
+  replay verde do CI no commit `671c7090`, com "aplique a migration 1083 em
+  produção" do operador. Conferida: os dois CHECKs com os tipos novos, os dois
+  gatilhos por instrução e ligados, as três funções com ACL só
+  `postgres`/`service_role`, nenhum resto da conferência (zero linhas
+  `conversation_%` na trilha logo depois). Antes, num Postgres 16 local,
+  aplicada 3× e com 15 cenários. **Corrigida no mesmo dia, antes do merge**
+  (Codex P1 no #402): todo nome que vai para a trilha (pessoa, responsável,
+  contato) passou a sair só da conta da conversa. O arquivo foi emendado no
+  commit `eb82b464`, e a produção recebeu, pela Management API e com "pode
+  gravar a correção" do operador, só as duas funções de gatilho
+  (`CREATE OR REPLACE`, sem tocar tabela nem gatilho) e a conferência, que
+  ganhou o caso (f), o responsável de outra conta. Por isso o `statements`
+  do histórico `20261013165224` ainda guarda a versão anterior das duas
+  funções; o schema é o do arquivo. Conferida: as duas recortam a conta, não
+  sobrou o `ORDER BY` antigo, ACL intacta (`postgres`/`service_role`) e
+  nenhuma linha com responsável de fora da conta. Antes, localmente, o
+  mesmo recorte foi aplicado sobre a versão anterior e passou nos 16
+  cenários.
 
 ## Notas do histórico
 
