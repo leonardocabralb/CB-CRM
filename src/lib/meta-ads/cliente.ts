@@ -1,6 +1,7 @@
 /**
- * Cliente da Marketing API da Meta — SÓ leitura (`ads_read`): a conta de
- * anúncios, as campanhas e o gasto por dia e por campanha.
+ * Cliente da Marketing API da Meta — SÓ leitura (`ads_read`): as contas de
+ * anúncios que o token enxerga, a conta, as campanhas e o gasto por dia e
+ * por campanha.
  *
  * - Token no header `Authorization: Bearer`, nunca em `?access_token=`
  *   (vazaria em log de proxy — a mesma regra da chave do Gemini).
@@ -92,6 +93,16 @@ export interface ContaDeAnuncios {
   moeda: string;
 }
 
+/**
+ * Uma conta de anúncios que o token enxerga — o que o cartão oferece para
+ * escolher. `ativa` é o `account_status` 1; as outras (desativada, em
+ * análise, encerrada) continuam escolhíveis, porque o gasto antigo delas
+ * ainda serve ao Desempenho.
+ */
+export interface ContaDisponivel extends ContaDeAnuncios {
+  ativa: boolean;
+}
+
 export interface CampanhaDaMeta {
   id: string;
   nome: string;
@@ -106,6 +117,7 @@ export interface GastoDiario {
 }
 
 export interface ClienteMeta {
+  contas(): Promise<ContaDisponivel[]>;
   conta(adAccountId: string): Promise<ContaDeAnuncios>;
   campanhas(adAccountId: string): Promise<CampanhaDaMeta[]>;
   gastos(adAccountId: string, since: string, until: string): Promise<GastoDiario[]>;
@@ -173,6 +185,28 @@ export function criarClienteMeta(token: string, fetchFn: Fetch = fetch): Cliente
   }
 
   return {
+    /**
+     * As contas atribuídas ao usuário de sistema do token. Lista vazia = o
+     * token vale, mas ninguém deu conta de anúncios a esse usuário (o
+     * esquecimento mais comum: atribuir só o app). Ativas primeiro.
+     */
+    async contas() {
+      const linhas = await paginar(`${BASE}/me/adaccounts?fields=id,name,currency,account_status&limit=200`);
+      const contas: ContaDisponivel[] = [];
+      for (const l of linhas) {
+        if (!ehObjeto(l)) continue;
+        const id = typeof l.id === "string" ? normalizarAdAccountId(l.id) : null;
+        if (!id) continue;
+        contas.push({
+          id,
+          nome: typeof l.name === "string" ? l.name : id,
+          moeda: typeof l.currency === "string" ? l.currency : "BRL",
+          ativa: l.account_status === 1,
+        });
+      }
+      return [...contas.filter((c) => c.ativa), ...contas.filter((c) => !c.ativa)];
+    },
+
     async conta(adAccountId) {
       const c = await pedir(`${BASE}/${adAccountId}?fields=name,currency,account_id`);
       return {

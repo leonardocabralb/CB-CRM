@@ -313,6 +313,12 @@ investimento/CAC no Desempenho.
   `sem_permissao`, `conta_nao_encontrada`, `limite`, `rede`, `meta_error`.
 - ⚠️ Token no cabeçalho `Authorization: Bearer`, nunca em `?access_token=`
   (vaza em log de proxy).
+- **Conectar = colar o token e ESCOLHER a conta**: `POST /api/cb/meta-ads/contas`
+  (token no CORPO, por isso POST) lista `/me/adaccounts` sem gravar nada; o
+  `PUT config` segue recebendo `ad_account_id` + token e testando de novo.
+  A lista no cartão é carimbada com o token que a buscou (`{ de, contas }`):
+  editado o token, ela some no mesmo render. Lista vazia = token válido sem
+  conta atribuída ao usuário de sistema, e a tela diz isso.
 - ⚠️ **A janela de sincronização é de 3 DIAS** (a Meta reprocessa o gasto por
   até 48 h; primeira sincronização: 90 dias), com upsert por
   `(conta, campanha, dia)`. ⚠️⚠️ **E a janela é RECONCILIADA**: dia que zerou

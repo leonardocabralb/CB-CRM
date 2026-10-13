@@ -136,6 +136,38 @@ describe("cliente — códigos e id da conta", () => {
     const gastos = await criarClienteMeta("tok", fetchFalso).gastos("act_1", "2026-09-02", "2026-09-04");
     expect(gastos).toEqual([{ campaignId: "c1", dia: "2026-09-03", gasto: 12.5 }]);
   });
+
+  it("contas: as do token, paginadas, ativas primeiro, sem o token na URL", async () => {
+    const urls: string[] = [];
+    const respostas = [
+      {
+        data: [
+          { id: "act_111", name: "Conta Antiga", currency: "BRL", account_status: 2 },
+          { id: "act_222", name: "Conta Principal", currency: "BRL", account_status: 1 },
+        ],
+        paging: { next: "https://graph.facebook.com/v21.0/me/adaccounts?after=x" },
+      },
+      { data: [{ id: "act_333", currency: "USD", account_status: 1 }, { id: "lixo" }, "nem objeto"] },
+    ];
+    const fetchFalso = (async (url: string | URL | Request, init?: RequestInit) => {
+      urls.push(String(url));
+      expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer tok");
+      return new Response(JSON.stringify(respostas.shift()), { status: 200 });
+    }) as typeof fetch;
+    const contas = await criarClienteMeta("tok", fetchFalso).contas();
+    expect(contas).toEqual([
+      { id: "act_222", nome: "Conta Principal", moeda: "BRL", ativa: true },
+      { id: "act_333", nome: "act_333", moeda: "USD", ativa: true },
+      { id: "act_111", nome: "Conta Antiga", moeda: "BRL", ativa: false },
+    ]);
+    expect(urls[0]).toContain("/me/adaccounts?fields=id,name,currency,account_status");
+    expect(urls.every((u) => !u.includes("access_token"))).toBe(true);
+  });
+
+  it("contas: token sem conta atribuída devolve lista vazia, não erro", async () => {
+    const fetchFalso = (async () => new Response(JSON.stringify({ data: [] }), { status: 200 })) as typeof fetch;
+    await expect(criarClienteMeta("tok", fetchFalso).contas()).resolves.toEqual([]);
+  });
 });
 
 describe("atribuição do gasto ao funil", () => {
