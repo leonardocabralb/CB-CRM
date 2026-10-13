@@ -32,7 +32,9 @@ import { atualizarPreviaDaConversa } from '@/lib/inbox/conversation-preview';
 
 export async function refletirComoUltima(
   db: SupabaseClient,
-  conversationId: string
+  conversationId: string,
+  /** Mensagem NOSSA (celular pareado) ou do cliente — a trilha (1083) diz quem reabriu. */
+  via: 'cliente' | 'celular'
 ): Promise<void> {
   try {
     const { data: conversa, error } = await db
@@ -50,7 +52,7 @@ export async function refletirComoUltima(
 
     // Cliente e celular pareado reabrem SEM responsável (ver `reopen.ts`). Quem
     // decide se está encerrada é o UPDATE condicional de lá, não esta leitura.
-    await reopenClosedConversation(db, { id: conversa.id as string });
+    await reopenClosedConversation(db, { id: conversa.id as string }, { via });
 
     await atualizarPreviaDaConversa(db, conversationId);
     const { error: erroDaPosicao } = await db

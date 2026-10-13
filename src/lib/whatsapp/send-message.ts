@@ -895,6 +895,7 @@ export async function sendMessageToConversation(
   // janela até aqui decide qual encerramento a reabertura desfaz.
   await reopenClosedConversation(db, conversation, {
     assignTo: senderUserId ?? null,
+    via: senderUserId ? 'envio' : 'api',
   });
 
   const lastMessageText =

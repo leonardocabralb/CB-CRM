@@ -9,6 +9,7 @@ import { isUniqueViolation } from "@/lib/contacts/dedupe";
 import { isValidE164, sanitizePhoneForMeta } from "@/lib/whatsapp/phone-utils";
 
 import { aplicarCobranca } from "./aplicar";
+import { marcarOrigem } from "@/lib/conversations/origem-da-escrita";
 import type { ClienteAsaas } from "./cliente";
 import { clienteDaConta } from "./conexao";
 import { COLUNAS_DA_COBRANCA, lerParcela } from "./espelho";
@@ -517,7 +518,14 @@ async function reconciliarNaFila(admin: SupabaseClient, accountId: string, agora
  * A conversa 1:1 do contato — a mais antiga; senão nasce aqui, com o canal
  * do passo e sem pino, e `user_id` = o DONO da conta (`dono-duravel`).
  */
-async function conversaDoContato(admin: SupabaseClient, accountId: string, contactId: string, channelId: string): Promise<string> {
+async function conversaDoContato(
+  admin: SupabaseClient,
+  accountId: string,
+  contactId: string,
+  channelId: string,
+  /** A automação da régua — a trilha da conversa (1083) diz quem a criou. */
+  automacaoId: string,
+): Promise<string> {
   const { data: existente, error } = await admin
     .from("conversations")
     .select("id")
@@ -530,9 +538,12 @@ async function conversaDoContato(admin: SupabaseClient, accountId: string, conta
   const { data: conta, error: erroConta } = await admin.from("accounts").select("owner_user_id").eq("id", accountId).maybeSingle();
   const dono = typeof conta?.owner_user_id === "string" ? conta.owner_user_id : null;
   if (erroConta || !dono) throw new Error("conversa: dono da conta não resolvido");
-  const { data: nova, error: erroNova } = await admin
-    .from("conversations")
-    .insert({ account_id: accountId, user_id: dono, contact_id: contactId, channel_id: channelId, channel_pinned: false })
+  const { data: nova, error: erroNova } = await marcarOrigem(
+    admin
+      .from("conversations")
+      .insert({ account_id: accountId, user_id: dono, contact_id: contactId, channel_id: channelId, channel_pinned: false }),
+    { via: "regua", ref: automacaoId },
+  )
     .select("id")
     .single();
   if (!erroNova && nova) return nova.id as string;
@@ -865,7 +876,7 @@ export async function varrerRegua(admin: SupabaseClient, accountId: string, deps
       if (ids.length === 0) continue;
       // 6) a conversa, o contexto e o disparo
       const vencidas = resumirDivida(vencidasDoCliente(frescas), agora, config.vencidas_listadas_em, fuso).vencidas;
-      const conversationId = await conversaDoContato(admin, accountId, ligado.contact_id, automacao.channelId);
+      const conversationId = await conversaDoContato(admin, accountId, ligado.contact_id, automacao.channelId, automacao.id);
       // `dias_de_atraso` é `cruzaram[0]`: as parcelas da automação que manda
       // vêm primeiro (a mais antiga delas à frente). Na ordem do banco (UUID),
       // a mensagem do marco de 30 dias dizia "3 dias" metade das vezes (Codex,
@@ -933,7 +944,7 @@ export async function varrerRegua(admin: SupabaseClient, accountId: string, deps
         venceHoje.map((p) => ({ account_id: accountId, cobranca_id: p.id, asaas_customer_id: grupo.asaasCustomerId, tipo: "vence_hoje" as const, marco: 0, vencimento: p.vencimento, automation_id: automacao.id, automation_nome: automacao.nome, contact_id: ligado.contact_id, resultado: "reservado" as const, detalhe: null })),
       );
       if (ids === null || ids.length === 0) continue;
-      const conversationId = await conversaDoContato(admin, accountId, ligado.contact_id, automacao.channelId);
+      const conversationId = await conversaDoContato(admin, accountId, ligado.contact_id, automacao.channelId, automacao.id);
       const vars = montarVariaveis({ clienteNome: ligado.nome, escritorioNome: escritorio, vencidas: [], cruzaram: [], venceHoje, hoje: dia, agora, fuso });
       const carimbo = new Date().toISOString();
       const disparo = await disparar({

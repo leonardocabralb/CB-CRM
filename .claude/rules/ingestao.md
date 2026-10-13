@@ -93,6 +93,8 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
     que ficou diz quem atendeu por último).
   - `aguardando_desde` NÃO é devolvida na reabertura (acenderia "em atraso"
     sobre cliente já respondido).
+  - Quem reabre ou CRIA declara a via (`marcarOrigem`, 1083); sem ela a
+    trilha diz "pelo sistema". Pino `origem-da-escrita.chamadores.test.ts`.
 - ⚠️⚠️ **Quem abre negócio: `routeContactToPipeline`** em Meta, `persistInboundMessage`,
   `persistDeviceMessage`, núcleo de envio, Instagram e a ligação (decisão do
   operador: número novo que liga vira card). No núcleo, via

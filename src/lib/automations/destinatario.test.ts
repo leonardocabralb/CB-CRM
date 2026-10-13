@@ -19,6 +19,7 @@ import { conversaDoContato, resolverDestinatario } from './destinatario'
 
 let conversasExistentes: { id: string }[] = []
 let insercoes: { tabela: string; payload: Record<string, unknown> }[] = []
+let cabecalhos: [string, string][] = []
 
 const db = {
   from(tabela: string) {
@@ -29,6 +30,10 @@ const db = {
       limit: () => b,
       insert: (payload: Record<string, unknown>) => {
         insercoes.push({ tabela, payload })
+        return b
+      },
+      setHeader: (nome: string, valor: string) => {
+        cabecalhos.push([nome, valor])
         return b
       },
       maybeSingle: async () => ({ data: { owner_user_id: 'dono-1' }, error: null }),
@@ -43,21 +48,26 @@ const db = {
 beforeEach(() => {
   conversasExistentes = []
   insercoes = []
+  cabecalhos = []
   busca.findExistingContact.mockReset().mockResolvedValue({ contato: null, falhou: false })
 })
+
+const WEBHOOK = { via: 'webhook' } as const
+const AGENDAMENTO = { via: 'agendamento' } as const
+const MOTOR = { via: 'automacao', ref: 'automacao-1' } as const
 
 const conversaInserida = () => insercoes.find((i) => i.tabela === 'conversations')?.payload
 
 describe('resolverDestinatario — a situação da conversa que nasce', () => {
   it('CRÍTICO: com conversaNovaEncerrada, a conversa nova nasce ENCERRADA', async () => {
-    const r = await resolverDestinatario(db, 'conta-1', '5585999998888', 'Maria', { conversaNovaEncerrada: true })
+    const r = await resolverDestinatario(db, 'conta-1', '5585999998888', 'Maria', { conversaNovaEncerrada: true, origem: WEBHOOK })
 
     expect(r).toEqual({ contactId: 'contato-novo', conversationId: 'conversa-nova', criouContato: true })
     expect(conversaInserida()).toMatchObject({ account_id: 'conta-1', user_id: 'dono-1', status: 'closed' })
   })
 
   it('sem a opção (Calendly, aviso à equipe), a conversa nova nasce como sempre', async () => {
-    await resolverDestinatario(db, 'conta-1', '5585999998888', 'Maria')
+    await resolverDestinatario(db, 'conta-1', '5585999998888', 'Maria', { origem: AGENDAMENTO })
 
     expect(conversaInserida()).toBeDefined()
     expect(conversaInserida()).not.toHaveProperty('status')
@@ -67,7 +77,7 @@ describe('resolverDestinatario — a situação da conversa que nasce', () => {
     busca.findExistingContact.mockResolvedValue({ contato: { id: 'contato-velho' }, falhou: false })
     conversasExistentes = [{ id: 'conversa-ativa' }]
 
-    const r = await resolverDestinatario(db, 'conta-1', '5585999998888', 'Maria', { conversaNovaEncerrada: true })
+    const r = await resolverDestinatario(db, 'conta-1', '5585999998888', 'Maria', { conversaNovaEncerrada: true, origem: WEBHOOK })
 
     expect(r).toEqual({ contactId: 'contato-velho', conversationId: 'conversa-ativa', criouContato: false })
     expect(insercoes).toEqual([])
@@ -76,7 +86,7 @@ describe('resolverDestinatario — a situação da conversa que nasce', () => {
 
 describe('conversaDoContato — a ficha que já existe (o agendamento do Calendly)', () => {
   it('CRÍTICO: ficha sem conversa ganha uma ABERTA, com o dono da conta', async () => {
-    const id = await conversaDoContato(db, 'conta-1', 'contato-da-api')
+    const id = await conversaDoContato(db, 'conta-1', 'contato-da-api', { origem: AGENDAMENTO })
 
     expect(id).toBe('conversa-nova')
     expect(conversaInserida()).toEqual({ account_id: 'conta-1', user_id: 'dono-1', contact_id: 'contato-da-api' })
@@ -85,14 +95,14 @@ describe('conversaDoContato — a ficha que já existe (o agendamento do Calendl
   it('conversa que já existe é devolvida, e nada é inserido', async () => {
     conversasExistentes = [{ id: 'conversa-ativa' }]
 
-    expect(await conversaDoContato(db, 'conta-1', 'contato-da-api')).toBe('conversa-ativa')
+    expect(await conversaDoContato(db, 'conta-1', 'contato-da-api', { origem: AGENDAMENTO })).toBe('conversa-ativa')
     expect(insercoes).toEqual([])
   })
 })
 
 describe('conversaDoContato — o passo de envio do motor (27/09/2026)', () => {
   it('CRÍTICO: com conversaNovaEncerrada, a ficha sem conversa ganha uma ENCERRADA, com o dono da conta', async () => {
-    const id = await conversaDoContato(db, 'conta-1', 'lead-da-api', { conversaNovaEncerrada: true })
+    const id = await conversaDoContato(db, 'conta-1', 'lead-da-api', { conversaNovaEncerrada: true, origem: MOTOR })
 
     expect(id).toBe('conversa-nova')
     expect(conversaInserida()).toEqual({
@@ -106,7 +116,26 @@ describe('conversaDoContato — o passo de envio do motor (27/09/2026)', () => {
   it('CRÍTICO: conversa que já existe NÃO é tocada, nem com a opção', async () => {
     conversasExistentes = [{ id: 'conversa-ativa' }]
 
-    expect(await conversaDoContato(db, 'conta-1', 'lead-da-api', { conversaNovaEncerrada: true })).toBe('conversa-ativa')
+    expect(await conversaDoContato(db, 'conta-1', 'lead-da-api', { conversaNovaEncerrada: true, origem: MOTOR })).toBe('conversa-ativa')
     expect(insercoes).toEqual([])
+  })
+})
+
+describe('a origem da conversa criada vai para a trilha (1083)', () => {
+  it('a criação leva o x-cb-via (e o x-cb-ref da automação) do chamador', async () => {
+    await conversaDoContato(db, 'conta-1', 'lead-da-api', { conversaNovaEncerrada: true, origem: MOTOR })
+
+    expect(cabecalhos).toEqual([
+      ['x-cb-via', 'automacao'],
+      ['x-cb-ref', 'automacao-1'],
+    ])
+  })
+
+  it('conversa que já existia não manda cabeçalho nenhum (nada foi escrito)', async () => {
+    conversasExistentes = [{ id: 'conversa-ativa' }]
+
+    await resolverDestinatario(db, 'conta-1', '5585999998888', 'Maria', { origem: WEBHOOK })
+
+    expect(cabecalhos).toEqual([])
   })
 })
