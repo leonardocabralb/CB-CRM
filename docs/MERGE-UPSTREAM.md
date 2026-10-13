@@ -581,6 +581,7 @@ upstream sobrescrevê-los:
 | `src/lib/whatsapp/broadcast-resume.ts` e o teste | a retomada sai pelo canal da CAMPANHA (`resolveMetaChannel` com `broadcasts.channel_id`) e passa o `channelId` a `resolveTemplateRow`; no teste, o dublê responde `cb_channels`. O original resolve pelo espelho `whatsapp_config` |
 | `src/app/(auth)/signup/page.tsx` | o ramo do cadastro por CONVITE (`cadastrarPorConvite`, decisão de 22/09/2026); o original o apaga. Pino `src/lib/auth/cadastro-por-convite.test.ts` |
 | `src/app/(auth)/forgot-password/page.tsx` | o aviso `?erro=link` (link vencido ou já usado, mandado pelo NOSSO `/auth/callback`); o original avisa no login por `?error=link_*` |
+| `src/types/index.ts`, `src/app/(dashboard)/notifications/page.tsx` (1085, 13/10/2026) | o tipo de aviso `whatsapp_alert` em `NotificationType` e o ícone dele (`TriangleAlert`) no `TYPE_ICON`, com o corpo em `line-clamp-3` — o aviso que a sentinela da VPS grava no sino (`docs/INFRA-VPS.md` §12). Um merge que traga a união ou o mapa crus do upstream quebra o typecheck do Meu dia, que é exaustivo |
 
 ## 5. Migrations do original: a história das renumerações
 

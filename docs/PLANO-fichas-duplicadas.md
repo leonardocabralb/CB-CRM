@@ -107,10 +107,6 @@ decide. Esta é a FASE 1: detectar e avisar. Unir é a fase 2.
 - "Pessoas diferentes, mas ligadas" grava o vínculo de Relacionados, que é
   de `agent` (1069): o atendente que liga as fichas pela aba também tira o
   par do aviso. Só o botão do "Comparar" é de admin.
-- Ordem de merge: a 1083 (histórico da conversa) e a 1085 (sentinela) são de
-  outras branches e já estão aplicadas. Quem instala e atualiza por
-  `supabase db push` recusa número abaixo do maior aplicado: mesclar os PRs
-  delas ANTES deste (a nossa produção não usa `db push`).
 - `cb_primeiro_nome` aplica `lower()` antes de decompor: num banco com
   LC_CTYPE "C" puro, a letra maiúscula acentuada não desce, e a conferência
   da 1084 aborta. Produção e replay usam UTF-8 com ICU; mudar exige migration

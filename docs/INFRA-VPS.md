@@ -6,7 +6,8 @@
 > (seção 0, item c). Documento INTERNO: descreve a nossa operação e não vai
 > para quem instala. A operação da imagem da Evolution 2.4 e a receita do
 > `docker stack deploy` do CRM estão nas §9 e §10; o que envelheceu nesta
-> página está anotado na §11.
+> página está anotado na §11; a sentinela do WhatsApp (o cron de hora em hora
+> que avisa no sino do CRM), na §12.
 
 O banco tem migrations, histórico e ordem de aplicação. A infraestrutura não
 tinha nada disso. Este documento é a resposta: **inventário do que roda hoje +
@@ -46,7 +47,8 @@ memória.
 ⚠️ **Não existe backup automático.** Conferido em 2026-08-04 e de novo em
 09/09/2026: sem crontab do root, sem tarefa de dump, sem volume espelhado. O
 `/etc/cron.d` tem `certbot`, `docker-image-prune`, `docker-builder-prune`,
-`e2scrub_all` e `popularity-contest` — nenhum faz backup. O que existe são os
+`e2scrub_all` e `popularity-contest` — nenhum faz backup (desde 13/10/2026
+há também o `saude-whatsapp`, a sentinela da §12, que não faz backup). O que existe são os
 **dumps manuais de 09/09** em `/root/backups/` (do plano da Baileys 7), no
 mesmo disco.
 
@@ -389,6 +391,9 @@ o `stack deploy` manual descrito no `DEPLOY-VPS.md`.
    atendimento e a descoberta foi acidental. O CRM respondia 200 o tempo todo,
    então qualquer monitor de "o site está no ar?" teria dito que estava tudo bem.
    O sinal certo é o fluxo de mensagens no Supabase, não o HTTP.
+   **Desde 13/10/2026:** a sentinela da §12 confere de hora em hora e avisa no
+   sino do CRM. Ela roda NESTA máquina, então a VPS inteira fora do ar não é
+   avisada por ela.
 4. **Ubuntu 20.04 fora de suporte** (163 atualizações de segurança pendentes).
 5. **3,7 GB de volumes órfãos** (`chatwoot_*`, `traefik-letsencrypt`).
 6. **Imagens em `:latest`** em 5 serviços — atualização silenciosa num
@@ -678,3 +683,94 @@ reescrever a seção.
 - §4 (Segredos), §5.3 e §6 item 10 citam `deploy.yml`: desde 26/08/2026 o
   workflow é o `.github/workflows/pipeline.yml` (o antigo foi consolidado
   nele).
+
+## 12. Sentinela do WhatsApp (desde 13/10/2026)
+
+Pedido do operador: um problema do WhatsApp chegou a correr de 1 a 4 semanas
+sem ninguém perceber. A sentinela roda **nesta máquina, de hora em hora**, só
+lendo, e avisa no **sino do CRM** os owner/admin da conta. A análise semanal
+aprofundada continua fora daqui (uma rotina no Mac do operador, que lê os
+arquivos abaixo por ssh).
+
+**Versionada em `ops/vps/saude-whatsapp/`** (`sentinela.py` e
+`saude-whatsapp.cron`). Na VPS:
+
+| Arquivo | O quê |
+|---|---|
+| `/etc/cron.d/saude-whatsapp` | `5 * * * *`, com `nice -n 10 timeout 300` (a execução leva ~10 s) |
+| `/root/saude-whatsapp/sentinela.py` | cópia do versionado (700) |
+| `/root/saude-whatsapp/estado.json` | problemas ativos, último aviso de cada um e até onde a coleta leu |
+| `/root/saude-whatsapp/coleta/AAAA-MM-DD.jsonl` | uma linha por execução: o TIPO de cada linha de erro/aviso dos logs da Evolution, do CRM e do agendador, com contagem, e os recibos ERROR por (conexão, tipo, código). Nunca o conteúdo: a assinatura corta no primeiro `{`/`[` (o nó cru da mensagem vem por aí), troca o que está entre aspas por `<…>`, apaga e-mail e mascara número, id e chave; objeto impresso na linha seguinte a um ERROR vira `(objeto omitido)`. Apagadas depois de 90 dias |
+| `/root/saude-whatsapp/sentinela.log` | uma linha por execução; aparado acima de 2 MB |
+
+**O que lê:** o banco `evolution` (`Instance`, `Message`, `MessageUpdate`);
+`docker service ls`; o json-file dos contêineres da Evolution, do `crm_crm` e
+do `crm_agendador` (inclusive os parados, enquanto o Docker os guardar); o
+Redis db 8 (`HSCAN … MATCH 'session-*.99'` nos hashes `evolution:instance:*`,
+uma vez por dia, às 10h de Brasília); `/proc/meminfo` e o disco; e, pelo
+PostgREST com a service role do `/root/crm.env`, `cb_channels`, `profiles` e
+`messages.message_id` (a conferência por id). **O que grava:** só
+`/root/saude-whatsapp` e linhas `whatsapp_alert` em `notifications` (1085).
+Nunca imprime segredo, telefone nem conteúdo de mensagem.
+
+**Os avisos** (só conexões que casam CRM × Evolution e cujo rótulo não tem
+"teste"):
+
+| Chave | Acende quando | Normaliza quando |
+|---|---|---|
+| `conexao:<instância>` | `connectionStatus` ≠ `open`, ou a instância nem existe mais no servidor (apagada ou renomeada), conferido de novo 60 s depois | `open` |
+| `sem_entrada:<instância>` | dia útil, janela de 2 h inteira entre 8h e 20h: 0 mensagem de cliente e ≥ 5 nossas saindo | chegou mensagem de cliente nas últimas 2 h |
+| `nao_gravadas:<instância>` | ≥ 3 mensagens de cliente (1:1, com conteúdo, fora o LID SEM telefone) das últimas 2 h, com mais de 10 min, que a Evolution tem e `messages.message_id` não — conferidas PELO ID (pega também a perda parcial) | só com PROVA: chegou mensagem na janela e todas estão no CRM (conexão quieta não decide nada). O "Normalizou" lembra que as que faltaram precisam ser importadas à mão |
+| `falhas:<instância>` | ≥ 3 ERROR do envio PRINCIPAL em 1:1 sem entrega em 24 h (a régua do CRM: `remoteJid` com "@" e sem ":") | < 3 |
+| `descartadas` | "error in handling message" no log da Evolution (mensagem descartada antes do banco: o caso da §8, 30/09). O log não diz de quem é: o aviso traz a conexão PROVÁVEL | é evento: no máximo um aviso a cada 6 h; o que chega dentro do intervalo, ou que o sino recusa, fica em `eventos_pendentes` e sai somado depois, para os destinatários de então |
+| `sessao99` | campo `session-<n>.99` em algum hash (§8), por `HSCAN … MATCH` (nunca `HKEYS`: o Redis é compartilhado), uma vez por dia a partir das 10h — e de novo a cada hora até dar certo no dia | 0 |
+| `replica:<serviço>` | só os vigiados — `crm_crm`, `crm_agendador`, `evolution_evolution`, `postgres_postgres`, `redis_redis`, `traefik_traefik` — com réplicas rodando ≠ esperadas, desligados (`scale …=0`, que aparece como "0/0") ou ausentes do Swarm, conferido de novo 60 s depois. Os outros serviços (n8n, Typebot…) ficam na semanal | iguais e diferentes de zero (⚠️ manutenção que escala a Evolution a 0 acende o aviso — é o esperado) |
+| `disco` / `memoria` | disco > 85% / `MemAvailable` < 300 MB (conferida de novo) | abaixo do limite |
+| `sentinela_cega` | alguma medição falhou ("não medido") em 3 execuções seguidas — sem isto, a sentinela cega só deixaria uma linha no `sentinela.log` | uma execução sem "não medido" |
+
+Um aviso por problema novo, um lembrete ("Continua — …") a cada 24 h enquanto
+durar e um "Normalizou — …" quando passa. Aviso que o PostgREST recusa não
+muda o estado: sai na execução seguinte.
+
+**Calibragem (13/10/2026).** O `sem_entrada` foi medido contra 5 semanas de
+histórico: disparou 3 vezes, 2 delas no incidente de 16/09 (a fila de entrada
+presa). Sem a exigência de saídas, dispararia em todo dia parado e em todo
+feriado. O log da Evolution cobria só ~6 h nesse dia (rotação de 10m × 3 com o
+log em VERBOSE): por isso a coleta é de hora em hora.
+
+**Cada parte falha sozinha.** Réplica, memória, disco e conexão rodam mesmo
+com o banco da Evolution fora (o Postgres parado aparece como
+`replica:postgres_postgres`, não como checagem pulada); sem o banco, conexão e
+mensagens ficam `NÃO MEDIDO` — nunca "normalizou". Sem o `crm.env` (ou com o
+Supabase fora) a coleta segue. Erro de rede ao gravar o aviso não derruba a
+execução (o aviso fica para a seguinte). A coleta entra inteira ou não entra
+(linha parcial seria contada duas vezes). As consultas ao banco da Evolution
+rodam em transação só de leitura.
+
+**Limites conhecidos.** A VPS inteira fora do ar não avisa (a sentinela roda
+nela). Sem o `/root/crm.env` (ou com a service role vazia, §10), a coleta
+continua, mas o aviso não sai: o `sentinela.log` registra `NÃO MEDIDO: CRM`.
+O log de um contêiner REMOVIDO some com ele (o parado o Docker guarda no
+histórico de tarefas, e a coleta o lê). O `sem_entrada` não tem histerese:
+numa conexão de pouco volume pode alternar entre aviso e "Normalizou"; e os
+feriados em dia útil não estão no calendário (a exigência de ≥ 5 saídas é o
+que os cala).
+
+**Comandos** (na VPS):
+
+```bash
+install -d -m 700 /root/saude-whatsapp
+```
+
+```bash
+install -m 700 /tmp/sentinela.py /root/saude-whatsapp/sentinela.py
+```
+
+```bash
+install -m 644 /tmp/saude-whatsapp.cron /etc/cron.d/saude-whatsapp
+```
+
+Conferir sem gravar nada (nem estado): `python3 /root/saude-whatsapp/sentinela.py --simular`.
+Mandar um aviso de teste aos administradores: `--teste-aviso`. Atualizar =
+copiar o `sentinela.py` novo por cima. Desligar = apagar
+`/etc/cron.d/saude-whatsapp` (a pasta fica; o histórico da coleta está nela).
