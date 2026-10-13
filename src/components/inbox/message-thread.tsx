@@ -48,6 +48,7 @@ import {
 } from "@/lib/inbox/salto-no-fio";
 import { Input } from "@/components/ui/input";
 import { contarNovasDoCliente } from "@/lib/inbox/nao-lidas-abaixo";
+import { marcarComoNaoLida } from "@/lib/inbox/marcar-nao-lida";
 import { naOrdemDoFio } from "@/lib/inbox/ordem-do-fio";
 import { entregasNaoConfirmadas } from "@/lib/inbox/entrega-nao-confirmada";
 import { ehUuid } from "@/lib/tasks/validar";
@@ -85,8 +86,10 @@ import type {
 } from "@/types";
 import {
   MessageSquare,
+  MessageSquareDot,
   ChevronDown,
   Check,
+  CheckCheck,
   Clock,
   ArrowLeft,
   RefreshCw,
@@ -178,6 +181,13 @@ interface MessageThreadProps {
    * mobile only.
    */
   onBack?: () => void;
+  /**
+   * "Marcar como não lida" gravou (pedido do operador, 13/10/2026). A página
+   * FECHA a conversa: aberta, ela se zeraria de novo sozinha (ver é ler), e a
+   * bolinha que o operador pediu sumiria na hora. Sem a prop, o botão de
+   * marcar como não lida não aparece.
+   */
+  onMarcadaNaoLida?: (conversationId: string) => void;
   /**
    * Abre a ficha do contato/grupo — chamado ao tocar no nome/avatar do
    * cabeçalho. No celular a página abre o overlay do painel (única
@@ -485,12 +495,13 @@ const DOODLE_BG_CLASSES =
  * `hasUnread` ficaria `true` e a mensagem seguinte não re-rodaria o efeito.
  */
 function zerarNaoLidas(conversationId: string) {
-  createClient()
+  return createClient()
     .from("conversations")
     .update({ unread_count: 0 })
     .eq("id", conversationId)
     .then(({ error }) => {
       if (error) console.error("Failed to reset unread_count:", error);
+      return !error;
     });
 }
 
@@ -505,6 +516,7 @@ export function MessageThread({
   onAssignChange,
   onChannelChange,
   onBack,
+  onMarcadaNaoLida,
   onOpenContactPanel,
   resyncToken = 0,
   onRefresh,
@@ -1292,8 +1304,15 @@ export function MessageThread({
   // ⚠️ No modo anônimo, ver não zera — e `modoAnonimo` nas dependências é
   // load-bearing: desligar o modo com a conversa aberta re-roda o efeito e
   // zera na hora, como se ela tivesse acabado de ser aberta.
+  //
+  // ⚠️ E não zera a conversa com "Marcar como não lida" EM CURSO
+  // (`naoLidaEmCursoRef`, Codex no #405): o tempo real pode trazer o 1 antes
+  // de a gravação voltar, a página o copia para a conversa aberta, e este
+  // zero desfaria o gesto — que fecharia a conversa já lida de novo.
+  const naoLidaEmCursoRef = useRef<string | null>(null);
   useEffect(() => {
     if (!conversationId || !hasUnread || modoAnonimo) return;
+    if (naoLidaEmCursoRef.current === conversationId) return;
     zerarNaoLidas(conversationId);
   }, [conversationId, hasUnread, modoAnonimo]);
 
@@ -1397,6 +1416,43 @@ export function MessageThread({
   // irmãos aqui, então o contador que os liga mora nesta tela mesmo.
   const podeEnviar = useCan("send-messages");
   const [agendadasResync, setAgendadasResync] = useState(0);
+
+  /**
+   * Marcar como lida / não lida, pelo cabeçalho (pedido do operador,
+   * 13/10/2026). A não lida é UMA por conversa, a da caixa compartilhada.
+   *
+   * - Não lida → "Marcar como lida": zera pelo MESMO `zerarNaoLidas` — e
+   *   também no modo anônimo, porque é gesto, não leitura (é ali que ela
+   *   aparece: fora do modo, ver já zerou).
+   * - Lida → "Marcar como não lida": grava e a página FECHA a conversa
+   *   (`onMarcadaNaoLida`); aberta, ela se zeraria de novo sozinha.
+   * - Só para quem escreve na conversa (`send-messages`, o `agent` da policy
+   *   de UPDATE de `conversations`): para o Visualizador o banco barra em
+   *   silêncio.
+   */
+  const [marcandoLeitura, setMarcandoLeitura] = useState(false);
+  const podeMarcarLeitura = Boolean(conversation && podeEnviar && (hasUnread || onMarcadaNaoLida));
+  const handleMarcarLeitura = useCallback(async () => {
+    if (!conversation || marcandoLeitura) return;
+    const id = conversation.id;
+    setMarcandoLeitura(true);
+    try {
+      if (hasUnread) {
+        const ok = await zerarNaoLidas(id);
+        if (!ok) toast.error(t("marcarComoLidaFalhou"));
+      } else {
+        naoLidaEmCursoRef.current = id;
+        const ok = await marcarComoNaoLida(createClient(), id);
+        if (ok) onMarcadaNaoLida?.(id);
+        else toast.error(t("marcarComoNaoLidaFalhou"));
+      }
+    } finally {
+      // Depois do `onMarcadaNaoLida`: a página já fechou a conversa (ou o
+      // operador já está noutra), e o zero automático volta a valer.
+      if (naoLidaEmCursoRef.current === id) naoLidaEmCursoRef.current = null;
+      setMarcandoLeitura(false);
+    }
+  }, [conversation, hasUnread, marcandoLeitura, onMarcadaNaoLida, t]);
 
   /**
    * ⚠️ Confere a conversa antes de pôr a anotação no fio.
@@ -2638,6 +2694,29 @@ export function MessageThread({
               when realtime missed an event or the agent just wants to be
               sure nothing's stale. Only rendered when the parent wires
               up `onRefresh`. */}
+          {/* Lida / não lida (13/10/2026): com não lidas, "Marcar como lida";
+              sem, "Marcar como não lida" — este só quando a página sabe
+              fechar a conversa depois (`onMarcadaNaoLida`).
+              ⚠️ Só de `sm` para cima: a 375 px o nome do contato já tinha
+              24 px e o botão o zerava (medido). No celular a mesma ação mora
+              no menu da situação, logo abaixo. */}
+          {podeMarcarLeitura && (
+            <button
+              type="button"
+              onClick={() => void handleMarcarLeitura()}
+              disabled={marcandoLeitura}
+              aria-label={hasUnread ? t("marcarComoLida") : t("marcarComoNaoLida")}
+              title={hasUnread ? t("marcarComoLida") : t("marcarComoNaoLida")}
+              className="hidden h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60 sm:inline-flex"
+            >
+              {hasUnread ? (
+                <CheckCheck className="h-3.5 w-3.5" />
+              ) : (
+                <MessageSquareDot className="h-3.5 w-3.5" />
+              )}
+            </button>
+          )}
+
           {/* A lupa: busca DENTRO desta conversa (09/09/2026). Fica acesa
               enquanto a barra está aberta; clicar de novo fecha. */}
           {conversation && (
@@ -2813,9 +2892,12 @@ export function MessageThread({
                 {currentStatus ? t(`status${currentStatus.label}`) : t("status")}
                 <ChevronDown className="h-3 w-3" />
             </DropdownMenuTrigger>
+            {/* `w-auto`: largura pelo CONTEÚDO (como o menu de canal), senão
+                o "Marcar como não lida" do celular quebrava em três linhas
+                na largura da pastilha. */}
             <DropdownMenuContent
               align="end"
-              className="border-border bg-popover"
+              className="border-border bg-popover w-auto"
             >
               {STATUS_OPTIONS.map((opt) => (
                 <DropdownMenuItem
@@ -2826,6 +2908,25 @@ export function MessageThread({
                   {t(`status${opt.label}`)}
                 </DropdownMenuItem>
               ))}
+              {/* No celular, o lida/não lida do cabeçalho mora aqui (lá ele
+                  some abaixo de `sm`, para não zerar o nome do contato). */}
+              {podeMarcarLeitura && (
+                <>
+                  <DropdownMenuSeparator className="bg-border sm:hidden" />
+                  <DropdownMenuItem
+                    onClick={() => void handleMarcarLeitura()}
+                    disabled={marcandoLeitura}
+                    className="text-sm whitespace-nowrap text-popover-foreground sm:hidden"
+                  >
+                    {hasUnread ? (
+                      <CheckCheck className="mr-2 h-3.5 w-3.5" />
+                    ) : (
+                      <MessageSquareDot className="mr-2 h-3.5 w-3.5" />
+                    )}
+                    {hasUnread ? t("marcarComoLida") : t("marcarComoNaoLida")}
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
           )}
