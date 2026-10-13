@@ -14,6 +14,7 @@ paths:
   - "src/hooks/use-contatos-relacionados*"
   - "src/hooks/use-possiveis-duplicatas*"
   - "src/hooks/use-comparacao-de-fichas*"
+  - "src/hooks/use-uniao-de-fichas*"
 ---
 
 # Contatos — regras
@@ -62,7 +63,7 @@ decide mais "mesma pessoa".
   dois `@`; "@" sozinho não casa nada (agulha vazia). Limite escrito: a busca
   de /contatos (RPC 025) e o `?search=` da v1 não olham o `@`.
 - Fundir fichas NÃO é `merge_duplicate_contacts` (apaga tarefas do perdedor e
-  agrupa por grafia exata): a receita está em `supabase.md`.
+  agrupa por grafia exata): é `cb_unir_fichas` (1092, abaixo).
 - ⚠️ **Busca por texto livre casa LITERALMENTE** (`src/lib/postgrest/literal.ts`):
   a de /contatos, o `?search=` da v1 e os seletores de cliente
   (`busca-remota.ts`) montam o `.or()` com `ramoContem` (`imatch` com o termo
@@ -232,8 +233,39 @@ operador, medição e fases: `docs/PLANO-fichas-duplicadas.md`.
   "Comparar" respeita o PERFIL: card de funil e conversa de conexão fora do
   escopo não aparecem; a falha de envio segue `envioQueNaoSaiu` (o incerto
   pode ter chegado; `failed` sem `nao_saiu` é "não entregue").
-- **Unir é a fase 2** (D5): o diálogo diz que a união ainda não é feita ali,
-  sem botão desabilitado.
+- **Sinal 4 (1092): contato de uma ficha unida**, nos dois sentidos (o
+  telefone/e-mail desta é contato antigo de outra, ou o contrário), SEM o
+  nome: o valor já foi da pessoa.
+
+### Unir fichas (1092)
+A fase 2 (decisões D6–D9 e desenho: `docs/PLANO-fichas-duplicadas.md`).
+`cb_previa_da_uniao`/`cb_unir_fichas`, `src/lib/contacts/uniao.ts` (puro),
+`use-uniao-de-fichas.ts`, `revisao-da-uniao.tsx` (no "Comparar"),
+`contatos-antigos.ts`.
+- ⚠️⚠️ **A receita de fusão MORA na função** (uma transação, SECURITY
+  DEFINER, admin sem suspensão). No fim ela percorre pelo CATÁLOGO toda FK
+  para `contacts` e para a conversa que sai, e RECUSA (`uniao_sem_tratamento`)
+  se sobrar linha numa tabela que não conhece: tabela nova com `contact_id`
+  (ou FK para `conversations`) entra na função no MESMO PR, senão toda união
+  passa a falhar — nunca a apagar calada.
+- ⚠️⚠️ **Sem prévia, sem botão**: a tela só une depois de ler o que a união
+  vai fazer (`lerPrevia`; bloqueio que o app não conhece BLOQUEIA). Sem
+  desfazer: o livro `cb_fichas_unidas` guarda a foto, e a trilha
+  (`contacts_merged`, escrita pelo gatilho do livro) diz no fio e no
+  Histórico quem saiu e o que ficou de fora.
+- ⚠️ **Depois de unir, a página RECARREGA na conversa que ficou**
+  (`recarregarNaFichaQueFicou`): a ficha aberta pode ter sido a que saiu, e as
+  mensagens que mudaram de conversa chegam por UPDATE (o fio só ouve INSERT).
+- ⚠️⚠️ **Contato antigo só nos CADASTROS (D9)**: `fichaPorContatoAntigo`
+  roda DEPOIS da busca normal não achar, com o MESMO primeiro nome, na API v1
+  (`findOrCreateContact`), no Calendly, no webhook de entrada
+  (`resolverDestinatario({ contatoAntigo: true })`) e na ficha do Asaas.
+  NUNCA na ingestão, no envio, na ligação nem no `send_to_number`: a mensagem
+  do número antigo abre ficha própria, e o sinal 4 a mostra. Erro da busca é
+  falha (500/`falhou`), nunca "criar" — seria a duplicata desfeita de volta.
+- **Id antigo na API v1**: `idAtualDaFicha` (`api-v1.md`).
+- **Instagram fica de fora** (bloqueio): a conversa mista é a Fase 5 de
+  `docs/PLANO-instagram-direct.md`.
 
 ### API v1 de contatos
 - `getContactById` ESTOURA em erro de banco: erro não é 404 (o integrador

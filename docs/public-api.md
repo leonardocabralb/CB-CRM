@@ -391,6 +391,15 @@ by phone:** an existing match returns `200` with the existing contact; a
 new contact returns `201`. The response body is the serialized contact
 (same shape as the list rows above).
 
+> **Merged contacts.** When an administrator merges two contacts in the CRM,
+> the phone and e-mail of the contact that was removed are kept as *old
+> contacts* of the one that stayed. A `POST /contacts` with one of them
+> returns the contact that stayed (`200`) instead of creating a new one —
+> **only when the first name matches** (a mistyped number may belong to
+> someone else). Without a name, or with a different first name, a new
+> contact is created and the CRM shows both side by side as a possible
+> duplicate.
+
 > ⚠️ **When the contact already exists, `tags` REPLACES its whole tag set**
 > (while `name`, `email` and `company` are ignored for it). Sending
 > `tags: ["Typebot"]` for a known phone removes every other tag that
@@ -440,6 +449,13 @@ is a `400`). A
 contact in another account returns `404`; a contact id in the path that is
 not a UUID returns `400 bad_request` (here and on `/custom-fields` and
 `/tags` below).
+
+> **Ids of merged contacts keep working.** If the contact was merged into
+> another one in the CRM, its old id still answers here, on
+> `/contacts/{id}/tags` and on `/contacts/{id}/custom-fields`: you read and
+> write **the contact that stayed**, and the response carries its **new**
+> `id` (`contact_id` on `/custom-fields`) — store it. Other endpoints that
+> take a `contact_id` do not resolve old ids.
 
 > ⚠️ `tags` here replaces the whole set — sending `["Lead"]` removes
 > every other tag the contact had — unless you send `"tags_mode": "add"`.

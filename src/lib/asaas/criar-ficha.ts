@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { marcaDoNomeManual } from "@/lib/contacts/nome-fixado";
+import { fichaPorContatoAntigo } from "@/lib/contacts/contatos-antigos";
 import { fichaQueVenceu, findExistingContact, isUniqueViolation } from "@/lib/contacts/dedupe";
 import { resolveImportTagIds } from "@/lib/contacts/resolve-import-tags";
 import { variantesDoNonoDigito } from "@/lib/contacts/telefone";
@@ -165,6 +166,14 @@ export async function criarFichaDoAsaas(
     return mesmoNumero(busca.contato.phone, cliente.telefone)
       ? { ok: true, contactId: busca.contato.id, criou: false, etiquetada: false }
       : { ok: false, codigo: "sufixo", candidatoId: busca.contato.id };
+  }
+  // D9 (1092): o número é CONTATO ANTIGO de uma ficha unida, com o mesmo
+  // primeiro nome — é a pessoa da ficha que ficou, não uma ficha nova.
+  try {
+    const antiga = await fichaPorContatoAntigo(admin, accountId, { telefone: cliente.telefone, nome: cliente.nome });
+    if (antiga) return { ok: true, contactId: antiga, criou: false, etiquetada: false };
+  } catch {
+    return { ok: false, codigo: "db_error" };
   }
 
   if (contexto.dono === undefined) contexto.dono = await donoDaConta(admin, accountId);

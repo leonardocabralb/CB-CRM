@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { conversaDoContato, resolverDestinatario } from "@/lib/automations/destinatario";
 import { dispararAutomacoes } from "@/lib/automations/engine";
+import { fichaPorContatoAntigo } from "@/lib/contacts/contatos-antigos";
 import { findExistingContact } from "@/lib/contacts/dedupe";
 import { nomeParaFixar } from "@/lib/contacts/nome-fixado";
 
@@ -129,6 +130,20 @@ export async function processarAgendamento(
 
   const busca = await findExistingContact(admin, accountId, agendamento.telefone);
   if (busca.falhou) return { resultado: "falhou", detalhe: "busca do contato falhou", contactId: null };
+  // D9 (1092): o telefone ou o e-mail de uma ficha UNIDA encontra a que
+  // ficou (com o mesmo primeiro nome), em vez de criar a duplicata de novo.
+  let antiga: string | null = null;
+  if (!busca.contato) {
+    try {
+      antiga = await fichaPorContatoAntigo(admin, accountId, {
+        telefone: agendamento.telefone,
+        email: agendamento.email,
+        nome: agendamento.nome,
+      });
+    } catch {
+      return { resultado: "falhou", detalhe: "busca dos contatos antigos falhou", contactId: null };
+    }
+  }
 
   // ⚠️ ANTES de criar ficha: alguém escuta este evento? Ver o cabeçalho.
   const { data: automacoes, error: erroAuto } = await admin
@@ -137,7 +152,7 @@ export async function processarAgendamento(
     .eq("account_id", accountId)
     .eq("trigger_type", "calendly_booking")
     .eq("is_active", true);
-  const contatoExistente = busca.contato?.id ?? null;
+  const contatoExistente = busca.contato?.id ?? antiga;
   if (erroAuto) {
     return { resultado: "falhou", detalhe: `leitura das automações falhou: ${erroAuto.message}`, contactId: contatoExistente };
   }

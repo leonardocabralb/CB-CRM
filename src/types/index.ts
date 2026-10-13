@@ -2170,7 +2170,13 @@ export type LeadEventType =
    */
   | 'conversation_status_changed'
   /** Só o responsável mudou (1083): de/para em `details`. */
-  | 'conversation_assigned';
+  | 'conversation_assigned'
+  /**
+   * Outra ficha foi UNIDA a esta (1092): a que saiu, o que ficou de fora e os
+   * contatos antigos em `details`. Escrita pelo gatilho do livro
+   * `cb_fichas_unidas`; `deal_id` e `conversation_id` nulos.
+   */
+  | 'contacts_merged';
 
 /**
  * De onde partiu a mudança. `sistema` é escrita server-side sem ator

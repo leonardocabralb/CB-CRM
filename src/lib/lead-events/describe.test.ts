@@ -8,6 +8,7 @@ import {
   chaveDoAutor,
   chaveDoTexto,
   complementoDoResponsavel,
+  detalhesDaUniao,
   direcaoDoMovimento,
   intercalar,
   juntarEventos,
@@ -640,4 +641,47 @@ describe('conversa (1083) — toda chave que a leitura devolve existe nos DOIS d
       expect(chaves).toContain(c);
     }
   });
+});
+
+describe('união de fichas (1092) — a linha da ficha que ficou', () => {
+  const uniao = (details: Record<string, unknown> | null) =>
+    evento({ event_type: 'contacts_merged', deal_id: null, details });
+
+  it('aparece no fio e tem frase própria', () => {
+    const e = uniao({ removida: { nome: 'Fulana Teste', telefone: '5511900000000' } });
+    expect(apareceNaConversa(e)).toBe(true);
+    expect(chaveDoTexto(e)).toBe('contactsMerged');
+  });
+
+  it('lê de `details` a ficha que saiu, o que ficou de fora e os contatos antigos — campo a campo', () => {
+    expect(
+      detalhesDaUniao(
+        uniao({
+          removida: { nome: 'Fulana Teste', telefone: '5511900000000', email: 'f@exemplo.invalid' },
+          divergencias: [{ campo: 'campo', rotulo: 'CPF', ficou: '111', saiu: '222' }, { campo: 'x' }],
+          contatos_antigos: [{ tipo: 'telefone', valor: '5511900000000' }, { tipo: 'fax', valor: '1' }],
+        }),
+      ),
+    ).toEqual({
+      nome: 'Fulana Teste',
+      telefone: '5511900000000',
+      divergencias: [{ campo: 'campo', rotulo: 'CPF', ficou: '111', saiu: '222' }],
+      contatosAntigos: [{ tipo: 'telefone', valor: '5511900000000' }],
+    });
+  });
+
+  it('`details` torto não estoura; evento de outro tipo devolve nulo', () => {
+    expect(detalhesDaUniao(uniao({ removida: 'x' }))).toEqual({ nome: null, telefone: null, divergencias: [], contatosAntigos: [] });
+    expect(detalhesDaUniao(evento({}))).toBeNull();
+  });
+
+  for (const arquivo of ['en.json', 'pt-BR.json']) {
+    it(`${arquivo} tem as frases da união`, () => {
+      const lido = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'messages', arquivo), 'utf8'))
+        .LeadEvents as Record<string, string>;
+      for (const chave of ['contactsMerged', 'mergedLeftOut', 'mergedOldContacts', 'mergedName', 'mergedCompany', 'mergedField']) {
+        expect(typeof lido[chave], chave).toBe('string');
+      }
+    });
+  }
 });

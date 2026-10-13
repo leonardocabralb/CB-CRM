@@ -208,14 +208,16 @@ export function itensDoFio(
 // ============================================================
 
 /** Os valores do CHECK de `automation_logs.interrompida_por` (1005). */
-export type MotivoDaInterrupcao = 'resposta' | 'etapa' | 'parar' | 'passo' | 'desativacao'
+export type MotivoDaInterrupcao = 'resposta' | 'etapa' | 'parar' | 'passo' | 'desativacao' | 'fusao'
 
+/** `fusao` (1092): a ficha foi unida a outra e as execuções dela terminaram. */
 export const MOTIVOS_DA_INTERRUPCAO: readonly MotivoDaInterrupcao[] = [
   'resposta',
   'etapa',
   'parar',
   'passo',
   'desativacao',
+  'fusao',
 ]
 
 export type DesfechoDoHistorico = AutomationLogDesfecho | 'interrompida'

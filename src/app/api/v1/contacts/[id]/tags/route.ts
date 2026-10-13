@@ -26,7 +26,6 @@
 
 import { requireApiKey } from '@/lib/auth/api-context';
 import {
-  ApiError,
   badRequest,
   fail,
   ok,
@@ -34,6 +33,7 @@ import {
 } from '@/lib/api/v1/respond';
 import {
   getContactById,
+  idAtualDaFicha,
   resolveAuditUserId,
   ContactError,
 } from '@/lib/api/v1/contacts';
@@ -45,35 +45,6 @@ import {
 } from '@/lib/api/v1/tags-do-contato';
 import { ContactTagWriteError } from '@/lib/contacts/tag-write';
 import { ehUuid } from '@/lib/tasks/validar';
-import type { SupabaseClient } from '@supabase/supabase-js';
-
-/**
- * Confere que o contato é DESTA conta. Devolve `false` só quando ele
- * não existe aqui; erro de banco estoura como 500 antes de qualquer
- * conclusão de ausência.
- *
- * Não usa `getContactById` só por PESO: aqui basta o id, e aquele helper
- * embute as etiquetas do contato. (Uma versão anterior deste comentário
- * dizia que ele colapsava erro e ausência no mesmo `null` — era verdade até
- * a revisão de 09/09/2026; hoje ele estoura em erro de banco.)
- */
-async function contatoEhDaConta(
-  db: SupabaseClient,
-  accountId: string,
-  contactId: string
-): Promise<boolean> {
-  const { data, error } = await db
-    .from('contacts')
-    .select('id')
-    .eq('id', contactId)
-    .eq('account_id', accountId)
-    .maybeSingle();
-  if (error) {
-    console.error('[api/v1/contacts/tags] contact lookup error:', error);
-    throw new ApiError('internal', 'Failed to load contact', 500);
-  }
-  return Boolean(data);
-}
 
 const ROTA = 'POST /api/v1/contacts/{id}/tags';
 
@@ -86,8 +57,8 @@ export async function POST(
   try {
     const ctx = await requireApiKey(request, 'contacts:write');
     keyId = ctx.keyId;
-    const { id } = await params;
-    if (!ehUuid(id)) throw badRequest("'id' must be a UUID");
+    const { id: idPedido } = await params;
+    if (!ehUuid(idPedido)) throw badRequest("'id' must be a UUID");
 
     const corpo = await request.json().catch(() => null);
     const leitura = lerMudancaDeTags(corpo);
@@ -96,9 +67,11 @@ export async function POST(
       throw badRequest(leitura.erro);
     }
 
-    if (!(await contatoEhDaConta(ctx.supabase, ctx.accountId, id))) {
-      return fail('not_found', 'Contact not found', 404);
-    }
+    // O contato é DESTA conta? Id de ficha UNIDA a outra (1092) aplica na
+    // que ficou. Erro de banco estoura como 500 antes de qualquer conclusão
+    // de ausência.
+    const id = await idAtualDaFicha(ctx.supabase, ctx.accountId, idPedido);
+    if (!id) return fail('not_found', 'Contact not found', 404);
 
     const auditUserId = await resolveAuditUserId(ctx.supabase, ctx.accountId);
     const resultado = await aplicarMudancaDeTags(ctx.supabase, {

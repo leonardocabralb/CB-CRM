@@ -1,5 +1,12 @@
-import { describe, it, expect } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
+
+// D9 (1092): a busca dos contatos antigos de fichas unidas — sem ficha antiga, por padrão.
+const antigos = vi.hoisted(() => ({ fichaPorContatoAntigo: vi.fn() }));
+vi.mock('@/lib/contacts/contatos-antigos', () => antigos);
+beforeEach(() => {
+  antigos.fichaPorContatoAntigo.mockReset().mockResolvedValue(null);
+});
 
 import {
   serializeContact,
@@ -182,5 +189,45 @@ describe('findOrCreateContact: nome, e-mail e empresa aparados (26/09/2026)', ()
       company: '',
     });
     expect(inseridos[0]).toMatchObject({ name: '5581988745316', email: null, company: null });
+  });
+});
+
+describe('findOrCreateContact: telefone ou e-mail de uma ficha UNIDA (1092, D9)', () => {
+  function dbSemFicha() {
+    const inseridos: Record<string, unknown>[] = [];
+    const cadeia: Record<string, unknown> = {
+      select: () => cadeia,
+      eq: () => cadeia,
+      order: () => cadeia,
+      like: () => Promise.resolve({ data: [], error: null }),
+      insert: (linha: Record<string, unknown>) => {
+        inseridos.push(linha);
+        return cadeia;
+      },
+      single: () => Promise.resolve({ data: { id: 'novo' }, error: null }),
+    };
+    return { db: { from: () => cadeia } as unknown as SupabaseClient, inseridos };
+  }
+
+  it('o contato antigo devolve a ficha que ficou — sem criar', async () => {
+    antigos.fichaPorContatoAntigo.mockResolvedValue('ficou-1');
+    const { db, inseridos } = dbSemFicha();
+    const r = await findOrCreateContact(db, 'acc', 'user', { phone: '81 98874-5316', name: ' Maria ', email: ' m@x.com ' });
+    expect(r).toEqual({ id: 'ficou-1', created: false });
+    expect(antigos.fichaPorContatoAntigo).toHaveBeenCalledWith(db, 'acc', {
+      telefone: '5581988745316',
+      email: 'm@x.com',
+      nome: 'Maria',
+    });
+    expect(inseridos).toHaveLength(0);
+  });
+
+  it('⚠️ a busca que falha é 500 — nunca cria a ficha de novo', async () => {
+    antigos.fichaPorContatoAntigo.mockRejectedValue(new Error('caiu'));
+    const { db, inseridos } = dbSemFicha();
+    await expect(findOrCreateContact(db, 'acc', 'user', { phone: '81 98874-5316', name: 'Maria' })).rejects.toBeInstanceOf(
+      ContactError,
+    );
+    expect(inseridos).toHaveLength(0);
   });
 });

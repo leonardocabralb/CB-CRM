@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import {
   falhaQueEncerrou,
   itensDoFio,
@@ -281,9 +281,13 @@ describe('o motivo da interrupção nos dois dicionários (chave montada)', () =
     })
   }
 
-  it('a lista do código é a do CHECK da 1005', () => {
-    const migration = readFileSync('supabase/migrations/1005_cb_execucao_interrompida.sql', 'utf8')
-    const check = migration.match(/interrompida_por in \(([^)]*)\)/)?.[1] ?? ''
+  it('a lista do código é a do CHECK do banco — a ÚLTIMA migration que o define (1005, 1092)', () => {
+    const dir = 'supabase/migrations'
+    let check = ''
+    for (const arquivo of readdirSync(dir).filter((f) => /^\d{4}_.*\.sql$/.test(f)).sort()) {
+      const achado = readFileSync(`${dir}/${arquivo}`, 'utf8').match(/interrompida_por\s+in\s+\(([^)]*)\)/i)
+      if (achado) check = achado[1]
+    }
     const doBanco = [...check.matchAll(/'([a-z]+)'/g)].map((m) => m[1]).sort()
     expect(doBanco).toEqual([...MOTIVOS_DA_INTERRUPCAO].sort())
   })

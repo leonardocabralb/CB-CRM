@@ -22,6 +22,13 @@ describe("lerMotivos", () => {
     ).toEqual([{ tipo: "mesmo_email" }, { tipo: "telefone_parecido" }, { tipo: "criadas_juntas", segundos: 36 }]);
   });
 
+  it("lê o sinal 4 da 1092 (contato de uma ficha unida)", () => {
+    expect(lerMotivos([{ tipo: "contato_antigo" }, { tipo: "telefone_parecido" }])).toEqual([
+      { tipo: "contato_antigo" },
+      { tipo: "telefone_parecido" },
+    ]);
+  });
+
   it("ignora o tipo desconhecido (sinal novo no banco antes do app) em vez de mostrá-lo cru", () => {
     expect(lerMotivos([{ tipo: "mesmo_cpf" }, { tipo: "mesmo_email" }])).toEqual([{ tipo: "mesmo_email" }]);
   });

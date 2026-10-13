@@ -11,12 +11,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const helpers = vi.hoisted(() => ({
   getContactById: vi.fn(),
+  idAtualDaFicha: vi.fn(),
   resolveAuditUserId: vi.fn(),
   aplicarMudancaDeTags: vi.fn(),
   maybeSingle: vi.fn(),
 }));
 
-// A conferência de posse do contato: `from().select().eq().eq().maybeSingle()`.
+// O banco em si só serve para provar que a entrada ruim não o toca: a posse
+// do contato é conferida por `idAtualDaFicha` (espiã abaixo).
 const encadeado = {
   select: () => encadeado,
   eq: () => encadeado,
@@ -33,6 +35,7 @@ vi.mock('@/lib/auth/api-context', () => ({
 }));
 vi.mock('@/lib/api/v1/contacts', () => ({
   getContactById: helpers.getContactById,
+  idAtualDaFicha: helpers.idAtualDaFicha,
   resolveAuditUserId: helpers.resolveAuditUserId,
   ContactError: class ContactError extends Error {
     status = 500;
@@ -77,6 +80,7 @@ beforeEach(() => {
   for (const f of Object.values(helpers)) f.mockReset();
   from.mockClear();
   helpers.maybeSingle.mockResolvedValue({ data: { id: ID }, error: null });
+  helpers.idAtualDaFicha.mockResolvedValue(ID);
   helpers.resolveAuditUserId.mockResolvedValue('usuario-de-auditoria');
   helpers.aplicarMudancaDeTags.mockResolvedValue({
     adicionadas: ['Typebot'],
@@ -132,5 +136,24 @@ describe('POST /api/v1/contacts/{id}/tags — o 400 de etiqueta vai para o log',
     expect((await post('abc', { add: ['Typebot'] })).status).toBe(400);
     expect(aviso).not.toHaveBeenCalled();
     aviso.mockRestore();
+  });
+});
+
+describe('POST /api/v1/contacts/{id}/tags — id de ficha UNIDA a outra (1092)', () => {
+  const NOVO = '99999999-8888-4777-8666-555555555555';
+
+  it('aplica na ficha que ficou', async () => {
+    helpers.idAtualDaFicha.mockResolvedValue(NOVO);
+    helpers.getContactById.mockResolvedValue({ id: NOVO, tags: [] });
+    const res = await post(ID, { add: ['Typebot'] });
+    expect(res.status).toBe(200);
+    expect(helpers.aplicarMudancaDeTags.mock.calls[0][1]).toMatchObject({ contactId: NOVO });
+  });
+
+  it('id que não é de ficha nem de união: 404, sem escrita', async () => {
+    helpers.idAtualDaFicha.mockResolvedValue(null);
+    const res = await post(ID, { add: ['Typebot'] });
+    expect(res.status).toBe(404);
+    expect(helpers.aplicarMudancaDeTags).not.toHaveBeenCalled();
   });
 });

@@ -26,6 +26,7 @@ import { requireApiKey } from '@/lib/auth/api-context';
 import { badRequest, ok, fail, toApiErrorResponse } from '@/lib/api/v1/respond';
 import {
   getContactById,
+  idAtualDaFicha,
   lerTagsPedidas,
   setContactTags,
   resolveAuditUserId,
@@ -47,7 +48,9 @@ export async function GET(
     const ctx = await requireApiKey(request, 'contacts:read');
     const { id } = await params;
     if (!ehUuid(id)) throw badRequest("'id' must be a UUID");
-    const contact = await getContactById(ctx.supabase, ctx.accountId, id);
+    // Id de ficha UNIDA a outra (1092) responde com a que ficou.
+    const atual = await idAtualDaFicha(ctx.supabase, ctx.accountId, id);
+    const contact = atual ? await getContactById(ctx.supabase, ctx.accountId, atual) : null;
     if (!contact) return fail('not_found', 'Contact not found', 404);
     return ok(contact);
   } catch (err) {
@@ -66,8 +69,8 @@ export async function PATCH(
   try {
     const ctx = await requireApiKey(request, 'contacts:write');
     keyId = ctx.keyId;
-    const { id } = await params;
-    if (!ehUuid(id)) throw badRequest("'id' must be a UUID");
+    const { id: idPedido } = await params;
+    if (!ehUuid(idPedido)) throw badRequest("'id' must be a UUID");
 
     const body = (await request.json().catch(() => null)) as Record<
       string,
@@ -92,9 +95,12 @@ export async function PATCH(
       return fail('bad_request', modo.erro, 400);
     }
 
-    // Verify the contact is in this account before mutating anything.
-    const existing = await getContactById(ctx.supabase, ctx.accountId, id);
-    if (!existing) return fail('not_found', 'Contact not found', 404);
+    // Verify the contact is in this account before mutating anything. Id de
+    // ficha UNIDA a outra (1092) escreve na que ficou — é ela que responde.
+    const atual = await idAtualDaFicha(ctx.supabase, ctx.accountId, idPedido);
+    const existing = atual ? await getContactById(ctx.supabase, ctx.accountId, atual) : null;
+    if (!atual || !existing) return fail('not_found', 'Contact not found', 404);
+    const id = atual;
 
     // Build a partial update from the provided scalar fields. A field
     // is updated only when its key is PRESENT (so omitted fields are

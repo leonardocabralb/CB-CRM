@@ -7,6 +7,7 @@ import {
   CircleCheck,
   CircleDot,
   Clock,
+  GitMerge,
   MessageCircle,
   MessageCirclePlus,
   Plus,
@@ -72,6 +73,8 @@ export function LeadEventIcon({
         default:
           return <MessageCircle className={className} />;
       }
+    case 'contacts_merged':
+      return <GitMerge className={className} />;
     case 'conversation_assigned':
       return chaveDoTexto(evento) === 'conversationUnassigned' ? (
         <UserX className={className} />

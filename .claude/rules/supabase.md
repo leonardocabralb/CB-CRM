@@ -59,7 +59,7 @@ UPDATE/INSERT/DELETE fora do app, saiba o que ele aciona:
   `default_stage_id` das conexões; card na etapa bloqueia.
 - **`accounts`** INSERT semeia o campo "E-mail".
 - Apagar CONTATO leva conversa e mensagens e deixa 18 tabelas com ponteiro
-  nulo — ver "APAGAR CONTATO". Fundir fichas: só pela receita.
+  nulo — ver "APAGAR CONTATO". Fundir fichas: só por `cb_unir_fichas` (1092).
 
 ## Carga em lote e importação
 
@@ -381,7 +381,8 @@ um espelho com pino lendo o SQL. Mudou um lado, muda o outro.
   `contact_tags`, `contact_custom_values`, `cb_tasks`, `cb_conversation_notes`,
   `cb_automation_reminders`, `cb_contatos_relacionados` (1069, pelas DUAS
   pontas), `cb_atlas_recusas` (1072), `cb_duplicatas_descartadas` (1088,
-  pelas DUAS pontas).
+  pelas DUAS pontas), `cb_contatos_antigos` e o livro `cb_fichas_unidas`
+  (1092: apagar a ficha que ficou leva o id antigo que respondia por ela).
 - SET NULL (fica órfão): `deals`, `cb_lead_events`, `cb_calendly_eventos`,
   `cb_meetings`, `cb_reunioes_transcritas`, `cb_asaas_clientes`,
   `cb_asaas_regua_envios`, `cb_automation_events`, `cb_webhook_eventos`,
@@ -400,24 +401,16 @@ um espelho com pino lendo o SQL. Mudou um lado, muda o outro.
   upstream, APAGA as tarefas e lembretes do perdedor pelo CASCADE, roda em
   TODAS as contas e agrupa por grafia exata (não vê as duas grafias do nono
   dígito).
-- **Receita de fusão**: reapontar TODAS as referências do perdedor para o
-  sobrevivente (as 18 do SET NULL e as 8 do CASCADE; `contact_tags`,
-  `contact_custom_values` e `cb_atlas_clientes` (1:1, POR AMBIENTE: o `NOT
-  EXISTS` compara também `api_url IS NOT DISTINCT FROM`) com `NOT EXISTS`,
-  por serem únicas por contato; `cb_atlas_recusas` com `NOT EXISTS` por
-  `(account_id, api_url, contact_id, atlas_client_id)`;
-  `cb_contatos_relacionados` nas duas colunas, pulando o par que viraria
-  repetido ou o sobrevivente ligado a si mesmo — o CASCADE leva o resto;
-  `cb_duplicatas_descartadas` igual, mas o par é ORDENADO (`contato_menor <
-  contato_maior`): regravar menor/maior, nunca só trocar o id) →
-  mover os campos que faltam na ficha sobrevivente — `wa_user_id`/`wa_username`/
-  `wa_parent_user_id` (o BSUID) ZERADOS no perdedor ANTES de gravados no
-  sobrevivente, senão o índice único por conta (1038) recusa — → apagar o negócio duplicado
-  EXPLICITAMENTE → só então apagar o contato. Tabela nova com `contact_id`
-  entra na receita no MESMO PR (não há pino).
-- Medido na fusão de 13/10/2026: UPDATE em `contact_tags` NÃO aciona a trilha
-  (o gatilho é INSERT/DELETE) — a etiqueta que falta passa por UPDATE com
-  `NOT EXISTS`, sem linha nova; a repetida sai no CASCADE, e na cascata do
-  contato o gatilho de etiqueta e o do e-mail (1000) saem SEM gravar. A
-  conversa é UMA por ficha (036): a do perdedor não se reaponta quando o
-  sobrevivente já tem a sua — ou sai no CASCADE, ou tem as mensagens movidas.
+- **Fundir fichas = `cb_unir_fichas` (1092)**: a RECEITA mora na função
+  (`contatos.md`, "Unir fichas"). O que ela trata e que vale para quem
+  escrever à mão: os únicos por contato (`contact_tags`,
+  `contact_custom_values`, `cb_atlas_clientes` por AMBIENTE com `api_url IS
+  NOT DISTINCT FROM`, `cb_atlas_recusas`, lembretes) passam com `NOT EXISTS`
+  e o repetido sai no CASCADE; Relacionados nas duas colunas, pulando o par
+  repetido e a ficha ligada a si mesma; `cb_duplicatas_descartadas` com o par
+  REGRAVADO em ordem; a conversa é UMA por ficha (036): com as duas, as
+  mensagens passam; UPDATE em `contact_tags` não acende a trilha (o gatilho é
+  INSERT/DELETE); a identidade (telefone, BSUID) só passa DEPOIS do DELETE da
+  que sai (`contacts_identidade_ck` e os índices únicos). No fim ela varre as
+  FKs pelo CATÁLOGO e RECUSA (`uniao_sem_tratamento`) tabela que não conhece:
+  tabela nova com `contact_id` entra na função no MESMO PR.

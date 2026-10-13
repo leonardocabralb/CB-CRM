@@ -9,6 +9,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { fichaPorContatoAntigo } from '@/lib/contacts/contatos-antigos';
 import { fichaQueVenceu, findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
 import { chaveDeTag } from '@/lib/contacts/chave-de-tag';
 import {
@@ -19,6 +20,7 @@ import {
 import { addContactTagAndDispatch } from '@/lib/contacts/tag-events';
 import { type MotivoDoTelefone, telefoneDigitado } from '@/lib/contacts/telefone';
 
+import { ApiError } from './respond';
 import { casarReferencias, erroDeIdsDesconhecidos } from './tags-do-contato';
 
 /** Row select that embeds the contact's tags for serialization. */
@@ -178,6 +180,22 @@ export async function findOrCreateContact(
   if (busca.falhou) throw new ContactError('Failed to look up contact', 500);
   const existing = busca.contato;
   if (existing) return { id: existing.id, created: false };
+
+  // D9 (1092): telefone ou e-mail de uma ficha UNIDA encontra a que ficou,
+  // com o mesmo primeiro nome — o formulário que repete o número antigo não
+  // recria a duplicata desfeita. Falha de banco é 500, nunca "criar".
+  let antiga: string | null;
+  try {
+    antiga = await fichaPorContatoAntigo(db, accountId, {
+      telefone: sanitized,
+      email: aparadoOuNulo(input.email),
+      nome: aparadoOuNulo(input.name),
+    });
+  } catch (err) {
+    console.error('[api/v1/contacts] old-contact lookup error:', err);
+    throw new ContactError('Failed to look up contact', 500);
+  }
+  if (antiga) return { id: antiga, created: false };
 
   const { data: created, error } = await db
     .from('contacts')
@@ -391,6 +409,49 @@ export async function setContactTags(
  * encontrado'"), e este helper era a maior exceção a ela. (Achado da
  * revisão adversarial.)
  */
+/**
+ * O id que responde HOJE pela ficha `contactId` nesta conta: o próprio, ou —
+ * se ela foi UNIDA a outra (1092) — a ficha que ficou. NULO = não existe
+ * aqui. O livro (`cb_fichas_unidas.ficha_que_fica`) aponta direto para a de
+ * hoje, também depois de uniões em cadeia.
+ *
+ * Por quê: o integrador guarda o id da ficha (o Make da iMotion desliga o
+ * cenário no primeiro erro). Depois de uma união, o id antigo continua
+ * valendo para LER e ESCREVER — na ficha que ficou; a resposta traz o id
+ * NOVO. Só GET/PATCH da ficha, etiquetas e campos usam isto.
+ *
+ * ⚠️ Erro de banco ESTOURA (500), nunca vira 404 — mesma regra de
+ * `getContactById`.
+ */
+export async function idAtualDaFicha(
+  db: SupabaseClient,
+  accountId: string,
+  contactId: string
+): Promise<string | null> {
+  const { data, error } = await db
+    .from('contacts')
+    .select('id')
+    .eq('id', contactId)
+    .eq('account_id', accountId)
+    .maybeSingle();
+  if (error) {
+    console.error('[api/v1/contacts] contact lookup error:', error);
+    throw new ApiError('internal', 'Failed to load contact', 500);
+  }
+  if (data) return contactId;
+  const { data: uniao, error: erroDaUniao } = await db
+    .from('cb_fichas_unidas')
+    .select('ficha_que_fica')
+    .eq('ficha_removida', contactId)
+    .eq('account_id', accountId)
+    .maybeSingle();
+  if (erroDaUniao) {
+    console.error('[api/v1/contacts] merged-contact lookup error:', erroDaUniao);
+    throw new ApiError('internal', 'Failed to load contact', 500);
+  }
+  return typeof uniao?.ficha_que_fica === 'string' ? uniao.ficha_que_fica : null;
+}
+
 export async function getContactById(
   db: SupabaseClient,
   accountId: string,

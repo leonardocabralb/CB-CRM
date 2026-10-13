@@ -3,10 +3,12 @@
 import { useCallback } from 'react';
 import { useTranslations } from 'next-intl';
 
+import { formatarTelefone, telefoneCanonico } from '@/lib/contacts/telefone';
 import {
   chaveDoAutor,
   chaveDoTexto,
   complementoDoResponsavel,
+  detalhesDaUniao,
   responsaveisDoEvento,
 } from '@/lib/lead-events/describe';
 import type { LeadEvent } from '@/types';
@@ -103,6 +105,14 @@ export function useLeadEventText() {
         case 'conversationUnassigned':
           texto = t('conversationUnassigned', { from: ou(de) });
           break;
+        // A união de fichas (1092): o nome da que saiu, senão o telefone.
+        case 'contactsMerged': {
+          const uniao = detalhesDaUniao(evento);
+          const quem =
+            uniao?.nome ?? (uniao?.telefone ? formatarTelefone(telefoneCanonico(uniao.telefone)) : null);
+          texto = t('contactsMerged', { name: ou(quem) });
+          break;
+        }
         default:
           texto = chave;
       }

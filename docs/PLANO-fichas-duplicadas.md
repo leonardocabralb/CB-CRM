@@ -1,4 +1,4 @@
-# Plano — Fichas duplicadas (detectar e avisar)
+# Plano — Fichas duplicadas (detectar, avisar e unir)
 
 > Plano vivo. Marcar `[x]` conforme cada fase entra. Documento INTERNO
 > (não vai para quem instala o sistema). Sem dado de cliente: o repositório
@@ -31,6 +31,32 @@ decide. Esta é a FASE 1: detectar e avisar. Unir é a fase 2.
   toda ficha antiga é conferida quando for aberta: não há varredura para
   rodar nem lista para manter.
 - **D5 — O botão "Unir" fica FORA da fase 1** (nem desabilitado).
+
+### Fase 2 — Unir (decisões de 13/10/2026)
+
+Pedido: "as duas devem prevalecer em cima daquela que o sistema acha que é a
+mais correta e a mais atual. Dados não devem ser perdidos, eles devem ser
+mesclados." Já decidido antes: só ADMIN une (D1), sem desfazer; a foto da
+ficha que sai e os valores que não couberam ficam guardados.
+
+- **D6 — Qual fica.** O sistema SUGERE (a ficha com a mensagem do cliente
+  mais recente; sem mensagem, a mexida por último; por fim a mais nova) e o
+  admin pode TROCAR.
+- **D7 — Cards.** UM card por funil: nos funis em que as duas fichas têm card,
+  fica o mais avançado (ganho > aberto > perdido; depois o degrau do funil de
+  eficiência; depois a posição; empate: o da ficha que fica). O outro sai
+  depois de passar a história (trilha, documentos do ZapSign), as notas, o
+  valor, o responsável e o id da Kommo para o que fica. Card em funil que só
+  uma tem passa inteiro.
+- **D8 — Automações.** As em curso da ficha que SAI terminam (marca durável
+  `fusao`, a mesma dos outros cancelamentos); o robô dela para; as da ficha
+  que fica seguem.
+- **D9 — Contatos antigos, só nos CADASTROS.** O telefone e o e-mail da ficha
+  que sai ficam guardados na que fica e a encontram no formulário pela API, no
+  Calendly, no webhook de entrada e na ficha criada pelo Asaas — com o MESMO
+  primeiro nome (o número digitado errado pode ser de outra pessoa). A
+  mensagem de WhatsApp do número antigo abre conversa própria; o aviso de
+  possível duplicata ganha o sinal "contato de uma ficha unida".
 
 ## Medição (13/10/2026, somente leitura)
 
@@ -89,6 +115,41 @@ decide. Esta é a FASE 1: detectar e avisar. Unir é a fase 2.
 - **Fusão de fichas:** a tabela nova entra na receita de
   `.claude/rules/supabase.md`, pelas duas pontas.
 
+### Desenho da fase 2 (1092)
+
+- **Tudo no banco, numa transação**: `cb_unir_fichas(fica, sai)` (SECURITY
+  DEFINER, admin sem suspensão). A tela pede antes `cb_previa_da_uniao` (o que
+  fica, o que sai, o que passa, o que fica de fora, os bloqueios) e só mostra
+  o botão com a prévia lida.
+- **A receita de fusão mora na função** e não se esquece de tabela: no fim
+  ela percorre pelo CATÁLOGO toda FK para `contacts` (e para a conversa que
+  sai) e recusa a união (`uniao_sem_tratamento`) se sobrar linha numa tabela
+  que ela não conhece.
+- **A conversa é UMA por ficha**: com as duas, as mensagens (menos a cópia da
+  mesma mensagem do WhatsApp), anotações, agendadas, reações, favoritos,
+  turnos da IA, avisos e ligações passam para a da ficha que fica. A conversa
+  reabre se a que saiu estava aberta (com o responsável dela), as não lidas
+  somam, a prévia e o canal seguem a mais recente (salvo canal fixado), a
+  janela da Meta fica com o maior carimbo de cada número e a espera é
+  recalculada.
+- **A ficha que fica completa o que falta**: nome (o escrito por gente vence o
+  apelido do WhatsApp; nome que é número cede), empresa, foto, e-mail, campos
+  vazios; valor diferente nas duas fica o da que fica e o outro vai para o
+  livro e para o Histórico. Etiquetas, tarefas, lembretes, vínculos de
+  Relacionados, "não é duplicata", Atlas, Asaas, Calendly, ZapSign, reuniões e
+  a trilha inteira passam.
+- **A ordem que as restrições reais impõem**: toda ficha precisa de telefone,
+  Instagram ou BSUID, então o telefone da que sai só passa à que fica (quando
+  ela não tem) DEPOIS de a outra ser apagada.
+- **Registro**: o livro `cb_fichas_unidas` (a foto da que saiu, as
+  divergências, o resumo) e, por gatilho, a linha "Ficha … unida a esta" no
+  Histórico e no fio da que fica. Os contatos antigos moram em
+  `cb_contatos_antigos`.
+- **Id antigo na API v1**: `GET`/`PATCH /contacts/{id}`, etiquetas e campos
+  respondem com a ficha que ficou (o Make de quem integra desliga no 1º erro).
+- **Bloqueios**: ficha do Instagram (a conversa mista é a Fase 5 de
+  `docs/PLANO-instagram-direct.md`) e dois BSUIDs diferentes.
+
 ## Estado
 
 > ⚠️ As migrations foram APLICADAS como 1084, 1086 e 1087 e renumeradas para
@@ -106,7 +167,8 @@ decide. Esta é a FASE 1: detectar e avisar. Unir é a fase 2.
 | 3 | Diálogo "Comparar" + decisões do admin | [x] código; [x] preview: as duas colunas, "Não é duplicata" + "Desfazer" do aviso, "Pessoas diferentes, mas ligadas" (o vínculo aparece nos Contatos relacionados) |
 | 4 | Faixa no formulário do card | [x] código; [x] preview (o "Comparar" abre por cima do formulário) |
 | 5 | Regras, revisão, preview, PR | PR #403 (fora do rascunho em 13/10); regras de contatos e de fusão, CLAUDE.md (seção 12), MERGE-UPSTREAM. [x] preview (como admin; a visão de quem não é admin fica no teste da faixa) [x] revisão independente (13/10): nomes reais na conferência da 1088 trocados por fictícios; 1090; o "Comparar" que reabria sozinho (componente único que remonta por ficha); faixa e aba Relacionados sincronizadas; rótulos de falha, ligação e telefone; rodapé no celular. [x] preview das correções (13/10, ficha gêmea fictícia com telefone pontuado, apagada no fim): telefone sem "++", rodapé no celular na ordem certa, ligar pelo "Comparar" atualiza a aba Relacionados e desvincular na aba devolve a faixa, sem recarregar. Merge por SQUASH (decisão do operador, 13/10/2026): o histórico do PR tem o commit com os nomes reais, e o `main` recebe um commit único, limpo. |
-| Fase 2 (futura) | Unir: operação única no servidor, só admin; telefone e e-mail secundários guardados e usados na busca; id antigo respondendo na API (o Make de quem integra desliga no 1º erro) | não começada |
+| 6 | Fase 2 — migration 1092 (unir, prévia, livro, contatos antigos, sinal 4) | [x] Provada numa RÉPLICA do esquema de produção (catálogo copiado só de leitura, sem dado; Postgres 16 local) com dados fictícios: 51 conferências no cenário das duas fichas com conversa e cards nos mesmos funis; só a que sai com conversa; ficha só-BSUID; bloqueios (Instagram, BSUIDs, contas, mesma ficha); portas (atendente, admin suspenso, dono de outra conta, sem sessão, peças internas); a trava contra tabela nova esquecida; sinal 4 nos dois sentidos e sob RLS; a busca dos cadastros (nome igual, diferente, ausente, outra conta). Aplicada duas vezes; a conferência une um par fictício e desfaz. Com 200 mil mensagens: prévia 13 ms, união 49 ms. [ ] CI [ ] aplicada em produção |
+| 7 | Fase 2 — tela e cadastros | [x] "Unir as fichas" no "Comparar" (revisão com sugestão e "Trocar", cards, o que passa, contatos antigos, o que fica de fora, automações interrompidas, bloqueios, aviso de que não se desfaz); recarrega na conversa que ficou. [x] A linha da união no fio e no Histórico (com o que ficou de fora). [x] Motivo `fusao` no "Já rodou". [x] Contatos antigos na API v1, Calendly, webhook de entrada e Asaas. [x] Id antigo na API v1. [ ] preview [ ] revisão independente [ ] PR |
 
 ## Limites conhecidos
 
@@ -123,3 +185,15 @@ decide. Esta é a FASE 1: detectar e avisar. Unir é a fase 2.
   em ~2 min); e-mail e telefone continuam valendo.
 - Duas grafias de nome sem a primeira palavra em comum (sobrenome trocado
   de lugar, apelido) só aparecem pelo e-mail.
+- **Unir (fase 2):**
+  - mensagem do cliente que chega pela conversa da ficha que SAI no instante
+    da união (a transação dura uma fração de segundo) encontra a conversa
+    apagada e se perde — o mesmo de apagar um contato;
+  - Instagram não se une por aqui (bloqueio);
+  - card de conexão da ficha que sai vira `manual` quando a que fica já tem
+    um (o índice da 911 aceita um só por ficha);
+  - com os dois cards carimbados pela Kommo, fica o id do card que fica (o
+    outro está na foto do livro);
+  - contato antigo não se apaga pela tela (só a próxima união mexe nele);
+  - a análise do Radar da conversa que sai some quando a que fica tem a sua
+    (a próxima análise refaz a janela).

@@ -17,7 +17,7 @@ paths:
 
 # Automações: esperas e interrupções — regras
 
-Vale ao mexer no "Aguardar", na retomada pela fila (`automation_pending_executions`), nos cinco cancelamentos (resposta do cliente, saída da etapa, botão Parar, passo "Parar automação", desativação) e na estadia do card na etapa. O motor em geral (retentativa, desfecho, grade do funil, construtor, `validate.ts`) está em `.claude/rules/automacoes.md`; o ponto de chamada na ingestão, em `.claude/rules/ingestao.md`.
+Vale ao mexer no "Aguardar", na retomada pela fila (`automation_pending_executions`), nos cinco cancelamentos (resposta do cliente, saída da etapa, botão Parar, passo "Parar automação", desativação) e na estadia do card na etapa. Há um sexto, fora do motor: a UNIÃO de fichas (1092) — o BANCO marca `fusao` nas execuções vivas da ficha que sai (publicando a hora de fim da falha adiada, como `marcarExecucoesInterrompidas`), cancela as esperas dela e para o robô; as da ficha que fica seguem. O motor em geral (retentativa, desfecho, grade do funil, construtor, `validate.ts`) está em `.claude/rules/automacoes.md`; o ponto de chamada na ingestão, em `.claude/rules/ingestao.md`.
 
 ### "Aguardar — parar se o cliente responder": a marca mora no `context` DA FILA
 

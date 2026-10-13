@@ -129,7 +129,13 @@ export type MotivoDeInterrupcao =
   | 'etapa'
   | 'parar'
   | 'passo'
-  | 'desativacao';
+  | 'desativacao'
+  /**
+   * A ficha foi UNIDA a outra (1092, D8): quem grava é o BANCO
+   * (`cb_unir_fichas`), não o motor — está aqui para o tipo ser o
+   * vocabulário inteiro do CHECK.
+   */
+  | 'fusao';
 
 /**
  * MARCA as execuções como interrompidas — a fonte da verdade (1005).
