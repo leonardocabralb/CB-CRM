@@ -467,10 +467,16 @@ def situacao_das_conexoes(pg):
             for nome, status, codigo, desde in linhas}
 
 
+def parado(rodando, esperado):
+    """Réplicas faltando, serviço ausente — ou desligado de propósito
+    (`docker service scale …=0` vira "0/0", que pareceria saudável)."""
+    return rodando != esperado or esperado == '0'
+
+
 def suspeitas(servidor, conexoes, producao):
     s = set()
     for servico, (rodando, esperado) in servidor['replicas'].items():
-        if rodando != esperado:
+        if parado(rodando, esperado):
             s.add('replica:' + servico)
     if servidor['memoria_mb'] is not None and servidor['memoria_mb'] < MEMORIA_MINIMA_MB:
         s.add('memoria')
@@ -502,10 +508,14 @@ def checar_servidor_e_conexoes(pg, producao, contas, achados):
     for servico, (rodando, esperado) in servidor['replicas'].items():
         chave = 'replica:' + servico
         if chave in persistentes:
-            corpo = ('O serviço não existe mais no Swarm.' if esperado == 'serviço ausente'
-                     else '%s de %s réplicas rodando.' % (rodando, esperado))
+            if esperado == 'serviço ausente':
+                corpo = 'O serviço não existe mais no Swarm.'
+            elif esperado == '0':
+                corpo = 'O serviço está desligado (escalado para 0 réplicas).'
+            else:
+                corpo = '%s de %s réplicas rodando.' % (rodando, esperado)
             achados.problema(chave, 'Serviço parado no servidor: ' + servico, corpo, contas)
-        elif rodando == esperado:
+        elif not parado(rodando, esperado):
             achados.normal(chave)
     if 'memoria' in persistentes:
         achados.problema('memoria', 'Memória do servidor quase no fim',
@@ -666,12 +676,18 @@ def conferir_gravacao(pg, crm, nomes, por_nome, achados):
                 achados.normal(chave)
 
 
-def checar_sessoes_99(rd, contas, achados, simular):
-    """Sessão legada '.99' (INFRA-VPS §8): uma vez por dia, ou sempre no
-    --simular. HSCAN com MATCH, nunca HKEYS: o Redis é compartilhado e os
-    hashes de chaves Signal são grandes."""
-    if not rd or not (simular or AGORA.astimezone(BRT).hour == HORA_DA_VARREDURA_99):
+def checar_sessoes_99(rd, contas, achados, simular, estado):
+    """Sessão legada '.99' (INFRA-VPS §8): uma vez por dia a partir das 10h
+    — e de novo a cada hora até dar certo no dia, senão uma varredura que
+    falha todo dia nunca chegaria às 3 falhas seguidas da `sentinela_cega` —,
+    ou sempre no --simular. HSCAN com MATCH, nunca HKEYS: o Redis é
+    compartilhado e os hashes de chaves Signal são grandes."""
+    local = AGORA.astimezone(BRT)
+    hoje = local.strftime('%Y-%m-%d')
+    if not simular and (local.hour < HORA_DA_VARREDURA_99 or estado.get('sessao99_ok_em') == hoje):
         return
+    if not rd:
+        raise RuntimeError('contêiner do Redis não encontrado')
     legadas = 0
     for chave_redis in rodar(['docker', 'exec', rd, 'redis-cli', '-n', '8', '--scan',
                               '--pattern', 'evolution:instance:*']).split():
@@ -691,6 +707,7 @@ def checar_sessoes_99(rd, contas, achados, simular):
                          % legadas, contas)
     else:
         achados.normal('sessao99')
+    estado['sessao99_ok_em'] = hoje
 
 
 # --------------------------------------------------------------------------
@@ -924,7 +941,7 @@ def main():
         except Exception as e:
             achados.nao_medido.append('mensagens: ' + sem_segredo(e))
     try:
-        checar_sessoes_99(rd, contas, achados, simular)
+        checar_sessoes_99(rd, contas, achados, simular, estado)
     except Exception as e:
         achados.nao_medido.append("sessões '.99': " + sem_segredo(e))
 
