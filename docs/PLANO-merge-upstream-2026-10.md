@@ -27,9 +27,9 @@ lados e não acusar conflito ali.
 | Item | O quê | Onde |
 | --- | --- | --- |
 | Dependências (2.4) | Pisos de segurança do #629 e as atualizações do #582, #583/#622, #623/#637, #509 e #598/#620 — `package.json` e lock pela união da seção 2.4 (as três `@codemirror/*` ficam); no `mcp-server`, o `package.json` mesclado e o lock do original | `package.json`, `package-lock.json`, `mcp-server/package*.json` |
-| #626 | Páginas com `Cache-Control: private, no-store`; `opus/` e `inbox-doodle.svg` fora da regra (ficam com o `public, max-age=0` do Next, revalidado por ETag). Teste do original + dois casos nossos | `next.config.ts`, `src/next-config.test.ts` |
+| #626 | Páginas com `Cache-Control: private, no-store`; `opus/` e `inbox-doodle.svg` fora da regra (ficam com o `public, max-age=0` do Next, revalidado por ETag). Teste do original (igual) + as exceções num teste nosso | `next.config.ts`, `src/next-config.test.ts`, `src/next-config.excecoes.test.ts` |
 | #607 | `/flows`, `/agents`, `/notifications` e `/tarefas` no `protectedPaths`. Teste do original (lê a pasta `(dashboard)`) | `src/middleware.ts`, `src/middleware.test.ts` |
-| #589, parte 2 | A conta nas três escritas da rota de modelo. Teste do original + um bloco nosso que confere o filtro de cada escrita | `src/app/api/whatsapp/templates/[id]/route.ts` e `route.test.ts` |
+| #589, parte 2 | A conta nas três escritas da rota de modelo. Teste do original (igual) + um teste nosso que confere o filtro de cada escrita | `src/app/api/whatsapp/templates/[id]/route.ts`, `route.test.ts` e `route.conta.test.ts` |
 | #597, signup | `emailRedirectTo` pelo nosso `/auth/callback` no ramo SEM convite | `src/app/(auth)/signup/page.tsx` |
 | #630, retomada | A retomada lê uma página de 1.000 com `count: 'exact'`, soma ao "restante" o que não carregou e marca os sem telefone em lotes de 100 (`chunk` do `paged-query.ts` do original, trazido inteiro com o teste) | `src/lib/whatsapp/broadcast-resume.ts` e teste, `src/lib/supabase/paged-query.ts` |
 | #625, telas | Os textos fixos em inglês das telas que entravam sem conflito: seletor de modelo da conversa, "Opção N" do robô, cor do funil, perfil, aparência, formulário de contato, amostra do disparo, falha do disparo, gráfico do Painel (dias da semana pelo idioma) e o "Fechar" de `Dialog`/`Sheet`. 15 chaves nos dois dicionários, texto do `pt.json` do original | 13 telas (seção 2.3, "Telas sem conflito") |
@@ -60,6 +60,34 @@ seletor do base-ui 1.8 mostrando o rótulo e os menus do cabeçalho abrindo para
 baixo no celular. A consulta nova da retomada rodou sem erro contra o PostgREST
 de produção (só leitura; há 3 destinatários na tabela inteira, então o caso
 acima de 1.000 é provado só pelos testes).
+
+**Limites conhecidos do porte** (apontados pelo Codex e pelo revisor
+independente no PR do porte; nenhum afeta a produção hoje):
+
+- **Retomada nos escopos "falhos" e "todos".** A página é sempre a das 1.000
+  linhas mais antigas (`created_at`, `id`), e a linha que falha de novo
+  continua `failed`, voltando à frente. Se as 1.000 primeiras não enviam
+  (sem telefone válido, ou recusa permanente da Meta), a retomada não passa
+  delas: a fila sai vazia (400 "no failed recipients", frase falsa) ou
+  reenvia às mesmas, e o "restante" novo promete uma rodada que relê as
+  mesmas linhas. Já era assim antes do porte (o corte de 1.000 do PostgREST
+  dava a mesma página; só a promessa é nova) e é igual no original. No
+  escopo "pendentes" a retomada anda, porque cada linha tratada sai do
+  escopo. Conserto (rodízio pela última tentativa ou cursor vindo da tela)
+  fica para PR próprio, junto com a página de detalhe da campanha que lê só
+  1.000 (item 6 da seção 8), antes do primeiro disparo grande.
+- **Confirmação de cadastro aberta noutro aparelho.** O `/auth/callback`
+  manda toda falha para `/forgot-password?erro=link`, desenhado para a
+  recuperação de senha: quem confirma o e-mail no celular depois de se
+  cadastrar no computador (sem o cookie do PKCE) cai em "o link expirou,
+  peça outro", embora o e-mail já esteja confirmado e baste entrar. O
+  original manda para `/login?error=link_invalid`. Só acontece com o
+  cadastro público aberto; o nosso é fechado (22/09/2026).
+- **`paged-query.ts` veio inteiro, mas só o `chunk` tem chamador.**
+  `fetchAllPages` e `fetchAllInChunks` paginam por POSIÇÃO e sem teto: para
+  contatos ou tabela com escrita concorrente, use `buscarPorChave`
+  (`src/lib/supabase/paginar.ts`), senão volta o destinatário em dobro que o
+  PR #269 consertou.
 
 ## 0. Como conferir este documento
 
