@@ -174,6 +174,7 @@
       "ariaLabel": "Pipeline value by stage"
     },
     "responseTimeChart": {
+      "avgMinutes": "Avg minutes",
       "title": "Average First Response Time",
       "description": "Minutes to reply to a customer's first unreplied message, by weekday",
       "target": "target {minutes}m",
@@ -561,6 +562,9 @@
       "you": "You"
     },
     "templatePicker": {
+      "urlButtonVarLabel": "URL button \"{text}\" — value for {var}",
+      "bodyVarLabel": "Body {var}",
+      "headerVarLabel": "Header {var}",
       "sendTemplate": "Send template",
       "fillPlaceholders": "Fill in the placeholders to render this template. Meta requires every variable to be set.",
       "pickTemplate": "Pick an approved WhatsApp template to send to this contact.",
@@ -1248,6 +1252,8 @@
       "selectContact": "Select {name}"
     },
     "form": {
+      "notLinkedToAccount": "Your profile is not linked to an account.",
+      "notAuthenticated": "Not authenticated",
       "addTitle": "Add Contact",
       "addDesc": "Create a new contact. Name is required.",
       "editTitle": "Edit Contact",
@@ -1536,6 +1542,7 @@
       "contactSearchMore": "Showing the first {count}. Keep typing to narrow it down."
     },
     "settings": {
+      "pickColor": "Pick color {color}",
       "managePipeline": "Manage Pipeline",
       "deletePipeline": "Delete Pipeline",
       "deletePipelineDesc": "All deals in this pipeline are deleted along with it. This cannot be undone.",
@@ -2037,6 +2044,7 @@
       "unknownError": "unknown error"
     },
     "new": {
+      "broadcastFailed": "Broadcast failed",
       "title": "New Broadcast",
       "subtitle": "Create and send a broadcast message to your contacts.",
       "steps": {
@@ -2099,6 +2107,8 @@
         "tentarDeNovo": "Try again"
       },
       "personalize": {
+        "sampleCompany": "Acme Corp",
+        "sampleName": "John Doe",
         "title": "Personalize Variables",
         "subtitle": "Map your template variables to contact fields or provide static values.",
         "headerImage": "Header Image",
@@ -3314,6 +3324,7 @@
       "canvasView": "Canvas",
       "listView": "List",
       "form": {
+        "optionN": "Option {n}",
         "advancesTo": "Advances to",
         "textToCustomer": "Text sent to the customer",
         "promptToCustomer": "Prompt sent to the customer",
@@ -4920,6 +4931,8 @@
       "radarPrivacyWarning": "When enabled, this number's conversation content is sent to the account's configured AI provider (your own key). Use the provider's paid tier and confirm the firm's confidentiality policy."
     },
     "profile": {
+      "fullNamePlaceholder": "Ada Lovelace",
+      "avatarAlt": "Avatar",
       "title": "Your profile",
       "description": "How you show up across the app. Your avatar and name appear in the header, sidebar, and anywhere your teammates see you.",
       "changePhoto": "Change photo",
@@ -4972,6 +4985,7 @@
       "unknownError": "Unknown error"
     },
     "appearance": {
+      "themeId": "Theme id: {id}",
       "title": "Appearance",
       "description": "Set the mode and accent colour used across the app. Saved to this device — try it, it changes live.",
       "mode": "Mode",
@@ -7045,6 +7059,9 @@
   "Upload": {
     "semSessao": "Not signed in. Sign in again to upload the file.",
     "semConta": "Could not resolve your account."
+  },
+  "UiPrimitives": {
+    "close": "Close"
   },
   "Toaster": {
     "rotulo": "Notifications"

@@ -173,6 +173,10 @@ function SignupPageInner() {
       return;
     }
 
+    // O link de confirmação passa pelo nosso `/auth/callback`, como o do
+    // "esqueci a senha" (porte do #597 do original). Sem `emailRedirectTo`
+    // ele iria para o Site URL do Supabase e não trocaria o código pela
+    // sessão. Só vale em instalação com o cadastro público aberto.
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -180,6 +184,7 @@ function SignupPageInner() {
         data: {
           full_name: fullName,
         },
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=/dashboard`,
       },
     });
 
