@@ -17,6 +17,7 @@
 // ============================================================
 
 import {
+  canDecideDuplicates,
   canDeleteContacts,
   canEditSettings,
   canManageAutomations,
@@ -55,6 +56,7 @@ export type PoderId =
   | "manage-deals"
   | "view-reports"
   | "delete-contacts"
+  | "decide-duplicates"
   | "manage-automations"
   | "edit-settings"
   | "manage-members";
@@ -91,6 +93,9 @@ export const PODERES: readonly {
   // de Funis e a de Contatos NÃO deixavam evidentes.
   { id: "view-reports", permite: canViewReports },
   { id: "delete-contacts", permite: canDeleteContacts },
+  // 1088 (13/10/2026): todos veem o aviso de possível duplicata; decidir é
+  // de admin, como apagar contato.
+  { id: "decide-duplicates", permite: canDecideDuplicates },
   { id: "manage-automations", permite: canManageAutomations },
   { id: "edit-settings", permite: canEditSettings },
   { id: "manage-members", permite: canManageMembers },

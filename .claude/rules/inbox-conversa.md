@@ -97,8 +97,8 @@ ficha em `.claude/rules/campos-e-nome.md`.
   trilha; texto `text-foreground`, cor só na borda, ícone e pastilha; mais a
   linha do ATLAS — suspenso e inativo também —, cada linha com a FONTE, "no
   funil …" ou "no Atlas desde …": `juntarSituacoes`, `integracoes-atlas.md`), inadimplência do Asaas,
-  possível no-show (`FaixaDeNoShow`, regra em `.claude/rules/reunioes.md`),
-  agendadas, presença (`FaixaDePresenca`), o número divergente e, COLADA no
+  possível no-show (`FaixaDeNoShow`, `reunioes.md`), possível duplicata
+  (`contatos.md`), agendadas, presença (`FaixaDePresenca`), o número divergente e, COLADA no
   compositor, a conexão fora do ar (`canal-na-conversa.md`). A de no-show vem do hook que carimba o contato dono do
   aviso: a de um cliente nunca aparece na conversa de outro. As ARREDONDADAS
   moram num bloco `pb-2 empty:hidden` (cada uma só com `mt-2`): fora dele, ou

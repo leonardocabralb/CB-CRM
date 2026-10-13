@@ -12,6 +12,8 @@ paths:
   - "src/components/settings/tag-manager.tsx"
   - "src/lib/whatsapp/phone-utils*"
   - "src/hooks/use-contatos-relacionados*"
+  - "src/hooks/use-possiveis-duplicatas*"
+  - "src/hooks/use-comparacao-de-fichas*"
 ---
 
 # Contatos — regras
@@ -180,6 +182,58 @@ todos: num merge, fica o nosso.
 - **Na ficha de /contatos o nome é link para `/inbox?c=`; no inbox, a página
   abre a conversa e liga a faixa "Voltar para"** (`inbox-conversa.md`). O
   "Conversar" (contato sem conversa) só existe no inbox: o diálogo mora lá.
+
+### Possível duplicata (1088)
+A mesma pessoa em duas fichas (formulário com um telefone, agendamento com
+outro). `cb_possiveis_duplicatas` (RPC), `src/lib/contacts/duplicatas.ts`
+(puro, testado), `use-possiveis-duplicatas.ts`, `use-comparacao-de-fichas.ts`,
+`aviso-de-possivel-duplicata.tsx` (a faixa + o "Comparar"),
+`faixa-de-possivel-duplicata.tsx` e `comparar-fichas-dialog.tsx`. Decisões do
+operador, medição e fases: `docs/PLANO-fichas-duplicadas.md`.
+- ⚠️⚠️ **Conferida NA HORA, nunca guardada**: a RPC calcula os pares da ficha
+  aberta. Nada de gatilho em `contacts` (a ingestão não paga) nem lista que
+  envelhece. É `SECURITY INVOKER`: a RLS de `contacts` é a cerca.
+- ⚠️⚠️ **Sem varrer a conta** (1089): candidatas por índice atrás de CTE
+  `MATERIALIZED`, o telefone vizinho por IGUALDADE (`unnest`, nunca `= ANY
+  (lista)`), a janela calculada na ficha (sob RLS, conta com função não
+  LEAKPROOF não vira condição de índice). A 1088, com o nome numa junção,
+  levava 289 ms em produção a cada conversa aberta (a 1089, 16 ms).
+- ⚠️⚠️ **Ficha de LOTE não busca par pelo horário** (1090): 2/3 da base
+  nasceram numa importação (3,9 mil fichas em 3 min), e a 1089 trazia o lote
+  inteiro para concluir "lote" (177 ms por ficha; a 1090, 9 ms). A ficha conta as fichas em
+  volta DELA (±1 min, parando na 11ª): toda janela de par a contém, então
+  mais de 10 ali reprova qualquer par. Quem mexer na régua do lote mexe nas
+  duas contagens juntas.
+- ⚠️⚠️ **Só sinais fortes, com os números da medição** (pino
+  `possiveis-duplicatas-1088.test.ts`): mesmo e-mail (em até 3 fichas);
+  telefone a um dígito + mesmo primeiro nome; criadas em até 2 min + mesmo
+  primeiro nome, FORA de lote (> 10 fichas em volta = importação, 12,5 mil
+  pares falsos). Nome SOZINHO nunca — 385 nomes repetidos na base.
+- **Todos veem, só admin decide** (D1): `canDecideDuplicates`/
+  `useCan('decide-duplicates')` na tela, policy de INSERT/DELETE de
+  `cb_duplicatas_descartadas` no banco, e o poder no editor de perfis
+  (`PODERES`). "Pessoas diferentes, mas ligadas" grava o vínculo da 1069; o
+  par ligado ou descartado sai do aviso. ⚠️ Limite: o vínculo é de `agent`
+  (1069, "quem edita contato vincula") — o atendente que liga as fichas pela
+  aba Relacionados também tira o par do aviso. Só o botão é de admin.
+- **Faixa e aba Relacionados conversam por `EVENTO_RELACIONADOS`**
+  (`aviso-de-relacionados.ts`): quem grava vínculo avisa, os dois hooks
+  relêem. Sem isso, o "Ligar as fichas" dizia "ligadas em Relacionados" com
+  a aba vazia, e desvincular não devolvia o aviso.
+- **As escritas recebem as DUAS fichas** (o "Desfazer" do toast pode chegar
+  com o operador noutra conversa). O par descartado é ORDENADO em
+  minúsculas (`parOrdenado`): o uuid do banco ordena pelo hexadecimal.
+- **A faixa mora no fio** (bloco de faixas, depois do no-show) **e no
+  formulário do card aberto pelo QUADRO** (`origemFunil`): o card sem conversa
+  abre o formulário. No painel do inbox o formulário não a mostra (o fio já
+  mostra). Os dois montam só `AvisoDePossivelDuplicata`, que REMONTA a cada
+  ficha (`key` por dentro): carimbar o "Comparar" aberto com o contato não
+  bastava — trocar de conversa com ele aberto e voltar o reabria sozinho. O
+  "Comparar" respeita o PERFIL: card de funil e conversa de conexão fora do
+  escopo não aparecem; a falha de envio segue `envioQueNaoSaiu` (o incerto
+  pode ter chegado; `failed` sem `nao_saiu` é "não entregue").
+- **Unir é a fase 2** (D5): o diálogo diz que a união ainda não é feita ali,
+  sem botão desabilitado.
 
 ### API v1 de contatos
 - `getContactById` ESTOURA em erro de banco: erro não é 404 (o integrador

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
+import { avisarRelacionadosMudaram, EVENTO_RELACIONADOS } from '@/lib/contacts/aviso-de-relacionados';
 import { createClient } from '@/lib/supabase/client';
 import {
   descricaoParaGravar,
@@ -109,6 +110,13 @@ export function useContatosRelacionados(
     };
   }, [contactId, nonce, resyncToken]);
 
+  // Quem grava vínculo noutra árvore (o "Ligar as fichas" do "Comparar" da
+  // possível duplicata) avisa; e quem grava aqui avisa a faixa de lá.
+  useEffect(() => {
+    window.addEventListener(EVENTO_RELACIONADOS, recarregar);
+    return () => window.removeEventListener(EVENTO_RELACIONADOS, recarregar);
+  }, [recarregar]);
+
   const vincular = useCallback(
     async (outroContatoId: string, descricao: string): Promise<DesfechoDaEscrita> => {
       // Falha FECHADA: sem a conta não há como gravar a linha certa.
@@ -124,10 +132,11 @@ export function useContatosRelacionados(
         });
       // INSERT barrado pela RLS ESTOURA (42501), ao contrário de UPDATE/DELETE.
       if (error) return desfechoDoErro(error);
-      recarregar();
+      // Este hook e a faixa "Possível duplicata" relêem pelo aviso.
+      avisarRelacionadosMudaram();
       return 'ok';
     },
-    [contactId, accountId, recarregar],
+    [contactId, accountId],
   );
 
   const editarDescricao = useCallback(
@@ -141,10 +150,10 @@ export function useContatosRelacionados(
       if (error) return desfechoDoErro(error);
       // RLS que barra UPDATE devolve 0 linhas com `error: null`.
       const desfecho = (data ?? []).length > 0 ? 'ok' : await motivoDeZeroLinhas(supabase, vinculoId);
-      recarregar();
+      avisarRelacionadosMudaram();
       return desfecho;
     },
-    [recarregar],
+    [],
   );
 
   const desvincular = useCallback(
@@ -157,10 +166,10 @@ export function useContatosRelacionados(
         .select('id');
       if (error) return desfechoDoErro(error);
       const desfecho = (data ?? []).length > 0 ? 'ok' : await motivoDeZeroLinhas(supabase, vinculoId);
-      recarregar();
+      avisarRelacionadosMudaram();
       return desfecho;
     },
-    [recarregar],
+    [],
   );
 
   const doContatoAtual = !!contactId && estado.de === contactId;

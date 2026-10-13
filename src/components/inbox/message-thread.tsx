@@ -16,6 +16,7 @@ import { useConversationNotes } from "@/hooks/use-conversation-notes";
 import { useApagarNota } from "@/hooks/use-apagar-nota";
 import { useFixarNota } from "@/hooks/use-fixar-nota";
 import { useCan } from "@/hooks/use-can";
+import { AvisoDePossivelDuplicata } from "@/components/contacts/aviso-de-possivel-duplicata";
 import { ScheduledBar } from "./scheduled-bar";
 import { FaixaDeSituacaoDoCliente } from "./faixa-de-situacao-do-cliente";
 import { FaixaDeInadimplencia } from "./faixa-de-inadimplencia";
@@ -235,6 +236,14 @@ interface MessageThreadProps {
    * a faixa cala, sem afirmar "em dia".
    */
   inadimplencia?: RespostaDoResumo | null;
+  /**
+   * Abrir a conversa de OUTRA ficha a partir do fio — o "Abrir conversa" do
+   * "Comparar" da possível duplicata (1088). É o mesmo pulo da aba
+   * Relacionados (`handleAbrirConversaRelacionada` da página: seleção +
+   * faixa "Voltar para"); nunca `router.push` daqui, que deixaria o fio na
+   * conversa antiga. Sem ele, o botão não aparece.
+   */
+  onAbrirConversaRelacionada?: (conversaId: string) => void;
 }
 
 /**
@@ -523,6 +532,7 @@ export function MessageThread({
   termoDaBusca = "",
   saltoPedido = null,
   inadimplencia = null,
+  onAbrirConversaRelacionada,
 }: MessageThreadProps) {
   const t = useTranslations("Inbox.messageThread");
   const tTimer = useTranslations("Inbox.sessionTimer");
@@ -3417,6 +3427,21 @@ export function MessageThread({
           reunião nova e já faltou, ou marcou antes e não avançou. Some quando
           a reunião nova termina; cala com `null`. */}
       <FaixaDeNoShow aviso={avisoDeFalta} agora={agoraDaBadge} />
+
+      {/* Faixa POSSÍVEL DUPLICATA (1088, pedido do operador em 13/10/2026):
+          esta ficha parece ser a mesma pessoa de outra — o formulário com
+          um telefone, o agendamento com outro. Abaixo das que mudam a
+          conversa (situação, dívida, no-show), porque é arrumação de cadastro;
+          o "Comparar" abre as duas lado a lado. Cala com `null`; grupo não
+          tem contato. */}
+      {contact && (
+        <AvisoDePossivelDuplicata
+          contatoId={contact.id}
+          resyncToken={resyncToken}
+          aoAbrirConversa={onAbrirConversaRelacionada}
+          className="mx-3 mt-2"
+        />
+      )}
 
       {/* Faixa AGENDADAS (925), colada no compositor e dentro do fio.
           ⚠️ Fica AQUI, e não na ficha lateral: quem abre a conversa precisa
