@@ -726,9 +726,11 @@ def texto_das_descartadas(dados, rotulos):
             'conversa nenhuma.' % (dados['n'], quando(de_iso(dados['desde'])), ', '.join(partes)))
 
 
-def juntar_eventos_pendentes(estado, achados, rotulos):
-    """Evento que o sino recusou numa execução anterior volta agora, somado ao
-    desta (o log daquela janela não será relido)."""
+def juntar_eventos_pendentes(estado, achados, rotulos, contas):
+    """Evento que ainda não foi ao sino (recusado, ou dentro do intervalo de
+    6 h) volta agora, somado ao desta execução — o log daquela janela não
+    será relido. Os destinatários são os de AGORA somados aos guardados: um
+    evento guardado com o CRM fora (sem conta) não pode ficar sem destino."""
     for chave, pendente in sorted((estado.get('eventos_pendentes') or {}).items()):
         atual = ((achados.problemas.get(chave) or {}).get('dados') or {})
         por_instancia = collections.Counter(pendente['dados'].get('por_instancia') or {})
@@ -737,7 +739,7 @@ def juntar_eventos_pendentes(estado, achados, rotulos):
                  'desde': pendente['dados'].get('desde') or iso(AGORA),
                  'por_instancia': dict(por_instancia)}
         achados.problema(chave, pendente['titulo'], texto_das_descartadas(dados, rotulos),
-                         pendente['contas'], evento=True, dados=dados)
+                         sorted(set(pendente.get('contas') or []) | set(contas)), evento=True, dados=dados)
 
 
 def decidir(estado, achados):
@@ -769,7 +771,7 @@ def decidir(estado, achados):
     return avisos
 
 
-def aplicar(estado, achados, avisos, enviados):
+def aplicar(estado, achados, enviados):
     ativos = estado.setdefault('ativos', {})
     eventos = estado.setdefault('eventos', {})
     pendentes = estado.setdefault('eventos_pendentes', {})
@@ -785,11 +787,11 @@ def aplicar(estado, achados, avisos, enviados):
             ativos[chave]['avisado_em'] = iso(AGORA)
         elif motivo == 'resolvido':
             ativos.pop(chave, None)
-    # Evento que devia ir ao sino e não foi fica guardado para a próxima.
-    for chave, motivo, titulo, _corpo, contas in avisos:
-        if motivo == 'evento' and (chave, motivo) not in enviados:
-            p = achados.problemas[chave]
-            pendentes[chave] = {'titulo': titulo, 'contas': contas, 'dados': p['dados']}
+    # Evento que não foi ao sino nesta execução — recusado, ou dentro do
+    # intervalo de 6 h — fica guardado (já somado) para a próxima.
+    for chave, p in achados.problemas.items():
+        if p['evento'] and (chave, 'evento') not in enviados:
+            pendentes[chave] = {'titulo': p['titulo'], 'contas': p['contas'], 'dados': p['dados']}
 
 
 def enviar(crm, admins, avisos):
@@ -948,7 +950,7 @@ def main():
                  'por_instancia': registro['evolution']['descartadas_por_instancia']}
         achados.problema('descartadas', 'WhatsApp descartou mensagens recebidas',
                          texto_das_descartadas(dados, rotulos), contas, evento=True, dados=dados)
-    juntar_eventos_pendentes(estado, achados, rotulos)
+    juntar_eventos_pendentes(estado, achados, rotulos, contas)
     vigiar_a_propria_medicao(estado, achados, contas)
 
     avisos = decidir(estado, achados)
@@ -971,7 +973,7 @@ def main():
         return 0
 
     enviados = enviar(crm, admins, avisos)
-    aplicar(estado, achados, avisos, enviados)
+    aplicar(estado, achados, enviados)
     registro['avisos'] = [list(e) for e in enviados]
     if coleta_ok:
         estado['coletado_ate'] = ate + 'Z'
