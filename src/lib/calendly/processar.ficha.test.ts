@@ -81,7 +81,9 @@ describe("processarAgendamento — telefone que não é de nenhum contato", () =
   it("CRÍTICO: cria a ficha com o nome do Calendly e dispara a automação", async () => {
     const r = await processarAgendamento(admin, "acct-1", AGENDAMENTO);
 
-    expect(destino.resolverDestinatario).toHaveBeenCalledWith(admin, "acct-1", "5519980000004", "Joel");
+    expect(destino.resolverDestinatario).toHaveBeenCalledWith(admin, "acct-1", "5519980000004", "Joel", {
+      origem: { via: "agendamento" },
+    });
     expect(r).toMatchObject({ resultado: "disparado", contactId: "novo-1" });
     expect(r.detalhe).toContain("ficha criada");
     // A conversa recém-criada é a do disparo, sem uma segunda consulta.
@@ -176,7 +178,7 @@ describe("processarAgendamento — ficha que já existia sem conversa", () => {
   it("CRÍTICO: ganha a conversa, e é ela que vai para a automação (o link do aviso)", async () => {
     const r = await processarAgendamento(admin, "acct-1", AGENDAMENTO);
 
-    expect(destino.conversaDoContato).toHaveBeenCalledWith(admin, "acct-1", "c1");
+    expect(destino.conversaDoContato).toHaveBeenCalledWith(admin, "acct-1", "c1", { origem: { via: "agendamento" } });
     expect(destino.resolverDestinatario).not.toHaveBeenCalled();
     expect(motor.dispararAutomacoes.mock.calls[0][0]).toMatchObject({
       contactId: "c1",

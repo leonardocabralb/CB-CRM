@@ -39,6 +39,7 @@ import type {
 } from '@/types';
 import { supabaseAdmin } from './admin-client';
 import { conversaDoContato, resolverDestinatario } from './destinatario';
+import { marcarOrigem } from '@/lib/conversations/origem-da-escrita';
 import { resolveEngineChannelPreferring } from '@/lib/cb-channels/engine-send';
 import { ehWhatsApp } from '@/lib/cb-channels/transporte';
 import { conexaoDoCodigo, conexoesDoTexto, numeroDaConexao } from './variaveis/conexao';
@@ -1895,10 +1896,13 @@ async function runStep(
           ? args.context.conversation_id
           : null;
 
-      let q = db
-        .from('conversations')
-        .update({ assigned_agent_id: agentId })
-        .eq('account_id', args.automation.account_id);
+      let q = marcarOrigem(
+        db
+          .from('conversations')
+          .update({ assigned_agent_id: agentId })
+          .eq('account_id', args.automation.account_id),
+        { via: 'automacao', ref: args.automation.id }
+      );
       q = conversaDoDisparo
         ? q.eq('id', conversaDoDisparo)
         : q.eq('contact_id', args.contactId);
@@ -2494,7 +2498,8 @@ async function runStep(
         db,
         accountId,
         digitos,
-        cfg.contact_name
+        cfg.contact_name,
+        { origem: { via: 'automacao', ref: args.automation.id } }
       );
 
       // ⚠️ A conexão escolhida tem de resolver DE FATO. `resolveEngineChannelPreferring`
@@ -2535,15 +2540,19 @@ async function runStep(
       // operador, 2026-09-02): a atribuição dura até o encerramento, e quem
       // reabrir depois — cliente ou equipe — recebe a conversa sem dono
       // velho. Ver `src/lib/conversations/situacao.ts`.
-      await db
-        .from('conversations')
-        .update({
-          status: 'closed',
-          assigned_agent_id: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('account_id', args.automation.account_id)
-        .eq('contact_id', args.contactId);
+      // A trilha da conversa (1083) diz qual automação encerrou.
+      await marcarOrigem(
+        db
+          .from('conversations')
+          .update({
+            status: 'closed',
+            assigned_agent_id: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('account_id', args.automation.account_id)
+          .eq('contact_id', args.contactId),
+        { via: 'automacao', ref: args.automation.id }
+      );
       return 'conversation closed';
     }
 
@@ -3238,7 +3247,10 @@ async function resolveConversationId(
         supabaseAdmin(),
         args.automation.account_id,
         args.contactId,
-        { conversaNovaEncerrada: true }
+        {
+          conversaNovaEncerrada: true,
+          origem: { via: 'automacao', ref: args.automation.id },
+        }
       );
       // Os dados do contato desta execução foram lidos SEM conversa (se algum
       // passo anterior interpolou `contact.*`): esquecê-los faz o próximo

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { fichaQueVenceu, findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
+import { marcarOrigem, type OrigemDaEscrita } from '@/lib/conversations/origem-da-escrita'
 
 /**
  * Ficha + conversa de um NÚMERO, quando o CRM precisa falar com ele e ainda
@@ -43,8 +44,8 @@ export async function resolverDestinatario(
   db: SupabaseClient,
   accountId: string,
   digitos: string,
-  nome?: string | null,
-  opcoes?: {
+  nome: string | null | undefined,
+  opcoes: {
     /**
      * A conversa que NASCER aqui nasce ENCERRADA. Conversa que já existia não
      * é tocada — nem aberta, nem fechada. Só o webhook de entrada pede isto:
@@ -54,6 +55,12 @@ export async function resolverDestinatario(
      * inclusive a que o SDR está atendendo agora.
      */
     conversaNovaEncerrada?: boolean
+    /**
+     * Quem está criando, para a trilha da conversa (1083): "Conversa criada
+     * já encerrada · por um webhook" explica sozinha por que o lead está em
+     * Encerradas. Obrigatória para todo chamador declarar a sua.
+     */
+    origem: OrigemDaEscrita
   },
 ): Promise<Destinatario> {
   const busca = await findExistingContact(db, accountId, digitos)
@@ -86,8 +93,9 @@ export async function resolverDestinatario(
   }
   const contatoId: string = contactId
   const conversationId = await conversaDoContato(db, accountId, contatoId, {
-    conversaNovaEncerrada: opcoes?.conversaNovaEncerrada,
+    conversaNovaEncerrada: opcoes.conversaNovaEncerrada,
     dono: donoResolvido,
+    origem: opcoes.origem,
   })
   return { contactId: contatoId, conversationId, criouContato }
 }
@@ -115,13 +123,14 @@ export async function resolverDestinatario(
  *     escreveu, e a resposta dele a reabre (`reopen.ts`); envio de robô não
  *     reabre.
  *
- * `dono` evita reler `accounts` quando quem chama acabou de resolvê-lo.
+ * `dono` evita reler `accounts` quando quem chama acabou de resolvê-lo;
+ * `origem` vai para a trilha da conversa (1083).
  */
 export async function conversaDoContato(
   db: SupabaseClient,
   accountId: string,
   contatoId: string,
-  opcoes?: { conversaNovaEncerrada?: boolean; dono?: string | null },
+  opcoes: { conversaNovaEncerrada?: boolean; dono?: string | null; origem: OrigemDaEscrita },
 ): Promise<string> {
   const { data: existente, error: erroBusca } = await db
     .from('conversations')
@@ -133,15 +142,16 @@ export async function conversaDoContato(
   if (erroBusca) throw new Error(`destinatário: busca da conversa falhou (${erroBusca.message})`)
   if (existente && existente.length > 0) return existente[0].id as string
 
-  const dono = opcoes?.dono ?? (await donoDaConta(db, accountId))
-  const { data: nova, error: erroNova } = await db
-    .from('conversations')
-    .insert({
+  const dono = opcoes.dono ?? (await donoDaConta(db, accountId))
+  const { data: nova, error: erroNova } = await marcarOrigem(
+    db.from('conversations').insert({
       account_id: accountId,
       user_id: dono,
       contact_id: contatoId,
-      ...(opcoes?.conversaNovaEncerrada ? { status: 'closed' } : {}),
-    })
+      ...(opcoes.conversaNovaEncerrada ? { status: 'closed' } : {}),
+    }),
+    opcoes.origem,
+  )
     .select('id')
     .single()
   if (erroNova || !nova) {
