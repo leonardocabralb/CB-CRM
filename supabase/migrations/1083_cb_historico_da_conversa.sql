@@ -236,6 +236,14 @@ REVOKE EXECUTE ON FUNCTION public.cb_quem_mexeu_na_conversa() FROM PUBLIC, anon,
 -- Supabase: elas leem `profiles` (só o NOME, para congelar na trilha), e o
 -- pino da 1067 cobra conferência de suspensão de quem lê `profiles` pelo
 -- chamador. Quem é o chamador vem de `cb_quem_mexeu_na_conversa`.
+--
+-- ⚠️ Todo NOME que vai para a trilha (pessoa, responsável, contato) sai SÓ
+-- desta conta (`account_id = n.account_id`). As funções são SECURITY DEFINER
+-- (a RLS de `profiles` e `contacts` não vale aqui), e `assigned_agent_id` e
+-- `contact_id` não têm FK composta com a conta: quem pode mexer na conversa
+-- gravaria ali o uuid de alguém de OUTRA conta, e o nome ou o e-mail dele
+-- ficaria legível na trilha desta (Codex no #402). Fora da conta, o nome
+-- fica nulo e o id fica como veio.
 CREATE OR REPLACE FUNCTION public.cb_log_conversa_criada()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -282,7 +290,7 @@ BEGIN
       ))
     FROM novas n
     JOIN accounts a ON a.id = n.account_id
-    LEFT JOIN contacts c ON c.id = n.contact_id
+    LEFT JOIN contacts c ON c.id = n.contact_id AND c.account_id = n.account_id
     LEFT JOIN cb_channels ch ON ch.id = n.channel_id
     LEFT JOIN LATERAL (
       -- A pessoa da sessão vale sempre (o login existe: é ele que está
@@ -290,8 +298,7 @@ BEGIN
       SELECT q.ator AS user_id, (
                SELECT coalesce(nullif(p.full_name, ''), p.email)
                  FROM profiles p
-                WHERE p.user_id = q.ator
-                ORDER BY (p.account_id = n.account_id) DESC
+                WHERE p.user_id = q.ator AND p.account_id = n.account_id
                 LIMIT 1
              ) AS nome
        WHERE q.ator IS NOT NULL
@@ -302,8 +309,7 @@ BEGIN
     LEFT JOIN LATERAL (
       SELECT coalesce(nullif(p.full_name, ''), p.email) AS nome
         FROM profiles p
-       WHERE p.user_id = n.assigned_agent_id
-       ORDER BY (p.account_id = n.account_id) DESC
+       WHERE p.user_id = n.assigned_agent_id AND p.account_id = n.account_id
        LIMIT 1
     ) para ON true
     LEFT JOIN LATERAL (
@@ -409,14 +415,13 @@ BEGIN
     FROM antes o
     JOIN depois n ON n.id = o.id
     JOIN accounts a ON a.id = n.account_id
-    LEFT JOIN contacts c ON c.id = n.contact_id
+    LEFT JOIN contacts c ON c.id = n.contact_id AND c.account_id = n.account_id
     LEFT JOIN cb_channels ch ON ch.id = n.channel_id
     LEFT JOIN LATERAL (
       SELECT q.ator AS user_id, (
                SELECT coalesce(nullif(p.full_name, ''), p.email)
                  FROM profiles p
-                WHERE p.user_id = q.ator
-                ORDER BY (p.account_id = n.account_id) DESC
+                WHERE p.user_id = q.ator AND p.account_id = n.account_id
                 LIMIT 1
              ) AS nome
        WHERE q.ator IS NOT NULL
@@ -427,15 +432,13 @@ BEGIN
     LEFT JOIN LATERAL (
       SELECT coalesce(nullif(p.full_name, ''), p.email) AS nome
         FROM profiles p
-       WHERE p.user_id = o.assigned_agent_id
-       ORDER BY (p.account_id = n.account_id) DESC
+       WHERE p.user_id = o.assigned_agent_id AND p.account_id = n.account_id
        LIMIT 1
     ) de ON true
     LEFT JOIN LATERAL (
       SELECT coalesce(nullif(p.full_name, ''), p.email) AS nome
         FROM profiles p
-       WHERE p.user_id = n.assigned_agent_id
-       ORDER BY (p.account_id = n.account_id) DESC
+       WHERE p.user_id = n.assigned_agent_id AND p.account_id = n.account_id
        LIMIT 1
     ) para ON true
     LEFT JOIN LATERAL (
@@ -492,6 +495,7 @@ DECLARE
   v_membro    uuid;
   v_dono      uuid;
   v_livre     uuid;
+  v_estranho  uuid;
   v_nova      uuid;
   v_antes     bigint;
   v_depois    bigint;
@@ -627,6 +631,29 @@ BEGIN
       PERFORM set_config('request.jwt.claims', '{"role":"service_role"}', true);
     ELSE
       RAISE NOTICE '1083: conta sem membro — o ramo do responsável foi conferido pela definição.';
+    END IF;
+
+    -- (f) Responsável de OUTRA conta: o id fica, o nome não (ver o ⚠️ da
+    -- seção 3).
+    SELECT p.user_id INTO v_estranho
+      FROM profiles p
+     WHERE p.account_id <> v_conta
+       AND NOT EXISTS (SELECT 1 FROM profiles x
+                        WHERE x.user_id = p.user_id AND x.account_id = v_conta)
+     ORDER BY p.user_id
+     LIMIT 1;
+    IF v_estranho IS NOT NULL THEN
+      PERFORM set_config('request.headers', '{"x-cb-via":"automacao"}', true);
+      UPDATE conversations SET assigned_agent_id = NULL WHERE id = v_conv;
+      UPDATE conversations SET assigned_agent_id = v_estranho WHERE id = v_conv;
+      SELECT * INTO v_linha FROM cb_lead_events
+       WHERE conversation_id = v_conv ORDER BY occurred_at DESC, id DESC LIMIT 1;
+      IF v_linha.details ->> 'para_responsavel_id' IS DISTINCT FROM v_estranho::text
+         OR v_linha.details ? 'para_responsavel' THEN
+        RAISE EXCEPTION '1083: o nome de um responsável de outra conta entrou na trilha: %', row_to_json(v_linha);
+      END IF;
+    ELSE
+      RAISE NOTICE '1083: nenhum perfil de outra conta — o recorte do nome foi conferido pela definição.';
     END IF;
 
     -- (e) Criação: linha com `from_status` nulo; histórica não vira linha.
