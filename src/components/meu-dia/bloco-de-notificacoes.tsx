@@ -22,6 +22,7 @@ import {
   ListTodo,
   MessageSquareReply,
   Reply,
+  TriangleAlert,
   UserPlus,
 } from 'lucide-react';
 
@@ -51,6 +52,7 @@ const ICONE: Record<Notification['type'], typeof Bell> = {
   note_reply: MessageSquareReply,
   task_assigned: ListTodo,
   task_reply: Reply,
+  whatsapp_alert: TriangleAlert,
 };
 
 export function BlocoDeNotificacoes({

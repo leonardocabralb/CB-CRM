@@ -113,6 +113,17 @@ passou na máquina). Por isso:
   Redis é compartilhado com outros serviços: backup só do banco da Evolution.
   `TELEMETRY_ENABLED=false`.
 
+### Sentinela do WhatsApp (`ops/vps/saude-whatsapp/`)
+- Cron de hora em hora NA VPS (`docs/INFRA-VPS.md` §12): só lê e avisa no
+  sino (`whatsapp_alert`, 1084). ⚠️ O CI NÃO a publica: mudou o
+  `sentinela.py`, copie para `/root/saude-whatsapp/` e confira com
+  `--simular` (não grava nada). Mudou limiar ou aviso, atualize a tabela da
+  §12 no mesmo PR.
+- ⚠️ Python 3.8 (Ubuntu 20.04) e só biblioteca padrão: nada de `match`,
+  `str.removeprefix` nem tipo `list[str]` em tempo de execução.
+- Ela é a coleta dos logs para a varredura semanal: o log da Evolution cobria
+  ~6 h em 13/10. Desligar o cron abre buraco no histórico.
+
 ### Código que viaja para quem instala
 - `scripts/produto-gate.test.ts` reprova a NOSSA infraestrutura (domínio,
   rede, endereço, ref do Supabase, contas) em `src/`, `messages/`,

@@ -1,0 +1,5 @@
+# Sentinela do WhatsApp (docs/INFRA-VPS.md, seção 12). Vai em /etc/cron.d/saude-whatsapp.
+# De hora em hora, no minuto 5; nice + teto de 5 min (a execução leva ~10 s).
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+5 * * * * root nice -n 10 timeout 300 python3 /root/saude-whatsapp/sentinela.py >> /root/saude-whatsapp/sentinela.log 2>&1
