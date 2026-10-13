@@ -3,8 +3,10 @@
 import { funisVisiveis } from "@/lib/perfis/escopo";
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { AvisoDePossivelDuplicata } from "@/components/contacts/aviso-de-possivel-duplicata";
 import { escritaDoTituloManual } from "@/lib/deals/titulo-do-card";
 import { DEFAULT_CURRENCY } from "@/lib/currency";
 import { ValorInput } from "@/components/valor/valor-input";
@@ -107,6 +109,12 @@ export function DealForm({
   const [statusAction, setStatusAction] = useState<DealStatus | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // A possível duplicata (1088). Só no formulário aberto pelo QUADRO
+  // (`origemFunil`): é lá que o card SEM conversa cai — o caso da ficha de
+  // formulário de anúncio. No painel do inbox o fio já mostra a faixa.
+  const router = useRouter();
+  const contatoDaFaixa = open && origemFunil && contactId ? contactId : null;
 
   // Reset the form fields every time the sheet opens on a new deal. This is
   // a legitimate prop-driven sync; the rule is over-cautious here, hence the
@@ -428,6 +436,22 @@ export function DealForm({
                   <MessageSquare className="h-3 w-3" />
                   {t("linkToConversation")}
                 </Link>
+              )}
+
+              {/* Dentro da árvore do Sheet de propósito: o "Comparar" é um
+                  diálogo ANINHADO, e o base-ui não briga pelo foco. Fechar o
+                  formulário desmonta o aviso (nada reabre sozinho). */}
+              {contatoDaFaixa && (
+                <AvisoDePossivelDuplicata
+                  contatoId={contatoDaFaixa}
+                  aoAbrirConversa={(conversaId) => {
+                    // A jornada do funil: o retorno de rolagem e a faixa
+                    // "Voltar ao funil", como o link "ver conversa".
+                    aoIrParaConversa?.();
+                    router.push(urlDoInbox({ c: conversaId, de: "funil" }));
+                  }}
+                  className="mt-1"
+                />
               )}
             </div>
 

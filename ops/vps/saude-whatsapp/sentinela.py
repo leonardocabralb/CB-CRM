@@ -76,6 +76,10 @@ CEGA_DEPOIS_DE = 3
 # em laço viraria aviso diário no sino do CRM.
 SERVICOS_VIGIADOS = ('crm_crm', 'crm_agendador', 'evolution_evolution',
                      'postgres_postgres', 'redis_redis', 'traefik_traefik')
+# Chaves de UMA conexão (o prefixo + a instância): o aviso vai só à conta dona
+# dela. As outras chaves são do servidor e vão a toda conta com conexão de
+# produção.
+PREFIXOS_DA_CONEXAO = ('conexao:', 'sem_entrada:', 'nao_gravadas:', 'falhas:')
 
 # "Aberta sem receber": em dia útil, com a janela de 2 h inteira entre 8h e
 # 20h, nenhuma mensagem de cliente e pelo menos 5 nossas saindo pela conexão.
@@ -293,22 +297,20 @@ def arquivos_de_log(nome_do_servico, desde):
         def ordem(p):
             fim = p.rsplit('.', 1)[1]
             return -int(fim) if fim.isdigit() else 0
+        # Arquivo que some ou não abre (rotação no meio da leitura, erro de
+        # disco) FAZ a coleta falhar: pulado em silêncio, a janela avançaria
+        # e aquele trecho nunca seria relido. Falhando, a hora seguinte relê.
         for nome in sorted(glob.glob(caminho + '*'), key=ordem):
-            try:
-                if os.path.getmtime(nome) >= corte:
-                    arquivos.append(nome)
-            except OSError:
-                continue
+            if os.path.getmtime(nome) >= corte:
+                arquivos.append(nome)
     return arquivos
 
 
 def linhas_do_log(arquivos, desde, ate):
-    """(instante, texto) do json-file do Docker, em streaming, na janela."""
+    """(instante, texto) do json-file do Docker, em streaming, na janela.
+    Arquivo que não abre LANÇA (ver `arquivos_de_log`)."""
     for nome in arquivos:
-        try:
-            fh = open(nome, 'rb')
-        except OSError:
-            continue
+        fh = open(nome, 'rb')
         with fh:
             for bruto in fh:
                 try:
@@ -695,16 +697,25 @@ def checar_sessoes_99(rd, contas, achados, simular, estado):
     legadas = 0
     for chave_redis in rodar(['docker', 'exec', rd, 'redis-cli', '-n', '8', '--scan',
                               '--pattern', 'evolution:instance:*']).split():
+        # ⚠️ Nem toda chave `evolution:instance:*` é hash: a Evolution grava,
+        # de tempos em tempos, `evolution:instance:whatsapp_web_version` como
+        # TEXTO. E o redis-cli devolve o "WRONGTYPE" com código de saída 0 —
+        # lido como cursor, virou um laço de milhares de chamadas (13/10/2026).
+        tipo = rodar(['docker', 'exec', rd, 'redis-cli', '-n', '8', 'TYPE', chave_redis]).strip()
+        if tipo != 'hash':
+            continue
         cursor = '0'
-        for _volta in range(100000):
+        for _volta in range(10000):
             saida = rodar(['docker', 'exec', rd, 'redis-cli', '-n', '8', 'HSCAN', chave_redis, cursor,
                            'MATCH', 'session-*.99', 'COUNT', '1000'], timeout=60).splitlines()
-            if not saida:
-                break
+            if not saida or not saida[0].strip().isdigit():
+                raise RuntimeError('HSCAN de %s respondeu %r' % (chave_redis, (saida or [''])[0][:80]))
             cursor = saida[0].strip()
             legadas += sum(1 for campo in saida[1:] if re.match(r'^session-[0-9]+\.99$', campo))
             if cursor == '0':
                 break
+        else:
+            raise RuntimeError('HSCAN de %s não terminou em 10.000 voltas' % chave_redis)
     if legadas > 0:
         # Não marca o dia como feito: com sessão legada a varredura repete a
         # cada hora (barata, por HSCAN) e o problema segue aceso até sumir —
@@ -766,11 +777,38 @@ def juntar_eventos_pendentes(estado, achados, rotulos, contas):
                          sorted(set(pendente.get('contas') or []) | set(contas)), evento=True, dados=dados)
 
 
-def decidir(estado, achados):
-    """Os avisos desta execução: (chave, motivo, titulo, corpo, contas)."""
+def decidir(estado, achados, contas_atuais, vigiaveis):
+    """Os avisos desta execução: (chave, motivo, titulo, corpo, contas).
+
+    Todo problema entra em `ativos` assim que é VISTO (`aplicar`), avisado ou
+    não: `avisado_em` nulo = o sino ainda não recebeu. Daí:
+    - visto e não avisado → o aviso sai de novo, esteja o problema ainda
+      medido ou não; se já normalizou, vira "Aconteceu e já normalizou";
+    - avisado e sem medição nova (conexão quieta, banco fora) → lembrete de
+      24 h do mesmo jeito: só a PROVA de normalização encerra;
+    - normalização vista e não avisada (o sino recusou) → guardada em
+      `normalizou_em` e reenviada mesmo sem medição nova (conexão quieta, `.99`
+      já varrido no dia): a prova já veio, e o problema não volta a ser afirmado;
+    - o que deixou de ser vigiado (conexão apagada do CRM, serviço fora da
+      lista) sai em silêncio — senão lembraria para sempre. `vigiaveis` None
+      = não se sabe (CRM fora): nada sai.
+    Destinatários: o aviso de uma conexão vai só à conta dona dela; o do
+    servidor, às contas de agora somadas às guardadas (aviso guardado com o
+    CRM fora não fica sem destino)."""
     ativos = estado.get('ativos', {})
     eventos = estado.get('eventos', {})
+    lembrete = datetime.timedelta(hours=LEMBRETE_H)
     avisos = []
+
+    def destino(chave, *listas):
+        # Aviso de uma conexão vai só à conta DONA dela: a da medição de agora
+        # (a primeira lista com conta) ou, sem medição, a guardada. Somar as
+        # contas de agora — ou o dono antigo de uma instância recriada noutra
+        # conta — o mandaria aos admins de OUTRA conta, com o nome e o incidente.
+        if chave.startswith(PREFIXOS_DA_CONEXAO):
+            return sorted(next((lista for lista in listas if lista), []))
+        return sorted(set(contas_atuais).union(*[set(lista or []) for lista in listas]))
+
     for chave, p in sorted(achados.problemas.items()):
         if p['evento']:
             ultimo = eventos.get(chave)
@@ -778,20 +816,39 @@ def decidir(estado, achados):
                 continue
             avisos.append((chave, 'evento', p['titulo'], p['corpo'], p['contas']))
             continue
-        atual = ativos.get(chave)
-        if atual is None:
-            avisos.append((chave, 'novo', p['titulo'], p['corpo'], p['contas']))
-        elif AGORA - de_iso(atual['avisado_em']) >= datetime.timedelta(hours=LEMBRETE_H):
+        atual = ativos.get(chave) or {}
+        if not atual.get('avisado_em'):
+            avisos.append((chave, 'novo', p['titulo'], p['corpo'], destino(chave, p['contas'], atual.get('contas'))))
+        elif AGORA - de_iso(atual['avisado_em']) >= lembrete:
             avisos.append((chave, 'lembrete', 'Continua — ' + p['titulo'],
-                           p['corpo'] + ' Desde %s.' % quando(de_iso(atual['desde'])), p['contas']))
+                           p['corpo'] + ' Desde %s.' % quando(de_iso(atual['desde'])),
+                           destino(chave, p['contas'], atual.get('contas'))))
     for chave, atual in sorted(ativos.items()):
-        if chave in achados.normais and chave not in achados.problemas:
-            corpo = 'Voltou ao normal %s; tinha começado %s.' % (
-                quando_com_preposicao(AGORA), quando_com_preposicao(de_iso(atual['desde'])))
+        if chave in achados.problemas:
+            continue
+        if vigiaveis is not None and chave not in vigiaveis:
+            avisos.append((chave, 'esquecido', '', '', []))
+            continue
+        contas = destino(chave, atual.get('contas'))
+        if chave in achados.normais or atual.get('normalizou_em'):
+            voltou = de_iso(atual['normalizou_em']) if atual.get('normalizou_em') else AGORA
+            fim, inicio = quando_com_preposicao(voltou), quando_com_preposicao(de_iso(atual['desde']))
+            if atual.get('avisado_em'):
+                motivo, titulo = 'resolvido', 'Normalizou — ' + atual['titulo']
+                corpo = 'Voltou ao normal %s; tinha começado %s.' % (fim, inicio)
+            else:
+                motivo, titulo = 'passou', 'Aconteceu e já normalizou — ' + atual['titulo']
+                corpo = '%s Voltou ao normal %s.' % (atual.get('corpo') or '', fim)
             if chave.startswith('nao_gravadas:'):
                 corpo += (' As mensagens que faltaram NÃO entram sozinhas no CRM: '
                           'precisam ser importadas à mão.')
-            avisos.append((chave, 'resolvido', 'Normalizou — ' + atual['titulo'], corpo, atual['contas']))
+            avisos.append((chave, motivo, titulo, corpo.strip(), contas))
+        elif not atual.get('avisado_em'):
+            avisos.append((chave, 'novo', atual['titulo'], atual.get('corpo') or '', contas))
+        elif AGORA - de_iso(atual['avisado_em']) >= lembrete:
+            avisos.append((chave, 'lembrete', 'Continua — ' + atual['titulo'],
+                           'Ainda sem prova de que normalizou: nenhuma medição nova mostrou o fim. '
+                           'Desde %s.' % quando(de_iso(atual['desde'])), contas))
     return avisos
 
 
@@ -799,18 +856,33 @@ def aplicar(estado, achados, enviados):
     ativos = estado.setdefault('ativos', {})
     eventos = estado.setdefault('eventos', {})
     pendentes = estado.setdefault('eventos_pendentes', {})
+    # Todo problema visto entra (ou continua) em `ativos` JÁ — avisado ou não:
+    # o aviso que o sino recusou não pode depender de o problema durar até a
+    # próxima execução.
+    for chave, p in achados.problemas.items():
+        if p['evento']:
+            continue
+        atual = ativos.setdefault(chave, {'desde': iso(AGORA), 'avisado_em': None})
+        atual['titulo'], atual['corpo'] = p['titulo'], p['corpo']
+        if chave.startswith(PREFIXOS_DA_CONEXAO):
+            atual['contas'] = sorted(p['contas'])  # o dono de AGORA, nunca somado ao antigo
+        else:
+            atual['contas'] = sorted(set(atual.get('contas') or []) | set(p['contas']))
+        atual.pop('normalizou_em', None)  # voltou antes de o "Normalizou" entrar
     for chave, motivo in enviados:
         if motivo == 'evento':
             eventos[chave] = iso(AGORA)
             pendentes.pop(chave, None)
-        elif motivo == 'novo':
-            p = achados.problemas[chave]
-            ativos[chave] = {'desde': iso(AGORA), 'avisado_em': iso(AGORA),
-                             'titulo': p['titulo'], 'contas': p['contas']}
-        elif motivo == 'lembrete':
-            ativos[chave]['avisado_em'] = iso(AGORA)
-        elif motivo == 'resolvido':
+        elif motivo in ('novo', 'lembrete'):
+            if chave in ativos:
+                ativos[chave]['avisado_em'] = iso(AGORA)
+        elif motivo in ('resolvido', 'passou', 'esquecido'):
             ativos.pop(chave, None)
+    # Normalização vista cujo aviso não entrou (o sino recusou) fica guardada,
+    # com a hora em que foi vista, até entrar.
+    for chave in achados.normais:
+        if chave in ativos and chave not in achados.problemas:
+            ativos[chave].setdefault('normalizou_em', iso(AGORA))
     # Evento que não foi ao sino nesta execução — recusado, ou dentro do
     # intervalo de 6 h — fica guardado (já somado) para a próxima.
     for chave, p in achados.problemas.items():
@@ -827,6 +899,10 @@ def enviar(crm, admins, avisos):
             print('  %d aviso(s) sem CRM para gravar' % len(avisos))
         return enviados
     for chave, motivo, titulo, corpo, contas in avisos:
+        if motivo == 'esquecido':
+            print('  %s deixou de ser vigiado: sai dos ativos sem aviso' % chave)
+            enviados.append((chave, motivo))
+            continue
         linhas = [{'account_id': conta, 'user_id': uid, 'type': TIPO_DO_AVISO,
                    'title': titulo[:200], 'body': corpo[:500]}
                   for conta in contas for uid in admins.get(conta, [])]
@@ -977,7 +1053,16 @@ def main():
     juntar_eventos_pendentes(estado, achados, rotulos, contas)
     vigiar_a_propria_medicao(estado, achados, contas)
 
-    avisos = decidir(estado, achados)
+    # O que esta execução sabe vigiar — só com o CRM respondendo (sem ele, a
+    # lista de conexões vem vazia e tudo pareceria "deixou de ser vigiado").
+    vigiaveis = None
+    if crm is not None and not any(m.startswith('CRM:') for m in achados.nao_medido):
+        vigiaveis = {'disco', 'memoria', 'sessao99', 'sentinela_cega'} | {'replica:' + s for s in SERVICOS_VIGIADOS}
+        for canal in producao:
+            for prefixo in PREFIXOS_DA_CONEXAO:
+                vigiaveis.add(prefixo + canal['instance_name'])
+
+    avisos = decidir(estado, achados, contas, vigiaveis)
     registro['problemas'] = sorted(achados.problemas)
     registro['nao_medido'] = achados.nao_medido
 

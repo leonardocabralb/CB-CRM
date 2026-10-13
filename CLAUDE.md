@@ -509,11 +509,10 @@ O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
 - Atlas: vincular/desvincular à mão só admin; a faixa acende também com
   suspenso e inativo; a linha do Atlas aparece a todos (sem recorte de
   perfil); o Atlas "ativo" NÃO apaga a linha do funil (30/09/2026).
-- Cartão de contato: aparece como cartão, com Copiar e Conversar (a "Nova
-  conversa" já preenchida); `.html` recebido é guardado e oferecido para
-  baixar (28/09/2026); ENVIAR `.html`, só nas conexões por QR code — a Meta o
-  recusa (02/10/2026). Documento e cartão em destaque na bolha (superfície
-  própria, selo do tipo); desenho do fundo do fio a 15% (01/10/2026).
+- Cartão de contato: cartão com Copiar e Conversar ("Nova conversa"
+  preenchida); `.html` recebido fica para baixar; ENVIAR `.html` só por QR
+  code (02/10/2026). Documento e cartão em destaque na bolha; fundo do fio a
+  15% (01/10/2026).
 - Instagram: robô não responde no Direct; unificar fichas é manual; o que a
   API não cobre fica inacessível na conversa.
 - Conversa ENCERRADA quando nasce sem o cliente ter escrito: webhook de
@@ -528,6 +527,8 @@ O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
 - Contatos relacionados: vínculo PAR A PAR, visto dos dois lados, com
   descrição opcional; quem edita contato vincula; faixa "Voltar para" de um
   nível só (29/09/2026).
+- Possível duplicata: todos veem, só admin decide; só sinais fortes; sem
+  lista (conferida ao abrir); unir é a fase 2 (13/10/2026).
 - Tarefa recorrente: PELO CALENDÁRIO (nasce no dia do prazo, concluída ou
   não a anterior), contando do prazo anterior; só no formulário; avisa no
   sino (30/09/2026).
@@ -591,7 +592,7 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
 - `.claude/rules/funil-metricas.md` — degraus, coorte × por período,
   Desempenho, Saúde, Meta Ads.
 - `.claude/rules/contatos.md` — chave canônica do telefone, telefone
-  digitado, exclusão de contato, etiquetas.
+  digitado, exclusão de contato, etiquetas, possível duplicata.
 - `.claude/rules/campos-e-nome.md` — campo que salva sozinho, blocos de
   campos, e-mail espelhado, nome fixado.
 - `.claude/rules/integracoes-calendly.md` — ficha nasce do agendamento,

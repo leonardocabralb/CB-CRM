@@ -713,8 +713,8 @@ PostgREST com a service role do `/root/crm.env`, `cb_channels`, `profiles` e
 `/root/saude-whatsapp` e linhas `whatsapp_alert` em `notifications` (1085).
 Nunca imprime segredo, telefone nem conteúdo de mensagem.
 
-**Os avisos** (só conexões que casam CRM × Evolution e cujo rótulo não tem
-"teste"):
+**Os avisos** (só conexões que casam CRM × Evolution e cujo rótulo ou
+instância não tem "teste"):
 
 | Chave | Acende quando | Normaliza quando |
 |---|---|---|
@@ -723,14 +723,29 @@ Nunca imprime segredo, telefone nem conteúdo de mensagem.
 | `nao_gravadas:<instância>` | ≥ 3 mensagens de cliente (1:1, com conteúdo, fora o LID SEM telefone) das últimas 2 h, com mais de 10 min, que a Evolution tem e `messages.message_id` não — conferidas PELO ID (pega também a perda parcial) | só com PROVA: chegou mensagem na janela e todas estão no CRM (conexão quieta não decide nada). O "Normalizou" lembra que as que faltaram precisam ser importadas à mão |
 | `falhas:<instância>` | ≥ 3 ERROR do envio PRINCIPAL em 1:1 sem entrega em 24 h (a régua do CRM: `remoteJid` com "@" e sem ":") | < 3 |
 | `descartadas` | "error in handling message" no log da Evolution (mensagem descartada antes do banco: o caso da §8, 30/09). O log não diz de quem é: o aviso traz a conexão PROVÁVEL | é evento: no máximo um aviso a cada 6 h; o que chega dentro do intervalo, ou que o sino recusa, fica em `eventos_pendentes` e sai somado depois, para os destinatários de então |
-| `sessao99` | campo `session-<n>.99` em algum hash (§8), por `HSCAN … MATCH` (nunca `HKEYS`: o Redis é compartilhado), uma vez por dia a partir das 10h — e de novo a cada hora até dar certo no dia | 0 |
+| `sessao99` | campo `session-<n>.99` em algum hash (§8), por `HSCAN … MATCH` (nunca `HKEYS`: o Redis é compartilhado), uma vez por dia a partir das 10h — e de novo a cada hora até dar certo no dia. ⚠️ Só chave do tipo HASH: a Evolution grava também `evolution:instance:whatsapp_web_version` como texto, e o `redis-cli` devolve o `WRONGTYPE` com código 0 — em 13/10 isso virou um laço que travou a execução das 15:05 (encerrada à mão) | 0 |
 | `replica:<serviço>` | só os vigiados — `crm_crm`, `crm_agendador`, `evolution_evolution`, `postgres_postgres`, `redis_redis`, `traefik_traefik` — com réplicas rodando ≠ esperadas, desligados (`scale …=0`, que aparece como "0/0") ou ausentes do Swarm, conferido de novo 60 s depois. Os outros serviços (n8n, Typebot…) ficam na semanal | iguais e diferentes de zero (⚠️ manutenção que escala a Evolution a 0 acende o aviso — é o esperado) |
 | `disco` / `memoria` | disco > 85% / `MemAvailable` < 300 MB (conferida de novo) | abaixo do limite |
 | `sentinela_cega` | alguma medição falhou ("não medido") em 3 execuções seguidas — sem isto, a sentinela cega só deixaria uma linha no `sentinela.log` | uma execução sem "não medido" |
 
 Um aviso por problema novo, um lembrete ("Continua — …") a cada 24 h enquanto
-durar e um "Normalizou — …" quando passa. Aviso que o PostgREST recusa não
-muda o estado: sai na execução seguinte.
+durar e um "Normalizou — …" quando passa. Todo problema entra em `ativos` no
+momento em que é VISTO, avisado ou não (`avisado_em` nulo = o sino ainda não
+recebeu): o aviso recusado sai na execução seguinte e, se o problema já
+passou, vira "Aconteceu e já normalizou — …". Do mesmo jeito, a normalização
+vista fica guardada (`normalizou_em`) até o "Normalizou" entrar: sem isso, uma
+hora sem medição decisiva voltaria a afirmar o problema. Problema avisado e sem medição
+nova (conexão quieta, banco fora) também ganha o lembrete — só a prova de
+normalização o encerra. O que deixou de ser vigiado (conexão apagada do CRM)
+sai em silêncio.
+
+**Quem recebe.** O aviso de uma conexão (`conexao:`, `sem_entrada:`,
+`nao_gravadas:`, `falhas:`) vai só aos owner/admin da conta DONA dela (a da
+medição mais recente; nunca somada a um dono anterior), do primeiro aviso ao
+"Normalizou". Os do servidor (réplica, memória, disco,
+`sessao99`, `descartadas`, `sentinela_cega`) vão a toda conta com conexão de
+produção. Em 13/10/2026 só a conta do escritório tinha conexão de produção: as
+outras duas contas com conexão na Evolution só têm conexão de teste.
 
 **Calibragem (13/10/2026).** O `sem_entrada` foi medido contra 5 semanas de
 histórico: disparou 3 vezes, 2 delas no incidente de 16/09 (a fila de entrada
@@ -744,8 +759,9 @@ com o banco da Evolution fora (o Postgres parado aparece como
 mensagens ficam `NÃO MEDIDO` — nunca "normalizou". Sem o `crm.env` (ou com o
 Supabase fora) a coleta segue. Erro de rede ao gravar o aviso não derruba a
 execução (o aviso fica para a seguinte). A coleta entra inteira ou não entra
-(linha parcial seria contada duas vezes). As consultas ao banco da Evolution
-rodam em transação só de leitura.
+(linha parcial seria contada duas vezes), e arquivo de log que não abre (a
+rotação no meio da leitura) faz a coleta da hora falhar — a seguinte relê a
+janela. As consultas ao banco da Evolution rodam em transação só de leitura.
 
 **Limites conhecidos.** A VPS inteira fora do ar não avisa (a sentinela roda
 nela). Sem o `/root/crm.env` (ou com a service role vazia, §10), a coleta
@@ -754,7 +770,9 @@ O log de um contêiner REMOVIDO some com ele (o parado o Docker guarda no
 histórico de tarefas, e a coleta o lê). O `sem_entrada` não tem histerese:
 numa conexão de pouco volume pode alternar entre aviso e "Normalizou"; e os
 feriados em dia útil não estão no calendário (a exigência de ≥ 5 saídas é o
-que os cala).
+que os cala). Os avisos do servidor podem citar conexão de outra conta (o
+`descartadas` traz a conexão provável, e a `sentinela_cega` o erro da
+medição): uma segunda conta com conexão de produção pede revisão disso.
 
 **Comandos** (na VPS):
 

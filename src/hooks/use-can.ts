@@ -2,6 +2,7 @@
 
 import { useAuth } from "@/hooks/use-auth";
 import {
+  canDecideDuplicates,
   canDeleteAccount,
   canDeleteContacts,
   canEditSettings,
@@ -32,7 +33,9 @@ export type CanAction =
   /** As três abas analíticas do funil (lista, desempenho, saúde). */
   | "view-reports"
   /** Apagar contato — destrutivo: leva conversa e mensagens junto. */
-  | "delete-contacts";
+  | "delete-contacts"
+  /** Decidir uma possível duplicata (1088): "não é duplicata" ou "ligadas". */
+  | "decide-duplicates";
 
 /**
  * Inline alternative to `<RequireRole>` for places that need a
@@ -72,6 +75,8 @@ export function useCan(action: CanAction): boolean {
       return canViewReports(accountRole);
     case "delete-contacts":
       return canDeleteContacts(accountRole);
+    case "decide-duplicates":
+      return canDecideDuplicates(accountRole);
     default: {
       // Exhaustiveness check — adding a new `CanAction` without a
       // case here fails the typecheck because TS narrows `action`

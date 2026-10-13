@@ -1277,13 +1277,66 @@ nome da época em que foram aplicadas.
   `notifications.type` (os cinco tipos antigos reescritos junto): o aviso que
   a sentinela da VPS grava no sino (`docs/INFRA-VPS.md` §12). Nasceu 1084 e foi
   renumerada antes de aplicar: a 1083 (`historico_da_conversa`) e a 1084
-  (`possiveis_duplicatas`) são de outras sessões. ADITIVA e ANTES do deploy.
+  (`possiveis_duplicatas`, hoje o arquivo 1088) são de outras sessões. ADITIVA
+  e ANTES do deploy.
   Aplicada em 13/10/2026 pela Management API (histórico `20261013163840`), com
   "pode gravar" do operador — ⚠️ ANTES do replay do CI (o PR ainda não estava
   aberto); provada antes num Postgres 16 local, aplicada duas vezes (aceita
   `whatsapp_alert`, mantém os antigos, recusa tipo desconhecido). O replay do
   CI no PR #404 passou depois, em todos os commits. Conferida: CHECK com os
   seis tipos, as 87 notificações intactas.
+- ⚠️ **1088, 1089 e 1090 foram APLICADAS como 1084, 1086 e 1087** e
+  renumeradas antes do merge do PR #403, com o OK do operador (13/10/2026):
+  com os números antigos ficavam abaixo da 1085, que entrou antes no `main`, e
+  quem atualiza por `supabase db push` as teria recusadas (Codex no #403). No
+  histórico da produção os nomes continuam os antigos; o schema é o dos
+  arquivos. Nunca reaplicar por isso.
+- **1088_cb_possiveis_duplicatas** (no histórico: `1084_cb_possiveis_duplicatas`)
+  — a RPC `cb_possiveis_duplicatas(uuid)` (SECURITY INVOKER) e as auxiliares
+  `cb_primeiro_nome(text)` e `cb_vizinhos_do_telefone(text)`; a tabela
+  `cb_duplicatas_descartadas` (par ordenado; leitura na forma da 1032,
+  INSERT/DELETE de admin com a autoria de quem grava, sem UPDATE, nada para
+  `anon`); o índice `idx_contacts_conta_criacao (account_id, created_at)`.
+  PR #403. ADITIVA e ANTES do deploy (a faixa chama a RPC). Aplicada em
+  13/10/2026 pela Management API (histórico `20261013163655`), depois do
+  replay verde do CI no commit `cee7af70`, com "aplique a migration 1084 em
+  produção" do operador. Conferida: as três funções INVOKER, `anon` sem
+  EXECUTE, RLS ligada com as três policies, o índice, a expressão do acento
+  com o escape intacto (`\u0300` como texto) e a RPC achando os pares reais
+  medidos no plano. ⚠️ Medida em produção como `authenticated`: 289 ms por
+  chamada (o primeiro nome calculado para a conta inteira) — consertada pela
+  1089. ⚠️ O ARQUIVO mudou depois de aplicado, só no comentário e nas
+  constantes da conferência do primeiro nome (dois nomes de clientes reais
+  trocados por fictícios da mesma forma, repo público): o que ela cria no
+  banco é o mesmo.
+- **1089_cb_duplicatas_sem_varredura** (no histórico:
+  `1086_cb_duplicatas_sem_varredura`) — `CREATE OR REPLACE` da RPC da 1088
+  com o MESMO resultado e sem varrer a conta: candidatas por índice atrás de
+  CTE `MATERIALIZED`, o telefone vizinho por igualdade (`unnest`), a janela de
+  ±2 min calculada na ficha. Num Postgres 16 local com 6 mil fichas, como
+  `authenticated`: 49 ms → 3,5 ms; os cenários da 1088 passam com ela.
+  Aplicada em 13/10/2026 pela Management API (histórico `20261013172136`),
+  depois do replay verde do CI no commit `01c6a5d7`, com "aplique a migration
+  1086 em produção" do operador. Conferida: INVOKER, `search_path`, o corpo
+  novo, EXECUTE só de `authenticated` e `service_role`; nas 20 fichas com
+  chance de par, as MESMAS 20 linhas da 1088 (assinatura md5 igual, foto
+  tirada antes de aplicar). Medida em produção como `authenticated` (média de
+  10): ficha comum 16 ms (era 289 ms); ficha de lote 177 ms — consertada pela
+  1090.
+- **1090_cb_duplicatas_fora_do_lote** (no histórico:
+  `1087_cb_duplicatas_fora_do_lote`) — `CREATE OR REPLACE` da RPC com o
+  MESMO resultado: a ficha conta as fichas em volta DELA (±1 min, até 11) e,
+  com mais de 10 (lote), não busca candidatas pelo horário; a contagem do par
+  para na 11ª. Num Postgres 16 local com 8 mil fichas e um lote de 2 mil em
+  90 s, como `authenticated` (média de 50): ficha de lote 52 ms → 3,3 ms,
+  ficha comum igual; a base inteira devolve as mesmas 14 linhas nas duas.
+  Aplicada em 13/10/2026 pela Management API (histórico `20261013175900`),
+  depois do CI verde no commit `b2bad097`, com "aplique a migration 1087 em
+  produção" do operador. Conferida: o corpo novo, INVOKER, EXECUTE só de
+  `authenticated` e `service_role`; a RPC sobre a base INTEIRA (5.786 fichas,
+  o que com a 1089 estourava o tempo) devolve as mesmas 20 linhas da foto
+  tirada antes da 1089 (assinatura md5 igual). Medida em produção como
+  `authenticated` (média de 10): ficha de lote 177 → 9 ms; ficha comum 8 ms.
 
 ## Notas do histórico
 
