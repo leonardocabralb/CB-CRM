@@ -269,7 +269,8 @@ A fase 2 (decisões D6–D11 e desenho: `docs/PLANO-fichas-duplicadas.md`).
 - ⚠️⚠️ **As execuções SEGUEM O CARD (D8', 1093)**: `cb_execucoes_da_uniao`
   decide na prévia e na união — card que fica, continua (o contexto ganha a
   conversa nova; a retomada recusa a que não existe); card que a D7 apaga,
-  `fusao`; sem card, a da ficha que sai termina.
+  `fusao`; sem card, a da ficha que sai termina. Limite: a execução rodando
+  NO INSTANTE (espera `running`, primeiros passos) cai na regra da ficha.
 - ⚠️ **Identidade e janela pelas fichas COMO ESTAVAM**: o BSUID da que sai só
   passa quando uma das duas não tem telefone (com os dois, o webhook da Meta
   casaria o número antigo na conversa unida pelo BSUID e a resposta sairia

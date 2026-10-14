@@ -231,4 +231,10 @@ o operador escolheu (migration 1093):
     diferentes);
   - com o mesmo card carimbado pela Kommo nas duas fichas, o id do card
     apagado fica só na foto: se o delta da Kommo rodar de novo para esse
-    lead, ele recria o card.
+    lead, ele recria o card;
+  - execução RODANDO no instante da união (a espera que o cron acabou de
+    pegar, `status = 'running'`, ou os primeiros passos, antes de qualquer
+    espera — segundos) não mostra o card: cai na regra da FICHA, a D8
+    original (a da que sai termina, a da que fica segue). Codex no #410
+    (P1, 14/10); aceito pela régua do operador para corrida rara — o mesmo
+    limite de `so-na-etapa.ts`, que o código já declara.
