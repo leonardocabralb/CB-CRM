@@ -1368,6 +1368,28 @@ nome da época em que foram aplicadas.
   produção como `authenticated`: o aviso, 18,8 ms por chamada (média de 10);
   a união do e2e, 35 ms em média nas 3 chamadas. ⚠️ A 1093 (ajustes da
   revisão) refaz a receita da união.
+- **1093_cb_unir_fichas_ajustes** — os ajustes da revisão da 1092 e as
+  decisões D8'–D11 do operador (PR #410), só funções: `cb_unir_fichas` (as
+  execuções seguem o card; o BSUID só passa sem telefone numa das duas; a
+  janela da Meta do número que envia; a espera sem a fala da encerrada; o que
+  apontava para a cópia repetida passa para a que fica; a foto ampliada; as
+  conversas travadas antes das fichas; "Data e Hora Reunião" mais nova),
+  `cb_previa_da_uniao` (`automacoes_que_seguem`), `cb_divergencias_da_uniao`,
+  as peças novas `cb_execucoes_da_uniao` e `cb_instante_do_valor` (sem
+  EXECUTE para fora) e `cb_ficha_por_contato_antigo` com assinatura nova, SÓ
+  telefone (DROP da de 4 argumentos — o código em produção nunca a chamou; o
+  PR que a chama sai depois). ANTES do deploy. Provada na réplica do esquema
+  de produção (54 conferências e os cenários 2–7). Aplicada em 14/10/2026
+  pela Management API (histórico `20261014123254`), depois do CI verde no
+  commit `282cb826`, com "aplique em produção … pode gravar" do operador.
+  Conferida: antes de aplicar, as 5 funções de produção eram as da 1092 (md5
+  igual à réplica); depois, as 6 funções com o md5 da réplica, a busca antiga
+  sumida, EXECUTE como desenhado, 0 sobras da conferência (que exercita
+  execuções, card que passa e campo da reunião onde a conta os tem). e2e no
+  preview com ficha gêmea fictícia: a revisão com as contagens novas, o
+  "Trocar" com a execução sem card da ficha que sairia, a união, e a busca
+  nova da API medida no PostgREST real (`imatch` nos antigos e `id.in.(…)`
+  no `.or()`: acha pelo telefone antigo; sem o ramo, nada).
 
 ## Notas do histórico
 
