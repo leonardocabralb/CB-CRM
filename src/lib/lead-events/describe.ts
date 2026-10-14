@@ -13,6 +13,12 @@
 // duplicá-la produziria duas ordens diferentes para o mesmo fio.
 // ============================================================
 
+import {
+  lerContatosAntigos,
+  lerDivergencias,
+  type ContatoAntigo,
+  type DivergenciaDaUniao,
+} from '@/lib/contacts/uniao';
 import { VIAS, type ViaDaConversa } from '@/lib/conversations/origem-da-escrita';
 import type { ItemDeExecucao } from '@/lib/execucoes/desfecho';
 import type { ConversationNote, LeadEvent, LeadEventType } from '@/types';
@@ -63,6 +69,9 @@ const TIPOS_NA_CONVERSA: ReadonlySet<LeadEventType> = new Set([
   // pedido do operador, DENTRO da conversa.
   'conversation_status_changed',
   'conversation_assigned',
+  // A união de fichas (1092): o fio da ficha que ficou diz que a outra veio
+  // para cá — as mensagens dela estão logo acima.
+  'contacts_merged',
 ]);
 
 /**
@@ -132,6 +141,7 @@ export function chaveDoTexto(evento: LeadEvent): string {
     if (para === 'pending') return 'conversationPending';
     return 'conversationOpened';
   }
+  if (evento.event_type === 'contacts_merged') return 'contactsMerged';
   if (evento.event_type === 'conversation_assigned') {
     // Pelo ID, não pelo nome: o nome falta quando o membro já saiu da conta.
     if (!textoDoDetalhe(evento, 'para_responsavel_id')) return 'conversationUnassigned';
@@ -139,6 +149,31 @@ export function chaveDoTexto(evento: LeadEvent): string {
     return 'conversationReassigned';
   }
   return evento.event_type;
+}
+
+/**
+ * A união de fichas (1092), lida de `details` — JSON de fora, campo a campo:
+ * quem saiu (nome e telefone congelados), o que ficou de fora e os contatos
+ * antigos. `null` em evento de outro tipo.
+ */
+export function detalhesDaUniao(evento: LeadEvent): {
+  nome: string | null;
+  telefone: string | null;
+  divergencias: DivergenciaDaUniao[];
+  contatosAntigos: ContatoAntigo[];
+} | null {
+  if (evento.event_type !== 'contacts_merged') return null;
+  const removida = evento.details?.removida;
+  const ficha = removida && typeof removida === 'object' && !Array.isArray(removida)
+    ? (removida as Record<string, unknown>)
+    : {};
+  const texto = (v: unknown) => (typeof v === 'string' && v.trim() !== '' ? v : null);
+  return {
+    nome: texto(ficha.nome),
+    telefone: texto(ficha.telefone),
+    divergencias: lerDivergencias(evento.details?.divergencias),
+    contatosAntigos: lerContatosAntigos(evento.details?.contatos_antigos),
+  };
 }
 
 /** Nomes do responsável de antes e de depois, congelados pelo gatilho (1083). */

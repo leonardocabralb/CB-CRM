@@ -15,6 +15,9 @@ const busca = vi.hoisted(() => ({
 }))
 vi.mock('@/lib/contacts/dedupe', () => busca)
 
+const antigos = vi.hoisted(() => ({ fichaPorContatoAntigo: vi.fn() }))
+vi.mock('@/lib/contacts/contatos-antigos', () => antigos)
+
 import { conversaDoContato, resolverDestinatario } from './destinatario'
 
 let conversasExistentes: { id: string }[] = []
@@ -50,6 +53,7 @@ beforeEach(() => {
   insercoes = []
   cabecalhos = []
   busca.findExistingContact.mockReset().mockResolvedValue({ contato: null, falhou: false })
+  antigos.fichaPorContatoAntigo.mockReset().mockResolvedValue(null)
 })
 
 const WEBHOOK = { via: 'webhook' } as const
@@ -137,5 +141,32 @@ describe('a origem da conversa criada vai para a trilha (1083)', () => {
     await resolverDestinatario(db, 'conta-1', '5585999998888', 'Maria', { origem: WEBHOOK })
 
     expect(cabecalhos).toEqual([])
+  })
+})
+
+describe('resolverDestinatario — contato antigo de ficha unida (1092, D9)', () => {
+  it('com `contatoAntigo` (o webhook de entrada), o telefone antigo encontra a ficha que ficou — sem criar', async () => {
+    antigos.fichaPorContatoAntigo.mockResolvedValue('ficou-1')
+    conversasExistentes = [{ id: 'conversa-da-que-ficou' }]
+    const r = await resolverDestinatario(db, 'conta-1', '5585999998888', 'Maria', {
+      conversaNovaEncerrada: true,
+      origem: WEBHOOK,
+      contatoAntigo: true,
+    })
+    expect(antigos.fichaPorContatoAntigo).toHaveBeenCalledWith(db, 'conta-1', { telefone: '5585999998888', nome: 'Maria' })
+    expect(r).toEqual({ contactId: 'ficou-1', conversationId: 'conversa-da-que-ficou', criouContato: false })
+    expect(insercoes.find((i) => i.tabela === 'contacts')).toBeUndefined()
+  })
+
+  it('⚠️ SEM a opção (envio para um número, ligação), os contatos antigos nem são consultados', async () => {
+    await resolverDestinatario(db, 'conta-1', '5585999998888', 'Maria', { origem: MOTOR })
+    expect(antigos.fichaPorContatoAntigo).not.toHaveBeenCalled()
+  })
+
+  it('telefone que já é de uma ficha não consulta os contatos antigos', async () => {
+    busca.findExistingContact.mockResolvedValue({ contato: { id: 'contato-velho' }, falhou: false })
+    conversasExistentes = [{ id: 'conversa-ativa' }]
+    await resolverDestinatario(db, 'conta-1', '5585999998888', 'Maria', { origem: WEBHOOK, contatoAntigo: true })
+    expect(antigos.fichaPorContatoAntigo).not.toHaveBeenCalled()
   })
 })

@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { conversaDoContato, resolverDestinatario } from "@/lib/automations/destinatario";
 import { dispararAutomacoes } from "@/lib/automations/engine";
+import { fichaPorContatoAntigo } from "@/lib/contacts/contatos-antigos";
 import { findExistingContact } from "@/lib/contacts/dedupe";
 import { nomeParaFixar } from "@/lib/contacts/nome-fixado";
 
@@ -129,6 +130,33 @@ export async function processarAgendamento(
 
   const busca = await findExistingContact(admin, accountId, agendamento.telefone);
   if (busca.falhou) return { resultado: "falhou", detalhe: "busca do contato falhou", contactId: null };
+  // D9 (1092): o telefone de uma ficha UNIDA encontra a que ficou (com o
+  // mesmo primeiro nome), em vez de criar a duplicata de novo. Só o telefone
+  // (1093): o agendamento não procura a ficha pelo e-mail nem o atual, e o
+  // e-mail antigo só acende o aviso de possível duplicata.
+  let antiga: string | null = null;
+  if (!busca.contato) {
+    try {
+      antiga = await fichaPorContatoAntigo(admin, accountId, {
+        telefone: agendamento.telefone,
+        nome: agendamento.nome,
+      });
+    } catch (e) {
+      // ⚠️ `sem_contato`, não `falhou`: nada rodou ainda (nem a leitura das
+      // automações), então repetir é seguro — e `sem_contato` está em
+      // `RESULTADOS_REPROCESSAVEIS`, que o "Processar de novo" aceita. Com
+      // `falhou` o agendamento ficava sem volta: o "Executar automação" da
+      // conversa (o caminho do `falhou`) não serve ao lead que ainda não tem
+      // ficha. Criar a ficha aqui, nunca — seria a duplicata que a união
+      // desfez.
+      console.error("[calendly] a busca dos contatos antigos falhou:", e instanceof Error ? e.message : e);
+      return {
+        resultado: "sem_contato",
+        detalhe: "a busca dos contatos antigos falhou — nada rodou; processar de novo é seguro",
+        contactId: null,
+      };
+    }
+  }
 
   // ⚠️ ANTES de criar ficha: alguém escuta este evento? Ver o cabeçalho.
   const { data: automacoes, error: erroAuto } = await admin
@@ -137,7 +165,7 @@ export async function processarAgendamento(
     .eq("account_id", accountId)
     .eq("trigger_type", "calendly_booking")
     .eq("is_active", true);
-  const contatoExistente = busca.contato?.id ?? null;
+  const contatoExistente = busca.contato?.id ?? antiga;
   if (erroAuto) {
     return { resultado: "falhou", detalhe: `leitura das automações falhou: ${erroAuto.message}`, contactId: contatoExistente };
   }

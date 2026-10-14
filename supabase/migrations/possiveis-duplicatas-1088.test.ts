@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 // ============================================================
-// 1088 + 1089 + 1090 — possível duplicata: a mesma pessoa em duas fichas.
+// 1088 + 1089 + 1090 + 1092 — possível duplicata: a mesma pessoa em duas fichas.
 //
 // O que este pino segura:
 // - a RPC é SECURITY INVOKER: a RLS de `contacts` é a cerca (um DEFINER
@@ -24,7 +24,9 @@ import path from 'node:path';
 // - o par descartado e o par já ligado em Relacionados saem do aviso;
 // - decidir é de ADMIN, com a autoria de quem grava; ler é de qualquer
 //   membro, na forma da 1032; a decisão não se edita;
-// - nada para `anon`, e quem chama a RPC (INVOKER) chama as auxiliares.
+// - nada para `anon`, e quem chama a RPC (INVOKER) chama as auxiliares;
+// - o sinal 4 (1092): telefone ou e-mail que é CONTATO ANTIGO de uma ficha
+//   unida, nos dois sentidos, sem o nome (o valor já foi da pessoa).
 // O corpo da RPC é lido da ÚLTIMA migration que a define: quem a redefinir
 // de novo atualiza este pino. Os cenários (lote, e-mail de reserva, 9 a
 // mais, invertidos, outra conta, suspenso) e o tempo com 6 mil fichas foram
@@ -81,13 +83,33 @@ function cte(nome: string): string {
   throw new Error(`CTE ${nome} sem fim`);
 }
 
-describe('1088 + 1089 + 1090 — possível duplicata', () => {
-  it('a última definição da RPC é a da 1090 (redefiniu? atualize este pino)', () => {
+describe('1088 + 1089 + 1090 + 1092 — possível duplicata', () => {
+  it('a última definição da RPC é a da 1092 (redefiniu? atualize este pino)', () => {
     expect(definicoes).toEqual([
       '1088_cb_possiveis_duplicatas.sql',
       '1089_cb_duplicatas_sem_varredura.sql',
       '1090_cb_duplicatas_fora_do_lote.sql',
+      '1092_cb_unir_fichas.sql',
     ]);
+  });
+
+  it('o sinal 4 (1092): contato antigo nos dois sentidos, por igualdade, sem o nome', () => {
+    // O telefone/e-mail DESTA ficha é contato antigo de outra: pelo índice
+    // único (conta, tipo, valor).
+    const deOutra = cte('antigo_de_outra');
+    expect(deOutra).toMatch(/JOIN\s+public\.cb_contatos_antigos\s+a\s+ON\s+a\.account_id\s*=\s*eu\.account_id/i);
+    expect(deOutra).toMatch(/a\.tipo\s*=\s*'telefone'\s+AND\s+a\.valor\s*=\s*eu\.telefone/i);
+    expect(deOutra).toMatch(/a\.tipo\s*=\s*'email'\s+AND\s+a\.valor\s*=\s*eu\.email/i);
+    // Os contatos antigos DESTA ficha são o telefone/e-mail de outra: atrás
+    // da cerca, e o telefone pelo índice parcial da 1024.
+    expect(corpoDaRpc()).toMatch(/\bmeus_antigos\s+AS\s+MATERIALIZED\s*\(/i);
+    const meu = cte('antigo_meu');
+    expect(meu).toMatch(/o\.telefone_canonico\s*<>\s*''/i);
+    expect(meu).toMatch(/o\.telefone_canonico\s*=\s*m\.valor/i);
+    expect(meu).toMatch(/lower\(btrim\(o\.email\)\)\s*=\s*m\.valor/i);
+    // O motivo chega UMA vez por par, mesmo casando por telefone E e-mail.
+    expect(cte('unicos')).toMatch(/SELECT\s+DISTINCT\s+ON\s*\(\s*s\.id,\s*s\.motivo\s*\)/i);
+    expect(cte('eu')).toMatch(/nullif\(c\.telefone_canonico,\s*''\)\s+AS\s+telefone/i);
   });
 
   it('trava antes de criar e liga a RLS da tabela das decisões', () => {

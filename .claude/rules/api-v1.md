@@ -29,6 +29,21 @@ Vale ao mexer nas rotas `/api/v1`, nas chaves e escopos, na doc pública (`docs/
 - ⚠️ **Nome escrito pela API NÃO fica fixado** (o `PATCH /contacts/{id}` e o `name` do `POST /messages`): a próxima mensagem do cliente pode trazer o nome do perfil do WhatsApp. É o manifesto de `nome-fixado.chamadores.test.ts` ("sem marca, sem decisão do operador"); a doc diz isso. Mudar é decisão do operador, e a doc muda junto.
 - ⚠️ **`title` mandado pela API FIXA o título do card** (obrigatório no `POST /deals`, opcional no `PATCH`): o card deixa de seguir o nome da ficha. Está na doc.
 - ⚠️ **`meta_error` mistura recusa e entrega incerta** (qualquer exceção no envio à Meta, rede incluída): a doc manda repetir só quando o motivo é recusa.
+- ⚠️ **Id de ficha UNIDA a outra (1092) continua respondendo**: `GET`/`PATCH
+  /contacts/{id}`, `POST /contacts/{id}/tags` e `/contacts/{id}/custom-fields`
+  resolvem por `idAtualDaFicha` (o livro `cb_fichas_unidas` aponta para a
+  ficha de HOJE, também depois de uniões em cadeia) e respondem com o id NOVO.
+  As outras rotas que recebem `contact_id` não resolvem. E o `POST /contacts`
+  com o telefone antigo (SÓ ele, 1093: nada aqui procura por e-mail) e o
+  mesmo primeiro nome devolve a que ficou (`created: false`). Está na doc; o
+  Make de quem integra desliga no 1º erro.
+- ⚠️ **O `?search=` de `GET /contacts` acha a ficha pelo telefone ANTIGO**
+  (operador, 14/10/2026): termo só de dígitos, 8 ou mais
+  (`fichasPeloTelefoneAntigo`, canônico como o valor guardado), vira o ramo
+  `id.in.(…)` do `.or()`, com teto de 100 ids (vão na URL). A leitura dos
+  antigos que falha é 500, nunca a lista sem a ficha. Na doc também: o card
+  apagado na união dá 404 em `/deals/{id}`, e o `tags` substitutivo pelo id
+  antigo troca as etiquetas da ficha unida inteira.
 - **A agendada pela API conta como o DONO escrevendo** (`created_by` = dono): assina com o nome dele, pausa o agente de IA (gatilho da 1049) e reabre atribuindo a ele. O `POST /messages` não (sem `sender_id`). Está na doc; mudar é decisão do operador.
 
 ### API pública: escopo E rota, sempre em par

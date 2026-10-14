@@ -21,7 +21,12 @@ vi.mock("@/lib/automations/engine", () => motor);
 const destino = vi.hoisted(() => ({ resolverDestinatario: vi.fn(), conversaDoContato: vi.fn() }));
 vi.mock("@/lib/automations/destinatario", () => destino);
 
+// D9 (1092): a busca dos contatos antigos de fichas unidas — sem ficha antiga, por padrão.
+const antigos = vi.hoisted(() => ({ fichaPorContatoAntigo: vi.fn() }));
+vi.mock("@/lib/contacts/contatos-antigos", () => antigos);
+
 import { comFichaNova, processarAgendamento } from "./processar";
+import { RESULTADOS_REPROCESSAVEIS } from "./log";
 import { EVENTO_AGENDADO, type Agendamento } from "./payload";
 
 const AGENDAMENTO: Agendamento = {
@@ -69,6 +74,7 @@ const admin = {
 const ESCUTA = [{ trigger_type: "calendly_booking", trigger_config: {}, is_active: true }];
 
 beforeEach(() => {
+  antigos.fichaPorContatoAntigo.mockReset().mockResolvedValue(null);
   automacoes = ESCUTA;
   conversaExistente = null;
   busca.findExistingContact.mockReset().mockResolvedValue({ contato: null, falhou: false });
@@ -214,5 +220,49 @@ describe("comFichaNova", () => {
     expect(comFichaNova(base, false)).toBe(base);
     expect(comFichaNova(base, true).detalhe).toBe("ficha criada a partir do agendamento — 1 automação");
     expect(comFichaNova({ ...base, detalhe: null }, true).detalhe).toContain("sem detalhe");
+  });
+});
+
+describe("processarAgendamento — telefone de uma ficha UNIDA (1092, D9)", () => {
+  it("o contato antigo encontra a ficha que ficou: não cria ficha e dispara nela", async () => {
+    antigos.fichaPorContatoAntigo.mockResolvedValue("ficou-1");
+    conversaExistente = { id: "conv-1", channel_id: null };
+    const r = await processarAgendamento(admin, "acct-1", AGENDAMENTO);
+    expect(antigos.fichaPorContatoAntigo).toHaveBeenCalledWith(admin, "acct-1", {
+      telefone: "5519980000004",
+      nome: "Joel",
+    });
+    expect(destino.resolverDestinatario).not.toHaveBeenCalled();
+    expect(r).toMatchObject({ resultado: "disparado", contactId: "ficou-1" });
+  });
+
+  // D9 refinada (14/10/2026, 1093): o agendamento não procura a ficha pelo
+  // e-mail nem o atual — o e-mail antigo só acende o aviso de duplicata.
+  it("⚠️ só o TELEFONE vai à busca: o e-mail do agendamento NÃO é mandado", async () => {
+    await processarAgendamento(admin, "acct-1", { ...AGENDAMENTO, email: "joel@exemplo.invalid" });
+    const alvo = antigos.fichaPorContatoAntigo.mock.calls[0][2] as Record<string, unknown>;
+    expect(Object.keys(alvo).sort()).toEqual(["nome", "telefone"]);
+    expect(JSON.stringify(antigos.fichaPorContatoAntigo.mock.calls)).not.toContain("exemplo.invalid");
+  });
+
+  it("⚠️ a busca que falha é `sem_contato` (reprocessável) — nada roda e a ficha NÃO é criada de novo", async () => {
+    antigos.fichaPorContatoAntigo.mockRejectedValue(new Error("caiu"));
+    const erro = vi.spyOn(console, "error").mockImplementation(() => {});
+    const r = await processarAgendamento(admin, "acct-1", AGENDAMENTO);
+    expect(r).toMatchObject({ resultado: "sem_contato", contactId: null });
+    expect(r.detalhe).toContain("contatos antigos");
+    // É o que o "Processar de novo" aceita: com `falhou` o agendamento ficava
+    // sem volta — nada tinha rodado, e o lead pode nem ter ficha.
+    expect(RESULTADOS_REPROCESSAVEIS).toContain(r.resultado);
+    expect(destino.resolverDestinatario).not.toHaveBeenCalled();
+    expect(destino.conversaDoContato).not.toHaveBeenCalled();
+    expect(motor.dispararAutomacoes).not.toHaveBeenCalled();
+    erro.mockRestore();
+  });
+
+  it("telefone que já é de uma ficha não consulta os contatos antigos", async () => {
+    busca.findExistingContact.mockResolvedValue({ contato: { id: "c1", phone: "5519980000004" }, falhou: false });
+    await processarAgendamento(admin, "acct-1", AGENDAMENTO);
+    expect(antigos.fichaPorContatoAntigo).not.toHaveBeenCalled();
   });
 });

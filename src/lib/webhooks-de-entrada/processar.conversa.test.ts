@@ -57,7 +57,7 @@ describe("processarAcionamento — a conversa do lead", () => {
       "conta-1",
       "5585999998888",
       "Maria",
-      { conversaNovaEncerrada: true, origem: { via: "webhook" } }
+      { conversaNovaEncerrada: true, origem: { via: "webhook" }, contatoAntigo: true }
     );
   });
 });

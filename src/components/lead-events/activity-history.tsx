@@ -4,6 +4,8 @@ import { History } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { useLeadEvents } from '@/hooks/use-lead-events';
+import { formatarTelefone } from '@/lib/contacts/telefone';
+import { detalhesDaUniao } from '@/lib/lead-events/describe';
 import { LeadEventIcon } from './lead-event-icon';
 import { useLeadEventText } from './lead-event-text';
 import type { LeadEvent } from '@/types';
@@ -52,6 +54,31 @@ export function ActivityHistory({
   );
 }
 
+/**
+ * A união de fichas (1092) diz aqui o que ela guardou: os valores da ficha
+ * que saiu que NÃO couberam nesta (ficou o desta) e os contatos antigos — o
+ * operador pediu que nada se perdesse, e é aqui que ele confere.
+ */
+function DetalhesDaUniao({ evento }: { evento: LeadEvent }) {
+  const t = useTranslations('LeadEvents');
+  const uniao = detalhesDaUniao(evento);
+  if (!uniao) return null;
+  const foraDaFicha = uniao.divergencias.map((d) => {
+    const valor = d.saiu ?? '—';
+    if (d.campo === 'nome') return t('mergedName', { value: valor });
+    if (d.campo === 'empresa') return t('mergedCompany', { value: valor });
+    return t('mergedField', { field: d.rotulo ?? '—', value: valor });
+  });
+  const antigos = uniao.contatosAntigos.map((a) => (a.tipo === 'telefone' ? formatarTelefone(a.valor) : a.valor));
+  if (foraDaFicha.length === 0 && antigos.length === 0) return null;
+  return (
+    <div className="mt-1 space-y-0.5 text-[11px] text-muted-foreground">
+      {foraDaFicha.length > 0 && <p className="break-words">{t('mergedLeftOut', { list: foraDaFicha.join(' · ') })}</p>}
+      {antigos.length > 0 && <p className="break-words">{t('mergedOldContacts', { list: antigos.join(' · ') })}</p>}
+    </div>
+  );
+}
+
 function LinhaDoHistorico({ evento }: { evento: LeadEvent }) {
   const t = useTranslations('LeadEvents');
   const descrever = useLeadEventText();
@@ -65,6 +92,7 @@ function LinhaDoHistorico({ evento }: { evento: LeadEvent }) {
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-xs text-foreground">{texto}</p>
+          <DetalhesDaUniao evento={evento} />
           <p className="mt-0.5 text-[10px] text-muted-foreground">
             {autor} ·{' '}
             {new Date(evento.occurred_at).toLocaleString(undefined, {

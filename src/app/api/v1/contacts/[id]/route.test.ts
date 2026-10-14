@@ -18,6 +18,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const helpers = vi.hoisted(() => ({
   getContactById: vi.fn(),
+  idAtualDaFicha: vi.fn(),
   lerTagsPedidas: vi.fn(),
   setContactTags: vi.fn(),
   resolveAuditUserId: vi.fn(),
@@ -35,6 +36,7 @@ vi.mock('@/lib/auth/api-context', () => ({
 }));
 vi.mock('@/lib/api/v1/contacts', () => ({
   getContactById: helpers.getContactById,
+  idAtualDaFicha: helpers.idAtualDaFicha,
   lerTagsPedidas: helpers.lerTagsPedidas,
   setContactTags: helpers.setContactTags,
   resolveAuditUserId: helpers.resolveAuditUserId,
@@ -83,6 +85,8 @@ const get = (id: string) =>
 
 beforeEach(() => {
   for (const f of Object.values(helpers)) f.mockClear();
+  // A ficha existe: o id pedido é o de hoje.
+  helpers.idAtualDaFicha.mockImplementation(async (_db: unknown, _conta: unknown, id: string) => id);
   helpers.getContactById.mockResolvedValue({ id: ID, tags: [] });
   helpers.lerTagsPedidas.mockResolvedValue({ ids: [ETIQUETA], nomesNovos: [] });
   helpers.setContactTags.mockResolvedValue(undefined);
@@ -90,6 +94,7 @@ beforeEach(() => {
 });
 
 function nadaFoiTocado() {
+  expect(helpers.idAtualDaFicha).not.toHaveBeenCalled();
   expect(helpers.getContactById).not.toHaveBeenCalled();
   expect(helpers.lerTagsPedidas).not.toHaveBeenCalled();
   expect(helpers.setContactTags).not.toHaveBeenCalled();
@@ -281,5 +286,47 @@ describe('PATCH /api/v1/contacts/{id} — texto aparado, e vazio não apaga (26/
     const gravado = capturarUpdate();
     await patch(ID, { email: null });
     expect(gravado[0]).toHaveProperty('email', null);
+  });
+});
+
+describe('id de ficha UNIDA a outra (1092): responde e escreve na que ficou', () => {
+  const NOVO = '99999999-8888-4777-8666-555555555555';
+
+  it('GET devolve a ficha que ficou', async () => {
+    helpers.idAtualDaFicha.mockResolvedValue(NOVO);
+    helpers.getContactById.mockResolvedValue({ id: NOVO, tags: [] });
+    const res = await get(ID);
+    expect(res.status).toBe(200);
+    expect(helpers.getContactById).toHaveBeenCalledWith(expect.anything(), 'conta-1', NOVO);
+    expect((await res.json()).data.id).toBe(NOVO);
+  });
+
+  it('PATCH grava na que ficou — nome e etiquetas', async () => {
+    helpers.idAtualDaFicha.mockResolvedValue(NOVO);
+    helpers.getContactById.mockResolvedValue({ id: NOVO, tags: [] });
+    const filtros: unknown[][] = [];
+    helpers.from.mockImplementation(() => ({
+      update: () => {
+        const cadeia = {
+          eq: (...args: unknown[]) => {
+            filtros.push(args);
+            return cadeia;
+          },
+          then: (r: (v: unknown) => void) => r({ error: null }),
+        };
+        return cadeia;
+      },
+    }) as never);
+    const res = await patch(ID, { name: 'Maria Exemplo', tags: ['Typebot'] });
+    expect(res.status).toBe(200);
+    expect(filtros).toContainEqual(['id', NOVO]);
+    expect(helpers.setContactTags.mock.calls[0][3]).toBe(NOVO);
+  });
+
+  it('id que não é de ficha nem de união: 404', async () => {
+    helpers.idAtualDaFicha.mockResolvedValue(null);
+    expect((await get(ID)).status).toBe(404);
+    expect((await patch(ID, { name: 'Maria Exemplo' })).status).toBe(404);
+    expect(helpers.getContactById).not.toHaveBeenCalled();
   });
 });

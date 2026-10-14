@@ -35,6 +35,7 @@ import {
   prepararEscritaPorChave,
   serializeCustomFields,
 } from '@/lib/api/v1/custom-fields';
+import { idAtualDaFicha } from '@/lib/api/v1/contacts';
 import { salvarValoresDoContato } from '@/lib/contacts/custom-values';
 import { ehUuid } from '@/lib/tasks/validar';
 import type { CustomField } from '@/types';
@@ -48,21 +49,13 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 async function carregar(
   db: SupabaseClient,
   accountId: string,
-  contactId: string
-): Promise<{ fields: CustomField[]; values: Record<string, string> } | null> {
-  const { data: contato, error: contatoErr } = await db
-    .from('contacts')
-    .select('id')
-    .eq('id', contactId)
-    .eq('account_id', accountId)
-    .maybeSingle();
-  if (contatoErr) {
-    console.error('[api/v1/custom-fields] contact lookup error:', contatoErr);
-    // ⚠️ Erro de banco NUNCA vira "não encontrado" (regra do CLAUDE.md):
-    // timeout lido como 404 faria o integrador recriar o contato.
-    throw new ApiError('internal', 'Failed to load contact', 500);
-  }
-  if (!contato) return null;
+  idPedido: string
+): Promise<{ contactId: string; fields: CustomField[]; values: Record<string, string> } | null> {
+  // ⚠️ Erro de banco NUNCA vira "não encontrado" (regra do CLAUDE.md):
+  // timeout lido como 404 faria o integrador recriar o contato. Id de ficha
+  // UNIDA a outra (1092) lê e escreve na que ficou.
+  const contactId = await idAtualDaFicha(db, accountId, idPedido);
+  if (!contactId) return null;
 
   const [fieldsRes, valuesRes] = await Promise.all([
     db
@@ -95,7 +88,7 @@ async function carregar(
   for (const v of valuesRes.data ?? []) {
     values[v.custom_field_id as string] = (v.value as string | null) ?? '';
   }
-  return { fields: (fieldsRes.data ?? []) as CustomField[], values };
+  return { contactId, fields: (fieldsRes.data ?? []) as CustomField[], values };
 }
 
 export async function GET(
@@ -111,7 +104,7 @@ export async function GET(
     if (!dados) return fail('not_found', 'Contact not found', 404);
 
     return ok({
-      contact_id: id,
+      contact_id: dados.contactId,
       ...serializeCustomFields(dados.fields, dados.values),
     });
   } catch (err) {
@@ -196,22 +189,22 @@ export async function PATCH(
     // falhando por nada. Responde o estado atual.
     if (Object.keys(escrita.porId).length === 0) {
       return ok({
-        contact_id: id,
+        contact_id: dados.contactId,
         ...serializeCustomFields(dados.fields, dados.values),
       });
     }
 
-    const erro = await salvarValoresDoContato(ctx.supabase, id, escrita.porId);
+    const erro = await salvarValoresDoContato(ctx.supabase, dados.contactId, escrita.porId);
     if (erro) {
       console.error('[api/v1/custom-fields] write error:', erro);
       return fail('internal', 'Failed to save custom field values', 500);
     }
 
     // Estado pós-escrita — o n8n confirma o que ficou sem uma 2ª chamada.
-    const depois = await carregar(ctx.supabase, ctx.accountId, id);
+    const depois = await carregar(ctx.supabase, ctx.accountId, dados.contactId);
     if (!depois) return fail('not_found', 'Contact not found', 404);
     return ok({
-      contact_id: id,
+      contact_id: depois.contactId,
       ...serializeCustomFields(depois.fields, depois.values),
     });
   } catch (err) {

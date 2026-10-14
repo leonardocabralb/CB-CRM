@@ -11,7 +11,12 @@
 export type MotivoDaDuplicata =
   | { tipo: "mesmo_email" }
   | { tipo: "telefone_parecido" }
-  | { tipo: "criadas_juntas"; segundos: number };
+  | { tipo: "criadas_juntas"; segundos: number }
+  /**
+   * 1092: o telefone ou o e-mail de uma ficha é CONTATO ANTIGO da outra (de
+   * uma ficha unida a ela). Não depende do nome: o valor já foi da pessoa.
+   */
+  | { tipo: "contato_antigo" };
 
 /** A linha da RPC, crua. */
 export interface CandidataGravada {
@@ -53,7 +58,7 @@ export function lerMotivos(bruto: unknown): MotivoDaDuplicata[] {
   for (const item of bruto) {
     if (!item || typeof item !== "object") continue;
     const tipo = (item as { tipo?: unknown }).tipo;
-    if (tipo === "mesmo_email" || tipo === "telefone_parecido") {
+    if (tipo === "mesmo_email" || tipo === "telefone_parecido" || tipo === "contato_antigo") {
       motivos.push({ tipo });
     } else if (tipo === "criadas_juntas") {
       const s = Number((item as { segundos?: unknown }).segundos);

@@ -48,6 +48,7 @@ import {
   lerTagsDoCorpo,
   TagReferenceError,
 } from '@/lib/api/v1/tags-do-contato';
+import { fichasPeloTelefoneAntigo } from '@/lib/contacts/contatos-antigos';
 import { pareceIdDeEtiqueta } from '@/lib/contacts/id-de-etiqueta';
 import { ramoContem } from '@/lib/postgrest/literal';
 
@@ -97,7 +98,22 @@ export async function GET(request: Request) {
       .eq('account_id', ctx.accountId);
 
     if (search) {
-      query = query.or(`${ramoContem('name', search)},${ramoContem('phone', search)}`);
+      const ramos = [ramoContem('name', search), ramoContem('phone', search)];
+      // Fichas UNIDAS (1092): o telefone da ficha que saiu também acha a que
+      // ficou — o Make de quem integra procura pelos 8 últimos dígitos e
+      // desliga no primeiro erro (decisão do operador, 14/10/2026). Só termo
+      // de 8 dígitos ou mais (a régua está em `fichasPeloTelefoneAntigo`).
+      // ⚠️ Leitura que falha é 500, nunca "não achei": o integrador
+      // recriaria a ficha.
+      let peloTelefoneAntigo: string[];
+      try {
+        peloTelefoneAntigo = await fichasPeloTelefoneAntigo(ctx.supabase, ctx.accountId, search);
+      } catch (err) {
+        console.error('[api/v1/contacts] old-phone search error:', err);
+        return fail('internal', 'Failed to list contacts', 500);
+      }
+      if (peloTelefoneAntigo.length > 0) ramos.push(`id.in.(${peloTelefoneAntigo.join(',')})`);
+      query = query.or(ramos.join(','));
     }
 
     if (tag) {

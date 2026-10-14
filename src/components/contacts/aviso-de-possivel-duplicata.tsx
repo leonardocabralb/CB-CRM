@@ -17,6 +17,8 @@ import { useState } from "react";
 import { useCan } from "@/hooks/use-can";
 import { usePossiveisDuplicatas } from "@/hooks/use-possiveis-duplicatas";
 import type { Candidata } from "@/lib/contacts/duplicatas";
+import type { ResultadoDaUniao } from "@/lib/contacts/uniao";
+import { urlDoInbox } from "@/lib/inbox/url";
 
 import { CompararFichasDialog } from "./comparar-fichas-dialog";
 import { FaixaDePossivelDuplicata } from "./faixa-de-possivel-duplicata";
@@ -28,11 +30,28 @@ interface Props {
   resyncToken?: number;
   /** Abrir a conversa da OUTRA ficha. Sem ele, o botão não existe no "Comparar". */
   aoAbrirConversa?: (conversaId: string) => void;
+  /** O card aberto pelo QUADRO: depois de unir, a conversa leva a faixa "Voltar ao funil". */
+  origem?: "funil";
   /** As margens de quem monta. */
   className?: string;
 }
 
-function AvisoDaFicha({ contatoId, resyncToken = 0, aoAbrirConversa, className }: Props) {
+/**
+ * Depois de UNIR (1092), a página RECARREGA na conversa que ficou. Não é a
+ * navegação da página: a ficha aberta pode ter sido a que SAIU (o fio, o
+ * painel e o card mostrariam uma ficha que não existe), e as mensagens que
+ * passaram de conversa chegaram por UPDATE — o tempo real do fio só ouve
+ * INSERT. Sem conversa (duas fichas de formulário), recarrega onde está.
+ */
+function recarregarNaFichaQueFicou(resultado: ResultadoDaUniao, origem: "funil" | undefined) {
+  if (resultado.conversa) {
+    window.location.assign(urlDoInbox({ c: resultado.conversa, de: origem ?? null }));
+  } else {
+    window.location.reload();
+  }
+}
+
+function AvisoDaFicha({ contatoId, resyncToken = 0, aoAbrirConversa, origem, className }: Props) {
   const duplicatas = usePossiveisDuplicatas(contatoId, resyncToken);
   // Todos veem e comparam; decidir é de admin (D1).
   const podeDecidir = useCan("decide-duplicates");
@@ -58,6 +77,7 @@ function AvisoDaFicha({ contatoId, resyncToken = 0, aoAbrirConversa, className }
         podeDecidir={podeDecidir}
         acoes={duplicatas}
         aoAbrirConversa={aoAbrirConversa}
+        aoUnir={(resultado) => recarregarNaFichaQueFicou(resultado, origem)}
       />
     </>
   );

@@ -444,6 +444,7 @@ export function DealForm({
               {contatoDaFaixa && (
                 <AvisoDePossivelDuplicata
                   contatoId={contatoDaFaixa}
+                  origem="funil"
                   aoAbrirConversa={(conversaId) => {
                     // A jornada do funil: o retorno de rolagem e a faixa
                     // "Voltar ao funil", como o link "ver conversa".

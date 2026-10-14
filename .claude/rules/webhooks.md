@@ -77,6 +77,10 @@ I/O), a porta, o admin em `/api/cb/webhooks*` e a seção de Configurações.
   conversas do contato e solta o responsável.
 - ⚠️ **Lead novo não tem card, e `move_deal_stage` LANÇA**: automação de
   webhook que mexe no funil precisa de `create_deal` ANTES.
+- ⚠️ **Telefone que é CONTATO ANTIGO de uma ficha unida** (1092, D9) encontra
+  a que ficou: `resolverDestinatario({ contatoAntigo: true })`, só DESTE
+  chamador (cadastro), e só com o mesmo primeiro nome. O `send_to_number` e a
+  ligação não ligam a opção.
 - **`variaveis` guarda o ACHATADO, não o corpo cru**: a pergunta do operador é
   "por que `{{vars.nome}}` saiu vazio"; o cru seria uma segunda cópia de dado
   de cliente.

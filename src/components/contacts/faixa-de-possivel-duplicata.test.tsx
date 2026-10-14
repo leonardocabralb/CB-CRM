@@ -79,6 +79,12 @@ describe("FaixaDePossivelDuplicata", () => {
     expect(html).not.toContain("mesmo primeiro nome");
   });
 
+  it("contato de uma ficha UNIDA (1092): sinal próprio, sem pedir o primeiro nome", () => {
+    const html = desenhar([{ ...PARECIDA, motivos: [{ tipo: "contato_antigo" }] }], true);
+    expect(html).toContain(ptBR.Duplicatas.motivoContatoAntigo);
+    expect(html).not.toContain("mesmo primeiro nome");
+  });
+
   it("ficha apagada entre a conferência e a leitura: a linha fica, sem 'Comparar' ativo", () => {
     const html = desenhar([{ ...PARECIDA, ficha: null }], true);
     expect(html).toContain(ptBR.Duplicatas.fichaSumiu);

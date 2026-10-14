@@ -46,6 +46,9 @@ export function textoDosMotivos(t: T, motivos: MotivoDaDuplicata[]): string {
         partes.push(t("motivoTelefoneParecido"));
         dependeuDoNome = true;
         break;
+      case "contato_antigo":
+        partes.push(t("motivoContatoAntigo"));
+        break;
       case "criadas_juntas": {
         const intervalo = intervaloEntreAsFichas(m.segundos);
         partes.push(

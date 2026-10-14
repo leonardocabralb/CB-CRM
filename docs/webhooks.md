@@ -37,7 +37,12 @@ ficha se for número novo) → dispara as automações que têm o gatilho
   letra ou símbolo (um id do WhatsApp colado), com 0 na frente, com mais de
   15 dígitos ou um `55` sem DDD + 8 ou 9 dígitos é **recusado**: nenhuma
   ficha é criada, e o log diz o porquê. Número de outro país precisa do `+`.
-- **Campo do nome** — opcional; usado só quando a ficha é criada.
+- **Campo do nome** — opcional; usado quando a ficha é criada e para
+  reconhecer o **telefone antigo de uma ficha unida**: quando um
+  administrador une duas fichas, o telefone da que saiu fica guardado na que
+  ficou, e o acionamento com esse número e o **mesmo primeiro nome** age
+  sobre a ficha que ficou. Sem nome, ou com outro primeiro nome, nasce ficha
+  nova, e o CRM mostra as duas como possível duplicata.
 - **Campo do id** — opcional. Quando o sistema de fora manda um
   identificador estável do envio, o CRM ignora a reentrega do mesmo
   acionamento em vez de disparar tudo outra vez.

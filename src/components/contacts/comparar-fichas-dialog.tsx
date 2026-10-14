@@ -5,10 +5,10 @@
 //
 // Pedido do operador (13/10/2026): abrir os dois cards com as informações e
 // as conversas, um ao lado do outro, para conferir se são a mesma pessoa e
-// então descartar ou unir. Esta é a FASE 1 (docs/PLANO-fichas-duplicadas.md):
-// só o ADMIN decide (D1), e as decisões são "não é duplicata" e "pessoas
-// diferentes, mas ligadas". UNIR é a fase 2 — o diálogo diz isso em vez de
-// oferecer um botão que não existe (D5).
+// então descartar ou unir (docs/PLANO-fichas-duplicadas.md). Só o ADMIN
+// decide (D1): "não é duplicata", "pessoas diferentes, mas ligadas" e UNIR
+// (fase 2, 1092) — que abre a revisão (`RevisaoDaUniao`) no lugar das
+// colunas: o que fica, o que sai, o que passa e o que fica de fora.
 //
 // ⚠️ O recorte do PERFIL vale aqui: card de funil fora do escopo e conversa
 // de conexão fora do escopo NÃO aparecem (o perfil é restrição de
@@ -45,11 +45,13 @@ import { formatarData, TIPO_DATA } from "@/lib/contacts/campo-data";
 import type { Candidata } from "@/lib/contacts/duplicatas";
 import { nomeDoContato } from "@/lib/contacts/identidade";
 import { TETO_DA_DESCRICAO, type DesfechoDaEscrita } from "@/lib/contacts/relacionados";
+import type { ResultadoDaUniao } from "@/lib/contacts/uniao";
 import { envioQueNaoSaiu } from "@/lib/inbox/falha-do-envio";
 import { tipoNaoSuportado } from "@/lib/inbox/tipo-nao-suportado";
 import { canalNoEscopo, funilNoEscopo } from "@/lib/perfis/escopo";
 
 import { identidadeLegivel, textoDosMotivos } from "./faixa-de-possivel-duplicata";
+import { RevisaoDaUniao } from "./revisao-da-uniao";
 
 type T = ReturnType<typeof useTranslations<"Duplicatas.comparacao">>;
 
@@ -255,6 +257,7 @@ export function CompararFichasDialog({
   podeDecidir,
   acoes,
   aoAbrirConversa,
+  aoUnir,
 }: {
   /** A ficha de quem abriu (a conversa ou o card). */
   contatoId: string | null;
@@ -266,14 +269,19 @@ export function CompararFichasDialog({
   acoes: Pick<EstadoDasDuplicatas, "descartar" | "desfazerDescarte" | "ligar">;
   /** Abrir a conversa da OUTRA ficha. Sem ele (nenhum caminho de navegação ali), o botão não existe. */
   aoAbrirConversa?: (conversaId: string) => void;
+  /** Depois de UNIR (1092): a ficha de quem abriu pode ter sido a que saiu. */
+  aoUnir: (resultado: ResultadoDaUniao) => void;
 }) {
   const t = useTranslations("Duplicatas.comparacao");
   const tFaixa = useTranslations("Duplicatas");
+  const tUniao = useTranslations("Duplicatas.uniao");
   const outroId = candidata?.contatoId ?? null;
   const { fichas, carregando, falhou } = useComparacaoDeFichas(contatoId, outroId);
   const [ligando, setLigando] = useState(false);
   const [descricao, setDescricao] = useState("");
   const [gravando, setGravando] = useState(false);
+  /** A revisão da união no lugar das colunas. */
+  const [unindo, setUnindo] = useState(false);
 
   const esta = fichas?.find((f) => f.id === contatoId);
   const outra = fichas?.find((f) => f.id === outroId);
@@ -342,72 +350,95 @@ export function CompararFichasDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {carregando ? (
-          <p className="min-w-0 text-muted-foreground">{t("carregando")}</p>
-        ) : falhou ? (
-          <p className="min-w-0 text-red-600">{t("falhou")}</p>
+        {unindo && contatoId && outroId ? (
+          <RevisaoDaUniao
+            par={[contatoId, outroId]}
+            fichas={fichas}
+            aoVoltar={() => setUnindo(false)}
+            aoUnir={(resultado) => {
+              aoFechar();
+              toast.success(tUniao("toastUnidas"));
+              aoUnir(resultado);
+            }}
+          />
         ) : (
-          <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
-            <ColunaDaFicha t={t} titulo={t("estaFicha")} ficha={esta} semNome={tFaixa("semNome")} />
-            <ColunaDaFicha
-              t={t}
-              titulo={t("outraFicha")}
-              ficha={outra}
-              semNome={tFaixa("semNome")}
-              aoAbrirConversa={
-                aoAbrirConversa
-                  ? (conversaId) => {
-                      aoFechar();
-                      aoAbrirConversa(conversaId);
-                    }
-                  : undefined
-              }
-            />
-          </div>
-        )}
+          <>
+            {carregando ? (
+              <p className="min-w-0 text-muted-foreground">{t("carregando")}</p>
+            ) : falhou ? (
+              <p className="min-w-0 text-red-600">{t("falhou")}</p>
+            ) : (
+              <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
+                <ColunaDaFicha t={t} titulo={t("estaFicha")} ficha={esta} semNome={tFaixa("semNome")} />
+                <ColunaDaFicha
+                  t={t}
+                  titulo={t("outraFicha")}
+                  ficha={outra}
+                  semNome={tFaixa("semNome")}
+                  aoAbrirConversa={
+                    aoAbrirConversa
+                      ? (conversaId) => {
+                          aoFechar();
+                          aoAbrirConversa(conversaId);
+                        }
+                      : undefined
+                  }
+                />
+              </div>
+            )}
 
-        {/* No celular o rodapé é `flex-col-reverse`: o texto e o campo levam
-            `order-last` para ficar EM CIMA dos botões, não embaixo. */}
-        <DialogFooter className="min-w-0 sm:items-center">
-          {!podeDecidir ? (
-            <p className="text-xs text-muted-foreground sm:mr-auto">{t("soAdmin")}</p>
-          ) : ligando ? (
-            <>
-              <Input
-                autoFocus
-                value={descricao}
-                maxLength={TETO_DA_DESCRICAO}
-                onChange={(e) => setDescricao(e.target.value)}
-                placeholder={t("descricaoDoVinculo")}
-                aria-label={t("descricaoDoVinculo")}
-                className="order-last sm:order-none sm:mr-auto sm:max-w-sm"
-              />
-              <Button type="button" variant="outline" disabled={gravando} onClick={() => setLigando(false)}>
-                {t("cancelar")}
-              </Button>
-              <Button type="button" disabled={gravando || carregando || falhou} onClick={() => void ligar()}>
-                {t("confirmarLigacao")}
-              </Button>
-            </>
-          ) : (
-            <>
-              <p className="order-last text-xs text-muted-foreground sm:order-none sm:mr-auto sm:max-w-md">
-                {t("uniaoDepois")}
-              </p>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={gravando || carregando || falhou}
-                onClick={() => setLigando(true)}
-              >
-                {t("ligadas")}
-              </Button>
-              <Button type="button" disabled={gravando || carregando || falhou} onClick={() => void naoEDuplicata()}>
-                {t("naoEDuplicata")}
-              </Button>
-            </>
-          )}
-        </DialogFooter>
+            {/* No celular o rodapé é `flex-col-reverse`: o texto e o campo levam
+                `order-last` para ficar EM CIMA dos botões, não embaixo. */}
+            <DialogFooter className="min-w-0 sm:items-center">
+              {!podeDecidir ? (
+                <p className="text-xs text-muted-foreground sm:mr-auto">{t("soAdmin")}</p>
+              ) : ligando ? (
+                <>
+                  <Input
+                    autoFocus
+                    value={descricao}
+                    maxLength={TETO_DA_DESCRICAO}
+                    onChange={(e) => setDescricao(e.target.value)}
+                    placeholder={t("descricaoDoVinculo")}
+                    aria-label={t("descricaoDoVinculo")}
+                    className="order-last sm:order-none sm:mr-auto sm:max-w-sm"
+                  />
+                  <Button type="button" variant="outline" disabled={gravando} onClick={() => setLigando(false)}>
+                    {t("cancelar")}
+                  </Button>
+                  <Button type="button" disabled={gravando || carregando || falhou} onClick={() => void ligar()}>
+                    {t("confirmarLigacao")}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <p className="order-last text-xs text-muted-foreground sm:order-none sm:mr-auto sm:max-w-md">
+                    {t("decidaAbaixo")}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={gravando || carregando || falhou}
+                    onClick={() => setLigando(true)}
+                  >
+                    {t("ligadas")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={gravando || carregando || falhou}
+                    onClick={() => void naoEDuplicata()}
+                  >
+                    {t("naoEDuplicata")}
+                  </Button>
+                  <Button type="button" disabled={gravando || carregando || falhou} onClick={() => setUnindo(true)}>
+                    {tUniao("botao")}
+                  </Button>
+                </>
+              )}
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

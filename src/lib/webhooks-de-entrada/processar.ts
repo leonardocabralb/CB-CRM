@@ -217,7 +217,7 @@ export async function processarAcionamento(
       accountId,
       digitos,
       valorDoCampo(acionamento.variaveis, webhook.campo_nome),
-      { conversaNovaEncerrada: true, origem: { via: "webhook" } }
+      { conversaNovaEncerrada: true, origem: { via: "webhook" }, contatoAntigo: true }
     );
   } catch (err) {
     console.error("[webhooks-de-entrada] destinatário:", err);

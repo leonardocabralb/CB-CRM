@@ -128,3 +128,23 @@ describe("criarFichaDoAsaas", () => {
     expect(e.tabelas.contacts).toHaveLength(1);
   });
 });
+
+describe("criarFichaDoAsaas — telefone de uma ficha UNIDA (1092, D9)", () => {
+  const ANTIGO = { account_id: CONTA, contact_id: "ficou-1", tipo: "telefone", valor: "5584999990000" };
+
+  it("o número que virou contato antigo encontra a ficha que ficou, com o mesmo primeiro nome — sem criar", async () => {
+    const e = estado([{ id: "ficou-1", account_id: CONTA, phone: "5584988880000", name: "João Souza" }]);
+    e.tabelas.cb_contatos_antigos = [ANTIGO];
+    const r = await criarFichaDoAsaas(dubleDoSupabase(e), CONTA, { nome: "João Pedro Souza", telefone: "5584999990000" });
+    expect(r).toEqual({ ok: true, contactId: "ficou-1", criou: false, etiquetada: false });
+    expect(e.tabelas.contacts).toHaveLength(1);
+  });
+
+  it("⚠️ primeiro nome diferente: o número antigo pode ser de outra pessoa — cria a ficha nova", async () => {
+    const e = estado([{ id: "ficou-1", account_id: CONTA, phone: "5584988880000", name: "Maria Souza" }]);
+    e.tabelas.cb_contatos_antigos = [ANTIGO];
+    const r = await criarFichaDoAsaas(dubleDoSupabase(e), CONTA, { nome: "João Pedro Souza", telefone: "5584999990000" });
+    expect(r).toMatchObject({ ok: true, criou: true });
+    expect(e.tabelas.contacts).toHaveLength(2);
+  });
+});

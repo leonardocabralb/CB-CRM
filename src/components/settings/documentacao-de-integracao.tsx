@@ -514,6 +514,9 @@ export function DocumentacaoDeIntegracao({
               find-or-create SUBSTITUI o conjunto do contato que já existe, e
               o caso comum do Make é justamente o lead que já escreveu. */}
           <li>{t.rich("erros.tagsSubstituem", rico)}</li>
+          {/* Fichas unidas (1092/1093): o id antigo responde, a busca acha
+              pelo telefone antigo e o card apagado na união é 404. */}
+          <li>{t.rich("erros.fichaUnida", rico)}</li>
           <li>{t.rich("erros.usuario", rico)}</li>
           <li>{t.rich("erros.testUrl", rico)}</li>
           <li>{t.rich("erros.url", rico)}</li>

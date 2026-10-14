@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import { fichaPorContatoAntigo } from '@/lib/contacts/contatos-antigos'
 import { fichaQueVenceu, findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { marcarOrigem, type OrigemDaEscrita } from '@/lib/conversations/origem-da-escrita'
 
@@ -56,6 +57,13 @@ export async function resolverDestinatario(
      */
     conversaNovaEncerrada?: boolean
     /**
+     * D9 (1092): telefone que é CONTATO ANTIGO de uma ficha unida encontra a
+     * que ficou (com o mesmo primeiro nome) antes de criar. Só CADASTRO liga
+     * isto (o webhook de entrada): nunca o envio para um número nem a ligação —
+     * ali o número antigo abre ficha própria (`contatos-antigos.ts`).
+     */
+    contatoAntigo?: boolean
+    /**
      * Quem está criando, para a trilha da conversa (1083): "Conversa criada
      * já encerrada · por um webhook" explica sozinha por que o lead está em
      * Encerradas. Obrigatória para todo chamador declarar a sua.
@@ -71,6 +79,11 @@ export async function resolverDestinatario(
   let contactId: string | null = busca.contato?.id ?? null
   let criouContato = false
   let donoResolvido: string | null = null
+
+  if (!contactId && opcoes.contatoAntigo) {
+    // Estoura em erro de banco, como a busca acima: criar seria duplicar.
+    contactId = await fichaPorContatoAntigo(db, accountId, { telefone: digitos, nome })
+  }
 
   if (!contactId) {
     const dono = await donoDaConta(db, accountId)

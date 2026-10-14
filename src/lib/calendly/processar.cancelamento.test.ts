@@ -23,6 +23,10 @@ vi.mock("@/lib/automations/engine", () => motor);
 const destino = vi.hoisted(() => ({ resolverDestinatario: vi.fn() }));
 vi.mock("@/lib/automations/destinatario", () => destino);
 
+// D9 (1092): a busca dos contatos antigos de fichas unidas — sem ficha antiga, por padrão.
+const antigos = vi.hoisted(() => ({ fichaPorContatoAntigo: vi.fn() }));
+vi.mock("@/lib/contacts/contatos-antigos", () => antigos);
+
 import { processarAgendamento } from "./processar";
 import { EVENTO_AGENDADO, EVENTO_CANCELADO, type Agendamento } from "./payload";
 
@@ -92,6 +96,7 @@ const admin = {
 } as unknown as SupabaseClient;
 
 beforeEach(() => {
+  antigos.fichaPorContatoAntigo.mockReset().mockResolvedValue(null);
   chamadas = [];
   ordem = [];
   cancelamento = { data: null, error: null };

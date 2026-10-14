@@ -19,7 +19,7 @@
 - **(d) Escrita manual ou em lote no banco de PRODUÇÃO** (SQL pelo conector
   MCP, Management API, script): `.claude/rules/supabase.md` antes — gatilhos
   disparam POR LINHA, apagar contato deixa ponteiros nulos, fundir fichas só
-  pela receita.
+  por `cb_unir_fichas`.
 - **(e) Proposta que muda comportamento de produto:** seção 12 primeiro.
 - **(f) Subagente:** o prompt manda ler este arquivo e as regras da área PELA
   Read (o subagente Plan não carrega o CLAUDE.md).
@@ -204,8 +204,8 @@ Volta para `main` por PR no CB-CRM.
   `profiles.id`; `cb_tasks`, `conversations` e `notifications` guardam o id
   do LOGIN. Trocar dá 0 linhas, sem erro.
 - Apagar contato leva conversa e mensagens (CASCADE) e deixa ~18 tabelas com
-  ponteiro nulo (card em branco no Kanban). Fundir fichas = a receita de
-  `.claude/rules/supabase.md`; `merge_duplicate_contacts` não serve.
+  ponteiro nulo (card em branco no Kanban). Fundir fichas = `cb_unir_fichas`;
+  `merge_duplicate_contacts` não serve.
 - Negócio só nasce por `createDeal` no servidor (exceção: formulário do
   Funil). Transferência de funil = UM UPDATE (`pipeline_id` + `stage_id`
   juntos), senão a trilha conta duas mudanças. `cb_lead_events` e
@@ -527,8 +527,8 @@ O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
 - Contatos relacionados: vínculo PAR A PAR, visto dos dois lados, com
   descrição opcional; quem edita contato vincula; faixa "Voltar para" de um
   nível só (29/09/2026).
-- Possível duplicata: todos veem, só admin decide; só sinais fortes; sem
-  lista (conferida ao abrir); unir é a fase 2 (13/10/2026).
+- Possível duplicata: todos veem, só admin decide e une; só sinais fortes;
+  sem lista; unir: D6–D11 de `docs/PLANO-fichas-duplicadas.md` (13/10).
 - Tarefa recorrente: PELO CALENDÁRIO (nasce no dia do prazo, concluída ou
   não a anterior), contando do prazo anterior; só no formulário; avisa no
   sino (30/09/2026).
@@ -592,7 +592,7 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
 - `.claude/rules/funil-metricas.md` — degraus, coorte × por período,
   Desempenho, Saúde, Meta Ads.
 - `.claude/rules/contatos.md` — chave canônica do telefone, telefone
-  digitado, exclusão de contato, etiquetas, possível duplicata.
+  digitado, exclusão de contato, etiquetas, duplicatas e união.
 - `.claude/rules/campos-e-nome.md` — campo que salva sozinho, blocos de
   campos, e-mail espelhado, nome fixado.
 - `.claude/rules/integracoes-calendly.md` — ficha nasce do agendamento,

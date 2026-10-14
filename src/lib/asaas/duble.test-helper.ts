@@ -290,7 +290,37 @@ export function dubleDoSupabase(estado: EstadoDoDuble): SupabaseClient {
     };
     return q;
   }
-  return { from } as unknown as SupabaseClient;
+  /**
+   * A única RPC que estes caminhos chamam: a busca dos contatos antigos de
+   * fichas unidas (1092, D9; só o TELEFONE desde a 1093). Mesma régua do
+   * banco: telefone canônico exato na conta E o mesmo primeiro nome (3 letras
+   * ou mais, sem acento). Outra RPC é erro — e, como no PostgREST, que escolhe
+   * a função pelos NOMES dos argumentos, outro conjunto de argumentos também
+   * (o `p_email` da 1092 não casa com a função da 1093).
+   */
+  function rpc(nome: string, args: Record<string, unknown>) {
+    if (nome !== "cb_ficha_por_contato_antigo") {
+      return Promise.resolve({ data: null, error: { message: `rpc ${nome} não existe no dublê` } });
+    }
+    const recebidos = Object.keys(args).sort().join(", ");
+    if (recebidos !== "p_conta, p_nome, p_telefone_canonico") {
+      return Promise.resolve({ data: null, error: { message: `rpc ${nome}(${recebidos}) não existe (PGRST202)` } });
+    }
+    const primeiro = (v: unknown) =>
+      typeof v === "string"
+        ? (v.trim().split(/\s+/)[0] ?? "").normalize("NFD").replace(/\p{Mn}/gu, "").toLowerCase()
+        : "";
+    const alvo = primeiro(args.p_nome);
+    const achado = (estado.tabelas.cb_contatos_antigos ?? []).find((a) => {
+      if (a.account_id !== args.p_conta) return false;
+      if (a.tipo !== "telefone" || a.valor !== args.p_telefone_canonico) return false;
+      const ficha = tabela("contacts").find((c) => c.id === a.contact_id);
+      const nomeDaFicha = primeiro(ficha?.name);
+      return nomeDaFicha.length >= 3 && nomeDaFicha === alvo;
+    });
+    return Promise.resolve({ data: achado ? achado.contact_id : null, error: null });
+  }
+  return { from, rpc } as unknown as SupabaseClient;
 }
 
 export interface RespostasDoAsaas {

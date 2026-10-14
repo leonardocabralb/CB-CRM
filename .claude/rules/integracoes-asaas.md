@@ -63,6 +63,10 @@ o CRM só lê. O lado do MOTOR da régua (gatilhos `asaas_*` que casam só pelo
   criada entra em "todos os contatos" do disparo; a etiqueta é o que deixa
   excluí-la. `findExistingContact` é o PORTÃO anti-duplicata, não o vínculo:
   ficha que só bate pelo sufixo vai para "Para confirmar".
+- ⚠️ **Número que é CONTATO ANTIGO de uma ficha unida** (1092, D9), com o
+  mesmo primeiro nome, é a ficha que ficou: `criarFichaDoAsaas` a devolve em
+  vez de criar outra (depois de `findExistingContact` não achar nada — nem
+  pelo sufixo).
 - ⚠️⚠️ **Ficha APAGADA pelo administrador não é recriada em origem
   NENHUMA**: `criar` só quando `vinculo_origem IS NULL`. A FK é `ON DELETE SET
   NULL (contact_id)` e a origem sobrevive; guardando só em `criada`, o cliente
