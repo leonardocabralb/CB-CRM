@@ -528,7 +528,7 @@ O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
   descrição opcional; quem edita contato vincula; faixa "Voltar para" de um
   nível só (29/09/2026).
 - Possível duplicata: todos veem, só admin decide e une; só sinais fortes;
-  sem lista; unir: D6–D9 de `docs/PLANO-fichas-duplicadas.md` (13/10).
+  sem lista; unir: D6–D11 de `docs/PLANO-fichas-duplicadas.md` (13/10).
 - Tarefa recorrente: PELO CALENDÁRIO (nasce no dia do prazo, concluída ou
   não a anterior), contando do prazo anterior; só no formulário; avisa no
   sino (30/09/2026).

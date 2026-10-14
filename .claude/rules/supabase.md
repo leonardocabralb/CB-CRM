@@ -401,7 +401,7 @@ um espelho com pino lendo o SQL. Mudou um lado, muda o outro.
   upstream, APAGA as tarefas e lembretes do perdedor pelo CASCADE, roda em
   TODAS as contas e agrupa por grafia exata (não vê as duas grafias do nono
   dígito).
-- **Fundir fichas = `cb_unir_fichas` (1092)**: a RECEITA mora na função
+- **Fundir fichas = `cb_unir_fichas` (1093)**: a RECEITA mora na função
   (`contatos.md`, "Unir fichas"). O que ela trata e que vale para quem
   escrever à mão: os únicos por contato (`contact_tags`,
   `contact_custom_values`, `cb_atlas_clientes` por AMBIENTE com `api_url IS

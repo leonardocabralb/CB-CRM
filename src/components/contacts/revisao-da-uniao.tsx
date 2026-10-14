@@ -1,14 +1,17 @@
 'use client';
 
 // ============================================================
-// UNIR AS FICHAS (1092) — a revisão antes de unir, dentro do "Comparar".
+// UNIR AS FICHAS (1092/1093) — a revisão antes de unir, dentro do "Comparar".
 //
-// Decisões do operador (13/10/2026, docs/PLANO-fichas-duplicadas.md):
+// Decisões do operador (13–14/10/2026, docs/PLANO-fichas-duplicadas.md):
 //   D6 o sistema SUGERE a ficha que fica; o admin pode trocar;
 //   D7 um card por funil — o mais avançado fica, o outro sai com a história
 //      indo para o que fica;
-//   D8 as automações em curso da ficha que sai terminam;
-//   D9 telefone e e-mail da que sai viram contatos antigos da que fica.
+//   D8' as automações em curso SEGUEM O CARD: a de card que sai termina, a de
+//      card que fica continua; sem card, a da ficha que sai termina;
+//   D9' telefone e e-mail da que sai viram contatos antigos da que fica; só o
+//      telefone encontra a ficha nos cadastros;
+//   D10 "Data e Hora Reunião" nas duas: fica a mais nova.
 // Só admin (D1). Sem desfazer: por isso a tela mostra ANTES, pela prévia do
 // banco (`cb_previa_da_uniao`), tudo o que a união vai fazer — e sem a
 // prévia não há botão.
@@ -263,11 +266,15 @@ function CorpoDaPrevia({
         </section>
       )}
 
-      {(c.automacoesInterrompidas > 0 || c.robosParados > 0) && (
+      {(c.automacoesInterrompidas > 0 ||
+        c.automacoesQueSeguem > 0 ||
+        c.robosParados > 0) && (
         <p className="text-xs">
           {[
             c.automacoesInterrompidas > 0 &&
               t('automacoes', { count: c.automacoesInterrompidas }),
+            c.automacoesQueSeguem > 0 &&
+              t('automacoesSeguem', { count: c.automacoesQueSeguem }),
             c.robosParados > 0 && t('robos', { count: c.robosParados }),
           ]
             .filter(Boolean)

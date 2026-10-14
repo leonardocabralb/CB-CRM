@@ -58,6 +58,32 @@ ficha que sai e os valores que não couberam ficam guardados.
   mensagem de WhatsApp do número antigo abre conversa própria; o aviso de
   possível duplicata ganha o sinal "contato de uma ficha unida".
 
+### Fase 2 — refinamentos (14/10/2026, depois da revisão da 1092)
+
+A revisão independente mostrou casos que as decisões de 13/10 não cobriam;
+o operador escolheu (migration 1093):
+
+- **D8' — As automações SEGUEM O CARD.** A D7 decide por card e a D8 decidia
+  por ficha: o card que fica podia ser o da ficha que sai (o do Calendly, em
+  "Reunião Agendada"), e a confirmação dele era cortada enquanto o follow-up
+  do card apagado continuava. Agora: execução de card que fica continua,
+  venha de qual ficha vier; a de card apagado termina (`fusao`); sem card,
+  vale a D8 (a da ficha que sai termina, a da que fica segue). A revisão
+  mostra as que terminam e as que seguem.
+- **D9' — Só o TELEFONE antigo encontra a ficha nos cadastros.** Nenhum
+  cadastro procura a ficha pelo e-mail ATUAL; com a 1092, o e-mail ANTIGO
+  casava, e um agendamento com telefone novo e o e-mail antigo caía na ficha
+  unida, com a confirmação e os lembretes indo para o telefone dela. O e-mail
+  antigo só acende o aviso de possível duplicata.
+- **D10 — "Data e Hora Reunião" nas duas: fica a MAIS NOVA.** Os lembretes e
+  a pauta leem esse campo; a reunião futura da ficha que sai não pode ficar
+  de fora. A outra data vai para o Histórico.
+- **D11 — A busca da API acha pelo telefone antigo.** O cenário do Make da
+  agência busca o contato pelos 8 últimos dígitos e desliga no primeiro erro:
+  depois de uma união, quem agendasse com o número da ficha que saiu não seria
+  achado. `GET /api/v1/contacts?search=` passa a procurar também nos telefones
+  antigos.
+
 ## Medição (13/10/2026, somente leitura)
 
 - Ficha com 2 cards abertos no mesmo funil: **1** caso na base. O problema
@@ -167,8 +193,9 @@ ficha que sai e os valores que não couberam ficam guardados.
 | 3 | Diálogo "Comparar" + decisões do admin | [x] código; [x] preview: as duas colunas, "Não é duplicata" + "Desfazer" do aviso, "Pessoas diferentes, mas ligadas" (o vínculo aparece nos Contatos relacionados) |
 | 4 | Faixa no formulário do card | [x] código; [x] preview (o "Comparar" abre por cima do formulário) |
 | 5 | Regras, revisão, preview, PR | PR #403 (fora do rascunho em 13/10); regras de contatos e de fusão, CLAUDE.md (seção 12), MERGE-UPSTREAM. [x] preview (como admin; a visão de quem não é admin fica no teste da faixa) [x] revisão independente (13/10): nomes reais na conferência da 1088 trocados por fictícios; 1090; o "Comparar" que reabria sozinho (componente único que remonta por ficha); faixa e aba Relacionados sincronizadas; rótulos de falha, ligação e telefone; rodapé no celular. [x] preview das correções (13/10, ficha gêmea fictícia com telefone pontuado, apagada no fim): telefone sem "++", rodapé no celular na ordem certa, ligar pelo "Comparar" atualiza a aba Relacionados e desvincular na aba devolve a faixa, sem recarregar. Merge por SQUASH (decisão do operador, 13/10/2026): o histórico do PR tem o commit com os nomes reais, e o `main` recebe um commit único, limpo. |
-| 6 | Fase 2 — migration 1092 (unir, prévia, livro, contatos antigos, sinal 4) | [x] Provada numa RÉPLICA do esquema de produção (catálogo copiado só de leitura, sem dado; Postgres 16 local) com dados fictícios: 51 conferências no cenário das duas fichas com conversa e cards nos mesmos funis; só a que sai com conversa; ficha só-BSUID; bloqueios (Instagram, BSUIDs, contas, mesma ficha); portas (atendente, admin suspenso, dono de outra conta, sem sessão, peças internas); a trava contra tabela nova esquecida; sinal 4 nos dois sentidos e sob RLS; a busca dos cadastros (nome igual, diferente, ausente, outra conta). Aplicada duas vezes; a conferência une um par fictício e desfaz. Com 200 mil mensagens: prévia 13 ms, união 49 ms. [ ] CI [ ] aplicada em produção |
-| 7 | Fase 2 — tela e cadastros | [x] "Unir as fichas" no "Comparar" (revisão com sugestão e "Trocar", cards, o que passa, contatos antigos, o que fica de fora, automações interrompidas, bloqueios, aviso de que não se desfaz); recarrega na conversa que ficou. [x] A linha da união no fio e no Histórico (com o que ficou de fora). [x] Motivo `fusao` no "Já rodou". [x] Contatos antigos na API v1, Calendly, webhook de entrada e Asaas. [x] Id antigo na API v1. [ ] preview [ ] revisão independente [ ] PR |
+| 6 | Fase 2 — migration 1092 (unir, prévia, livro, contatos antigos, sinal 4) | [x] Provada numa RÉPLICA do esquema de produção (catálogo copiado só de leitura, sem dado; Postgres 16 local) com dados fictícios: 51 conferências no cenário das duas fichas com conversa e cards nos mesmos funis; só a que sai com conversa; ficha só-BSUID; bloqueios (Instagram, BSUIDs, contas, mesma ficha); portas (atendente, admin suspenso, dono de outra conta, sem sessão, peças internas); a trava contra tabela nova esquecida; sinal 4 nos dois sentidos e sob RLS; a busca dos cadastros (nome igual, diferente, ausente, outra conta). Aplicada duas vezes; a conferência une um par fictício e desfaz. Com 200 mil mensagens: prévia 13 ms, união 49 ms. [x] CI verde (`50360f0d`) [x] aplicada em produção em 14/10/2026 (histórico `20261014002055`; a conferência uniu um par fictício e desfez, 0 sobras). [x] e2e no preview com ficha gêmea FICTÍCIA do lead de teste: sugestão certa, "Trocar" e volta, união em 35 ms, linha no fio e no Histórico, sinal 4 conferido com uma 2ª ficha fictícia; as fichas fictícias e o contato antigo apagados (ficam no lead de teste a linha do livro e a da trilha). |
+| 6b | Migration 1093: ajustes da revisão + D8'–D11 | [x] Revisão independente da 1092 (14/10). [x] Na réplica: 54 conferências (o cenário 1 com execuções presas a card que passa, a card apagado e sem card; BSUID; reunião mais nova; citação e agendada que apontavam para a cópia), os cenários 2–7 (BSUID que não passa com os dois telefones e passa da ficha só-BSUID; bloqueios e portas; sinal 4; busca só pelo telefone), banco vazio e aplicada duas vezes (a conferência exercita execuções, card que passa e campo da reunião). [ ] CI [ ] aplicada em produção [ ] e2e |
+| 7 | Fase 2 — tela e cadastros | [x] "Unir as fichas" no "Comparar" (revisão com sugestão e "Trocar", cards, o que passa, contatos antigos, o que fica de fora, automações interrompidas, bloqueios, aviso de que não se desfaz); recarrega na conversa que ficou. [x] A linha da união no fio e no Histórico (com o que ficou de fora). [x] Motivo `fusao` no "Já rodou". [x] Contatos antigos na API v1, Calendly, webhook de entrada e Asaas. [x] Id antigo na API v1. [x] preview (e2e de 14/10, linha 6) [x] revisão independente (14/10; os achados viraram a 1093 e as decisões D8'–D11) [x] PR #410 (rascunho). Com a 1093: as execuções que seguem na revisão; só o telefone antigo nos cadastros; busca da API pelo telefone antigo; falha da busca no Calendly reprocessável. [ ] preview das mudanças da 1093 |
 
 ## Limites conhecidos
 
@@ -196,4 +223,12 @@ ficha que sai e os valores que não couberam ficam guardados.
     outro está na foto do livro);
   - contato antigo não se apaga pela tela (só a próxima união mexe nele);
   - a análise do Radar da conversa que sai some quando a que fica tem a sua
-    (a próxima análise refaz a janela).
+    (a próxima análise refaz a janela);
+  - a busca dos cadastros confere só o PRIMEIRO nome: o dono do número
+    digitado errado, com o mesmo primeiro nome, que agendar pelo Calendly com
+    esse número cai na ficha unida (o Calendly a renomeia). Raro; o nome
+    inteiro quebraria o caso comum (formulário e agendamento com grafias
+    diferentes);
+  - com o mesmo card carimbado pela Kommo nas duas fichas, o id do card
+    apagado fica só na foto: se o delta da Kommo rodar de novo para esse
+    lead, ele recria o card.

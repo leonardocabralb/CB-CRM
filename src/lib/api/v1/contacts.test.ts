@@ -192,7 +192,7 @@ describe('findOrCreateContact: nome, e-mail e empresa aparados (26/09/2026)', ()
   });
 });
 
-describe('findOrCreateContact: telefone ou e-mail de uma ficha UNIDA (1092, D9)', () => {
+describe('findOrCreateContact: telefone de uma ficha UNIDA (1092, D9; só o telefone desde a 1093)', () => {
   function dbSemFicha() {
     const inseridos: Record<string, unknown>[] = [];
     const cadeia: Record<string, unknown> = {
@@ -212,14 +212,27 @@ describe('findOrCreateContact: telefone ou e-mail de uma ficha UNIDA (1092, D9)'
   it('o contato antigo devolve a ficha que ficou — sem criar', async () => {
     antigos.fichaPorContatoAntigo.mockResolvedValue('ficou-1');
     const { db, inseridos } = dbSemFicha();
-    const r = await findOrCreateContact(db, 'acc', 'user', { phone: '81 98874-5316', name: ' Maria ', email: ' m@x.com ' });
+    const r = await findOrCreateContact(db, 'acc', 'user', { phone: '81 98874-5316', name: ' Maria ' });
     expect(r).toEqual({ id: 'ficou-1', created: false });
     expect(antigos.fichaPorContatoAntigo).toHaveBeenCalledWith(db, 'acc', {
       telefone: '5581988745316',
-      email: 'm@x.com',
       nome: 'Maria',
     });
     expect(inseridos).toHaveLength(0);
+  });
+
+  // D9 refinada (14/10/2026, 1093): o find-or-create não procura a ficha pelo
+  // e-mail nem o atual — o e-mail antigo só acende o aviso de duplicata.
+  it('⚠️ só o TELEFONE vai à busca: o e-mail do corpo NÃO é mandado', async () => {
+    const { db } = dbSemFicha();
+    await findOrCreateContact(db, 'acc', 'user', {
+      phone: '81 98874-5316',
+      name: 'Maria',
+      email: 'maria@exemplo.invalid',
+    });
+    const alvo = antigos.fichaPorContatoAntigo.mock.calls[0][2] as Record<string, unknown>;
+    expect(Object.keys(alvo).sort()).toEqual(['nome', 'telefone']);
+    expect(JSON.stringify(antigos.fichaPorContatoAntigo.mock.calls)).not.toContain('exemplo.invalid');
   });
 
   it('⚠️ a busca que falha é 500 — nunca cria a ficha de novo', async () => {

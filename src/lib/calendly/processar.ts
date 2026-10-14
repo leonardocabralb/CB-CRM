@@ -130,18 +130,31 @@ export async function processarAgendamento(
 
   const busca = await findExistingContact(admin, accountId, agendamento.telefone);
   if (busca.falhou) return { resultado: "falhou", detalhe: "busca do contato falhou", contactId: null };
-  // D9 (1092): o telefone ou o e-mail de uma ficha UNIDA encontra a que
-  // ficou (com o mesmo primeiro nome), em vez de criar a duplicata de novo.
+  // D9 (1092): o telefone de uma ficha UNIDA encontra a que ficou (com o
+  // mesmo primeiro nome), em vez de criar a duplicata de novo. Só o telefone
+  // (1093): o agendamento não procura a ficha pelo e-mail nem o atual, e o
+  // e-mail antigo só acende o aviso de possível duplicata.
   let antiga: string | null = null;
   if (!busca.contato) {
     try {
       antiga = await fichaPorContatoAntigo(admin, accountId, {
         telefone: agendamento.telefone,
-        email: agendamento.email,
         nome: agendamento.nome,
       });
-    } catch {
-      return { resultado: "falhou", detalhe: "busca dos contatos antigos falhou", contactId: null };
+    } catch (e) {
+      // ⚠️ `sem_contato`, não `falhou`: nada rodou ainda (nem a leitura das
+      // automações), então repetir é seguro — e `sem_contato` está em
+      // `RESULTADOS_REPROCESSAVEIS`, que o "Processar de novo" aceita. Com
+      // `falhou` o agendamento ficava sem volta: o "Executar automação" da
+      // conversa (o caminho do `falhou`) não serve ao lead que ainda não tem
+      // ficha. Criar a ficha aqui, nunca — seria a duplicata que a união
+      // desfez.
+      console.error("[calendly] a busca dos contatos antigos falhou:", e instanceof Error ? e.message : e);
+      return {
+        resultado: "sem_contato",
+        detalhe: "a busca dos contatos antigos falhou — nada rodou; processar de novo é seguro",
+        contactId: null,
+      };
     }
   }
 

@@ -342,6 +342,16 @@ case-insensitive substring of the name or the phone, matched literally —
 (from `GET /api/v1/tags`) — unlike the write endpoints below, a tag name
 there is a `400 bad_request`.
 
+> **Merged contacts.** A `search` made **only of digits, 8 or more** (the
+> last 8 digits of a number are enough) also finds a contact through the
+> phone of a contact that was merged into it (see
+> [Merged contacts](#post-apiv1contacts) below): the result is the contact
+> that stayed, with its **current** `phone`. A full number with `55` matches
+> with or without the mobile ninth digit (`5581988745316` or
+> `558188745316`). A shorter search, or one with anything besides digits,
+> matches only the current name and phone. If the CRM cannot read the old
+> phones, the answer is a `500` — never a list missing the contact.
+
 ```json
 {
   "data": [
@@ -392,13 +402,17 @@ new contact returns `201`. The response body is the serialized contact
 (same shape as the list rows above).
 
 > **Merged contacts.** When an administrator merges two contacts in the CRM,
-> the phone and e-mail of the contact that was removed are kept as *old
-> contacts* of the one that stayed. A `POST /contacts` with one of them
-> returns the contact that stayed (`200`) instead of creating a new one —
-> **only when the first name matches** (a mistyped number may belong to
-> someone else). Without a name, or with a different first name, a new
-> contact is created and the CRM shows both side by side as a possible
-> duplicate.
+> the phone of the contact that was removed is kept as an *old phone* of the
+> one that stayed. A `POST /contacts` with that phone returns the contact
+> that stayed (`200`) instead of creating a new one — **only when the first
+> name matches** (a mistyped number may belong to someone else). Without a
+> name, or with a different first name, a new contact is created and the CRM
+> shows both side by side as a possible duplicate. **Only the phone:** this
+> endpoint never looks a contact up by e-mail (not even by the current one),
+> so an old e-mail does not find it either — it only makes the CRM show the
+> possible duplicate. The contact that stayed carries the tags of **both**:
+> a `tags` in the default replace mode replaces all of them (see the warning
+> below).
 
 > ⚠️ **When the contact already exists, `tags` REPLACES its whole tag set**
 > (while `name`, `email` and `company` are ignored for it). Sending
@@ -456,6 +470,12 @@ not a UUID returns `400 bad_request` (here and on `/custom-fields` and
 > write **the contact that stayed**, and the response carries its **new**
 > `id` (`contact_id` on `/custom-fields`) — store it. Other endpoints that
 > take a `contact_id` do not resolve old ids.
+>
+> ⚠️ The contact that stayed carries the tags of **both** contacts. A
+> `PATCH` with `tags` in the default replace mode through the old id
+> replaces the tags of the **whole merged contact** — the ones that came
+> from the other contact included. To only add, send `"tags_mode": "add"` or
+> use `POST /api/v1/contacts/{id}/tags`.
 
 > ⚠️ `tags` here replaces the whole set — sending `["Lead"]` removes
 > every other tag the contact had — unless you send `"tags_mode": "add"`.
@@ -1061,6 +1081,20 @@ outcome is reopened (`status: open`) — also when the same request sends
 `status: "lost"` for a deal that is already lost. To keep a deal lost while
 moving it, move it to a stage marked *lost*. A won deal stays won when it
 moves to a stage without an outcome. The response shows the final status.
+
+**Merged contacts.** When two contacts are merged in the CRM and **both**
+have a deal in the same pipeline, only one deal stays there — the most
+advanced: won, then open, then lost; then the one further along the
+pipeline; on a tie, the deal of the contact that stayed. The other deal is
+**deleted**: its id answers `404` here, and no webhook event is sent.
+Before that, its history (activity trail, signed documents) and its notes
+move to the deal that stayed, which also takes the value, assignee,
+expected close date and `channel_id` it did not have. Every deal that stays
+keeps its `id`; one that belonged to the removed contact now has the
+`contact_id` of the contact that stayed (and a `source: "channel"` deal
+becomes `"manual"` when that contact already has one). To find the deal
+that stayed, list `GET /api/v1/deals?contact_id=` with the **new** contact
+id — the old one is not resolved there.
 
 ### `GET /api/v1/meetings`
 

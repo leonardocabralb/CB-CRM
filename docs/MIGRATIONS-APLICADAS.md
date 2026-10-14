@@ -1351,6 +1351,23 @@ nome da época em que foram aplicadas.
   a pedido do operador, marcadas pela tela de Gerenciar funil (o teste de
   ponta a ponta): "Desqualificado" no Bancário - Comercial e no Previdenciário
   - Comercial, "Desqualificado - Sem Direito" no Trabalhista - Comercial.
+- **1092_cb_unir_fichas** — a fase 2 das fichas duplicadas (PR #410): o livro
+  `cb_fichas_unidas` (foto da ficha que saiu, divergências, resumo; gatilho
+  que grava `contacts_merged` na trilha) e `cb_contatos_antigos` (leitura na
+  forma da 1032, escrita só pelas funções, nada para `anon`); os CHECKs de
+  `automation_logs.interrompida_por` (+`fusao`) e da trilha
+  (+`contacts_merged`); as RPCs `cb_previa_da_uniao`/`cb_unir_fichas` (admin
+  sem suspensão), as peças internas, `cb_ficha_por_contato_antigo` (só
+  `service_role`) e o sinal 4 em `cb_possiveis_duplicatas`. ADITIVA e ANTES do
+  deploy. Provada numa réplica do esquema de produção. Aplicada em 14/10/2026
+  pela Management API (histórico `20261014002055`), depois do CI verde no
+  commit `50360f0d`, com "aplique a migration 1092 em produção" do operador.
+  Conferida: os CHECKs de produção eram os que a migration recria (mais os
+  valores novos); a conferência embutida uniu um par fictício e desfez (0
+  sobras); EXECUTE e privilégios das tabelas como desenhados. Medida em
+  produção como `authenticated`: o aviso, 18,8 ms por chamada (média de 10);
+  a união do e2e, 35 ms em média nas 3 chamadas. ⚠️ A 1093 (ajustes da
+  revisão) refaz a receita da união.
 
 ## Notas do histórico
 

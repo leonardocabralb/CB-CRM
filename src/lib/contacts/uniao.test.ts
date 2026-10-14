@@ -46,6 +46,7 @@ const PREVIA = {
     etiquetas_novas: 1,
     campos_preenchidos: 2,
     automacoes_interrompidas: 2,
+    automacoes_que_seguem: 1,
   },
   nome_final: 'Maria Teste Silva',
   divergencias: [
@@ -124,6 +125,7 @@ describe('lerPrevia', () => {
       camposPreenchidos: 2,
       agendadas: 1,
       automacoesInterrompidas: 2,
+      automacoesQueSeguem: 1,
       robosParados: 1,
     });
   });
@@ -143,7 +145,7 @@ describe('lerPrevia', () => {
     expect(lerPrevia({ ...PREVIA, bloqueios: 'instagram' })).toBeNull();
   });
 
-  it('card sem destino legível sai da lista; contagem torta vira zero; motivo desconhecido vira nulo', () => {
+  it('card sem destino legível sai da lista; motivo desconhecido vira nulo; número torto vira inteiro ≥ 0', () => {
     const p = lerPrevia({
       ...PREVIA,
       cards: [
@@ -151,14 +153,21 @@ describe('lerPrevia', () => {
         null,
         PREVIA.cards[1],
       ],
-      contagens: { mensagens: 'x', tarefas: -3, anotacoes: 2.6 },
+      contagens: { ...PREVIA.contagens, tarefas: -3, anotacoes: 2.6 },
       motivo_da_sugestao: 'sorteio',
     })!;
     expect(p.cards.map((c) => c.dealId)).toEqual(['d-12']);
-    expect(p.contagens.mensagens).toBe(0);
     expect(p.contagens.tarefas).toBe(0);
     expect(p.contagens.anotacoes).toBe(3);
     expect(p.motivoDaSugestao).toBeNull();
+  });
+
+  it('⚠️ contagem que falta (ou não é número) é forma inesperada — lida como zero, a tela afirmaria "nada a mais"', () => {
+    expect(lerPrevia({ ...PREVIA, contagens: undefined })).toBeNull();
+    expect(lerPrevia({ ...PREVIA, contagens: { ...PREVIA.contagens, mensagens: 'x' } })).toBeNull();
+    const semAsQueSeguem: Record<string, unknown> = { ...PREVIA.contagens };
+    delete semAsQueSeguem.automacoes_que_seguem;
+    expect(lerPrevia({ ...PREVIA, contagens: semAsQueSeguem })).toBeNull();
   });
 });
 

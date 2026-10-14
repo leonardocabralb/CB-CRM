@@ -77,10 +77,12 @@ Decisão do operador (08/09/2026): telefone sem contato não é mais
   ganha lead que ninguém pediu.
 - ⚠️ **Falha ao criar vira `sem_contato`, não `falhou`**: nada rodou, repetir é
   seguro, e é o que "Processar de novo" aceita.
-- ⚠️ **Telefone ou e-mail que é CONTATO ANTIGO de uma ficha unida** (1092, D9)
+- ⚠️ **Telefone que é CONTATO ANTIGO de uma ficha unida** (1092, D9; SÓ o
+  telefone desde a 1093 — o e-mail antigo só acende o aviso de duplicata)
   encontra a que ficou ANTES de criar (`fichaPorContatoAntigo`, só com o
-  mesmo primeiro nome). A busca que falha é `falhou`, nunca "criar" — seria a
-  duplicata desfeita de volta.
+  mesmo primeiro nome). A busca que falha é `sem_contato` (nada rodou; o
+  "Processar de novo" aceita), nunca "criar" — seria a duplicata desfeita de
+  volta — nem `falhou`, que deixaria o agendamento sem volta.
 - ⚠️ **A conversa nasce com `channel_id` NULO** e `channelInScope` deixa passar
   canal nulo: automação restrita a uma conexão ainda dispara para lead novo.
   Apertar essa regra desliga o Calendly para lead novo.

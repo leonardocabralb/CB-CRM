@@ -237,11 +237,11 @@ operador, medição e fases: `docs/PLANO-fichas-duplicadas.md`.
   telefone/e-mail desta é contato antigo de outra, ou o contrário), SEM o
   nome: o valor já foi da pessoa.
 
-### Unir fichas (1092)
-A fase 2 (decisões D6–D9 e desenho: `docs/PLANO-fichas-duplicadas.md`).
-`cb_previa_da_uniao`/`cb_unir_fichas`, `src/lib/contacts/uniao.ts` (puro),
-`use-uniao-de-fichas.ts`, `revisao-da-uniao.tsx` (no "Comparar"),
-`contatos-antigos.ts`.
+### Unir fichas (1092/1093)
+A fase 2 (decisões D6–D11 e desenho: `docs/PLANO-fichas-duplicadas.md`).
+`cb_previa_da_uniao`/`cb_unir_fichas` (a receita vigente é a da 1093),
+`src/lib/contacts/uniao.ts` (puro), `use-uniao-de-fichas.ts`,
+`revisao-da-uniao.tsx` (no "Comparar"), `contatos-antigos.ts`.
 - ⚠️⚠️ **A receita de fusão MORA na função** (uma transação, SECURITY
   DEFINER, admin sem suspensão). No fim ela percorre pelo CATÁLOGO toda FK
   para `contacts` e para a conversa que sai, e RECUSA (`uniao_sem_tratamento`)
@@ -256,13 +256,28 @@ A fase 2 (decisões D6–D9 e desenho: `docs/PLANO-fichas-duplicadas.md`).
 - ⚠️ **Depois de unir, a página RECARREGA na conversa que ficou**
   (`recarregarNaFichaQueFicou`): a ficha aberta pode ter sido a que saiu, e as
   mensagens que mudaram de conversa chegam por UPDATE (o fio só ouve INSERT).
-- ⚠️⚠️ **Contato antigo só nos CADASTROS (D9)**: `fichaPorContatoAntigo`
-  roda DEPOIS da busca normal não achar, com o MESMO primeiro nome, na API v1
-  (`findOrCreateContact`), no Calendly, no webhook de entrada
-  (`resolverDestinatario({ contatoAntigo: true })`) e na ficha do Asaas.
-  NUNCA na ingestão, no envio, na ligação nem no `send_to_number`: a mensagem
-  do número antigo abre ficha própria, e o sinal 4 a mostra. Erro da busca é
-  falha (500/`falhou`), nunca "criar" — seria a duplicata desfeita de volta.
+- ⚠️⚠️ **Contato antigo só nos CADASTROS e só o TELEFONE (D9')**:
+  `fichaPorContatoAntigo` roda DEPOIS da busca normal não achar, com o MESMO
+  primeiro nome, na API v1 (`findOrCreateContact`), no Calendly, no webhook
+  de entrada (`resolverDestinatario({ contatoAntigo: true })`) e na ficha do
+  Asaas. O e-mail antigo NÃO casa (nenhum cadastro procura pelo e-mail
+  atual): só acende o sinal 4. NUNCA na ingestão, no envio, na ligação nem no
+  `send_to_number`: a mensagem do número antigo abre ficha própria, e o sinal
+  4 a mostra. Erro da busca é falha (500; `sem_contato` no Calendly, que
+  reprocessa), nunca "criar" — seria a duplicata desfeita de volta. A busca
+  `?search=` da API acha pelo telefone antigo (D11, `api-v1.md`).
+- ⚠️⚠️ **As execuções SEGUEM O CARD (D8', 1093)**: `cb_execucoes_da_uniao`
+  decide na prévia e na união — card que fica, continua (o contexto ganha a
+  conversa nova; a retomada recusa a que não existe); card que a D7 apaga,
+  `fusao`; sem card, a da ficha que sai termina.
+- ⚠️ **Identidade e janela pelas fichas COMO ESTAVAM**: o BSUID da que sai só
+  passa quando uma das duas não tem telefone (com os dois, o webhook da Meta
+  casaria o número antigo na conversa unida pelo BSUID e a resposta sairia
+  para o outro número); a janela da Meta é a do número para o qual a conversa
+  ENVIA; a espera não ressuscita fala de conversa encerrada.
+- **D10**: "Data e Hora Reunião" (`data_e_hora_reuniao`) nas duas fica a MAIS
+  NOVA (`cb_instante_do_valor`: ISO com fuso; valor torto vira nulo e fica o
+  da que fica). Travas: conversas ANTES das fichas.
 - **Id antigo na API v1**: `idAtualDaFicha` (`api-v1.md`).
 - **Instagram fica de fora** (bloqueio): a conversa mista é a Fase 5 de
   `docs/PLANO-instagram-direct.md`.

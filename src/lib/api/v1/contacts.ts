@@ -181,14 +181,15 @@ export async function findOrCreateContact(
   const existing = busca.contato;
   if (existing) return { id: existing.id, created: false };
 
-  // D9 (1092): telefone ou e-mail de uma ficha UNIDA encontra a que ficou,
-  // com o mesmo primeiro nome — o formulário que repete o número antigo não
-  // recria a duplicata desfeita. Falha de banco é 500, nunca "criar".
+  // D9 (1092): o telefone de uma ficha UNIDA encontra a que ficou, com o
+  // mesmo primeiro nome — o formulário que repete o número antigo não recria
+  // a duplicata desfeita. Só o telefone (1093): este find-or-create não
+  // procura a ficha pelo e-mail nem o atual, e o e-mail antigo só acende o
+  // aviso de possível duplicata. Falha de banco é 500, nunca "criar".
   let antiga: string | null;
   try {
     antiga = await fichaPorContatoAntigo(db, accountId, {
       telefone: sanitized,
-      email: aparadoOuNulo(input.email),
       nome: aparadoOuNulo(input.name),
     });
   } catch (err) {

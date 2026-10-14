@@ -374,7 +374,8 @@ status e etiqueta, e automações e colegas no Kanban movem o card com a
 conversa aberta — a linha "Avançou de … para …" só aparecia depois de
 atualizar.
 
-- Tipos da conversa (1083) têm `deal_id` nulo: leitor de funil filtra o tipo.
+- Tipos da conversa (1083) e `contacts_merged` (1092) têm `deal_id` nulo:
+  leitor de funil filtra o tipo.
 - **Só INSERT**, filtrado por `contact_id`. A trilha só cresce; o evento
   apagado por um desfazer de carga some na próxima busca. O `token`
   (atualizar, volta à aba, reconexão) continua refazendo a busca.

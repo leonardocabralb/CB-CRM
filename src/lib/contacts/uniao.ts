@@ -1,11 +1,11 @@
 // ============================================================
-// UNIR FICHAS (1092) — a regra pura do lado da tela.
+// UNIR FICHAS (1092/1093) — a regra pura do lado da tela.
 //
 // Quem decide e faz é o banco: `cb_previa_da_uniao` diz o que a união vai
 // fazer (sem gravar) e `cb_unir_fichas` a faz, numa transação. Aqui só se lê
 // o JSON que eles devolvem — dado de fora, campo a campo — e se traduz a
 // recusa num motivo que a tela explica. Plano e decisões do operador
-// (D6–D9): docs/PLANO-fichas-duplicadas.md.
+// (D6–D11): docs/PLANO-fichas-duplicadas.md.
 // ============================================================
 
 /** O que impede unir. Código que o app não conhece BLOQUEIA (falha fechada). */
@@ -48,9 +48,25 @@ export interface ContagensDaUniao {
   etiquetasNovas: number;
   camposPreenchidos: number;
   agendadas: number;
+  /** D8' (1093): das DUAS fichas — a de card apagado também termina. */
   automacoesInterrompidas: number;
+  /** As da ficha que sai que continuam com o card dela (D8'). */
+  automacoesQueSeguem: number;
   robosParados: number;
 }
+
+/** As contagens que a prévia TEM de trazer: sem uma delas, a tela afirmaria "nada a mais". */
+const CONTAGENS = [
+  'mensagens',
+  'anotacoes',
+  'tarefas',
+  'etiquetas_novas',
+  'campos_preenchidos',
+  'agendadas',
+  'automacoes_interrompidas',
+  'automacoes_que_seguem',
+  'robos_parados',
+] as const;
 
 export type MotivoDaSugestao =
   'mensagem_do_cliente' | 'atividade' | 'mais_nova';
@@ -171,11 +187,14 @@ export function lerDivergencias(v: unknown): DivergenciaDaUniao[] {
  * Lê a prévia (`cb_previa_da_uniao`). NULO = resposta que não tem a forma
  * esperada: a tela diz "não foi possível conferir" e NÃO oferece unir —
  * unir sem saber o que vai acontecer é o que a prévia existe para impedir.
+ * ⚠️ Contagem que falta também é forma inesperada: lida como zero, a tela
+ * afirmaria "a que sai não tem conversa, anotação…" sem saber.
  */
 export function lerPrevia(bruto: unknown): PreviaDaUniao | null {
   const o = objeto(bruto);
   if (!o || !Array.isArray(o.cards) || !Array.isArray(o.bloqueios)) return null;
-  const c = objeto(o.contagens) ?? {};
+  const c = objeto(o.contagens);
+  if (!c || CONTAGENS.some((k) => typeof c[k] !== 'number')) return null;
   const motivo = o.motivo_da_sugestao;
   return {
     sugeridaFica: texto(o.sugerida_fica),
@@ -202,6 +221,7 @@ export function lerPrevia(bruto: unknown): PreviaDaUniao | null {
       camposPreenchidos: inteiro(c.campos_preenchidos),
       agendadas: inteiro(c.agendadas),
       automacoesInterrompidas: inteiro(c.automacoes_interrompidas),
+      automacoesQueSeguem: inteiro(c.automacoes_que_seguem),
       robosParados: inteiro(c.robos_parados),
     },
   };
