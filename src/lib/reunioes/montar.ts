@@ -261,7 +261,7 @@ export function montarPauta(d: DadosDaPauta): { reunioes: ReuniaoDaPauta[]; funi
   const completar = (
     base: Pick<
       ReuniaoDaPauta,
-      'origem' | 'reuniaoId' | 'inicio' | 'fim' | 'evento' | 'link' | 'reagendamento' | 'remarcadaDe'
+      'origem' | 'reuniaoId' | 'inicio' | 'fim' | 'evento' | 'link' | 'reagendamento' | 'reagendadaDe' | 'remarcadaDe'
     >,
     contactId: string | null,
     desde: string | null,
@@ -400,6 +400,7 @@ export function montarPauta(d: DadosDaPauta): { reunioes: ReuniaoDaPauta[]; funi
         evento: r.evento,
         link: r.link,
         reagendamento: r.reagendamento || remarcadaPara !== null,
+        reagendadaDe: r.reagendadaDe,
         remarcadaDe: remarcadaPara === null ? null : r.inicio,
       },
       linha.contact_id,
@@ -423,6 +424,7 @@ export function montarPauta(d: DadosDaPauta): { reunioes: ReuniaoDaPauta[]; funi
         evento: comAlgo(a.titulo),
         link: comAlgo(a.local),
         reagendamento: false,
+        reagendadaDe: null,
         remarcadaDe: null,
       },
       a.contact_id,

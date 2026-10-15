@@ -70,6 +70,7 @@ const reuniao: ReuniaoDaPauta = {
   evento: null,
   link: null,
   reagendamento: false,
+  reagendadaDe: null,
   remarcadaDe: null,
   proximaEm: null,
   anteriorEm: null,

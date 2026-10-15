@@ -67,6 +67,21 @@ describe('montarReunioesExternas', () => {
       [],
     );
     expect(desmarcadas(lista)).toEqual({ r1: 'reagendada', r2: 'reagendada', r3: null });
+    // Cada horário novo sabe qual substituiu (o "era …" da pauta).
+    const de = Object.fromEntries(lista.map((r) => [r.id, r.reagendadaDe]));
+    expect(de).toEqual({ r1: null, r2: '2026-09-10T20:30:00.000Z', r3: '2026-09-10T20:45:00.000Z' });
+  });
+
+  it('o horário antigo do reagendamento sai da MESMA inferência: ambíguo fica nulo', () => {
+    const a = calendly({ id: 'a', inicio: '2026-10-01T13:00:00Z', recebido_em: '2026-09-20T10:00:00Z' });
+    const b = calendly({ id: 'b', inicio: '2026-10-02T13:00:00Z', recebido_em: '2026-09-21T10:00:00Z' });
+    const c = calendly({ id: 'c', inicio: '2026-10-03T13:00:00Z', recebido_em: '2026-09-22T10:00:00Z', situacao: 'Reagendamento' });
+    const comAviso = montarReunioesExternas([a, b, c], new Set([a.invitee_uri]), []);
+    expect(comAviso.find((r) => r.id === 'c')?.reagendadaDe).toBe('2026-10-01T13:00:00.000Z');
+    // Sem o aviso de cancelamento, dois candidatos: não chuta o horário antigo.
+    const semAviso = montarReunioesExternas([a, b, c], new Set(), []);
+    expect(semAviso.find((r) => r.id === 'c')?.reagendamento).toBe(true);
+    expect(semAviso.find((r) => r.id === 'c')?.reagendadaDe).toBeNull();
   });
 
   it('com duas reuniões futuras do mesmo tipo, só marca quando o cancelamento desempata (Codex, PR #331)', () => {
@@ -178,7 +193,7 @@ describe('montarReunioesExternas', () => {
 
 describe('lerReunioesExternas', () => {
   it('lê a resposta da rota', () => {
-    const r = { id: 'a', origem: 'calendly', evento: 'X', inicio: '2026-09-22T13:00:00.000Z', fim: null, desmarcada: 'reagendada', reagendamento: false, link: null };
+    const r = { id: 'a', origem: 'calendly', evento: 'X', inicio: '2026-09-22T13:00:00.000Z', fim: null, desmarcada: 'reagendada', reagendamento: false, reagendadaDe: null, link: null };
     expect(lerReunioesExternas({ reunioes: [r] })).toEqual([r]);
   });
 
@@ -192,10 +207,11 @@ describe('lerReunioesExternas', () => {
 
   it('valor desconhecido não inventa desmarcação; booleano só liga com true', () => {
     const [r] = lerReunioesExternas({
-      reunioes: [{ id: 'a', origem: 'kommo', inicio: '2026-05-12T17:00:00Z', desmarcada: 'sumiu', reagendamento: 1 }],
+      reunioes: [{ id: 'a', origem: 'kommo', inicio: '2026-05-12T17:00:00Z', desmarcada: 'sumiu', reagendamento: 1, reagendadaDe: 'ontem' }],
     })!;
     expect(r.desmarcada).toBeNull();
     expect(r.reagendamento).toBe(false);
+    expect(r.reagendadaDe).toBeNull();
   });
 });
 

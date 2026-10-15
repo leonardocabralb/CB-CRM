@@ -88,6 +88,8 @@ describe('montarPauta', () => {
     );
     expect(reunioes.map((r) => r.reuniaoId)).toEqual(['novo']);
     expect(reunioes[0].reagendamento).toBe(true);
+    // O selo "Remarcada pelo cliente · era …" sabe o horário antigo.
+    expect(reunioes[0].reagendadaDe).toBe('2026-09-30T14:00:00.000Z');
   });
 
   it('a inferência de reagendamento é POR CONTATO: o reagendamento de um não apaga a reunião de outro', () => {
@@ -657,6 +659,7 @@ describe('montarPauta — remarcada pela ficha ("Data e Hora Reunião")', () => 
         fonte: 'tela',
         etapa: null,
         valor: null,
+        fechou: false,
       });
     });
 

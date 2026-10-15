@@ -198,6 +198,7 @@ describe('resultadoDaReuniao', () => {
       fonte: 'funil',
       etapa: 'Reunião Sem Proposta',
       valor: null,
+      fechou: false,
     });
   });
 
@@ -226,6 +227,25 @@ describe('resultadoDaReuniao', () => {
     });
     expect(r?.tipo).toBe('proposta');
     expect(r?.fonte).toBe('funil');
+  });
+
+  it('"Fechou contrato" só quando o card ENTROU numa etapa de fechamento (contrato ou pasta)', () => {
+    const comPasta = new Map([
+      ...POR_ID,
+      ['pasta', { id: 'pasta', pipelineId: 'banc', nome: 'Pasta', posicao: 10, degrau: 'pasta', marca: null }],
+    ]);
+    const pela = (entradas: EntradaDaTrilha[], marcos: LinhaDoMarco[] = []) =>
+      resultadoDaReuniao({ inicio, ate: null, dealId: 'd1', marcos, entradas, etapas: comPasta });
+
+    expect(pela([entrada('2026-09-29T15:00:00Z', 'prop'), entrada('2026-09-29T16:00:00Z', 'contrato')])).toMatchObject({
+      tipo: 'proposta',
+      etapa: 'Contrato Fechado',
+      fechou: true,
+    });
+    expect(pela([entrada('2026-09-29T16:00:00Z', 'pasta')])).toMatchObject({ tipo: 'proposta', fechou: true });
+    expect(pela([entrada('2026-09-29T15:00:00Z', 'prop')])).toMatchObject({ tipo: 'proposta', fechou: false });
+    // O botão "Com proposta" leva à proposta: o marco da tela nunca diz contrato.
+    expect(pela([], [marco({ resultado: 'proposta', valor: 18000 })])).toMatchObject({ fonte: 'tela', fechou: false });
   });
 
   it('o marco de QUALIFICADA não é resultado', () => {
@@ -361,7 +381,7 @@ describe('resultadoDaReuniao — Reagendar (1081)', () => {
       entradas: [entrada('2026-09-28T16:00:01Z', 'reag', 'Leo')],
       etapas: POR_ID_R,
     });
-    expect(r).toEqual({ tipo: 'reagendar', em: '2026-09-28T16:00:00Z', por: 'Leo', fonte: 'tela', etapa: null, valor: null });
+    expect(r).toEqual({ tipo: 'reagendar', em: '2026-09-28T16:00:00Z', por: 'Leo', fonte: 'tela', etapa: null, valor: null, fechou: false });
     expect(faseDaReuniao(reuniao({ inicio, resultado: r }), new Date('2026-09-28T17:00:00Z'))).toBe('com_resultado');
     expect(pendentes([reuniao({ inicio, resultado: r })], new Date('2026-09-29T15:00:00Z'))).toEqual([]);
   });
@@ -388,7 +408,7 @@ describe('resultadoDaReuniao — Reagendar (1081)', () => {
       entradas: [entrada('2026-09-29T14:05:00Z', 'reag', 'Bia')],
       etapas: POR_ID_R,
     });
-    expect(r).toEqual({ tipo: 'reagendar', em: '2026-09-29T14:05:00Z', por: 'Bia', fonte: 'funil', etapa: 'Reagendar', valor: null });
+    expect(r).toEqual({ tipo: 'reagendar', em: '2026-09-29T14:05:00Z', por: 'Bia', fonte: 'funil', etapa: 'Reagendar', valor: null, fechou: false });
   });
 
   it('vence o MAIS RECENTE: Reagendar antes do horário e, depois do início, No Show pelo quadro → no show', () => {
@@ -486,6 +506,7 @@ function reuniao(p: Partial<ReuniaoDaPauta>): ReuniaoDaPauta {
     evento: null,
     link: null,
     reagendamento: false,
+    reagendadaDe: null,
     remarcadaDe: null,
     proximaEm: null,
     anteriorEm: null,
@@ -509,7 +530,7 @@ describe('faseDaReuniao', () => {
     expect(faseDaReuniao(r, new Date('2026-09-29T14:05:00Z'))).toBe('sem_resultado');
   });
   it('com resultado registrado, fica resolvida', () => {
-    const r = reuniao({ resultado: { tipo: 'no_show', em: 'x', por: null, fonte: 'tela', etapa: null, valor: null } });
+    const r = reuniao({ resultado: { tipo: 'no_show', em: 'x', por: null, fonte: 'tela', etapa: null, valor: null, fechou: false } });
     expect(faseDaReuniao(r, new Date('2026-09-29T13:00:00Z'))).toBe('com_resultado');
   });
 });
@@ -525,7 +546,7 @@ describe('pendentes (a rede de segurança)', () => {
       reuniao({
         chave: 'resolvida',
         inicio: '2026-09-25T10:00:00Z',
-        resultado: { tipo: 'proposta', em: 'x', por: null, fonte: 'funil', etapa: null, valor: null },
+        resultado: { tipo: 'proposta', em: 'x', por: null, fonte: 'funil', etapa: null, valor: null, fechou: false },
       }),
     ];
     expect(pendentes(lista, agora).map((r) => r.chave)).toEqual(['b', 'a']);

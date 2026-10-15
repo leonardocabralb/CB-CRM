@@ -254,6 +254,23 @@ a rota `/api/cb/reunioes`, `src/components/reunioes/`. Plano:
   tique e duas vezes no modo estrito.
 - **Fora do catálogo de perfis** (visível a todos, como o Meu dia) e recortada
   por FUNIL do perfil, pela lente (`acesso`).
+- ⚠️ **A pauta é AO VIVO pela trilha** (pedido do operador, 15/10/2026):
+  assina INSERT de `cb_lead_events` da CONTA (`account_id=eq.`; só os eventos
+  do CARD, `EVENTOS_DA_PAUTA` — a trilha guarda também etiqueta e a conversa,
+  1083) e recarrega `ESPERA_AO_VIVO_MS` depois do PRIMEIRO aviso, juntando
+  a rajada — uma carga grava centenas de linhas, e cada recarga é uma dúzia de
+  consultas. Aba escondida: uma recarga na volta. A de 2 min fica: o canal
+  falha calado, e o marco de outra pessoa que não move card não passa pela
+  trilha.
+- ⚠️ **O "Reagendamento" do Calendly NÃO é o resultado Reagendar** (1081): o
+  selo diz "Remarcada pelo cliente · era …" (`reagendadaDe`, da MESMA
+  inferência de `convitesSubstituidos`; ambígua = sem o "era"). A palavra
+  solta fez o operador ler reunião feita como não feita (15/10/2026); o Meu
+  dia usa os mesmos textos.
+- **"Fechou contrato" é o `fechou` do resultado**: só pela TRILHA, entrada em
+  etapa de fechamento (`ehFechamento`); o marco da tela nunca (o botão "Com
+  proposta" leva à proposta). A resolvida ganha faixa, fundo cinza e selo; a
+  começada sem resultado, âmbar (`ESTILO_DO_RESULTADO`).
 - **"Abrir conversa" abre um PAINEL por cima da pauta no computador**
   (`conversa-em-painel.tsx`, pedido do operador, 05/10/2026): o mesmo fio da
   caixa de entrada, sem a ficha; o dia e o "Desfazer" seguem de pé. Abaixo de

@@ -1,4 +1,4 @@
-import { alcancaProposta, marcaDaReuniaoQueVale } from '@/lib/funil/degraus';
+import { alcancaProposta, ehDegrau, ehFechamento, marcaDaReuniaoQueVale } from '@/lib/funil/degraus';
 
 /**
  * A PAUTA DE REUNIÕES (`/reunioes`): o que aconteceu com cada reunião e para
@@ -96,6 +96,12 @@ export interface RegistroDoResultado extends Registro {
   tipo: Resultado;
   /** O valor informado na tela (só `proposta` marcada aqui). */
   valor: number | null;
+  /**
+   * O card entrou numa etapa de FECHAMENTO (degrau contrato ou pasta,
+   * `ehFechamento`): a tela diz "Fechou contrato" em vez de "Com proposta".
+   * Só pela trilha — o botão "Com proposta" leva à proposta, nunca ao contrato.
+   */
+  fechou: boolean;
 }
 
 export interface AlvoDaAcao {
@@ -277,13 +283,16 @@ export function resultadoDaReuniao(args: {
       fonte: 'tela',
       etapa: null,
       valor: m.resultado === 'proposta' ? m.valor : null,
+      fechou: false,
     });
   }
   for (const e of entradasDaReuniao(args.entradas, inicio, ms(args.ate), args.dealId)) {
-    const tipo = resultadoDaEtapa(args.etapas.get(e.etapaId));
+    const etapa = args.etapas.get(e.etapaId);
+    const tipo = resultadoDaEtapa(etapa);
     if (!tipo) continue;
     if (tipo === 'reagendar' && fimDoReagendar !== null && (ms(e.em) ?? Infinity) >= fimDoReagendar) continue;
-    candidatos.push({ tipo, em: e.em, por: e.por, fonte: 'funil', etapa: e.etapa, valor: null });
+    const fechou = ehDegrau(etapa?.degrau) && ehFechamento(etapa.degrau);
+    candidatos.push({ tipo, em: e.em, por: e.por, fonte: 'funil', etapa: e.etapa, valor: null, fechou });
   }
   return maisRecente(candidatos);
 }
@@ -349,6 +358,12 @@ export interface ReuniaoDaPauta {
   link: string | null;
   /** É o horário novo de um reagendamento. */
   reagendamento: boolean;
+  /**
+   * O horário que o cliente trocou por este, pelo link do Calendly (o selo
+   * "Remarcada pelo cliente · era …"); nulo = não é reagendamento, ou a
+   * inferência do convite substituído não teve resposta única.
+   */
+  reagendadaDe: string | null;
   /**
    * O horário do CALENDLY quando a ficha ("Data e Hora Reunião") remarcou a
    * reunião para `inicio` (ver `montarPauta`); nulo = o horário é o do

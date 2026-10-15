@@ -212,14 +212,16 @@ function LinhaDaReuniao({
           {r.negocio?.etapaNome && (
             <span className="truncate">· {r.negocio.etapaNome}</span>
           )}
+          {/* Remarcação NÃO é o resultado "Reagendar": a palavra solta
+              "Reagendamento" fazia a reunião feita parecer não feita. */}
           {r.reagendamento && (
             <span className="bg-muted rounded px-1 py-px text-[11px]">
-              {tReunioes('reagendamento')}
+              {r.remarcadaDe ? tReunioes('remarcadaNaFichaCurto') : tReunioes('remarcadaPeloCliente')}
             </span>
           )}
           {r.resultado && (
             <span className={cn('rounded px-1 py-px text-[11px]', corDoResultado(r.resultado.tipo))}>
-              {rotuloDoResultado(r.resultado.tipo, tReunioes)}
+              {rotuloDoResultado(r.resultado, tReunioes)}
             </span>
           )}
         </span>
@@ -245,12 +247,12 @@ function LinhaDaReuniao({
  * proposta caía em "no show" por padrão.
  */
 function rotuloDoResultado(
-  tipo: Resultado,
+  { tipo, fechou }: { tipo: Resultado; fechou: boolean },
   t: ReturnType<typeof useTranslations<'Reunioes'>>
 ): string {
   switch (tipo) {
     case 'proposta':
-      return t('resultadoProposta');
+      return fechou ? t('resultadoContrato') : t('resultadoProposta');
     case 'sem_proposta':
       return t('resultadoSemProposta');
     case 'reagendar':

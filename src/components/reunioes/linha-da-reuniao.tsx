@@ -2,7 +2,17 @@
 
 import { useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
-import { AlertTriangle, CheckCircle2, ExternalLink, Loader2, MessageSquare, Rocket } from 'lucide-react';
+import {
+  AlertTriangle,
+  CalendarClock,
+  CheckCircle2,
+  ExternalLink,
+  Loader2,
+  MessageSquare,
+  Rocket,
+  XCircle,
+  type LucideIcon,
+} from 'lucide-react';
 
 import { Button, buttonVariants } from '@/components/ui/button';
 import { ValorInput } from '@/components/valor/valor-input';
@@ -37,6 +47,39 @@ const ROTULO_DO_RESULTADO: Record<
   sem_proposta: 'resultadoSemProposta',
   reagendar: 'resultadoReagendar',
   no_show: 'resultadoNoShow',
+};
+
+/**
+ * Como a reunião RESOLVIDA aparece: a faixa à esquerda, o selo do resultado e
+ * o ícone sob a hora (pedido do operador, 15/10/2026: separar à primeira vista
+ * a reunião feita da que falta resolver). Classes LITERAIS (o Tailwind não
+ * gera classe montada), e a primeira cor vale nos dois temas (`dark:` inerte).
+ */
+const ESTILO_DO_RESULTADO: Record<Resultado, { faixa: string; selo: string; icone: LucideIcon; corDoIcone: string }> = {
+  proposta: {
+    faixa: 'border-l-green-600',
+    selo: 'bg-green-600/10 text-green-700 dark:text-green-300',
+    icone: CheckCircle2,
+    corDoIcone: 'text-green-700 dark:text-green-300',
+  },
+  sem_proposta: {
+    faixa: 'border-l-slate-400',
+    selo: 'bg-muted text-foreground',
+    icone: CheckCircle2,
+    corDoIcone: 'text-muted-foreground',
+  },
+  reagendar: {
+    faixa: 'border-l-amber-500',
+    selo: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
+    icone: CalendarClock,
+    corDoIcone: 'text-amber-700 dark:text-amber-300',
+  },
+  no_show: {
+    faixa: 'border-l-red-600',
+    selo: 'bg-red-600/10 text-red-700 dark:text-red-300',
+    icone: XCircle,
+    corDoIcone: 'text-red-700 dark:text-red-300',
+  },
 };
 
 const TEXTO_DO_MOTIVO: Record<
@@ -248,10 +291,6 @@ export function LinhaDaReuniao({
     );
   } else if (fase === 'com_resultado' && r.resultado && !corrigindo) {
     const res = r.resultado;
-    const oQue =
-      res.tipo === 'proposta' && res.valor !== null
-        ? t('resultadoPropostaComValor', { valor: formatCurrency(res.valor) })
-        : t(ROTULO_DO_RESULTADO[res.tipo]);
     // ⚠️ "Corrigir" só depois que a reunião COMEÇA. Antes dela o único
     // resultado possível é o Reagendar (1081, vale antes do horário), e
     // corrigir abriria os botões de depois do início: o que se gravasse agora
@@ -261,12 +300,12 @@ export function LinhaDaReuniao({
     // apaga o registro — a reunião segue "pediu para reagendar" até começar,
     // e aí o "Corrigir" troca o resultado.
     const comecou = Date.parse(r.inicio) <= agora.getTime();
+    // O QUE houve está no selo do cabeçalho; aqui, por onde e por quem.
     acoes = (
       <span className="inline-flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-        <CheckCircle2 className="h-3.5 w-3.5 text-green-700 dark:text-green-300" />
         {res.fonte === 'tela'
-          ? t('resultadoRegistrado', { oQue, por: res.por ?? t('alguem'), hora: hora(res.em) })
-          : t('resultadoPeloFunil', { oQue, etapa: res.etapa ?? '—', por: res.por ?? t('sistema') })}
+          ? t('resultadoRegistrado', { por: res.por ?? t('alguem'), hora: hora(res.em) })
+          : t('resultadoPeloFunil', { etapa: res.etapa ?? '—', por: res.por ?? t('sistema') })}
         {podeMarcar && comecou && (
           <button
             type="button"
@@ -309,17 +348,36 @@ export function LinhaDaReuniao({
     acoes = botoesDoResultado;
   }
 
+  // O estado à primeira vista: a resolvida ganha faixa, fundo cinza e o selo
+  // do resultado; a que começou sem resultado fica âmbar até alguém resolver.
+  const resultado = r.resultado;
+  const estilo = resultado ? ESTILO_DO_RESULTADO[resultado.tipo] : null;
+  const IconeDoResultado = estilo?.icone ?? null;
+  const seloDoResultado = !resultado
+    ? null
+    : resultado.tipo === 'proposta' && resultado.fechou
+      ? t('resultadoContrato')
+      : resultado.tipo === 'proposta' && resultado.valor !== null
+        ? t('resultadoPropostaComValor', { valor: formatCurrency(resultado.valor) })
+        : t(ROTULO_DO_RESULTADO[resultado.tipo]);
+  const semResultado = fase === 'sem_resultado' && !pendente;
+
   return (
     <div
       className={cn(
         'rounded-lg border bg-card px-3 py-2.5',
-        fase === 'sem_resultado' && !pendente ? 'border-amber-500/50' : 'border-border',
+        estilo
+          ? cn('border-border border-l-4 bg-muted/40', estilo.faixa)
+          : semResultado
+            ? 'border-amber-500/60 bg-amber-500/5'
+            : 'border-border',
       )}
     >
       <div className="grid grid-cols-[3.25rem_minmax(0,1fr)] gap-3">
         <div className="pt-0.5">
-          <div className="text-sm font-medium tabular-nums">{hora(r.inicio)}</div>
+          <div className={cn('text-sm font-medium tabular-nums', estilo && 'text-muted-foreground')}>{hora(r.inicio)}</div>
           {mostrarDia && <div className="text-[11px] text-muted-foreground">{dataCurta(r.inicio)}</div>}
+          {IconeDoResultado && estilo && <IconeDoResultado aria-hidden className={cn('mt-1 h-4 w-4', estilo.corDoIcone)} />}
         </div>
         <div className="min-w-0 space-y-1.5">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -329,20 +387,40 @@ export function LinhaDaReuniao({
                 {t('remarcadaNaFicha', { data: dataCurta(r.remarcadaDe), hora: hora(r.remarcadaDe) })}
               </span>
             ) : (
+              // O cliente trocou o horário pelo link do Calendly. NÃO é o
+              // resultado "Reagendar" (a etapa da 1081): a palavra solta
+              // "Reagendamento" fazia a reunião feita parecer não feita.
               r.reagendamento && (
-                <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{t('reagendamento')}</span>
+                <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                  {r.reagendadaDe
+                    ? t('remarcadaPeloClienteEra', { data: dataCurta(r.reagendadaDe), hora: hora(r.reagendadaDe) })
+                    : t('remarcadaPeloCliente')}
+                </span>
               )
             )}
             {r.qualificada && fase !== 'antes' && !r.resultado && (
               <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] text-primary">{t('qualificada')}</span>
             )}
-            {r.negocio && (
-              <span
-                className="ml-auto max-w-full truncate rounded-md border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground"
-                title={r.negocio.pipelineNome ?? undefined}
-              >
-                {r.negocio.etapaNome ?? '—'}
-                {r.negocio.status === 'won' ? ` · ${t('ganho')}` : r.negocio.status === 'lost' ? ` · ${t('perdido')}` : ''}
+            {(seloDoResultado || semResultado || r.negocio) && (
+              <span className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1.5">
+                {seloDoResultado && estilo && (
+                  <span className={cn('rounded-md px-1.5 py-0.5 text-xs font-medium', estilo.selo)}>{seloDoResultado}</span>
+                )}
+                {semResultado && (
+                  <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/50 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
+                    <AlertTriangle className="h-3 w-3" />
+                    {t('semResultado')}
+                  </span>
+                )}
+                {r.negocio && (
+                  <span
+                    className="max-w-full truncate rounded-md border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground"
+                    title={r.negocio.pipelineNome ?? undefined}
+                  >
+                    {r.negocio.etapaNome ?? '—'}
+                    {r.negocio.status === 'won' ? ` · ${t('ganho')}` : r.negocio.status === 'lost' ? ` · ${t('perdido')}` : ''}
+                  </span>
+                )}
               </span>
             )}
           </div>
