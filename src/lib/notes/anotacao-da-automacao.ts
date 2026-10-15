@@ -9,7 +9,7 @@
 //
 // - não há gente do outro lado: o autor é a automação (`author_user_id`
 //   nulo, `autor_nome` = `Automação "<nome>"`, do dicionário, montado pelo
-//   motor com `autorDaAnotacaoDaAutomacao` — só admin apaga);
+//   motor com `textosDaAnotacaoDaAutomacao` — só admin apaga);
 // - quem é marcado vem da CONFIGURAÇÃO (ids de login), não do texto
 //   digitado; o `@Nome` entra no começo do texto na hora de gravar, com o
 //   nome de AGORA (quem mudou de nome continua marcado);
@@ -75,6 +75,8 @@ export async function escreverAnotacaoDaAutomacao(
     conversationId: string
     /** Quem assina a anotação e o aviso (`Automação "<nome>"`, já no idioma da instalação). */
     autor: string
+    /** O rótulo do marcado sem nome ("membro sem nome"), já no idioma da instalação. */
+    semNome: string
     /** Já interpolado e aparado; sem as marcações. */
     texto: string
     /** Ids de login, já lidos por `lerMarcados`. */
@@ -96,7 +98,7 @@ export async function escreverAnotacaoDaAutomacao(
   if (entrada.marcados.length > 0) {
     const { data: perfis, error: erroPerfis } = await db
       .from('profiles')
-      .select('user_id, full_name, email, suspenso_em')
+      .select('user_id, full_name, suspenso_em')
       .eq('account_id', entrada.accountId)
       .in('user_id', entrada.marcados)
     if (erroPerfis) throw new Error(`anotação: leitura de quem marcar falhou: ${erroPerfis.message}`)
@@ -104,15 +106,17 @@ export async function escreverAnotacaoDaAutomacao(
       ((perfis ?? []) as {
         user_id: string
         full_name: string | null
-        email: string | null
         suspenso_em: string | null
       }[]).map((p) => [p.user_id, p]),
     )
     marcados = entrada.marcados.flatMap((id) => {
       const p = porId.get(id)
       if (!p || p.suspenso_em) return []
-      // A cascata do `memberLabel`, aparada: há nome gravado com espaço no fim.
-      return [{ userId: id, nome: p.full_name?.trim() || p.email || id }]
+      // O nome, aparado (há nome gravado com espaço no fim). ⚠️ Sem nome, o
+      // rótulo neutro — NUNCA o e-mail, como faria o `memberLabel`: a lista
+      // de membros só mostra e-mail a admin, e a anotação e o aviso são lidos
+      // por todos (Codex, #412).
+      return [{ userId: id, nome: p.full_name?.trim() || entrada.semNome }]
     })
   }
 

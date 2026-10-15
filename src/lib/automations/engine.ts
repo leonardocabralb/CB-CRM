@@ -174,7 +174,7 @@ import {
   type SituacaoDoOnboarding,
 } from '@/lib/atlas/passos-do-atlas';
 import { escreverAnotacaoDaAutomacao, lerMarcados } from '@/lib/notes/anotacao-da-automacao';
-import { autorDaAnotacaoDaAutomacao } from '@/lib/ia-agentes/textos-do-servidor';
+import { textosDaAnotacaoDaAutomacao } from '@/lib/ia-agentes/textos-do-servidor';
 
 /** O motivo do `send_to_number` recusado, na frase que o registro mostra. */
 const POR_QUE_O_NUMERO_NAO_SERVE: Record<MotivoDoTelefone, string> = {
@@ -2671,10 +2671,12 @@ async function runStep(
           throw new Error('anotação: o contato não tem conversa (o passo não cria uma)');
         throw e;
       }
+      const { autor, semNome } = await textosDaAnotacaoDaAutomacao(args.automation.name ?? '');
       const r = await escreverAnotacaoDaAutomacao(db, {
         accountId: args.automation.account_id,
         conversationId,
-        autor: await autorDaAnotacaoDaAutomacao(args.automation.name ?? ''),
+        autor,
+        semNome,
         texto,
         marcados: lerMarcados(cfg.mencionados),
       });

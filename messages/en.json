@@ -3261,7 +3261,8 @@
       "falhouCarregar": "Your favorites didn't load right now."
     },
     "anotacaoGravada": {
-      "autor": "Automation \"{nome}\""
+      "autor": "Automation \"{nome}\"",
+      "semNome": "unnamed member"
     }
   },
   "Flows": {

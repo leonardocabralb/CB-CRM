@@ -88,6 +88,7 @@ const entrada = (marcados: string[] = [ANA]) => ({
   accountId: CONTA,
   conversationId: 'conv-1',
   autor: 'Automação "Contato do Banco"',
+  semNome: 'membro sem nome',
   texto: 'Contato bancário: verificar cliente.',
   marcados,
 })
@@ -138,12 +139,12 @@ describe('escreverAnotacaoDaAutomacao', () => {
     expect(perfis?.filtros).toContainEqual(['in', 'user_id', [ANA]])
   })
 
-  it('sem nome, o e-mail; a ordem dos @ é a da configuração', async () => {
+  it('⚠️ sem nome, o rótulo neutro — NUNCA o e-mail (só admin o vê); a ordem dos @ é a da configuração', async () => {
     const { db, chamadas } = bancoFalso({ perfis: PERFIS })
     const r = await escreverAnotacaoDaAutomacao(db, entrada([BIA, ANA]))
-    expect(r.avisados).toEqual(['bia@exemplo.test', 'Ana Lima'])
+    expect(r.avisados).toEqual(['membro sem nome', 'Ana Lima'])
     const nota = chamadas.find((c) => c.tabela === 'cb_conversation_notes')?.insert as { texto: string }
-    expect(nota.texto).toBe('@bia@exemplo.test @Ana Lima Contato bancário: verificar cliente.')
+    expect(nota.texto).toBe('@membro sem nome @Ana Lima Contato bancário: verificar cliente.')
   })
 
   it('⚠️ quem saiu da conta ou está suspenso não é marcado nem avisado, e o resultado CONTA', async () => {

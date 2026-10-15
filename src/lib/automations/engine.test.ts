@@ -2258,6 +2258,7 @@ describe('add_note — escrever anotação interna (15/10/2026)', () => {
       conversationId: 'conv-1',
       // Do dicionário, no idioma da instalação (o processo carrega um só).
       autor: expect.stringMatching(/^(Automação|Automation) "Contato do Banco"$/),
+      semNome: expect.stringMatching(/^(membro sem nome|unnamed member)$/),
       texto: 'Contato bancário: verificar cliente.',
       marcados: [ANA],
     });

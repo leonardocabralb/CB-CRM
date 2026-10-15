@@ -166,15 +166,17 @@ export async function avisoDaTarefa(agente: string): Promise<string> {
 }
 
 /**
- * Quem assina a anotação que uma AUTOMAÇÃO escreve (passo "Escrever anotação
- * interna", `src/lib/notes/anotacao-da-automacao.ts`) — `Automação "<nome>"`
- * no idioma da instalação, como o autor das anotações do agente.
+ * Os textos da anotação que uma AUTOMAÇÃO escreve (passo "Escrever anotação
+ * interna", `src/lib/notes/anotacao-da-automacao.ts`), no idioma da
+ * instalação: quem assina (`Automação "<nome>"`, como o autor das anotações
+ * do agente) e o rótulo do marcado SEM nome — nunca o e-mail dele, que só
+ * admin vê (`/api/account/members`) e a anotação mostraria a todos.
  */
-export async function autorDaAnotacaoDaAutomacao(nome: string): Promise<string> {
+export async function textosDaAnotacaoDaAutomacao(nome: string): Promise<{ autor: string; semNome: string }> {
   const { locale, messages } = await dicionario()
   const t = createTranslator({ locale, messages, namespace: 'Automations.anotacaoGravada' }) as unknown as (
     chave: string,
-    valores: Record<string, string>,
+    valores?: Record<string, string>,
   ) => string
-  return t('autor', { nome: nome.trim() })
+  return { autor: t('autor', { nome: nome.trim() }), semNome: t('semNome') }
 }

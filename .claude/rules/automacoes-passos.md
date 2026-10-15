@@ -250,11 +250,13 @@ quem cuida, marcando a pessoa. `src/lib/notes/anotacao-da-automacao.ts`
   `POST /api/cb/notes`, que importa os tetos daqui (4000 caracteres, 50
   marcados; a API v1 tem o seu). Autor = a automação (`author_user_id` nulo,
   `autor_nome` do dicionário, `Automations.anotacaoGravada.autor`, pelo
-  `autorDaAnotacaoDaAutomacao`): só admin apaga.
+  `textosDaAnotacaoDaAutomacao`): só admin apaga.
 - ⚠️ **Os marcados são ids de LOGIN na config, conferidos contra a CONTA na
   hora** (suspenso, 1067, também sai). O `@Nome` entra no começo do texto ao
   gravar, com o nome de agora (`full_name` aparado: há nome com espaço no
-  fim). A ativação confere só a forma (`ehListaDeMarcados`).
+  fim). ⚠️ Sem nome, o rótulo neutro do dicionário (`semNome`) — NUNCA o
+  e-mail: só admin vê e-mail de membro, e a anotação é lida por todos (Codex,
+  #412). A ativação confere só a forma (`ehListaDeMarcados`).
 - ⚠️⚠️ **Marcado que saiu e aviso que falhou FALHAM o passo DEPOIS de gravar**:
   a anotação fica (é o ato), a falha aparece na conversa e os passos SEGUINTES
   não rodam (por isso a anotação costuma ser o último). Concluir calado
