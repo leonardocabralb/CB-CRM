@@ -264,6 +264,9 @@ export const CODIGOS_DE_PENDENCIA = [
   'tarefa_prazo_invalido',
   'tarefa_hora_invalida',
   'fixar_sem_conexao',
+  'anotacao_sem_texto',
+  'anotacao_texto_longo',
+  'anotacao_marcados_invalidos',
   'atlas_tipo_de_contrato_invalido',
   'atlas_campo_invalido',
   // O nó "Atlas" (30/09/2026)

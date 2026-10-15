@@ -1726,6 +1726,7 @@
         "send_to_number": "Notify number: {alvo}",
         "create_task": "Create task: {alvo}",
         "pin_conversation_channel": "Pin the conversation to a number",
+        "add_note": "Write a note: {alvo}",
         "atlas_criar_cliente": "Create the client in Atlas",
         "atlas_atualizar_cliente": "Update the client in Atlas{situacao, select, ativo { (status: Active)} importado { (status: Imported)} finalizado { (status: Closed out)} rescindido { (status: Terminated)} inativo { (status: Inactive)} suspenso { (status: Suspended)} other {}}",
         "atlas_criar_tarefa": "Create task in Atlas: {alvo}",
@@ -2301,6 +2302,7 @@
         "send_to_number": "Notify a number",
         "create_task": "Create task",
         "pin_conversation_channel": "Pin conversation to a number",
+        "add_note": "Write an internal note",
         "atlas_criar_cliente": "Create client in Atlas",
         "atlas_atualizar_cliente": "Update client in Atlas",
         "atlas_criar_tarefa": "Create task in Atlas",
@@ -2712,6 +2714,14 @@
         "reservaHint": "Required. When no one is assigned (or whoever was left the account), the task goes to this person, and the automation history says why.",
         "cardHint": "Today the deal's assignee is only set by hand, in the deal form. Without one, the task goes to the person below."
       },
+      "anotacao": {
+        "textoLabel": "Note text",
+        "textoHint": "Only the team sees it. It shows up in the conversation signed by the automation.",
+        "marcarLabel": "Tag (optional)",
+        "marcarEscolher": "Tag someone…",
+        "marcarHint": "Whoever is tagged shows up with @ at the start of the note and gets the bell notification. If the person leaves the account, the step saves the note and reports a failure.",
+        "tirar": "Remove {nome}"
+      },
       "atlas": {
         "tipoLabel": "Contract type",
         "tipoFixo": "Fixed",
@@ -2913,6 +2923,9 @@
           "tarefa_prazo_invalido": "Choose a due date between 0 and 365 days.",
           "tarefa_hora_invalida": "Write the task time as HH:MM.",
           "fixar_sem_conexao": "Choose the number the conversation gets pinned to.",
+          "anotacao_sem_texto": "Write the note text.",
+          "anotacao_texto_longo": "The note is over the 4000-character limit.",
+          "anotacao_marcados_invalidos": "The list of tagged people is broken. Remove the tags and tag again.",
           "atlas_tipo_de_contrato_invalido": "Choose the contract type: fixed or monthly.",
           "atlas_campo_invalido": "Choose the date field again from the list (or “— don’t use —”).",
           "passo_desconhecido": "This step type no longer exists: delete the step.",

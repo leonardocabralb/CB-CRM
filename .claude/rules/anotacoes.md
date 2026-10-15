@@ -18,7 +18,10 @@ Vale ao editar ou revisar a anotação interna nas quatro telas (o fio, a aba
 Notas do painel, a do grupo e a ficha de `/contatos`), a caixa de escrever, a
 fixada e a resposta à anotação. O resto da conversa (fio, compositor, links
 clicáveis na nota) está em `.claude/rules/inbox-conversa.md`; o sino e o Meu
-dia, em `.claude/rules/meu-dia.md`.
+dia, em `.claude/rules/meu-dia.md`. São DOIS escritores, os dois no servidor:
+a rota `POST /api/cb/notes` e o passo de automação "Escrever anotação
+interna" (autor nulo, assinado pela automação; ver
+`.claude/rules/automacoes-passos.md`) — regra nova de escrita vale nos dois.
 
 ### Anotação interna: são QUATRO telas
 

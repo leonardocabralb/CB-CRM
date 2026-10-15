@@ -703,6 +703,18 @@ vi.mock('@/lib/atlas/acoes', async (original) => ({
   ...(await original<typeof import('@/lib/atlas/acoes')>()),
   ...acoesMock,
 }));
+// "Escrever anotação interna" (15/10/2026): o que a anotação grava e quem
+// ela avisa é testado em `src/lib/notes/anotacao-da-automacao.test.ts`; aqui,
+// a ENTRADA que o motor monta e o que ele faz com o resultado.
+const anotacaoMock = vi.hoisted(() => ({
+  escreverAnotacaoDaAutomacao: vi.fn<(db: unknown, entrada: Record<string, unknown>) => Promise<unknown>>(
+    async () => ({ notaId: 'nota-1', avisados: ['Ana Lima'], foraDaConta: 0, erroDoAviso: null })
+  ),
+}));
+vi.mock('@/lib/notes/anotacao-da-automacao', async (original) => ({
+  ...(await original<typeof import('@/lib/notes/anotacao-da-automacao')>()),
+  escreverAnotacaoDaAutomacao: anotacaoMock.escreverAnotacaoDaAutomacao,
+}));
 
 import {
   dispararAutomacoes,
@@ -2196,6 +2208,97 @@ describe('pin_conversation_channel — fixar a conversa no número (Comercial �
     expect(escritasNaConversa()).toHaveLength(0);
     expect(h.state.fromCalls).not.toContain('cb_channels');
     expect(JSON.stringify(h.state.logUpdates)).toContain('nenhuma conexão escolhida');
+  });
+});
+
+describe('add_note — escrever anotação interna (15/10/2026)', () => {
+  const ANA = '11111111-1111-4111-8111-111111111111';
+
+  async function rodar(step_config: Record<string, unknown>) {
+    h.state.owned ??= { id: 'c1', phone: '5583999990000' };
+    h.state.automations = [{ ...automationWithUpdateStep(), name: 'Contato do Banco' }];
+    h.state.steps = [
+      { id: 's1', automation_id: 'a1', step_type: 'add_note', position: 0, parent_step_id: null, step_config },
+    ];
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: { conversation_id: 'conv-1', channel_id: 'ch-comercial' },
+    });
+  }
+
+  function passos() {
+    return h.state.logUpdates.flatMap(
+      (u) => (u.steps_executed as { status: string; detail?: string }[] | undefined) ?? []
+    );
+  }
+
+  beforeEach(() => {
+    anotacaoMock.escreverAnotacaoDaAutomacao.mockClear();
+  });
+
+  it('CRÍTICO: grava na conversa DO DISPARO, assinada pela automação, com os marcados lidos da config', async () => {
+    await rodar({ texto: '  Contato bancário: verificar cliente.  ', mencionados: [ANA, 'lixo', ANA] });
+
+    expect(anotacaoMock.escreverAnotacaoDaAutomacao).toHaveBeenCalledTimes(1);
+    expect(anotacaoMock.escreverAnotacaoDaAutomacao.mock.calls[0][1]).toEqual({
+      accountId: ACCOUNT,
+      conversationId: 'conv-1',
+      nomeDaAutomacao: 'Contato do Banco',
+      texto: 'Contato bancário: verificar cliente.',
+      marcados: [ANA],
+    });
+    expect(passos()).toContainEqual(
+      expect.objectContaining({ status: 'success', detail: 'anotação gravada; avisado(s) no sino: Ana Lima' })
+    );
+  });
+
+  it('o texto passa pelas variáveis, como as mensagens', async () => {
+    await rodar({ texto: 'Ligar para {{contact.phone}}' });
+    expect(anotacaoMock.escreverAnotacaoDaAutomacao.mock.calls[0][1]).toMatchObject({
+      texto: 'Ligar para 5583999990000',
+    });
+  });
+
+  it('texto que sai vazio: FALHA sem gravar', async () => {
+    await rodar({ texto: '   ' });
+    expect(anotacaoMock.escreverAnotacaoDaAutomacao).not.toHaveBeenCalled();
+    expect(JSON.stringify(h.state.logUpdates)).toContain('o texto saiu vazio');
+  });
+
+  it('⚠️ marcado que saiu da conta: a anotação fica e o passo FALHA, visível', async () => {
+    anotacaoMock.escreverAnotacaoDaAutomacao.mockResolvedValueOnce({
+      notaId: 'nota-1',
+      avisados: [],
+      foraDaConta: 1,
+      erroDoAviso: null,
+    });
+    await rodar({ texto: 'x', mencionados: [ANA] });
+    expect(JSON.stringify(h.state.logUpdates)).toContain('anotação gravada, mas 1 pessoa(s) marcada(s)');
+    expect(passos().some((p) => p.status === 'success')).toBe(false);
+  });
+
+  it('⚠️ aviso no sino que falhou: o passo FALHA dizendo que a anotação foi gravada', async () => {
+    anotacaoMock.escreverAnotacaoDaAutomacao.mockResolvedValueOnce({
+      notaId: 'nota-1',
+      avisados: ['Ana Lima'],
+      foraDaConta: 0,
+      erroDoAviso: 'sino fora',
+    });
+    await rodar({ texto: 'x', mencionados: [ANA] });
+    expect(JSON.stringify(h.state.logUpdates)).toContain('anotação gravada, mas o aviso no sino falhou: sino fora');
+  });
+
+  it('sem ninguém marcado: só "anotação gravada"', async () => {
+    anotacaoMock.escreverAnotacaoDaAutomacao.mockResolvedValueOnce({
+      notaId: 'nota-1',
+      avisados: [],
+      foraDaConta: 0,
+      erroDoAviso: null,
+    });
+    await rodar({ texto: 'x' });
+    expect(passos()).toContainEqual(expect.objectContaining({ status: 'success', detail: 'anotação gravada' }));
   });
 });
 

@@ -11,6 +11,7 @@ paths:
   - "src/lib/automations/sem-conversa*"
   - "src/lib/automations/condicao-por-campo*"
   - "src/lib/automations/nao-repetir*"
+  - "src/lib/notes/anotacao-da-automacao*"
   - "src/components/automations/automation-builder.tsx"
   - "src/components/automations/condicao-por-campo-fields*"
 ---
@@ -21,7 +22,8 @@ Vale ao mexer no "Enviar modelo", no "Criar tarefa" pelo responsável, nas
 condições "Janela de 24h da Meta aberta", "Hora do dia" e "Campo
 personalizado da ficha", no "Aguardar até estar dentro do horário" (Fase 2
 do plano do previdenciário, 26/09/2026), no "Aguardar N sem conversa"
-(03/10/2026), no "Fixar a conversa no número" e na opção
+(03/10/2026), no "Fixar a conversa no número", no "Escrever anotação
+interna" e na opção
 "Não repetir para o mesmo contato por N horas" do gatilho. As regras são puras e testadas:
 `parametros-do-modelo.ts`, `responsavel-da-tarefa.ts`, `janela-da-meta.ts`,
 `hora-do-dia.ts`, `sem-conversa.ts` e `condicao-por-campo.ts`, em
@@ -236,6 +238,28 @@ que escreve no Comercial é avisado e passa a ser atendido pelo Jurídico.
 - O registro diz o NOME do número (`conversa fixada no número "…"`): o motor
   já leu a conexão para a recusa. O resumo do cartão (`descrever-passo.ts`)
   fica sem o nome — nenhuma tela que resume passo carrega `nomes.canais`.
+
+### "Escrever anotação interna" (`add_note`, 15/10/2026)
+
+A automação "Contato do Banco": encaminha o contato e deixa a instrução para
+quem cuida, marcando a pessoa. `src/lib/notes/anotacao-da-automacao.ts`
+(I/O + peças puras, com teste); o motor só monta a entrada.
+
+- **É a MESMA anotação e a MESMA menção da equipe** (`cb_conversation_notes`
+  + `note_mention` no sino), escritas em service role como a rota
+  `POST /api/cb/notes` — os tetos (4000 caracteres, 50 marcados) são os
+  dela, importados de um lugar só. Autor = a automação (`author_user_id`
+  nulo, `autor_nome` `Automação "<nome>"`): só admin apaga.
+- ⚠️ **Os marcados são ids de LOGIN na config, conferidos contra a CONTA na
+  hora** (suspenso, 1067, também sai). O `@Nome` entra no começo do texto ao
+  gravar, com o nome de agora (`full_name` aparado: há nome com espaço no
+  fim). A ativação confere só a forma (`ehListaDeMarcados`).
+- ⚠️⚠️ **Marcado que saiu e aviso que falhou FALHAM o passo DEPOIS de gravar**:
+  a anotação fica (é o ato) e a falha aparece na conversa. Concluir calado
+  deixaria a pessoa que devia agir sem saber. Leitura que falha lança ANTES
+  de gravar. Fora de `PASSOS_DE_ENVIO`: não repete.
+- **Não cria conversa** (não fala com o cliente, como o `set_ai`): ficha sem
+  conversa falha com o motivo.
 
 ### "Não repetir para o mesmo contato por N horas" (`trigger_config.nao_repetir_horas`)
 
