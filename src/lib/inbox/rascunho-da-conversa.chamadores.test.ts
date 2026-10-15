@@ -33,6 +33,32 @@ describe('o rascunho por conversa no compositor', () => {
     expect(compositor()).toContain('/* eslint react-hooks/exhaustive-deps: "error"');
   });
 
+  it('o que termina DEPOIS de uma troca só mexe na tela se ela ainda for a de origem', () => {
+    // O texto vai para o rascunho de origem pelo `setText` preso; o resto
+    // (foco, hora agendada, citação) é da conversa aberta AGORA.
+    const c = semComentarios(compositor());
+    const agendar = c.slice(c.indexOf('const agendar = useCallback('), c.indexOf('const handleSend = useCallback('));
+    expect(agendar).toContain('const origem = conversationId;');
+    expect(agendar).toMatch(
+      /if \(conversaAnteriorRef\.current === origem\) \{\s*limparAgendamento\(\);\s*onClearReply\?\.\(\);\s*\}/,
+    );
+    // E só limpa o rascunho se ele ainda for o texto agendado.
+    expect(agendar).toContain('setText((atual) => (atual.trim() === texto ? "" : atual))');
+    const ia = c.slice(c.indexOf('const handleDraft = useCallback('), c.indexOf('const openInteractiveBuilder'));
+    expect(ia).toContain('const origem = conversationId;');
+    expect(ia.indexOf('if (conversaAnteriorRef.current !== origem) return;')).toBeLessThan(
+      ia.indexOf('el.focus();'),
+    );
+  });
+
+  it('a altura é medida no efeito sobre `text` e quando a caixa volta a montar, não por tecla', () => {
+    const c = semComentarios(compositor());
+    expect(c).toMatch(/useLayoutEffect\(\(\) => \{\s*acertarAltura\(\);\s*\}, \[text, acertarAltura\]\);/);
+    expect(c).toContain('ref={refDaCaixa}');
+    const troca = c.slice(c.indexOf('const handleChange = useCallback('), c.indexOf('const handleDraft = useCallback('));
+    expect(troca).not.toContain('adjustHeight');
+  });
+
   it('a troca de conversa não apaga o texto da caixa — ele fica na conversa de origem', () => {
     const c = semComentarios(compositor());
     const troca = c.slice(
@@ -47,7 +73,8 @@ describe('o rascunho por conversa no compositor', () => {
 describe('o hook', () => {
   it('a chave leva o LOGIN e a conversa, e só grava com o login conhecido', () => {
     const h = hook();
-    expect(h).toContain('chaveDoRascunho(userId ?? "sem-login", conversationId)');
+    // As duas aspas: o `.prettierrc` pede simples, o arquivo usa duplas.
+    expect(h).toMatch(/chaveDoRascunho\(userId \?\? ["']sem-login["'], conversationId\)/);
     expect(h).toContain('repositorio.escrever(chave, novo, userId !== null)');
   });
 

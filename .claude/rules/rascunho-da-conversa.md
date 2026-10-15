@@ -29,6 +29,12 @@ o hook é `useRascunhoDaConversa`; pinos estruturais em
   `react-hooks/exhaustive-deps` ser ERRO ali (no resto do projeto é aviso, e
   aviso não reprova o CI). Um `setText` estável, lendo a conversa por ref,
   devolveria o defeito.
+- ⚠️ **O TEXTO vai para a origem; o resto é da TELA.** O que termina depois
+  de uma espera só mexe em foco, hora agendada e citação se a conversa aberta
+  ainda for a de origem (`conversaAnteriorRef.current === origem`): o foco da
+  sugestão da IA cairia na caixa do cliente aberto (até no meio de uma
+  anotação), e limpar a hora escolhida lá faria o próximo Enter sair NA HORA.
+  O agendamento só esvazia o rascunho que ainda for o texto agendado.
 - ⚠️ **O render lê por `useSyncExternalStore`, nunca por efeito**: por efeito,
   o primeiro render depois da troca mostraria o texto da conversa anterior
   (efeito passivo, seção 8c da raiz). O repositório é de MÓDULO (memória da
@@ -37,9 +43,12 @@ o hook é `useRascunhoDaConversa`; pinos estruturais em
   chave. Vence em `DIAS_DO_RASCUNHO` (30) — a leitura apaga o vencido, e uma
   varredura por carga de página apaga o das conversas que nunca mais abrem.
   Armazenamento bloqueado ou cheio = vale só na memória da aba.
-- **A altura acompanha num `useLayoutEffect` sobre `text`** (o texto muda sem
-  digitação na troca); vazia volta ao `auto`, como depois de enviar — medida,
-  a caixa vazia cresceria até o placeholder, que quebra numa coluna estreita.
+- **A altura é `acertarAltura`, em dois lugares só**: o `useLayoutEffect`
+  sobre `text` (o texto muda sem digitação na troca; o `handleChange` NÃO
+  mede, senão são dois recálculos de layout por tecla) e o ref de callback
+  `refDaCaixa` (a caixa volta MONTANDO depois da prévia de anexo ou da
+  gravação, sem o `text` mudar). Vazia volta ao `auto`, como depois de enviar
+  — medida, cresceria até o placeholder, que quebra numa coluna estreita.
 - **Fica de fora, de propósito:** a fila de anexos (segue recolhida na troca:
   o arquivo de um caso não monta no compositor de outro), a anotação interna
   (fecha na troca, pelo mesmo motivo), a citação e a mensagem retida na
