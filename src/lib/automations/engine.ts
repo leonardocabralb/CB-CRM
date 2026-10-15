@@ -174,6 +174,7 @@ import {
   type SituacaoDoOnboarding,
 } from '@/lib/atlas/passos-do-atlas';
 import { escreverAnotacaoDaAutomacao, lerMarcados } from '@/lib/notes/anotacao-da-automacao';
+import { autorDaAnotacaoDaAutomacao } from '@/lib/ia-agentes/textos-do-servidor';
 
 /** O motivo do `send_to_number` recusado, na frase que o registro mostra. */
 const POR_QUE_O_NUMERO_NAO_SERVE: Record<MotivoDoTelefone, string> = {
@@ -2660,11 +2661,20 @@ async function runStep(
       const cfg = step.step_config as AddNoteStepConfig;
       const texto = (await interpolate(cfg.texto ?? '', args)).trim();
       if (!texto) throw new Error('anotação: o texto saiu vazio');
-      const conversationId = await resolveConversationId(args);
+      let conversationId: string;
+      try {
+        conversationId = await resolveConversationId(args);
+      } catch (e) {
+        // O motivo de `resolveConversationId` fala em ENVIO ("cannot send"),
+        // e este passo não envia nada.
+        if (e instanceof Error && e.message.endsWith('contact has no existing conversation'))
+          throw new Error('anotação: o contato não tem conversa (o passo não cria uma)');
+        throw e;
+      }
       const r = await escreverAnotacaoDaAutomacao(db, {
         accountId: args.automation.account_id,
         conversationId,
-        nomeDaAutomacao: args.automation.name,
+        autor: await autorDaAnotacaoDaAutomacao(args.automation.name ?? ''),
         texto,
         marcados: lerMarcados(cfg.mencionados),
       });

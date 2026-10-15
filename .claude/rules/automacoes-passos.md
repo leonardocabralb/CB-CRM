@@ -246,20 +246,24 @@ quem cuida, marcando a pessoa. `src/lib/notes/anotacao-da-automacao.ts`
 (I/O + peças puras, com teste); o motor só monta a entrada.
 
 - **É a MESMA anotação e a MESMA menção da equipe** (`cb_conversation_notes`
-  + `note_mention` no sino), escritas em service role como a rota
-  `POST /api/cb/notes` — os tetos (4000 caracteres, 50 marcados) são os
-  dela, importados de um lugar só. Autor = a automação (`author_user_id`
-  nulo, `autor_nome` `Automação "<nome>"`): só admin apaga.
+  + `note_mention` no sino), escritas em service role como a rota do painel
+  `POST /api/cb/notes`, que importa os tetos daqui (4000 caracteres, 50
+  marcados; a API v1 tem o seu). Autor = a automação (`author_user_id` nulo,
+  `autor_nome` do dicionário, `Automations.anotacaoGravada.autor`, pelo
+  `autorDaAnotacaoDaAutomacao`): só admin apaga.
 - ⚠️ **Os marcados são ids de LOGIN na config, conferidos contra a CONTA na
   hora** (suspenso, 1067, também sai). O `@Nome` entra no começo do texto ao
   gravar, com o nome de agora (`full_name` aparado: há nome com espaço no
   fim). A ativação confere só a forma (`ehListaDeMarcados`).
 - ⚠️⚠️ **Marcado que saiu e aviso que falhou FALHAM o passo DEPOIS de gravar**:
-  a anotação fica (é o ato) e a falha aparece na conversa. Concluir calado
-  deixaria a pessoa que devia agir sem saber. Leitura que falha lança ANTES
-  de gravar. Fora de `PASSOS_DE_ENVIO`: não repete.
+  a anotação fica (é o ato), a falha aparece na conversa e os passos SEGUINTES
+  não rodam (por isso a anotação costuma ser o último). Concluir calado
+  deixaria a pessoa que devia agir sem saber. O construtor avisa antes, em
+  âmbar (`anotacao_marcado_fora_da_conta` em `avisosDaAutomacao`, com os
+  membros carregados). Leitura que falha lança ANTES de gravar. Fora de
+  `PASSOS_DE_ENVIO`: não repete.
 - **Não cria conversa** (não fala com o cliente, como o `set_ai`): ficha sem
-  conversa falha com o motivo.
+  conversa falha com motivo próprio (o de `resolveConversationId` fala em envio).
 
 ### "Não repetir para o mesmo contato por N horas" (`trigger_config.nao_repetir_horas`)
 

@@ -2717,9 +2717,9 @@
       "anotacao": {
         "textoLabel": "Note text",
         "textoHint": "Only the team sees it. It shows up in the conversation signed by the automation.",
-        "marcarLabel": "Tag (optional)",
-        "marcarEscolher": "Tag someone…",
-        "marcarHint": "Whoever is tagged shows up with @ at the start of the note and gets the bell notification. If the person leaves the account, the step saves the note and reports a failure.",
+        "marcarLabel": "Mention (optional)",
+        "marcarEscolher": "Mention someone…",
+        "marcarHint": "Whoever is mentioned shows up with @ at the start of the note and gets the bell notification. If the person leaves the account, the step saves the note without them, reports a failure and the automation stops there.",
         "tirar": "Remove {nome}"
       },
       "atlas": {
@@ -2963,6 +2963,7 @@
           "acionar_automacao_do_atlas": "The chosen automation uses the “Atlas status changed” trigger, which only runs from the Atlas reading: when this step is reached it fails and the following steps do not run. Choose another.",
           "iniciar_robo_desligado": "The chosen bot is not active: when this step is reached it fails and the following steps do not run. Activate it or choose another.",
           "iniciar_robo_apagado": "The chosen bot was deleted: when this step is reached it fails and the following steps do not run. Choose another.",
+          "anotacao_marcado_fora_da_conta": "A mentioned person is no longer an active member of the account: when this step is reached it saves the note without them, fails and the following steps do not run. Remove the mention.",
           "atlas_situacao_invalida": "Choose the Atlas status again (or “— don’t change —”).",
           "atlas_atualizar_sem_campos": "Choose at least one field to update in Atlas.",
           "atlas_tarefa_sem_titulo": "Write the Atlas task title.",
@@ -3258,6 +3259,9 @@
       "desmarcar": "Remove from favorites",
       "falhouSalvar": "Couldn't save the favorite. Try again.",
       "falhouCarregar": "Your favorites didn't load right now."
+    },
+    "anotacaoGravada": {
+      "autor": "Automation \"{nome}\""
     }
   },
   "Flows": {

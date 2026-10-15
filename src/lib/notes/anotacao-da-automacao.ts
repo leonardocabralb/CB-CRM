@@ -8,7 +8,8 @@
 // `POST /api/cb/notes`). O que muda:
 //
 // - não há gente do outro lado: o autor é a automação (`author_user_id`
-//   nulo, `autor_nome` com o nome dela — só admin apaga);
+//   nulo, `autor_nome` = `Automação "<nome>"`, do dicionário, montado pelo
+//   motor com `autorDaAnotacaoDaAutomacao` — só admin apaga);
 // - quem é marcado vem da CONFIGURAÇÃO (ids de login), não do texto
 //   digitado; o `@Nome` entra no começo do texto na hora de gravar, com o
 //   nome de AGORA (quem mudou de nome continua marcado);
@@ -16,13 +17,13 @@
 //   avisado, e o resultado diz quantos — o motor transforma isso em falha
 //   VISÍVEL depois de gravar (ver o `case 'add_note'` de `engine.ts`).
 //
-// Sem import de servidor: `validate.ts` (que roda também no construtor) lê
-// os tetos e a forma daqui.
+// Sem import de servidor: `validate.ts` e `pendencias.ts` (que rodam também
+// no construtor) leem os tetos e a forma daqui.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-/** Teto do texto gravado (marcações incluídas) — o mesmo da rota de anotações. */
+/** Teto do texto gravado (marcações incluídas) — o mesmo da rota de anotações do painel. */
 export const MAX_TEXTO_DA_ANOTACAO = 4000
 
 /** Teto de pessoas marcadas — o mesmo da rota de anotações. */
@@ -52,12 +53,6 @@ export function textoComMarcacoes(texto: string, nomes: readonly string[]): stri
   return marcas ? `${marcas} ${texto}` : texto
 }
 
-/** Quem assina a anotação e o aviso no sino. */
-export function autorDaAnotacao(nomeDaAutomacao: string | null | undefined): string {
-  const nome = nomeDaAutomacao?.trim()
-  return nome ? `Automação "${nome}"` : 'Automação'
-}
-
 export interface ResultadoDaAnotacao {
   notaId: string
   /** Os nomes de quem foi marcado e avisado, na ordem da configuração. */
@@ -78,7 +73,8 @@ export async function escreverAnotacaoDaAutomacao(
   entrada: {
     accountId: string
     conversationId: string
-    nomeDaAutomacao: string | null | undefined
+    /** Quem assina a anotação e o aviso (`Automação "<nome>"`, já no idioma da instalação). */
+    autor: string
     /** Já interpolado e aparado; sem as marcações. */
     texto: string
     /** Ids de login, já lidos por `lerMarcados`. */
@@ -116,11 +112,11 @@ export async function escreverAnotacaoDaAutomacao(
       const p = porId.get(id)
       if (!p || p.suspenso_em) return []
       // A cascata do `memberLabel`, aparada: há nome gravado com espaço no fim.
-      return [{ userId: id, nome: p.full_name?.trim() || p.email || 'membro' }]
+      return [{ userId: id, nome: p.full_name?.trim() || p.email || id }]
     })
   }
 
-  const autor = autorDaAnotacao(entrada.nomeDaAutomacao)
+  const autor = entrada.autor
   const texto = textoComMarcacoes(
     entrada.texto,
     marcados.map((m) => m.nome),

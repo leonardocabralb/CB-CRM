@@ -2002,6 +2002,17 @@ describe('ficha sem conversa — os passos de envio criam a conversa (27/09/2026
     );
   });
 
+  it('add_note também não fala com o contato: sem conversa, falha com o motivo DELE e não cria nada', async () => {
+    anotacaoMock.escreverAnotacaoDaAutomacao.mockClear();
+    await executar(passoDe('add_note', { texto: 'x' }));
+
+    expect(destinatarioMock.conversaDoContato).not.toHaveBeenCalled();
+    expect(anotacaoMock.escreverAnotacaoDaAutomacao).not.toHaveBeenCalled();
+    expect(JSON.stringify(h.state.logUpdates)).toContain(
+      'anotação: o contato não tem conversa (o passo não cria uma)'
+    );
+  });
+
   it('a criação falhou: o passo falha com o motivo, e nada é enviado', async () => {
     destinatarioMock.conversaDoContato.mockRejectedValueOnce(
       new Error('destinatário: dono da conta não resolvido')
@@ -2245,7 +2256,8 @@ describe('add_note — escrever anotação interna (15/10/2026)', () => {
     expect(anotacaoMock.escreverAnotacaoDaAutomacao.mock.calls[0][1]).toEqual({
       accountId: ACCOUNT,
       conversationId: 'conv-1',
-      nomeDaAutomacao: 'Contato do Banco',
+      // Do dicionário, no idioma da instalação (o processo carrega um só).
+      autor: expect.stringMatching(/^(Automação|Automation) "Contato do Banco"$/),
       texto: 'Contato bancário: verificar cliente.',
       marcados: [ANA],
     });

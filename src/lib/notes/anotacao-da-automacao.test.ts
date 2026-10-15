@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import {
-  autorDaAnotacao,
   ehListaDeMarcados,
   escreverAnotacaoDaAutomacao,
   lerMarcados,
@@ -13,7 +12,7 @@ import {
 const CONTA = 'conta-1'
 const ANA = '11111111-1111-4111-8111-111111111111'
 const BIA = '22222222-2222-4222-8222-222222222222'
-const CAIO = '33333333-3333-4333-8333-333333333333'
+const ZECA = '33333333-3333-4333-8333-333333333333'
 
 describe('peças puras', () => {
   it('lerMarcados: só ids, sem repetição, na ordem da configuração', () => {
@@ -32,11 +31,6 @@ describe('peças puras', () => {
   it('as marcações vão no começo, como a equipe escreve', () => {
     expect(textoComMarcacoes('verificar cliente.', ['Ana Lima', 'Bia'])).toBe('@Ana Lima @Bia verificar cliente.')
     expect(textoComMarcacoes('verificar cliente.', [])).toBe('verificar cliente.')
-  })
-
-  it('a automação assina pelo nome', () => {
-    expect(autorDaAnotacao(' Contato do Banco ')).toBe('Automação "Contato do Banco"')
-    expect(autorDaAnotacao('')).toBe('Automação')
   })
 })
 
@@ -93,7 +87,7 @@ function bancoFalso(cenario: {
 const entrada = (marcados: string[] = [ANA]) => ({
   accountId: CONTA,
   conversationId: 'conv-1',
-  nomeDaAutomacao: 'Contato do Banco',
+  autor: 'Automação "Contato do Banco"',
   texto: 'Contato bancário: verificar cliente.',
   marcados,
 })
@@ -101,7 +95,7 @@ const entrada = (marcados: string[] = [ANA]) => ({
 const PERFIS = [
   { user_id: ANA, full_name: 'Ana Lima ', email: 'ana@exemplo.test', suspenso_em: null },
   { user_id: BIA, full_name: '', email: 'bia@exemplo.test', suspenso_em: null },
-  { user_id: CAIO, full_name: 'Caio', email: null, suspenso_em: '2026-10-01T00:00:00Z' },
+  { user_id: ZECA, full_name: 'Zeca', email: null, suspenso_em: '2026-10-01T00:00:00Z' },
 ]
 
 describe('escreverAnotacaoDaAutomacao', () => {
@@ -155,7 +149,7 @@ describe('escreverAnotacaoDaAutomacao', () => {
   it('⚠️ quem saiu da conta ou está suspenso não é marcado nem avisado, e o resultado CONTA', async () => {
     const fora = '44444444-4444-4444-8444-444444444444'
     const { db, chamadas } = bancoFalso({ perfis: PERFIS })
-    const r = await escreverAnotacaoDaAutomacao(db, entrada([ANA, CAIO, fora]))
+    const r = await escreverAnotacaoDaAutomacao(db, entrada([ANA, ZECA, fora]))
     expect(r.foraDaConta).toBe(2)
     expect(r.avisados).toEqual(['Ana Lima'])
     const nota = chamadas.find((c) => c.tabela === 'cb_conversation_notes')?.insert as { mencionados: string[] }

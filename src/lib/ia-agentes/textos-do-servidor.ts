@@ -1,6 +1,7 @@
 // ============================================================
 // Textos que o SERVIDOR grava para a equipe ler (a anotação de transferência
-// do agente, a da passagem e a de cada AÇÃO que ele fez — F4). O turno roda no `after()` da ingestão ou do cron, sem pedido de
+// do agente, a da passagem e a de cada AÇÃO que ele fez — F4; e o autor da
+// anotação que uma automação escreve). O turno roda no `after()` da ingestão ou do cron, sem pedido de
 // tela: o idioma é o da instalação (`NEXT_PUBLIC_APP_LOCALE`, o mesmo de
 // `src/i18n/request.ts`), e o texto sai do dicionário — nunca frase fixa no
 // código (o `ai_handoff_summary` do app anterior era inglês fixo).
@@ -162,4 +163,18 @@ export async function avisoDaTarefa(agente: string): Promise<string> {
     valores: Record<string, string>,
   ) => string
   return t('acoes.avisoDaTarefa', { agente })
+}
+
+/**
+ * Quem assina a anotação que uma AUTOMAÇÃO escreve (passo "Escrever anotação
+ * interna", `src/lib/notes/anotacao-da-automacao.ts`) — `Automação "<nome>"`
+ * no idioma da instalação, como o autor das anotações do agente.
+ */
+export async function autorDaAnotacaoDaAutomacao(nome: string): Promise<string> {
+  const { locale, messages } = await dicionario()
+  const t = createTranslator({ locale, messages, namespace: 'Automations.anotacaoGravada' }) as unknown as (
+    chave: string,
+    valores: Record<string, string>,
+  ) => string
+  return t('autor', { nome: nome.trim() })
 }

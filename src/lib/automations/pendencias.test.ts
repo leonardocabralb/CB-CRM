@@ -224,6 +224,20 @@ describe('avisosDaAutomacao', () => {
     ])
   })
 
+  it('anotação marcando quem saiu da conta ou está suspenso avisa; sem a lista de membros, nada se afirma', () => {
+    const ANA = '11111111-1111-4111-8111-111111111111'
+    const BIA = '22222222-2222-4222-8222-222222222222'
+    const FORA = '44444444-4444-4444-8444-444444444444'
+    const anotar = (cid: string, mencionados: string[]) => p(cid, 'add_note', { texto: 'x', mencionados })
+    const membros = [{ user_id: ANA }, { user_id: BIA, suspenso_em: '2026-10-01T00:00:00Z' }]
+    const passos = [anotar('a', [ANA]), anotar('b', [ANA, BIA]), anotar('c', [FORA]), anotar('d', [])]
+    expect(avisosDaAutomacao(passos, { ...referencias, membros }).map((a) => [a.path, a.codigo])).toEqual([
+      ['steps[1].mencionados', 'anotacao_marcado_fora_da_conta'],
+      ['steps[2].mencionados', 'anotacao_marcado_fora_da_conta'],
+    ])
+    expect(avisosDaAutomacao(passos, { ...referencias, membros: null })).toEqual([])
+  })
+
   it('acionar a régua do Asaas avisa pela régua, não por estar desligada', () => {
     const avisos = avisosDaAutomacao([acionar('a', 'regua')], referencias)
     expect(avisos.map((a) => [a.path, a.codigo])).toEqual([

@@ -33,6 +33,7 @@
 import type { ValidationIssue } from './validate'
 import { ehGatilhoDaRegua } from '@/lib/asaas/regua'
 import { GATILHO_DO_ATLAS } from './so-pelo-disparador'
+import { lerMarcados } from '@/lib/notes/anotacao-da-automacao'
 
 /** O mínimo da árvore do construtor que este módulo precisa. */
 export interface NoDaArvore<T> {
@@ -322,6 +323,7 @@ export const CODIGOS_DE_PENDENCIA = [
   'acionar_automacao_do_atlas',
   'iniciar_robo_desligado',
   'iniciar_robo_apagado',
+  'anotacao_marcado_fora_da_conta',
 ] as const
 
 const CONHECIDOS: ReadonlySet<string> = new Set(CODIGOS_DE_PENDENCIA)
@@ -350,6 +352,8 @@ export interface ReferenciasDosPassos {
   automacoes: ReadonlyArray<{ id: string; is_active: boolean; trigger_type?: string }> | null
   /** Idem, para os passos de iniciar robô. */
   robos: ReadonlyArray<{ id: string; status: string }> | null
+  /** Idem, para quem a anotação marca. Ausente = não conferir. */
+  membros?: ReadonlyArray<{ user_id: string; suspenso_em?: string | null }> | null
 }
 
 interface NoComConfig<T> extends NoDaArvore<T> {
@@ -375,6 +379,9 @@ function idDoAlvo(valor: unknown): string | null {
  * - "Iniciar robô" apontando para robô que não está `active` (rascunho ou
  *   arquivado) ou APAGADO: `startFlowForContact` recusa, e o passo falha do
  *   mesmo jeito.
+ * - "Escrever anotação interna" marcando quem saiu da conta ou está suspenso
+ *   (1067): o motor grava a anotação sem ela e FALHA o passo, de propósito
+ *   (`add_note` em `engine.ts`) — os passos seguintes não rodam.
  *
  * Alvo vazio fica com a validação (é pendência, não aviso).
  */
@@ -387,6 +394,9 @@ export function avisosDaAutomacao<T extends NoComConfig<T>>(
     ? new Map(referencias.automacoes.map((a) => [a.id, a]))
     : null
   const robos = referencias.robos ? new Map(referencias.robos.map((r) => [r.id, r])) : null
+  const ativos = referencias.membros
+    ? new Set(referencias.membros.filter((m) => !m.suspenso_em).map((m) => m.user_id))
+    : null
   // O mesmo percurso e os mesmos endereços de `validate.ts`: só desce pelos
   // ramos de uma condição.
   const visitar = (lista: readonly T[], prefixo: string) => {
@@ -440,6 +450,14 @@ export function avisosDaAutomacao<T extends NoComConfig<T>>(
             codigo: 'iniciar_robo_desligado',
           })
         }
+      }
+      if (s.step_type === 'add_note' && ativos && lerMarcados(c.mencionados).some((id) => !ativos.has(id))) {
+        avisos.push({
+          path: `${path}.mencionados`,
+          message:
+            'a pessoa marcada não é membro ativo da conta: o passo grava a anotação, falha e os seguintes não rodam',
+          codigo: 'anotacao_marcado_fora_da_conta',
+        })
       }
       if (s.step_type === 'condition' && s.branches) {
         visitar(s.branches.yes, `${path}.yes.`)

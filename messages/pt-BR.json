@@ -2712,7 +2712,7 @@
         "textoHint": "Só a equipe vê. Aparece na conversa assinada pela automação.",
         "marcarLabel": "Marcar (opcional)",
         "marcarEscolher": "Marcar alguém…",
-        "marcarHint": "Quem for marcado aparece com @ no começo da anotação e recebe o aviso no sino. Se a pessoa sair da conta, o passo grava a anotação e acusa falha.",
+        "marcarHint": "Quem for marcado aparece com @ no começo da anotação e recebe o aviso no sino. Se a pessoa sair da conta, o passo grava a anotação sem ela, acusa falha e a automação para ali.",
         "tirar": "Tirar {nome}"
       },
       "atlas": {
@@ -2956,6 +2956,7 @@
           "acionar_automacao_do_atlas": "A automação escolhida é do gatilho “Situação mudou no Atlas”, que só roda pela leitura do Atlas: quando chegar aqui, o passo falha e os passos seguintes não rodam. Escolha outra.",
           "iniciar_robo_desligado": "O robô escolhido não está ativo: quando chegar aqui, o passo falha e os passos seguintes não rodam. Ative-o ou escolha outro.",
           "iniciar_robo_apagado": "O robô escolhido foi apagado: quando chegar aqui, o passo falha e os passos seguintes não rodam. Escolha outro.",
+          "anotacao_marcado_fora_da_conta": "Uma pessoa marcada não é mais membro ativo da conta: quando chegar aqui, o passo grava a anotação sem ela, falha e os passos seguintes não rodam. Tire a marcação.",
           "atlas_situacao_invalida": "Escolha de novo a situação do Atlas (ou “— não mudar —”).",
           "atlas_atualizar_sem_campos": "Escolha ao menos um campo para atualizar no Atlas.",
           "atlas_tarefa_sem_titulo": "Escreva o título da tarefa do Atlas.",
@@ -3251,6 +3252,9 @@
       "desmarcar": "Tirar das favoritas",
       "falhouSalvar": "Não deu para salvar a favorita. Tente de novo.",
       "falhouCarregar": "Suas favoritas não carregaram agora."
+    },
+    "anotacaoGravada": {
+      "autor": "Automação \"{nome}\""
     }
   },
   "Flows": {

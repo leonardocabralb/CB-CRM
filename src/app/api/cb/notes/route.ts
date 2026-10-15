@@ -22,12 +22,12 @@ import { MAX_MARCADOS, MAX_TEXTO_DA_ANOTACAO } from '@/lib/notes/anotacao-da-aut
  *    cliente malicioso poria qualquer uuid ali e notificaria estranhos.
  *
  * Por isso `cb_conversation_notes` não tem policy de INSERT e o papel
- * `authenticated` teve o INSERT revogado: não existe caminho de escrita fora
- * daqui — e do passo de automação "Escrever anotação interna"
- * (`src/lib/notes/anotacao-da-automacao.ts`), que também roda no servidor e
- * confere os marcados contra a conta. Apagar, sim, continua indo direto do
- * navegador — lá a RLS decide sozinha (autor ou admin) e não há o que
- * validar no meio.
+ * `authenticated` teve o INSERT revogado: o navegador não escreve. Os outros
+ * escritores também rodam no servidor — a API v1 (`/api/v1/notes`), o agente
+ * de IA e o passo de automação "Escrever anotação interna"
+ * (`src/lib/notes/anotacao-da-automacao.ts`, que confere os marcados contra a
+ * conta como esta rota). Apagar, sim, continua indo direto do navegador — lá
+ * a RLS decide sozinha (autor ou admin) e não há o que validar no meio.
  */
 /**
  * Teto do texto da anotação (o mesmo do passo de automação).

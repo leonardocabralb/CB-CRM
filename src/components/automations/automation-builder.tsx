@@ -1627,7 +1627,7 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
     document.querySelector(rolarPara.seletor)?.scrollIntoView({ behavior: "smooth", block: "start" })
   }, [rolarPara])
 
-  const { channels, customFields, automations, flows, carga } = recursosCarregados
+  const { channels, customFields, automations, flows, members, carga } = recursosCarregados
   // `null` = a lista não carregou (ou falhou): aquela conferência é pulada, e
   // quem responde é o servidor — nunca "a conta não tem canal" sobre lista
   // vazia durante a carga.
@@ -1657,8 +1657,9 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
           ? automations.map((a) => (a.id === initial.id ? { ...a, is_active: state.is_active } : a))
           : null,
       robos: carga.flows === "pronto" && flows.length < TETO_DE_LINHAS ? flows : null,
+      membros: carga.members === "pronto" ? members : null,
     }),
-    [carga.automations, automations, initial.id, state.is_active, carga.flows, flows],
+    [carga.automations, automations, initial.id, state.is_active, carga.flows, flows, carga.members, members],
   )
 
   const vermelhoLigado = state.is_active && tentouLigar
@@ -5197,8 +5198,8 @@ function StepEditor({
             rotulo={t("anotacao.textoLabel")}
             value={(cfg.texto as string) ?? ""}
             onChange={(texto) => set({ texto })}
+            ajuda={<p className="mt-1 text-[11px] text-muted-foreground">{t("anotacao.textoHint")}</p>}
           />
-          <p className="-mt-1 mb-2 text-[11px] text-muted-foreground">{t("anotacao.textoHint")}</p>
           <MarcarNaAnotacao
             value={Array.isArray(cfg.mencionados) ? cfg.mencionados.filter((v): v is string => typeof v === "string") : []}
             onChange={(mencionados) => set({ mencionados })}
