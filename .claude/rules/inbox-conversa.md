@@ -212,7 +212,9 @@ destaque e ↑/↓ em `message-thread.tsx`.
   anexo.
 - ⚠️⚠️ **`onSendMedia` DEVOLVE se entregou, e o pai NÃO apaga o objeto na
   falha**: o item fica na fila, do compositor. O envio PARA no primeiro que não
-  entregou (a causa costuma ser a mesma para todos).
+  entregou (a causa costuma ser a mesma para todos). ⚠️⚠️ O item EM VOO é da
+  MENSAGEM (`entreguesRef` antes do `await`, sai só na falha): a limpeza de
+  troca apagava a nota de voz em envio, e a bolha perdia o áudio.
 - ⚠️⚠️ **Trinco SÍNCRONO (`enviandoFilaRef`) que guarda a POSSE (um número por
   envio), nunca um booleano.** Estado não serializa o segundo clique (reenviaria
   tudo); o `finally` só solta quem ainda é dono — com booleano, o fim do envio
@@ -296,12 +298,9 @@ O WhatsApp quase nunca anuncia a falha; este vermelho é INFERIDO.
 
 ### Nome do anexo na bolha
 
-- ⚠️ **Exibir é `mediaFilename(message)`, nunca `media_filename` cru** (nula
-  antes da 969). A legenda só aparece quando DIFERE do nome — nas linhas antigas
-  da Meta o nome está no `content_text` e sairia duas vezes. Mais em
-  `.claude/rules/midia.md`.
-- **Áudio não mostra nome** (o WhatsApp manda um id hexadecimal): mostra a
-  transcrição quando pronta.
+- ⚠️ **Exibir é `mediaFilename(message)`, nunca `media_filename` cru**; a
+  legenda só quando DIFERE do nome; áudio não mostra nome (id hexadecimal).
+  Os porquês: `.claude/rules/midia.md`.
 
 ### Documento e cartão de contato em destaque; o fundo do fio (01/10/2026)
 
