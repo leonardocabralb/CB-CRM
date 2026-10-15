@@ -37,6 +37,12 @@ export interface ReuniaoExterna {
   desmarcada: Desmarcada | null;
   /** Este agendamento é o horário NOVO de um reagendamento. */
   reagendamento: boolean;
+  /**
+   * O horário que este reagendamento substituiu (ISO), pela MESMA inferência
+   * que marca o antigo como `reagendada`; nulo = não é reagendamento, ou a
+   * inferência não teve resposta única.
+   */
+  reagendadaDe: string | null;
   link: string | null;
 }
 
@@ -95,17 +101,20 @@ function comAlgo(texto: string | null): string | null {
  * reagendamentos em 27/09/2026). O payload traz `old_invitee`, mas a 977 não
  * o guarda. Conferido nos 8: todos com candidato único, e nos 2 que TÊM o
  * cancelamento a inferência acha o mesmo convite.
+ *
+ * Devolve o convite substituído → o reagendamento que o substituiu (a pauta
+ * diz "era 13/10, 13:45" no horário novo).
  */
 function convitesSubstituidos(
   agendamentos: LinhaDoCalendly[],
   convitesCancelados: ReadonlySet<string>,
-): Set<string> {
+): Map<string, string> {
   const ordem = agendamentos
     .map((a) => ({ a, chegou: instante(a.recebido_em) }))
     .filter((x): x is { a: LinhaDoCalendly; chegou: number } => x.chegou !== null)
     .sort((x, y) => x.chegou - y.chegou);
 
-  const tomados = new Set<string>();
+  const tomados = new Map<string, string>();
   ordem.forEach(({ a, chegou }, i) => {
     if (a.situacao !== SITUACAO_REAGENDAMENTO) return;
     const candidatos = ordem.slice(0, i).map((x) => x.a).filter((anterior) => {
@@ -116,7 +125,7 @@ function convitesSubstituidos(
     });
     const cancelados = candidatos.filter((c) => convitesCancelados.has(c.invitee_uri));
     const escolhido = candidatos.length === 1 ? candidatos[0] : cancelados.length === 1 ? cancelados[0] : null;
-    if (escolhido) tomados.add(escolhido.id);
+    if (escolhido) tomados.set(escolhido.id, a.id);
   });
   return tomados;
 }
@@ -158,6 +167,13 @@ export function montarReunioesExternas(
   const saida: { ms: number; reuniao: ReuniaoExterna }[] = [];
   const instantesVistos = new Set<number>();
   const substituidos = convitesSubstituidos(agendamentos, convitesCancelados);
+  // O horário antigo de cada reagendamento (substituto → início do substituído).
+  const inicioPorId = new Map(agendamentos.map((a) => [a.id, instante(a.inicio)]));
+  const reagendadaDe = new Map<string, string>();
+  for (const [antigo, novo] of substituidos) {
+    const ms = inicioPorId.get(antigo);
+    if (ms != null) reagendadaDe.set(novo, new Date(ms).toISOString());
+  }
 
   for (const a of agendamentos) {
     const ms = instante(a.inicio);
@@ -178,6 +194,7 @@ export function montarReunioesExternas(
             ? 'cancelada'
             : null,
         reagendamento: a.situacao === SITUACAO_REAGENDAMENTO,
+        reagendadaDe: reagendadaDe.get(a.id) ?? null,
         link: comAlgo(a.link),
       },
     });
@@ -198,6 +215,7 @@ export function montarReunioesExternas(
         fim: null,
         desmarcada: null,
         reagendamento: false,
+        reagendadaDe: null,
         link: comAlgo(k.link),
       },
     });
@@ -230,6 +248,7 @@ export function lerReunioesExternas(json: unknown): ReuniaoExterna[] | null {
       fim: typeof r.fim === 'string' ? r.fim : null,
       desmarcada: r.desmarcada === 'cancelada' || r.desmarcada === 'reagendada' ? r.desmarcada : null,
       reagendamento: r.reagendamento === true,
+      reagendadaDe: typeof r.reagendadaDe === 'string' && instante(r.reagendadaDe) !== null ? r.reagendadaDe : null,
       link: typeof r.link === 'string' ? r.link : null,
     });
   }

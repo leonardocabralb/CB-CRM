@@ -14,7 +14,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useCan } from '@/hooks/use-can';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { usePautaDeReunioes } from '@/hooks/use-pauta-de-reunioes';
-import { diaNoFuso, FUSO_PADRAO, paraInstante } from '@/lib/agenda/fuso';
+import { diaNoFuso, FUSO_PADRAO, horaNoFuso, paraInstante } from '@/lib/agenda/fuso';
 import { gradeDaSemana, somarDias } from '@/lib/agenda/grade';
 import { urlDoInbox } from '@/lib/inbox/url';
 import { funilNoEscopo } from '@/lib/perfis/escopo';
@@ -38,6 +38,15 @@ const ESPERA_DO_DESFAZER_S = 5;
 const DIAS_DA_REDE = 30;
 /** Recarga silenciosa com a aba à vista: agendamento e cancelamento do dia chegam sozinhos. */
 const RECARGA_MS = 2 * 60_000;
+/**
+ * Espera entre o primeiro aviso de card movido e a recarga AO VIVO: junta a
+ * rajada numa leitura só (um arrasto grava de 1 a 3 linhas na trilha; uma
+ * automação ou uma carga, centenas) — a rota faz uma dúzia de consultas.
+ */
+const ESPERA_AO_VIVO_MS = 5_000;
+
+/** Nome único por assinatura: o modo estrito monta duas vezes, e a remoção do canal é assíncrona. */
+let canaisAbertos = 0;
 
 type Filtro = 'todas' | 'sem_resultado' | 'nao_qualificadas';
 
@@ -162,6 +171,48 @@ export function PautaDeReunioes() {
     return () => clearInterval(id);
   }, [recarregar]);
 
+  // AO VIVO (pedido do operador, 15/10/2026): o card movido pelo quadro, pelo
+  // painel da conversa, por um colega ou pelo Calendly resolve a reunião pela
+  // TRILHA, e a trilha da conta chega pelo tempo real (1059). Sem isto, a
+  // reunião resolvida em outra aba seguia "sem resultado" por até 2 min. A
+  // recarga de 2 min fica como rede: o canal falha calado, e o marco gravado
+  // por outra pessoa sem mover o card não passa pela trilha.
+  // Etiqueta não muda nada na pauta. Com a aba escondida, a recarga espera a
+  // volta (uma só, por mais avisos que tenham chegado).
+  useEffect(() => {
+    if (!accountId) return;
+    let agendada: ReturnType<typeof setTimeout> | null = null;
+    let devendo = false;
+    const recarregarSeVisivel = () => {
+      agendada = null;
+      if (document.visibilityState === 'visible') recarregar();
+      else devendo = true;
+    };
+    const aoMudarVisibilidade = () => {
+      if (document.visibilityState !== 'visible' || !devendo) return;
+      devendo = false;
+      recarregar();
+    };
+    const canal = supabase
+      .channel(`pauta:${accountId}:${++canaisAbertos}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'cb_lead_events', filter: `account_id=eq.${accountId}` },
+        (payload) => {
+          const tipo = (payload.new as { event_type?: unknown }).event_type;
+          if (tipo === 'tag_added' || tipo === 'tag_removed') return;
+          if (agendada === null) agendada = setTimeout(recarregarSeVisivel, ESPERA_AO_VIVO_MS);
+        },
+      )
+      .subscribe();
+    document.addEventListener('visibilitychange', aoMudarVisibilidade);
+    return () => {
+      if (agendada !== null) clearTimeout(agendada);
+      document.removeEventListener('visibilitychange', aoMudarVisibilidade);
+      void supabase.removeChannel(canal);
+    };
+  }, [accountId, supabase, recarregar]);
+
   // Os destinos dos botões, das duas leituras (a rede pode ter reunião de um
   // funil que a semana não tem).
   const funis = useMemo<Record<string, AlvosDoFunil>>(
@@ -191,11 +242,38 @@ export function PautaDeReunioes() {
   const semResultado = daRede.pauta ? reunioesPendentes(daRedeVisiveis, agora) : null;
   const deOutrosDias = (semResultado ?? []).filter((r) => diaNoFuso(new Date(r.inicio), FUSO_PADRAO) !== dia);
 
-  let lista = doDia(dia);
+  const doDiaEscolhido = doDia(dia);
+  let lista = doDiaEscolhido;
   if (filtro === 'sem_resultado') lista = lista.filter((r) => faseDaReuniao(r, agora) === 'sem_resultado');
   if (filtro === 'nao_qualificadas') {
     lista = lista.filter((r) => faseDaReuniao(r, agora) === 'antes' && !r.qualificada);
   }
+
+  // O resumo do dia, ao lado do título: quantas resolvidas, quantas faltam
+  // resolver e quantas ainda vão acontecer (o Reagendar antes do horário já
+  // conta como resolvida).
+  const contarFase = (f: ReturnType<typeof faseDaReuniao>) =>
+    doDiaEscolhido.filter((r) => faseDaReuniao(r, agora) === f).length;
+  const resumoDoDia = { com: contarFase('com_resultado'), sem: contarFase('sem_resultado'), antes: contarFase('antes') };
+
+  // A linha "Agora" (só hoje, na lista inteira): antes da primeira reunião que
+  // ainda não começou — a lista vem em ordem de início. Todas já começaram: no
+  // fim.
+  const posicaoDoAgora =
+    dia === hoje && filtro === 'todas' && lista.length > 0
+      ? (() => {
+          const i = lista.findIndex((r) => Date.parse(r.inicio) > agoraMs);
+          return i === -1 ? lista.length : i;
+        })()
+      : null;
+  const linhaDoAgora = (
+    <div key="agora" className="flex items-center gap-2" role="separator">
+      <span className="text-[11px] font-medium tabular-nums text-primary">
+        {t('agora', { hora: horaNoFuso(agora, FUSO_PADRAO) })}
+      </span>
+      <div className="h-px flex-1 bg-primary/40" />
+    </div>
+  );
 
   // ------------------------------------------------------------------
   // As marcações: pendentes com "Desfazer", depois gravadas.
@@ -498,9 +576,29 @@ export function PautaDeReunioes() {
 
           <section className="space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-sm font-medium">
-                {dia === hoje ? t('hojeExtenso') : `${rotuloDoDia(dia).semana} ${rotuloDoDia(dia).data}`}
-              </h2>
+              <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                <h2 className="text-sm font-medium">
+                  {dia === hoje ? t('hojeExtenso') : `${rotuloDoDia(dia).semana} ${rotuloDoDia(dia).data}`}
+                </h2>
+                {doDiaEscolhido.length > 0 && (
+                  <span className="text-xs text-muted-foreground">
+                    {t('nReunioes', { n: doDiaEscolhido.length })}
+                    {resumoDoDia.com > 0 && (
+                      <>
+                        {' · '}
+                        <span className="text-green-700 dark:text-green-300">{t('nComResultado', { n: resumoDoDia.com })}</span>
+                      </>
+                    )}
+                    {resumoDoDia.sem > 0 && (
+                      <>
+                        {' · '}
+                        <span className="text-amber-700 dark:text-amber-300">{t('nSemResultado', { n: resumoDoDia.sem })}</span>
+                      </>
+                    )}
+                    {resumoDoDia.antes > 0 && ` · ${t('nAAcontecer', { n: resumoDoDia.antes })}`}
+                  </span>
+                )}
+              </div>
               <div className="inline-flex overflow-hidden rounded-md border border-border">
                 {(['todas', 'sem_resultado', 'nao_qualificadas'] as const).map((f) => (
                   <button
@@ -519,10 +617,13 @@ export function PautaDeReunioes() {
               </div>
             </div>
             {lista.length > 0 ? (
-              lista.map((r) => linha(r, false))
+              <>
+                {lista.flatMap((r, i) => (i === posicaoDoAgora ? [linhaDoAgora, linha(r, false)] : [linha(r, false)]))}
+                {posicaoDoAgora === lista.length && linhaDoAgora}
+              </>
             ) : (
               <p className="py-8 text-center text-sm text-muted-foreground">
-                {doDia(dia).length === 0 ? t('diaVazio') : t('recorteVazio')}
+                {doDiaEscolhido.length === 0 ? t('diaVazio') : t('recorteVazio')}
               </p>
             )}
           </section>
