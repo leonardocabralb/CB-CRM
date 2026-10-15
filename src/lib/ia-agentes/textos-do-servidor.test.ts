@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { TIPOS_DE_ACAO } from './agente'
 import {
+  textosDaAnotacaoDaAutomacao,
   avisoDaTarefa,
   chaveDoMotivoDaReuniao,
   CODIGOS_DA_REUNIAO_NAO_MARCADA,
@@ -116,6 +117,16 @@ describe('textos da transferência do agente', () => {
     } finally {
       vi.unstubAllEnvs()
     }
+  })
+
+  it('a anotação de uma automação: autor (com o nome dela) e rótulo de marcado sem nome, nos dois dicionários', async () => {
+    for (const arquivo of ['en.json', 'pt-BR.json']) {
+      expect(pegar(dicionario(arquivo), 'Automations.anotacaoGravada.autor'), arquivo).toContain('{nome}')
+      expect(typeof pegar(dicionario(arquivo), 'Automations.anotacaoGravada.semNome'), arquivo).toBe('string')
+    }
+    const { autor, semNome } = await textosDaAnotacaoDaAutomacao(' Contato do Banco ')
+    expect(autor).toMatch(/^(Automação|Automation) "Contato do Banco"$/)
+    expect(semNome).toMatch(/^(membro sem nome|unnamed member)$/)
   })
 
   it('a chave do motivo: falha na execução em `turnos.acoes.erro`, recusa em `ferramentas.recusa`', () => {

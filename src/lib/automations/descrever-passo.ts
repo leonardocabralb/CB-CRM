@@ -1,4 +1,5 @@
 import type {
+  AddNoteStepConfig,
   AtlasAtualizarClienteStepConfig,
   AtlasAtualizarOnboardingStepConfig,
   AtlasCriarTarefaStepConfig,
@@ -228,6 +229,11 @@ export function descreverPasso(passo: PassoResumivel, nomes: NomesConhecidos = {
       // quem recebe não cabe em `NomesConhecidos` — a tela da grade não
       // carrega membros — e um id cru ali seria lido como se fosse o nome.
       return simples(recortar((cfg as unknown as CreateTaskStepConfig).titulo))
+
+    case 'add_note':
+      // O TEXTO, pelo mesmo motivo da tarefa; quem é marcado fica de fora
+      // (a grade não carrega membros).
+      return simples(recortar((cfg as unknown as AddNoteStepConfig).texto))
 
     // O nó "Atlas" (30/09/2026). O "Atualizar cliente" diz a SITUAÇÃO que
     // escreve (é o que pesa: muda o grupo do cliente no Atlas), por ICU

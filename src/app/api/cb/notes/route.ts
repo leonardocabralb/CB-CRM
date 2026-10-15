@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { createClient } from '@/lib/supabase/server'
 import { canWriteNotes, isAccountRole } from '@/lib/auth/roles'
 import { quemAvisarDaResposta, type NotaDaConversa } from '@/lib/notes/resposta'
+import { MAX_MARCADOS, MAX_TEXTO_DA_ANOTACAO } from '@/lib/notes/anotacao-da-automacao'
 
 /**
  * Criação de anotação interna (migration 918).
@@ -21,25 +22,28 @@ import { quemAvisarDaResposta, type NotaDaConversa } from '@/lib/notes/resposta'
  *    cliente malicioso poria qualquer uuid ali e notificaria estranhos.
  *
  * Por isso `cb_conversation_notes` não tem policy de INSERT e o papel
- * `authenticated` teve o INSERT revogado: não existe caminho de escrita fora
- * daqui. Apagar, sim, continua indo direto do navegador — lá a RLS decide
- * sozinha (autor ou admin) e não há o que validar no meio.
+ * `authenticated` teve o INSERT revogado: o navegador não escreve. Os outros
+ * escritores também rodam no servidor — a API v1 (`/api/v1/notes`), o agente
+ * de IA e o passo de automação "Escrever anotação interna"
+ * (`src/lib/notes/anotacao-da-automacao.ts`, que confere os marcados contra a
+ * conta como esta rota). Apagar, sim, continua indo direto do navegador — lá
+ * a RLS decide sozinha (autor ou admin) e não há o que validar no meio.
  */
 /**
- * Teto do texto da anotação.
+ * Teto do texto da anotação (o mesmo do passo de automação).
  *
  * A coluna é `text` e não tem limite no banco, então sem isto um POST fora da
  * tela grava megabytes numa linha que o fio do chat renderiza inteira. 4000
  * é folgado para o uso real (o campo tem 3 linhas) e ainda cabe confortável
  * numa bolha.
  */
-const MAX_TEXTO = 4000
+const MAX_TEXTO = MAX_TEXTO_DA_ANOTACAO
 
 /**
  * Teto de menções por anotação. Uma conta real tem uma dezena de pessoas; o
  * número existe para o array não chegar sem tamanho no `.in(...)`.
  */
-const MAX_MENCOES = 50
+const MAX_MENCOES = MAX_MARCADOS
 
 /** Página da leitura de quem avisar da resposta (1075): o teto do PostgREST. */
 const PAGINA_DA_CONVERSA = 1000

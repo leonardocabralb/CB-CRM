@@ -235,7 +235,7 @@ const TODOS_OS_TIPOS: Record<AutomationStepType, true> = {
   move_deal_stage: true, set_deal_status: true, run_automation: true, stop_automation: true,
   run_flow: true, stop_flow: true, set_ai: true, send_media: true,
   wait: true, condition: true, send_webhook: true, close_conversation: true,
-  send_to_number: true, create_task: true, pin_conversation_channel: true,
+  send_to_number: true, create_task: true, pin_conversation_channel: true, add_note: true,
   atlas_criar_cliente: true, atlas_atualizar_cliente: true, atlas_criar_tarefa: true,
   atlas_enviar_transcricao: true, atlas_atualizar_onboarding: true,
 }

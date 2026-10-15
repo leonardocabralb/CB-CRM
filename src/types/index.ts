@@ -1309,6 +1309,12 @@ export type AutomationStepType =
    */
   | 'pin_conversation_channel'
   /**
+   * Escreve uma anotação interna na conversa, assinada pela automação, e
+   * marca membros da equipe (o mesmo aviso `note_mention` da menção feita à
+   * mão). Não fala com o cliente.
+   */
+  | 'add_note'
+  /**
    * Cria o cliente no Atlas Gestor (ou reativa o cadastro encerrado, ou só
    * vincula o que está em curso) pela chave da CONTA — a Fase 0 de
    * docs/PLANO-integracao-atlas.md. Não fala com ninguém.
@@ -1913,6 +1919,17 @@ export interface PinConversationChannelStepConfig {
 }
 
 /**
+ * "Escrever anotação interna". `texto` aceita as variáveis das mensagens;
+ * `mencionados` são ids de LOGIN (`auth.users.id`), como a coluna
+ * `cb_conversation_notes.mencionados` — o `@Nome` entra no texto na hora de
+ * gravar, com o nome de agora (`src/lib/notes/anotacao-da-automacao.ts`).
+ */
+export interface AddNoteStepConfig {
+  texto: string;
+  mencionados?: string[];
+}
+
+/**
  * "Criar cliente no Atlas". Os três `campo_*` são `custom_fields.field_key`
  * de campos de DATA da conta, escolhidos pelo operador; nulo/ausente = não
  * usar (primeiro contato cai na criação do card, fechamento em "agora",
@@ -2002,6 +2019,7 @@ export type AutomationStepConfig =
   | RunFlowStepConfig
   | SetAiStepConfig
   | PinConversationChannelStepConfig
+  | AddNoteStepConfig
   | AtlasCriarClienteStepConfig
   | AtlasAtualizarClienteStepConfig
   | AtlasCriarTarefaStepConfig
