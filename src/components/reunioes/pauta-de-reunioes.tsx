@@ -44,6 +44,21 @@ const RECARGA_MS = 2 * 60_000;
  * automação ou uma carga, centenas) — a rota faz uma dúzia de consultas.
  */
 const ESPERA_AO_VIVO_MS = 5_000;
+/**
+ * Os eventos da trilha que mudam a pauta: o CARD (etapa, funil, status, criado
+ * ou apagado) e a união de fichas. Lista de PERMITIDOS: a trilha também guarda
+ * etiqueta e a situação/responsável da CONVERSA (1083), que nada mudam aqui —
+ * e encerrar conversa acontece o dia todo (medido no preview, 15/10/2026: o
+ * primeiro aviso que chegou era `conversation_status_changed`).
+ */
+const EVENTOS_DA_PAUTA: ReadonlySet<unknown> = new Set([
+  'deal_created',
+  'stage_changed',
+  'pipeline_changed',
+  'status_changed',
+  'deal_deleted',
+  'contacts_merged',
+]);
 
 /** Nome único por assinatura: o modo estrito monta duas vezes, e a remoção do canal é assíncrona. */
 let canaisAbertos = 0;
@@ -177,8 +192,8 @@ export function PautaDeReunioes() {
   // reunião resolvida em outra aba seguia "sem resultado" por até 2 min. A
   // recarga de 2 min fica como rede: o canal falha calado, e o marco gravado
   // por outra pessoa sem mover o card não passa pela trilha.
-  // Etiqueta não muda nada na pauta. Com a aba escondida, a recarga espera a
-  // volta (uma só, por mais avisos que tenham chegado).
+  // Só os eventos do card (`EVENTOS_DA_PAUTA`). Com a aba escondida, a recarga
+  // espera a volta (uma só, por mais avisos que tenham chegado).
   useEffect(() => {
     if (!accountId) return;
     let agendada: ReturnType<typeof setTimeout> | null = null;
@@ -199,8 +214,7 @@ export function PautaDeReunioes() {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'cb_lead_events', filter: `account_id=eq.${accountId}` },
         (payload) => {
-          const tipo = (payload.new as { event_type?: unknown }).event_type;
-          if (tipo === 'tag_added' || tipo === 'tag_removed') return;
+          if (!EVENTOS_DA_PAUTA.has((payload.new as { event_type?: unknown }).event_type)) return;
           if (agendada === null) agendada = setTimeout(recarregarSeVisivel, ESPERA_AO_VIVO_MS);
         },
       )
