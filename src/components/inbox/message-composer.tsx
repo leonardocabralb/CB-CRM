@@ -1,10 +1,15 @@
 "use client";
+/* eslint react-hooks/exhaustive-deps: "error" -- o `setText` é PRESO à
+   conversa (rascunho por conversa): um useCallback sem ele nas dependências
+   escreve no rascunho de OUTRO cliente. No resto do projeto a regra é aviso,
+   e aviso não reprova o CI. Pino: rascunho-da-conversa.chamadores.test.ts */
 
 import {
   useState,
   useRef,
   useCallback,
   useEffect,
+  useLayoutEffect,
   KeyboardEvent,
 } from "react";
 import {
@@ -47,6 +52,7 @@ import {
 import { useCan } from "@/hooks/use-can";
 import { useAuth } from "@/hooks/use-auth";
 import { useMediaQuery } from "@/hooks/use-media-query";
+import { useRascunhoDaConversa } from "@/hooks/use-rascunho-da-conversa";
 import { enterEnvia, MIDIA_DE_TOQUE } from "@/lib/celular/teclado";
 import { custoDaAssinatura, nomeDePessoa } from "@/lib/assinatura/assinatura";
 import type { ConversationNote, MediaLibraryItem } from "@/types";
@@ -308,7 +314,12 @@ export function MessageComposer({
   const porQrCode = transporteConhecido && ehEvolution(channelKind);
   const aceite = aceiteDoSeletor(porQrCode);
 
-  const [text, setText] = useState("");
+  // ⚠️⚠️ Um rascunho POR CONVERSA (pedido do operador, 15/10/2026): o
+  // compositor não remonta na troca, e com um `useState` só o texto escrito
+  // para um cliente continuava na caixa do próximo. O `setText` é PRESO à
+  // conversa do render — quem o chama leva-o nas dependências, senão escreve
+  // no rascunho da conversa anterior. Ver `useRascunhoDaConversa`.
+  const [text, setText] = useRascunhoDaConversa(conversationId);
   const [drafting, setDrafting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // A caixa tinha o foco quando o dedo encostou no Enviar (ver o botão).
@@ -552,6 +563,17 @@ export function MessageComposer({
     el.style.height = `${Math.min(el.scrollHeight, 96) + borda}px`;
   }, []);
 
+  // O texto também muda SEM digitação — o rascunho de outra conversa, o que
+  // outra aba escreveu: a altura acompanha antes da pintura. Vazia, volta ao
+  // `auto`, como depois de enviar: medida, a caixa vazia cresceria até o
+  // placeholder, que quebra em várias linhas numa coluna estreita.
+  useLayoutEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    if (text === "") el.style.height = "auto";
+    else adjustHeight();
+  }, [text, adjustHeight]);
+
   // ---- Envio com janela de arrependimento ----------------------------
   //
   // Enter enviava na hora, e mensagem errada no WhatsApp não tem volta: só
@@ -638,7 +660,7 @@ export function MessageComposer({
       el.setSelectionRange(p.texto.length, p.texto.length);
       adjustHeight();
     });
-  }, [descartarTimer, adjustHeight]);
+  }, [descartarTimer, adjustHeight, setText]);
 
   /**
    * Agenda o texto para a hora do campo (925).
@@ -729,7 +751,7 @@ export function MessageComposer({
         setAgendando(false);
       }
     },
-    [quandoAg, conversationId, onScheduled, onClearReply, tAgendadas, limparAgendamento],
+    [quandoAg, conversationId, onScheduled, onClearReply, tAgendadas, limparAgendamento, setText],
   );
 
   const handleSend = useCallback(async () => {
@@ -773,7 +795,7 @@ export function MessageComposer({
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
-  }, [text, envioTravado, replyTo?.id, liberarPendente, quandoAg, agendar]);
+  }, [text, envioTravado, replyTo?.id, liberarPendente, quandoAg, agendar, setText]);
 
   // Trocar de conversa solta a pendente na hora.
   //
@@ -889,7 +911,7 @@ export function MessageComposer({
         adjustHeight();
       });
     },
-    [text, adjustHeight],
+    [text, adjustHeight, setText],
   );
 
   const handleKeyDown = useCallback(
@@ -930,7 +952,7 @@ export function MessageComposer({
       setText(e.target.value);
       adjustHeight();
     },
-    [adjustHeight]
+    [adjustHeight, setText]
   );
 
   // Ask the AI assistant for a suggested reply and drop it into the
@@ -975,7 +997,7 @@ export function MessageComposer({
     } finally {
       setDrafting(false);
     }
-  }, [drafting, conversationId, adjustHeight, t]);
+  }, [drafting, conversationId, adjustHeight, t, setText]);
 
   // ---- Interactive message + quick replies --------------------------
 
@@ -1070,7 +1092,7 @@ export function MessageComposer({
         }
       });
     },
-    [openInteractiveBuilder, adjustHeight, channelKind, t],
+    [openInteractiveBuilder, adjustHeight, channelKind, t, setText],
   );
 
   // Upload a captured file to chat-media and stage it as a draft.
