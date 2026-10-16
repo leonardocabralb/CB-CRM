@@ -136,7 +136,15 @@ export function criarRepositorio(
         if (guardar === null) armazenamento()?.removeItem(chave);
         else armazenamento()?.setItem(chave, guardar);
       } catch {
-        // Fica só na memória desta aba (ver o cabeçalho da função).
+        // Fica só na memória desta aba (ver o cabeçalho da função). ⚠️ E a
+        // versão VELHA sai do armazenamento: com a cota cheia, o `setItem`
+        // falha e ela ficaria lá — recarregar a página ressuscitaria um
+        // rascunho que a pessoa já tinha mudado (Codex, PR #414).
+        try {
+          armazenamento()?.removeItem(chave);
+        } catch {
+          // Armazenamento inteiro fora: nada guardado, nada a ressuscitar.
+        }
       }
     }
     avisar();

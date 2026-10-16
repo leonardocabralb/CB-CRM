@@ -753,7 +753,7 @@ export function MessageComposer({
         // ⚠️ A hora e a citação são da TELA: já em outra conversa, são as
         // dela — apagar a hora escolhida lá faria o próximo Enter sair NA
         // HORA. A troca de conversa já limpou as desta.
-        if (conversaAnteriorRef.current === origem) {
+        if (conversaNaTelaRef.current === origem) {
           // A hora sempre sai: o próximo envio tem de ser imediato por
           // padrão — hora esquecida no campo transformaria uma resposta
           // urgente em algo que sai amanhã.
@@ -834,6 +834,16 @@ export function MessageComposer({
   // é vazamento de informação entre casos, não só um erro de UI. Fechar
   // desmonta o `InternalNoteBox`, e o texto que estava dentro vai junto.
   const conversaAnteriorRef = useRef(conversationId);
+  // ⚠️ A conversa NA TELA, para quem volta de uma espera (upload, sugestão
+  // da IA, agendamento) decidir se ainda mexe nela. Num efeito de LAYOUT, e
+  // não no efeito de troca abaixo: este é PASSIVO, e a continuação de um
+  // `fetch` que caia entre o commit da troca e ele leria a conversa anterior
+  // (Codex, PR #414). O de layout roda no mesmo passo do commit, antes de
+  // qualquer promessa.
+  const conversaNaTelaRef = useRef(conversationId);
+  useLayoutEffect(() => {
+    conversaNaTelaRef.current = conversationId;
+  }, [conversationId]);
   useEffect(() => {
     if (conversaAnteriorRef.current === conversationId) return;
     conversaAnteriorRef.current = conversationId;
@@ -1010,7 +1020,7 @@ export function MessageComposer({
       // ⚠️ Já em OUTRA conversa, nada de foco: ele cairia na caixa do cliente
       // aberto, no meio do que a pessoa escreve (até numa anotação interna, e
       // o resto do texto iria para o cliente).
-      if (conversaAnteriorRef.current !== origem) return;
+      if (conversaNaTelaRef.current !== origem) return;
       // Let the textarea grow to fit and drop the cursor at the end so
       // the agent can tweak immediately.
       requestAnimationFrame(() => {
@@ -1149,7 +1159,7 @@ export function MessageComposer({
         // troca de conversa: sem esta conferência o anexo aterrissa no
         // rascunho do cliente que estiver aberto quando o upload termina.
         // O objeto recém-subido não serve a ninguém — apaga junto.
-        if (conversaAnteriorRef.current !== origem) {
+        if (conversaNaTelaRef.current !== origem) {
           removeStaged(path);
           return;
         }
@@ -1314,7 +1324,7 @@ export function MessageComposer({
           toast.error(t("acervoError"));
           return;
         }
-        if (conversaAnteriorRef.current !== origem) {
+        if (conversaNaTelaRef.current !== origem) {
           // A cópia é do acervo, mas é CÓPIA: apagá-la não toca o original.
           removeStaged(json.path as string);
           return;
@@ -1366,7 +1376,7 @@ export function MessageComposer({
         // prematura), e um caminho de upload novo entra nela também.
         // A troca DURANTE a gravação não chega aqui: o efeito de troca
         // cancela o gravador antes (ver `conversaAnteriorRef`).
-        if (conversaAnteriorRef.current !== origem) {
+        if (conversaNaTelaRef.current !== origem) {
           removeStaged(path);
           return;
         }

@@ -158,6 +158,21 @@ describe('o repositório', () => {
     expect(r.ler(A)).toBe('ainda funciona');
   });
 
+  it('cota cheia: a versão VELHA sai do armazenamento, não ressuscita ao recarregar', () => {
+    const arm = new ArmazenamentoFalso();
+    repo(arm).r.escrever(A, 'versão antiga');
+    // A partir daqui o `setItem` falha (cota cheia); o `removeItem` funciona.
+    arm.setItem = () => {
+      throw new Error('QuotaExceededError');
+    };
+    const { r } = repo(arm);
+    r.escrever(A, 'versão nova, só na memória');
+    expect(r.ler(A)).toBe('versão nova, só na memória');
+    expect(arm.dados.has(A)).toBe(false);
+    // Recarregar: nada guardado, nada velho a devolver.
+    expect(repo(arm).r.ler(A)).toBe('');
+  });
+
   it('sem armazenamento nenhum (null), também só memória', () => {
     const r = criarRepositorio(() => null, () => {}, () => AGORA);
     r.escrever(A, 'na memória');

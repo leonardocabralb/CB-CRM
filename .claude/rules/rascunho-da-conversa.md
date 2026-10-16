@@ -31,10 +31,15 @@ o hook é `useRascunhoDaConversa`; pinos estruturais em
   devolveria o defeito.
 - ⚠️ **O TEXTO vai para a origem; o resto é da TELA.** O que termina depois
   de uma espera só mexe em foco, hora agendada e citação se a conversa aberta
-  ainda for a de origem (`conversaAnteriorRef.current === origem`): o foco da
+  ainda for a de origem (`conversaNaTelaRef.current === origem`): o foco da
   sugestão da IA cairia na caixa do cliente aberto (até no meio de uma
   anotação), e limpar a hora escolhida lá faria o próximo Enter sair NA HORA.
   O agendamento só esvazia o rascunho que ainda for o texto agendado.
+  ⚠️ `conversaNaTelaRef` anda num efeito de LAYOUT (vale também para as
+  guardas de upload): o efeito de troca é passivo, e a continuação de um
+  `fetch` entre o commit e ele leria a conversa anterior (Codex, PR #414).
+- **Cota cheia**: o `setItem` falha e a versão VELHA é removida — ficaria no
+  armazenamento e ressuscitaria ao recarregar (Codex, PR #414).
 - ⚠️ **O render lê por `useSyncExternalStore`, nunca por efeito**: por efeito,
   o primeiro render depois da troca mostraria o texto da conversa anterior
   (efeito passivo, seção 8c da raiz). O repositório é de MÓDULO (memória da

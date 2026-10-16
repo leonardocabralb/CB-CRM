@@ -40,15 +40,22 @@ describe('o rascunho por conversa no compositor', () => {
     const agendar = c.slice(c.indexOf('const agendar = useCallback('), c.indexOf('const handleSend = useCallback('));
     expect(agendar).toContain('const origem = conversationId;');
     expect(agendar).toMatch(
-      /if \(conversaAnteriorRef\.current === origem\) \{\s*limparAgendamento\(\);\s*onClearReply\?\.\(\);\s*\}/,
+      /if \(conversaNaTelaRef\.current === origem\) \{\s*limparAgendamento\(\);\s*onClearReply\?\.\(\);\s*\}/,
     );
     // E só limpa o rascunho se ele ainda for o texto agendado.
     expect(agendar).toContain('setText((atual) => (atual.trim() === texto ? "" : atual))');
     const ia = c.slice(c.indexOf('const handleDraft = useCallback('), c.indexOf('const openInteractiveBuilder'));
     expect(ia).toContain('const origem = conversationId;');
-    expect(ia.indexOf('if (conversaAnteriorRef.current !== origem) return;')).toBeLessThan(
+    expect(ia.indexOf('if (conversaNaTelaRef.current !== origem) return;')).toBeLessThan(
       ia.indexOf('el.focus();'),
     );
+    // ⚠️ A marca "na tela" anda num efeito de LAYOUT: no passivo, a
+    // continuação de um `fetch` entre o commit da troca e o efeito leria a
+    // conversa anterior (Codex, PR #414).
+    expect(c).toMatch(
+      /useLayoutEffect\(\(\) => \{\s*conversaNaTelaRef\.current = conversationId;\s*\}, \[conversationId\]\);/,
+    );
+    expect(c).not.toMatch(/conversaAnteriorRef\.current (?:===|!==) origem/);
   });
 
   it('a altura é medida no efeito sobre `text` e quando a caixa volta a montar, não por tecla', () => {
