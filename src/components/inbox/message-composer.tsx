@@ -1,4 +1,8 @@
 "use client";
+/* eslint react-hooks/exhaustive-deps: "error" -- o `setText` é PRESO à
+   conversa (rascunho por conversa): um useCallback sem ele nas dependências
+   escreve no rascunho de OUTRO cliente. No resto do projeto a regra é aviso,
+   e aviso não reprova o CI. Pino: rascunho-da-conversa.chamadores.test.ts */
 
 import {
   useState,
@@ -48,6 +52,7 @@ import {
 import { useCan } from "@/hooks/use-can";
 import { useAuth } from "@/hooks/use-auth";
 import { useMediaQuery } from "@/hooks/use-media-query";
+import { useRascunhoDaConversa } from "@/hooks/use-rascunho-da-conversa";
 import { enterEnvia, MIDIA_DE_TOQUE } from "@/lib/celular/teclado";
 import { custoDaAssinatura, nomeDePessoa } from "@/lib/assinatura/assinatura";
 import type { ConversationNote, MediaLibraryItem } from "@/types";
@@ -374,7 +379,12 @@ export function MessageComposer({
   const porQrCode = transporteConhecido && ehEvolution(channelKind);
   const aceite = aceiteDoSeletor(porQrCode);
 
-  const [text, setText] = useState("");
+  // ⚠️⚠️ Um rascunho POR CONVERSA (pedido do operador, 15/10/2026): o
+  // compositor não remonta na troca, e com um `useState` só o texto escrito
+  // para um cliente continuava na caixa do próximo. O `setText` é PRESO à
+  // conversa do render — quem o chama leva-o nas dependências, senão escreve
+  // no rascunho da conversa anterior. Ver `useRascunhoDaConversa`.
+  const [text, setText] = useRascunhoDaConversa(conversationId);
   const [drafting, setDrafting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // A caixa tinha o foco quando o dedo encostou no Enviar (ver o botão).
@@ -622,6 +632,34 @@ export function MessageComposer({
     el.style.height = `${Math.min(el.scrollHeight, 96) + borda}px`;
   }, []);
 
+  // A altura certa para o texto de AGORA. Vazia volta ao `auto`, como depois
+  // de enviar: medida, a caixa vazia cresceria até o placeholder, que quebra
+  // em várias linhas numa coluna estreita.
+  const acertarAltura = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    if (el.value === "") el.style.height = "auto";
+    else adjustHeight();
+  }, [adjustHeight]);
+
+  // O texto também muda SEM digitação — o rascunho de outra conversa, o que
+  // outra aba escreveu, o envio que esvazia: a altura acompanha antes da
+  // pintura. É a ÚNICA medida por tecla (o `handleChange` não mede).
+  useLayoutEffect(() => {
+    acertarAltura();
+  }, [text, acertarAltura]);
+
+  // E a caixa some sob a prévia de anexo e a barra de gravação: volta
+  // MONTANDO de novo, sem o `text` mudar — o efeito acima não rodaria, e o
+  // rascunho de três linhas apareceria numa caixa de uma.
+  const refDaCaixa = useCallback(
+    (el: HTMLTextAreaElement | null) => {
+      textareaRef.current = el;
+      if (el) acertarAltura();
+    },
+    [acertarAltura],
+  );
+
   // ---- Envio com janela de arrependimento ----------------------------
   //
   // Enter enviava na hora, e mensagem errada no WhatsApp não tem volta: só
@@ -835,7 +873,7 @@ export function MessageComposer({
       el.setSelectionRange(p.texto.length, p.texto.length);
       adjustHeight();
     });
-  }, [descartarTimer, adjustHeight, devolverAPrevia]);
+  }, [descartarTimer, adjustHeight, setText, devolverAPrevia]);
 
   /**
    * Agenda o texto para a hora do campo (925).
@@ -866,6 +904,7 @@ export function MessageComposer({
       if (agendandoRef.current) return false;
       agendandoRef.current = true;
       setAgendando(true);
+      const origem = conversationId;
       const anexo = extra?.anexo ?? null;
       // O arquivo passa a ser da agendada a partir daqui — ver `entreguesRef`.
       if (anexo) entreguesRef.current.add(anexo.path);
@@ -903,18 +942,23 @@ export function MessageComposer({
         // silêncio, texto que ninguém mandou apagar.
         //
         // Quando é o texto mesmo, limpar é obrigatório: senão o operador manda
-        // a mesma coisa agora e de novo na hora marcada.
-        if (!anexo) setText("");
-        // A hora sempre sai: o próximo envio tem de ser imediato por padrão —
-        // hora esquecida no campo transformaria uma resposta urgente em algo
-        // que sai amanhã.
-        limparAgendamento();
-        // ⚠️ A citação sai da tela porque já está GUARDADA na agendada (932):
-        // deixá-la ali diria que a próxima coisa digitada também responde
-        // àquela bolha.
-        onClearReply?.();
-        // A altura só volta ao normal quando o campo foi esvaziado.
-        if (!anexo && textareaRef.current) textareaRef.current.style.height = "auto";
+        // a mesma coisa agora e de novo na hora marcada. O `setText` é preso à
+        // conversa de ORIGEM, e só limpa se o rascunho ainda for o agendado
+        // (quem foi e voltou pode ter escrito outra coisa durante o POST).
+        if (!anexo) setText((atual) => (atual.trim() === texto ? "" : atual));
+        // ⚠️ A hora e a citação são da TELA: já em outra conversa, são as
+        // dela — apagar a hora escolhida lá faria o próximo Enter sair NA
+        // HORA. A troca de conversa já limpou as desta.
+        if (conversaNaTelaRef.current === origem) {
+          // A hora sempre sai: o próximo envio tem de ser imediato por
+          // padrão — hora esquecida no campo transformaria uma resposta
+          // urgente em algo que sai amanhã.
+          limparAgendamento();
+          // ⚠️ A citação sai da tela porque já está GUARDADA na agendada
+          // (932): deixá-la ali diria que a próxima coisa digitada também
+          // responde àquela bolha.
+          onClearReply?.();
+        }
         onScheduled?.();
         return true;
       } catch {
@@ -926,7 +970,7 @@ export function MessageComposer({
         setAgendando(false);
       }
     },
-    [quandoAg, conversationId, onScheduled, onClearReply, tAgendadas, limparAgendamento],
+    [quandoAg, conversationId, onScheduled, onClearReply, tAgendadas, limparAgendamento, setText],
   );
 
   const handleSend = useCallback(async () => {
@@ -967,11 +1011,9 @@ export function MessageComposer({
     pendenteRef.current = retida;
     timerDesfazerRef.current = setTimeout(liberarPendente, SEGUNDOS_DESFAZER * 1000);
 
+    // A altura volta ao `auto` pelo efeito sobre `text`.
     setText("");
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-    }
-  }, [text, envioTravado, replyTo?.id, liberarPendente, quandoAg, agendar, conversationId]);
+  }, [text, envioTravado, replyTo?.id, liberarPendente, quandoAg, agendar, setText, conversationId]);
 
   // Trocar de conversa solta a pendente na hora.
   //
@@ -989,12 +1031,12 @@ export function MessageComposer({
   // é vazamento de informação entre casos, não só um erro de UI. Fechar
   // desmonta o `InternalNoteBox`, e o texto que estava dentro vai junto.
   const conversaAnteriorRef = useRef(conversationId);
-  // ⚠️ A conversa NA TELA, para quem volta de uma espera (upload, envio que
-  // falhou) decidir se ainda mexe nela. Num efeito de LAYOUT, e não no efeito
-  // de troca abaixo: este é PASSIVO, e a continuação de um `fetch` que caia
-  // entre o commit da troca e ele leria a conversa anterior (Codex, PRs #414
-  // e #415). O de layout roda no mesmo passo do commit, antes de qualquer
-  // promessa.
+  // ⚠️ A conversa NA TELA, para quem volta de uma espera (upload, sugestão
+  // da IA, agendamento, envio que falhou) decidir se ainda mexe nela. Num
+  // efeito de LAYOUT, e não no efeito de troca abaixo: este é PASSIVO, e a
+  // continuação de um `fetch` que caia entre o commit da troca e ele leria a
+  // conversa anterior (Codex, PRs #414 e #415). O de layout roda no mesmo
+  // passo do commit, antes de qualquer promessa.
   const conversaNaTelaRef = useRef(conversationId);
   useLayoutEffect(() => {
     conversaNaTelaRef.current = conversationId;
@@ -1099,7 +1141,7 @@ export function MessageComposer({
         adjustHeight();
       });
     },
-    [text, adjustHeight],
+    [text, adjustHeight, setText],
   );
 
   const handleKeyDown = useCallback(
@@ -1137,10 +1179,11 @@ export function MessageComposer({
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      // A altura é medida pelo `useLayoutEffect` sobre `text` — medir aqui
+      // também forçaria DOIS recálculos de layout por tecla.
       setText(e.target.value);
-      adjustHeight();
     },
-    [adjustHeight]
+    [setText]
   );
 
   // Ask the AI assistant for a suggested reply and drop it into the
@@ -1149,6 +1192,9 @@ export function MessageComposer({
   const handleDraft = useCallback(async () => {
     if (drafting) return;
     setDrafting(true);
+    // A sugestão vai para o rascunho de ORIGEM (o `setText` é preso a ela);
+    // o foco e o cursor são da TELA — ver o retorno abaixo.
+    const origem = conversationId;
     try {
       const res = await fetch("/api/ai/draft", {
         method: "POST",
@@ -1170,6 +1216,10 @@ export function MessageComposer({
         return;
       }
       setText(draftText);
+      // ⚠️ Já em OUTRA conversa, nada de foco: ele cairia na caixa do cliente
+      // aberto, no meio do que a pessoa escreve (até numa anotação interna, e
+      // o resto do texto iria para o cliente).
+      if (conversaNaTelaRef.current !== origem) return;
       // Let the textarea grow to fit and drop the cursor at the end so
       // the agent can tweak immediately.
       requestAnimationFrame(() => {
@@ -1185,7 +1235,7 @@ export function MessageComposer({
     } finally {
       setDrafting(false);
     }
-  }, [drafting, conversationId, adjustHeight, t]);
+  }, [drafting, conversationId, adjustHeight, t, setText]);
 
   // ---- Interactive message + quick replies --------------------------
 
@@ -1296,7 +1346,7 @@ export function MessageComposer({
         }
       });
     },
-    [openInteractiveBuilder, adjustHeight, channelKind, t],
+    [openInteractiveBuilder, adjustHeight, channelKind, t, setText],
   );
 
   // Upload a captured file to chat-media and stage it as a draft.
@@ -2118,7 +2168,7 @@ export function MessageComposer({
           )}
 
           <textarea
-            ref={textareaRef}
+            ref={refDaCaixa}
             value={text}
             onChange={handleChange}
             onKeyDown={handleKeyDown}

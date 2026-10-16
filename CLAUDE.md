@@ -55,8 +55,7 @@ como `###` nas regras.
 Fork do **wacrm** (`ArnasDon/wacrm`), CRM de WhatsApp (Next.js 16 + Supabase
 + Meta Cloud API) com inbox compartilhado, contatos, funis, disparos,
 automações e IA. Moldado para o **CB Advogados**: gestão de WhatsApp com
-integrações próprias. Seguimos incorporando melhorias do original por merge
-pontual.
+integrações próprias; do original, merge pontual (seção 4).
 
 ## 2. Como trabalhar
 
@@ -563,6 +562,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   compositor, fila de anexos, player de áudio, painel.
 - `.claude/rules/anotacoes.md` — anotação interna nas quatro telas, apagar e
   fixar, resposta à anotação (1075) e o aviso a quem já escreveu nela.
+- `.claude/rules/rascunho-da-conversa.md` — rascunho por conversa, no
+  navegador; `setText` preso à conversa.
 - `.claude/rules/modo-anonimo.md` — o admin lê sem zerar as não lidas nem
   aparecer na presença: quem zera, responder zera, papel real, pastilha.
 - `.claude/rules/midia.md` — dois tetos de tamanho, `too_large`, nome do
@@ -691,11 +692,11 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
 ## 16. Comandos úteis
 
 ```bash
-nvm use  # Node do .nvmrc (22) — antes de tudo
-npm run dev  # desenvolvimento (localhost:3000)
-npm run build  # build de produção
-npm run lint  # eslint
-npm run typecheck  # tsc --noEmit
-npm run test  # vitest
+nvm use  # Node 22, antes de tudo
+npm run dev  # localhost:3000
+npm run build
+npm run lint
+npm run typecheck
+npm run test
 npm run format  # prettier --write
 ```
