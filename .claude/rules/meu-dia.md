@@ -76,8 +76,9 @@ em `.claude/rules/auth.md`; o recarregar ao voltar para o app, em
   `atrasoDeResposta` e por `conversaNoEscopo` com o contexto REAL
   (`{ papel: profile.account_role, perfil: perfilDeAcesso }`, nunca `acesso`,
   que carrega a lente do "Ver como"). O select é enxuto (`SELECT_DE_CONVERSA`,
-  não o `CONVERSATION_SELECT`) e leva `group:cb_groups(channel_id)`: o recorte
-  por canal precisa do canal do GRUPO.
+  não o `CONVERSATION_SELECT`) e leva `group:cb_groups(channel_id)` e
+  `channel_pinned`: o recorte por canal precisa do canal do GRUPO e do pino
+  (grupo fixado no cabeçalho, `canal-na-conversa.md`).
 - ⚠️ **"Sem responsável" é ACERVO, repartido pela confirmação anterior**: um
   número fixo toda manhã é o que o olho aprende a pular. `novas` começaram a
   esperar depois da última confirmação; `antigas`, em texto apagado. São DUAS

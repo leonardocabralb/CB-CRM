@@ -498,21 +498,34 @@ export function casaComOResponsavel(
 /**
  * Por qual número esta conversa corre.
  *
- * ⚠️ **Conversa de GRUPO tem `conversations.channel_id` NULO — sempre, e não
- * por ser antiga.** `src/lib/cb-groups/persist.ts` cria a conversa do grupo
- * com `{ account_id, user_id, group_id }` e nenhum dos dois `update` seguintes
+ * ⚠️ **Conversa de GRUPO tem `conversations.channel_id` NULO — e não por ser
+ * antiga.** `src/lib/cb-groups/persist.ts` cria a conversa do grupo com
+ * `{ account_id, user_id, group_id }` e nenhum dos dois `update` seguintes
  * preenche a coluna; quem guarda o número é `cb_groups.channel_id` ("por qual
  * número vimos este grupo"). Sem esta função, escolher um número no filtro
  * APAGARIA TODOS OS GRUPOS daquele número, em silêncio — que é exatamente a
  * armadilha "grupo some sem erro" que o CLAUDE.md descreve, só que por um
  * caminho diferente do `!inner`.
  *
+ * ⚠️⚠️ **Grupo FIXADO no seletor do cabeçalho corre pelo número FIXADO**
+ * (decisão do operador, 16/10/2026): é por ele que a resposta sai, e o
+ * operador fixa justamente para o grupo passar à caixa daquele número. Só
+ * com `channel_pinned === true`: o "Automático" solta o pino e DEIXA o
+ * `channel_id` velho na linha (o grupo não segue o cliente, ninguém o
+ * reescreve) — ler a coluna sem o pino prenderia o grupo no último número
+ * fixado. Solto, vale o número que recebe o grupo.
+ *
  * ⚠️ Não confundir com o outro NULO legítimo: conversa 1:1 anterior à 903 não
  * tem carimbo nenhum, e essa continua aparecendo só em "Todos" — incluí-la em
  * todo número faria o filtro afirmar algo que ninguém sabe.
  */
 export function canalDaConversa(conversation: Conversation): string | null {
-  if (conversation.group_id) return conversation.group?.channel_id ?? null;
+  if (conversation.group_id) {
+    if (conversation.channel_pinned === true && conversation.channel_id) {
+      return conversation.channel_id;
+    }
+    return conversation.group?.channel_id ?? null;
+  }
   return conversation.channel_id ?? null;
 }
 

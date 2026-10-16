@@ -296,6 +296,36 @@ describe("conversaNoEscopo", () => {
     expect(conversaNoEscopo(ctx({ channel_ids: ["ch2"] }), grupoDoCh1)).toBe(false);
   });
 
+  it("⚠️ grupo FIXADO noutro número entra no escopo dos dois, e de nenhum outro", () => {
+    // O filtro mostra o grupo fixado no número fixado (16/10/2026); o perfil
+    // daquele número passa a vê-lo, e quem é do número que RECEBE o grupo não
+    // o perde por um clique de outra pessoa no seletor.
+    const fixadoNoCh2 = conversa({
+      contact_id: null,
+      group_id: "g1",
+      channel_id: "ch2",
+      channel_pinned: true,
+      group: { channel_id: "ch1" },
+    } as Partial<Conversation>);
+
+    expect(conversaNoEscopo(ctx({ channel_ids: ["ch2"] }), fixadoNoCh2)).toBe(true);
+    expect(conversaNoEscopo(ctx({ channel_ids: ["ch1"] }), fixadoNoCh2)).toBe(true);
+    expect(conversaNoEscopo(ctx({ channel_ids: ["ch3"] }), fixadoNoCh2)).toBe(false);
+  });
+
+  it("grupo SOLTO com channel_id velho não ganha o escopo do número antigo", () => {
+    const solto = conversa({
+      contact_id: null,
+      group_id: "g1",
+      channel_id: "ch2",
+      channel_pinned: false,
+      group: { channel_id: "ch1" },
+    } as Partial<Conversation>);
+
+    expect(conversaNoEscopo(ctx({ channel_ids: ["ch2"] }), solto)).toBe(false);
+    expect(conversaNoEscopo(ctx({ channel_ids: ["ch1"] }), solto)).toBe(true);
+  });
+
   it("conversa sem canal nenhum (anterior à 903) passa", () => {
     // Não sabemos por qual número veio; escondê-la faria sumir histórico
     // legítimo para afirmar algo que ninguém sabe.

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { matchesTypeFilter } from "./conversations";
 import {
   aplicarFiltros,
+  canalDaConversa,
   casaComABusca,
   casaComAEtapa,
   casaComOResponsavel,
@@ -745,6 +746,34 @@ describe("aplicarFiltros", () => {
       ctx(),
     );
     expect(saida.map((c) => c.id)).toEqual(["g1"]);
+  });
+
+  it("⚠️ GRUPO FIXADO no cabeçalho aparece no número fixado, não no que o recebe", () => {
+    // Decisão do operador (16/10/2026): o grupo que chega pelo Jurídico e foi
+    // fixado no Comercial sai na caixa do Comercial. Antes, o seletor do
+    // cabeçalho não mexia no filtro e o grupo ficava preso no número que o
+    // recebe.
+    const fixado = grupo({ id: "g1", channel_id: "ch2", channel_pinned: true });
+    const filtrar = (canal: string) =>
+      aplicarFiltros([fixado], { ...FILTROS_VAZIOS, canalIds: [canal] }, ctx()).map(
+        (c) => c.id,
+      );
+    expect(filtrar("ch2")).toEqual(["g1"]);
+    expect(filtrar("ch1")).toEqual([]);
+    expect(canalDaConversa(fixado)).toBe("ch2");
+  });
+
+  it("⚠️ grupo SOLTO (Automático) volta ao número que o recebe, mesmo com o channel_id velho", () => {
+    // O "Automático" grava só `channel_pinned: false` e deixa o `channel_id`
+    // da última fixação: grupo não segue o cliente, ninguém reescreve a
+    // coluna. Ler a coluna sem o pino prenderia o grupo no número antigo.
+    const solto = grupo({ id: "g1", channel_id: "ch2", channel_pinned: false });
+    expect(canalDaConversa(solto)).toBe("ch1");
+    expect(
+      aplicarFiltros([solto], { ...FILTROS_VAZIOS, canalIds: ["ch1"] }, ctx()).map(
+        (c) => c.id,
+      ),
+    ).toEqual(["g1"]);
   });
 
   it("grupo sem número conhecido não entra em recorte por número", () => {

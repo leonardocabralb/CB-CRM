@@ -290,9 +290,9 @@ Volta para `main` por PR no CB-CRM.
   grupo, LID ou IGSID (fundiria com o celular de um cliente real). O LID
   jamais vira `contacts.phone`.
 - **GRUPO ≠ CONTATO:** nunca em `contacts`; `conversations.contact_id` nulo;
-  `conversations.channel_id` é NULO em grupo → `canalDaConversa()` /
-  `cb_groups.channel_id`. Grupo não dispara automação/fluxo/IA (garantia
-  estrutural: `src/lib/cb-groups/persist.ts` não importa os motores, e há
+  `conversations.channel_id` NULO em grupo → `canalDaConversa()` (fixado,
+  senão `cb_groups.channel_id`). Grupo não dispara automação/fluxo/IA
+  (garantia estrutural: `cb-groups/persist.ts` não importa os motores; há
   teste lendo o fonte), não reabre com mensagem, não tem janela de 24h e fica
   fora do carimbo de canal por conversa.
 - **TRANSPORTE por predicado** (`ehMeta`/`ehEvolution`/`ehInstagram`/

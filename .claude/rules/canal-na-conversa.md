@@ -33,8 +33,9 @@ bolinha antes do nome na lista.
   dois números no mesmo grupo, o WhatsApp entrega às duas instâncias, o
   `UNIQUE (conversation_id, message_id)` descarta a segunda e fica o
   `channel_id` do webhook que chegou primeiro. Pintar isso afirmaria uma
-  escolha que ninguém fez. Em grupo, "por qual número" é `cb_groups.channel_id`,
-  e só no cabeçalho.
+  escolha que ninguém fez. Em grupo, "por qual número" é `canalDaConversa()`
+  (o FIXADO no seletor do cabeçalho, senão `cb_groups.channel_id`), e só no
+  cabeçalho e na bolinha da lista.
 - ⚠️ **O gatilho é `fioMulticanal`, não `channels.length >= 2`.** Pela CONTA, o
   rótulo aparecia em quase toda conversa, onde não informa nada — e o olho
   aprendia a ignorá-lo justo nos poucos casos que decidem a resposta.
@@ -65,7 +66,15 @@ bolinha antes do nome na lista.
   Trilha colorida na borda e anel no avatar foram descartados pelo operador —
   não voltar com eles.
 - ⚠️ **Na lista, o canal sai de `canalDaConversa()`**, nunca de
-  `conversation.channel_id` (sempre nulo em grupo).
+  `conversation.channel_id` (nulo em grupo solto).
+- ⚠️⚠️ **Grupo FIXADO no cabeçalho corre pelo número FIXADO** (decisão do
+  operador, 16/10/2026): filtro por conexão, bolinha da lista e recorte do
+  perfil seguem o pino. Só com `channel_pinned === true`: o "Automático" solta
+  o pino e DEIXA o `channel_id` velho na linha (grupo não segue o cliente) —
+  sem a condição, o grupo ficava preso no último número fixado. O PERFIL vê o
+  grupo fixado pelos DOIS números (o fixado e o que recebe): o pino é clique
+  de qualquer atendente e não tira a conversa de quem é do número que a
+  recebe. Consulta nova que alimente `conversaNoEscopo` traz `channel_pinned`.
 - ⚠️ **A faixa de divergência cala com `canalDeSaida` nulo — é o gate de
   carregamento.** `activeChannel` só resolve depois do `useChannels`, e um
   aviso montado sobre lista vazia nomearia a divergência errada.
