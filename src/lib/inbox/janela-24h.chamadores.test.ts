@@ -84,7 +84,11 @@ describe('o fio e a janela de 24h (F5)', () => {
   });
 
   it('M13/#84: o portão do disparo cobre os TRÊS caminhos', () => {
-    expect(ocorrencias(fio(), 'if (janelaFechadaAgora())')).toBe(3);
+    // Com a conversa NA TELA (15/10/2026): a fila de saída pode soltar o
+    // envio depois de uma troca de conversa, e aí os refs da janela são da
+    // OUTRA — fora da tela quem decide é o servidor (`conversaNaTelaRef`).
+    expect(ocorrencias(fio(), 'if (naTela && janelaFechadaAgora())')).toBe(3);
+    expect(ocorrencias(fio(), 'if (janelaFechadaAgora())')).toBe(0);
   });
 
   it('M12: transporte desconhecido chega ao compositor e esconde os atalhos Meta', () => {

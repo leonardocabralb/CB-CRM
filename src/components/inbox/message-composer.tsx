@@ -77,6 +77,7 @@ import {
   MAX_ANEXOS,
   tipoDoArquivo,
 } from "@/lib/inbox/arquivo-solto";
+import { criarFilaDeSaida } from "@/lib/inbox/fila-de-saida";
 import { useTranslations } from "next-intl";
 import {
   InteractiveBuilder,
@@ -149,6 +150,25 @@ const MAX_RECORDING_SECONDS = 5 * 60;
  */
 const SEGUNDOS_DESFAZER = 3;
 
+/**
+ * Tudo o que SAI do compositor para o cliente passa por aqui, na ordem, uma
+ * fila por conversa (`fila-de-saida.ts`): texto, cada anexo e a interativa.
+ * De MÓDULO, e não do componente: o envio que segue depois de sair da caixa
+ * de entrada (desmontou) e o da caixa que remontou têm de entrar na MESMA
+ * fila.
+ */
+const filaDeSaida = criarFilaDeSaida();
+
+// ⚠️ Fechar ou recarregar a aba com algo ainda saindo perde o resto, sem
+// aviso: a prévia que cobria o compositor até o fim do envio não existe mais
+// (o envio segue depois da janela de desfazer). De MÓDULO, como a fila: um
+// ouvinte do componente sairia no desmonte, com o lote ainda indo.
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeunload", (e) => {
+    if (filaDeSaida.algumaOcupada()) e.preventDefault();
+  });
+}
+
 export interface SendMediaPayload {
   kind: ComposerMediaKind;
   /** Public chat-media URL Meta fetches at send time. */
@@ -194,6 +214,43 @@ function novoDraft(d: Omit<MediaDraft, "id">): MediaDraft {
   return { ...d, id: `${d.path}#${Math.random().toString(36).slice(2, 8)}` };
 }
 
+/**
+ * O que está RETIDO na janela de desfazer: um texto OU a fila de anexos
+ * (os anexos ganharam a janela em 15/10/2026, pedido do operador). Um lugar
+ * só: mandar outra coisa solta a retida primeiro, e a ordem das mensagens no
+ * celular do cliente é a ordem em que foram mandadas.
+ *
+ * `enviar` é o despachante da conversa de ORIGEM, capturado na retenção (ver
+ * `handleSend`), e `origem` é a conversa — a fila de saída é por conversa, e
+ * o anexo que falhar só volta à prévia se ela ainda estiver aberta.
+ */
+type Retida =
+  | {
+      tipo: "texto";
+      origem: string;
+      texto: string;
+      replyToId?: string;
+      enviar: (texto: string, replyToId?: string) => void | Promise<void>;
+    }
+  | {
+      tipo: "anexos";
+      origem: string;
+      itens: MediaDraft[];
+      replyToId?: string;
+      enviar: (payload: SendMediaPayload) => boolean | Promise<boolean>;
+    };
+
+/** Um lote de anexos LIBERADO, já na fila de saída — ver `enviarAnexo`. */
+interface Lote {
+  /** Um não entregou: os seguintes não saem (a causa costuma ser a mesma). */
+  parou: boolean;
+  /** Quantos já COMEÇARAM a sair: o teto da fila pode soltar o seguinte com
+   *  o anterior ainda no ar. */
+  comecados: number;
+  /** Quantos ainda não entregaram; zero = o lote inteiro saiu. */
+  faltam: number;
+}
+
 interface MessageComposerProps {
   conversationId: string;
   sessionExpired: boolean;
@@ -224,7 +281,11 @@ interface MessageComposerProps {
    * que o CLAUDE.md marca como load-bearing.
    */
   transporteConhecido?: boolean;
-  onSend: (text: string, replyToId?: string) => void;
+  /**
+   * A promessa (o envio do fio é assíncrono) é o que a fila de saída espera
+   * antes do próximo envio da MESMA conversa — ver `fila-de-saida.ts`.
+   */
+  onSend: (text: string, replyToId?: string) => void | Promise<void>;
   /**
    * ⚠️ Devolve se ENTREGOU. Com vários anexos o compositor envia um por vez,
    * com `await` (senão chegam fora de ordem no celular do cliente), e só
@@ -232,7 +293,11 @@ interface MessageComposerProps {
    * arquivo ainda no bucket, para a pessoa tentar de novo sem reanexar.
    */
   onSendMedia: (payload: SendMediaPayload) => boolean | Promise<boolean>;
-  onSendInteractive: (payload: InteractiveMessagePayload, replyToId?: string) => void;
+  /** A promessa, como a de `onSend`: a interativa também passa pela fila. */
+  onSendInteractive: (
+    payload: InteractiveMessagePayload,
+    replyToId?: string,
+  ) => void | Promise<void>;
   onOpenTemplates: () => void;
   replyTo?: ReplyDraft | null;
   /**
@@ -328,17 +393,13 @@ export function MessageComposer({
   // do celular não tem (e lá o retorno pula linha — ver `enterEnvia`).
   const toque = useMediaQuery(MIDIA_DE_TOQUE);
   /**
-   * Mensagem escrita, ainda segurável. `null` = nada esperando.
+   * O que está retido na janela de desfazer — texto OU anexos (`Retida`).
+   * `null` = nada esperando.
    *
    * `enviar` é o despachante da conversa de ORIGEM, capturado no instante em
    * que a mensagem foi retida — ver a nota extensa em `handleSend`.
    */
-  const [pendente, setPendente] = useState<{
-    texto: string;
-    replyToId?: string;
-    expiraEm: number;
-    enviar: (texto: string, replyToId?: string) => void;
-  } | null>(null);
+  const [pendente, setPendente] = useState<(Retida & { expiraEm: number }) | null>(null);
   const timerDesfazerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Interactive-message builder dialog + quick-reply picker.
@@ -625,6 +686,20 @@ export function MessageComposer({
   useEffect(() => {
     onSendRef.current = onSend;
   }, [onSend]);
+  // O mesmo para os anexos, que também passam pela janela de desfazer.
+  const onSendMediaRef = useRef(onSendMedia);
+  useEffect(() => {
+    onSendMediaRef.current = onSendMedia;
+  }, [onSendMedia]);
+  // O anexo que falhar depois de liberado só volta à prévia de um compositor
+  // que ainda existe — ver `enviarAnexo`.
+  const montadoRef = useRef(true);
+  useEffect(() => {
+    montadoRef.current = true;
+    return () => {
+      montadoRef.current = false;
+    };
+  }, []);
 
   // Mesmo motivo do `onSendRef`: usado dentro de callbacks que não podem
   // trocar de identidade a cada render do pai.
@@ -635,15 +710,9 @@ export function MessageComposer({
 
   // Ref espelhando a pendente: o cleanup do efeito de desmontagem precisa do
   // valor mais recente sem re-registrar o efeito a cada tecla.
-  const pendenteRef = useRef<{
-    texto: string;
-    replyToId?: string;
-    enviar: (texto: string, replyToId?: string) => void;
-  } | null>(null);
+  const pendenteRef = useRef<Retida | null>(null);
   useEffect(() => {
-    pendenteRef.current = pendente
-      ? { texto: pendente.texto, replyToId: pendente.replyToId, enviar: pendente.enviar }
-      : null;
+    pendenteRef.current = pendente;
   }, [pendente]);
 
   const descartarTimer = useCallback(() => {
@@ -653,22 +722,135 @@ export function MessageComposer({
     }
   }, []);
 
+  /**
+   * Devolve anexos à prévia — no Desfazer e na falha — e eles voltam a ser do
+   * RASCUNHO (recolhíveis no descarte e na troca de conversa).
+   *
+   * ⚠️ Devolve TODOS, mesmo passando de `MAX_ANEXOS`: durante a janela (ou
+   * enquanto o lote saía) o compositor fica livre, e o operador pode ter
+   * anexado outros — inclusive um upload ainda em voo, que pousa DEPOIS desta
+   * devolução e que nenhuma conta feita aqui enxerga (medido no preview em
+   * 16/10/2026). Quem cobra o teto é a SAÍDA (`sendDraft`), por onde todo
+   * anexo passa. Cortar aqui apagaria o arquivo de um anexo que o operador
+   * acabou de pedir de volta.
+   */
+  const devolverAPrevia = useCallback((devolvidos: MediaDraft[]) => {
+    for (const d of devolvidos) entreguesRef.current.delete(d.path);
+    setDrafts((atual) => [...devolvidos, ...atual]);
+    // Sem roubar a seleção: a falha chega a qualquer momento, e o operador
+    // pode estar legendando outro anexo.
+    setSelecionado((atual) => atual ?? devolvidos[0].id);
+  }, []);
+
+  /**
+   * UM anexo liberado. Cada anexo é um trabalho PRÓPRIO na fila de saída: o
+   * teto dela conta por anexo, e um lote de dez áudios contado como um só
+   * deixava o texto seguinte passar na frente dos últimos (revisão do PR
+   * #415). Os do mesmo lote saem em ordem, um por vez, e PARAM no primeiro
+   * que não entregou (`lote.parou`).
+   *
+   * ⚠️⚠️ NÃO param na troca de conversa: o operador apertou Enviar, e o
+   * despachante está preso à ORIGEM. Antes da janela de desfazer, a troca no
+   * meio de uma fila descartava em silêncio os anexos que faltavam.
+   */
+  const enviarAnexo = useCallback(
+    async (p: Extract<Retida, { tipo: "anexos" }>, i: number, lote: Lote) => {
+      if (lote.parou) return;
+      lote.comecados = i + 1;
+      const item = p.itens[i];
+      const entregou = await p.enviar({
+        kind: item.kind,
+        mediaUrl: item.mediaUrl,
+        path: item.path,
+        // Audio takes no caption (Meta rejects it). Everything else: the
+        // trimmed caption, or undefined when blank.
+        caption: podeTerLegenda(item.kind) ? item.caption.trim() || undefined : undefined,
+        filename: item.kind === "document" ? item.filename : undefined,
+        replyToId: p.replyToId,
+      });
+      if (entregou) {
+        lote.faltam -= 1;
+        // ⚠️⚠️ A citação sai da tela só quando o lote INTEIRO saiu (#146): na
+        // falha os anexos voltam à prévia, e `MediaDraft` não guarda a citada
+        // — a nova tentativa a lê de `replyTo`. E só a que SAIU (quem compara
+        // é o dono do estado): o operador pode ter escolhido outra.
+        if (lote.faltam === 0 && p.replyToId) onClearReplyRef.current?.(p.replyToId);
+        return;
+      }
+      // Não saiu: este e os que ainda não COMEÇARAM voltam a ser do RASCUNHO.
+      // ⚠️ Nunca um que já começou: o teto da fila pode ter soltado o seguinte
+      // com este ainda no ar, e devolver à prévia um anexo que saiu (ou está
+      // saindo) o mandaria duas vezes — ou recolheria o arquivo dele (#413).
+      // ⚠️ E o resto do lote é de UMA falha só, a primeira (Codex, PR #415):
+      // com dois anexos no ar ao mesmo tempo e os dois falhando, os dois
+      // devolveriam a mesma cauda, e a nova tentativa a mandaria em dobro.
+      const cauda = lote.parou ? [] : p.itens.slice(lote.comecados);
+      lote.parou = true;
+      const sobra = [item, ...cauda];
+      // ⚠️ A conversa NA TELA, pelo ref de LAYOUT — nunca o
+      // `conversaAnteriorRef`, que é passivo: a falha de A que caísse entre o
+      // commit da troca e o efeito poria o arquivo de A na prévia de B
+      // (Codex, PR #415).
+      if (montadoRef.current && conversaNaTelaRef.current === p.origem) {
+        // À prévia, para tentar de novo sem reanexar (o pai NÃO apaga o
+        // objeto na falha).
+        devolverAPrevia(sobra);
+        return;
+      }
+      // Já em outra conversa (ou fora da caixa de entrada): o arquivo de um
+      // caso não volta ao compositor de outro. O que falhou tem a bolha
+      // "falhou" (se a conversa estiver na tela) e o aviso dele, e o arquivo
+      // FICA — a entrega dele é incerta. Os que nem começaram nunca saíram:
+      // recolhidos (fora da prévia e da marca, ninguém mais os alcança) e
+      // avisados aqui.
+      for (const d of sobra) entreguesRef.current.delete(d.path);
+      for (const d of cauda) removeStaged(d.path);
+      if (cauda.length > 0) toast.error(t("anexosNaoSairam", { n: cauda.length }));
+    },
+    [t, devolverAPrevia, removeStaged],
+  );
+
+  /**
+   * Tudo o que sai passa pela fila de saída da conversa de ORIGEM — nunca
+   * `enviar` direto: um texto mandado enquanto um áudio ainda sai esperaria
+   * por nada e chegaria ANTES dele (`fila-de-saida.ts`).
+   */
+  const despachar = useCallback(
+    (p: Retida) => {
+      if (p.tipo === "texto") {
+        void filaDeSaida.enfileirar(p.origem, () => p.enviar(p.texto, p.replyToId));
+        return;
+      }
+      const lote: Lote = { parou: false, comecados: 0, faltam: p.itens.length };
+      p.itens.forEach((_, i) => {
+        void filaDeSaida.enfileirar(p.origem, () => enviarAnexo(p, i, lote));
+      });
+    },
+    [enviarAnexo],
+  );
+  // Para o efeito de desmontagem, que não re-registra (ver `onSendRef`).
+  const despacharRef = useRef(despachar);
+  useEffect(() => {
+    despacharRef.current = despachar;
+  }, [despachar]);
+
   /** Manda a pendente na hora (sem esperar o relógio) e limpa o estado. */
   const liberarPendente = useCallback(() => {
     descartarTimer();
     const p = pendenteRef.current;
     pendenteRef.current = null;
     setPendente(null);
-    if (p) {
-      // `p.enviar`, NUNCA `onSendRef.current`: o segundo já aponta para a
-      // conversa que está na tela AGORA, que pode não ser a de origem.
-      p.enviar(p.texto, p.replyToId);
-      // A citação some só quando a mensagem SAI. Limpando no Enter, desfazer
-      // devolvia o texto mas perdia a resposta citada — e o operador teria de
-      // procurar de novo a mensagem que estava respondendo.
-      onClearReplyRef.current?.();
-    }
-  }, [descartarTimer]);
+    if (!p) return;
+    // `p.enviar`, NUNCA `onSendRef.current`: o segundo já aponta para a
+    // conversa que está na tela AGORA, que pode não ser a de origem.
+    despachar(p);
+    // A citação some só quando a mensagem SAI. Limpando no Enter, desfazer
+    // devolvia o texto mas perdia a resposta citada — e o operador teria de
+    // procurar de novo a mensagem que estava respondendo. Nos anexos quem
+    // limpa é o FIM do lote (`enviarAnexo`): se um falhar, ele volta à
+    // prévia, e a nova tentativa lê a citação de `replyTo` (#146).
+    if (p.tipo === "texto") onClearReplyRef.current?.();
+  }, [descartarTimer, despachar]);
 
   const desfazerEnvio = useCallback(() => {
     descartarTimer();
@@ -676,6 +858,12 @@ export function MessageComposer({
     pendenteRef.current = null;
     setPendente(null);
     if (!p) return;
+    if (p.tipo === "anexos") {
+      // Os anexos voltam à prévia, com as legendas (e no teto — ver
+      // `devolverAPrevia`). A citação ficou na tela: só sai quando o lote sai.
+      devolverAPrevia(p.itens);
+      return;
+    }
     // Devolve o texto ao campo para o operador corrigir em vez de redigitar.
     setText(p.texto);
     requestAnimationFrame(() => {
@@ -685,7 +873,7 @@ export function MessageComposer({
       el.setSelectionRange(p.texto.length, p.texto.length);
       adjustHeight();
     });
-  }, [descartarTimer, adjustHeight, setText]);
+  }, [descartarTimer, adjustHeight, setText, devolverAPrevia]);
 
   /**
    * Agenda o texto para a hora do campo (925).
@@ -812,19 +1000,20 @@ export function MessageComposer({
     // remonta na troca, então nada interrompia a espera. Num escritório de
     // advocacia isso é quebra de sigilo, e silenciosa: some do histórico de
     // A e aparece no de B.
-    const despachante = onSendRef.current;
-    setPendente({
+    const retida: Retida = {
+      tipo: "texto",
+      origem: conversationId,
       texto: trimmed,
       replyToId: replyTo?.id,
-      expiraEm: Date.now() + SEGUNDOS_DESFAZER * 1000,
-      enviar: despachante,
-    });
-    pendenteRef.current = { texto: trimmed, replyToId: replyTo?.id, enviar: despachante };
+      enviar: onSendRef.current,
+    };
+    setPendente({ ...retida, expiraEm: Date.now() + SEGUNDOS_DESFAZER * 1000 });
+    pendenteRef.current = retida;
     timerDesfazerRef.current = setTimeout(liberarPendente, SEGUNDOS_DESFAZER * 1000);
 
     // A altura volta ao `auto` pelo efeito sobre `text`.
     setText("");
-  }, [text, envioTravado, replyTo?.id, liberarPendente, quandoAg, agendar, setText]);
+  }, [text, envioTravado, replyTo?.id, liberarPendente, quandoAg, agendar, setText, conversationId]);
 
   // Trocar de conversa solta a pendente na hora.
   //
@@ -843,11 +1032,11 @@ export function MessageComposer({
   // desmonta o `InternalNoteBox`, e o texto que estava dentro vai junto.
   const conversaAnteriorRef = useRef(conversationId);
   // ⚠️ A conversa NA TELA, para quem volta de uma espera (upload, sugestão
-  // da IA, agendamento) decidir se ainda mexe nela. Num efeito de LAYOUT, e
-  // não no efeito de troca abaixo: este é PASSIVO, e a continuação de um
-  // `fetch` que caia entre o commit da troca e ele leria a conversa anterior
-  // (Codex, PR #414). O de layout roda no mesmo passo do commit, antes de
-  // qualquer promessa.
+  // da IA, agendamento, envio que falhou) decidir se ainda mexe nela. Num
+  // efeito de LAYOUT, e não no efeito de troca abaixo: este é PASSIVO, e a
+  // continuação de um `fetch` que caia entre o commit da troca e ele leria a
+  // conversa anterior (Codex, PRs #414 e #415). O de layout roda no mesmo
+  // passo do commit, antes de qualquer promessa.
   const conversaNaTelaRef = useRef(conversationId);
   useLayoutEffect(() => {
     conversaNaTelaRef.current = conversationId;
@@ -918,7 +1107,9 @@ export function MessageComposer({
       const p = pendenteRef.current;
       if (p) {
         pendenteRef.current = null;
-        p.enviar(p.texto, p.replyToId);
+        // Texto OU anexos, pela fila de saída da origem (que é de módulo e
+        // sobrevive a este desmonte).
+        despacharRef.current(p);
       }
       if (timerDesfazerRef.current) clearTimeout(timerDesfazerRef.current);
     };
@@ -1068,10 +1259,26 @@ export function MessageComposer({
       toast.error(mensagemDaInterativa(result, tValidacao));
       return;
     }
-    onSendInteractive(interactivePayload, replyTo?.id);
+    // Pela fila de saída, como o texto e os anexos (revisão do PR #415):
+    // mandada logo depois de um áudio, chegaria ANTES dele. A retida sai
+    // primeiro, pelo mesmo motivo.
+    liberarPendente();
+    const payload = interactivePayload;
+    const citada = replyTo?.id;
+    void filaDeSaida.enfileirar(conversationId, () => onSendInteractive(payload, citada));
     setInteractiveOpen(false);
     onClearReply?.();
-  }, [conexaoForaDoAr, t, interactivePayload, onSendInteractive, replyTo?.id, onClearReply, tValidacao]);
+  }, [
+    conexaoForaDoAr,
+    t,
+    interactivePayload,
+    onSendInteractive,
+    replyTo?.id,
+    onClearReply,
+    tValidacao,
+    liberarPendente,
+    conversationId,
+  ]);
 
   // Persist the current builder payload as a reusable interactive snippet.
   const saveAsQuickReply = useCallback(async () => {
@@ -1458,15 +1665,18 @@ export function MessageComposer({
   // ---- Draft send / discard -----------------------------------------
 
   /**
-   * Envia (ou agenda) a fila inteira, UM item por vez.
+   * Envia (ou agenda) a fila inteira.
    *
-   * ⚠️ SEQUENCIAL, com `await`: não existe "mensagem com 3 anexos" no
-   * WhatsApp — cada item é uma mensagem —, e disparar as três de uma vez as
-   * entregaria fora de ordem no celular do cliente. A prop `onSendMedia`
-   * aceita promessa justamente para isto.
+   * ⚠️⚠️ ENVIAR AGORA RETÉM a fila na janela de desfazer, como o texto (pedido
+   * do operador, 15/10/2026): os anexos saem da prévia na hora, a barra
+   * oferece "Desfazer" e o compositor fica livre. Ao fim de SEGUNDOS_DESFAZER
+   * — ou na troca de conversa, no desmonte, ao mandar outra coisa — saem UM
+   * por vez pela fila de saída da origem (`enviarAnexo`): não existe
+   * "mensagem com 3 anexos" no WhatsApp, e todos juntos chegariam fora de
+   * ordem no celular do cliente.
    *
-   * ⚠️ O que JÁ SAIU sai da fila, mesmo se o próximo falhar: reenviar do
-   * começo mandaria o primeiro anexo duas vezes ao cliente.
+   * AGENDAR não passa pela janela (925): cada anexo vira uma agendada, sob o
+   * trinco de posse abaixo.
    */
   const sendDraft = useCallback(async () => {
     // ⚠️ TRINCO SÍNCRONO, e por isso um ref: `busy` é estado, e entre o
@@ -1486,32 +1696,34 @@ export function MessageComposer({
     // A conexão caiu com o anexo já na fila: ele FICA (o botão está travado e
     // a faixa vermelha diz por quê), para sair quando ela voltar.
     if (conexaoForaDoAr) return;
-    // ⚠️ A POSSE é também a GERAÇÃO que cancela este laço. O compositor NÃO
-    // remonta na troca de conversa e cada item da fila é um `await`: sem
-    // cancelar, trocar de cliente no meio de uma fila de cinco deixava o laço
-    // seguir escrevendo no compositor do cliente NOVO — o `setDrafts(...)` do
-    // ramo agendado devolvia à tela dele os anexos que sobraram do anterior, e
-    // o `onClearReply()` do fim apagava a citação que ele acabou de escolher.
-    //
-    // ⚠️⚠️ Comparar o `conversationId` NÃO basta, e essa foi a primeira versão
-    // (achado do Codex no PR #148): em A → B → A a conversa volta a ser a
-    // mesma, o laço abandonado de A volta a casar e retoma como se nada
-    // tivesse acontecido — mandando anexos cujos objetos o efeito de troca já
-    // apagou do bucket e limpando a citação da sessão NOVA de A. A posse é
-    // única por invocação e o efeito de troca a zera, então toda navegação
-    // invalida o laço velho PARA SEMPRE, qualquer que seja o caminho.
-    const posse = ++proximaPosseRef.current;
-    enviandoFilaRef.current = posse;
-    setEnviandoFila(true);
-    // A citação que ESTA fila leva. Guardada porque o operador pode escolher
-    // outra enquanto os anexos saem, e o fim do laço não pode apagar a nova.
+    // ⚠️ O TETO É COBRADO AQUI, na saída, e não só no funil de entrada: com a
+    // janela de desfazer o compositor fica livre durante o envio, e o
+    // Desfazer (ou a falha) devolve o que estava retido por cima do que foi
+    // anexado nesse meio tempo — upload em voo inclusive (`devolverAPrevia`).
+    // Nada é apagado: a pessoa escolhe o que tirar.
+    if (drafts.length > MAX_ANEXOS) {
+      toast.error(t("tetoDeAnexosNoEnvio", { max: MAX_ANEXOS, n: drafts.length - MAX_ANEXOS }));
+      return;
+    }
+    // A citação que ESTA fila leva — capturada aqui, nunca relida: o operador
+    // pode escolher outra enquanto os anexos saem.
     const citada = replyTo?.id;
-    try {
 
     // ⚠️ DESVIO ANTES DE QUALQUER COISA, igual ao do texto (925). Com hora
     // escolhida, os anexos vão para a fila de agendadas em vez de sair agora
     // — uma linha por anexo, que é como a tabela guarda (932).
-      if (quandoAg) {
+    if (quandoAg) {
+      // ⚠️ A POSSE é também a GERAÇÃO que cancela este laço. O compositor NÃO
+      // remonta na troca de conversa e cada item é um `await`: sem cancelar,
+      // trocar de cliente no meio da fila deixava o laço escrevendo no
+      // compositor do cliente NOVO (o `setDrafts(restantes)` devolvia à tela
+      // dele os anexos do anterior). Comparar o `conversationId` NÃO basta
+      // (Codex, PR #148): em A → B → A o laço velho voltaria a casar. A posse
+      // é única por invocação e o efeito de troca a zera.
+      const posse = ++proximaPosseRef.current;
+      enviandoFilaRef.current = posse;
+      setEnviandoFila(true);
+      try {
         const restantes: MediaDraft[] = [];
         for (const item of drafts) {
           const legenda = podeTerLegenda(item.kind) ? item.caption.trim() : "";
@@ -1525,67 +1737,47 @@ export function MessageComposer({
         }
         setDrafts(restantes);
         setSelecionado(restantes[0]?.id ?? null);
-        return;
-      }
-
-      for (const item of drafts) {
-        // O arquivo passa a ser da MENSAGEM antes do `await`, não depois: a
-        // janela perigosa é a espera do envio — ver `entreguesRef`.
-        entreguesRef.current.add(item.path);
-        const entregou = await onSendMedia({
-          kind: item.kind,
-          mediaUrl: item.mediaUrl,
-          path: item.path,
-          // Audio takes no caption (Meta rejects it). Everything else: the
-          // trimmed caption, or undefined when blank.
-          caption: podeTerLegenda(item.kind) ? item.caption.trim() || undefined : undefined,
-          filename: item.kind === "document" ? item.filename : undefined,
-          replyToId: citada,
-        });
-        // ⚠️ PARA no primeiro que não entregou, e o item FICA na fila com o
-        // arquivo ainda no bucket. Seguir daria um toast de erro por anexo
-        // quando a causa é a mesma para todos (janela de 24h fechada, rede
-        // fora) — e o operador perderia as legendas já escritas.
-        if (!entregou) {
-          // Não saiu: o arquivo volta a ser do rascunho e a poder ser
-          // recolhido. Se a fila já foi abandonada pela troca de conversa,
-          // ele fica órfão no bucket — o lado seguro, porque a resposta
-          // perdida na rede pode ter chegado DEPOIS de o servidor gravar a
-          // mensagem que aponta para ele.
-          entreguesRef.current.delete(item.path);
-          return;
+      } finally {
+        // ⚠️ CERCA DE POSSE: só solta quem ainda é o dono. Solto pelo efeito
+        // de troca e com outro agendamento já em curso na conversa nova,
+        // limpar aqui abriria o trinco DELE — e o próximo clique repetiria.
+        if (enviandoFilaRef.current === posse) {
+          enviandoFilaRef.current = 0;
+          setEnviandoFila(false);
         }
-        if (enviandoFilaRef.current !== posse) return;
-        // O objeto passou a ser da mensagem enviada — sai da fila sem recolher.
-        setDrafts((atual) => atual.filter((d) => d.id !== item.id));
       }
-      setSelecionado(null);
-      // ⚠️⚠️ Limpa SÓ a citação que saiu, e quem compara é o DONO do estado.
-      //
-      // O operador pode clicar Responder noutra mensagem enquanto os anexos
-      // sobem, e limpar cegamente apagaria a escolha que ele acabou de fazer
-      // (Codex, PR #148). A primeira versão comparava contra um ref alimentado
-      // por `useEffect` — e aí a corrida volta pela porta dos fundos: efeito é
-      // PASSIVO, então a promessa do upload pode assentar depois de o React
-      // comprometer o `replyTo` novo e ANTES de o efeito atualizar o ref. Na
-      // janela, o ref ainda tem o id velho, a comparação passa, e apaga-se
-      // justamente a citação nova — o defeito que esta guarda existe para
-      // impedir (Codex, PR #149). É a armadilha de efeito passivo que o
-      // CLAUDE.md já registra quatro vezes.
-      //
-      // Passando o id, `setReplyTo` decide com o estado MAIS FRESCO, dentro do
-      // próprio updater. Não há janela: não há cópia a envelhecer.
-      onClearReply?.(citada);
-    } finally {
-      // ⚠️ CERCA DE POSSE: só solta quem ainda é o dono. Solto pelo efeito de
-      // troca e com outro envio já em curso na conversa nova, limpar aqui
-      // abriria o trinco DELE — e o próximo clique mandaria os anexos de novo.
-      if (enviandoFilaRef.current === posse) {
-        enviandoFilaRef.current = 0;
-        setEnviandoFila(false);
-      }
+      return;
     }
-  }, [drafts, busy, conexaoForaDoAr, onSendMedia, replyTo?.id, onClearReply, quandoAg, agendar, porQrCode, t]);
+
+    // Só o que ainda é do RASCUNHO: um segundo clique (ou Enter) no mesmo
+    // quadro lê a MESMA `drafts` capturada e reteria os mesmos anexos de novo
+    // — o cliente os receberia duas vezes (Codex, PR #144, no laço antigo).
+    const itens = drafts.filter((d) => !entreguesRef.current.has(d.path));
+    if (itens.length === 0) return;
+    // ⚠️⚠️ O arquivo passa a ser da MENSAGEM já na RETENÇÃO, não no envio: as
+    // limpezas de troca e de desmonte percorrem o `draftsRef`, que só é
+    // atualizado por efeito (passivo) — um clique em outra conversa no mesmo
+    // quadro apagaria o objeto retido, e a bolha enviada ficaria sem arquivo
+    // (o defeito do #413). `desfazerEnvio` e a falha devolvem a marca.
+    for (const d of itens) entreguesRef.current.add(d.path);
+    // Havia algo esperando (texto ou anexos): sai AGORA, antes destes — a
+    // ordem no celular do cliente é a ordem em que foram mandados.
+    liberarPendente();
+    const retida: Retida = {
+      tipo: "anexos",
+      origem: conversationId,
+      itens,
+      replyToId: citada,
+      // O despachante da ORIGEM, capturado na retenção — ver `handleSend`.
+      enviar: onSendMediaRef.current,
+    };
+    setPendente({ ...retida, expiraEm: Date.now() + SEGUNDOS_DESFAZER * 1000 });
+    pendenteRef.current = retida;
+    timerDesfazerRef.current = setTimeout(liberarPendente, SEGUNDOS_DESFAZER * 1000);
+    const retidos = new Set(itens.map((d) => d.id));
+    setDrafts((atual) => atual.filter((d) => !retidos.has(d.id)));
+    setSelecionado(null);
+  }, [drafts, busy, conexaoForaDoAr, replyTo?.id, quandoAg, agendar, porQrCode, t, liberarPendente, conversationId]);
 
   /** Descarta UM item — recolhe o objeto, que subiu e não foi enviado. */
   const discardDraft = useCallback(
@@ -1666,7 +1858,20 @@ export function MessageComposer({
         <div className="mb-2 flex items-center gap-2 rounded-lg bg-muted/60 px-3 py-2">
           <div className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-transparent" />
           <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-            {t("sendingIn", { seconds: restam })} &mdash; {pendente.texto}
+            {t("sendingIn", { seconds: restam })} &mdash;{" "}
+            {/* O texto, ou os anexos: vários pela contagem, um pelo tipo
+                (o documento, pelo nome — é o que o cliente vai ver). */}
+            {pendente.tipo === "texto"
+              ? pendente.texto
+              : pendente.itens.length > 1
+                ? t("enviarNAnexos", { n: pendente.itens.length })
+                : pendente.itens[0].kind === "audio"
+                  ? t("voiceNote")
+                  : pendente.itens[0].kind === "image"
+                    ? t("photo")
+                    : pendente.itens[0].kind === "video"
+                      ? t("video")
+                      : pendente.itens[0].filename || t("document")}
           </span>
           <button
             type="button"
