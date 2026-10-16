@@ -66,32 +66,56 @@ describe('a fila de anexos e a troca de conversa (#146)', () => {
     expect(c).toContain('enviandoFilaRef.current !== 0');
   });
 
-  it('o laço da fila é cancelado pela POSSE depois de cada await, não pelo id da conversa', () => {
+  it('o laço do AGENDAMENTO é cancelado pela POSSE depois de cada await, não pelo id da conversa', () => {
     const c = compositor();
     const corpo = c.slice(c.indexOf('const sendDraft'), c.indexOf('const discardDraft'));
-    // Um ponto por ramo: o agendado e o de enviar agora.
-    expect(ocorrencias(corpo, 'if (enviandoFilaRef.current !== posse) return;')).toBe(2);
+    // Só o ramo agendado tem laço aqui: o envio imediato RETÉM (sem await).
+    expect(ocorrencias(corpo, 'if (enviandoFilaRef.current !== posse) return;')).toBe(1);
     // ⚠️ Comparar o id da conversa NÃO serve: em A → B → A ele volta a casar
-    // e o laço abandonado de A retoma, mandando anexos cujos objetos já foram
-    // apagados e limpando a citação da sessão nova (Codex, PR #148).
+    // e o laço abandonado de A retoma (Codex, PR #148).
     expect(corpo).not.toContain('conversaAnteriorRef.current !== origem');
+    // E agendar desvia ANTES da janela de desfazer (925): a janela dispara
+    // na troca de conversa e mandaria em 3 s o que era para amanhã.
+    expect(corpo.indexOf('if (quandoAg) {')).toBeLessThan(corpo.indexOf('setPendente('));
   });
 
-  it('o fim da fila só limpa a citação se ela ainda for a que saiu', () => {
+  it('os anexos LIBERADOS não param na troca de conversa — saem para a origem', () => {
+    // Antes da janela de desfazer, a troca no meio de uma fila descartava em
+    // silêncio os anexos que faltavam. Agora o despachante é preso à origem
+    // e o laço não consulta posse nem conversa para seguir; a conversa só
+    // decide se o que FALHOU volta à prévia.
+    const c = compositor();
+    const laco = c.slice(c.indexOf('const enviarAnexos = useCallback('), c.indexOf('const despachar = useCallback('));
+    expect(laco).not.toContain('enviandoFilaRef');
+    expect(laco).not.toContain('posse');
+    expect(laco).toContain('if (montadoRef.current && conversaAnteriorRef.current === p.origem) {');
+  });
+
+  it('tudo o que sai passa pela fila de saída da ORIGEM — nunca `enviar` direto', () => {
+    const c = compositor();
+    // Os dois únicos chamadores do despachante: o texto, dentro da fila, e
+    // o laço dos anexos, que também roda dentro dela.
+    expect(ocorrencias(c, '.enviar(')).toBe(2);
+    expect(ocorrencias(c, 'filaDeSaida.enfileirar(p.origem,')).toBe(2);
+    // A desmontagem também (texto OU anexos).
+    expect(c).toMatch(/pendenteRef\.current = null;\s*despacharRef\.current\(p\);/);
+    // De MÓDULO: o compositor que remonta usa a mesma fila do que saiu.
+    expect(c).toMatch(/^const filaDeSaida = criarFilaDeSaida\(\);$/m);
+  });
+
+  it('a citação dos anexos só é limpa se ainda for a que saiu', () => {
     const c = compositor();
     const corpo = c.slice(c.indexOf('const sendDraft'), c.indexOf('const discardDraft'));
-    // O operador pode clicar Responder noutra mensagem enquanto os anexos
-    // sobem; limpar o que estiver vigente apagaria a escolha nova.
+    // O operador pode clicar Responder noutra mensagem durante a janela;
+    // limpar o que estiver vigente apagaria a escolha nova.
     expect(corpo).toContain('const citada = replyTo?.id;');
     // ⚠️⚠️ Quem COMPARA é o dono do estado, dentro do updater — o compositor
-    // só informa qual citação saiu. A primeira versão comparava contra um ref
-    // alimentado por `useEffect`, e efeito é PASSIVO: a promessa do upload
-    // pode assentar depois de o React comprometer o `replyTo` novo e antes de
-    // o efeito atualizar o ref, e aí apaga-se exatamente a citação nova — o
-    // defeito que esta guarda existe para impedir (Codex, PR #149).
-    expect(corpo).toContain('onClearReply?.(citada);');
-    expect(corpo).not.toContain('citadaAtualRef');
-    // E o que a fila manda é a citação CAPTURADA, não a lida a cada volta.
+    // só informa qual citação saiu. Um ref alimentado por `useEffect` reabre
+    // a corrida, porque efeito é PASSIVO (Codex, PR #149).
+    const liberar = c.slice(c.indexOf('const liberarPendente = useCallback('), c.indexOf('const desfazerEnvio'));
+    expect(liberar).toContain('else if (p.replyToId) onClearReplyRef.current?.(p.replyToId);');
+    expect(c).not.toContain('citadaAtualRef');
+    // E o que a fila manda é a citação CAPTURADA, não a relida.
     expect(corpo).not.toContain('replyToId: replyTo?.id');
     expect(ocorrencias(corpo, 'replyToId: citada')).toBe(2);
   });
@@ -114,23 +138,26 @@ describe('a fila de anexos e a troca de conversa (#146)', () => {
     expect(compositor()).toContain('onClearReply?.();');
   });
 
-  it('o item EM VOO é da mensagem: marcado antes do await, desmarcado só na falha', () => {
-    // O item só deixa a fila quando o envio VOLTA, e pela Evolution uma nota
-    // de voz leva segundos. Sem a marca, trocar de conversa nesse meio tempo
-    // fazia a limpeza de troca apagar o arquivo que a mensagem enviada usa:
-    // o cliente recebia e a bolha do CRM ficava sem o áudio (15/10/2026).
+  it('o anexo RETIDO já é da mensagem: marcado na retenção, desmarcado só no Desfazer e na falha', () => {
+    // Pela Evolution uma nota de voz leva segundos para sair. Sem a marca, a
+    // limpeza de troca de conversa apagava o arquivo que a mensagem enviada
+    // usa: o cliente recebia e a bolha do CRM ficava sem o áudio (#413). Com
+    // a janela de desfazer a marca vem JÁ na retenção: o `draftsRef` que as
+    // limpezas percorrem só é atualizado por efeito (passivo).
     const c = compositor();
     const corpo = c.slice(c.indexOf('const sendDraft'), c.indexOf('const discardDraft'));
-    const ate = corpo.indexOf('await onSendMedia(');
-    const laco = corpo.slice(corpo.lastIndexOf('for (const item of drafts)', ate), ate);
-    expect(laco).toContain('entreguesRef.current.add(item.path);');
-    const depois = corpo.slice(ate);
-    expect(depois).toMatch(
-      /if \(!entregou\) \{\s*entreguesRef\.current\.delete\(item\.path\);\s*return;\s*\}/,
-    );
-    // ⚠️ O sucesso NÃO desmarca: `draftsRef` é atualizado por efeito (passivo)
-    // e, no quadro seguinte ao `setDrafts`, a limpeza ainda vê o item enviado.
-    expect(ocorrencias(depois, 'entreguesRef.current.delete(')).toBe(1);
+    const marca = corpo.indexOf('for (const d of itens) entreguesRef.current.add(d.path);');
+    expect(marca).toBeGreaterThan(-1);
+    expect(marca).toBeLessThan(corpo.indexOf('setPendente('));
+    // O segundo clique no mesmo quadro não retém os mesmos anexos de novo.
+    expect(corpo).toContain('drafts.filter((d) => !entreguesRef.current.has(d.path))');
+    // Desfazer devolve à prévia — e à posse do rascunho.
+    const desfazer = c.slice(c.indexOf('const desfazerEnvio'), c.indexOf('const agendar = useCallback('));
+    expect(desfazer).toContain('for (const d of p.itens) entreguesRef.current.delete(d.path);');
+    // ⚠️ No laço, só a FALHA desmarca (o que sobrou); o sucesso nunca.
+    const laco = c.slice(c.indexOf('const enviarAnexos = useCallback('), c.indexOf('const despachar = useCallback('));
+    expect(ocorrencias(laco, 'entreguesRef.current.delete(')).toBe(1);
+    expect(laco).toContain('for (const d of sobra) entreguesRef.current.delete(d.path);');
   });
 
   it('a única porta que apaga objeto do bucket é `removeStaged`, que respeita a marca', () => {

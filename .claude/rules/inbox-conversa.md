@@ -28,6 +28,7 @@ paths:
   - "src/lib/inbox/entrega-nao-confirmada*"
   - "src/lib/inbox/motivo-da-falha*"
   - "src/lib/inbox/fila-de-anexos*"
+  - "src/lib/inbox/fila-de-saida*"
   - "src/lib/inbox/nao-lidas-abaixo*"
   - "src/lib/inbox/whatsapp-format*"
   - "src/lib/inbox/links-no-texto*"
@@ -206,37 +207,32 @@ destaque e ↑/↓ em `message-thread.tsx`.
   `pointer-events-none`, senão engole o `drop`.
 - ⚠️ **Print colado ganha nome com carimbo** (`nomeParaColagem`): toda colagem
   se chama `image.png`, e o nome vai ao WhatsApp e a `media_filename`.
-- ⚠️⚠️ **Até `MAX_ANEXOS` (10), cada anexo uma mensagem, em SEQUÊNCIA com
-  `await`**: todos juntos chegariam fora de ordem. O que JÁ saiu deixa a fila
-  item a item (reenviar do começo repetiria o primeiro). Agendado: uma linha por
-  anexo.
+- ⚠️⚠️ **Até `MAX_ANEXOS` (10), cada anexo uma mensagem. Enviar RETÉM a fila
+  na janela de desfazer, como o texto** (pedido do operador, 15/10/2026): a
+  prévia esvazia na hora, a barra oferece "Desfazer" (devolve anexos e
+  legendas à prévia) e o compositor fica livre. A retida é UMA (`Retida`,
+  texto OU anexos): mandar outra coisa solta a anterior antes.
+- ⚠️⚠️ **Liberada, sai pela fila de saída da ORIGEM** (`fila-de-saida.ts`, de
+  módulo, uma por conversa, teto de 45 s): um por vez, com `await`, e o texto
+  mandado depois espera o áudio — senão chega antes no celular do cliente.
+  Despachante preso na retenção; o laço NÃO para na troca de conversa (antes
+  descartava em silêncio o resto da fila).
+- ⚠️⚠️ **O arquivo é da MENSAGEM desde a retenção** (`entreguesRef` marcado
+  antes do `setPendente`; sai no Desfazer e na falha): o `draftsRef` das
+  limpezas é passivo, e a troca no mesmo quadro apagava o anexo enviado — a
+  bolha ficava sem o áudio que o cliente recebeu (#413).
 - ⚠️⚠️ **`onSendMedia` DEVOLVE se entregou, e o pai NÃO apaga o objeto na
-  falha**: o item fica na fila, do compositor. O envio PARA no primeiro que não
-  entregou (a causa costuma ser a mesma para todos). ⚠️⚠️ O item EM VOO é da
-  MENSAGEM (`entreguesRef` antes do `await`, sai só na falha): a limpeza de
-  troca apagava a nota de voz em envio, e a bolha perdia o áudio.
-- ⚠️⚠️ **Trinco SÍNCRONO (`enviandoFilaRef`) que guarda a POSSE (um número por
-  envio), nunca um booleano.** Estado não serializa o segundo clique (reenviaria
-  tudo); o `finally` só solta quem ainda é dono — com booleano, o fim do envio
-  de A soltava o trinco de B.
-- ⚠️⚠️ **A troca de conversa solta o trinco, e a posse é a GERAÇÃO que cancela o
-  laço**: depois de cada `await`, `enviandoFilaRef.current !== posse` desiste.
-  Sem soltar, o `fetch` sem prazo travava o Enviar do cliente seguinte; sem
-  cancelar, o laço de A escrevia na tela de B. Comparar o `conversationId` NÃO
-  basta: em A → B → A o laço velho retomaria. Laço novo com `await` sobre estado
-  da tela usa a posse.
-- ⚠️⚠️ **O fim da fila só limpa a citação se ela ainda for A QUE SAIU, e quem
-  compara é o dono do estado**: `onClearReply?.(citada)`, decidido dentro do
-  `setReplyTo((atual) => …)`. Ref alimentado por efeito reabre a corrida (efeito
-  é passivo). O teste é `typeof idQueSaiu !== "string"`: um `onClick` passaria o
-  MouseEvent como id.
-- ⚠️ **Os dois envios da fila (imediato e agendado) levam a `citada` CAPTURADA
-  na entrada do laço**, nunca `replyTo?.id` relido a cada volta: o operador pode
-  clicar Responder noutra mensagem enquanto os anexos sobem, e os restantes
-  trocariam de citação no meio.
-- ⚠️⚠️ **`handleSendMedia` NÃO limpa a citação — só o fim da fila**: ele tem
-  saídas que RETÊM o anexo, e a nova tentativa sairia sem a citação. Pino:
-  `src/lib/inbox/fila-de-anexos.chamadores.test.ts`.
+  falha.** O laço PARA no primeiro que falhou; ele e os seguintes voltam à
+  prévia se o compositor ainda está na origem, senão um aviso.
+- ⚠️⚠️ **Agendar desvia ANTES da janela, sob trinco SÍNCRONO de POSSE**
+  (`enviandoFilaRef`, nunca booleano; solto também na troca de conversa):
+  depois de cada `await`, `!== posse` desiste. Comparar o `conversationId`
+  NÃO basta: em A → B → A o laço velho retomaria.
+- ⚠️⚠️ **A citação é CAPTURADA na entrada (`citada`) e, liberados os anexos,
+  só sai se ainda for A QUE SAIU** — quem compara é o dono do estado
+  (`setReplyTo((atual) => …)`; `typeof idQueSaiu !== "string"`, porque um
+  `onClick` passaria o MouseEvent). `handleSendMedia` NÃO limpa: tem saídas
+  que RETÊM o anexo. Pinos: `fila-de-anexos.chamadores.test.ts`.
 - ⚠️ **Todo caminho passa pelo MESMO funil** (`receberArquivos`: teto e aviso do
   que ficou de fora) e acrescenta à fila com a guarda de troca de conversa. As
   limpezas (desmonte, anotação) percorrem a fila INTEIRA; uma esquecida vaza

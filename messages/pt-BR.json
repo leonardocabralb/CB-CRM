@@ -430,6 +430,7 @@
       "removeAllAttachments": "Remover todos",
       "addCaptionFor": "Legenda de {arquivo}",
       "enviarNAnexos": "{n} mensagens",
+      "anexosNaoSairam": "{n, plural, =1 {1 anexo da fila não saiu} other {# anexos da fila não saíram}}: a conversa já não estava aberta. Abra a conversa e anexe de novo.",
       "aiNotConfigured": "O assistente de IA ainda não está ligado — ative em Agentes de IA → assistente anterior (a chave fica em Configurações → Integrações).",
       "draftFailed": "Não foi possível redigir uma resposta.",
       "draftEmpty": "O assistente não devolveu resposta.",
