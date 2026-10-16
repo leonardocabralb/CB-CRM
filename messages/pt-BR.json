@@ -1719,6 +1719,7 @@
         "send_to_number": "Avisar o número: {alvo}",
         "create_task": "Criar tarefa: {alvo}",
         "pin_conversation_channel": "Fixar a conversa num número",
+        "add_note": "Escrever anotação: {alvo}",
         "atlas_criar_cliente": "Criar o cliente no Atlas",
         "atlas_atualizar_cliente": "Atualizar o cliente no Atlas{situacao, select, ativo { (situação: Ativo)} importado { (situação: Importado)} finalizado { (situação: Finalizado)} rescindido { (situação: Rescindido)} inativo { (situação: Inativo)} suspenso { (situação: Suspenso)} other {}}",
         "atlas_criar_tarefa": "Criar tarefa no Atlas: {alvo}",
@@ -2294,6 +2295,7 @@
         "send_to_number": "Avisar um número",
         "create_task": "Criar tarefa",
         "pin_conversation_channel": "Fixar a conversa no número",
+        "add_note": "Escrever anotação interna",
         "atlas_criar_cliente": "Criar cliente no Atlas",
         "atlas_atualizar_cliente": "Atualizar cliente no Atlas",
         "atlas_criar_tarefa": "Criar tarefa no Atlas",
@@ -2705,6 +2707,14 @@
         "reservaHint": "Obrigatório. Quando ninguém estiver atribuído (ou quem estava saiu da conta), a tarefa vai para esta pessoa, e o histórico da automação diz por quê.",
         "cardHint": "Hoje o responsável pelo card só é definido à mão, no formulário do negócio. Sem ele, a tarefa vai para a pessoa abaixo."
       },
+      "anotacao": {
+        "textoLabel": "Texto da anotação",
+        "textoHint": "Só a equipe vê. Aparece na conversa assinada pela automação.",
+        "marcarLabel": "Marcar (opcional)",
+        "marcarEscolher": "Marcar alguém…",
+        "marcarHint": "Quem for marcado aparece com @ no começo da anotação e recebe o aviso no sino. Se a pessoa sair da conta, o passo grava a anotação sem ela, acusa falha e a automação para ali.",
+        "tirar": "Tirar {nome}"
+      },
       "atlas": {
         "tipoLabel": "Tipo de contrato",
         "tipoFixo": "Fixo",
@@ -2906,6 +2916,9 @@
           "tarefa_prazo_invalido": "Escolha um prazo entre 0 e 365 dias.",
           "tarefa_hora_invalida": "Escreva a hora da tarefa no formato HH:MM.",
           "fixar_sem_conexao": "Escolha o número em que a conversa fica fixada.",
+          "anotacao_sem_texto": "Escreva o texto da anotação.",
+          "anotacao_texto_longo": "A anotação passou do limite de 4000 caracteres.",
+          "anotacao_marcados_invalidos": "A lista de pessoas marcadas está com defeito. Tire as marcações e marque de novo.",
           "atlas_tipo_de_contrato_invalido": "Escolha o tipo de contrato: fixo ou mensal.",
           "atlas_campo_invalido": "Escolha de novo o campo de data na lista (ou “— não usar —”).",
           "passo_desconhecido": "Este tipo de passo não existe mais: apague o passo.",
@@ -2943,6 +2956,7 @@
           "acionar_automacao_do_atlas": "A automação escolhida é do gatilho “Situação mudou no Atlas”, que só roda pela leitura do Atlas: quando chegar aqui, o passo falha e os passos seguintes não rodam. Escolha outra.",
           "iniciar_robo_desligado": "O robô escolhido não está ativo: quando chegar aqui, o passo falha e os passos seguintes não rodam. Ative-o ou escolha outro.",
           "iniciar_robo_apagado": "O robô escolhido foi apagado: quando chegar aqui, o passo falha e os passos seguintes não rodam. Escolha outro.",
+          "anotacao_marcado_fora_da_conta": "Uma pessoa marcada não é mais membro ativo da conta: quando chegar aqui, o passo grava a anotação sem ela, falha e os passos seguintes não rodam. Tire a marcação.",
           "atlas_situacao_invalida": "Escolha de novo a situação do Atlas (ou “— não mudar —”).",
           "atlas_atualizar_sem_campos": "Escolha ao menos um campo para atualizar no Atlas.",
           "atlas_tarefa_sem_titulo": "Escreva o título da tarefa do Atlas.",
@@ -3238,6 +3252,10 @@
       "desmarcar": "Tirar das favoritas",
       "falhouSalvar": "Não deu para salvar a favorita. Tente de novo.",
       "falhouCarregar": "Suas favoritas não carregaram agora."
+    },
+    "anotacaoGravada": {
+      "autor": "Automação \"{nome}\"",
+      "semNome": "membro sem nome"
     }
   },
   "Flows": {

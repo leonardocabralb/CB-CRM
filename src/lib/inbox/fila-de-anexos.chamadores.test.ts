@@ -114,6 +114,32 @@ describe('a fila de anexos e a troca de conversa (#146)', () => {
     expect(compositor()).toContain('onClearReply?.();');
   });
 
+  it('o item EM VOO é da mensagem: marcado antes do await, desmarcado só na falha', () => {
+    // O item só deixa a fila quando o envio VOLTA, e pela Evolution uma nota
+    // de voz leva segundos. Sem a marca, trocar de conversa nesse meio tempo
+    // fazia a limpeza de troca apagar o arquivo que a mensagem enviada usa:
+    // o cliente recebia e a bolha do CRM ficava sem o áudio (15/10/2026).
+    const c = compositor();
+    const corpo = c.slice(c.indexOf('const sendDraft'), c.indexOf('const discardDraft'));
+    const ate = corpo.indexOf('await onSendMedia(');
+    const laco = corpo.slice(corpo.lastIndexOf('for (const item of drafts)', ate), ate);
+    expect(laco).toContain('entreguesRef.current.add(item.path);');
+    const depois = corpo.slice(ate);
+    expect(depois).toMatch(
+      /if \(!entregou\) \{\s*entreguesRef\.current\.delete\(item\.path\);\s*return;\s*\}/,
+    );
+    // ⚠️ O sucesso NÃO desmarca: `draftsRef` é atualizado por efeito (passivo)
+    // e, no quadro seguinte ao `setDrafts`, a limpeza ainda vê o item enviado.
+    expect(ocorrencias(depois, 'entreguesRef.current.delete(')).toBe(1);
+  });
+
+  it('a única porta que apaga objeto do bucket é `removeStaged`, que respeita a marca', () => {
+    const c = compositor();
+    expect(ocorrencias(c, 'deleteAccountMedia(')).toBe(1);
+    const porta = c.slice(c.indexOf('const removeStaged'), c.indexOf('deleteAccountMedia('));
+    expect(porta).toContain('if (entreguesRef.current.has(path)) return;');
+  });
+
   it('MediaDraft não guarda a citada — é por isso que ela tem de sobreviver', () => {
     // Se um dia o rascunho passar a carregar o id da citada, este pino cai
     // e a regra acima muda de forma: aí a citação pode ser limpa no envio.

@@ -24,6 +24,7 @@ import type {
   RunFlowStepConfig,
   SetAiStepConfig,
   PinConversationChannelStepConfig,
+  AddNoteStepConfig,
   AtlasCriarClienteStepConfig,
   AtlasAtualizarClienteStepConfig,
   AtlasCriarTarefaStepConfig,
@@ -172,6 +173,8 @@ import {
   TIPO_TEXTO,
   type SituacaoDoOnboarding,
 } from '@/lib/atlas/passos-do-atlas';
+import { escreverAnotacaoDaAutomacao, lerMarcados } from '@/lib/notes/anotacao-da-automacao';
+import { textosDaAnotacaoDaAutomacao } from '@/lib/ia-agentes/textos-do-servidor';
 
 /** O motivo do `send_to_number` recusado, na frase que o registro mostra. */
 const POR_QUE_O_NUMERO_NAO_SERVE: Record<MotivoDoTelefone, string> = {
@@ -2640,6 +2643,52 @@ async function runStep(
         .eq('account_id', args.automation.account_id);
       if (upErr) throw new Error(`fixar a conversa falhou: ${upErr.message}`);
       return `conversa fixada no número "${rotulo}"`;
+    }
+
+    // ------------------------------------------------------------
+    // Escrever anotação interna (15/10/2026, "Contato do Banco"): a instrução
+    // para a equipe na conversa, assinada pela automação, marcando quem vai
+    // cuidar. Não fala com o cliente, então não cria conversa (como o
+    // `set_ai`). O I/O e a forma da anotação moram em
+    // `@/lib/notes/anotacao-da-automacao`.
+    //
+    // ⚠️ Marcado que saiu da conta e aviso que não chegou FALHAM o passo
+    // DEPOIS de gravar: a anotação fica (é o ato) e a falha aparece na
+    // conversa. Concluir em silêncio deixaria a pessoa que devia agir sem
+    // saber — e ninguém saberia que ela não soube.
+    // ------------------------------------------------------------
+    case 'add_note': {
+      const cfg = step.step_config as AddNoteStepConfig;
+      const texto = (await interpolate(cfg.texto ?? '', args)).trim();
+      if (!texto) throw new Error('anotação: o texto saiu vazio');
+      let conversationId: string;
+      try {
+        conversationId = await resolveConversationId(args);
+      } catch (e) {
+        // O motivo de `resolveConversationId` fala em ENVIO ("cannot send"),
+        // e este passo não envia nada.
+        if (e instanceof Error && e.message.endsWith('contact has no existing conversation'))
+          throw new Error('anotação: o contato não tem conversa (o passo não cria uma)');
+        throw e;
+      }
+      const { autor, semNome } = await textosDaAnotacaoDaAutomacao(args.automation.name ?? '');
+      const r = await escreverAnotacaoDaAutomacao(db, {
+        accountId: args.automation.account_id,
+        conversationId,
+        autor,
+        semNome,
+        texto,
+        marcados: lerMarcados(cfg.mencionados),
+      });
+      if (r.foraDaConta > 0)
+        throw new Error(
+          `anotação gravada, mas ${r.foraDaConta} pessoa(s) marcada(s) não é(são) mais membro ativo da conta: ajuste a automação`
+        );
+      if (r.erroDoAviso)
+        throw new Error(`anotação gravada, mas o aviso no sino falhou: ${r.erroDoAviso}`);
+      return r.avisados.length > 0
+        ? `anotação gravada; avisado(s) no sino: ${r.avisados.join(', ')}`
+        : 'anotação gravada';
     }
 
     // ------------------------------------------------------------

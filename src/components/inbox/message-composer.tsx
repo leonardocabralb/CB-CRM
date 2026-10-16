@@ -397,6 +397,14 @@ export function MessageComposer({
    * Marcado ANTES do POST, de propósito: a janela perigosa é justamente a
    * espera. Se o agendamento falhar, o caminho sai daqui e volta a ser
    * recolhível.
+   *
+   * ⚠️⚠️ O ENVIO IMEDIATO da fila passa pela mesma marca (`sendDraft`). Pela
+   * Evolution uma nota de voz leva de 4 a 7 s para sair, e o item só deixa a
+   * fila quando o envio volta: quem trocava de conversa nesse meio tempo
+   * disparava a limpeza de troca, que apagava o arquivo do item em voo. O
+   * cliente recebia (a Evolution já o tinha baixado) e a bolha do CRM ficava
+   * apontando para um objeto apagado — "Não foi possível reproduzir este
+   * áudio". Medido em 15/10/2026: ~10% das notas de voz gravadas no CRM.
    */
   const entreguesRef = useRef<Set<string>>(new Set());
 
@@ -1521,6 +1529,9 @@ export function MessageComposer({
       }
 
       for (const item of drafts) {
+        // O arquivo passa a ser da MENSAGEM antes do `await`, não depois: a
+        // janela perigosa é a espera do envio — ver `entreguesRef`.
+        entreguesRef.current.add(item.path);
         const entregou = await onSendMedia({
           kind: item.kind,
           mediaUrl: item.mediaUrl,
@@ -1535,7 +1546,15 @@ export function MessageComposer({
         // arquivo ainda no bucket. Seguir daria um toast de erro por anexo
         // quando a causa é a mesma para todos (janela de 24h fechada, rede
         // fora) — e o operador perderia as legendas já escritas.
-        if (!entregou) return;
+        if (!entregou) {
+          // Não saiu: o arquivo volta a ser do rascunho e a poder ser
+          // recolhido. Se a fila já foi abandonada pela troca de conversa,
+          // ele fica órfão no bucket — o lado seguro, porque a resposta
+          // perdida na rede pode ter chegado DEPOIS de o servidor gravar a
+          // mensagem que aponta para ele.
+          entreguesRef.current.delete(item.path);
+          return;
+        }
         if (enviandoFilaRef.current !== posse) return;
         // O objeto passou a ser da mensagem enviada — sai da fila sem recolher.
         setDrafts((atual) => atual.filter((d) => d.id !== item.id));

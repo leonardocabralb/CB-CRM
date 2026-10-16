@@ -1151,3 +1151,30 @@ describe("o nó Atlas (30/09/2026) — a forma de cada ação", () => {
     expect(validateAtlasSituacaoForActivation("manual", [atualizar])).toEqual([])
   })
 })
+
+describe("add_note — escrever anotação interna", () => {
+  const ANA = "11111111-1111-4111-8111-111111111111";
+  const anotar = (step_config: Record<string, unknown>) => ({ step_type: "add_note", step_config });
+
+  it("o texto é obrigatório, com código próprio", () => {
+    expect(validateStepsForActivation([anotar({ texto: "  ", mencionados: [] })])).toEqual([
+      { path: "steps[0].texto", message: "note text is required", codigo: "anotacao_sem_texto" },
+    ]);
+    expect(validateStepsForActivation([anotar({ texto: "Verificar cliente" })])).toEqual([]);
+  });
+
+  it("texto acima do teto da rota de anotações é recusado", () => {
+    const issues = validateStepsForActivation([anotar({ texto: "a".repeat(4001) })]);
+    expect(issues.map((i) => i.codigo)).toEqual(["anotacao_texto_longo"]);
+    expect(validateStepsForActivation([anotar({ texto: "a".repeat(4000) })])).toEqual([]);
+  });
+
+  it("marcados: lista de ids de login; o que não é id reprova (o motor ignoraria em silêncio)", () => {
+    expect(validateStepsForActivation([anotar({ texto: "x", mencionados: [ANA] })])).toEqual([]);
+    for (const ruim of [["Ana Lima"], ANA, [ANA, 1]]) {
+      expect(
+        validateStepsForActivation([anotar({ texto: "x", mencionados: ruim })]).map((i) => i.codigo),
+      ).toEqual(["anotacao_marcados_invalidos"]);
+    }
+  });
+});

@@ -25,6 +25,7 @@ import {
 } from '@/lib/atlas/passos-do-atlas'
 import { GATILHO_DO_ATLAS } from './so-pelo-disparador'
 import { aceitaNaoRepetir, HORAS_SEM_REPETIR_MAX, horasSemRepetirValidas } from './nao-repetir'
+import { ehListaDeMarcados, MAX_TEXTO_DA_ANOTACAO } from '@/lib/notes/anotacao-da-automacao'
 
 // ------------------------------------------------------------
 // Pre-flight config validation for automations about to be activated.
@@ -702,6 +703,28 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       }
       break
     }
+    case 'add_note':
+      // Só a FORMA. Se os marcados ainda são membros é o motor que confere,
+      // na hora: a equipe muda depois de a regra ser gravada. O teto conta
+      // só o texto escrito; com os `@Nome` na frente, o motor recusa o que
+      // passar (raro: são 4000 caracteres).
+      if (!nonEmpty(c.texto)) {
+        issues.push({ path: `${path}.texto`, message: 'note text is required', codigo: 'anotacao_sem_texto' })
+      } else if (String(c.texto).trim().length > MAX_TEXTO_DA_ANOTACAO) {
+        issues.push({
+          path: `${path}.texto`,
+          message: `note text must be at most ${MAX_TEXTO_DA_ANOTACAO} chars`,
+          codigo: 'anotacao_texto_longo',
+        })
+      }
+      if (c.mencionados !== undefined && c.mencionados !== null && !ehListaDeMarcados(c.mencionados)) {
+        issues.push({
+          path: `${path}.mencionados`,
+          message: 'tagged members must be a list of member ids',
+          codigo: 'anotacao_marcados_invalidos',
+        })
+      }
+      break
     default:
       issues.push({ path, message: `unknown step type: ${step.step_type}`, codigo: 'passo_desconhecido' })
   }

@@ -50,6 +50,8 @@ import {
   UserPlus,
   UserPen,
   ListChecks,
+  NotebookPen,
+  X,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -284,6 +286,8 @@ const STEP_META: Record<AutomationStepType, StepMeta> = {
   // Tarefa é trabalho INTERNO, como o aviso ao número: mesma borda, pelo mesmo
   // motivo — nada disto chega ao cliente.
   create_task: { label: "create_task", icon: ListTodo, border: "border-l-sky-500" },
+  // A anotação também é para a equipe: mesma borda da tarefa.
+  add_note: { label: "add_note", icon: NotebookPen, border: "border-l-sky-500" },
   // Não fala com ninguém: muda por qual número a conversa corre, como o
   // `set_ai` muda quem responde — mesma borda.
   pin_conversation_channel: { label: "pin_conversation_channel", icon: Pin, border: "border-l-violet-500" },
@@ -342,6 +346,7 @@ const ADDABLE_STEPS: AutomationStepType[] = [
   "close_conversation",
   "send_to_number",
   "create_task",
+  "add_note",
   // O nó "Atlas": UMA entrada no menu ("Atlas"), que nasce "Criar cliente"
   // (ou "Criar tarefa" na automação do gatilho do Atlas); as outras ações se
   // escolhem DENTRO do passo (`AtlasPassoFields`).
@@ -502,6 +507,8 @@ function blankConfig(type: AutomationStepType): Record<string, unknown> {
     // aparece na lista de hoje de ninguém.
     case "create_task":
       return { titulo: "", responsavel_user_id: "", prazo_em_dias: 0 }
+    case "add_note":
+      return { texto: "", mencionados: [] }
     default:
       return {}
   }
@@ -1620,7 +1627,7 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
     document.querySelector(rolarPara.seletor)?.scrollIntoView({ behavior: "smooth", block: "start" })
   }, [rolarPara])
 
-  const { channels, customFields, automations, flows, carga } = recursosCarregados
+  const { channels, customFields, automations, flows, members, carga } = recursosCarregados
   // `null` = a lista não carregou (ou falhou): aquela conferência é pulada, e
   // quem responde é o servidor — nunca "a conta não tem canal" sobre lista
   // vazia durante a carga.
@@ -1650,8 +1657,9 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
           ? automations.map((a) => (a.id === initial.id ? { ...a, is_active: state.is_active } : a))
           : null,
       robos: carga.flows === "pronto" && flows.length < TETO_DE_LINHAS ? flows : null,
+      membros: carga.members === "pronto" ? members : null,
     }),
-    [carga.automations, automations, initial.id, state.is_active, carga.flows, flows],
+    [carga.automations, automations, initial.id, state.is_active, carga.flows, flows, carga.members, members],
   )
 
   const vermelhoLigado = state.is_active && tentouLigar
@@ -3718,6 +3726,74 @@ function FixarConversaFields({
 }
 
 /**
+ * Quem a anotação marca ("Escrever anotação interna"): os escolhidos viram
+ * pílulas e o seletor oferece os que faltam. Grava ids de LOGIN, na ordem
+ * da escolha — é a ordem dos `@Nome` no começo da anotação.
+ */
+function MarcarNaAnotacao({
+  value,
+  onChange,
+  t,
+}: {
+  value: string[]
+  onChange: (ids: string[]) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const { members, carga } = useResources()
+  const nomeDe = (id: string) => {
+    const m = members.find((x) => x.user_id === id)
+    // Sem a lista carregada, "removido" afirmaria o que não se sabe.
+    if (!m) return carga.members === "pronto" ? t("agents.unknown") : "…"
+    const nome = m.full_name?.trim() || m.email || t("agents.semNome")
+    return m.suspenso_em ? t("agents.suspended", { name: nome }) : nome
+  }
+  // 1067: suspenso não é oferecido (o motor não o marca).
+  const disponiveis = opcoesDeResponsavel(members, () => false).filter((m) => !value.includes(m.user_id))
+  return (
+    <FieldBlock label={t("anotacao.marcarLabel")}>
+      {value.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          {value.map((id) => (
+            <span
+              key={id}
+              className="inline-flex max-w-full items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs text-foreground"
+            >
+              <span className="min-w-0 truncate">@{nomeDe(id)}</span>
+              <button
+                type="button"
+                onClick={() => onChange(value.filter((x) => x !== id))}
+                aria-label={t("anotacao.tirar", { nome: nomeDe(id) })}
+                className="shrink-0 rounded-full text-muted-foreground hover:text-foreground"
+              >
+                <X className="size-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      {members.length === 0 ? (
+        <ListaSemEscolha estado={carga.members} vazio={t("listas.semAtendentes")} t={t} />
+      ) : (
+        <select
+          value=""
+          onChange={(e) => e.target.value && onChange([...value, e.target.value])}
+          className={SELECT_CLASS}
+          disabled={disponiveis.length === 0}
+        >
+          <option value="">{t("anotacao.marcarEscolher")}</option>
+          {disponiveis.map((m) => (
+            <option key={m.user_id} value={m.user_id}>
+              {m.full_name?.trim() || m.email || t("agents.semNome")}
+            </option>
+          ))}
+        </select>
+      )}
+      <p className="mt-1 text-[11px] text-muted-foreground">{t("anotacao.marcarHint")}</p>
+    </FieldBlock>
+  )
+}
+
+/**
  * A conexão do Atlas vista do construtor, pelo cartão de Integrações
  * (`GET /api/cb/atlas`, só admin). ⚠️ Qualquer resposta que não é 200 (membro
  * sem admin, limite, rede) é "não sei" — nunca "não conectado".
@@ -5115,6 +5191,22 @@ function StepEditor({
           t={t}
         />
       )
+    case "add_note":
+      return (
+        <>
+          <CampoComVariaveis
+            rotulo={t("anotacao.textoLabel")}
+            value={(cfg.texto as string) ?? ""}
+            onChange={(texto) => set({ texto })}
+            ajuda={<p className="mt-1 text-[11px] text-muted-foreground">{t("anotacao.textoHint")}</p>}
+          />
+          <MarcarNaAnotacao
+            value={Array.isArray(cfg.mencionados) ? cfg.mencionados.filter((v): v is string => typeof v === "string") : []}
+            onChange={(mencionados) => set({ mencionados })}
+            t={t}
+          />
+        </>
+      )
     // O nó Atlas: as cinco ações num editor só, com o seletor de ação.
     case "atlas_criar_cliente":
     case "atlas_atualizar_cliente":
@@ -5366,6 +5458,8 @@ function previewFor(
       const id = step.step_config.channel_id
       return (typeof id === "string" && id && recursos.channels.find((c) => c.id === id)?.label) || ""
     }
+    case "add_note":
+      return (step.step_config.texto as string | undefined)?.split("\n")[0] || t("previa.semTexto")
     case "atlas_criar_cliente":
       return `${t("atlas.tipoLabel")}: ${
         step.step_config.tipo_de_contrato === "mensal" ? t("atlas.tipoMensal") : t("atlas.tipoFixo")
