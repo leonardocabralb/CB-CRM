@@ -441,7 +441,7 @@ export function useAreaDeTrabalho(pedido: PedidoDaArea): AreaDeTrabalho {
       if (ids.length > 0) {
         const { data: convs, error: erroConversas } = await supabase
           .from('conversations')
-          .select('id, channel_id, group_id, group:cb_groups(channel_id)')
+          .select('id, channel_id, channel_pinned, group_id, group:cb_groups(channel_id)')
           .eq('account_id', accountId)
           .in('id', ids);
         if (erroConversas) throw new Error(erroConversas.message);

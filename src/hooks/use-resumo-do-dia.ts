@@ -38,9 +38,10 @@
 // erro.)
 //
 // ⚠️ O recorte por conexão do perfil é feito em JS (`conversaNoEscopo`), e
-// por isso o select de conversas traz `group:cb_groups(channel_id)`: filtrar
-// `conversations` por canal NA CONSULTA apaga os grupos, cujo `channel_id` é
-// sempre nulo (armadilha documentada em `src/lib/inbox/filtros.ts`).
+// por isso o select de conversas traz `group:cb_groups(channel_id)` e
+// `channel_pinned` (grupo fixado no cabeçalho corre pelo número fixado):
+// filtrar `conversations` por canal NA CONSULTA apaga os grupos, cujo
+// `channel_id` é nulo (armadilha documentada em `src/lib/inbox/filtros.ts`).
 //
 // ⚠️ O select é ENXUTO de propósito, e não o `CONVERSATION_SELECT` do inbox
 // (contato inteiro + etiquetas + grupo inteiro): a fila sem responsável tem
@@ -145,11 +146,11 @@ const LINHAS_LISTADAS = 50;
 const IDS_POR_CONSULTA = 500;
 
 /**
- * Só o que as réguas leem: `conversaNoEscopo` (canal, grupo e o canal do
- * grupo), `atrasoDeResposta` (situação, grupo, espera) e o nome do cliente.
+ * Só o que as réguas leem: `conversaNoEscopo` (canal, pino, grupo e o canal
+ * do grupo), `atrasoDeResposta` (situação, grupo, espera) e o nome do cliente.
  */
 const SELECT_DE_CONVERSA =
-  'id, status, assigned_agent_id, channel_id, group_id, aguardando_desde, ' +
+  'id, status, assigned_agent_id, channel_id, channel_pinned, group_id, aguardando_desde, ' +
   'contact:contacts(id, name, phone, wa_username, instagram_username), group:cb_groups(channel_id)';
 
 /** O cliente do Supabase devolve `any[]`; as colunas acima são as do tipo que as réguas pedem. */

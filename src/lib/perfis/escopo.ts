@@ -107,12 +107,18 @@ export function recorteDeFunis(ctx: ContextoDeAcesso): string[] | null {
  * A conversa entra no escopo?
  *
  * ⚠️⚠️ USA `canalDaConversa`, NUNCA `conversation.channel_id` direto. Conversa
- * de grupo tem a coluna SEMPRE NULA — quem guarda o número é
- * `cb_groups.channel_id`. Ler a coluna crua aqui APAGARIA TODOS OS GRUPOS da
- * caixa de entrada de quem tem perfil restrito, em silêncio e sem erro. A
- * função importada já resolve os dois casos e está documentada em
+ * de grupo tem a coluna NULA (salvo fixada no cabeçalho) — quem guarda o
+ * número é `cb_groups.channel_id`. Ler a coluna crua aqui APAGARIA TODOS OS
+ * GRUPOS da caixa de entrada de quem tem perfil restrito, em silêncio e sem
+ * erro. A função importada já resolve os casos e está documentada em
  * `src/lib/inbox/filtros.ts`; reusá-la é o que impede esta armadilha de ter
  * duas implementações que divergem.
+ *
+ * ⚠️ **Grupo fixado noutro número entra no escopo dos DOIS**: o fixado (é por
+ * ele que a resposta sai, e o filtro já o mostra lá) e o que recebe o grupo.
+ * Fixar é gesto de qualquer atendente; se tirasse o grupo de quem é do número
+ * que o recebe, a pessoa perderia a conversa — e o fio a bloquearia
+ * (`ConversaForaDaArea`) — por um clique de outra.
  *
  * ⚠️ Conversa SEM canal nenhum (1:1 anterior à 903, que nunca foi carimbada)
  * PASSA. Não sabemos por qual número ela veio, e escondê-la faria sumir
@@ -129,8 +135,10 @@ export function conversaNoEscopo(
 
   const canal = canalDaConversa(conversa);
   if (canal === null) return true;
+  if (ctx.perfil!.channel_ids.includes(canal)) return true;
 
-  return ctx.perfil!.channel_ids.includes(canal);
+  const doGrupo = conversa.group_id ? (conversa.group?.channel_id ?? null) : null;
+  return doGrupo !== null && ctx.perfil!.channel_ids.includes(doGrupo);
 }
 
 /**

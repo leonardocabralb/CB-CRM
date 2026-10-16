@@ -1163,8 +1163,8 @@ export function ConversationList({
                 // Numa conta de um número só a bolinha não decide nada e só
                 // ocupa espaço — mesma régua do seletor e do filtro de canal.
                 // ⚠️ `canalDaConversa`, nunca `conversation.channel_id`: em
-                // grupo aquela coluna é SEMPRE nula, e a linha ficaria sem
-                // marca justamente onde há dois números envolvidos.
+                // grupo aquela coluna é nula (salvo fixado), e a linha ficaria
+                // sem marca justamente onde há dois números envolvidos.
                 corDoCanalDaLinha={
                   channels.length >= 2
                     ? corDoCanal(coresDosCanais, canalDaConversa(conv))
