@@ -5,6 +5,7 @@ import {
   useRef,
   useCallback,
   useEffect,
+  useLayoutEffect,
   KeyboardEvent,
 } from "react";
 import {
@@ -742,9 +743,17 @@ export function MessageComposer({
       // ⚠️ Nunca um que já começou: o teto da fila pode ter soltado o seguinte
       // com este ainda no ar, e devolver à prévia um anexo que saiu (ou está
       // saindo) o mandaria duas vezes — ou recolheria o arquivo dele (#413).
+      // ⚠️ E o resto do lote é de UMA falha só, a primeira (Codex, PR #415):
+      // com dois anexos no ar ao mesmo tempo e os dois falhando, os dois
+      // devolveriam a mesma cauda, e a nova tentativa a mandaria em dobro.
+      const cauda = lote.parou ? [] : p.itens.slice(lote.comecados);
       lote.parou = true;
-      const sobra = [item, ...p.itens.slice(lote.comecados)];
-      if (montadoRef.current && conversaAnteriorRef.current === p.origem) {
+      const sobra = [item, ...cauda];
+      // ⚠️ A conversa NA TELA, pelo ref de LAYOUT — nunca o
+      // `conversaAnteriorRef`, que é passivo: a falha de A que caísse entre o
+      // commit da troca e o efeito poria o arquivo de A na prévia de B
+      // (Codex, PR #415).
+      if (montadoRef.current && conversaNaTelaRef.current === p.origem) {
         // À prévia, para tentar de novo sem reanexar (o pai NÃO apaga o
         // objeto na falha).
         devolverAPrevia(sobra);
@@ -752,12 +761,15 @@ export function MessageComposer({
       }
       // Já em outra conversa (ou fora da caixa de entrada): o arquivo de um
       // caso não volta ao compositor de outro. O que falhou tem a bolha
-      // "falhou" (se a conversa estiver na tela) e o aviso dele; os
-      // seguintes, só este.
+      // "falhou" (se a conversa estiver na tela) e o aviso dele, e o arquivo
+      // FICA — a entrega dele é incerta. Os que nem começaram nunca saíram:
+      // recolhidos (fora da prévia e da marca, ninguém mais os alcança) e
+      // avisados aqui.
       for (const d of sobra) entreguesRef.current.delete(d.path);
-      if (sobra.length > 1) toast.error(t("anexosNaoSairam", { n: sobra.length - 1 }));
+      for (const d of cauda) removeStaged(d.path);
+      if (cauda.length > 0) toast.error(t("anexosNaoSairam", { n: cauda.length }));
     },
-    [t, devolverAPrevia],
+    [t, devolverAPrevia, removeStaged],
   );
 
   /**
@@ -977,6 +989,16 @@ export function MessageComposer({
   // é vazamento de informação entre casos, não só um erro de UI. Fechar
   // desmonta o `InternalNoteBox`, e o texto que estava dentro vai junto.
   const conversaAnteriorRef = useRef(conversationId);
+  // ⚠️ A conversa NA TELA, para quem volta de uma espera (upload, envio que
+  // falhou) decidir se ainda mexe nela. Num efeito de LAYOUT, e não no efeito
+  // de troca abaixo: este é PASSIVO, e a continuação de um `fetch` que caia
+  // entre o commit da troca e ele leria a conversa anterior (Codex, PRs #414
+  // e #415). O de layout roda no mesmo passo do commit, antes de qualquer
+  // promessa.
+  const conversaNaTelaRef = useRef(conversationId);
+  useLayoutEffect(() => {
+    conversaNaTelaRef.current = conversationId;
+  }, [conversationId]);
   useEffect(() => {
     if (conversaAnteriorRef.current === conversationId) return;
     conversaAnteriorRef.current = conversationId;
@@ -1302,7 +1324,7 @@ export function MessageComposer({
         // troca de conversa: sem esta conferência o anexo aterrissa no
         // rascunho do cliente que estiver aberto quando o upload termina.
         // O objeto recém-subido não serve a ninguém — apaga junto.
-        if (conversaAnteriorRef.current !== origem) {
+        if (conversaNaTelaRef.current !== origem) {
           removeStaged(path);
           return;
         }
@@ -1467,7 +1489,7 @@ export function MessageComposer({
           toast.error(t("acervoError"));
           return;
         }
-        if (conversaAnteriorRef.current !== origem) {
+        if (conversaNaTelaRef.current !== origem) {
           // A cópia é do acervo, mas é CÓPIA: apagá-la não toca o original.
           removeStaged(json.path as string);
           return;
@@ -1519,7 +1541,7 @@ export function MessageComposer({
         // prematura), e um caminho de upload novo entra nela também.
         // A troca DURANTE a gravação não chega aqui: o efeito de troca
         // cancela o gravador antes (ver `conversaAnteriorRef`).
-        if (conversaAnteriorRef.current !== origem) {
+        if (conversaNaTelaRef.current !== origem) {
           removeStaged(path);
           return;
         }

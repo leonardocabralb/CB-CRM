@@ -74,6 +74,7 @@ describe('a fila de anexos e a troca de conversa (#146)', () => {
     // ⚠️ Comparar o id da conversa NÃO serve: em A → B → A ele volta a casar
     // e o laço abandonado de A retoma (Codex, PR #148).
     expect(corpo).not.toContain('conversaAnteriorRef.current !== origem');
+    expect(corpo).not.toContain('conversaNaTelaRef.current !== origem');
     // E agendar desvia ANTES da janela de desfazer (925): a janela dispara
     // na troca de conversa e mandaria em 3 s o que era para amanhã.
     expect(corpo.indexOf('if (quandoAg) {')).toBeLessThan(corpo.indexOf('setPendente('));
@@ -88,7 +89,22 @@ describe('a fila de anexos e a troca de conversa (#146)', () => {
     const laco = c.slice(c.indexOf('const enviarAnexo = useCallback('), c.indexOf('const despachar = useCallback('));
     expect(laco).not.toContain('enviandoFilaRef');
     expect(laco).not.toContain('posse');
-    expect(laco).toContain('if (montadoRef.current && conversaAnteriorRef.current === p.origem) {');
+    expect(laco).toContain('if (montadoRef.current && conversaNaTelaRef.current === p.origem) {');
+  });
+
+  it('quem volta de uma espera confere a conversa NA TELA pelo ref de LAYOUT', () => {
+    // Codex, PRs #414 e #415: o `conversaAnteriorRef` é escrito no efeito de
+    // troca, que é PASSIVO. A volta de um `fetch` (upload, envio que falhou)
+    // que caísse entre o commit da troca e ele punha o arquivo de A na prévia
+    // de B — e um Enviar o entregava ao cliente errado.
+    const c = compositor();
+    expect(c).toMatch(
+      /useLayoutEffect\(\(\) => \{\s*conversaNaTelaRef\.current = conversationId;\s*\}, \[conversationId\]\);/,
+    );
+    // Os três uploads (arquivo, acervo, voz) e a devolução por falha.
+    expect(ocorrencias(c, 'if (conversaNaTelaRef.current !== origem) {')).toBe(3);
+    expect(c).not.toContain('conversaAnteriorRef.current !== origem');
+    expect(c).not.toContain('conversaAnteriorRef.current === p.origem');
   });
 
   it('cada anexo é um trabalho PRÓPRIO na fila, e a falha só devolve o que não começou', () => {
@@ -105,7 +121,17 @@ describe('a fila de anexos e a troca de conversa (#146)', () => {
     // ⚠️ O teto pode soltar o seguinte com o anterior ainda no ar: o que já
     // COMEÇOU nunca volta à prévia (sairia duas vezes, ou perderia o arquivo).
     expect(laco.indexOf('lote.comecados = i + 1;')).toBeLessThan(laco.indexOf('await p.enviar('));
-    expect(laco).toContain('const sobra = [item, ...p.itens.slice(lote.comecados)];');
+    // ⚠️ E o resto do lote é de UMA falha só (Codex, PR #415): com dois no ar
+    // e os dois falhando, a mesma cauda voltaria duas vezes à prévia.
+    const reivindica = laco.indexOf('const cauda = lote.parou ? [] : p.itens.slice(lote.comecados);');
+    expect(reivindica).toBeGreaterThan(-1);
+    expect(reivindica).toBeLessThan(laco.indexOf('lote.parou = true;'));
+    expect(laco).toContain('const sobra = [item, ...cauda];');
+    // Fora da tela, os que nem começaram nunca saíram: recolhidos, e só eles
+    // (o arquivo do que falhou fica — a entrega dele é incerta).
+    expect(laco).toContain('for (const d of cauda) removeStaged(d.path);');
+    expect(laco).not.toContain('for (const d of sobra) removeStaged(');
+    expect(laco).toContain('t("anexosNaoSairam", { n: cauda.length })');
   });
 
   it('tudo o que sai passa pela fila de saída da ORIGEM — nunca `enviar` direto', () => {

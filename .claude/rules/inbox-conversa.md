@@ -219,15 +219,16 @@ destaque e ↑/↓ em `message-thread.tsx`.
   fura o lote. Despachante preso na retenção; não para na troca de conversa.
   Fechar a aba com fila ocupada avisa.
 - ⚠️⚠️ **Fora da TELA, o fio só envia** (`conversaNaTelaRef`, efeito de
-  LAYOUT): sem bolha otimista, citação nem portão da janela de 24h (decide o
-  servidor) — senão a bolha de A cai no fio de B.
-- ⚠️⚠️ **O arquivo é da MENSAGEM desde a retenção** (`entreguesRef` marcado
-  antes do `setPendente`; sai no Desfazer e na falha): o `draftsRef` das
-  limpezas é passivo, e a troca no mesmo quadro apagava o anexo enviado (#413).
+  LAYOUT; zera no desmonte): sem bolha, citação nem portão das 24h (decide a
+  Meta) — senão a bolha de A cai no fio de B.
+- ⚠️⚠️ **O arquivo é da MENSAGEM desde a retenção** (`entreguesRef`, antes do
+  `setPendente`; sai no Desfazer e na falha): o `draftsRef` das limpezas é
+  passivo, e a troca no mesmo quadro apagava o anexo enviado (#413).
 - ⚠️⚠️ **`onSendMedia` DEVOLVE se entregou; o pai NÃO apaga o objeto na
   falha.** O lote PARA no que falhou; ele e os que não COMEÇARAM
-  (`lote.comecados`: o teto solta o seguinte com o anterior no ar) voltam à
-  prévia se o compositor está na origem; senão, avisa.
+  (`lote.comecados`; a cauda é só da 1ª falha) voltam à prévia se a origem
+  está NA TELA (`conversaNaTelaRef`, layout); senão, recolhe os que não
+  começaram e avisa.
 - ⚠️⚠️ **Agendar desvia ANTES da janela, sob trinco SÍNCRONO de POSSE**
   (`enviandoFilaRef`, nunca booleano; solto também na troca de conversa):
   depois de cada `await`, `!== posse` desiste. Comparar o `conversationId`
@@ -236,10 +237,9 @@ destaque e ↑/↓ em `message-thread.tsx`.
   INTEIRO entregue (`lote.faltam === 0`) e se ainda for A QUE SAIU** — quem
   compara é o dono do estado (`setReplyTo((atual) => …)`;
   `typeof idQueSaiu !== "string"`: um `onClick` passaria o MouseEvent).
-  Senão o anexo que falha volta sem ela. Pinos:
-  `fila-de-anexos.chamadores.test.ts`.
+  Pinos: `fila-de-anexos.chamadores.test.ts`.
 - ⚠️ **Todo caminho passa pelo MESMO funil** (`receberArquivos`: teto e aviso do
-  que ficou de fora) e acrescenta à fila com a guarda de troca de conversa. As
+  que ficou de fora) e acrescenta à fila com a guarda da conversa NA TELA. As
   limpezas (desmonte, anotação) percorrem a fila INTEIRA; uma esquecida vaza
   objeto no bucket.
 - ⚠️ **O item exibido é resolvido no RENDER** (`find(...) ?? drafts[0]`), nunca
