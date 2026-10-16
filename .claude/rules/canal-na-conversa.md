@@ -173,7 +173,9 @@ não reverter sem perguntar.
   interativa) passam por `janelaFechadaAgora()` antes do `fetch` — nunca por
   `sessionInfo.expired`, um `useMemo` que só recomputa no tique de 1 min da
   etiqueta. Um merge que traga o `sessionInfo` inline do upstream devolve os
-  três buracos.
+  três buracos. Só com a conversa NA TELA (`naTela`): a fila de saída pode
+  soltar o envio depois de uma troca, e aí os refs da janela já são da OUTRA
+  conversa — fora da tela decide a Meta (131047).
 - ⚠️ **`janelaDe24h = !canaisCarregando && !canaisFalharam && !evolutionActive
   && !ehGrupo`** — os QUATRO termos. Com os canais carregando (ou a consulta
   falhando), "não é Evolution" era lido como "é Meta": a etiqueta "Expirada"

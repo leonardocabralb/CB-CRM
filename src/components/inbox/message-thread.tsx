@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { Fragment, useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useModoAnonimo } from "@/hooks/use-modo-anonimo";
@@ -1112,6 +1112,33 @@ export function MessageThread({
     [],
   );
 
+  /**
+   * A conversa NA TELA agora.
+   *
+   * ⚠️⚠️ Os envios do compositor podem rodar DEPOIS de uma troca de conversa:
+   * a janela de desfazer solta a retida na troca, e a fila de saída segura o
+   * próximo envio até o anterior sair (15/10/2026). Eles saem presos à
+   * conversa de ORIGEM — o `fetch` usa o `conversation` do closure —, mas a
+   * bolha otimista, a citação e o portão da janela de 24h são da TELA. Fora
+   * dela, a bolha de A cairia no fio de B (o pai não filtra), a janela de B
+   * recusaria o anexo de A e o texto de A apagaria a citação escolhida em B.
+   * Então, fora da tela, só o envio: quem decide a janela é o servidor.
+   *
+   * Num efeito de LAYOUT: a fila roda em microtarefa depois do commit, e os
+   * refs escritos em efeito passivo (os da janela, acima) já podem estar na
+   * conversa nova sem este saber. E a limpeza ZERA: o fio desmonta quando a
+   * conversa seguinte é de outra área (`ConversaForaDaArea` o substitui), mas
+   * a página e as mensagens dela ficam — com o id velho no ref, o envio de A
+   * que saísse depois publicaria a bolha no fio montado para a próxima.
+   */
+  const conversaNaTelaRef = useRef(conversation?.id ?? null);
+  useLayoutEffect(() => {
+    conversaNaTelaRef.current = conversation?.id ?? null;
+    return () => {
+      conversaNaTelaRef.current = null;
+    };
+  }, [conversation?.id]);
+
   // Store latest callback in a ref so fetchMessages doesn't need to
   // depend on `onMessagesLoaded` — otherwise parent re-renders cause
   // fetchMessages to change → useEffect re-fires → refetch → realtime
@@ -1846,12 +1873,17 @@ export function MessageThread({
         created_at: new Date().toISOString(),
         reply_to_message_id: replyToId,
       };
-      publicarMensagemOtimista(optimisticMsg);
-      setReplyTo(null);
+      // Fora da tela (a fila soltou depois de uma troca), só o envio — ver
+      // `conversaNaTelaRef`. A citação de origem o compositor já limpou.
+      const naTela = conversaNaTelaRef.current === conversation.id;
+      if (naTela) {
+        publicarMensagemOtimista(optimisticMsg);
+        setReplyTo(null);
+      }
 
       // Ver `janelaFechadaAgora`: a janela pode ter fechado — ou só ter
       // ficado CONHECIDA — entre o Enter e este instante.
-      if (janelaFechadaAgora()) {
+      if (naTela && janelaFechadaAgora()) {
         onUpdateMessage(tempId, { status: "failed" });
         toast.error(t("sessionExpiredBlocked"));
         return;
@@ -1881,7 +1913,7 @@ export function MessageThread({
           // NÃO é erro: é uma pergunta. O cliente escreveu por outro número
           // enquanto o atendente digitava.
           const novo = channels.find((c) => c.id === payload.current_channel_id);
-          onNewMessage({ ...optimisticMsg, status: "failed" });
+          if (naTela) onNewMessage({ ...optimisticMsg, status: "failed" });
           toast.warning(
             t("channelChangedWhileTyping", {
               channel: novo?.label ?? t("channelChangedUnknown"),
@@ -1975,7 +2007,9 @@ export function MessageThread({
         created_at: new Date().toISOString(),
         reply_to_message_id: payload.replyToId,
       };
-      publicarMensagemOtimista(optimisticMsg);
+      // Fora da tela, só o envio — ver `conversaNaTelaRef`.
+      const naTela = conversaNaTelaRef.current === conversation.id;
+      if (naTela) publicarMensagemOtimista(optimisticMsg);
       // ⚠️ A CITAÇÃO NÃO É LIMPA AQUI. Quem limpa é o compositor, pelo
       // `onClearReply`, e só depois de a fila INTEIRA ter saído. Os três
       // retornos `false` abaixo mantêm o anexo na fila para o operador
@@ -1989,7 +2023,7 @@ export function MessageThread({
       // maior:
       // o anexo passa pelo MediaDraftPreview, que SUBSTITUI o compositor e
       // vive enquanto o operador escreve a legenda.
-      if (janelaFechadaAgora()) {
+      if (naTela && janelaFechadaAgora()) {
         onUpdateMessage(tempId, { status: "failed" });
         toast.error(t("sessionExpiredBlocked"));
         // ⚠️ O objeto FICA: com o retorno `false` o compositor mantém o anexo
@@ -2065,14 +2099,17 @@ export function MessageThread({
         created_at: new Date().toISOString(),
         reply_to_message_id: replyToId,
       };
-      publicarMensagemOtimista(optimisticMsg);
+      // A interativa também passa pela fila de saída: pode sair depois de
+      // uma troca de conversa — ver `conversaNaTelaRef`.
+      const naTela = conversaNaTelaRef.current === conversation.id;
+      if (naTela) publicarMensagemOtimista(optimisticMsg);
 
       // Mesmo portão dos outros dois (ver `janelaFechadaAgora`). O diálogo da
       // interativa é montado no compositor e o botão Enviar DELE não olha
       // `sessionExpired`: aberto durante a carga dos canais, ele continua
       // clicável depois de a carga resolver para uma sessão Meta expirada.
       // (Achado do Codex na revisão do PR #84.)
-      if (janelaFechadaAgora()) {
+      if (naTela && janelaFechadaAgora()) {
         onUpdateMessage(tempId, { status: "failed" });
         toast.error(t("sessionExpiredBlocked"));
         return;

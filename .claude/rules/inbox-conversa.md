@@ -208,31 +208,36 @@ destaque e ↑/↓ em `message-thread.tsx`.
 - ⚠️ **Print colado ganha nome com carimbo** (`nomeParaColagem`): toda colagem
   se chama `image.png`, e o nome vai ao WhatsApp e a `media_filename`.
 - ⚠️⚠️ **Até `MAX_ANEXOS` (10), cada anexo uma mensagem. Enviar RETÉM a fila
-  na janela de desfazer, como o texto** (pedido do operador, 15/10/2026): a
-  prévia esvazia na hora, a barra oferece "Desfazer" (devolve anexos e
-  legendas à prévia) e o compositor fica livre. A retida é UMA (`Retida`,
-  texto OU anexos): mandar outra coisa solta a anterior antes.
-- ⚠️⚠️ **Liberada, sai pela fila de saída da ORIGEM** (`fila-de-saida.ts`, de
-  módulo, uma por conversa, teto de 45 s): um por vez, com `await`, e o texto
-  mandado depois espera o áudio — senão chega antes no celular do cliente.
-  Despachante preso na retenção; o laço NÃO para na troca de conversa (antes
-  descartava em silêncio o resto da fila).
+  na janela de desfazer, como o texto** (operador, 15/10): a prévia
+  esvazia, a barra oferece "Desfazer" e o compositor fica livre. A retida é
+  UMA (`Retida`, texto OU anexos): mandar outra coisa solta a anterior.
+  `devolverAPrevia` devolve TUDO; o teto se cobra na SAÍDA (`sendDraft`):
+  upload em voo pousa após o Desfazer.
+- ⚠️⚠️ **Liberado, tudo sai pela fila de saída da ORIGEM** (`fila-de-saida.ts`,
+  de módulo, uma por conversa): texto, interativa e CADA anexo como trabalho
+  próprio; o teto (45 s) conta do INÍCIO do anterior — senão o texto seguinte
+  fura o lote. Despachante preso na retenção; não para na troca de conversa.
+  Fechar a aba com fila ocupada avisa.
+- ⚠️⚠️ **Fora da TELA, o fio só envia** (`conversaNaTelaRef`, efeito de
+  LAYOUT): sem bolha otimista, citação nem portão da janela de 24h (decide o
+  servidor) — senão a bolha de A cai no fio de B.
 - ⚠️⚠️ **O arquivo é da MENSAGEM desde a retenção** (`entreguesRef` marcado
   antes do `setPendente`; sai no Desfazer e na falha): o `draftsRef` das
-  limpezas é passivo, e a troca no mesmo quadro apagava o anexo enviado — a
-  bolha ficava sem o áudio que o cliente recebeu (#413).
-- ⚠️⚠️ **`onSendMedia` DEVOLVE se entregou, e o pai NÃO apaga o objeto na
-  falha.** O laço PARA no primeiro que falhou; ele e os seguintes voltam à
-  prévia se o compositor ainda está na origem, senão um aviso.
+  limpezas é passivo, e a troca no mesmo quadro apagava o anexo enviado (#413).
+- ⚠️⚠️ **`onSendMedia` DEVOLVE se entregou; o pai NÃO apaga o objeto na
+  falha.** O lote PARA no que falhou; ele e os que não COMEÇARAM
+  (`lote.comecados`: o teto solta o seguinte com o anterior no ar) voltam à
+  prévia se o compositor está na origem; senão, avisa.
 - ⚠️⚠️ **Agendar desvia ANTES da janela, sob trinco SÍNCRONO de POSSE**
   (`enviandoFilaRef`, nunca booleano; solto também na troca de conversa):
   depois de cada `await`, `!== posse` desiste. Comparar o `conversationId`
   NÃO basta: em A → B → A o laço velho retomaria.
-- ⚠️⚠️ **A citação é CAPTURADA na entrada (`citada`) e, liberados os anexos,
-  só sai se ainda for A QUE SAIU** — quem compara é o dono do estado
-  (`setReplyTo((atual) => …)`; `typeof idQueSaiu !== "string"`, porque um
-  `onClick` passaria o MouseEvent). `handleSendMedia` NÃO limpa: tem saídas
-  que RETÊM o anexo. Pinos: `fila-de-anexos.chamadores.test.ts`.
+- ⚠️⚠️ **A citação é CAPTURADA na entrada (`citada`) e só sai com o lote
+  INTEIRO entregue (`lote.faltam === 0`) e se ainda for A QUE SAIU** — quem
+  compara é o dono do estado (`setReplyTo((atual) => …)`;
+  `typeof idQueSaiu !== "string"`: um `onClick` passaria o MouseEvent).
+  Senão o anexo que falha volta sem ela. Pinos:
+  `fila-de-anexos.chamadores.test.ts`.
 - ⚠️ **Todo caminho passa pelo MESMO funil** (`receberArquivos`: teto e aviso do
   que ficou de fora) e acrescenta à fila com a guarda de troca de conversa. As
   limpezas (desmonte, anotação) percorrem a fila INTEIRA; uma esquecida vaza

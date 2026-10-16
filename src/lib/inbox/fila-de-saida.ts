@@ -12,14 +12,19 @@
 //
 // - Uma fila POR CONVERSA: um envio travado (o `fetch` da rota de envio não
 //   tem prazo) não pode segurar as mensagens dos outros clientes.
-// - Teto de espera (`TETO_DA_ESPERA_MS`): mesmo na conversa, o que vem atrás
-//   de um envio travado sai depois do teto — a ordem é o melhor esforço, e
-//   uma mensagem presa para sempre seria pior que uma fora de ordem.
+// - Teto de espera (`TETO_DA_ESPERA_MS`) contado a partir de quando o
+//   anterior COMEÇOU, não de quando este entrou na fila: contado da entrada,
+//   tudo o que esperava atrás de um envio travado sairia junto no mesmo
+//   instante, e a ordem entre eles se perderia (revisão do PR #415). Cada
+//   anexo entra como trabalho PRÓPRIO, pelo mesmo motivo: um lote de dez
+//   áudios contado como um só deixava o texto seguinte passar na frente dos
+//   últimos.
 // - Um trabalho que falha (ou lança) não para a fila: a falha é de quem a
 //   teve, e cada envio já avisa a sua.
 // ============================================================
 
-/** Quanto o próximo envio espera pelo anterior DA MESMA conversa. */
+/** Quanto o próximo envio espera pelo anterior DA MESMA conversa, a partir
+ *  de quando o anterior começou. */
 export const TETO_DA_ESPERA_MS = 45_000;
 
 export type Trabalho = () => unknown | Promise<unknown>;
@@ -29,6 +34,15 @@ export interface FilaDeSaida {
   enfileirar(conversa: string, trabalho: Trabalho): Promise<void>;
   /** Há algo na fila desta conversa (esperando ou saindo)? */
   ocupada(conversa: string): boolean;
+  /** Há algo em QUALQUER conversa — fechar a aba agora perderia envio. */
+  algumaOcupada(): boolean;
+}
+
+interface Entrada {
+  /** Resolve quando o trabalho COMEÇA (é daí que o teto do próximo conta). */
+  comecou: Promise<void>;
+  /** Resolve quando o trabalho termina — nunca rejeita. */
+  terminou: Promise<void>;
 }
 
 export function criarFilaDeSaida(
@@ -38,31 +52,42 @@ export function criarFilaDeSaida(
   aoFalhar: (erro: unknown) => void = (erro) =>
     console.error("[fila-de-saida] envio lançou:", erro),
 ): FilaDeSaida {
-  const caudas = new Map<string, Promise<void>>();
+  const caudas = new Map<string, Entrada>();
 
   function enfileirar(conversa: string, trabalho: Trabalho): Promise<void> {
-    const anterior = caudas.get(conversa) ?? Promise.resolve();
-    const este = (async () => {
-      // `anterior` nunca rejeita (ver o `catch` abaixo), e o teto solta a
-      // espera de um envio travado.
-      await Promise.race([anterior, esperar(teto)]);
+    const anterior = caudas.get(conversa);
+    let marcarComeco!: () => void;
+    const comecou = new Promise<void>((resolver) => {
+      marcarComeco = resolver;
+    });
+    const terminou = (async () => {
+      if (anterior) {
+        // ⚠️ Primeiro o anterior COMEÇAR; só então o teto. Atrás de um envio
+        // travado, cada um da fila espera o seu teto a partir do início do
+        // da frente — e eles saem um depois do outro, não todos juntos.
+        await anterior.comecou;
+        await Promise.race([anterior.terminou, esperar(teto)]);
+      }
+      marcarComeco();
       try {
         await trabalho();
       } catch (erro) {
         aoFalhar(erro);
       }
     })();
-    caudas.set(conversa, este);
-    void este.then(() => {
-      // Só a ÚLTIMA cauda sai do mapa — uma mais nova pode ter entrado
+    const entrada: Entrada = { comecou, terminou };
+    caudas.set(conversa, entrada);
+    void terminou.then(() => {
+      // Só a ÚLTIMA entrada sai do mapa — uma mais nova pode ter entrado
       // enquanto esta rodava.
-      if (caudas.get(conversa) === este) caudas.delete(conversa);
+      if (caudas.get(conversa) === entrada) caudas.delete(conversa);
     });
-    return este;
+    return terminou;
   }
 
   return {
     enfileirar,
     ocupada: (conversa) => caudas.has(conversa),
+    algumaOcupada: () => caudas.size > 0,
   };
 }

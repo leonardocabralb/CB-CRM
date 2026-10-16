@@ -106,8 +106,64 @@ describe('a fila de saída', () => {
     const fila = criarFilaDeSaida(tetoManual().esperar);
     const fim = fila.enfileirar('conv-a', async () => {});
     expect(fila.ocupada('conv-a')).toBe(true);
+    expect(fila.algumaOcupada()).toBe(true);
     await fim;
     await andar();
     expect(fila.ocupada('conv-a')).toBe(false);
+    expect(fila.algumaOcupada()).toBe(false);
+  });
+});
+
+// O teto com RELÓGIO de verdade (falso): é a conta dele que a revisão do PR
+// #415 pegou — contado da entrada na fila, e com o lote como um trabalho só.
+describe('o teto conta a partir de quando o anterior COMEÇOU', () => {
+  const TETO = 100;
+  const demora = (ms: number) => () => new Promise<void>((r) => setTimeout(r, ms));
+
+  it('um lote de 10 anexos (cada um abaixo do teto) não deixa o texto passar na frente', async () => {
+    vi.useFakeTimers();
+    try {
+      const fila = criarFilaDeSaida(undefined, TETO);
+      const ordem: string[] = [];
+      for (let i = 1; i <= 10; i++) {
+        void fila.enfileirar('conv-a', async () => {
+          await demora(60)();
+          ordem.push(`áudio ${i}`);
+        });
+      }
+      void fila.enfileirar('conv-a', () => {
+        ordem.push('ouça o áudio acima');
+      });
+      await vi.advanceTimersByTimeAsync(60 * 10 + TETO);
+      expect(ordem.at(-1)).toBe('ouça o áudio acima');
+      expect(ordem).toHaveLength(11);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('atrás de um envio TRAVADO, os que esperam saem um depois do outro, não juntos', async () => {
+    vi.useFakeTimers();
+    try {
+      const fila = criarFilaDeSaida(undefined, TETO);
+      const eventos: string[] = [];
+      void fila.enfileirar('conv-a', () => new Promise(() => {})); // nunca volta
+      void fila.enfileirar('conv-a', async () => {
+        eventos.push('texto 1 começou');
+        await demora(50)();
+        eventos.push('texto 1 terminou');
+      });
+      void fila.enfileirar('conv-a', () => {
+        eventos.push('texto 2 começou');
+      });
+      await vi.advanceTimersByTimeAsync(TETO - 1);
+      expect(eventos).toEqual([]);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(eventos).toEqual(['texto 1 começou']);
+      await vi.advanceTimersByTimeAsync(50);
+      expect(eventos).toEqual(['texto 1 começou', 'texto 1 terminou', 'texto 2 começou']);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

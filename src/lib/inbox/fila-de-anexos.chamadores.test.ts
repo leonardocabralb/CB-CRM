@@ -82,13 +82,30 @@ describe('a fila de anexos e a troca de conversa (#146)', () => {
   it('os anexos LIBERADOS não param na troca de conversa — saem para a origem', () => {
     // Antes da janela de desfazer, a troca no meio de uma fila descartava em
     // silêncio os anexos que faltavam. Agora o despachante é preso à origem
-    // e o laço não consulta posse nem conversa para seguir; a conversa só
+    // e o envio não consulta posse nem conversa para seguir; a conversa só
     // decide se o que FALHOU volta à prévia.
     const c = compositor();
-    const laco = c.slice(c.indexOf('const enviarAnexos = useCallback('), c.indexOf('const despachar = useCallback('));
+    const laco = c.slice(c.indexOf('const enviarAnexo = useCallback('), c.indexOf('const despachar = useCallback('));
     expect(laco).not.toContain('enviandoFilaRef');
     expect(laco).not.toContain('posse');
     expect(laco).toContain('if (montadoRef.current && conversaAnteriorRef.current === p.origem) {');
+  });
+
+  it('cada anexo é um trabalho PRÓPRIO na fila, e a falha só devolve o que não começou', () => {
+    // Revisão do PR #415: o lote inteiro como UM trabalho fazia o teto da
+    // fila contar o lote, e o texto mandado depois de dez áudios passava na
+    // frente dos últimos.
+    const c = compositor();
+    expect(c).toMatch(
+      /p\.itens\.forEach\(\(_, i\) => \{\s*void filaDeSaida\.enfileirar\(p\.origem, \(\) => enviarAnexo\(p, i, lote\)\);/,
+    );
+    const laco = c.slice(c.indexOf('const enviarAnexo = useCallback('), c.indexOf('const despachar = useCallback('));
+    // Um que falhou para os seguintes do MESMO lote.
+    expect(laco.indexOf('if (lote.parou) return;')).toBeLessThan(laco.indexOf('await p.enviar('));
+    // ⚠️ O teto pode soltar o seguinte com o anterior ainda no ar: o que já
+    // COMEÇOU nunca volta à prévia (sairia duas vezes, ou perderia o arquivo).
+    expect(laco.indexOf('lote.comecados = i + 1;')).toBeLessThan(laco.indexOf('await p.enviar('));
+    expect(laco).toContain('const sobra = [item, ...p.itens.slice(lote.comecados)];');
   });
 
   it('tudo o que sai passa pela fila de saída da ORIGEM — nunca `enviar` direto', () => {
@@ -99,6 +116,14 @@ describe('a fila de anexos e a troca de conversa (#146)', () => {
     expect(ocorrencias(c, 'filaDeSaida.enfileirar(p.origem,')).toBe(2);
     // A desmontagem também (texto OU anexos).
     expect(c).toMatch(/pendenteRef\.current = null;\s*despacharRef\.current\(p\);/);
+    // E a interativa (revisão do PR #415): fora da fila, a mandada logo
+    // depois de um áudio chegaria antes dele. A retida sai primeiro.
+    expect(ocorrencias(c, 'onSendInteractive(')).toBe(1);
+    const interativa = c.slice(c.indexOf('const sendInteractive = useCallback('), c.indexOf('const saveAsQuickReply'));
+    expect(interativa.indexOf('liberarPendente();')).toBeGreaterThan(-1);
+    expect(interativa.indexOf('liberarPendente();')).toBeLessThan(
+      interativa.indexOf('void filaDeSaida.enfileirar(conversationId, () => onSendInteractive(payload, citada));'),
+    );
     // De MÓDULO: o compositor que remonta usa a mesma fila do que saiu.
     expect(c).toMatch(/^const filaDeSaida = criarFilaDeSaida\(\);$/m);
   });
@@ -112,8 +137,17 @@ describe('a fila de anexos e a troca de conversa (#146)', () => {
     // ⚠️⚠️ Quem COMPARA é o dono do estado, dentro do updater — o compositor
     // só informa qual citação saiu. Um ref alimentado por `useEffect` reabre
     // a corrida, porque efeito é PASSIVO (Codex, PR #149).
+    // ⚠️ E só quando o lote INTEIRO saiu (revisão do PR #415): limpando na
+    // liberação, o anexo que falhava voltava à prévia sem a citação, e a nova
+    // tentativa saía solta (#146 de novo, por outro caminho).
     const liberar = c.slice(c.indexOf('const liberarPendente = useCallback('), c.indexOf('const desfazerEnvio'));
-    expect(liberar).toContain('else if (p.replyToId) onClearReplyRef.current?.(p.replyToId);');
+    expect(liberar).toContain('if (p.tipo === "texto") onClearReplyRef.current?.();');
+    expect(liberar).not.toContain('p.replyToId');
+    const laco = c.slice(c.indexOf('const enviarAnexo = useCallback('), c.indexOf('const despachar = useCallback('));
+    expect(ocorrencias(laco, 'lote.faltam -= 1;')).toBe(1);
+    expect(laco.indexOf('if (entregou) {')).toBeLessThan(laco.indexOf('lote.faltam -= 1;'));
+    expect(laco).toContain('if (lote.faltam === 0 && p.replyToId) onClearReplyRef.current?.(p.replyToId);');
+    expect(c).toContain('const lote: Lote = { parou: false, comecados: 0, faltam: p.itens.length };');
     expect(c).not.toContain('citadaAtualRef');
     // E o que a fila manda é a citação CAPTURADA, não a relida.
     expect(corpo).not.toContain('replyToId: replyTo?.id');
@@ -135,7 +169,7 @@ describe('a fila de anexos e a troca de conversa (#146)', () => {
     // `onClick` mandaria o MouseEvent como `idQueSaiu`, e o botão de fechar a
     // citação morreria em silêncio.
     expect(f).toContain('typeof idQueSaiu !== "string"');
-    expect(compositor()).toContain('onClearReply?.();');
+    expect(compositor()).toContain('onClearReplyRef.current?.(p.replyToId);');
   });
 
   it('o anexo RETIDO já é da mensagem: marcado na retenção, desmarcado só no Desfazer e na falha', () => {
@@ -153,11 +187,55 @@ describe('a fila de anexos e a troca de conversa (#146)', () => {
     expect(corpo).toContain('drafts.filter((d) => !entreguesRef.current.has(d.path))');
     // Desfazer devolve à prévia — e à posse do rascunho.
     const desfazer = c.slice(c.indexOf('const desfazerEnvio'), c.indexOf('const agendar = useCallback('));
-    expect(desfazer).toContain('for (const d of p.itens) entreguesRef.current.delete(d.path);');
-    // ⚠️ No laço, só a FALHA desmarca (o que sobrou); o sucesso nunca.
-    const laco = c.slice(c.indexOf('const enviarAnexos = useCallback('), c.indexOf('const despachar = useCallback('));
+    expect(desfazer).toContain('devolverAPrevia(p.itens);');
+    const devolver = c.slice(c.indexOf('const devolverAPrevia = useCallback('), c.indexOf('const enviarAnexo = useCallback('));
+    expect(devolver).toContain('for (const d of devolvidos) entreguesRef.current.delete(d.path);');
+    // ⚠️ No envio, só a FALHA desmarca (o que sobrou); o sucesso nunca.
+    const laco = c.slice(c.indexOf('const enviarAnexo = useCallback('), c.indexOf('const despachar = useCallback('));
     expect(ocorrencias(laco, 'entreguesRef.current.delete(')).toBe(1);
     expect(laco).toContain('for (const d of sobra) entreguesRef.current.delete(d.path);');
+    expect(laco).toContain('devolverAPrevia(sobra);');
+  });
+
+  it('o teto é cobrado na SAÍDA; a devolução volta inteira e não apaga nada', () => {
+    // Revisão do PR #415 + teste no preview (16/10/2026): durante a janela (ou
+    // enquanto o lote saía) o compositor fica livre, e um upload em voo pousa
+    // DEPOIS do Desfazer — nenhuma conta feita na devolução o enxerga. A soma
+    // passava de `MAX_ANEXOS` e saía inteira.
+    const c = compositor();
+    // Desfazer e falha passam pela MESMA porta.
+    expect(ocorrencias(c, 'devolverAPrevia(')).toBe(2);
+    expect(c).not.toContain('[...p.itens, ...atual]');
+    expect(c).not.toContain('[...sobra, ...atual]');
+    const devolver = c.slice(c.indexOf('const devolverAPrevia = useCallback('), c.indexOf('const enviarAnexo = useCallback('));
+    // ⚠️ Não corta nem recolhe: o arquivo é de um anexo que o operador pediu
+    // de volta. E a atualização é funcional (o upload que pousa no mesmo
+    // quadro não some).
+    expect(devolver).not.toContain('removeStaged(');
+    expect(devolver).toContain('setDrafts((atual) => [...devolvidos, ...atual]);');
+    // A saída confere — antes de reter E de agendar.
+    const corpo = c.slice(c.indexOf('const sendDraft'), c.indexOf('const discardDraft'));
+    const teto = corpo.indexOf('if (drafts.length > MAX_ANEXOS) {');
+    expect(teto).toBeGreaterThan(-1);
+    expect(teto).toBeLessThan(corpo.indexOf('if (quandoAg) {'));
+    expect(teto).toBeLessThan(corpo.indexOf('setPendente('));
+    expect(corpo).toContain('t("tetoDeAnexosNoEnvio", { max: MAX_ANEXOS, n: drafts.length - MAX_ANEXOS })');
+  });
+
+  it('o fio separa a conversa de ORIGEM da que está NA TELA', () => {
+    // Revisão do PR #415: a fila pode soltar o envio de A depois da troca
+    // para B. Sem a guarda, a bolha de A caía no fio de B, a janela de 24h
+    // de B recusava o anexo de A e o texto de A apagava a citação de B.
+    const f = fio();
+    // Num efeito de LAYOUT (a fila roda em microtarefa depois do commit), e a
+    // limpeza ZERA: o fio desmonta na conversa de outra área com a página
+    // (e as mensagens dela) ainda montada.
+    expect(f).toMatch(
+      /useLayoutEffect\(\(\) => \{\s*conversaNaTelaRef\.current = conversation\?\.id \?\? null;\s*return \(\) => \{\s*conversaNaTelaRef\.current = null;\s*\};\s*\}, \[conversation\?\.id\]\);/,
+    );
+    expect(ocorrencias(f, 'const naTela = conversaNaTelaRef.current === conversation.id;')).toBe(3);
+    expect(ocorrencias(f, 'if (naTela) publicarMensagemOtimista(optimisticMsg);')).toBe(2);
+    expect(f).toMatch(/if \(naTela\) \{\s*publicarMensagemOtimista\(optimisticMsg\);\s*setReplyTo\(null\);/);
   });
 
   it('a única porta que apaga objeto do bucket é `removeStaged`, que respeita a marca', () => {

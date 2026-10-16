@@ -434,6 +434,7 @@
       "anexoSoNoQrCode": "HTML pages only go out through QR code connections, and this conversation now replies through another one. Remove the file from the queue or switch back to a QR code connection.",
       "arquivoNaoSuportadoQrCode":"{n, plural, =1 {1 file is not supported by WhatsApp and was left out} other {# files are not supported by WhatsApp and were left out}}. Accepts images (PNG, JPG, WebP), video (MP4, 3GP), PDF, Word, Excel, PowerPoint, text and HTML pages.",
       "tetoDeAnexos": "{n, plural, =1 {1 file was left out} other {# files were left out}}: at most {max} attachments at a time.",
+      "tetoDeAnexosNoEnvio": "At most {max} attachments at a time: remove {n} from the queue to send.",
       "removeAllAttachments": "Remove all",
       "addCaptionFor": "Caption for {arquivo}",
       "enviarNAnexos": "{n} messages",
