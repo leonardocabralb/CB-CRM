@@ -166,4 +166,27 @@ describe('o teto conta a partir de quando o anterior COMEÇOU', () => {
       vi.useRealTimers();
     }
   });
+
+  it('o envio PRESO além do teto continua ocupando a conversa depois que o seguinte termina', async () => {
+    // Codex, PR #415: contado pela cauda da fila, o seguinte (solto pelo
+    // teto) saía do mapa ao terminar e a conversa parecia livre — fechar a
+    // aba abortava o envio preso sem o aviso do compositor.
+    vi.useFakeTimers();
+    try {
+      const fila = criarFilaDeSaida(undefined, TETO);
+      let soltarPreso!: () => void;
+      void fila.enfileirar('conv-a', () => new Promise<void>((r) => { soltarPreso = r; }));
+      void fila.enfileirar('conv-a', () => {});
+      await vi.advanceTimersByTimeAsync(TETO + 1);
+      expect(fila.ocupada('conv-a')).toBe(true);
+      expect(fila.algumaOcupada()).toBe(true);
+
+      soltarPreso();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fila.ocupada('conv-a')).toBe(false);
+      expect(fila.algumaOcupada()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

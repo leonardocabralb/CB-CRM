@@ -21,6 +21,11 @@
 //   últimos.
 // - Um trabalho que falha (ou lança) não para a fila: a falha é de quem a
 //   teve, e cada envio já avisa a sua.
+// - "Ocupada" conta os trabalhos que ainda NÃO terminaram, não a cauda da
+//   fila (Codex, PR #415): o envio preso além do teto continua no ar depois
+//   que o seguinte, solto pelo teto, terminou e saiu da cauda. Contado pela
+//   cauda, a conversa parecia livre, e fechar a aba abortava o envio sem o
+//   aviso do compositor.
 // ============================================================
 
 /** Quanto o próximo envio espera pelo anterior DA MESMA conversa, a partir
@@ -32,7 +37,8 @@ export type Trabalho = () => unknown | Promise<unknown>;
 export interface FilaDeSaida {
   /** Põe o trabalho na fila da conversa; resolve quando ele terminar. */
   enfileirar(conversa: string, trabalho: Trabalho): Promise<void>;
-  /** Há algo na fila desta conversa (esperando ou saindo)? */
+  /** Há algo desta conversa que ainda não terminou (esperando, saindo ou
+   *  preso além do teto)? */
   ocupada(conversa: string): boolean;
   /** Há algo em QUALQUER conversa — fechar a aba agora perderia envio. */
   algumaOcupada(): boolean;
@@ -53,9 +59,12 @@ export function criarFilaDeSaida(
     console.error("[fila-de-saida] envio lançou:", erro),
 ): FilaDeSaida {
   const caudas = new Map<string, Entrada>();
+  /** Trabalhos ainda não terminados, por conversa — ver o cabeçalho. */
+  const emAberto = new Map<string, number>();
 
   function enfileirar(conversa: string, trabalho: Trabalho): Promise<void> {
     const anterior = caudas.get(conversa);
+    emAberto.set(conversa, (emAberto.get(conversa) ?? 0) + 1);
     let marcarComeco!: () => void;
     const comecou = new Promise<void>((resolver) => {
       marcarComeco = resolver;
@@ -81,13 +90,16 @@ export function criarFilaDeSaida(
       // Só a ÚLTIMA entrada sai do mapa — uma mais nova pode ter entrado
       // enquanto esta rodava.
       if (caudas.get(conversa) === entrada) caudas.delete(conversa);
+      const resta = (emAberto.get(conversa) ?? 1) - 1;
+      if (resta > 0) emAberto.set(conversa, resta);
+      else emAberto.delete(conversa);
     });
     return terminou;
   }
 
   return {
     enfileirar,
-    ocupada: (conversa) => caudas.has(conversa),
-    algumaOcupada: () => caudas.size > 0,
+    ocupada: (conversa) => emAberto.has(conversa),
+    algumaOcupada: () => emAberto.size > 0,
   };
 }
