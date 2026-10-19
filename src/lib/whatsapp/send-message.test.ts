@@ -516,6 +516,59 @@ describe('sendMessageToConversation — template persistence (#483)', () => {
     expect(captured.message?.content_text).toBeNull();
     expect(captured.conversation?.last_message_text).toBe('[template]');
   });
+
+  // 19/10/2026: o que o `buildSendComponents` recusa nunca chega à Meta. É
+  // recusado ANTES (400 `bad_request`: nada saiu, a bolha diz "parou antes de
+  // sair" com o motivo), e não lançado de dentro do envio como `meta_error`
+  // ("pode ter saído"). O modelo criado direto no painel da Meta chega pela
+  // sincronização SEM `header_media_url`.
+  const MODELO_COM_IMAGEM = { ...TEMPLATE_ROW, header_type: 'image', header_media_url: null };
+
+  it('cabeçalho de imagem SEM arquivo: 400 antes da Meta, nada gravado, sem número na conversa', async () => {
+    sendTemplateMessage.mockClear();
+    escritasDoAdmin.updates = [];
+    const captured: CapturedWrites = {};
+    const err = await sendMessageToConversation(sendPathDb([MODELO_COM_IMAGEM], captured), 'acct-1', {
+      conversationId: 'cv-1',
+      messageType: 'template',
+      templateName: 'order_update',
+      templateParams: ['A123', 'Friday'],
+    }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(SendMessageError);
+    expect(err).toMatchObject({ code: 'bad_request', status: 400 });
+    expect((err as Error).message).toMatch(/image header requires a media link/);
+    expect(sendTemplateMessage).not.toHaveBeenCalled();
+    expect(captured.message).toBeUndefined();
+    // Não houve tentativa por conexão nenhuma: a conversa sem número fica sem.
+    expect(
+      escritasDoAdmin.updates.filter((u) => u.tabela === 'conversations' && 'channel_id' in u.row)
+    ).toEqual([]);
+    expect(motivoDaFalhaDoNucleo(err as SendMessageError)).toMatchObject({ motivo: 'barrado' });
+  });
+
+  it('o mesmo modelo, com o arquivo nos valores do envio, sai — a régua é a do envio', async () => {
+    sendTemplateMessage.mockClear();
+    await sendMessageToConversation(sendPathDb([MODELO_COM_IMAGEM], {}), 'acct-1', {
+      conversationId: 'cv-1',
+      messageType: 'template',
+      templateName: 'order_update',
+      templateMessageParams: { body: ['A123', 'Friday'], headerMediaUrl: 'https://exemplo.test/a.png' },
+    });
+    expect(sendTemplateMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('menos valores que as variáveis do corpo: 400 antes da Meta', async () => {
+    sendTemplateMessage.mockClear();
+    await expect(
+      sendMessageToConversation(sendPathDb([TEMPLATE_ROW], {}), 'acct-1', {
+        conversationId: 'cv-1',
+        messageType: 'template',
+        templateName: 'order_update',
+        templateParams: ['A123'],
+      })
+    ).rejects.toMatchObject({ code: 'bad_request', status: 400 });
+    expect(sendTemplateMessage).not.toHaveBeenCalled();
+  });
 });
 
 // ============================================================

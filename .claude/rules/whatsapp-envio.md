@@ -226,6 +226,14 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
 
 ### Modelos da Meta
 
+- ⚠️ **O núcleo MONTA o modelo antes de tentar** (`buildSendComponents`, com
+  os valores que o `attempt` entrega a `sendTemplateMessage`; 19/10/2026):
+  cabeçalho de mídia sem arquivo (o modelo criado no painel da Meta chega sem
+  `header_media_url`), MENOS valores que as variáveis do corpo, variável do
+  cabeçalho vazia e botão de URL sem o final são 400 `bad_request` ANTES da
+  Meta e do número na conversa sem número — nunca `meta_error` ("pode ter
+  saído"). Valor de corpo VAZIO não é conferido (vai à Meta, que recusa). O
+  robô tem a régua dele, mais estrita (`faltaNoModelo`).
 - ⚠️⚠️ **`resolveTemplateRow` (`template-body.ts`) tem o 5º parâmetro NOSSO,
   `channelId`, e os 5 call sites o passam.** O catálogo da Meta é POR WABA: sem
   o recorte, numa conta com dois números o atendente vê o preview de um modelo

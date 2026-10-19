@@ -67,6 +67,10 @@ import {
   templateBodyParams,
   templateContentText,
 } from '@/lib/whatsapp/template-body';
+import {
+  buildSendComponents,
+  type SendTimeParams,
+} from '@/lib/whatsapp/template-send-builder';
 import { ehEvolution, ehInstagram, ehMeta } from '@/lib/cb-channels/transporte';
 
 export const MEDIA_KINDS = ['image', 'video', 'document', 'audio'] as const;
@@ -770,6 +774,36 @@ export async function sendMessageToConversation(
       });
       return result.messageId;
     };
+
+    // O modelo é MONTADO antes de qualquer tentativa, com os mesmos valores
+    // que o `attempt` entrega a `sendTemplateMessage` (19/10/2026). O que o
+    // `buildSendComponents` recusa — cabeçalho de mídia sem arquivo (o modelo
+    // criado direto no painel da Meta chega pela sincronização sem
+    // `header_media_url`), menos valores que as variáveis do corpo, variável
+    // do cabeçalho vazia, botão de URL sem o final — nunca chega à Meta.
+    // Lançado de dentro do `attempt`, virava `meta_error`, que diz "pode ter
+    // saído"; aqui é `bad_request`: nada saiu, e a frase diz o que falta. (Valor
+    // de corpo VAZIO ele não confere: vai à Meta, que recusa.) Vem antes do
+    // número na conversa sem número (abaixo): não houve tentativa por conexão
+    // nenhuma — como no robô, cuja checagem (`faltaNoModelo`) também vem antes.
+    if (messageType === 'template' && templateRow) {
+      const valores = templateMessageParams as SendTimeParams | undefined;
+      try {
+        buildSendComponents(templateRow, {
+          body: valores?.body ?? (templateParams || []),
+          headerText: valores?.headerText,
+          headerMediaUrl: valores?.headerMediaUrl,
+          headerMediaId: valores?.headerMediaId,
+          buttonParams: valores?.buttonParams,
+        });
+      } catch (err) {
+        throw new SendMessageError(
+          'bad_request',
+          `Template cannot be sent: ${err instanceof Error ? err.message : String(err)}`,
+          400
+        );
+      }
+    }
 
     // A TENTATIVA por esta conexão dá à conversa SEM número o número dela,
     // também quando o provedor recusa (decisão do operador, 06/10/2026): a

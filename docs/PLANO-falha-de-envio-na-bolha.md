@@ -91,12 +91,14 @@ Limites conhecidos (aceitos na Fase 1):
   resolve é a Fase 2 (a tentativa gravada no banco);
 - o texto do motivo que vem do servidor pode estar em inglês (é o mesmo que o
   aviso do canto já mostrava);
-- modelo da Meta com cabeçalho de mídia SEM o arquivo (o criado direto no
-  painel da Meta não traz `header_media_url`) é barrado antes de chegar à Meta,
-  mas aparece como "envio incerto": o erro nasce dentro do `attempt`, como
-  `Error` comum, e vira `meta_error`. Lado seguro (sem botão). Conserto
-  possível: montar os componentes antes do laço de variantes e recusar com
-  `bad_request` (toca o núcleo; não feito aqui).
+- ~~modelo da Meta com cabeçalho de mídia SEM o arquivo aparece como "envio
+  incerto"~~ — RESOLVIDO no mesmo PR (19/10/2026, pedido do operador): o
+  núcleo monta o modelo (`buildSendComponents`) antes do laço de variantes e
+  do número na conversa sem número; o que ele recusa (mídia sem arquivo,
+  menos valores que as variáveis do corpo, variável do cabeçalho vazia, botão
+  de URL sem o final — valor de corpo VAZIO ainda vai à Meta) é 400 `bad_request` →
+  "Não enviada — o envio parou antes de sair", com o motivo. Na API v1 esses
+  casos passam de 502 `meta_error` a 400 `bad_request` (doc pública junto).
 
 ### Resultado medido (19/10/2026)
 
@@ -116,7 +118,8 @@ Limites conhecidos (aceitos na Fase 1):
   - Banco: zero linhas novas na conversa do lead durante o teste.
 - Revisão adversária (3 lentes + um cético por achado): corrigidos o Desfazer
   sem bolha, as linhas da tabela do `MERGE-UPSTREAM.md` e dois pinos de teste;
-  o modelo de mídia sem arquivo ficou como limite acima.
+  o modelo de mídia sem arquivo foi resolvido em seguida, no mesmo PR (acima).
+  Mutação: tirar a montagem antecipada reprova os dois testes de recusa.
 
 ## Fase 2 — riscos já levantados (para a decisão)
 

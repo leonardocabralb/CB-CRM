@@ -247,6 +247,17 @@ The object form needs a template the CRM has synced from Meta — it reads
 the template to place each value; for a template the CRM doesn't know, send
 the list.
 
+When the CRM knows the template, it is filled in **before** anything goes to
+Meta. If something is missing, the call answers `400 bad_request` and
+`message` says what: a media header (image, video, document) with no file —
+a template created directly in Meta's WhatsApp Manager is synced without
+one, so pass `headerMediaUrl` (or `headerMediaId`) —, fewer `body` values
+than the template's body variables, an empty text-header variable, or a URL
+button's `{{1}}` without its suffix. Nothing went out, so fix the values and
+send again. An **empty** body value is not checked here: it goes to Meta,
+which refuses it (`meta_error`). As with any send, the contact and the
+conversation are found or created first.
+
 `interactive` sends reply buttons or a list — **official Meta numbers
 only** (a QR-code number answers `not_supported`). It takes an
 `interactive_payload`:
@@ -314,7 +325,9 @@ Domain error codes beyond the table above:
   message through an Instagram connection.
 - `meta_error` (502) — the send to Meta failed, and `message` carries the
   reason. Usually Meta **refused** it (an invalid number, the 24-hour
-  window closed, a template problem…) and nothing went out. But the same
+  window closed, a template Meta rejected…) and nothing went out. A
+  template the CRM itself can't fill in is a `400 bad_request` instead (see
+  the `params` object above). But the same
   code covers a call that broke on the way — a network error, Meta
   unavailable — when the message **may** have gone out without the CRM
   recording it. Retry only when the reason is a refusal, or the customer
