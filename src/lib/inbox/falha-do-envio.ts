@@ -13,23 +13,92 @@ import type { Message } from '@/types';
 // ⚠️ `nao_saiu` é o que separa esta linha da falha de RECIBO: aquela saiu
 // (tem o id do provedor) e o WhatsApp avisou depois que não entregou — a
 // bolha "Não entregue" de sempre, com o texto da Meta (`motivo-da-falha.ts`).
+//
+// A bolha OTIMISTA do envio da equipe (19/10/2026) usa as mesmas frases, sem
+// gravar nada: na falha, o fio lhe dá `nao_saiu` + o motivo
+// (`falhaDaResposta`, abaixo). Antes ela só ficava `failed` e dizia "não
+// entregue — envie de novo", inclusive a número sem WhatsApp.
 // ============================================================
 
 /**
  * Por que não saiu. `incerto` é o único que NÃO afirma "não saiu": tempo
  * esgotado, 5xx, erro de rede — a mensagem PODE ter chegado (a lição do
  * `entrega_incerta`, 932), e a frase manda conferir antes de reenviar.
+ * `barrado` é o envio da equipe que parou NO CRM, antes de chegar a qualquer
+ * conexão (conversa, conexão sem configuração, janela de 24 h, número trocado
+ * no meio, limite, sessão): "o WhatsApp recusou" seria falso ali.
  */
 export const MOTIVOS_DO_ENVIO = [
   'conexao_fora_do_ar',
   'sem_whatsapp',
   'recusado',
+  'barrado',
   'incerto',
 ] as const;
 
 export type MotivoDoEnvio = (typeof MOTIVOS_DO_ENVIO)[number];
 
 type Campos = Pick<Message, 'nao_saiu' | 'error_title'>;
+
+/** O que a bolha otimista mostra quando o envio da equipe falhou. */
+export interface FalhaDoEnvio {
+  motivo: MotivoDoEnvio;
+  /** O porquê do provedor ou do CRM, na linha "Motivo:" e no `title`. */
+  detalhe: string | null;
+  /**
+   * O botão "Tentar de novo". Só com recusa COMPROVADA e que pode mudar:
+   * reenviar o que pode ter saído manda em dobro ao cliente (CLAUDE.md, 8e), e
+   * reenviar a número sem WhatsApp falha igual.
+   */
+  podeTentarDeNovo: boolean;
+}
+
+/** O `fetch` lançou (rede, aba, proxy): o servidor pode ter enviado. */
+export const FALHA_SEM_RESPOSTA: FalhaDoEnvio = {
+  motivo: 'incerto',
+  detalhe: null,
+  podeTentarDeNovo: false,
+};
+
+const TETO_DO_DETALHE = 300;
+
+function texto(v: unknown): string | null {
+  return typeof v === 'string' && v.trim() ? v.trim().slice(0, TETO_DO_DETALHE) : null;
+}
+
+/**
+ * A resposta NÃO-ok da rota de envio (`/api/whatsapp/send`) → a bolha.
+ *
+ * O `motivo` vem do servidor (`motivoDaFalhaDoNucleo`). Sem ele — o 401 do
+ * middleware, o 429 do limite, as recusas da própria rota antes do núcleo, o
+ * 500 genérico —, decide o status: 4xx parou antes de qualquer conexão
+ * (`barrado`); o resto é `incerto`, porque um 500 pode vir DEPOIS de o
+ * provedor aceitar.
+ */
+export function falhaDaResposta(status: number, corpo: unknown): FalhaDoEnvio {
+  const c = corpo && typeof corpo === 'object' ? (corpo as Record<string, unknown>) : {};
+  const doServidor = (MOTIVOS_DO_ENVIO as readonly unknown[]).includes(c.motivo)
+    ? (c.motivo as MotivoDoEnvio)
+    : null;
+  const motivo: MotivoDoEnvio =
+    doServidor ?? (status >= 400 && status < 500 ? 'barrado' : 'incerto');
+  const detalhe = doServidor ? texto(c.detalhe) : motivo === 'barrado' ? texto(c.error) : null;
+  const podeTentarDeNovo =
+    motivo === 'recusado' ||
+    motivo === 'conexao_fora_do_ar' ||
+    // Barrado só vale de novo quando a barreira passa: a sessão que caiu um
+    // instante (o login fora do ar, 19/10) e o limite de envios.
+    (motivo === 'barrado' && (status === 401 || status === 429));
+  return { motivo, detalhe, podeTentarDeNovo };
+}
+
+/** Os campos que pintam a bolha otimista como "não enviada" com o motivo. */
+export function naBolha(f: FalhaDoEnvio): Pick<
+  Message,
+  'status' | 'nao_saiu' | 'error_title' | 'error_details'
+> {
+  return { status: 'failed', nao_saiu: true, error_title: f.motivo, error_details: f.detalhe };
+}
 
 /**
  * O motivo, quando a linha é uma tentativa que não saiu; `null` em qualquer

@@ -17,7 +17,9 @@
 // na hora.
 //
 // O núcleo de envio de GENTE (`send-message.ts`) fica de fora: quem envia está
-// na tela e vê a bolha otimista falhar.
+// na tela e vê a bolha otimista falhar. Desde 19/10/2026 ela diz POR QUÊ, com
+// as mesmas frases: a rota do compositor responde o motivo de
+// `motivoDaFalhaDoNucleo`, abaixo — e nada é gravado.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -80,6 +82,42 @@ export function classificarFalha(err: unknown): {
     return { motivo: 'incerto', codigo: err.code, detalhe }
   }
   return { motivo: 'incerto', codigo: null, detalhe }
+}
+
+/**
+ * O motivo de uma falha do NÚCLEO de envio de gente (`SendMessageError`), para
+ * a rota do compositor responder à bolha otimista (19/10/2026). Tipado pela
+ * forma, não pela classe: o núcleo não é importado aqui.
+ *
+ * - Falha do PROVEDOR: a régua do robô (`classificarFalha`) sobre o erro cru
+ *   que o núcleo carrega em `cause`. Sem ele, só o 4xx da Evolution afirma
+ *   "não saiu"; o resto é `incerto`.
+ * - `db_error`: o provedor ACEITOU e o CRM não gravou — saiu. `incerto`, nunca
+ *   "barrado", e sem o texto cru do Postgres (nome de constraint não vai à tela).
+ * - Qualquer outro código parou NO CRM, antes de chegar a uma conexão
+ *   (validação, conversa, conexão sem configuração, modelo, grupo): `barrado`,
+ *   com a frase do próprio núcleo.
+ */
+export function motivoDaFalhaDoNucleo(err: {
+  code: string
+  message: string
+  cause?: unknown
+}): { motivo: MotivoDoEnvio; detalhe: string | null } {
+  switch (err.code) {
+    case 'evolution_rejected':
+    case 'evolution_error':
+    case 'meta_error': {
+      if (err.cause !== undefined) {
+        const { motivo, detalhe } = classificarFalha(err.cause)
+        return { motivo, detalhe: detalhe || null }
+      }
+      return { motivo: err.code === 'evolution_rejected' ? 'recusado' : 'incerto', detalhe: null }
+    }
+    case 'db_error':
+      return { motivo: 'incerto', detalhe: null }
+    default:
+      return { motivo: 'barrado', detalhe: err.message.slice(0, TETO_DO_DETALHE) || null }
+  }
 }
 
 /**

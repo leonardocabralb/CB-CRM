@@ -159,6 +159,18 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
   funções do banco também. Leitor novo entra no pino
   `src/lib/inbox/nao-saiu.chamadores.test.ts`. O envio de GENTE não grava
   bolha (a otimista falha na tela).
+- ⚠️⚠️ **A bolha OTIMISTA que falha diz POR QUÊ, com as mesmas frases**
+  (19/10/2026; `docs/PLANO-falha-de-envio-na-bolha.md`): a rota
+  `/api/whatsapp/send` responde `code` + `motivo` + `detalhe`
+  (`motivoDaFalhaDoNucleo`, a régua do robô sobre o erro do provedor que o
+  núcleo carrega em `SendMessageError.cause`), e o fio pinta a otimista com
+  `naBolha(falhaDaResposta(...))` — nada gravado. `barrado` = parou no CRM.
+  "Tentar de novo" só no TEXTO com recusa COMPROVADA (`podeTentarDeNovo`):
+  nunca no incerto (`db_error`, 5xx, `meta_error` 5xx, rede), em número sem
+  WhatsApp, 409, janela fechada, anexo (volta à prévia) nem em `failed` com
+  `message_id` (recibo). O clique vai ao COMPOSITOR (`reenviarTexto`): trava,
+  janela de desfazer e fila de saída do Enviar; reaproveita a id da bolha
+  (`substitui`). Pino `reenvio-da-bolha.chamadores.test.ts`.
 - ⚠️ **O contrato de falha é o NOSSO** (`send_interactive_failed`; a
   re-pergunta que falha ENCERRA o run): libera o contato na hora e deixa a
   falha visível, ao preço de perder o fluxo num erro transitório. O do
@@ -214,6 +226,14 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
 
 ### Modelos da Meta
 
+- ⚠️ **O núcleo MONTA o modelo antes de tentar** (`buildSendComponents`, com
+  os valores que o `attempt` entrega a `sendTemplateMessage`; 19/10/2026):
+  cabeçalho de mídia sem arquivo (o modelo criado no painel da Meta chega sem
+  `header_media_url`), MENOS valores que as variáveis do corpo, variável do
+  cabeçalho vazia e botão de URL sem o final são 400 `bad_request` ANTES da
+  Meta e do número na conversa sem número — nunca `meta_error` ("pode ter
+  saído"). Valor de corpo VAZIO não é conferido (vai à Meta, que recusa). O
+  robô tem a régua dele, mais estrita (`faltaNoModelo`).
 - ⚠️⚠️ **`resolveTemplateRow` (`template-body.ts`) tem o 5º parâmetro NOSSO,
   `channelId`, e os 5 call sites o passam.** O catálogo da Meta é POR WABA: sem
   o recorte, numa conta com dois números o atendente vê o preview de um modelo

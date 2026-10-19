@@ -14,6 +14,7 @@ import {
   SendMessageError,
 } from '@/lib/whatsapp/send-message'
 import { alvoDeEnvio, FRASE_SO_NUMERO_OFICIAL } from '@/lib/whatsapp/alvo-de-envio'
+import { motivoDaFalhaDoNucleo } from '@/lib/whatsapp/envio-que-falhou'
 
 // The dashboard's outbound-send endpoint. It owns auth, per-user rate
 // limiting, and the two ways the UI targets a thread — an existing
@@ -290,8 +291,13 @@ export async function POST(request: Request) {
       })
     } catch (err) {
       if (err instanceof SendMessageError) {
+        // `motivo` e `detalhe` são o que a bolha otimista diz (19/10/2026):
+        // "não saiu" com o porquê, ou "pode ter saído" — e só o primeiro
+        // ganha "Tentar de novo" (`falhaDaResposta`). Sem eles a bolha dizia
+        // "não entregue, envie de novo" a um número sem WhatsApp.
+        const { motivo, detalhe } = motivoDaFalhaDoNucleo(err)
         return NextResponse.json(
-          { error: err.message },
+          { error: err.message, code: err.code, motivo, detalhe },
           { status: err.status }
         )
       }

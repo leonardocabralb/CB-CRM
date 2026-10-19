@@ -67,6 +67,10 @@ import {
   templateBodyParams,
   templateContentText,
 } from '@/lib/whatsapp/template-body';
+import {
+  buildSendComponents,
+  type SendTimeParams,
+} from '@/lib/whatsapp/template-send-builder';
 import { ehEvolution, ehInstagram, ehMeta } from '@/lib/cb-channels/transporte';
 
 export const MEDIA_KINDS = ['image', 'video', 'document', 'audio'] as const;
@@ -81,12 +85,18 @@ export const VALID_MESSAGE_TYPES = [
  * Typed failure with a machine `code` and a suggested HTTP `status`.
  * Callers map it to their own response shape (`toErrorResponse` for
  * the dashboard route, the v1 envelope for the public endpoint).
+ *
+ * Na falha do PROVEDOR, `cause` carrega o erro cru dele (`EvolutionApiError`,
+ * `MetaApiError` ou o de rede): é por ele que a rota do compositor diz à bolha
+ * POR QUE não saiu (`motivoDaFalhaDoNucleo`) — o `code` junta "número sem
+ * WhatsApp" e "conexão fechada" no mesmo `evolution_rejected`. Não muda código
+ * nem status: a API v1 e a agendada continuam lendo os mesmos.
  */
 export class SendMessageError extends Error {
   readonly code: string;
   readonly status: number;
-  constructor(code: string, message: string, status: number) {
-    super(message);
+  constructor(code: string, message: string, status: number, options?: { cause?: unknown }) {
+    super(message, options);
     this.name = 'SendMessageError';
     this.code = code;
     this.status = status;
@@ -688,7 +698,8 @@ export async function sendMessageToConversation(
       throw new SendMessageError(
         recusa ? 'evolution_rejected' : 'evolution_error',
         `Evolution API error: ${message}`,
-        502
+        502,
+        { cause: err }
       );
     }
     // Chave da Baileys para citar/reagir depois. Em grupo o JID JÁ é o
@@ -764,6 +775,36 @@ export async function sendMessageToConversation(
       return result.messageId;
     };
 
+    // O modelo é MONTADO antes de qualquer tentativa, com os mesmos valores
+    // que o `attempt` entrega a `sendTemplateMessage` (19/10/2026). O que o
+    // `buildSendComponents` recusa — cabeçalho de mídia sem arquivo (o modelo
+    // criado direto no painel da Meta chega pela sincronização sem
+    // `header_media_url`), menos valores que as variáveis do corpo, variável
+    // do cabeçalho vazia, botão de URL sem o final — nunca chega à Meta.
+    // Lançado de dentro do `attempt`, virava `meta_error`, que diz "pode ter
+    // saído"; aqui é `bad_request`: nada saiu, e a frase diz o que falta. (Valor
+    // de corpo VAZIO ele não confere: vai à Meta, que recusa.) Vem antes do
+    // número na conversa sem número (abaixo): não houve tentativa por conexão
+    // nenhuma — como no robô, cuja checagem (`faltaNoModelo`) também vem antes.
+    if (messageType === 'template' && templateRow) {
+      const valores = templateMessageParams as SendTimeParams | undefined;
+      try {
+        buildSendComponents(templateRow, {
+          body: valores?.body ?? (templateParams || []),
+          headerText: valores?.headerText,
+          headerMediaUrl: valores?.headerMediaUrl,
+          headerMediaId: valores?.headerMediaId,
+          buttonParams: valores?.buttonParams,
+        });
+      } catch (err) {
+        throw new SendMessageError(
+          'bad_request',
+          `Template cannot be sent: ${err instanceof Error ? err.message : String(err)}`,
+          400
+        );
+      }
+    }
+
     // A TENTATIVA por esta conexão dá à conversa SEM número o número dela,
     // também quando o provedor recusa (decisão do operador, 06/10/2026): a
     // conversa aparece no filtro da conexão por onde se tentou. A que já tem
@@ -803,7 +844,7 @@ export async function sendMessageToConversation(
       const message =
         err instanceof Error ? err.message : 'Unknown Meta API error';
       console.error('[send-message] Meta send failed for all variants:', message);
-      throw new SendMessageError('meta_error', `Meta API error: ${message}`, 502);
+      throw new SendMessageError('meta_error', `Meta API error: ${message}`, 502, { cause: err });
     }
 
     // ⚠️ Só com TELEFONE: sem o `ehTelefone`, o envio a um BSUID gravaria o
