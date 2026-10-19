@@ -121,8 +121,15 @@ import { GaleriaDoFio } from "./media-gallery";
 import { MessageActions } from "./message-actions";
 import {
   MessageComposer,
+  type ComposerHandle,
   type SendMediaPayload,
 } from "./message-composer";
+import {
+  FALHA_SEM_RESPOSTA,
+  falhaDaResposta,
+  naBolha,
+  type FalhaDoEnvio,
+} from "@/lib/inbox/falha-do-envio";
 import { TemplatePicker } from "./template-picker";
 import { AiThreadBanner } from "./ai-thread-banner";
 import { buildReplyPreview } from "./reply-quote";
@@ -998,6 +1005,12 @@ export function MessageThread({
     return { expired: false, remaining };
   }, [messages, tTimer, agoraDaBadge, canalDaJanela]);
 
+  // A MESMA trava que o compositor recebe (janela de 24 h fechada, conexão
+  // fora do ar): com ela, o "Tentar de novo" da bolha nem aparece — o
+  // compositor recusaria o reenvio.
+  const sessaoExpirada = janelaDe24h ? sessionInfo.expired : false;
+  const envioTravado = sessaoExpirada || conexaoForaDoAr;
+
   /**
    * As mensagens nossas que o destinatário provavelmente NÃO recebeu: ficaram
    * em ✓ enquanto o aparelho dele confirmava outra enviada depois, ou ele
@@ -1846,11 +1859,43 @@ export function MessageThread({
     [onUpdateMessage, modoAnonimo],
   );
 
+  /**
+   * As bolhas otimistas de TEXTO que não saíram por recusa comprovada e podem
+   * ir de novo (19/10/2026): id da bolha → o texto CRU (sem a assinatura, que
+   * o envio aplica) e a citação dela. `retida` = o compositor já está com o
+   * reenvio na janela de desfazer, e o botão some — dois cliques mandariam em
+   * dobro. A bolha `temp-` some no próximo INSERT da conversa; a entrada que
+   * sobra aqui não é desenhada (só bolha existente pergunta por ela).
+   */
+  const [reenviaveis, setReenviaveis] = useState<
+    ReadonlyMap<string, { texto: string; replyToId?: string; retida: boolean }>
+  >(new Map());
+  const composerRef = useRef<ComposerHandle>(null);
+
+  const marcarReenviavel = useCallback(
+    (id: string, valor: { texto: string; replyToId?: string; retida: boolean } | null) => {
+      setReenviaveis((atual) => {
+        const proximo = new Map(atual);
+        if (valor) proximo.set(id, valor);
+        else proximo.delete(id);
+        return proximo;
+      });
+    },
+    [],
+  );
+
+  /**
+   * `substitui`: o REENVIO de uma bolha que não saiu ("Tentar de novo"),
+   * vindo do compositor depois da janela de desfazer. Reaproveita a MESMA
+   * bolha (a mesma id), em vez de deixar a vermelha e criar outra — e não
+   * mexe na citação da tela, que é de quem está escrevendo outra coisa.
+   */
   const handleSend = useCallback(
-    async (text: string, replyToId?: string) => {
+    async (text: string, replyToId?: string, substitui?: string) => {
       if (!conversation) return;
 
-      const tempId = `temp-${Date.now()}`;
+      const tempId = substitui ?? `temp-${Date.now()}`;
+      if (substitui) marcarReenviavel(substitui, null);
 
       // Optimistic update — shows the message immediately with "sending" status
       const optimisticMsg: Message = {
@@ -1877,14 +1922,34 @@ export function MessageThread({
       // `conversaNaTelaRef`. A citação de origem o compositor já limpou.
       const naTela = conversaNaTelaRef.current === conversation.id;
       if (naTela) {
+        // No reenvio, a bolha vermelha volta a "enviando" no lugar (o host
+        // ignora `onNewMessage` com id repetido); se um INSERT já a levou, a
+        // publicação a recria.
         publicarMensagemOtimista(optimisticMsg);
-        setReplyTo(null);
+        if (substitui) {
+          onUpdateMessage(substitui, {
+            ...optimisticMsg,
+            nao_saiu: false,
+            error_title: null,
+            error_details: null,
+          });
+        } else {
+          setReplyTo(null);
+        }
       }
+
+      // A falha que vale de novo guarda o texto para o "Tentar de novo".
+      const falhou = (falha: FalhaDoEnvio) => {
+        onUpdateMessage(tempId, naBolha(falha));
+        if (naTela && falha.podeTentarDeNovo) {
+          marcarReenviavel(tempId, { texto: text, replyToId, retida: false });
+        }
+      };
 
       // Ver `janelaFechadaAgora`: a janela pode ter fechado — ou só ter
       // ficado CONHECIDA — entre o Enter e este instante.
       if (naTela && janelaFechadaAgora()) {
-        onUpdateMessage(tempId, { status: "failed" });
+        falhou({ motivo: "barrado", detalhe: t("sessionExpiredBlocked"), podeTentarDeNovo: false });
         toast.error(t("sessionExpiredBlocked"));
         return;
       }
@@ -1913,13 +1978,15 @@ export function MessageThread({
           // NÃO é erro: é uma pergunta. O cliente escreveu por outro número
           // enquanto o atendente digitava.
           const novo = channels.find((c) => c.id === payload.current_channel_id);
-          if (naTela) onNewMessage({ ...optimisticMsg, status: "failed" });
-          toast.warning(
-            t("channelChangedWhileTyping", {
-              channel: novo?.label ?? t("channelChangedUnknown"),
-            }),
-            { duration: 12_000 },
-          );
+          const pergunta = t("channelChangedWhileTyping", {
+            channel: novo?.label ?? t("channelChangedUnknown"),
+          });
+          // Nada saiu, e sem "Tentar de novo": o aviso já é a pergunta, e
+          // quem decide por qual número responder é a pessoa. Era
+          // `onNewMessage` sobre a bolha já publicada — que o host ignora
+          // (id repetido) —, e ela ficava "enviando".
+          falhou({ motivo: "barrado", detalhe: pergunta, podeTentarDeNovo: false });
+          toast.warning(pergunta, { duration: 12_000 });
           return;
         }
 
@@ -1927,8 +1994,9 @@ export function MessageThread({
           const reason = payload?.error || `HTTP ${res.status}`;
           console.error("Failed to send message:", reason);
           toast.error(t("sendFailed", { reason }));
-          // Mark the optimistic bubble as failed so the user sees what happened
-          onUpdateMessage(tempId, { status: "failed" });
+          // A bolha diz POR QUÊ (19/10/2026): "não saiu" com o motivo, ou
+          // "pode ter saído" — e só o primeiro oferece "Tentar de novo".
+          falhou(falhaDaResposta(res.status, payload));
           return;
         }
 
@@ -1947,7 +2015,8 @@ export function MessageThread({
         console.error("Failed to send message:", err);
         const reason = err instanceof Error ? err.message : t("networkError");
         toast.error(t("sendFailed", { reason }));
-        onUpdateMessage(tempId, { status: "failed" });
+        // O pedido pode ter chegado ao servidor e saído: incerto, sem botão.
+        falhou(FALHA_SEM_RESPOSTA);
       }
     },
     // `activeChannel` e `channels` são load-bearing aqui: um closure obsoleto
@@ -1958,11 +2027,8 @@ export function MessageThread({
     [
       conversation,
       publicarMensagemOtimista,
-      // `onNewMessage` continua aqui porque o caminho do 409 acima reescreve a
-      // bolha já publicada — ali não há salto para liberar, a mensagem não é
-      // nova.
-      onNewMessage,
       onUpdateMessage,
+      marcarReenviavel,
       activeChannel?.id,
       channels,
       t,
@@ -1970,6 +2036,37 @@ export function MessageThread({
       nomeQueAssina,
       janelaFechadaAgora,
     ]
+  );
+
+  /**
+   * O "Tentar de novo" da bolha: entrega o texto ao COMPOSITOR, que o retém
+   * na janela de desfazer e o manda pela fila de saída — o mesmo trilho do
+   * Enviar. Recusado lá (conexão fora do ar, janela fechada), nada muda.
+   */
+  const tentarDeNovo = useCallback(
+    (id: string) => {
+      const r = reenviaveis.get(id);
+      if (!r || r.retida) return;
+      if (!composerRef.current?.reenviarTexto(r.texto, r.replyToId, id)) return;
+      marcarReenviavel(id, { ...r, retida: true });
+    },
+    [reenviaveis, marcarReenviavel],
+  );
+
+  // O "Desfazer" do compositor cancelou o reenvio: o botão volta — se a bolha
+  // ainda está no fio. Sumiu (recarga silenciosa, mensagem nova)? `false`, e
+  // o compositor devolve o texto ao campo, para ele não desaparecer.
+  const aoDesfazerReenvio = useCallback(
+    (id: string) => {
+      const r = reenviaveis.get(id);
+      if (!r || !messages.some((m) => m.id === id)) {
+        marcarReenviavel(id, null);
+        return false;
+      }
+      marcarReenviavel(id, { ...r, retida: false });
+      return true;
+    },
+    [messages, reenviaveis, marcarReenviavel],
   );
 
   /**
@@ -2024,7 +2121,10 @@ export function MessageThread({
       // o anexo passa pelo MediaDraftPreview, que SUBSTITUI o compositor e
       // vive enquanto o operador escreve a legenda.
       if (naTela && janelaFechadaAgora()) {
-        onUpdateMessage(tempId, { status: "failed" });
+        onUpdateMessage(
+          tempId,
+          naBolha({ motivo: "barrado", detalhe: t("sessionExpiredBlocked"), podeTentarDeNovo: false }),
+        );
         toast.error(t("sessionExpiredBlocked"));
         // ⚠️ O objeto FICA: com o retorno `false` o compositor mantém o anexo
         // na fila e volta a ser dono dele. Apagar aqui deixaria o rascunho
@@ -2052,7 +2152,10 @@ export function MessageThread({
           const reason = data?.error || `HTTP ${res.status}`;
           console.error("Failed to send media:", reason);
           toast.error(t("sendFailed", { reason }));
-          onUpdateMessage(tempId, { status: "failed" });
+          // O motivo na bolha, sem "Tentar de novo": o anexo já volta à
+          // prévia para isso — dois lugares para o mesmo arquivo mandariam em
+          // dobro.
+          onUpdateMessage(tempId, naBolha(falhaDaResposta(res.status, data)));
           // ⚠️ O objeto FICA — ver o cabeçalho: o compositor volta a ser dono.
           return false;
         }
@@ -2064,7 +2167,7 @@ export function MessageThread({
         console.error("Failed to send media:", err);
         const reason = err instanceof Error ? err.message : t("networkError");
         toast.error(t("sendFailed", { reason }));
-        onUpdateMessage(tempId, { status: "failed" });
+        onUpdateMessage(tempId, naBolha(FALHA_SEM_RESPOSTA));
         return false;
       }
     },
@@ -2110,7 +2213,10 @@ export function MessageThread({
       // clicável depois de a carga resolver para uma sessão Meta expirada.
       // (Achado do Codex na revisão do PR #84.)
       if (naTela && janelaFechadaAgora()) {
-        onUpdateMessage(tempId, { status: "failed" });
+        onUpdateMessage(
+          tempId,
+          naBolha({ motivo: "barrado", detalhe: t("sessionExpiredBlocked"), podeTentarDeNovo: false }),
+        );
         toast.error(t("sessionExpiredBlocked"));
         return;
       }
@@ -2133,7 +2239,8 @@ export function MessageThread({
           const reason = data?.error || `HTTP ${res.status}`;
           console.error("Failed to send interactive message:", reason);
           toast.error(t("sendFailed", { reason }));
-          onUpdateMessage(tempId, { status: "failed" });
+          // O motivo na bolha; o reenvio da interativa é pelo diálogo dela.
+          onUpdateMessage(tempId, naBolha(falhaDaResposta(res.status, data)));
           return;
         }
 
@@ -2143,7 +2250,7 @@ export function MessageThread({
         console.error("Failed to send interactive message:", err);
         const reason = err instanceof Error ? err.message : t("networkError");
         toast.error(t("sendFailed", { reason }));
-        onUpdateMessage(tempId, { status: "failed" });
+        onUpdateMessage(tempId, naBolha(FALHA_SEM_RESPOSTA));
       }
     },
     [
@@ -2257,7 +2364,8 @@ export function MessageThread({
           const reason = payload?.error || `HTTP ${res.status}`;
           console.error("Failed to send template:", reason);
           toast.error(t("sendTemplateFailed", { reason }));
-          onUpdateMessage(tempId, { status: "failed" });
+          // O motivo na bolha; o reenvio do modelo é pelo seletor dele.
+          onUpdateMessage(tempId, naBolha(falhaDaResposta(res.status, payload)));
           return;
         }
 
@@ -2266,7 +2374,7 @@ export function MessageThread({
         console.error("Failed to send template:", err);
         const reason = err instanceof Error ? err.message : t("networkError");
         toast.error(t("sendTemplateFailed", { reason }));
-        onUpdateMessage(tempId, { status: "failed" });
+        onUpdateMessage(tempId, naBolha(FALHA_SEM_RESPOSTA));
       }
     },
     [
@@ -3378,6 +3486,11 @@ export function MessageThread({
                             naoConfirmadas.has(msg.id) &&
                             confirmadasComoEnviadas.has(msg.id)
                           }
+                          onTentarDeNovo={
+                            !envioTravado && reenviaveis.get(msg.id)?.retida === false
+                              ? () => tentarDeNovo(msg.id)
+                              : undefined
+                          }
                         />
                       </MessageActions>
                       </LinhaDoFio>
@@ -3556,12 +3669,14 @@ export function MessageThread({
       {/* Composer — canal Evolution não tem janela de 24h (sessionExpired
           neutralizado) nem templates/interativas (channelKind esconde). */}
       <MessageComposer
+        ref={composerRef}
         conversationId={conversation.id}
-        sessionExpired={janelaDe24h ? sessionInfo.expired : false}
+        sessionExpired={sessaoExpirada}
         conexaoForaDoAr={conexaoForaDoAr}
         channelKind={activeChannel?.kind ?? null}
         transporteConhecido={!canaisCarregando && !canaisFalharam}
         onSend={handleSend}
+        onReenvioDesfeito={aoDesfazerReenvio}
         onSendMedia={handleSendMedia}
         onSendInteractive={handleSendInteractive}
         onOpenTemplates={handleOpenTemplates}

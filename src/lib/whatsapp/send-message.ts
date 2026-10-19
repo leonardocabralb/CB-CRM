@@ -81,12 +81,18 @@ export const VALID_MESSAGE_TYPES = [
  * Typed failure with a machine `code` and a suggested HTTP `status`.
  * Callers map it to their own response shape (`toErrorResponse` for
  * the dashboard route, the v1 envelope for the public endpoint).
+ *
+ * Na falha do PROVEDOR, `cause` carrega o erro cru dele (`EvolutionApiError`,
+ * `MetaApiError` ou o de rede): é por ele que a rota do compositor diz à bolha
+ * POR QUE não saiu (`motivoDaFalhaDoNucleo`) — o `code` junta "número sem
+ * WhatsApp" e "conexão fechada" no mesmo `evolution_rejected`. Não muda código
+ * nem status: a API v1 e a agendada continuam lendo os mesmos.
  */
 export class SendMessageError extends Error {
   readonly code: string;
   readonly status: number;
-  constructor(code: string, message: string, status: number) {
-    super(message);
+  constructor(code: string, message: string, status: number, options?: { cause?: unknown }) {
+    super(message, options);
     this.name = 'SendMessageError';
     this.code = code;
     this.status = status;
@@ -688,7 +694,8 @@ export async function sendMessageToConversation(
       throw new SendMessageError(
         recusa ? 'evolution_rejected' : 'evolution_error',
         `Evolution API error: ${message}`,
-        502
+        502,
+        { cause: err }
       );
     }
     // Chave da Baileys para citar/reagir depois. Em grupo o JID JÁ é o
@@ -803,7 +810,7 @@ export async function sendMessageToConversation(
       const message =
         err instanceof Error ? err.message : 'Unknown Meta API error';
       console.error('[send-message] Meta send failed for all variants:', message);
-      throw new SendMessageError('meta_error', `Meta API error: ${message}`, 502);
+      throw new SendMessageError('meta_error', `Meta API error: ${message}`, 502, { cause: err });
     }
 
     // ⚠️ Só com TELEFONE: sem o `ehTelefone`, o envio a um BSUID gravaria o

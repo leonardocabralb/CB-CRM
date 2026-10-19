@@ -273,9 +273,9 @@ O WhatsApp quase nunca anuncia a falha; este vermelho é INFERIDO.
 - ⚠️⚠️ **Acende quando saiu pelo CRM, está em ✓ há mais de 1 min e há prova de
   que o aparelho estava no ar** (mensagem nossa posterior entregue ou lida, por
   qualquer conexão, ou o destinatário escreveu mais de 1 min depois). Recortes,
-  cada um contra um alarme falso: só EVOLUTION (alargar para a Meta exige medir
-  de novo e decisão do operador, `docs/PLANO-link-sem-previa.md`); só o que saiu
-  pelo CRM; só desde 11/09/2026 00:00 UTC; grupo fora.
+  cada um contra um alarme falso: só EVOLUTION (a Meta, só medindo de novo e
+  com o operador: `docs/PLANO-link-sem-previa.md`); só o que saiu pelo CRM; só
+  desde 11/09/2026 00:00 UTC; grupo fora.
 - ⚠️⚠️ **O fio CONFERE NO BANCO antes de pintar**: a recarga
   (`handleMessagesLoaded`) pode atropelar um recibo do realtime, e o vermelho
   levaria a reenviar o que já chegou. O banco corrige a tela
@@ -283,7 +283,8 @@ O WhatsApp quase nunca anuncia a falha; este vermelho é INFERIDO.
 - ⚠️ **O relógio é o tique da badge (`agoraDaBadge`)**, sem depender da janela
   da Meta (senão apagaria num fio parado da Evolution).
 - ⚠️ **Saída se mede por `sender_type`, nunca por `from_me`** (a Meta grava nulo).
-- **A falha da Meta mostra o texto dela na bolha** (`motivoNaBolha`).
+- **A falha diz o porquê**: Meta, `motivoNaBolha`; otimista e reenvio,
+  `whatsapp-envio.md`.
 
 ### Cartão de contato e tipo não suportado na bolha (1060)
 

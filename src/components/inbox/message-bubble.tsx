@@ -22,6 +22,7 @@ import {
   Pencil,
   Download,
   MessageSquareWarning,
+  RotateCcw,
 } from "lucide-react";
 import { corDoRemetente, podeBaixarAnexo } from "@/lib/cb-groups/display";
 import { mediaFilename, nomeDeclarado } from "@/lib/media/filename";
@@ -86,6 +87,13 @@ interface MessageBubbleProps {
    * (lib/inbox/entrega-nao-confirmada.ts). Sem a prop, nada muda.
    */
   naoConfirmada?: boolean;
+  /**
+   * "Tentar de novo" na bolha que NÃO saiu (19/10/2026). O fio só passa isto
+   * à bolha OTIMISTA de texto com recusa comprovada (`podeTentarDeNovo` de
+   * `falha-do-envio.ts`) e com o compositor livre; a bolha não decide nada —
+   * sem a prop, nada muda (falha de recibo, robô, anexo, incerto).
+   */
+  onTentarDeNovo?: () => void;
 }
 
 /**
@@ -740,6 +748,7 @@ export function MessageBubble({
   baixandoAnexo = false,
   onAbrirGaleria,
   naoConfirmada = false,
+  onTentarDeNovo,
 }: MessageBubbleProps) {
   const t = useTranslations("Inbox.bubble");
 
@@ -1088,14 +1097,25 @@ export function MessageBubble({
             {t(`naoSaiu.${naoSaiu}`)}
           </p>
         )}
-        {/* "Recusado" sem mais: o porquê do provedor, como o da Meta acima. */}
-        {naoSaiu === "recusado" && message.error_details && (
+        {/* "Recusado" e "barrado" sem mais: o porquê do provedor (ou do
+            CRM), como o da Meta acima. */}
+        {(naoSaiu === "recusado" || naoSaiu === "barrado") && message.error_details && (
           <p
             className="aviso-falha mt-0.5 line-clamp-2 text-[10px] leading-tight !text-muted-foreground"
             title={message.error_details}
           >
             {t("naoSaiuMotivo", { motivo: message.error_details })}
           </p>
+        )}
+        {naoSaiu && onTentarDeNovo && (
+          <button
+            type="button"
+            onClick={onTentarDeNovo}
+            className="aviso-falha mt-1.5 inline-flex items-center gap-1 rounded-md border border-destructive/40 bg-background px-2 py-0.5 text-[11px] font-semibold !text-destructive hover:bg-destructive/10"
+          >
+            <RotateCcw className="h-3 w-3 shrink-0" />
+            {t("tentarDeNovo")}
+          </button>
         )}
         {semConfirmacao && (
           <p

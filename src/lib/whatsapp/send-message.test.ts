@@ -6,6 +6,8 @@ import {
   SendMessageError,
   type SendMessageParams,
 } from './send-message';
+import { motivoDaFalhaDoNucleo } from './envio-que-falhou';
+import { EvolutionApiError } from './transport/evolution-client';
 
 // Só o resolvedor de canal é substituído — os testes de `channelId` no fim
 // do arquivo precisam mandar nele. Os demais estouram antes de chegar lá.
@@ -772,6 +774,40 @@ describe('sendMessageToConversation — alvo por BSUID (Fase 11.3)', () => {
       expect.objectContaining({ to: '15551234567' })
     );
     expect(captured.message?.remote_jid).toBe('15551234567@s.whatsapp.net');
+  });
+
+  // O caso de 19/10/2026: a Evolution recusa o número sem WhatsApp ANTES de
+  // mandar. O erro CRU dela viaja em `cause` — é por ele que a bolha diz
+  // "este número não tem WhatsApp" e não oferece "Tentar de novo"; sem ele,
+  // `evolution_rejected` vira "recusado", com botão (`motivoDaFalhaDoNucleo`).
+  it('a recusa da Evolution leva o erro cru em `cause`: número sem WhatsApp', async () => {
+    await comCanal(EVOLUTION);
+    const recusa = new EvolutionApiError('number 15551234567 is not on WhatsApp', 400, true);
+    evolutionSendText.mockRejectedValueOnce(recusa);
+    const captured: CapturedWrites = {};
+    const err = await sendMessageToConversation(
+      sendPathDb([], captured, { id: 'ct-1', phone: '+15551234567' }),
+      'acct-1',
+      { conversationId: 'cv-1', messageType: 'text', contentText: 'oi' }
+    ).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(SendMessageError);
+    expect((err as SendMessageError).code).toBe('evolution_rejected');
+    expect((err as SendMessageError).cause).toBe(recusa);
+    expect(motivoDaFalhaDoNucleo(err as SendMessageError).motivo).toBe('sem_whatsapp');
+    expect(captured.message).toBeUndefined();
+  });
+
+  it('o tempo esgotado da Evolution também leva o cru — e é incerto, nunca "não saiu"', async () => {
+    await comCanal(EVOLUTION);
+    evolutionSendText.mockRejectedValueOnce(new EvolutionApiError('Evolution não respondeu em 15000ms', 504));
+    const err = await sendMessageToConversation(
+      sendPathDb([], {}, { id: 'ct-1', phone: '+15551234567' }),
+      'acct-1',
+      { conversationId: 'cv-1', messageType: 'text', contentText: 'oi' }
+    ).catch((e: unknown) => e);
+    expect((err as SendMessageError).code).toBe('evolution_error');
+    expect((err as SendMessageError).cause).toBeInstanceOf(EvolutionApiError);
+    expect(motivoDaFalhaDoNucleo(err as SendMessageError).motivo).toBe('incerto');
   });
 
   it('131030 com BSUID: UMA tentativa, sem variantes e sem tocar em contacts', async () => {
