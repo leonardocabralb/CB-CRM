@@ -299,7 +299,11 @@ vi.mock('@/lib/flows/admin-client', () => ({
 // O transporte da Evolution é espiado: os casos da Fase 11.3 provam que a
 // ficha só-BSUID é recusada ANTES de ele ser montado — a Evolution tiraria as
 // letras do BSUID e mandaria ao número formado pelos dígitos dele.
-const evolutionSendText = vi.fn(async () => ({ providerMessageId: 'evo.1' }));
+const evolutionSendText = vi.fn(
+  async (): Promise<{ providerMessageId: string; remoteJid?: string | null }> => ({
+    providerMessageId: 'evo.1',
+  })
+);
 vi.mock('@/lib/whatsapp/transport', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   getTransport: vi.fn(() => ({
@@ -772,6 +776,45 @@ describe('sendMessageToConversation — alvo por BSUID (Fase 11.3)', () => {
       expect.objectContaining({ to: '15551234567' })
     );
     expect(captured.message?.remote_jid).toBe('15551234567@s.whatsapp.net');
+  });
+
+  // 19/10/2026: o endereço gravado é o que a Evolution USOU. Ela confere o
+  // número no WhatsApp e manda para o que existe (o antigo de DDD 31 em diante
+  // vive SEM o 9); gravar o telefone da ficha fazia o "apagar para todos" ir
+  // para uma conversa que não existe. Ver `endereco-do-envio.ts`.
+  it('pela Evolution, grava o endereço que ela usou, não o telefone da ficha', async () => {
+    await comCanal(EVOLUTION);
+    evolutionSendText.mockResolvedValueOnce({
+      providerMessageId: 'evo.1',
+      remoteJid: '558388887777@s.whatsapp.net',
+    });
+    const captured: CapturedWrites = {};
+    await sendMessageToConversation(
+      sendPathDb([], captured, { id: 'ct-1', phone: '+5583988887777', wa_user_id: null }),
+      'acct-1',
+      { conversationId: 'cv-1', messageType: 'text', contentText: 'oi' }
+    );
+    expect(evolutionSendText).toHaveBeenCalledWith(
+      expect.objectContaining({ to: '5583988887777' })
+    );
+    expect(captured.message?.remote_jid).toBe('558388887777@s.whatsapp.net');
+    expect(captured.message?.remote_jid_lid).toBeNull();
+  });
+
+  it('pela Evolution, enviada pelo LID: o LID vai para remote_jid_lid', async () => {
+    await comCanal(EVOLUTION);
+    evolutionSendText.mockResolvedValueOnce({
+      providerMessageId: 'evo.1',
+      remoteJid: '100000000000102@lid',
+    });
+    const captured: CapturedWrites = {};
+    await sendMessageToConversation(
+      sendPathDb([], captured, { id: 'ct-1', phone: '+5583988887777', wa_user_id: null }),
+      'acct-1',
+      { conversationId: 'cv-1', messageType: 'text', contentText: 'oi' }
+    );
+    expect(captured.message?.remote_jid).toBe('5583988887777@s.whatsapp.net');
+    expect(captured.message?.remote_jid_lid).toBe('100000000000102@lid');
   });
 
   it('131030 com BSUID: UMA tentativa, sem variantes e sem tocar em contacts', async () => {

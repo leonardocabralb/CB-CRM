@@ -71,12 +71,12 @@ export class EvolutionTransport implements WhatsAppTransport {
   constructor(private readonly client: EvolutionClient) {}
 
   async sendText(args: SendTextArgs): Promise<SendResult> {
-    const providerMessageId = await this.client.sendText({
+    const enviada = await this.client.sendText({
       number: toEvolutionNumber(args.to),
       text: args.text,
       quoted: args.quoted ? toKey(args.quoted, args.to) : undefined,
     });
-    return { providerMessageId };
+    return { providerMessageId: enviada.id, remoteJid: enviada.remoteJid };
   }
 
   async sendMedia(args: SendMediaArgs): Promise<SendResult> {
@@ -85,15 +85,15 @@ export class EvolutionTransport implements WhatsAppTransport {
 
     // Audio is a voice note on Baileys — a distinct endpoint, no caption.
     if (args.kind === 'audio') {
-      const providerMessageId = await this.client.sendAudio({
+      const enviada = await this.client.sendAudio({
         number,
         audio: args.media,
         quoted,
       });
-      return { providerMessageId };
+      return { providerMessageId: enviada.id, remoteJid: enviada.remoteJid };
     }
 
-    const providerMessageId = await this.client.sendMedia({
+    const enviada = await this.client.sendMedia({
       number,
       mediatype: args.kind,
       media: args.media,
@@ -101,7 +101,7 @@ export class EvolutionTransport implements WhatsAppTransport {
       fileName: args.filename,
       quoted,
     });
-    return { providerMessageId };
+    return { providerMessageId: enviada.id, remoteJid: enviada.remoteJid };
   }
 
   async sendReaction(args: SendReactionArgs): Promise<SendResult> {

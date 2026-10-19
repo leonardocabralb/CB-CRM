@@ -148,12 +148,12 @@ describe('EvolutionClient.sendText', () => {
     const fetchSpy = evolutionRespondendo();
     vi.stubGlobal('fetch', fetchSpy);
 
-    const id = await client().sendText({
+    const enviada = await client().sendText({
       number: '5511999999999',
       text: 'Link da videochamada: https://meet.google.com/',
     });
 
-    expect(id).toBe('3EB0TESTE');
+    expect(enviada).toEqual({ id: '3EB0TESTE', remoteJid: null });
     expect(corpoDoEnvio(fetchSpy)).toEqual({
       number: '5511999999999',
       text: 'Link da videochamada: https://meet.google.com/',
@@ -173,6 +173,52 @@ describe('EvolutionClient.sendText', () => {
       text: 'https://exemplo.com',
       quoted: { key: citada },
       linkPreview: false,
+    });
+  });
+});
+
+// O endereço que a Evolution USOU volta junto com o id: é nele que apagar e
+// editar procuram a mensagem (ver `endereco-do-envio.ts`). Ela confere o
+// número no WhatsApp antes de enviar, e o número antigo de DDD 31 em diante
+// vive SEM o nono dígito — diferente do que pedimos.
+describe('envio devolve o endereço que a Evolution usou', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function respondendo(key: Record<string, unknown>) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ key }), { status: 201 })),
+    );
+  }
+
+  const transporte = () =>
+    getTransport({ provider: 'evolution', baseUrl: 'https://evo.example.com', instance: 'crm', apikey: 'k' });
+
+  it('texto: o JID da resposta, mesmo diferente do número pedido', async () => {
+    respondendo({ id: '3EB0A', remoteJid: '558388887777@s.whatsapp.net', fromMe: true });
+    await expect(transporte().sendText({ to: '+5583988887777', text: 'oi' })).resolves.toEqual({
+      providerMessageId: '3EB0A',
+      remoteJid: '558388887777@s.whatsapp.net',
+    });
+  });
+
+  it('mídia e áudio também', async () => {
+    respondendo({ id: '3EB0B', remoteJid: '100000000000102@lid', fromMe: true });
+    await expect(
+      transporte().sendMedia({ to: '5583988887777', kind: 'document', media: 'https://x/a.pdf' }),
+    ).resolves.toEqual({ providerMessageId: '3EB0B', remoteJid: '100000000000102@lid' });
+    await expect(
+      transporte().sendMedia({ to: '5583988887777', kind: 'audio', media: 'https://x/a.ogg' }),
+    ).resolves.toEqual({ providerMessageId: '3EB0B', remoteJid: '100000000000102@lid' });
+  });
+
+  it('resposta sem o endereço: remoteJid nulo (quem grava cai no telefone da ficha)', async () => {
+    respondendo({ id: '3EB0C' });
+    await expect(transporte().sendText({ to: '5583988887777', text: 'oi' })).resolves.toEqual({
+      providerMessageId: '3EB0C',
+      remoteJid: null,
     });
   });
 });

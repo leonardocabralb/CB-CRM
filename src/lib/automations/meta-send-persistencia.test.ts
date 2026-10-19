@@ -104,7 +104,6 @@ vi.mock('@/lib/cb-channels/engine-send', () => ({
     access_token: 'enc',
   })),
   evolutionTransportFor: vi.fn(),
-  evolutionRemoteJid: vi.fn(() => null),
 }))
 
 const preencherCanalDaConversa = vi.hoisted(() =>

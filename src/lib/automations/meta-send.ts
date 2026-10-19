@@ -9,8 +9,8 @@ import { assertConversationInAccount } from '@/lib/whatsapp/conversation-scope'
 import {
   resolveEngineChannelPreferring,
   evolutionTransportFor,
-  evolutionRemoteJid,
 } from '@/lib/cb-channels/engine-send'
+import { enderecoDoEnvio, type EnderecoDoEnvio } from '@/lib/whatsapp/transport/endereco-do-envio'
 import { preencherCanalDaConversa, stampMessageChannel } from '@/lib/cb-channels/stamp'
 import {
   phoneVariants,
@@ -318,7 +318,10 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
 
   let waMessageId = ''
   let workingPhone = alvo
-  let outboundRemoteJid: string | null = null
+  // Só Evolution: o endereço que ela USOU, nunca o telefone da ficha — o nono
+  // dígito pode divergir, e a revogação iria para uma conversa que não existe
+  // (ver `endereco-do-envio.ts`).
+  let endereco: EnderecoDoEnvio | null = null
 
   try {
     // `transport` existe só na Evolution (montado acima, fora da tentativa).
@@ -327,7 +330,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
       // `alvo` é telefone aqui: `alvoDoRobo` recusa o BSUID fora da Meta.
       const res = await transport.sendText({ to: alvo, text: textoFinal! })
       waMessageId = res.providerMessageId
-      outboundRemoteJid = evolutionRemoteJid(alvo)
+      endereco = enderecoDoEnvio(res.remoteJid, alvo)
     } else {
       const attempt = async (phone: string): Promise<string> => {
         if (input.kind === 'template') {
@@ -417,7 +420,8 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
       template_name,
       message_id: waMessageId,
       // Partes da chave Baileys — só Evolution (NULL no Meta).
-      remote_jid: outboundRemoteJid,
+      remote_jid: endereco?.remoteJid ?? null,
+      remote_jid_lid: endereco?.remoteJidLid ?? null,
       from_me: ehEvolution(channel) ? true : null,
       status: 'sent',
     })

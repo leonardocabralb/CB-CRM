@@ -40,10 +40,11 @@ import {
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption';
 import {
   getTransport,
-  toEvolutionNumber,
   type ProviderMessageRef,
+  type SendResult,
 } from '@/lib/whatsapp/transport';
 import { EvolutionApiError } from '@/lib/whatsapp/transport/evolution-client';
+import { enderecoDoEnvio } from '@/lib/whatsapp/transport/endereco-do-envio';
 import { resolveChannelForConversation } from '@/lib/cb-channels/resolve';
 import { preencherCanalDaConversa, stampMessageChannel } from '@/lib/cb-channels/stamp';
 import { supabaseAdmin } from '@/lib/flows/admin-client';
@@ -612,6 +613,9 @@ export async function sendMessageToConversation(
   // For Evolution rows: the recipient JID, persisted so reactions/replies
   // can rebuild the Baileys key later. NULL for Meta.
   let outboundRemoteJid: string | null = null;
+  // O LID por onde a Evolution enviou, quando enviou por ele: é por ele que
+  // a mensagem se apaga e se edita (`enderecoDoEnvio`). NULL no resto.
+  let outboundRemoteJidLid: string | null = null;
 
   if (ehEvolution(channel)) {
     // Evolution/Baileys has no HSM templates and unreliable native
@@ -644,8 +648,9 @@ export async function sendMessageToConversation(
     if (!ehGrupo) {
       await preencherCanalDaConversa(supabaseAdmin(), accountId, conversationId, channel.channelId);
     }
+    let enviada: SendResult;
     try {
-      const res = isMediaKind
+      enviada = isMediaKind
         ? await transport.sendMedia({
             to: destinatario,
             kind: messageType as MediaKind,
@@ -659,7 +664,7 @@ export async function sendMessageToConversation(
             text: textoFinal!,
             quoted: evolutionQuoted,
           });
-      waMessageId = res.providerMessageId;
+      waMessageId = enviada.providerMessageId;
     } catch (err) {
       const message =
         err instanceof Error ? err.message : 'Unknown Evolution error';
@@ -691,12 +696,19 @@ export async function sendMessageToConversation(
         502
       );
     }
-    // Chave da Baileys para citar/reagir depois. Em grupo o JID JÁ é o
-    // endereço final — pendurar `@s.whatsapp.net` nele produziria um JID
+    // Chave da Baileys para citar/reagir/apagar depois. Em grupo o JID JÁ é
+    // o endereço final — pendurar `@s.whatsapp.net` nele produziria um JID
     // inválido e quebraria a citação de toda mensagem que enviarmos ao grupo.
-    outboundRemoteJid = ehGrupo
-      ? destinatario
-      : `${toEvolutionNumber(destinatario)}@s.whatsapp.net`;
+    // No 1:1, o endereço que a Evolution USOU, nunca o telefone da ficha: o
+    // nono dígito pode divergir, e a revogação iria para uma conversa que não
+    // existe (ver `endereco-do-envio.ts`).
+    if (ehGrupo) {
+      outboundRemoteJid = destinatario;
+    } else {
+      const endereco = enderecoDoEnvio(enviada.remoteJid, destinatario);
+      outboundRemoteJid = endereco.remoteJid;
+      outboundRemoteJidLid = endereco.remoteJidLid;
+    }
   } else {
     const attempt = async (phone: string): Promise<string> => {
       if (messageType === 'template') {
@@ -871,6 +883,7 @@ export async function sendMessageToConversation(
       message_id: waMessageId,
       // Baileys key parts — only meaningful for Evolution (NULL for Meta).
       remote_jid: outboundRemoteJid,
+      remote_jid_lid: outboundRemoteJidLid,
       from_me: ehEvolution(channel) ? true : null,
       status: 'sent',
       reply_to_message_id: replyToMessageId || null,

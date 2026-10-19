@@ -19,6 +19,7 @@ import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { EvolutionApiError, EvolutionClient } from '@/lib/whatsapp/transport/evolution-client';
+import { jidDoClienteNaOutraGrafia } from '@/lib/whatsapp/transport/endereco-do-envio';
 import { resolveEngineChannelPreferring } from '@/lib/cb-channels/engine-send';
 import { atualizarPreviaDaConversa } from '@/lib/inbox/conversation-preview';
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
@@ -139,6 +140,35 @@ async function resolverAlvo(messageId: unknown) {
     };
   }
 
+  // ⚠️ O ENDEREÇO pode estar com a grafia errada do nono dígito. Até
+  // 19/10/2026 o envio pelo CRM gravava o telefone da FICHA, e a Evolution
+  // manda para o endereço que existe no WhatsApp (o antigo de DDD 31 em
+  // diante, SEM o 9). Revogar pelo da ficha ia para uma conversa que não
+  // existe: 2xx, e a mensagem seguia no aparelho do cliente. A grafia que o
+  // CLIENTE usa nesta conversa é a do WhatsApp; só a outra grafia do MESMO
+  // número substitui (`jidDoClienteNaOutraGrafia`). Com LID gravado, é por
+  // ele que se revoga, e nada muda. Leitura que falha fica com o gravado.
+  let remoteJid = alvo.remote_jid;
+  if (
+    !alvo.remote_jid_lid &&
+    alvo.sender_type !== 'customer' &&
+    remoteJid.endsWith('@s.whatsapp.net')
+  ) {
+    const { data: doCliente, error: erroDoCliente } = await supabase
+      .from('messages')
+      .select('remote_jid')
+      .eq('conversation_id', alvo.conversation_id)
+      .eq('sender_type', 'customer')
+      .like('remote_jid', '%@s.whatsapp.net')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (erroDoCliente) {
+      console.error('[whatsapp/message] ler o endereço do cliente falhou:', erroDoCliente.message);
+    }
+    remoteJid = jidDoClienteNaOutraGrafia(remoteJid, doCliente?.remote_jid) ?? remoteJid;
+  }
+
   // Canal DA MENSAGEM, não o da conversa. Uma conversa pode ter migrado de
   // número; revogar por outra instância não apaga nada e ainda responde 2xx.
   // Cai no canal da conversa quando a mensagem é anterior à 903.
@@ -185,7 +215,7 @@ async function resolverAlvo(messageId: unknown) {
   const pronto: AlvoPronto = {
     ...alvo,
     message_id: alvo.message_id,
-    remote_jid: alvo.remote_jid,
+    remote_jid: remoteJid,
   };
 
   return { alvo: pronto, cliente, accountId };

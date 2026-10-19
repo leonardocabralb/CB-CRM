@@ -62,7 +62,6 @@ vi.mock('@/lib/cb-channels/engine-send', () => ({
     access_token: 'enc',
   })),
   evolutionTransportFor: vi.fn(),
-  evolutionRemoteJid: vi.fn(() => null),
 }))
 vi.mock('@/lib/cb-channels/stamp', () => ({
   stampMessageChannel: vi.fn(async () => {}),

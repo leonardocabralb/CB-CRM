@@ -83,6 +83,20 @@ interface EvolutionSendResponse {
   messageId?: string;
 }
 
+/**
+ * O que um envio devolve: o id E o endereço que a Evolution USOU.
+ *
+ * ⚠️ `remoteJid` não é o número que mandamos. A Evolution confere o número no
+ * WhatsApp antes de enviar (`whatsappNumber`, testando as duas grafias do
+ * nono dígito) e manda para o endereço que existe — o número antigo de DDD 31
+ * em diante vive SEM o 9. Apagar e editar procuram a mensagem NESTE endereço:
+ * ver `endereco-do-envio.ts`. Nulo quando a resposta não o traz.
+ */
+export interface EvolutionEnviada {
+  id: string;
+  remoteJid: string | null;
+}
+
 export class EvolutionApiError extends Error {
   readonly status: number;
   /**
@@ -284,6 +298,14 @@ export class EvolutionClient {
     return id;
   }
 
+  private extractEnviada(res: EvolutionSendResponse): EvolutionEnviada {
+    const remoteJid = res.key?.remoteJid;
+    return {
+      id: this.extractId(res),
+      remoteJid: typeof remoteJid === 'string' && remoteJid ? remoteJid : null,
+    };
+  }
+
   // ----------------------------------------------------------
   // Messaging (instance key)
   // ----------------------------------------------------------
@@ -292,7 +314,7 @@ export class EvolutionClient {
     number: string;
     text: string;
     quoted?: EvolutionMessageKey;
-  }): Promise<string> {
+  }): Promise<EvolutionEnviada> {
     const res = await this.request<EvolutionSendResponse>(
       'POST',
       'message/sendText',
@@ -316,7 +338,7 @@ export class EvolutionClient {
         linkPreview: false,
       }
     );
-    return this.extractId(res);
+    return this.extractEnviada(res);
   }
 
   async sendMedia(args: {
@@ -327,7 +349,7 @@ export class EvolutionClient {
     caption?: string;
     fileName?: string;
     quoted?: EvolutionMessageKey;
-  }): Promise<string> {
+  }): Promise<EvolutionEnviada> {
     const res = await this.request<EvolutionSendResponse>(
       'POST',
       'message/sendMedia',
@@ -343,7 +365,7 @@ export class EvolutionClient {
       true,
       MEDIA_SEND_TIMEOUT_MS
     );
-    return this.extractId(res);
+    return this.extractEnviada(res);
   }
 
   /** WhatsApp voice-note / PTT. Separate endpoint from sendMedia. */
@@ -351,7 +373,7 @@ export class EvolutionClient {
     number: string;
     audio: string;
     quoted?: EvolutionMessageKey;
-  }): Promise<string> {
+  }): Promise<EvolutionEnviada> {
     const res = await this.request<EvolutionSendResponse>(
       'POST',
       'message/sendWhatsAppAudio',
@@ -363,7 +385,7 @@ export class EvolutionClient {
       true,
       MEDIA_SEND_TIMEOUT_MS
     );
-    return this.extractId(res);
+    return this.extractEnviada(res);
   }
 
   /** Empty `reaction` removes an existing reaction. */

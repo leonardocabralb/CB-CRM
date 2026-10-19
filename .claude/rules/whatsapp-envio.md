@@ -69,6 +69,15 @@ abrir negócio e carimbo de canal na ingestão estão em
 - ⚠️ **Apagar mensagem aqui é apagar MOLE** (`deleted_at`): o núcleo citaria o
   que o cliente vê como "Esta mensagem foi apagada". Quem enviar citação em
   código novo confere `deleted_at` — `send-message.ts` não confere.
+- ⚠️⚠️ **O endereço gravado é o que a Evolution USOU** (`enderecoDoEnvio`,
+  `transport/endereco-do-envio.ts`), nunca o telefone da ficha. Ela confere o
+  número no WhatsApp e manda para o que existe (o antigo de DDD 31+ vive SEM
+  o 9), mas o apagar usa o JID cru: com o da ficha, a revogação ia para uma
+  conversa que não existe, 2xx, e a mensagem ficava no aparelho (19/10/2026,
+  3 de 11 exclusões). Envio pelo LID vai para `remote_jid_lid`. Para o já
+  gravado, a rota de apagar/editar usa a grafia do CLIENTE na conversa
+  (`jidDoClienteNaOutraGrafia`: só a irmã do nono dígito). Remetente novo:
+  pino `endereco-do-envio.chamadores.test.ts`.
 - ⚠️ **`sendMessageToConversation` é o caminho de GENTE** (compositor, ficha,
   agendada, API v1): é nele que mora o gancho que abre negócio e reabre a
   conversa, via `supabaseAdmin()`. Broadcast e robô NÃO passam por ele, e é
