@@ -5,7 +5,6 @@ import {
   resolveEngineChannel,
   resolveEngineChannelPreferring,
   evolutionTransportFor,
-  evolutionRemoteJid,
 } from './engine-send';
 import type { ResolvedChannel } from './resolve';
 
@@ -197,13 +196,5 @@ describe('evolutionTransportFor', () => {
       api_key: null,
     } as unknown as ResolvedChannel;
     expect(() => evolutionTransportFor(channel)).toThrow(/incomplete/);
-  });
-});
-
-describe('evolutionRemoteJid', () => {
-  it('monta o JID a partir do E.164', () => {
-    expect(evolutionRemoteJid('+5511999999999')).toBe(
-      '5511999999999@s.whatsapp.net',
-    );
   });
 });

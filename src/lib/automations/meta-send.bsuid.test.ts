@@ -54,13 +54,16 @@ vi.mock('./admin-client', () => ({
 }))
 
 const evolution = vi.hoisted(() => ({
-  sendText: vi.fn(async () => ({ providerMessageId: 'evo.t' })),
+  sendText: vi.fn(
+    async (): Promise<{ providerMessageId: string; remoteJid?: string | null }> => ({
+      providerMessageId: 'evo.t',
+    }),
+  ),
 }))
 
 vi.mock('@/lib/cb-channels/engine-send', () => ({
   resolveEngineChannelPreferring: vi.fn(async () => h.canal),
   evolutionTransportFor: vi.fn(() => evolution),
-  evolutionRemoteJid: vi.fn((to: string) => `${to}@s.whatsapp.net`),
 }))
 vi.mock('@/lib/cb-channels/stamp', () => ({
   stampMessageChannel: vi.fn(async () => {}),
@@ -174,6 +177,20 @@ describe('automação (sendViaMeta): o alvo por BSUID', () => {
     await engineSendText({ ...BASE, text: 'oi' })
     expect(evolution.sendText).toHaveBeenCalledWith(expect.objectContaining({ to: '5583988887777' }))
     expect(h.mensagens[0]?.remote_jid).toBe('5583988887777@s.whatsapp.net')
+  })
+
+  // 19/10/2026: grava o endereço que a Evolution USOU (o número antigo de DDD
+  // 31 em diante vive SEM o 9), senão o "apagar para todos" erra a conversa.
+  it('send_message pela Evolution: grava o endereço que ela usou, não o da ficha', async () => {
+    h.canal = CANAL_EVOLUTION
+    h.contato = { id: 'contact-1', phone: '+5583988887777', wa_user_id: null }
+    evolution.sendText.mockResolvedValueOnce({
+      providerMessageId: 'evo.t',
+      remoteJid: '558388887777@s.whatsapp.net',
+    })
+    await engineSendText({ ...BASE, text: 'oi' })
+    expect(h.mensagens[0]?.remote_jid).toBe('558388887777@s.whatsapp.net')
+    expect(h.mensagens[0]?.remote_jid_lid).toBeNull()
   })
 
   it('send_template pela Evolution continua recusado pelo motivo de sempre', async () => {

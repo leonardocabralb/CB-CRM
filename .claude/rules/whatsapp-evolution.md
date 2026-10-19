@@ -69,6 +69,9 @@ patch" abaixo valem para a imagem de rollback; qual imagem está no ar é o
   junto as sessões de telefone de quem tem `lid-mapping`, senão a migração
   sobrescreve as LID vivas) e o veneno nos backups de 09/09:
   `docs/INFRA-VPS.md` §8 (30/09) e `docs/PLANO-baileys-7.md` 9.8.
+- ⚠️ **O envio devolve em `key.remoteJid` o endereço que ela USOU** (pode
+  diferir do número pedido no nono dígito; o apagar NÃO confere). É ele que
+  se grava: "O endereço gravado" em `whatsapp-envio.md`.
 - ⚠️ **Todo `protocolMessage` vira `messages.edited`**, inclusive a revogação
   (`type: 0`, sem `editedMessage`). A rota ignora o `edited` sem texto de
   propósito: o apagar-para-todos chega pelo `messages.delete`. Não tratar o

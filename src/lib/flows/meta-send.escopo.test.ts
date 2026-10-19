@@ -63,7 +63,6 @@ vi.mock('@/lib/cb-channels/engine-send', () => ({
     access_token: 'enc',
   })),
   evolutionTransportFor: vi.fn(),
-  evolutionRemoteJid: vi.fn(() => null),
 }))
 // `gravarComCanal` é o REAL: o INSERT da mensagem do robô passa por ele desde
 // a F2a (o canal vai no próprio INSERT), e ele só chama a gravação recebida.

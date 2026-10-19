@@ -15,11 +15,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { decrypt } from '@/lib/whatsapp/encryption';
-import {
-  getTransport,
-  toEvolutionNumber,
-  type WhatsAppTransport,
-} from '@/lib/whatsapp/transport';
+import { getTransport, type WhatsAppTransport } from '@/lib/whatsapp/transport';
 import {
   resolveChannelForConversation,
   type ResolvedChannel,
@@ -101,8 +97,3 @@ export function evolutionTransportFor(
   });
 }
 
-/** JID do destinatário, persistido em messages.remote_jid para reações/
- *  respostas reconstruírem a chave Baileys depois. */
-export function evolutionRemoteJid(phoneE164: string): string {
-  return `${toEvolutionNumber(phoneE164)}@s.whatsapp.net`;
-}
