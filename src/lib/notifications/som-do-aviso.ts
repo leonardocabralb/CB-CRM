@@ -5,9 +5,10 @@
 //
 // - O toque é GERADO pelo Web Audio (duas notas curtas), sem arquivo.
 // - ⚠️ O Chrome só deixa a página tocar som depois de um clique NAQUELA aba
-//   (política de reprodução automática). Sem o clique, `tocarSomDoAviso`
-//   devolve false e quem chama deixa o pop-up sem `silent`: o sistema decide,
-//   como antes — nunca um pop-up mudo por causa do CRM.
+//   (política de reprodução automática). Sem o clique — ou com o áudio que
+//   não está rodando por qualquer motivo —, `tocarSomDoAviso` devolve false e
+//   quem chama deixa o pop-up sem `silent`: o sistema decide, como antes —
+//   nunca um pop-up mudo por causa do CRM.
 // - ⚠️ Duas abas recebem o MESMO INSERT pelo realtime. O toque sai uma vez a
 //   cada `INTERVALO_DO_SOM_MS`, entre as abas: a trava (`navigator.locks`)
 //   serializa a pergunta "alguém tocou agora?" e o carimbo no localStorage a
@@ -32,7 +33,17 @@ let contexto: AudioContext | null = null;
 
 function contextoDeAudio(): AudioContext | null {
   if (typeof window === "undefined" || typeof window.AudioContext === "undefined") return null;
-  if (!contexto || contexto.state === "closed") contexto = new window.AudioContext();
+  if (!contexto || contexto.state === "closed") {
+    // ⚠️ O construtor pode lançar (sem saída de áudio, limite de contextos).
+    // Quem chama decide o `silent` DENTRO do `new Notification(...)`: um erro
+    // aqui derrubaria o próprio pop-up.
+    try {
+      contexto = new window.AudioContext();
+    } catch (erro) {
+      console.warn("[som-do-aviso] sem áudio:", erro);
+      return null;
+    }
+  }
   return contexto;
 }
 
@@ -101,18 +112,32 @@ function tocarSeNinguemTocou(): void {
  * `silent` do pop-up na mesma linha, sem um `await` entre a última olhada na
  * tela e o pop-up (`use-browser-notifications.ts`).
  *
- * Devolve true quando o som do CRM cobre este aviso — tocando agora ou porque
- * outro toque saiu há menos de `INTERVALO_DO_SOM_MS` —, e o pop-up pode sair
- * calado. False = a aba ainda não recebeu clique (o navegador recusaria o
- * som), o navegador não diz se recebeu, ou não há Web Audio: o pop-up sai sem
- * `silent`.
+ * Devolve true só com o áudio JÁ RODANDO (`state === "running"`): aí o som do
+ * CRM cobre este aviso — tocando agora ou porque outro toque saiu há menos de
+ * `INTERVALO_DO_SOM_MS` — e o pop-up pode sair calado. Qualquer outra coisa
+ * devolve false e o pop-up sai sem `silent` (o sistema decide).
+ *
+ * ⚠️ O estado é o que o navegador JÁ decidiu, não uma promessa: o Chrome
+ * cria o contexto rodando quando a política deixa e suspenso quando recusa.
+ * Devolver true antes disso (a ativação da aba, um `resume()` no ar) deixava
+ * o pop-up mudo quando o navegador recusava o áudio (Codex, PR #425). O
+ * contexto suspenso ganha um `resume()` para o próximo aviso já o achar
+ * rodando.
  */
 export function tocarSomDoAviso(): boolean {
   if (typeof window === "undefined" || typeof window.AudioContext === "undefined") return false;
-  // `hasBeenActive` = a aba já recebeu um clique ou tecla. ⚠️ Só com ela
-  // CONFIRMADA: sem a API não se sabe, e devolver true sobre um toque que o
-  // navegador vai recusar deixaria o pop-up mudo (revisão do PR).
-  if (!navigator.userActivation?.hasBeenActive) return false;
+  // `hasBeenActive` = a aba já recebeu um clique ou tecla. Sem ele, nem cria
+  // o contexto: o Chrome o criaria suspenso (e avisaria no console).
+  if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return false;
+
+  const ctx = contextoDeAudio();
+  if (!ctx) return false;
+  if (ctx.state !== "running") {
+    void ctx.resume().catch(() => {
+      // Recusado de novo: o sistema continua decidindo, aviso a aviso.
+    });
+    return false;
+  }
 
   if (navigator.locks) {
     void navigator.locks.request(TRAVA_DO_SOM, tocarSeNinguemTocou).catch(tocarSeNinguemTocou);

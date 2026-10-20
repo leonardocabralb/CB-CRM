@@ -358,8 +358,10 @@ na casca e o cartão em *Seu perfil*. Pino estrutural:
   forçado** (D4): `silent` é sempre `pref.somX && tocarSomDoAviso()`. Forçado,
   quem ouvia o som do Windows nas mensagens o perderia sem saber.
   `tocarSomDoAviso` é SÍNCRONO (nenhum `await` entre o `vendoAgora` e o aviso)
-  e devolve false sem clique na aba (o Chrome recusaria o som): o pop-up sai
-  sem `silent`. Um toque a cada 10 s ENTRE as abas (`navigator.locks` +
+  e só devolve true com o áudio JÁ rodando (`state === "running"`, o que o
+  navegador já decidiu): sem clique na aba ou com o áudio suspenso, false, e
+  o pop-up sai sem `silent` (Codex, #425: true antes disso deixava o pop-up
+  mudo). Um toque a cada 10 s ENTRE as abas (`navigator.locks` +
   carimbo `cb-som-do-aviso`): as duas recebem o mesmo INSERT.
 - **O clique marca lido** (`.is('read_at', null)`: zero linhas = já lido
   noutro lugar, não é falha) e leva por `rotaDoAviso`, com

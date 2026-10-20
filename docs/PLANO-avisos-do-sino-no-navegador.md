@@ -70,9 +70,11 @@
   conversa à vista). Sem a Caixa de entrada o cartão nem aparece, então não
   há pop-up: a pessoa não teria onde desligá-lo (achado da revisão).
 - `src/lib/notifications/som-do-aviso.ts`: toque curto gerado pelo Web Audio
-  (sem arquivo). O Chrome só deixa tocar depois de um clique na aba: sem ele
-  (ou sem a API que o confirma), devolve false e o pop-up sai sem `silent` (o
-  sistema decide). Uma vez por 10 s no máximo, ENTRE ABAS (`navigator.locks`
+  (sem arquivo). O Chrome só deixa tocar depois de um clique na aba. Devolve
+  true só com o áudio JÁ rodando; sem clique ou com o áudio suspenso (o
+  `resume()` fica para o próximo aviso), devolve false e o pop-up sai sem
+  `silent` (o sistema decide). Achado do Codex no #425: devolver true antes
+  disso deixava o pop-up mudo quando o navegador recusava o áudio. Uma vez por 10 s no máximo, ENTRE ABAS (`navigator.locks`
   + carimbo no `localStorage`; a trava se solta na hora): duas abas recebem o
   mesmo INSERT.
 - `src/hooks/use-avisos-do-sino-no-navegador.ts`: ouve INSERT em
