@@ -161,6 +161,28 @@ describe('problemasDoRascunho — o que desliga o Salvar', () => {
     const r = com(rascunhoDaLinha(LINHA), { corDoIcone: '' });
     expect(problemasDoRascunho(GRAVADA, r)).toEqual([]);
   });
+
+  // Revisão do Codex no #420: `.length` conta unidades UTF-16 (emoji = 2),
+  // e a rota e o CHECK contam ponto de código. 31 emojis são 62 unidades e
+  // 31 caracteres — a aba não pode recusar o que o banco aceita.
+  it('conta emoji como UM caractere, como a rota e o CHECK', () => {
+    const emoji = '\u{1F680}';
+    const cabe = com(rascunhoDaLinha(LINHA), {
+      nome: emoji.repeat(31),
+      nomeCurto: emoji.repeat(20),
+    });
+    expect(emoji.repeat(31).length).toBe(62);
+    expect(problemasDoRascunho(GRAVADA, cabe)).toEqual([]);
+
+    const passa = com(rascunhoDaLinha(LINHA), {
+      nome: emoji.repeat(61),
+      nomeCurto: emoji.repeat(21),
+    });
+    expect(problemasDoRascunho(GRAVADA, passa)).toEqual([
+      'nome_longo',
+      'nome_curto_longo',
+    ]);
+  });
 });
 
 describe('mudancasDoRascunho e formularioDoRascunho — só o que mudou vai', () => {

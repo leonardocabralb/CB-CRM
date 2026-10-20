@@ -12,6 +12,7 @@ import { supabaseAdmin } from '@/lib/automations/admin-client'
 import {
   BUCKET_DA_MARCA,
   COLUNA_DA_PECA,
+  caracteres,
   corValida,
   LIMITE_DO_NOME,
   LIMITE_DO_NOME_CURTO,
@@ -140,8 +141,8 @@ async function recusaDeEscrita(ctx: AccountContext): Promise<NextResponse | null
 }
 
 // Ponto de código, não unidade UTF-16: é o que o `char_length` do CHECK
-// conta (um emoji vale 1 lá e 2 em `.length`).
-const tamanho = (texto: string) => [...texto].length
+// conta (um emoji vale 1 lá e 2 em `.length`). A aba conta pela MESMA função.
+const tamanho = caracteres
 
 /** Texto aparado; `undefined` = o campo não veio (ou veio como arquivo). */
 function textoDe(form: FormData, campo: string): string | undefined {

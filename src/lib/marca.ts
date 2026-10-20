@@ -96,6 +96,15 @@ export const TIPOS_DA_PECA: Record<PecaDaMarca, readonly string[]> = {
 export const LIMITE_DO_NOME = 60
 export const LIMITE_DO_NOME_CURTO = 20
 
+/**
+ * Tamanho de um nome como o banco conta (`char_length`: ponto de código).
+ * ⚠️ Nunca `.length` nem `maxLength`: contam unidades UTF-16, e um emoji
+ * vale 2 — a aba recusaria um nome que a rota e o CHECK aceitam.
+ */
+export function caracteres(texto: string): number {
+  return [...texto].length
+}
+
 /** A marca resolvida: o que as telas desenham. */
 export interface Marca {
   /** `false` = o padrão do produto (Atlas CRM). */

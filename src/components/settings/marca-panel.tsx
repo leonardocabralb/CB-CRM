@@ -44,6 +44,7 @@ import {
   LIMITE_DO_NOME_CURTO,
   NOME_PADRAO,
   PECAS_DA_MARCA,
+  caracteres,
   corValida,
   type PecaDaMarca,
 } from '@/lib/marca';
@@ -496,15 +497,17 @@ export function FormularioDaMarca({
                   <Label htmlFor="marca-nome">{t('nomeLabel')}</Label>
                   <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
                     {t('contador', {
-                      atual: rascunho.nome.length,
+                      atual: caracteres(rascunho.nome),
                       limite: LIMITE_DO_NOME,
                     })}
                   </span>
                 </div>
+                {/* Sem `maxLength`: ele conta unidades UTF-16 (emoji = 2) e
+                    cortaria um nome que a rota aceita. O limite é cobrado
+                    por `problemasDoRascunho`, com `caracteres`. */}
                 <Input
                   id="marca-nome"
                   value={rascunho.nome}
-                  maxLength={LIMITE_DO_NOME}
                   disabled={ocupado}
                   aria-describedby="marca-nome-dica"
                   onChange={(e) => {
@@ -527,7 +530,7 @@ export function FormularioDaMarca({
                   </Label>
                   <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
                     {t('contador', {
-                      atual: rascunho.nomeCurto.length,
+                      atual: caracteres(rascunho.nomeCurto),
                       limite: LIMITE_DO_NOME_CURTO,
                     })}
                   </span>
@@ -535,7 +538,6 @@ export function FormularioDaMarca({
                 <Input
                   id="marca-nome-curto"
                   value={rascunho.nomeCurto}
-                  maxLength={LIMITE_DO_NOME_CURTO}
                   disabled={ocupado}
                   aria-describedby="marca-nome-curto-dica"
                   onChange={(e) => {

@@ -21,6 +21,7 @@ import {
   LIMITE_DO_NOME_CURTO,
   PECAS_DA_MARCA,
   TETO_DE_BYTES_DA_MARCA,
+  caracteres,
   corValida,
   type LinhaDaMarca,
   type Marca,
@@ -262,8 +263,9 @@ export function problemasDoRascunho(
   const problemas: CodigoDeErro[] = [];
   const nome = rascunho.nome.trim();
   if (!nome) problemas.push('nome_obrigatorio');
-  else if (nome.length > LIMITE_DO_NOME) problemas.push('nome_longo');
-  if (rascunho.nomeCurto.trim().length > LIMITE_DO_NOME_CURTO) {
+  // `caracteres`, nunca `.length`: a rota e o CHECK contam ponto de código.
+  else if (caracteres(nome) > LIMITE_DO_NOME) problemas.push('nome_longo');
+  if (caracteres(rascunho.nomeCurto.trim()) > LIMITE_DO_NOME_CURTO) {
     problemas.push('nome_curto_longo');
   }
   const cor = rascunho.corDoIcone.trim();
