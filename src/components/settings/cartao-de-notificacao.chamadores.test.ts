@@ -182,4 +182,30 @@ describe('cartão de notificação do navegador × ouvinte', () => {
     const cartao = semComentarios(ler('components/settings/browser-notifications-card.tsx'));
     expect(cartao).toMatch(/const supported = permission !== 'unsupported' && !toque;/);
   });
+
+  it('avisos do SINO: montados no ouvinte, sem os recortes das mensagens, e o som nunca força o silêncio', () => {
+    // Pedido do operador (20/10/2026): menção e tarefa acendiam só o sino.
+    // O ouvinte é do original: a versão crua tira o pop-up do sino sem erro.
+    const ouvinte = semComentarios(ler('components/notifications/browser-notifications-listener.tsx'));
+    expect(ouvinte).toMatch(/useBrowserNotifications\(\);\s*useAvisosDoSinoNoNavegador\(\);/);
+    const sino = semComentarios(ler('hooks/use-avisos-do-sino-no-navegador.ts'));
+    expect(sino).toMatch(/table: "notifications", filter: `user_id=eq\.\$\{userId\}`/);
+    expect(sino).toMatch(/if \(!avisoPossivelNoAparelho\(\)\) return;/);
+    // A régua cala de verdade: chamar e ignorar passaria numa busca pela chamada.
+    expect(sino).toMatch(/const silencio = silencioDoSino\(\{[\s\S]*?\}\);\s*if \(silencio\) return;\s*void exibir\(aviso\);/);
+    // D3: perfil, "quais conversas" e "Conexões que avisam" não calam o sino.
+    expect(sino).not.toMatch(/silencioDoAviso|silenciadas|conversaNoEscopo/);
+    // D6: o clique marca lido, como o clique no sino.
+    expect(sino).toMatch(/void marcarLido\(aviso\.id\);/);
+    // D4: desligado (ou a aba sem clique), o SISTEMA decide o som — `silent`
+    // forçado tiraria de quem ouvia o som do Windows nas mensagens.
+    const mensagens = semComentarios(ler('hooks/use-browser-notifications.ts'));
+    for (const fonte of [sino, mensagens]) expect(fonte).not.toMatch(/silent:\s*true/);
+    expect(sino).toMatch(/silent: pref\.somNoSino && tocarSomDoAviso\(\),/);
+    expect(mensagens).toMatch(/silent: pref\.somNasMensagens && tocarSomDoAviso\(\),/);
+    // D1: chave própria, que pede a permissão por si.
+    const cartao = semComentarios(ler('components/settings/browser-notifications-card.tsx'));
+    expect(cartao).toMatch(/const sinoLigado = preferencia\.sino && permission === 'granted';/);
+    expect(cartao).toMatch(/onCheckedChange=\{\(next\) => void onToggle\('sino', next\)\}/);
+  });
 });

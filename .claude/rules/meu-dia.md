@@ -16,6 +16,7 @@ paths:
   - "src/components/notifications/**"
   - "src/lib/notifications/**"
   - "src/hooks/use-browser-notifications*"
+  - "src/hooks/use-avisos-do-sino*"
   - "src/components/settings/browser-notifications-card.tsx"
   - "src/components/settings/profile-form.tsx"
   - "src/components/settings/celular-card.tsx"
@@ -334,3 +335,35 @@ na casca e o cartão em *Seu perfil*. Pino estrutural:
 - ⚠️ **Aparelho de toque é "não suportado"** (`avisoPossivelNoAparelho`,
   `MIDIA_DE_TOQUE`): sem service worker, `new Notification()` lança no Chrome
   do Android e no app instalado no iPhone — a chave ligaria e nada chegaria.
+
+### Avisos do SINO no navegador (20/10/2026)
+
+`src/lib/notifications/aviso-do-sino.ts` (puro), `som-do-aviso.ts` e
+`src/hooks/use-avisos-do-sino-no-navegador.ts`, montado no
+`BrowserNotificationsListener` ao lado do de mensagens. Decisões D1–D6:
+`docs/PLANO-avisos-do-sino-no-navegador.md`.
+
+- ⚠️ **Todo tipo do sino vira pop-up, SEM os recortes das mensagens** (D2,
+  D3): conexões do perfil, "quais conversas" e "Conexões que avisam" não
+  calam a menção, como o sino. Cala só: perfil sem a Caixa de entrada (a
+  mesma porta das mensagens — sem ela o cartão some e não haveria onde
+  desligar), o aviso de outra pessoa, o já lido, o repetido (o realtime
+  reentrega) e a anotação da conversa aberta na aba visível — o de tarefa
+  nunca, porque o destino dele é Tarefas.
+- **Tópico novo a cada inscrição** (`geracaoDoCanal`): `channel(nome)` devolve
+  o canal que ainda está saindo, e o ouvinte ficaria mudo.
+- **Chave própria (`sino`), LIGADA no padrão e independente de `ativo`** (D1):
+  quem já deu a permissão passa a receber sem abrir o cartão.
+- ⚠️⚠️ **Som do CRM desligado = o sistema decide, nunca `silent: true`
+  forçado** (D4): `silent` é sempre `pref.somX && tocarSomDoAviso()`. Forçado,
+  quem ouvia o som do Windows nas mensagens o perderia sem saber.
+  `tocarSomDoAviso` é SÍNCRONO (nenhum `await` entre o `vendoAgora` e o aviso)
+  e devolve false sem clique na aba (o Chrome recusaria o som): o pop-up sai
+  sem `silent`. Um toque a cada 10 s ENTRE as abas (`navigator.locks` +
+  carimbo `cb-som-do-aviso`): as duas recebem o mesmo INSERT.
+- **O clique marca lido** (`.is('read_at', null)`: zero linhas = já lido
+  noutro lugar, não é falha) e leva por `rotaDoAviso`, com
+  `EVENTO_ABRIR_CONVERSA` para o inbox já montado. A tag é `sino:<id>`: a do
+  aviso de mensagem é o id da conversa, e os dois se substituiriam.
+- **A conversa atribuída lê o contato** (o texto da 0027 é em inglês) e sai na
+  voz passiva (`textoDoAviso` sem autor): o pop-up não carrega os membros.

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useSyncExternalStore } from 'react';
-import { Bell, BellRing, CircleAlert, Loader2 } from 'lucide-react';
+import { Bell, BellRing, CircleAlert, Loader2, Volume2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTranslations } from 'next-intl';
 
@@ -34,7 +34,11 @@ import {
   getNotificationPermission,
   type BrowserNotifyPermission,
 } from '@/lib/notifications/browser-notify';
-import type { QuaisConversas } from '@/lib/notifications/aviso-no-navegador';
+import type { PreferenciaDeAviso, QuaisConversas } from '@/lib/notifications/aviso-no-navegador';
+import { tocarSomAgora } from '@/lib/notifications/som-do-aviso';
+
+/** As duas chaves que pedem a permissão do navegador. */
+type ChaveDoAviso = 'ativo' | 'sino';
 
 // `Notification.permission` has no change event of its own. Re-read it
 // whenever the tab regains focus (the user may have flipped the site
@@ -59,7 +63,9 @@ const serverPermission = (): BrowserNotifyPermission => 'unsupported';
  * desligada sempre que ela falta. Portado na Fase 8 do plano do merge do
  * upstream: a preferência é POR PESSOA neste navegador, e a pessoa escolhe
  * QUAIS conversas avisam e se o aviso mostra o texto (decisão P2) — e, desde
- * 02/10/2026, de quais CONEXÕES do perfil quer aviso.
+ * 02/10/2026, de quais CONEXÕES do perfil quer aviso. Desde 20/10/2026, a
+ * chave própria dos avisos do SINO ("Menções e tarefas", D1) e o som do CRM
+ * por tipo (D4); "Mostrar o texto" vale para os dois (D5).
  */
 export function BrowserNotificationsCard({ className }: { className?: string }) {
   const t = useTranslations('Settings.browserNotifications');
@@ -88,47 +94,60 @@ export function BrowserNotificationsCard({ className }: { className?: string }) 
     getNotificationPermission,
     serverPermission,
   );
-  const [requesting, setRequesting] = useState(false);
+  // Qual chave está pedindo a permissão: o carregando aparece na linha dela.
+  const [requesting, setRequesting] = useState<ChaveDoAviso | null>(null);
 
   // Aparelho de toque: a API existe, mas sem service worker o aviso nunca
   // aparece (ver `avisoPossivelNoAparelho`). Dizer "não suportado" é melhor
   // que uma chave que liga e não faz nada.
   const toque = useMediaQuery(MIDIA_DE_TOQUE);
   const supported = permission !== 'unsupported' && !toque;
-  const checked = preferencia.ativo && permission === 'granted';
+  // As duas chaves são independentes (D1); a permissão do navegador é uma só.
+  const mensagensLigadas = preferencia.ativo && permission === 'granted';
+  const sinoLigado = preferencia.sino && permission === 'granted';
+  const algumLigado = mensagensLigadas || sinoLigado;
 
-  const onToggle = async (next: boolean) => {
+  const comChave = (chave: ChaveDoAviso, valor: boolean): PreferenciaDeAviso =>
+    chave === 'ativo' ? { ...preferencia, ativo: valor } : { ...preferencia, sino: valor };
+
+  const onToggle = async (chave: ChaveDoAviso, next: boolean) => {
     if (!next) {
-      gravar({ ...preferencia, ativo: false });
+      gravar(comChave(chave, false));
       return;
     }
     if (permission === 'granted') {
-      gravar({ ...preferencia, ativo: true });
+      gravar(comChave(chave, true));
       return;
     }
     if (permission === 'denied') {
       toast.error(t('statusDenied'), { description: t('deniedHint') });
       return;
     }
-    setRequesting(true);
+    setRequesting(chave);
     try {
       const result = await Notification.requestPermission();
       // Também dispara o evento de mudança, que relê `permission`.
-      gravar({ ...preferencia, ativo: result === 'granted' });
+      gravar(comChave(chave, result === 'granted'));
       if (result === 'denied') {
         toast.error(t('permissionDeniedToast'), { description: t('deniedHint') });
       }
     } finally {
-      setRequesting(false);
+      setRequesting(null);
     }
   };
 
   const sendTest = () => {
+    // O teste toca o som do CRM se algum tipo ligado o usa: é um clique, então
+    // o navegador deixa tocar.
+    const comSom =
+      (sinoLigado && preferencia.somNoSino) || (mensagensLigadas && preferencia.somNasMensagens);
+    if (comSom) tocarSomAgora();
     try {
       new Notification(t('testTitle'), {
         body: t('testBody'),
         icon: '/icon',
         tag: 'cb-teste-de-notificacao',
+        silent: comSom,
       });
     } catch {
       toast.error(t('unsupported'));
@@ -174,28 +193,19 @@ export function BrowserNotificationsCard({ className }: { className?: string }) 
                 <p className="text-xs text-muted-foreground">{t('toggleDesc')}</p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                {requesting && (
+                {requesting === 'ativo' && (
                   <Loader2 className="size-4 animate-spin text-muted-foreground" />
                 )}
                 <Switch
-                  checked={checked}
-                  onCheckedChange={(next) => void onToggle(next)}
-                  disabled={requesting || permission === 'denied'}
+                  checked={mensagensLigadas}
+                  onCheckedChange={(next) => void onToggle('ativo', next)}
+                  disabled={requesting !== null || permission === 'denied'}
                   aria-label={t('toggleLabel')}
                 />
               </div>
             </div>
 
-            <p className="text-xs text-muted-foreground">{t(statusKey)}</p>
-
-            {permission === 'denied' && (
-              <p className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-                <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
-                <span>{t('deniedHint')}</span>
-              </p>
-            )}
-
-            {checked && (
+            {mensagensLigadas && (
               <div className="space-y-4 rounded-md border border-border p-3">
                 <div className="space-y-1.5">
                   <p className="text-sm font-medium text-foreground">{t('whichLabel')}</p>
@@ -261,6 +271,39 @@ export function BrowserNotificationsCard({ className }: { className?: string }) 
                   </div>
                 )}
 
+                <p className="text-xs text-muted-foreground">{t('scopeNote')}</p>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-4 rounded-md border border-border p-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">{t('sinoLabel')}</p>
+                <p className="text-xs text-muted-foreground">{t('sinoDesc')}</p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {requesting === 'sino' && (
+                  <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                )}
+                <Switch
+                  checked={sinoLigado}
+                  onCheckedChange={(next) => void onToggle('sino', next)}
+                  disabled={requesting !== null || permission === 'denied'}
+                  aria-label={t('sinoLabel')}
+                />
+              </div>
+            </div>
+
+            <p className="text-xs text-muted-foreground">{t(statusKey)}</p>
+
+            {permission === 'denied' && (
+              <p className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
+                <span>{t('deniedHint')}</span>
+              </p>
+            )}
+
+            {algumLigado && (
+              <div className="space-y-4 rounded-md border border-border p-3">
                 <div className="flex items-center justify-between gap-4">
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-foreground">
@@ -272,10 +315,38 @@ export function BrowserNotificationsCard({ className }: { className?: string }) 
                     checked={preferencia.mostrarTexto}
                     onCheckedChange={(next) => gravar({ ...preferencia, mostrarTexto: next })}
                     aria-label={t('showTextLabel')}
+                    className="shrink-0"
                   />
                 </div>
 
-                <p className="text-xs text-muted-foreground">{t('scopeNote')}</p>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-4">
+                    <p className="text-sm font-medium text-foreground">{t('somLabel')}</p>
+                    <Button type="button" variant="ghost" size="sm" onClick={tocarSomAgora}>
+                      <Volume2 className="size-4" />
+                      {t('somOuvir')}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{t('somDesc')}</p>
+                  {sinoLigado && (
+                    <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
+                      <Checkbox
+                        checked={preferencia.somNoSino}
+                        onCheckedChange={(v) => gravar({ ...preferencia, somNoSino: v })}
+                      />
+                      {t('somNoSino')}
+                    </label>
+                  )}
+                  {mensagensLigadas && (
+                    <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
+                      <Checkbox
+                        checked={preferencia.somNasMensagens}
+                        onCheckedChange={(v) => gravar({ ...preferencia, somNasMensagens: v })}
+                      />
+                      {t('somNasMensagens')}
+                    </label>
+                  )}
+                </div>
               </div>
             )}
 
@@ -284,7 +355,7 @@ export function BrowserNotificationsCard({ className }: { className?: string }) 
               variant="outline"
               size="sm"
               onClick={sendTest}
-              disabled={!checked}
+              disabled={!algumLigado}
             >
               <BellRing className="size-4" />
               {t('sendTest')}
