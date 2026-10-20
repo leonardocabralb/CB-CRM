@@ -207,5 +207,10 @@ describe('cartão de notificação do navegador × ouvinte', () => {
     const cartao = semComentarios(ler('components/settings/browser-notifications-card.tsx'));
     expect(cartao).toMatch(/const sinoLigado = preferencia\.sino && permission === 'granted';/);
     expect(cartao).toMatch(/onCheckedChange=\{\(next\) => void onToggle\('sino', next\)\}/);
+    // O teste também: calado só com o toque CONFIRMADO, nunca pela preferência
+    // sozinha — sem Web Audio, sairia um teste mudo (Codex, #425).
+    expect(cartao).toMatch(/const somDoCrm = comSom && tocarSomAgora\(\);/);
+    expect(cartao).toMatch(/silent: somDoCrm,/);
+    expect(cartao).not.toMatch(/silent: comSom/);
   });
 });

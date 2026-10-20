@@ -147,9 +147,23 @@ export function tocarSomDoAviso(): boolean {
   return true;
 }
 
-/** O botão "Ouvir" do cartão: toca na hora, fora do intervalo (é um clique). */
-export function tocarSomAgora(): void {
+/**
+ * Os botões "Ouvir" e "Enviar notificação de teste" do cartão: toca na hora,
+ * fora do intervalo (é um clique). Devolve true só quando o toque SAIU — o
+ * áudio já rodando —, como `tocarSomDoAviso`: o teste só sai calado com o som
+ * do CRM confirmado, senão seria um teste mudo e enganoso (Codex, PR #425).
+ * Com o áudio suspenso, o clique o retoma e toca em seguida, mas devolve
+ * false: o teste fica com o som do sistema.
+ */
+export function tocarSomAgora(): boolean {
+  const ctx = contextoDeAudio();
+  if (!ctx) return false;
+  if (ctx.state === "running") {
+    tocarNotas(ctx);
+    return true;
+  }
   void tocarJa().catch((erro: unknown) => {
     console.warn("[som-do-aviso] o som não tocou:", erro);
   });
+  return false;
 }

@@ -106,6 +106,24 @@ describe("tocarSomDoAviso — só cala o pop-up com o áudio rodando", () => {
     expect(tocar()).toBe(false);
   });
 
+  it("botão de teste/Ouvir: true só quando o toque saiu; suspenso retoma, mas devolve false", async () => {
+    navegador({ estado: "running" });
+    expect((await moduloNovo()).tocarSomAgora()).toBe(true);
+
+    const { criados } = navegador({ estado: "suspended" });
+    expect((await moduloNovo()).tocarSomAgora()).toBe(false);
+    expect(criados[0].resume).toHaveBeenCalledTimes(1);
+
+    navegador({ construtorLanca: true });
+    expect((await moduloNovo()).tocarSomAgora()).toBe(false);
+  });
+
+  it("botão de teste fora do intervalo: toca mesmo logo depois de outro toque", async () => {
+    const { armazenado } = navegador({ estado: "running" });
+    armazenado.set("cb-som-do-aviso", String(Date.now()));
+    expect((await moduloNovo()).tocarSomAgora()).toBe(true);
+  });
+
   it("dentro do intervalo de outro toque: true sem tocar de novo (o som já cobriu)", async () => {
     const { armazenado } = navegador({ estado: "running" });
     armazenado.set("cb-som-do-aviso", String(Date.now()));

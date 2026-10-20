@@ -137,17 +137,18 @@ export function BrowserNotificationsCard({ className }: { className?: string }) 
   };
 
   const sendTest = () => {
-    // O teste toca o som do CRM se algum tipo ligado o usa: é um clique, então
-    // o navegador deixa tocar.
+    // O teste toca o som do CRM se algum tipo ligado o usa. ⚠️ Só sai calado
+    // com o toque CONFIRMADO (`tocarSomAgora` devolve se saiu): pela
+    // preferência apenas, sem Web Audio o teste ficaria mudo (Codex, #425).
     const comSom =
       (sinoLigado && preferencia.somNoSino) || (mensagensLigadas && preferencia.somNasMensagens);
-    if (comSom) tocarSomAgora();
+    const somDoCrm = comSom && tocarSomAgora();
     try {
       new Notification(t('testTitle'), {
         body: t('testBody'),
         icon: '/icon',
         tag: 'cb-teste-de-notificacao',
-        silent: comSom,
+        silent: somDoCrm,
       });
     } catch {
       toast.error(t('unsupported'));
