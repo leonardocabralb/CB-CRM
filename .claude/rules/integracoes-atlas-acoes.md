@@ -30,6 +30,12 @@ Fase 5.
   é extraído dele para "compartilhar" (`acoes.ts` copia as ~20 linhas de
   conexão e vínculo). Pinos com a config EXATA de produção:
   `passo-de-integracao.test.ts`, `validate.test.ts` e `engine.test.ts`.
+  Exceção escrita (marca configurável, 1094): em `criar-cliente.ts` mudou
+  só a FONTE do `nomeDoApp` — `(await obterMarca()).nome`, lido na hora, no
+  lugar da constante que acabou —, e em `formatar.ts` só o comentário dele.
+  Config, decisão e formato ficam; a nota do cadastro passa a citar a marca
+  vigente ("Enviado pelo Atlas CRM" enquanto não houver marca gravada). O
+  #421 trocou só os TEXTOS de motivo e detalhe ("Atlas" → "Atlas Gestor").
 - **UMA entrada no menu** ("Atlas Gestor", `t("atlas.no")`): `ADDABLE_STEPS`
   tem só `atlas_criar_cliente`; o nó nasce "Criar cliente" — ou "Criar
   tarefa" na automação do gatilho do Atlas. A ação se escolhe DENTRO do passo
@@ -119,7 +125,7 @@ Fase 5.
   descarta em silêncio o `clientId` que não acha: o detalhe diz "pedida com o
   cliente", nunca "ligada". Prazo = `somarDias(diaNoFuso(…))` (nunca
   `toISOString().slice`); descrição vazia leva o nome da automação e o
-  `NOME_DO_APP`.
+  nome da marca, lido na hora (`obterMarca()`).
 - **Transcrição**: a da reunião MAIS RECENTE da ficha na janela
   (`cb_reunioes_transcritas`, padrão 72 h). Pendente, sem transcrição ou
   falha FALHA — nunca manda a anterior (seria outra reunião). ⚠️ Ligada pelo

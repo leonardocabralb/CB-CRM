@@ -64,13 +64,14 @@ Vale ao mexer na altura da casca, no fio e no compositor em aparelho de toque, n
 
 ### App instalado no celular: o manifesto existe por causa do ESCOPO
 
-`src/app/manifest.ts`, `src/app/apple-icon.tsx`, `NOME_CURTO_DO_APP` e `TAMANHOS_DO_ICONE` em `src/lib/marca.ts`. Pino: `src/app/manifest.test.ts`.
+`src/app/manifest.ts`, `src/app/apple-icon.tsx` (os dois leem `obterMarca()`) e `TAMANHOS_DO_ICONE` em `src/lib/marca.ts`. Pino: `src/app/manifest.test.ts`. A marca em si: `.claude/rules/marca.md`.
 
 - ⚠️⚠️ **`scope: "/"` não é detalhe:** sem ele o iPhone decide sozinho quais endereços são do app, e abrir uma conversa (`/inbox?c=…`) cobria a tela com a moldura de navegador. Estreitar o escopo devolve a moldura. `id: "/"` fixo: trocar a tela de abertura não faz o Android tratar o app como outro.
-- ⚠️ **O iPhone lê manifesto e ícone NA INSTALAÇÃO:** mudança de nome, ícone, escopo ou tela de abertura só chega a quem apagar o ícone e instalar de novo (com login de novo). Avisar o operador a cada mudança aqui.
-- ⚠️ **O ícone é fundo até a borda, sem canto arredondado e sem transparência** (`apple-icon.tsx`): o iPhone arredonda sozinho e pinta transparência de preto. Não reaproveitar o `icon.tsx` da aba do navegador.
+- ⚠️ **O iPhone lê manifesto e ícone NA INSTALAÇÃO:** mudança de nome, ícone, escopo ou tela de abertura — inclusive gravar a marca na aba Marca — só chega a quem apagar o ícone e instalar de novo (com login de novo). Avisar o operador a cada mudança aqui.
+- ⚠️ **O ícone é fundo até a borda, sem canto arredondado e sem transparência** (`apple-icon.tsx`: o símbolo sobre a `corDoIcone` da marca): o iPhone arredonda sozinho e pinta transparência de preto. Não reaproveitar o `icon.tsx` da aba do navegador.
 - ⚠️ **`TAMANHOS_DO_ICONE` alimenta os DOIS lados** (os arquivos do `apple-icon`, em `/apple-icon/<lado>`, e os `src` do manifesto): tamanho que só um lado conhece vira ícone quebrado, sem erro.
 - ⚠️⚠️ **`metadata.icons` no `layout.tsx` DESLIGA os ícones de arquivo:** o Next só injeta `icon.tsx`/`apple-icon.tsx` quando o metadata não declara `icons`, e o `<head>` sairia sem `apple-touch-icon`. O upstream declara; foi removido. Um merge que o traga de volta tira o ícone do app sem conflito — o pino reprova.
-- **O nome embaixo do ícone é `NOME_CURTO_DO_APP`** (build-arg `NEXT_PUBLIC_APP_SHORT_NAME`, no `appleWebApp` do layout); sem ele vale o `NOME_DO_APP`, que o iPhone corta. Marca nunca vem de literal (regra da raiz).
+- **O nome embaixo do ícone é o NOME CURTO da marca** (aba Marca; `appleWebApp` do layout e `short_name` do manifesto); sem ele vale o nome, que o iPhone corta. Marca nunca vem de literal (regra da raiz).
+- ⚠️ **Manifesto e ícones são DINÂMICOS** (leem `obterMarca()` a cada pedido): assados no build, a marca gravada na aba nunca chegaria ao app instalado.
 - **Abre em `/inbox`** (decisão do operador: no celular o uso é atender). Quem abre deslogado passa pelo login e cai no Painel.
 - **Link recebido no WhatsApp abre no Safari, não no app instalado:** o iPhone não deixa link abrir app da Tela de Início. Não tem conserto do nosso lado.

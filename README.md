@@ -139,9 +139,10 @@ paridade por um portão no CI. O idioma é escolhido no build, em
 
 ## Marca
 
-Nome, logo e cores são configuração, não código. `NEXT_PUBLIC_APP_NAME` e
-`NEXT_PUBLIC_APP_LOGO_URL` definem os dois primeiros; as cores vivem no
-tema, em `src/lib/themes.ts`.
+Nome, logo e cores não são código. Nome e logo se trocam pela tela, em
+*Configurações → Marca* (sem marca gravada, o sistema se chama Atlas CRM;
+ver [`docs/INSTALACAO.md`](./docs/INSTALACAO.md), passo 6.1); as cores
+vivem no tema, em `src/lib/themes.ts`.
 
 ## Origem e licença
 

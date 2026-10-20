@@ -57,6 +57,9 @@ export type SecaoId =
   // de limpeza no banco.
   | "assinatura"
   | "members"
+  // Marca (1094): nome e logo da INSTALAÇÃO. Só admin DE VERDADE — está em
+  // `SECOES_SO_DE_ADMIN` logo abaixo, pela mesma razão de `webhooks`.
+  | "marca"
   | "integracoes"
   // Webhooks (982): as duas direções — os de ENTRADA, que sistemas de fora
   // acionam, e os de SAÍDA da 028. Só admin DE VERDADE: está em
@@ -128,6 +131,7 @@ export const TODAS_AS_SECOES: SecaoId[] = [
   "fields",
   "assinatura",
   "members",
+  "marca",
   "integracoes",
   "api",
   "webhooks",
@@ -203,10 +207,16 @@ export const SECOES_TRAVADAS_PARA_ADMIN: readonly SecaoId[] = [
  * ⚠️ `api` está no mesmo caso e NÃO foi mexida aqui: é seção antiga, o
  * comportamento dela é o que a conta já vive hoje, e mudá-la de carona num
  * PR de webhooks esconderia a decisão. Vale revisitar em separado.
+ *
+ * `marca` (1094) entra pela mesma razão de `webhooks`: as escritas de
+ * `/api/cb/marca` são `requireRole("admin")` (e, além disso, só da conta
+ * dona da instalação). Num perfil `agent` a seção abriria só para dizer
+ * "você não pode".
  */
 export const SECOES_SO_DE_ADMIN: readonly SecaoId[] = [
   "perfis",
   "webhooks",
+  "marca",
 ] as const;
 
 /**

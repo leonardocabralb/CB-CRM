@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { NOME_DO_APP } from "@/lib/marca";
+import { obterMarca } from "@/lib/marca-servidor";
 
 import { AtlasError, criarClienteAtlas, type ClienteAtlas, type ClienteDoAtlas } from "./cliente";
 import { codigoDe, lerChaveDoAtlas, registrarConferencia } from "./conexao";
@@ -216,7 +216,9 @@ export async function criarOuReativarNoAtlas(
     linkDaConversa: entrada.linkDaConversa,
     tipoDeContrato: entrada.tipoDeContrato,
     agora: entrada.agora,
-    nomeDoApp: NOME_DO_APP,
+    // A nota do cadastro diz por qual sistema ele veio: o nome da marca da
+    // instalação, lido agora (Configurações → Marca).
+    nomeDoApp: (await obterMarca()).nome,
   };
 
   // O que JÁ foi escrito no Atlas: falha depois disso diz, para ninguém rodar de novo às cegas.
