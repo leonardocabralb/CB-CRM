@@ -54,8 +54,12 @@ const banco = vi.hoisted(() => ({
   linha: null as Linha | null,
   erroNaLeitura: null as { message: string } | null,
   erroNaGravacao: null as { message: string } | null,
+  /** O status HTTP do erro: 4xx = recusa comprovada; 5xx/504 = incerto. */
+  statusNaGravacao: 400,
   /** Grava e AINDA ASSIM devolve erro (tempo esgotado depois do COMMIT). */
   gravaEFalha: false,
+  /** O upsert LANÇA (rede caiu no meio). */
+  lancaNaGravacao: false,
   erroNoDelete: null as { message: string } | null,
   erroNoUpload: null as { message: string } | null,
   gravacoes: [] as Linha[],
@@ -84,13 +88,14 @@ vi.mock('@/lib/automations/admin-client', () => ({
             single: async () => {
               expect(opcoes.onConflict).toBe('id')
               banco.gravacoes.push(valores)
+              if (banco.lancaNaGravacao) throw new TypeError('fetch failed')
               if (banco.erroNaGravacao && !banco.gravaEFalha) {
-                return { data: null, error: banco.erroNaGravacao }
+                return { data: null, error: banco.erroNaGravacao, status: banco.statusNaGravacao }
               }
               // O upsert do PostgREST: só as colunas ENVIADAS mudam.
               banco.linha = { ...(banco.linha ?? {}), ...valores }
-              if (banco.gravaEFalha) return { data: null, error: { message: 'timeout' } }
-              return { data: projetar(banco.linha, colunas), error: null }
+              if (banco.gravaEFalha) return { data: null, error: { message: 'timeout' }, status: 504 }
+              return { data: projetar(banco.linha, colunas), error: null, status: 201 }
             },
           }),
         }),
@@ -178,7 +183,9 @@ beforeEach(() => {
   banco.linha = null
   banco.erroNaLeitura = null
   banco.erroNaGravacao = null
+  banco.statusNaGravacao = 400
   banco.gravaEFalha = false
+  banco.lancaNaGravacao = false
   banco.erroNoDelete = null
   banco.erroNoUpload = null
   banco.gravacoes = []
@@ -436,9 +443,10 @@ describe('POST /api/cb/marca — gravar', () => {
     expect(remove.mock.calls[0]![0]).toEqual(['simbolo/antigo.png'])
   })
 
-  it('falha ao gravar: apaga o que ESTE pedido subiu, não toca nos antigos, não revalida', async () => {
+  it('gravação RECUSADA (4xx): apaga o que ESTE pedido subiu, não toca nos antigos, não revalida', async () => {
     banco.linha = { ...LINHA_ATUAL }
     banco.erroNaGravacao = { message: 'violates check constraint' }
+    banco.statusNaGravacao = 400
     const r = await POST(pedido([['nome', 'Nova'], ['simbolo', simbolo()]]))
     expect(await respostaDe(r)).toEqual({ status: 500, corpo: { erro: 'falha_no_banco' } })
     const subido = upload.mock.calls[0]![0]
@@ -455,6 +463,27 @@ describe('POST /api/cb/marca — gravar', () => {
     const r = await POST(pedido([['nome', 'Nova'], ['simbolo', simbolo()]]))
     expect(r.status).toBe(500)
     expect(banco.linha!.simbolo_path).toBe(upload.mock.calls[0]![0])
+    expect(remove).not.toHaveBeenCalled()
+  })
+
+  // Codex no #420: o 504 pode chegar ANTES do commit, e uma releitura ali
+  // ainda vê a linha antiga — apagar o upload deixaria a linha (quando o
+  // commit vier) apontando para arquivo apagado. Incerto não apaga nada.
+  it('gravação INCERTA (504) que ainda não aparece no banco: os arquivos novos ficam', async () => {
+    banco.linha = { ...LINHA_ATUAL }
+    banco.erroNaGravacao = { message: 'Gateway Timeout' }
+    banco.statusNaGravacao = 504
+    const r = await POST(pedido([['nome', 'Nova'], ['simbolo', simbolo()]]))
+    expect(await respostaDe(r)).toEqual({ status: 500, corpo: { erro: 'falha_no_banco' } })
+    expect(upload).toHaveBeenCalledTimes(1)
+    expect(remove).not.toHaveBeenCalled()
+  })
+
+  it('rede caiu no upsert (exceção): os arquivos novos ficam', async () => {
+    banco.linha = { ...LINHA_ATUAL }
+    banco.lancaNaGravacao = true
+    const r = await POST(pedido([['nome', 'Nova'], ['simbolo', simbolo()]]))
+    expect(await respostaDe(r)).toEqual({ status: 500, corpo: { erro: 'falha_no_banco' } })
     expect(remove).not.toHaveBeenCalled()
   })
 

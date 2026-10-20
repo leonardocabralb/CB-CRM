@@ -105,28 +105,6 @@ async function apagarArquivos(caminhos: string[], contexto: string) {
   }
 }
 
-/**
- * A gravação falhou: apaga o que ESTE pedido subiu — menos o que a linha
- * já aponta. ⚠️ Erro na resposta não prova que o banco não gravou (tempo
- * esgotado depois do COMMIT): apagar às cegas deixaria a linha apontando
- * para arquivo apagado. Sem conseguir reler, os arquivos ficam (órfão é
- * lixo; logo quebrado é defeito).
- */
-async function desfazerUploads(subidos: string[]) {
-  if (subidos.length === 0) return
-  let agora: LinhaDaMarca | null
-  try {
-    agora = await lerLinhaDaMarca()
-  } catch (falha) {
-    console.warn('[api/cb/marca] gravação incerta e releitura falhou; os arquivos novos ficam no bucket:', falha)
-    return
-  }
-  const vivos = new Set(PECAS_DA_MARCA.map((peca) => caminhoDa(agora, peca)))
-  await apagarArquivos(
-    subidos.filter((caminho) => !vivos.has(caminho)),
-    'desfazer o upload da gravação que falhou',
-  )
-}
 
 /** Conta de quem pede pode trocar a marca? Responde o erro pronto, ou `null`. */
 async function recusaDeEscrita(ctx: AccountContext): Promise<NextResponse | null> {
@@ -306,19 +284,32 @@ export async function POST(request: Request) {
   }
 
   let linhaNova: LinhaDaMarca | null = null
+  let recusaComprovada = false
   try {
-    const { data, error } = await supabaseAdmin()
+    const { data, error, status } = await supabaseAdmin()
       .from('cb_marca')
       .upsert(gravar, { onConflict: 'id' })
       .select(COLUNAS_DA_MARCA)
       .single()
-    if (error) console.error('[POST /api/cb/marca] gravação:', error.message)
-    else linhaNova = data as unknown as LinhaDaMarca
+    if (error) {
+      console.error('[POST /api/cb/marca] gravação:', status, error.message)
+      // 4xx é o PostgREST recusando (CHECK, tipo): a transação não gravou.
+      recusaComprovada = status >= 400 && status < 500
+    } else linhaNova = data as unknown as LinhaDaMarca
   } catch (falha) {
     console.error('[POST /api/cb/marca] gravação:', falha)
   }
   if (!linhaNova) {
-    await desfazerUploads(subidos)
+    // ⚠️ Só a recusa COMPROVADA apaga o que este pedido subiu. Rede, tempo
+    // esgotado e 5xx (o 504 do gateway) não provam que o banco não gravou —
+    // nem uma releitura logo depois prova, porque a transação pode commitar
+    // depois dela (Codex no #420). Ali os arquivos ficam: órfão é lixo;
+    // logo apontando para arquivo apagado é defeito.
+    if (recusaComprovada) {
+      await apagarArquivos(subidos, 'desfazer o upload da gravação recusada')
+    } else if (subidos.length > 0) {
+      console.warn('[api/cb/marca] gravação incerta; os arquivos novos ficam no bucket:', subidos)
+    }
     return erro('falha_no_banco', 500)
   }
 

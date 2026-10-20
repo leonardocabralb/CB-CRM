@@ -61,6 +61,10 @@ instalado, em `.claude/rules/celular.md`.
   memória do símbolo em `marca-icone.ts`, que usa o caminho como chave);
   apagar antes de gravar deixaria a linha apontando para o nada se a
   gravação falhasse.
+- ⚠️ **Gravação que falhou só apaga o que subiu se a recusa for COMPROVADA
+  (4xx do PostgREST).** Rede, tempo esgotado e 5xx podem commitar DEPOIS —
+  nem uma releitura prova o contrário; ali os arquivos ficam (órfão é lixo;
+  logo apontando para arquivo apagado é defeito).
 - ⚠️ **`revalidateTag(TAG_DA_MARCA, { expire: 0 })` depois de gravar e de
   voltar ao padrão.** Com `'max'` (o recomendado da doc do Next) a próxima
   página ainda sairia com a marca velha (stale-while-revalidate); a forma de
