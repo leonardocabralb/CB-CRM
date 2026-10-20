@@ -6,7 +6,9 @@ import { porCanal } from './queries';
 // O ESCOPO DE CANAL DO PAINEL.
 //
 // `porCanal` é uma linha, mas é a linha que separa "este número" de "o
-// escritório inteiro" em nove consultas. Um `.eq` a menos e o painel passa a
+// escritório inteiro" nas consultas do painel pelo PostgREST (a série e o
+// tempo de resposta recebem o canal como `p_canal` das RPCs da 1095 — teste em
+// `por-dia-no-banco.test.ts`). Um `.eq` a menos e o painel passa a
 // contar a conta toda sob um filtro de canal — o próprio arquivo chama isso
 // de "a mentira mais cara que um painel pode contar".
 //

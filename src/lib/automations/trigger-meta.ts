@@ -74,7 +74,7 @@ export const TRIGGER_META: Record<AutomationTriggerType, TriggerMeta> = {
   // NOSSO (1073): a leitura periódica do Atlas é o call site — fica FORA de
   // `GATILHOS_SEM_DISPARO` (a grade do funil desenha a chegada do "Mover card").
   atlas_situacao_mudou: {
-    label: 'Atlas — status changed',
+    label: 'Atlas Gestor — status changed',
     pillClass: 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300',
   },
   manual: {

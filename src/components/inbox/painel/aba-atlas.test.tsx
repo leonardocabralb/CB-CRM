@@ -67,18 +67,18 @@ describe('AbaAtlas', () => {
 
   it('falhou: aviso e "Tentar de novo" — nunca "sem vínculo"', () => {
     const html = desenhar({ falhou: true });
-    expect(html).toContain('Não foi possível carregar o vínculo com o Atlas.');
+    expect(html).toContain('Não foi possível carregar o vínculo com o Atlas Gestor.');
     expect(html).toContain('Tentar de novo');
     expect(html).not.toContain('não está ligada');
   });
 
   it('não conectado: diz que o Atlas não está conectado', () => {
-    expect(desenhar({ dados: { conectado: false, vinculo: null, erroDaLeitura: null } })).toContain('O Atlas não está conectado.');
+    expect(desenhar({ dados: { conectado: false, vinculo: null, erroDaLeitura: null } })).toContain('O Atlas Gestor não está conectado.');
   });
 
   it('sem vínculo: quem não administra é mandado ao administrador, sem campo', () => {
     const html = desenhar({ dados: { conectado: true, vinculo: null, erroDaLeitura: null } });
-    expect(html).toContain('Esta ficha não está ligada a um cliente do Atlas.');
+    expect(html).toContain('Esta ficha não está ligada a um cliente do Atlas Gestor.');
     expect(html).toContain('peça a um administrador');
     expect(html).not.toContain('<input');
   });
@@ -87,7 +87,7 @@ describe('AbaAtlas', () => {
     h.podeVincular = true;
     const html = desenhar({ dados: { conectado: true, vinculo: null, erroDaLeitura: null } });
     expect(html).toContain('<input');
-    expect(html).toContain('Link da ficha no Atlas');
+    expect(html).toContain('Link da ficha no Atlas Gestor');
     expect(html).toContain('Vincular');
   });
 
@@ -105,8 +105,8 @@ describe('AbaAtlas', () => {
   });
 
   it('leitura velha: o aviso de atraso; nunca lida: diz que ainda não leu', () => {
-    expect(desenhar({ dados: { conectado: true, vinculo: vinculo({ velha: true }), erroDaLeitura: 'fora_do_ar' } })).toContain('a leitura do Atlas está atrasada');
-    expect(desenhar({ dados: { conectado: true, vinculo: vinculo({ velha: true, lidaEm: null }), erroDaLeitura: null } })).toContain('A situação ainda não foi lida do Atlas.');
+    expect(desenhar({ dados: { conectado: true, vinculo: vinculo({ velha: true }), erroDaLeitura: 'fora_do_ar' } })).toContain('a leitura do Atlas Gestor está atrasada');
+    expect(desenhar({ dados: { conectado: true, vinculo: vinculo({ velha: true, lidaEm: null }), erroDaLeitura: null } })).toContain('A situação ainda não foi lida do Atlas Gestor.');
   });
 
   it('situação desconhecida: o texto de reserva (nunca a chave crua); data desconhecida dita', () => {
@@ -124,8 +124,8 @@ describe('AbaAtlas', () => {
   it('na LIXEIRA do Atlas: diz, com o link (o Atlas mostra o Restaurar) — sem afirmar a situação', () => {
     h.podeVincular = true;
     const html = desenhar({ dados: { conectado: true, vinculo: vinculo({ excluidoEm: '2026-09-29T10:00:00.000Z' }), erroDaLeitura: null } });
-    expect(html).toContain('está na lixeira do Atlas');
-    expect(html).toContain('Abrir no Atlas');
+    expect(html).toContain('está na lixeira do Atlas Gestor');
+    expect(html).toContain('Abrir no Atlas Gestor');
     expect(html).toContain('Desvincular');
     expect(html).not.toContain('Rescindido');
   });
@@ -134,22 +134,22 @@ describe('AbaAtlas', () => {
     const naLixeira = { conectado: true, vinculo: vinculo({ excluidoEm: '2026-09-29T10:00:00.000Z' }), erroDaLeitura: null };
     h.podeVincular = true;
     const admin = desenhar({ dados: naLixeira });
-    expect(admin).toContain('Conferir no Atlas');
-    expect(admin).toContain('toque em “Conferir no Atlas”');
+    expect(admin).toContain('Conferir no Atlas Gestor');
+    expect(admin).toContain('toque em “Conferir no Atlas Gestor”');
     semChaveCrua(admin);
-    expect(desenhar({ dados: naLixeira }, en, 'en')).toContain('Check in Atlas');
+    expect(desenhar({ dados: naLixeira }, en, 'en')).toContain('Check in Atlas Gestor');
 
     // Quem não vincula: sem o botão, e a dica diz quando o CRM percebe (nunca "desvincule").
     h.podeVincular = false;
     const agente = desenhar({ dados: naLixeira });
-    expect(agente).not.toContain('Conferir no Atlas');
+    expect(agente).not.toContain('Conferir no Atlas Gestor');
     expect(agente).not.toContain('Desvincular');
     expect(agente).toContain('próxima leitura completa');
     semChaveCrua(agente);
   });
 
   it('sem endereço https, sem o botão "Abrir no Atlas"', () => {
-    expect(desenhar({ dados: { conectado: true, vinculo: vinculo({ appUrl: null }), erroDaLeitura: null } })).not.toContain('Abrir no Atlas');
+    expect(desenhar({ dados: { conectado: true, vinculo: vinculo({ appUrl: null }), erroDaLeitura: null } })).not.toContain('Abrir no Atlas Gestor');
   });
 
   it('en.json: os mesmos estados, sem chave crua', () => {
@@ -157,8 +157,8 @@ describe('AbaAtlas', () => {
     const html = desenhar({ dados: { conectado: true, vinculo: vinculo(), erroDaLeitura: null } }, en, 'en');
     expect(html).toContain('Terminated');
     expect(html).toContain('Linked automatically by the sync, by the conversation link');
-    expect(html).toContain('Open in Atlas');
+    expect(html).toContain('Open in Atlas Gestor');
     semChaveCrua(html);
-    expect(desenhar({ dados: { conectado: true, vinculo: null, erroDaLeitura: null } }, en, 'en')).toContain('This contact is not linked to an Atlas client.');
+    expect(desenhar({ dados: { conectado: true, vinculo: null, erroDaLeitura: null } }, en, 'en')).toContain('This contact is not linked to an Atlas Gestor client.');
   });
 });

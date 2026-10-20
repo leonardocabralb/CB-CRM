@@ -30,12 +30,20 @@ Fase 5.
   é extraído dele para "compartilhar" (`acoes.ts` copia as ~20 linhas de
   conexão e vínculo). Pinos com a config EXATA de produção:
   `passo-de-integracao.test.ts`, `validate.test.ts` e `engine.test.ts`.
-- **UMA entrada no menu** ("Atlas", `t("atlas.no")`): `ADDABLE_STEPS` tem só
-  `atlas_criar_cliente`; o nó nasce "Criar cliente" — ou "Criar tarefa" na
-  automação do gatilho do Atlas. A ação se escolhe DENTRO do passo
+  Exceção escrita (marca configurável, 1094): em `criar-cliente.ts` mudou
+  só a FONTE do `nomeDoApp` — `(await obterMarca()).nome`, lido na hora, no
+  lugar da constante que acabou —, e em `formatar.ts` só o comentário dele.
+  Config, decisão e formato ficam; a nota do cadastro passa a citar a marca
+  vigente ("Enviado pelo Atlas CRM" enquanto não houver marca gravada). O
+  #421 trocou só os TEXTOS de motivo e detalhe ("Atlas" → "Atlas Gestor").
+- **UMA entrada no menu** ("Atlas Gestor", `t("atlas.no")`): `ADDABLE_STEPS`
+  tem só `atlas_criar_cliente`; o nó nasce "Criar cliente" — ou "Criar
+  tarefa" na automação do gatilho do Atlas. A ação se escolhe DENTRO do passo
   (`AtlasPassoFields`), e os cinco têm a borda laranja, o ícone tingido e o
-  selo "Integração Atlas" (`ehPassoDeIntegracao` = `ehPassoDoAtlas`; nenhum
-  outro tipo usa laranja).
+  selo "Integração" (`ehPassoDeIntegracao` = `ehPassoDoAtlas`; nenhum outro
+  tipo usa laranja). ⚠️ O selo fica CURTO e com `min-w-0 truncate`: divide
+  com "Ação" uma fileira que não quebra linha, e "Integração Atlas Gestor"
+  cobria a seta do cartão no ramo de condição (coluna de 157 px).
 - ⚠️⚠️ **Trocar de ação troca o tipo e a config, e MANTÉM `cid` e `id`** (a
   espera parada num ramo guarda o id do passo). A config de cada ação fica
   numa memória da tela por `cid` (`trocarAcao`, `MEMORIA_DO_NO_ATLAS`):
@@ -62,9 +70,9 @@ Fase 5.
   é o 404); barra a TAREFA, que não tem 404 (a API liga a tarefa ao cliente
   da lixeira) — a ajuda do passo e a INSTALACAO dizem. ⚠️ O SUCESSO dessas
   três TIRA a marca (`tirarMarcaDaLixeira`: a edge só escreve com
-  `deleted_at IS NULL`; só a marca, como o "Conferir no Atlas"): restaurar
-  não muda o `status_changed_at`, e a tarefa seguinte falharia até a
-  listagem completa.
+  `deleted_at IS NULL`; só a marca, como o "Conferir no Atlas Gestor"):
+  restaurar não muda o `status_changed_at`, e a tarefa seguinte falharia até
+  a listagem completa.
 - ⚠️⚠️ **`create_task`, `create_transcript` e `update_onboarding` são
   OPCIONAIS** (`PERMISSOES_OPCIONAIS`, fora de `PERMISSOES_NECESSARIAS`):
   desligada, o passo falha com o que ela faz e o nome TÉCNICO
@@ -117,7 +125,7 @@ Fase 5.
   descarta em silêncio o `clientId` que não acha: o detalhe diz "pedida com o
   cliente", nunca "ligada". Prazo = `somarDias(diaNoFuso(…))` (nunca
   `toISOString().slice`); descrição vazia leva o nome da automação e o
-  `NOME_DO_APP`.
+  nome da marca, lido na hora (`obterMarca()`).
 - **Transcrição**: a da reunião MAIS RECENTE da ficha na janela
   (`cb_reunioes_transcritas`, padrão 72 h). Pendente, sem transcrição ou
   falha FALHA — nunca manda a anterior (seria outra reunião). ⚠️ Ligada pelo

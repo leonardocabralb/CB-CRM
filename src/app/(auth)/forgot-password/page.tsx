@@ -15,7 +15,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { MessageSquare, CheckCircle, ArrowLeft } from "lucide-react";
+import { CheckCircle, ArrowLeft } from "lucide-react";
+import { LogoDaMarca } from "@/components/marca/logo-da-marca";
 
 // `useSearchParams` tira o componente do prerender estático fora de um
 // Suspense — mesmo desenho da tela de login.
@@ -98,8 +99,13 @@ function ForgotPasswordPageInner() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <Card className="w-full max-w-md border-border bg-card">
         <CardHeader className="items-center text-center">
-          <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-            <MessageSquare className="h-6 w-6 text-primary" />
+          {/* O logo da instalação, como no login. A tela de "e-mail enviado"
+              (acima) fica com o ícone de sucesso: ele diz o ESTADO. */}
+          <div className="mb-2 flex min-w-0 justify-center">
+            <LogoDaMarca
+              forma="vertical"
+              className="h-20 w-auto max-w-full sm:h-24"
+            />
           </div>
           <CardTitle className="text-xl text-foreground">{t("title")}</CardTitle>
           <CardDescription className="text-muted-foreground">

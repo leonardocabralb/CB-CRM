@@ -47,7 +47,9 @@ borda.
 
 - **D1.** Notificações ficam para a Fase 2.
 - **D2.** Nome embaixo do ícone: **"CB CRM"** (build-arg
-  `NEXT_PUBLIC_APP_SHORT_NAME` no `pipeline.yml`).
+  `NEXT_PUBLIC_APP_SHORT_NAME` no `pipeline.yml`). *Substituída em
+  19/10/2026:* o nome curto é dado da marca (Configurações → Marca, 1094) e
+  o build-arg acabou — `docs/PLANO-marca-configuravel.md`.
 - **D3.** O logo do escritório fica **para depois**: o ícone sai com o símbolo
   genérico do sistema. Quando o logo vier, cada pessoa reinstala o ícone de
   novo (o iPhone guarda o ícone no momento da instalação).

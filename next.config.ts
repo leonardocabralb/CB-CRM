@@ -136,11 +136,13 @@ const nextConfig: NextConfig = {
    *     set: the old `public, s-maxage=300` let a shared cache keep a
    *     signed-in page or a login redirect for 5 min and serve it to
    *     someone else. Pinned by `src/next-config.test.ts`.
-   *   - Two files of `public/` stay out of the no-store rule (Next's
+   *   - Three paths of `public/` stay out of the no-store rule (Next's
    *     own `public, max-age=0` applies, revalidated by ETag): the
    *     voice-note encoder (`opus/`, ~380 KB, loaded on every
-   *     recording) and the chat background (`inbox-doodle.svg`).
-   *     Under no-store the browser would download them again each time.
+   *     recording), the chat background (`inbox-doodle.svg`) and the
+   *     default brand images (`marca/`, the sidebar and login logos on
+   *     every page). Under no-store the browser would download them
+   *     again each time.
    *
    * Security headers are appended via a separate catch-all rule
    * below — Next.js merges headers from every matching rule, so
@@ -155,7 +157,7 @@ const nextConfig: NextConfig = {
       },
       {
         source:
-          "/:path((?!_next/static|_next/image|api|opus/|inbox-doodle\\.svg).*)",
+          "/:path((?!_next/static|_next/image|api|opus/|inbox-doodle\\.svg|marca/).*)",
         headers: [{ key: "Cache-Control", value: "private, no-store" }],
       },
       {

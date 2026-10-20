@@ -169,6 +169,10 @@ export const ESCRITA_DA_SECAO: Record<SecaoId, AccountRole> = {
   fields: "admin", // policies `custom_fields_*` / `tags_*` (017) e da 966
   assinatura: "admin", // grava em `accounts`; a tela usa canEditSettings
   members: "admin", // canManageMembers
+  // /api/cb/marca: POST e DELETE são requireRole('admin') E a conta da
+  // instalação (`contaDaInstalacao`, a mais antiga). Invisível fora do admin
+  // (SECOES_SO_DE_ADMIN); o admin de outra conta vê a seção só para leitura.
+  marca: "admin",
   // + /api/cb/atlas* (cartão e "Ler agora"; o vínculo à mão da aba Atlas,
   // também admin, mora no inbox/contatos, que seguem `viewer` pela anotação)
   integracoes: "admin", // /api/cb/ia/chaves, /api/cb/ia/radar, /api/cb/integracoes/status

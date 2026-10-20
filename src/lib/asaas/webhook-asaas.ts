@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { diaNoFuso, FUSO_PADRAO } from "@/lib/agenda/fuso";
-import { NOME_DO_APP } from "@/lib/marca";
+import { obterMarca } from "@/lib/marca-servidor";
 import { encrypt } from "@/lib/whatsapp/encryption";
 
 import { aplicarCobranca } from "./aplicar";
@@ -95,9 +95,14 @@ export async function emailDosAlertas(admin: SupabaseClient, accountId: string, 
   return null;
 }
 
-function corpoDoWebhook(url: string, email: string, authToken: string): Record<string, unknown> {
+/**
+ * O `name` é só RÓTULO na tela do Asaas e sai da marca da instalação, que
+ * muda pela aba Marca: trocada a marca, o próximo PUT renomeia o MESMO
+ * webhook (a procura, em `garantirWebhookComCadeado`, nunca usa o nome).
+ */
+function corpoDoWebhook(url: string, email: string, authToken: string, nomeDoSistema: string): Record<string, unknown> {
   return {
-    name: nomeDoWebhook(NOME_DO_APP),
+    name: nomeDoWebhook(nomeDoSistema),
     url,
     email,
     enabled: true,
@@ -186,10 +191,13 @@ async function garantirWebhookComCadeado(
   if (!token) return { ok: false, codigo: "db_error" };
   const url = urlDoWebhook(origem, token);
   const authToken = gerarTokenDeAutenticacao();
-  const corpo = corpoDoWebhook(url, email, authToken);
+  const corpo = corpoDoWebhook(url, email, authToken, (await obterMarca()).nome);
 
   let w: WebhookNoAsaas | null = null;
   try {
+    // ⚠️ A procura é pelo ID e pela URL, NUNCA pelo nome: o nome vem da
+    // marca, e a marca trocada faria a procura falhar e o POST criar um
+    // segundo webhook (entregas dobradas).
     // ⚠️ Um PUT que deu certo mas voltou sem `id` (forma estranha) CONTINUA
     // sendo o webhook que já existe — cair para o POST criaria um segundo
     // na mesma URL e dobraria as entregas (revisão do PR #204).

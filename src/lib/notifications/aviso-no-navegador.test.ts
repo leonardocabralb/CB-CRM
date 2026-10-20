@@ -93,12 +93,36 @@ describe("lerPreferencia — parse, nunca `as`", () => {
       "canal-a",
       "canal-b",
     ]);
-    // A preferência gravada antes da lista (sem a chave) continua igual.
+    // A preferência gravada antes da lista (sem a chave) continua igual — e
+    // ganha o padrão do sino e do som (D1 e D4, 20/10/2026).
     expect(lerPreferencia('{"ativo":true,"quais":"minhas","mostrarTexto":false}')).toEqual({
       ativo: true,
       quais: "minhas",
       mostrarTexto: false,
+      sino: true,
+      somNoSino: true,
+      somNasMensagens: false,
       silenciadas: [],
+    });
+  });
+
+  it("menções e tarefas nascem LIGADAS e independentes das mensagens (D1)", () => {
+    expect(PREFERENCIA_PADRAO.sino).toBe(true);
+    // Quem desligou as mensagens continua com o sino, e o contrário.
+    expect(lerPreferencia('{"ativo":false}').sino).toBe(true);
+    expect(lerPreferencia('{"ativo":true,"sino":false}')).toMatchObject({ ativo: true, sino: false });
+    expect(lerPreferencia('{"sino":"false"}').sino).toBe(true);
+  });
+
+  it("som do CRM: ligado no sino, desligado nas mensagens; só booleano muda (D4)", () => {
+    expect(PREFERENCIA_PADRAO).toMatchObject({ somNoSino: true, somNasMensagens: false });
+    expect(lerPreferencia('{"somNoSino":false,"somNasMensagens":true}')).toMatchObject({
+      somNoSino: false,
+      somNasMensagens: true,
+    });
+    expect(lerPreferencia('{"somNoSino":0,"somNasMensagens":1}')).toMatchObject({
+      somNoSino: true,
+      somNasMensagens: false,
     });
   });
 

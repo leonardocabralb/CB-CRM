@@ -46,11 +46,10 @@ arquivo da área, nunca para cá. O mesmo teste exige `paths:` em toda regra,
 todo glob casando arquivo versionado, toda regra listada no índice. Estourou:
 condensar ou mover, nunca subir o teto.
 
-**Texto integral anterior:** `git show f5879b3f:CLAUDE.md` (626 KB, com a
-história: datas, medições, rodadas de revisão). Comentário do código que diz
-"ver CLAUDE.md, seção X": mapa no fim da seção 13, ou
-`grep -rni 'X' CLAUDE.md .claude/rules docs` — os títulos antigos continuam
-como `###` nas regras.
+**Texto integral anterior:** `git show f5879b3f:CLAUDE.md` (com a história).
+Comentário do código que diz "ver CLAUDE.md, seção X": mapa no fim da seção
+13, ou `grep -rni 'X' CLAUDE.md .claude/rules docs` — os títulos antigos
+continuam como `###` nas regras.
 
 ## 1. O que é este projeto
 
@@ -379,10 +378,9 @@ Volta para `main` por PR no CB-CRM.
 - Pino estrutural (`*.chamadores.test.ts`, default-deny) que reprova é
   decisão a escrever na allowlist, com motivo — nunca afrouxar o teste nem
   contornar o nome.
-- Marca: nome, logo e nome curto só de `src/lib/marca.ts` (build-args,
-  padrão genérico `'CRM'` — nunca o nome do escritório no código); nome de
-  produto não é chave de dicionário, e frase de UI não cita nome de produto
-  (o nosso nem o do upstream; onde precisa, `{appName}`).
+- Marca é DADO (`cb_marca`, 1094): `obterMarca()` no servidor, `useMarca()`
+  no navegador, padrão Atlas CRM em `src/lib/marca.ts`; nunca literal nem
+  chave de dicionário. Frase de UI não cita nome de produto (`{appName}`).
   `scripts/produto-gate.test.ts` reprova nossa infra em `src/`, `messages/`,
   `supabase/` e na raiz (exceção só em `EXCECOES`, com motivo);
   `scripts/env-documentado.test.ts` exige toda `process.env.X` no
@@ -412,7 +410,7 @@ dentro, exceções e testes de chave montada: `.claude/rules/i18n.md`.
   deploy exige verificar e migrations verdes). Só com o operador ciente.
   Vários merges seguidos: o run do meio morre na fila e o último publica
   todos.
-- `NEXT_PUBLIC_*` é build-arg (idioma, nome do app): muda no
+- `NEXT_PUBLIC_*` é build-arg (idioma, Supabase): muda no
   `pipeline.yml`/`docker-stack.yml` e exige rebuild. O `crm.env` não muda
   isso.
 - ⚠️⚠️ **`docker stack deploy` SEM carregar o `crm.env` zera todos os
@@ -568,6 +566,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   date-fns.
 - `.claude/rules/deploy.md` — pipeline, agendador, Node, stack deploy,
   Evolution na VPS, produto-gate.
+- `.claude/rules/marca.md` — nome e logo: quem grava, a ordem da gravação,
+  nada assado no build.
 
 **Títulos antigos citados em comentários do código → onde estão agora:**
 

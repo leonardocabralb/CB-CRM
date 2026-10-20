@@ -18,7 +18,7 @@ erro, typecheck, 2.832 testes, os dois portões de i18n e o build.
 | 0 — fechar o repositório | **não iniciada** | decisão do operador (D1) |
 | 1 — infraestrutura parametrizada | **só o 1.6** (comentários e fixtures) | 1.1 a 1.5 exigem janela e `stack deploy` |
 | 2 — buracos funcionais | **feita** | — |
-| 3 — marca configurável | **feita** | 3.3 entregue como `NEXT_PUBLIC_APP_LOGO_URL`, não como detecção de arquivo |
+| 3 — marca configurável | **feita; substituída em 19/10/2026** | entregue como build-args (`NEXT_PUBLIC_APP_*`); hoje a marca é DADO, trocada em Configurações → Marca (1094), e os build-args de nome e logo acabaram — `docs/PLANO-marca-configuravel.md` |
 | 4 — documentação | **feita** | 4.4 (tirar `docs/PLANO-*` e infra da árvore) e 4.5 (`ARQUITETURA.md` saneado) |
 | 5 — portão de migrations | **feita** | a validação de instalação limpa exige Supabase e número de teste |
 | 6.2 — portão de strings | **feita** | escopo estreito: `src/`, `messages/`, `supabase/`, raiz |
@@ -30,10 +30,14 @@ a Fase 6.1 (repositório do produto) e a 7 (instalador) necessárias, não
 opcionais.
 
 **Decisões ainda abertas:** D1 (como privar), D2 (como o comprador
-recebe), D3 (licença das adições), D4 (nome do produto — hoje o padrão no
-código é o genérico `CRM` e a nossa produção passa `NEXT_PUBLIC_APP_NAME`
-pelo build-arg), D6 (segundo caminho de deploy), D7 (Supabase do
-comprador), D8 (`CLAUDE.md` saneado).
+recebe), D3 (licença das adições), D6 (segundo caminho de deploy), D7
+(Supabase do comprador), D8 (`CLAUDE.md` saneado).
+
+**D4 (nome do produto) foi respondida em 19/10/2026:** **Atlas CRM**, o
+padrão do produto, e a nossa produção passa a ser Atlas CRM. O nome deixou
+de ser build-arg: é dado, trocado pela tela. Ver
+`docs/PLANO-marca-configuravel.md` (D2 e D3). As menções a
+`NEXT_PUBLIC_APP_NAME`/`NOME_DO_APP` abaixo são a história da Fase 3.
 
 **D5 foi respondida na prática:** o `ko.json` foi removido.
 

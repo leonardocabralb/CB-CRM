@@ -11,6 +11,12 @@ vi.mock("@/lib/whatsapp/encryption", () => ({
   },
 }));
 
+// O nome do sistema nos textos que vão ao Atlas: o da MARCA da instalação.
+vi.mock("@/lib/marca-servidor", async () => {
+  const { marcaPadrao } = await import("@/lib/marca");
+  return { obterMarca: async () => ({ ...marcaPadrao(), propria: true, nome: "Sistema Exemplo" }) };
+});
+
 import { MAX_DESCRICAO } from "@/lib/tasks/validar";
 
 import { criarBanco, type Banco } from "../zapsign/duble.test-helper";
@@ -108,9 +114,9 @@ describe("conexão, vínculo e falhas (todas as ações)", () => {
 
   it("sem conexão, de outro ambiente ou com a chave ilegível: falha sem chamar o Atlas (a ilegível marca a conexão)", async () => {
     banco.tabelas.cb_atlas_config = [];
-    await expect(criarTarefaNoAtlas(banco.cliente, tarefa(), opcoes)).rejects.toThrow("o Atlas não está conectado");
+    await expect(criarTarefaNoAtlas(banco.cliente, tarefa(), opcoes)).rejects.toThrow("o Atlas Gestor não está conectado");
     banco.tabelas.cb_atlas_config = [{ account_id: CONTA, api_url: "https://staging.example.com/x", api_key: `cifrado:${CHAVE}`, atlas_tenant_id: "t1" }];
-    await expect(criarTarefaNoAtlas(banco.cliente, tarefa(), opcoes)).rejects.toThrow("é de outro ambiente do Atlas");
+    await expect(criarTarefaNoAtlas(banco.cliente, tarefa(), opcoes)).rejects.toThrow("é de outro ambiente do Atlas Gestor");
     banco.tabelas.cb_atlas_config = [{ account_id: CONTA, api_url: null, api_key: "estragada", atlas_tenant_id: "t1", status: "conectado" }];
     await expect(criarTarefaNoAtlas(banco.cliente, tarefa(), opcoes)).rejects.toThrow("não pôde ser lida");
     expect(conexao()).toMatchObject({ status: "erro", last_error: "chave_ilegivel" });
@@ -130,7 +136,7 @@ describe("conexão, vínculo e falhas (todas as ações)", () => {
 
   it("erro na leitura do vínculo NUNCA vira 'sem vínculo'", async () => {
     banco.falhar.add("cb_atlas_clientes:select");
-    await expect(atualizarOnboardingNoAtlas(banco.cliente, onboarding(), opcoes)).rejects.toThrow("não foi possível ler o vínculo com o Atlas no CRM");
+    await expect(atualizarOnboardingNoAtlas(banco.cliente, onboarding(), opcoes)).rejects.toThrow("não foi possível ler o vínculo com o Atlas Gestor no CRM");
   });
 
   it("o SUCESSO de uma ação com cliente tira SÓ a marca da lixeira (a API só escreve em cliente fora dela), e a tarefa volta a sair", async () => {
@@ -166,7 +172,7 @@ describe("conexão, vínculo e falhas (todas as ações)", () => {
     // A FALHA não tira: o `not_found` mantém (e o de outra razão também).
     marcado();
     falha = new AtlasError("validacao", "400", 400);
-    await expect(atualizarOnboardingNoAtlas(banco.cliente, onboarding(), opcoes)).rejects.toThrow("o Atlas recusou os dados");
+    await expect(atualizarOnboardingNoAtlas(banco.cliente, onboarding(), opcoes)).rejects.toThrow("o Atlas Gestor recusou os dados");
     expect(vinculo().excluido_no_atlas_em).toBe(MARCA);
   });
 
@@ -175,7 +181,7 @@ describe("conexão, vínculo e falhas (todas as ações)", () => {
       falha = new AtlasError("sem_permissao", `create_task → 403 permission_denied: ${DO_ATLAS}`, 403, permissao);
       const e = await erroDe(criarTarefaNoAtlas(banco.cliente, tarefa(), opcoes));
       // O rótulo da tela do Atlas ainda não foi conferido: a descrição e o nome técnico, nunca um rótulo inventado.
-      expect(e.message).toBe("Atlas: a permissão de criar tarefas (create_task) está desligada no Atlas; ligue-a lá e rode de novo");
+      expect(e.message).toBe("Atlas Gestor: a permissão de criar tarefas (create_task) está desligada no Atlas Gestor; ligue-a lá e rode de novo");
       expect(conexao()).toMatchObject({ status: "conectado", last_error: null });
     }
     falha = new AtlasError("sem_permissao", "403", 403, "update_onboarding");
@@ -194,7 +200,7 @@ describe("conexão, vínculo e falhas (todas as ações)", () => {
   it("CRÍTICO: o motivo NUNCA carrega texto da resposta do Atlas; chave recusada marca a conexão", async () => {
     falha = new AtlasError("chave_invalida", `create_task → 403 invalid_api_key: ${DO_ATLAS}`, 403);
     const e = await erroDe(criarTarefaNoAtlas(banco.cliente, tarefa(), opcoes));
-    expect(e.message).toBe("Atlas: a chave do Atlas foi recusada — reconecte em Configurações → Integrações");
+    expect(e.message).toBe("Atlas Gestor: a chave do Atlas Gestor foi recusada — reconecte em Configurações → Integrações");
     expect(conexao()).toMatchObject({ status: "erro", last_error: "chave_invalida" });
     for (const codigo of ["validacao", "limite", "idempotencia", "acao_desconhecida", "fora_do_ar", "rede", "resposta_inesperada", "ambiguo", "sem_admin", "atlas_error"] as const) {
       const m = motivoDaAcao(new AtlasError(codigo, DO_ATLAS, 400, DO_ATLAS, { codigoDoAtlas: "x", campos: ["title"] }), "atlas_criar_tarefa");
@@ -259,7 +265,7 @@ describe("atualizarClienteNoAtlas", () => {
     expect(Object.values(corpo())).not.toContain(null);
     expect(chamadas.map((c) => c.metodo)).toEqual(["atualizarCliente"]);
     expect(r).toBe(
-      "cliente atualizado no Atlas: tipo de contrato, data de fechamento; vazios na ficha, não alterados: valor do card, data do primeiro contato, data da proposta, link da conversa, telefone, e-mail, documento",
+      "cliente atualizado no Atlas Gestor: tipo de contrato, data de fechamento; vazios na ficha, não alterados: valor do card, data do primeiro contato, data da proposta, link da conversa, telefone, e-mail, documento",
     );
   });
 
@@ -309,7 +315,7 @@ describe("atualizarClienteNoAtlas", () => {
 
   it("tudo o que foi escolhido está vazio na ficha: CONCLUI sem chamar o Atlas (ele recusaria o pedido sem campo)", async () => {
     const r = await atualizarClienteNoAtlas(banco.cliente, entrada({ situacao: null, tipoDeContrato: null, telefone: null, email: "" }), opcoes);
-    expect(r).toBe("nada a atualizar no Atlas: os campos escolhidos estão vazios na ficha (telefone, e-mail)");
+    expect(r).toBe("nada a atualizar no Atlas Gestor: os campos escolhidos estão vazios na ficha (telefone, e-mail)");
     expect(chamadas).toHaveLength(0);
   });
 
@@ -322,7 +328,7 @@ describe("atualizarClienteNoAtlas", () => {
       excluido_no_atlas_em: null,
       app_url: "https://app.example.com/#/clients/c9",
     });
-    expect(r).toBe("cliente atualizado no Atlas: situação (rescindido → finalizado)");
+    expect(r).toBe("cliente atualizado no Atlas Gestor: situação (rescindido → finalizado)");
     expect(conexao()).toMatchObject({ conferido_em: expect.any(String) });
   });
 
@@ -334,20 +340,20 @@ describe("atualizarClienteNoAtlas", () => {
   it("a situação anterior só aparece no detalhe quando é uma das NOSSAS", async () => {
     respostaDoAtualizar = { id: "c9", appUrl: null, situacaoAnterior: `<b>${DO_ATLAS}</b>` };
     const r = await atualizarClienteNoAtlas(banco.cliente, entrada({ situacao: "inativo", tipoDeContrato: null }), opcoes);
-    expect(r).toBe("cliente atualizado no Atlas: situação (inativo)");
+    expect(r).toBe("cliente atualizado no Atlas Gestor: situação (inativo)");
   });
 
   it("a escrita do vínculo que falha DEPOIS do Atlas falha o passo dizendo o que já foi escrito", async () => {
     banco.falhar.add("cb_atlas_clientes:update");
     await expect(atualizarClienteNoAtlas(banco.cliente, entrada({ situacao: "finalizado", tipoDeContrato: null }), opcoes)).rejects.toThrow(
-      "a situação foi gravada no Atlas, mas o vínculo não foi atualizado no CRM",
+      "a situação foi gravada no Atlas Gestor, mas o vínculo não foi atualizado no CRM",
     );
   });
 
   it("CRÍTICO: ativo/importado RELÊ o cliente e PARA no suspenso (a trava do 'Criar cliente'); sem ele, segue", async () => {
     noAtlas.set("c9", { id: "c9", status: "suspenso", appUrl: null });
     await expect(atualizarClienteNoAtlas(banco.cliente, entrada({ situacao: "ativo", tipoDeContrato: null }), opcoes)).rejects.toThrow(
-      "no Atlas está suspenso",
+      "no Atlas Gestor está suspenso",
     );
     expect(chamadas.map((c) => c.metodo)).toEqual(["ler"]);
     noAtlas.set("c9", { id: "c9", status: "rescindido", appUrl: null });
@@ -395,19 +401,19 @@ describe("criarTarefaNoAtlas", () => {
   it("com vínculo: pede a tarefa com o cliente, e o detalhe não afirma o que a API não prova", async () => {
     const r = await criarTarefaNoAtlas(banco.cliente, entrada(), opcoes);
     expect(dados()).toEqual({ title: "Preparar a pasta de Cliente Exemplo", description: "Conferir os documentos", priority: "urgent", dueDate: "2026-10-02", clientId: "c9" });
-    expect(r).toBe("tarefa criada no Atlas (pedida com o cliente ligado à ficha)");
+    expect(r).toBe("tarefa criada no Atlas Gestor (pedida com o cliente ligado à ficha)");
   });
 
   it("DECISÃO: sem vínculo, a tarefa nasce SEM cliente, e o detalhe diz", async () => {
     banco.tabelas.cb_atlas_clientes = [];
     const r = await criarTarefaNoAtlas(banco.cliente, entrada(), opcoes);
     expect(dados()).not.toHaveProperty("clientId");
-    expect(r).toBe("tarefa criada no Atlas sem cliente: a ficha não está ligada ao Atlas");
+    expect(r).toBe("tarefa criada no Atlas Gestor sem cliente: a ficha não está ligada ao Atlas Gestor");
   });
 
   it("vínculo marcado na LIXEIRA: falha sem enviar (a tarefa ficaria presa ao cadastro excluído)", async () => {
     banco.tabelas.cb_atlas_clientes = [{ ...VINCULO, excluido_no_atlas_em: "2026-09-29T10:00:00.000Z" }];
-    await expect(criarTarefaNoAtlas(banco.cliente, entrada(), opcoes)).rejects.toThrow("está na lixeira do Atlas (a tarefa ficaria presa a ele)");
+    await expect(criarTarefaNoAtlas(banco.cliente, entrada(), opcoes)).rejects.toThrow("está na lixeira do Atlas Gestor (a tarefa ficaria presa a ele)");
     expect(chamadas).toHaveLength(0);
   });
 
@@ -421,7 +427,7 @@ describe("criarTarefaNoAtlas", () => {
 
   it("descrição vazia leva a frase com o nome da automação e do app (sem ela, o Atlas grava o inglês); título vazio falha", async () => {
     await criarTarefaNoAtlas(banco.cliente, entrada({ descricao: "   " }), opcoes);
-    expect(dados().description).toMatch(/^Aberta pela automação "Contrato fechado" no .+/);
+    expect(dados().description).toBe('Aberta pela automação "Contrato fechado" no Sistema Exemplo');
     await expect(criarTarefaNoAtlas(banco.cliente, entrada({ titulo: "  " }), opcoes)).rejects.toThrow("o título da tarefa ficou vazio");
   });
 
@@ -486,9 +492,9 @@ describe("enviarTranscricaoAoAtlas", () => {
     const e = enviado();
     expect(e.clientId).toBe("c9");
     expect(e.transcript).toBe("Transcrição da reunião");
-    expect(e.notes).toMatch(/^Reunião "Reunião de diagnóstico" de 30\/09\/2026 10:00 \(tl;dv\), enviada pelo .+\n\nContrato fechado hoje\n\nResumo do tl;dv$/);
+    expect(e.notes).toMatch(/^Reunião "Reunião de diagnóstico" de 30\/09\/2026 10:00 \(tl;dv\), enviada pelo Sistema Exemplo\n\nContrato fechado hoje\n\nResumo do tl;dv$/);
     expect(chamadas.find((c) => c.metodo === "enviarTranscricao")?.args[1]).toBe(`${IDEM}:transcricao`);
-    expect(r).toBe('transcrição da reunião "Reunião de diagnóstico" de 30/09 enviada ao Atlas (aguarda análise no Diagnóstico)');
+    expect(r).toBe('transcrição da reunião "Reunião de diagnóstico" de 30/09 enviada ao Atlas Gestor (aguarda análise no Diagnóstico)');
     // O TEXTO da transcrição nunca vai ao detalhe.
     expect(r).not.toContain("Transcrição da reunião");
   });
@@ -551,7 +557,7 @@ describe("enviarTranscricaoAoAtlas", () => {
 
   it("transcrição acima de 300 KB falha SEM cortar e sem chamar", async () => {
     banco.tabelas.cb_reunioes_transcritas = [reuniao({ texto: "é".repeat(150_001) })];
-    await expect(enviarTranscricaoAoAtlas(banco.cliente, entrada(), opcoes)).rejects.toThrow("passa do teto do Atlas (300 KB)");
+    await expect(enviarTranscricaoAoAtlas(banco.cliente, entrada(), opcoes)).rejects.toThrow("passa do teto do Atlas Gestor (300 KB)");
     expect(chamadas).toHaveLength(0);
   });
 
@@ -593,7 +599,7 @@ describe("atualizarOnboardingNoAtlas", () => {
   it("pelo texto do item, aparado; observação vazia fica FORA (null apagaria a de lá)", async () => {
     const r = await atualizarOnboardingNoAtlas(banco.cliente, entrada(), opcoes);
     expect(dados()).toEqual({ clientId: "c9", text: "Comprovante de residência", status: "done" });
-    expect(r).toBe('item "Comprovante de residência" do onboarding atualizado no Atlas: marcado como feito');
+    expect(r).toBe('item "Comprovante de residência" do onboarding atualizado no Atlas Gestor: marcado como feito');
   });
 
   it("observação acima de 2000 unidades UTF-16 é cortada sem partir emoji", async () => {
@@ -612,7 +618,7 @@ describe("atualizarOnboardingNoAtlas", () => {
   it("CRÍTICO: item que não existe NÃO marca a lixeira; o `not_found` do cliente, sim", async () => {
     falha = new AtlasError("item_nao_encontrado", "404", 404);
     await expect(atualizarOnboardingNoAtlas(banco.cliente, entrada(), opcoes)).rejects.toThrow(
-      'o checklist de onboarding deste cliente no Atlas não tem o item "Comprovante de residência"',
+      'o checklist de onboarding deste cliente no Atlas Gestor não tem o item "Comprovante de residência"',
     );
     expect(vinculo().excluido_no_atlas_em).toBeNull();
     falha = new AtlasError("nao_encontrado", "404", 404);

@@ -22,6 +22,7 @@ import {
   recorteTemDoisNiveis,
   SEM_ETAPA,
   SEM_RESPONSAVEL,
+  temRecorteDoPainel,
   type FiltrosDoInbox,
 } from "@/lib/inbox/filtros";
 import type { ModoDeEtiqueta, TipoDeConversa } from "@/lib/inbox/conversations";
@@ -134,6 +135,9 @@ export function lerFiltroSalvo(bruto: unknown): FiltrosDoInbox {
     funilIds: listaOuValorAntigo(o.funilIds, o.funilId),
     etapaIds: listaOuValorAntigo(o.etapaIds, o.etapaId),
     favoritas: o.favoritas === true,
+    // Ausente nas visões gravadas antes de 20/10 → desligado, que é como elas
+    // recortavam.
+    incluirFavoritas: o.incluirFavoritas === true,
     naoLidas: o.naoLidas === true,
     emAtraso: o.emAtraso === true,
     inadimplentes: o.inadimplentes === true,
@@ -162,6 +166,7 @@ export function escreverFiltroSalvo(f: FiltrosDoInbox): Record<string, unknown> 
     funilIds: f.funilIds,
     etapaIds: f.etapaIds,
     favoritas: f.favoritas,
+    incluirFavoritas: f.incluirFavoritas,
     naoLidas: f.naoLidas,
     emAtraso: f.emAtraso,
     inadimplentes: f.inadimplentes,
@@ -187,7 +192,8 @@ function mesmoConjunto(a: string[], b: string[]): boolean {
  * aplicar. `modoDeEtiqueta` só conta quando há 2+ etiquetas — com uma só,
  * "qualquer" e "todas" recortam igual, e diferenciar ali faria o mesmo recorte
  * parecer dois. Conexões, funis e etapas também comparam como conjunto, pelo
- * mesmo motivo.
+ * mesmo motivo. `incluirFavoritas` só conta com recorte do painel, pela mesma
+ * razão do modo: sem ele, ligado ou desligado recortam igual.
  *
  * ⚠️ `status` (a aba) NÃO entra: trocar de aba com um chip aceso não pode
  * apagá-lo nem oferecer "salvar alterações" — a aba não faz parte da visão
@@ -204,6 +210,7 @@ export function mesmoFiltro(a: FiltrosDoInbox, b: FiltrosDoInbox): boolean {
   })();
 
   const modoImporta = a.etiquetaIds.length >= 2 || b.etiquetaIds.length >= 2;
+  const inclusaoImporta = temRecorteDoPainel(a) || temRecorteDoPainel(b);
 
   return (
     a.tipo === b.tipo &&
@@ -217,7 +224,8 @@ export function mesmoFiltro(a: FiltrosDoInbox, b: FiltrosDoInbox): boolean {
     a.emAtraso === b.emAtraso &&
     a.inadimplentes === b.inadimplentes &&
     etiquetasIguais &&
-    (!modoImporta || a.modoDeEtiqueta === b.modoDeEtiqueta)
+    (!modoImporta || a.modoDeEtiqueta === b.modoDeEtiqueta) &&
+    (!inclusaoImporta || a.incluirFavoritas === b.incluirFavoritas)
   );
 }
 
@@ -247,6 +255,7 @@ export type ChaveDeRotulo =
   | "filterAwaiting"
   | "filterDelinquent"
   | "favorites"
+  | "favoritesIncluded"
   | "channelFilter"
   | "assigneeNone"
   | "assigneeUnnamed"
@@ -464,6 +473,17 @@ export function descreverFiltro(
         : { fonte: "i18n", chave: "labelStage" },
       orfao: cat.etapas.length > 0 && !etapa,
       limpar: { etapaIds: f.etapaIds.filter((x) => x !== id) },
+    });
+  }
+
+  // Logo depois do recorte que ela alarga — é onde o painel a mostra. Sem
+  // recorte do painel ela não muda a lista, e a descrição não a promete (a
+  // régua de `mesmoFiltro`).
+  if (f.incluirFavoritas && temRecorteDoPainel(f)) {
+    pedacos.push({
+      chave: "incluirFavoritas",
+      rotulo: { fonte: "i18n", chave: "favoritesIncluded" },
+      limpar: { incluirFavoritas: false },
     });
   }
 

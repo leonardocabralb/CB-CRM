@@ -7,9 +7,10 @@
  *   Bearer`, e NUNCA na URL (URL vaza em log de proxy). A chave começa com
  *   `$` (`$aact_prod_…`) e o `$` faz parte dela.
  * - ⚠️ **`User-Agent` é obrigatório** para conta criada desde 13/06/2024 —
- *   sem ele o Asaas recusa. Ele sai do nome do produto (`NOME_DO_APP`), e
- *   passa por `agente()`: um nome com acento faria o `fetch` LANÇAR em TODA
- *   chamada, com um erro que não fala de acento nenhum.
+ *   sem ele o Asaas recusa. Ele sai do nome da MARCA da instalação
+ *   (`obterMarca()`, lido no primeiro pedido de cada cliente), e passa por
+ *   `agente()`: um nome com acento faria o `fetch` LANÇAR em TODA chamada,
+ *   com um erro que não fala de acento nenhum.
  * - ⚠️ **GET com CORPO devolve 403.** Por isso `pedir()` nunca monta `body`
  *   num GET, e todo filtro viaja na query.
  * - ⚠️ **404 também significa "id de outra conta"**, não só "não existe".
@@ -31,12 +32,14 @@
  *   Ads: meia lista vira número errado com cara de número certo).
  */
 
-import { NOME_DO_APP } from "@/lib/marca";
+import { obterMarca } from "@/lib/marca-servidor";
 
 /**
- * O nome do produto em ASCII, para caber num cabeçalho HTTP. O `NOME_DO_APP`
- * vem de `NEXT_PUBLIC_APP_NAME` e cada instalação escreve o que quiser lá —
- * "Jurídico Ação", por exemplo, derrubaria toda chamada ao Asaas.
+ * O nome do produto em ASCII, para caber num cabeçalho HTTP. O nome vem da
+ * marca, que cada instalação escreve como quiser em Configurações → Marca —
+ * "Jurídico Ação", por exemplo, derrubaria toda chamada ao Asaas. Sem nada
+ * aproveitável, o genérico (nunca o nome padrão do produto: uma marca
+ * própria não se apresenta como outra).
  */
 export function agente(nome: string): string {
   const limpo = nome
@@ -195,6 +198,12 @@ export function criarClienteAsaas(
   const fetchFn = opcoes.fetchFn ?? fetch;
   const base = baseDoAmbiente(ambiente);
   let cota: CabecalhosDeCota = {};
+  // O `User-Agent`, lido da marca UMA vez por cliente (um ciclo faz centenas
+  // de pedidos), no primeiro pedido — nunca na criação, que é síncrona. A
+  // marca trocada vale a partir do próximo cliente (o próximo ciclo).
+  let userAgent: Promise<string> | null = null;
+  const agenteDaMarca = () =>
+    (userAgent ??= obterMarca().then((marca) => agente(marca.nome)));
 
   function url(caminho: string, params?: Record<string, string | number | undefined>): string {
     const u = new URL(`${base}${caminho.startsWith("/") ? caminho : `/${caminho}`}`);
@@ -219,6 +228,8 @@ export function criarClienteAsaas(
     // identidade em /customers da listagem de /payments. SEM a query — filtro
     // de busca pode carregar dado do cliente.
     const pedido = `${envio?.metodo ?? "GET"} ${new URL(alvo).pathname.replace(/^\/v3(?=\/)/, "")}`;
+    // `obterMarca()` nunca lança (cai no padrão): fica fora do try da rede.
+    const userAgentDaMarca = await agenteDaMarca();
     let resposta: Response;
     try {
       resposta = await fetchFn(alvo, {
@@ -226,7 +237,7 @@ export function criarClienteAsaas(
         headers: {
           access_token: chave,
           Accept: "application/json",
-          "User-Agent": agente(NOME_DO_APP),
+          "User-Agent": userAgentDaMarca,
           ...(envio && envio.corpo !== undefined ? { "Content-Type": "application/json" } : {}),
         },
         ...(envio && envio.corpo !== undefined ? { body: JSON.stringify(envio.corpo) } : {}),

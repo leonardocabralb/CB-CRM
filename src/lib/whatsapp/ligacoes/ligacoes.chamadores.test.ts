@@ -141,8 +141,9 @@ describe('na tela, a ligação é faixa — sem ações', () => {
 describe('quem lê content_type trata a ligação', () => {
   it('o Painel não conta a ligação como mensagem (a atendida é `agent`)', () => {
     const filtro = /\.neq\('content_type', 'call'\)/g;
-    // Enviadas hoje e ontem, a série de conversas e o feed de atividade.
-    expect(fonte('lib/dashboard/queries.ts').match(filtro) ?? []).toHaveLength(4);
+    // Enviadas hoje e ontem e o feed de atividade. A série de conversas soma
+    // no banco (1095) e filtra lá — pino em `painel-por-dia-1095.test.ts`.
+    expect(fonte('lib/dashboard/queries.ts').match(filtro) ?? []).toHaveLength(3);
   });
 
   it('o Meu dia não conta mensagem nenhuma desde a v2 — quem voltar a contar repete o filtro', () => {

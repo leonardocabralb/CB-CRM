@@ -735,9 +735,10 @@ ter de respeitar:
 - `ORIGEM_ASAAS = { producao: 'https://api.asaas.com', sandbox:
   'https://api-sandbox.asaas.com' }`; `doAsaas(url, ambiente)` prende o host
   antes de TODO pedido.
-- Cabeçalhos `access_token: <chave>`, `User-Agent: <NOME_DO_APP>` (de
-  `src/lib/marca.ts`, nunca literal — o `produto-gate` reprova) e `Accept:
-  application/json`. **GET sempre sem corpo.** Chave nunca na URL.
+- Cabeçalhos `access_token: <chave>`, `User-Agent: <nome da marca>` (de
+  `obterMarca()`, lido uma vez por cliente do ciclo — a marca é dado desde a
+  1094, `docs/PLANO-marca-configuravel.md`; nunca literal — o `produto-gate`
+  reprova) e `Accept: application/json`. **GET sempre sem corpo.** Chave nunca na URL.
 - `AsaasError { codigo }`: `chave_invalida` (401 `invalid_access_token*`),
   `ambiente_errado` (401 `invalid_environment`: a cura é trocar o seletor,
   não a chave), `sem_permissao` (403 — permissão que falta OU IP fora da lista da

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 import { cn } from "@/lib/utils";
-import { LOGO_DO_APP, NOME_DO_APP } from "@/lib/marca";
+import { LogoDaMarca } from "@/components/marca/logo-da-marca";
 import { useAuth } from "@/hooks/use-auth";
 import { useTotalUnread } from "@/hooks/use-total-unread";
 import { useUnreadNotifications } from "@/hooks/use-unread-notifications";
@@ -225,32 +225,20 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         aria-label={t("primaryNav")}
       >
         {/* Logo row. On mobile we put a close button here; on desktop the
-            close button is hidden since the sidebar is always-visible. */}
-        <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-4">
-          <Link href="/dashboard" className="flex items-center gap-2">
-            {/* ⚠️ O nome sai de `NEXT_PUBLIC_APP_NAME` (src/lib/marca.ts),
-                nunca do dicionário: nome de produto não é tradução, e
-                mantê-lo em `Sidebar.title` obrigava a editar os dois
-                dicionários para renomear o sistema. O logo é opcional —
-                sem ele fica o símbolo genérico. */}
-            {LOGO_DO_APP ? (
-              // eslint-disable-next-line @next/next/no-img-element -- marca de
-              // 32px vinda de configuração: `next/image` exigiria dimensões
-              // fixas e uma allow-list de origem para um arquivo que cada
-              // instalação escolhe, sem ganho de LCP nenhum nesse tamanho.
-              <img
-                src={LOGO_DO_APP}
-                alt=""
-                className="h-8 w-8 shrink-0 rounded-lg object-contain"
-              />
-            ) : (
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                <MessageSquare className="h-4 w-4" />
-              </div>
-            )}
-            <span className="truncate text-sm font-semibold text-foreground">
-              {NOME_DO_APP}
-            </span>
+            close button is hidden since the sidebar is always-visible.
+            ⚠️ `pl-6` (24 px) = o `px-3` do <nav> + o `px-3` do item: o logo
+            começa na MESMA coluna dos ícones do menu (pedido do operador,
+            20/10/2026; com `px-4` ficava 8 px à esquerda deles). */}
+        <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border pl-6 pr-4">
+          {/* ⚠️ A marca é DADO da instalação (Configurações → Marca; o layout
+              raiz a entrega pelo `MarcaProvider`), nunca dicionário nem
+              build-arg: nome de produto não é tradução, e quem compra o
+              sistema troca nome e logo pela tela. O logo horizontal do fundo
+              do modo vigente; sem ele, símbolo + nome em texto
+              (`LogoDaMarca`). `min-w-0` e o teto de largura: no celular a
+              linha divide os 256 px com o botão de fechar. */}
+          <Link href="/dashboard" className="flex min-w-0 items-center">
+            <LogoDaMarca forma="horizontal" className="h-7 w-auto max-w-44" />
           </Link>
           <button
             type="button"

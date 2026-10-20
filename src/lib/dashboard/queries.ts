@@ -1,7 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   daysAgoStart,
-  DOW_SHORT_MON_FIRST,
   lastNDayKeys,
   localDayKey,
   mondayIndex,
@@ -20,11 +19,14 @@ import { nomeDoContato } from '@/lib/contacts/identidade'
 import { buscarPaginado } from '@/lib/supabase/paginar'
 
 // ------------------------------------------------------------
-// All client-side aggregation. RLS scopes every query to the
-// signed-in user automatically, so we never pass user_id explicitly
-// here. Perf is acceptable for the current scale (low thousands of
-// messages) — if a tenant's dataset outgrows this, we'd migrate the
-// heavy aggregations to SQL RPCs. Noted in the PR.
+// RLS scopes every query to the signed-in user automatically, so we
+// never pass user_id explicitly here.
+//
+// ⚠️ Nada aqui baixa LINHAS de `messages` para somar no navegador: o
+// PostgREST corta em 1000 sem avisar, e a conta passa disso em um dia útil.
+// A série e o tempo de resposta somam no banco (RPCs da 1095, SECURITY
+// INVOKER — a RLS continua valendo); os cartões contam por `count/head`; o
+// feed pede 10 linhas.
 // ------------------------------------------------------------
 
 type DB = SupabaseClient
@@ -147,7 +149,8 @@ function registrarLeituraDuvidosa(
 //   1. o embed EMBED_SEM_GRUPO no `.select(...)`, e
 //   2. o `semGrupo(...)` na query.
 // Sem o embed `!inner` o filtro não recorta nada. Por isso as duas moram aqui
-// lado a lado: quem copiar uma lembra da outra.
+// lado a lado: quem copiar uma lembra da outra. (A série e o tempo de resposta
+// não passam por aqui: as RPCs da 1095 cortam o grupo no próprio SQL.)
 // ------------------------------------------------------------
 
 /** Vai no `.select(...)` de toda consulta a `messages` que passe por `semGrupo`. */
@@ -293,40 +296,42 @@ export async function loadMetrics(
 
 // --- 2. Conversations over time ---------------------------------------
 
+/**
+ * O fuso em que a tela nomeia os dias (`lastNDayKeys`, `localDayKey`). As
+ * RPCs da 1095 agrupam por ele: o banco roda em UTC, e agrupar lá jogaria as
+ * mensagens das 21h à meia-noite no dia seguinte.
+ */
+function fusoDoNavegador(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone
+}
+
 export async function loadConversationsSeries(
   db: DB,
   rangeDays: number,
   channelId?: string | null,
 ): Promise<ConversationsSeriesPoint[]> {
-  const start = daysAgoStart(rangeDays - 1).toISOString()
-  const { data, error } = await porCanal(
-    semGrupo(
-      db
-        .from('messages')
-        .select(`created_at, sender_type, ${EMBED_SEM_GRUPO}`)
-        .gte('created_at', start)
-        // Ligação (1044) não é mensagem trocada.
-        .neq('content_type', 'call')
-        // CB (1080): nem a tentativa do robô que não saiu.
-        .eq('nao_saiu', false),
-    ),
-    channelId,
-  ).order('created_at', { ascending: true })
+  // Uma linha por dia, já somada no banco (1095). Os filtros da leitura
+  // antiga — sem grupo, sem ligação (1044), sem a tentativa do robô que não
+  // saiu (1080), o canal — moram na função.
+  const { data, error } = await db.rpc('cb_painel_mensagens_por_dia', {
+    p_desde: daysAgoStart(rangeDays - 1).toISOString(),
+    p_fuso: fusoDoNavegador(),
+    p_canal: channelId || null,
+  })
   if (error) throw error
 
-  const keys = lastNDayKeys(rangeDays)
-  const buckets = new Map<string, { incoming: number; outgoing: number }>()
-  for (const k of keys) buckets.set(k, { incoming: 0, outgoing: 0 })
-
-  for (const row of (data ?? []) as { created_at: string; sender_type: string }[]) {
-    const key = localDayKey(row.created_at)
-    const bucket = buckets.get(key)
-    if (!bucket) continue
-    if (row.sender_type === 'customer') bucket.incoming += 1
-    else bucket.outgoing += 1 // agent + bot both count as outgoing
-  }
-
-  return keys.map((day) => ({ day, ...(buckets.get(day) ?? { incoming: 0, outgoing: 0 }) }))
+  const porDia = new Map(
+    ((data ?? []) as { dia: string; recebidas: number; enviadas: number }[]).map((linha) => [
+      linha.dia,
+      linha,
+    ]),
+  )
+  // Dia sem mensagem não vem da função: é zero DE VERDADE (a resposta veio).
+  return lastNDayKeys(rangeDays).map((day) => ({
+    day,
+    incoming: porDia.get(day)?.recebidas ?? 0,
+    outgoing: porDia.get(day)?.enviadas ?? 0,
+  }))
 }
 
 // --- 3. Pipeline donut -------------------------------------------------
@@ -403,103 +408,58 @@ export async function loadResponseTime(
   db: DB,
   channelId?: string | null,
 ): Promise<ResponseTimeSummary> {
-  // Pull the last 14 days of messages in one shot, then walk per
-  // conversation to find each "first inbound" → "first subsequent
-  // outbound" pair. 14 days gives us both "this week" + "last week"
-  // with enough overlap if the user opens the dashboard late on a
-  // Monday.
-  const fourteenDaysAgo = daysAgoStart(13).toISOString()
-  const { data, error } = await porCanal(
-    semGrupo(
-      db
-        .from('messages')
-        .select(`conversation_id, sender_type, created_at, ${EMBED_SEM_GRUPO}`)
-        .gte('created_at', fourteenDaysAgo)
-        // CB (1080): a tentativa do robô que não saiu não respondeu ninguém.
-        .eq('nao_saiu', false),
-    ),
-    channelId,
-  )
-    .order('conversation_id', { ascending: true })
-    .order('created_at', { ascending: true })
+  // The last 14 days give us both "this week" + "last week" with enough
+  // overlap if the user opens the dashboard late on a Monday.
+  //
+  // Os pares "primeira fala do cliente sem resposta → próxima fala de fora"
+  // são montados no banco (1095), que devolve, por dia do cliente, quantas
+  // amostras e quantos minutos somados. Aqui só se junta por dia da semana e
+  // por semana — média de soma ÷ amostras é a mesma média das amostras.
+  const { data, error } = await db.rpc('cb_painel_tempo_de_resposta', {
+    p_desde: daysAgoStart(13).toISOString(),
+    p_fuso: fusoDoNavegador(),
+    p_canal: channelId || null,
+  })
   if (error) throw error
 
-  const rows = (data ?? []) as {
-    conversation_id: string
-    sender_type: string
-    created_at: string
-  }[]
-
-  // Group per conversation, pair unreplied customer messages with the
-  // next outbound message from the agent/bot. A single customer message
-  // can only count once (avoids inflating averages if the customer
-  // double-messages while the agent takes time to reply).
-  interface Sample {
-    customerAt: Date
-    responseAt: Date
-  }
-  const samples: Sample[] = []
-
-  let currentConv = ''
-  let pendingCustomer: Date | null = null
-  for (const row of rows) {
-    if (row.conversation_id !== currentConv) {
-      currentConv = row.conversation_id
-      pendingCustomer = null
-    }
-    const ts = new Date(row.created_at)
-    if (row.sender_type === 'customer') {
-      if (!pendingCustomer) pendingCustomer = ts
-    } else if (pendingCustomer) {
-      samples.push({ customerAt: pendingCustomer, responseAt: ts })
-      pendingCustomer = null
-    }
-  }
-
   const now = new Date()
-  const thisWeekStart = daysAgoStart(mondayIndex(now))
-  const lastWeekStart = daysAgoStart(mondayIndex(now) + 7)
+  // Início das semanas como CHAVE de dia: o dia que a função devolve é o do
+  // mesmo fuso, e comparar "AAAA-MM-DD" como texto é comparar datas.
+  const thisWeekStart = localDayKey(daysAgoStart(mondayIndex(now)))
+  const lastWeekStart = localDayKey(daysAgoStart(mondayIndex(now) + 7))
 
   // Per-day-of-week buckets, averaged over both weeks' worth of data
   // so each bar has more samples to stand on. If a day has no samples
   // its avgMinutes stays null and the chart renders the bar muted.
-  const byDow = new Map<number, number[]>()
-  for (let i = 0; i < 7; i++) byDow.set(i, [])
-  const thisWeekMins: number[] = []
-  const lastWeekMins: number[] = []
-
-  for (const s of samples) {
-    const diffMin = (s.responseAt.getTime() - s.customerAt.getTime()) / 60_000
-    if (diffMin < 0) continue
-    const dow = mondayIndex(s.customerAt)
-    byDow.get(dow)!.push(diffMin)
-    if (s.customerAt >= thisWeekStart) {
-      thisWeekMins.push(diffMin)
-    } else if (s.customerAt >= lastWeekStart && s.customerAt < thisWeekStart) {
-      lastWeekMins.push(diffMin)
-    }
+  type Soma = { minutos: number; amostras: number }
+  const vazio = (): Soma => ({ minutos: 0, amostras: 0 })
+  const byDow = Array.from({ length: 7 }, vazio)
+  const thisWeek = vazio()
+  const lastWeek = vazio()
+  const somar = (alvo: Soma, linha: { amostras: number; soma_minutos: number }) => {
+    alvo.minutos += linha.soma_minutos
+    alvo.amostras += linha.amostras
   }
 
-  const avg = (arr: number[]) =>
-    arr.length === 0 ? null : arr.reduce((a, b) => a + b, 0) / arr.length
+  for (const linha of (data ?? []) as { dia: string; amostras: number; soma_minutos: number }[]) {
+    const [y, m, d] = linha.dia.split('-').map(Number)
+    somar(byDow[mondayIndex(new Date(y, m - 1, d))], linha)
+    if (linha.dia >= thisWeekStart) somar(thisWeek, linha)
+    else if (linha.dia >= lastWeekStart) somar(lastWeek, linha)
+  }
 
-  const buckets: ResponseTimeBucket[] = Array.from({ length: 7 }, (_, dow) => {
-    const samples = byDow.get(dow) ?? []
-    return {
-      dow,
-      avgMinutes: avg(samples),
-      samples: samples.length,
-    }
-  })
+  const avg = (s: Soma) => (s.amostras === 0 ? null : s.minutos / s.amostras)
 
-  // Silence unused-label warnings — keep the arrays explicitly named
-  // for readability above.
-  void DOW_SHORT_MON_FIRST
+  const buckets: ResponseTimeBucket[] = byDow.map((s, dow) => ({
+    dow,
+    avgMinutes: avg(s),
+    samples: s.amostras,
+  }))
 
   return {
     buckets,
-    thisWeekAvg: avg(thisWeekMins),
-    lastWeekAvg: avg(lastWeekMins),
+    thisWeekAvg: avg(thisWeek),
+    lastWeekAvg: avg(lastWeek),
   }
 }
 

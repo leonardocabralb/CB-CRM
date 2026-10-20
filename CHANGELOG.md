@@ -17,6 +17,22 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Alterado
 
+- **Nome e logo se trocam pela tela, em *Configurações → Marca*.** Nome,
+  nome curto (o de baixo do ícone no celular), símbolo, logos para o fundo
+  escuro e para o claro e a cor de fundo do ícone do app instalado. Só um
+  administrador da conta mais antiga da instalação grava. Sem marca
+  gravada, o sistema se chama **Atlas CRM**. Onde a interface cita o nome
+  do produto, aparece o da marca gravada. O passo a passo está em [`docs/INSTALACAO.md`](./docs/INSTALACAO.md), passo 6.1.
+  ⚠️ Nome e logo deixaram de ser variáveis de build: se a sua instalação
+  os passava por build-arg (`NEXT_PUBLIC_APP_*`, menos o
+  `NEXT_PUBLIC_APP_LOCALE`), depois de atualizar ela passa a se chamar
+  Atlas CRM até você gravar a marca na aba — as linhas do `pipeline.yml`
+  podem sair, ninguém as lê mais. Quem já instalou o app no iPhone precisa
+  apagar o ícone e adicionar de novo para ver a marca nova.
+  **Migration necessária:** `supabase/migrations/1094_cb_marca.sql`,
+  aplicada **antes** de publicar esta versão (só acrescenta a tabela e o
+  bucket `marca`).
+
 - **A chave de IA passa a ser do PROVEDOR, uma por conta.** A chave da
   OpenAI, do Gemini ou da Anthropic é cadastrada uma vez em *Configurações →
   Integrações* e vale para o assistente, o Radar, a transcrição de áudio e a
@@ -414,10 +430,6 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     --include-all`, o histórico ficou com `0043` e `0045`, que não existem
     mais: rode antes `supabase migration repair --status reverted 0043 0045`.
     As colunas ficam, e a 1038 e a 1039 não refazem nada.
-- **Nome e logo viraram configuração.** `NEXT_PUBLIC_APP_NAME` e
-  `NEXT_PUBLIC_APP_LOGO_URL` definem como o CRM se apresenta. Sem valor,
-  ele se chama "CRM". Nenhuma frase da interface cita mais o nome do
-  produto original.
 - **O replay das migrations passou a segurar a publicação.** Antes era
   apenas um aviso: uma migration que não aplicasse num banco vazio ia
   para produção assim mesmo. Agora não vai.

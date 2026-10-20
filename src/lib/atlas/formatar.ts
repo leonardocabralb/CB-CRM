@@ -117,7 +117,7 @@ export interface EntradaDoCliente {
   tipoDeContrato: TipoDeContrato;
   /** O instante da execução (fechamento sem campo, e a nota). */
   agora: Date;
-  /** O nome do CRM na nota ("Enviado pelo <app> em …"): de `marca.ts`, nunca literal. */
+  /** O nome do CRM na nota ("Enviado pelo <app> em …"): a marca da instalação (`obterMarca()`), nunca literal. */
   nomeDoApp: string;
 }
 
