@@ -26,9 +26,9 @@ do produto é o **Atlas CRM**. Vale para PC e celular.
 
 | Fase | O quê | Estado |
 |---|---|---|
-| 1 | Banco (1094), rota, aba Marca com exemplos | em andamento |
-| 2 | A marca em todo lugar (PC e celular) | em andamento |
-| 3 | Padrão Atlas, fim dos build-args, docs | em andamento |
+| 1 | Banco (1094), rota, aba Marca com exemplos | feito e integrado (sem commit) |
+| 2 | A marca em todo lugar (PC e celular) | feito e integrado (sem commit) |
+| 3 | Padrão Atlas, fim dos build-args, docs | feito e integrado (sem commit) |
 | 4 | "Atlas" → "Atlas Gestor" nos textos (PR próprio) | em andamento |
 | 5 | Aplicar a 1094 (com "pode gravar"), deploy, conferir | pendente |
 
@@ -124,10 +124,76 @@ Só TEXTO de tela, ajuda e docs entregues. Chaves de dicionário,
 identificadores, URLs e nomes de coluna ficam.
 
 ### Fase 5 — publicar
-Conferir número da migration contra as outras worktrees e o banco; aplicar a
-1094 com "pode gravar"; `docs/MIGRATIONS-APLICADAS.md`; merge; conferir na
-produção (aba do navegador, barra lateral nos dois modos, login, ícone,
-manifesto).
+Conferir número da migration contra as outras worktrees e o banco; ler as
+contas da produção (`select id, name, created_at from accounts order by
+created_at, id`) e conferir que a PRIMEIRA é a do escritório e que o
+`created_at` dela não empata com o da segunda (a carga da 0017 criou as
+contas de então num INSERT só; no empate, quem troca a marca é sorteado
+pelo uuid — critério explícito é decisão do operador); aplicar a 1094 com
+"pode gravar"; `docs/MIGRATIONS-APLICADAS.md`; merge; conferir na produção
+(aba do navegador, barra lateral nos dois modos, login, ícone, manifesto).
+
+## Integração das fases 1–3 (19/10/2026, sem commit)
+
+Medido na worktree, com tudo no índice do Git (sem commit):
+
+- `tsc --noEmit`: 0 erros. `npm run lint`: `✖ 59 problems (0 errors, 59
+  warnings)`; dos arquivos do PR, só `signup` e `join/[token]` aparecem, com
+  o `window.location.href` que já existia.
+- Vitest na Node 22, suíte inteira: 728 arquivos, 11290 testes, todos
+  verdes (inclui `instrucoes.test.ts`, que cobra os globs de `marca.md`).
+- `i18n-parity` e `i18n-chaves-usadas`: OK. `doc-acompanha origin/main`:
+  nenhum contrato de integração mudou.
+- `next build`: 231 rotas, todas dinâmicas (ƒ), nenhuma estática;
+  `/icon`, `/apple-icon/[id]` e `/manifest.webmanifest` dinâmicos; nenhuma
+  leitura da marca no build.
+- A 1094 num Postgres 16 descartável (esqueleto mínimo de papéis, `auth` e
+  `storage`): três aplicações (vazia, de novo, com linha) passaram; os
+  CHECKs, a PK de uma linha, o `permission denied` de anon/authenticated e o
+  SET NULL da autoria se comportaram como o esperado. O replay completo
+  (`supabase db start`) fica com o CI.
+
+Decisões tomadas na integração (a conferir):
+
+- O POST com corpo que não é multipart responde 400 `corpo_invalido`,
+  código que a aba não conhece: cai na frase genérica. A aba nunca manda
+  esse corpo (só se o limite de 10 MB do middleware cortar o pedido, e cada
+  imagem tem 1 MB).
+- A aba conta o nome em unidades UTF-16 (`maxLength` e `.length`); a rota e
+  o CHECK, em caracteres. Só a aba fica mais rígida, e só com emoji.
+
+Decisões tomadas na correção da revisão (19/10/2026, a conferir):
+
+- Teto de DIMENSÃO do símbolo: 2048 px no lado maior (`simbolo_grande`,
+  `LADO_MAXIMO_DO_SIMBOLO`). Um PNG chapado de 10000×10000 px cabe em 1 MB, e
+  o `next/og` decodifica a imagem inteira (~400 MB) a cada ícone gerado; o
+  maior ícone tem 512 px, e 2048 dá folga de 4× (~16 MB). Os códigos 400 da
+  rota passam a 13.
+- SVG: `@import`, `image-set(` e `url(` que não aponta para `#…` são
+  recusados, também escritos com escapes do CSS (`\75 rl(`) — antes a
+  frase "nada aponta para fora" não valia para o CSS.
+- A aba só diz "sem permissão" no 403 com o motivo da rota ou o papel
+  insuficiente (`ehRecusaDePermissao`); o 403 de perfil ilegível
+  (`requireRole` quando o banco falha) cai na frase genérica.
+- Telas de entrada: `min-w-0` no invólucro do logo e `max-w-full` no nome
+  em texto (medido no Chromium com um nome de 58 caracteres em 375 px: a
+  coluna do cartão ia a 519 px; com os dois, 311 px e reticências).
+- Empate na conta mais antiga (`contaDaInstalacao` desempata pelo uuid):
+  sem mudança de código — recusar a escrita no empate trancaria a aba
+  também na nossa produção, se ela empatar; a leitura e a decisão ficam na
+  fase 5. `docs/ATUALIZAR.md` diz a quem atualiza como conferir.
+
+Pendências:
+
+- `marca` nasce invisível para perfil já gravado (seção nova do catálogo);
+  ficou fora de `SECOES_TRAVADAS_PARA_ADMIN`. Decisão do operador.
+- E2E da aba com a rota (escolher, salvar, 400/403, voltar ao padrão) num
+  banco de teste antes do merge — o preview grava na produção.
+- Conferir na tela, depois do deploy: barra lateral nos dois modos, login,
+  ícone da aba e do app, manifesto; o iPhone.
+- Responder ao operador quais são as contas da instalação (a mais antiga é
+  a que troca a marca, D1) e se a primeira empata em `created_at`: exige
+  uma leitura na produção (fase 5).
 
 ## Limites conhecidos
 

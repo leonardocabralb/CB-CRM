@@ -39,6 +39,10 @@ is included.
   `docker compose --env-file .env.local up --build -d`. This includes
   `NEXT_PUBLIC_APP_LOCALE` (`en | pt-BR`), so the UI language is
   fixed per image.
+- The product name and logo are **not** variables: they are data,
+  changed in the app under *Settings → Brand* by an admin of the oldest
+  account, with no rebuild. Nothing saved there means the default brand
+  (Atlas CRM). Steps in [`INSTALACAO.md`, step 6.1](./INSTALACAO.md#61-a-marca-nome-e-logo).
 - Everything else (`SUPABASE_SERVICE_ROLE_KEY`, `ENCRYPTION_KEY`,
   `META_APP_SECRET`, …) is read at **runtime** from `.env.local` via
   `env_file` and is never baked into the image — safe to change with

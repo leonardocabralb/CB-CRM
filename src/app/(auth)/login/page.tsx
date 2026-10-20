@@ -15,7 +15,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { MessageSquare, UsersRound } from "lucide-react";
+import { LogoDaMarca } from "@/components/marca/logo-da-marca";
 
 // `useSearchParams` opts the component out of static prerendering
 // unless it sits under a Suspense boundary. We split the form into
@@ -78,12 +78,17 @@ function LoginPageInner() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <Card className="w-full max-w-md border-border bg-card">
         <CardHeader className="items-center text-center">
-          <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-            {inviteToken ? (
-              <UsersRound className="h-6 w-6 text-primary" />
-            ) : (
-              <MessageSquare className="h-6 w-6 text-primary" />
-            )}
+          {/* O logo da instalação (Configurações → Marca), com ou sem
+              convite: quem chega por um link precisa saber em que sistema
+              está entrando, e o convite já se diz no título. ⚠️ `min-w-0`:
+              é item da grade do CardHeader; sem ele, a marca sem logo
+              vertical (símbolo + nome em texto) com nome comprido alarga a
+              coluna, e título e descrição saem cortados no celular. */}
+          <div className="mb-2 flex min-w-0 justify-center">
+            <LogoDaMarca
+              forma="vertical"
+              className="h-20 w-auto max-w-full sm:h-24"
+            />
           </div>
           <CardTitle className="text-xl text-foreground">
             {inviteToken ? t('titleAccept') : t('titleWelcome')}

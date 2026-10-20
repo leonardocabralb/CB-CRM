@@ -279,7 +279,7 @@ gatilho "Situação mudou no Atlas" (Fase 4). Plano, fases e decisões do operad
   (`telefoneCanonico`), estado pelo DDD SÓ de número brasileiro, datas
   `aaaa-mm-dd` no fuso do escritório (nunca `toISOString().slice`), valor do
   card (0 sem card), "fixo" por padrão, vazio vai `null`. A nota leva o nome
-  do app de `marca.ts`, nunca literal. A reativação não mexe em nome,
+  da marca da instalação, lido na hora (`obterMarca()`), nunca literal. A reativação não mexe em nome,
   telefone, e-mail nem nota que a equipe cuida no Atlas.
 - **O motivo da falha vai para o "Já rodou" da aba Automações e para os
   registros** (qualquer membro lê; o fio não mostra motivo cru): só o código

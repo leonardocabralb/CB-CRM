@@ -73,7 +73,9 @@ diálogo aberto.
 - ⚠️ **Filho direto do `DialogContent` com `truncate` precisa de `min-w-0`.**
   O `DialogContent` é `grid`, e item de grid nasce com `min-width: auto`;
   `truncate` é `nowrap`, então o filho fica com a largura do texto inteiro
-  (a busca do diálogo de executar automação atravessava a tela).
+  (a busca do diálogo de executar automação atravessava a tela). O
+  `CardHeader` também é `grid`: o invólucro do logo nas telas de entrada
+  leva `min-w-0` (`.claude/rules/marca.md`).
 - ⚠️ **Filho de flex com `items-start`/`items-end` que recebe texto de fora
   precisa de `max-w-full`.** `max-width` não se herda, e `flex-start`
   dimensiona pelo conteúdo: a bolha do fio saía com 1040 px sob um pai de

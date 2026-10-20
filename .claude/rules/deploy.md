@@ -37,9 +37,10 @@ moram lá, não aqui.
 - Vários merges seguidos não geram um deploy por PR: o GitHub guarda UM run
   pendente por grupo de concorrência, o do meio morre na FILA e o último
   publica todos. O histórico do Actions não diz o que foi publicado quando.
-- ⚠️ `NEXT_PUBLIC_*` é inlinado no BUILD (idioma, nome do app, nome curto):
-  muda no `pipeline.yml` e exige rebuild; o `crm.env` não muda nada disso.
-  "Produção diferente do meu local": confira o build-arg antes do env.
+- ⚠️ `NEXT_PUBLIC_*` é inlinado no BUILD (idioma, Supabase, endereço do
+  site): muda no `pipeline.yml` e exige rebuild; o `crm.env` não muda nada
+  disso. "Produção diferente do meu local": confira o build-arg antes do
+  env. Nome e logo NÃO são build-arg: são dado (`.claude/rules/marca.md`).
 
 ### Node: uma major, no `.nvmrc`
 Teste de Intl, fuso ou colação muda entre majors do V8 (já reprovou no CI o que
@@ -61,9 +62,11 @@ passou na máquina). Por isso:
   sintoma é ` M AGENTS.md` sozinho no `git status`.
 - Páginas saem com `Cache-Control: private, no-store` (#626 do original):
   `public` deixaria um cache compartilhado servir a página de uma pessoa a
-  outra. Exceções: `opus/` e `inbox-doodle.svg`, senão o navegador baixa o
-  gravador a cada nota de voz. Arquivo novo de `public/` usado a toda hora
-  entra na exceção. Pino `src/next-config.test.ts`.
+  outra. Exceções: `opus/`, `inbox-doodle.svg` e `marca/` (o logo padrão em
+  toda página), senão o navegador baixa o gravador a cada nota de voz.
+  Arquivo novo de `public/` usado a toda hora entra na exceção. Pino NOSSO
+  `src/next-config.excecoes.test.ts` (o `next-config.test.ts` é o do
+  original, igual).
 
 ### Agendador: nada dispara sozinho
 - O serviço `agendador` do `docker-stack.yml` bate nas rotas de cron em dois
@@ -135,9 +138,10 @@ passou na máquina). Por isso:
   `supabase/` e na raiz. Escopo estreito de propósito — `docs/`, `ops/`,
   `CLAUDE.md`, `docker-stack.yml` e os workflows ainda descrevem a nossa infra.
   Exceção nova entra em `EXCECOES` com o motivo, nunca alargando o padrão.
-- A marca da nossa produção vem dos build-args `NEXT_PUBLIC_APP_NAME` e
-  `NEXT_PUBLIC_APP_SHORT_NAME` no `pipeline.yml`; o padrão no código
-  (`src/lib/marca.ts`) é genérico.
+- A marca é DADO da instalação (`cb_marca`, 1094), nunca build-arg: a
+  mesma imagem serve a qualquer marca, e a nossa produção usa o padrão do
+  produto (Atlas CRM, `src/lib/marca.ts`). Build-arg de nome ou logo que
+  volte ao `pipeline.yml`/`Dockerfile` não é lido por nada.
 - `scripts/vps-inventario.sh` é SÓ leitura, com lista fixa de comandos, e
   imprime os NOMES das variáveis, nunca os valores. Acrescentar comando ali é
   ampliar uma permissão já concedida.

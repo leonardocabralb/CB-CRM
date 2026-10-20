@@ -59,10 +59,10 @@ export function LogoDaMarca({
         const url = logoPara(marca, forma, f);
         if (url) {
           return (
-            // eslint-disable-next-line @next/next/no-img-element -- imagem
-            // vinda de configuração (Storage ou `public/marca/`): `next/image`
-            // exigiria dimensões fixas e uma allow-list de origem para um
-            // arquivo que cada instalação escolhe.
+            // Imagem vinda de configuração (Storage ou `public/marca/`):
+            // `next/image` exigiria dimensões fixas e uma allow-list de origem
+            // para um arquivo que cada instalação escolhe.
+            // eslint-disable-next-line @next/next/no-img-element -- ver acima.
             <img
               key={f}
               src={url}
@@ -88,6 +88,12 @@ export function LogoDaMarca({
 /**
  * A marca sem logo para este fundo: o símbolo (ou o genérico, se nem ele
  * existe) com o nome em texto — o desenho que a barra lateral sempre teve.
+ *
+ * ⚠️ `max-w-full` no nome (e na caixa): na forma vertical ele é item de uma
+ * coluna `items-center`, que o dimensiona pelo conteúdo — sem teto, o
+ * `truncate` não corta nada e o nome comprido (até 60 caracteres) alarga
+ * quem o contém. Quem põe o logo num item de grade ou de flex (o
+ * `CardHeader` das telas de entrada) dá `min-w-0` a esse item (raiz, 8c).
  */
 function SimboloENome({
   marca,
@@ -104,7 +110,7 @@ function SimboloENome({
   return (
     <span
       className={cn(
-        "flex min-w-0 items-center",
+        "flex min-w-0 max-w-full items-center",
         vertical ? "flex-col gap-2 text-center" : "gap-2",
         className,
       )}
@@ -115,7 +121,7 @@ function SimboloENome({
       />
       <span
         className={cn(
-          "truncate font-semibold",
+          "max-w-full truncate font-semibold",
           vertical ? "text-lg" : "text-sm",
           corDoNome,
         )}

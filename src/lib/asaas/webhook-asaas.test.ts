@@ -1,10 +1,19 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+import { marcaPadrao } from "@/lib/marca";
 import { decrypt, encrypt } from "@/lib/whatsapp/encryption";
 
 import { AsaasError, criarClienteAsaas } from "./cliente";
 import { dubleDoAsaas, dubleDoSupabase, type EstadoDoDuble, type PedidosAoAsaas, type RespostasDoAsaas } from "./duble.test-helper";
+import { nomeDoWebhook } from "./webhook";
 import { apagarWebhook, ativarWebhook, conferirWebhook, criarSemaforo, cuidarDoWebhook, garantirWebhook, lerConfigDoWebhook, processarEvento, religarWebhook, RETENTAR_ERRO_MS } from "./webhook-asaas";
+
+// O nome do sistema que vai ao Asaas sai da marca da instalação, que a aba
+// Marca troca a qualquer hora — o teste a troca no meio.
+const marca = vi.hoisted(() => ({ nome: "Sistema Exemplo" }));
+vi.mock("@/lib/marca-servidor", () => ({
+  obterMarca: async () => ({ ...marcaPadrao(), propria: true, nome: marca.nome }),
+}));
 
 const CONTA = "conta-1";
 const ORIGEM = "https://crm.exemplo.com";
@@ -88,6 +97,24 @@ describe("garantirWebhook — cria, reaproveita, e grava o token cifrado", () =>
     const r = await garantirWebhook(dubleDoSupabase(e), CONTA, cliente, ORIGEM, "admin@exemplo.com", AGORA);
     expect(r).toEqual({ ok: true, estado: "ativo" });
     expect(registro.envios!.map((x) => x.chave)).toEqual(["PUT /webhooks/wh_nosso"]);
+    expect(e.tabelas.cb_asaas_config[0].webhook_asaas_id).toBe("wh_nosso");
+  });
+
+  it("o nome do webhook é o da marca; marca TROCADA reaproveita o MESMO webhook pela URL e só o renomeia — nunca cadastra um segundo", async () => {
+    const e = estado({ webhook_token: "tok_antigo_0000000000000000" });
+    const { registro, cliente } = rodar({
+      listas: { "/webhooks": [webhookDoAsaas("wh_nosso", { name: nomeDoWebhook("Sistema Exemplo") })] },
+      recursos: {},
+      envios: { "PUT /webhooks/wh_nosso": webhookDoAsaas("wh_nosso") },
+    });
+    marca.nome = "Marca Nova";
+    try {
+      expect(await garantirWebhook(dubleDoSupabase(e), CONTA, cliente, ORIGEM, "admin@exemplo.com", AGORA)).toEqual({ ok: true, estado: "ativo" });
+    } finally {
+      marca.nome = "Sistema Exemplo";
+    }
+    expect(registro.envios!.map((x) => x.chave)).toEqual(["PUT /webhooks/wh_nosso"]);
+    expect((registro.envios![0].corpo as Record<string, unknown>).name).toBe(nomeDoWebhook("Marca Nova"));
     expect(e.tabelas.cb_asaas_config[0].webhook_asaas_id).toBe("wh_nosso");
   });
 

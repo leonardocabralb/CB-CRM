@@ -3,10 +3,12 @@ import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages } from 'next-intl/server';
 import { Inter } from "next/font/google";
 import Script from "next/script";
+import { connection } from "next/server";
 import "./globals.css";
 import { ThemeProvider } from "@/hooks/use-theme";
 import { ThemedToaster } from "@/components/themed-toaster";
-import { NOME_CURTO_DO_APP, NOME_DO_APP } from "@/lib/marca";
+import { MarcaProvider } from "@/components/marca/marca-provider";
+import { obterMarca } from "@/lib/marca-servidor";
 import {
   DEFAULT_MODE,
   DEFAULT_THEME,
@@ -21,38 +23,49 @@ const inter = Inter({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  // ⚠️ Nome e descrição saem de `src/lib/marca.ts`, não de literal aqui:
-  // o produto é instalado por outras pessoas, e um nome escrito no código
-  // faz a instalação delas se apresentar com o nome de outro escritório.
-  title: {
-    default: NOME_DO_APP,
-    template: `%s — ${NOME_DO_APP}`,
-  },
-  description: `Gestão de atendimento no WhatsApp — ${NOME_DO_APP}.`,
-  robots: {
-    index: false,
-    follow: false,
-  },
-  // ⚠️ SEM `icons` aqui. O Next só injeta os ícones de ARQUIVO — o
-  // `icon.tsx` (a aba do navegador) e o `apple-icon.tsx` (o do app instalado
-  // no celular) — quando o metadata não declara `icons`. Com a declaração
-  // que vinha do upstream, o `<head>` saía sem nenhum `apple-touch-icon` e o
-  // iPhone improvisava o ícone (medido em 14/09/2026, Next 16.2). Há pino em
-  // `manifest.test.ts`.
-  // App instalado na Tela de Início do celular: o nome que o iPhone sugere
-  // embaixo do ícone. O resto (escopo, tela de abertura, ícones) mora em
-  // `manifest.ts`, e o ícone em `apple-icon.tsx`.
-  appleWebApp: {
-    capable: true,
-    title: NOME_CURTO_DO_APP,
-  },
-  formatDetection: {
-    email: false,
-    address: false,
-    telephone: false,
-  },
-};
+// ⚠️⚠️ A MARCA é dado da instalação (`cb_marca`, editada em Configurações →
+// Marca), lida por `obterMarca()` A CADA PEDIDO — e por isso o
+// `await connection()` antes de lê-la, aqui e no layout abaixo. Sem ele o
+// Next pode prerenderizar a página no `next build`, e no CI não há service
+// role: a leitura cairia no padrão e o padrão ficaria ASSADO no HTML para
+// sempre, com a marca própria gravada no banco e ignorada.
+export async function generateMetadata(): Promise<Metadata> {
+  await connection();
+  const marca = await obterMarca();
+  return {
+    // Nome e descrição saem da marca, nunca de literal: o produto é
+    // instalado por outras pessoas, e um nome escrito no código faria a
+    // instalação delas se apresentar com o nome de outro escritório.
+    title: {
+      default: marca.nome,
+      template: `%s — ${marca.nome}`,
+    },
+    description: `Gestão de atendimento no WhatsApp — ${marca.nome}.`,
+    robots: {
+      index: false,
+      follow: false,
+    },
+    // ⚠️ SEM `icons` aqui. O Next só injeta os ícones de ARQUIVO — o
+    // `icon.tsx` (a aba do navegador) e o `apple-icon.tsx` (o do app instalado
+    // no celular) — quando o metadata não declara `icons`. Com a declaração
+    // que vinha do upstream, o `<head>` saía sem nenhum `apple-touch-icon` e o
+    // iPhone improvisava o ícone (medido em 14/09/2026, Next 16.2). Há pino em
+    // `manifest.test.ts`.
+    // App instalado na Tela de Início do celular: o nome que o iPhone sugere
+    // embaixo do ícone (o nome CURTO: ele corta nome comprido). O resto
+    // (escopo, tela de abertura, ícones) mora em `manifest.ts`, e o ícone em
+    // `apple-icon.tsx`.
+    appleWebApp: {
+      capable: true,
+      title: marca.nomeCurto,
+    },
+    formatDetection: {
+      email: false,
+      address: false,
+      telephone: false,
+    },
+  };
+}
 
 export const viewport: Viewport = {
   themeColor: "#020617",
@@ -96,8 +109,13 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const locale = await getLocale();
-  const messages = await getMessages();
+  // `connection()` ANTES da marca: ver o comentário de `generateMetadata`.
+  await connection();
+  const [locale, messages, marca] = await Promise.all([
+    getLocale(),
+    getMessages(),
+    obterMarca(),
+  ]);
 
   return (
     <html
@@ -123,10 +141,15 @@ export default async function RootLayout({
       </head>
       <body className="min-h-full bg-background text-foreground font-sans">
         <NextIntlClientProvider messages={messages} locale={locale}>
-          <ThemeProvider>
-            {children}
-            <ThemedToaster />
-          </ThemeProvider>
+          {/* A marca já resolvida desce para o navegador (`useMarca()`):
+              ele nunca lê `cb_marca`, fechada a anon e a authenticated — e a
+              tela de login precisa dela antes de haver sessão. */}
+          <MarcaProvider marca={marca}>
+            <ThemeProvider>
+              {children}
+              <ThemedToaster />
+            </ThemeProvider>
+          </MarcaProvider>
         </NextIntlClientProvider>
       </body>
     </html>
