@@ -164,8 +164,8 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
   `aoFalhar` e grava só quando DESISTE (fora da retentativa: uma bolha por
   tentativa daria três); robô e agente de IA gravam na hora. ⚠️ Não é fala:
   todo leitor que pergunta "alguém falou?" filtra `.eq('nao_saiu', false)`
-  (Aguardar sem conversa, contexto e turno da IA, Radar, painel), e as quatro
-  funções do banco também. Leitor novo entra no pino
+  (Aguardar sem conversa, contexto e turno da IA, Radar), e as funções do
+  banco também (as quatro da 1080 e as duas do Painel, 1095). Leitor novo entra no pino
   `src/lib/inbox/nao-saiu.chamadores.test.ts`. O envio de GENTE não grava
   bolha (a otimista falha na tela).
 - ⚠️ **O contrato de falha é o NOSSO** (`send_interactive_failed`; a
