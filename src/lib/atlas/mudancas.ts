@@ -246,13 +246,13 @@ export async function dispararMudancas(admin: SupabaseClient, accountId: string,
       if (erroVinculo) throw new FalhaDeLeitura(`o vínculo não pôde ser lido: ${erroVinculo.message}`);
       const v = vinculo as { contact_id: string | null; situacao: string | null; situacao_desde: string | null; app_url: string | null } | null;
       if (!v || !v.contact_id) {
-        await concluir("superada", "o vínculo com o Atlas sumiu ou a ficha foi apagada — nada foi disparado");
+        await concluir("superada", "o vínculo com o Atlas Gestor sumiu ou a ficha foi apagada — nada foi disparado");
         continue;
       }
       const guardada = instante(v.situacao_desde);
       const daMudanca = instante(m.situacao_desde)!;
       if (guardada !== null && guardada > daMudanca) {
-        await concluir("superada", "a situação mudou de novo no Atlas antes do disparo — nada foi disparado");
+        await concluir("superada", "a situação mudou de novo no Atlas Gestor antes do disparo — nada foi disparado");
         continue;
       }
       if (guardada === null || guardada < daMudanca) {

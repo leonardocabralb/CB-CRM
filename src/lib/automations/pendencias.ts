@@ -423,7 +423,7 @@ export function avisosDaAutomacao<T extends NoComConfig<T>>(
           avisos.push({
             path: `${path}.automation_id`,
             message:
-              'a automação acionada é do gatilho "Situação mudou no Atlas", que só roda pela leitura do Atlas: o passo falha e os seguintes não rodam',
+              'a automação acionada é do gatilho "Situação mudou no Atlas Gestor", que só roda pela leitura do Atlas Gestor: o passo falha e os seguintes não rodam',
             codigo: 'acionar_automacao_do_atlas',
           })
         } else if (alvo && alvo.is_active !== true) {

@@ -1342,7 +1342,7 @@ the change:
   (flow's) "Move card" block (which also creates the card when the contact
   has none), or an AI agent's "Move the deal" tool — including an
   automation that one of your API calls set off (a tag applied through this
-  API, for instance). The Calendly, ZapSign and Atlas integrations move
+  API, for instance). The Calendly, ZapSign and Atlas Gestor integrations move
   cards only through automations, so their moves come as `automation` too;
 - `api` — deal writes through this API (`POST`/`PATCH /api/v1/deals`);
 - `system` — anything else done without a signed-in user: a fix run

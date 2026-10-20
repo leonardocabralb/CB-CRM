@@ -36,13 +36,13 @@ describe('AbrirNoAtlas', () => {
     expect(html).toContain(`href="${APP}"`);
     expect(html).toContain('target="_blank"');
     expect(html).toContain('rel="noopener noreferrer"');
-    expect(html).toContain('aria-label="Abrir no Atlas"');
-    expect(html).toContain('title="Abrir no Atlas"');
+    expect(html).toContain('aria-label="Abrir no Atlas Gestor"');
+    expect(html).toContain('title="Abrir no Atlas Gestor"');
     expect(html).toContain('rounded-full');
   });
 
   it('botão: com o texto, nos dois dicionários', () => {
-    expect(desenhar(APP, 'botao')).toMatch(/<a[^>]*>.*Abrir no Atlas<\/a>/);
-    expect(desenhar(APP, 'botao', en, 'en')).toMatch(/<a[^>]*>.*Open in Atlas<\/a>/);
+    expect(desenhar(APP, 'botao')).toMatch(/<a[^>]*>.*Abrir no Atlas Gestor<\/a>/);
+    expect(desenhar(APP, 'botao', en, 'en')).toMatch(/<a[^>]*>.*Open in Atlas Gestor<\/a>/);
   });
 });

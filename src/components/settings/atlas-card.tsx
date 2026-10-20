@@ -266,7 +266,7 @@ export function AtlasCard() {
     <div className="rounded-lg border border-border bg-card">
       <button type="button" onClick={() => setAberto((a) => !a)} aria-expanded={aberto} className="flex w-full items-center gap-3 p-4 text-left">
         <Scale className="size-4 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">Atlas</span>
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">Atlas Gestor</span>
         {cartao?.ambienteDeTeste && <SettingsChip variant="warn">{t("atlas.ambienteDeTeste")}</SettingsChip>}
         <SettingsChip variant={variante}>{rotuloDoChip}</SettingsChip>
         <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", aberto && "rotate-180")} />

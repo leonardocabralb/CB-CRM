@@ -185,9 +185,9 @@ gatilho "Situação mudou no Atlas" (Fase 4). Plano, fases e decisões do operad
   mantém na FALHA (o "Tentar de novo", nunca a aba sumida).
 - **Lixeira na aba**: restaurar no Atlas não muda o `status_changed_at`, e
   só a listagem completa (ou o sucesso de uma ação do nó Atlas neste cliente,
-  `integracoes-atlas-acoes.md`) limparia a marca. O admin tem "Conferir no Atlas"
-  (o `PUT ligar` com o id do vínculo): o par já ligado NA LIXEIRA relê o
-  `get_client` e tira SÓ a marca (a situação fica para a leitura, que decide
+  `integracoes-atlas-acoes.md`) limparia a marca. O admin tem "Conferir no
+  Atlas Gestor" (o `PUT ligar` com o id do vínculo): o par já ligado NA
+  LIXEIRA relê o `get_client` e tira SÓ a marca (a situação fica para a leitura, que decide
   o evento); `not_found` = `ainda_na_lixeira`, a marca fica.
   Chaves montadas `situacao.`, `origem.`, `casouPor.`, `erro.` cobradas por
   `do-contato.test.ts`; situação desconhecida = texto de reserva.
@@ -224,7 +224,7 @@ gatilho "Situação mudou no Atlas" (Fase 4). Plano, fases e decisões do operad
 ### O passo "Criar cliente no Atlas" (`criar-cliente.ts`)
 
 - É a primeira ação do NÓ Atlas do construtor (cinco ações, uma entrada no
-  menu, `ehPassoDoAtlas`; destaque laranja e selo "Integração Atlas"): o nó e
+  menu, `ehPassoDoAtlas`; destaque laranja e selo "Integração"): o nó e
   as outras quatro estão em `integracoes-atlas-acoes.md`. ⚠️ No "Contrato
   fechado" ele é o ÚLTIMO do ramo NÃO, LIGADO, com os três campos de data da
   ficha (`data_do_primeiro_contato`, `data_da_proposta`,

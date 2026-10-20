@@ -54,9 +54,9 @@ describe('FaixaDeSituacaoDoCliente', () => {
   });
 
   it('pelo Atlas: "no Atlas desde <data>", e a variante sem a data quando ela é desconhecida', () => {
-    expect(desenhar([doAtlas('rescindido')])).toContain(`Contrato rescindido no Atlas desde ${dia(DESDE)}.`);
+    expect(desenhar([doAtlas('rescindido')])).toContain(`Contrato rescindido no Atlas Gestor desde ${dia(DESDE)}.`);
     const semData = desenhar([doAtlas('finalizado', { desde: null })]);
-    expect(semData).toContain('Contrato finalizado no Atlas.');
+    expect(semData).toContain('Contrato finalizado no Atlas Gestor.');
     expect(semData).not.toContain('desde');
     expect(semData).toContain('data-fonte="atlas"');
   });
@@ -65,18 +65,18 @@ describe('FaixaDeSituacaoDoCliente', () => {
     const suspenso = desenhar([doAtlas('suspenso')]);
     expect(suspenso).toMatch(/Cliente <span[^>]*bg-amber-700[^>]*text-white[^>]*>Suspenso<\/span>/);
     expect(suspenso).toContain('border-amber-500/50');
-    expect(suspenso).toContain(`Cliente suspenso no Atlas desde ${dia(DESDE)}.`);
+    expect(suspenso).toContain(`Cliente suspenso no Atlas Gestor desde ${dia(DESDE)}.`);
     const inativo = desenhar([doAtlas('inativo', { desde: null })]);
     expect(inativo).toMatch(/Cliente <span[^>]*bg-slate-600[^>]*text-white[^>]*>Inativo<\/span>/);
     expect(inativo).toContain('border-slate-500/50');
-    expect(inativo).toContain('Cliente inativo no Atlas.');
+    expect(inativo).toContain('Cliente inativo no Atlas Gestor.');
   });
 
   it('leitura velha: a linha discreta "Situação lida no Atlas em …"; fresca, nada', () => {
-    expect(desenhar([doAtlas('rescindido', { velha: true })])).toContain('Situação lida no Atlas em');
-    expect(desenhar([doAtlas('rescindido')])).not.toContain('Situação lida no Atlas em');
+    expect(desenhar([doAtlas('rescindido', { velha: true })])).toContain('Situação lida no Atlas Gestor em');
+    expect(desenhar([doAtlas('rescindido')])).not.toContain('Situação lida no Atlas Gestor em');
     // Velha sem saber quando: não inventa data.
-    expect(desenhar([doAtlas('rescindido', { velha: true, lidaEm: null })])).not.toContain('Situação lida no Atlas em');
+    expect(desenhar([doAtlas('rescindido', { velha: true, lidaEm: null })])).not.toContain('Situação lida no Atlas Gestor em');
   });
 
   it('o texto nunca é colorido (contraste nos dois modos): a cor de texto só vai no ícone', () => {
@@ -90,7 +90,7 @@ describe('FaixaDeSituacaoDoCliente', () => {
     const html = desenhar([doAtlas('rescindido'), RESCINDIDO, FINALIZADO]);
     expect(html).toContain('data-situacao="rescindido"');
     expect(html).toContain('data-fonte="atlas"');
-    expect(html).toContain('no Atlas desde');
+    expect(html).toContain('no Atlas Gestor desde');
     expect(html).toContain('Bancário - Jurídico');
     expect(html).toContain('Trabalhista - Jurídico');
   });
@@ -104,8 +104,8 @@ describe('FaixaDeSituacaoDoCliente', () => {
   it('os dois dicionários têm as chaves (fallback do next-intl é por arquivo)', () => {
     expect(desenhar([RESCINDIDO], en, 'en')).toMatch(/Client <span[^>]*>Terminated<\/span>/);
     expect(desenhar([FINALIZADO], en, 'en')).toMatch(/Client <span[^>]*>Closed out<\/span>/);
-    expect(desenhar([doAtlas('suspenso', { velha: true })], en, 'en')).toMatch(/Client <span[^>]*>Suspended<\/span>[\s\S]*in Atlas since[\s\S]*Status read from Atlas on/);
-    expect(desenhar([doAtlas('inativo', { desde: null })], en, 'en')).toContain('Client inactive in Atlas.');
+    expect(desenhar([doAtlas('suspenso', { velha: true })], en, 'en')).toMatch(/Client <span[^>]*>Suspended<\/span>[\s\S]*in Atlas Gestor since[\s\S]*Status read from Atlas Gestor on/);
+    expect(desenhar([doAtlas('inativo', { desde: null })], en, 'en')).toContain('Client inactive in Atlas Gestor.');
     expect(desenhar([RESCINDIDO], en, 'en')).toContain('in the Bancário - Jurídico pipeline, stage “Cliente Rescindido”.');
   });
 });
