@@ -16,7 +16,7 @@
 
 import { useEffect, useState } from 'react';
 
-import { NOME_DO_APP } from '@/lib/marca';
+import { useMarca } from '@/components/marca/marca-provider';
 import { createClient } from '@/lib/supabase/client';
 import { PerfilResumo, type PerfilParaResumo } from './perfil-resumo';
 import { toast } from 'sonner';
@@ -81,6 +81,8 @@ export function InviteMemberDialog({
   const t = useTranslations('Settings.invite');
   const tRoles = useTranslations('Settings.roles');
   const { account } = useAuth();
+  // O nome do sistema na mensagem do WhatsApp: o da marca da instalação.
+  const marca = useMarca();
   const [role, setRole] = useState<InviteRole>('agent');
   // Fase 6: o convite escolhe um PERFIL, não um papel cru — o papel vem do
   // perfil. O select de papel continua existindo só como fallback quando a
@@ -245,7 +247,7 @@ export function InviteMemberDialog({
     const accountName = result?.accountName ?? t('genericAccountName');
     const message = t('whatsappMessage', {
       accountName,
-      appName: NOME_DO_APP,
+      appName: marca.nome,
       expiresInDays: result?.expiresInDays ?? 0,
       url,
     });

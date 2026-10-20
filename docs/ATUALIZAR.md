@@ -170,6 +170,39 @@ cid=$(docker ps --filter name=crm_crm --format '{{.ID}}' | head -1)
 docker exec $cid printenv SUPABASE_SERVICE_ROLE_KEY | wc -c   # 0 = quebrado
 ```
 
+### Nome e logo: da variável de build para a tela
+
+Nas versões antigas, o nome e o logo vinham de variáveis de build
+(`NEXT_PUBLIC_APP_*`, menos o `NEXT_PUBLIC_APP_LOCALE`, que continua). A
+partir da versão que traz *Configurações → Marca*, essas variáveis não
+são mais lidas: sem marca gravada na aba, vale o padrão do produto, o
+**Atlas CRM**.
+
+Se a sua instalação usava essas variáveis:
+
+1. Aplique as migrations antes de publicar (a da marca só acrescenta uma
+   tabela e um bucket).
+2. Publique. Até o passo 3, a sua instalação se apresenta como Atlas CRM.
+3. Entre com um administrador da conta mais antiga da instalação e grave
+   o seu nome e o seu logo em *Configurações → Marca* — o roteiro está em
+   [`INSTALACAO.md`, passo 6.1](./INSTALACAO.md#61-a-marca-nome-e-logo).
+   Instalação antiga, de antes do compartilhamento de conta: a atualização
+   que o trouxe criou de uma vez uma conta para cada login que já existia,
+   todas com a MESMA data de criação. Nesse empate, a "mais antiga" é
+   decidida pelo identificador da conta, não pela ordem em que as pessoas
+   chegaram. Confira no *SQL Editor* do painel antes de contar com a troca:
+   ```sql
+   select id, name, created_at from accounts order by created_at, id limit 5;
+   ```
+   A primeira linha é a conta que troca a marca: se não for a sua, só um
+   administrador dela consegue gravar.
+4. Tire as linhas de nome e logo do `build-args` do `pipeline.yml` (e o
+   arquivo de logo que você tinha posto em `public/`, se quiser): não
+   quebram nada, mas não fazem mais nada.
+
+Quem instalou o sistema no iPhone continua vendo o nome e o ícone antigos
+até apagar o ícone e adicionar de novo: o iPhone os guarda na instalação.
+
 ---
 
 ## Coisas que valem a pena não mudar

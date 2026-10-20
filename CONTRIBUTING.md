@@ -68,8 +68,10 @@ fallback do next-intl é por arquivo, não por chave: uma chave que falta
 não cai para o inglês, aparece na tela como o caminho dela. Dois scripts
 no CI cobram isso.
 
-**O nome do produto não é tradução.** Ele vem de `src/lib/marca.ts`, que
-lê `NEXT_PUBLIC_APP_NAME`. Frase de interface não cita o nome do produto;
+**O nome do produto não é tradução nem literal.** É dado da instalação
+(*Configurações → Marca*): no servidor, `obterMarca()`
+(`src/lib/marca-servidor.ts`); no navegador, `useMarca()`. O padrão mora
+em `src/lib/marca.ts`. Frase de interface não cita o nome do produto;
 onde ele é necessário, entra como parâmetro `{appName}`.
 
 **Migrations são arquivos, e nunca se renumera uma já aplicada.** Nomes
