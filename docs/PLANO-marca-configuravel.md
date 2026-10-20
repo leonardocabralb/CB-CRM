@@ -223,3 +223,10 @@ Pendências:
 - As peças do Atlas vieram em PNG pequeno (símbolo com 117 px, ampliado para
   512): trocar pelos originais (SVG ou PNG ≥ 1024 px) quando chegarem —
   basta substituir os arquivos de `public/marca/`.
+- Dois admins com a aba aberta ao mesmo tempo: o POST sempre leva o `nome`
+  (obrigatório), então quem salva só uma imagem a partir da tela antiga
+  regrava o nome que carregou, desfazendo um renomear feito no meio
+  (revisão do Codex no #420, `85f2ed41`). Aceito como corrida rara com lado
+  seguro: só os admins da conta mais antiga trocam a marca, o nome antigo
+  aparece na hora e basta salvar de novo. Se virar problema: mandar o nome
+  só quando muda, ou recusar gravação velha pelo `atualizado_em`.
