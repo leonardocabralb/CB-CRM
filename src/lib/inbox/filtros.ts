@@ -116,6 +116,23 @@ export interface FiltrosDoInbox {
   /** Só as que EU marquei. */
   favoritas: boolean;
   /**
+   * As que EU marquei entram MESMO FORA do recorte do painel (pedido do
+   * operador, 20/10/2026: "BA - Comercial" mostrando também o cliente
+   * favoritado que corre pela Bancário - Jurídico). Alarga, nunca recorta —
+   * é um OU, ao contrário de {@link FiltrosDoInbox.favoritas}.
+   *
+   * ⚠️ A favorita passa por cima SÓ do recorte do painel
+   * (`temRecorteDoPainel`: conexões, etiquetas, funil/etapa, responsável,
+   * tipo e empresa). Aba, perfil, busca, "Só favoritas", Não lidas, Em atraso
+   * e Inadimplentes continuam valendo para ela (decisão do operador): com
+   * "Não lidas" aceso, a favorita já lida some. Ver `aplicarFiltros`.
+   *
+   * ⚠️ Sem recorte do painel não muda nada (tudo ∪ favoritas = tudo), e por
+   * isso NÃO conta no distintivo e só pesa em `mesmoFiltro`/`descreverFiltro`
+   * quando há recorte — a regra de `modoDeEtiqueta`.
+   */
+  incluirFavoritas: boolean;
+  /**
    * Só as que têm mensagem não lida.
    *
    * ⚠️ **É da CONTA INTEIRA, não "as que eu não li".** `unread_count` é uma
@@ -174,6 +191,7 @@ export const FILTROS_VAZIOS: FiltrosDoInbox = {
   funilIds: [],
   etapaIds: [],
   favoritas: false,
+  incluirFavoritas: false,
   naoLidas: false,
   emAtraso: false,
   inadimplentes: false,
@@ -196,7 +214,8 @@ export const FILTROS_VAZIOS: FiltrosDoInbox = {
  * conhecê-la. "Limpar tudo" e os chips mantêm a aba pelo mesmo motivo.
  *
  * ⚠️ `modoDeEtiqueta` NÃO conta: ele não recorta nada sozinho, só muda como as
- * etiquetas já escolhidas se combinam.
+ * etiquetas já escolhidas se combinam. `incluirFavoritas` também não: ele
+ * ALARGA o recorte, e o número existe para explicar uma lista curta.
  */
 export function contarFiltrosAtivos(f: FiltrosDoInbox): number {
   let n = 0;
@@ -216,6 +235,27 @@ export function contarFiltrosAtivos(f: FiltrosDoInbox): number {
   if (f.emAtraso) n++;
   if (f.inadimplentes) n++;
   return n;
+}
+
+/**
+ * Há recorte do PAINEL — o que {@link FiltrosDoInbox.incluirFavoritas} deixa
+ * a favorita atravessar: conexões, etiquetas, funil/etapa, responsável, tipo
+ * e empresa. Sem ele, "incluir favoritas" não muda a lista.
+ *
+ * ⚠️ É a MESMA lista de `casaComORecorteDoPainel`: campo novo do painel entra
+ * nas duas, senão o interruptor some do painel com o recorte de pé (ou a
+ * favorita não atravessa o campo novo).
+ */
+export function temRecorteDoPainel(f: FiltrosDoInbox): boolean {
+  return (
+    f.tipo !== "todas" ||
+    f.canalIds.length > 0 ||
+    f.responsavelId !== null ||
+    f.etiquetaIds.length > 0 ||
+    f.empresa !== null ||
+    f.funilIds.length > 0 ||
+    f.etapaIds.length > 0
+  );
 }
 
 /**
@@ -628,6 +668,54 @@ export function casaComASituacao(
 }
 
 /**
+ * O recorte do PAINEL — conexões, etiquetas, funil/etapa, responsável, tipo e
+ * empresa —, a parte que a favorita atravessa com
+ * {@link FiltrosDoInbox.incluirFavoritas}. A mesma lista de
+ * {@link temRecorteDoPainel}.
+ */
+function casaComORecorteDoPainel(
+  c: Conversation,
+  f: FiltrosDoInbox,
+  ctx: ContextoDosFiltros,
+): boolean {
+  if (!matchesTypeFilter(c, f.tipo)) return false;
+
+  // Ver `canalDaConversa`: em grupo o número mora em `cb_groups`, não na
+  // conversa.
+  if (f.canalIds.length > 0) {
+    const canal = canalDaConversa(c);
+    if (!canal || !f.canalIds.includes(canal)) return false;
+  }
+
+  if (!casaComOResponsavel(c, f.responsavelId)) return false;
+
+  // Ver `recorteDeEtapaConfiavel`: sem os dados por trás, o recorte de
+  // funil/etapa é neutralizado — nunca aplicado sobre um mapa incompleto.
+  // Os DOIS níveis caem juntos: o mapa que falta é o mesmo.
+  const recorteDeEtapa = ctx.recorteDeEtapaConfiavel
+    ? { funilIds: f.funilIds, etapaIds: f.etapaIds }
+    : { funilIds: [], etapaIds: [] };
+  if (
+    !casaComAEtapa(c, recorteDeEtapa, ctx.etapaPorContato, ctx.funilPorEtapa)
+  ) {
+    return false;
+  }
+
+  if (f.etiquetaIds.length > 0 || f.empresa !== null) {
+    if (
+      !matchesContactFilters(c, {
+        tagIds: f.etiquetaIds,
+        tagMode: f.modoDeEtiqueta,
+        company: f.empresa,
+      })
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
  * O recorte inteiro.
  *
  * ⚠️ **Todos os filtros se aplicam JUNTOS (E lógico)** — decisão do operador em
@@ -635,7 +723,9 @@ export function casaComASituacao(
  * mais favoritas mostra *as favoritas da Ana*. É o que faz o contador
  * "Exibindo N" importar — ele é a única coisa que explica um resultado vazio.
  * (A aba padrão não é filtro, e a busca a atravessa — ver
- * {@link casaComASituacao}.)
+ * {@link casaComASituacao}.) A ÚNICA exceção é pedida à parte:
+ * {@link FiltrosDoInbox.incluirFavoritas} deixa a favorita atravessar o
+ * recorte do painel, e só ele.
  */
 export function aplicarFiltros(
   conversations: Conversation[],
@@ -650,20 +740,19 @@ export function aplicarFiltros(
     // participa da lista. Com termo, ela segue no pipeline e o OU da busca
     // lá no fim decide se casou — passando ainda pelos outros filtros, como
     // qualquer conversa (buscar "contrato" com "Favoritas" ligado não traz
-    // não-favorita de outra área).
+    // não-favorita de outra área). Nem "incluir favoritas" fura o perfil: a
+    // favorita fora dele não abriria.
     if (ctx.foraDoPerfil?.(c) && ctx.busca.trim() === "") return false;
 
-    if (!matchesTypeFilter(c, f.tipo)) return false;
     if (!casaComASituacao(c, f.status, ctx.busca)) return false;
 
-    // Ver `canalDaConversa`: em grupo o número mora em `cb_groups`, não na
-    // conversa.
-    if (f.canalIds.length > 0) {
-      const canal = canalDaConversa(c);
-      if (!canal || !f.canalIds.includes(canal)) return false;
-    }
+    // ⚠️ "Incluir favoritas" é um OU com o recorte do PAINEL, e só com ele
+    // (decisão do operador, 20/10/2026): a favorita da Bancário - Jurídico
+    // entra no "BA - Comercial", mas os interruptores abaixo — Não lidas, Em
+    // atraso, Inadimplentes — e a busca continuam valendo para ela.
+    const atravessaOPainel = f.incluirFavoritas && ctx.favoritas.has(c.id);
+    if (!atravessaOPainel && !casaComORecorteDoPainel(c, f, ctx)) return false;
 
-    if (!casaComOResponsavel(c, f.responsavelId)) return false;
     if (f.favoritas && !ctx.favoritas.has(c.id)) return false;
     if (f.naoLidas && c.unread_count <= 0) return false;
     // ⚠️ A MESMA função que acende o selo da linha, e não uma cópia da régua:
@@ -679,29 +768,6 @@ export function aplicarFiltros(
       (!c.contact_id || !ctx.inadimplentes.has(c.contact_id))
     ) {
       return false;
-    }
-    // Ver `recorteDeEtapaConfiavel`: sem os dados por trás, o recorte de
-    // funil/etapa é neutralizado — nunca aplicado sobre um mapa incompleto.
-    // Os DOIS níveis caem juntos: o mapa que falta é o mesmo.
-    const recorteDeEtapa = ctx.recorteDeEtapaConfiavel
-      ? { funilIds: f.funilIds, etapaIds: f.etapaIds }
-      : { funilIds: [], etapaIds: [] };
-    if (
-      !casaComAEtapa(c, recorteDeEtapa, ctx.etapaPorContato, ctx.funilPorEtapa)
-    ) {
-      return false;
-    }
-
-    if (f.etiquetaIds.length > 0 || f.empresa !== null) {
-      if (
-        !matchesContactFilters(c, {
-          tagIds: f.etiquetaIds,
-          tagMode: f.modoDeEtiqueta,
-          company: f.empresa,
-        })
-      ) {
-        return false;
-      }
     }
 
     // ⚠️ A busca é a ÚLTIMA pergunta, e é um OU entre duas fontes: o que esta

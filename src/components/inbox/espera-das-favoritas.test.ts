@@ -17,8 +17,10 @@ describe("a lista espera as favoritas antes de aplicar o recorte", () => {
   const lista = ler("src/components/inbox/conversation-list.tsx");
   const hook = ler("src/hooks/use-favoritas.ts");
 
-  it("o spinner segura enquanto o recorte está ligado e as favoritas não voltaram", () => {
-    expect(lista).toMatch(/const aguardandoFavoritas = filtros\.favoritas && !favoritasCarregadas;/);
+  it("o spinner segura enquanto o recorte (ou o 'incluir favoritas') está ligado e as favoritas não voltaram", () => {
+    expect(lista).toMatch(
+      /const aguardandoFavoritas =\s+\(filtros\.favoritas \|\| filtros\.incluirFavoritas\) && !favoritasCarregadas;/,
+    );
     expect(lista).toMatch(/\{loading \|\| aguardandoEtapas \|\| aguardandoFavoritas \|\| esperandoPadrao \? \(/);
   });
 

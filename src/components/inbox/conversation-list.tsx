@@ -723,7 +723,10 @@ export function ConversationList({
   // Favoritas era semeado assim quando ela chegava por último — antes do #247
   // a espera pelos negócios escondia a corrida (Codex, PR #247). Leitura que
   // falhou também conta como voltada: o aviso das favoritas já explica.
-  const aguardandoFavoritas = filtros.favoritas && !favoritasCarregadas;
+  // "Incluir favoritas" espera também: sem ela, a favorita de fora do recorte
+  // aparecia um segundo depois, empurrando a lista.
+  const aguardandoFavoritas =
+    (filtros.favoritas || filtros.incluirFavoritas) && !favoritasCarregadas;
 
   /**
    * Ciclo de vida do filtro SEMEADO por `?etapa=` (e só dele — recorte de

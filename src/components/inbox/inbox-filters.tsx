@@ -53,6 +53,7 @@ import {
   recorteTemDoisNiveis,
   SEM_ETAPA,
   SEM_RESPONSAVEL,
+  temRecorteDoPainel,
   type FiltrosDoInbox,
   type SituacaoDaCaixa,
 } from "@/lib/inbox/filtros";
@@ -628,6 +629,41 @@ export function InboxFilters({
                 />
               </Campo>
             )}
+
+          {/* INCLUIR MINHAS FAVORITAS (pedido do operador, 20/10/2026): a
+              favorita entra mesmo fora do recorte do painel — "BA - Comercial"
+              mostrando o cliente favoritado da Bancário - Jurídico. Só aparece
+              com recorte do painel para alargar (sem ele não muda nada, a
+              regra do "Qualquer uma × Todas elas"), ou já ligado, para dar
+              como desligar. Não lidas, Em atraso e Inadimplentes continuam
+              valendo para a favorita — ver `incluirFavoritas` em filtros.ts. */}
+          {(temRecorteDoPainel(filtros) || filtros.incluirFavoritas) && (
+            <div>
+              <button
+                type="button"
+                onClick={() => mexer({ incluirFavoritas: !filtros.incluirFavoritas })}
+                aria-pressed={filtros.incluirFavoritas}
+                title={t("includeFavoritesHint")}
+                className={cn(
+                  "inline-flex h-8 w-full items-center gap-2 rounded-md border px-2 text-xs transition-colors",
+                  filtros.incluirFavoritas
+                    ? "border-amber-500/40 bg-amber-500/10 text-amber-600 hover:bg-amber-500/15 dark:text-amber-400"
+                    : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
+              >
+                <Star
+                  className={cn("h-3.5 w-3.5 shrink-0", filtros.incluirFavoritas && "fill-current")}
+                  aria-hidden="true"
+                />
+                <span className="truncate">{t("includeFavorites")}</span>
+              </button>
+              {filtros.incluirFavoritas && (
+                <p className="mt-1 px-0.5 text-[11px] text-muted-foreground">
+                  {t("includeFavoritesHint")}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* INADIMPLENTES (Asaas, Fase 1b): um interruptor no painel, e não
               um 5º chip na barra — medido em 03/09, a barra já ocupa ~290 dos
