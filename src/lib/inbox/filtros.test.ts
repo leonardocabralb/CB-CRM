@@ -19,6 +19,7 @@ import {
   type FiltrosDoInbox,
   casaComASituacao,
   digitosDeBuscaDeTelefone,
+  temRecorteDoPainel,
 } from "./filtros";
 import type { Conversation, Tag } from "@/types";
 
@@ -1086,5 +1087,119 @@ describe("recorte por inadimplência no Asaas (Fase 1b)", () => {
     expect(contarFiltrosAtivos(f)).toBe(1);
     const ids = aplicarFiltros([devendo, emDia], FILTROS_VAZIOS, ctx({ inadimplentes: new Set() })).map((c) => c.id);
     expect(ids).toEqual(["c-deve", "c-em-dia"]);
+  });
+});
+
+describe("incluir favoritas — a favorita atravessa o recorte do PAINEL (20/10/2026)", () => {
+  // O caso do operador: "BA - Comercial" recorta por duas conexões, e o
+  // cliente favoritado corre pela Bancário - Jurídico.
+  const comercial = conversa({ id: "com", channel_id: "ch-com" });
+  const meta = conversa({ id: "meta", channel_id: "ch-meta" });
+  const juridicoFavorita = conversa({ id: "jur-fav", channel_id: "ch-jur" });
+  const juridicoOutra = conversa({ id: "jur", channel_id: "ch-jur" });
+  const lista = [comercial, meta, juridicoFavorita, juridicoOutra];
+  const baComercial = { ...FILTROS_VAZIOS, canalIds: ["ch-com", "ch-meta"] };
+  const favoritas = new Set(["jur-fav"]);
+
+  it("a favorita de outra conexão entra; a não favorita dessa conexão continua fora", () => {
+    const ids = (f: FiltrosDoInbox) =>
+      aplicarFiltros(lista, f, ctx({ favoritas })).map((c) => c.id);
+    expect(ids(baComercial)).toEqual(["com", "meta"]);
+    expect(ids({ ...baComercial, incluirFavoritas: true })).toEqual(["com", "meta", "jur-fav"]);
+  });
+
+  it("atravessa TODO o recorte do painel: etiqueta, funil/etapa, responsável, tipo e empresa", () => {
+    const f = {
+      ...FILTROS_VAZIOS,
+      etiquetaIds: ["t1"],
+      etapaIds: ["e1"],
+      responsavelId: "u9",
+      tipo: "grupos" as const,
+      empresa: "ACME",
+      incluirFavoritas: true,
+    };
+    const ids = aplicarFiltros([juridicoFavorita, juridicoOutra], f, ctx({ favoritas })).map(
+      (c) => c.id,
+    );
+    expect(ids).toEqual(["jur-fav"]);
+  });
+
+  it("⚠️ Não lidas continua valendo para a favorita (decisão do operador)", () => {
+    const lida = conversa({ id: "fav-lida", channel_id: "ch-jur", unread_count: 0 });
+    const naoLida = conversa({ id: "fav-nao-lida", channel_id: "ch-jur", unread_count: 2 });
+    const ids = aplicarFiltros(
+      [lida, naoLida],
+      { ...baComercial, incluirFavoritas: true, naoLidas: true },
+      ctx({ favoritas: new Set(["fav-lida", "fav-nao-lida"]) }),
+    ).map((c) => c.id);
+    expect(ids).toEqual(["fav-nao-lida"]);
+  });
+
+  it("Inadimplentes continua valendo para a favorita", () => {
+    const f = { ...baComercial, incluirFavoritas: true, inadimplentes: true };
+    expect(
+      aplicarFiltros([juridicoFavorita], f, ctx({ favoritas, inadimplentes: new Set() })),
+    ).toEqual([]);
+  });
+
+  it("a aba continua valendo: favorita encerrada não aparece em Abertas", () => {
+    const encerrada = conversa({ id: "jur-fav", channel_id: "ch-jur", status: "closed" });
+    const f = { ...baComercial, incluirFavoritas: true };
+    expect(aplicarFiltros([encerrada], f, ctx({ favoritas }))).toEqual([]);
+    expect(
+      aplicarFiltros([encerrada], { ...f, status: "closed" }, ctx({ favoritas })).map((c) => c.id),
+    ).toEqual(["jur-fav"]);
+  });
+
+  it("o perfil continua valendo: favorita fora dele não entra (não abriria)", () => {
+    const f = { ...baComercial, incluirFavoritas: true };
+    expect(
+      aplicarFiltros([juridicoFavorita], f, ctx({ favoritas, foraDoPerfil: () => true })),
+    ).toEqual([]);
+  });
+
+  it("a busca continua valendo: favorita que não casa com o termo fica fora", () => {
+    const f = { ...baComercial, incluirFavoritas: true };
+    expect(aplicarFiltros([juridicoFavorita], f, ctx({ favoritas, busca: "zzz" }))).toEqual([]);
+  });
+
+  it("com 'Só favoritas' aceso, mostra TODAS as favoritas, de qualquer conexão", () => {
+    const comercialFavorita = conversa({ id: "com-fav", channel_id: "ch-com" });
+    const ids = aplicarFiltros(
+      [comercialFavorita, comercial, juridicoFavorita],
+      { ...baComercial, favoritas: true, incluirFavoritas: true },
+      ctx({ favoritas: new Set(["com-fav", "jur-fav"]) }),
+    ).map((c) => c.id);
+    expect(ids).toEqual(["com-fav", "jur-fav"]);
+  });
+
+  it("não conta no distintivo — alarga, não recorta", () => {
+    expect(contarFiltrosAtivos({ ...FILTROS_VAZIOS, incluirFavoritas: true })).toBe(0);
+    expect(contarFiltrosAtivos({ ...baComercial, incluirFavoritas: true })).toBe(1);
+  });
+
+  it("temRecorteDoPainel: cada campo do painel conta; aba e interruptores não", () => {
+    expect(temRecorteDoPainel(FILTROS_VAZIOS)).toBe(false);
+    for (const patch of [
+      { tipo: "diretas" as const },
+      { canalIds: ["c"] },
+      { responsavelId: SEM_RESPONSAVEL },
+      { etiquetaIds: ["t"] },
+      { empresa: "ACME" },
+      { funilIds: ["p"] },
+      { etapaIds: [SEM_ETAPA] },
+    ]) {
+      expect(temRecorteDoPainel({ ...FILTROS_VAZIOS, ...patch }), JSON.stringify(patch)).toBe(true);
+    }
+    for (const patch of [
+      { status: "closed" as const },
+      { favoritas: true },
+      { naoLidas: true },
+      { emAtraso: true },
+      { inadimplentes: true },
+      { incluirFavoritas: true },
+    ]) {
+      expect(temRecorteDoPainel({ ...FILTROS_VAZIOS, ...patch }), JSON.stringify(patch)).toBe(false);
+    }
   });
 });
