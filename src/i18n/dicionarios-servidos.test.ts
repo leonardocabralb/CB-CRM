@@ -29,9 +29,10 @@ describe('dicionários servidos', () => {
   });
 
   it('nome de produto não é tradução: `Sidebar.title` não volta', () => {
-    // A barra lateral e o <title> leem NOME_DO_APP (src/lib/marca.ts). Uma
-    // chave no dicionário faria renomear o sistema exigir editar os dois, e
-    // o nome divergir entre os idiomas. O #259 a recriou sem uso.
+    // A barra lateral e o <title> leem a MARCA da instalação (`obterMarca()`
+    // no servidor, `useMarca()` no navegador; Configurações → Marca). Uma
+    // chave no dicionário faria o nome divergir entre os idiomas e da marca
+    // gravada. O #259 a recriou sem uso.
     for (const f of ['en.json', 'pt-BR.json']) {
       const d = JSON.parse(fs.readFileSync(path.join(DIR, f), 'utf8'));
       expect(d.Sidebar?.title, f).toBeUndefined();

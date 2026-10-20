@@ -280,3 +280,12 @@ html[data-theme="rose"] {
     font-size: 16px;
   }
 }
+
+/* O logo da marca no fundo do modo do APP (`LogoDaMarca`): as duas versões
+   vão no HTML e esta regra esconde a do outro modo, sem esperar a
+   hidratação. Sem `data-mode` vale o escuro, o padrão do app. FORA de
+   camada, como a regra acima: vence o `flex`/`block` que a tela puser. */
+html[data-mode="light"] .marca-so-no-escuro,
+html:not([data-mode="light"]) .marca-so-no-claro {
+  display: none;
+}

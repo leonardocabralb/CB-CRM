@@ -103,7 +103,8 @@ Troca de LENTE no navegador, e só nele (`simulacao.ts`, o override no
 
 ### Seções só de admin
 - ⚠️⚠️ Seção cujas rotas são todas `requireRole('admin')` entra em
-  `SECOES_SO_DE_ADMIN` (`catalogo.ts`; hoje `perfis` e `webhooks`). Marcar
+  `SECOES_SO_DE_ADMIN` (`catalogo.ts`; hoje `perfis`, `webhooks` e
+  `marca`). Marcar
   `admin` em `ESCRITA_DA_SECAO` NÃO basta: `podeVerSecao` tem fail-open para
   membro sem perfil, e um admin poderia marcar a caixa num perfil `agent` — a
   seção apareceria e não funcionaria. `api` está no mesmo caso e ficou como

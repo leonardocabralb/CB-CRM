@@ -1390,6 +1390,19 @@ nome da época em que foram aplicadas.
   "Trocar" com a execução sem card da ficha que sairia, a união, e a busca
   nova da API medida no PostgREST real (`imatch` nos antigos e `id.in.(…)`
   no `.or()`: acha pelo telefone antigo; sem o ramo, nada).
+- **1094_cb_marca** — a marca configurável (PR #420): `cb_marca`, uma linha
+  por instalação (nome, nome curto, cor do ícone e os caminhos das 5 peças),
+  RLS ligada sem policy, nada para `anon`/`authenticated`; o bucket público
+  `marca` (1 MB; PNG, WebP, SVG), sem policy de escrita (só a rota, com
+  service role). ADITIVA e ANTES do deploy. Provada num Postgres 16
+  descartável (três aplicações). Aplicada em 20/10/2026 pela Management API
+  (histórico `20261020131033`), depois do CI verde no commit `a1200685`, com
+  "pode gravar a 1094 na produção" do operador. Conferida: RLS ligada, 0
+  policy, anon e authenticated sem SELECT, service_role com INSERT, bucket
+  público com o teto e os tipos certos. e2e no preview com uma marca
+  fictícia ("Marca Teste"): salvar, barra lateral, título, login sem sessão,
+  ícones e manifesto com a marca nova; voltar ao padrão deixou 0 linhas e 0
+  arquivos no bucket. Até o deploy do #420, o app no ar não lê a tabela.
 - **1095_cb_painel_por_dia** — as RPCs `cb_painel_mensagens_por_dia` e
   `cb_painel_tempo_de_resposta` (PR #422): a série e o tempo de resposta do
   Painel somam no banco, uma linha por dia no fuso do navegador (o PostgREST

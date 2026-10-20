@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { partesNoFuso } from "@/lib/agenda/fuso";
 import { FUSO_DO_ESCRITORIO } from "@/lib/contacts/campo-data";
-import { NOME_DO_APP } from "@/lib/marca";
+import { obterMarca } from "@/lib/marca-servidor";
 import { diaNoFuso, somarDias } from "@/lib/tasks/prazo";
 import { MAX_DESCRICAO, MAX_TITULO } from "@/lib/tasks/validar";
 
@@ -503,11 +503,13 @@ export async function criarTarefaNoAtlas(admin: SupabaseClient, entrada: Entrada
   const titulo = entrada.titulo.trim();
   if (!titulo) throw new Error("o título da tarefa ficou vazio (confira os campos inseridos) — nada foi enviado ao Atlas");
   const descricao = entrada.descricao.trim();
+  // O nome do sistema na reserva: o da marca da instalação, lido agora.
+  const reserva = descricao ? "" : `Aberta pela automação "${entrada.nomeDaAutomacao}" no ${(await obterMarca()).nome}`;
   const dados: Parameters<AcoesNoAtlas["criarTarefa"]>[0] = {
     title: recortarUtf16(titulo, MAX_TITULO),
     // Sem descrição, o Atlas grava o inglês "Created via API".
     // O nome da automação não tem teto: a reserva passa pelo MESMO corte (Codex, #365).
-    description: recortarUtf16(descricao || `Aberta pela automação "${entrada.nomeDaAutomacao}" no ${NOME_DO_APP}`, MAX_DESCRICAO),
+    description: recortarUtf16(descricao || reserva, MAX_DESCRICAO),
     priority: entrada.prioridade,
   };
   // O dia no fuso do escritório (a régua do `create_task` do CRM), nunca
@@ -619,7 +621,7 @@ export async function enviarTranscricaoAoAtlas(admin: SupabaseClient, entrada: E
       throw new Error(`a transcrição da reunião de ${quando} passa do teto do Atlas (300 KB); nada foi enviado ao Atlas`);
     }
 
-    const cabecalho = `Reunião "${reuniao.titulo}" de ${quando} (${reuniao.origem === "manual" ? "colada à mão" : "tl;dv"}), enviada pelo ${NOME_DO_APP}`;
+    const cabecalho = `Reunião "${reuniao.titulo}" de ${quando} (${reuniao.origem === "manual" ? "colada à mão" : "tl;dv"}), enviada pelo ${(await obterMarca()).nome}`;
     const doOperador = textoOuNulo(entrada.notasDoOperador);
     const base = [cabecalho, doOperador].filter((x): x is string => !!x).join("\n\n");
     if (bytesUtf8(base) > TETO_NOTAS_BYTES) throw new Error("as notas do passo passam do teto do Atlas (50 KB); encurte o texto — nada foi enviado ao Atlas");

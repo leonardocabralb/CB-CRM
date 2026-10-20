@@ -8,6 +8,12 @@ vi.mock("@/lib/whatsapp/encryption", () => ({
   },
 }));
 
+// A nota do cadastro leva o nome da MARCA da instalação (Configurações → Marca).
+vi.mock("@/lib/marca-servidor", async () => {
+  const { marcaPadrao } = await import("@/lib/marca");
+  return { obterMarca: async () => ({ ...marcaPadrao(), propria: true, nome: "Sistema Exemplo" }) };
+});
+
 import { criarBanco, type Banco } from "../zapsign/duble.test-helper";
 
 import { AtlasError, type ClienteAtlas, type ClienteDoAtlas, type CriteriosDeBusca, type DadosDoClienteNoAtlas } from "./cliente";
@@ -101,6 +107,7 @@ describe("criarOuReativarNoAtlas", () => {
     const criar = chamadas.find((c) => c.metodo === "criar")!;
     expect(criar.args[1]).toBe("log-1:passo-1:criar");
     expect((criar.args[0] as DadosDoClienteNoAtlas).chatLink).toBe("https://crm.example.com/inbox?c=conv-1");
+    expect((criar.args[0] as DadosDoClienteNoAtlas).notes).toMatch(/^Enviado pelo Sistema Exemplo em /);
     expect(banco.tabelas.cb_atlas_clientes).toEqual([
       expect.objectContaining({ account_id: CONTA, contact_id: FICHA, atlas_client_id: "novo-1", atlas_tenant_id: "t1", origem: "criada", situacao: "ativo" }),
     ]);

@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
-import { NOME_CURTO_DO_APP, NOME_DO_APP, TAMANHOS_DO_ICONE } from "@/lib/marca";
+import { TAMANHOS_DO_ICONE } from "@/lib/marca";
+import { obterMarca } from "@/lib/marca-servidor";
 
 // ============================================================
 // Manifesto do app INSTALADO na Tela de Início do celular.
@@ -17,12 +18,22 @@ import { NOME_CURTO_DO_APP, NOME_DO_APP, TAMANHOS_DO_ICONE } from "@/lib/marca";
 // ⚠️ O iPhone lê o manifesto NA INSTALAÇÃO. Quem já instalou só pega uma
 // mudança daqui apagando o ícone e adicionando de novo — e entra de novo,
 // porque o app instalado guarda o login separado do Safari.
+//
+// ⚠️ DINÂMICO: nome e ícones são os da MARCA da instalação (`cb_marca`,
+// Configurações → Marca). Estático, o manifesto seria gerado no
+// `next build`, sem service role, e o padrão ficaria nele para sempre.
 // ============================================================
 
-export default function manifest(): MetadataRoute.Manifest {
+export const dynamic = "force-dynamic";
+
+export default async function manifest(): Promise<MetadataRoute.Manifest> {
+  const marca = await obterMarca();
+  // `?v=` muda a cada gravação da marca: o Chrome e o Edge guardam o ícone
+  // pelo ENDEREÇO, e sem isso continuariam com o antigo.
+  const versao = encodeURIComponent(marca.versao);
   return {
-    name: NOME_DO_APP,
-    short_name: NOME_CURTO_DO_APP,
+    name: marca.nome,
+    short_name: marca.nomeCurto,
     // `id` fixo: sem ele a identidade do app instalado É o `start_url`, e
     // trocar a tela de abertura faria o Android tratá-lo como outro app.
     id: "/",
@@ -37,7 +48,7 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#020617",
     icons: [
       ...TAMANHOS_DO_ICONE.map((lado) => ({
-        src: `/apple-icon/${lado}`,
+        src: `/apple-icon/${lado}?v=${versao}`,
         sizes: `${lado}x${lado}`,
         type: "image/png",
       })),
@@ -45,7 +56,7 @@ export default function manifest(): MetadataRoute.Manifest {
       // só quando ele se declara recortável. O desenho é o mesmo: fundo até
       // a borda e o símbolo dentro da área que sobrevive ao recorte.
       {
-        src: "/apple-icon/512",
+        src: `/apple-icon/512?v=${versao}`,
         sizes: "512x512",
         type: "image/png",
         purpose: "maskable",

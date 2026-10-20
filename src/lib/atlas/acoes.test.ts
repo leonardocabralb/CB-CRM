@@ -11,6 +11,12 @@ vi.mock("@/lib/whatsapp/encryption", () => ({
   },
 }));
 
+// O nome do sistema nos textos que vão ao Atlas: o da MARCA da instalação.
+vi.mock("@/lib/marca-servidor", async () => {
+  const { marcaPadrao } = await import("@/lib/marca");
+  return { obterMarca: async () => ({ ...marcaPadrao(), propria: true, nome: "Sistema Exemplo" }) };
+});
+
 import { MAX_DESCRICAO } from "@/lib/tasks/validar";
 
 import { criarBanco, type Banco } from "../zapsign/duble.test-helper";
@@ -421,7 +427,7 @@ describe("criarTarefaNoAtlas", () => {
 
   it("descrição vazia leva a frase com o nome da automação e do app (sem ela, o Atlas grava o inglês); título vazio falha", async () => {
     await criarTarefaNoAtlas(banco.cliente, entrada({ descricao: "   " }), opcoes);
-    expect(dados().description).toMatch(/^Aberta pela automação "Contrato fechado" no .+/);
+    expect(dados().description).toBe('Aberta pela automação "Contrato fechado" no Sistema Exemplo');
     await expect(criarTarefaNoAtlas(banco.cliente, entrada({ titulo: "  " }), opcoes)).rejects.toThrow("o título da tarefa ficou vazio");
   });
 
@@ -486,7 +492,7 @@ describe("enviarTranscricaoAoAtlas", () => {
     const e = enviado();
     expect(e.clientId).toBe("c9");
     expect(e.transcript).toBe("Transcrição da reunião");
-    expect(e.notes).toMatch(/^Reunião "Reunião de diagnóstico" de 30\/09\/2026 10:00 \(tl;dv\), enviada pelo .+\n\nContrato fechado hoje\n\nResumo do tl;dv$/);
+    expect(e.notes).toMatch(/^Reunião "Reunião de diagnóstico" de 30\/09\/2026 10:00 \(tl;dv\), enviada pelo Sistema Exemplo\n\nContrato fechado hoje\n\nResumo do tl;dv$/);
     expect(chamadas.find((c) => c.metodo === "enviarTranscricao")?.args[1]).toBe(`${IDEM}:transcricao`);
     expect(r).toBe('transcrição da reunião "Reunião de diagnóstico" de 30/09 enviada ao Atlas (aguarda análise no Diagnóstico)');
     // O TEXTO da transcrição nunca vai ao detalhe.

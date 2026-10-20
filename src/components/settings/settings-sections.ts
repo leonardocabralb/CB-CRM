@@ -8,6 +8,7 @@ import {
   Plug,
   Shield,
   Smartphone,
+  Stamp,
   Tags,
   User,
   UsersRound,
@@ -37,6 +38,10 @@ export const SETTINGS_SECTIONS = [
   'fields',
   'assinatura',
   'members',
+  // Marca (1094) — nome e logo da INSTALAÇÃO, não da conta: só o admin da
+  // conta mais antiga troca (`/api/cb/marca`). Só de admin no catálogo de
+  // perfis (`SECOES_SO_DE_ADMIN`).
+  'marca',
   'integracoes',
   'api',
   // Webhooks (982) — as duas direções: os de ENTRADA, que sistemas de
@@ -81,6 +86,7 @@ export const SECTION_META: Record<SettingsSection, SectionMeta> = {
   fields: { id: 'fields', label: 'Fields & tags', icon: Tags, group: 'workspace' },
   assinatura: { id: 'assinatura', label: 'Message signature', icon: PenLine, group: 'workspace' },
   members: { id: 'members', label: 'Team members', icon: UsersRound, group: 'workspace' },
+  marca: { id: 'marca', label: 'Brand', icon: Stamp, group: 'workspace' },
   // Integrações (CB Advogados) — chaves de IA, Google Agenda e o que
   // vier (TLDV, Calendly…), com estado ao vivo por integração.
   integracoes: { id: 'integracoes', label: 'Integrations', icon: Plug, group: 'workspace' },

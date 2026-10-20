@@ -18,6 +18,7 @@ import { QuickRepliesManager } from '@/components/settings/quick-replies-manager
 import { FieldsAndTagsPanel } from '@/components/settings/fields-and-tags-panel';
 import { AssinaturaSettings } from '@/components/settings/assinatura-settings';
 import { MembersTab } from '@/components/settings/members-tab';
+import { MarcaPanel } from '@/components/settings/marca-panel';
 import { IntegracoesPanel } from '@/components/settings/integracoes-panel';
 import { WebhooksPanel } from '@/components/settings/webhooks-panel';
 import { ApiPanel } from '@/components/settings/api-panel';
@@ -99,6 +100,7 @@ function SettingsPageInner() {
     fields: <FieldsAndTagsPanel />,
     assinatura: <AssinaturaSettings />,
     members: <MembersTab />,
+    marca: <MarcaPanel />,
     integracoes: <IntegracoesPanel />,
     api: <ApiPanel />,
     webhooks: <WebhooksPanel />,

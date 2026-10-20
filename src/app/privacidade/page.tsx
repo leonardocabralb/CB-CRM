@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
+import { connection } from 'next/server';
 
-import { NOME_DO_APP } from '@/lib/marca';
+import { obterMarca } from '@/lib/marca-servidor';
 
 // ============================================================
 // Política de privacidade — página PÚBLICA, servida em /privacidade.
@@ -13,9 +14,13 @@ import { NOME_DO_APP } from '@/lib/marca';
 // ⚠️ O texto NÃO cita o nome do escritório nem e-mail de ninguém: este
 // arquivo VIAJA para quem instalar o sistema (produto-gate.test.ts
 // reprova nome, domínio e conta nossos em `src/`). Quem opera a
-// instalação é chamado de "Operador", e o nome do produto sai de
-// `NOME_DO_APP`, como no resto do app. A identificação do Operador é o
-// DOMÍNIO em que a página é servida — que é de quem instalou.
+// instalação é chamado de "Operador", e o nome do produto sai da MARCA da
+// instalação (`obterMarca()`, Configurações → Marca), como no resto do app.
+// A identificação do Operador é o DOMÍNIO em que a página é servida — que é
+// de quem instalou.
+//
+// ⚠️ `connection()` antes de ler a marca (página e metadata): sem ele o
+// `next build`, que não tem service role, poderia assar o nome padrão aqui.
 //
 // Fica fora dos route groups: `(auth)` tem layout de login e
 // `(dashboard)` exige sessão. O middleware só protege os `protectedPaths`,
@@ -26,18 +31,24 @@ import { NOME_DO_APP } from '@/lib/marca';
 // Operador, não interface — não passa pelo dicionário i18n.
 // ============================================================
 
-export const metadata: Metadata = {
-  title: 'Política de Privacidade',
-  description: `Como ${NOME_DO_APP} trata os dados das conversas que recebe.`,
-};
+export async function generateMetadata(): Promise<Metadata> {
+  await connection();
+  const { nome } = await obterMarca();
+  return {
+    title: 'Política de Privacidade',
+    description: `Como ${nome} trata os dados das conversas que recebe.`,
+  };
+}
 
 const ATUALIZADA_EM = '9 de setembro de 2026';
 
-export default function PaginaDePrivacidade() {
+export default async function PaginaDePrivacidade() {
+  await connection();
+  const { nome } = await obterMarca();
   return (
     <main className="text-foreground mx-auto max-w-3xl px-6 py-12 text-base leading-relaxed">
       <header className="mb-10">
-        <p className="text-muted-foreground text-sm">{NOME_DO_APP}</p>
+        <p className="text-muted-foreground text-sm">{nome}</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">
           Política de Privacidade
         </h1>
@@ -48,7 +59,7 @@ export default function PaginaDePrivacidade() {
 
       <Secao titulo="1. O que é este sistema e quem responde por ele">
         <p>
-          {NOME_DO_APP} é um sistema de gestão de atendimento: ele recebe,
+          {nome} é um sistema de gestão de atendimento: ele recebe,
           organiza e permite responder mensagens que clientes e interessados
           enviam a uma organização por canais como WhatsApp e Instagram Direct.
           Cada instalação é operada por uma organização (o{' '}

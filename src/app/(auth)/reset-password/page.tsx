@@ -33,7 +33,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { KeyRound, ShieldAlert } from "lucide-react";
+import { ShieldAlert } from "lucide-react";
+import { LogoDaMarca } from "@/components/marca/logo-da-marca";
 
 /** Mesmo piso do cadastro (`SignupPage.passwordPlaceholder`). */
 const MINIMO = 6;
@@ -131,8 +132,13 @@ export default function ResetPasswordPage() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <Card className="w-full max-w-md border-border bg-card">
         <CardHeader className="items-center text-center">
-          <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-            <KeyRound className="h-6 w-6 text-primary" />
+          {/* O logo da instalação, como no login. O link vencido (acima)
+              fica com o alerta: ele diz o ESTADO. */}
+          <div className="mb-2 flex min-w-0 justify-center">
+            <LogoDaMarca
+              forma="vertical"
+              className="h-20 w-auto max-w-full sm:h-24"
+            />
           </div>
           <CardTitle className="text-xl text-foreground">{t("title")}</CardTitle>
           <CardDescription className="text-muted-foreground">
