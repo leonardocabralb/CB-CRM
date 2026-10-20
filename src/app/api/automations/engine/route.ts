@@ -31,7 +31,7 @@ export async function POST(request: Request) {
   // (1073): a "Situação mudou no Atlas" só roda pela leitura do Atlas (sem o
   // card do evento, o "Mover card" pegaria o aberto mais recente).
   if (soRodaPeloDisparador(body.trigger_type)) {
-    return NextResponse.json({ error: 'this trigger only runs from its own dispatcher (Asaas sweep or Atlas reading)' }, { status: 400 })
+    return NextResponse.json({ error: 'this trigger only runs from its own dispatcher (Asaas sweep or Atlas Gestor reading)' }, { status: 400 })
   }
 
   await runAutomationsForTrigger({

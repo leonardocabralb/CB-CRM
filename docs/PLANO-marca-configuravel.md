@@ -29,8 +29,8 @@ do produto é o **Atlas CRM**. Vale para PC e celular.
 | 1 | Banco (1094), rota, aba Marca com exemplos | feito (#420) |
 | 2 | A marca em todo lugar (PC e celular) | feito (#420) |
 | 3 | Padrão Atlas, fim dos build-args, docs | feito (#420) |
-| 4 | "Atlas" → "Atlas Gestor" nos textos (PR próprio) | feito (#421), mesclar depois do #420 |
-| 5 | Aplicar a 1094 (com "pode gravar"), deploy, conferir | 1094 aplicada e e2e feito (20/10); falta merge e conferir no ar |
+| 4 | "Atlas" → "Atlas Gestor" nos textos (PR próprio) | feito (#421), atualizado com o main depois do #420 |
+| 5 | Aplicar a 1094 (com "pode gravar"), deploy, conferir | 1094 aplicada e e2e feito; #420 mesclado em 20/10 13:44 UTC (`fd7e16e2`) |
 
 ## As peças e onde aparecem
 
@@ -207,7 +207,7 @@ Pendências:
 
 - `marca` nasce invisível para perfil já gravado (seção nova do catálogo);
   ficou fora de `SECOES_TRAVADAS_PARA_ADMIN`. Decisão do operador.
-- Merge do #420 (publica) e conferir no ar: barra lateral nos dois modos,
+- Conferir no ar depois do deploy do #420: barra lateral nos dois modos,
   login, ícone da aba e do app, manifesto; o iPhone (apagar e instalar de
   novo).
 - O 403 para quem não é admin da conta mais antiga só foi provado nos
@@ -230,3 +230,9 @@ Pendências:
   seguro: só os admins da conta mais antiga trocam a marca, o nome antigo
   aparece na hora e basta salvar de novo. Se virar problema: mandar o nome
   só quando muda, ou recusar gravação velha pelo `atualizado_em`.
+- Gravação INCERTA (504 ou rede caindo depois do commit): a rota responde
+  `falha_no_banco` e NÃO revalida a etiqueta, então as páginas podem seguir
+  com a marca anterior até a renovação de 1 h do `unstable_cache` (Codex no
+  #420, `0c4fcb4a`). Corrida rara com lado seguro: quem salvou vê a falha, e
+  salvar de novo revalida. Se virar problema: revalidar também no caminho
+  incerto (revalidar a mais é inofensivo).

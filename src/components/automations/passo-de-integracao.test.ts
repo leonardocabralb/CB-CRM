@@ -8,7 +8,7 @@ import { PASSOS_DO_ATLAS, ehPassoDoAtlas, trocarAcao, type PassoDoAtlas } from "
 // ============================================================
 // O nó "Atlas" no construtor (decisão do operador, 30/09/2026): UMA entrada
 // no menu, as cinco ações (cada uma um `step_type`) com destaque de
-// integração — borda laranja, ícone tingido e o selo "Integração Atlas" — e
+// integração — borda laranja, ícone tingido e o selo "Integração" — e
 // um seletor de ação dentro do passo. O construtor veio do upstream: um
 // merge que o traga cru apaga o nó sem conflito nenhum. Este pino lê o fonte.
 // ============================================================
@@ -55,6 +55,11 @@ describe("o nó Atlas no construtor", () => {
   it("o selo aparece no cartão e no menu de adicionar, com a chave nos dois dicionários", () => {
     expect(construtor.match(/ehPassoDeIntegracao\(step\.step_type\) && <span className=\{SELO_DE_INTEGRACAO\}>\{t\("integracaoAtlas"\)\}/g)).toHaveLength(1);
     expect(construtor).toMatch(/ehPassoDeIntegracao\(tp\) && <span className=\{cn\(SELO_DE_INTEGRACAO, "ml-auto"\)\}>\{t\("integracaoAtlas"\)\}/);
+    // A fileira do cartão fechado não quebra linha: selo que não encolhe
+    // VAZA da coluna e cobre a seta de abrir no ramo de uma condição.
+    const classes = constante("SELO_DE_INTEGRACAO").split(/\s+/);
+    expect(classes).toEqual(expect.arrayContaining(["min-w-0", "truncate"]));
+    expect(classes).not.toContain("shrink-0");
   });
 
   it("as cinco ações caem no editor do nó, e o seletor oferece as cinco com chave LITERAL nos dois dicionários", () => {

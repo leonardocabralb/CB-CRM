@@ -304,7 +304,13 @@ const STEP_META: Record<AutomationStepType, StepMeta> = {
 
 /**
  * Os passos que vêm de uma integração externa ganham destaque no cartão e no
- * menu de adicionar. Hoje só os do nó Atlas; o selo diz "Integração Atlas".
+ * menu de adicionar. Hoje só os do nó Atlas; o selo diz só "Integração" (o
+ * nome do produto está no título do passo e na entrada do menu).
+ * ⚠️ O selo divide a fileira com "Ação", e a fileira não quebra linha: no ramo
+ * de uma condição a coluna de texto tem 157 px, e "Integração Atlas Gestor"
+ * (199 px com "Ação", medido em Inter) cobria a seta de abrir. Texto curto, e
+ * `min-w-0 truncate` (nunca `shrink-0`) para cortar em vez de vazar nas
+ * colunas mais estreitas (ramo lado a lado abaixo de 640 px de tela).
  * ⚠️ Classes LITERAIS (o Tailwind não gera classe montada) e sem `dark:` (o
  * variant está inerte): a MESMA cor vale nos dois temas, e nenhum laranja
  * translúcido passa 4,5:1 nos dois (texto de 10 px). Medido pela fórmula da
@@ -319,7 +325,7 @@ function ehPassoDeIntegracao(tipo: AutomationStepType): boolean {
 }
 const ICONE_DE_INTEGRACAO = "bg-orange-500/15 text-orange-600"
 const SELO_DE_INTEGRACAO =
-  "shrink-0 rounded bg-orange-700 px-1.5 text-[10px] font-semibold uppercase leading-4 tracking-wide text-white"
+  "min-w-0 truncate rounded bg-orange-700 px-1.5 text-[10px] font-semibold uppercase leading-4 tracking-wide text-white"
 
 const ADDABLE_STEPS: AutomationStepType[] = [
   "send_message",
@@ -2964,7 +2970,7 @@ function AddButton({ onPick }: { onPick: (t: AutomationStepType) => void }) {
         >
           {ADDABLE_STEPS.map((tp) => {
             const Icon = STEP_META[tp].icon
-            // O nó Atlas: UMA entrada, "Atlas". Nasce "Criar cliente" (a ação
+            // O nó Atlas: UMA entrada, "Atlas Gestor". Nasce "Criar cliente" (a ação
             // que as outras pressupõem), ou "Criar tarefa" onde o gatilho do
             // Atlas recusa escrever no cadastro.
             const escolhido: AutomationStepType =

@@ -67,39 +67,39 @@ type FabricaDeCliente = (chave: string) => ClienteAtlas;
 
 /** O motivo em português, para o "Já rodou" — sem nada da resposta do Atlas. */
 export function motivoDaFalha(e: unknown): string {
-  if (!(e instanceof AtlasError)) return "erro inesperado ao falar com o Atlas";
+  if (!(e instanceof AtlasError)) return "erro inesperado ao falar com o Atlas Gestor";
   switch (e.codigo) {
     case "chave_invalida":
-      return "a chave do Atlas foi recusada — reconecte em Configurações → Integrações";
+      return "a chave do Atlas Gestor foi recusada — reconecte em Configurações → Integrações";
     case "api_fora_do_plano":
-      return "o plano do escritório no Atlas não inclui a API";
+      return "o plano do escritório no Atlas Gestor não inclui a API";
     case "sem_permissao":
-      return `a permissão ${e.permissao ? `"${e.permissao}" ` : ""}está desligada no Atlas`;
+      return `a permissão ${e.permissao ? `"${e.permissao}" ` : ""}está desligada no Atlas Gestor`;
     case "validacao":
-      return `o Atlas recusou os dados do cliente (validação${e.campos.length > 0 ? `: ${e.campos.join(", ")}` : ""})`;
+      return `o Atlas Gestor recusou os dados do cliente (validação${e.campos.length > 0 ? `: ${e.campos.join(", ")}` : ""})`;
     case "limite":
-      return "o Atlas pediu para esperar (limite de pedidos por minuto); rode de novo em instantes";
+      return "o Atlas Gestor pediu para esperar (limite de pedidos por minuto); rode de novo em instantes";
     case "limite_do_plano":
-      return "o escritório atingiu o limite de clientes do plano no Atlas";
+      return "o escritório atingiu o limite de clientes do plano no Atlas Gestor";
     case "idempotencia":
-      return "o Atlas ainda está processando este pedido; confira no Atlas antes de rodar de novo";
+      return "o Atlas Gestor ainda está processando este pedido; confira no Atlas Gestor antes de rodar de novo";
     case "acao_desconhecida":
-      return "a API do Atlas ainda não tem esta ação (atualização pendente no Atlas)";
+      return "a API do Atlas Gestor ainda não tem esta ação (atualização pendente no Atlas Gestor)";
     case "fora_do_ar":
     case "rede":
-      return "o Atlas não respondeu; confira no Atlas se o cliente foi criado antes de rodar de novo";
+      return "o Atlas Gestor não respondeu; confira no Atlas Gestor se o cliente foi criado antes de rodar de novo";
     case "resposta_inesperada":
-      return "o Atlas respondeu num formato inesperado; confira no Atlas se o cliente foi criado antes de rodar de novo";
+      return "o Atlas Gestor respondeu num formato inesperado; confira no Atlas Gestor se o cliente foi criado antes de rodar de novo";
     case "nao_encontrado":
-      return "o cliente não foi encontrado no Atlas";
+      return "o cliente não foi encontrado no Atlas Gestor";
     default:
-      return "o Atlas devolveu um erro";
+      return "o Atlas Gestor devolveu um erro";
   }
 }
 
 const POR_QUE_CASOU: Record<string, string> = {
   email: "pelo e-mail",
-  phone_last8: "pelo final do telefone (guardado no Atlas sem DDD)",
+  phone_last8: "pelo final do telefone (guardado no Atlas Gestor sem DDD)",
 };
 
 /** O passo PARA sem escrever nada no Atlas: a frase diz o que a equipe faz. */
@@ -107,20 +107,20 @@ function parada(decisao: Exclude<Decisao, { acao: "criar" | "reativar" | "vincul
   switch (decisao.acao) {
     case "ambiguo":
       return new Error(
-        `há ${decisao.quantos > 0 ? decisao.quantos : "vários"} cadastros no Atlas que podem ser deste cliente; ` +
-          "resolva no Atlas (um cadastro por pessoa) e rode de novo — nada foi alterado no Atlas",
+        `há ${decisao.quantos > 0 ? decisao.quantos : "vários"} cadastros no Atlas Gestor que podem ser deste cliente; ` +
+          "resolva no Atlas Gestor (um cadastro por pessoa) e rode de novo — nada foi alterado no Atlas Gestor",
       );
     case "fraco": {
       const por = (decisao.cliente.casouPor ?? []).map((m) => POR_QUE_CASOU[m]).filter(Boolean);
       return new Error(
-        `há um cadastro no Atlas que casa com este cliente só ${por.length > 0 ? por.join(" e ") : "por um dado que não basta"}; ` +
-          "confira no Atlas se é a mesma pessoa (acerte lá o telefone com DDD, ou ponha o link da conversa) e rode de novo — nada foi alterado no Atlas",
+        `há um cadastro no Atlas Gestor que casa com este cliente só ${por.length > 0 ? por.join(" e ") : "por um dado que não basta"}; ` +
+          "confira no Atlas Gestor se é a mesma pessoa (acerte lá o telefone com DDD, ou ponha o link da conversa) e rode de novo — nada foi alterado no Atlas Gestor",
       );
     }
     case "pausado":
       return new Error(
-        `o cadastro deste cliente no Atlas está ${decisao.cliente.status ?? "pausado"}; ` +
-          "o Atlas manda no contrato: reative-o lá se for o caso e rode de novo — nada foi alterado no Atlas",
+        `o cadastro deste cliente no Atlas Gestor está ${decisao.cliente.status ?? "pausado"}; ` +
+          "o Atlas Gestor manda no contrato: reative-o lá se for o caso e rode de novo — nada foi alterado no Atlas Gestor",
       );
   }
 }
@@ -148,7 +148,7 @@ async function donoDoCliente(
     admin.from("cb_atlas_clientes").select("id, contact_id").eq("account_id", accountId).eq("atlas_client_id", atlasClientId),
     ambiente,
   ).maybeSingle();
-  if (error) throw new Error("não foi possível ler o vínculo com o Atlas no CRM");
+  if (error) throw new Error("não foi possível ler o vínculo com o Atlas Gestor no CRM");
   return data ? { id: String(data.id), contact_id: data.contact_id ? String(data.contact_id) : null } : null;
 }
 
@@ -158,20 +158,20 @@ async function parRecusado(admin: SupabaseClient, accountId: string, ambiente: s
     admin.from("cb_atlas_recusas").select("id").eq("account_id", accountId).eq("contact_id", contactId).eq("atlas_client_id", atlasClientId),
     ambiente,
   ).limit(1);
-  if (error) throw new Error("não foi possível ler as recusas de vínculo com o Atlas no CRM");
+  if (error) throw new Error("não foi possível ler as recusas de vínculo com o Atlas Gestor no CRM");
   return (data ?? []).length > 0;
 }
 
 const MOTIVO_NA_LIXEIRA =
-  "o cadastro ligado a esta ficha está na lixeira do Atlas; restaure lá (até 7 dias) ou desvincule na aba Atlas e rode de novo — nada foi alterado no Atlas";
+  "o cadastro ligado a esta ficha está na lixeira do Atlas Gestor; restaure lá (até 7 dias) ou desvincule na aba Atlas Gestor e rode de novo — nada foi alterado no Atlas Gestor";
 const MOTIVO_RECUSADO =
-  "o cadastro do Atlas que casa com esta ficha foi desvinculado dela à mão; vincule o certo na aba Atlas e rode de novo — nada foi alterado no Atlas";
+  "o cadastro do Atlas Gestor que casa com esta ficha foi desvinculado dela à mão; vincule o certo na aba Atlas Gestor e rode de novo — nada foi alterado no Atlas Gestor";
 
 const MOTIVO_DA_CONEXAO = {
-  nao_conectado: "o Atlas não está conectado (Configurações → Integrações)",
-  chave_ilegivel: "a chave do Atlas guardada não pôde ser lida — reconecte em Configurações → Integrações",
-  outro_ambiente: "a conexão do Atlas guardada é de outro ambiente do Atlas (teste × produção) — reconecte em Configurações → Integrações",
-  db_error: "não foi possível ler a conexão com o Atlas",
+  nao_conectado: "o Atlas Gestor não está conectado (Configurações → Integrações)",
+  chave_ilegivel: "a chave do Atlas Gestor guardada não pôde ser lida — reconecte em Configurações → Integrações",
+  outro_ambiente: "a conexão do Atlas Gestor guardada é de outro ambiente do Atlas Gestor (teste × produção) — reconecte em Configurações → Integrações",
+  db_error: "não foi possível ler a conexão com o Atlas Gestor",
 } as const;
 
 export async function criarOuReativarNoAtlas(
@@ -191,7 +191,7 @@ export async function criarOuReativarNoAtlas(
   ] as const) {
     const bruto = entrada.datas[chave];
     if (bruto && bruto.trim() !== "" && diaParaAtlas(bruto) === null) {
-      throw new Error(`a data ${nome} na ficha não é uma data válida; corrija o campo e rode de novo — nada foi enviado ao Atlas`);
+      throw new Error(`a data ${nome} na ficha não é uma data válida; corrija o campo e rode de novo — nada foi enviado ao Atlas Gestor`);
     }
   }
 
@@ -229,7 +229,7 @@ export async function criarOuReativarNoAtlas(
       admin.from("cb_atlas_clientes").select("id, atlas_client_id, atlas_tenant_id").eq("account_id", accountId).eq("contact_id", contactId),
       ambiente,
     ).maybeSingle();
-    if (erroVinculo) throw new Error("não foi possível ler o vínculo com o Atlas no CRM");
+    if (erroVinculo) throw new Error("não foi possível ler o vínculo com o Atlas Gestor no CRM");
 
     let decisao: Decisao | null = null;
     /** A linha de `cb_atlas_clientes` a atualizar no fim (a desta ficha, ou a órfã do cliente achado). */
@@ -286,8 +286,8 @@ export async function criarOuReativarNoAtlas(
             return { acao: "ligado_a_outra_ficha", atlasClientId: decisao.cliente.id, situacao: decisao.cliente.status };
           }
           throw new Error(
-            "o cadastro do Atlas que casa com este cliente já está ligado a outra ficha do CRM (provável ficha duplicada); " +
-              "junte as fichas ou confira no Atlas e rode de novo — nada foi alterado no Atlas",
+            "o cadastro do Atlas Gestor que casa com este cliente já está ligado a outra ficha do CRM (provável ficha duplicada); " +
+              "junte as fichas ou confira no Atlas Gestor e rode de novo — nada foi alterado no Atlas Gestor",
           );
         }
         if (dono) linha = dono.id; // órfão (a ficha foi apagada): esta ficha o adota
@@ -306,13 +306,13 @@ export async function criarOuReativarNoAtlas(
       case "criar": {
         const novo = dadosParaCriar(dados);
         // O Atlas exige o nome: sem ele, recusaria com "validação" genérica.
-        if (!novo.name) throw new Error("a ficha do cliente não tem nome; preencha o nome e rode de novo — nada foi enviado ao Atlas");
+        if (!novo.name) throw new Error("a ficha do cliente não tem nome; preencha o nome e rode de novo — nada foi enviado ao Atlas Gestor");
         // ⚠️ Só cria o que a busca ACHA de novo (link da conversa, telefone ou
         // e-mail): se o vínculo falhar depois, rodar de novo reencontra o
         // cliente em vez de criar outro (a chave de idempotência muda por execução).
         if (!novo.chatLink && !telefoneParaBusca(entrada.contato.telefone) && !novo.email) {
           throw new Error(
-            "a ficha não tem conversa, telefone nem e-mail para o Atlas achar este cliente de novo; preencha o telefone ou o e-mail e rode de novo — nada foi enviado ao Atlas",
+            "a ficha não tem conversa, telefone nem e-mail para o Atlas Gestor achar este cliente de novo; preencha o telefone ou o e-mail e rode de novo — nada foi enviado ao Atlas Gestor",
           );
         }
         cliente = await atlas.criar(novo, `${entrada.chaveDeIdempotencia}:criar`);
@@ -366,14 +366,14 @@ export async function criarOuReativarNoAtlas(
       const ja = await donoDoCliente(admin, accountId, ambiente, cliente.id);
       if (ja?.contact_id === contactId) ({ error: erroGravar } = await atualizar(ja.id, lido));
     }
-    if (erroGravar) throw new Error(escrito ? "o vínculo não foi gravado no CRM" : "o vínculo com o Atlas não foi gravado no CRM");
+    if (erroGravar) throw new Error(escrito ? "o vínculo não foi gravado no CRM" : "o vínculo com o Atlas Gestor não foi gravado no CRM");
     await registrarConferencia(admin, accountId, null, ambiente);
     return resultado;
   } catch (e) {
     const motivo = e instanceof AtlasError ? motivoDaFalha(e) : e instanceof Error ? e.message : String(e);
     if (e instanceof AtlasError) await registrarConferencia(admin, accountId, codigoDe(e), ambiente);
-    if (escrito) throw new Error(`o cliente foi ${escrito} no Atlas, mas ${motivo}`);
-    throw e instanceof AtlasError ? new Error(`Atlas: ${motivo}`) : e;
+    if (escrito) throw new Error(`o cliente foi ${escrito} no Atlas Gestor, mas ${motivo}`);
+    throw e instanceof AtlasError ? new Error(`Atlas Gestor: ${motivo}`) : e;
   }
 }
 
@@ -381,12 +381,12 @@ export async function criarOuReativarNoAtlas(
 export function detalheDoResultado(r: ResultadoDoPassoAtlas): string {
   switch (r.acao) {
     case "criado":
-      return "cliente criado no Atlas";
+      return "cliente criado no Atlas Gestor";
     case "reativado":
-      return `cadastro reativado no Atlas${r.situacaoAnterior ? ` (estava ${r.situacaoAnterior})` : ""}`;
+      return `cadastro reativado no Atlas Gestor${r.situacaoAnterior ? ` (estava ${r.situacaoAnterior})` : ""}`;
     case "vinculado":
-      return `já estava no Atlas${r.situacao ? ` (${r.situacao})` : ""}: vinculado, nada alterado lá`;
+      return `já estava no Atlas Gestor${r.situacao ? ` (${r.situacao})` : ""}: vinculado, nada alterado lá`;
     case "ligado_a_outra_ficha":
-      return "já estava no Atlas, ligado a outra ficha do CRM: nada alterado";
+      return "já estava no Atlas Gestor, ligado a outra ficha do CRM: nada alterado";
   }
 }

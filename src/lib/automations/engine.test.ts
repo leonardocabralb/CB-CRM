@@ -687,16 +687,16 @@ vi.mock('@/lib/atlas/criar-cliente', async (original) => ({
 // `src/lib/atlas/acoes.test.ts`; aqui, a ENTRADA que o motor monta.
 const acoesMock = vi.hoisted(() => ({
   atualizarClienteNoAtlas: vi.fn<(admin: unknown, entrada: Record<string, unknown>) => Promise<string>>(
-    async () => 'cliente atualizado no Atlas: tipo de contrato'
+    async () => 'cliente atualizado no Atlas Gestor: tipo de contrato'
   ),
   criarTarefaNoAtlas: vi.fn<(admin: unknown, entrada: Record<string, unknown>) => Promise<string>>(
-    async () => 'tarefa criada no Atlas (pedida com o cliente ligado à ficha)'
+    async () => 'tarefa criada no Atlas Gestor (pedida com o cliente ligado à ficha)'
   ),
   enviarTranscricaoAoAtlas: vi.fn<(admin: unknown, entrada: Record<string, unknown>) => Promise<string>>(
-    async () => 'transcrição enviada ao Atlas'
+    async () => 'transcrição enviada ao Atlas Gestor'
   ),
   atualizarOnboardingNoAtlas: vi.fn<(admin: unknown, entrada: Record<string, unknown>) => Promise<string>>(
-    async () => 'item atualizado no Atlas'
+    async () => 'item atualizado no Atlas Gestor'
   ),
 }));
 vi.mock('@/lib/atlas/acoes', async (original) => ({
@@ -2417,7 +2417,7 @@ describe('atlas_criar_cliente — criar cliente no Atlas (Fase 0)', () => {
       )
     ).toBe(true);
     expect(passos()).toContainEqual(
-      expect.objectContaining({ step_type: 'atlas_criar_cliente', status: 'success', detail: 'cliente criado no Atlas' })
+      expect.objectContaining({ step_type: 'atlas_criar_cliente', status: 'success', detail: 'cliente criado no Atlas Gestor' })
     );
   });
 
@@ -2473,20 +2473,20 @@ describe('atlas_criar_cliente — criar cliente no Atlas (Fase 0)', () => {
     });
     await rodar({});
     expect(passos()).toContainEqual(
-      expect.objectContaining({ status: 'success', detail: 'cadastro reativado no Atlas (estava rescindido)' })
+      expect.objectContaining({ status: 'success', detail: 'cadastro reativado no Atlas Gestor (estava rescindido)' })
     );
   });
 
   it('⚠️ a falha do Atlas FALHA o passo com o motivo, e a execução termina', async () => {
     atlasMock.criarOuReativarNoAtlas.mockRejectedValue(
-      new Error('o Atlas não está conectado (Configurações → Integrações)')
+      new Error('o Atlas Gestor não está conectado (Configurações → Integrações)')
     );
     await rodar({});
     expect(passos()).toContainEqual(
       expect.objectContaining({
         step_type: 'atlas_criar_cliente',
         status: 'failed',
-        detail: 'o Atlas não está conectado (Configurações → Integrações)',
+        detail: 'o Atlas Gestor não está conectado (Configurações → Integrações)',
       })
     );
     expect(h.state.logUpdates).toContainEqual(expect.objectContaining({ desfecho: 'falhou' }));
@@ -2613,7 +2613,7 @@ describe('o nó Atlas (30/09/2026) — as quatro ações novas', () => {
       },
     });
     expect(passos()).toContainEqual(
-      expect.objectContaining({ step_type: 'atlas_atualizar_cliente', status: 'success', detail: 'cliente atualizado no Atlas: tipo de contrato' })
+      expect.objectContaining({ step_type: 'atlas_atualizar_cliente', status: 'success', detail: 'cliente atualizado no Atlas Gestor: tipo de contrato' })
     );
     // Não fala com o contato: nenhuma conversa criada.
     expect(destinatarioMock.conversaDoContato).not.toHaveBeenCalled();
@@ -2666,7 +2666,7 @@ describe('o nó Atlas (30/09/2026) — as quatro ações novas', () => {
     h.state.erroNosValoresDoContato = 'fora do ar';
     await rodar('atlas_criar_tarefa', { titulo: 'Preparar a pasta de {{contact.name}}' });
     expect(acoesMock.criarTarefaNoAtlas).not.toHaveBeenCalled();
-    expect(JSON.stringify(h.state.logUpdates)).toContain('criar tarefa no Atlas: a leitura dos dados do cliente no CRM falhou');
+    expect(JSON.stringify(h.state.logUpdates)).toContain('criar tarefa no Atlas Gestor: a leitura dos dados do cliente no CRM falhou');
   });
 
   it('enviar transcrição: notas interpoladas, janela padrão 72 h e as caixas só com `true`', async () => {
@@ -2693,7 +2693,7 @@ describe('o nó Atlas (30/09/2026) — as quatro ações novas', () => {
   });
 
   it('⚠️ a falha da ação FALHA o passo com o motivo, e nada volta para a fila (fora de PASSOS_DE_ENVIO)', async () => {
-    acoesMock.criarTarefaNoAtlas.mockRejectedValueOnce(new Error('Atlas: o escritório no Atlas não tem administrador ativo para receber a tarefa'));
+    acoesMock.criarTarefaNoAtlas.mockRejectedValueOnce(new Error('Atlas Gestor: o escritório no Atlas Gestor não tem administrador ativo para receber a tarefa'));
     await rodar('atlas_criar_tarefa', { titulo: 'x' });
     expect(passos()).toContainEqual(expect.objectContaining({ step_type: 'atlas_criar_tarefa', status: 'failed' }));
     expect(h.state.logUpdates).toContainEqual(expect.objectContaining({ desfecho: 'falhou' }));
@@ -2934,7 +2934,7 @@ describe('Situação mudou no Atlas (1073): só roda pela leitura do Atlas', () 
       rotuloDoDisparo: 'manual',
     });
     expect(r.ok).toBe(false);
-    expect(r.detail).toMatch(/só roda pela leitura do Atlas/);
+    expect(r.detail).toMatch(/só roda pela leitura do Atlas Gestor/);
   });
 });
 

@@ -93,7 +93,7 @@ beforeEach(() => {
 describe("criarOuReativarNoAtlas", () => {
   it("sem conexão: falha com motivo, sem chamar o Atlas", async () => {
     banco.tabelas.cb_atlas_config = [];
-    await expect(rodar()).rejects.toThrow("o Atlas não está conectado");
+    await expect(rodar()).rejects.toThrow("o Atlas Gestor não está conectado");
     expect(chamadas).toHaveLength(0);
   });
 
@@ -111,7 +111,7 @@ describe("criarOuReativarNoAtlas", () => {
     expect(banco.tabelas.cb_atlas_clientes).toEqual([
       expect.objectContaining({ account_id: CONTA, contact_id: FICHA, atlas_client_id: "novo-1", atlas_tenant_id: "t1", origem: "criada", situacao: "ativo" }),
     ]);
-    expect(detalheDoResultado(r)).toBe("cliente criado no Atlas");
+    expect(detalheDoResultado(r)).toBe("cliente criado no Atlas Gestor");
   });
 
   it("achado RESCINDIDO: reativa o MESMO cadastro (D3), nunca cria outro", async () => {
@@ -124,7 +124,7 @@ describe("criarOuReativarNoAtlas", () => {
     expect((atualizar.args[1] as DadosDoClienteNoAtlas).status).toBe("ativo");
     expect(atualizar.args[2]).toBe("log-1:passo-1:reativar");
     expect(banco.tabelas.cb_atlas_clientes[0]).toMatchObject({ origem: "reativada", app_url: "https://app.example.com/#/clients/antigo-1" });
-    expect(detalheDoResultado(r)).toBe("cadastro reativado no Atlas (estava rescindido)");
+    expect(detalheDoResultado(r)).toBe("cadastro reativado no Atlas Gestor (estava rescindido)");
   });
 
   it("achado ATIVO: só vincula — nada é escrito no Atlas", async () => {
@@ -142,7 +142,7 @@ describe("criarOuReativarNoAtlas", () => {
       ],
       truncado: false,
     };
-    await expect(rodar()).rejects.toThrow("há 2 cadastros no Atlas que podem ser deste cliente");
+    await expect(rodar()).rejects.toThrow("há 2 cadastros no Atlas Gestor que podem ser deste cliente");
     expect(chamadas.map((c) => c.metodo)).toEqual(["buscar"]);
     expect(banco.tabelas.cb_atlas_clientes ?? []).toHaveLength(0);
   });
@@ -166,7 +166,7 @@ describe("criarOuReativarNoAtlas", () => {
 
   it("CRÍTICO: vínculo com o cliente na LIXEIRA do Atlas: PARA sem apagar o vínculo nem procurar (a busca não vê a lixeira e criaria outro)", async () => {
     banco.tabelas.cb_atlas_clientes = [{ id: "v1", account_id: CONTA, contact_id: FICHA, atlas_tenant_id: "t1", atlas_client_id: "sumido", origem: "criada", excluido_no_atlas_em: null }];
-    await expect(rodar()).rejects.toThrow("está na lixeira do Atlas; restaure lá (até 7 dias) ou desvincule na aba Atlas");
+    await expect(rodar()).rejects.toThrow("está na lixeira do Atlas Gestor; restaure lá (até 7 dias) ou desvincule na aba Atlas Gestor");
     expect(chamadas.map((c) => c.metodo)).toEqual(["ler"]);
     expect(banco.tabelas.cb_atlas_clientes).toEqual([expect.objectContaining({ id: "v1", atlas_client_id: "sumido", contact_id: FICHA })]);
     const marcadoEm = banco.tabelas.cb_atlas_clientes[0].excluido_no_atlas_em;
@@ -187,7 +187,7 @@ describe("criarOuReativarNoAtlas", () => {
   it("CRÍTICO: o único candidato forte foi DESVINCULADO desta ficha à mão: para sem escrever no Atlas", async () => {
     banco.tabelas.cb_atlas_recusas = [{ id: "r1", account_id: CONTA, api_url: null, contact_id: FICHA, atlas_client_id: "antigo-1" }];
     achados = { clientes: [{ id: "antigo-1", status: "rescindido", appUrl: null, casouPor: ["chat_link"] }], truncado: false };
-    await expect(rodar()).rejects.toThrow("foi desvinculado dela à mão; vincule o certo na aba Atlas");
+    await expect(rodar()).rejects.toThrow("foi desvinculado dela à mão; vincule o certo na aba Atlas Gestor");
     expect(chamadas.map((c) => c.metodo)).toEqual(["buscar"]);
     expect(banco.tabelas.cb_atlas_clientes ?? []).toHaveLength(0);
     // A recusa de OUTRA ficha (ou de outro ambiente) não pesa aqui.
@@ -265,21 +265,21 @@ describe("criarOuReativarNoAtlas", () => {
   it("chave recusada: a conexão vai a erro e o motivo não traz nada da resposta do Atlas", async () => {
     falha = new AtlasError("chave_invalida", "find_clients → 403 invalid_api_key: Invalid API Key com dado de cliente", 403);
     const e = (await rodar().catch((x: unknown) => x)) as Error;
-    expect(e.message).toBe("Atlas: a chave do Atlas foi recusada — reconecte em Configurações → Integrações");
+    expect(e.message).toBe("Atlas Gestor: a chave do Atlas Gestor foi recusada — reconecte em Configurações → Integrações");
     expect(e.message).not.toContain("dado de cliente");
     expect(banco.tabelas.cb_atlas_config[0]).toMatchObject({ status: "erro", last_error: "chave_invalida" });
   });
 
   it("permissão desligada: o motivo nomeia a permissão", async () => {
     falha = new AtlasError("sem_permissao", "403", 403, "read_client");
-    await expect(rodar()).rejects.toThrow('a permissão "read_client" está desligada no Atlas');
+    await expect(rodar()).rejects.toThrow('a permissão "read_client" está desligada no Atlas Gestor');
   });
 
   it("o vínculo que não grava depois de o Atlas ter sido escrito diz o que aconteceu", async () => {
     banco.falhar.add("cb_atlas_clientes:insert");
-    await expect(rodar()).rejects.toThrow("o cliente foi criado no Atlas, mas o vínculo não foi gravado no CRM");
+    await expect(rodar()).rejects.toThrow("o cliente foi criado no Atlas Gestor, mas o vínculo não foi gravado no CRM");
     achados = { clientes: [{ id: "antigo-1", status: "rescindido", appUrl: null, casouPor: ["chat_link"] }], truncado: false };
-    await expect(rodar()).rejects.toThrow("o cliente foi reativado no Atlas, mas o vínculo não foi gravado no CRM");
+    await expect(rodar()).rejects.toThrow("o cliente foi reativado no Atlas Gestor, mas o vínculo não foi gravado no CRM");
   });
 
   it("CRÍTICO: casado só pelo e-mail ou pelo final do telefone — para SEM escrever no Atlas", async () => {
@@ -288,17 +288,17 @@ describe("criarOuReativarNoAtlas", () => {
     achados = { clientes: [{ id: "de-outra-pessoa", status: "ativo", appUrl: null, casouPor: ["phone_last8"] }], truncado: false };
     await expect(rodar()).rejects.toThrow("só pelo final do telefone");
     achados = { clientes: [{ id: "de-outra-pessoa", status: "ativo", appUrl: null }], truncado: false };
-    await expect(rodar()).rejects.toThrow("nada foi alterado no Atlas");
+    await expect(rodar()).rejects.toThrow("nada foi alterado no Atlas Gestor");
     expect(chamadas.map((c) => c.metodo)).toEqual(["buscar", "buscar", "buscar"]);
     expect(banco.tabelas.cb_atlas_clientes ?? []).toHaveLength(0);
   });
 
   it("suspenso no Atlas: para (a equipe suspendeu lá), nem pela busca nem pelo vínculo", async () => {
     achados = { clientes: [{ id: "s1", status: "suspenso", appUrl: null, casouPor: ["chat_link"] }], truncado: false };
-    await expect(rodar()).rejects.toThrow("no Atlas está suspenso");
+    await expect(rodar()).rejects.toThrow("no Atlas Gestor está suspenso");
     banco.tabelas.cb_atlas_clientes = [{ id: "v1", account_id: CONTA, contact_id: FICHA, atlas_tenant_id: "t1", atlas_client_id: "s2", origem: "criada" }];
     noAtlas.set("s2", { id: "s2", status: "suspenso", appUrl: null });
-    await expect(rodar()).rejects.toThrow("no Atlas está suspenso");
+    await expect(rodar()).rejects.toThrow("no Atlas Gestor está suspenso");
     expect(chamadas.some((c) => c.metodo === "atualizar")).toBe(false);
   });
 
@@ -325,7 +325,7 @@ describe("criarOuReativarNoAtlas", () => {
   it("CRÍTICO: falha ao reler o cliente do vínculo (não é o `not_found` do Atlas) mantém o vínculo", async () => {
     banco.tabelas.cb_atlas_clientes = [{ id: "v1", account_id: CONTA, contact_id: FICHA, atlas_tenant_id: "t1", atlas_client_id: "c9", origem: "criada" }];
     falha = new AtlasError("atlas_error", "get_client → 404 NOT_FOUND", 404);
-    await expect(rodar()).rejects.toThrow("Atlas: o Atlas devolveu um erro");
+    await expect(rodar()).rejects.toThrow("Atlas Gestor: o Atlas Gestor devolveu um erro");
     expect(banco.tabelas.cb_atlas_clientes).toHaveLength(1);
   });
 
@@ -363,7 +363,7 @@ describe("criarOuReativarNoAtlas", () => {
 
   it("validação recusada: o motivo nomeia os NOSSOS campos", async () => {
     falha = new AtlasError("validacao", "400", 400, null, { codigoDoAtlas: "validation_error", campos: ["email", "phone"] });
-    await expect(rodar()).rejects.toThrow("o Atlas recusou os dados do cliente (validação: email, phone)");
+    await expect(rodar()).rejects.toThrow("o Atlas Gestor recusou os dados do cliente (validação: email, phone)");
   });
 
   it("a conversa da execução entra na busca mesmo quando a ficha tem mais de 9 conversas (teto do Atlas: 10 ids)", async () => {
@@ -383,7 +383,7 @@ describe("criarOuReativarNoAtlas", () => {
 
   it("conexão feita em OUTRO ambiente do Atlas (o staging, no preview): falha sem mandar a chave", async () => {
     banco.tabelas.cb_atlas_config[0].api_url = "https://staging.example.com/functions/v1/client-webhook";
-    await expect(rodar()).rejects.toThrow("é de outro ambiente do Atlas");
+    await expect(rodar()).rejects.toThrow("é de outro ambiente do Atlas Gestor");
     expect(chamadas).toHaveLength(0);
   });
 });

@@ -233,7 +233,7 @@ mudança (`source`). O formato completo, com exemplo, está em
   "Criar negócio", "Mover card de etapa" e "Marcar ganho ou perdido" das
   automações, o bloco "Mover card de etapa" dos robôs (que também cria o
   card quando o contato não tem nenhum) e a ferramenta "Mover o card" dos
-  agentes de IA — Calendly, ZapSign e Atlas só movem card por automação,
+  agentes de IA — Calendly, ZapSign e Atlas Gestor só movem card por automação,
   então chegam assim também; `api` é a API de negócios (`POST`/`PATCH /api/v1/deals`) —
   filtre esse valor se o seu fluxo mover o card pela API, senão ele reage ao
   próprio movimento —; e `system` é o resto: uma correção feita direto no
