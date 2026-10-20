@@ -1390,6 +1390,19 @@ nome da época em que foram aplicadas.
   "Trocar" com a execução sem card da ficha que sairia, a união, e a busca
   nova da API medida no PostgREST real (`imatch` nos antigos e `id.in.(…)`
   no `.or()`: acha pelo telefone antigo; sem o ramo, nada).
+- **1095_cb_painel_por_dia** — as RPCs `cb_painel_mensagens_por_dia` e
+  `cb_painel_tempo_de_resposta` (PR #422): a série e o tempo de resposta do
+  Painel somam no banco, uma linha por dia no fuso do navegador (o PostgREST
+  cortava as linhas em 1000 e a série zerava do 2º dia em diante). Só
+  funções, SECURITY INVOKER, nada para `anon`. ADITIVA e ANTES do deploy.
+  Provada num Postgres 16 descartável (3 aplicações, cenários, a cerca entre
+  contas como `authenticated`, e igual ao algoritmo antigo sem o corte sobre
+  5,8 mil linhas aleatórias). Aplicada em 20/10/2026 pela Management API
+  (histórico `20261020133416`), depois do replay verde no commit `c1595c9d`,
+  com "pode gravar: aplique a 1095 na produção" do operador. Conferida: as
+  duas com `prosecdef = false`, EXECUTE só para `authenticated` e
+  `service_role` (o papel de leitura do `supabase-cb` não as chama — de
+  propósito); a conferência embutida chamou as duas.
 
 ## Notas do histórico
 
