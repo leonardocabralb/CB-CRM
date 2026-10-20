@@ -26,11 +26,11 @@ do produto é o **Atlas CRM**. Vale para PC e celular.
 
 | Fase | O quê | Estado |
 |---|---|---|
-| 1 | Banco (1094), rota, aba Marca com exemplos | feito e integrado (sem commit) |
-| 2 | A marca em todo lugar (PC e celular) | feito e integrado (sem commit) |
-| 3 | Padrão Atlas, fim dos build-args, docs | feito e integrado (sem commit) |
-| 4 | "Atlas" → "Atlas Gestor" nos textos (PR próprio) | em andamento |
-| 5 | Aplicar a 1094 (com "pode gravar"), deploy, conferir | pendente |
+| 1 | Banco (1094), rota, aba Marca com exemplos | feito (#420) |
+| 2 | A marca em todo lugar (PC e celular) | feito (#420) |
+| 3 | Padrão Atlas, fim dos build-args, docs | feito (#420) |
+| 4 | "Atlas" → "Atlas Gestor" nos textos (PR próprio) | feito (#421), mesclar depois do #420 |
+| 5 | Aplicar a 1094 (com "pode gravar"), deploy, conferir | 1094 aplicada e e2e feito (20/10); falta merge e conferir no ar |
 
 ## As peças e onde aparecem
 
@@ -102,24 +102,24 @@ e `manifest.ts` passam a dinâmicos e leem `obterMarca()`.
 
 ## Fases
 
-### Fase 1 — banco, rota, aba (em andamento)
+### Fase 1 — banco, rota, aba (feita)
 Arquivos: `supabase/migrations/1094_cb_marca.sql`,
 `src/app/api/cb/marca/route.ts`, seção `marca` em Configurações
 (`settings-sections.ts`, `catalogo.ts`, `poderes.ts`, a página), o painel
 `marca-panel.tsx`, chaves `Settings.marca.*` nos dois dicionários.
 
-### Fase 2 — a marca em todo lugar (em andamento)
+### Fase 2 — a marca em todo lugar (feita)
 Barra lateral (PC e menu do celular), login/cadastro/esqueci/redefinir
 senha/convite, ícone da aba, ícone do app instalado, manifesto, título da
 aba, textos (`{appName}`), Asaas e Atlas (nome do sistema que vai para eles).
 
-### Fase 3 — padrão Atlas e limpeza (em andamento)
+### Fase 3 — padrão Atlas e limpeza (feita)
 Sai `NEXT_PUBLIC_APP_NAME`/`_SHORT_NAME`/`_LOGO_URL` (Dockerfile,
 `pipeline.yml`, compose, `.env.local.example`). Docs de instalação e de
 atualização. Regras (`CLAUDE.md` 8f, `deploy.md`, `celular.md`,
 `marca.md`). Exceção de cache para `public/marca/`.
 
-### Fase 4 — "Atlas Gestor" (PR próprio, em andamento)
+### Fase 4 — "Atlas Gestor" (PR próprio, #421)
 Só TEXTO de tela, ajuda e docs entregues. Chaves de dicionário,
 identificadores, URLs e nomes de coluna ficam.
 
@@ -183,17 +183,35 @@ Decisões tomadas na correção da revisão (19/10/2026, a conferir):
   também na nossa produção, se ela empatar; a leitura e a decisão ficam na
   fase 5. `docs/ATUALIZAR.md` diz a quem atualiza como conferir.
 
+## Fase 5 — o que foi feito (20/10/2026)
+
+- Contas da produção lidas (19/10): 5 contas; a mais antiga é a do
+  escritório (21/07, 16 membros), sem empate — a seguinte é de 23/07. As
+  outras 4 são avulsas de 1 pessoa.
+- Número conferido contra o `main`, as worktrees, as branches remotas e o
+  histórico do banco: 1094 livre. CI verde no `a1200685` (replay incluso).
+- 1094 aplicada pela Management API com "pode gravar a 1094 na produção" do
+  operador; conferida (ver `docs/MIGRATIONS-APLICADAS.md`).
+- e2e no preview (dev da branch, banco de produção, app no ar sem ler a
+  tabela) com a marca fictícia "Marca Teste": símbolo de 100 px recusado na
+  tela com a frase do lado mínimo e o Salvar desligado; com as peças
+  válidas, a prévia (login cai na horizontal sem a vertical); salvar →
+  barra lateral, título "Marca Teste", `/icon` e `/apple-icon/180` com o
+  símbolo enviado sobre a cor escolhida, manifesto com `?v=` novo, login sem
+  sessão (127.0.0.1) com a marca; "Voltar ao padrão" com a confirmação →
+  Atlas de volta, 0 linhas e 0 arquivos no bucket. A aba a 375 px sem
+  rolagem lateral. Ajuste feito no e2e: a frase da prévia dizia "depois de
+  salvar" logo após salvar.
+
 Pendências:
 
 - `marca` nasce invisível para perfil já gravado (seção nova do catálogo);
   ficou fora de `SECOES_TRAVADAS_PARA_ADMIN`. Decisão do operador.
-- E2E da aba com a rota (escolher, salvar, 400/403, voltar ao padrão) num
-  banco de teste antes do merge — o preview grava na produção.
-- Conferir na tela, depois do deploy: barra lateral nos dois modos, login,
-  ícone da aba e do app, manifesto; o iPhone.
-- Responder ao operador quais são as contas da instalação (a mais antiga é
-  a que troca a marca, D1) e se a primeira empata em `created_at`: exige
-  uma leitura na produção (fase 5).
+- Merge do #420 (publica) e conferir no ar: barra lateral nos dois modos,
+  login, ícone da aba e do app, manifesto; o iPhone (apagar e instalar de
+  novo).
+- O 403 para quem não é admin da conta mais antiga só foi provado nos
+  testes da rota (não há outro login no preview).
 
 ## Limites conhecidos
 

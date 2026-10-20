@@ -637,7 +637,11 @@ export function FormularioDaMarca({
             {t('previaTitulo')}
           </h3>
           <p className="text-muted-foreground mt-1 text-xs">
-            {podeEditar && emPropria ? t('previaRascunho') : t('previaAtual')}
+            {/* Rascunho só quando ele DIFERE do gravado: logo depois de
+                salvar, com "Nada mudou ainda", a prévia é a marca de agora. */}
+            {podeEditar && emPropria && (mudancas.alguma || !gravada.propria)
+              ? t('previaRascunho')
+              : t('previaAtual')}
           </p>
         </div>
         <PreviaDaMarca marca={previa} />
