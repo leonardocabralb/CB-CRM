@@ -33,10 +33,28 @@ export const QUAIS_CONVERSAS: readonly QuaisConversas[] = [
 ];
 
 export interface PreferenciaDeAviso {
+  /** O aviso de MENSAGEM de cliente (a chave do original). */
   ativo: boolean;
   quais: QuaisConversas;
-  /** Desligado, o aviso diz só QUEM escreveu (tela à vista de outras pessoas). */
+  /**
+   * Desligado, o aviso diz só QUEM escreveu ou chamou (tela à vista de outras
+   * pessoas). Vale para mensagem e sino (D5, 20/10/2026).
+   */
   mostrarTexto: boolean;
+  /**
+   * "Menções e tarefas": o pop-up dos avisos do SINO (D1, 20/10/2026;
+   * `aviso-do-sino.ts`). Chave própria, independente de `ativo`, e LIGADA no
+   * padrão — quem já deu a permissão do navegador passa a receber; quem não
+   * deu, nada recebe até ligar (e o navegador pedir).
+   */
+  sino: boolean;
+  /**
+   * "Tocar o som do CRM", por tipo (D4): ligado no sino, desligado nas
+   * mensagens (~620 por dia útil). ⚠️ Desligado = o sistema decide, como
+   * antes, nunca `silent` forçado (`som-do-aviso.ts`).
+   */
+  somNoSino: boolean;
+  somNasMensagens: boolean;
   /**
    * As conexões DESMARCADAS em "Conexões que avisam" (pedido do operador,
    * 02/10/2026). ⚠️ Guarda o que NÃO avisa, nunca o que avisa: a conexão nova
@@ -51,8 +69,16 @@ export const PREFERENCIA_PADRAO: PreferenciaDeAviso = {
   ativo: false,
   quais: "todas",
   mostrarTexto: true,
+  sino: true,
+  somNoSino: true,
+  somNasMensagens: false,
   silenciadas: [],
 };
+
+/** Booleano só vale escrito como booleano; o resto cai no padrão. */
+function booleanoOu(valor: unknown, padrao: boolean): boolean {
+  return typeof valor === "boolean" ? valor : padrao;
+}
 
 /**
  * ⚠️ A chave é POR PESSOA, e não a global do original
@@ -90,8 +116,10 @@ export function lerPreferencia(texto: string | null): PreferenciaDeAviso {
     quais: QUAIS_CONVERSAS.includes(o.quais as QuaisConversas)
       ? (o.quais as QuaisConversas)
       : PREFERENCIA_PADRAO.quais,
-    mostrarTexto:
-      typeof o.mostrarTexto === "boolean" ? o.mostrarTexto : PREFERENCIA_PADRAO.mostrarTexto,
+    mostrarTexto: booleanoOu(o.mostrarTexto, PREFERENCIA_PADRAO.mostrarTexto),
+    sino: booleanoOu(o.sino, PREFERENCIA_PADRAO.sino),
+    somNoSino: booleanoOu(o.somNoSino, PREFERENCIA_PADRAO.somNoSino),
+    somNasMensagens: booleanoOu(o.somNasMensagens, PREFERENCIA_PADRAO.somNasMensagens),
     silenciadas: Array.isArray(o.silenciadas)
       ? o.silenciadas.filter((id): id is string => typeof id === "string" && id !== "")
       : PREFERENCIA_PADRAO.silenciadas,

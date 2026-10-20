@@ -29,13 +29,15 @@ import {
 import { nomeDoContato, type ContatoIdentificavel } from "@/lib/contacts/identidade";
 import { EVENTO_ABRIR_CONVERSA, EVENTO_CONVERSA_ABERTA, urlDoInbox } from "@/lib/inbox/url";
 import { MIDIA_DE_TOQUE } from "@/lib/celular/teclado";
+import { tocarSomDoAviso } from "@/lib/notifications/som-do-aviso";
 
 // ⚠️ Este arquivo veio do original (#516) e foi PORTADO na Fase 8 do plano do
 // merge do upstream: a preferência é POR PESSOA, a régua de quem recebe
 // aviso é a nossa (`silencioDoAviso`: perfil, grupo, conexões silenciadas,
 // "quais conversas", mensagem antiga) e o título sai de `nomeDoContato`. Um
 // merge que traga a versão dele crua devolve o aviso de grupo e de conexão
-// fora do perfil.
+// fora do perfil. Desde 20/10/2026, o som do CRM (`somNasMensagens`) e, ao
+// lado deste, o pop-up dos avisos do sino (`use-avisos-do-sino-no-navegador.ts`).
 
 const semServidor = () => null;
 
@@ -285,6 +287,11 @@ export function useBrowserNotifications(): void {
           // Um aviso por conversa: a segunda mensagem substitui a primeira.
           tag: msg.conversation_id,
           icon: "/icon",
+          // Som do CRM (D4, 20/10/2026; desligado no padrão, pelo volume):
+          // tocado, o do sistema se cala; desligado ou com a aba sem clique,
+          // o sistema decide, como antes. Síncrono: nenhum `await` entre o
+          // `vendoAgora` de cima e o aviso.
+          silent: pref.somNasMensagens && tocarSomDoAviso(),
         });
         notificacao.onclick = () => {
           window.focus();
