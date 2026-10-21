@@ -53,7 +53,11 @@ export function useMenuRecolhido(): {
   alternar: () => void;
 } {
   const preferido = useSyncExternalStore(assinar, lerGuardado, () => false);
-  const telaLarga = useMediaQuery("(min-width: 1024px)");
+  // `64rem`, NUNCA `1024px`: é o `lg:` do Tailwind, e `rem` em media query
+  // segue a fonte PADRÃO do navegador. Com fonte grande, `1024px` recolheria
+  // a gaveta do celular, onde o botão de expandir (`lg:flex`) não aparece
+  // (Codex, PR #426; o mesmo caso da página do inbox).
+  const telaLarga = useMediaQuery("(min-width: 64rem)");
 
   const alternar = useCallback(() => {
     const novo = !lerGuardado();
