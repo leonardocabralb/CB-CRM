@@ -87,3 +87,18 @@ export function useRascunhoDaConversa(
   );
   return [texto, definir];
 }
+
+/**
+ * O texto do rascunho de uma conversa — a marca "Rascunho" da LISTA. Só lê.
+ * `ativo: false` responde "" sem olhar (a conversa aberta: o rascunho dela
+ * está à vista na caixa, e a linha dela se redesenharia a cada tecla).
+ */
+export function useTextoDoRascunho(conversationId: string, ativo: boolean): string {
+  const { user } = useAuth();
+  const chave = chaveDoRascunho(user?.id ?? "sem-login", conversationId);
+  return useSyncExternalStore(
+    assinar,
+    () => (ativo ? repositorio.ler(chave) : ""),
+    () => "",
+  );
+}

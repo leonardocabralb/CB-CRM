@@ -115,3 +115,4 @@ Nome, telefone, grupo e última mensagem em JS (`casaComABusca`); o corpo do his
 - **A rota confere POSSE do canal, não escopo de perfil** (nenhuma rota valida `canalNoEscopo` hoje).
 - **O "Conversar" do cartão de contato (1060) abre este diálogo preenchido** (`inicial`): a lista escuta o evento só com `podeAbrirConversa`, a MESMA régua do botão, e o botão da lista zera o pedido (abre vazio). Ver `.claude/rules/inbox-conversa.md`.
 - A prévia da linha troca o rótulo de tipo não suportado por frase (`tipoNaoSuportado`), como faz com a ligação.
+- **Conversa com rascunho (texto ou anexos) e não aberta: a prévia vira "Rascunho:"** em verde (21/10/2026). O trecho da busca vence. Regra em `.claude/rules/rascunho-da-conversa.md`.
