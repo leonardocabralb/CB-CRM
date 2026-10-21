@@ -143,8 +143,8 @@ Tabela `cb_media_library`, `src/lib/acervo/` (puro, com teste), rotas em
 `acervo-picker.tsx` no clipe do compositor.
 
 - ⚠️⚠️ **Enviar do acervo COPIA o arquivo (rota `copiar`).** O compositor APAGA
-  o objeto quando o envio falha ou o rascunho é descartado
-  (`deleteAccountMedia`), e cancelar uma agendada também apaga: por
+  o objeto quando o rascunho é descartado (`deleteAccountMedia`), e cancelar
+  uma agendada também apaga: por
   referência, o envio falho de um estagiário levaria o contrato-padrão de todo
   mundo, sem ninguém ligar uma coisa à outra. E o que FOI ENVIADO não pode
   mudar quando alguém troca o item.

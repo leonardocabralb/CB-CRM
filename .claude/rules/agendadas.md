@@ -90,8 +90,9 @@ Tudo aqui existe porque passam HORAS entre escrever e enviar.
 - ⚠️ **Cancelar apaga o objeto do bucket — MENOS quando há `message_id`.** O
   teste é a COLUNA, e ela vem do RETORNO do `delete`, não da lista da tela: o
   worker pode ter enviado entre a carga e o clique, e aí o arquivo é da
-  mensagem que está no fio do cliente. No compositor, `entreguesRef` impede a
-  limpeza de desmonte de apagar arquivo que já é de uma agendada.
+  mensagem que está no fio do cliente. No compositor, `entreguesRef` impede o
+  descarte de apagar arquivo que já é de uma agendada, e o laço de agendar
+  pula o que já está marcado (`rascunho-da-conversa.md`).
 - Vários anexos agendados = uma linha por anexo; só o que falhou fica na tela.
 - ⚠️ **`reply_to_message_id` não tem FK, de propósito**: `RESTRICT` faria apagar
   mensagem falhar, `CASCADE` apagaria a agendada, `SET NULL` apagaria a

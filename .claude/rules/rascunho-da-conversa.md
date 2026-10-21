@@ -2,6 +2,8 @@
 paths:
   - "src/lib/inbox/rascunho-da-conversa*"
   - "src/hooks/use-rascunho-da-conversa*"
+  - "src/lib/inbox/anexos-da-conversa*"
+  - "src/hooks/use-anexos-da-conversa*"
   - "src/components/inbox/message-composer.tsx"
 ---
 
@@ -54,9 +56,52 @@ o hook é `useRascunhoDaConversa`; pinos estruturais em
   `refDaCaixa` (a caixa volta MONTANDO depois da prévia de anexo ou da
   gravação, sem o `text` mudar). Vazia volta ao `auto`, como depois de enviar
   — medida, cresceria até o placeholder, que quebra numa coluna estreita.
-- **Fica de fora, de propósito:** a fila de anexos (segue recolhida na troca:
-  o arquivo de um caso não monta no compositor de outro), a anotação interna
-  (fecha na troca, pelo mesmo motivo), a citação e a mensagem retida na
-  janela de desfazer (a troca a ENVIA, `liberarPendente`).
+- **Fica de fora, de propósito:** a anotação interna (fecha na troca: o texto
+  de um caso não pode ser salvo na conversa de outro), a citação e a mensagem
+  retida na janela de desfazer (a troca a ENVIA, `liberarPendente`).
 - Não há marca "Rascunho" na lista de conversas (o WhatsApp tem): seria a
   lista assinando o mesmo repositório.
+
+### Os ANEXOS em rascunho (21/10/2026)
+
+Pedido do operador: o anexo subido e não enviado fica na conversa em que foi
+anexado, com a legenda, e volta com ela. Antes, a troca o APAGAVA — era a
+única defesa contra o documento de um caso montado no compositor de outro.
+Regra pura em `src/lib/inbox/anexos-da-conversa.ts` (pino
+`anexos-da-conversa.test.ts`); o hook é `useAnexosDaConversa`; pinos
+estruturais em `anexos-da-conversa.chamadores.test.ts`.
+
+- ⚠️⚠️ **Só na MEMÓRIA da aba, por decisão do operador** ("como o WhatsApp"):
+  recarregar ou fechar a aba perde os anexos (o texto continua, no
+  `localStorage`). Repositório de MÓDULO no compositor
+  (`anexosDaConversa`), chave `<user.id>:<conversa>`: o compositor que
+  remonta (saiu da caixa de entrada e voltou, ou o painel da pauta) lê a
+  mesma fila, e outra pessoa na mesma aba não vê a de quem saiu.
+- ⚠️⚠️ **O `setDrafts` é PRESO à conversa, como o `setText`**, e pela mesma
+  diretiva de lint: o upload, a cópia do acervo e a nota de voz que pousam
+  DEPOIS da troca vão para a fila da ORIGEM (antes eram apagados); o
+  desfeito volta para a fila guardada na retenção (`Retida.rascunho`). A
+  SELEÇÃO é da tela: só muda com `conversaNaTelaRef.current === origem`.
+- ⚠️⚠️ **Falha FORA da tela devolve só o que nem COMEÇOU** (com o aviso
+  `anexosNaoSairam`); o que falhou fica marcado e fora da fila: tempo
+  esgotado e 5xx também chegam como falha (entrega incerta), e sem a bolha à
+  vista, oferecê-lo na prévia o mandaria em dobro. Na tela volta tudo.
+- ⚠️⚠️ **O laço de AGENDAR para no desmonte, como na troca** (a posse zerada
+  nos dois), **tira da fila cada anexo assim que ele É agendado e pula o que
+  já está marcado ou saiu da fila**: vivo depois do desmonte, ele agendaria a
+  fila que o compositor remontado oferece de novo — Enviar ou Agendar outra
+  vez mandaria em dobro. O "X" não trava durante o laço.
+- ⚠️ **A marca "já é de uma mensagem" (`entreguesRef`) é o Set de MÓDULO
+  `caminhosEntregues`**: o compositor que remonta com um agendamento no ar
+  mostra o anexo na fila, e sem a marca do que desmontou o "X" apagaria o
+  arquivo da agendada.
+- ⚠️ **A gravação vence a prévia** (`drafts.length > 0 && !recording`): um
+  anexo que pousa com o microfone ligado esconderia a barra de parar.
+- ⚠️ **`onSendRef`/`onSendMediaRef` andam num efeito de LAYOUT**: a fila da
+  conversa nova aparece no primeiro quadro, e o envio nesse quadro levaria o
+  despachante da anterior.
+- ⚠️ **Só o descarte da PESSOA apaga objeto do bucket** (o "X" e o descartar
+  tudo; o pino conta as chamadas de `removeStaged`). O preço da memória:
+  quem recarrega com anexo em rascunho deixa o arquivo ÓRFÃO no `chat-media`.
+  Se crescer, a saída é varrer — decisão do operador, porque apaga.
+- `busy` (upload em curso) continua um só: subindo em A, o clipe de B espera.

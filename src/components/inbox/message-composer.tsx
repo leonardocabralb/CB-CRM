@@ -53,6 +53,7 @@ import { useCan } from "@/hooks/use-can";
 import { useAuth } from "@/hooks/use-auth";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useRascunhoDaConversa } from "@/hooks/use-rascunho-da-conversa";
+import { useAnexosDaConversa } from "@/hooks/use-anexos-da-conversa";
 import { enterEnvia, MIDIA_DE_TOQUE } from "@/lib/celular/teclado";
 import { custoDaAssinatura, nomeDePessoa } from "@/lib/assinatura/assinatura";
 import type { ConversationNote, MediaLibraryItem } from "@/types";
@@ -78,6 +79,7 @@ import {
   tipoDoArquivo,
 } from "@/lib/inbox/arquivo-solto";
 import { criarFilaDeSaida } from "@/lib/inbox/fila-de-saida";
+import { criarRepositorioDeAnexos, type NovosAnexos } from "@/lib/inbox/anexos-da-conversa";
 import { useTranslations } from "next-intl";
 import {
   InteractiveBuilder,
@@ -215,14 +217,33 @@ function novoDraft(d: Omit<MediaDraft, "id">): MediaDraft {
 }
 
 /**
+ * A fila de anexos em rascunho de CADA conversa (pedido do operador,
+ * 21/10/2026, "como o WhatsApp"): trocar de conversa guarda a da conversa que
+ * ficou, e voltar a devolve. Só na memória da aba — recarregar perde, por
+ * decisão dele (`anexos-da-conversa.ts`). De MÓDULO, como a fila de saída: o
+ * compositor que remonta (saiu da caixa de entrada e voltou) lê a mesma.
+ */
+const anexosDaConversa = criarRepositorioDeAnexos<MediaDraft>();
+
+/**
+ * Os caminhos que já são de uma mensagem ou de uma agendada — ver
+ * `entreguesRef`. De MÓDULO pelo mesmo motivo da fila: o compositor que
+ * remonta enquanto um agendamento ainda está no ar mostra o anexo na fila, e
+ * sem a marca dele o "X" apagaria o arquivo da agendada, e o Enviar o
+ * mandaria de novo.
+ */
+const caminhosEntregues = new Set<string>();
+
+/**
  * O que está RETIDO na janela de desfazer: um texto OU a fila de anexos
  * (os anexos ganharam a janela em 15/10/2026, pedido do operador). Um lugar
  * só: mandar outra coisa solta a retida primeiro, e a ordem das mensagens no
  * celular do cliente é a ordem em que foram mandadas.
  *
  * `enviar` é o despachante da conversa de ORIGEM, capturado na retenção (ver
- * `handleSend`), e `origem` é a conversa — a fila de saída é por conversa, e
- * o anexo que falhar só volta à prévia se ela ainda estiver aberta.
+ * `handleSend`), e `origem` é a conversa — a fila de saída é por conversa.
+ * `rascunho` é a fila de anexos DELA, presa também na retenção: o anexo que
+ * falhar ou for desfeito volta para lá, esteja ela na tela ou não.
  */
 type Retida =
   | {
@@ -238,6 +259,7 @@ type Retida =
       itens: MediaDraft[];
       replyToId?: string;
       enviar: (payload: SendMediaPayload) => boolean | Promise<boolean>;
+      rascunho: (novo: NovosAnexos<MediaDraft>) => void;
     };
 
 /** Um lote de anexos LIBERADO, já na fila de saída — ver `enviarAnexo`. */
@@ -414,7 +436,13 @@ export function MessageComposer({
   // attachment; `busy` covers the upload/transcode window.
   // ⚠️ FILA, não um só (08/09/2026, pedido do operador). Cada item vira UMA
   // mensagem no WhatsApp — não existe "mensagem com 3 anexos" no protocolo.
-  const [drafts, setDrafts] = useState<MediaDraft[]>([]);
+  // ⚠️⚠️ E uma fila POR CONVERSA (21/10/2026): a troca guarda a da conversa
+  // que ficou, em vez de apagá-la. O `setDrafts` é PRESO à conversa do render,
+  // como o `setText`: quem volta de uma espera (upload, falha, agendamento)
+  // grava na fila da ORIGEM — o anexo de A nunca pousa na prévia de B. Todo
+  // `useCallback` que o chama o leva nas dependências. `lerDrafts` é a fila
+  // de AGORA, para quem não pode esperar o render (descarte, funil de entrada).
+  const [drafts, setDrafts, lerDrafts] = useAnexosDaConversa(anexosDaConversa, conversationId);
   // Qual item está com a prévia grande e o campo de legenda aberto.
   const [selecionado, setSelecionado] = useState<string | null>(null);
   // Trinco do envio da fila. O ref é o que serializa (síncrono); o estado só
@@ -436,38 +464,33 @@ export function MessageComposer({
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const documentInputRef = useRef<HTMLInputElement>(null);
-  // Mirror of `draft` for the unmount cleanup, which can't read render
-  // state. Kept in sync below so navigating away with a staged-but-unsent
-  // attachment GCs the orphaned object.
-  const draftsRef = useRef<MediaDraft[]>([]);
-  useEffect(() => {
-    draftsRef.current = drafts;
-  }, [drafts]);
 
   /**
    * Caminhos que JÁ pertencem a outra coisa e não podem mais ser recolhidos.
    *
-   * ⚠️ Existe por causa do agendamento (932). A limpeza de desmonte acima
-   * apaga o objeto do rascunho — certo para um anexo que ficou na tela e nunca
-   * foi mandado. Mas agendar cria a linha no servidor e o arquivo passa a ser
-   * DELA: se o operador trocar de tela enquanto o POST está no ar (ou no
-   * quadro seguinte ao sucesso, antes de o rascunho sumir), a limpeza apagaria
-   * o arquivo de uma agendada recém-criada — e o defeito só apareceria horas
-   * depois, na hora do envio.
-   *
-   * Marcado ANTES do POST, de propósito: a janela perigosa é justamente a
-   * espera. Se o agendamento falhar, o caminho sai daqui e volta a ser
-   * recolhível.
+   * ⚠️ Existe por causa do agendamento (932): agendar cria a linha no
+   * servidor e o arquivo passa a ser DELA. Quem apagasse o objeto enquanto o
+   * POST está no ar (ou no quadro seguinte ao sucesso, antes de o item sair da
+   * fila) apagaria o arquivo de uma agendada recém-criada — e o defeito só
+   * apareceria horas depois, na hora do envio. Marcado ANTES do POST, de
+   * propósito: a janela perigosa é justamente a espera. Se o agendamento
+   * falhar, o caminho sai daqui e volta a ser recolhível pelo descarte.
    *
    * ⚠️⚠️ O ENVIO IMEDIATO da fila passa pela mesma marca (`sendDraft`). Pela
-   * Evolution uma nota de voz leva de 4 a 7 s para sair, e o item só deixa a
-   * fila quando o envio volta: quem trocava de conversa nesse meio tempo
-   * disparava a limpeza de troca, que apagava o arquivo do item em voo. O
-   * cliente recebia (a Evolution já o tinha baixado) e a bolha do CRM ficava
-   * apontando para um objeto apagado — "Não foi possível reproduzir este
-   * áudio". Medido em 15/10/2026: ~10% das notas de voz gravadas no CRM.
+   * Evolution uma nota de voz leva de 4 a 7 s para sair: quem trocava de
+   * conversa nesse meio tempo disparava a limpeza de troca de então, que
+   * apagava o arquivo do item em voo. O cliente recebia (a Evolution já o
+   * tinha baixado) e a bolha do CRM ficava apontando para um objeto apagado —
+   * "Não foi possível reproduzir este áudio". Medido em 15/10/2026: ~10% das
+   * notas de voz gravadas no CRM.
+   *
+   * ⚠️ Desde a fila por conversa (21/10/2026) a troca e o desmonte não apagam
+   * mais nada; a marca protege o descarte (o "X"), a retenção em dobro
+   * (`sendDraft`) e o laço de agendar (que pula o marcado). É o Set de MÓDULO
+   * (`caminhosEntregues`): o compositor que remonta herda as marcas do que
+   * desmontou.
    */
-  const entreguesRef = useRef<Set<string>>(new Set());
+  const entreguesRef = useRef<Set<string>>(caminhosEntregues);
 
   // Best-effort GC of a staged object the user never sent. Fire-and-forget.
   const removeStaged = useCallback((path: string | undefined) => {
@@ -605,17 +628,23 @@ export function MessageComposer({
   }, []);
 
   // Tear down any live recording + timer on unmount so a mid-record
-  // navigation doesn't leak the mic, and GC a staged-but-unsent
-  // attachment so it doesn't orphan in the bucket.
+  // navigation doesn't leak the mic.
+  // ⚠️ Os anexos em rascunho NÃO são recolhidos aqui (21/10/2026): a fila é
+  // da conversa, de módulo, e quem volta à caixa de entrada os encontra.
   useEffect(() => {
     return () => {
       clearTimer();
       cancelledRef.current = true;
       // stop() releases the mic stream + audio context inside opus-recorder.
       void recorderRef.current?.stop().catch(() => {});
-      for (const d of draftsRef.current) removeStaged(d.path);
+      // ⚠️⚠️ E o laço de AGENDAR para aqui, como na troca de conversa: vivo,
+      // ele seguiria agendando a fila capturada enquanto o compositor que
+      // remonta mostra os mesmos anexos — um Enviar ou um novo Agendar os
+      // mandaria em dobro ao cliente. O item em voo termina e sai da fila;
+      // o resto fica nela, à espera de quem voltar.
+      enviandoFilaRef.current = 0;
     };
-  }, [clearTimer, removeStaged]);
+  }, [clearTimer]);
 
   const adjustHeight = useCallback(() => {
     const el = textareaRef.current;
@@ -682,13 +711,19 @@ export function MessageComposer({
   // chegando durante a janela re-registraria o efeito, o cleanup rodaria e a
   // pendente sairia antes da hora — o "Desfazer" só funcionaria em conversa
   // parada, que é justamente quando ninguém precisa dele.
+  //
+  // ⚠️ Num efeito de LAYOUT, como o `conversaNaTelaRef`: o rascunho (texto e
+  // anexos) da conversa nova já aparece no PRIMEIRO quadro dela, e um envio
+  // nesse quadro, com o efeito passivo ainda por rodar (troca que não vem de
+  // clique: o deep link, o voltar do histórico), reteria o rascunho de B com
+  // o despachante de A.
   const onSendRef = useRef(onSend);
-  useEffect(() => {
+  useLayoutEffect(() => {
     onSendRef.current = onSend;
   }, [onSend]);
   // O mesmo para os anexos, que também passam pela janela de desfazer.
   const onSendMediaRef = useRef(onSendMedia);
-  useEffect(() => {
+  useLayoutEffect(() => {
     onSendMediaRef.current = onSendMedia;
   }, [onSendMedia]);
   // O anexo que falhar depois de liberado só volta à prévia de um compositor
@@ -723,8 +758,9 @@ export function MessageComposer({
   }, []);
 
   /**
-   * Devolve anexos à prévia — no Desfazer e na falha — e eles voltam a ser do
-   * RASCUNHO (recolhíveis no descarte e na troca de conversa).
+   * Devolve anexos à fila de rascunho da ORIGEM (`p.rascunho`) — no Desfazer
+   * e na falha — e eles voltam a ser do RASCUNHO (recolhíveis no descarte).
+   * Com a origem fora da tela, ficam lá, à espera de quem voltar a ela.
    *
    * ⚠️ Devolve TODOS, mesmo passando de `MAX_ANEXOS`: durante a janela (ou
    * enquanto o lote saía) o compositor fica livre, e o operador pode ter
@@ -734,13 +770,19 @@ export function MessageComposer({
    * anexo passa. Cortar aqui apagaria o arquivo de um anexo que o operador
    * acabou de pedir de volta.
    */
-  const devolverAPrevia = useCallback((devolvidos: MediaDraft[]) => {
-    for (const d of devolvidos) entreguesRef.current.delete(d.path);
-    setDrafts((atual) => [...devolvidos, ...atual]);
-    // Sem roubar a seleção: a falha chega a qualquer momento, e o operador
-    // pode estar legendando outro anexo.
-    setSelecionado((atual) => atual ?? devolvidos[0].id);
-  }, []);
+  const devolverAPrevia = useCallback(
+    (p: Extract<Retida, { tipo: "anexos" }>, devolvidos: MediaDraft[]) => {
+      for (const d of devolvidos) entreguesRef.current.delete(d.path);
+      p.rascunho((atual) => [...devolvidos, ...atual]);
+      // ⚠️ A seleção é da TELA: só se a origem ainda estiver nela (pelo ref de
+      // LAYOUT — ver `conversaNaTelaRef`). E sem roubá-la: a falha chega a
+      // qualquer momento, e o operador pode estar legendando outro anexo.
+      if (montadoRef.current && conversaNaTelaRef.current === p.origem) {
+        setSelecionado((atual) => atual ?? devolvidos[0].id);
+      }
+    },
+    [],
+  );
 
   /**
    * UM anexo liberado. Cada anexo é um trabalho PRÓPRIO na fila de saída: o
@@ -786,28 +828,27 @@ export function MessageComposer({
       // devolveriam a mesma cauda, e a nova tentativa a mandaria em dobro.
       const cauda = lote.parou ? [] : p.itens.slice(lote.comecados);
       lote.parou = true;
-      const sobra = [item, ...cauda];
       // ⚠️ A conversa NA TELA, pelo ref de LAYOUT — nunca o
       // `conversaAnteriorRef`, que é passivo: a falha de A que caísse entre o
-      // commit da troca e o efeito poria o arquivo de A na prévia de B
-      // (Codex, PR #415).
+      // commit da troca e o efeito leria a conversa errada (Codex, PR #415).
       if (montadoRef.current && conversaNaTelaRef.current === p.origem) {
         // À prévia, para tentar de novo sem reanexar (o pai NÃO apaga o
-        // objeto na falha).
-        devolverAPrevia(sobra);
+        // objeto na falha); a bolha "falhou" mostra o resto.
+        devolverAPrevia(p, [item, ...cauda]);
         return;
       }
-      // Já em outra conversa (ou fora da caixa de entrada): o arquivo de um
-      // caso não volta ao compositor de outro. O que falhou tem a bolha
-      // "falhou" (se a conversa estiver na tela) e o aviso dele, e o arquivo
-      // FICA — a entrega dele é incerta. Os que nem começaram nunca saíram:
-      // recolhidos (fora da prévia e da marca, ninguém mais os alcança) e
-      // avisados aqui.
-      for (const d of sobra) entreguesRef.current.delete(d.path);
-      for (const d of cauda) removeStaged(d.path);
-      if (cauda.length > 0) toast.error(t("anexosNaoSairam", { n: cauda.length }));
+      // ⚠️⚠️ Fora da tela, à fila da ORIGEM (fila por conversa, 21/10/2026) só
+      // os que nem COMEÇARAM: nunca saíram, voltam sem risco — antes eram
+      // apagados. O que falhou FICA marcado e fora da fila, com o arquivo: a
+      // entrega dele é incerta (tempo esgotado e 5xx também chegam como
+      // falha), e sem a bolha à vista, oferecê-lo de novo na prévia de A o
+      // mandaria em dobro — ou o "X" apagaria o arquivo de uma bolha entregue.
+      if (cauda.length > 0) {
+        devolverAPrevia(p, cauda);
+        toast.error(t("anexosNaoSairam", { n: cauda.length }));
+      }
     },
-    [t, devolverAPrevia, removeStaged],
+    [t, devolverAPrevia],
   );
 
   /**
@@ -861,7 +902,7 @@ export function MessageComposer({
     if (p.tipo === "anexos") {
       // Os anexos voltam à prévia, com as legendas (e no teto — ver
       // `devolverAPrevia`). A citação ficou na tela: só sai quando o lote sai.
-      devolverAPrevia(p.itens);
+      devolverAPrevia(p, p.itens);
       return;
     }
     // Devolve o texto ao campo para o operador corrigir em vez de redigitar.
@@ -930,7 +971,7 @@ export function MessageComposer({
         const json = (await res.json()) as { error?: string };
         if (!res.ok) {
           // Falhou: o arquivo volta a ser do rascunho, e volta a poder ser
-          // recolhido se o operador sair da tela sem tentar de novo.
+          // recolhido se o operador o descartar em vez de tentar de novo.
           if (anexo) entreguesRef.current.delete(anexo.path);
           toast.error(json.error ?? tAgendadas("scheduleFailed"));
           return false;
@@ -1052,13 +1093,10 @@ export function MessageComposer({
     limparAgendamento();
     setSeletorAberto(false);
     setAnotando(false);
-    // ⚠️ O anexo JÁ POUSADO segue o destino da anotação: o rascunho do
-    // cliente A não pode continuar montado no compositor de B — um clique em
-    // Enviar mandaria o documento de um caso para o outro. Mesma receita da
-    // limpeza de desmonte lá em cima: recolhe o objeto (o `entreguesRef`
-    // protege arquivo que já é de uma agendada) e limpa o estado.
-    for (const d of draftsRef.current) removeStaged(d.path);
-    setDrafts([]);
+    // ⚠️⚠️ Os anexos JÁ POUSADOS ficam na fila da conversa de onde saímos
+    // (fila por conversa, 21/10/2026): a prévia de B lê a fila de B, no
+    // próprio render (`useAnexosDaConversa`), e o documento de A nunca monta
+    // no compositor de B. Antes eram recolhidos aqui. Só a SELEÇÃO é da tela.
     setSelecionado(null);
     // ⚠️ E O TRINCO DA FILA SOLTA AQUI. Ele é liberado pelo `finally` de
     // `sendDraft`, que só roda quando o envio em voo assenta — e o `fetch`
@@ -1072,21 +1110,19 @@ export function MessageComposer({
     // (achado do Codex no PR #146).
     enviandoFilaRef.current = 0;
     setEnviandoFila(false);
-    // ⚠️ E uma gravação EM CURSO morre aqui, descartada. Não é por a guarda
-    // de origem falhar: o `ondataavailable` do gravador segura o
-    // `finalizeRecording` do render em que a gravação COMEÇOU, cujo `origem`
-    // é o cliente anterior — a guarda pegaria, e o áudio seria apagado no
-    // fim do upload (o Codex corrigiu a versão anterior desta nota, que
-    // dizia o contrário). Cancela-se aqui por dois motivos que sobram:
-    // ninguém deve seguir gravando dentro do compositor de B uma fala que
-    // já está condenada, e sem o cancelamento o upload dela ainda seria
-    // pago para ser jogado fora. O `cancelledRef` faz o `ondataavailable`
-    // ignorar os bytes que o encoder ainda devolver.
+    // ⚠️ E uma gravação EM CURSO morre aqui, descartada. Não é para proteger
+    // B: o `ondataavailable` do gravador segura o `finalizeRecording` do
+    // render em que a gravação COMEÇOU, e o `setDrafts` dele é preso ao
+    // cliente anterior — sem o cancelamento, a nota iria para a fila DELE
+    // (fila por conversa, 21/10/2026). Cancela-se porque ninguém deve seguir
+    // gravando, dentro do compositor de B, uma fala sobre outro cliente com
+    // o microfone aberto. O `cancelledRef` faz o `ondataavailable` ignorar os
+    // bytes que o encoder ainda devolver.
     clearTimer();
     cancelledRef.current = true;
     setRecording(false);
     void recorderRef.current?.stop().catch(() => {});
-  }, [conversationId, liberarPendente, limparAgendamento, removeStaged, clearTimer]);
+  }, [conversationId, liberarPendente, limparAgendamento, clearTimer]);
 
   // Contagem regressiva da barra. Sem isto o rótulo repetiria o valor cheio
   // o tempo todo, inclusive no último instante antes de a mensagem sair.
@@ -1370,14 +1406,6 @@ export function MessageComposer({
       setBusy(true);
       try {
         const { publicUrl, path } = await uploadAccountMedia(CHAT_MEDIA_BUCKET, file);
-        // ⚠️ Subir um arquivo leva segundos e o compositor NÃO remonta na
-        // troca de conversa: sem esta conferência o anexo aterrissa no
-        // rascunho do cliente que estiver aberto quando o upload termina.
-        // O objeto recém-subido não serve a ninguém — apaga junto.
-        if (conversaNaTelaRef.current !== origem) {
-          removeStaged(path);
-          return;
-        }
         // ⚠️ ACRESCENTA à fila (não substitui): o compositor passou a levar
         // vários anexos, e cada um vira uma mensagem.
         const item = novoDraft({
@@ -1388,15 +1416,21 @@ export function MessageComposer({
           caption: "",
           mime: file.type,
         });
+        // ⚠️⚠️ Na fila da conversa de ORIGEM: subir leva segundos e o
+        // compositor NÃO remonta na troca de conversa, mas o `setDrafts` deste
+        // render é preso a ela. O anexo que pousa depois de a pessoa ir para
+        // outra conversa fica no rascunho de onde foi anexado (21/10/2026; antes
+        // era apagado) — nunca na prévia do cliente aberto agora.
         setDrafts((atual) => [...atual, item]);
-        setSelecionado((atual) => atual ?? item.id);
+        // A seleção é da TELA, pelo ref de LAYOUT.
+        if (conversaNaTelaRef.current === origem) setSelecionado((atual) => atual ?? item.id);
       } catch (err) {
         toast.error(mensagemDoUpload(err, tUpload, t("uploadFailed")));
       } finally {
         setBusy(false);
       }
     },
-    [removeStaged, conversationId, t, tUpload],
+    [setDrafts, conversationId, t, tUpload],
   );
 
   /**
@@ -1428,7 +1462,9 @@ export function MessageComposer({
   const receberArquivos = useCallback(
     (arquivos: readonly File[]) => {
       if (readOnly || envioTravado || busy) return;
-      const r = escolherArquivos(arquivos, draftsRef.current.length, porQrCode);
+      // A fila de AGORA desta conversa: um upload pode ter pousado no quadro.
+      const naFila = lerDrafts().length;
+      const r = escolherArquivos(arquivos, naFila, porQrCode);
       // Cada descarte tem seu aviso: o operador precisa saber o que NÃO foi.
       // A lista do aviso é a desta conexão (a página .html só no QR code).
       if (r.recusados > 0) {
@@ -1445,7 +1481,7 @@ export function MessageComposer({
       // conclusão, não a que a pessoa soltou.
       void stageUploads(r.aceitos);
     },
-    [readOnly, envioTravado, busy, stageUploads, t, porQrCode],
+    [readOnly, envioTravado, busy, stageUploads, t, porQrCode, lerDrafts],
   );
 
   /**
@@ -1516,14 +1552,14 @@ export function MessageComposer({
    * recém-subido — com legenda, prévia, envio agora ou agendamento.
    *
    * ⚠️ A rota COPIA o objeto e devolve o caminho da cópia. É por isso que o
-   * `removeStaged` daqui embaixo é seguro: o que ele pode vir a apagar é a
+   * descarte (`removeStaged`) é seguro: o que ele pode vir a apagar é a
    * cópia, nunca o arquivo do acervo. Enviar por referência faria um envio
    * falho apagar o contrato-padrão do escritório inteiro — ver o cabeçalho de
    * `api/cb/acervo/[id]/copiar`.
    *
-   * ⚠️ E confere a conversa ao voltar, como o `stageUpload`: o compositor não
-   * remonta na troca, então a cópia em voo aterrissaria no rascunho de quem
-   * estivesse aberto — o documento do cliente A pronto para enviar ao B.
+   * ⚠️ E a cópia em voo pousa na fila da ORIGEM, como no `stageUpload`: o
+   * compositor não remonta na troca, e o documento do cliente A nunca pode
+   * aterrissar pronto para enviar ao B.
    */
   const escolherDoAcervo = useCallback(
     async (item: MediaLibraryItem) => {
@@ -1539,11 +1575,6 @@ export function MessageComposer({
           toast.error(t("acervoError"));
           return;
         }
-        if (conversaNaTelaRef.current !== origem) {
-          // A cópia é do acervo, mas é CÓPIA: apagá-la não toca o original.
-          removeStaged(json.path as string);
-          return;
-        }
         const novo = novoDraft({
           kind: json.kind as ComposerMediaKind,
           mediaUrl: json.mediaUrl as string,
@@ -1551,15 +1582,16 @@ export function MessageComposer({
           filename: (json.filename as string) ?? item.filename,
           caption: "",
         });
+        // Na fila da ORIGEM (o `setDrafts` deste render); a seleção é da TELA.
         setDrafts((atual) => [...atual, novo]);
-        setSelecionado((atual) => atual ?? novo.id);
+        if (conversaNaTelaRef.current === origem) setSelecionado((atual) => atual ?? novo.id);
       } catch {
         toast.error(t("acervoError"));
       } finally {
         setBusy(false);
       }
     },
-    [removeStaged, t, conversationId],
+    [setDrafts, t, conversationId],
   );
 
   // ---- Voice recording (client-side Ogg/Opus, no server transcode) ---
@@ -1582,29 +1614,26 @@ export function MessageComposer({
       setBusy(true);
       try {
         const { publicUrl, path } = await uploadAccountMedia(CHAT_MEDIA_BUCKET, file);
+        const nota = novoDraft({ kind: "audio", mediaUrl: publicUrl, path, filename: file.name, caption: "" });
         // ⚠️ Subir um arquivo leva segundos e o compositor NÃO remonta na
-        // troca de conversa: sem esta conferência a nota de voz sobre o caso
-        // de A aterrissa no rascunho do cliente que estiver aberto quando o
-        // upload termina — e um Enviar entrega áudio sigiloso de um cliente a
-        // outro. É a MESMA guarda de `stageUpload` e `escolherDoAcervo`; são
-        // TRÊS cópias de propósito (três linhas parecidas > abstração
-        // prematura), e um caminho de upload novo entra nela também.
+        // troca de conversa: a nota de voz sobre o caso de A vai para a fila
+        // de A (o `setDrafts` deste render é preso a ela), nunca para a prévia
+        // do cliente aberto quando o upload termina — um Enviar entregaria
+        // áudio sigiloso de um cliente a outro. É a MESMA receita de
+        // `stageUpload` e `escolherDoAcervo`; são TRÊS cópias de propósito
+        // (três linhas parecidas > abstração prematura), e um caminho de
+        // upload novo entra nela também. A seleção é da TELA.
         // A troca DURANTE a gravação não chega aqui: o efeito de troca
         // cancela o gravador antes (ver `conversaAnteriorRef`).
-        if (conversaNaTelaRef.current !== origem) {
-          removeStaged(path);
-          return;
-        }
-        const nota = novoDraft({ kind: "audio", mediaUrl: publicUrl, path, filename: file.name, caption: "" });
         setDrafts((atual) => [...atual, nota]);
-        setSelecionado((atual) => atual ?? nota.id);
+        if (conversaNaTelaRef.current === origem) setSelecionado((atual) => atual ?? nota.id);
       } catch (err) {
         toast.error(mensagemDoUpload(err, tUpload, t("uploadFailed")));
       } finally {
         setBusy(false);
       }
     },
-    [removeStaged, conversationId, t, tUpload],
+    [setDrafts, conversationId, t, tUpload],
   );
 
   const startRecording = useCallback(async () => {
@@ -1716,27 +1745,39 @@ export function MessageComposer({
       // ⚠️ A POSSE é também a GERAÇÃO que cancela este laço. O compositor NÃO
       // remonta na troca de conversa e cada item é um `await`: sem cancelar,
       // trocar de cliente no meio da fila deixava o laço escrevendo no
-      // compositor do cliente NOVO (o `setDrafts(restantes)` devolvia à tela
-      // dele os anexos do anterior). Comparar o `conversationId` NÃO basta
-      // (Codex, PR #148): em A → B → A o laço velho voltaria a casar. A posse
-      // é única por invocação e o efeito de troca a zera.
+      // compositor do cliente NOVO (o `setDrafts(restantes)` de então devolvia
+      // à tela dele os anexos do anterior). Comparar o `conversationId` NÃO
+      // basta (Codex, PR #148): em A → B → A o laço velho voltaria a casar. A
+      // posse é única por invocação e o efeito de troca a zera. Desde a fila
+      // por conversa (21/10/2026) o laço grava na fila da ORIGEM, e o que a
+      // troca deixou sem agendar fica nela, à espera de quem voltar a A.
       const posse = ++proximaPosseRef.current;
       enviandoFilaRef.current = posse;
       setEnviandoFila(true);
       try {
-        const restantes: MediaDraft[] = [];
         for (const item of drafts) {
+          // ⚠️ Só o que AINDA é rascunho: a fila capturada envelhece a cada
+          // `await`. O que a pessoa descartou no meio (o "X" não trava) teve o
+          // arquivo apagado; o que está marcado já é de outra agendada em voo
+          // (a de um compositor que desmontou) — agendá-lo de novo mandaria em
+          // dobro.
+          if (entreguesRef.current.has(item.path)) continue;
+          if (!lerDrafts().some((d) => d.id === item.id)) continue;
           const legenda = podeTerLegenda(item.kind) ? item.caption.trim() : "";
           const ok = await agendar(legenda, { anexo: item, replyToId: citada });
           // ⚠️ Só sai da fila quando DEU CERTO, e sem apagar o objeto do
           // bucket: ele passou a pertencer à agendada, e o disparador vai
-          // buscá-lo lá daqui a horas. Falhou? O item fica na tela, com o
+          // buscá-lo lá daqui a horas. Falhou? O item fica na fila, com o
           // arquivo já subido, e a pessoa tenta de novo sem reanexar.
-          if (!ok) restantes.push(item);
+          // ⚠️⚠️ UM POR UM, na fila da ORIGEM (o `setDrafts` deste render),
+          // logo depois de agendado (fila por conversa, 21/10/2026): o laço
+          // cortado pela troca deixaria na fila de A o que já é agendada, e
+          // voltar a A ofereceria mandá-la de novo ao cliente.
+          if (ok) setDrafts((atual) => atual.filter((d) => d.id !== item.id));
           if (enviandoFilaRef.current !== posse) return;
         }
-        setDrafts(restantes);
-        setSelecionado(restantes[0]?.id ?? null);
+        // A prévia mostra o primeiro que sobrou (resolvido no render).
+        setSelecionado(null);
       } finally {
         // ⚠️ CERCA DE POSSE: só solta quem ainda é o dono. Solto pelo efeito
         // de troca e com outro agendamento já em curso na conversa nova,
@@ -1754,10 +1795,10 @@ export function MessageComposer({
     // — o cliente os receberia duas vezes (Codex, PR #144, no laço antigo).
     const itens = drafts.filter((d) => !entreguesRef.current.has(d.path));
     if (itens.length === 0) return;
-    // ⚠️⚠️ O arquivo passa a ser da MENSAGEM já na RETENÇÃO, não no envio: as
-    // limpezas de troca e de desmonte percorrem o `draftsRef`, que só é
-    // atualizado por efeito (passivo) — um clique em outra conversa no mesmo
-    // quadro apagaria o objeto retido, e a bolha enviada ficaria sem arquivo
+    // ⚠️⚠️ O arquivo passa a ser da MENSAGEM já na RETENÇÃO, não no envio:
+    // nada que ainda o tenha à mão (o descarte, um segundo clique no mesmo
+    // quadro) pode apagá-lo ou retê-lo de novo — antes, a limpeza da troca de
+    // conversa apagava o objeto retido, e a bolha enviada ficava sem arquivo
     // (o defeito do #413). `desfazerEnvio` e a falha devolvem a marca.
     for (const d of itens) entreguesRef.current.add(d.path);
     // Havia algo esperando (texto ou anexos): sai AGORA, antes destes — a
@@ -1770,6 +1811,8 @@ export function MessageComposer({
       replyToId: citada,
       // O despachante da ORIGEM, capturado na retenção — ver `handleSend`.
       enviar: onSendMediaRef.current,
+      // E a fila de rascunho dela, para onde volta o que falhar ou for desfeito.
+      rascunho: setDrafts,
     };
     setPendente({ ...retida, expiraEm: Date.now() + SEGUNDOS_DESFAZER * 1000 });
     pendenteRef.current = retida;
@@ -1777,12 +1820,12 @@ export function MessageComposer({
     const retidos = new Set(itens.map((d) => d.id));
     setDrafts((atual) => atual.filter((d) => !retidos.has(d.id)));
     setSelecionado(null);
-  }, [drafts, busy, conexaoForaDoAr, replyTo?.id, quandoAg, agendar, porQrCode, t, liberarPendente, conversationId]);
+  }, [drafts, setDrafts, lerDrafts, busy, conexaoForaDoAr, replyTo?.id, quandoAg, agendar, porQrCode, t, liberarPendente, conversationId]);
 
   /** Descarta UM item — recolhe o objeto, que subiu e não foi enviado. */
   const discardDraft = useCallback(
     (id: string) => {
-      const alvo = draftsRef.current.find((d) => d.id === id);
+      const alvo = lerDrafts().find((d) => d.id === id);
       removeStaged(alvo?.path);
       setDrafts((atual) => {
         const resto = atual.filter((d) => d.id !== id);
@@ -1790,19 +1833,22 @@ export function MessageComposer({
         return resto;
       });
     },
-    [removeStaged],
+    [removeStaged, lerDrafts, setDrafts],
   );
 
   /** Descarta a fila inteira. */
   const discardAll = useCallback(() => {
-    for (const d of draftsRef.current) removeStaged(d.path);
+    for (const d of lerDrafts()) removeStaged(d.path);
     setDrafts([]);
     setSelecionado(null);
-  }, [removeStaged]);
+  }, [removeStaged, lerDrafts, setDrafts]);
 
-  const setCaption = useCallback((id: string, caption: string) => {
-    setDrafts((atual) => atual.map((d) => (d.id === id ? { ...d, caption } : d)));
-  }, []);
+  const setCaption = useCallback(
+    (id: string, caption: string) => {
+      setDrafts((atual) => atual.map((d) => (d.id === id ? { ...d, caption } : d)));
+    },
+    [setDrafts],
+  );
 
   // ---- Render --------------------------------------------------------
 
@@ -1964,7 +2010,11 @@ export function MessageComposer({
         }}
       />
 
-      {drafts.length > 0 ? (
+      {/* ⚠️ A gravação vence a prévia: um anexo que pousa na fila com o
+          microfone ligado (o upload de um compositor que desmontou, a falha
+          que volta) esconderia a barra, e não haveria como parar a gravação.
+          Parada, a nota entra na fila e a prévia mostra tudo. */}
+      {drafts.length > 0 && !recording ? (
         <MediaDraftPreview
           drafts={drafts}
           selecionadoId={selecionado}
@@ -2404,7 +2454,7 @@ function MediaDraftPreview({
   t,
 }: {
   /** A fila inteira; cada item vira UMA mensagem. */
-  drafts: MediaDraft[];
+  drafts: readonly MediaDraft[];
   selecionadoId: string | null;
   onSelecionar: (id: string) => void;
   busy: boolean;

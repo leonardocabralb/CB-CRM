@@ -443,7 +443,7 @@
       "removeAllAttachments": "Remove all",
       "addCaptionFor": "Caption for {arquivo}",
       "enviarNAnexos": "{n} messages",
-      "anexosNaoSairam": "{n, plural, =1 {1 queued attachment wasn't sent} other {# queued attachments weren't sent}}: the conversation was no longer open. Open it and attach again.",
+      "anexosNaoSairam": "{n, plural, =1 {1 attachment wasn't sent and went back to the draft of the conversation it was sent from} other {# attachments weren't sent and went back to the draft of the conversation they were sent from}}. Open the conversation to try again.",
       "aiNotConfigured": "The AI assistant isn't on yet — turn it on in AI Agents → previous assistant (the key lives in Settings → Integrations).",
       "draftFailed": "Couldn't draft a reply.",
       "draftEmpty": "The assistant didn't return a reply.",
