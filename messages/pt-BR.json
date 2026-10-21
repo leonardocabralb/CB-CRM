@@ -76,6 +76,8 @@
     "automations": "Automações",
     "settings": "Configurações",
     "openMenu": "Abrir menu",
+    "recolherMenu": "Recolher menu",
+    "expandirMenu": "Expandir menu",
     "openAccountMenu": "Abrir menu da conta",
     "openAccountMenuAnonimo": "Abrir menu da conta (modo anônimo ligado)",
     "defaultUser": "Usuário",

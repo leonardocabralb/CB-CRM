@@ -10,6 +10,7 @@ paths:
   - "src/components/auth/**"
   - "src/components/layout/**"
   - "src/hooks/use-can*"
+  - "src/hooks/use-menu-recolhido*"
   - "src/lib/auth/roles*"
   - "src/app/api/cb/perfis/**"
   - "src/app/api/account/**"
@@ -136,6 +137,11 @@ Troca de LENTE no navegador, e só nele (`simulacao.ts`, o override no
   cobra `Sidebar.<labelKey>` e `Header.<título>` nos dois dicionários.
 - O "Modo anônimo" do menu do nome segue o papel REAL, de propósito (a lente
   não o esconde nem o desliga): `.claude/rules/modo-anonimo.md`.
+- ⚠️ **Menu recolhido (64 px, só ícones) é preferência do navegador** e só vale
+  do `lg` para cima: `recolhido` de `useMenuRecolhido` já sai falso abaixo,
+  e a gaveta do celular mostra sempre os nomes. Selo, chip ou texto novo numa
+  linha do menu tem de tratar o `recolhido` (o contador vira selo no ícone,
+  `CONTADOR_SOBRE_O_ICONE`; o resto some): sem isso, estoura os 64 px.
 
 ### Membros e posse da conta
 - Com perfil atribuído, o papel SEGUE o `papel_base` do perfil (962):
