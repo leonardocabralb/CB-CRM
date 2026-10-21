@@ -20,13 +20,18 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 const CHAVE_DO_MENU_RECOLHIDO = "cb-menu-recolhido";
 const AVISO_NESTA_ABA = "cb-menu-recolhido-mudou";
 
-let naMemoria = false;
+// A escolha que o navegador RECUSOU gravar (armazenamento bloqueado, cota
+// cheia). Vale por cima do `localStorage`: com a cota cheia a leitura ainda
+// funciona e devolveria o valor antigo, e o botão não faria nada (Codex,
+// PR #426). Volta a `null` na próxima gravação que der certo.
+let naMemoria: boolean | null = null;
 
 function lerGuardado(): boolean {
+  if (naMemoria !== null) return naMemoria;
   try {
     return window.localStorage.getItem(CHAVE_DO_MENU_RECOLHIDO) === "1";
   } catch {
-    return naMemoria;
+    return false;
   }
 }
 
@@ -58,6 +63,7 @@ export function useMenuRecolhido(): {
       } else {
         window.localStorage.removeItem(CHAVE_DO_MENU_RECOLHIDO);
       }
+      naMemoria = null;
     } catch {
       naMemoria = novo;
     }
