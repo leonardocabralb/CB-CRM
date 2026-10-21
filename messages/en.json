@@ -76,6 +76,8 @@
     "automations": "Automations",
     "settings": "Settings",
     "openMenu": "Open menu",
+    "recolherMenu": "Collapse menu",
+    "expandirMenu": "Expand menu",
     "openAccountMenu": "Open account menu",
     "openAccountMenuAnonimo": "Open account menu (incognito mode on)",
     "defaultUser": "User",
