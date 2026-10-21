@@ -221,9 +221,10 @@ function novoDraft(d: Omit<MediaDraft, "id">): MediaDraft {
  * 21/10/2026, "como o WhatsApp"): trocar de conversa guarda a da conversa que
  * ficou, e voltar a devolve. Só na memória da aba — recarregar perde, por
  * decisão dele (`anexos-da-conversa.ts`). De MÓDULO, como a fila de saída: o
- * compositor que remonta (saiu da caixa de entrada e voltou) lê a mesma.
+ * compositor que remonta (saiu da caixa de entrada e voltou) lê a mesma, e a
+ * marca "Rascunho" da lista de conversas também (`useQuantosAnexosNoRascunho`).
  */
-const anexosDaConversa = criarRepositorioDeAnexos<MediaDraft>();
+export const anexosDaConversa = criarRepositorioDeAnexos<MediaDraft>();
 
 /**
  * Os caminhos que já são de uma mensagem ou de uma agendada — ver

@@ -291,7 +291,9 @@
       "automacaoRodando": "{n, plural, one {# automação agendada para este cliente} other {# automações agendadas para este cliente}}",
       "searchPlaceholderInMessages": "Buscar por nome, número ou mensagem...",
       "searchInsideMessages": "Buscar também dentro das mensagens",
-      "previaNaoSuportada": "Mensagem não suportada"
+      "previaNaoSuportada": "Mensagem não suportada",
+      "rascunho": "Rascunho:",
+      "rascunhoAnexos": "{n, plural, =1 {1 anexo} other {# anexos}}"
     },
     "messageThread": {
       "unknownAuthor": "Desconhecido",

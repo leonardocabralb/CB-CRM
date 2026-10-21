@@ -49,3 +49,22 @@ export function useAnexosDaConversa<T>(
   const lerAgora = useCallback(() => repositorio.ler(chave), [repositorio, chave]);
   return [fila, gravar, lerAgora];
 }
+
+/**
+ * Quantos anexos há no rascunho de uma conversa — a marca "Rascunho" da LISTA.
+ * Só lê. `ativo: false` responde 0 sem olhar (a conversa aberta: o rascunho
+ * dela está à vista no compositor).
+ */
+export function useQuantosAnexosNoRascunho<T>(
+  repositorio: RepositorioDeAnexos<T>,
+  conversationId: string,
+  ativo: boolean,
+): number {
+  const { user } = useAuth();
+  const chave = chaveDosAnexos(user?.id ?? "sem-login", conversationId);
+  return useSyncExternalStore(
+    repositorio.assinar,
+    () => (ativo ? repositorio.ler(chave).length : 0),
+    () => 0,
+  );
+}

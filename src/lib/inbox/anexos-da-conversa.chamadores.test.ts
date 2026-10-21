@@ -33,7 +33,8 @@ describe('a fila de anexos é da CONVERSA', () => {
     expect(c).toContain(
       'const [drafts, setDrafts, lerDrafts] = useAnexosDaConversa(anexosDaConversa, conversationId);',
     );
-    expect(c).toMatch(/^const anexosDaConversa = criarRepositorioDeAnexos<MediaDraft>\(\);$/m);
+    // Exportado: a marca "Rascunho" da lista lê a MESMA fila.
+    expect(c).toMatch(/^export const anexosDaConversa = criarRepositorioDeAnexos<MediaDraft>\(\);$/m);
     expect(c).not.toMatch(/useState<MediaDraft\[\]>/);
     // O espelho por efeito (passivo) saiu: quem precisa da fila de AGORA lê
     // o repositório (`lerDrafts`).
@@ -137,8 +138,13 @@ describe('a fila de anexos é da CONVERSA', () => {
 });
 
 describe('o hook', () => {
-  it('a chave leva o LOGIN e a conversa', () => {
-    expect(hook()).toMatch(/chaveDosAnexos\(user\?\.id \?\? ["']sem-login["'], conversationId\)/);
+  it('a chave leva o LOGIN e a conversa — no compositor e na lista', () => {
+    // Duas: a fila do compositor e a contagem da marca "Rascunho" da lista.
+    expect(hook().match(/chaveDosAnexos\(user\?\.id \?\? ["']sem-login["'], conversationId\)/g)).toHaveLength(2);
+    // E o leitor do TEXTO para a lista, com a mesma chave do escritor.
+    expect(fonte('hooks/use-rascunho-da-conversa.ts')).toMatch(
+      /chaveDoRascunho\(user\?\.id \?\? ["']sem-login["'], conversationId\)/,
+    );
   });
 
   it('o `gravar` e o `lerAgora` são presos à chave do render', () => {

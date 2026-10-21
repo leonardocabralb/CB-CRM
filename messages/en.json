@@ -298,7 +298,9 @@
       "automacaoRodando": "{n, plural, one {# automation scheduled for this contact} other {# automations scheduled for this contact}}",
       "searchPlaceholderInMessages": "Search by name, number or message...",
       "searchInsideMessages": "Also search inside messages",
-      "previaNaoSuportada": "Unsupported message"
+      "previaNaoSuportada": "Unsupported message",
+      "rascunho": "Draft:",
+      "rascunhoAnexos": "{n, plural, =1 {1 attachment} other {# attachments}}"
     },
     "messageThread": {
       "unknownAuthor": "Unknown",

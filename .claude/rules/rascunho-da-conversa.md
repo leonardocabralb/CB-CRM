@@ -5,6 +5,7 @@ paths:
   - "src/lib/inbox/anexos-da-conversa*"
   - "src/hooks/use-anexos-da-conversa*"
   - "src/components/inbox/message-composer.tsx"
+  - "src/components/inbox/conversation-list.tsx"
 ---
 
 # Rascunho por conversa — regras
@@ -59,8 +60,15 @@ o hook é `useRascunhoDaConversa`; pinos estruturais em
 - **Fica de fora, de propósito:** a anotação interna (fecha na troca: o texto
   de um caso não pode ser salvo na conversa de outro), a citação e a mensagem
   retida na janela de desfazer (a troca a ENVIA, `liberarPendente`).
-- Não há marca "Rascunho" na lista de conversas (o WhatsApp tem): seria a
-  lista assinando o mesmo repositório.
+- **A marca "Rascunho" da lista de conversas** (21/10/2026, como o WhatsApp):
+  a linha troca a última mensagem por "Rascunho:" em verde, com o clipe e o
+  número de anexos e/ou o texto. Lê pelos hooks só-leitura
+  `useTextoDoRascunho`/`useQuantosAnexosNoRascunho` (os MESMOS repositórios
+  de módulo; `anexosDaConversa` é exportado pelo compositor) e SÓ das
+  conversas que não estão abertas (`ativo: !isActive`): a da aberta está à
+  vista, e a linha dela se redesenharia a cada tecla. O trecho achado pela
+  busca no corpo vence o rascunho. Pinos em
+  `rascunho-da-conversa.chamadores.test.ts`.
 
 ### Os ANEXOS em rascunho (21/10/2026)
 

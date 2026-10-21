@@ -55,6 +55,7 @@ import {
   Star,
   MessageSquareText,
   MessageSquarePlus,
+  Paperclip,
 } from "lucide-react";
 import { atrasoDeResposta } from "@/lib/inbox/atraso";
 import { ordenarComoOBanco } from "@/lib/inbox/ordem-da-lista";
@@ -82,6 +83,9 @@ import { useFavoritas } from "@/hooks/use-favoritas";
 import { ehInstagram } from "@/lib/cb-channels/transporte";
 import { ehPreviaDeLigacao } from "@/lib/whatsapp/ligacoes/previa";
 import { tipoNaoSuportado } from "@/lib/inbox/tipo-nao-suportado";
+import { useTextoDoRascunho } from "@/hooks/use-rascunho-da-conversa";
+import { useQuantosAnexosNoRascunho } from "@/hooks/use-anexos-da-conversa";
+import { anexosDaConversa } from "./message-composer";
 import {
   EVENTO_CONVERSAR_COM_CONTATO,
   lerPedidoDeConversa,
@@ -1292,6 +1296,12 @@ function ConversationItem({
     onToggleFavorita(conversation.id);
   }, [onToggleFavorita, conversation.id]);
 
+  // O rascunho desta conversa, como no WhatsApp (pedido do operador,
+  // 21/10/2026): o texto (no navegador) e os anexos (na memória da aba). Só
+  // das conversas que NÃO estão abertas — o da aberta está à vista na caixa.
+  const textoDoRascunho = useTextoDoRascunho(conversation.id, !isActive).trim();
+  const anexosDoRascunho = useQuantosAnexosNoRascunho(anexosDaConversa, conversation.id, !isActive);
+
   const timeAgo = conversation.last_message_at
     ? formatDistanceToNow(new Date(conversation.last_message_at), {
         addSuffix: false,
@@ -1481,6 +1491,37 @@ function ConversationItem({
                     {t("searchHitCount", { n: achado.quantas })}
                   </span>
                 )}
+              </p>
+            ) : textoDoRascunho || anexosDoRascunho > 0 ? (
+              // O rascunho toma o lugar da última mensagem, como no WhatsApp.
+              // Verde, a cor do WhatsApp para ele, porque as marcas da linha
+              // são violeta, âmbar, vermelho e cinza (situação, atraso, dívida)
+              // — no acento esmeralda o violeta vira verde, e a palavra
+              // "Rascunho:" é que distingue. O tom é o do modo claro (`dark:`
+              // está inerte, seção 8c da raiz).
+              // ⚠️ `overflow-hidden` e o pedaço que cresce em `truncate`: na
+              // coluna de 320 px, com "Pendente" e não lidas à direita,
+              // "Rascunho: 10 anexos" passaria por cima da pastilha.
+              <p className="flex min-w-0 items-center gap-1 overflow-hidden text-xs text-muted-foreground">
+                <span className="shrink-0 font-semibold text-emerald-700">
+                  {t("rascunho")}
+                </span>
+                {anexosDoRascunho > 0 && (
+                  <span className="flex shrink-0 items-center gap-0.5">
+                    <Paperclip className="h-3 w-3" aria-hidden="true" />
+                    {textoDoRascunho && (
+                      <>
+                        <span aria-hidden="true">{anexosDoRascunho}</span>
+                        <span className="sr-only">{t("rascunhoAnexos", { n: anexosDoRascunho })}</span>
+                      </>
+                    )}
+                  </span>
+                )}
+                <span className="truncate">
+                  {textoDoRascunho
+                    ? stripWhatsAppFormat(textoDoRascunho)
+                    : t("rascunhoAnexos", { n: anexosDoRascunho })}
+                </span>
               </p>
             ) : (
               <p className="truncate text-xs text-muted-foreground">
