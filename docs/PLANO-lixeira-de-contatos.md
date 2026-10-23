@@ -47,7 +47,7 @@
 | **1** | Portas dos fundos: o atendente deixa de apagar conversa e mensagem pelo navegador | ✅ aplicada em 23/10/2026 e mesclada | `1096_cb_atendente_nao_apaga_conversa` (RESTRITIVA, mas nada do app usa o que tira: vale antes ou depois do deploy) | #428 |
 | **2** | A Lixeira: banco (mover, prévia, restaurar, excluir agora, vencimento, fila de arquivos), tela (prévia, Lixeira, Desfazer) e a doc do B6 (`docs/public-api.md` e Configurações → API → Documentação) | ✅ aplicada em 23/10/2026 (antes do deploy); e2e no preview com fichas fictícias | `1097_cb_lixeira_de_contatos` (ADITIVA), `1098_cb_lixeira_conferencia` (a prova de ida e volta) e `1099_cb_lixeira_anular_confere_o_ponteiro` (correção do Codex) | #429 |
 | **3** | Depois do deploy da 2: derrubar a policy `contacts_delete` e o privilégio (só a Lixeira, as funções e o service role apagam) | ✅ aplicada em 23/10/2026, depois do deploy da 2; DELETE direto pelo navegador dá 42501 | `1100_cb_so_a_lixeira_apaga_contato` (RESTRITIVA) | #430 |
-| **4** | Ficha nova da mesma pessoa: faixa "há uma ficha desta pessoa na Lixeira" e "Restaurar e unir" | ⏳ em implementação (desenho abaixo) | ADITIVA, `1101` | — |
+| **4** | Ficha nova da mesma pessoa: faixa "há uma ficha desta pessoa na Lixeira" e "Restaurar e unir" | ✅ implementada, provada no descartável e revisada (23/10/2026); aplicar antes do deploy | `1101_cb_lixeira_restaurar_e_unir` (ADITIVA) | #431 |
 | **5** | O 410 da API e o roteiro interno de pedido de exclusão (LGPD) | ✅ o roteiro está abaixo; o 410 NÃO se aplica: B6 escolheu a volta com o MESMO id (a doc da API diz) | — | — |
 
 ### Fase 1 — registro (22/10/2026)
@@ -139,6 +139,42 @@
   no banco (mensagens, anotações, etiquetas, campos, ficha e conversa pela
   digital md5; o card reapontado) e, numa 2ª aba com a caixa de entrada
   aberta, nenhuma não lida a mais nem linha duplicada.
+
+### Fase 4 — registro (23/10/2026)
+
+- **Onde:** "Restaurar e unir", só admin (`delete-contacts`), em dois
+  lugares: na faixa "Há uma ficha desta pessoa na Lixeira" do fio e do
+  formulário do card (`cb_lixeira_da_mesma_pessoa`, pelos três índices
+  parciais da 1097; cala carregando ou com falha), onde fica a ficha aberta;
+  e no item bloqueado da Lixeira (B2), onde fica a ficha que ocupa
+  (`ocupada_por`). Com Instagram em qualquer das duas não há botão, só a
+  frase (a união recusa sempre; Fase 5 do plano do Instagram).
+- **Como:** `cb_restaurar_e_unir`, numa transação: trava o item (NOWAIT),
+  confere que a identidade casa, dá à fotografia identidade provisória
+  (anula só o que colide; nada sobrando, a reserva `lixeira:<item>`, que
+  `cb_bloqueios_da_uniao` ignora) e devolve a conversa da fotografia como
+  HISTÓRICO (encerrada, sem responsável, sem espera, sem não lidas).
+  Restaura pelo miolo da 1097 e une por `cb_unir_fichas`: a conversa de hoje
+  não reabre, não troca de responsável nem avisa no sino, e a espera não
+  recua. Na mesma transação, a janela da Meta só avança (o maior instante
+  por chave), a reserva nunca sobra e o livro e a trilha guardam a
+  identidade original. Prévia obrigatória (`cb_previa_restaurar_e_unir`,
+  desfeita por P1101), com o corpo da prévia da união sem "Trocar".
+- **Recusas** desfazem tudo e voltam com o código: terceira ficha
+  (`identidade_ocupada`, com a dica de unir antes as duas vivas),
+  `bloqueada:*`, `em_processamento`, `item_sumiu`, `identidade_nao_casa`.
+- **Decisões tomadas na implementação** (a conferir pelo operador): a
+  conversa que volta entra como histórico, com as não lidas zeradas; a
+  ficha aberta é sempre a que fica, sem "Trocar"; o BSUID da ficha que volta
+  passa para a que fica quando o telefone é o mesmo.
+- **Provado** no Postgres 16 descartável (telefone, BSUID, Instagram, a
+  reserva nos três formatos, terceira ficha, portas, trava, prévia sem
+  rastro, aplicação dupla, banco vazio). **Revisão independente:** 0 P0/P1;
+  3 P2 (janela da Meta, conversa velha reabrindo, sem onde clicar quando a
+  ficha nova não tem conversa nem card) e os P3 corrigidos, com os cenários
+  do revisor repetidos (2.000 mensagens: prévia 156 ms, união 230 ms).
+- **Limite:** o INSERT da trilha `contacts_merged` sai no tempo real com a
+  identidade provisória antes da correção.
 
 ### Fase 4 — desenho ("Restaurar e unir")
 
