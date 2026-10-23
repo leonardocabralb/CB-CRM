@@ -4,8 +4,14 @@ import { createTranslator, type AbstractIntlMessages } from 'next-intl';
 import en from '../../../../messages/en.json';
 import ptBR from '../../../../messages/pt-BR.json';
 import { MOTIVOS_DA_LIXEIRA, TIPOS_DE_RESSALVA } from '@/lib/contacts/lixeira';
+import { MOTIVOS_DO_RESTAURAR_E_UNIR } from '@/lib/contacts/restaurar-e-unir';
 
-import { chaveDaRessalva, chaveDoMotivo } from './textos-da-lixeira';
+import {
+  chaveDaRessalva,
+  chaveDoMotivo,
+  textoDaRecusaDoRestaurarEUnir,
+  type TradutorDaLixeira,
+} from './textos-da-lixeira';
 
 // ============================================================
 // As frases da Lixeira que saem de CÓDIGO do banco são chave MONTADA
@@ -51,6 +57,17 @@ describe.each([
     const texto = t(chaveDoMotivo(motivo) as never);
     expect(erros, erros.join('\n')).toEqual([]);
     expect(texto).not.toContain('motivos.');
+  });
+
+  // "Restaurar e unir" (1101): os motivos próprios têm chave LITERAL (o
+  // portão as confere) e os da Lixeira, a montada de cima — este teste passa
+  // por TODOS, colhidos do tipo, pela mesma função da tela.
+  it.each(MOTIVOS_DO_RESTAURAR_E_UNIR)('a recusa %s do Restaurar e unir tem frase', (motivo) => {
+    erros.length = 0;
+    const texto = textoDaRecusaDoRestaurarEUnir(t as unknown as TradutorDaLixeira, motivo);
+    expect(erros, erros.join('\n')).toEqual([]);
+    expect(texto).not.toMatch(/^Contacts\.|motivos\.|mesmaPessoa\./);
+    expect(texto.length).toBeGreaterThan(10);
   });
 
   it.each(TIPOS_DE_RESSALVA)('a ressalva %s tem frase, com o número no plural', (tipo) => {

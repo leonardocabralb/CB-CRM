@@ -497,8 +497,10 @@ not a UUID returns `400 bad_request` (here and on `/custom-fields` and
 > ⚠️ So a `404` for a contact id you stored is **not** a reason to recreate
 > the contact right away. A new contact with the same phone — the customer
 > writing again, or the find-or-create of `POST /api/v1/contacts` — takes
-> that phone, and the original can no longer be restored until someone
-> sorts the two out in the CRM.
+> that phone, and the original can no longer come back on its own: an admin
+> can only **restore it merged** into the new contact. From then on its old
+> id answers with the contact that stayed, as described in *Ids of merged
+> contacts* above — store the new `id`.
 
 > ⚠️ `tags` here replaces the whole set — sending `["Lead"]` removes
 > every other tag the contact had — unless you send `"tags_mode": "add"`.

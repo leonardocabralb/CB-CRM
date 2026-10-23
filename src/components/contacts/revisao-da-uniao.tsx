@@ -100,6 +100,10 @@ function textoDaDivergencia(t: T, d: DivergenciaDaUniao): string {
   return t('divergenciaCampo', { campo: d.rotulo ?? '—', valor });
 }
 
+/** O que as caixas "Fica" e "Sai" desenham: a ficha do "Comparar" e a do
+ *  "Restaurar e unir" da Lixeira (1101) cabem aqui. */
+type FichaDaCaixa = Pick<FichaComparada, 'name' | 'phone' | 'wa_username' | 'instagram_username'>;
+
 function CaixaDaFicha({
   rotulo,
   ficha,
@@ -107,7 +111,7 @@ function CaixaDaFicha({
   sugestao,
 }: {
   rotulo: string;
-  ficha: FichaComparada | undefined;
+  ficha: FichaDaCaixa | undefined;
   semNome: string;
   sugestao: string | null;
 }) {
@@ -130,7 +134,12 @@ function CaixaDaFicha({
   );
 }
 
-function CorpoDaPrevia({
+/**
+ * O corpo da prévia da união. Exportado para o "Restaurar e unir" da Lixeira
+ * (1101), que mostra a MESMA prévia (`cb_previa_da_uniao`) com a ficha que
+ * fica fixa — sem `aoTrocar`, o "Trocar" não aparece.
+ */
+export function CorpoDaPrevia({
   t,
   previa,
   ficaFicha,
@@ -141,10 +150,10 @@ function CorpoDaPrevia({
 }: {
   t: T;
   previa: PreviaDaUniao;
-  ficaFicha: FichaComparada | undefined;
-  saiFicha: FichaComparada | undefined;
+  ficaFicha: FichaDaCaixa | undefined;
+  saiFicha: FichaDaCaixa | undefined;
   ficaEhSugerida: boolean;
-  aoTrocar: () => void;
+  aoTrocar?: () => void;
   semNome: string;
 }) {
   const { acesso } = useAuth();
@@ -177,9 +186,11 @@ function CorpoDaPrevia({
           }
         />
         <div className="flex items-center justify-center">
-          <Button type="button" size="xs" variant="outline" onClick={aoTrocar}>
-            {t('trocar')}
-          </Button>
+          {aoTrocar && (
+            <Button type="button" size="xs" variant="outline" onClick={aoTrocar}>
+              {t('trocar')}
+            </Button>
+          )}
         </div>
         <CaixaDaFicha
           rotulo={t('sai')}

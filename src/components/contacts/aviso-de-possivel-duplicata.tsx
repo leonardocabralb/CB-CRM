@@ -43,7 +43,7 @@ interface Props {
  * passaram de conversa chegaram por UPDATE — o tempo real do fio só ouve
  * INSERT. Sem conversa (duas fichas de formulário), recarrega onde está.
  */
-function recarregarNaFichaQueFicou(resultado: ResultadoDaUniao, origem: "funil" | undefined) {
+export function recarregarNaFichaQueFicou(resultado: ResultadoDaUniao, origem: "funil" | undefined) {
   if (resultado.conversa) {
     window.location.assign(urlDoInbox({ c: resultado.conversa, de: origem ?? null }));
   } else {
