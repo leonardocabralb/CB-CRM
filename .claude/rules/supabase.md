@@ -395,7 +395,9 @@ um espelho com pino lendo o SQL. Mudou um lado, muda o outro.
 - ⚠️ **Os ponteiros se anulam ANTES do DELETE** (`cb_lixeira_anular`):
   deixado ao CASCADE, o Postgres anula `flow_runs` (contato, conversa e
   última pergunta) em três passos e confere a FK da pergunta entre eles —
-  23503 (medido; o DELETE direto tem o mesmo defeito).
+  23503 (medido; o DELETE direto tem o mesmo defeito). E só onde o ponteiro
+  AINDA vale o fotografado (1099): a linha de fora não está travada, e a
+  troca de contato feita por outro pedido nesse intervalo não se apaga.
 - **Excluir de vez** (prazo ou "Excluir agora") põe os arquivos que a
   fotografia cita na fila `cb_arquivos_a_apagar` (guarda
   `cb_caminho_no_chat_media`; sai só o que ninguém mais cita,
