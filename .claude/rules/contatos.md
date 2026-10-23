@@ -113,6 +113,13 @@ Apagar leva a conversa e TODAS as mensagens (CASCADE), e isso é do escritório.
 - ⚠️ **A seleção perde os RESOLVIDOS** (apagados e sumidos), e só eles:
   `fetchContacts({ preservarSelecao })` + `selecaoRestante`. A recarga da lista
   zera a seleção sozinha — sem o par, a poda não vale na prática.
+- ⚠️ **Conversa e mensagem não se apagam pelo navegador (1096)**: a 0017 dava
+  ao `agent` o DELETE de `conversations` e de `messages` (a conversa inteira,
+  contornando a 981). Sem policy e sem o privilégio, elas saem só pela ficha
+  (o CASCADE roda como o dono da tabela), pelas funções SECURITY DEFINER e
+  pelo service role. As policies são do upstream: pino
+  `portas-dos-fundos-1096.test.ts` e item 16 da §6 de `docs/MERGE-UPSTREAM.md`.
+  Lixeira de contatos: `docs/PLANO-lixeira-de-contatos.md`.
 
 ### Etiquetas: UMA régua de "mesma etiqueta" (`chaveDeTag`)
 - ⚠️⚠️ **`chaveDeTag` (aparado, sem acento, minúsculas) vale nas três portas

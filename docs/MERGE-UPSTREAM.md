@@ -707,6 +707,16 @@ depois de `aee1b01f` (§3.1).
     `whatsapp/config` e `whatsapp/templates/[id]` (pino
     `src/app/api/whatsapp/guarda-de-papel-so-nossa.test.ts`) e o
     `supabase/ci/verify-schema.sql` com as NOSSAS asserções.
+16. Policy ou GRANT do original que devolva o DELETE de `conversations` ou de
+    `messages` ao navegador (a `conversations_delete` e o FOR ALL
+    `messages_modify` da 0017, ou um `GRANT ALL ON ALL TABLES` a
+    `authenticated`/`anon`): a 1096 os tirou, e recriados eles devolvem ao
+    atendente o apagar a conversa inteira. Pinos:
+    `supabase/migrations/portas-dos-fundos-1096.test.ts` (os `.sql`) e o
+    `supabase/ci/verify-schema.sql` (o catálogo no fim do replay). O
+    comentário do upstream em `src/app/api/whatsapp/send/route.ts` ainda cita
+    `messages_modify`: é texto deles, descreve o banco deles; o nosso INSERT de
+    mensagem é a `messages_insert`.
 
 ## 7. Arquivos que ficam NOSSOS inteiros
 
