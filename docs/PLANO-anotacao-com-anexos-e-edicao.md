@@ -43,8 +43,8 @@
 | Fase | Escopo | Estado | Migration | PR |
 | --- | --- | --- | --- | --- |
 | **0** | Estudo, riscos conferidos no código e na produção, decisões | ✅ 22/10/2026 (este arquivo) | — | — |
-| **1** | Banco e servidor: colunas, regras, gatilho na fila de arquivos a apagar (a fila e a drenagem já existem: Lixeira), regras do armazenamento para `notas/`, POST com anexos | ✅ código e migration na branch `feat/anotacao-com-anexos` (23/10/2026); migration provada no descartável, **NÃO aplicada**; a leitura do Storage (`info()`) medida pelo operador | `1102` | #434 |
-| **2** | Tela: anexar, gravar, colar e arrastar na caixa; mostrar nos cinco lugares; aviso no sino | ✅ código na mesma branch (23/10/2026); **falta o preview** (1440×900 e 375 px) e o iPhone | — | #434 |
+| **1** | Banco e servidor: colunas, regras, gatilho na fila de arquivos a apagar (a fila e a drenagem já existem: Lixeira), regras do armazenamento para `notas/`, POST com anexos | ✅ 1102 aplicada na produção em 23/10/2026 (histórico `20261023220536`, depois do CI verde em `a268963d`) e conferida; registro em `docs/MIGRATIONS-APLICADAS.md` | `1102` | #434 |
+| **2** | Tela: anexar, gravar, colar e arrastar na caixa; mostrar nos cinco lugares; aviso no sino | ✅ e2e no preview em 23/10/2026 (1440×900, ~1024 e 375 px; registro abaixo); **falta o iPhone** (gravar e ouvir) | — | #434 |
 | **3** | Edição: editar no lugar, marca "editada", menção acrescentada | ⏳ (outro PR; a coluna `editada_em` já entrou na 1102) | a da Fase 1 | — |
 | **4** | API v1 (`GET /notes` com anexos e `editada_em`) e doc pública | ✅ na mesma branch (23/10/2026) | — | #434 |
 
@@ -470,10 +470,9 @@ teste de unidade (o vitest roda sem DOM): confere-se no preview e no iPhone.
   microfone, com 10 anexos;
 - na API, o `.html` sai com `?download=` também (a mesma régua da tela).
 
-**Fica para depois:** aplicar a 1102 com autorização do operador (ADITIVA:
-antes do deploy) e registrar em `docs/MIGRATIONS-APLICADAS.md`; o e2e da
-seção "Teste de ponta a ponta"; a gravação e o player no iPhone; a Fase 3
-(edição, `mantidosSaoDaNota`, a marca "editada"). Medido pelo operador em
+**Fica para depois:** a gravação e o player no iPhone; a Fase 3 (edição,
+`mantidosSaoDaNota`, a marca "editada"). A 1102 foi aplicada e o e2e feito
+em 23/10/2026 (seção "e2e no preview", abaixo). Medido pelo operador em
 23/10/2026 (sem pendência): o `info()` do Storage hospedado devolve `size` e
 `contentType` no topo, e o ausente como `status: 400`, `statusCode: "404"`
 (o que `lerArquivoDoAnexo` já trata); as policies de UPDATE, DELETE e INSERT
@@ -518,3 +517,40 @@ bucket) — se faltar, a 1102 reprova no CI com a mensagem do Postgres.
 - **Textos**: a recusa de tipo diz os formatos aceitos de verdade (áudio OGG,
   MP3, AAC ou AMR; M4A, WAV e WebM ficam de fora), com teste que amarra a
   frase à régua.
+
+### e2e no preview (23/10/2026, com a 1102 aplicada)
+
+No dev da branch (`a268963d`) contra a produção, só na conversa de teste
+autorizada pelo operador:
+
+- **Texto + quatro anexos** (imagem PNG, áudio OGG, página `.html`, PDF):
+  cada um em `account-<conta>/notas/<uuid>/<nome>`, com `owner_id` = autor e
+  `bytes` lidos no armazenamento (iguais aos dos arquivos). No fio: o player,
+  a miniatura de 160 px pela transformação (o original só no visualizador),
+  o `.html` com `?download=` e o PDF em aba nova.
+- **Só anexo**: `texto` gravado como `''`; nenhuma tela desenha parágrafo
+  vazio.
+- **Fixada**: a faixa do fio e o cartão recolhido da aba Notas mostram
+  "📎 4 anexos"; aberto, o cartão traz os anexos com rolagem própria.
+- **Resposta**: a citação mostra "📎 4 anexos" na caixa, no fio, na aba e na
+  ficha.
+- **Ficha de `/contatos`**: mostra os anexos; a caixa de lá segue só texto
+  (A6). Esc no visualizador aberto dentro da ficha (Sheet) fecha só o
+  visualizador.
+- **Tipo recusado** (`.zip`): fica de fora, com o aviso que lista os
+  formatos.
+- **Falha no envio** (o segundo de dois arquivos derrubado na rede): a caixa
+  fica com o texto e os dois arquivos; no segundo Salvar só o que falhou
+  sobe, e ficam exatamente 2 objetos (sem órfão nem duplicado).
+- **375 px**: a faixa, a nota e a caixa (com clipe e microfone) cabem sem
+  rolagem lateral.
+- **Apagar** as quatro anotações de teste pela tela → 7 caminhos na fila
+  com origem `anotacao` → a drenagem do laço lento das 22:26 UTC (o ciclo
+  seguinte) apagou os 7 objetos num pedido só e esvaziou a fila; `notas/`
+  ficou sem objeto.
+
+Não coberto: gravar pelo microfone e ouvir no iPhone (o navegador do teste
+não tem microfone); perfil leitura anexando e o tempo real numa segunda
+sessão (outro usuário); trocar de conversa gravando. De passagem: o
+"Cancelar" da caixa some no modo escuro (texto claro sobre o âmbar) — já era
+assim no `main`; o conserto foi para a Fase 3, onde ele desiste da edição.
