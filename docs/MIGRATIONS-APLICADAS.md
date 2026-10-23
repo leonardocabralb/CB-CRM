@@ -1416,6 +1416,43 @@ nome da época em que foram aplicadas.
   duas com `prosecdef = false`, EXECUTE só para `authenticated` e
   `service_role` (o papel de leitura do `supabase-cb` não as chama — de
   propósito); a conferência embutida chamou as duas.
+- **1096_cb_atendente_nao_apaga_conversa** — a Fase 1 da Lixeira de contatos
+  (PR #428): derruba `conversations_delete` e o `messages_modify` (FOR ALL),
+  recria INSERT e UPDATE de mensagem com o predicado da 1032 e revoga o
+  DELETE de `conversations` e `messages` de `authenticated` e `anon` (a
+  ficha apagada continua levando as duas pelo CASCADE). RESTRITIVA, mas
+  nenhuma versão do app usa o que ela tira. Provada num Postgres 16
+  descartável (o CASCADE da ficha com o papel `authenticated` sem o
+  privilégio). Aplicada em 23/10/2026 pela Management API (histórico
+  `20261023103318`), antes do merge do PR #428, com "aplique as migrations
+  1096, 1097 e 1098 em produção" do operador. Conferida: só
+  `conversations_insert/select/update` e `messages_insert/select/update` de
+  pé, `authenticated` e `anon` sem DELETE nas duas; e2e no preview: uma
+  mensagem de teste ao lead autorizado saiu e chegou como entregue.
+- **1097_cb_lixeira_de_contatos** — a Lixeira de contatos de 90 dias, Fase 2
+  (PR #429): `conversations.restaurada_em`; os tipos `contact_trashed`/
+  `contact_restored`/`contact_purged` e o motivo `lixeira` nos CHECKs; as
+  tabelas `cb_lixeira_de_contatos` (a fotografia do fecho do CASCADE e os
+  ponteiros) e `cb_arquivos_a_apagar` (a fila do Storage, fechada); as RPCs de
+  mover, prévia, restaurar, excluir agora, vencer, listar e a fila; 12
+  gatilhos calados por `WHEN` no sinal `cb.lixeira`. ADITIVA e ANTES do
+  deploy. Provada num Postgres 16 descartável com o esquema da produção (ida
+  e volta idêntica de 800 mensagens; 25 fichas com 3 mil mensagens em 1,3 s
+  para mover e 0,3 s para restaurar). Aplicada em 23/10/2026 pela Management
+  API (histórico `20261023103334`), antes do merge do PR #429, depois do
+  replay verde no commit `f92a0217`, com "aplique as migrations 1096, 1097 e
+  1098 em produção" do operador. Conferida: as 24 funções, os 12 gatilhos com
+  o `WHEN`, nada para `anon`, `vencer` e `reivindicar` só do service role;
+  advisors de segurança sem nada novo de risco. e2e no preview com duas fichas
+  fictícias: prévia com a tarefa aberta, mover, "Desfazer", restaurar pela
+  tela (ficha, tarefa e trilha de volta), identidade ocupada bloqueando (B2) e
+  "Excluir agora" com e sem o pedido de exclusão (com ele, a trilha perde o
+  nome).
+- **1098_cb_lixeira_conferencia** — só a prova de ida e volta da 1097 (prévia,
+  mover, restaurar, mover, excluir com pedido) sobre uma ficha fictícia,
+  desfeita por SQLSTATE próprio; separada para não rodar sob a trava
+  exclusiva das ALTERs. Aplicada junto, em 23/10/2026 (histórico
+  `20261023103343`), mesma autorização. Passou na produção sem deixar linha.
 
 ## Notas do histórico
 

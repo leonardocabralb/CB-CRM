@@ -180,6 +180,28 @@ BEGIN
       'messages.error_code/error_title/error_details não existem — a 1039 não aplicou';
   END IF;
 
+  -- 1096: conversa e mensagem não se apagam pelo navegador. Conferido aqui,
+  -- no FIM do replay, porque a conferência da própria 1096 só vale no
+  -- instante dela, e o pino `portas-dos-fundos-1096.test.ts` lê os `.sql` e
+  -- não vê policy ou GRANT feitos por EXECUTE numa migration posterior (as
+  -- duas policies são do upstream e voltam sem conflito num merge).
+  IF EXISTS (
+    SELECT 1 FROM pg_policies
+     WHERE schemaname = 'public'
+       AND tablename IN ('conversations', 'messages')
+       AND cmd IN ('DELETE', 'ALL')
+  ) THEN
+    RAISE EXCEPTION
+      'há policy de DELETE ou FOR ALL em conversations/messages — devolve ao atendente o apagar a conversa inteira (1096)';
+  END IF;
+  IF has_table_privilege('authenticated', 'public.conversations', 'DELETE')
+     OR has_table_privilege('authenticated', 'public.messages', 'DELETE')
+     OR has_table_privilege('anon', 'public.conversations', 'DELETE')
+     OR has_table_privilege('anon', 'public.messages', 'DELETE') THEN
+    RAISE EXCEPTION
+      'authenticated ou anon têm DELETE em conversations/messages — a 1096 tirou (só a ficha, as funções e o service role apagam)';
+  END IF;
+
   RAISE NOTICE 'schema verification passed';
 END
 $$;
