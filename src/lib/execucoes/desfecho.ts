@@ -207,10 +207,20 @@ export function itensDoFio(
 // Ordem: da mais RECENTE para a mais antiga (a da aba).
 // ============================================================
 
-/** Os valores do CHECK de `automation_logs.interrompida_por` (1005). */
-export type MotivoDaInterrupcao = 'resposta' | 'etapa' | 'parar' | 'passo' | 'desativacao' | 'fusao'
+/** Os valores do CHECK de `automation_logs.interrompida_por` (1005; o vigente é o da 1097). */
+export type MotivoDaInterrupcao =
+  | 'resposta'
+  | 'etapa'
+  | 'parar'
+  | 'passo'
+  | 'desativacao'
+  | 'fusao'
+  | 'lixeira'
 
-/** `fusao` (1092): a ficha foi unida a outra e as execuções dela terminaram. */
+/**
+ * `fusao` (1092): a ficha foi unida a outra e as execuções dela terminaram.
+ * `lixeira` (1097): a ficha foi para a Lixeira — e restaurar não as religa.
+ */
 export const MOTIVOS_DA_INTERRUPCAO: readonly MotivoDaInterrupcao[] = [
   'resposta',
   'etapa',
@@ -218,6 +228,7 @@ export const MOTIVOS_DA_INTERRUPCAO: readonly MotivoDaInterrupcao[] = [
   'passo',
   'desativacao',
   'fusao',
+  'lixeira',
 ]
 
 export type DesfechoDoHistorico = AutomationLogDesfecho | 'interrompida'

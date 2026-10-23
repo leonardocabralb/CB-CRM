@@ -11,8 +11,7 @@ paths:
 Vale ao escrever migration, função, policy ou gatilho, e ANTES de qualquer
 escrita manual ou em lote no banco de PRODUÇÃO (SQL pelo conector MCP,
 Management API, script). O núcleo (nome, número, ordem de aplicação) está na
-raiz, seção 7; aqui ficam os detalhes e os modelos SQL. Texto integral
-anterior, com a história: `git show f5879b3f:CLAUDE.md`.
+raiz, seção 7; aqui ficam os detalhes e os modelos SQL.
 
 ## Escrita manual ou em lote no banco de PRODUÇÃO
 
@@ -58,8 +57,8 @@ UPDATE/INSERT/DELETE fora do app, saiba o que ele aciona:
   **DELETE em `pipeline_stages`** tira a etapa das automações e zera
   `default_stage_id` das conexões; card na etapa bloqueia.
 - **`accounts`** INSERT semeia o campo "E-mail".
-- Apagar CONTATO leva conversa e mensagens e deixa 18 tabelas com ponteiro
-  nulo — ver "APAGAR CONTATO". Fundir fichas: só por `cb_unir_fichas` (1092).
+- DELETE à mão em `contacts` pula a Lixeira: sem volta, leva conversa e
+  mensagens — ver "APAGAR CONTATO". Fundir fichas: só por `cb_unir_fichas`.
 
 ## Carga em lote e importação
 
@@ -306,13 +305,6 @@ Pino `rls-leitura-1032.test.ts`.
   rascunho). As policies da 020/023 casam só o 1º segmento: subpasta com regra
   própria repete o par rota + policy (954).
 
-### A 903 removeu dois índices únicos
-`message_templates(user_id, name, language)` e `ai_configs(account_id)` viraram
-pares PARCIAIS (global + por canal): `.upsert(onConflict)` não serve (índice
-parcial não é alvo de ON CONFLICT — use lookup + insert/update) e
-`.maybeSingle()` só por `account_id` estoura com a segunda linha (escope o
-canal ou `.is('channel_id', null)`).
-
 ### A trilha de auditoria (912) é escrita por TRIGGER
 - Não existe "logger": escrita normal em `deals`/`contact_tags` já gera o
   evento. `authenticated` só tem SELECT em `cb_lead_events` (sem o REVOKE, um
@@ -376,27 +368,42 @@ um espelho com pino lendo o SQL. Mudou um lado, muda o outro.
   mensagem estragou, a partir da espera de ANTES do insert (`p_espera_antes`).
   Não é o recálculo canônico. Pinos em `mensagens-sem-telefone-1010.test.ts`.
 
-### ⚠️⚠️ APAGAR CONTATO e merge_duplicate_contacts (receita de fusão)
-- CASCADE (some sem aviso): `conversations` (e TODAS as mensagens),
-  `contact_tags`, `contact_custom_values`, `cb_tasks`, `cb_conversation_notes`,
-  `cb_automation_reminders`, `cb_contatos_relacionados` (1069, pelas DUAS
-  pontas), `cb_atlas_recusas` (1072), `cb_duplicatas_descartadas` (1088,
-  pelas DUAS pontas), `cb_contatos_antigos` e o livro `cb_fichas_unidas`
-  (1092: apagar a ficha que ficou leva o id antigo que respondia por ela).
-- SET NULL (fica órfão): `deals`, `cb_lead_events`, `cb_calendly_eventos`,
-  `cb_meetings`, `cb_reunioes_transcritas`, `cb_asaas_clientes`,
-  `cb_asaas_regua_envios`, `cb_automation_events`, `cb_webhook_eventos`,
-  `automation_logs`, `automation_pending_executions`, `broadcast_recipients`,
-  `flow_runs`, `notifications`, `cb_reunioes_da_kommo`, `cb_zapsign_eventos`,
-  `cb_zapsign_documentos` (as duas também com `deal_id` SET NULL),
-  `cb_atlas_clientes` (1071). Card sem contato renderiza em BRANCO no Kanban.
-- ⚠️ Fora das duas listas: `cb_mensagens_sem_telefone` não tem `contact_id`.
-  O payload da retida (texto do cliente) sobrevive a apagar o contato, até
-  num pedido de exclusão (ver `whatsapp-evolution.md`).
-  O mesmo vale para `cb_ligacoes` (1044): sem `contact_id`, ela guarda
-  `telefone` e `quem_ligou` depois de apagar o contato (a bolha vai junto com
-  a conversa; `conversation_id`/`message_id` viram nulos). Pedido de exclusão
-  apaga também as linhas pelo telefone.
+### ⚠️⚠️ APAGAR CONTATO: a Lixeira (1097) e a receita de fusão
+- **O app não apaga, MOVE** (`cb_mover_contatos_para_lixeira`): a ficha e o
+  fecho do CASCADE viram a fotografia de `cb_lixeira_de_contatos`, os
+  ponteiros SET NULL de fora são anotados e a ficha sai como antes;
+  restaurar reinsere e reaponta só o que ainda está nulo. Tela e B1–B6:
+  `contatos.md`.
+- **As listas vivem em `cb_lixeira_tratamento()`**, conferida contra o
+  catálogo: `fecho` (o CASCADE: conversas e TODAS as mensagens, etiquetas,
+  campos, tarefas, anotações, agendadas, Relacionados e "não é duplicata"
+  pelas DUAS pontas, `cb_fichas_unidas`…) e `ponteiros` (o que fica nulo:
+  `deals`, trilha, Calendly, Asaas, execuções…), com o que a volta faz.
+- ⚠️⚠️ **DEFAULT-DENY**: tabela nova com FK para QUALQUER tabela do fecho
+  (conversa, mensagem, tarefa…, não só a ficha) recusa o mover
+  (`lixeira_sem_tratamento:<tabela>`), e gatilho novo numa tabela que a
+  restauração escreve recusa o restaurar. Ela entra na UNIÃO
+  (`cb_unir_fichas`) E em `cb_lixeira_tratamento()` no MESMO PR.
+- ⚠️⚠️ **Os gatilhos calam por SINAL, nunca `DISABLE TRIGGER`** (travaria
+  `messages` e `conversations` de TODAS as contas): `set_config('cb.lixeira',
+  …, true)` na transação e, no gatilho, `WHEN (nullif(current_setting(
+  'cb.lixeira', true), '') IS NULL)` — sem o `missing_ok` estoura em sessão
+  que nunca o definiu; sem o `nullif`, a do pool que já o usou guarda `''`.
+  Calado sem o WHEN faz a restauração RECUSAR (`lixeira_gatilho_sem_sinal`),
+  inclusive os do upstream (`set_updated_at` de `conversations`/`deals`,
+  `on_conversation_assigned`). Restaurar nunca manda nada ao cliente.
+- ⚠️ **Os ponteiros se anulam ANTES do DELETE** (`cb_lixeira_anular`):
+  deixado ao CASCADE, o Postgres anula `flow_runs` (contato, conversa e
+  última pergunta) em três passos e confere a FK da pergunta entre eles —
+  23503 (medido; o DELETE direto tem o mesmo defeito).
+- **Excluir de vez** (prazo ou "Excluir agora") põe os arquivos que a
+  fotografia cita na fila `cb_arquivos_a_apagar` (guarda
+  `cb_caminho_no_chat_media`; sai só o que ninguém mais cita,
+  `cb_arquivos_citados` — escritor novo de URL: `midia.md`).
+- ⚠️ `cb_mensagens_sem_telefone` e `cb_ligacoes` (1044) não têm `contact_id`:
+  a retida e a ligação sobrevivem ao mover. Só o "Excluir agora" com pedido
+  de exclusão apaga as ligações pelo telefone e as retidas pelos LIDs da
+  fotografia.
 - ⚠️⚠️ `merge_duplicate_contacts` NÃO serve: reaponta só nove tabelas do
   upstream, APAGA as tarefas e lembretes do perdedor pelo CASCADE, roda em
   TODAS as contas e agrupa por grafia exata (não vê as duas grafias do nono
@@ -412,5 +419,5 @@ um espelho com pino lendo o SQL. Mudou um lado, muda o outro.
   mensagens passam; UPDATE em `contact_tags` não acende a trilha (o gatilho é
   INSERT/DELETE); a identidade (telefone, BSUID) só passa DEPOIS do DELETE da
   que sai (`contacts_identidade_ck` e os índices únicos). No fim ela varre as
-  FKs pelo CATÁLOGO e RECUSA (`uniao_sem_tratamento`) tabela que não conhece:
-  tabela nova com `contact_id` entra na função no MESMO PR.
+  FKs pelo CATÁLOGO e RECUSA (`uniao_sem_tratamento`) tabela que não conhece
+  (o default-deny acima).

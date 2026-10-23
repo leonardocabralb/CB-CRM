@@ -184,6 +184,39 @@ Tabela `cb_media_library`, `src/lib/acervo/` (puro, com teste), rotas em
   copia a cada envio (`.claude/rules/whatsapp-envio.md`). Erro de banco é
   `leitura`, nunca `nao_encontrado`.
 
+### Arquivo que SAI do `chat-media`: a fila (1097)
+
+`cb_arquivos_a_apagar` (fechada ao navegador), a guarda
+`cb_caminho_no_chat_media(url, conta)`, o espelho TS `caminhoNoChatMedia`
+(`src/lib/storage/caminho-no-chat-media.ts`) e a drenagem
+(`src/lib/storage/arquivos-a-apagar.ts`). Quem enfileira: excluir de vez da
+Lixeira de contatos (prazo ou "Excluir agora"; `supabase.md`, "APAGAR
+CONTATO"); a origem `anotacao` é do plano irmão (anexo na anotação).
+
+- ⚠️⚠️ **Só sai arquivo NOSSO**: a guarda devolve NULL para URL externa,
+  `flow-media`, outra conta, `acervo/` (o acervo tem dono próprio), `..`, `%`
+  (nome codificado: na dúvida, fica) e barra sobrando, e é repetida no CHECK
+  da fila e no reivindicar. Os dois lados respondem aos MESMOS exemplos (o
+  pino em TS e a conferência da 1097): mudou um, muda o outro.
+- ⚠️⚠️ **Sai só o que ninguém mais cita, conferido NA HORA**
+  (`cb_arquivos_citados`): mensagens, agendadas, modelos, fotos de contato,
+  perfil e grupo, acervo, passos de automação e nós de robô (no JSON) e as
+  fotografias dos OUTROS itens da Lixeira. Escritor NOVO de URL do
+  `chat-media` (tabela ou coluna) entra em `cb_arquivos_citados` e no pino
+  `arquivos-do-chat-media.chamadores.test.ts`, senão a drenagem apaga arquivo
+  que ainda aparece numa bolha. O citado sai da fila e o arquivo fica: quem
+  cita enfileira de novo ao sair. Todo escritor da fila usa `ON CONFLICT DO
+  NOTHING` (a mensagem e a agendada enviada citam o MESMO objeto).
+- **Quem drena é o servidor** (`drenarArquivosAApagar`, no `after()` de
+  `/api/cb/scheduled/cron`, `deploy.md`): `cb_reivindicar_arquivos_a_apagar`
+  carimba e CONTA a tentativa antes do trabalho; reivindicado há mais de 10
+  min volta à fila, e na 10ª tentativa o item para — a tela da Lixeira avisa
+  (`cb_arquivos_da_lixeira_parados`). ⚠️ Toda escrita na fila depois do
+  reivindicar leva a cerca de posse (`reivindicado_em` = o carimbo do
+  próprio lote), e o espelho TS confere o caminho DE NOVO antes do `remove`:
+  o que ele recusa fica no bucket, com `ultimo_erro` (os dois lados
+  divergiram, e isso tem de aparecer).
+
 ### Leitura de corpo com teto e visualizador
 
 - ⚠️ **Corpo de URL de fora que vai para a memória passa por `lerComTeto`**

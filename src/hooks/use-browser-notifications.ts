@@ -27,6 +27,7 @@ import {
   type PreferenciaDeAviso,
 } from "@/lib/notifications/aviso-no-navegador";
 import { nomeDoContato, type ContatoIdentificavel } from "@/lib/contacts/identidade";
+import { reinseridaPelaRestauracao } from "@/lib/contacts/lixeira";
 import { EVENTO_ABRIR_CONVERSA, EVENTO_CONVERSA_ABERTA, urlDoInbox } from "@/lib/inbox/url";
 import { MIDIA_DE_TOQUE } from "@/lib/celular/teclado";
 import { tocarSomDoAviso } from "@/lib/notifications/som-do-aviso";
@@ -112,10 +113,19 @@ export function usePreferenciaDeAviso(): {
   return { preferencia, gravar };
 }
 
-/** O que a consulta da conversa traz: a régua (`silencioDoAviso`) e o nome. */
+/**
+ * O que a consulta da conversa traz: a régua (`silencioDoAviso`) e o nome.
+ * ⚠️ `restaurada_em` é da 1097 (ADITIVA, aplicada ANTES do deploy): sem a
+ * coluna no banco a consulta inteira falharia, e conversa ilegível é
+ * silêncio — todo aviso calaria.
+ */
 const SELECT_DA_CONVERSA =
   "id, channel_id, channel_pinned, group_id, assigned_agent_id, " +
+  "restaurada_em, " +
   "contact:contacts(name, phone, wa_username, instagram_username), group:cb_groups(channel_id)";
+
+/** A mensagem como o tempo real a entrega: a linha inteira, com `gravada_em`. */
+type MensagemDoTempoReal = Message & { gravada_em?: string | null };
 
 type ConversaDaConsulta = ConversaDoAviso & {
   contact?: ContatoIdentificavel | null;
@@ -203,6 +213,14 @@ export function useBrowserNotifications(): void {
     // ANTES da abertura pode ainda estar no ar e estacionar depois — ou a da
     // soltura, que já tirou a mensagem da fila (Codex, PR #289).
     const vistas = new Map<string, { ate: number; em: number }>();
+    // As conversas que VOLTARAM da Lixeira enquanto esta aba ouvia (1097): id
+    // → `restaurada_em`. A volta reinsere a conversa e DEPOIS as mensagens,
+    // na mesma transação (o tempo real entrega na ordem do banco), e a fala
+    // antiga do cliente sai aqui pela mesma régua de `silencioDoAviso` — sem
+    // a consulta da conversa, que seria uma por mensagem devolvida (centenas
+    // por ficha, em cada aba com o aviso ligado). O que escapar daqui (o
+    // INSERT da conversa perdido) cai na consulta, que lê `restaurada_em`.
+    const restauradas = new Map<string, string>();
     const marcarVista = (conversaId: string) => {
       vistas.set(conversaId, { ate: chegadas, em: Date.now() });
       estacionadas.delete(conversaId);
@@ -344,7 +362,7 @@ export function useBrowserNotifications(): void {
           // Conferido a cada evento: a pessoa pode revogar a permissão no
           // navegador sem a preferência mudar.
           if (getNotificationPermission() !== "granted") return;
-          const msg = payload.new as Message;
+          const msg = payload.new as MensagemDoTempoReal;
           const deveAvisar = shouldNotifyForMessage(msg, {
             documentVisible: document.visibilityState === "visible",
             viewingConversationId: viewedConversationFromLocation(
@@ -354,7 +372,18 @@ export function useBrowserNotifications(): void {
             seen: seenRef.current,
           });
           if (!deveAvisar) return;
+          if (reinseridaPelaRestauracao(msg.gravada_em, restauradas.get(msg.conversation_id))) return;
           void avisar(msg, true, ++chegadas);
+        },
+      )
+      // A volta da Lixeira (ver `restauradas`): só o INSERT de conversa que
+      // já nasce com `restaurada_em` — a conversa nova de todo dia nasce sem.
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "conversations" },
+        (payload) => {
+          const nova = payload.new as { id?: string; restaurada_em?: string | null };
+          if (nova.id && nova.restaurada_em) restauradas.set(nova.id, nova.restaurada_em);
         },
       )
       .on(
@@ -430,6 +459,7 @@ export function useBrowserNotifications(): void {
       atribuidasAgora.clear();
       avisadas.clear();
       vistas.clear();
+      restauradas.clear();
       supabase.removeChannel(canal);
     };
   }, [ativo, userId, router]);

@@ -3,7 +3,7 @@
 import { memo } from "react";
 import type { Deal, PipelineStage } from "@/types";
 import type { CbChannel } from "@/lib/cb-channels/repo";
-import { Calendar, Check, Pencil, X, Zap } from "lucide-react";
+import { Calendar, Check, Pencil, Trash2, X, Zap } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
 import { useTranslations } from "next-intl";
 import { findChannel } from "@/lib/cb-channels/display";
@@ -31,6 +31,15 @@ interface DealCardProps {
    * `0` = nenhuma, ou ainda não se sabe — a marca cala nos dois casos.
    */
   esperasDeAutomacao?: number;
+  /**
+   * A ficha deste card está na LIXEIRA (B4, 1097): o negócio ficou no funil
+   * sem contato e volta a apontar para ela se for restaurada. Por prop e
+   * primitivo (o mapa é do quadro, `useNegociosNaLixeira`), pelo `memo`.
+   * Ausente = não se sabe ou não está: o card fica como sempre.
+   */
+  naLixeira?: boolean;
+  /** O nome da ficha na Lixeira, quando ela tinha um. */
+  nomeNaLixeira?: string | null;
   onEdit: (deal: Deal) => void;
   /** Clique no corpo do card, quando há conversa para abrir. */
   onAbrirConversa: (conversationId: string) => void;
@@ -72,6 +81,8 @@ export const DealCard = memo(function DealCard({
   stage,
   campos,
   esperasDeAutomacao = 0,
+  naLixeira = false,
+  nomeNaLixeira = null,
   channels,
   onEdit,
   onAbrirConversa,
@@ -82,7 +93,11 @@ export const DealCard = memo(function DealCard({
   const tLigacao = useTranslations("Inbox.ligacao");
   // O tipo de mensagem que a ingestão não lê (1060) também é rótulo no banco.
   const tLista = useTranslations("Inbox.conversationList");
-  const contactLabel = nomeDoContato(deal.contact, t("noContact"));
+  // B4: sem contato porque a ficha está na Lixeira — o nome dela (ou a
+  // frase), nunca o "Sem contato" de um card cuja pessoa pode voltar.
+  const contactLabel = naLixeira
+    ? (nomeNaLixeira ?? t("contatoNaLixeira"))
+    : nomeDoContato(deal.contact, t("noContact"));
   const assigneeLabel = deal.assignee?.full_name || null;
 
   // Por qual número o cliente CHEGOU (908). Com um canal só a etiqueta não
@@ -174,12 +189,27 @@ export const DealCard = memo(function DealCard({
           )}
         </div>
 
-        {/* Contact row */}
-        <div className="mt-2 flex items-center gap-2">
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-foreground">
-            {initials(deal.contact?.name, identidadeDoContato(deal.contact ?? {}) ?? undefined)}
-          </span>
+        {/* Contact row. Ficha na Lixeira (B4): a lixeira no lugar da inicial,
+            o nome dela e a pastilha — a dica diz que ela pode voltar. */}
+        <div
+          className="mt-2 flex items-center gap-2"
+          title={naLixeira ? t("contatoNaLixeiraDica") : undefined}
+        >
+          {naLixeira ? (
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+              <Trash2 className="h-3 w-3" aria-hidden="true" />
+            </span>
+          ) : (
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-foreground">
+              {initials(deal.contact?.name, identidadeDoContato(deal.contact ?? {}) ?? undefined)}
+            </span>
+          )}
           <span className="truncate text-xs text-muted-foreground">{contactLabel}</span>
+          {naLixeira && nomeNaLixeira !== null && (
+            <span className="shrink-0 rounded-full border border-border bg-background/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+              {t("naLixeira")}
+            </span>
+          )}
           {canalDeOrigem && (
             <span
               title={t("cameFrom", { channel: canalDeOrigem.label })}

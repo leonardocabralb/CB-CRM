@@ -256,12 +256,12 @@ a rota `/api/cb/reunioes`, `src/components/reunioes/`. Plano:
   por FUNIL do perfil, pela lente (`acesso`).
 - ⚠️ **A pauta é AO VIVO pela trilha** (pedido do operador, 15/10/2026):
   assina INSERT de `cb_lead_events` da CONTA (`account_id=eq.`; só os eventos
-  do CARD, `EVENTOS_DA_PAUTA` — a trilha guarda também etiqueta e a conversa,
-  1083) e recarrega `ESPERA_AO_VIVO_MS` depois do PRIMEIRO aviso, juntando
-  a rajada — uma carga grava centenas de linhas, e cada recarga é uma dúzia de
-  consultas. Aba escondida: uma recarga na volta. A de 2 min fica: o canal
-  falha calado, e o marco de outra pessoa que não move card não passa pela
-  trilha.
+  do CARD e da ficha que vai e volta da Lixeira, `EVENTOS_DA_PAUTA` — a trilha
+  guarda também etiqueta e a conversa, 1083) e recarrega `ESPERA_AO_VIVO_MS`
+  depois do PRIMEIRO aviso, juntando a rajada — uma carga grava centenas de
+  linhas, e cada recarga é uma dúzia de consultas. Aba escondida: uma recarga
+  na volta. A de 2 min fica: o canal falha calado, e o marco de outra pessoa
+  que não move card não passa pela trilha.
 - ⚠️ **O "Reagendamento" do Calendly NÃO é o resultado Reagendar** (1081): o
   selo diz "Remarcada pelo cliente · era …" (`reagendadaDe`, da MESMA
   inferência de `convitesSubstituidos`; ambígua = sem o "era"). A palavra

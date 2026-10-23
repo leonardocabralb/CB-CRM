@@ -34,6 +34,7 @@ import {
 import type { CamposDoCard } from "@/lib/pipelines/campos-do-card";
 import { gravarRetorno, lerRetorno } from "@/lib/pipelines/retorno";
 import { urlDoInbox } from "@/lib/inbox/url";
+import { useNegociosNaLixeira } from "@/hooks/use-negocios-na-lixeira";
 
 /**
  * Quantos cards uma coluna desenha de uma vez.
@@ -272,6 +273,17 @@ export function PipelineBoard({
     return mapa;
   }, [sinalDeExecucoes]);
 
+  // B4 (1097): o card SEM contato cuja ficha está na Lixeira ganha a marca,
+  // em vez de sair em branco. Só os que têm conteúdo (é nele que vem o
+  // `contact_id`; a lista enxuta não o traz) — os desenhados —, e só os sem
+  // contato: o hook não pergunta nada com o conjunto vazio. Memo pela lista:
+  // o funil grande passa de 8 mil cards, e o quadro redesenha a cada arrasto.
+  const semContato = useMemo(
+    () => deals.filter((d) => temConteudo(d) && !d.contact_id).map((d) => d.id),
+    [deals],
+  );
+  const negociosNaLixeira = useNegociosNaLixeira(semContato);
+
   const sortedStages = useMemo(
     () => [...stages].sort((a, b) => a.position - b.position),
     [stages],
@@ -482,6 +494,7 @@ export function PipelineBoard({
               campos={campos}
               channels={channels}
               esperasPorContato={esperasPorContato}
+              negociosNaLixeira={negociosNaLixeira}
               limite={limitesDoFunil[stage.id] ?? CARDS_POR_COLUNA}
               recemSolto={etapaDoSolto === stage.id ? recemSolto : null}
               onMostrarMais={mostrarMais}
@@ -511,6 +524,8 @@ export function PipelineBoard({
               }
               campos={campos}
               channels={channels}
+              naLixeira={negociosNaLixeira.has(activeDeal.id)}
+              nomeNaLixeira={negociosNaLixeira.get(activeDeal.id) ?? null}
               onEdit={() => {}}
               onAbrirConversa={() => {}}
               isOverlay
@@ -579,6 +594,7 @@ const StageColumn = memo(function StageColumn({
   campos,
   channels,
   esperasPorContato,
+  negociosNaLixeira,
   limite,
   recemSolto,
   onMostrarMais,
@@ -595,6 +611,11 @@ const StageColumn = memo(function StageColumn({
   automacoesAtivas: number;
   campos: CamposDoCard;
   channels: CbChannel[];
+  /**
+   * negócio → nome da ficha que está na Lixeira (B4). Um mapa só para o
+   * quadro, como `esperasPorContato`; ao card vão primitivos (`memo`).
+   */
+  negociosNaLixeira: ReadonlyMap<string, string | null>;
   /** Quantos cards desta coluna desenhar — ver `CARDS_POR_COLUNA`. */
   limite: number;
   /** O último card solto no quadro, só quando ele está NESTA coluna. */
@@ -767,6 +788,8 @@ const StageColumn = memo(function StageColumn({
                 esperasDeAutomacao={
                   esperasPorContato[deal.contact_id ?? ""] ?? 0
                 }
+                naLixeira={negociosNaLixeira.has(deal.id)}
+                nomeNaLixeira={negociosNaLixeira.get(deal.id) ?? null}
                 onEdit={onEditDeal}
                 onAbrirConversa={onAbrirConversa}
               />
@@ -816,6 +839,8 @@ const DraggableDealCard = memo(function DraggableDealCard({
   campos,
   channels,
   esperasDeAutomacao,
+  naLixeira,
+  nomeNaLixeira,
   onEdit,
   onAbrirConversa,
 }: {
@@ -825,6 +850,9 @@ const DraggableDealCard = memo(function DraggableDealCard({
   channels: CbChannel[];
   /** Número primitivo, para não quebrar o `memo` do card. */
   esperasDeAutomacao: number;
+  /** A ficha do card está na Lixeira (B4); primitivos, pelo mesmo `memo`. */
+  naLixeira: boolean;
+  nomeNaLixeira: string | null;
   onEdit: (deal: Deal) => void;
   onAbrirConversa: (conversationId: string) => void;
 }) {
@@ -845,6 +873,8 @@ const DraggableDealCard = memo(function DraggableDealCard({
         campos={campos}
         channels={channels}
         esperasDeAutomacao={esperasDeAutomacao}
+        naLixeira={naLixeira}
+        nomeNaLixeira={nomeNaLixeira}
         onEdit={onEdit}
         onAbrirConversa={onAbrirConversa}
       />

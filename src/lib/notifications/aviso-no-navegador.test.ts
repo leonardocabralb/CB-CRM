@@ -316,6 +316,97 @@ describe("silencioDoAviso — mensagem ANTIGA gravada agora não avisa", () => {
   });
 });
 
+describe("silencioDoAviso — a volta da Lixeira (1097) não despeja avisos", () => {
+  // Restaurada AGORA (relógio do banco); a fala do cliente volta com o
+  // `gravada_em` de quando chegou, colado no carimbo dela.
+  const VOLTA = new Date(AGORA - 2_000).toISOString();
+  const restaurada = { restaurada_em: VOLTA };
+
+  it("⚠️ a fala DEVOLVIDA é antiga, mesmo gravada perto do próprio carimbo", () => {
+    const carimbo = AGORA - 20 * 60_000;
+    expect(
+      decide({
+        conversa: restaurada,
+        created_at: new Date(carimbo).toISOString(),
+        gravada_em: new Date(carimbo + 1_000).toISOString(),
+      }),
+    ).toBe("antiga");
+  });
+
+  it("a antiga da volta não ESPERA atribuição (não estaciona uma por fala)", () => {
+    const s = decide({
+      quais: "minhas",
+      conversa: { ...restaurada, assigned_agent_id: OUTRO },
+      created_at: new Date(AGORA - 60_000).toISOString(),
+      gravada_em: new Date(AGORA - 59_000).toISOString(),
+    });
+    expect(s).toBe("antiga");
+    expect(esperaAtribuicao(s)).toBe(false);
+  });
+
+  it("a mensagem gravada DEPOIS da volta avisa como sempre", () => {
+    expect(
+      decide({
+        conversa: restaurada,
+        created_at: new Date(AGORA - 500).toISOString(),
+        gravada_em: new Date(AGORA).toISOString(),
+      }),
+    ).toBeNull();
+  });
+
+  it("⚠️ o relógio da TELA não entra: adiantado ou atrasado, a régua é a do banco", () => {
+    const base = {
+      conversa: restaurada,
+      created_at: new Date(AGORA - 500).toISOString(),
+      gravada_em: new Date(AGORA).toISOString(),
+    };
+    for (const agoraMs of [AGORA + 6 * 60 * 60_000, AGORA - 6 * 60 * 60_000]) {
+      expect(
+        silencioDoAviso({
+          mensagem: { created_at: base.created_at, gravada_em: base.gravada_em, channel_id: null },
+          conversa: conversa(base.conversa),
+          ctx: RESTRITO,
+          userId: EU,
+          quais: "todas",
+          silenciadas: [],
+          agoraMs,
+        }),
+      ).toBeNull();
+    }
+  });
+
+  it("sem `gravada_em` (carga antiga) vale a régua de sempre, pelo carimbo", () => {
+    expect(
+      decide({ conversa: restaurada, created_at: new Date(AGORA - 60_000).toISOString(), gravada_em: null }),
+    ).toBeNull();
+    expect(decide({ conversa: restaurada, created_at: "2026-03-01T12:00:00Z", gravada_em: null })).toBe("antiga");
+  });
+
+  it("conversa que nunca esteve na Lixeira não muda nada", () => {
+    expect(decide({ conversa: { restaurada_em: null } })).toBeNull();
+  });
+});
+
+describe("silencioDoAviso — a volta pela ordem do tempo real (pino do hook)", () => {
+  it("a consulta lê `restaurada_em`, e a fala devolvida sai ANTES da consulta", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const hook = fs.readFileSync(
+      path.join(__dirname, "../../hooks/use-browser-notifications.ts"),
+      "utf8",
+    );
+    expect(hook).toMatch(/"restaurada_em, " \+/);
+    // O INSERT da conversa (que chega antes das mensagens) guarda o carimbo…
+    expect(hook).toMatch(
+      /event: "INSERT", schema: "public", table: "conversations" \},[\s\S]{0,300}?if \(nova\.id && nova\.restaurada_em\) restauradas\.set\(nova\.id, nova\.restaurada_em\);/,
+    );
+    // …e a fala devolvida não vira uma consulta da conversa por mensagem.
+    expect(hook).toMatch(
+      /if \(reinseridaPelaRestauracao\(msg\.gravada_em, restauradas\.get\(msg\.conversation_id\)\)\) return;\s*void avisar\(msg, true, \+\+chegadas\);/,
+    );
+  });
+});
+
 describe("trocaDeDonoSolta — a troca de responsável que solta a mensagem estacionada", () => {
   it("passou a ser minha: solta em qualquer preferência", () => {
     for (const quais of ["minhas", "minhas_e_sem_responsavel", "todas"] as QuaisConversas[]) {

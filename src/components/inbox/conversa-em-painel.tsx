@@ -39,6 +39,7 @@ import { useMarcarConversaAberta } from "@/hooks/use-conversa-aberta";
 import { useInadimplencia } from "@/hooks/use-inadimplencia";
 import { useModoAnonimo } from "@/hooks/use-modo-anonimo";
 import { useRealtime } from "@/hooks/use-realtime";
+import { reinseridaPelaRestauracao } from "@/lib/contacts/lixeira";
 import { avisarExecucoesMudaram } from "@/lib/execucoes/aviso";
 import {
   CONVERSATION_SELECT,
@@ -253,12 +254,20 @@ function ConversaCarregada({
     modoAnonimo || foraDoPerfil ? null : (conversation?.id ?? null);
   useMarcarConversaAberta(conversaLida);
 
+  // A volta desta conversa da Lixeira (1097), lida do INSERT da conversa, que
+  // chega ANTES das mensagens devolvidas (ver a página do inbox).
+  const restauradaEmRef = useRef<string | null>(null);
+
   // Tempo real: o mesmo do inbox, recortado nesta conversa.
   const handleMessageEvent = useCallback(
     (event: { eventType: string; new: Message }) => {
-      const msg = event.new;
+      // O `payload.new` traz a linha inteira — `gravada_em` incluído.
+      const msg = event.new as Message & { gravada_em?: string | null };
       if (msg.conversation_id !== conversaId) return;
       if (event.eventType === "INSERT") {
+        // A devolvida pela restauração não entra pelo fim nem recarrega as
+        // execuções: o fio é relido uma vez quando a conversa volta (abaixo).
+        if (reinseridaPelaRestauracao(msg.gravada_em, restauradaEmRef.current)) return;
         setMessages((prev) => {
           if (prev.some((m) => m.id === msg.id)) return prev;
           // A linha gravada substitui a bolha otimista do envio.
@@ -279,7 +288,16 @@ function ConversaCarregada({
   );
   const handleConversationEvent = useCallback(
     (event: { eventType: string; new: Conversation }) => {
-      if (event.eventType !== "UPDATE" || event.new.id !== conversaId) return;
+      if (event.new.id !== conversaId) return;
+      // ⚠️ A conversa VOLTOU da Lixeira (1097): ela nasce com `restaurada_em`
+      // e as mensagens antigas vêm atrás. Relê tudo uma vez (a transação já
+      // terminou), como a página do inbox.
+      if (event.eventType === "INSERT" && event.new.restaurada_em) {
+        restauradaEmRef.current = event.new.restaurada_em;
+        setResyncToken((n) => n + 1);
+        return;
+      }
+      if (event.eventType !== "UPDATE") return;
       // O payload não traz o contato embutido: o espalhamento o preserva.
       setConversation((prev) => (prev ? { ...prev, ...event.new } : prev));
     },

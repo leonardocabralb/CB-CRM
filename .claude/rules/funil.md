@@ -13,6 +13,7 @@ paths:
   - "src/lib/lead-events/**"
   - "src/components/lead-events/**"
   - "src/hooks/use-lead-events*"
+  - "src/hooks/use-negocios-na-lixeira*"
   - "src/components/inbox/painel/seletor-funil-etapa.tsx"
   - "src/lib/dashboard/**"
   - "src/components/dashboard/**"
@@ -23,16 +24,14 @@ paths:
 
 # Funil (quadro, negócio, etapa, card) — regras
 
-Vale no quadro Kanban e na página do Funil, em `src/lib/pipelines/` e
-`src/lib/deals/`, no roteador de entrada (`pipeline-routing.ts`: etapa de
-entrada, título, guarda de grupo), na trilha do lead (`lead-events`), no seletor de funil/etapa
-do painel da conversa, no Painel (dashboard) e nas rotas v1 de negócios e
-funis. As métricas (Lista, Desempenho, Saúde, Meta Ads) estão em
+Vale no quadro e na página do Funil, no roteador de entrada
+(`pipeline-routing.ts`), na trilha do lead, no seletor de funil/etapa do
+painel, no Painel e nas rotas v1 de negócios e funis. As métricas (Lista,
+Desempenho, Saúde, Meta Ads) estão em
 `.claude/rules/funil-metricas.md`; a recarga ao voltar para o app, em
 `.claude/rules/ao-voltar.md`; as automações que movem card (alvo, card fixado,
 `create_deal`), em `.claude/rules/automacoes.md`; o SQL dos gatilhos, em
-`.claude/rules/supabase.md`. O texto antigo, com a história, está em
-`git show f5879b3f:CLAUDE.md`.
+`.claude/rules/supabase.md`.
 
 ### Funil-com-conversas: o card do Kanban ABRE A CONVERSA, não o negócio
 
@@ -44,6 +43,10 @@ funis. As métricas (Lista, Desempenho, Saúde, Meta Ads) estão em
   Invertido, trocar o contato do negócio deixava o card com a cara do novo e o
   clique abrindo a conversa do antigo — o vínculo só é escrito no NASCIMENTO.
   O fallback cobre contato apagado e o plano B do select. Pino: `cartao.test.ts`.
+- ⚠️ **Card cuja ficha está na Lixeira (B4, 1097)**: fica no funil com
+  `contact_id` nulo e a marca "Contato na Lixeira" (com o nome), por
+  `cb_negocios_na_lixeira` (`useNegociosNaLixeira`; qualquer membro) só para
+  card SEM contato — nulo sozinho não prova Lixeira. Restaurar reaponta.
 - ⚠️ **`deal-card.tsx` é NOSSO inteiro** (num merge, fica o nosso): wrapper +
   botão do corpo (abre a conversa) + lápis IRMÃO (button aninhado é inválido),
   campos por `CamposDoCard`, etiquetas/última mensagem/não lidas, `memo` com
@@ -81,8 +84,8 @@ funis. As métricas (Lista, Desempenho, Saúde, Meta Ads) estão em
   da carga. Os canais são buscados UMA vez no board (`useChannels` no card
   custava um GET por card) e o `DealCard` é `memo` com handlers `useCallback`
   — prop nova instável volta a redesenhar o quadro inteiro a cada tecla.
-- **O deep link para o inbox** (`?etapa=`, `?de=funil`, `urlDoInbox`,
-  `recorteDeEtapaConfiavel`, o filtro semeado que morre com a jornada) está em
+- **O deep link para o inbox** (`?etapa=`, `?de=funil`, `urlDoInbox`, o
+  filtro semeado que morre com a jornada) está em
   `.claude/rules/inbox-lista.md`. Na página do funil, `?vista=` e `?funil=`
   são porta de ENTRADA, lidas uma vez na montagem; o voltar do construtor de
   automações (`voltaDoConstrutor`, pino `url.test.ts`) está em
@@ -374,8 +377,8 @@ status e etiqueta, e automações e colegas no Kanban movem o card com a
 conversa aberta — a linha "Avançou de … para …" só aparecia depois de
 atualizar.
 
-- Tipos da conversa (1083) e `contacts_merged` (1092) têm `deal_id` nulo:
-  leitor de funil filtra o tipo.
+- Tipos da conversa (1083), `contacts_merged` (1092) e os da Lixeira (1097)
+  têm `deal_id` nulo: leitor de funil filtra o tipo.
 - **Só INSERT**, filtrado por `contact_id`. A trilha só cresce; o evento
   apagado por um desfazer de carga some na próxima busca. O `token`
   (atualizar, volta à aba, reconexão) continua refazendo a busca.
@@ -388,9 +391,8 @@ atualizar.
   (`chegadosRef`): a foto dela pode ser anterior ao evento. Na junção, a versão
   buscada vence. A busca que FALHA deixa a lista como está.
 - **Limite conhecido**: evento gravado entre a foto da busca inicial e o canal
-  ficar ativo (~0,1–0,5 s ao abrir a conversa) só aparece na próxima busca.
-  Fechar pede uma segunda busca por abertura e trava de ordem entre as buscas —
-  decidido não compensar (Codex, PR #336).
+  ficar ativo (~0,1–0,5 s ao abrir a conversa) só aparece na próxima busca —
+  decidido não compensar (fechar pediria duas buscas por abertura).
 - **O que sai do hook é do contato do render ATUAL** (filtro por
   `contact_id`), a busca do contato anterior que volta por último é
   descartada (`vivo`), e `carregando` vale até a busca DESTE contato voltar
