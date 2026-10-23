@@ -45,7 +45,7 @@
 | **0** | Estudo, riscos conferidos no código e na produção, decisões | ✅ 22/10/2026 (este arquivo) | — | — |
 | **1** | Banco e servidor: colunas, regras, gatilho na fila de arquivos a apagar (a fila e a drenagem já existem: Lixeira), regras do armazenamento para `notas/`, POST com anexos | ✅ 1102 aplicada na produção em 23/10/2026 (histórico `20261023220536`, depois do CI verde em `a268963d`) e conferida; registro em `docs/MIGRATIONS-APLICADAS.md` | `1102` | #434 |
 | **2** | Tela: anexar, gravar, colar e arrastar na caixa; mostrar nos cinco lugares; aviso no sino | ✅ e2e no preview em 23/10/2026 (1440×900, ~1024 e 375 px; registro abaixo); **falta o iPhone** (gravar e ouvir) | — | #434 |
-| **3** | Edição: editar no lugar, marca "editada", menção acrescentada | ✅ código na branch `feat/anotacao-editavel` (23/10/2026), revisado e corrigido (registro abaixo); **falta o preview** (1440×900, ~305 e 375 px) e o iPhone | a da Fase 1 (`editada_em`) | — |
+| **3** | Edição: editar no lugar, marca "editada", menção acrescentada | ✅ revisada e corrigida; e2e no preview em 23/10/2026 (1440×900 e 375 px; registro abaixo); **falta o iPhone** e o merge (com o "pode" do operador) | a da Fase 1 (`editada_em`) | #435 |
 | **4** | API v1 (`GET /notes` com anexos e `editada_em`) e doc pública | ✅ na mesma branch (23/10/2026) | — | #434 |
 
 PRs: Fases 1 e 2 juntas (a 1 sozinha não tem tela para provar no preview); a
@@ -636,11 +636,9 @@ quem entrou, `mencionados` ausente, suspenso gravado sem aviso), os de
 (medido no preview: luminosidade 98 sobre 98,6) — já era assim no `main`. Na
 edição é ele que desiste; ganhou o âmbar dos ícones ao lado.
 
-**Fica para depois:** o e2e no preview, na conversa de teste autorizada
-(editar texto e anexos; tirar um anexo e ver a fila esvaziar depois do ciclo;
-a marca na tela do colega; a menção acrescentada avisando só o novo; editar
-com a nota apagada noutra sessão; dois cliques em Salvar; ~305 e 375 px) e o
-iPhone (a caixa no lugar com o teclado aberto).
+**Fica para depois:** o iPhone (a caixa no lugar com o teclado aberto; o
+arrasto no texto dela). O e2e no preview foi feito em 23/10/2026 (seção "e2e
+no preview da Fase 3", abaixo).
 
 ### Correções da revisão da Fase 3 (23/10/2026: revisor independente)
 
@@ -678,3 +676,39 @@ iPhone (a caixa no lugar com o teclado aberto).
   (dentro do contêiner que rola, para baixo a rolagem a alcança).
 - Não mexido: a marca "editada" com a hora só no `title` vai ao operador
   como pergunta.
+
+### e2e no preview da Fase 3 (23/10/2026)
+
+No dev da branch (`6da25da3`) contra a produção, só na conversa de teste
+autorizada pelo operador:
+
+- **Editar texto e anexos**: o lápis abre a caixa no lugar ("Editando a
+  anotação interna:", o texto e os anexos, cada um com "Tirar"); tirar A e
+  pôr C grava `[B, C]`, o texto novo e a `editada_em`, e o caminho de A entra
+  na fila com origem `anotacao`.
+- **Duas edições seguidas**: a segunda passa — a cerca de versão compara
+  certo no PostgREST real (o que a revisão não pôde medir).
+- **Nada mudou**: 200 `mudou: false`, sem mexer na `editada_em`.
+- **A rota direto**: sem `mantidos` = 400; versão velha = 409
+  `NOTE_CHANGED` com a nota atual; nada gravado.
+- **Duas abas**: a aba 2 salva; a aba 1, com a versão velha, recebe "editada
+  em outro lugar… nada foi sobrescrito", com o rascunho na caixa; cancelar e
+  editar de novo parte da versão da aba 2 e salva.
+- **Pelo painel**: a fixada vira caixa no lugar dela; a edição chega ao fio
+  pelo tempo real.
+- **Marca "editada"** no fio, na faixa fixada, na citação (na caixa e no
+  fio), na aba Notas e na ficha de `/contatos`, esta sem lápis (A6).
+- **Dois cliques em Salvar**: um PUT só.
+- **375 px**: a caixa de edição cabe no fio (292 px); a lista de @ abre para
+  baixo, dentro da tela.
+- **Apagada noutra aba durante a edição**: a caixa fecha com "A anotação que
+  você editava foi apagada." (um aviso só). A resposta a ela vira anotação
+  comum (a 1075 anula `resposta_de`).
+- **"Cancelar"** legível no modo escuro.
+- **Limpeza**: as duas anotações de teste apagadas pela tela → A, B e C na
+  fila → a drenagem do laço lento das 23:16 UTC apagou os 3 objetos e
+  esvaziou a fila; `notas/` ficou sem objeto.
+
+Não coberto: a menção acrescentada (avisaria um colega de verdade; os testes
+da rota cobrem); a marca na tela de outro usuário; o arrasto e o teclado no
+iPhone (só no aparelho).
