@@ -456,6 +456,13 @@
       "noteSavedAfterLeaving": "The note was saved in the conversation where it was written.",
       "noteNotSavedAfterLeaving": "The note was not saved: the box was closed before it finished, and the draft was discarded. Write it again in the conversation.",
       "noteMaybeSavedAfterLeaving": "Could not confirm whether the note was saved (the box was closed before the reply). Check the conversation.",
+      "noteEditTitle": "Editing the internal note:",
+      "saveEdit": "Save changes",
+      "noteEditGone": "The note you were editing was deleted.",
+      "noteEditChanged": "This note was edited somewhere else while you were editing. Cancel and edit again — nothing was overwritten.",
+      "noteEditForbidden": "Only whoever wrote the note can edit it.",
+      "noteEditNotSavedAfterLeaving": "The edit was not saved: the box was closed before it finished. Edit again in the conversation.",
+      "noteEditMaybeSaved": "Could not confirm whether the edit was saved (no response arrived). Check the note before saving again.",
       "fromLibrary": "From library",
       "acervoError": "Could not prepare the library file.",
       "solteParaAnexar": "Drop here to attach",
@@ -1115,7 +1122,10 @@
       "resumoVarios": "📎 {n} attachments",
       "abrirAnexo": "Open {nome}",
       "baixarAnexo": "Download {nome}",
-      "ampliarAnexo": "Enlarge {nome}"
+      "ampliarAnexo": "Enlarge {nome}",
+      "edit": "Edit",
+      "editada": "edited {quando}",
+      "editadaEm": "Edited on {quando}"
     },
     "scheduled": {
       "sectionTitle": "Scheduled",

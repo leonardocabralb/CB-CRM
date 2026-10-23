@@ -128,6 +128,31 @@ export function arrastoRecolheTeclado(
 }
 
 /**
+ * Atributo na raiz da caixa da anotação interna (`InternalNoteBox`). Na
+ * EDIÇÃO (Fase 3 da 1102) ela mora DENTRO do fio, no lugar da anotação.
+ */
+export const ATRIBUTO_CAIXA_DE_NOTA = "data-caixa-de-nota";
+
+/**
+ * Onde o arrasto NÃO é rolar a conversa: um campo onde se escreve e a caixa
+ * da anotação inteira (a lista de @menções e os botões dela inclusos).
+ */
+export const SELETOR_FORA_DO_ARRASTO = `textarea,input,select,[contenteditable]:not([contenteditable="false"]),[${ATRIBUTO_CAIXA_DE_NOTA}]`;
+
+/**
+ * O toque NASCEU fora da conversa — num campo ou na caixa da anotação? Então
+ * o arrasto dele não recolhe o teclado. Sem isso, arrastar o dedo no texto da
+ * anotação em edição (mover o cursor, rolar o texto longo) ou na lista de
+ * @menções subia até o fio, tirava o foco do campo e fechava o teclado a cada
+ * tentativa — e a lista junto. O alvo de um toque é o elemento onde ele
+ * COMEÇOU, e é lido no `touchstart`.
+ */
+export function toqueNasceuForaDaConversa(alvo: EventTarget | null): boolean {
+  const el = alvo as { closest?: (seletor: string) => unknown } | null;
+  return typeof el?.closest === "function" && el.closest(SELETOR_FORA_DO_ARRASTO) != null;
+}
+
+/**
  * O Enter envia a mensagem?
  *
  * No aparelho de toque, não: o teclado do celular não tem Shift+Enter, então

@@ -41,7 +41,10 @@ import {
 import { patchDeSituacao } from "@/lib/conversations/situacao";
 import { acharNoFio } from "@/lib/inbox/achados-no-fio";
 import { semAcento, TERMO_MINIMO } from "@/lib/inbox/busca-em-mensagens";
-import { arrastoRecolheTeclado } from "@/lib/celular/teclado";
+import {
+  arrastoRecolheTeclado,
+  toqueNasceuForaDaConversa,
+} from "@/lib/celular/teclado";
 import {
   DESTAQUE_DO_SALTO_MS,
   seletorDoAlvo,
@@ -72,6 +75,8 @@ import {
 } from "@/lib/assinatura/assinatura";
 import { LeadEventLine } from "@/components/lead-events/lead-event-line";
 import { NoteLine } from "./note-line";
+import { InternalNoteBox } from "./internal-note-box";
+import { useEdicaoDeNota } from "@/hooks/use-edicao-de-nota";
 import { AvisoDeExecucao } from "./aviso-de-execucao";
 import { NotaFixadaBar } from "./nota-fixada-bar";
 import { cn } from "@/lib/utils";
@@ -1397,8 +1402,10 @@ export function MessageThread({
   // inexistente, e um hook ali violaria a regra dos hooks.
   const {
     notas,
+    pronta: notasProntas,
     remover: removerNotaLocal,
     acrescentar: acrescentarNota,
+    substituir: substituirNota,
     recarregar: recarregarNotas,
     aplicarFixacao,
   } = useConversationNotes(conversationId, resyncToken);
@@ -1445,6 +1452,16 @@ export function MessageThread({
   const notaRespondida =
     respondendo && respondendo.de === conversationId ? respondendo.nota : null;
   const limparNotaRespondida = useCallback(() => setRespondendo(null), []);
+  /**
+   * EDITAR uma anotação no lugar (Fase 3): o lápis da `NoteLine` (só para o
+   * AUTOR) troca a linha pela caixa — a do fio, nunca a do compositor, onde o
+   * Enter envia ao cliente. Carimbado com a conversa (`useEdicaoDeNota`).
+   */
+  const {
+    editandoId: notaEmEdicao,
+    editar: editarNota,
+    pararDeEditar: pararDeEditarNota,
+  } = useEdicaoDeNota(conversationId, notas, notasProntas);
   /** A respondida de cada resposta, para a citação (as notas já carregadas). */
   const notasPorId = useMemo(
     () => new Map(notas.map((n) => [n.id, n])),
@@ -1686,10 +1703,16 @@ export function MessageThread({
    * recolhê-lo (relato do operador, 14/09/2026). Só para baixo: arrastar para
    * cima, rumo ao fim, é o gesto de quem continua escrevendo.
    * E arrastar continua sendo agir: solta o salto da busca, como a roda.
+   * ⚠️ O toque que NASCE num campo ou na caixa da anotação não conta
+   * (`toqueNasceuForaDaConversa`): a caixa de EDIÇÃO mora dentro do fio, e
+   * arrastar o dedo no texto dela ou na lista de @menções fechava o teclado a
+   * cada tentativa.
    */
   const inicioDoToqueRef = useRef<number | null>(null);
   const aoTocarNoFio = useCallback((e: React.TouchEvent) => {
-    inicioDoToqueRef.current = e.touches[0]?.clientY ?? null;
+    inicioDoToqueRef.current = toqueNasceuForaDaConversa(e.target)
+      ? null
+      : (e.touches[0]?.clientY ?? null);
   }, []);
   const aoArrastarOFio = useCallback(
     (e: React.TouchEvent) => {
@@ -3218,8 +3241,36 @@ export function MessageThread({
                               destaqueDaCitacao.id === item.nota.id)
                           }
                         >
+                        {notaEmEdicao === nota.id && conversationId ? (
+                          // A caixa toma o lugar da linha (Fase 3), no mesmo
+                          // molde centralizado: o salto até a nota segue
+                          // achando o `LinhaDoFio` dela.
+                          <div className="flex justify-center py-1">
+                            <div className="w-full max-w-[85%]">
+                              <InternalNoteBox
+                                key={`edicao:${nota.id}`}
+                                conversationId={conversationId}
+                                editando={nota}
+                                // Para BAIXO: dentro do fio (que rola), a
+                                // lista de @menções aberta para cima sai do
+                                // alcance quando a nota está no alto da tela —
+                                // para baixo, rolar a alcança.
+                                listaParaBaixo
+                                onSaved={substituirNota}
+                                onClose={pararDeEditarNota}
+                              />
+                            </div>
+                          </div>
+                        ) : (
                         <NoteLine
                           nota={item.nota}
+                          // Só o AUTOR edita (A2); anotação sem autor
+                          // (automação, agente de IA) nunca.
+                          onEditar={
+                            podeAnotar && user?.id && nota.author_user_id === user.id
+                              ? () => editarNota(nota)
+                              : undefined
+                          }
                           respondida={
                             respondidaId ? (notasPorId.get(respondidaId) ?? null) : null
                           }
@@ -3247,6 +3298,7 @@ export function MessageThread({
                               : undefined
                           }
                         />
+                        )}
                         </LinhaDoFio>
                       );
                     }

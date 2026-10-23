@@ -20,6 +20,7 @@ import {
   escolherAnexosDaNota,
   lerAnexosDaNota,
   lerAnexosDoCorpo,
+  mantidosSaoDaNota,
   nomeDaGravacao,
   prefixoDasNotas,
   resumoDosAnexos,
@@ -279,6 +280,53 @@ describe('lerAnexosDaNota (o JSON gravado, para mostrar)', () => {
     expect(lerAnexosDaNota(undefined)).toEqual([]);
     expect(lerAnexosDaNota(null)).toEqual([]);
     expect(lerAnexosDaNota({ caminho: 'x' })).toEqual([]);
+  });
+});
+
+describe('mantidosSaoDaNota (Fase 3: o que FICA na edição)', () => {
+  const daNota = [
+    { caminho: `${PREFIXO}u1/a.ogg`, nome: 'a.ogg', mime: 'audio/ogg', bytes: 10 },
+    { caminho: `${PREFIXO}u2/b.pdf`, nome: 'b.pdf', mime: 'application/pdf', bytes: 20 },
+    { caminho: `${PREFIXO}u3/c.png`, nome: 'c.png', mime: 'image/png', bytes: 30 },
+  ];
+
+  it('ausente ou nulo é RECUSADO: tirar todos é `[]` explícito (um corpo sem o campo apagaria os anexos)', () => {
+    expect(mantidosSaoDaNota(undefined, daNota)).toEqual({ ok: false, erro: 'ATTACHMENTS_INVALID' });
+    expect(mantidosSaoDaNota(null, daNota)).toEqual({ ok: false, erro: 'ATTACHMENTS_INVALID' });
+    expect(mantidosSaoDaNota([], daNota)).toEqual({ ok: true, anexos: [] });
+  });
+
+  it('o que fica é o que a NOTA guarda (nome, tipo e tamanho dela), na ordem pedida', () => {
+    expect(mantidosSaoDaNota([`${PREFIXO}u3/c.png`, `${PREFIXO}u1/a.ogg`], daNota)).toEqual({
+      ok: true,
+      anexos: [daNota[2], daNota[0]],
+    });
+  });
+
+  it('caminho que a nota NÃO tem é recusado, dizendo qual — nem de outra nota da conta', () => {
+    expect(mantidosSaoDaNota([`${PREFIXO}u9/outra.pdf`], daNota)).toEqual({
+      ok: false,
+      erro: 'ATTACHMENT_NOT_IN_NOTE',
+      caminho: `${PREFIXO}u9/outra.pdf`,
+    });
+    // Nota sem anexo: nada pode "ficar".
+    expect(mantidosSaoDaNota([`${PREFIXO}u1/a.ogg`], [])).toMatchObject({
+      ok: false,
+      erro: 'ATTACHMENT_NOT_IN_NOTE',
+    });
+  });
+
+  it('forma torta e repetição são recusadas', () => {
+    expect(mantidosSaoDaNota('x', daNota)).toEqual({ ok: false, erro: 'ATTACHMENTS_INVALID' });
+    expect(mantidosSaoDaNota([{ caminho: `${PREFIXO}u1/a.ogg` }], daNota)).toEqual({
+      ok: false,
+      erro: 'ATTACHMENTS_INVALID',
+    });
+    expect(mantidosSaoDaNota([`${PREFIXO}u1/a.ogg`, `${PREFIXO}u1/a.ogg`], daNota)).toEqual({
+      ok: false,
+      erro: 'ATTACHMENT_REPEATED',
+      caminho: `${PREFIXO}u1/a.ogg`,
+    });
   });
 });
 

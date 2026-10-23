@@ -4,6 +4,7 @@ import {
   ChevronDown,
   ChevronUp,
   Locate,
+  Pencil,
   Pin,
   PinOff,
   Reply,
@@ -17,6 +18,7 @@ import {
   ResumoDosAnexos,
 } from '@/components/inbox/anexos-da-nota';
 import { CitacaoDaNota } from '@/components/inbox/citacao-da-nota';
+import { MarcaDeEditada } from '@/components/inbox/marca-de-editada';
 import { TextoComLinks } from '@/components/inbox/texto-com-links';
 import { lerAnexosDaNota } from '@/lib/notes/anexos';
 import { cn } from '@/lib/utils';
@@ -60,6 +62,11 @@ import type { ConversationNote } from '@/types';
  * RESPOSTA (1075): a mesma citação e o mesmo "Responder" da `NoteLine`. Na
  * aba a resposta fica onde foi escrita, com a respondida citada em cima
  * (decisão do operador); a caixa de escrever é a do topo da aba.
+ *
+ * EDIÇÃO (Fase 3): o lápis, só com `onEditar` (quem monta o passa só ao
+ * AUTOR — A2), e quem monta troca o cartão pela caixa no lugar dele. A marca
+ * "editada" fica ao lado da data, em todo cartão (a ficha de `/contatos`
+ * mostra, sem lápis — A6).
  */
 export function CartaoDeNota({
   nota,
@@ -72,6 +79,7 @@ export function CartaoDeNota({
   onVerNaConversa,
   respondida,
   onResponder,
+  onEditar,
 }: {
   nota: ConversationNote;
   /** Autor ou admin — quem decide de verdade é a RLS; isto só esconde o botão. */
@@ -100,6 +108,8 @@ export function CartaoDeNota({
   respondida?: ConversationNote | null;
   /** Ausente = sem botão Responder (a ficha de `/contatos`). */
   onResponder?: () => void;
+  /** Ausente = sem lápis (só o AUTOR edita — A2; a ficha não edita — A6). */
+  onEditar?: () => void;
 }) {
   const t = useTranslations('Inbox.note');
   const tSidebar = useTranslations('Inbox.sidebar');
@@ -168,6 +178,7 @@ export function CartaoDeNota({
                 minute: '2-digit',
               })}
             </span>
+            <MarcaDeEditada editadaEm={nota.editada_em} criadaEm={nota.created_at} />
           </p>
         </div>
         <span className="flex shrink-0 items-center gap-1.5">
@@ -196,6 +207,17 @@ export function CartaoDeNota({
               className="text-muted-foreground hover:text-foreground -m-1 p-1 transition-colors"
             >
               <Locate className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {onEditar && (
+            <button
+              type="button"
+              onClick={onEditar}
+              aria-label={t('edit')}
+              title={t('edit')}
+              className="text-muted-foreground hover:text-foreground -m-1 p-1 transition-colors"
+            >
+              <Pencil className="h-3.5 w-3.5" />
             </button>
           )}
           {onFixar && (

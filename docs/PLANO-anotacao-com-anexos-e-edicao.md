@@ -45,7 +45,7 @@
 | **0** | Estudo, riscos conferidos no código e na produção, decisões | ✅ 22/10/2026 (este arquivo) | — | — |
 | **1** | Banco e servidor: colunas, regras, gatilho na fila de arquivos a apagar (a fila e a drenagem já existem: Lixeira), regras do armazenamento para `notas/`, POST com anexos | ✅ 1102 aplicada na produção em 23/10/2026 (histórico `20261023220536`, depois do CI verde em `a268963d`) e conferida; registro em `docs/MIGRATIONS-APLICADAS.md` | `1102` | #434 |
 | **2** | Tela: anexar, gravar, colar e arrastar na caixa; mostrar nos cinco lugares; aviso no sino | ✅ e2e no preview em 23/10/2026 (1440×900, ~1024 e 375 px; registro abaixo); **falta o iPhone** (gravar e ouvir) | — | #434 |
-| **3** | Edição: editar no lugar, marca "editada", menção acrescentada | ⏳ (outro PR; a coluna `editada_em` já entrou na 1102) | a da Fase 1 | — |
+| **3** | Edição: editar no lugar, marca "editada", menção acrescentada | ✅ revisada e corrigida; e2e no preview em 23/10/2026 (1440×900 e 375 px; registro abaixo); **falta o iPhone** e o merge (com o "pode" do operador) | a da Fase 1 (`editada_em`) | #435 |
 | **4** | API v1 (`GET /notes` com anexos e `editada_em`) e doc pública | ✅ na mesma branch (23/10/2026) | — | #434 |
 
 PRs: Fases 1 e 2 juntas (a 1 sozinha não tem tela para provar no preview); a
@@ -230,8 +230,8 @@ Número = maior do `main` + 1 NA HORA (`ls supabase/migrations`,
 - Tetos: `TETO_DO_ANEXO` (A7) e `MAX_ANEXOS_DA_NOTA` = `MAX_ANEXOS`;
   `SUBPASTA_DAS_NOTAS = 'notas'`.
 - `lerAnexosDoCorpo` (forma, prefixo `account-<conta>/notas/`, sem
-  repetição), `mantidosSaoDaNota` (Fase 3, ainda não escrita: na edição, os
-  que ficam são os que a nota já tinha) e `resumoDosAnexos` ("🎤 Áudio", "📎 3 anexos") para o aviso, a
+  repetição), `mantidosSaoDaNota` (Fase 3: na edição, os
+  que ficam são os que a nota já tinha, gravados como a nota os guarda) e `resumoDosAnexos` ("🎤 Áudio", "📎 3 anexos") para o aviso, a
   citação e a faixa fixada.
 
 ### Rotas
@@ -317,8 +317,9 @@ Número = maior do `main` + 1 NA HORA (`ls supabase/migrations`,
   envia ao cliente.
 - **Marca "editada"** ao lado da hora, com a hora da edição no `title`, nos
   cinco lugares (A4).
-- **Tempo real sem mudar o hook:** ele já troca a linha no UPDATE; a citação
-  e a faixa fixada leem a nota atual.
+- **Tempo real:** o hook já troca a linha no UPDATE; a citação e a faixa
+  fixada leem a nota atual. (Na implementação o hook ganhou só `substituir`:
+  a resposta do `PUT` troca a linha na hora, como o `acrescentar` do POST.)
 - **Menção acrescentada** → `note_mention` só para quem entrou.
 - Os comentários que afirmam "a nota não é editável" (918,
   `[id]/route.ts`, `use-conversation-notes.ts`, `anotacoes.md`) mudam junto.
@@ -554,3 +555,179 @@ não tem microfone); perfil leitura anexando e o tempo real numa segunda
 sessão (outro usuário); trocar de conversa gravando. De passagem: o
 "Cancelar" da caixa some no modo escuro (texto claro sobre o âmbar) — já era
 assim no `main`; o conserto foi para a Fase 3, onde ele desiste da edição.
+
+## Fase 3 — registro (23/10/2026)
+
+**Objetivo:** editar a anotação NO LUGAR (texto e anexos), só pelo autor, com
+a marca "editada" nos cinco lugares e a menção acrescentada avisando só quem
+entrou. Branch `feat/anotacao-editavel`, a partir de `a268963d` (a ponta do
+#434), com o `main` mesclado depois do merge do #434. Sem migration:
+`editada_em` entrou na 1102 (aplicada).
+
+**Arquivos.** Servidor: o `PUT` em `src/app/api/cb/notes/[id]/route.ts` (e o
+`PATCH` de fixar passou a responder 500, não 403, quando a leitura do perfil
+falha) e `mantidosSaoDaNota` em `src/lib/notes/anexos.ts`. Navegador: o modo
+`editando` do `internal-note-box.tsx`, `src/hooks/use-edicao-de-nota.ts`, o
+`substituir` do `use-conversation-notes.ts`, `marca-de-editada.tsx`, o lápis
+em `note-line.tsx` e `cartao-de-nota.tsx`, a marca na faixa fixada, na
+citação e na ficha de `/contatos`, os três que trocam a nota pela caixa
+(`message-thread.tsx`, `painel-do-contato.tsx`, `group-sidebar.tsx`), o
+comentário de `ConversationNote`, os dois dicionários, a frase do
+`editada_em` em `docs/public-api.md` (o contrato da API não mudou),
+`anotacoes.md` e `docs/MERGE-UPSTREAM.md`. `poderes.ts` não mudou: quem anota
+(`canWriteNotes`, `viewer` para cima) edita a PRÓPRIA, e as telas já são
+`viewer` em `ESCRITA_DA_TELA`.
+
+**Decisões tomadas na implementação (conferir com o operador):**
+- a cerca de concorrência é o próprio `editada_em` (a tabela não tem
+  `updated_at`): a caixa manda a versão de quando ABRIU e o banco compara, na
+  leitura e no UPDATE. Editada noutro lugar = 409 `NOTE_CHANGED`, com a nota
+  atual: nada se sobrescreve e o rascunho fica na caixa ("cancele e edite de
+  novo"); não há mescla;
+- apagada antes da leitura OU entre a leitura e o UPDATE = 409 `NOTE_GONE`
+  (as duas medidas pela mesma releitura); a caixa diz que foi apagada;
+- o corpo é `{ texto, mencionados, mantidos, novos, versao }`: `mantidos` são
+  só os caminhos (o resto vem da nota) e são OBRIGATÓRIOS (tirar todos é
+  `[]`), `novos` têm a forma dos `anexos` do POST;
+- "nada mudou" compara o texto aparado e a lista de caminhos NA ORDEM: sem
+  UPDATE, `editada_em` intacta, `mudou: false`;
+- as menções gravadas FICAM quando não há conferência: leitura dos membros
+  que falhou na rota, ou a caixa que ainda não tinha (ou não conseguiu) a
+  lista de membros — ela então não manda `mencionados`. Sem isso, quem já
+  estava mencionado "entraria" de novo na edição seguinte;
+- a nota em edição que some da lista RESPONDIDA (apagada por outra pessoa)
+  fecha a caixa com o aviso "foi apagada"; os anexos novos ainda não salvos
+  ficam na memória e somem com ela (nada subiu antes do Salvar);
+- o lápis vem antes do alfinete (no cartão, depois de "Ver na conversa"); no
+  fio, só para quem anota (`podeAnotar`) e é o autor;
+- a marca é "editada <hora da edição>" em itálico ao lado da hora (a hora
+  VISÍVEL foi decisão do operador depois da revisão; ver "A hora da edição
+  visível", abaixo), com "Editada em <data e hora>" no `title`;
+- frases próprias da edição: o título "Editando a anotação interna:", o botão
+  "Salvar alterações" e os avisos de apagada, editada noutro lugar, sem
+  permissão e "não salva" com a caixa fora da tela; os de "salva" e "talvez
+  salva" fora da tela são os da anotação nova.
+
+**Testes (Node 22):** `[id]/route.test.ts` novo (35 casos do `PUT` e o
+erro de perfil do `PATCH`: autor × não autor × admin × sem autor, mantido de
+outra nota, `mantidos` ausente, novo ausente/grande/tipo recusado/
+armazenamento fora, nada mudou, 409 nas duas janelas com a nota atual, a
+versão que vai ao banco como veio, erros de leitura = 500, menção só para
+quem entrou, `mencionados` ausente, suspenso gravado sem aviso), os de
+`mantidosSaoDaNota` em `anexos.test.ts`, `destinoDaEdicao` em
+`edicao.test.ts`, o toque na caixa em `teclado.test.ts`, a marca e o lápis em
+`cartao-de-nota.test.tsx`, e o default-deny estendido para a marca.
+
+**Limites conhecidos (novos):**
+- na aba Notas, a nota FIXADA ou desafixada por outra pessoa no meio da
+  edição muda de lugar (do cartão preso para a lista, ou o contrário): a
+  caixa remonta e o rascunho se perde, sem aviso;
+- a recarga das anotações que FALHA (voltar ao app sem rede) esvazia a
+  lista: a caixa some com o rascunho, sem o aviso de "apagada" (falha não é
+  apagada), e a edição acaba ali — a recarga seguinte mostra a nota como
+  está, sem reabrir a caixa;
+- o membro RENOMEADO: o "@Nome" antigo no texto não casa com o nome novo, e
+  uma correção qualquer o tira da lista gravada de mencionados; se a nota
+  voltar a citá-lo pelo nome atual (ou ele voltar ao nome antigo), a edição
+  seguinte o avisa de novo. Raro; consertar exigiria guardar a menção pelo
+  id dentro do texto.
+
+**Achado no e2e das Fases 1–2 e consertado aqui:** o "Cancelar" da caixa
+(`ghost`) herdava a cor do tema e, no modo escuro, saía branco sobre o âmbar
+(medido no preview: luminosidade 98 sobre 98,6) — já era assim no `main`. Na
+edição é ele que desiste; ganhou o âmbar dos ícones ao lado.
+
+**Fica para depois:** o iPhone (a caixa no lugar com o teclado aberto; o
+arrasto no texto dela). O e2e no preview foi feito em 23/10/2026 (seção "e2e
+no preview da Fase 3", abaixo).
+
+### Correções da revisão da Fase 3 (23/10/2026: revisor independente)
+
+- **P2 — o arrasto dentro da caixa de edição fechava o teclado (celular).** A
+  caixa de edição mora DENTRO do contêiner que rola o fio, e o `touchmove`
+  subia até ele (`arrastoRecolheTeclado` → `blur`): arrastar o dedo no texto
+  ou na lista de @menções recolhia o teclado e fechava a lista. Agora o toque
+  que NASCE num campo ou na caixa (`data-caixa-de-nota` na raiz do
+  `InternalNoteBox`) não conta: `toqueNasceuForaDaConversa`, lido no
+  `onTouchStart`, puro e com teste, e pinos lendo o fio e a caixa.
+- **P3 — `mencoesNotificadas: false` sem ninguém a avisar.** Na falha da
+  leitura dos membros, a rota só diz `false` quando alguém ENTRARIA na
+  menção; corrigir uma letra de "@Bia confere", com a Bia já gravada, não
+  falhou em avisar ninguém.
+- **P3 — a recarga que falhava reabria a caixa depois.** `useEdicaoDeNota`
+  solta a edição no render sempre que a nota sai da lista
+  (`destinoDaEdicao`, puro, em `src/lib/notes/edicao.ts`, com teste) e só
+  avisa "apagada" com a lista respondida.
+- **P3 — `mantidos` ausente tirava todos os anexos** (e o gatilho os apagaria
+  em ~15 min). Agora é 400, na rota (antes de ler a nota) e em
+  `mantidosSaoDaNota`; tirar todos é `[]`.
+- **P3 — 409 em laço com a lista velha.** O 409 `NOTE_CHANGED` leva a nota
+  ATUAL (`note`), e a caixa a entrega ao `onSaved` (= `substituir` nos três
+  lugares que editam) sem fechar: cancelar e editar de novo parte da versão
+  atual, também na aba do grupo, que não tem `resyncToken`. E o `PUT` sem
+  resposta diz "talvez salva" (`noteEditMaybeSaved`, nos dois dicionários),
+  não "não foi possível salvar".
+- **P3 — o suspenso "entrava" de novo na menção.** Na edição a caixa refaz a
+  menção contra TODOS os membros (as sugestões seguem só com os ativos), e a
+  rota grava o suspenso (lê `suspenso_em`) sem avisá-lo — de volta, ele não é
+  avisado outra vez. De quebra, "@Ana Paula" (suspensa) não casa mais com
+  "@Ana". O membro renomeado ficou como limite (acima).
+- **P3 — a lista de @menções abria para cima no fio**, fora do alcance com a
+  nota no alto da tela: a caixa de edição do fio passa `listaParaBaixo`
+  (dentro do contêiner que rola, para baixo a rolagem a alcança).
+- Não mexido aqui: a marca "editada" com a hora só no `title` foi ao
+  operador como pergunta (decidido: "A hora da edição visível", abaixo).
+
+### e2e no preview da Fase 3 (23/10/2026)
+
+No dev da branch (`6da25da3`) contra a produção, só na conversa de teste
+autorizada pelo operador:
+
+- **Editar texto e anexos**: o lápis abre a caixa no lugar ("Editando a
+  anotação interna:", o texto e os anexos, cada um com "Tirar"); tirar A e
+  pôr C grava `[B, C]`, o texto novo e a `editada_em`, e o caminho de A entra
+  na fila com origem `anotacao`.
+- **Duas edições seguidas**: a segunda passa — a cerca de versão compara
+  certo no PostgREST real (o que a revisão não pôde medir).
+- **Nada mudou**: 200 `mudou: false`, sem mexer na `editada_em`.
+- **A rota direto**: sem `mantidos` = 400; versão velha = 409
+  `NOTE_CHANGED` com a nota atual; nada gravado.
+- **Duas abas**: a aba 2 salva; a aba 1, com a versão velha, recebe "editada
+  em outro lugar… nada foi sobrescrito", com o rascunho na caixa; cancelar e
+  editar de novo parte da versão da aba 2 e salva.
+- **Pelo painel**: a fixada vira caixa no lugar dela; a edição chega ao fio
+  pelo tempo real.
+- **Marca "editada"** no fio, na faixa fixada, na citação (na caixa e no
+  fio), na aba Notas e na ficha de `/contatos`, esta sem lápis (A6).
+- **Dois cliques em Salvar**: um PUT só.
+- **375 px**: a caixa de edição cabe no fio (292 px); a lista de @ abre para
+  baixo, dentro da tela.
+- **Apagada noutra aba durante a edição**: a caixa fecha com "A anotação que
+  você editava foi apagada." (um aviso só). A resposta a ela vira anotação
+  comum (a 1075 anula `resposta_de`).
+- **"Cancelar"** legível no modo escuro.
+- **Limpeza**: as duas anotações de teste apagadas pela tela → A, B e C na
+  fila → a drenagem do laço lento das 23:16 UTC apagou os 3 objetos e
+  esvaziou a fila; `notas/` ficou sem objeto.
+
+Não coberto: a menção acrescentada (avisaria um colega de verdade; os testes
+da rota cobrem); a marca na tela de outro usuário; o arrasto e o teclado no
+iPhone (só no aparelho).
+
+### A hora da edição visível (decisão do operador, 23/10/2026)
+
+"Pode mostrar a hora da edição ao lado da marca 'editada' (para aparecer
+também no celular)". A marca passa a ser "editada 20:31": só a hora quando a
+edição foi no mesmo dia em que a anotação foi escrita (no fuso de quem lê);
+noutro dia, "editada 24/10, 09:15"; noutro ano, com o ano
+(`quandoFoiEditada` em `src/lib/notes/edicao.ts`, com teste em fuso fixo).
+A data completa fica no `title`. A marca recebe `criadaEm` nos cinco lugares.
+Na faixa fixada, a primeira linha corta com reticências, e a marca no fim
+dela era a primeira a sumir (no fio com o painel aberto já cortava o
+"editada" sozinho): agora ela fica FORA do corte, e quem encolhe é o autor.
+
+e2e no preview (anotação só de texto, editada e fixada, com uma resposta):
+"editada 20:31" inteira no fio, na faixa fixada, na citação, na aba Notas e
+na ficha de `/contatos`, a 1440×900 e a 375 px (na faixa, o nome do autor
+com reticências e "EDITADA 20:31" inteiro); as duas anotações apagadas
+depois, sem arquivo na fila.

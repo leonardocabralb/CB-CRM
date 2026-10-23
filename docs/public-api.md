@@ -1196,8 +1196,9 @@ know:
 `anexos` is `[]` on a note with text only. Each `url` is the file's public
 address (anyone with the link can fetch it, like the other chat
 attachments); an HTML page comes with `?download=` so it downloads instead
-of opening. `editada_em` is reserved for note editing in the dashboard and
-is `null` until a note is edited.
+of opening. `editada_em` is when the note was last edited (`null` = never):
+in the dashboard, a note's author can edit its text and attachments — the
+`id` and `created_at` stay the same. Notes cannot be edited through this API.
 
 ### `POST /api/v1/notes`
 

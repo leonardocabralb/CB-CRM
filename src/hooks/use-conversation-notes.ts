@@ -16,13 +16,15 @@ import type { ConversationNote } from '@/types';
  * onde é lida (o compositor), e dois atendentes na mesma conversa é o caso
  * normal, não a exceção.
  *
- * ⚠️ Cobre INSERT **e** DELETE. O DELETE só funciona porque a 921 pôs a
- * tabela em REPLICA IDENTITY FULL: com a identidade padrão, a linha antiga
- * chega só com a chave primária, e sem as outras colunas o Postgres não
- * avalia nem o filtro por conversa nem a RLS — o evento não é entregue a
+ * ⚠️ Cobre INSERT, UPDATE **e** DELETE. O DELETE só funciona porque a 921
+ * pôs a tabela em REPLICA IDENTITY FULL: com a identidade padrão, a linha
+ * antiga chega só com a chave primária, e sem as outras colunas o Postgres
+ * não avalia nem o filtro por conversa nem a RLS — o evento não é entregue a
  * ninguém. A 918 tinha dispensado isso alegando custo de WAL; o argumento não
  * vale aqui (replica identity não afeta INSERT, que é quase toda a escrita
- * desta tabela, e UPDATE é revogado). Ver o cabeçalho da 921.
+ * desta tabela). Ver o cabeçalho da 921. O UPDATE vem do fixar (951) e da
+ * EDIÇÃO (Fase 3 da 1102), sempre pela rota `/api/cb/notes/[id]` — o
+ * navegador não faz UPDATE nesta tabela.
  *
  * O que isso conserta na prática: a ficha e o fio ficam na tela AO MESMO
  * TEMPO, cada um com sua instância deste hook. Apagar no fio removia a
@@ -177,10 +179,11 @@ export function useConversationNotes(
       .on(
         'postgres_changes',
         {
-          // O primeiro UPDATE que esta tabela viu na vida é o fixar/desafixar
-          // da 951 (nota continua não-editável). A 921 já pôs REPLICA
-          // IDENTITY FULL, então o evento chega com a linha inteira e o
-          // filtro por conversa funciona.
+          // O fixar/desafixar (951) e a EDIÇÃO (Fase 3: texto, anexos e
+          // `editada_em`) — a linha inteira troca, e a citação e a faixa da
+          // fixada, que leem desta lista, mostram a nota atual sozinhas. A 921
+          // já pôs REPLICA IDENTITY FULL, então o evento chega com a linha
+          // inteira e o filtro por conversa funciona.
           event: 'UPDATE',
           schema: 'public',
           table: 'cb_conversation_notes',
@@ -251,6 +254,16 @@ export function useConversationNotes(
   }, []);
 
   /**
+   * Põe no lugar a anotação EDITADA (Fase 3), sem esperar o tempo real — que
+   * troca a linha sozinho no UPDATE, também para quem não editou. Resposta
+   * de outra conversa morre aqui, pela mesma régua de `acrescentar`.
+   */
+  const substituir = useCallback((nota: ConversationNote) => {
+    if (nota.conversation_id !== conversaAtualRef.current) return;
+    setNotas((anteriores) => anteriores.map((n) => (n.id === nota.id ? nota : n)));
+  }, []);
+
+  /**
    * ⚠️ O que sai daqui é sempre da conversa do render ATUAL.
    *
    * O estado é esvaziado num efeito, e efeito é PASSIVO: no primeiro render
@@ -285,6 +298,7 @@ export function useConversationNotes(
     recarregar: buscar,
     remover,
     acrescentar,
+    substituir,
     aplicarFixacao,
   };
 }
