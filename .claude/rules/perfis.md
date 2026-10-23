@@ -120,8 +120,9 @@ Troca de LENTE no navegador, e só nele (`simulacao.ts`, o override no
   de TELA, não barreira (`deals` e `cb_lead_events` são legíveis por qualquer
   membro). A aba vigente é resolvida no RENDER (`vistaVigente`). Detalhes em
   `funil.md`.
-- Excluir contato (mover para a Lixeira, restaurar, "Excluir agora") é de
-  admin na tela e nas RPCs da 1097, que conferem por dentro — `contatos.md`.
+- Excluir contato (mover para a Lixeira, restaurar, "Excluir agora", e o
+  "Restaurar e unir" da 1101) é de admin na tela e nas RPCs, que conferem
+  por dentro — `contatos.md`.
 - Os poderes que separam `agent` de `admin` aparecem no editor (`PODERES`).
   Tarefa: `podeNaTarefa` dá apagar ao criador e ao admin (tarefa órfã).
 

@@ -202,6 +202,23 @@ BEGIN
       'authenticated ou anon têm DELETE em conversations/messages — a 1096 tirou (só a ficha, as funções e o service role apagam)';
   END IF;
 
+  -- 1100: contato só sai pela Lixeira (as funções SECURITY DEFINER e o
+  -- service role). Conferido no FIM do replay pelo mesmo motivo da 1096: a
+  -- policy `contacts_delete` é do upstream (0017) e volta sem conflito num
+  -- merge; o pino `so-a-lixeira-apaga-1100.test.ts` só lê os `.sql`.
+  IF EXISTS (
+    SELECT 1 FROM pg_policies
+     WHERE schemaname = 'public' AND tablename = 'contacts' AND cmd IN ('DELETE', 'ALL')
+  ) THEN
+    RAISE EXCEPTION
+      'há policy de DELETE ou FOR ALL em contacts — o navegador volta a apagar ficha sem a Lixeira (1100)';
+  END IF;
+  IF has_table_privilege('authenticated', 'public.contacts', 'DELETE')
+     OR has_table_privilege('anon', 'public.contacts', 'DELETE') THEN
+    RAISE EXCEPTION
+      'authenticated ou anon têm DELETE em contacts — a 1100 tirou (excluir é mover para a Lixeira)';
+  END IF;
+
   RAISE NOTICE 'schema verification passed';
 END
 $$;

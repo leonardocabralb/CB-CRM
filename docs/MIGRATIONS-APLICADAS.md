@@ -1465,6 +1465,40 @@ nome da época em que foram aplicadas.
   as migrations da finalização da Lixeira. Conferida: a guarda na definição
   vigente, nenhum EXECUTE para `authenticated`/`anon`, a conferência embutida
   passou sem deixar linha.
+- **1100_cb_so_a_lixeira_apaga_contato** — Fase 3 da Lixeira (PR #430):
+  `DROP POLICY contacts_delete` e `REVOKE DELETE ON contacts FROM
+  authenticated, anon`; excluir contato passa a ser só mover para a Lixeira
+  (apagam ainda as funções SECURITY DEFINER, o CASCADE da conta e o service
+  role). RESTRITIVA: aplicada DEPOIS do deploy da Fase 2 (#429). Provada num
+  Postgres 16 descartável. Aplicada em 23/10/2026 pela Management API
+  (histórico `20261023123104`), depois do CI verde no commit `0906f340`,
+  antes do merge do PR #430, com a autorização do operador para as
+  migrations da finalização. Conferida: `contacts` só com
+  `contacts_insert/select/update`, `authenticated`/`anon` sem DELETE,
+  INSERT/UPDATE de pé, service role com DELETE, a Lixeira com EXECUTE. e2e
+  no preview: DELETE direto em `contacts`, `conversations` e `messages` pela
+  sessão de um admin dá 42501; mover e restaurar o lead de teste (801
+  mensagens) pela tela seguem funcionando.
+- **1101_cb_lixeira_restaurar_e_unir** — Fase 4 da Lixeira (PR #431):
+  `cb_lixeira_da_mesma_pessoa` (a faixa), `cb_previa_restaurar_e_unir` (a
+  prévia, desfeita por P1101), `cb_restaurar_e_unir` (restaura com
+  identidade provisória e une por `cb_unir_fichas`, a conversa antiga como
+  histórico, a janela da Meta só avança), a peça interna
+  `cb_lixeira_preparar_uniao`, `cb_bloqueios_da_uniao` ignorando o prefixo
+  `lixeira:` e `cb_lixeira_da_conta` recriada com `ocupada_com_instagram`
+  no fim. ADITIVA, ANTES do deploy, depois da 1099 e da 1100. Provada num
+  Postgres 16 descartável (incluindo os cenários da revisão independente).
+  Aplicada em 23/10/2026 pela Management API (histórico `20261023124946`),
+  depois do CI verde no commit `54c8bcc8`, antes do merge do PR #431, com a
+  autorização do operador para as migrations da finalização. Conferida: as
+  funções da tela SECURITY DEFINER com EXECUTE para `authenticated` e nada
+  para `anon`; as internas fechadas; nenhuma reserva `lixeira:` em ficha. e2e
+  no preview com duas fichas fictícias de mesmo telefone: a faixa (pela RPC
+  na sessão do admin) acha a antiga; o item bloqueado da Lixeira oferece
+  "Restaurar e unir"; a prévia não deixa rastro; a união deixa só a nova,
+  com o livro e a trilha (`contact_trashed` → `contact_restored` →
+  `contacts_merged`) com a identidade original e nenhuma reserva; o
+  "Excluir agora" com pedido limpou o resto.
 
 ## Notas do histórico
 

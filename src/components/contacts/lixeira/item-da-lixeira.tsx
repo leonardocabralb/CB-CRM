@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { AlertTriangle, Loader2, RotateCcw, Trash2 } from 'lucide-react';
+import { AlertTriangle, Combine, Loader2, RotateCcw, Trash2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { identidadeDoContato, nomeDoContato } from '@/lib/contacts/identidade';
@@ -20,7 +20,9 @@ export function contatoDoItem(item: ItemDaLixeira) {
   };
 }
 
-function quandoLegivel(iso: string): string {
+/** Data e hora no idioma do navegador; ilegível vira travessão. A faixa
+ *  "Há uma ficha desta pessoa na Lixeira" (1101) usa a mesma. */
+export function quandoLegivel(iso: string): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime())
     ? '—'
@@ -39,7 +41,9 @@ function quandoLegivel(iso: string): string {
  *
  * ⚠️ B2: com a identidade já em outra ficha, Restaurar fica DESABILITADO e a
  * linha diz de quem é, com o link — o banco recusaria do mesmo jeito, mas a
- * pessoa precisa saber ANTES o que resolver.
+ * pessoa precisa saber ANTES o que resolver. A saída é "Restaurar e unir"
+ * (1101) com a ficha que ocupa — salvo com Instagram (a união recusa sempre):
+ * aí, a frase no lugar do botão.
  */
 export function ItemDaLixeiraLinha({
   item,
@@ -49,6 +53,7 @@ export function ItemDaLixeiraLinha({
   emAcao,
   aoRestaurar,
   aoRestaurarLote,
+  aoRestaurarEUnir,
   aoExcluir,
 }: {
   item: ItemDaLixeira;
@@ -63,6 +68,8 @@ export function ItemDaLixeiraLinha({
   emAcao: boolean;
   aoRestaurar: () => void;
   aoRestaurarLote: () => void;
+  /** "Restaurar e unir" com a ficha que ocupa a identidade (só bloqueada). */
+  aoRestaurarEUnir: () => void;
   aoExcluir: () => void;
 }) {
   const t = useTranslations('Contacts.lixeira');
@@ -71,6 +78,10 @@ export function ItemDaLixeiraLinha({
   const identidade = identidadeDoContato(contato);
   const dias = diasRestantes(item.venceEm, agora);
   const bloqueada = item.ocupadaPor !== null;
+  const podeUnir = bloqueada && !item.ocupadaComInstagram;
+  const porQueBloqueada = item.ocupadaComInstagram
+    ? t('mesmaPessoa.instagram')
+    : t('tela.restaurarBloqueado');
   const c = item.contagens;
 
   const contagens = [
@@ -126,11 +137,17 @@ export function ItemDaLixeiraLinha({
             size="sm"
             onClick={aoRestaurar}
             disabled={ocupado || bloqueada}
-            title={bloqueada ? t('tela.restaurarBloqueado') : undefined}
+            title={bloqueada ? porQueBloqueada : undefined}
           >
             {emAcao ? <Loader2 className="size-3.5 animate-spin" /> : <RotateCcw className="size-3.5" />}
             {t('tela.restaurar')}
           </Button>
+          {podeUnir && (
+            <Button variant="outline" size="sm" onClick={aoRestaurarEUnir} disabled={ocupado}>
+              <Combine className="size-3.5" />
+              {t('mesmaPessoa.restaurarEUnir')}
+            </Button>
+          )}
           {fichasNoLote > 1 && (
             <Button
               variant="outline"
@@ -163,7 +180,7 @@ export function ItemDaLixeiraLinha({
                 {t('tela.abrirFicha')}
               </Link>
             </p>
-            <p>{t('tela.restaurarBloqueado')}</p>
+            <p>{porQueBloqueada}</p>
           </div>
         </div>
       )}

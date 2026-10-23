@@ -46,8 +46,8 @@
 | **0** | Estudo, medição, revisão adversarial, decisões | ✅ 22/10/2026 (este arquivo) | — | — |
 | **1** | Portas dos fundos: o atendente deixa de apagar conversa e mensagem pelo navegador | ✅ aplicada em 23/10/2026 e mesclada | `1096_cb_atendente_nao_apaga_conversa` (RESTRITIVA, mas nada do app usa o que tira: vale antes ou depois do deploy) | #428 |
 | **2** | A Lixeira: banco (mover, prévia, restaurar, excluir agora, vencimento, fila de arquivos), tela (prévia, Lixeira, Desfazer) e a doc do B6 (`docs/public-api.md` e Configurações → API → Documentação) | ✅ aplicada em 23/10/2026 (antes do deploy); e2e no preview com fichas fictícias | `1097_cb_lixeira_de_contatos` (ADITIVA), `1098_cb_lixeira_conferencia` (a prova de ida e volta) e `1099_cb_lixeira_anular_confere_o_ponteiro` (correção do Codex) | #429 |
-| **3** | Depois do deploy da 2: derrubar a policy `contacts_delete` e o privilégio (só a Lixeira, as funções e o service role apagam) | ⏳ rascunho provado no descartável | `1100_cb_so_a_lixeira_apaga_contato` (RESTRITIVA: DEPOIS do deploy) | — |
-| **4** | Ficha nova da mesma pessoa: faixa "há uma ficha desta pessoa na Lixeira" e "Restaurar e unir" | ⏳ em implementação (desenho abaixo) | ADITIVA, `1101` | — |
+| **3** | Depois do deploy da 2: derrubar a policy `contacts_delete` e o privilégio (só a Lixeira, as funções e o service role apagam) | ✅ aplicada em 23/10/2026, depois do deploy da 2; DELETE direto pelo navegador dá 42501 | `1100_cb_so_a_lixeira_apaga_contato` (RESTRITIVA) | #430 |
+| **4** | Ficha nova da mesma pessoa: faixa "há uma ficha desta pessoa na Lixeira" e "Restaurar e unir" | ✅ aplicada em 23/10/2026 (antes do deploy); e2e no preview com fichas fictícias | `1101_cb_lixeira_restaurar_e_unir` (ADITIVA) | #431 |
 | **5** | O 410 da API e o roteiro interno de pedido de exclusão (LGPD) | ✅ o roteiro está abaixo; o 410 NÃO se aplica: B6 escolheu a volta com o MESMO id (a doc da API diz) | — | — |
 
 ### Fase 1 — registro (22/10/2026)
@@ -115,6 +115,75 @@
   montado do zero (conferência da 1099 duas vezes, "IDA E VOLTA OK" e
   "PROVA 2 OK" com a função nova). A Fase 3 passou a ser a 1100.
 - **PR:** #429.
+
+### Fase 3 — registro (23/10/2026)
+
+- **Objetivo:** o navegador deixa de apagar contato; excluir é só mover para
+  a Lixeira.
+- **Arquivos:** `supabase/migrations/1100_cb_so_a_lixeira_apaga_contato.sql`
+  (`DROP POLICY contacts_delete`; `REVOKE DELETE` de `authenticated` e
+  `anon`; os GRANTs que ficam; conferência pelo catálogo, que exige a porta da
+  Lixeira de pé), o pino `supabase/migrations/so-a-lixeira-apaga-1100.test.ts`
+  (os `.sql` posteriores e nenhum `.from('contacts')…delete()` em `src/`), o
+  bloco no `supabase/ci/verify-schema.sql`, os comentários de
+  `contacts/page.tsx` e de `canDeleteContacts`, `.claude/rules/contatos.md` e
+  o item 18 da §6 de `docs/MERGE-UPSTREAM.md`.
+- **Medido no Postgres 16 descartável:** antes, o admin apagava a ficha
+  direto; depois, admin e atendente recebem 42501; a Lixeira (RPC) segue
+  movendo; o service role segue apagando; aplicar duas vezes dá o mesmo.
+- **Aplicada** em 23/10/2026, depois do deploy da Fase 2. **e2e na
+  produção pelo preview:** DELETE direto em `contacts`, `conversations` e
+  `messages` com a sessão de um admin → 42501. Na mesma rodada, o e2e da
+  Fase 2 com o lead de teste: mover (801 mensagens, ~4,8 s), a marca "Na
+  Lixeira" no card do funil, restaurar (~2,5 s) com a ida e volta idêntica
+  no banco (mensagens, anotações, etiquetas, campos, ficha e conversa pela
+  digital md5; o card reapontado) e, numa 2ª aba com a caixa de entrada
+  aberta, nenhuma não lida a mais nem linha duplicada.
+
+### Fase 4 — registro (23/10/2026)
+
+- **Onde:** "Restaurar e unir", só admin (`delete-contacts`), em dois
+  lugares: na faixa "Há uma ficha desta pessoa na Lixeira" do fio e do
+  formulário do card (`cb_lixeira_da_mesma_pessoa`, pelos três índices
+  parciais da 1097; cala carregando ou com falha), onde fica a ficha aberta;
+  e no item bloqueado da Lixeira (B2), onde fica a ficha que ocupa
+  (`ocupada_por`). Com Instagram em qualquer das duas não há botão, só a
+  frase (a união recusa sempre; Fase 5 do plano do Instagram).
+- **Como:** `cb_restaurar_e_unir`, numa transação: trava o item (NOWAIT),
+  confere que a identidade casa, dá à fotografia identidade provisória
+  (anula só o que colide; nada sobrando, a reserva `lixeira:<item>`, que
+  `cb_bloqueios_da_uniao` ignora) e devolve a conversa da fotografia como
+  HISTÓRICO (encerrada, sem responsável, sem espera, sem não lidas).
+  Restaura pelo miolo da 1097 e une por `cb_unir_fichas`: a conversa de hoje
+  não reabre, não troca de responsável nem avisa no sino, e a espera não
+  recua. Na mesma transação, a janela da Meta só avança (o maior instante
+  por chave), a reserva nunca sobra e o livro e a trilha guardam a
+  identidade original. Prévia obrigatória (`cb_previa_restaurar_e_unir`,
+  desfeita por P1101), com o corpo da prévia da união sem "Trocar".
+- **Recusas** desfazem tudo e voltam com o código: terceira ficha
+  (`identidade_ocupada`, com a dica de unir antes as duas vivas),
+  `bloqueada:*`, `em_processamento`, `item_sumiu`, `identidade_nao_casa`.
+- **Decisões confirmadas pelo operador** (23/10/2026, depois da entrega):
+  a conversa que volta entra como histórico, com as não lidas zeradas; a
+  ficha aberta é sempre a que fica, sem "Trocar"; o BSUID da ficha que volta
+  passa para a que fica quando o telefone é o mesmo e ela não tem BSUID
+  (com dois BSUIDs diferentes a união recusa, `bsuid_diferentes`).
+- **Provado** no Postgres 16 descartável (telefone, BSUID, Instagram, a
+  reserva nos três formatos, terceira ficha, portas, trava, prévia sem
+  rastro, aplicação dupla, banco vazio). **Revisão independente:** 0 P0/P1;
+  3 P2 (janela da Meta, conversa velha reabrindo, sem onde clicar quando a
+  ficha nova não tem conversa nem card) e os P3 corrigidos, com os cenários
+  do revisor repetidos (2.000 mensagens: prévia 156 ms, união 230 ms).
+- **Limite:** o INSERT da trilha `contacts_merged` sai no tempo real com a
+  identidade provisória antes da correção.
+- **Aplicada** em 23/10/2026, antes do deploy. **e2e no preview** (a
+  produção) com duas fichas fictícias de mesmo telefone: a faixa acha a
+  antiga para o admin; o item bloqueado da Lixeira oferece "Restaurar e
+  unir"; a prévia mostra fica/sai e a frase do histórico, sem rastro no
+  banco; unir deixa só a nova, com a trilha mover → restaurar → unir e o
+  livro com a identidade original, nenhuma reserva em lugar nenhum. Não
+  conferido na tela: a faixa no fio e no card (a ficha fictícia não tem
+  conversa nem card — criar um card dispararia automações do funil).
 
 ### Fase 4 — desenho ("Restaurar e unir")
 
@@ -540,13 +609,14 @@ pino cobra que toda FK do fecho tenha um:
   do navegador (a conversa só some pela ficha; mensagem, nenhuma tela apaga),
   depois de conferir no código que nada do app usa.
 - **Fase 3 (RESTRITIVA, DEPOIS do deploy da Lixeira):** `DROP POLICY
-  contacts_delete`. Uma aba aberta com o app antigo recebe 0 linhas, e o
-  `lerExclusao` já diz "recusado". O pino reprova `.from('contacts').delete()`
-  em `src/`.
+  contacts_delete` e `REVOKE DELETE` de `authenticated`/`anon` (1100). Uma
+  aba aberta com o app antigo recebe 42501 (o REVOKE torna a recusa
+  VISÍVEL, em vez de 0 linhas), e o `lerExclusao` dela diz "falhou". O pino
+  reprova `.from('contacts').delete()` em `src/`.
 - A lógica da tela mora num módulo nosso (`src/lib/contacts/lixeira.ts` + um
   hook); a página do upstream só o chama, com a linha na tabela do
   MERGE-UPSTREAM. Sem a policy, um merge que traga a página crua passa a
-  dizer "recusado", nunca a apagar de vez.
+  falhar (42501), nunca a apagar de vez.
 
 ### Tela
 

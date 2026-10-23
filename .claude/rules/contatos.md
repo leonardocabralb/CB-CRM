@@ -110,10 +110,14 @@ Decisões do operador (22/10/2026, B1–B6): `docs/PLANO-lixeira-de-contatos.md`
   (1067) e recusa o LOTE inteiro com um id de conta onde quem chama não é
   admin. Na tela os caminhos SOMEM juntos para quem não é admin (menu da
   linha e seleção múltipla; nunca um `GatedButton` desabilitado); cadastrar
-  e corrigir seguem de `agent`. ⚠️ A policy
-  `contacts_delete` (981) fica de pé até a Fase 3: um DELETE do navegador
-  ainda apaga SEM Lixeira — nada no app chama `.delete()` em `contacts`, e a
-  página crua do upstream num merge volta a apagar (`docs/MERGE-UPSTREAM.md`).
+  e corrigir seguem de `agent`.
+- ⚠️⚠️ **Só a Lixeira apaga (1100)**: sem a policy `contacts_delete` e sem o
+  privilégio, um DELETE do navegador dá 42501 — a página crua do upstream
+  num merge passa a FALHAR, nunca a apagar sem fotografia. Apagam ainda as
+  funções SECURITY DEFINER (Lixeira, união, desfazer da Kommo), o CASCADE da
+  conta e o service role. Pino `so-a-lixeira-apaga-1100.test.ts` (os `.sql`
+  e nenhum `.from('contacts')…delete()` em `src/`) e item 18 da §6 de
+  `docs/MERGE-UPSTREAM.md`.
 - ⚠️ **Prévia ANTES de mover** (`cb_previa_da_lixeira` → `lerPrevia`,
   `previaTemAviso`): o que o mover cancela de COLEGAS — agendadas (com o
   autor), esperas, robôs, tarefas abertas (com o responsável), negócios
@@ -139,7 +143,35 @@ Decisões do operador (22/10/2026, B1–B6): `docs/PLANO-lixeira-de-contatos.md`
 - ⚠️⚠️ **Identidade ocupada BLOQUEIA (B2)**: telefone, BSUID ou Instagram que
   já é de outra ficha → `identidade_ocupada`, e a lista mostra "ocupada pela
   ficha X" com link (`ocupada_por` de `cb_lixeira_da_conta`). Nunca fundir
-  nem sobrescrever na volta: une-se depois, por `cb_unir_fichas`.
+  nem sobrescrever na volta: a saída é o "Restaurar e unir" (abaixo).
+- ⚠️⚠️ **"Restaurar e unir" (Fase 4, 1101)**, só admin: na faixa "Há uma
+  ficha desta pessoa na Lixeira" (`aviso-de-ficha-na-lixeira.tsx`; fio e
+  formulário do card, junto do aviso de duplicata; `cb_lixeira_da_mesma_pessoa`
+  pelos três índices parciais da 1097, nunca pelo `@`; cala carregando ou com
+  falha), onde a ficha ABERTA fica, e no item bloqueado da Lixeira, onde fica
+  a que ocupa (`ocupada_por`). Com Instagram (`com_instagram`/
+  `ocupada_com_instagram`) não há botão: a união recusa sempre. Uma
+  transação (`cb_restaurar_e_unir`): trava o item (NOWAIT), confere que a
+  identidade casa, dá à fotografia identidade PROVISÓRIA (anula SÓ o que
+  colide; nada sobrando, a reserva `lixeira:<item>`), restaura pelo miolo
+  (`cb_lixeira_restaurar_um`) e une. Recusa desfaz TUDO.
+- ⚠️⚠️ **A conversa que volta é HISTÓRICO** (decisão do operador,
+  23/10/2026, com as duas abaixo): entra encerrada, sem responsável, sem
+  espera nem não lidas — a de hoje não reabre, não troca de responsável (nem
+  avisa no sino), a espera não recua. A janela da Meta SÓ AVANÇA: a maior
+  por chave entre a de hoje (lida antes) e a da fotografia. Fica sempre a
+  ficha aberta (sem "Trocar"); com o mesmo telefone, o BSUID da que volta
+  passa para a que fica quando ela não tem BSUID (dois BSUIDs diferentes:
+  a união recusa, `bsuid_diferentes`).
+- ⚠️⚠️ **Nunca**: a reserva sobrar (sai da ficha; livro e trilha levam a
+  identidade original; a função confere — `cb_bloqueios_da_uniao` a ignora);
+  anular identidade de uma TERCEIRA ficha (`identidade_ocupada`); botão sem
+  prévia (`cb_previa_restaurar_e_unir`, o mesmo caminho desfeito por P1101,
+  no `CorpoDaPrevia` da união). Limite: o INSERT da trilha `contacts_merged`
+  sai no tempo real com a identidade provisória antes da correção. Leitura:
+  `restaurar-e-unir.ts`; chamadas: `use-lixeira-da-mesma-pessoa.ts`; depois
+  de unir, `recarregarNaFichaQueFicou`. Pino
+  `lixeira-restaurar-e-unir-1101.test.ts`.
 - ⚠️ **"Excluir agora" (B3)**, com confirmação forte e a marca "é pedido de
   exclusão (LGPD)" (`cb_excluir_da_lixeira`): sem volta; os arquivos vão para
   a fila (`midia.md`); com a marca, saem também ligações e retidas, e o dado
