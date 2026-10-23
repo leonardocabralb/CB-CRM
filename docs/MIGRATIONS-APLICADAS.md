@@ -1465,6 +1465,20 @@ nome da época em que foram aplicadas.
   as migrations da finalização da Lixeira. Conferida: a guarda na definição
   vigente, nenhum EXECUTE para `authenticated`/`anon`, a conferência embutida
   passou sem deixar linha.
+- **1100_cb_so_a_lixeira_apaga_contato** — Fase 3 da Lixeira (PR #430):
+  `DROP POLICY contacts_delete` e `REVOKE DELETE ON contacts FROM
+  authenticated, anon`; excluir contato passa a ser só mover para a Lixeira
+  (apagam ainda as funções SECURITY DEFINER, o CASCADE da conta e o service
+  role). RESTRITIVA: aplicada DEPOIS do deploy da Fase 2 (#429). Provada num
+  Postgres 16 descartável. Aplicada em 23/10/2026 pela Management API
+  (histórico `20261023123104`), depois do CI verde no commit `0906f340`,
+  antes do merge do PR #430, com a autorização do operador para as
+  migrations da finalização. Conferida: `contacts` só com
+  `contacts_insert/select/update`, `authenticated`/`anon` sem DELETE,
+  INSERT/UPDATE de pé, service role com DELETE, a Lixeira com EXECUTE. e2e
+  no preview: DELETE direto em `contacts`, `conversations` e `messages` pela
+  sessão de um admin dá 42501; mover e restaurar o lead de teste (801
+  mensagens) pela tela seguem funcionando.
 
 ## Notas do histórico
 
