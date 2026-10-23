@@ -1416,6 +1416,19 @@ nome da época em que foram aplicadas.
   duas com `prosecdef = false`, EXECUTE só para `authenticated` e
   `service_role` (o papel de leitura do `supabase-cb` não as chama — de
   propósito); a conferência embutida chamou as duas.
+- **1096_cb_atendente_nao_apaga_conversa** — a Fase 1 da Lixeira de contatos
+  (PR #428): derruba `conversations_delete` e o `messages_modify` (FOR ALL),
+  recria INSERT e UPDATE de mensagem com o predicado da 1032 e revoga o
+  DELETE de `conversations` e `messages` de `authenticated` e `anon` (a
+  ficha apagada continua levando as duas pelo CASCADE). RESTRITIVA, mas
+  nenhuma versão do app usa o que ela tira. Provada num Postgres 16
+  descartável (o CASCADE da ficha com o papel `authenticated` sem o
+  privilégio). Aplicada em 23/10/2026 pela Management API (histórico
+  `20261023103318`), antes do merge do PR #428, com "aplique as migrations
+  1096, 1097 e 1098 em produção" do operador. Conferida: só
+  `conversations_insert/select/update` e `messages_insert/select/update` de
+  pé, `authenticated` e `anon` sem DELETE nas duas; e2e no preview: uma
+  mensagem de teste ao lead autorizado saiu e chegou como entregue.
 
 ## Notas do histórico
 
