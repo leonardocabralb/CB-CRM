@@ -375,11 +375,16 @@ describe("silencioDoAviso — a volta da Lixeira (1097) não despeja avisos", ()
     }
   });
 
-  it("sem `gravada_em` (carga antiga) vale a régua de sempre, pelo carimbo", () => {
+  it("⚠️ sem `gravada_em` (a carga: 72% da produção), o `created_at` decide — mesmo dentro da 1 h", () => {
+    // Importada há um minuto, devolvida pela volta: a régua de 1 h deixaria passar.
     expect(
       decide({ conversa: restaurada, created_at: new Date(AGORA - 60_000).toISOString(), gravada_em: null }),
-    ).toBeNull();
+    ).toBe("antiga");
     expect(decide({ conversa: restaurada, created_at: "2026-03-01T12:00:00Z", gravada_em: null })).toBe("antiga");
+    // Carimbo DEPOIS da volta: é nova.
+    expect(
+      decide({ conversa: restaurada, created_at: new Date(AGORA - 500).toISOString(), gravada_em: null }),
+    ).toBeNull();
   });
 
   it("conversa que nunca esteve na Lixeira não muda nada", () => {

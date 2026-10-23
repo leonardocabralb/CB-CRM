@@ -235,8 +235,10 @@ export function silencioDoAviso(args: {
   // então a régua de cima a deixaria passar), e a volta de uma ficha com
   // centenas de falas do cliente despejaria um aviso por fala. A régua é
   // `gravada_em` anterior a `restaurada_em`, os dois do relógio do BANCO —
-  // nunca o da tela (`reinseridaPelaRestauracao`).
-  if (reinseridaPelaRestauracao(mensagem.gravada_em, conversa.restaurada_em)) {
+  // nunca o da tela (`reinseridaPelaRestauracao`). Sem `gravada_em` (a carga:
+  // 72% da produção), o `created_at` — a fala importada de meia hora atrás
+  // passaria pela régua de 1 h acima (Codex, #429).
+  if (reinseridaPelaRestauracao(mensagem.gravada_em, conversa.restaurada_em, mensagem.created_at)) {
     return "antiga";
   }
 

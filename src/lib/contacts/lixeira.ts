@@ -543,7 +543,9 @@ export const NEGOCIOS_POR_CHAMADA = 1000;
 export function reinseridaPelaRestauracao(
   gravadaEm: string | null | undefined,
   restauradaEm: string | null | undefined,
-  createdAt?: string | null,
+  // Obrigatório de propósito: um chamador que o esquecesse deixaria passar a
+  // fala importada (sem `gravada_em`) — o Codex achou um no #429.
+  createdAt: string | null | undefined,
 ): boolean {
   const carimbo = gravadaEm || createdAt;
   if (!carimbo || !restauradaEm) return false;

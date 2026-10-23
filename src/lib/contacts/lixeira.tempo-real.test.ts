@@ -14,15 +14,15 @@ describe('reinseridaPelaRestauracao — gravada_em × restaurada_em, os dois do 
   const VOLTA = '2026-10-23T18:30:00.123456+00:00';
 
   it('gravada ANTES da volta é devolvida; DEPOIS (ou no mesmo instante) é nova', () => {
-    expect(reinseridaPelaRestauracao('2026-10-20T14:00:00+00:00', VOLTA)).toBe(true);
-    expect(reinseridaPelaRestauracao('2026-10-23T18:30:00.122+00:00', VOLTA)).toBe(true);
-    expect(reinseridaPelaRestauracao('2026-10-23T18:30:01+00:00', VOLTA)).toBe(false);
-    expect(reinseridaPelaRestauracao('2026-10-23T18:30:00.123+00:00', VOLTA)).toBe(false);
+    expect(reinseridaPelaRestauracao('2026-10-20T14:00:00+00:00', VOLTA, undefined)).toBe(true);
+    expect(reinseridaPelaRestauracao('2026-10-23T18:30:00.122+00:00', VOLTA, undefined)).toBe(true);
+    expect(reinseridaPelaRestauracao('2026-10-23T18:30:01+00:00', VOLTA, undefined)).toBe(false);
+    expect(reinseridaPelaRestauracao('2026-10-23T18:30:00.123+00:00', VOLTA, undefined)).toBe(false);
   });
 
   it('compara INSTANTES, não texto (o mesmo momento em fusos diferentes)', () => {
-    expect(reinseridaPelaRestauracao('2026-10-23T15:29:59-03:00', VOLTA)).toBe(true);
-    expect(reinseridaPelaRestauracao('2026-10-23T15:31:00-03:00', VOLTA)).toBe(false);
+    expect(reinseridaPelaRestauracao('2026-10-23T15:29:59-03:00', VOLTA, undefined)).toBe(true);
+    expect(reinseridaPelaRestauracao('2026-10-23T15:31:00-03:00', VOLTA, undefined)).toBe(false);
   });
 
   it('sem gravada_em (72% da produção: carga histórica), vale o created_at', () => {
@@ -35,13 +35,13 @@ describe('reinseridaPelaRestauracao — gravada_em × restaurada_em, os dois do 
   });
 
   it('sem nenhum carimbo, sem a volta, ou ilegível: falso — vale a régua de sempre de quem chama', () => {
-    expect(reinseridaPelaRestauracao(null, VOLTA)).toBe(false);
-    expect(reinseridaPelaRestauracao(undefined, VOLTA)).toBe(false);
+    expect(reinseridaPelaRestauracao(null, VOLTA, undefined)).toBe(false);
+    expect(reinseridaPelaRestauracao(undefined, VOLTA, undefined)).toBe(false);
     expect(reinseridaPelaRestauracao(null, VOLTA, null)).toBe(false);
-    expect(reinseridaPelaRestauracao('2026-10-20T14:00:00Z', null)).toBe(false);
-    expect(reinseridaPelaRestauracao('2026-10-20T14:00:00Z', undefined)).toBe(false);
-    expect(reinseridaPelaRestauracao('não é data', VOLTA)).toBe(false);
-    expect(reinseridaPelaRestauracao('2026-10-20T14:00:00Z', 'não é data')).toBe(false);
+    expect(reinseridaPelaRestauracao('2026-10-20T14:00:00Z', null, undefined)).toBe(false);
+    expect(reinseridaPelaRestauracao('2026-10-20T14:00:00Z', undefined, undefined)).toBe(false);
+    expect(reinseridaPelaRestauracao('não é data', VOLTA, undefined)).toBe(false);
+    expect(reinseridaPelaRestauracao('2026-10-20T14:00:00Z', 'não é data', undefined)).toBe(false);
   });
 });
 

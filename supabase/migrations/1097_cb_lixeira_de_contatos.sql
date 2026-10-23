@@ -900,8 +900,17 @@ DECLARE
   v_negocios uuid[];
   v_contagens jsonb;
 BEGIN
-  -- Travas: as CONVERSAS primeiro, depois a ficha (a ordem dos gatilhos, como
-  -- a união), e de novo a conversa criada entre as duas.
+  -- Travas, na ordem da ingestão (mensagem → conversa → ficha; supabase.md):
+  -- as MENSAGENS primeiro — sem isso, o recibo, a edição, a mensagem apagada
+  -- pelo cliente ou o anexo da Evolution que chega segundos depois mudaria a
+  -- mensagem DEPOIS da fotografia, e a volta traria a versão velha (Codex,
+  -- #429). A reação e a anotação já esperam a trava da conversa (FK para
+  -- ela). Depois as CONVERSAS, a ficha, e de novo a conversa criada entre as
+  -- duas.
+  PERFORM 1 FROM messages m
+   WHERE m.conversation_id IN (SELECT c.id FROM conversations c WHERE c.contact_id = p_contato)
+   ORDER BY m.id
+     FOR UPDATE OF m;
   PERFORM 1 FROM conversations c WHERE c.contact_id = p_contato ORDER BY c.id FOR UPDATE;
   SELECT * INTO v_ficha FROM contacts WHERE id = p_contato FOR UPDATE;
   IF v_ficha.id IS NULL THEN
