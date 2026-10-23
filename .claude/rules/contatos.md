@@ -110,10 +110,14 @@ Decisões do operador (22/10/2026, B1–B6): `docs/PLANO-lixeira-de-contatos.md`
   (1067) e recusa o LOTE inteiro com um id de conta onde quem chama não é
   admin. Na tela os caminhos SOMEM juntos para quem não é admin (menu da
   linha e seleção múltipla; nunca um `GatedButton` desabilitado); cadastrar
-  e corrigir seguem de `agent`. ⚠️ A policy
-  `contacts_delete` (981) fica de pé até a Fase 3: um DELETE do navegador
-  ainda apaga SEM Lixeira — nada no app chama `.delete()` em `contacts`, e a
-  página crua do upstream num merge volta a apagar (`docs/MERGE-UPSTREAM.md`).
+  e corrigir seguem de `agent`.
+- ⚠️⚠️ **Só a Lixeira apaga (1100)**: sem a policy `contacts_delete` e sem o
+  privilégio, um DELETE do navegador dá 42501 — a página crua do upstream
+  num merge passa a FALHAR, nunca a apagar sem fotografia. Apagam ainda as
+  funções SECURITY DEFINER (Lixeira, união, desfazer da Kommo), o CASCADE da
+  conta e o service role. Pino `so-a-lixeira-apaga-1100.test.ts` (os `.sql`
+  e nenhum `.from('contacts')…delete()` em `src/`) e item 18 da §6 de
+  `docs/MERGE-UPSTREAM.md`.
 - ⚠️ **Prévia ANTES de mover** (`cb_previa_da_lixeira` → `lerPrevia`,
   `previaTemAviso`): o que o mover cancela de COLEGAS — agendadas (com o
   autor), esperas, robôs, tarefas abertas (com o responsável), negócios

@@ -163,15 +163,14 @@ export function canViewReports(role: AccountRole): boolean {
  * Owner / admin: APAGAR contato.
  *
  * Decisão do operador (2026-09-08): o atendente edita nome e telefone, e
- * não apaga. Apagar contato aqui é destrutivo de verdade — `conversations`
- * cascateia de `contacts`, então some o histórico inteiro de mensagens
- * daquele cliente, que é do escritório.
+ * não exclui. Excluir contato é MOVER PARA A LIXEIRA (1097): a ficha some de
+ * todas as telas com a conversa e as mensagens, que são do escritório, e só
+ * um admin a restaura nos 90 dias.
  *
  * ⚠️ Separado de `canEditSettings` porque a régua é outra: editar contato
  * segue sendo `agent` (policies `contacts_update` da 017). Este predicado
- * cobre só o DELETE, e tem par no banco — a policy `contacts_delete` subiu
- * para `admin` na 981. Sem os dois lados, a tela esconderia o botão e um
- * `.delete()` do navegador ainda apagaria.
+ * cobre só o excluir, e tem par no banco — as RPCs da Lixeira conferem admin
+ * por dentro, e desde a 1100 o navegador não tem DELETE em `contacts`.
  */
 export function canDeleteContacts(role: AccountRole): boolean {
   return hasMinRole(role, "admin");
