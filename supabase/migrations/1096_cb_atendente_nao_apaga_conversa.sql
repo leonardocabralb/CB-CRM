@@ -46,7 +46,15 @@ SET LOCAL lock_timeout = '5s';
 -- `conversations` —, um INSERT em voo fecharia um ciclo com esta migration e
 -- o detector de deadlock abortaria a INGESTÃO: mensagem do cliente perdida
 -- (supabase.md, "Mensagem ANTIGA").
-LOCK TABLE public.messages, public.conversations IN ACCESS EXCLUSIVE MODE;
+-- Dentro de um bloco DO de propósito: `LOCK TABLE` solto estoura fora de
+-- transação ("can only be used in transaction blocks"). Aplicada numa
+-- transação (o replay do CI, a Management API), a trava vale até o fim da
+-- migration; em modo autocommit, cada instrução é a sua própria transação e
+-- não há travas acumuladas para fechar ciclo.
+DO $$
+BEGIN
+  LOCK TABLE public.messages, public.conversations IN ACCESS EXCLUSIVE MODE;
+END $$;
 
 -- ------------------------------------------------------------
 -- 1) Conversa: sem policy de DELETE e sem o privilégio.
