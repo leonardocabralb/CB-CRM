@@ -26,6 +26,8 @@ const estado = vi.hoisted(() => ({
   usuario: '',
   notas: [] as Nota[],
   membros: [] as string[],
+  erroDoPerfil: false,
+  erroDaConversa: false,
   erroDaConversaDaNota: false,
   erroDoInsert: null as null | { code: string; message: string },
   inserts: [] as Record<string, unknown>[],
@@ -44,6 +46,7 @@ const NOMES: Record<string, string> = {
 function resolver(tabela: string, filtros: Filtro[], modo: 'uma' | 'lista') {
   const eq = (col: string) => filtros.find((f) => f.op === 'eq' && f.col === col)?.val;
   if (tabela === 'profiles' && modo === 'uma') {
+    if (estado.erroDoPerfil) return { data: null, error: { message: 'timeout' } };
     return {
       data: {
         account_id: CONTA,
@@ -62,6 +65,7 @@ function resolver(tabela: string, filtros: Filtro[], modo: 'uma' | 'lista') {
     };
   }
   if (tabela === 'conversations') {
+    if (estado.erroDaConversa) return { data: null, error: { message: 'timeout' } };
     return {
       data: eq('id') === CONVERSA ? { id: CONVERSA, contact_id: 'contato-1', account_id: CONTA } : null,
       error: null,
@@ -166,6 +170,8 @@ beforeEach(() => {
   estado.usuario = BIA;
   estado.notas = [{ id: ORIGINAL, resposta_de: null, author_user_id: ANA }];
   estado.membros = [ANA, BIA, CAIO];
+  estado.erroDoPerfil = false;
+  estado.erroDaConversa = false;
   estado.erroDaConversaDaNota = false;
   estado.erroDoInsert = null;
   estado.inserts = [];
@@ -326,13 +332,16 @@ describe('POST /api/cb/notes — anexos (1102)', () => {
     expect(estado.inserts).toEqual([]);
   });
 
-  it('arquivo que não está no armazenamento é 400 ATTACHMENT_NOT_FOUND, sem gravar', async () => {
+  it('arquivo que não está no armazenamento é 400 ATTACHMENT_NOT_FOUND, dizendo QUAL, sem gravar', async () => {
     estado.arquivos[AUDIO] = existe(10, 'audio/ogg');
     const res = await POST(
       pedido({ anexos: [{ caminho: AUDIO, nome: 'a.ogg' }, { caminho: PDF, nome: 'c.pdf' }] })
     );
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: 'ATTACHMENT_NOT_FOUND' });
+    expect(await res.json()).toEqual({
+      error: 'ATTACHMENT_NOT_FOUND',
+      anexo: { caminho: PDF, nome: 'c.pdf' },
+    });
     expect(estado.inserts).toEqual([]);
   });
 
@@ -349,15 +358,30 @@ describe('POST /api/cb/notes — anexos (1102)', () => {
     expect(estado.inserts).toEqual([]);
   });
 
-  it('tipo que a anotação não aceita, ou acima de 50 MiB, é 400', async () => {
+  it('tipo que a anotação não aceita, ou acima de 50 MiB, é 400 — dizendo QUAL', async () => {
     estado.arquivos[AUDIO] = existe(10, 'image/gif');
     let res = await POST(pedido({ anexos: [{ caminho: AUDIO, nome: 'a.gif' }] }));
-    expect(await res.json()).toEqual({ error: 'ATTACHMENT_TYPE_REFUSED' });
+    expect(await res.json()).toEqual({
+      error: 'ATTACHMENT_TYPE_REFUSED',
+      anexo: { caminho: AUDIO, nome: 'a.gif' },
+    });
     estado.arquivos[AUDIO] = existe(50 * 1024 * 1024 + 1, 'audio/ogg');
     res = await POST(pedido({ anexos: [{ caminho: AUDIO, nome: 'a.ogg' }] }));
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: 'ATTACHMENT_TOO_LARGE' });
+    expect(await res.json()).toEqual({
+      error: 'ATTACHMENT_TOO_LARGE',
+      anexo: { caminho: AUDIO, nome: 'a.ogg' },
+    });
     expect(estado.inserts).toEqual([]);
+  });
+
+  it('nome com emoji no ponto do teto grava sem a metade solta (o Postgres a recusaria)', async () => {
+    estado.arquivos[AUDIO] = existe(10, 'audio/ogg');
+    const nome = `${'a'.repeat(199)}😀.ogg`;
+    const res = await POST(pedido({ anexos: [{ caminho: AUDIO, nome }] }));
+    expect(res.status).toBe(201);
+    const gravado = (estado.inserts[0].anexos as { nome: string }[])[0].nome;
+    expect(gravado).toBe('a'.repeat(199));
   });
 
   it('a menção com anexo avisa com o resumo no corpo (cru, como o título)', async () => {
@@ -381,5 +405,32 @@ describe('POST /api/cb/notes — anexos (1102)', () => {
     expect(estado.avisos).toEqual([
       expect.objectContaining({ user_id: ANA, type: 'note_reply', body: '🎤 Áudio' }),
     ]);
+  });
+});
+
+describe('POST /api/cb/notes — erro de LEITURA não é "não encontrado" (raiz, 8b)', () => {
+  it('perfil que não deu para ler é 500, nunca 403', async () => {
+    estado.erroDoPerfil = true;
+    const res = await POST(pedido({}));
+    expect(res.status).toBe(500);
+    expect(estado.inserts).toEqual([]);
+  });
+
+  it('conversa que não deu para ler é 500, nunca 404', async () => {
+    estado.erroDaConversa = true;
+    const res = await POST(pedido({}));
+    expect(res.status).toBe(500);
+    expect(estado.inserts).toEqual([]);
+  });
+
+  it('id que não é UUID é 400 ANTES do banco (o 22P02 viraria 500)', async () => {
+    for (const corpo of [
+      { conversation_id: 'conversa-1' },
+      { conversation_id: undefined, contact_id: 'contato-1' },
+    ]) {
+      const res = await POST(pedido(corpo));
+      expect(res.status, JSON.stringify(corpo)).toBe(400);
+    }
+    expect(estado.inserts).toEqual([]);
   });
 });

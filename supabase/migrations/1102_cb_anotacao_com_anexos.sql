@@ -55,18 +55,75 @@
 --      pela fila, com o service role. `IS DISTINCT FROM`, nunca `<>`: a
 --      segunda pasta de um anexo comum é NULA (supabase.md, "Storage").
 --
--- AS TRAVAS. A ALTER pega trava exclusiva em `cb_conversation_notes` (tabela
--- de pouco tráfego: ~370 anotações por mês) e a segura até o fim: a
--- conferência que CHAMA o gatilho (supabase.md, regra 3 do banco vazio) só
--- escreve nela mesma e na fila, e uma anotação a menos por um instante não
--- para o atendimento. As policies de `storage.objects` (tabela QUENTE: toda
--- leitura de anexo passa por ela) ficam no FIM, para a trava exclusiva dela
--- durar só até o COMMIT.
+-- AS TRAVAS (supabase.md: "depois da primeira ALTER, só catálogo"). A ALTER
+-- pega trava exclusiva em `cb_conversation_notes` e a segura até o COMMIT —
+-- enquanto isso, a caixa de entrada não lê anotação nenhuma. Por isso:
+--   - a regra do armazenamento conferida EM MEMÓRIA vem ANTES da ALTER (0);
+--   - depois dela, as conferências são de CATÁLOGO (6): as regras pela
+--     definição renderizada, `cb_arquivos_citados` (LANGUAGE sql, conferida
+--     no próprio CREATE) pelo corpo — ela varre `messages` e NÃO é chamada
+--     com a trava tomada;
+--   - a ÚNICA DML depois da ALTER é a que CHAMA o gatilho (7; regra 3 do
+--     banco vazio: o corpo plpgsql só é analisado quando roda, e ele só roda
+--     com a coluna e o gatilho desta migration): três instruções numa
+--     anotação fictícia, pela chave, sem varrer tabela. O resto do que o
+--     gatilho faz (o sinal da Lixeira, o caminho torto fora da fila, a
+--     anotação viva que segura o arquivo) se provou no Postgres descartável,
+--     com dado (registro no plano);
+--   - as policies de `storage.objects` (tabela QUENTE: toda leitura de
+--     anexo passa por ela) ficam no FIM, com `lock_timeout` de 1 s: a espera
+--     pela trava dela acontece com a das anotações já tomada (8).
 --
 -- Idempotente — seguro rodar mais de uma vez.
 -- ============================================================
 
 SET LOCAL lock_timeout = '5s';
+
+-- ------------------------------------------------------------
+-- 0) A regra de `notas/` no armazenamento, EM MEMÓRIA (antes da ALTER)
+-- ------------------------------------------------------------
+-- A mesma expressão das policies da seção 8, sobre casos escritos (como a
+-- 954): vale no banco vazio, não depende de existir membro de cada papel e
+-- não trava nada. As policies em si são conferidas no catálogo, no fim.
+DO $$
+DECLARE
+  v_conta text := 'account-11111111-1111-1111-1111-111111111111';
+  v_eu text := '22222222-2222-2222-2222-222222222222';
+  v_ok boolean;
+BEGIN
+  FOR v_ok IN
+    SELECT (
+      CASE acao
+        WHEN 'trocar' THEN
+          (storage.foldername(caminho))[2] IS DISTINCT FROM 'notas'
+          AND ((storage.foldername(caminho))[2] IS DISTINCT FROM 'acervo' OR papel IN ('owner', 'admin'))
+        ELSE
+          coalesce(CASE
+            WHEN (storage.foldername(caminho))[2] IS NOT DISTINCT FROM 'notas' THEN dono = v_eu
+            ELSE (storage.foldername(caminho))[2] IS DISTINCT FROM 'acervo' OR papel IN ('owner', 'admin')
+          END, false)
+      END
+    ) IS NOT DISTINCT FROM esperado
+    FROM (VALUES
+      -- `notas/`: ninguém troca; só o dono apaga — nem o admin apaga o dos outros.
+      (v_conta || '/notas/u1/a.ogg', 'agent',  v_eu,   'apagar', true),
+      (v_conta || '/notas/u1/a.ogg', 'viewer', v_eu,   'apagar', true),
+      (v_conta || '/notas/u1/a.ogg', 'admin',  'outro', 'apagar', false),
+      (v_conta || '/notas/u1/a.ogg', 'owner',  NULL,   'apagar', false),
+      (v_conta || '/notas/u1/a.ogg', 'agent',  v_eu,   'trocar', false),
+      (v_conta || '/notas/u1/a.ogg', 'owner',  v_eu,   'trocar', false),
+      -- Fora de `notas/`, como na 954: anexo comum, todo membro; acervo, admin.
+      (v_conta || '/1-foto.png',          'viewer', NULL, 'apagar', true),
+      (v_conta || '/1-foto.png',          'agent',  NULL, 'trocar', true),
+      (v_conta || '/acervo/1-modelo.pdf', 'agent',  NULL, 'apagar', false),
+      (v_conta || '/acervo/1-modelo.pdf', 'admin',  NULL, 'trocar', true)
+    ) AS t(caminho, papel, dono, acao, esperado)
+  LOOP
+    IF NOT v_ok THEN
+      RAISE EXCEPTION '1102: a regra de notas/ no armazenamento não bate com o esperado.';
+    END IF;
+  END LOOP;
+END $$;
 
 -- ------------------------------------------------------------
 -- 1) As colunas
@@ -371,7 +428,6 @@ DO $$
 DECLARE
   v_def text;
   v_seguro boolean;
-  v_caminho text;
 BEGIN
   -- 6.1 As colunas.
   IF NOT EXISTS (
@@ -397,6 +453,25 @@ BEGIN
        WHERE c.conrelid = 'public.cb_conversation_notes'::regclass AND c.contype = 'c'
          AND c.conname IN ('cb_conversation_notes_conteudo_ck', 'cb_conversation_notes_anexos_ck')) <> 2 THEN
     RAISE EXCEPTION '1102: faltou cb_conversation_notes_conteudo_ck ou cb_conversation_notes_anexos_ck';
+  END IF;
+  -- E o que elas DIZEM, pela definição renderizada (sem DML com a trava
+  -- tomada): lista de até 10; texto OU ao menos um anexo; o resto, recusado.
+  SELECT regexp_replace(pg_get_constraintdef(c.oid), '\s+', ' ', 'g') INTO v_def
+    FROM pg_constraint c
+   WHERE c.conrelid = 'public.cb_conversation_notes'::regclass
+     AND c.conname = 'cb_conversation_notes_anexos_ck';
+  IF position('WHEN (jsonb_typeof(anexos) = ''array''::text) THEN (jsonb_array_length(anexos) <= 10)' IN v_def) = 0
+     OR position('ELSE false' IN v_def) = 0 THEN
+    RAISE EXCEPTION '1102: cb_conversation_notes_anexos_ck não diz "lista de até 10": %', v_def;
+  END IF;
+  SELECT regexp_replace(pg_get_constraintdef(c.oid), '\s+', ' ', 'g') INTO v_def
+    FROM pg_constraint c
+   WHERE c.conrelid = 'public.cb_conversation_notes'::regclass
+     AND c.conname = 'cb_conversation_notes_conteudo_ck';
+  IF position('WHEN (btrim(texto) <> ''''::text) THEN true' IN v_def) = 0
+     OR position('THEN (jsonb_array_length(anexos) >= 1)' IN v_def) = 0
+     OR position('ELSE false' IN v_def) = 0 THEN
+    RAISE EXCEPTION '1102: cb_conversation_notes_conteudo_ck não diz "texto OU anexo": %', v_def;
   END IF;
 
   -- 6.3 O gatilho: AFTER DELETE OR UPDATE OF anexos, por linha, com o sinal.
@@ -442,15 +517,15 @@ BEGIN
     RAISE EXCEPTION '1102: os privilégios das anotações ou da fila mudaram';
   END IF;
 
-  -- 6.6 `cb_arquivos_citados` recriada é CHAMADA (no banco vazio, sem nada a
-  --     citar): o corpo novo roda.
-  SELECT c INTO v_caminho
-    FROM public.cb_arquivos_citados('00000000-0000-0000-0000-000000000001',
-                                    ARRAY['account-00000000-0000-0000-0000-000000000001/notas/x/1102.ogg']) c;
-  IF v_caminho IS NOT NULL
-     AND NOT EXISTS (SELECT 1 FROM public.cb_conversation_notes n
-                      WHERE n.anexos @> '[{"caminho": "account-00000000-0000-0000-0000-000000000001/notas/x/1102.ogg"}]') THEN
-    RAISE EXCEPTION '1102: cb_arquivos_citados cita um caminho que ninguém usa: %', v_caminho;
+  -- 6.6 `cb_arquivos_citados` lê os anexos das anotações — pelo CORPO. É
+  --     LANGUAGE sql: o Postgres conferiu o corpo no CREATE (colunas e
+  --     tabelas), e chamá-la aqui varreria `messages` com a trava exclusiva
+  --     das anotações tomada (a prova com dado foi no descartável).
+  v_def := pg_get_functiondef('public.cb_arquivos_citados(uuid, text[])'::regprocedure);
+  IF position('FROM cb_conversation_notes n' IN v_def) = 0
+     OR position('jsonb_array_elements(' IN v_def) = 0
+     OR position('cb_lixeira_de_contatos' IN v_def) = 0 THEN
+    RAISE EXCEPTION '1102: cb_arquivos_citados não conta os anexos das anotações vivas';
   END IF;
 
   RAISE NOTICE '1102: colunas, regras, gatilho, inventário da Lixeira e privilégios conferidos.';
@@ -459,10 +534,14 @@ END $$;
 -- ------------------------------------------------------------
 -- 7) Conferência que CHAMA o gatilho (supabase.md, regra 3 do banco vazio)
 -- ------------------------------------------------------------
--- Numa conversa de verdade, num subbloco desfeito pelo SQLSTATE próprio
--- (P1102 — nunca `WHEN OTHERS`, que engoliria o defeito): nada sobra na
--- anotação nem na fila, e nada sai pelo tempo real (só o que é confirmado é
--- decodificado). No banco vazio do replay, pula com NOTICE.
+-- ⚠️ A única DML depois da primeira ALTER (ver "AS TRAVAS" no cabeçalho), e a
+-- MENOR que exercita os dois ramos do gatilho: uma anotação fictícia com dois
+-- anexos (INSERT), tirar um (UPDATE: o ramo que compara com NEW) e apagá-la
+-- (DELETE). Tudo pela chave; a fila é lida pelo índice único (bucket,
+-- caminho). Num subbloco desfeito pelo SQLSTATE próprio (P1102 — nunca
+-- `WHEN OTHERS`, que engoliria o defeito): nada sobra na anotação nem na
+-- fila, e nada sai pelo tempo real (só o confirmado é decodificado). No banco
+-- vazio do replay, pula com NOTICE.
 DO $$
 DECLARE
   v_conta uuid;
@@ -470,7 +549,6 @@ DECLARE
   v_contato uuid;
   v_base text;
   v_nota uuid;
-  v_onze jsonb;
 BEGIN
   SELECT c.account_id, c.id, c.contact_id INTO v_conta, v_conversa, v_contato
     FROM public.conversations c
@@ -483,104 +561,36 @@ BEGIN
   v_base := 'account-' || v_conta::text || '/notas/conferencia-1102-' || replace(gen_random_uuid()::text, '-', '') || '/';
 
   BEGIN
-    -- a) Anotação SÓ de anexo entra; vazia, com 11 anexos ou com anexos que
-    --    não são lista, não.
     INSERT INTO public.cb_conversation_notes (account_id, conversation_id, contact_id, texto, anexos)
     VALUES (v_conta, v_conversa, v_contato, '',
-            jsonb_build_array(jsonb_build_object('caminho', v_base || 'a.ogg', 'nome', 'a.ogg',
-                                                 'mime', 'audio/ogg', 'bytes', 10)))
+            jsonb_build_array(jsonb_build_object('caminho', v_base || 'a.ogg', 'nome', 'a.ogg'),
+                              jsonb_build_object('caminho', v_base || 'b.pdf', 'nome', 'b.pdf')))
     RETURNING id INTO v_nota;
-    BEGIN
-      INSERT INTO public.cb_conversation_notes (account_id, conversation_id, contact_id, texto, anexos)
-      VALUES (v_conta, v_conversa, v_contato, '   ', '[]'::jsonb);
-      RAISE EXCEPTION '1102: anotação sem texto e sem anexo entrou';
-    EXCEPTION WHEN check_violation THEN NULL;
-    END;
-    SELECT jsonb_agg(jsonb_build_object('caminho', v_base || g || '.pdf', 'nome', g || '.pdf'))
-      INTO v_onze FROM generate_series(1, 11) g;
-    BEGIN
-      INSERT INTO public.cb_conversation_notes (account_id, conversation_id, contact_id, texto, anexos)
-      VALUES (v_conta, v_conversa, v_contato, 'onze', v_onze);
-      RAISE EXCEPTION '1102: anotação com 11 anexos entrou';
-    EXCEPTION WHEN check_violation THEN NULL;
-    END;
-    BEGIN
-      INSERT INTO public.cb_conversation_notes (account_id, conversation_id, contact_id, texto, anexos)
-      VALUES (v_conta, v_conversa, v_contato, 'objeto', '{"caminho": "x"}'::jsonb);
-      RAISE EXCEPTION '1102: anexos que não são lista entraram';
-    EXCEPTION WHEN check_violation THEN NULL;
-    END;
 
-    -- b) Apagar a anotação põe o anexo na fila (origem `anotacao`).
-    DELETE FROM public.cb_conversation_notes WHERE id = v_nota;
-    IF NOT EXISTS (SELECT 1 FROM public.cb_arquivos_a_apagar f
-                    WHERE f.caminho = v_base || 'a.ogg' AND f.account_id = v_conta
-                      AND f.origem = 'anotacao' AND f.bucket = 'chat-media') THEN
-      RAISE EXCEPTION '1102: apagar a anotação não pôs o anexo na fila';
-    END IF;
-
-    -- c) Tirar 1 de 3 anexos põe só o tirado; mexer em outra coluna, nada.
-    INSERT INTO public.cb_conversation_notes (account_id, conversation_id, contact_id, texto, anexos)
-    VALUES (v_conta, v_conversa, v_contato, 'tres',
-            jsonb_build_array(jsonb_build_object('caminho', v_base || 'b.png', 'nome', 'b.png'),
-                              jsonb_build_object('caminho', v_base || 'c.pdf', 'nome', 'c.pdf'),
-                              jsonb_build_object('caminho', v_base || 'd.mp4', 'nome', 'd.mp4')))
-    RETURNING id INTO v_nota;
+    -- Tirar um anexo põe SÓ o tirado na fila (origem `anotacao`).
     UPDATE public.cb_conversation_notes
-       SET anexos = jsonb_build_array(jsonb_build_object('caminho', v_base || 'b.png', 'nome', 'b.png'),
-                                      jsonb_build_object('caminho', v_base || 'd.mp4', 'nome', 'd.mp4'))
+       SET anexos = jsonb_build_array(jsonb_build_object('caminho', v_base || 'a.ogg', 'nome', 'a.ogg'))
      WHERE id = v_nota;
-    UPDATE public.cb_conversation_notes SET texto = 'tres, agora dois' WHERE id = v_nota;
-    IF NOT EXISTS (SELECT 1 FROM public.cb_arquivos_a_apagar WHERE caminho = v_base || 'c.pdf')
-       OR EXISTS (SELECT 1 FROM public.cb_arquivos_a_apagar
-                   WHERE caminho IN (v_base || 'b.png', v_base || 'd.mp4')) THEN
+    IF NOT EXISTS (SELECT 1 FROM public.cb_arquivos_a_apagar f
+                    WHERE f.bucket = 'chat-media' AND f.caminho = v_base || 'b.pdf'
+                      AND f.account_id = v_conta AND f.origem = 'anotacao')
+       OR EXISTS (SELECT 1 FROM public.cb_arquivos_a_apagar f
+                   WHERE f.bucket = 'chat-media' AND f.caminho = v_base || 'a.ogg') THEN
       RAISE EXCEPTION '1102: tirar um anexo não pôs SÓ o tirado na fila';
     END IF;
 
-    -- d) Uma anotação viva cita o caminho: a drenagem não o apaga.
-    IF NOT EXISTS (SELECT 1 FROM public.cb_arquivos_citados(v_conta, ARRAY[v_base || 'b.png', v_base || 'c.pdf']) c
-                    WHERE c = v_base || 'b.png')
-       OR EXISTS (SELECT 1 FROM public.cb_arquivos_citados(v_conta, ARRAY[v_base || 'c.pdf']) c) THEN
-      RAISE EXCEPTION '1102: cb_arquivos_citados não conta os anexos das anotações vivas';
-    END IF;
-
-    -- e) Com o sinal da Lixeira (o CASCADE do mover), nada vai para a fila.
-    PERFORM set_config('cb.lixeira', 'movendo', true);
+    -- Apagar a anotação põe o que ficou.
     DELETE FROM public.cb_conversation_notes WHERE id = v_nota;
-    PERFORM set_config('cb.lixeira', '', true);
-    IF EXISTS (SELECT 1 FROM public.cb_arquivos_a_apagar
-                WHERE caminho IN (v_base || 'b.png', v_base || 'd.mp4')) THEN
-      RAISE EXCEPTION '1102: com cb.lixeira = movendo, o anexo foi para a fila (a fotografia o guarda)';
-    END IF;
-
-    -- f) Caminho fora de `notas/`, de outra conta ou torto não entra na fila
-    --    (o arquivo fica: na dúvida, nada se apaga).
-    INSERT INTO public.cb_conversation_notes (account_id, conversation_id, contact_id, texto, anexos)
-    VALUES (v_conta, v_conversa, v_contato, 'tortos',
-            jsonb_build_array(
-              jsonb_build_object('caminho', 'account-' || v_conta::text || '/conferencia-1102-fora.pdf'),
-              jsonb_build_object('caminho', 'account-00000000-0000-0000-0000-000000000000/notas/x/y.pdf'),
-              jsonb_build_object('caminho', v_base || '../z.pdf'),
-              jsonb_build_object('nome', 'sem caminho'),
-              '"texto solto"'::jsonb))
-    RETURNING id INTO v_nota;
-    DELETE FROM public.cb_conversation_notes WHERE id = v_nota;
-    IF EXISTS (SELECT 1 FROM public.cb_arquivos_a_apagar
-                WHERE caminho IN ('account-' || v_conta::text || '/conferencia-1102-fora.pdf',
-                                  'account-00000000-0000-0000-0000-000000000000/notas/x/y.pdf',
-                                  v_base || '../z.pdf')) THEN
-      RAISE EXCEPTION '1102: caminho fora de notas/ (ou de outra conta) entrou na fila';
+    IF NOT EXISTS (SELECT 1 FROM public.cb_arquivos_a_apagar f
+                    WHERE f.bucket = 'chat-media' AND f.caminho = v_base || 'a.ogg'
+                      AND f.account_id = v_conta AND f.origem = 'anotacao') THEN
+      RAISE EXCEPTION '1102: apagar a anotação não pôs o anexo na fila';
     END IF;
 
     RAISE EXCEPTION USING ERRCODE = 'P1102', MESSAGE = 'desfaz a conferência';
   EXCEPTION WHEN SQLSTATE 'P1102' THEN
     RAISE NOTICE '1102: o gatilho dos anexos EXECUTOU numa conversa de verdade (desfeito).';
   END;
-
-  -- O rollback do subbloco desfaz o sinal junto; confere.
-  IF nullif(current_setting('cb.lixeira', true), '') IS NOT NULL THEN
-    RAISE EXCEPTION '1102: o sinal cb.lixeira sobrou depois da conferência';
-  END IF;
 END $$;
 
 -- ------------------------------------------------------------
@@ -589,6 +599,12 @@ END $$;
 -- No FIM de propósito: a trava exclusiva de `storage.objects` vai daqui até o
 -- COMMIT. A policy de INSERT ("Members can upload chat media", 954) NÃO é
 -- tocada: gravar em `notas/` continua aberto a todo membro ativo (D6).
+--
+-- ⚠️ Teto de 1 s para ESPERAR a trava de `storage.objects`: a das anotações
+-- já está tomada desde a seção 1, e cada segundo de espera aqui é um segundo
+-- em que a caixa de entrada não lê anotação nem anexo. Passou do teto, a
+-- migration falha inteira (nada fica pela metade) e se aplica de novo.
+SET LOCAL lock_timeout = '1s';
 
 -- TROCAR (UPDATE): ninguém em `notas/` pelo navegador. Sem WITH CHECK, o
 -- USING vale também para a linha NOVA: ninguém move arquivo para dentro de
@@ -632,47 +648,10 @@ CREATE POLICY "Members can delete chat media"
     )
   );
 
--- Conferência: a REGRA em memória (como a 954 — vale no banco vazio e não
--- depende de existir membro de cada papel) e as policies no catálogo.
+-- Conferência das policies no CATÁLOGO (a regra em si foi conferida em
+-- memória na seção 0, antes de qualquer trava).
 DO $$
-DECLARE
-  v_conta text := 'account-11111111-1111-1111-1111-111111111111';
-  v_eu text := '22222222-2222-2222-2222-222222222222';
-  v_ok boolean;
 BEGIN
-  FOR v_ok IN
-    SELECT (
-      CASE acao
-        WHEN 'trocar' THEN
-          (storage.foldername(caminho))[2] IS DISTINCT FROM 'notas'
-          AND ((storage.foldername(caminho))[2] IS DISTINCT FROM 'acervo' OR papel IN ('owner', 'admin'))
-        ELSE
-          coalesce(CASE
-            WHEN (storage.foldername(caminho))[2] IS NOT DISTINCT FROM 'notas' THEN dono = v_eu
-            ELSE (storage.foldername(caminho))[2] IS DISTINCT FROM 'acervo' OR papel IN ('owner', 'admin')
-          END, false)
-      END
-    ) IS NOT DISTINCT FROM esperado
-    FROM (VALUES
-      -- `notas/`: ninguém troca; só o dono apaga — nem o admin apaga o dos outros.
-      (v_conta || '/notas/u1/a.ogg', 'agent',  v_eu,   'apagar', true),
-      (v_conta || '/notas/u1/a.ogg', 'viewer', v_eu,   'apagar', true),
-      (v_conta || '/notas/u1/a.ogg', 'admin',  'outro', 'apagar', false),
-      (v_conta || '/notas/u1/a.ogg', 'owner',  NULL,   'apagar', false),
-      (v_conta || '/notas/u1/a.ogg', 'agent',  v_eu,   'trocar', false),
-      (v_conta || '/notas/u1/a.ogg', 'owner',  v_eu,   'trocar', false),
-      -- Fora de `notas/`, como na 954: anexo comum, todo membro; acervo, admin.
-      (v_conta || '/1-foto.png',          'viewer', NULL, 'apagar', true),
-      (v_conta || '/1-foto.png',          'agent',  NULL, 'trocar', true),
-      (v_conta || '/acervo/1-modelo.pdf', 'agent',  NULL, 'apagar', false),
-      (v_conta || '/acervo/1-modelo.pdf', 'admin',  NULL, 'trocar', true)
-    ) AS t(caminho, papel, dono, acao, esperado)
-  LOOP
-    IF NOT v_ok THEN
-      RAISE EXCEPTION '1102: a regra de notas/ no armazenamento não bate com o esperado.';
-    END IF;
-  END LOOP;
-
   IF NOT EXISTS (
        SELECT 1 FROM pg_policies
         WHERE schemaname = 'storage' AND tablename = 'objects'

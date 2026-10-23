@@ -43,10 +43,10 @@
 | Fase | Escopo | Estado | Migration | PR |
 | --- | --- | --- | --- | --- |
 | **0** | Estudo, riscos conferidos no código e na produção, decisões | ✅ 22/10/2026 (este arquivo) | — | — |
-| **1** | Banco e servidor: colunas, regras, gatilho na fila de arquivos a apagar (a fila e a drenagem já existem: Lixeira), regras do armazenamento para `notas/`, POST com anexos | ✅ código e migration na branch `feat/anotacao-com-anexos` (23/10/2026); migration provada no descartável, **NÃO aplicada**; falta medir a leitura do Storage no preview | `1102` | — |
-| **2** | Tela: anexar, gravar, colar e arrastar na caixa; mostrar nos cinco lugares; aviso no sino | ✅ código na mesma branch (23/10/2026); **falta o preview** (1440×900 e 375 px) e o iPhone | — | — |
+| **1** | Banco e servidor: colunas, regras, gatilho na fila de arquivos a apagar (a fila e a drenagem já existem: Lixeira), regras do armazenamento para `notas/`, POST com anexos | ✅ código e migration na branch `feat/anotacao-com-anexos` (23/10/2026); migration provada no descartável, **NÃO aplicada**; a leitura do Storage (`info()`) medida pelo operador | `1102` | #434 |
+| **2** | Tela: anexar, gravar, colar e arrastar na caixa; mostrar nos cinco lugares; aviso no sino | ✅ código na mesma branch (23/10/2026); **falta o preview** (1440×900 e 375 px) e o iPhone | — | #434 |
 | **3** | Edição: editar no lugar, marca "editada", menção acrescentada | ⏳ (outro PR; a coluna `editada_em` já entrou na 1102) | a da Fase 1 | — |
-| **4** | API v1 (`GET /notes` com anexos e `editada_em`) e doc pública | ✅ na mesma branch (23/10/2026) | — | — |
+| **4** | API v1 (`GET /notes` com anexos e `editada_em`) e doc pública | ✅ na mesma branch (23/10/2026) | — | #434 |
 
 PRs: Fases 1 e 2 juntas (a 1 sozinha não tem tela para provar no preview); a
 Fase 3 em outro PR; a 4 entra no PR das Fases 1–2 se couber.
@@ -470,18 +470,51 @@ teste de unidade (o vitest roda sem DOM): confere-se no preview e no iPhone.
   microfone, com 10 anexos;
 - na API, o `.html` sai com `?download=` também (a mesma régua da tela).
 
-**Fica para depois:** medir no preview a leitura do Storage (`info()`; se o
-projeto responder diferente, troca-se só `arquivo-do-anexo.ts` — a
-alternativa é o `list()` da pasta do arquivo); antes de aplicar, conferir
-que as policies de UPDATE e DELETE do `chat-media` na produção são as da 954
-(`pg_policies`; a 1102 as recria a partir dela — mudança feita pela UI se
-perderia); aplicar a 1102 com autorização do operador (ADITIVA: antes do
-deploy) e registrar em `docs/MIGRATIONS-APLICADAS.md`; o e2e da seção "Teste de ponta a ponta"; a
-gravação e o player no iPhone; a Fase 3 (edição, `mantidosSaoDaNota`, a marca
-"editada"); a linha da seção 12 do CLAUDE.md (está a 2 bytes do teto).
+**Fica para depois:** aplicar a 1102 com autorização do operador (ADITIVA:
+antes do deploy) e registrar em `docs/MIGRATIONS-APLICADAS.md`; o e2e da
+seção "Teste de ponta a ponta"; a gravação e o player no iPhone; a Fase 3
+(edição, `mantidosSaoDaNota`, a marca "editada"). Medido pelo operador em
+23/10/2026 (sem pendência): o `info()` do Storage hospedado devolve `size` e
+`contentType` no topo, e o ausente como `status: 400`, `statusCode: "404"`
+(o que `lerArquivoDoAnexo` já trata); as policies de UPDATE, DELETE e INSERT
+do `chat-media` na produção são exatamente as da 954; a linha da seção 12 do
+CLAUDE.md entrou (`d87458f1`).
 
 **Limite novo conhecido:** a aba fechada com o POST sem resposta deixa os
 arquivos (a anotação pode ter sido salva; a caixa não apaga o incerto). E o
 replay do CI precisa de `storage.objects.owner_id` (migration do próprio
 storage-api, presente onde a 0023/0986/1060 já usam colunas mais novas do
 bucket) — se faltar, a 1102 reprova no CI com a mensagem do Postgres.
+
+### Correções da revisão (23/10/2026: revisor independente + Codex no PR #434)
+
+- **Salvar que termina fora da tela** (trocou de conversa no meio): não
+  chama mais `onSaved`/`onClose`/`onLimparResposta` (eram os do render do
+  clique e mexiam na conversa aberta agora); avisa "salva", "não salva" ou
+  "incerta" com frase própria (`naTelaRef`, efeito de layout).
+- **Gravação parada e salva em seguida**: o gravador fica `finalizando` até
+  os bytes chegarem, e o Salvar espera; arquivo solto ou colado durante o
+  salvar avisa em vez de sumir.
+- **Miniatura** de imagem pela transformação do Storage (`urlDaMiniatura`,
+  160 px); o original só no visualizador; ícone se a transformação recusar.
+- **Esc no visualizador dentro de Sheet** não fecha mais o Sheet (captura no
+  `document`); o visualizador só trava a rolagem se ninguém travou antes.
+- **Emoji no ponto do corte** (nome do anexo, corpo do aviso):
+  `cortarSemPartir`, com teste em toda posição.
+- **Pinos**: `anexos-da-nota.chamadores.test.ts` lê a árvore do TypeScript
+  (`n.texto`, `nota!.texto`, desestruturação) em quem usa `ConversationNote`,
+  com exceções pelas leituras exatas; `subirAnexoDaNota` em `AJUDANTES`.
+- **Rota**: erro ao ler perfil ou conversa = 500 (era 403/404); id que não é
+  UUID = 400 antes do banco; a recusa de um anexo diz qual (`anexo`).
+- **1102 e as travas**: a regra do armazenamento em memória foi para ANTES da
+  ALTER; depois dela, só catálogo (as regras pela definição,
+  `cb_arquivos_citados` pelo corpo — não é mais CHAMADA com a trava tomada) e
+  a DML mínima que chama o gatilho (um INSERT, um UPDATE, um DELETE, pela
+  chave); `lock_timeout` de 1 s antes das policies de `storage.objects`.
+  Provado de novo no descartável: as 2 aplicações, o banco vazio e os 28
+  cenários; a 1102 inteira roda em ~20 ms ali; cinco mutantes (regra com 11,
+  gatilho mudo, UPDATE que ignora NEW, `cb_arquivos_citados` sem as anotações,
+  regra que deixa o admin apagar) são todos recusados pela conferência.
+- **Textos**: a recusa de tipo diz os formatos aceitos de verdade (áudio OGG,
+  MP3, AAC ou AMR; M4A, WAV e WebM ficam de fora), com teste que amarra a
+  frase à régua.

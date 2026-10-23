@@ -1,24 +1,26 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 // ============================================================
 // Quem DESENHA o texto da anotação desenha os anexos — DEFAULT-DENY (1102).
 //
 // Desde a 1102 a anotação pode ser SÓ de anexos (texto vazio). Uma tela que
-// desenha `nota.texto` e esquece os anexos mostra a anotação em branco — um
-// áudio para o colega que ninguém ouve, sem erro nenhum. Todo arquivo de
-// `src/` que lê o texto de uma anotação (`nota.texto`, `note.texto`,
-// `original.texto`) monta também `<AnexosDaNota>` (a anotação inteira) ou
-// `<ResumoDosAnexos>` (onde ela aparece encolhida: a faixa da fixada e a
-// citação). Arquivo novo assim reprova até montar um dos dois — ou entrar em
-// SEM_ANEXOS, com o motivo.
+// desenha o texto e esquece os anexos mostra a anotação em branco — um áudio
+// para o colega que ninguém ouve, sem erro nenhum. Todo arquivo de `src/` que
+// usa o tipo da anotação (`ConversationNote`) e LÊ um `.texto` monta também
+// `<AnexosDaNota>` (a anotação inteira) ou `<ResumoDosAnexos>` (onde ela
+// aparece encolhida: a faixa da fixada e a citação). Arquivo novo assim
+// reprova até montar um dos dois — ou entrar em SEM_ANEXOS com o motivo e as
+// leituras EXATAS que ele faz (uma leitura nova no mesmo arquivo reprova).
 //
-// LIMITE DECLARADO: segue os nomes de variável com que as telas recebem a
-// anotação. Por isso os CINCO lugares conhecidos precisam continuar sendo
-// achados — renomear a variável num deles tira o arquivo do pino, e o teste
-// "acha os cinco" reprova.
+// O detector lê a ÁRVORE do TypeScript, não o nome da variável: pega
+// `n.texto`, `anotacao.texto`, `fixada.texto`, `nota!.texto`, `nota?.texto`,
+// `nota['texto']` e a desestruturação (`{ texto } = nota`, `({ texto }) =>`).
+// LIMITE DECLARADO: arquivo que recebe a anotação sem citar `ConversationNote`
+// (um `Record<string, unknown>` cru, como o serializador da API v1) escapa.
 // ============================================================
 
 const raiz = path.join(__dirname, '..', '..', '..');
@@ -32,15 +34,52 @@ const ARQUIVOS: string[] = [];
   }
 })('src');
 
-/** Fonte sem comentários (eles citam o texto da anotação ao explicar). */
-function fonte(rel: string): string {
-  return fs
-    .readFileSync(path.join(raiz, rel), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/(^|[^:])\/\/.*$/gm, '$1');
+/**
+ * As leituras de `texto` no código, na forma em que aparecem (`nota.texto`,
+ * `{ texto }`…). Comentário não conta: a árvore não os tem.
+ */
+function leiturasDoTexto(codigo: string, nome = 'x.tsx'): string[] {
+  const arquivo = ts.createSourceFile(
+    nome,
+    codigo,
+    ts.ScriptTarget.Latest,
+    true,
+    nome.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS
+  );
+  const achadas: string[] = [];
+  const visitar = (no: ts.Node): void => {
+    if (ts.isPropertyAccessExpression(no) && no.name.text === 'texto') {
+      achadas.push(no.getText(arquivo));
+    } else if (
+      ts.isElementAccessExpression(no) &&
+      ts.isStringLiteralLike(no.argumentExpression) &&
+      no.argumentExpression.text === 'texto'
+    ) {
+      achadas.push(no.getText(arquivo));
+    } else if (ts.isBindingElement(no) && ts.isObjectBindingPattern(no.parent)) {
+      const chave = no.propertyName ?? no.name;
+      if ((ts.isIdentifier(chave) || ts.isStringLiteralLike(chave)) && chave.text === 'texto') {
+        achadas.push(`{ ${no.getText(arquivo)} }`);
+      }
+    }
+    ts.forEachChild(no, visitar);
+  };
+  visitar(arquivo);
+  return [...new Set(achadas)].sort();
 }
 
-const LE_O_TEXTO = /\b(?:nota|note|original)\??\.texto\b/;
+function codigo(rel: string): string {
+  return fs.readFileSync(path.join(raiz, rel), 'utf8');
+}
+
+/** Usa o tipo da anotação — fora de comentário. */
+function usaANota(rel: string): boolean {
+  const semComentarios = codigo(rel)
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
+  return /\bConversationNote\b/.test(semComentarios);
+}
+
 const DESENHA_OS_ANEXOS = /<(?:AnexosDaNota|ResumoDosAnexos)\b/;
 
 /** Os cinco lugares do plano (docs/PLANO-anotacao-com-anexos-e-edicao.md). */
@@ -52,25 +91,50 @@ const CONHECIDOS = [
   'src/components/inbox/note-line.tsx',
 ];
 
-/** Lê o texto e, de propósito, não desenha anexo — com o motivo. */
-const SEM_ANEXOS: Record<string, string> = {};
+/**
+ * Usa o tipo da anotação e lê um `.texto` que NÃO é o dela — com o motivo e
+ * as leituras exatas (outra leitura no mesmo arquivo reprova).
+ */
+const SEM_ANEXOS: Record<string, { motivo: string; leituras: string[] }> = {
+  'src/components/inbox/internal-note-box.tsx': {
+    motivo:
+      'a caixa de ESCREVER: `r.texto` é o resultado da menção aplicada (aplicarMencao); a anotação respondida aparece pela CitacaoDaNota',
+    leituras: ['r.texto'],
+  },
+  'src/components/inbox/message-composer.tsx': {
+    motivo:
+      'o compositor de MENSAGEM: `p.texto`/`pendente.texto` são a mensagem retida na janela de desfazer e `r.texto` a menção; a anotação é escrita no InternalNoteBox',
+    leituras: ['p.texto', 'pendente.texto', 'r.texto'],
+  },
+  'src/components/inbox/message-thread.tsx': {
+    motivo:
+      '`cor.texto` é a classe de cor de uma faixa do fio; a anotação no fio é desenhada pela NoteLine',
+    leituras: ['cor.texto'],
+  },
+};
 
 describe('anexos da anotação: quem desenha o texto desenha os anexos (default-deny)', () => {
-  const leem = ARQUIVOS.filter((rel) => LE_O_TEXTO.test(fonte(rel))).sort();
+  const leem = ARQUIVOS.filter(
+    (rel) => usaANota(rel) && leiturasDoTexto(codigo(rel), rel).length > 0
+  ).sort();
 
   it('o detector acha os cinco lugares conhecidos', () => {
     for (const rel of CONHECIDOS) expect(leem, rel).toContain(rel);
   });
 
-  it('todo arquivo que lê o texto da anotação monta <AnexosDaNota> ou <ResumoDosAnexos>', () => {
+  it('todo arquivo que usa a anotação e lê `.texto` monta <AnexosDaNota> ou <ResumoDosAnexos>', () => {
     const fora = leem.filter(
-      (rel) => !(rel in SEM_ANEXOS) && !DESENHA_OS_ANEXOS.test(fonte(rel))
+      (rel) => !(rel in SEM_ANEXOS) && !DESENHA_OS_ANEXOS.test(codigo(rel))
     );
     expect(fora).toEqual([]);
   });
 
-  it('a lista de exceções não guarda arquivo morto', () => {
-    for (const rel of Object.keys(SEM_ANEXOS)) expect(leem, rel).toContain(rel);
+  it('a exceção vale só para as leituras escritas nela', () => {
+    for (const [rel, { motivo, leituras }] of Object.entries(SEM_ANEXOS)) {
+      expect(motivo.trim(), rel).not.toBe('');
+      expect(leem, `${rel} saiu do detector: tire da lista`).toContain(rel);
+      expect(leiturasDoTexto(codigo(rel), rel), rel).toEqual([...leituras].sort());
+    }
   });
 
   it('o fio e os cartões desenham os anexos INTEIROS; a faixa e a citação, o resumo', () => {
@@ -79,21 +143,42 @@ describe('anexos da anotação: quem desenha o texto desenha os anexos (default-
       'src/components/inbox/cartao-de-nota.tsx',
       'src/components/contacts/contact-detail-view.tsx',
     ]) {
-      expect(fonte(rel), rel).toMatch(/<AnexosDaNota\b/);
+      expect(codigo(rel), rel).toMatch(/<AnexosDaNota\b/);
     }
     for (const rel of [
       'src/components/inbox/nota-fixada-bar.tsx',
       'src/components/inbox/citacao-da-nota.tsx',
     ]) {
-      expect(fonte(rel), rel).toMatch(/<ResumoDosAnexos\b/);
+      expect(codigo(rel), rel).toMatch(/<ResumoDosAnexos\b/);
     }
   });
 
-  it('o detector enxerga as formas que interessam', () => {
-    expect(LE_O_TEXTO.test('<TextoComLinks texto={nota.texto} />')).toBe(true);
-    expect(LE_O_TEXTO.test('{original.texto}')).toBe(true);
-    expect(LE_O_TEXTO.test('note?.texto')).toBe(true);
-    expect(LE_O_TEXTO.test('setTexto(r.texto)')).toBe(false);
-    expect(LE_O_TEXTO.test('p.texto')).toBe(false);
+  it('o detector enxerga as formas que interessam (senão o default-deny não prova nada)', () => {
+    const casos: [string, string[]][] = [
+      ['<TextoComLinks texto={nota.texto} />', ['nota.texto']],
+      ['const a = n.texto;', ['n.texto']],
+      ['f(anotacao.texto, fixada.texto)', ['anotacao.texto', 'fixada.texto']],
+      ['g(nota!.texto)', ['nota!.texto']],
+      ['g(nota?.texto)', ['nota?.texto']],
+      ["g(nota['texto'])", ["nota['texto']"]],
+      ['const { texto } = nota;', ['{ texto }']],
+      ['const { id, texto: corpo } = nota;', ['{ texto: corpo }']],
+      ['const X = ({ texto }: ConversationNote) => texto;', ['{ texto }']],
+      ['lista.map(({ id, texto }) => id + texto)', ['{ texto }']],
+    ];
+    for (const [trecho, esperado] of casos) {
+      expect(leiturasDoTexto(trecho), trecho).toEqual(esperado);
+    }
+    // O que NÃO é leitura do texto de alguém.
+    for (const trecho of [
+      'fetch(u, { body: JSON.stringify({ texto: limpo }) })',
+      'interface N { texto: string }',
+      'const [texto, setTexto] = useState("");',
+      '// nota.texto num comentário',
+      'const s = "nota.texto";',
+    ]) {
+      expect(leiturasDoTexto(trecho), trecho).toEqual([]);
+    }
+    expect(usaANota('src/types/index.ts')).toBe(true);
   });
 });

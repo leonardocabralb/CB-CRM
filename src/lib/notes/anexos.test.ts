@@ -16,6 +16,7 @@ import {
   caminhoDoAnexoDaNota,
   conferirAnexo,
   corpoDoAviso,
+  cortarSemPartir,
   escolherAnexosDaNota,
   lerAnexosDaNota,
   lerAnexosDoCorpo,
@@ -198,6 +199,39 @@ describe('lerAnexosDoCorpo', () => {
     expect(anexos[1].nome).toBe('b.pdf');
     expect(anexos[2].nome).toHaveLength(MAX_NOME_DO_ANEXO);
   });
+
+  it('o teto do nome nunca parte um emoji (a metade solta o Postgres recusa: 22P02)', () => {
+    // 199 letras + 😀 = 201 unidades: o corte em 200 caía no MEIO do emoji.
+    const nome = `${'a'.repeat(MAX_NOME_DO_ANEXO - 1)}😀.pdf`;
+    const r = lerAnexosDoCorpo([{ caminho: `${PREFIXO}u1/a.pdf`, nome }], CONTA);
+    const gravado = r.ok ? r.anexos[0].nome : '';
+    expect(gravado).toBe('a'.repeat(MAX_NOME_DO_ANEXO - 1));
+    expect(temMetadeSolta(gravado)).toBe(false);
+    // E o que cabe inteiro fica inteiro, emoji incluído.
+    const cabe = `${'a'.repeat(MAX_NOME_DO_ANEXO - 2)}😀`;
+    const r2 = lerAnexosDoCorpo([{ caminho: `${PREFIXO}u1/a.pdf`, nome: cabe }], CONTA);
+    expect(r2.ok ? r2.anexos[0].nome : '').toBe(cabe);
+  });
+});
+
+/** Uma unidade UTF-16 de par sem a outra metade — o que o Postgres recusa. */
+function temMetadeSolta(texto: string): boolean {
+  return /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(texto);
+}
+
+describe('cortarSemPartir', () => {
+  it('corta em unidades UTF-16 e tira a metade alta que sobraria no fim', () => {
+    expect(cortarSemPartir('abc', 5)).toBe('abc');
+    expect(cortarSemPartir('abcdef', 3)).toBe('abc');
+    expect(cortarSemPartir('ab😀', 3)).toBe('ab');
+    expect(cortarSemPartir('ab😀', 4)).toBe('ab😀');
+    expect(cortarSemPartir('😀😀', 3)).toBe('😀');
+    for (let max = 0; max <= 12; max++) {
+      const corte = cortarSemPartir('a😀b🎤c📄', max);
+      expect(corte.length, String(max)).toBeLessThanOrEqual(max);
+      expect(temMetadeSolta(corte), String(max)).toBe(false);
+    }
+  });
 });
 
 describe('conferirAnexo (o que o armazenamento diz)', () => {
@@ -282,6 +316,43 @@ describe('resumo e corpo do aviso', () => {
     const corpo = corpoDoAviso('x'.repeat(500), [anexo({}), anexo({})]);
     expect(corpo.length).toBeLessThanOrEqual(TETO_DO_CORPO_DO_AVISO);
     expect(corpo.endsWith(' · 📎 2 anexos')).toBe(true);
+  });
+
+  it('nenhum corte do corpo parte um emoji — com e sem anexo, em toda posição', () => {
+    for (let n = 260; n <= 290; n++) {
+      const texto = `${'x'.repeat(n)}😀😀😀`;
+      for (const anexos of [[], [anexo({ mime: 'audio/ogg' })]]) {
+        const corpo = corpoDoAviso(texto, anexos);
+        expect(corpo.length, `${n}/${anexos.length}`).toBeLessThanOrEqual(TETO_DO_CORPO_DO_AVISO);
+        expect(temMetadeSolta(corpo), `${n}/${anexos.length}`).toBe(false);
+      }
+    }
+    // O resumo de um documento de nome longo com emoji, sem texto.
+    const longo = anexo({ nome: `${'d'.repeat(TETO_DO_CORPO_DO_AVISO - 4)}😀😀.pdf` });
+    expect(temMetadeSolta(corpoDoAviso('', [longo]))).toBe(false);
+  });
+});
+
+describe('a frase da recusa diz a verdade sobre os formatos (os dois dicionários)', () => {
+  const dicionarios = ['pt-BR', 'en'].map((idioma) => {
+    const arquivo = path.join(__dirname, '..', '..', '..', 'messages', `${idioma}.json`);
+    const json = JSON.parse(fs.readFileSync(arquivo, 'utf8'));
+    return { idioma, frase: json.Inbox.composer.noteAttachmentRefused as string };
+  });
+
+  it('os áudios que ela nomeia são aceitos, e os que ela deixa de fora são recusados', () => {
+    // Nomeados na frase: cada um entra pela régua da anotação.
+    for (const mime of ['audio/ogg', 'audio/mpeg', 'audio/aac', 'audio/amr']) {
+      expect(tipoDoAnexo(mime), mime).toBe('audio');
+    }
+    // Os que o operador grava/recebe e a régua RECUSA: a frase não os promete.
+    for (const mime of ['audio/x-m4a', 'audio/wav', 'audio/x-wav', 'audio/webm']) {
+      expect(tipoDoAnexo(mime), mime).toBeNull();
+    }
+    for (const { idioma, frase } of dicionarios) {
+      for (const nome of ['OGG', 'MP3', 'AAC', 'AMR']) expect(frase, idioma).toContain(nome);
+      for (const nome of ['M4A', 'WAV', 'WebM', 'WEBM']) expect(frase, idioma).not.toContain(nome);
+    }
   });
 });
 

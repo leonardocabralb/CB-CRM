@@ -120,10 +120,24 @@ function nomeDoCaminho(caminho: string): string {
   return caminho.slice(caminho.lastIndexOf('/') + 1) || 'arquivo';
 }
 
+/**
+ * Corta em `max` unidades UTF-16 SEM partir um caractere. Emoji (e todo
+ * caractere fora do plano básico) é um PAR de unidades: o `slice` cru deixava
+ * a metade alta solta no fim, e o Postgres a recusa no JSON (22P02) — a
+ * anotação com nome longo terminado em emoji nunca salvava, e o aviso cuja
+ * frase cortava num emoji não saía.
+ */
+export function cortarSemPartir(texto: string, max: number): string {
+  if (texto.length <= max) return texto;
+  const corte = texto.slice(0, max);
+  const ultima = corte.charCodeAt(corte.length - 1);
+  return ultima >= 0xd800 && ultima <= 0xdbff ? corte.slice(0, -1) : corte;
+}
+
 /** O nome do corpo, aparado, sem caractere de controle e com teto. */
 function nomeDoPedido(nome: string, caminho: string): string {
   const limpo = nome.replace(/[\u0000-\u001f\u007f]/g, '').trim();
-  return (limpo || nomeDoCaminho(caminho)).slice(0, MAX_NOME_DO_ANEXO);
+  return cortarSemPartir(limpo || nomeDoCaminho(caminho), MAX_NOME_DO_ANEXO);
 }
 
 /** O que o corpo do POST traz de cada anexo: o resto o servidor LÊ. */
@@ -290,7 +304,8 @@ export const TETO_DO_CORPO_DO_AVISO = 280;
 /**
  * O corpo do aviso (sino e pop-up do navegador): o texto e, depois dele, o
  * resumo dos anexos ("@Fulano confere · 🎤 Áudio"). Sem texto, só o resumo.
- * O resumo nunca é cortado: o texto encolhe para ele caber no teto.
+ * O resumo nunca é cortado: o texto encolhe para ele caber no teto. Todo
+ * corte é por `cortarSemPartir` (emoji no ponto do corte).
  */
 export function corpoDoAviso(
   texto: string,
@@ -298,13 +313,13 @@ export function corpoDoAviso(
 ): string {
   const limpo = texto.trim();
   const resumo = resumoDosAnexos(anexos);
-  if (!resumo) return limpo.slice(0, TETO_DO_CORPO_DO_AVISO);
+  if (!resumo) return cortarSemPartir(limpo, TETO_DO_CORPO_DO_AVISO);
   const sufixo = textoDoResumo(resumo);
-  if (!limpo) return sufixo.slice(0, TETO_DO_CORPO_DO_AVISO);
+  if (!limpo) return cortarSemPartir(sufixo, TETO_DO_CORPO_DO_AVISO);
   const junta = ' · ';
   const espaco = TETO_DO_CORPO_DO_AVISO - junta.length - sufixo.length;
-  if (espaco <= 0) return sufixo.slice(0, TETO_DO_CORPO_DO_AVISO);
-  return `${limpo.slice(0, espaco).trimEnd()}${junta}${sufixo}`;
+  if (espaco <= 0) return cortarSemPartir(sufixo, TETO_DO_CORPO_DO_AVISO);
+  return `${cortarSemPartir(limpo, espaco).trimEnd()}${junta}${sufixo}`;
 }
 
 /** O tamanho para a tela ("820 KB", "3,4 MB"), no formato de número de quem vê. */

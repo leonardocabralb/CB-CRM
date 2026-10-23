@@ -78,11 +78,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { data: profile } = await supabase
+  const { data: profile, error: erroPerfil } = await supabase
     .from('profiles')
     .select('account_id, account_role, full_name, email')
     .eq('user_id', user.id)
     .maybeSingle()
+  // ⚠️ Erro de LEITURA não é "sem conta" (raiz, 8b): o 403 diria à pessoa
+  // que ela não pode anotar quando o banco só falhou.
+  if (erroPerfil) {
+    console.error('[POST /api/cb/notes] falha ao ler o perfil:', erroPerfil.message)
+    return NextResponse.json({ error: erroPerfil.message }, { status: 500 })
+  }
 
   const accountId = profile?.account_id as string | undefined
   if (!accountId) {
@@ -130,6 +136,14 @@ export async function POST(request: Request) {
       { status: 400 },
     )
   }
+  // Forma ANTES do banco: é o que deixa o `error` da leitura abaixo
+  // significar só falha do banco (um id torto daria 22P02, e viraria 500).
+  if (!UUID.test(porConversa ? porConversa : (porContato as string))) {
+    return NextResponse.json(
+      { error: porConversa ? 'conversation_id must be a UUID' : 'contact_id must be a UUID' },
+      { status: 400 },
+    )
+  }
   if (texto !== undefined && texto !== null && typeof texto !== 'string') {
     return NextResponse.json({ error: 'texto must be a string' }, { status: 400 })
   }
@@ -173,11 +187,18 @@ export async function POST(request: Request) {
     .from('conversations')
     .select('id, contact_id, account_id')
     .eq('account_id', accountId)
-  const { data: conversa } = porConversa
+  const { data: conversa, error: erroConversa } = porConversa
     ? await busca.eq('id', conversation_id).maybeSingle()
     : // `idx_conversations_account_contact` é UNIQUE em (account_id,
       // contact_id) desde a 036, então isto devolve no máximo uma linha.
       await busca.eq('contact_id', contact_id).maybeSingle()
+
+  // ⚠️ Erro de leitura NÃO é "não encontrada" (raiz, 8b): o 404/409 faria a
+  // tela dizer que a conversa não existe, ou que o contato não tem conversa.
+  if (erroConversa) {
+    console.error('[POST /api/cb/notes] falha ao ler a conversa:', erroConversa.message)
+    return NextResponse.json({ error: erroConversa.message }, { status: 500 })
+  }
 
   if (!conversa) {
     return NextResponse.json(
@@ -281,7 +302,9 @@ export async function POST(request: Request) {
 
   // 1102: cada anexo conferido no PRÓPRIO armazenamento — existe, o tamanho
   // e o tipo —, um por vez (no máximo 10; o caso comum é 1). Por último, de
-  // propósito: nada vai ao armazenamento por uma conversa que não existe.
+  // propósito: nada vai ao armazenamento por uma conversa que não existe. A
+  // recusa de UM anexo diz QUAL (`anexo`: o caminho e o nome), e a caixa
+  // mostra o nome que a pessoa vê na lista.
   const anexosConferidos: AnexoDaNota[] = []
   for (const pedido of anexosPedidos.anexos) {
     const lido = await lerArquivoDoAnexo(admin, pedido.caminho)
@@ -289,12 +312,13 @@ export async function POST(request: Request) {
       console.error('[POST /api/cb/notes] não deu para conferir o anexo:', lido.motivo)
       return NextResponse.json({ error: 'STORAGE_UNAVAILABLE' }, { status: 503 })
     }
+    const qual = { caminho: pedido.caminho, nome: pedido.nome }
     if (lido.estado === 'ausente') {
-      return NextResponse.json({ error: 'ATTACHMENT_NOT_FOUND' }, { status: 400 })
+      return NextResponse.json({ error: 'ATTACHMENT_NOT_FOUND', anexo: qual }, { status: 400 })
     }
     const conferido = conferirAnexo(pedido, lido)
     if (!conferido.ok) {
-      return NextResponse.json({ error: conferido.erro }, { status: 400 })
+      return NextResponse.json({ error: conferido.erro, anexo: qual }, { status: 400 })
     }
     anexosConferidos.push(conferido.anexo)
   }

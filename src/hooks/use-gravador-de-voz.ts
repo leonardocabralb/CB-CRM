@@ -17,6 +17,13 @@ const CAMINHO_DO_ENCODER = '/opus/encoderWorker.min.js';
 export type InicioDaGravacao = 'gravando' | 'sem-suporte' | 'negado' | 'cancelado';
 
 /**
+ * Quanto se espera o encoder devolver a gravação parada. Ele responde em
+ * milissegundos; o prazo só existe para um encoder que morreu não deixar a
+ * caixa "finalizando" (e o Salvar desligado) para sempre.
+ */
+const PRAZO_DA_ENTREGA_MS = 10_000;
+
+/**
  * Gravador de voz da caixa de anotação (1102).
  *
  * CÓPIA do gravador do compositor (`message-composer.tsx`, arquivo do
@@ -33,6 +40,10 @@ export type InicioDaGravacao = 'gravando' | 'sem-suporte' | 'negado' | 'cancelad
  *   início leva uma GERAÇÃO, e parar, descartar e desmontar a avançam.
  * - O teto (`maxSegundos`, 5 min como o compositor) para e ENTREGA a
  *   gravação, no próprio tique do relógio — nunca por efeito.
+ * - ⚠️ `finalizando`: de `parar` (ou do teto) até os bytes chegarem pelo
+ *   `ondataavailable`, o áudio ainda NÃO está na lista de quem chamou. Salvar
+ *   nesse meio-tempo gravaria a anotação sem ele, e o áudio, chegando com o
+ *   salvar em voo, se perderia: quem chama segura o Salvar enquanto isso.
  *
  * `aoGravar` recebe o arquivo Ogg/Opus inteiro (`streamPages: false`).
  */
@@ -44,9 +55,13 @@ export function useGravadorDeVoz({
   maxSegundos: number;
 }) {
   const [gravando, setGravando] = useState(false);
+  const [finalizando, setFinalizando] = useState(false);
   const [segundos, setSegundos] = useState(0);
 
   const recorderRef = useRef<import('opus-recorder').default | null>(null);
+  // O gravador parado que ainda está ENTREGANDO os bytes, e o prazo dele.
+  const finalizandoRef = useRef<import('opus-recorder').default | null>(null);
+  const prazoRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const relogioRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const contagemRef = useRef(0);
   const geracaoRef = useRef(0);
@@ -59,22 +74,48 @@ export function useGravadorDeVoz({
     aoGravarRef.current = aoGravar;
   });
 
-  const encerrar = useCallback((descartando: boolean) => {
-    geracaoRef.current += 1;
-    if (relogioRef.current !== null) {
-      clearInterval(relogioRef.current);
-      relogioRef.current = null;
+  /** A entrega DESTE gravador acabou (chegou, falhou ou estourou o prazo). */
+  const entregou = useCallback((recorder: import('opus-recorder').default) => {
+    if (finalizandoRef.current !== recorder) return;
+    finalizandoRef.current = null;
+    if (prazoRef.current !== null) {
+      clearTimeout(prazoRef.current);
+      prazoRef.current = null;
     }
-    const recorder = recorderRef.current;
-    recorderRef.current = null;
-    if (!recorder) return;
-    if (descartando) descartadosRef.current.add(recorder);
-    // `stop()` solta o microfone (as trilhas do fluxo) por dentro do
-    // opus-recorder e, gravando, faz o encoder devolver o arquivo pelo
-    // `ondataavailable`. Com o microfone ainda sendo pedido ele não faz nada:
-    // quem fecha é o `iniciar`, pela geração.
-    void recorder.stop().catch(() => {});
+    setFinalizando(false);
   }, []);
+
+  const encerrar = useCallback(
+    (descartando: boolean) => {
+      geracaoRef.current += 1;
+      if (relogioRef.current !== null) {
+        clearInterval(relogioRef.current);
+        relogioRef.current = null;
+      }
+      const recorder = recorderRef.current;
+      recorderRef.current = null;
+      if (!recorder) return;
+      // `stop()` solta o microfone (as trilhas do fluxo) por dentro do
+      // opus-recorder e, gravando, faz o encoder devolver o arquivo pelo
+      // `ondataavailable`. Com o microfone ainda sendo pedido ele não faz
+      // nada: quem fecha é o `iniciar`, pela geração.
+      if (descartando) {
+        descartadosRef.current.add(recorder);
+        void recorder.stop().catch(() => {});
+        return;
+      }
+      finalizandoRef.current = recorder;
+      setFinalizando(true);
+      prazoRef.current = setTimeout(() => entregou(recorder), PRAZO_DA_ENTREGA_MS);
+      // O `ondataavailable` vem ANTES de o `stop()` resolver (o "done" do
+      // encoder); o `finally` só cobre a gravação que não devolveu nada.
+      void recorder
+        .stop()
+        .catch(() => {})
+        .finally(() => entregou(recorder));
+    },
+    [entregou]
+  );
 
   /** Para e ENTREGA a gravação (`aoGravar`). */
   const parar = useCallback(() => {
@@ -113,7 +154,10 @@ export function useGravadorDeVoz({
       recorder = este;
       este.ondataavailable = (bytes) => {
         if (descartadosRef.current.has(este)) return;
+        // Os bytes entram na lista de quem chamou e, no MESMO tique, o
+        // "finalizando" acaba: o Salvar volta já com o áudio na lista.
         aoGravarRef.current(bytes);
+        entregou(este);
       };
       recorderRef.current = este;
       await este.start();
@@ -146,12 +190,21 @@ export function useGravadorDeVoz({
       }
       return geracao === geracaoRef.current ? 'negado' : 'cancelado';
     }
-  }, [encerrar, maxSegundos]);
+  }, [encerrar, entregou, maxSegundos]);
 
-  // A caixa sumiu: descarta e solta o microfone.
+  // A caixa sumiu: descarta e solta o microfone — e a gravação parada que
+  // ainda estava chegando não entra numa caixa que não existe mais.
   useEffect(() => {
-    return () => encerrar(true);
+    // O conjunto é o MESMO a vida toda (o ref nunca é reatribuído).
+    const descartados = descartadosRef.current;
+    return () => {
+      encerrar(true);
+      const chegando = finalizandoRef.current;
+      if (chegando) descartados.add(chegando);
+      finalizandoRef.current = null;
+      if (prazoRef.current !== null) clearTimeout(prazoRef.current);
+    };
   }, [encerrar]);
 
-  return { gravando, segundos, iniciar, parar, descartar };
+  return { gravando, finalizando, segundos, iniciar, parar, descartar };
 }

@@ -14,6 +14,7 @@ import { useTranslations } from 'next-intl';
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -62,15 +63,31 @@ interface Escolhido {
   caminho: string | null;
 }
 
-/** As recusas da rota sobre os anexos que têm a mesma frase na tela. */
-const RECUSAS_DO_ANEXO = new Set([
+/**
+ * As recusas da rota sobre a LISTA de anexos (a forma do corpo). A caixa
+ * gera esses caminhos, então não há um arquivo para apontar: a frase é geral.
+ */
+const RECUSAS_DA_LISTA = new Set([
   'ATTACHMENTS_INVALID',
   'TOO_MANY_ATTACHMENTS',
   'ATTACHMENT_OUTSIDE_ACCOUNT',
   'ATTACHMENT_REPEATED',
-  'ATTACHMENT_TYPE_REFUSED',
-  'ATTACHMENT_TOO_LARGE',
 ]);
+
+/** As recusas de UM anexo, lido no armazenamento: a rota devolve qual. */
+const RECUSAS_DO_ARQUIVO = new Set(['ATTACHMENT_TYPE_REFUSED', 'ATTACHMENT_TOO_LARGE']);
+
+/**
+ * O nome do anexo que a rota recusou, como a pessoa o vê na lista: a rota
+ * devolve `anexo: { caminho, nome }`, e o caminho acha o item.
+ */
+function nomeDoRecusado(resposta: unknown, lista: readonly Escolhido[]): string {
+  const anexo = (resposta as { anexo?: { caminho?: unknown; nome?: unknown } } | null)
+    ?.anexo;
+  const doItem = lista.find((e) => e.caminho !== null && e.caminho === anexo?.caminho);
+  if (doItem) return doItem.arquivo.name;
+  return typeof anexo?.nome === 'string' ? anexo.nome : '';
+}
 
 const TETO_EM_MB = Math.round(TETO_DO_ANEXO / (1024 * 1024));
 
@@ -100,13 +117,19 @@ function minutos(segundos: number): string {
  * progresso; só então vai o POST.
  * - ⚠️⚠️ O salvar leva a conversa de ORIGEM (a do clique) até o fim: no fio
  *   a caixa fecha ao trocar de conversa, e a anotação em voo cai onde foi
- *   escrita. Desmontada no meio, quem salva segue sozinho. Por isso, salvando,
- *   Cancelar e Esc não fecham: o salvar não se interrompe.
+ *   escrita. Fora da tela no meio, quem salva segue sozinho — e então NÃO
+ *   chama `onSaved`, `onClose` nem `onLimparResposta` (são os do render do
+ *   clique: mexeriam na conversa aberta agora); só avisa o desfecho, com
+ *   frase própria (`naTelaRef`). Por isso, salvando, Cancelar e Esc não
+ *   fecham: o salvar não se interrompe.
  * - Falha no meio: a caixa PARA, mantém texto e arquivos, e o que já subiu
  *   não sobe de novo (`caminho`). Desistir — tirar da lista, Cancelar, a
  *   caixa sumir com o rascunho — APAGA o que a pessoa subiu (a regra do dono
  *   em `notas/`); o que virou anotação nunca. Resposta que não veio (rede)
  *   pode ter salvo: aqueles caminhos ficam INCERTOS e nunca são apagados.
+ * - Gravação parada e ainda chegando do encoder (`finalizando`): o Salvar
+ *   espera, senão a anotação sairia sem o áudio. Arquivo solto ou colado
+ *   durante o salvar não entra — e avisa.
  * - Arrastar para a caixa não chega ao compositor em volta (`stopPropagation`):
  *   o arquivo viraria anexo de MENSAGEM ao cliente.
  * - O gravador é PRÓPRIO (`useGravadorDeVoz`) e solta o microfone quando a
@@ -191,7 +214,13 @@ export function InternalNoteBox({
 
   const receberArquivos = useCallback(
     (brutos: readonly File[]) => {
-      if (salvandoRef.current || brutos.length === 0) return;
+      if (brutos.length === 0) return;
+      // Salvando, a lista é a da anotação em voo: o arquivo solto ou colado
+      // agora não entra nela — e não some calado.
+      if (salvandoRef.current) {
+        toast.error(t('noteBusySaving'));
+        return;
+      }
       // Nome e tipo ajustados ANTES de subir: o print colado vem sem nome
       // útil, e o bucket tem lista EXATA de tipos (midia.md).
       const arquivos = brutos.map((b) => arquivoParaEnviar(b));
@@ -249,14 +278,20 @@ export function InternalNoteBox({
     };
   }, []);
 
-  // A caixa ainda está na tela? (o salvar segue depois do desmonte)
-  const montadaRef = useRef(true);
-  useEffect(() => {
-    montadaRef.current = true;
+  // A caixa está na TELA, na conversa em que nasceu? O salvar segue depois de
+  // ela sumir — no fio, na troca de conversa (some no render e desmonta no
+  // efeito do compositor); no painel e no grupo, ao remontar (`key`) ou ao
+  // trocar de aba. Os retornos dele (`onSaved`, `onClose`,
+  // `onLimparResposta`) são os do render do CLIQUE: chamados com a caixa fora
+  // da tela, fechariam a caixa, desfariam a citação e mexeriam na rolagem da
+  // conversa aberta AGORA. Efeito de LAYOUT: vale já no commit da troca.
+  const naTelaRef = useRef(true);
+  useLayoutEffect(() => {
+    naTelaRef.current = conversationId === de;
     return () => {
-      montadaRef.current = false;
+      naTelaRef.current = false;
     };
-  }, []);
+  }, [conversationId, de]);
 
   // --- gravação -------------------------------------------------------
   const aoGravar = useCallback(
@@ -428,11 +463,13 @@ export function InternalNoteBox({
     [termo, texto]
   );
 
-  const gravando = gravador.gravando;
+  // Gravando, ou com a gravação parada ainda chegando do encoder: o áudio não
+  // está na lista, e salvar agora gravaria a anotação sem ele.
+  const { gravando, finalizando } = gravador;
   const salvar = useCallback(async () => {
     const limpo = texto.trim();
     const itens = escolhidosRef.current;
-    if (salvandoRef.current || gravando) return;
+    if (salvandoRef.current || gravando || finalizando) return;
     if (!limpo && itens.length === 0) return;
     if (itens.length > 0 && !accountId) {
       toast.error(t('noteSaveError'));
@@ -444,12 +481,16 @@ export function InternalNoteBox({
     setSalvando(true);
     let lista = itens;
     const subidos = () => lista.flatMap((e) => (e.caminho ? [e.caminho] : []));
-    // Desmontada (a pessoa saiu daqui) e a anotação NÃO foi gravada: ninguém
-    // mais vai tentar de novo, e o que subiu sai do armazenamento.
-    const largarSeSumiu = () => {
-      if (montadaRef.current) return;
+    // A caixa saiu da tela e a anotação NÃO foi gravada: o rascunho foi junto,
+    // ninguém vai tentar de novo, e o que subiu sai do armazenamento — a lista
+    // zera, e o desmonte não tem mais o que apagar. `true` = saiu.
+    const largarSeSumiu = (): boolean => {
+      if (naTelaRef.current) return false;
       const sobras = subidos().filter((c) => !incertosRef.current.has(c));
       if (sobras.length > 0) void apagarAnexosSubidos(sobras).catch(() => {});
+      for (const e of lista) if (e.previa) URL.revokeObjectURL(e.previa);
+      definirEscolhidos([]);
+      return true;
     };
     try {
       // 1. Sobe o que falta, um por vez (a ordem é a da lista).
@@ -465,8 +506,9 @@ export function InternalNoteBox({
             '[InternalNoteBox] o anexo não subiu:',
             erro instanceof Error ? erro.message : erro
           );
-          toast.error(t('noteUploadFailed', { nome: item.arquivo.name }));
-          largarSeSumiu();
+          // Fora da tela não há rascunho para "salvar de novo": frase própria.
+          if (largarSeSumiu()) toast.error(t('noteNotSavedAfterLeaving'));
+          else toast.error(t('noteUploadFailed', { nome: item.arquivo.name }));
           return;
         }
         lista = lista.map((e) => (e.id === item.id ? { ...e, caminho } : e));
@@ -493,11 +535,17 @@ export function InternalNoteBox({
         // Sem resposta: a anotação PODE ter sido gravada. Os caminhos ficam
         // incertos — a caixa não os apaga nunca mais.
         incertosRef.current = new Set([...incertosRef.current, ...subidos()]);
-        toast.error(t('noteSaveError'));
+        toast.error(
+          naTelaRef.current ? t('noteSaveError') : t('noteMaybeSavedAfterLeaving')
+        );
         return;
       }
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
+        if (largarSeSumiu()) {
+          toast.error(t('noteNotSavedAfterLeaving'));
+          return;
+        }
         const erro: unknown = json?.error;
         if (erro === 'REPLIED_NOTE_NOT_FOUND') {
           // A respondida foi apagada enquanto a pessoa escrevia: a citação
@@ -506,15 +554,16 @@ export function InternalNoteBox({
           toast.error(t('noteReplyGone'));
           onLimparResposta?.();
         } else if (erro === 'ATTACHMENT_NOT_FOUND') {
-          toast.error(t('noteAttachmentGone'));
+          toast.error(t('noteAttachmentGone', { nome: nomeDoRecusado(json, lista) }));
+        } else if (typeof erro === 'string' && RECUSAS_DO_ARQUIVO.has(erro)) {
+          toast.error(t('noteAttachmentRefusedByName', { nome: nomeDoRecusado(json, lista) }));
         } else if (erro === 'STORAGE_UNAVAILABLE') {
           toast.error(t('noteStorageUnavailable'));
-        } else if (typeof erro === 'string' && RECUSAS_DO_ANEXO.has(erro)) {
+        } else if (typeof erro === 'string' && RECUSAS_DA_LISTA.has(erro)) {
           toast.error(t('noteAttachmentRejected'));
         } else {
           toast.error(typeof erro === 'string' && erro ? erro : t('noteSaveError'));
         }
-        largarSeSumiu();
         return;
       }
       // A anotação foi salva; o aviso ao colega pode não ter saído. Dizer
@@ -526,6 +575,13 @@ export function InternalNoteBox({
       // a limpeza do desmonte apagaria o que sobrasse nela.
       for (const e of lista) if (e.previa) URL.revokeObjectURL(e.previa);
       definirEscolhidos([]);
+      if (!naTelaRef.current) {
+        // Salva com a caixa já fora da tela: quem tem a conversa aberta a
+        // recebe pelo tempo real (e quem voltar a ela, na leitura). Nenhum
+        // retorno do render do clique roda — ver `naTelaRef`.
+        toast.success(t('noteSavedAfterLeaving'));
+        return;
+      }
       onSaved?.(json.note as ConversationNote);
       setTexto('');
       onLimparResposta?.();
@@ -540,6 +596,7 @@ export function InternalNoteBox({
   }, [
     texto,
     gravando,
+    finalizando,
     accountId,
     conversationId,
     membros,
@@ -750,12 +807,26 @@ export function InternalNoteBox({
         </div>
       )}
 
+      {/* Parada, a gravação ainda vem do encoder: o Salvar espera por ela. */}
+      {!gravando && finalizando && (
+        <p className="mt-2 flex items-center gap-1.5 text-xs text-amber-950 dark:text-amber-50">
+          <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+          {t('noteRecordingFinishing')}
+        </p>
+      )}
+
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <Button
           size="sm"
           onClick={() => void salvar()}
-          disabled={vazia || salvando || gravando}
-          title={gravando ? t('noteStopRecordingFirst') : undefined}
+          disabled={vazia || salvando || gravando || finalizando}
+          title={
+            gravando
+              ? t('noteStopRecordingFirst')
+              : finalizando
+                ? t('noteRecordingFinishing')
+                : undefined
+          }
           className="h-8 bg-emerald-600 text-white hover:bg-emerald-700"
         >
           {salvando ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
@@ -787,7 +858,7 @@ export function InternalNoteBox({
         <button
           type="button"
           onClick={() => void gravar()}
-          disabled={salvando || cheia || gravando}
+          disabled={salvando || cheia || gravando || finalizando}
           aria-label={t('noteRecord')}
           title={t('noteRecord')}
           className="flex h-8 w-8 items-center justify-center rounded-md text-amber-900 transition-colors hover:bg-amber-100 disabled:opacity-40 dark:text-amber-100 dark:hover:bg-amber-900/40"

@@ -64,7 +64,8 @@ ficha em `.claude/rules/campos-e-nome.md`.
 ### `message-bubble.tsx` e `message-thread.tsx` ficam NOSSOS, inteiros
 
 - ⚠️ **O visualizador de mídia do upstream foi descartado**: o nosso
-  `media-viewer.tsx` tem giro e zoom. `media-lightbox.tsx` e `message-media.tsx`
+  `media-viewer.tsx` tem giro e zoom (Esc em captura no `document`: no Sheet, o
+  base-ui o pegava). `media-lightbox.tsx` e `message-media.tsx`
   NÃO estão ligados; religá-los dá dois visualizadores. O que é nosso dentro de
   arquivo do upstream está em `docs/MERGE-UPSTREAM.md`.
 - ⚠️ **Conversa fora das conexões do perfil: `ConversaForaDaArea` SUBSTITUI o

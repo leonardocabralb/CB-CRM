@@ -20,7 +20,12 @@ import { describe, expect, it } from 'vitest';
 //     nas pastas — uma migration que recrie a da 954 reabriria a porta;
 // (d) a conferência CHAMA o gatilho, desfeita pelo SQLSTATE próprio, sem
 //     `WHEN OTHERS`, e as policies de `storage.objects` vêm DEPOIS dela (a
-//     trava exclusiva da tabela quente dura só até o COMMIT).
+//     trava exclusiva da tabela quente dura só até o COMMIT);
+// (e) AS TRAVAS (supabase.md: "depois da primeira ALTER, só catálogo"): a
+//     regra do armazenamento em memória vem ANTES da ALTER; depois dela, a
+//     única DML é a que chama o gatilho (um INSERT, um UPDATE, um DELETE),
+//     `cb_arquivos_citados` (que varre `messages`) não é CHAMADA, e o teto da
+//     espera cai para 1 s antes das policies de `storage.objects`.
 // ============================================================
 
 const DIR = __dirname;
@@ -133,8 +138,9 @@ describe('1102 — anotação com anexos', () => {
     expect(SQL).toMatch(/RAISE\s+EXCEPTION\s+USING\s+ERRCODE\s*=\s*'P1102'/);
     expect(SQL).toMatch(/WHEN\s+SQLSTATE\s+'P1102'\s+THEN/);
     expect(SQL).not.toMatch(/WHEN\s+OTHERS/i);
+    // Os DOIS ramos do gatilho: o UPDATE que tira um anexo e o DELETE.
+    expect(SQL).toMatch(/UPDATE\s+public\.cb_conversation_notes\s+SET\s+anexos\s*=/);
     expect(SQL).toMatch(/DELETE\s+FROM\s+public\.cb_conversation_notes/);
-    expect(SQL).toContain("set_config('cb.lixeira', 'movendo', true)");
   });
 
   it('(d) as policies de storage.objects vêm DEPOIS de toda escrita da conferência', () => {
@@ -142,5 +148,34 @@ describe('1102 — anotação com anexos', () => {
     const ultimaEscrita = SQL.lastIndexOf('DELETE FROM public.cb_conversation_notes');
     expect(primeiraPolicy).toBeGreaterThan(ultimaEscrita);
     expect(SQL.search(/SET\s+LOCAL\s+lock_timeout/i)).toBeLessThan(SQL.search(/ALTER\s+TABLE/i));
+  });
+
+  it('(e) a regra do armazenamento em memória vem ANTES da primeira ALTER', () => {
+    const primeiraAlter = SQL.search(/ALTER\s+TABLE/i);
+    const regraEmMemoria = SQL.search(/AS\s+t\(caminho,\s*papel,\s*dono,\s*acao,\s*esperado\)/i);
+    expect(regraEmMemoria).toBeGreaterThan(0);
+    expect(regraEmMemoria).toBeLessThan(primeiraAlter);
+    // E só uma vez: a seção 8 confere as policies no catálogo.
+    expect(SQL.match(/AS\s+t\(caminho,\s*papel,\s*dono,\s*acao,\s*esperado\)/gi)).toHaveLength(1);
+  });
+
+  it('(e) depois da primeira ALTER, a única DML é a que chama o gatilho; cb_arquivos_citados não é chamada', () => {
+    const depois = SQL.slice(SQL.search(/ALTER\s+TABLE/i));
+    expect(depois.match(/INSERT\s+INTO\s+public\.cb_conversation_notes\b/gi)).toHaveLength(1);
+    expect(depois.match(/UPDATE\s+public\.cb_conversation_notes\b/gi)).toHaveLength(1);
+    expect(depois.match(/DELETE\s+FROM\s+public\.cb_conversation_notes\b/gi)).toHaveLength(1);
+    expect(depois).not.toMatch(/INSERT\s+INTO\s+public\.(?!cb_conversation_notes\b)\w+/i);
+    expect(depois).not.toMatch(/(?:FROM|PERFORM|SELECT)\s+public\.cb_arquivos_citados\s*\(/i);
+    expect(depois).not.toMatch(/set_config\(\s*'cb\.lixeira'/i);
+  });
+
+  it('(e) o teto da espera cai para 1 s ANTES das policies de storage.objects', () => {
+    const travas = [...SQL.matchAll(/SET\s+LOCAL\s+lock_timeout\s*=\s*'([^']+)'/gi)];
+    expect(travas.map((m) => m[1])).toEqual(['5s', '1s']);
+    const segunda = travas[1].index!;
+    expect(segunda).toBeGreaterThan(SQL.lastIndexOf('DELETE FROM public.cb_conversation_notes'));
+    expect(segunda).toBeLessThan(
+      SQL.search(/DROP\s+POLICY\s+IF\s+EXISTS\s+"Members can update chat media"/i)
+    );
   });
 });

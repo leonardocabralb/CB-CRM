@@ -6,6 +6,10 @@ paths:
   - "src/components/inbox/internal-note-box.tsx"
   - "src/components/inbox/nota-fixada-bar.tsx"
   - "src/components/inbox/anexos-da-nota*"
+  - "src/components/contacts/contact-detail-view.tsx"
+  - "src/components/inbox/message-composer.tsx"
+  - "src/components/inbox/painel/painel-do-contato.tsx"
+  - "src/components/inbox/group-sidebar.tsx"
   - "src/hooks/use-apagar-nota*"
   - "src/hooks/use-conversation-notes*"
   - "src/hooks/use-fixar-nota*"
@@ -97,8 +101,11 @@ a régua das três pontas), `arquivo-do-anexo.ts` (a leitura no armazenamento),
 - ⚠️⚠️ **A rota nunca confia no corpo**: o caminho tem de ser desta conta e de
   `notas/`, pela guarda da 1097 (`lerAnexosDoCorpo`), e o tamanho e o tipo
   são LIDOS no armazenamento (`lerArquivoDoAnexo`, `info()` com o service
-  role; a forma ainda se mede no preview). Ausente = 400
+  role; medido no Storage hospedado em 23/10/2026: `size`/`contentType` no
+  topo; ausente = `status: 400` com `statusCode: "404"`). Ausente = 400
   `ATTACHMENT_NOT_FOUND`; fora do ar = 503 `STORAGE_UNAVAILABLE`, nunca 400.
+  A recusa de UM anexo devolve `anexo: { caminho, nome }` e a caixa diz o
+  nome. Erro ao ler perfil ou conversa = 500, nunca 403/404 (raiz, 8b).
 - ⚠️⚠️ **O que SAI da anotação vai para a fila de arquivos** (gatilho
   `cb_anexos_da_anotacao_para_a_fila`, AFTER DELETE OR UPDATE OF anexos,
   SECURITY DEFINER): apagar pela tela, o CASCADE da conversa, do contato ou
@@ -123,25 +130,37 @@ a régua das três pontas), `arquivo-do-anexo.ts` (a leitura no armazenamento),
   sumir) apaga o que a pessoa subiu; o que virou anotação, nunca — a lista
   zera ANTES de fechar. POST sem resposta (rede) PODE ter salvo: aqueles
   caminhos ficam incertos e a caixa nunca os apaga.
+- ⚠️⚠️ **O salvar que termina com a caixa FORA DA TELA (`naTelaRef`, efeito
+  de layout) não chama `onSaved`, `onClose` nem `onLimparResposta`**: são os
+  do render do clique, e fechariam a caixa, desfariam a citação e soltariam
+  o salto e a rolagem da conversa aberta AGORA. Só avisa o desfecho, com
+  frase própria (salva; não salva; incerta) — nunca "salve de novo", porque
+  o rascunho foi junto com a caixa. O tempo real leva a anotação.
 - ⚠️ **Um funil para clipe, colar, arrastar e gravar** (`escolherAnexosDaNota`:
   tipo de `MIMES_DA_ANOTACAO`, 50 MiB por arquivo — A7 —, 10 por anotação,
   cada recusa com aviso), com `arquivoParaEnviar` antes. ⚠️ O arrastar dá
   `stopPropagation`: a caixa mora DENTRO do compositor, e o arquivo viraria
   anexo de mensagem ao cliente. O `.html` entra (a anotação não vai à Meta)
-  e só BAIXA.
+  e só BAIXA. Arquivo solto ou colado DURANTE o salvar não entra — e avisa.
 - ⚠️ **Gravador PRÓPRIO** (`useGravadorDeVoz`, cópia do opus-recorder do
   compositor do upstream, 5 min): o desmonte da caixa descarta a gravação e
   solta o microfone, e o pedido de permissão que volta depois do desmonte o
   fecha na hora (geração). O teto para no tique do relógio, nunca por efeito.
+  ⚠️ De `parar` até os bytes chegarem do encoder ele está `finalizando`, e o
+  Salvar espera: salvo nesse meio-tempo, a anotação sairia sem o áudio. O
+  descarte é POR GRAVADOR (um sinal só seria religado pela gravação seguinte).
 - ⚠️ **A caixa é da conversa em que NASCEU** (`de`): no fio ela não remonta, e
   no render da troca o rascunho apareceria sob o cabeçalho de outro cliente.
 - **Mostrar: `<AnexosDaNota>` no fio, nas abas e na ficha de `/contatos` (A6:
   lá só mostra; a caixa de lá segue só texto); `<ResumoDosAnexos>` na faixa
   fixada e na citação.** Pino default-deny `anexos-da-nota.chamadores.test.ts`:
-  quem lê `nota.texto` desenha um dos dois. Áudio no `PlayerDeAudio` sem
-  transcrição (D4; `corHerdada` na nota âmbar); imagem e vídeo em miniatura que
-  abre o visualizador por portal; documento no cartão com o selo. Fora da aba
-  Arquivos (D5).
+  quem usa `ConversationNote` e lê um `.texto` (pela árvore do TypeScript:
+  `n.texto`, `nota!.texto`, desestruturação) desenha um dos dois, ou entra na
+  exceção com as leituras exatas. Áudio no `PlayerDeAudio` sem transcrição
+  (D4; `corHerdada` na nota âmbar); imagem em MINIATURA renderizada pelo
+  Storage (`urlDaMiniatura`; o original só no visualizador, aberto por
+  portal); vídeo pelo `<video preload="metadata">`; documento no cartão com
+  o selo. Fora da aba Arquivos (D5).
 - **O aviso (sino e pop-up) leva o resumo no corpo** (`corpoDoAviso`: "@Ana
   confere · 🎤 Áudio"), cru como o título.
 - **API v1**: `GET /notes` traz `anexos` (`nome`, `tipo`, `tamanho`, `url`) e

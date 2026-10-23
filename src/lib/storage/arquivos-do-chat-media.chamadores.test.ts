@@ -68,7 +68,11 @@ type Uso =
   | { grava: Coluna[]; nota?: string }
   | {
       papel:
-        'só lê' | 'só sobe e devolve a URL' | 'só apaga' | 'só nomeia o bucket';
+        | 'só lê'
+        | 'só sobe e devolve a URL'
+        | 'só sobe e devolve o caminho'
+        | 'só apaga'
+        | 'só nomeia o bucket';
       nota: string;
     };
 
@@ -153,8 +157,8 @@ const DECLARADOS: Record<string, Uso> = {
   },
   // 1102 — anexos da anotação interna.
   'src/lib/notes/subir-anexo.ts': {
-    grava: [{ coluna: 'cb_conversation_notes.anexos', citada: true }],
-    nota: 'a caixa sobe o anexo em notas/ e o POST /api/cb/notes grava o caminho; apaga o que a própria pessoa subiu e desistiu',
+    papel: 'só sobe e devolve o caminho',
+    nota: 'sobe o anexo da anotação em notas/ e devolve o CAMINHO a quem chama (ver AJUDANTES); apaga o que a própria pessoa subiu e desistiu',
   },
   'src/lib/notes/arquivo-do-anexo.ts': {
     papel: 'só lê',
@@ -167,8 +171,8 @@ const DECLARADOS: Record<string, Uso> = {
 };
 
 /**
- * Os ajudantes PRESOS ao `chat-media` que devolvem a URL a quem chama: cada
- * chamador declara onde ela termina.
+ * Os ajudantes PRESOS ao `chat-media` que devolvem a URL (ou o caminho) a quem
+ * chama: cada chamador declara onde ela termina.
  */
 const AJUDANTES: {
   funcao: string;
@@ -210,6 +214,17 @@ const AJUDANTES: {
       'src/app/api/cb/groups/media/[messageId]/route.ts': {
         grava: [MSG],
         nota: 'o download sob demanda do grupo',
+      },
+    },
+  },
+  {
+    // 1102: devolve o CAMINHO (não a URL): a anotação guarda o caminho.
+    funcao: 'subirAnexoDaNota',
+    modulo: 'src/lib/notes/subir-anexo.ts',
+    chamadores: {
+      'src/components/inbox/internal-note-box.tsx': {
+        grava: [{ coluna: 'cb_conversation_notes.anexos', citada: true }],
+        nota: 'sobe ao Salvar e manda o caminho ao POST /api/cb/notes, que o grava em anexos[].caminho',
       },
     },
   },

@@ -1,6 +1,6 @@
 'use client';
 
-import { Play } from 'lucide-react';
+import { ImageIcon, Play } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -8,6 +8,7 @@ import { createPortal } from 'react-dom';
 import { MediaViewer } from '@/components/inbox/media-viewer';
 import { SeloDoDocumento } from '@/components/inbox/message-bubble';
 import { PlayerDeAudio } from '@/components/inbox/player-de-audio';
+import { urlDaMiniatura } from '@/lib/acervo/tipos';
 import { ehPaginaHtml, urlParaAbrirAnexo } from '@/lib/media/abrir-anexo';
 import {
   lerAnexosDaNota,
@@ -38,6 +39,9 @@ import { cn } from '@/lib/utils';
  * Nada tem largura fixa que não encolha (fio de 305 px): miniaturas de 80 px
  * que quebram linha, cartões com `max-w-full`, o player com `max-w-full`.
  */
+
+/** O lado pedido ao Storage para a miniatura de 80 px: o dobro, para tela retina. */
+const LADO_DA_MINIATURA_DA_NOTA = 160;
 export function AnexosDaNota({
   anexos,
   naNotaDoFio = false,
@@ -55,6 +59,8 @@ export function AnexosDaNota({
   const t = useTranslations('Inbox.note');
   // O anexo aberto no visualizador, pelo CAMINHO (a identidade estável).
   const [aberto, setAberto] = useState<string | null>(null);
+  // As imagens cuja miniatura o Storage não renderizou (pelo caminho).
+  const [semMiniatura, setSemMiniatura] = useState<ReadonlySet<string>>(() => new Set());
 
   const lista = lerAnexosDaNota(anexos);
   if (lista.length === 0) return null;
@@ -113,12 +119,28 @@ export function AnexosDaNota({
                       <Play className="ml-0.5 h-5 w-5 fill-current" />
                     </span>
                   </>
+                ) : semMiniatura.has(m.caminho) ? (
+                  // A transformação recusou (foto grande demais para ela):
+                  // um ícone, e o original continua a um clique.
+                  <span className="text-muted-foreground flex size-full items-center justify-center">
+                    <ImageIcon className="h-5 w-5" />
+                  </span>
                 ) : (
+                  // ⚠️ A MINIATURA renderizada pelo Storage, nunca o original:
+                  // o original (uma foto de celular tem MB) só no
+                  // visualizador. Sem `loading="lazy"`, como no seletor do
+                  // acervo: dentro de gaveta recém-aberta ela não pintava, e
+                  // a miniatura tem poucos KB.
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={url}
+                    src={urlDaMiniatura(url, LADO_DA_MINIATURA_DA_NOTA)}
                     alt={m.nome}
-                    loading="lazy"
+                    decoding="async"
+                    width={80}
+                    height={80}
+                    onError={() =>
+                      setSemMiniatura((atuais) => new Set(atuais).add(m.caminho))
+                    }
                     className="size-full object-cover"
                   />
                 )}
