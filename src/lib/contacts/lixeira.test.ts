@@ -430,7 +430,15 @@ describe('lerItem (uma linha de cb_lixeira_da_conta)', () => {
       ocupadaPor: OUTRA,
       ocupadaPorNome: 'Fulana (nova)',
       loteTotal: 3,
+      ocupadaComInstagram: false,
     });
+  });
+
+  it('o Instagram na identidade ocupada (1101) só liga com true', () => {
+    expect(lerItem({ ...linha, ocupada_com_instagram: true })?.ocupadaComInstagram).toBe(true);
+    for (const v of [null, 'true', 1, undefined]) {
+      expect(lerItem({ ...linha, ocupada_com_instagram: v })?.ocupadaComInstagram, String(v)).toBe(false);
+    }
   });
 
   it('o tamanho do lote vem do banco (fora da busca); ausente ou torto vira 1 — o botão some', () => {

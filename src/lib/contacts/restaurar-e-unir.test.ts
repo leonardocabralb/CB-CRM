@@ -65,6 +65,7 @@ describe('lerItensDaMesmaPessoa (a faixa)', () => {
         movida_por_nome: 'Admin Teste',
         vence_em: '2027-01-18T12:00:00+00:00',
         mensagens: 12,
+        com_instagram: false,
       },
     ]);
     expect(itens).toEqual([
@@ -78,8 +79,17 @@ describe('lerItensDaMesmaPessoa (a faixa)', () => {
         movidaEm: '2026-10-20T12:00:00+00:00',
         movidaPorNome: 'Admin Teste',
         mensagens: 12,
+        comInstagram: false,
       },
     ]);
+  });
+
+  it('com Instagram (uma das duas fichas) só liga com true — a união recusaria', () => {
+    const base = { id: ITEM, contact_id: FICHA_QUE_VOLTA, movida_em: '2026-10-20T12:00:00Z' };
+    expect(lerItensDaMesmaPessoa([{ ...base, com_instagram: true }])![0].comInstagram).toBe(true);
+    for (const v of [null, 'true', 1, undefined]) {
+      expect(lerItensDaMesmaPessoa([{ ...base, com_instagram: v }])![0].comInstagram, String(v)).toBe(false);
+    }
   });
 
   it('a resposta que não é lista é NULA (a faixa cala, nunca "nada na Lixeira")', () => {

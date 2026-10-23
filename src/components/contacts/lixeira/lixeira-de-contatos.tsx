@@ -5,8 +5,9 @@
 //
 // Decisões do operador (22/10/2026, docs/PLANO-lixeira-de-contatos.md): só
 // admin; 90 dias e sai de vez (com os arquivos); restaurar volta com o MESMO
-// id; identidade já usada por outra ficha BLOQUEIA a volta (B2); "Excluir
-// agora" com confirmação forte e a marca de pedido de exclusão (B3).
+// id; identidade já usada por outra ficha BLOQUEIA a volta (B2) — a saída é
+// "Restaurar e unir" com a ficha que ocupa (1101); "Excluir agora" com
+// confirmação forte e a marca de pedido de exclusão (B3).
 //
 // ⚠️ Carregando ≠ vazia ≠ falhou (seção 8c): "A Lixeira está vazia" só com
 // resposta do banco. A recarga depois de uma ação mantém a lista na tela; se
@@ -32,9 +33,11 @@ import {
 import { nomeDoContato } from '@/lib/contacts/identidade';
 import { type ItemDaLixeira } from '@/lib/contacts/lixeira';
 
+import { recarregarNaFichaQueFicou } from '../aviso-de-possivel-duplicata';
 import { avisarVolta } from './avisar-volta';
 import { ExcluirDeVezDialog } from './excluir-de-vez-dialog';
 import { ItemDaLixeiraLinha, contatoDoItem } from './item-da-lixeira';
+import { RestaurarEUnirDialog } from './restaurar-e-unir-dialog';
 
 export function LixeiraDeContatos() {
   const t = useTranslations('Contacts.lixeira');
@@ -96,6 +99,8 @@ function ConteudoDaLixeira() {
   /** O item, ou o lote, com uma ação em voo — os botões esperam. */
   const [emAcao, setEmAcao] = useState<string | null>(null);
   const [excluindo, setExcluindo] = useState<ItemDaLixeira | null>(null);
+  /** O item bloqueado (B2) em "Restaurar e unir": fica a ficha que ocupa. */
+  const [unindo, setUnindo] = useState<{ itemId: string; fica: string } | null>(null);
 
   const itens = lista.itens ?? [];
   const nomeDoItem = (itemId: string) => {
@@ -177,6 +182,9 @@ function ConteudoDaLixeira() {
                 emAcao={emAcao === item.id || emAcao === item.loteId}
                 aoRestaurar={() => void restaurarItem(item)}
                 aoRestaurarLote={() => void restaurarLote(item)}
+                aoRestaurarEUnir={() =>
+                  item.ocupadaPor && setUnindo({ itemId: item.id, fica: item.ocupadaPor })
+                }
                 aoExcluir={() => setExcluindo(item)}
               />
             ))}
@@ -188,6 +196,16 @@ function ConteudoDaLixeira() {
           )}
         </>
       )}
+
+      {/* Depois de unir, a página vai para a conversa que ficou (ou recarrega
+          sem conversa), como na faixa da conversa. */}
+      <RestaurarEUnirDialog
+        key={unindo?.itemId ?? 'nenhum'}
+        itemId={unindo?.itemId ?? null}
+        fichaQueFica={unindo?.fica ?? ''}
+        aoFechar={() => setUnindo(null)}
+        aoUnir={(resultado) => recarregarNaFichaQueFicou(resultado, undefined)}
+      />
 
       <ExcluirDeVezDialog
         item={excluindo}

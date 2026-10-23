@@ -1552,7 +1552,7 @@
         "restaurar": "Restore",
         "restaurarLote": "Restore batch ({count})",
         "restaurarLoteDica": "Restores all {count} records moved together with this one, including the ones the search hides.",
-        "restaurarBloqueado": "While the other record uses this identity, this one cannot come back on its own (there would be two records for the same person): in the other record's conversation or card, use \"Restore and merge\".",
+        "restaurarBloqueado": "While the other record uses this identity, this one cannot come back on its own (there would be two records for the same person): use \"Restore and merge\" to bring it back merged into the other one.",
         "excluirAgora": "Delete now",
         "ocupada": "This record's phone, WhatsApp or Instagram already belongs to {nome}.",
         "abrirFicha": "Open record"
@@ -1563,6 +1563,9 @@
         "movidaEm": "Moved on {quando}, with {count, plural, =0 {no messages} one {# message} other {# messages}}.",
         "verNaLixeira": "See in the Trash",
         "restaurarEUnir": "Restore and merge",
+        "instagram": "With Instagram, restore and merge is not possible here yet.",
+        "conversaComoHistorico": "If the record in the Trash has a conversation, it comes in as history: closed and unassigned. This record's conversation does not reopen, does not change assignee and its waiting time does not go back.",
+        "dicaIdentidadeOcupada": "Merge the two live records first and try again.",
         "dica": "Restore and merge brings the record back and joins it to this one, which stays: the conversation, tasks and notes move here.",
         "dialogoTitulo": "Restore and merge",
         "dialogoDescricao": "The record comes back from the Trash and is merged into this one, which stays. Check what will happen before confirming.",

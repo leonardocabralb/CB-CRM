@@ -26,6 +26,17 @@ import { createClient } from '@/lib/supabase/client';
 // ============================================================
 
 /**
+ * A recusa que o app não sabe nomear (cai em `falhou`): o código e a
+ * mensagem que o banco devolveu vão ao console — sem eles ninguém descobre o
+ * que foi, e a tela só diz "não deu para confirmar".
+ */
+function avisarRecusaSemFrase(onde: string, recusa: RecusaDoRestaurarEUnir, bruto: unknown) {
+  if (recusa.motivo !== 'falhou') return;
+  const o = bruto && typeof bruto === 'object' ? (bruto as Record<string, unknown>) : {};
+  console.error(`[lixeira] ${onde} recusou sem frase própria:`, { codigo: o.codigo, motivo: o.motivo });
+}
+
+/**
  * As fichas da Lixeira da MESMA pessoa que a ficha aberta
  * (`cb_lixeira_da_mesma_pessoa`: telefone canônico, BSUID ou Instagram).
  *
@@ -127,6 +138,7 @@ export function usePreviaDoRestaurarEUnir(
           setEstado({ de, previa: null, recusa: recusaDoErro(null) });
           return;
         }
+        if (!resposta.ok) avisarRecusaSemFrase('a prévia de restaurar e unir', resposta.recusa, data);
         setEstado(
           resposta.ok
             ? { de, previa: resposta.previa, recusa: null }
@@ -176,6 +188,7 @@ export async function restaurarEUnir(itemId: string, fica: string): Promise<Resp
       console.error('[lixeira] restaurar e unir voltou numa forma inesperada');
       return { ok: false, recusa: recusaDoErro(null) };
     }
+    if (!resposta.ok) avisarRecusaSemFrase('restaurar e unir', resposta.recusa, data);
     return resposta;
   } catch (err) {
     console.error('[lixeira] restaurar e unir estourou:', err);

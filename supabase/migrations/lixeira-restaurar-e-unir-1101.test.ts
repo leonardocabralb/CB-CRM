@@ -25,7 +25,11 @@ import { describe, expect, it } from 'vitest';
 //   volta só com o BSUID);
 // - a reserva NUNCA sobra: sai da ficha que fica, do livro e da trilha;
 // - a faixa pelos três índices parciais da 1097, só para admin, sem a
-//   fotografia.
+//   fotografia, com o sinal de Instagram; a lista da Lixeira recriada com o
+//   mesmo sinal e o corpo da 1097;
+// - a conversa que volta entra como HISTÓRICO (encerrada, sem responsável,
+//   sem espera, sem não lidas) e a janela da Meta SÓ AVANÇA (revisão de
+//   23/10/2026: a união reabria a conversa de hoje e recuava a janela).
 // LIMITE DECLARADO: lê os `.sql`.
 // ============================================================
 
@@ -34,7 +38,8 @@ const ARQUIVO = '1101_cb_lixeira_restaurar_e_unir.sql';
 const NUMERO = 1101;
 
 const semComentarios = (sql: string) => sql.replace(/--[^\n]*/g, '');
-const SQL = semComentarios(fs.readFileSync(path.join(DIR, ARQUIVO), 'utf8'));
+const BRUTO = fs.readFileSync(path.join(DIR, ARQUIVO), 'utf8');
+const SQL = semComentarios(BRUTO);
 const SQL_1097 = semComentarios(fs.readFileSync(path.join(DIR, '1097_cb_lixeira_de_contatos.sql'), 'utf8'));
 
 const MIGRATIONS = fs
@@ -77,10 +82,18 @@ const TELA = [
   'cb_restaurar_e_unir(uuid, uuid)',
 ];
 const INTERNAS = ['cb_lixeira_preparar_uniao(uuid, uuid, uuid)', 'cb_bloqueios_da_uniao(uuid, uuid)'];
+/** A lista da Lixeira (1097), recriada com uma coluna: as portas da 1097. */
+const RECRIADAS_DA_1097 = ['cb_lixeira_da_conta(text)'];
 
 describe('1101 — restaurar e unir', () => {
-  it('ADITIVA e só funções: nenhuma ALTER, tabela, gatilho ou policy', () => {
+  it('ADITIVA e só funções: nenhuma ALTER, tabela, gatilho ou policy; o único DROP é o da lista, recriada logo abaixo', () => {
     expect(SQL).not.toMatch(/\bALTER\s+TABLE\b/i);
+    const drops = [...SQL.matchAll(/DROP\s+FUNCTION\s+IF\s+EXISTS\s+public\.(\w+)\(([^)]*)\)/gi)];
+    expect(drops.map((m) => `${m[1]}(${m[2]})`)).toEqual(RECRIADAS_DA_1097);
+    const drop = SQL.search(/DROP\s+FUNCTION\s+IF\s+EXISTS\s+public\.cb_lixeira_da_conta\(text\)/i);
+    const cria = SQL.search(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.cb_lixeira_da_conta\(/i);
+    expect(cria).toBeGreaterThan(drop);
+    expect(SQL.slice(drop, cria)).not.toMatch(/;[\s\S]*;/);
     expect(SQL).not.toMatch(/\bCREATE\s+(?:UNIQUE\s+)?(?:TABLE|INDEX|POLICY)\b/i);
     expect(SQL).not.toMatch(/\bCREATE\s+(?:OR\s+REPLACE\s+)?TRIGGER\b/i);
     expect(SQL).not.toMatch(/DISABLE\s+TRIGGER|session_replication_role/i);
@@ -90,8 +103,28 @@ describe('1101 — restaurar e unir', () => {
 
   it('toda função da 1101 tem porta DECLARADA aqui (função nova sem decisão reprova)', () => {
     const criadas = [...SQL.matchAll(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.(\w+)\s*\(/gi)].map((m) => m[1]).sort();
-    const declaradas = [...TELA, ...INTERNAS].map((a) => a.slice(0, a.indexOf('('))).sort();
+    const declaradas = [...TELA, ...INTERNAS, ...RECRIADAS_DA_1097].map((a) => a.slice(0, a.indexOf('('))).sort();
     expect(criadas).toEqual(declaradas);
+  });
+
+  it('a lista recriada: as portas da 1097 de novo (authenticated, nunca anon)', () => {
+    for (const f of RECRIADAS_DA_1097) {
+      expect(revoga(f, 'PUBLIC,\\s*anon'), f).toBe(true);
+      expect(concessoes(SQL, f), f).toEqual(['authenticated']);
+    }
+  });
+
+  it('a lista recriada é o corpo da 1097 mais o sinal de Instagram, no fim', () => {
+    const daqui = corpoDaFuncao(SQL, 'cb_lixeira_da_conta')!;
+    const da1097 = corpoDaFuncao(SQL_1097, 'cb_lixeira_da_conta')!;
+    const sem = (t: string) =>
+      t
+        .replace(/,\s*ocupada_com_instagram\s+boolean/i, '')
+        .replace(/,\s*CASE\s+WHEN\s+o\.id\s+IS\s+NOT\s+NULL\s+THEN\s+x\.instagram_id[^\n]*END/i, '')
+        .replace(/,\s*c\.instagram_id\s*\n/i, '\n')
+        .replace(/\s+/g, ' ');
+    expect(sem(daqui)).toBe(sem(da1097));
+    expect(daqui).toMatch(/ocupada_com_instagram\s+boolean\s*\)/i);
   });
 
   it('as RPCs da tela: authenticated e service_role, nunca anon; a porta de admin é por dentro', () => {
@@ -172,7 +205,7 @@ describe('1101 — restaurar e unir', () => {
       expect(b2, `a B2 da 1097 não lê mais ${coluna} — revise a 1101`).toMatch(new RegExp(`v\\.${coluna}`));
       expect(p, coluna).toMatch(new RegExp(`\\b${coluna}\\s*=`, 'i'));
     }
-    expect(p).toMatch(/jsonb_set\(\s*x\.fotografia,\s*'\{contacts,0\}'/i);
+    expect(p).toMatch(/'\{contacts,0\}',\s*v_ficha\s*\|\|\s*jsonb_build_object\('phone',\s*v_phone/i);
     expect(p).toMatch(/IF\s+NOT\s+\(v_bate_tel\s+OR\s+v_bate_wa\s+OR\s+v_bate_ig\)\s+THEN\s+RAISE\s+EXCEPTION\s+'identidade_nao_casa'/i);
   });
 
@@ -243,11 +276,44 @@ describe('1101 — restaurar e unir', () => {
     expect(ultima!.corpo, `${ultima!.arquivo} recriou a regra sem a exceção da reserva`).toMatch(/'lixeira:'/);
   });
 
+  it('a conversa da fotografia entra como HISTÓRICO: encerrada, sem responsável, sem espera, sem não lidas, IA como o encerrar deixa', () => {
+    const p = funcao('cb_lixeira_preparar_uniao');
+    expect(p).toMatch(
+      /'status',\s*'closed',\s*'assigned_agent_id',\s*NULL,\s*'aguardando_desde',\s*NULL,\s*'unread_count',\s*0/i,
+    );
+    // O que `cb_encerrar_limpa_ia` faz ao encerrar, para a que estava aberta.
+    for (const campo of ['ia_agente_id', 'ai_autoreply_disabled', 'ia_pausada_por', 'ia_pausada_em', 'ia_retomada_em']) {
+      expect(p, campo).toMatch(new RegExp(`'${campo}'`));
+    }
+    // Antes da volta (o miolo reinsere a fotografia já assim).
+    expect(p.search(/jsonb_set\(\s*x\.fotografia,\s*'\{conversations\}'/i)).toBeLessThan(
+      p.search(/cb_lixeira_restaurar_um\(/i),
+    );
+  });
+
+  it('a janela da Meta SÓ AVANÇA: a de hoje lida antes da união, a maior por chave, só quando casou pelo número', () => {
+    const p = funcao('cb_lixeira_preparar_uniao');
+    expect(p.search(/SELECT\s+c\.janela_meta\s+INTO\s+v_janela_fica/i)).toBeLessThan(p.search(/cb_lixeira_restaurar_um\(/i));
+    expect(p).toMatch(/'casou_por_numero',\s*v_bate_tel\s+OR\s+v_bate_wa/i);
+    const f = funcao('cb_restaurar_e_unir');
+    const uniao = f.search(/v_uniao\s*:=\s*cb_unir_fichas\(/i);
+    const janela = f.search(/IF\s+\(v_prep\s*->>\s*'casou_por_numero'\)::boolean/i);
+    expect(janela).toBeGreaterThan(uniao);
+    expect(f.slice(janela)).toMatch(/cb_instante_do_valor\(j\.foto[\s\S]*?>\s*cb_instante_do_valor\(j\.fica/i);
+  });
+
   it('a reserva NUNCA sobra: sai da ficha que fica, o livro e a trilha levam a identidade original, e a função confere', () => {
     const f = funcao('cb_restaurar_e_unir');
     expect(f).toMatch(/UPDATE\s+contacts\s+c\s+SET\s+wa_user_id\s*=\s*NULL[\s\S]*?WHERE\s+c\.id\s*=\s*p_fica\s+AND\s+c\.wa_user_id\s*=\s*v_reserva/i);
     expect(f).toMatch(/UPDATE\s+cb_fichas_unidas\s+u\s+SET\s+foto\s*=[\s\S]*?'\{ficha,telefone\}'[\s\S]*?'\{ficha,wa_user_id\}'/i);
     expect(f).toMatch(/UPDATE\s+cb_lead_events\s+e\s+SET\s+details\s*=\s*jsonb_set\(\s*e\.details,\s*'\{removida\}'/i);
+    // A trilha pela ficha que fica (o índice `(account_id, contact_id, …)`).
+    const naTrilha = [...f.matchAll(/FROM\s+cb_lead_events\s+e[\s\S]*?(?:;|\))|UPDATE\s+cb_lead_events\s+e[\s\S]*?;/gi)];
+    expect(naTrilha.length).toBeGreaterThanOrEqual(2);
+    for (const m of naTrilha) expect(m[0]).toMatch(/e\.contact_id\s*=\s*p_fica/i);
+    // O limite do tempo real (o INSERT da trilha com a identidade provisória)
+    // fica escrito no cabeçalho.
+    expect(BRUTO).toMatch(/LIMITE CONHECIDO \(o tempo real\)/);
     expect(f).toMatch(/RAISE\s+EXCEPTION\s+'lixeira_reserva_sobrou'/i);
   });
 
@@ -274,6 +340,8 @@ describe('1101 — restaurar e unir', () => {
     }
     expect(f).toMatch(/cb_contas_do_usuario\(\s*'admin'::public\.account_role_enum\s*\)/i);
     expect(f).toMatch(/AS\s+MATERIALIZED/i);
+    expect(f).toMatch(/com_instagram\s+boolean/i);
+    expect(f).toMatch(/x\.instagram_id\s+IS\s+NOT\s+NULL\s+OR\s+f\.ig\s+IS\s+NOT\s+NULL/i);
     // Só colunas de lista: nem a fotografia, nem o BSUID, nem o Instagram.
     const [cabecalho, corpo] = f.split('AS $$');
     expect(cabecalho).not.toMatch(/fotografia|wa_user_id|instagram_id\b/i);

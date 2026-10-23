@@ -25,6 +25,7 @@ const ITEM: ItemDaMesmaPessoa = {
   movidaEm: '2026-10-20T12:00:00+00:00',
   movidaPorNome: 'Admin Teste',
   mensagens: 12,
+  comInstagram: false,
 };
 
 function desenhar(itens: ItemDaMesmaPessoa[] | null, messages: unknown = ptBR, locale = 'pt-BR') {
@@ -79,6 +80,14 @@ describe('FaixaDeFichaNaLixeira', () => {
   it('a ficha só do WhatsApp (sem telefone) aparece pelo @, nunca pelo BSUID', () => {
     const { html } = desenhar([{ ...ITEM, nome: null, telefone: null, waUsername: 'fulana_wa' }]);
     expect(html).toContain('@fulana_wa');
+  });
+
+  it('com Instagram: sem o botão, com a frase de que ainda não dá — e o link da Lixeira fica', () => {
+    const { html, erros } = desenhar([{ ...ITEM, comInstagram: true }]);
+    expect(erros).toEqual([]);
+    expect(html).not.toContain('>Restaurar e unir</button>');
+    expect(html).toContain(ptBR.Contacts.lixeira.mesmaPessoa.instagram);
+    expect(html).toContain('href="/contacts/lixeira"');
   });
 
   it('em inglês, sem chave faltando', () => {

@@ -1545,7 +1545,7 @@
         "restaurar": "Restaurar",
         "restaurarLote": "Restaurar o lote ({count})",
         "restaurarLoteDica": "Restaura todas as {count} fichas movidas junto com esta, inclusive as que a busca não mostra.",
-        "restaurarBloqueado": "Enquanto a outra ficha usar essa identidade, esta não volta sozinha (seriam duas fichas da mesma pessoa): na conversa ou no card da outra ficha, use \"Restaurar e unir\".",
+        "restaurarBloqueado": "Enquanto a outra ficha usar essa identidade, esta não volta sozinha (seriam duas fichas da mesma pessoa): use \"Restaurar e unir\" para trazê-la unida à outra.",
         "excluirAgora": "Excluir agora",
         "ocupada": "O telefone, o WhatsApp ou o Instagram desta ficha já é de {nome}.",
         "abrirFicha": "Abrir a ficha"
@@ -1556,6 +1556,9 @@
         "movidaEm": "Movida em {quando}, com {count, plural, =0 {nenhuma mensagem} one {# mensagem} other {# mensagens}}.",
         "verNaLixeira": "Ver na Lixeira",
         "restaurarEUnir": "Restaurar e unir",
+        "instagram": "Com Instagram, restaurar e unir ainda não é possível por aqui.",
+        "conversaComoHistorico": "Se a ficha da Lixeira tem conversa, ela entra como histórico: encerrada e sem responsável. A conversa desta ficha não reabre, não muda de responsável e a espera dela não recua.",
+        "dicaIdentidadeOcupada": "Una antes as duas fichas que estão de pé e tente de novo.",
         "dica": "Restaurar e unir traz a ficha de volta e a junta a esta, que fica: a conversa, as tarefas e as anotações passam para cá.",
         "dialogoTitulo": "Restaurar e unir",
         "dialogoDescricao": "A ficha volta da Lixeira e é unida a esta, que fica. Confira o que vai acontecer antes de confirmar.",

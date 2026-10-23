@@ -245,6 +245,9 @@ export interface ItemDaLixeira {
   /** Fichas no LOTE inteiro (fora da busca): o que "Restaurar o lote" traz de
    *  volta. Ausente ou ilegível vira 1 — o botão do lote some, nunca mente. */
   loteTotal: number;
+  /** A ficha que ocupa, ou esta, tem Instagram: "Restaurar e unir" (1101)
+   *  não é oferecido — a união recusa sempre. Só `true` liga. */
+  ocupadaComInstagram: boolean;
 }
 
 /** Lê UMA linha de `cb_lixeira_da_conta`. NULO = forma inesperada. */
@@ -276,6 +279,7 @@ export function lerItem(bruto: unknown): ItemDaLixeira | null {
     ocupadaPor: texto(o.ocupada_por),
     ocupadaPorNome: texto(o.ocupada_por_nome),
     loteTotal: Math.max(1, inteiro(o.lote_total)),
+    ocupadaComInstagram: o.ocupada_com_instagram === true,
   };
 }
 

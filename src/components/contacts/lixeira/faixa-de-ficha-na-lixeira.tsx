@@ -72,15 +72,22 @@ export function FaixaDeFichaNaLixeira({
                       : t('mesmaPessoa.movidaEm', { quando, count: item.mensagens })}
                   </p>
                 </div>
-                <Button
-                  type="button"
-                  size="xs"
-                  variant="outline"
-                  className="shrink-0 bg-background"
-                  onClick={() => aoRestaurarEUnir(item)}
-                >
-                  {t('mesmaPessoa.restaurarEUnir')}
-                </Button>
+                {/* Com Instagram a união recusa sempre: em vez de um botão
+                    que levaria a uma prévia bloqueada, a frase. O "Ver na
+                    Lixeira" fica. */}
+                {item.comInstagram ? (
+                  <p className="max-w-48 shrink-0 text-muted-foreground">{t('mesmaPessoa.instagram')}</p>
+                ) : (
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="outline"
+                    className="shrink-0 bg-background"
+                    onClick={() => aoRestaurarEUnir(item)}
+                  >
+                    {t('mesmaPessoa.restaurarEUnir')}
+                  </Button>
+                )}
               </li>
             );
           })}

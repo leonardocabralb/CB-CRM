@@ -48,6 +48,9 @@ export interface ItemDaMesmaPessoa {
   movidaPorNome: string | null;
   /** Mensagens na fotografia (as contagens da Lixeira; sem a tabela, zero). */
   mensagens: number;
+  /** Uma das duas fichas tem Instagram: a união recusa sempre, e a tela não
+   *  oferece o botão. Só `true` liga (dado de fora). */
+  comInstagram: boolean;
 }
 
 /**
@@ -74,6 +77,7 @@ export function lerItensDaMesmaPessoa(bruto: unknown): ItemDaMesmaPessoa[] | nul
       movidaEm,
       movidaPorNome: texto(o.movida_por_nome),
       mensagens: inteiro(o.mensagens),
+      comInstagram: o.com_instagram === true,
     });
   }
   return saida;

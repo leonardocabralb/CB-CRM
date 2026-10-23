@@ -48,7 +48,7 @@ function AvisoDaFicha({ contatoId, resyncToken = 0, origem, className }: Props) 
           reconhece o ANINHADO e não briga pelo foco). */}
       <RestaurarEUnirDialog
         key={escolhido?.id ?? 'nenhum'}
-        item={escolhido}
+        itemId={escolhido?.id ?? null}
         fichaQueFica={contatoId}
         aoFechar={() => setEscolhido(null)}
         // Depois de unir, a página recarrega na conversa que ficou: as

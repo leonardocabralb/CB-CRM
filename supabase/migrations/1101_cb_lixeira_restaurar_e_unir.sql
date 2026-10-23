@@ -35,6 +35,29 @@
 -- trava, esquema que mudou) desfaz TUDO — o subbloco volta ao começo — e a
 -- função devolve o código.
 --
+-- A CONVERSA QUE VOLTA ENTRA COMO HISTÓRICO (decisão de 23/10/2026, revisão
+-- da Fase 4). Junto da identidade provisória, a conversa da fotografia volta
+-- ENCERRADA, sem responsável, sem espera, sem não lidas e com a IA como o
+-- encerrar deixa (o que `cb_encerrar_limpa_ia` faria). Sem isso a união
+-- (1093) a leria como viva: reabriria a conversa de hoje com o responsável de
+-- meses atrás (aviso no sino incluso) e a espera podia recuar para uma fala
+-- antiga. A conversa de hoje não reabre, não troca de responsável e a espera
+-- dela não recua.
+--
+-- A JANELA DA META SÓ AVANÇA. A união decide a janela pelas fichas COMO
+-- ESTÃO — e a da fotografia está com a identidade provisória (sem o telefone
+-- ou o BSUID que colidiu). Como a identidade CASOU (mesmo número ou mesma
+-- conta do WhatsApp), a conversa que fica recebe, por chave, o MAIOR instante
+-- entre a janela dela (lida ANTES da união) e a da conversa da fotografia.
+--
+-- LIMITE CONHECIDO (o tempo real): o INSERT de `cb_fichas_unidas` grava a
+-- trilha `contacts_merged` pelo gatilho da 1092 com a identidade PROVISÓRIA
+-- (telefone nulo, ou a reserva no lugar do BSUID), e esse INSERT sai pelo
+-- tempo real antes do UPDATE que o corrige na mesma transação. Quem está com
+-- a conversa aberta vê, até recarregar, a linha "unida" sem o telefone da
+-- ficha que voltou. A reserva `lixeira:<item>` não é dado pessoal (é o id do
+-- item). `cb_unir_fichas` não muda por isso.
+--
 -- A PRÉVIA ("sem prévia, sem botão", a regra da união): os passos 1–4 num
 -- subbloco, `cb_previa_da_uniao(fica, restaurada)` guardada numa variável e
 -- o subbloco desfeito pelo SQLSTATE próprio P1101 — nunca `WHEN OTHERS`.
@@ -51,7 +74,11 @@
 -- mesma conta com o telefone canônico, o BSUID ou o Instagram da ficha
 -- aberta, pelos três índices parciais da 1097 — nunca pelo `@`, que muda e
 -- não é único. Só colunas de lista (nunca a fotografia), e vazio para quem
--- não é admin daquela conta.
+-- não é admin daquela conta. `com_instagram`: uma das duas fichas tem
+-- Instagram, e a união recusa sempre (Fase 5 do plano do Instagram) — a tela
+-- não oferece o botão. A lista da Lixeira (`cb_lixeira_da_conta`, 1097)
+-- ganha o mesmo sinal (`ocupada_com_instagram`) para oferecer "Restaurar e
+-- unir" no próprio item bloqueado: coluna de saída nova = DROP + CREATE.
 --
 -- ⚠️ `auth.uid()` e a suspensão (1067): as três RPCs da tela conferem por
 -- dentro; provado no descartável trocando de papel (`authenticated` com os
@@ -90,7 +117,8 @@ $$;
 CREATE OR REPLACE FUNCTION public.cb_lixeira_da_mesma_pessoa(p_contato uuid)
 RETURNS TABLE (
   id uuid, contact_id uuid, nome text, telefone text, wa_username text, instagram_username text,
-  movida_em timestamptz, movida_por_nome text, vence_em timestamptz, mensagens integer
+  movida_em timestamptz, movida_por_nome text, vence_em timestamptz, mensagens integer,
+  com_instagram boolean
 )
 LANGUAGE sql
 STABLE
@@ -120,9 +148,55 @@ AS $$
          x.movida_em, x.movida_por_nome, x.vence_em,
          -- `contagens` só tem as tabelas com linha: sem `messages`, zero.
          CASE WHEN jsonb_typeof(x.contagens -> 'messages') = 'number'
-              THEN (x.contagens ->> 'messages')::numeric::integer ELSE 0 END
+              THEN (x.contagens ->> 'messages')::numeric::integer ELSE 0 END,
+         -- A união recusa sempre que uma das duas tem Instagram.
+         x.instagram_id IS NOT NULL OR f.ig IS NOT NULL
     FROM cb_lixeira_de_contatos x
+    CROSS JOIN ficha f
    WHERE x.id IN (SELECT a.id FROM achados a)
+   ORDER BY x.movida_em DESC, x.id
+$$;
+
+-- 2.1) A lista da Lixeira (1097) com o mesmo sinal: o item bloqueado por
+-- identidade ocupada oferece "Restaurar e unir" com a ficha que ocupa — salvo
+-- com Instagram (`ocupada_com_instagram`). O corpo é o da 1097, com a coluna
+-- nova no fim (o app anterior a ignora). Coluna de saída nova = DROP + CREATE
+-- (`CREATE OR REPLACE` não muda o tipo de retorno), na mesma transação.
+DROP FUNCTION IF EXISTS public.cb_lixeira_da_conta(text);
+CREATE OR REPLACE FUNCTION public.cb_lixeira_da_conta(p_busca text DEFAULT NULL)
+RETURNS TABLE (
+  id uuid, account_id uuid, contact_id uuid, lote_id uuid, nome text, telefone text, email text,
+  instagram_username text, wa_username text, movida_em timestamptz, movida_por_nome text,
+  vence_em timestamptz, contagens jsonb, ocupada_por uuid, ocupada_por_nome text, lote_total integer,
+  ocupada_com_instagram boolean
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT x.id, x.account_id, x.contact_id, x.lote_id, x.nome, x.telefone, x.email,
+         x.instagram_username, x.wa_username, x.movida_em, x.movida_por_nome,
+         x.vence_em, x.contagens, o.id, o.nome,
+         (SELECT count(*)::integer FROM cb_lixeira_de_contatos y
+           WHERE y.account_id = x.account_id AND y.lote_id = x.lote_id),
+         CASE WHEN o.id IS NOT NULL THEN x.instagram_id IS NOT NULL OR o.instagram_id IS NOT NULL END
+    FROM cb_lixeira_de_contatos x
+    LEFT JOIN LATERAL (
+      SELECT c.id, coalesce(nullif(c.name, ''), c.phone, c.instagram_username) AS nome, c.instagram_id
+        FROM contacts c
+       WHERE c.account_id = x.account_id
+         AND ((x.telefone_canonico IS NOT NULL AND c.telefone_canonico = x.telefone_canonico)
+              OR (x.phone_normalized IS NOT NULL AND c.phone_normalized = x.phone_normalized)
+              OR (x.wa_user_id IS NOT NULL AND c.wa_user_id = x.wa_user_id)
+              OR (x.instagram_id IS NOT NULL AND c.instagram_id = x.instagram_id))
+       ORDER BY c.created_at
+       LIMIT 1
+    ) o ON true
+   WHERE x.account_id = ANY (ARRAY(SELECT public.cb_contas_do_usuario('admin'::public.account_role_enum)))
+     AND (coalesce(btrim(p_busca), '') = ''
+          OR position(lower(btrim(p_busca)) IN lower(concat_ws(' ', x.nome, x.telefone, x.email,
+                                                                x.instagram_username, x.wa_username))) > 0)
    ORDER BY x.movida_em DESC, x.id
 $$;
 
@@ -148,6 +222,8 @@ DECLARE
   v_wa text;
   v_ig text;
   v_reserva text;
+  v_conversas jsonb;
+  v_janela_fica jsonb;
   v_res jsonb;
 BEGIN
   -- 1. O item, travado sem esperar, e só da conta de quem fica.
@@ -166,6 +242,8 @@ BEGIN
   -- gatilhos da conversa; na inversa, a ingestão fecharia um ciclo).
   PERFORM 1 FROM conversations c WHERE c.contact_id = p_fica ORDER BY c.id FOR UPDATE;
   SELECT * INTO v_fica FROM contacts c WHERE c.id = p_fica FOR UPDATE;
+  -- A janela da Meta da conversa de hoje ANTES da união (ela só avança).
+  SELECT c.janela_meta INTO v_janela_fica FROM conversations c WHERE c.contact_id = p_fica;
   IF v_fica.id IS NULL THEN
     RAISE EXCEPTION 'ficha_nao_encontrada' USING ERRCODE = 'P0001';
   END IF;
@@ -195,10 +273,27 @@ BEGIN
     v_reserva := 'lixeira:' || v.id::text;
     v_wa := v_reserva;
   END IF;
+  -- A conversa da fotografia entra na união como HISTÓRICO: encerrada, sem
+  -- responsável, sem espera e sem não lidas — e, se estava aberta, com a IA
+  -- como o encerrar deixa (`cb_encerrar_limpa_ia`). A união (1093) então não
+  -- reabre a conversa de hoje, não troca o responsável (nem avisa no sino) e
+  -- não recua a espera dela.
+  v_conversas := (
+    SELECT jsonb_agg(c || jsonb_build_object(
+             'status', 'closed', 'assigned_agent_id', NULL, 'aguardando_desde', NULL, 'unread_count', 0)
+           || CASE WHEN c ->> 'status' IS DISTINCT FROM 'closed' THEN jsonb_build_object(
+                'ia_agente_id', NULL, 'ai_autoreply_disabled', false, 'ia_pausada_por', NULL,
+                'ia_pausada_em', NULL, 'ia_retomada_em', now())
+              ELSE '{}'::jsonb END)
+      FROM jsonb_array_elements(v.fotografia -> 'conversations') c
+     WHERE jsonb_typeof(v.fotografia -> 'conversations') = 'array');
   UPDATE cb_lixeira_de_contatos x
-     SET fotografia = jsonb_set(x.fotografia, '{contacts,0}',
-                                v_ficha || jsonb_build_object('phone', v_phone, 'wa_user_id', v_wa,
-                                                              'instagram_id', v_ig)),
+     SET fotografia = jsonb_set(
+                        CASE WHEN v_conversas IS NULL THEN x.fotografia
+                             ELSE jsonb_set(x.fotografia, '{conversations}', v_conversas) END,
+                        '{contacts,0}',
+                        v_ficha || jsonb_build_object('phone', v_phone, 'wa_user_id', v_wa,
+                                                      'instagram_id', v_ig)),
          telefone_canonico = CASE WHEN v_bate_tel THEN NULL ELSE x.telefone_canonico END,
          phone_normalized = CASE WHEN v_bate_tel THEN NULL ELSE x.phone_normalized END,
          wa_user_id = v_wa,
@@ -216,6 +311,11 @@ BEGIN
   RETURN jsonb_build_object(
     'contact_id', v.contact_id,
     'reserva', v_reserva,
+    -- Por onde a identidade casou, e as janelas da Meta das duas conversas
+    -- (a da fotografia não muda com o histórico).
+    'casou_por_numero', v_bate_tel OR v_bate_wa,
+    'janela_fica', v_janela_fica,
+    'janela_foto', v.fotografia -> 'conversations' -> 0 -> 'janela_meta',
     -- A identidade como estava (o livro e a trilha da união a recebem).
     'original', jsonb_build_object('telefone', v_ficha -> 'phone', 'wa_user_id', v_ficha -> 'wa_user_id'),
     -- O que a união pode trocar na ficha que fica junto com a reserva.
@@ -359,6 +459,29 @@ BEGIN
              wa_parent_user_id = v_prep -> 'fica_antes' ->> 'wa_parent_user_id'
        WHERE c.id = p_fica AND c.wa_user_id = v_reserva;
     END IF;
+    -- 7. A janela da Meta SÓ AVANÇA. A união a decidiu pela identidade
+    -- provisória da fotografia; como a identidade casou pelo número (ou pela
+    -- conta do WhatsApp), a conversa que fica recebe, por chave, o MAIOR
+    -- instante entre a janela dela antes da união e a da fotografia. Valor que
+    -- não é instante (`cb_instante_do_valor` nulo) nunca vence um que é.
+    IF (v_prep ->> 'casou_por_numero')::boolean AND v_uniao ->> 'conversa' IS NOT NULL THEN
+      UPDATE conversations c
+         SET janela_meta = coalesce((
+               SELECT jsonb_object_agg(k.chave,
+                        CASE WHEN cb_instante_do_valor(j.foto ->> k.chave) IS NOT NULL
+                                  AND (cb_instante_do_valor(j.fica ->> k.chave) IS NULL
+                                       OR cb_instante_do_valor(j.foto ->> k.chave)
+                                          > cb_instante_do_valor(j.fica ->> k.chave))
+                             THEN j.foto -> k.chave
+                             ELSE coalesce(j.fica -> k.chave, j.foto -> k.chave) END)
+                 FROM (SELECT CASE WHEN jsonb_typeof(v_prep -> 'janela_fica') = 'object'
+                                   THEN v_prep -> 'janela_fica' ELSE '{}'::jsonb END AS fica,
+                              CASE WHEN jsonb_typeof(v_prep -> 'janela_foto') = 'object'
+                                   THEN v_prep -> 'janela_foto' ELSE '{}'::jsonb END AS foto) j
+                CROSS JOIN LATERAL (SELECT jsonb_object_keys(j.fica) AS chave
+                                    UNION SELECT jsonb_object_keys(j.foto)) k), '{}'::jsonb)
+       WHERE c.id = (v_uniao ->> 'conversa')::uuid;
+    END IF;
     -- O livro e a trilha da união contam a ficha que voltou com a identidade
     -- ORIGINAL (a provisória diria "sem telefone" — e levaria a reserva).
     UPDATE cb_fichas_unidas u
@@ -372,7 +495,7 @@ BEGIN
     IF v_removida IS NOT NULL THEN
       UPDATE cb_lead_events e
          SET details = jsonb_set(e.details, '{removida}', v_removida)
-       WHERE e.account_id = v_conta AND e.event_type = 'contacts_merged'
+       WHERE e.account_id = v_conta AND e.contact_id = p_fica AND e.event_type = 'contacts_merged'
          AND e.details ->> 'fusao_id' = v_fusao::text;
     END IF;
     IF v_reserva IS NOT NULL AND (
@@ -380,7 +503,7 @@ BEGIN
          OR EXISTS (SELECT 1 FROM cb_fichas_unidas u
                      WHERE u.id = v_fusao AND position(v_reserva IN u.foto::text) > 0)
          OR EXISTS (SELECT 1 FROM cb_lead_events e
-                     WHERE e.account_id = v_conta AND e.event_type = 'contacts_merged'
+                     WHERE e.account_id = v_conta AND e.contact_id = p_fica AND e.event_type = 'contacts_merged'
                        AND e.details ->> 'fusao_id' = v_fusao::text
                        AND position(v_reserva IN e.details::text) > 0)) THEN
       RAISE EXCEPTION 'lixeira_reserva_sobrou' USING ERRCODE = 'P0001';
@@ -422,6 +545,9 @@ REVOKE EXECUTE ON FUNCTION public.cb_restaurar_e_unir(uuid, uuid) FROM PUBLIC, a
 GRANT EXECUTE ON FUNCTION public.cb_lixeira_da_mesma_pessoa(uuid) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.cb_previa_restaurar_e_unir(uuid, uuid) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.cb_restaurar_e_unir(uuid, uuid) TO authenticated, service_role;
+-- A lista da Lixeira recriada: as portas da 1097, de novo (o DROP as levou).
+REVOKE EXECUTE ON FUNCTION public.cb_lixeira_da_conta(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.cb_lixeira_da_conta(text) TO authenticated;
 
 -- ------------------------------------------------------------
 -- 7) Conferência
@@ -443,6 +569,7 @@ DECLARE
   v_mensagens integer;
   v_antes jsonb;
   v_ret jsonb;
+  v_c record;
 BEGIN
   -- 7.1 As portas.
   IF has_function_privilege('anon', 'public.cb_restaurar_e_unir(uuid, uuid)', 'EXECUTE')
@@ -454,7 +581,9 @@ BEGIN
      OR NOT has_function_privilege('authenticated', 'public.cb_restaurar_e_unir(uuid, uuid)', 'EXECUTE')
      OR NOT has_function_privilege('authenticated', 'public.cb_previa_restaurar_e_unir(uuid, uuid)', 'EXECUTE')
      OR NOT has_function_privilege('authenticated', 'public.cb_lixeira_da_mesma_pessoa(uuid)', 'EXECUTE')
-     OR NOT has_function_privilege('service_role', 'public.cb_restaurar_e_unir(uuid, uuid)', 'EXECUTE') THEN
+     OR NOT has_function_privilege('service_role', 'public.cb_restaurar_e_unir(uuid, uuid)', 'EXECUTE')
+     OR has_function_privilege('anon', 'public.cb_lixeira_da_conta(text)', 'EXECUTE')
+     OR NOT has_function_privilege('authenticated', 'public.cb_lixeira_da_conta(text)', 'EXECUTE') THEN
     RAISE EXCEPTION '1101: EXECUTE das funções fora do lugar';
   END IF;
 
@@ -475,13 +604,15 @@ BEGIN
     PERFORM set_config('request.jwt.claim.sub', v_dono::text, true);
     -- Telefone fictício fora de qualquer faixa real (DDD 00). A ficha que
     -- vai para a Lixeira tem SÓ o telefone: na volta nada sobra, e a reserva
-    -- entra (o caso que mais pode deixar rastro).
+    -- entra (o caso que mais pode deixar rastro). A conversa dela está
+    -- ABERTA, com responsável e janela da Meta: volta como histórico, com a
+    -- janela.
     v_tel := '5500' || lpad((floor(random() * 1e9))::bigint::text, 9, '0');
     INSERT INTO public.contacts (user_id, account_id, phone, name)
     VALUES (v_dono, v_conta, v_tel, 'Fulano Conferencia 1101')
     RETURNING id INTO v_velha;
-    INSERT INTO public.conversations (user_id, account_id, contact_id, status)
-    VALUES (v_dono, v_conta, v_velha, 'closed')
+    INSERT INTO public.conversations (user_id, account_id, contact_id, status, assigned_agent_id, janela_meta)
+    VALUES (v_dono, v_conta, v_velha, 'open', v_dono, '{"conferencia": "2026-01-02T00:00:00+00:00"}')
     RETURNING id INTO v_conversa;
     INSERT INTO public.messages (conversation_id, sender_type, content_type, content_text, created_at)
     VALUES (v_conversa, 'customer', 'text', 'oi 1101', now() - interval '3 days');
@@ -495,10 +626,16 @@ BEGIN
     VALUES (v_dono, v_conta, v_tel, 'Fulano Conferencia 1101')
     RETURNING id INTO v_nova;
 
-    -- A faixa acha o item, com as mensagens.
-    SELECT f.id, f.mensagens INTO v_item, v_mensagens FROM public.cb_lixeira_da_mesma_pessoa(v_nova) f;
+    -- A faixa acha o item, com as mensagens; a lista da Lixeira diz quem
+    -- ocupa e que dá para unir (sem Instagram).
+    SELECT f.id, f.mensagens INTO v_item, v_mensagens FROM public.cb_lixeira_da_mesma_pessoa(v_nova) f
+     WHERE NOT f.com_instagram;
     IF v_item IS NULL OR v_mensagens IS DISTINCT FROM 1 THEN
       RAISE EXCEPTION '1101: a faixa não achou a ficha na Lixeira: % %', v_item, v_mensagens;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM public.cb_lixeira_da_conta(NULL) l
+                    WHERE l.id = v_item AND l.ocupada_por = v_nova AND l.ocupada_com_instagram IS FALSE) THEN
+      RAISE EXCEPTION '1101: a lista da Lixeira não mostra quem ocupa a identidade';
     END IF;
 
     -- A prévia mostra e não grava nada.
@@ -530,6 +667,14 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM public.messages m JOIN public.conversations v ON v.id = m.conversation_id
                     WHERE v.contact_id = v_nova AND m.content_text = 'oi 1101') THEN
       RAISE EXCEPTION '1101: a conversa da ficha que voltou não passou';
+    END IF;
+    -- A conversa que passou é HISTÓRICO, e a janela da Meta veio junto.
+    SELECT v.status, v.assigned_agent_id, v.aguardando_desde, v.janela_meta INTO v_c
+      FROM public.conversations v WHERE v.contact_id = v_nova;
+    IF v_c.status IS DISTINCT FROM 'closed' OR v_c.assigned_agent_id IS NOT NULL
+       OR v_c.aguardando_desde IS NOT NULL
+       OR v_c.janela_meta ->> 'conferencia' IS DISTINCT FROM '2026-01-02T00:00:00+00:00' THEN
+      RAISE EXCEPTION '1101: a conversa que voltou não entrou como histórico com a janela: %', row_to_json(v_c);
     END IF;
     IF NOT EXISTS (SELECT 1 FROM public.cb_fichas_unidas u
                     WHERE u.ficha_removida = v_velha AND u.ficha_que_fica = v_nova

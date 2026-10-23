@@ -27,7 +27,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { restaurarEUnir, usePreviaDoRestaurarEUnir } from '@/hooks/use-lixeira-da-mesma-pessoa';
-import type { ItemDaMesmaPessoa, RecusaDoRestaurarEUnir } from '@/lib/contacts/restaurar-e-unir';
+import type { RecusaDoRestaurarEUnir } from '@/lib/contacts/restaurar-e-unir';
 import type { ResultadoDaUniao } from '@/lib/contacts/uniao';
 
 import { CorpoDaPrevia } from '../revisao-da-uniao';
@@ -44,8 +44,13 @@ function TextoDaRecusa({ t, recusa }: { t: TradutorDaLixeira; recusa: RecusaDoRe
   return (
     <div className="min-w-0 space-y-1 text-sm text-red-600">
       <p className="break-words">{textoDaRecusaDoRestaurarEUnir(t, recusa.motivo)}</p>
-      {recusa.motivo === 'identidade_ocupada' && recusa.ocupadaPorNome && (
-        <p className="break-words">{t('volta.ocupadaPor', { nomes: recusa.ocupadaPorNome })}</p>
+      {recusa.motivo === 'identidade_ocupada' && (
+        <>
+          {recusa.ocupadaPorNome && (
+            <p className="break-words">{t('volta.ocupadaPor', { nomes: recusa.ocupadaPorNome })}</p>
+          )}
+          <p className="break-words">{t('mesmaPessoa.dicaIdentidadeOcupada')}</p>
+        </>
       )}
       {afirmaQueNadaMudou(recusa.motivo) && <p className="text-muted-foreground">{t('mesmaPessoa.nadaMudou')}</p>}
     </div>
@@ -53,14 +58,15 @@ function TextoDaRecusa({ t, recusa }: { t: TradutorDaLixeira; recusa: RecusaDoRe
 }
 
 export function RestaurarEUnirDialog({
-  item,
+  itemId,
   fichaQueFica,
   aoFechar,
   aoUnir,
 }: {
-  /** O item da Lixeira escolhido na faixa; nulo = diálogo fechado. */
-  item: ItemDaMesmaPessoa | null;
-  /** A ficha aberta: é ela que fica. */
+  /** O item da Lixeira escolhido (na faixa ou na própria Lixeira); nulo =
+   *  diálogo fechado. */
+  itemId: string | null;
+  /** A ficha que FICA: a aberta (faixa) ou a que ocupa a identidade (Lixeira). */
   fichaQueFica: string;
   aoFechar: () => void;
   aoUnir: (resultado: ResultadoDaUniao) => void;
@@ -69,8 +75,8 @@ export function RestaurarEUnirDialog({
   const tUniao = useTranslations('Duplicatas.uniao');
   const tDuplicatas = useTranslations('Duplicatas');
   const { previa, recusa, carregando, tentarDeNovo } = usePreviaDoRestaurarEUnir(
-    item?.id ?? null,
-    item ? fichaQueFica : null,
+    itemId,
+    itemId ? fichaQueFica : null,
   );
   const [unindo, setUnindo] = useState(false);
   const [falha, setFalha] = useState<RecusaDoRestaurarEUnir | null>(null);
@@ -79,10 +85,10 @@ export function RestaurarEUnirDialog({
   const ressalvas = previa ? textosDasRessalvas(t, previa.ressalvas) : [];
 
   async function confirmar() {
-    if (!item || !podeUnir) return;
+    if (!itemId || !podeUnir) return;
     setUnindo(true);
     setFalha(null);
-    const r = await restaurarEUnir(item.id, fichaQueFica);
+    const r = await restaurarEUnir(itemId, fichaQueFica);
     if (!r.ok) {
       setUnindo(false);
       setFalha(r.recusa);
@@ -94,7 +100,7 @@ export function RestaurarEUnirDialog({
   }
 
   return (
-    <Dialog open={item !== null} onOpenChange={(aberto) => !aberto && !unindo && aoFechar()}>
+    <Dialog open={itemId !== null} onOpenChange={(aberto) => !aberto && !unindo && aoFechar()}>
       <DialogContent className="max-h-[calc(var(--altura-visivel,100dvh)-2rem)] overflow-y-auto sm:max-w-3xl">
         <DialogHeader className="min-w-0">
           <DialogTitle>{t('mesmaPessoa.dialogoTitulo')}</DialogTitle>
@@ -116,6 +122,9 @@ export function RestaurarEUnirDialog({
                 ficaEhSugerida={false}
                 semNome={tDuplicatas('semNome')}
               />
+              {/* A conversa que volta entra como HISTÓRICO (1101): a de hoje
+                  não reabre, não troca de responsável, a espera não recua. */}
+              <p className="text-xs break-words text-muted-foreground">{t('mesmaPessoa.conversaComoHistorico')}</p>
               {ressalvas.length > 0 && (
                 <section className="text-sm">
                   <h4 className="text-xs font-medium text-muted-foreground">{t('mesmaPessoa.ressalvasTitulo')}</h4>
