@@ -372,7 +372,7 @@ export function useBrowserNotifications(): void {
             seen: seenRef.current,
           });
           if (!deveAvisar) return;
-          if (reinseridaPelaRestauracao(msg.gravada_em, restauradas.get(msg.conversation_id))) return;
+          if (reinseridaPelaRestauracao(msg.gravada_em, restauradas.get(msg.conversation_id), msg.created_at)) return;
           void avisar(msg, true, ++chegadas);
         },
       )

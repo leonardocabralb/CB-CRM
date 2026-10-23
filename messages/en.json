@@ -1516,6 +1516,7 @@
         "negociosFicam": "The deals that stayed in the pipeline remain there, with no contact.",
         "pedidoRotulo": "This is a data subject's deletion request (LGPD)",
         "pedidoTexto": "Also erases what stayed outside the record: this person's data in webhook and Calendly events, the content of automation runs, the calls and the held messages from this phone, and their name in the history (the entry saying the record existed stays, without the name).",
+        "ficamNoCrm": "These stay in the CRM as the firm's records (to be confirmed with whoever handles LGPD): the deals, with their title; the Asaas charges and customer record; the ZapSign documents; the meetings and transcripts; and this person's messages in groups.",
         "foraDoAlcance": "Even so, these are beyond the CRM's reach: backups, Evolution (the QR code connections) and whatever third parties already received (integrations, e-mails, spreadsheets).",
         "digite": "To confirm, type {palavra}",
         "palavra": "DELETE",

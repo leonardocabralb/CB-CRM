@@ -514,6 +514,7 @@ function InboxPageInner() {
             (activeConversation?.id === newMsg.conversation_id
               ? activeConversation.restaurada_em
               : null),
+          newMsg.created_at,
         );
         // Add to messages if it belongs to active conversation
         if (

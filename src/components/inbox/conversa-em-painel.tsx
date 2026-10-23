@@ -267,7 +267,7 @@ function ConversaCarregada({
       if (event.eventType === "INSERT") {
         // A devolvida pela restauração não entra pelo fim nem recarrega as
         // execuções: o fio é relido uma vez quando a conversa volta (abaixo).
-        if (reinseridaPelaRestauracao(msg.gravada_em, restauradaEmRef.current)) return;
+        if (reinseridaPelaRestauracao(msg.gravada_em, restauradaEmRef.current, msg.created_at)) return;
         setMessages((prev) => {
           if (prev.some((m) => m.id === msg.id)) return prev;
           // A linha gravada substitui a bolha otimista do envio.

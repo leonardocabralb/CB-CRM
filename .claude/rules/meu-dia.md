@@ -289,8 +289,10 @@ na casca e o cartão em *Seu perfil*. Pino estrutural:
   com o `gravada_em` original, colado ao carimbo — a régua de 1 h não as
   pega. Antiga é `gravada_em` anterior a `conversations.restaurada_em`
   (`reinseridaPelaRestauracao`; o ouvinte lê a coluna com a conversa): os
-  dois do relógio do BANCO, nunca o da tela. Nunca regravar `gravada_em` na
-  volta: com `now()`, a fala antiga seria resposta de agora.
+  dois do relógio do BANCO, nunca o da tela. ⚠️ Sem `gravada_em` (72% da
+  produção: carga e anteriores à 1003; a inserção ao vivo sempre o ganha),
+  vale o `created_at`. Nunca regravar `gravada_em` na volta: com `now()`, a
+  fala antiga seria resposta de agora.
 - ⚠️ **A preferência é POR PESSOA neste navegador** (`cb-notificacoes:<userId>`,
   JSON lido por `lerPreferencia`, nunca `as`): a chave global do original
   (`wacrm:browser-notifications`, apagada ao gravar a nova) fazia quem entrasse

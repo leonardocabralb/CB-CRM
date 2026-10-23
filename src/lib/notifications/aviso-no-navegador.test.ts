@@ -402,7 +402,7 @@ describe("silencioDoAviso — a volta pela ordem do tempo real (pino do hook)", 
     );
     // …e a fala devolvida não vira uma consulta da conversa por mensagem.
     expect(hook).toMatch(
-      /if \(reinseridaPelaRestauracao\(msg\.gravada_em, restauradas\.get\(msg\.conversation_id\)\)\) return;\s*void avisar\(msg, true, \+\+chegadas\);/,
+      /if \(reinseridaPelaRestauracao\(msg\.gravada_em, restauradas\.get\(msg\.conversation_id\), msg\.created_at\)\) return;\s*void avisar\(msg, true, \+\+chegadas\);/,
     );
   });
 });

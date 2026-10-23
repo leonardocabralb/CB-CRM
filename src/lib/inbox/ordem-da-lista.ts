@@ -100,7 +100,7 @@ export function comMensagemNova<C extends Conversation>(
   aberta: boolean,
 ): C {
   if (mensagem.content_type === "system") return conversa;
-  if (reinseridaPelaRestauracao(mensagem.gravada_em, conversa.restaurada_em)) return conversa;
+  if (reinseridaPelaRestauracao(mensagem.gravada_em, conversa.restaurada_em, mensagem.created_at)) return conversa;
   const atual = instante(conversa.last_message_at);
   const nova = instante(mensagem.created_at);
   const avanca = atual === null || (nova !== null && nova >= atual);

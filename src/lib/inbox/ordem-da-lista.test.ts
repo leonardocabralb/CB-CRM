@@ -149,7 +149,16 @@ describe("comMensagemNova — a volta da Lixeira (1097)", () => {
     expect(c.last_message_text).toBe("Oi de novo");
   });
 
-  it("sem `gravada_em` (carga antiga) vale a régua de sempre", () => {
+  it("⚠️ sem `gravada_em` (72% da produção: a carga) vale o `created_at` — a importada antiga não soma", () => {
+    const c = comMensagemNova(
+      restaurada,
+      { created_at: "2025-03-01T10:00:00+00:00", content_text: "importada", gravada_em: null },
+      false,
+    );
+    expect(c).toBe(restaurada);
+  });
+
+  it("sem `gravada_em` e `created_at` depois da volta: nova, soma como sempre", () => {
     const c = comMensagemNova(
       restaurada,
       { created_at: "2026-10-23T18:31:00+00:00", content_text: "sem gravação", gravada_em: null },
@@ -206,7 +215,7 @@ describe("pinos: quem usa a ordem", () => {
     );
     // O fio aberto não recebe as devolvidas pelo fim (a releitura as traz na
     // ordem), nem recarrega as execuções por cada fala antiga do cliente.
-    expect(pagina).toMatch(/const daRestauracao = reinseridaPelaRestauracao\(\s*newMsg\.gravada_em,/);
+    expect(pagina).toMatch(/const daRestauracao = reinseridaPelaRestauracao\(\s*newMsg\.gravada_em,[\s\S]{0,300}?newMsg\.created_at,\s*\);/);
     expect(pagina).toMatch(/if \(\s*!daRestauracao &&\s*activeConversation &&\s*newMsg\.conversation_id === activeConversation\.id\s*\)/);
   });
 
@@ -215,6 +224,6 @@ describe("pinos: quem usa a ordem", () => {
     expect(painel).toMatch(
       /if \(event\.eventType === "INSERT" && event\.new\.restaurada_em\) \{\s*restauradaEmRef\.current = event\.new\.restaurada_em;\s*setResyncToken\(\(n\) => n \+ 1\);/,
     );
-    expect(painel).toContain("if (reinseridaPelaRestauracao(msg.gravada_em, restauradaEmRef.current)) return;");
+    expect(painel).toContain("if (reinseridaPelaRestauracao(msg.gravada_em, restauradaEmRef.current, msg.created_at)) return;");
   });
 });

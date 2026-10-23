@@ -131,6 +131,10 @@ function Formulario({
           <span className="min-w-0 space-y-1">
             <span className="block font-medium text-foreground">{t('excluir.pedidoRotulo')}</span>
             <span className="block text-muted-foreground">{t('excluir.pedidoTexto')}</span>
+            {/* O que FICA no CRM mesmo com o pedido (B3, proposta a confirmar
+                com quem responde pela LGPD): sem isto, a tela daria a
+                entender que só backups e terceiros guardam a pessoa. */}
+            <span className="block text-muted-foreground">{t('excluir.ficamNoCrm')}</span>
           </span>
         </label>
 

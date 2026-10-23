@@ -317,6 +317,59 @@ describe('1097 — a Lixeira de contatos', () => {
     }
   });
 
+  // ── (e) gatilho NOVO numa tabela que a restauração escreve ──────────────
+  //
+  // A conferência da 1097 recusa a restauração (`lixeira_sem_tratamento:
+  // gatilho:…`) quando acha gatilho não declarado nessas tabelas — inclusive
+  // o "Desfazer" do toast. Sem este pino, a migration que cria o gatilho passa
+  // verde no CI, sai no deploy, e a Lixeira só quebra quando alguém precisa
+  // dela. O gatilho novo entra em `calados` (com o WHEN do sinal) ou em
+  // `livres` de uma `cb_lixeira_tratamento()` redefinida no mesmo PR.
+
+  /** As tabelas que a restauração escreve: o fecho que volta e os ponteiros reapontados. */
+  function tabelasQueARestauracaoEscreve(corpo: string): Set<string> {
+    const tabelas = new Set<string>();
+    for (const [t, destino] of fecho(corpo)) if (destino !== 'nao_volta') tabelas.add(t);
+    const ponteiros = trecho(corpo, 'ponteiros', 'extras');
+    for (const m of ponteiros.matchAll(/'(\w+)\.[\w,]+'\s*,\s*'(\w+)'/g)) {
+      if (m[2] !== 'nao_reaponta') tabelas.add(m[1]);
+    }
+    return tabelas;
+  }
+
+  /** `livres`: a última lista do tratamento, até o fim do corpo. */
+  function livres(corpo: string): string[] {
+    const inicio = corpo.indexOf("'livres'");
+    expect(inicio).toBeGreaterThanOrEqual(0);
+    return [...corpo.slice(inicio).matchAll(/'(\w+\.\w+)'/g)].map((m) => m[1]);
+  }
+
+  it('(e) DEFAULT-DENY: gatilho criado DEPOIS da 1097 numa tabela que a restauração escreve está declarado', () => {
+    const escritas = tabelasQueARestauracaoEscreve(vigente.corpo);
+    const declarados = new Set([...caladosVigentes, ...livres(vigente.corpo)]);
+    const fora: string[] = [];
+    for (const m of POSTERIORES) {
+      for (const g of gatilhosCriados(m.sql)) {
+        const tabela = g.chave.split('.')[0];
+        if (escritas.has(tabela) && !declarados.has(g.chave)) fora.push(`${g.chave} (${m.arquivo})`);
+      }
+    }
+    expect(fora).toEqual([]);
+  });
+
+  it('(e) o leitor das tabelas escritas acha o que interessa', () => {
+    const escritas = tabelasQueARestauracaoEscreve(vigente.corpo);
+    for (const t of ['contacts', 'conversations', 'messages', 'deals', 'cb_lead_events', 'cb_tasks', 'broadcast_recipients']) {
+      expect(escritas.has(t), t).toBe(true);
+    }
+    // Não volta, mas é REAPONTADA (turno de outra conversa que cita a mensagem).
+    expect(escritas.has('cb_ia_turnos')).toBe(true);
+    // Nem volta nem é reapontada: gatilho ali não atrapalha a volta.
+    expect(escritas.has('flow_runs')).toBe(false);
+    expect(escritas.has('cb_automation_events')).toBe(false);
+    expect(livres(vigente.corpo)).toContain('deals.cb_deals_log_event');
+  });
+
   it('(d) o detector pega a forma que interessa', () => {
     expect(alvosDeFk('contact_id uuid REFERENCES public.contacts(id) ON DELETE CASCADE')).toEqual(['contacts']);
     expect(alvosDeFk('ADD CONSTRAINT x FOREIGN KEY (a, b) REFERENCES conversations (id, account_id)')).toEqual([
@@ -327,13 +380,31 @@ describe('1097 — a Lixeira de contatos', () => {
 
   // ── a forma da migration ────────────────────────────────────────────────
 
-  it('trava com teto ANTES da primeira ALTER, e a conferência desfaz a prova pelo SQLSTATE próprio', () => {
+  it('trava com teto ANTES da primeira ALTER; depois dela, a 1097 só confere o catálogo', () => {
     const trava = SQL.search(/SET\s+LOCAL\s+lock_timeout/i);
     expect(trava).toBeGreaterThanOrEqual(0);
     expect(trava).toBeLessThan(SQL.search(/ALTER\s+TABLE/i));
+    // A ida e volta (DML nas tabelas de verdade) segurando a trava exclusiva
+    // das ALTERs pararia a caixa de entrada: ela mora na 1098 (supabase.md,
+    // "depois da primeira ALTER, só catálogo").
     const conferencia = SQL.slice(SQL.lastIndexOf('DO $$'));
-    expect(conferencia).toMatch(/WHEN\s+SQLSTATE\s+'P1097'\s+THEN/);
-    expect(conferencia).not.toMatch(/WHEN\s+OTHERS/i);
+    expect(conferencia).not.toMatch(/:=\s*public\.cb_(mover_contatos_para_lixeira|restaurar_da_lixeira|excluir_da_lixeira)\s*\(|INSERT\s+INTO|UPDATE\s+public\.|DELETE\s+FROM/i);
+  });
+
+  it('a 1098 faz a ida e volta, desfeita pelo SQLSTATE próprio, sem DDL nem WHEN OTHERS', () => {
+    const prova = semComentarios(fs.readFileSync(path.join(DIR, '1098_cb_lixeira_conferencia.sql'), 'utf8'));
+    for (const f of [
+      'cb_previa_da_lixeira',
+      'cb_mover_contatos_para_lixeira',
+      'cb_restaurar_da_lixeira',
+      'cb_excluir_da_lixeira',
+    ]) {
+      expect(prova, f).toMatch(new RegExp(`public\\.${f}\\(`));
+    }
+    expect(prova).toMatch(/RAISE\s+EXCEPTION\s+USING\s+ERRCODE\s*=\s*'P1098'/);
+    expect(prova).toMatch(/WHEN\s+SQLSTATE\s+'P1098'\s+THEN/);
+    expect(prova).not.toMatch(/WHEN\s+OTHERS/i);
+    expect(prova).not.toMatch(/\b(ALTER|CREATE|DROP|GRANT|REVOKE)\s+/i);
   });
 
   it('os CHECKs alargados vêm ANTES das funções que gravam os valores novos', () => {

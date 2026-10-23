@@ -551,6 +551,24 @@ describe('lerVolta e lerRessalvas', () => {
     ]);
   });
 
+  it('a linha que o ON CONFLICT engoliu (sem FK) também é ressalva', () => {
+    expect(
+      lerRessalvas({
+        tabelas: {
+          contacts: { total: 1, inseridas: 1 },
+          // O mesmo telefone antigo gravado por outra união durante a Lixeira.
+          cb_contatos_antigos: { total: 2, inseridas: 1 },
+          // Uma pela FK e uma pelo conflito: duas, nunca três.
+          cb_contatos_relacionados: {
+            total: 3,
+            inseridas: 1,
+            fks: { x_fkey: { acao: 'descartada', n: 1 } },
+          },
+        },
+      })
+    ).toEqual([{ tipo: 'linhas_descartadas', n: 1 + 2 }]);
+  });
+
   it('volta limpa (só os extras zerados) → nenhuma ressalva', () => {
     expect(
       lerRessalvas({

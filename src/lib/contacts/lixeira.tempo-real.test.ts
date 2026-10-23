@@ -25,9 +25,19 @@ describe('reinseridaPelaRestauracao — gravada_em × restaurada_em, os dois do 
     expect(reinseridaPelaRestauracao('2026-10-23T15:31:00-03:00', VOLTA)).toBe(false);
   });
 
-  it('sem um dos dois, ou ilegível: falso — vale a régua de sempre de quem chama', () => {
+  it('sem gravada_em (72% da produção: carga histórica), vale o created_at', () => {
+    expect(reinseridaPelaRestauracao(null, VOLTA, '2025-03-01T10:00:00+00:00')).toBe(true);
+    expect(reinseridaPelaRestauracao(undefined, VOLTA, '2025-03-01T10:00:00+00:00')).toBe(true);
+    // gravada_em, quando há, manda — mesmo com created_at do passado (a
+    // mensagem nova com carimbo do aparelho atrasado ainda é nova).
+    expect(reinseridaPelaRestauracao('2026-10-23T18:31:00+00:00', VOLTA, '2025-03-01T10:00:00+00:00')).toBe(false);
+    expect(reinseridaPelaRestauracao(null, VOLTA, '2026-10-23T18:31:00+00:00')).toBe(false);
+  });
+
+  it('sem nenhum carimbo, sem a volta, ou ilegível: falso — vale a régua de sempre de quem chama', () => {
     expect(reinseridaPelaRestauracao(null, VOLTA)).toBe(false);
     expect(reinseridaPelaRestauracao(undefined, VOLTA)).toBe(false);
+    expect(reinseridaPelaRestauracao(null, VOLTA, null)).toBe(false);
     expect(reinseridaPelaRestauracao('2026-10-20T14:00:00Z', null)).toBe(false);
     expect(reinseridaPelaRestauracao('2026-10-20T14:00:00Z', undefined)).toBe(false);
     expect(reinseridaPelaRestauracao('não é data', VOLTA)).toBe(false);

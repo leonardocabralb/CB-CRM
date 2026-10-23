@@ -341,9 +341,17 @@ export function lerRessalvas(relatorio: unknown): Ressalva[] {
     if (!t) continue;
     if (t.tabela_sumiu === true) descartadas += 1;
     descartadas += inteiro(t.fora_da_volta);
+    let pelasFks = 0;
     for (const fk of Object.values(objeto(t.fks) ?? {})) {
       const f = objeto(fk);
-      if (f && (f.acao === 'descartada' || f.acao === 'restrita')) descartadas += inteiro(f.n);
+      if (f && (f.acao === 'descartada' || f.acao === 'restrita')) pelasFks += inteiro(f.n);
+    }
+    descartadas += pelasFks;
+    // E as que o `ON CONFLICT DO NOTHING` engoliu: o mesmo contato antigo
+    // gravado por outra união durante a Lixeira, o vínculo já refeito com a
+    // ficha que ficou. Sem esta conta o toast dizia "restaurada" sem ressalva.
+    if ('total' in t && 'inseridas' in t) {
+      descartadas += Math.max(0, inteiro(t.total) - inteiro(t.inseridas) - pelasFks);
     }
     colunas += lista(t.colunas_sumidas).length;
   }
@@ -514,17 +522,28 @@ export const NEGOCIOS_POR_CHAMADA = 1000;
  * relógio de aparelho. ⚠️ Nunca contra o relógio do navegador (adiantado,
  * calaria toda mensagem nova) e nunca reescrevendo `gravada_em`.
  *
- * Sem `gravada_em` (carga antiga, anterior à 1003) ou sem `restaurada_em`
- * (conversa que nunca esteve na Lixeira), ou com um dos dois ilegível: falso,
- * e vale a régua de sempre de quem chama. A mensagem nova da conversa
- * restaurada é gravada DEPOIS da volta (a conversa não existia antes) e passa.
+ * ⚠️⚠️ Sem `gravada_em`, vale o `created_at`. NÃO é caso raro: 72% das
+ * mensagens da produção (81.937 de 113.869, medido em 23/10/2026) não têm
+ * `gravada_em` — a carga do histórico do WhatsApp, a da Kommo e tudo o que é
+ * anterior à 1003. A inserção ao vivo SEMPRE ganha `gravada_em` (DEFAULT
+ * `now()`; a carga grava NULO de propósito, supabase.md), então o nulo é
+ * sempre mensagem do passado, e o `created_at` dela é do passado também. Sem
+ * isto, restaurar uma ficha importada somava uma não lida por mensagem e
+ * consultava a conversa a cada fala do cliente, em cada aba.
+ *
+ * Sem `restaurada_em` (conversa que nunca esteve na Lixeira), ou com os
+ * carimbos ilegíveis: falso, e vale a régua de sempre de quem chama. A
+ * mensagem nova da conversa restaurada é gravada DEPOIS da volta (a conversa
+ * não existia antes) e passa.
  */
 export function reinseridaPelaRestauracao(
   gravadaEm: string | null | undefined,
   restauradaEm: string | null | undefined,
+  createdAt?: string | null,
 ): boolean {
-  if (!gravadaEm || !restauradaEm) return false;
-  const gravada = Date.parse(gravadaEm);
+  const carimbo = gravadaEm || createdAt;
+  if (!carimbo || !restauradaEm) return false;
+  const gravada = Date.parse(carimbo);
   const volta = Date.parse(restauradaEm);
   if (Number.isNaN(gravada) || Number.isNaN(volta)) return false;
   return gravada < volta;
