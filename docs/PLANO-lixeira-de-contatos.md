@@ -46,7 +46,7 @@
 | **0** | Estudo, medição, revisão adversarial, decisões | ✅ 22/10/2026 (este arquivo) | — | — |
 | **1** | Portas dos fundos: o atendente deixa de apagar conversa e mensagem pelo navegador | ✅ aplicada em 23/10/2026 e mesclada | `1096_cb_atendente_nao_apaga_conversa` (RESTRITIVA, mas nada do app usa o que tira: vale antes ou depois do deploy) | #428 |
 | **2** | A Lixeira: banco (mover, prévia, restaurar, excluir agora, vencimento, fila de arquivos), tela (prévia, Lixeira, Desfazer) e a doc do B6 (`docs/public-api.md` e Configurações → API → Documentação) | ✅ aplicada em 23/10/2026 (antes do deploy); e2e no preview com fichas fictícias | `1097_cb_lixeira_de_contatos` (ADITIVA), `1098_cb_lixeira_conferencia` (a prova de ida e volta) e `1099_cb_lixeira_anular_confere_o_ponteiro` (correção do Codex) | #429 |
-| **3** | Depois do deploy da 2: derrubar a policy `contacts_delete` e o privilégio (só a Lixeira, as funções e o service role apagam) | ✅ implementada e provada no descartável (23/10/2026); aplicar DEPOIS do deploy da 2 | `1100_cb_so_a_lixeira_apaga_contato` (RESTRITIVA) | — |
+| **3** | Depois do deploy da 2: derrubar a policy `contacts_delete` e o privilégio (só a Lixeira, as funções e o service role apagam) | ✅ aplicada em 23/10/2026, depois do deploy da 2; DELETE direto pelo navegador dá 42501 | `1100_cb_so_a_lixeira_apaga_contato` (RESTRITIVA) | #430 |
 | **4** | Ficha nova da mesma pessoa: faixa "há uma ficha desta pessoa na Lixeira" e "Restaurar e unir" | ⏳ em implementação (desenho abaixo) | ADITIVA, `1101` | — |
 | **5** | O 410 da API e o roteiro interno de pedido de exclusão (LGPD) | ✅ o roteiro está abaixo; o 410 NÃO se aplica: B6 escolheu a volta com o MESMO id (a doc da API diz) | — | — |
 
@@ -131,6 +131,14 @@
 - **Medido no Postgres 16 descartável:** antes, o admin apagava a ficha
   direto; depois, admin e atendente recebem 42501; a Lixeira (RPC) segue
   movendo; o service role segue apagando; aplicar duas vezes dá o mesmo.
+- **Aplicada** em 23/10/2026, depois do deploy da Fase 2. **e2e na
+  produção pelo preview:** DELETE direto em `contacts`, `conversations` e
+  `messages` com a sessão de um admin → 42501. Na mesma rodada, o e2e da
+  Fase 2 com o lead de teste: mover (801 mensagens, ~4,8 s), a marca "Na
+  Lixeira" no card do funil, restaurar (~2,5 s) com a ida e volta idêntica
+  no banco (mensagens, anotações, etiquetas, campos, ficha e conversa pela
+  digital md5; o card reapontado) e, numa 2ª aba com a caixa de entrada
+  aberta, nenhuma não lida a mais nem linha duplicada.
 
 ### Fase 4 — desenho ("Restaurar e unir")
 
