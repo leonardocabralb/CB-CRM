@@ -15,10 +15,9 @@ qualquer uma é pergunta ao operador.
 - Funil: ganho que sai para etapa neutra segue ganho; perdido que entra em
   neutra volta aberto (21/09/2026).
 - Funil comercial: "por período" é o padrão (18/09/2026); taxa acima de 100%
-  aparece como é; negócio transferido conta no funil de origem. Degrau
-  `pasta` depois do contrato, opcional, e "fechado" o inclui; cada funil
-  configura o próprio painel; "custo por contrato assinado" ao lado do CAC em
-  pé (26/09/2026).
+  aparece como é; transferido conta no funil de origem. Degrau `pasta` depois
+  do contrato, opcional, e "fechado" o inclui; painel por funil; "custo por
+  contrato assinado" ao lado do CAC em pé (26/09/2026).
 - Card: título = nome da pessoa, sem prefixo de conexão; o Calendly renomeia
   até título escrito à mão e fixa o nome da ficha.
 - Reuniões: "Data e Hora Reunião" mais nova que todo agendamento remarca a
@@ -48,8 +47,9 @@ qualquer uma é pergunta ao operador.
   nem vai na visão salva; busca no corpo das mensagens desligada por padrão.
 - Ficha: um bloco de campos por vez, em menu horizontal, na ordem de cada
   pessoa (12/10/2026).
-- Notas do painel: a caixa de escrever vem ANTES da fixada, e a fixada nasce
-  recolhida (29/09/2026).
+- Anotação: caixa ANTES da fixada, que nasce recolhida (29/09/2026);
+  anexos de todo tipo, vários, sem transcrição nem aba Arquivos; só o autor
+  edita, sem prazo, com marca "editada" (23/10/2026).
 - Quem mais está com a conversa aberta: frase acima do compositor, além dos
   avatares do cabeçalho (29/09/2026).
 - Modo anônimo, só de admin, no menu do nome: abrir não zera as não lidas nem
@@ -59,8 +59,8 @@ qualquer uma é pergunta ao operador.
 - Canal: a faixa de divergência só informa, não bloqueia; cor derivada; anel
   no avatar e trilha colorida foram descartados.
 - IA: chave por PROVEDOR, uma para a conta toda — nunca por conexão
-  (28/08/2026; `cb_ia_chaves`, 1047). O modelo é do módulo (Radar) e, com os
-  agentes, de cada agente (D1 de `docs/PLANO-agentes-de-ia.md`).
+  (28/08/2026; 1047). O modelo é do módulo (Radar) e, com os agentes, de
+  cada agente (D1 de `docs/PLANO-agentes-de-ia.md`).
 - Automação presa à etapa: caixa por automação, marcada só nas criadas pela
   grade; as antigas não mudam (18/09/2026).
 - Asaas: o CRM cria a ficha, com nome fixado; ligar a régua não é
@@ -68,10 +68,9 @@ qualquer uma é pergunta ao operador.
 - Atlas: vincular/desvincular à mão só admin; a faixa acende também com
   suspenso e inativo; a linha do Atlas aparece a todos (sem recorte de
   perfil); o Atlas "ativo" NÃO apaga a linha do funil (30/09/2026).
-- Cartão de contato: cartão com Copiar e Conversar ("Nova conversa"
-  preenchida); `.html` recebido fica para baixar; ENVIAR `.html` só por QR
-  code (02/10/2026). Documento e cartão em destaque na bolha; fundo do fio a
-  15% (01/10/2026).
+- Cartão de contato com Copiar e Conversar; `.html` recebido só baixa e só
+  se ENVIA por QR code (02/10/2026). Documento e cartão em destaque na
+  bolha; fundo do fio a 15% (01/10/2026).
 - Instagram: robô não responde no Direct; unificar fichas é manual; o que a
   API não cobre fica inacessível na conversa.
 - Conversa ENCERRADA quando nasce sem o cliente ter escrito: webhook de

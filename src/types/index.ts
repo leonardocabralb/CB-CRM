@@ -2,6 +2,7 @@ import type { AccountRole } from '@/lib/auth/roles';
 import type { InteractiveMessagePayload } from '@/lib/whatsapp/interactive';
 import type { FraseDaTranscricao } from '@/lib/tldv/leitura';
 import type { ContatoCompartilhado } from '@/lib/whatsapp/cartao-de-contato';
+import type { AnexoDaNota } from '@/lib/notes/anexos';
 
 export type {
   InteractiveMessagePayload,
@@ -310,6 +311,15 @@ export interface ConversationNote {
    * (`ON DELETE SET NULL`): ela segue como anotação comum.
    */
   resposta_de: string | null;
+  /**
+   * Os anexos (1102): `{ caminho, nome, mime, bytes }`, até 10; `[]` na
+   * anotação só de texto. O caminho é do `chat-media`, em
+   * `account-<conta>/notas/`; a URL nasce na tela. JSON do banco: a tela lê
+   * por `lerAnexosDaNota`, campo a campo.
+   */
+  anexos: AnexoDaNota[];
+  /** Quando foi editada pela última vez (Fase 3). NULL = nunca. */
+  editada_em: string | null;
   created_at: string;
 }
 

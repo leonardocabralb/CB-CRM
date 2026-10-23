@@ -24,7 +24,7 @@ UPDATE/INSERT/DELETE fora do app, saiba o que ele aciona:
   avisos `deal.*` ao n8n, com `origem = 'system'`. Grava também a trilha
   `cb_lead_events` (912). Card novo entra como `deal_stage_changed` sem origem
   (é o `deal.created`). Só calar os gatilhos de `deals` evita isso (a carga da
-  Kommo cala — e por isso o delta dela não avisa o n8n).
+  Kommo cala: o delta dela não avisa o n8n).
 - **`deals` BEFORE INSERT/UPDATE OF stage_id** (950/1031): etapa com
   `resultado` grava ganho/perdido; perdido que entra em etapa neutra volta
   `open`. E (1049) mudar a etapa carimba `etapa_desde`, a D27 dos agentes de
@@ -57,6 +57,7 @@ UPDATE/INSERT/DELETE fora do app, saiba o que ele aciona:
   **DELETE em `pipeline_stages`** tira a etapa das automações e zera
   `default_stage_id` das conexões; card na etapa bloqueia.
 - **`accounts`** INSERT semeia o campo "E-mail".
+- **`cb_conversation_notes`** DELETE ou anexo tirado: o arquivo vai à fila (1102).
 - DELETE à mão em `contacts` pula a Lixeira: sem volta, leva conversa e
   mensagens — ver "APAGAR CONTATO". Fundir fichas: só por `cb_unir_fichas`.
 

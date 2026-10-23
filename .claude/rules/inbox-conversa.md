@@ -64,7 +64,8 @@ ficha em `.claude/rules/campos-e-nome.md`.
 ### `message-bubble.tsx` e `message-thread.tsx` ficam NOSSOS, inteiros
 
 - ⚠️ **O visualizador de mídia do upstream foi descartado**: o nosso
-  `media-viewer.tsx` tem giro e zoom. `media-lightbox.tsx` e `message-media.tsx`
+  `media-viewer.tsx` tem giro e zoom (Esc em captura no `document`: no Sheet, o
+  base-ui o pegava). `media-lightbox.tsx` e `message-media.tsx`
   NÃO estão ligados; religá-los dá dois visualizadores. O que é nosso dentro de
   arquivo do upstream está em `docs/MERGE-UPSTREAM.md`.
 - ⚠️ **Conversa fora das conexões do perfil: `ConversaForaDaArea` SUBSTITUI o
@@ -257,7 +258,7 @@ desenho do WhatsApp (pedido do operador).
   (segura a memória), só quando o player aparece (`IntersectionObserver`),
   guardada por endereço. Falha vira fileira de pontos.
 - **Cor por `currentColor`**: a bolha não entregue troca o texto para
-  `!text-foreground`, e cor fixa sumiria.
+  `!text-foreground`, e cor fixa sumiria. Na anotação, `corHerdada` (1102).
 - **No toque, encostar NÃO pula** (o dedo pode estar rolando): pula no arraste
   horizontal de mais de 8 px ou no toque curto.
 - **Uma velocidade para todos** (`cb-audio-velocidade`, `lerVelocidade`), um

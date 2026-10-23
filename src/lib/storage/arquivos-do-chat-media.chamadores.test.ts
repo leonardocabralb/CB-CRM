@@ -68,7 +68,11 @@ type Uso =
   | { grava: Coluna[]; nota?: string }
   | {
       papel:
-        'só lê' | 'só sobe e devolve a URL' | 'só apaga' | 'só nomeia o bucket';
+        | 'só lê'
+        | 'só sobe e devolve a URL'
+        | 'só sobe e devolve o caminho'
+        | 'só apaga'
+        | 'só nomeia o bucket';
       nota: string;
     };
 
@@ -151,11 +155,24 @@ const DECLARADOS: Record<string, Uso> = {
     papel: 'só sobe e devolve a URL',
     nota: 'baixa a mídia da Evolution (ver AJUDANTES)',
   },
+  // 1102 — anexos da anotação interna.
+  'src/lib/notes/subir-anexo.ts': {
+    papel: 'só sobe e devolve o caminho',
+    nota: 'sobe o anexo da anotação em notas/ e devolve o CAMINHO a quem chama (ver AJUDANTES); apaga o que a própria pessoa subiu e desistiu',
+  },
+  'src/lib/notes/arquivo-do-anexo.ts': {
+    papel: 'só lê',
+    nota: 'a rota POST /api/cb/notes lê tamanho e tipo do anexo no armazenamento (info) antes de gravar',
+  },
+  'src/lib/notes/anexos.ts': {
+    papel: 'só lê',
+    nota: 'deriva a URL pública do caminho do anexo (a tela e a API v1); a anotação guarda só o caminho',
+  },
 };
 
 /**
- * Os ajudantes PRESOS ao `chat-media` que devolvem a URL a quem chama: cada
- * chamador declara onde ela termina.
+ * Os ajudantes PRESOS ao `chat-media` que devolvem a URL (ou o caminho) a quem
+ * chama: cada chamador declara onde ela termina.
  */
 const AJUDANTES: {
   funcao: string;
@@ -197,6 +214,17 @@ const AJUDANTES: {
       'src/app/api/cb/groups/media/[messageId]/route.ts': {
         grava: [MSG],
         nota: 'o download sob demanda do grupo',
+      },
+    },
+  },
+  {
+    // 1102: devolve o CAMINHO (não a URL): a anotação guarda o caminho.
+    funcao: 'subirAnexoDaNota',
+    modulo: 'src/lib/notes/subir-anexo.ts',
+    chamadores: {
+      'src/components/inbox/internal-note-box.tsx': {
+        grava: [{ coluna: 'cb_conversation_notes.anexos', citada: true }],
+        nota: 'sobe ao Salvar e manda o caminho ao POST /api/cb/notes, que o grava em anexos[].caminho',
       },
     },
   },
@@ -290,12 +318,13 @@ function colunasCitadas(corpo: string): string[] {
 }
 
 /**
- * O que `cb_arquivos_citados` confere hoje. Coluna nova na função (o plano
- * irmão acrescenta os anexos de anotação) entra aqui junto — e os escritores
- * dela entram em DECLARADOS.
+ * O que `cb_arquivos_citados` confere hoje. Coluna nova na função entra aqui
+ * junto — e os escritores dela entram em DECLARADOS (os anexos de anotação
+ * entraram com a 1102).
  */
 const CITADAS_ESPERADAS = [
   'automation_steps.step_config',
+  'cb_conversation_notes.anexos',
   'cb_groups.picture_url',
   'cb_lixeira_de_contatos.arquivos',
   'cb_media_library.media_path',

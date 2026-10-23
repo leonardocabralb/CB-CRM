@@ -57,6 +57,53 @@ beforeEach(() => {
 });
 
 describe('GET /api/v1/notes', () => {
+  it('1102: cada anotação traz os anexos (nome, tipo, tamanho, URL derivada do caminho) e editada_em', async () => {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://projeto.supabase.co');
+    const pasta = 'account-11111111-2222-4333-8444-000000000001/notas/u1';
+    h.resultados.cb_conversation_notes = {
+      data: [
+        {
+          id: 'nota-1',
+          conversation_id: CONVERSA,
+          contact_id: 'contato-1',
+          author_user_id: 'autor-1',
+          autor_nome: 'Fulana Exemplo',
+          texto: '',
+          anexos: [
+            { caminho: `${pasta}/audio.ogg`, nome: 'audio.ogg', mime: 'audio/ogg', bytes: 4096 },
+            { caminho: `${pasta}/pagina.html`, nome: 'Página.html', mime: 'text/html', bytes: 10 },
+            { nome: 'sem caminho' },
+          ],
+          editada_em: null,
+          created_at: '2026-10-23T12:00:00Z',
+        },
+      ],
+      error: null,
+    };
+    const r = await GET(new Request('http://localhost/api/v1/notes', { headers: { authorization: 'Bearer x' } }));
+    expect(r.status).toBe(200);
+    const corpo = await r.json();
+    expect(corpo.data[0]).toMatchObject({ texto: '', editada_em: null });
+    expect(corpo.data[0].anexos).toEqual([
+      {
+        nome: 'audio.ogg',
+        tipo: 'audio/ogg',
+        tamanho: 4096,
+        url: `https://projeto.supabase.co/storage/v1/object/public/chat-media/${pasta}/audio.ogg`,
+      },
+      {
+        nome: 'Página.html',
+        tipo: 'text/html',
+        tamanho: 10,
+        // A página .html vai para BAIXAR, nunca abrir do nosso Storage (1060).
+        url: `https://projeto.supabase.co/storage/v1/object/public/chat-media/${pasta}/pagina.html?download=P%C3%A1gina.html`,
+      },
+    ]);
+    // O caminho cru nunca sai: a URL é derivada.
+    expect(JSON.stringify(corpo)).not.toContain('"caminho"');
+    vi.unstubAllEnvs();
+  });
+
   it('recorta as anotações de conversa de grupo (contact_id nulo)', async () => {
     h.resultados.cb_conversation_notes = { data: [], error: null };
     const r = await GET(new Request('http://localhost/api/v1/notes', { headers: { authorization: 'Bearer x' } }));

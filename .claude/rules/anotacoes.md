@@ -5,24 +5,33 @@ paths:
   - "src/components/inbox/citacao-da-nota.tsx"
   - "src/components/inbox/internal-note-box.tsx"
   - "src/components/inbox/nota-fixada-bar.tsx"
+  - "src/components/inbox/anexos-da-nota*"
+  - "src/components/contacts/contact-detail-view.tsx"
+  - "src/components/inbox/message-composer.tsx"
+  - "src/components/inbox/painel/painel-do-contato.tsx"
+  - "src/components/inbox/group-sidebar.tsx"
   - "src/hooks/use-apagar-nota*"
   - "src/hooks/use-conversation-notes*"
   - "src/hooks/use-fixar-nota*"
+  - "src/hooks/use-gravador-de-voz*"
   - "src/lib/notes/**"
   - "src/app/api/cb/notes/**"
+  - "src/app/api/v1/notes/**"
+  - "supabase/migrations/1102_cb_anotacao_com_anexos.sql"
 ---
 
 # Anotações internas — regras
 
 Vale ao editar ou revisar a anotação interna nas quatro telas (o fio, a aba
 Notas do painel, a do grupo e a ficha de `/contatos`), a caixa de escrever, a
-fixada e a resposta à anotação. O resto da conversa (fio, compositor, links
-clicáveis na nota) está em `.claude/rules/inbox-conversa.md`; o sino e o Meu
-dia, em `.claude/rules/meu-dia.md`. São QUATRO escritores, todos no servidor:
+fixada, a resposta à anotação e os anexos. O resto da conversa (fio,
+compositor, links clicáveis na nota) está em `.claude/rules/inbox-conversa.md`;
+o sino e o Meu dia, em `.claude/rules/meu-dia.md`; a fila de arquivos e o
+bucket, em `.claude/rules/midia.md`. São QUATRO escritores, todos no servidor:
 a rota do painel `POST /api/cb/notes`, a API v1 `POST /api/v1/notes` (sem
 menção), o agente de IA (`anotarNaConversa`) e o passo de automação
 "Escrever anotação interna" (autor nulo; `.claude/rules/automacoes-passos.md`)
-— regra nova de escrita vale em todos.
+— regra nova de escrita vale em todos. Anexo, SÓ a rota do painel.
 
 ### Anotação interna: são QUATRO telas
 
@@ -38,8 +47,9 @@ menção), o agente de IA (`anotarNaConversa`) e o passo de automação
   `sticky`.
 - ⚠️ **Aba Notas do painel (decisão do operador, 29/09/2026): caixa de
   escrever PRIMEIRO, fixada logo abaixo, RECOLHIDA** (`destaque` no
-  `CartaoDeNota`: duas linhas, seta só com texto cortado de verdade, aberta
-  com teto e rolagem própria). Presa e inteira, uma nota longa cobria a
+  `CartaoDeNota`: duas linhas, seta só com texto cortado de verdade — ou com
+  anexo, que recolhida vira o resumo —, aberta com UM teto e rolagem própria
+  para o texto e os anexos). Presa e inteira, uma nota longa cobria a
   lista toda. O sticky respeita o padding do `TabsContent`: `-top-4` + faixa
   `bg-card`, senão a lista aparece por cima do cartão. Pino
   `cartao-de-nota.test.tsx`.
@@ -71,3 +81,87 @@ apagar a respondida), `src/lib/notes/resposta.ts` (pino `resposta.test.ts`) e
   painel e grupo → a caixa do topo da aba), carimbado com a conversa e
   comparado no render. O X da citação (e a respondida apagada, 409
   `REPLIED_NOTE_NOT_FOUND`) desfaz a citação SEM fechar a caixa: o texto fica.
+
+### Anexos na anotação (1102)
+
+Decisões D1–D7 e A1–A7 do operador e o desenho:
+`docs/PLANO-anotacao-com-anexos-e-edicao.md`. `src/lib/notes/anexos.ts` (puro,
+a régua das três pontas), `arquivo-do-anexo.ts` (a leitura no armazenamento),
+`subir-anexo.ts` (o navegador), `use-gravador-de-voz.ts` e `anexos-da-nota.tsx`.
+
+- ⚠️⚠️ **Anotação = texto OU anexo, nas TRÊS camadas**: o CHECK
+  `cb_conversation_notes_conteudo_ck` (com CASE; `..._anexos_ck` = lista de
+  até 10), a rota e o `disabled` da caixa. Só de anexos, o `texto` é `''`:
+  toda tela esconde o parágrafo vazio. Os outros três escritores seguem
+  exigindo texto e gravam `anexos = []` pelo padrão.
+- ⚠️⚠️ **A anotação guarda o CAMINHO** (`account-<conta>/notas/<único>/<nome>`,
+  com `nome`, `mime` e `bytes`), **nunca a URL**: ela nasce na tela por
+  `urlPublicaDoAnexo` (a mesma de `getPublicUrl`; virar o bucket privado não
+  migra dado). Ler o JSON é `lerAnexosDaNota`, campo a campo.
+- ⚠️⚠️ **A rota nunca confia no corpo**: o caminho tem de ser desta conta e de
+  `notas/`, pela guarda da 1097 (`lerAnexosDoCorpo`), e o tamanho e o tipo
+  são LIDOS no armazenamento (`lerArquivoDoAnexo`, `info()` com o service
+  role; medido no Storage hospedado em 23/10/2026: `size`/`contentType` no
+  topo; ausente = `status: 400` com `statusCode: "404"`). Ausente = 400
+  `ATTACHMENT_NOT_FOUND`; fora do ar = 503 `STORAGE_UNAVAILABLE`, nunca 400.
+  A recusa de UM anexo devolve `anexo: { caminho, nome }` e a caixa diz o
+  nome. Erro ao ler perfil ou conversa = 500, nunca 403/404 (raiz, 8b).
+- ⚠️⚠️ **O que SAI da anotação vai para a fila de arquivos** (gatilho
+  `cb_anexos_da_anotacao_para_a_fila`, AFTER DELETE OR UPDATE OF anexos,
+  SECURITY DEFINER): apagar pela tela, o CASCADE da conversa, do contato ou
+  da conta, SQL à mão e o anexo tirado numa edição. A drenagem (`midia.md`)
+  apaga em até ~15 min, se ninguém mais cita (`cb_arquivos_citados` conta os
+  anexos das anotações vivas). ⚠️ Só com o WHEN do sinal `cb.lixeira` e
+  declarado nos `calados` de `cb_lixeira_tratamento()`: mover a ficha para a
+  Lixeira NÃO enfileira (a fotografia guarda os anexos; saem no "Excluir
+  agora" ou no vencimento). Sem o WHEN, o arquivo sumiria com a ficha na
+  Lixeira; sem a declaração, TODA restauração recusa. Pinos
+  `anotacao-com-anexos-1102.test.ts` e `lixeira-1097.test.ts`.
+- ⚠️⚠️ **No armazenamento, `notas/` tem regra própria** (as policies da 954
+  refeitas na 1102): gravar, todo membro ativo (D6, `canWriteNotes`); TROCAR,
+  ninguém pelo navegador; APAGAR, só o arquivo que a própria pessoa subiu
+  (`owner_id`). Recriar as policies do `chat-media` sem isso reabre a porta
+  (o pino lê a ÚLTIMA definição do replay).
+- ⚠️⚠️ **A caixa sobe SÓ ao Salvar, um por um, com progresso, e leva a
+  conversa de ORIGEM** até o fim (no fio ela fecha na troca e o salvar segue
+  sozinho; por isso, salvando, Cancelar e Esc não fecham a caixa). Falha:
+  para, mantém texto e arquivos, e o que subiu não sobe de
+  novo (`caminho` no item). Desistir (tirar da lista, Cancelar, a caixa
+  sumir) apaga o que a pessoa subiu; o que virou anotação, nunca — a lista
+  zera ANTES de fechar. POST sem resposta (rede) PODE ter salvo: aqueles
+  caminhos ficam incertos e a caixa nunca os apaga.
+- ⚠️⚠️ **O salvar que termina com a caixa FORA DA TELA (`naTelaRef`, efeito
+  de layout) não chama `onSaved`, `onClose` nem `onLimparResposta`**: são os
+  do render do clique, e fechariam a caixa, desfariam a citação e soltariam
+  o salto e a rolagem da conversa aberta AGORA. Só avisa o desfecho, com
+  frase própria (salva; não salva; incerta) — nunca "salve de novo", porque
+  o rascunho foi junto com a caixa. O tempo real leva a anotação.
+- ⚠️ **Um funil para clipe, colar, arrastar e gravar** (`escolherAnexosDaNota`:
+  tipo de `MIMES_DA_ANOTACAO`, 50 MiB por arquivo — A7 —, 10 por anotação,
+  cada recusa com aviso), com `arquivoParaEnviar` antes. ⚠️ O arrastar dá
+  `stopPropagation`: a caixa mora DENTRO do compositor, e o arquivo viraria
+  anexo de mensagem ao cliente. O `.html` entra (a anotação não vai à Meta)
+  e só BAIXA. Arquivo solto ou colado DURANTE o salvar não entra — e avisa.
+- ⚠️ **Gravador PRÓPRIO** (`useGravadorDeVoz`, cópia do opus-recorder do
+  compositor do upstream, 5 min): o desmonte da caixa descarta a gravação e
+  solta o microfone, e o pedido de permissão que volta depois do desmonte o
+  fecha na hora (geração). O teto para no tique do relógio, nunca por efeito.
+  ⚠️ De `parar` até os bytes chegarem do encoder ele está `finalizando`, e o
+  Salvar espera: salvo nesse meio-tempo, a anotação sairia sem o áudio. O
+  descarte é POR GRAVADOR (um sinal só seria religado pela gravação seguinte).
+- ⚠️ **A caixa é da conversa em que NASCEU** (`de`): no fio ela não remonta, e
+  no render da troca o rascunho apareceria sob o cabeçalho de outro cliente.
+- **Mostrar: `<AnexosDaNota>` no fio, nas abas e na ficha de `/contatos` (A6:
+  lá só mostra; a caixa de lá segue só texto); `<ResumoDosAnexos>` na faixa
+  fixada e na citação.** Pino default-deny `anexos-da-nota.chamadores.test.ts`:
+  quem usa `ConversationNote` e lê um `.texto` (pela árvore do TypeScript:
+  `n.texto`, `nota!.texto`, desestruturação) desenha um dos dois, ou entra na
+  exceção com as leituras exatas. Áudio no `PlayerDeAudio` sem transcrição
+  (D4; `corHerdada` na nota âmbar); imagem em MINIATURA renderizada pelo
+  Storage (`urlDaMiniatura`; o original só no visualizador, aberto por
+  portal); vídeo pelo `<video preload="metadata">`; documento no cartão com
+  o selo. Fora da aba Arquivos (D5).
+- **O aviso (sino e pop-up) leva o resumo no corpo** (`corpoDoAviso`: "@Ana
+  confere · 🎤 Áudio"), cru como o título.
+- **API v1**: `GET /notes` traz `anexos` (`nome`, `tipo`, `tamanho`, `url`) e
+  `editada_em`; o `POST` segue só texto. Doc em `docs/public-api.md`.

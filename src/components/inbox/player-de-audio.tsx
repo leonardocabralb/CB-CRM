@@ -162,6 +162,12 @@ interface PlayerDeAudioProps {
    * contra o primary. Na do cliente, contra o `bg-muted`.
    */
   naBolhaDaEquipe: boolean;
+  /**
+   * Herda a cor do texto de quem monta (a anotação âmbar do fio, 1102), em
+   * vez de `text-foreground`: o `dark:` está INERTE e a anotação é clara nos
+   * dois temas — com a cor do tema escuro, a onda sumiria no âmbar.
+   */
+  corHerdada?: boolean;
 }
 
 /**
@@ -172,7 +178,7 @@ export function PlayerDeAudio(props: PlayerDeAudioProps) {
   return <Player key={props.src} {...props} />;
 }
 
-function Player({ src, naBolhaDaEquipe }: PlayerDeAudioProps) {
+function Player({ src, naBolhaDaEquipe, corHerdada = false }: PlayerDeAudioProps) {
   const t = useTranslations("Inbox.audioPlayer");
   const velocidade = useSyncExternalStore(
     assinarVelocidade,
@@ -369,7 +375,11 @@ function Player({ src, naBolhaDaEquipe }: PlayerDeAudioProps) {
   // descendente para `!text-foreground` sobre um fundo claro, e barras
   // `bg-primary-foreground` ficariam brancas sobre branco. Com
   // `currentColor` a onda acompanha a troca sozinha.
-  const cor = naBolhaDaEquipe ? "text-primary-foreground" : "text-foreground";
+  const cor = corHerdada
+    ? ""
+    : naBolhaDaEquipe
+      ? "text-primary-foreground"
+      : "text-foreground";
 
   if (falhou) {
     // Em PALAVRAS: o nativo mostrava um controle cinza sem dizer nada, e
@@ -524,7 +534,9 @@ function Player({ src, naBolhaDaEquipe }: PlayerDeAudioProps) {
           "min-w-11 shrink-0 rounded-full px-2 py-1 text-xs font-semibold tabular-nums focus-visible:ring-2 focus-visible:ring-current/50 focus-visible:outline-none",
           naBolhaDaEquipe
             ? "bg-primary-foreground/20 hover:bg-primary-foreground/30"
-            : "bg-foreground/10 hover:bg-foreground/15",
+            : corHerdada
+              ? "bg-current/10 hover:bg-current/15"
+              : "bg-foreground/10 hover:bg-foreground/15",
         )}
       >
         {t("velocidade", { valor: velocidade })}

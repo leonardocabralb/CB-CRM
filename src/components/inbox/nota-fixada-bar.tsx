@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp, Pin, PinOff } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 
+import { ResumoDosAnexos } from '@/components/inbox/anexos-da-nota';
 import { TextoComLinks } from '@/components/inbox/texto-com-links';
 import { cn } from '@/lib/utils';
 import type { ConversationNote } from '@/types';
@@ -78,17 +79,23 @@ export function NotaFixadaBar({
           {t('pinnedBanner')} · {nota.autor_nome || t('unknownAuthor')} ·{' '}
           {quando}
         </p>
-        <p
-          ref={textoRef}
-          className={cn(
-            'mt-0.5 text-xs break-words whitespace-pre-wrap',
-            // Teto ao expandir: anotação longa não pode empurrar a conversa
-            // inteira para fora da tela. Rola dentro do próprio bloco.
-            aberto ? 'max-h-32 overflow-y-auto' : 'line-clamp-2'
-          )}
-        >
-          <TextoComLinks texto={nota.texto} />
-        </p>
+        {/* Anotação só de anexos (1102) tem o texto vazio: sem parágrafo. */}
+        {nota.texto.trim() && (
+          <p
+            ref={textoRef}
+            className={cn(
+              'mt-0.5 text-xs break-words whitespace-pre-wrap',
+              // Teto ao expandir: anotação longa não pode empurrar a conversa
+              // inteira para fora da tela. Rola dentro do próprio bloco.
+              aberto ? 'max-h-32 overflow-y-auto' : 'line-clamp-2'
+            )}
+          >
+            <TextoComLinks texto={nota.texto} />
+          </p>
+        )}
+        {/* A faixa é atalho: dos anexos, só o resumo — eles estão na
+            anotação, no ponto do fio em que ela foi escrita. */}
+        <ResumoDosAnexos anexos={nota.anexos} className="mt-0.5 text-xs" />
       </div>
       {(truncado || aberto) && (
         <button

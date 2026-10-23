@@ -155,19 +155,35 @@ export function MediaViewer({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
       if (e.key === "r") girar(90);
       if (e.key === "R") girar(-90);
       if (e.key === "ArrowLeft") anterior();
       if (e.key === "ArrowRight") proxima();
     };
+    // ⚠️ O Escape é ouvido em CAPTURA no `document` e PARA ali. Aberto de
+    // dentro de um Sheet (a ficha de /contatos, a conversa sobre a pauta), o
+    // base-ui escuta o Escape no `document` (na bolha) e para a propagação:
+    // o ouvinte de `window` nunca o recebia, e o Sheet inteiro fechava por
+    // baixo do visualizador. Em captura ele chega antes; fora de Sheet, só
+    // fecha o visualizador, como antes.
+    const onEscape = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      onClose();
+    };
     window.addEventListener("keydown", onKey);
-    // Trava o scroll do fundo enquanto o visualizador está aberto.
+    document.addEventListener("keydown", onEscape, true);
+    // Trava o scroll do fundo enquanto o visualizador está aberto — se
+    // ninguém travou antes. Dentro de um Sheet, o base-ui já travou (e
+    // destrava sozinho ao fechar): guardar o "hidden" dele e devolvê-lo
+    // depois deixaria a página travada se o Sheet fechasse primeiro.
+    const jaTravado = document.body.style.overflow === "hidden";
     const overflowAnterior = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    if (!jaTravado) document.body.style.overflow = "hidden";
     return () => {
       window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = overflowAnterior;
+      document.removeEventListener("keydown", onEscape, true);
+      if (!jaTravado) document.body.style.overflow = overflowAnterior;
     };
   }, [onClose, girar, anterior, proxima]);
 
