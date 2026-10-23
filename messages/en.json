@@ -462,6 +462,7 @@
       "noteEditChanged": "This note was edited somewhere else while you were editing. Cancel and edit again — nothing was overwritten.",
       "noteEditForbidden": "Only whoever wrote the note can edit it.",
       "noteEditNotSavedAfterLeaving": "The edit was not saved: the box was closed before it finished. Edit again in the conversation.",
+      "noteEditMaybeSaved": "Could not confirm whether the edit was saved (no response arrived). Check the note before saving again.",
       "fromLibrary": "From library",
       "acervoError": "Could not prepare the library file.",
       "solteParaAnexar": "Drop here to attach",

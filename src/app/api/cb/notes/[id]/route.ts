@@ -164,7 +164,10 @@ const INSTANTE =
 /**
  * Por que a nota não veio — na leitura com a cerca de versão ou no UPDATE
  * cercado: APAGADA, ou EDITADA noutro lugar desde que a pessoa abriu a
- * edição. Medido, nunca deduzido (raiz, 8b): relê sem a cerca.
+ * edição. Medido, nunca deduzido (raiz, 8b): relê sem a cerca. Editada, a
+ * resposta leva a nota ATUAL (`note`): a lista da tela pode estar velha (o
+ * tempo real perdeu o UPDATE), e editar de novo a partir dela daria 409 em
+ * laço.
  */
 async function porQueNaoVeio(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -173,7 +176,7 @@ async function porQueNaoVeio(
 ): Promise<NextResponse> {
   const { data, error } = await supabase
     .from('cb_conversation_notes')
-    .select('id')
+    .select('*')
     .eq('id', id)
     .eq('account_id', accountId)
     .maybeSingle();
@@ -182,7 +185,7 @@ async function porQueNaoVeio(
     return NextResponse.json({ error: 'Failed to load note' }, { status: 500 });
   }
   return NextResponse.json(
-    { error: data ? 'NOTE_CHANGED' : 'NOTE_GONE' },
+    data ? { error: 'NOTE_CHANGED', note: data } : { error: 'NOTE_GONE' },
     { status: 409 }
   );
 }
@@ -200,13 +203,15 @@ async function porQueNaoVeio(
  *   a edição (`null` = nunca editada). A leitura E o UPDATE exigem
  *   `editada_em` igual a ela, comparado pelo BANCO (o tempo real e o
  *   PostgREST escrevem o instante cada um a seu jeito). Editada noutra aba ou
- *   aparelho desde então = 409 `NOTE_CHANGED` — nunca sobrescreve uma edição
- *   que a pessoa não viu. Fixar não mexe em `editada_em`, e não conflita.
- *   Apagada no meio = 409 `NOTE_GONE`. O UPDATE leva também a conta e o autor.
- * - Os anexos que FICAM (`mantidos`, pelo caminho) têm de ser da nota
- *   (`mantidosSaoDaNota`); os NOVOS (`novos`, já subidos pela caixa) passam
- *   pela régua do POST: desta conta e de `notas/`, e tamanho e tipo LIDOS no
- *   armazenamento (503 × 400; a recusa diz qual, em `anexo`).
+ *   aparelho desde então = 409 `NOTE_CHANGED`, com a nota ATUAL em `note` —
+ *   nunca sobrescreve uma edição que a pessoa não viu. Fixar não mexe em
+ *   `editada_em`, e não conflita. Apagada no meio = 409 `NOTE_GONE`. O UPDATE
+ *   leva também a conta e o autor.
+ * - Os anexos que FICAM (`mantidos`, pelo caminho; OBRIGATÓRIO — tirar todos
+ *   é `[]`: um corpo sem o campo apagaria os anexos, sem volta) têm de ser da
+ *   nota (`mantidosSaoDaNota`); os NOVOS (`novos`, já subidos pela caixa)
+ *   passam pela régua do POST: desta conta e de `notas/`, e tamanho e tipo
+ *   LIDOS no armazenamento (503 × 400; a recusa diz qual, em `anexo`).
  * - NADA MUDOU (o mesmo texto e os mesmos anexos, na mesma ordem) = 200 sem
  *   UPDATE: `editada_em` só muda quando algo mudou de fato (A4).
  * - O anexo TIRADO não é apagado aqui: o gatilho da 1102 (UPDATE OF anexos)
@@ -215,7 +220,9 @@ async function porQueNaoVeio(
  *   quem já estava mencionado não recebe de novo, e o aviso antigo fica como
  *   foi escrito. `mencoesNotificadas: false` = havia a quem avisar e falhou.
  *   `mencionados` AUSENTE (a caixa não soube quem é da conta) mantém a lista
- *   gravada; `[]` a esvazia.
+ *   gravada; `[]` a esvazia. O SUSPENSO (1067) fica na lista gravada, mas
+ *   não é avisado: a caixa refaz a menção contra todos os membros, e tirá-lo
+ *   da lista o faria "entrar" de novo — com outro aviso — depois da volta.
  */
 export async function PUT(
   request: Request,
@@ -275,6 +282,14 @@ export async function PUT(
   if (versao !== null && (typeof versao !== 'string' || !INSTANTE.test(versao))) {
     return NextResponse.json(
       { error: 'versao must be the editada_em that was read (or null)' },
+      { status: 400 }
+    );
+  }
+  // `mantidos` é OBRIGATÓRIO: ausente "tiraria todos" — e o gatilho da 1102
+  // apagaria os arquivos em ~15 min, sem volta. Tirar todos é `[]`.
+  if (!Array.isArray(mantidos)) {
+    return NextResponse.json(
+      { error: 'mantidos must be the list of attachment paths that stay ([] = none)' },
       { status: 400 }
     );
   }
@@ -378,22 +393,30 @@ export async function PUT(
   // próxima edição, e ser avisado outra vez.
   const antigos = Array.isArray(nota.mencionados) ? (nota.mencionados as string[]) : [];
   let mencionadosAgora = antigos;
+  // Quem está SUSPENSO (1067) entre os conferidos: fica gravado, não é avisado.
+  const suspensos = new Set<string>();
   let mencoesOk = true;
   if (pedidosDeMencao?.length === 0) {
     mencionadosAgora = [];
   } else if (pedidosDeMencao) {
     const { data: membros, error: erroMembros } = await supabase
       .from('profiles')
-      .select('user_id')
+      .select('user_id, suspenso_em')
       .eq('account_id', accountId)
       .in('user_id', pedidosDeMencao);
     if (erroMembros) {
       console.error('[PUT /api/cb/notes] falha ao validar menções:', erroMembros.message);
-      mencoesOk = false;
+      // `false` só quando havia a quem avisar (alguém ENTRARIA na menção) —
+      // corrigir uma letra de "@Bia confere", com a Bia já gravada, não falhou
+      // em avisar ninguém.
+      mencoesOk = !pedidosDeMencao.some((u) => u !== user.id && !antigos.includes(u));
     } else {
       mencionadosAgora = (membros ?? [])
         .map((m) => m.user_id as string)
         .filter((u) => u !== user.id);
+      for (const m of membros ?? []) {
+        if (m.suspenso_em) suspensos.add(m.user_id as string);
+      }
     }
   }
 
@@ -422,8 +445,9 @@ export async function PUT(
   // Zero linhas: apagada ou editada entre a leitura e o UPDATE.
   if (!atualizada) return porQueNaoVeio(supabase, id, accountId);
 
-  // O aviso a quem ENTROU na menção — depois da edição e sem derrubá-la.
-  const entraram = mencoesOk ? mencionadosAgora.filter((u) => !antigos.includes(u)) : [];
+  // O aviso a quem ENTROU na menção — depois da edição e sem derrubá-la. O
+  // suspenso não lê anotação: não é avisado (e, gravado, não "entra" de novo).
+  const entraram = mencionadosAgora.filter((u) => !antigos.includes(u) && !suspensos.has(u));
   if (entraram.length > 0) {
     const autorNome = profile?.full_name?.trim() || profile?.email || null;
     const { error: erroSino } = await admin.from('notifications').insert(

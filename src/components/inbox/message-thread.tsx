@@ -41,7 +41,10 @@ import {
 import { patchDeSituacao } from "@/lib/conversations/situacao";
 import { acharNoFio } from "@/lib/inbox/achados-no-fio";
 import { semAcento, TERMO_MINIMO } from "@/lib/inbox/busca-em-mensagens";
-import { arrastoRecolheTeclado } from "@/lib/celular/teclado";
+import {
+  arrastoRecolheTeclado,
+  toqueNasceuForaDaConversa,
+} from "@/lib/celular/teclado";
 import {
   DESTAQUE_DO_SALTO_MS,
   seletorDoAlvo,
@@ -1700,10 +1703,16 @@ export function MessageThread({
    * recolhê-lo (relato do operador, 14/09/2026). Só para baixo: arrastar para
    * cima, rumo ao fim, é o gesto de quem continua escrevendo.
    * E arrastar continua sendo agir: solta o salto da busca, como a roda.
+   * ⚠️ O toque que NASCE num campo ou na caixa da anotação não conta
+   * (`toqueNasceuForaDaConversa`): a caixa de EDIÇÃO mora dentro do fio, e
+   * arrastar o dedo no texto dela ou na lista de @menções fechava o teclado a
+   * cada tentativa.
    */
   const inicioDoToqueRef = useRef<number | null>(null);
   const aoTocarNoFio = useCallback((e: React.TouchEvent) => {
-    inicioDoToqueRef.current = e.touches[0]?.clientY ?? null;
+    inicioDoToqueRef.current = toqueNasceuForaDaConversa(e.target)
+      ? null
+      : (e.touches[0]?.clientY ?? null);
   }, []);
   const aoArrastarOFio = useCallback(
     (e: React.TouchEvent) => {
@@ -3242,6 +3251,11 @@ export function MessageThread({
                                 key={`edicao:${nota.id}`}
                                 conversationId={conversationId}
                                 editando={nota}
+                                // Para BAIXO: dentro do fio (que rola), a
+                                // lista de @menções aberta para cima sai do
+                                // alcance quando a nota está no alto da tela —
+                                // para baixo, rolar a alcança.
+                                listaParaBaixo
                                 onSaved={substituirNota}
                                 onClose={pararDeEditarNota}
                               />

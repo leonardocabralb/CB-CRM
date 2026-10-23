@@ -28,7 +28,6 @@ import { toast } from 'sonner';
 import { CitacaoDaNota } from '@/components/inbox/citacao-da-nota';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/use-auth';
-import { idDoAvisoDeApagada } from '@/hooks/use-edicao-de-nota';
 import { useGravadorDeVoz } from '@/hooks/use-gravador-de-voz';
 import { fetchAccountMembersOrNull, memberLabel } from '@/lib/account/members';
 import { membrosAtivos } from '@/lib/account/suspensao';
@@ -52,9 +51,10 @@ import {
   tokenSobOCursor,
   type MembroMencionavel,
 } from '@/lib/notes/mentions';
+import { idDoAvisoDeApagada } from '@/lib/notes/edicao';
 import { apagarAnexosSubidos, subirAnexoDaNota } from '@/lib/notes/subir-anexo';
 import { cn } from '@/lib/utils';
-import type { ConversationNote } from '@/types';
+import type { AccountMember, ConversationNote } from '@/types';
 
 /** Um arquivo escolhido na caixa, antes de virar anexo da anotação. */
 interface Escolhido {
@@ -165,6 +165,13 @@ export function InternalNoteBox({
   editando = null,
 }: {
   conversationId: string;
+  /**
+   * A anotação gravada (nova: a do POST; editada: a do PUT). Na EDIÇÃO é o
+   * `substituir` da lista de quem monta, e recebe também a versão ATUAL que
+   * o 409 `NOTE_CHANGED` devolve, SEM fechar a caixa: a lista da tela estava
+   * velha (o tempo real perdeu o UPDATE), e "cancelar e editar de novo"
+   * congelaria a mesma versão velha, com 409 em laço.
+   */
   onSaved?: (nota: ConversationNote) => void;
   /**
    * Fecha a caixa (compositor). AUSENTE na aba Notas do painel, onde a
@@ -420,7 +427,15 @@ export function InternalNoteBox({
   );
 
   // --- menção -------------------------------------------------------
+  // As SUGESTÕES: só quem está ativo (1067: o suspenso não lê anotação —
+  // mencioná-lo não chega).
   const [membros, setMembros] = useState<MembroMencionavel[]>([]);
+  // Na EDIÇÃO, a menção gravada se refaz contra TODOS, suspensos inclusos
+  // (quem é avisado a rota decide): refeita só com os ativos, a menção de
+  // quem foi suspenso sairia da lista gravada numa correção qualquer, e a
+  // pessoa "entraria" de novo — com outro aviso — na edição seguinte à volta
+  // dela. E "@Ana Paula" (suspensa) casaria com "@Ana", que seria avisada.
+  const [todosOsMembros, setTodosOsMembros] = useState<MembroMencionavel[]>([]);
   // A lista de membros VEIO? Carregando ou falha = "não sei" — e a edição
   // então não mexe nas menções gravadas (ver `salvar`).
   const [membrosSabidos, setMembrosSabidos] = useState(false);
@@ -433,10 +448,12 @@ export function InternalNoteBox({
     let vivo = true;
     void fetchAccountMembersOrNull().then((lista) => {
       if (!vivo || !lista) return;
-      // 1067: quem está suspenso não lê anotação — mencioná-lo não chega.
-      setMembros(
-        membrosAtivos(lista).map((m) => ({ user_id: m.user_id, rotulo: memberLabel(m) }))
-      );
+      const rotular = (m: AccountMember) => ({
+        user_id: m.user_id,
+        rotulo: memberLabel(m),
+      });
+      setMembros(membrosAtivos(lista).map(rotular));
+      setTodosOsMembros(lista.map(rotular));
       setMembrosSabidos(true);
     });
     return () => {
@@ -581,8 +598,9 @@ export function InternalNoteBox({
       //    POST. Editada: o PUT da nota, com o que FICA (pelo caminho), o que
       //    ENTRA e a versão que a caixa viu ao abrir (a cerca de concorrência).
       const novos = lista.map((e) => ({ caminho: e.caminho, nome: e.arquivo.name }));
-      // Derivado do texto, não de quem foi clicado — ver `mentions.ts`.
-      const mencionados = mencionadosNoTexto(limpo, membros);
+      // Derivado do texto, não de quem foi clicado — ver `mentions.ts`. Na
+      // edição, contra TODOS os membros (ver `todosOsMembros`).
+      const mencionados = mencionadosNoTexto(limpo, emEdicao ? todosOsMembros : membros);
       let res: Response;
       try {
         res = emEdicao
@@ -614,10 +632,16 @@ export function InternalNoteBox({
             });
       } catch {
         // Sem resposta: a anotação PODE ter sido gravada. Os caminhos ficam
-        // incertos — a caixa não os apaga nunca mais.
+        // incertos — a caixa não os apaga nunca mais. A edição na tela diz
+        // "talvez": salvar de novo às cegas, se a primeira entrou, só daria o
+        // 409 de versão.
         incertosRef.current = new Set([...incertosRef.current, ...subidos()]);
         toast.error(
-          naTelaRef.current ? t('noteSaveError') : t('noteMaybeSavedAfterLeaving')
+          !naTelaRef.current
+            ? t('noteMaybeSavedAfterLeaving')
+            : emEdicao
+              ? t('noteEditMaybeSaved')
+              : t('noteSaveError')
         );
         return;
       }
@@ -641,7 +665,11 @@ export function InternalNoteBox({
           avisarApagada();
         } else if (erro === 'NOTE_CHANGED') {
           // Editada noutra aba ou aparelho: nada se sobrescreve; o rascunho
-          // fica na caixa para a pessoa copiar o que quiser.
+          // fica na caixa para a pessoa copiar o que quiser. A versão ATUAL
+          // vai para a lista (`onSaved` = `substituir`, sem fechar): com a
+          // lista velha, editar de novo congelaria a mesma versão, em laço.
+          const atual = json?.note as ConversationNote | undefined;
+          if (emEdicao && atual?.id === emEdicao.id) onSaved?.(atual);
           toast.error(t('noteEditChanged'));
         } else if (erro === 'NOT_THE_AUTHOR') {
           toast.error(t('noteEditForbidden'));
@@ -698,6 +726,7 @@ export function InternalNoteBox({
     accountId,
     conversationId,
     membros,
+    todosOsMembros,
     membrosSabidos,
     respondendoA?.id,
     emEdicao,
@@ -761,6 +790,10 @@ export function InternalNoteBox({
 
   return (
     <div
+      // `ATRIBUTO_CAIXA_DE_NOTA` (`celular/teclado.ts`): o arrasto que nasce
+      // aqui não é rolar o fio — na edição a caixa mora DENTRO dele, e o
+      // arrasto no texto fechava o teclado (`toqueNasceuForaDaConversa`).
+      data-caixa-de-nota=""
       className="relative mb-2 rounded-lg border border-amber-300/60 bg-amber-50 p-3 dark:border-amber-700/50 dark:bg-amber-950/40"
       onDragEnter={aoArrastarEntrando}
       onDragOver={aoArrastarSobre}

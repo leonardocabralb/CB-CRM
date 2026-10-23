@@ -258,14 +258,16 @@ export type LeituraDosMantidos =
  * que a nota JÁ tem, e o que se grava deles é o que a NOTA guarda (nome, tipo
  * e tamanho lidos do armazenamento quando entraram) — nunca o corpo. Sem
  * isso, "manter" seria a porta para pôr na anotação um arquivo que não passou
- * pela conferência do armazenamento. Ausente ou nulo = nenhum fica; sem
- * repetição; a ordem é a pedida (a caixa manda a da nota, menos os tirados).
+ * pela conferência do armazenamento. ⚠️ A lista é OBRIGATÓRIA: ausente ou
+ * nula é recusada, e tirar todos é `[]` — "ausente = nenhum fica" deixaria um
+ * corpo sem o campo apagar todos os anexos (o gatilho da 1102 leva os
+ * arquivos à fila, sem volta). Sem repetição; a ordem é a pedida (a caixa
+ * manda a da nota, menos os tirados).
  */
 export function mantidosSaoDaNota(
   pedidos: unknown,
   daNota: unknown
 ): LeituraDosMantidos {
-  if (pedidos === undefined || pedidos === null) return { ok: true, anexos: [] };
   if (!Array.isArray(pedidos)) return { ok: false, erro: 'ATTACHMENTS_INVALID' };
   const atuais = new Map(lerAnexosDaNota(daNota).map((a) => [a.caminho, a]));
   const vistos = new Set<string>();

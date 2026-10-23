@@ -290,9 +290,10 @@ describe('mantidosSaoDaNota (Fase 3: o que FICA na edição)', () => {
     { caminho: `${PREFIXO}u3/c.png`, nome: 'c.png', mime: 'image/png', bytes: 30 },
   ];
 
-  it('ausente ou nulo = nenhum fica', () => {
-    expect(mantidosSaoDaNota(undefined, daNota)).toEqual({ ok: true, anexos: [] });
-    expect(mantidosSaoDaNota(null, daNota)).toEqual({ ok: true, anexos: [] });
+  it('ausente ou nulo é RECUSADO: tirar todos é `[]` explícito (um corpo sem o campo apagaria os anexos)', () => {
+    expect(mantidosSaoDaNota(undefined, daNota)).toEqual({ ok: false, erro: 'ATTACHMENTS_INVALID' });
+    expect(mantidosSaoDaNota(null, daNota)).toEqual({ ok: false, erro: 'ATTACHMENTS_INVALID' });
+    expect(mantidosSaoDaNota([], daNota)).toEqual({ ok: true, anexos: [] });
   });
 
   it('o que fica é o que a NOTA guarda (nome, tipo e tamanho dela), na ordem pedida', () => {

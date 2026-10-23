@@ -36,6 +36,8 @@ const estado = vi.hoisted(() => ({
   /** A linha no "banco" (null = apagada). */
   nota: null as null | Record<string, unknown>,
   membros: [] as string[],
+  /** Membros da conta SUSPENSOS (1067): o perfil existe, com `suspenso_em`. */
+  suspensos: [] as string[],
   erroDoPerfil: false,
   erroDaLeitura: false,
   erroDaReleitura: false,
@@ -86,19 +88,25 @@ function doUsuario(tabela: string) {
       if (estado.erroDosMembros) return { data: null, error: { message: 'timeout' } };
       const pedidos = (filtros.find((f) => f.op === 'in')?.val ?? []) as string[];
       return {
-        data: pedidos.filter((id) => estado.membros.includes(id)).map((user_id) => ({ user_id })),
+        data: pedidos
+          .filter((id) => estado.membros.includes(id))
+          .map((user_id) => ({
+            user_id,
+            suspenso_em: estado.suspensos.includes(user_id) ? '2026-10-20T12:00:00Z' : null,
+          })),
         error: null,
       };
     }
     if (tabela === 'cb_conversation_notes' && modo === 'uma') {
       estado.leiturasDaNota.push({ colunas, filtros: [...filtros] });
-      const releitura = colunas === 'id';
+      // A releitura que mede o 409 é a leitura SEM a cerca de versão.
+      const releitura = !filtros.some((f) => f.col === 'editada_em');
       if (releitura ? estado.erroDaReleitura : estado.erroDaLeitura) {
         return { data: null, error: { message: 'timeout' } };
       }
       const linha = estado.nota;
       if (!casa(linha, filtros)) return { data: null, error: null };
-      return { data: releitura ? { id: linha.id } : { ...linha }, error: null };
+      return { data: { ...linha }, error: null };
     }
     throw new Error(`leitura inesperada: ${tabela}/${modo}`);
   };
@@ -209,6 +217,7 @@ beforeEach(() => {
     fixada_em: null,
   };
   estado.membros = [ANA, BIA, CAIO];
+  estado.suspensos = [];
   estado.erroDoPerfil = false;
   estado.erroDaLeitura = false;
   estado.erroDaReleitura = false;
@@ -362,6 +371,15 @@ describe('PUT /api/cb/notes/[id] — os anexos', () => {
     expect(estado.removidos).toEqual([]);
   });
 
+  it('sem `mantidos` é 400, sem ler a nota: tirar todos os anexos é `[]` explícito', async () => {
+    for (const mantidos of [undefined, null, 'tudo']) {
+      const res = await editar({ mantidos });
+      expect(res.status, String(mantidos)).toBe(400);
+    }
+    expect(estado.leiturasDaNota).toEqual([]);
+    expect(estado.updates).toEqual([]);
+  });
+
   it('sem texto e sem anexo é 400, sem escrever', async () => {
     const res = await editar({ texto: '   ', mantidos: [] });
     expect(res.status).toBe(400);
@@ -390,11 +408,21 @@ describe('PUT /api/cb/notes/[id] — nada mudou (A4)', () => {
 });
 
 describe('PUT /api/cb/notes/[id] — concorrência: 409, nunca sobrescrita', () => {
-  it('editada noutro lugar depois que a caixa abriu = 409 NOTE_CHANGED, sem escrever', async () => {
+  it('editada noutro lugar depois que a caixa abriu = 409 NOTE_CHANGED com a nota ATUAL, sem escrever', async () => {
     estado.nota!.editada_em = '2026-10-23T15:00:00.000Z';
+    estado.nota!.texto = 'Da outra aba';
     const res = await editar({ texto: 'A minha versão', versao: null });
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: 'NOTE_CHANGED' });
+    // A nota atual vai junto: a lista da tela pode estar velha (o tempo real
+    // perdeu o UPDATE), e editar de novo a partir dela daria 409 em laço.
+    expect(await res.json()).toEqual({
+      error: 'NOTE_CHANGED',
+      note: expect.objectContaining({
+        id: NOTA,
+        texto: 'Da outra aba',
+        editada_em: '2026-10-23T15:00:00.000Z',
+      }),
+    });
     expect(estado.updates).toEqual([]);
   });
 
@@ -430,7 +458,10 @@ describe('PUT /api/cb/notes/[id] — concorrência: 409, nunca sobrescrita', () 
     };
     const res = await editar({ texto: 'A minha versão' });
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: 'NOTE_CHANGED' });
+    expect(await res.json()).toMatchObject({
+      error: 'NOTE_CHANGED',
+      note: { id: NOTA, texto: 'Da outra aba' },
+    });
     expect(estado.nota!.texto).toBe('Da outra aba');
   });
 
@@ -530,6 +561,36 @@ describe('PUT /api/cb/notes/[id] — menção: só quem ENTROU recebe o aviso', 
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ mudou: true, mencoesNotificadas: true });
     expect(estado.updates[0].valores.mencionados).toEqual([BIA]);
+    expect(estado.avisos).toEqual([]);
+  });
+
+  it('falha ao conferir os membros SEM ninguém novo na menção: não houve a quem avisar (mencoesNotificadas true)', async () => {
+    // Corrigir uma letra de "@Bia confere", com a Bia já gravada.
+    estado.nota!.texto = '@Bia confre';
+    estado.nota!.mencionados = [BIA];
+    estado.erroDosMembros = true;
+    const res = await editar({ texto: '@Bia confere', mencionados: [BIA, ANA] });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ mudou: true, mencoesNotificadas: true });
+    expect(estado.updates[0].valores.mencionados).toEqual([BIA]);
+    expect(estado.avisos).toEqual([]);
+  });
+
+  it('o SUSPENSO fica gravado na menção e não é avisado — e, gravado, não "entra" de novo quando volta', async () => {
+    estado.suspensos = [CAIO];
+    let res = await editar({ texto: '@Caio @Bia confiram', mencionados: [CAIO, BIA] });
+    expect(res.status).toBe(200);
+    expect(estado.updates[0].valores.mencionados).toEqual([CAIO, BIA]);
+    expect(estado.avisos.map((a) => a.user_id)).toEqual([BIA]);
+    // O Caio volta; a próxima correção não o avisa: ele já estava.
+    estado.suspensos = [];
+    estado.avisos = [];
+    res = await editar({
+      texto: '@Caio @Bia confiram hoje',
+      mencionados: [CAIO, BIA],
+      versao: estado.nota!.editada_em as string,
+    });
+    expect(res.status).toBe(200);
     expect(estado.avisos).toEqual([]);
   });
 

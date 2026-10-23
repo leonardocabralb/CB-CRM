@@ -4,10 +4,13 @@ import { describe, expect, it } from "vitest";
 import {
   ARRASTO_QUE_RECOLHE_PX,
   ATRIBUTO_ACIMA_DO_TECLADO,
+  ATRIBUTO_CAIXA_DE_NOTA,
   MIDIA_DE_TOQUE,
+  SELETOR_FORA_DO_ARRASTO,
   ajusteDoTeclado,
   arrastoRecolheTeclado,
   enterEnvia,
+  toqueNasceuForaDaConversa,
 } from "./teclado";
 
 const IPHONE = 844;
@@ -109,6 +112,34 @@ describe("arrastoRecolheTeclado", () => {
   });
 });
 
+describe("toqueNasceuForaDaConversa (a caixa de EDIÇÃO da anotação mora dentro do fio)", () => {
+  /** Um alvo de toque de mentira: `closest` acha o que a "árvore" dele tem. */
+  const alvo = (dentroDe: boolean) => ({
+    closest: (seletor: string) =>
+      dentroDe && seletor === SELETOR_FORA_DO_ARRASTO ? { tagName: "DIV" } : null,
+  });
+
+  it("o toque que nasce num campo ou na caixa da anotação não é arrasto da conversa", () => {
+    expect(toqueNasceuForaDaConversa(alvo(true) as unknown as EventTarget)).toBe(true);
+  });
+
+  it("o toque numa bolha ou no fundo do fio é", () => {
+    expect(toqueNasceuForaDaConversa(alvo(false) as unknown as EventTarget)).toBe(false);
+  });
+
+  it("alvo sem `closest` (a janela, o documento) ou ausente não decide nada", () => {
+    expect(toqueNasceuForaDaConversa(null)).toBe(false);
+    expect(toqueNasceuForaDaConversa({} as EventTarget)).toBe(false);
+  });
+
+  it("o seletor cobre os campos e a caixa inteira (lista de @menções e botões inclusos)", () => {
+    for (const parte of ["textarea", "input", "select", `[${ATRIBUTO_CAIXA_DE_NOTA}]`]) {
+      expect(SELETOR_FORA_DO_ARRASTO.split(","), parte).toContain(parte);
+    }
+    expect(SELETOR_FORA_DO_ARRASTO).toContain('[contenteditable]:not([contenteditable="false"])');
+  });
+});
+
 describe("enterEnvia", () => {
   it("no computador, Enter envia e Shift+Enter pula linha", () => {
     expect(enterEnvia({ key: "Enter", shiftKey: false }, false)).toBe(true);
@@ -145,6 +176,15 @@ describe("as peças que o ajuste amarra", () => {
     const fio = ler("src/components/inbox/message-thread.tsx");
     expect(fio).toContain("onTouchStart={aoTocarNoFio}");
     expect(fio).toContain("onTouchMove={aoArrastarOFio}");
+    // O toque que nasce num campo ou na caixa da anotação não conta: a caixa
+    // de EDIÇÃO mora dentro do fio, e o arrasto no texto fechava o teclado.
+    expect(fio).toContain("toqueNasceuForaDaConversa(e.target)");
+  });
+
+  it("a caixa da anotação marca a raiz — sem a marca, o arrasto nela recolhe o teclado", () => {
+    expect(ler("src/components/inbox/internal-note-box.tsx")).toContain(
+      `${ATRIBUTO_CAIXA_DE_NOTA}=""`,
+    );
   });
 
   it("o Enter do compositor passa pela regra do toque", () => {

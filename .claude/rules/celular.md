@@ -38,7 +38,7 @@ Vale ao mexer na altura da casca, no fio e no compositor em aparelho de toque, n
   (o foco não sai da caixa) e devolve o foco no `onClick`, dentro do gesto,
   a quem estava na caixa (`focoNaCaixaRef`, lido no `onPointerDown`). Botão
   novo que "envia" e deve manter o teclado repete o par.
-- **Arrastar a conversa para BAIXO recolhe o teclado** (`arrastoRecolheTeclado`, o gesto do WhatsApp); para cima não — é quem continua escrevendo. Mora no `onTouchMove` do contêiner, junto do `liberarSalto`.
+- **Arrastar a conversa para BAIXO recolhe o teclado** (`arrastoRecolheTeclado`, o gesto do WhatsApp); para cima não — é quem continua escrevendo. Mora no `onTouchMove` do contêiner, junto do `liberarSalto`. ⚠️ O toque que NASCE num campo ou na caixa da anotação não conta (`toqueNasceuForaDaConversa`, lido no `onTouchStart`; a caixa marca a raiz com `data-caixa-de-nota`): a caixa de EDIÇÃO mora dentro do fio, e arrastar o dedo no texto dela ou na lista de @menções fechava o teclado a cada tentativa (e a lista junto). Campo novo dentro do fio que não seja `textarea`/`input`/`select`/`contenteditable` entra no `SELETOR_FORA_DO_ARRASTO`.
 
 ### Segurar a mensagem abre a barra de ações (05/10/2026)
 

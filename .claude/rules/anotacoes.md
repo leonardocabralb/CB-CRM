@@ -174,8 +174,9 @@ a régua das três pontas), `arquivo-do-anexo.ts` (a leitura no armazenamento),
 
 Decisões A2–A6 do operador: `docs/PLANO-anotacao-com-anexos-e-edicao.md`.
 `PUT /api/cb/notes/[id]` (o `PATCH` segue só para fixar), `mantidosSaoDaNota`
-(`anexos.ts`), `useEdicaoDeNota`, o modo `editando` do `InternalNoteBox` e
-`<MarcaDeEditada>`. Pinos: `[id]/route.test.ts`, `anexos.test.ts`,
+(`anexos.ts`), `useEdicaoDeNota` (as regras em `src/lib/notes/edicao.ts`), o
+modo `editando` do `InternalNoteBox` e `<MarcaDeEditada>`. Pinos:
+`[id]/route.test.ts`, `anexos.test.ts`, `edicao.test.ts`,
 `cartao-de-nota.test.tsx` e o default-deny abaixo.
 
 - ⚠️⚠️ **Só o AUTOR, sem prazo (A2, A3)**: o lápis só aparece com
@@ -188,14 +189,19 @@ Decisões A2–A6 do operador: `docs/PLANO-anotacao-com-anexos-e-edicao.md`.
   editada), e a leitura sob RLS e o UPDATE exigem `editada_em` igual (a
   tabela não tem `updated_at`). Nunca comparar o instante como texto no JS: o
   tempo real e o PostgREST o escrevem cada um a seu jeito. Zero linhas MEDE
-  pela releitura: existe → 409 `NOTE_CHANGED` (a caixa fica aberta com o
-  rascunho; nada sobrescrito); sumiu → 409 `NOTE_GONE`. Fixar não mexe em
-  `editada_em` e não conflita.
+  pela releitura: existe → 409 `NOTE_CHANGED` com a nota ATUAL em `note` (a
+  caixa fica aberta com o rascunho e a põe na lista pelo `onSaved` =
+  `substituir`, sem fechar: com a lista velha — tempo real perdido —, editar
+  de novo congelaria a mesma versão, em laço); sumiu → 409 `NOTE_GONE`. Fixar
+  não mexe em `editada_em` e não conflita. `PUT` sem resposta (rede) PODE ter
+  entrado: "talvez salva" (`noteEditMaybeSaved`), nunca "não salvou".
 - ⚠️ **Nada mudou = 200 `mudou: false`, sem UPDATE**: `editada_em` só muda
   quando o texto aparado ou a lista de caminhos (na ordem) mudou (A4).
 - ⚠️⚠️ **O que FICA é o que a nota tem** (`mantidosSaoDaNota`: pelo caminho, e
   grava o objeto da NOTA, nunca o do corpo; de fora = 400
-  `ATTACHMENT_NOT_IN_NOTE` com `anexo`); o NOVO passa pela régua do POST
+  `ATTACHMENT_NOT_IN_NOTE` com `anexo`). `mantidos` é OBRIGATÓRIO: ausente =
+  400, tirar todos = `[]` — "ausente = nenhum" deixaria um corpo sem o campo
+  apagar os anexos, sem volta. O NOVO passa pela régua do POST
   (`lerAnexosDoCorpo` + `lerArquivoDoAnexo`, 503 × 400). O TIRADO não se
   apaga na rota nem na caixa (o X do anexo atual só o tira da lista): o
   gatilho da 1102 o põe na fila quando a edição salva.
@@ -203,17 +209,27 @@ Decisões A2–A6 do operador: `docs/PLANO-anotacao-com-anexos-e-edicao.md`.
   antigo fica como foi escrito). Sem conferência — leitura dos membros que
   falhou, ou `mencionados` AUSENTE porque a caixa não soube quem é da conta
   (`membrosSabidos`) — fica a lista GRAVADA: trocá-la por nenhuma faria quem
-  já estava "entrar" de novo na próxima edição.
+  já estava "entrar" de novo na próxima edição; `mencoesNotificadas: false`
+  só quando alguém ENTRARIA. ⚠️ Na edição a caixa refaz a menção contra
+  TODOS os membros (`todosOsMembros`, suspensos inclusos; as sugestões seguem
+  só com os ativos) e a rota grava o SUSPENSO sem avisá-lo: refeita só com os
+  ativos, uma correção qualquer o tirava da lista, e ele "entrava" de novo
+  (com outro aviso) depois da volta. Limite: o membro RENOMEADO (o "@Nome"
+  antigo não casa com o nome novo).
 - ⚠️⚠️ **Edita NO LUGAR, nunca na caixa do compositor** (lá o Enter envia ao
   cliente): no fio, na aba Notas (a fixada vira caixa no slot sticky) e no
   grupo, a linha vira `InternalNoteBox` com `editando` e `key`
   `edicao:<id>`; `onSaved` = `substituir` do `useConversationNotes` (sem
   esperar o tempo real). As guardas do salvar valem igual (`naTelaRef`,
-  conversa de origem), com frase própria da edição.
-- ⚠️ **`useEdicaoDeNota` carimba a conversa** (`{ de, id }`, zerado no render
-  da troca) e solta a edição quando a nota SOME da lista RESPONDIDA
-  (`pronta`), com aviso: apagada por outra pessoa. Busca que falhou não é
-  "apagada".
+  conversa de origem), com frase própria da edição. No fio, a caixa mora
+  DENTRO do contêiner que rola: lista de @menções para BAIXO
+  (`listaParaBaixo`; para cima ela sai do alcance), e o arrasto que nasce
+  nela não recolhe o teclado (`data-caixa-de-nota`, `celular.md`).
+- ⚠️ **`useEdicaoDeNota` carimba a conversa** (`{ de, id }`) e SOLTA a edição
+  no render (`destinoDaEdicao`) sempre que a conversa muda ou a nota sai da
+  lista — senão a volta (A → B → A) ou a recarga boa depois de uma que falhou
+  REABRIAM a caixa sozinhas, sem o rascunho. Só com a lista RESPONDIDA
+  (`pronta`) a saída é "apagada" e avisa; busca que falhou não é "apagada".
 - ⚠️⚠️ **Marca "editada" ao lado da hora, com a hora da edição no `title`,
   nos CINCO lugares** (fio, abas Notas e do grupo, faixa fixada, citação,
   ficha de `/contatos` — esta só mostra, A6). O pino

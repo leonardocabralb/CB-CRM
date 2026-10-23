@@ -544,14 +544,14 @@ comentário de `ConversationNote`, os dois dicionários, a frase do
 **Decisões tomadas na implementação (conferir com o operador):**
 - a cerca de concorrência é o próprio `editada_em` (a tabela não tem
   `updated_at`): a caixa manda a versão de quando ABRIU e o banco compara, na
-  leitura e no UPDATE. Editada noutro lugar = 409 `NOTE_CHANGED`: nada se
-  sobrescreve e o rascunho fica na caixa ("cancele e edite de novo"); não há
-  mescla;
+  leitura e no UPDATE. Editada noutro lugar = 409 `NOTE_CHANGED`, com a nota
+  atual: nada se sobrescreve e o rascunho fica na caixa ("cancele e edite de
+  novo"); não há mescla;
 - apagada antes da leitura OU entre a leitura e o UPDATE = 409 `NOTE_GONE`
   (as duas medidas pela mesma releitura); a caixa diz que foi apagada;
 - o corpo é `{ texto, mencionados, mantidos, novos, versao }`: `mantidos` são
-  só os caminhos (o resto vem da nota), `novos` têm a forma dos `anexos` do
-  POST;
+  só os caminhos (o resto vem da nota) e são OBRIGATÓRIOS (tirar todos é
+  `[]`), `novos` têm a forma dos `anexos` do POST;
 - "nada mudou" compara o texto aparado e a lista de caminhos NA ORDEM: sem
   UPDATE, `editada_em` intacta, `mudou: false`;
 - as menções gravadas FICAM quando não há conferência: leitura dos membros
@@ -570,12 +570,14 @@ comentário de `ConversationNote`, os dois dicionários, a frase do
   permissão e "não salva" com a caixa fora da tela; os de "salva" e "talvez
   salva" fora da tela são os da anotação nova.
 
-**Testes (Node 22):** `[id]/route.test.ts` novo (32 casos do `PUT` e o
+**Testes (Node 22):** `[id]/route.test.ts` novo (35 casos do `PUT` e o
 erro de perfil do `PATCH`: autor × não autor × admin × sem autor, mantido de
-outra nota, novo ausente/grande/tipo recusado/armazenamento fora, nada
-mudou, 409 nas duas janelas, a versão que vai ao banco como veio, erros de
-leitura = 500, menção só para quem entrou, `mencionados` ausente), os de
-`mantidosSaoDaNota` em `anexos.test.ts`, a marca e o lápis em
+outra nota, `mantidos` ausente, novo ausente/grande/tipo recusado/
+armazenamento fora, nada mudou, 409 nas duas janelas com a nota atual, a
+versão que vai ao banco como veio, erros de leitura = 500, menção só para
+quem entrou, `mencionados` ausente, suspenso gravado sem aviso), os de
+`mantidosSaoDaNota` em `anexos.test.ts`, `destinoDaEdicao` em
+`edicao.test.ts`, o toque na caixa em `teclado.test.ts`, a marca e o lápis em
 `cartao-de-nota.test.tsx`, e o default-deny estendido para a marca.
 
 **Limites conhecidos (novos):**
@@ -584,7 +586,13 @@ leitura = 500, menção só para quem entrou, `mencionados` ausente), os de
   caixa remonta e o rascunho se perde, sem aviso;
 - a recarga das anotações que FALHA (voltar ao app sem rede) esvazia a
   lista: a caixa some com o rascunho, sem o aviso de "apagada" (falha não é
-  apagada), e a nota volta na recarga seguinte como está.
+  apagada), e a edição acaba ali — a recarga seguinte mostra a nota como
+  está, sem reabrir a caixa;
+- o membro RENOMEADO: o "@Nome" antigo no texto não casa com o nome novo, e
+  uma correção qualquer o tira da lista gravada de mencionados; se a nota
+  voltar a citá-lo pelo nome atual (ou ele voltar ao nome antigo), a edição
+  seguinte o avisa de novo. Raro; consertar exigiria guardar a menção pelo
+  id dentro do texto.
 
 **Achado no e2e das Fases 1–2 e consertado aqui:** o "Cancelar" da caixa
 (`ghost`) herdava a cor do tema e, no modo escuro, saía branco sobre o âmbar
@@ -596,3 +604,40 @@ edição é ele que desiste; ganhou o âmbar dos ícones ao lado.
 a marca na tela do colega; a menção acrescentada avisando só o novo; editar
 com a nota apagada noutra sessão; dois cliques em Salvar; ~305 e 375 px) e o
 iPhone (a caixa no lugar com o teclado aberto).
+
+### Correções da revisão da Fase 3 (23/10/2026: revisor independente)
+
+- **P2 — o arrasto dentro da caixa de edição fechava o teclado (celular).** A
+  caixa de edição mora DENTRO do contêiner que rola o fio, e o `touchmove`
+  subia até ele (`arrastoRecolheTeclado` → `blur`): arrastar o dedo no texto
+  ou na lista de @menções recolhia o teclado e fechava a lista. Agora o toque
+  que NASCE num campo ou na caixa (`data-caixa-de-nota` na raiz do
+  `InternalNoteBox`) não conta: `toqueNasceuForaDaConversa`, lido no
+  `onTouchStart`, puro e com teste, e pinos lendo o fio e a caixa.
+- **P3 — `mencoesNotificadas: false` sem ninguém a avisar.** Na falha da
+  leitura dos membros, a rota só diz `false` quando alguém ENTRARIA na
+  menção; corrigir uma letra de "@Bia confere", com a Bia já gravada, não
+  falhou em avisar ninguém.
+- **P3 — a recarga que falhava reabria a caixa depois.** `useEdicaoDeNota`
+  solta a edição no render sempre que a nota sai da lista
+  (`destinoDaEdicao`, puro, em `src/lib/notes/edicao.ts`, com teste) e só
+  avisa "apagada" com a lista respondida.
+- **P3 — `mantidos` ausente tirava todos os anexos** (e o gatilho os apagaria
+  em ~15 min). Agora é 400, na rota (antes de ler a nota) e em
+  `mantidosSaoDaNota`; tirar todos é `[]`.
+- **P3 — 409 em laço com a lista velha.** O 409 `NOTE_CHANGED` leva a nota
+  ATUAL (`note`), e a caixa a entrega ao `onSaved` (= `substituir` nos três
+  lugares que editam) sem fechar: cancelar e editar de novo parte da versão
+  atual, também na aba do grupo, que não tem `resyncToken`. E o `PUT` sem
+  resposta diz "talvez salva" (`noteEditMaybeSaved`, nos dois dicionários),
+  não "não foi possível salvar".
+- **P3 — o suspenso "entrava" de novo na menção.** Na edição a caixa refaz a
+  menção contra TODOS os membros (as sugestões seguem só com os ativos), e a
+  rota grava o suspenso (lê `suspenso_em`) sem avisá-lo — de volta, ele não é
+  avisado outra vez. De quebra, "@Ana Paula" (suspensa) não casa mais com
+  "@Ana". O membro renomeado ficou como limite (acima).
+- **P3 — a lista de @menções abria para cima no fio**, fora do alcance com a
+  nota no alto da tela: a caixa de edição do fio passa `listaParaBaixo`
+  (dentro do contêiner que rola, para baixo a rolagem a alcança).
+- Não mexido: a marca "editada" com a hora só no `title` vai ao operador
+  como pergunta.

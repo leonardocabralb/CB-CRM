@@ -455,6 +455,7 @@
       "noteEditChanged": "Esta anotação foi editada em outro lugar enquanto você editava. Cancele e edite de novo — nada foi sobrescrito.",
       "noteEditForbidden": "Só quem escreveu a anotação pode editá-la.",
       "noteEditNotSavedAfterLeaving": "A edição não foi salva: a caixa foi fechada antes de terminar. Edite de novo na conversa.",
+      "noteEditMaybeSaved": "Não deu para confirmar se a edição foi salva (a resposta não chegou). Confira a anotação antes de salvar de novo.",
       "fromLibrary": "Do acervo",
       "acervoError": "Não foi possível preparar o arquivo do acervo.",
       "solteParaAnexar": "Solte aqui para anexar",
