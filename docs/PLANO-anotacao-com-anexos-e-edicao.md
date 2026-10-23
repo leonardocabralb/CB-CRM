@@ -586,6 +586,11 @@ leitura = 500, menção só para quem entrou, `mencionados` ausente), os de
   lista: a caixa some com o rascunho, sem o aviso de "apagada" (falha não é
   apagada), e a nota volta na recarga seguinte como está.
 
+**Achado no e2e das Fases 1–2 e consertado aqui:** o "Cancelar" da caixa
+(`ghost`) herdava a cor do tema e, no modo escuro, saía branco sobre o âmbar
+(medido no preview: luminosidade 98 sobre 98,6) — já era assim no `main`. Na
+edição é ele que desiste; ganhou o âmbar dos ícones ao lado.
+
 **Fica para depois:** o e2e no preview, na conversa de teste autorizada
 (editar texto e anexos; tirar um anexo e ver a fila esvaziar depois do ciclo;
 a marca na tela do colega; a menção acrescentada avisando só o novo; editar

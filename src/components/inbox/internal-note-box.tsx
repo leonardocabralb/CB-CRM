@@ -976,12 +976,15 @@ export function InternalNoteBox({
               : t('saveNote')}
         </Button>
         {onClose ? (
+          // ⚠️ Cor própria, a dos ícones ao lado: o `ghost` herda a do tema,
+          // e no modo escuro (o `dark:` está inerte) o texto claro sumia no
+          // fundo âmbar — e é por ele que se desiste de uma edição.
           <Button
             size="sm"
             variant="ghost"
             onClick={onClose}
             disabled={salvando}
-            className="h-8"
+            className="h-8 text-amber-900 hover:bg-amber-100 hover:text-amber-950 dark:text-amber-100 dark:hover:bg-amber-900/40"
           >
             {t('cancel')}
           </Button>
