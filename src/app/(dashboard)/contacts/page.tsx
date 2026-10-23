@@ -340,8 +340,10 @@ export default function ContactsPage() {
    * na lista.
    */
   function aposMover(resolvidos: string[]) {
-    if (resolvidos.length === 0) return;
-    setSelected((atual) => selecaoRestante(atual, resolvidos));
+    // A seleção perde só o CONFIRMADO; a lista recarrega SEMPRE (Codex,
+    // #429): a resposta perdida depois de o banco gravar vira "recusada" na
+    // tela, e sem a recarga as fichas que saíram seguiriam listadas.
+    if (resolvidos.length > 0) setSelected((atual) => selecaoRestante(atual, resolvidos));
     void fetchContacts({ preservarSelecao: true });
   }
 

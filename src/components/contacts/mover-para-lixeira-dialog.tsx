@@ -94,9 +94,7 @@ export function MoverParaLixeiraDialog({
         description: t('mover.toastMovidasDica'),
         // B5: "alguns segundos" — os 4 s do padrão somem antes de achar o botão.
         duration: 10_000,
-        action: lote
-          ? { label: t('mover.desfazer'), onClick: () => void desfazer(lote) }
-          : undefined,
+        action: { label: t('mover.desfazer'), onClick: () => void desfazer(lote) },
       });
     }
     if (sumidas > 0) toast.info(t('mover.toastSumidas', { count: sumidas }));

@@ -33,18 +33,21 @@ import { createClient } from '@/lib/supabase/client';
 // ── Mover ────────────────────────────────────────────────────────────────
 
 export interface ResultadoDoMoverNaTela {
-  /** O lote do "Desfazer" (B5). NULO quando nenhuma fatia teve resposta
-   *  legível — aí não há o que desfazer pela tela. */
-  loteId: string | null;
+  /** O lote do "Desfazer" (B5), gerado AQUI antes da primeira fatia. */
+  loteId: string;
   /** Uma entrada por ficha PEDIDA, sempre. */
   fichas: FichaMovida[];
 }
 
 /**
  * Move as fichas para a Lixeira, em fatias de `FICHAS_POR_CHAMADA` (o teto
- * de 8 s do navegador), TODAS no MESMO lote: a primeira chamada vai sem
- * `p_lote` e devolve o lote; as seguintes o passam. O "Desfazer" restaura o
- * lote inteiro.
+ * de 8 s do navegador), TODAS no MESMO lote, gerado AQUI antes da primeira
+ * fatia e passado em todas. O "Desfazer" restaura o lote inteiro.
+ *
+ * ⚠️ O lote não se aprende da primeira resposta (Codex, #429): se ela se
+ * perde depois de a fatia gravar, as seguintes iriam sem `p_lote`, a ação
+ * se partiria em dois lotes e o "Desfazer" deixaria a primeira fatia na
+ * Lixeira.
  *
  * ⚠️ Erro da chamada INTEIRA vira `recusada` para as fichas daquela fatia,
  * com o motivo (a transação do banco é uma só: nada da fatia saiu — salvo
@@ -55,7 +58,7 @@ export interface ResultadoDoMoverNaTela {
  */
 export async function moverParaLixeira(ids: readonly string[]): Promise<ResultadoDoMoverNaTela> {
   const supabase = createClient();
-  let loteId: string | null = null;
+  const loteId = crypto.randomUUID();
   const fichas: FichaMovida[] = [];
 
   for (const fatia of fatiar(ids)) {
@@ -65,7 +68,7 @@ export async function moverParaLixeira(ids: readonly string[]): Promise<Resultad
     try {
       const { data, error } = await supabase.rpc(
         'cb_mover_contatos_para_lixeira',
-        loteId ? { p_ids: fatia, p_lote: loteId } : { p_ids: fatia },
+        { p_ids: fatia, p_lote: loteId },
       );
       if (error) {
         console.error('[lixeira] mover foi recusado:', error.message);
@@ -78,7 +81,6 @@ export async function moverParaLixeira(ids: readonly string[]): Promise<Resultad
         recusar('falhou');
         continue;
       }
-      loteId = loteId ?? resposta.loteId;
       const pedidas = new Set(fatia);
       const vistas = new Set<string>();
       for (const f of resposta.fichas) {
