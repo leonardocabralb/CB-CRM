@@ -123,7 +123,7 @@ export function DealForm({
   // contato aqui tira o negócio da volta dela. Pergunta só com o formulário
   // aberto num negócio sem contato; o mapa é recortado pelo negócio do
   // render ATUAL (trocar de negócio não mostra a nota do anterior).
-  const naLixeira = useNegociosNaLixeira(open && deal && !deal.contact_id ? [deal.id] : []);
+  const naLixeira = useNegociosNaLixeira(open && deal && !deal.contact_id ? [deal.id] : [], deal);
   const fichaNaLixeira =
     deal && naLixeira.has(deal.id) ? { nome: naLixeira.get(deal.id) ?? null } : null;
 

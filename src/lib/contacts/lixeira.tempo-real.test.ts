@@ -59,6 +59,10 @@ describe('a marca do card (B4): useNegociosNaLixeira', () => {
     expect(hook).toMatch(/useEffect\(\(\) => \{\s*if \(!chave\) return;/);
   });
 
+  it('relê a cada leitura do quadro (a ficha excluída de vez não muda o conjunto)', () => {
+    expect(hook).toMatch(/\}, \[chave, versao\]\);/);
+  });
+
   it('em fatias que a resposta nunca estoura (uma linha por negócio pedido)', () => {
     expect(NEGOCIOS_POR_CHAMADA).toBeLessThanOrEqual(1000);
     expect(hook).toMatch(
@@ -83,7 +87,7 @@ describe('a marca do card (B4): useNegociosNaLixeira', () => {
   it('o quadro pergunta só pelos cards SEM contato que têm conteúdo, e passa primitivos ao card', () => {
     const quadro = fonte('components/pipelines/pipeline-board.tsx');
     expect(quadro).toMatch(
-      /const semContato = useMemo\(\s*\(\) => deals\.filter\(\(d\) => temConteudo\(d\) && !d\.contact_id\)\.map\(\(d\) => d\.id\),\s*\[deals\],\s*\);\s*const negociosNaLixeira = useNegociosNaLixeira\(semContato\);/,
+      /const semContato = useMemo\(\s*\(\) => deals\.filter\(\(d\) => temConteudo\(d\) && !d\.contact_id\)\.map\(\(d\) => d\.id\),\s*\[deals\],\s*\);[\s\S]{0,200}?const negociosNaLixeira = useNegociosNaLixeira\(semContato, deals\);/,
     );
     expect(quadro).toContain('naLixeira={negociosNaLixeira.has(deal.id)}');
     expect(quadro).toContain('nomeNaLixeira={negociosNaLixeira.get(deal.id) ?? null}');
@@ -92,7 +96,7 @@ describe('a marca do card (B4): useNegociosNaLixeira', () => {
   it('o formulário do card pergunta só aberto e num negócio sem contato', () => {
     const formulario = fonte('components/pipelines/deal-form.tsx');
     expect(formulario).toContain(
-      'useNegociosNaLixeira(open && deal && !deal.contact_id ? [deal.id] : [])',
+      'useNegociosNaLixeira(open && deal && !deal.contact_id ? [deal.id] : [], deal)',
     );
   });
 });

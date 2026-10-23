@@ -31,12 +31,18 @@ import { createClient } from '@/lib/supabase/client';
  * nunca "não está na Lixeira" afirmado sobre dado que não veio, nem a marca
  * de outra leitura apagada por um soluço de rede.
  *
- * Foto da carga, como o resto do quadro (sem tempo real, `funil.md`): a
- * ficha restaurada ou excluída de vez com o quadro aberto aparece certa na
- * próxima leitura do quadro, que muda o conjunto (a restaurada volta com
- * contato e sai dele), ou ao reabrir a tela.
+ * Foto da carga, como o resto do quadro (sem tempo real, `funil.md`), mas
+ * RELIDA a cada leitura do quadro (`versao`): a ficha excluída de vez (outro
+ * admin, ou o vencimento) deixa o negócio com o MESMO `contact_id` nulo, o
+ * conjunto não muda, e só pela chave a marca ficava no card até desmontar
+ * o quadro (Codex, #429). A restaurada volta com contato e sai do conjunto.
  */
-export function useNegociosNaLixeira(ids: readonly string[]): ReadonlyMap<string, string | null> {
+export function useNegociosNaLixeira(
+  ids: readonly string[],
+  /** Muda a cada leitura dos negócios (a lista nova do quadro): pergunta de
+   *  novo mesmo com o mesmo conjunto. */
+  versao?: unknown,
+): ReadonlyMap<string, string | null> {
   // Texto ordenado e sem repetição: a lista nova a cada render do quadro não
   // refaz a pergunta, só um CONJUNTO novo.
   const chave = [...new Set(ids)].sort().join(',');
@@ -75,7 +81,7 @@ export function useNegociosNaLixeira(ids: readonly string[]): ReadonlyMap<string
     return () => {
       vivo = false;
     };
-  }, [chave]);
+  }, [chave, versao]);
 
   // Recortado pelo conjunto do render ATUAL. O mapa só muda de identidade
   // quando a resposta ou o conjunto mudam: os cards são `memo`.

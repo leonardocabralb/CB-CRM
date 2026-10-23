@@ -282,7 +282,9 @@ export function PipelineBoard({
     () => deals.filter((d) => temConteudo(d) && !d.contact_id).map((d) => d.id),
     [deals],
   );
-  const negociosNaLixeira = useNegociosNaLixeira(semContato);
+  // A lista de negócios como versão: cada leitura do quadro relê a marca (a
+  // ficha excluída de vez não muda o conjunto sem contato).
+  const negociosNaLixeira = useNegociosNaLixeira(semContato, deals);
 
   const sortedStages = useMemo(
     () => [...stages].sort((a, b) => a.position - b.position),
