@@ -279,6 +279,8 @@ describe('intercalar', () => {
     mencionados: [],
     fixada_em: null,
     resposta_de: null,
+    anexos: [],
+    editada_em: null,
     created_at,
   });
 

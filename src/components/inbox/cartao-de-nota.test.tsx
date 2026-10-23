@@ -31,6 +31,8 @@ const NOTA: ConversationNote = {
   resposta_de: null,
   mencionados: [],
   fixada_em: null,
+  anexos: [],
+  editada_em: null,
   created_at: '2026-09-29T15:42:00Z',
 };
 

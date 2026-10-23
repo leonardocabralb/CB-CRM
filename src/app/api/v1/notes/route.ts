@@ -2,8 +2,12 @@
 // /api/v1/notes — internal conversation notes (migration 918).
 //
 // GET  (scope: notes:read)  — keyset-paginated list. Filters:
-//        `?conversation_id=`, `?contact_id=`.
-// POST (scope: notes:write) — create a note on a conversation.
+//        `?conversation_id=`, `?contact_id=`. Each note carries `anexos`
+//        (name, type, size and URL of the attachments added in the
+//        dashboard — migration 1102) and `editada_em`.
+// POST (scope: notes:write) — create a note on a conversation. TEXT only:
+//        attachments are dashboard-only (the file has to be uploaded to
+//        storage first, and the API has no upload).
 // Conversa de GRUPO fica fora dos dois verbos (regra da v1).
 //
 // The write mirrors the dashboard route (`/api/cb/notes`): the
@@ -30,10 +34,27 @@ import {
   buildPage,
 } from '@/lib/api/v1/pagination';
 import { resolveApiAuthor } from '@/lib/api/v1/authorship';
+import { urlParaAbrirAnexo } from '@/lib/media/abrir-anexo';
+import { lerAnexosDaNota, urlPublicaDoAnexo } from '@/lib/notes/anexos';
 import { ehUuid } from '@/lib/tasks/validar';
 
 /** Same ceiling as the dashboard route. */
 const MAX_TEXTO = 4000;
+
+/**
+ * An attachment of a note (1102: audio, image, video or document added in
+ * the dashboard). Read-only here — the API writes text only. `url` is the
+ * public file address, derived from the stored path (never stored itself);
+ * an HTML page carries `download=` so it downloads instead of opening.
+ */
+interface ApiNoteAttachment {
+  nome: string;
+  /** MIME type, read from storage when the note was saved. */
+  tipo: string;
+  /** Size in bytes. */
+  tamanho: number;
+  url: string;
+}
 
 interface ApiNote {
   id: string;
@@ -41,7 +62,11 @@ interface ApiNote {
   contact_id: string | null;
   author_user_id: string | null;
   autor_nome: string | null;
+  /** Empty when the note carries only attachments. */
   texto: string;
+  anexos: ApiNoteAttachment[];
+  /** When the note was last edited; null = never. */
+  editada_em: string | null;
   created_at: string;
 }
 
@@ -53,6 +78,14 @@ function serializeNote(row: Record<string, unknown>): ApiNote {
     author_user_id: (row.author_user_id as string | null) ?? null,
     autor_nome: (row.autor_nome as string | null) ?? null,
     texto: row.texto as string,
+    // Field by field, as the screens read it: the column is JSON.
+    anexos: lerAnexosDaNota(row.anexos).map((a) => ({
+      nome: a.nome,
+      tipo: a.mime,
+      tamanho: a.bytes,
+      url: urlParaAbrirAnexo(urlPublicaDoAnexo(a.caminho), a.mime, a.nome),
+    })),
+    editada_em: (row.editada_em as string | null) ?? null,
     created_at: row.created_at as string,
   };
 }

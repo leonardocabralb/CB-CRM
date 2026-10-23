@@ -5,6 +5,7 @@ import { Pin, PinOff, Reply, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
+import { AnexosDaNota } from '@/components/inbox/anexos-da-nota';
 import { CitacaoDaNota } from '@/components/inbox/citacao-da-nota';
 import { TextoComLinks } from '@/components/inbox/texto-com-links';
 import { cn } from '@/lib/utils';
@@ -139,9 +140,13 @@ export function NoteLine({
             className="mb-1.5"
           />
         )}
-        <p className="whitespace-pre-wrap break-words">
-          <TextoComLinks texto={nota.texto} />
-        </p>
+        {/* Anotação só de anexos (1102) tem o texto vazio: sem parágrafo. */}
+        {nota.texto.trim() && (
+          <p className="whitespace-pre-wrap break-words">
+            <TextoComLinks texto={nota.texto} />
+          </p>
+        )}
+        <AnexosDaNota anexos={nota.anexos} naNotaDoFio />
         {onResponder && (
           <div className="mt-1 flex justify-end">
             <button

@@ -3,6 +3,7 @@
 import { X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
+import { ResumoDosAnexos } from '@/components/inbox/anexos-da-nota';
 import { cn } from '@/lib/utils';
 import type { ConversationNote } from '@/types';
 
@@ -42,12 +43,16 @@ export function CitacaoDaNota({
       <span className="block truncate text-xs font-semibold">
         {autor ?? t('originalUnavailable')}
       </span>
-      {original && (
+      {original && original.texto.trim() && (
         // `break-words` + `line-clamp-2`: link colado na anotação não pode
         // alargar a bolha (a armadilha de `min-width: auto` da raiz).
         <span className="line-clamp-2 text-xs break-words whitespace-pre-wrap opacity-80">
           {original.texto}
         </span>
+      )}
+      {/* Dos anexos da respondida (1102), só o resumo. */}
+      {original && (
+        <ResumoDosAnexos anexos={original.anexos} className="text-xs opacity-80" />
       )}
     </>
   );

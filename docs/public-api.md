@@ -1167,12 +1167,45 @@ Notes are internal to the team — they are never sent to the customer.
 Notes on **group** conversations are not listed: groups stay out of this
 API, as in [`GET /api/v1/conversations`](#get-apiv1conversations).
 
+A note made in the dashboard can carry **attachments** — a voice recording,
+images, videos or documents, up to 10 — and may then have an **empty
+`texto`** (a note with only an audio clip, for example). Read `anexos` to
+know:
+
+```jsonc
+{
+  "id": "…",
+  "conversation_id": "…",
+  "contact_id": "…",
+  "author_user_id": "…",
+  "autor_nome": "Ana",
+  "texto": "",                     // may be empty when there are attachments
+  "anexos": [
+    {
+      "nome": "audio-20261023-153012.ogg",
+      "tipo": "audio/ogg",          // MIME type
+      "tamanho": 48213,             // bytes
+      "url": "https://…/storage/v1/object/public/chat-media/…"
+    }
+  ],
+  "editada_em": null,              // when the note was last edited; null = never
+  "created_at": "2026-10-23T15:30:12.000Z"
+}
+```
+
+`anexos` is `[]` on a note with text only. Each `url` is the file's public
+address (anyone with the link can fetch it, like the other chat
+attachments); an HTML page comes with `?download=` so it downloads instead
+of opening. `editada_em` is reserved for note editing in the dashboard and
+is `null` until a note is edited.
+
 ### `POST /api/v1/notes`
 
 Create an internal note on a conversation. Scope: `notes:write`. Pass
 `conversation_id`, **or** `contact_id` to note on that contact's
 conversation (each contact has at most one). `texto` is required
-(≤ 4000 chars). @-mentions are dashboard-only. A contact with no
+(≤ 4000 chars). @-mentions and attachments are dashboard-only: a note
+created here is text only (`anexos: []`). A contact with no
 conversation yet — typically one created through `POST /api/v1/contacts`
 and never messaged — returns `409` with code
 `contact_without_conversation` (a lead that arrived by an incoming webhook

@@ -1499,6 +1499,30 @@ nome da época em que foram aplicadas.
   com o livro e a trilha (`contact_trashed` → `contact_restored` →
   `contacts_merged`) com a identidade original e nenhuma reserva; o
   "Excluir agora" com pedido limpou o resto.
+- **1102_cb_anotacao_com_anexos** — anexos na anotação interna (Fases 1–2,
+  PR #434): colunas `anexos jsonb NOT NULL DEFAULT '[]'` e `editada_em` em
+  `cb_conversation_notes`; os CHECKs `..._conteudo_ck` (texto OU anexo; troca
+  o `texto_check` da 918) e `..._anexos_ck` (até 10); o gatilho
+  `cb_anexos_da_anotacao_para_a_fila` (AFTER DELETE OR UPDATE OF anexos,
+  calado pelo sinal `cb.lixeira`) põe na fila de arquivos a apagar o caminho
+  que sai; `cb_lixeira_tratamento()` recriada (o gatilho nos calados) e
+  `cb_arquivos_citados` recriada (conta os anexos das anotações vivas); as
+  policies do `chat-media` refeitas para `notas/` (ninguém troca pelo
+  navegador; apaga só quem subiu, pelo `owner_id`; o resto igual à 954).
+  ADITIVA, ANTES do deploy. Provada num Postgres 16 descartável montado do
+  zero (28 cenários; a conferência embutida recusa cinco mutantes). Aplicada
+  em 23/10/2026 pela Management API (histórico `20261023220536`), depois do
+  CI verde no commit `a268963d`, antes do merge do PR #434, com "Pode
+  aplicar a 1102 na produção" do operador. Conferida: as colunas, só os dois
+  CHECKs novos, o gatilho com o `WHEN` exato e declarado no inventário da
+  Lixeira, `cb_arquivos_citados` com as anotações, a função do gatilho
+  fechada para `authenticated`, as policies (DELETE pelo `owner_id` em
+  `notas/`, UPDATE recusando `notas/`, acervo e INSERT como estavam); fila
+  vazia e nenhuma das 920 anotações com anexo. e2e no preview na conversa de
+  teste (registro no `docs/PLANO-anotacao-com-anexos-e-edicao.md`): quatro
+  anotações com 7 arquivos, apagadas pela tela → 7 caminhos na fila com
+  origem `anotacao` → a drenagem do laço lento das 22:26 UTC apagou os 7
+  objetos e esvaziou a fila.
 
 ## Notas do histórico
 

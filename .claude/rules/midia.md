@@ -191,7 +191,14 @@ Tabela `cb_media_library`, `src/lib/acervo/` (puro, com teste), rotas em
 (`src/lib/storage/caminho-no-chat-media.ts`) e a drenagem
 (`src/lib/storage/arquivos-a-apagar.ts`). Quem enfileira: excluir de vez da
 Lixeira de contatos (prazo ou "Excluir agora"; `supabase.md`, "APAGAR
-CONTATO"); a origem `anotacao` é do plano irmão (anexo na anotação).
+CONTATO") e o gatilho da anotação (1102, origem `anotacao`: anotação apagada
+ou anexo tirado, fora do sinal `cb.lixeira`; `anotacoes.md`).
+
+- ⚠️ **`notas/` (anexo de anotação) é subpasta com regra própria**, o par rota
+  + policy da 954: o `POST /api/cb/notes` exige o prefixo e lê tamanho e tipo
+  no bucket; ninguém troca pelo navegador; só o dono (`owner_id`) apaga. Os
+  tipos são `MIMES_DA_ANOTACAO` (`MIMES_POR_TIPO` + o `.html`), com teste
+  amarrando à lista do bucket.
 
 - ⚠️⚠️ **Só sai arquivo NOSSO**: a guarda devolve NULL para URL externa,
   `flow-media`, outra conta, `acervo/` (o acervo tem dono próprio), `..`, `%`
@@ -200,8 +207,9 @@ CONTATO"); a origem `anotacao` é do plano irmão (anexo na anotação).
   pino em TS e a conferência da 1097): mudou um, muda o outro.
 - ⚠️⚠️ **Sai só o que ninguém mais cita, conferido NA HORA**
   (`cb_arquivos_citados`): mensagens, agendadas, modelos, fotos de contato,
-  perfil e grupo, acervo, passos de automação e nós de robô (no JSON) e as
-  fotografias dos OUTROS itens da Lixeira. Escritor NOVO de URL do
+  perfil e grupo, acervo, passos de automação e nós de robô (no JSON),
+  anexos de anotação (1102) e as fotografias dos OUTROS itens da Lixeira.
+  Escritor NOVO de URL do
   `chat-media` (tabela ou coluna) entra em `cb_arquivos_citados` e no pino
   `arquivos-do-chat-media.chamadores.test.ts`, senão a drenagem apaga arquivo
   que ainda aparece numa bolha. O citado sai da fila e o arquivo fica: quem
