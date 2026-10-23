@@ -369,11 +369,10 @@ um espelho com pino lendo o SQL. Mudou um lado, muda o outro.
   Não é o recálculo canônico. Pinos em `mensagens-sem-telefone-1010.test.ts`.
 
 ### ⚠️⚠️ APAGAR CONTATO: a Lixeira (1097) e a receita de fusão
-- **O app não apaga, MOVE** (`cb_mover_contatos_para_lixeira`): a ficha e o
+- **O app não apaga, MOVE** (`cb_mover_contatos_para_lixeira`): ficha e
   fecho do CASCADE viram a fotografia de `cb_lixeira_de_contatos`, os
-  ponteiros SET NULL de fora são anotados e a ficha sai como antes;
-  restaurar reinsere e reaponta só o que ainda está nulo. Tela e B1–B6:
-  `contatos.md`.
+  ponteiros SET NULL de fora são anotados; restaurar reinsere e reaponta só
+  o que ainda está nulo. Tela e B1–B6: `contatos.md`.
 - **As listas vivem em `cb_lixeira_tratamento()`**, conferida contra o
   catálogo: `fecho` (o CASCADE: conversas e TODAS as mensagens, etiquetas,
   campos, tarefas, anotações, agendadas, Relacionados e "não é duplicata"
@@ -393,19 +392,16 @@ um espelho com pino lendo o SQL. Mudou um lado, muda o outro.
   inclusive os do upstream (`set_updated_at` de `conversations`/`deals`,
   `on_conversation_assigned`). Restaurar nunca manda nada ao cliente.
 - ⚠️ **Os ponteiros se anulam ANTES do DELETE** (`cb_lixeira_anular`):
-  deixado ao CASCADE, o Postgres anula `flow_runs` (contato, conversa e
-  última pergunta) em três passos e confere a FK da pergunta entre eles —
-  23503 (medido; o DELETE direto tem o mesmo defeito). E só onde o ponteiro
-  AINDA vale o fotografado (1099): a linha de fora não está travada, e a
-  troca de contato feita por outro pedido nesse intervalo não se apaga.
+  ao CASCADE, `flow_runs` (contato, conversa, última pergunta) se anula em
+  três passos com a FK conferida entre eles — 23503. E só onde o ponteiro
+  AINDA vale o fotografado (1099): a linha de fora não está travada.
 - **Excluir de vez** (prazo ou "Excluir agora") põe os arquivos que a
   fotografia cita na fila `cb_arquivos_a_apagar` (guarda
   `cb_caminho_no_chat_media`; sai só o que ninguém mais cita,
   `cb_arquivos_citados` — escritor novo de URL: `midia.md`).
-- ⚠️ `cb_mensagens_sem_telefone` e `cb_ligacoes` (1044) não têm `contact_id`:
-  a retida e a ligação sobrevivem ao mover. Só o "Excluir agora" com pedido
-  de exclusão apaga as ligações pelo telefone e as retidas pelos LIDs da
-  fotografia.
+- ⚠️ `cb_mensagens_sem_telefone` e `cb_ligacoes` (1044), sem `contact_id`,
+  sobrevivem ao mover; só o "Excluir agora" com pedido as apaga (ligações
+  pelo telefone, retidas pelos LIDs da fotografia).
 - ⚠️⚠️ `merge_duplicate_contacts` NÃO serve: reaponta só nove tabelas do
   upstream, APAGA as tarefas e lembretes do perdedor pelo CASCADE, roda em
   TODAS as contas e agrupa por grafia exata (não vê as duas grafias do nono
