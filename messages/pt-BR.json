@@ -1544,7 +1544,7 @@
         "contagemAgendadas": "{count, plural, one {# agendada} other {# agendadas}}",
         "restaurar": "Restaurar",
         "restaurarLote": "Restaurar o lote ({count})",
-        "restaurarLoteDica": "Restaura todas as fichas movidas junto com esta ({count} nesta lista).",
+        "restaurarLoteDica": "Restaura todas as {count} fichas movidas junto com esta, inclusive as que a busca não mostra.",
         "restaurarBloqueado": "Enquanto a outra ficha usar essa identidade, esta não pode voltar: seriam duas fichas da mesma pessoa.",
         "excluirAgora": "Excluir agora",
         "ocupada": "O telefone, o WhatsApp ou o Instagram desta ficha já é de {nome}.",

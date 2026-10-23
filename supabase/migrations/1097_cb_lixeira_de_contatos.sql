@@ -1538,12 +1538,15 @@ $$;
 -- ------------------------------------------------------------
 -- 11) Leituras da tela
 -- ------------------------------------------------------------
--- A lista (só admin, nunca a fotografia), com a identidade ocupada (B2).
+-- A lista (só admin, nunca a fotografia), com a identidade ocupada (B2) e o
+-- tamanho do LOTE inteiro — contado fora da busca: "Restaurar o lote"
+-- restaura todas as fichas do lote, inclusive as que a busca esconde, e o
+-- botão não pode dizer um número menor que o que vai voltar.
 CREATE OR REPLACE FUNCTION public.cb_lixeira_da_conta(p_busca text DEFAULT NULL)
 RETURNS TABLE (
   id uuid, account_id uuid, contact_id uuid, lote_id uuid, nome text, telefone text, email text,
   instagram_username text, wa_username text, movida_em timestamptz, movida_por_nome text,
-  vence_em timestamptz, contagens jsonb, ocupada_por uuid, ocupada_por_nome text
+  vence_em timestamptz, contagens jsonb, ocupada_por uuid, ocupada_por_nome text, lote_total integer
 )
 LANGUAGE sql
 STABLE
@@ -1552,7 +1555,9 @@ SET search_path = public
 AS $$
   SELECT x.id, x.account_id, x.contact_id, x.lote_id, x.nome, x.telefone, x.email,
          x.instagram_username, x.wa_username, x.movida_em, x.movida_por_nome,
-         x.vence_em, x.contagens, o.id, o.nome
+         x.vence_em, x.contagens, o.id, o.nome,
+         (SELECT count(*)::integer FROM cb_lixeira_de_contatos y
+           WHERE y.account_id = x.account_id AND y.lote_id = x.lote_id)
     FROM cb_lixeira_de_contatos x
     LEFT JOIN LATERAL (
       SELECT c.id, coalesce(nullif(c.name, ''), c.phone, c.instagram_username) AS nome

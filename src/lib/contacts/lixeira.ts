@@ -242,6 +242,9 @@ export interface ItemDaLixeira {
   /** B2: a identidade já é de outra ficha — restaurar está bloqueado. */
   ocupadaPor: string | null;
   ocupadaPorNome: string | null;
+  /** Fichas no LOTE inteiro (fora da busca): o que "Restaurar o lote" traz de
+   *  volta. Ausente ou ilegível vira 1 — o botão do lote some, nunca mente. */
+  loteTotal: number;
 }
 
 /** Lê UMA linha de `cb_lixeira_da_conta`. NULO = forma inesperada. */
@@ -272,6 +275,7 @@ export function lerItem(bruto: unknown): ItemDaLixeira | null {
     contagens,
     ocupadaPor: texto(o.ocupada_por),
     ocupadaPorNome: texto(o.ocupada_por_nome),
+    loteTotal: Math.max(1, inteiro(o.lote_total)),
   };
 }
 

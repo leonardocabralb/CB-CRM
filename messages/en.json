@@ -1551,7 +1551,7 @@
         "contagemAgendadas": "{count, plural, one {# scheduled} other {# scheduled}}",
         "restaurar": "Restore",
         "restaurarLote": "Restore batch ({count})",
-        "restaurarLoteDica": "Restores every record moved together with this one ({count} in this list).",
+        "restaurarLoteDica": "Restores all {count} records moved together with this one, including the ones the search hides.",
         "restaurarBloqueado": "While the other record uses this identity, this one cannot come back: there would be two records for the same person.",
         "excluirAgora": "Delete now",
         "ocupada": "This record's phone, WhatsApp or Instagram already belongs to {nome}.",

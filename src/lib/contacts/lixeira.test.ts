@@ -410,6 +410,7 @@ describe('lerItem (uma linha de cb_lixeira_da_conta)', () => {
     contagens: { contacts: 1, messages: 120, cb_tasks: '2', lixo: 'x' },
     ocupada_por: OUTRA,
     ocupada_por_nome: 'Fulana (nova)',
+    lote_total: 3,
   };
 
   it('a forma certa', () => {
@@ -428,7 +429,15 @@ describe('lerItem (uma linha de cb_lixeira_da_conta)', () => {
       contagens: { contacts: 1, messages: 120, cb_tasks: 2, lixo: 0 },
       ocupadaPor: OUTRA,
       ocupadaPorNome: 'Fulana (nova)',
+      loteTotal: 3,
     });
+  });
+
+  it('o tamanho do lote vem do banco (fora da busca); ausente ou torto vira 1 — o botão some', () => {
+    for (const lote_total of [undefined, null, 0, -2, 'x']) {
+      expect(lerItem({ ...linha, lote_total })?.loteTotal, String(lote_total)).toBe(1);
+    }
+    expect(lerItem({ ...linha, lote_total: '25' })?.loteTotal).toBe(25);
   });
 
   it('forma torta → nulo', () => {

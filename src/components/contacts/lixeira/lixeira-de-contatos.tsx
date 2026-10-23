@@ -98,8 +98,6 @@ function ConteudoDaLixeira() {
   const [excluindo, setExcluindo] = useState<ItemDaLixeira | null>(null);
 
   const itens = lista.itens ?? [];
-  const fichasPorLote = new Map<string, number>();
-  for (const i of itens) fichasPorLote.set(i.loteId, (fichasPorLote.get(i.loteId) ?? 0) + 1);
   const nomeDoItem = (itemId: string) => {
     const item = itens.find((i) => i.id === itemId);
     return item ? nomeDoContato(contatoDoItem(item), t('semNome')) : null;
@@ -174,7 +172,7 @@ function ConteudoDaLixeira() {
                 key={item.id}
                 item={item}
                 agora={agora}
-                fichasNoLote={fichasPorLote.get(item.loteId) ?? 1}
+                fichasNoLote={item.loteTotal}
                 ocupado={emAcao !== null}
                 emAcao={emAcao === item.id || emAcao === item.loteId}
                 aoRestaurar={() => void restaurarItem(item)}
