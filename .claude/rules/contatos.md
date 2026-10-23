@@ -161,7 +161,8 @@ Decisões do operador (22/10/2026, B1–B6): `docs/PLANO-lixeira-de-contatos.md`
   avisa no sino), a espera não recua. A janela da Meta SÓ AVANÇA: a maior
   por chave entre a de hoje (lida antes) e a da fotografia. Fica sempre a
   ficha aberta (sem "Trocar"); com o mesmo telefone, o BSUID da que volta
-  passa para a que fica.
+  passa para a que fica quando ela não tem BSUID (dois BSUIDs diferentes:
+  a união recusa, `bsuid_diferentes`).
 - ⚠️⚠️ **Nunca**: a reserva sobrar (sai da ficha; livro e trilha levam a
   identidade original; a função confere — `cb_bloqueios_da_uniao` a ignora);
   anular identidade de uma TERCEIRA ficha (`identidade_ocupada`); botão sem

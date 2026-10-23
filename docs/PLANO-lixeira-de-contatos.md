@@ -166,7 +166,8 @@
 - **Decisões confirmadas pelo operador** (23/10/2026, depois da entrega):
   a conversa que volta entra como histórico, com as não lidas zeradas; a
   ficha aberta é sempre a que fica, sem "Trocar"; o BSUID da ficha que volta
-  passa para a que fica quando o telefone é o mesmo.
+  passa para a que fica quando o telefone é o mesmo e ela não tem BSUID
+  (com dois BSUIDs diferentes a união recusa, `bsuid_diferentes`).
 - **Provado** no Postgres 16 descartável (telefone, BSUID, Instagram, a
   reserva nos três formatos, terceira ficha, portas, trava, prévia sem
   rastro, aplicação dupla, banco vazio). **Revisão independente:** 0 P0/P1;
