@@ -178,7 +178,7 @@ export function CartaoDeNota({
                 minute: '2-digit',
               })}
             </span>
-            <MarcaDeEditada editadaEm={nota.editada_em} />
+            <MarcaDeEditada editadaEm={nota.editada_em} criadaEm={nota.created_at} />
           </p>
         </div>
         <span className="flex shrink-0 items-center gap-1.5">

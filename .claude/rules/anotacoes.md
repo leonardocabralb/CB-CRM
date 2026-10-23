@@ -230,10 +230,14 @@ modo `editando` do `InternalNoteBox` e `<MarcaDeEditada>`. Pinos:
   lista — senão a volta (A → B → A) ou a recarga boa depois de uma que falhou
   REABRIAM a caixa sozinhas, sem o rascunho. Só com a lista RESPONDIDA
   (`pronta`) a saída é "apagada" e avisa; busca que falhou não é "apagada".
-- ⚠️⚠️ **Marca "editada" ao lado da hora, com a hora da edição no `title`,
-  nos CINCO lugares** (fio, abas Notas e do grupo, faixa fixada, citação,
-  ficha de `/contatos` — esta só mostra, A6). O pino
-  `anexos-da-nota.chamadores.test.ts` cobra `<MarcaDeEditada>` de quem
+- ⚠️⚠️ **Marca "editada <hora>" ao lado da hora, nos CINCO lugares** (fio,
+  abas Notas e do grupo, faixa fixada, citação, ficha de `/contatos` — esta
+  só mostra, A6). A hora da edição fica VISÍVEL (decisão do operador,
+  23/10/2026: no celular não há `title`): só a hora no mesmo dia da anotação,
+  noutro dia com dia e mês (`quandoFoiEditada`, no fuso de quem lê; por isso
+  a marca recebe `criadaEm`); a data completa vai no `title`. Na faixa
+  fixada a marca fica FORA do corte (`shrink-0`; quem encolhe é o autor). O
+  pino `anexos-da-nota.chamadores.test.ts` cobra `<MarcaDeEditada>` de quem
   desenha o texto da nota: um sexto lugar reprova até montá-la.
 - **Tempo real**: o UPDATE troca a linha no hook (para quem não editou
   também); a citação (`notasPorId`) e a faixa fixada leem dessa lista.

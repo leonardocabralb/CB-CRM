@@ -48,3 +48,48 @@ export function destinoDaEdicao(
   }
   return { editandoId: null, soltar: true, apagada: naConversa && pronta ? edicao.id : null };
 }
+
+/** Locale e fuso: os do NAVEGADOR (`undefined`) na tela; os testes os fixam. */
+export interface OndeSeLe {
+  locale?: string;
+  timeZone?: string;
+}
+
+/**
+ * A hora da EDIÇÃO, VISÍVEL ao lado da marca "editada" (decisão do operador,
+ * 23/10/2026: a A4 é a marca COM a hora, e no celular não há `title`). Só a
+ * hora quando a edição foi no mesmo dia — no fuso de quem lê — em que a
+ * anotação foi escrita (esse dia já está ao lado); noutro dia, dia e mês;
+ * noutro ano (ou sem a data de criação), também o ano. `null` = instante
+ * ilegível.
+ */
+export function quandoFoiEditada(
+  editadaEm: string,
+  criadaEm: string | null | undefined,
+  { locale, timeZone }: OndeSeLe = {}
+): string | null {
+  const editada = new Date(editadaEm);
+  if (Number.isNaN(editada.getTime())) return null;
+  const criada = criadaEm ? new Date(criadaEm) : null;
+  // O dia no fuso de quem lê, pelas PARTES (nunca pelo texto formatado).
+  const dia = (d: Date) => {
+    const partes = new Intl.DateTimeFormat(locale, {
+      timeZone,
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+    }).formatToParts(d);
+    const parte = (tipo: string) => partes.find((p) => p.type === tipo)?.value ?? '';
+    return { ano: parte('year'), dia: `${parte('year')}-${parte('month')}-${parte('day')}` };
+  };
+  const daEdicao = dia(editada);
+  const daCriacao = criada && !Number.isNaN(criada.getTime()) ? dia(criada) : null;
+  const hora = { hour: '2-digit', minute: '2-digit', timeZone } as const;
+  if (daCriacao?.dia === daEdicao.dia) return editada.toLocaleTimeString(locale, hora);
+  return editada.toLocaleString(locale, {
+    day: '2-digit',
+    month: '2-digit',
+    ...(daCriacao?.ano === daEdicao.ano ? {} : { year: 'numeric' }),
+    ...hora,
+  });
+}

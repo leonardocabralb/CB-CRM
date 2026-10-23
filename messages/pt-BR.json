@@ -1117,7 +1117,7 @@
       "baixarAnexo": "Baixar {nome}",
       "ampliarAnexo": "Ampliar {nome}",
       "edit": "Editar",
-      "editada": "editada",
+      "editada": "editada {quando}",
       "editadaEm": "Editada em {quando}"
     },
     "scheduled": {

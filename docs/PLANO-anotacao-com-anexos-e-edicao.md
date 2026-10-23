@@ -600,8 +600,9 @@ comentário de `ConversationNote`, os dois dicionários, a frase do
   ficam na memória e somem com ela (nada subiu antes do Salvar);
 - o lápis vem antes do alfinete (no cartão, depois de "Ver na conversa"); no
   fio, só para quem anota (`podeAnotar`) e é o autor;
-- a marca é "editada" em itálico ao lado da hora, com "Editada em <data e
-  hora>" no `title` e no texto para leitor de tela;
+- a marca é "editada <hora da edição>" em itálico ao lado da hora (a hora
+  VISÍVEL foi decisão do operador depois da revisão; ver "A hora da edição
+  visível", abaixo), com "Editada em <data e hora>" no `title`;
 - frases próprias da edição: o título "Editando a anotação interna:", o botão
   "Salvar alterações" e os avisos de apagada, editada noutro lugar, sem
   permissão e "não salva" com a caixa fora da tela; os de "salva" e "talvez
@@ -674,8 +675,8 @@ no preview da Fase 3", abaixo).
 - **P3 — a lista de @menções abria para cima no fio**, fora do alcance com a
   nota no alto da tela: a caixa de edição do fio passa `listaParaBaixo`
   (dentro do contêiner que rola, para baixo a rolagem a alcança).
-- Não mexido: a marca "editada" com a hora só no `title` vai ao operador
-  como pergunta.
+- Não mexido aqui: a marca "editada" com a hora só no `title` foi ao
+  operador como pergunta (decidido: "A hora da edição visível", abaixo).
 
 ### e2e no preview da Fase 3 (23/10/2026)
 
@@ -712,3 +713,21 @@ autorizada pelo operador:
 Não coberto: a menção acrescentada (avisaria um colega de verdade; os testes
 da rota cobrem); a marca na tela de outro usuário; o arrasto e o teclado no
 iPhone (só no aparelho).
+
+### A hora da edição visível (decisão do operador, 23/10/2026)
+
+"Pode mostrar a hora da edição ao lado da marca 'editada' (para aparecer
+também no celular)". A marca passa a ser "editada 20:31": só a hora quando a
+edição foi no mesmo dia em que a anotação foi escrita (no fuso de quem lê);
+noutro dia, "editada 24/10, 09:15"; noutro ano, com o ano
+(`quandoFoiEditada` em `src/lib/notes/edicao.ts`, com teste em fuso fixo).
+A data completa fica no `title`. A marca recebe `criadaEm` nos cinco lugares.
+Na faixa fixada, a primeira linha corta com reticências, e a marca no fim
+dela era a primeira a sumir (no fio com o painel aberto já cortava o
+"editada" sozinho): agora ela fica FORA do corte, e quem encolhe é o autor.
+
+e2e no preview (anotação só de texto, editada e fixada, com uma resposta):
+"editada 20:31" inteira no fio, na faixa fixada, na citação, na aba Notas e
+na ficha de `/contatos`, a 1440×900 e a 375 px (na faixa, o nome do autor
+com reticências e "EDITADA 20:31" inteiro); as duas anotações apagadas
+depois, sem arquivo na fila.

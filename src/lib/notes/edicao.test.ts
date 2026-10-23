@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { destinoDaEdicao, idDoAvisoDeApagada } from './edicao';
+import { destinoDaEdicao, idDoAvisoDeApagada, quandoFoiEditada } from './edicao';
 
 // ============================================================
 // A edição da anotação na tela (Fase 3): quando ela continua, quando acaba e
@@ -61,5 +61,35 @@ describe('idDoAvisoDeApagada', () => {
   it('um id por nota — o hook e a caixa juntam o mesmo aviso', () => {
     expect(idDoAvisoDeApagada(NOTA)).toBe(idDoAvisoDeApagada(NOTA));
     expect(idDoAvisoDeApagada(NOTA)).not.toBe(idDoAvisoDeApagada(OUTRA));
+  });
+});
+
+describe('quandoFoiEditada (a hora visível ao lado da marca "editada")', () => {
+  // Fuso e locale fixos: a tela usa os do navegador, e o teste não pode
+  // depender da máquina (o CI roda em UTC).
+  const BRASIL = { locale: 'pt-BR', timeZone: 'America/Sao_Paulo' };
+
+  it('editada no mesmo dia em que foi escrita: só a hora', () => {
+    expect(quandoFoiEditada('2026-10-23T23:02:00Z', '2026-10-23T22:59:00Z', BRASIL)).toBe('20:02');
+  });
+
+  it('o "mesmo dia" é o do fuso de quem lê, não o do UTC', () => {
+    // 20:30 e 22:00 em Brasília (23/10): no UTC já seriam dias diferentes.
+    expect(quandoFoiEditada('2026-10-24T01:00:00Z', '2026-10-23T23:30:00Z', BRASIL)).toBe('22:00');
+    // 21:30 de 23/10 e 00:10 de 24/10 em Brasília: dias diferentes, o mesmo dia no UTC.
+    expect(quandoFoiEditada('2026-10-24T03:10:00Z', '2026-10-24T00:30:00Z', BRASIL)).toBe('24/10, 00:10');
+  });
+
+  it('noutro dia do mesmo ano: dia, mês e hora', () => {
+    expect(quandoFoiEditada('2026-10-24T12:15:00Z', '2026-10-23T22:59:00Z', BRASIL)).toBe('24/10, 09:15');
+  });
+
+  it('noutro ano, ou sem a data de criação: com o ano', () => {
+    expect(quandoFoiEditada('2027-01-05T13:00:00Z', '2026-12-30T13:00:00Z', BRASIL)).toBe('05/01/2027, 10:00');
+    expect(quandoFoiEditada('2026-10-24T12:15:00Z', null, BRASIL)).toBe('24/10/2026, 09:15');
+  });
+
+  it('instante ilegível: nada (a marca não aparece)', () => {
+    expect(quandoFoiEditada('não é data', '2026-10-23T22:59:00Z', BRASIL)).toBeNull();
   });
 });

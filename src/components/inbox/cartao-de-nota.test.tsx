@@ -133,16 +133,20 @@ function desenharNota(nota: ConversationNote, onEditar?: () => void) {
 }
 
 describe('CartaoDeNota — edição', () => {
-  it('editada: a marca aparece ao lado da data, com a hora da edição no title', () => {
+  it('editada: a marca mostra a hora da edição AO LADO (no celular não há title), e a data completa no title', () => {
     const html = desenharNota({ ...NOTA, editada_em: '2026-09-30T13:05:00Z' });
-    expect(html).toContain(`>${ptBR.Inbox.note.editada}<`);
-    const titulo = html.match(/<span title="([^"]*)" class="italic">/);
-    expect(titulo, 'a marca precisa do title com a hora da edição').not.toBeNull();
-    expect(titulo![1].startsWith(ptBR.Inbox.note.editadaEm.replace('{quando}', ''))).toBe(true);
+    const marca = html.match(/<span title="([^"]*)" class="italic">([^<]*)<\/span>/);
+    expect(marca, 'a marca, com o title').not.toBeNull();
+    // Locale e fuso são os do runtime (na tela, os do navegador): o teste
+    // cobra a FORMA — "editada <quando>" com uma hora —, não o texto exato,
+    // que está em `quandoFoiEditada` (edicao.test.ts, com fuso fixo).
+    expect(marca![2].startsWith(ptBR.Inbox.note.editada.replace('{quando}', ''))).toBe(true);
+    expect(marca![2]).toMatch(/\d{1,2}:\d{2}/);
+    expect(marca![1].startsWith(ptBR.Inbox.note.editadaEm.replace('{quando}', ''))).toBe(true);
   });
 
   it('nunca editada: sem marca', () => {
-    expect(desenharNota(NOTA)).not.toContain(`>${ptBR.Inbox.note.editada}<`);
+    expect(desenharNota(NOTA)).not.toContain(ptBR.Inbox.note.editadaEm.replace('{quando}', ''));
   });
 
   it('o lápis só existe com onEditar (quem monta o passa só ao autor)', () => {

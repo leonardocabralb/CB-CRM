@@ -91,7 +91,11 @@ export function NoteLine({
             <span className="text-[10px] opacity-70">
               {format(new Date(nota.created_at), 'HH:mm')}
             </span>
-            <MarcaDeEditada editadaEm={nota.editada_em} className="text-[10px] opacity-70" />
+            <MarcaDeEditada
+              editadaEm={nota.editada_em}
+              criadaEm={nota.created_at}
+              className="text-[10px] opacity-70"
+            />
             {/* Sem hover-para-aparecer, igual ao painel: no toque do celular
                 não existe hover, e o botão simplesmente não existiria. */}
             {onEditar && (

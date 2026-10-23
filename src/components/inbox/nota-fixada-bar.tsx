@@ -76,15 +76,19 @@ export function NotaFixadaBar({
     <div className="flex shrink-0 items-start gap-2 border-b border-amber-300/60 bg-amber-50 px-4 py-2 text-amber-950 dark:border-amber-700/50 dark:bg-amber-950/40 dark:text-amber-50">
       <Pin className="mt-1 h-3.5 w-3.5 shrink-0 opacity-70" />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[10px] font-semibold tracking-wider uppercase opacity-70">
-          {t('pinnedBanner')} · {nota.autor_nome || t('unknownAuthor')} ·{' '}
-          {quando}
-          {/* A marca "editada" (Fase 3), com a hora da edição no `title`. */}
+        <p className="flex min-w-0 text-[10px] font-semibold tracking-wider uppercase opacity-70">
+          <span className="min-w-0 truncate">
+            {t('pinnedBanner')} · {nota.autor_nome || t('unknownAuthor')} ·{' '}
+            {quando}
+          </span>
+          {/* A marca "editada" (Fase 3), com a hora da edição, FORA do corte:
+              no fim da linha cortada ela era a primeira a sumir (o fio com o
+              painel aberto já cortava o "editada" sozinho). Encolhe o resto. */}
           {nota.editada_em ? (
-            <>
+            <span className="shrink-0 whitespace-pre">
               {' · '}
-              <MarcaDeEditada editadaEm={nota.editada_em} />
-            </>
+              <MarcaDeEditada editadaEm={nota.editada_em} criadaEm={nota.created_at} />
+            </span>
           ) : null}
         </p>
         {/* Anotação só de anexos (1102) tem o texto vazio: sem parágrafo. */}

@@ -1065,8 +1065,12 @@ export function ContactDetailView({
                             minute: '2-digit',
                           })}
                           {/* A marca "editada" (Fase 3; A6: a ficha mostra,
-                              não edita), com a hora da edição no `title`. */}
-                          <MarcaDeEditada editadaEm={note.editada_em} className="ml-1.5" />
+                              não edita), com a hora da edição ao lado. */}
+                          <MarcaDeEditada
+                            editadaEm={note.editada_em}
+                            criadaEm={note.created_at}
+                            className="ml-1.5"
+                          />
                         </p>
                       </div>
                     ))

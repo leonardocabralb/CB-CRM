@@ -48,6 +48,7 @@ export function CitacaoDaNota({
         {original && (
           <MarcaDeEditada
             editadaEm={original.editada_em}
+            criadaEm={original.created_at}
             className="ml-1.5 font-normal opacity-70"
           />
         )}
