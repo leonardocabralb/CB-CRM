@@ -115,3 +115,39 @@ describe('painel do contato — aba Notas', () => {
     expect(aba).toContain('key={notaFixada.id}');
   });
 });
+
+// ============================================================
+// Fase 3 — a marca "editada" e o lápis (A2, A4 do operador).
+// ============================================================
+
+function desenharNota(nota: ConversationNote, onEditar?: () => void) {
+  return renderToStaticMarkup(
+    <NextIntlClientProvider
+      locale="pt-BR"
+      messages={ptBR as unknown as AbstractIntlMessages}
+      timeZone="America/Sao_Paulo"
+    >
+      <CartaoDeNota nota={nota} podeApagar onApagar={() => {}} onEditar={onEditar} />
+    </NextIntlClientProvider>
+  );
+}
+
+describe('CartaoDeNota — edição', () => {
+  it('editada: a marca aparece ao lado da data, com a hora da edição no title', () => {
+    const html = desenharNota({ ...NOTA, editada_em: '2026-09-30T13:05:00Z' });
+    expect(html).toContain(`>${ptBR.Inbox.note.editada}<`);
+    const titulo = html.match(/<span title="([^"]*)" class="italic">/);
+    expect(titulo, 'a marca precisa do title com a hora da edição').not.toBeNull();
+    expect(titulo![1].startsWith(ptBR.Inbox.note.editadaEm.replace('{quando}', ''))).toBe(true);
+  });
+
+  it('nunca editada: sem marca', () => {
+    expect(desenharNota(NOTA)).not.toContain(`>${ptBR.Inbox.note.editada}<`);
+  });
+
+  it('o lápis só existe com onEditar (quem monta o passa só ao autor)', () => {
+    const rotulo = `aria-label="${ptBR.Inbox.note.edit}"`;
+    expect(desenharNota(NOTA)).not.toContain(rotulo);
+    expect(desenharNota(NOTA, () => {})).toContain(rotulo);
+  });
+});

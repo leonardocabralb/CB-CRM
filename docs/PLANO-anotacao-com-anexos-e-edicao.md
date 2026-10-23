@@ -45,7 +45,7 @@
 | **0** | Estudo, riscos conferidos no código e na produção, decisões | ✅ 22/10/2026 (este arquivo) | — | — |
 | **1** | Banco e servidor: colunas, regras, gatilho na fila de arquivos a apagar (a fila e a drenagem já existem: Lixeira), regras do armazenamento para `notas/`, POST com anexos | ✅ código e migration na branch `feat/anotacao-com-anexos` (23/10/2026); migration provada no descartável, **NÃO aplicada**; a leitura do Storage (`info()`) medida pelo operador | `1102` | #434 |
 | **2** | Tela: anexar, gravar, colar e arrastar na caixa; mostrar nos cinco lugares; aviso no sino | ✅ código na mesma branch (23/10/2026); **falta o preview** (1440×900 e 375 px) e o iPhone | — | #434 |
-| **3** | Edição: editar no lugar, marca "editada", menção acrescentada | ⏳ (outro PR; a coluna `editada_em` já entrou na 1102) | a da Fase 1 | — |
+| **3** | Edição: editar no lugar, marca "editada", menção acrescentada | ✅ código na branch `feat/anotacao-editavel` (23/10/2026, a partir de `a268963d`), sem push; **falta o preview** (1440×900, ~305 e 375 px) e o iPhone | a da Fase 1 (`editada_em`) | — |
 | **4** | API v1 (`GET /notes` com anexos e `editada_em`) e doc pública | ✅ na mesma branch (23/10/2026) | — | #434 |
 
 PRs: Fases 1 e 2 juntas (a 1 sozinha não tem tela para provar no preview); a
@@ -230,8 +230,8 @@ Número = maior do `main` + 1 NA HORA (`ls supabase/migrations`,
 - Tetos: `TETO_DO_ANEXO` (A7) e `MAX_ANEXOS_DA_NOTA` = `MAX_ANEXOS`;
   `SUBPASTA_DAS_NOTAS = 'notas'`.
 - `lerAnexosDoCorpo` (forma, prefixo `account-<conta>/notas/`, sem
-  repetição), `mantidosSaoDaNota` (Fase 3, ainda não escrita: na edição, os
-  que ficam são os que a nota já tinha) e `resumoDosAnexos` ("🎤 Áudio", "📎 3 anexos") para o aviso, a
+  repetição), `mantidosSaoDaNota` (Fase 3: na edição, os
+  que ficam são os que a nota já tinha, gravados como a nota os guarda) e `resumoDosAnexos` ("🎤 Áudio", "📎 3 anexos") para o aviso, a
   citação e a faixa fixada.
 
 ### Rotas
@@ -317,8 +317,9 @@ Número = maior do `main` + 1 NA HORA (`ls supabase/migrations`,
   envia ao cliente.
 - **Marca "editada"** ao lado da hora, com a hora da edição no `title`, nos
   cinco lugares (A4).
-- **Tempo real sem mudar o hook:** ele já troca a linha no UPDATE; a citação
-  e a faixa fixada leem a nota atual.
+- **Tempo real:** o hook já troca a linha no UPDATE; a citação e a faixa
+  fixada leem a nota atual. (Na implementação o hook ganhou só `substituir`:
+  a resposta do `PUT` troca a linha na hora, como o `acrescentar` do POST.)
 - **Menção acrescentada** → `note_mention` só para quem entrou.
 - Os comentários que afirmam "a nota não é editável" (918,
   `[id]/route.ts`, `use-conversation-notes.ts`, `anotacoes.md`) mudam junto.
@@ -518,3 +519,75 @@ bucket) — se faltar, a 1102 reprova no CI com a mensagem do Postgres.
 - **Textos**: a recusa de tipo diz os formatos aceitos de verdade (áudio OGG,
   MP3, AAC ou AMR; M4A, WAV e WebM ficam de fora), com teste que amarra a
   frase à régua.
+
+## Fase 3 — registro (23/10/2026)
+
+**Objetivo:** editar a anotação NO LUGAR (texto e anexos), só pelo autor, com
+a marca "editada" nos cinco lugares e a menção acrescentada avisando só quem
+entrou. Branch `feat/anotacao-editavel`, a partir de `a268963d` (a ponta do
+#434), sem push. Sem migration: `editada_em` entrou na 1102.
+
+**Arquivos.** Servidor: o `PUT` em `src/app/api/cb/notes/[id]/route.ts` (e o
+`PATCH` de fixar passou a responder 500, não 403, quando a leitura do perfil
+falha) e `mantidosSaoDaNota` em `src/lib/notes/anexos.ts`. Navegador: o modo
+`editando` do `internal-note-box.tsx`, `src/hooks/use-edicao-de-nota.ts`, o
+`substituir` do `use-conversation-notes.ts`, `marca-de-editada.tsx`, o lápis
+em `note-line.tsx` e `cartao-de-nota.tsx`, a marca na faixa fixada, na
+citação e na ficha de `/contatos`, os três que trocam a nota pela caixa
+(`message-thread.tsx`, `painel-do-contato.tsx`, `group-sidebar.tsx`), o
+comentário de `ConversationNote`, os dois dicionários, a frase do
+`editada_em` em `docs/public-api.md` (o contrato da API não mudou),
+`anotacoes.md` e `docs/MERGE-UPSTREAM.md`. `poderes.ts` não mudou: quem anota
+(`canWriteNotes`, `viewer` para cima) edita a PRÓPRIA, e as telas já são
+`viewer` em `ESCRITA_DA_TELA`.
+
+**Decisões tomadas na implementação (conferir com o operador):**
+- a cerca de concorrência é o próprio `editada_em` (a tabela não tem
+  `updated_at`): a caixa manda a versão de quando ABRIU e o banco compara, na
+  leitura e no UPDATE. Editada noutro lugar = 409 `NOTE_CHANGED`: nada se
+  sobrescreve e o rascunho fica na caixa ("cancele e edite de novo"); não há
+  mescla;
+- apagada antes da leitura OU entre a leitura e o UPDATE = 409 `NOTE_GONE`
+  (as duas medidas pela mesma releitura); a caixa diz que foi apagada;
+- o corpo é `{ texto, mencionados, mantidos, novos, versao }`: `mantidos` são
+  só os caminhos (o resto vem da nota), `novos` têm a forma dos `anexos` do
+  POST;
+- "nada mudou" compara o texto aparado e a lista de caminhos NA ORDEM: sem
+  UPDATE, `editada_em` intacta, `mudou: false`;
+- as menções gravadas FICAM quando não há conferência: leitura dos membros
+  que falhou na rota, ou a caixa que ainda não tinha (ou não conseguiu) a
+  lista de membros — ela então não manda `mencionados`. Sem isso, quem já
+  estava mencionado "entraria" de novo na edição seguinte;
+- a nota em edição que some da lista RESPONDIDA (apagada por outra pessoa)
+  fecha a caixa com o aviso "foi apagada"; os anexos novos ainda não salvos
+  ficam na memória e somem com ela (nada subiu antes do Salvar);
+- o lápis vem antes do alfinete (no cartão, depois de "Ver na conversa"); no
+  fio, só para quem anota (`podeAnotar`) e é o autor;
+- a marca é "editada" em itálico ao lado da hora, com "Editada em <data e
+  hora>" no `title` e no texto para leitor de tela;
+- frases próprias da edição: o título "Editando a anotação interna:", o botão
+  "Salvar alterações" e os avisos de apagada, editada noutro lugar, sem
+  permissão e "não salva" com a caixa fora da tela; os de "salva" e "talvez
+  salva" fora da tela são os da anotação nova.
+
+**Testes (Node 22):** `[id]/route.test.ts` novo (32 casos do `PUT` e o
+erro de perfil do `PATCH`: autor × não autor × admin × sem autor, mantido de
+outra nota, novo ausente/grande/tipo recusado/armazenamento fora, nada
+mudou, 409 nas duas janelas, a versão que vai ao banco como veio, erros de
+leitura = 500, menção só para quem entrou, `mencionados` ausente), os de
+`mantidosSaoDaNota` em `anexos.test.ts`, a marca e o lápis em
+`cartao-de-nota.test.tsx`, e o default-deny estendido para a marca.
+
+**Limites conhecidos (novos):**
+- na aba Notas, a nota FIXADA ou desafixada por outra pessoa no meio da
+  edição muda de lugar (do cartão preso para a lista, ou o contrário): a
+  caixa remonta e o rascunho se perde, sem aviso;
+- a recarga das anotações que FALHA (voltar ao app sem rede) esvazia a
+  lista: a caixa some com o rascunho, sem o aviso de "apagada" (falha não é
+  apagada), e a nota volta na recarga seguinte como está.
+
+**Fica para depois:** o e2e no preview, na conversa de teste autorizada
+(editar texto e anexos; tirar um anexo e ver a fila esvaziar depois do ciclo;
+a marca na tela do colega; a menção acrescentada avisando só o novo; editar
+com a nota apagada noutra sessão; dois cliques em Salvar; ~305 e 375 px) e o
+iPhone (a caixa no lugar com o teclado aberto).

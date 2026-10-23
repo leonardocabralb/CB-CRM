@@ -244,6 +244,43 @@ export function lerAnexosDaNota(valor: unknown): AnexoDaNota[] {
   return saida;
 }
 
+export type LeituraDosMantidos =
+  | { ok: true; anexos: AnexoDaNota[] }
+  | {
+      ok: false;
+      erro: 'ATTACHMENTS_INVALID' | 'ATTACHMENT_REPEATED' | 'ATTACHMENT_NOT_IN_NOTE';
+      /** O caminho recusado, quando há um (a rota o devolve à caixa). */
+      caminho?: string;
+    };
+
+/**
+ * Fase 3 (EDIÇÃO): os anexos que FICAM, pedidos pelo caminho. Têm de ser os
+ * que a nota JÁ tem, e o que se grava deles é o que a NOTA guarda (nome, tipo
+ * e tamanho lidos do armazenamento quando entraram) — nunca o corpo. Sem
+ * isso, "manter" seria a porta para pôr na anotação um arquivo que não passou
+ * pela conferência do armazenamento. Ausente ou nulo = nenhum fica; sem
+ * repetição; a ordem é a pedida (a caixa manda a da nota, menos os tirados).
+ */
+export function mantidosSaoDaNota(
+  pedidos: unknown,
+  daNota: unknown
+): LeituraDosMantidos {
+  if (pedidos === undefined || pedidos === null) return { ok: true, anexos: [] };
+  if (!Array.isArray(pedidos)) return { ok: false, erro: 'ATTACHMENTS_INVALID' };
+  const atuais = new Map(lerAnexosDaNota(daNota).map((a) => [a.caminho, a]));
+  const vistos = new Set<string>();
+  const anexos: AnexoDaNota[] = [];
+  for (const caminho of pedidos) {
+    if (typeof caminho !== 'string') return { ok: false, erro: 'ATTACHMENTS_INVALID' };
+    if (vistos.has(caminho)) return { ok: false, erro: 'ATTACHMENT_REPEATED', caminho };
+    vistos.add(caminho);
+    const atual = atuais.get(caminho);
+    if (!atual) return { ok: false, erro: 'ATTACHMENT_NOT_IN_NOTE', caminho };
+    anexos.push(atual);
+  }
+  return { ok: true, anexos };
+}
+
 /**
  * A URL pública do arquivo, DERIVADA do caminho — na forma exata de
  * `getPublicUrl` do storage-js (`encodeURI` sobre

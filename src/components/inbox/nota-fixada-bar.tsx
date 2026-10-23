@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 
 import { ResumoDosAnexos } from '@/components/inbox/anexos-da-nota';
+import { MarcaDeEditada } from '@/components/inbox/marca-de-editada';
 import { TextoComLinks } from '@/components/inbox/texto-com-links';
 import { cn } from '@/lib/utils';
 import type { ConversationNote } from '@/types';
@@ -78,6 +79,13 @@ export function NotaFixadaBar({
         <p className="truncate text-[10px] font-semibold tracking-wider uppercase opacity-70">
           {t('pinnedBanner')} · {nota.autor_nome || t('unknownAuthor')} ·{' '}
           {quando}
+          {/* A marca "editada" (Fase 3), com a hora da edição no `title`. */}
+          {nota.editada_em ? (
+            <>
+              {' · '}
+              <MarcaDeEditada editadaEm={nota.editada_em} />
+            </>
+          ) : null}
         </p>
         {/* Anotação só de anexos (1102) tem o texto vazio: sem parágrafo. */}
         {nota.texto.trim() && (

@@ -41,6 +41,7 @@ import { AbaCobrancas } from '@/components/inbox/painel/aba-cobrancas';
 import { TextoComLinks } from '@/components/inbox/texto-com-links';
 import { CitacaoDaNota } from '@/components/inbox/citacao-da-nota';
 import { AnexosDaNota } from '@/components/inbox/anexos-da-nota';
+import { MarcaDeEditada } from '@/components/inbox/marca-de-editada';
 import { useCobrancasDoContato } from '@/hooks/use-cobrancas-do-contato';
 import { ContatosRelacionados } from '@/components/contacts/contatos-relacionados';
 import { useContatosRelacionados } from '@/hooks/use-contatos-relacionados';
@@ -1063,6 +1064,9 @@ export function ContactDetailView({
                             hour: '2-digit',
                             minute: '2-digit',
                           })}
+                          {/* A marca "editada" (Fase 3; A6: a ficha mostra,
+                              não edita), com a hora da edição no `title`. */}
+                          <MarcaDeEditada editadaEm={note.editada_em} className="ml-1.5" />
                         </p>
                       </div>
                     ))

@@ -449,6 +449,12 @@
       "noteSavedAfterLeaving": "A anotação foi salva na conversa em que foi escrita.",
       "noteNotSavedAfterLeaving": "A anotação não foi salva: a caixa foi fechada antes de terminar, e o rascunho foi descartado. Escreva de novo na conversa.",
       "noteMaybeSavedAfterLeaving": "Não deu para confirmar se a anotação foi salva (a caixa foi fechada antes da resposta). Confira na conversa.",
+      "noteEditTitle": "Editando a anotação interna:",
+      "saveEdit": "Salvar alterações",
+      "noteEditGone": "A anotação que você editava foi apagada.",
+      "noteEditChanged": "Esta anotação foi editada em outro lugar enquanto você editava. Cancele e edite de novo — nada foi sobrescrito.",
+      "noteEditForbidden": "Só quem escreveu a anotação pode editá-la.",
+      "noteEditNotSavedAfterLeaving": "A edição não foi salva: a caixa foi fechada antes de terminar. Edite de novo na conversa.",
       "fromLibrary": "Do acervo",
       "acervoError": "Não foi possível preparar o arquivo do acervo.",
       "solteParaAnexar": "Solte aqui para anexar",
@@ -1108,7 +1114,10 @@
       "resumoVarios": "📎 {n} anexos",
       "abrirAnexo": "Abrir {nome}",
       "baixarAnexo": "Baixar {nome}",
-      "ampliarAnexo": "Ampliar {nome}"
+      "ampliarAnexo": "Ampliar {nome}",
+      "edit": "Editar",
+      "editada": "editada",
+      "editadaEm": "Editada em {quando}"
     },
     "scheduled": {
       "sectionTitle": "Agendadas",

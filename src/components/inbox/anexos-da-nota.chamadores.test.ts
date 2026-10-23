@@ -5,16 +5,19 @@ import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 // ============================================================
-// Quem DESENHA o texto da anotação desenha os anexos — DEFAULT-DENY (1102).
+// Quem DESENHA o texto da anotação desenha os anexos E a marca "editada" —
+// DEFAULT-DENY (1102 e a Fase 3).
 //
 // Desde a 1102 a anotação pode ser SÓ de anexos (texto vazio). Uma tela que
 // desenha o texto e esquece os anexos mostra a anotação em branco — um áudio
-// para o colega que ninguém ouve, sem erro nenhum. Todo arquivo de `src/` que
-// usa o tipo da anotação (`ConversationNote`) e LÊ um `.texto` monta também
-// `<AnexosDaNota>` (a anotação inteira) ou `<ResumoDosAnexos>` (onde ela
-// aparece encolhida: a faixa da fixada e a citação). Arquivo novo assim
-// reprova até montar um dos dois — ou entrar em SEM_ANEXOS com o motivo e as
-// leituras EXATAS que ele faz (uma leitura nova no mesmo arquivo reprova).
+// para o colega que ninguém ouve, sem erro nenhum. E desde a Fase 3 ela se
+// EDITA: a tela que esquece a `<MarcaDeEditada>` mostra o texto reescrito como
+// se fosse o original (A4). Todo arquivo de `src/` que usa o tipo da anotação
+// (`ConversationNote`) e LÊ um `.texto` monta `<AnexosDaNota>` (a anotação
+// inteira) ou `<ResumoDosAnexos>` (onde ela aparece encolhida: a faixa da
+// fixada e a citação), e a `<MarcaDeEditada>`. Arquivo novo assim reprova até
+// montar os dois — ou entrar em SEM_ANEXOS com o motivo e as leituras EXATAS
+// que ele faz (uma leitura nova no mesmo arquivo reprova).
 //
 // O detector lê a ÁRVORE do TypeScript, não o nome da variável: pega
 // `n.texto`, `anotacao.texto`, `fixada.texto`, `nota!.texto`, `nota?.texto`,
@@ -81,6 +84,7 @@ function usaANota(rel: string): boolean {
 }
 
 const DESENHA_OS_ANEXOS = /<(?:AnexosDaNota|ResumoDosAnexos)\b/;
+const DESENHA_A_MARCA = /<MarcaDeEditada\b/;
 
 /** Os cinco lugares do plano (docs/PLANO-anotacao-com-anexos-e-edicao.md). */
 const CONHECIDOS = [
@@ -98,8 +102,8 @@ const CONHECIDOS = [
 const SEM_ANEXOS: Record<string, { motivo: string; leituras: string[] }> = {
   'src/components/inbox/internal-note-box.tsx': {
     motivo:
-      'a caixa de ESCREVER: `r.texto` é o resultado da menção aplicada (aplicarMencao); a anotação respondida aparece pela CitacaoDaNota',
-    leituras: ['r.texto'],
+      'a caixa de ESCREVER: `r.texto` é o resultado da menção aplicada (aplicarMencao) e `emEdicao?.texto` o rascunho inicial da EDIÇÃO (os anexos atuais viram fichas removíveis, `mantidos`); a anotação respondida aparece pela CitacaoDaNota',
+    leituras: ['emEdicao?.texto', 'r.texto'],
   },
   'src/components/inbox/message-composer.tsx': {
     motivo:
@@ -113,7 +117,7 @@ const SEM_ANEXOS: Record<string, { motivo: string; leituras: string[] }> = {
   },
 };
 
-describe('anexos da anotação: quem desenha o texto desenha os anexos (default-deny)', () => {
+describe('anotação: quem desenha o texto desenha os anexos e a marca "editada" (default-deny)', () => {
   const leem = ARQUIVOS.filter(
     (rel) => usaANota(rel) && leiturasDoTexto(codigo(rel), rel).length > 0
   ).sort();
@@ -127,6 +131,15 @@ describe('anexos da anotação: quem desenha o texto desenha os anexos (default-
       (rel) => !(rel in SEM_ANEXOS) && !DESENHA_OS_ANEXOS.test(codigo(rel))
     );
     expect(fora).toEqual([]);
+  });
+
+  it('todo arquivo que usa a anotação e lê `.texto` monta a <MarcaDeEditada> (Fase 3)', () => {
+    const fora = leem.filter(
+      (rel) => !(rel in SEM_ANEXOS) && !DESENHA_A_MARCA.test(codigo(rel))
+    );
+    expect(fora).toEqual([]);
+    // Os cinco lugares, nomeados: renomear a peça num deles reprova aqui.
+    for (const rel of CONHECIDOS) expect(codigo(rel), rel).toMatch(DESENHA_A_MARCA);
   });
 
   it('a exceção vale só para as leituras escritas nela', () => {

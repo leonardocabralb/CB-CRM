@@ -12,6 +12,8 @@ paths:
   - "src/components/inbox/group-sidebar.tsx"
   - "src/hooks/use-apagar-nota*"
   - "src/hooks/use-conversation-notes*"
+  - "src/hooks/use-edicao-de-nota*"
+  - "src/components/inbox/marca-de-editada*"
   - "src/hooks/use-fixar-nota*"
   - "src/hooks/use-gravador-de-voz*"
   - "src/lib/notes/**"
@@ -24,14 +26,16 @@ paths:
 
 Vale ao editar ou revisar a anotação interna nas quatro telas (o fio, a aba
 Notas do painel, a do grupo e a ficha de `/contatos`), a caixa de escrever, a
-fixada, a resposta à anotação e os anexos. O resto da conversa (fio,
+fixada, a resposta à anotação, os anexos e a edição. O resto da conversa (fio,
 compositor, links clicáveis na nota) está em `.claude/rules/inbox-conversa.md`;
 o sino e o Meu dia, em `.claude/rules/meu-dia.md`; a fila de arquivos e o
 bucket, em `.claude/rules/midia.md`. São QUATRO escritores, todos no servidor:
 a rota do painel `POST /api/cb/notes`, a API v1 `POST /api/v1/notes` (sem
 menção), o agente de IA (`anotarNaConversa`) e o passo de automação
 "Escrever anotação interna" (autor nulo; `.claude/rules/automacoes-passos.md`)
-— regra nova de escrita vale em todos. Anexo, SÓ a rota do painel.
+— regra nova de escrita vale em todos. Anexo, SÓ a rota do painel. EDITAR,
+só o autor e só pelo `PUT /api/cb/notes/[id]` (o navegador segue sem UPDATE
+na tabela; a API v1 não edita).
 
 ### Anotação interna: são QUATRO telas
 
@@ -165,3 +169,55 @@ a régua das três pontas), `arquivo-do-anexo.ts` (a leitura no armazenamento),
   confere · 🎤 Áudio"), cru como o título.
 - **API v1**: `GET /notes` traz `anexos` (`nome`, `tipo`, `tamanho`, `url`) e
   `editada_em`; o `POST` segue só texto. Doc em `docs/public-api.md`.
+
+### Edição da anotação (Fase 3)
+
+Decisões A2–A6 do operador: `docs/PLANO-anotacao-com-anexos-e-edicao.md`.
+`PUT /api/cb/notes/[id]` (o `PATCH` segue só para fixar), `mantidosSaoDaNota`
+(`anexos.ts`), `useEdicaoDeNota`, o modo `editando` do `InternalNoteBox` e
+`<MarcaDeEditada>`. Pinos: `[id]/route.test.ts`, `anexos.test.ts`,
+`cartao-de-nota.test.tsx` e o default-deny abaixo.
+
+- ⚠️⚠️ **Só o AUTOR, sem prazo (A2, A3)**: o lápis só aparece com
+  `author_user_id === user.id` (no fio, também `podeAnotar`); a rota confere
+  de novo (403 `NOT_THE_AUTHOR`) e o UPDATE é cercado pelo autor. Sem autor
+  (automação, agente de IA), ninguém edita; o admin APAGA a de qualquer um,
+  mas não reescreve — a autoria carimbada mentiria.
+- ⚠️⚠️ **Cerca de VERSÃO, comparada pelo BANCO**: a caixa manda `versao` = o
+  `editada_em` de quando ABRIU (congelado na montagem; `null` = nunca
+  editada), e a leitura sob RLS e o UPDATE exigem `editada_em` igual (a
+  tabela não tem `updated_at`). Nunca comparar o instante como texto no JS: o
+  tempo real e o PostgREST o escrevem cada um a seu jeito. Zero linhas MEDE
+  pela releitura: existe → 409 `NOTE_CHANGED` (a caixa fica aberta com o
+  rascunho; nada sobrescrito); sumiu → 409 `NOTE_GONE`. Fixar não mexe em
+  `editada_em` e não conflita.
+- ⚠️ **Nada mudou = 200 `mudou: false`, sem UPDATE**: `editada_em` só muda
+  quando o texto aparado ou a lista de caminhos (na ordem) mudou (A4).
+- ⚠️⚠️ **O que FICA é o que a nota tem** (`mantidosSaoDaNota`: pelo caminho, e
+  grava o objeto da NOTA, nunca o do corpo; de fora = 400
+  `ATTACHMENT_NOT_IN_NOTE` com `anexo`); o NOVO passa pela régua do POST
+  (`lerAnexosDoCorpo` + `lerArquivoDoAnexo`, 503 × 400). O TIRADO não se
+  apaga na rota nem na caixa (o X do anexo atual só o tira da lista): o
+  gatilho da 1102 o põe na fila quando a edição salva.
+- ⚠️ **Menção acrescentada avisa só quem ENTROU** (novos − gravados; o aviso
+  antigo fica como foi escrito). Sem conferência — leitura dos membros que
+  falhou, ou `mencionados` AUSENTE porque a caixa não soube quem é da conta
+  (`membrosSabidos`) — fica a lista GRAVADA: trocá-la por nenhuma faria quem
+  já estava "entrar" de novo na próxima edição.
+- ⚠️⚠️ **Edita NO LUGAR, nunca na caixa do compositor** (lá o Enter envia ao
+  cliente): no fio, na aba Notas (a fixada vira caixa no slot sticky) e no
+  grupo, a linha vira `InternalNoteBox` com `editando` e `key`
+  `edicao:<id>`; `onSaved` = `substituir` do `useConversationNotes` (sem
+  esperar o tempo real). As guardas do salvar valem igual (`naTelaRef`,
+  conversa de origem), com frase própria da edição.
+- ⚠️ **`useEdicaoDeNota` carimba a conversa** (`{ de, id }`, zerado no render
+  da troca) e solta a edição quando a nota SOME da lista RESPONDIDA
+  (`pronta`), com aviso: apagada por outra pessoa. Busca que falhou não é
+  "apagada".
+- ⚠️⚠️ **Marca "editada" ao lado da hora, com a hora da edição no `title`,
+  nos CINCO lugares** (fio, abas Notas e do grupo, faixa fixada, citação,
+  ficha de `/contatos` — esta só mostra, A6). O pino
+  `anexos-da-nota.chamadores.test.ts` cobra `<MarcaDeEditada>` de quem
+  desenha o texto da nota: um sexto lugar reprova até montá-la.
+- **Tempo real**: o UPDATE troca a linha no hook (para quem não editou
+  também); a citação (`notasPorId`) e a faixa fixada leem dessa lista.

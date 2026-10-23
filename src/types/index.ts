@@ -256,8 +256,10 @@ export interface ContactCustomValue {
  * para alguém "consertar" a tela errada. A chave é a CONVERSA porque é a
  * única que cobre conversa 1:1 e conversa de grupo (grupo não tem contato).
  *
- * ⚠️ Não tem `updated_at` de propósito: a anotação é criada e apagada, nunca
- * editada. O banco reforça isso com `REVOKE UPDATE`.
+ * ⚠️ Não tem `updated_at`: o navegador só cria (pela rota) e apaga — o UPDATE
+ * segue revogado dele (918/920). A EDIÇÃO (Fase 3 da 1102: texto e anexos, só
+ * pelo autor) e a fixação passam pela rota `/api/cb/notes/[id]`, e quem marca
+ * a edição é `editada_em` — que serve também de cerca de versão no `PUT`.
  */
 /**
  * Um item do acervo de mídias da conta (migration 953).

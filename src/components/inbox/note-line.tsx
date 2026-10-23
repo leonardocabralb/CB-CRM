@@ -1,12 +1,13 @@
 'use client';
 
 import { format } from 'date-fns';
-import { Pin, PinOff, Reply, Trash2 } from 'lucide-react';
+import { Pencil, Pin, PinOff, Reply, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { AnexosDaNota } from '@/components/inbox/anexos-da-nota';
 import { CitacaoDaNota } from '@/components/inbox/citacao-da-nota';
+import { MarcaDeEditada } from '@/components/inbox/marca-de-editada';
 import { TextoComLinks } from '@/components/inbox/texto-com-links';
 import { cn } from '@/lib/utils';
 import type { ConversationNote } from '@/types';
@@ -32,6 +33,10 @@ import type { ConversationNote } from '@/types';
  * O alfinete (951) fixa esta anotação no topo da conversa. Ele só aparece
  * quando quem renderiza passa o `onFixar` — nota de GRUPO não fixa, porque a
  * fixação é "uma por CLIENTE" e o índice parcial da 951 nem a cobre.
+ *
+ * O lápis (Fase 3) edita NO LUGAR: quem monta troca esta linha pela caixa
+ * (`InternalNoteBox` com `editando`). Só aparece com `onEditar`, que quem
+ * monta passa só ao AUTOR (A2). A marca "editada" fica ao lado da hora.
  */
 export function NoteLine({
   nota,
@@ -43,6 +48,7 @@ export function NoteLine({
   respondida,
   onIrParaRespondida,
   onResponder,
+  onEditar,
 }: {
   nota: ConversationNote;
   podeApagar: boolean;
@@ -62,6 +68,8 @@ export function NoteLine({
   onIrParaRespondida?: () => void;
   /** Ausente = sem botão Responder (quem não anota). */
   onResponder?: () => void;
+  /** Ausente = sem lápis (só o AUTOR edita — A2). */
+  onEditar?: () => void;
 }) {
   const t = useTranslations('Inbox.note');
   const [confirmando, setConfirmando] = useState(false);
@@ -70,7 +78,11 @@ export function NoteLine({
     <div className="flex justify-center py-1">
       <div className="w-full max-w-[85%] rounded-lg border border-amber-300/60 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-700/50 dark:bg-amber-950/40 dark:text-amber-50">
         <div className="mb-1 flex items-baseline justify-between gap-2">
-          <span className="text-xs font-semibold">
+          {/* `min-w-0 break-words`: com a hora, a marca "editada" e três
+              botões à direita (`shrink-0`), o autor sem nome (o e-mail, uma
+              palavra só) não cabia no fio de 305 px e empurrava a nota para
+              fora. */}
+          <span className="min-w-0 text-xs font-semibold break-words">
             {t(nota.resposta_de ? 'replied' : 'wrote', {
               autor: nota.autor_nome || t('unknownAuthor'),
             })}
@@ -79,8 +91,20 @@ export function NoteLine({
             <span className="text-[10px] opacity-70">
               {format(new Date(nota.created_at), 'HH:mm')}
             </span>
+            <MarcaDeEditada editadaEm={nota.editada_em} className="text-[10px] opacity-70" />
             {/* Sem hover-para-aparecer, igual ao painel: no toque do celular
                 não existe hover, e o botão simplesmente não existiria. */}
+            {onEditar && (
+              <button
+                type="button"
+                onClick={onEditar}
+                aria-label={t('edit')}
+                title={t('edit')}
+                className="opacity-60 transition-opacity hover:opacity-100"
+              >
+                <Pencil className="h-3 w-3" />
+              </button>
+            )}
             {onFixar && (
               <button
                 type="button"

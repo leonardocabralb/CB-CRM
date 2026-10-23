@@ -20,6 +20,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useConversationNotes } from '@/hooks/use-conversation-notes';
+import { useEdicaoDeNota } from '@/hooks/use-edicao-de-nota';
 import { CartaoDeNota } from '@/components/inbox/cartao-de-nota';
 import { useApagarNota } from '@/hooks/use-apagar-nota';
 import { useFixarNota } from '@/hooks/use-fixar-nota';
@@ -512,11 +513,20 @@ export function PainelDoContato({
    */
   const {
     notas,
+    pronta: notasProntas,
     acrescentar: acrescentarNota,
+    substituir: substituirNota,
     aplicarFixacao,
     remover: removerNotaLocal,
     recarregar: recarregarNotas,
   } = useConversationNotes(conversationId, resyncToken);
+  // EDITAR no lugar (Fase 3): o lápis do cartão (só para o AUTOR) troca o
+  // cartão pela caixa. Carimbado com a conversa (`useEdicaoDeNota`).
+  const {
+    editandoId: notaEmEdicao,
+    editar: editarNota,
+    pararDeEditar: pararDeEditarNota,
+  } = useEdicaoDeNota(conversationId, notas, notasProntas);
   /**
    * Apagar (918). ⚠️ No HOOK pela mesma razão do `useFixarNota` logo abaixo:
    * o que os call sites precisam ter em comum é a guarda do `count` — RLS que
@@ -1701,33 +1711,66 @@ export function PainelDoContato({
               é da leitura DESTA anotação, não da fixada do cliente anterior. */}
           {notaFixada && (
             <div className="bg-card sticky -top-4 z-10 pt-2">
-              <CartaoDeNota
-                key={notaFixada.id}
-                nota={notaFixada}
-                destaque
-                fixada
-                fixando={fixando === notaFixada.id}
-                onFixar={(fixar) => void fixarNota(notaFixada, fixar)}
-                podeApagar={
-                  notaFixada.author_user_id === user?.id || podeAdministrar
-                }
-                onApagar={(id) => void apagarNota(id)}
-                onVerNaConversa={
-                  onIrParaItemDoFio
-                    ? () => onIrParaItemDoFio({ tipo: 'nota', id: notaFixada.id })
-                    : undefined
-                }
-                respondida={respondidaDe(notaFixada)}
-                onResponder={responderA(notaFixada)}
-              />
+              {/* Editando a fixada (Fase 3): a caixa no lugar do cartão. */}
+              {notaEmEdicao === notaFixada.id && conversationId ? (
+                <InternalNoteBox
+                  key={`edicao:${notaFixada.id}`}
+                  conversationId={conversationId}
+                  editando={notaFixada}
+                  listaParaBaixo
+                  onSaved={substituirNota}
+                  onClose={pararDeEditarNota}
+                />
+              ) : (
+                <CartaoDeNota
+                  key={notaFixada.id}
+                  nota={notaFixada}
+                  destaque
+                  fixada
+                  fixando={fixando === notaFixada.id}
+                  onFixar={(fixar) => void fixarNota(notaFixada, fixar)}
+                  podeApagar={
+                    notaFixada.author_user_id === user?.id || podeAdministrar
+                  }
+                  onApagar={(id) => void apagarNota(id)}
+                  onVerNaConversa={
+                    onIrParaItemDoFio
+                      ? () => onIrParaItemDoFio({ tipo: 'nota', id: notaFixada.id })
+                      : undefined
+                  }
+                  respondida={respondidaDe(notaFixada)}
+                  onResponder={responderA(notaFixada)}
+                  // Só o AUTOR edita (A2); sem autor (automação, IA), nunca.
+                  onEditar={
+                    user?.id && notaFixada.author_user_id === user.id
+                      ? () => editarNota(notaFixada)
+                      : undefined
+                  }
+                />
+              )}
             </div>
           )}
 
           <div className="mt-3 space-y-3">
-            {notasComuns.map((note) => (
+            {notasComuns.map((note) =>
+              notaEmEdicao === note.id && conversationId ? (
+                <InternalNoteBox
+                  key={`edicao:${note.id}`}
+                  conversationId={conversationId}
+                  editando={note}
+                  listaParaBaixo
+                  onSaved={substituirNota}
+                  onClose={pararDeEditarNota}
+                />
+              ) : (
               <CartaoDeNota
                 key={note.id}
                 nota={note}
+                onEditar={
+                  user?.id && note.author_user_id === user.id
+                    ? () => editarNota(note)
+                    : undefined
+                }
                 fixando={fixando === note.id}
                 // Fixar é para qualquer um que anota (viewer incluso — a rota
                 // decide). Sem `contact_id` não há fixação: o índice parcial
@@ -1748,7 +1791,8 @@ export function PainelDoContato({
                 respondida={respondidaDe(note)}
                 onResponder={responderA(note)}
               />
-            ))}
+              )
+            )}
           </div>
         </TabsContent>
 

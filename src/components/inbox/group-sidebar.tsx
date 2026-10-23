@@ -46,6 +46,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useCan } from "@/hooks/use-can";
 import { useChannels } from "@/hooks/use-channels";
 import { useConversationNotes } from "@/hooks/use-conversation-notes";
+import { useEdicaoDeNota } from "@/hooks/use-edicao-de-nota";
 import { CartaoDeNota } from "@/components/inbox/cartao-de-nota";
 import { nomeDoGrupo, podeRenomearNoWhatsApp } from "@/lib/cb-groups/display";
 import { TituloDeSecao } from "@/components/inbox/painel/painel-do-contato";
@@ -107,8 +108,15 @@ export function GroupSidebar({
     falhou: notasFalharam,
     recarregar: recarregarNotas,
     acrescentar: acrescentarNota,
+    substituir: substituirNota,
     remover: removerNotaLocal,
   } = useConversationNotes(conversationId);
+  // EDITAR no lugar (Fase 3) — o mesmo do painel do contato.
+  const {
+    editandoId: notaEmEdicao,
+    editar: editarNota,
+    pararDeEditar: pararDeEditarNota,
+  } = useEdicaoDeNota(conversationId, notas, notasProntas);
   const { user } = useAuth();
   // Autor OU admin, a mesma régua do fio e do painel — é a policy da 918.
   const podeAdministrar = useCan("manage-members");
@@ -428,12 +436,28 @@ export function GroupSidebar({
           ) : null}
 
           <div className="mt-3 space-y-3">
-            {notas.map((note) => (
+            {notas.map((note) =>
+              notaEmEdicao === note.id && conversationId ? (
+                <InternalNoteBox
+                  key={`edicao:${note.id}`}
+                  conversationId={conversationId}
+                  editando={note}
+                  listaParaBaixo
+                  onSaved={substituirNota}
+                  onClose={pararDeEditarNota}
+                />
+              ) : (
               // Sem `onFixar`: nota de grupo não fixa (o índice parcial da
               // 951 exige `contact_id`, que grupo não tem).
               <CartaoDeNota
                 key={note.id}
                 nota={note}
+                // Só o AUTOR edita (A2); sem autor (automação, IA), nunca.
+                onEditar={
+                  user?.id && note.author_user_id === user.id
+                    ? () => editarNota(note)
+                    : undefined
+                }
                 podeApagar={note.author_user_id === user?.id || podeAdministrar}
                 onApagar={(id) => void apagarNota(id)}
                 onVerNaConversa={
@@ -450,7 +474,8 @@ export function GroupSidebar({
                     : undefined
                 }
               />
-            ))}
+              )
+            )}
             {/* ⚠️ O vazio só vira afirmação quando a busca DESTA conversa
                 voltou bem (`pronta`): durante a carga a lista é vazia por
                 construção, e afirmar "nenhuma anotação" ali era mentira a
