@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { AvisoDePossivelDuplicata } from "@/components/contacts/aviso-de-possivel-duplicata";
+import { AvisoDeFichaNaLixeira } from "@/components/contacts/lixeira/aviso-de-ficha-na-lixeira";
 import { escritaDoTituloManual } from "@/lib/deals/titulo-do-card";
 import { DEFAULT_CURRENCY } from "@/lib/currency";
 import { ValorInput } from "@/components/valor/valor-input";
@@ -478,6 +479,12 @@ export function DealForm({
                   }}
                   className="mt-1"
                 />
+              )}
+              {/* A ficha desta pessoa que está na Lixeira (1101): só admin,
+                  com "Restaurar e unir" — o mesmo lugar e a mesma regra do
+                  aviso de duplicata acima. */}
+              {contatoDaFaixa && (
+                <AvisoDeFichaNaLixeira contatoId={contatoDaFaixa} origem="funil" className="mt-1" />
               )}
             </div>
 

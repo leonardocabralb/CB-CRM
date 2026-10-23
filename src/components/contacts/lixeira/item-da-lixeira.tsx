@@ -20,7 +20,9 @@ export function contatoDoItem(item: ItemDaLixeira) {
   };
 }
 
-function quandoLegivel(iso: string): string {
+/** Data e hora no idioma do navegador; ilegível vira travessão. A faixa
+ *  "Há uma ficha desta pessoa na Lixeira" (1101) usa a mesma. */
+export function quandoLegivel(iso: string): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime())
     ? '—'

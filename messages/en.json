@@ -1552,10 +1552,30 @@
         "restaurar": "Restore",
         "restaurarLote": "Restore batch ({count})",
         "restaurarLoteDica": "Restores all {count} records moved together with this one, including the ones the search hides.",
-        "restaurarBloqueado": "While the other record uses this identity, this one cannot come back: there would be two records for the same person.",
+        "restaurarBloqueado": "While the other record uses this identity, this one cannot come back on its own (there would be two records for the same person): in the other record's conversation or card, use \"Restore and merge\".",
         "excluirAgora": "Delete now",
         "ocupada": "This record's phone, WhatsApp or Instagram already belongs to {nome}.",
         "abrirFicha": "Open record"
+      },
+      "mesmaPessoa": {
+        "titulo": "{count, plural, one {There is a record of this person in the Trash} other {There are # records of this person in the Trash}}",
+        "movidaPor": "Moved on {quando} by {quem}, with {count, plural, =0 {no messages} one {# message} other {# messages}}.",
+        "movidaEm": "Moved on {quando}, with {count, plural, =0 {no messages} one {# message} other {# messages}}.",
+        "verNaLixeira": "See in the Trash",
+        "restaurarEUnir": "Restore and merge",
+        "dica": "Restore and merge brings the record back and joins it to this one, which stays: the conversation, tasks and notes move here.",
+        "dialogoTitulo": "Restore and merge",
+        "dialogoDescricao": "The record comes back from the Trash and is merged into this one, which stays. Check what will happen before confirming.",
+        "conferindo": "Checking what the restore and the merge will do…",
+        "ressalvasTitulo": "Coming back from the Trash",
+        "nadaMudou": "Nothing changed: the record is still in the Trash.",
+        "confirmar": "Restore and merge",
+        "unindo": "Restoring and merging…",
+        "toastUnidas": "Record restored and merged. Opening the record that stayed…",
+        "motivoSumiu": "The record is no longer in the Trash: someone restored or deleted it first. Refresh the page.",
+        "motivoNaoCasa": "This record's phone, WhatsApp and Instagram no longer match the record in the Trash. Refresh the page.",
+        "motivoFichaNaoEncontrada": "This record no longer exists — it may have been merged already. Refresh the page.",
+        "motivoBloqueada": "Merging these records was refused (Instagram, or different WhatsApp accounts)."
       }
     }
   },
@@ -5798,7 +5818,7 @@
         "testUrl": "<b>Nothing reaches n8n</b> — the Test URL only listens for 120 seconds. Register the Production URL, with the flow published.",
         "url": "<b>Address refused</b> — the CRM only delivers to a public https:// address: http, localhost and internal IPs do not work.",
         "desligado": "<b>Endpoint switched off</b> — after {falhas} consecutive failures the CRM stops delivering. Fix the destination and click Turn back on in Webhooks → Outgoing.",
-        "fichaNaLixeira": "<b>Contact deleted in the CRM</b> — it goes to the trash for 90 days. Meanwhile its id answers <code>404</code> (its conversations too), but an admin can restore it with the <b>same id</b> and its conversations and messages as they were. Don't recreate the contact on the first <code>404</code>: a new record with the same phone blocks the restore."
+        "fichaNaLixeira": "<b>Contact deleted in the CRM</b> — it goes to the trash for 90 days. Meanwhile its id answers <code>404</code> (its conversations too), but an admin can restore it with the <b>same id</b> and its conversations and messages as they were. Don't recreate the contact on the first <code>404</code>: with a new record for the same phone, it can only come back <b>merged</b> into it, and the old id then answers with the record that stayed."
       },
       "referencia": "Every endpoint's reference, with all fields, is in the repository's <code>docs/public-api.md</code> file; the full guide to incoming webhooks, in <code>docs/webhooks.md</code>.",
       "marcador": {

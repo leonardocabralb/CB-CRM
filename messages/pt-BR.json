@@ -1545,10 +1545,30 @@
         "restaurar": "Restaurar",
         "restaurarLote": "Restaurar o lote ({count})",
         "restaurarLoteDica": "Restaura todas as {count} fichas movidas junto com esta, inclusive as que a busca não mostra.",
-        "restaurarBloqueado": "Enquanto a outra ficha usar essa identidade, esta não pode voltar: seriam duas fichas da mesma pessoa.",
+        "restaurarBloqueado": "Enquanto a outra ficha usar essa identidade, esta não volta sozinha (seriam duas fichas da mesma pessoa): na conversa ou no card da outra ficha, use \"Restaurar e unir\".",
         "excluirAgora": "Excluir agora",
         "ocupada": "O telefone, o WhatsApp ou o Instagram desta ficha já é de {nome}.",
         "abrirFicha": "Abrir a ficha"
+      },
+      "mesmaPessoa": {
+        "titulo": "{count, plural, one {Há uma ficha desta pessoa na Lixeira} other {Há # fichas desta pessoa na Lixeira}}",
+        "movidaPor": "Movida em {quando} por {quem}, com {count, plural, =0 {nenhuma mensagem} one {# mensagem} other {# mensagens}}.",
+        "movidaEm": "Movida em {quando}, com {count, plural, =0 {nenhuma mensagem} one {# mensagem} other {# mensagens}}.",
+        "verNaLixeira": "Ver na Lixeira",
+        "restaurarEUnir": "Restaurar e unir",
+        "dica": "Restaurar e unir traz a ficha de volta e a junta a esta, que fica: a conversa, as tarefas e as anotações passam para cá.",
+        "dialogoTitulo": "Restaurar e unir",
+        "dialogoDescricao": "A ficha volta da Lixeira e é unida a esta, que fica. Confira o que vai acontecer antes de confirmar.",
+        "conferindo": "Conferindo o que a volta e a união vão fazer…",
+        "ressalvasTitulo": "Na volta da Lixeira",
+        "nadaMudou": "Nada mudou: a ficha continua na Lixeira.",
+        "confirmar": "Restaurar e unir",
+        "unindo": "Restaurando e unindo…",
+        "toastUnidas": "Ficha restaurada e unida. Abrindo a ficha que ficou…",
+        "motivoSumiu": "A ficha já não está na Lixeira: alguém restaurou ou excluiu antes. Atualize a página.",
+        "motivoNaoCasa": "O telefone, o WhatsApp e o Instagram desta ficha já não batem com os da ficha da Lixeira. Atualize a página.",
+        "motivoFichaNaoEncontrada": "Esta ficha não existe mais — talvez já tenha sido unida. Atualize a página.",
+        "motivoBloqueada": "A união destas fichas foi recusada (Instagram ou contas de WhatsApp diferentes)."
       }
     }
   },
@@ -5791,7 +5811,7 @@
         "testUrl": "<b>Nada chega no n8n</b> — a Test URL só escuta 120 segundos. Cadastre a Production URL, com o fluxo publicado.",
         "url": "<b>Endereço recusado</b> — o CRM só entrega em https:// público: http, localhost e IP interno não servem.",
         "desligado": "<b>Endereço desligado</b> — depois de {falhas} falhas seguidas o CRM para de entregar. Conserte o destino e clique em Religar em Webhooks → Enviados.",
-        "fichaNaLixeira": "<b>Contato excluído no CRM</b> — ele vai para a Lixeira por 90 dias. Enquanto isso o id responde <code>404</code> (as conversas dele também), mas um admin pode restaurá-lo com o <b>mesmo id</b> e as conversas e mensagens como estavam. Não recrie o contato no primeiro <code>404</code>: uma ficha nova com o mesmo telefone bloqueia a volta."
+        "fichaNaLixeira": "<b>Contato excluído no CRM</b> — ele vai para a Lixeira por 90 dias. Enquanto isso o id responde <code>404</code> (as conversas dele também), mas um admin pode restaurá-lo com o <b>mesmo id</b> e as conversas e mensagens como estavam. Não recrie o contato no primeiro <code>404</code>: com uma ficha nova do mesmo telefone, ele só volta <b>unido</b> a ela, e o id antigo passa a responder com a ficha que ficou."
       },
       "referencia": "A referência de cada endpoint, com todos os campos, está no arquivo <code>docs/public-api.md</code> do repositório; o guia completo dos webhooks recebidos, em <code>docs/webhooks.md</code>.",
       "marcador": {

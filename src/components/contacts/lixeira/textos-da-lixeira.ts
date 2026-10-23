@@ -1,6 +1,7 @@
 import type { useTranslations } from 'next-intl';
 
 import type { MotivoDaLixeira, Ressalva, TipoDeRessalva } from '@/lib/contacts/lixeira';
+import type { MotivoDoRestaurarEUnir } from '@/lib/contacts/restaurar-e-unir';
 
 // ============================================================
 // As frases da Lixeira que saem de um CÓDIGO do banco: o motivo de uma
@@ -30,4 +31,23 @@ export function textoDoMotivo(t: TradutorDaLixeira, motivo: MotivoDaLixeira): st
 /** Uma frase por ressalva, com o número (`{n}` no plural do ICU). */
 export function textosDasRessalvas(t: TradutorDaLixeira, ressalvas: readonly Ressalva[]): string[] {
   return ressalvas.map((r) => t(chaveDaRessalva(r.tipo), { n: r.n }));
+}
+
+/**
+ * A frase de uma recusa do "Restaurar e unir" (1101): os motivos próprios
+ * com chave LITERAL; os da Lixeira, pela frase deles.
+ */
+export function textoDaRecusaDoRestaurarEUnir(t: TradutorDaLixeira, motivo: MotivoDoRestaurarEUnir): string {
+  switch (motivo) {
+    case 'sumiu':
+      return t('mesmaPessoa.motivoSumiu');
+    case 'nao_casa':
+      return t('mesmaPessoa.motivoNaoCasa');
+    case 'ficha_nao_encontrada':
+      return t('mesmaPessoa.motivoFichaNaoEncontrada');
+    case 'bloqueada':
+      return t('mesmaPessoa.motivoBloqueada');
+    default:
+      return textoDoMotivo(t, motivo);
+  }
 }

@@ -139,7 +139,28 @@ Decisões do operador (22/10/2026, B1–B6): `docs/PLANO-lixeira-de-contatos.md`
 - ⚠️⚠️ **Identidade ocupada BLOQUEIA (B2)**: telefone, BSUID ou Instagram que
   já é de outra ficha → `identidade_ocupada`, e a lista mostra "ocupada pela
   ficha X" com link (`ocupada_por` de `cb_lixeira_da_conta`). Nunca fundir
-  nem sobrescrever na volta: une-se depois, por `cb_unir_fichas`.
+  nem sobrescrever na volta: a saída é o "Restaurar e unir" (abaixo).
+- ⚠️⚠️ **"Restaurar e unir" (Fase 4, 1101)**: a faixa "Há uma ficha desta
+  pessoa na Lixeira" (`aviso-de-ficha-na-lixeira.tsx`, no fio e no formulário
+  do card, junto do aviso de duplicata; só admin, `delete-contacts` — e o
+  banco devolve vazio a quem não é) acha o item pelos três índices parciais
+  da 1097 (`cb_lixeira_da_mesma_pessoa`; nunca pelo `@`) e cala carregando ou
+  com falha. A ficha ABERTA fica. `cb_restaurar_e_unir`, uma transação: trava
+  o item (NOWAIT), confere que a identidade casa, dá à fotografia identidade
+  PROVISÓRIA (anula SÓ o que colide com a que fica; nada sobrando, o BSUID de
+  reserva `lixeira:<item>`), restaura pelo miolo de sempre e une
+  (`cb_unir_fichas`). Recusa desfaz TUDO. Leitura: `restaurar-e-unir.ts`;
+  chamadas: `use-lixeira-da-mesma-pessoa.ts`.
+- ⚠️⚠️ **O que nunca pode acontecer**: a reserva sobrar em linha nenhuma (sai
+  da ficha que fica; livro e trilha levam a identidade ORIGINAL; a função
+  confere); anular identidade de uma TERCEIRA ficha (segue
+  `identidade_ocupada`); copiar a reinserção (é `cb_lixeira_restaurar_um`);
+  botão sem prévia (`cb_previa_restaurar_e_unir`, o mesmo caminho num
+  subbloco desfeito por P1101; a tela mostra o `CorpoDaPrevia` da união, sem
+  "Trocar", e as ressalvas da volta). `cb_bloqueios_da_uniao` ignora o
+  prefixo `lixeira:` — sem isso, ficha só-BSUID nunca voltaria. Depois de
+  unir, `recarregarNaFichaQueFicou`. Pino
+  `lixeira-restaurar-e-unir-1101.test.ts`.
 - ⚠️ **"Excluir agora" (B3)**, com confirmação forte e a marca "é pedido de
   exclusão (LGPD)" (`cb_excluir_da_lixeira`): sem volta; os arquivos vão para
   a fila (`midia.md`); com a marca, saem também ligações e retidas, e o dado

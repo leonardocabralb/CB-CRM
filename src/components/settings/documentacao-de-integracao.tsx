@@ -519,7 +519,8 @@ export function DocumentacaoDeIntegracao({
           <li>{t.rich("erros.fichaUnida", rico)}</li>
           {/* A Lixeira de contatos (1097, B6): o id da ficha excluída
               responde 404 por até 90 dias e pode VOLTAR igual. O Make que
-              recria no primeiro 404 ocupa o telefone e bloqueia a volta. */}
+              recria no primeiro 404 ocupa o telefone: a volta só sai UNIDA à
+              ficha nova (1101), e o id antigo passa a responder com ela. */}
           <li>{t.rich("erros.fichaNaLixeira", rico)}</li>
           <li>{t.rich("erros.usuario", rico)}</li>
           <li>{t.rich("erros.testUrl", rico)}</li>

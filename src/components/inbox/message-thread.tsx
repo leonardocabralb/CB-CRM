@@ -17,6 +17,7 @@ import { useApagarNota } from "@/hooks/use-apagar-nota";
 import { useFixarNota } from "@/hooks/use-fixar-nota";
 import { useCan } from "@/hooks/use-can";
 import { AvisoDePossivelDuplicata } from "@/components/contacts/aviso-de-possivel-duplicata";
+import { AvisoDeFichaNaLixeira } from "@/components/contacts/lixeira/aviso-de-ficha-na-lixeira";
 import { ScheduledBar } from "./scheduled-bar";
 import { FaixaDeSituacaoDoCliente } from "./faixa-de-situacao-do-cliente";
 import { FaixaDeInadimplencia } from "./faixa-de-inadimplencia";
@@ -3478,6 +3479,15 @@ export function MessageThread({
           aoAbrirConversa={onAbrirConversaRelacionada}
           className="mx-3 mt-2"
         />
+      )}
+
+      {/* Faixa FICHA DESTA PESSOA NA LIXEIRA (1101, Fase 4 da Lixeira): o
+          cliente cuja ficha foi para a Lixeira voltou a escrever e caiu numa
+          ficha nova. Só admin; "Restaurar e unir" traz a antiga para esta.
+          Junto da de duplicata (também é arrumação de cadastro); cala com
+          `null`. */}
+      {contact && (
+        <AvisoDeFichaNaLixeira contatoId={contact.id} resyncToken={resyncToken} className="mx-3 mt-2" />
       )}
 
       {/* Faixa AGENDADAS (925), colada no compositor e dentro do fio.
