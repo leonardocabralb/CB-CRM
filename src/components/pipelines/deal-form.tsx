@@ -41,6 +41,7 @@ import { urlDoInbox } from "@/lib/inbox/url";
 import { opcoesDeResponsavel } from "@/lib/account/suspensao";
 import { SeletorDeContatoRemoto } from "@/components/contacts/seletor-de-contato-remoto";
 import { TETO_DE_RESULTADOS } from "@/lib/contacts/busca-remota";
+import { useNegociosNaLixeira } from "@/hooks/use-negocios-na-lixeira";
 
 interface DealFormProps {
   open: boolean;
@@ -115,6 +116,16 @@ export function DealForm({
   // formulário de anúncio. No painel do inbox o fio já mostra a faixa.
   const router = useRouter();
   const contatoDaFaixa = open && origemFunil && contactId ? contactId : null;
+
+  // B4 (1097): negócio SEM contato porque a ficha está na Lixeira. O campo
+  // de contato abre vazio (como num card de contato apagado), e sem a nota o
+  // operador não saberia que a pessoa pode voltar — nem que escolher outro
+  // contato aqui tira o negócio da volta dela. Pergunta só com o formulário
+  // aberto num negócio sem contato; o mapa é recortado pelo negócio do
+  // render ATUAL (trocar de negócio não mostra a nota do anterior).
+  const naLixeira = useNegociosNaLixeira(open && deal && !deal.contact_id ? [deal.id] : [], deal);
+  const fichaNaLixeira =
+    deal && naLixeira.has(deal.id) ? { nome: naLixeira.get(deal.id) ?? null } : null;
 
   // Reset the form fields every time the sheet opens on a new deal. This is
   // a legitimate prop-driven sync; the rule is over-cautious here, hence the
@@ -413,6 +424,20 @@ export function DealForm({
                 ariaLabel={t("contact")}
                 className="h-9 border-border bg-muted text-foreground"
               />
+
+              {fichaNaLixeira && (
+                <div className="mt-1 flex items-start gap-2 rounded-md border border-border bg-muted/50 px-2 py-1.5 text-xs text-muted-foreground">
+                  <Trash2 className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  <p className="min-w-0">
+                    <span className="font-medium text-foreground">
+                      {fichaNaLixeira.nome
+                        ? t("contatoNaLixeiraComNome", { nome: fichaNaLixeira.nome })
+                        : t("contatoNaLixeira")}
+                    </span>{" "}
+                    {t("contatoNaLixeiraDica")}
+                  </p>
+                </div>
+              )}
 
               {/* O caminho de volta do card para o atendimento.
                   ⚠️ A conversa do CONTATO manda; o vínculo gravado

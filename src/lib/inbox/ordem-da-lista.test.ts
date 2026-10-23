@@ -104,6 +104,83 @@ describe("comMensagemNova", () => {
   });
 });
 
+describe("comMensagemNova — a volta da Lixeira (1097)", () => {
+  // A conversa restaurada às 18:30 (relógio do BANCO); as mensagens antigas
+  // voltam com o `gravada_em` de quando chegaram de verdade.
+  const restaurada = conversa("a", "2026-10-20T14:00:00+00:00", {
+    unread_count: 2,
+    restaurada_em: "2026-10-23T18:30:00.123456+00:00",
+  });
+
+  it("⚠️ a mensagem DEVOLVIDA não soma não lida, não troca a prévia nem reordena", () => {
+    const c = comMensagemNova(
+      restaurada,
+      {
+        // O carimbo pode até ser o mais novo da conversa: quem decide é a gravação.
+        created_at: "2026-10-20T14:00:00+00:00",
+        content_text: "fala antiga",
+        gravada_em: "2026-10-20T14:00:01.5+00:00",
+      },
+      false,
+    );
+    expect(c).toBe(restaurada);
+  });
+
+  it("nem na conversa aberta: a linha fica como está até o UPDATE final (a não lida do banco)", () => {
+    const c = comMensagemNova(
+      restaurada,
+      { created_at: "2026-10-01T10:00:00Z", content_text: "x", gravada_em: "2026-10-01T10:00:00Z" },
+      true,
+    );
+    expect(c).toBe(restaurada);
+  });
+
+  it("a mensagem gravada DEPOIS da volta é nova: soma e avança como sempre", () => {
+    const c = comMensagemNova(
+      restaurada,
+      {
+        created_at: "2026-10-23T18:31:00+00:00",
+        content_text: "Oi de novo",
+        gravada_em: "2026-10-23T18:31:00.200+00:00",
+      },
+      false,
+    );
+    expect(c.unread_count).toBe(3);
+    expect(c.last_message_text).toBe("Oi de novo");
+  });
+
+  it("⚠️ sem `gravada_em` (72% da produção: a carga) vale o `created_at` — a importada antiga não soma", () => {
+    const c = comMensagemNova(
+      restaurada,
+      { created_at: "2025-03-01T10:00:00+00:00", content_text: "importada", gravada_em: null },
+      false,
+    );
+    expect(c).toBe(restaurada);
+  });
+
+  it("sem `gravada_em` e `created_at` depois da volta: nova, soma como sempre", () => {
+    const c = comMensagemNova(
+      restaurada,
+      { created_at: "2026-10-23T18:31:00+00:00", content_text: "sem gravação", gravada_em: null },
+      false,
+    );
+    expect(c.unread_count).toBe(3);
+  });
+
+  it("conversa que nunca esteve na Lixeira: o `gravada_em` não muda nada", () => {
+    const c = comMensagemNova(
+      base0(),
+      { created_at: "2026-09-23T18:05:00+00:00", content_text: "Oi", gravada_em: "2026-09-23T18:05:01Z" },
+      false,
+    );
+    expect(c.unread_count).toBe(3);
+  });
+
+  function base0() {
+    return conversa("a", "2026-09-23T18:00:00+00:00", { unread_count: 2, restaurada_em: null });
+  }
+});
+
 describe("pinos: quem usa a ordem", () => {
   const raiz = join(__dirname, "..", "..", "..");
   const lista = readFileSync(join(raiz, "src/components/inbox/conversation-list.tsx"), "utf8");
@@ -123,5 +200,30 @@ describe("pinos: quem usa a ordem", () => {
   it("o tempo real da página não grava a hora da mensagem crua — passa por comMensagemNova", () => {
     expect(pagina).toContain("comMensagemNova(c, newMsg, aberta)");
     expect(pagina).not.toMatch(/last_message_at:\s*newMsg\.created_at/);
+  });
+
+  it("⚠️ a volta da Lixeira: o INSERT da conversa grava `restaurada_em` ANTES das mensagens", () => {
+    // O carimbo vai para o ref (o fio decide antes de qualquer render) e, na
+    // linha VELHA que ainda está na lista (o "Desfazer"), para o estado — que
+    // `comMensagemNova` lê no updater seguinte. Sem ele, cada mensagem
+    // devolvida somava uma não lida até o UPDATE final.
+    expect(pagina).toMatch(
+      /if \(conv\.restaurada_em\) \{\s*restauradaEmRef\.current\.set\(conv\.id, conv\.restaurada_em\);\s*if \(activeConversation\?\.id === conv\.id\) setResyncToken\(\(n\) => n \+ 1\);\s*\}/,
+    );
+    expect(pagina).toMatch(
+      /\} else if \(conv\.restaurada_em\) \{[\s\S]{0,700}?\{ \.\.\.c, restaurada_em: restauradaEm \}/,
+    );
+    // O fio aberto não recebe as devolvidas pelo fim (a releitura as traz na
+    // ordem), nem recarrega as execuções por cada fala antiga do cliente.
+    expect(pagina).toMatch(/const daRestauracao = reinseridaPelaRestauracao\(\s*newMsg\.gravada_em,[\s\S]{0,300}?newMsg\.created_at,\s*\);/);
+    expect(pagina).toMatch(/if \(\s*!daRestauracao &&\s*activeConversation &&\s*newMsg\.conversation_id === activeConversation\.id\s*\)/);
+  });
+
+  it("o fio por cima da pauta (`conversa-em-painel`) repete a régua da página", () => {
+    const painel = readFileSync(join(raiz, "src/components/inbox/conversa-em-painel.tsx"), "utf8");
+    expect(painel).toMatch(
+      /if \(event\.eventType === "INSERT" && event\.new\.restaurada_em\) \{\s*restauradaEmRef\.current = event\.new\.restaurada_em;\s*setResyncToken\(\(n\) => n \+ 1\);/,
+    );
+    expect(painel).toContain("if (reinseridaPelaRestauracao(msg.gravada_em, restauradaEmRef.current, msg.created_at)) return;");
   });
 });

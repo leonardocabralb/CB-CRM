@@ -98,7 +98,10 @@ failure on our side — the database timing out, for instance — is a
 create the thing again. Retry a `500`. The same goes for the key: if the
 CRM cannot read it at that moment, the answer is `500`, not `401` — retry
 instead of rotating the key. An `{id}` in the path that is not a UUID is a
-`400 bad_request`, on every endpoint.
+`400 bad_request`, on every endpoint. A contact in the CRM's trash counts as
+not existing — but it can come back with the same id within 90 days (see
+[contacts](#get--patch-apiv1contactsid)): don't recreate it on the first
+`404`.
 
 ## Rate limits
 
@@ -476,6 +479,26 @@ not a UUID returns `400 bad_request` (here and on `/custom-fields` and
 > replaces the tags of the **whole merged contact** — the ones that came
 > from the other contact included. To only add, send `"tags_mode": "add"` or
 > use `POST /api/v1/contacts/{id}/tags`.
+
+> **A deleted contact can come back with the same id.** Deleting a contact
+> in the CRM moves it to the **trash** for 90 days. While it is there, the
+> API treats it as deleted: `GET` and `PATCH /api/v1/contacts/{id}` (and
+> `/tags` and `/custom-fields`) answer `404`, it is neither listed nor found
+> by `?search=`, and its conversations, messages, tasks, notes and scheduled
+> messages are gone from the API too. Its deals and meetings stay, with
+> `contact_id: null`. Within those 90 days an admin can **restore** it: it
+> comes back with the **same `id`**, its conversations and messages as they
+> were (same ids), and its deals and meetings point to it again. Nothing is
+> sent to the customer on the way back: a scheduled message that had not
+> gone out returns as `failed`. No webhook event is sent when a contact goes
+> to the trash or comes back. After 90 days — or when an admin deletes it
+> from the trash — it is gone for good.
+>
+> ⚠️ So a `404` for a contact id you stored is **not** a reason to recreate
+> the contact right away. A new contact with the same phone — the customer
+> writing again, or the find-or-create of `POST /api/v1/contacts` — takes
+> that phone, and the original can no longer be restored until someone
+> sorts the two out in the CRM.
 
 > ⚠️ `tags` here replaces the whole set — sending `["Lead"]` removes
 > every other tag the contact had — unless you send `"tags_mode": "add"`.
@@ -1226,9 +1249,9 @@ multi-channel. On `deal.*` it is `null` whenever, at the moment of the
 move, the contact had no conversation tied to a number: a lead created by
 an incoming webhook (a form, Typebot) or by a Calendly booking before
 writing to you, a contact created through this API, a card with no contact
-(a group card, or a deleted contact). A flow that filters by number must
-decide what to do with those — dropping them silently drops exactly the
-new leads.
+(a group card, or a deleted contact — also one in the trash). A flow that
+filters by number must decide what to do with those — dropping them
+silently drops exactly the new leads.
 
 The `deal.*` events fire for **every** way a card moves: dragging on the
 board, the deal form, the list view, the conversation side panel, the
@@ -1313,7 +1336,7 @@ The three `deal.*` events share one shape:
   "assignee": { "user_id": "…", "name": "Ana" },   // or null
   "pipeline": { "id": "…", "name": "Comercial" },  // where the card went IN THIS EVENT
   "stage": { "id": "…", "name": "Reunião Agendada", "position": 3 },
-  "contact": {                     // GET /api/v1/contacts/{id} shape, or null (group card / deleted contact)
+  "contact": {                     // GET /api/v1/contacts/{id} shape, or null (group card / deleted contact, also one in the trash)
     "id": "…", "name": "…", "phone": "…", "email": "…", "tags": [{ "id": "…", "name": "Typebot", "color": "#3b82f6" }],
     "custom_fields": { "tamanho_da_divida": "150000", "utm_source": null },
     "…": "…"

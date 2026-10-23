@@ -315,8 +315,10 @@ a opção `telefoneResolvido` de `normalizeUpsert` e a tabela
   navegador; o Meu dia recebe só CONEXÃO e HORA (ver `.claude/rules/meu-dia.md`);
   o log de falha do insert leva só código e mensagem (o `details` traz o texto
   do cliente). ⚠️ Retida que nunca religa guarda o payload sem prazo e SEM
-  vínculo com ficha: apagar o contato (inclusive por pedido de exclusão) não a
-  alcança — decisão pendente do operador, registrada no plano.
+  vínculo com ficha: mover o contato para a Lixeira (e o vencimento dela) não
+  a alcança; só o "Excluir agora" com pedido de exclusão (1097) apaga as
+  retidas pelos LIDs que a conversa da ficha conhecia — o prazo das outras
+  segue decisão pendente do operador, registrada no plano.
 - O fio aberto acrescenta a recuperada no FIM, não pelo carimbo (ver
   `.claude/rules/inbox-conversa.md`).
 - Os limites aceitos (apagada ou editada antes de religar, citação sem

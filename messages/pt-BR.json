@@ -95,7 +95,8 @@
     "radar": "Radar do atendimento",
     "agenda": "Agenda de reuniões",
     "meuDia": "Meu dia",
-    "reunioes": "Reuniões"
+    "reunioes": "Reuniões",
+    "lixeira": "Lixeira de contatos"
   },
   "ModeToggle": {
     "switchMode": "Alternar para o modo {mode}"
@@ -958,7 +959,8 @@
           "passo": "Interrompida por outra automação (passo \"Parar automação\")",
           "desativacao": "Interrompida: a automação foi desligada",
           "fusao": "Interrompida: a ficha foi unida a outra",
-          "desconhecido": "Interrompida"
+          "desconhecido": "Interrompida",
+          "lixeira": "Interrompida: a ficha foi para a Lixeira"
         },
         "verRegistros": "Ver todas as execuções desta automação",
         "mostrarMais": "Mostrar mais {n}"
@@ -1222,7 +1224,6 @@
       "noTagsYet": "Nenhuma etiqueta ainda.",
       "selectedCount": "{count} selecionados",
       "clearSelection": "Limpar",
-      "deleteSelected": "Excluir selecionados",
       "tableColumns": {
         "name": "Nome",
         "phone": "Telefone",
@@ -1237,26 +1238,16 @@
       "addFirstContact": "Adicione seu primeiro contato",
       "unnamed": "Sem nome",
       "editAction": "Editar",
-      "deleteAction": "Excluir",
       "showingPagination": "Exibindo {start}-{end} de {total}",
       "pageCount": "Página {page} de {total}",
-      "deleteContactTitle": "Excluir contato",
-      "deleteContactDesc": "Tem certeza de que deseja excluir {name}? Esta ação não pode ser desfeita.",
-      "cancel": "Cancelar",
-      "deleteBtn": "Excluir",
-      "deleteBulkTitle": "Excluir contatos",
-      "deleteBulkDesc": "Tem certeza de que deseja excluir {count} contatos selecionados? Esta ação não pode ser desfeita.",
       "toastFailedLoad": "Falha ao carregar contatos",
-      "toastFailedDelete": "Falha ao excluir contato",
-      "toastDeleted": "Contato excluído",
-      "toastBulkFailedDelete": "Falha ao excluir contatos",
-      "toastBulkDeleted": "{count} contatos excluídos",
-      "toastDeleteRefused": "Não foi possível excluir: seu perfil não tem permissão para apagar contatos.",
-      "toastDeleteGone": "Este contato já não existe — alguém o excluiu antes. A lista foi atualizada.",
       "selectAllOnPage": "Selecionar todos os contatos desta página",
       "filterByTag": "Filtrar por {name}",
       "removeTagFilter": "Tirar o filtro {name}",
-      "selectContact": "Selecionar {name}"
+      "selectContact": "Selecionar {name}",
+      "lixeiraBtn": "Lixeira",
+      "moverSelecionados": "Mover para a Lixeira",
+      "moverParaLixeira": "Mover para a Lixeira"
     },
     "form": {
       "notLinkedToAccount": "Seu perfil não está vinculado a uma conta.",
@@ -1448,6 +1439,117 @@
       "seedTracking": "Criar os {count} campos de traqueamento que faltam em “{group}”",
       "toastSeeded": "{count} campos de traqueamento criados.",
       "toastSeedFailed": "Não foi possível criar os campos de traqueamento."
+    },
+    "lixeira": {
+      "semNome": "Sem nome",
+      "cancelar": "Cancelar",
+      "motivos": {
+        "so_admin": "Só administradores mexem na Lixeira de contatos (ou a sua sessão expirou: entre de novo).",
+        "membro_suspenso": "Seu acesso está suspenso.",
+        "ocupada": "Outra pessoa está mexendo nesta ficha agora. Tente de novo em instantes.",
+        "em_processamento": "Outra pessoa está restaurando ou excluindo esta ficha agora. Tente de novo em instantes.",
+        "identidade_ocupada": "O telefone, o WhatsApp ou o Instagram desta ficha já é de outra ficha: ela não pode voltar enquanto isso não for resolvido.",
+        "esquema_mudou": "O sistema mudou desde que a ficha entrou na Lixeira, e ela não voltaria como estava. Chame quem cuida do sistema.",
+        "sem_tratamento": "O sistema ganhou uma parte nova que a Lixeira ainda não sabe guardar. Chame quem cuida do sistema.",
+        "presa": "Outro registro ainda prende esta ficha. Chame quem cuida do sistema.",
+        "demorou": "O banco demorou demais para responder. Confira a lista antes de tentar de novo.",
+        "falhou": "Não deu para confirmar o que aconteceu. Confira a lista antes de tentar de novo."
+      },
+      "ressalvas": {
+        "linhas_descartadas": "{n, plural, one {# registro não voltou} other {# registros não voltaram}}: o que ele citava (etiqueta, campo, conexão ou automação) foi apagado enquanto a ficha estava na Lixeira.",
+        "agendadas_em_falha": "{n, plural, one {# mensagem agendada voltou como falha} other {# mensagens agendadas voltaram como falha}}: nada sai sozinho. Envie ou cancele em Mensagens agendadas.",
+        "movimentos_sem_automacao": "{n, plural, one {# movimento de card ficou} other {# movimentos de card ficaram}} sem a automação da etapa enquanto a ficha estava na Lixeira: use \"Executar automação\" no card, se precisar.",
+        "zapsign_sem_contato": "{n, plural, one {# assinatura do ZapSign chegou} other {# assinaturas do ZapSign chegaram}} sem ficha correspondente desde que esta foi para a Lixeira: confira se alguma era desta pessoa e use \"Processar de novo\" na integração.",
+        "pares_para_a_lixeira": "{n, plural, one {# vínculo com outra ficha que também está na Lixeira volta} other {# vínculos com outras fichas que também estão na Lixeira voltam}} quando ela for restaurada.",
+        "colunas_sumidas": "{n, plural, one {# dado ficou de fora} other {# dados ficaram de fora}}: o campo não existe mais no sistema."
+      },
+      "mover": {
+        "titulo": "Mover para a Lixeira",
+        "descricao": "{count, plural, one {A ficha sai de todas as telas e fica} other {As # fichas saem de todas as telas e ficam}} 90 dias na Lixeira, com a conversa, as mensagens, as tarefas e as anotações. Um administrador pode restaurar nesse prazo; depois, sai de vez, com os arquivos.",
+        "conferindo": "Conferindo o que a exclusão cancela…",
+        "previaFalhou": "Não deu para conferir o que a exclusão cancela, e sem isso a ficha não é movida.",
+        "tentarDeNovo": "Tentar de novo",
+        "mensagens": "{count, plural, one {# mensagem vai junto para a Lixeira.} other {# mensagens vão junto para a Lixeira.}}",
+        "cancelaTitulo": "O que muda para a equipe:",
+        "nadaEmAndamento": "{count, plural, one {Nada em andamento nesta ficha} other {Nada em andamento nas # fichas}}: nenhuma mensagem agendada, automação esperando, robô, tarefa aberta, negócio aberto nem conversa aberta com responsável.",
+        "outrasSemNada": "{count, plural, one {A outra ficha não tem nada em andamento.} other {As outras # fichas não têm nada em andamento.}}",
+        "naoExistem": "{count, plural, one {# ficha já não existe} other {# fichas já não existem}}: alguém excluiu antes.",
+        "conversa": "A conversa aberta com {responsavel} sai da caixa de entrada (volta com a ficha).",
+        "agendadas": "{count, plural, one {# mensagem agendada não vai sair (se a ficha voltar, ela volta como falha, para enviar ou cancelar):} other {# mensagens agendadas não vão sair (se a ficha voltar, elas voltam como falha, para enviar ou cancelar):}}",
+        "agendadaDe": "de {autor}, para {quando}",
+        "autorDesconhecido": "autor desconhecido",
+        "esperas": "{count, plural, one {# automação esperando é encerrada e não volta com a ficha.} other {# automações esperando são encerradas e não voltam com a ficha.}}",
+        "robos": "{count, plural, one {# robô em conversa é parado e não volta com a ficha.} other {# robôs em conversa são parados e não voltam com a ficha.}}",
+        "tarefas": "{count, plural, one {# tarefa aberta sai da lista de quem é responsável e volta com a ficha:} other {# tarefas abertas saem da lista de quem é responsável e voltam com a ficha:}}",
+        "tarefaDe": "{titulo}: {responsavel}, vence em {quando}",
+        "semTitulo": "sem título",
+        "semResponsavel": "sem responsável",
+        "negocios": "{count, plural, one {# negócio aberto fica no funil sem contato, com a marca \"contato na Lixeira\", e volta a apontar para a ficha se ela for restaurada:} other {# negócios abertos ficam no funil sem contato, com a marca \"contato na Lixeira\", e voltam a apontar para a ficha se ela for restaurada:}}",
+        "negocioEm": "{titulo}: {funil} › {etapa}",
+        "confirmar": "Mover para a Lixeira",
+        "toastMovidas": "{count, plural, one {Ficha movida para a Lixeira} other {# fichas movidas para a Lixeira}}",
+        "toastMovidasDica": "Ficam 90 dias na Lixeira de contatos e podem ser restauradas.",
+        "desfazer": "Desfazer",
+        "toastSumidas": "{count, plural, one {# ficha já não existia} other {# fichas já não existiam}}: alguém excluiu antes. A lista foi atualizada.",
+        "toastRecusadas": "{count, plural, one {# ficha não foi movida} other {# fichas não foram movidas}}"
+      },
+      "volta": {
+        "falhou": "Não deu para restaurar",
+        "restaurada": "{nome} voltou da Lixeira",
+        "restauradas": "{count, plural, one {# ficha voltou da Lixeira} other {# fichas voltaram da Lixeira}}",
+        "abrirFicha": "Abrir a ficha",
+        "ocupadaPor": "Identidade em uso por: {nomes}.",
+        "naoVoltaram": "{count, plural, one {# ficha não voltou} other {# fichas não voltaram}}",
+        "sumiram": "{count, plural, one {# ficha já não estava na Lixeira} other {# fichas já não estavam na Lixeira}}: alguém restaurou ou excluiu antes.",
+        "nadaNaLixeira": "Nada a restaurar: as fichas já saíram da Lixeira (alguém restaurou ou excluiu antes)."
+      },
+      "excluir": {
+        "titulo": "Excluir de vez",
+        "texto": "{nome} sai da Lixeira de vez: a ficha, a conversa, as mensagens, as tarefas, as anotações e os arquivos dela. Não dá para restaurar depois.",
+        "negociosFicam": "Os negócios que ficaram no funil continuam lá, sem contato.",
+        "pedidoRotulo": "É pedido de exclusão do titular (LGPD)",
+        "pedidoTexto": "Apaga também o que ficou fora da ficha: os dados desta pessoa nos eventos de webhook e do Calendly, o conteúdo das execuções de automação, as ligações e as mensagens retidas deste telefone, e o nome dela no histórico (o registro de que a ficha existiu fica, sem o nome).",
+        "ficamNoCrm": "Ficam no CRM, como dado do escritório (a confirmar com quem responde pela LGPD): os negócios, com o título; as cobranças e o cadastro do Asaas; os documentos do ZapSign; as reuniões e as transcrições; e as falas desta pessoa em grupos.",
+        "foraDoAlcance": "Mesmo assim, ficam fora do alcance do CRM: as cópias de segurança (backups), a Evolution (as conexões por QR code) e o que terceiros já receberam (integrações, e-mails, planilhas).",
+        "digite": "Para confirmar, digite {palavra}",
+        "palavra": "EXCLUIR",
+        "confirmar": "Excluir de vez",
+        "toastExcluida": "Ficha excluída de vez",
+        "toastExcluidaPedido": "Ficha excluída de vez, como pedido de exclusão do titular",
+        "toastArquivos": "{count, plural, one {# arquivo sai} other {# arquivos saem}} do armazenamento no próximo ciclo do servidor.",
+        "toastSumiu": "Esta ficha já não estava na Lixeira: alguém restaurou ou excluiu antes.",
+        "toastFalhou": "Não deu para excluir de vez"
+      },
+      "tela": {
+        "voltar": "Contatos",
+        "titulo": "Lixeira de contatos",
+        "descricao": "As fichas excluídas ficam aqui por 90 dias e podem ser restauradas com a conversa, as mensagens, as tarefas e as anotações. Depois disso saem de vez, com os arquivos.",
+        "somenteAdmin": "Só administradores veem a Lixeira de contatos.",
+        "arquivosParados": "{count, plural, one {# arquivo de ficha excluída não pôde ser apagado} other {# arquivos de fichas excluídas não puderam ser apagados}} do armazenamento depois de 10 tentativas. Avise quem cuida do sistema.",
+        "buscaPlaceholder": "Buscar por nome, telefone ou e-mail",
+        "carregando": "Carregando a Lixeira…",
+        "falhou": "Não deu para carregar a Lixeira.",
+        "falhouRecarga": "Não deu para atualizar a lista: o que aparece pode estar desatualizado.",
+        "tentarDeNovo": "Tentar de novo",
+        "vazia": "A Lixeira está vazia.",
+        "semResultado": "Nenhuma ficha da Lixeira corresponde à busca.",
+        "truncada": "Mostrando as {count} mais recentes. Use a busca para achar outra.",
+        "movidaPor": "Movida por {quem} em {quando}",
+        "movidaEm": "Movida em {quando}",
+        "vencida": "Prazo vencido: aguardando a limpeza",
+        "diasRestantes": "{dias, plural, one {Sai de vez em # dia} other {Sai de vez em # dias}}",
+        "contagemMensagens": "{count, plural, one {# mensagem} other {# mensagens}}",
+        "contagemTarefas": "{count, plural, one {# tarefa} other {# tarefas}}",
+        "contagemAnotacoes": "{count, plural, one {# anotação} other {# anotações}}",
+        "contagemAgendadas": "{count, plural, one {# agendada} other {# agendadas}}",
+        "restaurar": "Restaurar",
+        "restaurarLote": "Restaurar o lote ({count})",
+        "restaurarLoteDica": "Restaura todas as {count} fichas movidas junto com esta, inclusive as que a busca não mostra.",
+        "restaurarBloqueado": "Enquanto a outra ficha usar essa identidade, esta não pode voltar: seriam duas fichas da mesma pessoa.",
+        "excluirAgora": "Excluir agora",
+        "ocupada": "O telefone, o WhatsApp ou o Instagram desta ficha já é de {nome}.",
+        "abrirFicha": "Abrir a ficha"
+      }
     }
   },
   "Pipelines": {
@@ -1497,7 +1599,10 @@
       "editDeal": "Editar negócio",
       "editDealTitled": "Editar o negócio {titulo}",
       "unreadCount": "{count, plural, one {# mensagem não lida} other {# mensagens não lidas}}",
-      "automacaoRodando": "{n, plural, one {# automação agendada para este cliente} other {# automações agendadas para este cliente}}"
+      "automacaoRodando": "{n, plural, one {# automação agendada para este cliente} other {# automações agendadas para este cliente}}",
+      "naLixeira": "Na Lixeira",
+      "contatoNaLixeira": "Contato na Lixeira",
+      "contatoNaLixeiraDica": "A ficha deste contato está na Lixeira. Se for restaurada, volta a este negócio."
     },
     "form": {
       "editDeal": "Editar negócio",
@@ -1546,7 +1651,10 @@
       "contactSearchHint": "Digite ao menos 2 letras para buscar.",
       "contactSearchEmpty": "Nenhum contato encontrado para a busca.",
       "contactSearchFailed": "A busca falhou. Digite de novo para tentar.",
-      "contactSearchMore": "Mostrando os {count} primeiros. Continue digitando para afinar."
+      "contactSearchMore": "Mostrando os {count} primeiros. Continue digitando para afinar.",
+      "contatoNaLixeira": "O contato deste negócio está na Lixeira.",
+      "contatoNaLixeiraComNome": "{nome} está na Lixeira.",
+      "contatoNaLixeiraDica": "Se a ficha for restaurada, ela volta a este negócio — a não ser que outro contato seja escolhido aqui."
     },
     "settings": {
       "pickColor": "Escolher a cor {color}",
@@ -5682,7 +5790,8 @@
         "usuario": "<b>Responsável não encontrado</b> — use o id de usuário do membro, não o id de outra coisa da mesma tela.",
         "testUrl": "<b>Nada chega no n8n</b> — a Test URL só escuta 120 segundos. Cadastre a Production URL, com o fluxo publicado.",
         "url": "<b>Endereço recusado</b> — o CRM só entrega em https:// público: http, localhost e IP interno não servem.",
-        "desligado": "<b>Endereço desligado</b> — depois de {falhas} falhas seguidas o CRM para de entregar. Conserte o destino e clique em Religar em Webhooks → Enviados."
+        "desligado": "<b>Endereço desligado</b> — depois de {falhas} falhas seguidas o CRM para de entregar. Conserte o destino e clique em Religar em Webhooks → Enviados.",
+        "fichaNaLixeira": "<b>Contato excluído no CRM</b> — ele vai para a Lixeira por 90 dias. Enquanto isso o id responde <code>404</code> (as conversas dele também), mas um admin pode restaurá-lo com o <b>mesmo id</b> e as conversas e mensagens como estavam. Não recrie o contato no primeiro <code>404</code>: uma ficha nova com o mesmo telefone bloqueia a volta."
       },
       "referencia": "A referência de cada endpoint, com todos os campos, está no arquivo <code>docs/public-api.md</code> do repositório; o guia completo dos webhooks recebidos, em <code>docs/webhooks.md</code>.",
       "marcador": {
@@ -6605,7 +6714,12 @@
     "actorAgent": "por um agente de IA",
     "actorAgentNamed": "pelo agente de IA {name}",
     "actorScheduling": "pelo agendamento",
-    "actorIntegration": "por uma integração"
+    "actorIntegration": "por uma integração",
+    "contactTrashed": "Ficha movida para a Lixeira",
+    "contactRestored": "Ficha restaurada da Lixeira",
+    "contactPurged": "Ficha excluída de vez da Lixeira",
+    "contactPurgedRequest": "Ficha excluída de vez (pedido de exclusão)",
+    "contactPurgedExpired": "Ficha excluída de vez: venceu o prazo da Lixeira"
   },
   "Radar": {
     "title": "Radar do atendimento",
@@ -7134,7 +7248,7 @@
       "write-notes": "Escrever anotações internas",
       "manage-deals": "Mover negócios no funil (criar e apagar funis é do Administrador)",
       "view-reports": "Ver os relatórios do funil: lista de leads, Desempenho e Saúde",
-      "delete-contacts": "Excluir contatos (apagar a ficha leva a conversa e as mensagens junto)",
+      "delete-contacts": "Excluir contatos e cuidar da Lixeira (a ficha excluída fica 90 dias lá, com a conversa e as mensagens, e pode ser restaurada; depois sai de vez)",
       "decide-duplicates": "Decidir uma possível duplicata: marcar \"não é duplicata\", ligar ou unir as fichas (a que sai é apagada)",
       "manage-automations": "Criar automações, fluxos e disparos em massa",
       "edit-settings": "Alterar configurações da conta: conexões, modelos, campos, assinatura, integrações e chaves de API",

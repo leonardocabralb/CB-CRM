@@ -33,6 +33,10 @@ const pageTitles: Record<string, string> = {
   "/inbox": "inbox",
   "/notifications": "notifications",
   "/tarefas": "tasks",
+  // A Lixeira de contatos (1097). ANTES de `/contacts`, como `/agendadas`
+  // antes de `/agenda`: fora da casa exata, `getPageTitleKey` casa por
+  // `startsWith` na ordem de inserção.
+  "/contacts/lixeira": "lixeira",
   "/contacts": "contacts",
   "/pipelines": "pipelines",
   "/broadcasts": "broadcasts",

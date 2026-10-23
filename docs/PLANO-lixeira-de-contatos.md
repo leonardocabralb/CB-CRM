@@ -44,11 +44,11 @@
 | Fase | Escopo | Estado | Migration | PR |
 | --- | --- | --- | --- | --- |
 | **0** | Estudo, medição, revisão adversarial, decisões | ✅ 22/10/2026 (este arquivo) | — | — |
-| **1** | Portas dos fundos: o atendente deixa de apagar conversa e mensagem pelo navegador | ✅ implementada e provada no descartável (22/10/2026); falta o PR e aplicar | `1096_cb_atendente_nao_apaga_conversa` (RESTRITIVA, mas nada do app usa o que tira: vale antes ou depois do deploy) | — |
-| **2** | A Lixeira: banco (mover, prévia, restaurar, excluir agora, vencimento, fila de arquivos), tela (prévia, Lixeira, Desfazer) e a doc do B6 (`docs/public-api.md` e Configurações → API → Documentação) | ⏳ decisões tomadas (22/10) | ADITIVA, numerar na hora | — |
-| **3** | Depois do deploy da 2: derrubar a policy `contacts_delete` (só a função apaga) | ⏳ | RESTRITIVA | — |
-| **4** | Ficha nova do mesmo número: faixa "há uma ficha deste número na Lixeira" e "Restaurar e unir" | ⏳ desenho próprio | — | — |
-| **5** | O 410 da API (se B6 o escolher) e o roteiro interno de pedido de exclusão (LGPD) | ⏳ | — | — |
+| **1** | Portas dos fundos: o atendente deixa de apagar conversa e mensagem pelo navegador | ✅ aplicada em 23/10/2026 e mesclada | `1096_cb_atendente_nao_apaga_conversa` (RESTRITIVA, mas nada do app usa o que tira: vale antes ou depois do deploy) | #428 |
+| **2** | A Lixeira: banco (mover, prévia, restaurar, excluir agora, vencimento, fila de arquivos), tela (prévia, Lixeira, Desfazer) e a doc do B6 (`docs/public-api.md` e Configurações → API → Documentação) | ✅ aplicada em 23/10/2026 (antes do deploy); e2e no preview com fichas fictícias | `1097_cb_lixeira_de_contatos` (ADITIVA), `1098_cb_lixeira_conferencia` (a prova de ida e volta) e `1099_cb_lixeira_anular_confere_o_ponteiro` (correção do Codex) | #429 |
+| **3** | Depois do deploy da 2: derrubar a policy `contacts_delete` e o privilégio (só a Lixeira, as funções e o service role apagam) | ⏳ rascunho provado no descartável | `1100_cb_so_a_lixeira_apaga_contato` (RESTRITIVA: DEPOIS do deploy) | — |
+| **4** | Ficha nova da mesma pessoa: faixa "há uma ficha desta pessoa na Lixeira" e "Restaurar e unir" | ⏳ em implementação (desenho abaixo) | ADITIVA, `1101` | — |
+| **5** | O 410 da API e o roteiro interno de pedido de exclusão (LGPD) | ✅ o roteiro está abaixo; o 410 NÃO se aplica: B6 escolheu a volta com o MESMO id (a doc da API diz) | — | — |
 
 ### Fase 1 — registro (22/10/2026)
 
@@ -73,6 +73,96 @@
   o pino aceita nomes entre aspas (`"public"."messages"`).
 - **Testes:** suíte inteira verde no Node 22 (735 arquivos, 11.401 testes),
   lint e typecheck limpos.
+
+### Fase 2 — registro (23/10/2026)
+
+- **Objetivo:** a Lixeira de 90 dias inteira (B1–B6): mover com prévia,
+  "Desfazer", restaurar (com identidade ocupada bloqueando), excluir agora
+  (com a marca de pedido de exclusão), vencimento e a fila de arquivos.
+- **Migrations:** `1097_cb_lixeira_de_contatos` (ADITIVA: antes do deploy;
+  tabelas, RPCs, gatilhos calados por `WHEN`, default-deny, conferência de
+  catálogo) e `1098_cb_lixeira_conferencia` (só a prova de ida e volta,
+  separada para não rodar sob a trava exclusiva das ALTERs).
+- **App:** `src/lib/contacts/lixeira.ts` (puro), `use-lixeira.ts`,
+  `mover-para-lixeira-dialog.tsx`, `/contacts/lixeira`, a marca B4 no quadro
+  e no formulário do funil, a régua `restaurada_em` no tempo real, a trilha,
+  a fila (`src/lib/storage/arquivos-a-apagar.ts`, espelho
+  `caminho-no-chat-media.ts`) e o ciclo de manutenção do cron.
+- **Medido** no Postgres 16 descartável com o esquema da produção: ida e
+  volta idêntica (800 mensagens, uma linha em cada tabela do fecho e em cada
+  ponteiro); recusas, portas, pares, "Desfazer" pelo lote, exclusão com
+  pedido, fila e vencimento; 25 fichas com 3.000 mensagens em 1,3 s para
+  mover e 0,3 s para restaurar, com o volume da produção.
+- **Revisão independente:** nenhum P0/P1; 7 P2 corrigidos (a régua do tempo
+  real com `gravada_em` nulo — 72% da produção —, o pedido de exclusão mais
+  completo, a linha engolida por conflito como ressalva, o pino de gatilho
+  novo, a prova fora da trava, a corrida de conta no mover).
+- **Achado de hoje:** a exclusão crua estoura 23503 com robô parado numa
+  pergunta da conversa (o CASCADE anula `flow_runs` em três passos); a
+  Lixeira anula os ponteiros antes do DELETE (`cb_lixeira_anular`).
+- **Aplicada** em 23/10/2026, antes do deploy (1097 e 1098; a 1098 passou na
+  produção sem deixar linha). **e2e no preview** com duas fichas fictícias
+  (a produção, pelo `.env.local`): prévia com a tarefa aberta, mover pelo menu
+  e pela seleção, "Desfazer" do toast, restaurar pela Lixeira (ficha, tarefa e
+  os eventos da trilha de volta), identidade ocupada bloqueando o Restaurar
+  (B2) e "Excluir agora" com e sem o pedido (com ele, a trilha perde o nome).
+  Falta o e2e com conversa e mensagens, depois do deploy.
+- **Codex (rodada final):** P2 — `cb_lixeira_anular` anulava o ponteiro só
+  pela chave, e a troca de contato feita por outro pedido entre a fotografia
+  e o DELETE se perdia (a linha de fora não está travada). Correção na
+  `1099_cb_lixeira_anular_confere_o_ponteiro` (ADITIVA, antes do deploy): o
+  UPDATE confere também o valor fotografado. Provada num cluster descartável
+  montado do zero (conferência da 1099 duas vezes, "IDA E VOLTA OK" e
+  "PROVA 2 OK" com a função nova). A Fase 3 passou a ser a 1100.
+- **PR:** #429.
+
+### Fase 4 — desenho ("Restaurar e unir")
+
+- **Faixa (só admin)** na conversa e na ficha nova cujo telefone canônico,
+  BSUID ou `instagram_id` casa com um item da Lixeira (os índices da 1097
+  nessas três colunas): "Há uma ficha deste número na Lixeira, movida em …
+  por …, com N mensagens" + "Ver na Lixeira" + "Restaurar e unir".
+- **Restaurar e unir**, numa transação, admin: (1) trava o item; (2) dá à
+  fotografia uma identidade PROVISÓRIA que não colide (BSUID de reserva,
+  telefone e Instagram nulos — o `contacts_identidade_ck` exige uma); (3)
+  restaura pelo miolo de sempre; (4) `cb_unir_fichas(fica = a nova, sai = a
+  restaurada)`, com a prévia da união antes do botão; (5) limpa a reserva se
+  ela tiver passado para a nova (a união leva o BSUID da que sai quando uma
+  não tem telefone). A trilha conta as duas coisas (`contact_restored` e
+  `contacts_merged`).
+- **Riscos a provar no descartável:** o BSUID de reserva nunca ficar na ficha
+  nova; a regra D7 de cards da união (o card repetido no mesmo funil é
+  apagado) — a prévia mostra; conversa nas duas → mensagens mescladas.
+
+### Fase 5 — roteiro interno do pedido de exclusão (LGPD)
+
+Para quem recebe o pedido do titular. Não é parecer jurídico: a lista de B3
+continua PROPOSTA até quem responde pela LGPD no escritório confirmar.
+
+1. **Registrar o pedido** fora do CRM (quem pediu, quando, por qual canal),
+   sem copiar dado pessoal para o registro além do necessário.
+2. **Achar todas as fichas da pessoa:** busca por telefone (as duas grafias do
+   nono dígito), e-mail e nome; o aviso de possível duplicata; fichas unidas
+   (o histórico da ficha mostra "fichas unidas"); a Lixeira.
+3. **Mover cada ficha para a Lixeira** e, na Lixeira, **Excluir agora** com a
+   caixa "É pedido de exclusão do titular". Sai: a ficha, a conversa, as
+   mensagens, tarefas, anotações, os arquivos (no ciclo seguinte do servidor,
+   ~15 min), os dados dela nos eventos de webhook e do Calendly, o conteúdo
+   das execuções, as ligações e mensagens retidas do telefone, e o nome no
+   histórico.
+4. **O que FICA no CRM** (dado do escritório ou obrigação, a confirmar):
+   negócios com o título, cobranças e cadastro do Asaas, documentos do
+   ZapSign, reuniões e transcrições, falas da pessoa em grupos. Decidir caso a
+   caso; apagar à mão pela tela de cada módulo, se for o caso.
+5. **Fora do alcance do CRM:** cópias de segurança do Supabase (somem quando o
+   período de retenção vence), a Evolution (conversas no aparelho e na
+   instância das conexões por QR code), e o que terceiros já receberam
+   (Asaas, ZapSign, Calendly, Atlas, tl;dv, n8n/Make, e-mails, planilhas).
+   Pedir a exclusão em cada um que tiver o dado.
+6. **Cache do armazenamento:** conferir no painel do Supabase se o Smart CDN
+   invalida ao apagar antes de afirmar prazo ao titular.
+7. **Responder ao titular** dizendo o que foi apagado e o que ficou (e por
+   quê), sem afirmar eliminação total.
 
 ## O pedido (22/10/2026)
 
@@ -486,7 +576,8 @@ pino cobra que toda FK do fecho tenha um:
   que muda e não é único.
 - "Restaurar e unir": a identidade ocupada impede reinserir a antiga como
   está; o desenho (trazer as linhas para dentro da nova pela receita da
-  `cb_unir_fichas`, com a prévia) é estudo próprio.
+  `cb_unir_fichas`, com a prévia): "Fase 4 — desenho", no começo deste
+  arquivo.
 
 ### Prova
 
@@ -534,6 +625,12 @@ pino cobra que toda FK do fecho tenha um:
   nesse intervalo.
 - A mensagem do cliente que chega durante o mover espera a trava e, depois do
   commit, recebe 23503 e se perde (já é assim hoje na exclusão).
+- O mover trava a ficha, as conversas e as mensagens, mas não os outros
+  descendentes (reação, etiqueta, campo, `cb_message_media_ref`): uma edição
+  ou remoção deles que comite entre a fotografia e o DELETE some, e a
+  restauração devolve a versão de antes (a etiqueta removida volta). Corrida
+  de milissegundos com lado seguro — nada sai ao cliente (Codex no #429,
+  aceita como limite).
 - Os arquivos seguem públicos pelo link durante os 90 dias. O "Excluir agora"
   leva até um ciclo do laço lento (~15 min) para tirá-los do bucket, mais o
   cache do CDN enquanto durar (conferir no painel se o Smart CDN invalida ao

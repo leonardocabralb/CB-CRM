@@ -95,7 +95,8 @@
     "radar": "Service radar",
     "agenda": "Meeting calendar",
     "meuDia": "My day",
-    "reunioes": "Meetings"
+    "reunioes": "Meetings",
+    "lixeira": "Contacts trash"
   },
   "ModeToggle": {
     "switchMode": "Switch to {mode} mode"
@@ -965,7 +966,8 @@
           "passo": "Interrupted by another automation (\"Stop automation\" step)",
           "desativacao": "Interrupted: the automation was turned off",
           "fusao": "Interrupted: the contact was merged into another",
-          "desconhecido": "Interrupted"
+          "desconhecido": "Interrupted",
+          "lixeira": "Interrupted: the contact was moved to the trash"
         },
         "verRegistros": "See all runs of this automation",
         "mostrarMais": "Show {n} more"
@@ -1229,7 +1231,6 @@
       "noTagsYet": "No tags yet.",
       "selectedCount": "{count} selected",
       "clearSelection": "Clear",
-      "deleteSelected": "Delete selected",
       "tableColumns": {
         "name": "Name",
         "phone": "Phone",
@@ -1244,26 +1245,16 @@
       "addFirstContact": "Add your first contact",
       "unnamed": "Unnamed",
       "editAction": "Edit",
-      "deleteAction": "Delete",
       "showingPagination": "Showing {start}-{end} of {total}",
       "pageCount": "Page {page} of {total}",
-      "deleteContactTitle": "Delete Contact",
-      "deleteContactDesc": "Are you sure you want to delete {name}? This action cannot be undone.",
-      "cancel": "Cancel",
-      "deleteBtn": "Delete",
-      "deleteBulkTitle": "Delete Contacts",
-      "deleteBulkDesc": "Are you sure you want to delete {count} selected contacts? This action cannot be undone.",
       "toastFailedLoad": "Failed to load contacts",
-      "toastFailedDelete": "Failed to delete contact",
-      "toastDeleted": "Contact deleted",
-      "toastBulkFailedDelete": "Failed to delete contacts",
-      "toastBulkDeleted": "{count} contacts deleted",
-      "toastDeleteRefused": "Could not delete: your profile is not allowed to delete contacts.",
-      "toastDeleteGone": "This contact no longer exists — someone deleted it first. The list has been refreshed.",
       "selectAllOnPage": "Select all contacts on this page",
       "filterByTag": "Filter by {name}",
       "removeTagFilter": "Remove the {name} filter",
-      "selectContact": "Select {name}"
+      "selectContact": "Select {name}",
+      "lixeiraBtn": "Trash",
+      "moverSelecionados": "Move to Trash",
+      "moverParaLixeira": "Move to Trash"
     },
     "form": {
       "notLinkedToAccount": "Your profile is not linked to an account.",
@@ -1455,6 +1446,117 @@
       "seedTracking": "Create the {count} missing tracking fields in “{group}”",
       "toastSeeded": "{count} tracking fields created.",
       "toastSeedFailed": "Could not create the tracking fields."
+    },
+    "lixeira": {
+      "semNome": "No name",
+      "cancelar": "Cancel",
+      "motivos": {
+        "so_admin": "Only admins can use the contacts Trash (or your session expired: sign in again).",
+        "membro_suspenso": "Your access is suspended.",
+        "ocupada": "Someone else is working on this record right now. Try again in a moment.",
+        "em_processamento": "Someone else is restoring or deleting this record right now. Try again in a moment.",
+        "identidade_ocupada": "This record's phone, WhatsApp or Instagram already belongs to another record: it cannot come back until that is resolved.",
+        "esquema_mudou": "The system changed since the record went to the Trash, and it would not come back as it was. Call whoever maintains the system.",
+        "sem_tratamento": "The system gained a new part that the Trash does not know how to keep yet. Call whoever maintains the system.",
+        "presa": "Another record still holds this one. Call whoever maintains the system.",
+        "demorou": "The database took too long to answer. Check the list before trying again.",
+        "falhou": "Could not confirm what happened. Check the list before trying again."
+      },
+      "ressalvas": {
+        "linhas_descartadas": "{n, plural, one {# entry did not come back} other {# entries did not come back}}: what it referred to (tag, field, connection or automation) was deleted while the record was in the Trash.",
+        "agendadas_em_falha": "{n, plural, one {# scheduled message came back as failed} other {# scheduled messages came back as failed}}: nothing goes out on its own. Send or cancel it in Scheduled messages.",
+        "movimentos_sem_automacao": "{n, plural, one {# card move ran} other {# card moves ran}} without the stage automation while the record was in the Trash: use \"Run automation\" on the card if needed.",
+        "zapsign_sem_contato": "{n, plural, one {# ZapSign signature arrived} other {# ZapSign signatures arrived}} with no matching record since this one went to the Trash: check whether any was this person's and use \"Process again\" in the integration.",
+        "pares_para_a_lixeira": "{n, plural, one {# link to another record that is also in the Trash comes back} other {# links to other records that are also in the Trash come back}} when that record is restored.",
+        "colunas_sumidas": "{n, plural, one {# piece of data was left out} other {# pieces of data were left out}}: the field no longer exists in the system."
+      },
+      "mover": {
+        "titulo": "Move to Trash",
+        "descricao": "{count, plural, one {The record leaves every screen and stays} other {The # records leave every screen and stay}} in the Trash for 90 days, with the conversation, messages, tasks and notes. An admin can restore within that time; after that it is gone for good, files included.",
+        "conferindo": "Checking what the deletion cancels…",
+        "previaFalhou": "Could not check what the deletion cancels, and without that the record is not moved.",
+        "tentarDeNovo": "Try again",
+        "mensagens": "{count, plural, one {# message goes to the Trash with it.} other {# messages go to the Trash with it.}}",
+        "cancelaTitulo": "What changes for the team:",
+        "nadaEmAndamento": "{count, plural, one {Nothing in progress on this record} other {Nothing in progress on the # records}}: no scheduled message, waiting automation, bot, open task, open deal or open conversation with an assignee.",
+        "outrasSemNada": "{count, plural, one {The other record has nothing in progress.} other {The other # records have nothing in progress.}}",
+        "naoExistem": "{count, plural, one {# record no longer exists} other {# records no longer exist}}: someone deleted it first.",
+        "conversa": "The open conversation with {responsavel} leaves the inbox (it comes back with the record).",
+        "agendadas": "{count, plural, one {# scheduled message will not go out (if the record comes back, it comes back as failed, to send or cancel):} other {# scheduled messages will not go out (if the record comes back, they come back as failed, to send or cancel):}}",
+        "agendadaDe": "by {autor}, for {quando}",
+        "autorDesconhecido": "unknown author",
+        "esperas": "{count, plural, one {# waiting automation is ended and does not come back with the record.} other {# waiting automations are ended and do not come back with the record.}}",
+        "robos": "{count, plural, one {# bot in conversation is stopped and does not come back with the record.} other {# bots in conversation are stopped and do not come back with the record.}}",
+        "tarefas": "{count, plural, one {# open task leaves its assignee's list and comes back with the record:} other {# open tasks leave their assignees' lists and come back with the record:}}",
+        "tarefaDe": "{titulo}: {responsavel}, due {quando}",
+        "semTitulo": "untitled",
+        "semResponsavel": "no assignee",
+        "negocios": "{count, plural, one {# open deal stays in the pipeline with no contact, marked \"contact in Trash\", and points to the record again if it is restored:} other {# open deals stay in the pipeline with no contact, marked \"contact in Trash\", and point to the record again if it is restored:}}",
+        "negocioEm": "{titulo}: {funil} › {etapa}",
+        "confirmar": "Move to Trash",
+        "toastMovidas": "{count, plural, one {Record moved to the Trash} other {# records moved to the Trash}}",
+        "toastMovidasDica": "They stay in the contacts Trash for 90 days and can be restored.",
+        "desfazer": "Undo",
+        "toastSumidas": "{count, plural, one {# record no longer existed} other {# records no longer existed}}: someone deleted it first. The list was refreshed.",
+        "toastRecusadas": "{count, plural, one {# record was not moved} other {# records were not moved}}"
+      },
+      "volta": {
+        "falhou": "Could not restore",
+        "restaurada": "{nome} is back from the Trash",
+        "restauradas": "{count, plural, one {# record is back from the Trash} other {# records are back from the Trash}}",
+        "abrirFicha": "Open record",
+        "ocupadaPor": "Identity in use by: {nomes}.",
+        "naoVoltaram": "{count, plural, one {# record did not come back} other {# records did not come back}}",
+        "sumiram": "{count, plural, one {# record was no longer in the Trash} other {# records were no longer in the Trash}}: someone restored or deleted it first.",
+        "nadaNaLixeira": "Nothing to restore: the records already left the Trash (someone restored or deleted them first)."
+      },
+      "excluir": {
+        "titulo": "Delete for good",
+        "texto": "{nome} leaves the Trash for good: the record, its conversation, messages, tasks, notes and files. It cannot be restored afterwards.",
+        "negociosFicam": "The deals that stayed in the pipeline remain there, with no contact.",
+        "pedidoRotulo": "This is a data subject's deletion request (LGPD)",
+        "pedidoTexto": "Also erases what stayed outside the record: this person's data in webhook and Calendly events, the content of automation runs, the calls and the held messages from this phone, and their name in the history (the entry saying the record existed stays, without the name).",
+        "ficamNoCrm": "These stay in the CRM as the firm's records (to be confirmed with whoever handles LGPD): the deals, with their title; the Asaas charges and customer record; the ZapSign documents; the meetings and transcripts; and this person's messages in groups.",
+        "foraDoAlcance": "Even so, these are beyond the CRM's reach: backups, Evolution (the QR code connections) and whatever third parties already received (integrations, e-mails, spreadsheets).",
+        "digite": "To confirm, type {palavra}",
+        "palavra": "DELETE",
+        "confirmar": "Delete for good",
+        "toastExcluida": "Record deleted for good",
+        "toastExcluidaPedido": "Record deleted for good, as a data subject's deletion request",
+        "toastArquivos": "{count, plural, one {# file leaves} other {# files leave}} storage on the server's next cycle.",
+        "toastSumiu": "This record was no longer in the Trash: someone restored or deleted it first.",
+        "toastFalhou": "Could not delete for good"
+      },
+      "tela": {
+        "voltar": "Contacts",
+        "titulo": "Contacts trash",
+        "descricao": "Deleted records stay here for 90 days and can be restored with their conversation, messages, tasks and notes. After that they are gone for good, files included.",
+        "somenteAdmin": "Only admins can see the contacts Trash.",
+        "arquivosParados": "{count, plural, one {# file of a deleted record could not be erased} other {# files of deleted records could not be erased}} from storage after 10 attempts. Tell whoever maintains the system.",
+        "buscaPlaceholder": "Search by name, phone or e-mail",
+        "carregando": "Loading the Trash…",
+        "falhou": "Could not load the Trash.",
+        "falhouRecarga": "Could not refresh the list: what you see may be out of date.",
+        "tentarDeNovo": "Try again",
+        "vazia": "The Trash is empty.",
+        "semResultado": "No record in the Trash matches the search.",
+        "truncada": "Showing the {count} most recent. Use the search to find another one.",
+        "movidaPor": "Moved by {quem} on {quando}",
+        "movidaEm": "Moved on {quando}",
+        "vencida": "Time is up: waiting for cleanup",
+        "diasRestantes": "{dias, plural, one {Gone for good in # day} other {Gone for good in # days}}",
+        "contagemMensagens": "{count, plural, one {# message} other {# messages}}",
+        "contagemTarefas": "{count, plural, one {# task} other {# tasks}}",
+        "contagemAnotacoes": "{count, plural, one {# note} other {# notes}}",
+        "contagemAgendadas": "{count, plural, one {# scheduled} other {# scheduled}}",
+        "restaurar": "Restore",
+        "restaurarLote": "Restore batch ({count})",
+        "restaurarLoteDica": "Restores all {count} records moved together with this one, including the ones the search hides.",
+        "restaurarBloqueado": "While the other record uses this identity, this one cannot come back: there would be two records for the same person.",
+        "excluirAgora": "Delete now",
+        "ocupada": "This record's phone, WhatsApp or Instagram already belongs to {nome}.",
+        "abrirFicha": "Open record"
+      }
     }
   },
   "Pipelines": {
@@ -1504,7 +1606,10 @@
       "editDeal": "Edit deal",
       "editDealTitled": "Edit deal {titulo}",
       "unreadCount": "{count, plural, one {# unread message} other {# unread messages}}",
-      "automacaoRodando": "{n, plural, one {# automation scheduled for this contact} other {# automations scheduled for this contact}}"
+      "automacaoRodando": "{n, plural, one {# automation scheduled for this contact} other {# automations scheduled for this contact}}",
+      "naLixeira": "In Trash",
+      "contatoNaLixeira": "Contact in Trash",
+      "contatoNaLixeiraDica": "This contact’s record is in the Trash. If it is restored, it returns to this deal."
     },
     "form": {
       "editDeal": "Edit Deal",
@@ -1553,7 +1658,10 @@
       "contactSearchHint": "Type at least 2 letters to search.",
       "contactSearchEmpty": "No contact matches the search.",
       "contactSearchFailed": "The search failed. Type again to retry.",
-      "contactSearchMore": "Showing the first {count}. Keep typing to narrow it down."
+      "contactSearchMore": "Showing the first {count}. Keep typing to narrow it down.",
+      "contatoNaLixeira": "This deal’s contact is in the Trash.",
+      "contatoNaLixeiraComNome": "{nome} is in the Trash.",
+      "contatoNaLixeiraDica": "If the record is restored, it returns to this deal — unless another contact is chosen here."
     },
     "settings": {
       "pickColor": "Pick color {color}",
@@ -5689,7 +5797,8 @@
         "usuario": "<b>Assignee not found</b> — use the member's user id, not the id of something else on the same screen.",
         "testUrl": "<b>Nothing reaches n8n</b> — the Test URL only listens for 120 seconds. Register the Production URL, with the flow published.",
         "url": "<b>Address refused</b> — the CRM only delivers to a public https:// address: http, localhost and internal IPs do not work.",
-        "desligado": "<b>Endpoint switched off</b> — after {falhas} consecutive failures the CRM stops delivering. Fix the destination and click Turn back on in Webhooks → Outgoing."
+        "desligado": "<b>Endpoint switched off</b> — after {falhas} consecutive failures the CRM stops delivering. Fix the destination and click Turn back on in Webhooks → Outgoing.",
+        "fichaNaLixeira": "<b>Contact deleted in the CRM</b> — it goes to the trash for 90 days. Meanwhile its id answers <code>404</code> (its conversations too), but an admin can restore it with the <b>same id</b> and its conversations and messages as they were. Don't recreate the contact on the first <code>404</code>: a new record with the same phone blocks the restore."
       },
       "referencia": "Every endpoint's reference, with all fields, is in the repository's <code>docs/public-api.md</code> file; the full guide to incoming webhooks, in <code>docs/webhooks.md</code>.",
       "marcador": {
@@ -6612,7 +6721,12 @@
     "actorAgent": "by an AI agent",
     "actorAgentNamed": "by the AI agent {name}",
     "actorScheduling": "by the scheduling",
-    "actorIntegration": "by an integration"
+    "actorIntegration": "by an integration",
+    "contactTrashed": "Record moved to the Trash",
+    "contactRestored": "Record restored from the Trash",
+    "contactPurged": "Record permanently deleted from the Trash",
+    "contactPurgedRequest": "Record permanently deleted (deletion request)",
+    "contactPurgedExpired": "Record permanently deleted: its time in the Trash ran out"
   },
   "Radar": {
     "title": "Service radar",
@@ -7134,7 +7248,7 @@
       "write-notes": "Write internal notes",
       "manage-deals": "Move deals across the pipeline (creating and deleting pipelines is admin-only)",
       "view-reports": "See the pipeline reports: lead list, Performance and Health",
-      "delete-contacts": "Delete contacts (deleting a record takes its conversation and messages with it)",
+      "delete-contacts": "Delete contacts and manage the Trash (a deleted record stays there for 90 days with its conversation and messages and can be restored; after that it is gone for good)",
       "decide-duplicates": "Decide a possible duplicate: mark \"not a duplicate\", link or merge the records (the one that goes away is deleted)",
       "manage-automations": "Create automations, flows and broadcasts",
       "edit-settings": "Change account settings: connections, templates, fields, signature, integrations and API keys",

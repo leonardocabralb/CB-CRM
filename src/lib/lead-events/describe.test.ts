@@ -15,7 +15,7 @@ import {
   ordenarPorTempo,
   viaDoEvento,
 } from './describe';
-import type { LeadEvent, ConversationNote } from '@/types';
+import type { LeadEvent, LeadEventType, ConversationNote } from '@/types';
 
 function evento(patch: Partial<LeadEvent>): LeadEvent {
   return {
@@ -684,4 +684,116 @@ describe('união de fichas (1092) — a linha da ficha que ficou', () => {
       }
     });
   }
+});
+
+describe('Lixeira de contatos (1097) — mover, restaurar, excluir de vez', () => {
+  const ANA = '00000000-0000-0000-0000-00000000000a';
+  const daLixeira = (tipo: 'contact_trashed' | 'contact_restored' | 'contact_purged', patch: Partial<LeadEvent> = {}) =>
+    evento({
+      event_type: tipo,
+      deal_id: null,
+      actor_user_id: ANA,
+      actor_label: 'Ana',
+      origin: 'usuario',
+      details: { item_id: 'item-1', lote_id: 'lote-1' },
+      ...patch,
+    });
+  // Como o gatilho grava a exclusão definitiva: sem ficha e sem rótulo.
+  const excluida = (patch: Partial<LeadEvent> = {}) =>
+    daLixeira('contact_purged', { contact_id: null, contact_label: null, ...patch });
+
+  it('mover e restaurar aparecem no fio da ficha que voltou; a exclusão definitiva não', () => {
+    expect(apareceNaConversa(daLixeira('contact_trashed'))).toBe(true);
+    expect(apareceNaConversa(daLixeira('contact_restored'))).toBe(true);
+    expect(apareceNaConversa(excluida())).toBe(false);
+
+    const fio = intercalar(
+      [{ id: 'm1', created_at: '2026-10-23T12:00:00+00:00' }],
+      [
+        daLixeira('contact_trashed', { id: 'e1', occurred_at: '2026-10-23T14:00:00+00:00' }),
+        daLixeira('contact_restored', { id: 'e2', occurred_at: '2026-10-23T14:00:05+00:00' }),
+        excluida({ id: 'e3', occurred_at: '2026-10-23T14:00:09+00:00' }),
+      ],
+    );
+    expect(fio.map((i) => i.chave)).toEqual(['m:m1', 'e:e1', 'e:e2']);
+  });
+
+  it('cada linha tem frase própria, com quem fez pelo autor', () => {
+    expect(chaveDoTexto(daLixeira('contact_trashed'))).toBe('contactTrashed');
+    expect(chaveDoTexto(daLixeira('contact_restored'))).toBe('contactRestored');
+    expect(chaveDoAutor(daLixeira('contact_trashed'))).toEqual({ chave: 'actorPerson', nome: 'Ana' });
+  });
+
+  it('exclusão definitiva: "Excluir agora", pedido de exclusão (B3) e prazo vencido', () => {
+    expect(chaveDoTexto(excluida({ details: { pedido_exclusao: false } }))).toBe('contactPurged');
+    expect(chaveDoTexto(excluida({ details: { pedido_exclusao: true } }))).toBe('contactPurgedRequest');
+    // JSONB de fora: só o booleano verdadeiro liga (seção 8c).
+    expect(chaveDoTexto(excluida({ details: { pedido_exclusao: 'true' } }))).toBe('contactPurged');
+    // O vencimento roda no servidor: sem ninguém, "pelo sistema".
+    const vencida = excluida({ actor_user_id: null, actor_label: null, origin: 'sistema', details: { pedido_exclusao: false } });
+    expect(chaveDoTexto(vencida)).toBe('contactPurgedExpired');
+    expect(chaveDoAutor(vencida).chave).toBe('actorSystem');
+  });
+
+  for (const arquivo of ['en.json', 'pt-BR.json']) {
+    it(`${arquivo} tem as frases da Lixeira (colhidas da leitura)`, () => {
+      const lido = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'messages', arquivo), 'utf8'))
+        .LeadEvents as Record<string, string>;
+      const chaves = new Set<string>();
+      for (const tipo of ['contact_trashed', 'contact_restored', 'contact_purged'] as const) {
+        for (const origin of ['usuario', 'sistema'] as const) {
+          for (const pedido of [true, false]) {
+            chaves.add(chaveDoTexto(daLixeira(tipo, { origin, details: { pedido_exclusao: pedido } })));
+          }
+        }
+      }
+      expect(chaves.size).toBe(5);
+      expect([...chaves].filter((c) => typeof lido[c] !== 'string')).toEqual([]);
+    });
+  }
+});
+
+describe('os tipos da trilha no TS são os do CHECK do banco', () => {
+  // `satisfies` reprova o typecheck quando `LeadEventType` ganha ou perde um
+  // tipo sem esta lista; o teste reprova quando a migration mais nova que
+  // recria o CHECK diverge dela. Tipo só no SQL vira linha sem frase nem
+  // símbolo; tipo só no TS é linha que o banco recusa.
+  const TIPOS = {
+    deal_created: true,
+    stage_changed: true,
+    pipeline_changed: true,
+    status_changed: true,
+    deal_deleted: true,
+    tag_added: true,
+    tag_removed: true,
+    conversation_status_changed: true,
+    conversation_assigned: true,
+    contacts_merged: true,
+    contact_trashed: true,
+    contact_restored: true,
+    contact_purged: true,
+  } satisfies Record<LeadEventType, true>;
+
+  it('a migration mais nova que recria `cb_lead_events_event_type_check` aceita exatamente estes', () => {
+    const pasta = path.join(__dirname, '..', '..', '..', 'supabase', 'migrations');
+    const marca = /ADD\s+CONSTRAINT\s+cb_lead_events_event_type_check/i;
+    const sql = fs
+      .readdirSync(pasta)
+      .filter((nome) => /^\d{4}_.*\.sql$/.test(nome))
+      .sort()
+      .reverse()
+      .map((nome) =>
+        fs
+          .readFileSync(path.join(pasta, nome), 'utf8')
+          .split('\n')
+          .map((linha) => linha.replace(/--.*$/, ''))
+          .join('\n'),
+      )
+      .find((texto) => marca.test(texto));
+    expect(sql).toBeDefined();
+    const trecho = sql!.slice(sql!.search(marca));
+    const check = trecho.slice(0, trecho.indexOf(';'));
+    const doBanco = [...check.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+    expect([...doBanco].sort()).toEqual(Object.keys(TIPOS).sort());
+  });
 });

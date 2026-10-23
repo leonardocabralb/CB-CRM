@@ -36,6 +36,7 @@ import {
   urlDoInbox,
 } from "@/lib/inbox/url";
 import { comMensagemNova } from "@/lib/inbox/ordem-da-lista";
+import { reinseridaPelaRestauracao } from "@/lib/contacts/lixeira";
 import {
   novoPedidoDeSalto,
   type AlvoDoSalto,
@@ -486,14 +487,38 @@ function InboxPageInner() {
     checkConnection();
   }, []);
 
+  /**
+   * As conversas que VOLTARAM da Lixeira enquanto a página ouvia (1097): id →
+   * `restaurada_em`, gravado pelo INSERT da conversa, que o tempo real entrega
+   * ANTES das mensagens devolvidas (a mesma transação, na ordem do banco). Ref,
+   * e não estado: o evento da mensagem chega antes de qualquer render.
+   */
+  const restauradaEmRef = useRef(new Map<string, string>());
+
   // Handle realtime message events
   const handleMessageEvent = useCallback(
     (event: { eventType: string; new: Message; old: Partial<Message> }) => {
-      const newMsg = event.new;
+      // O `payload.new` traz a linha inteira — `gravada_em` incluído.
+      const newMsg = event.new as Message & { gravada_em?: string | null };
 
       if (event.eventType === "INSERT") {
+        // ⚠️ A mensagem DEVOLVIDA pela restauração da Lixeira (1097) não entra
+        // no fio aberto pelo fim nem dispara a recarga das execuções: chegam
+        // centenas, fora da ordem do carimbo, e a do cliente pediria uma
+        // recarga cada. O fio aberto é relido UMA vez quando a conversa volta
+        // (`handleConversationEvent`), na ordem certa. A régua é a da lista e
+        // do aviso (`reinseridaPelaRestauracao`).
+        const daRestauracao = reinseridaPelaRestauracao(
+          newMsg.gravada_em,
+          restauradaEmRef.current.get(newMsg.conversation_id) ??
+            (activeConversation?.id === newMsg.conversation_id
+              ? activeConversation.restaurada_em
+              : null),
+          newMsg.created_at,
+        );
         // Add to messages if it belongs to active conversation
         if (
+          !daRestauracao &&
           activeConversation &&
           newMsg.conversation_id === activeConversation.id
         ) {
@@ -569,6 +594,16 @@ function InboxPageInner() {
       const conv = event.new;
 
       if (event.eventType === "INSERT") {
+        // ⚠️ A conversa que VOLTA da Lixeira (1097) nasce com `restaurada_em`
+        // (a conversa nova de todo dia nasce sem), e as mensagens devolvidas
+        // vêm logo atrás: a régua precisa do instante ANTES delas
+        // (`restauradaEmRef`). Se é a conversa ABERTA nesta tela, o fio é
+        // relido uma vez — a transação já terminou quando o evento chega —
+        // em vez de receber as devolvidas pelo fim, fora da ordem.
+        if (conv.restaurada_em) {
+          restauradaEmRef.current.set(conv.id, conv.restaurada_em);
+          if (activeConversation?.id === conv.id) setResyncToken((n) => n + 1);
+        }
         // Prepend immediately for snappy UX so the new conv shows in the
         // list right away, then hydrate to fill in the `contact` join
         // (realtime payloads never include joins). Skip both if we
@@ -580,6 +615,18 @@ function InboxPageInner() {
             return [conv, ...prev];
           });
           hydrateConversation(conv.id);
+        } else if (conv.restaurada_em) {
+          // A linha VELHA da conversa ainda está na lista (o "Desfazer" logo
+          // depois de mover: a página não ouve o DELETE da conversa). Só o
+          // carimbo da volta entra — o resto da linha vem no UPDATE final —,
+          // e entra ANTES das mensagens: os `setConversations` de
+          // `comMensagemNova` rodam depois deste, na ordem da fila.
+          const restauradaEm = conv.restaurada_em;
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.id === conv.id ? { ...c, restaurada_em: restauradaEm } : c,
+            ),
+          );
         }
       }
 
