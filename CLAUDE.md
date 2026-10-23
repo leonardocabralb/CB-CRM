@@ -471,9 +471,9 @@ O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
 - De ADMIN: "Gerenciar funil" e as abas Lista/Desempenho/Saúde
   (08/09/2026). A automação é da CONTA: qualquer admin edita, ativa,
   duplica e apaga, nunca só o autor (23/09/2026).
-- Lixeira de contatos (22/10/2026): excluir é de admin e MOVE por 90 dias;
-  restaurar volta o mesmo id e bloqueia com a identidade em outra ficha;
-  B1–B6 de `docs/PLANO-lixeira-de-contatos.md`.
+- Lixeira (B1–B6, 22/10/2026): excluir é de admin, 90 dias; restaurar volta
+  o mesmo id; identidade ocupada → "Restaurar e unir": fica a ficha aberta,
+  a conversa velha vira histórico (23/10).
 - Cadastro só por convite (22/09/2026); a saída para ex-membro que ainda
   tem login é BLOQUEAR no Supabase (apagar o login leva por CASCADE o que ele
   criou: etiquetas, modelos, automações).

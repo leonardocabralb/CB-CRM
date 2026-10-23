@@ -155,10 +155,14 @@ Decisões do operador (22/10/2026, B1–B6): `docs/PLANO-lixeira-de-contatos.md`
   identidade casa, dá à fotografia identidade PROVISÓRIA (anula SÓ o que
   colide; nada sobrando, a reserva `lixeira:<item>`), restaura pelo miolo
   (`cb_lixeira_restaurar_um`) e une. Recusa desfaz TUDO.
-- ⚠️⚠️ **A conversa que volta é HISTÓRICO**: entra encerrada, sem
-  responsável, sem espera nem não lidas — a de hoje não reabre, não troca de
-  responsável (nem avisa no sino), a espera não recua. A janela da Meta SÓ
-  AVANÇA: a maior por chave entre a de hoje (lida antes) e a da fotografia.
+- ⚠️⚠️ **A conversa que volta é HISTÓRICO** (decisão do operador,
+  23/10/2026, com as duas abaixo): entra encerrada, sem responsável, sem
+  espera nem não lidas — a de hoje não reabre, não troca de responsável (nem
+  avisa no sino), a espera não recua. A janela da Meta SÓ AVANÇA: a maior
+  por chave entre a de hoje (lida antes) e a da fotografia. Fica sempre a
+  ficha aberta (sem "Trocar"); com o mesmo telefone, o BSUID da que volta
+  passa para a que fica quando ela não tem BSUID (dois BSUIDs diferentes:
+  a união recusa, `bsuid_diferentes`).
 - ⚠️⚠️ **Nunca**: a reserva sobrar (sai da ficha; livro e trilha levam a
   identidade original; a função confere — `cb_bloqueios_da_uniao` a ignora);
   anular identidade de uma TERCEIRA ficha (`identidade_ocupada`); botão sem
