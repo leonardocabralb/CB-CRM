@@ -46,7 +46,7 @@
 | **0** | Estudo, medição, revisão adversarial, decisões | ✅ 22/10/2026 (este arquivo) | — | — |
 | **1** | Portas dos fundos: o atendente deixa de apagar conversa e mensagem pelo navegador | ✅ aplicada em 23/10/2026 e mesclada | `1096_cb_atendente_nao_apaga_conversa` (RESTRITIVA, mas nada do app usa o que tira: vale antes ou depois do deploy) | #428 |
 | **2** | A Lixeira: banco (mover, prévia, restaurar, excluir agora, vencimento, fila de arquivos), tela (prévia, Lixeira, Desfazer) e a doc do B6 (`docs/public-api.md` e Configurações → API → Documentação) | ✅ aplicada em 23/10/2026 (antes do deploy); e2e no preview com fichas fictícias | `1097_cb_lixeira_de_contatos` (ADITIVA) e `1098_cb_lixeira_conferencia` (a prova de ida e volta) | #429 |
-| **3** | Depois do deploy da 2: derrubar a policy `contacts_delete` e o privilégio (só a Lixeira, as funções e o service role apagam) | ⏳ rascunho provado no descartável | `1099_cb_so_a_lixeira_apaga_contato` (RESTRITIVA: DEPOIS do deploy) | — |
+| **3** | Depois do deploy da 2: derrubar a policy `contacts_delete` e o privilégio (só a Lixeira, as funções e o service role apagam) | ✅ implementada e provada no descartável (23/10/2026); aplicar DEPOIS do deploy da 2 | `1099_cb_so_a_lixeira_apaga_contato` (RESTRITIVA) | — |
 | **4** | Ficha nova da mesma pessoa: faixa "há uma ficha desta pessoa na Lixeira" e "Restaurar e unir" | ⏳ em implementação (desenho abaixo) | ADITIVA, `1100` | — |
 | **5** | O 410 da API e o roteiro interno de pedido de exclusão (LGPD) | ✅ o roteiro está abaixo; o 410 NÃO se aplica: B6 escolheu a volta com o MESMO id (a doc da API diz) | — | — |
 
@@ -108,6 +108,22 @@
   (B2) e "Excluir agora" com e sem o pedido (com ele, a trilha perde o nome).
   Falta o e2e com conversa e mensagens, depois do deploy.
 - **PR:** #429.
+
+### Fase 3 — registro (23/10/2026)
+
+- **Objetivo:** o navegador deixa de apagar contato; excluir é só mover para
+  a Lixeira.
+- **Arquivos:** `supabase/migrations/1100_cb_so_a_lixeira_apaga_contato.sql`
+  (`DROP POLICY contacts_delete`; `REVOKE DELETE` de `authenticated` e
+  `anon`; os GRANTs que ficam; conferência pelo catálogo, que exige a porta da
+  Lixeira de pé), o pino `supabase/migrations/so-a-lixeira-apaga-1100.test.ts`
+  (os `.sql` posteriores e nenhum `.from('contacts')…delete()` em `src/`), o
+  bloco no `supabase/ci/verify-schema.sql`, os comentários de
+  `contacts/page.tsx` e de `canDeleteContacts`, `.claude/rules/contatos.md` e
+  o item 18 da §6 de `docs/MERGE-UPSTREAM.md`.
+- **Medido no Postgres 16 descartável:** antes, o admin apagava a ficha
+  direto; depois, admin e atendente recebem 42501; a Lixeira (RPC) segue
+  movendo; o service role segue apagando; aplicar duas vezes dá o mesmo.
 
 ### Fase 4 — desenho ("Restaurar e unir")
 
@@ -533,13 +549,14 @@ pino cobra que toda FK do fecho tenha um:
   do navegador (a conversa só some pela ficha; mensagem, nenhuma tela apaga),
   depois de conferir no código que nada do app usa.
 - **Fase 3 (RESTRITIVA, DEPOIS do deploy da Lixeira):** `DROP POLICY
-  contacts_delete`. Uma aba aberta com o app antigo recebe 0 linhas, e o
-  `lerExclusao` já diz "recusado". O pino reprova `.from('contacts').delete()`
-  em `src/`.
+  contacts_delete` e `REVOKE DELETE` de `authenticated`/`anon` (1100). Uma
+  aba aberta com o app antigo recebe 42501 (o REVOKE torna a recusa
+  VISÍVEL, em vez de 0 linhas), e o `lerExclusao` dela diz "falhou". O pino
+  reprova `.from('contacts').delete()` em `src/`.
 - A lógica da tela mora num módulo nosso (`src/lib/contacts/lixeira.ts` + um
   hook); a página do upstream só o chama, com a linha na tabela do
   MERGE-UPSTREAM. Sem a policy, um merge que traga a página crua passa a
-  dizer "recusado", nunca a apagar de vez.
+  falhar (42501), nunca a apagar de vez.
 
 ### Tela
 

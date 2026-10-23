@@ -73,8 +73,9 @@ export default function ContactsPage() {
   // EDITAR segue de `agent`. Desde a 1097 apagar é MOVER PARA A LIXEIRA (90
   // dias, restaurável; `cb_mover_contatos_para_lixeira` confere admin por
   // dentro) — a ficha some de todas as telas com a conversa e as mensagens.
-  // A policy `contacts_delete` (981) continua: sem os dois lados, o botão
-  // sumiria e um `.delete()` do navegador ainda apagaria.
+  // Desde a 1100 o navegador não tem DELETE em `contacts` (sem policy nem
+  // privilégio): a Lixeira é a única porta, e um `.delete()` daria 42501
+  // (pino `so-a-lixeira-apaga-1100.test.ts`).
   const podeApagarContatos = useCan('delete-contacts');
 
   const [contacts, setContacts] = useState<ContactWithTags[]>([]);
