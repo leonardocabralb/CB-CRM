@@ -642,6 +642,12 @@ pino cobra que toda FK do fecho tenha um:
   nesse intervalo.
 - A mensagem do cliente que chega durante o mover espera a trava e, depois do
   commit, recebe 23503 e se perde (já é assim hoje na exclusão).
+- O mover trava a ficha, as conversas e as mensagens, mas não os outros
+  descendentes (reação, etiqueta, campo, `cb_message_media_ref`): uma edição
+  ou remoção deles que comite entre a fotografia e o DELETE some, e a
+  restauração devolve a versão de antes (a etiqueta removida volta). Corrida
+  de milissegundos com lado seguro — nada sai ao cliente (Codex no #429,
+  aceita como limite).
 - Os arquivos seguem públicos pelo link durante os 90 dias. O "Excluir agora"
   leva até um ciclo do laço lento (~15 min) para tirá-los do bucket, mais o
   cache do CDN enquanto durar (conferir no painel se o Smart CDN invalida ao
