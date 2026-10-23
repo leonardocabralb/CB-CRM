@@ -1453,6 +1453,18 @@ nome da época em que foram aplicadas.
   desfeita por SQLSTATE próprio; separada para não rodar sob a trava
   exclusiva das ALTERs. Aplicada junto, em 23/10/2026 (histórico
   `20261023103343`), mesma autorização. Passou na produção sem deixar linha.
+- **1099_cb_lixeira_anular_confere_o_ponteiro** — correção da 1097 pedida
+  pelo Codex no PR #429: `cb_lixeira_anular` passa a anular só a linha cujo
+  ponteiro ainda tem o valor fotografado (`IS NOT DISTINCT FROM`), para não
+  apagar a troca de contato feita por outro pedido entre a fotografia e o
+  DELETE. Mesma assinatura, ADITIVA, ANTES do deploy. Provada num cluster
+  descartável montado do zero (a conferência duas vezes; a ida e volta da
+  Fase 2 e a prova 2 seguem passando). Aplicada em 23/10/2026 pela
+  Management API (histórico `20261023113805`), depois do CI verde no commit
+  `12053b44`, antes do merge do PR #429, com a autorização do operador para
+  as migrations da finalização da Lixeira. Conferida: a guarda na definição
+  vigente, nenhum EXECUTE para `authenticated`/`anon`, a conferência embutida
+  passou sem deixar linha.
 
 ## Notas do histórico
 
