@@ -493,6 +493,13 @@ export interface Conversation {
    */
   aguardando_desde?: string | null;
   /**
+   * Quando a conversa voltou da Lixeira de contatos (migration 1097). A
+   * restauração reinsere as mensagens pelo tempo real: a que foi gravada
+   * ANTES deste instante é antiga — nem aviso do navegador, nem não lida
+   * somada. NULL = nunca esteve na Lixeira.
+   */
+  restaurada_em?: string | null;
+  /**
    * A janela de 24h da Meta POR NÚMERO (migration 993): mapa id-da-conexão →
    * instante ISO da última mensagem do CLIENTE por aquele número oficial,
    * mais a chave `sem_carimbo` (a mensagem da Meta sem carimbo: histórico,
@@ -2194,7 +2201,24 @@ export type LeadEventType =
    * contatos antigos em `details`. Escrita pelo gatilho do livro
    * `cb_fichas_unidas`; `deal_id` e `conversation_id` nulos.
    */
-  | 'contacts_merged';
+  | 'contacts_merged'
+  /**
+   * A Lixeira de contatos (1097), escritos pelo gatilho da tabela da Lixeira
+   * (`cb_log_lixeira`); `deal_id` e `conversation_id` nulos.
+   * - `contact_trashed`: a ficha foi para a Lixeira; `details` = {item_id,
+   *   lote_id, vence_em, contagens}. Nasce apontando para a ficha, fica com
+   *   `contact_id` nulo enquanto ela está lá (o DELETE anula) e volta a
+   *   apontar na restauração.
+   * - `contact_restored`: a ficha voltou; `details` = {item_id, lote_id,
+   *   movida_em}.
+   * - `contact_purged`: saiu DE VEZ (prazo vencido ou "Excluir agora").
+   *   `contact_id` e `contact_label` NULOS, sem dado pessoal; `details` =
+   *   {contact_id, item_id, movida_em, pedido_exclusao, contagens}. Nunca
+   *   aparece numa ficha: ela não existe mais.
+   */
+  | 'contact_trashed'
+  | 'contact_restored'
+  | 'contact_purged';
 
 /**
  * De onde partiu a mudança. `sistema` é escrita server-side sem ator

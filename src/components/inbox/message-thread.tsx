@@ -1974,8 +1974,8 @@ export function MessageThread({
 
   /**
    * ⚠️ Devolve `false` quando NÃO entregou — e nesse caso NÃO apaga o objeto
-   * do bucket. O compositor mantém o anexo na fila e continua dono dele (a
-   * limpeza de desmonte e o descarte recolhem). Sem esse par, o anexo de uma
+   * do bucket. O compositor mantém o anexo na fila e continua dono dele (o
+   * descarte recolhe). Sem esse par, o anexo de uma
    * fila de cinco sumia no erro do terceiro e o operador reanexava tudo
    * (achado do Codex no PR #144).
    */

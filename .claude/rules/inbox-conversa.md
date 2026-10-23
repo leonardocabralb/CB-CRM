@@ -165,7 +165,7 @@ destaque e ↑/↓ em `message-thread.tsx`.
   `sendDraft`): a janela dispara na hora ao trocar de conversa, desmontar ou
   dar Enter de novo, e mandaria em 3 s a mensagem marcada para amanhã.
   `<SeletorDeHorario>` é de módulo (reusado no `MediaDraftPreview`), e
-  `entreguesRef` impede o desmonte de apagar arquivo que já é de uma agendada.
+  `entreguesRef` impede o descarte de apagar arquivo que já é de uma agendada.
   Regras da agendada: `.claude/rules/agendadas.md`.
 - **O acervo mora no menu do clipe; gravar voz fica FORA dele**, à direita.
   "Executar automação" fica no menu +, atrás da prop `onExecutarAutomacao`; o
@@ -221,14 +221,13 @@ destaque e ↑/↓ em `message-thread.tsx`.
 - ⚠️⚠️ **Fora da TELA, o fio só envia** (`conversaNaTelaRef`, efeito de
   LAYOUT; zera no desmonte): sem bolha, citação nem portão das 24h (decide a
   Meta) — senão a bolha de A cai no fio de B.
-- ⚠️⚠️ **O arquivo é da MENSAGEM desde a retenção** (`entreguesRef`, antes do
-  `setPendente`; sai no Desfazer e na falha): o `draftsRef` das limpezas é
-  passivo, e a troca no mesmo quadro apagava o anexo enviado (#413).
+- ⚠️⚠️ **O arquivo é da MENSAGEM desde a retenção** (`entreguesRef`, de
+  módulo, antes do `setPendente`; sai no Desfazer e na falha): protege o
+  descarte e a retenção em dobro (#413).
 - ⚠️⚠️ **`onSendMedia` DEVOLVE se entregou; o pai NÃO apaga o objeto na
   falha.** O lote PARA no que falhou; ele e os que não COMEÇARAM
-  (`lote.comecados`; a cauda é só da 1ª falha) voltam à prévia se a origem
-  está NA TELA (`conversaNaTelaRef`, layout); senão, recolhe os que não
-  começaram e avisa.
+  (`lote.comecados`; a cauda é só da 1ª falha) voltam à fila da ORIGEM
+  (`Retida.rascunho`); fora da tela, com aviso.
 - ⚠️⚠️ **Agendar desvia ANTES da janela, sob trinco SÍNCRONO de POSSE**
   (`enviandoFilaRef`, nunca booleano; solto também na troca de conversa):
   depois de cada `await`, `!== posse` desiste. Comparar o `conversationId`
@@ -239,9 +238,8 @@ destaque e ↑/↓ em `message-thread.tsx`.
   `typeof idQueSaiu !== "string"`: um `onClick` passaria o MouseEvent).
   Pinos: `fila-de-anexos.chamadores.test.ts`.
 - ⚠️ **Todo caminho passa pelo MESMO funil** (`receberArquivos`: teto e aviso do
-  que ficou de fora) e acrescenta à fila com a guarda da conversa NA TELA. As
-  limpezas (desmonte, anotação) percorrem a fila INTEIRA; uma esquecida vaza
-  objeto no bucket.
+  que ficou de fora) e acrescenta à fila da ORIGEM; a fila é por conversa
+  (`rascunho-da-conversa.md`).
 - ⚠️ **O item exibido é resolvido no RENDER** (`find(...) ?? drafts[0]`), nunca
   por efeito. Cada descarte tem aviso (`recusados`, `excedentes`). A tira de
   miniaturas só aparece com MAIS DE UM anexo (a regra do seletor de canal: com

@@ -1,12 +1,14 @@
 'use client';
 
 import {
+  ArchiveRestore,
   ArrowDownRight,
   ArrowUpRight,
   ArrowLeftRight,
   CircleCheck,
   CircleDot,
   Clock,
+  Eraser,
   GitMerge,
   MessageCircle,
   MessageCirclePlus,
@@ -81,7 +83,22 @@ export function LeadEventIcon({
       ) : (
         <UserCheck className={className} />
       );
-    default:
+    // A Lixeira (1097): o cesto ao mover, a caixa que devolve ao restaurar, a
+    // borracha ao sair de vez (esta não chega a ficha nenhuma, mas tem
+    // símbolo, como todo tipo da trilha).
+    case 'contact_trashed':
+      return <Trash2 className={className} />;
+    case 'contact_restored':
+      return <ArchiveRestore className={className} />;
+    case 'contact_purged':
+      return <Eraser className={className} />;
+    default: {
+      // Tipo novo da trilha (CHECK da migration + `LeadEventType`) escolhe o
+      // símbolo aqui: o `never` reprova o typecheck. O círculo segue como
+      // reserva para a linha que o banco gravou antes do app saber dela.
+      const tipoNovo: never = evento.event_type;
+      void tipoNovo;
       return <CircleDot className={className} />;
+    }
   }
 }

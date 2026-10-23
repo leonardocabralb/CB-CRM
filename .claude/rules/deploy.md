@@ -80,6 +80,15 @@ passou na máquina). Por isso:
   `docker stack deploy` manual na VPS, com o `crm.env` carregado.
 - ⚠️ A rota `cb/asaas/cron` carrega a leitura do Atlas em `after()`
   (`integracoes-atlas.md`): tirá-la do laço lento cala o Atlas junto.
+- ⚠️ A rota `cb/scheduled/cron` (laço lento) roda no `after()`
+  `rodarManutencaoDoCiclo` (`src/lib/scheduled/manutencao-do-ciclo.ts`): sob
+  UM prazo comum (`PRAZO_DA_MANUTENCAO_MS`) e nesta ordem, cada passo
+  isolado, as tarefas recorrentes (1074) → o vencimento da Lixeira de
+  contatos (`cb_vencer_lixeira`, UM item por chamada, repetida enquanto há
+  prazo) → a drenagem da fila de arquivos (`midia.md`). O prazo fica abaixo
+  dos 10 min em que a fila recolhe o lote reivindicado e dos 15 min do laço.
+  O `after()` não disputa o `-m 120` com o disparo. Tirar a rota do laço cala
+  os três sem erro: a Lixeira deixa de vencer e os arquivos ficam no bucket.
 
 ### Ambiente do contêiner
 - O `docker-stack.yml` passa o ambiente por `environment:` EXPLÍCITO, sem

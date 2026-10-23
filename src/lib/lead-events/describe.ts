@@ -72,6 +72,17 @@ const TIPOS_NA_CONVERSA: ReadonlySet<LeadEventType> = new Set([
   // A união de fichas (1092): o fio da ficha que ficou diz que a outra veio
   // para cá — as mensagens dela estão logo acima.
   'contacts_merged',
+  // A Lixeira (1097): o fio só existe de novo depois da restauração, e as
+  // duas linhas (o gatilho reaponta a do mover para a ficha que voltou)
+  // explicam o que o atendente vê em seguida: a execução que parou, o robô
+  // encerrado, a agendada que voltou como falha — mover para a Lixeira os
+  // interrompe e a volta não religa. Até o "Desfazer" de segundos deixa o
+  // par, e de propósito: a interrupção aconteceu do mesmo jeito. Ao
+  // contrário do `deal_deleted`, cada linha é da PRÓPRIA ficha (mover 100
+  // fichas dá uma linha em cada conversa, não 100 numa só).
+  // `contact_purged` fica de FORA: tem `contact_id` nulo e não há conversa.
+  'contact_trashed',
+  'contact_restored',
 ]);
 
 /**
@@ -142,6 +153,14 @@ export function chaveDoTexto(evento: LeadEvent): string {
     return 'conversationOpened';
   }
   if (evento.event_type === 'contacts_merged') return 'contactsMerged';
+  if (evento.event_type === 'contact_trashed') return 'contactTrashed';
+  if (evento.event_type === 'contact_restored') return 'contactRestored';
+  if (evento.event_type === 'contact_purged') {
+    // `=== true`: booleano vindo de JSONB. Só o "Excluir agora" marca o
+    // pedido; o vencimento roda no servidor, sem ninguém (`origin` sistema).
+    if (evento.details?.pedido_exclusao === true) return 'contactPurgedRequest';
+    return evento.origin === 'usuario' ? 'contactPurged' : 'contactPurgedExpired';
+  }
   if (evento.event_type === 'conversation_assigned') {
     // Pelo ID, não pelo nome: o nome falta quando o membro já saiu da conta.
     if (!textoDoDetalhe(evento, 'para_responsavel_id')) return 'conversationUnassigned';

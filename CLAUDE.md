@@ -146,8 +146,6 @@ Supabase (Postgres + Auth + Storage + RLS) · Meta Cloud API · Evolution API.
 - **Um workflow só:** `.github/workflows/pipeline.yml` — verificar →
   migrations (replay num Postgres limpo) → deploy, com
   `needs: [verificar, migrations]` (pino `pipeline.test.ts`).
-- `agentRules: false` no `next.config.ts`: sem ela o `next dev` reescreve o
-  `AGENTS.md` rastreado (worktree suja; pacote escrevendo nas instruções).
 
 ## 6. Branches e PRs
 
@@ -209,9 +207,10 @@ Volta para `main` por PR no CB-CRM.
 - `profiles.id` ≠ `profiles.user_id`: `deals.assigned_to` guarda
   `profiles.id`; `cb_tasks`, `conversations` e `notifications` guardam o id
   do LOGIN. Trocar dá 0 linhas, sem erro.
-- Apagar contato leva conversa e mensagens (CASCADE) e deixa ~18 tabelas com
-  ponteiro nulo (card em branco no Kanban). Fundir fichas = `cb_unir_fichas`;
-  `merge_duplicate_contacts` não serve.
+- Excluir contato = MOVER para a Lixeira (`cb_mover_contatos_para_lixeira`,
+  1097): fotografa e apaga como antes (conversa e mensagens somem, ponteiros
+  de fora ficam nulos: `cb_lixeira_tratamento()`). DELETE à mão não volta.
+  Fundir fichas = `cb_unir_fichas`; `merge_duplicate_contacts` não serve.
 - Negócio só nasce por `createDeal` no servidor (exceção: formulário do
   Funil). Transferência de funil = UM UPDATE (`pipeline_id` + `stage_id`
   juntos), senão a trilha conta duas mudanças. `cb_lead_events` e
@@ -362,8 +361,7 @@ Volta para `main` por PR no CB-CRM.
   `docker-stack.yml`) bate em `/api/…/cron` (laço rápido ~15 s, lento
   ~15 min). Rota de cron NOVA entra num dos laços, senão nunca roda.
   `maxDuration` é decorativo em produção: o teto é o `-m` do curl
-  (50 s/120 s), e worker novo se orça contra ele. Mudar o `command` do
-  agendador só vale com `docker stack deploy` manual. `process.env.X` novo
+  (50 s/120 s), e worker novo se orça contra ele. `process.env.X` novo
   do servidor entra também no `environment:` da stack (pino
   `scripts/stack-env.test.ts`; sem `env_file`, fica vazio no contêiner).
 - Datas: `toLocaleDateString(undefined, …)`, nunca locale fixo; date-fns só
@@ -427,10 +425,9 @@ dentro, exceções e testes de chave montada: `.claude/rules/i18n.md`.
   (401 = ok; 503 = env vazia).
 - Evolution: nunca trocar a imagem nem reiniciar o CONTÊINER com a fila de
   entrada represada (a fila se perde para o CRM); o restart da INSTÂNCIA
-  (`POST /instance/restart`) é o paliativo que a drena. Voltar de versão está
-  descartado. O resto da operação (digests, Redis compartilhado, prune,
-  stack só para recriar) está em `docs/INFRA-VPS.md`, §9 e §10 (a leitura
-  obrigatória da seção 0c).
+  (`POST /instance/restart`) é o paliativo que a drena. O resto da operação
+  (digests, Redis compartilhado, prune, stack só para recriar) está em
+  `docs/INFRA-VPS.md`, §9 e §10.
 - O webhook do WhatsApp exige HTTPS (Traefik na VPS). Detalhes do pipeline e
   do agendador: `.claude/rules/deploy.md`.
 
@@ -470,7 +467,7 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
 `paths:` dele.
 
 - `.claude/rules/supabase.md` — escrita manual no banco de produção,
-  gatilhos por linha, receita de fusão, modelos do banco vazio,
+  gatilhos por linha, receita de fusão e da Lixeira, modelos do banco vazio,
   REVOKE/GRANT, policy da 1032, carga em lote.
 - `.claude/rules/ingestao.md` — obrigações por caminho de entrada e de
   envio: canal no upsert, reabrir, abrir negócio, cancelar espera, medir
@@ -524,7 +521,7 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
 - `.claude/rules/funil-metricas.md` — degraus, coorte × por período,
   Desempenho, Saúde, Meta Ads.
 - `.claude/rules/contatos.md` — chave canônica do telefone, telefone
-  digitado, exclusão de contato, etiquetas, duplicatas e união.
+  digitado, Lixeira de contatos, etiquetas, duplicatas e união.
 - `.claude/rules/campos-e-nome.md` — campo que salva sozinho, blocos de
   campos, e-mail espelhado, nome fixado.
 - `.claude/rules/integracoes-calendly.md` — ficha nasce do agendamento,

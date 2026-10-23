@@ -30,9 +30,12 @@ qualquer uma é pergunta ao operador.
   sozinho, nem pela resposta da equipe; cliente assim, card à mão (29/09/2026).
 - Encerrar conversa SOLTA o responsável; quem reabre enviando fica
   responsável; cliente, celular e API reabrem sem responsável (02/09/2026).
-- De ADMIN: "Gerenciar funil", as abas Lista/Desempenho/Saúde e apagar
-  contato (08/09/2026). A automação é da CONTA: qualquer admin edita, ativa,
+- De ADMIN: "Gerenciar funil" e as abas Lista/Desempenho/Saúde
+  (08/09/2026). A automação é da CONTA: qualquer admin edita, ativa,
   duplica e apaga, nunca só o autor (23/09/2026).
+- Lixeira de contatos (22/10/2026): excluir é de admin e MOVE por 90 dias;
+  restaurar volta o mesmo id e bloqueia com a identidade em outra ficha;
+  B1–B6 de `docs/PLANO-lixeira-de-contatos.md`.
 - Cadastro só por convite (22/09/2026); a saída para ex-membro que ainda
   tem login é BLOQUEAR no Supabase (apagar o login leva por CASCADE o que ele
   criou: etiquetas, modelos, automações).

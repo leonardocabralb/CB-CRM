@@ -1,4 +1,5 @@
 import type { Conversation } from "@/types";
+import { reinseridaPelaRestauracao } from "@/lib/contacts/lixeira";
 import { conversaNoEscopo } from "@/lib/perfis/escopo";
 import type { ContextoDeAcesso } from "@/lib/perfis/tipos";
 import { podeVerTela } from "@/lib/perfis/visibilidade";
@@ -18,9 +19,9 @@ import { podeVerTela } from "@/lib/perfis/visibilidade";
 //   e se o texto aparece.
 //
 // E um recorte que o original não precisa: mensagem ANTIGA gravada agora
-// (a carga do histórico da Kommo, a fala recuperada horas depois pela 1010)
-// não avisa — sem ele, uma carga em lote com a aba aberta despejaria um
-// aviso por conversa.
+// (a carga do histórico da Kommo, a fala recuperada horas depois pela 1010,
+// a devolvida pela restauração da Lixeira) não avisa — sem ele, uma carga em
+// lote com a aba aberta despejaria um aviso por conversa.
 // ============================================================
 
 /** Quais conversas avisam. Escopo do perfil vale nas três. */
@@ -147,7 +148,14 @@ export interface MensagemDoAviso {
 /** O que a decisão lê da conversa (a consulta do ouvinte). */
 export type ConversaDoAviso = Pick<
   Conversation,
-  "id" | "channel_id" | "channel_pinned" | "group_id" | "group" | "assigned_agent_id"
+  | "id"
+  | "channel_id"
+  | "channel_pinned"
+  | "group_id"
+  | "group"
+  | "assigned_agent_id"
+  // A volta da Lixeira (1097): a mensagem gravada antes dela é antiga.
+  | "restaurada_em"
 >;
 
 /**
@@ -220,6 +228,17 @@ export function silencioDoAviso(args: {
   const gravada = mensagem.gravada_em ? Date.parse(mensagem.gravada_em) : NaN;
   const referencia = Number.isNaN(gravada) ? agoraMs : gravada;
   if (!Number.isNaN(carimbo) && referencia - carimbo > LIMITE_DE_ATRASO_MS) {
+    return "antiga";
+  }
+  // ⚠️ A REINSERIDA pela restauração da Lixeira (1097) também é antiga: ela
+  // volta com o `gravada_em` de quando chegou de verdade (perto do carimbo,
+  // então a régua de cima a deixaria passar), e a volta de uma ficha com
+  // centenas de falas do cliente despejaria um aviso por fala. A régua é
+  // `gravada_em` anterior a `restaurada_em`, os dois do relógio do BANCO —
+  // nunca o da tela (`reinseridaPelaRestauracao`). Sem `gravada_em` (a carga:
+  // 72% da produção), o `created_at` — a fala importada de meia hora atrás
+  // passaria pela régua de 1 h acima (Codex, #429).
+  if (reinseridaPelaRestauracao(mensagem.gravada_em, conversa.restaurada_em, mensagem.created_at)) {
     return "antiga";
   }
 
