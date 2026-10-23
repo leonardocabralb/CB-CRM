@@ -47,7 +47,7 @@
 | **1** | Portas dos fundos: o atendente deixa de apagar conversa e mensagem pelo navegador | ✅ aplicada em 23/10/2026 e mesclada | `1096_cb_atendente_nao_apaga_conversa` (RESTRITIVA, mas nada do app usa o que tira: vale antes ou depois do deploy) | #428 |
 | **2** | A Lixeira: banco (mover, prévia, restaurar, excluir agora, vencimento, fila de arquivos), tela (prévia, Lixeira, Desfazer) e a doc do B6 (`docs/public-api.md` e Configurações → API → Documentação) | ✅ aplicada em 23/10/2026 (antes do deploy); e2e no preview com fichas fictícias | `1097_cb_lixeira_de_contatos` (ADITIVA), `1098_cb_lixeira_conferencia` (a prova de ida e volta) e `1099_cb_lixeira_anular_confere_o_ponteiro` (correção do Codex) | #429 |
 | **3** | Depois do deploy da 2: derrubar a policy `contacts_delete` e o privilégio (só a Lixeira, as funções e o service role apagam) | ✅ aplicada em 23/10/2026, depois do deploy da 2; DELETE direto pelo navegador dá 42501 | `1100_cb_so_a_lixeira_apaga_contato` (RESTRITIVA) | #430 |
-| **4** | Ficha nova da mesma pessoa: faixa "há uma ficha desta pessoa na Lixeira" e "Restaurar e unir" | ✅ implementada, provada no descartável e revisada (23/10/2026); aplicar antes do deploy | `1101_cb_lixeira_restaurar_e_unir` (ADITIVA) | #431 |
+| **4** | Ficha nova da mesma pessoa: faixa "há uma ficha desta pessoa na Lixeira" e "Restaurar e unir" | ✅ aplicada em 23/10/2026 (antes do deploy); e2e no preview com fichas fictícias | `1101_cb_lixeira_restaurar_e_unir` (ADITIVA) | #431 |
 | **5** | O 410 da API e o roteiro interno de pedido de exclusão (LGPD) | ✅ o roteiro está abaixo; o 410 NÃO se aplica: B6 escolheu a volta com o MESMO id (a doc da API diz) | — | — |
 
 ### Fase 1 — registro (22/10/2026)
@@ -175,6 +175,14 @@
   do revisor repetidos (2.000 mensagens: prévia 156 ms, união 230 ms).
 - **Limite:** o INSERT da trilha `contacts_merged` sai no tempo real com a
   identidade provisória antes da correção.
+- **Aplicada** em 23/10/2026, antes do deploy. **e2e no preview** (a
+  produção) com duas fichas fictícias de mesmo telefone: a faixa acha a
+  antiga para o admin; o item bloqueado da Lixeira oferece "Restaurar e
+  unir"; a prévia mostra fica/sai e a frase do histórico, sem rastro no
+  banco; unir deixa só a nova, com a trilha mover → restaurar → unir e o
+  livro com a identidade original, nenhuma reserva em lugar nenhum. Não
+  conferido na tela: a faixa no fio e no card (a ficha fictícia não tem
+  conversa nem card — criar um card dispararia automações do funil).
 
 ### Fase 4 — desenho ("Restaurar e unir")
 
