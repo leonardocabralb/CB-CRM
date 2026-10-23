@@ -716,7 +716,17 @@ depois de `aee1b01f` (§3.1).
     `whatsapp/config` e `whatsapp/templates/[id]` (pino
     `src/app/api/whatsapp/guarda-de-papel-so-nossa.test.ts`) e o
     `supabase/ci/verify-schema.sql` com as NOSSAS asserções.
-16. Migration nova do original que crie tabela com FK para `contacts` ou
+16. Policy ou GRANT do original que devolva o DELETE de `conversations` ou de
+    `messages` ao navegador (a `conversations_delete` e o FOR ALL
+    `messages_modify` da 0017, ou um `GRANT ALL ON ALL TABLES` a
+    `authenticated`/`anon`): a 1096 os tirou, e recriados eles devolvem ao
+    atendente o apagar a conversa inteira. Pinos:
+    `supabase/migrations/portas-dos-fundos-1096.test.ts` (os `.sql`) e o
+    `supabase/ci/verify-schema.sql` (o catálogo no fim do replay). O
+    comentário do upstream em `src/app/api/whatsapp/send/route.ts` ainda cita
+    `messages_modify`: é texto deles, descreve o banco deles; o nosso INSERT de
+    mensagem é a `messages_insert`.
+17. Migration nova do original que crie tabela com FK para `contacts` ou
     para outra tabela do fecho da Lixeira (conversa, mensagem, tarefa,
     anotação…), ou que crie/recrie gatilho numa tabela que a restauração
     escreve: a 1097 passa a RECUSAR o mover (`lixeira_sem_tratamento:<tabela>`)
