@@ -88,7 +88,8 @@ passou na máquina). Por isso:
   prazo) → a drenagem da fila de arquivos (`midia.md`). O prazo fica abaixo
   dos 10 min em que a fila recolhe o lote reivindicado e dos 15 min do laço.
   O `after()` não disputa o `-m 120` com o disparo. Tirar a rota do laço cala
-  os três sem erro: a Lixeira deixa de vencer e os arquivos ficam no bucket.
+  os três sem erro: a Lixeira deixa de vencer e os arquivos ficam no bucket
+  (também os anexos das anotações apagadas, 1102).
 
 ### Ambiente do contêiner
 - O `docker-stack.yml` passa o ambiente por `environment:` EXPLÍCITO, sem

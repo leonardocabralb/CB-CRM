@@ -12,8 +12,13 @@ import {
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 
+import {
+  AnexosDaNota,
+  ResumoDosAnexos,
+} from '@/components/inbox/anexos-da-nota';
 import { CitacaoDaNota } from '@/components/inbox/citacao-da-nota';
 import { TextoComLinks } from '@/components/inbox/texto-com-links';
+import { lerAnexosDaNota } from '@/lib/notes/anexos';
 import { cn } from '@/lib/utils';
 import type { ConversationNote } from '@/types';
 
@@ -102,6 +107,9 @@ export function CartaoDeNota({
   const [aberta, setAberta] = useState(false);
   const [cortada, setCortada] = useState(false);
   const textoRef = useRef<HTMLParagraphElement>(null);
+  // Com anexo, a fixada recolhida esconde algo (os anexos viram o resumo):
+  // a seta aparece mesmo com o texto inteiro.
+  const temAnexos = lerAnexosDaNota(nota.anexos).length > 0;
 
   /**
    * Só a fixada recolhe, e a seta só aparece quando o texto está CORTADO.
@@ -163,7 +171,7 @@ export function CartaoDeNota({
           </p>
         </div>
         <span className="flex shrink-0 items-center gap-1.5">
-          {destaque && (cortada || aberta) && (
+          {destaque && (cortada || aberta || temAnexos) && (
             <button
               type="button"
               onClick={() => setAberta((v) => !v)}
@@ -243,23 +251,41 @@ export function CartaoDeNota({
           className="text-foreground mt-2"
         />
       )}
-      <p
-        ref={textoRef}
-        className={cn(
-          'text-foreground mt-2 text-sm leading-relaxed whitespace-pre-wrap',
-          // ⚠️ `break-words`: a anotação recebe texto de fora (link de
-          // processo colado, número sem espaços) e a coluna do painel é
-          // estreita — sem isto ela empurra a largura e acende barra
-          // horizontal, a armadilha que o CLAUDE.md registra sobre a bolha
-          // do fio.
-          'break-words',
-          destaque && (aberta ? 'max-h-64 overflow-y-auto' : 'line-clamp-2')
+      {/* Aberta, a fixada tem UM teto e rola dentro dele — o texto E os
+          anexos (1102): presa no topo, uma lista de anexos solta cobriria a
+          aba como a nota longa cobria. */}
+      <div className={cn(destaque && aberta && 'max-h-64 overflow-y-auto')}>
+        {/* Anotação só de anexos (1102) tem o texto vazio: sem parágrafo. */}
+        {nota.texto.trim() && (
+          <p
+            ref={textoRef}
+            className={cn(
+              'text-foreground mt-2 text-sm leading-relaxed whitespace-pre-wrap',
+              // ⚠️ `break-words`: a anotação recebe texto de fora (link de
+              // processo colado, número sem espaços) e a coluna do painel é
+              // estreita — sem isto ela empurra a largura e acende barra
+              // horizontal, a armadilha que o CLAUDE.md registra sobre a bolha
+              // do fio.
+              'break-words',
+              destaque && !aberta && 'line-clamp-2'
+            )}
+          >
+            {/* Endereço clicável (29/09/2026) — link de documento colado na
+                nota é o caso comum. */}
+            <TextoComLinks texto={nota.texto} />
+          </p>
         )}
-      >
-        {/* Endereço clicável (29/09/2026) — link de documento colado na
-            nota é o caso comum. */}
-        <TextoComLinks texto={nota.texto} />
-      </p>
+        {/* Recolhida, a fixada mostra só o resumo dos anexos; aberta (ou a
+            nota comum), os anexos. */}
+        {destaque && !aberta ? (
+          <ResumoDosAnexos
+            anexos={nota.anexos}
+            className="text-muted-foreground mt-1 text-xs"
+          />
+        ) : (
+          <AnexosDaNota anexos={nota.anexos} className="mt-2" />
+        )}
+      </div>
       {onResponder && (
         <div className="mt-1 flex justify-end">
           <button

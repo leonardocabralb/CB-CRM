@@ -5,6 +5,13 @@ import { createClient } from '@/lib/supabase/server'
 import { canWriteNotes, isAccountRole } from '@/lib/auth/roles'
 import { quemAvisarDaResposta, type NotaDaConversa } from '@/lib/notes/resposta'
 import { MAX_MARCADOS, MAX_TEXTO_DA_ANOTACAO } from '@/lib/notes/anotacao-da-automacao'
+import {
+  conferirAnexo,
+  corpoDoAviso,
+  lerAnexosDoCorpo,
+  type AnexoDaNota,
+} from '@/lib/notes/anexos'
+import { lerArquivoDoAnexo } from '@/lib/notes/arquivo-do-anexo'
 
 /**
  * Criação de anotação interna (migration 918).
@@ -28,6 +35,15 @@ import { MAX_MARCADOS, MAX_TEXTO_DA_ANOTACAO } from '@/lib/notes/anotacao-da-aut
  * (`src/lib/notes/anotacao-da-automacao.ts`, que confere os marcados contra a
  * conta como esta rota). Apagar, sim, continua indo direto do navegador — lá
  * a RLS decide sozinha (autor ou admin) e não há o que validar no meio.
+ *
+ * ANEXOS (1102; só esta rota — os outros três escritores seguem só texto):
+ * a caixa sobe cada arquivo para `account-<conta>/notas/<único>/` ANTES do
+ * POST e manda `anexos: [{ caminho, nome }]`. Anotação = texto OU anexo. O
+ * caminho tem de ser desta conta e de `notas/` (`lerAnexosDoCorpo`), e o
+ * tamanho e o tipo são LIDOS no próprio armazenamento (`lerArquivoDoAnexo`,
+ * service role), nunca do corpo. Armazenamento fora do ar não é arquivo
+ * sumido: 503, nunca 400. Se o insert falhar, os arquivos ficam para a nova
+ * tentativa da caixa — que apaga os seus quando a pessoa desiste.
  */
 /**
  * Teto do texto da anotação (o mesmo do passo de automação).
@@ -90,7 +106,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { conversation_id, contact_id, texto, mencionados, resposta_de } = (body ??
+  const { conversation_id, contact_id, texto, mencionados, resposta_de, anexos } = (body ??
     {}) as {
     conversation_id?: unknown
     contact_id?: unknown
@@ -98,6 +114,8 @@ export async function POST(request: Request) {
     mencionados?: unknown
     /** A anotação que esta responde (1075). Ausente = anotação comum. */
     resposta_de?: unknown
+    /** Os arquivos já subidos pela caixa (1102): `[{ caminho, nome }]`. */
+    anexos?: unknown
   }
 
   // Aceita os dois caminhos de entrada. O inbox sabe a conversa; a ficha do
@@ -112,10 +130,21 @@ export async function POST(request: Request) {
       { status: 400 },
     )
   }
-  if (typeof texto !== 'string' || !texto.trim()) {
-    return NextResponse.json({ error: 'texto is required' }, { status: 400 })
+  if (texto !== undefined && texto !== null && typeof texto !== 'string') {
+    return NextResponse.json({ error: 'texto must be a string' }, { status: 400 })
   }
-  if (texto.length > MAX_TEXTO) {
+  const textoLimpo = typeof texto === 'string' ? texto.trim() : ''
+  // 1102: a forma e o lugar de cada anexo (desta conta, em `notas/`, até 10,
+  // sem repetir) ANTES de qualquer leitura no banco ou no armazenamento.
+  const anexosPedidos = lerAnexosDoCorpo(anexos, accountId)
+  if (!anexosPedidos.ok) {
+    return NextResponse.json({ error: anexosPedidos.erro }, { status: 400 })
+  }
+  // Texto OU anexo — a mesma régua do CHECK `..._conteudo_ck` da 1102.
+  if (!textoLimpo && anexosPedidos.anexos.length === 0) {
+    return NextResponse.json({ error: 'texto or anexos is required' }, { status: 400 })
+  }
+  if (typeof texto === 'string' && texto.length > MAX_TEXTO) {
     return NextResponse.json({ error: 'Note is too long' }, { status: 400 })
   }
   const respostaDe =
@@ -249,6 +278,27 @@ export async function POST(request: Request) {
   }
 
   const admin = supabaseAdmin()
+
+  // 1102: cada anexo conferido no PRÓPRIO armazenamento — existe, o tamanho
+  // e o tipo —, um por vez (no máximo 10; o caso comum é 1). Por último, de
+  // propósito: nada vai ao armazenamento por uma conversa que não existe.
+  const anexosConferidos: AnexoDaNota[] = []
+  for (const pedido of anexosPedidos.anexos) {
+    const lido = await lerArquivoDoAnexo(admin, pedido.caminho)
+    if (lido.estado === 'falhou') {
+      console.error('[POST /api/cb/notes] não deu para conferir o anexo:', lido.motivo)
+      return NextResponse.json({ error: 'STORAGE_UNAVAILABLE' }, { status: 503 })
+    }
+    if (lido.estado === 'ausente') {
+      return NextResponse.json({ error: 'ATTACHMENT_NOT_FOUND' }, { status: 400 })
+    }
+    const conferido = conferirAnexo(pedido, lido)
+    if (!conferido.ok) {
+      return NextResponse.json({ error: conferido.erro }, { status: 400 })
+    }
+    anexosConferidos.push(conferido.anexo)
+  }
+
   const { data: nota, error } = await admin
     .from('cb_conversation_notes')
     .insert({
@@ -262,10 +312,13 @@ export async function POST(request: Request) {
       contact_id: conversa.contact_id ?? null,
       author_user_id: user.id,
       autor_nome: autorNome,
-      texto: texto.trim(),
+      // Vazio quando a anotação é só de anexos (o CHECK da 1102 aceita).
+      texto: textoLimpo,
       mencionados: validos,
       // Só quando é resposta: anotação comum não depende da coluna da 1075.
       ...(respostaDe ? { resposta_de: respostaDe } : {}),
+      // Só com anexo, pelo mesmo motivo: a de só texto não depende da 1102.
+      ...(anexosConferidos.length > 0 ? { anexos: anexosConferidos } : {}),
     })
     .select('*')
     .single()
@@ -301,7 +354,8 @@ export async function POST(request: Request) {
         // mesmo que o trigger da 027 faz (em inglês). Unificar os dois
         // idiomas do sino é assunto de outra passada.
         title: `${autorNome ?? 'Alguém da equipe'} mencionou você numa anotação`,
-        body: texto.trim().slice(0, 280),
+        // 1102: o texto e o resumo dos anexos ("… · 🎤 Áudio"), também cru.
+        body: corpoDoAviso(textoLimpo, anexosConferidos),
       })),
     )
     if (erroSino) {
@@ -346,7 +400,7 @@ export async function POST(request: Request) {
               destinatario === autorDaRespondida
                 ? `${autorNome ?? 'Alguém da equipe'} respondeu à sua anotação`
                 : `${autorNome ?? 'Alguém da equipe'} respondeu numa anotação em que você escreveu`,
-            body: texto.trim().slice(0, 280),
+            body: corpoDoAviso(textoLimpo, anexosConferidos),
           })),
         )
         if (erroSino) {

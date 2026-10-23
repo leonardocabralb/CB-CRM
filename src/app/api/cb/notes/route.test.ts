@@ -16,6 +16,8 @@ const RESPOSTA_DA_BIA = 'a0000000-0000-4000-8000-000000000002';
 const ANA = 'b0000000-0000-4000-8000-00000000000a';
 const BIA = 'b0000000-0000-4000-8000-00000000000b';
 const CAIO = 'b0000000-0000-4000-8000-00000000000c';
+// A conta com forma de UUID: o caminho do anexo é conferido contra ela (1102).
+const CONTA = 'c1000000-0000-4000-8000-000000000001';
 
 type Nota = { id: string; resposta_de: string | null; author_user_id: string | null };
 type Filtro = { op: string; col: string; val: unknown };
@@ -28,6 +30,9 @@ const estado = vi.hoisted(() => ({
   erroDoInsert: null as null | { code: string; message: string },
   inserts: [] as Record<string, unknown>[],
   avisos: [] as Record<string, unknown>[],
+  /** O que `storage.from('chat-media').info(caminho)` responde, por caminho. */
+  arquivos: {} as Record<string, () => Promise<unknown>>,
+  lidos: [] as string[],
 }));
 
 const NOMES: Record<string, string> = {
@@ -41,7 +46,7 @@ function resolver(tabela: string, filtros: Filtro[], modo: 'uma' | 'lista') {
   if (tabela === 'profiles' && modo === 'uma') {
     return {
       data: {
-        account_id: 'conta-1',
+        account_id: CONTA,
         account_role: 'agent',
         full_name: NOMES[eq('user_id') as string],
         email: null,
@@ -58,7 +63,7 @@ function resolver(tabela: string, filtros: Filtro[], modo: 'uma' | 'lista') {
   }
   if (tabela === 'conversations') {
     return {
-      data: eq('id') === CONVERSA ? { id: CONVERSA, contact_id: 'contato-1', account_id: 'conta-1' } : null,
+      data: eq('id') === CONVERSA ? { id: CONVERSA, contact_id: 'contato-1', account_id: CONTA } : null,
       error: null,
     };
   }
@@ -105,6 +110,20 @@ vi.mock('@/lib/supabase/server', () => ({
 
 vi.mock('@/lib/automations/admin-client', () => ({
   supabaseAdmin: () => ({
+    storage: {
+      from: (bucket: string) => ({
+        info: (caminho: string) => {
+          estado.lidos.push(`${bucket}:${caminho}`);
+          const resposta = estado.arquivos[caminho];
+          return resposta
+            ? resposta()
+            : Promise.resolve({
+                data: null,
+                error: { message: 'Object not found', status: 400, statusCode: '404' },
+              });
+        },
+      }),
+    },
     from(tabela: string) {
       if (tabela === 'cb_conversation_notes') {
         return {
@@ -151,6 +170,8 @@ beforeEach(() => {
   estado.erroDoInsert = null;
   estado.inserts = [];
   estado.avisos = [];
+  estado.arquivos = {};
+  estado.lidos = [];
 });
 
 describe('POST /api/cb/notes — resposta à anotação (1075)', () => {
@@ -247,5 +268,118 @@ describe('POST /api/cb/notes — resposta à anotação (1075)', () => {
     expect(res.status).toBe(201);
     expect(estado.inserts[0]).not.toHaveProperty('resposta_de');
     expect(estado.avisos).toEqual([]);
+  });
+});
+
+// ============================================================
+// 1102 — anexos. A caixa sobe cada arquivo antes do POST; a rota confere o
+// caminho (desta conta, em `notas/`) e LÊ no armazenamento o tamanho e o tipo
+// (nunca do corpo). Armazenamento fora do ar = 503, nunca 400.
+// ============================================================
+
+const AUDIO = `account-${CONTA}/notas/a1000000-0000-4000-8000-000000000001/audio-1.ogg`;
+const PDF = `account-${CONTA}/notas/a1000000-0000-4000-8000-000000000002/contrato.pdf`;
+
+function existe(bytes: number, contentType: string) {
+  return () => Promise.resolve({ data: { size: bytes, contentType }, error: null });
+}
+
+describe('POST /api/cb/notes — anexos (1102)', () => {
+  it('anotação SÓ de áudio: texto vazio, e tamanho e tipo vêm do ARMAZENAMENTO', async () => {
+    estado.arquivos[AUDIO] = existe(4096, 'audio/ogg');
+    const res = await POST(
+      pedido({ texto: '', anexos: [{ caminho: AUDIO, nome: 'audio-1.ogg', mime: 'image/png', bytes: 1 }] })
+    );
+    expect(res.status).toBe(201);
+    expect(estado.lidos).toEqual([`chat-media:${AUDIO}`]);
+    expect(estado.inserts[0]).toMatchObject({
+      texto: '',
+      anexos: [{ caminho: AUDIO, nome: 'audio-1.ogg', mime: 'audio/ogg', bytes: 4096 }],
+    });
+  });
+
+  it('sem texto e sem anexo é 400, sem ler nada', async () => {
+    const res = await POST(pedido({ texto: '   ' }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'texto or anexos is required' });
+    expect(estado.inserts).toEqual([]);
+  });
+
+  it('anotação de só texto não leva a coluna da 1102', async () => {
+    const res = await POST(pedido({}));
+    expect(res.status).toBe(201);
+    expect(estado.inserts[0]).not.toHaveProperty('anexos');
+    expect(estado.lidos).toEqual([]);
+  });
+
+  it('caminho de outra conta (ou fora de notas/) é 400 antes de ir ao armazenamento', async () => {
+    for (const caminho of [
+      'account-00000000-0000-4000-8000-000000000099/notas/x/a.ogg',
+      `account-${CONTA}/1700-a.ogg`,
+      `account-${CONTA}/acervo/a.ogg`,
+    ]) {
+      const res = await POST(pedido({ anexos: [{ caminho, nome: 'a.ogg' }] }));
+      expect(res.status, caminho).toBe(400);
+      expect(await res.json()).toEqual({ error: 'ATTACHMENT_OUTSIDE_ACCOUNT' });
+    }
+    expect(estado.lidos).toEqual([]);
+    expect(estado.inserts).toEqual([]);
+  });
+
+  it('arquivo que não está no armazenamento é 400 ATTACHMENT_NOT_FOUND, sem gravar', async () => {
+    estado.arquivos[AUDIO] = existe(10, 'audio/ogg');
+    const res = await POST(
+      pedido({ anexos: [{ caminho: AUDIO, nome: 'a.ogg' }, { caminho: PDF, nome: 'c.pdf' }] })
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'ATTACHMENT_NOT_FOUND' });
+    expect(estado.inserts).toEqual([]);
+  });
+
+  it('armazenamento fora do ar é 503 STORAGE_UNAVAILABLE, nunca "não encontrado"', async () => {
+    for (const falha of [
+      () => Promise.resolve({ data: null, error: { message: 'bad gateway', status: 502, statusCode: '502' } }),
+      () => Promise.reject(new TypeError('fetch failed')),
+    ]) {
+      estado.arquivos[AUDIO] = falha;
+      const res = await POST(pedido({ anexos: [{ caminho: AUDIO, nome: 'a.ogg' }] }));
+      expect(res.status).toBe(503);
+      expect(await res.json()).toEqual({ error: 'STORAGE_UNAVAILABLE' });
+    }
+    expect(estado.inserts).toEqual([]);
+  });
+
+  it('tipo que a anotação não aceita, ou acima de 50 MiB, é 400', async () => {
+    estado.arquivos[AUDIO] = existe(10, 'image/gif');
+    let res = await POST(pedido({ anexos: [{ caminho: AUDIO, nome: 'a.gif' }] }));
+    expect(await res.json()).toEqual({ error: 'ATTACHMENT_TYPE_REFUSED' });
+    estado.arquivos[AUDIO] = existe(50 * 1024 * 1024 + 1, 'audio/ogg');
+    res = await POST(pedido({ anexos: [{ caminho: AUDIO, nome: 'a.ogg' }] }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'ATTACHMENT_TOO_LARGE' });
+    expect(estado.inserts).toEqual([]);
+  });
+
+  it('a menção com anexo avisa com o resumo no corpo (cru, como o título)', async () => {
+    estado.arquivos[AUDIO] = existe(10, 'audio/ogg');
+    estado.arquivos[PDF] = existe(20, 'application/pdf');
+    await POST(
+      pedido({
+        texto: '@Ana confere',
+        mencionados: [ANA],
+        anexos: [{ caminho: AUDIO, nome: 'a.ogg' }, { caminho: PDF, nome: 'contrato.pdf' }],
+      })
+    );
+    expect(estado.avisos).toEqual([
+      expect.objectContaining({ user_id: ANA, type: 'note_mention', body: '@Ana confere · 📎 2 anexos' }),
+    ]);
+  });
+
+  it('a resposta só de áudio avisa com o resumo', async () => {
+    estado.arquivos[AUDIO] = existe(10, 'audio/ogg');
+    await POST(pedido({ texto: '', resposta_de: ORIGINAL, anexos: [{ caminho: AUDIO, nome: 'a.ogg' }] }));
+    expect(estado.avisos).toEqual([
+      expect.objectContaining({ user_id: ANA, type: 'note_reply', body: '🎤 Áudio' }),
+    ]);
   });
 });

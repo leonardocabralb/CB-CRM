@@ -257,7 +257,7 @@ desenho do WhatsApp (pedido do operador).
   (segura a memória), só quando o player aparece (`IntersectionObserver`),
   guardada por endereço. Falha vira fileira de pontos.
 - **Cor por `currentColor`**: a bolha não entregue troca o texto para
-  `!text-foreground`, e cor fixa sumiria.
+  `!text-foreground`, e cor fixa sumiria. Na anotação, `corHerdada` (1102).
 - **No toque, encostar NÃO pula** (o dedo pode estar rolando): pula no arraste
   horizontal de mais de 8 px ou no toque curto.
 - **Uma velocidade para todos** (`cb-audio-velocidade`, `lerVelocidade`), um

@@ -151,6 +151,19 @@ const DECLARADOS: Record<string, Uso> = {
     papel: 'só sobe e devolve a URL',
     nota: 'baixa a mídia da Evolution (ver AJUDANTES)',
   },
+  // 1102 — anexos da anotação interna.
+  'src/lib/notes/subir-anexo.ts': {
+    grava: [{ coluna: 'cb_conversation_notes.anexos', citada: true }],
+    nota: 'a caixa sobe o anexo em notas/ e o POST /api/cb/notes grava o caminho; apaga o que a própria pessoa subiu e desistiu',
+  },
+  'src/lib/notes/arquivo-do-anexo.ts': {
+    papel: 'só lê',
+    nota: 'a rota POST /api/cb/notes lê tamanho e tipo do anexo no armazenamento (info) antes de gravar',
+  },
+  'src/lib/notes/anexos.ts': {
+    papel: 'só lê',
+    nota: 'deriva a URL pública do caminho do anexo (a tela e a API v1); a anotação guarda só o caminho',
+  },
 };
 
 /**
@@ -290,12 +303,13 @@ function colunasCitadas(corpo: string): string[] {
 }
 
 /**
- * O que `cb_arquivos_citados` confere hoje. Coluna nova na função (o plano
- * irmão acrescenta os anexos de anotação) entra aqui junto — e os escritores
- * dela entram em DECLARADOS.
+ * O que `cb_arquivos_citados` confere hoje. Coluna nova na função entra aqui
+ * junto — e os escritores dela entram em DECLARADOS (os anexos de anotação
+ * entraram com a 1102).
  */
 const CITADAS_ESPERADAS = [
   'automation_steps.step_config',
+  'cb_conversation_notes.anexos',
   'cb_groups.picture_url',
   'cb_lixeira_de_contatos.arquivos',
   'cb_media_library.media_path',

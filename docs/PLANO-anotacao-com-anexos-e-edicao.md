@@ -43,10 +43,10 @@
 | Fase | Escopo | Estado | Migration | PR |
 | --- | --- | --- | --- | --- |
 | **0** | Estudo, riscos conferidos no código e na produção, decisões | ✅ 22/10/2026 (este arquivo) | — | — |
-| **1** | Banco e servidor: colunas, regras, gatilho na fila de arquivos a apagar (a fila e a drenagem já existem: Lixeira), regras do armazenamento para `notas/`, POST com anexos | ⏳ em implementação (23/10/2026) | `1102` (conferir na hora) | — |
-| **2** | Tela: anexar, gravar, colar e arrastar na caixa; mostrar nos cinco lugares; aviso no sino | ⏳ | — | — |
-| **3** | Edição: editar no lugar, marca "editada", menção acrescentada | ⏳ | a da Fase 1 | — |
-| **4** | API v1 (`GET /notes` com anexos e `editada_em`) e doc pública | ⏳ | — | — |
+| **1** | Banco e servidor: colunas, regras, gatilho na fila de arquivos a apagar (a fila e a drenagem já existem: Lixeira), regras do armazenamento para `notas/`, POST com anexos | ✅ código e migration na branch `feat/anotacao-com-anexos` (23/10/2026); migration provada no descartável, **NÃO aplicada**; falta medir a leitura do Storage no preview | `1102` | — |
+| **2** | Tela: anexar, gravar, colar e arrastar na caixa; mostrar nos cinco lugares; aviso no sino | ✅ código na mesma branch (23/10/2026); **falta o preview** (1440×900 e 375 px) e o iPhone | — | — |
+| **3** | Edição: editar no lugar, marca "editada", menção acrescentada | ⏳ (outro PR; a coluna `editada_em` já entrou na 1102) | a da Fase 1 | — |
+| **4** | API v1 (`GET /notes` com anexos e `editada_em`) e doc pública | ✅ na mesma branch (23/10/2026) | — | — |
 
 PRs: Fases 1 e 2 juntas (a 1 sozinha não tem tela para provar no preview); a
 Fase 3 em outro PR; a 4 entra no PR das Fases 1–2 se couber.
@@ -230,8 +230,8 @@ Número = maior do `main` + 1 NA HORA (`ls supabase/migrations`,
 - Tetos: `TETO_DO_ANEXO` (A7) e `MAX_ANEXOS_DA_NOTA` = `MAX_ANEXOS`;
   `SUBPASTA_DAS_NOTAS = 'notas'`.
 - `lerAnexosDoCorpo` (forma, prefixo `account-<conta>/notas/`, sem
-  repetição), `mantidosSaoDaNota` (na edição, os que ficam são os que a nota
-  já tinha) e `resumoDosAnexos` ("🎤 Áudio", "📎 3 anexos") para o aviso, a
+  repetição), `mantidosSaoDaNota` (Fase 3, ainda não escrita: na edição, os
+  que ficam são os que a nota já tinha) e `resumoDosAnexos` ("🎤 Áudio", "📎 3 anexos") para o aviso, a
   citação e a faixa fixada.
 
 ### Rotas
@@ -387,3 +387,101 @@ Número = maior do `main` + 1 NA HORA (`ls supabase/migrations`,
   `docs/MERGE-UPSTREAM.md` (as duas linhas da Fase 2),
   `docs/MIGRATIONS-APLICADAS.md` (ao aplicar) e `docs/public-api.md`
   (Fase 4).
+
+## Fases 1, 2 e 4 — registro (23/10/2026)
+
+**Objetivo:** anexos na anotação de ponta a ponta (banco, rota, caixa, os
+cinco lugares que desenham a anotação, o aviso e a API v1), sem a edição.
+Branch `feat/anotacao-com-anexos` (a partir do `main` @ `5fe5693a`), sem push.
+
+**Arquivos.** Banco: `supabase/migrations/1102_cb_anotacao_com_anexos.sql`
+(pino `anotacao-com-anexos-1102.test.ts`). Servidor: `src/lib/notes/anexos.ts`
+(puro), `arquivo-do-anexo.ts` (a leitura no Storage), `POST /api/cb/notes`,
+`GET /api/v1/notes`. Navegador: `src/lib/notes/subir-anexo.ts`,
+`src/hooks/use-gravador-de-voz.ts`, `internal-note-box.tsx`,
+`anexos-da-nota.tsx` (`AnexosDaNota` e `ResumoDosAnexos`, pino
+`anexos-da-nota.chamadores.test.ts`), os cinco lugares, `player-de-audio.tsx`
+(`corHerdada`), `ConversationNote.anexos`/`editada_em`, os dois dicionários,
+`docs/public-api.md`, as regras (`anotacoes.md`, `midia.md`, `supabase.md`,
+`deploy.md`, `inbox-conversa.md`) e `docs/MERGE-UPSTREAM.md`.
+
+**Medido no Postgres 16 descartável** (o esquema da produção, a semente
+fictícia, a 1097→1101 do `main`, um `storage.objects` mínimo com as policies
+da 0900/0954; scripts em `…/scratchpad/lixeira-prova/refazer-anotacao.sh` e
+`prova-anotacao.sql`):
+- a 954 deixava um membro apagar o arquivo de `notas/` que OUTRO subiu (1
+  linha) — o furo que a 1102 fecha;
+- a 1102 aplicada DUAS vezes (a segunda deu o mesmo) e num banco sem conta
+  (a conferência do gatilho pula com NOTICE); a conferência da migration
+  CHAMOU o gatilho numa conversa da semente (desfeita);
+- regras: só de anexo entra; sem texto e sem anexo, só espaços, 11 anexos,
+  objeto ou escalar no lugar da lista não entram; 10 entram; o escritor
+  antigo (só texto) segue valendo, com `anexos = []`;
+- apagar pelo NAVEGADOR (a autora, papel `authenticated`, sem privilégio na
+  fila) põe os 2 anexos na fila, origem `anotacao`; o navegador não lê a
+  fila (42501);
+- tirar 1 de 3 anexos põe SÓ o tirado; renomear, mexer no texto ou regravar
+  a mesma lista, nada;
+- com o sinal `cb.lixeira` (`movendo`, `restaurando`) nada vai à fila; com o
+  sinal vazio (sessão do pool que já o usou), vai;
+- contato apagado por SQL e CONTA apagada: os anexos vão à fila (a linha da
+  conta sumida sobrevive, sem FK);
+- a ida e volta da Lixeira (ficha fictícia, como a 1098): mover → nada na
+  fila, o item cita o anexo e ele conta como citado → restaurar → a anotação
+  volta com os MESMOS anexos → excluir de vez → o anexo vai à fila (origem
+  `lixeira`);
+- SEM o WHEN do sinal (gatilho recriado à mão, desfeito): o mover enfileira e
+  a restauração recusa com `lixeira_gatilho_sem_sinal:cb_conversation_notes.
+  cb_anexos_da_anotacao_para_a_fila` — o defeito que o WHEN e a declaração
+  evitam;
+- a drenagem: o caminho citado por anotação viva sai da fila sem ser
+  devolvido para apagar; o não citado é devolvido;
+- armazenamento (RLS, como `authenticated` com claims): a atendente grava em
+  `notas/`; o ADMIN não apaga nem troca o arquivo dela (0 linhas); nem a dona
+  troca; mover anexo comum para dentro de `notas/` é recusado; a dona apaga o
+  dela; arquivo sem dono (service role) ninguém apaga; quem saiu da conta não
+  apaga; fora de `notas/`, igual à 954 (anexo comum: todo membro troca e
+  apaga; acervo: só admin).
+- Sementes: a ficha A da semente não restaura no descartável
+  (`cb_webhook_eventos_webhook_fk`: o webhook da semente não tem conta) —
+  defeito da SEMENTE, não da 1102; a ida e volta usa ficha fictícia nova.
+
+**Testes (Node 22):** suíte inteira verde (vitest: 755 arquivos, 11.764
+testes), typecheck, lint (0 erros; nos arquivos tocados, só os 6 avisos que
+já existiam em `contact-detail-view.tsx`), os dois portões de i18n e o
+`doc-acompanha` contra `origin/main`. O gravador (`useGravadorDeVoz`) não tem
+teste de unidade (o vitest roda sem DOM): confere-se no preview e no iPhone.
+
+**Decisões tomadas na implementação (conferir com o operador):**
+- caminho `account-<conta>/notas/<uuid>/<nome>`: pasta por arquivo, para o
+  nome no fim do endereço ser o do arquivo (o PDF aberto numa aba sugere esse
+  nome ao baixar);
+- a gravação se chama `audio-<AAAAMMDD-HHMMSS>.ogg` (UTC, como o print
+  colado);
+- resumo: um anexo pelo tipo ("🎤 Áudio", "🖼️ Imagem", "🎬 Vídeo",
+  "📄 <nome>"), vários pela contagem ("📎 3 anexos"); o corpo do aviso é
+  "texto · resumo", e o texto encolhe para o resumo caber nos 280;
+- o cartão FIXADO do painel, recolhido, mostra o resumo e ganha a seta mesmo
+  com o texto inteiro; aberto, texto e anexos rolam juntos sob um teto;
+- a faixa da fixada no fio e a citação mostram só o resumo;
+- salvando (subindo os arquivos ou gravando a anotação), Cancelar e Esc não
+  fecham a caixa: o salvar não se interrompe, e fechar faria parecer
+  desistência; "Salvar" fica desligado enquanto grava, e o clipe e o
+  microfone, com 10 anexos;
+- na API, o `.html` sai com `?download=` também (a mesma régua da tela).
+
+**Fica para depois:** medir no preview a leitura do Storage (`info()`; se o
+projeto responder diferente, troca-se só `arquivo-do-anexo.ts` — a
+alternativa é o `list()` da pasta do arquivo); antes de aplicar, conferir
+que as policies de UPDATE e DELETE do `chat-media` na produção são as da 954
+(`pg_policies`; a 1102 as recria a partir dela — mudança feita pela UI se
+perderia); aplicar a 1102 com autorização do operador (ADITIVA: antes do
+deploy) e registrar em `docs/MIGRATIONS-APLICADAS.md`; o e2e da seção "Teste de ponta a ponta"; a
+gravação e o player no iPhone; a Fase 3 (edição, `mantidosSaoDaNota`, a marca
+"editada"); a linha da seção 12 do CLAUDE.md (está a 2 bytes do teto).
+
+**Limite novo conhecido:** a aba fechada com o POST sem resposta deixa os
+arquivos (a anotação pode ter sido salva; a caixa não apaga o incerto). E o
+replay do CI precisa de `storage.objects.owner_id` (migration do próprio
+storage-api, presente onde a 0023/0986/1060 já usam colunas mais novas do
+bucket) — se faltar, a 1102 reprova no CI com a mensagem do Postgres.
