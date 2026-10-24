@@ -253,7 +253,8 @@ todos: num merge, fica o nosso.
   (`outroLado`). O índice único sobre `LEAST/GREATEST` recusa o par repetido
   em qualquer ordem (23505 → "já vinculados"); nunca gravar A→B e B→A.
 - **Par a par**: três pessoas no mesmo caso = três vínculos. Sem "grupo de
-  caso" (decisão do operador).
+  caso" (decisão do operador). A descrição do vínculo ("esposa",
+  "procurador") é OPCIONAL (`descricaoParaGravar`: vazia vira nulo).
 - **FKs compostas com CASCADE**: apagar uma das fichas desfaz o vínculo; a
   fusão de fichas reaponta os vínculos (receita em `supabase.md`).
 - ⚠️ **Os dados vêm por PROP e são carimbados (`{ de, itens }`)**: o painel

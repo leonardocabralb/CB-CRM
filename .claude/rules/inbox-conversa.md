@@ -288,11 +288,12 @@ O WhatsApp quase nunca anuncia a falha; este vermelho é INFERIDO.
 
 - **`CartaoDeContato` lê `messages.contatos` por `lerContatosGravados`** (JSON de
   fora, campo a campo); sem nada legível mostra o resumo ou "sem dados", nunca
-  bolha vazia. A ingestão está em `.claude/rules/whatsapp-evolution.md`.
+  bolha vazia (ingestão: `whatsapp-evolution.md`). Por telefone, Copiar e
+  Conversar (operador).
 - ⚠️ **"Conversar" só com `waid` e só para quem envia**
   (`useCan('send-messages')`), e dispara `EVENTO_CONVERSAR_COM_CONTATO`
   (`conversar-com-contato.ts`): a "Nova conversa" mora na LISTA, irmã do fio.
-  Uma segunda cópia do nome do evento faria o botão não fazer nada.
+  Outra cópia do nome do evento deixa o botão inerte.
 - O rótulo de tipo não suportado vira `Inbox.bubble.naoSuportada`
   (`tipoNaoSuportado`), com o tipo técnico no `title`.
 
