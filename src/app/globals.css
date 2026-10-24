@@ -12,17 +12,19 @@
        `.next.nosync`, e o Tailwind o respeita. Medido rodando o scanner real
        com e sem estas linhas: mesmos 577 arquivos, mesmos candidatos.
      · "o Tailwind resolve o symlink" — não resolve. Ele alcança
-       `.next.nosync` direto, como diretório irmão. A linha do `.next` sozinha
-       não protege nada NESTA máquina (protege no Docker, onde `.next` é
-       diretório de verdade).
+       `.next.nosync` direto, como diretório irmão. Com o `.next` como atalho
+       (o arranjo do iCloud, ver o `.gitignore`), a linha do `.next` sozinha
+       não protege nada; protege onde ele é diretório de verdade (no Docker e
+       com o projeto fora do iCloud).
      · "qualquer um dos dois sozinho deixa a porta aberta" — ao contrário: a
        linha do `.next.nosync` sozinha fecha.
 
-   O QUE REALMENTE ABRE A PORTA é a cópia de conflito do iCloud. O projeto
-   vive em ~/Documents, e o iCloud cria duplicatas com sufixo " 2" quando vê
-   conflito — existe `/.next 2` na raiz, criado um minuto depois do symlink, e
-   ele NÃO é ignorado pelo git (`git check-ignore` sai 1). Está vazio hoje; no
-   instante em que ganhar saída de build, o bug volta idêntico:
+   O QUE REALMENTE ABRIA A PORTA era a cópia de conflito do iCloud, com o
+   projeto em ~/Documents: o iCloud criava duplicatas com sufixo " 2" quando
+   via conflito, e uma `/.next 2` nasceu na raiz um minuto depois do symlink,
+   sem o git ignorá-la (`git check-ignore` saía 1; o `.gitignore` passou a
+   cobrir o sufixo " 2"). Vazia, não fazia mal; com saída de build dentro, o
+   bug voltaria idêntico:
 
      Module not found: Can't resolve '; ??'
      .bg-\[url\(\'\;\1 ...\'\)\]  { background-image: url('; ...'); }
