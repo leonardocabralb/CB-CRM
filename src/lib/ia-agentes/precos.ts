@@ -44,7 +44,11 @@ export const PRECOS: readonly LinhaDePreco[] = [
   { provedor: 'openai', modelo: 'gpt-5.4-mini', desde: null, entrada: 0.75, saida: 4.5, fonte: 'openai.com/index/introducing-gpt-5-4-mini-and-nano' },
   { provedor: 'openai', modelo: 'gpt-5.4-nano', desde: null, entrada: 0.2, saida: 1.25, fonte: 'openai.com/index/introducing-gpt-5-4-mini-and-nano' },
   { provedor: 'anthropic', modelo: 'claude-haiku-4-5-20251001', desde: null, entrada: 1, saida: 5, fonte: 'anthropic.com/claude/haiku' },
-  { provedor: 'anthropic', modelo: 'claude-haiku-5-5', desde: null, entrada: 0.1, saida: 0.5, fonte: 'platform.claude.com/docs/en/about-claude/pricing (25/10/2026; pedido até 100 mil tokens — acima, 0,50/2,50)' },
+  // ⚠️ `claude-haiku-5-5` fica SEM preço de propósito: ele tem duas tabelas
+  // pelo tamanho de CADA pedido (US$ 0,10/0,50 até 100 mil tokens; 0,50/2,50
+  // acima — platform.claude.com/docs/en/about-claude/pricing, 25/10/2026), e
+  // `cb_ia_uso` soma o dia inteiro, sem o tamanho de cada pedido. Um PDF longo
+  // da leitura passa dos 100 mil: com a tabela baixa, o custo sairia 5× menor.
   { provedor: 'anthropic', modelo: 'claude-sonnet-5', desde: null, entrada: 2, saida: 10, fonte: 'platform.claude.com/docs/en/models/overview' },
   { provedor: 'anthropic', modelo: 'claude-sonnet-4-5-20250929', desde: null, entrada: 3, saida: 15, fonte: 'platform.claude.com/docs/en/about-claude/pricing (26/09/2026)' },
 ]
