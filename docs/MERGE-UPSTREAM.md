@@ -350,6 +350,26 @@ fechado sem merge em 13/10/2026). Inventário completo e motivos em
   `src/lib/webhooks/ssrf.ts` (o nosso é idêntico ao do #588; o deles só
   acrescenta o 2º parâmetro opcional do #609).
 
+### 3.5 A rodada de 2026-10-25: porte manual do lote `27c6bdf4..34bce1a8`
+
+30 PRs do original (#639–#684, 13 a 16/10/2026), analisados um a um contra o
+nosso código em 24–25/10/2026. Sem merge (o ensaio dá 124 conflitos); a
+ancestralidade continua em `aee1b01f`. O porte saiu em dois PRs: segurança e
+as demais correções.
+
+- **Segurança (este porte):** o gatilho `enforce_account_identity_columns`
+  do #670 (mesmo nome e corpo do original) e a guarda "conta com outros
+  membros" no `redeem_invitation`, os dois na NOSSA 1103; e os cabeçalhos do
+  proxy de mídia do #678 (`proxy-response-headers.ts` idêntico, com o teste).
+- **Descartar no próximo merge:** a `047_account_membership_integrity`
+  inteira (recria `redeem_invitation`, `set_member_role`,
+  `remove_account_member` e `transfer_account_ownership` por cima das
+  nossas: 0960/0961/0962/0965/0971/1000/1067 — o gatilho dela já está na
+  1103, igual); o `route.test.ts` do proxy de mídia (ver a linha na §4); e,
+  do #678, `document-click.ts` e as mudanças em `message-media.tsx` e
+  `blob-cache.ts` (o `message-media.tsx` não está ligado aqui;
+  `.claude/rules/inbox-conversa.md`).
+
 ## 4. Arquivos do upstream com trechos NOSSOS
 
 ⚠️ **Vários arquivos do upstream ganharam mudanças NOSSAS para o multi-canal —
@@ -604,6 +624,7 @@ upstream sobrescrevê-los:
 | `src/components/inbox/message-thread.tsx`, `src/components/pipelines/deal-form.tsx` e `messages/en.json` (Lixeira, Fase 4: restaurar e unir, 23/10/2026, 1101) | no fio (bloco de faixas) e no formulário do card (só com `origemFunil`), `<AvisoDeFichaNaLixeira>` (NOSSO, `src/components/contacts/lixeira/aviso-de-ficha-na-lixeira.tsx`) logo depois do `<AvisoDePossivelDuplicata>`: a faixa "Há uma ficha desta pessoa na Lixeira" (só admin) e o "Restaurar e unir". No `en.json`, a sub-árvore `Contacts.lixeira` (NOSSA inteira desde a 1097; a 1101 acrescenta `mesmaPessoa`). Um merge que traga o fio ou o formulário crus some com a faixa sem conflito, e a ficha antiga de quem voltou a escrever fica presa na Lixeira (B2); ver `.claude/rules/contatos.md` |
 | `src/components/layout/header.tsx` (Lixeira de contatos, 22/10/2026) | `"/contacts/lixeira": "lixeira"` no `pageTitles`, ANTES de `/contacts` (o mapa casa por `startsWith` na ordem) |
 | `src/types/index.ts` (Lixeira de contatos, 22/10/2026, 1097) | `Conversation.restaurada_em` e os tipos `contact_trashed`/`contact_restored`/`contact_purged` no tipo do evento da trilha (o `never` do ícone e o `satisfies` do pino reprovam o typecheck se um merge os tirar) |
+| `src/app/api/whatsapp/media/[mediaId]/route.ts` (porte do #678, 25/10/2026) | o resto do arquivo já era nosso (`?channel=`, a ordem do token, `whatsapp_config` por `maybeSingle`); do original veio só a resposta por `mediaProxyHeaders` (`src/lib/media/proxy-response-headers.ts`, trazido idêntico com o teste dele). Os testes NOSSOS da rota moram em `route.cabecalhos.test.ts`: o `route.test.ts` do original simula o `whatsapp_config` por `.single()` e sem o `?channel=`, e contra a nossa rota daria 400 — no merge ele chega como arquivo novo e deve ser APAGADO |
 
 ## 5. Migrations do original: a história das renumerações
 

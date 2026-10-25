@@ -135,6 +135,16 @@ teto. A bolha, a fila de anexos do compositor e o player de áudio estão em
   BAIXAR, nunca aberto a partir do Storage**: `urlParaAbrirAnexo`
   (`abrir-anexo.ts`) põe `?download=` na bolha e na aba Arquivos. Link novo
   para anexo passa por ele.
+- ⚠️⚠️ **O proxy da Meta (`/api/whatsapp/media/<id>`) responde por
+  `mediaProxyHeaders`** (`src/lib/media/proxy-response-headers.ts`, upstream
+  #678): é a reserva do anexo que o espelho no `chat-media` não guardou (tipo
+  fora da lista do bucket — SVG, ZIP, CSV —, acima de 50 MiB, Storage fora do
+  ar), sai no NOSSO domínio com o tipo que o CLIENTE mandou, e a bolha o abre
+  numa aba nova. Só imagem, áudio e vídeo comuns vão `inline`; o resto vai
+  como `attachment`, com `sandbox` e cache privado. O `nosniff` global não
+  impede HTML declarado como HTML, e a CSP do `next.config.ts` só relata.
+  Rota nova que devolva bytes de fora repete o helper. Pino
+  `route.cabecalhos.test.ts`.
 
 ### Acervo de mídias (953/954)
 
