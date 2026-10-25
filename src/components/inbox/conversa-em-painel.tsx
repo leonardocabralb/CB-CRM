@@ -42,6 +42,11 @@ import { useRealtime } from "@/hooks/use-realtime";
 import { reinseridaPelaRestauracao } from "@/lib/contacts/lixeira";
 import { avisarExecucoesMudaram } from "@/lib/execucoes/aviso";
 import {
+  comBolhaPublicada,
+  comLinhaDoTempoReal,
+  recargaComFalhadas,
+} from "@/lib/inbox/bolhas-otimistas";
+import {
   CONVERSATION_SELECT,
   normalizeConversation,
 } from "@/lib/inbox/conversations";
@@ -196,7 +201,9 @@ function ConversaCarregada({
   aoAbrirNaCaixa: (conversaId: string) => void;
 }) {
   const t = useTranslations("ConversaEmPainel");
-  const { acesso } = useAuth();
+  // `user`: o login de quem está na tela — a régua das bolhas otimistas é a da
+  // página do inbox (`bolhas-otimistas.ts`).
+  const { acesso, user } = useAuth();
   const { ativo: modoAnonimo } = useModoAnonimo();
 
   const [conversation, setConversation] = useState<Conversation | null>(null);
@@ -268,11 +275,9 @@ function ConversaCarregada({
         // A devolvida pela restauração não entra pelo fim nem recarrega as
         // execuções: o fio é relido uma vez quando a conversa volta (abaixo).
         if (reinseridaPelaRestauracao(msg.gravada_em, restauradaEmRef.current, msg.created_at)) return;
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === msg.id)) return prev;
-          // A linha gravada substitui a bolha otimista do envio.
-          return [...prev.filter((m) => !m.id.startsWith("temp-")), msg];
-        });
+        // A linha do PRÓPRIO atendente troca UMA bolha otimista dele; a que
+        // FALHOU nunca sai por aqui (a régua da página do inbox).
+        setMessages((prev) => comLinhaDoTempoReal(prev, msg, user?.id ?? null));
         // O cliente respondeu: a espera "parar se o cliente responder" pode
         // ter sido cancelada no servidor logo depois (ver a página do inbox).
         if (msg.sender_type === "customer") {
@@ -284,7 +289,7 @@ function ConversaCarregada({
         );
       }
     },
-    [conversaId],
+    [conversaId, user?.id],
   );
   const handleConversationEvent = useCallback(
     (event: { eventType: string; new: Conversation }) => {
@@ -383,11 +388,13 @@ function ConversaCarregada({
         conversation={conversation}
         contact={conversation.contact ?? null}
         messages={messages}
-        onMessagesLoaded={setMessages}
+        // A recarga mantém as bolhas que FALHARAM; a otimista republicada como
+        // falhada (409) vira falhada no lugar — a régua da página do inbox.
+        onMessagesLoaded={(loaded) =>
+          setMessages((prev) => recargaComFalhadas(loaded, prev, conversaId))
+        }
         onNewMessage={(msg) =>
-          setMessages((prev) =>
-            prev.some((m) => m.id === msg.id) ? prev : [...prev, msg],
-          )
+          setMessages((prev) => comBolhaPublicada(prev, msg))
         }
         onUpdateMessage={(id, updates) =>
           setMessages((prev) =>

@@ -36,6 +36,11 @@ import {
   urlDoInbox,
 } from "@/lib/inbox/url";
 import { comMensagemNova } from "@/lib/inbox/ordem-da-lista";
+import {
+  comBolhaPublicada,
+  comLinhaDoTempoReal,
+  recargaComFalhadas,
+} from "@/lib/inbox/bolhas-otimistas";
 import { reinseridaPelaRestauracao } from "@/lib/contacts/lixeira";
 import {
   novoPedidoDeSalto,
@@ -113,7 +118,9 @@ function InboxPageInner() {
   // conversa de outra área); ABRIR é que rende o cartão amigável no lugar do
   // fio. Derivado, nunca estado: a seleção pode chegar por clique, por deep
   // link (?conversation=) ou por URL colada, e todas caem aqui.
-  const { acesso } = useAuth();
+  // `user` é o LOGIN de quem está na tela: o INSERT do tempo real só troca a
+  // bolha otimista pela linha que tem o `sender_id` dele (`bolhas-otimistas.ts`).
+  const { acesso, user } = useAuth();
   const [activeConversation, setActiveConversation] =
     useState<Conversation | null>(null);
   const [activeContact, setActiveContact] = useState<Contact | null>(null);
@@ -522,15 +529,14 @@ function InboxPageInner() {
           activeConversation &&
           newMsg.conversation_id === activeConversation.id
         ) {
-          setMessages((prev) => {
-            // Avoid duplicates
-            if (prev.some((m) => m.id === newMsg.id)) return prev;
-            // Replace optimistic message if it exists
-            const withoutOptimistic = prev.filter(
-              (m) => !m.id.startsWith("temp-")
-            );
-            return [...withoutOptimistic, newMsg];
-          });
+          // Repetida não entra. A linha do PRÓPRIO atendente troca UMA bolha
+          // otimista dele; a do cliente, do colega ou do robô só entra no fim.
+          // ⚠️ A bolha que FALHOU nunca sai por aqui: o envio de gente não grava
+          // linha quando nada sai, e ela é a única marca disso na tela
+          // (`bolhas-otimistas.ts`).
+          setMessages((prev) =>
+            comLinhaDoTempoReal(prev, newMsg, user?.id ?? null)
+          );
 
           // O cliente respondeu NESTA conversa: o servidor pode ter acabado de
           // cancelar uma automação ("Aguardar — parar se o cliente
@@ -581,7 +587,7 @@ function InboxPageInner() {
         );
       }
     },
-    [activeConversation, conversaLida, hydrateConversation]
+    [activeConversation, conversaLida, hydrateConversation, user?.id]
   );
 
   // Handle realtime conversation events
@@ -1095,20 +1101,25 @@ function InboxPageInner() {
 
   const handleMessagesLoaded = useCallback(
     (loaded: Message[]) => {
-      setMessages(loaded);
+      const conversaId = activeConversation?.id ?? null;
+      // A recarga silenciosa (voltar à aba, reconectar, o botão atualizar) não
+      // apaga a bolha que FALHOU nesta conversa — só as pendentes saem, como
+      // antes (`recargaComFalhadas`). Ela confere a conversa bolha a bolha:
+      // nada de um fio vaza para o outro.
+      setMessages((prev) => recargaComFalhadas(loaded, prev, conversaId));
       // Carimba de quem é o array. O fio só chama isto quando a busca NÃO foi
       // cancelada, ou seja, quando ela ainda é da conversa aberta — por isso
       // dá para ler o id do estado da página em vez de o fio precisar mandá-lo.
-      setMessagesDaConversa(activeConversation?.id ?? null);
+      setMessagesDaConversa(conversaId);
     },
     [activeConversation?.id]
   );
 
+  // A bolha que o fio publica. Id repetido continua descartado, exceto a
+  // MESMA otimista republicada como falhada (o 409 de número trocado): ela
+  // vira falhada no lugar (`comBolhaPublicada`).
   const handleNewMessage = useCallback((msg: Message) => {
-    setMessages((prev) => {
-      if (prev.some((m) => m.id === msg.id)) return prev;
-      return [...prev, msg];
-    });
+    setMessages((prev) => comBolhaPublicada(prev, msg));
   }, []);
 
   const handleUpdateMessage = useCallback(

@@ -1002,6 +1002,7 @@
       },
       "motor": {
         "enviadaPara": "sent to {numero}",
+        "retomadaInterrompida": "the server stopped in the middle of this resume: it was not run again, so no message is sent twice to the customer — the steps after the wait may or may not have run",
         "etiquetaJaEstava": "the contact already had this tag",
         "semResponsavel": "nobody available to assign",
         "responsavelSuspenso": "{nome} is suspended: the conversation was left unassigned",
@@ -5417,6 +5418,7 @@
       "removeSuccess": "Document removed.",
       "removeFailed": "Failed to remove.",
       "reindexSuccess": "Reindexed {count} document(s).",
+      "reindexWithFailures": "Reindexed {reindexed} of {total} document(s). {failedCount} failed: {titles}. Use Reindex to retry.",
       "reindexFailed": "Reindex failed.",
       "title": "Knowledge base",
       "description": "Add FAQs, policies, or product details. The assistant retrieves the relevant pieces when drafting and auto-replying, so it can answer instead of handing off.{searchType}",
@@ -5451,6 +5453,7 @@
       "save": "Save",
       "nameRequired": "Give the quick reply a name.",
       "saveError": "Couldn't save the quick reply.",
+      "notFound": "This quick reply no longer exists — the list was refreshed.",
       "updatedToast": "Quick reply updated.",
       "createdToast": "Quick reply created.",
       "confirmDelete": "Delete this quick reply?",

@@ -216,10 +216,16 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
   quem saiu e com leitura que falha): omitir a coluna manteria o dono ANTERIOR,
   e a tela promete a fila de quem está sem dono (Codex, PR #319).
 - ⚠️ **Nó NOVO no robô exige MIGRATION**: `flow_nodes.node_type` tem CHECK
-  com a lista fechada (0016), e o `PUT /api/flows/[id]` apaga TODOS os nós
-  antes de inserir, sem transação — um tipo recusado pelo CHECK deixa o robô
-  sem nó nenhum. Opção nova num nó que já existe (`config` é JSONB) não
-  precisa.
+  com a lista fechada (1053). O `PUT /api/flows/[id]` troca os nós por
+  `cb_trocar_nos_do_robo` (1104: numa transação, ANTES do cabeçalho) — o tipo
+  recusado devolve 500 e o robô fica como estava, mas não salva até a
+  migration. Opção nova num nó que já existe (`config` é JSONB) não precisa.
+- ⚠️ **Robô que deixa de estar ATIVO encerra a run de quem estava nele**
+  (`stopped_by_agent` + `robo_desativado`, `encerrarRunDeRoboDesativado`): na
+  resposta do cliente (`dispatchInboundToFlows`, que segue como se não
+  houvesse run — gatilhos, automações, IA) e no cron dos robôs. Leitura do
+  robô que falha = "não sei": a run segue. O `cancelled` do #674 não existe
+  aqui (CHECK da 0955).
 
 ### Modelos da Meta
 

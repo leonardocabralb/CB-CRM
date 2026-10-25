@@ -15,6 +15,14 @@ const h = vi.hoisted(() => ({
     // returns the row; a replayed delivery conflicts and returns [].
     messageUpsertResult: [{ id: 'msg-1' }] as { id: string }[],
     priorCustomerMsgCount: 0,
+    /** A conversa já teve a primeira mensagem reivindicada (`first_inbound_at`, 1105). */
+    primeiraLevada: false,
+    /** O patch de cada reivindicação da primeira mensagem. */
+    reivindicacoes: [] as Record<string, unknown>[],
+    /** A linha MAIS RECENTE de `broadcast_recipients` do contato (a régua do #671). */
+    ultimoDestinatario: null as { id: string; status: string; sent_at: string | null } | null,
+    /** Cada `replied` gravado: o patch, o id e as situações aceitas no WHERE. */
+    respostasMarcadas: [] as { patch: Record<string, unknown>; id: unknown; aceitas: unknown }[],
     /** Row `lookupInternalIdByMetaId` resolves for a `context.id`. */
     replyContextParent: null as { id: string } | null,
     conversation: { id: 'conv-1', unread_count: 0, account_id: 'acc-1' },
@@ -78,10 +86,22 @@ vi.mock('@supabase/supabase-js', () => ({
           // reopenClosedConversation: update().eq('id').eq('status','closed'),
           // que roda a toda mensagem desde que o atalho sobre o status lido no
           // começo da requisição saiu (Codex, PR #232). 0 linhas = aberta.
+          // E a reivindicação da primeira mensagem (1105):
+          // update({ first_inbound_at }).eq('id').is('first_inbound_at', null)
+          // .select('id') — leva a linha só quem chega primeiro, a régua do
+          // UPDATE condicional.
           return {
-            update: () => ({
+            update: (patch: Record<string, unknown>) => ({
               eq: () => ({
                 eq: () => Promise.resolve({ error: null, count: 0 }),
+                is: () => ({
+                  select: () => {
+                    h.state.reivindicacoes.push(patch)
+                    if (h.state.primeiraLevada) return Promise.resolve({ data: [], error: null })
+                    h.state.primeiraLevada = true
+                    return Promise.resolve({ data: [{ id: h.state.conversation.id }], error: null })
+                  },
+                }),
               }),
             }),
             select: () => ({
@@ -106,17 +126,30 @@ vi.mock('@supabase/supabase-js', () => ({
             }),
           }
         case 'broadcast_recipients':
-          // flagBroadcastReplyIfAny: select().eq().eq().in().order().limit()
+          // marcarRespostaAoDisparo (#671): a linha mais recente do contato,
+          // select().eq().eq().order().limit(), e o replied condicional,
+          // update().eq('id').in('status', …).select('id').
           return {
             select: () => ({
               eq: () => ({
                 eq: () => ({
-                  in: () => ({
-                    order: () => ({
-                      limit: () =>
-                        Promise.resolve({ data: [], error: null }),
-                    }),
+                  order: () => ({
+                    limit: () =>
+                      Promise.resolve({
+                        data: h.state.ultimoDestinatario ? [h.state.ultimoDestinatario] : [],
+                        error: null,
+                      }),
                   }),
+                }),
+              }),
+            }),
+            update: (patch: Record<string, unknown>) => ({
+              eq: (_col: string, id: unknown) => ({
+                in: (_status: string, aceitas: unknown) => ({
+                  select: () => {
+                    h.state.respostasMarcadas.push({ patch, id, aceitas })
+                    return Promise.resolve({ data: [{ id }], error: null })
+                  },
                 }),
               }),
             }),
@@ -338,6 +371,10 @@ beforeEach(() => {
   vi.clearAllMocks()
   h.state.messageUpsertResult = [{ id: 'msg-1' }]
   h.state.priorCustomerMsgCount = 0
+  h.state.primeiraLevada = false
+  h.state.reivindicacoes = []
+  h.state.ultimoDestinatario = null
+  h.state.respostasMarcadas = []
   h.state.replyContextParent = null
   h.state.conversation = { id: 'conv-1', unread_count: 0, account_id: 'acc-1' }
   h.state.criarConversa = false
@@ -665,6 +702,101 @@ describe('inbound webhook: after() awaits automations (#368)', () => {
     await runWebhook()
     expect(tipos).toEqual(['first_inbound_message', 'new_message_received', 'keyword_match'])
     erro.mockRestore()
+  })
+})
+
+// ============================================================
+// ⚠️ NOSSO (1105): a primeira mensagem é reivindicada UMA vez, no banco,
+// DEPOIS do insert. Numa rajada, as duas requisições contavam zero antes de
+// qualquer uma gravar, e a saudação do robô e da automação saía em dobro.
+// ============================================================
+describe('a primeira mensagem é reivindicada UMA vez (1105)', () => {
+  const comoPrimeira = () =>
+    h.dispararAutomacoes.mock.calls.filter(([a]) => a.triggerType === 'first_inbound_message').length
+
+  it('rajada: dois POSTs que contam zero ao mesmo tempo — só UM é a primeira', async () => {
+    await POST(inboundRequest({ ...TEXT_MESSAGE, id: 'wamid.RAJADA1', text: { body: 'oi' } }))
+    await POST(inboundRequest({ ...TEXT_MESSAGE, id: 'wamid.RAJADA2', text: { body: 'tudo bem?' } }))
+    // Os dois `after()` ao mesmo tempo, como dois POSTs da Meta em paralelo.
+    await Promise.all(h.state.afterCallbacks.map((cb) => cb()))
+
+    expect(h.state.upsertCalls).toHaveLength(2)
+    expect(h.state.reivindicacoes).toHaveLength(2)
+    expect(comoPrimeira()).toBe(1)
+    expect(h.dispatchInboundToFlows.mock.calls.filter(([a]) => a.isFirstInboundMessage)).toHaveLength(1)
+  })
+
+  it('reivindica com o carimbo na coluna da 1105', async () => {
+    await runWebhook()
+
+    expect(h.state.reivindicacoes).toEqual([{ first_inbound_at: expect.any(String) }])
+    expect(comoPrimeira()).toBe(1)
+  })
+
+  it('a reentrega (upsert sem linha) sai antes e nem tenta', async () => {
+    h.state.messageUpsertResult = []
+
+    await runWebhook()
+
+    expect(h.state.reivindicacoes).toEqual([])
+  })
+
+  it('conversa com mensagem anterior do cliente: nem tenta', async () => {
+    h.state.priorCustomerMsgCount = 2
+
+    await runWebhook()
+
+    expect(h.state.reivindicacoes).toEqual([])
+    expect(comoPrimeira()).toBe(0)
+  })
+
+  it('a reivindicação perdeu (outra requisição levou): a mensagem segue como comum', async () => {
+    h.state.primeiraLevada = true
+
+    await runWebhook()
+
+    expect(h.state.reivindicacoes).toHaveLength(1)
+    expect(h.dispararAutomacoes.mock.calls.map(([a]) => a.triggerType)).toEqual([
+      'new_message_received',
+      'keyword_match',
+    ])
+  })
+})
+
+// ============================================================
+// ⚠️ NOSSO (porte do #671): a resposta do cliente conta para a campanha
+// CERTA — só a linha mais recente do contato, enviada há até 7 dias. A régua
+// inteira tem teste em `broadcast-resposta.test.ts`; aqui, a ligação.
+// ============================================================
+describe('a resposta conta para o disparo certo (#671)', () => {
+  it('a linha mais recente, enviada há uma hora: vira replied, com o UPDATE condicional', async () => {
+    h.state.ultimoDestinatario = {
+      id: 'dest-1',
+      status: 'read',
+      sent_at: new Date(Date.now() - 3_600_000).toISOString(),
+    }
+
+    await runWebhook()
+
+    expect(h.state.respostasMarcadas).toEqual([
+      {
+        patch: { status: 'replied', replied_at: expect.any(String) },
+        id: 'dest-1',
+        aceitas: ['sent', 'delivered', 'read'],
+      },
+    ])
+  })
+
+  it('a linha mais recente foi enviada há 8 dias: nada é marcado', async () => {
+    h.state.ultimoDestinatario = {
+      id: 'dest-1',
+      status: 'delivered',
+      sent_at: new Date(Date.now() - 8 * 86_400_000).toISOString(),
+    }
+
+    await runWebhook()
+
+    expect(h.state.respostasMarcadas).toEqual([])
   })
 })
 

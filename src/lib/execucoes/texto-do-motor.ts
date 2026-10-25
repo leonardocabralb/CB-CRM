@@ -20,6 +20,8 @@
 // isto — por isso os padrões aceitam qualquer coisa (`.+`) onde havia um id.
 // ============================================================
 
+import { MOTIVO_RETOMADA_INTERROMPIDA } from '@/lib/automations/retomada'
+
 /** Um pedaço do texto: frase do dicionário (`Inbox.execucoes.motor.*`) ou texto cru. */
 export type ParteDoTexto =
   | { chave: string; valores: Record<string, string | number> }
@@ -87,6 +89,13 @@ const PADROES: Padrao[] = [
   { re: /^(?:Error: )?Connection Closed$/i, ler: () => frase('conexaoCaiu') },
   // A frase é do `throwError` de `evolution-client.ts` (400 com `exists: false`).
   { re: /^number (\S+) is not on WhatsApp$/, ler: (m) => frase('semWhatsApp', { numero: m[1] }) },
+  // A retomada que o processo não terminou, recolhida pelo cron (1106). O
+  // texto gravado é a constante do motor, casado INTEIRO (os parênteses dela
+  // escapados): quem atende precisa ler que nada foi repetido ao cliente.
+  {
+    re: new RegExp('^' + MOTIVO_RETOMADA_INTERROMPIDA.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$'),
+    ler: () => frase('retomadaInterrompida'),
+  },
 ]
 
 /** A nota entre parênteses da condição ("hora no escritório: dom 18:57") já é português. */
@@ -163,6 +172,7 @@ export const CHAVES_DO_MOTOR = [
   'tarefaCriada',
   'conexaoCaiu',
   'semWhatsApp',
+  'retomadaInterrompida',
   'tentativa',
   'desistiu',
   'naoRepetiu',

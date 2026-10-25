@@ -12,6 +12,7 @@ import {
 } from '@/lib/whatsapp/template-validators'
 import { buildMetaTemplatePayload } from '@/lib/whatsapp/template-components'
 import { ensureMediaHeaderHandle } from '@/lib/whatsapp/template-header-handle'
+import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 import { barrarPorPapel } from '@/lib/auth/barrar-por-papel'
 
 /**
@@ -88,6 +89,11 @@ export async function PATCH(
     // nunca entraria no caminho.
     const barrado = barrarPorPapel(profile?.account_role, 'admin');
     if (barrado) return barrado;
+
+    // Porte do upstream #660: depois da guarda (quem não pode nem gasta o
+    // balde) e antes da Meta.
+    const limit = checkRateLimit(`whatsapp-admin:${user.id}`, RATE_LIMITS.whatsappAdmin)
+    if (!limit.success) return rateLimitResponse(limit)
 
     let payload: TemplatePayload
     try {
@@ -286,6 +292,9 @@ export async function DELETE(
     // nunca entraria no caminho.
     const barrado = barrarPorPapel(profile?.account_role, 'admin');
     if (barrado) return barrado;
+
+    const limit = checkRateLimit(`whatsapp-admin:${user.id}`, RATE_LIMITS.whatsappAdmin)
+    if (!limit.success) return rateLimitResponse(limit)
 
     const { data: existing, error: lookupErr } = await supabase
       .from('message_templates')

@@ -22,6 +22,22 @@ import { ehEvolution, ehInstagram } from '@/lib/cb-channels/transporte';
  * Sends the reaction to Meta and mirrors it into `message_reactions`
  * (delete on empty emoji). Customer-side reactions are handled by the
  * webhook — this route only writes `actor_type = 'agent'` rows.
+ *
+ * ⚠️ No WhatsApp o escritório é UM remetente: o cliente vê só a ÚLTIMA
+ * reação do número, seja de quem for no CRM (adaptado do upstream #675, sem a
+ * migration dele). Por isso o espelho guarda no máximo UMA reação `agent` por
+ * mensagem: reagir apaga a dos colegas antes de gravar a sua, e tirar a
+ * reação apaga a do escritório inteira — senão a tela mostrava duas, ou a do
+ * colega continuava ali com o cliente já sem nenhuma.
+ *
+ * Limites: (1) duas reações SIMULTÂNEAS de atendentes diferentes ainda podem
+ * deixar as duas linhas (o original fecha isso com um índice único parcial);
+ * a próxima reação na mensagem as reduz a uma. (2) ⚠️ O DELETE não chega pelo
+ * realtime: `message_reactions` está com a REPLICA IDENTITY padrão, e o
+ * evento só com a chave primária não passa pelo filtro por conversa do fio
+ * (o que a 921 mediu em `cb_conversation_notes`). O INSERT e o UPDATE chegam;
+ * a reação apagada do colega some do BANCO e continua na tela aberta até o
+ * fio reler as reações (trocar de conversa, voltar à aba).
  */
 export async function POST(request: Request) {
   try {
@@ -185,12 +201,13 @@ export async function POST(request: Request) {
 
     // Mirror into DB. Empty emoji = removal.
     if (emoji === '') {
+      // Tirar a reação tira a do NÚMERO: some a de todo atendente na mensagem
+      // (a do cliente, `actor_type = 'customer'`, fica).
       const { error: delError } = await supabase
         .from('message_reactions')
         .delete()
         .eq('message_id', targetMessage.id)
-        .eq('actor_type', 'agent')
-        .eq('actor_id', userId);
+        .eq('actor_type', 'agent');
 
       if (delError) {
         console.error('[whatsapp/react] DB delete failed:', delError.message);
@@ -200,6 +217,24 @@ export async function POST(request: Request) {
         );
       }
     } else {
+      // A reação do número passou a ser esta: a dos COLEGAS sai antes. A
+      // própria fica (o upsert abaixo troca o emoji na mesma linha, e o fio
+      // recebe um UPDATE em vez de sumir e voltar).
+      const { error: clearError } = await supabase
+        .from('message_reactions')
+        .delete()
+        .eq('message_id', targetMessage.id)
+        .eq('actor_type', 'agent')
+        .neq('actor_id', userId);
+
+      if (clearError) {
+        console.error('[whatsapp/react] DB cleanup failed:', clearError.message);
+        return NextResponse.json(
+          { error: 'Reaction sent to Meta but DB cleanup failed' },
+          { status: 500 },
+        );
+      }
+
       // Upsert. The unique constraint (message_id, actor_type, actor_id)
       // lets us swap emoji in a single statement.
       const { error: upsertError } = await supabase.from('message_reactions').upsert(

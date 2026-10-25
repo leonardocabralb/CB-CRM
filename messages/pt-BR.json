@@ -995,6 +995,7 @@
       },
       "motor": {
         "enviadaPara": "enviada para {numero}",
+        "retomadaInterrompida": "o servidor parou no meio desta retomada: ela não foi refeita, para não repetir mensagem ao cliente — o que vinha depois da espera pode ter rodado ou não",
         "etiquetaJaEstava": "o contato já tinha esta etiqueta",
         "semResponsavel": "ninguém disponível para atribuir",
         "responsavelSuspenso": "{nome} está suspenso: a conversa ficou sem responsável",
@@ -5410,6 +5411,7 @@
       "removeSuccess": "Documento removido.",
       "removeFailed": "Falha ao remover.",
       "reindexSuccess": "{count} documento(s) reindexado(s).",
+      "reindexWithFailures": "{reindexed} de {total} documento(s) reindexado(s); {failedCount, plural, one {# falhou} other {# falharam}}: {titles}. Use Reindexar para tentar de novo.",
       "reindexFailed": "Falha ao reindexar.",
       "title": "Base de conhecimento",
       "description": "Adicione perguntas frequentes, políticas ou detalhes dos serviços. O assistente busca os trechos relevantes ao redigir rascunhos e responder automaticamente, para responder em vez de encaminhar.{searchType}",
@@ -5444,6 +5446,7 @@
       "save": "Salvar",
       "nameRequired": "Dê um nome à resposta rápida.",
       "saveError": "Não foi possível salvar a resposta rápida.",
+      "notFound": "Esta resposta rápida não existe mais — a lista foi atualizada.",
       "updatedToast": "Resposta rápida atualizada.",
       "createdToast": "Resposta rápida criada.",
       "confirmDelete": "Excluir esta resposta rápida?",

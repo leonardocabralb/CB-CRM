@@ -592,3 +592,23 @@ describe('templates/submit — qual linha é a do modelo', () => {
     expect(linhaDe(banco, 'outro-numero')?.meta_template_id).toBe('hsm-2')
   })
 })
+
+// Porte do upstream #660: o balde `whatsappAdmin` (30/min por usuário), depois
+// do papel e antes da Meta. O `afterEach` reinicia os módulos, então cada teste
+// começa com o balde vazio.
+describe('templates/submit — limite por usuário', () => {
+  it('o 31º envio no minuto é 429 e não chama a Meta', async () => {
+    const banco = bancoFalso({})
+    submitMessageTemplate.mockResolvedValue({ id: 'hsm-1', status: 'PENDING' })
+
+    for (let i = 0; i < 30; i++) {
+      const r = await enviar(banco)
+      expect(r.init?.status).not.toBe(429)
+    }
+    expect(submitMessageTemplate).toHaveBeenCalledTimes(30)
+
+    const barrado = await enviar(banco)
+    expect(barrado.init?.status).toBe(429)
+    expect(submitMessageTemplate).toHaveBeenCalledTimes(30)
+  })
+})

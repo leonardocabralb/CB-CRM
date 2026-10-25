@@ -12,6 +12,24 @@ import { AiError, mensagemSeguraDeAiError } from '@/lib/ai/types'
  * after adding an embeddings key: existing documents were stored
  * lexical-only, and this backfills their vectors so semantic search
  * turns on. Also recovers documents whose indexing failed earlier.
+ *
+ * É a base da CONTA (`ai_knowledge_documents`/`ai_knowledge_chunks`): a do
+ * rascunho ✨ e a dos agentes de IA (1052), que só marcam quais documentos
+ * cada agente consulta (`cb_ia_agente_documentos`) e buscam nos mesmos
+ * trechos. Reindexar aqui refaz o que os agentes leem.
+ *
+ * Porte do upstream #676: um documento que falha não para os outros. A
+ * resposta diz o total, quantos reindexaram e QUAIS falharam (`failed`, os
+ * ids; a tela troca pelo título), com o motivo do primeiro (`motivo`, a
+ * mensagem segura). Antes, a primeira falha encerrava a rodada e o resto da
+ * base ficava como estava, sem a tela saber quais.
+ *
+ * ⚠️ NOSSO (diverge do original): a falha DO PROVEDOR de vetores (`AiError`)
+ * continua encerrando a rodada. `ingestDocument` apaga os trechos antigos
+ * ANTES de gerar os vetores, e a falha do provedor quase sempre é da conta
+ * (chave recusada, cota, provedor fora do ar): seguir deixaria TODOS os
+ * documentos só com busca por palavra, em vez de um. Segue adiante só a
+ * falha que é do documento (banco).
  */
 export async function POST() {
   try {
@@ -50,30 +68,36 @@ export async function POST() {
       )
     }
 
+    const total = (docs ?? []).length
     let reindexed = 0
+    const failed: string[] = []
+    let motivo: string | null = null
     for (const doc of docs ?? []) {
       try {
         await ingestDocument(supabase, accountId, { embeddingsApiKey }, doc.id, doc.content)
         reindexed += 1
       } catch (err) {
-        // One bad document (e.g. a mid-run embeddings rate-limit) should
-        // not abort the whole batch.
-        // Ver a nota irmã em `knowledge/route.ts`: `invalid_key` ecoa a chave.
-        const message = err instanceof AiError ? mensagemSeguraDeAiError(err) : String(err)
-        console.error(`[ai/knowledge/reindex] doc ${doc.id} failed:`, message)
-        return NextResponse.json(
-          {
-            success: false,
-            reindexed,
-            total: (docs ?? []).length,
-            error: `Reindexed ${reindexed}, then hit an error: ${message}`,
-          },
-          { status: 200 },
-        )
+        // Ver a nota irmã em `knowledge/route.ts`: `invalid_key` ecoa a chave
+        // — nem o log nem a tela recebem a mensagem crua de um `AiError`.
+        // Erro que não é do provedor (banco) não carrega chave: vai inteiro
+        // para o log, e a tela recebe só o genérico.
+        const seguro = err instanceof AiError ? mensagemSeguraDeAiError(err) : null
+        console.error(`[ai/knowledge/reindex] doc ${doc.id} failed:`, seguro ?? err)
+        failed.push(doc.id)
+        motivo ??= seguro ?? 'indexing failed'
+        // A falha do PROVEDOR encerra a rodada (ver o cabeçalho): os
+        // documentos seguintes guardam os vetores que têm.
+        if (err instanceof AiError) break
       }
     }
 
-    return NextResponse.json({ success: true, reindexed })
+    return NextResponse.json({
+      success: failed.length === 0,
+      reindexed,
+      total,
+      failed,
+      ...(motivo ? { motivo } : {}),
+    })
   } catch (err) {
     return toErrorResponse(err)
   }

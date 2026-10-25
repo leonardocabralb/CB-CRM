@@ -8,14 +8,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const h = vi.hoisted(() => ({
   downloadContentType: 'image/jpeg' as string | null,
   metaMimeType: 'image/jpeg',
+  pedidosAMeta: 0,
 }))
 
 vi.mock('next/server', () => ({
   NextResponse: {
-    json: (body: unknown, init?: { status?: number }) =>
+    json: (body: unknown, init?: { status?: number; headers?: Record<string, string> }) =>
       new Response(JSON.stringify(body), {
         status: init?.status ?? 200,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...init?.headers },
       }),
   },
 }))
@@ -44,11 +45,15 @@ vi.mock('@/lib/supabase/server', () => ({
 vi.mock('@/lib/cb-channels/repo', () => ({ getChannelWithSecrets: async () => null }))
 vi.mock('@/lib/whatsapp/encryption', () => ({ decrypt: (v: string) => `plain-${v}` }))
 vi.mock('@/lib/whatsapp/meta-api', () => ({
-  getMediaUrl: async () => ({ url: 'https://lookaside.example/m', mimeType: h.metaMimeType, fileSize: 3 }),
+  getMediaUrl: async () => {
+    h.pedidosAMeta += 1
+    return { url: 'https://lookaside.example/m', mimeType: h.metaMimeType, fileSize: 3 }
+  },
   downloadMedia: async () => ({ buffer: Buffer.from('abc'), contentType: h.downloadContentType }),
 }))
 
 import { GET } from './route'
+import { __resetRateLimitForTests } from '@/lib/rate-limit'
 
 function call(mediaId = '1234567890') {
   return GET(new Request(`http://localhost/api/whatsapp/media/${mediaId}`), {
@@ -57,8 +62,10 @@ function call(mediaId = '1234567890') {
 }
 
 beforeEach(() => {
+  __resetRateLimitForTests()
   h.downloadContentType = 'image/jpeg'
   h.metaMimeType = 'image/jpeg'
+  h.pedidosAMeta = 0
 })
 
 describe('GET /api/whatsapp/media/[mediaId] — cabeçalhos', () => {
@@ -100,5 +107,20 @@ describe('GET /api/whatsapp/media/[mediaId] — cabeçalhos', () => {
     const res = await call()
     expect(res.headers.get('Content-Type')).toBe('audio/ogg')
     expect(res.headers.get('Content-Disposition')).toBe('inline')
+  })
+})
+
+// Porte do upstream #660: o balde `whatsappMedia` (240/min por usuário).
+describe('GET /api/whatsapp/media/[mediaId] — limite por usuário', () => {
+  it('o pedido que passa do balde é 429, com Retry-After, sem ir à Meta', async () => {
+    for (let i = 0; i < 240; i++) {
+      expect((await call()).status).toBe(200)
+    }
+    expect(h.pedidosAMeta).toBe(240)
+
+    const barrado = await call()
+    expect(barrado.status).toBe(429)
+    expect(barrado.headers.get('Retry-After')).toMatch(/^\d+$/)
+    expect(h.pedidosAMeta).toBe(240)
   })
 })
