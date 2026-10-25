@@ -10,7 +10,15 @@
 // computador de quem baixou, fora do CRM.
 //
 // Puro: lido pela bolha e pela aba Arquivos.
+//
+// E o proxy da Meta (`/api/whatsapp/media/<id>`, a reserva do anexo que o
+// espelho no bucket não guardou): desde o porte do #678 ele manda como
+// DOWNLOAD tudo o que não é imagem, áudio ou vídeo comum, e sem o nome o
+// arquivo baixaria como `<id>.pdf`. Por isso o link leva `nome=<nome>`, que o
+// proxy põe no `Content-Disposition` (`proxy-response-headers.ts`).
 // ============================================================
+
+import { isProxiedMediaUrl } from './blob-cache';
 
 /** O anexo é uma página HTML? Pelo tipo, ou pela extensão quando o tipo falta. */
 export function ehPaginaHtml(mime: string | null | undefined, nome: string | null | undefined): boolean {
@@ -20,16 +28,21 @@ export function ehPaginaHtml(mime: string | null | undefined, nome: string | nul
 }
 
 /**
- * O `href` do anexo. Igual à URL, menos para .html guardado no Storage do
- * Supabase (`/storage/v1/object/public/`), que ganha `download=<nome>`.
- * URL de outro lugar (o proxy da Meta, por exemplo) não é tocada: o parâmetro
- * só significa algo para o Storage.
+ * O `href` do anexo. Igual à URL, menos em dois casos: o .html guardado no
+ * Storage do Supabase (`/storage/v1/object/public/`) ganha `download=<nome>`;
+ * a URL do proxy da Meta ganha `nome=<nome>` (qualquer tipo — é o proxy que
+ * decide o que abre e o que baixa). URL de outro lugar não é tocada.
  */
 export function urlParaAbrirAnexo(
   url: string,
   mime: string | null | undefined,
   nome: string | null | undefined,
 ): string {
+  if (isProxiedMediaUrl(url)) {
+    const arquivo = (nome ?? '').trim();
+    if (!arquivo || /[?&]nome=/.test(url)) return url;
+    return `${url}${url.includes('?') ? '&' : '?'}nome=${encodeURIComponent(arquivo)}`;
+  }
   if (!ehPaginaHtml(mime, nome) || !url.includes('/storage/v1/object/public/')) return url;
   if (/[?&]download(=|&|$)/.test(url)) return url;
   const arquivo = (nome ?? '').trim() || 'pagina.html';

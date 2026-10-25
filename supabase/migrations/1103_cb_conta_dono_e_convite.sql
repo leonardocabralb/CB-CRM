@@ -20,7 +20,13 @@
 --    A transferência continua: `transfer_account_ownership` é SECURITY
 --    DEFINER (roda como `postgres`) e o servidor escreve como `service_role`.
 --    O que o app grava do navegador em `accounts` (nome, assinatura) não
---    toca nenhuma das três colunas.
+--    toca nenhuma das três colunas. O `created_at` pesa por outro motivo:
+--    `contaDaInstalacao` (`src/lib/marca-servidor.ts`) elege a conta MAIS
+--    ANTIGA, e só o admin dela troca a marca de todos — o dono de qualquer
+--    conta avulsa (um ex-membro, por exemplo) virava "a conta da instalação"
+--    com um PATCH de `created_at`. Conferido por leitura em 25/10/2026:
+--    ninguém usou (a mais antiga é a do escritório, e todo dono tem perfil
+--    `owner` na própria conta).
 -- 2. `redeem_invitation` recusa quando a conta atual de quem aceita tem
 --    OUTROS membros. Ela só conferia que o chamador é o dono e que a conta
 --    está vazia; o DELETE da conta no fim levava, pelo CASCADE de
@@ -28,13 +34,27 @@
 --    perfil é justamente quem a policy `profiles_insert` deixa se inserir em
 --    qualquer conta. O corpo é a reprodução FIEL da 1000 com UMA guarda nova,
 --    antes da checagem de dados (a lição da 922/960: `CREATE OR REPLACE`
---    troca o corpo inteiro). Hoje inofensivo — das contas, só a do escritório
---    tem mais de um membro, e ela tem dados —, mas é o que torna verdade o
---    motivo escrito em `membro-suspenso-1067.test.ts` ("o DONO único").
+--    troca o corpo inteiro), e a busca da conta de quem aceita passa a TRAVAR
+--    as linhas (`FOR UPDATE OF p, a`, como a 047): sem isso, um colega que
+--    entrasse NA conta de quem está saindo no mesmo instante passaria pela
+--    guarda e perderia o perfil no CASCADE. Hoje inofensivo — das contas, só a
+--    do escritório tem mais de um membro, e ela tem dados —, mas é o que torna
+--    verdade o motivo escrito em `membro-suspenso-1067.test.ts` ("o DONO
+--    único").
+-- 3. A raiz do item 2: a policy `profiles_insert` (017) só confere
+--    `auth.uid() = user_id`, então um login SEM perfil se inseria em qualquer
+--    conta, como `owner`. O app nunca insere perfil pelo navegador — quem
+--    insere é `handle_new_user`, SECURITY DEFINER (conferido na produção em
+--    25/10/2026: nenhuma função comum insere em `profiles`) —, então a policy
+--    sai e o INSERT de `anon`/`authenticated` é revogado. É o que a branch
+--    `fix/authz-membership-holes` do original (ainda não mesclada) também faz.
 --
--- Sem dado novo, sem backfill. Conferência no fim: roda em banco vazio
--- (pula o que pede dado) e, com dado, PROVA as duas peças em subblocos
--- desfeitos por SQLSTATE próprio.
+-- Sem dado novo, sem backfill. As três peças leem `auth.uid()`: provadas num
+-- Postgres 16 descartável (esqueleto com as tabelas e a policy de escrita
+-- reais, a migration aplicada duas vezes, 13 cenários e o banco vazio) — ver
+-- a descrição do PR. Conferência no fim: roda em banco vazio (pula o que pede
+-- dado) e, com dado, PROVA as peças em subblocos desfeitos por SQLSTATE
+-- próprio.
 -- ============================================================
 
 SET LOCAL lock_timeout = '3s';
@@ -117,11 +137,16 @@ BEGIN
   END IF;
 
   -- Caller's current account + its owner.
+  -- 1103: TRAVADAS até o fim — a guarda dos outros membros (abaixo) é lida
+  -- antes do DELETE da conta, e um colega entrando nela no meio-tempo
+  -- passaria pela guarda (o UPDATE de profiles dele espera esta trava, e a
+  -- FK falha quando a conta some).
   SELECT p.account_id, a.owner_user_id
   INTO v_old_account_id, v_old_account_owner
   FROM profiles p
   JOIN accounts a ON a.id = p.account_id
-  WHERE p.user_id = v_caller_id;
+  WHERE p.user_id = v_caller_id
+  FOR UPDATE OF p, a;
 
   IF v_old_account_id IS NULL THEN
     -- Defensive — every authenticated user has a profile post-017.
@@ -231,6 +256,15 @@ $function$;
 GRANT EXECUTE ON FUNCTION public.redeem_invitation(text) TO authenticated;
 
 -- ------------------------------------------------------------
+-- 3) Login sem perfil não se insere em conta nenhuma
+-- ------------------------------------------------------------
+-- O perfil nasce por `handle_new_user` (SECURITY DEFINER, roda como dono e
+-- não passa pela RLS) e muda por `redeem_invitation`/`remove_account_member`/
+-- transferência (todas definer). Nada do navegador insere.
+DROP POLICY IF EXISTS profiles_insert ON public.profiles;
+REVOKE INSERT ON TABLE public.profiles FROM anon, authenticated;
+
+-- ------------------------------------------------------------
 -- Conferência
 -- ------------------------------------------------------------
 DO $$
@@ -273,12 +307,36 @@ BEGIN
   IF NOT has_function_privilege('authenticated', 'public.redeem_invitation(text)', 'EXECUTE') THEN
     RAISE EXCEPTION '1103: authenticated perdeu redeem_invitation — ninguém entra na conta';
   END IF;
+  IF v_def !~ 'FOR UPDATE OF p, a' THEN
+    RAISE EXCEPTION '1103: redeem_invitation não trava a conta de quem aceita';
+  END IF;
 
-  -- Com dado: uma conta com dono e pelo menos um colega.
+  -- O perfil: nenhuma policy de INSERT, e nem anon nem authenticated inserem.
+  IF EXISTS (
+    SELECT 1 FROM pg_policy
+    WHERE polrelid = 'public.profiles'::regclass AND polcmd IN ('a', '*')
+  ) THEN
+    RAISE EXCEPTION '1103: profiles ainda tem policy que deixa inserir';
+  END IF;
+  IF has_table_privilege('authenticated', 'public.profiles', 'INSERT')
+     OR has_table_privilege('anon', 'public.profiles', 'INSERT') THEN
+    RAISE EXCEPTION '1103: anon/authenticated ainda inserem em profiles';
+  END IF;
+  IF NOT (SELECT prosecdef FROM pg_proc WHERE oid = 'public.handle_new_user()'::regprocedure) THEN
+    RAISE EXCEPTION '1103: handle_new_user deixou de ser SECURITY DEFINER — sem a policy, o cadastro pararia';
+  END IF;
+
+  -- Com dado: uma conta cujo dono é ADMIN dela de fato (perfil owner/admin,
+  -- não suspenso — senão a RLS esconde a linha, a régua da 1067) e um colega
+  -- que não é dono de conta nenhuma (o índice um-dono-uma-conta da 017
+  -- recusaria a troca de prova do passo b).
   SELECT a.id, a.owner_user_id, p.user_id
   INTO v_conta, v_dono, v_colega
   FROM public.accounts a
+  JOIN public.profiles d ON d.account_id = a.id AND d.user_id = a.owner_user_id
+   AND d.account_role IN ('owner', 'admin') AND d.suspenso_em IS NULL
   JOIN public.profiles p ON p.account_id = a.id AND p.user_id <> a.owner_user_id
+  WHERE NOT EXISTS (SELECT 1 FROM public.accounts o WHERE o.owner_user_id = p.user_id)
   ORDER BY a.created_at, p.user_id
   LIMIT 1;
 
@@ -286,6 +344,21 @@ BEGIN
     RAISE NOTICE '1103: nenhuma conta com dono e colega — nada a provar com dado.';
     RETURN;
   END IF;
+
+  -- (0) O colega, pelo navegador, não se insere em outra conta (a raiz).
+  BEGIN
+    PERFORM set_config('request.jwt.claims',
+      json_build_object('sub', v_colega, 'role', 'authenticated')::text, true);
+    PERFORM set_config('request.jwt.claim.sub', v_colega::text, true);
+    SET LOCAL ROLE authenticated;
+    INSERT INTO public.profiles (user_id, account_id, account_role)
+    VALUES (v_colega, v_conta, 'owner');
+    RAISE EXCEPTION USING ERRCODE = 'P1130', MESSAGE = 'o navegador inseriu perfil';
+  EXCEPTION
+    WHEN insufficient_privilege THEN NULL;  -- 42501: o REVOKE barrou
+    WHEN SQLSTATE 'P1130' THEN
+      RAISE EXCEPTION '1103: o navegador ainda insere perfil';
+  END;
 
   -- (a) O dono, pelo navegador (authenticated + o JWT dele), não consegue
   -- passar a conta a um colega. O UPDATE chega à linha (a RLS deixa o admin)

@@ -81,8 +81,47 @@ describe("mediaProxyHeaders", () => {
     for (const type of ["image/png", "text/html", undefined]) {
       const headers = mediaProxyHeaders("1", type);
       expect(headers["X-Content-Type-Options"]).toBe("nosniff");
-      expect(headers["Content-Security-Policy"]).toBe("default-src 'none'; sandbox");
       expect(headers["Cache-Control"]).toBe("private, max-age=86400");
     }
+  });
+
+  // ⚠️ NOSSO (diverge do original): ver o topo de proxy-response-headers.ts.
+  it("o que vira download vai com sandbox", () => {
+    for (const type of ["text/html", "image/svg+xml", "application/pdf", undefined]) {
+      expect(mediaProxyHeaders("1", type)["Content-Security-Policy"]).toBe("default-src 'none'; sandbox");
+    }
+  });
+
+  it("a mídia exibida vai sem sandbox (aberta em aba, áudio e vídeo tocam), sem script", () => {
+    for (const type of ["image/png", "audio/ogg; codecs=opus", "video/mp4"]) {
+      const csp = mediaProxyHeaders("1", type)["Content-Security-Policy"];
+      expect(csp).not.toMatch(/sandbox/);
+      expect(csp).toMatch(/^default-src 'none';/);
+      expect(csp).not.toMatch(/script-src/);
+      expect(csp).toMatch(/media-src 'self'/);
+    }
+  });
+
+  it("o download leva o nome que o link trouxe, com acento pelo filename*", () => {
+    expect(mediaProxyHeaders("987", "application/pdf", "Petição Inicial.pdf")["Content-Disposition"]).toBe(
+      `attachment; filename="Peti__o Inicial.pdf"; filename*=UTF-8''Peti%C3%A7%C3%A3o%20Inicial.pdf`,
+    );
+  });
+
+  it("o nome do link não injeta cabeçalho nem caminho", () => {
+    const d = mediaProxyHeaders("987", "application/pdf", '../x"\r\nSet-Cookie: a=1.pdf')["Content-Disposition"];
+    expect(d).not.toMatch(/[\r\n]/);
+    expect(d).toMatch(/^attachment; filename="[^"]*"; filename\*=UTF-8''/);
+    expect(d).not.toContain("..");
+  });
+
+  it("nome vazio ou só lixo cai no nome do id", () => {
+    expect(mediaProxyHeaders("987", "application/pdf", "  ")["Content-Disposition"]).toBe(
+      'attachment; filename="987.pdf"',
+    );
+  });
+
+  it("mídia exibida ignora o nome (inline)", () => {
+    expect(mediaProxyHeaders("1", "image/jpeg", "foto.jpg")["Content-Disposition"]).toBe("inline");
   });
 });
