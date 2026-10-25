@@ -146,7 +146,24 @@ export function AiKnowledgeCard({
     try {
       const res = await fetch('/api/ai/knowledge/reindex', { method: 'POST' });
       const data = await res.json();
-      if (res.ok && data.success) {
+      // A rota segue pelos documentos depois de uma falha e diz quais falharam
+      // (ids): "N de M; K falharam", com os títulos e o motivo do provedor. A
+      // falha do PROVEDOR encerra a rodada: os seguintes nem são tentados e
+      // ficam como estavam (`pendentes`).
+      const failed: string[] = Array.isArray(data.failed) ? data.failed : [];
+      if (res.ok && failed.length > 0) {
+        const titleById = new Map(docs.map((d) => [d.id, d.title]));
+        toast.error(
+          t('reindexWithFailures', {
+            reindexed: data.reindexed,
+            total: data.total,
+            failedCount: failed.length,
+            titles: failed.map((id) => titleById.get(id) ?? id).join(', '),
+            pendentes: Math.max(0, (data.total ?? 0) - (data.reindexed ?? 0) - failed.length),
+          }),
+          typeof data.motivo === 'string' ? { description: data.motivo } : undefined,
+        );
+      } else if (res.ok && data.success) {
         toast.success(t('reindexSuccess', { count: data.reindexed }));
       } else {
         toast.error(data.error ?? t('reindexFailed'));

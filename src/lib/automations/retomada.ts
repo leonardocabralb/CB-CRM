@@ -56,6 +56,18 @@ export const MOTIVO_PASSO_MOVIDO =
   'o passo em que esta execução esperava foi levado para outro ramo ao editar a automação — ela não retomou, para não seguir por outro caminho';
 export const MOTIVO_PASSO_NAO_CONFERIDO =
   'não consegui conferir o passo em que esta execução esperava — ela não retomou, para não seguir por outro caminho';
+/**
+ * A retomada que o cron REIVINDICOU e não terminou: o processo morreu no meio
+ * (deploy, reinício do contêiner) e a espera ficou `running` — gravado pelo
+ * recolhimento (`recolherEsperasPresas`, `engine.ts`, 1106). ⚠️ Ela NÃO é
+ * refeita: o processo pode ter morrido logo DEPOIS de mandar a mensagem, e
+ * refazer a mandaria de novo (CLAUDE.md, 8e). Linha do MOTOR (`step_id`
+ * vazio); a tela a traduz (`texto-do-motor.ts`) e não afirma o que deixou de
+ * rodar (`detalhe.ts`): o escopo é gravado no fim, então o que rodou depois da
+ * espera pode não estar no registro.
+ */
+export const MOTIVO_RETOMADA_INTERROMPIDA =
+  'a retomada desta execução parou no meio, sem terminar (o servidor reiniciou ou travou) — ela não foi refeita, para não repetir mensagem ao cliente';
 
 /** O contexto a gravar na fila: o de sempre, mais o passo que estaciona. */
 export function comPassoDaFila<T extends object>(

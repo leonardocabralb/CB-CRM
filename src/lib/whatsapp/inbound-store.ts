@@ -16,6 +16,7 @@ import { fichaQueVenceu, findExistingContact, isUniqueViolation } from '@/lib/co
 import { routeContactToPipeline } from '@/lib/cb-channels/pipeline-routing';
 import { reopenClosedConversation } from '@/lib/conversations/reopen';
 import { marcarOrigem } from '@/lib/conversations/origem-da-escrita';
+import { reivindicarPrimeiraMensagem } from '@/lib/conversations/primeira-mensagem';
 import { dispararAutomacoes, etapaTemQuemFale } from '@/lib/automations/engine';
 import { cancelarEsperasPorResposta } from '@/lib/automations/parar-se-responder';
 import { dispatchInboundToFlows } from '@/lib/flows/engine';
@@ -456,12 +457,15 @@ export async function persistInboundMessage(
   const contentType = ALLOWED_CONTENT_TYPES.has(m.contentType) ? m.contentType : 'text';
   const mimeNaChegada = m.figurinha && contentType === 'image' ? MIME_DA_FIGURINHA : null;
 
-  const { count: priorCustomerMsgCount } = await db
+  // As mensagens anteriores do cliente, contadas ANTES de gravar esta. Zero só
+  // HABILITA a reivindicação da primeira mensagem, depois do insert (1105):
+  // numa rajada, as duas mensagens contam zero antes de qualquer uma gravar.
+  // Ver `primeira-mensagem.ts`.
+  const contagemAnterior = await db
     .from('messages')
     .select('id', { count: 'exact', head: true })
     .eq('conversation_id', conversation.id)
     .eq('sender_type', 'customer');
-  const isFirstInboundMessage = (priorCustomerMsgCount ?? 0) === 0;
 
   // O canal vai NO PRÓPRIO insert (10/09/2026) — o mesmo motivo do webhook da
   // Meta: o carimbo em UPDATE separado podia falhar em silêncio e deixar a
@@ -534,6 +538,16 @@ export async function persistInboundMessage(
   // medição mais fiel que existe: o carimbo é de quando ele apertou enviar,
   // e estamos no instante da gravação. Ver `atraso-de-entrega.ts`.
   await registrarEntrega(db, canalGravado, m.timestamp);
+
+  // A primeira mensagem do cliente se decide no BANCO, depois do insert
+  // (1105): só uma requisição da rajada leva a conversa, e a saudação do robô
+  // e da automação não sai em dobro. Falha fechada, nunca lança — ver
+  // `primeira-mensagem.ts`. Gêmeo do webhook da Meta.
+  const isFirstInboundMessage = await reivindicarPrimeiraMensagem(
+    db,
+    conversation.id,
+    contagemAnterior,
+  );
 
   // ---- downstream engines (parity with the Meta webhook) ----
   // O texto que a ingestão MONTOU (cartão de contato, mensagem de empresa)

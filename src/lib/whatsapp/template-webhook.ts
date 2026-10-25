@@ -47,7 +47,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { decrypt } from './encryption'
 import { conteudoDoModeloDaMeta, lerModeloNaMeta } from './modelo-da-meta'
-import { normalizeStatus } from './template-status-normalize'
+import {
+  clearsRejectionReason,
+  templateStatusFromWebhookEvent,
+} from './template-status-normalize'
 
 const TEMPLATE_WEBHOOK_FIELDS = new Set([
   'message_template_status_update',
@@ -97,7 +100,10 @@ export interface TemplateWebhookChange {
  * criam stub: a rota de exclusão apaga na Meta e em seguida a linha local, e
  * o aviso que a Meta manda depois (`PENDING_DELETION`) ressuscitaria o modelo
  * que o operador acabou de apagar — a sincronização nunca remove linha. O
- * valor é o CRU do evento: `normalizeStatus` achata DELETED/ARCHIVED em PENDING.
+ * valor é o CRU do evento, não a situação traduzida: hoje DELETED vira
+ * PENDING_DELETION e ARCHIVED vira PENDING (`templateStatusFromWebhookEvent`),
+ * mas a régua do stub não pode depender dessa tradução — se ela mudar, o
+ * modelo apagado não volta.
  */
 const EVENTOS_DE_SAIDA = new Set(['PENDING_DELETION', 'DELETED', 'ARCHIVED'])
 /** Postgres unique_violation — the row appeared between our UPDATE and INSERT. */
@@ -156,17 +162,32 @@ async function handleStatusUpdate(
     return
   }
 
-  const status = normalizeStatus(value.event)
+  // Porte do upstream #675. `normalizeStatus` (o da sincronização) faz de
+  // todo evento desconhecido um PENDING: REINSTATED (o modelo voltou a valer)
+  // e FLAGGED deixavam o modelo "Em análise" e fora do seletor. Aqui o evento
+  // é traduzido para uma situação que guardamos (REINSTATED → APPROVED,
+  // DELETED → PENDING_DELETION e, NOSSO, ARCHIVED → PENDING), e o que não é
+  // troca de situação — FLAGGED, LOCKED, LIMIT_EXCEEDED, o que a Meta inventar
+  // — não grava nada e não cria stub.
+  const status = templateStatusFromWebhookEvent(value.event)
+  if (!status) {
+    console.info(
+      `[template-webhook] event ${value.event} for meta_template_id ${metaTemplateId} is not a status change; status left as is`,
+    )
+    return
+  }
 
   // Persist the rejection reason on REJECTED — that's the only event
-  // where Meta sends a human-readable explanation. Clear it on any
-  // other status flip so the UI doesn't show a stale REJECTED banner
-  // after Meta re-approves a resubmitted template.
-  const update: Record<string, unknown> = {
-    status,
-    rejection_reason:
-      status === 'REJECTED' ? value.reason ?? 'Rejected by Meta' : null,
-    submission_error: null,
+  // where Meta sends a human-readable explanation. Só a aprovação e a nova
+  // análise (APPROVED/PENDING) apagam o motivo antigo: pausado, desativado
+  // ou em recurso, o modelo continua com a explicação da recusa à vista.
+  const update: Record<string, unknown> = { status }
+  if (status === 'REJECTED') {
+    update.rejection_reason = value.reason ?? 'Rejected by Meta'
+    update.submission_error = null
+  } else if (clearsRejectionReason(status)) {
+    update.rejection_reason = null
+    update.submission_error = null
   }
 
   const { data, error } = await supabase

@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
 import { resolveFallbackPolicy } from '@/lib/flows/fallback'
+import { encerrarRunDeRoboDesativado } from '@/lib/flows/parar-run'
 
 /**
  * Sweep abandoned active flow runs.
@@ -25,6 +26,13 @@ import { resolveFallbackPolicy } from '@/lib/flows/fallback'
  * pinger). A 5-minute interval is more than enough for a 24h timeout
  * default; once per hour would also be acceptable for low-volume
  * tenants.
+ *
+ * NOSSO (adaptado do #674 do original): a run cujo robô deixou de estar
+ * ATIVO (rascunho ou arquivado) é encerrada aqui também — `stopped_by_agent`
+ * com `robo_desativado`, a mesma régua do motor quando o cliente responde
+ * (`dispatchInboundToFlows`). Esta ponta é a de quem NÃO responde mais: sem
+ * ela, a run do robô pausado ficava "ativa" até o timeout da política, e a aba
+ * da conversa dizia que o robô seguia atendendo.
  */
 export async function GET(request: Request) {
   const expected = process.env.AUTOMATION_CRON_SECRET
@@ -54,7 +62,7 @@ export async function GET(request: Request) {
   const { data: runs, error } = await admin
     .from('flow_runs')
     .select(
-      'id, flow_id, user_id, contact_id, last_advanced_at, flows ( fallback_policy )',
+      'id, flow_id, user_id, contact_id, last_advanced_at, flows ( fallback_policy, status )',
     )
     .eq('status', 'active')
 
@@ -62,20 +70,34 @@ export async function GET(request: Request) {
     console.error('[flows-cron] active-run scan failed:', error.message)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
-  if (!runs?.length) return NextResponse.json({ swept: 0 })
+  if (!runs?.length) return NextResponse.json({ swept: 0, paradas: 0 })
 
+  type Robo = { fallback_policy: unknown; status?: string | null }
   type Row = {
     id: string
     flow_id: string
     user_id: string
     contact_id: string | null
     last_advanced_at: string
-    flows: { fallback_policy: unknown } | { fallback_policy: unknown }[] | null
+    flows: Robo | Robo[] | null
   }
 
   let swept = 0
+  let paradas = 0
   for (const r of runs as Row[]) {
     const flowsField = Array.isArray(r.flows) ? r.flows[0] : r.flows
+    // Robô que não está ativo encerra a run, antes do timeout. Status ausente
+    // (o embutido não veio) é "não sei": a run segue para a régua do tempo,
+    // como antes — encerrar às cegas cortaria o atendimento de um robô ativo.
+    if (flowsField?.status && flowsField.status !== 'active') {
+      const fim = await encerrarRunDeRoboDesativado(admin, r.id)
+      if (!fim.ok) {
+        console.error('[flows-cron] encerrar a run do robô desativado falhou:', r.id, fim.erro)
+      } else if (fim.encerrou) {
+        paradas += 1
+      }
+      continue
+    }
     const policy = resolveFallbackPolicy(flowsField?.fallback_policy ?? null)
     const lastAdvanced = new Date(r.last_advanced_at)
     const ageHours = (now.getTime() - lastAdvanced.getTime()) / (1000 * 60 * 60)
@@ -108,5 +130,5 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json({ swept })
+  return NextResponse.json({ swept, paradas })
 }

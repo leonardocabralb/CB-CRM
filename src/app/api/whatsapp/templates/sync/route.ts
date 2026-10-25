@@ -12,6 +12,7 @@ import {
   conteudoDoModeloDaMeta,
   type MetaTemplate,
 } from '@/lib/whatsapp/modelo-da-meta'
+import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 
 /**
  * Sync message templates from Meta → local message_templates table.
@@ -36,6 +37,9 @@ export async function POST(request: Request) {
     // insert/update RLS policies (migration 017) both require 'admin'.
     // Resolving account_id off the profile only proved membership.
     const { supabase, accountId, userId } = await requireRole('admin')
+
+    const limit = checkRateLimit(`whatsapp-admin:${userId}`, RATE_LIMITS.whatsappAdmin)
+    if (!limit.success) return rateLimitResponse(limit)
 
     // Multi-canal: sincroniza o catalogo do canal PEDIDO, ou do primeiro
     // canal Meta utilizavel. Antes lia so o espelho e perguntava se o PADRAO

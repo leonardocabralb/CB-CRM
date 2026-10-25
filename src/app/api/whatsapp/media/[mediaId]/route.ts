@@ -6,6 +6,7 @@ import { getChannelWithSecrets } from '@/lib/cb-channels/repo'
 import type { CbChannelWithSecrets } from '@/lib/cb-channels/repo'
 import { ehMeta } from '@/lib/cb-channels/transporte'
 import { mediaProxyHeaders } from '@/lib/media/proxy-response-headers'
+import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 
 export async function GET(
   request: Request,
@@ -34,6 +35,11 @@ export async function GET(
         { status: 401 }
       )
     }
+
+    // Porte do upstream #660: cada pedido são duas idas à Meta (a URL e o
+    // download), com o token da conta. Antes de qualquer leitura.
+    const limit = checkRateLimit(`whatsapp-media:${user.id}`, RATE_LIMITS.whatsappMedia)
+    if (!limit.success) return rateLimitResponse(limit)
 
     // Resolve the caller's account_id — whatsapp_config is one-per-
     // account post-multi-user, so a teammate fetching media for a

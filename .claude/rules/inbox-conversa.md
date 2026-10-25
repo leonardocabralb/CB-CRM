@@ -29,6 +29,7 @@ paths:
   - "src/lib/inbox/motivo-da-falha*"
   - "src/lib/inbox/fila-de-anexos*"
   - "src/lib/inbox/fila-de-saida*"
+  - "src/lib/inbox/bolhas-otimistas*"
   - "src/lib/inbox/nao-lidas-abaixo*"
   - "src/lib/inbox/whatsapp-format*"
   - "src/lib/inbox/links-no-texto*"
@@ -88,6 +89,10 @@ ficha em `.claude/rules/campos-e-nome.md`.
 - ⚠️ **Mensagem do realtime entra no FIM do fio aberto, não pelo carimbo — de
   propósito**: pelo carimbo, toda mensagem atrasada nasceria acima da dobra,
   despercebida. Ao recarregar, ela vai para o lugar do carimbo.
+- ⚠️ **A provisória EM VOO só sai pela linha do PRÓPRIO atendente; a que
+  FALHOU sai com qualquer linha e na recarga** (`bolhas-otimistas.ts`): falha
+  incerta (502, rede) pode ter saído, e mantê-la convida ao reenvio em dobro.
+  Segurá-la pede o motivo da recusa na resposta (#417).
 - ⚠️ **A faixa da nota fixada compara `conversation_id` com a prop do render
   atual**: o `useConversationNotes` esvazia num efeito, e a nota do cliente
   anterior aparecia sob o cabeçalho do novo.
@@ -134,7 +139,7 @@ destaque e ↑/↓ em `message-thread.tsx`.
   (`contarNovasDoCliente` e a âncora `ultimaMensagemRef` passam por
   `naOrdemDoFio`): o tempo real acrescenta no fim da lista, e a ligação (1044)
   entra com carimbo no passado — pela ordem crua ela acendia o botão sobre uma
-  bolha desenhada acima da âncora (Codex, PR #304).
+  bolha desenhada acima da âncora.
 
 ### Busca DENTRO do fio e "Ver na conversa"
 
@@ -305,8 +310,7 @@ O WhatsApp quase nunca anuncia a falha; este vermelho é INFERIDO.
 
 ### Documento e cartão de contato em destaque; o fundo do fio (01/10/2026)
 
-Pedido do operador: sem miniatura, o documento e o cartão passavam por texto
-comum no meio das mensagens (ícone cinza sobre bolha cinza).
+Pedido do operador: sem miniatura, passavam por texto comum no meio do fio.
 
 - ⚠️ **Os dois têm superfície PRÓPRIA (`bg-card` + anel), nunca um tom da
   bolha**: o `bg-muted/50` de antes sumia no cinza do cliente. Assim as cores de
@@ -316,7 +320,7 @@ comum no meio das mensagens (ícone cinza sobre bolha cinza).
   imagem e vídeo com o teto fixo no INVÓLUCRO (`max-w-60`) e `max-w-full`
   neles; quadros de carga como o player (`w-64 max-w-full`). Senão, num fio
   estreito (320 px; 1280 px com o painel aberto = fio de 305 px) a peça vaza o
-  teto de 75% e a conversa rola para o lado (Codex #371; medido 01/10/2026).
+  teto de 75% e a conversa rola para o lado.
 - **Selo do documento = extensão sobre a cor da família** (`tipoDoDocumento`,
   `src/lib/media/tipo-de-documento.ts`): PDF vermelho, planilha verde, texto
   azul. Os tons passam de 4,5 com o branco; os `-600` de verde, laranja e
@@ -335,7 +339,7 @@ comum no meio das mensagens (ícone cinza sobre bolha cinza).
   marcador, partiam o link em itálico. Formatação EM VOLTA dele vale — mas o
   `_`/`~`/`*` do FIM só sai do link quando o mesmo marcador está ABERTO (e
   ainda não fechado) antes dele (`abertoAntes`, que simula o pareamento do
-  interpretador; Codex, #347, duas rodadas): código de compartilhamento
+  interpretador): código de compartilhamento
   termina em `_`, e tirá-lo mandava o `href` para outra página.
 - ⚠️ **Só `http(s)://` e `www.`**, de propósito: domínio solto daria link
   falso em número de processo, CNPJ e "fls.23". O `href` sai do prefixo, e o
@@ -349,9 +353,7 @@ comum no meio das mensagens (ícone cinza sobre bolha cinza).
 
 ### Anotação interna e resposta à anotação
 
-Moram em `.claude/rules/anotacoes.md` (as quatro telas, apagar, fixar, a
-aba Notas do painel e a resposta da 1075). Os links clicáveis na anotação
-ficam acima, em "Links clicáveis".
+Moram em `.claude/rules/anotacoes.md`; os links, acima.
 
 ### Cabeçalho do fio, painel lateral e aba Arquivos
 
@@ -385,7 +387,7 @@ O vínculo e a aba: `.claude/rules/contatos.md`. Aqui, o pulo entre conversas.
   `handleConversaAberta`. Nunca `router.push` do painel: a página não remonta,
   e o fio ficaria na conversa antiga. ⚠️ `handleConversaAberta` FECHA o painel
   do celular: o "Conversar" da aba abre a Nova conversa com o painel sobre o
-  fio, e a conversa criada nascia escondida (Codex, #352).
+  fio, e a conversa criada nascia escondida.
 - ⚠️ **A faixa aparece só com `voltarPara.naConversa === activeConversation.id`,
   DERIVADO no render**; clique na lista, fechar e o aviso do navegador a zeram.
   Um nível só (decisão do operador): de B para C, ela vira "Voltar para B".
@@ -411,7 +413,7 @@ O vínculo e a aba: `.claude/rules/contatos.md`. Aqui, o pulo entre conversas.
   o cabeçalho mostra `<AvataresNaConversa>` por `useQuemVeAConversa`. Os dois
   escritores recebem `conversaLida`, nula no modo anônimo e fora do perfil
   (`modo-anonimo.md`).
-- **Decisão do operador (29/09/2026): a presença também sai em FRASE acima do
+- **Decisão do operador: a presença também sai em FRASE acima do
   compositor** (`<FaixaDePresenca>`, os mesmos `vendoAgora` e roster dos
   avatares): é na hora de responder que importa. Verde, nunca as cores da
   situação (violeta/âmbar/cinza leriam como "pendente"). Pino

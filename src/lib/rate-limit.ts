@@ -182,6 +182,18 @@ export const RATE_LIMITS = {
    *  capping a stampede; excess inbounds simply don't get an auto-reply
    *  (they still land in the inbox for a human). */
   aiAutoReplyAccount: { limit: 30, windowMs: 60_000 },
+  /** Porte do upstream #660 (nomes e números dele, por usuário). As rotas que
+   *  chamam a Meta e que ninguém limitava: `whatsappAdmin` nas de MODELO
+   *  (editar, apagar, submeter, sincronizar — cliques avulsos de admin, cada
+   *  um uma ida à Graph API) e na verificação de registro (legada, duas
+   *  idas, sem tela que a chame); `whatsappMedia` no proxy de mídia (a reserva do
+   *  anexo que o espelho no `chat-media` não guardou: uma miniatura por
+   *  pedido, e 240/min ≈ 4/s cobre folhear a aba Arquivos); e
+   *  `automationTrigger` no `POST /api/automations/engine` (só integração e
+   *  teste à mão; o "Executar automação" da tela passa pelo `execucao`). */
+  whatsappAdmin: { limit: 30, windowMs: 60_000 },
+  whatsappMedia: { limit: 240, windowMs: 60_000 },
+  automationTrigger: { limit: 30, windowMs: 60_000 },
   /** Transcrição de áudio sob demanda, por usuário. Cada clique é uma
    *  chamada paga na chave BYO — 20/min cobre uso humano real. */
   transcricao: { limit: 20, windowMs: 60_000 },

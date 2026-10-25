@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import en from '../../../messages/en.json'
 import ptBR from '../../../messages/pt-BR.json'
+import { MOTIVO_RETOMADA_INTERROMPIDA } from '@/lib/automations/retomada'
 import { CHAVES_DO_MOTOR, ehAvisoDeTentativa, lerTextoDoMotor } from './texto-do-motor'
 
 // ============================================================
@@ -52,6 +53,16 @@ describe('lerTextoDoMotor', () => {
     expect(lerTextoDoMotor('number 5511900000000 is not on WhatsApp')).toEqual([
       { chave: 'semWhatsApp', valores: { numero: '5511900000000' } },
     ])
+  })
+
+  it('a retomada que o processo não terminou (recolhida pelo cron, 1106) vira a frase — só o texto INTEIRO', () => {
+    expect(lerTextoDoMotor(MOTIVO_RETOMADA_INTERROMPIDA)).toEqual([{ chave: 'retomadaInterrompida', valores: {} }])
+    // Os parênteses da constante estão escapados: nem um pedaço nem um
+    // acréscimo casam (o padrão não pode engolir outro texto do motor).
+    expect(lerTextoDoMotor(MOTIVO_RETOMADA_INTERROMPIDA.slice(0, 40))).toEqual([
+      { texto: MOTIVO_RETOMADA_INTERROMPIDA.slice(0, 40) },
+    ])
+    expect(lerTextoDoMotor(`${MOTIVO_RETOMADA_INTERROMPIDA} x`)).toEqual([{ texto: `${MOTIVO_RETOMADA_INTERROMPIDA} x` }])
   })
 
   it('a condição diz o ramo, e a nota (já em português) vem junto', () => {
@@ -140,6 +151,7 @@ describe('as frases nos dois dicionários (chave montada)', () => {
       'tarefa criada (a)',
       'Connection Closed',
       'number 1 is not on WhatsApp',
+      MOTIVO_RETOMADA_INTERROMPIDA,
       'a — tentativa 1 de 3; nova tentativa em 30s',
       'a — desisti depois de 3 tentativas',
       'a — não reenfileirada: a execução já foi interrompida',

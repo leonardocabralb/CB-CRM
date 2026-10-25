@@ -53,7 +53,10 @@ e a aba em geral: `.claude/rules/automacoes.md` ("Execuções na conversa",
   ("não executado", a guarda "saiu da etapa"). Os motivos da retomada
   (`MOTIVOS_DA_RETOMADA`) são linha do MOTOR, como `step_id` vazio: o ponto de
   parada é a fila, nunca o escopo onde o passo está hoje. Ponto que sumiu da
-  automação (editada depois) → `naoRodaramDesconhecido`, nunca uma lista.
+  automação (editada depois) → `naoRodaramDesconhecido`, nunca uma lista. A
+  retomada que o processo não terminou (`MOTIVO_RETOMADA_INTERROMPIDA`, 1106)
+  → `null`: o escopo é gravado no fim, e o que rodou depois da espera pode não
+  estar no registro.
 - ⚠️ **Não há sinal de "a automação foi editada depois da execução"**:
   `automations.updated_at` muda a CADA execução (o contador passa pelo gatilho
   `set_updated_at`) e `automation_steps` não tem carimbo de edição. Aviso

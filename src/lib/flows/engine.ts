@@ -40,7 +40,11 @@ import {
   engineSendText,
 } from "./meta-send";
 import { decideFallback, resolveFallbackPolicy } from "./fallback";
-import { abortActiveRunsForContact, type MotivoDeParada } from "./parar-run";
+import {
+  abortActiveRunsForContact,
+  encerrarRunDeRoboDesativado,
+  type MotivoDeParada,
+} from "./parar-run";
 import { addContactTagAndDispatch } from "@/lib/contacts/tag-events";
 import { removeContactTag } from "@/lib/contacts/tag-write";
 import { legendaDoEnvio, prepararMidiaDoNo } from "./midia-do-no";
@@ -1152,8 +1156,31 @@ export async function dispatchInboundToFlows(
       }
       // One SELECT for the whole flow's nodes — advance loop is now
       // in-memory. See loadAllNodes.
-      const nodes = await loadAllNodes(db, activeRun.flow_id);
-      return handleReplyForActiveRun(db, activeRun, input.message, nodes);
+      // ⚠️⚠️ O ROBÔ AINDA ESTÁ ATIVO? (NOSSO, adaptado do #674 do original.)
+      // Pausar (rascunho) ou arquivar o robô só barrava a ENTRADA —
+      // `findEntryFlow` lê só os ativos —, e quem já estava no meio seguia
+      // recebendo as perguntas: o interruptor não era freio. Robô que não está
+      // ativo ENCERRA a run (`stopped_by_agent` + `robo_desativado`: alguém da
+      // equipe o desligou) e a mensagem segue como se não houvesse run —
+      // gatilhos de entrada, automações e IA, como sempre. `loadFlow` que
+      // falha devolve `null` ("não sei"): aí a run segue como antes, porque
+      // encerrar às cegas cortaria o atendimento de um robô ativo.
+      const [robo, nodes] = await Promise.all([
+        loadFlow(db, activeRun.flow_id),
+        loadAllNodes(db, activeRun.flow_id),
+      ]);
+      if (!robo || robo.status === "active") {
+        return handleReplyForActiveRun(db, activeRun, input.message, nodes);
+      }
+      const fim = await encerrarRunDeRoboDesativado(db, activeRun.id);
+      if (!fim.ok) {
+        // A run continua ATIVA: começar outra por cima estouraria o índice
+        // de uma run ativa por contato e a mensagem sairia como "consumida",
+        // longe das automações e da IA. Segue como "não é do robô" — e a
+        // próxima mensagem tenta encerrar de novo.
+        console.error("[flows] encerrar a run do robô desativado falhou:", fim.erro);
+        return { consumed: false, outcome: "no_match" };
+      }
     }
 
     // No active run → look for a flow whose entry trigger matches.

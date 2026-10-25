@@ -31,7 +31,7 @@
 -- 1) A tabela
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS cb_conversation_notes (
-  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 
   account_id uuid NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
 

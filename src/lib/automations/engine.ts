@@ -132,7 +132,11 @@ import {
   execucaoJaInterrompida,
   marcarExecucoesInterrompidas,
 } from './interrupcao';
-import { comPassoDaFila, conferirRetomada } from './retomada';
+import {
+  MOTIVO_RETOMADA_INTERROMPIDA,
+  comPassoDaFila,
+  conferirRetomada,
+} from './retomada';
 import {
   desfechoDoEscopo,
   desfechoDoRetorno,
@@ -793,6 +797,118 @@ export async function resumePendingExecution(pending: {
     console.error('[automations] resume failed:', err);
     await markPending(pending.id, 'failed');
     await fecharLog(pending.log_id, 'falhou');
+  }
+}
+
+/**
+ * Quanto uma retomada reivindicada pode ficar `running` antes de ser dada como
+ * MORTA (1106). Uma retomada roda os passos até a próxima espera — segundos
+ * (o `-m 50` do agendador só desiste da RESPOSTA: o processo segue). O teto
+ * tem de passar da PIOR conta real (CLAUDE.md, 8e: processamento menor que o
+ * recolhimento): a Evolution corta cada chamada em 15 s, mas os envios da Meta
+ * (`meta-api.ts`) não têm teto próprio — o padrão do undici espera até ~5 min
+ * por resposta —, então meia dúzia de envios lentos já passaria de 15 min. A
+ * retomada viva que passe disto é recolhida como falha e SEGUE rodando (nada a
+ * para); a escrita dela depois não desfaz o `failed` (`markPending` é cercado).
+ */
+export const TETO_DA_RETOMADA_MS = 60 * 60_000;
+
+/**
+ * A `running` reivindicada pelo código ANTERIOR à 1106 não tem `claimed_at`:
+ * só o vencimento (`run_at`) diz há quanto tempo ela pode estar lá, e uma fila
+ * atrasada (agendador parado) reivindica espera vencida há horas — daí a folga
+ * de um dia.
+ */
+export const TETO_DA_ESPERA_SEM_CARIMBO_MS = 24 * 60 * 60_000;
+
+/**
+ * Recolhe as esperas PRESAS em `running` (1106): o cron as reivindicou e o
+ * processo que as retomava morreu no meio (deploy, reinício do contêiner).
+ * Até aqui a linha ficava `running` para sempre: a execução sumia em silêncio,
+ * a aba dizia que ela ainda rodava e a guarda de espera viva de `fecharLog`
+ * nunca publicava a hora de fim das irmãs.
+ *
+ * ⚠️⚠️ NADA é re-executado — ao contrário do #672 do original, que devolve a
+ * linha à fila: o processo pode ter morrido logo DEPOIS de mandar a mensagem,
+ * e refazer a retomada a mandaria de novo (envio que pode ter saído nunca se
+ * repete — CLAUDE.md, 8e). A linha vira FALHA VISÍVEL pelo mesmo caminho da
+ * espera que não pode retomar (`conferirRetomada` → `parar`): `failed`, a
+ * linha do motor com o motivo e `fecharLog('falhou')`. Só ESTA continuação
+ * para; as irmãs da execução seguem cada uma pela sua espera.
+ *
+ * ⚠️ O UPDATE é a CERCA: `status = 'running'` e o corte de tempo no WHERE.
+ * Retomada viva dentro do teto não é tocada, e dois ciclos sobrepostos nunca
+ * fecham a mesma linha (para o segundo UPDATE ela já não casa). Só o que o
+ * UPDATE DEVOLVEU é fechado.
+ *
+ * Nunca lança: roda em `after()` no topo do cron.
+ */
+export async function recolherEsperasPresas(
+  agora: Date = new Date()
+): Promise<number> {
+  try {
+    const db = supabaseAdmin();
+    const comCarimbo = await db
+      .from('automation_pending_executions')
+      .update({ status: 'failed' })
+      .eq('status', 'running')
+      .lt('claimed_at', new Date(agora.getTime() - TETO_DA_RETOMADA_MS).toISOString())
+      .select('id, log_id');
+    // As do código anterior à 1106: `.lt()` nunca casa NULL, e sem esta
+    // segunda cerca elas ficariam presas para sempre.
+    const semCarimbo = await db
+      .from('automation_pending_executions')
+      .update({ status: 'failed' })
+      .eq('status', 'running')
+      .is('claimed_at', null)
+      .lt(
+        'run_at',
+        new Date(agora.getTime() - TETO_DA_ESPERA_SEM_CARIMBO_MS).toISOString()
+      )
+      .select('id, log_id');
+    for (const { error } of [comCarimbo, semCarimbo]) {
+      if (error) {
+        console.error('[automations] recolher esperas presas falhou:', error.message);
+      }
+    }
+    const presas = [
+      ...((comCarimbo.data as { id: string; log_id: string | null }[] | null) ?? []),
+      ...((semCarimbo.data as { id: string; log_id: string | null }[] | null) ?? []),
+    ];
+    if (presas.length === 0) return 0;
+    console.warn(
+      '[automations] esperas presas em running recolhidas como falha:',
+      presas.map((p) => p.id)
+    );
+    // UM fechamento por EXECUÇÃO: duas continuações presas do mesmo registro
+    // (dois ramos) dariam duas linhas iguais no "Já rodou".
+    const logs = [
+      ...new Set(presas.map((p) => p.log_id).filter((id): id is string => Boolean(id))),
+    ];
+    for (const logId of logs) {
+      try {
+        await appendResults(
+          logId,
+          [
+            {
+              step_id: '',
+              step_type: 'wait',
+              status: 'failed',
+              detail: MOTIVO_RETOMADA_INTERROMPIDA,
+            },
+          ],
+          'failed',
+          MOTIVO_RETOMADA_INTERROMPIDA
+        );
+        await fecharLog(logId, 'falhou');
+      } catch (err) {
+        console.error('[automations] fechar a execução presa estourou:', logId, err);
+      }
+    }
+    return presas.length;
+  } catch (err) {
+    console.error('[automations] recolher esperas presas estourou:', err);
+    return 0;
   }
 }
 
@@ -4824,6 +4940,16 @@ async function fecharLog(
   }
 }
 
+/**
+ * O desfecho da espera que ESTA retomada reivindicou — só chamada dentro de
+ * `resumePendingExecution`, depois da reivindicação do cron.
+ *
+ * ⚠️ CERCA DE POSSE (1106): `status = 'running'`. A retomada que passou do
+ * teto foi recolhida como `failed` (`recolherEsperasPresas`), e a escrita
+ * atrasada dela não pode virar `done` por cima — a execução já está no "Já
+ * rodou" como falha. O status basta como carimbo porque a linha é reivindicada
+ * UMA vez só: nada a devolve a `pending` (o recolhimento só a leva a `failed`).
+ */
 async function markPending(
   id: string,
   status: 'done' | 'failed' | 'cancelled'
@@ -4831,5 +4957,6 @@ async function markPending(
   await supabaseAdmin()
     .from('automation_pending_executions')
     .update({ status })
-    .eq('id', id);
+    .eq('id', id)
+    .eq('status', 'running');
 }

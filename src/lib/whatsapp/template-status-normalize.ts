@@ -26,3 +26,27 @@ export function normalizeStatus(raw: string): MessageTemplateStatus {
     ? (upper as MessageTemplateStatus)
     : 'PENDING'
 }
+
+const WEBHOOK_EVENT_STATUS: Readonly<Record<string, MessageTemplateStatus>> = {
+  REINSTATED: 'APPROVED',
+  DELETED: 'PENDING_DELETION',
+  // NOSSO (o original o ignora): o modelo ARQUIVADO sai do seletor, como já
+  // sai pela sincronização (`normalizeStatus`: desconhecido → PENDING). Ignorado,
+  // ele seguia "Aprovado" e oferecido para envio até alguém sincronizar.
+  ARCHIVED: 'PENDING',
+}
+
+export function templateStatusFromWebhookEvent(
+  event: string,
+): MessageTemplateStatus | null {
+  const upper = (event ?? '').toUpperCase()
+  if (upper === 'PENDING_REVIEW') return 'PENDING'
+  if ((ALLOWED as readonly string[]).includes(upper)) {
+    return upper as MessageTemplateStatus
+  }
+  return WEBHOOK_EVENT_STATUS[upper] ?? null
+}
+
+export function clearsRejectionReason(status: MessageTemplateStatus): boolean {
+  return status === 'APPROVED' || status === 'PENDING'
+}

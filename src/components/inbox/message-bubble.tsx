@@ -22,6 +22,11 @@ import {
   Pencil,
   Download,
   MessageSquareWarning,
+  Reply,
+  ExternalLink,
+  Phone,
+  Copy,
+  type LucideIcon,
 } from "lucide-react";
 import { corDoRemetente, podeBaixarAnexo } from "@/lib/cb-groups/display";
 import { mediaFilename, nomeDeclarado } from "@/lib/media/filename";
@@ -40,6 +45,12 @@ import { urlParaAbrirAnexo } from "@/lib/media/abrir-anexo";
 import { tipoDoDocumento, type FamiliaDeDocumento } from "@/lib/media/tipo-de-documento";
 import { InteractivePreview } from "@/components/interactive/interactive-preview";
 import { useNomeDoAgenteDeIa } from "@/components/agentes-de-ia/nomes-dos-agentes";
+import { useModelosDaConta } from "@/hooks/use-modelos-da-conta";
+import {
+  modeloDaMensagem,
+  partesDoModelo,
+  type TipoDeBotao,
+} from "@/lib/whatsapp/modelo-da-mensagem";
 import { useTranslations } from "next-intl";
 import type { CorDeCanal } from "@/lib/cb-channels/cores";
 
@@ -510,6 +521,111 @@ function TranscricaoDeAudio({
   );
 }
 
+/** O ícone de cada tipo de botão do modelo (o desenho do #659 do original). */
+const ICONE_DO_BOTAO: Record<TipoDeBotao, LucideIcon> = {
+  QUICK_REPLY: Reply,
+  URL: ExternalLink,
+  PHONE_NUMBER: Phone,
+  COPY_CODE: Copy,
+};
+
+/**
+ * A bolha de MODELO da Meta: a etiqueta, o cabeçalho de texto, o corpo, o
+ * rodapé e os botões — o que o cliente viu, não só o corpo gravado (#659 do
+ * original, adaptado).
+ *
+ * O resto do modelo vem da linha local de `message_templates`, casada pelo
+ * nome e pelo CANAL da mensagem (`modeloDaMensagem`: o catálogo é por WABA).
+ * O catálogo é UM por conta, num cache de módulo lido aqui
+ * (`useModelosDaConta`), não pelo fio. Carregando, leitura que falhou ou
+ * modelo que não casa: a bolha de sempre (etiqueta e corpo), sem afirmar nada.
+ *
+ * ⚠️ Cabeçalho de MÍDIA não aparece: a mensagem não guarda a URL do arquivo
+ * que saiu, e a amostra do modelo não é o que o cliente recebeu. O de texto
+ * com variável também não: o valor não é gravado (`modelo-da-mensagem.ts`).
+ *
+ * ⚠️ As cores INVERTEM na bolha da equipe (`bg-primary`): a etiqueta era
+ * `bg-primary/20 text-primary` nos dois lados e sumia — violeta sobre violeta —
+ * justo onde o modelo mora (ele sai sempre de nós).
+ */
+function ConteudoDoModelo({
+  message,
+  isAgent,
+  t,
+}: {
+  message: Message;
+  isAgent: boolean;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const catalogo = useModelosDaConta(message.template_name);
+  const partes = catalogo
+    ? partesDoModelo(modeloDaMensagem(message, catalogo))
+    : null;
+  return (
+    <div>
+      <span
+        className={cn(
+          "mb-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium",
+          isAgent
+            ? "bg-primary-foreground/20 text-primary-foreground"
+            : "bg-primary/20 text-primary",
+        )}
+      >
+        <LayoutTemplate className="h-3 w-3" />
+        {t("template")}
+      </span>
+      {partes?.cabecalho && (
+        <p className="mt-1 break-words text-sm font-semibold">
+          {partes.cabecalho}
+        </p>
+      )}
+      {message.content_text && (
+        <FormattedText texto={message.content_text} className="mt-1" />
+      )}
+      {partes?.rodape && (
+        <p
+          className={cn(
+            "mt-1 break-words text-[11px]",
+            isAgent ? "text-primary-foreground/70" : "text-muted-foreground",
+          )}
+        >
+          {partes.rodape}
+        </p>
+      )}
+      {partes && partes.botoes.length > 0 && (
+        // Sem ação de clique, de propósito: é o retrato do que o cliente
+        // recebeu, não um controle. `min-w-0` no rótulo: sem ele o `truncate`
+        // não corta dentro do flex e o rótulo estica a bolha (`ui.md`).
+        <div
+          className={cn(
+            "mt-2 flex flex-col border-t",
+            isAgent ? "border-primary-foreground/20" : "border-border",
+          )}
+        >
+          {partes.botoes.map((botao, i) => {
+            const Icone = ICONE_DO_BOTAO[botao.tipo];
+            return (
+              <div
+                key={i}
+                title={botao.texto}
+                className={cn(
+                  "flex items-center justify-center gap-1.5 border-t py-1.5 text-sm font-medium first:border-t-0",
+                  isAgent
+                    ? "border-primary-foreground/20 text-primary-foreground"
+                    : "border-border text-primary",
+                )}
+              >
+                <Icone aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+                <span className="min-w-0 truncate">{botao.texto}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MessageContent({
   message,
   isAgent,
@@ -656,17 +772,7 @@ function MessageContent({
     }
 
     case "template":
-      return (
-        <div>
-          <span className="mb-1 inline-flex items-center gap-1 rounded bg-primary/20 px-1.5 py-0.5 text-[10px] font-medium text-primary">
-            <LayoutTemplate className="h-3 w-3" />
-            {t("template")}
-          </span>
-          {message.content_text && (
-            <FormattedText texto={message.content_text} className="mt-1" />
-          )}
-        </div>
-      );
+      return <ConteudoDoModelo message={message} isAgent={isAgent} t={t} />;
 
     case "location":
       return (

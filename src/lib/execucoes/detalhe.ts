@@ -42,7 +42,7 @@
 
 import { descreverPasso, type NomesConhecidos } from '@/lib/automations/descrever-passo'
 import { DETALHE_DA_INTERRUPCAO } from '@/lib/automations/parar-se-responder'
-import { decidirRetomada, lerPassoDaFila } from '@/lib/automations/retomada'
+import { decidirRetomada, lerPassoDaFila, MOTIVO_RETOMADA_INTERROMPIDA } from '@/lib/automations/retomada'
 import { DETALHE_SAIU_DA_ETAPA } from '@/lib/automations/so-na-etapa'
 import { falhaQueEncerrou, MOTIVOS_DA_RETOMADA, type DesfechoDoHistorico } from './desfecho'
 import type { PassoDaAutomacao, PassoExecutado } from './linha-do-tempo'
@@ -293,6 +293,15 @@ export function montarDetalhe(args: {
   const lista = emOrdem(itens, executados, porId).filter((p): p is PassoDoDetalhe => p !== null)
 
   if (desfecho !== 'falhou' && desfecho !== 'interrompida') {
+    return { passos: lista, naoRodaram: null }
+  }
+
+  // ⚠️ A retomada que o processo não terminou (recolhida pelo cron, 1106): o
+  // motor grava o escopo no FIM, então o que rodou depois da espera — uma
+  // mensagem, inclusive — pode não estar no registro. Calcular "não rodaram"
+  // a partir da espera afirmaria que não saiu o que pode ter saído. Cala:
+  // `null` é "não se aplica / não sei", nunca "nada ficou para trás".
+  if (executados.some((e) => e.detail === MOTIVO_RETOMADA_INTERROMPIDA)) {
     return { passos: lista, naoRodaram: null }
   }
 

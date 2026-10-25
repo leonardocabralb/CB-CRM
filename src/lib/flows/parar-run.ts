@@ -81,6 +81,48 @@ export async function encerrarRunsAtivas(
 }
 
 /**
+ * O `end_reason` da run cujo robô deixou de estar ATIVO (rascunho ou
+ * arquivado) enquanto ela esperava o cliente. O status é `stopped_by_agent`:
+ * alguém da equipe desligou o robô — intenção declarada, como o botão Parar —,
+ * e este motivo fino distingue os dois na investigação.
+ */
+export const MOTIVO_ROBO_DESATIVADO = 'robo_desativado'
+
+/**
+ * Encerra UMA run, a do robô que deixou de estar ativo — pelo id, cercada por
+ * `status = 'active'` (a run que terminou por outro caminho no meio-tempo não
+ * é tocada: `encerrou: false`). Adaptado do #674 do original, com o NOSSO
+ * vocabulário: lá o status é `cancelled`, que o CHECK daqui (0955) não aceita.
+ *
+ * Dois chamadores: a resposta do cliente que chega à run
+ * (`dispatchInboundToFlows`) e a varredura do cron dos robôs, para quem não
+ * responde mais. Não lança — devolve o erro por valor: o motor precisa saber
+ * que a run continua ativa para não tentar começar outra por cima.
+ */
+export async function encerrarRunDeRoboDesativado(
+  db: SupabaseClient,
+  runId: string,
+): Promise<{ ok: true; encerrou: boolean } | { ok: false; erro: string }> {
+  const status: MotivoDeParada = 'stopped_by_agent'
+  try {
+    const { data, error } = await db
+      .from('flow_runs')
+      .update({
+        status,
+        ended_at: new Date().toISOString(),
+        end_reason: MOTIVO_ROBO_DESATIVADO,
+      })
+      .eq('id', runId)
+      .eq('status', 'active')
+      .select('id')
+    if (error) return { ok: false, erro: error.message }
+    return { ok: true, encerrou: (data ?? []).length > 0 }
+  } catch (err) {
+    return { ok: false, erro: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+/**
  * Encerra a run ativa do contato, se houver. Devolve quantas encerrou.
  *
  * ⚠️ **Nunca lança, e erro vira 0.** As três pontas do MOTOR que chamam são

@@ -43,7 +43,7 @@
 -- 1) A tabela dos grupos
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS cb_grupos_de_campos (
-  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 
   account_id uuid NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
 

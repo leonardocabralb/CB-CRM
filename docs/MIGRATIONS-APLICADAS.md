@@ -1543,6 +1543,43 @@ nome da época em que foram aplicadas.
   trava; nenhuma policy nem privilégio de INSERT em `profiles` para `anon` e
   `authenticated` (SELECT e UPDATE intactos); no preview, renomear a conta
   pela rota respondeu 200.
+- **1104_cb_robo_salva_nos_numa_transacao** — correções do porte do lote
+  13–16/10 (PR #437): `cb_trocar_nos_do_robo(uuid, jsonb)`, SECURITY INVOKER,
+  só o `service_role` executa; apaga e insere os nós do robô numa transação
+  (a recusa desfaz as duas). GRANT ao `service_role` do que ela usa
+  (`flows`: SELECT/UPDATE; `flow_nodes`: SELECT/INSERT/DELETE) — o replay do
+  CI barrou a 1ª versão em `permission denied for table flows`, porque em
+  banco novo o default do Supabase não existe. ADITIVA, ANTES do deploy.
+  Provada num Postgres 16 igual ao do CI (sem GRANT prévio; vazio e com
+  dado, duas vezes, com os cenários). Aplicada em 25/10/2026 pela Management
+  API (histórico `20261025163502`), depois do CI verde em `8c5e49c2`, antes
+  do merge, com a autorização do operador para aplicar as migrations do
+  porte. Conferida: INVOKER, (uuid, jsonb), EXECUTE só do `service_role`, os
+  privilégios nas duas tabelas, os 24 nós dos 2 robôs intactos; e2e no
+  preview pela rota: robô de rascunho salvo com 3 nós, o salvamento com tipo
+  recusado devolveu 500 e manteve os nós e o início, a conexão inexistente
+  deu 400 antes da troca; o robô de teste foi apagado (2 robôs, 24 nós).
+- **1105_cb_primeira_mensagem_reivindicada** — `conversations.first_inbound_at`
+  (timestamptz, nula, sem default, SEM preencher as antigas), a reivindicação
+  da primeira mensagem. Conferência só de catálogo (depois da ALTER, só
+  catálogo); a disputa provada num Postgres local com duas sessões. ADITIVA,
+  ANTES do deploy. Aplicada em 25/10/2026 (histórico `20261025163518`), mesmo
+  PR e autorização. Conferida: o tipo, nula, sem default, nenhuma conversa
+  preenchida, UPDATE do `service_role` na coluna.
+- **1106_cb_espera_presa_falha_visivel** — `automation_pending_executions.
+  claimed_at` (timestamptz, nula) e o índice parcial
+  `automation_pending_executions_presas_idx` (`claimed_at` WHERE `status =
+  'running'`); o corte de 1 h mora no app. ADITIVA, ANTES do deploy. Antes de
+  aplicar: nenhuma espera em `running`. Aplicada em 25/10/2026 (histórico
+  `20261025163548`), mesmo PR e autorização. Conferida: a coluna e o índice
+  com a definição exata; nenhuma carimbada.
+- **1107_cb_reacao_apagada_em_tempo_real** — `message_reactions` com REPLICA
+  IDENTITY FULL, para o DELETE passar pelo filtro por conversa do tempo real
+  (o mesmo da 0921). ADITIVA (o app no ar já trata o DELETE). Aplicada em
+  25/10/2026 (histórico `20261025163605`), mesmo PR e autorização. Conferida:
+  `relreplident = f`, na publicação `supabase_realtime`; e2e no preview,
+  antes e depois: antes, tirar a reação zerava o banco e a tela seguia com o
+  👍 depois de 15 s; depois, a tela tirou o 👍 em até 5 s.
 
 ## Notas do histórico
 
