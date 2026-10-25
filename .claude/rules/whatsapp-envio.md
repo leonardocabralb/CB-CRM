@@ -7,6 +7,8 @@ paths:
   - "src/lib/whatsapp/meta-error-explain*"
   - "src/lib/whatsapp/template-*"
   - "src/lib/whatsapp/modelo-da-meta*"
+  - "src/lib/whatsapp/modelo-da-mensagem*"
+  - "src/hooks/use-modelos-da-conta*"
   - "src/lib/whatsapp/resolve-conversation*"
   - "src/lib/whatsapp/interactive*"
   - "src/lib/flows/**"
@@ -126,6 +128,9 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
   categoria é desconhecida, e a Meta decide.
 - A reação pela Evolution usa só a CHAVE da mensagem (o telefone da ficha
   nunca foi usado ali); pela Meta, o alvo.
+- ⚠️ **A reação do escritório é UMA por mensagem** (o cliente vê só a do
+  número): reagir apaga a dos colegas e tirar apaga todas (`react/route.ts`);
+  o DELETE chega às outras telas pela 1107 (REPLICA IDENTITY FULL).
 - Continuam só com telefone: disparo em massa, a régua do Asaas (a varredura
   pula ficha sem telefone), `send_to_number`, "nova conversa" e
   `POST /v1/messages`.
@@ -269,6 +274,11 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
   criou. Pino `src/components/settings/catalogo-da-conta.test.ts`.
 - Broadcast e rotas de modelo resolvem a conexão por `resolveMetaChannel`,
   nunca pelo espelho `whatsapp_config`.
+- ⚠️ **A bolha do modelo desenha cabeçalho de TEXTO, rodapé e botões** pela
+  linha local (`modeloDaMensagem`, lida por `useModelosDaConta`): a do canal
+  da mensagem, senão a sem canal, NUNCA a de outro número; vários idiomas sem
+  corpo que case = nenhum. Cabeçalho de mídia ou com `{{1}}` fica de fora (o
+  que saiu não é gravado): a bolha só afirma o que o cliente viu.
 
 ### Graph API e configuração da conexão
 
@@ -313,11 +323,17 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
   `use-broadcast-sending.contagem.test.ts` e `.paginacao.test.ts`. O
   `paged-query.ts` (do original) pagina por POSIÇÃO e sem teto: dele, só o
   `chunk` tem uso.
-- ⚠️ **A retomada (`broadcast-resume.ts`, #630) lê UMA página de 1.000 por
-  pedido**, das linhas mais antigas. Nos escopos "falhos" e "todos", a linha
-  que falha de novo volta à frente: se as 1.000 primeiras não enviam, a
-  retomada não passa delas (limite conhecido,
+- ⚠️ **A retomada (`broadcast-resume.ts`) manda até 1.000 por pedido e lê até
+  25 páginas para achá-las** (#658), das linhas mais antigas: a página só de
+  fichas sem telefone não a encerra mais. Página por POSIÇÃO: a linha lida
+  duas vezes entra UMA vez no plano (`vistas`). Nos escopos "falhos" e
+  "todos", a linha que falha de novo volta à frente: se as 1.000 primeiras
+  com telefone falham de novo, a retomada não passa delas (limite conhecido,
   `docs/PLANO-merge-upstream-2026-10.md`).
+- **"Respondeu" vai só à campanha mais recente do contato, enviada há até 7
+  dias** (`marcarRespostaAoDisparo`, `broadcast-resposta.ts`, no webhook da
+  Meta). A régua antiga pulava a mais nova já `replied` ou `failed` e dava o
+  crédito à ANTERIOR, de qualquer idade.
 - ⚠️⚠️ **`create_broadcast_with_recipients` tem UMA assinatura: NOVE
   parâmetros, `p_template_params JSONB`** (lista de listas) e RETURNING
   qualificado (1030). Com `JSONB[]`, o `json_to_record` do PostgREST fazia um

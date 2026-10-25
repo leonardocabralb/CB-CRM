@@ -162,6 +162,7 @@ export async function planBroadcastResume(
   const statuses = scopeStatuses(scope);
   const sendable: RecipientRow[] = [];
   const unsendable: string[] = [];
+  const vistas = new Set<string>();
   let inScopeCount: number | null = null;
   let scanned = 0;
 
@@ -199,6 +200,12 @@ export async function planBroadcastResume(
     // it failed now: leaving it 'pending' would keep the broadcast in
     // 'sending' forever, which is the very symptom being fixed.
     for (const row of rows) {
+      // NOSSO: as páginas são por POSIÇÃO, e a linha que ENTRA no escopo no
+      // meio da leitura (o recibo de falha da Meta, no escopo "falhos")
+      // empurra a seguinte para a próxima página — lida duas vezes, ela
+      // sairia duas vezes ao cliente.
+      if (vistas.has(row.id)) continue;
+      vistas.add(row.id);
       const sanitized = sanitizePhoneForMeta(contactPhone(row) ?? '');
       if (isValidE164(sanitized)) sendable.push(row);
       else unsendable.push(row.id);

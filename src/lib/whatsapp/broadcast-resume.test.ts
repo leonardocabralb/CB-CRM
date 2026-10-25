@@ -431,6 +431,28 @@ describe('planBroadcastResume', () => {
     ]);
   });
 
+  // NOSSO: a página é por POSIÇÃO; a linha que ENTRA no escopo no meio da
+  // leitura empurra a da borda para a página seguinte, lida duas vezes (aqui,
+  // a mesma linha nas posições 999 e 1000).
+  it('a linha lida em duas páginas entra UMA vez no plano', async () => {
+    const borda = recipient('borda', '+15551234567');
+    const rows = [
+      ...Array.from({ length: RESUME_MAX_PER_REQUEST - 1 }, (_, i) =>
+        recipient(`bad${i}`, null),
+      ),
+      borda,
+      borda,
+      recipient('seguinte', '+15559876543'),
+    ];
+    const { plan } = await planBroadcastResume(
+      planDb({ broadcast: BROADCAST, config: CONFIG, recipients: rows }),
+      'acct-1',
+      'bc-1',
+      'failed',
+    );
+    expect(plan.planned.map((p) => p.recipientRowId)).toEqual(['borda', 'seguinte']);
+  });
+
   it('fills the cap from later pages and counts what it left unread', async () => {
     const rows = [
       ...Array.from({ length: 600 }, (_, i) => recipient(`bad${i}`, null)),

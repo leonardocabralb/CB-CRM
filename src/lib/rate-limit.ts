@@ -185,7 +185,8 @@ export const RATE_LIMITS = {
   /** Porte do upstream #660 (nomes e números dele, por usuário). As rotas que
    *  chamam a Meta e que ninguém limitava: `whatsappAdmin` nas de MODELO
    *  (editar, apagar, submeter, sincronizar — cliques avulsos de admin, cada
-   *  um uma ida à Graph API); `whatsappMedia` no proxy de mídia (a reserva do
+   *  um uma ida à Graph API) e na verificação de registro (legada, duas
+   *  idas, sem tela que a chame); `whatsappMedia` no proxy de mídia (a reserva do
    *  anexo que o espelho no `chat-media` não guardou: uma miniatura por
    *  pedido, e 240/min ≈ 4/s cobre folhear a aba Arquivos); e
    *  `automationTrigger` no `POST /api/automations/engine` (só integração e

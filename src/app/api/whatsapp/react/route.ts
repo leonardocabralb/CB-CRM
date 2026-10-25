@@ -30,14 +30,14 @@ import { ehEvolution, ehInstagram } from '@/lib/cb-channels/transporte';
  * reação apaga a do escritório inteira — senão a tela mostrava duas, ou a do
  * colega continuava ali com o cliente já sem nenhuma.
  *
- * Limites: (1) duas reações SIMULTÂNEAS de atendentes diferentes ainda podem
+ * Limite: duas reações SIMULTÂNEAS de atendentes diferentes ainda podem
  * deixar as duas linhas (o original fecha isso com um índice único parcial);
- * a próxima reação na mensagem as reduz a uma. (2) ⚠️ O DELETE não chega pelo
- * realtime: `message_reactions` está com a REPLICA IDENTITY padrão, e o
- * evento só com a chave primária não passa pelo filtro por conversa do fio
- * (o que a 921 mediu em `cb_conversation_notes`). O INSERT e o UPDATE chegam;
- * a reação apagada do colega some do BANCO e continua na tela aberta até o
- * fio reler as reações (trocar de conversa, voltar à aba).
+ * a próxima reação na mensagem as reduz a uma.
+ *
+ * O DELETE que apaga a reação do colega chega às outras telas pelo tempo real
+ * por causa da 1107 (REPLICA IDENTITY FULL em `message_reactions`): com a
+ * padrão, o evento só com a chave primária não passava pelo filtro por
+ * conversa do fio — o que a 921 mediu em `cb_conversation_notes`.
  */
 export async function POST(request: Request) {
   try {
