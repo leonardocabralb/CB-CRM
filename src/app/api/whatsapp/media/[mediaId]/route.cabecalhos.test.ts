@@ -1,0 +1,113 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+// O proxy de mídia da Meta responde no NOSSO domínio, com o tipo que o
+// CLIENTE mandou (upstream #678). Arquivo próprio, e não o `route.test.ts` do
+// original: lá a rota não tem o `?channel=` nem o `whatsapp_config` por
+// `maybeSingle`, e o arquivo dele viraria conflito add/add no próximo merge.
+
+const h = vi.hoisted(() => ({
+  downloadContentType: 'image/jpeg' as string | null,
+  metaMimeType: 'image/jpeg',
+}))
+
+vi.mock('next/server', () => ({
+  NextResponse: {
+    json: (body: unknown, init?: { status?: number }) =>
+      new Response(JSON.stringify(body), {
+        status: init?.status ?? 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+  },
+}))
+
+vi.mock('@/lib/supabase/server', () => ({
+  createClient: async () => ({
+    auth: { getUser: async () => ({ data: { user: { id: 'user-1' } }, error: null }) },
+    from(table: string) {
+      const chain = {
+        select: () => chain,
+        eq: () => chain,
+        maybeSingle: async () => ({
+          data:
+            table === 'profiles'
+              ? { account_id: 'acc-1' }
+              : table === 'whatsapp_config'
+                ? { access_token: 'enc-token' }
+                : null,
+        }),
+      }
+      return chain
+    },
+  }),
+}))
+
+vi.mock('@/lib/cb-channels/repo', () => ({ getChannelWithSecrets: async () => null }))
+vi.mock('@/lib/whatsapp/encryption', () => ({ decrypt: (v: string) => `plain-${v}` }))
+vi.mock('@/lib/whatsapp/meta-api', () => ({
+  getMediaUrl: async () => ({ url: 'https://lookaside.example/m', mimeType: h.metaMimeType, fileSize: 3 }),
+  downloadMedia: async () => ({ buffer: Buffer.from('abc'), contentType: h.downloadContentType }),
+}))
+
+import { GET } from './route'
+
+function call(mediaId = '1234567890', query = '') {
+  return GET(new Request(`http://localhost/api/whatsapp/media/${mediaId}${query}`), {
+    params: Promise.resolve({ mediaId }),
+  })
+}
+
+beforeEach(() => {
+  h.downloadContentType = 'image/jpeg'
+  h.metaMimeType = 'image/jpeg'
+})
+
+describe('GET /api/whatsapp/media/[mediaId] — cabeçalhos', () => {
+  // O `Cache-Control` não é conferido aqui: em produção vale o `no-store` que o
+  // `next.config.ts` grava em `/api/*` antes da rota (pino `next-config.test.ts`).
+  it('foto vai inline, com nosniff e CSP que não deixa rodar script', async () => {
+    const res = await call()
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Content-Type')).toBe('image/jpeg')
+    expect(res.headers.get('Content-Disposition')).toBe('inline')
+    expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff')
+    expect(res.headers.get('Content-Security-Policy')).toMatch(/^default-src 'none';/)
+  })
+
+  it('documento HTML do cliente vira download, com sandbox, nunca página no nosso domínio', async () => {
+    h.downloadContentType = 'text/html; charset=utf-8'
+    h.metaMimeType = 'text/html'
+    const res = await call()
+    expect(res.headers.get('Content-Type')).toBe('text/html')
+    expect(res.headers.get('Content-Disposition')).toBe('attachment')
+    expect(res.headers.get('Content-Security-Policy')).toBe("default-src 'none'; sandbox")
+  })
+
+  it('o download leva o nome real que o link trouxe', async () => {
+    h.downloadContentType = 'application/pdf'
+    const res = await call('987', '?channel=c1&nome=Contrato%20Social.pdf')
+    expect(res.headers.get('Content-Disposition')).toBe(
+      `attachment; filename="Contrato Social.pdf"; filename*=UTF-8''Contrato%20Social.pdf`,
+    )
+  })
+
+  it('SVG (que roda script quando aberto) vira download', async () => {
+    h.downloadContentType = 'image/svg+xml'
+    h.metaMimeType = 'image/svg+xml'
+    const res = await call()
+    expect(res.headers.get('Content-Disposition')).toBe('attachment')
+  })
+
+  it('PDF sem nome no link sai como download com o nome do id', async () => {
+    h.downloadContentType = 'application/pdf'
+    const res = await call('987')
+    expect(res.headers.get('Content-Type')).toBe('application/pdf')
+    expect(res.headers.get('Content-Disposition')).toBe('attachment; filename="987.pdf"')
+  })
+
+  it('áudio do WhatsApp (ogg com parâmetro) toca inline, com o tipo base', async () => {
+    h.downloadContentType = 'audio/ogg; codecs=opus'
+    const res = await call()
+    expect(res.headers.get('Content-Type')).toBe('audio/ogg')
+    expect(res.headers.get('Content-Disposition')).toBe('inline')
+  })
+})
