@@ -13,8 +13,9 @@ import type { AiProvider } from './types'
 export const AI_PROVIDER_DEFAULT_MODEL: Record<AiProvider, string> = {
   openai: 'gpt-5.4-mini',
   anthropic: 'claude-haiku-4-5-20251001',
-  // 3.7 e 3.6 custam o mesmo; o 3.7 é o Flash mais capaz (ago/2026).
-  gemini: 'gemini-3.7-flash',
+  // 3.8 e 3.6 custam o mesmo; o 3.8 é o Flash mais capaz (set/2026). O 3.7
+  // foi descontinuado em 08/10/2026: o Google atende os pedidos a ele com o 3.8.
+  gemini: 'gemini-3.8-flash',
 }
 
 /**
@@ -29,7 +30,9 @@ export const AI_PROVIDER_DEFAULT_MODEL: Record<AiProvider, string> = {
  * Recorte de agosto/2026: a família Flash do Gemini, que é a que atende
  * assistente, Radar e transcrição com o melhor custo. A lista foi
  * conferida contra o catálogo real da conta (`GET /v1beta/models`), não
- * escrita de memória.
+ * escrita de memória. Revista em 25/10/2026 contra a lista oficial
+ * (https://ai.google.dev/gemini-api/docs/models): saíram o 3.7 e o 3.5 Flash,
+ * descontinuados (o Google os atende com o 3.8 e o 3.6).
  */
 export const AI_PROVIDER_MODELS: Record<AiProvider, readonly string[]> = {
   openai: ['gpt-5.4-mini', 'gpt-5.4', 'gpt-5.4-nano'],
@@ -39,9 +42,8 @@ export const AI_PROVIDER_MODELS: Record<AiProvider, readonly string[]> = {
     'claude-sonnet-4-5-20250929',
   ],
   gemini: [
-    'gemini-3.7-flash',
+    'gemini-3.8-flash',
     'gemini-3.6-flash',
-    'gemini-3.5-flash',
     'gemini-3.5-flash-lite',
     'gemini-3.1-flash-lite',
   ],

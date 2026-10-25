@@ -172,7 +172,7 @@ describe('PUT /api/cb/ia/chaves — a chave nova é conferida nos modelos EM USO
     linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: 'gemini-b' }
     const res = await PUT(pedido('gemini'))
     expect(res.status).toBe(200)
-    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.7-flash', 'gemini-a', 'gemini-b'])
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.8-flash', 'gemini-a', 'gemini-b'])
   })
 
   it('a nova não alcança o modelo em uso e a ATUAL alcança: recusa, e nada é gravado', async () => {
@@ -211,7 +211,7 @@ describe('PUT /api/cb/ia/chaves — a chave nova é conferida nos modelos EM USO
     linhaPadrao = { provider: 'openai', model: 'gpt-x', radar_model: 'gpt-y' }
     embedTexts.mockResolvedValue([[0.1]])
     await PUT(pedido('gemini'))
-    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.7-flash'])
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.8-flash'])
   })
 })
 
@@ -224,7 +224,7 @@ describe('PUT /api/cb/ia/chaves — os modelos dos AGENTES também contam (F1b)'
       { provedor: 'openai', modelo: 'gpt-x', ativo: true },
     ]
     await PUT(pedido('gemini'))
-    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.7-flash', 'gemini-a', 'gemini-b'])
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.8-flash', 'gemini-a', 'gemini-b'])
   })
 
   it('a nova não alcança o modelo de um agente que a atual alcança: recusa', async () => {
@@ -244,7 +244,7 @@ describe('PUT /api/cb/ia/chaves — as linhas POR CONEXÃO também contam (Codex
       { channel_id: 'canal-2', provider: 'openai', model: 'gpt-x', radar_model: null, auto_reply_enabled: true },
     ]
     await PUT(pedido('gemini'))
-    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.7-flash', 'gemini-a', 'gemini-da-conexao'])
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.8-flash', 'gemini-a', 'gemini-da-conexao'])
   })
 
   it('a linha PADRÃO vem antes das de conexão, qualquer que seja a ordem do banco (Codex, #295)', async () => {
@@ -255,7 +255,7 @@ describe('PUT /api/cb/ia/chaves — as linhas POR CONEXÃO também contam (Codex
     ]
     await PUT(pedido('gemini'))
     expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual([
-      'gemini-3.7-flash',
+      'gemini-3.8-flash',
       'gemini-a',
       'gemini-radar',
       'gemini-da-conexao',
@@ -268,7 +268,7 @@ describe('PUT /api/cb/ia/chaves — as linhas POR CONEXÃO também contam (Codex
       { channel_id: 'canal-1', provider: 'gemini', model: 'gemini-desligado', radar_model: null, is_active: false, auto_reply_enabled: true },
     ]
     await PUT(pedido('gemini'))
-    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.7-flash', 'gemini-a'])
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.8-flash', 'gemini-a'])
   })
 })
 
@@ -276,22 +276,22 @@ describe('PUT /api/cb/ia/chaves — a transcrição usa o modelo FIXO com a chav
   it('o modelo da transcrição é conferido mesmo quando o assistente usa outro modelo do Gemini', async () => {
     linhaPadrao = { provider: 'gemini', model: 'gemini-customizado', radar_model: null }
     await PUT(pedido('gemini'))
-    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toContain('gemini-3.7-flash')
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toContain('gemini-3.8-flash')
   })
 
   it('sem chave atual e a nova não alcança a transcrição: recusa (não há modelo a trocar), nada gravado', async () => {
     linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: null }
     chaveAtual = null
-    alcanca = (_chave, modelo) => modelo !== 'gemini-3.7-flash'
+    alcanca = (_chave, modelo) => modelo !== 'gemini-3.8-flash'
     const res = await PUT(pedido('gemini'))
     expect(res.status).toBe(400)
-    expect(await res.json()).toMatchObject({ code: 'transcricao_recusada', modelo: 'gemini-3.7-flash' })
+    expect(await res.json()).toMatchObject({ code: 'transcricao_recusada', modelo: 'gemini-3.8-flash' })
     expect(gravarChave).not.toHaveBeenCalled()
   })
 
   it('sem chave atual e a transcrição só deu tempo esgotado: devolve o erro passageiro, não "recusada"', async () => {
     linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: null }
-    passageira = (_chave, modelo) => (modelo === 'gemini-3.7-flash' ? 'timeout' : null)
+    passageira = (_chave, modelo) => (modelo === 'gemini-3.8-flash' ? 'timeout' : null)
     const res = await PUT(pedido('gemini'))
     expect(res.status).toBe(400)
     expect(await res.json()).toMatchObject({ code: 'timeout' })
@@ -301,16 +301,16 @@ describe('PUT /api/cb/ia/chaves — a transcrição usa o modelo FIXO com a chav
   it('a atual alcança a transcrição e a nova não: recusa pela regra geral', async () => {
     linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: null }
     chaveAtual = 'sk-atual'
-    alcanca = (chave, modelo) => !(chave === 'sk-teste' && modelo === 'gemini-3.7-flash')
+    alcanca = (chave, modelo) => !(chave === 'sk-teste' && modelo === 'gemini-3.8-flash')
     const res = await PUT(pedido('gemini'))
-    expect(await res.json()).toMatchObject({ code: 'modelo_em_uso_recusado', modelo: 'gemini-3.7-flash' })
+    expect(await res.json()).toMatchObject({ code: 'modelo_em_uso_recusado', modelo: 'gemini-3.8-flash' })
     expect(gravarChave).not.toHaveBeenCalled()
   })
 
   it('nem a atual alcança a transcrição: aceita com aviso PRÓPRIO, sem mandar trocar modelo', async () => {
     linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: null }
     chaveAtual = 'sk-atual'
-    alcanca = (_chave, modelo) => modelo !== 'gemini-3.7-flash'
+    alcanca = (_chave, modelo) => modelo !== 'gemini-3.8-flash'
     const res = await PUT(pedido('gemini'))
     expect(res.status).toBe(200)
     expect(await res.json()).toMatchObject({ ok: true, avisos: ['transcricao_indisponivel'], modelos: [] })
@@ -326,7 +326,7 @@ describe('PUT /api/cb/ia/chaves — agente desligado e o teto de modelos (Codex,
       { provedor: 'gemini', modelo: 'gemini-a', ativo: false },
     ]
     const res = await PUT(pedido('gemini'))
-    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.7-flash', 'gemini-a'])
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.8-flash', 'gemini-a'])
     const corpo = (await res.json()) as { avisos: string[]; naoConferidos: string[] }
     expect(corpo.avisos).toContain('modelos_nao_conferidos')
     // O modelo que o uso já cobre (gemini-a) não entra.
@@ -338,7 +338,7 @@ describe('PUT /api/cb/ia/chaves — agente desligado e o teto de modelos (Codex,
     agentesDaConta = ['m2', 'm3', 'm4', 'm5', 'm6', 'm7'].map((modelo) => ({ provedor: 'gemini', modelo, ativo: true }))
     const res = await PUT(pedido('gemini'))
     const corpo = (await res.json()) as { avisos: string[]; naoConferidos: string[] }
-    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.7-flash', 'm1', 'm2', 'm3', 'm4'])
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.8-flash', 'm1', 'm2', 'm3', 'm4'])
     expect(corpo.avisos).toContain('modelos_nao_conferidos')
     expect(corpo.naoConferidos).toEqual(['m5', 'm6', 'm7'])
   })
@@ -392,20 +392,20 @@ describe('PUT /api/cb/ia/chaves — só os modelos que RODAM são conferidos (Co
   it('assistente desligado e o Radar com modelo próprio: o modelo do assistente não conta', async () => {
     linhaPadrao = { provider: 'gemini', model: 'gemini-sem-uso', radar_model: 'gemini-radar', is_active: false }
     await PUT(pedido('gemini'))
-    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.7-flash', 'gemini-radar'])
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.8-flash', 'gemini-radar'])
   })
 
   it('assistente desligado e o Radar HERDANDO: o modelo do assistente conta', async () => {
     linhaPadrao = { provider: 'gemini', model: 'gemini-herdado', radar_model: null, is_active: false }
     await PUT(pedido('gemini'))
-    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.7-flash', 'gemini-herdado'])
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.8-flash', 'gemini-herdado'])
   })
 
   it('nenhuma conexão com o Radar: o modelo do Radar não conta', async () => {
     radarLigado = false
     linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: 'gemini-radar', is_active: true }
     await PUT(pedido('gemini'))
-    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.7-flash', 'gemini-a'])
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.8-flash', 'gemini-a'])
   })
 
   it('a nova não alcança um modelo que nada usa: não recusa', async () => {

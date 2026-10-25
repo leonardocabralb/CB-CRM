@@ -31,22 +31,24 @@ export const ORDEM_DA_TRANSCRICAO: readonly AiProvider[] = ['gemini', 'openai']
 /**
  * O modelo que LÊ imagem e PDF, por provedor. Fixo de propósito.
  *
- * - Gemini: o MESMO da transcrição (`MODELO_TRANSCRICAO`, escolhido por
- *   medição em 28/08) — lê imagem e PDF pelo mesmo `generateContent`.
+ * - Gemini: o MESMO da transcrição (`MODELO_TRANSCRICAO`; a troca do 3.7
+ *   pelo 3.8 está explicada lá) — lê imagem e PDF pelo mesmo `generateContent`.
  * - OpenAI: `gpt-5.4-mini`, o padrão do projeto, está na lista de modelos com
  *   visão (https://developers.openai.com/api/docs/guides/images-vision) e o PDF
  *   exige modelo com visão ("gpt-4o and later",
  *   https://developers.openai.com/api/docs/guides/pdf-files).
- * - Anthropic: `claude-sonnet-5` — "All active models support PDF processing"
- *   (https://platform.claude.com/docs/en/build-with-claude/pdf-support). NÃO o
- *   Haiku 4.5: a aposentadoria dele é "not sooner than October 15, 2026"
+ * - Anthropic: `claude-haiku-5-5`, escolha do operador no lugar do
+ *   `claude-sonnet-5` (25/10/2026) — "All active models support PDF
+ *   processing" (https://platform.claude.com/docs/en/build-with-claude/pdf-support,
+ *   conferido em 25/10/2026). NÃO o Haiku 4.5: a aposentadoria dele é "not
+ *   sooner than October 15, 2026"
  *   (https://platform.claude.com/docs/en/about-claude/models/overview), e um
  *   modelo fixo que some vira `falhou` em toda leitura sem ninguém ver.
  */
 export const MODELO_DE_LEITURA: Record<AiProvider, string> = {
-  gemini: 'gemini-3.7-flash',
+  gemini: 'gemini-3.8-flash',
   openai: 'gpt-5.4-mini',
-  anthropic: 'claude-sonnet-5',
+  anthropic: 'claude-haiku-5-5',
 }
 
 /**
@@ -154,7 +156,7 @@ export const TETO_PROPRIO_BYTES = 20 * MB
  *   directly" (vision): 7 MB de arquivo; PDF — "Maximum request size 32 MB"
  *   (pdf-support), ~23 MB de arquivo em base64: o nosso teto.
  * ⚠️ Páginas: Gemini 1000; Anthropic 600 (100 com contexto abaixo de 1M — o
- * Sonnet 5 tem 1M). Não há como contar páginas antes de mandar: o PDF longo
+ * Haiku 5.5 tem 1M). Não há como contar páginas antes de mandar: o PDF longo
  * demais é recusado pelo provedor, vira `falhou` e, na 3ª tentativa, `recusada`.
  */
 export const LIMITE_DE_BYTES: Record<AiProvider, Record<TipoDeLeitura, number>> = {
