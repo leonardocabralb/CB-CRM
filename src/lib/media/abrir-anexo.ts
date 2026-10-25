@@ -19,6 +19,7 @@
 // ============================================================
 
 import { isProxiedMediaUrl } from './blob-cache';
+import { semSurrogatoSolto } from './filename';
 
 /** O anexo é uma página HTML? Pelo tipo, ou pela extensão quando o tipo falta. */
 export function ehPaginaHtml(mime: string | null | undefined, nome: string | null | undefined): boolean {
@@ -32,6 +33,10 @@ export function ehPaginaHtml(mime: string | null | undefined, nome: string | nul
  * Storage do Supabase (`/storage/v1/object/public/`) ganha `download=<nome>`;
  * a URL do proxy da Meta ganha `nome=<nome>` (qualquer tipo — é o proxy que
  * decide o que abre e o que baixa). URL de outro lugar não é tocada.
+ *
+ * ⚠️ Roda no RENDER (bolha e aba Arquivos): o nome passa por
+ * `semSurrogatoSolto` antes de `encodeURIComponent`, que LANÇA com meio emoji
+ * — e derrubaria a conversa inteira por causa de um nome de arquivo.
  */
 export function urlParaAbrirAnexo(
   url: string,
@@ -41,10 +46,10 @@ export function urlParaAbrirAnexo(
   if (isProxiedMediaUrl(url)) {
     const arquivo = (nome ?? '').trim();
     if (!arquivo || /[?&]nome=/.test(url)) return url;
-    return `${url}${url.includes('?') ? '&' : '?'}nome=${encodeURIComponent(arquivo)}`;
+    return `${url}${url.includes('?') ? '&' : '?'}nome=${encodeURIComponent(semSurrogatoSolto(arquivo))}`;
   }
   if (!ehPaginaHtml(mime, nome) || !url.includes('/storage/v1/object/public/')) return url;
   if (/[?&]download(=|&|$)/.test(url)) return url;
   const arquivo = (nome ?? '').trim() || 'pagina.html';
-  return `${url}${url.includes('?') ? '&' : '?'}download=${encodeURIComponent(arquivo)}`;
+  return `${url}${url.includes('?') ? '&' : '?'}download=${encodeURIComponent(semSurrogatoSolto(arquivo))}`;
 }

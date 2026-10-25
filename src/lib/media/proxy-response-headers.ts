@@ -9,7 +9,7 @@
 //   2. O download leva o NOME do arquivo quando o link o traz (`nome=`, posto
 //      por `urlParaAbrirAnexo`): sem isso o documento do cliente baixava como
 //      `<id>.pdf`.
-import { extensionForMime, sanitizeFilename } from "./filename";
+import { extensionForMime, sanitizeFilename, semSurrogatoSolto } from "./filename";
 
 const FALLBACK_CONTENT_TYPE = "application/octet-stream";
 
@@ -68,9 +68,11 @@ export function isInlineSafeMimeType(mimeType: string | null): boolean {
  * O nome que o link trouxe, pronto para o cabeçalho: `sanitizeFilename` tira
  * caminho, controle e aspas; a forma ASCII vai em `filename` e a de verdade em
  * `filename*` (RFC 5987), para acento e cedilha chegarem ao arquivo baixado.
+ * Sem meio emoji (`semSurrogatoSolto`): com ele, `encodeURIComponent` lança e
+ * a rota responderia 500 em vez do arquivo.
  */
 function nomeNoCabecalho(nome: string): string | null {
-  const limpo = sanitizeFilename(nome);
+  const limpo = semSurrogatoSolto(sanitizeFilename(nome));
   if (!limpo) return null;
   const ascii = limpo.replace(/[^\x20-\x7e]/g, "_").replace(/[\\"]/g, "_");
   const codificado = encodeURIComponent(limpo).replace(

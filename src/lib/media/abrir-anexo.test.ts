@@ -51,4 +51,12 @@ describe('urlParaAbrirAnexo', () => {
   it('sem nome, um nome genérico', () => {
     expect(urlParaAbrirAnexo(STORAGE, 'text/html', null)).toBe(`${STORAGE}?download=pagina.html`);
   });
+
+  // Roda no render: meio emoji no nome não pode lançar (Codex, #436).
+  it('nome com meio emoji não derruba a bolha', () => {
+    expect(urlParaAbrirAnexo('/api/whatsapp/media/123', 'application/pdf', 'a\uD83D.pdf')).toBe(
+      '/api/whatsapp/media/123?nome=a%EF%BF%BD.pdf',
+    );
+    expect(urlParaAbrirAnexo(STORAGE, 'text/html', 'b\uD83D.html')).toBe(`${STORAGE}?download=b%EF%BF%BD.html`);
+  });
 });
