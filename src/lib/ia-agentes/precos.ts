@@ -32,6 +32,8 @@ export interface LinhaDePreco {
 export const PRECOS: readonly LinhaDePreco[] = [
   { provedor: 'gemini', modelo: 'gemini-3.7-flash', desde: null, entrada: 0.75, saida: 3.75, fonte: 'ai.google.dev/gemini-api/docs/pricing (preço introdutório até 31/12/2026)' },
   { provedor: 'gemini', modelo: 'gemini-3.7-flash', desde: '2027-01-01', entrada: 1.5, saida: 7.5, fonte: 'ai.google.dev/gemini-api/docs/pricing (a partir de 01/01/2027)' },
+  { provedor: 'gemini', modelo: 'gemini-3.8-flash', desde: null, entrada: 0.75, saida: 3.75, fonte: 'ai.google.dev/gemini-api/docs/pricing (25/10/2026; preço introdutório até 31/12/2026)' },
+  { provedor: 'gemini', modelo: 'gemini-3.8-flash', desde: '2027-01-01', entrada: 1.5, saida: 7.5, fonte: 'ai.google.dev/gemini-api/docs/pricing (25/10/2026; a partir de 01/01/2027)' },
   { provedor: 'gemini', modelo: 'gemini-3.6-flash', desde: null, entrada: 0.75, saida: 3.75, fonte: 'cloud.google.com, Agent Platform pricing (até 31/12/2026)' },
   { provedor: 'gemini', modelo: 'gemini-3.6-flash', desde: '2027-01-01', entrada: 1.5, saida: 7.5, fonte: 'cloud.google.com, Agent Platform pricing (a partir de 01/01/2027)' },
   // Conferido em 26/09/2026 (ai.google.dev/gemini-api/docs/pricing): os outros três que a tela sugere.
@@ -42,6 +44,7 @@ export const PRECOS: readonly LinhaDePreco[] = [
   { provedor: 'openai', modelo: 'gpt-5.4-mini', desde: null, entrada: 0.75, saida: 4.5, fonte: 'openai.com/index/introducing-gpt-5-4-mini-and-nano' },
   { provedor: 'openai', modelo: 'gpt-5.4-nano', desde: null, entrada: 0.2, saida: 1.25, fonte: 'openai.com/index/introducing-gpt-5-4-mini-and-nano' },
   { provedor: 'anthropic', modelo: 'claude-haiku-4-5-20251001', desde: null, entrada: 1, saida: 5, fonte: 'anthropic.com/claude/haiku' },
+  { provedor: 'anthropic', modelo: 'claude-haiku-5-5', desde: null, entrada: 0.1, saida: 0.5, fonte: 'platform.claude.com/docs/en/about-claude/pricing (25/10/2026; pedido até 100 mil tokens — acima, 0,50/2,50)' },
   { provedor: 'anthropic', modelo: 'claude-sonnet-5', desde: null, entrada: 2, saida: 10, fonte: 'platform.claude.com/docs/en/models/overview' },
   { provedor: 'anthropic', modelo: 'claude-sonnet-4-5-20250929', desde: null, entrada: 3, saida: 15, fonte: 'platform.claude.com/docs/en/about-claude/pricing (26/09/2026)' },
 ]
