@@ -294,7 +294,6 @@ export default function ContactsPage() {
     const chave = JSON.stringify([page, search, selectedTagIds]);
     const soOCatalogo = chaveDaListaRef.current === chave;
     chaveDaListaRef.current = chave;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchContacts(
       soOCatalogo ? { silencioso: true, preservarSelecao: true } : undefined,
     );

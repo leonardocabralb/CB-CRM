@@ -146,6 +146,9 @@ Supabase (Postgres + Auth + Storage + RLS) · Meta Cloud API · Evolution API.
 - **Um workflow só:** `.github/workflows/pipeline.yml` — verificar →
   migrations (replay num Postgres limpo) → deploy, com
   `needs: [verificar, migrations]` (pino `pipeline.test.ts`).
+- **`eslint-suppressions.json`** guarda os casos ANTIGOS das regras do React
+  Compiler; caso novo reprova. Consertou um → `npx eslint --prune-suppressions`
+  no mesmo PR (senão o lint sai com 2); incluir caso só com motivo no PR.
 
 ## 6. Branches e PRs
 

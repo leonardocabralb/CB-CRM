@@ -6,6 +6,7 @@ paths:
   - "docker/**"
   - "ops/**"
   - "next.config.ts"
+  - "AGENTS.md"
   - ".nvmrc"
   - "package.json"
   - "mcp-server/package.json"
@@ -60,6 +61,10 @@ passou na máquina). Por isso:
   `AGENTS.md` rastreado — que o `CLAUDE.md` importa — e toda worktree com dev
   server fica suja. Merge que traga o arquivo cru do upstream tira a linha; o
   sintoma é ` M AGENTS.md` sozinho no `git status`.
+- ⚠️ O `AGENTS.md` vive SEM os marcadores `BEGIN/END:nextjs-agent-rules`: com
+  `agentRules: false`, o `next dev` da 16.4+ apaga o bloco marcado e, como ele
+  era o arquivo inteiro, o arquivo (sintoma ` D AGENTS.md`). Merge que traga o
+  `AGENTS.md` cru do upstream devolve os marcadores.
 - Páginas saem com `Cache-Control: private, no-store` (#626 do original):
   `public` deixaria um cache compartilhado servir a página de uma pessoa a
   outra. Exceções: `opus/`, `inbox-doodle.svg` e `marca/` (o logo padrão em

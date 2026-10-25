@@ -693,6 +693,7 @@ upstream sobrescrevê-los:
 | `src/app/api/ai/knowledge/reindex/route.ts` (25/10/2026) | a falha do PROVEDOR (`AiError`) encerra a rodada, e só ela leva `motivo` (a mensagem segura de `mensagemSeguraDeAiError`); a tela conta os que nem foram tentados (`pendentes` na frase). O original (#676) segue por todos e separa `keyword_only`: aqui `ingestDocument` apaga os trechos antes de gerar os vetores, e seguir tiraria os vetores da base inteira. Pino `reindex/route.test.ts` |
 | `src/lib/whatsapp/template-status-normalize.ts` (`ARCHIVED`, 25/10/2026) | o resto é igual ao do #675; NOSSO é `ARCHIVED → PENDING` em `WEBHOOK_EVENT_STATUS`: o modelo arquivado sai do seletor, como a sincronização já faz (`normalizeStatus`), em vez de seguir "Aprovado". O original o ignora. Pinos `template-status-normalize.test.ts` e `template-webhook.test.ts` |
 | `src/app/api/whatsapp/react/route.ts` (reação do escritório, 25/10/2026) | reagir apaga a reação dos COLEGAS na mensagem e tirar apaga a do escritório inteira (o cliente vê uma só, a do número), sem o índice único da 054. Pino `react/route.test.ts` |
+| `AGENTS.md` (Next 16.4, 25/10/2026) | o mesmo texto SEM os marcadores `BEGIN/END:nextjs-agent-rules` (o arquivo era só o bloco): com o nosso `agentRules: false`, o `next dev` da 16.4+ apaga o bloco marcado e, sem mais nada no arquivo, o arquivo que o `CLAUDE.md` importa. O arquivo cru do original devolve os marcadores (item 7 da §6) |
 
 ## 5. Migrations do original: a história das renumerações
 
@@ -769,8 +770,10 @@ depois de `aee1b01f` (§3.1).
 
 6. `node-version: <n>` cravado no workflow → `node-version-file: .nvmrc`.
    Sem isso o CI volta a poder rodar outra major do Node.
-7. `agentRules: false` no `next.config.ts`. Sem a linha, o `next dev`
-   reescreve o `AGENTS.md` rastreado; o sintoma é ` M AGENTS.md` sozinho no
+7. `agentRules: false` no `next.config.ts` e o `AGENTS.md` SEM os marcadores
+   `BEGIN/END:nextjs-agent-rules`. Sem a linha, o `next dev` reescreve o
+   `AGENTS.md` rastreado (sintoma ` M AGENTS.md`); com os marcadores de volta,
+   o da 16.4+ apaga o arquivo (sintoma ` D AGENTS.md`) — nos dois casos, no
    `git status` de quem só subiu o servidor.
 8. Migration nova do original, com 3 dígitos → o maior número do `main` + 1,
    com prefixo `cb_`, nunca zero à esquerda (§5). Pino:
