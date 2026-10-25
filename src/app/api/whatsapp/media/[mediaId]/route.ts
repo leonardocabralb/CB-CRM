@@ -123,12 +123,17 @@ export async function GET(
     // Upstream #678: o tipo vem do CLIENTE (o documento que ele mandou), e esta
     // resposta sai no NOSSO domínio — a bolha abre o link numa aba nova. Só
     // imagem, áudio e vídeo comuns vão `inline`; o resto (SVG, HTML, PDF…) vai
-    // como download, com `sandbox` e sem cache compartilhado. Só chega aqui o
-    // anexo que o espelho no `chat-media` não guardou (tipo fora da lista do
-    // bucket, acima de 50 MiB, Storage fora do ar).
+    // como download, com `sandbox`, e com o nome que o link trouxe (`nome=`,
+    // de `urlParaAbrirAnexo`). Só chega aqui o anexo que o espelho no
+    // `chat-media` não guardou (tipo fora da lista do bucket, acima de 50 MiB,
+    // Storage fora do ar).
     return new Response(new Uint8Array(buffer), {
       status: 200,
-      headers: mediaProxyHeaders(mediaId, contentType || mediaInfo.mimeType),
+      headers: mediaProxyHeaders(
+        mediaId,
+        contentType || mediaInfo.mimeType,
+        new URL(request.url).searchParams.get('nome'),
+      ),
     })
   } catch (error) {
     console.error('Error in WhatsApp media GET:', error)

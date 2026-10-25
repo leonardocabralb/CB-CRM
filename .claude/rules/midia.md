@@ -140,11 +140,15 @@ teto. A bolha, a fila de anexos do compositor e o player de áudio estão em
   #678): é a reserva do anexo que o espelho no `chat-media` não guardou (tipo
   fora da lista do bucket — SVG, ZIP, CSV —, acima de 50 MiB, Storage fora do
   ar), sai no NOSSO domínio com o tipo que o CLIENTE mandou, e a bolha o abre
-  numa aba nova. Só imagem, áudio e vídeo comuns vão `inline`; o resto vai
-  como `attachment`, com `sandbox` e cache privado. O `nosniff` global não
+  numa aba nova. Só imagem, áudio e vídeo comuns vão `inline`, com CSP sem
+  script; o resto vai como `attachment`, com `sandbox`, e com o nome real
+  (`nome=`, que `urlParaAbrirAnexo` põe no link). O `nosniff` global não
   impede HTML declarado como HTML, e a CSP do `next.config.ts` só relata.
-  Rota nova que devolva bytes de fora repete o helper. Pino
-  `route.cabecalhos.test.ts`.
+  ⚠️ A mídia exibida NÃO leva `sandbox`: medido, o áudio aberto em aba fica
+  sem fonte com ele. ⚠️ O `Cache-Control` do helper não chega ao navegador:
+  vale o `no-store` que o `next.config.ts` grava em `/api/*` antes da rota.
+  Rota nova que devolva bytes de fora repete o helper. Pinos
+  `proxy-response-headers.test.ts` e `route.cabecalhos.test.ts`.
 
 ### Acervo de mídias (953/954)
 

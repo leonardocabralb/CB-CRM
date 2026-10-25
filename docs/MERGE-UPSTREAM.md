@@ -358,17 +358,24 @@ ancestralidade continua em `aee1b01f`. O porte saiu em dois PRs: segurança e
 as demais correções.
 
 - **Segurança (este porte):** o gatilho `enforce_account_identity_columns`
-  do #670 (mesmo nome e corpo do original) e a guarda "conta com outros
-  membros" no `redeem_invitation`, os dois na NOSSA 1103; e os cabeçalhos do
-  proxy de mídia do #678 (`proxy-response-headers.ts` idêntico, com o teste).
+  do #670 (mesmo nome e corpo do original), a guarda "conta com outros
+  membros" e a trava `FOR UPDATE OF p, a` no `redeem_invitation`, e o fim da
+  policy `profiles_insert` (o que a branch `fix/authz-membership-holes` do
+  original faz, ainda não mesclada), tudo na NOSSA 1103; e os cabeçalhos do
+  proxy de mídia do #678 — `proxy-response-headers.ts` trazido e ALTERADO
+  (CSP sem `sandbox` na mídia exibida: medido, o áudio aberto em aba não
+  tocava; o nome real no download, por `nome=` posto em `abrir-anexo.ts`).
+  Num merge, esse arquivo e o teste dele ficam os NOSSOS inteiros.
 - **Descartar no próximo merge:** a `047_account_membership_integrity`
   inteira (recria `redeem_invitation`, `set_member_role`,
   `remove_account_member` e `transfer_account_ownership` por cima das
   nossas: 0960/0961/0962/0965/0971/1000/1067 — o gatilho dela já está na
   1103, igual); o `route.test.ts` do proxy de mídia (ver a linha na §4); e,
   do #678, `document-click.ts` e as mudanças em `message-media.tsx` e
-  `blob-cache.ts` (o `message-media.tsx` não está ligado aqui;
-  `.claude/rules/inbox-conversa.md`).
+  `blob-cache.ts`: lá o clique no documento baixa por JavaScript para manter
+  o nome; aqui a bolha e a aba Arquivos abrem o link, e o nome vai no
+  `nome=` (`urlParaAbrirAnexo`), sem mexer na bolha. O `message-media.tsx`
+  não está ligado aqui (`.claude/rules/inbox-conversa.md`).
 
 ## 4. Arquivos do upstream com trechos NOSSOS
 
@@ -624,7 +631,7 @@ upstream sobrescrevê-los:
 | `src/components/inbox/message-thread.tsx`, `src/components/pipelines/deal-form.tsx` e `messages/en.json` (Lixeira, Fase 4: restaurar e unir, 23/10/2026, 1101) | no fio (bloco de faixas) e no formulário do card (só com `origemFunil`), `<AvisoDeFichaNaLixeira>` (NOSSO, `src/components/contacts/lixeira/aviso-de-ficha-na-lixeira.tsx`) logo depois do `<AvisoDePossivelDuplicata>`: a faixa "Há uma ficha desta pessoa na Lixeira" (só admin) e o "Restaurar e unir". No `en.json`, a sub-árvore `Contacts.lixeira` (NOSSA inteira desde a 1097; a 1101 acrescenta `mesmaPessoa`). Um merge que traga o fio ou o formulário crus some com a faixa sem conflito, e a ficha antiga de quem voltou a escrever fica presa na Lixeira (B2); ver `.claude/rules/contatos.md` |
 | `src/components/layout/header.tsx` (Lixeira de contatos, 22/10/2026) | `"/contacts/lixeira": "lixeira"` no `pageTitles`, ANTES de `/contacts` (o mapa casa por `startsWith` na ordem) |
 | `src/types/index.ts` (Lixeira de contatos, 22/10/2026, 1097) | `Conversation.restaurada_em` e os tipos `contact_trashed`/`contact_restored`/`contact_purged` no tipo do evento da trilha (o `never` do ícone e o `satisfies` do pino reprovam o typecheck se um merge os tirar) |
-| `src/app/api/whatsapp/media/[mediaId]/route.ts` (porte do #678, 25/10/2026) | o resto do arquivo já era nosso (`?channel=`, a ordem do token, `whatsapp_config` por `maybeSingle`); do original veio só a resposta por `mediaProxyHeaders` (`src/lib/media/proxy-response-headers.ts`, trazido idêntico com o teste dele). Os testes NOSSOS da rota moram em `route.cabecalhos.test.ts`: o `route.test.ts` do original simula o `whatsapp_config` por `.single()` e sem o `?channel=`, e contra a nossa rota daria 400 — no merge ele chega como arquivo novo e deve ser APAGADO |
+| `src/app/api/whatsapp/media/[mediaId]/route.ts` (porte do #678, 25/10/2026) | o resto do arquivo já era nosso (`?channel=`, a ordem do token, `whatsapp_config` por `maybeSingle`); do original veio a resposta por `mediaProxyHeaders` (`src/lib/media/proxy-response-headers.ts`, trazido e ALTERADO — ver a §3.5), com o `nome=` do link como 3º argumento. Os testes NOSSOS da rota moram em `route.cabecalhos.test.ts`: o `route.test.ts` do original simula o `whatsapp_config` por `.single()` e sem o `?channel=`, e contra a nossa rota daria 400 — no merge ele chega como arquivo novo e deve ser APAGADO |
 
 ## 5. Migrations do original: a história das renumerações
 

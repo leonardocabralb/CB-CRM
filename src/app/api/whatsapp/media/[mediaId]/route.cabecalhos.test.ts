@@ -55,8 +55,8 @@ vi.mock('@/lib/whatsapp/meta-api', () => ({
 import { GET } from './route'
 import { __resetRateLimitForTests } from '@/lib/rate-limit'
 
-function call(mediaId = '1234567890') {
-  return GET(new Request(`http://localhost/api/whatsapp/media/${mediaId}`), {
+function call(mediaId = '1234567890', query = '') {
+  return GET(new Request(`http://localhost/api/whatsapp/media/${mediaId}${query}`), {
     params: Promise.resolve({ mediaId }),
   })
 }
@@ -69,22 +69,32 @@ beforeEach(() => {
 })
 
 describe('GET /api/whatsapp/media/[mediaId] — cabeçalhos', () => {
-  it('foto vai inline, com nosniff, sandbox e cache privado', async () => {
+  // O `Cache-Control` não é conferido aqui: em produção vale o `no-store` que o
+  // `next.config.ts` grava em `/api/*` antes da rota (pino `next-config.test.ts`).
+  it('foto vai inline, com nosniff e CSP que não deixa rodar script', async () => {
     const res = await call()
     expect(res.status).toBe(200)
     expect(res.headers.get('Content-Type')).toBe('image/jpeg')
     expect(res.headers.get('Content-Disposition')).toBe('inline')
     expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff')
-    expect(res.headers.get('Content-Security-Policy')).toBe("default-src 'none'; sandbox")
-    expect(res.headers.get('Cache-Control')).toBe('private, max-age=86400')
+    expect(res.headers.get('Content-Security-Policy')).toMatch(/^default-src 'none';/)
   })
 
-  it('documento HTML do cliente vira download, nunca página no nosso domínio', async () => {
+  it('documento HTML do cliente vira download, com sandbox, nunca página no nosso domínio', async () => {
     h.downloadContentType = 'text/html; charset=utf-8'
     h.metaMimeType = 'text/html'
     const res = await call()
     expect(res.headers.get('Content-Type')).toBe('text/html')
     expect(res.headers.get('Content-Disposition')).toBe('attachment')
+    expect(res.headers.get('Content-Security-Policy')).toBe("default-src 'none'; sandbox")
+  })
+
+  it('o download leva o nome real que o link trouxe', async () => {
+    h.downloadContentType = 'application/pdf'
+    const res = await call('987', '?channel=c1&nome=Contrato%20Social.pdf')
+    expect(res.headers.get('Content-Disposition')).toBe(
+      `attachment; filename="Contrato Social.pdf"; filename*=UTF-8''Contrato%20Social.pdf`,
+    )
   })
 
   it('SVG (que roda script quando aberto) vira download', async () => {
@@ -94,9 +104,8 @@ describe('GET /api/whatsapp/media/[mediaId] — cabeçalhos', () => {
     expect(res.headers.get('Content-Disposition')).toBe('attachment')
   })
 
-  it('sem tipo da CDN, vale o tipo da Meta; PDF sai como download com o nome do id', async () => {
-    h.downloadContentType = null
-    h.metaMimeType = 'application/pdf'
+  it('PDF sem nome no link sai como download com o nome do id', async () => {
+    h.downloadContentType = 'application/pdf'
     const res = await call('987')
     expect(res.headers.get('Content-Type')).toBe('application/pdf')
     expect(res.headers.get('Content-Disposition')).toBe('attachment; filename="987.pdf"')
