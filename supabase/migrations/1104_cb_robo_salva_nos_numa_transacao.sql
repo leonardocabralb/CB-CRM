@@ -86,6 +86,17 @@ COMMENT ON FUNCTION public.cb_trocar_nos_do_robo(uuid, jsonb) IS
 REVOKE ALL ON FUNCTION public.cb_trocar_nos_do_robo(uuid, jsonb) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.cb_trocar_nos_do_robo(uuid, jsonb) TO service_role;
 
+-- INVOKER: tudo o que roda dentro checa o privilégio de QUEM chama, o
+-- service_role. Na produção ele já tem tudo nas duas tabelas (o default do
+-- Supabase); em banco novo esse default não existe, e a função — como a
+-- conferência abaixo, que troca de papel — barrava em `permission denied for
+-- table flows` (medido no replay do CI). Só o que a função usa: travar o robô
+-- (`SELECT … FOR UPDATE` pede UPDATE) e apagar e inserir os nós. Na produção,
+-- conceder o que já existe não muda nada.
+SET LOCAL lock_timeout = '3s';
+GRANT SELECT, UPDATE ON TABLE public.flows TO service_role;
+GRANT SELECT, INSERT, DELETE ON TABLE public.flow_nodes TO service_role;
+
 -- O PostgREST converte o corpo pelo TIPO dos argumentos que tem em cache.
 -- Sem ninguém ouvindo (o replay do CI), é no-op.
 NOTIFY pgrst, 'reload schema';
