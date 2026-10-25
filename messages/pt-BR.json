@@ -5411,7 +5411,7 @@
       "removeSuccess": "Documento removido.",
       "removeFailed": "Falha ao remover.",
       "reindexSuccess": "{count} documento(s) reindexado(s).",
-      "reindexWithFailures": "{reindexed} de {total} documento(s) reindexado(s); {failedCount, plural, one {# falhou} other {# falharam}}: {titles}. Use Reindexar para tentar de novo.",
+      "reindexWithFailures": "{reindexed} de {total} documento(s) reindexado(s); {failedCount, plural, one {# falhou} other {# falharam}}: {titles}.{pendentes, plural, =0 {} one { # nem foi tentado e ficou como estava.} other { # nem foram tentados e ficaram como estavam.}} Use Reindexar para tentar de novo.",
       "reindexFailed": "Falha ao reindexar.",
       "title": "Base de conhecimento",
       "description": "Adicione perguntas frequentes, políticas ou detalhes dos serviços. O assistente busca os trechos relevantes ao redigir rascunhos e responder automaticamente, para responder em vez de encaminhar.{searchType}",

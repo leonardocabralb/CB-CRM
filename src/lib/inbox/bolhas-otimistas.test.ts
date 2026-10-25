@@ -6,7 +6,6 @@ import {
   comBolhaPublicada,
   comLinhaDoTempoReal,
   ehOtimista,
-  recargaComFalhadas,
 } from './bolhas-otimistas';
 
 // Ids fictícios: o login de quem está na tela e o de um colega.
@@ -47,15 +46,50 @@ describe('ehOtimista', () => {
 });
 
 describe('comLinhaDoTempoReal', () => {
-  it('cliente escreve com uma bolha FALHADA na tela: ela fica', () => {
+  // ⚠️ A falhada sai com qualquer linha, como antes: a tela não sabe se foi
+  // recusa comprovada ou incerta (o envio pode ter saído — CLAUDE.md, 8e).
+  it('cliente escreve com uma bolha FALHADA na tela: ela sai, como antes', () => {
     const antes = [otimista('temp-1', { status: 'failed' })];
     const depois = comLinhaDoTempoReal(
       antes,
       msg('in-1', { sender_type: 'customer', content_text: 'oi?' }),
       EU
     );
-    expect(ids(depois)).toEqual(['temp-1', 'in-1']);
-    expect(depois[0].status).toBe('failed');
+    expect(ids(depois)).toEqual(['in-1']);
+  });
+
+  it('queda de rede com o envio FEITO: a linha gravada tira a falhada (nada de "Envie de novo" ao lado)', () => {
+    // O `fetch` morreu no navegador (troca de app no celular), mas o servidor
+    // mandou e gravou; a otimista virou `failed` no `catch`.
+    const antes = [otimista('temp-1', { status: 'failed', content_text: 'oi' })];
+    const depois = comLinhaDoTempoReal(
+      antes,
+      minha('real-1', { content_text: 'oi' }),
+      EU
+    );
+    expect(ids(depois)).toEqual(['real-1']);
+  });
+
+  it('eco do celular de um envio incerto também tira a falhada', () => {
+    const antes = [otimista('temp-1', { status: 'failed', content_text: 'oi' })];
+    const depois = comLinhaDoTempoReal(
+      antes,
+      msg('eco-1', { from_device: true, content_text: 'oi' }),
+      EU
+    );
+    expect(ids(depois)).toEqual(['eco-1']);
+  });
+
+  it('a falhada de OUTRA conversa não é tocada', () => {
+    const antes = [
+      otimista('temp-b', { status: 'failed', conversation_id: 'conv-2' }),
+    ];
+    const depois = comLinhaDoTempoReal(
+      antes,
+      msg('in-1', { sender_type: 'customer' }),
+      EU
+    );
+    expect(ids(depois)).toEqual(['temp-b', 'in-1']);
   });
 
   it('cliente escreve: nem a pendente sai (a linha dela ainda vem)', () => {
@@ -190,16 +224,17 @@ describe('comLinhaDoTempoReal', () => {
     ).toEqual(['temp-1', 'real-1']);
   });
 
-  it('a que FALHOU nunca sai por INSERT, nem com o mesmo texto', () => {
+  it('em voo e falhada juntas: a linha alheia leva só a falhada', () => {
     const lista = [
-      otimista('temp-1', { status: 'failed', content_text: 'oi' }),
+      otimista('temp-1', { status: 'failed', content_text: 'primeira' }),
+      otimista('temp-2', { content_text: 'segunda' }),
     ];
     const depois = comLinhaDoTempoReal(
       lista,
-      minha('real-1', { content_text: 'oi' }),
+      msg('in-1', { sender_type: 'customer' }),
       EU
     );
-    expect(ids(depois)).toEqual(['temp-1', 'real-1']);
+    expect(ids(depois)).toEqual(['temp-2', 'in-1']);
   });
 
   it('outro tipo ou outra conversa não é trocada', () => {
@@ -218,52 +253,6 @@ describe('comLinhaDoTempoReal', () => {
   it('a mesma linha duas vezes devolve a MESMA lista', () => {
     const lista = [minha('real-1')];
     expect(comLinhaDoTempoReal(lista, minha('real-1'), EU)).toBe(lista);
-  });
-});
-
-describe('recargaComFalhadas', () => {
-  it('mantém só as FALHADAS da conversa, depois do que veio do banco', () => {
-    const naTela = [
-      msg('real-1'),
-      otimista('temp-falhou', { status: 'failed' }),
-      otimista('temp-pendente'),
-      otimista('temp-confirmada', { status: 'sent' }),
-      otimista('temp-de-outra', {
-        status: 'failed',
-        conversation_id: 'conv-2',
-      }),
-    ];
-    const carregadas = [msg('real-1'), msg('real-2')];
-    expect(ids(recargaComFalhadas(carregadas, naTela, CONVERSA))).toEqual([
-      'real-1',
-      'real-2',
-      'temp-falhou',
-    ]);
-  });
-
-  it('sem falhada (ou sem conversa) devolve a própria lista carregada', () => {
-    const carregadas = [msg('real-1')];
-    expect(recargaComFalhadas(carregadas, [otimista('temp-1')], CONVERSA)).toBe(
-      carregadas
-    );
-    expect(
-      recargaComFalhadas(
-        carregadas,
-        [otimista('temp-1', { status: 'failed' })],
-        null
-      )
-    ).toBe(carregadas);
-  });
-
-  it('a falhada sobrevive a uma recarga e depois a um INSERT do cliente', () => {
-    let lista = [otimista('temp-1', { status: 'failed' })];
-    lista = recargaComFalhadas([msg('real-1')], lista, CONVERSA);
-    lista = comLinhaDoTempoReal(
-      lista,
-      msg('in-1', { sender_type: 'customer' }),
-      EU
-    );
-    expect(ids(lista)).toEqual(['real-1', 'temp-1', 'in-1']);
   });
 });
 
@@ -295,10 +284,10 @@ describe('comBolhaPublicada', () => {
     expect(comBolhaPublicada(lista, otimista('temp-1'))).toBe(lista);
   });
 
-  it('o 409 e o reenvio: a falhada fica, o reenvio vira uma bolha só', () => {
+  it('o 409 e o reenvio: o INSERT do reenvio leva a otimista dele e a falhada', () => {
     // Publica, o servidor responde 409 (o cliente trocou de número) e o
-    // atendente reenvia o mesmo texto: o INSERT do reenvio leva a otimista
-    // DELE, nunca a do 409.
+    // atendente reenvia o mesmo texto: a linha do reenvio troca a otimista
+    // DELE e a falhada do 409 sai com ela.
     let lista = comBolhaPublicada(
       [],
       otimista('temp-1', { content_text: 'oi' })
@@ -316,7 +305,6 @@ describe('comBolhaPublicada', () => {
       minha('real-2', { content_text: 'oi' }),
       EU
     );
-    expect(ids(lista)).toEqual(['temp-1', 'real-2']);
-    expect(lista[0].status).toBe('failed');
+    expect(ids(lista)).toEqual(['real-2']);
   });
 });

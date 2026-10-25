@@ -32,7 +32,7 @@
 -- da 051 também não vem: o nosso passo da fila mora no contexto
 -- (`_passo_da_fila`, `retomada.ts`).
 --
--- Os cortes (no app, `engine.ts`): reivindicada há mais de 15 min; ou, para
+-- Os cortes (no app, `engine.ts`): reivindicada há mais de 1 h; ou, para
 -- as `running` do código anterior a esta migration (sem carimbo), vencida há
 -- mais de 24 h. A conferência abaixo diz, ANTES de qualquer ALTER, quantas
 -- dessas antigas o primeiro ciclo depois do deploy vai fechar como falha.

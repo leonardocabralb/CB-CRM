@@ -32,9 +32,11 @@ describe('templateStatusFromWebhookEvent', () => {
   it('maps lifecycle events onto existing statuses', () => {
     expect(templateStatusFromWebhookEvent('REINSTATED')).toBe('APPROVED');
     expect(templateStatusFromWebhookEvent('DELETED')).toBe('PENDING_DELETION');
+    // NOSSO: o arquivado sai do seletor, como pela sincronização.
+    expect(templateStatusFromWebhookEvent('ARCHIVED')).toBe('PENDING');
   });
   it('returns null for events that are not a status change', () => {
-    for (const event of ['FLAGGED', 'LIMIT_EXCEEDED', 'LOCKED', 'ARCHIVED', 'NEW_THING', '']) {
+    for (const event of ['FLAGGED', 'LIMIT_EXCEEDED', 'LOCKED', 'NEW_THING', '']) {
       expect(templateStatusFromWebhookEvent(event)).toBeNull();
     }
   });

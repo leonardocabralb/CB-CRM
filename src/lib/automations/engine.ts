@@ -802,13 +802,16 @@ export async function resumePendingExecution(pending: {
 
 /**
  * Quanto uma retomada reivindicada pode ficar `running` antes de ser dada como
- * MORTA (1106). Uma retomada roda os passos até a próxima espera — segundos;
- * no pior caso, alguns minutos de envios e integrações lentas (o `-m 50` do
- * agendador só desiste da RESPOSTA: o processo segue). Folga larga, mas não
- * infinita: a retomada viva que passe disto é recolhida como falha, e a
- * escrita dela depois não desfaz o `failed` (`markPending` é cercado).
+ * MORTA (1106). Uma retomada roda os passos até a próxima espera — segundos
+ * (o `-m 50` do agendador só desiste da RESPOSTA: o processo segue). O teto
+ * tem de passar da PIOR conta real (CLAUDE.md, 8e: processamento menor que o
+ * recolhimento): a Evolution corta cada chamada em 15 s, mas os envios da Meta
+ * (`meta-api.ts`) não têm teto próprio — o padrão do undici espera até ~5 min
+ * por resposta —, então meia dúzia de envios lentos já passaria de 15 min. A
+ * retomada viva que passe disto é recolhida como falha e SEGUE rodando (nada a
+ * para); a escrita dela depois não desfaz o `failed` (`markPending` é cercado).
  */
-export const TETO_DA_RETOMADA_MS = 15 * 60_000;
+export const TETO_DA_RETOMADA_MS = 60 * 60_000;
 
 /**
  * A `running` reivindicada pelo código ANTERIOR à 1106 não tem `claimed_at`:

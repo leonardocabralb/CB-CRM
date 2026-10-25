@@ -10,7 +10,8 @@ import path from 'node:path';
 // preenchimento acenderia os gatilhos de UPDATE em toda conversa da base.
 //
 // LIMITE DECLARADO: lê o `.sql`. A prova de comportamento (sem reescrita,
-// corrida entre duas sessões, banco vazio) foi num Postgres 16 descartável.
+// corrida entre duas sessões, banco vazio) foi num Postgres 16 descartável,
+// e a conferência da migration é só catálogo (depois do ALTER, nada de dado).
 // ============================================================
 
 const sql = fs.readFileSync(path.join(__dirname, '1105_cb_primeira_mensagem_reivindicada.sql'), 'utf8');
@@ -29,14 +30,11 @@ describe('1105 — conversations.first_inbound_at', () => {
     expect(trava).toBeLessThan(semComentarios.indexOf('ALTER TABLE'));
   });
 
-  it('sem preenchimento: o único UPDATE é a prova da conferência, desfeita por SQLSTATE próprio', () => {
-    const updates = semComentarios.match(/UPDATE public\.conversations/g) ?? [];
-    expect(updates).toHaveLength(2);
-    // As duas escritas da prova vêm antes do RAISE que desfaz o subbloco, e
-    // nenhuma escrita sobra depois dele.
-    const desfaz = semComentarios.indexOf("RAISE SQLSTATE 'P1105';");
-    expect(desfaz).toBeGreaterThan(semComentarios.lastIndexOf('UPDATE public.conversations'));
-    expect(semComentarios).toMatch(/EXCEPTION WHEN SQLSTATE 'P1105' THEN\s+NULL;/);
-    expect(semComentarios).not.toMatch(/WHEN OTHERS/);
+  it('sem preenchimento e sem escrita depois do ALTER: a conferência é só catálogo', () => {
+    // Nem a prova com dado: depois do ALTER a trava exclusiva fica até o fim
+    // da migration, e ali só roda catálogo (`.claude/rules/supabase.md`).
+    expect(semComentarios).not.toMatch(/UPDATE\s+public\.conversations/i);
+    expect(semComentarios).not.toMatch(/\bFROM\s+public\.conversations\b/i);
+    expect(semComentarios).toMatch(/FROM pg_attribute a/);
   });
 });

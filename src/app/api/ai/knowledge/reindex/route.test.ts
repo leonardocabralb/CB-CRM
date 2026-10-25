@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // POST /api/ai/knowledge/reindex — um documento que falha não para os outros
 // (porte do upstream #676, adaptado: o nosso `ingestDocument` LANÇA quando o
 // embedding falha, então não há o balde `keyword_only` do original, e a
-// resposta leva o `motivo` seguro da primeira falha).
+// resposta leva o `motivo` seguro quando a falha é do provedor).
 // ============================================================
 
 const h = vi.hoisted(() => ({
@@ -88,12 +88,12 @@ describe('POST /api/ai/knowledge/reindex', () => {
       reindexed: 2,
       total: 3,
       failed: ['doc-1'],
-      // Erro que não é do provedor: a tela recebe só o genérico.
-      motivo: 'indexing failed',
+      // Erro que não é do provedor (banco): sem motivo — vai inteiro ao log, e
+      // a frase da tela já diz quais falharam.
     })
   })
 
-  it('junta os que falharam pelo banco; o motivo é o da PRIMEIRA falha', async () => {
+  it('junta os que falharam pelo banco, sem motivo (não é do provedor)', async () => {
     h.ingest.mockImplementation(async (_db, _conta, _cfg, id: string) => {
       if (id === 'doc-1') throw new Error('insert failed')
       if (id === 'doc-3') throw new Error('delete failed')
@@ -105,8 +105,8 @@ describe('POST /api/ai/knowledge/reindex', () => {
       reindexed: 1,
       total: 3,
       failed: ['doc-1', 'doc-3'],
-      motivo: 'indexing failed',
     })
+    expect(res.body).not.toHaveProperty('motivo')
   })
 
   // ⚠️ NOSSO: `ingestDocument` apaga os trechos antes de gerar os vetores, e a

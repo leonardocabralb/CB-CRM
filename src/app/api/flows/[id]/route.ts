@@ -118,6 +118,27 @@ export async function PUT(
     )
   }
 
+  // A conexão do cabeçalho é conferida ANTES de trocar os nós: o editor aberto
+  // de um robô cuja conexão foi apagada manda o id velho, e o UPDATE do
+  // cabeçalho estouraria DEPOIS da troca — nós novos com o `entry_node_id`
+  // antigo. Pela sessão (RLS): conexão de outra conta também não passa.
+  if (body.channel_id) {
+    const { data: canal, error: canalErr } = await guard.supabase
+      .from('cb_channels')
+      .select('id')
+      .eq('id', body.channel_id)
+      .maybeSingle()
+    if (canalErr) {
+      return NextResponse.json({ error: canalErr.message }, { status: 500 })
+    }
+    if (!canal) {
+      return NextResponse.json(
+        { error: 'channel_id does not match a connection of this account' },
+        { status: 400 },
+      )
+    }
+  }
+
   const admin = supabaseAdmin()
 
   // ⚠️⚠️ OS NÓS NUMA TRANSAÇÃO (1104, adaptado do #674 do original). Até aqui

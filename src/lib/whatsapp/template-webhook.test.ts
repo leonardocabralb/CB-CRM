@@ -209,7 +209,21 @@ describe('handleTemplateWebhookChange — status update', () => {
     });
   });
 
-  it.each(['FLAGGED', 'LIMIT_EXCEEDED', 'LOCKED', 'ARCHIVED', 'SOMETHING_NEW'])(
+  // NOSSO: o original também ignora o ARCHIVED; aqui ele sai do seletor,
+  // como pela sincronização (`normalizeStatus`).
+  it('maps ARCHIVED to PENDING, out of the picker (as the sync does)', async () => {
+    const { stub, calls } = makeSupabaseStub();
+    await handleTemplateWebhookChange(
+      {
+        field: 'message_template_status_update',
+        value: { event: 'ARCHIVED', message_template_id: '1' },
+      },
+      stub,
+    );
+    expect(calls[0].update?.status).toBe('PENDING');
+  });
+
+  it.each(['FLAGGED', 'LIMIT_EXCEEDED', 'LOCKED', 'SOMETHING_NEW'])(
     'leaves the row untouched on %s, which is not a status we track',
     async (event) => {
       const { stub, calls } = makeSupabaseStub();
@@ -477,7 +491,7 @@ describe('handleTemplateWebhookChange — unknown template stub (#534, porte da 
     expect(String(erro.mock.calls[0][0])).toContain('no usable access token');
   });
 
-  it.each(['PENDING_DELETION', 'DELETED'])(
+  it.each(['PENDING_DELETION', 'DELETED', 'ARCHIVED'])(
     '⚠️ %s for an unknown template does NOT resurrect it as a stub',
     async (evento) => {
       // A rota de exclusão apaga na Meta e em seguida a linha local; o aviso
@@ -489,7 +503,7 @@ describe('handleTemplateWebhookChange — unknown template stub (#534, porte da 
     },
   );
 
-  it.each(['ARCHIVED', 'FLAGGED', 'LOCKED', 'SOMETHING_NEW'])(
+  it.each(['FLAGGED', 'LOCKED', 'SOMETHING_NEW'])(
     '⚠️ %s (não é troca de situação) não grava, não lê a Meta e não cria stub — nem com a WABA resolvível',
     async (evento) => {
       // Antes (porte do #675), `normalizeStatus` fazia destes um PENDING: com

@@ -39,7 +39,6 @@ import { comMensagemNova } from "@/lib/inbox/ordem-da-lista";
 import {
   comBolhaPublicada,
   comLinhaDoTempoReal,
-  recargaComFalhadas,
 } from "@/lib/inbox/bolhas-otimistas";
 import { reinseridaPelaRestauracao } from "@/lib/contacts/lixeira";
 import {
@@ -530,10 +529,9 @@ function InboxPageInner() {
           newMsg.conversation_id === activeConversation.id
         ) {
           // Repetida não entra. A linha do PRÓPRIO atendente troca UMA bolha
-          // otimista dele; a do cliente, do colega ou do robô só entra no fim.
-          // ⚠️ A bolha que FALHOU nunca sai por aqui: o envio de gente não grava
-          // linha quando nada sai, e ela é a única marca disso na tela
-          // (`bolhas-otimistas.ts`).
+          // otimista dele ainda em voo; a do cliente, do colega ou do robô só
+          // entra no fim — e a bolha que FALHOU sai com qualquer linha, como
+          // antes (`bolhas-otimistas.ts`).
           setMessages((prev) =>
             comLinhaDoTempoReal(prev, newMsg, user?.id ?? null)
           );
@@ -1101,16 +1099,13 @@ function InboxPageInner() {
 
   const handleMessagesLoaded = useCallback(
     (loaded: Message[]) => {
-      const conversaId = activeConversation?.id ?? null;
-      // A recarga silenciosa (voltar à aba, reconectar, o botão atualizar) não
-      // apaga a bolha que FALHOU nesta conversa — só as pendentes saem, como
-      // antes (`recargaComFalhadas`). Ela confere a conversa bolha a bolha:
-      // nada de um fio vaza para o outro.
-      setMessages((prev) => recargaComFalhadas(loaded, prev, conversaId));
+      // A recarga troca a lista inteira pela do banco, otimistas inclusive
+      // (`bolhas-otimistas.ts`: a falhada não sobrevive a ela).
+      setMessages(loaded);
       // Carimba de quem é o array. O fio só chama isto quando a busca NÃO foi
       // cancelada, ou seja, quando ela ainda é da conversa aberta — por isso
       // dá para ler o id do estado da página em vez de o fio precisar mandá-lo.
-      setMessagesDaConversa(conversaId);
+      setMessagesDaConversa(activeConversation?.id ?? null);
     },
     [activeConversation?.id]
   );

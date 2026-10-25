@@ -89,9 +89,10 @@ ficha em `.claude/rules/campos-e-nome.md`.
 - ⚠️ **Mensagem do realtime entra no FIM do fio aberto, não pelo carimbo — de
   propósito**: pelo carimbo, toda mensagem atrasada nasceria acima da dobra,
   despercebida. Ao recarregar, ela vai para o lugar do carimbo.
-- ⚠️ **A bolha provisória só sai pela mensagem do PRÓPRIO atendente, e a que
-  falhou FICA** (`bolhas-otimistas.ts`, página e painel da pauta): o tempo
-  real e a recarga tiravam todas, e a falha do envio de gente só vive na tela.
+- ⚠️ **A provisória EM VOO só sai pela linha do PRÓPRIO atendente; a que
+  FALHOU sai com qualquer linha e na recarga** (`bolhas-otimistas.ts`): falha
+  incerta (502, rede) pode ter saído, e mantê-la convida ao reenvio em dobro.
+  Segurá-la pede o motivo da recusa na resposta (#417).
 - ⚠️ **A faixa da nota fixada compara `conversation_id` com a prop do render
   atual**: o `useConversationNotes` esvazia num efeito, e a nota do cliente
   anterior aparecia sob o cabeçalho do novo.

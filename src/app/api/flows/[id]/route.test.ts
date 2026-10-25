@@ -22,6 +22,7 @@ const TIPOS_DO_CHECK = new Set([
 const h = vi.hoisted(() => ({
   papel: 'admin',
   donoVe: true,
+  canalExiste: true,
   ordem: [] as string[],
   rpcs: [] as { nome: string; args: Record<string, unknown> }[],
   patches: [] as Record<string, unknown>[],
@@ -42,12 +43,17 @@ vi.mock('@/lib/auth/account', () => ({
 vi.mock('@/lib/supabase/server', () => ({
   createClient: async () => ({
     auth: { getUser: async () => ({ data: { user: { id: 'u-1' } } }) },
-    // A guarda de posse: o robô visível pela RLS de quem pediu.
-    from: () => {
+    // A guarda de posse (o robô visível pela RLS de quem pediu) e a conexão
+    // do cabeçalho, pela mesma sessão.
+    from: (tabela: string) => {
       const b = {
         select: () => b,
         eq: () => b,
         maybeSingle: async () => {
+          if (tabela === 'cb_channels') {
+            h.ordem.push('canal')
+            return { data: h.canalExiste ? { id: 'canal-1' } : null, error: null }
+          }
           h.ordem.push('posse')
           return { data: h.donoVe ? { id: 'robo-1' } : null, error: null }
         },
@@ -121,6 +127,7 @@ async function salvar(corpo: unknown) {
 beforeEach(() => {
   h.papel = 'admin'
   h.donoVe = true
+  h.canalExiste = true
   h.ordem = []
   h.rpcs = []
   h.patches = []
@@ -179,6 +186,31 @@ describe('PUT /api/flows/[id] — os nós numa transação (1104)', () => {
     expect(h.patches).toEqual([])
     expect(h.flow).toMatchObject({ name: 'Robô', entry_node_id: 'inicio' })
     expect(h.escritasDiretasNosNos).toEqual([])
+  })
+
+  it('conexão do cabeçalho conferida ANTES da troca: a que sumiu é 400 e o robô fica como estava', async () => {
+    // O editor aberto de um robô cuja conexão foi apagada manda o id velho; o
+    // UPDATE do cabeçalho estouraria DEPOIS da troca dos nós.
+    h.canalExiste = false
+    const r = await salvar({
+      channel_id: 'canal-apagado',
+      entry_node_id: 'novo',
+      nodes: [{ node_key: 'novo', node_type: 'start', config: {} }],
+    })
+
+    expect(r.status).toBe(400)
+    expect(h.ordem).toEqual(['papel', 'posse', 'canal'])
+    expect(h.rpcs).toEqual([])
+    expect(h.patches).toEqual([])
+    expect(h.nos).toEqual(NOS_DE_ANTES)
+  })
+
+  it('conexão que existe: confere, troca e grava o cabeçalho', async () => {
+    const r = await salvar({ channel_id: 'canal-1', nodes: [{ node_key: 'fim', node_type: 'end', config: {} }] })
+
+    expect(r.status).toBe(200)
+    expect(h.ordem).toEqual(['papel', 'posse', 'canal', 'rpc:cb_trocar_nos_do_robo', 'cabecalho'])
+    expect(h.patches[0]).toMatchObject({ channel_id: 'canal-1' })
   })
 
   it('salvar só o cabeçalho (sem `nodes`) não chama a troca', async () => {

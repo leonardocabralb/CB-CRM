@@ -30,6 +30,10 @@ export function normalizeStatus(raw: string): MessageTemplateStatus {
 const WEBHOOK_EVENT_STATUS: Readonly<Record<string, MessageTemplateStatus>> = {
   REINSTATED: 'APPROVED',
   DELETED: 'PENDING_DELETION',
+  // NOSSO (o original o ignora): o modelo ARQUIVADO sai do seletor, como já
+  // sai pela sincronização (`normalizeStatus`: desconhecido → PENDING). Ignorado,
+  // ele seguia "Aprovado" e oferecido para envio até alguém sincronizar.
+  ARCHIVED: 'PENDING',
 }
 
 export function templateStatusFromWebhookEvent(

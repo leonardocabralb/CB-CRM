@@ -382,17 +382,22 @@ as demais correções.
   multi-canal nosso). #659: a bolha do modelo desenha cabeçalho de texto,
   rodapé e botões pela linha local do modelo (`modelo-da-mensagem.ts`,
   `use-modelos-da-conta.ts`), na NOSSA `message-bubble.tsx`. #677, só a
-  bolha: a provisória sai só pela mensagem do PRÓPRIO atendente, e a que
-  falhou fica (`bolhas-otimistas.ts`). #674: a troca dos nós do robô numa
-  transação (`cb_trocar_nos_do_robo`, 1104) e o robô que deixou de estar
-  ativo encerrando a run (`encerrarRunDeRoboDesativado`, status da 0955).
+  bolha EM VOO: a provisória ainda enviando sai só pela linha do PRÓPRIO
+  atendente (`bolhas-otimistas.ts`); a que FALHOU sai como antes, com
+  qualquer linha e na recarga — segurá-la pede separar recusa comprovada de
+  envio incerto (a rota devolve 502 nos dois; o rascunho #417 traz o motivo),
+  senão "Envie de novo" fica ao lado do que chegou ao cliente. #674: a troca
+  dos nós do robô numa transação (`cb_trocar_nos_do_robo`, 1104, com a
+  conexão do cabeçalho conferida antes) e o robô que deixou de estar ativo
+  encerrando a run (`encerrarRunDeRoboDesativado`, status da 0955).
   #675: a primeira mensagem reivindicada por `conversations.first_inbound_at`
   (1105) DEPOIS do insert, sem backfill (`primeira-mensagem.ts`); os eventos
-  de modelo que não são troca de status (`template-status-normalize.ts`
-  igual ao deles byte a byte); a reação do escritório única por mensagem,
+  de modelo que não são troca de status (`template-status-normalize.ts` igual
+  ao deles, menos o `ARCHIVED`, que aqui sai do seletor como na
+  sincronização); a reação do escritório única por mensagem,
   com a 1107 (REPLICA IDENTITY FULL em `message_reactions`). #672:
   `claimed_at` (1106) e a espera presa em `running` recolhida como FALHA
-  VISÍVEL (`recolherEsperasPresas`). #673, só a edição: a linha mesclada
+  VISÍVEL (`recolherEsperasPresas`, teto de 1 h). #673, só a edição: a linha mesclada
   validada (`quick-replies/patch.ts`, fiel menos os textos) e o 404. #671: o
   "respondeu" vai só à campanha mais recente do contato, enviada há até 7
   dias (`broadcast-resposta.ts`). #676: reindexar segue pelos demais quando
@@ -408,13 +413,16 @@ as demais correções.
   `cancelled`, que o nosso CHECK não tem); da 051, o código que RE-EXECUTA a
   espera presa (`requeueStalledExecutions`, `claimPendingExecution`: a
   mensagem pode já ter saído, regra 8e) — o `claimed_at` dela já é da 1106,
-  com índice nosso, e o `parked_step_id` não entrou (decidir no merge); da
+  com índice nosso, e o `parked_step_id` não entrou (o nosso passo da fila mora no contexto, `_passo_da_fila`); da
   054, o backfill de `first_inbound_at` (reescreve todas as conversas de uma
   vez, gatilhos por linha inclusive; a coluna já é da 1105) — o resto dela (a
   fila `pending_message_statuses` e o índice único da reação do escritório,
   que APAGA as duplicadas antes) não entrou e se decide no merge; o
   `optimistic-messages.ts` e o fio paginado do #677
-  (`onOlderMessagesLoaded`: quebra o salto da busca); do
+  (`onOlderMessagesLoaded`: quebra o salto da busca; e o módulo SEGURA a
+  falhada sempre — o risco de reenvio em dobro que a nossa régua evita. O
+  par exato por `message_id` dele, `confirmedSendUpdate`, vale trazer junto
+  com o motivo da falha do #417); do
   `broadcast-recipient-webhook.ts`, a parte da resposta
   (`flagBroadcastReply`, que é a nossa `broadcast-resposta.ts`) — a guarda de
   status do destinatário (`applyBroadcastRecipientStatus`, com a 049) não
@@ -677,12 +685,13 @@ upstream sobrescrevê-los:
 | `src/types/index.ts` (Lixeira de contatos, 22/10/2026, 1097) | `Conversation.restaurada_em` e os tipos `contact_trashed`/`contact_restored`/`contact_purged` no tipo do evento da trilha (o `never` do ícone e o `satisfies` do pino reprovam o typecheck se um merge os tirar) |
 | `src/app/api/whatsapp/media/[mediaId]/route.ts` (porte do #678, 25/10/2026) | o resto do arquivo já era nosso (`?channel=`, a ordem do token, `whatsapp_config` por `maybeSingle`); do original veio a resposta por `mediaProxyHeaders` (`src/lib/media/proxy-response-headers.ts`, trazido e ALTERADO — ver a §3.5), com o `nome=` do link como 3º argumento. Os testes NOSSOS da rota moram em `route.cabecalhos.test.ts`: o `route.test.ts` do original simula o `whatsapp_config` por `.single()` e sem o `?channel=`, e contra a nossa rota daria 400 — no merge ele chega como arquivo novo e deve ser APAGADO |
 | `src/lib/media/filename.ts` (`sanitizeFilename`, 25/10/2026) | o corte em 80 unidades passa por `cortarSemPartir`: o emoji na borda sai inteiro, nunca pela METADE — com o meio emoji, `encodeURIComponent` lança, e o link do anexo (`urlParaAbrirAnexo`, no render da bolha) derrubava a conversa (Codex, #436). Mais `semSurrogatoSolto`, exportada, usada antes de codificar em `abrir-anexo.ts` e `proxy-response-headers.ts`. O corte cru do original volta a partir o par. Pinos `filename.test.ts` e `abrir-anexo.test.ts` |
-| `src/lib/automations/engine.ts` e `src/app/api/automations/cron/route.ts` (espera presa, 1106, 25/10/2026) | a reivindicação carimba `claimed_at` e CONFERE o erro (sem a coluna, toda retomada falharia em silêncio); `recolherEsperasPresas`, em `after()` no cron, recolhe a `running` mais velha que o teto como FALHA VISÍVEL no "Já rodou"; `markPending` só devolve a espera à fila com `.eq('status', 'running')`. O original (#672) RE-EXECUTA a presa (`requeueStalledExecutions`, `claimPendingExecution`) — repete a mensagem que pode já ter saído. Pino `esperas-presas.test.ts` |
-| `src/app/api/flows/[id]/route.ts` (1104, 25/10/2026) | salvar troca os nós pela RPC `cb_trocar_nos_do_robo` (uma transação: o INSERT recusado não deixa mais o robô sem nó). O original (#674) chama a `replace_flow_nodes` da 052, que não existe aqui. Pino `flows/[id]/route.test.ts` |
+| `src/lib/automations/engine.ts` e `src/app/api/automations/cron/route.ts` (espera presa, 1106, 25/10/2026) | a reivindicação carimba `claimed_at` e CONFERE o erro (sem a coluna, toda retomada falharia em silêncio); `recolherEsperasPresas`, em `after()` no cron, recolhe a `running` mais velha que o teto (1 h, acima da pior conta real: os envios da Meta não têm teto próprio) como FALHA VISÍVEL no "Já rodou"; `markPending` só FECHA (done/failed/cancelled) a espera que ainda está `running` (`.eq('status', 'running')`). O original (#672) RE-EXECUTA a presa (`requeueStalledExecutions`, `claimPendingExecution`) — repete a mensagem que pode já ter saído. Pino `esperas-presas.test.ts` |
+| `src/app/api/flows/[id]/route.ts` (1104, 25/10/2026) | salvar troca os nós pela RPC `cb_trocar_nos_do_robo` (uma transação: o INSERT recusado não deixa mais o robô sem nó), depois de conferir pela sessão a conexão do cabeçalho (`channel_id` de conexão apagada ou de outra conta = 400 ANTES da troca; o UPDATE do cabeçalho estourava depois dela). O original (#674) chama a `replace_flow_nodes` da 052, que não existe aqui. Pino `flows/[id]/route.test.ts` |
 | `src/lib/flows/engine.ts` e `src/app/api/flows/cron/route.ts` (robô desativado, 25/10/2026) | a run cujo robô deixou de estar ATIVO é encerrada por `encerrarRunDeRoboDesativado` (`parar-run.ts`, NOSSO): `stopped_by_agent` com `robo_desativado`, quando o cliente responde e, no cron, antes do timeout; status do robô ausente no embutido = "não sei", segue a régua do tempo. O original (#674) encerra com `cancelled`, que o CHECK da 0955 recusa. Pino `robo-desativado.test.ts` |
 | `src/app/api/whatsapp/webhook/route.ts` (9ª linha nossa, 25/10/2026) e `src/lib/whatsapp/inbound-store.ts` | o gatilho de primeira mensagem sai de `reivindicarPrimeiraMensagem` (`src/lib/conversations/primeira-mensagem.ts`, 1105): reivindica `first_inbound_at` DEPOIS do insert e só quando a contagem deu zero, e erro na reivindicação = não é a primeira. E o "respondeu" ao disparo é `marcarRespostaAoDisparo` (`broadcast-resposta.ts`, NOSSO). O original (#675/#671) depende do backfill da 054 e chama `flagBroadcastReplyIfAny` → `broadcast-recipient-webhook.ts`. Pinos `primeira-mensagem.chamadores.test.ts` e `broadcast-resposta.test.ts` |
-| `src/app/(dashboard)/inbox/page.tsx` (bolhas provisórias, 25/10/2026) | o INSERT do tempo real, a recarga silenciosa e a publicação passam por `comLinhaDoTempoReal`/`recargaComFalhadas`/`comBolhaPublicada` (`src/lib/inbox/bolhas-otimistas.ts`, NOSSO; o painel da pauta usa os mesmos): só a mensagem do PRÓPRIO atendente troca uma provisória, e a que falhou fica. O original (#677) traz `optimistic-messages.ts` junto do fio paginado (`onOlderMessagesLoaded`), que quebra o salto da busca. Pino `bolhas-otimistas.test.ts` |
-| `src/app/api/ai/knowledge/reindex/route.ts` (25/10/2026) | a falha do PROVEDOR (`AiError`) encerra a rodada, e a resposta leva `motivo` (a mensagem segura de `mensagemSeguraDeAiError`). O original (#676) segue por todos e separa `keyword_only`: aqui `ingestDocument` apaga os trechos antes de gerar os vetores, e seguir tiraria os vetores da base inteira. Pino `reindex/route.test.ts` |
+| `src/app/(dashboard)/inbox/page.tsx` (bolhas provisórias, 25/10/2026) | o INSERT do tempo real e a publicação passam por `comLinhaDoTempoReal`/`comBolhaPublicada` (`src/lib/inbox/bolhas-otimistas.ts`, NOSSO; o painel da pauta usa os mesmos): a provisória EM VOO só sai pela linha do PRÓPRIO atendente; a que FALHOU sai com qualquer linha e na recarga (`setMessages(loaded)`), como antes — segurá-la sem saber se a falha foi incerta convidaria a reenviar em dobro. O original (#677) traz `optimistic-messages.ts`, que segura a falhada sempre, junto do fio paginado (`onOlderMessagesLoaded`), que quebra o salto da busca. Pino `bolhas-otimistas.test.ts` |
+| `src/app/api/ai/knowledge/reindex/route.ts` (25/10/2026) | a falha do PROVEDOR (`AiError`) encerra a rodada, e só ela leva `motivo` (a mensagem segura de `mensagemSeguraDeAiError`); a tela conta os que nem foram tentados (`pendentes` na frase). O original (#676) segue por todos e separa `keyword_only`: aqui `ingestDocument` apaga os trechos antes de gerar os vetores, e seguir tiraria os vetores da base inteira. Pino `reindex/route.test.ts` |
+| `src/lib/whatsapp/template-status-normalize.ts` (`ARCHIVED`, 25/10/2026) | o resto é igual ao do #675; NOSSO é `ARCHIVED → PENDING` em `WEBHOOK_EVENT_STATUS`: o modelo arquivado sai do seletor, como a sincronização já faz (`normalizeStatus`), em vez de seguir "Aprovado". O original o ignora. Pinos `template-status-normalize.test.ts` e `template-webhook.test.ts` |
 | `src/app/api/whatsapp/react/route.ts` (reação do escritório, 25/10/2026) | reagir apaga a reação dos COLEGAS na mensagem e tirar apaga a do escritório inteira (o cliente vê uma só, a do número), sem o índice único da 054. Pino `react/route.test.ts` |
 
 ## 5. Migrations do original: a história das renumerações

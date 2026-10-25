@@ -3,33 +3,38 @@
 //
 // O fio desenha a mensagem antes de o servidor responder (`temp-<ms>`,
 // `sending`); ela vira `sent` em `marcarEnviada` ou `failed` na recusa, e a
-// linha gravada chega depois pelo tempo real, com outro id. ⚠️ O envio de
-// GENTE não grava linha quando nada saiu (`whatsapp-envio.md`): a bolha
-// falhada é a ÚNICA marca de que a mensagem não chegou ao cliente.
+// linha gravada chega depois pelo tempo real, com outro id.
 //
 // Antes (o mesmo no original até o #677): QUALQUER INSERT da conversa aberta
-// tirava TODAS as otimistas — a mensagem do cliente, do colega ou do robô
-// apagava a falha da tela —, e a recarga silenciosa (`visibilitychange`,
-// reconexão, o botão atualizar) trocava a lista inteira pela do banco.
+// tirava TODAS as otimistas. A mensagem do cliente, do colega ou do robô que
+// chegasse com o envio ainda em voo levava a bolha dele; se o envio falhasse
+// depois, `onUpdateMessage(temp, failed)` não achava mais nada e a falha
+// sumia da tela (só o aviso passageiro ficava).
 //
 // A régua daqui (adaptada do #677, que casa só pelo texto):
-// · INSERT do tempo real: só a linha do ATENDENTE DESTA TELA (`agent` com
-//   `sender_id` = o login) tira otimista, e UMA, das que não falharam: a de
-//   mesmo tipo e mesmo texto; senão a MAIS ANTIGA do mesmo tipo. O texto
-//   diverge de verdade: a otimista nasce assinada pela TELA
-//   (`aplicarAssinatura`) e o servidor assina de novo — até `marcarEnviada`,
-//   a bolha tem o texto da tela. A que falhou NUNCA sai por INSERT.
-// · Recarga: a lista do banco MAIS as falhadas desta conversa. As pendentes
-//   saem, como antes: a linha delas pode já estar no banco, e mantê-las
-//   desenharia a mensagem duas vezes.
+// · A otimista EM VOO (`sending`/`sent`) só sai pela linha do ATENDENTE
+//   DESTA TELA (`agent` com `sender_id` = o login), e UMA: a de mesmo tipo e
+//   mesmo texto; senão a MAIS ANTIGA do mesmo tipo. O texto diverge de
+//   verdade: a otimista nasce assinada pela TELA (`aplicarAssinatura`) e o
+//   servidor assina de novo — até `marcarEnviada`, a bolha tem o texto da
+//   tela.
+// · ⚠️ A que FALHOU sai como antes: com QUALQUER linha nova da conversa e na
+//   recarga. A tela não sabe se a falha foi recusa comprovada (nada saiu) ou
+//   incerta — a rota devolve 502 nos dois casos, e a queda de rede do
+//   navegador pode vir com o envio feito e a linha gravada. Manter a bolha
+//   "Não entregue… Envie de novo" ao lado do que chegou ao cliente convidaria
+//   a mandar em dobro (CLAUDE.md, 8e). Segurá-la só na recusa comprovada
+//   depende de a resposta trazer o motivo (o rascunho #417).
 // · Republicar a mesma otimista como falhada (o 409 "o cliente trocou de
 //   número") VIRA a bolha em falhada. Antes o id repetido era descartado e
 //   ela ficava em `sending` até o próximo INSERT a varrer; agora que só o
-//   INSERT do próprio atendente varre, ela ficaria "enviando" e seria
-//   confundida com o reenvio.
+//   INSERT do próprio atendente varre a pendente, ela ficaria "enviando".
 //
 // ⚠️ "A mais antiga" é a primeira da LISTA: as otimistas entram no fim, na
-// ordem em que nasceram, e nenhuma régua daqui as reordena.
+// ordem em que nasceram, e nenhuma régua daqui as reordena. E a linha do
+// MESMO atendente vinda de outra aba ou aparelho, com texto diferente, leva a
+// mais antiga daqui (limite conhecido: o par exato pediria o `message_id` da
+// resposta na otimista).
 //
 // Puro. Sem mudança, a lista volta sem cópia (o React não re-renderiza).
 // ============================================================
@@ -56,7 +61,8 @@ function deTroca(m: Message, linha: Message): boolean {
 /**
  * O INSERT do tempo real na conversa aberta. `quemEstaNaTela` é o id do LOGIN
  * (`useAuth().user.id`) — o mesmo que a rota de envio grava em
- * `messages.sender_id`. Nulo (sessão ainda não chegou): nada é trocado.
+ * `messages.sender_id`. Nulo (sessão ainda não chegou): nenhuma pendente é
+ * trocada.
  */
 export function comLinhaDoTempoReal(
   lista: Message[],
@@ -64,39 +70,29 @@ export function comLinhaDoTempoReal(
   quemEstaNaTela: string | null
 ): Message[] {
   if (lista.some((m) => m.id === linha.id)) return lista;
+  // A falhada da conversa sai com qualquer linha nova (ver o topo).
+  const semFalhadas = lista.filter(
+    (m) =>
+      !(
+        ehOtimista(m) &&
+        m.status === 'failed' &&
+        m.conversation_id === linha.conversation_id
+      )
+  );
   const doAtendenteDaTela =
     quemEstaNaTela !== null &&
     linha.sender_type === 'agent' &&
     linha.sender_id === quemEstaNaTela;
-  if (!doAtendenteDaTela) return [...lista, linha];
+  if (!doAtendenteDaTela) return [...semFalhadas, linha];
 
   const texto = linha.content_text ?? '';
-  let alvo = lista.findIndex(
+  let alvo = semFalhadas.findIndex(
     (m) => deTroca(m, linha) && (m.content_text ?? '') === texto
   );
-  if (alvo < 0) alvo = lista.findIndex((m) => deTroca(m, linha));
-  const sem = alvo < 0 ? lista : lista.filter((_, i) => i !== alvo);
+  if (alvo < 0) alvo = semFalhadas.findIndex((m) => deTroca(m, linha));
+  const sem =
+    alvo < 0 ? semFalhadas : semFalhadas.filter((_, i) => i !== alvo);
   return [...sem, linha];
-}
-
-/**
- * A recarga do fio (`onMessagesLoaded`): o que veio do banco, mais as
- * otimistas que FALHARAM nesta conversa. A conversa é a da TELA, conferida
- * bolha a bolha — nada de uma conversa vaza para a outra.
- */
-export function recargaComFalhadas(
-  carregadas: Message[],
-  naTela: readonly Message[],
-  conversationId: string | null
-): Message[] {
-  if (!conversationId) return carregadas;
-  const falhadas = naTela.filter(
-    (m) =>
-      ehOtimista(m) &&
-      m.status === 'failed' &&
-      m.conversation_id === conversationId
-  );
-  return falhadas.length === 0 ? carregadas : [...carregadas, ...falhadas];
 }
 
 /**

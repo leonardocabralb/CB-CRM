@@ -222,9 +222,9 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
   e a tela promete a fila de quem está sem dono (Codex, PR #319).
 - ⚠️ **Nó NOVO no robô exige MIGRATION**: `flow_nodes.node_type` tem CHECK
   com a lista fechada (1053). O `PUT /api/flows/[id]` troca os nós por
-  `cb_trocar_nos_do_robo` (1104: numa transação, ANTES do cabeçalho) — o tipo
-  recusado devolve 500 e o robô fica como estava, mas não salva até a
-  migration. Opção nova num nó que já existe (`config` é JSONB) não precisa.
+  `cb_trocar_nos_do_robo` (1104: numa transação, ANTES do cabeçalho, com a
+  conexão do cabeçalho conferida antes dela) — o tipo recusado devolve 500 e
+  o robô fica como estava, mas não salva até a migration. Opção nova num nó que já existe (`config` é JSONB) não precisa.
 - ⚠️ **Robô que deixa de estar ATIVO encerra a run de quem estava nele**
   (`stopped_by_agent` + `robo_desativado`, `encerrarRunDeRoboDesativado`): na
   resposta do cliente (`dispatchInboundToFlows`, que segue como se não
@@ -274,10 +274,13 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
   criou. Pino `src/components/settings/catalogo-da-conta.test.ts`.
 - Broadcast e rotas de modelo resolvem a conexão por `resolveMetaChannel`,
   nunca pelo espelho `whatsapp_config`.
+- Evento de modelo que não é troca de situação (FLAGGED, LOCKED…) não grava;
+  `ARCHIVED` vira PENDING (NOSSO: sai do seletor, como na sincronização).
 - ⚠️ **A bolha do modelo desenha cabeçalho de TEXTO, rodapé e botões** pela
   linha local (`modeloDaMensagem`, lida por `useModelosDaConta`): a do canal
-  da mensagem, senão a sem canal, NUNCA a de outro número; vários idiomas sem
-  corpo que case = nenhum. Cabeçalho de mídia ou com `{{1}}` fica de fora (o
+  da mensagem, senão a sem canal, nunca a de outro número — menos a mensagem
+  SEM canal (histórico; conexão apagada), que enxerga todos, como
+  `resolveTemplateRow` sem canal; vários idiomas sem corpo que case = nenhum. Cabeçalho de mídia ou com `{{1}}` fica de fora (o
   que saiu não é gravado): a bolha só afirma o que o cliente viu.
 
 ### Graph API e configuração da conexão

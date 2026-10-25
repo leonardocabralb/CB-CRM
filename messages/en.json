@@ -5418,7 +5418,7 @@
       "removeSuccess": "Document removed.",
       "removeFailed": "Failed to remove.",
       "reindexSuccess": "Reindexed {count} document(s).",
-      "reindexWithFailures": "Reindexed {reindexed} of {total} document(s). {failedCount} failed: {titles}. Use Reindex to retry.",
+      "reindexWithFailures": "Reindexed {reindexed} of {total} document(s). {failedCount} failed: {titles}.{pendentes, plural, =0 {} one { # was not tried and kept its previous index.} other { # were not tried and kept their previous index.}} Use Reindex to retry.",
       "reindexFailed": "Reindex failed.",
       "title": "Knowledge base",
       "description": "Add FAQs, policies, or product details. The assistant retrieves the relevant pieces when drafting and auto-replying, so it can answer instead of handing off.{searchType}",

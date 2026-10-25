@@ -20,9 +20,9 @@ import { AiError, mensagemSeguraDeAiError } from '@/lib/ai/types'
  *
  * Porte do upstream #676: um documento que falha não para os outros. A
  * resposta diz o total, quantos reindexaram e QUAIS falharam (`failed`, os
- * ids; a tela troca pelo título), com o motivo do primeiro (`motivo`, a
- * mensagem segura). Antes, a primeira falha encerrava a rodada e o resto da
- * base ficava como estava, sem a tela saber quais.
+ * ids; a tela troca pelo título) e, na falha do provedor, o motivo
+ * (`motivo`, a mensagem segura). Antes, a primeira falha encerrava a rodada e
+ * o resto da base ficava como estava, sem a tela saber quais.
  *
  * ⚠️ NOSSO (diverge do original): a falha DO PROVEDOR de vetores (`AiError`)
  * continua encerrando a rodada. `ingestDocument` apaga os trechos antigos
@@ -80,11 +80,11 @@ export async function POST() {
         // Ver a nota irmã em `knowledge/route.ts`: `invalid_key` ecoa a chave
         // — nem o log nem a tela recebem a mensagem crua de um `AiError`.
         // Erro que não é do provedor (banco) não carrega chave: vai inteiro
-        // para o log, e a tela recebe só o genérico.
+        // para o log, e a tela não recebe motivo (a frase já diz quais).
         const seguro = err instanceof AiError ? mensagemSeguraDeAiError(err) : null
         console.error(`[ai/knowledge/reindex] doc ${doc.id} failed:`, seguro ?? err)
         failed.push(doc.id)
-        motivo ??= seguro ?? 'indexing failed'
+        if (seguro) motivo ??= seguro
         // A falha do PROVEDOR encerra a rodada (ver o cabeçalho): os
         // documentos seguintes guardam os vetores que têm.
         if (err instanceof AiError) break

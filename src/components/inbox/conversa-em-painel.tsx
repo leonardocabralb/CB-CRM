@@ -44,7 +44,6 @@ import { avisarExecucoesMudaram } from "@/lib/execucoes/aviso";
 import {
   comBolhaPublicada,
   comLinhaDoTempoReal,
-  recargaComFalhadas,
 } from "@/lib/inbox/bolhas-otimistas";
 import {
   CONVERSATION_SELECT,
@@ -275,8 +274,8 @@ function ConversaCarregada({
         // A devolvida pela restauração não entra pelo fim nem recarrega as
         // execuções: o fio é relido uma vez quando a conversa volta (abaixo).
         if (reinseridaPelaRestauracao(msg.gravada_em, restauradaEmRef.current, msg.created_at)) return;
-        // A linha do PRÓPRIO atendente troca UMA bolha otimista dele; a que
-        // FALHOU nunca sai por aqui (a régua da página do inbox).
+        // A linha do PRÓPRIO atendente troca UMA bolha otimista dele ainda em
+        // voo; a que falhou sai com qualquer linha (a régua da página do inbox).
         setMessages((prev) => comLinhaDoTempoReal(prev, msg, user?.id ?? null));
         // O cliente respondeu: a espera "parar se o cliente responder" pode
         // ter sido cancelada no servidor logo depois (ver a página do inbox).
@@ -388,11 +387,9 @@ function ConversaCarregada({
         conversation={conversation}
         contact={conversation.contact ?? null}
         messages={messages}
-        // A recarga mantém as bolhas que FALHARAM; a otimista republicada como
-        // falhada (409) vira falhada no lugar — a régua da página do inbox.
-        onMessagesLoaded={(loaded) =>
-          setMessages((prev) => recargaComFalhadas(loaded, prev, conversaId))
-        }
+        onMessagesLoaded={setMessages}
+        // A otimista republicada como falhada (409) vira falhada no lugar — a
+        // régua da página do inbox.
         onNewMessage={(msg) =>
           setMessages((prev) => comBolhaPublicada(prev, msg))
         }

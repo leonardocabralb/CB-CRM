@@ -8,12 +8,14 @@
 // `delivered` e `read`, sem janela nenhuma:
 //  - a resposta meses depois contava para uma campanha velha;
 //  - com o destinatário da campanha mais nova já `replied` (a 2ª mensagem do
-//    cliente) ou `failed` (não chegou), a busca pulava para a ANTERIOR, e uma
-//    campanha que o cliente nem viu agora levava o crédito.
+//    cliente) ou `failed` (não chegou), a busca pulava para a ANTERIOR, de
+//    qualquer idade, e ela levava o crédito de uma resposta que não era a ela.
 //
 // A régua agora: lê SÓ a linha mais recente do contato na conta, em qualquer
 // situação, e marca só se ela está em `sent`/`delivered`/`read` e foi enviada
-// há no máximo 7 dias. O UPDATE é condicional (`.in('status', …)`): dois
+// há no máximo 7 dias. Consequência aceita (a mesma do original): com a mais
+// recente ainda `pending` (campanha saindo em lotes) ou `failed`, a resposta
+// não conta para NENHUMA — nem para a anterior que chegou dentro dos 7 dias. O UPDATE é condicional (`.in('status', …)`): dois
 // webhooks do mesmo cliente ao mesmo tempo não marcam duas vezes, e um
 // `replied` nunca volta a ser escrito.
 //

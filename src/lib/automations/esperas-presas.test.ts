@@ -182,10 +182,11 @@ const log = (id: string) => h.tabelas.automation_logs.find((l) => l.id === id) a
 beforeEach(() => {
   h.tabelas = {
     automation_pending_executions: [
-      // Reivindicada há 20 min e nunca terminou: o processo morreu.
-      espera({ id: 'velha', log_id: 'log-velha', status: 'running', claimed_at: antes(20 * MIN) }),
-      // Reivindicada há 5 min: ainda pode estar rodando — não se toca.
-      espera({ id: 'viva', log_id: 'log-viva', status: 'running', claimed_at: antes(5 * MIN) }),
+      // Reivindicada há 1 h 30 e nunca terminou: o processo morreu.
+      espera({ id: 'velha', log_id: 'log-velha', status: 'running', claimed_at: antes(90 * MIN) }),
+      // Reivindicada há 30 min: envios lentos da Meta (sem teto próprio) ainda
+      // podem estar rodando — não se toca.
+      espera({ id: 'viva', log_id: 'log-viva', status: 'running', claimed_at: antes(30 * MIN) }),
       // Do código anterior à 1106 (sem carimbo): vencida há 3 dias…
       espera({ id: 'legado-velho', log_id: 'log-legado', status: 'running', run_at: antes(3 * 24 * 60 * MIN) }),
       // …e vencida há 2 h (fila atrasada: pode estar viva).
@@ -246,7 +247,8 @@ describe('recolherEsperasPresas — a cerca', () => {
       ['is', 'claimed_at', null],
       ['lt', 'run_at', antes(TETO_DA_ESPERA_SEM_CARIMBO_MS)],
     ]);
-    expect(TETO_DA_RETOMADA_MS).toBe(15 * MIN);
+    // Acima da pior conta real (envios da Meta sem teto próprio): ver o motor.
+    expect(TETO_DA_RETOMADA_MS).toBe(60 * MIN);
     expect(TETO_DA_ESPERA_SEM_CARIMBO_MS).toBe(24 * 60 * MIN);
   });
 
@@ -303,7 +305,7 @@ describe('recolherEsperasPresas — a falha VISÍVEL, pelo caminho da espera que
   });
 
   it('duas continuações presas da MESMA execução (dois ramos): uma linha só no registro', async () => {
-    fila().push(espera({ id: 'velha-irma', log_id: 'log-velha', status: 'running', claimed_at: antes(40 * MIN), branch: 'yes', parent_step_id: 'cond' }));
+    fila().push(espera({ id: 'velha-irma', log_id: 'log-velha', status: 'running', claimed_at: antes(2 * 60 * MIN), branch: 'yes', parent_step_id: 'cond' }));
 
     expect(await recolherEsperasPresas(AGORA)).toBe(3);
     const linhas = (log('log-velha').steps_executed as Linha[]).filter((p) => p.detail === MOTIVO_RETOMADA_INTERROMPIDA);
