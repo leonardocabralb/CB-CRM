@@ -878,7 +878,6 @@ export function ConversationList({
     if (contarFiltrosAtivos(filtrosRef.current) !== 0) return;
     // A base da visão é o padrão: mexer depois oferece "salvar alterações".
     // (Mesma justificativa do `setFiltros` logo abaixo: é semente única.)
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setVisaoBaseId(padrao.id);
     // A aba corrente fica: "recorte intacto" não diz nada sobre a aba (ela não
     // conta), e o operador pode ter ido a Encerradas enquanto a consulta voltava.
