@@ -1523,6 +1523,26 @@ nome da época em que foram aplicadas.
   anotações com 7 arquivos, apagadas pela tela → 7 caminhos na fila com
   origem `anotacao` → a drenagem do laço lento das 22:26 UTC apagou os 7
   objetos e esvaziou a fila.
+- **1103_cb_conta_dono_e_convite** — segurança do porte do lote 13–16/10 do
+  original (PR #436): o gatilho `enforce_account_identity_columns` (o do
+  #670, INVOKER: só o `authenticated` é barrado de trocar `owner_user_id`,
+  `id` e `created_at` de `accounts`; a troca de dono segue pela
+  `transfer_account_ownership`, SECURITY DEFINER); `redeem_invitation`
+  recriada com `FOR UPDATE OF p, a` e a guarda "conta com outros membros"
+  (23505); a policy `profiles_insert` derrubada e o INSERT em `profiles`
+  revogado de `anon`/`authenticated` (o perfil nasce pelo `handle_new_user`).
+  Fecha permissão, mas o app no ar não usa nenhuma das três (conferido no
+  código: nenhum INSERT de perfil pelo navegador; renomear a conta só grava
+  `name`). Provada num Postgres 16 descartável (cenários da 1103 e, à parte, a
+  troca de dono por função DEFINER passando pelo gatilho). Aplicada em
+  25/10/2026 pela Management API (histórico `20261025154431`), depois do CI
+  verde no commit `73fbd7a0` (o arquivo não mudou depois) e da revisão do
+  Codex sem achado nela, antes do merge do PR #436, com a autorização do
+  operador para aplicar as migrations do porte. Conferida: gatilho ativo,
+  INVOKER e fechado ao `authenticated`; o convite DEFINER com a guarda e a
+  trava; nenhuma policy nem privilégio de INSERT em `profiles` para `anon` e
+  `authenticated` (SELECT e UPDATE intactos); no preview, renomear a conta
+  pela rota respondeu 200.
 
 ## Notas do histórico
 

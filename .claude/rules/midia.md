@@ -135,6 +135,10 @@ teto. A bolha, a fila de anexos do compositor e o player de áudio estão em
   BAIXAR, nunca aberto a partir do Storage**: `urlParaAbrirAnexo`
   (`abrir-anexo.ts`) põe `?download=` na bolha e na aba Arquivos. Link novo
   para anexo passa por ele.
+- ⚠️ **Nome de arquivo para URL ou cabeçalho passa por `semSurrogatoSolto`**
+  (`filename.ts`) antes de `encodeURIComponent`, que LANÇA com meio emoji; e o
+  corte de `sanitizeFilename` não parte o par (`cortarSemPartir`). No render
+  da bolha, o erro derrubava a conversa (Codex, #436).
 - ⚠️⚠️ **O proxy da Meta (`/api/whatsapp/media/<id>`) responde por
   `mediaProxyHeaders`** (`src/lib/media/proxy-response-headers.ts`, upstream
   #678): é a reserva do anexo que o espelho no `chat-media` não guardou (tipo

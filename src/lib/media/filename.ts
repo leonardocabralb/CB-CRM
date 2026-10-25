@@ -93,10 +93,35 @@ export function sanitizeFilename(raw: string): string {
   // Truncate the stem, never the extension — a shortened `.pdf` opens, a
   // truncated one doesn't.
   const dot = cleaned.lastIndexOf(".");
-  if (dot <= 0) return cleaned.slice(0, MAX_FILENAME_LENGTH);
+  if (dot <= 0) return cortarSemPartir(cleaned, MAX_FILENAME_LENGTH);
   const ext = cleaned.slice(dot);
   const stem = cleaned.slice(0, dot);
-  return stem.slice(0, Math.max(1, MAX_FILENAME_LENGTH - ext.length)) + ext;
+  const corte = cortarSemPartir(stem, Math.max(1, MAX_FILENAME_LENGTH - ext.length));
+  return (corte || Array.from(stem)[0]) + ext;
+}
+
+/**
+ * NOSSO: o corte é por unidade de código, e um emoji (par de surrogates) na
+ * borda ficava PELA METADE — com ele, `encodeURIComponent` LANÇA (`URIError`),
+ * e o link do anexo derrubava a bolha (Codex, #436). O meio emoji sai inteiro.
+ */
+function cortarSemPartir(texto: string, limite: number): string {
+  const corte = texto.slice(0, limite);
+  return /[\uD800-\uDBFF]$/.test(corte) ? corte.slice(0, -1) : corte;
+}
+
+/**
+ * Troca o surrogate SOLTO (meio emoji) por U+FFFD antes de codificar para URL
+ * ou cabeçalho: `encodeURIComponent` lança com ele. O nome que passa por
+ * `sanitizeFilename` já vem inteiro; isto cobre quem codifica o que recebeu.
+ */
+export function semSurrogatoSolto(texto: string): string {
+  let saida = "";
+  for (const ch of texto) {
+    const c = ch.charCodeAt(0);
+    saida += ch.length === 1 && c >= 0xd800 && c <= 0xdfff ? "�" : ch;
+  }
+  return saida;
 }
 
 /** A trailing `.ext` of 1–8 alphanumerics — good enough to call it a file. */

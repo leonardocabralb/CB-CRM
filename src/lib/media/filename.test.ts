@@ -5,6 +5,7 @@ import {
   mediaFilename,
   nomeDeclarado,
   sanitizeFilename,
+  semSurrogatoSolto,
 } from "./filename";
 
 const AT = "2026-08-04T14:15:30.000Z";
@@ -63,6 +64,30 @@ describe("sanitizeFilename", () => {
     const out = sanitizeFilename(long);
     expect(out.length).toBe(80);
     expect(out.endsWith(".pdf")).toBe(true);
+  });
+
+  // NOSSO (Codex, #436): o corte por unidade de código partia o emoji da
+  // borda, e `encodeURIComponent` lança com o meio emoji.
+  it("o corte nunca parte um emoji ao meio", () => {
+    const comExtensao = sanitizeFilename(`${"a".repeat(75)}😀.pdf`);
+    expect(comExtensao).toBe(`${"a".repeat(75)}.pdf`);
+    expect(() => encodeURIComponent(comExtensao)).not.toThrow();
+
+    const semExtensao = sanitizeFilename(`${"b".repeat(79)}😀😀`);
+    expect(semExtensao).toBe("b".repeat(79));
+    expect(() => encodeURIComponent(semExtensao)).not.toThrow();
+
+    // O emoji que cabe inteiro fica.
+    expect(sanitizeFilename(`${"c".repeat(74)}😀.pdf`)).toBe(`${"c".repeat(74)}😀.pdf`);
+  });
+});
+
+describe("semSurrogatoSolto", () => {
+  it("troca o meio emoji por U+FFFD e deixa o resto como está", () => {
+    expect(semSurrogatoSolto("a\uD83D.pdf")).toBe("a\uFFFD.pdf");
+    expect(semSurrogatoSolto("\uDE00b")).toBe("\uFFFDb");
+    expect(semSurrogatoSolto("Petição 😀.pdf")).toBe("Petição 😀.pdf");
+    expect(() => encodeURIComponent(semSurrogatoSolto("x\uD83D"))).not.toThrow();
   });
 });
 

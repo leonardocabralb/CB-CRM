@@ -115,6 +115,11 @@ describe("mediaProxyHeaders", () => {
     expect(d).not.toContain("..");
   });
 
+  it("nome longo com emoji na borda do corte não lança (Codex, #436)", () => {
+    const d = mediaProxyHeaders("987", "application/pdf", `${"a".repeat(75)}😀.pdf`)["Content-Disposition"];
+    expect(d).toBe(`attachment; filename="${"a".repeat(75)}.pdf"; filename*=UTF-8''${"a".repeat(75)}.pdf`);
+  });
+
   it("nome vazio ou só lixo cai no nome do id", () => {
     expect(mediaProxyHeaders("987", "application/pdf", "  ")["Content-Disposition"]).toBe(
       'attachment; filename="987.pdf"',
