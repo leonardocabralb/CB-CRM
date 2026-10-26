@@ -36,6 +36,13 @@ describe('lerTextoDoMotor', () => {
     expect(lerTextoDoMotor('negócio movido para "Comercial › Contrato"')).toEqual([
       { chave: 'cardMovido', valores: { etapa: '"Comercial › Contrato"' } },
     ])
+    // 1112: o motivo do passo vem depois de " — ", e não vai para o nome da etapa.
+    expect(lerTextoDoMotor('negócio movido para "Comercial › Perdido" — motivo: Desistiu / não quis seguir')).toEqual([
+      { chave: 'cardMovidoComMotivo', valores: { etapa: '"Comercial › Perdido"', motivo: 'Desistiu / não quis seguir' } },
+    ])
+    expect(lerTextoDoMotor('negócio movido para "Comercial › Perdido" — motivo não gravado (a etapa não pede motivo)')).toEqual([
+      { chave: 'cardMovidoSemMotivo', valores: { etapa: '"Comercial › Perdido"', causa: 'a etapa não pede motivo' } },
+    ])
     expect(lerTextoDoMotor('tarefa criada ("Enviar contrato")')).toEqual([
       { chave: 'tarefaCriada', valores: { tarefa: '"Enviar contrato"' } },
     ])
@@ -140,6 +147,8 @@ describe('as frases nos dois dicionários (chave montada)', () => {
       'name not updated: the value is not a name',
       'deal already existed',
       'negócio movido para a',
+      'negócio movido para a — motivo: b',
+      'negócio movido para a — motivo não gravado (c)',
       'branch=yes',
       'branch=no',
       'webhook 200',

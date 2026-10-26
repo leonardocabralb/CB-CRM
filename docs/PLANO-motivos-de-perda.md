@@ -12,7 +12,7 @@ personalizado (a IA já preenche campo).
 | 0 | Listas de motivos aprovadas; campos criados nos blocos | ✅ 26/10: 4 campos gravados em produção (Bancário e Trabalhista); Previdenciário só renomeado |
 | 1 | Migration: campo do motivo por etapa; seletor no Gerenciar funil | ✅ 26/10: código na branch (sem PR); 1112 APLICADA em produção (`20261026161549`) |
 | 2 | Janela "Por que…?" nos caminhos de gente; botão Perdido escolhe etapa | ✅ 26/10: código na branch, e2e no preview OK e limpo; configuração do Bancário gravada |
-| 3 | Passo "Mover card de etapa" grava o motivo | — |
+| 3 | Passo "Mover card de etapa" grava o motivo | código pronto 26/10 (branch); e2e no preview a fazer |
 | 4 | Relatório de motivos no Desempenho | — |
 | 5 | Agente de IA que leva o card à perda grava o motivo | depois (agentes desligados) |
 
@@ -214,15 +214,31 @@ sub-árvore `Pipelines.janelaDoMotivo` nos dois dicionários e o pino
     etapa (o card de teste já estava perdido) — cobertos pelo código
     comum da janela e pelo pino dos chamadores.
 
-### Fase 3 — automações
+### Fase 3 — automações (código pronto em 26/10/2026)
 
-- `move_deal_stage.step_config.motivo` (texto). O motor grava o motivo no
-  campo da etapa de destino quando o movimento acontece. Validador avisa
-  quando o destino pede motivo e o passo não tem. Descrição do passo e
-  ajuda na tela mudam junto (doc acompanha, CLAUDE.md seção 11).
-- As 6 automações do Previdenciário recebem o motivo (ex.: "Não
-  respondeu") — edição em produção só com o "pode gravar", ou pelo
-  operador na tela.
+Arquivos: `src/lib/automations/motivo-do-passo.ts` (NOVO, testado), o
+`case 'move_deal_stage'` do `engine.ts`, `MotivoDoPassoField` e as
+`referenciasDosPassos` do construtor, o aviso `mover_card_sem_motivo`
+(`pendencias.ts`), o resumo `move_deal_stage_com_motivo`
+(`descrever-passo.ts`), os padrões `cardMovidoComMotivo`/`cardMovidoSemMotivo`
+do "Já rodou" (`texto-do-motor.ts`) e `MoveDealStepConfig.motivo`.
+
+- `move_deal_stage.step_config.motivo` (texto LITERAL, entre as opções do
+  campo da etapa). O motor grava DEPOIS da RPC aceita (movimento recusado
+  não deixa motivo solto); falha ao gravar vira nota no registro, nunca
+  passo falho (o card já se moveu; parar calaria as mensagens seguintes).
+- **O aviso não barra** e conta como motivo um "Atualizar campo" no mesmo
+  campo — o jeito das automações de lembrete do Previdenciário, que por
+  isso NÃO precisam ser editadas.
+- Ajuda na tela: o seletor diz em que campo o passo grava; a dica do
+  Gerenciar funil voltou a citar as automações. Doc pública: nenhuma
+  mudança (o portão confirma: o passo move pela mesma RPC, com a mesma
+  origem).
+- Fora, por escrito: o nó "Mover card" do robô e o `set_deal_status` não
+  gravam motivo (nenhum robô leva a etapa de perda hoje; o "Marcar
+  perdido" das automações não muda a etapa).
+- Medido: typecheck e lint limpos; testes de automações e execuções verdes
+  (1.264). e2e no preview: a fazer.
 
 ### Fase 4 — relatório
 

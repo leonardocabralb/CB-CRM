@@ -238,6 +238,34 @@ describe('avisosDaAutomacao', () => {
     expect(avisosDaAutomacao(passos, { ...referencias, membros: null })).toEqual([])
   })
 
+  it('"Mover card" para etapa que pede motivo sem motivo avisa; motivo no passo ou "Atualizar campo" no mesmo campo, não (1112)', () => {
+    const etapasComMotivo = new Map([['perdido', 'campo-perda']])
+    const mover = (cid: string, cfg: Record<string, unknown>) => p(cid, 'move_deal_stage', cfg)
+    const passos = [
+      mover('a', { stage_id: 'perdido' }),
+      mover('b', { stage_id: 'perdido', motivo: 'Desistiu' }),
+      mover('c', { stage_id: 'neutra' }),
+      mover('d', { stage_id: 'perdido', motivo: '   ' }),
+    ]
+    expect(avisosDaAutomacao(passos, { ...referencias, etapasComMotivo }).map((a) => [a.path, a.codigo])).toEqual([
+      ['steps[0].motivo', 'mover_card_sem_motivo'],
+      ['steps[3].motivo', 'mover_card_sem_motivo'],
+    ])
+    // O jeito antigo (as automações de lembrete do Previdenciário): um
+    // "Atualizar campo" no MESMO campo, em qualquer ramo, vale como motivo.
+    const comAtualizar = [
+      cond('x', [p('y', 'update_contact_field', { field: 'custom:campo-perda', value: 'Não respondeu' })], []),
+      mover('a', { stage_id: 'perdido' }),
+    ]
+    expect(avisosDaAutomacao(comAtualizar, { ...referencias, etapasComMotivo })).toEqual([])
+    // Outro campo não conta; etapas não carregadas, nada se afirma.
+    const outroCampo = [p('y', 'update_contact_field', { field: 'custom:outro', value: 'x' }), mover('a', { stage_id: 'perdido' })]
+    expect(avisosDaAutomacao(outroCampo, { ...referencias, etapasComMotivo }).map((a) => a.codigo)).toEqual([
+      'mover_card_sem_motivo',
+    ])
+    expect(avisosDaAutomacao(passos, { ...referencias, etapasComMotivo: null })).toEqual([])
+  })
+
   it('acionar a régua do Asaas avisa pela régua, não por estar desligada', () => {
     const avisos = avisosDaAutomacao([acionar('a', 'regua')], referencias)
     expect(avisos.map((a) => [a.path, a.codigo])).toEqual([

@@ -1011,6 +1011,8 @@
         "nomeRecusado": "the value doesn't look like a name: the name was not changed",
         "cardJaExistia": "the contact already had a card: no new one was created",
         "cardMovido": "card moved to {etapa}",
+        "cardMovidoComMotivo": "card moved to {etapa}, with the reason \"{motivo}\"",
+        "cardMovidoSemMotivo": "card moved to {etapa}; the reason was not saved ({causa})",
         "ramoSim": "went through Yes",
         "ramoNao": "went through No",
         "webhookOk": "the destination answered {status}",
@@ -1841,7 +1843,7 @@
         "titulo": "Reason when entering the stage",
         "resumo": "{quantas, plural, one {# stage asks} other {# stages ask}}",
         "resumoNenhuma": "no stage asks",
-        "dica": "Whoever moves the card to the stage picks the reason, saved in a List field of the client record. Only List fields with options appear; create them in Settings → Fields & tags.",
+        "dica": "Whoever moves the card to the stage picks the reason, saved in a List field of the client record, and an automation that moves the card there saves the reason chosen in its \"Move deal to stage\" step. Only List fields with options appear; create them in Settings → Fields & tags.",
         "falhou": "Could not load the fields. What is already chosen stays saved.",
         "semCampos": "This account has no List field with options yet.",
         "carregando": "Loading…",
@@ -1917,6 +1919,7 @@
         "update_contact_field_company": "Update the contact's company",
         "create_deal": "Create deal: {alvo}",
         "move_deal_stage": "Move to stage: {alvo}",
+        "move_deal_stage_com_motivo": "Move to stage: {alvo} (reason: {motivo})",
         "set_deal_status_won": "Mark deal as won",
         "set_deal_status_lost": "Mark deal as lost",
         "set_deal_status_open": "Reopen the deal",
@@ -2842,7 +2845,12 @@
         "status_open": "Reopened",
         "moveToLabel": "Move to stage",
         "pickStage": "Pick a stage",
-        "moveHelp": "Moves the trigger's deal. With no deal on the trigger, it moves the contact's most recent open deal — or, when none is open, the most recent lost deal, which is reopened (except for contacts who already have a won deal: a client is never pulled back). If the deal's status changes while the automation runs, the step stops instead of touching it."
+        "moveHelp": "Moves the trigger's deal. With no deal on the trigger, it moves the contact's most recent open deal — or, when none is open, the most recent lost deal, which is reopened (except for contacts who already have a won deal: a client is never pulled back). If the deal's status changes while the automation runs, the step stops instead of touching it.",
+        "motivoLabel": "Reason saved on the record",
+        "motivoNenhum": "No reason",
+        "motivoHelp": "This stage asks for a reason: the step saves the chosen one in the \"{campo}\" field of the record, after moving the card.",
+        "motivoIgnorado": "The reason \"{motivo}\" of this step will not be saved: the destination stage does not ask for a reason.",
+        "motivoCampoSumiu": "The reason field of this stage is no longer in the account"
       },
       "lembrete": {
         "campoLabel": "Date field",
@@ -3206,7 +3214,8 @@
           "atlas_onboarding_item_com_variavel": "The checklist item does not accept inserted fields: write the item text.",
           "atlas_onboarding_situacao_invalida": "Choose the item status again (or “— don’t change —”).",
           "atlas_onboarding_sem_mudanca": "Choose the item status or write a note.",
-          "atlas_gatilho_com_atualizar_cliente": "An automation triggered by an Atlas Gestor status change cannot have “Update client in Atlas Gestor”: Atlas Gestor owns the status, and updating by reflex can loop."
+          "atlas_gatilho_com_atualizar_cliente": "An automation triggered by an Atlas Gestor status change cannot have “Update client in Atlas Gestor”: Atlas Gestor owns the status, and updating by reflex can loop.",
+          "mover_card_sem_motivo": "The destination stage asks for a reason and this automation does not save one: the card arrives without a reason. Pick the reason in the step."
         }
       },
       "previa": {

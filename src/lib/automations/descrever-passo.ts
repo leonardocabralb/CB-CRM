@@ -103,8 +103,16 @@ export function descreverPasso(passo: PassoResumivel, nomes: NomesConhecidos = {
     case 'stop_automation':
       return porId(nomes.automacoes, (cfg as unknown as AutomationRefStepConfig).automation_id)
 
-    case 'move_deal_stage':
-      return porId(nomes.etapas, (cfg as unknown as MoveDealStepConfig).stage_id)
+    case 'move_deal_stage': {
+      const mover = cfg as unknown as MoveDealStepConfig
+      const resumo = porId(nomes.etapas, mover.stage_id)
+      // 1112: com motivo, a chave `move_deal_stage_com_motivo` (cobrada nos
+      // dois dicionários pelas `VARIANTES` do teste).
+      const motivo = typeof mover.motivo === 'string' ? mover.motivo.trim() : ''
+      return motivo
+        ? { ...resumo, chave: 'move_deal_stage_com_motivo', valores: { ...resumo.valores, motivo } }
+        : resumo
+    }
 
     case 'create_deal':
       return simples((cfg as unknown as CreateDealStepConfig).title ?? '')

@@ -48,6 +48,7 @@ import { alvoDeEnvio } from '@/lib/whatsapp/alvo-de-envio';
 import { ehGatilhoDaRegua, PASSOS_QUE_FALAM_COM_O_CONTATO } from '@/lib/asaas/regua';
 import { GATILHO_DO_ATLAS, soRodaPeloDisparador } from './so-pelo-disparador';
 import { rodouNoPrazo } from './nao-repetir';
+import { gravarMotivoDoPasso, motivoDoPasso } from './motivo-do-passo';
 
 /**
  * Os passos que calam o agente de IA quando rodam por causa da mensagem do
@@ -2292,8 +2293,20 @@ async function runStep(
       args.context.deal_status_fixado = (r.status_gravado as DealStatus | null) ?? null;
       if (escutaODestino && etapaAntes !== cfg.stage_id) args.aoFalar?.();
 
+      // O motivo do passo (1112, Fase 3 dos motivos): DEPOIS do movimento,
+      // e a falha vira nota no registro, nunca passo falho — ver
+      // `motivo-do-passo.ts`.
+      const nota = ehMover
+        ? await gravarMotivoDoPasso(db, {
+            accountId: args.automation.account_id,
+            contactId: args.contactId ?? null,
+            stageId: cfg.stage_id as string,
+            motivo: motivoDoPasso(cfg),
+          })
+        : '';
+
       return ehMover
-        ? `negócio movido para ${cfg.stage_id}`
+        ? `negócio movido para ${cfg.stage_id}${nota}`
         : `negócio marcado ${cfg.status}`;
     }
 

@@ -75,6 +75,16 @@ const PADROES: Padrao[] = [
   { re: /^deal already existed$/, ler: () => frase('cardJaExistia') },
   // O motor grava o id da etapa que USOU; a tela o troca pelo nome. É a
   // fotografia — o nome do passo vem da automação de HOJE, que pode ter mudado.
+  // O motivo do passo (1112, `motivo-do-passo.ts`) vem DEPOIS de " — ", e
+  // casa antes do genérico (que engoliria a nota no nome da etapa).
+  {
+    re: /^negócio movido para (.+?) — motivo: (.+)$/,
+    ler: (m) => frase('cardMovidoComMotivo', { etapa: m[1], motivo: m[2] }),
+  },
+  {
+    re: /^negócio movido para (.+?) — motivo não gravado \((.+)\)$/,
+    ler: (m) => frase('cardMovidoSemMotivo', { etapa: m[1], causa: m[2] }),
+  },
   { re: /^negócio movido para (.+)$/, ler: (m) => frase('cardMovido', { etapa: m[1] }) },
   { re: /^negócio marcado (won|lost|open)$/, ler: () => null },
   {
@@ -161,6 +171,8 @@ export const CHAVES_DO_MOTOR = [
   'nomeRecusado',
   'cardJaExistia',
   'cardMovido',
+  'cardMovidoComMotivo',
+  'cardMovidoSemMotivo',
   'ramoSim',
   'ramoNao',
   'webhookOk',

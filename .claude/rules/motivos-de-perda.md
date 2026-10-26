@@ -4,6 +4,7 @@ paths:
   - "src/components/pipelines/motivo-da-etapa-config*"
   - "src/components/pipelines/janela-do-motivo*"
   - "src/components/inbox/painel/avancar-etapa.tsx"
+  - "src/lib/automations/motivo-do-passo*"
   - "supabase/migrations/1112_cb_campo_do_motivo_da_etapa.sql"
   - "supabase/migrations/campo-do-motivo-1112.test.ts"
 ---
@@ -97,6 +98,30 @@ Pino `janela-do-motivo.chamadores.test.ts` com a lista dos caminhos de gente.
 - ⚠️ No formulário (que veio do upstream), `{janelaDoMotivo}` fica DENTRO do
   `<Sheet>`: embrulhar num fragmento reindenta o JSX inteiro (349 linhas de
   ruído no diff e conflito garantido no próximo merge).
+
+### O passo "Mover card de etapa" grava o motivo (Fase 3)
+
+`motivo-do-passo.ts` (I/O + puro, testado), `MotivoDoPassoField` no
+construtor, o aviso `mover_card_sem_motivo` (`pendencias.ts`).
+
+- ⚠️⚠️ **Grava DEPOIS da RPC aceita e do card fixado**: movimento recusado
+  (o status mudou no meio) não deixa motivo solto. Pino lendo a ordem no
+  `engine.ts` (`motivo-do-passo.test.ts`).
+- ⚠️ **Falha ao gravar NÃO falha o passo**: o card já se moveu, e parar a
+  execução calaria as mensagens seguintes ao cliente por um dado de
+  relatório. Vira nota no registro (`— motivo não gravado (…)`), que o "Já
+  rodou" traduz (`cardMovidoSemMotivo`, padrão ANTES do genérico em
+  `texto-do-motor.ts`).
+- **Motivo LITERAL do passo** (`step_config.motivo`), escolhido entre as
+  opções do campo da etapa; trocar a etapa no construtor o limpa. Etapa que
+  deixou de pedir motivo: o motor ignora e a tela avisa
+  (`stages.motivoIgnorado`).
+- **O aviso não barra a ativação** e conta como motivo um "Atualizar campo"
+  no MESMO campo, em qualquer ramo — o jeito das automações de lembrete do
+  Previdenciário. Etapas não carregadas: nada se afirma.
+- Fora, por escrito: o nó "Mover card" do ROBÔ (`flows/mover-card.ts`) e o
+  `set_deal_status` (marca perdido sem mudar a etapa) não gravam motivo; o
+  agente de IA é a Fase 5.
 
 ### O Previdenciário ainda tem UM campo só
 

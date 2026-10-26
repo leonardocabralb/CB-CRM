@@ -1004,6 +1004,8 @@
         "nomeRecusado": "o valor não parece um nome: o nome não foi alterado",
         "cardJaExistia": "o cliente já tinha um card: nenhum novo foi criado",
         "cardMovido": "card movido para {etapa}",
+        "cardMovidoComMotivo": "card movido para {etapa}, com o motivo \"{motivo}\"",
+        "cardMovidoSemMotivo": "card movido para {etapa}; o motivo não foi gravado ({causa})",
         "ramoSim": "seguiu pelo Sim",
         "ramoNao": "seguiu pelo Não",
         "webhookOk": "o destino respondeu {status}",
@@ -1834,7 +1836,7 @@
         "titulo": "Motivo ao entrar na etapa",
         "resumo": "{quantas, plural, one {# etapa pergunta} other {# etapas perguntam}}",
         "resumoNenhuma": "nenhuma etapa pergunta",
-        "dica": "Quem levar o card até a etapa escolhe o motivo num campo do tipo Lista da ficha do cliente. Só aparecem campos Lista com opções; crie-os em Configurações → Campos e etiquetas.",
+        "dica": "Quem levar o card até a etapa escolhe o motivo num campo do tipo Lista da ficha do cliente, e a automação que move o card para ela grava o motivo escolhido no passo \"Mover card de etapa\". Só aparecem campos Lista com opções; crie-os em Configurações → Campos e etiquetas.",
         "falhou": "Não foi possível carregar os campos. O que já está escolhido continua salvo.",
         "semCampos": "Esta conta ainda não tem campo do tipo Lista com opções.",
         "carregando": "Carregando…",
@@ -1910,6 +1912,7 @@
         "update_contact_field_company": "Alterar a empresa do contato",
         "create_deal": "Criar negócio: {alvo}",
         "move_deal_stage": "Mover para a etapa: {alvo}",
+        "move_deal_stage_com_motivo": "Mover para a etapa: {alvo} (motivo: {motivo})",
         "set_deal_status_won": "Marcar o negócio como ganho",
         "set_deal_status_lost": "Marcar o negócio como perdido",
         "set_deal_status_open": "Reabrir o negócio",
@@ -2835,7 +2838,12 @@
         "status_open": "Reaberto",
         "moveToLabel": "Mover para a etapa",
         "pickStage": "Escolha a etapa",
-        "moveHelp": "Move o card do gatilho. Sem card no gatilho, move o negócio aberto mais recente do contato — ou, sem nenhum aberto, o perdido mais recente, que volta a ficar aberto (menos de quem já tem negócio ganho: cliente não é puxado de volta). Se o status do card mudar enquanto a automação roda, o passo para em vez de mexer nele."
+        "moveHelp": "Move o card do gatilho. Sem card no gatilho, move o negócio aberto mais recente do contato — ou, sem nenhum aberto, o perdido mais recente, que volta a ficar aberto (menos de quem já tem negócio ganho: cliente não é puxado de volta). Se o status do card mudar enquanto a automação roda, o passo para em vez de mexer nele.",
+        "motivoLabel": "Motivo gravado na ficha",
+        "motivoNenhum": "Sem motivo",
+        "motivoHelp": "Esta etapa pede motivo: o passo grava o escolhido no campo \"{campo}\" da ficha, depois de mover o card.",
+        "motivoIgnorado": "O motivo \"{motivo}\" deste passo não será gravado: a etapa de destino não pede motivo.",
+        "motivoCampoSumiu": "O campo do motivo desta etapa não está mais na conta"
       },
       "lembrete": {
         "campoLabel": "Campo de data",
@@ -3199,7 +3207,8 @@
           "atlas_onboarding_item_com_variavel": "O item do checklist não aceita campo inserido: escreva o texto do item.",
           "atlas_onboarding_situacao_invalida": "Escolha de novo a situação do item (ou “— não mudar —”).",
           "atlas_onboarding_sem_mudanca": "Escolha a situação do item ou escreva uma observação.",
-          "atlas_gatilho_com_atualizar_cliente": "Uma automação disparada pela situação do Atlas Gestor não pode ter “Atualizar cliente no Atlas Gestor”: o Atlas Gestor manda na situação, e atualizar por reflexo pode virar laço."
+          "atlas_gatilho_com_atualizar_cliente": "Uma automação disparada pela situação do Atlas Gestor não pode ter “Atualizar cliente no Atlas Gestor”: o Atlas Gestor manda na situação, e atualizar por reflexo pode virar laço.",
+          "mover_card_sem_motivo": "A etapa de destino pede motivo e esta automação não grava nenhum: o card chega lá sem motivo. Escolha o motivo no passo."
         }
       },
       "previa": {

@@ -1697,6 +1697,12 @@ export interface MoveDealStepConfig {
   stage_id?: string;
   /** Status de destino, para `set_deal_status`. */
   status?: 'open' | 'won' | 'lost';
+  /**
+   * O motivo que `move_deal_stage` grava no campo da etapa de destino
+   * (`campo_do_motivo_id`, 1112) — texto LITERAL escolhido entre as opções do
+   * campo. Gravado depois do movimento; ver `motivo-do-passo.ts`.
+   */
+  motivo?: string;
 }
 
 export interface WaitStepConfig {
