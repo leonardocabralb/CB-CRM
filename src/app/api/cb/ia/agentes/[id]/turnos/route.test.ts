@@ -90,7 +90,7 @@ describe('GET /api/cb/ia/agentes/[id]/turnos', () => {
     expect(corpo.turnos).toEqual([
       {
         id: 't3', status: 'aguardando', criadoEm: '2026-09-26T12:05:00Z', terminadoEm: null, erro: null, conversationId: 'conv-1', contato: 'Maria',
-        contexto: null, acoes: [], retomada: { tentativa: 2, de: 6 }, executarApos: '2026-09-26T13:00:00Z',
+        contexto: null, acoes: [], retomada: { tentativa: 2, de: 6 }, executarApos: '2026-09-26T13:00:00Z', conteudoRemovido: null,
       },
       {
         id: 't2', status: 'passou', criadoEm: '2026-09-26T12:00:00Z', terminadoEm: null, erro: null, conversationId: 'conv-2', contato: '5511888880000',
@@ -105,13 +105,16 @@ describe('GET /api/cb/ia/agentes/[id]/turnos', () => {
         ],
         // O turno de resposta (e o anterior à 1056, sem as colunas): sem retomada.
         retomada: null,
+        conteudoRemovido: null,
       },
-      { id: 't1', status: 'falhou', criadoEm: '2026-09-26T11:00:00Z', terminadoEm: '2026-09-26T11:00:05Z', erro: 'sem chave', conversationId: 'conv-1', contato: 'Maria', contexto: null, acoes: [], retomada: null },
+      { id: 't1', status: 'falhou', criadoEm: '2026-09-26T11:00:00Z', terminadoEm: '2026-09-26T11:00:05Z', erro: 'sem chave', conversationId: 'conv-1', contato: 'Maria', contexto: null, acoes: [], retomada: null, conteudoRemovido: null },
     ])
     const dosTurnos = consultas.find((c) => c.tabela === 'cb_ia_turnos')!
     expect(dosTurnos.colunas).toContain('contexto')
     expect(dosTurnos.colunas).toContain('acoes')
-    for (const col of ['tipo', 'tentativa', 'tentativas', 'executar_apos']) expect(dosTurnos.colunas).toContain(col)
+    for (const col of ['tipo', 'tentativa', 'tentativas', 'executar_apos', 'conteudo_removido_em', 'conteudo_removido_por']) {
+      expect(dosTurnos.colunas).toContain(col)
+    }
     expect(dosTurnos.filtros).toEqual([
       ['eq', 'account_id', 'conta-1'],
       ['eq', 'ia_agente_id', ID],
@@ -120,6 +123,50 @@ describe('GET /api/cb/ia/agentes/[id]/turnos', () => {
     ])
     const dosContatos = consultas.find((c) => c.tabela === 'conversations')!
     expect(dosContatos.filtros).toContainEqual(['eq', 'account_id', 'conta-1'])
+  })
+
+  it('1110: o turno da conversa APAGADA (ou na Lixeira) vem sem conversa e sem contato; o conteúdo removido vem com quando e por quê', async () => {
+    turnos = [
+      {
+        id: 't9', status: 'incerto', created_at: '2026-10-26T12:00:00Z', terminado_em: '2026-10-26T12:00:03Z', erro: 'conversa apagada',
+        conversation_id: null, contexto: null,
+        acoes: [{ tipo: 'mover_etapa', alvo: { id: 'etapa-1', nome: 'Proposta' }, ok: true, detalhe: 'ja_estava' }],
+        tipo: 'resposta', tentativa: null, tentativas: null, executar_apos: '2026-10-26T12:00:00Z',
+        conteudo_removido_em: '2026-10-27T03:00:00Z', conteudo_removido_por: 'exclusao',
+      },
+      { ...(turnos![2] as object), conversation_id: 'conv-1', conteudo_removido_em: null, conteudo_removido_por: null },
+    ]
+    const corpo = (await (await chamar()).json()) as { turnos: Record<string, unknown>[] }
+    expect(corpo.turnos[0]).toMatchObject({
+      conversationId: null,
+      contato: null,
+      erro: 'conversa apagada',
+      contexto: null,
+      acoes: [{ tipo: 'mover_etapa', alvo: { id: 'etapa-1', nome: 'Proposta' }, ok: true, detalhe: 'ja_estava' }],
+      conteudoRemovido: { em: '2026-10-27T03:00:00Z', por: 'exclusao' },
+    })
+    expect(corpo.turnos[1]).toMatchObject({ conversationId: 'conv-1', contato: 'Maria', conteudoRemovido: null })
+    // A conversa nula não vai para a consulta dos contatos.
+    const dosContatos = consultas.find((c) => c.tabela === 'conversations')!
+    expect(dosContatos.filtros).toContainEqual(['in', 'id', ['conv-1']])
+  })
+
+  it('só turnos sem conversa: nem consulta os contatos', async () => {
+    turnos = [
+      {
+        id: 't9', status: 'descartado', created_at: '2026-10-26T12:00:00Z', terminado_em: null, erro: 'conversa apagada',
+        conversation_id: null, contexto: null, acoes: [], tipo: 'resposta', tentativa: null, tentativas: null, executar_apos: null,
+        conteudo_removido_em: null, conteudo_removido_por: null,
+      },
+    ]
+    const res = await chamar()
+    expect(res.status).toBe(200)
+    expect(consultas.map((c) => c.tabela)).toEqual(['cb_ia_turnos'])
+    expect(((await res.json()) as { turnos: Record<string, unknown>[] }).turnos[0]).toMatchObject({
+      conversationId: null,
+      contato: null,
+      conteudoRemovido: null,
+    })
   })
 
   it('agente de outra conta (ou inexistente): 404, sem ler turno nenhum', async () => {

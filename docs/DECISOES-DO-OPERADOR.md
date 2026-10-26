@@ -67,6 +67,10 @@ qualquer uma é pergunta ao operador.
 - Agente de IA fora do horário: a mensagem espera e ele responde quando o
   horário abrir, se ninguém da equipe respondeu antes; o padrão da Anthropic
   é o Haiku 5.5, e o seletor mostra os modelos da chave (25/10/2026).
+- Registro dos agentes de IA (DC1–DC3 de `docs/PLANO-central-dos-agentes.md`,
+  26/10/2026): o turno sobrevive à conversa e à Lixeira (restaurar o religa);
+  o texto do cliente sai em 90 dias e em TODA exclusão definitiva da ficha
+  (prazo ou "Excluir agora"); o esqueleto fica, sem prazo.
 - Automação presa à etapa: caixa por automação, marcada só nas criadas pela
   grade; as antigas não mudam (18/09/2026).
 - Asaas: o CRM cria a ficha, com nome fixado; ligar a régua não é

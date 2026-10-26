@@ -105,7 +105,9 @@ Decisões do operador (22/10/2026, B1–B6): `docs/PLANO-lixeira-de-contatos.md`
   a ficha e tudo o que o CASCADE levaria, ENCERRA execuções, esperas e robô
   dela (restaurar não religa) e apaga a ficha como antes: para o resto do CRM
   (automação, IA, API, integrações) ela não existe. Em 90 dias o servidor a
-  exclui de vez.
+  exclui de vez. O registro dos agentes de IA FICA (1110, `ia-central.md`):
+  sem conversa na Lixeira (restaurar religa); excluir de vez tira só o
+  conteúdo — a tela diz isso no "Excluir de vez".
 - ⚠️⚠️ **Admin POR DENTRO**: toda RPC da Lixeira confere admin e suspensão
   (1067) e recusa o LOTE inteiro com um id de conta onde quem chama não é
   admin. Na tela os caminhos SOMEM juntos para quem não é admin (menu da

@@ -90,10 +90,12 @@ passou na máquina). Por isso:
   UM prazo comum (`PRAZO_DA_MANUTENCAO_MS`) e nesta ordem, cada passo
   isolado, as tarefas recorrentes (1074) → o vencimento da Lixeira de
   contatos (`cb_vencer_lixeira`, UM item por chamada, repetida enquanto há
-  prazo) → a drenagem da fila de arquivos (`midia.md`). O prazo fica abaixo
+  prazo) → a poda do conteúdo dos turnos da IA (1110, `ia-central.md`) → a
+  drenagem da fila de arquivos (`midia.md`). O prazo fica abaixo
   dos 10 min em que a fila recolhe o lote reivindicado e dos 15 min do laço.
   O `after()` não disputa o `-m 120` com o disparo. Tirar a rota do laço cala
-  os três sem erro: a Lixeira deixa de vencer e os arquivos ficam no bucket
+  os quatro sem erro: a Lixeira deixa de vencer, o texto do cliente fica nos
+  turnos além do prazo e os arquivos ficam no bucket
   (também os anexos das anotações apagadas, 1102).
 
 ### Ambiente do contêiner

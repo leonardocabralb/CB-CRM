@@ -29,8 +29,9 @@ anexos, em `.claude/rules/midia.md`. O texto antigo, com a história, está em
   enche — o destino de `broadcasts.scheduled_at`, viva e sem leitor desde a
   001.
 - ⚠️ **A rota carrega também, no `after()` (`rodarManutencaoDoCiclo`), as
-  TAREFAS RECORRENTES** (1074) **e a limpeza da Lixeira de contatos** (1097:
-  o vencimento e a fila de arquivos, `.claude/rules/deploy.md`): tirá-la do
+  TAREFAS RECORRENTES** (1074), **a limpeza da Lixeira de contatos** (1097:
+  o vencimento e a fila de arquivos, `.claude/rules/deploy.md`) **e a poda do
+  conteúdo dos turnos da IA** (1110, `ia-central.md`): tirá-la do
   laço, ou tirar a chamada, para tudo isso sem erro nenhum. Pinos
   `tarefas-recorrentes-1074.test.ts` e `manutencao-do-ciclo.test.ts`; as
   tarefas em `.claude/rules/tarefas.md`.

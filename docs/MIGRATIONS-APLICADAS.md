@@ -1596,6 +1596,29 @@ nome da época em que foram aplicadas.
   `authenticated` sem EXECUTE; a conferência da própria migration (turno de
   teste numa conversa real, desfeito por SQLSTATE) não deixou turno nem
   conversa alterados.
+- **1110_cb_ia_turnos_sobrevivem_a_conversa** — o turno do agente de IA
+  sobrevive à conversa e à Lixeira (C1 da central, DC1–DC3):
+  - `conversation_id` anulável, e a FK vira `ON DELETE SET NULL
+    (conversation_id)`, NOT VALID + VALIDATE;
+  - gatilho `cb_ia_turnos_conversa_apagada_trigger` do turno vivo;
+  - 6 colunas: o conteúdo removido, `saida_bruta`, `erro_detalhe`, `motivo`
+    e `esperou_horario`;
+  - `cb_ia_turno_sem_conteudo` e `cb_ia_podar_conteudo_dos_turnos`;
+  - 2 índices;
+  - `cb_lixeira_tratamento` (de 1102) e `cb_lixeira_purgar_um` (de 1097)
+    refeitas.
+
+  ADITIVA, ANTES do deploy. PR #441, autorização do operador em
+  26/10/2026; aplicada em 26/10/2026 (histórico `20261026151000`), depois
+  do replay verde do CI no commit `f8d0ab20`. Conferida:
+  - a FK SET NULL só na coluna 3 (`conversation_id`), validada;
+  - o gatilho ligado, as 6 colunas e os 2 índices;
+  - as portas: as duas funções sem EXECUTE para anon e authenticated; a
+    poda SECURITY DEFINER e com EXECUTE no `service_role`;
+  - o md5 do corpo das quatro funções igual ao do Postgres local onde a
+    1110 foi provada;
+  - 0 turnos: a conferência da migration, desfeita por `P1110`, não deixou
+    rastro.
 
 ## Notas do histórico
 

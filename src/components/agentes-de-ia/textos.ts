@@ -168,6 +168,29 @@ export function rotuloDoStatusDoTurno(t: ReturnType<typeof useTranslations>, sta
 }
 
 /**
+ * O `erro` que o BANCO grava no turno — os gatilhos e as funções da 1049
+ * (conexão apagada, conversa encerrada), 1056 (o cliente escreveu antes da
+ * retomada), 1093 (fichas unidas) e 1110 (conversa apagada: o turno sobrevive
+ * à conversa) —, traduzido (`IaAgentes.turnos.erroDoBanco.<chave>`): o banco
+ * não sabe o idioma de quem instala. `textos.test.ts` cobra cada chave nos
+ * dois dicionários e que todo `erro` gravado pelas migrations esteja aqui. O
+ * resto (o que o motor grava) aparece como veio.
+ */
+export const ERROS_GRAVADOS_PELO_BANCO = {
+  'conversa apagada': 'turnos.erroDoBanco.conversaApagada',
+  'conversa encerrada': 'turnos.erroDoBanco.conversaEncerrada',
+  'conexão apagada': 'turnos.erroDoBanco.conexaoApagada',
+  'fichas unidas': 'turnos.erroDoBanco.fichasUnidas',
+  'o cliente escreveu antes da retomada': 'turnos.erroDoBanco.clienteEscreveu',
+} as const;
+
+export function textoDoErroDoTurno(t: ReturnType<typeof useTranslations>, erro: string): string {
+  return Object.prototype.hasOwnProperty.call(ERROS_GRAVADOS_PELO_BANCO, erro)
+    ? t(ERROS_GRAVADOS_PELO_BANCO[erro as keyof typeof ERROS_GRAVADOS_PELO_BANCO])
+    : erro;
+}
+
+/**
  * O nome de um bloco do acesso (F3) — na sub-aba Acesso, no "o agente viu"
  * do Playground e no retrato da sub-aba Turnos (`IaAgentes.acesso.bloco.<b>`).
  * Chave MONTADA, cobrada em `textos.test.ts`. Bloco fora da lista (um novo no

@@ -118,7 +118,10 @@ describe('1097 — a Lixeira de contatos', () => {
   it('o leitor do tratamento acha o que interessa (senão o default-deny não prova nada)', () => {
     expect(vigente.arquivo >= ARQUIVO).toBe(true);
     expect(fechoVigente.get('contacts')).toBe('volta');
-    expect(fechoVigente.get('cb_ia_turnos')).toBe('nao_volta');
+    expect(fechoVigente.get('notifications')).toBe('nao_volta');
+    // 1110 (DC1): o turno da IA não sai mais com a ficha — a FK da conversa
+    // é SET NULL, e restaurar o religa (`turnos-sobrevivem-1110.test.ts`).
+    expect(fechoVigente.has('cb_ia_turnos')).toBe(false);
     // As tabelas que o pino (d) tem de cobrir, no mínimo.
     for (const t of [
       'contacts',
@@ -127,7 +130,6 @@ describe('1097 — a Lixeira de contatos', () => {
       'cb_tasks',
       'cb_conversation_notes',
       'cb_fichas_unidas',
-      'cb_ia_turnos',
       'message_reactions',
     ]) {
       expect(fechoVigente.has(t), t).toBe(true);
@@ -362,7 +364,7 @@ describe('1097 — a Lixeira de contatos', () => {
     for (const t of ['contacts', 'conversations', 'messages', 'deals', 'cb_lead_events', 'cb_tasks', 'broadcast_recipients']) {
       expect(escritas.has(t), t).toBe(true);
     }
-    // Não volta, mas é REAPONTADA (turno de outra conversa que cita a mensagem).
+    // Fora do fecho, mas REAPONTADA: a conversa e as mensagens do turno (1110).
     expect(escritas.has('cb_ia_turnos')).toBe(true);
     // Nem volta nem é reapontada: gatilho ali não atrapalha a volta.
     expect(escritas.has('flow_runs')).toBe(false);

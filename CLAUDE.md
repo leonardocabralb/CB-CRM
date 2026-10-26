@@ -550,6 +550,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   avisos antes de salvar, "não atende" na faixa, custo por faixa (1108).
 - `.claude/rules/ia-agentes-turno.md` — ação prometida retida, passagem com
   campo/etiqueta/tarefa, espera do horário, encerrar sem apagar (1109).
+- `.claude/rules/ia-central.md` — o turno durável (1110): sobrevive à
+  conversa e à Lixeira, esqueleto × conteúdo, poda e exclusão definitiva.
 - `.claude/rules/ia-sandbox.md` — o Playground testa o RASCUNHO (DC4):
   conferido como o salvar, conversa que não zera, comparar, roteiro, pedido,
   nada escreve além do custo de teste.
