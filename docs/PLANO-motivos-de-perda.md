@@ -10,7 +10,7 @@ personalizado (a IA já preenche campo).
 | Fase | O quê | Estado |
 | --- | --- | --- |
 | 0 | Listas de motivos aprovadas; campos criados nos blocos | ✅ 26/10: 4 campos gravados em produção (Bancário e Trabalhista); Previdenciário só renomeado |
-| 1 | Migration: campo do motivo por etapa; seletor no Gerenciar funil | ✅ código 26/10 (branch, sem PR): 1112 escrita e provada no Postgres local; seção no Gerenciar funil vista no preview; **1112 NÃO aplicada** |
+| 1 | Migration: campo do motivo por etapa; seletor no Gerenciar funil | ✅ 26/10: código na branch (sem PR); 1112 APLICADA em produção (`20261026161549`) |
 | 2 | Janela "Por que…?" nos caminhos de gente; botão Perdido escolhe etapa | — |
 | 3 | Passo "Mover card de etapa" grava o motivo | — |
 | 4 | Relatório de motivos no Desempenho | — |

@@ -1619,6 +1619,22 @@ nome da época em que foram aplicadas.
     1110 foi provada;
   - 0 turnos: a conferência da migration, desfeita por `P1110`, não deixou
     rastro.
+- **1112_cb_campo_do_motivo_da_etapa** — `pipeline_stages.campo_do_motivo_id`
+  (FK para `custom_fields` `ON DELETE SET NULL`) e o gatilho
+  `cb_campo_do_motivo_da_mesma_conta_trg` (BEFORE INSERT OR UPDATE OF a
+  coluna; confere só a CONTA do campo contra a do funil). Fase 1 do
+  `docs/PLANO-motivos-de-perda.md`.
+
+  ADITIVA, ANTES do deploy. Autorização do operador em 26/10/2026 ("aplique
+  a migration 1112 em produção"), aplicada em 26/10/2026 (histórico
+  `20261026161549`) ANTES do PR e do replay do CI, para o e2e da Fase 2 no
+  preview: provada num replay local limpo das 235 migrations até ela
+  (verify-schema OK) e em 7 cenários (`campo-do-motivo-1112.test.ts` fixa
+  as decisões). Conferida:
+  - a coluna uuid anulável e a FK SET NULL;
+  - o gatilho ligado e o EXECUTE da função fechado para authenticated;
+  - 0 etapas com motivo: a conferência, desfeita por `P1112`, não deixou
+    rastro.
 
 ## Notas do histórico
 
