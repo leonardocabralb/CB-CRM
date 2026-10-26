@@ -143,7 +143,10 @@ CREATE INDEX IF NOT EXISTS cb_ia_turnos_conteudo_a_podar_idx
 -- ------------------------------------------------------------
 -- O esqueleto fica: status, tipo, tokens, ids e as ações sem `valor` e sem o
 -- `detalhe` cru — o `detalhe` que é CÓDIGO da lista fechada fica (`ja_estava`,
--- `sem_marcador`, `nome_sem_origem` e o `automacao_fala` da C3). O `erro` fica
+-- `sem_marcador`, `nome_sem_origem` e o `automacao_fala` da C3), e também o
+-- código que acompanha um erro: o passo da D5 que bloqueou a automação
+-- (`CODIGOS_DA_D5`) e o tipo do campo no `valor_invalido` (`FormatoDoCampo`).
+-- Os dois saem do motor como 2º argumento de `falha(…)`. O `erro` fica
 -- até o primeiro ':' — é código desde a C3; o gravado antes dela colava o
 -- texto retido depois dos dois-pontos. Turno já limpo não é carimbado de novo
 -- (o primeiro motivo é o que vale). Devolve quantos limpou.
@@ -167,6 +170,10 @@ BEGIN
          acoes = CASE WHEN jsonb_typeof(t.acoes) = 'array' THEN coalesce((
                    SELECT jsonb_agg(CASE
                             WHEN e.a ->> 'detalhe' IN ('ja_estava', 'sem_marcador', 'nome_sem_origem', 'automacao_fala')
+                              OR (e.a ->> 'erro' IN ('automacao_fora_da_d5', 'cascata_fora_da_d5')
+                                  AND e.a ->> 'detalhe' IN ('send_to_number', 'send_webhook', 'atlas_criar_cliente', 'status_de_resultado', 'etapa_de_resultado', 'run_flow', 'campo_vigiado', 'aguardar'))
+                              OR (e.a ->> 'erro' = 'valor_invalido'
+                                  AND e.a ->> 'detalhe' IN ('texto', 'data', 'numero', 'lista', 'email'))
                               THEN e.a - 'valor'
                             ELSE e.a - 'valor' - 'detalhe'
                           END ORDER BY e.i)

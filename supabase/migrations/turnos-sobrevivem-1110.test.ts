@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { CODIGOS_DA_D5 } from '../../src/components/agentes-de-ia/textos';
 import { MOTIVOS_DE_TRANSFERENCIA } from '../../src/lib/ia-agentes/textos-do-servidor';
 
 // ============================================================
@@ -329,6 +330,39 @@ describe('1110 — (g) os CHECKs e a limpeza', () => {
     // O leitor acha o que interessa.
     expect([...gravados].sort()).toEqual(expect.arrayContaining(['ja_estava', 'nome_sem_origem', 'sem_marcador']));
     expect([...gravados].filter((g) => !poupados.includes(g))).toEqual([]);
+  });
+
+  it('o código que acompanha um erro fica: o passo da D5 (CODIGOS_DA_D5) e o tipo do campo (FormatoDoCampo)', () => {
+    const f = compacto(corpoDaFuncao(SQL, 'cb_ia_turno_sem_conteudo')!);
+    const lista = (re: RegExp) => [...f.match(re)![1].matchAll(/'(\w+)'/g)].map((m) => m[1]).sort();
+    expect(
+      lista(/e\.a ->> 'erro' IN \('automacao_fora_da_d5', 'cascata_fora_da_d5'\) AND e\.a ->> 'detalhe' IN \(([^)]*)\)/),
+    ).toEqual([...CODIGOS_DA_D5].sort());
+    // `FormatoDoCampo` é tipo, sem lista em tempo de execução: lê os `tipo: '…'` do bloco dele.
+    const acoes = fs.readFileSync(path.join(DIR, '..', '..', 'src', 'lib', 'ia-agentes', 'acoes.ts'), 'utf8');
+    const bloco = acoes.match(/export type FormatoDoCampo =([\s\S]*?)\n\n/)![1];
+    const formatos = [...bloco.matchAll(/tipo: '(\w+)'/g)].map((m) => m[1]).sort();
+    expect(formatos.length).toBeGreaterThan(3);
+    expect(lista(/e\.a ->> 'erro' = 'valor_invalido' AND e\.a ->> 'detalhe' IN \(([^)]*)\)/)).toEqual(formatos);
+  });
+
+  it('DEFAULT-DENY: toda `falha(código, detalhe)` do motor está classificada (código fica, texto sai)', () => {
+    const fonte = fs.readFileSync(path.join(DIR, '..', '..', 'src', 'lib', 'ia-agentes', 'executar-acoes.ts'), 'utf8');
+    const chamadas = [...fonte.matchAll(/\bfalha\(\s*([^,()]+?)\s*,\s*([^)]+?)\s*\)/g)].map((m) => `${m[1]} | ${m[2]}`);
+    // 'codigo': poupado pela limpeza (teste acima). 'texto': texto livre (do
+    // provedor, da RPC ou do motor), apagado com o conteúdo. Chamada nova
+    // reprova até ser classificada AQUI e, se for código, poupada na limpeza.
+    const CLASSIFICADAS: Record<string, 'codigo' | 'texto'> = {
+      "'valor_invalido' | formato.tipo": 'codigo',
+      "'automacao_fora_da_d5' | motivo": 'codigo',
+      "'recusado' | r?.motivo": 'texto',
+      "'recusado' | r.detail": 'texto',
+      "'recusado' | 'marcar reunião sem tipo de evento liberado'": 'texto',
+      'r.erro | r.detalhe': 'texto',
+      "'falhou' | detalhe": 'texto',
+    };
+    expect(chamadas.length).toBeGreaterThan(0);
+    expect(chamadas.filter((c) => !(c in CLASSIFICADAS))).toEqual([]);
   });
 });
 
