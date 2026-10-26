@@ -13,7 +13,7 @@ personalizado (a IA já preenche campo).
 | 1 | Migration: campo do motivo por etapa; seletor no Gerenciar funil | ✅ 26/10: código na branch (sem PR); 1112 APLICADA em produção (`20261026161549`) |
 | 2 | Janela "Por que…?" nos caminhos de gente; botão Perdido escolhe etapa | ✅ 26/10: código na branch, e2e no preview OK e limpo; configuração do Bancário gravada |
 | 3 | Passo "Mover card de etapa" grava o motivo | ✅ 26/10: código na branch; construtor conferido no preview; execução real do motor não exercitada |
-| 4 | Relatório de motivos no Desempenho | 26/10: código na branch; 1113 provada no replay local (5 cenários) e medida na produção (só leitura); falta aplicar a 1113 e conferir a tela com dado real |
+| 4 | Relatório de motivos no Desempenho | ✅ 26/10: código na branch (sem PR); 1113 APLICADA em produção (`20261026182933`); seção conferida no preview com dado real (a soma bate com a trilha) |
 | 5 | Agente de IA que leva o card à perda grava o motivo | depois (agentes desligados) |
 
 ## Decisões do operador (26/10/2026)

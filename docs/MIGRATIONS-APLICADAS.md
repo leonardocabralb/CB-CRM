@@ -1635,6 +1635,20 @@ nome da época em que foram aplicadas.
   - o gatilho ligado e o EXECUTE da função fechado para authenticated;
   - 0 etapas com motivo: a conferência, desfeita por `P1112`, não deixou
     rastro.
+- **1113_cb_motivos_do_funil** — a RPC `cb_motivos_do_funil(funil, desde,
+  ate)` (SQL, STABLE, SECURITY INVOKER): por etapa com campo de motivo, os
+  cards que entraram nela no período, pelo motivo atual da ficha, e os sem
+  motivo por quem levou. Fase 4 do `docs/PLANO-motivos-de-perda.md`.
+
+  ADITIVA (função nova), ANTES do deploy. Autorização do operador em
+  26/10/2026 ("aplique a migration 1113 em produção"), aplicada em
+  26/10/2026 (histórico `20261026182933`) ANTES do PR e do replay do CI,
+  para conferir a seção no preview: provada num replay local limpo até ela,
+  em 5 cenários e pelo caminho do PostgREST. Conferida:
+  - SECURITY INVOKER; EXECUTE fechado para anon, aberto para authenticated
+    e service_role;
+  - a seção "Motivos" do Desempenho do Bancário - Comercial carregou com a
+    sessão do operador (resposta 200), e a soma bateu com a trilha.
 
 ## Notas do histórico
 
