@@ -28,9 +28,9 @@ num roteiro. Ponto de partida: o mapeamento do que existe, também de
 
 | Fase | Frente | O quê | Migration | Esforço | Depende de | Estado |
 |---|---|---|---|---|---|---|
-| — | — | Este plano e as decisões DC1–DC25 | — | — | — | escrito em 26/10/2026; **decisões pendentes** |
-| C1 | Base comum | Turno durável: o registro sobrevive à conversa e à Lixeira; o texto do cliente tem prazo | sim | M (3–4 dias) | DC1–DC3 | não iniciada |
-| C2 | Sandbox | Playground testa o RASCUNHO da tela e compara com o salvo; o teste não zera ao salvar; "ver o pedido enviado" | não | M (2–3 dias) | DC4 | não iniciada |
+| — | — | Este plano e as decisões DC1–DC25 | — | — | — | escrito em 26/10/2026; DC1–DC4 decididas em 26/10/2026; as outras pendentes |
+| C1 | Base comum | Turno durável: o registro sobrevive à conversa e à Lixeira; o texto do cliente tem prazo | sim | M (3–4 dias) | DC1–DC3 | **implementada** na branch `feat/ia-turno-duravel` (26/10/2026); migration 1110 provada no Postgres local, **não aplicada**; falta o e2e e o PR |
+| C2 | Sandbox | Playground testa o RASCUNHO da tela e compara com o salvo; o teste não zera ao salvar; "ver o pedido enviado" | não | M (2–3 dias) | DC4 | **implementada** na branch `feat/playground-rascunho` (26/10/2026); falta o e2e e o PR; mesclar DEPOIS da C1 |
 | C3 | Base comum | Registro completo do turno: motivo da transferência, erro como código, saída bruta, valor de cada ação, destino da passagem, a marca de que esperou o horário | não | M (2 dias) | C1, DC6 | não iniciada |
 | C4 | Painel | Aba **Painel** em /agents: agentes e onde atuam, desfechos por dia, por que transferiu, o que o agente fez, tempo e custo | sim | M (2–3 dias) | C1, C3, DC5 | não iniciada |
 | C5 | Base comum | Versões do agente (vN, quem e quando); o turno grava a versão usada | sim | M (2–3 dias) | C3, DC7 | não iniciada |
@@ -142,7 +142,7 @@ bloqueiam.
 
 ### Destravam o começo (antes da C1 e da C2)
 
-**DC1 — Como o histórico do que os agentes fizeram deve sobreviver quando a conversa é apagada ou a ficha vai para a Lixeira?** · Estado: **pendente** · Quando: Já: antes da C1, que precisa estar no ar antes de ligar o piloto
+**DC1 — Como o histórico do que os agentes fizeram deve sobreviver quando a conversa é apagada ou a ficha vai para a Lixeira?** · Estado: **decidida em 26/10/2026: a recomendação** · Quando: Já: antes da C1, que precisa estar no ar antes de ligar o piloto
 
 - (a) Como hoje: o registro some com a conversa, e a Lixeira o leva sem volta
 - (b) Tabela de resumo separada, sem texto, mantida por gatilho, e os turnos detalhados apagados por prazo (proposta do painel)
@@ -158,7 +158,7 @@ A (b) duplica o dado e mesmo assim perde o detalhe quando a conversa sai. Com a 
 
 Bloqueia: C1, C3, C4, C6, C10, C14
 
-**DC2 — Por quanto tempo guardar o texto do cliente nos registros, o esqueleto sem texto e os registros do modo observação?** · Estado: **pendente** · Quando: Já: antes da C1
+**DC2 — Por quanto tempo guardar o texto do cliente nos registros, o esqueleto sem texto e os registros do modo observação?** · Estado: **decidida em 26/10/2026: a recomendação** · Quando: Já: antes da C1
 
 - Texto do cliente: 90 dias (o prazo que o plano aprovado em 25/09 já previa, igual ao da Lixeira)
 - Texto do cliente: 180 dias (cobre reclamação tardia; ~0,15–0,55 GB no pior caso)
@@ -176,7 +176,7 @@ Por quê: Separa a métrica, que não tem texto e pode ficar, da auditoria, que 
 
 Bloqueia: C1, C14
 
-**DC3 — O que a exclusão definitiva de uma ficha (pelo prazo da Lixeira ou pelo 'Excluir agora') faz com o registro dos agentes dela?** · Estado: **pendente** · Quando: Já: antes da C1
+**DC3 — O que a exclusão definitiva de uma ficha (pelo prazo da Lixeira ou pelo 'Excluir agora') faz com o registro dos agentes dela?** · Estado: **decidida em 26/10/2026: a recomendação** · Quando: Já: antes da C1
 
 - (a) Só o 'Excluir agora' a pedido do titular limpa o texto; sem pedido, o texto fica até o prazo
 - (b) Toda exclusão definitiva limpa o texto do cliente; o esqueleto fica
@@ -188,7 +188,7 @@ Por quê: O texto do turno (ficha, cobranças, saída do modelo) é mais rico qu
 
 Bloqueia: C1
 
-**DC4 — Como testar uma mudança no agente sem afetar a produção?** · Estado: **pendente** · Quando: Já: pode vir junto com DC1–DC3; a C2 corre em paralelo com a C1
+**DC4 — Como testar uma mudança no agente sem afetar a produção?** · Estado: **decidida em 26/10/2026: a recomendação** · Quando: Já: pode vir junto com DC1–DC3; a C2 corre em paralelo com a C1
 
 - (A) O Playground recebe o rascunho que está na tela, validado como no salvar (C2)
 - (B) Versão salva separada da publicada, com um botão 'Publicar' (sobre as versões da C5)
@@ -686,5 +686,26 @@ Todas são ADITIVAS e entram antes do deploy.
     colunas novas, filtro de motivo e linhas do `MERGE-UPSTREAM.md`).
   - Maquete do Painel com dados fictícios para a decisão visual.
   - Branch `docs/plano-central-dos-agentes`, sem PR.
-  - Próximo passo: o operador responde DC1–DC4. Com as respostas, a C1 e a C2
-    começam em paralelo, a partir do `main`.
+  - O operador aceitou as recomendações de DC1 a DC4. A C1 e a C2 começaram
+    em paralelo, a partir do `main`, por workflow:
+    - um agente montou o replay COMPLETO das migrations num Postgres 16
+      local (`~/Downloads/CB-CRM/ferramentas/pg-replay/recriar.sh`). As 233
+      migrations aplicam, e o schema bate com a produção (tabelas, policies,
+      gatilhos);
+    - um agente para cada fase;
+    - um agente provou a 1110 com dado: 9 cenários e os extras. Entre eles,
+      a premissa de que o SET NULL da FK dispara o gatilho, mover, restaurar
+      e excluir de vez, a poda e `cb_unir_fichas`;
+    - um revisor só, para as duas branches. Achou 4 pontos, todos tratados:
+      - a limpeza apagava o passo da D5 e o tipo do campo, que são códigos;
+      - o roteiro não pausava no limite do provedor (502 `rate_limited`);
+      - o roteiro misturava versões se o agente fosse salvo no meio;
+      - as duas branches conflitam no índice do CLAUDE.md e no
+        `textos.test.ts`: mesclar a C1 antes da C2.
+  - Os corpos vigentes de `cb_lixeira_tratamento` e `cb_lixeira_purgar_um`
+    conferem com a produção (md5 do corpo).
+  - Próximo passo, na ordem do CLAUDE.md seção 7:
+    1. os PRs (o CI faz o replay da 1110 no commit exato);
+    2. a 1110 aplicada, só com a autorização do operador;
+    3. o e2e no preview;
+    4. o merge, a C1 antes da C2.
