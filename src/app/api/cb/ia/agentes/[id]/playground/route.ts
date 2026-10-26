@@ -38,6 +38,13 @@ type Contexto = { params: Promise<{ id: string }> }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
+ * Marca do 400 que recusou o RASCUNHO (o corpo é o mesmo do PATCH): a tela diz
+ * que o erro é do rascunho, que também não passaria no Salvar. Os outros 400
+ * (sem mensagens, sem chave do provedor salvo…) não a levam.
+ */
+const CABECALHO_DO_RASCUNHO_RECUSADO = 'x-rascunho-recusado'
+
+/**
  * POST /api/cb/ia/agentes/[id]/playground
  * `{ messages, contactId?, rascunho?, verPedido?, retomada?, tentativa? }`  (admin, D14)
  *
@@ -104,7 +111,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
  * teste roda com ele por cima do agente salvo (`aplicarAlteracao`), sem
  * gravar. É lido e conferido como no salvar (`lerAlteracao` +
  * `conferirRascunho`): rascunho inválido devolve o MESMO 400 do `PATCH`
- * (código e `itens`). A Base de conhecimento continua a SALVA (a busca é
+ * (código e `itens`), com o cabeçalho `x-rascunho-recusado: 1` (só nele: a
+ * tela diz que o erro é do rascunho). A Base de conhecimento continua a SALVA (a busca é
  * pelo id do agente). `ativo`, conexões e etapas não mudam a geração.
  *
  * `verPedido: true` (sob demanda, só administrador — D14): a resposta traz
@@ -164,13 +172,24 @@ export async function POST(request: Request, { params }: Contexto) {
     }
 
     // O RASCUNHO da tela (DC4): lido e conferido como no salvar — a recusa é o
-    // mesmo 400 (`recusa`, ou o `ErroDoAgente` que o `catch` traduz) —, e
-    // aplicado por cima do salvo. Sem ele, o teste é o do agente SALVO.
+    // MESMO 400 do PATCH (corpo idêntico), marcada no cabeçalho para a tela
+    // dizer que o erro é do rascunho —, e aplicado por cima do salvo. Sem ele,
+    // o teste é o do agente SALVO.
     let agente = salvo
     if (corpo?.rascunho !== undefined && corpo.rascunho !== null) {
+      const doRascunho = (r: NextResponse) => {
+        r.headers.set(CABECALHO_DO_RASCUNHO_RECUSADO, '1')
+        return r
+      }
       const lida = lerAlteracao(corpo.rascunho, false)
-      if (!lida.ok) return recusa(lida.codigo)
-      await conferirRascunho(ctx.accountId, salvo, lida.valor)
+      if (!lida.ok) return doRascunho(recusa(lida.codigo))
+      try {
+        await conferirRascunho(ctx.accountId, salvo, lida.valor)
+      } catch (err) {
+        const recusada = respostaDoErro(err)
+        if (recusada && recusada.status === 400) return doRascunho(recusada)
+        throw err
+      }
       agente = aplicarAlteracao(salvo, lida.valor)
     }
 

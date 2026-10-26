@@ -32,8 +32,10 @@ que o agente vê, ações simuladas, travas, retomada) está em `ia-agentes.md`,
 - ⚠️⚠️ **Conferido COMO o salvar**: `lerAlteracao` + `conferirRascunho`
   (`repo.ts`: a MESMA `conferirReferencias` do `atualizarAgente`, sem gravar;
   o provedor do rascunho, ou o salvo quando o rascunho LIGA). A recusa é o
-  mesmo 400 do `PATCH`, com o código e os `itens` — a tela diz que o rascunho
-  não passaria no Salvar. Regra nova de validação do salvar entra em
+  mesmo 400 do `PATCH` (corpo idêntico: código e `itens`), marcada SÓ ela com
+  o cabeçalho `x-rascunho-recusado` — a tela diz que o rascunho não passaria
+  no Salvar; o `sem_chave` do provedor salvo não é do rascunho e não leva a
+  marca. Erro de leitura na conferência é 500. Regra nova de validação do salvar entra em
   `conferirReferencias` (vale para os dois), nunca só em `atualizarAgente`.
   As etapas NÃO são conferidas: não mudam a resposta, e a etapa tomada por
   outro agente continua sendo o 409 do salvar.

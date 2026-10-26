@@ -692,6 +692,8 @@ describe('POST /api/cb/ia/agentes/[id]/playground — o RASCUNHO da tela (DC4, 2
   ])('rascunho fora da forma (%s): o MESMO 400 do PATCH, sem gerar', async (codigo, rascunho) => {
     const res = await enviar({ rascunho })
     expect(res.status).toBe(400)
+    // A marca de que o erro é do RASCUNHO (o corpo continua o do PATCH).
+    expect(res.headers.get('x-rascunho-recusado')).toBe('1')
     const corpo = await res.json()
     expect(corpo).toMatchObject({ code: codigo })
     const doSalvar = await PATCH(
@@ -713,6 +715,7 @@ describe('POST /api/cb/ia/agentes/[id]/playground — o RASCUNHO da tela (DC4, 2
     vi.mocked(conferirRascunho).mockRejectedValue(erro)
     const res = await enviar({ rascunho: { ferramentas: { etiquetar: { etiquetas: [OUTRO] } } } })
     expect(res.status).toBe(400)
+    expect(res.headers.get('x-rascunho-recusado')).toBe('1')
     const corpo = await res.json()
     expect(corpo).toEqual({ error: codigo, code: codigo, itens: [OUTRO] })
     // O que o PATCH devolveria com a mesma recusa.
@@ -726,6 +729,25 @@ describe('POST /api/cb/ia/agentes/[id]/playground — o RASCUNHO da tela (DC4, 2
     const res = await enviar({ rascunho: { provedor: 'openai', modelo: 'gpt-x' } })
     expect(res.status).toBe(400)
     expect(await res.json()).toMatchObject({ code: 'provedor_sem_chave' })
+  })
+
+  it('o 400 que NÃO é do rascunho (sem chave do provedor salvo, conversa sem cliente) não leva a marca', async () => {
+    vi.mocked(lerChave).mockResolvedValueOnce({ chave: null, ilegivel: false })
+    const semChave = await enviar({ rascunho: { instrucoes: 'Nova.' } })
+    expect(semChave.status).toBe(400)
+    expect(await semChave.json()).toMatchObject({ code: 'sem_chave' })
+    expect(semChave.headers.get('x-rascunho-recusado')).toBeNull()
+    const semCliente = await enviar({ messages: [{ role: 'assistant', content: 'oi' }], rascunho: { instrucoes: 'Nova.' } })
+    expect(semCliente.status).toBe(400)
+    expect(semCliente.headers.get('x-rascunho-recusado')).toBeNull()
+  })
+
+  it('erro de BANCO na conferência do rascunho é 500, nunca "recusado"', async () => {
+    vi.mocked(conferirRascunho).mockRejectedValue(new ErroDoAgente('banco', 'timeout'))
+    const res = await enviar({ rascunho: { ferramentas: { etiquetar: { etiquetas: [OUTRO] } } } })
+    expect(res.status).toBe(500)
+    expect(res.headers.get('x-rascunho-recusado')).toBeNull()
+    expect(generateReply).not.toHaveBeenCalled()
   })
 
   it('`rascunho: null` é o mesmo que sem rascunho', async () => {

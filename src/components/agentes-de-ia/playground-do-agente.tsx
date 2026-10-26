@@ -375,8 +375,8 @@ export function PlaygroundDoAgente({
       return {
         ok: false,
         texto: textoDoCodigo(t, lido.code, lido.code === 'etapa_ocupada' ? lido.outroAgente : lido.error),
-        // O 400 com rascunho: ele não passaria no Salvar (o mesmo código).
-        descricao: res.status === 400 && corpo.rascunho ? t('playground.rascunhoRecusado') : undefined,
+        // A recusa do RASCUNHO (o servidor a marca): ele também não passaria no Salvar.
+        descricao: res.headers.get('x-rascunho-recusado') === '1' ? t('playground.rascunhoRecusado') : undefined,
         esperaMs: null,
       };
     } catch {
