@@ -9,7 +9,7 @@ personalizado (a IA já preenche campo).
 
 | Fase | O quê | Estado |
 | --- | --- | --- |
-| 0 | Listas de motivos aprovadas; campos criados nos blocos | listas aprovadas (26/10); campos a criar |
+| 0 | Listas de motivos aprovadas; campos criados nos blocos | ✅ 26/10: 4 campos gravados em produção (Bancário e Trabalhista); Previdenciário só renomeado |
 | 1 | Migration: campo do motivo por etapa; seletor no Gerenciar funil | — |
 | 2 | Janela "Por que…?" nos caminhos de gente; botão Perdido escolhe etapa | — |
 | 3 | Passo "Mover card de etapa" grava o motivo | — |
@@ -95,11 +95,29 @@ Toda lista termina com **"Outro"** (texto livre na janela).
 
 ## Desenho
 
-### Fase 0 — os campos
+### Fase 0 — os campos (✅ 26/10/2026)
 
-- Seis campos Lista (dois por bloco: Bancário, Trabalhista,
-  Previdenciário). O Previdenciário reaproveita o campo existente para a
-  desqualificação (troca as opções; 0 valores) e ganha o da perda.
+Resultado medido: INSERT dos 4 campos + UPDATE do nome do campo do
+Previdenciário pela Management API, com o "pode gravar" do operador.
+Conferido pelo `supabase-cb`: opções certas terminando em "Outro", 0
+valores, dono = `accounts.owner_user_id`, e as 7 automações do
+Previdenciário ainda apontam para o mesmo id. Catálogo conferido no
+preview (Configurações → Campos e etiquetas). Desfazer: apagar os quatro
+campos (nasceram vazios) e devolver o nome "Motivo da desqualificação".
+
+- Quatro campos Lista agora (dois no Bancário, dois no Trabalhista), com a
+  área no nome — "Motivo da perda (Bancário)" —, porque o seletor do passo
+  "Atualizar campo" e o catálogo do agente de IA listam os campos sem o
+  bloco. Chaves `ba_motivo_desqualificacao`, `ba_motivo_perda`,
+  `tr_motivo_desqualificacao`, `tr_motivo_perda` (o Previdenciário já usa
+  `aa_`).
+- ⚠️ **O Previdenciário NÃO se divide na Fase 0** (medido em 26/10): as 6
+  automações de lembrete já GRAVAM o motivo no campo atual
+  (`update_contact_field`: "Não respondeu", "Não reengajou", "Outro") e a
+  automação desligada "Volta do Desqualificado por 'Não respondeu'" DECIDE
+  por ele (condição `equals`). Dividir agora quebraria as duas pontas. O
+  campo só ganha a área no nome; a divisão vai junto com a decisão da etapa
+  "Perdido" do Previdenciário (Em aberto), repontando as 7 automações.
 - Dono durável: `custom_fields.user_id` CASCADEia de `auth.users` → grava
   `accounts.owner_user_id`, nunca o login de quem cria (CLAUDE.md, 8a).
 - A chave (`field_key`) nasce do nome pelo gatilho da 948.
