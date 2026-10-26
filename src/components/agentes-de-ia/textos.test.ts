@@ -21,12 +21,14 @@ import {
   STATUS_DO_TURNO,
   TIPOS_DE_CAMPO,
   fraseDaAcao,
+  rotuloDaChaveDoRascunho,
   rotuloDoTipoDeAcao,
   rotuloDoTipoDoCampo,
   textoDoDetalheDaAcao,
   textoDoErroDaAcao,
 } from './textos'
-import { BLOCOS_DO_ACESSO, CAIXAS_DO_ACESSO, MODELOS_DE_PARTIDA, TIPOS_DE_ACAO } from './tipos'
+import { alteracoesDoRascunho } from './rascunho'
+import { BLOCOS_DO_ACESSO, CAIXAS_DO_ACESSO, MODELOS_DE_PARTIDA, TIPOS_DE_ACAO, type IaAgente } from './tipos'
 
 // As telas dos agentes de IA pedem chaves MONTADAS (`erro.${código}`,
 // `modelos.${m}.*`, `dia.${d}`, `uso.modo.${m}`), que escapam dos portões de
@@ -279,5 +281,49 @@ describe('STATUS_DO_TURNO espelha o CHECK de cb_ia_turnos.status (1049)', () => 
     expect(check, 'o CHECK do status do turno').toBeTruthy()
     const doBanco = [...check![1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1])
     for (const s of doBanco) expect(STATUS_DO_TURNO as readonly string[], s).toContain(s)
+  })
+})
+
+describe('rotuloDaChaveDoRascunho — a lista "o que mudou" do Playground (DC4)', () => {
+  const t = ((chave: string) => chave) as unknown as ReturnType<typeof useTranslations>
+
+  it('toda chave que as abas mandam tem rótulo (a Configuração com TUDO mudado, mais Acesso, Ferramentas e Retomada)', () => {
+    const salvo = {
+      nome: 'A',
+      descricao: '',
+      instrucoes: '',
+      regras: [],
+      provedor: 'gemini',
+      modelo: 'm',
+      ativo: false,
+      conexoes: [],
+      horario: null,
+      tetoRespostas: 10,
+      transferirPara: null,
+      podePassarPara: [],
+      etapas: [],
+    } as unknown as IaAgente
+    const tudo = alteracoesDoRascunho(salvo, {
+      nome: 'B',
+      descricao: 'd',
+      instrucoes: 'i',
+      regras: ['r'],
+      provedor: 'openai',
+      modelo: 'n',
+      ativo: true,
+      conexoes: ['c'],
+      horario: { dias: [1], inicio: '08:00', fim: '18:00' },
+      tetoRespostas: 5,
+      transferirPara: 'u',
+      podePassarPara: ['p'],
+      etapas: ['e'],
+    })
+    for (const chave of [...Object.keys(tudo), 'acesso', 'ferramentas', 'retomada']) {
+      expect(rotuloDaChaveDoRascunho(t, chave), chave).not.toBeNull()
+    }
+  })
+
+  it('chave desconhecida fica de fora (nunca crua)', () => {
+    expect(rotuloDaChaveDoRascunho(t, 'coisa_nova')).toBeNull()
   })
 })

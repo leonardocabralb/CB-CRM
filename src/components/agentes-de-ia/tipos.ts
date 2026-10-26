@@ -108,6 +108,8 @@ export interface RetomadaSimulada {
   de: number
   texto: string
   parada: string | null
+  /** A retomada está desligada na versão testada: na produção nada sairia (a simulação roda assim mesmo). */
+  desligada: boolean
 }
 
 /** As ações de uma resposta do Playground — SIMULADAS, nada executa ali (F4). */

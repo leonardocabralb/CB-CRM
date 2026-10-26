@@ -3,24 +3,71 @@ import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-// O detalhe do agente (Codex, #295): a conversa do Playground zera a cada
-// salvamento da configuração, e a aba Uso remonta a cada visita.
+// O detalhe do agente: as abas com rascunho ficam montadas, a aba Uso remonta
+// a cada visita, e o Playground testa o RASCUNHO da tela (DC4, 26/10/2026).
+// ⚠️ A conversa do Playground NÃO zera mais ao salvar (antes zerava: Codex,
+// #295): cada resposta leva o selo da versão que a gerou.
 const fonte = readFileSync(join(__dirname, 'detalhe-do-agente.tsx'), 'utf8')
+const playground = readFileSync(join(__dirname, 'playground-do-agente.tsx'), 'utf8')
+
+/** O corpo de cada `useEffect(() => { … }, …)` do fonte. */
+function corposDosEfeitos(f: string): string[] {
+  const saida: string[] = []
+  for (const m of f.matchAll(/useEffect\(/g)) {
+    let profundidade = 0
+    let i = m.index + 'useEffect'.length
+    const inicio = i
+    for (; i < f.length; i++) {
+      if (f[i] === '(') profundidade++
+      else if (f[i] === ')' && --profundidade === 0) break
+    }
+    saida.push(f.slice(inicio, i + 1))
+  }
+  return saida
+}
 
 describe('detalhe-do-agente — abas', () => {
-  it('o salvamento conta, e a contagem entra na key do Playground', () => {
-    expect(fonte).toContain('setSalvamentos((n) => n + 1)')
-    const playground = fonte.slice(fonte.indexOf('<PlaygroundDoAgente'))
-    expect(playground.slice(0, 120)).toContain('key={`${e.agente.id}:${salvamentos}`}')
+  it('⚠️ salvar NÃO zera a conversa do Playground: a key é só o id do agente (DC4)', () => {
+    const doPlayground = fonte.slice(fonte.indexOf('<PlaygroundDoAgente'))
+    expect(doPlayground.slice(0, 80)).toContain('key={e.agente.id}')
+    expect(fonte).not.toMatch(/salvamentos/i)
   })
 
-  it('salvar o Acesso, a Base (F3) ou as Ferramentas (F4) também zera a conversa do Playground', () => {
-    const acesso = fonte.slice(fonte.indexOf('<AcessoDoAgente'))
-    expect(acesso.slice(0, 200)).toContain('aoSalvar={aoSalvarAgente}')
-    const ferramentas = fonte.slice(fonte.indexOf('<FerramentasDoAgente'))
-    expect(ferramentas.slice(0, 200)).toContain('aoSalvar={aoSalvarAgente}')
+  it('⚠️ e o Playground não zera a conversa sozinho quando o agente muda (nenhum efeito mexe nela)', () => {
+    const efeitos = corposDosEfeitos(playground)
+    expect(efeitos.length).toBeGreaterThan(0)
+    for (const e of efeitos) expect(e).not.toContain('setTurnos')
+    // Cada resposta leva o selo da versão que a gerou.
+    expect(playground).toContain("t('playground.versaoSalvo'")
+    expect(playground).toContain("t('playground.versaoRascunho')")
+    expect(playground).toContain('toLocaleTimeString(undefined')
+  })
+
+  it('salvar qualquer aba atualiza o agente na tela (a versão salva nova)', () => {
+    for (const aba of ['<ConfiguracaoDoAgente', '<AcessoDoAgente', '<FerramentasDoAgente', '<RetomadaDoAgente']) {
+      expect(fonte.slice(fonte.indexOf(aba)).slice(0, 260), aba).toContain('aoSalvar={aoSalvarAgente}')
+    }
+  })
+
+  it('⚠️ Configuração, Acesso, Ferramentas e Retomada avisam o RASCUNHO; a Base não (o teste usa a SALVA)', () => {
+    const pares = [
+      ['<ConfiguracaoDoAgente', 'setRascunhoDaConfiguracao'],
+      ['<AcessoDoAgente', 'setRascunhoDoAcesso'],
+      ['<FerramentasDoAgente', 'setRascunhoDasFerramentas'],
+      ['<RetomadaDoAgente', 'setRascunhoDaRetomada'],
+    ]
+    for (const [aba, setter] of pares) {
+      expect(fonte.slice(fonte.indexOf(aba)).slice(0, 300), aba).toContain(`aoMudarRascunho={${setter}}`)
+    }
     const base = fonte.slice(fonte.indexOf('<BaseDoAgente'))
-    expect(base.slice(0, 200)).toContain('aoSalvar={() => setSalvamentos((n) => n + 1)}')
+    expect(base.slice(0, base.indexOf('/>'))).not.toContain('aoMudarRascunho')
+  })
+
+  it('o Playground recebe o rascunho juntado SÓ com o carimbo da versão atual (efeito passivo)', () => {
+    expect(fonte).toContain('juntarRascunhos(e.agente.updatedAt, [')
+    const doPlayground = fonte.slice(fonte.indexOf('<PlaygroundDoAgente'))
+    expect(doPlayground.slice(0, 300)).toContain('rascunho={rascunho}')
+    expect(doPlayground.slice(0, 300)).toContain('baseNaoSalva={baseNaoSalva}')
   })
 
   it('Acesso, Base (F3), Ferramentas (F4) e Retomada (1056) têm rascunho: montadas depois da 1ª visita, escondidas (não desmontadas)', () => {
@@ -35,11 +82,6 @@ describe('detalhe-do-agente — abas', () => {
       expect(fonte).toContain(flag)
     }
     expect(fonte).toContain('naoSalvoEm={naoSalvoEm}')
-  })
-
-  it('salvar a Retomada também zera a conversa do Playground', () => {
-    const retomada = fonte.slice(fonte.indexOf('<RetomadaDoAgente'))
-    expect(retomada.slice(0, 200)).toContain('aoSalvar={aoSalvarAgente}')
   })
 
   it('a Retomada fica entre as Ferramentas e o Playground (1056)', () => {

@@ -219,7 +219,14 @@ export function lerRetomadaSimulada(v: unknown): RetomadaSimulada | null {
   const t = typeof r.texto === 'string' ? r.texto : ''
   // Sem parada, tem de haver texto: é o que sairia.
   if (parada === null && !t.trim()) return null
-  return { tentativa: r.tentativa as number, de: r.de as number, texto: parada === null ? t : '', parada }
+  return {
+    tentativa: r.tentativa as number,
+    de: r.de as number,
+    texto: parada === null ? t : '',
+    parada,
+    // Só o booleano true: servidor anterior (sem o campo) não acende o aviso.
+    desligada: r.desligada === true,
+  }
 }
 
 /** Acima disto a lista de horários do Playground aparece recolhida (F5). */
