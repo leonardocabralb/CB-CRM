@@ -443,6 +443,15 @@ describe('persistInboundMessage: os fatos da mensagem vão para o agente de IA',
     expect(eventos().at(-1)).toBe('message.received');
   });
 
+  it('a escolha num botão ou numa lista (1111) chega como toque em botão: não abre turno', async () => {
+    // Como na Meta (#478): navegação de menu, não pergunta. Outro sistema no
+    // mesmo número pode mandar botões, e a escolha do cliente traz o rótulo
+    // como texto — sem a marca, o agente responderia por cima dele.
+    await persistInboundMessage(fakeDb(), { ...MENSAGEM, text: 'Falar com atendente', escolhaDeOpcao: true });
+
+    expect(agente).toHaveBeenCalledWith(expect.objectContaining({ ehRespostaDeBotao: true }));
+  });
+
   it('⚠️ E4: basta UM gatilho da mensagem ter falado — os outros não apagam', async () => {
     vi.mocked(dispararAutomacoes).mockImplementation(async ({ triggerType }) => ({
       ...DISPARO,

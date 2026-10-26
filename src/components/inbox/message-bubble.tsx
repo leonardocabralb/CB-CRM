@@ -51,6 +51,7 @@ import {
   partesDoModelo,
   type TipoDeBotao,
 } from "@/lib/whatsapp/modelo-da-mensagem";
+import { lerOpcoesGravadas, textoSemAsOpcoes } from "@/lib/whatsapp/opcoes-de-resposta";
 import { useTranslations } from "next-intl";
 import type { CorDeCanal } from "@/lib/cb-channels/cores";
 
@@ -97,6 +98,12 @@ interface MessageBubbleProps {
    * (lib/inbox/entrega-nao-confirmada.ts). Sem a prop, nada muda.
    */
   naoConfirmada?: boolean;
+  /**
+   * Clique numa opção de resposta de uma mensagem de EMPRESA recebida (1111):
+   * o fio põe o rótulo na caixa do compositor, citando a mensagem. Sem o
+   * callback (quem não envia), as opções aparecem sem clique.
+   */
+  onResponderComOpcao?: (opcao: string) => void;
 }
 
 /**
@@ -552,15 +559,28 @@ function ConteudoDoModelo({
   message,
   isAgent,
   t,
+  onResponderComOpcao,
 }: {
   message: Message;
   isAgent: boolean;
   t: ReturnType<typeof useTranslations>;
+  onResponderComOpcao?: (opcao: string) => void;
 }) {
   const catalogo = useModelosDaConta(message.template_name);
   const partes = catalogo
     ? partesDoModelo(modeloDaMensagem(message, catalogo))
     : null;
+  // A mensagem de EMPRESA recebida com opções de resposta (1111): as linhas
+  // `[opção]` saem do texto e viram os botões embaixo. Sem opções gravadas
+  // (antes da 1111), o texto inteiro, como sempre.
+  const opcoes =
+    message.sender_type === "customer"
+      ? lerOpcoesGravadas(message.opcoes_de_resposta)
+      : [];
+  const texto = textoSemAsOpcoes(message.content_text ?? null, opcoes);
+  // Mensagem de empresa sem nada legível (1111): a ingestão grava o rótulo de
+  // tipo não lido, e a bolha o troca pela frase, como no `text`.
+  const tipoNaoLido = tipoNaoSuportado(texto);
   return (
     <div>
       <span
@@ -579,8 +599,13 @@ function ConteudoDoModelo({
           {partes.cabecalho}
         </p>
       )}
-      {message.content_text && (
-        <FormattedText texto={message.content_text} className="mt-1" />
+      {tipoNaoLido !== null ? (
+        <div className="mt-1 flex items-start gap-1.5 text-sm italic opacity-80" title={tipoNaoLido || undefined}>
+          <MessageSquareWarning className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{t("naoSuportada")}</span>
+        </div>
+      ) : (
+        texto && <FormattedText texto={texto} className="mt-1" />
       )}
       {partes?.rodape && (
         <p
@@ -622,6 +647,57 @@ function ConteudoDoModelo({
           })}
         </div>
       )}
+      {opcoes.length > 0 && (
+        <OpcoesDeResposta opcoes={opcoes} onEscolher={onResponderComOpcao} t={t} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * As opções de resposta de uma mensagem de EMPRESA recebida (1111), no desenho
+ * dos botões do modelo. Com `onEscolher`, cada uma PREPARA a resposta: o
+ * rótulo vai para a caixa do compositor, citando a mensagem, e nada sai sem o
+ * Enviar. Do outro lado chega uma resposta digitada, não o toque no botão — a
+ * Evolution não manda "resposta a botão" (`opcoes-de-resposta.ts`).
+ */
+function OpcoesDeResposta({
+  opcoes,
+  onEscolher,
+  t,
+}: {
+  opcoes: string[];
+  onEscolher?: (opcao: string) => void;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  // `min-w-0` no rótulo: sem ele o `truncate` não corta dentro do flex e o
+  // rótulo estica a bolha (`ui.md`).
+  const linha =
+    "flex w-full min-w-0 items-center justify-center gap-1.5 border-t border-border py-1.5 text-sm font-medium text-primary first:border-t-0";
+  return (
+    <div className="mt-2 flex flex-col border-t border-border">
+      {opcoes.map((opcao, i) =>
+        onEscolher ? (
+          <button
+            key={i}
+            type="button"
+            onClick={() => onEscolher(opcao)}
+            title={t("prepararResposta", { opcao })}
+            className={cn(
+              linha,
+              "transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            )}
+          >
+            <Reply aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+            <span className="min-w-0 truncate">{opcao}</span>
+          </button>
+        ) : (
+          <div key={i} title={opcao} className={linha}>
+            <Reply aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+            <span className="min-w-0 truncate">{opcao}</span>
+          </div>
+        ),
+      )}
     </div>
   );
 }
@@ -631,12 +707,14 @@ function MessageContent({
   isAgent,
   t,
   onAbrirGaleria,
+  onResponderComOpcao,
 }: {
   message: Message;
   /** A bolha é da equipe (fundo primary) — o player de áudio lê contra ele. */
   isAgent: boolean;
   t: ReturnType<typeof useTranslations>;
   onAbrirGaleria?: (messageId: string) => void;
+  onResponderComOpcao?: (opcao: string) => void;
 }) {
   switch (message.content_type) {
     case "text": {
@@ -772,7 +850,14 @@ function MessageContent({
     }
 
     case "template":
-      return <ConteudoDoModelo message={message} isAgent={isAgent} t={t} />;
+      return (
+        <ConteudoDoModelo
+          message={message}
+          isAgent={isAgent}
+          t={t}
+          onResponderComOpcao={onResponderComOpcao}
+        />
+      );
 
     case "location":
       return (
@@ -846,6 +931,7 @@ export function MessageBubble({
   baixandoAnexo = false,
   onAbrirGaleria,
   naoConfirmada = false,
+  onResponderComOpcao,
 }: MessageBubbleProps) {
   const t = useTranslations("Inbox.bubble");
 
@@ -1026,6 +1112,8 @@ export function MessageBubble({
             isAgent={isAgent}
             t={t}
             onAbrirGaleria={onAbrirGaleria}
+            // Mensagem apagada não oferece resposta: as opções ficam só de retrato.
+            onResponderComOpcao={apagada ? undefined : onResponderComOpcao}
           />
         </div>
         <div

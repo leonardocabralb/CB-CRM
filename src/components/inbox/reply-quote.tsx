@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Message } from "@/types";
 import { useTranslations } from "next-intl";
+import { lerOpcoesGravadas, textoSemAsOpcoes } from "@/lib/whatsapp/opcoes-de-resposta";
 
 interface ReplyQuoteProps {
   /** Sender label of the quoted message: "You" for our own messages,
@@ -106,7 +107,13 @@ export function ReplyQuote({
 
 /** Build the one-line preview text shown inside a reply quote. */
 export function buildReplyPreview(message: Message, t: ReturnType<typeof useTranslations>): string {
-  if (message.content_text) return message.content_text;
+  // ⚠️ NOSSO (1111): a mensagem de empresa com opções de resposta cita só o
+  // corpo, sem as linhas `[opção]` — como a bolha, e como o WhatsApp.
+  const texto =
+    message.sender_type === "customer"
+      ? textoSemAsOpcoes(message.content_text ?? null, lerOpcoesGravadas(message.opcoes_de_resposta))
+      : message.content_text;
+  if (texto) return texto;
   switch (message.content_type) {
     case "image":
       return t("photo");

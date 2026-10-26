@@ -17,6 +17,7 @@ import {
   resumoDosContatos,
   type ContatoCompartilhado,
 } from '@/lib/whatsapp/cartao-de-contato';
+import { MAX_OPCOES, linhaDoBotao } from '@/lib/whatsapp/opcoes-de-resposta';
 
 export interface EvolutionMessageKey {
   remoteJid?: string;
@@ -229,16 +230,35 @@ export function extractText(message?: Record<string, unknown> | null): string | 
   if (contatos) return resumoDosContatos(contatos);
   // Mensagem de EMPRESA com botões (modelo do WhatsApp Business): medido em
   // setembro, 22 chegaram assim e viraram bolha vazia — o texto se perdia.
-  const modelo = asRecord(m0.templateMessage);
-  if (modelo) return textoDoModelo(modelo);
-  const interativa = asRecord(m0.interactiveMessage);
-  if (interativa) return textoInterativo(interativa);
-  return null;
+  // Desde a 1111, também o menu em lista de um robô.
+  const empresa = lerMensagemDeEmpresa(m0);
+  if (empresa) return montarTexto(empresa.blocos, empresa.botoes.map((b) => b.linha));
+  // A ESCOLHA feita num botão ou numa lista (1111): até 26/10/2026 virava
+  // "tipo que o CRM ainda não mostra".
+  return textoDaEscolha(m0);
 }
 
 /** Texto não vazio, ou nada. */
 function textoOuNada(v: unknown): string | null {
   return typeof v === 'string' && v.trim() ? v.trim() : null;
+}
+
+/** Um botão de mensagem de empresa, como entra no texto e, se for o caso, como opção. */
+interface BotaoLido {
+  /** A linha no texto: `[Sim]`, `[Ver boleto] https://…` ou o Pix. */
+  linha: string;
+  /**
+   * O rótulo, quando tocar no botão RESPONDE com ele (1111): resposta rápida
+   * do modelo, `quick_reply` da interativa, item da lista. A linha dele é
+   * sempre `linhaDoBotao(resposta)`, que a bolha tira do texto.
+   */
+  resposta: string | null;
+}
+
+/** Uma mensagem de empresa lida: os blocos de texto e os botões, na ordem. */
+interface MensagemDeEmpresa {
+  blocos: (string | null)[];
+  botoes: BotaoLido[];
 }
 
 /**
@@ -247,9 +267,9 @@ function textoOuNada(v: unknown): string | null {
  * texto porque, sem eles, "[Ver boleto]" não diz ao operador para onde o
  * cliente foi mandado.
  */
-function botoesDoModelo(botoes: unknown): string[] {
+function botoesDoModelo(botoes: unknown): BotaoLido[] {
   if (!Array.isArray(botoes)) return [];
-  const linhas: string[] = [];
+  const lidos: BotaoLido[] = [];
   for (const b of botoes) {
     const botao = asRecord(b);
     if (!botao) continue;
@@ -260,9 +280,9 @@ function botoesDoModelo(botoes: unknown): string[] {
     const rotulo = textoOuNada(alvo?.displayText);
     if (!rotulo) continue;
     const extra = textoOuNada(link?.url) ?? textoOuNada(ligar?.phoneNumber);
-    linhas.push(extra ? `[${rotulo}] ${extra}` : `[${rotulo}]`);
+    lidos.push({ linha: linhaDoBotao(rotulo, extra), resposta: resposta && !extra ? rotulo : null });
   }
-  return linhas;
+  return lidos;
 }
 
 /** Junta os blocos de texto (separados por linha em branco) e os botões. */
@@ -273,26 +293,115 @@ function montarTexto(blocos: (string | null)[], botoes: string[]): string | null
 }
 
 /**
+ * Mensagem montada por SISTEMA de empresa, lida UMA vez para o texto e para as
+ * opções de resposta (1111) — assim cada opção tem a sua linha no texto.
+ *
  * `templateMessage` — as três formas medidas nos 22 de setembro:
  * `hydratedTemplate` (título, corpo, rodapé e botões), a variante
  * `hydratedFourRowTemplate` (mesmos campos) e `interactiveMessageTemplate`
  * (a forma nova, igual à `interactiveMessage`). A imagem do cabeçalho, quando
- * há, NÃO é baixada: a mensagem é gravada como texto.
+ * há, NÃO é baixada: a mensagem é gravada como texto. Depois, a
+ * `interactiveMessage` e o menu em lista (`listMessage`, 1111).
  */
-function textoDoModelo(modelo: Record<string, unknown>): string | null {
-  const hidratado = asRecord(modelo.hydratedTemplate) ?? asRecord(modelo.hydratedFourRowTemplate);
-  if (hidratado) {
-    return montarTexto(
-      [
-        textoOuNada(hidratado.hydratedTitleText),
-        textoOuNada(hidratado.hydratedContentText),
-        textoOuNada(hidratado.hydratedFooterText),
-      ],
-      botoesDoModelo(hidratado.hydratedButtons),
-    );
+function lerMensagemDeEmpresa(m: Record<string, unknown>): MensagemDeEmpresa | null {
+  const modelo = asRecord(m.templateMessage);
+  if (modelo) {
+    const hidratado = asRecord(modelo.hydratedTemplate) ?? asRecord(modelo.hydratedFourRowTemplate);
+    if (hidratado) {
+      return {
+        blocos: [
+          textoOuNada(hidratado.hydratedTitleText),
+          textoOuNada(hidratado.hydratedContentText),
+          textoOuNada(hidratado.hydratedFooterText),
+        ],
+        botoes: botoesDoModelo(hidratado.hydratedButtons),
+      };
+    }
+    const interativo = asRecord(modelo.interactiveMessageTemplate);
+    return interativo ? lerInterativa(interativo) : null;
   }
-  const interativo = asRecord(modelo.interactiveMessageTemplate);
-  return interativo ? textoInterativo(interativo) : null;
+  const interativa = asRecord(m.interactiveMessage);
+  if (interativa) return lerInterativa(interativa);
+  const lista = asRecord(m.listMessage);
+  return lista ? lerLista(lista) : null;
+}
+
+/**
+ * `listMessage`: o menu em lista de um robô de empresa (medido em 13/10/2026,
+ * um robô de cobrança: "selecione a equipe de atendimento" e um item por
+ * banco). Cabeçalho, descrição e rodapé, e uma linha `[opção]` por item de
+ * todas as seções — o mesmo desenho dos botões do modelo. Ficam de fora o
+ * botão que abre a lista ("Ver opções"), o título de seção e a descrição do
+ * item (nenhum veio no caso medido).
+ */
+function lerLista(lista: Record<string, unknown>): MensagemDeEmpresa {
+  const botoes: BotaoLido[] = [];
+  const secoes = Array.isArray(lista.sections) ? lista.sections : [];
+  for (const secao of secoes) {
+    const itens = asRecord(secao)?.rows;
+    if (!Array.isArray(itens)) continue;
+    for (const item of itens) {
+      const titulo = textoOuNada(asRecord(item)?.title);
+      if (titulo) botoes.push({ linha: linhaDoBotao(titulo), resposta: titulo });
+    }
+  }
+  return {
+    blocos: [textoOuNada(lista.title), textoOuNada(lista.description), textoOuNada(lista.footerText)],
+    botoes,
+  };
+}
+
+/** As caixas da ESCOLHA feita num botão ou numa lista (1111). */
+const CAIXAS_DA_ESCOLHA = [
+  'templateButtonReplyMessage',
+  'buttonsResponseMessage',
+  'listResponseMessage',
+  'interactiveResponseMessage',
+] as const;
+
+/**
+ * A mensagem é a ESCOLHA feita num botão ou numa lista? Como o toque em botão
+ * da Meta (#478), ela não abre turno do agente de IA: é navegação de menu, não
+ * pergunta (`ehRespostaDeBotao`).
+ */
+export function ehEscolhaDeOpcao(message?: Record<string, unknown> | null): boolean {
+  const m = unwrapMessage(message);
+  return !!m && CAIXAS_DA_ESCOLHA.some((caixa) => asRecord(m[caixa]));
+}
+
+/**
+ * A ESCOLHA feita num botão ou numa lista: o rótulo que o WhatsApp mostra no
+ * balão (1111). Medidas em 26/10/2026: `templateButtonReplyMessage` (a equipe
+ * tocou "Sim" num modelo, pelo celular) e `listResponseMessage` (escolheu um
+ * item de lista pelo WhatsApp Web). `buttonsResponseMessage` e
+ * `interactiveResponseMessage` seguem o formato oficial do WhatsApp (o proto),
+ * ainda sem caso medido: lidas errado, caem no rótulo de tipo não lido, como
+ * antes. Só o RÓTULO serve: o id da opção ("menu_beta") é código do sistema
+ * que a mandou, e iria como fala aos motores, à IA e à API. A citação da
+ * mensagem escolhida vem no `contextInfo` de cada uma (`CAIXAS_COM_CONTEXTO`).
+ */
+function textoDaEscolha(m: Record<string, unknown>): string | null {
+  const modelo = asRecord(m.templateButtonReplyMessage);
+  if (modelo) return textoOuNada(modelo.selectedDisplayText);
+  const botoes = asRecord(m.buttonsResponseMessage);
+  if (botoes) return textoOuNada(botoes.selectedDisplayText);
+  const lista = asRecord(m.listResponseMessage);
+  if (lista) return textoOuNada(lista.title);
+  return textoOuNada(asRecord(asRecord(m.interactiveResponseMessage)?.body)?.text);
+}
+
+/**
+ * As opções de RESPOSTA de uma mensagem de empresa (1111) — o que a bolha
+ * oferece como botão que prepara a resposta. Link, telefone, código a copiar e
+ * Pix não são resposta e ficam só no texto. `null` quando não há nenhuma.
+ */
+export function extractOpcoesDeResposta(
+  message?: Record<string, unknown> | null,
+): string[] | null {
+  const m = unwrapMessage(message);
+  const empresa = m ? lerMensagemDeEmpresa(m) : null;
+  const opcoes = (empresa?.botoes ?? []).flatMap((b) => (b.resposta ? [b.resposta] : []));
+  return opcoes.length > 0 ? opcoes.slice(0, MAX_OPCOES) : null;
 }
 
 /**
@@ -323,11 +432,15 @@ function textoDoPix(parametros: Record<string, unknown>): string | null {
     .join(' · ');
 }
 
-/** Os botões nativos (`nativeFlowMessage.buttons`): o rótulo, ou o Pix. */
-function botoesNativos(nativo: unknown): string[] {
+/**
+ * Os botões nativos (`nativeFlowMessage.buttons`): o rótulo, ou o Pix. Só o
+ * `quick_reply` RESPONDE com o rótulo (1111); link, ligação e código a copiar
+ * levam a outro lugar.
+ */
+function botoesNativos(nativo: unknown): BotaoLido[] {
   const botoes = asRecord(nativo)?.buttons;
   if (!Array.isArray(botoes)) return [];
-  const linhas: string[] = [];
+  const lidos: BotaoLido[] = [];
   for (const b of botoes) {
     const botao = asRecord(b);
     if (!botao || typeof botao.buttonParamsJson !== 'string') continue;
@@ -340,27 +453,30 @@ function botoesNativos(nativo: unknown): string[] {
     if (!parametros) continue;
     if (botao.name === 'payment_info') {
       const pix = textoDoPix(parametros);
-      if (pix) linhas.push(pix);
+      if (pix) lidos.push({ linha: pix, resposta: null });
       continue;
     }
     const rotulo = textoOuNada(parametros.display_text);
     if (!rotulo) continue;
     const extra = textoOuNada(parametros.url) ?? textoOuNada(parametros.phone_number);
-    linhas.push(extra ? `[${rotulo}] ${extra}` : `[${rotulo}]`);
+    lidos.push({
+      linha: linhaDoBotao(rotulo, extra),
+      resposta: botao.name === 'quick_reply' && !extra ? rotulo : null,
+    });
   }
-  return linhas;
+  return lidos;
 }
 
 /** `interactiveMessage`: cabeçalho, corpo, rodapé e os botões nativos. */
-function textoInterativo(interativa: Record<string, unknown>): string | null {
-  return montarTexto(
-    [
+function lerInterativa(interativa: Record<string, unknown>): MensagemDeEmpresa {
+  return {
+    blocos: [
       textoOuNada(asRecord(interativa.header)?.title),
       textoOuNada(asRecord(interativa.body)?.text),
       textoOuNada(asRecord(interativa.footer)?.text),
     ],
-    botoesNativos(interativa.nativeFlowMessage),
-  );
+    botoes: botoesNativos(interativa.nativeFlowMessage),
+  };
 }
 
 /**
@@ -421,13 +537,16 @@ export function rotuloDeTipoNaoLido(message?: Record<string, unknown> | null): s
 /**
  * O texto de uma mensagem como ela é GRAVADA: o que `extractText` lê, ou,
  * quando o resultado seria uma bolha de texto vazia, o rótulo do tipo não lido.
+ * Vale também para a mensagem de empresa (`template`) sem nada legível — uma
+ * lista sem título nem itens, uma interativa sem corpo (1111): a bolha
+ * mostraria só o selo "Modelo".
  */
 export function textoParaGravar(
   message: Record<string, unknown> | null | undefined,
   contentType: NormalizedInbound['contentType'],
 ): string | null {
   const texto = extractText(message);
-  if (texto !== null || contentType !== 'text') return texto;
+  if (texto !== null || (contentType !== 'text' && contentType !== 'template')) return texto;
   return rotuloDeTipoNaoLido(message);
 }
 
@@ -462,8 +581,10 @@ export function detectContentType(
   // `template`, e não `text`: a bolha mostra o selo "Modelo" com o texto, o
   // agente de IA não abre turno com ela (quem escreveu foi um sistema — um
   // banco avisando do boleto —, não uma pessoa) e o robô e as automações
-  // continuam sem vê-la (`texto-para-os-motores.ts`), como antes da 1060.
-  if (m.templateMessage || m.interactiveMessage) return 'template';
+  // continuam sem vê-la (`texto-para-os-motores.ts`), como antes da 1060. O
+  // menu em lista (1111) é o mesmo caso: só um sistema manda lista — e, como
+  // `template`, o número que a manda também não vira card (guarda 5).
+  if (m.templateMessage || m.interactiveMessage || m.listMessage) return 'template';
   return 'text';
 }
 
@@ -538,6 +659,10 @@ const CAIXAS_COM_CONTEXTO = [
   // O cartão de contato também pode responder a uma mensagem (1060).
   'contactMessage',
   'contactsArrayMessage',
+  // A ESCOLHA num botão ou numa lista cita a mensagem que tinha as opções
+  // (1111). Medido em 26/10/2026: nelas a 2.4 entrega o `contextInfo` de cima
+  // NULO, e a resposta do celular entrava sem a citação.
+  ...CAIXAS_DA_ESCOLHA,
 ] as const;
 
 /**
@@ -682,6 +807,8 @@ export function normalizeUpsert(
         : Math.floor(Date.now() / 1000);
 
   const contentType = detectContentType(item.message);
+  const opcoesDeResposta =
+    contentType === 'template' ? extractOpcoesDeResposta(item.message) : null;
 
   return {
     accountId,
@@ -710,6 +837,11 @@ export function normalizeUpsert(
     // Só no cartão de contato (1060): a chave ausente nas outras mantém o
     // INSERT de sempre para todo o resto.
     ...(contentType === 'contact' ? { contatos: extractContatos(item.message) ?? [] } : {}),
+    // Só na mensagem de empresa com opções de resposta (1111), pelo mesmo
+    // motivo: a chave ausente mantém o INSERT de sempre.
+    ...(opcoesDeResposta ? { opcoesDeResposta } : {}),
+    // A escolha num botão ou numa lista não abre turno do agente de IA (1111).
+    ...(ehEscolhaDeOpcao(item.message) ? { escolhaDeOpcao: true } : {}),
     // Preenchido pelo webhook, que tem as credenciais para chamar
     // chat/getBase64FromMediaMessage — ver evolution-media.ts.
     mediaUrl: null,
