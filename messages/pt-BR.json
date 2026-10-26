@@ -1829,6 +1829,21 @@
         "tornarPrincipal": "Tornar principal",
         "voltarAoAutomatico": "Voltar ao automático",
         "nenhumaBotao": "Nenhuma"
+      },
+      "motivo": {
+        "titulo": "Motivo ao entrar na etapa",
+        "resumo": "{quantas, plural, one {# etapa pergunta} other {# etapas perguntam}}",
+        "resumoNenhuma": "nenhuma etapa pergunta",
+        "dica": "Quem levar o card até a etapa escolhe o motivo num campo do tipo Lista da ficha do cliente. Só aparecem campos Lista com opções; crie-os em Configurações → Campos e etiquetas.",
+        "falhou": "Não foi possível carregar os campos. O que já está escolhido continua salvo.",
+        "semCampos": "Esta conta ainda não tem campo do tipo Lista com opções.",
+        "carregando": "Carregando…",
+        "naoPergunta": "Não pergunta",
+        "campoDesconhecido": "Campo que não está mais na conta",
+        "seletor": "Campo do motivo da etapa {etapa}",
+        "naoServe": "O campo \"{campo}\" não é mais uma Lista com opções: a etapa não vai perguntar até ele voltar a ser Lista ou outro campo ser escolhido.",
+        "sumiu": "O campo escolhido não está mais no catálogo da conta: escolha outro ou \"Não pergunta\".",
+        "perdaSemMotivo": "Etapa de perda sem motivo."
       }
     },
     "automacoes": {

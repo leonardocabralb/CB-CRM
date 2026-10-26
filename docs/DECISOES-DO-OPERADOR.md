@@ -14,6 +14,10 @@ qualquer uma é pergunta ao operador.
 - Radar: sem aba "Todos"; falso negativo da IA não ganha botão.
 - Funil: ganho que sai para etapa neutra segue ganho; perdido que entra em
   neutra volta aberto (21/09/2026).
+- Motivos de perda (26/10/2026): dois campos Lista por área
+  (desqualificação × perda) com "Outro" em texto livre; a ETAPA diz qual
+  pergunta; obrigatório para quem move o card, a automação grava no próprio
+  passo; o botão "Perdido" escolhe etapa e motivo e move.
 - Funil comercial: "por período" é o padrão (18/09/2026); taxa acima de 100%
   aparece como é; transferido conta no funil de origem. Degrau `pasta` depois
   do contrato, opcional, e "fechado" o inclui; painel por funil; "custo por

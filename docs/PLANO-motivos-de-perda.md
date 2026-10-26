@@ -10,7 +10,7 @@ personalizado (a IA já preenche campo).
 | Fase | O quê | Estado |
 | --- | --- | --- |
 | 0 | Listas de motivos aprovadas; campos criados nos blocos | ✅ 26/10: 4 campos gravados em produção (Bancário e Trabalhista); Previdenciário só renomeado |
-| 1 | Migration: campo do motivo por etapa; seletor no Gerenciar funil | — |
+| 1 | Migration: campo do motivo por etapa; seletor no Gerenciar funil | ✅ código 26/10 (branch, sem PR): 1112 escrita e provada no Postgres local; seção no Gerenciar funil vista no preview; **1112 NÃO aplicada** |
 | 2 | Janela "Por que…?" nos caminhos de gente; botão Perdido escolhe etapa | — |
 | 3 | Passo "Mover card de etapa" grava o motivo | — |
 | 4 | Relatório de motivos no Desempenho | — |
@@ -122,21 +122,34 @@ campos (nasceram vazios) e devolver o nome "Motivo da desqualificação".
   `accounts.owner_user_id`, nunca o login de quem cria (CLAUDE.md, 8a).
 - A chave (`field_key`) nasce do nome pelo gatilho da 948.
 
-### Fase 1 — qual campo cada etapa pergunta
+### Fase 1 — qual campo cada etapa pergunta (código pronto em 26/10/2026)
+
+Arquivos: `supabase/migrations/1112_cb_campo_do_motivo_da_etapa.sql` (+ pino
+`campo-do-motivo-1112.test.ts`), `src/lib/pipelines/motivo-da-etapa.ts`
+(puro, testado), `src/components/pipelines/motivo-da-etapa-config.tsx`,
+`pipeline-settings.tsx` (catálogo lido pela conta do funil, coluna no
+upsert), `PipelineStage.campo_do_motivo_id`, `Pipelines.settings.motivo`
+nos dois dicionários, regra `.claude/rules/motivos-de-perda.md`.
 
 - `pipeline_stages.campo_do_motivo_id uuid NULL` → `custom_fields(id)`
   `ON DELETE SET NULL`. A etapa sem campo não pergunta nada (comportamento
-  de hoje). Quem decide é a CONFIGURAÇÃO da etapa, não o `resultado`: o
-  operador pode ligar também numa etapa neutra como "Não Respondeu".
-- `pipeline_stages` não tem `account_id`: FK simples só garante "existe um
-  id". Gatilho BEFORE confere que o campo é da conta do funil e do tipo
-  `select`.
-- Gerenciar funil: seletor "Motivo" na linha da etapa (só campos Lista). O
-  diálogo já tem quatro seletores de largura fixa (`.claude/rules/funil.md`,
-  "Trechos nossos no quadro e na página"): mostrar a tela antes de decidir o
-  layout.
-- Banco vazio: a migration aplica sem dado; conferência pula com
-  `RAISE NOTICE` (`.claude/rules/supabase.md`).
+  de hoje). Quem decide é a CONFIGURAÇÃO da etapa, não o `resultado`.
+- **Mudou do desenho**: o gatilho confere só a CONTA, não o tipo. O upsert
+  do Gerenciar funil regrava todas as etapas a cada "Salvar" (e o BEFORE
+  INSERT do upsert roda até para a linha que vira UPDATE): conferir o tipo
+  travaria o salvamento depois de o tipo do campo mudar. Quem lê confere o
+  tipo (`motivoDaEtapa`).
+- **Mudou do desenho**: seção própria ("Motivo ao entrar na etapa", acima
+  do "Botão de avançar"), não uma quinta caixa na linha da etapa — a linha
+  já não cabe abaixo de `lg`. Print: `~/Downloads/CB-CRM/motivos-de-perda-2026-10-26/fase1-gerenciar-funil.jpg`.
+- Medido: replay de 235 migrations até a 1112 num Postgres 16 local limpo
+  (verify-schema OK) e 7 cenários (mesma conta grava; outra conta recusada
+  no INSERT, no UPDATE e no upsert; upsert com tipo trocado passa; apagar o
+  campo zera a etapa; apagar a conta não trava; reaplicar passa).
+  typecheck, lint e 869 testes verdes (Node 22).
+- ⚠️ ADITIVA: aplicar a 1112 ANTES do deploy (sem a coluna, o PostgREST
+  recusa o "Salvar" do Gerenciar funil inteiro). Conferir o número nas
+  worktrees e no histórico logo antes.
 
 ### Fase 2 — a janela, nos caminhos de GENTE
 

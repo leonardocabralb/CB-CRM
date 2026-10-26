@@ -1056,6 +1056,13 @@ export interface PipelineStage {
    * `desqualificacaoQueVale` (`src/lib/funil/degraus.ts`).
    */
   desqualificacao?: boolean;
+  /**
+   * O campo personalizado (Lista) que guarda o MOTIVO de quem entra na etapa
+   * (1112): a tela pergunta a quem leva o card até ela e a automação grava.
+   * Nulo = não pergunta. A conta é conferida por gatilho; o TIPO, por quem
+   * lê — leia por `campoDoMotivo` (`src/lib/pipelines/motivo-da-etapa.ts`).
+   */
+  campo_do_motivo_id?: string | null;
   created_at: string;
 }
 
