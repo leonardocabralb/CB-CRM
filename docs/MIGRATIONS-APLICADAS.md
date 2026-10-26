@@ -1580,6 +1580,22 @@ nome da época em que foram aplicadas.
   `relreplident = f`, na publicação `supabase_realtime`; e2e no preview,
   antes e depois: antes, tirar a reação zerava o banco e a tela seguia com o
   👍 depois de 15 s; depois, a tela tirou o 👍 em até 5 s.
+- **1108_cb_ia_uso_por_faixa** — `cb_ia_uso` recriada (DROP + CREATE) com a
+  coluna `acima_da_faixa` (`coalesce(prompt_tokens, 0) > 100000` por linha de
+  `ai_usage_log`), no GROUP BY e no ORDER BY; REVOKE de PUBLIC/anon/
+  authenticated, EXECUTE ao `service_role`. ADITIVA, ANTES do deploy (a rota
+  nova ordena pela coluna). PR #440, autorização do operador em 26/10/2026;
+  aplicada em 26/10/2026 (histórico `20261026093824`). Conferida: um
+  overload, a coluna nova, o `coalesce`, `authenticated` sem EXECUTE e
+  `service_role` com.
+- **1109_cb_encerrar_nao_apaga_turno_que_ja_respondeu** — só o corpo de
+  `cb_encerrar_limpa_ia` (vigente era o da 1049): o descarte dos turnos vivos
+  ao encerrar ganha `AND mensagem_enviada_id IS NULL`. Gatilho intocado.
+  Independe do deploy. Mesmo PR e autorização; aplicada em 26/10/2026
+  (histórico `20261026093835`). Conferida: o corpo novo, SECURITY DEFINER,
+  `authenticated` sem EXECUTE; a conferência da própria migration (turno de
+  teste numa conversa real, desfeito por SQLSTATE) não deixou turno nem
+  conversa alterados.
 
 ## Notas do histórico
 

@@ -381,6 +381,12 @@ export async function POST(request: Request) {
               normalized.fromMe ? undefined : { accountId: route.accountId },
             )
           ) {
+            // A CHEGADA descartada deixa rastro (o eco, que é o caso comum,
+            // não): a de 25/10/2026 sumiu sem log nem retenção, e só o log da
+            // VPS mostraria a causa.
+            if (!normalized.fromMe) {
+              console.info('[evolution-webhook] chegada já gravada nesta conta, descartada:', normalized.providerMessageId);
+            }
             continue;
           }
 

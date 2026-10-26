@@ -2113,8 +2113,11 @@ async function encerrar(
         // O retrato é da rodada que acabou: a próxima grava o seu (revisão da F3).
         contexto: null,
         // A espera do horário diz que espera (a aba Turnos o reconhece); a de
-        // sempre (áudio, mídia, retomada) limpa a marca de uma espera anterior.
-        erro: desfecho.erro ?? null,
+        // sempre (áudio, mídia, retomada) limpa a marca de uma espera anterior —
+        // menos a da REPETIÇÃO da geração: apagada por um reagendamento do
+        // áudio no meio, a falha passageira repetiria de novo (revisão de
+        // 26/10/2026).
+        erro: desfecho.erro ?? (turno.erro === ERRO_DA_REPETICAO ? ERRO_DA_REPETICAO : null),
         updated_at: new Date().toISOString(),
       })
       .eq('id', turno.id)

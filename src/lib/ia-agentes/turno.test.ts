@@ -2137,6 +2137,21 @@ describe('executarTurno — áudio', () => {
     expect(turno().status).toBe('aguardando')
   })
 
+  it('⚠️ o reagendamento do áudio NÃO apaga a marca da repetição da geração (a falha passageira repete UMA vez só, revisão de 26/10/2026)', async () => {
+    turno().erro = ERRO_DA_REPETICAO
+    gatilhoDeAudio(10_000)
+    vi.mocked(transcreverAudio).mockResolvedValue({ status: 'falhou', erro: 'o áudio ainda está sendo baixado' })
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({ status: 'aguardando', erro: ERRO_DA_REPETICAO })
+  })
+
+  it('sem a marca, o reagendamento do áudio deixa o erro nulo, como antes', async () => {
+    gatilhoDeAudio(10_000)
+    vi.mocked(transcreverAudio).mockResolvedValue({ status: 'falhou', erro: 'o áudio ainda está sendo baixado' })
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({ status: 'aguardando', erro: null })
+  })
+
   it('falhou depois da janela: transfere (`audio`)', async () => {
     gatilhoDeAudio(JANELA_DO_AUDIO_MS + 60_000)
     vi.mocked(transcreverAudio).mockResolvedValue({ status: 'falhou', erro: 'gemini fora do ar' })

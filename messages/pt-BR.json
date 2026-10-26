@@ -6044,7 +6044,7 @@
       "semOutrosAgentes": "Não há outros agentes na conta.",
       "ativoLigando": "Ao salvar ligado, o agente só atende os cards que ENTRAREM nas etapas a partir de agora. Os que já estão lá ficam com a equipe.",
       "ativoDesligando": "Ao salvar, o agente para de responder. Se for religado depois, ele só atende os cards que ENTRAREM nas etapas a partir de então: os que já estiverem lá ficam com a equipe.",
-      "horarioDica": "Fora deste horário o agente não responde na hora: a mensagem fica na fila e ele responde quando o horário abrir, se ninguém da equipe tiver respondido antes."
+      "horarioDica": "Fora deste horário o agente não responde na hora: a mensagem fica na fila e ele responde quando o horário abrir, se ninguém da equipe tiver respondido antes. Na conexão oficial da Meta, só se a janela de 24 h ainda estiver aberta na abertura; senão, a mensagem fica com a equipe."
     },
     "config": {
       "modelo": "Provedor e modelo",

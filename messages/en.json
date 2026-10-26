@@ -6051,7 +6051,7 @@
       "semOutrosAgentes": "There are no other agents in the account.",
       "ativoLigando": "Once saved as on, the agent only handles cards that ENTER the stages from now on. Cards already there stay with the team.",
       "ativoDesligando": "Once saved, the agent stops replying. If it is turned back on later, it only handles cards that ENTER the stages from then on: cards already there stay with the team.",
-      "horarioDica": "Outside these hours the agent does not reply right away: the message waits in the queue and it replies when the hours open, unless someone on the team has replied first."
+      "horarioDica": "Outside these hours the agent does not reply right away: the message waits in the queue and it replies when the hours open, unless someone on the team has replied first. On the official Meta connection, only if the 24-hour window is still open by then; otherwise the message stays with the team."
     },
     "config": {
       "modelo": "Provider and model",

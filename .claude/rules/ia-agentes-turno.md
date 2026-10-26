@@ -65,7 +65,9 @@ das ações está em `ia.md` e `ia-agentes.md`.
   `[[PASSAR:n]]` (não diz mais "e nada mais").
 - **Limite aceito**: a etiqueta dispara as automações de `tag_added` na hora —
   se uma MOVER o card, o UPDATE da passagem não casa e ela transfere; se uma
-  FALAR, o destino se cala nesta mensagem (E4).
+  FALAR, o destino se cala nesta mensagem (E4); se uma ENCERRAR a conversa, a
+  1109 descarta o turno (a passagem não tem `mensagem_enviada_id`) e as ações
+  feitas somem do registro do turno (as anotações delas ficam).
 
 ### FORA DO HORÁRIO o turno ESPERA a abertura
 
@@ -97,7 +99,8 @@ das ações está em `ia.md` e `ia-agentes.md`.
   reivindicada); a segunda falha é `falhou`, como antes (E8, não transfere).
   Medido na simulação de 25/10/2026: 2 de 59 pedidos ao Gemini passaram de
   30 s, e o cliente ficava sem resposta até escrever de novo. Falha de
-  configuração (chave, modelo, 404) não repete.
+  configuração (chave, modelo, 404) não repete. O reagendamento do áudio ou da
+  mídia no meio MANTÉM a marca (`encerrar`): sem isso, repetiria de novo.
 
 ### Encerrar NÃO descarta o turno que já respondeu (1109)
 
