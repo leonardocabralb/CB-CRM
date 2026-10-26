@@ -40,6 +40,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { salvarValoresDoContato } from '@/lib/contacts/custom-values';
 import {
   escolhaInicial,
@@ -225,21 +226,23 @@ function JanelaDoMotivo({ pedido, aoFechar }: { pedido: PedidoDeMotivo; aoFechar
 
         <div className="grid min-w-0 gap-4">
           {variasEtapas && (
-            <fieldset className="grid gap-1.5">
-              <legend className="mb-1 text-sm font-medium text-foreground">{t('qualEtapa')}</legend>
-              {pedido.etapas.map((e) => (
-                <label key={e.id} className="flex min-w-0 cursor-pointer items-center gap-2 text-sm text-foreground">
-                  <input
-                    type="radio"
-                    name="etapa-do-motivo"
-                    checked={etapaId === e.id}
-                    onChange={() => setEtapaId(e.id)}
-                  />
-                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: e.color }} />
-                  <span className="truncate">{e.name}</span>
-                </label>
-              ))}
-            </fieldset>
+            <div className="grid gap-1.5">
+              <p className="text-sm font-medium text-foreground">{t('qualEtapa')}</p>
+              <RadioGroup
+                value={etapaId}
+                onValueChange={(v) => typeof v === 'string' && setEtapaId(v)}
+                aria-label={t('qualEtapa')}
+                className="gap-1.5"
+              >
+                {pedido.etapas.map((e) => (
+                  <label key={e.id} className="flex min-w-0 cursor-pointer items-center gap-2 text-sm text-foreground">
+                    <RadioGroupItem value={e.id} />
+                    <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: e.color }} />
+                    <span className="truncate">{e.name}</span>
+                  </label>
+                ))}
+              </RadioGroup>
+            </div>
           )}
 
           {etapa && atual?.estado === 'carregando' && (
@@ -269,45 +272,53 @@ function JanelaDoMotivo({ pedido, aoFechar }: { pedido: PedidoDeMotivo; aoFechar
           )}
 
           {atual?.estado === 'pronto' && (
-            <fieldset className="grid gap-1.5">
-              <legend className="mb-1 text-sm font-medium text-foreground">{atual.campo.field_name}</legend>
-              {opcoesDaJanela(atual.campo).fixas.map((opcao) => (
-                <label key={opcao} className="flex min-w-0 cursor-pointer items-center gap-2 text-sm text-foreground">
-                  <input
-                    type="radio"
-                    name="motivo"
-                    checked={escolhaAtual.tipo === 'fixa' && escolhaAtual.opcao === opcao}
-                    onChange={() => marcar({ tipo: 'fixa', opcao })}
-                  />
-                  <span className="min-w-0 break-words">{opcao}</span>
-                </label>
-              ))}
-              {opcoesDaJanela(atual.campo).outro !== null && (
-                <>
+            <div className="grid gap-1.5">
+              <p className="text-sm font-medium text-foreground">{atual.campo.field_name}</p>
+              {/* O valor do item "Outro" é o próprio rótulo: as opções fixas
+                  nunca o contêm (`opcoesDaJanela` o separa por `ehOutro`). */}
+              <RadioGroup
+                value={
+                  escolhaAtual.tipo === 'fixa'
+                    ? escolhaAtual.opcao
+                    : escolhaAtual.tipo === 'outro'
+                      ? opcoesDaJanela(atual.campo).outro
+                      : null
+                }
+                onValueChange={(v) => {
+                  if (typeof v !== 'string') return;
+                  if (v === opcoesDaJanela(atual.campo).outro) {
+                    marcar({ tipo: 'outro', texto: escolhaAtual.tipo === 'outro' ? escolhaAtual.texto : '' });
+                  } else {
+                    marcar({ tipo: 'fixa', opcao: v });
+                  }
+                }}
+                aria-label={atual.campo.field_name}
+                className="gap-1.5"
+              >
+                {opcoesDaJanela(atual.campo).fixas.map((opcao) => (
+                  <label key={opcao} className="flex min-w-0 cursor-pointer items-center gap-2 text-sm text-foreground">
+                    <RadioGroupItem value={opcao} />
+                    <span className="min-w-0 break-words">{opcao}</span>
+                  </label>
+                ))}
+                {opcoesDaJanela(atual.campo).outro !== null && (
                   <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
-                    <input
-                      type="radio"
-                      name="motivo"
-                      checked={escolhaAtual.tipo === 'outro'}
-                      onChange={() =>
-                        marcar({ tipo: 'outro', texto: escolhaAtual.tipo === 'outro' ? escolhaAtual.texto : '' })
-                      }
-                    />
+                    <RadioGroupItem value={opcoesDaJanela(atual.campo).outro ?? ''} />
                     {opcoesDaJanela(atual.campo).outro}
                   </label>
-                  {escolhaAtual.tipo === 'outro' && (
-                    <Input
-                      autoFocus
-                      value={escolhaAtual.texto}
-                      onChange={(e) => marcar({ tipo: 'outro', texto: e.target.value })}
-                      placeholder={t('outroPlaceholder')}
-                      aria-label={t('outroPlaceholder')}
-                      className="ml-6 w-auto border-border bg-muted text-sm text-foreground"
-                    />
-                  )}
-                </>
+                )}
+              </RadioGroup>
+              {escolhaAtual.tipo === 'outro' && (
+                <Input
+                  autoFocus
+                  value={escolhaAtual.texto}
+                  onChange={(e) => marcar({ tipo: 'outro', texto: e.target.value })}
+                  placeholder={t('outroPlaceholder')}
+                  aria-label={t('outroPlaceholder')}
+                  className="ml-6 w-auto border-border bg-muted text-sm text-foreground"
+                />
               )}
-            </fieldset>
+            </div>
           )}
         </div>
 

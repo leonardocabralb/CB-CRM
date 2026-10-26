@@ -11,7 +11,7 @@ personalizado (a IA já preenche campo).
 | --- | --- | --- |
 | 0 | Listas de motivos aprovadas; campos criados nos blocos | ✅ 26/10: 4 campos gravados em produção (Bancário e Trabalhista); Previdenciário só renomeado |
 | 1 | Migration: campo do motivo por etapa; seletor no Gerenciar funil | ✅ 26/10: código na branch (sem PR); 1112 APLICADA em produção (`20261026161549`) |
-| 2 | Janela "Por que…?" nos caminhos de gente; botão Perdido escolhe etapa | código pronto 26/10 (branch); e2e no preview espera autorização |
+| 2 | Janela "Por que…?" nos caminhos de gente; botão Perdido escolhe etapa | ✅ 26/10: código na branch, e2e no preview OK e limpo; configuração do Bancário gravada |
 | 3 | Passo "Mover card de etapa" grava o motivo | — |
 | 4 | Relatório de motivos no Desempenho | — |
 | 5 | Agente de IA que leva o card à perda grava o motivo | depois (agentes desligados) |
@@ -185,9 +185,34 @@ sub-árvore `Pipelines.janelaDoMotivo` nos dois dicionários e o pino
   que protegem: `ao-voltar.test.ts` (o movimento do quadro virou
   `persistirMovimento`) e o inventário de escritores de `deals`
   (`origem-dos-escritores.chamadores.test.ts`: o `marcarStatus` tem dois
-  `update` literais, origem `user`). **e2e no preview pendente**: salvar a configuração e
-  mover o card de teste gravam em produção e esperam a autorização do
-  operador.
+  `update` literais, origem `user`).
+- **e2e no preview (26/10/2026, com o "pode gravar" do operador)**:
+  configuração salva pelo Gerenciar funil (Bancário - Comercial:
+  Desqualificado → `ba_motivo_desqualificacao`, Perdido → `ba_motivo_perda`;
+  as outras colunas das etapas intactas — FICA, é a configuração final).
+  No painel do lead de teste: a janela abriu sem nada marcado e com "Mover"
+  travado; "Cancelar" depois de marcar não gravou nada (card, ficha e
+  trilha intactos); Perdido → Desqualificado com "Só Pronampe/FGI" gravou o
+  campo e moveu (trilha: `stage_changed` pelo operador); Desqualificado →
+  Perdido com "Outro" travou sem texto e gravou o texto digitado. As
+  automações das etapas etiquetaram e encerraram a conversa de teste (sem
+  mensagem).
+  - **Achados corrigidos no mesmo e2e**: (1) a ficha do painel seguia
+    mostrando "—" — o campo não persegue a prop; agora remonta pela
+    `versaoDoCampo`; (2) o `radio` nativo saía pintado de preto mesmo
+    desmarcado — trocado pelo `RadioGroup` do projeto.
+  - **Incidente do teste**: um clique de busca por texto pegou a etiqueta
+    "Bancário" do lead de teste (o botão da etiqueta remove) em vez da
+    pastilha do bloco; devolvida na limpeza.
+  - **Limpeza pela tela, provada no banco**: motivos apagados (0 valores dos
+    quatro campos na conta), etiqueta "Desqualificado" tirada e "Bancário"
+    devolvida, conversa reaberta com o operador responsável, 0 avisos no
+    sino; card em Perdido/perdido como antes. Ficam os eventos da trilha do
+    lead de teste.
+  - Não exercitados por clique: o arrastar no quadro (o dnd-kit não aceita
+    arrasto sintético), a lista, o formulário e o "Perdido" com escolha de
+    etapa (o card de teste já estava perdido) — cobertos pelo código
+    comum da janela e pelo pino dos chamadores.
 
 ### Fase 3 — automações
 

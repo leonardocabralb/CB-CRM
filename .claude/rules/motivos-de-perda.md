@@ -88,7 +88,12 @@ Pino `janela-do-motivo.chamadores.test.ts` com a lista dos caminhos de gente.
   A janela abre marcada com o que a ficha já tem (`escolhaInicial`).
 - **O painel espelha o motivo na ficha** (`espelharMotivo`, cerca do
   contato), com UMA janela por painel — o "avançar" recebe `pedirMotivo`
-  por prop.
+  por prop. ⚠️ Espelhar no estado NÃO basta: o campo que salva sozinho não
+  persegue `valorSalvo` (`campos-e-nome.md`) e seguia mostrando "—" (e2e de
+  26/10). A versão do campo (`versaoDoCampo`) entra na `key` e o remonta.
+- **Botões de opção pelo `RadioGroup` do projeto**, nunca `<input
+  type="radio">`: o nativo saía pintado de preto mesmo desmarcado na tela
+  (e2e de 26/10).
 - ⚠️ No formulário (que veio do upstream), `{janelaDoMotivo}` fica DENTRO do
   `<Sheet>`: embrulhar num fragmento reindenta o JSX inteiro (349 linhas de
   ruído no diff e conflito garantido no próximo merge).

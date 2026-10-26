@@ -971,14 +971,23 @@ export function PainelDoContato({
   // "avançar". Etapa que pede motivo abre a janela antes de mover; o motivo
   // gravado aparece na ficha na hora (`espelharMotivo`), com a mesma cerca
   // de contato de `gravarCampo`.
+  // ⚠️ Espelhar no estado NÃO basta: o campo que salva sozinho guarda o
+  // rascunho da montagem e não persegue `valorSalvo` (campos-e-nome.md) —
+  // medido no e2e de 26/10/2026, a ficha seguia mostrando "—". A versão do
+  // campo entra na `key` e o remonta com o valor novo. Sem risco de o
+  // desmonte regravar por cima: o motivo é Lista, que grava na ESCOLHA e não
+  // tem rascunho pendente.
   const { pedirMotivo, janela: janelaDoMotivo } = useJanelaDoMotivo();
+  const [versaoDoCampo, setVersaoDoCampo] = useState<Record<string, number>>({});
   const espelharMotivo = useCallback(
-    (campoId: string, valor: string, contatoId: string) =>
+    (campoId: string, valor: string, contatoId: string) => {
       setCustomValues((prev) =>
         prev.de === contatoId
           ? { de: prev.de, mapa: { ...prev.mapa, [campoId]: valor.trim() } }
           : prev
-      ),
+      );
+      setVersaoDoCampo((prev) => ({ ...prev, [campoId]: (prev[campoId] ?? 0) + 1 }));
+    },
     []
   );
   const contatoDoMotivo = useCallback(
@@ -1792,7 +1801,7 @@ export function PainelDoContato({
                   {blocoVisivel.campos.map((field) =>
                     valoresDesteContato ? (
                       <CampoComSalvamento
-                        key={`${contact.id}:${field.id}`}
+                        key={`${contact.id}:${field.id}:${versaoDoCampo[field.id] ?? 0}`}
                         field={field}
                         rotulo={field.field_name}
                         valorSalvo={valoresDesteContato[field.id] ?? ''}
