@@ -550,6 +550,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   avisos antes de salvar, "não atende" na faixa, custo por faixa (1108).
 - `.claude/rules/ia-agentes-turno.md` — ação prometida retida, passagem com
   campo/etiqueta/tarefa, espera do horário, encerrar sem apagar (1109).
+- `.claude/rules/ia-central.md` — o turno durável (1110): sobrevive à
+  conversa e à Lixeira, esqueleto × conteúdo, poda e exclusão definitiva.
 - `.claude/rules/reunioes.md` — agenda (EXCLUDE, fuso), pauta e Reagendar
   (1081), aviso de no-show, tl;dv e transcrições.
 - `.claude/rules/agendadas.md` — mensagem agendada, anexo e citação, tela
