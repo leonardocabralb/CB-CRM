@@ -89,6 +89,11 @@ export interface NormalizedInbound {
    * `text` leva as mesmas opções como linhas `[opção]`.
    */
   opcoesDeResposta?: string[];
+  /**
+   * A mensagem é a ESCOLHA feita num botão ou numa lista (1111): como o toque
+   * em botão da Meta, não abre turno do agente de IA. Só existe quando `true`.
+   */
+  escolhaDeOpcao?: boolean;
   mediaUrl?: string | null;
   /**
    * A imagem é FIGURINHA (`stickerMessage`). Ela é gravada como `image`, e o
@@ -677,9 +682,11 @@ export async function persistInboundMessage(
     texto: m.text,
     mime: mimeNaChegada,
     ehGrupo: false,
-    // A Evolution não entrega toque em botão: mensagem interativa só sai pela
-    // Meta (`evolution-transport.ts` a recusa), e o normalizador nem a lê.
-    ehRespostaDeBotao: false,
+    // Toque em botão ou escolha de lista (1111): navegação de menu, não
+    // pergunta — como na Meta (#478). O robô do CRM não manda botão pela
+    // Evolution, mas outro sistema no mesmo número pode mandar, e a escolha do
+    // cliente chega aqui com o rótulo como texto.
+    ehRespostaDeBotao: m.escolhaDeOpcao === true,
     roboConsumiu: flowConsumed,
     automacaoFalou,
   });

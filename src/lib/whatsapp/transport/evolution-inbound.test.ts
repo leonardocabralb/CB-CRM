@@ -1109,13 +1109,40 @@ describe('a ESCOLHA num botão ou numa lista (1111)', () => {
     ).toBe('BOTOES1');
   });
 
-  it('sem o rótulo, o id; sem nada, o rótulo de tipo não lido, como antes', () => {
-    expect(extractText({ templateButtonReplyMessage: { selectedId: 'Sim' } })).toBe('Sim');
-    expect(extractText({ listResponseMessage: { singleSelectReply: { selectedRowId: 'menu_beta' } } })).toBe(
-      'menu_beta',
-    );
+  it('sem o rótulo, o rótulo de tipo não lido, como antes — nunca o id da opção', () => {
+    // "menu_beta" é código do sistema que mandou a lista: gravado como fala,
+    // iria aos motores, à IA e à API (revisão do PR #443).
+    expect(extractText({ templateButtonReplyMessage: { selectedId: 'Sim' } })).toBeNull();
+    expect(
+      normalizeUpsert(item({ listResponseMessage: { singleSelectReply: { selectedRowId: 'menu_beta' } } }), 'acc', 'owner')
+        ?.text,
+    ).toBe('[Unsupported message type: listResponseMessage]');
     expect(normalizeUpsert(item({ templateButtonReplyMessage: {} }), 'acc', 'owner')?.text).toBe(
       '[Unsupported message type: templateButtonReplyMessage]',
     );
+  });
+
+  it('a escolha vem marcada — não abre turno do agente de IA, como o toque na Meta', () => {
+    const escolha = normalizeUpsert(item({ listResponseMessage: { title: 'Banco Beta' } }), 'acc', 'owner');
+    expect(escolha?.escolhaDeOpcao).toBe(true);
+    for (const msg of [{ conversation: 'Sim' }, MODELO_COM_RESPOSTAS, LISTA_DE_ROBO]) {
+      const n = normalizeUpsert(item(msg), 'acc', 'owner');
+      expect(n && 'escolhaDeOpcao' in n).toBe(false);
+    }
+  });
+});
+
+describe('mensagem de empresa sem nada legível (1111)', () => {
+  it('vira o rótulo de tipo não lido, nunca uma bolha só com o selo "Modelo"', () => {
+    const listaVazia = { listMessage: { listType: 2, sections: [] } };
+    const interativaVazia = { interactiveMessage: { nativeFlowMessage: { buttons: [] } } };
+    for (const [msg, tipo] of [
+      [listaVazia, 'listMessage'],
+      [interativaVazia, 'interactiveMessage'],
+    ] as const) {
+      const n = normalizeUpsert(item(msg), 'acc', 'owner');
+      expect(n?.contentType).toBe('template');
+      expect(n?.text).toBe(`[Unsupported message type: ${tipo}]`);
+    }
   });
 });

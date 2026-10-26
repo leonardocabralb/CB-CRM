@@ -351,6 +351,24 @@ function lerLista(lista: Record<string, unknown>): MensagemDeEmpresa {
   };
 }
 
+/** As caixas da ESCOLHA feita num botão ou numa lista (1111). */
+const CAIXAS_DA_ESCOLHA = [
+  'templateButtonReplyMessage',
+  'buttonsResponseMessage',
+  'listResponseMessage',
+  'interactiveResponseMessage',
+] as const;
+
+/**
+ * A mensagem é a ESCOLHA feita num botão ou numa lista? Como o toque em botão
+ * da Meta (#478), ela não abre turno do agente de IA: é navegação de menu, não
+ * pergunta (`ehRespostaDeBotao`).
+ */
+export function ehEscolhaDeOpcao(message?: Record<string, unknown> | null): boolean {
+  const m = unwrapMessage(message);
+  return !!m && CAIXAS_DA_ESCOLHA.some((caixa) => asRecord(m[caixa]));
+}
+
 /**
  * A ESCOLHA feita num botão ou numa lista: o rótulo que o WhatsApp mostra no
  * balão (1111). Medidas em 26/10/2026: `templateButtonReplyMessage` (a equipe
@@ -358,18 +376,17 @@ function lerLista(lista: Record<string, unknown>): MensagemDeEmpresa {
  * item de lista pelo WhatsApp Web). `buttonsResponseMessage` e
  * `interactiveResponseMessage` seguem o formato oficial do WhatsApp (o proto),
  * ainda sem caso medido: lidas errado, caem no rótulo de tipo não lido, como
- * antes. A citação da mensagem escolhida vem no `contextInfo` de cada uma
- * (`CAIXAS_COM_CONTEXTO`).
+ * antes. Só o RÓTULO serve: o id da opção ("menu_beta") é código do sistema
+ * que a mandou, e iria como fala aos motores, à IA e à API. A citação da
+ * mensagem escolhida vem no `contextInfo` de cada uma (`CAIXAS_COM_CONTEXTO`).
  */
 function textoDaEscolha(m: Record<string, unknown>): string | null {
   const modelo = asRecord(m.templateButtonReplyMessage);
-  if (modelo) return textoOuNada(modelo.selectedDisplayText) ?? textoOuNada(modelo.selectedId);
+  if (modelo) return textoOuNada(modelo.selectedDisplayText);
   const botoes = asRecord(m.buttonsResponseMessage);
-  if (botoes) return textoOuNada(botoes.selectedDisplayText) ?? textoOuNada(botoes.selectedButtonId);
+  if (botoes) return textoOuNada(botoes.selectedDisplayText);
   const lista = asRecord(m.listResponseMessage);
-  if (lista) {
-    return textoOuNada(lista.title) ?? textoOuNada(asRecord(lista.singleSelectReply)?.selectedRowId);
-  }
+  if (lista) return textoOuNada(lista.title);
   return textoOuNada(asRecord(asRecord(m.interactiveResponseMessage)?.body)?.text);
 }
 
@@ -520,13 +537,16 @@ export function rotuloDeTipoNaoLido(message?: Record<string, unknown> | null): s
 /**
  * O texto de uma mensagem como ela é GRAVADA: o que `extractText` lê, ou,
  * quando o resultado seria uma bolha de texto vazia, o rótulo do tipo não lido.
+ * Vale também para a mensagem de empresa (`template`) sem nada legível — uma
+ * lista sem título nem itens, uma interativa sem corpo (1111): a bolha
+ * mostraria só o selo "Modelo".
  */
 export function textoParaGravar(
   message: Record<string, unknown> | null | undefined,
   contentType: NormalizedInbound['contentType'],
 ): string | null {
   const texto = extractText(message);
-  if (texto !== null || contentType !== 'text') return texto;
+  if (texto !== null || (contentType !== 'text' && contentType !== 'template')) return texto;
   return rotuloDeTipoNaoLido(message);
 }
 
@@ -642,10 +662,7 @@ const CAIXAS_COM_CONTEXTO = [
   // A ESCOLHA num botão ou numa lista cita a mensagem que tinha as opções
   // (1111). Medido em 26/10/2026: nelas a 2.4 entrega o `contextInfo` de cima
   // NULO, e a resposta do celular entrava sem a citação.
-  'templateButtonReplyMessage',
-  'buttonsResponseMessage',
-  'listResponseMessage',
-  'interactiveResponseMessage',
+  ...CAIXAS_DA_ESCOLHA,
 ] as const;
 
 /**
@@ -823,6 +840,8 @@ export function normalizeUpsert(
     // Só na mensagem de empresa com opções de resposta (1111), pelo mesmo
     // motivo: a chave ausente mantém o INSERT de sempre.
     ...(opcoesDeResposta ? { opcoesDeResposta } : {}),
+    // A escolha num botão ou numa lista não abre turno do agente de IA (1111).
+    ...(ehEscolhaDeOpcao(item.message) ? { escolhaDeOpcao: true } : {}),
     // Preenchido pelo webhook, que tem as credenciais para chamar
     // chat/getBase64FromMediaMessage — ver evolution-media.ts.
     mediaUrl: null,

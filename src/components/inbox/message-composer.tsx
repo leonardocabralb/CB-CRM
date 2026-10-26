@@ -57,7 +57,7 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import { useRascunhoDaConversa } from "@/hooks/use-rascunho-da-conversa";
 import { useAnexosDaConversa } from "@/hooks/use-anexos-da-conversa";
 import { enterEnvia, MIDIA_DE_TOQUE } from "@/lib/celular/teclado";
-import { textoComAOpcao } from "@/lib/whatsapp/opcoes-de-resposta";
+import { textoComAOpcao, type OpcaoPreparada } from "@/lib/whatsapp/opcoes-de-resposta";
 import { custoDaAssinatura, nomeDePessoa } from "@/lib/assinatura/assinatura";
 import type { ConversationNote, MediaLibraryItem } from "@/types";
 import { InternalNoteBox } from "./internal-note-box";
@@ -283,7 +283,7 @@ export interface CompositorHandle {
    * Clique numa opção de resposta de uma mensagem de empresa (1111): o rótulo
    * vai para a caixa (`textoComAOpcao`). A citação é do fio.
    */
-  prepararResposta: (opcao: string, opcoes: readonly string[]) => void;
+  prepararResposta: (opcao: string) => void;
 }
 
 interface MessageComposerProps {
@@ -1406,12 +1406,22 @@ export function MessageComposer({
   );
 
   // Opção de resposta de uma mensagem de empresa (1111), pedida pelo fio no
-  // clique: o rótulo vai para o rascunho desta conversa. O foco só no
-  // computador: no toque ele abriria o teclado por cima do fio, e lá o retorno
-  // nem envia (`enterEnvia`) — o Enviar já está à vista.
+  // clique: o rótulo vai para o rascunho desta conversa. O último clique fica
+  // lembrado (`de`, a conversa: o compositor não remonta na troca) para o
+  // seguinte TROCAR a opção em vez de acumular, também entre mensagens. O
+  // foco só no computador: no toque ele abriria o teclado por cima do fio, e
+  // lá o retorno nem envia (`enterEnvia`) — o Enviar já está à vista.
+  const opcaoPreparadaRef = useRef<(OpcaoPreparada & { de: string }) | null>(null);
   const prepararResposta = useCallback(
-    (opcao: string, opcoes: readonly string[]) => {
-      setText((atual) => textoComAOpcao(atual, opcao, opcoes));
+    (opcao: string) => {
+      const anterior = opcaoPreparadaRef.current;
+      const preparada = textoComAOpcao(
+        text,
+        opcao,
+        anterior?.de === conversationId ? anterior : null,
+      );
+      opcaoPreparadaRef.current = { ...preparada, de: conversationId };
+      setText(preparada.resultado);
       if (toque) return;
       requestAnimationFrame(() => {
         const el = textareaRef.current;
@@ -1421,7 +1431,7 @@ export function MessageComposer({
         }
       });
     },
-    [setText, toque],
+    [text, conversationId, setText, toque],
   );
   useImperativeHandle(ref, () => ({ prepararResposta }), [prepararResposta]);
 

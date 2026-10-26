@@ -578,6 +578,9 @@ function ConteudoDoModelo({
       ? lerOpcoesGravadas(message.opcoes_de_resposta)
       : [];
   const texto = textoSemAsOpcoes(message.content_text ?? null, opcoes);
+  // Mensagem de empresa sem nada legível (1111): a ingestão grava o rótulo de
+  // tipo não lido, e a bolha o troca pela frase, como no `text`.
+  const tipoNaoLido = tipoNaoSuportado(texto);
   return (
     <div>
       <span
@@ -596,7 +599,14 @@ function ConteudoDoModelo({
           {partes.cabecalho}
         </p>
       )}
-      {texto && <FormattedText texto={texto} className="mt-1" />}
+      {tipoNaoLido !== null ? (
+        <div className="mt-1 flex items-start gap-1.5 text-sm italic opacity-80" title={tipoNaoLido || undefined}>
+          <MessageSquareWarning className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{t("naoSuportada")}</span>
+        </div>
+      ) : (
+        texto && <FormattedText texto={texto} className="mt-1" />
+      )}
       {partes?.rodape && (
         <p
           className={cn(

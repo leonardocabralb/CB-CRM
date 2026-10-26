@@ -130,7 +130,6 @@ import {
   type CompositorHandle,
   type SendMediaPayload,
 } from "./message-composer";
-import { lerOpcoesGravadas } from "@/lib/whatsapp/opcoes-de-resposta";
 import { TemplatePicker } from "./template-picker";
 import { AiThreadBanner } from "./ai-thread-banner";
 import { buildReplyPreview } from "./reply-quote";
@@ -2362,7 +2361,7 @@ export function MessageThread({
   const responderComOpcao = useCallback(
     (msg: Message, opcao: string) => {
       handleStartReply(msg);
-      compositorRef.current?.prepararResposta(opcao, lerOpcoesGravadas(msg.opcoes_de_resposta));
+      compositorRef.current?.prepararResposta(opcao);
     },
     [handleStartReply],
   );

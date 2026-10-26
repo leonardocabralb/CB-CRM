@@ -80,20 +80,36 @@ describe('textoSemAsOpcoes — a bolha troca as linhas por botões', () => {
 });
 
 describe('textoComAOpcao — a caixa do compositor depois do clique', () => {
-  const opcoes = ['Sim', 'Retorna mais tarde'];
-
   it('caixa vazia (ou só com espaço) vira a opção', () => {
-    expect(textoComAOpcao('', 'Sim', opcoes)).toBe('Sim');
-    expect(textoComAOpcao('  \n', 'Sim', opcoes)).toBe('Sim');
+    expect(textoComAOpcao('', 'Sim', null).resultado).toBe('Sim');
+    expect(textoComAOpcao('  \n', 'Sim', null).resultado).toBe('Sim');
   });
 
-  it('trocar de opção troca o texto, sem acumular', () => {
-    expect(textoComAOpcao('Sim', 'Retorna mais tarde', opcoes)).toBe('Retorna mais tarde');
-    expect(textoComAOpcao(' Sim ', 'Sim', opcoes)).toBe('Sim');
+  it('trocar de opção troca o texto, sem acumular — também entre mensagens', () => {
+    // Medido no preview (26/10/2026): a régua por "opção da MESMA mensagem"
+    // acumulava ao clicar na opção de outra mensagem.
+    const sim = textoComAOpcao('', 'Sim', null);
+    const tarde = textoComAOpcao(sim.resultado, 'Retorna mais tarde', sim);
+    expect(tarde.resultado).toBe('Retorna mais tarde');
+    expect(textoComAOpcao(tarde.resultado, 'Equipe B', tarde).resultado).toBe('Equipe B');
   });
 
   it('o que a pessoa escreveu não se perde: a opção vai numa linha nova', () => {
-    expect(textoComAOpcao('Bom dia', 'Sim', opcoes)).toBe('Bom dia\nSim');
-    expect(textoComAOpcao('Bom dia\n', 'Sim', opcoes)).toBe('Bom dia\nSim');
+    expect(textoComAOpcao('Bom dia', 'Sim', null).resultado).toBe('Bom dia\nSim');
+    expect(textoComAOpcao('Bom dia\n', 'Sim', null).resultado).toBe('Bom dia\nSim');
+  });
+
+  it('trocar de opção mantém o que estava escrito antes dela', () => {
+    const sim = textoComAOpcao('Bom dia', 'Sim', null);
+    expect(textoComAOpcao(sim.resultado, 'Retorna mais tarde', sim).resultado).toBe(
+      'Bom dia\nRetorna mais tarde',
+    );
+  });
+
+  it('a caixa editada depois do clique é da pessoa: a próxima opção acrescenta', () => {
+    const sim = textoComAOpcao('', 'Sim', null);
+    expect(textoComAOpcao('Sim, obrigado', 'Retorna mais tarde', sim).resultado).toBe(
+      'Sim, obrigado\nRetorna mais tarde',
+    );
   });
 });

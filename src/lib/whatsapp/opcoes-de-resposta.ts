@@ -60,14 +60,26 @@ export function textoSemAsOpcoes(texto: string | null, opcoes: readonly string[]
   return fica.length > 0 ? fica.join('\n\n') : null;
 }
 
+/** O que o último clique numa opção deixou na caixa, e o que havia nela antes. */
+export interface OpcaoPreparada {
+  base: string;
+  resultado: string;
+}
+
 /**
- * A caixa do compositor depois do clique numa opção. Vazia, ou com outra opção
- * da MESMA mensagem (o operador mudou de ideia), vira a opção; com texto
- * escrito, a opção vai numa linha nova, como a resposta rápida — o que a pessoa
- * escreveu não se perde.
+ * A caixa do compositor depois do clique numa opção. Se ela ainda é o que o
+ * clique anterior deixou, a opção é TROCADA (o operador mudou de ideia, nesta
+ * ou noutra mensagem) e o que havia antes dela fica; senão o que está na caixa
+ * é da pessoa e a opção vai numa linha nova, como a resposta rápida — o que
+ * ela escreveu não se perde. Caixa vazia vira a opção.
  */
-export function textoComAOpcao(atual: string, opcao: string, opcoes: readonly string[]): string {
-  const limpo = atual.trim();
-  if (limpo === '' || opcoes.includes(limpo)) return opcao;
-  return /\s$/.test(atual) ? `${atual}${opcao}` : `${atual}\n${opcao}`;
+export function textoComAOpcao(
+  atual: string,
+  opcao: string,
+  anterior: OpcaoPreparada | null,
+): OpcaoPreparada {
+  const base = anterior && anterior.resultado === atual ? anterior.base : atual;
+  const resultado =
+    base.trim() === '' ? opcao : /\s$/.test(base) ? `${base}${opcao}` : `${base}\n${opcao}`;
+  return { base, resultado };
 }

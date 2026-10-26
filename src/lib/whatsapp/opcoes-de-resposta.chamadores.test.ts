@@ -36,6 +36,19 @@ describe('quem grava `messages.opcoes_de_resposta`', () => {
     ]);
   });
 
+  it('no `inbound-store`, só o insert do CLIENTE — o do celular não grava', () => {
+    // Os dois moram no mesmo arquivo: o recorte é pelo CORPO de cada função
+    // (revisão do PR #443).
+    const loja = semComentarios(cru('lib/whatsapp/inbound-store.ts'));
+    const corpo = (nome: string) => {
+      const inicio = loja.indexOf(`export async function ${nome}(`);
+      const fim = loja.indexOf('\nexport ', inicio + 1);
+      return loja.slice(inicio, fim === -1 ? undefined : fim);
+    };
+    expect(corpo('persistInboundMessage')).toMatch(/\bopcoes_de_resposta\s*:/);
+    expect(corpo('persistDeviceMessage')).not.toContain('opcoes_de_resposta');
+  });
+
   it('a recuperada grava só na mensagem do cliente, nunca na da equipe', () => {
     expect(semComentarios(cru('lib/whatsapp/sem-telefone/historica.ts'))).toContain(
       '!daEquipe && m.opcoesDeResposta',
@@ -54,7 +67,16 @@ describe('o clique numa opção da bolha', () => {
     expect(responder).toContain('compositorRef.current?.prepararResposta(');
     expect(f).toContain('ref={compositorRef}');
     const compositor = semComentarios(cru('components/inbox/message-composer.tsx'));
-    expect(compositor).toContain('setText((atual) => textoComAOpcao(atual, opcao, opcoes));');
+    const inicioDoPreparar = compositor.indexOf('const prepararResposta = useCallback(');
+    const preparar = compositor.slice(
+      inicioDoPreparar,
+      compositor.indexOf('useImperativeHandle(', inicioDoPreparar),
+    );
+    // O texto entra pelo `setText` DESTE render, e o clique anterior só vale
+    // na MESMA conversa (o compositor não remonta na troca).
+    expect(preparar).toContain('const preparada = textoComAOpcao(');
+    expect(preparar).toContain("anterior?.de === conversationId ? anterior : null");
+    expect(preparar).toContain('setText(preparada.resultado);');
     expect(compositor).toContain(
       'useImperativeHandle(ref, () => ({ prepararResposta }), [prepararResposta]);',
     );

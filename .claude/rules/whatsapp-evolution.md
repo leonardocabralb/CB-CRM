@@ -155,8 +155,10 @@ Live Photo e edições cifradas de antes do descarte).
   do cliente) e ao texto como `[opção]` por `linhaDoBotao`, a linha que a
   bolha tira para oferecer o botão que PREPARA a resposta (sai digitada: a
   Evolution não manda resposta a botão). A ESCOLHA
-  (`templateButtonReplyMessage`, `listResponseMessage`…) vira texto e cita
-  pela caixa dela — o `contextInfo` de cima vem nulo.
+  (`templateButtonReplyMessage`, `listResponseMessage`…) vira texto (só o
+  rótulo, nunca o id), cita pela caixa dela — o `contextInfo` de cima vem
+  nulo — e, como o toque na Meta, não abre turno da IA (`escolhaDeOpcao`).
+  `template` sem nada legível também leva o rótulo de tipo não lido.
 - ⚠️⚠️ **O texto MONTADO (cartão e modelo) não chega aos motores**
   (`texto-para-os-motores.ts`, com pino lendo as duas ingestões): o robô e as
   automações recebem `''`, como antes da 1060. Senão um robô com a palavra

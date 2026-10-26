@@ -768,9 +768,10 @@ that leads somewhere). On a WhatsApp connection by QR code, **picking** one
 of those options — a tap on a button or on a list item, on the office's phone
 or by the contact — is listed as `content_type: "text"`, with the chosen
 option in `content_text` and `reply_to_message_id` pointing to the message
-that offered it. A WhatsApp message type the CRM can't read yet is listed as
-`content_type: "text"` with `content_text` set to
-`[Unsupported message type: <type>]`.
+that offered it. A WhatsApp message type the CRM can't read yet is listed
+with `content_text` set to `[Unsupported message type: <type>]` — as
+`content_type: "text"`, or `"template"` for a company's message with nothing
+the CRM can read.
 
 ### `POST /api/v1/broadcasts`
 

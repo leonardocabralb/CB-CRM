@@ -1596,6 +1596,15 @@ nome da época em que foram aplicadas.
   `authenticated` sem EXECUTE; a conferência da própria migration (turno de
   teste numa conversa real, desfeito por SQLSTATE) não deixou turno nem
   conversa alterados.
+- **1111_cb_opcoes_de_resposta** — `messages.opcoes_de_resposta` (jsonb,
+  nula): os rótulos das opções de resposta da mensagem de empresa recebida
+  (resposta rápida do modelo, `quick_reply`, item de lista), que a bolha
+  oferece como botões que preparam a resposta. ADITIVA, ANTES do deploy (o
+  INSERT da mensagem com opções levaria 42703). PR #443, replay do CI verde
+  no commit `b6153ac1`, autorização do operador em 26/10/2026; aplicada em
+  26/10/2026 (histórico `20261026152759`). Conferida: a coluna em `jsonb`; a
+  publicação de tempo real de `messages` sem lista de colunas (a coluna
+  viaja).
 
 ## Notas do histórico
 

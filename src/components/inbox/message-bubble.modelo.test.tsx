@@ -155,4 +155,12 @@ describe('MessageBubble — mensagem de empresa com opções de resposta (1111)'
     const html = desenhar(mensagem({ opcoes_de_resposta: ['Quero falar'] }), () => {});
     expect(html).not.toContain('Preparar a resposta');
   });
+
+  it('mensagem de empresa sem nada legível: a frase do tipo não lido, não o rótulo cru', () => {
+    const html = desenhar(
+      recebida({ content_text: '[Unsupported message type: listMessage]', opcoes_de_resposta: null }),
+    );
+    expect(html).toContain(ptBR.Inbox.bubble.naoSuportada);
+    expect(html).not.toContain('Unsupported message type');
+  });
 });
