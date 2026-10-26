@@ -552,6 +552,9 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   campo/etiqueta/tarefa, espera do horário, encerrar sem apagar (1109).
 - `.claude/rules/ia-central.md` — o turno durável (1110): sobrevive à
   conversa e à Lixeira, esqueleto × conteúdo, poda e exclusão definitiva.
+- `.claude/rules/ia-sandbox.md` — o Playground testa o RASCUNHO (DC4):
+  conferido como o salvar, conversa que não zera, comparar, roteiro, pedido,
+  nada escreve além do custo de teste.
 - `.claude/rules/reunioes.md` — agenda (EXCLUDE, fuso), pauta e Reagendar
   (1081), aviso de no-show, tl;dv e transcrições.
 - `.claude/rules/agendadas.md` — mensagem agendada, anexo e citação, tela

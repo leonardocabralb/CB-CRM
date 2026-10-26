@@ -45,7 +45,7 @@ import {
   type IaAgente,
 } from './tipos';
 import { textoDoCodigo } from './textos';
-import { alteracoesDoRascunho, lerTeto } from './rascunho';
+import { alteracoesDoRascunho, lerTeto, type RascunhoDaAba } from './rascunho';
 import { OndeAtua } from './onde-atua';
 import { listaDaChave, QuemLeAMidia, SeletorDeModelo, useModelosDasChaves } from './provedor-e-modelo';
 import { RegrasDoSistema } from './regras-do-sistema';
@@ -56,11 +56,14 @@ export function ConfiguracaoDoAgente({
   agente,
   aoSalvar,
   aoMudarNaoSalvo,
+  aoMudarRascunho,
 }: {
   agente: IaAgente;
   aoSalvar: (novo: IaAgente) => void;
   /** Avisa o detalhe se há alteração não salva (a aba Playground diz isso). */
   aoMudarNaoSalvo?: (naoSalvo: boolean) => void;
+  /** Avisa o detalhe do que o Salvar mandaria agora: é o RASCUNHO que o Playground testa (DC4). */
+  aoMudarRascunho?: (rascunho: RascunhoDaAba | null) => void;
 }) {
   const t = useTranslations('IaAgentes');
   const router = useRouter();
@@ -142,6 +145,16 @@ export function ConfiguracaoDoAgente({
   useEffect(() => {
     aoMudarNaoSalvo?.(naoSalvo);
   }, [naoSalvo, aoMudarNaoSalvo]);
+
+  // O rascunho do Playground (DC4) é o MESMO corpo do Salvar, carimbado com a
+  // versão do agente sobre a qual foi calculado.
+  const rascunho = useMemo(
+    () => (Object.keys(alteracoes).length > 0 ? { de: agente.updatedAt, corpo: alteracoes } : null),
+    [alteracoes, agente.updatedAt]
+  );
+  useEffect(() => {
+    aoMudarRascunho?.(rascunho);
+  }, [rascunho, aoMudarRascunho]);
 
   // O destino da transferência que não está na equipe: a pessoa saiu (ou a
   // equipe não carregou). A opção fica visível com o aviso, em vez de o

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  aplicarAlteracao,
   blocoMarcado,
   colunasDaAlteracao,
   ehUriDeTipoDeEvento,
@@ -15,6 +16,7 @@ import {
   LIMITES,
   planoDasEtapas,
   TIPOS_DE_ACAO,
+  type IaAgente,
 } from './agente'
 
 const ID = '11111111-1111-4111-8111-111111111111'
@@ -377,5 +379,97 @@ describe('lerAlteracao — ferramentas (PATCH)', () => {
     const r = lerAlteracao({ nome: 'X' }, false)
     if (!r.ok) throw new Error('fixture')
     expect(colunasDaAlteracao(r.valor)).not.toHaveProperty('ferramentas')
+  })
+})
+
+describe('aplicarAlteracao — o RASCUNHO do Playground por cima do salvo (DC4, 26/10/2026)', () => {
+  const SALVO: IaAgente = {
+    id: ID,
+    accountId: 'conta-1',
+    nome: 'Triagem',
+    descricao: 'faz a triagem',
+    instrucoes: 'Instrução salva.',
+    regras: ['Regra salva.'],
+    provedor: 'gemini',
+    modelo: 'gemini-x',
+    ativo: false,
+    conexoes: ['22222222-2222-4222-8222-222222222222'],
+    horario: null,
+    tetoRespostas: 10,
+    podePassarPara: [],
+    transferirPara: null,
+    acesso: { ficha: false, campos: [], negocio: false, etiquetas: false, cobrancas: false, reuniao: false },
+    ferramentas: {},
+    retomada: { ativa: false, cadencia: [15, 60], janela: { inicio: '08:00', fim: '21:00' } },
+    ativadoEm: null,
+    arquivadoEm: null,
+    createdAt: '2026-10-01T12:00:00Z',
+    updatedAt: '2026-10-26T14:32:00Z',
+  }
+
+  function rascunho(corpo: Record<string, unknown>) {
+    const r = lerAlteracao(corpo, false)
+    if (!r.ok) throw new Error(`fixture: ${r.codigo}`)
+    return r.valor
+  }
+
+  it('campo AUSENTE no rascunho fica como está salvo', () => {
+    expect(aplicarAlteracao(SALVO, {})).toEqual(SALVO)
+    const r = aplicarAlteracao(SALVO, rascunho({ instrucoes: 'Instrução nova.' }))
+    expect(r).toEqual({ ...SALVO, instrucoes: 'Instrução nova.' })
+  })
+
+  it('o que muda a resposta entra: instruções, regras, provedor e modelo, passagens, acesso, ferramentas e retomada', () => {
+    const OUTRO = '33333333-3333-4333-8333-333333333333'
+    const r = aplicarAlteracao(
+      SALVO,
+      rascunho({
+        instrucoes: ' Nova. ',
+        regras: ['Uma', ''],
+        provedor: 'anthropic',
+        modelo: 'claude-haiku-5-5',
+        pode_passar_para: [OUTRO],
+        acesso: { ficha: true },
+        ferramentas: { etiquetar: { etiquetas: [OUTRO] } },
+        retomada: { ativa: true, cadencia: [30], janela: { inicio: '09:00', fim: '18:00' } },
+      }),
+    )
+    expect(r).toMatchObject({
+      instrucoes: 'Nova.',
+      regras: ['Uma'],
+      provedor: 'anthropic',
+      modelo: 'claude-haiku-5-5',
+      podePassarPara: [OUTRO],
+      acesso: { ficha: true, campos: [] },
+      ferramentas: { etiquetar: { etiquetas: [OUTRO] } },
+      retomada: { ativa: true, cadencia: [30] },
+    })
+  })
+
+  it('⚠️ etapas, `ativo` e conexões NÃO entram: no Playground eles não decidem a resposta', () => {
+    const r = aplicarAlteracao(
+      SALVO,
+      rascunho({ ativo: true, conexoes: [], etapas: ['44444444-4444-4444-8444-444444444444'], instrucoes: 'Nova.' }),
+    )
+    expect(r.ativo).toBe(false)
+    expect(r.conexoes).toEqual(SALVO.conexoes)
+    expect(r).not.toHaveProperty('etapas')
+    expect(r.instrucoes).toBe('Nova.')
+  })
+
+  it('não muda o agente salvo e preserva o que vem a mais (as etapas do detalhe)', () => {
+    const comEtapas = { ...SALVO, etapas: [{ stageId: 's1', pipelineId: 'p1', desde: '2026-10-01' }] }
+    const r = aplicarAlteracao(comEtapas, rascunho({ modelo: 'outro', etapas: [] }))
+    expect(r.etapas).toEqual(comEtapas.etapas)
+    expect(r.modelo).toBe('outro')
+    expect(comEtapas.modelo).toBe('gemini-x')
+  })
+
+  it('o `horario: null` do rascunho (sempre) vale; e o teto e a transferência também entram', () => {
+    const salvoComHorario = { ...SALVO, horario: { dias: [1], inicio: '08:00', fim: '18:00' } }
+    const r = aplicarAlteracao(salvoComHorario, rascunho({ horario: null, teto_respostas: 3, transferir_para: null }))
+    expect(r.horario).toBeNull()
+    expect(r.tetoRespostas).toBe(3)
+    expect(r.transferirPara).toBeNull()
   })
 })

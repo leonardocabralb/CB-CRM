@@ -221,6 +221,23 @@ async function conferirReferencias(
 }
 
 /**
+ * O RASCUNHO do Playground (DC4 da central dos agentes, 26/10/2026) conferido
+ * como o SALVAR o confere em `atualizarAgente`, SEM gravar nada: a mesma
+ * `conferirReferencias` — ids da conta, a chave do provedor (o trocado; ou o
+ * salvo, quando o rascunho LIGA o agente), Instagram, a D5 das ferramentas e
+ * o tipo de evento do Calendly quando muda (as ferramentas SALVAS vão junto).
+ * A recusa é o MESMO `ErroDoAgente` do salvar, e a rota devolve o mesmo 400:
+ * sem isso, a tela testaria o que não se salva.
+ *
+ * As etapas não são conferidas aqui: não mudam a resposta do teste, e a etapa
+ * tomada por outro agente continua sendo recusada no salvar (409).
+ */
+export async function conferirRascunho(accountId: string, salvo: IaAgente, a: AlteracaoDoAgente): Promise<void> {
+  const provedor = a.provedor ?? (a.ativo === true ? salvo.provedor : undefined)
+  await conferirReferencias(accountId, { ...a, provedor }, salvo.id, salvo.ferramentas)
+}
+
+/**
  * Confere as etapas pedidas (D24) e devolve as que ENTRAM: toda etapa é de um
  * funil DESTA conta (`pipeline_stages` não tem `account_id` — a conta vem do
  * funil), e nenhuma já é de OUTRO agente (409 com o nome dele). O índice da

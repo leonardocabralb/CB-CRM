@@ -7,11 +7,15 @@ import {
   ferramentasDoRascunho,
   ferramentasMudaram,
   ferramentasParaSalvar,
+  juntarRascunhos,
   lerTeto,
   listaDaFerramenta,
+  NAO_MUDAM_A_RESPOSTA,
   rascunhoDasFerramentas,
   type Rascunho,
 } from './rascunho'
+import { aplicarAlteracao, lerAlteracao } from '@/lib/ia-agentes/agente'
+
 import { TIPOS_DE_ACAO, type AcessoDoAgente, type FerramentasDoAgente, type IaAgente } from './tipos'
 
 const SALVO: IaAgente = {
@@ -264,5 +268,47 @@ describe('"Marcar reunião" (F5) — UM tipo de evento, com o nome de chave do s
       marcar_reuniao: { tipos_de_evento: [] },
     })
     expect(ferramentasParaSalvar(f, { marcar_reuniao: null })).toEqual(f)
+  })
+})
+
+describe('juntarRascunhos — o rascunho que o Playground testa (DC4, 26/10/2026)', () => {
+  const V1 = '2026-10-26T14:32:00Z'
+  const V2 = '2026-10-26T14:40:00Z'
+
+  it('junta o que cada aba salvaria (chaves diferentes do PATCH)', () => {
+    expect(
+      juntarRascunhos(V1, [
+        { de: V1, corpo: { instrucoes: 'Nova.' } },
+        null,
+        { de: V1, corpo: { ferramentas: {} } },
+        { de: V1, corpo: { retomada: { ativa: true } } },
+      ]),
+    ).toEqual({ instrucoes: 'Nova.', ferramentas: {}, retomada: { ativa: true } })
+  })
+
+  it('nada mudou em aba nenhuma: `null` (o teste é o do salvo)', () => {
+    expect(juntarRascunhos(V1, [null, null, null, null])).toBeNull()
+  })
+
+  it('⚠️ efeito passivo: o rascunho calculado sobre a versão ANTERIOR (logo depois de salvar) fica de fora', () => {
+    expect(juntarRascunhos(V2, [{ de: V1, corpo: { instrucoes: 'já salva' } }, { de: V2, corpo: { acesso: {} } }])).toEqual({
+      acesso: {},
+    })
+    expect(juntarRascunhos(V2, [{ de: V1, corpo: { instrucoes: 'já salva' } }])).toBeNull()
+  })
+})
+
+describe('NAO_MUDAM_A_RESPOSTA — o que a tela diz que não muda o teste', () => {
+  it('ativo, conexões e etapas: o servidor NÃO os aplica na geração (`aplicarAlteracao`)', () => {
+    const r = lerAlteracao({ ativo: true, conexoes: [], etapas: [] }, false)
+    if (!r.ok) throw new Error('fixture')
+    expect(aplicarAlteracao(SALVO, r.valor)).toEqual(SALVO)
+    for (const chave of ['ativo', 'conexoes', 'etapas']) expect(NAO_MUDAM_A_RESPOSTA.has(chave), chave).toBe(true)
+  })
+
+  it('o que muda o pedido ao modelo nunca está na lista', () => {
+    for (const chave of ['instrucoes', 'regras', 'provedor', 'modelo', 'pode_passar_para', 'acesso', 'ferramentas', 'retomada']) {
+      expect(NAO_MUDAM_A_RESPOSTA.has(chave), chave).toBe(false)
+    }
   })
 })

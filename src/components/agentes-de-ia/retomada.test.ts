@@ -61,7 +61,18 @@ describe('acrescentarIntervalo', () => {
 
 describe('lerRetomadaSimulada (a resposta do Playground)', () => {
   it('com texto, sem parada', () => {
-    expect(lerRetomadaSimulada({ tentativa: 1, de: 6, texto: 'Oi!', parada: null })).toEqual({ tentativa: 1, de: 6, texto: 'Oi!', parada: null })
+    expect(lerRetomadaSimulada({ tentativa: 1, de: 6, texto: 'Oi!', parada: null })).toEqual({
+      tentativa: 1,
+      de: 6,
+      texto: 'Oi!',
+      parada: null,
+      desligada: false,
+    })
+  })
+
+  it('`desligada` (DC4): só o booleano true acende o aviso', () => {
+    expect(lerRetomadaSimulada({ tentativa: 1, de: 6, texto: 'Oi!', parada: null, desligada: true })?.desligada).toBe(true)
+    expect(lerRetomadaSimulada({ tentativa: 1, de: 6, texto: 'Oi!', parada: null, desligada: 'true' })?.desligada).toBe(false)
   })
 
   it('com parada: sem texto, com o motivo (mesmo desconhecido)', () => {
@@ -70,6 +81,7 @@ describe('lerRetomadaSimulada (a resposta do Playground)', () => {
       de: 6,
       texto: '',
       parada: 'nada_pendente',
+      desligada: false,
     })
     expect(lerRetomadaSimulada({ tentativa: 2, de: 6, texto: '', parada: 'motivo_novo' })?.parada).toBe('motivo_novo')
   })

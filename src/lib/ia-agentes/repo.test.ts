@@ -37,7 +37,8 @@ vi.mock('@/lib/ai/admin-client', () => ({
   }),
 }))
 
-import { atualizarAgente, criarAgente } from './repo'
+import { lerLinhaDoAgente } from './agente'
+import { atualizarAgente, conferirRascunho, criarAgente } from './repo'
 
 beforeEach(() => {
   inserts.length = 0
@@ -106,5 +107,47 @@ describe('atualizarAgente — LIGAR confere a chave do provedor guardado (Codex,
     guardado = linha('anthropic')
     await expect(atualizarAgente('conta-1', 'user-1', 'ag-1', { ativo: false })).rejects.toMatchObject({ codigo: 'banco' })
     expect(updates).toHaveLength(1)
+  })
+})
+
+describe('conferirRascunho — o rascunho do Playground conferido COMO o salvar (DC4, 26/10/2026)', () => {
+  const linha = (provedor: string) => ({
+    id: 'ag-1', account_id: 'conta-1', nome: 'X', descricao: null, instrucoes: '', regras: [], provedor,
+    modelo: 'm', ativo: false, conexoes: [], horario: null, teto_respostas: 5, pode_passar_para: [],
+    transferir_para: null, arquivado_em: null, created_at: '2026-09-26', updated_at: '2026-09-26',
+  })
+  const salvo = (provedor: string) => {
+    const a = lerLinhaDoAgente(linha(provedor))
+    if (!a) throw new Error('fixture')
+    return a
+  }
+
+  it('trocar para provedor sem chave: o MESMO código do salvar, nada gravado', async () => {
+    guardado = linha('gemini')
+    const rascunho = { provedor: 'anthropic', modelo: 'claude-haiku-5-5' } as const
+    await expect(atualizarAgente('conta-1', 'user-1', 'ag-1', rascunho)).rejects.toMatchObject({ codigo: 'provedor_sem_chave' })
+    updates.length = 0
+    await expect(conferirRascunho('conta-1', salvo('gemini'), rascunho)).rejects.toMatchObject({ codigo: 'provedor_sem_chave' })
+    expect(updates).toHaveLength(0)
+    expect(inserts).toHaveLength(0)
+  })
+
+  it('OpenAI só da base: provedor_so_da_base, como no salvar', async () => {
+    await expect(conferirRascunho('conta-1', salvo('gemini'), { provedor: 'openai', modelo: 'gpt-x' })).rejects.toMatchObject({
+      codigo: 'provedor_so_da_base',
+    })
+  })
+
+  it('o rascunho que LIGA confere a chave do provedor SALVO (como o salvar)', async () => {
+    await expect(conferirRascunho('conta-1', salvo('anthropic'), { ativo: true })).rejects.toMatchObject({
+      codigo: 'provedor_sem_chave',
+    })
+    await expect(conferirRascunho('conta-1', salvo('gemini'), { ativo: true })).resolves.toBeUndefined()
+  })
+
+  it('rascunho que passa: nada gravado', async () => {
+    await expect(conferirRascunho('conta-1', salvo('gemini'), { instrucoes: 'Nova.', ativo: false })).resolves.toBeUndefined()
+    expect(updates).toHaveLength(0)
+    expect(inserts).toHaveLength(0)
   })
 })

@@ -219,7 +219,32 @@ export function lerRetomadaSimulada(v: unknown): RetomadaSimulada | null {
   const t = typeof r.texto === 'string' ? r.texto : ''
   // Sem parada, tem de haver texto: é o que sairia.
   if (parada === null && !t.trim()) return null
-  return { tentativa: r.tentativa as number, de: r.de as number, texto: parada === null ? t : '', parada }
+  return {
+    tentativa: r.tentativa as number,
+    de: r.de as number,
+    texto: parada === null ? t : '',
+    parada,
+    // Só o booleano true: servidor anterior (sem o campo) não acende o aviso.
+    desligada: r.desligada === true,
+  }
+}
+
+/**
+ * Quanto esperar (ms) quando a rota do Playground recusa por LIMITE por
+ * minuto: o 429 da própria rota (por pessoa e por conta, com
+ * `retry_after_seconds`) e o do PROVEDOR, que chega como 502 com
+ * `code: 'rate_limited'` (o `AiError` do `providerHttpError`). Os dois pausam
+ * o roteiro e retomam; qualquer outra recusa devolve `null` (o roteiro para).
+ */
+export function esperaDoLimite(
+  status: number,
+  corpo: Record<string, unknown>,
+  retryAfter: string | null,
+  padraoS: number,
+): number | null {
+  if (status !== 429 && corpo.code !== 'rate_limited') return null
+  const s = Number(corpo.retry_after_seconds ?? retryAfter)
+  return (Number.isFinite(s) && s > 0 ? Math.ceil(s) : padraoS) * 1000
 }
 
 /** Acima disto a lista de horários do Playground aparece recolhida (F5). */

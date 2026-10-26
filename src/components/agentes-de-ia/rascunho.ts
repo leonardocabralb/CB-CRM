@@ -84,6 +84,55 @@ export function alteracoesDoRascunho(salvo: IaAgente, r: Rascunho): Record<strin
   return corpo
 }
 
+// ------------------------------------------------------------
+// O rascunho que o Playground testa (DC4 da central dos agentes, 26/10/2026)
+// ------------------------------------------------------------
+
+/**
+ * O que uma aba SALVARIA agora (o corpo do PATCH dela), carimbado com a
+ * versão do agente sobre a qual foi calculado (`updatedAt`). Efeito passivo
+ * (CLAUDE.md 8c): logo depois de um salvamento, o detalhe ainda guarda, por
+ * um render, o rascunho calculado sobre a versão anterior — o carimbo o
+ * descarta.
+ */
+export interface RascunhoDaAba {
+  de: string
+  corpo: Record<string, unknown>
+}
+
+/**
+ * Os rascunhos das abas, juntos: o `rascunho` que o Playground manda. Só os
+ * carimbados com a versão ATUAL do agente; nenhum = `null` (nada a testar
+ * além do salvo). As abas mandam chaves diferentes do PATCH, então juntar
+ * não pisa em nada.
+ */
+export function juntarRascunhos(
+  versao: string,
+  abas: readonly (RascunhoDaAba | null)[],
+): Record<string, unknown> | null {
+  const corpo: Record<string, unknown> = {}
+  for (const aba of abas) if (aba && aba.de === versao) Object.assign(corpo, aba.corpo)
+  return Object.keys(corpo).length > 0 ? corpo : null
+}
+
+/**
+ * As chaves do PATCH que NÃO mudam a resposta do Playground: o nome e a
+ * descrição do próprio agente não vão ao pedido, e "ligado", conexões,
+ * etapas, horário, teto e transferência decidem SE o agente atende, não o que
+ * ele responde (`aplicarAlteracao` nem os aplica todos). A tela os lista à
+ * parte, para ninguém esperar ver efeito deles no teste.
+ */
+export const NAO_MUDAM_A_RESPOSTA: ReadonlySet<string> = new Set([
+  'nome',
+  'descricao',
+  'ativo',
+  'conexoes',
+  'etapas',
+  'horario',
+  'teto_respostas',
+  'transferir_para',
+])
+
 /** "12" → 12; vazio, fração ou fora de 1..100 → `null` (o campo avisa, o Salvar trava). */
 export function lerTeto(texto: string, min: number, max: number): number | null {
   const t = texto.trim()

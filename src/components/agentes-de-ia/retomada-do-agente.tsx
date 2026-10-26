@@ -14,7 +14,7 @@
 // precisa saber antes de ligar.
 // ============================================================
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Plus, RotateCcw, X } from 'lucide-react';
@@ -25,7 +25,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { CADENCIA_PADRAO, cadenciaValida, LIMITES_DA_RETOMADA } from '@/lib/ia-agentes/retomada';
 import { cn } from '@/lib/utils';
-import { acrescentarIntervalo, retomadaMudou } from './rascunho';
+import { acrescentarIntervalo, retomadaMudou, type RascunhoDaAba } from './rascunho';
 import { textoDoCodigo, textoDoIntervalo } from './textos';
 import type { ConfigDaRetomada, IaAgente } from './tipos';
 
@@ -42,11 +42,14 @@ export function RetomadaDoAgente({
   agente,
   aoSalvar,
   aoMudarNaoSalvo,
+  aoMudarRascunho,
 }: {
   agente: IaAgente;
   aoSalvar: (novo: IaAgente) => void;
   /** Avisa o detalhe se há alteração não salva (a aba Playground diz isso). */
   aoMudarNaoSalvo?: (naoSalvo: boolean) => void;
+  /** Avisa o detalhe do que o Salvar mandaria agora: é o RASCUNHO que o Playground testa (DC4). */
+  aoMudarRascunho?: (rascunho: RascunhoDaAba | null) => void;
 }) {
   const t = useTranslations('IaAgentes');
   const [rascunho, setRascunho] = useState<ConfigDaRetomada>(() => copiar(agente.retomada));
@@ -58,6 +61,16 @@ export function RetomadaDoAgente({
   useEffect(() => {
     aoMudarNaoSalvo?.(naoSalvo);
   }, [naoSalvo, aoMudarNaoSalvo]);
+
+  // O rascunho do Playground (DC4): o MESMO corpo do Salvar (cadência ou
+  // janela fora da forma = o mesmo 400 do Salvar), carimbado com a versão do agente.
+  const rascunhoDoTeste = useMemo(
+    () => (naoSalvo ? { de: agente.updatedAt, corpo: { retomada: rascunho } } : null),
+    [naoSalvo, rascunho, agente.updatedAt]
+  );
+  useEffect(() => {
+    aoMudarRascunho?.(rascunhoDoTeste);
+  }, [rascunhoDoTeste, aoMudarRascunho]);
 
   const janelaValida =
     HORA.test(rascunho.janela.inicio) && HORA.test(rascunho.janela.fim) && rascunho.janela.inicio < rascunho.janela.fim;
