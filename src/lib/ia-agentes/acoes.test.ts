@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  ACOES_COM_A_PASSAGEM,
+  acaoPrometida,
+  acoesAfirmadas,
   afirmaReuniaoMarcada,
   automacoesAlcancaveis,
   equipePrometida,
@@ -34,6 +37,9 @@ import {
 //  - a trava de link inventado compara URL INTEIRA;
 //  - a trava da reunião prometida: o texto que afirma a reunião sem o
 //    marcador (com horários oferecidos) é retido — e só ele;
+//  - a trava da AÇÃO prometida (25/10/2026): "criei o lembrete" sem a ação
+//    aceita na mesma resposta é retido — e o futuro, a oferta, a negação e o
+//    "anotado" sem objeto, não;
 //  - a régua da D5 atravessa `run_automation`, com trava de ciclo, e SÓ ele:
 //    a cascata (automações da etapa e da etiqueta) não conta desde 27/09/2026;
 //  - o valor do campo cabe no formato (data, número, lista, e-mail).
@@ -571,6 +577,156 @@ describe('a trava da REUNIÃO PROMETIDA (F5, 27/09)', () => {
 
   it('texto que não afirma: não dispara', () => {
     expect(reuniaoPrometida({ texto: 'Quer que eu marque para terça às 15:15?', horariosOferecidos: 5, aceitas: [] })).toBe(false)
+  })
+})
+
+describe('a trava da AÇÃO PROMETIDA (25/10/2026)', () => {
+  // O texto MEDIDO no teste real de 25/10: "Criar tarefa" desligada, as
+  // instruções ainda pedindo a tarefa — e nada foi criado.
+  const MEDIDO = 'Criei o lembrete para o Leonardo te enviar a lista de documentos na quarta-feira.'
+
+  it('⚠️ o texto medido AFIRMA a tarefa: sem ação → retida; com `criar_tarefa` aceita → passa', () => {
+    expect(acoesAfirmadas(MEDIDO)).toEqual(new Set(['tarefa']))
+    expect(acaoPrometida({ texto: MEDIDO, aceitas: [] })).toBe('tarefa')
+    expect(acaoPrometida({ texto: MEDIDO, aceitas: [{ tipo: 'criar_tarefa' }] })).toBeNull()
+    // Outra ação (a etiqueta, o campo) não cumpre a tarefa.
+    expect(acaoPrometida({ texto: MEDIDO, aceitas: [{ tipo: 'etiquetar' }, { tipo: 'preencher_campo' }] })).toBe('tarefa')
+  })
+
+  it.each<[string, string]>([
+    ['tarefa', 'Pronto! Já criei uma tarefa para a Ana te ligar amanhã.'],
+    ['tarefa', 'Agendei um lembrete para o Dr. Paulo te chamar na sexta.'],
+    ['tarefa', 'Deixei um lembrete aqui para a equipe.'],
+    ['tarefa', 'O lembrete para quarta-feira foi criado.'],
+    ['tarefa', 'Lembrete criado para quarta! 👍'],
+    ['tarefa', 'Pronto, tarefa criada ✅'],
+    ['tarefa', "I've created a reminder for Leonardo."],
+    ['registro', 'Registrei suas informações no sistema.'],
+    ['registro', 'Anotei os seus dados no cadastro.'],
+    ['registro', 'Já salvei o valor da dívida na sua ficha.'],
+    ['registro', 'Atualizei o seu cadastro com o novo telefone.'],
+    ['registro', 'Seus dados foram atualizados.'],
+    ['registro', 'Fiz uma anotação para o advogado.'],
+    ['registro', 'Deixei anotado no sistema que você prefere a tarde.'],
+    ['registro', "I've saved your details."],
+    ['etiqueta', 'Etiquetei seu contato como prioridade.'],
+    ['etiqueta', 'Coloquei a etiqueta de urgente no seu atendimento.'],
+    ['etiqueta', 'A etiqueta VIP foi adicionada.'],
+    ['etapa', 'Movi seu card para a etapa de documentação.'],
+    ['etapa', 'Passei para a etapa de Proposta.'],
+    ['etapa', 'Seu card foi movido para Documentos.'],
+    ['automacao', 'Executei a automação de boas-vindas.'],
+    ['encerramento', 'Encerrei o seu atendimento por aqui.'],
+    ['encerramento', 'Seu atendimento foi encerrado.'],
+    // A reunião na 1ª pessoa, sem a ferramenta (revisão de 25/10/2026).
+    ['reuniao', 'Agendei sua reunião para terça às 15h.'],
+    ['reuniao', 'Marquei sua reunião para terça às 15:15.'],
+    ['reuniao', 'Remarquei a consulta para quinta.'],
+    ['reuniao', "I've booked your meeting for Tuesday."],
+  ])('afirma (%s): "%s"', (acao, texto) => {
+    expect(acoesAfirmadas(texto)).toContain(acao)
+    expect(acaoPrometida({ texto, aceitas: [] })).toBe(acao)
+  })
+
+  it.each([
+    // Futuro, oferta, pergunta, condição, negação.
+    'Vou criar um lembrete para o Leonardo.',
+    'Posso registrar suas informações agora?',
+    'Quer que eu crie uma tarefa para a Ana?',
+    'Já criei o lembrete?',
+    'Se você preferir, anoto seus dados depois.',
+    'Assim que você mandar os documentos, a equipe cria a tarefa.',
+    'Ainda não registrei seus dados: me confirme o CPF.',
+    'Não consegui criar o lembrete.',
+    'O lembrete não foi criado.',
+    'A tarefa ainda não foi aberta.',
+    // Sem objeto: o "anotado" da conversa não afirma nada no sistema.
+    'Anotado! Qual é o seu e-mail?',
+    'Pronto, anotei!',
+    'Anotei, obrigado.',
+    // A "etapa" da conversa, não a do funil.
+    'Agora passamos para a próxima etapa: me envie os extratos.',
+    'Passei para a próxima etapa do atendimento.',
+    'Na próxima etapa, o advogado analisa o seu caso.',
+    // Consulta não é escrita.
+    'Fiz uma consulta no sistema e vi que o seu processo está ativo.',
+    'Verifiquei no sistema: o seu contrato está em análise.',
+    // A reunião que o próprio cliente marcou (pelo link) pode estar marcada:
+    // só a 1ª pessoa afirma.
+    'Sua reunião está marcada para terça às 15:15.',
+    // ⚠️ Outra oração entre o verbo e o objeto (revisão de 25/10/2026, frases
+    // comuns do atendimento que eram retidas).
+    'Anotei tudo e vou passar as informações para o advogado.',
+    'Entendi, anotei aqui e já vou repassar suas informações ao advogado.',
+    'Registrei sua mensagem e passei as informações para a equipe.',
+    'Deixei claro que precisamos dos seus dados.',
+    'Atualizei aqui e vi que seu cadastro está completo.',
+    'Finalizei a análise e o atendimento continua com o advogado.',
+    'Fechamos aqui a conversa de hoje, ok?',
+    'Anotei aqui.',
+    'Registrei seu interesse.',
+    'Já encaminhei para o advogado.',
+    'Entendi, vou verificar.',
+  ])('NÃO afirma: "%s"', (texto) => {
+    expect(acoesAfirmadas(texto)).toEqual(new Set())
+    expect(acaoPrometida({ texto, aceitas: [] })).toBeNull()
+  })
+
+  it('⚠️ "Anotado!"/"anotei" com o campo ACEITO passa; "anotei seus dados" sem o campo é retido', () => {
+    expect(acaoPrometida({ texto: 'Anotado! Anotei seus dados no cadastro.', aceitas: [{ tipo: 'preencher_campo' }] })).toBeNull()
+    expect(acaoPrometida({ texto: 'Anotado! Anotei seus dados no cadastro.', aceitas: [] })).toBe('registro')
+  })
+
+  it('cada afirmação precisa da SUA ação: a tarefa cumprida não cobre a etiqueta prometida', () => {
+    const texto = 'Criei a tarefa para a Ana e etiquetei seu contato como urgente.'
+    expect(acaoPrometida({ texto, aceitas: [{ tipo: 'criar_tarefa' }] })).toBe('etiqueta')
+    expect(acaoPrometida({ texto, aceitas: [{ tipo: 'criar_tarefa' }, { tipo: 'etiquetar' }] })).toBeNull()
+    // Tirar a etiqueta também cumpre a etiqueta.
+    expect(acaoPrometida({ texto: 'Removi a etiqueta de pendente.', aceitas: [{ tipo: 'tirar_etiqueta' }] })).toBeNull()
+  })
+
+  it('⚠️ a automação executada (e a reunião marcada, que dispara a do tipo de evento) cumpre qualquer afirmação', () => {
+    // O caso medido de 25/10: a automação com a anotação e o encerramento.
+    const texto = 'Registrei uma anotação para a equipe e encerrei o atendimento.'
+    expect(acoesAfirmadas(texto)).toEqual(new Set(['registro', 'encerramento']))
+    expect(acaoPrometida({ texto, aceitas: [] })).toBe('registro')
+    expect(acaoPrometida({ texto, aceitas: [{ tipo: 'executar_automacao' }] })).toBeNull()
+    expect(acaoPrometida({ texto: MEDIDO, aceitas: [{ tipo: 'marcar_reuniao' }] })).toBeNull()
+  })
+
+  it('a afirmação que REPETE uma resposta anterior do escritório não é nova (o pedido manda não repetir o marcador)', () => {
+    const texto = 'Sim, já anotei seus dados no cadastro.'
+    expect(acaoPrometida({ texto, aceitas: [], anteriores: ['Anotei seus dados no cadastro! Qual é o seu e-mail?'] })).toBeNull()
+    // A anterior que afirmou OUTRA coisa não serve.
+    expect(acaoPrometida({ texto, aceitas: [], anteriores: ['Criei a tarefa para a Ana.'] })).toBe('registro')
+    expect(acaoPrometida({ texto: MEDIDO, aceitas: [], anteriores: ['Olá! Como posso ajudar?'] })).toBe('tarefa')
+  })
+
+  it('⚠️ sem o "já" não é repetição: o lembrete NOVO não passa só porque um antigo foi criado', () => {
+    const anteriores = ['Já criei o lembrete da reunião.']
+    expect(acaoPrometida({ texto: 'Criei um lembrete para o advogado te ligar amanhã.', aceitas: [], anteriores })).toBe('tarefa')
+    expect(acaoPrometida({ texto: 'Sim, já criei o lembrete.', aceitas: [], anteriores })).toBeNull()
+    expect(acaoPrometida({ texto: 'Como eu disse, criei o lembrete da reunião.', aceitas: [], anteriores })).toBeNull()
+  })
+
+  it('a reunião afirmada é cumprida pela reunião marcada (e pela automação), e repetida com "já" passa', () => {
+    const texto = 'Agendei sua reunião para terça às 15h.'
+    expect(acaoPrometida({ texto, aceitas: [{ tipo: 'marcar_reuniao' }] })).toBeNull()
+    expect(acaoPrometida({ texto, aceitas: [{ tipo: 'criar_tarefa' }] })).toBe('reuniao')
+    expect(acaoPrometida({ texto: 'Já marquei sua reunião para terça, tudo certo.', aceitas: [], anteriores: [texto] })).toBeNull()
+  })
+
+  it('a confirmação no fim ("…, tudo bem?") ainda afirma', () => {
+    expect(acaoPrometida({ texto: 'Criei o lembrete para quarta, tudo bem?', aceitas: [] })).toBe('tarefa')
+  })
+})
+
+describe('as ações que rodam JUNTO com a passagem (D25, 25/10/2026)', () => {
+  it('campo, etiqueta (pôr e tirar) e tarefa rodam; mover, a automação e a reunião, não (a passagem já move o card)', () => {
+    expect([...ACOES_COM_A_PASSAGEM].sort()).toEqual(['criar_tarefa', 'etiquetar', 'preencher_campo', 'tirar_etiqueta'])
+    for (const t of ['mover_etapa', 'executar_automacao', 'marcar_reuniao'] as const) {
+      expect(ACOES_COM_A_PASSAGEM.has(t)).toBe(false)
+    }
   })
 })
 

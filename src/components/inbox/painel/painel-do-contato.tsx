@@ -11,8 +11,9 @@
 //
 // Estrutura: cabeçalho compacto (fechar + avatar + nome + telefone),
 // fileira de abas SÓ-ÍCONE e o conteúdo rolável de cada aba. As
-// buscas de dados (negócios, etiquetas) e a assinatura realtime das
-// notas moram NO TOPO do painel, não dentro das abas — trocar de aba
+// buscas de dados (negócios, etiquetas) e as assinaturas realtime (as
+// notas; a trilha, que avisa quando o negócio muda por outro caminho)
+// moram NO TOPO do painel, não dentro das abas — trocar de aba
 // não refaz query nenhuma, e fechar o painel (que agora só o esconde,
 // sem desmontar) não derruba o realtime.
 // ============================================================
@@ -35,7 +36,9 @@ import { SeletorFunilEtapa } from '@/components/inbox/painel/seletor-funil-etapa
 import { AvancarEtapa } from '@/components/inbox/painel/avancar-etapa';
 import { useMovimentoDeEtapa } from '@/hooks/use-movimento-de-etapa';
 import { useMovimentosDoFunil } from '@/hooks/use-movimentos-do-funil';
+import { useMudancaNoNegocio } from '@/hooks/use-mudanca-no-negocio';
 import { aoConcluirMovimento, concluirAgora } from '@/lib/pipelines/mover-com-desfazer';
+import { criarReguaDasLeituras } from '@/lib/pipelines/regua-das-leituras';
 import { AbaAutomacoes } from '@/components/inbox/painel/aba-automacoes';
 import { AbaArquivos } from '@/components/inbox/painel/aba-arquivos';
 import { AbaCobrancas } from '@/components/inbox/painel/aba-cobrancas';
@@ -308,6 +311,13 @@ export function PainelDoContato({
    * contato (declarado antes do efeito que dispara o fetch).
    */
   const contactIdRef = useRef<string | null>(null);
+  /**
+   * Ordem das leituras de NEGÓCIOS do mesmo contato (a carga, a releitura de
+   * cada mudança vinda de outro caminho, a da volta à aba) e das escritas do
+   * próprio painel — ver `regua-das-leituras.ts`. Objeto estável (estado
+   * preguiçoso, nunca recriado).
+   */
+  const [reguaDosNegocios] = useState(criarReguaDasLeituras);
 
   // ---- Fase 2: edição dentro da conversa --------------------------------
   const [allTags, setAllTags] = useState<Tag[]>([]);
@@ -593,6 +603,7 @@ export function PainelDoContato({
     // Congela o alvo: quem valida a chegada é o ref, que o efeito de troca
     // de contato mantém apontando para o contato ATUAL.
     const idPedido = contact.id;
+    const leituraDosNegocios = reguaDosNegocios.pedir();
 
     const supabase = createClient();
 
@@ -668,11 +679,16 @@ export function PainelDoContato({
     // aparece na barra da conversa — mesmo cliente podendo ter caso nas duas
     // áreas, cada equipe vê o seu. `pipeline_id` nulo (negócio órfão) passa,
     // como todo "sem carimbo" do projeto.
-    setDeals(
-      ((dealsRes.data ?? []) as Deal[]).filter(
-        (d) => !d.pipeline_id || funilNoEscopo(acesso, d.pipeline_id),
-      ),
-    );
+    // ⚠️ Os negócios só gravam se nenhuma leitura pedida DEPOIS (a releitura
+    // de uma mudança vinda de outro caminho) já gravou: esta carga traz a foto
+    // de antes da mudança. O resto da ficha grava como sempre.
+    if (reguaDosNegocios.podeGravar(leituraDosNegocios)) {
+      setDeals(
+        ((dealsRes.data ?? []) as Deal[]).filter(
+          (d) => !d.pipeline_id || funilNoEscopo(acesso, d.pipeline_id),
+        ),
+      );
+    }
     const mapped = (tagsRes.data ?? [])
       .filter((ct: Record<string, unknown>) => ct.tags)
       .map((ct: Record<string, unknown>) => ({
@@ -697,13 +713,68 @@ export function PainelDoContato({
     if (etapasRes.data) setAllStages(etapasRes.data as PipelineStage[]);
     if (!tarefasRes.error) setTarefasAbertas(tarefasRes.count ?? 0);
     setDadosProntos(true);
-  }, [contact, tSidebar, acesso, donoDaOrdem]);
+  }, [contact, tSidebar, acesso, donoDaOrdem, reguaDosNegocios]);
 
   // Load on contact change. setDeals/setTags run inside async
   // Supabase callbacks, not synchronously in the effect body.
   useEffect(() => {
     fetchContactData();
   }, [fetchContactData]);
+
+  /**
+   * Relê SÓ os negócios do contato — a etapa, o funil e o status que OUTRO
+   * caminho mudou com a conversa aberta: o agente de IA e as automações no
+   * servidor, o robô, um colega no quadro. Sem isto o seletor de etapa
+   * mostrava a etapa antiga até recarregar a página.
+   *
+   * Silenciosa: mantém o que está na tela até a resposta chegar, e a falha
+   * também mantém (a leitura que falha não sabe nada melhor; a próxima mudança
+   * ou a volta à aba relê). Não mexe em `dadosProntos`, nem no resto da ficha:
+   * reler campos e valores a cada evento da trilha trocaria por baixo o que o
+   * operador está digitando.
+   *
+   * ⚠️ As duas cercas da carga do contato: resposta de OUTRO contato morre no
+   * `contactIdRef` (o `{ de, … }` desta tela), e a régua impede a foto velha
+   * de gravar por cima da nova.
+   */
+  const contatoDoPainel = contact?.id ?? null;
+  const recarregarNegocios = useCallback(async () => {
+    if (!contatoDoPainel) return;
+    const leitura = reguaDosNegocios.pedir();
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from('deals')
+      .select('*, stage:pipeline_stages(*)')
+      .eq('contact_id', contatoDoPainel)
+      .order('created_at', { ascending: false });
+    if (contactIdRef.current !== contatoDoPainel) return;
+    if (error) {
+      console.warn('[painel] releitura dos negócios falhou:', error.message);
+      return;
+    }
+    if (!reguaDosNegocios.podeGravar(leitura)) return;
+    // O mesmo recorte por perfil da carga do contato.
+    setDeals(
+      ((data ?? []) as Deal[]).filter(
+        (d) => !d.pipeline_id || funilNoEscopo(acesso, d.pipeline_id),
+      ),
+    );
+  }, [contatoDoPainel, acesso, reguaDosNegocios]);
+
+  // Negócio do contato mudou por outro caminho (evento da trilha, 1059).
+  useMudancaNoNegocio(contatoDoPainel, () => {
+    void recarregarNegocios();
+  });
+
+  // O que o canal perdeu enquanto esteve fora (aba em segundo plano,
+  // reconexão, o botão de atualizar do fio) volta pelo `resyncToken`. Só
+  // quando ele MUDA: a carga do contato já cobre a montagem e a troca.
+  const resyncVistoRef = useRef(resyncToken);
+  useEffect(() => {
+    if (resyncVistoRef.current === resyncToken) return;
+    resyncVistoRef.current = resyncToken;
+    void recarregarNegocios();
+  }, [resyncToken, recarregarNegocios]);
 
   // Trocar de conversa NO MEIO de uma edição de nome descartaria o texto no
   // contato errado — mesma classe de bug do rascunho de nota, mesma guarda.
@@ -799,7 +870,10 @@ export function PainelDoContato({
    * - `conversation_id` só no NASCIMENTO (o DealForm cuida), nunca aqui.
    *
    * `deals` não tem realtime — o estado local é atualizado na mão, e erro
-   * refaz a busca (o otimismo não pode sobreviver a um update recusado).
+   * refaz a busca (o otimismo não pode sobreviver a um update recusado). A
+   * mudança feita por OUTRO caminho chega pela trilha (`useMudancaNoNegocio`
+   * → `recarregarNegocios`); a escrita daqui avisa a régua, para a releitura
+   * pedida antes dela não desfazer na tela o que acabou de ser salvo.
    */
   const atualizarNegocio = useCallback(
     async (
@@ -845,6 +919,15 @@ export function PainelDoContato({
       // gravado — não pelo `deal.status` desta tela, que pode ser de antes de
       // outro operador mexer no card (Codex, PR #245).
       const statusGravado = linhas[0].status as DealStatus;
+      // Releitura no ar foi pedida antes desta escrita: ela não grava mais (a
+      // foto dela é de antes), e o motivo dela — outro caminho mexeu no card —
+      // pede uma releitura nova.
+      // ⚠️ Só se o negócio é do contato que está NA TELA: a escrita que volta
+      // depois da troca de conversa calaria a carga do contato novo, e ele
+      // ficaria "sem negócios".
+      if (deal.contact_id === contactIdRef.current && reguaDosNegocios.escreveu()) {
+        void recarregarNegocios();
+      }
       setDeals((prev) =>
         prev.map((d) =>
           d.id === deal.id
@@ -872,7 +955,7 @@ export function PainelDoContato({
       if (drenar) avisarDrenagemDeFunil();
       return true;
     },
-    [allStages, fetchContactData, tSidebar]
+    [allStages, fetchContactData, tSidebar, reguaDosNegocios, recarregarNegocios]
   );
 
   /**
@@ -909,8 +992,14 @@ export function PainelDoContato({
   useEffect(
     () =>
       aoConcluirMovimento(({ dealId, resultado }) => {
-        if (!negociosRef.current.some((d) => d.id === dealId)) return;
+        const movido = negociosRef.current.find((d) => d.id === dealId);
+        if (!movido) return;
         if (resultado.tipo === 'movido') {
+          // A escrita do botão "avançar" é do painel: a mesma régua (e a
+          // mesma cerca de contato) de `atualizarNegocio`.
+          if (movido.contact_id === contactIdRef.current && reguaDosNegocios.escreveu()) {
+            void recarregarNegocios();
+          }
           setDeals((prev) =>
             prev.map((d) =>
               d.id === dealId
@@ -931,7 +1020,7 @@ export function PainelDoContato({
           void fetchContactData();
         }
       }),
-    [fetchContactData]
+    [fetchContactData, reguaDosNegocios, recarregarNegocios]
   );
 
   const mudarStatus = useCallback(

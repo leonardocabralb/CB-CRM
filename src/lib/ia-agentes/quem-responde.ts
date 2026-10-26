@@ -154,6 +154,21 @@ export type MotivoDeNinguem =
   /** D27: o card entrou na etapa ANTES de o agente ser ligado nela. */
   | 'card_antigo'
 
+/**
+ * Os motivos em que a etapa do card TEM agente, mas ele não atende esta
+ * conversa: desligado (ou arquivado), sem a conexão, card antigo (D27). A
+ * faixa do fio diz quem é e por quê (`naoAtende` de `GET
+ * /api/cb/ia/conversa/[id]`) — sem ela, o cliente que escreve depois de
+ * religar o agente fica sem resposta e a conversa não mostra NADA (medido,
+ * validação de 25/10/2026). Os outros motivos não têm agente a nomear.
+ */
+export const MOTIVOS_DO_AGENTE_QUE_NAO_ATENDE = [
+  'agente_desligado',
+  'fora_da_conexao',
+  'card_antigo',
+] as const satisfies readonly MotivoDeNinguem[]
+export type MotivoDoAgenteQueNaoAtende = (typeof MOTIVOS_DO_AGENTE_QUE_NAO_ATENDE)[number]
+
 export type QuemResponde =
   | { quem: 'ninguem'; motivo: MotivoDeNinguem }
   | { quem: 'agente'; agenteId: string; dealId: string; stageId: string }

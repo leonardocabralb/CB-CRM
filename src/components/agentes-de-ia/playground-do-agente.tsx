@@ -24,7 +24,13 @@
 // aparece entre as simuladas, com o aviso de que foi inferida
 // (`transferenciaInferida`). E a resposta que reproduz o pedido interno
 // (`pedidoVazado`, as regras do sistema de 27/09/2026) ganha o aviso
-// vermelho: em produção ela seria retida.
+// vermelho: em produção ela seria retida. O mesmo para a resposta que diz que
+// FEZ algo no sistema (criou a tarefa, gravou o campo, moveu o card…) sem a
+// ação que o faça (`acaoPrometida`, 25/10/2026).
+//
+// A PASSAGEM com ações (25/10/2026): campo, etiqueta e tarefa da resposta que
+// passa a conversa rodariam ANTES de o card ir para o outro agente — aparecem
+// como "antes de passar"; mover, automação e reunião, entre as recusadas.
 //
 // F5 (D7): com "Marcar reunião" ligado, a rota lê os horários livres do
 // Calendly AO VIVO e devolve os que foram oferecidos ao modelo
@@ -52,6 +58,7 @@ import {
   Bot,
   CalendarClock,
   CalendarX,
+  ClipboardX,
   Eye,
   History,
   Link2Off,
@@ -114,6 +121,8 @@ interface Turno {
   linkInventado?: boolean;
   /** Só do agente: a resposta diz que marcou a reunião sem o marcador (F5, 27/09). */
   reuniaoPrometida?: boolean;
+  /** Só do agente: a resposta diz que fez algo no sistema sem a ação que o faça (25/10/2026). */
+  acaoPrometida?: boolean;
   /** Só do agente: a resposta prometeu a equipe sem o `[[TRANSFERIR]]` — a transferência simulada foi inferida (27/09). */
   transferenciaInferida?: boolean;
   /** Só do agente: os horários livres oferecidos ao modelo (F5); nulo = nada a mostrar. */
@@ -144,6 +153,7 @@ function proximaRetomada(turnos: Turno[], cadencia: number): number | null {
     ultima.pedidoVazado ||
     ultima.linkInventado ||
     ultima.reuniaoPrometida ||
+    ultima.acaoPrometida ||
     ultima.acoes?.aceitas.some((a) => a.tipo === ACAO_TRANSFERIR)
   ) {
     return null;
@@ -151,12 +161,13 @@ function proximaRetomada(turnos: Turno[], cadencia: number): number | null {
   return seguidas < cadencia ? seguidas + 1 : null;
 }
 
-/** A resposta tem algo das ações (F4) a mostrar: pedido vazado, link inventado, reunião prometida, ação aceita ou recusada. */
+/** A resposta tem algo das ações (F4) a mostrar: pedido vazado, link inventado, reunião ou ação prometida, ação aceita ou recusada. */
 function temAvisoDeAcao(x: Turno): boolean {
   return (
     x.pedidoVazado === true ||
     x.linkInventado === true ||
     x.reuniaoPrometida === true ||
+    x.acaoPrometida === true ||
     (!!x.acoes && (x.acoes.aceitas.length > 0 || x.acoes.recusadas.length > 0))
   );
 }
@@ -218,6 +229,7 @@ export function PlaygroundDoAgente({
         pedidoVazado?: boolean;
         linkInventado?: boolean;
         reuniaoPrometida?: boolean;
+        acaoPrometida?: boolean;
         transferenciaInferida?: boolean;
         horarios?: unknown;
         code?: string;
@@ -242,6 +254,7 @@ export function PlaygroundDoAgente({
           pedidoVazado: corpo.pedidoVazado === true,
           linkInventado: corpo.linkInventado === true,
           reuniaoPrometida: corpo.reuniaoPrometida === true,
+          acaoPrometida: corpo.acaoPrometida === true,
           transferenciaInferida: corpo.transferenciaInferida === true,
           horarios: lerHorariosOferecidos(corpo.horarios),
         },
@@ -447,13 +460,24 @@ export function PlaygroundDoAgente({
                         <span>{t('playground.reuniaoPrometida')}</span>
                       </p>
                     ) : null}
+                    {x.acaoPrometida ? (
+                      <p className="flex items-start gap-1 text-red-700 dark:text-red-300">
+                        <ClipboardX className="mt-px size-3.5 shrink-0" />
+                        <span>{t('playground.acaoPrometida')}</span>
+                      </p>
+                    ) : null}
                     {x.acoes && x.acoes.aceitas.length > 0 ? (
                       <p className="flex items-start gap-1 text-foreground">
                         <Wrench className="mt-px size-3.5 shrink-0 text-primary" />
                         <span>
-                          {t('playground.acoesSimuladas', {
-                            itens: x.acoes.aceitas.map((a) => fraseDaAcao(t, a.tipo, a.nome, a.valor)).join(' · '),
-                          })}
+                          {/* Com a passagem, as que rodariam ANTES de passar (25/10/2026). */}
+                          {x.passaPara
+                            ? t('playground.acoesAntesDaPassagem', {
+                                itens: x.acoes.aceitas.map((a) => fraseDaAcao(t, a.tipo, a.nome, a.valor)).join(' · '),
+                              })
+                            : t('playground.acoesSimuladas', {
+                                itens: x.acoes.aceitas.map((a) => fraseDaAcao(t, a.tipo, a.nome, a.valor)).join(' · '),
+                              })}
                         </span>
                       </p>
                     ) : null}

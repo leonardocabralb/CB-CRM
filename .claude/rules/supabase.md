@@ -45,8 +45,8 @@ UPDATE/INSERT/DELETE fora do app, saiba o que ele aciona:
 - **`conversations`**: encerrar limpa a espera; atribuir (`assigned_agent_id`
   novo, não nulo, por outra pessoa ou por SQL) cria aviso no sino do
   responsável. Encerrar — inclusive o lote da 1018/1034 — limpa agente, pausa
-  e retomada da IA e descarta os turnos dela (`cb_ia_turnos`, 1049).
-  Despausar à mão (`ai_autoreply_disabled` → false) religa a IA na conversa.
+  e retomada da IA e descarta os turnos dela sem resposta (`cb_ia_turnos`,
+  1109). Despausar à mão (`ai_autoreply_disabled` → false) religa a IA.
   Criar, mudar situação ou responsável grava a trilha (1083, gatilho por
   INSTRUÇÃO): SQL à mão sai "pelo sistema"; carga com `created_at` de mais de
   10 min no passado não vira linha.

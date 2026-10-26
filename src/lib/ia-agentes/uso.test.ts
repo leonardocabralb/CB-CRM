@@ -13,6 +13,7 @@ function linha(p: Partial<LinhaDeUso>): LinhaDeUso {
     iaAgenteNome: 'Triagem',
     provedor: 'gemini',
     modelo: 'gemini-3.7-flash',
+    acimaDaFaixa: false,
     chamadas: 1,
     tokensEntrada: 1_000_000,
     tokensSaida: 1_000_000,
@@ -27,11 +28,11 @@ describe('preços', () => {
     expect(precoNoDia('gemini', 'gemini-3.7-flash', '2027-01-01')?.entrada).toBe(1.5)
   })
   it('modelo fora da tabela = sem preço (null), nunca zero', () => {
-    expect(custoEmDolar({ provedor: 'gemini', modelo: 'x', dia: '2026-09-25', tokensEntrada: 10, tokensSaida: 10, tokensTotal: 20 })).toBeNull()
+    expect(custoEmDolar({ provedor: 'gemini', modelo: 'x', dia: '2026-09-25', acimaDaFaixa: false, tokensEntrada: 10, tokensSaida: 10, tokensTotal: 20 })).toBeNull()
   })
   it('os pensamentos do Gemini (total − entrada) contam como saída', () => {
     // 1M entrada, 0 saída declarada, 2M total → 1M de saída cobrada.
-    const d = custoEmDolar({ provedor: 'gemini', modelo: 'gemini-3.7-flash', dia: '2026-09-25', tokensEntrada: 1_000_000, tokensSaida: 0, tokensTotal: 2_000_000 })
+    const d = custoEmDolar({ provedor: 'gemini', modelo: 'gemini-3.7-flash', dia: '2026-09-25', acimaDaFaixa: false, tokensEntrada: 1_000_000, tokensSaida: 0, tokensTotal: 2_000_000 })
     expect(d).toBeCloseTo(0.75 + 3.75, 6)
   })
 })
@@ -86,6 +87,23 @@ describe('resumirUso', () => {
     expect(r.porModo.radar.chamadas).toBe(1)
   })
 
+  it('o Haiku 5.5 em duas faixas no mesmo dia: cada uma pelo seu preço (1108)', () => {
+    const haiku = { modo: 'agente', provedor: 'anthropic', modelo: 'claude-haiku-5-5', tokensEntrada: 1_000_000, tokensSaida: 1_000_000, tokensTotal: 2_000_000 }
+    const r = resumirUso([linha({ ...haiku, acimaDaFaixa: false }), linha({ ...haiku, acimaDaFaixa: true })], null)
+    expect(r.total.dolar).toBeCloseTo(0.1 + 0.5 + (0.5 + 2.5), 6)
+    expect(r.semPreco).toEqual([])
+  })
+
+  it('a soma sem a faixa (função de antes da 1108): o Haiku 5.5 é sem preço; o resto segue', () => {
+    const r = resumirUso(
+      [linha({ modo: 'agente', provedor: 'anthropic', modelo: 'claude-haiku-5-5', acimaDaFaixa: null }), linha({ modo: 'agente', acimaDaFaixa: null })],
+      null,
+    )
+    expect(r.semPreco).toEqual(['anthropic/claude-haiku-5-5'])
+    expect(r.total.dolar).toBeCloseTo(0.75 + 3.75, 6)
+    expect(r.total.parcial).toBe(true)
+  })
+
   it('dias em ordem', () => {
     const r = resumirUso([linha({ dia: '2026-09-25' }), linha({ dia: '2026-09-24' })], null)
     expect(r.porDia.map((d) => d.dia)).toEqual(['2026-09-24', '2026-09-25'])
@@ -96,6 +114,12 @@ describe('lerLinhaDeUso', () => {
   it('bigint chega como texto do PostgREST e vira número', () => {
     const l = lerLinhaDeUso({ dia: '2026-09-25', modo: 'agente', provedor: 'gemini', modelo: 'm', chamadas: '3', tokens_entrada: '10', tokens_saida: 5, tokens_total: '15' })
     expect(l).toMatchObject({ chamadas: 3, tokensEntrada: 10, tokensSaida: 5, tokensTotal: 15, iaAgenteId: null })
+  })
+  it('a faixa (1108) é lida; ausente vira null, nunca false', () => {
+    const base = { dia: '2026-10-25', modo: 'agente', provedor: 'anthropic', modelo: 'claude-haiku-5-5', chamadas: 1 }
+    expect(lerLinhaDeUso({ ...base, acima_da_faixa: true })?.acimaDaFaixa).toBe(true)
+    expect(lerLinhaDeUso({ ...base, acima_da_faixa: false })?.acimaDaFaixa).toBe(false)
+    expect(lerLinhaDeUso(base)?.acimaDaFaixa).toBeNull()
   })
   it('forma estranha é descartada', () => {
     expect(lerLinhaDeUso({ dia: 1 })).toBeNull()

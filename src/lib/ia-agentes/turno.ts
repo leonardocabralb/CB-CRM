@@ -50,10 +50,11 @@
 //    cerca de posse, antes da geração.
 //  - AÇÕES junto com a resposta (F4, D28): o modelo lista marcadores no fim
 //    (`acoes.ts`), sobre as opções numeradas que o pedido mostrou
-//    (`opcoesDoAgente`). O marcador NUNCA chega ao cliente; passagem e
-//    transferência VENCEM (as ações não executam) — inclusive o sentinela
-//    escrito de outro jeito (`[[ handoff ]]`); resposta sem texto além dos
-//    marcadores transfere; link que não veio do pedido nem da conversa RETÉM
+//    (`opcoesDoAgente`). O marcador NUNCA chega ao cliente; a transferência
+//    VENCE (as ações não executam) — inclusive o sentinela escrito de outro
+//    jeito (`[[ handoff ]]`) —, e com a passagem só rodam as que não mexem
+//    no card (abaixo); resposta sem texto além dos marcadores transfere;
+//    link que não veio do pedido nem da conversa RETÉM
 //    a resposta e transfere (`link_inventado`, com os links no `erro`), e a
 //    resposta que diz que marcou a reunião SEM o marcador (com horários
 //    oferecidos) também (`reuniao_prometida`, com o texto no `erro`), e a
@@ -87,7 +88,28 @@
 //    retomada que sai arma a seguinte (`armarRetomada`). A retomada é uma
 //    linha da mesma fila (`tipo = 'retomada'`), roda por `conduzirRetomada`
 //    e para quando alguém escreve depois da âncora — as regras dela estão na
-//    seção própria, abaixo.
+//    seção própria, abaixo. A conversa ENCERRADA durante o turno (a automação
+//    que o próprio agente executou fecha a conversa) não arma retomada; e o
+//    turno cuja resposta já saiu não é mais descartado pelo encerramento
+//    (1109): ele grava `respondeu` com as ações.
+//  - A AÇÃO PROMETIDA (25/10/2026, medido): a resposta que diz "criei o
+//    lembrete", "registrei seus dados", "movi seu card" SEM a ação aceita na
+//    mesma resposta é RETIDA e transfere (`acao_prometida`, o texto no
+//    `erro`), como a reunião prometida (`acaoPrometida`, `acoes.ts`). O
+//    pedido diz ao modelo, sempre, que só o marcador muda o sistema.
+//  - A PASSAGEM com AÇÕES (25/10/2026): campo, etiqueta e tarefa da mesma
+//    resposta rodam ANTES de o card ir para a etapa do destino, com a reserva
+//    e a posse de sempre (`ACOES_COM_A_PASSAGEM`); mover, automação e
+//    reunião são recusadas (`passagem`) — a passagem já move o card.
+//  - FORA DO HORÁRIO NÃO É "NUNCA" (25/10/2026): o turno volta para a fila
+//    (`aguardando`) com `executar_apos` = a próxima abertura do horário do
+//    agente (`proximaAbertura`), e na hora tudo é conferido de novo. A
+//    mensagem nova do cliente empurra o pendente (a rajada); ele roda,
+//    confere o horário e volta a esperar — uma rodada curta por mensagem,
+//    sem laço. As esperas do áudio e das mídias contam, nesse turno, da
+//    abertura de hoje (`aberturaDeHoje`), e o teto de respostas por minuto da
+//    conta o devolve à fila (em vez de `sem_resposta`): a fila da noite vence
+//    toda na abertura.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -115,6 +137,8 @@ import { transcreverAudio } from '@/lib/transcricao/transcrever'
 import { lerOQueOAgenteVe } from './acesso'
 import {
   ACAO_TRANSFERIR,
+  ACOES_COM_A_PASSAGEM,
+  acaoPrometida,
   equipePrometida,
   lerAcoes,
   linksInventados,
@@ -139,7 +163,7 @@ import {
 } from './fila'
 import { anotarNaConversa, executarAcoes } from './executar-acoes'
 import { opcoesDoAgente } from './ferramentas'
-import { dentroDoHorario } from './horario'
+import { aberturaDeHoje, dentroDoHorario, ERRO_DA_ESPERA_DO_HORARIO, proximaAbertura } from './horario'
 import { lerPassagem, montarPedidoDaRetomada, montarPedidoDoAgente } from './pedido'
 import { vazouOPedido } from './regras-do-sistema'
 import {
@@ -191,6 +215,8 @@ export interface LinhaDoTurno {
   tipo?: string | null
   tentativa?: number | null
   tentativas?: number | null
+  /** O que a linha guardava ao ser reivindicada (a marca de uma espera ou da repetição). */
+  erro?: string | null
 }
 
 interface Gatilho {
@@ -212,8 +238,13 @@ export type Desfecho =
       status: 'passou' | 'descartado' | 'pausado_no_meio' | 'fora_do_horario' | 'sem_resposta' | 'falhou'
       erro?: string
     }
-  /** `executarApos`: a retomada empurrada para a janela ou para depois de um lembrete (sem ele, `REAGENDAR_AUDIO_MS`). */
-  | { status: 'reagendar'; executarApos?: string }
+  /**
+   * `executarApos`: a retomada empurrada para a janela ou para depois de um
+   * lembrete, ou o turno que espera a abertura do horário do agente (sem ele,
+   * `REAGENDAR_AUDIO_MS`). `erro`: o que a linha guarda enquanto espera
+   * (`ERRO_DA_ESPERA_DO_HORARIO`, que a aba Turnos reconhece); sem ele, nulo.
+   */
+  | { status: 'reagendar'; executarApos?: string; erro?: string }
   | { status: 'abandonado' }
 
 // ------------------------------------------------------------
@@ -548,6 +579,16 @@ async function conferir(db: SupabaseClient, turno: LinhaDoTurno, gatilho: Gatilh
 // Áudio (E9)
 // ------------------------------------------------------------
 
+/**
+ * De quando conta uma espera do turno (a janela do áudio, a da leitura, o
+ * teto das mídias): o carimbo da mensagem — ou a abertura de hoje do horário
+ * do agente, se for mais nova (`andamento.abertoDesde`): o turno que esperou
+ * a abertura trata a mensagem da madrugada como chegada na abertura.
+ */
+function desdeAEspera(gravadaMs: number, andamento: Andamento): number {
+  return andamento.abertoDesde === null ? gravadaMs : Math.max(gravadaMs, andamento.abertoDesde)
+}
+
 /** Quantos áudios da rajada o turno transcreve (os MAIS NOVOS). */
 const AUDIOS_DA_RAJADA = 5
 
@@ -605,9 +646,10 @@ async function prepararAudios(
     }
     if (r.status === 'recusada') return { status: 'transferiu', motivo: 'audio' }
     // `transcrevendo`, ou `falhou` (arquivo ainda baixando, Gemini fora do
-    // ar): dentro da janela, reagenda; depois dela, gente ouve.
+    // ar): dentro da janela, reagenda; depois dela, gente ouve. No turno que
+    // esperou a abertura do horário, a janela conta da abertura.
     const gravada = Date.parse((audio.gravada_em as string | null) ?? '')
-    const idade = Number.isFinite(gravada) ? Date.now() - gravada : Number.POSITIVE_INFINITY
+    const idade = Number.isFinite(gravada) ? Date.now() - desdeAEspera(gravada, andamento) : Number.POSITIVE_INFINITY
     if (r.status === 'transcrevendo' || idade < JANELA_DO_AUDIO_MS) return { status: 'reagendar' }
     return { status: 'transferiu', motivo: 'audio' }
   }
@@ -672,9 +714,13 @@ async function prepararMidias(
 ): Promise<Desfecho | null> {
   if (!turno.canal_id) return null
   // O teto dos reagendamentos: gatilho velho demais (ou sem carimbo) não
-  // espera leitura nenhuma.
+  // espera leitura nenhuma. No turno que esperou a abertura do horário, o
+  // teto conta da abertura: a foto mandada de madrugada é lida às 08:00 (e o
+  // teto ainda segura o laço).
   const doGatilho = Date.parse(gatilho.gravada_em ?? '')
-  if (!Number.isFinite(doGatilho) || Date.now() - doGatilho >= TETO_DA_ESPERA_DAS_MIDIAS_MS) return null
+  if (!Number.isFinite(doGatilho) || Date.now() - desdeAEspera(doGatilho, andamento) >= TETO_DA_ESPERA_DAS_MIDIAS_MS) {
+    return null
+  }
 
   const { data, error } = await db
     .from('messages')
@@ -720,7 +766,7 @@ async function prepararMidias(
     }
     if (r.status === 'recusada') continue
     const gravada = Date.parse(m.gravada_em ?? '')
-    const idade = Number.isFinite(gravada) ? Date.now() - gravada : Number.POSITIVE_INFINITY
+    const idade = Number.isFinite(gravada) ? Date.now() - desdeAEspera(gravada, andamento) : Number.POSITIVE_INFINITY
     if (idade < JANELA_DO_AUDIO_MS) return { status: 'reagendar' }
     // Fora da janela o turno segue sem o texto — mas a tentativa que FALHOU
     // pode ter comido o prazo (download + provedor lento): contada como
@@ -796,7 +842,8 @@ async function etapaDoAgente(
  * sem a espera da rajada) — menos quando uma automação ligada escuta a etapa
  * de destino: aí ela fala, e o destino responde a próxima mensagem (E4).
  * Passagem de passagem, agente n que não serve e card que já saiu da etapa
- * TRANSFEREM para gente.
+ * TRANSFEREM para gente. As ações que rodam com ela (`antesDeMover`) vêm
+ * depois de conferido o destino e antes do UPDATE do card.
  */
 async function passar(
   db: SupabaseClient,
@@ -805,6 +852,12 @@ async function passar(
   conferido: { contactId: string | null; card: CardDoContato; agente: IaAgente },
   opcoes: IaAgente[],
   n: number,
+  /**
+   * As ações que rodam JUNTO com a passagem (25/10/2026), com a passagem já
+   * conferida (destino e etapa) e ANTES de mover o card. Devolve o desfecho
+   * que a interrompe (reserva recusada, posse perdida) ou nulo para seguir.
+   */
+  antesDeMover: (() => Promise<Desfecho | null>) | null = null,
 ): Promise<Desfecho> {
   if (turno.veio_de_passagem) return { status: 'transferiu', motivo: 'sentinela' }
   const destino = opcoes[n - 1]
@@ -813,6 +866,15 @@ async function passar(
   }
   const etapa = await etapaDoAgente(db, turno.account_id, destino.id, conferido.card.pipelineId)
   if (!etapa) return { status: 'transferiu', motivo: 'sentinela' }
+
+  // Campo, etiqueta e tarefa da mesma resposta, antes de o card sair da etapa
+  // (o UPDATE abaixo exige o card AINDA nela). ⚠️ Se o card sair no meio —
+  // a automação de uma etiqueta aplicada aqui o move —, a passagem transfere
+  // e o que já foi feito fica no registro.
+  if (antesDeMover) {
+    const parada = await antesDeMover()
+    if (parada) return parada
+  }
 
   // `pipeline_id` e `stage_id` num UPDATE só (a trilha da 912 conta a troca
   // de funil numa linha).
@@ -902,6 +964,26 @@ async function lerNomeDaFicha(db: SupabaseClient, accountId: string, contactId: 
   }
 }
 
+/** A folga da geração e do envio entre a abertura do horário e o fim da janela da Meta. */
+const FOLGA_NA_JANELA_META_MS = 10 * 60_000
+
+/**
+ * Falha PASSAGEIRA do provedor (prazo, limite de taxa, 5xx): o turno tenta UMA
+ * vez mais, daqui a `REPETIR_A_GERACAO_MS`, pela rede do cron, com a marca
+ * `ERRO_DA_REPETICAO` na linha — a segunda falha é `falhou`, como antes (E8:
+ * não transfere). Medido na simulação de 25/10/2026: 2 de 59 pedidos ao
+ * Gemini passaram de 30 s, e o cliente ficava sem resposta até escrever de
+ * novo.
+ */
+const REPETIR_A_GERACAO_MS = 20_000
+export const ERRO_DA_REPETICAO = 'falha passageira do provedor: tentando de novo'
+
+function falhaPassageira(err: unknown): boolean {
+  if (!(err instanceof AiError)) return false
+  if (err.code === 'timeout' || err.code === 'rate_limited') return true
+  return err.code === 'provider_error' && (err.upstreamStatus ?? 0) >= 500
+}
+
 /** Teto do texto RETIDO que vai ao `erro` do turno (a reunião prometida): a aba Turnos o mostra. */
 const TETO_DO_TEXTO_RETIDO = 1_000
 
@@ -959,6 +1041,14 @@ interface Andamento {
    */
   pediuEquipe: boolean
   /**
+   * Quando o horário do agente abriu HOJE (`aberturaDeHoje`, ms); nulo sem
+   * horário. As esperas que contam do gatilho (o áudio que ainda baixa, a
+   * leitura das mídias) contam no máximo daqui: o turno que esperou a
+   * abertura (25/10/2026) chega com o gatilho da madrugada, e com o prazo
+   * contado dele não tentaria ler nada.
+   */
+  abertoDesde: number | null
+  /**
    * Cancela o "digitando…" (`mostrarDigitando`). O envio o CONCLUI antes de a
    * resposta sair (`concluirDigitando`), e `executarTurno` o cancela em TODA
    * saída — senão o pedido em voo chegava à Meta depois de o turno desistir.
@@ -992,7 +1082,39 @@ async function conduzir(
   andamento.agente = agente
   andamento.contactId = primeira.contactId
 
-  if (!dentroDoHorario(agente.horario, new Date())) return { status: 'fora_do_horario' }
+  // FORA DO HORÁRIO (D12) o turno ESPERA a próxima abertura (25/10/2026):
+  // antes ele terminava `fora_do_horario` e a mensagem da noite nunca era
+  // respondida. Volta à fila (`aguardando`, `executar_apos` = a abertura,
+  // pela rede do cron — horas não cabem num `after()`), e na hora tudo é
+  // conferido de novo (pausa por gente, card, mensagem mais nova…). A
+  // mensagem nova do cliente empurra o pendente (a rajada, 8 s), ele roda,
+  // confere o horário e volta a esperar: uma rodada curta por mensagem. A
+  // abertura que não fica no futuro (horário sem dia — `lerHorario` não
+  // deixa) termina como antes, nunca em laço.
+  //
+  // ⚠️ Na conexão OFICIAL, a espera não passa da janela de 24 h da Meta
+  // (revisão de 25/10/2026): o cliente do sábado de manhã só seria respondido
+  // na segunda, com a janela fechada — texto livre recusado (muitas vezes só
+  // no recibo, com o turno já `respondeu`). Se a janela fecha antes da
+  // abertura (com a folga da geração), termina `fora_do_horario`, como antes.
+  const agora = new Date()
+  if (!dentroDoHorario(agente.horario, agora)) {
+    const abertura = proximaAbertura(agente.horario, agora)
+    if (abertura === null || abertura <= agora.getTime()) return { status: 'fora_do_horario' }
+    if (turno.canal_id) {
+      const fimDaJanelaMeta = await lerFimDaJanelaMeta(db, {
+        accountId: turno.account_id,
+        conversationId: turno.conversation_id,
+        canalId: turno.canal_id,
+        agora: agora.getTime(),
+      })
+      if (fimDaJanelaMeta !== null && abertura + FOLGA_NA_JANELA_META_MS >= fimDaJanelaMeta) {
+        return { status: 'fora_do_horario', erro: 'a janela de 24 h da Meta fecha antes de o horário do agente abrir' }
+      }
+    }
+    return { status: 'reagendar', executarApos: new Date(abertura).toISOString(), erro: ERRO_DA_ESPERA_DO_HORARIO }
+  }
+  andamento.abertoDesde = aberturaDeHoje(agente.horario, agora)
 
   const desde = await inicioDaRajada(db, turno, gatilho)
   const audio = await prepararAudios(db, turno, gatilho, desde, andamento)
@@ -1036,7 +1158,18 @@ async function conduzir(
   // ANTES de ler o que o agente vê (F3): o turno barrado não lê dado do
   // cliente nem paga a busca da base.
   const limite = checkRateLimit(`ai-autoreply:${turno.account_id}`, RATE_LIMITS.aiAutoReplyAccount)
-  if (!limite.success) return { status: 'sem_resposta', erro: 'limite de respostas por minuto da conta' }
+  if (!limite.success) {
+    // O turno que ESPEROU a abertura do horário (25/10/2026): a fila da noite
+    // (do fim de semana) vence toda na abertura, e o teto da conta cortaria
+    // parte dela em `sem_resposta` — quem esperou horas ficaria sem resposta
+    // por causa do próprio agendamento. Volta à fila para quando o teto abre
+    // de novo (a falha não conta no teto; a fila escoa no ritmo dele).
+    const gravadoEm = Date.parse(gatilho.gravada_em ?? '')
+    if (andamento.abertoDesde !== null && Number.isFinite(gravadoEm) && gravadoEm < andamento.abertoDesde) {
+      return { status: 'reagendar', executarApos: new Date(Math.max(limite.reset, Date.now() + REAGENDAR_AUDIO_MS)).toISOString() }
+    }
+    return { status: 'sem_resposta', erro: 'limite de respostas por minuto da conta' }
+  }
 
   // O que o agente vê além da conversa (F3) e o que ele pode FAZER (F4, as
   // opções numeradas do pedido; F5, os horários livres do Calendly, com o
@@ -1125,7 +1258,15 @@ async function conduzir(
     // Toda falha da geração termina aqui, sem enviar nada e sem transferir
     // (E8) — inclusive a resposta CORTADA pelo teto de tokens
     // (`output_truncated`): o texto pela metade nunca chega ao cliente, e a
-    // próxima mensagem dele abre um turno novo.
+    // próxima mensagem dele abre um turno novo. A PASSAGEIRA tenta uma vez
+    // mais (`REPETIR_A_GERACAO_MS`).
+    if (falhaPassageira(err) && turno.erro !== ERRO_DA_REPETICAO) {
+      return {
+        status: 'reagendar',
+        executarApos: new Date(Date.now() + REPETIR_A_GERACAO_MS).toISOString(),
+        erro: ERRO_DA_REPETICAO,
+      }
+    }
     return {
       status: 'falhou',
       erro: err instanceof AiError ? mensagemSeguraDeAiError(err) : 'erro inesperado ao gerar',
@@ -1234,6 +1375,26 @@ async function conduzir(
       andamento.acoes = naoExecutadas('transferencia')
       return { status: 'transferiu', motivo: 'reuniao_prometida', erro: `reunião prometida sem marcar: ${textoRetido(lidas.texto)}` }
     }
+    // A AÇÃO PROMETIDA sem o marcador (25/10/2026, medido: com "Criar
+    // tarefa" desligada, "Criei o lembrete para o Leonardo te enviar a lista
+    // de documentos na quarta-feira" — e nada foi criado). A resposta que
+    // afirma ter feito algo no sistema sem a ação ACEITA que o faça é RETIDA
+    // (o cliente esperaria uma coisa que ninguém vai fazer), e o texto vai
+    // para o `erro` do turno. As respostas anteriores do escritório entram:
+    // repetir o que já foi feito ("sim, já anotei") não é afirmação nova.
+    const prometida = acaoPrometida({
+      texto: lidas.texto,
+      aceitas,
+      anteriores: conversa.filter((m) => m.role === 'assistant').map((m) => m.content),
+    })
+    if (prometida) {
+      andamento.acoes = naoExecutadas('transferencia')
+      return {
+        status: 'transferiu',
+        motivo: 'acao_prometida',
+        erro: `ação prometida sem fazer (${prometida}): ${textoRetido(lidas.texto)}`,
+      }
+    }
   }
 
   // O "digitando…" termina (ou é cancelado, passados 2 s) ANTES da última
@@ -1254,8 +1415,72 @@ async function conduzir(
   if (!segunda.ok) return semEnvio(segunda.desfecho)
 
   if (passagem !== null) {
+    // Passagem inválida (transfere) ou que não chega a mover: nada executa.
     andamento.acoes = naoExecutadas('passagem')
-    return passar(db, turno, gatilho, segunda, opcoes, passagem)
+    // As que rodam JUNTO com a passagem válida (25/10/2026, medido: a
+    // qualificação passava sem gravar o campo): campo, etiqueta e tarefa,
+    // ANTES de o card ir para a etapa do destino, com as conferências de
+    // sempre — a reserva (a última palavra, com a conversa travada) e a posse.
+    // Mover, automação e reunião mexeriam no card que a passagem já move:
+    // recusadas (`passagem`).
+    const comAPassagem = aceitas.filter((a) => ACOES_COM_A_PASSAGEM.has(a.tipo))
+    // Parou antes de mover: nada mexeu no card nem foi ao cliente — o registro
+    // diz `passagem`, não `envio_falhou` (revisão de 25/10/2026).
+    const semPassagem = (desfecho: Desfecho): Desfecho => {
+      andamento.acoes = naoExecutadas('passagem')
+      return desfecho
+    }
+    const antesDeMover =
+      comAPassagem.length === 0
+        ? null
+        : async (): Promise<Desfecho | null> => {
+            const { data: reserva, error: erroReserva } = await db.rpc('cb_ia_reservar_envio', {
+              p_turno_id: turno.id,
+              p_rodando_desde: turno.rodando_desde,
+            })
+            if (erroReserva) return semPassagem({ status: 'falhou', erro: `reservar a passagem falhou: ${erroReserva.message}` })
+            if (reserva === 'pausada') return semPassagem({ status: 'pausado_no_meio', erro: 'pausada antes da passagem' })
+            // O teto conta as RESPOSTAS do agente: a passagem não manda nada ao
+            // cliente, e nunca foi segurada por ele.
+            if (reserva !== 'ok' && reserva !== 'teto') {
+              return semPassagem({ status: 'descartado', erro: `a reserva recusou a passagem: ${String(reserva)}` })
+            }
+            const dono = await donoDaConta(db, turno.account_id)
+            if (!dono) return semPassagem({ status: 'falhou', erro: 'a conta não tem dono' })
+            if (!segunda.contactId) return semPassagem({ status: 'descartado', erro: 'conversa sem contato' })
+            // A posse, como no envio (sem `enviando_desde`: nada vai ao cliente).
+            const posse = await gravarNoTurno(db, turno, {
+              iteracoes: 1,
+              tokens_entrada: andamento.usage?.promptTokens ?? null,
+              tokens_saida: andamento.usage?.completionTokens ?? null,
+              tokens_total: andamento.usage?.totalTokens ?? null,
+            })
+            if (!posse) return { status: 'abandonado' }
+            const feitas = await executarAcoes(
+              db,
+              {
+                accountId: turno.account_id,
+                conversationId: turno.conversation_id,
+                contactId: segunda.contactId,
+                dealId: turno.deal_id,
+                canalId: turno.canal_id,
+                agente: { id: agente.id, nome: agente.nome },
+                dono,
+                tipoDeEvento: null,
+              },
+              comAPassagem,
+            )
+            andamento.acoes = [
+              ...feitas.registros,
+              ...aceitas
+                .filter((a) => !ACOES_COM_A_PASSAGEM.has(a.tipo))
+                .map((a): RegistroDeAcao => ({ tipo: a.tipo, alvo: { id: a.id, nome: a.nome }, ok: false, erro: 'passagem' })),
+              ...(transferirDepois ? [linhaDaTransferencia({ ok: false, erro: 'passagem' })] : []),
+              ...recusasDaLeitura,
+            ]
+            return null
+          }
+    return passar(db, turno, gatilho, segunda, opcoes, passagem, antesDeMover)
   }
 
   const dono = await donoDaConta(db, turno.account_id)
@@ -1506,6 +1731,7 @@ const ERRO_DA_RESPOSTA: Record<ParadaDaResposta, string> = {
   sem_texto: 'a retomada veio sem texto',
   pedido_vazado: 'pedido vazado: a retomada reproduzia o pedido interno',
   link_inventado: 'link inventado',
+  acao_prometida: 'ação prometida: a retomada dizia ter feito algo no sistema',
 }
 
 type ConferenciaDaRetomada =
@@ -1727,7 +1953,12 @@ async function conduzirRetomada(
 
   // "Nada pendente", a equipe pedida, a passagem, o link inventado: a série
   // PARA, sem mandar nada, e fica registrado — a retomada nunca transfere.
-  const lida = lerRespostaDaRetomada(texto, handoff, [pedido, ...conversa.map((m) => m.content)])
+  const lida = lerRespostaDaRetomada(
+    texto,
+    handoff,
+    [pedido, ...conversa.map((m) => m.content)],
+    conversa.filter((m) => m.role === 'assistant').map((m) => m.content),
+  )
   if (lida.parada !== null) {
     const detalhe = lida.detalhe ? `: ${textoRetido(lida.detalhe)}` : ''
     return { status: 'sem_resposta', erro: `${ERRO_DA_RESPOSTA[lida.parada]}${detalhe}` }
@@ -1796,6 +2027,10 @@ async function armarRetomada(
       .maybeSingle()
     if (erroDaConversa) throw new Error(`leitura da conversa falhou: ${erroDaConversa.message}`)
     const c = conv as { status: string; ai_autoreply_disabled: boolean | null } | null
+    // Encerrada TAMBÉM pelo próprio turno: a automação que o agente executou
+    // fechou a conversa (desde a 1109 o encerramento não descarta mais o turno
+    // cuja resposta saiu, e ele chega aqui como `respondeu`). Nada de
+    // follow-up numa conversa que o agente encerrou.
     if (!c || c.status === 'closed' || c.ai_autoreply_disabled === true) return
 
     const { depois } = await lerMensagensDepois(db, {
@@ -1877,6 +2112,9 @@ async function encerrar(
         executar_apos: executarApos,
         // O retrato é da rodada que acabou: a próxima grava o seu (revisão da F3).
         contexto: null,
+        // A espera do horário diz que espera (a aba Turnos o reconhece); a de
+        // sempre (áudio, mídia, retomada) limpa a marca de uma espera anterior.
+        erro: desfecho.erro ?? null,
         updated_at: new Date().toISOString(),
       })
       .eq('id', turno.id)
@@ -1885,7 +2123,8 @@ async function encerrar(
       .select('id')
     if (!error && data && data.length > 0) {
       // Só o reagendamento curto (o áudio, a mídia) ganha disparo no próprio
-      // processo; a retomada empurrada (minutos, horas) é da rede do cron.
+      // processo; a retomada empurrada (minutos, horas) e a espera do horário
+      // do agente são da rede do cron.
       if (!desfecho.executarApos) agendarTurno({ id: turno.id, executarApos })
       return
     }
@@ -1989,6 +2228,7 @@ export async function executarTurno(turnoId: string): Promise<void> {
     semLeitor: new Set(),
     acoes: null,
     pediuEquipe: false,
+    abertoDesde: null,
     cancelarDigitando: new AbortController(),
   }
   let desfecho: Desfecho

@@ -139,6 +139,8 @@ export const TRECHOS_DO_PEDIDO = [
   'they override your instructions',
   'rules you must always follow',
   'the markers are removed before the customer sees',
+  // A regra de que só o marcador muda o sistema (a ação prometida, 25/10/2026).
+  'only through the action markers',
   // A seção da retomada (`secaoDaRetomada`, `pedido.ts`).
   'brings the conversation back to what is pending',
 ] as const

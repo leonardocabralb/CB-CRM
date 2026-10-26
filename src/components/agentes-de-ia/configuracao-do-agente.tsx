@@ -9,6 +9,10 @@
 //
 // ⚠️ Conexões: NENHUMA marcada = o agente não atende em conexão nenhuma
 // (nunca "todas": há número de uso pessoal na conta). Idem as etapas.
+//
+// O modelo sai da lista da CHAVE do provedor (`provedor-e-modelo.tsx`,
+// 25/10/2026), com o quadro de quem lê a mídia ao lado; mudar "Ligado" avisa,
+// ANTES de salvar, o que a D27 faz com os cards que já estão nas etapas.
 // ============================================================
 
 import { useEffect, useMemo, useState } from 'react';
@@ -26,7 +30,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useChannels } from '@/hooks/use-channels';
 import { fetchAccountMembersOrNull, memberLabel } from '@/lib/account/members';
 import { opcoesDeResponsavel } from '@/lib/account/suspensao';
-import { AI_PROVIDER_MODELS } from '@/lib/ai/defaults';
+import { modeloRecomendado } from '@/lib/ai/defaults';
 import type { AiProvider } from '@/lib/ai/types';
 import { LIMITES } from '@/lib/ia-agentes/agente';
 import { ehInstagram } from '@/lib/cb-channels/transporte';
@@ -43,6 +47,7 @@ import {
 import { textoDoCodigo } from './textos';
 import { alteracoesDoRascunho, lerTeto } from './rascunho';
 import { OndeAtua } from './onde-atua';
+import { listaDaChave, QuemLeAMidia, SeletorDeModelo, useModelosDasChaves } from './provedor-e-modelo';
 import { RegrasDoSistema } from './regras-do-sistema';
 
 const DIAS = [1, 2, 3, 4, 5, 6, 0] as const;
@@ -65,6 +70,8 @@ export function ConfiguracaoDoAgente({
   // `membros` nulo depois da carga = a equipe NÃO carregou (não "sem ninguém").
   const [equipeLida, setEquipeLida] = useState(false);
   const [outros, setOutros] = useState<IaAgente[] | null>(null);
+  // Os modelos de cada chave e quem lê a mídia (`GET /api/cb/ia/modelos`).
+  const modelosDasChaves = useModelosDasChaves();
 
   const [nome, setNome] = useState(agente.nome);
   const [descricao, setDescricao] = useState(agente.descricao);
@@ -208,6 +215,14 @@ export function ConfiguracaoDoAgente({
             <Switch checked={ativo} onCheckedChange={setAtivo} />
           </div>
         </div>
+        {/* D27 dita o que acontece com os cards PARADOS nas etapas: o aviso
+            vem antes do Salvar, só quando "Ligado" mudou. Ligar pela
+            primeira vez tem o mesmo efeito (`ativado_em` é carimbado agora). */}
+        {ativo !== agente.ativo ? (
+          <p className="text-xs text-amber-700 dark:text-amber-300">
+            {ativo ? t('campo.ativoLigando') : t('campo.ativoDesligando')}
+          </p>
+        ) : null}
         <div className="space-y-1.5">
           <Label htmlFor="ag-desc">{t('campo.descricao')}</Label>
           <Textarea
@@ -284,7 +299,8 @@ export function ConfiguracaoDoAgente({
               onClick={() => {
                 if (p === provedor) return;
                 setProvedor(p);
-                setModelo(AI_PROVIDER_MODELS[p][0]);
+                // O recomendado que a chave do provedor TEM (sem a lista, o padrão).
+                setModelo(modeloRecomendado(p, listaDaChave(modelosDasChaves.leitura?.provedores[p])));
               }}
               className={cn(
                 'rounded-md border px-2.5 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-50',
@@ -301,14 +317,19 @@ export function ConfiguracaoDoAgente({
         ) : null}
         <div className="space-y-1.5 sm:max-w-md">
           <Label htmlFor="ag-modelo">{t('campo.modelo')}</Label>
-          <Input id="ag-modelo" list="ag-modelos" value={modelo} onChange={(e) => setModelo(e.target.value)} />
-          {/* Sugestão, nunca allow-list: os ids mudam mais rápido que a lista. */}
-          <datalist id="ag-modelos">
-            {AI_PROVIDER_MODELS[provedor].map((m) => (
-              <option key={m} value={m} />
-            ))}
-          </datalist>
+          <SeletorDeModelo
+            id="ag-modelo"
+            provedor={provedor}
+            valor={modelo}
+            aoMudar={setModelo}
+            lista={modelosDasChaves.leitura ? modelosDasChaves.leitura.provedores[provedor] : null}
+            atualizando={modelosDasChaves.atualizando}
+            aoAtualizar={modelosDasChaves.atualizar}
+          />
         </div>
+        {/* Quem lê áudio, imagem e PDF NÃO é este modelo (o operador pediu
+            que fique claro): é a chave da conta, e o agente recebe o texto. */}
+        <QuemLeAMidia leitores={modelosDasChaves.leitura ? modelosDasChaves.leitura.leitores : undefined} />
       </section>
 
       <section className="space-y-3">
@@ -343,6 +364,7 @@ export function ConfiguracaoDoAgente({
 
       <section className="space-y-3">
         <h3 className="text-sm font-semibold text-foreground">{t('campo.horario')}</h3>
+        <p className="text-xs text-muted-foreground">{t('campo.horarioDica')}</p>
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
             checked={horario === null}

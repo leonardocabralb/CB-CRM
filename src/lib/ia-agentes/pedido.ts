@@ -8,7 +8,8 @@
 // administrador escreve, e nada na configuração as desliga), o texto-base
 // (fixo, para o MODELO — por isso em inglês, como o de
 // `buildSystemPrompt`; a regra "responda no idioma do cliente" cuida do
-// português; com o `[[HANDOFF]]` e o `[[TRANSFERIR]]`, "responda e passe"),
+// português; com o `[[HANDOFF]]` e o `[[TRANSFERIR]]`, "responda e passe",
+// e a regra de que só o MARCADOR muda o sistema — a ação prometida, 25/10/2026),
 // a data e a hora no fuso do escritório, as INSTRUÇÕES do agente,
 // as REGRAS numeradas (D23), os agentes para quem ele pode PASSAR a conversa
 // (D25), o que ele sabe do CLIENTE — os blocos de acesso (F3, `acesso.ts`) —,
@@ -73,6 +74,17 @@ const TEXTO_BASE = [
     `and add ${MARCADOR_DE_TRANSFERENCIA} at the very end: the message is sent, and then the conversation goes to a person. ` +
     `Never tell the customer that someone will take over without ${MARCADOR_DE_TRANSFERENCIA}. ` +
     `Use ${HANDOFF_SENTINEL} alone only when nothing should be said to the customer.`,
+  // A AÇÃO PROMETIDA (25/10/2026, medido): com "Criar tarefa" desligada e as
+  // instruções ainda pedindo a tarefa, o agente escreveu "Criei o lembrete
+  // para o Leonardo…" — e nada foi criado. Vale SEMPRE, com ou sem ações
+  // liberadas: o que muda o sistema é só o marcador. A trava do turno
+  // (`acaoPrometida`, `acoes.ts`) retém a resposta que afirma sem ele.
+  "You can change the business's systems ONLY through the action markers listed further below, if there are any — without them you " +
+    'cannot change anything. Never say that you did something in the systems — created a task or a reminder, saved or noted information ' +
+    "in a field or in the customer's record, added or removed a tag, moved the deal to another stage, ran an automation, wrote a note, " +
+    "closed the conversation or booked a meeting — unless that action's marker is in this same reply. If your instructions ask for something " +
+    'you cannot do with a marker, never say it was done: tell the customer the team will take care of it and add ' +
+    `${MARCADOR_DE_TRANSFERENCIA} at the very end.`,
 ]
 
 /** "Wednesday, 25 September 2026, 14:05" no fuso dado. */
@@ -96,10 +108,12 @@ export interface AgenteParaPassar {
 }
 
 /**
- * A PASSAGEM (D25): o modelo responde SÓ `[[PASSAR:n]]` para entregar a
- * conversa ao agente n da lista. Lido em qualquer ponto do texto, e com
- * espaço ou caixa diferentes: o marcador NUNCA pode chegar ao cliente — texto
- * que o contenha é passagem, nunca resposta. `null` = não é passagem.
+ * A PASSAGEM (D25): o modelo responde `[[PASSAR:n]]`, sem texto ao cliente,
+ * para entregar a conversa ao agente n da lista (desde 25/10/2026, com os
+ * marcadores das ações que rodam junto com ela, `ACOES_COM_A_PASSAGEM`).
+ * Lido em qualquer ponto do texto, e com espaço ou caixa diferentes: o
+ * marcador NUNCA pode chegar ao cliente — texto que o contenha é passagem,
+ * nunca resposta. `null` = não é passagem.
  */
 export function lerPassagem(texto: string): number | null {
   const m = /\[\[\s*PASSAR\s*:\s*(\d+)\s*\]\]/i.exec(texto)
@@ -299,8 +313,16 @@ export function montarPedidoDoAgente(args: {
   if (passagens.length > 0) {
     partes.push(
       "Other AI agents of the business can take this conversation over. If the customer's request is clearly another agent's job, " +
-        'hand the conversation to that agent by replying with exactly [[PASSAR:n]] (n = the number of the agent below) and nothing else — ' +
-        'that agent will then answer this same message. Otherwise answer yourself.\n' +
+        'hand the conversation to that agent by replying with [[PASSAR:n]] (n = the number of the agent below) and no text for the customer — ' +
+        'that agent will then answer this same message. ' +
+        // A PASSAGEM com as ações que não mexem no card (25/10/2026, medido:
+        // a qualificação passava sem gravar o campo). Rodam ANTES de o card ir
+        // para a etapa do destino; mover, automação e reunião não rodam com
+        // ela (`ACOES_COM_A_PASSAGEM`, `turno.ts`).
+        'Before handing over, save what the customer already told you: if the actions listed below let you fill in a field, add or remove a tag ' +
+        'or create a task, add those markers after [[PASSAR:n]], one per line — they are done before the handover. ' +
+        'Moving the deal, running an automation and booking a meeting are never done together with a handover (the handover already moves the deal). ' +
+        'Otherwise answer yourself.\n' +
         passagens
           .map((a, i) => {
             const descricao = a.descricao.trim()

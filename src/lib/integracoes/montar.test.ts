@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
+  leitoresDaConta,
   montarCartoes,
   type CanalParaMontar,
   type ChaveParaMontar,
@@ -339,5 +340,46 @@ describe('montarCartoes — leitura de imagem e PDF, e a queda da transcrição 
     const cartoes = comLeitura([chave('gemini'), chave('openai')]);
     expect(cartao(cartoes, 'openai').estado).toBe('ok');
     expect(usosDe(cartoes, 'openai', 'leitura')).toHaveLength(1);
+  });
+});
+
+// Quem lê a mídia NESTA conta (25/10/2026): a primeira chave na ordem de cada
+// módulo. As ordens são as REAIS (`leitores.ts`) — é a régua de `escolherLeitor`.
+describe('leitoresDaConta — quem lê a mídia nesta conta', () => {
+  const ordens = async () => {
+    const { ORDEM_DA_LEITURA, ORDEM_DA_TRANSCRICAO } = await import('@/lib/transcricao/leitores');
+    return [ORDEM_DA_LEITURA, ORDEM_DA_TRANSCRICAO] as const;
+  };
+
+  it('com Gemini, o Gemini lê tudo', async () => {
+    const [leitura, transcricao] = await ordens();
+    expect(leitoresDaConta({ gemini: true, openai: true, anthropic: true }, leitura, transcricao)).toEqual({
+      audio: 'gemini',
+      imagemEPdf: 'gemini',
+    });
+  });
+
+  it('sem Gemini, a OpenAI ouve e lê', async () => {
+    const [leitura, transcricao] = await ordens();
+    expect(leitoresDaConta({ gemini: false, openai: true, anthropic: true }, leitura, transcricao)).toEqual({
+      audio: 'openai',
+      imagemEPdf: 'openai',
+    });
+  });
+
+  it('só a Anthropic: ela lê imagem e PDF, e NINGUÉM ouve o áudio', async () => {
+    const [leitura, transcricao] = await ordens();
+    expect(leitoresDaConta({ gemini: false, openai: false, anthropic: true }, leitura, transcricao)).toEqual({
+      audio: null,
+      imagemEPdf: 'anthropic',
+    });
+  });
+
+  it('sem chave nenhuma: ninguém', async () => {
+    const [leitura, transcricao] = await ordens();
+    expect(leitoresDaConta({ gemini: false, openai: false, anthropic: false }, leitura, transcricao)).toEqual({
+      audio: null,
+      imagemEPdf: null,
+    });
   });
 });

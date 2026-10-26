@@ -11,6 +11,7 @@ let cotacaoDaConta: string | null = '5.5'
 const buscarPtax = vi.fn(async (): Promise<{ valor: number; dia: string } | null> => ({ valor: 5.2, dia: '2026-09-25' }))
 let paginas: Array<{ data: unknown[] | null; error: { message: string } | null; count: number | null }> = []
 const ranges: Array<[number, number]> = []
+const ordens: string[] = []
 
 function linha(i: number) {
   return {
@@ -49,7 +50,10 @@ vi.mock('@/lib/ai/admin-client', () => ({
   supabaseAdmin: () => {
     const rpc = () => {
       const q = {
-        order: () => q,
+        order: (coluna: string) => {
+          ordens.push(coluna)
+          return q
+        },
         range: async (de: number, ate: number) => {
           ranges.push([de, ate])
           return paginas.shift() ?? { data: [], error: null, count: 0 }
@@ -75,6 +79,7 @@ beforeEach(() => {
   buscarPtax.mockClear()
   paginas = []
   ranges.length = 0
+  ordens.length = 0
 })
 
 describe('GET /api/cb/ia/uso — paginado', () => {
@@ -114,6 +119,23 @@ describe('GET /api/cb/ia/uso — paginado', () => {
     const res = await GET(new Request('http://x/api/cb/ia/uso?dias=30'))
     const corpo = (await res.json()) as { resumo: { porAgente: { nome: string; arquivado: boolean }[] } }
     expect(corpo.resumo.porAgente[0]).toMatchObject({ nome: 'Triagem (nome novo)', arquivado: false })
+  })
+})
+
+describe('GET /api/cb/ia/uso — a faixa do pedido (1108)', () => {
+  it('a paginação ordena pelas seis chaves do grupo, a faixa por último', async () => {
+    paginas = [{ data: [linha(0)], error: null, count: 1 }]
+    await GET(new Request('http://x/api/cb/ia/uso?dias=30'))
+    expect(ordens).toEqual(['dia', 'modo', 'ia_agente_id', 'provedor', 'modelo', 'acima_da_faixa'])
+  })
+
+  it('o Haiku 5.5 nas duas faixas sai com preço, cada uma pela sua tabela', async () => {
+    const haiku = { ...linha(0), modo: 'agente', ia_agente_id: 'ag-1', provedor: 'anthropic', modelo: 'claude-haiku-5-5', tokens_entrada: 1_000_000, tokens_saida: 1_000_000, tokens_total: 2_000_000 }
+    paginas = [{ data: [{ ...haiku, acima_da_faixa: false }, { ...haiku, acima_da_faixa: true }], error: null, count: 2 }]
+    const res = await GET(new Request('http://x/api/cb/ia/uso?dias=30'))
+    const corpo = (await res.json()) as { resumo: { total: { dolar: number }; semPreco: string[] } }
+    expect(corpo.resumo.semPreco).toEqual([])
+    expect(corpo.resumo.total.dolar).toBeCloseTo(0.6 + 3, 6)
   })
 })
 

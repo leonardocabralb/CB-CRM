@@ -6,6 +6,7 @@ import { NextIntlClientProvider, type AbstractIntlMessages } from 'next-intl';
 
 import en from '../../../messages/en.json';
 import ptBR from '../../../messages/pt-BR.json';
+import { MOTIVOS_DO_AGENTE_QUE_NAO_ATENDE } from '@/lib/ia-agentes/quem-responde';
 
 import {
   AiThreadBanner,
@@ -35,8 +36,10 @@ const banner = ptBR.Inbox.aiBanner;
 const TRIAGEM = { id: 'ag-1', nome: 'Triagem' };
 
 function estado(p: Partial<EstadoDaIa> = {}): EstadoDaIa {
-  return { agente: TRIAGEM, pausada: false, pausadaPor: null, ...p };
+  return { agente: TRIAGEM, pausada: false, pausadaPor: null, naoAtende: null, ...p };
 }
+
+const CARD_ANTIGO = { agente: TRIAGEM, motivo: 'card_antigo' } as const;
 
 function desenhar(faixa: Faixa, messages: AbstractIntlMessages = ptBR as unknown as AbstractIntlMessages) {
   return renderToStaticMarkup(
@@ -58,7 +61,11 @@ describe('faixaDaIa — o que a faixa desenha', () => {
 
   it('pausada com agente: "pausada", com o motivo', () => {
     for (const m of MOTIVOS_DA_PAUSA) {
-      expect(faixaDaIa(estado({ pausada: true, pausadaPor: m }), null)).toEqual({ tipo: 'pausada', motivo: m });
+      expect(faixaDaIa(estado({ pausada: true, pausadaPor: m }), null)).toEqual({
+        tipo: 'pausada',
+        motivo: m,
+        naoAtende: null,
+      });
     }
   });
 
@@ -66,6 +73,7 @@ describe('faixaDaIa — o que a faixa desenha', () => {
     expect(faixaDaIa(estado({ agente: null, pausada: true, pausadaPor: 'gente' }), 'ag-1')).toEqual({
       tipo: 'pausada',
       motivo: 'gente',
+      naoAtende: null,
     });
   });
 
@@ -74,12 +82,58 @@ describe('faixaDaIa — o que a faixa desenha', () => {
   });
 
   it('motivo desconhecido ou nulo: pausada, sem motivo', () => {
-    expect(faixaDaIa(estado({ pausada: true, pausadaPor: 'outro' }), null)).toEqual({ tipo: 'pausada', motivo: null });
-    expect(faixaDaIa(estado({ pausada: true }), null)).toEqual({ tipo: 'pausada', motivo: null });
+    expect(faixaDaIa(estado({ pausada: true, pausadaPor: 'outro' }), null)).toEqual({
+      tipo: 'pausada',
+      motivo: null,
+      naoAtende: null,
+    });
+    expect(faixaDaIa(estado({ pausada: true }), null)).toEqual({ tipo: 'pausada', motivo: null, naoAtende: null });
   });
 
   it('sem resposta da rota (carregando, falhou, outra conversa): não desenha', () => {
     expect(faixaDaIa(null, 'ag-1')).toBeNull();
+  });
+});
+
+describe('faixaDaIa — "não atende": a etapa TEM agente, mas ele não atende (validação de 25/10/2026)', () => {
+  it('⚠️ card antigo depois de religar o agente: a linha aparece onde antes não se desenhava NADA', () => {
+    expect(faixaDaIa(estado({ agente: null, naoAtende: CARD_ANTIGO }), null)).toEqual({
+      tipo: 'naoAtende',
+      agente: 'Triagem',
+      motivo: 'card_antigo',
+    });
+    // Com o último agente que respondeu na conversa, também (sem pausa não há Retomar a oferecer).
+    expect(faixaDaIa(estado({ agente: null, naoAtende: CARD_ANTIGO }), 'ag-1')).toMatchObject({ tipo: 'naoAtende' });
+  });
+
+  it('cada motivo da lista do motor chega à faixa', () => {
+    for (const motivo of MOTIVOS_DO_AGENTE_QUE_NAO_ATENDE) {
+      expect(faixaDaIa(estado({ agente: null, naoAtende: { agente: TRIAGEM, motivo } }), null)).toEqual({
+        tipo: 'naoAtende',
+        agente: 'Triagem',
+        motivo,
+      });
+    }
+  });
+
+  it('os estados de hoje ficam: pausada com agente segue pausada + Retomar, e ganha a linha embaixo', () => {
+    expect(faixaDaIa(estado({ agente: null, pausada: true, pausadaPor: 'gente', naoAtende: CARD_ANTIGO }), 'ag-1')).toEqual({
+      tipo: 'pausada',
+      motivo: 'gente',
+      naoAtende: { agente: 'Triagem', motivo: 'card_antigo' },
+    });
+  });
+
+  it('pausada sem agente nenhum a retomar, mas com o da etapa que não atende: só a linha (sem Retomar)', () => {
+    expect(faixaDaIa(estado({ agente: null, pausada: true, pausadaPor: 'gente', naoAtende: CARD_ANTIGO }), null)).toEqual({
+      tipo: 'naoAtende',
+      agente: 'Triagem',
+      motivo: 'card_antigo',
+    });
+  });
+
+  it('sem `naoAtende` e sem agente: continua não desenhando', () => {
+    expect(faixaDaIa(estado({ agente: null }), null)).toBeNull();
   });
 });
 
@@ -89,6 +143,7 @@ describe('lerEstadoDaIa — o corpo da rota', () => {
       agente: TRIAGEM,
       pausada: true,
       pausadaPor: 'botao',
+      naoAtende: null,
     });
   });
   it('forma estranha: agente nulo, pausa só com o booleano true', () => {
@@ -96,8 +151,15 @@ describe('lerEstadoDaIa — o corpo da rota', () => {
       agente: null,
       pausada: false,
       pausadaPor: null,
+      naoAtende: null,
     });
     expect(lerEstadoDaIa(null)).toBeNull();
+  });
+  it('lê `naoAtende`; motivo fora da lista ou agente sem nome = nulo (nunca chave crua na tela)', () => {
+    expect(lerEstadoDaIa({ agente: null, pausada: false, naoAtende: CARD_ANTIGO })?.naoAtende).toEqual(CARD_ANTIGO);
+    expect(lerEstadoDaIa({ naoAtende: { agente: TRIAGEM, motivo: 'motivo_novo' } })?.naoAtende).toBeNull();
+    expect(lerEstadoDaIa({ naoAtende: { agente: { id: 'ag-1' }, motivo: 'card_antigo' } })?.naoAtende).toBeNull();
+    expect(lerEstadoDaIa({ naoAtende: 'card_antigo' })?.naoAtende).toBeNull();
   });
 });
 
@@ -110,15 +172,58 @@ describe('FaixaDaIa — o texto, nos dois dicionários', () => {
   });
 
   it.each(MOTIVOS_DA_PAUSA)('pausada por %s: "IA pausada — <motivo>" e Retomar IA', (motivo) => {
-    const html = desenhar({ tipo: 'pausada', motivo });
+    const html = desenhar({ tipo: 'pausada', motivo, naoAtende: null });
     expect(html).toContain(`IA pausada — ${banner.motivo[motivo]}`);
     expect(html).toContain(banner.resume);
     expect(html).not.toContain(banner.pausar);
   });
 
   it('pausada sem motivo: só "IA pausada"', () => {
-    const html = desenhar({ tipo: 'pausada', motivo: null });
+    const html = desenhar({ tipo: 'pausada', motivo: null, naoAtende: null });
     expect(html).toContain(`>${banner.pausada}<`);
+  });
+
+  it('⚠️ não atende, card antigo: "IA · Triagem não atende esta conversa: <motivo>", a dica, e nenhum botão', () => {
+    const html = desenhar({ tipo: 'naoAtende', agente: 'Triagem', motivo: 'card_antigo' });
+    expect(html).toContain(
+      `IA · Triagem não atende esta conversa: ${banner.naoAtendeMotivo.card_antigo}`,
+    );
+    expect(html).toContain(banner.naoAtendeDica);
+    expect(html).not.toContain('<button');
+  });
+
+  it('não atende por agente desligado ou fora da conexão: o motivo, sem a dica do card antigo', () => {
+    for (const motivo of ['agente_desligado', 'fora_da_conexao'] as const) {
+      const html = desenhar({ tipo: 'naoAtende', agente: 'Triagem', motivo });
+      expect(html).toContain(`IA · Triagem não atende esta conversa: ${banner.naoAtendeMotivo[motivo]}`);
+      expect(html).not.toContain(banner.naoAtendeDica);
+    }
+  });
+
+  it('pausada com a linha "não atende" embaixo: Retomar continua, e a linha diz que ele ainda não atenderia', () => {
+    const html = desenhar({ tipo: 'pausada', motivo: 'gente', naoAtende: { agente: 'Triagem', motivo: 'card_antigo' } });
+    expect(html).toContain(`IA pausada — ${banner.motivo.gente}`);
+    expect(html).toContain(banner.resume);
+    expect(html).toContain(banner.naoAtendeMotivo.card_antigo);
+  });
+
+  it('⚠️ o motivo do "não atende" é chave MONTADA: cada um da lista do motor existe nos DOIS dicionários', () => {
+    for (const dic of [en, ptBR]) {
+      const b = dic.Inbox.aiBanner as Record<string, unknown> & { naoAtendeMotivo?: Record<string, unknown> };
+      expect(typeof b.naoAtende, 'Inbox.aiBanner.naoAtende').toBe('string');
+      expect(typeof b.naoAtendeDica, 'Inbox.aiBanner.naoAtendeDica').toBe('string');
+      for (const m of MOTIVOS_DO_AGENTE_QUE_NAO_ATENDE) {
+        expect(typeof b.naoAtendeMotivo?.[m], `Inbox.aiBanner.naoAtendeMotivo.${m}`).toBe('string');
+      }
+    }
+  });
+
+  it('não atende em inglês também, sem chave crua', () => {
+    for (const motivo of MOTIVOS_DO_AGENTE_QUE_NAO_ATENDE) {
+      const html = desenhar({ tipo: 'naoAtende', agente: 'Triagem', motivo }, en as unknown as AbstractIntlMessages);
+      expect(html).not.toContain('Inbox.aiBanner');
+      expect(html).toContain('Triagem');
+    }
   });
 
   it('nada: não desenha', () => {
@@ -134,7 +239,7 @@ describe('FaixaDaIa — o texto, nos dois dicionários', () => {
   });
 
   it('desenha em inglês também, sem chave crua', () => {
-    const html = desenhar({ tipo: 'pausada', motivo: 'gente' }, en as unknown as AbstractIntlMessages);
+    const html = desenhar({ tipo: 'pausada', motivo: 'gente', naoAtende: null }, en as unknown as AbstractIntlMessages);
     expect(html).toContain(en.Inbox.aiBanner.motivo.gente);
     expect(html).not.toContain('Inbox.aiBanner');
   });

@@ -461,7 +461,7 @@
       "solteParaAnexar": "Solte aqui para anexar",
       "arquivoNaoSuportado": "{n, plural, =1 {1 arquivo não é suportado pelo WhatsApp e ficou de fora} other {# arquivos não são suportados pelo WhatsApp e ficaram de fora}}. Aceita imagem (PNG, JPG, WebP), vídeo (MP4, 3GP), PDF, Word, Excel, PowerPoint e texto. Página HTML, só nas conexões por QR code.",
       "anexoSoNoQrCode": "Página HTML só sai pelas conexões por QR code, e esta conversa agora responde por outra. Tire o arquivo da fila ou volte para uma conexão por QR code.",
-      "arquivoNaoSuportadoQrCode":"{n, plural, =1 {1 arquivo não é suportado pelo WhatsApp e ficou de fora} other {# arquivos não são suportados pelo WhatsApp e ficaram de fora}}. Aceita imagem (PNG, JPG, WebP), vídeo (MP4, 3GP), PDF, Word, Excel, PowerPoint, texto e página HTML.",
+      "arquivoNaoSuportadoQrCode": "{n, plural, =1 {1 arquivo não é suportado pelo WhatsApp e ficou de fora} other {# arquivos não são suportados pelo WhatsApp e ficaram de fora}}. Aceita imagem (PNG, JPG, WebP), vídeo (MP4, 3GP), PDF, Word, Excel, PowerPoint, texto e página HTML.",
       "tetoDeAnexos": "{n, plural, =1 {1 arquivo ficou de fora} other {# arquivos ficaram de fora}}: são no máximo {max} anexos por vez.",
       "tetoDeAnexosNoEnvio": "São no máximo {max} anexos por vez: tire {n} da fila para enviar.",
       "removeAllAttachments": "Remover todos",
@@ -1042,7 +1042,14 @@
       "erroNadaGravado": "Nada foi alterado — a conversa pode ter mudado. Recarregue e tente de novo.",
       "erroNaoEncontrada": "Conversa não encontrada.",
       "erroSemPermissao": "Seu perfil não pode mudar a IA desta conversa.",
-      "erroMuitasTentativas": "Muitas tentativas seguidas. Aguarde um instante e tente de novo."
+      "erroMuitasTentativas": "Muitas tentativas seguidas. Aguarde um instante e tente de novo.",
+      "naoAtende": "IA · {agente} não atende esta conversa: {motivo}",
+      "naoAtendeMotivo": {
+        "agente_desligado": "o agente está desligado",
+        "fora_da_conexao": "a conversa chega por uma conexão que o agente não atende",
+        "card_antigo": "o card já estava na etapa antes de o agente ser ligado nela"
+      },
+      "naoAtendeDica": "Ele só atende os cards que entram na etapa depois de ligado: esta conversa fica com a equipe."
     },
     "mediaViewer": {
       "open": "Ampliar imagem",
@@ -1628,7 +1635,7 @@
       "newPipeline": "Novo funil",
       "pipelineName": "Nome do funil",
       "pipelineNamePlaceholder": "ex.: Vendas corporativas",
-      "defaultStagesDesc": "As etapas padrão (New Lead → Won) serão criadas automaticamente.",
+      "defaultStagesDesc": "As etapas padrão ({primeira} → {ultima}) serão criadas automaticamente.",
       "cancel": "Cancelar",
       "creating": "Criando...",
       "createPipelineBtn": "Criar funil",
@@ -1636,7 +1643,15 @@
       "toastFailedLoadDeals": "Não foi possível carregar os negócios — recarregue a página",
       "toastFailedCreatePipeline": "Falha ao criar o funil",
       "toastPipelineCreated": "Funil criado",
-      "toastNotLinkedToAccount": "Seu perfil não está vinculado a uma conta."
+      "toastNotLinkedToAccount": "Seu perfil não está vinculado a uma conta.",
+      "funilPadrao": "Funil de vendas",
+      "etapasPadrao": {
+        "novoLead": "Novo lead",
+        "qualificado": "Qualificado",
+        "propostaEnviada": "Proposta enviada",
+        "negociacao": "Negociação",
+        "ganho": "Ganho"
+      }
     },
     "board": {
       "dropDealHere": "Solte um negócio aqui",
@@ -6024,9 +6039,12 @@
       "equipeNaoCarregou": "Não foi possível carregar a equipe. O destino da transferência continua como está até você recarregar a página.",
       "membroNaoCarregado": "(carregando…)",
       "podePassarPara": "Pode passar a conversa para",
-      "podePassarParaDica": "Os outros agentes para quem este pode passar a conversa. Ao passar, o card vai para a etapa do agente escolhido, e ele responde em seguida a mesma mensagem do cliente.",
+      "podePassarParaDica": "Os outros agentes para quem este pode passar a conversa. Ao passar, ele ainda grava o campo, a etiqueta e a tarefa da mesma resposta; o card vai para a etapa do agente escolhido, e ele responde em seguida a mesma mensagem do cliente.",
       "passarSemEtapa": "(sem etapa: a passagem vai para a equipe)",
-      "semOutrosAgentes": "Não há outros agentes na conta."
+      "semOutrosAgentes": "Não há outros agentes na conta.",
+      "ativoLigando": "Ao salvar ligado, o agente só atende os cards que ENTRAREM nas etapas a partir de agora. Os que já estão lá ficam com a equipe.",
+      "ativoDesligando": "Ao salvar, o agente para de responder. Se for religado depois, ele só atende os cards que ENTRAREM nas etapas a partir de então: os que já estiverem lá ficam com a equipe.",
+      "horarioDica": "Fora deste horário o agente não responde na hora: a mensagem fica na fila e ele responde quando o horário abrir, se ninguém da equipe tiver respondido antes."
     },
     "config": {
       "modelo": "Provedor e modelo",
@@ -6201,8 +6219,14 @@
         "abrirIntegracoes": "Conectar em Configurações → Integrações",
         "falhou": "Não consegui ler os tipos de evento do Calendly.",
         "orfao": "O tipo de evento salvo não está mais ativo no Calendly. Escolha outro.",
-        "semEscolha": "Nenhum tipo de evento escolhido: ligado assim, o agente não tem como marcar."
-      }
+        "semEscolha": "Nenhum tipo de evento escolhido: ligado assim, o agente não tem como marcar.",
+        "semCampoEmail": "Sem o campo E-mail marcado em “Preencher campo”, o agente não marca a reunião de quem não tem e-mail na ficha: ele pede o e-mail ao cliente e passa a conversa para a equipe marcar.",
+        "liberarEmail": "Liberar o campo {campo}",
+        "liberarEmailNoTeto": "“Preencher campo” já tem {max} campos marcados: desmarque um para liberar o e-mail.",
+        "emailLiberado": "Campo do e-mail marcado em “Preencher campo”. Salve para valer."
+      },
+      "instrucoesPedem": "As instruções pedem “{ferramenta}”, mas a ferramenta está desligada: o agente não consegue fazer isso.",
+      "instrucoesTrecho": "Trecho: “{trecho}”"
     },
     "playground": {
       "explicacao": "Converse como se fosse o cliente. Vale o que está SALVO no agente (Configuração, Acesso, Base de conhecimento e Ferramentas), com o mesmo modelo da produção; o gasto conta como teste. Aqui as ações são só simuladas.",
@@ -6264,9 +6288,12 @@
         "pediu_equipe": "O agente pediu a equipe: as retomadas parariam sem mandar nada (a retomada não transfere a conversa).",
         "sem_texto": "A resposta veio sem texto: as retomadas parariam.",
         "pedido_vazado": "A mensagem reproduzia as instruções internas do agente: as retomadas parariam sem mandar nada.",
-        "link_inventado": "A mensagem trazia um link que não veio da conversa: as retomadas parariam sem mandar nada."
+        "link_inventado": "A mensagem trazia um link que não veio da conversa: as retomadas parariam sem mandar nada.",
+        "acao_prometida": "A mensagem dizia ter feito algo no sistema (tarefa, campo, etiqueta…), e na retomada nada é feito: as retomadas parariam sem mandar nada."
       },
-      "retomadaParadaDesconhecida": "As retomadas parariam sem mandar nada."
+      "retomadaParadaDesconhecida": "As retomadas parariam sem mandar nada.",
+      "acaoPrometida": "O agente disse que fez algo no sistema (tarefa, campo, etiqueta, etapa…) sem fazer: em produção esta resposta seria retida e a conversa iria para uma pessoa.",
+      "acoesAntesDaPassagem": "Antes de passar a conversa (simuladas): {itens}"
     },
     "uso": {
       "explicacao": "Últimos {dias} dias. Os valores em R$ são uma ESTIMATIVA pelo preço de lista de cada modelo e pela cotação de hoje.",
@@ -6366,7 +6393,8 @@
         "incerto": "Envio incerto"
       },
       "retomada": "Retomada {k}/{n}",
-      "prevista": "prevista para {quando}"
+      "prevista": "prevista para {quando}",
+      "esperaOHorario": "aguardando o horário do agente · abre {quando}"
     },
     "dia": {
       "0": "Dom",
@@ -6475,7 +6503,8 @@
         "reuniao_nao_marcada": "{agente} não conseguiu marcar a reunião: {motivo}. A conversa passou para a equipe — confira no Calendly se a reunião não foi criada antes de marcar de novo, e confirme o horário com o cliente.",
         "reuniao_prometida": "{agente} passou a conversa para a equipe: a resposta dizia que a reunião estava marcada, mas nada foi marcado no Calendly — e ela não foi enviada. O texto retido está nos Turnos do agente; confirme o horário com o cliente e marque.",
         "agente_passou": "{agente} respondeu ao cliente e passou a conversa para a equipe.",
-        "pedido_vazado": "{agente} passou a conversa para a equipe: a resposta revelava parte das instruções internas do agente, e não foi enviada. O texto retido está nos Turnos do agente."
+        "pedido_vazado": "{agente} passou a conversa para a equipe: a resposta revelava parte das instruções internas do agente, e não foi enviada. O texto retido está nos Turnos do agente.",
+        "acao_prometida": "{agente} passou a conversa para a equipe: a resposta dizia que algo foi feito no sistema (uma tarefa, um campo, uma etiqueta, a etapa do card…), mas nada foi feito — e ela não foi enviada. O texto retido está nos Turnos do agente; faça o que foi pedido e responda ao cliente."
       },
       "passagem": "{agente} passou a conversa para IA · {destino}, e o card foi para a etapa desse agente.",
       "acoes": {
@@ -6523,6 +6552,35 @@
       "paradas": "As retomadas param sozinhas quando o cliente responde, quando alguém da equipe escreve ou pausa a IA, quando a conversa é encerrada, quando o card sai da etapa do agente e perto da reunião do cliente: nunca a menos de 30 min de um lembrete da reunião, e nunca nos 90 min antes dela. Numa conexão oficial da Meta, também quando a janela de 24 h fecha. Se não houver nada pendente, o agente encerra as retomadas sem mandar nada — e elas nunca passam a conversa para a equipe. Cada retomada conta no teto de respostas do agente.",
       "salvar": "Salvar retomada",
       "salvo": "Retomada salva."
+    },
+    "modeloDaChave": {
+      "carregando": "Carregando os modelos desta chave…",
+      "escolha": "Escolha um modelo",
+      "recomendados": "Recomendados",
+      "outrosDaChave": "Outros modelos desta chave",
+      "foraDaLista": "{modelo} (não está na lista desta chave)",
+      "foraDaListaDica": "O modelo salvo não aparece entre os que a chave deste provedor oferece hoje: ele pode ter saído do ar. Escolha um da lista.",
+      "outro": "Outro (digitar o id)…",
+      "voltarALista": "Escolher da lista",
+      "falhou": "Não foi possível ler agora os modelos desta chave. Digite o id do modelo ou escolha uma sugestão.",
+      "listaVazia": "A chave deste provedor não ofereceu nenhum modelo de texto. Digite o id do modelo.",
+      "atualizar": "Atualizar a lista de modelos"
+    },
+    "midia": {
+      "titulo": "Quem lê áudio, imagem e PDF do cliente",
+      "explicacao": "Não é o modelo do agente de IA: é a chave da conta, na ordem Gemini → OpenAI → Anthropic (a primeira cadastrada em Integrações). O agente recebe só o texto do que foi ouvido ou lido, qualquer que seja o provedor dele.",
+      "nestaConta": "Nesta conta:",
+      "audioPor": "Áudio: {provedor}",
+      "audioNinguem": "Áudio: ninguém ouve",
+      "imagemPor": "Imagem e PDF: {provedor}",
+      "imagemNinguem": "Imagem e PDF: ninguém lê (a conta não tem chave de IA)",
+      "desconhecido": "Não foi possível conferir agora quais chaves a conta tem.",
+      "semAudio": "Esta conta não tem chave do Gemini nem da OpenAI, e a Anthropic não ouve áudio: o áudio do cliente não será ouvido, e a conversa com áudio vai para a equipe.",
+      "limiteAudio": "Áudio: Gemini, senão OpenAI. A Anthropic não ouve áudio.",
+      "limiteFormatos": "Foto HEIC (a do iPhone) só é lida quando quem lê é o Gemini; GIF, só quando quem lê não é o Gemini.",
+      "limitePlanilha": "Planilha, Word e outros arquivos nenhum provedor lê: o agente pede que o cliente descreva o conteúdo ou reenvie em outro formato.",
+      "limiteVideo": "Vídeo não é assistido: o agente vê só que chegou um vídeo, com a legenda.",
+      "resumo": "Áudio, imagem e PDF são lidos pela chave da conta (Gemini → OpenAI → Anthropic), não pelo modelo do agente: ele recebe o texto."
     }
   },
   "ForgotPasswordPage": {

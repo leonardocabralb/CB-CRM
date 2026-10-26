@@ -468,7 +468,7 @@
       "solteParaAnexar": "Drop here to attach",
       "arquivoNaoSuportado": "{n, plural, =1 {1 file is not supported by WhatsApp and was left out} other {# files are not supported by WhatsApp and were left out}}. Accepts images (PNG, JPG, WebP), video (MP4, 3GP), PDF, Word, Excel, PowerPoint and text. HTML pages only on QR code connections.",
       "anexoSoNoQrCode": "HTML pages only go out through QR code connections, and this conversation now replies through another one. Remove the file from the queue or switch back to a QR code connection.",
-      "arquivoNaoSuportadoQrCode":"{n, plural, =1 {1 file is not supported by WhatsApp and was left out} other {# files are not supported by WhatsApp and were left out}}. Accepts images (PNG, JPG, WebP), video (MP4, 3GP), PDF, Word, Excel, PowerPoint, text and HTML pages.",
+      "arquivoNaoSuportadoQrCode": "{n, plural, =1 {1 file is not supported by WhatsApp and was left out} other {# files are not supported by WhatsApp and were left out}}. Accepts images (PNG, JPG, WebP), video (MP4, 3GP), PDF, Word, Excel, PowerPoint, text and HTML pages.",
       "tetoDeAnexos": "{n, plural, =1 {1 file was left out} other {# files were left out}}: at most {max} attachments at a time.",
       "tetoDeAnexosNoEnvio": "At most {max} attachments at a time: remove {n} from the queue to send.",
       "removeAllAttachments": "Remove all",
@@ -1049,7 +1049,14 @@
       "erroNadaGravado": "Nothing changed — the conversation may have been updated meanwhile. Reload and try again.",
       "erroNaoEncontrada": "This conversation was not found.",
       "erroSemPermissao": "Your role can’t change the AI in this conversation.",
-      "erroMuitasTentativas": "Too many attempts. Wait a moment and try again."
+      "erroMuitasTentativas": "Too many attempts. Wait a moment and try again.",
+      "naoAtende": "AI · {agente} does not answer this conversation: {motivo}",
+      "naoAtendeMotivo": {
+        "agente_desligado": "the agent is turned off",
+        "fora_da_conexao": "the conversation comes in through a connection the agent does not serve",
+        "card_antigo": "the deal was already in the stage before the agent was turned on there"
+      },
+      "naoAtendeDica": "It only answers deals that enter the stage after it is turned on: this conversation stays with the team."
     },
     "mediaViewer": {
       "open": "Open image",
@@ -1635,7 +1642,7 @@
       "newPipeline": "New Pipeline",
       "pipelineName": "Pipeline Name",
       "pipelineNamePlaceholder": "e.g., Enterprise Sales",
-      "defaultStagesDesc": "Default stages (New Lead → Won) will be created automatically.",
+      "defaultStagesDesc": "Default stages ({primeira} → {ultima}) will be created automatically.",
       "cancel": "Cancel",
       "creating": "Creating...",
       "createPipelineBtn": "Create Pipeline",
@@ -1643,7 +1650,15 @@
       "toastFailedLoadDeals": "Failed to load deals — try refreshing the page",
       "toastFailedCreatePipeline": "Failed to create pipeline",
       "toastPipelineCreated": "Pipeline created",
-      "toastNotLinkedToAccount": "Your profile is not linked to an account."
+      "toastNotLinkedToAccount": "Your profile is not linked to an account.",
+      "funilPadrao": "Sales Pipeline",
+      "etapasPadrao": {
+        "novoLead": "New Lead",
+        "qualificado": "Qualified",
+        "propostaEnviada": "Proposal Sent",
+        "negociacao": "Negotiation",
+        "ganho": "Won"
+      }
     },
     "board": {
       "dropDealHere": "Drop a deal here",
@@ -6031,9 +6046,12 @@
       "equipeNaoCarregou": "The team could not be loaded. The transfer destination stays as it is until you reload the page.",
       "membroNaoCarregado": "(loading…)",
       "podePassarPara": "May hand the conversation to",
-      "podePassarParaDica": "The other agents this one may hand the conversation to. On handover, the deal moves to the chosen agent's stage, and that agent then answers the same customer message.",
+      "podePassarParaDica": "The other agents this one can hand the conversation to. When handing over, it still saves the field, the tag and the task from the same reply; the deal goes to the chosen agent's stage, and that agent then replies to the same customer message.",
       "passarSemEtapa": "(no stage: the handover goes to the team)",
-      "semOutrosAgentes": "There are no other agents in the account."
+      "semOutrosAgentes": "There are no other agents in the account.",
+      "ativoLigando": "Once saved as on, the agent only handles cards that ENTER the stages from now on. Cards already there stay with the team.",
+      "ativoDesligando": "Once saved, the agent stops replying. If it is turned back on later, it only handles cards that ENTER the stages from then on: cards already there stay with the team.",
+      "horarioDica": "Outside these hours the agent does not reply right away: the message waits in the queue and it replies when the hours open, unless someone on the team has replied first."
     },
     "config": {
       "modelo": "Provider and model",
@@ -6208,8 +6226,14 @@
         "abrirIntegracoes": "Connect it in Settings → Integrations",
         "falhou": "Could not read the Calendly event types.",
         "orfao": "The saved event type is no longer active in Calendly. Pick another one.",
-        "semEscolha": "No event type chosen: turned on like this, the agent cannot book."
-      }
+        "semEscolha": "No event type chosen: turned on like this, the agent cannot book.",
+        "semCampoEmail": "Without the E-mail field ticked in “Fill in a field”, the agent does not book the meeting for customers with no e-mail on file: it asks the customer for the e-mail and hands the conversation to the team to book.",
+        "liberarEmail": "Allow the {campo} field",
+        "liberarEmailNoTeto": "“Fill in a field” already has {max} fields ticked: untick one to allow the e-mail.",
+        "emailLiberado": "E-mail field ticked in “Fill in a field”. Save to apply."
+      },
+      "instrucoesPedem": "The instructions ask for “{ferramenta}”, but the tool is turned off: the agent cannot do it.",
+      "instrucoesTrecho": "Excerpt: “{trecho}”"
     },
     "playground": {
       "explicacao": "Chat as if you were the customer. What’s SAVED in the agent (Settings, Access, Knowledge base and Tools) applies, with the same model as production; the spend counts as testing. Actions are only simulated here.",
@@ -6271,9 +6295,12 @@
         "pediu_equipe": "The agent asked for the team: the follow-ups would stop without sending anything (a follow-up doesn't hand the conversation over).",
         "sem_texto": "The reply had no text: the follow-ups would stop.",
         "pedido_vazado": "The message reproduced the agent's internal instructions: the follow-ups would stop without sending anything.",
-        "link_inventado": "The message had a link that didn't come from the conversation: the follow-ups would stop without sending anything."
+        "link_inventado": "The message had a link that didn't come from the conversation: the follow-ups would stop without sending anything.",
+        "acao_prometida": "The message said it did something in the system (task, field, tag…), and nothing is done in a follow-up: the follow-ups would stop without sending anything."
       },
-      "retomadaParadaDesconhecida": "The follow-ups would stop without sending anything."
+      "retomadaParadaDesconhecida": "The follow-ups would stop without sending anything.",
+      "acaoPrometida": "The agent said it did something in the system (task, field, tag, stage…) without doing it: in production this reply would be held back and the conversation would go to a person.",
+      "acoesAntesDaPassagem": "Before handing over (simulated): {itens}"
     },
     "uso": {
       "explicacao": "Last {dias} days. Amounts in R$ are an ESTIMATE from each model's list price and today's exchange rate.",
@@ -6349,7 +6376,7 @@
           "desconhecido": "not done ({erro})",
           "semCodigo": "not done",
           "sem_email": "the contact has no e-mail on file (Calendly requires one)",
-          "sem_telefone": "the contact has no valid phone (the CRM finds the booking\u2019s customer by it)",
+          "sem_telefone": "the contact has no valid phone (the CRM finds the booking’s customer by it)",
           "horario_indisponivel": "the slot is no longer free in Calendly",
           "calendly_desconectado": "Calendly is not connected"
         },
@@ -6373,7 +6400,8 @@
         "incerto": "Uncertain delivery"
       },
       "retomada": "Follow-up {k}/{n}",
-      "prevista": "due {quando}"
+      "prevista": "due {quando}",
+      "esperaOHorario": "waiting for the agent's hours · opens {quando}"
     },
     "dia": {
       "0": "Sun",
@@ -6482,7 +6510,8 @@
         "reuniao_nao_marcada": "{agente} could not book the meeting: {motivo}. The conversation went to the team — check in Calendly that the meeting was not created before booking it again, and confirm the time with the customer.",
         "reuniao_prometida": "{agente} handed the conversation to the team: the reply said the meeting was booked, but nothing was booked in Calendly — and it was not sent. The held-back text is in the agent's Turns; confirm the time with the customer and book it.",
         "agente_passou": "{agente} replied to the customer and handed the conversation to the team.",
-        "pedido_vazado": "{agente} handed the conversation to the team: the reply revealed part of the agent's internal instructions, and it was not sent. The held-back text is in the agent's Turns."
+        "pedido_vazado": "{agente} handed the conversation to the team: the reply revealed part of the agent's internal instructions, and it was not sent. The held-back text is in the agent's Turns.",
+        "acao_prometida": "{agente} handed the conversation to the team: the reply said something was done in the system (a task, a field, a tag, the deal's stage…), but nothing was done — and it was not sent. The held-back text is in the agent's Turns; do what was asked and reply to the customer."
       },
       "passagem": "{agente} handed the conversation to AI · {destino}, and the deal moved to that agent's stage.",
       "acoes": {
@@ -6530,6 +6559,35 @@
       "paradas": "Follow-ups stop on their own when the customer answers, when someone from the team writes or pauses the AI, when the conversation is closed, when the deal leaves the agent's stage and near the customer's meeting: never within 30 min of a meeting reminder, and never in the 90 min before it. On an official Meta connection, also when the 24-hour window closes. If nothing is pending, the agent ends the follow-ups without sending anything — and they never hand the conversation to the team. Each follow-up counts toward the agent's reply limit.",
       "salvar": "Save follow-ups",
       "salvo": "Follow-ups saved."
+    },
+    "modeloDaChave": {
+      "carregando": "Loading the models for this key…",
+      "escolha": "Choose a model",
+      "recomendados": "Recommended",
+      "outrosDaChave": "Other models for this key",
+      "foraDaLista": "{modelo} (not in this key's list)",
+      "foraDaListaDica": "The saved model is not among the ones this provider's key offers today: it may have been retired. Choose one from the list.",
+      "outro": "Other (type the id)…",
+      "voltarALista": "Choose from the list",
+      "falhou": "Could not read this key's models right now. Type the model id or pick a suggestion.",
+      "listaVazia": "This provider's key did not offer any text model. Type the model id.",
+      "atualizar": "Refresh the model list"
+    },
+    "midia": {
+      "titulo": "Who reads the customer's audio, images and PDFs",
+      "explicacao": "It is not the AI agent's model: it is the account's key, in the order Gemini → OpenAI → Anthropic (the first one saved in Integrations). The agent only receives the text of what was heard or read, whatever its own provider.",
+      "nestaConta": "In this account:",
+      "audioPor": "Audio: {provedor}",
+      "audioNinguem": "Audio: no one listens",
+      "imagemPor": "Images and PDFs: {provedor}",
+      "imagemNinguem": "Images and PDFs: no one reads them (the account has no AI key)",
+      "desconhecido": "Could not check right now which keys the account has.",
+      "semAudio": "This account has no Gemini or OpenAI key, and Anthropic does not take audio: the customer's audio will not be heard, and a conversation with audio goes to the team.",
+      "limiteAudio": "Audio: Gemini, otherwise OpenAI. Anthropic does not take audio.",
+      "limiteFormatos": "HEIC photos (the iPhone's) are only read when the reader is Gemini; GIFs, only when the reader is not Gemini.",
+      "limitePlanilha": "No provider reads spreadsheets, Word or other files: the agent asks the customer to describe the content or resend it in another format.",
+      "limiteVideo": "Videos are not watched: the agent only sees that a video arrived, with its caption.",
+      "resumo": "Audio, images and PDFs are read by the account's key (Gemini → OpenAI → Anthropic), not by the agent's model: the agent receives the text."
     }
   },
   "ForgotPasswordPage": {

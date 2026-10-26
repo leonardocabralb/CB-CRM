@@ -167,6 +167,19 @@ Live Photo e edições cifradas de antes do descarte).
 - **Só imagem, vídeo, áudio e documento vão para o download** (`temArquivo`):
   no 1:1 a localização disparava um download que não podia dar certo.
 
+### Mensagem entre DOIS números da conta (25/10/2026)
+
+- ⚠️⚠️ O `key.id` é o MESMO nos dois lados: a SAÍDA do número A já está
+  gravada com ele quando a chegada bate no webhook do número B. Por isso a
+  chegada 1:1 (`fromMe` falso, e a retida sem telefone) chama `jaGravada` com
+  `recebida`: só conta outra CHEGADA (`sender_type = 'customer'`) da MESMA
+  conta. Sem o recorte, a chegada era descartada como repetida, sem log nem
+  retenção. O eco (`fromMe`), o GRUPO (dois números nossos no mesmo grupo
+  recebem a mesma mensagem, e ela é UMA no fio) e a religação seguem
+  comparando com qualquer linha. Pino: `route.entre-conexoes.test.ts`.
+  **Limite aceito**: a chegada passa pela ingestão INTEIRA (card, robô,
+  automação, IA) — dois robôs da conta podem responder um ao outro.
+
 ### Recibos: a escada e a espera
 
 - ⚠️ **Recibo fora de ordem**: a 2.4 manda `SERVER_ACK` depois do

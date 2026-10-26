@@ -67,6 +67,22 @@ describe('lerRespostaDaRetomada', () => {
     const r = lerRespostaDaRetomada('O link é https://calendly.com/cb/reuniao', false, [...FONTES, 'https://calendly.com/cb/reuniao'])
     expect(r.parada).toBeNull()
   })
+
+  it('ação prometida ("criei o lembrete"): para — na retomada nada executa (25/10/2026)', () => {
+    const texto = 'Oi! Criei o lembrete para a equipe te mandar a lista hoje.'
+    expect(lerRespostaDaRetomada(texto, false, FONTES)).toEqual({ parada: 'acao_prometida', detalhe: texto })
+  })
+
+  it('ação que uma resposta ANTERIOR do escritório já afirmou não é nova: sai', () => {
+    const texto = 'Oi! Como eu disse, já registrei suas informações. Conseguiu ver os documentos?'
+    const anteriores = ['Registrei suas informações, obrigado!']
+    expect(lerRespostaDaRetomada(texto, false, FONTES, anteriores).parada).toBeNull()
+  })
+
+  it('lembrar o cliente sem afirmar ação: sai', () => {
+    const r = lerRespostaDaRetomada('Oi! Passando para lembrar dos documentos. Conseguiu separar?', false, FONTES)
+    expect(r.parada).toBeNull()
+  })
 })
 
 describe('comNotaDaRetomada', () => {

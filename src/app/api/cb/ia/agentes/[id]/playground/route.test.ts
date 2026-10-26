@@ -398,6 +398,54 @@ describe('POST /api/cb/ia/agentes/[id]/playground — as ações (F4, SIMULADAS)
     expect(corpo).toMatchObject({ reply: '', passaPara: 'Cobrança' })
     expect(corpo.acoes).toEqual({ aceitas: [], recusadas: [{ tipo: 'mover_etapa', motivo: 'passagem' }] })
   })
+
+  it('⚠️ a passagem com AÇÕES (25/10/2026): etiqueta e tarefa ficam nas aceitas (no turno, rodam antes de passar); mover vai às recusadas', async () => {
+    resposta = { text: '[[PASSAR:1]]\n[[ETIQUETAR:1]]\n[[MOVER:1]]\n[[TAREFA:1=Ligar amanhã]]\n[[TRANSFERIR]]', handoff: false }
+    const corpo = await (await enviar()).json()
+    expect(corpo).toMatchObject({ reply: '', passaPara: 'Cobrança', handoff: false })
+    expect(corpo.acoes).toEqual({
+      aceitas: [
+        { tipo: 'etiquetar', nome: 'VIP' },
+        { tipo: 'criar_tarefa', nome: 'Ana', valor: 'Ligar amanhã' },
+      ],
+      recusadas: [
+        { tipo: 'mover_etapa', motivo: 'passagem' },
+        { tipo: 'transferir', motivo: 'passagem' },
+      ],
+    })
+    expect(executarAcoes).not.toHaveBeenCalled()
+  })
+
+  it('a passagem INVÁLIDA (número que não existe) transfere: nada executaria', async () => {
+    resposta = { text: '[[PASSAR:7]]\n[[ETIQUETAR:1]]', handoff: false }
+    const corpo = await (await enviar()).json()
+    expect(corpo).toMatchObject({ handoff: true, passaPara: null })
+    expect(corpo.acoes).toEqual({ aceitas: [], recusadas: [{ tipo: 'etiquetar', motivo: 'transferencia' }] })
+  })
+
+  it('⚠️ a AÇÃO PROMETIDA sem a ação (25/10/2026, a frase medida): `acaoPrometida`, e as ações não executariam', async () => {
+    const MEDIDO = 'Criei o lembrete para o Leonardo te enviar a lista de documentos na quarta-feira.'
+    resposta = { text: `${MEDIDO}\n[[ETIQUETAR:1]]`, handoff: false }
+    const corpo = await (await enviar()).json()
+    expect(corpo).toMatchObject({ acaoPrometida: true, reuniaoPrometida: false, linkInventado: false, handoff: false })
+    expect(corpo.acoes).toEqual({ aceitas: [], recusadas: [{ tipo: 'etiquetar', motivo: 'transferencia' }] })
+    // Com a tarefa aceita, cumpre: sai, e a tarefa vem simulada.
+    resposta = { text: `${MEDIDO}\n[[TAREFA:1=Enviar a lista]]`, handoff: false }
+    const comTarefa = await (await enviar()).json()
+    expect(comTarefa.acaoPrometida).toBe(false)
+    expect(comTarefa.acoes.aceitas).toEqual([{ tipo: 'criar_tarefa', nome: 'Ana', valor: 'Enviar a lista' }])
+  })
+
+  it('a afirmação que repete uma resposta ANTERIOR do agente no teste não é prometida', async () => {
+    resposta = { text: 'Sim, já registrei suas informações no sistema.', handoff: false }
+    const mensagens = [
+      { role: 'user', content: 'Meu nome é Ana' },
+      { role: 'assistant', content: 'Registrei suas informações no sistema!' },
+      { role: 'user', content: 'Registrou mesmo?' },
+    ]
+    expect((await (await enviar({ messages: mensagens })).json()).acaoPrometida).toBe(false)
+    expect((await (await enviar({ messages: [{ role: 'user', content: 'Registrou?' }] })).json()).acaoPrometida).toBe(true)
+  })
 })
 
 describe('POST /api/cb/ia/agentes/[id]/playground — marcar reunião (F5)', () => {
