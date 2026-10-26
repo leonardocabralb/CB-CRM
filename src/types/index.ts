@@ -757,6 +757,12 @@ export interface Message {
    * fora — leia por `lerContatosGravados`, nunca direto.
    */
   contatos?: ContatoCompartilhado[] | null;
+  /**
+   * Só na mensagem de EMPRESA recebida com opções de resposta (1111): os
+   * rótulos dos botões de resposta rápida ou dos itens da lista. JSON de fora —
+   * leia por `lerOpcoesGravadas`, nunca direto.
+   */
+  opcoes_de_resposta?: unknown;
   message_id?: string;
   status: MessageStatus;
   created_at: string;

@@ -150,6 +150,13 @@ Live Photo e edições cifradas de antes do descarte).
   visível o agente de IA abriria turno e responderia ao robô do banco. A bolha
   já tinha o selo "Modelo" para esse tipo. E o número que a manda não vira
   card (guarda 5 de `pipeline-routing.ts`, lê o `template` RECEBIDO).
+- ⚠️ **Opções de resposta (1111):** resposta rápida, `quick_reply` e item de
+  LISTA (`listMessage`, também `template`) vão a `opcoes_de_resposta` (só a
+  do cliente) e ao texto como `[opção]` por `linhaDoBotao`, a linha que a
+  bolha tira para oferecer o botão que PREPARA a resposta (sai digitada: a
+  Evolution não manda resposta a botão). A ESCOLHA
+  (`templateButtonReplyMessage`, `listResponseMessage`…) vira texto e cita
+  pela caixa dela — o `contextInfo` de cima vem nulo.
 - ⚠️⚠️ **O texto MONTADO (cartão e modelo) não chega aos motores**
   (`texto-para-os-motores.ts`, com pino lendo as duas ingestões): o robô e as
   automações recebem `''`, como antes da 1060. Senão um robô com a palavra

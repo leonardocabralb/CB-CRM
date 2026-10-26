@@ -82,6 +82,13 @@ export interface NormalizedInbound {
    * `contentType` é `'contact'`; `text` leva o resumo (`resumoDosContatos`).
    */
   contatos?: ContatoCompartilhado[];
+  /**
+   * As opções de RESPOSTA da mensagem de empresa (1111) →
+   * `messages.opcoes_de_resposta`: o botão de resposta rápida do modelo, o
+   * `quick_reply` da interativa, o item da lista. Só existe quando há alguma;
+   * `text` leva as mesmas opções como linhas `[opção]`.
+   */
+  opcoesDeResposta?: string[];
   mediaUrl?: string | null;
   /**
    * A imagem é FIGURINHA (`stickerMessage`). Ela é gravada como `image`, e o
@@ -488,6 +495,10 @@ export async function persistInboundMessage(
           ...(mimeNaChegada ? { media_type: mimeNaChegada } : {}),
           // Os contatos do cartão (1060), só nele — ver o insert do celular.
           ...(contentType === 'contact' ? { contatos: m.contatos ?? [] } : {}),
+          // As opções da mensagem de empresa (1111), só nela: a bolha as troca
+          // por botões que preparam a resposta. O celular não as grava (a
+          // mensagem é da equipe).
+          ...(m.opcoesDeResposta ? { opcoes_de_resposta: m.opcoesDeResposta } : {}),
           message_id: m.providerMessageId,
           remote_jid: m.remoteJid ?? null,
           // Endereço para AGIR sobre a mensagem quando a conversa migrou para
