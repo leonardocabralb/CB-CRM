@@ -70,6 +70,7 @@ import {
   ferramentasMudaram,
   ferramentasParaSalvar,
   rascunhoDasFerramentas,
+  type RascunhoDaAba,
   type RascunhoDasFerramentas,
 } from './rascunho';
 import { motivoForaDaD5, rotuloDoTipoDeAcao, rotuloDoTipoDoCampo, textoDoCodigo } from './textos';
@@ -87,11 +88,14 @@ export function FerramentasDoAgente({
   agente,
   aoSalvar,
   aoMudarNaoSalvo,
+  aoMudarRascunho,
 }: {
   agente: IaAgente;
   aoSalvar: (novo: IaAgente) => void;
   /** Avisa o detalhe se há alteração não salva (a aba Playground diz isso). */
   aoMudarNaoSalvo?: (naoSalvo: boolean) => void;
+  /** Avisa o detalhe do que o Salvar mandaria agora: é o RASCUNHO que o Playground testa (DC4). */
+  aoMudarRascunho?: (rascunho: RascunhoDaAba | null) => void;
 }) {
   const t = useTranslations('IaAgentes');
   const [rascunho, setRascunho] = useState<RascunhoDasFerramentas>(() => rascunhoDasFerramentas(agente.ferramentas));
@@ -139,6 +143,16 @@ export function FerramentasDoAgente({
     for (const tipo of TIPOS_DE_ACAO) saida[tipo] = catalogoDoTipo(carga.opcoes, tipo);
     return saida;
   }, [carga]);
+
+  // O rascunho do Playground (DC4): o MESMO corpo do Salvar, carimbado com a versão do agente.
+  const rascunhoDoTeste = useMemo(
+    () =>
+      naoSalvo ? { de: agente.updatedAt, corpo: { ferramentas: ferramentasParaSalvar(ferramentas, existentes) } } : null,
+    [naoSalvo, ferramentas, existentes, agente.updatedAt],
+  );
+  useEffect(() => {
+    aoMudarRascunho?.(rascunhoDoTeste);
+  }, [rascunhoDoTeste, aoMudarRascunho]);
 
   const nadaLigado = rascunho.ligadas.length === 0;
 

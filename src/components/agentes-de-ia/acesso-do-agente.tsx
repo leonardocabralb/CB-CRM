@@ -27,7 +27,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { LIMITES } from '@/lib/ia-agentes/agente';
 import { semAcento } from '@/lib/inbox/busca-em-mensagens';
 import { createClient } from '@/lib/supabase/client';
-import { acessoMudou, acessoParaSalvar } from './rascunho';
+import { acessoMudou, acessoParaSalvar, type RascunhoDaAba } from './rascunho';
 import { rotuloDoBloco, textoDoCodigo } from './textos';
 import { CAIXAS_DO_ACESSO, type AcessoDoAgente as Acesso, type IaAgente } from './tipos';
 
@@ -48,11 +48,14 @@ export function AcessoDoAgente({
   agente,
   aoSalvar,
   aoMudarNaoSalvo,
+  aoMudarRascunho,
 }: {
   agente: IaAgente;
   aoSalvar: (novo: IaAgente) => void;
   /** Avisa o detalhe se há alteração não salva (a aba Playground diz isso). */
   aoMudarNaoSalvo?: (naoSalvo: boolean) => void;
+  /** Avisa o detalhe do que o Salvar mandaria agora: é o RASCUNHO que o Playground testa (DC4). */
+  aoMudarRascunho?: (rascunho: RascunhoDaAba | null) => void;
 }) {
   const t = useTranslations('IaAgentes');
   const [rascunho, setRascunho] = useState<Acesso>(() => ({
@@ -99,6 +102,15 @@ export function AcessoDoAgente({
     () => (carga.fase === 'pronto' && carga.completo ? new Set(carga.campos.map((c) => c.id)) : null),
     [carga]
   );
+  // O rascunho do Playground (DC4): o MESMO corpo do Salvar, carimbado com a versão do agente.
+  const rascunhoDoTeste = useMemo(
+    () => (naoSalvo ? { de: agente.updatedAt, corpo: { acesso: acessoParaSalvar(rascunho, existentes) } } : null),
+    [naoSalvo, rascunho, existentes, agente.updatedAt]
+  );
+  useEffect(() => {
+    aoMudarRascunho?.(rascunhoDoTeste);
+  }, [rascunhoDoTeste, aoMudarRascunho]);
+
   // Só os marcados que ainda existem contam para o teto (o Salvar descarta os outros).
   const marcados = existentes ? rascunho.campos.filter((id) => existentes.has(id)).length : rascunho.campos.length;
   const noTeto = marcados >= LIMITES.campos;

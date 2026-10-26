@@ -97,6 +97,51 @@ export function textoDoCodigo(
 }
 
 /**
+ * O nome, na tela, de uma chave do RASCUNHO que o Playground testa (o corpo
+ * do PATCH do agente; DC4, 26/10/2026) — a lista "o que mudou". Chave
+ * desconhecida = `null`: fica de fora, nunca crua (`textos.test.ts` cobra
+ * toda chave que as abas mandam).
+ */
+export function rotuloDaChaveDoRascunho(t: ReturnType<typeof useTranslations>, chave: string): string | null {
+  switch (chave) {
+    case 'nome':
+      return t('campo.nome');
+    case 'descricao':
+      return t('campo.descricao');
+    case 'instrucoes':
+      return t('campo.instrucoes');
+    case 'regras':
+      return t('campo.regras');
+    case 'provedor':
+      return t('campo.provedor');
+    case 'modelo':
+      return t('campo.modelo');
+    case 'ativo':
+      return t('campo.ativo');
+    case 'conexoes':
+      return t('campo.conexoes');
+    case 'horario':
+      return t('campo.horario');
+    case 'teto_respostas':
+      return t('campo.teto');
+    case 'transferir_para':
+      return t('campo.transferirPara');
+    case 'pode_passar_para':
+      return t('campo.podePassarPara');
+    case 'etapas':
+      return t('ondeAtua.titulo');
+    case 'acesso':
+      return t('detalhe.acesso');
+    case 'ferramentas':
+      return t('detalhe.ferramentas');
+    case 'retomada':
+      return t('detalhe.retomada');
+    default:
+      return null;
+  }
+}
+
+/**
  * Os status de `cb_ia_turnos` (1049) que a sub-aba Turnos traduz
  * (`IaAgentes.turnos.status.<status>`). Chave MONTADA: `textos.test.ts` cobra
  * cada uma nos dois dicionários. Status fora da lista (um novo no CHECK) cai

@@ -190,7 +190,8 @@ then sends.
 > from the CRM composer. Only if that number has a default pipeline set
 > (*Settings → Connections*); without one, no deal is created. Nor for a
 > **business** number: a contact who has sent an automated business message
-> (a template with buttons — billing, marketing) never gets a deal this way;
+> (a template with buttons or a bot's menu of options — billing, marketing)
+> never gets a deal this way;
 > create it by hand if it is a client. At most one
 > deal per contact is ever created this way; contacts that already have a
 > deal are left untouched. This is intentional (PR #79); if your
@@ -759,12 +760,18 @@ again.
 `content_type: "contact"`. `content_text` carries one line per shared contact,
 in the form `👤 Name · +55 85 90000-0000` (the phone numbers, when the card has
 any). A message built by a company's system — a WhatsApp Business template
-with buttons, or an interactive message — is listed with
-`content_type: "template"` even when the customer's side sent it; its
-`content_text` carries the body, the footer and one line per button. A
-WhatsApp message type the CRM can't read yet is listed as
-`content_type: "text"` with `content_text` set to
-`[Unsupported message type: <type>]`.
+with buttons, an interactive message, or a bot's menu of options (a list) —
+is listed with `content_type: "template"` even when the customer's side sent
+it; its `content_text` carries the body, the footer and one line per button
+or option, in the form `[Yes]` (or `[See invoice] https://…` for a button
+that leads somewhere). On a WhatsApp connection by QR code, **picking** one
+of those options — a tap on a button or on a list item, on the office's phone
+or by the contact — is listed as `content_type: "text"`, with the chosen
+option in `content_text` and `reply_to_message_id` pointing to the message
+that offered it. A WhatsApp message type the CRM can't read yet is listed
+with `content_text` set to `[Unsupported message type: <type>]` — as
+`content_type: "text"`, or `"template"` for a company's message with nothing
+the CRM can read.
 
 ### `POST /api/v1/broadcasts`
 

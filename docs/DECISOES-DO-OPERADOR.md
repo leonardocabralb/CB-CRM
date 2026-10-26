@@ -62,6 +62,9 @@ qualquer uma é pergunta ao operador.
   filtro salvo não decide; o sino também avisa, com som do CRM (20/10/2026).
 - Canal: a faixa de divergência só informa, não bloqueia; cor derivada; anel
   no avatar e trilha colorida foram descartados.
+- Agentes de IA: o Playground testa o RASCUNHO da tela, conferido como o
+  salvar, e compara com o salvo; a conversa não zera ao salvar. Versão
+  publicada separada só depois do piloto (DC4, 26/10/2026).
 - IA: chave por PROVEDOR, uma para a conta toda — nunca por conexão
   (28/08/2026; 1047). O modelo é do módulo (Radar) e, com os agentes, de
   cada agente (D1 de `docs/PLANO-agentes-de-ia.md`).

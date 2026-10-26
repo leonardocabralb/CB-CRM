@@ -43,13 +43,13 @@ type Carga =
 
 export function BaseDoAgente({
   agenteId,
-  aoSalvar,
   aoMudarNaoSalvo,
 }: {
   agenteId: string;
-  /** A base do agente mudou (o detalhe zera a conversa do Playground). */
-  aoSalvar?: () => void;
-  /** Avisa o detalhe se há alteração não salva (a aba Playground diz isso). */
+  /**
+   * Avisa o detalhe se há alteração não salva: o Playground testa sempre a
+   * base SALVA, e diz isso em âmbar (DC4, 26/10/2026).
+   */
   aoMudarNaoSalvo?: (naoSalvo: boolean) => void;
 }) {
   const t = useTranslations('IaAgentes');
@@ -117,7 +117,6 @@ export function BaseDoAgente({
       toast.success(t('base.salvo'));
       setCarga({ ...carga, salvos: corpo.documentoIds });
       setMarcados([...corpo.documentoIds]);
-      aoSalvar?.();
     } catch {
       toast.error(t('erro.generico'));
     } finally {

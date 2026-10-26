@@ -8,13 +8,19 @@
 // ⚠️ Configuração, Acesso, Base, Ferramentas, Retomada e Playground ficam MONTADAS
 // depois da primeira visita (escondidas, não desmontadas): o rascunho de
 // cada uma vive nela, e trocar de aba para testar no Playground apagava, sem
-// aviso, o que tinha sido digitado. A conversa do Playground também
-// sobrevive à troca — MENOS a um salvamento (da Configuração, do Acesso, da
-// Base ou das Ferramentas): a conversa gerada pela versão anterior, mandada
-// à nova, não testa versão nenhuma do agente (Codex, #295). A aba Uso, sem
-// rascunho, remonta a cada visita: montada, os testes feitos no Playground
-// não apareciam até recarregar a página. A aba Turnos, pelo mesmo motivo,
-// também remonta a cada visita.
+// aviso, o que tinha sido digitado. A aba Uso, sem rascunho, remonta a cada
+// visita: montada, os testes feitos no Playground não apareciam até
+// recarregar a página. A aba Turnos, pelo mesmo motivo, também remonta a cada
+// visita.
+//
+// O PLAYGROUND TESTA O RASCUNHO (DC4 da central dos agentes, 26/10/2026):
+// Configuração, Acesso, Ferramentas e Retomada avisam aqui o que o Salvar
+// delas mandaria agora (`aoMudarRascunho`, carimbado com a versão do agente),
+// e o Playground manda isso junto. Aba não visitada não tem rascunho. A Base
+// não entra: o teste usa os documentos SALVOS (a busca é pelo id do agente).
+// ⚠️ A conversa do Playground NÃO zera mais ao salvar (a `key` é só o id do
+// agente): cada resposta leva o selo da versão que a gerou ("salvo às HH:MM"
+// ou "rascunho"), e "Rodar o roteiro de novo" a refaz com a versão escolhida.
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -31,6 +37,7 @@ import { PlaygroundDoAgente } from './playground-do-agente';
 import { RetomadaDoAgente } from './retomada-do-agente';
 import { TurnosDoAgente } from './turnos-do-agente';
 import { UsoDeIa } from './uso-de-ia';
+import { juntarRascunhos, type RascunhoDaAba } from './rascunho';
 import type { IaAgente } from './tipos';
 
 type Aba = 'configuracao' | 'acesso' | 'base' | 'ferramentas' | 'retomada' | 'playground' | 'uso' | 'turnos';
@@ -51,12 +58,12 @@ export function DetalheDoAgente({ id }: { id: string }) {
   const [baseNaoSalva, setBaseNaoSalva] = useState(false);
   const [ferramentasNaoSalvas, setFerramentasNaoSalvas] = useState(false);
   const [retomadaNaoSalva, setRetomadaNaoSalva] = useState(false);
-  // Quantas vezes o agente foi salvo nesta tela (configuração, acesso, base
-  // ou ferramentas): entra na `key` do Playground para zerar a conversa a cada versão
-  // nova do agente.
-  const [salvamentos, setSalvamentos] = useState(0);
-  // O cliente do teste do Playground (F3) mora aqui: sobrevive ao salvamento
-  // que zera a conversa.
+  // O que o Salvar de cada aba mandaria agora: o RASCUNHO que o Playground testa (DC4).
+  const [rascunhoDaConfiguracao, setRascunhoDaConfiguracao] = useState<RascunhoDaAba | null>(null);
+  const [rascunhoDoAcesso, setRascunhoDoAcesso] = useState<RascunhoDaAba | null>(null);
+  const [rascunhoDasFerramentas, setRascunhoDasFerramentas] = useState<RascunhoDaAba | null>(null);
+  const [rascunhoDaRetomada, setRascunhoDaRetomada] = useState<RascunhoDaAba | null>(null);
+  // O cliente do teste do Playground (F3) mora aqui.
   const [contatoDoTeste, setContatoDoTeste] = useState('');
 
   function trocarDeAba(nova: Aba) {
@@ -92,8 +99,19 @@ export function DetalheDoAgente({ id }: { id: string }) {
 
   function aoSalvarAgente(novo: IaAgente) {
     setEstado({ de: id, e: { fase: 'pronto', agente: novo } });
-    setSalvamentos((n) => n + 1);
   }
+
+  // Só os rascunhos calculados sobre a versão ATUAL do agente (efeito
+  // passivo: logo depois de salvar, a aba ainda não reavisou).
+  const rascunho =
+    e.fase === 'pronto'
+      ? juntarRascunhos(e.agente.updatedAt, [
+          rascunhoDaConfiguracao,
+          rascunhoDoAcesso,
+          rascunhoDasFerramentas,
+          rascunhoDaRetomada,
+        ])
+      : null;
 
   const naoSalvoEm = [
     configuracaoNaoSalva ? t('detalhe.configuracao') : null,
@@ -150,6 +168,7 @@ export function DetalheDoAgente({ id }: { id: string }) {
               agente={e.agente}
               aoSalvar={aoSalvarAgente}
               aoMudarNaoSalvo={setConfiguracaoNaoSalva}
+              aoMudarRascunho={setRascunhoDaConfiguracao}
             />
           </div>
           {visitadas.has('acesso') ? (
@@ -159,17 +178,13 @@ export function DetalheDoAgente({ id }: { id: string }) {
                 agente={e.agente}
                 aoSalvar={aoSalvarAgente}
                 aoMudarNaoSalvo={setAcessoNaoSalvo}
+                aoMudarRascunho={setRascunhoDoAcesso}
               />
             </div>
           ) : null}
           {visitadas.has('base') ? (
             <div hidden={aba !== 'base'}>
-              <BaseDoAgente
-                key={e.agente.id}
-                agenteId={e.agente.id}
-                aoSalvar={() => setSalvamentos((n) => n + 1)}
-                aoMudarNaoSalvo={setBaseNaoSalva}
-              />
+              <BaseDoAgente key={e.agente.id} agenteId={e.agente.id} aoMudarNaoSalvo={setBaseNaoSalva} />
             </div>
           ) : null}
           {visitadas.has('ferramentas') ? (
@@ -179,6 +194,7 @@ export function DetalheDoAgente({ id }: { id: string }) {
                 agente={e.agente}
                 aoSalvar={aoSalvarAgente}
                 aoMudarNaoSalvo={setFerramentasNaoSalvas}
+                aoMudarRascunho={setRascunhoDasFerramentas}
               />
             </div>
           ) : null}
@@ -189,15 +205,18 @@ export function DetalheDoAgente({ id }: { id: string }) {
                 agente={e.agente}
                 aoSalvar={aoSalvarAgente}
                 aoMudarNaoSalvo={setRetomadaNaoSalva}
+                aoMudarRascunho={setRascunhoDaRetomada}
               />
             </div>
           ) : null}
           {visitadas.has('playground') ? (
             <div hidden={aba !== 'playground'}>
               <PlaygroundDoAgente
-                key={`${e.agente.id}:${salvamentos}`}
+                key={e.agente.id}
                 agente={e.agente}
+                rascunho={rascunho}
                 naoSalvoEm={naoSalvoEm}
+                baseNaoSalva={baseNaoSalva}
                 contatoId={contatoDoTeste}
                 aoMudarContato={setContatoDoTeste}
               />

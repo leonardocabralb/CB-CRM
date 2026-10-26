@@ -127,6 +127,7 @@ import { GaleriaDoFio } from "./media-gallery";
 import { MessageActions } from "./message-actions";
 import {
   MessageComposer,
+  type CompositorHandle,
   type SendMediaPayload,
 } from "./message-composer";
 import { TemplatePicker } from "./template-picker";
@@ -2353,6 +2354,18 @@ export function MessageThread({
     [authorLabelFor],
   );
 
+  // Opção de resposta de uma mensagem de EMPRESA (1111): cita a mensagem e o
+  // compositor põe o rótulo na caixa. Nada sai sem o Enviar — e do outro lado
+  // chega uma resposta digitada, não o toque no botão.
+  const compositorRef = useRef<CompositorHandle>(null);
+  const responderComOpcao = useCallback(
+    (msg: Message, opcao: string) => {
+      handleStartReply(msg);
+      compositorRef.current?.prepararResposta(opcao);
+    },
+    [handleStartReply],
+  );
+
   // Single reaction-set primitive. emoji === "" removes; otherwise adds/swaps.
   // The "toggle" semantic (pill click) is computed at the call site where the
   // current reactions for the bubble are already in scope — keeps this
@@ -3431,6 +3444,11 @@ export function MessageThread({
                             naoConfirmadas.has(msg.id) &&
                             confirmadasComoEnviadas.has(msg.id)
                           }
+                          onResponderComOpcao={
+                            podeEnviar && msg.opcoes_de_resposta != null
+                              ? (opcao) => responderComOpcao(msg, opcao)
+                              : undefined
+                          }
                         />
                       </MessageActions>
                       </LinhaDoFio>
@@ -3618,6 +3636,7 @@ export function MessageThread({
       {/* Composer — canal Evolution não tem janela de 24h (sessionExpired
           neutralizado) nem templates/interativas (channelKind esconde). */}
       <MessageComposer
+        ref={compositorRef}
         conversationId={conversation.id}
         sessionExpired={janelaDe24h ? sessionInfo.expired : false}
         conexaoForaDoAr={conexaoForaDoAr}

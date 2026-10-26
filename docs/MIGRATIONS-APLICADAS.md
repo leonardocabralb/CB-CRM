@@ -1619,6 +1619,15 @@ nome da época em que foram aplicadas.
     1110 foi provada;
   - 0 turnos: a conferência da migration, desfeita por `P1110`, não deixou
     rastro.
+- **1111_cb_opcoes_de_resposta** — `messages.opcoes_de_resposta` (jsonb,
+  nula): os rótulos das opções de resposta da mensagem de empresa recebida
+  (resposta rápida do modelo, `quick_reply`, item de lista), que a bolha
+  oferece como botões que preparam a resposta. ADITIVA, ANTES do deploy (o
+  INSERT da mensagem com opções levaria 42703). PR #443, replay do CI verde
+  no commit `b6153ac1`, autorização do operador em 26/10/2026; aplicada em
+  26/10/2026 (histórico `20261026152759`, depois da 1110). Conferida: a
+  coluna em `jsonb`; a publicação de tempo real de `messages` sem lista de
+  colunas (a coluna viaja).
 - **1112_cb_campo_do_motivo_da_etapa** — `pipeline_stages.campo_do_motivo_id`
   (FK para `custom_fields` `ON DELETE SET NULL`) e o gatilho
   `cb_campo_do_motivo_da_mesma_conta_trg` (BEFORE INSERT OR UPDATE OF a

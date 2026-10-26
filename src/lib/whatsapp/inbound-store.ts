@@ -82,6 +82,18 @@ export interface NormalizedInbound {
    * `contentType` é `'contact'`; `text` leva o resumo (`resumoDosContatos`).
    */
   contatos?: ContatoCompartilhado[];
+  /**
+   * As opções de RESPOSTA da mensagem de empresa (1111) →
+   * `messages.opcoes_de_resposta`: o botão de resposta rápida do modelo, o
+   * `quick_reply` da interativa, o item da lista. Só existe quando há alguma;
+   * `text` leva as mesmas opções como linhas `[opção]`.
+   */
+  opcoesDeResposta?: string[];
+  /**
+   * A mensagem é a ESCOLHA feita num botão ou numa lista (1111): como o toque
+   * em botão da Meta, não abre turno do agente de IA. Só existe quando `true`.
+   */
+  escolhaDeOpcao?: boolean;
   mediaUrl?: string | null;
   /**
    * A imagem é FIGURINHA (`stickerMessage`). Ela é gravada como `image`, e o
@@ -488,6 +500,10 @@ export async function persistInboundMessage(
           ...(mimeNaChegada ? { media_type: mimeNaChegada } : {}),
           // Os contatos do cartão (1060), só nele — ver o insert do celular.
           ...(contentType === 'contact' ? { contatos: m.contatos ?? [] } : {}),
+          // As opções da mensagem de empresa (1111), só nela: a bolha as troca
+          // por botões que preparam a resposta. O celular não as grava (a
+          // mensagem é da equipe).
+          ...(m.opcoesDeResposta ? { opcoes_de_resposta: m.opcoesDeResposta } : {}),
           message_id: m.providerMessageId,
           remote_jid: m.remoteJid ?? null,
           // Endereço para AGIR sobre a mensagem quando a conversa migrou para
@@ -666,9 +682,11 @@ export async function persistInboundMessage(
     texto: m.text,
     mime: mimeNaChegada,
     ehGrupo: false,
-    // A Evolution não entrega toque em botão: mensagem interativa só sai pela
-    // Meta (`evolution-transport.ts` a recusa), e o normalizador nem a lê.
-    ehRespostaDeBotao: false,
+    // Toque em botão ou escolha de lista (1111): navegação de menu, não
+    // pergunta — como na Meta (#478). O robô do CRM não manda botão pela
+    // Evolution, mas outro sistema no mesmo número pode mandar, e a escolha do
+    // cliente chega aqui com o rótulo como texto.
+    ehRespostaDeBotao: m.escolhaDeOpcao === true,
     roboConsumiu: flowConsumed,
     automacaoFalou,
   });

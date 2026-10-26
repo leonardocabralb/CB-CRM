@@ -9,8 +9,10 @@ import {
   useRef,
   useCallback,
   useEffect,
+  useImperativeHandle,
   useLayoutEffect,
   KeyboardEvent,
+  type Ref,
 } from "react";
 import {
   Send,
@@ -55,6 +57,7 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import { useRascunhoDaConversa } from "@/hooks/use-rascunho-da-conversa";
 import { useAnexosDaConversa } from "@/hooks/use-anexos-da-conversa";
 import { enterEnvia, MIDIA_DE_TOQUE } from "@/lib/celular/teclado";
+import { textoComAOpcao, type OpcaoPreparada } from "@/lib/whatsapp/opcoes-de-resposta";
 import { custoDaAssinatura, nomeDePessoa } from "@/lib/assinatura/assinatura";
 import type { ConversationNote, MediaLibraryItem } from "@/types";
 import { InternalNoteBox } from "./internal-note-box";
@@ -274,7 +277,22 @@ interface Lote {
   faltam: number;
 }
 
+/** O que o fio pede ao compositor pelo `ref`. */
+export interface CompositorHandle {
+  /**
+   * Clique numa opção de resposta de uma mensagem de empresa (1111): o rótulo
+   * vai para a caixa (`textoComAOpcao`). A citação é do fio.
+   */
+  prepararResposta: (opcao: string) => void;
+}
+
 interface MessageComposerProps {
+  /**
+   * React 19: `ref` é prop comum. O texto da opção escolhida na bolha (1111)
+   * entra pelo `setText` DESTE compositor — o único escritor do rascunho da
+   * caixa, preso à conversa do render.
+   */
+  ref?: Ref<CompositorHandle>;
   conversationId: string;
   sessionExpired: boolean;
   /**
@@ -368,6 +386,7 @@ function formatDuration(seconds: number): string {
 const OPUS_ENCODER_PATH = "/opus/encoderWorker.min.js";
 
 export function MessageComposer({
+  ref,
   conversationId,
   sessionExpired,
   conexaoForaDoAr = false,
@@ -1385,6 +1404,36 @@ export function MessageComposer({
     },
     [openInteractiveBuilder, adjustHeight, channelKind, t, setText],
   );
+
+  // Opção de resposta de uma mensagem de empresa (1111), pedida pelo fio no
+  // clique: o rótulo vai para o rascunho desta conversa. O último clique fica
+  // lembrado (`de`, a conversa: o compositor não remonta na troca) para o
+  // seguinte TROCAR a opção em vez de acumular, também entre mensagens. O
+  // foco só no computador: no toque ele abriria o teclado por cima do fio, e
+  // lá o retorno nem envia (`enterEnvia`) — o Enviar já está à vista.
+  const opcaoPreparadaRef = useRef<(OpcaoPreparada & { de: string }) | null>(null);
+  const prepararResposta = useCallback(
+    (opcao: string) => {
+      const anterior = opcaoPreparadaRef.current;
+      const preparada = textoComAOpcao(
+        text,
+        opcao,
+        anterior?.de === conversationId ? anterior : null,
+      );
+      opcaoPreparadaRef.current = { ...preparada, de: conversationId };
+      setText(preparada.resultado);
+      if (toque) return;
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (el) {
+          el.focus();
+          el.setSelectionRange(el.value.length, el.value.length);
+        }
+      });
+    },
+    [text, conversationId, setText, toque],
+  );
+  useImperativeHandle(ref, () => ({ prepararResposta }), [prepararResposta]);
 
   // Upload a captured file to chat-media and stage it as a draft.
   const stageUpload = useCallback(

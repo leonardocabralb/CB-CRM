@@ -4,6 +4,7 @@ import { LIMITES } from '@/lib/ia-agentes/agente'
 
 import {
   agruparItens,
+  esperaDoLimite,
   avisoDoEmailDaReuniao,
   catalogoDoTipo,
   itensDoTipo,
@@ -469,5 +470,23 @@ describe('liberarCampoDoEmail — o botão "Liberar o campo E-mail" (só o rascu
     const r = rascunhoDasFerramentas({ marcar_reuniao: { tipos_de_evento: [ABC] } })
     expect(avisoDoEmailDaReuniao(opcoes, r)).not.toBeNull()
     expect(avisoDoEmailDaReuniao(opcoes, liberarCampoDoEmail(r, 'c-email'))).toBeNull()
+  })
+})
+
+describe('esperaDoLimite (o roteiro do Playground pausa no limite por minuto)', () => {
+  it('o 429 da rota espera o retry_after_seconds (ou o Retry-After)', () => {
+    expect(esperaDoLimite(429, { error: 'limite', retry_after_seconds: 37 }, null, 20)).toBe(37_000)
+    expect(esperaDoLimite(429, {}, '12', 20)).toBe(12_000)
+    expect(esperaDoLimite(429, {}, null, 20)).toBe(20_000)
+  })
+
+  it('o limite do PROVEDOR chega como 502 rate_limited e também pausa (o padrão)', () => {
+    expect(esperaDoLimite(502, { error: 'muitas chamadas', code: 'rate_limited' }, null, 20)).toBe(20_000)
+  })
+
+  it('outra recusa não pausa: o roteiro para', () => {
+    expect(esperaDoLimite(502, { code: 'timeout' }, null, 20)).toBeNull()
+    expect(esperaDoLimite(400, { code: 'item_de_outra_conta' }, null, 20)).toBeNull()
+    expect(esperaDoLimite(500, {}, '30', 20)).toBeNull()
   })
 })
