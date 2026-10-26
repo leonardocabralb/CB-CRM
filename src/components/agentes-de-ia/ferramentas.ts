@@ -229,6 +229,24 @@ export function lerRetomadaSimulada(v: unknown): RetomadaSimulada | null {
   }
 }
 
+/**
+ * Quanto esperar (ms) quando a rota do Playground recusa por LIMITE por
+ * minuto: o 429 da própria rota (por pessoa e por conta, com
+ * `retry_after_seconds`) e o do PROVEDOR, que chega como 502 com
+ * `code: 'rate_limited'` (o `AiError` do `providerHttpError`). Os dois pausam
+ * o roteiro e retomam; qualquer outra recusa devolve `null` (o roteiro para).
+ */
+export function esperaDoLimite(
+  status: number,
+  corpo: Record<string, unknown>,
+  retryAfter: string | null,
+  padraoS: number,
+): number | null {
+  if (status !== 429 && corpo.code !== 'rate_limited') return null
+  const s = Number(corpo.retry_after_seconds ?? retryAfter)
+  return (Number.isFinite(s) && s > 0 ? Math.ceil(s) : padraoS) * 1000
+}
+
 /** Acima disto a lista de horários do Playground aparece recolhida (F5). */
 export const HORARIOS_A_MOSTRA = 4
 

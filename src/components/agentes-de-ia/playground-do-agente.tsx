@@ -103,7 +103,13 @@ import { TETO_DE_RESULTADOS } from '@/lib/contacts/busca-remota';
 import { ACAO_TRANSFERIR } from '@/lib/ia-agentes/acoes';
 import { lerRetomada } from '@/lib/ia-agentes/retomada';
 import { cn } from '@/lib/utils';
-import { HORARIOS_A_MOSTRA, lerAcoesSimuladas, lerHorariosOferecidos, lerRetomadaSimulada } from './ferramentas';
+import {
+  HORARIOS_A_MOSTRA,
+  esperaDoLimite,
+  lerAcoesSimuladas,
+  lerHorariosOferecidos,
+  lerRetomadaSimulada,
+} from './ferramentas';
 import { NAO_MUDAM_A_RESPOSTA } from './rascunho';
 import type { AcoesSimuladas, HorarioOferecido, IaAgente } from './tipos';
 import {
@@ -306,6 +312,9 @@ export function PlaygroundDoAgente({
   // "Parar" o roteiro, e o componente que saiu da tela (a rodada não segue gastando).
   const pararRef = useRef(false);
   const vivoRef = useRef(true);
+  // A versão SALVA de agora: o roteiro para se alguém salvar no meio da rodada
+  // (as respostas seguintes sairiam da versão nova com o selo da antiga).
+  const salvoEmRef = useRef(agente.updatedAt);
 
   const usaRascunho = testar === 'rascunho' && rascunho !== null;
   const rascunhoDaChamada = usaRascunho ? rascunho : null;
@@ -339,6 +348,10 @@ export function PlaygroundDoAgente({
     };
   }, []);
 
+  useEffect(() => {
+    salvoEmRef.current = agente.updatedAt;
+  }, [agente.updatedAt]);
+
   function trocarContato(id: string) {
     if (id === contatoId) return;
     aoMudarContato(id);
@@ -364,13 +377,14 @@ export function PlaygroundDoAgente({
       });
       const lido = (await res.json().catch(() => ({}))) as Record<string, unknown>;
       if (res.ok) return { ok: true, corpo: lido };
-      if (res.status === 429) {
+      const esperaMs = esperaDoLimite(res.status, lido, res.headers.get('Retry-After'), ESPERA_PADRAO_S);
+      if (esperaMs !== null) {
         // Sem `code` = o limite por minuto da ROTA (com o tempo); com, o do provedor.
-        const s = Number(lido.retry_after_seconds ?? res.headers.get('Retry-After'));
-        const segundos = Number.isFinite(s) && s > 0 ? Math.ceil(s) : ESPERA_PADRAO_S;
         const texto =
-          typeof lido.code === 'string' ? textoDoCodigo(t, lido.code, lido.error) : t('playground.limiteDeTestes', { s: segundos });
-        return { ok: false, texto, esperaMs: segundos * 1000 };
+          typeof lido.code === 'string'
+            ? textoDoCodigo(t, lido.code, lido.error)
+            : t('playground.limiteDeTestes', { s: esperaMs / 1000 });
+        return { ok: false, texto, esperaMs };
       }
       return {
         ok: false,
@@ -480,7 +494,8 @@ export function PlaygroundDoAgente({
   /**
    * "Rodar o roteiro de novo": as mensagens do cliente, uma a uma, com as
    * respostas NOVAS como contexto e a versão escolhida AGORA (fixa na rodada).
-   * O 429 pausa e retoma; parar ou falhar devolve a conversa de antes.
+   * O limite por minuto (da rota ou do provedor) pausa e retoma; parar,
+   * falhar ou SALVAR o agente no meio devolve a conversa de antes.
    */
   async function rodarRoteiro() {
     setConfirmandoRoteiro(false);
@@ -489,6 +504,8 @@ export function PlaygroundDoAgente({
     const antes = turnos;
     const versao = versaoDaChamada;
     const doRascunho = rascunhoDaChamada;
+    const salvoNoInicio = agente.updatedAt;
+    const salvouNoMeio = () => salvoEmRef.current !== salvoNoInicio;
     const total = mensagens.length;
     pararRef.current = false;
     setComparacao(null);
@@ -506,6 +523,11 @@ export function PlaygroundDoAgente({
             toast.info(t('playground.roteiroParou'));
             return;
           }
+          if (salvouNoMeio()) {
+            setTurnos(antes);
+            toast.info(t('playground.roteiroSalvouNoMeio'));
+            return;
+          }
           const r = await chamar({ messages: paraARota(novos), ...(doRascunho ? { rascunho: doRascunho } : {}) });
           if (r.ok) {
             novos = [...novos, turnoDaResposta(r.corpo, versao)];
@@ -518,9 +540,10 @@ export function PlaygroundDoAgente({
             avisarFalha(r, t('playground.roteiroVoltou'));
             return;
           }
-          // O limite por minuto (20 por pessoa, 60 por conta): pausa e continua.
+          // O limite por minuto (da rota: 20 por pessoa, 60 por conta; ou do
+          // provedor): pausa e continua.
           setRoteiro({ feitas: i, total, pausadoAte: Date.now() + r.esperaMs });
-          await esperar(r.esperaMs, () => pararRef.current || !vivoRef.current);
+          await esperar(r.esperaMs, () => pararRef.current || !vivoRef.current || salvouNoMeio());
           setRoteiro({ feitas: i, total, pausadoAte: null });
         }
       }

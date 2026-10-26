@@ -65,9 +65,11 @@ que o agente vê, ações simuladas, travas, retomada) está em `ia-agentes.md`,
   some a cada envio, retomada, roteiro, recomeço ou troca de cliente.
 - **"Rodar o roteiro de novo"**: só as mensagens do CLIENTE, uma a uma, com
   as respostas NOVAS como contexto e a versão escolhida no clique (fixa na
-  rodada). A contagem de chamadas aparece ANTES. ⚠️ O 429 PAUSA até o
-  `retry_after_seconds` (o do provedor, 20 s) e retoma — não é erro; parar ou
-  falhar devolve a conversa de antes. O teto da rota (20/min por pessoa,
+  rodada). A contagem de chamadas aparece ANTES. ⚠️ O limite por minuto
+  PAUSA e retoma — não é erro: o 429 da rota até o `retry_after_seconds`, e o
+  do PROVEDOR, que chega como 502 `rate_limited`, 20 s (`esperaDoLimite`).
+  Parar, falhar ou SALVAR o agente no meio (o `updatedAt` mudou) devolve a
+  conversa de antes. O teto da rota (20/min por pessoa,
   60/min por conta) é POR PROCESSO: dois no deploy.
 - **"Mostrar o pedido enviado ao modelo"**: `verPedido: true` devolve
   `pedido`, o texto EXATO daquela resposta. Sob demanda: o pedido leva dado
