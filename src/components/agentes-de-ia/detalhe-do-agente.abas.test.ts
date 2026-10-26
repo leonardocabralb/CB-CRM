@@ -43,6 +43,15 @@ describe('detalhe-do-agente — abas', () => {
     expect(playground).toContain('toLocaleTimeString(undefined')
   })
 
+  it('⚠️ o roteiro confere "Parar" e Salvar DEPOIS de cada chamada, antes de aceitar a resposta (Codex #442)', () => {
+    const roteiro = playground.slice(playground.indexOf('async function rodarRoteiro'))
+    const depois = roteiro.slice(roteiro.indexOf('await chamar('))
+    const aceita = depois.indexOf('if (r.ok)')
+    const confere = depois.search(/if \(!vivoRef\.current \|\| pararRef\.current \|\| salvouNoMeio\(\)\) continue/)
+    expect(confere).toBeGreaterThan(0)
+    expect(confere).toBeLessThan(aceita)
+  })
+
   it('salvar qualquer aba atualiza o agente na tela (a versão salva nova)', () => {
     for (const aba of ['<ConfiguracaoDoAgente', '<AcessoDoAgente', '<FerramentasDoAgente', '<RetomadaDoAgente']) {
       expect(fonte.slice(fonte.indexOf(aba)).slice(0, 260), aba).toContain('aoSalvar={aoSalvarAgente}')

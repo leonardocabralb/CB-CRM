@@ -529,6 +529,9 @@ export function PlaygroundDoAgente({
             return;
           }
           const r = await chamar({ messages: paraARota(novos), ...(doRascunho ? { rascunho: doRascunho } : {}) });
+          // "Parar" ou Salvar DURANTE a chamada: a resposta não entra; o topo do
+          // laço devolve a conversa de antes (Codex #442).
+          if (!vivoRef.current || pararRef.current || salvouNoMeio()) continue;
           if (r.ok) {
             novos = [...novos, turnoDaResposta(r.corpo, versao)];
             setTurnos(novos);
