@@ -296,6 +296,8 @@ custo (`no_show`). Plano: Fase 4 de `docs/PLANO-reagendamento.md`.
   desqualificados. ⚠️ Diferente do no-show, a semente da 912 CONTA (a perda
   já a lê pelo `perdidoDesde`). O cartão (`desqualificado`, ao lado do `mql`)
   só aparece no funil com etapa marcada (`funilMedeDesqualificacao`).
+- A seção **Motivos** (1113, `motivos-do-periodo.tsx`) tem regra própria:
+  `.claude/rules/motivos-de-perda.md`.
 
 ### CSV
 

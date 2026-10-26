@@ -34,6 +34,7 @@ import type { ValidationIssue } from './validate'
 import { ehGatilhoDaRegua } from '@/lib/asaas/regua'
 import { GATILHO_DO_ATLAS } from './so-pelo-disparador'
 import { lerMarcados } from '@/lib/notes/anotacao-da-automacao'
+import { motivoDoPasso } from './motivo-do-passo'
 
 /** O mínimo da árvore do construtor que este módulo precisa. */
 export interface NoDaArvore<T> {
@@ -324,6 +325,7 @@ export const CODIGOS_DE_PENDENCIA = [
   'iniciar_robo_desligado',
   'iniciar_robo_apagado',
   'anotacao_marcado_fora_da_conta',
+  'mover_card_sem_motivo',
 ] as const
 
 const CONHECIDOS: ReadonlySet<string> = new Set(CODIGOS_DE_PENDENCIA)
@@ -354,6 +356,11 @@ export interface ReferenciasDosPassos {
   robos: ReadonlyArray<{ id: string; status: string }> | null
   /** Idem, para quem a anotação marca. Ausente = não conferir. */
   membros?: ReadonlyArray<{ user_id: string; suspenso_em?: string | null }> | null
+  /**
+   * Etapa → o campo do motivo que ela pede (1112), só das etapas que pedem.
+   * Ausente ou `null` = as etapas não carregaram: nada é afirmado.
+   */
+  etapasComMotivo?: ReadonlyMap<string, string> | null
 }
 
 interface NoComConfig<T> extends NoDaArvore<T> {
@@ -382,6 +389,10 @@ function idDoAlvo(valor: unknown): string | null {
  * - "Escrever anotação interna" marcando quem saiu da conta ou está suspenso
  *   (1067): o motor grava a anotação sem ela e FALHA o passo, de propósito
  *   (`add_note` em `engine.ts`) — os passos seguintes não rodam.
+ * - "Mover card de etapa" para etapa que pede motivo (1112) sem motivo no
+ *   passo e sem "Atualizar campo" no mesmo campo: o card chega sem motivo e
+ *   o relatório o conta em "Sem motivo". Não barra: a etapa pode passar a
+ *   pedir motivo depois, e a automação antiga continua valendo.
  *
  * Alvo vazio fica com a validação (é pendência, não aviso).
  */
@@ -397,6 +408,24 @@ export function avisosDaAutomacao<T extends NoComConfig<T>>(
   const ativos = referencias.membros
     ? new Set(referencias.membros.filter((m) => !m.suspenso_em).map((m) => m.user_id))
     : null
+  // 1112: os campos que algum "Atualizar campo" da automação grava, em
+  // qualquer ramo — o jeito antigo de gravar o motivo (as automações de
+  // lembrete do Previdenciário), que vale como motivo do "Mover card".
+  const etapasComMotivo = referencias.etapasComMotivo ?? null
+  const camposGravados = new Set<string>()
+  const juntarCampos = (lista: readonly T[]) => {
+    for (const s of lista) {
+      const campo = s.step_config?.field
+      if (s.step_type === 'update_contact_field' && typeof campo === 'string' && campo.startsWith('custom:')) {
+        camposGravados.add(campo.slice('custom:'.length))
+      }
+      if (s.step_type === 'condition' && s.branches) {
+        juntarCampos(s.branches.yes)
+        juntarCampos(s.branches.no)
+      }
+    }
+  }
+  if (etapasComMotivo) juntarCampos(steps)
   // O mesmo percurso e os mesmos endereços de `validate.ts`: só desce pelos
   // ramos de uma condição.
   const visitar = (lista: readonly T[], prefixo: string) => {
@@ -458,6 +487,18 @@ export function avisosDaAutomacao<T extends NoComConfig<T>>(
             'a pessoa marcada não é membro ativo da conta: o passo grava a anotação, falha e os seguintes não rodam',
           codigo: 'anotacao_marcado_fora_da_conta',
         })
+      }
+      if (s.step_type === 'move_deal_stage' && etapasComMotivo) {
+        const etapa = idDoAlvo(c.stage_id)
+        const campo = etapa ? etapasComMotivo.get(etapa) : undefined
+        if (campo && !motivoDoPasso(c) && !camposGravados.has(campo)) {
+          avisos.push({
+            path: `${path}.motivo`,
+            message:
+              'a etapa de destino pede motivo e a automação não grava nenhum: o card chega lá sem motivo',
+            codigo: 'mover_card_sem_motivo',
+          })
+        }
       }
       if (s.step_type === 'condition' && s.branches) {
         visitar(s.branches.yes, `${path}.yes.`)

@@ -85,7 +85,9 @@ describe("Gerenciar funil", () => {
     // Semeado de outro lugar (a prop `pipeline`), ele seria o de antes do
     // último salvamento; e o formulário só existe com a leitura pronta —
     // antes dela o rascunho é o padrão, e salvar o gravaria por cima.
-    expect(settings).toContain(`.select("name, painel")`);
+    // (1112: a mesma leitura traz a conta do funil, que recorta o catálogo
+    // do seletor de motivo.)
+    expect(settings).toContain(`.select("name, painel, account_id")`);
     expect(settings).toContain("setPainel(lerPainel(lido.painel));");
     expect(settings).toContain(".update({ name: name.trim(), painel: escreverPainel(painel) })");
     expect(settings).toMatch(/\{situacao === "pronto" && \(\s*<details/);

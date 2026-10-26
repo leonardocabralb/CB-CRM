@@ -38,6 +38,8 @@ import { useMovimentoDeEtapa } from '@/hooks/use-movimento-de-etapa';
 import { useMovimentosDoFunil } from '@/hooks/use-movimentos-do-funil';
 import { useMudancaNoNegocio } from '@/hooks/use-mudanca-no-negocio';
 import { aoConcluirMovimento, concluirAgora } from '@/lib/pipelines/mover-com-desfazer';
+import { etapasDePerda } from '@/lib/pipelines/motivo-da-etapa';
+import { useJanelaDoMotivo } from '@/components/pipelines/janela-do-motivo';
 import { criarReguaDasLeituras } from '@/lib/pipelines/regua-das-leituras';
 import { AbaAutomacoes } from '@/components/inbox/painel/aba-automacoes';
 import { AbaArquivos } from '@/components/inbox/painel/aba-arquivos';
@@ -965,16 +967,62 @@ export function PainelDoContato({
    * estado intermediário. E o lead chega na etapa ESCOLHIDA — não mais na
    * primeira do funil novo.
    */
+  // 1112 (Fase 2 dos motivos): UMA janela por painel, também para o botão
+  // "avançar". Etapa que pede motivo abre a janela antes de mover; o motivo
+  // gravado aparece na ficha na hora (`espelharMotivo`), com a mesma cerca
+  // de contato de `gravarCampo`.
+  // ⚠️ Espelhar no estado NÃO basta: o campo que salva sozinho guarda o
+  // rascunho da montagem e não persegue `valorSalvo` (campos-e-nome.md) —
+  // medido no e2e de 26/10/2026, a ficha seguia mostrando "—". A versão do
+  // campo entra na `key` e o remonta com o valor novo. Sem risco de o
+  // desmonte regravar por cima: o motivo é Lista, que grava na ESCOLHA e não
+  // tem rascunho pendente.
+  const { pedirMotivo, janela: janelaDoMotivo } = useJanelaDoMotivo();
+  const [versaoDoCampo, setVersaoDoCampo] = useState<Record<string, number>>({});
+  const espelharMotivo = useCallback(
+    (campoId: string, valor: string, contatoId: string) => {
+      setCustomValues((prev) =>
+        prev.de === contatoId
+          ? { de: prev.de, mapa: { ...prev.mapa, [campoId]: valor.trim() } }
+          : prev
+      );
+      setVersaoDoCampo((prev) => ({ ...prev, [campoId]: (prev[campoId] ?? 0) + 1 }));
+    },
+    []
+  );
+  const contatoDoMotivo = useCallback(
+    (deal: Pick<Deal, 'contact_id'>) =>
+      deal.contact_id && contact && deal.contact_id === contact.id
+        ? { id: contact.id, nome: nomeDoContato(contact, '') }
+        : null,
+    [contact]
+  );
+
   const moverPara = useCallback(
     (deal: Deal, pipelineId: string, stageId: string) => {
       if (stageId === deal.stage_id) return;
-      const patch =
-        pipelineId === deal.pipeline_id
-          ? { stage_id: stageId }
-          : { pipeline_id: pipelineId, stage_id: stageId };
-      void atualizarNegocio(deal, patch, true);
+      const destino = allStages.find((st) => st.id === stageId);
+      const mover = (etapaId: string) =>
+        atualizarNegocio(
+          deal,
+          pipelineId === deal.pipeline_id
+            ? { stage_id: etapaId }
+            : { pipeline_id: pipelineId, stage_id: etapaId },
+          true
+        );
+      if (!destino) {
+        void mover(stageId);
+        return;
+      }
+      const contato = contatoDoMotivo(deal);
+      pedirMotivo({
+        etapas: [destino],
+        contato,
+        mover,
+        aoGravarMotivo: (campoId, valor) => contato && espelharMotivo(campoId, valor, contato.id),
+      });
     },
-    [atualizarNegocio]
+    [allStages, atualizarNegocio, contatoDoMotivo, pedirMotivo, espelharMotivo]
   );
 
   /**
@@ -1030,11 +1078,41 @@ export function PainelDoContato({
         lost: tForm('toastMarkedLost'),
         open: tForm('toastReopened'),
       };
+      // 1112: "Perdido" escolhe a ETAPA de perda e o motivo, e move
+      // (decisão do operador, 26/10/2026). O status vai junto: a etapa igual
+      // não passa pelo gatilho da 950, e o card reaberto parado na própria
+      // etapa de perda ficaria aberto. Funil sem etapa de perda: como antes.
+      // ⚠️ Etapas do funil que não chegaram (a leitura falhou) são "não sei",
+      // nunca "funil sem etapa de perda": marcaria perdido sem mover e sem
+      // perguntar o motivo. Todo funil com card tem ao menos a etapa dele.
+      if (
+        status === 'lost' &&
+        deal.pipeline_id &&
+        !allStages.some((st) => st.pipeline_id === deal.pipeline_id)
+      ) {
+        toast.error(tSidebar('loadError'));
+        return;
+      }
+      const perdas =
+        status === 'lost' && deal.pipeline_id ? etapasDePerda(allStages, deal.pipeline_id) : [];
+      if (perdas.length > 0) {
+        const contato = contatoDoMotivo(deal);
+        pedirMotivo({
+          etapas: perdas,
+          contato,
+          mover: (etapaId) =>
+            atualizarNegocio(deal, { stage_id: etapaId, status: 'lost' }, true).then((ok) => {
+              if (ok) toast.success(toasts.lost);
+            }),
+          aoGravarMotivo: (campoId, valor) => contato && espelharMotivo(campoId, valor, contato.id),
+        });
+        return;
+      }
       void atualizarNegocio(deal, { status }, true).then((ok) => {
         if (ok) toast.success(toasts[status]);
       });
     },
-    [atualizarNegocio, tForm]
+    [allStages, atualizarNegocio, contatoDoMotivo, espelharMotivo, pedirMotivo, tForm, tSidebar]
   );
 
   /**
@@ -1143,6 +1221,8 @@ export function PainelDoContato({
 
   return (
     <div className="border-border bg-card flex h-full w-full flex-col border-l">
+      {/* 1112: a janela do motivo (seletor de etapa, "avançar", "Perdido"). */}
+      {janelaDoMotivo}
       {/* Cabeçalho compacto: fechar + avatar 40px + nome/telefone em linha.
           A identidade ocupava ~150px em três blocos centralizados; agora são
           ~60px, e o que sobrou de altura vai para o conteúdo das abas. */}
@@ -1414,6 +1494,9 @@ export function PainelDoContato({
                     contato={displayName}
                     userId={user.id}
                     disabled={negocioOcupado}
+                    pedirMotivo={pedirMotivo}
+                    contatoDoMotivo={contatoDoMotivo(dealAtivo)}
+                    aoGravarMotivo={(campoId, valor) => espelharMotivo(campoId, valor, contact.id)}
                   />
                 )}
 
@@ -1729,7 +1812,7 @@ export function PainelDoContato({
                   {blocoVisivel.campos.map((field) =>
                     valoresDesteContato ? (
                       <CampoComSalvamento
-                        key={`${contact.id}:${field.id}`}
+                        key={`${contact.id}:${field.id}:${versaoDoCampo[field.id] ?? 0}`}
                         field={field}
                         rotulo={field.field_name}
                         valorSalvo={valoresDesteContato[field.id] ?? ''}
@@ -2058,6 +2141,10 @@ export function PainelDoContato({
             setDealFormAberto(null);
             void fetchContactData();
           }}
+          // O motivo que a janela do formulário gravou aparece na ficha na
+          // hora: o refetch do `onSaved` troca o valor, mas o campo que salva
+          // sozinho só o mostra remontado (a cerca é a do contato da ficha).
+          aoGravarMotivo={(contatoId, campoId, valor) => espelharMotivo(campoId, valor, contatoId)}
         />
       )}
     </div>

@@ -1012,6 +1012,8 @@
         "nomeRecusado": "the value doesn't look like a name: the name was not changed",
         "cardJaExistia": "the contact already had a card: no new one was created",
         "cardMovido": "card moved to {etapa}",
+        "cardMovidoComMotivo": "card moved to {etapa}, with the reason \"{motivo}\"",
+        "cardMovidoSemMotivo": "card moved to {etapa}; the reason was not saved ({causa})",
         "ramoSim": "went through Yes",
         "ramoNao": "went through No",
         "webhookOk": "the destination answered {status}",
@@ -1837,7 +1839,41 @@
         "tornarPrincipal": "Make main",
         "voltarAoAutomatico": "Back to automatic",
         "nenhumaBotao": "None"
+      },
+      "motivo": {
+        "titulo": "Reason when entering the stage",
+        "resumo": "{quantas, plural, one {# stage asks} other {# stages ask}}",
+        "resumoNenhuma": "no stage asks",
+        "dica": "Whoever moves the card to the stage picks the reason, saved in a List field of the client record, and an automation that moves the card there saves the reason chosen in its \"Move deal to stage\" step. Only List fields with options appear; create them in Settings → Fields & tags.",
+        "falhou": "Could not load the fields. What is already chosen stays saved.",
+        "semCampos": "This account has no List field with options yet.",
+        "carregando": "Loading…",
+        "naoPergunta": "Does not ask",
+        "campoDesconhecido": "Field no longer in the account",
+        "seletor": "Reason field for stage {etapa}",
+        "naoServe": "The field \"{campo}\" is no longer a List with options: the stage will not ask until it becomes a List again or another field is chosen.",
+        "sumiu": "The chosen field is no longer in the account catalog: pick another one or \"Does not ask\".",
+        "perdaSemMotivo": "Lost stage without a reason."
       }
+    },
+    "janelaDoMotivo": {
+      "titulo": "Why is the card going to {etapa}?",
+      "tituloPerdido": "Mark as lost",
+      "descricao": "The reason is saved on the record of {cliente}.",
+      "qualEtapa": "Which stage?",
+      "carregando": "Loading the reasons…",
+      "falhou": "Could not load the reasons.",
+      "tentarDeNovo": "Try again",
+      "campoIndisponivel": "The reason field of this stage is not available (tell an admin). The card moves without a reason.",
+      "etapaSemMotivo": "This stage does not ask for a reason.",
+      "semContatoNaJanela": "Card without a contact: the reason is not recorded.",
+      "semContato": "Card without a contact: the reason was not recorded.",
+      "outroPlaceholder": "Write the reason",
+      "cancelar": "Cancel",
+      "gravando": "Saving…",
+      "mover": "Move to {etapa}",
+      "escolhaAEtapa": "Pick the stage",
+      "erroAoGravar": "Could not save the \"{campo}\" field of {cliente}. The card was not moved."
     },
     "automacoes": {
       "abaLeads": "Board",
@@ -1884,6 +1920,7 @@
         "update_contact_field_company": "Update the contact's company",
         "create_deal": "Create deal: {alvo}",
         "move_deal_stage": "Move to stage: {alvo}",
+        "move_deal_stage_com_motivo": "Move to stage: {alvo} (reason: {motivo})",
         "set_deal_status_won": "Mark deal as won",
         "set_deal_status_lost": "Mark deal as lost",
         "set_deal_status_open": "Reopen the deal",
@@ -2060,6 +2097,21 @@
           "taxa": "No-show rate",
           "taxaDesc": "no-shows ÷ bookings",
           "noAnterior": "{valor} in the previous period"
+        },
+        "motivos": {
+          "titulo": "Reasons",
+          "nota": "Each card that entered a stage that asks for a reason during the period (whenever it came in), by the reason on the contact today — in both modes, the count is by period. Values outside the list are “Other”, with the texts. “No reason” shows who moved the card to the stage, and includes entries from before the stage asked for a reason.",
+          "carregando": "Loading the reasons…",
+          "falhou": "Could not load the reasons for this pipeline.",
+          "tentarDeNovo": "Try again",
+          "cards": "{n, plural, one {# card} other {# cards}}",
+          "campo": "Field: {nome}",
+          "nenhum": "No card entered this stage during the period.",
+          "outro": "Other",
+          "semMotivo": "No reason",
+          "semPessoa": "Automation, bot, AI or API",
+          "historico": "Imported history",
+          "pessoaSemNome": "Unnamed person"
         }
       },
       "cartoesDeCusto": {
@@ -2809,7 +2861,12 @@
         "status_open": "Reopened",
         "moveToLabel": "Move to stage",
         "pickStage": "Pick a stage",
-        "moveHelp": "Moves the trigger's deal. With no deal on the trigger, it moves the contact's most recent open deal — or, when none is open, the most recent lost deal, which is reopened (except for contacts who already have a won deal: a client is never pulled back). If the deal's status changes while the automation runs, the step stops instead of touching it."
+        "moveHelp": "Moves the trigger's deal. With no deal on the trigger, it moves the contact's most recent open deal — or, when none is open, the most recent lost deal, which is reopened (except for contacts who already have a won deal: a client is never pulled back). If the deal's status changes while the automation runs, the step stops instead of touching it.",
+        "motivoLabel": "Reason saved on the record",
+        "motivoNenhum": "No reason",
+        "motivoHelp": "This stage asks for a reason: the step saves the chosen one in the \"{campo}\" field of the record, after moving the card.",
+        "motivoIgnorado": "The reason \"{motivo}\" of this step will not be saved: the destination stage does not ask for a reason.",
+        "motivoCampoSumiu": "The reason field of this stage is no longer in the account"
       },
       "lembrete": {
         "campoLabel": "Date field",
@@ -3173,7 +3230,8 @@
           "atlas_onboarding_item_com_variavel": "The checklist item does not accept inserted fields: write the item text.",
           "atlas_onboarding_situacao_invalida": "Choose the item status again (or “— don’t change —”).",
           "atlas_onboarding_sem_mudanca": "Choose the item status or write a note.",
-          "atlas_gatilho_com_atualizar_cliente": "An automation triggered by an Atlas Gestor status change cannot have “Update client in Atlas Gestor”: Atlas Gestor owns the status, and updating by reflex can loop."
+          "atlas_gatilho_com_atualizar_cliente": "An automation triggered by an Atlas Gestor status change cannot have “Update client in Atlas Gestor”: Atlas Gestor owns the status, and updating by reflex can loop.",
+          "mover_card_sem_motivo": "The destination stage asks for a reason and this automation does not save one: the card arrives without a reason. Pick the reason in the step."
         }
       },
       "previa": {

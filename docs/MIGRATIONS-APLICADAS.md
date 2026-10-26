@@ -1628,6 +1628,36 @@ nome da época em que foram aplicadas.
   26/10/2026 (histórico `20261026152759`, depois da 1110). Conferida: a
   coluna em `jsonb`; a publicação de tempo real de `messages` sem lista de
   colunas (a coluna viaja).
+- **1112_cb_campo_do_motivo_da_etapa** — `pipeline_stages.campo_do_motivo_id`
+  (FK para `custom_fields` `ON DELETE SET NULL`) e o gatilho
+  `cb_campo_do_motivo_da_mesma_conta_trg` (BEFORE INSERT OR UPDATE OF a
+  coluna; confere só a CONTA do campo contra a do funil). Fase 1 do
+  `docs/PLANO-motivos-de-perda.md`.
+
+  ADITIVA, ANTES do deploy. Autorização do operador em 26/10/2026 ("aplique
+  a migration 1112 em produção"), aplicada em 26/10/2026 (histórico
+  `20261026161549`) ANTES do PR e do replay do CI, para o e2e da Fase 2 no
+  preview: provada num replay local limpo das 235 migrations até ela
+  (verify-schema OK) e em 7 cenários (`campo-do-motivo-1112.test.ts` fixa
+  as decisões). Conferida:
+  - a coluna uuid anulável e a FK SET NULL;
+  - o gatilho ligado e o EXECUTE da função fechado para authenticated;
+  - 0 etapas com motivo: a conferência, desfeita por `P1112`, não deixou
+    rastro.
+- **1113_cb_motivos_do_funil** — a RPC `cb_motivos_do_funil(funil, desde,
+  ate)` (SQL, STABLE, SECURITY INVOKER): por etapa com campo de motivo, os
+  cards que entraram nela no período, pelo motivo atual da ficha, e os sem
+  motivo por quem levou. Fase 4 do `docs/PLANO-motivos-de-perda.md`.
+
+  ADITIVA (função nova), ANTES do deploy. Autorização do operador em
+  26/10/2026 ("aplique a migration 1113 em produção"), aplicada em
+  26/10/2026 (histórico `20261026182933`) ANTES do PR e do replay do CI,
+  para conferir a seção no preview: provada num replay local limpo até ela,
+  em 5 cenários e pelo caminho do PostgREST. Conferida:
+  - SECURITY INVOKER; EXECUTE fechado para anon, aberto para authenticated
+    e service_role;
+  - a seção "Motivos" do Desempenho do Bancário - Comercial carregou com a
+    sessão do operador (resposta 200), e a soma bateu com a trilha.
 
 ## Notas do histórico
 
