@@ -39,7 +39,8 @@ vi.mock('@/lib/ai/admin-client', () => ({
 }))
 
 import { conferirFerramentas } from './ferramentas'
-import { atualizarAgente, criarAgente } from './repo'
+import { lerLinhaDoAgente, type FerramentasDoAgente } from './agente'
+import { atualizarAgente, conferirRascunho, criarAgente } from './repo'
 
 const ETAPA = '44444444-4444-4444-8444-444444444444'
 
@@ -105,5 +106,48 @@ describe('as ferramentas são conferidas antes de gravar', () => {
     await expect(atualizarAgente('conta-1', 'user-1', 'ag-1', { nome: 'Y' })).rejects.toMatchObject({ codigo: 'banco' })
     expect(conferirFerramentas).not.toHaveBeenCalled()
     expect(updates).toHaveLength(1)
+  })
+})
+
+describe('conferirRascunho — as ferramentas do rascunho do Playground (DC4, 26/10/2026)', () => {
+  const TIPO = 'https://api.calendly.com/event_types/T1'
+  const salvo = () => {
+    const a = lerLinhaDoAgente({
+      id: 'ag-1',
+      account_id: 'conta-1',
+      provedor: 'anthropic',
+      ferramentas: { marcar_reuniao: { tipos_de_evento: [TIPO] } },
+    })
+    if (!a) throw new Error('fixture')
+    return a
+  }
+
+  it.each<['item_de_outra_conta' | 'campo_vigiado' | 'automacao_fora_da_d5', FerramentasDoAgente]>([
+    ['item_de_outra_conta', { etiquetar: { etiquetas: [ETAPA] } }],
+    ['campo_vigiado', { preencher_campo: { campos: [ETAPA] } }],
+    ['automacao_fora_da_d5', { executar_automacao: { automacoes: [ETAPA] } }],
+  ])('%s: o MESMO código e os ids do salvar, nada gravado', async (codigo, ferramentas) => {
+    vi.mocked(conferirFerramentas).mockResolvedValue({ ok: false, codigo, itens: [ETAPA] })
+    const doSalvar = await atualizarAgente('conta-1', 'user-1', 'ag-1', { ferramentas }).catch((e: unknown) => e)
+    const doRascunho = await conferirRascunho('conta-1', salvo(), { ferramentas }).catch((e: unknown) => e)
+    expect(doRascunho).toMatchObject({ codigo, itens: [ETAPA] })
+    expect(doRascunho).toMatchObject({
+      codigo: (doSalvar as { codigo: string }).codigo,
+      itens: (doSalvar as { itens: string[] }).itens,
+    })
+    expect(updates).toHaveLength(0)
+    expect(inserts).toHaveLength(0)
+  })
+
+  it('a conferência recebe as ferramentas SALVAS (o tipo de evento que não mudou não vai ao Calendly)', async () => {
+    vi.mocked(conferirFerramentas).mockResolvedValue({ ok: true })
+    const ferramentas = { marcar_reuniao: { tipos_de_evento: [TIPO] } }
+    await conferirRascunho('conta-1', salvo(), { ferramentas })
+    expect(vi.mocked(conferirFerramentas).mock.calls[0].slice(1)).toEqual(['conta-1', ferramentas, ferramentas])
+  })
+
+  it('sem `ferramentas` no rascunho, não confere nada', async () => {
+    await conferirRascunho('conta-1', salvo(), { instrucoes: 'Nova.' })
+    expect(conferirFerramentas).not.toHaveBeenCalled()
   })
 })

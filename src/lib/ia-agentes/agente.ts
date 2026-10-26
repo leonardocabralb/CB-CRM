@@ -478,6 +478,34 @@ export function lerAlteracao(corpo: unknown, criacao: boolean): LeituraDaAlterac
   return { ok: true, valor: v }
 }
 
+/**
+ * O agente com o RASCUNHO da tela por cima (o Playground; DC4 da central dos
+ * agentes, 26/10/2026): o que a alteração traz vale, o que ela não traz fica
+ * como está salvo. PURA — não muda o agente recebido.
+ *
+ * ⚠️ `ativo` e as conexões ficam os SALVOS, e as etapas não são do agente
+ * (outra tabela): no Playground nenhum dos três decide a resposta — quem diz
+ * se o agente atenderia um contato é o diagnóstico, não a geração.
+ */
+export function aplicarAlteracao<A extends IaAgente>(agente: A, a: AlteracaoDoAgente): A {
+  return {
+    ...agente,
+    ...(a.nome !== undefined ? { nome: a.nome } : {}),
+    ...(a.descricao !== undefined ? { descricao: a.descricao } : {}),
+    ...(a.instrucoes !== undefined ? { instrucoes: a.instrucoes } : {}),
+    ...(a.regras !== undefined ? { regras: a.regras } : {}),
+    ...(a.provedor !== undefined ? { provedor: a.provedor } : {}),
+    ...(a.modelo !== undefined ? { modelo: a.modelo } : {}),
+    ...(a.horario !== undefined ? { horario: a.horario } : {}),
+    ...(a.tetoRespostas !== undefined ? { tetoRespostas: a.tetoRespostas } : {}),
+    ...(a.podePassarPara !== undefined ? { podePassarPara: a.podePassarPara } : {}),
+    ...(a.transferirPara !== undefined ? { transferirPara: a.transferirPara } : {}),
+    ...(a.acesso !== undefined ? { acesso: a.acesso } : {}),
+    ...(a.ferramentas !== undefined ? { ferramentas: a.ferramentas } : {}),
+    ...(a.retomada !== undefined ? { retomada: a.retomada } : {}),
+  }
+}
+
 /** Alteração → colunas do banco (só as presentes). As etapas NÃO: são outra tabela. */
 export function colunasDaAlteracao(a: AlteracaoDoAgente): Record<string, unknown> {
   const c: Record<string, unknown> = {}
