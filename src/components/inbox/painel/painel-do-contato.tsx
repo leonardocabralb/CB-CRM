@@ -1082,6 +1082,17 @@ export function PainelDoContato({
       // (decisão do operador, 26/10/2026). O status vai junto: a etapa igual
       // não passa pelo gatilho da 950, e o card reaberto parado na própria
       // etapa de perda ficaria aberto. Funil sem etapa de perda: como antes.
+      // ⚠️ Etapas do funil que não chegaram (a leitura falhou) são "não sei",
+      // nunca "funil sem etapa de perda": marcaria perdido sem mover e sem
+      // perguntar o motivo. Todo funil com card tem ao menos a etapa dele.
+      if (
+        status === 'lost' &&
+        deal.pipeline_id &&
+        !allStages.some((st) => st.pipeline_id === deal.pipeline_id)
+      ) {
+        toast.error(tSidebar('loadError'));
+        return;
+      }
       const perdas =
         status === 'lost' && deal.pipeline_id ? etapasDePerda(allStages, deal.pipeline_id) : [];
       if (perdas.length > 0) {
@@ -1101,7 +1112,7 @@ export function PainelDoContato({
         if (ok) toast.success(toasts[status]);
       });
     },
-    [allStages, atualizarNegocio, contatoDoMotivo, espelharMotivo, pedirMotivo, tForm]
+    [allStages, atualizarNegocio, contatoDoMotivo, espelharMotivo, pedirMotivo, tForm, tSidebar]
   );
 
   /**
@@ -2130,6 +2141,10 @@ export function PainelDoContato({
             setDealFormAberto(null);
             void fetchContactData();
           }}
+          // O motivo que a janela do formulário gravou aparece na ficha na
+          // hora: o refetch do `onSaved` troca o valor, mas o campo que salva
+          // sozinho só o mostra remontado (a cerca é a do contato da ficha).
+          aoGravarMotivo={(contatoId, campoId, valor) => espelharMotivo(campoId, valor, contatoId)}
         />
       )}
     </div>

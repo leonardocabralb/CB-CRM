@@ -179,7 +179,14 @@ sub-árvore `Pipelines.janelaDoMotivo` nos dois dicionários e o pino
   com aviso (configuração quebrada não trava o trabalho); leitura que falhou
   trava com "Tentar de novo".
 - **Limite aceito**: no "avançar", desfazer o movimento não apaga o motivo
-  já gravado.
+  já gravado. O mesmo quando o movimento falha DEPOIS da janela ("já tinha
+  mudado", `salvar()` do formulário que falha, update com 0 linhas): a ficha
+  fica com o motivo (revisão do PR, 26/10/2026).
+- **Revisão do PR (26/10/2026), corrigidos**: no quadro, o card movido pela
+  janela não era marcado como recém-solto e sumia atrás do "carregar mais"
+  das colunas de perda; o formulário aberto pelo painel não espelhava o
+  motivo na ficha; o "Perdido" do painel com as etapas sem carregar marcava
+  perdido sem mover nem perguntar.
 - Medido: typecheck e lint limpos nos arquivos da frente; suíte inteira
   verde (794 arquivos, 12.462 testes). Dois pinos atualizados sem mudar o
   que protegem: `ao-voltar.test.ts` (o movimento do quadro virou

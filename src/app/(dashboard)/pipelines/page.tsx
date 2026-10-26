@@ -911,25 +911,30 @@ function PipelinesPageInner() {
   );
 
   // 1112 (Fase 2 dos motivos): etapa que pede motivo abre a janela ANTES de
-  // mover; o card espera nela na coluna de origem (`false` para o quadro) e
-  // só se move depois de o motivo estar gravado. Cancelar não mexe em nada.
+  // mover; o card espera nela na coluna de origem e só se move depois de o
+  // motivo estar gravado. Cancelar não mexe em nada. Todo movimento passa por
+  // `mover`, que avisa o quadro (`marcarSolto`) na hora em que acontece.
   const { pedirMotivo, janela: janelaDoMotivo } = useJanelaDoMotivo();
   const handleDealMoved = useCallback(
-    (dealId: string, newStageId: string): boolean => {
+    (dealId: string, newStageId: string, marcarSolto: () => void) => {
       const destino = stages.find((s) => s.id === newStageId);
       const deal = deals.find((d) => d.id === dealId);
+      const mover = (etapaId: string) => {
+        marcarSolto();
+        return persistirMovimento(dealId, etapaId);
+      };
       if (!destino?.campo_do_motivo_id || !deal) {
-        void persistirMovimento(dealId, newStageId);
-        return true;
+        void mover(newStageId);
+        return;
       }
-      return !pedirMotivo({
+      pedirMotivo({
         etapas: [destino],
         // O título do card é o nome da pessoa (1007). Só card COM conteúdo é
         // arrastável (o quadro não registra `useDraggable` no que carrega),
         // e é ele que traz o contato.
         contato:
           temConteudo(deal) && deal.contact_id ? { id: deal.contact_id, nome: deal.title } : null,
-        mover: (etapaId) => persistirMovimento(dealId, etapaId),
+        mover,
       });
     },
     [stages, deals, pedirMotivo, persistirMovimento],

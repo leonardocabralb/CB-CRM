@@ -33,10 +33,20 @@ describe('janela do motivo: quem move o card pergunta antes', () => {
     expect(ler(arquivo)).toMatch(/pedirMotivo\(\{/);
   });
 
-  it('o quadro deixa o card na coluna enquanto a janela espera', () => {
+  it('o quadro marca o card como recém-solto quando ele REALMENTE se move — também depois da janela', () => {
+    // As etapas que pedem motivo são as de perda, as colunas mais cheias: sem
+    // a marca depois da janela, o card de meses atrás sumia atrás do
+    // "carregar mais" (revisão do PR, 26/10/2026). Cancelada, nada se marca.
     expect(ler('src/components/pipelines/pipeline-board.tsx')).toMatch(
-      /if \(onDealMoved\(dealId, targetStageId\) === false\) return;\s*setRecemSolto\(dealId\);/,
+      /onDealMoved\(dealId, targetStageId, \(\) => setRecemSolto\(dealId\)\);/,
     );
+    const pagina = ler('src/app/(dashboard)/pipelines/page.tsx');
+    expect(pagina).toMatch(
+      /const mover = \(etapaId: string\) => \{\s*marcarSolto\(\);\s*return persistirMovimento\(dealId, etapaId\);\s*\};/,
+    );
+    // Os dois caminhos passam por `mover`: o direto e o da janela.
+    expect(pagina).toMatch(/void mover\(newStageId\);/);
+    expect(pagina).toMatch(/pedirMotivo\(\{[\s\S]{0,400}?\bmover,\s*\}\);/);
   });
 
   it('o botão "Perdido" (painel e formulário) escolhe a etapa de perda e manda o status junto', () => {

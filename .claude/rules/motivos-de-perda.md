@@ -75,9 +75,20 @@ Pino `janela-do-motivo.chamadores.test.ts` com a lista dos caminhos de gente.
   escrito: a pauta de reuniões (só etapas de reunião) e os caminhos que não
   são de gente.
 - ⚠️ **O motivo é gravado ANTES de mover, e o card só sai da coluna depois
-  da confirmação**: no quadro, `handleDealMoved` devolve `false` e o quadro
-  não marca o card como recém-solto; na lista, o seletor é controlado pela
-  etapa gravada; cancelar não grava nada. Falha ao gravar o campo NÃO move.
+  da confirmação**: na lista, o seletor é controlado pela etapa gravada;
+  cancelar não grava nada. Falha ao gravar o campo NÃO move.
+- ⚠️⚠️ **No quadro, o card movido pela janela também é marcado como
+  recém-solto** (`onDealMoved(…, marcarSolto)`, chamado pelo `mover` da
+  página na hora em que o card se move): as etapas que pedem motivo são as de
+  perda, as colunas mais cheias, e sem a marca o card de meses atrás sumia
+  atrás do "carregar mais" (`cardsDaColuna`). Cancelada, nada se marca.
+- **Limite aceito: motivo gravado e card não movido** quando o movimento
+  falha DEPOIS da janela ("avançar" que volta "já tinha mudado", `salvar()`
+  do formulário que falha, update com 0 linhas). A ficha fica com o motivo e
+  a próxima janela abre com ele marcado.
+- ⚠️ **"Perdido" no painel com as etapas do funil desconhecidas** (a
+  leitura falhou) avisa e não faz nada: "não sei" nunca vira "funil sem
+  etapa de perda", que marcaria perdido sem mover e sem perguntar.
 - **No "avançar", o "Desfazer" vem depois da janela**: desfazer o movimento
   não apaga o motivo já gravado na ficha (limite aceito).
 - ⚠️ **"Perdido" (painel e formulário) escolhe a etapa de perda
@@ -94,7 +105,8 @@ Pino `janela-do-motivo.chamadores.test.ts` com a lista dos caminhos de gente.
   A janela abre marcada com o que a ficha já tem (`escolhaInicial`).
 - **O painel espelha o motivo na ficha** (`espelharMotivo`, cerca do
   contato), com UMA janela por painel — o "avançar" recebe `pedirMotivo`
-  por prop. ⚠️ Espelhar no estado NÃO basta: o campo que salva sozinho não
+  por prop, e o formulário do negócio aberto pelo painel avisa por
+  `aoGravarMotivo` (com o contato do formulário, que pode ter sido trocado). ⚠️ Espelhar no estado NÃO basta: o campo que salva sozinho não
   persegue `valorSalvo` (`campos-e-nome.md`) e seguia mostrando "—" (e2e de
   26/10). A versão do campo (`versaoDoCampo`) entra na `key` e o remonta.
 - **Botões de opção pelo `RadioGroup` do projeto**, nunca `<input
@@ -124,9 +136,10 @@ construtor, o aviso `mover_card_sem_motivo` (`pendencias.ts`).
 - **O aviso não barra a ativação** e conta como motivo um "Atualizar campo"
   no MESMO campo, em qualquer ramo — o jeito das automações de lembrete do
   Previdenciário. Etapas não carregadas: nada se afirma.
-- Fora, por escrito: o nó "Mover card" do ROBÔ (`flows/mover-card.ts`) e o
-  `set_deal_status` (marca perdido sem mudar a etapa) não gravam motivo; o
-  agente de IA é a Fase 5.
+- Fora, por escrito: o nó "Mover card" do ROBÔ (`flows/mover-card.ts`), o
+  `set_deal_status` (marca perdido sem mudar a etapa) e o `create_deal` que
+  cria o card direto numa etapa que pede motivo não gravam motivo nem
+  recebem o aviso; o agente de IA é a Fase 5.
 
 ### O relatório no Desempenho (Fase 4, 1113)
 

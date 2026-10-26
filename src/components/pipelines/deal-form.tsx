@@ -71,6 +71,12 @@ interface DealFormProps {
    */
   origemFunil?: boolean;
   aoIrParaConversa?: () => void;
+  /**
+   * O motivo que a janela gravou (1112), para a tela que mostra a ficha
+   * espelhar — o painel do inbox. Leva o contato: o do formulário pode ter
+   * sido trocado.
+   */
+  aoGravarMotivo?: (contatoId: string, campoId: string, valor: string) => void;
 }
 
 export function DealForm({
@@ -84,6 +90,7 @@ export function DealForm({
   onSaved,
   origemFunil,
   aoIrParaConversa,
+  aoGravarMotivo,
 }: DealFormProps) {
   const t = useTranslations("Pipelines.form");
   const supabase = createClient();
@@ -264,6 +271,7 @@ export function DealForm({
         // O título do card é o nome da pessoa (1007).
         contato: { id: contactId, nome: title.trim() },
         mover: () => salvar(),
+        aoGravarMotivo: (campoId, valor) => aoGravarMotivo?.(contactId, campoId, valor),
       });
       return;
     }
@@ -369,10 +377,12 @@ export function DealForm({
     const perdas =
       status === "lost" && origem.pipeline_id ? etapasDePerda(etapasConhecidas, origem.pipeline_id) : [];
     if (perdas.length > 0) {
+      const contatoId = deal.contact_id;
       pedirMotivo({
         etapas: perdas,
-        contato: deal.contact_id ? { id: deal.contact_id, nome: deal.title } : null,
+        contato: contatoId ? { id: contatoId, nome: deal.title } : null,
         mover: (etapaId) => marcarStatus(status, etapaId),
+        aoGravarMotivo: (campoId, valor) => contatoId && aoGravarMotivo?.(contatoId, campoId, valor),
       });
       return;
     }
