@@ -1,25 +1,30 @@
 // ============================================================
 // O que o ciclo das agendadas (`/api/cb/scheduled/cron`, laço de 15 min)
 // faz DEPOIS da resposta, em `after()`: as tarefas recorrentes (1074), o
-// vencimento da Lixeira de contatos e a drenagem da fila de arquivos a apagar
-// (1097) — nesta ordem, sob UM prazo comum.
+// vencimento da Lixeira de contatos (1097), a poda do conteúdo dos turnos dos
+// agentes de IA (1110) e a drenagem da fila de arquivos a apagar (1097) —
+// nesta ordem, sob UM prazo comum.
 //
 // ⚠️ Por que nesta rota, e não numa nova: rota nova no agendador só roda
 // depois de mudar o `command` do `docker-stack.yml` E de um `docker stack
 // deploy` manual na VPS (`.claude/rules/deploy.md`). Tirar esta chamada da
-// rota (ou a rota do laço) para as três coisas, sem erro nenhum — pinos
+// rota (ou a rota do laço) para as quatro coisas, sem erro nenhum — pinos
 // `tarefas-recorrentes-1074.test.ts` e `manutencao-do-ciclo.test.ts`.
 //
 // ⚠️ A ORDEM: o vencimento põe arquivos na fila, e a drenagem do MESMO ciclo
-// já os leva. As tarefas vêm primeiro porque são o que alguém vê hoje.
+// já os leva. As tarefas vêm primeiro porque são o que alguém vê hoje. A
+// poda vem DEPOIS do vencimento (a ficha excluída de vez limpa os turnos dela
+// como `exclusao`; a poda leva o resto como `prazo`) e antes da drenagem, que
+// é quem pode gastar o prazo inteiro.
 //
-// ⚠️ Cada passo é ISOLADO: os três já nunca lançam, e mesmo assim cada um
+// ⚠️ Cada passo é ISOLADO: os quatro já nunca lançam, e mesmo assim cada um
 // roda dentro do próprio try — a falha (ou um defeito futuro que lance) de um
 // não impede o seguinte.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { podarConteudoDosTurnos } from '@/lib/ia-agentes/conteudo-dos-turnos';
 import {
   drenarArquivosAApagar,
   vencerLixeira,
@@ -39,7 +44,7 @@ import { gerarTarefasRecorrentes } from '@/lib/tasks/gerar-recorrentes';
  */
 export const PRAZO_DA_MANUTENCAO_MS = 5 * 60_000;
 
-/** Um passo que lançou (não devia: os três engolem) não derruba os outros. */
+/** Um passo que lançou (não devia: os quatro engolem) não derruba os outros. */
 async function isolado(
   nome: string,
   passo: () => Promise<unknown>
@@ -62,6 +67,9 @@ export async function rodarManutencaoDoCiclo(
   const prazo = agora + PRAZO_DA_MANUTENCAO_MS;
   await isolado('tarefas recorrentes', () => gerarTarefasRecorrentes(admin));
   await isolado('vencimento da Lixeira', () => vencerLixeira(admin, prazo));
+  await isolado('conteúdo dos turnos da IA', () =>
+    podarConteudoDosTurnos(admin, prazo)
+  );
   await isolado('fila de arquivos a apagar', () =>
     drenarArquivosAApagar(admin, prazo)
   );

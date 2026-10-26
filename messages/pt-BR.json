@@ -1554,11 +1554,11 @@
       },
       "excluir": {
         "titulo": "Excluir de vez",
-        "texto": "{nome} sai da Lixeira de vez: a ficha, a conversa, as mensagens, as tarefas, as anotações e os arquivos dela. Não dá para restaurar depois.",
+        "texto": "{nome} sai da Lixeira de vez: a ficha, a conversa, as mensagens, as tarefas, as anotações e os arquivos dela. O registro dos agentes de IA desta ficha fica, sem o conteúdo (o texto do cliente). Não dá para restaurar depois.",
         "negociosFicam": "Os negócios que ficaram no funil continuam lá, sem contato.",
         "pedidoRotulo": "É pedido de exclusão do titular (LGPD)",
         "pedidoTexto": "Apaga também o que ficou fora da ficha: os dados desta pessoa nos eventos de webhook e do Calendly, o conteúdo das execuções de automação, as ligações e as mensagens retidas deste telefone, e o nome dela no histórico (o registro de que a ficha existiu fica, sem o nome).",
-        "ficamNoCrm": "Ficam no CRM, como dado do escritório (a confirmar com quem responde pela LGPD): os negócios, com o título; as cobranças e o cadastro do Asaas; os documentos do ZapSign; as reuniões e as transcrições; e as falas desta pessoa em grupos.",
+        "ficamNoCrm": "Ficam no CRM, como dado do escritório (a confirmar com quem responde pela LGPD): os negócios, com o título; as cobranças e o cadastro do Asaas; os documentos do ZapSign; as reuniões e as transcrições; o registro dos agentes de IA, sem o conteúdo (o que o agente fez, sem o texto do cliente); e as falas desta pessoa em grupos.",
         "foraDoAlcance": "Mesmo assim, ficam fora do alcance do CRM: as cópias de segurança (backups), a Evolution (as conexões por QR code) e o que terceiros já receberam (integrações, e-mails, planilhas).",
         "digite": "Para confirmar, digite {palavra}",
         "palavra": "EXCLUIR",
@@ -6395,7 +6395,16 @@
       },
       "retomada": "Retomada {k}/{n}",
       "prevista": "prevista para {quando}",
-      "esperaOHorario": "aguardando o horário do agente · abre {quando}"
+      "esperaOHorario": "aguardando o horário do agente · abre {quando}",
+      "semConversa": "Sem conversa (apagada ou na Lixeira)",
+      "conteudoRemovido": "Conteúdo removido em {quando} ({por, select, prazo {prazo de {dias} dias} exclusao {ficha excluída de vez} other {—}}): ficam o desfecho e as ações, sem o texto do cliente.",
+      "erroDoBanco": {
+        "conversaApagada": "a conversa foi apagada (ou a ficha foi para a Lixeira)",
+        "conversaEncerrada": "a conversa foi encerrada",
+        "conexaoApagada": "a conexão foi apagada",
+        "fichasUnidas": "as fichas foram unidas",
+        "clienteEscreveu": "o cliente escreveu antes da retomada"
+      }
     },
     "dia": {
       "0": "Dom",

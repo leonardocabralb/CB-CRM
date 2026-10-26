@@ -21,13 +21,16 @@ interface LinhaDoTurno {
   created_at: string
   terminado_em: string | null
   erro: string | null
-  conversation_id: string
+  /** Nula quando a conversa foi apagada ou a ficha está na Lixeira (1110: o turno fica). */
+  conversation_id: string | null
   contexto: unknown
   acoes: unknown
   tipo: string | null
   tentativa: number | null
   tentativas: number | null
   executar_apos: string | null
+  conteudo_removido_em: string | null
+  conteudo_removido_por: string | null
 }
 
 /**
@@ -48,6 +51,12 @@ interface LinhaDoTurno {
  * link inventado traz os links ("link inventado: https://…").
  * A RETOMADA (1056) vem com `retomada: { tentativa, de }` (nula no turno de
  * resposta) e `executarApos` — o vencimento da que ainda espera na fila.
+ * O turno SOBREVIVE à conversa (1110, DC1): `conversationId` e `contato` vêm
+ * nulos quando a conversa foi apagada ou a ficha está na Lixeira (restaurar
+ * religa). `conteudoRemovido: { em, por }` (`por` = 'prazo' | 'exclusao')
+ * quando o texto do cliente já saiu (a poda de 90 dias ou a ficha excluída de
+ * vez): `contexto` vem nulo e as ações sem o detalhe cru — a tela diz que o
+ * conteúdo foi removido, nunca mostra um retrato vazio.
  * `cb_ia_turnos` é fechada ao navegador — daí a rota, com o cliente de
  * serviço e a conta conferida (o agente e cada consulta).
  */
@@ -63,7 +72,9 @@ export async function GET(_request: Request, { params }: Contexto) {
     const db = supabaseAdmin()
     const { data, error } = await db
       .from('cb_ia_turnos')
-      .select('id, status, created_at, terminado_em, erro, conversation_id, contexto, acoes, tipo, tentativa, tentativas, executar_apos')
+      .select(
+        'id, status, created_at, terminado_em, erro, conversation_id, contexto, acoes, tipo, tentativa, tentativas, executar_apos, conteudo_removido_em, conteudo_removido_por',
+      )
       .eq('account_id', ctx.accountId)
       .eq('ia_agente_id', id)
       .order('created_at', { ascending: false })
@@ -77,7 +88,7 @@ export async function GET(_request: Request, { params }: Contexto) {
     // O contato de cada conversa. Falhar aqui não derruba a lista: a tela
     // mostra o turno sem o nome.
     const contatoDa = new Map<string, string>()
-    const conversas = [...new Set(turnos.map((t) => t.conversation_id))]
+    const conversas = [...new Set(turnos.map((t) => t.conversation_id).filter((c): c is string => c !== null))]
     if (conversas.length > 0) {
       const { data: linhas, error: erroDosContatos } = await db
         .from('conversations')
@@ -99,7 +110,7 @@ export async function GET(_request: Request, { params }: Contexto) {
         terminadoEm: t.terminado_em,
         erro: t.erro,
         conversationId: t.conversation_id,
-        contato: contatoDa.get(t.conversation_id) ?? null,
+        contato: t.conversation_id ? (contatoDa.get(t.conversation_id) ?? null) : null,
         contexto: lerRetrato(t.contexto),
         acoes: lerRegistrosDasAcoes(t.acoes),
         retomada:
@@ -107,6 +118,9 @@ export async function GET(_request: Request, { params }: Contexto) {
             ? { tentativa: t.tentativa, de: t.tentativas }
             : null,
         executarApos: t.executar_apos,
+        conteudoRemovido: t.conteudo_removido_em
+          ? { em: t.conteudo_removido_em, por: t.conteudo_removido_por }
+          : null,
       })),
     })
   } catch (err) {
