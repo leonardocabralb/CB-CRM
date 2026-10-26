@@ -28,9 +28,12 @@ Retenção"). Decisões do operador DC1–DC3 (26/10/2026). O motor do turno:
   `cb_ia_turno_sem_conteudo` no MESMO PR** — senão escapa do prazo e da
   exclusão, sem erro nenhum.
 - O `detalhe` que é CÓDIGO fica (`ja_estava`, `sem_marcador`,
-  `nome_sem_origem`, `automacao_fala`, a lista no SQL). Código novo gravado
-  pelo motor fora dela seria apagado como texto: o pino
-  `turnos-sobrevivem-1110.test.ts` lê o motor (default-deny).
+  `nome_sem_origem`, `automacao_fala`, a lista no SQL), e também o código
+  que acompanha um erro: o passo da D5 (`CODIGOS_DA_D5`) e o tipo do campo no
+  `valor_invalido` (`FormatoDoCampo`). Código novo gravado pelo motor fora
+  delas seria apagado como texto: o pino `turnos-sobrevivem-1110.test.ts` lê
+  o motor (default-deny, inclusive toda `falha(código, detalhe)` classificada
+  como código ou texto).
 - O `erro` é cortado no primeiro `:` (o antigo colava o texto retido depois).
   Limite até a C3 (que move o texto para `erro_detalhe`): o erro cru SEM `:`
   (a mensagem do provedor) fica.
