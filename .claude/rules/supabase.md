@@ -9,9 +9,8 @@ paths:
 # Supabase — regras
 
 Vale ao escrever migration, função, policy ou gatilho, e ANTES de qualquer
-escrita manual ou em lote no banco de PRODUÇÃO (SQL pelo conector MCP,
-Management API, script). O núcleo (nome, número, ordem de aplicação) está na
-raiz, seção 7; aqui ficam os detalhes e os modelos SQL.
+escrita manual ou em lote no banco de PRODUÇÃO. O núcleo (nome, número,
+ordem de aplicação) está na raiz, seção 7; aqui, os detalhes e os modelos.
 
 ## Escrita manual ou em lote no banco de PRODUÇÃO
 
@@ -378,7 +377,8 @@ um espelho com pino lendo o SQL. Mudou um lado, muda o outro.
   catálogo: `fecho` (o CASCADE: conversas e TODAS as mensagens, etiquetas,
   campos, tarefas, anotações, agendadas, Relacionados e "não é duplicata"
   pelas DUAS pontas, `cb_fichas_unidas`…) e `ponteiros` (o que fica nulo:
-  `deals`, trilha, Calendly, Asaas, execuções…), com o que a volta faz.
+  `deals`, trilha, Calendly, Asaas, execuções, turno da IA…), com o que a
+  volta faz.
 - ⚠️⚠️ **DEFAULT-DENY**: tabela nova com FK para QUALQUER tabela do fecho
   (conversa, mensagem, tarefa…, não só a ficha) recusa o mover
   (`lixeira_sem_tratamento:<tabela>`), e gatilho novo numa tabela que a
@@ -396,8 +396,9 @@ um espelho com pino lendo o SQL. Mudou um lado, muda o outro.
   ao CASCADE, `flow_runs` (contato, conversa, última pergunta) se anula em
   três passos com a FK conferida entre eles — 23503. E só onde o ponteiro
   AINDA vale o fotografado (1099): a linha de fora não está travada.
-- **Excluir de vez** (prazo ou "Excluir agora") põe os arquivos que a
-  fotografia cita na fila `cb_arquivos_a_apagar` (guarda
+- **Excluir de vez** (prazo ou "Excluir agora") limpa o conteúdo dos turnos
+  da IA (1110) e põe os arquivos que a fotografia cita na fila
+  `cb_arquivos_a_apagar` (guarda
   `cb_caminho_no_chat_media`; sai só o que ninguém mais cita,
   `cb_arquivos_citados` — escritor novo de URL: `midia.md`).
 - ⚠️ `cb_mensagens_sem_telefone` e `cb_ligacoes` (1044), sem `contact_id`,
