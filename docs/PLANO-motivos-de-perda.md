@@ -11,7 +11,7 @@ personalizado (a IA já preenche campo).
 | --- | --- | --- |
 | 0 | Listas de motivos aprovadas; campos criados nos blocos | ✅ 26/10: 4 campos gravados em produção (Bancário e Trabalhista); Previdenciário só renomeado |
 | 1 | Migration: campo do motivo por etapa; seletor no Gerenciar funil | ✅ 26/10: código na branch (sem PR); 1112 APLICADA em produção (`20261026161549`) |
-| 2 | Janela "Por que…?" nos caminhos de gente; botão Perdido escolhe etapa | — |
+| 2 | Janela "Por que…?" nos caminhos de gente; botão Perdido escolhe etapa | código pronto 26/10 (branch); e2e no preview espera autorização |
 | 3 | Passo "Mover card de etapa" grava o motivo | — |
 | 4 | Relatório de motivos no Desempenho | — |
 | 5 | Agente de IA que leva o card à perda grava o motivo | depois (agentes desligados) |
@@ -151,23 +151,43 @@ nos dois dicionários, regra `.claude/rules/motivos-de-perda.md`.
   recusa o "Salvar" do Gerenciar funil inteiro). Conferir o número nas
   worktrees e no histórico logo antes.
 
-### Fase 2 — a janela, nos caminhos de GENTE
+### Fase 2 — a janela, nos caminhos de GENTE (código pronto em 26/10/2026)
 
-- Caminhos: arrastar no quadro (`pipeline-board.tsx`, `handleDragEnd`),
-  seletor de etapa do painel (`seletor-funil-etapa.tsx`), botão "avançar"
-  (`avancar-etapa.tsx`, quando o destino é etapa com motivo), lista do funil
-  (`lista-de-leads.tsx`), formulário do negócio (`deal-form.tsx`) e o botão
-  "Perdido" (painel `painel-do-contato.tsx` e `deal-form.tsx`).
+Arquivos: `src/components/pipelines/janela-do-motivo.tsx` (NOVO:
+`useJanelaDoMotivo`), funções puras em `motivo-da-etapa.ts` (`etapasDePerda`,
+`ehOutro`, `opcoesDaJanela`, `escolhaInicial`, `valorDaEscolha`, testadas),
+a página do funil e o quadro, `lista-de-leads.tsx`,
+`painel-do-contato.tsx`, `avancar-etapa.tsx`, `deal-form.tsx`, a
+sub-árvore `Pipelines.janelaDoMotivo` nos dois dicionários e o pino
+`janela-do-motivo.chamadores.test.ts`.
+
+- Caminhos ligados: arrastar no quadro, seletor de etapa do painel, botão
+  "avançar", lista do funil, formulário do negócio (mudar etapa, ou criar
+  direto numa etapa com motivo) e o botão "Perdido" (painel e formulário).
+  Fora, por escrito: a pauta de reuniões (`reunioes/executar.ts`, só etapas
+  de reunião).
 - A janela mostra os motivos do campo como seletor, pré-marca o valor atual
-  da ficha, e "Outro" abre texto livre. Confirmar grava o CAMPO e só depois
-  move o card; cancelar não grava nada e o card fica (no quadro, volta à
-  coluna — `movidosRef` desmarca).
+  da ficha, e "Outro" abre texto livre. Confirmar grava o CAMPO
+  (`salvarValoresDoContato`) e só depois move; falha ao gravar NÃO move;
+  cancelar não grava nada e o card fica na coluna (o quadro não o marca
+  como recém-solto).
 - Botão "Perdido": a janela pergunta a etapa (as de `resultado = 'perdido'`
-  do funil) e o motivo dela, e move.
-- Card cujo contato está na Lixeira (`contact_id` nulo): não há ficha para
-  gravar. A decidir na implementação: mover sem motivo com aviso.
-- Gravação do campo: um campo por gravação, confere retorno (RLS que barra
-  devolve 0 linhas); erro ALTO nomeando campo e cliente.
+  do funil) e o motivo dela, e move com `status: 'lost'` junto (etapa igual
+  não passa pelo gatilho da 950). Funil sem etapa de perda: como antes.
+- **Decidido na implementação**: card sem contato (ficha na Lixeira) move
+  sem janela, com aviso; campo que deixou de servir deixa mover sem motivo,
+  com aviso (configuração quebrada não trava o trabalho); leitura que falhou
+  trava com "Tentar de novo".
+- **Limite aceito**: no "avançar", desfazer o movimento não apaga o motivo
+  já gravado.
+- Medido: typecheck e lint limpos nos arquivos da frente; suíte inteira
+  verde (794 arquivos, 12.462 testes). Dois pinos atualizados sem mudar o
+  que protegem: `ao-voltar.test.ts` (o movimento do quadro virou
+  `persistirMovimento`) e o inventário de escritores de `deals`
+  (`origem-dos-escritores.chamadores.test.ts`: o `marcarStatus` tem dois
+  `update` literais, origem `user`). **e2e no preview pendente**: salvar a configuração e
+  mover o card de teste gravam em produção e esperam a autorização do
+  operador.
 
 ### Fase 3 — automações
 

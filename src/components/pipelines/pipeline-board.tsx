@@ -181,7 +181,8 @@ interface PipelineBoardProps {
    * carimbo, o retorno do funil B levaria os tetos do funil A.
    */
   limitesRef: React.MutableRefObject<TetosDoQuadro>;
-  onDealMoved: (dealId: string, newStageId: string) => void;
+  /** `false` = o movimento espera a janela do motivo (1112); o card fica. */
+  onDealMoved: (dealId: string, newStageId: string) => boolean;
   onAddDeal: (stageId: string) => void;
   onEditDeal: (deal: Deal) => void;
   onOpenAutomations: (stage: PipelineStage) => void;
@@ -440,9 +441,10 @@ export function PipelineBoard({
 
     // Só marca quando o movimento REALMENTE acontece (as três saídas acima
     // devolvem o card ao lugar) — senão a coluna de origem passaria a fixar
-    // no topo um card que ninguém moveu.
+    // no topo um card que ninguém moveu. `false` = a etapa pede motivo e o
+    // card espera a janela (1112): ele fica na coluna de origem.
+    if (onDealMoved(dealId, targetStageId) === false) return;
     setRecemSolto(dealId);
-    onDealMoved(dealId, targetStageId);
   }
 
   function handleDragCancel() {

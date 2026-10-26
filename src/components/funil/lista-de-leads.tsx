@@ -68,6 +68,7 @@ import {
 import { urlDoInbox } from "@/lib/inbox/url";
 import { statusAoEntrarNaEtapa } from "@/lib/pipelines/resultado";
 import { createClient } from "@/lib/supabase/client";
+import { useJanelaDoMotivo } from "@/components/pipelines/janela-do-motivo";
 import type { CustomField, GrupoDeCampos, Pipeline, PipelineStage } from "@/types";
 
 import { ColunasPopover } from "./colunas-popover";
@@ -281,9 +282,8 @@ export function ListaDeLeads({
     if (id) router.push(urlDoInbox({ c: id, de: "funil" }));
   };
 
-  const moverEtapa = useCallback(
+  const persistirEtapa = useCallback(
     async (f: FatosDoNegocio, stageId: string) => {
-      if (stageId === f.linha.stage_id) return;
       const dealId = f.linha.deal_id;
       const antes = f.linha;
       const status = statusAoEntrarNaEtapa(stages, stageId, antes.status);
@@ -310,6 +310,24 @@ export function ListaDeLeads({
       onDealChanged();
     },
     [stages, supabase, atualizarLinha, recarregar, onDealChanged, t],
+  );
+
+  // 1112: etapa que pede motivo abre a janela antes de mover. O seletor da
+  // linha é controlado pela etapa gravada: cancelar a janela o deixa onde
+  // estava, sem desfazer nada.
+  const { pedirMotivo, janela: janelaDoMotivo } = useJanelaDoMotivo();
+  const moverEtapa = useCallback(
+    (f: FatosDoNegocio, stageId: string) => {
+      if (stageId === f.linha.stage_id) return;
+      const destino = stages.find((s) => s.id === stageId);
+      if (!destino) return;
+      pedirMotivo({
+        etapas: [destino],
+        contato: f.linha.contact_id ? { id: f.linha.contact_id, nome: nomeDaLinha(f) } : null,
+        mover: (etapaId) => persistirEtapa(f, etapaId),
+      });
+    },
+    [stages, pedirMotivo, persistirEtapa],
   );
 
   const exportar = () => {
@@ -368,7 +386,7 @@ export function ListaDeLeads({
           <select
             value={l.stage_id}
             disabled={!podeMover}
-            onChange={(e) => void moverEtapa(f, e.target.value)}
+            onChange={(e) => moverEtapa(f, e.target.value)}
             aria-label={t("colunas.etapa")}
             className="h-7 max-w-[13rem] truncate rounded-full border bg-card px-2 text-xs font-medium disabled:opacity-70"
             style={{
@@ -595,6 +613,7 @@ export function ListaDeLeads({
           </Button>
         </div>
       )}
+      {janelaDoMotivo}
     </div>
   );
 }

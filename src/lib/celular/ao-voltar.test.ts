@@ -107,7 +107,7 @@ describe("as cercas da recarga silenciosa (Codex, PR #216)", () => {
       /const refreshStages = useCallback\(async \(\) => \{\s*if \(!selectedPipelineId\) return;\s*versaoDoQuadroRef\.current \+= 1;/,
       /const refreshPipelines = useCallback\(async \(\) => \{\s*versaoDoQuadroRef\.current \+= 1;/,
       /const refreshAutomations = useCallback\(async \(\) => \{\s*versaoDoQuadroRef\.current \+= 1;/,
-      /const handleDealMoved = useCallback\(\s*async \(dealId: string, newStageId: string\) => \{[\s\S]{0,300}versaoDoQuadroRef\.current \+= 1;/,
+      /const persistirMovimento = useCallback\(\s*async \(dealId: string, newStageId: string\) => \{[\s\S]{0,300}versaoDoQuadroRef\.current \+= 1;/,
       // Preso ao fim do PRÓPRIO efeito: colado nele vem o `refreshAutomations`,
       // cujo incremento um regex solto aceitaria no lugar deste.
       /funilAbertoRef\.current = selectedPipelineId;[^}]*versaoDoQuadroRef\.current \+= 1;\s*\}, \[selectedPipelineId\]\);/,
@@ -155,8 +155,10 @@ describe("as cercas da recarga silenciosa (Codex, PR #216)", () => {
     expect(funil).not.toContain("if (pedidoDosNegociosRef.current !== pedido) return;");
     // O arrasto marca o card no gesto (não confirmado) e na gravação
     // (confirmado), e desmarca quando o banco recusa — aí a recarga tem de
-    // devolvê-lo.
-    const mover = funil.slice(funil.indexOf("const handleDealMoved = useCallback"));
+    // devolvê-lo. (1112: o movimento é `persistirMovimento`; quando a etapa
+    // pede motivo, o "gesto" é a confirmação da janela — antes dela o card
+    // não saiu da coluna.)
+    const mover = funil.slice(funil.indexOf("const persistirMovimento = useCallback"));
     const gesto = mover.indexOf(
       "movidosRef.current.set(dealId, { passo: ++movimentosRef.current, confirmado: false });",
     );

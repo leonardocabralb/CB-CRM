@@ -1853,6 +1853,25 @@
         "perdaSemMotivo": "Lost stage without a reason."
       }
     },
+    "janelaDoMotivo": {
+      "titulo": "Why is the card going to {etapa}?",
+      "tituloPerdido": "Mark as lost",
+      "descricao": "The reason is saved on the record of {cliente}.",
+      "qualEtapa": "Which stage?",
+      "carregando": "Loading the reasons…",
+      "falhou": "Could not load the reasons.",
+      "tentarDeNovo": "Try again",
+      "campoIndisponivel": "The reason field of this stage is not available (tell an admin). The card moves without a reason.",
+      "etapaSemMotivo": "This stage does not ask for a reason.",
+      "semContatoNaJanela": "Card without a contact: the reason is not recorded.",
+      "semContato": "Card without a contact: the reason was not recorded.",
+      "outroPlaceholder": "Write the reason",
+      "cancelar": "Cancel",
+      "gravando": "Saving…",
+      "mover": "Move to {etapa}",
+      "escolhaAEtapa": "Pick the stage",
+      "erroAoGravar": "Could not save the \"{campo}\" field of {cliente}. The card was not moved."
+    },
     "automacoes": {
       "abaLeads": "Board",
       "abaLista": "List",

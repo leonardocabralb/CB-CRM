@@ -38,6 +38,8 @@ import {
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 import { avisarDrenagemDeFunil } from "@/lib/automations/avisar-drenagem";
+import { etapasDePerda } from "@/lib/pipelines/motivo-da-etapa";
+import { useJanelaDoMotivo } from "@/components/pipelines/janela-do-motivo";
 import { urlDoInbox } from "@/lib/inbox/url";
 import { opcoesDeResponsavel } from "@/lib/account/suspensao";
 import { SeletorDeContatoRemoto } from "@/components/contacts/seletor-de-contato-remoto";
@@ -240,11 +242,35 @@ export function DealForm({
     };
   }, [open, contactId, supabase]);
 
+  // 1112 (Fase 2 dos motivos): mover o card pelo formulário para uma etapa
+  // que pede motivo — ou criá-lo direto nela — abre a janela antes de salvar;
+  // "Marcar perdido" escolhe a etapa de perda e o motivo, e move.
+  const { pedirMotivo, janela: janelaDoMotivo } = useJanelaDoMotivo();
+  // Antes de as etapas de todos os funis chegarem, as do quadro aberto.
+  const etapasConhecidas = allStages.length > 0 ? allStages : stages;
+
   async function handleSave() {
     if (!title.trim() || !contactId || !stageId) {
       toast.error(t("toastRequired"));
       return;
     }
+    const origem = deal ? (dealDaSessaoRef.current ?? deal) : null;
+    const vaiMover =
+      !origem || stageId !== origem.stage_id || selectedPipelineId !== origem.pipeline_id;
+    const destino = vaiMover ? etapasConhecidas.find((s) => s.id === stageId) : undefined;
+    if (destino?.campo_do_motivo_id) {
+      pedirMotivo({
+        etapas: [destino],
+        // O título do card é o nome da pessoa (1007).
+        contato: { id: contactId, nome: title.trim() },
+        mover: () => salvar(),
+      });
+      return;
+    }
+    await salvar();
+  }
+
+  async function salvar() {
     setSaving(true);
 
     // ⚠️ O TÍTULO NÃO ENTRA NO PAYLOAD (1007). Ele é digitado, e quem o
@@ -337,11 +363,32 @@ export function DealForm({
 
   async function handleStatusChange(status: DealStatus) {
     if (!deal) return;
+    // 1112: "Marcar perdido" escolhe a ETAPA de perda e o motivo, e move
+    // (decisão do operador, 26/10/2026). Funil sem etapa de perda: como antes.
+    const origem = dealDaSessaoRef.current ?? deal;
+    const perdas =
+      status === "lost" && origem.pipeline_id ? etapasDePerda(etapasConhecidas, origem.pipeline_id) : [];
+    if (perdas.length > 0) {
+      pedirMotivo({
+        etapas: perdas,
+        contato: deal.contact_id ? { id: deal.contact_id, nome: deal.title } : null,
+        mover: (etapaId) => marcarStatus(status, etapaId),
+      });
+      return;
+    }
+    await marcarStatus(status);
+  }
+
+  async function marcarStatus(status: DealStatus, etapaId?: string) {
+    if (!deal) return;
     setStatusAction(status);
-    const { error } = await supabase
-      .from("deals")
-      .update({ status })
-      .eq("id", deal.id);
+    // Com a etapa, o status vai junto: etapa igual não passa pelo gatilho da
+    // 950, e o card reaberto parado na própria etapa de perda ficaria aberto.
+    // Dois objetos LITERAIS, sem espalhar: o pino dos escritores de título
+    // (`titulo-do-card.chamadores.test.ts`) lê `...` como "pode ser o título".
+    const { error } = await (etapaId
+      ? supabase.from("deals").update({ status, stage_id: etapaId }).eq("id", deal.id)
+      : supabase.from("deals").update({ status }).eq("id", deal.id));
     setStatusAction(null);
     if (error) {
       toast.error(t("toastFailedStatus"));
@@ -694,6 +741,8 @@ export function DealForm({
           </div>
         </div>
       </SheetContent>
+      {/* 1112: a janela do motivo, por cima do formulário (portal próprio). */}
+      {janelaDoMotivo}
     </Sheet>
   );
 }

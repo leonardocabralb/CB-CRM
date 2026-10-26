@@ -525,8 +525,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   Desempenho, Saúde, Meta Ads.
 - `.claude/rules/funil-painel-e-etapas.md` — painel da conversa acompanha o
   negócio mudado por fora; etapas do funil novo no idioma.
-- `.claude/rules/motivos-de-perda.md` — campo do motivo por etapa (1112):
-  gatilho só de conta, tipo conferido por quem lê, Previdenciário sem dividir.
+- `.claude/rules/motivos-de-perda.md` — campo do motivo por etapa (1112), a
+  janela "Por que…?" nos caminhos de gente, "Perdido" escolhe a etapa.
 - `.claude/rules/contatos.md` — chave canônica do telefone, telefone
   digitado, Lixeira de contatos, etiquetas, duplicatas e união.
 - `.claude/rules/campos-e-nome.md` — campo que salva sozinho, blocos de

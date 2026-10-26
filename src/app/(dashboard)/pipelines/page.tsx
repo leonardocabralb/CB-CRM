@@ -20,6 +20,7 @@ import {
 import { PipelineSettings } from "@/components/pipelines/pipeline-settings";
 import { AutomationsBoard } from "@/components/pipelines/automations-board";
 import { DealForm } from "@/components/pipelines/deal-form";
+import { useJanelaDoMotivo } from "@/components/pipelines/janela-do-motivo";
 import { PipelineAnalytics } from "@/components/pipelines/pipeline-analytics";
 import { Button } from "@/components/ui/button";
 import {
@@ -65,6 +66,7 @@ import {
   manterMovimentosLocais,
   movidosParaALeitura,
   normalizarDealDoQuadro,
+  temConteudo,
   type CardDoQuadro,
   type CardSemConteudo,
   type DealDoQuadro,
@@ -847,7 +849,7 @@ function PipelinesPageInner() {
     })();
   });
 
-  const handleDealMoved = useCallback(
+  const persistirMovimento = useCallback(
     async (dealId: string, newStageId: string) => {
       // Mudança local: a recarga da volta ao app que estiver no ar já não
       // pode gravar por cima (ver `versaoDoQuadroRef`).
@@ -906,6 +908,31 @@ function PipelinesPageInner() {
       avisarDrenagemDeFunil();
     },
     [supabase, stages, refreshDeals, t],
+  );
+
+  // 1112 (Fase 2 dos motivos): etapa que pede motivo abre a janela ANTES de
+  // mover; o card espera nela na coluna de origem (`false` para o quadro) e
+  // só se move depois de o motivo estar gravado. Cancelar não mexe em nada.
+  const { pedirMotivo, janela: janelaDoMotivo } = useJanelaDoMotivo();
+  const handleDealMoved = useCallback(
+    (dealId: string, newStageId: string): boolean => {
+      const destino = stages.find((s) => s.id === newStageId);
+      const deal = deals.find((d) => d.id === dealId);
+      if (!destino?.campo_do_motivo_id || !deal) {
+        void persistirMovimento(dealId, newStageId);
+        return true;
+      }
+      return !pedirMotivo({
+        etapas: [destino],
+        // O título do card é o nome da pessoa (1007). Só card COM conteúdo é
+        // arrastável (o quadro não registra `useDraggable` no que carrega),
+        // e é ele que traz o contato.
+        contato:
+          temConteudo(deal) && deal.contact_id ? { id: deal.contact_id, nome: deal.title } : null,
+        mover: (etapaId) => persistirMovimento(dealId, etapaId),
+      });
+    },
+    [stages, deals, pedirMotivo, persistirMovimento],
   );
 
   const handleAddDeal = useCallback(
@@ -1305,6 +1332,9 @@ function PipelinesPageInner() {
         origemFunil
         aoIrParaConversa={salvarRetornoDoQuadro}
       />
+
+      {/* 1112: o motivo de quem o quadro leva a uma etapa que pede motivo. */}
+      {janelaDoMotivo}
     </div>
   );
 }

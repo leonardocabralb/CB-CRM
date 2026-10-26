@@ -2,6 +2,8 @@
 paths:
   - "src/lib/pipelines/motivo-da-etapa*"
   - "src/components/pipelines/motivo-da-etapa-config*"
+  - "src/components/pipelines/janela-do-motivo*"
+  - "src/components/inbox/painel/avancar-etapa.tsx"
   - "supabase/migrations/1112_cb_campo_do_motivo_da_etapa.sql"
   - "supabase/migrations/campo-do-motivo-1112.test.ts"
 ---
@@ -55,6 +57,41 @@ funil.
 - **ADITIVA**: o app novo manda a coluna no upsert; sem a 1112 aplicada o
   PostgREST recusa o "Salvar" do Gerenciar funil inteiro. Aplicar ANTES do
   deploy.
+
+### A janela "Por que…?" (Fase 2)
+
+`janela-do-motivo.tsx` (`useJanelaDoMotivo` → `pedirMotivo` + `janela`).
+Pino `janela-do-motivo.chamadores.test.ts` com a lista dos caminhos de gente.
+
+- ⚠️⚠️ **Caminho de GENTE que move card passa por `pedirMotivo`**: o quadro
+  (a página), a lista do funil, o painel (seletor de etapa e "Perdido"), o
+  "avançar" e o formulário do negócio. Caminho novo entra no pino. Fora, por
+  escrito: a pauta de reuniões (só etapas de reunião) e os caminhos que não
+  são de gente.
+- ⚠️ **O motivo é gravado ANTES de mover, e o card só sai da coluna depois
+  da confirmação**: no quadro, `handleDealMoved` devolve `false` e o quadro
+  não marca o card como recém-solto; na lista, o seletor é controlado pela
+  etapa gravada; cancelar não grava nada. Falha ao gravar o campo NÃO move.
+- **No "avançar", o "Desfazer" vem depois da janela**: desfazer o movimento
+  não apaga o motivo já gravado na ficha (limite aceito).
+- ⚠️ **"Perdido" (painel e formulário) escolhe a etapa de perda
+  (`etapasDePerda`) e manda `status: 'lost'` JUNTO com a etapa**: etapa
+  igual não passa pelo gatilho da 950, e o card reaberto parado na própria
+  etapa de perda ficaria aberto. Funil sem etapa de perda: o botão segue
+  marcando perdido sem mover.
+- **Configuração quebrada não trava o trabalho** (campo que deixou de ser
+  Lista, sumiu ou ficou sem opção): move SEM motivo, com aviso. Leitura que
+  falhou trava ("Tentar de novo" ou cancelar). Card sem contato (ficha na
+  Lixeira) move sem janela, com aviso.
+- **"Outro"** é a opção cujo rótulo é "Outro" (`ehOutro`, sem caixa nem
+  acento) e só existe se a lista a tiver; o texto digitado vai para o campo.
+  A janela abre marcada com o que a ficha já tem (`escolhaInicial`).
+- **O painel espelha o motivo na ficha** (`espelharMotivo`, cerca do
+  contato), com UMA janela por painel — o "avançar" recebe `pedirMotivo`
+  por prop.
+- ⚠️ No formulário (que veio do upstream), `{janelaDoMotivo}` fica DENTRO do
+  `<Sheet>`: embrulhar num fragmento reindenta o JSX inteiro (349 linhas de
+  ruído no diff e conflito garantido no próximo merge).
 
 ### O Previdenciário ainda tem UM campo só
 

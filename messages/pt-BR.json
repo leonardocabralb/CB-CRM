@@ -1846,6 +1846,25 @@
         "perdaSemMotivo": "Etapa de perda sem motivo."
       }
     },
+    "janelaDoMotivo": {
+      "titulo": "Por que o card vai para {etapa}?",
+      "tituloPerdido": "Marcar como perdido",
+      "descricao": "O motivo fica na ficha de {cliente}.",
+      "qualEtapa": "Para qual etapa?",
+      "carregando": "Carregando os motivos…",
+      "falhou": "Não foi possível carregar os motivos.",
+      "tentarDeNovo": "Tentar de novo",
+      "campoIndisponivel": "O campo de motivo desta etapa não está disponível (avise um admin). O card vai sem motivo.",
+      "etapaSemMotivo": "Esta etapa não pede motivo.",
+      "semContatoNaJanela": "Card sem contato: o motivo não fica registrado.",
+      "semContato": "Card sem contato: o motivo não foi registrado.",
+      "outroPlaceholder": "Escreva o motivo",
+      "cancelar": "Cancelar",
+      "gravando": "Salvando…",
+      "mover": "Mover para {etapa}",
+      "escolhaAEtapa": "Escolha a etapa",
+      "erroAoGravar": "Não foi possível salvar o campo \"{campo}\" de {cliente}. O card não foi movido."
+    },
     "automacoes": {
       "abaLeads": "Quadro",
       "abaLista": "Lista",
