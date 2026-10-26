@@ -12,7 +12,7 @@ personalizado (a IA já preenche campo).
 | 0 | Listas de motivos aprovadas; campos criados nos blocos | ✅ 26/10: 4 campos gravados em produção (Bancário e Trabalhista); Previdenciário só renomeado |
 | 1 | Migration: campo do motivo por etapa; seletor no Gerenciar funil | ✅ 26/10: código na branch (sem PR); 1112 APLICADA em produção (`20261026161549`) |
 | 2 | Janela "Por que…?" nos caminhos de gente; botão Perdido escolhe etapa | ✅ 26/10: código na branch, e2e no preview OK e limpo; configuração do Bancário gravada |
-| 3 | Passo "Mover card de etapa" grava o motivo | código pronto 26/10 (branch); e2e no preview a fazer |
+| 3 | Passo "Mover card de etapa" grava o motivo | ✅ 26/10: código na branch; construtor conferido no preview; execução real do motor não exercitada |
 | 4 | Relatório de motivos no Desempenho | — |
 | 5 | Agente de IA que leva o card à perda grava o motivo | depois (agentes desligados) |
 
@@ -237,8 +237,19 @@ do "Já rodou" (`texto-do-motor.ts`) e `MoveDealStepConfig.motivo`.
 - Fora, por escrito: o nó "Mover card" do robô e o `set_deal_status` não
   gravam motivo (nenhum robô leva a etapa de perda hoje; o "Marcar
   perdido" das automações não muda a etapa).
-- Medido: typecheck e lint limpos; testes de automações e execuções verdes
-  (1.264). e2e no preview: a fazer.
+- Medido: typecheck e lint limpos; suíte inteira verde (795 arquivos,
+  12.469 testes).
+- **Preview do construtor (26/10/2026), sem salvar nada** (0 automações
+  criadas, conferido no banco): numa automação nova, "Mover card de etapa"
+  → Bancário "Perdido" mostra "Motivo gravado na ficha" com as opções do
+  "Motivo da perda (Bancário)" e a ajuda dizendo o campo; trocar para
+  "Desqualificado" limpa o motivo e traz as opções da desqualificação;
+  etapa neutra esconde o seletor. O aviso âmbar só aparece depois da
+  primeira tentativa de salvar ligada (desenho de antes), então fica provado
+  pelos testes de `avisosDaAutomacao`. **Não exercitado**: uma execução real
+  do motor (criar automação e rodá-la no card de teste grava em produção) —
+  coberto pelo teste de `gravarMotivoDoPasso` e pelo pino da ordem no
+  `engine.ts`.
 
 ### Fase 4 — relatório
 
