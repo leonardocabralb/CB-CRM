@@ -29,8 +29,8 @@ num roteiro. Ponto de partida: o mapeamento do que existe, também de
 | Fase | Frente | O quê | Migration | Esforço | Depende de | Estado |
 |---|---|---|---|---|---|---|
 | — | — | Este plano e as decisões DC1–DC25 | — | — | — | escrito em 26/10/2026; DC1–DC4 decididas em 26/10/2026; as outras pendentes |
-| C1 | Base comum | Turno durável: o registro sobrevive à conversa e à Lixeira; o texto do cliente tem prazo | sim | M (3–4 dias) | DC1–DC3 | **implementada** na branch `feat/ia-turno-duravel` (26/10/2026); migration 1110 provada no Postgres local, **não aplicada**; falta o e2e e o PR |
-| C2 | Sandbox | Playground testa o RASCUNHO da tela e compara com o salvo; o teste não zera ao salvar; "ver o pedido enviado" | não | M (2–3 dias) | DC4 | **implementada** na branch `feat/playground-rascunho` (26/10/2026); falta o e2e e o PR; mesclar DEPOIS da C1 |
+| C1 | Base comum | Turno durável: o registro sobrevive à conversa e à Lixeira; o texto do cliente tem prazo | sim | M (3–4 dias) | DC1–DC3 | **pronta para o merge** (PR #441): 1110 **aplicada** na produção em 26/10/2026 e conferida; e2e com gravação OK e limpo |
+| C2 | Sandbox | Playground testa o RASCUNHO da tela e compara com o salvo; o teste não zera ao salvar; "ver o pedido enviado" | não | M (2–3 dias) | DC4 | **pronta para o merge** (PR #442): e2e OK e limpo; mesclar DEPOIS da C1 |
 | C3 | Base comum | Registro completo do turno: motivo da transferência, erro como código, saída bruta, valor de cada ação, destino da passagem, a marca de que esperou o horário | não | M (2 dias) | C1, DC6 | não iniciada |
 | C4 | Painel | Aba **Painel** em /agents: agentes e onde atuam, desfechos por dia, por que transferiu, o que o agente fez, tempo e custo | sim | M (2–3 dias) | C1, C3, DC5 | não iniciada |
 | C5 | Base comum | Versões do agente (vN, quem e quando); o turno grava a versão usada | sim | M (2–3 dias) | C3, DC7 | não iniciada |
@@ -704,8 +704,25 @@ Todas são ADITIVAS e entram antes do deploy.
         `textos.test.ts`: mesclar a C1 antes da C2.
   - Os corpos vigentes de `cb_lixeira_tratamento` e `cb_lixeira_purgar_um`
     conferem com a produção (md5 do corpo).
-  - Próximo passo, na ordem do CLAUDE.md seção 7:
-    1. os PRs (o CI faz o replay da 1110 no commit exato);
-    2. a 1110 aplicada, só com a autorização do operador;
-    3. o e2e no preview;
-    4. o merge, a C1 antes da C2.
+  - PRs #441 (C1) e #442 (C2). Codex sem achados no #441. No #442, um P2
+    corrigido (o roteiro aceitava a resposta que chegava depois de "Parar" ou
+    de salvar) e a nova revisão saiu limpa.
+  - 1110 aplicada com a autorização do operador, depois do replay verde do CI
+    no commit exato (histórico `20261026151000`). As funções na produção têm
+    o mesmo md5 das provadas no Postgres local.
+  - e2e com gravação, autorizado e limpo:
+    - C1: a ficha fictícia foi para a Lixeira (o turno ficou, "Sem
+      conversa"), foi restaurada (o turno voltou à conversa) e foi excluída
+      de vez (o esqueleto ficou, o conteúdo saiu, os códigos "ja_estava" e o
+      passo da D5 ficaram; a tela mostra "Conteúdo removido … (ficha excluída
+      de vez)");
+    - C2: no agente de teste, a instrução mudou sem salvar; o rascunho valeu
+      na resposta; "Comparar" mostrou as duas versões; "Rodar o roteiro"
+      refez 2 respostas; "Mostrar o pedido" trouxe a instrução nova; salvar
+      manteve a conversa, com o selo novo. O lead de teste ficou idêntico ao
+      retrato de antes;
+    - a limpeza apagou o turno, o agente de teste e os 4 eventos da trilha. A
+      auditoria por consulta não achou mais nada. Ficou o custo das 7
+      chamadas de teste (`agente_teste`).
+  - Próximo passo: o merge, com o operador sabendo (merge = deploy). A C1
+    antes da C2, e a C2 traz o `main` depois.
