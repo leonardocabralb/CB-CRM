@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
@@ -16,6 +16,7 @@ import {
 import {
   CHAVE_DO_ERRO_DA_ACAO,
   CODIGOS_CONHECIDOS,
+  ERROS_GRAVADOS_PELO_BANCO,
   CODIGOS_DA_D5,
   MOTIVOS_DE_RECUSA,
   STATUS_DO_TURNO,
@@ -25,6 +26,7 @@ import {
   rotuloDoTipoDoCampo,
   textoDoDetalheDaAcao,
   textoDoErroDaAcao,
+  textoDoErroDoTurno,
 } from './textos'
 import { BLOCOS_DO_ACESSO, CAIXAS_DO_ACESSO, MODELOS_DE_PARTIDA, TIPOS_DE_ACAO } from './tipos'
 
@@ -65,6 +67,14 @@ describe.each(['en.json', 'pt-BR.json'])('IaAgentes em %s', (arquivo) => {
   it('cada status de turno tem texto (a sub-aba Turnos), e o desconhecido também', () => {
     for (const s of STATUS_DO_TURNO) expect(em(d, `turnos.status.${s}`), s).toBeTruthy()
     expect(em(d, 'turnos.statusDesconhecido')).toBeTruthy()
+  })
+
+  it('o turno sem conversa, o conteúdo removido e cada erro gravado pelo banco têm texto (1110)', () => {
+    expect(em(d, 'turnos.semConversa')).toBeTruthy()
+    // O prazo vem da constante (`{dias}`), nunca escrito no dicionário.
+    const removido = em(d, 'turnos.conteudoRemovido')
+    expect(typeof removido === 'string' && removido.includes('{dias}') && removido.includes('{quando}')).toBe(true)
+    for (const chave of Object.values(ERROS_GRAVADOS_PELO_BANCO)) expect(em(d, chave), chave).toBeTruthy()
   })
 
   it('cada bloco do acesso (F3) tem nome, cada caixa tem dica, e o desconhecido também', () => {
@@ -279,5 +289,29 @@ describe('STATUS_DO_TURNO espelha o CHECK de cb_ia_turnos.status (1049)', () => 
     expect(check, 'o CHECK do status do turno').toBeTruthy()
     const doBanco = [...check![1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1])
     for (const s of doBanco) expect(STATUS_DO_TURNO as readonly string[], s).toContain(s)
+  })
+})
+
+describe('ERROS_GRAVADOS_PELO_BANCO cobre todo `erro` que as migrations gravam no turno (1110)', () => {
+  // Default-deny: gatilho ou função nova que grave outro texto no `erro` do
+  // turno aparece cru na aba Turnos até entrar aqui (e nos dois dicionários).
+  it('todo texto fixo de `erro = …` / `NEW.erro := …` das migrations tem tradução', () => {
+    const dir = join(process.cwd(), 'supabase', 'migrations')
+    const gravados = new Set<string>()
+    for (const arquivo of readdirSync(dir).filter((f) => /^\d{4}_.*\.sql$/.test(f))) {
+      const sql = readFileSync(join(dir, arquivo), 'utf8').replace(/--[^\n]*/g, '')
+      for (const m of sql.matchAll(/(?:\bNEW\.erro\s*:=|\berro\s*=)\s*'([^']+)'/g)) gravados.add(m[1])
+    }
+    // O leitor acha o que interessa.
+    expect([...gravados]).toEqual(expect.arrayContaining(['conversa apagada', 'conversa encerrada', 'conexão apagada']))
+    expect([...gravados].filter((g) => !(g in ERROS_GRAVADOS_PELO_BANCO))).toEqual([])
+  })
+
+  it('traduz o do banco; o do motor aparece como veio', () => {
+    const t = ((chave: string) => `[${chave}]`) as unknown as ReturnType<typeof useTranslations>
+    expect(textoDoErroDoTurno(t, 'conversa apagada')).toBe('[turnos.erroDoBanco.conversaApagada]')
+    expect(textoDoErroDoTurno(t, 'o cliente apagou a mensagem')).toBe('o cliente apagou a mensagem')
+    // Nunca casa por herança do objeto.
+    expect(textoDoErroDoTurno(t, 'toString')).toBe('toString')
   })
 })

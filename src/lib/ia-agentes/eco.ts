@@ -84,11 +84,16 @@ async function turnoDaResposta(
       console.error('[ia-agentes/eco] ler o turno do eco falhou:', error.message)
       return null
     }
-    const turno = (data as TurnoDoEco | null) ?? null
+    const turno = (data as (Omit<TurnoDoEco, 'conversation_id'> & { conversation_id: string | null }) | null) ?? null
     // ⚠️ A conta conferida TAMBÉM aqui. O recorte de verdade é o `.eq` acima,
     // mas é daqui que sai a conversa onde a mensagem vai ser gravada: um id
     // que colida com o turno de outra conta não pode escrever no fio dela.
-    return turno && turno.account_id === accountId ? turno : null
+    if (!turno || turno.account_id !== accountId) return null
+    // O turno de uma conversa APAGADA (1110: ele fica, sem conversa) não tem
+    // fio onde gravar: o caminho de sempre, como antes da 1110, quando o
+    // turno sumia com a conversa.
+    if (!turno.conversation_id) return null
+    return { ...turno, conversation_id: turno.conversation_id }
   } catch (err) {
     console.error('[ia-agentes/eco] ler o turno do eco falhou:', err instanceof Error ? err.message : err)
     return null

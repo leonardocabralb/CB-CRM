@@ -1560,11 +1560,11 @@
       },
       "excluir": {
         "titulo": "Delete for good",
-        "texto": "{nome} leaves the Trash for good: the record, its conversation, messages, tasks, notes and files. It cannot be restored afterwards.",
+        "texto": "{nome} leaves the Trash for good: the record, its conversation, messages, tasks, notes and files. The AI agents' log for this record stays, without the content (the customer's text). It cannot be restored afterwards.",
         "negociosFicam": "The deals that stayed in the pipeline remain there, with no contact.",
         "pedidoRotulo": "This is a data subject's deletion request (LGPD)",
         "pedidoTexto": "Also erases what stayed outside the record: this person's data in webhook and Calendly events, the content of automation runs, the calls and the held messages from this phone, and their name in the history (the entry saying the record existed stays, without the name).",
-        "ficamNoCrm": "These stay in the CRM as the firm's records (to be confirmed with whoever handles LGPD): the deals, with their title; the Asaas charges and customer record; the ZapSign documents; the meetings and transcripts; and this person's messages in groups.",
+        "ficamNoCrm": "These stay in the CRM as the firm's records (to be confirmed with whoever handles LGPD): the deals, with their title; the Asaas charges and customer record; the ZapSign documents; the meetings and transcripts; the AI agents' log, without the content (what the agent did, without the customer's text); and this person's messages in groups.",
         "foraDoAlcance": "Even so, these are beyond the CRM's reach: backups, Evolution (the QR code connections) and whatever third parties already received (integrations, e-mails, spreadsheets).",
         "digite": "To confirm, type {palavra}",
         "palavra": "DELETE",
@@ -6401,7 +6401,16 @@
       },
       "retomada": "Follow-up {k}/{n}",
       "prevista": "due {quando}",
-      "esperaOHorario": "waiting for the agent's hours · opens {quando}"
+      "esperaOHorario": "waiting for the agent's hours · opens {quando}",
+      "semConversa": "No conversation (deleted or in the Trash)",
+      "conteudoRemovido": "Content removed on {quando} ({por, select, prazo {{dias}-day limit} exclusao {record deleted for good} other {—}}): the outcome and the actions remain, without the customer's text.",
+      "erroDoBanco": {
+        "conversaApagada": "the conversation was deleted (or the record went to the Trash)",
+        "conversaEncerrada": "the conversation was closed",
+        "conexaoApagada": "the connection was deleted",
+        "fichasUnidas": "the records were merged",
+        "clienteEscreveu": "the customer wrote before the follow-up"
+      }
     },
     "dia": {
       "0": "Sun",
