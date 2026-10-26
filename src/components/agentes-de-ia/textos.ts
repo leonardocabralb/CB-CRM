@@ -354,6 +354,7 @@ export const PARADAS_DA_RETOMADA: Record<ParadaDaResposta, true> = {
   sem_texto: true,
   pedido_vazado: true,
   link_inventado: true,
+  acao_prometida: true,
 };
 
 export function textoDaParadaDaRetomada(t: ReturnType<typeof useTranslations>, parada: string): string {

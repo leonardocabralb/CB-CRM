@@ -10,6 +10,8 @@ import { lerChave, lerEstado } from '@/lib/ia-chaves/repo'
 import { blocoIndisponivel, lerOQueOAgenteVe } from '@/lib/ia-agentes/acesso'
 import {
   ACAO_TRANSFERIR,
+  ACOES_COM_A_PASSAGEM,
+  acaoPrometida,
   equipePrometida,
   lerAcoes,
   linkInventado,
@@ -52,11 +54,16 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
  *
  * F4 (D28): o pedido lista as AÇÕES liberadas, como no turno, mas aqui elas
  * são SIMULADAS — nada executa. A resposta traz `acoes: { aceitas: [{ tipo,
- * nome, valor? }], recusadas: [{ tipo, motivo }] }` (com passagem ou
- * transferência, as que seriam aceitas vão para as recusadas com o motivo
- * `passagem`/`transferencia`: no turno elas não executariam) e
- * `linkInventado` — no turno, a resposta seria retida e a conversa iria para
- * gente. O `reply` nunca traz marcador.
+ * nome, valor? }], recusadas: [{ tipo, motivo }] }` (com transferência, as
+ * que seriam aceitas vão para as recusadas com o motivo `transferencia`: no
+ * turno elas não executariam; com a PASSAGEM válida, desde 25/10/2026, campo,
+ * etiqueta e tarefa ficam nas aceitas — no turno rodam ANTES de o card ir
+ * para o destino — e mover, automação e reunião vão para as recusadas com
+ * `passagem`) e `linkInventado` — no turno, a resposta seria retida e a
+ * conversa iria para gente. O `reply` nunca traz marcador. E `acaoPrometida`
+ * (25/10/2026): a resposta disse que fez algo no sistema (tarefa, campo,
+ * etiqueta, etapa…) sem a ação aceita que o faça — no turno ela seria retida
+ * e a conversa iria para gente (`acao_prometida`).
  *
  * F5: com "Marcar reunião" liberado, os horários livres são lidos AO VIVO no
  * Calendly (a mesma leitura do turno, com o mesmo prazo), e a reunião é
@@ -228,7 +235,12 @@ export async function POST(request: Request, { params }: Contexto) {
         iaAgenteNome: agente.nome,
       })
       // A MESMA régua do turno: o que para a série não é mostrado como texto.
-      const lida = lerRespostaDaRetomada(gerada.text, gerada.handoff, [pedido, ...mensagens.map((m) => m.content)])
+      const lida = lerRespostaDaRetomada(
+        gerada.text,
+        gerada.handoff,
+        [pedido, ...mensagens.map((m) => m.content)],
+        mensagens.filter((m) => m.role === 'assistant').map((m) => m.content),
+      )
       return NextResponse.json({
         retomada: {
           tentativa,
@@ -353,9 +365,24 @@ export async function POST(request: Request, { params }: Contexto) {
         horariosOferecidos: opcoesDeAcao.marcar_reuniao?.length ?? 0,
         aceitas: resolvidas.aceitas,
       })
-    // Com passagem, transferência, pedido vazado, link inventado ou reunião prometida, no turno nada executa.
-    const naoExecutaria: MotivoDaRecusa | null =
-      transfere || vazou || inventou || prometeu ? 'transferencia' : n !== null ? 'passagem' : null
+    // A AÇÃO PROMETIDA sem a ação (25/10/2026): a MESMA régua do turno, com as
+    // respostas anteriores do teste (repetir o que já foi feito não é nova).
+    const prometeuAcao =
+      !transfere &&
+      n === null &&
+      !vazou &&
+      !inventou &&
+      !prometeu &&
+      acaoPrometida({
+        texto: lidas.texto,
+        aceitas: resolvidas.aceitas,
+        anteriores: mensagens.filter((m) => m.role === 'assistant').map((m) => m.content),
+      }) !== null
+    // Com transferência, pedido vazado, link inventado, reunião ou ação prometida, no turno nada executa.
+    const naoExecutaria: MotivoDaRecusa | null = transfere || vazou || inventou || prometeu || prometeuAcao ? 'transferencia' : null
+    // A PASSAGEM válida (25/10/2026): campo, etiqueta e tarefa rodam antes de o
+    // card ir para o destino; o resto fica (`passagem`).
+    const naPassagem = naoExecutaria === null && n !== null
     // "Responda e passe" (`[[TRANSFERIR]]`, 27/09): no turno, a conversa iria
     // para a equipe DEPOIS de a resposta sair — aqui, uma ação simulada a mais
     // (`tipo: 'transferir'`, sem nome); quando nada sairia, recusada como as outras.
@@ -363,17 +390,25 @@ export async function POST(request: Request, { params }: Contexto) {
     // ele estivesse lá; `transferenciaInferida` avisa a tela.
     const transferenciaInferida = !sentinela && n === null && !lidas.transferirDepois && equipePrometida(lidas.texto)
     const transferir = lidas.transferirDepois || transferenciaInferida ? [{ tipo: ACAO_TRANSFERIR, nome: '' }] : []
+    const executariam = naoExecutaria
+      ? []
+      : naPassagem
+        ? resolvidas.aceitas.filter((a) => ACOES_COM_A_PASSAGEM.has(a.tipo))
+        : resolvidas.aceitas
+    const ficariam = naoExecutaria
+      ? [...resolvidas.aceitas, ...transferir]
+      : naPassagem
+        ? [...resolvidas.aceitas.filter((a) => !ACOES_COM_A_PASSAGEM.has(a.tipo)), ...transferir]
+        : []
     const acoes = {
-      aceitas: naoExecutaria
-        ? []
-        : [
-            ...resolvidas.aceitas.map((a) => ({ tipo: a.tipo, nome: a.nome, ...(a.valor !== undefined ? { valor: a.valor } : {}) })),
-            ...transferir,
-          ],
+      aceitas: [
+        ...executariam.map((a) => ({ tipo: a.tipo, nome: a.nome, ...(a.valor !== undefined ? { valor: a.valor } : {}) })),
+        ...(naoExecutaria || naPassagem ? [] : transferir),
+      ],
       recusadas: [
         ...lidas.recusadas,
         ...resolvidas.recusadas,
-        ...(naoExecutaria ? [...resolvidas.aceitas, ...transferir].map((a) => ({ tipo: a.tipo, motivo: naoExecutaria })) : []),
+        ...ficariam.map((a) => ({ tipo: a.tipo, motivo: naoExecutaria ?? ('passagem' as const) })),
       ].map((r) => ({ tipo: r.tipo, motivo: r.motivo })),
     }
     return NextResponse.json({
@@ -384,6 +419,7 @@ export async function POST(request: Request, { params }: Contexto) {
       pedidoVazado: vazou,
       linkInventado: inventou,
       reuniaoPrometida: prometeu,
+      acaoPrometida: prometeuAcao,
       transferenciaInferida,
       // O que foi oferecido ao modelo (F5); `null` = reunião desligada, leitura
       // que falhou ou cliente que já tem reunião (nada foi oferecido). O

@@ -85,6 +85,7 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
       pausada: false,
       pausadaPor: null,
       motivo: null,
+      naoAtende: null,
     })
   })
 
@@ -175,6 +176,71 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
     consultas.length = 0
     expect(await (await chamar()).json()).toMatchObject({ agente: null, motivo: 'fora_do_alcance' })
     expect(consultas.some((c) => c.tabela === 'deals')).toBe(false)
+  })
+
+  describe('naoAtende — a etapa TEM agente, mas ele não atende esta conversa (validação de 25/10/2026)', () => {
+    it('⚠️ card antigo depois de desligar e religar o agente (D27): o nome e o motivo, nunca silêncio', async () => {
+      // Religado agora: o card que já estava na etapa ficou "antigo".
+      banco.cb_ia_agentes = { ...(banco.cb_ia_agentes as object), ativado_em: '2026-09-26T00:00:00Z' }
+      expect(await (await chamar()).json()).toEqual({
+        agente: null,
+        pausada: false,
+        pausadaPor: null,
+        motivo: 'card_antigo',
+        naoAtende: { agente: { id: 'ag-1', nome: 'Triagem' }, motivo: 'card_antigo' },
+      })
+    })
+
+    it('agente desligado e conexão fora das dele: o motivo de cada um', async () => {
+      banco.cb_ia_agentes = { ...(banco.cb_ia_agentes as object), ativo: false }
+      expect((await (await chamar()).json()).naoAtende).toEqual({
+        agente: { id: 'ag-1', nome: 'Triagem' },
+        motivo: 'agente_desligado',
+      })
+      banco.cb_ia_agentes = { ...(banco.cb_ia_agentes as object), ativo: true, conexoes: ['canal-9'] }
+      expect((await (await chamar()).json()).naoAtende).toEqual({
+        agente: { id: 'ag-1', nome: 'Triagem' },
+        motivo: 'fora_da_conexao',
+      })
+    })
+
+    it('com a IA pausada também: a faixa pode dizer que, retomada, ela ainda não atenderia', async () => {
+      banco.conversations = { ...(banco.conversations as object), ai_autoreply_disabled: true, ia_pausada_por: 'gente' }
+      banco.cb_ia_agentes = { ...(banco.cb_ia_agentes as object), ativado_em: '2026-09-26T00:00:00Z' }
+      expect(await (await chamar()).json()).toMatchObject({
+        pausada: true,
+        pausadaPor: 'gente',
+        naoAtende: { agente: { id: 'ag-1', nome: 'Triagem' }, motivo: 'card_antigo' },
+      })
+    })
+
+    it('sem agente a nomear (sem card, etapa sem agente), atendendo, encerrada, grupo: nulo', async () => {
+      expect((await (await chamar()).json()).naoAtende).toBeNull()
+      banco.cb_ia_agente_etapas = null
+      expect((await (await chamar()).json()).naoAtende).toBeNull()
+      banco.deals = null
+      expect((await (await chamar()).json()).naoAtende).toBeNull()
+      banco.deals = { id: 'd1', stage_id: 'e1', pipeline_id: 'f1', etapa_desde: '2026-09-01T00:00:00Z' }
+      banco.cb_ia_agente_etapas = { ia_agente_id: 'ag-1', desde: '2026-09-21T12:00:00Z' }
+      // Card antigo, mas a conversa está encerrada: o motor para antes (encerrada).
+      banco.conversations = { ...(banco.conversations as object), status: 'closed' }
+      expect(await (await chamar()).json()).toMatchObject({ motivo: 'encerrada', naoAtende: null })
+      banco.conversations = { ...(banco.conversations as object), status: 'open', group_id: 'g-1', contact_id: null }
+      expect(await (await chamar()).json()).toMatchObject({ motivo: 'fora_do_alcance', naoAtende: null })
+    })
+
+    it('⚠️ de qualquer membro: do agente sai SÓ id e nome — nunca conexões, datas ou instruções', async () => {
+      banco.cb_ia_agentes = {
+        ...(banco.cb_ia_agentes as object),
+        ativo: false,
+        instrucoes: 'segredo do administrador',
+      }
+      const corpo = await (await chamar()).json()
+      expect(Object.keys(corpo).sort()).toEqual(['agente', 'motivo', 'naoAtende', 'pausada', 'pausadaPor'])
+      expect(Object.keys(corpo.naoAtende).sort()).toEqual(['agente', 'motivo'])
+      expect(Object.keys(corpo.naoAtende.agente).sort()).toEqual(['id', 'nome'])
+      expect(JSON.stringify(corpo)).not.toMatch(/canal-1|2026-09|segredo/)
+    })
   })
 
   it('conversa de outra conta (ou inexistente): 404', async () => {

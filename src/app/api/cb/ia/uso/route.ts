@@ -17,7 +17,10 @@ type Db = ReturnType<typeof supabaseAdmin>
 
 /**
  * Todas as linhas de `cb_ia_uso`, página a página, sobre a ordem TOTAL da
- * função (as cinco chaves do grupo). `null` = não deu para ler TUDO (erro, ou
+ * função (as seis chaves do grupo — a FAIXA do pedido entrou na 1108; sem ela,
+ * duas linhas empatavam e a fronteira da página podia repetir uma e pular a
+ * outra). ⚠️ Exige a 1108 aplicada (ADITIVA, antes do deploy): ordenar por
+ * coluna que a função não tem é erro do PostgREST. `null` = não deu para ler TUDO (erro, ou
  * mais páginas que o teto): a tela diz que falhou em vez de mostrar um total
  * menor com cara de certo — e, com a ordem por dia, quem sobraria de fora
  * seriam justamente os dias mais recentes.
@@ -36,6 +39,7 @@ async function lerUsoInteiro(
       .order('ia_agente_id', { ascending: true, nullsFirst: false })
       .order('provedor', { ascending: true })
       .order('modelo', { ascending: true })
+      .order('acima_da_faixa', { ascending: true })
       .range(de, de + PAGINA - 1)
     if (error) {
       console.error('[cb/ia/uso] leitura falhou:', error.message)

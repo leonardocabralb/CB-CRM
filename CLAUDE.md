@@ -523,6 +523,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   card, `createDeal`, FKs compostas, concorrência do quadro.
 - `.claude/rules/funil-metricas.md` — degraus, coorte × por período,
   Desempenho, Saúde, Meta Ads.
+- `.claude/rules/funil-painel-e-etapas.md` — painel da conversa acompanha o
+  negócio mudado por fora; etapas do funil novo no idioma.
 - `.claude/rules/contatos.md` — chave canônica do telefone, telefone
   digitado, Lixeira de contatos, etiquetas, duplicatas e união.
 - `.claude/rules/campos-e-nome.md` — campo que salva sozinho, blocos de
@@ -544,6 +546,10 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   e a base de conhecimento por agente (1052); a resposta cortada pelo teto.
 - `.claude/rules/ia-retomada.md` — a retomada do agente quando o cliente não
   responde (1056): a fila, a cadência, o que a para e os lembretes.
+- `.claude/rules/ia-tela-do-agente.md` — modelo pela chave, quem lê a mídia,
+  avisos antes de salvar, "não atende" na faixa, custo por faixa (1108).
+- `.claude/rules/ia-agentes-turno.md` — ação prometida retida, passagem com
+  campo/etiqueta/tarefa, espera do horário, encerrar sem apagar (1109).
 - `.claude/rules/reunioes.md` — agenda (EXCLUDE, fuso), pauta e Reagendar
   (1081), aviso de no-show, tl;dv e transcrições.
 - `.claude/rules/agendadas.md` — mensagem agendada, anexo e citação, tela

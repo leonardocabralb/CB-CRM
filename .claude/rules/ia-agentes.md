@@ -76,9 +76,11 @@ Plano: `docs/PLANO-agentes-de-ia.md` (D5, D28, F4). Sem migration.
 - ⚠️⚠️ **O modelo escolhe NÚMERO, nunca id** (`opcoesDoAgente` → pedido
   numerado → `resolverAcoes`). Contato, card e conversa são os DO TURNO.
   Número fora da lista = recusada. Nada ligado em `ferramentas` = só conversa.
-- ⚠️⚠️ **As ações rodam DEPOIS de a resposta SAIR** (`turno.ts`). Passagem,
-  transferência, link inventado, reserva recusada, envio recusado ou incerto
-  = nenhuma ação (registradas como recusadas / `envio_falhou`). Cada ação é
+- ⚠️⚠️ **As ações rodam DEPOIS de a resposta SAIR** (`turno.ts`). Transferência,
+  link inventado, ação prometida, reserva recusada, envio recusado ou
+  incerto = nenhuma ação (registradas como recusadas / `envio_falhou`). A
+  PASSAGEM roda só campo, etiqueta e tarefa, ANTES de mover
+  (`ia-agentes-turno.md`). Cada ação é
   conferida DE NOVO na hora e deixa a anotação "IA · <agente> …"; uma falha
   não segura as outras.
 - ⚠️⚠️ **D5 SÓ para o que o agente faz (decisão do operador, 27/09/2026)**
@@ -112,6 +114,8 @@ Plano: `docs/PLANO-agentes-de-ia.md` (D5, D28, F4). Sem migration.
 - **Link inventado** (`linkInventado`): URL da resposta que não está no
   pedido montado nem nas mensagens enviadas ao modelo → retém e transfere
   (`link_inventado`), com o link no registro do turno.
+- **Ação prometida sem a ação** ("criei o lembrete") → retém e transfere
+  (`acao_prometida`): `ia-agentes-turno.md`.
 - **Campo com tipo**: data, número, lista e o e-mail espelhado são validados
   na hora (`valor_invalido`); valor vazio não apaga.
 - **O registro** (`cb_ia_turnos.acoes`): `erro` é código de lista FECHADA

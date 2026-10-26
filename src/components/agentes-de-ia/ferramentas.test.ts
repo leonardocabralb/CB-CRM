@@ -1,16 +1,21 @@
 import { describe, expect, it } from 'vitest'
 
+import { LIMITES } from '@/lib/ia-agentes/agente'
+
 import {
   agruparItens,
+  avisoDoEmailDaReuniao,
   catalogoDoTipo,
   itensDoTipo,
   lerAcoesDoTurno,
   lerAcoesSimuladas,
   lerHorariosOferecidos,
   lerOpcoes,
+  liberarCampoDoEmail,
   situacaoDaReuniao,
   TETO_DO_POSTGREST,
 } from './ferramentas'
+import { ferramentasDoRascunho, rascunhoDasFerramentas, type RascunhoDasFerramentas } from './rascunho'
 import type { OpcoesDasFerramentas } from './tipos'
 
 const OPCOES: OpcoesDasFerramentas = {
@@ -342,5 +347,127 @@ describe('catalogoDoTipo — o que PROVA que um item marcado sumiu', () => {
       ['https://api.calendly.com/event_types/def', 'Retorno'],
     ])
     expect(itensDoTipo({ ...OPCOES, calendly: 'falhou', tiposDeEvento: null }, 'marcar_reuniao')).toEqual([])
+  })
+})
+
+describe('avisoDoEmailDaReuniao — "Marcar reunião" sem o campo E-mail liberado (validação de 25/10/2026)', () => {
+  const EMAIL = { id: 'c-email', nome: 'E-mail', vigiado: false, tipo: 'email', opcoes: [] }
+  const COM_EMAIL: OpcoesDasFerramentas = { ...OPCOES, campos: [...OPCOES.campos, EMAIL] }
+  const ABC = 'https://api.calendly.com/event_types/abc'
+
+  function rascunho(f: Parameters<typeof rascunhoDasFerramentas>[0]): RascunhoDasFerramentas {
+    return rascunhoDasFerramentas(f)
+  }
+
+  it('reunião desligada: nada a avisar', () => {
+    expect(avisoDoEmailDaReuniao(COM_EMAIL, rascunho({}))).toBeNull()
+    expect(avisoDoEmailDaReuniao(COM_EMAIL, rascunho({ preencher_campo: { campos: ['c1'] } }))).toBeNull()
+  })
+
+  it('⚠️ reunião ligada e "Preencher campo" desligada: avisa, com o campo do e-mail para liberar', () => {
+    expect(avisoDoEmailDaReuniao(COM_EMAIL, rascunho({ marcar_reuniao: { tipos_de_evento: [ABC] } }))).toEqual({
+      campo: { id: 'c-email', nome: 'E-mail' },
+      podeLiberar: true,
+    })
+  })
+
+  it('"Preencher campo" ligada SEM o e-mail marcado: avisa também', () => {
+    expect(
+      avisoDoEmailDaReuniao(
+        COM_EMAIL,
+        rascunho({ marcar_reuniao: { tipos_de_evento: [ABC] }, preencher_campo: { campos: ['c1'] } }),
+      ),
+    ).toMatchObject({ campo: { id: 'c-email' }, podeLiberar: true })
+  })
+
+  it('o e-mail marcado com "Preencher campo" ligada: nada a avisar', () => {
+    expect(
+      avisoDoEmailDaReuniao(
+        COM_EMAIL,
+        rascunho({ marcar_reuniao: { tipos_de_evento: [ABC] }, preencher_campo: { campos: ['c1', 'c-email'] } }),
+      ),
+    ).toBeNull()
+  })
+
+  it('o e-mail na lista, mas "Preencher campo" desligada: avisa (desligada não preenche nada)', () => {
+    const r = rascunho({ marcar_reuniao: { tipos_de_evento: [ABC] }, preencher_campo: { campos: ['c-email'] } })
+    const desligada = { ...r, ligadas: r.ligadas.filter((t) => t !== 'preencher_campo') }
+    expect(avisoDoEmailDaReuniao(COM_EMAIL, desligada)).toMatchObject({ podeLiberar: true })
+  })
+
+  it('o campo do e-mail é o de tipo `email` (o espelhado), nunca um campo de texto com "e-mail" no nome', () => {
+    const soTexto: OpcoesDasFerramentas = {
+      ...OPCOES,
+      campos: [...OPCOES.campos, { id: 'c9', nome: 'E-mail secundário', vigiado: false, tipo: 'text', opcoes: [] }],
+    }
+    // A conta sem o campo espelhado: o aviso sai, sem nada a liberar.
+    expect(avisoDoEmailDaReuniao(soTexto, rascunho({ marcar_reuniao: { tipos_de_evento: [ABC] } }))).toEqual({
+      campo: null,
+      podeLiberar: false,
+    })
+  })
+
+  it('"Preencher campo" no teto de itens: o aviso sai, sem o botão (o Salvar recusaria)', () => {
+    const muitos = Array.from({ length: LIMITES.itensPorAcao }, (_, i) => ({
+      id: `x${i}`,
+      nome: `Campo ${i}`,
+      vigiado: false,
+      tipo: 'text',
+      opcoes: [],
+    }))
+    const opcoes: OpcoesDasFerramentas = { ...OPCOES, campos: [...muitos, EMAIL] }
+    const cheio = rascunho({
+      marcar_reuniao: { tipos_de_evento: [ABC] },
+      preencher_campo: { campos: muitos.map((c) => c.id) },
+    })
+    expect(avisoDoEmailDaReuniao(opcoes, cheio)).toMatchObject({ podeLiberar: false })
+    // Um a menos: cabe o e-mail. Órfão (o campo que não existe mais) não conta.
+    const umAMenos = rascunho({
+      marcar_reuniao: { tipos_de_evento: [ABC] },
+      preencher_campo: { campos: [...muitos.slice(1).map((c) => c.id), 'campo-apagado'] },
+    })
+    expect(avisoDoEmailDaReuniao(opcoes, umAMenos)).toMatchObject({ podeLiberar: true })
+  })
+
+  it('campo do e-mail vigiado (não deveria): o aviso sai, sem o botão', () => {
+    const vigiado: OpcoesDasFerramentas = { ...OPCOES, campos: [{ ...EMAIL, vigiado: true }] }
+    expect(avisoDoEmailDaReuniao(vigiado, rascunho({ marcar_reuniao: { tipos_de_evento: [ABC] } }))).toMatchObject({
+      podeLiberar: false,
+    })
+  })
+})
+
+describe('liberarCampoDoEmail — o botão "Liberar o campo E-mail" (só o rascunho)', () => {
+  const ABC = 'https://api.calendly.com/event_types/abc'
+
+  it('liga "Preencher campo" e marca o e-mail; o resto do rascunho fica', () => {
+    const antes = rascunhoDasFerramentas({ marcar_reuniao: { tipos_de_evento: [ABC] }, etiquetar: { etiquetas: ['t1'] } })
+    const depois = liberarCampoDoEmail(antes, 'c-email')
+    expect(ferramentasDoRascunho(depois)).toEqual({
+      marcar_reuniao: { tipos_de_evento: [ABC] },
+      etiquetar: { etiquetas: ['t1'] },
+      preencher_campo: { campos: ['c-email'] },
+    })
+    // Puro: o rascunho de antes não muda.
+    expect(ferramentasDoRascunho(antes)).toEqual({ marcar_reuniao: { tipos_de_evento: [ABC] }, etiquetar: { etiquetas: ['t1'] } })
+  })
+
+  it('"Preencher campo" já ligada: acrescenta o e-mail aos marcados, sem repetir', () => {
+    const antes = rascunhoDasFerramentas({ preencher_campo: { campos: ['c1'] } })
+    expect(ferramentasDoRascunho(liberarCampoDoEmail(antes, 'c-email'))).toEqual({
+      preencher_campo: { campos: ['c1', 'c-email'] },
+    })
+    const duas = liberarCampoDoEmail(liberarCampoDoEmail(antes, 'c-email'), 'c-email')
+    expect(ferramentasDoRascunho(duas)).toEqual({ preencher_campo: { campos: ['c1', 'c-email'] } })
+  })
+
+  it('depois do botão, o aviso some', () => {
+    const opcoes: OpcoesDasFerramentas = {
+      ...OPCOES,
+      campos: [...OPCOES.campos, { id: 'c-email', nome: 'E-mail', vigiado: false, tipo: 'email', opcoes: [] }],
+    }
+    const r = rascunhoDasFerramentas({ marcar_reuniao: { tipos_de_evento: [ABC] } })
+    expect(avisoDoEmailDaReuniao(opcoes, r)).not.toBeNull()
+    expect(avisoDoEmailDaReuniao(opcoes, liberarCampoDoEmail(r, 'c-email'))).toBeNull()
   })
 })

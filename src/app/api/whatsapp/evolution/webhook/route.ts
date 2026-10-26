@@ -354,7 +354,12 @@ export async function POST(request: Request) {
               // Com o item: o eco da resposta de um agente de IA pode chegar
               // assim também (ver `jaGravada`).
               jaGravada: (id, esperar) =>
-                jaGravada(id, esperar, { accountId: route.accountId, item }),
+                jaGravada(
+                  id,
+                  esperar,
+                  { accountId: route.accountId, item },
+                  esperar ? undefined : { accountId: route.accountId },
+                ),
             });
             semAnexo.push(...chegada.anexos);
             // Ficou retida e o acervo JÁ conhece o LID (o eco entrou no meio):
@@ -369,11 +374,19 @@ export async function POST(request: Request) {
           }
 
           if (
-            await jaGravada(normalized.providerMessageId, normalized.fromMe, {
-              accountId: route.accountId,
-              item,
-            })
+            await jaGravada(
+              normalized.providerMessageId,
+              normalized.fromMe,
+              { accountId: route.accountId, item },
+              normalized.fromMe ? undefined : { accountId: route.accountId },
+            )
           ) {
+            // A CHEGADA descartada deixa rastro (o eco, que é o caso comum,
+            // não): a de 25/10/2026 sumiu sem log nem retenção, e só o log da
+            // VPS mostraria a causa.
+            if (!normalized.fromMe) {
+              console.info('[evolution-webhook] chegada já gravada nesta conta, descartada:', normalized.providerMessageId);
+            }
             continue;
           }
 
@@ -1011,13 +1024,37 @@ export async function POST(request: Request) {
  * chamador que espera a corrida (`fromMe`) passa o item — há pino em
  * `route.eco.test.ts`. A religação das retidas não espera e não passa: o
  * limite está no cabeçalho de `eco.ts`.
+ *
+ * ⚠️⚠️ `recebida` (a mensagem 1:1 que CHEGA, `fromMe` falso): só conta outra
+ * mensagem que também CHEGOU, na MESMA conta. O id do WhatsApp é o mesmo nos
+ * dois lados da conversa, e entre dois números desta conta (a Bancário -
+ * Comercial escrevendo para a Bancário - Jurídico) a SAÍDA de um já está
+ * gravada com ele: sem o recorte, a chegada no outro número era descartada
+ * como repetida, sem log nem retenção (medido em 25/10/2026). O eco (`fromMe`)
+ * e o GRUPO seguem comparando com qualquer linha — dois números nossos no
+ * mesmo grupo recebem a mesma mensagem, e ela é UMA no fio do grupo.
  */
 async function jaGravada(
   providerMessageId: string,
   esperarCorrida = false,
   eco?: EcoPossivel,
+  recebida?: { accountId: string },
 ): Promise<boolean> {
   const existe = async () => {
+    if (recebida) {
+      const { data, error } = await supabaseAdmin()
+        .from('messages')
+        .select('id, conversations!inner(account_id)')
+        .eq('message_id', providerMessageId)
+        .eq('sender_type', 'customer')
+        .eq('conversations.account_id', recebida.accountId)
+        .limit(1)
+        .maybeSingle();
+      // Erro de leitura NÃO é "já gravada": a mensagem segue (a ingestão tem a
+      // própria guarda de repetição); descartá-la a perderia em silêncio.
+      if (error) console.error('[evolution-webhook] jaGravada: leitura falhou', error.code, error.message);
+      return !!data;
+    }
     const { data } = await supabaseAdmin()
       .from('messages')
       .select('id')

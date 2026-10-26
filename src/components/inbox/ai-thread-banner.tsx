@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 import { Sparkles, Pause, Undo2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EVENTO_EXECUCOES } from "@/lib/execucoes/aviso";
+import {
+  MOTIVOS_DO_AGENTE_QUE_NAO_ATENDE,
+  type MotivoDoAgenteQueNaoAtende,
+} from "@/lib/ia-agentes/quem-responde";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 
@@ -23,6 +27,14 @@ import { useTranslations } from "next-intl";
 //   - atendendo → "IA · <nome> responde nesta conversa" + [Pausar]
 //   - pausada   → "IA pausada — <motivo>" + [Retomar IA] (D26: só este botão
 //                 retoma; mudar o card de etapa não)
+//   - não atende → "IA · <nome> não atende esta conversa: <motivo>", discreta,
+//                 sem botão: a etapa do card TEM agente, mas ele está
+//                 desligado, sem a conexão ou o card é antigo (D27; nunca
+//                 sugere mover o card e voltar: as automações das etapas
+//                 rodariam de novo). Sem ela, o card que já estava na
+//                 etapa quando o agente foi religado ficava em silêncio sem
+//                 rastro (medido, validação de 25/10/2026). Também vai como
+//                 segunda linha da pausada: retomar não faria ele atender.
 //   - nada      → não desenha
 //
 // Pausar e Retomar vão pela rota `POST /api/ai/autoreply/[id]`, que NÃO mexe
@@ -32,50 +44,81 @@ import { useTranslations } from "next-intl";
 export const MOTIVOS_DA_PAUSA = ["gente", "botao", "transferencia", "automacao"] as const;
 export type MotivoDaPausa = (typeof MOTIVOS_DA_PAUSA)[number];
 
+/** O agente da etapa que não atende esta conversa, e por quê (`naoAtende` da rota). */
+export interface NaoAtende {
+  agente: { id: string; nome: string };
+  motivo: MotivoDoAgenteQueNaoAtende;
+}
+
 /** O que a rota da conversa responde (o que a faixa usa). */
 export interface EstadoDaIa {
   agente: { id: string; nome: string } | null;
   pausada: boolean;
   pausadaPor: string | null;
+  naoAtende: NaoAtende | null;
+}
+
+function lerAgente(v: unknown): { id: string; nome: string } | null {
+  const a = v as Record<string, unknown> | null | undefined;
+  return a && typeof a === "object" && typeof a.id === "string" && typeof a.nome === "string"
+    ? { id: a.id, nome: a.nome }
+    : null;
+}
+
+/** `naoAtende` da rota; motivo fora da lista (servidor mais novo) = nulo, nunca chave crua. */
+function lerNaoAtende(v: unknown): NaoAtende | null {
+  if (!v || typeof v !== "object") return null;
+  const n = v as Record<string, unknown>;
+  const agente = lerAgente(n.agente);
+  const motivo = (MOTIVOS_DO_AGENTE_QUE_NAO_ATENDE as readonly unknown[]).includes(n.motivo)
+    ? (n.motivo as MotivoDoAgenteQueNaoAtende)
+    : null;
+  return agente && motivo ? { agente, motivo } : null;
 }
 
 /** Corpo da rota → estado. Parse campo a campo; forma estranha = `null` (a faixa some). */
 export function lerEstadoDaIa(corpo: unknown): EstadoDaIa | null {
   if (!corpo || typeof corpo !== "object") return null;
   const c = corpo as Record<string, unknown>;
-  const a = c.agente as Record<string, unknown> | null | undefined;
-  const agente =
-    a && typeof a === "object" && typeof a.id === "string" && typeof a.nome === "string"
-      ? { id: a.id, nome: a.nome }
-      : null;
   return {
-    agente,
+    agente: lerAgente(c.agente),
     pausada: c.pausada === true,
     pausadaPor: typeof c.pausadaPor === "string" ? c.pausadaPor : null,
+    naoAtende: lerNaoAtende(c.naoAtende),
   };
 }
 
+/** A linha "não atende": o nome do agente e o motivo. */
+export type LinhaNaoAtende = { agente: string; motivo: MotivoDoAgenteQueNaoAtende };
+
 export type Faixa =
   | { tipo: "atendendo"; agente: string }
-  | { tipo: "pausada"; motivo: MotivoDaPausa | null }
+  | { tipo: "pausada"; motivo: MotivoDaPausa | null; naoAtende: LinhaNaoAtende | null }
+  | ({ tipo: "naoAtende" } & LinhaNaoAtende)
   | null;
 
 /**
  * O que a faixa desenha. Pausada só aparece onde há agente — o da etapa, ou
  * o último que respondeu (`iaAgenteIdDaConversa`): a pausa antiga do
  * assistente anterior, numa conversa que nenhum agente atende, seria um
- * "Retomar" que não retoma nada.
+ * "Retomar" que não retoma nada. "Não atende" entra só onde, antes, não se
+ * desenhava NADA (e como segunda linha da pausada): os estados de atender e
+ * de pausa ficam como eram.
  */
 export function faixaDaIa(estado: EstadoDaIa | null, iaAgenteIdDaConversa: string | null): Faixa {
   if (!estado) return null;
-  if (estado.pausada) {
-    if (!estado.agente && !iaAgenteIdDaConversa) return null;
+  const naoAtende = estado.naoAtende
+    ? { agente: estado.naoAtende.agente.nome, motivo: estado.naoAtende.motivo }
+    : null;
+  if (estado.pausada && (estado.agente || iaAgenteIdDaConversa)) {
     const motivo = (MOTIVOS_DA_PAUSA as readonly string[]).includes(estado.pausadaPor ?? "")
       ? (estado.pausadaPor as MotivoDaPausa)
       : null;
-    return { tipo: "pausada", motivo };
+    return { tipo: "pausada", motivo, naoAtende };
   }
-  return estado.agente ? { tipo: "atendendo", agente: estado.agente.nome } : null;
+  // Daqui para baixo, agente da etapa só sem pausa (pausada com ele já saiu acima).
+  if (estado.agente) return { tipo: "atendendo", agente: estado.agente.nome };
+  return naoAtende ? { tipo: "naoAtende", ...naoAtende } : null;
 }
 
 /** Qual frase do dicionário explica a recusa da rota. Nunca o `error` cru (inglês). */
@@ -218,12 +261,23 @@ export function FaixaDaIa({
   if (faixa.tipo === "pausada") {
     return (
       <Banner tone="muted">
-        <p className="min-w-0 flex-1 truncate font-medium text-foreground">
-          {faixa.motivo ? t("pausadaComMotivo", { motivo: t(`motivo.${faixa.motivo}`) }) : t("pausada")}
-        </p>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-medium text-foreground">
+            {faixa.motivo ? t("pausadaComMotivo", { motivo: t(`motivo.${faixa.motivo}`) }) : t("pausada")}
+          </p>
+          {faixa.naoAtende ? <LinhaNaoAtendeDaFaixa linha={faixa.naoAtende} /> : null}
+        </div>
         <BannerButton onClick={aoRetomar} busy={busy} icon={Undo2} title={t("retomarDica")}>
           {t("resume")}
         </BannerButton>
+      </Banner>
+    );
+  }
+
+  if (faixa.tipo === "naoAtende") {
+    return (
+      <Banner tone="muted">
+        <LinhaNaoAtendeDaFaixa linha={faixa} />
       </Banner>
     );
   }
@@ -238,6 +292,26 @@ export function FaixaDaIa({
         {t("pausar")}
       </BannerButton>
     </Banner>
+  );
+}
+
+/**
+ * "IA · <agente> não atende esta conversa: <motivo>", discreta e sem botão;
+ * no card antigo (D27), a dica de como fazer a IA atender. O texto QUEBRA
+ * linha (nunca `truncate`): no celular a dica sumiria cortada.
+ */
+function LinhaNaoAtendeDaFaixa({ linha }: { linha: LinhaNaoAtende }) {
+  const t = useTranslations("Inbox.aiBanner");
+  return (
+    <div className="min-w-0 flex-1 text-muted-foreground">
+      <p className="flex min-w-0 items-start gap-1.5">
+        <Sparkles className="mt-px h-3.5 w-3.5 flex-shrink-0" />
+        <span className="min-w-0">
+          {t("naoAtende", { agente: linha.agente, motivo: t(`naoAtendeMotivo.${linha.motivo}`) })}
+        </span>
+      </p>
+      {linha.motivo === "card_antigo" ? <p className="mt-0.5 pl-5">{t("naoAtendeDica")}</p> : null}
+    </div>
   );
 }
 

@@ -3,7 +3,8 @@
 //
 // A entrada são as linhas da RPC `cb_ia_uso` (1048: uma por dia, modo,
 // agente, provedor e modelo — a soma é feita no BANCO, porque ler linha a
-// linha esbarrava no corte de 1000 do PostgREST). Aqui só se reagrupa e se
+// linha esbarrava no corte de 1000 do PostgREST; desde a 1108, também por
+// FAIXA do pedido, para o preço do Haiku 5.5). Aqui só se reagrupa e se
 // estima o custo.
 //
 // ⚠️ Produção (`agente`) e teste do Playground (`agente_teste`, D13) ficam
@@ -21,6 +22,12 @@ export interface LinhaDeUso {
   iaAgenteNome: string | null
   provedor: string
   modelo: string
+  /**
+   * Os pedidos tinham mais de `LIMIAR_DA_FAIXA` tokens de entrada (1108).
+   * `null` = a soma não trouxe a coluna (a função de antes da 1108): o modelo
+   * COM faixa fica sem preço (`custoEmDolar`).
+   */
+  acimaDaFaixa: boolean | null
   chamadas: number
   tokensEntrada: number
   tokensSaida: number
@@ -89,6 +96,7 @@ export function resumirUso(linhas: LinhaDeUso[], cotacao: number | null): Resumo
       provedor: l.provedor,
       modelo: l.modelo,
       dia: l.dia,
+      acimaDaFaixa: l.acimaDaFaixa,
       tokensEntrada: l.tokensEntrada,
       tokensSaida: l.tokensSaida,
       tokensTotal: l.tokensTotal,
@@ -139,7 +147,11 @@ export function resumirUso(linhas: LinhaDeUso[], cotacao: number | null): Resumo
   }
 }
 
-/** Linha crua da RPC → `LinhaDeUso`; forma estranha é descartada. */
+/**
+ * Linha crua da RPC → `LinhaDeUso`; forma estranha é descartada. A coluna da
+ * faixa (1108) ausente vira `null`, nunca `false`: "até o limiar" por palpite
+ * daria ao pedido longo o preço baixo.
+ */
 export function lerLinhaDeUso(r: Record<string, unknown>): LinhaDeUso | null {
   if (typeof r.dia !== 'string' || typeof r.modo !== 'string') return null
   if (typeof r.provedor !== 'string' || typeof r.modelo !== 'string') return null
@@ -151,6 +163,7 @@ export function lerLinhaDeUso(r: Record<string, unknown>): LinhaDeUso | null {
     iaAgenteNome: typeof r.ia_agente_nome === 'string' ? r.ia_agente_nome : null,
     provedor: r.provedor,
     modelo: r.modelo,
+    acimaDaFaixa: typeof r.acima_da_faixa === 'boolean' ? r.acima_da_faixa : null,
     chamadas: n(r.chamadas),
     tokensEntrada: n(r.tokens_entrada),
     tokensSaida: n(r.tokens_saida),

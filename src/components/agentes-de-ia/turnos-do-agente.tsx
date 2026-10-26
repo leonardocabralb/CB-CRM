@@ -25,15 +25,21 @@
 //
 // A RETOMADA (1056) é um turno como os outros, com o rótulo "Retomada k/n" ao
 // lado do status; a que ainda espera na fila diz para quando está prevista.
+//
+// FORA DO HORÁRIO (25/10/2026): o turno que espera a abertura do horário do
+// agente continua "Aguardando", com "aguardando o horário do agente · abre
+// <quando>" ao lado — reconhecido pelo `erro` que o servidor grava enquanto
+// ele espera (`ERRO_DA_ESPERA_DO_HORARIO`), que então não aparece cru.
 // ============================================================
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { Check, Eye, History, RefreshCw, Wrench, X } from 'lucide-react';
+import { Check, Clock, Eye, History, RefreshCw, Wrench, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { ACAO_TRANSFERIR } from '@/lib/ia-agentes/acoes';
+import { ERRO_DA_ESPERA_DO_HORARIO } from '@/lib/ia-agentes/horario';
 import { urlDoInbox } from '@/lib/inbox/url';
 import { cn } from '@/lib/utils';
 import { lerAcoesDoTurno } from './ferramentas';
@@ -62,6 +68,11 @@ interface Turno {
   retomada: { tentativa: number; de: number } | null;
   /** O vencimento — o que a tela mostra da retomada que ainda espera. */
   executarApos: string | null;
+}
+
+/** O turno que espera a abertura do horário do agente (25/10/2026): ainda na fila, com a marca do servidor. */
+function esperaOHorario(turno: Turno): turno is Turno & { executarApos: string } {
+  return turno.status === 'aguardando' && turno.erro === ERRO_DA_ESPERA_DO_HORARIO && turno.executarApos !== null;
 }
 
 /** Parse, nunca `as`: forma estranha = turno de resposta (sem rótulo). */
@@ -194,6 +205,17 @@ export function TurnosDoAgente({ agenteId }: { agenteId: string }) {
                     : null}
                 </span>
               ) : null}
+              {esperaOHorario(turno) ? (
+                <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+                  <Clock className="size-3" />
+                  {t('turnos.esperaOHorario', {
+                    quando: new Date(turno.executarApos).toLocaleString(undefined, {
+                      dateStyle: 'short',
+                      timeStyle: 'short',
+                    }),
+                  })}
+                </span>
+              ) : null}
               <span className="shrink-0 text-xs text-muted-foreground">
                 {new Date(turno.criadoEm).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
               </span>
@@ -203,7 +225,7 @@ export function TurnosDoAgente({ agenteId }: { agenteId: string }) {
               >
                 {turno.contato ?? t('turnos.semContato')}
               </Link>
-              {turno.erro ? (
+              {turno.erro && !esperaOHorario(turno) ? (
                 <p className="w-full truncate text-xs text-muted-foreground" title={turno.erro}>
                   {turno.erro}
                 </p>

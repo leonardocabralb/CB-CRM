@@ -80,6 +80,7 @@ import {
 import { gravarRetorno, lerRetorno } from "@/lib/pipelines/retorno";
 import { lerUrlDoFunil } from "@/lib/pipelines/url";
 import { CamposDoCardPopover } from "@/components/pipelines/campos-do-card-popover";
+import { etapasPadrao } from "@/lib/pipelines/etapas-padrao";
 
 // Pipeline creation is admin-class (settings-tier write under
 // the new RLS); deal creation is operational and only requires
@@ -96,15 +97,6 @@ let embedDoQuadroRecusado = false;
 // sessão inteira no plano B por um soluço, e o conteúdo é pedido a cada
 // "mostrar mais".
 const RECUSA_DO_EMBED = new Set(["PGRST200", "PGRST201", "42703"]);
-
-// Spec-defined seed — name and color per the product spec.
-const SPEC_DEFAULT_STAGES = [
-  { name: "New Lead", color: "#3b82f6", position: 0 }, // blue
-  { name: "Qualified", color: "#eab308", position: 1 }, // yellow
-  { name: "Proposal Sent", color: "#f97316", position: 2 }, // orange
-  { name: "Negotiation", color: "#8b5cf6", position: 3 }, // purple
-  { name: "Won", color: "#22c55e", position: 4 }, // green
-];
 
 // `useSearchParams` (a volta do construtor de automações pede aba e funil
 // pela URL) pede um Suspense em página estática — o mesmo embrulho do inbox
@@ -527,9 +519,11 @@ function PipelinesPageInner() {
     // pipelines.account_id is NOT NULL post-017 with no DB default.
     if (!accountId) return null;
 
+    // O nome do funil e os das etapas são GRAVADOS: saem do dicionário do
+    // idioma da instalação, nunca de literal (ver `etapas-padrao.ts`).
     const { data: pipeline, error } = await supabase
       .from("pipelines")
-      .insert({ user_id: user.id, account_id: accountId, name: "Sales Pipeline" })
+      .insert({ user_id: user.id, account_id: accountId, name: t("funilPadrao") })
       .select()
       .single();
 
@@ -538,7 +532,7 @@ function PipelinesPageInner() {
       return null;
     }
 
-    const stagesPayload = SPEC_DEFAULT_STAGES.map((s) => ({
+    const stagesPayload = etapasPadrao(t).map((s) => ({
       pipeline_id: pipeline.id,
       name: s.name,
       color: s.color,
@@ -547,7 +541,7 @@ function PipelinesPageInner() {
     await supabase.from("pipeline_stages").insert(stagesPayload);
 
     return pipeline as Pipeline;
-  }, [supabase, accountId]);
+  }, [supabase, accountId, t]);
 
   // Initial load + seed-if-empty
   useEffect(() => {
@@ -979,7 +973,7 @@ function PipelinesPageInner() {
       return;
     }
 
-    const stagesPayload = SPEC_DEFAULT_STAGES.map((s) => ({
+    const stagesPayload = etapasPadrao(t).map((s) => ({
       pipeline_id: pipeline.id,
       name: s.name,
       color: s.color,
@@ -996,6 +990,7 @@ function PipelinesPageInner() {
   }
 
   const selectedPipeline = pipelines.find((p) => p.id === selectedPipelineId);
+  const etapasDoFunilNovo = etapasPadrao(t);
 
   if (loading) {
     return (
@@ -1253,7 +1248,12 @@ function PipelinesPageInner() {
               }}
             />
             <p className="mt-2 text-xs text-muted-foreground">
-              {t("defaultStagesDesc")}
+              {/* Os nomes da frase são os que vão ser GRAVADOS — saem da
+                  mesma lista, para o texto nunca prometer outras etapas. */}
+              {t("defaultStagesDesc", {
+                primeira: etapasDoFunilNovo[0].name,
+                ultima: etapasDoFunilNovo[etapasDoFunilNovo.length - 1].name,
+              })}
             </p>
           </div>
           <DialogFooter className="bg-popover/50 border-border">

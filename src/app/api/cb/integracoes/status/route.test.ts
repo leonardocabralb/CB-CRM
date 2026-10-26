@@ -260,3 +260,20 @@ describe('GET /api/cb/integracoes/status — a linha de conexão só conta com a
     expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).not.toContain('gemini-da-conexao')
   })
 })
+
+describe('GET /api/cb/integracoes/status — quem lê a mídia nesta conta (25/10/2026)', () => {
+  it('a chave do Gemini lê tudo', async () => {
+    const corpo = (await (await GET(new Request('http://x/api/cb/integracoes/status?ping=0'))).json()) as { leitores: unknown }
+    expect(corpo.leitores).toEqual({ audio: 'gemini', imagemEPdf: 'gemini' })
+  })
+
+  it('a OpenAI "só da base" não lê: com só ela e a Anthropic, ninguém ouve e a Anthropic lê', async () => {
+    vi.mocked(lerEstado).mockResolvedValueOnce([
+      { provedor: 'gemini', existe: false },
+      { provedor: 'openai', existe: true, soDaBase: true },
+      { provedor: 'anthropic', existe: true },
+    ] as never)
+    const corpo = (await (await GET(new Request('http://x/api/cb/integracoes/status?ping=0'))).json()) as { leitores: unknown }
+    expect(corpo.leitores).toEqual({ audio: null, imagemEPdf: 'anthropic' })
+  })
+})

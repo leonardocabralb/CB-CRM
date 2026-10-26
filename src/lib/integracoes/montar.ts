@@ -183,6 +183,36 @@ export interface CartaoDeIntegracao {
   usos: UsoNoCartao[];
 }
 
+/**
+ * Quem lê a mídia do cliente NESTA conta (25/10/2026, o operador pediu que
+ * fique CLARO): NÃO é o modelo do agente — é a primeira chave da conta na
+ * ordem de cada módulo (`escolherLeitor`), e o agente recebe o TEXTO.
+ */
+export interface LeitoresDaConta {
+  /** Quem transcreve o áudio; `null` = ninguém (sem Gemini nem OpenAI: a Anthropic não ouve). */
+  audio: ProviderId | null;
+  /** Quem lê imagem e PDF; `null` = a conta não tem chave que leia. */
+  imagemEPdf: ProviderId | null;
+}
+
+/**
+ * `serve`: a chave do provedor existe e serve à leitura (a régua de
+ * `escolherLeitor`: na OpenAI, não a "só da base"). As ordens entram por
+ * PARÂMETRO (`ORDEM_DA_LEITURA`, `ORDEM_DA_TRANSCRICAO` de `leitores.ts`),
+ * como as outras constantes deste módulo: redigitadas aqui, a tela mentiria
+ * na primeira troca.
+ */
+export function leitoresDaConta(
+  serve: Record<ProviderId, boolean>,
+  ordemDaLeitura: readonly ProviderId[],
+  ordemDaTranscricao: readonly ProviderId[]
+): LeitoresDaConta {
+  return {
+    audio: ordemDaTranscricao.find((p) => serve[p]) ?? null,
+    imagemEPdf: ordemDaLeitura.find((p) => serve[p]) ?? null,
+  };
+}
+
 function estadoDe(testes: Teste[]): EstadoDaIntegracao {
   if (testes.length === 0) return 'nao_configurado';
   if (testes.some((t) => t === null)) return 'conferindo';

@@ -67,6 +67,29 @@ describe('montarPedidoDoAgente', () => {
     expect(p).not.toContain('Actions you can take')
   })
 
+  it('⚠️ a AÇÃO PROMETIDA (25/10/2026): SEMPRE — com ou sem ferramentas — só o marcador muda o sistema, e o que não dá para fazer vai para a equipe', () => {
+    const regra = /You can change the business's systems ONLY through the action markers listed further below, if there are any/
+    for (const p of [
+      montarPedidoDoAgente({ instrucoes: 'Crie uma tarefa para o Leonardo.', regras: [], agora: AGORA }),
+      montarPedidoDoAgente({
+        instrucoes: 'x',
+        regras: [],
+        agora: AGORA,
+        acoes: { etiquetar: [{ id: 't', nome: 'VIP' }] },
+      }),
+    ]) {
+      expect(p).toMatch(regra)
+      expect(p).toMatch(/created a task or a reminder, saved or noted information in a field/)
+      expect(p).toMatch(/added or removed a tag, moved the deal to another stage, ran an automation, wrote a note, closed the conversation or booked a meeting/)
+      expect(p).toMatch(/unless that action's marker is in this same reply/)
+      expect(p).toMatch(/tell the customer the team will take care of it and add \[\[TRANSFERIR\]\] at the very end/)
+    }
+    // Sem ferramenta, a regra não inventa a seção das ações nem nomeia marcador de ação.
+    const semNada = montarPedidoDoAgente({ instrucoes: 'x', regras: [], agora: AGORA })
+    expect(semNada).not.toContain('Actions you can take')
+    expect(semNada).not.toMatch(/\[\[(?:MOVER|ETIQUETAR|TIRAR|CAMPO|TAREFA|AUTOMACAO|REUNIAO)/)
+  })
+
   it('trechos da base entram por último, numerados', () => {
     const p = montarPedidoDoAgente({ instrucoes: 'a', regras: ['b'], agora: AGORA, conhecimento: ['T1', 'T2'] })
     expect(p.indexOf('[1] T1')).toBeGreaterThan(p.indexOf('1. b'))
@@ -119,6 +142,20 @@ describe('a PASSAGEM (D25)', () => {
     expect(p).toContain('1. Cobrança — boletos e segunda via')
     expect(p).toContain('2. Trabalhista')
     expect(p).not.toContain('2. Trabalhista —')
+  })
+
+  it('⚠️ a passagem leva as ações que não mexem no card (25/10/2026): campo, etiqueta e tarefa ANTES; mover, automação e reunião nunca', () => {
+    const p = montarPedidoDoAgente({
+      instrucoes: 'Qualificação.',
+      regras: [],
+      agora,
+      passagens: [{ nome: 'Bancário', descricao: '' }],
+    })
+    expect(p).toMatch(/replying with \[\[PASSAR:n\]\] \(n = the number of the agent below\) and no text for the customer/)
+    expect(p).toMatch(/fill in a field, add or remove a tag or create a task, add those markers after \[\[PASSAR:n\]\], one per line — they are done before the handover/)
+    expect(p).toMatch(/Moving the deal, running an automation and booking a meeting are never done together with a handover/)
+    // Não manda mais "e nada mais": era o que fazia o campo da qualificação se perder.
+    expect(p).not.toMatch(/\[\[PASSAR:n\]\][^.]*and nothing else/)
   })
 
   it('sem agentes para passar, o pedido não fala de passagem', () => {
