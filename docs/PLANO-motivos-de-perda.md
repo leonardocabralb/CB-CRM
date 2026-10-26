@@ -13,7 +13,7 @@ personalizado (a IA já preenche campo).
 | 1 | Migration: campo do motivo por etapa; seletor no Gerenciar funil | ✅ 26/10: código na branch (sem PR); 1112 APLICADA em produção (`20261026161549`) |
 | 2 | Janela "Por que…?" nos caminhos de gente; botão Perdido escolhe etapa | ✅ 26/10: código na branch, e2e no preview OK e limpo; configuração do Bancário gravada |
 | 3 | Passo "Mover card de etapa" grava o motivo | ✅ 26/10: código na branch; construtor conferido no preview; execução real do motor não exercitada |
-| 4 | Relatório de motivos no Desempenho | — |
+| 4 | Relatório de motivos no Desempenho | 26/10: código na branch; 1113 provada no replay local (5 cenários) e medida na produção (só leitura); falta aplicar a 1113 e conferir a tela com dado real |
 | 5 | Agente de IA que leva o card à perda grava o motivo | depois (agentes desligados) |
 
 ## Decisões do operador (26/10/2026)
@@ -251,13 +251,26 @@ do "Já rodou" (`texto-do-motor.ts`) e `MoveDealStepConfig.motivo`.
   coberto pelo teste de `gravarMotivoDoPasso` e pelo pino da ordem no
   `engine.ts`.
 
-### Fase 4 — relatório
+### Fase 4 — relatório (código pronto em 26/10/2026)
 
-- No Desempenho: por funil e período, os CARDS que entraram em etapa com
-  motivo, agrupados pelo motivo ATUAL da ficha (fora da lista → "Outro",
-  com os textos), e "Sem motivo" separado por quem moveu (pessoa,
-  automação, IA, API). Agregação no banco (RPC), nunca contar no navegador
-  (corte de 1000 linhas do PostgREST).
+- No Desempenho, seção "Motivos" (só no funil com etapa que pede motivo):
+  por etapa, os CARDS que entraram nela no período, agrupados pelo motivo
+  ATUAL da ficha (fora da lista → "Outro", com os textos), e "Sem motivo"
+  separado por quem levou o card até a etapa. Agregação no banco
+  (`cb_motivos_do_funil`, 1113), nunca contar no navegador (corte de 1000
+  linhas do PostgREST).
+- **Conta como o cartão "Desqualificados"** (cada card que ENTROU na etapa
+  no período, uma vez só), pelo período nos DOIS modos do Desempenho — o
+  motivo é do momento da saída. Por isso o total de uma etapa pode diferir
+  da linha dela em "Negativos e em aberto" (que conta quem ESTÁ perdido hoje).
+- ⚠️ **Medido: a trilha não separa automação, IA e API.** O gatilho da 912
+  grava toda troca de etapa sem pessoa como `sistema`; o "Sem motivo" mostra
+  cada PESSOA pelo nome, "Automação, robô, IA ou API" juntos e o "Histórico
+  importado" (`retroativo`). Separar mais pede mudar o gatilho da trilha
+  (fora desta fase).
+- Medido na produção (26/10, só leitura): a consulta de um ano do Bancário
+  roda em ~7 ms com o valor lido por subconsulta (contato + campo no índice
+  único); a junção solta levava ~400 ms.
 
 ### Fase 5 — IA (depois)
 
@@ -269,4 +282,6 @@ do "Já rodou" (`texto-do-motor.ts`) e `MoveDealStepConfig.motivo`.
 - **O motivo é do CONTATO, não do negócio.** Lead que volta e é perdido de
   novo sobrescreve; o relatório mostra o motivo atual.
 - API e integrações (Make, n8n) não são obrigadas a mandar motivo: aparecem
-  em "Sem motivo — API".
+  em "Sem motivo", junto com automação, robô e IA (a trilha não os separa).
+- O relatório lê a configuração ATUAL das etapas: a etapa que deixa de pedir
+  motivo some dele, com o passado.

@@ -1,3 +1,4 @@
+import { lerLinhaDeMotivo, type LinhaDeMotivo } from "./motivos";
 import { lerLinha, type LinhaDeTrajetoria } from "./trajetoria";
 
 /**
@@ -124,4 +125,34 @@ export async function carregarTrajetorias(
   if (faixas.some((linhas) => linhas === null)) return null;
   // As faixas vêm em ordem e cada uma ordenada: o todo sai por `deal_id`.
   return faixas.flatMap((linhas) => linhas ?? []);
+}
+
+/**
+ * O relatório de motivos (`cb_motivos_do_funil`, 1113): já vem SOMADO do
+ * banco, poucas dezenas de linhas. Resposta que bate no teto do PostgREST
+ * (que corta sem avisar) é `null`, como erro e linha com forma inesperada —
+ * nunca meia soma.
+ */
+export async function carregarMotivos(
+  db: ClienteDaRpc,
+  parametros: ParametrosDeCarga,
+): Promise<LinhaDeMotivo[] | null> {
+  const { data, error } = await db
+    .rpc("cb_motivos_do_funil", {
+      p_pipeline_id: parametros.pipelineId,
+      p_desde: parametros.desde ? parametros.desde.toISOString() : null,
+      p_ate: parametros.ate ? parametros.ate.toISOString() : null,
+    })
+    .order("etapa_id", { ascending: true });
+  if (error || !data || data.length >= PAGINA) return null;
+  const linhas: LinhaDeMotivo[] = [];
+  for (const cru of data) {
+    const linha = lerLinhaDeMotivo(cru);
+    if (!linha) {
+      console.warn("[funil] linha de motivo com forma inesperada; carga descartada");
+      return null;
+    }
+    linhas.push(linha);
+  }
+  return linhas;
 }

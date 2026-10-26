@@ -57,6 +57,7 @@ import type { Pipeline, PipelineStage } from "@/types";
 import { ICONE_DO_CARTAO, useRotuloDoCartaoDeCusto } from "./cartoes-de-custo";
 import { GraficoDeEntradas } from "./grafico-de-entradas";
 import { GraficoDeTaxas, type LinhaDeTaxa } from "./grafico-de-taxas";
+import { MotivosDoPeriodo } from "./motivos-do-periodo";
 import { ReunioesDoPeriodo } from "./reunioes-do-periodo";
 import { SeletorDeModo } from "./seletor-de-modo";
 import { SeletorDePeriodo } from "./seletor-de-periodo";
@@ -84,6 +85,8 @@ import { SeletorDePeriodo } from "./seletor-de-periodo";
  * - A seção REUNIÕES (`reunioes-do-periodo.tsx`, 09/10/2026) só no funil que
  *   mede no-show (`funilMedeNoShow`): agendamentos, no-shows e a taxa, pelas
  *   TRANSIÇÕES do card, no mesmo resumo (`noShows`, `taxaDeNoShow`).
+ * - A seção MOTIVOS (`motivos-do-periodo.tsx`, 1113) só no funil com etapa
+ *   que pede motivo: carrega e recarrega sozinha, pelo período nos dois modos.
  */
 
 export function Desempenho({
@@ -545,6 +548,12 @@ export function Desempenho({
               )}
             </div>
           </section>
+
+          {/* Motivos: por etapa que pede motivo, os cards que entraram nela no
+              período, pelo motivo da ficha (a soma é da 1113). */}
+          {stages.some((s) => s.campo_do_motivo_id) && (
+            <MotivosDoPeriodo pipelineId={pipeline.id} intervalo={intervalo} stages={stages} />
+          )}
 
           {/* Reuniões: agendamentos, no-shows e a taxa, pelas transições do card
               (só no funil que mede no-show: etapa "Faltou" e degrau reunião). */}

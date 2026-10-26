@@ -2096,6 +2096,21 @@
           "taxa": "No-show rate",
           "taxaDesc": "no-shows ÷ bookings",
           "noAnterior": "{valor} in the previous period"
+        },
+        "motivos": {
+          "titulo": "Reasons",
+          "nota": "Each card that entered a stage that asks for a reason during the period (whenever it came in), by the reason on the contact today — in both modes, the count is by period. Values outside the list are “Other”, with the texts. “No reason” shows who moved the card to the stage, and includes entries from before the stage asked for a reason.",
+          "carregando": "Loading the reasons…",
+          "falhou": "Could not load the reasons for this pipeline.",
+          "tentarDeNovo": "Try again",
+          "cards": "{n, plural, one {# card} other {# cards}}",
+          "campo": "Field: {nome}",
+          "nenhum": "No card entered this stage during the period.",
+          "outro": "Other",
+          "semMotivo": "No reason",
+          "semPessoa": "Automation, bot, AI or API",
+          "historico": "Imported history",
+          "pessoaSemNome": "Unnamed person"
         }
       },
       "cartoesDeCusto": {

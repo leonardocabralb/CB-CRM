@@ -9,6 +9,7 @@ paths:
   - "src/components/funil/desempenho.tsx"
   - "src/components/funil/saude.tsx"
   - "src/components/funil/lista-de-leads.tsx"
+  - "src/components/funil/motivos-do-periodo.tsx"
   - "src/hooks/use-tarefas*"
   - "src/hooks/use-channels*"
   - "src/hooks/use-gastos-de-anuncios*"
@@ -105,3 +106,7 @@ uma hora atrás, sem aviso. A caixa de entrada tem o seu próprio mecanismo
   colunas de campo), e as conexões usam o `recarregarEmSilencio` do
   `useChannels`, que descarta a falha. O `recarregar` comum trocaria a lista
   boa pelo vazio e apagaria a coluna Conexão até a volta seguinte.
+- **A seção Motivos do Desempenho (1113) carrega SOZINHA**
+  (`useMotivosDoFunil`) e chama o hook com o próprio `recarregar`, que pisca
+  como o das trajetórias (afirma números): a recarga do Desempenho não a
+  alcança. Está na lista do pino.

@@ -7,6 +7,11 @@ paths:
   - "src/lib/automations/motivo-do-passo*"
   - "supabase/migrations/1112_cb_campo_do_motivo_da_etapa.sql"
   - "supabase/migrations/campo-do-motivo-1112.test.ts"
+  - "supabase/migrations/1113_cb_motivos_do_funil.sql"
+  - "supabase/migrations/motivos-do-funil-1113.test.ts"
+  - "src/lib/funil/motivos*"
+  - "src/hooks/use-motivos-do-funil*"
+  - "src/components/funil/motivos-do-periodo.tsx"
 ---
 
 # Motivos de desqualificação e de perda — regras
@@ -122,6 +127,36 @@ construtor, o aviso `mover_card_sem_motivo` (`pendencias.ts`).
 - Fora, por escrito: o nó "Mover card" do ROBÔ (`flows/mover-card.ts`) e o
   `set_deal_status` (marca perdido sem mudar a etapa) não gravam motivo; o
   agente de IA é a Fase 5.
+
+### O relatório no Desempenho (Fase 4, 1113)
+
+`cb_motivos_do_funil` (soma no banco), `motivos.ts` (leitura e
+`agruparMotivos`, puros), `carregarMotivos` em `carregar.ts`,
+`useMotivosDoFunil` e a seção `MotivosDoPeriodo`.
+
+- ⚠️ **Conta CARDS que ENTRARAM na etapa no período** (a última entrada de
+  cada card em cada etapa; `deal_created`, `stage_changed` e
+  `pipeline_changed`, retroativo inclusive) — o jeito do cartão
+  "Desqualificados" (1091), não o da linha de perda dos "Negativos" (que é
+  quem ESTÁ perdido hoje): os números das duas seções podem diferir. Pelo
+  período nos DOIS modos do Desempenho, e a nota diz isso.
+- ⚠️⚠️ **A soma é do banco**, e a resposta que bate no teto do PostgREST é
+  `null` ("não confie"), nunca meia soma. A seção que falha diz que não sabe;
+  nunca "nenhum card".
+- **Motivo = valor ATUAL do campo da etapa na ficha do contato ATUAL do
+  card** (limite aceito: o motivo é do contato). Opção da lista → a linha
+  dela; fora da lista (texto do "Outro", opção renomeada, o "Outro" literal
+  do passo) → "Outro" com os textos; campo que deixou de ser Lista ou sumiu
+  → tudo em "Outro", nada some.
+- ⚠️ **"Sem motivo" separa só PESSOA de "sem pessoa"**: a trilha (912) grava
+  automação, robô, IA e API todos como `sistema`; `retroativo` é o histórico
+  importado. Separar mais pede mudar o gatilho da trilha — não prometer na
+  tela.
+- **A etapa que deixa de pedir motivo some do relatório**, com o passado
+  dela: a função lê a configuração ATUAL das etapas.
+- O valor vem por SUBCONSULTA (contato + campo casam o índice único): a
+  junção solta lia a ficha inteira (medido: ~400 ms → ~7 ms num ano do
+  Bancário).
 
 ### O Previdenciário ainda tem UM campo só
 

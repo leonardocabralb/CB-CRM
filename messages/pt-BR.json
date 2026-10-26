@@ -2089,6 +2089,21 @@
           "taxa": "Taxa de no-show",
           "taxaDesc": "no-shows ÷ agendamentos",
           "noAnterior": "{valor} no período anterior"
+        },
+        "motivos": {
+          "titulo": "Motivos",
+          "nota": "Cada card que entrou numa etapa que pede motivo no período (venha de quando vier), pelo motivo que a ficha tem hoje — nos dois modos, a conta é pelo período. Fora da lista é “Outro”, com os textos. “Sem motivo” mostra quem levou o card até a etapa, e inclui as entradas de antes de a etapa pedir motivo.",
+          "carregando": "Carregando os motivos…",
+          "falhou": "Não foi possível carregar os motivos deste funil.",
+          "tentarDeNovo": "Tentar de novo",
+          "cards": "{n, plural, one {# card} other {# cards}}",
+          "campo": "Campo: {nome}",
+          "nenhum": "Nenhum card entrou nesta etapa no período.",
+          "outro": "Outro",
+          "semMotivo": "Sem motivo",
+          "semPessoa": "Automação, robô, IA ou API",
+          "historico": "Histórico importado",
+          "pessoaSemNome": "Pessoa sem nome"
         }
       },
       "cartoesDeCusto": {
