@@ -29,7 +29,9 @@ import {
   rotuloDeTipoNaoLido,
   temArquivo,
   textoParaGravar,
+  extractOpcoesDeResposta,
 } from './evolution-inbound';
+import { linhaDoBotao, textoSemAsOpcoes } from '@/lib/whatsapp/opcoes-de-resposta';
 
 function item(message: Record<string, unknown>, over: Partial<EvolutionUpsert> = {}) {
   return {
@@ -910,5 +912,237 @@ describe('tipo que o normalizador não lê (1060)', () => {
     expect(textoParaGravar(FIGURINHA, 'image')).toBeNull();
     expect(textoParaGravar(IMAGEM, 'image')).toBe('olha o contrato');
     expect(textoParaGravar({ locationMessage: { degreesLatitude: 1 } }, 'location')).toBeNull();
+  });
+});
+
+// ============================================================
+// 1111 — as opções de RESPOSTA da mensagem de empresa e a ESCOLHA feita num
+// botão ou numa lista. Formas medidas na Evolution em 26/10/2026 (o modelo de
+// um credor e o "Sim" tocado no celular) e em 13/10/2026 (o menu de um robô de
+// cobrança e a escolha pelo WhatsApp Web), aqui com dados fictícios.
+// ============================================================
+
+const MODELO_COM_RESPOSTAS = {
+  templateMessage: {
+    templateId: '1000000000000001',
+    hydratedTemplate: {
+      templateId: '1000000000000001',
+      hydratedButtons: [
+        { index: 0, quickReplyButton: { id: 'Sim', displayText: 'Sim' } },
+        { index: 1, quickReplyButton: { id: 'Retorna mais tarde', displayText: 'Retorna mais tarde' } },
+      ],
+      hydratedTitleText: '',
+      hydratedContentText: 'Olá, Empresa Exemplo. Por favor, responda esta mensagem.',
+    },
+  },
+  messageContextInfo: { deviceListMetadataVersion: 2 },
+};
+
+const LISTA_DE_ROBO = {
+  listMessage: {
+    listType: 1,
+    sections: [
+      {
+        rows: [
+          { rowId: 'menu_alfa', title: 'Banco Alfa' },
+          { rowId: 'menu_beta', title: 'Banco Beta' },
+        ],
+      },
+    ],
+    buttonText: 'Ver opções',
+    description: 'Olá! Selecione a equipe de atendimento:',
+  },
+};
+
+const INTERATIVA_MISTA = {
+  interactiveMessage: {
+    body: { text: 'Escolha' },
+    nativeFlowMessage: {
+      buttons: [
+        { name: 'quick_reply', buttonParamsJson: JSON.stringify({ display_text: 'Quero saber mais', id: 'q1' }) },
+        { name: 'cta_url', buttonParamsJson: JSON.stringify({ display_text: 'Abrir', url: 'https://exemplo.test' }) },
+        { name: 'cta_copy', buttonParamsJson: JSON.stringify({ display_text: 'Copiar código', copy_code: 'ABC1' }) },
+      ],
+    },
+  },
+};
+
+describe('opções de resposta da mensagem de empresa (1111)', () => {
+  it('modelo com resposta rápida: as opções à parte, e as mesmas linhas no texto', () => {
+    const n = normalizeUpsert(item(MODELO_COM_RESPOSTAS), 'acc', 'owner');
+    expect(n?.contentType).toBe('template');
+    expect(n?.text).toBe(
+      'Olá, Empresa Exemplo. Por favor, responda esta mensagem.\n\n[Sim]\n[Retorna mais tarde]',
+    );
+    expect(n?.opcoesDeResposta).toEqual(['Sim', 'Retorna mais tarde']);
+  });
+
+  it('a variante hydratedFourRowTemplate (a que vem citada na resposta) também', () => {
+    const quatro = {
+      templateMessage: { hydratedFourRowTemplate: MODELO_COM_RESPOSTAS.templateMessage.hydratedTemplate },
+    };
+    expect(extractOpcoesDeResposta(quatro)).toEqual(['Sim', 'Retorna mais tarde']);
+  });
+
+  it('só o botão de RESPOSTA é opção: link e telefone ficam só no texto', () => {
+    const modelo = {
+      templateMessage: {
+        hydratedTemplate: {
+          hydratedContentText: 'Sua fatura vence amanhã.',
+          hydratedButtons: [
+            { index: 0, quickReplyButton: { displayText: 'Já paguei', id: 'x' } },
+            { index: 1, urlButton: { displayText: 'Ver boleto', url: 'https://exemplo.test/boleto' } },
+            { index: 2, callButton: { displayText: 'Ligar', phoneNumber: '+55 11 3000-0000' } },
+          ],
+        },
+      },
+    };
+    expect(extractOpcoesDeResposta(modelo)).toEqual(['Já paguei']);
+  });
+
+  it('interativa: só o quick_reply é opção (link e código a copiar, não)', () => {
+    const n = normalizeUpsert(item(INTERATIVA_MISTA), 'acc', 'owner');
+    expect(n?.text).toBe('Escolha\n\n[Quero saber mais]\n[Abrir] https://exemplo.test\n[Copiar código]');
+    expect(n?.opcoesDeResposta).toEqual(['Quero saber mais']);
+  });
+
+  it('menu em lista de um robô: mensagem de empresa, com os itens como opções', () => {
+    // Até 26/10/2026 virava "tipo que o CRM ainda não mostra".
+    const n = normalizeUpsert(item(LISTA_DE_ROBO), 'acc', 'owner');
+    expect(n?.contentType).toBe('template');
+    expect(n?.text).toBe('Olá! Selecione a equipe de atendimento:\n\n[Banco Alfa]\n[Banco Beta]');
+    expect(n?.opcoesDeResposta).toEqual(['Banco Alfa', 'Banco Beta']);
+  });
+
+  it('cada opção tem a SUA linha no texto — é ela que a bolha tira', () => {
+    for (const msg of [MODELO_COM_RESPOSTAS, LISTA_DE_ROBO, INTERATIVA_MISTA]) {
+      const n = normalizeUpsert(item(msg), 'acc', 'owner');
+      const opcoes = n?.opcoesDeResposta ?? [];
+      expect(opcoes.length).toBeGreaterThan(0);
+      const linhas = (n?.text ?? '').split('\n');
+      for (const o of opcoes) expect(linhas).toContain(linhaDoBotao(o));
+      const resto = (textoSemAsOpcoes(n?.text ?? null, opcoes) ?? '').split('\n');
+      for (const o of opcoes) expect(resto).not.toContain(linhaDoBotao(o));
+    }
+  });
+
+  it('sem opção de resposta, a chave nem existe (o INSERT de sempre)', () => {
+    const semResposta = {
+      templateMessage: {
+        hydratedTemplate: {
+          hydratedContentText: 'Seu boleto',
+          hydratedButtons: [{ index: 0, urlButton: { displayText: 'Ver', url: 'https://exemplo.test' } }],
+        },
+      },
+    };
+    for (const msg of [{ conversation: 'Sim' }, semResposta]) {
+      const n = normalizeUpsert(item(msg), 'acc', 'owner');
+      expect(n && 'opcoesDeResposta' in n).toBe(false);
+    }
+  });
+});
+
+describe('a ESCOLHA num botão ou numa lista (1111)', () => {
+  it('o "Sim" tocado no celular vira o texto escolhido, citando o modelo', () => {
+    // Medido: a 2.4 entrega o `contextInfo` de cima NULO; a citação mora
+    // dentro da própria resposta.
+    const resposta = {
+      key: { remoteJid: '5511999998888@s.whatsapp.net', fromMe: true, id: 'RESPOSTA1' },
+      message: {
+        templateButtonReplyMessage: {
+          selectedId: 'Sim',
+          selectedIndex: 0,
+          selectedDisplayText: 'Sim',
+          contextInfo: {
+            stanzaId: 'MODELO1',
+            participant: '5511999998888@s.whatsapp.net',
+            quotedMessage: MODELO_COM_RESPOSTAS,
+          },
+        },
+      },
+      contextInfo: null,
+      messageTimestamp: 1785080000,
+    };
+    const n = normalizeUpsert(resposta, 'acc', 'owner');
+    expect(n?.fromMe).toBe(true);
+    expect(n?.contentType).toBe('text');
+    expect(n?.text).toBe('Sim');
+    expect(n?.quotedProviderId).toBe('MODELO1');
+    expect(n && 'opcoesDeResposta' in n).toBe(false);
+  });
+
+  it('a escolha na lista: o título do item, citando a lista', () => {
+    const n = normalizeUpsert(
+      item({
+        listResponseMessage: {
+          title: 'Banco Beta',
+          listType: 1,
+          singleSelectReply: { selectedRowId: 'menu_beta' },
+          contextInfo: { stanzaId: 'LISTA1', quotedMessage: LISTA_DE_ROBO },
+        },
+      }),
+      'acc',
+      'owner',
+    );
+    expect(n?.contentType).toBe('text');
+    expect(n?.text).toBe('Banco Beta');
+    expect(n?.quotedProviderId).toBe('LISTA1');
+  });
+
+  it('as formas oficiais ainda não medidas: resposta a botões e a interativa', () => {
+    expect(extractText({ buttonsResponseMessage: { selectedButtonId: 'b1', selectedDisplayText: 'Confirmo' } })).toBe(
+      'Confirmo',
+    );
+    expect(
+      extractText({
+        interactiveResponseMessage: {
+          body: { text: 'Quero saber mais' },
+          nativeFlowResponseMessage: { name: 'quick_reply', paramsJson: '{"id":"q1"}' },
+        },
+      }),
+    ).toBe('Quero saber mais');
+    expect(
+      quotedProviderId({
+        key: { remoteJid: '5511999998888@s.whatsapp.net', id: 'X' },
+        message: { buttonsResponseMessage: { selectedDisplayText: 'Confirmo', contextInfo: { stanzaId: 'BOTOES1' } } },
+      }),
+    ).toBe('BOTOES1');
+  });
+
+  it('sem o rótulo, o rótulo de tipo não lido, como antes — nunca o id da opção', () => {
+    // "menu_beta" é código do sistema que mandou a lista: gravado como fala,
+    // iria aos motores, à IA e à API (revisão do PR #443).
+    expect(extractText({ templateButtonReplyMessage: { selectedId: 'Sim' } })).toBeNull();
+    expect(
+      normalizeUpsert(item({ listResponseMessage: { singleSelectReply: { selectedRowId: 'menu_beta' } } }), 'acc', 'owner')
+        ?.text,
+    ).toBe('[Unsupported message type: listResponseMessage]');
+    expect(normalizeUpsert(item({ templateButtonReplyMessage: {} }), 'acc', 'owner')?.text).toBe(
+      '[Unsupported message type: templateButtonReplyMessage]',
+    );
+  });
+
+  it('a escolha vem marcada — não abre turno do agente de IA, como o toque na Meta', () => {
+    const escolha = normalizeUpsert(item({ listResponseMessage: { title: 'Banco Beta' } }), 'acc', 'owner');
+    expect(escolha?.escolhaDeOpcao).toBe(true);
+    for (const msg of [{ conversation: 'Sim' }, MODELO_COM_RESPOSTAS, LISTA_DE_ROBO]) {
+      const n = normalizeUpsert(item(msg), 'acc', 'owner');
+      expect(n && 'escolhaDeOpcao' in n).toBe(false);
+    }
+  });
+});
+
+describe('mensagem de empresa sem nada legível (1111)', () => {
+  it('vira o rótulo de tipo não lido, nunca uma bolha só com o selo "Modelo"', () => {
+    const listaVazia = { listMessage: { listType: 2, sections: [] } };
+    const interativaVazia = { interactiveMessage: { nativeFlowMessage: { buttons: [] } } };
+    for (const [msg, tipo] of [
+      [listaVazia, 'listMessage'],
+      [interativaVazia, 'interactiveMessage'],
+    ] as const) {
+      const n = normalizeUpsert(item(msg), 'acc', 'owner');
+      expect(n?.contentType).toBe('template');
+      expect(n?.text).toBe(`[Unsupported message type: ${tipo}]`);
+    }
   });
 });
