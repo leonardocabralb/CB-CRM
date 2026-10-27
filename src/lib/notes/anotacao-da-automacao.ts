@@ -153,6 +153,8 @@ export async function escreverAnotacaoDaAutomacao(
         type: 'note_mention',
         conversation_id: conversa.id,
         contact_id: conversa.contact_id ?? null,
+        // 1114: o clique no aviso leva o fio até esta anotação.
+        note_id: (nota as { id: string }).id,
         actor_user_id: null,
         title: `${autor} mencionou você numa anotação`,
         body: texto.slice(0, 280),

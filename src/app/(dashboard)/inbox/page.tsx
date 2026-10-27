@@ -31,7 +31,9 @@ import { avisarExecucoesMudaram } from "@/lib/execucoes/aviso";
 import {
   EVENTO_ABRIR_CONVERSA,
   EVENTO_CONVERSA_ABERTA,
+  EVENTO_IR_PARA_NOTA,
   ehOrigemDoInbox,
+  notaDaUrl,
   recorteDaUrl,
   urlDoInbox,
 } from "@/lib/inbox/url";
@@ -81,6 +83,13 @@ function InboxPageInner() {
    * automatically instead of showing the empty center panel.
    */
   const deepLinkConvId = searchParams.get("c");
+  /**
+   * `?nota=<id>` (1114) — o aviso de anotação (sino, Meu dia) abre a conversa
+   * JÁ no trecho que o gerou: junto com o deep link, vira um pedido de salto
+   * para o fio, que espera a anotação chegar e a centraliza. Porta de
+   * ENTRADA, como `?etapa=`: os replaces não a repetem (`urlDoInbox`).
+   */
+  const notaDoDeepLink = notaDaUrl(searchParams.get("nota"));
   /**
    * `?etapa=<stageId>` — porta de entrada do botão da coluna do funil.
    * Semeia o filtro de etapa da lista UMA vez (no estado inicial dela); NÃO
@@ -826,6 +835,13 @@ function InboxPageInner() {
           setActiveContact(match.contact ?? null);
           setMessages([]);
           setMessagesDaConversa(null);
+          // O aviso de anotação (1114): o fio salta até ela quando a carga a
+          // trouxer (o salto pontual espera a âncora aparecer).
+          if (notaDoDeepLink) {
+            setSaltoPedido((prev) =>
+              novoPedidoDeSalto(prev, match.id, { tipo: "nota", id: notaDoDeepLink }),
+            );
+          }
           // Mirror the optimistic unread reset that handleSelectConversation
           // does — the user just deep-linked into this conv, treat that the
           // same as a click. Leaves activeConversation.unread_count alone so
@@ -849,7 +865,7 @@ function InboxPageInner() {
         }
       }
     },
-    [deepLinkConvId, activeConversation?.id, acesso, modoAnonimo]
+    [deepLinkConvId, notaDoDeepLink, activeConversation?.id, acesso, modoAnonimo]
   );
 
   const handleSelectConversation = useCallback(
@@ -1094,6 +1110,28 @@ function InboxPageInner() {
     };
     window.addEventListener(EVENTO_ABRIR_CONVERSA, aoPedirAbertura);
     return () => window.removeEventListener(EVENTO_ABRIR_CONVERSA, aoPedirAbertura);
+  }, []);
+
+  /**
+   * O par do de cima no pop-up de ANOTAÇÃO (1114): o fio salta até ela. O
+   * pedido sai carimbado com a conversa do aviso — com ela já aberta, salta
+   * na hora; com outra aberta, espera o fio trocar (o de cima a abre) e a
+   * anotação chegar. É o caminho do `?nota=` quando a página já está montada:
+   * o `router.push` só troca a query, e o deep link não é relido.
+   */
+  useEffect(() => {
+    const aoPedirNota = (e: Event) => {
+      const pedido = (e as CustomEvent<unknown>).detail;
+      if (typeof pedido !== "object" || pedido === null) return;
+      const { conversaId, notaId } = pedido as Record<string, unknown>;
+      if (typeof conversaId !== "string" || !conversaId) return;
+      if (typeof notaId !== "string" || !notaId) return;
+      setSaltoPedido((prev) =>
+        novoPedidoDeSalto(prev, conversaId, { tipo: "nota", id: notaId }),
+      );
+    };
+    window.addEventListener(EVENTO_IR_PARA_NOTA, aoPedirNota);
+    return () => window.removeEventListener(EVENTO_IR_PARA_NOTA, aoPedirNota);
   }, []);
 
 

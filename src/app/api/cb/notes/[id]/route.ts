@@ -457,6 +457,8 @@ export async function PUT(
         type: 'note_mention',
         conversation_id: nota.conversation_id,
         contact_id: nota.contact_id ?? null,
+        // 1114: o clique no aviso leva o fio até a anotação editada.
+        note_id: id,
         actor_user_id: user.id,
         // Cru, como no POST (as colunas são TEXT, no idioma de quem escreveu).
         title: `${autorNome ?? 'Alguém da equipe'} mencionou você numa anotação`,

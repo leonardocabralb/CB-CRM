@@ -562,6 +562,12 @@ export interface Notification {
   actor_user_id?: string;
   /** A tarefa que o aviso abre (944). Só nos tipos `task_*`. */
   task_id?: string;
+  /**
+   * A anotação que gerou o aviso (1114): o clique leva o fio até ela. Só em
+   * `note_mention`/`note_reply` gravados desde a 1114; sem FK — anotação
+   * apagada deixa o ponteiro solto, e o clique só abre a conversa.
+   */
+  note_id?: string | null;
   title: string;
   body?: string;
   read_at?: string;

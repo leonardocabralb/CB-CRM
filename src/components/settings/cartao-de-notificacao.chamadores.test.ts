@@ -153,6 +153,26 @@ describe('cartão de notificação do navegador × ouvinte', () => {
     expect(inbox).toMatch(/if \(conversaAbertaRef\.current === id\) return;\s*conversaRecemAbertaRef\.current = id;/);
   });
 
+  it('1114: o aviso de anotação leva o fio até ela — pelo deep link e com o inbox já montado', () => {
+    // Pedido do operador (27/10/2026): o clique abria a conversa e deixava a
+    // pessoa procurando o trecho. Cada elo abaixo, sozinho, some sem erro.
+    const inbox = semComentarios(ler('app/(dashboard)/inbox/page.tsx'));
+    // O `?nota=` do sino e do Meu dia vira pedido de salto JUNTO com o deep link.
+    expect(inbox).toMatch(/const notaDoDeepLink = notaDaUrl\(searchParams\.get\("nota"\)\);/);
+    expect(inbox).toMatch(
+      /novoPedidoDeSalto\(prev, match\.id, \{ tipo: "nota", id: notaDoDeepLink \}\)/,
+    );
+    // Com a página montada, o `router.push` não relê o deep link: o pop-up
+    // manda o sinal, e a página o ouve.
+    const sino = semComentarios(ler('hooks/use-avisos-do-sino-no-navegador.ts'));
+    expect(sino).toMatch(/new CustomEvent\(EVENTO_IR_PARA_NOTA, \{ detail: pedido \}\)/);
+    expect(inbox).toMatch(/window\.addEventListener\(EVENTO_IR_PARA_NOTA, /);
+    // O Meu dia lê o aviso com lista FIXA de colunas: sem `note_id`, o clique
+    // de lá só abriria a conversa.
+    const meuDia = semComentarios(ler('hooks/use-area-de-trabalho.ts'));
+    expect(meuDia).toMatch(/task_id, note_id,/);
+  });
+
   it('"Conexões que avisam": o ouvinte respeita a lista, e o cartão lista as conexões do perfil REAL', () => {
     // Pedido do operador (02/10/2026). Sem as desmarcadas na régua, a lista
     // do cartão seria enfeite: a pessoa desmarca e o aviso vem do mesmo jeito.

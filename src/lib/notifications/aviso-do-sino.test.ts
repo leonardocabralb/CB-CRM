@@ -95,7 +95,15 @@ describe("popUpDoSino", () => {
       tag: "sino:n1",
       rota: "/inbox?c=c1",
       conversaId: "c1",
+      notaId: null,
     });
+  });
+
+  it("1114: o aviso com a anotação leva o fio até ela — na rota e no sinal da caixa já montada", () => {
+    const p = popUpDoSino(aviso({ note_id: "nt1" }), texto, true);
+    expect(p.rota).toBe("/inbox?c=c1&nota=nt1");
+    expect(p.conversaId).toBe("c1");
+    expect(p.notaId).toBe("nt1");
   });
 
   it("a tag não colide com a do pop-up de mensagem (o id da conversa)", () => {
@@ -118,6 +126,8 @@ describe("popUpDoSino", () => {
     const p = popUpDoSino(aviso({ type: "task_assigned", task_id: "t1", conversation_id: "c1" }), texto, true);
     expect(p.rota).toBe("/tarefas");
     expect(p.conversaId).toBeNull();
+    // Sem conversa não há fio onde saltar.
+    expect(popUpDoSino(aviso({ task_id: "t1", note_id: "nt1" }), texto, true).notaId).toBeNull();
   });
 
   it("alerta do WhatsApp não leva a lugar nenhum: o clique só marca lido", () => {

@@ -123,6 +123,8 @@ describe('escreverAnotacaoDaAutomacao', () => {
         type: 'note_mention',
         conversation_id: 'conv-1',
         contact_id: 'ct-1',
+        // 1114: o clique leva o fio até a anotação que a automação gravou.
+        note_id: 'nota-1',
         actor_user_id: null,
         title: 'Automação "Contato do Banco" mencionou você numa anotação',
         body: '@Ana Lima Contato bancário: verificar cliente.',
