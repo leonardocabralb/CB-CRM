@@ -19,7 +19,9 @@ export const TIPOS_DE_MIDIA: readonly TipoDeMidia[] = [
 ] as const;
 
 /**
- * ⚠️ ESPELHO da `allowed_mime_types` do bucket `chat-media` (migration 023).
+ * ⚠️ Os tipos de ENVIO: um pedaço da `allowed_mime_types` do bucket
+ * `chat-media` (migration 023). O espelho INTEIRO da lista, com os tipos só
+ * de entrada, é `MIMES_DO_CHAT_MEDIA` (`src/lib/storage/tipos-do-chat-media.ts`).
  *
  * Mime fora desta lista é recusado pelo próprio Storage, com um erro que na
  * tela vira "falha no upload" sem dizer por quê. Conferir aqui antes é o que

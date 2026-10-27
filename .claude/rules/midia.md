@@ -107,6 +107,19 @@ teto. A bolha, a fila de anexos do compositor e o player de áudio estão em
 
 ### MIME e upload
 
+- ⚠️⚠️ **Anexo RECEBIDO entra de qualquer tipo (1115, pedido do operador,
+  27/10/2026)**: sobe por `tipoParaGuardar`
+  (`src/lib/storage/tipos-do-chat-media.ts`) — o tipo declarado se o bucket
+  o aceita, senão `application/octet-stream` — nos DOIS transportes
+  (`fetchAndStoreEvolutionMedia` e o espelho da Meta, que serve o Instagram).
+  Antes, fora da lista exata o Storage recusava (415 `InvalidMimeType`) e o
+  anexo virava "Documento indisponível" (ZIP do Windows, `.msg`). O tipo
+  VERDADEIRO fica em `media_type`; o guardado como binário BAIXA com o nome
+  real (`guardadoComoBinario` → `download=` em `urlParaAbrirAnexo`).
+  ⚠️ A lista NÃO vira nula ("aceita tudo"): `.svg`/`.html` com o tipo
+  verdadeiro rodariam no navegador a partir do nosso Storage. Tipo novo que
+  a bolha DESENHA ou TOCA entra na lista (migration) E em
+  `MIMES_DO_CHAT_MEDIA`, o espelho exato (pino lê 0042 + 1060 + 1115).
 - ⚠️⚠️ **A lista de MIMEs aceitos é UMA** (`MIMES_ACEITOS`, `arquivo-solto.ts`),
   e o `accept=` dos seletores deriva dela (`aceiteDoSeletor`). Duas listas
   divergem, e o arquivo aceito por uma porta falha só no envio, longe da causa.
@@ -124,13 +137,13 @@ teto. A bolha, a fila de anexos do compositor e o player de áudio estão em
   `contentType`, e o bucket tem lista EXATA (023) — `image/png;
   charset=binary`, que aparece em colagem, era recusado no upload. Caminho novo
   de upload repete a normalização.
-- ⚠️ **`MIMES_POR_TIPO` (`src/lib/acervo/tipos.ts`) é ESPELHO da
-  `allowed_mime_types` da 023.** Alargar só no código faz o upload falhar no
-  Storage com "erro de upload"; só na migration faz a tela recusar arquivo que
-  o WhatsApp aceita. Os dois, sempre — menos os tipos SÓ DE ENTRADA, que o
-  bucket aceita e a lista de envio não: GIF, QuickTime, 3gp e Opus (042) e
+- ⚠️ **`MIMES_POR_TIPO` (`src/lib/acervo/tipos.ts`) é a lista de ENVIO, um
+  pedaço da `allowed_mime_types`.** Alargar só no código faz o upload falhar
+  no Storage com "erro de upload"; só na migration faz a tela recusar arquivo
+  que o WhatsApp aceita. Os dois, sempre — menos os tipos SÓ DE ENTRADA, que o
+  bucket aceita e a lista de envio não: GIF, QuickTime, 3gp e Opus (042),
   `text/html` (1060 — que o compositor também ENVIA nas conexões por QR code
-  desde 02/10/2026; o acervo, não).
+  desde 02/10/2026; o acervo, não) e os da 1115.
 - ⚠️ **`.html` recebido é guardado (1060, decisão do operador) e oferecido para
   BAIXAR, nunca aberto a partir do Storage**: `urlParaAbrirAnexo`
   (`abrir-anexo.ts`) põe `?download=` na bolha e na aba Arquivos. Link novo
@@ -141,9 +154,9 @@ teto. A bolha, a fila de anexos do compositor e o player de áudio estão em
   da bolha, o erro derrubava a conversa (Codex, #436).
 - ⚠️⚠️ **O proxy da Meta (`/api/whatsapp/media/<id>`) responde por
   `mediaProxyHeaders`** (`src/lib/media/proxy-response-headers.ts`, upstream
-  #678): é a reserva do anexo que o espelho no `chat-media` não guardou (tipo
-  fora da lista do bucket — SVG, ZIP, CSV —, acima de 50 MiB, Storage fora do
-  ar), sai no NOSSO domínio com o tipo que o CLIENTE mandou, e a bolha o abre
+  #678): é a reserva do anexo que o espelho no `chat-media` não guardou (acima
+  de 50 MiB, Storage fora do ar; o tipo fora da lista vai como binário desde
+  a 1115), sai no NOSSO domínio com o tipo que o CLIENTE mandou, e a bolha o abre
   numa aba nova. Só imagem, áudio e vídeo comuns vão `inline`, com CSP sem
   script; o resto vai como `attachment`, com `sandbox`, e com o nome real
   (`nome=`, que `urlParaAbrirAnexo` põe no link). O `nosniff` global não

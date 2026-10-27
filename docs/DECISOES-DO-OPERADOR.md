@@ -53,7 +53,10 @@ qualquer uma é pergunta ao operador.
   pessoa (12/10/2026).
 - Anotação: caixa ANTES da fixada, que nasce recolhida (29/09/2026);
   anexos de todo tipo, vários, sem transcrição nem aba Arquivos; só o autor
-  edita, sem prazo, com marca "editada" (23/10/2026).
+  edita, sem prazo, com marca "editada" (23/10/2026); o clique no aviso de
+  menção ou resposta abre a conversa NO TRECHO da anotação (27/10/2026).
+- Arquivo recebido: todo formato entra (ZIP, RAR, MSG…); o que o navegador
+  não mostra fica para baixar, com o nome real (27/10/2026).
 - Quem mais está com a conversa aberta: frase acima do compositor, além dos
   avatares do cabeçalho (29/09/2026).
 - Modo anônimo, só de admin, no menu do nome: abrir não zera as não lidas nem

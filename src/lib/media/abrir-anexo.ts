@@ -16,7 +16,13 @@
 // DOWNLOAD tudo o que não é imagem, áudio ou vídeo comum, e sem o nome o
 // arquivo baixaria como `<id>.pdf`. Por isso o link leva `nome=<nome>`, que o
 // proxy põe no `Content-Disposition` (`proxy-response-headers.ts`).
+//
+// E o anexo guardado como BINÁRIO (1115: ZIP, RAR, MSG… — todo tipo fora da
+// lista do bucket, `tipos-do-chat-media.ts`) também vai com `download=<nome>`:
+// sem o nome, ele baixaria com o nome do objeto (`1793…-endere_o_Leonardo.zip`).
 // ============================================================
+
+import { guardadoComoBinario } from '@/lib/storage/tipos-do-chat-media';
 
 import { isProxiedMediaUrl } from './blob-cache';
 import { semSurrogatoSolto } from './filename';
@@ -29,10 +35,11 @@ export function ehPaginaHtml(mime: string | null | undefined, nome: string | nul
 }
 
 /**
- * O `href` do anexo. Igual à URL, menos em dois casos: o .html guardado no
- * Storage do Supabase (`/storage/v1/object/public/`) ganha `download=<nome>`;
- * a URL do proxy da Meta ganha `nome=<nome>` (qualquer tipo — é o proxy que
- * decide o que abre e o que baixa). URL de outro lugar não é tocada.
+ * O `href` do anexo. Igual à URL, menos em dois casos: o .html e o anexo
+ * guardado como binário (1115), no Storage do Supabase
+ * (`/storage/v1/object/public/`), ganham `download=<nome>`; a URL do proxy da
+ * Meta ganha `nome=<nome>` (qualquer tipo — é o proxy que decide o que abre e
+ * o que baixa). URL de outro lugar não é tocada.
  *
  * ⚠️ Roda no RENDER (bolha e aba Arquivos): o nome passa por
  * `semSurrogatoSolto` antes de `encodeURIComponent`, que LANÇA com meio emoji
@@ -48,8 +55,11 @@ export function urlParaAbrirAnexo(
     if (!arquivo || /[?&]nome=/.test(url)) return url;
     return `${url}${url.includes('?') ? '&' : '?'}nome=${encodeURIComponent(semSurrogatoSolto(arquivo))}`;
   }
-  if (!ehPaginaHtml(mime, nome) || !url.includes('/storage/v1/object/public/')) return url;
+  if (!url.includes('/storage/v1/object/public/')) return url;
+  const pagina = ehPaginaHtml(mime, nome);
+  if (!pagina && !guardadoComoBinario(mime)) return url;
   if (/[?&]download(=|&|$)/.test(url)) return url;
-  const arquivo = (nome ?? '').trim() || 'pagina.html';
+  // Sem nome, o binário baixa com o nome do objeto (`download=` vazio).
+  const arquivo = (nome ?? '').trim() || (pagina ? 'pagina.html' : '');
   return `${url}${url.includes('?') ? '&' : '?'}download=${encodeURIComponent(semSurrogatoSolto(arquivo))}`;
 }
