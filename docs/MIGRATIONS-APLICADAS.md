@@ -1658,6 +1658,26 @@ nome da época em que foram aplicadas.
     e service_role;
   - a seção "Motivos" do Desempenho do Bancário - Comercial carregou com a
     sessão do operador (resposta 200), e a soma bateu com a trilha.
+- **1114_cb_aviso_aponta_a_anotacao** — `notifications.note_id` (uuid nulo,
+  SEM FK de propósito: a Lixeira e `cb_unir_fichas` são default-deny sobre
+  as FKs). O clique no aviso de menção/resposta leva o fio até a anotação.
+
+  ADITIVA, ANTES do deploy. Autorização do operador em 27/10/2026 ("pode
+  gravar" as migrations 1114 e 1115 em produção), aplicada em 27/10/2026
+  (histórico `20261027184357`) depois do replay verde do CI no commit do PR
+  #445. Conferida: coluna `uuid`; `authenticated` lê e não reescreve.
+- **1115_cb_chat_media_recebe_todo_arquivo** — o bucket `chat-media` ganha
+  `application/octet-stream` e as grafias de imagem, áudio e vídeo que a
+  bolha desenha ou toca (23 → 37 tipos; nenhum saiu). O app guarda como
+  binário todo tipo fora da lista (`tipoParaGuardar`).
+
+  ADITIVA, ANTES do deploy. Mesma autorização, aplicada em 27/10/2026
+  (histórico `20261027184407`). Conferida: a lista tem os tipos de antes e
+  os novos. Em seguida, com a autorização do operador ("recuperar todos"),
+  5 ZIP perdidos desde 19/10 voltaram da Evolution (SHA-256 conferido com a
+  mensagem, `media_url`/`media_type`/`media_filename` gravados só nas linhas
+  ainda sem anexo). Os 2 `.msg` de 16/10 são irrecuperáveis: a Evolution
+  guarda o registro sem o conteúdo (getBase64 400).
 
 ## Notas do histórico
 
