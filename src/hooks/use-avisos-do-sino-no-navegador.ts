@@ -13,7 +13,11 @@ import {
 import { popUpDoSino, silencioDoSino } from "@/lib/notifications/aviso-do-sino";
 import { textoDoAviso, type AvisoComContato } from "@/lib/notifications/texto-do-aviso";
 import { tocarSomDoAviso } from "@/lib/notifications/som-do-aviso";
-import { EVENTO_ABRIR_CONVERSA } from "@/lib/inbox/url";
+import {
+  EVENTO_ABRIR_CONVERSA,
+  EVENTO_IR_PARA_NOTA,
+  type PedidoDeIrParaNota,
+} from "@/lib/inbox/url";
 import { podeVerTela } from "@/lib/perfis/visibilidade";
 import type { Notification } from "@/types";
 
@@ -132,6 +136,12 @@ export function useAvisosDoSinoNoNavegador(): void {
           // página abre a conversa por este sinal (como no aviso de mensagem).
           if (popUp.conversaId) {
             window.dispatchEvent(new CustomEvent(EVENTO_ABRIR_CONVERSA, { detail: popUp.conversaId }));
+            // 1114: e o fio salta até a anotação que gerou o aviso — também
+            // quando a conversa já estava aberta (aí só o salto age).
+            if (popUp.notaId) {
+              const pedido: PedidoDeIrParaNota = { conversaId: popUp.conversaId, notaId: popUp.notaId };
+              window.dispatchEvent(new CustomEvent(EVENTO_IR_PARA_NOTA, { detail: pedido }));
+            }
           }
           notificacao.close();
         };

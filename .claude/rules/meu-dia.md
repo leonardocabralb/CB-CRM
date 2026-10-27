@@ -357,7 +357,8 @@ na casca e o cartão em *Seu perfil*. Pino estrutural:
   mesma porta das mensagens — sem ela o cartão some e não haveria onde
   desligar), o aviso de outra pessoa, o já lido, o repetido (o realtime
   reentrega) e a anotação da conversa aberta na aba visível — o de tarefa
-  nunca, porque o destino dele é Tarefas.
+  nunca, porque o destino dele é Tarefas. O de anotação leva ao trecho
+  (`note_id`, 1114: `anotacoes.md`).
 - **Tópico novo a cada inscrição** (`geracaoDoCanal`): `channel(nome)` devolve
   o canal que ainda está saindo, e o ouvinte ficaria mudo.
 - **Chave própria (`sino`), LIGADA no padrão e independente de `ativo`** (D1):

@@ -413,7 +413,8 @@ export function useAreaDeTrabalho(pedido: PedidoDaArea): AreaDeTrabalho {
       const { data, error, count } = await supabase
         .from('notifications')
         .select(
-          'id, account_id, user_id, type, title, body, conversation_id, contact_id, task_id, actor_user_id, read_at, created_at, ' +
+          // `note_id` (1114): o clique leva o fio até a anotação do aviso.
+          'id, account_id, user_id, type, title, body, conversation_id, contact_id, task_id, note_id, actor_user_id, read_at, created_at, ' +
             'contact:contacts(name, phone, wa_username, instagram_username)',
           { count: 'exact' }
         )

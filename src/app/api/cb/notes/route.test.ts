@@ -228,6 +228,15 @@ describe('POST /api/cb/notes — resposta à anotação (1075)', () => {
     expect(estado.avisos.map((a) => [a.user_id, a.type])).toEqual([[ANA, 'note_mention']]);
   });
 
+  it('1114: os dois avisos apontam a anotação NOVA — a resposta, nunca a respondida', async () => {
+    // O clique leva o fio até `note_id`; a resposta cita a respondida em cima.
+    await POST(pedido({ resposta_de: ORIGINAL, mencionados: [CAIO] }));
+    expect(estado.avisos.map((a) => [a.user_id, a.type, a.note_id])).toEqual([
+      [CAIO, 'note_mention', 'nova'],
+      [ANA, 'note_reply', 'nova'],
+    ]);
+  });
+
   it('resposta_de que não é UUID é 400, sem gravar', async () => {
     const res = await POST(pedido({ resposta_de: 'nao-e-uuid' }));
     expect(res.status).toBe(400);

@@ -86,6 +86,26 @@ apagar a respondida), `src/lib/notes/resposta.ts` (pino `resposta.test.ts`) e
   comparado no render. O X da citação (e a respondida apagada, 409
   `REPLIED_NOTE_NOT_FOUND`) desfaz a citação SEM fechar a caixa: o texto fica.
 
+### O aviso leva à anotação (1114)
+
+`notifications.note_id`, `rotaDoAviso` e `urlDoInbox({ c, nota })`. Pedido do
+operador (27/10/2026): o clique no aviso abria a conversa e deixava a pessoa
+procurando o trecho.
+
+- ⚠️ **Todo escritor de `note_mention`/`note_reply` grava `note_id`** (a rota
+  do painel, a edição que acrescenta menção e `escreverAnotacaoDaAutomacao`,
+  da automação e do agente de IA): sem ele o clique só abre a conversa, sem
+  erro. Na resposta, é a RESPOSTA (ela cita a respondida em cima).
+- ⚠️ **Sem FK, de propósito**: a Lixeira e `cb_unir_fichas` são default-deny
+  sobre as FKs do catálogo (`supabase.md`); a conferência da 1114 recusa uma.
+  Anotação apagada deixa o ponteiro solto, e o fio só não salta.
+- **O salto é o `saltoPedido` da página** (o do "Ver na conversa"): o `?nota=`
+  do deep link (sino, Meu dia) e, com a página já montada, o
+  `EVENTO_IR_PARA_NOTA` do pop-up. O pedido sai carimbado com a conversa do
+  aviso e espera a âncora `data-nota-id` chegar. ⚠️ O Meu dia lê o aviso com
+  lista FIXA de colunas: `note_id` está nela. Pino:
+  `cartao-de-notificacao.chamadores.test.ts`.
+
 ### Anexos na anotação (1102)
 
 Decisões D1–D7 e A1–A7 do operador e o desenho:

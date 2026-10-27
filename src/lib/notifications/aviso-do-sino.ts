@@ -84,6 +84,12 @@ export interface PopUpDoSino {
    * Tarefas mesmo quando um dia trouxer conversa (a ordem de `rotaDoAviso`).
    */
   conversaId: string | null;
+  /**
+   * A anotação até onde o fio salta (1114), para o sinal da caixa de entrada
+   * já montada (`EVENTO_IR_PARA_NOTA`). Só com `conversaId`: sem conversa
+   * aberta não há fio onde saltar.
+   */
+  notaId: string | null;
 }
 
 /**
@@ -92,16 +98,18 @@ export interface PopUpDoSino {
  * os avisos nossos já gravam título e corpo prontos.
  */
 export function popUpDoSino(
-  aviso: Pick<Notification, "id" | "conversation_id" | "task_id">,
+  aviso: Pick<Notification, "id" | "conversation_id" | "task_id" | "note_id">,
   texto: TextoDoAviso,
   mostrarTexto: boolean,
 ): PopUpDoSino {
   const corpo = mostrarTexto && texto.corpo?.trim() ? truncateBody(texto.corpo) : null;
+  const conversaId = aviso.task_id ? null : (aviso.conversation_id ?? null);
   return {
     titulo: texto.titulo,
     corpo,
     tag: `sino:${aviso.id}`,
     rota: rotaDoAviso(aviso),
-    conversaId: aviso.task_id ? null : (aviso.conversation_id ?? null),
+    conversaId,
+    notaId: conversaId ? (aviso.note_id ?? null) : null,
   };
 }

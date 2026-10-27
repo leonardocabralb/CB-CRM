@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ehOrigemDoInbox, recorteDaUrl, urlDoInbox } from "./url";
+import { ehOrigemDoInbox, notaDaUrl, recorteDaUrl, urlDoInbox } from "./url";
 
 describe("urlDoInbox", () => {
   it("sem nada → /inbox, nunca /inbox?", () => {
@@ -41,6 +41,32 @@ describe("urlDoInbox", () => {
     // Parecido não é igual: a comparação é exata.
     expect(urlDoInbox({ c: "cv1", de: "Reunioes" })).toBe("/inbox?c=cv1");
     expect(urlDoInbox({ de: "reunioes&x=1" })).toBe("/inbox");
+  });
+});
+
+describe("a anotação do aviso (`nota`, 1114)", () => {
+  const NOTA = "9b1d2c3e-1111-4222-8333-444455556666";
+
+  it("sai com a conversa, logo depois do `c`", () => {
+    expect(urlDoInbox({ c: "cv1", nota: NOTA })).toBe(`/inbox?c=cv1&nota=${NOTA}`);
+    expect(urlDoInbox({ c: "cv1", nota: NOTA, de: "funil" })).toBe(
+      `/inbox?c=cv1&nota=${NOTA}&de=funil`,
+    );
+    expect(urlDoInbox({ c: "cv1", nota: null })).toBe("/inbox?c=cv1");
+  });
+
+  it("⚠️ sem conversa não sai: não há fio onde saltar", () => {
+    expect(urlDoInbox({ nota: NOTA })).toBe("/inbox");
+    expect(urlDoInbox({ etapa: "s1", nota: NOTA })).toBe("/inbox?etapa=s1");
+  });
+
+  it("notaDaUrl é PARSE: o que não tem forma de id não pede salto", () => {
+    expect(notaDaUrl(NOTA)).toBe(NOTA);
+    expect(notaDaUrl(NOTA.toUpperCase())).toBe(NOTA.toUpperCase());
+    expect(notaDaUrl("nota-1")).toBeNull();
+    expect(notaDaUrl(`${NOTA}"]`)).toBeNull();
+    expect(notaDaUrl("")).toBeNull();
+    expect(notaDaUrl(null)).toBeNull();
   });
 });
 

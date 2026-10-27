@@ -12,6 +12,14 @@ describe("rotaDoAviso", () => {
     expect(rotaDoAviso({ conversation_id: "c1" })).toBe("/inbox?c=c1");
   });
 
+  it("1114: aviso de anotação abre o fio JÁ na anotação que o gerou", () => {
+    expect(rotaDoAviso({ conversation_id: "c1", note_id: "n1" })).toBe("/inbox?c=c1&nota=n1");
+    // Aviso anterior à 1114 (sem a coluna): só a conversa, como antes.
+    expect(rotaDoAviso({ conversation_id: "c1", note_id: null })).toBe("/inbox?c=c1");
+    // A tarefa continua vencendo.
+    expect(rotaDoAviso({ task_id: "t1", conversation_id: "c1", note_id: "n1" })).toBe("/tarefas");
+  });
+
   it("sem destino devolve null", () => {
     expect(rotaDoAviso({})).toBeNull();
   });

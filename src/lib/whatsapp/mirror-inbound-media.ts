@@ -4,6 +4,7 @@ import {
   buildMediaPath,
   MEDIA_MAX_BYTES_ENTRADA,
 } from "@/lib/storage/upload-media";
+import { tipoParaGuardar } from "@/lib/storage/tipos-do-chat-media";
 
 /**
  * Copies inbound WhatsApp media into the `chat-media` bucket so it
@@ -213,15 +214,18 @@ export async function mirrorInboundMedia(
     // `upsert: true` for that same reason: on the rare Meta redelivery
     // the second pass rewrites byte-identical content at the same key
     // instead of erroring or orphaning a duplicate.
+    // ⚠️ O tipo que o BUCKET aceita (1115): um documento pode ser de
+    // qualquer tipo (ZIP, RAR, MSG…), e fora da lista o Storage recusava —
+    // o anexo ficava só no proxy, que a Meta deixa de servir em ~30 dias.
+    // O que não está na lista vai como binário; `media_type` guarda o de Meta.
     const { error } = await storage.from(MIRROR_BUCKET).upload(path, buffer, {
-      contentType: uploadType,
+      contentType: tipoParaGuardar(uploadType),
       cacheControl: "3600",
       upsert: true,
     });
     if (error) {
-      // Most likely a MIME outside the bucket's allow-list (migration
-      // 039 covers what Meta realistically sends, but a document can be
-      // any type at all). Log and let the caller keep the proxy URL.
+      // Storage down, or a size the checks above missed. Log and let the
+      // caller keep the proxy URL.
       console.warn(
         `[mirror-media] upload failed for ${mediaId} (${uploadType}):`,
         error.message,

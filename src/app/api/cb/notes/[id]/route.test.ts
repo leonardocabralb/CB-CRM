@@ -522,6 +522,8 @@ describe('PUT /api/cb/notes/[id] — menção: só quem ENTROU recebe o aviso', 
         type: 'note_mention',
         conversation_id: CONVERSA,
         contact_id: CONTATO,
+        // 1114: o clique leva o fio até a anotação editada.
+        note_id: NOTA,
         actor_user_id: ANA,
         title: 'Ana Autora mencionou você numa anotação',
         body: '@Bia @Caio confiram · 🎤 Áudio',

@@ -372,6 +372,8 @@ export async function POST(request: Request) {
         // destino, e clicar nele no sino não abriria conversa nenhuma.
         conversation_id: conversa.id,
         contact_id: conversa.contact_id ?? null,
+        // 1114: o clique no aviso leva o fio até esta anotação.
+        note_id: nota.id,
         actor_user_id: user.id,
         // ⚠️ Texto CRU, sem passar pelo dicionário: `notifications.title` e
         // `body` são colunas TEXT, gravadas no idioma de quem escreveu. É o
@@ -418,6 +420,8 @@ export async function POST(request: Request) {
             type: 'note_reply',
             conversation_id: conversa.id,
             contact_id: conversa.contact_id ?? null,
+            // A RESPOSTA (ela cita a respondida em cima), nunca a respondida.
+            note_id: nota.id,
             actor_user_id: user.id,
             // Texto cru, como o da menção (ver a nota lá em cima).
             title:

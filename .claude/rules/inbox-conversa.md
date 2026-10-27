@@ -149,14 +149,13 @@ destaque e ↑/↓ em `message-thread.tsx`.
   mais ANTIGO, Shift+Enter volta, Esc fecha. A barra é carimbada com a conversa
   (`buscaLocal.conversationId`), nunca zerada por efeito.
 - ⚠️⚠️ **O salto PONTUAL tem UMA mecânica, `useSaltoPontual`**, para a citação
-  (`irParaCitada`) e para o "Ver na conversa" do painel (`saltoPedido`, com
-  `conversationId` + `n`). Origem nova instancia o hook, não copia o efeito.
-  Quatro cercas: atende UMA vez por `n` (`atendidoRef`), senão mensagem nova
-  re-centralizaria o alvo velho; o pedido do painel só vale para ESTA conversa;
-  chama `liberarSalto()` antes de rolar, senão o achado da busca puxa de volta;
-  o timer do destaque vive num REF, fora da limpeza do efeito, senão o destaque
-  ficaria aceso para sempre. O destaque é DERIVADO (`pedido.n !== apagado`),
-  sem `setState` síncrono em efeito.
+  (`irParaCitada`) e para o `saltoPedido` da página ("Ver na conversa" e o
+  aviso de anotação, 1114; `conversationId` + `n`). Origem nova instancia o
+  hook, não copia o efeito. Quatro cercas: atende UMA vez por `n`
+  (`atendidoRef`), senão mensagem nova re-centraliza o alvo velho; o pedido só
+  vale para ESTA conversa; `liberarSalto()` antes de rolar (o achado da busca
+  puxaria de volta); o timer do destaque num REF, fora da limpeza do efeito
+  (senão fica aceso). Destaque DERIVADO (`pedido.n !== apagado`).
 - ⚠️ **`LinhaDoFio` embrulha mensagem E anotação** (`data-message-id` OU
   `data-nota-id`, os dois nomes em `seletorDoAlvo`). Pino `salto-no-fio.test.ts`
   lê o fio: renomear um lado sem o outro faz o botão não fazer nada.
