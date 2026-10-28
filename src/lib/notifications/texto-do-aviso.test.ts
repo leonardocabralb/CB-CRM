@@ -3,7 +3,12 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createTranslator } from "next-intl";
 
-import { textoDoAviso, type AvisoComContato } from "./texto-do-aviso";
+import {
+  clienteDoAviso,
+  EMBED_DO_CLIENTE_DO_AVISO,
+  textoDoAviso,
+  type AvisoComContato,
+} from "./texto-do-aviso";
 
 const RAIZ = join(__dirname, "..", "..", "..");
 const dicionario = (arq: string) =>
@@ -79,6 +84,44 @@ describe("textoDoAviso", () => {
     expect(pagina).toMatch(/const texto = textoDoAviso\(/);
     expect(pagina).toMatch(/\{texto\.titulo\}/);
     expect(pagina).not.toMatch(/\{n\.title\}|\{n\.body\}/);
-    expect(pagina).toMatch(/\.select\("\*, contact:contacts\(name, phone, wa_username, instagram_username\)"\)/);
+    // O embed mora numa constante desde 28/10/2026 (o Meu dia usa a mesma):
+    // a página a usa, e ela traz o contato com os dois `@` e o grupo.
+    expect(pagina).toMatch(/\.select\(`\*, \$\{EMBED_DO_CLIENTE_DO_AVISO\}`\)/);
+    expect(EMBED_DO_CLIENTE_DO_AVISO).toContain(
+      "contact:contacts(name, phone, wa_username, instagram_username)",
+    );
+    expect(EMBED_DO_CLIENTE_DO_AVISO).toContain("conversation:conversations(group:cb_groups(subject))");
+  });
+});
+
+describe("clienteDoAviso (28/10/2026: de quem é o aviso)", () => {
+  const mencao: AvisoComContato = { ...base, type: "note_mention", title: "Ana mencionou você", body: "@Leo veja" };
+
+  it("o cliente pela ficha: o nome, senão o telefone", () => {
+    expect(clienteDoAviso({ ...mencao, contact: { name: " Julio Amarante ", phone: "5532000000000" } })).toEqual({
+      tipo: "contato",
+      nome: "Julio Amarante",
+    });
+    expect(clienteDoAviso({ ...mencao, contact: { name: null, phone: "5532000000000" } })?.tipo).toBe("contato");
+  });
+
+  it("a conversa de GRUPO (sem ficha) mostra o grupo", () => {
+    expect(
+      clienteDoAviso({ ...mencao, contact: null, conversation: { group: { subject: " Equipe Bancário " } } }),
+    ).toEqual({ tipo: "grupo", nome: "Equipe Bancário" });
+  });
+
+  it("tarefa e resposta também dizem o cliente", () => {
+    const contato = { name: "Fulana", phone: null };
+    expect(clienteDoAviso({ ...mencao, type: "task_assigned", contact: contato })?.nome).toBe("Fulana");
+    expect(clienteDoAviso({ ...mencao, type: "note_reply", contact: contato })?.nome).toBe("Fulana");
+  });
+
+  it("nada a dizer = null: atribuição (o corpo já traz o contato), saúde do WhatsApp, sem ficha nem grupo", () => {
+    expect(clienteDoAviso({ ...base, contact: { name: "Fulana" } })).toBeNull();
+    expect(clienteDoAviso({ ...mencao, type: "whatsapp_alert", contact: { name: "Fulana" } })).toBeNull();
+    expect(clienteDoAviso(mencao)).toBeNull();
+    expect(clienteDoAviso({ ...mencao, contact: { name: "  ", phone: null } })).toBeNull();
+    expect(clienteDoAviso({ ...mencao, conversation: { group: { subject: "   " } } })).toBeNull();
   });
 });

@@ -153,6 +153,23 @@ describe('cartão de notificação do navegador × ouvinte', () => {
     expect(inbox).toMatch(/if \(conversaAbertaRef\.current === id\) return;\s*conversaRecemAbertaRef\.current = id;/);
   });
 
+  it('28/10: o clique no sino e no Meu dia volta para a tela de origem, e as duas listas dizem o cliente', () => {
+    // Cada elo some sem erro: sem o `de`, a conversa abre sem faixa; sem o
+    // leitor na página, o `de` viaja e nada aparece; sem o embed, a linha
+    // do cliente fica vazia.
+    const sino = semComentarios(ler('app/(dashboard)/notifications/page.tsx'));
+    expect(sino).toMatch(/rotaDoAviso\(n, "notificacoes"\)/);
+    expect(sino).toMatch(/<LinhaDoCliente cliente=\{clienteDoAviso\(n\)\}/);
+    const meuDia = semComentarios(ler('components/meu-dia/bloco-de-notificacoes.tsx'));
+    expect(meuDia).toMatch(/rotaDoAviso\(aviso, 'meu-dia'\)/);
+    expect(meuDia).toMatch(/<LinhaDoCliente cliente=\{clienteDoAviso\(aviso\)\}/);
+    expect(semComentarios(ler('hooks/use-area-de-trabalho.ts'))).toMatch(/EMBED_DO_CLIENTE_DO_AVISO/);
+    const inbox = semComentarios(ler('app/(dashboard)/inbox/page.tsx'));
+    expect(inbox).toMatch(/<VoltarAosAvisos origem=\{veioDosAvisos\}/);
+    // O pop-up do navegador NÃO leva faixa: não vem de uma tela.
+    expect(semComentarios(ler('lib/notifications/aviso-do-sino.ts'))).toMatch(/rota: rotaDoAviso\(aviso\),/);
+  });
+
   it('1114: o aviso de anotação leva o fio até ela — pelo deep link e com o inbox já montado', () => {
     // Pedido do operador (27/10/2026): o clique abria a conversa e deixava a
     // pessoa procurando o trecho. Cada elo abaixo, sozinho, some sem erro.

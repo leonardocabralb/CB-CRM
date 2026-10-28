@@ -17,7 +17,9 @@
 // quem conta a verdade sobre o recorte.
 //
 // ⚠️ `de` só é emitido com os valores que têm leitor: "funil" (a faixa
-// "Voltar ao funil") e "reunioes" (a faixa "Voltar às reuniões", da pauta).
+// "Voltar ao funil"), "reunioes" (a faixa "Voltar às reuniões", da pauta),
+// "notificacoes" e "meu-dia" (as faixas "Voltar às notificações" e "Voltar ao
+// Meu dia", do clique num aviso — pedido do operador, 28/10/2026).
 // Reemitir verbatim fazia um `de=qualquercoisa` de link colado grudar em
 // todos os replaces da sessão, sem UI nenhuma para removê-lo.
 // ============================================================
@@ -25,13 +27,13 @@
 import { UUID } from "@/lib/tasks/validar";
 
 /** As telas que abrem a caixa de entrada com uma faixa de volta. */
-export type OrigemDoInbox = "funil" | "reunioes";
+export type OrigemDoInbox = "funil" | "reunioes" | "notificacoes" | "meu-dia";
 
 /** O `de` da URL tem leitor? Valor desconhecido (link colado) não passa. */
 export function ehOrigemDoInbox(
   de: string | null | undefined,
 ): de is OrigemDoInbox {
-  return de === "funil" || de === "reunioes";
+  return de === "funil" || de === "reunioes" || de === "notificacoes" || de === "meu-dia";
 }
 
 /**

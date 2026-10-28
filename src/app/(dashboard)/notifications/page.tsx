@@ -6,7 +6,13 @@ import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useMembros } from "@/hooks/use-membros";
 import type { Notification } from "@/types";
-import { textoDoAviso, type AvisoComContato } from "@/lib/notifications/texto-do-aviso";
+import {
+  clienteDoAviso,
+  EMBED_DO_CLIENTE_DO_AVISO,
+  textoDoAviso,
+  type AvisoComContato,
+} from "@/lib/notifications/texto-do-aviso";
+import { LinhaDoCliente } from "@/components/notifications/linha-do-cliente";
 import { rotaDoAviso } from "@/lib/notifications/rota-do-aviso";
 import {
   AtSign,
@@ -66,8 +72,10 @@ export default function NotificationsPage() {
     const { data, error: fetchErr } = await supabase
       .from("notifications")
       // O contato vem junto: o aviso de atribuição é escrito aqui, com o
-      // nome dele (o texto gravado pelo gatilho da 0027 é em inglês).
-      .select("*, contact:contacts(name, phone, wa_username, instagram_username)")
+      // nome dele (o texto gravado pelo gatilho da 0027 é em inglês). E dá
+      // nome ao CLIENTE de cada aviso — ou ao grupo, pela conversa
+      // (`EMBED_DO_CLIENTE_DO_AVISO`, 28/10/2026).
+      .select(`*, ${EMBED_DO_CLIENTE_DO_AVISO}`)
       .eq("account_id", accountId)
       .order("created_at", { ascending: false })
       .limit(100);
@@ -158,8 +166,9 @@ export default function NotificationsPage() {
     (n: Notification) => {
       if (!n.read_at) markRead(n.id);
       // ⚠️ Tarefa ANTES de conversa (944) — a regra mora em `rotaDoAviso`,
-      // a mesma do card de notificações do Meu dia.
-      const rota = rotaDoAviso(n);
+      // a mesma do card de notificações do Meu dia. `de=notificacoes` liga na
+      // conversa a faixa que volta para cá.
+      const rota = rotaDoAviso(n, "notificacoes");
       if (rota) router.push(rota);
     },
     [markRead, router],
@@ -292,6 +301,8 @@ export default function NotificationsPage() {
                         />
                       )}
                     </div>
+                    {/* De quem é o aviso — o cliente ou o grupo (28/10/2026). */}
+                    <LinhaDoCliente cliente={clienteDoAviso(n)} className="mt-0.5" />
                     {texto.corpo && (
                       <p
                         className={cn(

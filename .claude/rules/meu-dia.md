@@ -172,7 +172,8 @@ para a aba (`/meu-dia`, sem janela na URL: a aba não repete as novidades).
   restrição" e o card piscaria para o atendente. A própria pessoa fica fora;
   "em dia" só com a lista de membros respondida (`emDia: null` = não sei).
 - **Notificações: as NÃO LIDAS** (a janela "desde a última entrada" ficou no
-  cartão), clique pela `rotaDoAviso`, recorte por conexão do perfil.
+  cartão), clique pela `rotaDoAviso(…, 'meu-dia')` (faixa de volta,
+  `inbox-lista.md`), o cliente pela `LinhaDoCliente`, recorte por conexão do perfil.
 - ⚠️ **`whatsapp_alert` (1085) é escrito de FORA do app**: a sentinela da VPS
   (`docs/INFRA-VPS.md` §12) grava pelo PostgREST, com a service role, para
   owner/admin, título e corpo prontos e SEM conversa nem tarefa — o clique só

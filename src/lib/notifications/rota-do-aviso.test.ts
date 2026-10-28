@@ -20,6 +20,14 @@ describe("rotaDoAviso", () => {
     expect(rotaDoAviso({ task_id: "t1", conversation_id: "c1", note_id: "n1" })).toBe("/tarefas");
   });
 
+  it("28/10: a tela de onde o clique saiu vira a faixa de volta (`de`) — e a tarefa segue indo para Tarefas", () => {
+    expect(rotaDoAviso({ conversation_id: "c1", note_id: "n1" }, "notificacoes")).toBe(
+      "/inbox?c=c1&nota=n1&de=notificacoes",
+    );
+    expect(rotaDoAviso({ conversation_id: "c1" }, "meu-dia")).toBe("/inbox?c=c1&de=meu-dia");
+    expect(rotaDoAviso({ task_id: "t1", conversation_id: "c1" }, "notificacoes")).toBe("/tarefas");
+  });
+
   it("sem destino devolve null", () => {
     expect(rotaDoAviso({})).toBeNull();
   });
