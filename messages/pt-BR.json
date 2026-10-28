@@ -188,6 +188,8 @@
       "whatsappNotConnected": "O WhatsApp® não está conectado. Acesse Configurações para conectar sua conta.",
       "backToPipeline": "Voltar ao funil",
       "backToReunioes": "Voltar às reuniões",
+      "backToNotifications": "Voltar às notificações",
+      "backToMeuDia": "Voltar ao Meu dia",
       "backToContact": "Voltar para {nome}",
       "backToConversation": "Voltar à conversa anterior"
     },
@@ -6819,6 +6821,8 @@
     "unread": "Não lida",
     "markReadError": "Não foi possível marcar a notificação como lida",
     "markAllReadError": "Não foi possível marcar todas como lidas",
+    "clienteDoAviso": "Cliente",
+    "grupoDoAviso": "Grupo",
     "tipos": {
       "atribuida": {
         "titulo": "Conversa atribuída a você",

@@ -16,14 +16,19 @@ import { urlDoInbox } from "@/lib/inbox/url";
 // O aviso de anotação (1114) leva também a ANOTAÇÃO (`&nota=`): o fio abre já
 // no trecho que gerou o aviso. Sem `note_id` (aviso anterior à 1114), só a
 // conversa, como antes.
+//
+// `de` é a tela de onde o clique saiu ("notificacoes" no sino, "meu-dia" no
+// card), e liga na conversa a faixa que volta para ela (28/10/2026). O pop-up
+// do navegador não passa nada: ele não vem de uma tela para onde voltar.
 // ============================================================
 
 export function rotaDoAviso(
   aviso: Pick<Notification, "task_id" | "conversation_id" | "note_id">,
+  de?: "notificacoes" | "meu-dia",
 ): string | null {
   if (aviso.task_id) return "/tarefas";
   if (aviso.conversation_id) {
-    return urlDoInbox({ c: aviso.conversation_id, nota: aviso.note_id });
+    return urlDoInbox({ c: aviso.conversation_id, nota: aviso.note_id, de });
   }
   return null;
 }

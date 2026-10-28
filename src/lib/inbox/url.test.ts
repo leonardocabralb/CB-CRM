@@ -12,6 +12,9 @@ describe("urlDoInbox", () => {
   it("as combinações de verdade", () => {
     expect(urlDoInbox({ c: "cv1" })).toBe("/inbox?c=cv1");
     expect(urlDoInbox({ c: "cv1", de: "funil" })).toBe("/inbox?c=cv1&de=funil");
+    // A faixa de volta aos avisos sobrevive aos replaces, como a do funil.
+    expect(urlDoInbox({ c: "cv2", de: "notificacoes" })).toBe("/inbox?c=cv2&de=notificacoes");
+    expect(urlDoInbox({ c: "cv2", de: "meu-dia" })).toBe("/inbox?c=cv2&de=meu-dia");
     expect(urlDoInbox({ etapa: "s1", de: "funil" })).toBe(
       "/inbox?etapa=s1&de=funil",
     );
@@ -105,9 +108,13 @@ describe("recorte do Meu dia (`conexao` + `ver`)", () => {
 });
 
 describe("ehOrigemDoInbox", () => {
-  it("só os dois valores com leitor", () => {
+  it("só os valores com leitor (as quatro faixas de volta)", () => {
     expect(ehOrigemDoInbox("funil")).toBe(true);
     expect(ehOrigemDoInbox("reunioes")).toBe(true);
+    // 28/10/2026: a volta aos avisos do sino e do card do Meu dia.
+    expect(ehOrigemDoInbox("notificacoes")).toBe(true);
+    expect(ehOrigemDoInbox("meu-dia")).toBe(true);
+    expect(ehOrigemDoInbox("notifications")).toBe(false);
     expect(ehOrigemDoInbox("qualquer")).toBe(false);
     expect(ehOrigemDoInbox("")).toBe(false);
     expect(ehOrigemDoInbox(null)).toBe(false);

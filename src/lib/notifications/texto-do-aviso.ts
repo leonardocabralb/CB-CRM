@@ -18,7 +18,43 @@ import { nomeDoContato, type ContatoIdentificavel } from "@/lib/contacts/identid
 
 export type AvisoComContato = Notification & {
   contact?: ContatoIdentificavel | null;
+  /**
+   * A conversa do aviso, só pelo nome do GRUPO (`cb_groups.subject`): aviso de
+   * anotação em grupo nasce sem contato (grupo não é contato).
+   */
+  conversation?: { group?: { subject?: string | null } | null } | null;
 };
+
+/**
+ * O embed que dá nome ao CLIENTE do aviso, na mesma forma no sino e no Meu dia.
+ * ⚠️ Os dois `@` vão junto do telefone (pino `identidade-nos-embeds.test.ts`):
+ * sem eles, a ficha só-BSUID cairia no rótulo genérico.
+ */
+export const EMBED_DO_CLIENTE_DO_AVISO =
+  "contact:contacts(name, phone, wa_username, instagram_username), conversation:conversations(group:cb_groups(subject))";
+
+/** De quem é o aviso: o cliente (ficha) ou o grupo da conversa. */
+export interface ClienteDoAviso {
+  tipo: "contato" | "grupo";
+  nome: string;
+}
+
+/**
+ * O cliente a mostrar na linha do aviso (pedido do operador, 28/10/2026: "em
+ * qual cliente foi feita aquela modificação"). `null` quando não há o que
+ * dizer: o aviso de atribuição já traz o contato no corpo, o de saúde do
+ * WhatsApp não é de cliente, e o aviso sem ficha nem grupo legível não ganha
+ * nome inventado.
+ */
+export function clienteDoAviso(aviso: AvisoComContato): ClienteDoAviso | null {
+  if (aviso.type === "conversation_assigned" || aviso.type === "whatsapp_alert") return null;
+  if (aviso.contact) {
+    const nome = nomeDoContato(aviso.contact, "");
+    return nome ? { tipo: "contato", nome } : null;
+  }
+  const grupo = aviso.conversation?.group?.subject?.trim();
+  return grupo ? { tipo: "grupo", nome: grupo } : null;
+}
 
 export interface TextoDoAviso {
   titulo: string;

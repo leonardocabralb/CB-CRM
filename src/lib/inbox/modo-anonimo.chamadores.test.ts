@@ -141,9 +141,13 @@ describe('modo anônimo: quem zera as não lidas', () => {
 
   it('a página só esvazia o espelho da lista fora do modo', () => {
     const p = fonte(PAGINA);
-    expect(ocorrencias(p, '{ ...c, unread_count: 0 }')).toBe(2);
+    // Três escritores do espelho: o clique, o deep link e (28/10/2026) a
+    // ABERTURA RÁPIDA do deep link, que abre a conversa antes da lista e paga
+    // o espelho quando ela chega — cada um com a guarda do modo.
+    expect(ocorrencias(p, '{ ...c, unread_count: 0 }')).toBe(3);
     expect(p).toContain('if (!bloqueadaAoSelecionar && !modoAnonimo) {');
     expect(p).toMatch(/!modoAnonimo &&\s*conversaNoEscopo\(acesso, match\) &&/);
+    expect(p).toMatch(/!modoAnonimo &&\s*conversaNoEscopo\(acesso, daLista\) &&/);
     expect(p).toContain('const lida = conversaLida === conv.id;');
     expect(p).toContain('unread_count: lida ? 0 : conv.unread_count,');
     // `aberta` é o nome que o pino de `ordem-da-lista.test.ts` cobra.

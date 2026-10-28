@@ -55,6 +55,9 @@ qualquer uma é pergunta ao operador.
   anexos de todo tipo, vários, sem transcrição nem aba Arquivos; só o autor
   edita, sem prazo, com marca "editada" (23/10/2026); o clique no aviso de
   menção ou resposta abre a conversa NO TRECHO da anotação (27/10/2026).
+- Avisos (sino e Meu dia): cada um diz o cliente (ou o grupo); a conversa
+  aberta por eles tem a faixa de volta à tela de origem; os avisos antigos
+  sem a anotação ficam como estão, sem religação (28/10/2026).
 - Arquivo recebido: todo formato entra (ZIP, RAR, MSG…); o que o navegador
   não mostra fica para baixar, com o nome real (27/10/2026).
 - Quem mais está com a conversa aberta: frase acima do compositor, além dos

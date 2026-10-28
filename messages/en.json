@@ -195,6 +195,8 @@
       "whatsappNotConnected": "WhatsApp® is not connected. Go to Settings to connect your account.",
       "backToPipeline": "Back to pipeline",
       "backToReunioes": "Back to meetings",
+      "backToNotifications": "Back to notifications",
+      "backToMeuDia": "Back to My day",
       "backToContact": "Back to {nome}",
       "backToConversation": "Back to the previous conversation"
     },
@@ -6826,6 +6828,8 @@
     "unread": "Unread",
     "markReadError": "Failed to mark notification as read",
     "markAllReadError": "Failed to mark all as read",
+    "clienteDoAviso": "Client",
+    "grupoDoAviso": "Group",
     "tipos": {
       "atribuida": {
         "titulo": "Conversation assigned to you",

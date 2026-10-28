@@ -25,6 +25,7 @@ import { conversaNoEscopo } from "@/lib/perfis/escopo";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { VoltarAoFunil } from "@/components/inbox/voltar-ao-funil";
 import { VoltarAsReunioes } from "@/components/inbox/voltar-as-reunioes";
+import { VoltarAosAvisos } from "@/components/inbox/voltar-aos-avisos";
 import { VoltarParaConversa } from "@/components/inbox/voltar-para-conversa";
 import { nomeDoContato } from "@/lib/contacts/identidade";
 import { avisarExecucoesMudaram } from "@/lib/execucoes/aviso";
@@ -120,6 +121,8 @@ function InboxPageInner() {
   // filtro nenhum: dela vem apenas a faixa de volta.
   const veioDoFunil = de === "funil";
   const veioDasReunioes = de === "reunioes";
+  // O clique num aviso do sino ou do card do Meu dia (28/10/2026).
+  const veioDosAvisos = de === "notificacoes" || de === "meu-dia" ? de : null;
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   // Recorte por perfil (Fase 3). A LINHA aparece na lista (a busca acha
@@ -330,6 +333,13 @@ function InboxPageInner() {
    * A ref não corre contra nada. (Achado do Codex na revisão do PR #79.)
    */
   const conversaRecemAbertaRef = useRef<string | null>(null);
+  /**
+   * A conversa do deep link que a ABERTURA RÁPIDA pôs na tela antes de a lista
+   * chegar (28/10/2026, ver o efeito logo depois de `handleConversationsLoaded`).
+   * A lista, quando vem, deve a ela o espelho de "lida" que o deep link faria —
+   * e só uma vez.
+   */
+  const abertaAntesDaListaRef = useRef<string | null>(null);
   /**
    * A faixa "Voltar para <nome>" (1069): o operador pulou da conversa
    * `conversaId` para a `naConversa` pela aba Relacionados do painel.
@@ -788,6 +798,27 @@ function InboxPageInner() {
     (loaded: Conversation[]) => {
       setConversations(loaded);
 
+      // A abertura rápida (28/10/2026) já selecionou a conversa do deep link
+      // e consumiu a ref dele: o bloco do deep link abaixo não roda para ela.
+      // Fica devendo o espelho de "lida" da linha, com as MESMAS guardas
+      // (escopo, modo anônimo) — e só se ela ainda é a aberta.
+      const abertaAntes = abertaAntesDaListaRef.current;
+      if (abertaAntes) {
+        abertaAntesDaListaRef.current = null;
+        const daLista = loaded.find((c) => c.id === abertaAntes);
+        if (
+          daLista &&
+          conversaAbertaRef.current === abertaAntes &&
+          !modoAnonimo &&
+          conversaNoEscopo(acesso, daLista) &&
+          daLista.unread_count > 0
+        ) {
+          setConversations((prev) =>
+            prev.map((c) => (c.id === abertaAntes ? { ...c, unread_count: 0 } : c)),
+          );
+        }
+      }
+
       // A conversa que acabou de ser aberta pelo botão. Vem antes do deep
       // link e não olha a URL — ver `conversaRecemAbertaRef`. Só limpa a ref
       // quando de fato encontra a linha: se esta carga saiu antes de a
@@ -867,6 +898,59 @@ function InboxPageInner() {
     },
     [deepLinkConvId, notaDoDeepLink, activeConversation?.id, acesso, modoAnonimo]
   );
+
+  /**
+   * ABERTURA RÁPIDA do deep link (pedido do operador, 28/10/2026): a conversa
+   * do `?c=` é lida SOZINHA e aberta já, sem esperar a lista.
+   *
+   * Medido no build de produção: abrir pelo aviso levava ~5 s, dos quais
+   * ~3,4 s eram a lista INTEIRA (3.535 conversas, quatro páginas de mil em
+   * série — `buscarPaginado`), que o bloco do deep link acima espera para
+   * achar a linha; o fio em si leva ~0,4 s. A lista continua chegando em
+   * segundo plano, e quando chega o bloco do deep link não reaplica (a ref
+   * está consumida) — só o espelho de "lida" (`abertaAntesDaListaRef`).
+   *
+   * ⚠️ As cercas, cada uma contra uma seleção que atropelaria outra: a ref do
+   * deep link já consumida (a lista chegou primeiro, ou a pessoa clicou numa
+   * conversa — `handleSelectConversation` a carimba antes do `replace`);
+   * outra conversa já aberta ou a caminho pelo "Nova conversa"; e a URL que
+   * já não pede esta conversa. Conferidas ANTES e DEPOIS da leitura. Falha ou
+   * conversa que a RLS esconde = nada aqui: o caminho da lista continua de pé.
+   * `setState` só depois do `await` (React Compiler: nada síncrono no efeito).
+   */
+  useEffect(() => {
+    if (!deepLinkConvId) return;
+    const atendido = () =>
+      autoSelectedForDeepLinkRef.current === deepLinkConvId ||
+      conversaAbertaRef.current !== null ||
+      conversaRecemAbertaRef.current !== null;
+    if (atendido()) return;
+    let cancelado = false;
+    (async () => {
+      const { data, error } = await createClient()
+        .from("conversations")
+        .select(CONVERSATION_SELECT)
+        .eq("id", deepLinkConvId)
+        .maybeSingle();
+      if (cancelado || error || !data || atendido()) return;
+      if (new URLSearchParams(window.location.search).get("c") !== deepLinkConvId) return;
+      const conversa = normalizeConversation(data);
+      autoSelectedForDeepLinkRef.current = deepLinkConvId;
+      abertaAntesDaListaRef.current = deepLinkConvId;
+      setActiveConversation(conversa);
+      setActiveContact(conversa.contact ?? null);
+      setMessages([]);
+      setMessagesDaConversa(null);
+      if (notaDoDeepLink) {
+        setSaltoPedido((prev) =>
+          novoPedidoDeSalto(prev, conversa.id, { tipo: "nota", id: notaDoDeepLink }),
+        );
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [deepLinkConvId, notaDoDeepLink]);
 
   const handleSelectConversation = useCallback(
     (conv: Conversation) => {
@@ -1273,6 +1357,8 @@ function InboxPageInner() {
       {veioDoFunil && <VoltarAoFunil inert={fundoInerte} />}
       {/* A mesma faixa para quem veio da pauta de reuniões. */}
       {veioDasReunioes && <VoltarAsReunioes inert={fundoInerte} />}
+      {/* E para quem veio de um aviso (sino ou Meu dia). */}
+      {veioDosAvisos && <VoltarAosAvisos origem={veioDosAvisos} inert={fundoInerte} />}
       {/* Volta da conversa de um contato RELACIONADO (1069). Derivada: só
           vale enquanto a conversa aberta é a de destino do pulo. */}
       {voltarPara && voltarPara.naConversa === activeConversation?.id && (
