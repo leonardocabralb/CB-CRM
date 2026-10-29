@@ -52,10 +52,10 @@ interface SendTextEngineArgs {
    *  lookups so a flow authored by user A still sends through the
    *  WhatsApp number user B saved on the same account. */
   accountId: string
-  /** Original author of the flow — used for INSERT audit columns
-   *  and for resolving the agent's identity in logs. Not consulted
-   *  for tenancy. */
-  userId: string
+  /** Original author of the flow. Not consulted for tenancy, and no send
+   *  reads it (quem assina é o escritório). Nulo quando o login de quem
+   *  criou foi apagado (1116). */
+  userId: string | null
   conversationId: string
   contactId: string
   text: string
@@ -370,7 +370,7 @@ export async function engineSendText(
 
 interface SendMediaEngineArgs {
   accountId: string
-  userId: string
+  userId: string | null
   conversationId: string
   contactId: string
   kind: MediaKind
@@ -563,7 +563,7 @@ export async function engineSendMedia(
 
 interface SendInteractiveButtonsEngineArgs {
   accountId: string
-  userId: string
+  userId: string | null
   conversationId: string
   contactId: string
   bodyText: string
@@ -579,7 +579,7 @@ interface SendInteractiveButtonsEngineArgs {
 
 interface SendInteractiveListEngineArgs {
   accountId: string
-  userId: string
+  userId: string | null
   conversationId: string
   contactId: string
   bodyText: string

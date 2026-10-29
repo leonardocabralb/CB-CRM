@@ -40,8 +40,8 @@ qualquer uma é pergunta ao operador.
   o mesmo id; identidade ocupada → "Restaurar e unir": fica a ficha aberta,
   a conversa velha vira histórico (23/10).
 - Cadastro só por convite (22/09/2026); a saída para ex-membro que ainda
-  tem login é BLOQUEAR no Supabase (apagar o login leva por CASCADE o que ele
-  criou: etiquetas, modelos, automações).
+  tem login é BLOQUEAR no Supabase (reversível; desde a 1116, 29/10/2026,
+  apagar o login não leva mais o que ele criou — fica sem autor).
 - Webhook de saída `conversation.created` = SÓ "o cliente abriu a conversa"
   (entrada; 23/09/2026) — emitir noutro caminho muda o contrato publicado.
 - Retentativa de passo de automação só na Evolution; na Meta fica de fora
