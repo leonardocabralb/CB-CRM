@@ -173,7 +173,7 @@ function argsDoAlvo(accountId: string, contactId: string): ArgsDoAlvo {
 export interface EntradaDoMoverCard {
   accountId: string;
   /** Autor do robô: dono de registro do card criado (a coluna é SET NULL). */
-  userId: string;
+  userId: string | null;
   flowId: string;
   contactId: string | null;
   conversationId: string | null;

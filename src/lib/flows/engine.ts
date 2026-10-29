@@ -1518,7 +1518,7 @@ async function startNewRun(
  */
 export async function startFlowForContact(args: {
   accountId: string;
-  userId: string;
+  userId: string | null;
   contactId: string;
   conversationId: string;
   flowId: string;

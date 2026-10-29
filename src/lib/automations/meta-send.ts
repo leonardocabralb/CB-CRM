@@ -44,10 +44,10 @@ interface SendTextArgs {
    *  lookups so an automation authored by user A still sends through
    *  the WhatsApp number user B saved on the same account. */
   accountId: string
-  /** Original author of the automation/flow — used for INSERT audit
-   *  columns (messages.sender_id-ish) and for resolving the agent's
-   *  identity in logs. Not consulted for tenancy. */
-  userId: string
+  /** Original author of the automation/flow. Not consulted for tenancy,
+   *  and no send reads it (quem assina é o escritório, ver `sendViaMeta`).
+   *  Nulo quando o login de quem criou foi apagado (1116). */
+  userId: string | null
   conversationId: string
   contactId: string
   text: string
@@ -70,7 +70,7 @@ interface SendTextArgs {
 
 interface SendTemplateArgs {
   accountId: string
-  userId: string
+  userId: string | null
   conversationId: string
   contactId: string
   templateName: string
@@ -100,7 +100,7 @@ export async function engineSendTemplate(
 
 interface SendInteractiveArgs {
   accountId: string
-  userId: string
+  userId: string | null
   conversationId: string
   contactId: string
   payload: InteractiveMessagePayload

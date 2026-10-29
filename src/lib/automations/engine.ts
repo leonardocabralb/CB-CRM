@@ -547,8 +547,9 @@ export async function dispararAutomacoes(
 export async function resumePendingExecution(pending: {
   id: string;
   automation_id: string;
-  /** Audit-only; the automation row carries account_id for tenancy. */
-  user_id: string;
+  /** Audit-only; the automation row carries account_id for tenancy.
+   *  Nula quando o login do autor é apagado (1116). */
+  user_id: string | null;
   /** Account-scoped lookups read from the automation row, so this
    *  field is just here to mirror the row shape and keep the cron's
    *  pass-through self-documenting. */
@@ -3305,7 +3306,9 @@ export async function criarTarefaComAviso(
     .from('profiles')
     .select('user_id, full_name, email')
     .eq('account_id', args.accountId)
-    .in('user_id', [autorId, args.responsavelUserId]);
+    // Autor nulo (login apagado, 1116) fica fora da lista: nulo não é um
+    // id a procurar, e `nomeDe(null)` já devolve null.
+    .in('user_id', autorId ? [autorId, args.responsavelUserId] : [args.responsavelUserId]);
   if (erroPerfis)
     throw new Error(
       `create_task: leitura de perfis falhou: ${erroPerfis.message}`
