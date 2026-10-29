@@ -1678,6 +1678,20 @@ nome da época em que foram aplicadas.
   mensagem, `media_url`/`media_type`/`media_filename` gravados só nas linhas
   ainda sem anexo). Os 2 `.msg` de 16/10 são irrecuperáveis: a Evolution
   guarda o registro sem o conteúdo (getBase64 400).
+- **1116_cb_autoria_nao_apaga_dado_da_conta** — o `user_id` de `pipelines`,
+  `tags`, `automations`, `automation_logs`, `automation_pending_executions`,
+  `flows`, `flow_runs`, `broadcasts`, `message_templates`, `quick_replies` e
+  `whatsapp_config` vira autoria anulável com `ON DELETE SET NULL`: apagar o
+  login de quem criou não leva mais o funil (com os negócios), as etiquetas,
+  as automações e o resto. Só catálogo, nenhuma linha muda.
+
+  Afrouxa: serve ao app de antes e ao de depois. Autorização do operador em
+  29/10/2026 ("Sim, aplicar", à pergunta de aplicar a 1116 em produção antes
+  do merge), aplicada em
+  29/10/2026 (histórico `20261029202131`) depois do replay verde do CI no
+  commit do PR #447. Conferida: as onze anuláveis e com a FK em SET NULL; só
+  as 14 tabelas da pessoa e do dono durável seguem com CASCADE para
+  `auth.users`; contagens de funis, etiquetas e automações iguais às de antes.
 
 ## Notas do histórico
 
