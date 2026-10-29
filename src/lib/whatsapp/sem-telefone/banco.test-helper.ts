@@ -129,6 +129,13 @@ export function criarBanco(tabelas: Record<string, Linha[]> = {}): Banco {
       gt: (c: string, v: string) => (filtros.push((l) => String(ler(l, c)) > v), q),
       gte: (c: string, v: string) => (filtros.push((l) => String(ler(l, c)) >= v), q),
       neq: (c: string, v: unknown) => (filtros.push((l) => ler(l, c) !== v), q),
+      in: (c: string, vs: unknown[]) => (filtros.push((l) => vs.includes(ler(l, c))), q),
+      /** Só a forma `.not(col, 'is', null)` (nomes do grupo). */
+      not: (c: string, operador: string, v: unknown) => {
+        if (operador !== 'is') throw new Error(`dublê: .not(${operador}) não suportado`);
+        filtros.push((l) => (ler(l, c) ?? null) !== v);
+        return q;
+      },
       like: (c: string, padrao: string) => {
         const sufixo = padrao.replace(/^%/, '');
         filtros.push((l) => String(ler(l, c) ?? '').endsWith(sufixo));

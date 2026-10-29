@@ -36,6 +36,7 @@ import {
   persistGroupMessage,
   LIMITE_DOWNLOAD_AUTOMATICO_BYTES,
 } from '@/lib/cb-groups/persist';
+import { detalharGruposSemDetalhe } from '@/lib/cb-groups/detalhar-na-chegada';
 import {
   descreverParticipantes,
   nomesConhecidos,
@@ -228,6 +229,12 @@ export async function POST(request: Request) {
        * no lote são UMA consulta às retidas, não três.
        */
       const paraReligar = new Map<string, { telefoneJid: string; conversationId: string }>();
+      /**
+       * Grupos desta conexão que chegaram sem nome, participantes nem "somos
+       * admin?" — detalhados no FIM da entrega (ver lá embaixo). Por jid: dez
+       * mensagens do mesmo grupo são UMA consulta à Evolution.
+       */
+      const gruposSemDetalhe = new Set<string>();
 
       for (const item of items) {
         try {
@@ -319,6 +326,8 @@ export async function POST(request: Request) {
                   ownLid: route.ownLid,
                   mediaRef: item,
                 });
+
+            if (gravadaGrupo?.grupoSemDetalhe) gruposSemDetalhe.add(g.groupJid);
 
             if (gravadaGrupo && temArquivo(g.contentType)) {
               semAnexo.push({
@@ -642,6 +651,21 @@ export async function POST(request: Request) {
       // anexo (já baixado). Falha vira log — a próxima mensagem tenta de novo.
       if (paraFoto.length > 0) {
         await conferirFotosDosContatos(route.accountId, route.channelId, paraFoto);
+      }
+
+      // Grupo sem detalhe (nasceu pela mensagem, ou o detalhamento falhou):
+      // nome, participantes e "somos admin?" pela Evolution, ~0,8 s por grupo.
+      // ⚠️ Por ÚLTIMO, como as fotos, e nunca dentro do laço dos itens: as
+      // mensagens e os anexos do lote vêm antes do enfeite do painel. Nunca
+      // lança; o freio de 15 min por grupo mora no módulo.
+      if (gruposSemDetalhe.size > 0 && route.channelId) {
+        await detalharGruposSemDetalhe({
+          db: supabaseAdmin(),
+          accountId: route.accountId,
+          channelId: route.channelId,
+          jids: [...gruposSemDetalhe],
+          agora: Date.now(),
+        });
       }
     });
     return NextResponse.json({ ok: true });

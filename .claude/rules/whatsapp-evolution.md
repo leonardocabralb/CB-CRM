@@ -349,33 +349,10 @@ a opção `telefoneResolvido` de `normalizeUpsert` e a tabela
   função) estão no plano. A Fase 3 (consulta local `getPNForLID` na imagem)
   ficou fora por decisão do operador.
 
-### Grupo de WhatsApp (906/916): detalhes da Evolution
+### Grupo de WhatsApp (906/916)
 
-Grupo não é contato — a regra geral está na raiz. Aqui, o que é do transporte:
-
-- ⚠️ **A regra do `@lid` do 1:1 NÃO vale em grupo.** O remetente vai
-  desnormalizado em `messages.group_sender_*`, sem FK e sem criar contato.
-  Quase todo participante chega em `@lid`: a regra do 1:1 esvaziaria o recurso.
-- **Grupo não dispara automação, fluxo nem IA**: `cb-groups/persist.ts` não
-  importa os motores, e um teste lê o fonte. Grupo nas automações = import
-  visível ali, nunca uma flag.
-- ⚠️ **`persist.ts` não reabre conversa encerrada.** Grupo encerrado some da
-  caixa enquanto as mensagens continuam chegando; só um envio da equipe o
-  reabre. Por isso o encerramento em lote (1018) deixa grupo de fora por padrão.
-- ⚠️ **`group/fetchAllGroups` estoura** (mais de 90 s). Use `chat/findChats`
-  filtrando `@g.us` (traz nome e foto). `findGroupInfos` (~650 ms por grupo)
-  só para participantes, announce, admin e o nosso LID.
-- ⚠️ **Um evento desconhecido faz a Evolution recusar a lista INTEIRA de
-  eventos do webhook.** `GROUPS_UPDATE` não existe. `GROUP_UPDATE` existe na
-  2.4, mas ainda não está na lista do CRM (pendente em `PLANO-baileys-7.md`,
-  ajuste 5: conferir o enum e "Ressincronizar" as conexões).
-- **Ligar `cb_channels.groups_enabled` não basta**: instância já conectada só
-  recebe os eventos novos depois de reaplicar o webhook ("Ressincronizar").
-- **Menção chega em `@lid`**: `cb_channels.own_lid` (916) é aprendido na
-  primeira mensagem nossa num grupo. Sem ele, `mentions_us` fica falso para
-  sempre.
-- **Insert em BLOCO preenche coluna ausente com NULL**: `from_device` e
-  `mentions_us` (NOT NULL) estouram se as linhas do lote não forem uniformes.
+Mora em `.claude/rules/grupos.md`: o `@lid` em grupo, os eventos, o
+⚠️⚠️ GET de grupo da 2.4 que exige CORPO, o detalhamento e os participantes.
 
 ### Nome da instância Evolution
 
