@@ -219,6 +219,38 @@ BEGIN
       'authenticated ou anon têm DELETE em contacts — a 1100 tirou (excluir é mover para a Lixeira)';
   END IF;
 
+  -- 1116: apagar um LOGIN só leva junto o dado da PESSOA. CASCADE de
+  -- `public.*` para `auth.users` só nesta lista: o dado da pessoa e o trio do
+  -- dono durável (CLAUDE.md, 8a). Tabela NOVA com dado da conta e coluna de
+  -- autoria nasce `ON DELETE SET NULL` (a forma das `cb_*`); se o dado for
+  -- mesmo da pessoa, entra aqui com o motivo. Um merge do upstream que crie
+  -- tabela com o CASCADE dele reprova aqui.
+  DECLARE
+    v_fora text;
+  BEGIN
+    SELECT string_agg(DISTINCT r.relname::text, ', ') INTO v_fora
+      FROM pg_constraint c
+      JOIN pg_class r ON r.oid = c.conrelid
+     WHERE c.contype = 'f'
+       AND c.confrelid = 'auth.users'::regclass
+       AND c.confdeltype = 'c'
+       AND r.relnamespace = 'public'::regnamespace
+       AND r.relname NOT IN (
+         -- dado da pessoa
+         'profiles', 'member_presence', 'notifications',
+         'cb_automacoes_favoritas', 'cb_availability',
+         'cb_celulares_dos_membros', 'cb_conversa_aberta',
+         'cb_conversation_favorites', 'cb_inbox_filtro_padrao',
+         'cb_inbox_saved_filters', 'cb_ordem_dos_blocos',
+         -- dono durável: sempre `accounts.owner_user_id` (RESTRICT)
+         'contacts', 'conversations', 'custom_fields'
+       );
+    IF v_fora IS NOT NULL THEN
+      RAISE EXCEPTION
+        'ON DELETE CASCADE para auth.users em %: apagar o login de quem criou apagaria o dado da conta. Use ON DELETE SET NULL (1116) ou, se o dado for da pessoa, inclua a tabela na lista desta asserção', v_fora;
+    END IF;
+  END;
+
   RAISE NOTICE 'schema verification passed';
 END
 $$;

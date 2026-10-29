@@ -206,7 +206,10 @@ Volta para `main` por PR no CB-CRM.
   clientes junto. Pino `src/lib/contacts/dono-duravel.test.ts`.
 - Nas outras tabelas `user_id` é AUTORIA: tela não recorta catálogo da conta
   com `.eq('user_id', …)` (o membro via o catálogo vazio). Só dado da PESSOA
-  (favoritas, filtros salvos, avisos, perfil) se recorta assim.
+  (favoritas, filtros salvos, avisos, perfil) se recorta assim. Autoria é
+  anulável com `ON DELETE SET NULL` (1116): o código aceita autor nulo, e
+  coluna nova para `auth.users` com CASCADE só em dado da pessoa (o
+  `verify-schema.sql` reprova o resto).
 - `profiles.id` ≠ `profiles.user_id`: `deals.assigned_to` guarda
   `profiles.id`; `cb_tasks`, `conversations` e `notifications` guardam o id
   do LOGIN. Trocar dá 0 linhas, sem erro.

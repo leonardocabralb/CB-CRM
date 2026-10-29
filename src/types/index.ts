@@ -160,7 +160,8 @@ export interface Contact {
 
 export interface Tag {
   id: string;
-  user_id: string;
+  /** Autoria: nula quando o login de quem criou é apagado (1116, SET NULL). */
+  user_id: string | null;
   name: string;
   color: string;
   created_at: string;
@@ -881,7 +882,8 @@ export interface MessageReaction {
 
 export interface WhatsAppConfig {
   id: string;
-  user_id: string;
+  /** Autoria: nula quando o login de quem criou é apagado (1116, SET NULL). */
+  user_id: string | null;
   /**
    * Which transport backs this connection (migration 037). 'meta' rows
    * carry phone_number_id + access_token; 'evolution' rows carry
@@ -956,7 +958,8 @@ export interface TemplateSampleValues {
 
 export interface MessageTemplate {
   id: string;
-  user_id: string;
+  /** Autoria: nula quando o login de quem criou é apagado (1116, SET NULL). */
+  user_id: string | null;
   name: string;
   category: 'Marketing' | 'Utility' | 'Authentication';
   language?: string;
@@ -989,7 +992,8 @@ export interface MessageTemplate {
 
 export interface Pipeline {
   id: string;
-  user_id: string;
+  /** Autoria: nula quando o login de quem criou é apagado (1116, SET NULL). */
+  user_id: string | null;
   /** NOT NULL desde a 017; faltava no tipo. */
   account_id?: string;
   name: string;
@@ -1140,7 +1144,8 @@ export type RecipientStatus =
 
 export interface Broadcast {
   id: string;
-  user_id: string;
+  /** Autoria: nula quando o login de quem criou é apagado (1116, SET NULL). */
+  user_id: string | null;
   name: string;
   template_name: string;
   template_language: string;
@@ -2085,7 +2090,8 @@ export interface Automation {
   account_id: string;
   /** Original author. Used for log audit + outbound message
    *  sender-of-record, never for tenancy isolation. */
-  user_id: string;
+  /** Autoria: nula quando o login de quem criou é apagado (1116, SET NULL). */
+  user_id: string | null;
   name: string;
   description?: string;
   trigger_type: AutomationTriggerType;
@@ -2158,7 +2164,8 @@ export type AutomationLogDesfecho = 'concluida' | 'barrada' | 'falhou';
 export interface AutomationLog {
   id: string;
   automation_id: string;
-  user_id: string;
+  /** Autoria: nula quando o login de quem criou é apagado (1116, SET NULL). */
+  user_id: string | null;
   contact_id: string | null;
   trigger_event: string;
   steps_executed: AutomationLogStepResult[];
@@ -2200,7 +2207,8 @@ export interface QuickReply {
   /** Account tenancy key — shared across all members of the account. */
   account_id: string;
   /** Author / audit only. */
-  user_id: string;
+  /** Autoria: nula quando o login de quem criou é apagado (1116, SET NULL). */
+  user_id: string | null;
   title: string;
   kind: QuickReplyKind;
   /** Set when `kind === 'text'`. */

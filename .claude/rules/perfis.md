@@ -152,9 +152,10 @@ Troca de LENTE no navegador, e só nele (`simulacao.ts`, o override no
   apaga), e `transfer_account_ownership` reparenta `contacts`, `conversations`
   e `custom_fields` para o novo dono (971) e limpa o `perfil_id` dele (965) —
   senão, apagado o login do ex-dono, o acervo iria junto pelo CASCADE. SÓ
-  essas três: as outras guardam quem CRIOU, e mover é decisão pendente.
-- `remove_account_member` só realoca o perfil; o que dispara o CASCADE de
-  `user_id` é apagar o LOGIN fora do app (painel do Supabase, admin API).
+  essas três: as outras guardam quem CRIOU, com `ON DELETE SET NULL` (1116).
+- `remove_account_member` só realoca o perfil. Apagar o LOGIN fora do app
+  (painel do Supabase, admin API) leva pelo CASCADE só o dado da PESSOA
+  (perfil, avisos, favoritas, filtros); o que ela criou fica sem autor (1116).
 - O celular de cada membro (1046) aparece na lista de Membros SÓ para
   administradores, como o e-mail, e com barreira no banco (RLS de
   `cb_celulares_dos_membros`). As regras estão em `meu-dia.md`.

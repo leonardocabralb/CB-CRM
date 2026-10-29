@@ -935,10 +935,11 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
 
     try {
       // ── Step 0: Resolve current user ──────────────────────────────
-      // broadcasts.user_id is NOT NULL + guarded by RLS
+      // broadcasts.user_id was NOT NULL + guarded by RLS
       // (auth.uid() = user_id). Without this, the INSERT below was
       // silently failing with 23502 / 42501 — the wizard would
-      // no-op with no feedback.
+      // no-op with no feedback. (Hoje é só autoria, anulável com
+      // ON DELETE SET NULL desde a 1116; a sessão continua exigida.)
       const {
         data: { session },
       } = await supabase.auth.getSession();
