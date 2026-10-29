@@ -33,6 +33,8 @@ beforeEach(() => {
       { conversation_id: 'conv-g', group_sender_jid: '5511922223333@s.whatsapp.net', group_sender_name: 'Bruno antigo', created_at: '2026-10-01T10:00:00Z' },
       { conversation_id: 'conv-g', group_sender_jid: '5511922223333@s.whatsapp.net', group_sender_name: 'Bruno Teste', created_at: '2026-10-20T10:00:00Z' },
       { conversation_id: 'conv-g', group_sender_jid: '333@lid', group_sender_name: 'Carla pelo LID', created_at: '2026-10-21T10:00:00Z' },
+      // Celular gravado COM o nono dígito.
+      { conversation_id: 'conv-g', group_sender_jid: '5511987650001@s.whatsapp.net', group_sender_name: 'Dora Teste', created_at: '2026-10-22T10:00:00Z' },
       { conversation_id: 'conv-outro', group_sender_jid: '444@lid', group_sender_name: 'De outro grupo', created_at: '2026-10-21T10:00:00Z' },
     ],
   });
@@ -50,6 +52,12 @@ describe('nomearParticipantes', () => {
   it('sem ficha DESTA conta, vale o nome mais recente com que escreveu no grupo', async () => {
     const [p] = await nomear([participante({ id: '222@lid', lid: '222@lid', telefone: '5511922223333' })]);
     expect(p).toMatchObject({ nome: 'Bruno Teste', fonteDoNome: 'grupo', contatoId: null });
+  });
+
+  it('o nome do grupo casa pela chave de pessoa: o nono dígito não separa', async () => {
+    // Remetente gravado com 13 dígitos; a lista traz o mesmo celular com 12.
+    const [p] = await nomear([participante({ id: '555@lid', lid: '555@lid', telefone: '551187650001' })]);
+    expect(p).toMatchObject({ nome: 'Dora Teste', fonteDoNome: 'grupo' });
   });
 
   it('acha o nome pelo LID quando a mensagem veio só com ele', async () => {
@@ -94,7 +102,10 @@ describe('ordenarParticipantes', () => {
       com({ id: 'nos', somosNos: true }),
       com({ id: 'ana', nome: 'Ána' }),
       com({ id: 'criador', papel: 'criador' }),
+      com({ id: 'oculto', telefone: null }),
+      com({ id: 'tel-1', telefone: '5511900000001' }),
     ]).map((p) => p.id);
-    expect(ordem).toEqual(['nos', 'criador', 'admin', 'ana', 'zeca', 'tel']);
+    // "Número oculto" (sem telefone) por último, depois de quem só tem telefone.
+    expect(ordem).toEqual(['nos', 'criador', 'admin', 'ana', 'zeca', 'tel-1', 'tel', 'oculto']);
   });
 });

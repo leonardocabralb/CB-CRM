@@ -101,15 +101,21 @@ export async function PATCH(
       // Checagem própria antes de renomear: a Evolution devolveria um 500
       // cru, e o operador ficaria sem saber que o problema é permissão.
       // Decide AO VIVO (o `we_are_admin` gravado envelhece quando o número é
-      // rebaixado, e o "qualquer participante edita" nem é guardado); só sem
-      // resposta legível vale o gravado, como antes.
-      let pode = (grupo as { we_are_admin: boolean | null }).we_are_admin === true;
+      // rebaixado, e o "qualquer participante edita" nem é guardado); o que
+      // a leitura não sabe (sem resposta, ou sem achar a nossa linha) fica
+      // com o gravado, como antes.
+      const gravado = (grupo as { we_are_admin: boolean | null }).we_are_admin;
+      let pode = gravado === true;
       try {
         const aoVivo = parseGroupInfo(
           await client.findGroupInfos((grupo as { jid: string }).jid),
           canal.display_phone ?? null,
+          (canal as { own_lid?: string | null }).own_lid ?? null,
         );
-        if (aoVivo.weAreAdmin !== null) pode = podeRenomearAoVivo(aoVivo);
+        pode = podeRenomearAoVivo({
+          weAreAdmin: aoVivo.weAreAdmin ?? gravado,
+          soAdminEdita: aoVivo.soAdminEdita,
+        });
       } catch (err) {
         console.warn(
           '[cb/groups PATCH] conferir permissão ao vivo falhou (vale o gravado):',

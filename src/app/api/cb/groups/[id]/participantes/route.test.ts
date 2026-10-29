@@ -113,6 +113,15 @@ describe('GET participantes', () => {
     expect((await pedir()).body).toMatchObject({ podeRenomear: true, soAdminEdita: false });
   });
 
+  it('⚠️ sem achar a nossa linha, vale o "somos admin?" gravado — e ele não é apagado', async () => {
+    h.banco.tabelas.cb_groups[0].we_are_admin = true;
+    h.canal = { ...h.canal, display_phone: '5599999999999' };
+    const r = await pedir();
+    expect(r.body.podeRenomear).toBe(true);
+    expect(h.banco.tabelas.cb_groups[0].we_are_admin).toBe(true);
+    expect((r.body.participantes as { somosNos: boolean }[]).some((p) => p.somosNos)).toBe(false);
+  });
+
   it('WhatsApp fora do ar = 502, sem gravar nada', async () => {
     h.falhaDaEvolution = new Error('timeout');
     const r = await pedir();

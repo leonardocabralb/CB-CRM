@@ -57,7 +57,7 @@ export async function GET(
     // canal, fichas e mensagens para os nomes, a gravação do espelho).
     const { data: grupo, error: erroDoGrupo } = await ctx.supabase
       .from('cb_groups')
-      .select('id, jid, channel_id')
+      .select('id, jid, channel_id, we_are_admin')
       .eq('id', id)
       .eq('account_id', ctx.accountId)
       .maybeSingle();
@@ -68,7 +68,11 @@ export async function GET(
     if (!grupo) {
       return NextResponse.json({ error: 'Grupo não encontrado.' }, { status: 404 });
     }
-    const { jid, channel_id: channelId } = grupo as { jid: string; channel_id: string | null };
+    const { jid, channel_id: channelId, we_are_admin: gravado } = grupo as {
+      jid: string;
+      channel_id: string | null;
+      we_are_admin: boolean | null;
+    };
 
     const db = admin();
     const canal = channelId ? await getChannelWithSecrets(db, ctx.accountId, channelId) : null;
@@ -95,14 +99,15 @@ export async function GET(
       );
       bruto = null;
     }
-    const participantes = lerParticipantes(bruto, canal.display_phone ?? null);
+    const nossoLid = (canal as { own_lid?: string | null }).own_lid ?? null;
+    const participantes = lerParticipantes(bruto, canal.display_phone ?? null, nossoLid);
     if (!participantes.length) {
       return NextResponse.json(
         { error: 'O WhatsApp não respondeu agora.', code: 'WHATSAPP_INDISPONIVEL' },
         { status: 502 },
       );
     }
-    const info = parseGroupInfo(bruto, canal.display_phone ?? null);
+    const info = parseGroupInfo(bruto, canal.display_phone ?? null, nossoLid);
 
     // O espelho. Falhar aqui não tira a lista da tela: ela já veio.
     const { data: atualizado, error: erroDoEspelho } = await db
@@ -134,7 +139,12 @@ export async function GET(
 
     return NextResponse.json({
       participantes: ordenarParticipantes(comNome),
-      podeRenomear: podeRenomearAoVivo(info),
+      // Sem achar a nossa linha, o "somos admin?" é o gravado: "não achei"
+      // não trava o admin de verdade.
+      podeRenomear: podeRenomearAoVivo({
+        weAreAdmin: info.weAreAdmin ?? gravado,
+        soAdminEdita: info.soAdminEdita,
+      }),
       soAdminEdita: info.soAdminEdita,
       grupo: erroDoEspelho ? null : (atualizado ?? null),
     });

@@ -77,8 +77,19 @@ export interface DetalheDoGrupo {
   ourLid: string | null;
 }
 
-const soDigitos = (s: unknown): string =>
-  typeof s === 'string' ? s.replace(/\D/g, '') : '';
+/**
+ * Os dígitos de um TELEFONE: só `<número>@s.whatsapp.net` ou dígitos soltos.
+ * ⚠️ Nunca de um `@lid` (nem de outro domínio): esse "telefone" alimenta a
+ * busca da ficha e o "Conversar", e o LID jamais vira número de contato
+ * (raiz, 8d). O sufixo de aparelho (`:12`) fica de fora.
+ */
+const digitosDeTelefone = (v: unknown): string => {
+  if (typeof v !== 'string') return '';
+  const [usuario, dominio] = v.split('@');
+  if (dominio !== undefined && dominio !== 's.whatsapp.net') return '';
+  const numero = usuario.split(':')[0];
+  return /^\+?\d+$/.test(numero) ? numero.replace(/\D/g, '') : '';
+};
 
 /**
  * O telefone de um participante, na forma que a Evolution entregar:
@@ -90,9 +101,9 @@ const soDigitos = (s: unknown): string =>
  * silêncio. Ver docs/PLANO-baileys-7.md, ajuste 3.
  */
 const telefoneDoParticipante = (p: Record<string, unknown>): string =>
-  soDigitos(p.phoneNumber) ||
-  soDigitos(p.jid) ||
-  (typeof p.id === 'string' && p.id.endsWith('@s.whatsapp.net') ? soDigitos(p.id) : '');
+  digitosDeTelefone(p.phoneNumber) ||
+  digitosDeTelefone(p.jid) ||
+  (typeof p.id === 'string' && p.id.endsWith('@s.whatsapp.net') ? digitosDeTelefone(p.id) : '');
 
 /** O LID de um participante: `.lid` quando vem, senão o `.id` se ele for `@lid`. */
 const lidDoParticipante = (p: Record<string, unknown>): string | null => {
@@ -102,15 +113,28 @@ const lidDoParticipante = (p: Record<string, unknown>): string | null => {
   return null;
 };
 
+/** Quem somos: a chave de pessoa do `display_phone` e o `own_lid` do canal. */
+interface Nos {
+  chave: string;
+  lid: string | null;
+}
+
+const nosDoCanal = (nossoTelefone: string | null, nossoLid: string | null): Nos => ({
+  chave: nossoTelefone ? chaveDePessoa(nossoTelefone) : '',
+  lid: nossoLid && nossoLid.endsWith('@lid') ? nossoLid : null,
+});
+
 /**
  * É a NOSSA linha? Pela chave de pessoa (`chaveDePessoa`), nunca pela grafia:
  * o WhatsApp entrega o número antigo sem o nono dígito, e o `display_phone`
  * do canal pode estar gravado com ele — pela grafia, "somos admin?" saía
- * `false` para o próprio admin.
+ * `false` para o próprio admin. Ou pelo LID do canal (`own_lid`), para a
+ * linha que vem só com o LID.
  */
-const ehONossoNumero = (p: Record<string, unknown>, nosso: string): boolean => {
+const ehONossoNumero = (p: Record<string, unknown>, nos: Nos): boolean => {
+  if (nos.lid && (p.id === nos.lid || p.lid === nos.lid)) return true;
   const telefone = telefoneDoParticipante(p);
-  return !!nosso && !!telefone && chaveDePessoa(telefone) === nosso;
+  return !!nos.chave && !!telefone && chaveDePessoa(telefone) === nos.chave;
 };
 
 const participantesDe = (raw: unknown): Record<string, unknown>[] => {
@@ -127,9 +151,19 @@ const participantesDe = (raw: unknown): Record<string, unknown>[] => {
  * linha entre os participantes — e é a única forma de descobrir o nosso LID,
  * porque o `participants[].id` vem em `@lid` e só o telefone do participante
  * (`.jid` ou `.phoneNumber`, conforme a versão) casa com o nosso número. Sem
- * esse cruzamento, menção a nós nunca acende (ver 916).
+ * esse cruzamento, menção a nós nunca acende (ver 916). `nossoLid` (o
+ * `own_lid` já aprendido) acha a linha que vem só com o LID.
+ *
+ * ⚠️ Sem achar a nossa linha, `weAreAdmin` é `null` ("não sei"), nunca
+ * `false`: o número está no grupo (senão a Evolution nem leria os dados), e
+ * um `false` de "não achei" passaria por cima do `true` gravado e travaria o
+ * renomear do admin de verdade.
  */
-export function parseGroupInfo(raw: unknown, nossoTelefone: string | null): DetalheDoGrupo {
+export function parseGroupInfo(
+  raw: unknown,
+  nossoTelefone: string | null,
+  nossoLid: string | null = null,
+): DetalheDoGrupo {
   const vazio: DetalheDoGrupo = {
     subject: null,
     description: null,
@@ -146,16 +180,13 @@ export function parseGroupInfo(raw: unknown, nossoTelefone: string | null): Deta
 
   const participantes = participantesDe(raw);
 
-  let weAreAdmin: boolean | null = participantes.length ? false : null;
+  let weAreAdmin: boolean | null = null;
   let ourLid: string | null = null;
-  const nosso = nossoTelefone ? chaveDePessoa(nossoTelefone) : '';
-  if (nosso) {
-    const eu = participantes.find((p) => ehONossoNumero(p, nosso));
-    if (eu) {
-      // `admin` vem como 'admin' | 'superadmin' | null.
-      weAreAdmin = !!eu.admin;
-      ourLid = lidDoParticipante(eu);
-    }
+  const eu = participantes.find((p) => ehONossoNumero(p, nosDoCanal(nossoTelefone, nossoLid)));
+  if (eu) {
+    // `admin` vem como 'admin' | 'superadmin' | null.
+    weAreAdmin = !!eu.admin;
+    ourLid = lidDoParticipante(eu);
   }
 
   return {
@@ -175,7 +206,9 @@ export function parseGroupInfo(raw: unknown, nossoTelefone: string | null): Deta
 /**
  * O renomear NO WHATSAPP vale para nós? Admin, ou grupo que deixa qualquer
  * participante mudar os dados. `null` em qualquer dos dois = não sei, e não
- * destrava (o WhatsApp responderia com erro cru).
+ * destrava (o WhatsApp responderia com erro cru). Quem chama completa o
+ * `weAreAdmin` nulo da leitura com o GRAVADO (`?? we_are_admin`): "não achei
+ * a nossa linha" não apaga o que se sabia.
  */
 export function podeRenomearAoVivo(info: Pick<DetalheDoGrupo, 'weAreAdmin' | 'soAdminEdita'>): boolean {
   return info.weAreAdmin === true || info.soAdminEdita === false;
@@ -184,15 +217,16 @@ export function podeRenomearAoVivo(info: Pick<DetalheDoGrupo, 'weAreAdmin' | 'so
 /**
  * O que o detalhe grava em `cb_groups`. Uma lista só para o detalhamento em
  * lote e para a leitura ao vivo do painel: duas cópias divergiriam, e um dos
- * caminhos voltaria a apagar o nome com NULL.
+ * caminhos voltaria a apagar o nome com NULL. O "somos admin?" desconhecido
+ * (não achamos a nossa linha) também não apaga o gravado.
  */
 export function camposDoDetalhe(info: DetalheDoGrupo, agora: string): Record<string, unknown> {
   const campos: Record<string, unknown> = {
     participant_count: info.participantCount,
     is_announce: info.isAnnounce,
-    we_are_admin: info.weAreAdmin,
     synced_at: agora,
   };
+  if (info.weAreAdmin !== null) campos.we_are_admin = info.weAreAdmin;
   if (info.subject) campos.subject = info.subject;
   if (info.description) campos.description = info.description;
   if (info.pictureUrl) campos.picture_url = info.pictureUrl;
@@ -221,8 +255,12 @@ export interface ParticipanteDoGrupo {
  * de `parseGroupInfo` (`{id: lid, jid}`, `{id: lid, phoneNumber}`,
  * `{id: telefone, lid}`). Item sem `id` é descartado; nada aqui lança.
  */
-export function lerParticipantes(raw: unknown, nossoTelefone: string | null): ParticipanteDoGrupo[] {
-  const nosso = nossoTelefone ? chaveDePessoa(nossoTelefone) : '';
+export function lerParticipantes(
+  raw: unknown,
+  nossoTelefone: string | null,
+  nossoLid: string | null = null,
+): ParticipanteDoGrupo[] {
+  const nos = nosDoCanal(nossoTelefone, nossoLid);
   const saida: ParticipanteDoGrupo[] = [];
   for (const p of participantesDe(raw)) {
     if (typeof p.id !== 'string' || !p.id) continue;
@@ -231,7 +269,7 @@ export function lerParticipantes(raw: unknown, nossoTelefone: string | null): Pa
       telefone: telefoneDoParticipante(p) || null,
       lid: lidDoParticipante(p),
       papel: p.admin === 'superadmin' ? 'criador' : p.admin === 'admin' ? 'admin' : null,
-      somosNos: ehONossoNumero(p, nosso),
+      somosNos: ehONossoNumero(p, nos),
     });
   }
   return saida;
@@ -339,7 +377,7 @@ export async function detalharGrupos(
 
   for (const jid of args.jids) {
     try {
-      const info = parseGroupInfo(await args.client.findGroupInfos(jid), args.displayPhone);
+      const info = parseGroupInfo(await args.client.findGroupInfos(jid), args.displayPhone, ourLid);
 
       const { error } = await db
         .from('cb_groups')

@@ -81,13 +81,13 @@ async function nomesUsadosNoGrupo(
     return mapa;
   }
   // Da mais nova para a mais antiga: fica o nome MAIS RECENTE de cada um. O
-  // remetente de telefone entra também pelos DÍGITOS, que é como o
-  // participante traz o número.
+  // remetente de telefone entra pela CHAVE DE PESSOA (o nono dígito do
+  // remetente gravado pode diferir do da lista); o de LID, pelo LID.
   for (const m of (data ?? []) as { group_sender_jid: string | null; group_sender_name: string | null }[]) {
     const nome = m.group_sender_name?.trim();
     if (!m.group_sender_jid || !nome) continue;
     const [antes, dominio] = m.group_sender_jid.split('@');
-    const chave = dominio === 's.whatsapp.net' ? antes : m.group_sender_jid;
+    const chave = dominio === 's.whatsapp.net' ? chaveDePessoa(antes) : m.group_sender_jid;
     if (!mapa.has(chave)) mapa.set(chave, nome);
   }
   return mapa;
@@ -112,7 +112,7 @@ export async function nomearParticipantes(
     const ficha = p.telefone ? fichas.get(chaveDePessoa(p.telefone)) : undefined;
     // O remetente gravado prefere o telefone (`remetenteDoGrupo`), mas a
     // mensagem antiga ou a sem par chega pelo LID: as três formas.
-    const doGrupo = [p.telefone, p.id, p.lid]
+    const doGrupo = [p.telefone ? chaveDePessoa(p.telefone) : null, p.id, p.lid]
       .map((chave) => (chave ? usados.get(chave) : undefined))
       .find(Boolean);
     const nome = p.somosNos ? null : (ficha?.nome ?? doGrupo ?? null);
@@ -139,6 +139,9 @@ export function ordenarParticipantes(lista: ParticipanteComNome[]): Participante
     if (porPapel !== 0) return porPapel;
     if (a.nome && b.nome) return a.nome.localeCompare(b.nome, undefined, { sensitivity: 'base' });
     if (a.nome || b.nome) return a.nome ? -1 : 1;
-    return (a.telefone ?? '~').localeCompare(b.telefone ?? '~');
+    // Sem telefone ("Número oculto") por último. Explícito: na colação do
+    // ICU um marcador como `~` vem ANTES dos dígitos.
+    if (!a.telefone || !b.telefone) return a.telefone ? -1 : b.telefone ? 1 : 0;
+    return a.telefone < b.telefone ? -1 : a.telefone > b.telefone ? 1 : 0;
   });
 }

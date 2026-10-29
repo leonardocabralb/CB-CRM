@@ -39,7 +39,8 @@ medições: `docs/PLANO-participantes-do-grupo.md`.
   undefined or null to object". Medido em 29/10/2026: nenhum grupo era
   detalhado desde a troca de versão (os 12 detalhados eram de 01/09). O
   `fetch` do Node recusa corpo em GET e descarta o `Content-Length`; por isso
-  o `node:http(s)`. GET de grupo novo passa pelo mesmo método.
+  o `node:http(s)`, que NÃO segue redirecionamento (`server_url` atrás de 301
+  falha só aí). GET de grupo novo passa pelo mesmo método.
 - ⚠️ **Um evento desconhecido faz a Evolution recusar a lista INTEIRA de
   eventos do webhook.** `GROUPS_UPDATE` não existe. `GROUP_UPDATE` existe na
   2.4, mas ainda não está na lista do CRM (pendente em `PLANO-baileys-7.md`,
@@ -59,7 +60,8 @@ medições: `docs/PLANO-participantes-do-grupo.md`.
   itens, dos anexos e das fotos (dentro do laço, ~0,8 s por grupo atrasaria —
   e num corte do `after()` perderia — as mensagens seguintes). Freio de 15
   min por `<conta>:<jid>` no processo, carimbado ANTES da chamada (vale também
-  na falha). Pino `route.grupo-sem-detalhe.test.ts`.
+  na falha). Pino `route.grupo-sem-detalhe.test.ts` (inclusive a ordem
+  contra o download do anexo).
 - ⚠️ **O sinal é `participant_count` nulo, nunca o `synced_at`**: a parte
   rápida da sincronização e o `groups.upsert` carimbam o `synced_at` sem
   participantes nem admin, e o grupo cujo detalhamento falhou ficaria travado
@@ -72,8 +74,14 @@ medições: `docs/PLANO-participantes-do-grupo.md`.
   sincronização e a leitura do painel): nome, descrição, foto e dono só
   quando vieram — nunca NULL por cima.
 - ⚠️ **A nossa linha entre os participantes se acha pela chave de pessoa**
-  (`chaveDePessoa`), nunca pela grafia: o canal gravado sem o nono dígito e o
-  WhatsApp entregando com ele davam "não admin" ao próprio admin.
+  (`chaveDePessoa`), nunca pela grafia (o canal gravado sem o nono dígito e o
+  WhatsApp entregando com ele davam "não admin" ao próprio admin), ou pelo
+  `own_lid` do canal. ⚠️ Sem achá-la, `weAreAdmin` é `null`, nunca `false`:
+  `camposDoDetalhe` não o grava e quem decide o renomear completa com o
+  gravado (`?? we_are_admin`) — um "não achei" travaria o admin de verdade.
+- ⚠️ **Telefone de participante só sai de `@s.whatsapp.net` ou de dígitos**
+  (`digitosDeTelefone`), nunca de um `@lid`: ele alimenta a ficha e o
+  "Conversar", e o LID jamais vira número de contato.
 
 ### Participantes e renomear: AO VIVO
 
@@ -91,7 +99,8 @@ como no próprio WhatsApp).
   ausente ou que não é da Evolution = 409 `SEM_CONEXAO`.
 - **Nome, nesta ordem** (`nomes-dos-participantes.ts`): a ficha do CRM pelo
   `telefone_canonico` (em fatias); senão o nome mais recente com que a pessoa
-  escreveu NESTE grupo (as últimas 1000 mensagens, pelo telefone ou pelo LID);
+  escreveu NESTE grupo (as últimas 1000 mensagens, pela chave de pessoa do
+  telefone ou pelo LID);
   senão o telefone; sem telefone, "Número oculto" — nunca o LID cru. O
   `findGroupInfos` não traz nome, e o da Evolution vem dos contatos do
   celular, não do grupo.
@@ -101,7 +110,11 @@ como no próprio WhatsApp).
   guardado. Só sem resposta legível vale o gravado. `null` não destrava.
 - **O painel lê o grupo assim que o mostra** (`useParticipantesDoGrupo`, não
   só com a aba aberta): o renomear depende da leitura. Até ela voltar (ou se
-  falhar), vale o `we_are_admin` gravado, com a frase "Conferindo…".
+  falhar), vale o `we_are_admin` gravado, com a frase "Conferindo…". ⚠️ O
+  painel fica MONTADO mesmo fechado: a última leitura boa de cada grupo é
+  reaproveitada por 3 min (`leiturasRecentes`, de módulo; o "Tentar de novo"
+  passa por cima), e o patch do grupo NÃO é reaplicado dela (desfaria um
+  renomear feito depois).
 - ⚠️⚠️ **`onGrupoAtualizado` da página aplica o patch na conversa ABERTA**,
   não pelo id do grupo: o hook só o chama com o grupo ainda NA TELA
   (`grupoNaTelaRef`, efeito de LAYOUT) — a resposta de A que pousa entre a

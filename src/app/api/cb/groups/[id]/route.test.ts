@@ -111,6 +111,17 @@ describe('renomear no WhatsApp: a permissão ao vivo', () => {
     expect((await renomear()).status).toBe(200);
   });
 
+  it('⚠️ sem achar a nossa linha na leitura, vale o gravado (não trava o admin)', async () => {
+    prepararGrupo(true);
+    h.info = {
+      id: JID,
+      size: 1,
+      restrict: true,
+      participants: [{ id: '222@lid', phoneNumber: '5511922223333@s.whatsapp.net', admin: 'superadmin' }],
+    };
+    expect((await renomear()).status).toBe(200);
+  });
+
   it('sem resposta legível vale o gravado, como antes', async () => {
     prepararGrupo(true);
     h.falhaDaLeitura = new Error('timeout');

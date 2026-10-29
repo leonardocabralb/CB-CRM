@@ -262,6 +262,9 @@ export class EvolutionClient {
    * object" (lido no fonte de `e273b904` e medido em 29/10/2026: nenhum grupo
    * era detalhado desde a troca de versão). O `fetch` do Node recusa corpo em
    * GET e descarta o `Content-Length`, que o Express exige para ler o corpo.
+   * ⚠️ Ao contrário do `fetch`, NÃO segue redirecionamento: um `server_url`
+   * atrás de um 301/302 (http → https num proxy) dá "Evolution API error:
+   * 301" só nesta chamada — o conserto é gravar o endereço final.
    */
   private async getComCorpo<T>(
     path: string,

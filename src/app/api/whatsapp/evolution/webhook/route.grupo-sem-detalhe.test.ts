@@ -52,7 +52,23 @@ vi.mock('@/lib/cb-groups/detalhar-na-chegada', () => ({
 
 vi.mock('@/lib/webhooks/deliver', () => ({ dispatchWebhookEvent: vi.fn(async () => {}) }));
 
+// O download do anexo de grupo: o detalhamento tem de vir DEPOIS dele.
+vi.mock('@/lib/cb-channels/resolve', () => ({
+  resolveChannelForConversation: vi.fn(async () => ({
+    id: 'canal-a',
+    kind: 'evolution',
+    base_url: 'http://evolution.de.teste',
+    instance_name: 'cbcrm-numero-a',
+    api_key: 'cifrada',
+  })),
+}));
+vi.mock('@/lib/whatsapp/encryption', () => ({ decrypt: (s: string) => s }));
+vi.mock('@/lib/whatsapp/transport/evolution-media', () => ({
+  fetchAndStoreEvolutionMedia: vi.fn(async () => null),
+}));
+
 import { persistGroupMessage } from '@/lib/cb-groups/persist';
+import { fetchAndStoreEvolutionMedia } from '@/lib/whatsapp/transport/evolution-media';
 import { detalharGruposSemDetalhe } from '@/lib/cb-groups/detalhar-na-chegada';
 import { criarBanco } from '@/lib/whatsapp/sem-telefone/banco.test-helper';
 
@@ -115,6 +131,7 @@ beforeEach(() => {
   h.semDetalhe = true;
   vi.mocked(persistGroupMessage).mockClear();
   vi.mocked(detalharGruposSemDetalhe).mockClear();
+  vi.mocked(fetchAndStoreEvolutionMedia).mockClear();
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'info').mockImplementation(() => {});
@@ -147,6 +164,19 @@ describe('grupo que chega sem detalhe', () => {
     const ultimaGravacao = Math.max(...vi.mocked(persistGroupMessage).mock.invocationCallOrder);
     expect(vi.mocked(detalharGruposSemDetalhe).mock.invocationCallOrder[0]).toBeGreaterThan(
       ultimaGravacao,
+    );
+  });
+
+  it('⚠️ vem DEPOIS da fase de anexos (o download do anexo de grupo)', async () => {
+    const comFoto = {
+      ...item(),
+      message: { imageMessage: { mimetype: 'image/jpeg', fileLength: '1000', caption: 'TESTE' } },
+      messageType: 'imageMessage',
+    };
+    await entregar(comFoto);
+    expect(fetchAndStoreEvolutionMedia).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(detalharGruposSemDetalhe).mock.invocationCallOrder[0]).toBeGreaterThan(
+      vi.mocked(fetchAndStoreEvolutionMedia).mock.invocationCallOrder[0],
     );
   });
 
