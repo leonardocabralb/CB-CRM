@@ -351,7 +351,7 @@ a opção `telefoneResolvido` de `normalizeUpsert` e a tabela
 
 ### Grupo de WhatsApp (906/916): detalhes da Evolution
 
-Grupo não é contato — a regra geral está na raiz. Aqui, o que é do transporte:
+Grupo não é contato (regra geral na raiz). Aqui, o que é do transporte:
 
 - ⚠️ **A regra do `@lid` do 1:1 NÃO vale em grupo.** O remetente vai
   desnormalizado em `messages.group_sender_*`, sem FK e sem criar contato.
@@ -362,20 +362,21 @@ Grupo não é contato — a regra geral está na raiz. Aqui, o que é do transpo
 - ⚠️ **`persist.ts` não reabre conversa encerrada.** Grupo encerrado some da
   caixa enquanto as mensagens continuam chegando; só um envio da equipe o
   reabre. Por isso o encerramento em lote (1018) deixa grupo de fora por padrão.
-- ⚠️ **`group/fetchAllGroups` estoura** (mais de 90 s). Use `chat/findChats`
-  filtrando `@g.us` (traz nome e foto). `findGroupInfos` (~650 ms por grupo)
-  só para participantes, announce, admin e o nosso LID.
+- ⚠️ **`group/fetchAllGroups` estoura** (mais de 90 s): use `chat/findChats`
+  (`@g.us`, com nome e foto); `findGroupInfos` (~650 ms por grupo) só para
+  participantes, announce, admin e o nosso LID. ⚠️ Grupo sem
+  `participant_count` é detalhado na CHEGADA (`detalhar-na-chegada.ts`; não
+  pelo `synced_at`): pela conexão DO grupo, no fim da entrega, freio de 15 min.
 - ⚠️ **Um evento desconhecido faz a Evolution recusar a lista INTEIRA de
   eventos do webhook.** `GROUPS_UPDATE` não existe. `GROUP_UPDATE` existe na
   2.4, mas ainda não está na lista do CRM (pendente em `PLANO-baileys-7.md`,
   ajuste 5: conferir o enum e "Ressincronizar" as conexões).
-- **Ligar `cb_channels.groups_enabled` não basta**: instância já conectada só
-  recebe os eventos novos depois de reaplicar o webhook ("Ressincronizar").
+- **Ligar `groups_enabled` não basta**: instância já conectada só recebe os
+  eventos novos depois do "Ressincronizar".
 - **Menção chega em `@lid`**: `cb_channels.own_lid` (916) é aprendido na
-  primeira mensagem nossa num grupo. Sem ele, `mentions_us` fica falso para
-  sempre.
+  primeira mensagem nossa num grupo; sem ele, `mentions_us` fica sempre falso.
 - **Insert em BLOCO preenche coluna ausente com NULL**: `from_device` e
-  `mentions_us` (NOT NULL) estouram se as linhas do lote não forem uniformes.
+  `mentions_us` (NOT NULL) estouram com linhas não uniformes no lote.
 
 ### Nome da instância Evolution
 

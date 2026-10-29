@@ -50,28 +50,38 @@ export interface PersistedGroupMessage {
   messageId: string;
   conversationId: string;
   groupId: string;
+  /**
+   * O grupo ainda não tem nome, participantes nem "somos admin?" e é DESTA
+   * conexão: a rota o detalha depois do lote (`detalhar-na-chegada.ts`).
+   */
+  grupoSemDetalhe: boolean;
+}
+
+interface GrupoAchado {
+  id: string;
+  channel_id: string | null;
+  participant_count: number | null;
 }
 
 /**
  * Encontra ou cria a linha do grupo. `subject` NÃO é preenchido aqui: a
- * mensagem de grupo não carrega o nome, ele vem da sincronização (Fase 4).
- * Um grupo recém-nascido fica com `subject` NULL e a UI mostra "Grupo sem
- * nome" até a sincronização rodar.
+ * mensagem de grupo não carrega o nome. Ele vem da sincronização ou do
+ * detalhamento que a rota faz quando `grupoSemDetalhe` diz que falta.
  */
 export async function findOrCreateGroup(
   db: SupabaseClient,
   accountId: string,
   channelId: string | null,
   groupJid: string,
-): Promise<{ id: string } | null> {
+): Promise<GrupoAchado | null> {
   const buscar = async () => {
     const { data } = await db
       .from('cb_groups')
-      .select('id')
+      .select('id, channel_id, participant_count')
       .eq('account_id', accountId)
       .eq('jid', groupJid)
       .maybeSingle();
-    return data as { id: string } | null;
+    return data as GrupoAchado | null;
   };
 
   const existente = await buscar();
@@ -80,7 +90,7 @@ export async function findOrCreateGroup(
   const { data: criado, error } = await db
     .from('cb_groups')
     .insert({ account_id: accountId, jid: groupJid, channel_id: channelId })
-    .select('id')
+    .select('id, channel_id, participant_count')
     .single();
 
   if (error) {
@@ -93,7 +103,24 @@ export async function findOrCreateGroup(
     console.error('[cb-groups] criar grupo falhou:', error);
     return null;
   }
-  return criado as { id: string };
+  return criado as GrupoAchado;
+}
+
+/**
+ * Falta o detalhe E o grupo é da conexão que recebeu a mensagem.
+ *
+ * "Falta o detalhe" = `participant_count` nulo: só o `findGroupInfos` o
+ * preenche (a Evolution sempre manda `size`). NÃO é o `synced_at`: a parte
+ * rápida da sincronização e o `groups.upsert` o carimbam sem participantes nem
+ * "somos admin?" — um detalhamento que falhou depois deixaria o grupo
+ * travado para sempre.
+ *
+ * ⚠️ A conexão tem de ser a do GRUPO: com dois números nossos no mesmo grupo,
+ * o "somos admin?" do outro número seria gravado, e o renomear (que sai pela
+ * `channel_id` do grupo) seria liberado ou travado pelo número errado.
+ */
+function semDetalhe(grupo: GrupoAchado, channelId: string | null): boolean {
+  return grupo.participant_count == null && channelId != null && grupo.channel_id === channelId;
 }
 
 /**
@@ -267,7 +294,12 @@ export async function persistGroupMessage(
   // escrever. Num grupo ele trocaria a identidade de resposta toda vez que um
   // participante diferente falasse — o grupo é um só, o canal também.
 
-  return { messageId: gravada.id, conversationId: conversa.id, groupId: grupo.id };
+  return {
+    messageId: gravada.id,
+    conversationId: conversa.id,
+    groupId: grupo.id,
+    grupoSemDetalhe: semDetalhe(grupo, m.channelId),
+  };
 }
 
 /**
@@ -344,7 +376,12 @@ export async function persistGroupDeviceMessage(
     })
     .eq('id', conversa.id);
 
-  return { messageId: gravada.id, conversationId: conversa.id, groupId: grupo.id };
+  return {
+    messageId: gravada.id,
+    conversationId: conversa.id,
+    groupId: grupo.id,
+    grupoSemDetalhe: semDetalhe(grupo, m.channelId),
+  };
 }
 
 /** Texto da prévia na lista do inbox. */
