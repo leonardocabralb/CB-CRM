@@ -7,16 +7,40 @@ pelo CRM e ver todos os participantes dele.
 
 | Fase | O quê | Estado |
 | --- | --- | --- |
-| 0 | Medir a resposta do `findGroupInfos` e do `findChats` na 2.4 (só leitura) | ✅ 29/10 pelo FONTE do commit de produção; falta o `findChats` com o grupo novo (o clique em "Sincronizar") |
-| 1 | Grupo sem detalhe se detalha sozinho na chegada da mensagem | ✅ 29/10: código na branch (sem commit); suíte inteira verde em Node 22 |
-| 2 | Participantes no painel do grupo, lidos do WhatsApp ao abrir | pendente |
-| 3 | Renomear confere ao vivo (admin, ou grupo aberto a todos) | pendente (D2 aprovada) |
-| 4 | "Conversar" com um participante | opcional (D3) |
+| 0 | Medir a resposta do `findGroupInfos` e do `findChats` na 2.4 (só leitura) | ✅ 29/10 pelo FONTE e no preview: a 2.4 RECUSAVA todo GET de grupo sem corpo (abaixo) |
+| 1 | Grupo sem detalhe se detalha sozinho na chegada da mensagem | ✅ 29/10: commit `2d03c6d8` na branch |
+| 1b | GET de grupo COM corpo (a causa de nenhum grupo ser detalhado desde a 2.4) | ✅ 29/10: medido no preview com o grupo do print (502 → 200) |
+| 2 | Participantes no painel do grupo, lidos do WhatsApp ao abrir | ✅ 29/10: aba "Participantes" (D1 a confirmar vendo a tela) |
+| 3 | Renomear confere ao vivo (admin, ou grupo aberto a todos) | ✅ 29/10 |
+| 4 | "Conversar" com um participante | ✅ 29/10 (pedido do operador: "faça todas as fases aqui") |
 
-Sem migration prevista: nada novo é guardado no banco.
+Sem migration: nada novo é guardado no banco.
 
-Decisões respondidas em 29/10/2026: D2 e D4 como recomendado; D1 se decide
-vendo a tela, na Fase 2.
+Decisões respondidas em 29/10/2026: D2 e D4 como recomendado; D3 feita;
+D1 implementada como aba própria, para o operador confirmar vendo a tela.
+
+## O que o preview mediu (29/10/2026, grupo do print, com autorização)
+
+Aberto em modo anônimo pelo link direto (as não lidas não zeraram: uma
+mensagem que chegou durante o teste ficou contada).
+
+- ⚠️⚠️ **A 1ª leitura deu 502**: a Evolution respondeu "Cannot convert
+  undefined or null to object" ao `findGroupInfos`. No fonte de `e273b904`:
+  Express 5 (`"express": "^5.2.1"`) deixa `req.body` INDEFINIDO no GET sem
+  corpo, e o `groupValidate` faz `Object.assign(body, { groupJid })`. Era
+  por isso que o botão "Sincronizar" não detalhava grupo nenhum desde a 2.4
+  (os 12 detalhados da Bancário - Jurídico são de 01/09) e que a Fase 1, sem
+  isto, também falharia sempre.
+- O `fetch` do Node recusa corpo em GET e descarta o `Content-Length`
+  (medido num servidor local, Node 22). Conserto: `getComCorpo` no
+  `EvolutionClient`, pelo `node:http(s)`, com o `groupJid` no corpo e na
+  query. Depois dele: 200 em ~2 s.
+- Gravado no grupo: nome (o real do WhatsApp), 3 participantes,
+  `we_are_admin = true` — o "Renomear no WhatsApp" ficou liberado. A aba
+  mostrou os três (este número como criador; um com ficha no CRM), e o
+  "Conversar" abriu a Nova conversa preenchida (cancelada, nada criado).
+- Não exercitado: o renomear de verdade (mudaria o nome para todos no grupo
+  real) e a Fase 1 com mensagem real (só depois do deploy).
 
 ## O que foi medido (29/10/2026, produção, só leitura)
 
@@ -195,3 +219,23 @@ na próxima mensagem (ou agora, pelo botão).
 - A Fase 1 mexe na rota do webhook da Evolution: sem caminho novo de
   ingestão, sem motor, sem reabrir, sem medir entrega (regras de
   `ingestao.md` para grupo).
+
+## Como ficaram as Fases 2–4 (29/10/2026)
+
+- Rota `GET /api/cb/groups/[id]/participantes` (`viewer`): grupo pela RLS,
+  credenciais e o resto por service role com `account_id`; `findGroupInfos`
+  ao vivo; espelho por `camposDoDetalhe`; nomes por
+  `nomes-dos-participantes.ts` (ficha pela chave de pessoa, senão o nome usado
+  no grupo nas últimas 1000 mensagens); `podeRenomear` = admin OU
+  `restrict === false`. Falha e lista vazia = 502; sem conexão = 409.
+- `PATCH` do renomear: lê o `findGroupInfos` antes e decide ao vivo; sem
+  resposta legível, vale o gravado.
+- `parseGroupInfo` acha a nossa linha pela chave de pessoa (o nono dígito
+  dava "não admin" ao admin) e lê o `restrict` (`soAdminEdita`).
+- Tela: `useParticipantesDoGrupo` (carimbo `{ de }`, `grupoNaTelaRef` contra
+  o patch no grupo errado), aba Participantes em `group-sidebar.tsx`
+  (`participantes-do-grupo.tsx`: busca acima de 10, papel, "tem ficha",
+  "Número oculto", "Conversar"), frase "Conferindo…" no renomear.
+- Regra nova `.claude/rules/grupos.md` (a seção de grupos saiu de
+  `whatsapp-evolution.md`, que estava no teto); decisão em
+  `docs/DECISOES-DO-OPERADOR.md`.

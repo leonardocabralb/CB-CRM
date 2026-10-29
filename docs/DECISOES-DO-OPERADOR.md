@@ -22,6 +22,9 @@ qualquer uma é pergunta ao operador.
   aparece como é; transferido conta no funil de origem. Degrau `pasta` depois
   do contrato, opcional, e "fechado" o inclui; painel por funil; "custo por
   contrato assinado" ao lado do CAC em pé (26/09/2026).
+- Grupos (29/10/2026): renomear no WhatsApp vale também quando o grupo deixa
+  qualquer participante mudar os dados (não só para admin); quem vê o grupo
+  vê os telefones dos participantes, lidos na hora e nunca guardados.
 - Card: título = nome da pessoa, sem prefixo de conexão; o Calendly renomeia
   até título escrito à mão e fixa o nome da ficha.
 - Reuniões: "Data e Hora Reunião" mais nova que todo agendamento remarca a

@@ -477,7 +477,9 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   entrega, foto de perfil.
 - `.claude/rules/whatsapp-evolution.md` — Evolution 2.4/Baileys 7, LID sem
   telefone (retida, tardia, histórica), recibos fora de ordem, edição
-  cifrada, link sem prévia, grupos.
+  cifrada, link sem prévia.
+- `.claude/rules/grupos.md` — grupo de WhatsApp: GET de grupo da 2.4 com
+  corpo, detalhe na chegada, participantes e renomear ao vivo.
 - `.claude/rules/ligacoes.md` — ligação de WhatsApp vira faixa no fio (1044):
   aviso CALL, desfecho com folga, quem ligou, o que não roda, quem lê
   `content_type`.

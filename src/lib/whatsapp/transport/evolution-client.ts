@@ -25,6 +25,9 @@
 // appears only inside inbound webhook payloads.
 // ============================================================
 
+import http from 'node:http';
+import https from 'node:https';
+
 export interface EvolutionClientConfig {
   /** Evolution server origin, no trailing slash, e.g. `https://evo.example.com`. */
   baseUrl: string;
@@ -247,6 +250,63 @@ export class EvolutionClient {
     // Some endpoints (e.g. markMessageAsRead) return an empty body.
     const text = await response.text();
     return (text ? JSON.parse(text) : {}) as T;
+  }
+
+  /**
+   * GET com CORPO JSON, pelo `node:http(s)`.
+   *
+   * ⚠️ Existe por causa da Evolution 2.4: ela roda no Express 5, que deixa
+   * `req.body` INDEFINIDO num pedido sem corpo, e as rotas de grupo
+   * (`groupValidate`) fazem `Object.assign(body, …)` em cima dele — todo
+   * `GET /group/…` sem corpo responde "Cannot convert undefined or null to
+   * object" (lido no fonte de `e273b904` e medido em 29/10/2026: nenhum grupo
+   * era detalhado desde a troca de versão). O `fetch` do Node recusa corpo em
+   * GET e descarta o `Content-Length`, que o Express exige para ler o corpo.
+   */
+  private async getComCorpo<T>(
+    path: string,
+    corpo: unknown,
+    timeoutMs: number = DEFAULT_TIMEOUT_MS
+  ): Promise<T> {
+    const url = new URL(`${this.baseUrl}/${path}`);
+    const dados = JSON.stringify(corpo);
+    let resposta: { status: number; texto: string };
+    try {
+      resposta = await new Promise((resolve, reject) => {
+        const pedido = (url.protocol === 'https:' ? https : http).request(
+          url,
+          {
+            method: 'GET',
+            headers: {
+              apikey: this.apikey,
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(dados),
+            },
+            signal: AbortSignal.timeout(timeoutMs),
+          },
+          (res) => {
+            let texto = '';
+            res.setEncoding('utf8');
+            res.on('data', (pedaco: string) => (texto += pedaco));
+            res.on('end', () => resolve({ status: res.statusCode ?? 0, texto }));
+            res.on('error', reject);
+          }
+        );
+        pedido.on('error', reject);
+        pedido.end(dados);
+      });
+    } catch (err) {
+      if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
+        throw new EvolutionApiError(`Evolution não respondeu em ${timeoutMs}ms (GET ${path})`, 504);
+      }
+      throw err;
+    }
+
+    if (resposta.status < 200 || resposta.status >= 300) {
+      // A mesma leitura do erro do `request` (o `Response` só embrulha o texto).
+      await this.throwError(new Response(resposta.texto, { status: resposta.status || 502 }));
+    }
+    return (resposta.texto ? JSON.parse(resposta.texto) : {}) as T;
   }
 
   /**
@@ -543,16 +603,14 @@ export class EvolutionClient {
    * participantes — que é onde vive o mapeamento LID → telefone
    * (`participants[].jid` traz o número real).
    *
-   * O JID vai na query, então a instância é montada à mão e `appendInstance`
-   * fica false: o construtor de URL do `request` só sabe pendurar a instância
-   * no fim do caminho.
+   * O JID vai na query E no corpo: a 2.4 só aceita GET de grupo com corpo
+   * (`getComCorpo`) e lê o `groupJid` dele primeiro; a query fica para a
+   * versão que não lê o corpo.
    */
   async findGroupInfos(groupJid: string): Promise<unknown> {
-    return this.request(
-      'GET',
+    return this.getComCorpo(
       `group/findGroupInfos/${encodeURIComponent(this.instance)}?groupJid=${encodeURIComponent(groupJid)}`,
-      undefined,
-      false,
+      { groupJid },
     );
   }
 

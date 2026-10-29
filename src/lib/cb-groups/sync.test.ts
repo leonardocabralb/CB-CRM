@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { parseChatsParaGrupos, parseGroupInfo } from './sync';
+import {
+  camposDoDetalhe,
+  lerParticipantes,
+  parseChatsParaGrupos,
+  parseGroupInfo,
+  podeRenomearAoVivo,
+} from './sync';
 
 const GRUPO = '120363123456789012@g.us';
 
@@ -133,5 +139,89 @@ describe('parseGroupInfo', () => {
   it('lixo devolve tudo nulo em vez de estourar', () => {
     expect(parseGroupInfo(null, NOSSO).subject).toBeNull();
     expect(parseGroupInfo('texto', NOSSO).participantCount).toBeNull();
+  });
+});
+
+describe('parseGroupInfo — o que a Fase 2 dos participantes acrescentou', () => {
+  const BASE = {
+    id: GRUPO,
+    subject: 'Grupo de teste',
+    size: 2,
+    participants: [
+      { id: '111@lid', phoneNumber: '5583980000016@s.whatsapp.net', admin: 'admin' },
+      { id: '222@lid', phoneNumber: '5511922223333@s.whatsapp.net', admin: null },
+    ],
+  };
+
+  it('lê o `restrict` como "só admin edita os dados"', () => {
+    expect(parseGroupInfo({ ...BASE, restrict: true }, null).soAdminEdita).toBe(true);
+    expect(parseGroupInfo({ ...BASE, restrict: false }, null).soAdminEdita).toBe(false);
+    expect(parseGroupInfo(BASE, null).soAdminEdita).toBeNull();
+  });
+
+  it('⚠️ acha a nossa linha mesmo com o nono dígito diferente dos dois lados', () => {
+    // O canal gravado SEM o 9 e o WhatsApp entregando COM ele (ou o
+    // contrário): pela grafia, o admin de verdade saía "não admin".
+    const d = parseGroupInfo(BASE, '558380000016');
+    expect(d.weAreAdmin).toBe(true);
+    expect(d.ourLid).toBe('111@lid');
+  });
+});
+
+describe('podeRenomearAoVivo', () => {
+  it('admin renomeia; grupo aberto a todos também; o resto não', () => {
+    expect(podeRenomearAoVivo({ weAreAdmin: true, soAdminEdita: true })).toBe(true);
+    expect(podeRenomearAoVivo({ weAreAdmin: false, soAdminEdita: false })).toBe(true);
+    expect(podeRenomearAoVivo({ weAreAdmin: false, soAdminEdita: true })).toBe(false);
+  });
+
+  it('não saber NÃO destrava', () => {
+    expect(podeRenomearAoVivo({ weAreAdmin: null, soAdminEdita: null })).toBe(false);
+    expect(podeRenomearAoVivo({ weAreAdmin: false, soAdminEdita: null })).toBe(false);
+  });
+});
+
+describe('camposDoDetalhe', () => {
+  it('nunca grava NULL por cima do nome, da foto, da descrição e do dono', () => {
+    const vazio = parseGroupInfo({ id: GRUPO, size: 1, participants: [{ id: '1@lid' }] }, null);
+    const campos = camposDoDetalhe(vazio, '2026-10-29T12:00:00.000Z');
+    expect(campos).toEqual({
+      participant_count: 1,
+      is_announce: null,
+      we_are_admin: false,
+      synced_at: '2026-10-29T12:00:00.000Z',
+    });
+  });
+});
+
+describe('lerParticipantes', () => {
+  it('lê as três formas, o papel e a nossa linha', () => {
+    const lidos = lerParticipantes(
+      {
+        participants: [
+          { id: '111@lid', jid: '5516999998784@s.whatsapp.net', lid: '111@lid', admin: 'superadmin' },
+          { id: '222@lid', phoneNumber: '558380000016@s.whatsapp.net', admin: 'admin' },
+          { id: '5511922223333@s.whatsapp.net', lid: '333@lid', admin: null },
+        ],
+      },
+      '5583980000016',
+    );
+    expect(lidos).toEqual([
+      { id: '111@lid', telefone: '5516999998784', lid: '111@lid', papel: 'criador', somosNos: false },
+      { id: '222@lid', telefone: '558380000016', lid: '222@lid', papel: 'admin', somosNos: true },
+      { id: '5511922223333@s.whatsapp.net', telefone: '5511922223333', lid: '333@lid', papel: null, somosNos: false },
+    ]);
+  });
+
+  it('quem esconde o número fica sem telefone, nunca com o LID no lugar', () => {
+    const [p] = lerParticipantes({ participants: [{ id: '444@lid', admin: null }] }, null);
+    expect(p.telefone).toBeNull();
+    expect(p.lid).toBe('444@lid');
+  });
+
+  it('item sem id e lixo são descartados sem estourar', () => {
+    expect(lerParticipantes({ participants: [null, 'x', {}, { id: 5 }] }, null)).toEqual([]);
+    expect(lerParticipantes(null, null)).toEqual([]);
+    expect(lerParticipantes({ participants: 'x' }, null)).toEqual([]);
   });
 });

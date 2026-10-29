@@ -5,7 +5,8 @@
 //
 //   `alias`   — apelido só nosso. Ninguém no grupo percebe. Reversível.
 //   `subject` — o nome DE VERDADE no WhatsApp. Todo participante vê a
-//               notificação "Fulano mudou o nome do grupo". Exige ser admin.
+//               notificação "Fulano mudou o nome do grupo". Exige ser admin,
+//               ou o grupo deixar qualquer participante mudar os dados.
 //
 // O segundo é ação para FORA e por isso pede `renomear_no_whatsapp: true`
 // explícito no corpo: um cliente que mandasse `{ subject }` por engano
@@ -17,6 +18,7 @@ import { NextResponse } from 'next/server';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 import { getChannelWithSecrets } from '@/lib/cb-channels/repo';
+import { parseGroupInfo, podeRenomearAoVivo } from '@/lib/cb-groups/sync';
 import { EvolutionClient } from '@/lib/whatsapp/transport/evolution-client';
 import { decrypt } from '@/lib/whatsapp/encryption';
 
@@ -79,15 +81,6 @@ export async function PATCH(
           { status: 400 },
         );
       }
-      // Checagem própria antes de gastar a chamada: a Evolution devolveria um
-      // 500 cru, e o operador ficaria sem saber que o problema é permissão.
-      if ((grupo as { we_are_admin: boolean | null }).we_are_admin !== true) {
-        return NextResponse.json(
-          { error: 'Só administradores do grupo podem mudar o nome dele no WhatsApp.' },
-          { status: 403 },
-        );
-      }
-
       const channelId = (grupo as { channel_id: string | null }).channel_id;
       const canal = channelId
         ? await getChannelWithSecrets(ctx.supabase, ctx.accountId, channelId)
@@ -104,6 +97,31 @@ export async function PATCH(
         instance: canal.instance_name,
         apikey: decrypt(canal.api_key),
       });
+
+      // Checagem própria antes de renomear: a Evolution devolveria um 500
+      // cru, e o operador ficaria sem saber que o problema é permissão.
+      // Decide AO VIVO (o `we_are_admin` gravado envelhece quando o número é
+      // rebaixado, e o "qualquer participante edita" nem é guardado); só sem
+      // resposta legível vale o gravado, como antes.
+      let pode = (grupo as { we_are_admin: boolean | null }).we_are_admin === true;
+      try {
+        const aoVivo = parseGroupInfo(
+          await client.findGroupInfos((grupo as { jid: string }).jid),
+          canal.display_phone ?? null,
+        );
+        if (aoVivo.weAreAdmin !== null) pode = podeRenomearAoVivo(aoVivo);
+      } catch (err) {
+        console.warn(
+          '[cb/groups PATCH] conferir permissão ao vivo falhou (vale o gravado):',
+          err instanceof Error ? err.message : err,
+        );
+      }
+      if (!pode) {
+        return NextResponse.json(
+          { error: 'Só administradores do grupo podem mudar o nome dele no WhatsApp.' },
+          { status: 403 },
+        );
+      }
 
       try {
         await client.updateGroupSubject(
