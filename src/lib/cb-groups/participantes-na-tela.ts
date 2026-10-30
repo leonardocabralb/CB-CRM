@@ -16,6 +16,8 @@ export interface ParticipanteNaTela {
   papel: PapelNaTela;
   somosNos: boolean;
   contatoId: string | null;
+  /** A conversa individual da ficha no CRM (1117): o painel a abre. */
+  conversaId: string | null;
 }
 
 export interface RespostaDosParticipantes {
@@ -46,6 +48,8 @@ function lerParticipante(bruto: unknown): ParticipanteNaTela | null {
     papel: p.papel === 'criador' || p.papel === 'admin' ? p.papel : null,
     somosNos: p.somosNos === true,
     contatoId: textoOuNulo(p.contatoId),
+    // A nossa linha nunca abre conversa (a rota já não manda; a tela repete).
+    conversaId: p.somosNos === true ? null : textoOuNulo(p.conversaId),
   };
 }
 

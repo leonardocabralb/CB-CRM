@@ -94,6 +94,11 @@ interface GroupSidebarProps {
   messagesCarregando?: boolean;
   /** "Ver na conversa" das abas Notas e Arquivos — ver `PainelDoContatoProps`. */
   onIrParaItemDoFio?: (alvo: AlvoDoSalto) => void;
+  /**
+   * Aba Participantes (1117): pede à página — dona da seleção — que abra a
+   * conversa individual do participante e ligue a faixa "Voltar para" o grupo.
+   */
+  onAbrirConversaRelacionada?: (conversaId: string) => void;
 }
 
 export function GroupSidebar({
@@ -106,6 +111,7 @@ export function GroupSidebar({
   messages = [],
   messagesCarregando = false,
   onIrParaItemDoFio,
+  onAbrirConversaRelacionada,
 }: GroupSidebarProps) {
   const t = useTranslations("Inbox.groupSidebar");
   const tSidebar = useTranslations("Inbox.sidebar");
@@ -437,7 +443,8 @@ export function GroupSidebar({
 
         {/* ---- Participantes: lidos ao vivo (o hook mora acima, porque o
              renomear também depende da leitura). `key` com o grupo: a busca
-             digitada é de UM grupo. ---- */}
+             digitada é de UM grupo. Quem tem conversa no CRM abre por aqui
+             (1117), com a faixa "Voltar para" o grupo. ---- */}
         <TabsContent
           value="participantes"
           className="min-h-0 flex-1 overflow-y-auto p-4"
@@ -455,6 +462,7 @@ export function GroupSidebar({
                   }
                 : undefined
             }
+            onAbrirConversa={onAbrirConversaRelacionada}
           />
         </TabsContent>
 

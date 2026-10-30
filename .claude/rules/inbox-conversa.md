@@ -376,7 +376,7 @@ Moram em `.claude/rules/anotacoes.md`; os links, acima.
 
 ### Aba Relacionados e a faixa "Voltar para" (1069)
 
-O vínculo e a aba: `.claude/rules/contatos.md`. Aqui, o pulo entre conversas.
+O vínculo e a aba: `contatos.md`; grupo ↔ ficha (1117): `grupos.md`. Aqui, o pulo.
 
 - **A aba entrou DEPOIS de Arquivos** (antes do Histórico, que é sempre o
   último), para não mudar a posição das abas que o time já conhece.

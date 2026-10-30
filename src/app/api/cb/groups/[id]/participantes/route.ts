@@ -16,6 +16,12 @@
 // ⚠️ Vazio NUNCA vira "nenhum participante": o número desta conexão está no
 // grupo (senão a Evolution nem leria os dados), então lista vazia é resposta
 // que não se entendeu — 502, como a falha.
+//
+// E (1117) a leitura refaz o vínculo do grupo com as FICHAS de quem está nele
+// — o que põe o grupo na aba Relacionados do cliente — e devolve a conversa
+// individual de cada participante com ficha (`conversaId`), que o painel abre
+// com a faixa "Voltar para" o grupo. Guarda-se só a ficha, nunca o telefone de
+// quem não é cliente.
 // ============================================================
 
 import { NextResponse } from 'next/server';
@@ -32,6 +38,12 @@ import {
   podeRenomearAoVivo,
 } from '@/lib/cb-groups/sync';
 import { nomearParticipantes, ordenarParticipantes } from '@/lib/cb-groups/nomes-dos-participantes';
+import {
+  chavesDasConexoes,
+  conversasDasFichas,
+  fichasParaGravar,
+  gravarFichasDoGrupo,
+} from '@/lib/cb-groups/fichas-do-grupo';
 import { EvolutionClient } from '@/lib/whatsapp/transport/evolution-client';
 import { decrypt } from '@/lib/whatsapp/encryption';
 
@@ -131,14 +143,34 @@ export async function GET(
       console.error('[cb/groups/participantes] ler a conversa falhou:', erroDaConversa.message);
     }
 
-    const comNome = await nomearParticipantes(db, {
+    const { participantes: comNome, fichasLidas } = await nomearParticipantes(db, {
       accountId: ctx.accountId,
       conversationId: (conversa as { id: string } | null)?.id ?? null,
       participantes,
     });
 
+    // O vínculo só se refaz com as fichas E os números do escritório lidos
+    // por inteiro: pela metade, apagaria o de quem não se leu. Falhar aqui
+    // não tira a lista da tela (o log diz).
+    const doEscritorio = fichasLidas ? await chavesDasConexoes(db, ctx.accountId) : null;
+    const fichas = comNome.flatMap((p) => (p.contatoId && !p.somosNos ? [p.contatoId] : []));
+    const [conversas] = await Promise.all([
+      conversasDasFichas(db, ctx.accountId, fichas),
+      doEscritorio
+        ? gravarFichasDoGrupo(db, {
+            accountId: ctx.accountId,
+            groupId: id,
+            contatoIds: fichasParaGravar(comNome, (p) => p.contatoId, doEscritorio),
+          })
+        : Promise.resolve(false),
+    ]);
+    const comConversa = comNome.map((p) => ({
+      ...p,
+      conversaId: p.contatoId && !p.somosNos ? (conversas.get(p.contatoId) ?? null) : null,
+    }));
+
     return NextResponse.json({
-      participantes: ordenarParticipantes(comNome),
+      participantes: ordenarParticipantes(comConversa),
       // Sem achar a nossa linha, o "somos admin?" é o gravado: "não achei"
       // não trava o admin de verdade.
       podeRenomear: podeRenomearAoVivo({

@@ -6,7 +6,9 @@
 // vinha do botão "Sincronizar dados do grupo", e um grupo novo ficava como
 // "Grupo sem nome", com o renomear travado, até alguém lembrar de clicar —
 // medido em 29/10/2026: um grupo de 27/10 numa conexão sincronizada pela
-// última vez em 01/09.
+// última vez em 01/09. Desde a 1117, também o grupo cuja lista não é
+// conferida contra as fichas há mais de 24 h: é o que mantém o grupo na ficha
+// de quem está nele (`fichas-do-grupo.ts`).
 //
 // A rota do webhook da Evolution chama isto DEPOIS de gravar todos os itens do
 // lote (e os anexos): o `findGroupInfos` custa ~0,8 s, e dentro do laço
@@ -38,11 +40,13 @@ export const ESPERA_ENTRE_TENTATIVAS_MS = 15 * 60_000;
 const tentativas = new Map<string, number>();
 
 /**
- * Detalha os grupos que chegaram sem detalhe nesta entrega. Todos são da
- * conexão `channelId` (quem chama só junta os de `grupoSemDetalhe`, que
+ * Detalha os grupos desta entrega que chegaram sem detalhe ou com a lista
+ * conferida há mais de 24 h (1117: o detalhamento refaz o vínculo com as
+ * fichas). Todos são da
+ * conexão `channelId` (quem chama só junta os de `grupoParaDetalhar`, que
  * exige isso). Nunca lança: o detalhe é acessório, a mensagem já está gravada.
  */
-export async function detalharGruposSemDetalhe(args: {
+export async function detalharGruposDaChegada(args: {
   db: SupabaseClient;
   accountId: string;
   channelId: string;

@@ -2,8 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ============================================================
 // GET /api/cb/groups/[id]/participantes: lê ao vivo, atualiza o espelho,
-// responde `podeRenomear` com o `restrict`, e nunca transforma falha (ou lista
-// vazia) em "nenhum participante". Ids, jids e telefones fictícios.
+// responde `podeRenomear` com o `restrict`, nunca transforma falha (ou lista
+// vazia) em "nenhum participante", e (1117) refaz o vínculo com as fichas e
+// devolve a conversa de cada participante. Ids, jids e telefones fictícios.
 // ============================================================
 
 import type { Banco } from '@/lib/whatsapp/sem-telefone/banco.test-helper';
@@ -65,8 +66,16 @@ beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {});
   h.banco = criarBanco({
     cb_groups: [{ id: 'g-1', account_id: 'conta-1', jid: JID, channel_id: 'canal-a', participant_count: null, we_are_admin: null }],
-    conversations: [{ id: 'conv-g', account_id: 'conta-1', group_id: 'g-1' }],
-    contacts: [{ id: 'ficha-1', account_id: 'conta-1', name: 'Cliente de Teste', telefone_canonico: '5583980000099' }],
+    conversations: [
+      { id: 'conv-g', account_id: 'conta-1', group_id: 'g-1', contact_id: null },
+      { id: 'conv-1', account_id: 'conta-1', group_id: null, contact_id: 'ficha-1' },
+    ],
+    contacts: [
+      { id: 'ficha-1', account_id: 'conta-1', name: 'Cliente de Teste', telefone_canonico: '5583980000099' },
+      // A ficha do NOSSO número (uma conexão do CRM cadastrada como contato).
+      { id: 'ficha-nossa', account_id: 'conta-1', name: 'Conexão', telefone_canonico: '5583980000016' },
+    ],
+    cb_channels: [{ id: 'canal-a', account_id: 'conta-1', display_phone: '558380000016' }],
     messages: [],
   });
   h.canal = {
@@ -77,6 +86,7 @@ beforeEach(() => {
     api_key: 'chave',
     display_phone: '558380000016',
   };
+  h.banco.respostasDeRpc.cb_gravar_fichas_do_grupo = true;
   h.info = INFO;
   h.falhaDaEvolution = null;
   h.pedidos = [];
@@ -95,13 +105,39 @@ describe('GET participantes', () => {
     const lista = r.body.participantes as { id: string; nome: string | null; somosNos: boolean; papel: string | null }[];
     expect(lista.map((p) => p.id)).toEqual(['111@lid', '222@lid', '333@lid']);
     expect(lista[0].somosNos).toBe(true);
-    expect(lista[1]).toMatchObject({ nome: 'Cliente de Teste', papel: 'criador' });
+    expect(lista[1]).toMatchObject({ nome: 'Cliente de Teste', papel: 'criador', conversaId: 'conv-1' });
+    // A nossa linha nunca abre conversa, mesmo com ficha.
+    expect(lista[0]).toMatchObject({ conversaId: null });
     expect(h.banco.tabelas.cb_groups[0]).toMatchObject({
       participant_count: 3,
       we_are_admin: false,
       subject: 'Grupo de teste',
     });
     expect(r.body.grupo).toMatchObject({ id: 'g-1', participant_count: 3 });
+  });
+
+  const conferencias = () => h.banco.rpcs.filter((r) => r.nome === 'cb_gravar_fichas_do_grupo').map((r) => r.args);
+
+  it('refaz o vínculo com as fichas de quem está, nunca a do nosso número', async () => {
+    await pedir();
+    expect(conferencias()).toEqual([{ p_account_id: 'conta-1', p_group_id: 'g-1', p_contact_ids: ['ficha-1'] }]);
+  });
+
+  it('⚠️ fichas ou números do escritório que não se leram NÃO refazem o vínculo', async () => {
+    h.banco.falhas.contacts = { message: 'fora do ar' };
+    expect((await pedir()).status).toBe(200);
+    delete h.banco.falhas.contacts;
+    h.banco.falhas.cb_channels = { message: 'fora do ar' };
+    expect((await pedir()).status).toBe(200);
+    expect(conferencias()).toEqual([]);
+  });
+
+  it('conversa que não se leu tira só o "abrir a conversa": a lista fica', async () => {
+    h.banco.falhas.conversations = { message: 'fora do ar' };
+    const r = await pedir();
+    expect(r.status).toBe(200);
+    const lista = r.body.participantes as { conversaId: string | null }[];
+    expect(lista.every((p) => p.conversaId === null)).toBe(true);
   });
 
   it('só admin edita e não somos admin: não renomeia', async () => {

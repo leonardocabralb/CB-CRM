@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ============================================================
 // Grupo que chega sem detalhe (29/10/2026): a rota junta os grupos cuja
-// gravação disse `grupoSemDetalhe` e os detalha UMA vez por grupo, DEPOIS de
+// gravação disse `grupoParaDetalhar` e os detalha UMA vez por grupo, DEPOIS de
 // todos os itens gravados — nunca no meio do laço, onde a consulta de ~0,8 s
 // à Evolution atrasaria as mensagens seguintes. Ids e jids fictícios.
 // ============================================================
@@ -12,7 +12,7 @@ import type { Banco, Linha } from '@/lib/whatsapp/sem-telefone/banco.test-helper
 const h = vi.hoisted(() => ({
   banco: null as unknown as Banco,
   after: [] as (() => Promise<void> | void)[],
-  semDetalhe: true,
+  paraDetalhar: true,
 }));
 
 vi.mock('next/server', () => ({
@@ -36,18 +36,18 @@ vi.mock('@/lib/cb-groups/persist', async (original) => ({
     messageId: 'msg-grupo',
     conversationId: 'conv-grupo',
     groupId: 'g-1',
-    grupoSemDetalhe: h.semDetalhe,
+    grupoParaDetalhar: h.paraDetalhar,
   })),
   persistGroupDeviceMessage: vi.fn(async () => ({
     messageId: 'msg-grupo-aparelho',
     conversationId: 'conv-grupo',
     groupId: 'g-1',
-    grupoSemDetalhe: h.semDetalhe,
+    grupoParaDetalhar: h.paraDetalhar,
   })),
 }));
 
 vi.mock('@/lib/cb-groups/detalhar-na-chegada', () => ({
-  detalharGruposSemDetalhe: vi.fn(async () => {}),
+  detalharGruposDaChegada: vi.fn(async () => {}),
 }));
 
 vi.mock('@/lib/webhooks/deliver', () => ({ dispatchWebhookEvent: vi.fn(async () => {}) }));
@@ -69,7 +69,7 @@ vi.mock('@/lib/whatsapp/transport/evolution-media', () => ({
 
 import { persistGroupMessage } from '@/lib/cb-groups/persist';
 import { fetchAndStoreEvolutionMedia } from '@/lib/whatsapp/transport/evolution-media';
-import { detalharGruposSemDetalhe } from '@/lib/cb-groups/detalhar-na-chegada';
+import { detalharGruposDaChegada } from '@/lib/cb-groups/detalhar-na-chegada';
 import { criarBanco } from '@/lib/whatsapp/sem-telefone/banco.test-helper';
 
 import { POST } from './route';
@@ -128,9 +128,9 @@ beforeEach(() => {
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'chave-de-teste';
   h.banco = criarBanco({ accounts: [conta], cb_channels: [canal], messages: [] });
   h.after = [];
-  h.semDetalhe = true;
+  h.paraDetalhar = true;
   vi.mocked(persistGroupMessage).mockClear();
-  vi.mocked(detalharGruposSemDetalhe).mockClear();
+  vi.mocked(detalharGruposDaChegada).mockClear();
   vi.mocked(fetchAndStoreEvolutionMedia).mockClear();
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -144,14 +144,14 @@ afterEach(() => {
 describe('grupo que chega sem detalhe', () => {
   it('é detalhado pela conexão do webhook, depois de gravar a mensagem', async () => {
     await entregar(item());
-    expect(detalharGruposSemDetalhe).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(detalharGruposSemDetalhe).mock.calls[0][0]).toMatchObject({
+    expect(detalharGruposDaChegada).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(detalharGruposDaChegada).mock.calls[0][0]).toMatchObject({
       accountId: 'conta-1',
       channelId: 'canal-a',
       jids: [GRUPO],
       agora: (AGORA + 5) * 1000,
     });
-    expect(vi.mocked(detalharGruposSemDetalhe).mock.invocationCallOrder[0]).toBeGreaterThan(
+    expect(vi.mocked(detalharGruposDaChegada).mock.invocationCallOrder[0]).toBeGreaterThan(
       vi.mocked(persistGroupMessage).mock.invocationCallOrder[0],
     );
   });
@@ -159,10 +159,10 @@ describe('grupo que chega sem detalhe', () => {
   it('várias mensagens do mesmo grupo no lote: UMA consulta, depois de TODAS gravadas', async () => {
     await entregar([item(), item(), item(OUTRO_GRUPO)]);
     expect(persistGroupMessage).toHaveBeenCalledTimes(3);
-    expect(detalharGruposSemDetalhe).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(detalharGruposSemDetalhe).mock.calls[0][0].jids).toEqual([GRUPO, OUTRO_GRUPO]);
+    expect(detalharGruposDaChegada).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(detalharGruposDaChegada).mock.calls[0][0].jids).toEqual([GRUPO, OUTRO_GRUPO]);
     const ultimaGravacao = Math.max(...vi.mocked(persistGroupMessage).mock.invocationCallOrder);
-    expect(vi.mocked(detalharGruposSemDetalhe).mock.invocationCallOrder[0]).toBeGreaterThan(
+    expect(vi.mocked(detalharGruposDaChegada).mock.invocationCallOrder[0]).toBeGreaterThan(
       ultimaGravacao,
     );
   });
@@ -175,15 +175,15 @@ describe('grupo que chega sem detalhe', () => {
     };
     await entregar(comFoto);
     expect(fetchAndStoreEvolutionMedia).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(detalharGruposSemDetalhe).mock.invocationCallOrder[0]).toBeGreaterThan(
+    expect(vi.mocked(detalharGruposDaChegada).mock.invocationCallOrder[0]).toBeGreaterThan(
       vi.mocked(fetchAndStoreEvolutionMedia).mock.invocationCallOrder[0],
     );
   });
 
   it('grupo já detalhado não consulta nada', async () => {
-    h.semDetalhe = false;
+    h.paraDetalhar = false;
     await entregar(item());
     expect(persistGroupMessage).toHaveBeenCalledTimes(1);
-    expect(detalharGruposSemDetalhe).not.toHaveBeenCalled();
+    expect(detalharGruposDaChegada).not.toHaveBeenCalled();
   });
 });

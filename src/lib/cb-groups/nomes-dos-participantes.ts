@@ -40,12 +40,18 @@ const FATIA = 200;
  */
 export const MENSAGENS_LIDAS_PARA_NOMES = 1000;
 
-async function fichasPorTelefone(
+/**
+ * As fichas dos telefones, pela chave de pessoa. `completa` = todas as fatias
+ * se leram: a falha de uma só tira nomes da tela, mas o vínculo do grupo
+ * (`fichas-do-grupo.ts`) não pode ser refeito sobre um conjunto pela metade.
+ */
+export async function fichasPorTelefone(
   db: SupabaseClient,
   accountId: string,
   telefones: string[],
-): Promise<Map<string, { id: string; nome: string | null }>> {
+): Promise<{ mapa: Map<string, { id: string; nome: string | null }>; completa: boolean }> {
   const mapa = new Map<string, { id: string; nome: string | null }>();
+  let completa = true;
   const chaves = [...new Set(telefones.map((t) => chaveDePessoa(t)).filter(Boolean))];
   for (let i = 0; i < chaves.length; i += FATIA) {
     const { data, error } = await db
@@ -55,13 +61,14 @@ async function fichasPorTelefone(
       .in('telefone_canonico', chaves.slice(i, i + FATIA));
     if (error) {
       console.error('[cb-groups] ler as fichas dos participantes falhou:', error.message);
+      completa = false;
       continue;
     }
     for (const c of (data ?? []) as { id: string; name: string | null; telefone_canonico: string | null }[]) {
       if (c.telefone_canonico) mapa.set(c.telefone_canonico, { id: c.id, nome: c.name?.trim() || null });
     }
   }
-  return mapa;
+  return { mapa, completa };
 }
 
 async function nomesUsadosNoGrupo(
@@ -96,19 +103,20 @@ async function nomesUsadosNoGrupo(
 /**
  * Dá nome aos participantes. `conversationId` nulo (grupo sem conversa) pula
  * a 2ª fonte. A linha deste número não ganha nome: a tela a chama de "este
- * número".
+ * número". `fichasLidas` = a 1ª fonte se leu por inteiro (ver
+ * `fichasPorTelefone`).
  */
 export async function nomearParticipantes(
   db: SupabaseClient,
   args: { accountId: string; conversationId: string | null; participantes: ParticipanteDoGrupo[] },
-): Promise<ParticipanteComNome[]> {
+): Promise<{ participantes: ParticipanteComNome[]; fichasLidas: boolean }> {
   const telefones = args.participantes.flatMap((p) => (p.telefone ? [p.telefone] : []));
-  const [fichas, usados] = await Promise.all([
+  const [{ mapa: fichas, completa }, usados] = await Promise.all([
     fichasPorTelefone(db, args.accountId, telefones),
     args.conversationId ? nomesUsadosNoGrupo(db, args.conversationId) : Promise.resolve(new Map<string, string>()),
   ]);
 
-  return args.participantes.map((p) => {
+  const participantes = args.participantes.map((p): ParticipanteComNome => {
     const ficha = p.telefone ? fichas.get(chaveDePessoa(p.telefone)) : undefined;
     // O remetente gravado prefere o telefone (`remetenteDoGrupo`), mas a
     // mensagem antiga ou a sem par chega pelo LID: as três formas.
@@ -123,6 +131,7 @@ export async function nomearParticipantes(
       contatoId: ficha?.id ?? null,
     };
   });
+  return { participantes, fichasLidas: completa };
 }
 
 const PESO_DO_PAPEL = { criador: 0, admin: 1 } as const;
@@ -131,7 +140,7 @@ const PESO_DO_PAPEL = { criador: 0, admin: 1 } as const;
  * Ordem da lista: este número, os admins (o criador primeiro), quem tem nome
  * em ordem alfabética, e por fim quem só tem telefone.
  */
-export function ordenarParticipantes(lista: ParticipanteComNome[]): ParticipanteComNome[] {
+export function ordenarParticipantes<T extends ParticipanteComNome>(lista: T[]): T[] {
   const peso = (p: ParticipanteComNome) =>
     p.somosNos ? -1 : p.papel ? PESO_DO_PAPEL[p.papel] : 2;
   return [...lista].sort((a, b) => {

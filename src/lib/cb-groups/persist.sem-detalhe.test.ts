@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
 // ============================================================
-// `grupoSemDetalhe`: o grupo que nasceu pela mensagem (ou cujo detalhamento
-// falhou) avisa a rota para buscar nome, participantes e "somos admin?". Só
-// pela conexão do PRÓPRIO grupo. Ids e jids fictícios.
+// `grupoParaDetalhar`: o grupo que nasceu pela mensagem (ou cujo detalhamento
+// falhou) avisa a rota para buscar nome, participantes e "somos admin?" — e o
+// grupo cuja lista não é conferida contra as fichas há mais de 24 h (1117)
+// também. Só pela conexão do PRÓPRIO grupo. Ids e jids fictícios.
 // ============================================================
 
 import { criarBanco, type Linha } from '@/lib/whatsapp/sem-telefone/banco.test-helper';
@@ -36,11 +37,11 @@ function banco(grupos: Linha[] = []) {
   return criarBanco({ cb_groups: grupos, conversations: [], messages: [] });
 }
 
-describe('grupoSemDetalhe', () => {
+describe('grupoParaDetalhar', () => {
   it('grupo que NASCE pela mensagem pede o detalhe', async () => {
     const b = banco();
     const r = await persistGroupMessage({ db: b.db, m: mensagem() });
-    expect(r?.grupoSemDetalhe).toBe(true);
+    expect(r?.grupoParaDetalhar).toBe(true);
     expect(b.tabelas.cb_groups).toHaveLength(1);
   });
 
@@ -51,15 +52,27 @@ describe('grupoSemDetalhe', () => {
       { id: 'g-1', account_id: 'conta-1', jid: JID, channel_id: 'canal-a', participant_count: null, synced_at: '2026-09-01T12:00:00Z' },
     ]);
     const r = await persistGroupMessage({ db: b.db, m: mensagem() });
-    expect(r?.grupoSemDetalhe).toBe(true);
+    expect(r?.grupoParaDetalhar).toBe(true);
   });
 
-  it('grupo já detalhado não pede de novo', async () => {
+  it('grupo detalhado e conferido há menos de 24 h não pede de novo', async () => {
+    const conferidoEm = new Date(Date.now() - 23 * 60 * 60_000).toISOString();
     const b = banco([
-      { id: 'g-1', account_id: 'conta-1', jid: JID, channel_id: 'canal-a', participant_count: 12 },
+      { id: 'g-1', account_id: 'conta-1', jid: JID, channel_id: 'canal-a', participant_count: 12, participantes_conferidos_em: conferidoEm },
     ]);
     const r = await persistGroupMessage({ db: b.db, m: mensagem() });
-    expect(r?.grupoSemDetalhe).toBe(false);
+    expect(r?.grupoParaDetalhar).toBe(false);
+  });
+
+  it('grupo detalhado mas com a lista conferida há mais de 24 h (ou nunca) pede de novo', async () => {
+    const antigo = new Date(Date.now() - 25 * 60 * 60_000).toISOString();
+    for (const conferidoEm of [antigo, null]) {
+      const b = banco([
+        { id: 'g-1', account_id: 'conta-1', jid: JID, channel_id: 'canal-a', participant_count: 12, participantes_conferidos_em: conferidoEm },
+      ]);
+      const r = await persistGroupMessage({ db: b.db, m: mensagem() });
+      expect(r?.grupoParaDetalhar).toBe(true);
+    }
   });
 
   it('mensagem que chega por OUTRO número nosso não pede o detalhe', async () => {
@@ -69,7 +82,7 @@ describe('grupoSemDetalhe', () => {
       { id: 'g-1', account_id: 'conta-1', jid: JID, channel_id: 'canal-a', participant_count: null },
     ]);
     const r = await persistGroupMessage({ db: b.db, m: mensagem({ channelId: 'canal-b' }) });
-    expect(r?.grupoSemDetalhe).toBe(false);
+    expect(r?.grupoParaDetalhar).toBe(false);
   });
 
   it('grupo sem conexão (a dele foi apagada) não pede o detalhe', async () => {
@@ -77,12 +90,12 @@ describe('grupoSemDetalhe', () => {
       { id: 'g-1', account_id: 'conta-1', jid: JID, channel_id: null, participant_count: null },
     ]);
     const r = await persistGroupMessage({ db: b.db, m: mensagem() });
-    expect(r?.grupoSemDetalhe).toBe(false);
+    expect(r?.grupoParaDetalhar).toBe(false);
   });
 
   it('a mensagem do celular pareado também pede o detalhe', async () => {
     const b = banco();
     const r = await persistGroupDeviceMessage({ db: b.db, m: mensagem({ fromMe: true }) });
-    expect(r?.grupoSemDetalhe).toBe(true);
+    expect(r?.grupoParaDetalhar).toBe(true);
   });
 });

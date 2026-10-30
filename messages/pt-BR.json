@@ -1113,7 +1113,10 @@
       "membersAdmin": "Admin",
       "membersHasRecord": "tem ficha",
       "membersConverse": "Conversar com {nome}",
-      "membersConverseHint": "Abrir uma conversa no privado com esta pessoa"
+      "membersConverseHint": "Abrir uma conversa no privado com esta pessoa",
+      "membersOpenConversation": "Abrir a conversa com {nome}",
+      "membersOpenConversationHint": "Abre a conversa desta pessoa no CRM; a faixa no topo volta para o grupo",
+      "membersHasConversation": "tem conversa"
     },
     "note": {
       "wrote": "{autor} anotou:",
@@ -1277,6 +1280,19 @@
       "toastContactGone": "O contato escolhido não existe mais.",
       "toastLinkGone": "Este vínculo já tinha sido desfeito.",
       "toastFailed": "Não foi possível salvar. Tente de novo."
+    },
+    "groups": {
+      "title": "Grupos de WhatsApp",
+      "loading": "Carregando os grupos…",
+      "loadFailed": "Não foi possível carregar os grupos.",
+      "retry": "Tentar de novo",
+      "empty": "Nenhum grupo conhecido com este cliente.",
+      "emptyHint": "O grupo aparece aqui quando a lista de participantes dele é conferida: ao abrir o grupo ou ao sincronizar os grupos da conexão. Uma mensagem no grupo também confere, no máximo uma vez por dia.",
+      "noName": "Grupo sem nome",
+      "participants": "{count, plural, one {# participante} other {# participantes}}",
+      "seenOn": "na lista em {data}",
+      "noConversation": "ainda sem conversa no CRM",
+      "openGroup": "Abrir o grupo"
     },
     "page": {
       "title": "Contatos",

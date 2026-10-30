@@ -16,6 +16,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { isUniqueViolation } from '@/lib/contacts/dedupe';
+import { conferenciaVencida } from '@/lib/cb-groups/fichas-do-grupo';
 import type { NormalizedGroupInbound } from '@/lib/whatsapp/transport/evolution-group-inbound';
 import { temArquivo } from '@/lib/whatsapp/transport/evolution-inbound';
 
@@ -51,22 +52,33 @@ export interface PersistedGroupMessage {
   conversationId: string;
   groupId: string;
   /**
-   * O grupo ainda não tem nome, participantes nem "somos admin?" e é DESTA
-   * conexão: a rota o detalha depois do lote (`detalhar-na-chegada.ts`).
+   * O grupo é DESTA conexão e ainda não tem nome, participantes nem "somos
+   * admin?" — ou a lista dele não é conferida contra as fichas há mais de 24 h
+   * (1117): a rota o detalha depois do lote (`detalhar-na-chegada.ts`).
    */
-  grupoSemDetalhe: boolean;
+  grupoParaDetalhar: boolean;
 }
 
 interface GrupoAchado {
   id: string;
   channel_id: string | null;
   participant_count: number | null;
+  /** Ausente sem a 1117 aplicada (ver `COLUNAS_DO_GRUPO`). */
+  participantes_conferidos_em?: string | null;
 }
+
+/**
+ * `*`, e não a lista: sem a 1117 aplicada, pedir `participantes_conferidos_em`
+ * pelo nome derrubaria a leitura E o INSERT (42703), e toda mensagem de grupo
+ * se perderia. Com `*`, a coluna ausente só lê `undefined` (= conferir de
+ * novo), como "banco sem a 1010 é tolerado".
+ */
+const COLUNAS_DO_GRUPO = '*';
 
 /**
  * Encontra ou cria a linha do grupo. `subject` NÃO é preenchido aqui: a
  * mensagem de grupo não carrega o nome. Ele vem da sincronização ou do
- * detalhamento que a rota faz quando `grupoSemDetalhe` diz que falta.
+ * detalhamento que a rota faz quando `grupoParaDetalhar` diz que falta.
  */
 export async function findOrCreateGroup(
   db: SupabaseClient,
@@ -77,7 +89,7 @@ export async function findOrCreateGroup(
   const buscar = async () => {
     const { data } = await db
       .from('cb_groups')
-      .select('id, channel_id, participant_count')
+      .select(COLUNAS_DO_GRUPO)
       .eq('account_id', accountId)
       .eq('jid', groupJid)
       .maybeSingle();
@@ -90,7 +102,7 @@ export async function findOrCreateGroup(
   const { data: criado, error } = await db
     .from('cb_groups')
     .insert({ account_id: accountId, jid: groupJid, channel_id: channelId })
-    .select('id, channel_id, participant_count')
+    .select(COLUNAS_DO_GRUPO)
     .single();
 
   if (error) {
@@ -107,20 +119,24 @@ export async function findOrCreateGroup(
 }
 
 /**
- * Falta o detalhe E o grupo é da conexão que recebeu a mensagem.
+ * O grupo é da conexão que recebeu a mensagem E falta o detalhe ou a
+ * conferência da lista está vencida.
  *
  * "Falta o detalhe" = `participant_count` nulo: só o `findGroupInfos` o
  * preenche (a Evolution sempre manda `size`). NÃO é o `synced_at`: a parte
  * rápida da sincronização e o `groups.upsert` o carimbam sem participantes nem
  * "somos admin?" — um detalhamento que falhou depois deixaria o grupo
- * travado para sempre.
+ * travado para sempre. "Conferência vencida" = `participantes_conferidos_em`
+ * nulo ou com mais de 24 h (1117): é o que mantém o grupo na ficha de quem
+ * está nele.
  *
  * ⚠️ A conexão tem de ser a do GRUPO: com dois números nossos no mesmo grupo,
  * o "somos admin?" do outro número seria gravado, e o renomear (que sai pela
  * `channel_id` do grupo) seria liberado ou travado pelo número errado.
  */
-function semDetalhe(grupo: GrupoAchado, channelId: string | null): boolean {
-  return grupo.participant_count == null && channelId != null && grupo.channel_id === channelId;
+function paraDetalhar(grupo: GrupoAchado, channelId: string | null): boolean {
+  if (channelId == null || grupo.channel_id !== channelId) return false;
+  return grupo.participant_count == null || conferenciaVencida(grupo.participantes_conferidos_em, Date.now());
 }
 
 /**
@@ -298,7 +314,7 @@ export async function persistGroupMessage(
     messageId: gravada.id,
     conversationId: conversa.id,
     groupId: grupo.id,
-    grupoSemDetalhe: semDetalhe(grupo, m.channelId),
+    grupoParaDetalhar: paraDetalhar(grupo, m.channelId),
   };
 }
 
@@ -380,7 +396,7 @@ export async function persistGroupDeviceMessage(
     messageId: gravada.id,
     conversationId: conversa.id,
     groupId: grupo.id,
-    grupoSemDetalhe: semDetalhe(grupo, m.channelId),
+    grupoParaDetalhar: paraDetalhar(grupo, m.channelId),
   };
 }
 

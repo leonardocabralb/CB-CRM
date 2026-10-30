@@ -13,8 +13,10 @@ pelo CRM e ver todos os participantes dele.
 | 2 | Participantes no painel do grupo, lidos do WhatsApp ao abrir | ✅ 29/10: aba "Participantes" (D1 a confirmar vendo a tela) |
 | 3 | Renomear confere ao vivo (admin, ou grupo aberto a todos) | ✅ 29/10 |
 | 4 | "Conversar" com um participante | ✅ 29/10 (pedido do operador: "faça todas as fases aqui") |
+| 5 | Grupo ↔ ficha: abrir a conversa do participante pelo grupo, e o grupo pela ficha do cliente (1117) | 🔨 30/10: branch `feat/grupos-e-clientes` |
 
-Sem migration: nada novo é guardado no banco.
+Fases 0–4 sem migration. A Fase 5 traz a 1117 (`cb_grupos_dos_contatos`):
+guarda só o vínculo com a FICHA, nunca a lista.
 
 Decisões respondidas em 29/10/2026: D2 e D4 como recomendado; D3 feita;
 D1 implementada como aba própria, para o operador confirmar vendo a tela.
@@ -156,7 +158,9 @@ na próxima mensagem (ou agora, pelo botão).
   `synced_at`: a parte rápida da sincronização e o `groups.upsert` carimbam
   o `synced_at` sem participantes. `findOrCreateGroup` lê `channel_id` e
   `participant_count`; `persistGroupMessage` e `persistGroupDeviceMessage`
-  devolvem `grupoSemDetalhe` (só com a conexão do grupo igual à do webhook).
+  devolvem `grupoSemDetalhe` (só com a conexão do grupo igual à do webhook;
+  renomeado `grupoParaDetalhar` na Fase 5, que também o acende com a
+  conferência das fichas vencida).
 - `src/lib/cb-groups/detalhar-na-chegada.ts`: freio de 15 min por
   `<conta>:<jid>` no processo, carimbado ANTES da chamada (vale também
   quando a tentativa falha); canal por `getChannelWithSecrets`; reusa
@@ -239,3 +243,43 @@ na próxima mensagem (ou agora, pelo botão).
 - Regra nova `.claude/rules/grupos.md` (a seção de grupos saiu de
   `whatsapp-evolution.md`, que estava no teto); decisão em
   `docs/DECISOES-DO-OPERADOR.md`.
+
+## Fase 5 — Grupo ↔ ficha (30/10/2026)
+
+Pedido do operador: "caso a gente tenha alguma conversa com esse participante
+no CRM, possibilitar clicar pra abrir a conversa individual dele por meio do
+grupo (e também vice-versa), com botão de retorno", e vincular o grupo ao
+cadastro do cliente para vê-lo e abri-lo pelo chat do cliente.
+
+- **Medido antes (30/10, produção, só leitura):** os 13 grupos da Bancário -
+  Jurídico detalhados pelo "Sincronizar" depois do #448 (8 com "somos admin");
+  1/1 na Trabalhista e Previdenciário - Jurídico; 4 grupos atualizados pelo
+  painel aberto entre 13:02 e 14:04 UTC. O detalhe NA CHEGADA ainda não tinha
+  sido exercido (nenhum grupo sem nome recebeu mensagem desde o deploy).
+- **1117** (`cb_grupos_dos_contatos` + `cb_groups.participantes_conferidos_em`):
+  grupo, ficha e `visto_em`; escrita só do servidor; `contact_id` sem FK (a
+  Lixeira e a união são default-deny sobre FKs para `contacts`). ADITIVA,
+  antes do deploy: `findOrCreateGroup` lê a coluna nova na ingestão.
+- **Quem refaz o vínculo:** a rota de participantes (o painel), o
+  `detalharGrupos` (o "Sincronizar" e a chegada) — sempre o grupo inteiro,
+  pela função `cb_gravar_fichas_do_grupo` (uma transação com o grupo
+  travado), só com a lista, as fichas e os números do escritório lidos por
+  inteiro; sem as outras conexões da conta; leitura sem telefone nenhum só
+  carimba. A chegada de mensagem também
+  detalha o grupo conferido há mais de 24 h: é a carga inicial dos grupos com
+  movimento depois do deploy; os parados entram pelo "Sincronizar".
+- **Tela:** no grupo, o participante com conversa é a linha inteira (abre com
+  "Voltar para <grupo>"); na ficha, a seção "Grupos de WhatsApp" na aba
+  Relacionados (abre o grupo com "Voltar para <cliente>"), somada na etiqueta.
+- **Revisão independente (30/10):** sem P1 no código; os P2 (conferências
+  simultâneas se cruzando, leitura sem telefone apagando tudo, números do
+  escritório virando cliente) e a tolerância da ingestão sem a 1117
+  (`select('*')`) foram consertados; dos P3, a etiqueta parcial, a nota da
+  Lixeira, a dica da tela, a conferência do UPDATE e este plano.
+- **Limites:** sem evento de participantes no webhook, quem entra ou sai de
+  um grupo parado só aparece na próxima leitura; a ficha de `/contatos` não
+  mostra os grupos; participante de número oculto (só LID) não casa com ficha;
+  o `conversaId` vem do cache de 3 min do painel (a conversa criada pelo
+  "Conversar" vira clique quando ele vence); grupo cuja lista vem sempre vazia
+  é detalhado de novo a cada 15 min enquanto recebe mensagem (o freio da
+  chegada).

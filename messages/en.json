@@ -1120,7 +1120,10 @@
       "membersAdmin": "Admin",
       "membersHasRecord": "has a contact record",
       "membersConverse": "Message {nome}",
-      "membersConverseHint": "Open a private conversation with this person"
+      "membersConverseHint": "Open a private conversation with this person",
+      "membersOpenConversation": "Open the conversation with {nome}",
+      "membersOpenConversationHint": "Opens this person's conversation in the CRM; the bar at the top brings you back to the group",
+      "membersHasConversation": "has a conversation"
     },
     "note": {
       "wrote": "{autor} noted:",
@@ -1284,6 +1287,19 @@
       "toastContactGone": "The chosen contact no longer exists.",
       "toastLinkGone": "This link had already been removed.",
       "toastFailed": "Could not save. Try again."
+    },
+    "groups": {
+      "title": "WhatsApp groups",
+      "loading": "Loading the groups…",
+      "loadFailed": "Could not load the groups.",
+      "retry": "Try again",
+      "empty": "No known group with this contact.",
+      "emptyHint": "A group shows up here once its member list is checked: when someone opens the group or syncs the connection's groups. A message in the group also checks it, at most once a day.",
+      "noName": "Unnamed group",
+      "participants": "{count, plural, one {# member} other {# members}}",
+      "seenOn": "in the list on {data}",
+      "noConversation": "no conversation in the CRM yet",
+      "openGroup": "Open the group"
     },
     "page": {
       "title": "Contacts",
