@@ -410,8 +410,8 @@ O vínculo e a aba: `contatos.md`; grupo ↔ ficha (1117): `grupos.md`. Aqui, o 
 - **Quem monta o fio é o dono da seleção** (`useMarcarConversaAberta`): a
   página do inbox e o painel da pauta de reuniões (`conversa-em-painel.tsx`);
   o cabeçalho mostra `<AvataresNaConversa>` por `useQuemVeAConversa`. Os dois
-  escritores recebem `conversaLida`, nula no modo anônimo e fora do perfil
-  (`modo-anonimo.md`).
+  escritores recebem `conversaLida`, nula no modo anônimo, fora do perfil e
+  com a aba escondida (`modo-anonimo.md`).
 - **Decisão do operador: a presença também sai em FRASE acima do
   compositor** (`<FaixaDePresenca>`, os mesmos `vendoAgora` e roster dos
   avatares): é na hora de responder que importa. Verde, nunca as cores da
