@@ -1692,6 +1692,23 @@ nome da época em que foram aplicadas.
   commit do PR #447. Conferida: as onze anuláveis e com a FK em SET NULL; só
   as 14 tabelas da pessoa e do dono durável seguem com CASCADE para
   `auth.users`; contagens de funis, etiquetas e automações iguais às de antes.
+- **1117_cb_grupos_dos_contatos** — `cb_grupos_dos_contatos` (grupo, ficha,
+  `visto_em`; `contact_id` SEM FK de propósito, como o `note_id` da 1114),
+  `cb_groups.participantes_conferidos_em` e a função
+  `cb_gravar_fichas_do_grupo` (refaz o vínculo do grupo numa transação, com o
+  grupo travado; EXECUTE só do `service_role`). O grupo aparece na ficha de
+  quem está nele, e o participante com conversa abre pelo grupo.
+
+  ADITIVA, ANTES do deploy. Autorização do operador em 30/10/2026 ("Sim,
+  aplicar", à pergunta de aplicar a 1117 em produção quando o CI ficasse
+  verde), aplicada em 30/10/2026 (histórico `20261030154735`) depois do replay
+  verde do CI no commit `43c990a3` do PR #449. Conferida: coluna, tabela e
+  índice `cb_groups_id_account_idx` criados; só a policy de leitura; `anon`
+  sem leitura, `authenticated` lê e não apaga nem chama a função,
+  `service_role` chama; zero linhas e zero grupos carimbados depois da prova
+  (desfeita). No preview, a primeira conferência de um grupo interno gravou as
+  5 fichas de clientes, sem o número da conexão nem o de outra conexão da
+  conta.
 
 ## Notas do histórico
 
