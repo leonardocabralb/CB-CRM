@@ -67,6 +67,9 @@ qualquer uma é pergunta ao operador.
   avatares do cabeçalho (29/09/2026).
 - Modo anônimo, só de admin, no menu do nome: abrir não zera as não lidas nem
   mostra a presença; responder zera; dura até desligar (01/10/2026).
+- Aba escondida não lê: a conversa aberta numa aba atrás de outra (ou com a
+  janela minimizada) não zera as não lidas nem marca presença; voltar para a
+  aba zera (30/10/2026).
 - Notificação do navegador: conexões que avisam por pessoa (todas marcadas);
   filtro salvo não decide; o sino também avisa, com som do CRM (20/10/2026).
 - Canal: a faixa de divergência só informa, não bloqueia; cor derivada; anel

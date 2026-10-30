@@ -16,6 +16,7 @@ import {
   navegacaoAoAbrir,
 } from "@/lib/inbox/voltar-no-celular";
 import { useMarcarConversaAberta } from "@/hooks/use-conversa-aberta";
+import { useAbaVisivel } from "@/hooks/use-aba-visivel";
 import { useModoAnonimo } from "@/hooks/use-modo-anonimo";
 import { useInadimplencia } from "@/hooks/use-inadimplencia";
 import { ConversationList } from "@/components/inbox/conversation-list";
@@ -142,13 +143,16 @@ function InboxPageInner() {
     activeConversation !== null && !conversaNoEscopo(acesso, activeConversation);
   // A conversa que ESTE membro está lendo para a equipe: a que aparece na
   // presença e a que zera as não lidas. Nenhuma no modo anônimo (decisão do
-  // operador, 01/10/2026: o administrador vê o fio sem deixar rastro) nem
-  // fora do perfil (quem vê o cartão de bloqueio não está lendo nada). Os
-  // espelhos da lista abaixo usam a MESMA régua; o fio aplica a dele no
-  // banco (`.claude/rules/modo-anonimo.md`).
+  // operador, 01/10/2026: o administrador vê o fio sem deixar rastro), fora
+  // do perfil (quem vê o cartão de bloqueio não está lendo nada) nem com a
+  // ABA ESCONDIDA (decisão do operador, 30/10/2026: a aba esquecida atrás de
+  // outra zerava a mensagem do cliente e o "marcar como não lida" da equipe,
+  // sem aparecer na presença). Os espelhos da lista abaixo usam a MESMA
+  // régua; o fio aplica a dele no banco (`.claude/rules/modo-anonimo.md`).
   const { ativo: modoAnonimo } = useModoAnonimo();
+  const abaVisivel = useAbaVisivel();
   const conversaLida =
-    modoAnonimo || foraDoPerfil ? null : (activeConversation?.id ?? null);
+    modoAnonimo || foraDoPerfil || !abaVisivel ? null : (activeConversation?.id ?? null);
   // Presença por conversa (963): marca no banco qual conversa ESTE membro
   // está vendo — a página é a dona da seleção, então o escritor mora aqui.
   useMarcarConversaAberta(conversaLida);

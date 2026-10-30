@@ -3,6 +3,7 @@ paths:
   - "src/lib/inbox/modo-anonimo*"
   - "src/hooks/use-modo-anonimo*"
   - "src/hooks/use-conversa-aberta*"
+  - "src/hooks/use-aba-visivel*"
   - "src/hooks/use-acoes-da-agendada*"
   - "src/components/inbox/scheduled-bar.tsx"
   - "src/components/layout/header.tsx"
@@ -34,6 +35,19 @@ estado em `useModoAnonimo`; pinos `modo-anonimo.test.ts` e
   até alguém decidir se ele roda quando a pessoa só LÊ. ⚠️ Esse inventário NÃO
   pega tela nova que só MONTE o fio (o zero continua morando nele): para isso
   há o pino "quem monta o fio" (abaixo).
+- ⚠️⚠️ **Aba ESCONDIDA não lê** (decisão do operador, 30/10/2026): a mesma
+  régua, por `useAbaVisivel` (escondida = outra aba na frente, janela
+  minimizada ou coberta inteira; segundo monitor conta como à vista). A
+  `conversaLida` da página e do painel é nula com a aba escondida, e o efeito
+  de zerar do fio confere `!abaVisivel` — com `abaVisivel` nas dependências,
+  load-bearing como o `modoAnonimo`: voltar à aba zera na hora. Motivo
+  medido: a aba esquecida atrás de outra zerava a mensagem do cliente e o
+  "marcar como não lida" da equipe em ~1 s, e a faixa de presença não a
+  mostrava. O escritor da presença NÃO escreve escondido — nem a batida, nem
+  o `null` de quem esconde (chegaria depois da marcação da aba que veio para
+  a frente); a marcação dela envelhece nos 75 s do leitor. Limite aceito:
+  duas janelas VISÍVEIS lado a lado ainda disputam a linha única da pessoa
+  (resolver = presença por aba, com migration).
 - ⚠️ **O fio fora da caixa de entrada repete a régua da página.** O painel
   lateral (`conversa-em-painel.tsx`, a conversa por cima da pauta de
   reuniões) é o SEGUNDO escritor da presença: deriva `foraDoPerfil` e

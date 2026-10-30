@@ -4,6 +4,7 @@ import { Fragment, useState, useEffect, useCallback, useRef, useMemo, useLayoutE
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useModoAnonimo } from "@/hooks/use-modo-anonimo";
+import { useAbaVisivel } from "@/hooks/use-aba-visivel";
 import { useChannels } from "@/hooks/use-channels";
 import { useChannelHealth } from "@/hooks/use-channel-health";
 import { useLeadEvents } from "@/hooks/use-lead-events";
@@ -553,6 +554,12 @@ export function MessageThread({
    * a página, dona da seleção.
    */
   const { ativo: modoAnonimo } = useModoAnonimo();
+  /**
+   * Aba escondida não lê (decisão do operador, 30/10/2026): o fio aberto
+   * numa aba esquecida atrás de outra zerava a mensagem do cliente e o
+   * "marcar como não lida" da equipe. Ao voltar para a aba, zera.
+   */
+  const abaVisivel = useAbaVisivel();
 
   /**
    * O nome com que ESTA pessoa assina, ou null. Só para desenhar a bolha
@@ -1349,16 +1356,21 @@ export function MessageThread({
   // load-bearing: desligar o modo com a conversa aberta re-roda o efeito e
   // zera na hora, como se ela tivesse acabado de ser aberta.
   //
+  // ⚠️ Com a ABA ESCONDIDA também não zera (30/10/2026), e `abaVisivel` nas
+  // dependências é load-bearing do mesmo jeito: voltar para a aba é abrir a
+  // conversa de novo, e a não lida que chegou enquanto ela estava atrás
+  // zera na hora.
+  //
   // ⚠️ E não zera a conversa com "Marcar como não lida" EM CURSO
   // (`naoLidaEmCursoRef`, Codex no #405): o tempo real pode trazer o 1 antes
   // de a gravação voltar, a página o copia para a conversa aberta, e este
   // zero desfaria o gesto — que fecharia a conversa já lida de novo.
   const naoLidaEmCursoRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!conversationId || !hasUnread || modoAnonimo) return;
+    if (!conversationId || !hasUnread || modoAnonimo || !abaVisivel) return;
     if (naoLidaEmCursoRef.current === conversationId) return;
     zerarNaoLidas(conversationId);
-  }, [conversationId, hasUnread, modoAnonimo]);
+  }, [conversationId, hasUnread, modoAnonimo, abaVisivel]);
 
   // Trilha de atividade do lead (migration 912) — mudança de funil, etapa,
   // status e tags aparecem intercaladas na conversa. `resyncToken` entra como
