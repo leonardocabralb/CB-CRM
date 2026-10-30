@@ -64,6 +64,8 @@ import { avisarDrenagemDeFunil } from '@/lib/automations/avisar-drenagem';
 import { CampoComSalvamento } from '@/components/contacts/campo-com-salvamento';
 import { ContatosRelacionados } from '@/components/contacts/contatos-relacionados';
 import { useContatosRelacionados } from '@/hooks/use-contatos-relacionados';
+import { GruposDoContato } from '@/components/inbox/painel/grupos-do-contato';
+import { useGruposDoContato } from '@/hooks/use-grupos-do-contato';
 import { pedirConversaComContato } from '@/lib/inbox/conversar-com-contato';
 import { MenuDeBlocos } from '@/components/contacts/menu-de-blocos';
 import { LinhaDeEdicao } from '@/components/inbox/painel/linha-de-edicao';
@@ -272,6 +274,14 @@ export function PainelDoContato({
   // Contatos relacionados (1069). No TOPO pelo mesmo motivo: a etiqueta da
   // aba mostra quantos são antes de a aba abrir.
   const relacionados = useContatosRelacionados(contact?.id ?? null, resyncToken);
+  // Os grupos de WhatsApp do cliente (1117), na mesma aba e na mesma etiqueta.
+  const gruposDoContato = useGruposDoContato(contact?.id ?? null, resyncToken);
+  // A etiqueta soma os dois só quando os dois responderam: com um lado
+  // carregando ou em falha, a parte leria como o total.
+  const contagemDosRelacionados =
+    relacionados.itens == null || gruposDoContato.itens == null
+      ? null
+      : relacionados.itens.length + gruposDoContato.itens.length;
   // O Atlas (Fase 2): o botão "Abrir no Atlas" do cabeçalho precisa do
   // vínculo antes de a aba abrir. O hook carimba o dono (`{ de }`).
   const atlas = useAtlasDoContato(contact?.id ?? null, resyncToken);
@@ -1408,7 +1418,7 @@ export function PainelDoContato({
           <AbaDeIcone
             value="relacionados"
             label={tSidebar('tabRelated')}
-            badge={relacionados.itens?.length ?? null}
+            badge={contagemDosRelacionados}
           >
             <Users className="h-4 w-4" />
           </AbaDeIcone>
@@ -2051,7 +2061,8 @@ export function PainelDoContato({
 
         {/* ---- Relacionados (1069): clicar abre a conversa da outra pessoa
              na própria caixa de entrada. `key` com o contato: o formulário
-             de vincular é rascunho e não pode atravessar a troca. ---- */}
+             de vincular é rascunho e não pode atravessar a troca. Embaixo,
+             os grupos do cliente (1117). ---- */}
         <TabsContent
           value="relacionados"
           className="min-h-0 flex-1 overflow-y-auto p-4"
@@ -2071,6 +2082,11 @@ export function PainelDoContato({
                 : undefined
             }
           />
+          {/* Os grupos em que o cliente está (1117): clicar abre o grupo,
+              com a faixa "Voltar para" o cliente. */}
+          <div className="border-border mt-4 border-t pt-4">
+            <GruposDoContato grupos={gruposDoContato} onAbrirConversa={onAbrirConversaRelacionada} />
+          </div>
         </TabsContent>
 
         {/* ---- Atlas (Fase 2): a situação no Atlas, "Abrir no Atlas" e, para

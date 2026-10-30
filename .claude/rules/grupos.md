@@ -5,14 +5,17 @@ paths:
   - "src/components/inbox/group-sidebar.tsx"
   - "src/components/inbox/painel/participantes-do-grupo.tsx"
   - "src/hooks/use-participantes-do-grupo.ts"
+  - "src/hooks/use-grupos-do-contato.ts"
+  - "src/components/inbox/painel/grupos-do-contato.tsx"
+  - "supabase/migrations/1117_cb_grupos_dos_contatos.sql"
 ---
 
 # Grupos de WhatsApp — regras
 
 Vale para a ingestão de grupo (`cb-groups/persist.ts`), a sincronização e o
 detalhamento (`sync.ts`, `detalhar-na-chegada.ts`), as rotas
-`/api/cb/groups/**` e o painel do grupo (`group-sidebar.tsx`, aba
-Participantes). Grupo não é contato: a regra geral está na raiz (8d); o que
+`/api/cb/groups/**`, o painel do grupo (`group-sidebar.tsx`, aba
+Participantes) e o grupo na ficha do cliente (1117). Grupo não é contato: a regra geral está na raiz (8d); o que
 a ingestão de grupo NÃO faz (reabrir, motores, entrega), em `ingestao.md`; o
 transporte da Evolution em geral, em `whatsapp-evolution.md`. Plano e
 medições: `docs/PLANO-participantes-do-grupo.md`.
@@ -54,8 +57,9 @@ medições: `docs/PLANO-participantes-do-grupo.md`.
 
 ### Detalhe do grupo: nome, contagem, "somos admin?"
 
-- ⚠️⚠️ **Grupo sem `participant_count` é detalhado na CHEGADA**
-  (`detalhar-na-chegada.ts`): a gravação devolve `grupoSemDetalhe`, a rota do
+- ⚠️⚠️ **Grupo sem `participant_count` (ou com a conferência das fichas
+  vencida, abaixo) é detalhado na CHEGADA** (`detalhar-na-chegada.ts`): a
+  gravação devolve `grupoParaDetalhar`, a rota do
   webhook junta os jids num `Set` e detalha UMA vez por grupo DEPOIS dos
   itens, dos anexos e das fotos (dentro do laço, ~0,8 s por grupo atrasaria —
   e num corte do `after()` perderia — as mensagens seguintes). Freio de 15
@@ -89,9 +93,9 @@ Decisões do operador (29/10/2026): D2 (renomear também quando o grupo deixa
 qualquer participante mudar os dados) e D4 (quem vê o grupo vê os telefones,
 como no próprio WhatsApp).
 
-- ⚠️⚠️ **A lista não é guardada**: `GET /api/cb/groups/[id]/participantes`
-  lê o `findGroupInfos` na hora e devolve; telefone de participante só existe
-  nessa resposta. Guardar exigiria acompanhar cada entrada e saída, e a lista
+- ⚠️⚠️ **A lista não é guardada** (só o vínculo com as FICHAS, abaixo):
+  `GET /api/cb/groups/[id]/participantes` lê o `findGroupInfos` na hora e
+  devolve; telefone de participante só existe nessa resposta. Guardar exigiria acompanhar cada entrada e saída, e a lista
   envelheceria sem aviso. A mesma leitura grava o espelho
   (`camposDoDetalhe`) e devolve `podeRenomear`.
 - ⚠️ **Lista vazia é FALHA (502), nunca "nenhum participante"**: o número da
@@ -121,3 +125,49 @@ como no próprio WhatsApp).
   troca e a limpeza do efeito gravaria a contagem de A em B.
 - **"Conversar" com um participante** abre a Nova conversa da lista
   (`pedirConversaComContato`), só para `send-messages` e só com telefone.
+
+### O grupo na ficha do cliente (1117)
+
+Pedido do operador (30/10/2026): o participante com conversa no CRM abre a
+conversa individual pelo grupo, e o cliente vê e abre os grupos dele pela
+própria conversa. `cb_grupos_dos_contatos` e `fichas-do-grupo.ts`.
+
+- ⚠️⚠️ **Guarda-se só a FICHA de quem está no grupo** (grupo, ficha,
+  `visto_em`), nunca a lista: o telefone de quem não é cliente segue só na
+  leitura ao vivo. Escreve só o servidor (nenhuma policy de escrita; o
+  navegador sem INSERT/UPDATE/DELETE).
+- ⚠️⚠️ **Refeito por INTEIRO a cada leitura completa** (o painel, o
+  "Sincronizar", a chegada), SÓ pela função `cb_gravar_fichas_do_grupo`:
+  apaga quem saiu, grava quem está e carimba
+  `cb_groups.participantes_conferidos_em` numa transação, com o grupo
+  TRAVADO. Em três pedidos soltos, duas conferências ao mesmo tempo se
+  cruzavam e apagavam quem estava nas duas listas (revisão de 30/10/2026).
+- ⚠️⚠️ **Só com a lista, as fichas (`fichasPorTelefone` → `completa`) e os
+  números do escritório (`chavesDasConexoes`) lidos por inteiro**: lista
+  vazia é falha, e um conjunto pela metade apagaria o vínculo de quem não se
+  leu. `fichasParaGravar` tira o nosso número E os das outras conexões da
+  conta (a ficha da conversa interna não é cliente do grupo) e devolve NULO
+  quando ninguém além de nós tem telefone (a Evolution mudou o campo ou
+  perdeu o par do LID): aí só se carimba, nunca "ninguém".
+- ⚠️ **Envelhece entre leituras**: mensagem num grupo conferido há mais de
+  24 h (`conferenciaVencida`) o detalha de novo; quem entra ou sai de um grupo
+  PARADO, ou ganha ficha depois, só aparece quando alguém o abre ou
+  sincroniza. Não há evento de participantes no webhook (evento desconhecido
+  derruba a lista, acima). Depois da 1117, todo grupo começa sem conferência.
+  O `conversaId` da lista vem do cache de 3 min do painel.
+- ⚠️ **A ingestão lê o grupo com `select('*')`** (`COLUNAS_DO_GRUPO`): pela
+  lista de colunas, um banco sem a 1117 derrubava a leitura e o INSERT
+  (42703) e TODA mensagem de grupo se perdia.
+- ⚠️⚠️ **`contact_id` SEM FK, de propósito**: a Lixeira e `cb_unir_fichas`
+  são default-deny sobre FKs para `contacts` (`supabase.md`; o precedente é o
+  `note_id` da 1114). A ficha que sai (Lixeira, união, exclusão de vez)
+  deixa a linha solta até a próxima conferência, que a apaga; a restaurada
+  (mesmo id) é religada na conferência seguinte. A tela lê pelo contato
+  aberto. Para `cb_groups`, FK composta com CASCADE.
+- **Os dois pulos são o da PÁGINA** (`onAbrirConversaRelacionada`,
+  `inbox-conversa.md`). No grupo, o participante com conversa (`conversaId`
+  da rota) é a LINHA inteira, e a faixa diz o nome do GRUPO (`nomeDoGrupo`
+  da origem); sem conversa, o "Conversar". Na ficha, a seção "Grupos de
+  WhatsApp" da aba Relacionados (`useGruposDoContato`, `{ de }`) abre o grupo
+  com a faixa "Voltar para" o cliente; a etiqueta da aba soma os dois só
+  quando os dois responderam. A ficha de `/contatos` não mostra os grupos.

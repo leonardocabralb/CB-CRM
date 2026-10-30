@@ -36,7 +36,7 @@ import {
   persistGroupMessage,
   LIMITE_DOWNLOAD_AUTOMATICO_BYTES,
 } from '@/lib/cb-groups/persist';
-import { detalharGruposSemDetalhe } from '@/lib/cb-groups/detalhar-na-chegada';
+import { detalharGruposDaChegada } from '@/lib/cb-groups/detalhar-na-chegada';
 import {
   descreverParticipantes,
   nomesConhecidos,
@@ -231,10 +231,11 @@ export async function POST(request: Request) {
       const paraReligar = new Map<string, { telefoneJid: string; conversationId: string }>();
       /**
        * Grupos desta conexão que chegaram sem nome, participantes nem "somos
-       * admin?" — detalhados no FIM da entrega (ver lá embaixo). Por jid: dez
+       * admin?", ou com a lista conferida contra as fichas há mais de 24 h
+       * (1117) — detalhados no FIM da entrega (ver lá embaixo). Por jid: dez
        * mensagens do mesmo grupo são UMA consulta à Evolution.
        */
-      const gruposSemDetalhe = new Set<string>();
+      const gruposParaDetalhar = new Set<string>();
 
       for (const item of items) {
         try {
@@ -327,7 +328,7 @@ export async function POST(request: Request) {
                   mediaRef: item,
                 });
 
-            if (gravadaGrupo?.grupoSemDetalhe) gruposSemDetalhe.add(g.groupJid);
+            if (gravadaGrupo?.grupoParaDetalhar) gruposParaDetalhar.add(g.groupJid);
 
             if (gravadaGrupo && temArquivo(g.contentType)) {
               semAnexo.push({
@@ -653,17 +654,18 @@ export async function POST(request: Request) {
         await conferirFotosDosContatos(route.accountId, route.channelId, paraFoto);
       }
 
-      // Grupo sem detalhe (nasceu pela mensagem, ou o detalhamento falhou):
-      // nome, participantes e "somos admin?" pela Evolution, ~0,8 s por grupo.
+      // Grupo sem detalhe (nasceu pela mensagem, ou o detalhamento falhou) ou
+      // com a conferência vencida: nome, participantes, "somos admin?" e as
+      // fichas de quem está nele, pela Evolution, ~0,8 s por grupo.
       // ⚠️ Por ÚLTIMO, como as fotos, e nunca dentro do laço dos itens: as
       // mensagens e os anexos do lote vêm antes do enfeite do painel. Nunca
       // lança; o freio de 15 min por grupo mora no módulo.
-      if (gruposSemDetalhe.size > 0 && route.channelId) {
-        await detalharGruposSemDetalhe({
+      if (gruposParaDetalhar.size > 0 && route.channelId) {
+        await detalharGruposDaChegada({
           db: supabaseAdmin(),
           accountId: route.accountId,
           channelId: route.channelId,
-          jids: [...gruposSemDetalhe],
+          jids: [...gruposParaDetalhar],
           agora: Date.now(),
         });
       }

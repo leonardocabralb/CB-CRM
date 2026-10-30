@@ -10,6 +10,7 @@ const p = (over: Partial<ParticipanteNaTela>): ParticipanteNaTela => ({
   papel: null,
   somosNos: false,
   contatoId: null,
+  conversaId: null,
   ...over,
 });
 
@@ -37,6 +38,17 @@ describe('lerRespostaDosParticipantes', () => {
     expect(lerRespostaDosParticipantes({ participantes: [{}] })).toBeNull();
     expect(lerRespostaDosParticipantes({ error: 'x' })).toBeNull();
     expect(lerRespostaDosParticipantes(null)).toBeNull();
+  });
+
+  it('a conversa da ficha (1117) vem lida; a da nossa linha nunca', () => {
+    const r = lerRespostaDosParticipantes({
+      participantes: [
+        { id: 'a', contatoId: 'c-1', conversaId: 'conv-1' },
+        { id: 'b', contatoId: 'c-2', conversaId: 'conv-2', somosNos: true },
+        { id: 'c', conversaId: 42 },
+      ],
+    });
+    expect(r?.participantes.map((x) => x.conversaId)).toEqual(['conv-1', null, null]);
   });
 
   it('podeRenomear só com `true` de verdade', () => {

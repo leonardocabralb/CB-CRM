@@ -18,6 +18,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { chaveDePessoa } from '@/lib/contacts/dedupe';
+import { conferirFichasDoGrupo } from '@/lib/cb-groups/fichas-do-grupo';
 import type { EvolutionClient } from '@/lib/whatsapp/transport/evolution-client';
 
 /** Um grupo como o `findChats` entrega. */
@@ -377,15 +378,29 @@ export async function detalharGrupos(
 
   for (const jid of args.jids) {
     try {
-      const info = parseGroupInfo(await args.client.findGroupInfos(jid), args.displayPhone, ourLid);
+      const bruto = await args.client.findGroupInfos(jid);
+      const info = parseGroupInfo(bruto, args.displayPhone, ourLid);
 
-      const { error } = await db
+      const { data: gravado, error } = await db
         .from('cb_groups')
         .update(camposDoDetalhe(info, new Date().toISOString()))
         .eq('account_id', args.accountId)
-        .eq('jid', jid);
+        .eq('jid', jid)
+        .select('id')
+        .maybeSingle();
       if (error) throw new Error(error.message);
       detalhados++;
+
+      // A mesma leitura refaz o vínculo do grupo com as fichas (1117). Falhar
+      // aqui não desfaz o detalhe: a próxima chegada confere de novo.
+      const grupoId = (gravado as { id: string } | null)?.id;
+      if (grupoId) {
+        await conferirFichasDoGrupo(db, {
+          accountId: args.accountId,
+          groupId: grupoId,
+          participantes: lerParticipantes(bruto, args.displayPhone, ourLid ?? info.ourLid),
+        });
+      }
 
       if (!ourLid && info.ourLid) {
         ourLid = info.ourLid;

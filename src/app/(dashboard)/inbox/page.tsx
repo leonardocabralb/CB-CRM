@@ -29,6 +29,7 @@ import { VoltarAsReunioes } from "@/components/inbox/voltar-as-reunioes";
 import { VoltarAosAvisos } from "@/components/inbox/voltar-aos-avisos";
 import { VoltarParaConversa } from "@/components/inbox/voltar-para-conversa";
 import { nomeDoContato } from "@/lib/contacts/identidade";
+import { nomeDoGrupo } from "@/lib/cb-groups/display";
 import { avisarExecucoesMudaram } from "@/lib/execucoes/aviso";
 import {
   EVENTO_ABRIR_CONVERSA,
@@ -1107,7 +1108,8 @@ function InboxPageInner() {
 
   /**
    * Abre, pela aba Relacionados do painel (1069), a conversa de outro contato
-   * — e liga a faixa que volta para esta.
+   * — e liga a faixa que volta para esta. Também de um grupo para a conversa
+   * de um participante, e da ficha para o grupo dela (1117).
    *
    * A lista carrega TODAS as conversas da conta (a de qualquer situação e
    * fora do filtro), então a do relacionado quase sempre já está em
@@ -1120,7 +1122,10 @@ function InboxPageInner() {
     (conversaId: string) => {
       const origem = activeConversation;
       if (!origem || origem.id === conversaId) return;
-      const nome = nomeDoContato(activeContact, "") || null;
+      // Do grupo (aba Participantes, 1117) a faixa diz o nome do GRUPO.
+      const nome = origem.group_id
+        ? nomeDoGrupo(origem.group, tThread("groupNoName"))
+        : nomeDoContato(activeContact, "") || null;
       const conv = conversations.find((c) => c.id === conversaId);
       if (conv) {
         handleSelectConversation(conv);
@@ -1131,7 +1136,7 @@ function InboxPageInner() {
       // lote, e esta vence.
       setVoltarPara({ naConversa: conversaId, conversaId: origem.id, nome });
     },
-    [activeConversation, activeContact, conversations, handleSelectConversation, handleConversaAberta],
+    [activeConversation, activeContact, conversations, handleSelectConversation, handleConversaAberta, tThread],
   );
 
   /** A faixa "Voltar para": a conversa de onde se pulou, pelo mesmo caminho. */
@@ -1543,6 +1548,9 @@ function InboxPageInner() {
                   messagesDaConversa !== activeConversation.id
                 }
                 onIrParaItemDoFio={handleIrParaItemDoFio}
+                // O participante com conversa no CRM (1117): o mesmo pulo da
+                // aba Relacionados, com a faixa "Voltar para" o grupo.
+                onAbrirConversaRelacionada={handleAbrirConversaRelacionada}
               />
             ) : (
               <ContactSidebar

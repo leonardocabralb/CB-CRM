@@ -267,6 +267,7 @@ todos: num merge, fica o nosso.
 - **Na ficha de /contatos o nome é link para `/inbox?c=`; no inbox, a página
   abre a conversa e liga a faixa "Voltar para"** (`inbox-conversa.md`). O
   "Conversar" (contato sem conversa) só existe no inbox: o diálogo mora lá.
+- No inbox a aba traz também os GRUPOS do cliente (1117): `grupos.md`.
 
 ### Possível duplicata (1088)
 A mesma pessoa em duas fichas (formulário com um telefone, agendamento com

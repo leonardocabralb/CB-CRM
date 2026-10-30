@@ -6,11 +6,15 @@
 //
 // ⚠️ Vazio NUNCA é afirmação: carregando e falha têm frase própria, e a rota
 // já responde falha para a lista vazia (o número da conexão está no grupo).
+//
+// O participante com conversa no CRM (1117) é a LINHA inteira: clicar abre a
+// conversa individual (a página liga a faixa "Voltar para" o grupo). Sem
+// conversa, o "Conversar" abre a Nova conversa com o telefone.
 // ============================================================
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { Loader2, MessageSquarePlus, Search } from "lucide-react";
+import { ArrowUpRight, Loader2, MessageSquarePlus, Search } from "lucide-react";
 
 import type { FalhaDosParticipantes } from "@/hooks/use-participantes-do-grupo";
 import { formatarTelefone } from "@/lib/contacts/telefone";
@@ -30,6 +34,7 @@ export function ParticipantesDoGrupo({
   falha,
   onTentarDeNovo,
   onConversar,
+  onAbrirConversa,
 }: {
   participantes: ParticipanteNaTela[] | null;
   carregando: boolean;
@@ -37,6 +42,8 @@ export function ParticipantesDoGrupo({
   onTentarDeNovo: () => void;
   /** Ausente = quem vê não pode abrir conversa: o botão não existe. */
   onConversar?: (p: ParticipanteNaTela) => void;
+  /** Abre a conversa individual que JÁ existe (`conversaId`). Ausente = a linha não clica. */
+  onAbrirConversa?: (conversaId: string) => void;
 }) {
   const t = useTranslations("Inbox.groupSidebar");
   const [termo, setTermo] = useState("");
@@ -87,7 +94,13 @@ export function ParticipantesDoGrupo({
       ) : (
         <ul className="divide-border divide-y">
           {visiveis.map((p) => (
-            <LinhaDoParticipante key={p.id} p={p} onConversar={onConversar} t={t} />
+            <LinhaDoParticipante
+              key={p.id}
+              p={p}
+              onConversar={onConversar}
+              onAbrirConversa={onAbrirConversa}
+              t={t}
+            />
           ))}
         </ul>
       )}
@@ -98,10 +111,12 @@ export function ParticipantesDoGrupo({
 function LinhaDoParticipante({
   p,
   onConversar,
+  onAbrirConversa,
   t,
 }: {
   p: ParticipanteNaTela;
   onConversar?: (p: ParticipanteNaTela) => void;
+  onAbrirConversa?: (conversaId: string) => void;
   t: ReturnType<typeof useTranslations>;
 }) {
   const telefone = p.telefone ? formatarTelefone(p.telefone) : null;
@@ -109,26 +124,50 @@ function LinhaDoParticipante({
   // pessoa esconde o número — nunca o LID cru na tela.
   const titulo = p.somosNos ? t("membersThisNumber") : (p.nome ?? telefone ?? t("membersHiddenNumber"));
   const legenda = p.somosNos || p.nome ? telefone : null;
+  const marca = p.conversaId ? t("membersHasConversation") : p.contatoId ? t("membersHasRecord") : null;
+
+  const corpo = (
+    <div className="min-w-0 flex-1">
+      <div className="flex min-w-0 items-center gap-1.5">
+        <span className="text-foreground truncate text-sm">{titulo}</span>
+        {p.papel && (
+          <Badge variant="outline" className="shrink-0 text-[10px]">
+            {p.papel === "criador" ? t("membersCreator") : t("membersAdmin")}
+          </Badge>
+        )}
+      </div>
+      {(legenda || marca) && (
+        <p className="text-muted-foreground truncate text-xs tabular-nums">
+          {legenda}
+          {legenda && marca && " · "}
+          {marca}
+        </p>
+      )}
+    </div>
+  );
+
+  // Com conversa no CRM, a linha inteira é o botão (sem botão dentro dele).
+  const conversaId = p.conversaId;
+  if (conversaId && onAbrirConversa && !p.somosNos) {
+    return (
+      <li>
+        <button
+          type="button"
+          onClick={() => onAbrirConversa(conversaId)}
+          aria-label={t("membersOpenConversation", { nome: titulo })}
+          title={t("membersOpenConversationHint")}
+          className="hover:bg-muted -mx-2 flex w-[calc(100%+1rem)] items-center gap-2 rounded-md px-2 py-2 text-left transition-colors"
+        >
+          {corpo}
+          <ArrowUpRight className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+        </button>
+      </li>
+    );
+  }
 
   return (
     <li className="flex items-center gap-2 py-2">
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center gap-1.5">
-          <span className="text-foreground truncate text-sm">{titulo}</span>
-          {p.papel && (
-            <Badge variant="outline" className="shrink-0 text-[10px]">
-              {p.papel === "criador" ? t("membersCreator") : t("membersAdmin")}
-            </Badge>
-          )}
-        </div>
-        {(legenda || p.contatoId) && (
-          <p className="text-muted-foreground truncate text-xs tabular-nums">
-            {legenda}
-            {legenda && p.contatoId && " · "}
-            {p.contatoId && t("membersHasRecord")}
-          </p>
-        )}
-      </div>
+      {corpo}
       {onConversar && p.telefone && !p.somosNos && (
         <button
           type="button"

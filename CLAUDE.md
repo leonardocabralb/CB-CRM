@@ -482,7 +482,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   telefone (retida, tardia, histórica), recibos fora de ordem, edição
   cifrada, link sem prévia.
 - `.claude/rules/grupos.md` — grupo de WhatsApp: GET de grupo da 2.4 com
-  corpo, detalhe na chegada, participantes e renomear ao vivo.
+  corpo, detalhe na chegada, participantes e renomear ao vivo, o grupo na
+  ficha do cliente (1117).
 - `.claude/rules/ligacoes.md` — ligação de WhatsApp vira faixa no fio (1044):
   aviso CALL, desfecho com folga, quem ligou, o que não roda, quem lê
   `content_type`.

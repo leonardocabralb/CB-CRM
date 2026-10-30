@@ -25,7 +25,7 @@ vi.mock('@/lib/whatsapp/encryption', () => ({ decrypt: (s: string) => `claro:${s
 import { detalharGrupos } from '@/lib/cb-groups/sync';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { ESPERA_ENTRE_TENTATIVAS_MS, detalharGruposSemDetalhe } from './detalhar-na-chegada';
+import { ESPERA_ENTRE_TENTATIVAS_MS, detalharGruposDaChegada } from './detalhar-na-chegada';
 
 const db = {} as SupabaseClient;
 const AGORA = 1_792_980_000_000;
@@ -51,9 +51,9 @@ beforeEach(() => {
 });
 
 const chamar = (jids: string[], agora = AGORA) =>
-  detalharGruposSemDetalhe({ db, accountId: 'conta-1', channelId: 'canal-a', jids, agora });
+  detalharGruposDaChegada({ db, accountId: 'conta-1', channelId: 'canal-a', jids, agora });
 
-describe('detalharGruposSemDetalhe', () => {
+describe('detalharGruposDaChegada', () => {
   it('detalha os grupos com o telefone e o LID do canal', async () => {
     const jid = jidNovo();
     await chamar([jid]);

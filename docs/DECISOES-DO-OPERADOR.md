@@ -25,6 +25,9 @@ qualquer uma é pergunta ao operador.
 - Grupos (29/10/2026): renomear no WhatsApp vale também quando o grupo deixa
   qualquer participante mudar os dados (não só para admin); quem vê o grupo
   vê os telefones dos participantes, lidos na hora e nunca guardados.
+  Em 30/10/2026: o participante com conversa no CRM abre a conversa pelo
+  grupo, e o grupo aparece (e abre) na ficha do cliente que está nele, com a
+  faixa de volta; guarda-se só o vínculo com a FICHA (`grupos.md`, 1117).
 - Card: título = nome da pessoa, sem prefixo de conexão; o Calendly renomeia
   até título escrito à mão e fixa o nome da ficha.
 - Reuniões: "Data e Hora Reunião" mais nova que todo agendamento remarca a

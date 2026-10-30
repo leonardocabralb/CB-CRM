@@ -40,8 +40,10 @@ beforeEach(() => {
   });
 });
 
-const nomear = (participantes: ParticipanteDoGrupo[]) =>
+const nomearComTudo = (participantes: ParticipanteDoGrupo[]) =>
   nomearParticipantes(b.db, { accountId: 'conta-1', conversationId: 'conv-g', participantes });
+const nomear = async (participantes: ParticipanteDoGrupo[]) =>
+  (await nomearComTudo(participantes)).participantes;
 
 describe('nomearParticipantes', () => {
   it('a FICHA vem primeiro, pela chave de pessoa (o nono dígito não separa)', async () => {
@@ -82,6 +84,13 @@ describe('nomearParticipantes', () => {
       participante({ id: '222@lid', lid: '222@lid', telefone: '5511922223333' }),
     ]);
     expect(lista.map((p) => p.nome)).toEqual([null, 'Bruno Teste']);
+  });
+
+  it('diz se as fichas se leram por inteiro: o vínculo do grupo só se refaz com elas', async () => {
+    const lista = [participante({ telefone: '558380000016' })];
+    expect((await nomearComTudo(lista)).fichasLidas).toBe(true);
+    b.falhas.contacts = { message: 'fora do ar' };
+    expect((await nomearComTudo(lista)).fichasLidas).toBe(false);
   });
 });
 
