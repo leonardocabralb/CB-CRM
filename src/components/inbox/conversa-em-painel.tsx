@@ -34,6 +34,7 @@ import {
   SheetContent,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { useAbaVisivel } from "@/hooks/use-aba-visivel";
 import { useAuth } from "@/hooks/use-auth";
 import { useMarcarConversaAberta } from "@/hooks/use-conversa-aberta";
 import { useInadimplencia } from "@/hooks/use-inadimplencia";
@@ -253,11 +254,13 @@ function ConversaCarregada({
   // A régua da caixa de entrada, as duas linhas iguais às da página (pino
   // `modo-anonimo.chamadores.test.ts`): fora do perfil o fio NEM MONTA — ele
   // buscaria as mensagens e zeraria as não lidas de quem não pode
-  // respondê-las —, e nem fora do perfil nem no modo anônimo a presença marca.
+  // respondê-las —, e nem fora do perfil, nem no modo anônimo, nem com a aba
+  // escondida a presença marca.
   const foraDoPerfil =
     conversation !== null && !conversaNoEscopo(acesso, conversation);
+  const abaVisivel = useAbaVisivel();
   const conversaLida =
-    modoAnonimo || foraDoPerfil ? null : (conversation?.id ?? null);
+    modoAnonimo || foraDoPerfil || !abaVisivel ? null : (conversation?.id ?? null);
   useMarcarConversaAberta(conversaLida);
 
   // A volta desta conversa da Lixeira (1097), lida do INSERT da conversa, que

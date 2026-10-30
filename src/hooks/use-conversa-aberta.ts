@@ -11,6 +11,9 @@
 //     chegada decidiria o estado final; com a fila, quem decide é a ordem
 //     dos cliques. "Saí do inbox" é best-effort no desmonte + staleness de
 //     75s no leitor (aba fechada não escreve nada — filosofia da 024).
+//     ⚠️ Aba ESCONDIDA também não escreve nada (30/10/2026): a presença é
+//     UMA linha por pessoa, e a aba esquecida atrás de outra disputava a
+//     linha com a aba da frente.
 //
 //   useQuemVeAConversa       — LEITOR. Snapshot da conta + realtime
 //     (espelho do use-presence: assina PRIMEIRO, snapshot funde depois,
@@ -22,6 +25,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/client";
+import { useAbaVisivel } from "@/hooks/use-aba-visivel";
 import { useAuth } from "@/hooks/use-auth";
 import { HEARTBEAT_MS } from "@/lib/presence";
 import {
@@ -44,12 +48,19 @@ export function useMarcarConversaAberta(conversationId: string | null): void {
   // RPC a cada 30s só para colher "No account for caller" no console —
   // ruído que esconde erro de verdade (ledger 48h).
   const { accountId } = useAuth();
+  const abaVisivel = useAbaVisivel();
   // Fila de RPCs: garante que a ÚLTIMA intenção do operador é a última a
   // escrever, mesmo com respostas fora de ordem na rede.
   const filaRef = useRef<Promise<unknown>>(Promise.resolve());
 
   useEffect(() => {
     if (!accountId) return;
+    // ⚠️ Escondida, a aba não bate nem marca (decisão do operador,
+    // 30/10/2026): a linha é UMA por pessoa, e a batida da aba esquecida —
+    // mesmo a com `null` — apagava a conversa que a aba da FRENTE marcou. A
+    // marcação dela envelhece sozinha (os 75 s do leitor); voltar para a
+    // aba marca na hora.
+    if (!abaVisivel) return;
     const supabase = createClient();
     const marcar = (id: string | null) => {
       filaRef.current = filaRef.current
@@ -76,9 +87,12 @@ export function useMarcarConversaAberta(conversationId: string | null): void {
       // Na troca de conversa o efeito seguinte re-marca logo atrás (a fila
       // preserva a ordem); se a aba fechar sem rodar isto, o staleness de
       // 75s do leitor resolve.
-      marcar(null);
+      // ⚠️ Esconder a aba NÃO grava o "saí": ao trocar de aba, o `null` desta
+      // pode chegar depois da marcação da aba que veio para a frente e
+      // apagá-la até a batida seguinte dela.
+      if (document.visibilityState !== "hidden") marcar(null);
     };
-  }, [conversationId, accountId]);
+  }, [conversationId, accountId, abaVisivel]);
 }
 
 /**
