@@ -146,7 +146,9 @@ obrigações gerais de caminho de entrada estão em `.claude/rules/ingestao.md`.
   (`ia-agentes/contexto.ts`). A ATENDIDA pausa o agente da conversa
   (`cb_pausar_ia_por_gente`): é resposta de gente.
 - Painel: `.neq('content_type', 'call')` nas contagens de mensagem — a
-  atendida é `agent`, e contaria como mensagem enviada. O Meu dia deixou de
+  atendida é `agent`, e contaria como mensagem enviada. A série "Conversas ao
+  longo do tempo" soma no banco (1095) e filtra lá; o tempo de resposta conta
+  a ligação, como sempre contou. O Meu dia deixou de
   contar mensagens na v2 (29/09/2026); quem voltar a contar repete o filtro.
 - ⚠️ `messages_content_type_check` é do upstream: um merge que o recrie tira
   o `'call'`, e a ligação passa a ser recusada com 23514, sem aviso na tela.

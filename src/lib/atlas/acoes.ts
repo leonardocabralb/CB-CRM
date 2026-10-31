@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { partesNoFuso } from "@/lib/agenda/fuso";
 import { FUSO_DO_ESCRITORIO } from "@/lib/contacts/campo-data";
-import { NOME_DO_APP } from "@/lib/marca";
+import { obterMarca } from "@/lib/marca-servidor";
 import { diaNoFuso, somarDias } from "@/lib/tasks/prazo";
 import { MAX_DESCRICAO, MAX_TITULO } from "@/lib/tasks/validar";
 
@@ -74,22 +74,22 @@ export interface EntradaDaAcao {
 
 /** Copiado de `criar-cliente.ts` (o passo de produção não é mexido para "compartilhar"). */
 const MOTIVO_DA_CONEXAO = {
-  nao_conectado: "o Atlas não está conectado (Configurações → Integrações)",
-  chave_ilegivel: "a chave do Atlas guardada não pôde ser lida — reconecte em Configurações → Integrações",
-  outro_ambiente: "a conexão do Atlas guardada é de outro ambiente do Atlas (teste × produção) — reconecte em Configurações → Integrações",
-  db_error: "não foi possível ler a conexão com o Atlas",
+  nao_conectado: "o Atlas Gestor não está conectado (Configurações → Integrações)",
+  chave_ilegivel: "a chave do Atlas Gestor guardada não pôde ser lida — reconecte em Configurações → Integrações",
+  outro_ambiente: "a conexão do Atlas Gestor guardada é de outro ambiente do Atlas Gestor (teste × produção) — reconecte em Configurações → Integrações",
+  db_error: "não foi possível ler a conexão com o Atlas Gestor",
 } as const;
 
 export const MOTIVO_SEM_VINCULO =
-  'a ficha não está ligada a um cliente do Atlas: rode "Criar cliente" antes ou peça a um admin para vincular na aba Atlas ' +
-  '(se o "Criar cliente" disse "ligado a outra ficha", junte as fichas) — nada foi enviado ao Atlas';
+  'a ficha não está ligada a um cliente do Atlas Gestor: rode "Criar cliente" antes ou peça a um admin para vincular na aba Atlas Gestor ' +
+  '(se o "Criar cliente" disse "ligado a outra ficha", junte as fichas) — nada foi enviado ao Atlas Gestor';
 
 export const MOTIVO_NA_LIXEIRA =
-  "o cadastro ligado a esta ficha está na lixeira do Atlas; restaure lá (até 7 dias) ou desvincule na aba Atlas e rode de novo — nada foi alterado no Atlas";
+  "o cadastro ligado a esta ficha está na lixeira do Atlas Gestor; restaure lá (até 7 dias) ou desvincule na aba Atlas Gestor e rode de novo — nada foi alterado no Atlas Gestor";
 
 /** A tarefa não tem 404 (a API liga a tarefa ao cliente da lixeira): quem avisa é a MARCA do vínculo. */
 export const MOTIVO_TAREFA_NA_LIXEIRA =
-  'o cadastro ligado a esta ficha está na lixeira do Atlas (a tarefa ficaria presa a ele); restaure lá ou, se já restaurou, use "Conferir no Atlas" na aba Atlas e rode de novo — nada foi enviado ao Atlas';
+  'o cadastro ligado a esta ficha está na lixeira do Atlas Gestor (a tarefa ficaria presa a ele); restaure lá ou, se já restaurou, use "Conferir no Atlas Gestor" na aba Atlas Gestor e rode de novo — nada foi enviado ao Atlas Gestor';
 
 async function conectar(
   admin: SupabaseClient,
@@ -132,7 +132,7 @@ async function vinculoDaFicha(
       .eq("contact_id", contactId),
     ambiente,
   ).maybeSingle();
-  if (error) throw new Error("não foi possível ler o vínculo com o Atlas no CRM");
+  if (error) throw new Error("não foi possível ler o vínculo com o Atlas Gestor no CRM");
   if (!data || data.atlas_tenant_id !== tenantId) return null;
   return {
     id: String(data.id),
@@ -206,51 +206,51 @@ const O_QUE_CONFERIR: Record<AcaoNova, string> = {
  * que é código, não texto) e os NOSSOS nomes. Nunca `e.message`.
  */
 export function motivoDaAcao(e: unknown, acao: AcaoNova, contexto: { item?: string } = {}): string {
-  if (!(e instanceof AtlasError)) return "erro inesperado ao falar com o Atlas";
+  if (!(e instanceof AtlasError)) return "erro inesperado ao falar com o Atlas Gestor";
   switch (e.codigo) {
     case "chave_invalida":
-      return "a chave do Atlas foi recusada — reconecte em Configurações → Integrações";
+      return "a chave do Atlas Gestor foi recusada — reconecte em Configurações → Integrações";
     case "api_fora_do_plano":
-      return "o plano do escritório no Atlas não inclui a API";
+      return "o plano do escritório no Atlas Gestor não inclui a API";
     case "sem_permissao": {
       const p = permissaoDaFalha(e, acao);
       const rotulo = ROTULO_DA_PERMISSAO[p];
       const descricao = (DESCRICAO_DA_PERMISSAO_OPCIONAL as Readonly<Record<string, string>>)[p];
       const nome = rotulo ? `"${rotulo}" (${p})` : descricao ? `de ${descricao} (${p})` : `"${p}"`;
-      return `a permissão ${nome} está desligada no Atlas; ligue-a lá e rode de novo`;
+      return `a permissão ${nome} está desligada no Atlas Gestor; ligue-a lá e rode de novo`;
     }
     case "validacao":
-      return `o Atlas recusou os dados (validação${e.campos.length > 0 ? `: ${e.campos.join(", ")}` : ""})`;
+      return `o Atlas Gestor recusou os dados (validação${e.campos.length > 0 ? `: ${e.campos.join(", ")}` : ""})`;
     case "limite":
-      return "o Atlas pediu para esperar (limite de pedidos por minuto); rode de novo em instantes";
+      return "o Atlas Gestor pediu para esperar (limite de pedidos por minuto); rode de novo em instantes";
     case "idempotencia":
       switch (e.codigoDoAtlas) {
         case "idempotency_outcome_unknown":
-          return "o Atlas não sabe se o pedido anterior entrou; confira no Atlas antes de rodar de novo";
+          return "o Atlas Gestor não sabe se o pedido anterior entrou; confira no Atlas Gestor antes de rodar de novo";
         case "idempotency_conflict":
-          return "o mesmo pedido já foi feito com outros dados; confira no Atlas";
+          return "o mesmo pedido já foi feito com outros dados; confira no Atlas Gestor";
         case "idempotency_key_invalid":
-          return "erro do CRM na chave do pedido ao Atlas; avise o suporte do CRM";
+          return "erro do CRM na chave do pedido ao Atlas Gestor; avise o suporte do CRM";
         default:
-          return "o Atlas ainda está processando este pedido; confira no Atlas antes de rodar de novo";
+          return "o Atlas Gestor ainda está processando este pedido; confira no Atlas Gestor antes de rodar de novo";
       }
     case "acao_desconhecida":
-      return "a API do Atlas ainda não tem esta ação (atualização pendente no Atlas)";
+      return "a API do Atlas Gestor ainda não tem esta ação (atualização pendente no Atlas Gestor)";
     case "fora_do_ar":
     case "rede":
-      return `o Atlas não respondeu; confira no Atlas ${O_QUE_CONFERIR[acao]} antes de rodar de novo`;
+      return `o Atlas Gestor não respondeu; confira no Atlas Gestor ${O_QUE_CONFERIR[acao]} antes de rodar de novo`;
     case "resposta_inesperada":
-      return `o Atlas respondeu num formato inesperado; confira no Atlas ${O_QUE_CONFERIR[acao]} antes de rodar de novo`;
+      return `o Atlas Gestor respondeu num formato inesperado; confira no Atlas Gestor ${O_QUE_CONFERIR[acao]} antes de rodar de novo`;
     case "item_nao_encontrado":
-      return `o checklist de onboarding deste cliente no Atlas não tem o item "${contexto.item ?? ""}"; confira o texto lá e ajuste o passo`;
+      return `o checklist de onboarding deste cliente no Atlas Gestor não tem o item "${contexto.item ?? ""}"; confira o texto lá e ajuste o passo`;
     case "ambiguo":
-      return "há mais de um item com esse texto no checklist deste cliente no Atlas; renomeie lá e rode de novo";
+      return "há mais de um item com esse texto no checklist deste cliente no Atlas Gestor; renomeie lá e rode de novo";
     case "sem_admin":
-      return "o escritório no Atlas não tem administrador ativo para receber a tarefa";
+      return "o escritório no Atlas Gestor não tem administrador ativo para receber a tarefa";
     case "nao_encontrado":
-      return "o cliente não foi encontrado no Atlas";
+      return "o cliente não foi encontrado no Atlas Gestor";
     default:
-      return "o Atlas devolveu um erro";
+      return "o Atlas Gestor devolveu um erro";
   }
 }
 
@@ -265,7 +265,7 @@ async function falhou(
 ): Promise<never> {
   if (e instanceof AtlasError) {
     await registrarFalha(admin, accountId, ambiente, e, acao);
-    throw new Error(`Atlas: ${motivoDaAcao(e, acao, contexto)}`);
+    throw new Error(`Atlas Gestor: ${motivoDaAcao(e, acao, contexto)}`);
   }
   throw e;
 }
@@ -352,7 +352,7 @@ export function montarAtualizacao(f: FontesDoAtualizar): { dados: DadosDoCliente
       continue;
     }
     const dia = diaParaAtlas(bruto);
-    if (!dia) throw new Error(`a data ${nome} na ficha não é uma data válida; corrija o campo e rode de novo — nada foi enviado ao Atlas`);
+    if (!dia) throw new Error(`a data ${nome} na ficha não é uma data válida; corrija o campo e rode de novo — nada foi enviado ao Atlas Gestor`);
     dados[campo] = dia;
     enviados.push(rotulo);
   }
@@ -383,7 +383,7 @@ export function montarAtualizacao(f: FontesDoAtualizar): { dados: DadosDoCliente
     else {
       const digitos = bruto.replace(/\D/g, "");
       if (digitos.length !== 11 && digitos.length !== 14) {
-        throw new Error("o documento na ficha não é CPF (11 dígitos) nem CNPJ (14 dígitos); corrija o campo e rode de novo — nada foi enviado ao Atlas");
+        throw new Error("o documento na ficha não é CPF (11 dígitos) nem CNPJ (14 dígitos); corrija o campo e rode de novo — nada foi enviado ao Atlas Gestor");
       }
       dados.docId = digitos;
       enviados.push("documento");
@@ -400,7 +400,7 @@ export async function atualizarClienteNoAtlas(admin: SupabaseClient, entrada: En
   const naoAlterados = vazios.length > 0 ? `; vazios na ficha, não alterados: ${vazios.join(", ")}` : "";
   // Tudo o que foi escolhido está vazio na ficha: o Atlas recusaria o pedido
   // sem campo ("No updatable fields"), e não há o que mudar.
-  if (enviados.length === 0) return `nada a atualizar no Atlas: os campos escolhidos estão vazios na ficha (${vazios.join(", ")})`;
+  if (enviados.length === 0) return `nada a atualizar no Atlas Gestor: os campos escolhidos estão vazios na ficha (${vazios.join(", ")})`;
 
   const ambiente = ambienteDoAtlas();
   const { atlas, tenantId } = await conectar(admin, accountId, ambiente, opcoes);
@@ -419,7 +419,7 @@ export async function atualizarClienteNoAtlas(admin: SupabaseClient, entrada: En
       }
       if (estaPausado(atual.status)) {
         throw new Error(
-          "o cadastro deste cliente no Atlas está suspenso; o Atlas manda no contrato: reative-o lá se for o caso — nada foi alterado no Atlas",
+          "o cadastro deste cliente no Atlas Gestor está suspenso; o Atlas Gestor manda no contrato: reative-o lá se for o caso — nada foi alterado no Atlas Gestor",
         );
       }
     }
@@ -458,7 +458,7 @@ export async function atualizarClienteNoAtlas(admin: SupabaseClient, entrada: En
       );
       if (error) {
         throw new Error(
-          "a situação foi gravada no Atlas, mas o vínculo não foi atualizado no CRM (a próxima leitura pode tratar como mudança feita no Atlas)",
+          "a situação foi gravada no Atlas Gestor, mas o vínculo não foi atualizado no CRM (a próxima leitura pode tratar como mudança feita no Atlas Gestor)",
         );
       }
     } else await tirarMarcaDaLixeira(admin, accountId, ambiente, vinculo);
@@ -469,7 +469,7 @@ export async function atualizarClienteNoAtlas(admin: SupabaseClient, entrada: En
       const antes = resposta.situacaoAnterior;
       return antes && ANTERIORES_LEGIVEIS.includes(antes) ? `situação (${antes} → ${dados.status})` : `situação (${dados.status})`;
     });
-    return `cliente atualizado no Atlas: ${rotulos.join(", ")}${naoAlterados}`;
+    return `cliente atualizado no Atlas Gestor: ${rotulos.join(", ")}${naoAlterados}`;
   } catch (e) {
     return falhou(admin, accountId, ambiente, e, "atlas_atualizar_cliente");
   }
@@ -501,13 +501,15 @@ export interface EntradaDaTarefa extends EntradaDaAcao {
 export async function criarTarefaNoAtlas(admin: SupabaseClient, entrada: EntradaDaTarefa, opcoes: Opcoes = {}): Promise<string> {
   const { accountId, contactId } = entrada;
   const titulo = entrada.titulo.trim();
-  if (!titulo) throw new Error("o título da tarefa ficou vazio (confira os campos inseridos) — nada foi enviado ao Atlas");
+  if (!titulo) throw new Error("o título da tarefa ficou vazio (confira os campos inseridos) — nada foi enviado ao Atlas Gestor");
   const descricao = entrada.descricao.trim();
+  // O nome do sistema na reserva: o da marca da instalação, lido agora.
+  const reserva = descricao ? "" : `Aberta pela automação "${entrada.nomeDaAutomacao}" no ${(await obterMarca()).nome}`;
   const dados: Parameters<AcoesNoAtlas["criarTarefa"]>[0] = {
     title: recortarUtf16(titulo, MAX_TITULO),
     // Sem descrição, o Atlas grava o inglês "Created via API".
     // O nome da automação não tem teto: a reserva passa pelo MESMO corte (Codex, #365).
-    description: recortarUtf16(descricao || `Aberta pela automação "${entrada.nomeDaAutomacao}" no ${NOME_DO_APP}`, MAX_DESCRICAO),
+    description: recortarUtf16(descricao || reserva, MAX_DESCRICAO),
     priority: entrada.prioridade,
   };
   // O dia no fuso do escritório (a régua do `create_task` do CRM), nunca
@@ -523,8 +525,8 @@ export async function criarTarefaNoAtlas(admin: SupabaseClient, entrada: Entrada
     await atlas.criarTarefa(dados, `${entrada.chaveDeIdempotencia}:tarefa`);
     await registrarConferencia(admin, accountId, null, ambiente);
     return vinculo
-      ? "tarefa criada no Atlas (pedida com o cliente ligado à ficha)"
-      : "tarefa criada no Atlas sem cliente: a ficha não está ligada ao Atlas";
+      ? "tarefa criada no Atlas Gestor (pedida com o cliente ligado à ficha)"
+      : "tarefa criada no Atlas Gestor sem cliente: a ficha não está ligada ao Atlas Gestor";
   } catch (e) {
     return falhou(admin, accountId, ambiente, e, "atlas_criar_tarefa");
   }
@@ -581,23 +583,23 @@ export async function enviarTranscricaoAoAtlas(admin: SupabaseClient, entrada: E
       .order("realizada_em", { ascending: false })
       .limit(5);
     // Erro de leitura nunca vira "não há transcrição" (CLAUDE.md 8b).
-    if (error) throw new Error("não foi possível ler as transcrições no CRM — nada foi enviado ao Atlas");
+    if (error) throw new Error("não foi possível ler as transcrições no CRM — nada foi enviado ao Atlas Gestor");
     // A desvinculada à mão não é deste cliente (hoje ela já sai pelo `contact_id` nulo).
     const reuniao = ((data ?? []) as ReuniaoLida[]).find((r) => r.vinculo_origem !== "desvinculada");
     if (!reuniao) {
       throw new Error(
-        `não há transcrição de reunião deste cliente nas últimas ${entrada.idadeMaximaHoras} h (tl;dv ou colada na aba Reuniões) — nada foi enviado ao Atlas`,
+        `não há transcrição de reunião deste cliente nas últimas ${entrada.idadeMaximaHoras} h (tl;dv ou colada na aba Reuniões) — nada foi enviado ao Atlas Gestor`,
       );
     }
     const quando = dataEHora(reuniao.realizada_em);
     if (reuniao.status === "pendente") {
       throw new Error(
-        `a transcrição da reunião de ${quando} ainda não ficou pronta no tl;dv; rode de novo mais tarde (ou ponha um "Aguardar" antes) — nada foi enviado ao Atlas`,
+        `a transcrição da reunião de ${quando} ainda não ficou pronta no tl;dv; rode de novo mais tarde (ou ponha um "Aguardar" antes) — nada foi enviado ao Atlas Gestor`,
       );
     }
     if (reuniao.status !== "pronta" || !textoOuNulo(reuniao.texto)) {
       throw new Error(
-        `a reunião de ${quando} ficou sem transcrição${reuniao.status === "falhou" ? " (a busca no tl;dv falhou)" : ""}; cole a transcrição na aba Reuniões ou rode sem este passo — nada foi enviado ao Atlas`,
+        `a reunião de ${quando} ficou sem transcrição${reuniao.status === "falhou" ? " (a busca no tl;dv falhou)" : ""}; cole a transcrição na aba Reuniões ou rode sem este passo — nada foi enviado ao Atlas Gestor`,
       );
     }
     // ⚠️ O tl;dv liga a reunião à ficha pelo E-MAIL do convidado — casamento
@@ -610,19 +612,19 @@ export async function enviarTranscricaoAoAtlas(admin: SupabaseClient, entrada: E
         // grava `manual` quando alguém vincula de novo (tirar e vincular).
         `a reunião de ${quando} foi ligada a esta ficha pelo e-mail do convidado; se ela é mesmo deste cliente, tire-a da ficha e vincule de novo ` +
           '(na aba Reuniões: abra a reunião, "Tirar deste cliente" e depois "Do tl;dv"; ou em Configurações → Integrações → tl;dv: o X e depois "Vincular cliente") ' +
-          'ou marque no passo "Aceitar reunião ligada pelo e-mail do convidado" — nada foi enviado ao Atlas',
+          'ou marque no passo "Aceitar reunião ligada pelo e-mail do convidado" — nada foi enviado ao Atlas Gestor',
       );
     }
     const texto = reuniao.texto as string;
     if (bytesUtf8(texto) > TETO_TRANSCRICAO_BYTES) {
       // Sem cortar: a análise de meia reunião engana.
-      throw new Error(`a transcrição da reunião de ${quando} passa do teto do Atlas (300 KB); nada foi enviado ao Atlas`);
+      throw new Error(`a transcrição da reunião de ${quando} passa do teto do Atlas Gestor (300 KB); nada foi enviado ao Atlas Gestor`);
     }
 
-    const cabecalho = `Reunião "${reuniao.titulo}" de ${quando} (${reuniao.origem === "manual" ? "colada à mão" : "tl;dv"}), enviada pelo ${NOME_DO_APP}`;
+    const cabecalho = `Reunião "${reuniao.titulo}" de ${quando} (${reuniao.origem === "manual" ? "colada à mão" : "tl;dv"}), enviada pelo ${(await obterMarca()).nome}`;
     const doOperador = textoOuNulo(entrada.notasDoOperador);
     const base = [cabecalho, doOperador].filter((x): x is string => !!x).join("\n\n");
-    if (bytesUtf8(base) > TETO_NOTAS_BYTES) throw new Error("as notas do passo passam do teto do Atlas (50 KB); encurte o texto — nada foi enviado ao Atlas");
+    if (bytesUtf8(base) > TETO_NOTAS_BYTES) throw new Error("as notas do passo passam do teto do Atlas Gestor (50 KB); encurte o texto — nada foi enviado ao Atlas Gestor");
     let notas = base;
     const daReuniao = entrada.incluirNotasDaReuniao ? textoOuNulo(reuniao.notas) : null;
     if (daReuniao) {
@@ -644,7 +646,7 @@ export async function enviarTranscricaoAoAtlas(admin: SupabaseClient, entrada: E
     await registrarConferencia(admin, accountId, null, ambiente);
     const titulo = recortarUtf16(reuniao.titulo, 60);
     return (
-      `transcrição da reunião "${titulo}" de ${quando.slice(0, 5)} enviada ao Atlas (aguarda análise no Diagnóstico)` +
+      `transcrição da reunião "${titulo}" de ${quando.slice(0, 5)} enviada ao Atlas Gestor (aguarda análise no Diagnóstico)` +
       (peloEmail ? " — reunião ligada à ficha pelo e-mail do convidado" : "")
     );
   } catch (e) {
@@ -674,7 +676,7 @@ const SITUACAO_DO_ITEM_EM_PORTUGUES: Record<SituacaoDoOnboarding, string> = {
 export async function atualizarOnboardingNoAtlas(admin: SupabaseClient, entrada: EntradaDoOnboarding, opcoes: Opcoes = {}): Promise<string> {
   const { accountId, contactId } = entrada;
   const item = entrada.item.trim();
-  if (!item) throw new Error("o passo não diz qual item do checklist atualizar — nada foi enviado ao Atlas");
+  if (!item) throw new Error("o passo não diz qual item do checklist atualizar — nada foi enviado ao Atlas Gestor");
   const observacao = entrada.observacao.trim();
   // Vazia fica FORA (nunca `null`, que apagaria a observação lá). O teto do
   // Atlas conta unidades UTF-16 (`.length`), não caracteres.
@@ -707,7 +709,7 @@ export async function atualizarOnboardingNoAtlas(admin: SupabaseClient, entrada:
       ...(dados.status ? [`marcado como ${SITUACAO_DO_ITEM_EM_PORTUGUES[dados.status as SituacaoDoOnboarding]}`] : []),
       ...(dados.observation ? ["observação atualizada"] : []),
     ];
-    return `item "${recortarUtf16(item, 60)}" do onboarding atualizado no Atlas: ${partes.join(", ")}`;
+    return `item "${recortarUtf16(item, 60)}" do onboarding atualizado no Atlas Gestor: ${partes.join(", ")}`;
   } catch (e) {
     return falhou(admin, accountId, ambiente, e, "atlas_atualizar_onboarding", { item: recortarUtf16(item, 60) });
   }

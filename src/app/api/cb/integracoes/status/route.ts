@@ -10,12 +10,18 @@ import { listChannels } from '@/lib/cb-channels/repo';
 import { validateAiCredentials } from '@/lib/ai/validate';
 import { embedTexts, EMBEDDING_MODEL } from '@/lib/ai/embeddings';
 import { MODELO_TRANSCRICAO } from '@/lib/transcricao/transcrever';
-import { MODELO_DE_LEITURA, MODELO_TRANSCRICAO_OPENAI } from '@/lib/transcricao/leitores';
+import {
+  MODELO_DE_LEITURA,
+  MODELO_TRANSCRICAO_OPENAI,
+  ORDEM_DA_LEITURA,
+  ORDEM_DA_TRANSCRICAO,
+} from '@/lib/transcricao/leitores';
 import { AiError, type AiProvider } from '@/lib/ai/types';
 import { AI_PROVIDER_DEFAULT_MODEL } from '@/lib/ai/defaults';
 import { lerChave, lerChaveDeEmbeddings, lerEstado } from '@/lib/ia-chaves/repo';
 import { listarAgentes } from '@/lib/ia-agentes/repo';
 import {
+  leitoresDaConta,
   montarCartoes,
   type ChaveParaMontar,
   type ProviderId,
@@ -334,8 +340,21 @@ export async function GET(request: Request) {
       { leitura: MODELO_DE_LEITURA, transcricaoOpenai: MODELO_TRANSCRICAO_OPENAI }
     );
 
+    // Quem lê a mídia NESTA conta (o quadro ao lado da transcrição e da
+    // leitura): a régua de `escolherLeitor` sobre o estado das chaves — a da
+    // OpenAI "só da base" não lê. Limite conhecido: a chave que não decifra
+    // só aparece no ping (o estado diz que ela existe).
+    const leitores = leitoresDaConta(
+      Object.fromEntries(
+        estado.map((e) => [e.provedor, e.existe && !(e.provedor === 'openai' && e.soDaBase)])
+      ) as Record<ProviderId, boolean>,
+      ORDEM_DA_LEITURA,
+      ORDEM_DA_TRANSCRICAO
+    );
+
     return NextResponse.json({
       cartoes,
+      leitores,
       testadoEm: pingar ? new Date().toISOString() : null,
     });
   } catch (err) {

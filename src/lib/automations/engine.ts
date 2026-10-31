@@ -48,6 +48,7 @@ import { alvoDeEnvio } from '@/lib/whatsapp/alvo-de-envio';
 import { ehGatilhoDaRegua, PASSOS_QUE_FALAM_COM_O_CONTATO } from '@/lib/asaas/regua';
 import { GATILHO_DO_ATLAS, soRodaPeloDisparador } from './so-pelo-disparador';
 import { rodouNoPrazo } from './nao-repetir';
+import { gravarMotivoDoPasso, motivoDoPasso } from './motivo-do-passo';
 
 /**
  * Os passos que calam o agente de IA quando rodam por causa da mensagem do
@@ -132,7 +133,11 @@ import {
   execucaoJaInterrompida,
   marcarExecucoesInterrompidas,
 } from './interrupcao';
-import { comPassoDaFila, conferirRetomada } from './retomada';
+import {
+  MOTIVO_RETOMADA_INTERROMPIDA,
+  comPassoDaFila,
+  conferirRetomada,
+} from './retomada';
 import {
   desfechoDoEscopo,
   desfechoDoRetorno,
@@ -542,8 +547,9 @@ export async function dispararAutomacoes(
 export async function resumePendingExecution(pending: {
   id: string;
   automation_id: string;
-  /** Audit-only; the automation row carries account_id for tenancy. */
-  user_id: string;
+  /** Audit-only; the automation row carries account_id for tenancy.
+   *  Nula quando o login do autor é apagado (1116). */
+  user_id: string | null;
   /** Account-scoped lookups read from the automation row, so this
    *  field is just here to mirror the row shape and keep the cron's
    *  pass-through self-documenting. */
@@ -797,6 +803,118 @@ export async function resumePendingExecution(pending: {
 }
 
 /**
+ * Quanto uma retomada reivindicada pode ficar `running` antes de ser dada como
+ * MORTA (1106). Uma retomada roda os passos até a próxima espera — segundos
+ * (o `-m 50` do agendador só desiste da RESPOSTA: o processo segue). O teto
+ * tem de passar da PIOR conta real (CLAUDE.md, 8e: processamento menor que o
+ * recolhimento): a Evolution corta cada chamada em 15 s, mas os envios da Meta
+ * (`meta-api.ts`) não têm teto próprio — o padrão do undici espera até ~5 min
+ * por resposta —, então meia dúzia de envios lentos já passaria de 15 min. A
+ * retomada viva que passe disto é recolhida como falha e SEGUE rodando (nada a
+ * para); a escrita dela depois não desfaz o `failed` (`markPending` é cercado).
+ */
+export const TETO_DA_RETOMADA_MS = 60 * 60_000;
+
+/**
+ * A `running` reivindicada pelo código ANTERIOR à 1106 não tem `claimed_at`:
+ * só o vencimento (`run_at`) diz há quanto tempo ela pode estar lá, e uma fila
+ * atrasada (agendador parado) reivindica espera vencida há horas — daí a folga
+ * de um dia.
+ */
+export const TETO_DA_ESPERA_SEM_CARIMBO_MS = 24 * 60 * 60_000;
+
+/**
+ * Recolhe as esperas PRESAS em `running` (1106): o cron as reivindicou e o
+ * processo que as retomava morreu no meio (deploy, reinício do contêiner).
+ * Até aqui a linha ficava `running` para sempre: a execução sumia em silêncio,
+ * a aba dizia que ela ainda rodava e a guarda de espera viva de `fecharLog`
+ * nunca publicava a hora de fim das irmãs.
+ *
+ * ⚠️⚠️ NADA é re-executado — ao contrário do #672 do original, que devolve a
+ * linha à fila: o processo pode ter morrido logo DEPOIS de mandar a mensagem,
+ * e refazer a retomada a mandaria de novo (envio que pode ter saído nunca se
+ * repete — CLAUDE.md, 8e). A linha vira FALHA VISÍVEL pelo mesmo caminho da
+ * espera que não pode retomar (`conferirRetomada` → `parar`): `failed`, a
+ * linha do motor com o motivo e `fecharLog('falhou')`. Só ESTA continuação
+ * para; as irmãs da execução seguem cada uma pela sua espera.
+ *
+ * ⚠️ O UPDATE é a CERCA: `status = 'running'` e o corte de tempo no WHERE.
+ * Retomada viva dentro do teto não é tocada, e dois ciclos sobrepostos nunca
+ * fecham a mesma linha (para o segundo UPDATE ela já não casa). Só o que o
+ * UPDATE DEVOLVEU é fechado.
+ *
+ * Nunca lança: roda em `after()` no topo do cron.
+ */
+export async function recolherEsperasPresas(
+  agora: Date = new Date()
+): Promise<number> {
+  try {
+    const db = supabaseAdmin();
+    const comCarimbo = await db
+      .from('automation_pending_executions')
+      .update({ status: 'failed' })
+      .eq('status', 'running')
+      .lt('claimed_at', new Date(agora.getTime() - TETO_DA_RETOMADA_MS).toISOString())
+      .select('id, log_id');
+    // As do código anterior à 1106: `.lt()` nunca casa NULL, e sem esta
+    // segunda cerca elas ficariam presas para sempre.
+    const semCarimbo = await db
+      .from('automation_pending_executions')
+      .update({ status: 'failed' })
+      .eq('status', 'running')
+      .is('claimed_at', null)
+      .lt(
+        'run_at',
+        new Date(agora.getTime() - TETO_DA_ESPERA_SEM_CARIMBO_MS).toISOString()
+      )
+      .select('id, log_id');
+    for (const { error } of [comCarimbo, semCarimbo]) {
+      if (error) {
+        console.error('[automations] recolher esperas presas falhou:', error.message);
+      }
+    }
+    const presas = [
+      ...((comCarimbo.data as { id: string; log_id: string | null }[] | null) ?? []),
+      ...((semCarimbo.data as { id: string; log_id: string | null }[] | null) ?? []),
+    ];
+    if (presas.length === 0) return 0;
+    console.warn(
+      '[automations] esperas presas em running recolhidas como falha:',
+      presas.map((p) => p.id)
+    );
+    // UM fechamento por EXECUÇÃO: duas continuações presas do mesmo registro
+    // (dois ramos) dariam duas linhas iguais no "Já rodou".
+    const logs = [
+      ...new Set(presas.map((p) => p.log_id).filter((id): id is string => Boolean(id))),
+    ];
+    for (const logId of logs) {
+      try {
+        await appendResults(
+          logId,
+          [
+            {
+              step_id: '',
+              step_type: 'wait',
+              status: 'failed',
+              detail: MOTIVO_RETOMADA_INTERROMPIDA,
+            },
+          ],
+          'failed',
+          MOTIVO_RETOMADA_INTERROMPIDA
+        );
+        await fecharLog(logId, 'falhou');
+      } catch (err) {
+        console.error('[automations] fechar a execução presa estourou:', logId, err);
+      }
+    }
+    return presas.length;
+  } catch (err) {
+    console.error('[automations] recolher esperas presas estourou:', err);
+    return 0;
+  }
+}
+
+/**
  * Roda UMA automação, por id — o passo `run_automation` (migration 936).
  *
  * Não passa por `triggerMatches` nem pelos recortes de canal/etapa, e isso é
@@ -857,7 +975,7 @@ export async function runAutomationById(args: {
       ok: false,
       detail:
         alvo.trigger_type === GATILHO_DO_ATLAS
-          ? 'a automação "Situação mudou no Atlas" só roda pela leitura do Atlas'
+          ? 'a automação "Situação mudou no Atlas Gestor" só roda pela leitura do Atlas Gestor'
           : 'a régua de cobrança do Asaas só roda pela varredura do Asaas',
     };
   }
@@ -2176,8 +2294,20 @@ async function runStep(
       args.context.deal_status_fixado = (r.status_gravado as DealStatus | null) ?? null;
       if (escutaODestino && etapaAntes !== cfg.stage_id) args.aoFalar?.();
 
+      // O motivo do passo (1112, Fase 3 dos motivos): DEPOIS do movimento,
+      // e a falha vira nota no registro, nunca passo falho — ver
+      // `motivo-do-passo.ts`.
+      const nota = ehMover
+        ? await gravarMotivoDoPasso(db, {
+            accountId: args.automation.account_id,
+            contactId: args.contactId ?? null,
+            stageId: cfg.stage_id as string,
+            motivo: motivoDoPasso(cfg),
+          })
+        : '';
+
       return ehMover
-        ? `negócio movido para ${cfg.stage_id}`
+        ? `negócio movido para ${cfg.stage_id}${nota}`
         : `negócio marcado ${cfg.status}`;
     }
 
@@ -2708,10 +2838,10 @@ async function runStep(
     case 'atlas_criar_cliente': {
       const cfg = step.step_config as AtlasCriarClienteStepConfig;
       if (!args.contactId)
-        throw new Error('criar cliente no Atlas: a execução não tem um contato');
+        throw new Error('criar cliente no Atlas Gestor: a execução não tem um contato');
       const tipo = cfg.tipo_de_contrato ?? 'fixo';
       if (!(TIPOS_DE_CONTRATO as readonly string[]).includes(tipo))
-        throw new Error('criar cliente no Atlas: tipo de contrato desconhecido');
+        throw new Error('criar cliente no Atlas Gestor: tipo de contrato desconhecido');
       const tipoDeContrato = tipo as TipoDeContrato;
 
       // Sem registro não há chave de idempotência estável: nada vai ao Atlas.
@@ -2720,10 +2850,10 @@ async function runStep(
       // sobre um cliente que não foi criado seria mentira.
       if (!args.logId) {
         if (args.triggerEvent === 'previa') {
-          return `prévia: criaria o cliente no Atlas (ou reativaria o cadastro encerrado), contrato ${tipoDeContrato} — nada foi enviado`;
+          return `prévia: criaria o cliente no Atlas Gestor (ou reativaria o cadastro encerrado), contrato ${tipoDeContrato} — nada foi enviado`;
         }
         throw new Error(
-          'criar cliente no Atlas: a execução não tem registro (sem chave de idempotência); nada foi enviado ao Atlas'
+          'criar cliente no Atlas Gestor: a execução não tem registro (sem chave de idempotência); nada foi enviado ao Atlas Gestor'
         );
       }
 
@@ -2737,11 +2867,11 @@ async function runStep(
       } catch (err) {
         console.error('[automations] atlas_criar_cliente: leitura do CRM falhou', err);
         throw new Error(
-          'criar cliente no Atlas: a leitura dos dados do cliente no CRM falhou; nada foi enviado ao Atlas'
+          'criar cliente no Atlas Gestor: a leitura dos dados do cliente no CRM falhou; nada foi enviado ao Atlas Gestor'
         );
       }
       if (!dados.contato)
-        throw new Error('criar cliente no Atlas: a ficha do cliente não foi encontrada nesta conta');
+        throw new Error('criar cliente no Atlas Gestor: a ficha do cliente não foi encontrada nesta conta');
 
       // ⚠️ Campo ESCOLHIDO que sumiu do catálogo (apagado, ou mudou de tipo)
       // FALHA o passo: tratado como "não escolhido", o Atlas receberia a
@@ -2759,7 +2889,7 @@ async function runStep(
           .eq('account_id', args.automation.account_id)
           .in('field_key', chavesEscolhidas);
         if (erroDoCatalogo)
-          throw new Error('criar cliente no Atlas: a leitura dos campos de data falhou; nada foi enviado ao Atlas');
+          throw new Error('criar cliente no Atlas Gestor: a leitura dos campos de data falhou; nada foi enviado ao Atlas Gestor');
         const deData = new Set(
           ((defs ?? []) as { field_key: string; field_type: string }[])
             .filter((d) => d.field_type === TIPO_DATA)
@@ -2768,7 +2898,7 @@ async function runStep(
         const sumido = chavesEscolhidas.find((k) => !deData.has(k));
         if (sumido)
           throw new Error(
-            `criar cliente no Atlas: o campo de data "${sumido}" escolhido no passo não existe mais nesta conta (ou não é de data); ajuste o passo — nada foi enviado ao Atlas`
+            `criar cliente no Atlas Gestor: o campo de data "${sumido}" escolhido no passo não existe mais nesta conta (ou não é de data); ajuste o passo — nada foi enviado ao Atlas Gestor`
           );
       }
       const campo = (chave: string | null | undefined): string | null => {
@@ -2820,13 +2950,13 @@ async function runStep(
     case 'atlas_atualizar_cliente': {
       const cfg = step.step_config as AtlasAtualizarClienteStepConfig;
       if (!args.contactId)
-        throw new Error('atualizar cliente no Atlas: a execução não tem um contato');
+        throw new Error('atualizar cliente no Atlas Gestor: a execução não tem um contato');
       const situacao = cfg.situacao ?? null;
       if (situacao !== null && !(SITUACOES_ESCREVIVEIS as readonly string[]).includes(situacao))
-        throw new Error('atualizar cliente no Atlas: situação desconhecida');
+        throw new Error('atualizar cliente no Atlas Gestor: situação desconhecida');
       const tipo = cfg.tipo_de_contrato ?? null;
       if (tipo !== null && !(TIPOS_DE_CONTRATO as readonly string[]).includes(tipo))
-        throw new Error('atualizar cliente no Atlas: tipo de contrato desconhecido');
+        throw new Error('atualizar cliente no Atlas Gestor: tipo de contrato desconhecido');
       const chave = (k: unknown) => (typeof k === 'string' ? k.trim() : '');
       const datas = {
         primeiroContato: chave(cfg.campo_primeiro_contato),
@@ -2843,10 +2973,10 @@ async function runStep(
 
       if (!args.logId) {
         if (args.triggerEvent === 'previa') {
-          return 'prévia: atualizaria o cliente ligado à ficha no Atlas — nada foi enviado';
+          return 'prévia: atualizaria o cliente ligado à ficha no Atlas Gestor — nada foi enviado';
         }
         throw new Error(
-          'atualizar cliente no Atlas: a execução não tem registro (sem chave de idempotência); nada foi enviado ao Atlas'
+          'atualizar cliente no Atlas Gestor: a execução não tem registro (sem chave de idempotência); nada foi enviado ao Atlas Gestor'
         );
       }
 
@@ -2860,11 +2990,11 @@ async function runStep(
       } catch (err) {
         console.error('[automations] atlas_atualizar_cliente: leitura do CRM falhou', err);
         throw new Error(
-          'atualizar cliente no Atlas: a leitura dos dados do cliente no CRM falhou; nada foi enviado ao Atlas'
+          'atualizar cliente no Atlas Gestor: a leitura dos dados do cliente no CRM falhou; nada foi enviado ao Atlas Gestor'
         );
       }
       if (querFicha && !dados?.contato)
-        throw new Error('atualizar cliente no Atlas: a ficha do cliente não foi encontrada nesta conta');
+        throw new Error('atualizar cliente no Atlas Gestor: a ficha do cliente não foi encontrada nesta conta');
 
       // ⚠️ Campo ESCOLHIDO que sumiu do catálogo (apagado, ou mudou de tipo:
       // data ≠ `datetime`, documento ≠ texto) FALHA o passo, como no "Criar".
@@ -2877,18 +3007,18 @@ async function runStep(
           .eq('account_id', args.automation.account_id)
           .in('field_key', escolhidos);
         if (erroDoCatalogo)
-          throw new Error('atualizar cliente no Atlas: a leitura dos campos da ficha falhou; nada foi enviado ao Atlas');
+          throw new Error('atualizar cliente no Atlas Gestor: a leitura dos campos da ficha falhou; nada foi enviado ao Atlas Gestor');
         const tipoDe = new Map(
           ((defs ?? []) as { field_key: string; field_type: string }[]).map((d) => [d.field_key, d.field_type])
         );
         const dataSumida = deData.find((k) => tipoDe.get(k) !== TIPO_DATA);
         if (dataSumida)
           throw new Error(
-            `atualizar cliente no Atlas: o campo de data "${dataSumida}" escolhido no passo não existe mais nesta conta (ou não é de data); ajuste o passo — nada foi enviado ao Atlas`
+            `atualizar cliente no Atlas Gestor: o campo de data "${dataSumida}" escolhido no passo não existe mais nesta conta (ou não é de data); ajuste o passo — nada foi enviado ao Atlas Gestor`
           );
         if (documento && tipoDe.get(documento) !== TIPO_TEXTO)
           throw new Error(
-            `atualizar cliente no Atlas: o campo do documento "${documento}" escolhido no passo não existe mais nesta conta (ou não é de texto); ajuste o passo — nada foi enviado ao Atlas`
+            `atualizar cliente no Atlas Gestor: o campo do documento "${documento}" escolhido no passo não existe mais nesta conta (ou não é de texto); ajuste o passo — nada foi enviado ao Atlas Gestor`
           );
       }
 
@@ -2918,23 +3048,23 @@ async function runStep(
     case 'atlas_criar_tarefa': {
       const cfg = step.step_config as AtlasCriarTarefaStepConfig;
       if (!args.contactId)
-        throw new Error('criar tarefa no Atlas: a execução não tem um contato');
+        throw new Error('criar tarefa no Atlas Gestor: a execução não tem um contato');
       const prioridade = cfg.prioridade ?? 'normal';
       if (!(PRIORIDADES_DA_TAREFA as readonly string[]).includes(prioridade))
-        throw new Error('criar tarefa no Atlas: prioridade desconhecida');
+        throw new Error('criar tarefa no Atlas Gestor: prioridade desconhecida');
       const prazo = cfg.prazo_em_dias ?? null;
       if (prazo !== null && !(Number.isInteger(prazo) && prazo >= 0 && prazo <= PRAZO_MAXIMO_DA_TAREFA))
-        throw new Error('criar tarefa no Atlas: prazo inválido');
+        throw new Error('criar tarefa no Atlas Gestor: prazo inválido');
       if (!args.logId) {
-        if (args.triggerEvent === 'previa') return 'prévia: criaria uma tarefa no Atlas — nada foi enviado';
+        if (args.triggerEvent === 'previa') return 'prévia: criaria uma tarefa no Atlas Gestor — nada foi enviado';
         throw new Error(
-          'criar tarefa no Atlas: a execução não tem registro (sem chave de idempotência); nada foi enviado ao Atlas'
+          'criar tarefa no Atlas Gestor: a execução não tem registro (sem chave de idempotência); nada foi enviado ao Atlas Gestor'
         );
       }
       const [titulo, descricao] = await interpolarParaOAtlas(
         [cfg.titulo ?? '', cfg.descricao ?? ''],
         args,
-        'criar tarefa no Atlas'
+        'criar tarefa no Atlas Gestor'
       );
       return criarTarefaNoAtlas(db, {
         accountId: args.automation.account_id,
@@ -2952,19 +3082,19 @@ async function runStep(
     case 'atlas_enviar_transcricao': {
       const cfg = step.step_config as AtlasEnviarTranscricaoStepConfig;
       if (!args.contactId)
-        throw new Error('enviar transcrição ao Atlas: a execução não tem um contato');
+        throw new Error('enviar transcrição ao Atlas Gestor: a execução não tem um contato');
       const horas = cfg.idade_maxima_horas ?? IDADE_PADRAO_DA_TRANSCRICAO_H;
       if (!(Number.isInteger(horas) && horas >= 1 && horas <= IDADE_MAXIMA_DA_TRANSCRICAO_H))
-        throw new Error('enviar transcrição ao Atlas: janela da transcrição inválida');
+        throw new Error('enviar transcrição ao Atlas Gestor: janela da transcrição inválida');
       if (!args.logId) {
         if (args.triggerEvent === 'previa') {
-          return `prévia: enviaria ao Atlas a transcrição mais recente das últimas ${horas} h — nada foi enviado`;
+          return `prévia: enviaria ao Atlas Gestor a transcrição mais recente das últimas ${horas} h — nada foi enviado`;
         }
         throw new Error(
-          'enviar transcrição ao Atlas: a execução não tem registro (sem chave de idempotência); nada foi enviado ao Atlas'
+          'enviar transcrição ao Atlas Gestor: a execução não tem registro (sem chave de idempotência); nada foi enviado ao Atlas Gestor'
         );
       }
-      const [notas] = await interpolarParaOAtlas([cfg.notas ?? ''], args, 'enviar transcrição ao Atlas');
+      const [notas] = await interpolarParaOAtlas([cfg.notas ?? ''], args, 'enviar transcrição ao Atlas Gestor');
       return enviarTranscricaoAoAtlas(db, {
         accountId: args.automation.account_id,
         contactId: args.contactId,
@@ -2981,24 +3111,24 @@ async function runStep(
     case 'atlas_atualizar_onboarding': {
       const cfg = step.step_config as AtlasAtualizarOnboardingStepConfig;
       if (!args.contactId)
-        throw new Error('atualizar onboarding no Atlas: a execução não tem um contato');
+        throw new Error('atualizar onboarding no Atlas Gestor: a execução não tem um contato');
       const item = typeof cfg.item === 'string' ? cfg.item.trim() : '';
-      if (!item) throw new Error('atualizar onboarding no Atlas: o passo não diz qual item do checklist');
+      if (!item) throw new Error('atualizar onboarding no Atlas Gestor: o passo não diz qual item do checklist');
       const situacao = cfg.situacao ?? null;
       if (situacao !== null && !(SITUACOES_DO_ONBOARDING as readonly string[]).includes(situacao))
-        throw new Error('atualizar onboarding no Atlas: situação do item desconhecida');
+        throw new Error('atualizar onboarding no Atlas Gestor: situação do item desconhecida');
       if (!args.logId) {
         if (args.triggerEvent === 'previa') {
-          return `prévia: atualizaria o item "${item}" do onboarding no Atlas — nada foi enviado`;
+          return `prévia: atualizaria o item "${item}" do onboarding no Atlas Gestor — nada foi enviado`;
         }
         throw new Error(
-          'atualizar onboarding no Atlas: a execução não tem registro (sem chave de idempotência); nada foi enviado ao Atlas'
+          'atualizar onboarding no Atlas Gestor: a execução não tem registro (sem chave de idempotência); nada foi enviado ao Atlas Gestor'
         );
       }
       const [observacao] = await interpolarParaOAtlas(
         [typeof cfg.observacao === 'string' ? cfg.observacao : ''],
         args,
-        'atualizar onboarding no Atlas'
+        'atualizar onboarding no Atlas Gestor'
       );
       return atualizarOnboardingNoAtlas(db, {
         accountId: args.automation.account_id,
@@ -3176,7 +3306,9 @@ export async function criarTarefaComAviso(
     .from('profiles')
     .select('user_id, full_name, email')
     .eq('account_id', args.accountId)
-    .in('user_id', [autorId, args.responsavelUserId]);
+    // Autor nulo (login apagado, 1116) fica fora da lista: nulo não é um
+    // id a procurar, e `nomeDe(null)` já devolve null.
+    .in('user_id', autorId ? [autorId, args.responsavelUserId] : [args.responsavelUserId]);
   if (erroPerfis)
     throw new Error(
       `create_task: leitura de perfis falhou: ${erroPerfis.message}`
@@ -4210,7 +4342,7 @@ async function interpolarParaOAtlas(
     ]);
   } catch (err) {
     console.error(`[automations] ${passo}: leitura do CRM falhou`, err);
-    throw new Error(`${passo}: a leitura dos dados do cliente no CRM falhou; nada foi enviado ao Atlas`);
+    throw new Error(`${passo}: a leitura dos dados do cliente no CRM falhou; nada foi enviado ao Atlas Gestor`);
   }
   if (citaContato && !dados?.contato)
     throw new Error(`${passo}: a ficha do cliente não foi encontrada nesta conta`);
@@ -4824,6 +4956,16 @@ async function fecharLog(
   }
 }
 
+/**
+ * O desfecho da espera que ESTA retomada reivindicou — só chamada dentro de
+ * `resumePendingExecution`, depois da reivindicação do cron.
+ *
+ * ⚠️ CERCA DE POSSE (1106): `status = 'running'`. A retomada que passou do
+ * teto foi recolhida como `failed` (`recolherEsperasPresas`), e a escrita
+ * atrasada dela não pode virar `done` por cima — a execução já está no "Já
+ * rodou" como falha. O status basta como carimbo porque a linha é reivindicada
+ * UMA vez só: nada a devolve a `pending` (o recolhimento só a leva a `failed`).
+ */
 async function markPending(
   id: string,
   status: 'done' | 'failed' | 'cancelled'
@@ -4831,5 +4973,6 @@ async function markPending(
   await supabaseAdmin()
     .from('automation_pending_executions')
     .update({ status })
-    .eq('id', id);
+    .eq('id', id)
+    .eq('status', 'running');
 }

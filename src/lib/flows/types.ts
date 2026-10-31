@@ -340,9 +340,9 @@ export interface FlowRow {
   /** Account tenancy (NOT NULL post-017). The engine looks up active
    *  flows for inbound dispatch using this field. */
   account_id: string;
-  /** Author. Used as a default sender-of-record on engine sends and
-   *  preserved on flow_runs for log/audit display. */
-  user_id: string;
+  /** Author, preserved on flow_runs for log/audit display. Nula quando o
+   *  login de quem criou é apagado (1116, SET NULL); nenhum envio a lê. */
+  user_id: string | null;
   name: string;
   description: string | null;
   status: "draft" | "active" | "archived";
@@ -379,8 +379,8 @@ export interface FlowRunRow {
   flow_id: string;
   /** Tenancy. Matches flows.account_id; NOT NULL post-017. */
   account_id: string;
-  /** Audit. Matches the parent flow.user_id. */
-  user_id: string;
+  /** Audit. Matches the parent flow.user_id (nula pela 1116 também). */
+  user_id: string | null;
   contact_id: string | null;
   conversation_id: string | null;
   status:
@@ -460,8 +460,10 @@ export interface DispatchInboundInput {
    *  idempotency check for previously-seen inbound message_ids. */
   accountId: string;
   /** Sender-of-record for the bot's outbound prompts on engine
-   *  sends. Set by the webhook to the account owner (`donoDaConta`). */
-  userId: string;
+   *  sends. Set by the webhook to the account owner (`donoDaConta`); o
+   *  `run_flow` da automação passa o autor dela, nulo pela 1116. O run grava
+   *  `flows.user_id`, não este. */
+  userId: string | null;
   contactId: string;
   conversationId: string;
   message: ParsedInbound;

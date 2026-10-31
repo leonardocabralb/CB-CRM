@@ -2,6 +2,7 @@ import type { AccountRole } from '@/lib/auth/roles';
 import type { InteractiveMessagePayload } from '@/lib/whatsapp/interactive';
 import type { FraseDaTranscricao } from '@/lib/tldv/leitura';
 import type { ContatoCompartilhado } from '@/lib/whatsapp/cartao-de-contato';
+import type { AnexoDaNota } from '@/lib/notes/anexos';
 
 export type {
   InteractiveMessagePayload,
@@ -159,7 +160,8 @@ export interface Contact {
 
 export interface Tag {
   id: string;
-  user_id: string;
+  /** Autoria: nula quando o login de quem criou é apagado (1116, SET NULL). */
+  user_id: string | null;
   name: string;
   color: string;
   created_at: string;
@@ -255,8 +257,10 @@ export interface ContactCustomValue {
  * para alguém "consertar" a tela errada. A chave é a CONVERSA porque é a
  * única que cobre conversa 1:1 e conversa de grupo (grupo não tem contato).
  *
- * ⚠️ Não tem `updated_at` de propósito: a anotação é criada e apagada, nunca
- * editada. O banco reforça isso com `REVOKE UPDATE`.
+ * ⚠️ Não tem `updated_at`: o navegador só cria (pela rota) e apaga — o UPDATE
+ * segue revogado dele (918/920). A EDIÇÃO (Fase 3 da 1102: texto e anexos, só
+ * pelo autor) e a fixação passam pela rota `/api/cb/notes/[id]`, e quem marca
+ * a edição é `editada_em` — que serve também de cerca de versão no `PUT`.
  */
 /**
  * Um item do acervo de mídias da conta (migration 953).
@@ -310,6 +314,15 @@ export interface ConversationNote {
    * (`ON DELETE SET NULL`): ela segue como anotação comum.
    */
   resposta_de: string | null;
+  /**
+   * Os anexos (1102): `{ caminho, nome, mime, bytes }`, até 10; `[]` na
+   * anotação só de texto. O caminho é do `chat-media`, em
+   * `account-<conta>/notas/`; a URL nasce na tela. JSON do banco: a tela lê
+   * por `lerAnexosDaNota`, campo a campo.
+   */
+  anexos: AnexoDaNota[];
+  /** Quando foi editada pela última vez (Fase 3). NULL = nunca. */
+  editada_em: string | null;
   created_at: string;
 }
 
@@ -493,6 +506,13 @@ export interface Conversation {
    */
   aguardando_desde?: string | null;
   /**
+   * Quando a conversa voltou da Lixeira de contatos (migration 1097). A
+   * restauração reinsere as mensagens pelo tempo real: a que foi gravada
+   * ANTES deste instante é antiga — nem aviso do navegador, nem não lida
+   * somada. NULL = nunca esteve na Lixeira.
+   */
+  restaurada_em?: string | null;
+  /**
    * A janela de 24h da Meta POR NÚMERO (migration 993): mapa id-da-conexão →
    * instante ISO da última mensagem do CLIENTE por aquele número oficial,
    * mais a chave `sem_carimbo` (a mensagem da Meta sem carimbo: histórico,
@@ -543,6 +563,12 @@ export interface Notification {
   actor_user_id?: string;
   /** A tarefa que o aviso abre (944). Só nos tipos `task_*`. */
   task_id?: string;
+  /**
+   * A anotação que gerou o aviso (1114): o clique leva o fio até ela. Só em
+   * `note_mention`/`note_reply` gravados desde a 1114; sem FK — anotação
+   * apagada deixa o ponteiro solto, e o clique só abre a conversa.
+   */
+  note_id?: string | null;
   title: string;
   body?: string;
   read_at?: string;
@@ -738,6 +764,12 @@ export interface Message {
    * fora — leia por `lerContatosGravados`, nunca direto.
    */
   contatos?: ContatoCompartilhado[] | null;
+  /**
+   * Só na mensagem de EMPRESA recebida com opções de resposta (1111): os
+   * rótulos dos botões de resposta rápida ou dos itens da lista. JSON de fora —
+   * leia por `lerOpcoesGravadas`, nunca direto.
+   */
+  opcoes_de_resposta?: unknown;
   message_id?: string;
   status: MessageStatus;
   created_at: string;
@@ -850,7 +882,8 @@ export interface MessageReaction {
 
 export interface WhatsAppConfig {
   id: string;
-  user_id: string;
+  /** Autoria: nula quando o login de quem criou é apagado (1116, SET NULL). */
+  user_id: string | null;
   /**
    * Which transport backs this connection (migration 037). 'meta' rows
    * carry phone_number_id + access_token; 'evolution' rows carry
@@ -925,7 +958,8 @@ export interface TemplateSampleValues {
 
 export interface MessageTemplate {
   id: string;
-  user_id: string;
+  /** Autoria: nula quando o login de quem criou é apagado (1116, SET NULL). */
+  user_id: string | null;
   name: string;
   category: 'Marketing' | 'Utility' | 'Authentication';
   language?: string;
@@ -958,7 +992,8 @@ export interface MessageTemplate {
 
 export interface Pipeline {
   id: string;
-  user_id: string;
+  /** Autoria: nula quando o login de quem criou é apagado (1116, SET NULL). */
+  user_id: string | null;
   /** NOT NULL desde a 017; faltava no tipo. */
   account_id?: string;
   name: string;
@@ -1037,6 +1072,13 @@ export interface PipelineStage {
    * `desqualificacaoQueVale` (`src/lib/funil/degraus.ts`).
    */
   desqualificacao?: boolean;
+  /**
+   * O campo personalizado (Lista) que guarda o MOTIVO de quem entra na etapa
+   * (1112): a tela pergunta a quem leva o card até ela e a automação grava.
+   * Nulo = não pergunta. A conta é conferida por gatilho; o TIPO, por quem
+   * lê — leia por `campoDoMotivo` (`src/lib/pipelines/motivo-da-etapa.ts`).
+   */
+  campo_do_motivo_id?: string | null;
   created_at: string;
 }
 
@@ -1102,7 +1144,8 @@ export type RecipientStatus =
 
 export interface Broadcast {
   id: string;
-  user_id: string;
+  /** Autoria: nula quando o login de quem criou é apagado (1116, SET NULL). */
+  user_id: string | null;
   name: string;
   template_name: string;
   template_language: string;
@@ -1671,6 +1714,12 @@ export interface MoveDealStepConfig {
   stage_id?: string;
   /** Status de destino, para `set_deal_status`. */
   status?: 'open' | 'won' | 'lost';
+  /**
+   * O motivo que `move_deal_stage` grava no campo da etapa de destino
+   * (`campo_do_motivo_id`, 1112) — texto LITERAL escolhido entre as opções do
+   * campo. Gravado depois do movimento; ver `motivo-do-passo.ts`.
+   */
+  motivo?: string;
 }
 
 export interface WaitStepConfig {
@@ -2041,7 +2090,8 @@ export interface Automation {
   account_id: string;
   /** Original author. Used for log audit + outbound message
    *  sender-of-record, never for tenancy isolation. */
-  user_id: string;
+  /** Autoria: nula quando o login de quem criou é apagado (1116, SET NULL). */
+  user_id: string | null;
   name: string;
   description?: string;
   trigger_type: AutomationTriggerType;
@@ -2114,7 +2164,8 @@ export type AutomationLogDesfecho = 'concluida' | 'barrada' | 'falhou';
 export interface AutomationLog {
   id: string;
   automation_id: string;
-  user_id: string;
+  /** Autoria: nula quando o login de quem criou é apagado (1116, SET NULL). */
+  user_id: string | null;
   contact_id: string | null;
   trigger_event: string;
   steps_executed: AutomationLogStepResult[];
@@ -2156,7 +2207,8 @@ export interface QuickReply {
   /** Account tenancy key — shared across all members of the account. */
   account_id: string;
   /** Author / audit only. */
-  user_id: string;
+  /** Autoria: nula quando o login de quem criou é apagado (1116, SET NULL). */
+  user_id: string | null;
   title: string;
   kind: QuickReplyKind;
   /** Set when `kind === 'text'`. */
@@ -2194,7 +2246,24 @@ export type LeadEventType =
    * contatos antigos em `details`. Escrita pelo gatilho do livro
    * `cb_fichas_unidas`; `deal_id` e `conversation_id` nulos.
    */
-  | 'contacts_merged';
+  | 'contacts_merged'
+  /**
+   * A Lixeira de contatos (1097), escritos pelo gatilho da tabela da Lixeira
+   * (`cb_log_lixeira`); `deal_id` e `conversation_id` nulos.
+   * - `contact_trashed`: a ficha foi para a Lixeira; `details` = {item_id,
+   *   lote_id, vence_em, contagens}. Nasce apontando para a ficha, fica com
+   *   `contact_id` nulo enquanto ela está lá (o DELETE anula) e volta a
+   *   apontar na restauração.
+   * - `contact_restored`: a ficha voltou; `details` = {item_id, lote_id,
+   *   movida_em}.
+   * - `contact_purged`: saiu DE VEZ (prazo vencido ou "Excluir agora").
+   *   `contact_id` e `contact_label` NULOS, sem dado pessoal; `details` =
+   *   {contact_id, item_id, movida_em, pedido_exclusao, contagens}. Nunca
+   *   aparece numa ficha: ela não existe mais.
+   */
+  | 'contact_trashed'
+  | 'contact_restored'
+  | 'contact_purged';
 
 /**
  * De onde partiu a mudança. `sistema` é escrita server-side sem ator

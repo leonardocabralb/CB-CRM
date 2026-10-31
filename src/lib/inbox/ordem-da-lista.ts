@@ -30,6 +30,7 @@
 // ============================================================
 
 import type { Conversation, Message } from "@/types";
+import { reinseridaPelaRestauracao } from "@/lib/contacts/lixeira";
 import { PREVIA_DA_LIGACAO } from "@/lib/whatsapp/ligacoes/previa";
 
 type Ordenavel = Pick<Conversation, "id" | "last_message_at">;
@@ -77,6 +78,13 @@ export function ordenarComoOBanco<T extends Ordenavel>(lista: readonly T[]): T[]
  * poria na prévia uma mensagem que não é a última. O banco não recua
  * `last_message_at` nesses casos, então a tela também não.
  *
+ * ⚠️ A mensagem REINSERIDA pela restauração da Lixeira (1097) não mexe na
+ * linha (`reinseridaPelaRestauracao`: `gravada_em` anterior a
+ * `restaurada_em` da conversa): a volta devolve centenas de mensagens antigas
+ * pelo tempo real, e cada uma somaria uma não lida e puxaria a prévia. A
+ * linha certa chega pelo UPDATE final da conversa (a não lida do BANCO). Sem
+ * `gravada_em` vale a régua de sempre.
+ *
  * `aberta`: é a conversa que a pessoa está lendo agora — a não lida fica em
  * zero (a página zera no banco logo em seguida). No modo anônimo a página
  * passa `false` para a conversa aberta: ninguém a zera, e a lista conta como
@@ -84,10 +92,15 @@ export function ordenarComoOBanco<T extends Ordenavel>(lista: readonly T[]): T[]
  */
 export function comMensagemNova<C extends Conversation>(
   conversa: C,
-  mensagem: Pick<Message, "created_at" | "content_text"> & Partial<Pick<Message, "content_type">>,
+  mensagem: Pick<Message, "created_at" | "content_text"> &
+    Partial<Pick<Message, "content_type">> & {
+      /** O `now()` da gravação (1003); vem no `payload.new` do tempo real. */
+      gravada_em?: string | null;
+    },
   aberta: boolean,
 ): C {
   if (mensagem.content_type === "system") return conversa;
+  if (reinseridaPelaRestauracao(mensagem.gravada_em, conversa.restaurada_em, mensagem.created_at)) return conversa;
   const atual = instante(conversa.last_message_at);
   const nova = instante(mensagem.created_at);
   const avanca = atual === null || (nova !== null && nova >= atual);

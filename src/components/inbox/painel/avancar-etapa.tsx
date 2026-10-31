@@ -32,6 +32,7 @@ import {
   ESPERA_PARA_DESFAZER_MS,
   tentarAgora,
 } from '@/lib/pipelines/mover-com-desfazer';
+import type { PedidoDeMotivo } from '@/components/pipelines/janela-do-motivo';
 import type { Deal, PipelineStage } from '@/types';
 
 export function AvancarEtapa({
@@ -41,6 +42,9 @@ export function AvancarEtapa({
   contato,
   userId,
   disabled,
+  pedirMotivo,
+  contatoDoMotivo,
+  aoGravarMotivo,
 }: {
   deal: Pick<Deal, 'id' | 'stage_id' | 'pipeline_id'>;
   /** As etapas da conta (a regra recorta as do funil do negócio). */
@@ -51,6 +55,15 @@ export function AvancarEtapa({
   contato: string;
   userId: string;
   disabled?: boolean;
+  /**
+   * 1112: a janela do motivo do PAINEL (uma por painel). Destino que pede
+   * motivo abre a janela antes de agendar o movimento; o "Desfazer" vale
+   * depois dela — desfazer não apaga o motivo já gravado na ficha.
+   */
+  pedirMotivo: (pedido: PedidoDeMotivo) => boolean;
+  /** O cliente do card, para a janela; `null` sem ficha. */
+  contatoDoMotivo: PedidoDeMotivo['contato'];
+  aoGravarMotivo?: PedidoDeMotivo['aoGravarMotivo'];
 }) {
   const t = useTranslations('Inbox.sidebar.avancar');
   const movimento = useMovimentoDeEtapa(deal.id);
@@ -145,20 +158,26 @@ export function AvancarEtapa({
     const destino = porId.get(para);
     if (!destino) return;
     const nomes = { contato, etapa: destino.name };
-    agendarMovimento(
-      {
-        dealId: deal.id,
-        de: deal.stage_id,
-        para,
-        textos: {
-          movido: t('toastMovido', nomes),
-          mudou: t('toastMudou', nomes),
-          falhou: t('toastFalhou', nomes),
-          tentandoDeNovo: t('toastTentandoDeNovo', nomes),
-        },
-      },
-      userId,
-    );
+    pedirMotivo({
+      etapas: [destino],
+      contato: contatoDoMotivo,
+      aoGravarMotivo,
+      mover: () =>
+        agendarMovimento(
+          {
+            dealId: deal.id,
+            de: deal.stage_id,
+            para,
+            textos: {
+              movido: t('toastMovido', nomes),
+              mudou: t('toastMudou', nomes),
+              falhou: t('toastFalhou', nomes),
+              tentandoDeNovo: t('toastTentandoDeNovo', nomes),
+            },
+          },
+          userId,
+        ),
+    });
   };
 
   const principal = recomendacao.principal ? porId.get(recomendacao.principal) : undefined;

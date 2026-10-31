@@ -66,6 +66,25 @@ requisição, com o `redeem_invitation` rodando com o JWT da pessoa. Pino:
 - **O cadastro fechado não tranca quem JÁ tem login** (ex-membro — remover da
   equipe não apaga o login — e contas avulsas antigas). A saída é BLOQUEAR em
   Authentication → Users (decisão do operador).
+- ⚠️⚠️ **`redeem_invitation` recusa a conta atual com OUTROS membros** (1103,
+  porte do #670) e TRAVA a conta e o perfil de quem aceita (`FOR UPDATE OF p,
+  a`): o DELETE da conta velha levaria pelo CASCADE o perfil de cada colega.
+  Quem recriar a função mantém essa guarda, a trava, a do dono, a do campo
+  espelhado (`supabase.md`) e o bloco do perfil (960).
+- ⚠️⚠️ **Perfil não se insere pelo navegador** (1103): sem a policy
+  `profiles_insert` e sem INSERT para `anon`/`authenticated` — com ela, login
+  sem perfil se inseria em qualquer conta como `owner`. Perfil nasce só por
+  `handle_new_user` (SECURITY DEFINER). Tela que precise criar perfil vai por
+  rota/função definer, nunca reabre a policy.
+- ⚠️⚠️ **O dono da conta NÃO se troca pelo navegador** (gatilho
+  `enforce_account_identity_columns`, 1103): `owner_user_id`, `id` e
+  `created_at` recusam UPDATE de `authenticated`, que a policy
+  `accounts_update` deixava a qualquer admin. O dono é o carimbo do dono
+  durável (raiz, 8a), e o `created_at` elege a conta da instalação
+  (`contaDaInstalacao`, a marca de todos). Transferir é
+  `transfer_account_ownership` (SECURITY DEFINER); o servidor escreve como
+  `service_role`. Função nova que mude o dono roda como definer, nunca
+  INVOKER chamada do navegador.
 
 ### Sair: todo `auth.signOut(` declara o escopo
 

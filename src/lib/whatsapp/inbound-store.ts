@@ -16,6 +16,7 @@ import { fichaQueVenceu, findExistingContact, isUniqueViolation } from '@/lib/co
 import { routeContactToPipeline } from '@/lib/cb-channels/pipeline-routing';
 import { reopenClosedConversation } from '@/lib/conversations/reopen';
 import { marcarOrigem } from '@/lib/conversations/origem-da-escrita';
+import { reivindicarPrimeiraMensagem } from '@/lib/conversations/primeira-mensagem';
 import { dispararAutomacoes, etapaTemQuemFale } from '@/lib/automations/engine';
 import { cancelarEsperasPorResposta } from '@/lib/automations/parar-se-responder';
 import { dispatchInboundToFlows } from '@/lib/flows/engine';
@@ -81,6 +82,18 @@ export interface NormalizedInbound {
    * `contentType` é `'contact'`; `text` leva o resumo (`resumoDosContatos`).
    */
   contatos?: ContatoCompartilhado[];
+  /**
+   * As opções de RESPOSTA da mensagem de empresa (1111) →
+   * `messages.opcoes_de_resposta`: o botão de resposta rápida do modelo, o
+   * `quick_reply` da interativa, o item da lista. Só existe quando há alguma;
+   * `text` leva as mesmas opções como linhas `[opção]`.
+   */
+  opcoesDeResposta?: string[];
+  /**
+   * A mensagem é a ESCOLHA feita num botão ou numa lista (1111): como o toque
+   * em botão da Meta, não abre turno do agente de IA. Só existe quando `true`.
+   */
+  escolhaDeOpcao?: boolean;
   mediaUrl?: string | null;
   /**
    * A imagem é FIGURINHA (`stickerMessage`). Ela é gravada como `image`, e o
@@ -456,12 +469,15 @@ export async function persistInboundMessage(
   const contentType = ALLOWED_CONTENT_TYPES.has(m.contentType) ? m.contentType : 'text';
   const mimeNaChegada = m.figurinha && contentType === 'image' ? MIME_DA_FIGURINHA : null;
 
-  const { count: priorCustomerMsgCount } = await db
+  // As mensagens anteriores do cliente, contadas ANTES de gravar esta. Zero só
+  // HABILITA a reivindicação da primeira mensagem, depois do insert (1105):
+  // numa rajada, as duas mensagens contam zero antes de qualquer uma gravar.
+  // Ver `primeira-mensagem.ts`.
+  const contagemAnterior = await db
     .from('messages')
     .select('id', { count: 'exact', head: true })
     .eq('conversation_id', conversation.id)
     .eq('sender_type', 'customer');
-  const isFirstInboundMessage = (priorCustomerMsgCount ?? 0) === 0;
 
   // O canal vai NO PRÓPRIO insert (10/09/2026) — o mesmo motivo do webhook da
   // Meta: o carimbo em UPDATE separado podia falhar em silêncio e deixar a
@@ -484,6 +500,10 @@ export async function persistInboundMessage(
           ...(mimeNaChegada ? { media_type: mimeNaChegada } : {}),
           // Os contatos do cartão (1060), só nele — ver o insert do celular.
           ...(contentType === 'contact' ? { contatos: m.contatos ?? [] } : {}),
+          // As opções da mensagem de empresa (1111), só nela: a bolha as troca
+          // por botões que preparam a resposta. O celular não as grava (a
+          // mensagem é da equipe).
+          ...(m.opcoesDeResposta ? { opcoes_de_resposta: m.opcoesDeResposta } : {}),
           message_id: m.providerMessageId,
           remote_jid: m.remoteJid ?? null,
           // Endereço para AGIR sobre a mensagem quando a conversa migrou para
@@ -534,6 +554,16 @@ export async function persistInboundMessage(
   // medição mais fiel que existe: o carimbo é de quando ele apertou enviar,
   // e estamos no instante da gravação. Ver `atraso-de-entrega.ts`.
   await registrarEntrega(db, canalGravado, m.timestamp);
+
+  // A primeira mensagem do cliente se decide no BANCO, depois do insert
+  // (1105): só uma requisição da rajada leva a conversa, e a saudação do robô
+  // e da automação não sai em dobro. Falha fechada, nunca lança — ver
+  // `primeira-mensagem.ts`. Gêmeo do webhook da Meta.
+  const isFirstInboundMessage = await reivindicarPrimeiraMensagem(
+    db,
+    conversation.id,
+    contagemAnterior,
+  );
 
   // ---- downstream engines (parity with the Meta webhook) ----
   // O texto que a ingestão MONTOU (cartão de contato, mensagem de empresa)
@@ -652,9 +682,11 @@ export async function persistInboundMessage(
     texto: m.text,
     mime: mimeNaChegada,
     ehGrupo: false,
-    // A Evolution não entrega toque em botão: mensagem interativa só sai pela
-    // Meta (`evolution-transport.ts` a recusa), e o normalizador nem a lê.
-    ehRespostaDeBotao: false,
+    // Toque em botão ou escolha de lista (1111): navegação de menu, não
+    // pergunta — como na Meta (#478). O robô do CRM não manda botão pela
+    // Evolution, mas outro sistema no mesmo número pode mandar, e a escolha do
+    // cliente chega aqui com o rótulo como texto.
+    ehRespostaDeBotao: m.escolhaDeOpcao === true,
     roboConsumiu: flowConsumed,
     automacaoFalou,
   });

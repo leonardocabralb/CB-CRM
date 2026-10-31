@@ -36,6 +36,7 @@ import {
   persistGroupMessage,
   LIMITE_DOWNLOAD_AUTOMATICO_BYTES,
 } from '@/lib/cb-groups/persist';
+import { detalharGruposDaChegada } from '@/lib/cb-groups/detalhar-na-chegada';
 import {
   descreverParticipantes,
   nomesConhecidos,
@@ -228,6 +229,13 @@ export async function POST(request: Request) {
        * no lote são UMA consulta às retidas, não três.
        */
       const paraReligar = new Map<string, { telefoneJid: string; conversationId: string }>();
+      /**
+       * Grupos desta conexão que chegaram sem nome, participantes nem "somos
+       * admin?", ou com a lista conferida contra as fichas há mais de 24 h
+       * (1117) — detalhados no FIM da entrega (ver lá embaixo). Por jid: dez
+       * mensagens do mesmo grupo são UMA consulta à Evolution.
+       */
+      const gruposParaDetalhar = new Set<string>();
 
       for (const item of items) {
         try {
@@ -320,6 +328,8 @@ export async function POST(request: Request) {
                   mediaRef: item,
                 });
 
+            if (gravadaGrupo?.grupoParaDetalhar) gruposParaDetalhar.add(g.groupJid);
+
             if (gravadaGrupo && temArquivo(g.contentType)) {
               semAnexo.push({
                 item,
@@ -354,7 +364,12 @@ export async function POST(request: Request) {
               // Com o item: o eco da resposta de um agente de IA pode chegar
               // assim também (ver `jaGravada`).
               jaGravada: (id, esperar) =>
-                jaGravada(id, esperar, { accountId: route.accountId, item }),
+                jaGravada(
+                  id,
+                  esperar,
+                  { accountId: route.accountId, item },
+                  esperar ? undefined : { accountId: route.accountId },
+                ),
             });
             semAnexo.push(...chegada.anexos);
             // Ficou retida e o acervo JÁ conhece o LID (o eco entrou no meio):
@@ -369,11 +384,19 @@ export async function POST(request: Request) {
           }
 
           if (
-            await jaGravada(normalized.providerMessageId, normalized.fromMe, {
-              accountId: route.accountId,
-              item,
-            })
+            await jaGravada(
+              normalized.providerMessageId,
+              normalized.fromMe,
+              { accountId: route.accountId, item },
+              normalized.fromMe ? undefined : { accountId: route.accountId },
+            )
           ) {
+            // A CHEGADA descartada deixa rastro (o eco, que é o caso comum,
+            // não): a de 25/10/2026 sumiu sem log nem retenção, e só o log da
+            // VPS mostraria a causa.
+            if (!normalized.fromMe) {
+              console.info('[evolution-webhook] chegada já gravada nesta conta, descartada:', normalized.providerMessageId);
+            }
             continue;
           }
 
@@ -629,6 +652,22 @@ export async function POST(request: Request) {
       // anexo (já baixado). Falha vira log — a próxima mensagem tenta de novo.
       if (paraFoto.length > 0) {
         await conferirFotosDosContatos(route.accountId, route.channelId, paraFoto);
+      }
+
+      // Grupo sem detalhe (nasceu pela mensagem, ou o detalhamento falhou) ou
+      // com a conferência vencida: nome, participantes, "somos admin?" e as
+      // fichas de quem está nele, pela Evolution, ~0,8 s por grupo.
+      // ⚠️ Por ÚLTIMO, como as fotos, e nunca dentro do laço dos itens: as
+      // mensagens e os anexos do lote vêm antes do enfeite do painel. Nunca
+      // lança; o freio de 15 min por grupo mora no módulo.
+      if (gruposParaDetalhar.size > 0 && route.channelId) {
+        await detalharGruposDaChegada({
+          db: supabaseAdmin(),
+          accountId: route.accountId,
+          channelId: route.channelId,
+          jids: [...gruposParaDetalhar],
+          agora: Date.now(),
+        });
       }
     });
     return NextResponse.json({ ok: true });
@@ -1011,13 +1050,37 @@ export async function POST(request: Request) {
  * chamador que espera a corrida (`fromMe`) passa o item — há pino em
  * `route.eco.test.ts`. A religação das retidas não espera e não passa: o
  * limite está no cabeçalho de `eco.ts`.
+ *
+ * ⚠️⚠️ `recebida` (a mensagem 1:1 que CHEGA, `fromMe` falso): só conta outra
+ * mensagem que também CHEGOU, na MESMA conta. O id do WhatsApp é o mesmo nos
+ * dois lados da conversa, e entre dois números desta conta (a Bancário -
+ * Comercial escrevendo para a Bancário - Jurídico) a SAÍDA de um já está
+ * gravada com ele: sem o recorte, a chegada no outro número era descartada
+ * como repetida, sem log nem retenção (medido em 25/10/2026). O eco (`fromMe`)
+ * e o GRUPO seguem comparando com qualquer linha — dois números nossos no
+ * mesmo grupo recebem a mesma mensagem, e ela é UMA no fio do grupo.
  */
 async function jaGravada(
   providerMessageId: string,
   esperarCorrida = false,
   eco?: EcoPossivel,
+  recebida?: { accountId: string },
 ): Promise<boolean> {
   const existe = async () => {
+    if (recebida) {
+      const { data, error } = await supabaseAdmin()
+        .from('messages')
+        .select('id, conversations!inner(account_id)')
+        .eq('message_id', providerMessageId)
+        .eq('sender_type', 'customer')
+        .eq('conversations.account_id', recebida.accountId)
+        .limit(1)
+        .maybeSingle();
+      // Erro de leitura NÃO é "já gravada": a mensagem segue (a ingestão tem a
+      // própria guarda de repetição); descartá-la a perderia em silêncio.
+      if (error) console.error('[evolution-webhook] jaGravada: leitura falhou', error.code, error.message);
+      return !!data;
+    }
     const { data } = await supabaseAdmin()
       .from('messages')
       .select('id')

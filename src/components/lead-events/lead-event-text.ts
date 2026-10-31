@@ -113,6 +113,24 @@ export function useLeadEventText() {
           texto = t('contactsMerged', { name: ou(quem) });
           break;
         }
+        // A Lixeira (1097). Nenhuma frase cita a pessoa: a da exclusão
+        // definitiva não tem de quem falar (rótulo e ficha nulos — é o
+        // pedido de exclusão, B3), e "quem fez" vem do autor, como sempre.
+        case 'contactTrashed':
+          texto = t('contactTrashed');
+          break;
+        case 'contactRestored':
+          texto = t('contactRestored');
+          break;
+        case 'contactPurged':
+          texto = t('contactPurged');
+          break;
+        case 'contactPurgedRequest':
+          texto = t('contactPurgedRequest');
+          break;
+        case 'contactPurgedExpired':
+          texto = t('contactPurgedExpired');
+          break;
         default:
           texto = chave;
       }

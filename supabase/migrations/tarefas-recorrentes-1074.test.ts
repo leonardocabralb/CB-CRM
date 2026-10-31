@@ -58,7 +58,11 @@ describe('1074 — tarefa recorrente', () => {
   });
 
   it('o ciclo das agendadas carrega a geração, em after() com callback', () => {
+    // Desde a 1097 a geração é o 1º passo da manutenção do ciclo (com o
+    // vencimento da Lixeira e a fila de arquivos), sob um prazo comum.
     const rota = ler('src/app/api/cb/scheduled/cron/route.ts');
-    expect(rota).toContain('after(() => gerarTarefasRecorrentes(admin))');
+    expect(rota).toContain('after(() => rodarManutencaoDoCiclo(admin))');
+    const manutencao = ler('src/lib/scheduled/manutencao-do-ciclo.ts').replace(/\/\/.*$/gm, '');
+    expect(manutencao).toContain('gerarTarefasRecorrentes(admin)');
   });
 });

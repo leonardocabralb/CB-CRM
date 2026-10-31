@@ -17,6 +17,12 @@
 //     o caso de grupo por escrito. O hook sempre buscou por conversa. Só o
 //     painel não expunha.
 //
+// ⚠️ A aba **Participantes** (29/10/2026) lê o grupo AO VIVO no WhatsApp
+// (`useParticipantesDoGrupo`) assim que o painel mostra o grupo, não só com a
+// aba aberta: a MESMA leitura diz se o renomear vale (admin, ou grupo que deixa
+// qualquer participante mudar os dados) e atualiza a contagem do cabeçalho.
+// Enquanto ela não volta, vale o `we_are_admin` gravado.
+//
 // O que continua de fora, e por quê: tarefas e campos personalizados exigem
 // `contact_id NOT NULL` (944 / 001); negócios e histórico o banco aceitaria,
 // mas dependem de decisão de produto; automações estão excluídas por desenho
@@ -46,8 +52,12 @@ import { useAuth } from "@/hooks/use-auth";
 import { useCan } from "@/hooks/use-can";
 import { useChannels } from "@/hooks/use-channels";
 import { useConversationNotes } from "@/hooks/use-conversation-notes";
+import { useEdicaoDeNota } from "@/hooks/use-edicao-de-nota";
+import { useParticipantesDoGrupo } from "@/hooks/use-participantes-do-grupo";
 import { CartaoDeNota } from "@/components/inbox/cartao-de-nota";
 import { nomeDoGrupo, podeRenomearNoWhatsApp } from "@/lib/cb-groups/display";
+import { pedirConversaComContato } from "@/lib/inbox/conversar-com-contato";
+import { ParticipantesDoGrupo } from "@/components/inbox/painel/participantes-do-grupo";
 import { TituloDeSecao } from "@/components/inbox/painel/painel-do-contato";
 import { LinhaDeEdicao } from "@/components/inbox/painel/linha-de-edicao";
 import { AbaArquivos } from "@/components/inbox/painel/aba-arquivos";
@@ -84,6 +94,11 @@ interface GroupSidebarProps {
   messagesCarregando?: boolean;
   /** "Ver na conversa" das abas Notas e Arquivos — ver `PainelDoContatoProps`. */
   onIrParaItemDoFio?: (alvo: AlvoDoSalto) => void;
+  /**
+   * Aba Participantes (1117): pede à página — dona da seleção — que abra a
+   * conversa individual do participante e ligue a faixa "Voltar para" o grupo.
+   */
+  onAbrirConversaRelacionada?: (conversaId: string) => void;
 }
 
 export function GroupSidebar({
@@ -96,6 +111,7 @@ export function GroupSidebar({
   messages = [],
   messagesCarregando = false,
   onIrParaItemDoFio,
+  onAbrirConversaRelacionada,
 }: GroupSidebarProps) {
   const t = useTranslations("Inbox.groupSidebar");
   const tSidebar = useTranslations("Inbox.sidebar");
@@ -107,11 +123,22 @@ export function GroupSidebar({
     falhou: notasFalharam,
     recarregar: recarregarNotas,
     acrescentar: acrescentarNota,
+    substituir: substituirNota,
     remover: removerNotaLocal,
   } = useConversationNotes(conversationId);
+  // EDITAR no lugar (Fase 3) — o mesmo do painel do contato.
+  const {
+    editandoId: notaEmEdicao,
+    editar: editarNota,
+    pararDeEditar: pararDeEditarNota,
+  } = useEdicaoDeNota(conversationId, notas, notasProntas);
   const { user } = useAuth();
   // Autor OU admin, a mesma régua do fio e do painel — é a policy da 918.
   const podeAdministrar = useCan("manage-members");
+  // O "Conversar" de um participante abre a Nova conversa da lista — a mesma
+  // régua do cartão de contato (`conversar-com-contato.ts`).
+  const podeConversar = useCan("send-messages");
+  const participantes = useParticipantesDoGrupo(grupo?.id ?? null, onGrupoAtualizado);
   const { apagarNota } = useApagarNota(removerNotaLocal, recarregarNotas);
   // Responder a uma anotação (1075) — o mesmo do painel do contato,
   // carimbado com a conversa pelo mesmo motivo.
@@ -219,7 +246,10 @@ export function GroupSidebar({
 
   const nome = nomeDoGrupo(grupo, t("noName"));
   const canal = channels.find((c) => c.id === grupo.channel_id);
-  const podeRenomear = podeRenomearNoWhatsApp(grupo);
+  // Ao vivo quando a leitura voltou; até lá (ou se ela falhou), o gravado.
+  const podeRenomear = participantes.dados
+    ? participantes.dados.podeRenomear
+    : podeRenomearNoWhatsApp(grupo);
 
   return (
     <div className="flex h-full w-full flex-col border-l border-border bg-card">
@@ -263,7 +293,7 @@ export function GroupSidebar({
       )}
 
       {/* Abas com RÓTULO, não só-ícone como na ficha do contato: lá são cinco
-          e o espaço obriga; aqui são três e cabem escritas. */}
+          e o espaço obriga; aqui são quatro e cabem escritas. */}
       <Tabs
         defaultValue="informacoes"
         className="flex min-h-0 flex-1 flex-col gap-0"
@@ -276,6 +306,9 @@ export function GroupSidebar({
         <TabsList className="border-border bg-muted/30 w-full shrink-0 justify-start gap-x-1 rounded-none border-b px-2 py-1 group-data-horizontal/tabs:h-auto [&>button]:h-8 [&>button]:flex-1">
           <TabsTrigger value="informacoes" className="text-xs">
             {t("tabInfo")}
+          </TabsTrigger>
+          <TabsTrigger value="participantes" className="text-xs">
+            {t("tabMembers")}
           </TabsTrigger>
           <TabsTrigger value="notas" className="text-xs">
             {tSidebar("tabNotes")}
@@ -348,7 +381,11 @@ export function GroupSidebar({
           {/* Nome no WhatsApp */}
           <Secao titulo={t("realNameTitle")}>
             <p className="mb-2 text-[11px] leading-snug text-muted-foreground">
-              {podeRenomear ? t("realNameHint") : t("realNameBlocked")}
+              {podeRenomear
+                ? t("realNameHint")
+                : participantes.carregando
+                  ? t("realNameChecking")
+                  : t("realNameBlocked")}
             </p>
             {editandoNomeReal ? (
               <LinhaDeEdicao
@@ -404,6 +441,31 @@ export function GroupSidebar({
       </ScrollArea>
         </TabsContent>
 
+        {/* ---- Participantes: lidos ao vivo (o hook mora acima, porque o
+             renomear também depende da leitura). `key` com o grupo: a busca
+             digitada é de UM grupo. Quem tem conversa no CRM abre por aqui
+             (1117), com a faixa "Voltar para" o grupo. ---- */}
+        <TabsContent
+          value="participantes"
+          className="min-h-0 flex-1 overflow-y-auto p-4"
+        >
+          <ParticipantesDoGrupo
+            key={grupo.id}
+            participantes={participantes.dados?.participantes ?? null}
+            carregando={participantes.carregando}
+            falha={participantes.falha}
+            onTentarDeNovo={participantes.recarregar}
+            onConversar={
+              podeConversar
+                ? (p) => {
+                    if (p.telefone) pedirConversaComContato({ telefone: `+${p.telefone}`, nome: p.nome });
+                  }
+                : undefined
+            }
+            onAbrirConversa={onAbrirConversaRelacionada}
+          />
+        </TabsContent>
+
         {/* ---- Notas (918). O mesmo caminho da ficha do contato, menos a
              FIXAÇÃO: o índice único da 951 exige `contact_id NOT NULL`.
              ⚠️ `keepMounted` pela mesma razão de lá — o rascunho mora dentro
@@ -428,12 +490,28 @@ export function GroupSidebar({
           ) : null}
 
           <div className="mt-3 space-y-3">
-            {notas.map((note) => (
+            {notas.map((note) =>
+              notaEmEdicao === note.id && conversationId ? (
+                <InternalNoteBox
+                  key={`edicao:${note.id}`}
+                  conversationId={conversationId}
+                  editando={note}
+                  listaParaBaixo
+                  onSaved={substituirNota}
+                  onClose={pararDeEditarNota}
+                />
+              ) : (
               // Sem `onFixar`: nota de grupo não fixa (o índice parcial da
               // 951 exige `contact_id`, que grupo não tem).
               <CartaoDeNota
                 key={note.id}
                 nota={note}
+                // Só o AUTOR edita (A2); sem autor (automação, IA), nunca.
+                onEditar={
+                  user?.id && note.author_user_id === user.id
+                    ? () => editarNota(note)
+                    : undefined
+                }
                 podeApagar={note.author_user_id === user?.id || podeAdministrar}
                 onApagar={(id) => void apagarNota(id)}
                 onVerNaConversa={
@@ -450,7 +528,8 @@ export function GroupSidebar({
                     : undefined
                 }
               />
-            ))}
+              )
+            )}
             {/* ⚠️ O vazio só vira afirmação quando a busca DESTA conversa
                 voltou bem (`pronta`): durante a carga a lista é vazia por
                 construção, e afirmar "nenhuma anotação" ali era mentira a

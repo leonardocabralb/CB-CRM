@@ -98,6 +98,14 @@ export function QuickRepliesManager() {
         },
       );
       const data = await res.json().catch(() => ({}));
+      // 404 na edição = a resposta não existe mais (um colega a apagou com o
+      // diálogo aberto): a lista estava velha. Antes a rota dizia "salvo".
+      if (draft.id && res.status === 404) {
+        toast.error(t("notFound"));
+        setDraft(null);
+        await load();
+        return;
+      }
       if (!res.ok) {
         toast.error(data.error ?? t("saveError"));
         return;
@@ -116,6 +124,13 @@ export function QuickRepliesManager() {
     async (id: string) => {
       if (!window.confirm(t("confirmDelete"))) return;
       const res = await fetch(`/api/quick-replies/${id}`, { method: "DELETE" });
+      // Já não existia (outra pessoa apagou): o que se pediu já é verdade, e
+      // "não foi possível excluir" mentiria. Só a lista precisa voltar.
+      if (res.status === 404) {
+        toast.info(t("notFound"));
+        await load();
+        return;
+      }
       if (!res.ok) {
         toast.error(t("deleteError"));
         return;

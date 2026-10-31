@@ -60,13 +60,19 @@ import {
 /**
  * Fixo de propósito — ver o cabeçalho. Trocar de modelo é trocar AQUI.
  *
- * `gemini-3.7-flash` desde 2026-08-28, escolhido por medição: 12 áudios
+ * `gemini-3.8-flash` desde 2026-10-25. O Google descontinuou o 3.7 em
+ * 2026-10-08 e passou a atender os pedidos a ele com o 3.8, ao mesmo preço
+ * (https://ai.google.dev/gemini-api/docs/changelog): a troca só pôs na
+ * constante o modelo que já respondia. ⚠️ A medição abaixo é do 3.7 e NÃO
+ * foi refeita no 3.8.
+ *
+ * O 3.7 entrou em 2026-08-28, escolhido por medição: 12 áudios
  * REAIS do acervo (12 conversas, 8min30, de 1,5s a 2min54), mesmo prompt,
  * temperatura 0, erro medido contra duas referências Pro de gerações
  * diferentes — que discordam ENTRE SI em 9,4%, o piso de ruído da medida:
  *
  *   gemini-3.5-transcribe   11,3%   R$ 3,49/mês   ← outra API; ver 🔭 abaixo
- *   gemini-3.7-flash        12,1%   R$ 5,45/mês   ← este
+ *   gemini-3.7-flash        12,1%   R$ 5,45/mês   ← o escolhido
  *   gemini-3.1-flash-lite   13,5%   R$ 1,31/mês
  *   gemini-3.5-flash-lite   18,4%   R$ 1,25/mês   ← o anterior
  *   whisper-large-v3        18,9%   local, ~5 min por áudio de 30s na VPS
@@ -107,7 +113,7 @@ import {
  * neste arquivo, com queda para o modelo acima quando a resposta vier
  * vazia — não uma troca de constante.
  */
-export const MODELO_TRANSCRICAO = 'gemini-3.7-flash'
+export const MODELO_TRANSCRICAO = 'gemini-3.8-flash'
 const TENTATIVAS_MAX = 3
 const TRAVADA_MIN = 10
 /** Nota de voz real tem centenas de KB; 15 MB já é playlist encaminhada.

@@ -331,7 +331,8 @@ chmod 600 crm.env
 > do Supabase são lidas pelo navegador, e o Next.js as grava dentro do
 > pacote JavaScript **no momento do build**. Não existe uma imagem única
 > servindo instalações diferentes — a sua tem as suas credenciais dentro.
-> Vale o mesmo para o idioma, o nome do produto e o logo.
+> Vale o mesmo para o idioma. Nome e logo, não: eles se trocam pela tela,
+> depois de instalar (passo 6.1), sem construir outra imagem.
 
 ### 5.1 Ajustar o que identifica a sua instalação
 
@@ -343,18 +344,9 @@ build-args: |
   NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
   NEXT_PUBLIC_SITE_URL=https://crm.seudominio.com
   NEXT_PUBLIC_APP_LOCALE=pt-BR
-  NEXT_PUBLIC_APP_NAME=CRM do Seu Escritório
-  NEXT_PUBLIC_APP_SHORT_NAME=Seu CRM
 ```
 
-Idiomas prontos: `pt-BR` e `en`, os dois completos. Para um logo próprio,
-ponha o arquivo em `public/marca/logo.svg` e acrescente
-`NEXT_PUBLIC_APP_LOGO_URL=/marca/logo.svg`.
-
-O `NEXT_PUBLIC_APP_SHORT_NAME` é o nome que aparece embaixo do ícone quando
-alguém instala o sistema no celular (no iPhone: Safari → Compartilhar →
-Adicionar à Tela de Início). O iPhone corta nome comprido ali; sem essa
-linha, vale o `NEXT_PUBLIC_APP_NAME`.
+Idiomas prontos: `pt-BR` e `en`, os dois completos.
 
 No mesmo arquivo, ajuste `IMAGE` para o seu usuário do GitHub, e no
 `docker-stack.yml` ajuste o domínio, a rede e o resolvedor de certificado
@@ -478,6 +470,52 @@ tela usa para oferecer horários e prometer "sai em até 15 min".
      fixado na criação; renomear a conexão depois não a renomeia.
    - *Meta*: cole o Phone Number ID, o WABA ID, o token permanente,
      invente um Verify Token e informe o PIN.
+5. **Configurações → Marca**: o nome e o logo da sua instalação (a seguir).
+
+### 6.1 A marca: nome e logo
+
+O sistema nasce se chamando **Atlas CRM**, com o logo dele. Para usar
+o seu, abra *Configurações → Marca*. Nada de código, variável ou imagem
+nova: ao gravar, a marca vale para todo mundo na próxima página aberta.
+
+**Quem pode trocar:** só um administrador da conta **mais antiga** da
+instalação — a primeira criada, que é a sua se você seguiu o passo 6 logo
+depois de publicar. Toda pessoa que se cadastra sem convite ganha uma
+conta própria em que é administradora; se "qualquer administrador"
+trocasse a marca, essas contas avulsas trocariam o logo de todos. Ninguém
+mais grava a marca, nem administrador de outra conta. Mais um motivo para
+fechar o cadastro (passo 10).
+
+A aba mostra as peças do Atlas CRM como **exemplo**, para baixar: é a
+forma mais rápida de ver o formato, a proporção e o fundo de cada uma.
+
+| Peça | Formato | Onde aparece |
+|---|---|---|
+| Nome | até 60 caracteres (obrigatório) | título da aba do navegador, barra lateral (quando não há logo), textos, o nome do sistema que as integrações recebem |
+| Nome curto | até 20 caracteres | embaixo do ícone do app instalado no celular (o iPhone corta nome comprido) |
+| Símbolo | PNG quase quadrado, de 192 a 2048 px de lado (512 px recomendado), fundo transparente (obrigatório) | ícone da aba do navegador, das notificações e do app instalado |
+| Horizontal para fundo escuro | PNG, WebP ou SVG, texto claro | barra lateral e menu do celular no modo escuro |
+| Horizontal para fundo claro | PNG, WebP ou SVG, texto escuro | barra lateral e menu do celular no modo claro |
+| Vertical para fundo escuro / claro (opcionais) | PNG, WebP ou SVG | telas de login, cadastro, senha e convite |
+| Cor de fundo do ícone | `#rrggbb` | fundo do ícone do app instalado na tela de início |
+
+Cada imagem tem até 1 MB. SVG com script ou que aponte para fora é recusado.
+
+O que acontece quando falta uma peça: sem a horizontal de um fundo, a
+barra lateral mostra o símbolo com o nome em texto; sem a vertical, as
+telas de login usam a horizontal do mesmo fundo. Uma marca própria nunca
+mistura peças do Atlas CRM. Voltar ao padrão, na mesma aba, apaga a sua
+marca e as imagens dela.
+
+> ⚠️ **Celular:** o iPhone guarda o nome e o ícone no momento em que o
+> sistema é adicionado à Tela de Início. Quem já tinha instalado antes da
+> troca continua vendo a marca antiga até apagar o ícone e adicionar de
+> novo (Safari → Compartilhar → Adicionar à Tela de Início). No computador,
+> o ícone da aba pode exigir recarregar a página.
+
+> O e-mail de recuperação de senha não passa pelo CRM: ele é o modelo do
+> painel do Supabase (*Authentication → Emails*). Se ele cita o nome do
+> sistema, troque lá também.
 
 ---
 
@@ -533,6 +571,8 @@ sozinha: é o teste do agendador.
 | Convite devolve erro 500 citando `NEXT_PUBLIC_SITE_URL` | A instalação não sabe o próprio endereço. Defina a variável e reconstrua |
 | Eco do celular pareado não aparece | O conserto do `@lid` na Evolution. Veja o passo 3.1 |
 | Tela em inglês depois de mudar o idioma | Idioma é fixado no build. Reconstrua a imagem |
+| *Configurações → Marca* não deixa gravar | Só um administrador da conta mais antiga da instalação troca a marca. Veja o passo 6.1 |
+| Nome ou ícone antigo no app instalado no celular | O iPhone guarda os dois na instalação. Apague o ícone e adicione de novo (passo 6.1) |
 | `/signup` diz "cadastro fechado" | É o esperado sem convite, com *Allow new users to sign up* desligado (passo 10). Quem vai entrar precisa de um link de convite |
 | Convite recusado na criação da conta | O convite venceu, já foi usado ou foi revogado. Gere outro em *Configurações → Membros* |
 | Evolution "connection refused" a partir do CRM | `EVOLUTION_BASE_URL` apontando para `127.0.0.1`. Use o nome do serviço no Swarm. Veja o passo 3.1 |
@@ -630,64 +670,64 @@ de chave `cpf`) de quem assinou — nenhum contato é criado. Para mover o
 card, crie a automação na aba Automações do funil com a condição
 "Negócio está na etapa…" antes do "Mover card".
 
-**Atlas Gestor** (cliente do contrato fechado vai para o Atlas): um
+**Atlas Gestor** (cliente do contrato fechado vai para o Atlas Gestor): um
 administrador do escritório gera a chave em *Configurações → Integrações
-(API)* do Atlas, liga ali as permissões **Consultar**, **Criar** e
-**Atualizar clientes**, e cola a chave no cartão **Atlas**. O CRM a confere
-no Atlas sem gravar nada lá e a guarda cifrada; ela não volta à tela. Na
-automação de contrato fechado, ponha o passo **Criar cliente no Atlas** por
-último: ele procura o cliente no Atlas (pelo link da conversa, telefone e
+(API)* do Atlas Gestor, liga ali as permissões **Consultar**, **Criar** e
+**Atualizar clientes**, e cola a chave no cartão **Atlas Gestor**. O CRM a confere
+no Atlas Gestor sem gravar nada lá e a guarda cifrada; ela não volta à tela. Na
+automação de contrato fechado, ponha o passo **Criar cliente no Atlas Gestor** por
+último: ele procura o cliente no Atlas Gestor (pelo link da conversa, telefone e
 e-mail) e cria, reativa o cadastro de quem estava rescindido, finalizado ou inativo,
-ou só vincula quem já está ativo. Não cria outro cadastro para quem o Atlas
+ou só vincula quem já está ativo. Não cria outro cadastro para quem o Atlas Gestor
 acha por esses dados; quando há dúvida (mais de um cadastro, casamento só pelo
-e-mail ou pelo final do telefone, cadastro suspenso no Atlas), para sem
-mexer no Atlas e diz o motivo no histórico da automação. A chave é do
+e-mail ou pelo final do telefone, cadastro suspenso no Atlas Gestor), para sem
+mexer no Atlas Gestor e diz o motivo no histórico da automação. A chave é do
 escritório inteiro: uma por conta do CRM. Ligue também **Listar clientes**
 para a **leitura das situações**: a cada ~15 minutos, pelo mesmo agendador
-das outras integrações (sem rota nova nem ajuste na VPS), o CRM lê no Atlas
+das outras integrações (sem rota nova nem ajuste na VPS), o CRM lê no Atlas Gestor
 a situação de cada cliente (ativo, rescindido, finalizado…) e liga sozinho a
-ficha ao cliente do Atlas pelo link da conversa, quando só um cadastro e só
+ficha ao cliente do Atlas Gestor pelo link da conversa, quando só um cadastro e só
 uma ficha casam. Pelo telefone completo, a ligação só acontece na leitura
 completa diária, e só em escritório com até ~900 clientes (acima disso, a
 leitura completa não cabe numa rodada). Sem essa permissão, o cartão
 avisa e o passo continua funcionando; o botão **Ler situações agora** lê na
-hora. A leitura exige a versão da API do Atlas que informa a data da mudança
+hora. A leitura exige a versão da API do Atlas Gestor que informa a data da mudança
 da situação; com a antiga, o cartão diz que a atualização está pendente.
 Na conversa, a faixa acima do compositor passa a dizer também "rescindido,
-finalizado, suspenso ou inativo **no Atlas**", ao lado do que diz a etapa do
-funil; o painel ganha o botão **Abrir no Atlas** e a aba **Atlas**, onde um
-administrador liga a ficha à mão colando o link da ficha do cliente no Atlas
+finalizado, suspenso ou inativo **no Atlas Gestor**", ao lado do que diz a etapa do
+funil; o painel ganha o botão **Abrir no Atlas Gestor** e a aba **Atlas Gestor**, onde um
+administrador liga a ficha à mão colando o link da ficha do cliente no Atlas Gestor
 (ou desfaz um vínculo errado — a leitura não volta a ligá-lo sozinha).
-Cliente mandado para a lixeira do Atlas aparece na aba como "na lixeira";
-restaurado lá, o administrador toca em **Conferir no Atlas** (sem isso, o
+Cliente mandado para a lixeira do Atlas Gestor aparece na aba como "na lixeira";
+restaurado lá, o administrador toca em **Conferir no Atlas Gestor** (sem isso, o
 CRM percebe na próxima leitura completa). **Ler negociações** é opcional:
-ligada, a aba Atlas da conversa mostra os bancos, contratos, propostas e
-acordos do cliente, lidos na hora no Atlas e nunca guardados no CRM
+ligada, a aba Atlas Gestor da conversa mostra os bancos, contratos, propostas e
+acordos do cliente, lidos na hora no Atlas Gestor e nunca guardados no CRM
 (qualquer membro que vê a conversa os vê). Desligada, a seção avisa que a
 leitura está desligada e o resto segue funcionando.
-Com a leitura ligada, o gatilho de automação **Situação mudou no Atlas**
+Com a leitura ligada, o gatilho de automação **Situação mudou no Atlas Gestor**
 roda quando a situação de um cliente vinculado MUDA (nunca na primeira
 leitura): escolha as situações e os funis onde o card do cliente precisa
-estar — sem card nesses funis, nada roda. O cartão **Atlas** mostra as
+estar — sem card nesses funis, nada roda. O cartão **Atlas Gestor** mostra as
 últimas mudanças e o que as automações fizeram.
-No construtor de automações, o **Atlas** é um nó só (uma entrada no menu de
+No construtor de automações, o **Atlas Gestor** é um nó só (uma entrada no menu de
 adicionar), com um seletor de **Ação**: **Criar cliente** (o de cima),
 **Atualizar cliente** (situação, tipo e valor do contrato, datas, link da
 conversa, telefone, e-mail e CPF/CNPJ — só o que foi escolhido e está
-preenchido na ficha; nada no Atlas é apagado), **Criar tarefa** (vai para o
-administrador mais antigo do escritório no Atlas; sem a ficha ligada ao
-Atlas, nasce sem cliente; com o cadastro ligado marcado na lixeira do Atlas,
-o passo falha sem enviar — restaure lá e use **Conferir no Atlas** na aba
-Atlas), **Enviar transcrição de reunião** (a mais recente
+preenchido na ficha; nada no Atlas Gestor é apagado), **Criar tarefa** (vai para o
+administrador mais antigo do escritório no Atlas Gestor; sem a ficha ligada ao
+Atlas Gestor, nasce sem cliente; com o cadastro ligado marcado na lixeira do Atlas Gestor,
+o passo falha sem enviar — restaure lá e use **Conferir no Atlas Gestor** na aba
+Atlas Gestor), **Enviar transcrição de reunião** (a mais recente
 do cliente, do tl;dv ou colada na aba Reuniões, para o Diagnóstico) e
 **Atualizar item do onboarding** (pelo texto do item do checklist). As três
-últimas pedem permissões **opcionais** no Atlas — as de criar tarefas
+últimas pedem permissões **opcionais** no Atlas Gestor — as de criar tarefas
 (`create_task`), criar transcrições (`create_transcript`) e atualizar o
 onboarding (`update_onboarding`): desligadas, só o passo que as usa
 falha, com o motivo, e a conexão continua valendo. Atualizar, transcrição e
-onboarding precisam da ficha ligada ao Atlas (rode antes o **Criar cliente**
-ou vincule na aba Atlas). Nenhuma ação repete sozinha; rodar de novo a tarefa
-ou a transcrição cria outra no Atlas.
+onboarding precisam da ficha ligada ao Atlas Gestor (rode antes o **Criar cliente**
+ou vincule na aba Atlas Gestor). Nenhuma ação repete sozinha; rodar de novo a tarefa
+ou a transcrição cria outra no Atlas Gestor.
 
 **tl;dv** (transcrições de reunião na ficha): a API só existe nos planos
 **Pro e Business**, e só sai pela API a reunião de quem a ORGANIZOU com um

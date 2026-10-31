@@ -180,6 +180,77 @@ BEGIN
       'messages.error_code/error_title/error_details não existem — a 1039 não aplicou';
   END IF;
 
+  -- 1096: conversa e mensagem não se apagam pelo navegador. Conferido aqui,
+  -- no FIM do replay, porque a conferência da própria 1096 só vale no
+  -- instante dela, e o pino `portas-dos-fundos-1096.test.ts` lê os `.sql` e
+  -- não vê policy ou GRANT feitos por EXECUTE numa migration posterior (as
+  -- duas policies são do upstream e voltam sem conflito num merge).
+  IF EXISTS (
+    SELECT 1 FROM pg_policies
+     WHERE schemaname = 'public'
+       AND tablename IN ('conversations', 'messages')
+       AND cmd IN ('DELETE', 'ALL')
+  ) THEN
+    RAISE EXCEPTION
+      'há policy de DELETE ou FOR ALL em conversations/messages — devolve ao atendente o apagar a conversa inteira (1096)';
+  END IF;
+  IF has_table_privilege('authenticated', 'public.conversations', 'DELETE')
+     OR has_table_privilege('authenticated', 'public.messages', 'DELETE')
+     OR has_table_privilege('anon', 'public.conversations', 'DELETE')
+     OR has_table_privilege('anon', 'public.messages', 'DELETE') THEN
+    RAISE EXCEPTION
+      'authenticated ou anon têm DELETE em conversations/messages — a 1096 tirou (só a ficha, as funções e o service role apagam)';
+  END IF;
+
+  -- 1100: contato só sai pela Lixeira (as funções SECURITY DEFINER e o
+  -- service role). Conferido no FIM do replay pelo mesmo motivo da 1096: a
+  -- policy `contacts_delete` é do upstream (0017) e volta sem conflito num
+  -- merge; o pino `so-a-lixeira-apaga-1100.test.ts` só lê os `.sql`.
+  IF EXISTS (
+    SELECT 1 FROM pg_policies
+     WHERE schemaname = 'public' AND tablename = 'contacts' AND cmd IN ('DELETE', 'ALL')
+  ) THEN
+    RAISE EXCEPTION
+      'há policy de DELETE ou FOR ALL em contacts — o navegador volta a apagar ficha sem a Lixeira (1100)';
+  END IF;
+  IF has_table_privilege('authenticated', 'public.contacts', 'DELETE')
+     OR has_table_privilege('anon', 'public.contacts', 'DELETE') THEN
+    RAISE EXCEPTION
+      'authenticated ou anon têm DELETE em contacts — a 1100 tirou (excluir é mover para a Lixeira)';
+  END IF;
+
+  -- 1116: apagar um LOGIN só leva junto o dado da PESSOA. CASCADE de
+  -- `public.*` para `auth.users` só nesta lista: o dado da pessoa e o trio do
+  -- dono durável (CLAUDE.md, 8a). Tabela NOVA com dado da conta e coluna de
+  -- autoria nasce `ON DELETE SET NULL` (a forma das `cb_*`); se o dado for
+  -- mesmo da pessoa, entra aqui com o motivo. Um merge do upstream que crie
+  -- tabela com o CASCADE dele reprova aqui.
+  DECLARE
+    v_fora text;
+  BEGIN
+    SELECT string_agg(DISTINCT r.relname::text, ', ') INTO v_fora
+      FROM pg_constraint c
+      JOIN pg_class r ON r.oid = c.conrelid
+     WHERE c.contype = 'f'
+       AND c.confrelid = 'auth.users'::regclass
+       AND c.confdeltype = 'c'
+       AND r.relnamespace = 'public'::regnamespace
+       AND r.relname NOT IN (
+         -- dado da pessoa
+         'profiles', 'member_presence', 'notifications',
+         'cb_automacoes_favoritas', 'cb_availability',
+         'cb_celulares_dos_membros', 'cb_conversa_aberta',
+         'cb_conversation_favorites', 'cb_inbox_filtro_padrao',
+         'cb_inbox_saved_filters', 'cb_ordem_dos_blocos',
+         -- dono durável: sempre `accounts.owner_user_id` (RESTRICT)
+         'contacts', 'conversations', 'custom_fields'
+       );
+    IF v_fora IS NOT NULL THEN
+      RAISE EXCEPTION
+        'ON DELETE CASCADE para auth.users em %: apagar o login de quem criou apagaria o dado da conta. Use ON DELETE SET NULL (1116) ou, se o dado for da pessoa, inclua a tabela na lista desta asserção', v_fora;
+    END IF;
+  END;
+
   RAISE NOTICE 'schema verification passed';
 END
 $$;

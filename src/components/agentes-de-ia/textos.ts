@@ -97,6 +97,51 @@ export function textoDoCodigo(
 }
 
 /**
+ * O nome, na tela, de uma chave do RASCUNHO que o Playground testa (o corpo
+ * do PATCH do agente; DC4, 26/10/2026) — a lista "o que mudou". Chave
+ * desconhecida = `null`: fica de fora, nunca crua (`textos.test.ts` cobra
+ * toda chave que as abas mandam).
+ */
+export function rotuloDaChaveDoRascunho(t: ReturnType<typeof useTranslations>, chave: string): string | null {
+  switch (chave) {
+    case 'nome':
+      return t('campo.nome');
+    case 'descricao':
+      return t('campo.descricao');
+    case 'instrucoes':
+      return t('campo.instrucoes');
+    case 'regras':
+      return t('campo.regras');
+    case 'provedor':
+      return t('campo.provedor');
+    case 'modelo':
+      return t('campo.modelo');
+    case 'ativo':
+      return t('campo.ativo');
+    case 'conexoes':
+      return t('campo.conexoes');
+    case 'horario':
+      return t('campo.horario');
+    case 'teto_respostas':
+      return t('campo.teto');
+    case 'transferir_para':
+      return t('campo.transferirPara');
+    case 'pode_passar_para':
+      return t('campo.podePassarPara');
+    case 'etapas':
+      return t('ondeAtua.titulo');
+    case 'acesso':
+      return t('detalhe.acesso');
+    case 'ferramentas':
+      return t('detalhe.ferramentas');
+    case 'retomada':
+      return t('detalhe.retomada');
+    default:
+      return null;
+  }
+}
+
+/**
  * Os status de `cb_ia_turnos` (1049) que a sub-aba Turnos traduz
  * (`IaAgentes.turnos.status.<status>`). Chave MONTADA: `textos.test.ts` cobra
  * cada uma nos dois dicionários. Status fora da lista (um novo no CHECK) cai
@@ -120,6 +165,29 @@ export function rotuloDoStatusDoTurno(t: ReturnType<typeof useTranslations>, sta
   return (STATUS_DO_TURNO as readonly string[]).includes(status)
     ? t(`turnos.status.${status}`)
     : t('turnos.statusDesconhecido', { status });
+}
+
+/**
+ * O `erro` que o BANCO grava no turno — os gatilhos e as funções da 1049
+ * (conexão apagada, conversa encerrada), 1056 (o cliente escreveu antes da
+ * retomada), 1093 (fichas unidas) e 1110 (conversa apagada: o turno sobrevive
+ * à conversa) —, traduzido (`IaAgentes.turnos.erroDoBanco.<chave>`): o banco
+ * não sabe o idioma de quem instala. `textos.test.ts` cobra cada chave nos
+ * dois dicionários e que todo `erro` gravado pelas migrations esteja aqui. O
+ * resto (o que o motor grava) aparece como veio.
+ */
+export const ERROS_GRAVADOS_PELO_BANCO = {
+  'conversa apagada': 'turnos.erroDoBanco.conversaApagada',
+  'conversa encerrada': 'turnos.erroDoBanco.conversaEncerrada',
+  'conexão apagada': 'turnos.erroDoBanco.conexaoApagada',
+  'fichas unidas': 'turnos.erroDoBanco.fichasUnidas',
+  'o cliente escreveu antes da retomada': 'turnos.erroDoBanco.clienteEscreveu',
+} as const;
+
+export function textoDoErroDoTurno(t: ReturnType<typeof useTranslations>, erro: string): string {
+  return Object.prototype.hasOwnProperty.call(ERROS_GRAVADOS_PELO_BANCO, erro)
+    ? t(ERROS_GRAVADOS_PELO_BANCO[erro as keyof typeof ERROS_GRAVADOS_PELO_BANCO])
+    : erro;
 }
 
 /**
@@ -354,6 +422,7 @@ export const PARADAS_DA_RETOMADA: Record<ParadaDaResposta, true> = {
   sem_texto: true,
   pedido_vazado: true,
   link_inventado: true,
+  acao_prometida: true,
 };
 
 export function textoDaParadaDaRetomada(t: ReturnType<typeof useTranslations>, parada: string): string {

@@ -147,7 +147,7 @@ bolha, ao Radar e ao agente de IA.
   `MAX_TOKENS`, tentativas esgotadas). ⚠️ A chave é a do PROVEDOR
   (`escolherLeitor`, 1047): Gemini, senão OpenAI; a Anthropic não ouve. Erro de LEITURA é `falhou` sem gravar, nunca "sem chave".
 - ⚠️ **O modelo é FIXADO em `MODELO_TRANSCRICAO`** (OpenAI:
-  `MODELO_TRANSCRICAO_OPENAI`), UM para os chamadores (quem chega primeiro fixa o do áudio, nenhuma coluna o registra,
+  `MODELO_TRANSCRICAO_OPENAI`), UM para os chamadores (o 1º a chegar fixa o do áudio, nenhuma coluna o registra,
   o teto de 3 tentativas é compartilhado). Plano B no comentário da
   constante. ⚠️ Não desligar o raciocínio (`thinkingBudget: 0` piora o erro,
   medido). ⚠️ Trocar o modelo NÃO refaz o já transcrito — quem trocar decide
@@ -186,7 +186,7 @@ bolha, ao Radar e ao agente de IA.
 - ⚠️ **Só o Radar tem coluna própria (`ai_configs.radar_model`; NULL = herda
   `model`).** Transcrição e RAG têm constante (`MODELO_TRANSCRICAO`,
   `EMBEDDING_MODEL`), que entra em `montarCartoes` por PARÂMETRO — nunca
-  redigitada no módulo puro nem no dicionário.
+  redigitada.
 - ⚠️ **O modelo do Radar aparece em TRÊS lugares do worker**
   (`generateStructured`, `logAiUsage`, a coluna `model` do insight): resolver
   `config.radarModel ?? config.model` UMA vez.
@@ -213,8 +213,8 @@ bolha, ao Radar e ao agente de IA.
 - **Radar exige `radar_enabled === true`; transcrição Gemini, senão OpenAI;
   leitura de mídia Gemini → OpenAI → Anthropic; RAG é OpenAI-only** (modelo
   fixo, `vector(1536)`), no cartão da OpenAI mesmo com outro provedor.
-- **`AI_PROVIDER_MODELS` é SUGESTÃO (`<datalist>`), nunca allow-list.**
-  Google Agenda é cartão "não conectado" de propósito.
+- **Seletor de modelo e quadro da mídia: `ia-tela-do-agente.md`.** Google
+  Agenda é cartão "não conectado" de propósito.
 
 ### Agentes de IA (1048, `src/lib/ia-agentes/`, `/agents`)
 
@@ -336,10 +336,9 @@ ingestões), `fila.ts`, `turno.ts`, `rede.ts` (no topo de `/api/automations/cron
   pausa; a agendada e o eco antes do id pausam (o lado seguro). O turno só LÊ
   a pausa. `set_ai`: desligar = `automacao` sem pisar noutro motivo; ligar
   desfaz SÓ `automacao`, sem zerar o teto nem soltar o responsável.
-- ⚠️ **Encerrar limpa agente e pausa, recomeça o teto (`ia_retomada_em =
-  now()`) e descarta os turnos**
-  `aguardando` e `rodando` (`cb_encerrar_limpa_ia`, SECURITY DEFINER: o
-  operador encerra sob RLS), inclusive o que já envia.
+- ⚠️ **Encerrar limpa agente e pausa, recomeça o teto (`ia_retomada_em`)
+  e descarta os turnos** `aguardando` e `rodando` (`cb_encerrar_limpa_ia`,
+  SECURITY DEFINER: o operador encerra sob RLS), menos o que respondeu (1109).
 - ⚠️ **Falha de CONFIGURAÇÃO não transfere** (E8): chave, modelo, provedor
   fora do ar → `falhou`. Transferem o sentinela, a resposta vazia, o teto, o
   áudio que não se ouve e o envio incerto — pausa `transferencia`, destino só
@@ -359,10 +358,11 @@ ingestões), `fila.ts`, `turno.ts`, `rede.ts` (no topo de `/api/automations/cron
 - ⚠️ **A faixa do fio pergunta `GET /api/cb/ia/conversa/[id]`** quem responde;
   as colunas do realtime (pausa, motivo, último agente) só a fazem perguntar de
   novo. Atendendo = "IA · X" + Pausar; pausada (com agente da etapa ou
-  `ia_agente_id`) = motivo + Retomar; senão, nada. Pausar não toca
+  `ia_agente_id`) = motivo + Retomar; agente que não atende = uma
+  linha (`ia-tela-do-agente.md`); senão, nada. Pausar não toca
   `assigned_agent_id`. Motivo e status do turno são chaves MONTADAS, cobradas
   nos dois dicionários (`STATUS_DO_TURNO` lê o CHECK da 1049). A bolha mostra
-  "IA · <nome>" (`nomes-dos-agentes.ts`, cache de módulo; sem nome, "IA").
+  "IA · <nome>" (`nomes-dos-agentes.ts`; sem nome, "IA").
   `/api/cb/ia/agentes/nomes` e `/conversa/[id]` são de qualquer membro e
   devolvem só id e nome.
 - ⚠️ **A tela legada (`ai-config.tsx`) não tem controle de auto-reply**: o

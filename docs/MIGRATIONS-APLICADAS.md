@@ -1390,6 +1390,325 @@ nome da época em que foram aplicadas.
   "Trocar" com a execução sem card da ficha que sairia, a união, e a busca
   nova da API medida no PostgREST real (`imatch` nos antigos e `id.in.(…)`
   no `.or()`: acha pelo telefone antigo; sem o ramo, nada).
+- **1094_cb_marca** — a marca configurável (PR #420): `cb_marca`, uma linha
+  por instalação (nome, nome curto, cor do ícone e os caminhos das 5 peças),
+  RLS ligada sem policy, nada para `anon`/`authenticated`; o bucket público
+  `marca` (1 MB; PNG, WebP, SVG), sem policy de escrita (só a rota, com
+  service role). ADITIVA e ANTES do deploy. Provada num Postgres 16
+  descartável (três aplicações). Aplicada em 20/10/2026 pela Management API
+  (histórico `20261020131033`), depois do CI verde no commit `a1200685`, com
+  "pode gravar a 1094 na produção" do operador. Conferida: RLS ligada, 0
+  policy, anon e authenticated sem SELECT, service_role com INSERT, bucket
+  público com o teto e os tipos certos. e2e no preview com uma marca
+  fictícia ("Marca Teste"): salvar, barra lateral, título, login sem sessão,
+  ícones e manifesto com a marca nova; voltar ao padrão deixou 0 linhas e 0
+  arquivos no bucket. Até o deploy do #420, o app no ar não lê a tabela.
+- **1095_cb_painel_por_dia** — as RPCs `cb_painel_mensagens_por_dia` e
+  `cb_painel_tempo_de_resposta` (PR #422): a série e o tempo de resposta do
+  Painel somam no banco, uma linha por dia no fuso do navegador (o PostgREST
+  cortava as linhas em 1000 e a série zerava do 2º dia em diante). Só
+  funções, SECURITY INVOKER, nada para `anon`. ADITIVA e ANTES do deploy.
+  Provada num Postgres 16 descartável (3 aplicações, cenários, a cerca entre
+  contas como `authenticated`, e igual ao algoritmo antigo sem o corte sobre
+  5,8 mil linhas aleatórias). Aplicada em 20/10/2026 pela Management API
+  (histórico `20261020133416`), depois do replay verde no commit `c1595c9d`,
+  com "pode gravar: aplique a 1095 na produção" do operador. Conferida: as
+  duas com `prosecdef = false`, EXECUTE só para `authenticated` e
+  `service_role` (o papel de leitura do `supabase-cb` não as chama — de
+  propósito); a conferência embutida chamou as duas.
+- **1096_cb_atendente_nao_apaga_conversa** — a Fase 1 da Lixeira de contatos
+  (PR #428): derruba `conversations_delete` e o `messages_modify` (FOR ALL),
+  recria INSERT e UPDATE de mensagem com o predicado da 1032 e revoga o
+  DELETE de `conversations` e `messages` de `authenticated` e `anon` (a
+  ficha apagada continua levando as duas pelo CASCADE). RESTRITIVA, mas
+  nenhuma versão do app usa o que ela tira. Provada num Postgres 16
+  descartável (o CASCADE da ficha com o papel `authenticated` sem o
+  privilégio). Aplicada em 23/10/2026 pela Management API (histórico
+  `20261023103318`), antes do merge do PR #428, com "aplique as migrations
+  1096, 1097 e 1098 em produção" do operador. Conferida: só
+  `conversations_insert/select/update` e `messages_insert/select/update` de
+  pé, `authenticated` e `anon` sem DELETE nas duas; e2e no preview: uma
+  mensagem de teste ao lead autorizado saiu e chegou como entregue.
+- **1097_cb_lixeira_de_contatos** — a Lixeira de contatos de 90 dias, Fase 2
+  (PR #429): `conversations.restaurada_em`; os tipos `contact_trashed`/
+  `contact_restored`/`contact_purged` e o motivo `lixeira` nos CHECKs; as
+  tabelas `cb_lixeira_de_contatos` (a fotografia do fecho do CASCADE e os
+  ponteiros) e `cb_arquivos_a_apagar` (a fila do Storage, fechada); as RPCs de
+  mover, prévia, restaurar, excluir agora, vencer, listar e a fila; 12
+  gatilhos calados por `WHEN` no sinal `cb.lixeira`. ADITIVA e ANTES do
+  deploy. Provada num Postgres 16 descartável com o esquema da produção (ida
+  e volta idêntica de 800 mensagens; 25 fichas com 3 mil mensagens em 1,3 s
+  para mover e 0,3 s para restaurar). Aplicada em 23/10/2026 pela Management
+  API (histórico `20261023103334`), antes do merge do PR #429, depois do
+  replay verde no commit `f92a0217`, com "aplique as migrations 1096, 1097 e
+  1098 em produção" do operador. Conferida: as 24 funções, os 12 gatilhos com
+  o `WHEN`, nada para `anon`, `vencer` e `reivindicar` só do service role;
+  advisors de segurança sem nada novo de risco. e2e no preview com duas fichas
+  fictícias: prévia com a tarefa aberta, mover, "Desfazer", restaurar pela
+  tela (ficha, tarefa e trilha de volta), identidade ocupada bloqueando (B2) e
+  "Excluir agora" com e sem o pedido de exclusão (com ele, a trilha perde o
+  nome).
+- **1098_cb_lixeira_conferencia** — só a prova de ida e volta da 1097 (prévia,
+  mover, restaurar, mover, excluir com pedido) sobre uma ficha fictícia,
+  desfeita por SQLSTATE próprio; separada para não rodar sob a trava
+  exclusiva das ALTERs. Aplicada junto, em 23/10/2026 (histórico
+  `20261023103343`), mesma autorização. Passou na produção sem deixar linha.
+- **1099_cb_lixeira_anular_confere_o_ponteiro** — correção da 1097 pedida
+  pelo Codex no PR #429: `cb_lixeira_anular` passa a anular só a linha cujo
+  ponteiro ainda tem o valor fotografado (`IS NOT DISTINCT FROM`), para não
+  apagar a troca de contato feita por outro pedido entre a fotografia e o
+  DELETE. Mesma assinatura, ADITIVA, ANTES do deploy. Provada num cluster
+  descartável montado do zero (a conferência duas vezes; a ida e volta da
+  Fase 2 e a prova 2 seguem passando). Aplicada em 23/10/2026 pela
+  Management API (histórico `20261023113805`), depois do CI verde no commit
+  `12053b44`, antes do merge do PR #429, com a autorização do operador para
+  as migrations da finalização da Lixeira. Conferida: a guarda na definição
+  vigente, nenhum EXECUTE para `authenticated`/`anon`, a conferência embutida
+  passou sem deixar linha.
+- **1100_cb_so_a_lixeira_apaga_contato** — Fase 3 da Lixeira (PR #430):
+  `DROP POLICY contacts_delete` e `REVOKE DELETE ON contacts FROM
+  authenticated, anon`; excluir contato passa a ser só mover para a Lixeira
+  (apagam ainda as funções SECURITY DEFINER, o CASCADE da conta e o service
+  role). RESTRITIVA: aplicada DEPOIS do deploy da Fase 2 (#429). Provada num
+  Postgres 16 descartável. Aplicada em 23/10/2026 pela Management API
+  (histórico `20261023123104`), depois do CI verde no commit `0906f340`,
+  antes do merge do PR #430, com a autorização do operador para as
+  migrations da finalização. Conferida: `contacts` só com
+  `contacts_insert/select/update`, `authenticated`/`anon` sem DELETE,
+  INSERT/UPDATE de pé, service role com DELETE, a Lixeira com EXECUTE. e2e
+  no preview: DELETE direto em `contacts`, `conversations` e `messages` pela
+  sessão de um admin dá 42501; mover e restaurar o lead de teste (801
+  mensagens) pela tela seguem funcionando.
+- **1101_cb_lixeira_restaurar_e_unir** — Fase 4 da Lixeira (PR #431):
+  `cb_lixeira_da_mesma_pessoa` (a faixa), `cb_previa_restaurar_e_unir` (a
+  prévia, desfeita por P1101), `cb_restaurar_e_unir` (restaura com
+  identidade provisória e une por `cb_unir_fichas`, a conversa antiga como
+  histórico, a janela da Meta só avança), a peça interna
+  `cb_lixeira_preparar_uniao`, `cb_bloqueios_da_uniao` ignorando o prefixo
+  `lixeira:` e `cb_lixeira_da_conta` recriada com `ocupada_com_instagram`
+  no fim. ADITIVA, ANTES do deploy, depois da 1099 e da 1100. Provada num
+  Postgres 16 descartável (incluindo os cenários da revisão independente).
+  Aplicada em 23/10/2026 pela Management API (histórico `20261023124946`),
+  depois do CI verde no commit `54c8bcc8`, antes do merge do PR #431, com a
+  autorização do operador para as migrations da finalização. Conferida: as
+  funções da tela SECURITY DEFINER com EXECUTE para `authenticated` e nada
+  para `anon`; as internas fechadas; nenhuma reserva `lixeira:` em ficha. e2e
+  no preview com duas fichas fictícias de mesmo telefone: a faixa (pela RPC
+  na sessão do admin) acha a antiga; o item bloqueado da Lixeira oferece
+  "Restaurar e unir"; a prévia não deixa rastro; a união deixa só a nova,
+  com o livro e a trilha (`contact_trashed` → `contact_restored` →
+  `contacts_merged`) com a identidade original e nenhuma reserva; o
+  "Excluir agora" com pedido limpou o resto.
+- **1102_cb_anotacao_com_anexos** — anexos na anotação interna (Fases 1–2,
+  PR #434): colunas `anexos jsonb NOT NULL DEFAULT '[]'` e `editada_em` em
+  `cb_conversation_notes`; os CHECKs `..._conteudo_ck` (texto OU anexo; troca
+  o `texto_check` da 918) e `..._anexos_ck` (até 10); o gatilho
+  `cb_anexos_da_anotacao_para_a_fila` (AFTER DELETE OR UPDATE OF anexos,
+  calado pelo sinal `cb.lixeira`) põe na fila de arquivos a apagar o caminho
+  que sai; `cb_lixeira_tratamento()` recriada (o gatilho nos calados) e
+  `cb_arquivos_citados` recriada (conta os anexos das anotações vivas); as
+  policies do `chat-media` refeitas para `notas/` (ninguém troca pelo
+  navegador; apaga só quem subiu, pelo `owner_id`; o resto igual à 954).
+  ADITIVA, ANTES do deploy. Provada num Postgres 16 descartável montado do
+  zero (28 cenários; a conferência embutida recusa cinco mutantes). Aplicada
+  em 23/10/2026 pela Management API (histórico `20261023220536`), depois do
+  CI verde no commit `a268963d`, antes do merge do PR #434, com "Pode
+  aplicar a 1102 na produção" do operador. Conferida: as colunas, só os dois
+  CHECKs novos, o gatilho com o `WHEN` exato e declarado no inventário da
+  Lixeira, `cb_arquivos_citados` com as anotações, a função do gatilho
+  fechada para `authenticated`, as policies (DELETE pelo `owner_id` em
+  `notas/`, UPDATE recusando `notas/`, acervo e INSERT como estavam); fila
+  vazia e nenhuma das 920 anotações com anexo. e2e no preview na conversa de
+  teste (registro no `docs/PLANO-anotacao-com-anexos-e-edicao.md`): quatro
+  anotações com 7 arquivos, apagadas pela tela → 7 caminhos na fila com
+  origem `anotacao` → a drenagem do laço lento das 22:26 UTC apagou os 7
+  objetos e esvaziou a fila.
+- **1103_cb_conta_dono_e_convite** — segurança do porte do lote 13–16/10 do
+  original (PR #436): o gatilho `enforce_account_identity_columns` (o do
+  #670, INVOKER: só o `authenticated` é barrado de trocar `owner_user_id`,
+  `id` e `created_at` de `accounts`; a troca de dono segue pela
+  `transfer_account_ownership`, SECURITY DEFINER); `redeem_invitation`
+  recriada com `FOR UPDATE OF p, a` e a guarda "conta com outros membros"
+  (23505); a policy `profiles_insert` derrubada e o INSERT em `profiles`
+  revogado de `anon`/`authenticated` (o perfil nasce pelo `handle_new_user`).
+  Fecha permissão, mas o app no ar não usa nenhuma das três (conferido no
+  código: nenhum INSERT de perfil pelo navegador; renomear a conta só grava
+  `name`). Provada num Postgres 16 descartável (cenários da 1103 e, à parte, a
+  troca de dono por função DEFINER passando pelo gatilho). Aplicada em
+  25/10/2026 pela Management API (histórico `20261025154431`), depois do CI
+  verde no commit `73fbd7a0` (o arquivo não mudou depois) e da revisão do
+  Codex sem achado nela, antes do merge do PR #436, com a autorização do
+  operador para aplicar as migrations do porte. Conferida: gatilho ativo,
+  INVOKER e fechado ao `authenticated`; o convite DEFINER com a guarda e a
+  trava; nenhuma policy nem privilégio de INSERT em `profiles` para `anon` e
+  `authenticated` (SELECT e UPDATE intactos); no preview, renomear a conta
+  pela rota respondeu 200.
+- **1104_cb_robo_salva_nos_numa_transacao** — correções do porte do lote
+  13–16/10 (PR #437): `cb_trocar_nos_do_robo(uuid, jsonb)`, SECURITY INVOKER,
+  só o `service_role` executa; apaga e insere os nós do robô numa transação
+  (a recusa desfaz as duas). GRANT ao `service_role` do que ela usa
+  (`flows`: SELECT/UPDATE; `flow_nodes`: SELECT/INSERT/DELETE) — o replay do
+  CI barrou a 1ª versão em `permission denied for table flows`, porque em
+  banco novo o default do Supabase não existe. ADITIVA, ANTES do deploy.
+  Provada num Postgres 16 igual ao do CI (sem GRANT prévio; vazio e com
+  dado, duas vezes, com os cenários). Aplicada em 25/10/2026 pela Management
+  API (histórico `20261025163502`), depois do CI verde em `8c5e49c2`, antes
+  do merge, com a autorização do operador para aplicar as migrations do
+  porte. Conferida: INVOKER, (uuid, jsonb), EXECUTE só do `service_role`, os
+  privilégios nas duas tabelas, os 24 nós dos 2 robôs intactos; e2e no
+  preview pela rota: robô de rascunho salvo com 3 nós, o salvamento com tipo
+  recusado devolveu 500 e manteve os nós e o início, a conexão inexistente
+  deu 400 antes da troca; o robô de teste foi apagado (2 robôs, 24 nós).
+- **1105_cb_primeira_mensagem_reivindicada** — `conversations.first_inbound_at`
+  (timestamptz, nula, sem default, SEM preencher as antigas), a reivindicação
+  da primeira mensagem. Conferência só de catálogo (depois da ALTER, só
+  catálogo); a disputa provada num Postgres local com duas sessões. ADITIVA,
+  ANTES do deploy. Aplicada em 25/10/2026 (histórico `20261025163518`), mesmo
+  PR e autorização. Conferida: o tipo, nula, sem default, nenhuma conversa
+  preenchida, UPDATE do `service_role` na coluna.
+- **1106_cb_espera_presa_falha_visivel** — `automation_pending_executions.
+  claimed_at` (timestamptz, nula) e o índice parcial
+  `automation_pending_executions_presas_idx` (`claimed_at` WHERE `status =
+  'running'`); o corte de 1 h mora no app. ADITIVA, ANTES do deploy. Antes de
+  aplicar: nenhuma espera em `running`. Aplicada em 25/10/2026 (histórico
+  `20261025163548`), mesmo PR e autorização. Conferida: a coluna e o índice
+  com a definição exata; nenhuma carimbada.
+- **1107_cb_reacao_apagada_em_tempo_real** — `message_reactions` com REPLICA
+  IDENTITY FULL, para o DELETE passar pelo filtro por conversa do tempo real
+  (o mesmo da 0921). ADITIVA (o app no ar já trata o DELETE). Aplicada em
+  25/10/2026 (histórico `20261025163605`), mesmo PR e autorização. Conferida:
+  `relreplident = f`, na publicação `supabase_realtime`; e2e no preview,
+  antes e depois: antes, tirar a reação zerava o banco e a tela seguia com o
+  👍 depois de 15 s; depois, a tela tirou o 👍 em até 5 s.
+- **1108_cb_ia_uso_por_faixa** — `cb_ia_uso` recriada (DROP + CREATE) com a
+  coluna `acima_da_faixa` (`coalesce(prompt_tokens, 0) > 100000` por linha de
+  `ai_usage_log`), no GROUP BY e no ORDER BY; REVOKE de PUBLIC/anon/
+  authenticated, EXECUTE ao `service_role`. ADITIVA, ANTES do deploy (a rota
+  nova ordena pela coluna). PR #440, autorização do operador em 26/10/2026;
+  aplicada em 26/10/2026 (histórico `20261026093824`). Conferida: um
+  overload, a coluna nova, o `coalesce`, `authenticated` sem EXECUTE e
+  `service_role` com.
+- **1109_cb_encerrar_nao_apaga_turno_que_ja_respondeu** — só o corpo de
+  `cb_encerrar_limpa_ia` (vigente era o da 1049): o descarte dos turnos vivos
+  ao encerrar ganha `AND mensagem_enviada_id IS NULL`. Gatilho intocado.
+  Independe do deploy. Mesmo PR e autorização; aplicada em 26/10/2026
+  (histórico `20261026093835`). Conferida: o corpo novo, SECURITY DEFINER,
+  `authenticated` sem EXECUTE; a conferência da própria migration (turno de
+  teste numa conversa real, desfeito por SQLSTATE) não deixou turno nem
+  conversa alterados.
+- **1110_cb_ia_turnos_sobrevivem_a_conversa** — o turno do agente de IA
+  sobrevive à conversa e à Lixeira (C1 da central, DC1–DC3):
+  - `conversation_id` anulável, e a FK vira `ON DELETE SET NULL
+    (conversation_id)`, NOT VALID + VALIDATE;
+  - gatilho `cb_ia_turnos_conversa_apagada_trigger` do turno vivo;
+  - 6 colunas: o conteúdo removido, `saida_bruta`, `erro_detalhe`, `motivo`
+    e `esperou_horario`;
+  - `cb_ia_turno_sem_conteudo` e `cb_ia_podar_conteudo_dos_turnos`;
+  - 2 índices;
+  - `cb_lixeira_tratamento` (de 1102) e `cb_lixeira_purgar_um` (de 1097)
+    refeitas.
+
+  ADITIVA, ANTES do deploy. PR #441, autorização do operador em
+  26/10/2026; aplicada em 26/10/2026 (histórico `20261026151000`), depois
+  do replay verde do CI no commit `f8d0ab20`. Conferida:
+  - a FK SET NULL só na coluna 3 (`conversation_id`), validada;
+  - o gatilho ligado, as 6 colunas e os 2 índices;
+  - as portas: as duas funções sem EXECUTE para anon e authenticated; a
+    poda SECURITY DEFINER e com EXECUTE no `service_role`;
+  - o md5 do corpo das quatro funções igual ao do Postgres local onde a
+    1110 foi provada;
+  - 0 turnos: a conferência da migration, desfeita por `P1110`, não deixou
+    rastro.
+- **1111_cb_opcoes_de_resposta** — `messages.opcoes_de_resposta` (jsonb,
+  nula): os rótulos das opções de resposta da mensagem de empresa recebida
+  (resposta rápida do modelo, `quick_reply`, item de lista), que a bolha
+  oferece como botões que preparam a resposta. ADITIVA, ANTES do deploy (o
+  INSERT da mensagem com opções levaria 42703). PR #443, replay do CI verde
+  no commit `b6153ac1`, autorização do operador em 26/10/2026; aplicada em
+  26/10/2026 (histórico `20261026152759`, depois da 1110). Conferida: a
+  coluna em `jsonb`; a publicação de tempo real de `messages` sem lista de
+  colunas (a coluna viaja).
+- **1112_cb_campo_do_motivo_da_etapa** — `pipeline_stages.campo_do_motivo_id`
+  (FK para `custom_fields` `ON DELETE SET NULL`) e o gatilho
+  `cb_campo_do_motivo_da_mesma_conta_trg` (BEFORE INSERT OR UPDATE OF a
+  coluna; confere só a CONTA do campo contra a do funil). Fase 1 do
+  `docs/PLANO-motivos-de-perda.md`.
+
+  ADITIVA, ANTES do deploy. Autorização do operador em 26/10/2026 ("aplique
+  a migration 1112 em produção"), aplicada em 26/10/2026 (histórico
+  `20261026161549`) ANTES do PR e do replay do CI, para o e2e da Fase 2 no
+  preview: provada num replay local limpo das 235 migrations até ela
+  (verify-schema OK) e em 7 cenários (`campo-do-motivo-1112.test.ts` fixa
+  as decisões). Conferida:
+  - a coluna uuid anulável e a FK SET NULL;
+  - o gatilho ligado e o EXECUTE da função fechado para authenticated;
+  - 0 etapas com motivo: a conferência, desfeita por `P1112`, não deixou
+    rastro.
+- **1113_cb_motivos_do_funil** — a RPC `cb_motivos_do_funil(funil, desde,
+  ate)` (SQL, STABLE, SECURITY INVOKER): por etapa com campo de motivo, os
+  cards que entraram nela no período, pelo motivo atual da ficha, e os sem
+  motivo por quem levou. Fase 4 do `docs/PLANO-motivos-de-perda.md`.
+
+  ADITIVA (função nova), ANTES do deploy. Autorização do operador em
+  26/10/2026 ("aplique a migration 1113 em produção"), aplicada em
+  26/10/2026 (histórico `20261026182933`) ANTES do PR e do replay do CI,
+  para conferir a seção no preview: provada num replay local limpo até ela,
+  em 5 cenários e pelo caminho do PostgREST. Conferida:
+  - SECURITY INVOKER; EXECUTE fechado para anon, aberto para authenticated
+    e service_role;
+  - a seção "Motivos" do Desempenho do Bancário - Comercial carregou com a
+    sessão do operador (resposta 200), e a soma bateu com a trilha.
+- **1114_cb_aviso_aponta_a_anotacao** — `notifications.note_id` (uuid nulo,
+  SEM FK de propósito: a Lixeira e `cb_unir_fichas` são default-deny sobre
+  as FKs). O clique no aviso de menção/resposta leva o fio até a anotação.
+
+  ADITIVA, ANTES do deploy. Autorização do operador em 27/10/2026 ("pode
+  gravar" as migrations 1114 e 1115 em produção), aplicada em 27/10/2026
+  (histórico `20261027184357`) depois do replay verde do CI no commit do PR
+  #445. Conferida: coluna `uuid`; `authenticated` lê e não reescreve.
+- **1115_cb_chat_media_recebe_todo_arquivo** — o bucket `chat-media` ganha
+  `application/octet-stream` e as grafias de imagem, áudio e vídeo que a
+  bolha desenha ou toca (23 → 37 tipos; nenhum saiu). O app guarda como
+  binário todo tipo fora da lista (`tipoParaGuardar`).
+
+  ADITIVA, ANTES do deploy. Mesma autorização, aplicada em 27/10/2026
+  (histórico `20261027184407`). Conferida: a lista tem os tipos de antes e
+  os novos. Em seguida, com a autorização do operador ("recuperar todos"),
+  5 ZIP perdidos desde 19/10 voltaram da Evolution (SHA-256 conferido com a
+  mensagem, `media_url`/`media_type`/`media_filename` gravados só nas linhas
+  ainda sem anexo). Os 2 `.msg` de 16/10 são irrecuperáveis: a Evolution
+  guarda o registro sem o conteúdo (getBase64 400).
+- **1116_cb_autoria_nao_apaga_dado_da_conta** — o `user_id` de `pipelines`,
+  `tags`, `automations`, `automation_logs`, `automation_pending_executions`,
+  `flows`, `flow_runs`, `broadcasts`, `message_templates`, `quick_replies` e
+  `whatsapp_config` vira autoria anulável com `ON DELETE SET NULL`: apagar o
+  login de quem criou não leva mais o funil (com os negócios), as etiquetas,
+  as automações e o resto. Só catálogo, nenhuma linha muda.
+
+  Afrouxa: serve ao app de antes e ao de depois. Autorização do operador em
+  29/10/2026 ("Sim, aplicar", à pergunta de aplicar a 1116 em produção antes
+  do merge), aplicada em
+  29/10/2026 (histórico `20261029202131`) depois do replay verde do CI no
+  commit do PR #447. Conferida: as onze anuláveis e com a FK em SET NULL; só
+  as 14 tabelas da pessoa e do dono durável seguem com CASCADE para
+  `auth.users`; contagens de funis, etiquetas e automações iguais às de antes.
+- **1117_cb_grupos_dos_contatos** — `cb_grupos_dos_contatos` (grupo, ficha,
+  `visto_em`; `contact_id` SEM FK de propósito, como o `note_id` da 1114),
+  `cb_groups.participantes_conferidos_em` e a função
+  `cb_gravar_fichas_do_grupo` (refaz o vínculo do grupo numa transação, com o
+  grupo travado; EXECUTE só do `service_role`). O grupo aparece na ficha de
+  quem está nele, e o participante com conversa abre pelo grupo.
+
+  ADITIVA, ANTES do deploy. Autorização do operador em 30/10/2026 ("Sim,
+  aplicar", à pergunta de aplicar a 1117 em produção quando o CI ficasse
+  verde), aplicada em 30/10/2026 (histórico `20261030154735`) depois do replay
+  verde do CI no commit `43c990a3` do PR #449. Conferida: coluna, tabela e
+  índice `cb_groups_id_account_idx` criados; só a policy de leitura; `anon`
+  sem leitura, `authenticated` lê e não apaga nem chama a função,
+  `service_role` chama; zero linhas e zero grupos carimbados depois da prova
+  (desfeita). No preview, a primeira conferência de um grupo interno gravou as
+  5 fichas de clientes, sem o número da conexão nem o de outra conexão da
+  conta.
 
 ## Notas do histórico
 

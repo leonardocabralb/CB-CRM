@@ -13,6 +13,8 @@ import { fichaQueVenceu, findExistingContact, isUniqueViolation } from '@/lib/co
 import { fichaQueVenceuPorBsuid } from '@/lib/contacts/bsuid'
 import { reopenClosedConversation } from '@/lib/conversations/reopen'
 import { marcarOrigem } from '@/lib/conversations/origem-da-escrita'
+import { reivindicarPrimeiraMensagem } from '@/lib/conversations/primeira-mensagem'
+import { marcarRespostaAoDisparo } from '@/lib/whatsapp/broadcast-resposta'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { routeContactToPipeline } from '@/lib/cb-channels/pipeline-routing'
 import { dispararAutomacoes, etapaTemQuemFale } from '@/lib/automations/engine'
@@ -814,45 +816,6 @@ async function handleStatusUpdate(
 }
 
 /**
- * If an inbound message's sender is on a still-unreplied
- * broadcast_recipients row, flip it to `replied` so the reply count
- * advances on the parent broadcast.
- *
- * Runs on a best-effort basis — failures here must not break the
- * main inbound-message flow, so errors are swallowed with a log.
- */
-async function flagBroadcastReplyIfAny(accountId: string, contactId: string) {
-  try {
-    // Most recent outbound broadcast in this account that hasn't
-    // been replied to yet. Account-scoped so a shared inbox reply
-    // marks the broadcast as replied regardless of which teammate
-    // sent it.
-    const { data: recs, error } = await supabaseAdmin()
-      .from('broadcast_recipients')
-      .select('id, status, broadcast_id, broadcasts!inner(account_id)')
-      .eq('contact_id', contactId)
-      .eq('broadcasts.account_id', accountId)
-      .in('status', ['sent', 'delivered', 'read'])
-      .order('created_at', { ascending: false })
-      .limit(1)
-
-    if (error || !recs || recs.length === 0) return
-
-    const row = recs[0]
-    const { error: updErr } = await supabaseAdmin()
-      .from('broadcast_recipients')
-      .update({ status: 'replied', replied_at: new Date().toISOString() })
-      .eq('id', row.id)
-
-    if (updErr) {
-      console.error('Error marking broadcast recipient replied:', updErr)
-    }
-  } catch (err) {
-    console.error('flagBroadcastReplyIfAny failed:', err)
-  }
-}
-
-/**
  * Resolve a Meta-side message_id into the matching internal UUID, scoped
  * to one conversation. Returns null when we never received the parent
  * (e.g. a swipe-reply to a message older than this CRM install).
@@ -1073,12 +1036,14 @@ async function processMessage(
   // BEFORE we insert, so the count is accurate. Covers the case where
   // the contact row already exists (manual add / CSV import) but they've
   // never messaged us before — which new_contact_created wouldn't catch.
-  const { count: priorCustomerMsgCount } = await supabaseAdmin()
+  // ⚠️ NOSSO (1105): zero só HABILITA a reivindicação da primeira mensagem,
+  // depois do insert — numa rajada, as duas mensagens contam zero antes de
+  // qualquer uma gravar. Ver `primeira-mensagem.ts`.
+  const contagemAnterior = await supabaseAdmin()
     .from('messages')
     .select('id', { count: 'exact', head: true })
     .eq('conversation_id', conversation.id)
     .eq('sender_type', 'customer')
-  const isFirstInboundMessage = (priorCustomerMsgCount ?? 0) === 0
 
   // Idempotent insert. Meta retries webhook deliveries (a slow ack, a
   // transient 5xx), and each retry replays the exact same message.id. The
@@ -1195,10 +1160,23 @@ async function processMessage(
     await registrarEntrega(supabaseAdmin(), canalGravado, parseInt(message.timestamp))
   }
 
+  // ⚠️ NOSSO (1105): a primeira mensagem do cliente se decide no BANCO, depois
+  // do insert e do `return` da reentrega — só uma requisição da rajada leva a
+  // conversa, e a saudação do robô e da automação não sai em dobro. Falha
+  // fechada, nunca lança. Gêmeo do `persistInboundMessage` da Evolution.
+  const isFirstInboundMessage = await reivindicarPrimeiraMensagem(
+    supabaseAdmin(),
+    conversation.id,
+    contagemAnterior,
+  )
+
   // If this contact was a recent broadcast recipient, flag the reply
   // so the broadcast's `replied_count` advances (via the aggregate
   // trigger installed in migration 003).
-  await flagBroadcastReplyIfAny(accountId, contactRecord.id)
+  // ⚠️ NOSSO (porte do #671): só a linha MAIS RECENTE do contato, enviada há
+  // até 7 dias — sem janela, a resposta de meses depois contava para uma
+  // campanha velha. Best effort, nunca lança. Ver `broadcast-resposta.ts`.
+  await marcarRespostaAoDisparo(supabaseAdmin(), accountId, contactRecord.id)
 
   // ⚠️ NOSSO: o anúncio de origem (o `referral` do Click-to-WhatsApp) vai
   // para os campos de traqueamento da ficha. ANTES do robô, das automações e

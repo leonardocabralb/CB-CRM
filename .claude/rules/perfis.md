@@ -10,6 +10,7 @@ paths:
   - "src/components/auth/**"
   - "src/components/layout/**"
   - "src/hooks/use-can*"
+  - "src/hooks/use-menu-recolhido*"
   - "src/lib/auth/roles*"
   - "src/app/api/cb/perfis/**"
   - "src/app/api/account/**"
@@ -103,7 +104,8 @@ Troca de LENTE no navegador, e só nele (`simulacao.ts`, o override no
 
 ### Seções só de admin
 - ⚠️⚠️ Seção cujas rotas são todas `requireRole('admin')` entra em
-  `SECOES_SO_DE_ADMIN` (`catalogo.ts`; hoje `perfis` e `webhooks`). Marcar
+  `SECOES_SO_DE_ADMIN` (`catalogo.ts`; hoje `perfis`, `webhooks` e
+  `marca`). Marcar
   `admin` em `ESCRITA_DA_SECAO` NÃO basta: `podeVerSecao` tem fail-open para
   membro sem perfil, e um admin poderia marcar a caixa num perfil `agent` — a
   seção apareceria e não funcionaria. `api` está no mesmo caso e ficou como
@@ -118,7 +120,9 @@ Troca de LENTE no navegador, e só nele (`simulacao.ts`, o override no
   de TELA, não barreira (`deals` e `cb_lead_events` são legíveis por qualquer
   membro). A aba vigente é resolvida no RENDER (`vistaVigente`). Detalhes em
   `funil.md`.
-- Apagar contato é admin nos dois lados (981) — `contatos.md`.
+- Excluir contato (mover para a Lixeira, restaurar, "Excluir agora", e o
+  "Restaurar e unir" da 1101) é de admin na tela e nas RPCs, que conferem
+  por dentro — `contatos.md`.
 - Os poderes que separam `agent` de `admin` aparecem no editor (`PODERES`).
   Tarefa: `podeNaTarefa` dá apagar ao criador e ao admin (tarefa órfã).
 
@@ -135,6 +139,11 @@ Troca de LENTE no navegador, e só nele (`simulacao.ts`, o override no
   cobra `Sidebar.<labelKey>` e `Header.<título>` nos dois dicionários.
 - O "Modo anônimo" do menu do nome segue o papel REAL, de propósito (a lente
   não o esconde nem o desliga): `.claude/rules/modo-anonimo.md`.
+- ⚠️ **Menu recolhido (64 px, só ícones) é preferência do navegador** e só vale
+  do `lg` para cima: `recolhido` de `useMenuRecolhido` já sai falso abaixo,
+  e a gaveta do celular mostra sempre os nomes. Selo, chip ou texto novo numa
+  linha do menu tem de tratar o `recolhido` (o contador vira selo no ícone,
+  `CONTADOR_SOBRE_O_ICONE`; o resto some): sem isso, estoura os 64 px.
 
 ### Membros e posse da conta
 - Com perfil atribuído, o papel SEGUE o `papel_base` do perfil (962):
@@ -143,9 +152,10 @@ Troca de LENTE no navegador, e só nele (`simulacao.ts`, o override no
   apaga), e `transfer_account_ownership` reparenta `contacts`, `conversations`
   e `custom_fields` para o novo dono (971) e limpa o `perfil_id` dele (965) —
   senão, apagado o login do ex-dono, o acervo iria junto pelo CASCADE. SÓ
-  essas três: as outras guardam quem CRIOU, e mover é decisão pendente.
-- `remove_account_member` só realoca o perfil; o que dispara o CASCADE de
-  `user_id` é apagar o LOGIN fora do app (painel do Supabase, admin API).
+  essas três: as outras guardam quem CRIOU, com `ON DELETE SET NULL` (1116).
+- `remove_account_member` só realoca o perfil. Apagar o LOGIN fora do app
+  (painel do Supabase, admin API) leva pelo CASCADE só o dado da PESSOA
+  (perfil, avisos, favoritas, filtros); o que ela criou fica sem autor (1116).
 - O celular de cada membro (1046) aparece na lista de Membros SÓ para
   administradores, como o e-mail, e com barreira no banco (RLS de
   `cb_celulares_dos_membros`). As regras estão em `meu-dia.md`.

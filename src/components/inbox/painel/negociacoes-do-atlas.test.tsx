@@ -134,15 +134,15 @@ describe("os estados da seção", () => {
 
   it("sem banco nenhum: 'sem negociação' (só com resposta)", () => {
     expect(painel({ negociacoes: { truncated: false, totals: { banks: 0, contracts: 0, proposals: 0 }, banks: [] } })).toContain(
-      "Nenhum banco cadastrado para este cliente no Atlas.",
+      "Nenhum banco cadastrado para este cliente no Atlas Gestor.",
     );
   });
 
   it("cada erro tem a sua frase, com 'Tentar de novo', e nenhum vira 'sem negociação'", () => {
     const esperado: Record<string, string> = {
-      sem_permissao: "A leitura das negociações está desligada no Atlas.",
-      nao_encontrado: "O cliente não foi encontrado no Atlas (pode estar na lixeira).",
-      falhou: "Não foi possível ler as negociações no Atlas.",
+      sem_permissao: "A leitura das negociações está desligada no Atlas Gestor.",
+      nao_encontrado: "O cliente não foi encontrado no Atlas Gestor (pode estar na lixeira).",
+      falhou: "Não foi possível ler as negociações no Atlas Gestor.",
     };
     for (const erro of ERROS_DAS_NEGOCIACOES) {
       const html = painel({ erro });
@@ -155,7 +155,7 @@ describe("os estados da seção", () => {
 
   it("429 do Atlas: a espera pedida, e o botão travado enquanto dura", () => {
     const html = painel({ espera: { segundos: 17, origem: "atlas" } }, { esperando: true });
-    expect(html).toContain("O Atlas pediu para esperar 17 s antes de ler de novo.");
+    expect(html).toContain("O Atlas Gestor pediu para esperar 17 s antes de ler de novo.");
     expect(html).toMatch(BOTAO_TRAVADO);
     expect(html).not.toContain("Nenhum banco");
   });
@@ -163,7 +163,7 @@ describe("os estados da seção", () => {
   it("429 do balde do CRM: nunca atribui ao Atlas (nenhuma chamada foi feita)", () => {
     const html = painel({ espera: { segundos: 17, origem: "crm" } }, { esperando: true });
     expect(html).toContain("Muitas leituras em pouco tempo; aguarde 17 s antes de ler de novo.");
-    expect(html).not.toContain("O Atlas pediu");
+    expect(html).not.toContain("O Atlas Gestor pediu");
     expect(desenhar(<PainelDasNegociacoes estado={{ ...ESTADO_INICIAL, de: FICHA_A, espera: { segundos: 5, origem: "crm" } }} carregando={false} atualizando={false} esperando onAtualizar={() => {}} />, en, "en")).toContain(
       "Too many reads in a short time; wait 5 s",
     );
@@ -179,7 +179,7 @@ describe("os estados da seção", () => {
     // Com a negociação já mostrada, ela continua lá, sem o aviso.
     const comLista = painel({ negociacoes: NEGOCIACAO, espera: { segundos: 17, origem: "atlas" } }, { esperando: false });
     expect(comLista).toContain("Banco Exemplo");
-    expect(comLista).not.toContain("O Atlas pediu");
+    expect(comLista).not.toContain("O Atlas Gestor pediu");
   });
 
   it("a negociação: banco, dívidas, contrato (titular, judicializado, quitado, acordo) e propostas", () => {
@@ -205,13 +205,13 @@ describe("os estados da seção", () => {
 
   it("lista cortada: a nota com os totais reais", () => {
     const html = painel({ negociacoes: { ...NEGOCIACAO, truncated: true, totals: { banks: 1, contracts: 1200, proposals: null } } });
-    expect(html).toContain("A lista veio cortada pelo Atlas. No total: 1 bancos, 1200 contratos e — propostas.");
+    expect(html).toContain("A lista veio cortada pelo Atlas Gestor. No total: 1 bancos, 1200 contratos e — propostas.");
   });
 
 
   it("os dois dicionários desenham (fallback do next-intl é por arquivo)", () => {
     const html = painel({ negociacoes: NEGOCIACAO }, {}, en, "en");
-    expect(html).toContain("Negotiation in Atlas");
+    expect(html).toContain("Negotiation in Atlas Gestor");
     expect(html).toContain("Accepted · Lump sum");
   });
 });

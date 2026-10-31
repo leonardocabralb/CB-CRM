@@ -58,15 +58,15 @@ vi.mock('./admin-client', () => ({
   }),
 }))
 
+type EnvioDaEvolution = { providerMessageId: string; remoteJid?: string | null }
 const evolution = vi.hoisted(() => ({
-  sendText: vi.fn(async () => ({ providerMessageId: 'evo.t' })),
-  sendMedia: vi.fn(async () => ({ providerMessageId: 'evo.m' })),
+  sendText: vi.fn(async (): Promise<EnvioDaEvolution> => ({ providerMessageId: 'evo.t' })),
+  sendMedia: vi.fn(async (): Promise<EnvioDaEvolution> => ({ providerMessageId: 'evo.m' })),
 }))
 
 vi.mock('@/lib/cb-channels/engine-send', () => ({
   resolveEngineChannelPreferring: vi.fn(async () => h.canal),
   evolutionTransportFor: vi.fn(() => evolution),
-  evolutionRemoteJid: vi.fn((to: string) => `${to}@s.whatsapp.net`),
 }))
 // `gravarComCanal` é o REAL: o INSERT da mensagem do robô passa por ele desde
 // a F2a (o canal vai no próprio INSERT), e ele só chama a gravação recebida.
@@ -234,6 +234,32 @@ describe('robô (fluxo e IA): o alvo por BSUID', () => {
     h.contato = { id: 'contact-1', phone: '+5583988887777', wa_user_id: null }
     await engineSendMedia({ ...BASE, kind: 'image', link: 'https://x.test/a.jpg' })
     expect(evolution.sendMedia).toHaveBeenCalledWith(expect.objectContaining({ to: '5583988887777' }))
+  })
+
+  // 19/10/2026: grava o endereço que a Evolution USOU (o número antigo de DDD
+  // 31 em diante vive SEM o 9), senão o "apagar para todos" erra a conversa.
+  it('texto pela Evolution: grava o endereço que ela usou, não o da ficha', async () => {
+    h.canal = CANAL_EVOLUTION
+    h.contato = { id: 'contact-1', phone: '+5583988887777', wa_user_id: null }
+    evolution.sendText.mockResolvedValueOnce({
+      providerMessageId: 'evo.t',
+      remoteJid: '558388887777@s.whatsapp.net',
+    })
+    await engineSendText({ ...BASE, text: 'oi' })
+    expect(h.mensagens[0]?.remote_jid).toBe('558388887777@s.whatsapp.net')
+    expect(h.mensagens[0]?.remote_jid_lid).toBeNull()
+  })
+
+  it('mídia pela Evolution enviada pelo LID: o LID vai para remote_jid_lid', async () => {
+    h.canal = CANAL_EVOLUTION
+    h.contato = { id: 'contact-1', phone: '+5583988887777', wa_user_id: null }
+    evolution.sendMedia.mockResolvedValueOnce({
+      providerMessageId: 'evo.m',
+      remoteJid: '100000000000102@lid',
+    })
+    await engineSendMedia({ ...BASE, kind: 'image', link: 'https://x.test/a.jpg' })
+    expect(h.mensagens[0]?.remote_jid).toBe('5583988887777@s.whatsapp.net')
+    expect(h.mensagens[0]?.remote_jid_lid).toBe('100000000000102@lid')
   })
 
   it('ficha sem telefone e sem BSUID (a do Instagram) falha com o motivo, sem provedor', async () => {

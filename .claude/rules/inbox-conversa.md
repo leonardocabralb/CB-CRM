@@ -29,6 +29,7 @@ paths:
   - "src/lib/inbox/motivo-da-falha*"
   - "src/lib/inbox/fila-de-anexos*"
   - "src/lib/inbox/fila-de-saida*"
+  - "src/lib/inbox/bolhas-otimistas*"
   - "src/lib/inbox/nao-lidas-abaixo*"
   - "src/lib/inbox/whatsapp-format*"
   - "src/lib/inbox/links-no-texto*"
@@ -64,7 +65,8 @@ ficha em `.claude/rules/campos-e-nome.md`.
 ### `message-bubble.tsx` e `message-thread.tsx` ficam NOSSOS, inteiros
 
 - ⚠️ **O visualizador de mídia do upstream foi descartado**: o nosso
-  `media-viewer.tsx` tem giro e zoom. `media-lightbox.tsx` e `message-media.tsx`
+  `media-viewer.tsx` tem giro e zoom (Esc em captura no `document`: no Sheet, o
+  base-ui o pegava). `media-lightbox.tsx` e `message-media.tsx`
   NÃO estão ligados; religá-los dá dois visualizadores. O que é nosso dentro de
   arquivo do upstream está em `docs/MERGE-UPSTREAM.md`.
 - ⚠️ **Conversa fora das conexões do perfil: `ConversaForaDaArea` SUBSTITUI o
@@ -87,6 +89,10 @@ ficha em `.claude/rules/campos-e-nome.md`.
 - ⚠️ **Mensagem do realtime entra no FIM do fio aberto, não pelo carimbo — de
   propósito**: pelo carimbo, toda mensagem atrasada nasceria acima da dobra,
   despercebida. Ao recarregar, ela vai para o lugar do carimbo.
+- ⚠️ **A provisória EM VOO só sai pela linha do PRÓPRIO atendente; a que
+  FALHOU sai com qualquer linha e na recarga** (`bolhas-otimistas.ts`): falha
+  incerta (502, rede) pode ter saído, e mantê-la convida ao reenvio em dobro.
+  Segurá-la pede o motivo da recusa na resposta (#417).
 - ⚠️ **A faixa da nota fixada compara `conversation_id` com a prop do render
   atual**: o `useConversationNotes` esvazia num efeito, e a nota do cliente
   anterior aparecia sob o cabeçalho do novo.
@@ -99,7 +105,7 @@ ficha em `.claude/rules/campos-e-nome.md`.
   linha do ATLAS — suspenso e inativo também —, cada linha com a FONTE, "no
   funil …" ou "no Atlas desde …": `juntarSituacoes`, `integracoes-atlas.md`), inadimplência do Asaas,
   possível no-show (`FaixaDeNoShow`, `reunioes.md`), possível duplicata
-  (`contatos.md`), agendadas, presença (`FaixaDePresenca`), o número divergente e, COLADA no
+  e ficha na Lixeira (`contatos.md`), agendadas, presença (`FaixaDePresenca`), o número divergente e, COLADA no
   compositor, a conexão fora do ar (`canal-na-conversa.md`). A de no-show vem do hook que carimba o contato dono do
   aviso: a de um cliente nunca aparece na conversa de outro. As ARREDONDADAS
   moram num bloco `pb-2 empty:hidden` (cada uma só com `mt-2`): fora dele, ou
@@ -133,7 +139,7 @@ destaque e ↑/↓ em `message-thread.tsx`.
   (`contarNovasDoCliente` e a âncora `ultimaMensagemRef` passam por
   `naOrdemDoFio`): o tempo real acrescenta no fim da lista, e a ligação (1044)
   entra com carimbo no passado — pela ordem crua ela acendia o botão sobre uma
-  bolha desenhada acima da âncora (Codex, PR #304).
+  bolha desenhada acima da âncora.
 
 ### Busca DENTRO do fio e "Ver na conversa"
 
@@ -143,14 +149,13 @@ destaque e ↑/↓ em `message-thread.tsx`.
   mais ANTIGO, Shift+Enter volta, Esc fecha. A barra é carimbada com a conversa
   (`buscaLocal.conversationId`), nunca zerada por efeito.
 - ⚠️⚠️ **O salto PONTUAL tem UMA mecânica, `useSaltoPontual`**, para a citação
-  (`irParaCitada`) e para o "Ver na conversa" do painel (`saltoPedido`, com
-  `conversationId` + `n`). Origem nova instancia o hook, não copia o efeito.
-  Quatro cercas: atende UMA vez por `n` (`atendidoRef`), senão mensagem nova
-  re-centralizaria o alvo velho; o pedido do painel só vale para ESTA conversa;
-  chama `liberarSalto()` antes de rolar, senão o achado da busca puxa de volta;
-  o timer do destaque vive num REF, fora da limpeza do efeito, senão o destaque
-  ficaria aceso para sempre. O destaque é DERIVADO (`pedido.n !== apagado`),
-  sem `setState` síncrono em efeito.
+  (`irParaCitada`) e para o `saltoPedido` da página ("Ver na conversa" e o
+  aviso de anotação, 1114; `conversationId` + `n`). Origem nova instancia o
+  hook, não copia o efeito. Quatro cercas: atende UMA vez por `n`
+  (`atendidoRef`), senão mensagem nova re-centraliza o alvo velho; o pedido só
+  vale para ESTA conversa; `liberarSalto()` antes de rolar (o achado da busca
+  puxaria de volta); o timer do destaque num REF, fora da limpeza do efeito
+  (senão fica aceso). Destaque DERIVADO (`pedido.n !== apagado`).
 - ⚠️ **`LinhaDoFio` embrulha mensagem E anotação** (`data-message-id` OU
   `data-nota-id`, os dois nomes em `seletorDoAlvo`). Pino `salto-no-fio.test.ts`
   lê o fio: renomear um lado sem o outro faz o botão não fazer nada.
@@ -165,7 +170,7 @@ destaque e ↑/↓ em `message-thread.tsx`.
   `sendDraft`): a janela dispara na hora ao trocar de conversa, desmontar ou
   dar Enter de novo, e mandaria em 3 s a mensagem marcada para amanhã.
   `<SeletorDeHorario>` é de módulo (reusado no `MediaDraftPreview`), e
-  `entreguesRef` impede o desmonte de apagar arquivo que já é de uma agendada.
+  `entreguesRef` impede o descarte de apagar arquivo que já é de uma agendada.
   Regras da agendada: `.claude/rules/agendadas.md`.
 - **O acervo mora no menu do clipe; gravar voz fica FORA dele**, à direita.
   "Executar automação" fica no menu +, atrás da prop `onExecutarAutomacao`; o
@@ -221,14 +226,13 @@ destaque e ↑/↓ em `message-thread.tsx`.
 - ⚠️⚠️ **Fora da TELA, o fio só envia** (`conversaNaTelaRef`, efeito de
   LAYOUT; zera no desmonte): sem bolha, citação nem portão das 24h (decide a
   Meta) — senão a bolha de A cai no fio de B.
-- ⚠️⚠️ **O arquivo é da MENSAGEM desde a retenção** (`entreguesRef`, antes do
-  `setPendente`; sai no Desfazer e na falha): o `draftsRef` das limpezas é
-  passivo, e a troca no mesmo quadro apagava o anexo enviado (#413).
+- ⚠️⚠️ **O arquivo é da MENSAGEM desde a retenção** (`entreguesRef`, de
+  módulo, antes do `setPendente`; sai no Desfazer e na falha): protege o
+  descarte e a retenção em dobro (#413).
 - ⚠️⚠️ **`onSendMedia` DEVOLVE se entregou; o pai NÃO apaga o objeto na
   falha.** O lote PARA no que falhou; ele e os que não COMEÇARAM
-  (`lote.comecados`; a cauda é só da 1ª falha) voltam à prévia se a origem
-  está NA TELA (`conversaNaTelaRef`, layout); senão, recolhe os que não
-  começaram e avisa.
+  (`lote.comecados`; a cauda é só da 1ª falha) voltam à fila da ORIGEM
+  (`Retida.rascunho`); fora da tela, com aviso.
 - ⚠️⚠️ **Agendar desvia ANTES da janela, sob trinco SÍNCRONO de POSSE**
   (`enviandoFilaRef`, nunca booleano; solto também na troca de conversa):
   depois de cada `await`, `!== posse` desiste. Comparar o `conversationId`
@@ -239,9 +243,8 @@ destaque e ↑/↓ em `message-thread.tsx`.
   `typeof idQueSaiu !== "string"`: um `onClick` passaria o MouseEvent).
   Pinos: `fila-de-anexos.chamadores.test.ts`.
 - ⚠️ **Todo caminho passa pelo MESMO funil** (`receberArquivos`: teto e aviso do
-  que ficou de fora) e acrescenta à fila com a guarda da conversa NA TELA. As
-  limpezas (desmonte, anotação) percorrem a fila INTEIRA; uma esquecida vaza
-  objeto no bucket.
+  que ficou de fora) e acrescenta à fila da ORIGEM; a fila é por conversa
+  (`rascunho-da-conversa.md`).
 - ⚠️ **O item exibido é resolvido no RENDER** (`find(...) ?? drafts[0]`), nunca
   por efeito. Cada descarte tem aviso (`recusados`, `excedentes`). A tira de
   miniaturas só aparece com MAIS DE UM anexo (a regra do seletor de canal: com
@@ -259,7 +262,7 @@ desenho do WhatsApp (pedido do operador).
   (segura a memória), só quando o player aparece (`IntersectionObserver`),
   guardada por endereço. Falha vira fileira de pontos.
 - **Cor por `currentColor`**: a bolha não entregue troca o texto para
-  `!text-foreground`, e cor fixa sumiria.
+  `!text-foreground`, e cor fixa sumiria. Na anotação, `corHerdada` (1102).
 - **No toque, encostar NÃO pula** (o dedo pode estar rolando): pula no arraste
   horizontal de mais de 8 px ou no toque curto.
 - **Uma velocidade para todos** (`cb-audio-velocidade`, `lerVelocidade`), um
@@ -290,11 +293,12 @@ O WhatsApp quase nunca anuncia a falha; este vermelho é INFERIDO.
 
 - **`CartaoDeContato` lê `messages.contatos` por `lerContatosGravados`** (JSON de
   fora, campo a campo); sem nada legível mostra o resumo ou "sem dados", nunca
-  bolha vazia. A ingestão está em `.claude/rules/whatsapp-evolution.md`.
+  bolha vazia (ingestão: `whatsapp-evolution.md`). Por telefone, Copiar e
+  Conversar (operador).
 - ⚠️ **"Conversar" só com `waid` e só para quem envia**
   (`useCan('send-messages')`), e dispara `EVENTO_CONVERSAR_COM_CONTATO`
   (`conversar-com-contato.ts`): a "Nova conversa" mora na LISTA, irmã do fio.
-  Uma segunda cópia do nome do evento faria o botão não fazer nada.
+  Outra cópia do nome do evento deixa o botão inerte.
 - O rótulo de tipo não suportado vira `Inbox.bubble.naoSuportada`
   (`tipoNaoSuportado`), com o tipo técnico no `title`.
 
@@ -306,8 +310,7 @@ O WhatsApp quase nunca anuncia a falha; este vermelho é INFERIDO.
 
 ### Documento e cartão de contato em destaque; o fundo do fio (01/10/2026)
 
-Pedido do operador: sem miniatura, o documento e o cartão passavam por texto
-comum no meio das mensagens (ícone cinza sobre bolha cinza).
+Pedido do operador: sem miniatura, passavam por texto comum no meio do fio.
 
 - ⚠️ **Os dois têm superfície PRÓPRIA (`bg-card` + anel), nunca um tom da
   bolha**: o `bg-muted/50` de antes sumia no cinza do cliente. Assim as cores de
@@ -317,7 +320,7 @@ comum no meio das mensagens (ícone cinza sobre bolha cinza).
   imagem e vídeo com o teto fixo no INVÓLUCRO (`max-w-60`) e `max-w-full`
   neles; quadros de carga como o player (`w-64 max-w-full`). Senão, num fio
   estreito (320 px; 1280 px com o painel aberto = fio de 305 px) a peça vaza o
-  teto de 75% e a conversa rola para o lado (Codex #371; medido 01/10/2026).
+  teto de 75% e a conversa rola para o lado.
 - **Selo do documento = extensão sobre a cor da família** (`tipoDoDocumento`,
   `src/lib/media/tipo-de-documento.ts`): PDF vermelho, planilha verde, texto
   azul. Os tons passam de 4,5 com o branco; os `-600` de verde, laranja e
@@ -336,7 +339,7 @@ comum no meio das mensagens (ícone cinza sobre bolha cinza).
   marcador, partiam o link em itálico. Formatação EM VOLTA dele vale — mas o
   `_`/`~`/`*` do FIM só sai do link quando o mesmo marcador está ABERTO (e
   ainda não fechado) antes dele (`abertoAntes`, que simula o pareamento do
-  interpretador; Codex, #347, duas rodadas): código de compartilhamento
+  interpretador): código de compartilhamento
   termina em `_`, e tirá-lo mandava o `href` para outra página.
 - ⚠️ **Só `http(s)://` e `www.`**, de propósito: domínio solto daria link
   falso em número de processo, CNPJ e "fls.23". O `href` sai do prefixo, e o
@@ -350,9 +353,7 @@ comum no meio das mensagens (ícone cinza sobre bolha cinza).
 
 ### Anotação interna e resposta à anotação
 
-Moram em `.claude/rules/anotacoes.md` (as quatro telas, apagar, fixar, a
-aba Notas do painel e a resposta da 1075). Os links clicáveis na anotação
-ficam acima, em "Links clicáveis".
+Moram em `.claude/rules/anotacoes.md`; os links, acima.
 
 ### Cabeçalho do fio, painel lateral e aba Arquivos
 
@@ -376,7 +377,7 @@ ficam acima, em "Links clicáveis".
 
 ### Aba Relacionados e a faixa "Voltar para" (1069)
 
-O vínculo e a aba: `.claude/rules/contatos.md`. Aqui, o pulo entre conversas.
+O vínculo e a aba: `contatos.md`; grupo ↔ ficha (1117): `grupos.md`. Aqui, o pulo.
 
 - **A aba entrou DEPOIS de Arquivos** (antes do Histórico, que é sempre o
   último), para não mudar a posição das abas que o time já conhece.
@@ -386,7 +387,7 @@ O vínculo e a aba: `.claude/rules/contatos.md`. Aqui, o pulo entre conversas.
   `handleConversaAberta`. Nunca `router.push` do painel: a página não remonta,
   e o fio ficaria na conversa antiga. ⚠️ `handleConversaAberta` FECHA o painel
   do celular: o "Conversar" da aba abre a Nova conversa com o painel sobre o
-  fio, e a conversa criada nascia escondida (Codex, #352).
+  fio, e a conversa criada nascia escondida.
 - ⚠️ **A faixa aparece só com `voltarPara.naConversa === activeConversation.id`,
   DERIVADO no render**; clique na lista, fechar e o aviso do navegador a zeram.
   Um nível só (decisão do operador): de B para C, ela vira "Voltar para B".
@@ -410,9 +411,9 @@ O vínculo e a aba: `.claude/rules/contatos.md`. Aqui, o pulo entre conversas.
 - **Quem monta o fio é o dono da seleção** (`useMarcarConversaAberta`): a
   página do inbox e o painel da pauta de reuniões (`conversa-em-painel.tsx`);
   o cabeçalho mostra `<AvataresNaConversa>` por `useQuemVeAConversa`. Os dois
-  escritores recebem `conversaLida`, nula no modo anônimo e fora do perfil
-  (`modo-anonimo.md`).
-- **Decisão do operador (29/09/2026): a presença também sai em FRASE acima do
+  escritores recebem `conversaLida`, nula no modo anônimo, fora do perfil e
+  com a aba escondida (`modo-anonimo.md`).
+- **Decisão do operador: a presença também sai em FRASE acima do
   compositor** (`<FaixaDePresenca>`, os mesmos `vendoAgora` e roster dos
   avatares): é na hora de responder que importa. Verde, nunca as cores da
   situação (violeta/âmbar/cinza leriam como "pendente"). Pino

@@ -80,6 +80,8 @@ const SEM_CONFERIR_A_SUSPENSAO: Record<string, string> = {
   notify_conversation_assigned: 'gatilho: grava o aviso para quem RECEBE a conversa; não decide acesso de ninguém',
   cb_reunioes_marcos_carimbo:
     'gatilho (1063): só carimba o NOME de quem marcou; a escrita na tabela já exige is_account_member',
+  cb_previa_da_lixeira:
+    'a porta é is_account_member(conta, admin), que já corta o suspenso (1067); o profiles lido é o do RESPONSÁVEL da conversa, só o nome — não descobre o chamador',
 };
 
 describe('1067 — membro suspenso', () => {

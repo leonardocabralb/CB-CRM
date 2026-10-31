@@ -11,8 +11,9 @@
 //
 // Estrutura: cabeçalho compacto (fechar + avatar + nome + telefone),
 // fileira de abas SÓ-ÍCONE e o conteúdo rolável de cada aba. As
-// buscas de dados (negócios, etiquetas) e a assinatura realtime das
-// notas moram NO TOPO do painel, não dentro das abas — trocar de aba
+// buscas de dados (negócios, etiquetas) e as assinaturas realtime (as
+// notas; a trilha, que avisa quando o negócio muda por outro caminho)
+// moram NO TOPO do painel, não dentro das abas — trocar de aba
 // não refaz query nenhuma, e fechar o painel (que agora só o esconde,
 // sem desmontar) não derruba o realtime.
 // ============================================================
@@ -20,6 +21,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useConversationNotes } from '@/hooks/use-conversation-notes';
+import { useEdicaoDeNota } from '@/hooks/use-edicao-de-nota';
 import { CartaoDeNota } from '@/components/inbox/cartao-de-nota';
 import { useApagarNota } from '@/hooks/use-apagar-nota';
 import { useFixarNota } from '@/hooks/use-fixar-nota';
@@ -34,7 +36,11 @@ import { SeletorFunilEtapa } from '@/components/inbox/painel/seletor-funil-etapa
 import { AvancarEtapa } from '@/components/inbox/painel/avancar-etapa';
 import { useMovimentoDeEtapa } from '@/hooks/use-movimento-de-etapa';
 import { useMovimentosDoFunil } from '@/hooks/use-movimentos-do-funil';
+import { useMudancaNoNegocio } from '@/hooks/use-mudanca-no-negocio';
 import { aoConcluirMovimento, concluirAgora } from '@/lib/pipelines/mover-com-desfazer';
+import { etapasDePerda } from '@/lib/pipelines/motivo-da-etapa';
+import { useJanelaDoMotivo } from '@/components/pipelines/janela-do-motivo';
+import { criarReguaDasLeituras } from '@/lib/pipelines/regua-das-leituras';
 import { AbaAutomacoes } from '@/components/inbox/painel/aba-automacoes';
 import { AbaArquivos } from '@/components/inbox/painel/aba-arquivos';
 import { AbaCobrancas } from '@/components/inbox/painel/aba-cobrancas';
@@ -58,6 +64,8 @@ import { avisarDrenagemDeFunil } from '@/lib/automations/avisar-drenagem';
 import { CampoComSalvamento } from '@/components/contacts/campo-com-salvamento';
 import { ContatosRelacionados } from '@/components/contacts/contatos-relacionados';
 import { useContatosRelacionados } from '@/hooks/use-contatos-relacionados';
+import { GruposDoContato } from '@/components/inbox/painel/grupos-do-contato';
+import { useGruposDoContato } from '@/hooks/use-grupos-do-contato';
 import { pedirConversaComContato } from '@/lib/inbox/conversar-com-contato';
 import { MenuDeBlocos } from '@/components/contacts/menu-de-blocos';
 import { LinhaDeEdicao } from '@/components/inbox/painel/linha-de-edicao';
@@ -266,6 +274,14 @@ export function PainelDoContato({
   // Contatos relacionados (1069). No TOPO pelo mesmo motivo: a etiqueta da
   // aba mostra quantos são antes de a aba abrir.
   const relacionados = useContatosRelacionados(contact?.id ?? null, resyncToken);
+  // Os grupos de WhatsApp do cliente (1117), na mesma aba e na mesma etiqueta.
+  const gruposDoContato = useGruposDoContato(contact?.id ?? null, resyncToken);
+  // A etiqueta soma os dois só quando os dois responderam: com um lado
+  // carregando ou em falha, a parte leria como o total.
+  const contagemDosRelacionados =
+    relacionados.itens == null || gruposDoContato.itens == null
+      ? null
+      : relacionados.itens.length + gruposDoContato.itens.length;
   // O Atlas (Fase 2): o botão "Abrir no Atlas" do cabeçalho precisa do
   // vínculo antes de a aba abrir. O hook carimba o dono (`{ de }`).
   const atlas = useAtlasDoContato(contact?.id ?? null, resyncToken);
@@ -307,6 +323,13 @@ export function PainelDoContato({
    * contato (declarado antes do efeito que dispara o fetch).
    */
   const contactIdRef = useRef<string | null>(null);
+  /**
+   * Ordem das leituras de NEGÓCIOS do mesmo contato (a carga, a releitura de
+   * cada mudança vinda de outro caminho, a da volta à aba) e das escritas do
+   * próprio painel — ver `regua-das-leituras.ts`. Objeto estável (estado
+   * preguiçoso, nunca recriado).
+   */
+  const [reguaDosNegocios] = useState(criarReguaDasLeituras);
 
   // ---- Fase 2: edição dentro da conversa --------------------------------
   const [allTags, setAllTags] = useState<Tag[]>([]);
@@ -512,11 +535,20 @@ export function PainelDoContato({
    */
   const {
     notas,
+    pronta: notasProntas,
     acrescentar: acrescentarNota,
+    substituir: substituirNota,
     aplicarFixacao,
     remover: removerNotaLocal,
     recarregar: recarregarNotas,
   } = useConversationNotes(conversationId, resyncToken);
+  // EDITAR no lugar (Fase 3): o lápis do cartão (só para o AUTOR) troca o
+  // cartão pela caixa. Carimbado com a conversa (`useEdicaoDeNota`).
+  const {
+    editandoId: notaEmEdicao,
+    editar: editarNota,
+    pararDeEditar: pararDeEditarNota,
+  } = useEdicaoDeNota(conversationId, notas, notasProntas);
   /**
    * Apagar (918). ⚠️ No HOOK pela mesma razão do `useFixarNota` logo abaixo:
    * o que os call sites precisam ter em comum é a guarda do `count` — RLS que
@@ -583,6 +615,7 @@ export function PainelDoContato({
     // Congela o alvo: quem valida a chegada é o ref, que o efeito de troca
     // de contato mantém apontando para o contato ATUAL.
     const idPedido = contact.id;
+    const leituraDosNegocios = reguaDosNegocios.pedir();
 
     const supabase = createClient();
 
@@ -658,11 +691,16 @@ export function PainelDoContato({
     // aparece na barra da conversa — mesmo cliente podendo ter caso nas duas
     // áreas, cada equipe vê o seu. `pipeline_id` nulo (negócio órfão) passa,
     // como todo "sem carimbo" do projeto.
-    setDeals(
-      ((dealsRes.data ?? []) as Deal[]).filter(
-        (d) => !d.pipeline_id || funilNoEscopo(acesso, d.pipeline_id),
-      ),
-    );
+    // ⚠️ Os negócios só gravam se nenhuma leitura pedida DEPOIS (a releitura
+    // de uma mudança vinda de outro caminho) já gravou: esta carga traz a foto
+    // de antes da mudança. O resto da ficha grava como sempre.
+    if (reguaDosNegocios.podeGravar(leituraDosNegocios)) {
+      setDeals(
+        ((dealsRes.data ?? []) as Deal[]).filter(
+          (d) => !d.pipeline_id || funilNoEscopo(acesso, d.pipeline_id),
+        ),
+      );
+    }
     const mapped = (tagsRes.data ?? [])
       .filter((ct: Record<string, unknown>) => ct.tags)
       .map((ct: Record<string, unknown>) => ({
@@ -687,13 +725,68 @@ export function PainelDoContato({
     if (etapasRes.data) setAllStages(etapasRes.data as PipelineStage[]);
     if (!tarefasRes.error) setTarefasAbertas(tarefasRes.count ?? 0);
     setDadosProntos(true);
-  }, [contact, tSidebar, acesso, donoDaOrdem]);
+  }, [contact, tSidebar, acesso, donoDaOrdem, reguaDosNegocios]);
 
   // Load on contact change. setDeals/setTags run inside async
   // Supabase callbacks, not synchronously in the effect body.
   useEffect(() => {
     fetchContactData();
   }, [fetchContactData]);
+
+  /**
+   * Relê SÓ os negócios do contato — a etapa, o funil e o status que OUTRO
+   * caminho mudou com a conversa aberta: o agente de IA e as automações no
+   * servidor, o robô, um colega no quadro. Sem isto o seletor de etapa
+   * mostrava a etapa antiga até recarregar a página.
+   *
+   * Silenciosa: mantém o que está na tela até a resposta chegar, e a falha
+   * também mantém (a leitura que falha não sabe nada melhor; a próxima mudança
+   * ou a volta à aba relê). Não mexe em `dadosProntos`, nem no resto da ficha:
+   * reler campos e valores a cada evento da trilha trocaria por baixo o que o
+   * operador está digitando.
+   *
+   * ⚠️ As duas cercas da carga do contato: resposta de OUTRO contato morre no
+   * `contactIdRef` (o `{ de, … }` desta tela), e a régua impede a foto velha
+   * de gravar por cima da nova.
+   */
+  const contatoDoPainel = contact?.id ?? null;
+  const recarregarNegocios = useCallback(async () => {
+    if (!contatoDoPainel) return;
+    const leitura = reguaDosNegocios.pedir();
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from('deals')
+      .select('*, stage:pipeline_stages(*)')
+      .eq('contact_id', contatoDoPainel)
+      .order('created_at', { ascending: false });
+    if (contactIdRef.current !== contatoDoPainel) return;
+    if (error) {
+      console.warn('[painel] releitura dos negócios falhou:', error.message);
+      return;
+    }
+    if (!reguaDosNegocios.podeGravar(leitura)) return;
+    // O mesmo recorte por perfil da carga do contato.
+    setDeals(
+      ((data ?? []) as Deal[]).filter(
+        (d) => !d.pipeline_id || funilNoEscopo(acesso, d.pipeline_id),
+      ),
+    );
+  }, [contatoDoPainel, acesso, reguaDosNegocios]);
+
+  // Negócio do contato mudou por outro caminho (evento da trilha, 1059).
+  useMudancaNoNegocio(contatoDoPainel, () => {
+    void recarregarNegocios();
+  });
+
+  // O que o canal perdeu enquanto esteve fora (aba em segundo plano,
+  // reconexão, o botão de atualizar do fio) volta pelo `resyncToken`. Só
+  // quando ele MUDA: a carga do contato já cobre a montagem e a troca.
+  const resyncVistoRef = useRef(resyncToken);
+  useEffect(() => {
+    if (resyncVistoRef.current === resyncToken) return;
+    resyncVistoRef.current = resyncToken;
+    void recarregarNegocios();
+  }, [resyncToken, recarregarNegocios]);
 
   // Trocar de conversa NO MEIO de uma edição de nome descartaria o texto no
   // contato errado — mesma classe de bug do rascunho de nota, mesma guarda.
@@ -789,7 +882,10 @@ export function PainelDoContato({
    * - `conversation_id` só no NASCIMENTO (o DealForm cuida), nunca aqui.
    *
    * `deals` não tem realtime — o estado local é atualizado na mão, e erro
-   * refaz a busca (o otimismo não pode sobreviver a um update recusado).
+   * refaz a busca (o otimismo não pode sobreviver a um update recusado). A
+   * mudança feita por OUTRO caminho chega pela trilha (`useMudancaNoNegocio`
+   * → `recarregarNegocios`); a escrita daqui avisa a régua, para a releitura
+   * pedida antes dela não desfazer na tela o que acabou de ser salvo.
    */
   const atualizarNegocio = useCallback(
     async (
@@ -835,6 +931,15 @@ export function PainelDoContato({
       // gravado — não pelo `deal.status` desta tela, que pode ser de antes de
       // outro operador mexer no card (Codex, PR #245).
       const statusGravado = linhas[0].status as DealStatus;
+      // Releitura no ar foi pedida antes desta escrita: ela não grava mais (a
+      // foto dela é de antes), e o motivo dela — outro caminho mexeu no card —
+      // pede uma releitura nova.
+      // ⚠️ Só se o negócio é do contato que está NA TELA: a escrita que volta
+      // depois da troca de conversa calaria a carga do contato novo, e ele
+      // ficaria "sem negócios".
+      if (deal.contact_id === contactIdRef.current && reguaDosNegocios.escreveu()) {
+        void recarregarNegocios();
+      }
       setDeals((prev) =>
         prev.map((d) =>
           d.id === deal.id
@@ -862,7 +967,7 @@ export function PainelDoContato({
       if (drenar) avisarDrenagemDeFunil();
       return true;
     },
-    [allStages, fetchContactData, tSidebar]
+    [allStages, fetchContactData, tSidebar, reguaDosNegocios, recarregarNegocios]
   );
 
   /**
@@ -872,16 +977,62 @@ export function PainelDoContato({
    * estado intermediário. E o lead chega na etapa ESCOLHIDA — não mais na
    * primeira do funil novo.
    */
+  // 1112 (Fase 2 dos motivos): UMA janela por painel, também para o botão
+  // "avançar". Etapa que pede motivo abre a janela antes de mover; o motivo
+  // gravado aparece na ficha na hora (`espelharMotivo`), com a mesma cerca
+  // de contato de `gravarCampo`.
+  // ⚠️ Espelhar no estado NÃO basta: o campo que salva sozinho guarda o
+  // rascunho da montagem e não persegue `valorSalvo` (campos-e-nome.md) —
+  // medido no e2e de 26/10/2026, a ficha seguia mostrando "—". A versão do
+  // campo entra na `key` e o remonta com o valor novo. Sem risco de o
+  // desmonte regravar por cima: o motivo é Lista, que grava na ESCOLHA e não
+  // tem rascunho pendente.
+  const { pedirMotivo, janela: janelaDoMotivo } = useJanelaDoMotivo();
+  const [versaoDoCampo, setVersaoDoCampo] = useState<Record<string, number>>({});
+  const espelharMotivo = useCallback(
+    (campoId: string, valor: string, contatoId: string) => {
+      setCustomValues((prev) =>
+        prev.de === contatoId
+          ? { de: prev.de, mapa: { ...prev.mapa, [campoId]: valor.trim() } }
+          : prev
+      );
+      setVersaoDoCampo((prev) => ({ ...prev, [campoId]: (prev[campoId] ?? 0) + 1 }));
+    },
+    []
+  );
+  const contatoDoMotivo = useCallback(
+    (deal: Pick<Deal, 'contact_id'>) =>
+      deal.contact_id && contact && deal.contact_id === contact.id
+        ? { id: contact.id, nome: nomeDoContato(contact, '') }
+        : null,
+    [contact]
+  );
+
   const moverPara = useCallback(
     (deal: Deal, pipelineId: string, stageId: string) => {
       if (stageId === deal.stage_id) return;
-      const patch =
-        pipelineId === deal.pipeline_id
-          ? { stage_id: stageId }
-          : { pipeline_id: pipelineId, stage_id: stageId };
-      void atualizarNegocio(deal, patch, true);
+      const destino = allStages.find((st) => st.id === stageId);
+      const mover = (etapaId: string) =>
+        atualizarNegocio(
+          deal,
+          pipelineId === deal.pipeline_id
+            ? { stage_id: etapaId }
+            : { pipeline_id: pipelineId, stage_id: etapaId },
+          true
+        );
+      if (!destino) {
+        void mover(stageId);
+        return;
+      }
+      const contato = contatoDoMotivo(deal);
+      pedirMotivo({
+        etapas: [destino],
+        contato,
+        mover,
+        aoGravarMotivo: (campoId, valor) => contato && espelharMotivo(campoId, valor, contato.id),
+      });
     },
-    [atualizarNegocio]
+    [allStages, atualizarNegocio, contatoDoMotivo, pedirMotivo, espelharMotivo]
   );
 
   /**
@@ -899,8 +1050,14 @@ export function PainelDoContato({
   useEffect(
     () =>
       aoConcluirMovimento(({ dealId, resultado }) => {
-        if (!negociosRef.current.some((d) => d.id === dealId)) return;
+        const movido = negociosRef.current.find((d) => d.id === dealId);
+        if (!movido) return;
         if (resultado.tipo === 'movido') {
+          // A escrita do botão "avançar" é do painel: a mesma régua (e a
+          // mesma cerca de contato) de `atualizarNegocio`.
+          if (movido.contact_id === contactIdRef.current && reguaDosNegocios.escreveu()) {
+            void recarregarNegocios();
+          }
           setDeals((prev) =>
             prev.map((d) =>
               d.id === dealId
@@ -921,7 +1078,7 @@ export function PainelDoContato({
           void fetchContactData();
         }
       }),
-    [fetchContactData]
+    [fetchContactData, reguaDosNegocios, recarregarNegocios]
   );
 
   const mudarStatus = useCallback(
@@ -931,11 +1088,41 @@ export function PainelDoContato({
         lost: tForm('toastMarkedLost'),
         open: tForm('toastReopened'),
       };
+      // 1112: "Perdido" escolhe a ETAPA de perda e o motivo, e move
+      // (decisão do operador, 26/10/2026). O status vai junto: a etapa igual
+      // não passa pelo gatilho da 950, e o card reaberto parado na própria
+      // etapa de perda ficaria aberto. Funil sem etapa de perda: como antes.
+      // ⚠️ Etapas do funil que não chegaram (a leitura falhou) são "não sei",
+      // nunca "funil sem etapa de perda": marcaria perdido sem mover e sem
+      // perguntar o motivo. Todo funil com card tem ao menos a etapa dele.
+      if (
+        status === 'lost' &&
+        deal.pipeline_id &&
+        !allStages.some((st) => st.pipeline_id === deal.pipeline_id)
+      ) {
+        toast.error(tSidebar('loadError'));
+        return;
+      }
+      const perdas =
+        status === 'lost' && deal.pipeline_id ? etapasDePerda(allStages, deal.pipeline_id) : [];
+      if (perdas.length > 0) {
+        const contato = contatoDoMotivo(deal);
+        pedirMotivo({
+          etapas: perdas,
+          contato,
+          mover: (etapaId) =>
+            atualizarNegocio(deal, { stage_id: etapaId, status: 'lost' }, true).then((ok) => {
+              if (ok) toast.success(toasts.lost);
+            }),
+          aoGravarMotivo: (campoId, valor) => contato && espelharMotivo(campoId, valor, contato.id),
+        });
+        return;
+      }
       void atualizarNegocio(deal, { status }, true).then((ok) => {
         if (ok) toast.success(toasts[status]);
       });
     },
-    [atualizarNegocio, tForm]
+    [allStages, atualizarNegocio, contatoDoMotivo, espelharMotivo, pedirMotivo, tForm, tSidebar]
   );
 
   /**
@@ -1044,6 +1231,8 @@ export function PainelDoContato({
 
   return (
     <div className="border-border bg-card flex h-full w-full flex-col border-l">
+      {/* 1112: a janela do motivo (seletor de etapa, "avançar", "Perdido"). */}
+      {janelaDoMotivo}
       {/* Cabeçalho compacto: fechar + avatar 40px + nome/telefone em linha.
           A identidade ocupava ~150px em três blocos centralizados; agora são
           ~60px, e o que sobrou de altura vai para o conteúdo das abas. */}
@@ -1229,7 +1418,7 @@ export function PainelDoContato({
           <AbaDeIcone
             value="relacionados"
             label={tSidebar('tabRelated')}
-            badge={relacionados.itens?.length ?? null}
+            badge={contagemDosRelacionados}
           >
             <Users className="h-4 w-4" />
           </AbaDeIcone>
@@ -1315,6 +1504,9 @@ export function PainelDoContato({
                     contato={displayName}
                     userId={user.id}
                     disabled={negocioOcupado}
+                    pedirMotivo={pedirMotivo}
+                    contatoDoMotivo={contatoDoMotivo(dealAtivo)}
+                    aoGravarMotivo={(campoId, valor) => espelharMotivo(campoId, valor, contact.id)}
                   />
                 )}
 
@@ -1630,7 +1822,7 @@ export function PainelDoContato({
                   {blocoVisivel.campos.map((field) =>
                     valoresDesteContato ? (
                       <CampoComSalvamento
-                        key={`${contact.id}:${field.id}`}
+                        key={`${contact.id}:${field.id}:${versaoDoCampo[field.id] ?? 0}`}
                         field={field}
                         rotulo={field.field_name}
                         valorSalvo={valoresDesteContato[field.id] ?? ''}
@@ -1701,33 +1893,66 @@ export function PainelDoContato({
               é da leitura DESTA anotação, não da fixada do cliente anterior. */}
           {notaFixada && (
             <div className="bg-card sticky -top-4 z-10 pt-2">
-              <CartaoDeNota
-                key={notaFixada.id}
-                nota={notaFixada}
-                destaque
-                fixada
-                fixando={fixando === notaFixada.id}
-                onFixar={(fixar) => void fixarNota(notaFixada, fixar)}
-                podeApagar={
-                  notaFixada.author_user_id === user?.id || podeAdministrar
-                }
-                onApagar={(id) => void apagarNota(id)}
-                onVerNaConversa={
-                  onIrParaItemDoFio
-                    ? () => onIrParaItemDoFio({ tipo: 'nota', id: notaFixada.id })
-                    : undefined
-                }
-                respondida={respondidaDe(notaFixada)}
-                onResponder={responderA(notaFixada)}
-              />
+              {/* Editando a fixada (Fase 3): a caixa no lugar do cartão. */}
+              {notaEmEdicao === notaFixada.id && conversationId ? (
+                <InternalNoteBox
+                  key={`edicao:${notaFixada.id}`}
+                  conversationId={conversationId}
+                  editando={notaFixada}
+                  listaParaBaixo
+                  onSaved={substituirNota}
+                  onClose={pararDeEditarNota}
+                />
+              ) : (
+                <CartaoDeNota
+                  key={notaFixada.id}
+                  nota={notaFixada}
+                  destaque
+                  fixada
+                  fixando={fixando === notaFixada.id}
+                  onFixar={(fixar) => void fixarNota(notaFixada, fixar)}
+                  podeApagar={
+                    notaFixada.author_user_id === user?.id || podeAdministrar
+                  }
+                  onApagar={(id) => void apagarNota(id)}
+                  onVerNaConversa={
+                    onIrParaItemDoFio
+                      ? () => onIrParaItemDoFio({ tipo: 'nota', id: notaFixada.id })
+                      : undefined
+                  }
+                  respondida={respondidaDe(notaFixada)}
+                  onResponder={responderA(notaFixada)}
+                  // Só o AUTOR edita (A2); sem autor (automação, IA), nunca.
+                  onEditar={
+                    user?.id && notaFixada.author_user_id === user.id
+                      ? () => editarNota(notaFixada)
+                      : undefined
+                  }
+                />
+              )}
             </div>
           )}
 
           <div className="mt-3 space-y-3">
-            {notasComuns.map((note) => (
+            {notasComuns.map((note) =>
+              notaEmEdicao === note.id && conversationId ? (
+                <InternalNoteBox
+                  key={`edicao:${note.id}`}
+                  conversationId={conversationId}
+                  editando={note}
+                  listaParaBaixo
+                  onSaved={substituirNota}
+                  onClose={pararDeEditarNota}
+                />
+              ) : (
               <CartaoDeNota
                 key={note.id}
                 nota={note}
+                onEditar={
+                  user?.id && note.author_user_id === user.id
+                    ? () => editarNota(note)
+                    : undefined
+                }
                 fixando={fixando === note.id}
                 // Fixar é para qualquer um que anota (viewer incluso — a rota
                 // decide). Sem `contact_id` não há fixação: o índice parcial
@@ -1748,7 +1973,8 @@ export function PainelDoContato({
                 respondida={respondidaDe(note)}
                 onResponder={responderA(note)}
               />
-            ))}
+              )
+            )}
           </div>
         </TabsContent>
 
@@ -1835,7 +2061,8 @@ export function PainelDoContato({
 
         {/* ---- Relacionados (1069): clicar abre a conversa da outra pessoa
              na própria caixa de entrada. `key` com o contato: o formulário
-             de vincular é rascunho e não pode atravessar a troca. ---- */}
+             de vincular é rascunho e não pode atravessar a troca. Embaixo,
+             os grupos do cliente (1117). ---- */}
         <TabsContent
           value="relacionados"
           className="min-h-0 flex-1 overflow-y-auto p-4"
@@ -1855,6 +2082,11 @@ export function PainelDoContato({
                 : undefined
             }
           />
+          {/* Os grupos em que o cliente está (1117): clicar abre o grupo,
+              com a faixa "Voltar para" o cliente. */}
+          <div className="border-border mt-4 border-t pt-4">
+            <GruposDoContato grupos={gruposDoContato} onAbrirConversa={onAbrirConversaRelacionada} />
+          </div>
         </TabsContent>
 
         {/* ---- Atlas (Fase 2): a situação no Atlas, "Abrir no Atlas" e, para
@@ -1925,6 +2157,10 @@ export function PainelDoContato({
             setDealFormAberto(null);
             void fetchContactData();
           }}
+          // O motivo que a janela do formulário gravou aparece na ficha na
+          // hora: o refetch do `onSaved` troca o valor, mas o campo que salva
+          // sozinho só o mostra remontado (a cerca é a do contato da ficha).
+          aoGravarMotivo={(contatoId, campoId, valor) => espelharMotivo(campoId, valor, contatoId)}
         />
       )}
     </div>

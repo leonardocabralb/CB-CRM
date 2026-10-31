@@ -13,8 +13,8 @@ import { assertConversationInAccount } from '@/lib/whatsapp/conversation-scope'
 import {
   resolveEngineChannelPreferring,
   evolutionTransportFor,
-  evolutionRemoteJid,
 } from '@/lib/cb-channels/engine-send'
+import { enderecoDoEnvio, type EnderecoDoEnvio } from '@/lib/whatsapp/transport/endereco-do-envio'
 import {
   gravarComCanal,
   preencherCanalDaConversa,
@@ -52,10 +52,10 @@ interface SendTextEngineArgs {
    *  lookups so a flow authored by user A still sends through the
    *  WhatsApp number user B saved on the same account. */
   accountId: string
-  /** Original author of the flow — used for INSERT audit columns
-   *  and for resolving the agent's identity in logs. Not consulted
-   *  for tenancy. */
-  userId: string
+  /** Original author of the flow. Not consulted for tenancy, and no send
+   *  reads it (quem assina é o escritório). Nulo quando o login de quem
+   *  criou foi apagado (1116). */
+  userId: string | null
   conversationId: string
   contactId: string
   text: string
@@ -261,7 +261,10 @@ export async function engineSendText(
 
   let waMessageId = ''
   let workingPhone = alvo
-  let outboundRemoteJid: string | null = null
+  // Só Evolution: o endereço que ela USOU, nunca o telefone da ficha — o nono
+  // dígito pode divergir, e a revogação iria para uma conversa que não existe
+  // (ver `endereco-do-envio.ts`).
+  let endereco: EnderecoDoEnvio | null = null
 
   args.antesDoProvedor?.()
   try {
@@ -271,7 +274,7 @@ export async function engineSendText(
       // `alvo` é telefone aqui: `alvoDoRobo` recusa o BSUID fora da Meta.
       const res = await transport.sendText({ to: alvo, text: textoFinal })
       waMessageId = res.providerMessageId
-      outboundRemoteJid = evolutionRemoteJid(alvo)
+      endereco = enderecoDoEnvio(res.remoteJid, alvo)
     } else {
       const attempt = async (phone: string): Promise<string> => {
         const r = await sendTextMessage({
@@ -335,7 +338,8 @@ export async function engineSendText(
         content_text: textoFinal,
         message_id: waMessageId,
         // Partes da chave Baileys — só Evolution (NULL no Meta).
-        remote_jid: outboundRemoteJid,
+        remote_jid: endereco?.remoteJid ?? null,
+        remote_jid_lid: endereco?.remoteJidLid ?? null,
         from_me: ehEvolution(channel) ? true : null,
         status: 'sent',
         ai_generated: args.aiGenerated ?? false,
@@ -366,7 +370,7 @@ export async function engineSendText(
 
 interface SendMediaEngineArgs {
   accountId: string
-  userId: string
+  userId: string | null
   conversationId: string
   contactId: string
   kind: MediaKind
@@ -455,7 +459,8 @@ export async function engineSendMedia(
 
   let waMessageId = ''
   let workingPhone = alvo
-  let outboundRemoteJid: string | null = null
+  // Só Evolution: o endereço que ela USOU (ver `engineSendText`).
+  let endereco: EnderecoDoEnvio | null = null
 
   try {
     if (transport) {
@@ -469,7 +474,7 @@ export async function engineSendMedia(
         filename: args.filename,
       })
       waMessageId = res.providerMessageId
-      outboundRemoteJid = evolutionRemoteJid(alvo)
+      endereco = enderecoDoEnvio(res.remoteJid, alvo)
     } else {
       workingPhone = await comVariantes(alvo, ehTelefone, async (v) => {
         const r = await sendMediaMessage({
@@ -529,7 +534,8 @@ export async function engineSendMedia(
       // nome, e foto e vídeo não o mostram.
       ...(args.kind === 'document' && args.filename ? { media_filename: args.filename } : {}),
       message_id: waMessageId,
-      remote_jid: outboundRemoteJid,
+      remote_jid: endereco?.remoteJid ?? null,
+      remote_jid_lid: endereco?.remoteJidLid ?? null,
       from_me: ehEvolution(channel) ? true : null,
       status: 'sent',
     })
@@ -557,7 +563,7 @@ export async function engineSendMedia(
 
 interface SendInteractiveButtonsEngineArgs {
   accountId: string
-  userId: string
+  userId: string | null
   conversationId: string
   contactId: string
   bodyText: string
@@ -573,7 +579,7 @@ interface SendInteractiveButtonsEngineArgs {
 
 interface SendInteractiveListEngineArgs {
   accountId: string
-  userId: string
+  userId: string | null
   conversationId: string
   contactId: string
   bodyText: string

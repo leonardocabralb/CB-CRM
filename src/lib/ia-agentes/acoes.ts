@@ -764,6 +764,284 @@ export function reuniaoPrometida(args: {
 }
 
 // ------------------------------------------------------------
+// A trava da AÇÃO PROMETIDA (25/10/2026)
+// ------------------------------------------------------------
+
+/**
+ * O que a resposta pode AFIRMAR ter feito no sistema do escritório. A reunião
+ * entra só na 1ª pessoa ("agendei sua reunião"): com horários oferecidos, a
+ * trava própria (`reuniaoPrometida`) vem antes e pega também "sua reunião
+ * está marcada"; sem eles ("Marcar reunião" desligada, leitura que falhou),
+ * só esta pega — "sua reunião está marcada" pode ser verdade (o cliente
+ * agendou pelo link), "agendei" não (revisão de 25/10/2026).
+ */
+export type AcaoAfirmada = 'tarefa' | 'registro' | 'etiqueta' | 'etapa' | 'automacao' | 'encerramento' | 'reuniao'
+
+/**
+ * A ação ACEITA na mesma resposta que torna a afirmação verdadeira. A
+ * automação executada — e a do tipo de evento, que a reunião marcada dispara
+ * pelo `invitee.created` — pode ter feito qualquer uma delas (anotar, encerrar,
+ * mover o card, criar a tarefa): com uma delas aceita, a trava não segura.
+ */
+const QUEM_CUMPRE: Record<AcaoAfirmada, readonly TipoDeAcao[]> = {
+  tarefa: ['criar_tarefa'],
+  registro: ['preencher_campo'],
+  etiqueta: ['etiquetar', 'tirar_etiqueta'],
+  etapa: ['mover_etapa'],
+  automacao: [],
+  encerramento: [],
+  reuniao: ['marcar_reuniao'],
+}
+const CUMPRE_QUALQUER: readonly TipoDeAcao[] = ['executar_automacao', 'marcar_reuniao']
+
+/**
+ * As palavras que ABREM outra oração ou falam do futuro: o trecho entre o
+ * verbo e o objeto não as atravessa. Sem isso, "anotei tudo E VOU PASSAR as
+ * informações ao advogado" e "deixei claro QUE precisamos dos seus dados"
+ * viravam "registrei as informações" (revisão de 25/10/2026). "para" fica de
+ * fora da lista: "passei PARA a etapa de Proposta" afirma.
+ */
+const ABRE_OUTRA_ORACAO = [
+  ...NAO_AFIRMA,
+  'e', 'que', 'mas', 'porem', 'porque', 'pois', 'ou', 'se', 'quando', 'como', 'onde', 'enquanto',
+  'and', 'but', 'that', 'so', 'or',
+].join('|')
+/** Até seis palavras entre o verbo e o objeto, sem atravessar pontuação (a vírgula fecha a oração) nem `ABRE_OUTRA_ORACAO`. */
+const ENTRE = `(?:\\s+(?!(?:${ABRE_OUTRA_ORACAO})(?![\\p{L}\\p{N}'-]))[\\p{L}\\p{N}'-]+){0,6}?\\s+`
+
+/**
+ * "etapa" como a do FUNIL: nunca a da conversa — "passei para a próxima etapa
+ * (do atendimento)", "nesta etapa" (o agente narrando o roteiro dele).
+ */
+const ETAPA_DO_FUNIL = '(?<!(?:proxima|seguinte|primeira|ultima|nova|outra|esta|essa|nesta|nessa|dessa|desta)\\s)etapa'
+
+/** A negação DENTRO da forma: "o lembrete não foi criado", "a tarefa ainda não foi aberta". */
+const NEGACAO = /\b(?:nao|nunca|nem|not|never)\b/
+
+/** Verbo na 1ª pessoa, no passado (e o plural, "criamos"), já sem acento ("incluí" → "inclui"). */
+function verbos(...v: string[]): string {
+  return `\\b(?:${v.join('|')})\\b`
+}
+
+/**
+ * A forma que AFIRMA a ação, por objeto, sobre o texto sem acento e em
+ * minúsculas: o verbo na 1ª pessoa do passado + o objeto na mesma oração
+ * ("criei o lembrete", "registrei suas informações no sistema", "movi seu
+ * card", "encerrei o atendimento"), o particípio com o auxiliar ("o lembrete
+ * foi criado", "seus dados foram atualizados") e, no começo da frase, o
+ * particípio colado ("Lembrete criado!", "Tarefa criada ✅"). Em inglês, só
+ * com o sujeito "I/we" ("I've created a reminder"). "Anotado!" e "anotei"
+ * sozinhos não afirmam nada no sistema (não têm objeto).
+ *
+ * ⚠️ "etapa" é palavra comum da conversa ("na próxima etapa…", "agora
+ * passamos para a próxima etapa"): ela só conta com o verbo no SINGULAR
+ * ("movi", "passei para a etapa"), nunca "passamos".
+ */
+const FORMAS_DA_ACAO: ReadonlyArray<{ acao: AcaoAfirmada; forma: RegExp }> = [
+  // A tarefa e o lembrete.
+  {
+    acao: 'tarefa',
+    forma: new RegExp(
+      `${verbos('criei', 'criamos', 'abri', 'abrimos', 'registrei', 'registramos', 'agendei', 'agendamos', 'programei', 'programamos', 'deixei', 'deixamos', 'coloquei', 'colocamos', 'anotei', 'anotamos', 'gerei', 'geramos', 'adicionei', 'adicionamos', 'cadastrei', 'cadastramos', 'marquei', 'marcamos', 'lancei', 'lancamos')}${ENTRE}(?:tarefas?|lembretes?)\\b`,
+      'u',
+    ),
+  },
+  {
+    acao: 'tarefa',
+    forma: /\b(?:tarefas?|lembretes?)\b(?:\s+[\p{L}\p{N}'-]+){0,3}?\s+(?:ja\s+)?(?:foi|foram|esta|estao|ficou|ficaram)\s+(?:\p{L}+\s+)?(?:criad|registrad|agendad|programad|cadastrad|abert|lancad)[ao]s?\b/u,
+  },
+  {
+    acao: 'tarefa',
+    forma: /^(?:(?:pronto|ok|certo|feito|perfeito|otimo|beleza|combinado|tudo certo)[\s,!.]+)?(?:(?:o|a|os|as|seu|sua|um|uma)\s+)?(?:tarefas?|lembretes?)\s+(?:criad|registrad|agendad|programad|cadastrad|abert|lancad)[ao]s?\b/u,
+  },
+  // O dado no campo, a ficha, a anotação.
+  {
+    acao: 'registro',
+    forma: new RegExp(
+      `${verbos('registrei', 'registramos', 'anotei', 'anotamos', 'salvei', 'salvamos', 'gravei', 'gravamos', 'atualizei', 'atualizamos', 'preenchi', 'preenchemos', 'cadastrei', 'cadastramos', 'inclui', 'incluimos', 'adicionei', 'adicionamos', 'coloquei', 'colocamos', 'deixei', 'deixamos', 'guardei', 'guardamos', 'lancei', 'lancamos', 'criei', 'criamos')}${ENTRE}(?:campos?|dados|informac(?:ao|oes)|cadastros?|fichas?|sistema|anotac(?:ao|oes)|observac(?:ao|oes))\\b`,
+      'u',
+    ),
+  },
+  // "Fiz a anotação / o registro / o cadastro" — o objeto LOGO depois ("fiz uma consulta no sistema" não grava nada).
+  {
+    acao: 'registro',
+    forma: /\b(?:fiz|fizemos)\s+(?:(?:o|a|um|uma|seu|sua|o\s+seu|a\s+sua)\s+)?(?:anotac(?:ao|oes)|observac(?:ao|oes)|registro|cadastro)\b/u,
+  },
+  {
+    acao: 'registro',
+    forma: /\b(?:campos?|dados|informac(?:ao|oes)|cadastros?|fichas?|anotac(?:ao|oes)|observac(?:ao|oes))\b(?:\s+[\p{L}\p{N}'-]+){0,3}?\s+(?:ja\s+)?(?:foi|foram|esta|estao|ficou|ficaram)\s+(?:\p{L}+\s+)?(?:atualizad|preenchid|anotad|gravad|cadastrad)[ao]s?\b/u,
+  },
+  // A etiqueta ("etiquetei" já diz o objeto).
+  { acao: 'etiqueta', forma: /\b(?:etiquetei|etiquetamos)\b/u },
+  {
+    acao: 'etiqueta',
+    forma: new RegExp(
+      `${verbos('coloquei', 'colocamos', 'adicionei', 'adicionamos', 'apliquei', 'aplicamos', 'marquei', 'marcamos', 'inclui', 'incluimos', 'removi', 'removemos', 'tirei', 'tiramos', 'retirei', 'retiramos')}${ENTRE}(?:etiquetas?|tags?)\\b`,
+      'u',
+    ),
+  },
+  {
+    acao: 'etiqueta',
+    forma: /\b(?:etiquetas?|tags?)\b(?:\s+[\p{L}\p{N}'-]+){0,3}?\s+(?:ja\s+)?(?:foi|foram|esta|estao|ficou|ficaram)\s+(?:\p{L}+\s+)?(?:adicionad|aplicad|colocad|removid|retirad|incluid)[ao]s?\b/u,
+  },
+  // O card e a etapa: só o singular (ver acima).
+  {
+    acao: 'etapa',
+    forma: new RegExp(
+      `${verbos('movi', 'movemos', 'mudei', 'passei', 'coloquei', 'avancei', 'transferi')}${ENTRE}(?:card|cartao|negocio|funil|${ETAPA_DO_FUNIL})\\b`,
+      'u',
+    ),
+  },
+  {
+    acao: 'etapa',
+    forma: /\b(?:card|cartao|negocio)\b(?:\s+[\p{L}\p{N}'-]+){0,3}?\s+(?:ja\s+)?(?:foi|esta|ficou)\s+(?:\p{L}+\s+)?movid[ao]\b/u,
+  },
+  // A automação.
+  {
+    acao: 'automacao',
+    forma: new RegExp(
+      `${verbos('executei', 'executamos', 'rodei', 'rodamos', 'acionei', 'acionamos', 'disparei', 'disparamos', 'ativei', 'ativamos', 'iniciei', 'iniciamos')}${ENTRE}(?:automac(?:ao|oes)|fluxos?)\\b`,
+      'u',
+    ),
+  },
+  {
+    acao: 'automacao',
+    forma: /\b(?:automac(?:ao|oes)|fluxos?)\b(?:\s+[\p{L}\p{N}'-]+){0,3}?\s+(?:ja\s+)?(?:foi|foram|esta|estao|ficou)\s+(?:\p{L}+\s+)?(?:executad|acionad|disparad|ativad)[ao]s?\b/u,
+  },
+  // Encerrar o atendimento.
+  {
+    acao: 'encerramento',
+    // Sem "conversa": "fechamos aqui a conversa de hoje" é despedida, não o
+    // botão Encerrar (revisão de 25/10/2026).
+    forma: new RegExp(
+      `${verbos('encerrei', 'encerramos', 'finalizei', 'finalizamos', 'fechei', 'fechamos', 'arquivei', 'arquivamos')}${ENTRE}(?:atendimentos?|chamados?|protocolos?|tickets?)\\b`,
+      'u',
+    ),
+  },
+  {
+    acao: 'encerramento',
+    forma: /\b(?:atendimento|conversa|chamado)\b(?:\s+[\p{L}\p{N}'-]+){0,3}?\s+(?:ja\s+)?(?:foi|esta|ficou)\s+(?:\p{L}+\s+)?(?:encerrad|finalizad|arquivad)[ao]\b/u,
+  },
+  // A reunião, só na 1ª pessoa (ver `AcaoAfirmada`).
+  {
+    acao: 'reuniao',
+    forma: new RegExp(
+      `${verbos('agendei', 'agendamos', 'marquei', 'marcamos', 'reagendei', 'reagendamos', 'remarquei', 'remarcamos')}${ENTRE}(?:reuni(?:ao|oes)|consultas?|agendamentos?|videochamadas?|horarios?)\\b`,
+      'u',
+    ),
+  },
+  // Em inglês, com o sujeito.
+  ...(
+    [
+      ['tarefa', 'created|added|set up|scheduled|logged', 'tasks?|reminders?'],
+      ['registro', 'saved|recorded|logged|noted|updated|filled in|added', "fields?|details|information|data|records?|notes?|profile|file"],
+      ['etiqueta', 'added|applied|removed', 'tags?|labels?'],
+      ['etapa', 'moved', 'deal|card|stage|pipeline'],
+      ['automacao', 'ran|run|executed|triggered|started', 'automations?|workflows?'],
+      ['encerramento', 'closed|ended', 'ticket'],
+      ['reuniao', 'booked|scheduled|rescheduled', 'meetings?|calls?|appointments?'],
+    ] as const
+  ).map(([acao, v, o]) => ({
+    acao,
+    forma: new RegExp(`\\b(?:i|we)(?:'ve|'d|\\s+have|\\s+just|\\s+already)*\\s+(?:${v})\\b${ENTRE}(?:${o})\\b`, 'u'),
+  })),
+  { acao: 'etiqueta', forma: /\b(?:i|we)(?:'ve|\s+have|\s+just|\s+already)*\s+tagged\b/u },
+]
+
+/** "Como eu disse", "conforme falei": a frase fala de uma resposta ANTERIOR. */
+const FALA_DE_ANTES = /\b(?:como|conforme)\s+(?:eu\s+|nos\s+)?(?:ja\s+)?(?:disse|dissemos|falei|falamos|mencionei|informei|expliquei)\b|\bas\s+i\s+(?:said|mentioned)\b/u
+
+/**
+ * As afirmações do texto (`FORMAS_DA_ACAO`), frase a frase, com as MESMAS
+ * guardas das outras travas: fora de pergunta (menos a de confirmação no fim,
+ * "…, tudo bem?"), sem negação, futuro, modal ou oferta nas quatro palavras
+ * antes da forma ("ainda não criei", "vou criar", "posso registrar") nem
+ * negação dentro dela ("o lembrete não foi criado"), e sem condição antes
+ * dela ("se você preferir, …"). `repete`: a afirmação se APRESENTA como de
+ * antes — "já" nas três palavras antes da forma, ou "como eu disse" na frase.
+ */
+function afirmacoes(texto: string): Map<AcaoAfirmada, { repete: boolean }> {
+  const achadas = new Map<AcaoAfirmada, { repete: boolean }>()
+  for (const frase of texto.split(/(?<=[.!?…;])\s+|\n+/)) {
+    const f = semAcento(frase.trim()).replace(/’/g, "'")
+    if (!f) continue
+    if (PERGUNTA.test(f) && !PERGUNTA_DE_CONFIRMACAO.test(f)) continue
+    for (const { acao, forma } of FORMAS_DA_ACAO) {
+      const m = forma.exec(f)
+      if (!m || NEGACAO.test(m[0])) continue
+      const antes = f.slice(0, m.index)
+      const ultimas = antes.split(/\s+/).map(palavraNormalizada).filter(Boolean)
+      if (naoAfirma(ultimas.slice(-4))) continue
+      if (haCondicao(antes)) continue
+      const repete = ultimas.slice(-3).some((p) => p === 'ja' || p === 'already') || FALA_DE_ANTES.test(f)
+      // A mesma ação dita duas vezes só é repetição se TODAS se apresentam assim.
+      const anterior = achadas.get(acao)
+      achadas.set(acao, { repete: anterior ? anterior.repete && repete : repete })
+    }
+  }
+  return achadas
+}
+
+/** O que o texto AFIRMA ter feito no sistema (`afirmacoes`, sem a marca da repetição). */
+export function acoesAfirmadas(texto: string): Set<AcaoAfirmada> {
+  return new Set(afirmacoes(texto).keys())
+}
+
+/**
+ * A trava: a resposta vai RETIDA e o turno transfere (`acao_prometida`)
+ * quando o texto ao cliente — já sem os marcadores — AFIRMA uma ação no
+ * sistema (`acoesAfirmadas`) e nenhuma ação ACEITA na mesma resposta a cumpre
+ * (`QUEM_CUMPRE`). Medido em 25/10/2026: com "Criar tarefa" DESLIGADA e as
+ * instruções ainda pedindo a tarefa, o agente respondeu "Criei o lembrete para
+ * o Leonardo te enviar a lista de documentos na quarta-feira" — e nada foi
+ * criado. Devolve a primeira afirmação sem ação; `null` = passa.
+ *
+ * `anteriores`: as respostas do ESCRITÓRIO já na conversa (papel `assistant`).
+ * A afirmação que se apresenta como REPETIÇÃO ("sim, JÁ anotei seu e-mail no
+ * cadastro", "como eu disse, criei o lembrete") de uma anterior do mesmo
+ * tipo fala de uma resposta anterior — que, se era do agente, já passou por
+ * esta trava —, e o pedido manda nunca repetir o marcador de uma ação já
+ * feita: não segura. ⚠️ Sem o "já", não é repetição: o lembrete NOVO ("criei
+ * um lembrete para o advogado te ligar amanhã") passava só porque um lembrete
+ * antigo tinha sido criado (revisão de 25/10/2026).
+ */
+export function acaoPrometida(args: {
+  texto: string
+  aceitas: ReadonlyArray<Pick<AcaoResolvida, 'tipo'>>
+  anteriores?: readonly string[]
+}): AcaoAfirmada | null {
+  const afirmadas = afirmacoes(args.texto)
+  if (afirmadas.size === 0) return null
+  const tipos = new Set(args.aceitas.map((a) => a.tipo))
+  if (CUMPRE_QUALQUER.some((t) => tipos.has(t))) return null
+  const ditasAntes = new Set((args.anteriores ?? []).flatMap((a) => [...acoesAfirmadas(a)]))
+  for (const [acao, { repete }] of afirmadas) {
+    if (QUEM_CUMPRE[acao].some((t) => tipos.has(t))) continue
+    if (repete && ditasAntes.has(acao)) continue
+    return acao
+  }
+  return null
+}
+
+// ------------------------------------------------------------
+// As ações que rodam JUNTO com a passagem (D25, 25/10/2026)
+// ------------------------------------------------------------
+
+/**
+ * Com a PASSAGEM válida, estas rodam ANTES de o card ir para a etapa do
+ * destino — o que o cliente já disse fica gravado (medido em 25/10/2026: a
+ * qualificação passou sem gravar o campo). As outras mexem no card (mover a
+ * etapa; a automação; a reunião, que dispara a automação do tipo de evento) e
+ * a passagem já o move: recusadas com `passagem`.
+ */
+export const ACOES_COM_A_PASSAGEM: ReadonlySet<TipoDeAcao> = new Set([
+  'preencher_campo',
+  'etiquetar',
+  'tirar_etiqueta',
+  'criar_tarefa',
+])
+
+// ------------------------------------------------------------
 // A EQUIPE PROMETIDA sem o `[[TRANSFERIR]]` (27/09/2026)
 // ------------------------------------------------------------
 

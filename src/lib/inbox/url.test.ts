@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ehOrigemDoInbox, recorteDaUrl, urlDoInbox } from "./url";
+import { ehOrigemDoInbox, notaDaUrl, recorteDaUrl, urlDoInbox } from "./url";
 
 describe("urlDoInbox", () => {
   it("sem nada → /inbox, nunca /inbox?", () => {
@@ -12,6 +12,9 @@ describe("urlDoInbox", () => {
   it("as combinações de verdade", () => {
     expect(urlDoInbox({ c: "cv1" })).toBe("/inbox?c=cv1");
     expect(urlDoInbox({ c: "cv1", de: "funil" })).toBe("/inbox?c=cv1&de=funil");
+    // A faixa de volta aos avisos sobrevive aos replaces, como a do funil.
+    expect(urlDoInbox({ c: "cv2", de: "notificacoes" })).toBe("/inbox?c=cv2&de=notificacoes");
+    expect(urlDoInbox({ c: "cv2", de: "meu-dia" })).toBe("/inbox?c=cv2&de=meu-dia");
     expect(urlDoInbox({ etapa: "s1", de: "funil" })).toBe(
       "/inbox?etapa=s1&de=funil",
     );
@@ -41,6 +44,32 @@ describe("urlDoInbox", () => {
     // Parecido não é igual: a comparação é exata.
     expect(urlDoInbox({ c: "cv1", de: "Reunioes" })).toBe("/inbox?c=cv1");
     expect(urlDoInbox({ de: "reunioes&x=1" })).toBe("/inbox");
+  });
+});
+
+describe("a anotação do aviso (`nota`, 1114)", () => {
+  const NOTA = "9b1d2c3e-1111-4222-8333-444455556666";
+
+  it("sai com a conversa, logo depois do `c`", () => {
+    expect(urlDoInbox({ c: "cv1", nota: NOTA })).toBe(`/inbox?c=cv1&nota=${NOTA}`);
+    expect(urlDoInbox({ c: "cv1", nota: NOTA, de: "funil" })).toBe(
+      `/inbox?c=cv1&nota=${NOTA}&de=funil`,
+    );
+    expect(urlDoInbox({ c: "cv1", nota: null })).toBe("/inbox?c=cv1");
+  });
+
+  it("⚠️ sem conversa não sai: não há fio onde saltar", () => {
+    expect(urlDoInbox({ nota: NOTA })).toBe("/inbox");
+    expect(urlDoInbox({ etapa: "s1", nota: NOTA })).toBe("/inbox?etapa=s1");
+  });
+
+  it("notaDaUrl é PARSE: o que não tem forma de id não pede salto", () => {
+    expect(notaDaUrl(NOTA)).toBe(NOTA);
+    expect(notaDaUrl(NOTA.toUpperCase())).toBe(NOTA.toUpperCase());
+    expect(notaDaUrl("nota-1")).toBeNull();
+    expect(notaDaUrl(`${NOTA}"]`)).toBeNull();
+    expect(notaDaUrl("")).toBeNull();
+    expect(notaDaUrl(null)).toBeNull();
   });
 });
 
@@ -79,9 +108,13 @@ describe("recorte do Meu dia (`conexao` + `ver`)", () => {
 });
 
 describe("ehOrigemDoInbox", () => {
-  it("só os dois valores com leitor", () => {
+  it("só os valores com leitor (as quatro faixas de volta)", () => {
     expect(ehOrigemDoInbox("funil")).toBe(true);
     expect(ehOrigemDoInbox("reunioes")).toBe(true);
+    // 28/10/2026: a volta aos avisos do sino e do card do Meu dia.
+    expect(ehOrigemDoInbox("notificacoes")).toBe(true);
+    expect(ehOrigemDoInbox("meu-dia")).toBe(true);
+    expect(ehOrigemDoInbox("notifications")).toBe(false);
     expect(ehOrigemDoInbox("qualquer")).toBe(false);
     expect(ehOrigemDoInbox("")).toBe(false);
     expect(ehOrigemDoInbox(null)).toBe(false);

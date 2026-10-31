@@ -67,8 +67,10 @@ const ESCRITORES: Record<string, string[]> = {
   'app/(dashboard)/pipelines/page.tsx': ['update'], // arrastar no quadro
   'components/funil/lista-de-leads.tsx': ['update'], // a lista do funil
   'components/inbox/painel/painel-do-contato.tsx': ['update'], // painel da conversa
-  // o formulário do card (apagar não gera aviso)
-  'components/pipelines/deal-form.tsx': ['update', 'insert', 'update', 'delete'],
+  // o formulário do card (apagar não gera aviso). O 2º e o 3º `update` são o
+  // `marcarStatus` (1112): com a etapa de perda escolhida na janela do motivo
+  // e sem ela — dois literais de propósito (pino dos escritores de título).
+  'components/pipelines/deal-form.tsx': ['update', 'insert', 'update', 'update', 'delete'],
   'lib/reunioes/executar.ts': ['update'], // a pauta de reuniões (cliente da tela)
   'app/api/cb/negocios/[id]/mover/route.ts': ['update'], // "avançar" (sessão de quem clicou)
   // ---- `channel`: o roteador da conexão, `source: 'channel'` ----

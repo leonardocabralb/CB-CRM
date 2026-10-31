@@ -16,6 +16,7 @@ paths:
   - "src/components/notifications/**"
   - "src/lib/notifications/**"
   - "src/hooks/use-browser-notifications*"
+  - "src/hooks/use-avisos-do-sino*"
   - "src/components/settings/browser-notifications-card.tsx"
   - "src/components/settings/profile-form.tsx"
   - "src/components/settings/celular-card.tsx"
@@ -171,7 +172,8 @@ para a aba (`/meu-dia`, sem janela na URL: a aba não repete as novidades).
   restrição" e o card piscaria para o atendente. A própria pessoa fica fora;
   "em dia" só com a lista de membros respondida (`emDia: null` = não sei).
 - **Notificações: as NÃO LIDAS** (a janela "desde a última entrada" ficou no
-  cartão), clique pela `rotaDoAviso`, recorte por conexão do perfil.
+  cartão), clique pela `rotaDoAviso(…, 'meu-dia')` (faixa de volta,
+  `inbox-lista.md`), o cliente pela `LinhaDoCliente`, recorte por conexão do perfil.
 - ⚠️ **`whatsapp_alert` (1085) é escrito de FORA do app**: a sentinela da VPS
   (`docs/INFRA-VPS.md` §12) grava pelo PostgREST, com a service role, para
   owner/admin, título e corpo prontos e SEM conversa nem tarefa — o clique só
@@ -284,6 +286,14 @@ na casca e o cartão em *Seu perfil*. Pino estrutural:
   por conversa. O atraso de entrega real (até 50 min medidos) ainda avisa.
   Não use `conversations.last_message_at` para "alguém escreveu depois": a
   ingestão o carimba com o relógio do SERVIDOR, não com o do WhatsApp.
+- ⚠️⚠️ **A conversa que VOLTA da Lixeira (1097) re-INSERE as falas antigas**
+  com o `gravada_em` original, colado ao carimbo — a régua de 1 h não as
+  pega. Antiga é `gravada_em` anterior a `conversations.restaurada_em`
+  (`reinseridaPelaRestauracao`; o ouvinte lê a coluna com a conversa): os
+  dois do relógio do BANCO, nunca o da tela. ⚠️ Sem `gravada_em` (72% da
+  produção: carga e anteriores à 1003; a inserção ao vivo sempre o ganha),
+  vale o `created_at`. Nunca regravar `gravada_em` na volta: com `now()`, a
+  fala antiga seria resposta de agora.
 - ⚠️ **A preferência é POR PESSOA neste navegador** (`cb-notificacoes:<userId>`,
   JSON lido por `lerPreferencia`, nunca `as`): a chave global do original
   (`wacrm:browser-notifications`, apagada ao gravar a nova) fazia quem entrasse
@@ -334,3 +344,38 @@ na casca e o cartão em *Seu perfil*. Pino estrutural:
 - ⚠️ **Aparelho de toque é "não suportado"** (`avisoPossivelNoAparelho`,
   `MIDIA_DE_TOQUE`): sem service worker, `new Notification()` lança no Chrome
   do Android e no app instalado no iPhone — a chave ligaria e nada chegaria.
+
+### Avisos do SINO no navegador (20/10/2026)
+
+`src/lib/notifications/aviso-do-sino.ts` (puro), `som-do-aviso.ts` e
+`src/hooks/use-avisos-do-sino-no-navegador.ts`, montado no
+`BrowserNotificationsListener` ao lado do de mensagens. Decisões D1–D6:
+`docs/PLANO-avisos-do-sino-no-navegador.md`.
+
+- ⚠️ **Todo tipo do sino vira pop-up, SEM os recortes das mensagens** (D2,
+  D3): conexões do perfil, "quais conversas" e "Conexões que avisam" não
+  calam a menção, como o sino. Cala só: perfil sem a Caixa de entrada (a
+  mesma porta das mensagens — sem ela o cartão some e não haveria onde
+  desligar), o aviso de outra pessoa, o já lido, o repetido (o realtime
+  reentrega) e a anotação da conversa aberta na aba visível — o de tarefa
+  nunca, porque o destino dele é Tarefas. O de anotação leva ao trecho
+  (`note_id`, 1114: `anotacoes.md`).
+- **Tópico novo a cada inscrição** (`geracaoDoCanal`): `channel(nome)` devolve
+  o canal que ainda está saindo, e o ouvinte ficaria mudo.
+- **Chave própria (`sino`), LIGADA no padrão e independente de `ativo`** (D1):
+  quem já deu a permissão passa a receber sem abrir o cartão.
+- ⚠️⚠️ **Som do CRM desligado = o sistema decide, nunca `silent: true`
+  forçado** (D4): `silent` é sempre `pref.somX && tocarSomDoAviso()`. Forçado,
+  quem ouvia o som do Windows nas mensagens o perderia sem saber.
+  `tocarSomDoAviso` é SÍNCRONO (nenhum `await` entre o `vendoAgora` e o aviso)
+  e só devolve true com o áudio JÁ rodando (`state === "running"`, o que o
+  navegador já decidiu): sem clique na aba ou com o áudio suspenso, false, e
+  o pop-up sai sem `silent` (Codex, #425: true antes disso deixava o pop-up
+  mudo). Um toque a cada 10 s ENTRE as abas (`navigator.locks` +
+  carimbo `cb-som-do-aviso`): as duas recebem o mesmo INSERT.
+- **O clique marca lido** (`.is('read_at', null)`: zero linhas = já lido
+  noutro lugar, não é falha) e leva por `rotaDoAviso`, com
+  `EVENTO_ABRIR_CONVERSA` para o inbox já montado. A tag é `sino:<id>`: a do
+  aviso de mensagem é o id da conversa, e os dois se substituiriam.
+- **A conversa atribuída lê o contato** (o texto da 0027 é em inglês) e sai na
+  voz passiva (`textoDoAviso` sem autor): o pop-up não carrega os membros.

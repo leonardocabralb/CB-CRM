@@ -107,6 +107,19 @@ teto. A bolha, a fila de anexos do compositor e o player de áudio estão em
 
 ### MIME e upload
 
+- ⚠️⚠️ **Anexo RECEBIDO entra de qualquer tipo (1115, pedido do operador,
+  27/10/2026)**: sobe por `tipoParaGuardar`
+  (`src/lib/storage/tipos-do-chat-media.ts`) — o tipo declarado se o bucket
+  o aceita, senão `application/octet-stream` — nos DOIS transportes
+  (`fetchAndStoreEvolutionMedia` e o espelho da Meta, que serve o Instagram).
+  Antes, fora da lista exata o Storage recusava (415 `InvalidMimeType`) e o
+  anexo virava "Documento indisponível" (ZIP do Windows, `.msg`). O tipo
+  VERDADEIRO fica em `media_type`; o guardado como binário BAIXA com o nome
+  real (`guardadoComoBinario` → `download=` em `urlParaAbrirAnexo`).
+  ⚠️ A lista NÃO vira nula ("aceita tudo"): `.svg`/`.html` com o tipo
+  verdadeiro rodariam no navegador a partir do nosso Storage. Tipo novo que
+  a bolha DESENHA ou TOCA entra na lista (migration) E em
+  `MIMES_DO_CHAT_MEDIA`, o espelho exato (pino lê 0042 + 1060 + 1115).
 - ⚠️⚠️ **A lista de MIMEs aceitos é UMA** (`MIMES_ACEITOS`, `arquivo-solto.ts`),
   e o `accept=` dos seletores deriva dela (`aceiteDoSeletor`). Duas listas
   divergem, e o arquivo aceito por uma porta falha só no envio, longe da causa.
@@ -124,17 +137,35 @@ teto. A bolha, a fila de anexos do compositor e o player de áudio estão em
   `contentType`, e o bucket tem lista EXATA (023) — `image/png;
   charset=binary`, que aparece em colagem, era recusado no upload. Caminho novo
   de upload repete a normalização.
-- ⚠️ **`MIMES_POR_TIPO` (`src/lib/acervo/tipos.ts`) é ESPELHO da
-  `allowed_mime_types` da 023.** Alargar só no código faz o upload falhar no
-  Storage com "erro de upload"; só na migration faz a tela recusar arquivo que
-  o WhatsApp aceita. Os dois, sempre — menos os tipos SÓ DE ENTRADA, que o
-  bucket aceita e a lista de envio não: GIF, QuickTime, 3gp e Opus (042) e
+- ⚠️ **`MIMES_POR_TIPO` (`src/lib/acervo/tipos.ts`) é a lista de ENVIO, um
+  pedaço da `allowed_mime_types`.** Alargar só no código faz o upload falhar
+  no Storage com "erro de upload"; só na migration faz a tela recusar arquivo
+  que o WhatsApp aceita. Os dois, sempre — menos os tipos SÓ DE ENTRADA, que o
+  bucket aceita e a lista de envio não: GIF, QuickTime, 3gp e Opus (042),
   `text/html` (1060 — que o compositor também ENVIA nas conexões por QR code
-  desde 02/10/2026; o acervo, não).
+  desde 02/10/2026; o acervo, não) e os da 1115.
 - ⚠️ **`.html` recebido é guardado (1060, decisão do operador) e oferecido para
   BAIXAR, nunca aberto a partir do Storage**: `urlParaAbrirAnexo`
   (`abrir-anexo.ts`) põe `?download=` na bolha e na aba Arquivos. Link novo
   para anexo passa por ele.
+- ⚠️ **Nome de arquivo para URL ou cabeçalho passa por `semSurrogatoSolto`**
+  (`filename.ts`) antes de `encodeURIComponent`, que LANÇA com meio emoji; e o
+  corte de `sanitizeFilename` não parte o par (`cortarSemPartir`). No render
+  da bolha, o erro derrubava a conversa (Codex, #436).
+- ⚠️⚠️ **O proxy da Meta (`/api/whatsapp/media/<id>`) responde por
+  `mediaProxyHeaders`** (`src/lib/media/proxy-response-headers.ts`, upstream
+  #678): é a reserva do anexo que o espelho no `chat-media` não guardou (acima
+  de 50 MiB, Storage fora do ar; o tipo fora da lista vai como binário desde
+  a 1115), sai no NOSSO domínio com o tipo que o CLIENTE mandou, e a bolha o abre
+  numa aba nova. Só imagem, áudio e vídeo comuns vão `inline`, com CSP sem
+  script; o resto vai como `attachment`, com `sandbox`, e com o nome real
+  (`nome=`, que `urlParaAbrirAnexo` põe no link). O `nosniff` global não
+  impede HTML declarado como HTML, e a CSP do `next.config.ts` só relata.
+  ⚠️ A mídia exibida NÃO leva `sandbox`: medido, o áudio aberto em aba fica
+  sem fonte com ele. ⚠️ O `Cache-Control` do helper não chega ao navegador:
+  vale o `no-store` que o `next.config.ts` grava em `/api/*` antes da rota.
+  Rota nova que devolva bytes de fora repete o helper. Pinos
+  `proxy-response-headers.test.ts` e `route.cabecalhos.test.ts`.
 
 ### Acervo de mídias (953/954)
 
@@ -143,8 +174,8 @@ Tabela `cb_media_library`, `src/lib/acervo/` (puro, com teste), rotas em
 `acervo-picker.tsx` no clipe do compositor.
 
 - ⚠️⚠️ **Enviar do acervo COPIA o arquivo (rota `copiar`).** O compositor APAGA
-  o objeto quando o envio falha ou o rascunho é descartado
-  (`deleteAccountMedia`), e cancelar uma agendada também apaga: por
+  o objeto quando o rascunho é descartado (`deleteAccountMedia`), e cancelar
+  uma agendada também apaga: por
   referência, o envio falho de um estagiário levaria o contrato-padrão de todo
   mundo, sem ninguém ligar uma coisa à outra. E o que FOI ENVIADO não pode
   mudar quando alguém troca o item.
@@ -183,6 +214,47 @@ Tabela `cb_media_library`, `src/lib/acervo/` (puro, com teste), rotas em
   chamadores: a rota `copiar` (compositor) e o nó "Enviar mídia" do robô, que
   copia a cada envio (`.claude/rules/whatsapp-envio.md`). Erro de banco é
   `leitura`, nunca `nao_encontrado`.
+
+### Arquivo que SAI do `chat-media`: a fila (1097)
+
+`cb_arquivos_a_apagar` (fechada ao navegador), a guarda
+`cb_caminho_no_chat_media(url, conta)`, o espelho TS `caminhoNoChatMedia`
+(`src/lib/storage/caminho-no-chat-media.ts`) e a drenagem
+(`src/lib/storage/arquivos-a-apagar.ts`). Quem enfileira: excluir de vez da
+Lixeira de contatos (prazo ou "Excluir agora"; `supabase.md`, "APAGAR
+CONTATO") e o gatilho da anotação (1102, origem `anotacao`: anotação apagada
+ou anexo tirado, fora do sinal `cb.lixeira`; `anotacoes.md`).
+
+- ⚠️ **`notas/` (anexo de anotação) é subpasta com regra própria**, o par rota
+  + policy da 954: o `POST /api/cb/notes` exige o prefixo e lê tamanho e tipo
+  no bucket; ninguém troca pelo navegador; só o dono (`owner_id`) apaga. Os
+  tipos são `MIMES_DA_ANOTACAO` (`MIMES_POR_TIPO` + o `.html`), com teste
+  amarrando à lista do bucket.
+
+- ⚠️⚠️ **Só sai arquivo NOSSO**: a guarda devolve NULL para URL externa,
+  `flow-media`, outra conta, `acervo/` (o acervo tem dono próprio), `..`, `%`
+  (nome codificado: na dúvida, fica) e barra sobrando, e é repetida no CHECK
+  da fila e no reivindicar. Os dois lados respondem aos MESMOS exemplos (o
+  pino em TS e a conferência da 1097): mudou um, muda o outro.
+- ⚠️⚠️ **Sai só o que ninguém mais cita, conferido NA HORA**
+  (`cb_arquivos_citados`): mensagens, agendadas, modelos, fotos de contato,
+  perfil e grupo, acervo, passos de automação e nós de robô (no JSON),
+  anexos de anotação (1102) e as fotografias dos OUTROS itens da Lixeira.
+  Escritor NOVO de URL do
+  `chat-media` (tabela ou coluna) entra em `cb_arquivos_citados` e no pino
+  `arquivos-do-chat-media.chamadores.test.ts`, senão a drenagem apaga arquivo
+  que ainda aparece numa bolha. O citado sai da fila e o arquivo fica: quem
+  cita enfileira de novo ao sair. Todo escritor da fila usa `ON CONFLICT DO
+  NOTHING` (a mensagem e a agendada enviada citam o MESMO objeto).
+- **Quem drena é o servidor** (`drenarArquivosAApagar`, no `after()` de
+  `/api/cb/scheduled/cron`, `deploy.md`): `cb_reivindicar_arquivos_a_apagar`
+  carimba e CONTA a tentativa antes do trabalho; reivindicado há mais de 10
+  min volta à fila, e na 10ª tentativa o item para — a tela da Lixeira avisa
+  (`cb_arquivos_da_lixeira_parados`). ⚠️ Toda escrita na fila depois do
+  reivindicar leva a cerca de posse (`reivindicado_em` = o carimbo do
+  próprio lote), e o espelho TS confere o caminho DE NOVO antes do `remove`:
+  o que ele recusa fica no bucket, com `ultimo_erro` (os dois lados
+  divergiram, e isso tem de aparecer).
 
 ### Leitura de corpo com teto e visualizador
 

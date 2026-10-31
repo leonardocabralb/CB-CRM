@@ -28,10 +28,13 @@ anexos, em `.claude/rules/midia.md`. O texto antigo, com a história, está em
   `/api/cb/scheduled/cron` (laço do `docker-stack.yml`). Sem ele a tabela só
   enche — o destino de `broadcasts.scheduled_at`, viva e sem leitor desde a
   001.
-- ⚠️ **A rota carrega também as TAREFAS RECORRENTES** (1074,
-  `after(() => gerarTarefasRecorrentes(admin))`): tirá-la do laço, ou tirar a
-  chamada, para de gerar as tarefas sem erro nenhum. Pino
-  `tarefas-recorrentes-1074.test.ts`; o resto em `.claude/rules/tarefas.md`.
+- ⚠️ **A rota carrega também, no `after()` (`rodarManutencaoDoCiclo`), as
+  TAREFAS RECORRENTES** (1074), **a limpeza da Lixeira de contatos** (1097:
+  o vencimento e a fila de arquivos, `.claude/rules/deploy.md`) **e a poda do
+  conteúdo dos turnos da IA** (1110, `ia-central.md`): tirá-la do
+  laço, ou tirar a chamada, para tudo isso sem erro nenhum. Pinos
+  `tarefas-recorrentes-1074.test.ts` e `manutencao-do-ciclo.test.ts`; as
+  tarefas em `.claude/rules/tarefas.md`.
 - **Agendar não passa pela janela de desfazer.** O desvio é a primeira coisa do
   `handleSend` (e do `sendDraft`, para anexo), antes de qualquer
   `setPendente`: a janela tem três saídas que disparam na hora (trocar de
@@ -90,8 +93,9 @@ Tudo aqui existe porque passam HORAS entre escrever e enviar.
 - ⚠️ **Cancelar apaga o objeto do bucket — MENOS quando há `message_id`.** O
   teste é a COLUNA, e ela vem do RETORNO do `delete`, não da lista da tela: o
   worker pode ter enviado entre a carga e o clique, e aí o arquivo é da
-  mensagem que está no fio do cliente. No compositor, `entreguesRef` impede a
-  limpeza de desmonte de apagar arquivo que já é de uma agendada.
+  mensagem que está no fio do cliente. No compositor, `entreguesRef` impede o
+  descarte de apagar arquivo que já é de uma agendada, e o laço de agendar
+  pula o que já está marcado (`rascunho-da-conversa.md`).
 - Vários anexos agendados = uma linha por anexo; só o que falhou fica na tela.
 - ⚠️ **`reply_to_message_id` não tem FK, de propósito**: `RESTRICT` faria apagar
   mensagem falhar, `CASCADE` apagaria a agendada, `SET NULL` apagaria a

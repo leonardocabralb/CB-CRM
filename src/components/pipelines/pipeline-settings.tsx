@@ -22,7 +22,7 @@ import {
   channelsUsingPipeline,
   channelsUsingStage,
 } from "@/lib/cb-channels/display";
-import type { Pipeline, PipelineStage } from "@/types";
+import type { CustomField, GrupoDeCampos, Pipeline, PipelineStage } from "@/types";
 import {
   CLASSES,
   DEGRAUS,
@@ -45,6 +45,10 @@ import {
 } from "@/lib/funil/painel";
 import { useRotuloDoCartaoDeCusto } from "@/components/funil/cartoes-de-custo";
 import { EtapasRecomendadasConfig } from "@/components/pipelines/etapas-recomendadas-config";
+import {
+  MotivoDaEtapaConfig,
+  type CatalogoDeMotivo,
+} from "@/components/pipelines/motivo-da-etapa-config";
 import { lerMovimentosDoFunil } from "@/hooks/use-movimentos-do-funil";
 import type { Movimento } from "@/lib/pipelines/etapas-recomendadas";
 import {
@@ -161,6 +165,12 @@ export function PipelineSettings({
   // parte das etapas: falhar aqui não trava o diálogo.
   const [movimentos, setMovimentos] = useState<Movimento[] | null>(null);
   const [historico, setHistorico] = useState<"carregando" | "pronto" | "falhou">("carregando");
+  // 1112: os campos Lista da conta DO FUNIL (nunca só pela RLS, que devolve
+  // os de toda conta da pessoa), para o seletor de motivo por etapa. Lidos
+  // depois do funil, à parte das etapas: falhar aqui não trava o diálogo.
+  const [catalogoDeMotivo, setCatalogoDeMotivo] = useState<CatalogoDeMotivo>({
+    situacao: "carregando",
+  });
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     const abertura = ++aberturaRef.current;
@@ -168,6 +178,7 @@ export function PipelineSettings({
     setSituacao("carregando");
     setShowDeleteConfirm(false);
     setHistorico("carregando");
+    setCatalogoDeMotivo({ situacao: "carregando" });
     void lerMovimentosDoFunil(pipeline.id).then((lidos) => {
       if (aberturaRef.current !== abertura) return;
       setMovimentos(lidos);
@@ -176,7 +187,7 @@ export function PipelineSettings({
     (async () => {
       await gravacaoRef.current?.catch(() => undefined);
       const [funil, etapas] = await Promise.all([
-        supabase.from("pipelines").select("name, painel").eq("id", pipeline.id).maybeSingle(),
+        supabase.from("pipelines").select("name, painel, account_id").eq("id", pipeline.id).maybeSingle(),
         supabase
           .from("pipeline_stages")
           .select("*")
@@ -188,11 +199,13 @@ export function PipelineSettings({
         setSituacao("falhou");
         return;
       }
-      const lido = funil.data as { name: string; painel: unknown };
+      const lido = funil.data as { name: string; painel: unknown; account_id: string };
       setName(lido.name);
       setPainel(lerPainel(lido.painel));
       setLocalStages((etapas.data ?? []) as PipelineStage[]);
       setSituacao("pronto");
+      const catalogo = await lerCatalogoDeMotivo(supabase, lido.account_id);
+      if (aberturaRef.current === abertura) setCatalogoDeMotivo(catalogo);
     })();
   }, [open, pipeline.id, supabase]);
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -242,6 +255,9 @@ export function PipelineSettings({
       situacao_do_cliente: s.situacao_do_cliente ?? null,
       // 1091: desqualificação — só vale na perda (o CHECK recusa o resto).
       desqualificacao: desqualificacaoQueVale(s.degrau, s.desqualificacao),
+      // 1112: o campo Lista do motivo de quem entra na etapa (nulo = não
+      // pergunta). Com o catálogo que falhou, volta o valor lido do banco.
+      campo_do_motivo_id: s.campo_do_motivo_id ?? null,
     }));
 
     const abertura = aberturaRef.current;
@@ -656,6 +672,20 @@ export function PipelineSettings({
                 </div>
               </div>
 
+              {/* 1112: o campo do motivo de quem entra em cada etapa. Só
+                  depois da leitura: antes, o rascunho está vazio. */}
+              {situacao === "pronto" && (
+                <MotivoDaEtapaConfig
+                  etapas={localStages}
+                  catalogo={catalogoDeMotivo}
+                  onChange={(stageId, campoId) =>
+                    setLocalStages((atual) =>
+                      atual.map((s) => (s.id === stageId ? { ...s, campo_do_motivo_id: campoId } : s)),
+                    )
+                  }
+                />
+              )}
+
               {/* 1065: o botão de avançar do painel da conversa. Só depois da
                   leitura, como o painel abaixo: antes, o rascunho está vazio. */}
               {situacao === "pronto" && (
@@ -794,6 +824,35 @@ export function PipelineSettings({
       </DialogContent>
     </Dialog>
   );
+}
+
+/**
+ * 1112: os campos e os blocos da conta do funil, para o seletor de motivo.
+ * Falha (inclusive de um dos dois) é "falhou", nunca catálogo vazio: vazio
+ * afirmaria que a conta não tem campo Lista.
+ */
+async function lerCatalogoDeMotivo(
+  supabase: ReturnType<typeof createClient>,
+  accountId: string,
+): Promise<CatalogoDeMotivo> {
+  const [campos, grupos] = await Promise.all([
+    supabase
+      .from("custom_fields")
+      .select("id, user_id, account_id, field_name, field_type, field_key, field_options, grupo_id, posicao, created_at")
+      .eq("account_id", accountId)
+      .order("posicao", { nullsFirst: false })
+      .order("field_name"),
+    supabase
+      .from("cb_grupos_de_campos")
+      .select("id, account_id, nome, posicao, created_at")
+      .eq("account_id", accountId),
+  ]);
+  if (campos.error || grupos.error) return { situacao: "falhou" };
+  return {
+    situacao: "pronto",
+    campos: (campos.data ?? []) as CustomField[],
+    grupos: (grupos.data ?? []) as GrupoDeCampos[],
+  };
 }
 
 // O valor da opção "Desqualificação" no seletor de degrau (1091): não é um

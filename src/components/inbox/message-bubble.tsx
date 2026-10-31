@@ -23,6 +23,11 @@ import {
   Download,
   MessageSquareWarning,
   RotateCcw,
+  Reply,
+  ExternalLink,
+  Phone,
+  Copy,
+  type LucideIcon,
 } from "lucide-react";
 import { corDoRemetente, podeBaixarAnexo } from "@/lib/cb-groups/display";
 import { mediaFilename, nomeDeclarado } from "@/lib/media/filename";
@@ -41,6 +46,13 @@ import { urlParaAbrirAnexo } from "@/lib/media/abrir-anexo";
 import { tipoDoDocumento, type FamiliaDeDocumento } from "@/lib/media/tipo-de-documento";
 import { InteractivePreview } from "@/components/interactive/interactive-preview";
 import { useNomeDoAgenteDeIa } from "@/components/agentes-de-ia/nomes-dos-agentes";
+import { useModelosDaConta } from "@/hooks/use-modelos-da-conta";
+import {
+  modeloDaMensagem,
+  partesDoModelo,
+  type TipoDeBotao,
+} from "@/lib/whatsapp/modelo-da-mensagem";
+import { lerOpcoesGravadas, textoSemAsOpcoes } from "@/lib/whatsapp/opcoes-de-resposta";
 import { useTranslations } from "next-intl";
 import type { CorDeCanal } from "@/lib/cb-channels/cores";
 
@@ -94,6 +106,12 @@ interface MessageBubbleProps {
    * sem a prop, nada muda (falha de recibo, robô, anexo, incerto).
    */
   onTentarDeNovo?: () => void;
+  /**
+   * Clique numa opção de resposta de uma mensagem de EMPRESA recebida (1111):
+   * o fio põe o rótulo na caixa do compositor, citando a mensagem. Sem o
+   * callback (quem não envia), as opções aparecem sem clique.
+   */
+  onResponderComOpcao?: (opcao: string) => void;
 }
 
 /**
@@ -518,17 +536,193 @@ function TranscricaoDeAudio({
   );
 }
 
+/** O ícone de cada tipo de botão do modelo (o desenho do #659 do original). */
+const ICONE_DO_BOTAO: Record<TipoDeBotao, LucideIcon> = {
+  QUICK_REPLY: Reply,
+  URL: ExternalLink,
+  PHONE_NUMBER: Phone,
+  COPY_CODE: Copy,
+};
+
+/**
+ * A bolha de MODELO da Meta: a etiqueta, o cabeçalho de texto, o corpo, o
+ * rodapé e os botões — o que o cliente viu, não só o corpo gravado (#659 do
+ * original, adaptado).
+ *
+ * O resto do modelo vem da linha local de `message_templates`, casada pelo
+ * nome e pelo CANAL da mensagem (`modeloDaMensagem`: o catálogo é por WABA).
+ * O catálogo é UM por conta, num cache de módulo lido aqui
+ * (`useModelosDaConta`), não pelo fio. Carregando, leitura que falhou ou
+ * modelo que não casa: a bolha de sempre (etiqueta e corpo), sem afirmar nada.
+ *
+ * ⚠️ Cabeçalho de MÍDIA não aparece: a mensagem não guarda a URL do arquivo
+ * que saiu, e a amostra do modelo não é o que o cliente recebeu. O de texto
+ * com variável também não: o valor não é gravado (`modelo-da-mensagem.ts`).
+ *
+ * ⚠️ As cores INVERTEM na bolha da equipe (`bg-primary`): a etiqueta era
+ * `bg-primary/20 text-primary` nos dois lados e sumia — violeta sobre violeta —
+ * justo onde o modelo mora (ele sai sempre de nós).
+ */
+function ConteudoDoModelo({
+  message,
+  isAgent,
+  t,
+  onResponderComOpcao,
+}: {
+  message: Message;
+  isAgent: boolean;
+  t: ReturnType<typeof useTranslations>;
+  onResponderComOpcao?: (opcao: string) => void;
+}) {
+  const catalogo = useModelosDaConta(message.template_name);
+  const partes = catalogo
+    ? partesDoModelo(modeloDaMensagem(message, catalogo))
+    : null;
+  // A mensagem de EMPRESA recebida com opções de resposta (1111): as linhas
+  // `[opção]` saem do texto e viram os botões embaixo. Sem opções gravadas
+  // (antes da 1111), o texto inteiro, como sempre.
+  const opcoes =
+    message.sender_type === "customer"
+      ? lerOpcoesGravadas(message.opcoes_de_resposta)
+      : [];
+  const texto = textoSemAsOpcoes(message.content_text ?? null, opcoes);
+  // Mensagem de empresa sem nada legível (1111): a ingestão grava o rótulo de
+  // tipo não lido, e a bolha o troca pela frase, como no `text`.
+  const tipoNaoLido = tipoNaoSuportado(texto);
+  return (
+    <div>
+      <span
+        className={cn(
+          "mb-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium",
+          isAgent
+            ? "bg-primary-foreground/20 text-primary-foreground"
+            : "bg-primary/20 text-primary",
+        )}
+      >
+        <LayoutTemplate className="h-3 w-3" />
+        {t("template")}
+      </span>
+      {partes?.cabecalho && (
+        <p className="mt-1 break-words text-sm font-semibold">
+          {partes.cabecalho}
+        </p>
+      )}
+      {tipoNaoLido !== null ? (
+        <div className="mt-1 flex items-start gap-1.5 text-sm italic opacity-80" title={tipoNaoLido || undefined}>
+          <MessageSquareWarning className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{t("naoSuportada")}</span>
+        </div>
+      ) : (
+        texto && <FormattedText texto={texto} className="mt-1" />
+      )}
+      {partes?.rodape && (
+        <p
+          className={cn(
+            "mt-1 break-words text-[11px]",
+            isAgent ? "text-primary-foreground/70" : "text-muted-foreground",
+          )}
+        >
+          {partes.rodape}
+        </p>
+      )}
+      {partes && partes.botoes.length > 0 && (
+        // Sem ação de clique, de propósito: é o retrato do que o cliente
+        // recebeu, não um controle. `min-w-0` no rótulo: sem ele o `truncate`
+        // não corta dentro do flex e o rótulo estica a bolha (`ui.md`).
+        <div
+          className={cn(
+            "mt-2 flex flex-col border-t",
+            isAgent ? "border-primary-foreground/20" : "border-border",
+          )}
+        >
+          {partes.botoes.map((botao, i) => {
+            const Icone = ICONE_DO_BOTAO[botao.tipo];
+            return (
+              <div
+                key={i}
+                title={botao.texto}
+                className={cn(
+                  "flex items-center justify-center gap-1.5 border-t py-1.5 text-sm font-medium first:border-t-0",
+                  isAgent
+                    ? "border-primary-foreground/20 text-primary-foreground"
+                    : "border-border text-primary",
+                )}
+              >
+                <Icone aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+                <span className="min-w-0 truncate">{botao.texto}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {opcoes.length > 0 && (
+        <OpcoesDeResposta opcoes={opcoes} onEscolher={onResponderComOpcao} t={t} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * As opções de resposta de uma mensagem de EMPRESA recebida (1111), no desenho
+ * dos botões do modelo. Com `onEscolher`, cada uma PREPARA a resposta: o
+ * rótulo vai para a caixa do compositor, citando a mensagem, e nada sai sem o
+ * Enviar. Do outro lado chega uma resposta digitada, não o toque no botão — a
+ * Evolution não manda "resposta a botão" (`opcoes-de-resposta.ts`).
+ */
+function OpcoesDeResposta({
+  opcoes,
+  onEscolher,
+  t,
+}: {
+  opcoes: string[];
+  onEscolher?: (opcao: string) => void;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  // `min-w-0` no rótulo: sem ele o `truncate` não corta dentro do flex e o
+  // rótulo estica a bolha (`ui.md`).
+  const linha =
+    "flex w-full min-w-0 items-center justify-center gap-1.5 border-t border-border py-1.5 text-sm font-medium text-primary first:border-t-0";
+  return (
+    <div className="mt-2 flex flex-col border-t border-border">
+      {opcoes.map((opcao, i) =>
+        onEscolher ? (
+          <button
+            key={i}
+            type="button"
+            onClick={() => onEscolher(opcao)}
+            title={t("prepararResposta", { opcao })}
+            className={cn(
+              linha,
+              "transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            )}
+          >
+            <Reply aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+            <span className="min-w-0 truncate">{opcao}</span>
+          </button>
+        ) : (
+          <div key={i} title={opcao} className={linha}>
+            <Reply aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+            <span className="min-w-0 truncate">{opcao}</span>
+          </div>
+        ),
+      )}
+    </div>
+  );
+}
+
 function MessageContent({
   message,
   isAgent,
   t,
   onAbrirGaleria,
+  onResponderComOpcao,
 }: {
   message: Message;
   /** A bolha é da equipe (fundo primary) — o player de áudio lê contra ele. */
   isAgent: boolean;
   t: ReturnType<typeof useTranslations>;
   onAbrirGaleria?: (messageId: string) => void;
+  onResponderComOpcao?: (opcao: string) => void;
 }) {
   switch (message.content_type) {
     case "text": {
@@ -665,15 +859,12 @@ function MessageContent({
 
     case "template":
       return (
-        <div>
-          <span className="mb-1 inline-flex items-center gap-1 rounded bg-primary/20 px-1.5 py-0.5 text-[10px] font-medium text-primary">
-            <LayoutTemplate className="h-3 w-3" />
-            {t("template")}
-          </span>
-          {message.content_text && (
-            <FormattedText texto={message.content_text} className="mt-1" />
-          )}
-        </div>
+        <ConteudoDoModelo
+          message={message}
+          isAgent={isAgent}
+          t={t}
+          onResponderComOpcao={onResponderComOpcao}
+        />
       );
 
     case "location":
@@ -749,6 +940,7 @@ export function MessageBubble({
   onAbrirGaleria,
   naoConfirmada = false,
   onTentarDeNovo,
+  onResponderComOpcao,
 }: MessageBubbleProps) {
   const t = useTranslations("Inbox.bubble");
 
@@ -929,6 +1121,8 @@ export function MessageBubble({
             isAgent={isAgent}
             t={t}
             onAbrirGaleria={onAbrirGaleria}
+            // Mensagem apagada não oferece resposta: as opções ficam só de retrato.
+            onResponderComOpcao={apagada ? undefined : onResponderComOpcao}
           />
         </div>
         <div

@@ -329,7 +329,7 @@ describe('transcreverAudio', () => {
   //
   // 1. O LITERAL escrito à mão. As asserções que comparam o código com a
   //    própria constante são tautológicas — passam com ela mistypada.
-  //    Sem o literal, `gemini-3.7-flsah` atravessa typecheck, lint e a
+  //    Sem o literal, `gemini-3.8-flsah` atravessa typecheck, lint e a
   //    suíte inteira e só aparece em produção: a URL dá 404, o áudio vira
   //    `falhou` e, na 3ª tentativa, `recusada` TERMINAL, que não tem botão
   //    na bolha. No caminho do Radar isso é silencioso. Trocar de modelo
@@ -349,7 +349,7 @@ describe('transcreverAudio', () => {
 
     await transcreverAudio(admin, { accountId: 'a1', messageId: 'm1' })
 
-    expect(MODELO_TRANSCRICAO).toBe('gemini-3.7-flash')
+    expect(MODELO_TRANSCRICAO).toBe('gemini-3.8-flash')
 
     const url = String(
       fetchSpy.mock.calls.find((c) => String(c[0]).includes('generativelanguage'))![0],

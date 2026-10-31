@@ -12,9 +12,13 @@ import type { AiProvider } from './types'
  */
 export const AI_PROVIDER_DEFAULT_MODEL: Record<AiProvider, string> = {
   openai: 'gpt-5.4-mini',
-  anthropic: 'claude-haiku-4-5-20251001',
-  // 3.7 e 3.6 custam o mesmo; o 3.7 é o Flash mais capaz (ago/2026).
-  gemini: 'gemini-3.7-flash',
+  // Escolha do operador (25/10/2026): o Haiku 5.5, id oficial SEM sufixo de
+  // data (platform.claude.com/docs/en/about-claude/models/overview). O Haiku
+  // 4.5 sai do ar "not sooner than October 15, 2026".
+  anthropic: 'claude-haiku-5-5',
+  // 3.8 e 3.6 custam o mesmo; o 3.8 é o Flash mais capaz (set/2026). O 3.7
+  // foi descontinuado em 08/10/2026: o Google atende os pedidos a ele com o 3.8.
+  gemini: 'gemini-3.8-flash',
 }
 
 /**
@@ -29,22 +33,79 @@ export const AI_PROVIDER_DEFAULT_MODEL: Record<AiProvider, string> = {
  * Recorte de agosto/2026: a família Flash do Gemini, que é a que atende
  * assistente, Radar e transcrição com o melhor custo. A lista foi
  * conferida contra o catálogo real da conta (`GET /v1beta/models`), não
- * escrita de memória.
+ * escrita de memória. Revista em 25/10/2026 contra a lista oficial
+ * (https://ai.google.dev/gemini-api/docs/models): saíram o 3.7 e o 3.5 Flash,
+ * descontinuados (o Google os atende com o 3.8 e o 3.6). A Anthropic, revista
+ * no mesmo dia contra a referência oficial: a família 5.5 (Haiku, Sonnet,
+ * Opus), ids sem data.
+ *
+ * Desde 25/10/2026 a tela lista os modelos que a CHAVE da conta oferece
+ * (`modelos-da-chave.ts`); estes viram os RECOMENDADOS, no topo da lista
+ * (`opcoesDeModelo`), e a sugestão do campo de texto quando a lista falha.
+ * Cada um precisa de preço em `precos.ts` (pino `precos.test.ts`).
  */
 export const AI_PROVIDER_MODELS: Record<AiProvider, readonly string[]> = {
   openai: ['gpt-5.4-mini', 'gpt-5.4', 'gpt-5.4-nano'],
-  anthropic: [
-    'claude-haiku-4-5-20251001',
-    'claude-sonnet-5',
-    'claude-sonnet-4-5-20250929',
-  ],
+  anthropic: ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5'],
   gemini: [
-    'gemini-3.7-flash',
+    'gemini-3.8-flash',
     'gemini-3.6-flash',
-    'gemini-3.5-flash',
     'gemini-3.5-flash-lite',
     'gemini-3.1-flash-lite',
   ],
+}
+
+/**
+ * Um modelo de texto que a CHAVE da conta oferece (`GET /api/cb/ia/modelos`,
+ * lido em `modelos-da-chave.ts`). `nome` é o do provedor (o id, na OpenAI, que
+ * não manda nome).
+ */
+export interface ModeloDaChave {
+  id: string
+  nome: string
+}
+
+/**
+ * As opções do seletor de modelo (agente e Radar): os RECOMENDADOS
+ * (`AI_PROVIDER_MODELS`, na ordem dele) que a chave tem, e depois o resto da
+ * lista da chave, na ordem do provedor e sem repetir. PURO.
+ *
+ * Recomendado que a chave NÃO tem não aparece: oferecê-lo seria oferecer um
+ * modelo que a chave não alcança (o agente ficaria mudo). O modelo SALVO fora
+ * da lista é problema de quem desenha a tela (`provedor-e-modelo.tsx`): ele
+ * aparece sempre, marcado.
+ */
+export function opcoesDeModelo(
+  provedor: AiProvider,
+  daChave: readonly ModeloDaChave[],
+): { recomendados: ModeloDaChave[]; outros: ModeloDaChave[] } {
+  const porId = new Map(daChave.map((m) => [m.id, m]))
+  const recomendados = AI_PROVIDER_MODELS[provedor]
+    .map((id) => porId.get(id))
+    .filter((m): m is ModeloDaChave => m !== undefined)
+  const vistos = new Set(recomendados.map((m) => m.id))
+  const outros: ModeloDaChave[] = []
+  for (const m of daChave) {
+    if (vistos.has(m.id)) continue
+    vistos.add(m.id)
+    outros.push(m)
+  }
+  return { recomendados, outros }
+}
+
+/**
+ * O modelo que a tela escolhe ao TROCAR de provedor (ou ao abrir o "Novo
+ * agente"): o primeiro recomendado que a chave tem; sem nenhum, o primeiro da
+ * lista dela; sem lista (carregando, falhou, vazia), o padrão do provedor —
+ * o mesmo de antes da lista existir.
+ */
+export function modeloRecomendado(
+  provedor: AiProvider,
+  daChave: readonly ModeloDaChave[] | null,
+): string {
+  if (!daChave || daChave.length === 0) return AI_PROVIDER_DEFAULT_MODEL[provedor]
+  const { recomendados, outros } = opcoesDeModelo(provedor, daChave)
+  return (recomendados[0] ?? outros[0]).id
 }
 
 /**

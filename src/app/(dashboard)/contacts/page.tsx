@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import type { Contact, Tag, ContactTag } from '@/types';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Table,
@@ -23,14 +24,6 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog';
 import {
   Popover,
   PopoverContent,
@@ -50,14 +43,16 @@ import {
   SlidersHorizontal,
   Filter,
   X,
+  Trash,
 } from 'lucide-react';
 import { ContactForm } from '@/components/contacts/contact-form';
 import { ContactDetailView } from '@/components/contacts/contact-detail-view';
 import { ImportModal } from '@/components/contacts/import-modal';
 import { CustomFieldsManager } from '@/components/contacts/custom-fields-manager';
+import { MoverParaLixeiraDialog } from '@/components/contacts/mover-para-lixeira-dialog';
 import { useCan } from '@/hooks/use-can';
 import { useAoVoltarParaOApp } from '@/hooks/use-ao-voltar-para-o-app';
-import { lerExclusao, podeLimparSelecao, selecaoRestante } from '@/lib/contacts/exclusao';
+import { selecaoRestante } from '@/lib/contacts/exclusao';
 import { escaparLike, ramoContem } from '@/lib/postgrest/literal';
 import { GatedButton } from '@/components/ui/gated-button';
 import { useTranslations } from 'next-intl';
@@ -75,10 +70,12 @@ export default function ContactsPage() {
   const canEdit = useCan('send-messages');
   const canEditSettings = useCan('edit-settings');
   // ⚠️ APAGAR contato é de admin (decisão do operador, 08/09/2026), enquanto
-  // EDITAR segue de `agent`. Apagar aqui leva a conversa e todas as
-  // mensagens daquele cliente junto (CASCADE), e isso é do escritório. A
-  // policy `contacts_delete` subiu junto, na 981 — sem os dois lados, o
-  // botão sumiria e um `.delete()` do navegador ainda apagaria.
+  // EDITAR segue de `agent`. Desde a 1097 apagar é MOVER PARA A LIXEIRA (90
+  // dias, restaurável; `cb_mover_contatos_para_lixeira` confere admin por
+  // dentro) — a ficha some de todas as telas com a conversa e as mensagens.
+  // Desde a 1100 o navegador não tem DELETE em `contacts` (sem policy nem
+  // privilégio): a Lixeira é a única porta, e um `.delete()` daria 42501
+  // (pino `so-a-lixeira-apaga-1100.test.ts`).
   const podeApagarContatos = useCan('delete-contacts');
 
   const [contacts, setContacts] = useState<ContactWithTags[]>([]);
@@ -110,13 +107,12 @@ export default function ContactsPage() {
   );
   const [importOpen, setImportOpen] = useState(false);
   const [customFieldsOpen, setCustomFieldsOpen] = useState(false);
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<Contact | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  // As fichas do "Mover para a Lixeira" (uma, pelo menu da linha, ou a
+  // seleção), capturadas na abertura; NULO = diálogo fechado.
+  const [moverIds, setMoverIds] = useState<string[] | null>(null);
 
   // Bulk selection (page-scoped — only the loaded rows are selectable)
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
 
   // All tags for display
   const [tagsMap, setTagsMap] = useState<Record<string, Tag>>({});
@@ -165,7 +161,8 @@ export default function ContactsPage() {
     // ⚠️ MENOS quando quem recarrega já cuidou da seleção: uma exclusão
     // recusada não muda linha nenhuma, e limpar ali jogaria fora a seleção
     // que o operador precisa manter para tentar de novo (achado do Codex no
-    // PR #138 — sem esta saída, `podeLimparSelecao` não valia na prática).
+    // PR #138 — sem esta saída, a poda por `selecaoRestante` não valia na
+    // prática; hoje é o `aposMover` da Lixeira que a usa).
     // Chamador que passa um EVENTO (onUpdated/onImported) não tem a chave e
     // cai no comportamento normal.
     if (!opcoes?.preservarSelecao) setSelected(new Set());
@@ -297,7 +294,6 @@ export default function ContactsPage() {
     const chave = JSON.stringify([page, search, selectedTagIds]);
     const soOCatalogo = chaveDaListaRef.current === chave;
     chaveDaListaRef.current = chave;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchContacts(
       soOCatalogo ? { silencioso: true, preservarSelecao: true } : undefined,
     );
@@ -336,61 +332,19 @@ export default function ContactsPage() {
     setDetailOpen(true);
   }
 
-  function confirmDelete(contact: Contact) {
-    setDeleteTarget(contact);
-    setDeleteConfirmOpen(true);
-  }
-
   /**
-   * Quais destes contatos AINDA existem? É a medição que separa "a policy
-   * recusou" de "outro cliente já apagou" — as duas dão 0 linhas no DELETE,
-   * e nenhum estado da tela distingue as duas (um admin rebaixado com a
-   * página aberta ainda acha que pode). `null` = não deu para conferir.
+   * Depois de mover para a Lixeira: a seleção perde os RESOLVIDOS (movidos e
+   * os que já não existiam) e só eles — o recusado continua marcado, que é o
+   * que falta resolver —, e a recarga PRESERVA o que sobrou (ela zera a
+   * seleção por conta própria; Codex, #138/#139). Nada resolvido: nada mudou
+   * na lista.
    */
-  async function aindaExistentes(ids: string[]): Promise<string[] | null> {
-    if (ids.length === 0) return [];
-    const { data, error } = await supabase
-      .from('contacts')
-      .select('id')
-      .in('id', ids);
-    if (error) return null;
-    return (data ?? []).map((linha) => linha.id as string);
-  }
-
-  async function handleDelete() {
-    if (!deleteTarget) return;
-    setDeleting(true);
-
-    // ⚠️ CONFERE O ROWCOUNT, não só o erro: desde a 981 apagar contato é de
-    // admin, e RLS que barra DELETE devolve 0 linhas com `error: null`. Sem
-    // o `.select()`, a tela diria "contato excluído" sobre um contato
-    // intacto — e é o caso REAL de quem estava com a página aberta quando a
-    // policy mudou (achado do Codex no PR #137).
-    const { data, error } = await supabase
-      .from('contacts')
-      .delete()
-      .eq('id', deleteTarget.id)
-      .select('id');
-
-    const apagados = data?.length ?? 0;
-    // Só há o que conferir quando o contato NÃO saiu.
-    const restantes = apagados > 0 || error ? [] : await aindaExistentes([deleteTarget.id]);
-    const r = lerExclusao({
-      pedidos: 1,
-      apagados,
-      aindaExistem: restantes === null ? null : restantes.length,
-      houveErro: !!error,
-    });
-    if (r === 'apagado') toast.success(t('toastDeleted'));
-    // ⚠️ "Sumiu" NÃO é falta de permissão: o contato já não estava lá.
-    else if (r === 'sumiu') toast.info(t('toastDeleteGone'));
-    else if (r === 'recusado') toast.error(t('toastDeleteRefused'));
-    else toast.error(t('toastFailedDelete'));
-    if (r !== 'falhou') fetchContacts();
-
-    setDeleting(false);
-    setDeleteConfirmOpen(false);
-    setDeleteTarget(null);
+  function aposMover(resolvidos: string[]) {
+    // A seleção perde só o CONFIRMADO; a lista recarrega SEMPRE (Codex,
+    // #429): a resposta perdida depois de o banco gravar vira "recusada" na
+    // tela, e sem a recarga as fichas que saíram seguiriam listadas.
+    if (resolvidos.length > 0) setSelected((atual) => selecaoRestante(atual, resolvidos));
+    void fetchContacts({ preservarSelecao: true });
   }
 
   const allOnPageSelected =
@@ -416,57 +370,6 @@ export default function ContactsPage() {
       else next.add(id);
       return next;
     });
-  }
-
-  async function handleBulkDelete() {
-    const ids = [...selected];
-    if (ids.length === 0) return;
-    setDeleting(true);
-
-    // ⚠️ Mesma conferência da exclusão individual, e aqui o número IMPORTA:
-    // o toast dizia `count: ids.length` — o que se PEDIU —, não o que saiu.
-    // Com a policy da 981 recusando, ele anunciava "12 contatos excluídos"
-    // sobre zero, e ainda limpava a seleção.
-    const { data, error } = await supabase
-      .from('contacts')
-      .delete()
-      .in('id', ids)
-      .select('id');
-
-    const saidos = (data ?? []).map((linha) => linha.id as string);
-    const naoSairam = ids.filter((id) => !saidos.includes(id));
-    // Dos que ficaram, quais ainda existem? Os que existem foram RECUSADOS;
-    // os que não existem, outro cliente já tinha apagado.
-    const recusados = error || naoSairam.length === 0 ? [] : await aindaExistentes(naoSairam);
-    const r = lerExclusao({
-      pedidos: ids.length,
-      apagados: saidos.length,
-      aindaExistem: recusados === null ? null : recusados.length,
-      houveErro: !!error,
-    });
-    if (r === 'falhou') toast.error(t('toastBulkFailedDelete'));
-    else if (r === 'recusado') toast.error(t('toastDeleteRefused'));
-    else if (r === 'sumiu') toast.info(t('toastDeleteGone'));
-    // O número é o que SAIU, não o que se pediu.
-    else toast.success(t('toastBulkDeleted', { count: saidos.length }));
-
-    // ⚠️ A seleção é PODADA, não zerada, e o que sai são os RESOLVIDOS: os
-    // que foram apagados E os que já não existiam. Manter um ausente deixava
-    // uma linha invisível marcada na barra, e toda nova tentativa repetia
-    // "sumiu" (Codex, #139). E a recarga precisa preservar o que sobrou —
-    // ela zera a seleção por conta própria (Codex, #138).
-    const limpaTudo = podeLimparSelecao(r);
-    if (limpaTudo) {
-      setSelected(new Set());
-    } else {
-      const sumidos = recusados === null ? [] : naoSairam.filter((id) => !recusados.includes(id));
-      const resolvidos = [...saidos, ...sumidos];
-      if (resolvidos.length > 0) setSelected((atual) => selecaoRestante(atual, resolvidos));
-    }
-    if (r !== 'falhou') fetchContacts({ preservarSelecao: !limpaTudo });
-
-    setDeleting(false);
-    setBulkDeleteOpen(false);
   }
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
@@ -504,7 +407,23 @@ export default function ContactsPage() {
             {totalCount > 0 ? t('subtitle', { count: totalCount }) : t('subtitleZero')}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* A Lixeira (1097) é de quem exclui: some para quem não é admin.
+              No celular, só o ícone — a fileira já tem três botões. */}
+          {podeApagarContatos && (
+            <Link
+              href="/contacts/lixeira"
+              aria-label={t('lixeiraBtn')}
+              title={t('lixeiraBtn')}
+              className={buttonVariants({
+                variant: 'outline',
+                className: 'border-border text-muted-foreground hover:bg-muted',
+              })}
+            >
+              <Trash className="size-4" />
+              <span className="hidden sm:inline">{t('lixeiraBtn')}</span>
+            </Link>
+          )}
           {canEditSettings && (
             <Button
               variant="outline"
@@ -676,10 +595,10 @@ export default function ContactsPage() {
               <Button
                 variant="destructive"
                 size="sm"
-                onClick={() => setBulkDeleteOpen(true)}
+                onClick={() => setMoverIds([...selected])}
               >
                 <Trash2 className="size-4" />
-                {t('deleteSelected')}
+                {t('moverSelecionados')}
               </Button>
             )}
           </div>
@@ -842,11 +761,11 @@ export default function ContactsPage() {
                             variant="destructive"
                             onClick={(e) => {
                               e.stopPropagation();
-                              confirmDelete(contact);
+                              setMoverIds([contact.id]);
                             }}
                           >
                             <Trash2 className="size-4" />
-                            {t('deleteAction')}
+                            {t('moverParaLixeira')}
                           </DropdownMenuItem>
                         )}
                       </DropdownMenuContent>
@@ -934,65 +853,14 @@ export default function ContactsPage() {
         />
       )}
 
-      {/* Delete Confirmation */}
-      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
-        <DialogContent className="bg-popover border-border text-popover-foreground sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="text-popover-foreground">{t('deleteContactTitle')}</DialogTitle>
-            <DialogDescription className="text-muted-foreground">
-              {t('deleteContactDesc', { name: nomeDoContato(deleteTarget, '') })}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="bg-popover border-border">
-            <Button
-              variant="outline"
-              onClick={() => setDeleteConfirmOpen(false)}
-              className="border-border text-muted-foreground hover:bg-muted"
-            >
-              {t('cancel')}
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDelete}
-              disabled={deleting}
-            >
-              {deleting && <Loader2 className="size-4 animate-spin" />}
-              {t('deleteBtn')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Bulk Delete Confirmation */}
-      <Dialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
-        <DialogContent className="bg-popover border-border text-popover-foreground sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="text-popover-foreground">
-              {t('deleteBulkTitle')}
-            </DialogTitle>
-            <DialogDescription className="text-muted-foreground">
-              {t('deleteBulkDesc', { count: selected.size })}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="bg-popover border-border">
-            <Button
-              variant="outline"
-              onClick={() => setBulkDeleteOpen(false)}
-              className="border-border text-muted-foreground hover:bg-muted"
-            >
-              {t('cancel')}
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleBulkDelete}
-              disabled={deleting}
-            >
-              {deleting && <Loader2 className="size-4 animate-spin" />}
-              {t('deleteBtn')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Mover para a Lixeira (1097): a exclusão de UMA ficha e a da seleção.
+          A prévia, o toast com "Desfazer" e as recusas moram no componente. */}
+      <MoverParaLixeiraDialog
+        ids={moverIds}
+        aoFechar={() => setMoverIds(null)}
+        aoMover={aposMover}
+        aoDesfazer={() => void fetchContacts({ preservarSelecao: true, silencioso: true })}
+      />
     </div>
   );
 }

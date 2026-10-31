@@ -1,7 +1,10 @@
 import { timingSafeEqual } from 'node:crypto'
 import { NextResponse, after } from 'next/server'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
-import { resumePendingExecution } from '@/lib/automations/engine'
+import {
+  recolherEsperasPresas,
+  resumePendingExecution,
+} from '@/lib/automations/engine'
 import type { AutomationContext } from '@/lib/automations/engine'
 import {
   drenarEventosDeFunil,
@@ -24,6 +27,11 @@ import { rodarRedeDosTurnos } from '@/lib/ia-agentes/rede'
  * overlapping invocations don't double-process rows. Best-effort
  * only; expensive SELECT ... FOR UPDATE is avoided in favor of a
  * two-step UPDATE-by-id.
+ *
+ * NOSSO (1106): a reivindicação carimba `claimed_at`, e a espera que fica
+ * `running` além do teto (o processo morreu no meio da retomada) é recolhida
+ * como FALHA VISÍVEL no começo do ciclo — nunca re-executada
+ * (`recolherEsperasPresas`).
  */
 export async function GET(request: Request) {
   const expected = process.env.AUTOMATION_CRON_SECRET
@@ -51,6 +59,15 @@ export async function GET(request: Request) {
   // e não segura a resposta ao `curl` (o `-m` do agendador é o teto real).
   // Nunca lança.
   after(rodarRedeDosTurnos())
+
+  // A outra rede do topo (1106): a espera reivindicada cujo processo morreu
+  // no meio da retomada (deploy, reinício) vira FALHA VISÍVEL — nunca é
+  // re-executada, porque a mensagem pode ter saído antes de o processo cair.
+  // Mesmo lugar e mesma forma da rede de cima: antes de todo `return` (o
+  // caminho comum sai pelo "não havia execução parada") e em `after()` com a
+  // promessa já começada. Não disputa linha com a reivindicação abaixo: só
+  // toca `running` velha, e a reivindicação só toca `pending`. Nunca lança.
+  after(recolherEsperasPresas())
 
   // Fila de eventos de funil (933) — a REDE DE SEGURANÇA. O caminho normal é
   // o aviso imediato que quem moveu o card dispara; este ciclo pega o que não
@@ -109,13 +126,21 @@ export async function GET(request: Request) {
 
   let processed = 0
   for (const row of due) {
-    const { data: claim } = await admin
+    // O carimbo da reivindicação (1106) é o relógio do recolhimento: sem ele
+    // a espera presa em `running` só seria vista pelo vencimento, 24 h depois.
+    const { data: claim, error: claimErr } = await admin
       .from('automation_pending_executions')
-      .update({ status: 'running' })
+      .update({ status: 'running', claimed_at: new Date().toISOString() })
       .eq('id', row.id)
       .eq('status', 'pending')
       .select('id')
       .maybeSingle()
+    if (claimErr) {
+      // Sem isto, a coluna ausente (a 1106 não aplicada antes do deploy) faria
+      // TODA reivindicação falhar em silêncio — e nenhuma espera retomaria.
+      console.error('[automations] reivindicar a espera falhou:', row.id, claimErr.message)
+      continue
+    }
     if (!claim) continue
 
     await resumePendingExecution({
@@ -124,7 +149,7 @@ export async function GET(request: Request) {
       // account_id is NOT NULL on automation_pending_executions
       // post-017; the engine uses it for tenant-scoped lookups.
       account_id: row.account_id as string,
-      user_id: row.user_id as string,
+      user_id: (row.user_id as string | null) ?? null,
       contact_id: (row.contact_id as string | null) ?? null,
       log_id: (row.log_id as string | null) ?? null,
       parent_step_id: (row.parent_step_id as string | null) ?? null,

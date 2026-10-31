@@ -193,7 +193,78 @@ describe('handleTemplateWebhookChange — status update', () => {
     expect(calls[0].update?.rejection_reason).toBe('Rejected by Meta');
   });
 
-  it('normalises PENDING_REVIEW → PENDING (via shared normalizeStatus)', async () => {
+  it('maps REINSTATED to APPROVED and clears the old rejection', async () => {
+    const { stub, calls } = makeSupabaseStub();
+    await handleTemplateWebhookChange(
+      {
+        field: 'message_template_status_update',
+        value: { event: 'REINSTATED', message_template_id: '1' },
+      },
+      stub,
+    );
+    expect(calls[0].update).toEqual({
+      status: 'APPROVED',
+      rejection_reason: null,
+      submission_error: null,
+    });
+  });
+
+  // NOSSO: o original também ignora o ARCHIVED; aqui ele sai do seletor,
+  // como pela sincronização (`normalizeStatus`).
+  it('maps ARCHIVED to PENDING, out of the picker (as the sync does)', async () => {
+    const { stub, calls } = makeSupabaseStub();
+    await handleTemplateWebhookChange(
+      {
+        field: 'message_template_status_update',
+        value: { event: 'ARCHIVED', message_template_id: '1' },
+      },
+      stub,
+    );
+    expect(calls[0].update?.status).toBe('PENDING');
+  });
+
+  it.each(['FLAGGED', 'LIMIT_EXCEEDED', 'LOCKED', 'SOMETHING_NEW'])(
+    'leaves the row untouched on %s, which is not a status we track',
+    async (event) => {
+      const { stub, calls } = makeSupabaseStub();
+      await handleTemplateWebhookChange(
+        {
+          field: 'message_template_status_update',
+          value: { event, message_template_id: '1' },
+        },
+        stub,
+      );
+      expect(calls).toHaveLength(0);
+    },
+  );
+
+  it('keeps the rejection reason when a template is paused or disabled', async () => {
+    for (const event of ['PAUSED', 'DISABLED', 'IN_APPEAL']) {
+      const { stub, calls } = makeSupabaseStub();
+      await handleTemplateWebhookChange(
+        {
+          field: 'message_template_status_update',
+          value: { event, message_template_id: '1' },
+        },
+        stub,
+      );
+      expect(calls[0].update).toEqual({ status: event });
+    }
+  });
+
+  it('maps DELETED to PENDING_DELETION', async () => {
+    const { stub, calls } = makeSupabaseStub();
+    await handleTemplateWebhookChange(
+      {
+        field: 'message_template_status_update',
+        value: { event: 'DELETED', message_template_id: '1' },
+      },
+      stub,
+    );
+    expect(calls[0].update).toEqual({ status: 'PENDING_DELETION' });
+  });
+
+  it('normalises PENDING_REVIEW → PENDING', async () => {
     const { stub, calls } = makeSupabaseStub();
     await handleTemplateWebhookChange(
       {
@@ -431,6 +502,25 @@ describe('handleTemplateWebhookChange — unknown template stub (#534, porte da 
       expect(fetchDaMeta).not.toHaveBeenCalled();
     },
   );
+
+  it.each(['FLAGGED', 'LOCKED', 'SOMETHING_NEW'])(
+    '⚠️ %s (não é troca de situação) não grava, não lê a Meta e não cria stub — nem com a WABA resolvível',
+    async (evento) => {
+      // Antes (porte do #675), `normalizeStatus` fazia destes um PENDING: com
+      // a linha local, o modelo virava "Em análise"; sem ela, o stub nascia.
+      const { stub, calls } = makeSupabaseStub({ data: [], error: null }, { canais: [CANAL] });
+      await handleTemplateWebhookChange(statusDe({ event: evento }), stub);
+      expect(calls).toEqual([]);
+      expect(fetchDaMeta).not.toHaveBeenCalled();
+    },
+  );
+
+  it('REINSTATED de um modelo sem linha local ainda cria o stub (é troca de situação)', async () => {
+    const { stub, calls } = makeSupabaseStub({ data: [], error: null }, { canais: [CANAL] });
+    await handleTemplateWebhookChange(statusDe({ event: 'REINSTATED' }), stub);
+    expect(calls[0].update).toEqual({ status: 'APPROVED', rejection_reason: null, submission_error: null });
+    expect(calls.find((c) => c.insert)?.insert).toMatchObject({ status: 'APPROVED', channel_id: 'canal-meta-1' });
+  });
 
   it('warns with the WABA id and inserts nothing when no official connection matches', async () => {
     const warn = vi.spyOn(console, 'warn');

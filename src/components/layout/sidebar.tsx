@@ -4,8 +4,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 import { cn } from "@/lib/utils";
-import { LOGO_DO_APP, NOME_DO_APP } from "@/lib/marca";
+import { LogoDaMarca, SimboloDaMarca } from "@/components/marca/logo-da-marca";
+import { useMarca } from "@/components/marca/marca-provider";
 import { useAuth } from "@/hooks/use-auth";
+import { useMenuRecolhido } from "@/hooks/use-menu-recolhido";
 import { useTotalUnread } from "@/hooks/use-total-unread";
 import { useUnreadNotifications } from "@/hooks/use-unread-notifications";
 import { useTarefasNaoLidas } from "@/hooks/use-tarefas-nao-lidas";
@@ -87,6 +89,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { ItemDoMenu } from "@/components/layout/menu-recolhivel";
 
 interface NavItem {
   href: string;
@@ -144,6 +148,11 @@ const bottomNavItems = [
   { href: "/settings", labelKey: "settings", icon: Settings },
 ];
 
+// Menu recolhido: o contador de não lidas sai da ponta da linha (que some)
+// e vira selo no canto do ícone. O anel da cor do fundo o separa do traço.
+const CONTADOR_SOBRE_O_ICONE =
+  "absolute right-0.5 top-0.5 h-4 min-w-4 text-[9px] ring-2 ring-card";
+
 interface SidebarProps {
   /** Controlled on mobile by the Header's hamburger button. Ignored on lg+. */
   open?: boolean;
@@ -159,6 +168,11 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
   const totalUnread = useTotalUnread();
   const unreadNotifications = useUnreadNotifications();
   const tarefasNaoLidas = useTarefasNaoLidas();
+  const marca = useMarca();
+  // Só os ícones (o botão mora no cabeçalho). Já sai falso abaixo de `lg`:
+  // a gaveta do celular mostra sempre os nomes, e nada aqui precisa do
+  // prefixo `lg:` para não vazar para ela.
+  const { recolhido } = useMenuRecolhido();
   // Only surface the account-name strip when it actually carries
   // information. A solo user's personal account is named after them
   // (the 017 signup trigger seeds it from `full_name`), so showing it
@@ -197,7 +211,9 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
   }, [open, onClose]);
 
   return (
-    <>
+    // O provider (sem DOM) faz a dica do item seguinte abrir sem espera ao
+    // correr o mouse pelo menu recolhido.
+    <TooltipProvider>
       {/* Backdrop — only exists on mobile and only when open. Clicking
           it closes the drawer. Hidden from lg+ since the sidebar is
           part of the main flex row there. */}
@@ -220,37 +236,43 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
           "transition-transform duration-200 ease-out will-change-transform",
           open ? "translate-x-0" : "-translate-x-full",
           // Desktop: static, always visible — reset all the mobile framing.
-          "lg:static lg:z-0 lg:w-60 lg:translate-x-0 lg:transition-none",
+          // Recolhido: 64 px = o `px-3` do <nav> + o ícone no `px-3` do item
+          // dos DOIS lados — os ícones não saem do lugar ao recolher.
+          "lg:static lg:z-0 lg:translate-x-0 lg:transition-none",
+          recolhido ? "lg:w-16" : "lg:w-60",
         )}
         aria-label={t("primaryNav")}
       >
         {/* Logo row. On mobile we put a close button here; on desktop the
-            close button is hidden since the sidebar is always-visible. */}
-        <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-4">
-          <Link href="/dashboard" className="flex items-center gap-2">
-            {/* ⚠️ O nome sai de `NEXT_PUBLIC_APP_NAME` (src/lib/marca.ts),
-                nunca do dicionário: nome de produto não é tradução, e
-                mantê-lo em `Sidebar.title` obrigava a editar os dois
-                dicionários para renomear o sistema. O logo é opcional —
-                sem ele fica o símbolo genérico. */}
-            {LOGO_DO_APP ? (
-              // eslint-disable-next-line @next/next/no-img-element -- marca de
-              // 32px vinda de configuração: `next/image` exigiria dimensões
-              // fixas e uma allow-list de origem para um arquivo que cada
-              // instalação escolhe, sem ganho de LCP nenhum nesse tamanho.
-              <img
-                src={LOGO_DO_APP}
-                alt=""
-                className="h-8 w-8 shrink-0 rounded-lg object-contain"
-              />
+            close button is hidden since the sidebar is always-visible.
+            ⚠️ `pl-6` (24 px) = o `px-3` do <nav> + o `px-3` do item: o logo
+            começa na MESMA coluna dos ícones do menu (pedido do operador,
+            20/10/2026; com `px-4` ficava 8 px à esquerda deles). Recolhido,
+            o símbolo fica centrado sobre a coluna dos ícones. */}
+        <div
+          className={cn(
+            "flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border",
+            recolhido ? "justify-center" : "pl-6 pr-4",
+          )}
+        >
+          {/* ⚠️ A marca é DADO da instalação (Configurações → Marca; o layout
+              raiz a entrega pelo `MarcaProvider`), nunca dicionário nem
+              build-arg: nome de produto não é tradução, e quem compra o
+              sistema troca nome e logo pela tela. O logo horizontal do fundo
+              do modo vigente; sem ele, símbolo + nome em texto
+              (`LogoDaMarca`). `min-w-0` e o teto de largura: no celular a
+              linha divide os 256 px com o botão de fechar. Recolhido, só o
+              símbolo (a imagem é decorativa: o nome vai no `aria-label`). */}
+          <Link
+            href="/dashboard"
+            className="flex min-w-0 items-center"
+            aria-label={recolhido ? marca.nome : undefined}
+          >
+            {recolhido ? (
+              <SimboloDaMarca className="h-8 w-8" />
             ) : (
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                <MessageSquare className="h-4 w-4" />
-              </div>
+              <LogoDaMarca forma="horizontal" className="h-7 w-auto max-w-44" />
             )}
-            <span className="truncate text-sm font-semibold text-foreground">
-              {NOME_DO_APP}
-            </span>
           </Link>
           <button
             type="button"
@@ -262,8 +284,15 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
           </button>
         </div>
 
-        {/* Main navigation */}
-        <nav className="flex-1 overflow-y-auto px-3 py-4">
+        {/* Main navigation. Recolhido, a barra de rolagem (tela baixa, mouse
+            com barra clássica) comeria 15 px dos 64: some a barra, a rolagem
+            continua pela roda e pelo toque. */}
+        <nav
+          className={cn(
+            "flex-1 overflow-y-auto px-3 py-4",
+            recolhido && "[scrollbar-width:none]",
+          )}
+        >
           <ul className="flex flex-col gap-1">
             {navItems
               .filter((item) => {
@@ -294,21 +323,29 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
               const showTaskBadge =
                 item.href === "/tarefas" && tarefasNaoLidas > 0;
 
+              const rotulo = t(item.labelKey as string);
+
               return (
                 <li key={item.href}>
-                  <Link
+                  <ItemDoMenu
                     href={item.href}
+                    rotulo={rotulo}
+                    recolhido={recolhido}
                     className={cn(
                       // Taller on mobile so fingers can hit the row reliably (≥44px).
-                      "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
+                      "relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
                       isActive
                         ? "bg-primary/10 text-primary"
                         : "text-muted-foreground hover:bg-muted hover:text-foreground",
                     )}
                   >
-                    <item.icon className="h-4 w-4" />
-                    <span className="flex-1">{t(item.labelKey as string)}</span>
-                    {item.beta && (
+                    <item.icon className="h-4 w-4 shrink-0" />
+                    {/* Recolhido, o nome sai da tela mas fica para o leitor
+                        de tela (e aparece na dica ao passar o mouse). */}
+                    <span className={cn("flex-1", recolhido && "sr-only")}>
+                      {rotulo}
+                    </span>
+                    {item.beta && !recolhido && (
                       <span
                         aria-label={t("beta")}
                         className="rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-300"
@@ -319,7 +356,10 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                     {showUnreadDot && (
                       <span
                         aria-label={t("unreadConversations", { count: totalUnread })}
-                        className="relative flex h-2 w-2"
+                        className={cn(
+                          "relative flex h-2 w-2",
+                          recolhido && "absolute right-1.5 top-1.5",
+                        )}
                       >
                         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
                         <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
@@ -328,7 +368,10 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                     {showTaskBadge && (
                       <span
                         aria-label={t("unreadTasks", { count: tarefasNaoLidas })}
-                        className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground"
+                        className={cn(
+                          "flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground",
+                          recolhido && CONTADOR_SOBRE_O_ICONE,
+                        )}
                       >
                         {tarefasNaoLidas > 9 ? "9+" : tarefasNaoLidas}
                       </span>
@@ -336,12 +379,15 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                     {showNotificationBadge && (
                       <span
                         aria-label={t("unreadNotifications", { count: unreadNotifications })}
-                        className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground"
+                        className={cn(
+                          "flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground",
+                          recolhido && CONTADOR_SOBRE_O_ICONE,
+                        )}
                       >
                         {unreadNotifications > 9 ? "9+" : unreadNotifications}
                       </span>
                     )}
-                  </Link>
+                  </ItemDoMenu>
                 </li>
               );
             })}
@@ -352,20 +398,23 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
           <ul className="flex flex-col gap-1">
             {bottomNavItems.map((item) => {
               const isActive = pathname.startsWith(item.href);
+              const rotulo = t(item.labelKey as string);
               return (
                 <li key={item.href}>
-                  <Link
+                  <ItemDoMenu
                     href={item.href}
+                    rotulo={rotulo}
+                    recolhido={recolhido}
                     className={cn(
-                      "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
+                      "relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
                       isActive
                         ? "bg-primary/10 text-primary"
                         : "text-muted-foreground hover:bg-muted hover:text-foreground",
                     )}
                   >
-                    <item.icon className="h-4 w-4" />
-                    {t(item.labelKey as string)}
-                  </Link>
+                    <item.icon className="h-4 w-4 shrink-0" />
+                    <span className={cn(recolhido && "sr-only")}>{rotulo}</span>
+                  </ItemDoMenu>
                 </li>
               );
             })}
@@ -379,8 +428,9 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
               `showAccountStrip`). For a default solo account the two
               match, so we hide it to avoid duplicating the user name
               below; for renamed or shared accounts it tells the user
-              which account they're acting in. */}
-          {showAccountStrip && account?.name ? (
+              which account they're acting in. Recolhido, some: não cabe
+              em 64 px. */}
+          {showAccountStrip && account?.name && !recolhido ? (
             <div className="mb-2 flex items-center gap-2 px-3 text-xs text-muted-foreground">
               <UsersRound className="size-3.5 shrink-0" />
               {/* `title=` exposes the full name on hover when it
@@ -410,7 +460,17 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
             </div>
           ) : null}
           <DropdownMenu>
-            <DropdownMenuTrigger className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted/60 focus:bg-muted/60 focus:outline-none data-popup-open:bg-muted/60">
+            {/* Recolhido, só o avatar (o nome continua no cabeçalho); o
+                menu abre para o lado, senão sairia da tela pela esquerda. */}
+            <DropdownMenuTrigger
+              aria-label={
+                recolhido ? (profile?.full_name ?? t("defaultUser")) : undefined
+              }
+              className={cn(
+                "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted/60 focus:bg-muted/60 focus:outline-none data-popup-open:bg-muted/60",
+                recolhido && "justify-center px-0",
+              )}
+            >
               <Avatar className="size-8 shrink-0">
                 {profile?.avatar_url ? (
                   <AvatarImage
@@ -424,7 +484,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                     "U"}
                 </AvatarFallback>
               </Avatar>
-              <div className="min-w-0 flex-1">
+              <div className={cn("min-w-0 flex-1", recolhido && "hidden")}>
                 <p className="truncate text-sm font-medium text-foreground">
                   {profile?.full_name ?? t("defaultUser")}
                 </p>
@@ -435,7 +495,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="end"
-              side="top"
+              side={recolhido ? "right" : "top"}
               sideOffset={6}
               className="min-w-56 bg-popover text-popover-foreground ring-border"
             >
@@ -475,6 +535,6 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
           </DropdownMenu>
         </div>
       </aside>
-    </>
+    </TooltipProvider>
   );
 }

@@ -5,7 +5,9 @@
 // Na retomada nada executa e nada é transferido: o `[[SEM_RETOMADA]]` ("nada
 // pendente"), o `[[HANDOFF]]` em qualquer forma, o `[[TRANSFERIR]]`, a
 // passagem, o pedido vazado (`vazouOPedido`, as regras do sistema), a equipe
-// prometida sem marcador e o link inventado PARAM a série sem mandar nada —
+// prometida sem marcador, a AÇÃO prometida ("criei o lembrete": na retomada
+// nada executa, então toda afirmação de ação é falsa — 25/10/2026) e o link
+// inventado PARAM a série sem mandar nada —
 // a retomada não passa a conversa para gente por conta própria. Marcador de
 // ação sai do texto e não executa. A ordem é a do turno: o pedido vazado
 // vem antes das outras travas do texto.
@@ -13,7 +15,7 @@
 
 import type { ChatMessage } from '@/lib/ai/types'
 
-import { equipePrometida, lerAcoes, linksInventados } from './acoes'
+import { acaoPrometida, equipePrometida, lerAcoes, linksInventados } from './acoes'
 import { lerPassagem, lerSemRetomada } from './pedido'
 import { vazouOPedido } from './regras-do-sistema'
 
@@ -28,6 +30,8 @@ export type ParadaDaResposta =
   | 'pedido_vazado'
   /** Link que não veio do pedido nem da conversa. */
   | 'link_inventado'
+  /** Diz que fez algo no sistema (tarefa, campo, etiqueta…): nada executa. */
+  | 'acao_prometida'
 
 export type RespostaDaRetomada =
   | { parada: null; texto: string }
@@ -35,9 +39,16 @@ export type RespostaDaRetomada =
 
 /**
  * `texto` e `handoff` como `generateReply` os devolve; `fontes` = o pedido e
- * as mensagens mandadas ao modelo (de onde um link pode ter vindo).
+ * as mensagens mandadas ao modelo (de onde um link pode ter vindo);
+ * `anteriores` = as respostas do ESCRITÓRIO na conversa (repetir "já anotei"
+ * que uma delas disse não é afirmação nova — a régua do turno).
  */
-export function lerRespostaDaRetomada(texto: string, handoff: boolean, fontes: readonly string[]): RespostaDaRetomada {
+export function lerRespostaDaRetomada(
+  texto: string,
+  handoff: boolean,
+  fontes: readonly string[],
+  anteriores: readonly string[] = [],
+): RespostaDaRetomada {
   if (lerSemRetomada(texto)) return { parada: 'nada_pendente' }
   const lidas = lerAcoes(texto)
   if (handoff || lidas.transferir || lidas.transferirDepois || lerPassagem(texto) !== null) {
@@ -46,6 +57,9 @@ export function lerRespostaDaRetomada(texto: string, handoff: boolean, fontes: r
   if (!lidas.texto) return { parada: 'sem_texto' }
   if (vazouOPedido(lidas.texto)) return { parada: 'pedido_vazado', detalhe: lidas.texto }
   if (equipePrometida(lidas.texto)) return { parada: 'pediu_equipe', detalhe: lidas.texto }
+  if (acaoPrometida({ texto: lidas.texto, aceitas: [], anteriores })) {
+    return { parada: 'acao_prometida', detalhe: lidas.texto }
+  }
   const inventados = linksInventados(lidas.texto, [...fontes])
   if (inventados.length > 0) return { parada: 'link_inventado', detalhe: inventados.join(' ') }
   return { parada: null, texto: lidas.texto }

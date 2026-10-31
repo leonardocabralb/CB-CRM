@@ -153,6 +153,43 @@ describe('cartão de notificação do navegador × ouvinte', () => {
     expect(inbox).toMatch(/if \(conversaAbertaRef\.current === id\) return;\s*conversaRecemAbertaRef\.current = id;/);
   });
 
+  it('28/10: o clique no sino e no Meu dia volta para a tela de origem, e as duas listas dizem o cliente', () => {
+    // Cada elo some sem erro: sem o `de`, a conversa abre sem faixa; sem o
+    // leitor na página, o `de` viaja e nada aparece; sem o embed, a linha
+    // do cliente fica vazia.
+    const sino = semComentarios(ler('app/(dashboard)/notifications/page.tsx'));
+    expect(sino).toMatch(/rotaDoAviso\(n, "notificacoes"\)/);
+    expect(sino).toMatch(/<LinhaDoCliente cliente=\{clienteDoAviso\(n\)\}/);
+    const meuDia = semComentarios(ler('components/meu-dia/bloco-de-notificacoes.tsx'));
+    expect(meuDia).toMatch(/rotaDoAviso\(aviso, 'meu-dia'\)/);
+    expect(meuDia).toMatch(/<LinhaDoCliente cliente=\{clienteDoAviso\(aviso\)\}/);
+    expect(semComentarios(ler('hooks/use-area-de-trabalho.ts'))).toMatch(/EMBED_DO_CLIENTE_DO_AVISO/);
+    const inbox = semComentarios(ler('app/(dashboard)/inbox/page.tsx'));
+    expect(inbox).toMatch(/<VoltarAosAvisos origem=\{veioDosAvisos\}/);
+    // O pop-up do navegador NÃO leva faixa: não vem de uma tela.
+    expect(semComentarios(ler('lib/notifications/aviso-do-sino.ts'))).toMatch(/rota: rotaDoAviso\(aviso\),/);
+  });
+
+  it('1114: o aviso de anotação leva o fio até ela — pelo deep link e com o inbox já montado', () => {
+    // Pedido do operador (27/10/2026): o clique abria a conversa e deixava a
+    // pessoa procurando o trecho. Cada elo abaixo, sozinho, some sem erro.
+    const inbox = semComentarios(ler('app/(dashboard)/inbox/page.tsx'));
+    // O `?nota=` do sino e do Meu dia vira pedido de salto JUNTO com o deep link.
+    expect(inbox).toMatch(/const notaDoDeepLink = notaDaUrl\(searchParams\.get\("nota"\)\);/);
+    expect(inbox).toMatch(
+      /novoPedidoDeSalto\(prev, match\.id, \{ tipo: "nota", id: notaDoDeepLink \}\)/,
+    );
+    // Com a página montada, o `router.push` não relê o deep link: o pop-up
+    // manda o sinal, e a página o ouve.
+    const sino = semComentarios(ler('hooks/use-avisos-do-sino-no-navegador.ts'));
+    expect(sino).toMatch(/new CustomEvent\(EVENTO_IR_PARA_NOTA, \{ detail: pedido \}\)/);
+    expect(inbox).toMatch(/window\.addEventListener\(EVENTO_IR_PARA_NOTA, /);
+    // O Meu dia lê o aviso com lista FIXA de colunas: sem `note_id`, o clique
+    // de lá só abriria a conversa.
+    const meuDia = semComentarios(ler('hooks/use-area-de-trabalho.ts'));
+    expect(meuDia).toMatch(/task_id, note_id,/);
+  });
+
   it('"Conexões que avisam": o ouvinte respeita a lista, e o cartão lista as conexões do perfil REAL', () => {
     // Pedido do operador (02/10/2026). Sem as desmarcadas na régua, a lista
     // do cartão seria enfeite: a pessoa desmarca e o aviso vem do mesmo jeito.
@@ -181,5 +218,36 @@ describe('cartão de notificação do navegador × ouvinte', () => {
     expect(hook).toMatch(/matchMedia\?\.\(MIDIA_DE_TOQUE\)\.matches/);
     const cartao = semComentarios(ler('components/settings/browser-notifications-card.tsx'));
     expect(cartao).toMatch(/const supported = permission !== 'unsupported' && !toque;/);
+  });
+
+  it('avisos do SINO: montados no ouvinte, sem os recortes das mensagens, e o som nunca força o silêncio', () => {
+    // Pedido do operador (20/10/2026): menção e tarefa acendiam só o sino.
+    // O ouvinte é do original: a versão crua tira o pop-up do sino sem erro.
+    const ouvinte = semComentarios(ler('components/notifications/browser-notifications-listener.tsx'));
+    expect(ouvinte).toMatch(/useBrowserNotifications\(\);\s*useAvisosDoSinoNoNavegador\(\);/);
+    const sino = semComentarios(ler('hooks/use-avisos-do-sino-no-navegador.ts'));
+    expect(sino).toMatch(/table: "notifications", filter: `user_id=eq\.\$\{userId\}`/);
+    expect(sino).toMatch(/if \(!avisoPossivelNoAparelho\(\)\) return;/);
+    // A régua cala de verdade: chamar e ignorar passaria numa busca pela chamada.
+    expect(sino).toMatch(/const silencio = silencioDoSino\(\{[\s\S]*?\}\);\s*if \(silencio\) return;\s*void exibir\(aviso\);/);
+    // D3: perfil, "quais conversas" e "Conexões que avisam" não calam o sino.
+    expect(sino).not.toMatch(/silencioDoAviso|silenciadas|conversaNoEscopo/);
+    // D6: o clique marca lido, como o clique no sino.
+    expect(sino).toMatch(/void marcarLido\(aviso\.id\);/);
+    // D4: desligado (ou a aba sem clique), o SISTEMA decide o som — `silent`
+    // forçado tiraria de quem ouvia o som do Windows nas mensagens.
+    const mensagens = semComentarios(ler('hooks/use-browser-notifications.ts'));
+    for (const fonte of [sino, mensagens]) expect(fonte).not.toMatch(/silent:\s*true/);
+    expect(sino).toMatch(/silent: pref\.somNoSino && tocarSomDoAviso\(\),/);
+    expect(mensagens).toMatch(/silent: pref\.somNasMensagens && tocarSomDoAviso\(\),/);
+    // D1: chave própria, que pede a permissão por si.
+    const cartao = semComentarios(ler('components/settings/browser-notifications-card.tsx'));
+    expect(cartao).toMatch(/const sinoLigado = preferencia\.sino && permission === 'granted';/);
+    expect(cartao).toMatch(/onCheckedChange=\{\(next\) => void onToggle\('sino', next\)\}/);
+    // O teste também: calado só com o toque CONFIRMADO, nunca pela preferência
+    // sozinha — sem Web Audio, sairia um teste mudo (Codex, #425).
+    expect(cartao).toMatch(/const somDoCrm = comSom && tocarSomAgora\(\);/);
+    expect(cartao).toMatch(/silent: somDoCrm,/);
+    expect(cartao).not.toMatch(/silent: comSom/);
   });
 });

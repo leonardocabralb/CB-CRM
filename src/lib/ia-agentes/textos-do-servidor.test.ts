@@ -76,6 +76,14 @@ describe('textos da transferência do agente', () => {
     expect(texto).not.toMatch(/\{agente\}|IaAgentes/)
   })
 
+  it('a ação prometida sem fazer (25/10) é um motivo de transferência', async () => {
+    expect(MOTIVOS_DE_TRANSFERENCIA).toContain('acao_prometida')
+    const { autor, texto } = await textosDaTransferencia('Qualificação', 'acao_prometida')
+    expect(autor).toContain('Qualificação')
+    expect(texto).toContain('Qualificação')
+    expect(texto).not.toMatch(/\{agente\}|IaAgentes/)
+  })
+
   it('a anotação de cada ação (F4) diz o agente, o alvo e o valor', async () => {
     const mover = await textosDaAcao('Triagem', 'mover_etapa', 'Bancário · Proposta')
     expect(mover.autor).toContain('Triagem')

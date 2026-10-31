@@ -15,12 +15,13 @@ paths:
   - "src/hooks/use-possiveis-duplicatas*"
   - "src/hooks/use-comparacao-de-fichas*"
   - "src/hooks/use-uniao-de-fichas*"
+  - "src/hooks/use-lixeira*"
 ---
 
 # Contatos — regras
 
 Vale para a ficha, a lista e a importação de contatos, o telefone, as
-etiquetas e a exclusão. Campo personalizado que salva sozinho, blocos de
+etiquetas e a Lixeira. Campo personalizado que salva sozinho, blocos de
 campos, e-mail espelhado e nome escrito à mão → `campos-e-nome.md`. Dono
 durável (`user_id` = dono da conta) → raiz, seção 8. Apagar e fundir fichas no
 banco → `supabase.md`. Recarga ao voltar ao app → `ao-voltar.md`. Abas e painel
@@ -93,26 +94,108 @@ decide mais "mesma pessoa".
 - `ContactInput.phone` é o texto CRU: o disparo manda `to`, nunca os dígitos já
   lidos ("+41 55 555 12 12" relido sem o `+` ganharia o 55).
 
-### Exclusão de contato — só admin (981)
-Apagar leva a conversa e TODAS as mensagens (CASCADE), e isso é do escritório.
-- ⚠️⚠️ **Admin nos DOIS lados**: `canDeleteContacts` na tela e a policy
-  `contacts_delete` (981). Só o DELETE: `contacts_insert`/`contacts_update`
-  continuam em `agent` (cadastrar e corrigir é atendimento; a 981 confere). Ela
-  é restritiva: foi aplicada DEPOIS do deploy.
-- ⚠️ **Os dois caminhos SOMEM juntos para quem não é admin** (item do menu da
-  linha e botão da seleção múltipla). Nunca um `GatedButton` desabilitado num
-  deles.
-- ⚠️⚠️ **Confira o ROWCOUNT (`lerExclusao`, `exclusao.ts`)**: RLS que barra
-  DELETE devolve 0 linhas com `error: null`, e a tela diria "excluído" sobre
-  contato intacto. O toast conta os que SAÍRAM, nunca os pedidos.
-- ⚠️⚠️ **Zero linhas tem dois significados, e o motivo é MEDIDO**: depois de um
-  DELETE incompleto, uma consulta pergunta quais pedidos AINDA EXISTEM (os que
-  existem foram recusados; os que não existem, outro apagou). Nunca inferir do
-  papel em cache — um admin rebaixado com a página aberta ainda "pode" em
-  memória. Conferência que falha vira `falhou`, nunca palpite.
-- ⚠️ **A seleção perde os RESOLVIDOS** (apagados e sumidos), e só eles:
-  `fetchContacts({ preservarSelecao })` + `selecaoRestante`. A recarga da lista
-  zera a seleção sozinha — sem o par, a poda não vale na prática.
+### Lixeira de contatos (1097): excluir é MOVER, e é de admin
+Decisões do operador (22/10/2026, B1–B6): `docs/PLANO-lixeira-de-contatos.md`.
+`src/lib/contacts/lixeira.ts` (puro: leituras, motivos, fatias),
+`src/hooks/use-lixeira.ts` (as chamadas às RPCs da 1097),
+`mover-para-lixeira-dialog.tsx` (prévia, mover e "Desfazer") e a tela
+`/contacts/lixeira` (`src/components/contacts/lixeira/`). A receita no banco
+(fotografia, sinal, default-deny): `supabase.md`, "APAGAR CONTATO".
+- ⚠️⚠️ **Excluir = mover (B1)**: `cb_mover_contatos_para_lixeira` fotografa
+  a ficha e tudo o que o CASCADE levaria, ENCERRA execuções, esperas e robô
+  dela (restaurar não religa) e apaga a ficha como antes: para o resto do CRM
+  (automação, IA, API, integrações) ela não existe. Em 90 dias o servidor a
+  exclui de vez. O registro dos agentes de IA FICA (1110, `ia-central.md`):
+  sem conversa na Lixeira (restaurar religa); excluir de vez tira só o
+  conteúdo — a tela diz isso no "Excluir de vez".
+- ⚠️⚠️ **Admin POR DENTRO**: toda RPC da Lixeira confere admin e suspensão
+  (1067) e recusa o LOTE inteiro com um id de conta onde quem chama não é
+  admin. Na tela os caminhos SOMEM juntos para quem não é admin (menu da
+  linha e seleção múltipla; nunca um `GatedButton` desabilitado); cadastrar
+  e corrigir seguem de `agent`.
+- ⚠️⚠️ **Só a Lixeira apaga (1100)**: sem a policy `contacts_delete` e sem o
+  privilégio, um DELETE do navegador dá 42501 — a página crua do upstream
+  num merge passa a FALHAR, nunca a apagar sem fotografia. Apagam ainda as
+  funções SECURITY DEFINER (Lixeira, união, desfazer da Kommo), o CASCADE da
+  conta e o service role. Pino `so-a-lixeira-apaga-1100.test.ts` (os `.sql`
+  e nenhum `.from('contacts')…delete()` em `src/`) e item 18 da §6 de
+  `docs/MERGE-UPSTREAM.md`.
+- ⚠️ **Prévia ANTES de mover** (`cb_previa_da_lixeira` → `lerPrevia`,
+  `previaTemAviso`): o que o mover cancela de COLEGAS — agendadas (com o
+  autor), esperas, robôs, tarefas abertas (com o responsável), negócios
+  abertos e a conversa aberta com responsável. Prévia que não leu (`null`)
+  nunca vira "nada a perder".
+- ⚠️⚠️ **Em fatias de `FICHAS_POR_CHAMADA` com o MESMO lote** (`fatiar`; a
+  função recusa mais de 100): o "Desfazer" restaura a ação inteira. O
+  resultado é POR FICHA (`lerMover`: `movida`/`sumiu`/`recusada` com o
+  motivo): o toast conta as que SAÍRAM, e a seleção perde só as resolvidas
+  (`resolvidosDoMover`, a régua de `selecaoRestante`, com
+  `fetchContacts({ preservarSelecao })` — a recarga zeraria a seleção). A
+  recusada (trava, impasse, tabela sem tratamento) fica marcada.
+- **"Desfazer" no toast (10 s), só para quem moveu (B5)**:
+  `cb_restaurar_da_lixeira` pelo lote — a MESMA restauração da tela.
+- ⚠️⚠️ **Restaurar volta com o MESMO id (B6, a doc da API diz)** e traz
+  conversas, mensagens, etiquetas, campos, tarefas e anotações como estavam;
+  a conversa ganha `restaurada_em` (a régua do aviso e da não lida:
+  `meu-dia.md`, `inbox-lista.md`). Nada sai ao cliente: agendada pendente
+  volta como FALHA (a que estava saindo, como entrega incerta). O que voltou
+  com ressalva (`lerRessalvas`: linha cujo alvo sumiu nos 90 dias, agendadas
+  em falha, movimento de card sem automação, ZapSign sem contato, par ainda
+  na Lixeira, coluna que sumiu) aparece com o número.
+- ⚠️⚠️ **Identidade ocupada BLOQUEIA (B2)**: telefone, BSUID ou Instagram que
+  já é de outra ficha → `identidade_ocupada`, e a lista mostra "ocupada pela
+  ficha X" com link (`ocupada_por` de `cb_lixeira_da_conta`). Nunca fundir
+  nem sobrescrever na volta: a saída é o "Restaurar e unir" (abaixo).
+- ⚠️⚠️ **"Restaurar e unir" (Fase 4, 1101)**, só admin: na faixa "Há uma
+  ficha desta pessoa na Lixeira" (`aviso-de-ficha-na-lixeira.tsx`; fio e
+  formulário do card, junto do aviso de duplicata; `cb_lixeira_da_mesma_pessoa`
+  pelos três índices parciais da 1097, nunca pelo `@`; cala carregando ou com
+  falha), onde a ficha ABERTA fica, e no item bloqueado da Lixeira, onde fica
+  a que ocupa (`ocupada_por`). Com Instagram (`com_instagram`/
+  `ocupada_com_instagram`) não há botão: a união recusa sempre. Uma
+  transação (`cb_restaurar_e_unir`): trava o item (NOWAIT), confere que a
+  identidade casa, dá à fotografia identidade PROVISÓRIA (anula SÓ o que
+  colide; nada sobrando, a reserva `lixeira:<item>`), restaura pelo miolo
+  (`cb_lixeira_restaurar_um`) e une. Recusa desfaz TUDO.
+- ⚠️⚠️ **A conversa que volta é HISTÓRICO** (decisão do operador,
+  23/10/2026, com as duas abaixo): entra encerrada, sem responsável, sem
+  espera nem não lidas — a de hoje não reabre, não troca de responsável (nem
+  avisa no sino), a espera não recua. A janela da Meta SÓ AVANÇA: a maior
+  por chave entre a de hoje (lida antes) e a da fotografia. Fica sempre a
+  ficha aberta (sem "Trocar"); com o mesmo telefone, o BSUID da que volta
+  passa para a que fica quando ela não tem BSUID (dois BSUIDs diferentes:
+  a união recusa, `bsuid_diferentes`).
+- ⚠️⚠️ **Nunca**: a reserva sobrar (sai da ficha; livro e trilha levam a
+  identidade original; a função confere — `cb_bloqueios_da_uniao` a ignora);
+  anular identidade de uma TERCEIRA ficha (`identidade_ocupada`); botão sem
+  prévia (`cb_previa_restaurar_e_unir`, o mesmo caminho desfeito por P1101,
+  no `CorpoDaPrevia` da união). Limite: o INSERT da trilha `contacts_merged`
+  sai no tempo real com a identidade provisória antes da correção. Leitura:
+  `restaurar-e-unir.ts`; chamadas: `use-lixeira-da-mesma-pessoa.ts`; depois
+  de unir, `recarregarNaFichaQueFicou`. Pino
+  `lixeira-restaurar-e-unir-1101.test.ts`.
+- ⚠️ **"Excluir agora" (B3)**, com confirmação forte e a marca "é pedido de
+  exclusão (LGPD)" (`cb_excluir_da_lixeira`): sem volta; os arquivos vão para
+  a fila (`midia.md`); com a marca, saem também ligações e retidas, e o dado
+  pessoal dos eventos e da trilha. ⚠️ A tela NUNCA afirma eliminação total:
+  backups, a Evolution e o que terceiros baixaram ficam fora do CRM.
+- **`/contacts/lixeira`** lê `cb_lixeira_da_conta` (só contas em que a
+  pessoa é admin; nunca a fotografia). Dias por `diasRestantes` com o
+  relógio por tique: 0 é "vencida, aguardando a limpeza", nunca "excluída".
+  Arquivos que a fila não apagou: `cb_arquivos_da_lixeira_parados`. Cada
+  recusa tem a sua frase (`motivoDoErro`/`motivoDoCodigo`).
+- O card do negócio cuja ficha está na Lixeira (B4): `funil.md`.
+- `lerExclusao` (`exclusao.ts`) segue para DELETE do navegador que confere
+  ROWCOUNT (etiquetas): RLS que barra devolve 0 linhas com `error: null`, e
+  o motivo de zero linhas é MEDIDO (a linha ainda existe?), nunca inferido
+  do papel em cache — um admin rebaixado com a página aberta ainda "pode" em
+  memória.
+- ⚠️ **Conversa e mensagem não se apagam pelo navegador (1096)**: a 0017 dava
+  ao `agent` o DELETE de `conversations` e de `messages` (a conversa inteira,
+  contornando a 981). Sem policy e sem o privilégio, elas saem só com a
+  ficha (a Lixeira; o CASCADE roda como o dono da tabela), pelas funções
+  SECURITY DEFINER e pelo service role. As policies são do upstream: pino
+  `portas-dos-fundos-1096.test.ts` e item 16 da §6 de `docs/MERGE-UPSTREAM.md`.
 
 ### Etiquetas: UMA régua de "mesma etiqueta" (`chaveDeTag`)
 - ⚠️⚠️ **`chaveDeTag` (aparado, sem acento, minúsculas) vale nas três portas
@@ -172,7 +255,8 @@ todos: num merge, fica o nosso.
   (`outroLado`). O índice único sobre `LEAST/GREATEST` recusa o par repetido
   em qualquer ordem (23505 → "já vinculados"); nunca gravar A→B e B→A.
 - **Par a par**: três pessoas no mesmo caso = três vínculos. Sem "grupo de
-  caso" (decisão do operador).
+  caso" (decisão do operador). A descrição do vínculo ("esposa",
+  "procurador") é OPCIONAL (`descricaoParaGravar`: vazia vira nulo).
 - **FKs compostas com CASCADE**: apagar uma das fichas desfaz o vínculo; a
   fusão de fichas reaponta os vínculos (receita em `supabase.md`).
 - ⚠️ **Os dados vêm por PROP e são carimbados (`{ de, itens }`)**: o painel
@@ -183,6 +267,7 @@ todos: num merge, fica o nosso.
 - **Na ficha de /contatos o nome é link para `/inbox?c=`; no inbox, a página
   abre a conversa e liga a faixa "Voltar para"** (`inbox-conversa.md`). O
   "Conversar" (contato sem conversa) só existe no inbox: o diálogo mora lá.
+- No inbox a aba traz também os GRUPOS do cliente (1117): `grupos.md`.
 
 ### Possível duplicata (1088)
 A mesma pessoa em duas fichas (formulário com um telefone, agendamento com

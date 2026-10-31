@@ -24,7 +24,10 @@ import type { TipoDeAcao } from './agente'
  * foi para a equipe, como as instruções dele mandam. `pedido_vazado`
  * (27/09/2026): a resposta reproduzia o pedido interno — o canário das regras
  * do sistema, um trecho do texto-base ou o nome de um marcador
- * (`vazouOPedido`) — e é RETIDA, como a do link inventado.
+ * (`vazouOPedido`) — e é RETIDA, como a do link inventado. `acao_prometida`
+ * (25/10/2026): a resposta dizia que algo foi feito no sistema (tarefa, campo,
+ * etiqueta, etapa…) sem a ação aceita que o faça (`acaoPrometida`) — ela é
+ * RETIDA e a conversa vai para gente.
  */
 export const MOTIVOS_DE_TRANSFERENCIA = [
   'sentinela',
@@ -36,6 +39,7 @@ export const MOTIVOS_DE_TRANSFERENCIA = [
   'reuniao_prometida',
   'agente_passou',
   'pedido_vazado',
+  'acao_prometida',
 ] as const
 export type MotivoDeTransferencia = (typeof MOTIVOS_DE_TRANSFERENCIA)[number]
 

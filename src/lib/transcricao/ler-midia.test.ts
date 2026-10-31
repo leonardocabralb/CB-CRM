@@ -212,7 +212,7 @@ describe('lerMidia', () => {
     expect(r).toEqual({ status: 'pronta', texto: 'Print de conversa. Cliente: "já paguei"' })
 
     const [url, init] = chamadasAoProvedor(f)[0] as [string, RequestInit]
-    expect(url).toContain('/models/gemini-3.7-flash:generateContent')
+    expect(url).toContain('/models/gemini-3.8-flash:generateContent')
     expect((init.headers as Record<string, string>)['x-goog-api-key']).toBe('chave-gemini')
     expect(String(init.body)).toContain('"mimeType":"image/jpeg"')
 
@@ -227,7 +227,7 @@ describe('lerMidia', () => {
 
     expect(logAiUsage).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ mode: 'transcricao', provider: 'gemini', model: 'gemini-3.7-flash', channelId: 'ch1' }),
+      expect.objectContaining({ mode: 'transcricao', provider: 'gemini', model: 'gemini-3.8-flash', channelId: 'ch1' }),
     )
   })
 
@@ -258,7 +258,7 @@ describe('lerMidia', () => {
       messages: { content: { type: string }[] }[]
     }
     expect(corpo.messages[0].content[0].type).toBe('document')
-    expect(logAiUsage).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ provider: 'anthropic', model: 'claude-sonnet-5' }))
+    expect(logAiUsage).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ provider: 'anthropic', model: 'claude-haiku-5-5' }))
   })
 
   it('documento que NENHUM provedor lê (docx): `recusada` GRAVADA, sem chave nem download', async () => {

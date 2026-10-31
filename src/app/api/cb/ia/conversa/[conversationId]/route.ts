@@ -5,9 +5,11 @@ import { getCurrentAccount, toErrorResponse } from '@/lib/auth/account'
 import { ehInstagram } from '@/lib/cb-channels/transporte'
 import {
   canalDaIaNaConversa,
+  MOTIVOS_DO_AGENTE_QUE_NAO_ATENDE,
   quemResponde,
   type AgenteDaEtapa,
   type CardDoContato,
+  type MotivoDoAgenteQueNaoAtende,
 } from '@/lib/ia-agentes/quem-responde'
 
 type Contexto = { params: Promise<{ conversationId: string }> }
@@ -29,7 +31,7 @@ type LinhaDoAgente = {
  * GET /api/cb/ia/conversa/[conversationId]  (qualquer membro)
  *
  * O que a faixa do fio precisa saber (D24–D27):
- * `{ agente: { id, nome } | null, pausada, pausadaPor, motivo }`.
+ * `{ agente: { id, nome } | null, pausada, pausadaPor, motivo, naoAtende }`.
  *   - `agente` — o agente da ETAPA do card aberto mais recente do contato que
  *     ATENDERIA esta conversa (ligado, com a conexão da conversa, e o card
  *     entrou na etapa depois — D27), MESMO com a IA pausada (a faixa diz "IA
@@ -37,6 +39,15 @@ type LinhaDoAgente = {
  *   - `pausada`/`pausadaPor` — a pausa e o motivo (`gente`, `botao`,
  *     `transferencia`, `automacao`; nulo = pausa sem motivo).
  *   - `motivo` — por que `agente` é nulo (o `MotivoDeNinguem` do motor).
+ *   - `naoAtende` — `{ agente: { id, nome }, motivo }` quando a etapa do card
+ *     TEM agente, mas ele não atende esta conversa (desligado, sem a conexão,
+ *     card antigo — `MOTIVOS_DO_AGENTE_QUE_NAO_ATENDE`); nulo nos outros
+ *     casos. Sem isso, o card que já estava na etapa quando o agente foi
+ *     religado (D27) ficava em silêncio sem rastro nenhum na conversa
+ *     (medido, validação de 25/10/2026).
+ *
+ * Do agente sai SÓ id e nome, nos dois campos: a rota é de qualquer membro,
+ * e a configuração (conexões, datas, instruções) é do administrador (D14).
  *
  * A regra é a do MOTOR (`quemResponde`), com os fatos da CONVERSA — a
  * conexão da ÚLTIMA mensagem do cliente (o motor decide pela conexão da
@@ -158,11 +169,17 @@ export async function GET(_request: Request, { params }: Contexto) {
       card,
       agente,
     })
+    const motivo = decisao.quem === 'ninguem' ? decisao.motivo : null
+    const naoAtende =
+      agente && motivo && (MOTIVOS_DO_AGENTE_QUE_NAO_ATENDE as readonly string[]).includes(motivo)
+        ? { agente: { id: agente.id, nome: agente.nome }, motivo: motivo as MotivoDoAgenteQueNaoAtende }
+        : null
     return NextResponse.json({
       agente: decisao.quem === 'agente' && agente ? { id: agente.id, nome: agente.nome } : null,
       pausada,
       pausadaPor,
-      motivo: decisao.quem === 'ninguem' ? decisao.motivo : null,
+      motivo,
+      naoAtende,
     })
   } catch (err) {
     return toErrorResponse(err)

@@ -34,12 +34,18 @@ import {
   SheetContent,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { useAbaVisivel } from "@/hooks/use-aba-visivel";
 import { useAuth } from "@/hooks/use-auth";
 import { useMarcarConversaAberta } from "@/hooks/use-conversa-aberta";
 import { useInadimplencia } from "@/hooks/use-inadimplencia";
 import { useModoAnonimo } from "@/hooks/use-modo-anonimo";
 import { useRealtime } from "@/hooks/use-realtime";
+import { reinseridaPelaRestauracao } from "@/lib/contacts/lixeira";
 import { avisarExecucoesMudaram } from "@/lib/execucoes/aviso";
+import {
+  comBolhaPublicada,
+  comLinhaDoTempoReal,
+} from "@/lib/inbox/bolhas-otimistas";
 import {
   CONVERSATION_SELECT,
   normalizeConversation,
@@ -195,7 +201,9 @@ function ConversaCarregada({
   aoAbrirNaCaixa: (conversaId: string) => void;
 }) {
   const t = useTranslations("ConversaEmPainel");
-  const { acesso } = useAuth();
+  // `user`: o login de quem está na tela — a régua das bolhas otimistas é a da
+  // página do inbox (`bolhas-otimistas.ts`).
+  const { acesso, user } = useAuth();
   const { ativo: modoAnonimo } = useModoAnonimo();
 
   const [conversation, setConversation] = useState<Conversation | null>(null);
@@ -246,24 +254,32 @@ function ConversaCarregada({
   // A régua da caixa de entrada, as duas linhas iguais às da página (pino
   // `modo-anonimo.chamadores.test.ts`): fora do perfil o fio NEM MONTA — ele
   // buscaria as mensagens e zeraria as não lidas de quem não pode
-  // respondê-las —, e nem fora do perfil nem no modo anônimo a presença marca.
+  // respondê-las —, e nem fora do perfil, nem no modo anônimo, nem com a aba
+  // escondida a presença marca.
   const foraDoPerfil =
     conversation !== null && !conversaNoEscopo(acesso, conversation);
+  const abaVisivel = useAbaVisivel();
   const conversaLida =
-    modoAnonimo || foraDoPerfil ? null : (conversation?.id ?? null);
+    modoAnonimo || foraDoPerfil || !abaVisivel ? null : (conversation?.id ?? null);
   useMarcarConversaAberta(conversaLida);
+
+  // A volta desta conversa da Lixeira (1097), lida do INSERT da conversa, que
+  // chega ANTES das mensagens devolvidas (ver a página do inbox).
+  const restauradaEmRef = useRef<string | null>(null);
 
   // Tempo real: o mesmo do inbox, recortado nesta conversa.
   const handleMessageEvent = useCallback(
     (event: { eventType: string; new: Message }) => {
-      const msg = event.new;
+      // O `payload.new` traz a linha inteira — `gravada_em` incluído.
+      const msg = event.new as Message & { gravada_em?: string | null };
       if (msg.conversation_id !== conversaId) return;
       if (event.eventType === "INSERT") {
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === msg.id)) return prev;
-          // A linha gravada substitui a bolha otimista do envio.
-          return [...prev.filter((m) => !m.id.startsWith("temp-")), msg];
-        });
+        // A devolvida pela restauração não entra pelo fim nem recarrega as
+        // execuções: o fio é relido uma vez quando a conversa volta (abaixo).
+        if (reinseridaPelaRestauracao(msg.gravada_em, restauradaEmRef.current, msg.created_at)) return;
+        // A linha do PRÓPRIO atendente troca UMA bolha otimista dele ainda em
+        // voo; a que falhou sai com qualquer linha (a régua da página do inbox).
+        setMessages((prev) => comLinhaDoTempoReal(prev, msg, user?.id ?? null));
         // O cliente respondeu: a espera "parar se o cliente responder" pode
         // ter sido cancelada no servidor logo depois (ver a página do inbox).
         if (msg.sender_type === "customer") {
@@ -275,11 +291,20 @@ function ConversaCarregada({
         );
       }
     },
-    [conversaId],
+    [conversaId, user?.id],
   );
   const handleConversationEvent = useCallback(
     (event: { eventType: string; new: Conversation }) => {
-      if (event.eventType !== "UPDATE" || event.new.id !== conversaId) return;
+      if (event.new.id !== conversaId) return;
+      // ⚠️ A conversa VOLTOU da Lixeira (1097): ela nasce com `restaurada_em`
+      // e as mensagens antigas vêm atrás. Relê tudo uma vez (a transação já
+      // terminou), como a página do inbox.
+      if (event.eventType === "INSERT" && event.new.restaurada_em) {
+        restauradaEmRef.current = event.new.restaurada_em;
+        setResyncToken((n) => n + 1);
+        return;
+      }
+      if (event.eventType !== "UPDATE") return;
       // O payload não traz o contato embutido: o espalhamento o preserva.
       setConversation((prev) => (prev ? { ...prev, ...event.new } : prev));
     },
@@ -366,10 +391,10 @@ function ConversaCarregada({
         contact={conversation.contact ?? null}
         messages={messages}
         onMessagesLoaded={setMessages}
+        // A otimista republicada como falhada (409) vira falhada no lugar — a
+        // régua da página do inbox.
         onNewMessage={(msg) =>
-          setMessages((prev) =>
-            prev.some((m) => m.id === msg.id) ? prev : [...prev, msg],
-          )
+          setMessages((prev) => comBolhaPublicada(prev, msg))
         }
         onUpdateMessage={(id, updates) =>
           setMessages((prev) =>

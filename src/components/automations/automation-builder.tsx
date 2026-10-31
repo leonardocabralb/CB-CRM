@@ -151,6 +151,7 @@ import {
 import { useAuth } from "@/hooks/use-auth"
 import { TIPO_DATA } from "@/lib/contacts/campo-data"
 import { telefoneDigitado } from "@/lib/contacts/telefone"
+import { opcoesDoCampo } from "@/lib/contacts/campo-opcoes"
 import { uploadAccountMedia, MEDIA_MAX_BYTES_BY_KIND } from "@/lib/storage/upload-media"
 import { mensagemDoUpload } from "@/lib/storage/erro-de-upload"
 import { CHAT_MEDIA_BUCKET } from "@/lib/storage/buckets"
@@ -304,7 +305,13 @@ const STEP_META: Record<AutomationStepType, StepMeta> = {
 
 /**
  * Os passos que vêm de uma integração externa ganham destaque no cartão e no
- * menu de adicionar. Hoje só os do nó Atlas; o selo diz "Integração Atlas".
+ * menu de adicionar. Hoje só os do nó Atlas; o selo diz só "Integração" (o
+ * nome do produto está no título do passo e na entrada do menu).
+ * ⚠️ O selo divide a fileira com "Ação", e a fileira não quebra linha: no ramo
+ * de uma condição a coluna de texto tem 157 px, e "Integração Atlas Gestor"
+ * (199 px com "Ação", medido em Inter) cobria a seta de abrir. Texto curto, e
+ * `min-w-0 truncate` (nunca `shrink-0`) para cortar em vez de vazar nas
+ * colunas mais estreitas (ramo lado a lado abaixo de 640 px de tela).
  * ⚠️ Classes LITERAIS (o Tailwind não gera classe montada) e sem `dark:` (o
  * variant está inerte): a MESMA cor vale nos dois temas, e nenhum laranja
  * translúcido passa 4,5:1 nos dois (texto de 10 px). Medido pela fórmula da
@@ -319,7 +326,7 @@ function ehPassoDeIntegracao(tipo: AutomationStepType): boolean {
 }
 const ICONE_DE_INTEGRACAO = "bg-orange-500/15 text-orange-600"
 const SELO_DE_INTEGRACAO =
-  "shrink-0 rounded bg-orange-700 px-1.5 text-[10px] font-semibold uppercase leading-4 tracking-wide text-white"
+  "min-w-0 truncate rounded bg-orange-700 px-1.5 text-[10px] font-semibold uppercase leading-4 tracking-wide text-white"
 
 const ADDABLE_STEPS: AutomationStepType[] = [
   "send_message",
@@ -626,6 +633,8 @@ interface PipelineStageOption {
   name: string
   pipeline_id: string
   position: number
+  /** O campo Lista do motivo que a etapa pede (1112); nulo = não pede. */
+  campo_do_motivo_id: string | null
 }
 
 const ResourcesContext = createContext<AutomationResources>({
@@ -846,7 +855,7 @@ function useRecursosDaAutomacao(
           supabase.from("pipelines").select("id, name").order("name"),
           supabase
             .from("pipeline_stages")
-            .select("id, name, pipeline_id, position")
+            .select("id, name, pipeline_id, position, campo_do_motivo_id")
             .order("position"),
           // Orquestração (936). Traz INATIVAS também: o motor recusa acionar
           // automação desligada, e a tela precisa poder dizer isso ao operador
@@ -1154,6 +1163,65 @@ function AgentSelect({
         <option value={value}>{t("agents.unknown")}</option>
       )}
     </select>
+  )
+}
+
+/**
+ * 1112 (Fase 3 dos motivos): o motivo que o "Mover card de etapa" grava no
+ * campo da etapa de destino. Só aparece quando a etapa PEDE motivo; as opções
+ * são as do campo Lista dela, gravadas como texto literal no passo
+ * (`step_config.motivo`; o motor: `motivo-do-passo.ts`). Motivo gravado que a
+ * lista não traz fica como opção — a tela não reescreve config por abrir.
+ */
+function MotivoDoPassoField({
+  cfg,
+  set,
+  t,
+}: {
+  cfg: Record<string, unknown>
+  set: (patch: Record<string, unknown>) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const { stages, customFields, carga } = useResources()
+  const etapa = typeof cfg.stage_id === "string" ? stages.find((s) => s.id === cfg.stage_id) : undefined
+  const motivo = typeof cfg.motivo === "string" ? cfg.motivo : ""
+  if (!etapa?.campo_do_motivo_id) {
+    // A etapa deixou de pedir motivo (ou o passo é antigo): o motor ignora
+    // o motivo gravado, e a tela diz isso — só com as etapas carregadas.
+    return motivo && carga.pipelines === "pronto" ? (
+      <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-400">
+        {t("stages.motivoIgnorado", { motivo })}
+      </p>
+    ) : null
+  }
+  const campo = customFields.find((f) => f.id === etapa.campo_do_motivo_id)
+  const opcoes = campo ? opcoesDoCampo(campo) : []
+  return (
+    <div className="mt-3">
+      <label className="mb-1 block text-xs font-medium text-muted-foreground">{t("stages.motivoLabel")}</label>
+      {campo ? (
+        <select
+          value={motivo}
+          onChange={(e) => set({ motivo: e.target.value || undefined })}
+          className={SELECT_CLASS}
+        >
+          <option value="">{t("stages.motivoNenhum")}</option>
+          {opcoes.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+          {motivo && !opcoes.includes(motivo) && <option value={motivo}>{motivo}</option>}
+        </select>
+      ) : (
+        <ListaSemEscolha estado={carga.customFields} vazio={t("stages.motivoCampoSumiu")} t={t} />
+      )}
+      {campo && (
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          {t("stages.motivoHelp", { campo: campo.field_name })}
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -1627,7 +1695,7 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
     document.querySelector(rolarPara.seletor)?.scrollIntoView({ behavior: "smooth", block: "start" })
   }, [rolarPara])
 
-  const { channels, customFields, automations, flows, members, carga } = recursosCarregados
+  const { channels, customFields, automations, flows, members, stages, carga } = recursosCarregados
   // `null` = a lista não carregou (ou falhou): aquela conferência é pulada, e
   // quem responde é o servidor — nunca "a conta não tem canal" sobre lista
   // vazia durante a carga.
@@ -1658,8 +1726,17 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
           : null,
       robos: carga.flows === "pronto" && flows.length < TETO_DE_LINHAS ? flows : null,
       membros: carga.members === "pronto" ? members : null,
+      // 1112: as etapas que pedem motivo, para o aviso do "Mover card".
+      etapasComMotivo:
+        carga.pipelines === "pronto" && stages.length < TETO_DE_LINHAS
+          ? new Map(
+              stages
+                .filter((s) => s.campo_do_motivo_id)
+                .map((s) => [s.id, s.campo_do_motivo_id as string] as const),
+            )
+          : null,
     }),
-    [carga.automations, automations, initial.id, state.is_active, carga.flows, flows, carga.members, members],
+    [carga.automations, automations, initial.id, state.is_active, carga.flows, flows, carga.members, members, carga.pipelines, stages],
   )
 
   const vermelhoLigado = state.is_active && tentouLigar
@@ -2964,7 +3041,7 @@ function AddButton({ onPick }: { onPick: (t: AutomationStepType) => void }) {
         >
           {ADDABLE_STEPS.map((tp) => {
             const Icon = STEP_META[tp].icon
-            // O nó Atlas: UMA entrada, "Atlas". Nasce "Criar cliente" (a ação
+            // O nó Atlas: UMA entrada, "Atlas Gestor". Nasce "Criar cliente" (a ação
             // que as outras pressupõem), ou "Criar tarefa" onde o gatilho do
             // Atlas recusa escrever no cadastro.
             const escolhido: AutomationStepType =
@@ -4679,7 +4756,8 @@ function StepEditor({
           ) : (
             <select
               value={(cfg.stage_id as string) ?? ""}
-              onChange={(e) => set({ stage_id: e.target.value })}
+              // 1112: o motivo é da lista da etapa — trocar de etapa o tira.
+              onChange={(e) => set({ stage_id: e.target.value, motivo: undefined })}
               className={SELECT_CLASS}
             >
               <option value="">{t("stages.pickStage")}</option>
@@ -4709,6 +4787,7 @@ function StepEditor({
           <p className="mt-1 text-[11px] text-muted-foreground">
             {t("stages.moveHelp")}
           </p>
+          <MotivoDoPassoField cfg={cfg} set={set} t={t} />
         </FieldBlock>
       )
     case "set_deal_status":

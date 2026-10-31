@@ -8,8 +8,12 @@ import { CalendarDays, ChevronDown, RefreshCw, Sparkles } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { AI_PROVIDER_MODELS } from '@/lib/ai/defaults';
 import { RequireRole } from '@/components/auth/require-role';
+import {
+  QuemLeAMidia,
+  SeletorDeModelo,
+  useModelosDasChaves,
+} from '@/components/agentes-de-ia/provedor-e-modelo';
 import { useAuth } from '@/hooks/use-auth';
 import { AsaasCard } from './asaas-card';
 import { MetaAdsCard } from './meta-ads-card';
@@ -23,6 +27,7 @@ import { cn } from '@/lib/utils';
 import type {
   CartaoDeIntegracao,
   EstadoDaIntegracao,
+  LeitoresDaConta,
 } from '@/lib/integracoes/montar';
 
 /**
@@ -140,6 +145,9 @@ function Esqueleto() {
 function Conteudo() {
   const t = useTranslations('Settings.integracoes');
   const [cartoes, setCartoes] = useState<CartaoDeIntegracao[] | null>(null);
+  // Quem lê a mídia nesta conta (o quadro ao lado da transcrição e da
+  // leitura); `null` = a rota não mandou (servidor anterior).
+  const [leitores, setLeitores] = useState<LeitoresDaConta | null>(null);
   const [testando, setTestando] = useState(false);
   // ⚠️ Guarda do "Tentar de novo": `testando` só cobre a fase do ping, e na
   // janela da carga barata (carregar(false)) um duplo clique disparava DUAS
@@ -163,9 +171,13 @@ function Conteudo() {
         `/api/cb/integracoes/status${ping ? '' : '?ping=0'}`
       );
       if (!res.ok) throw new Error(String(res.status));
-      const corpo = (await res.json()) as { cartoes: CartaoDeIntegracao[] };
+      const corpo = (await res.json()) as {
+        cartoes: CartaoDeIntegracao[];
+        leitores?: LeitoresDaConta;
+      };
       if (vivoRef.current) {
         setCartoes(corpo.cartoes);
+        setLeitores(corpo.leitores ?? null);
         setFalhou(false);
       }
     } catch {
@@ -264,6 +276,7 @@ function Conteudo() {
         <Cartao
           key={cartao.id}
           cartao={cartao}
+          leitores={leitores}
           aberto={aberto === cartao.id}
           onToggle={() =>
             setAberto((atual) => (atual === cartao.id ? null : cartao.id))
@@ -319,11 +332,13 @@ function ChipDeEstado({ cartao }: { cartao: CartaoDeIntegracao }) {
 
 function Cartao({
   cartao,
+  leitores,
   aberto,
   onToggle,
   onSalvo,
 }: {
   cartao: CartaoDeIntegracao;
+  leitores: LeitoresDaConta | null;
   aberto: boolean;
   onToggle: () => void;
   onSalvo: () => void;
@@ -426,6 +441,13 @@ function Cartao({
               ) : null}
 
               <Usos cartao={cartao} />
+              {/* Onde aparecem a transcrição e a leitura de mídia, o mesmo
+                  esclarecimento da Configuração do agente: quem lê é a chave
+                  da conta, não o modelo do agente (o operador pediu que fique
+                  CLARO). */}
+              {cartao.usos.some((u) => u.modulo === 'transcricao' || u.modulo === 'leitura') ? (
+                <QuemLeAMidia leitores={leitores} />
+              ) : null}
 
               <FormularioDaChave
                 provedor={cartao.id as 'gemini' | 'openai' | 'anthropic'}
@@ -718,7 +740,8 @@ function FormularioDaChave({
 /**
  * O modelo do Radar (946), por rota PRÓPRIA (`PATCH /api/cb/ia/radar`), que
  * grava só essa coluna — nada de ecoar a linha do assistente. Em branco = o
- * Radar usa o modelo do assistente.
+ * Radar usa o modelo do assistente. Desde 25/10/2026 o modelo sai da lista da
+ * CHAVE do provedor (`SeletorDeModelo`), com a opção vazia = herdar.
  */
 function FormularioDoRadar({
   provedor,
@@ -734,6 +757,7 @@ function FormularioDoRadar({
   const t = useTranslations('Settings.integracoes');
   const [modeloRadar, setModeloRadar] = useState(modeloAtual);
   const [salvando, setSalvando] = useState(false);
+  const modelosDasChaves = useModelosDasChaves();
   const [recado, setRecado] = useState<Recado | null>(null);
 
   async function salvar() {
@@ -778,23 +802,24 @@ function FormularioDoRadar({
         <Label htmlFor={`radar-${provedor}`} className="text-muted-foreground">
           {t('campoModeloRadar')}
         </Label>
-        <Input
+        <SeletorDeModelo
           id={`radar-${provedor}`}
-          list={`modelos-${provedor}`}
-          value={modeloRadar}
-          placeholder={
+          provedor={provedor}
+          valor={modeloRadar}
+          aoMudar={setModeloRadar}
+          lista={
+            modelosDasChaves.leitura
+              ? modelosDasChaves.leitura.provedores[provedor]
+              : null
+          }
+          atualizando={modelosDasChaves.atualizando}
+          aoAtualizar={modelosDasChaves.atualizar}
+          opcaoVazia={
             modeloDoAgente
               ? t('modeloHerdado', { model: modeloDoAgente })
               : t('modeloHerdadoVazio')
           }
-          onChange={(e) => setModeloRadar(e.target.value)}
         />
-        {/* Sugestão, nunca allow-list: o campo aceita qualquer id. */}
-        <datalist id={`modelos-${provedor}`}>
-          {AI_PROVIDER_MODELS[provedor].map((m) => (
-            <option key={m} value={m} />
-          ))}
-        </datalist>
       </div>
       <p className="max-w-[62ch] text-xs text-muted-foreground">
         {t('modeloRadarDica')}

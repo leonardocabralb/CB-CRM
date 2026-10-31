@@ -5,6 +5,8 @@ import { decrypt } from '@/lib/whatsapp/encryption'
 import { getChannelWithSecrets } from '@/lib/cb-channels/repo'
 import type { CbChannelWithSecrets } from '@/lib/cb-channels/repo'
 import { ehMeta } from '@/lib/cb-channels/transporte'
+import { mediaProxyHeaders } from '@/lib/media/proxy-response-headers'
+import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 
 export async function GET(
   request: Request,
@@ -33,6 +35,11 @@ export async function GET(
         { status: 401 }
       )
     }
+
+    // Porte do upstream #660: cada pedido são duas idas à Meta (a URL e o
+    // download), com o token da conta. Antes de qualquer leitura.
+    const limit = checkRateLimit(`whatsapp-media:${user.id}`, RATE_LIMITS.whatsappMedia)
+    if (!limit.success) return rateLimitResponse(limit)
 
     // Resolve the caller's account_id — whatsapp_config is one-per-
     // account post-multi-user, so a teammate fetching media for a
@@ -113,12 +120,20 @@ export async function GET(
       accessToken,
     })
 
+    // Upstream #678: o tipo vem do CLIENTE (o documento que ele mandou), e esta
+    // resposta sai no NOSSO domínio — a bolha abre o link numa aba nova. Só
+    // imagem, áudio e vídeo comuns vão `inline`; o resto (SVG, HTML, PDF…) vai
+    // como download, com `sandbox`, e com o nome que o link trouxe (`nome=`,
+    // de `urlParaAbrirAnexo`). Só chega aqui o anexo que o espelho no
+    // `chat-media` não guardou (tipo fora da lista do bucket, acima de 50 MiB,
+    // Storage fora do ar).
     return new Response(new Uint8Array(buffer), {
       status: 200,
-      headers: {
-        'Content-Type': contentType || mediaInfo.mimeType || 'application/octet-stream',
-        'Cache-Control': 'public, max-age=86400',
-      },
+      headers: mediaProxyHeaders(
+        mediaId,
+        contentType || mediaInfo.mimeType,
+        new URL(request.url).searchParams.get('nome'),
+      ),
     })
   } catch (error) {
     console.error('Error in WhatsApp media GET:', error)

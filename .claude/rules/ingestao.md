@@ -85,7 +85,7 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
   - Quem reabre fica responsável: o envio reabre com `assignTo:
     senderUserId`; cliente, celular e API por chave ESCREVEM
     `assigned_agent_id = NULL` (a encerrada antiga guarda o dono velho).
-  - Encerrar SOLTA o responsável (decisão do operador, 02/09/2026): o fio
+  - Encerrar SOLTA o responsável (decisão do operador): o fio
     grava por `patchDeSituacao` e o passo `close_conversation` zera
     `assigned_agent_id`. Caminho novo que encerra repete isso, senão quem
     reabre recebe a conversa com o dono velho. Aberta ↔ pendente não mexe no
@@ -155,7 +155,7 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
   depois pelo telefone. Os preenchimentos (BSUID, telefone, `@`) são UPDATEs
   SEPARADOS do nome, cada um com a cerca no WHERE. 23505 num preenchimento =
   a mesma pessoa com duas fichas: só log com os dois ids, sem fusão, e a
-  mensagem fica na ficha do BSUID (decisão do operador, 24/09/2026). Ficha
+  mensagem fica na ficha do BSUID (decisão do operador). Ficha
   achada pelo TELEFONE que já tem OUTRO BSUID: a mensagem fica nela e nada é
   sobrescrito (só log). Mesmo telefone com outro BSUID quase sempre é a mesma
   pessoa (outro portfólio da Meta, conta recriada no mesmo número); só no
@@ -187,9 +187,12 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
   conversa" (decisão do operador): emiti-lo noutro caminho (envio, eco,
   histórica) muda o contrato publicado — ver `.claude/rules/webhooks.md`.
 - ⚠️ **As automações da mensagem rodam EM SEQUÊNCIA, um tipo de gatilho por
-  vez** (Meta e `inbound-store`, como o original #409): a ordem das mensagens
+  vez** (Meta e `inbound-store`): a ordem das mensagens
   e o "um card por contato" do `create_deal` dependem disso. Detalhe em
   `automacoes.md`.
+- ⚠️ **Primeira mensagem: `reivindicarPrimeiraMensagem` (1105)**, nos dois
+  caminhos: conta antes do insert e reivindica `first_inbound_at` depois;
+  contar-e-decidir dispara 2× na rajada. Pino `primeira-mensagem.chamadores`.
 - ⚠️⚠️ **Motores (robô, automações, IA) só nos caminhos de cliente do
   WhatsApp.** Grupo, `historica.ts`, `tardia.ts` e Instagram (decisão D1) não
   importam motor nenhum — garantia ESTRUTURAL (`persist.test.ts`,
@@ -239,14 +242,14 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
   `message.status_updated` só sai quando alguma linha avançou. Sem ela a bolha
   volta a um ✓ com a mensagem entregue (a 2.4 manda `SERVER_ACK` depois do
   `DELIVERY_ACK`; a Meta manda `sent` e `delivered` em POSTs separados).
-- ⚠️ **Da falha, só o `read` tira a mensagem** (29/09/2026). A falha vale só
+- ⚠️ **Da falha, só o `read` tira a mensagem**. A falha vale só
   antes da entrega (`ACEITA_FALHA`). Medido em 24–25/09 na Evolution: o ERROR
   chegou junto com os outros recibos e gravou primeiro, e o READ de segundos
   depois era recusado. A bolha pedia "envie de novo" sobre mensagem lida. O
   `sent` e o `delivered` NÃO tiram da falha: dizem que o servidor ou o
   aparelho recebeu, não que conseguiu mostrar (o ERROR dos links em Android
   era isso). Na Evolution, o ERROR de REENVIO a aparelho secundário
-  (`remoteJid` sem "@") nem vira falha (05/10/2026): `whatsapp-evolution.md`.
+  (`remoteJid` sem "@") nem vira falha: `whatsapp-evolution.md`.
 - ⚠️ **Espera da linha**: o recibo pode chegar ANTES da mensagem gravada
   (`aplicarReciboQuandoAMensagemExistir`). Evolution espera até ~30 s; Meta, 7 s
   (`pausasDoReciboDaMeta`), e `sent` e recibo de DISPARO não esperam. Recibo de

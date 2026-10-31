@@ -1,21 +1,49 @@
 'use client';
 
-import { Loader2 } from 'lucide-react';
+import {
+  FileText,
+  Film,
+  ImageIcon,
+  Loader2,
+  Mic,
+  Paperclip,
+  Square,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  type ClipboardEvent,
+  type DragEvent,
   type KeyboardEvent,
 } from 'react';
 import { toast } from 'sonner';
 
 import { CitacaoDaNota } from '@/components/inbox/citacao-da-nota';
 import { Button } from '@/components/ui/button';
-import { fetchAccountMembers, memberLabel } from '@/lib/account/members';
+import { useAuth } from '@/hooks/use-auth';
+import { useGravadorDeVoz } from '@/hooks/use-gravador-de-voz';
+import { fetchAccountMembersOrNull, memberLabel } from '@/lib/account/members';
 import { membrosAtivos } from '@/lib/account/suspensao';
+import { arquivoParaEnviar, colagemEhAnexo } from '@/lib/inbox/arquivo-solto';
+import {
+  ACEITE_DA_ANOTACAO,
+  MAX_ANEXOS_DA_NOTA,
+  MAX_SEGUNDOS_DA_GRAVACAO,
+  TETO_DO_ANEXO,
+  escolherAnexosDaNota,
+  lerAnexosDaNota,
+  nomeDaGravacao,
+  tamanhoLegivel,
+  tipoDoAnexo,
+  type AnexoDaNota,
+} from '@/lib/notes/anexos';
 import {
   aplicarMencao,
   filtrarMembros,
@@ -23,11 +51,58 @@ import {
   tokenSobOCursor,
   type MembroMencionavel,
 } from '@/lib/notes/mentions';
+import { idDoAvisoDeApagada } from '@/lib/notes/edicao';
+import { apagarAnexosSubidos, subirAnexoDaNota } from '@/lib/notes/subir-anexo';
 import { cn } from '@/lib/utils';
-import type { ConversationNote } from '@/types';
+import type { AccountMember, ConversationNote } from '@/types';
+
+/** Um arquivo escolhido na caixa, antes de virar anexo da anotação. */
+interface Escolhido {
+  /** Identidade na lista (o mesmo arquivo pode ser escolhido duas vezes). */
+  id: string;
+  arquivo: File;
+  /** `URL.createObjectURL` da imagem, para a miniatura; revogada ao sair. */
+  previa: string | null;
+  /** O caminho no armazenamento depois de subir: não sobe de novo. */
+  caminho: string | null;
+}
 
 /**
- * A caixa amarela de anotação interna (migrations 918/919).
+ * As recusas da rota sobre a LISTA de anexos (a forma do corpo). A caixa
+ * gera esses caminhos, então não há um arquivo para apontar: a frase é geral.
+ */
+const RECUSAS_DA_LISTA = new Set([
+  'ATTACHMENTS_INVALID',
+  'TOO_MANY_ATTACHMENTS',
+  'ATTACHMENT_OUTSIDE_ACCOUNT',
+  'ATTACHMENT_REPEATED',
+  // Edição: um "mantido" que não é da nota (a caixa só manda os da nota).
+  'ATTACHMENT_NOT_IN_NOTE',
+]);
+
+/** As recusas de UM anexo, lido no armazenamento: a rota devolve qual. */
+const RECUSAS_DO_ARQUIVO = new Set(['ATTACHMENT_TYPE_REFUSED', 'ATTACHMENT_TOO_LARGE']);
+
+/**
+ * O nome do anexo que a rota recusou, como a pessoa o vê na lista: a rota
+ * devolve `anexo: { caminho, nome }`, e o caminho acha o item.
+ */
+function nomeDoRecusado(resposta: unknown, lista: readonly Escolhido[]): string {
+  const anexo = (resposta as { anexo?: { caminho?: unknown; nome?: unknown } } | null)
+    ?.anexo;
+  const doItem = lista.find((e) => e.caminho !== null && e.caminho === anexo?.caminho);
+  if (doItem) return doItem.arquivo.name;
+  return typeof anexo?.nome === 'string' ? anexo.nome : '';
+}
+
+const TETO_EM_MB = Math.round(TETO_DO_ANEXO / (1024 * 1024));
+
+function minutos(segundos: number): string {
+  return `${Math.floor(segundos / 60)}:${String(segundos % 60).padStart(2, '0')}`;
+}
+
+/**
+ * A caixa amarela de anotação interna (migrations 918/919; anexos na 1102).
  *
  * Componente PRÓPRIO, e não mais um trecho dentro do `message-composer`, por
  * dois motivos: o compositor é arquivo do upstream e cada linha nossa ali é
@@ -39,6 +114,45 @@ import type { ConversationNote } from '@/types';
  * Enter para `handleSend` — a anotação interna sairia como mensagem para o
  * cliente, que é o pior erro possível nesta feature. Aqui Enter quebra linha
  * (anotação longa é o caso normal) e Ctrl/⌘+Enter salva.
+ *
+ * ANEXOS (1102; decisões D1–D7 e A1–A7 de
+ * docs/PLANO-anotacao-com-anexos-e-edicao.md). Clipe, microfone, colar e
+ * arrastar — todos pelo MESMO funil (`receberArquivos`: tipo, teto de 50 MiB
+ * e de 10, cada recusa com aviso). Os arquivos ficam na memória da aba e
+ * sobem SÓ ao Salvar, um por um, para `account-<conta>/notas/`, com
+ * progresso; só então vai o POST.
+ * - ⚠️⚠️ O salvar leva a conversa de ORIGEM (a do clique) até o fim: no fio
+ *   a caixa fecha ao trocar de conversa, e a anotação em voo cai onde foi
+ *   escrita. Fora da tela no meio, quem salva segue sozinho — e então NÃO
+ *   chama `onSaved`, `onClose` nem `onLimparResposta` (são os do render do
+ *   clique: mexeriam na conversa aberta agora); só avisa o desfecho, com
+ *   frase própria (`naTelaRef`). Por isso, salvando, Cancelar e Esc não
+ *   fecham: o salvar não se interrompe.
+ * - Falha no meio: a caixa PARA, mantém texto e arquivos, e o que já subiu
+ *   não sobe de novo (`caminho`). Desistir — tirar da lista, Cancelar, a
+ *   caixa sumir com o rascunho — APAGA o que a pessoa subiu (a regra do dono
+ *   em `notas/`); o que virou anotação nunca. Resposta que não veio (rede)
+ *   pode ter salvo: aqueles caminhos ficam INCERTOS e nunca são apagados.
+ * - Gravação parada e ainda chegando do encoder (`finalizando`): o Salvar
+ *   espera, senão a anotação sairia sem o áudio. Arquivo solto ou colado
+ *   durante o salvar não entra — e avisa.
+ * - Arrastar para a caixa não chega ao compositor em volta (`stopPropagation`):
+ *   o arquivo viraria anexo de MENSAGEM ao cliente.
+ * - O gravador é PRÓPRIO (`useGravadorDeVoz`) e solta o microfone quando a
+ *   caixa some.
+ * - A caixa é da conversa em que NASCEU (`de`): no fio ela não remonta (o
+ *   compositor só a fecha por efeito), e no render da troca o rascunho de um
+ *   cliente apareceria sob o cabeçalho de outro — some antes.
+ *
+ * EDIÇÃO (Fase 3; A2–A5 do operador): com `editando`, a MESMA caixa toma o
+ * lugar da anotação (quem monta a troca pelo cartão: `useEdicaoDeNota`) —
+ * nunca a caixa do compositor, onde o Enter envia ao cliente. Nasce com o
+ * texto e os anexos da nota; os anexos atuais saem pelo X (sem apagar nada:
+ * o tirado vai à fila pelo gatilho da 1102 quando a edição SALVA), os novos
+ * entram pelo mesmo funil e sobem só ao Salvar, e o teto de 10 conta os dois.
+ * Salvar é o `PUT /api/cb/notes/[id]`, com a VERSÃO que a caixa viu (o
+ * `editada_em` de quando abriu): editada noutro lugar no meio = 409, e nada
+ * se sobrescreve. Cancelar volta ao que era. Sem citação nem "responder".
  */
 export function InternalNoteBox({
   conversationId,
@@ -48,8 +162,16 @@ export function InternalNoteBox({
   autoFocus = true,
   respondendoA = null,
   onLimparResposta,
+  editando = null,
 }: {
   conversationId: string;
+  /**
+   * A anotação gravada (nova: a do POST; editada: a do PUT). Na EDIÇÃO é o
+   * `substituir` da lista de quem monta, e recebe também a versão ATUAL que
+   * o 409 `NOTE_CHANGED` devolve, SEM fechar a caixa: a lista da tela estava
+   * velha (o tempo real perdeu o UPDATE), e "cancelar e editar de novo"
+   * congelaria a mesma versão velha, com 409 em laço.
+   */
   onSaved?: (nota: ConversationNote) => void;
   /**
    * Fecha a caixa (compositor). AUSENTE na aba Notas do painel, onde a
@@ -81,15 +203,242 @@ export function InternalNoteBox({
    * resposta. O texto escrito fica.
    */
   onLimparResposta?: () => void;
+  /**
+   * A anotação que esta caixa EDITA (Fase 3), no lugar dela. Lida UMA vez,
+   * na montagem: o texto, os anexos e a versão (`editada_em`) de quando a
+   * edição abriu. Ausente = escrever uma nova.
+   */
+  editando?: ConversationNote | null;
 }) {
   const t = useTranslations('Inbox.composer');
+  const tNota = useTranslations('Inbox.note');
+  const { accountId } = useAuth();
 
-  const [texto, setTexto] = useState('');
+  // A conversa em que a caixa nasceu (ver o cabeçalho).
+  const [de] = useState(conversationId);
+  // A nota em edição, CONGELADA na montagem: a versão que vai na cerca do
+  // PUT é a que a pessoa viu, não a que o tempo real trouxer depois.
+  const [emEdicao] = useState(editando);
+
+  const [texto, setTexto] = useState(emEdicao?.texto ?? '');
   const [salvando, setSalvando] = useState(false);
+  const [progresso, setProgresso] = useState<{ atual: number; total: number } | null>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
+  const seletorRef = useRef<HTMLInputElement>(null);
+
+  // ⚠️ Trinco SÍNCRONO do salvar: dois Ctrl+Enter seguidos chegam antes de
+  // o estado `salvando` voltar, e subiriam e gravariam em dobro.
+  const salvandoRef = useRef(false);
+
+  // --- anexos ---------------------------------------------------------
+  // A lista mora num REF (lida na hora pelo funil, pelo salvar e pela
+  // limpeza do desmonte) e é espelhada no estado só para desenhar: duas
+  // soltas seguidas, antes de o render chegar, passariam do teto lendo o
+  // estado.
+  const escolhidosRef = useRef<Escolhido[]>([]);
+  const [escolhidos, setEscolhidosNaTela] = useState<Escolhido[]>([]);
+  const definirEscolhidos = useCallback((proximos: Escolhido[]) => {
+    escolhidosRef.current = proximos;
+    setEscolhidosNaTela(proximos);
+  }, []);
+  // Caminhos de um POST cuja resposta não veio: a anotação PODE ter sido
+  // salva com eles, então a caixa nunca os apaga.
+  const incertosRef = useRef<ReadonlySet<string>>(new Set());
+  // Edição: os anexos ATUAIS da nota que continuam (ref + espelho, pela mesma
+  // razão da lista acima: o funil conta os dois contra o teto de 10).
+  const [mantidos, setMantidosNaTela] = useState<AnexoDaNota[]>(() =>
+    lerAnexosDaNota(emEdicao?.anexos)
+  );
+  const mantidosRef = useRef<AnexoDaNota[]>(mantidos);
+  const definirMantidos = useCallback((proximos: AnexoDaNota[]) => {
+    mantidosRef.current = proximos;
+    setMantidosNaTela(proximos);
+  }, []);
+
+  const receberArquivos = useCallback(
+    (brutos: readonly File[]) => {
+      if (brutos.length === 0) return;
+      // Salvando, a lista é a da anotação em voo: o arquivo solto ou colado
+      // agora não entra nela — e não some calado.
+      if (salvandoRef.current) {
+        toast.error(t('noteBusySaving'));
+        return;
+      }
+      // Nome e tipo ajustados ANTES de subir: o print colado vem sem nome
+      // útil, e o bucket tem lista EXATA de tipos (midia.md).
+      const arquivos = brutos.map((b) => arquivoParaEnviar(b));
+      // O teto vale para a ANOTAÇÃO: na edição, os atuais que ficam contam.
+      const r = escolherAnexosDaNota(
+        arquivos,
+        mantidosRef.current.length + escolhidosRef.current.length
+      );
+      if (r.recusados > 0) toast.error(t('noteAttachmentRefused', { n: r.recusados }));
+      if (r.grandes > 0)
+        toast.error(t('noteAttachmentTooLarge', { n: r.grandes, max: TETO_EM_MB }));
+      if (r.excedentes > 0)
+        toast.error(
+          t('noteTooManyAttachments', { n: r.excedentes, max: MAX_ANEXOS_DA_NOTA })
+        );
+      if (r.aceitos.length === 0) return;
+      definirEscolhidos([
+        ...escolhidosRef.current,
+        ...r.aceitos.map((arquivo) => ({
+          id: crypto.randomUUID(),
+          arquivo,
+          previa:
+            tipoDoAnexo(arquivo.type) === 'imagem' ? URL.createObjectURL(arquivo) : null,
+          caminho: null,
+        })),
+      ]);
+    },
+    [definirEscolhidos, t]
+  );
+
+  const tirar = useCallback(
+    (id: string) => {
+      if (salvandoRef.current) return;
+      const item = escolhidosRef.current.find((e) => e.id === id);
+      if (!item) return;
+      if (item.previa) URL.revokeObjectURL(item.previa);
+      // Já subiu e a pessoa desistiu dele: sai do armazenamento (a dona pode).
+      if (item.caminho && !incertosRef.current.has(item.caminho)) {
+        void apagarAnexosSubidos([item.caminho]).catch(() => {});
+      }
+      definirEscolhidos(escolhidosRef.current.filter((e) => e.id !== id));
+    },
+    [definirEscolhidos]
+  );
+
+  // Edição: tira um anexo ATUAL da lista. Não apaga nada — o arquivo é da
+  // anotação gravada até a edição salvar (e aí o gatilho da 1102 o põe na
+  // fila); Cancelar o devolve.
+  const tirarMantido = useCallback(
+    (caminho: string) => {
+      if (salvandoRef.current) return;
+      definirMantidos(mantidosRef.current.filter((a) => a.caminho !== caminho));
+    },
+    [definirMantidos]
+  );
+
+  // A caixa sumiu (Cancelar, troca de conversa no fio, remonte no painel):
+  // o rascunho vai junto — e o que ele já tinha subido, também. Com um salvar
+  // EM VOO, nada se apaga: os arquivos são da anotação que está sendo gravada
+  // (quem salva decide no fim). O gravador cuida do microfone sozinho.
+  useEffect(() => {
+    return () => {
+      const itens = escolhidosRef.current;
+      for (const item of itens) if (item.previa) URL.revokeObjectURL(item.previa);
+      if (salvandoRef.current) return;
+      const sobras = itens.flatMap((e) =>
+        e.caminho && !incertosRef.current.has(e.caminho) ? [e.caminho] : []
+      );
+      if (sobras.length > 0) void apagarAnexosSubidos(sobras).catch(() => {});
+    };
+  }, []);
+
+  // A caixa está na TELA, na conversa em que nasceu? O salvar segue depois de
+  // ela sumir — no fio, na troca de conversa (some no render e desmonta no
+  // efeito do compositor); no painel e no grupo, ao remontar (`key`) ou ao
+  // trocar de aba. Os retornos dele (`onSaved`, `onClose`,
+  // `onLimparResposta`) são os do render do CLIQUE: chamados com a caixa fora
+  // da tela, fechariam a caixa, desfariam a citação e mexeriam na rolagem da
+  // conversa aberta AGORA. Efeito de LAYOUT: vale já no commit da troca.
+  const naTelaRef = useRef(true);
+  useLayoutEffect(() => {
+    naTelaRef.current = conversationId === de;
+    return () => {
+      naTelaRef.current = false;
+    };
+  }, [conversationId, de]);
+
+  // --- gravação -------------------------------------------------------
+  const aoGravar = useCallback(
+    (bytes: Uint8Array) => {
+      // Uint8Array é BlobPart em tempo de execução; o cast contorna o
+      // genérico ArrayBufferLike × ArrayBuffer do lib.dom (como o compositor).
+      const arquivo = new File([bytes as unknown as BlobPart], nomeDaGravacao(new Date()), {
+        type: 'audio/ogg',
+      });
+      if (arquivo.size === 0) return;
+      receberArquivos([arquivo]);
+    },
+    [receberArquivos]
+  );
+  const gravador = useGravadorDeVoz({ aoGravar, maxSegundos: MAX_SEGUNDOS_DA_GRAVACAO });
+  const { iniciar: iniciarGravacao } = gravador;
+  const gravar = useCallback(async () => {
+    if (salvandoRef.current) return;
+    const r = await iniciarGravacao();
+    if (r === 'sem-suporte') toast.error(t('recordingUnsupported'));
+    else if (r === 'negado') toast.error(t('microphoneDenied'));
+  }, [iniciarGravacao, t]);
+
+  // --- arrastar -------------------------------------------------------
+  // Contador, não booleano (o `dragleave` dispara ao passar de um filho a
+  // outro). ⚠️ `stopPropagation` em todos: a caixa mora DENTRO do
+  // compositor, e o arquivo solto aqui não pode virar anexo de mensagem.
+  const [arrastando, setArrastando] = useState(false);
+  const profundidadeRef = useRef(0);
+  const ehArquivo = (e: DragEvent) => e.dataTransfer.types.includes('Files');
+  const aoArrastarEntrando = (e: DragEvent<HTMLDivElement>) => {
+    if (!ehArquivo(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    profundidadeRef.current += 1;
+    setArrastando(true);
+  };
+  const aoArrastarSobre = (e: DragEvent<HTMLDivElement>) => {
+    if (!ehArquivo(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+  const aoArrastarSaindo = (e: DragEvent<HTMLDivElement>) => {
+    if (!ehArquivo(e)) return;
+    e.stopPropagation();
+    profundidadeRef.current = Math.max(0, profundidadeRef.current - 1);
+    if (profundidadeRef.current === 0) setArrastando(false);
+  };
+  const aoSoltar = (e: DragEvent<HTMLDivElement>) => {
+    if (!ehArquivo(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    profundidadeRef.current = 0;
+    setArrastando(false);
+    receberArquivos(Array.from(e.dataTransfer.files));
+  };
+
+  const aoColar = useCallback(
+    (e: ClipboardEvent<HTMLTextAreaElement>) => {
+      const arquivos = Array.from(e.clipboardData.files);
+      // ⚠️ Colagem COM texto não vira anexo (Word e Google Docs mandam os
+      // dois, e o texto se perderia) — `colagemEhAnexo`.
+      if (
+        !colagemEhAnexo({
+          temArquivo: arquivos.length > 0,
+          texto: e.clipboardData.getData('text/plain'),
+        })
+      )
+        return;
+      e.preventDefault();
+      receberArquivos(arquivos);
+    },
+    [receberArquivos]
+  );
 
   // --- menção -------------------------------------------------------
+  // As SUGESTÕES: só quem está ativo (1067: o suspenso não lê anotação —
+  // mencioná-lo não chega).
   const [membros, setMembros] = useState<MembroMencionavel[]>([]);
+  // Na EDIÇÃO, a menção gravada se refaz contra TODOS, suspensos inclusos
+  // (quem é avisado a rota decide): refeita só com os ativos, a menção de
+  // quem foi suspenso sairia da lista gravada numa correção qualquer, e a
+  // pessoa "entraria" de novo — com outro aviso — na edição seguinte à volta
+  // dela. E "@Ana Paula" (suspensa) casaria com "@Ana", que seria avisada.
+  const [todosOsMembros, setTodosOsMembros] = useState<MembroMencionavel[]>([]);
+  // A lista de membros VEIO? Carregando ou falha = "não sei" — e a edição
+  // então não mexe nas menções gravadas (ver `salvar`).
+  const [membrosSabidos, setMembrosSabidos] = useState(false);
   const [termo, setTermo] = useState<{ inicio: number; termo: string } | null>(
     null
   );
@@ -97,12 +446,15 @@ export function InternalNoteBox({
 
   useEffect(() => {
     let vivo = true;
-    void fetchAccountMembers().then((lista) => {
-      if (!vivo) return;
-      // 1067: quem está suspenso não lê anotação — mencioná-lo não chega.
-      setMembros(
-        membrosAtivos(lista).map((m) => ({ user_id: m.user_id, rotulo: memberLabel(m) }))
-      );
+    void fetchAccountMembersOrNull().then((lista) => {
+      if (!vivo || !lista) return;
+      const rotular = (m: AccountMember) => ({
+        user_id: m.user_id,
+        rotulo: memberLabel(m),
+      });
+      setMembros(membrosAtivos(lista).map(rotular));
+      setTodosOsMembros(lista.map(rotular));
+      setMembrosSabidos(true);
     });
     return () => {
       vivo = false;
@@ -183,41 +535,179 @@ export function InternalNoteBox({
     [termo, texto]
   );
 
+  // Gravando, ou com a gravação parada ainda chegando do encoder: o áudio não
+  // está na lista, e salvar agora gravaria a anotação sem ele.
+  const { gravando, finalizando } = gravador;
   const salvar = useCallback(async () => {
     const limpo = texto.trim();
-    if (!limpo || salvando) return;
+    const itens = escolhidosRef.current;
+    const ficam = mantidosRef.current;
+    if (salvandoRef.current || gravando || finalizando) return;
+    if (!limpo && itens.length === 0 && ficam.length === 0) return;
+    if (itens.length > 0 && !accountId) {
+      toast.error(t('noteSaveError'));
+      return;
+    }
+    // ⚠️ A conversa de ORIGEM, presa aqui até o fim (ver o cabeçalho).
+    const origem = conversationId;
+    salvandoRef.current = true;
     setSalvando(true);
+    let lista = itens;
+    const subidos = () => lista.flatMap((e) => (e.caminho ? [e.caminho] : []));
+    // A caixa saiu da tela e a anotação NÃO foi gravada: o rascunho foi junto,
+    // ninguém vai tentar de novo, e o que subiu sai do armazenamento — a lista
+    // zera, e o desmonte não tem mais o que apagar. `true` = saiu.
+    // Fora da tela, a frase do "não salva" (o rascunho foi junto com a caixa).
+    const avisarNaoSalva = () =>
+      toast.error(
+        emEdicao ? t('noteEditNotSavedAfterLeaving') : t('noteNotSavedAfterLeaving')
+      );
+    const largarSeSumiu = (): boolean => {
+      if (naTelaRef.current) return false;
+      const sobras = subidos().filter((c) => !incertosRef.current.has(c));
+      if (sobras.length > 0) void apagarAnexosSubidos(sobras).catch(() => {});
+      for (const e of lista) if (e.previa) URL.revokeObjectURL(e.previa);
+      definirEscolhidos([]);
+      return true;
+    };
     try {
-      const res = await fetch('/api/cb/notes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          conversation_id: conversationId,
-          texto: limpo,
-          // Derivado do texto, não de quem foi clicado — ver `mentions.ts`.
-          mencionados: mencionadosNoTexto(limpo, membros),
-          resposta_de: respondendoA?.id,
-        }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        // A respondida foi apagada enquanto a pessoa escrevia: a citação
-        // sai, o texto fica — salvar de novo grava como anotação comum.
-        if (json?.error === 'REPLIED_NOTE_NOT_FOUND') {
-          toast.error(t('noteReplyGone'));
-          onLimparResposta?.();
+      // 1. Sobe o que falta, um por vez (a ordem é a da lista).
+      for (let i = 0; i < lista.length; i++) {
+        const item = lista[i];
+        if (item.caminho) continue;
+        setProgresso({ atual: i + 1, total: lista.length });
+        let caminho: string;
+        try {
+          caminho = await subirAnexoDaNota(accountId!, item.arquivo);
+        } catch (erro) {
+          console.warn(
+            '[InternalNoteBox] o anexo não subiu:',
+            erro instanceof Error ? erro.message : erro
+          );
+          // Fora da tela não há rascunho para "salvar de novo": frase própria.
+          if (largarSeSumiu()) avisarNaoSalva();
+          else toast.error(t('noteUploadFailed', { nome: item.arquivo.name }));
           return;
         }
-        toast.error(json?.error || t('noteSaveError'));
+        lista = lista.map((e) => (e.id === item.id ? { ...e, caminho } : e));
+        definirEscolhidos(lista);
+      }
+      setProgresso(null);
+
+      // 2. A anotação, com os caminhos (tamanho e tipo a rota LÊ). Nova: o
+      //    POST. Editada: o PUT da nota, com o que FICA (pelo caminho), o que
+      //    ENTRA e a versão que a caixa viu ao abrir (a cerca de concorrência).
+      const novos = lista.map((e) => ({ caminho: e.caminho, nome: e.arquivo.name }));
+      // Derivado do texto, não de quem foi clicado — ver `mentions.ts`. Na
+      // edição, contra TODOS os membros (ver `todosOsMembros`).
+      const mencionados = mencionadosNoTexto(limpo, emEdicao ? todosOsMembros : membros);
+      let res: Response;
+      try {
+        res = emEdicao
+          ? await fetch(`/api/cb/notes/${emEdicao.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                texto: limpo,
+                // Sem a lista de membros, `mencionadosNoTexto` daria NENHUM, e
+                // a rota trocaria as menções gravadas por nada — quem já
+                // estava "entraria" de novo na próxima edição. Ausente = a
+                // rota mantém as gravadas.
+                mencionados: membrosSabidos ? mencionados : undefined,
+                mantidos: ficam.map((a) => a.caminho),
+                novos,
+                versao: emEdicao.editada_em ?? null,
+              }),
+            })
+          : await fetch('/api/cb/notes', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                conversation_id: origem,
+                texto: limpo,
+                mencionados,
+                resposta_de: respondendoA?.id,
+                anexos: novos,
+              }),
+            });
+      } catch {
+        // Sem resposta: a anotação PODE ter sido gravada. Os caminhos ficam
+        // incertos — a caixa não os apaga nunca mais. A edição na tela diz
+        // "talvez": salvar de novo às cegas, se a primeira entrou, só daria o
+        // 409 de versão.
+        incertosRef.current = new Set([...incertosRef.current, ...subidos()]);
+        toast.error(
+          !naTelaRef.current
+            ? t('noteMaybeSavedAfterLeaving')
+            : emEdicao
+              ? t('noteEditMaybeSaved')
+              : t('noteSaveError')
+        );
+        return;
+      }
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const erro: unknown = json?.error;
+        // Apagada (por quem administra) enquanto a pessoa editava. O mesmo
+        // aviso do `useEdicaoDeNota`, que fecha a caixa quando a lista a
+        // perde — o id junta os dois.
+        const avisarApagada = () =>
+          toast.error(t('noteEditGone'), {
+            id: emEdicao ? idDoAvisoDeApagada(emEdicao.id) : undefined,
+          });
+        if (largarSeSumiu()) {
+          // Fora da tela: "edite de novo" não serve a uma nota apagada.
+          if (erro === 'NOTE_GONE') avisarApagada();
+          else avisarNaoSalva();
+          return;
+        }
+        if (erro === 'NOTE_GONE') {
+          avisarApagada();
+        } else if (erro === 'NOTE_CHANGED') {
+          // Editada noutra aba ou aparelho: nada se sobrescreve; o rascunho
+          // fica na caixa para a pessoa copiar o que quiser. A versão ATUAL
+          // vai para a lista (`onSaved` = `substituir`, sem fechar): com a
+          // lista velha, editar de novo congelaria a mesma versão, em laço.
+          const atual = json?.note as ConversationNote | undefined;
+          if (emEdicao && atual?.id === emEdicao.id) onSaved?.(atual);
+          toast.error(t('noteEditChanged'));
+        } else if (erro === 'NOT_THE_AUTHOR') {
+          toast.error(t('noteEditForbidden'));
+        } else if (erro === 'REPLIED_NOTE_NOT_FOUND') {
+          // A respondida foi apagada enquanto a pessoa escrevia: a citação
+          // sai, o texto e os anexos ficam — salvar de novo grava como
+          // anotação comum.
+          toast.error(t('noteReplyGone'));
+          onLimparResposta?.();
+        } else if (erro === 'ATTACHMENT_NOT_FOUND') {
+          toast.error(t('noteAttachmentGone', { nome: nomeDoRecusado(json, lista) }));
+        } else if (typeof erro === 'string' && RECUSAS_DO_ARQUIVO.has(erro)) {
+          toast.error(t('noteAttachmentRefusedByName', { nome: nomeDoRecusado(json, lista) }));
+        } else if (erro === 'STORAGE_UNAVAILABLE') {
+          toast.error(t('noteStorageUnavailable'));
+        } else if (typeof erro === 'string' && RECUSAS_DA_LISTA.has(erro)) {
+          toast.error(t('noteAttachmentRejected'));
+        } else {
+          toast.error(typeof erro === 'string' && erro ? erro : t('noteSaveError'));
+        }
         return;
       }
       // A anotação foi salva; o aviso ao colega pode não ter saído. Dizer
       // isso é o ponto: quem escreveu "@fulano confere esse prazo" e some da
       // tela precisa saber se o fulano foi mesmo chamado.
-      if (json?.mencoesNotificadas === false)
-        toast.warning(t('noteMentionFailed'));
-      if (json?.respostaNotificada === false)
-        toast.warning(t('noteReplyFailed'));
+      if (json?.mencoesNotificadas === false) toast.warning(t('noteMentionFailed'));
+      if (json?.respostaNotificada === false) toast.warning(t('noteReplyFailed'));
+      // ⚠️ A lista sai ANTES de fechar: os arquivos agora são da anotação, e
+      // a limpeza do desmonte apagaria o que sobrasse nela.
+      for (const e of lista) if (e.previa) URL.revokeObjectURL(e.previa);
+      definirEscolhidos([]);
+      if (!naTelaRef.current) {
+        // Salva com a caixa já fora da tela: quem tem a conversa aberta a
+        // recebe pelo tempo real (e quem voltar a ela, na leitura). Nenhum
+        // retorno do render do clique roda — ver `naTelaRef`.
+        toast.success(t('noteSavedAfterLeaving'));
+        return;
+      }
       onSaved?.(json.note as ConversationNote);
       setTexto('');
       onLimparResposta?.();
@@ -225,14 +715,22 @@ export function InternalNoteBox({
     } catch {
       toast.error(t('noteSaveError'));
     } finally {
+      salvandoRef.current = false;
       setSalvando(false);
+      setProgresso(null);
     }
   }, [
     texto,
-    salvando,
+    gravando,
+    finalizando,
+    accountId,
     conversationId,
     membros,
+    todosOsMembros,
+    membrosSabidos,
     respondendoA?.id,
+    emEdicao,
+    definirEscolhidos,
     onSaved,
     onLimparResposta,
     onClose,
@@ -274,16 +772,47 @@ export function InternalNoteBox({
       }
       if (e.key === 'Escape') {
         e.preventDefault();
-        onClose?.();
+        // Salvando, a caixa não fecha (como o Cancelar): o salvar não se
+        // interrompe, e fechar faria parecer que a anotação foi desistida.
+        if (!salvandoRef.current) onClose?.();
       }
     },
     [listaAberta, sugestoes, destacado, escolher, salvar, onClose]
   );
 
+  // Nasceu noutra conversa: no fio o compositor a fecha no efeito da troca;
+  // até lá, o rascunho de um cliente não aparece sob o cabeçalho de outro.
+  if (de !== conversationId) return null;
+
+  // O teto e o "vazia" são da ANOTAÇÃO: na edição, os atuais que ficam contam.
+  const cheia = mantidos.length + escolhidos.length >= MAX_ANEXOS_DA_NOTA;
+  const vazia = !texto.trim() && mantidos.length === 0 && escolhidos.length === 0;
+
   return (
-    <div className="mb-2 rounded-lg border border-amber-300/60 bg-amber-50 p-3 dark:border-amber-700/50 dark:bg-amber-950/40">
+    <div
+      // `ATRIBUTO_CAIXA_DE_NOTA` (`celular/teclado.ts`): o arrasto que nasce
+      // aqui não é rolar o fio — na edição a caixa mora DENTRO dele, e o
+      // arrasto no texto fechava o teclado (`toqueNasceuForaDaConversa`).
+      data-caixa-de-nota=""
+      className="relative mb-2 rounded-lg border border-amber-300/60 bg-amber-50 p-3 dark:border-amber-700/50 dark:bg-amber-950/40"
+      onDragEnter={aoArrastarEntrando}
+      onDragOver={aoArrastarSobre}
+      onDragLeave={aoArrastarSaindo}
+      onDrop={aoSoltar}
+    >
+      {/* Alvo de soltura: `pointer-events-none`, senão engole o `drop`. */}
+      {arrastando && (
+        <div className="pointer-events-none absolute inset-1 z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-amber-500 bg-amber-100/90 dark:bg-amber-900/80">
+          <span className="text-sm font-medium text-amber-950 dark:text-amber-50">
+            {t('noteDropToAttach')}
+          </span>
+        </div>
+      )}
+
       <p className="mb-2 text-xs text-amber-950 dark:text-amber-50">
-        <span className="font-semibold">{t('noteBoxTitle')}</span>{' '}
+        <span className="font-semibold">
+          {emEdicao ? t('noteEditTitle') : t('noteBoxTitle')}
+        </span>{' '}
         <span className="opacity-80">{t('noteBoxHint')}</span>
       </p>
 
@@ -338,6 +867,7 @@ export function InternalNoteBox({
           onKeyDown={tecla}
           onClick={moverCursor}
           onSelect={moverCursor}
+          onPaste={aoColar}
           onBlur={() => setTermo(null)}
           rows={3}
           placeholder={t('notePlaceholder')}
@@ -345,27 +875,190 @@ export function InternalNoteBox({
         />
       </div>
 
-      <div className="mt-2 flex items-center gap-2">
+      {(mantidos.length > 0 || escolhidos.length > 0) && (
+        <ul aria-label={tNota('anexos')} className="mt-2 flex flex-wrap gap-1.5">
+          {/* Edição: os anexos ATUAIS da nota, primeiro. O X só os tira da
+              lista — nada se apaga aqui: o tirado vai à fila de arquivos pelo
+              gatilho da 1102 quando a edição SALVAR; Cancelar o devolve. */}
+          {mantidos.map((a) => {
+            const tipo = tipoDoAnexo(a.mime);
+            return (
+              <li
+                key={a.caminho}
+                className="flex max-w-full min-w-0 items-center gap-1.5 rounded-md border border-amber-300/60 bg-amber-100/70 py-1 pr-1 pl-1.5 text-xs text-amber-950 dark:border-amber-700/50 dark:bg-amber-900/40 dark:text-amber-50"
+              >
+                {tipo === 'audio' ? (
+                  <Mic className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                ) : tipo === 'imagem' ? (
+                  <ImageIcon className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                ) : tipo === 'video' ? (
+                  <Film className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                ) : (
+                  <FileText className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                )}
+                <span className="min-w-0 truncate">{a.nome}</span>
+                {a.bytes > 0 && (
+                  <span className="shrink-0 opacity-60">{tamanhoLegivel(a.bytes)}</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => tirarMantido(a.caminho)}
+                  disabled={salvando}
+                  aria-label={t('noteRemoveAttachment', { nome: a.nome })}
+                  title={t('noteRemoveAttachment', { nome: a.nome })}
+                  className="shrink-0 rounded p-0.5 opacity-60 transition-opacity hover:opacity-100 disabled:opacity-30"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </li>
+            );
+          })}
+          {escolhidos.map((e) => {
+            const tipo = tipoDoAnexo(e.arquivo.type);
+            return (
+              <li
+                key={e.id}
+                className="flex max-w-full min-w-0 items-center gap-1.5 rounded-md border border-amber-300/60 bg-amber-100/70 py-1 pr-1 pl-1.5 text-xs text-amber-950 dark:border-amber-700/50 dark:bg-amber-900/40 dark:text-amber-50"
+              >
+                {e.previa ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={e.previa} alt="" className="size-6 shrink-0 rounded object-cover" />
+                ) : tipo === 'audio' ? (
+                  <Mic className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                ) : tipo === 'video' ? (
+                  <Film className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                ) : (
+                  <FileText className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                )}
+                <span className="min-w-0 truncate">{e.arquivo.name}</span>
+                <span className="shrink-0 opacity-60">{tamanhoLegivel(e.arquivo.size)}</span>
+                <button
+                  type="button"
+                  onClick={() => tirar(e.id)}
+                  disabled={salvando}
+                  aria-label={t('noteRemoveAttachment', { nome: e.arquivo.name })}
+                  title={t('noteRemoveAttachment', { nome: e.arquivo.name })}
+                  className="shrink-0 rounded p-0.5 opacity-60 transition-opacity hover:opacity-100 disabled:opacity-30"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {gravando && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md bg-red-50 px-2 py-1.5 text-xs text-red-800 dark:bg-red-950/40 dark:text-red-200">
+          <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-red-600" />
+          <span className="min-w-0 flex-1 tabular-nums">
+            {t('recording', {
+              current: minutos(gravador.segundos),
+              max: minutos(MAX_SEGUNDOS_DA_GRAVACAO),
+            })}
+          </span>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={gravador.parar}
+            className="h-7 px-2 text-red-800 hover:bg-red-100 dark:text-red-200"
+          >
+            <Square className="mr-1 h-3 w-3 fill-current" />
+            {t('noteStopRecording')}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={gravador.descartar}
+            aria-label={t('noteCancelRecording')}
+            title={t('noteCancelRecording')}
+            className="h-7 px-2 text-red-800 hover:bg-red-100 dark:text-red-200"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
+
+      {/* Parada, a gravação ainda vem do encoder: o Salvar espera por ela. */}
+      {!gravando && finalizando && (
+        <p className="mt-2 flex items-center gap-1.5 text-xs text-amber-950 dark:text-amber-50">
+          <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+          {t('noteRecordingFinishing')}
+        </p>
+      )}
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
         <Button
           size="sm"
           onClick={() => void salvar()}
-          disabled={!texto.trim() || salvando}
+          disabled={vazia || salvando || gravando || finalizando}
+          title={
+            gravando
+              ? t('noteStopRecordingFirst')
+              : finalizando
+                ? t('noteRecordingFinishing')
+                : undefined
+          }
           className="h-8 bg-emerald-600 text-white hover:bg-emerald-700"
         >
-          {salvando ? (
-            <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-          ) : null}
-          {t('saveNote')}
+          {salvando ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+          {progresso
+            ? t('noteUploading', { atual: progresso.atual, total: progresso.total })
+            : emEdicao
+              ? t('saveEdit')
+              : t('saveNote')}
         </Button>
         {onClose ? (
-          <Button size="sm" variant="ghost" onClick={onClose} className="h-8">
+          // ⚠️ Cor própria, a dos ícones ao lado: o `ghost` herda a do tema,
+          // e no modo escuro (o `dark:` está inerte) o texto claro sumia no
+          // fundo âmbar — e é por ele que se desiste de uma edição.
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={onClose}
+            disabled={salvando}
+            className="h-8 text-amber-900 hover:bg-amber-100 hover:text-amber-950 dark:text-amber-100 dark:hover:bg-amber-900/40"
+          >
             {t('cancel')}
           </Button>
         ) : null}
+        <button
+          type="button"
+          onClick={() => seletorRef.current?.click()}
+          disabled={salvando || cheia}
+          aria-label={t('noteAttach')}
+          title={t('noteAttach')}
+          className="flex h-8 w-8 items-center justify-center rounded-md text-amber-900 transition-colors hover:bg-amber-100 disabled:opacity-40 dark:text-amber-100 dark:hover:bg-amber-900/40"
+        >
+          <Paperclip className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => void gravar()}
+          disabled={salvando || cheia || gravando || finalizando}
+          aria-label={t('noteRecord')}
+          title={t('noteRecord')}
+          className="flex h-8 w-8 items-center justify-center rounded-md text-amber-900 transition-colors hover:bg-amber-100 disabled:opacity-40 dark:text-amber-100 dark:hover:bg-amber-900/40"
+        >
+          <Mic className="h-4 w-4" />
+        </button>
         <span className="ml-auto text-[10px] text-amber-900/60 dark:text-amber-100/50">
           {t('noteMentionHint')}
         </span>
       </div>
+
+      {/* O clipe: a MESMA lista de tipos da rota (`ACEITE_DA_ANOTACAO`). */}
+      <input
+        ref={seletorRef}
+        type="file"
+        multiple
+        accept={ACEITE_DA_ANOTACAO}
+        className="hidden"
+        onChange={(e) => {
+          receberArquivos(Array.from(e.target.files ?? []));
+          e.target.value = '';
+        }}
+      />
     </div>
   );
 }

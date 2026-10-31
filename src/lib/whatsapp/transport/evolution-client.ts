@@ -25,6 +25,9 @@
 // appears only inside inbound webhook payloads.
 // ============================================================
 
+import http from 'node:http';
+import https from 'node:https';
+
 export interface EvolutionClientConfig {
   /** Evolution server origin, no trailing slash, e.g. `https://evo.example.com`. */
   baseUrl: string;
@@ -81,6 +84,20 @@ export interface EvolutionRevokeResponse {
 interface EvolutionSendResponse {
   key?: { id?: string; remoteJid?: string; fromMe?: boolean };
   messageId?: string;
+}
+
+/**
+ * O que um envio devolve: o id E o endereço que a Evolution USOU.
+ *
+ * ⚠️ `remoteJid` não é o número que mandamos. A Evolution confere o número no
+ * WhatsApp antes de enviar (`whatsappNumber`, testando as duas grafias do
+ * nono dígito) e manda para o endereço que existe — o número antigo de DDD 31
+ * em diante vive SEM o 9. Apagar e editar procuram a mensagem NESTE endereço:
+ * ver `endereco-do-envio.ts`. Nulo quando a resposta não o traz.
+ */
+export interface EvolutionEnviada {
+  id: string;
+  remoteJid: string | null;
 }
 
 export class EvolutionApiError extends Error {
@@ -236,6 +253,66 @@ export class EvolutionClient {
   }
 
   /**
+   * GET com CORPO JSON, pelo `node:http(s)`.
+   *
+   * ⚠️ Existe por causa da Evolution 2.4: ela roda no Express 5, que deixa
+   * `req.body` INDEFINIDO num pedido sem corpo, e as rotas de grupo
+   * (`groupValidate`) fazem `Object.assign(body, …)` em cima dele — todo
+   * `GET /group/…` sem corpo responde "Cannot convert undefined or null to
+   * object" (lido no fonte de `e273b904` e medido em 29/10/2026: nenhum grupo
+   * era detalhado desde a troca de versão). O `fetch` do Node recusa corpo em
+   * GET e descarta o `Content-Length`, que o Express exige para ler o corpo.
+   * ⚠️ Ao contrário do `fetch`, NÃO segue redirecionamento: um `server_url`
+   * atrás de um 301/302 (http → https num proxy) dá "Evolution API error:
+   * 301" só nesta chamada — o conserto é gravar o endereço final.
+   */
+  private async getComCorpo<T>(
+    path: string,
+    corpo: unknown,
+    timeoutMs: number = DEFAULT_TIMEOUT_MS
+  ): Promise<T> {
+    const url = new URL(`${this.baseUrl}/${path}`);
+    const dados = JSON.stringify(corpo);
+    let resposta: { status: number; texto: string };
+    try {
+      resposta = await new Promise((resolve, reject) => {
+        const pedido = (url.protocol === 'https:' ? https : http).request(
+          url,
+          {
+            method: 'GET',
+            headers: {
+              apikey: this.apikey,
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(dados),
+            },
+            signal: AbortSignal.timeout(timeoutMs),
+          },
+          (res) => {
+            let texto = '';
+            res.setEncoding('utf8');
+            res.on('data', (pedaco: string) => (texto += pedaco));
+            res.on('end', () => resolve({ status: res.statusCode ?? 0, texto }));
+            res.on('error', reject);
+          }
+        );
+        pedido.on('error', reject);
+        pedido.end(dados);
+      });
+    } catch (err) {
+      if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
+        throw new EvolutionApiError(`Evolution não respondeu em ${timeoutMs}ms (GET ${path})`, 504);
+      }
+      throw err;
+    }
+
+    if (resposta.status < 200 || resposta.status >= 300) {
+      // A mesma leitura do erro do `request` (o `Response` só embrulha o texto).
+      await this.throwError(new Response(resposta.texto, { status: resposta.status || 502 }));
+    }
+    return (resposta.texto ? JSON.parse(resposta.texto) : {}) as T;
+  }
+
+  /**
    * ⚠️ O texto vira `automation_logs.steps_executed[].detail` (o "Já rodou"),
    * a coluna `error` da agendada e o `message` do `evolution_rejected` da API
    * v1. A frase do número sem WhatsApp é lida por `texto-do-motor.ts`
@@ -284,6 +361,14 @@ export class EvolutionClient {
     return id;
   }
 
+  private extractEnviada(res: EvolutionSendResponse): EvolutionEnviada {
+    const remoteJid = res.key?.remoteJid;
+    return {
+      id: this.extractId(res),
+      remoteJid: typeof remoteJid === 'string' && remoteJid ? remoteJid : null,
+    };
+  }
+
   // ----------------------------------------------------------
   // Messaging (instance key)
   // ----------------------------------------------------------
@@ -292,7 +377,7 @@ export class EvolutionClient {
     number: string;
     text: string;
     quoted?: EvolutionMessageKey;
-  }): Promise<string> {
+  }): Promise<EvolutionEnviada> {
     const res = await this.request<EvolutionSendResponse>(
       'POST',
       'message/sendText',
@@ -316,7 +401,7 @@ export class EvolutionClient {
         linkPreview: false,
       }
     );
-    return this.extractId(res);
+    return this.extractEnviada(res);
   }
 
   async sendMedia(args: {
@@ -327,7 +412,7 @@ export class EvolutionClient {
     caption?: string;
     fileName?: string;
     quoted?: EvolutionMessageKey;
-  }): Promise<string> {
+  }): Promise<EvolutionEnviada> {
     const res = await this.request<EvolutionSendResponse>(
       'POST',
       'message/sendMedia',
@@ -343,7 +428,7 @@ export class EvolutionClient {
       true,
       MEDIA_SEND_TIMEOUT_MS
     );
-    return this.extractId(res);
+    return this.extractEnviada(res);
   }
 
   /** WhatsApp voice-note / PTT. Separate endpoint from sendMedia. */
@@ -351,7 +436,7 @@ export class EvolutionClient {
     number: string;
     audio: string;
     quoted?: EvolutionMessageKey;
-  }): Promise<string> {
+  }): Promise<EvolutionEnviada> {
     const res = await this.request<EvolutionSendResponse>(
       'POST',
       'message/sendWhatsAppAudio',
@@ -363,7 +448,7 @@ export class EvolutionClient {
       true,
       MEDIA_SEND_TIMEOUT_MS
     );
-    return this.extractId(res);
+    return this.extractEnviada(res);
   }
 
   /** Empty `reaction` removes an existing reaction. */
@@ -521,16 +606,14 @@ export class EvolutionClient {
    * participantes — que é onde vive o mapeamento LID → telefone
    * (`participants[].jid` traz o número real).
    *
-   * O JID vai na query, então a instância é montada à mão e `appendInstance`
-   * fica false: o construtor de URL do `request` só sabe pendurar a instância
-   * no fim do caminho.
+   * O JID vai na query E no corpo: a 2.4 só aceita GET de grupo com corpo
+   * (`getComCorpo`) e lê o `groupJid` dele primeiro; a query fica para a
+   * versão que não lê o corpo.
    */
   async findGroupInfos(groupJid: string): Promise<unknown> {
-    return this.request(
-      'GET',
+    return this.getComCorpo(
       `group/findGroupInfos/${encodeURIComponent(this.instance)}?groupJid=${encodeURIComponent(groupJid)}`,
-      undefined,
-      false,
+      { groupJid },
     );
   }
 

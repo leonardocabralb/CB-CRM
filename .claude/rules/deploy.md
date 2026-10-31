@@ -6,6 +6,7 @@ paths:
   - "docker/**"
   - "ops/**"
   - "next.config.ts"
+  - "AGENTS.md"
   - ".nvmrc"
   - "package.json"
   - "mcp-server/package.json"
@@ -37,9 +38,10 @@ moram lá, não aqui.
 - Vários merges seguidos não geram um deploy por PR: o GitHub guarda UM run
   pendente por grupo de concorrência, o do meio morre na FILA e o último
   publica todos. O histórico do Actions não diz o que foi publicado quando.
-- ⚠️ `NEXT_PUBLIC_*` é inlinado no BUILD (idioma, nome do app, nome curto):
-  muda no `pipeline.yml` e exige rebuild; o `crm.env` não muda nada disso.
-  "Produção diferente do meu local": confira o build-arg antes do env.
+- ⚠️ `NEXT_PUBLIC_*` é inlinado no BUILD (idioma, Supabase, endereço do
+  site): muda no `pipeline.yml` e exige rebuild; o `crm.env` não muda nada
+  disso. "Produção diferente do meu local": confira o build-arg antes do
+  env. Nome e logo NÃO são build-arg: são dado (`.claude/rules/marca.md`).
 
 ### Node: uma major, no `.nvmrc`
 Teste de Intl, fuso ou colação muda entre majors do V8 (já reprovou no CI o que
@@ -59,11 +61,17 @@ passou na máquina). Por isso:
   `AGENTS.md` rastreado — que o `CLAUDE.md` importa — e toda worktree com dev
   server fica suja. Merge que traga o arquivo cru do upstream tira a linha; o
   sintoma é ` M AGENTS.md` sozinho no `git status`.
+- ⚠️ O `AGENTS.md` vive SEM os marcadores `BEGIN/END:nextjs-agent-rules`: com
+  `agentRules: false`, o `next dev` da 16.4+ apaga o bloco marcado e, como ele
+  era o arquivo inteiro, o arquivo (sintoma ` D AGENTS.md`). Merge que traga o
+  `AGENTS.md` cru do upstream devolve os marcadores.
 - Páginas saem com `Cache-Control: private, no-store` (#626 do original):
   `public` deixaria um cache compartilhado servir a página de uma pessoa a
-  outra. Exceções: `opus/` e `inbox-doodle.svg`, senão o navegador baixa o
-  gravador a cada nota de voz. Arquivo novo de `public/` usado a toda hora
-  entra na exceção. Pino `src/next-config.test.ts`.
+  outra. Exceções: `opus/`, `inbox-doodle.svg` e `marca/` (o logo padrão em
+  toda página), senão o navegador baixa o gravador a cada nota de voz.
+  Arquivo novo de `public/` usado a toda hora entra na exceção. Pino NOSSO
+  `src/next-config.excecoes.test.ts` (o `next-config.test.ts` é o do
+  original, igual).
 
 ### Agendador: nada dispara sozinho
 - O serviço `agendador` do `docker-stack.yml` bate nas rotas de cron em dois
@@ -77,6 +85,18 @@ passou na máquina). Por isso:
   `docker stack deploy` manual na VPS, com o `crm.env` carregado.
 - ⚠️ A rota `cb/asaas/cron` carrega a leitura do Atlas em `after()`
   (`integracoes-atlas.md`): tirá-la do laço lento cala o Atlas junto.
+- ⚠️ A rota `cb/scheduled/cron` (laço lento) roda no `after()`
+  `rodarManutencaoDoCiclo` (`src/lib/scheduled/manutencao-do-ciclo.ts`): sob
+  UM prazo comum (`PRAZO_DA_MANUTENCAO_MS`) e nesta ordem, cada passo
+  isolado, as tarefas recorrentes (1074) → o vencimento da Lixeira de
+  contatos (`cb_vencer_lixeira`, UM item por chamada, repetida enquanto há
+  prazo) → a poda do conteúdo dos turnos da IA (1110, `ia-central.md`) → a
+  drenagem da fila de arquivos (`midia.md`). O prazo fica abaixo
+  dos 10 min em que a fila recolhe o lote reivindicado e dos 15 min do laço.
+  O `after()` não disputa o `-m 120` com o disparo. Tirar a rota do laço cala
+  os quatro sem erro: a Lixeira deixa de vencer, o texto do cliente fica nos
+  turnos além do prazo e os arquivos ficam no bucket
+  (também os anexos das anotações apagadas, 1102).
 
 ### Ambiente do contêiner
 - O `docker-stack.yml` passa o ambiente por `environment:` EXPLÍCITO, sem
@@ -135,9 +155,10 @@ passou na máquina). Por isso:
   `supabase/` e na raiz. Escopo estreito de propósito — `docs/`, `ops/`,
   `CLAUDE.md`, `docker-stack.yml` e os workflows ainda descrevem a nossa infra.
   Exceção nova entra em `EXCECOES` com o motivo, nunca alargando o padrão.
-- A marca da nossa produção vem dos build-args `NEXT_PUBLIC_APP_NAME` e
-  `NEXT_PUBLIC_APP_SHORT_NAME` no `pipeline.yml`; o padrão no código
-  (`src/lib/marca.ts`) é genérico.
+- A marca é DADO da instalação (`cb_marca`, 1094), nunca build-arg: a
+  mesma imagem serve a qualquer marca, e a nossa produção usa o padrão do
+  produto (Atlas CRM, `src/lib/marca.ts`). Build-arg de nome ou logo que
+  volte ao `pipeline.yml`/`Dockerfile` não é lido por nada.
 - `scripts/vps-inventario.sh` é SÓ leitura, com lista fixa de comandos, e
   imprime os NOMES das variáveis, nunca os valores. Acrescentar comando ali é
   ampliar uma permissão já concedida.

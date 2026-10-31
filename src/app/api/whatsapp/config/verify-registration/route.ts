@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import {
   getSubscribedApps,
@@ -46,6 +47,11 @@ export async function GET() {
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+
+  // Porte do upstream #660: cada pedido faz duas idas à Graph API, e a rota
+  // responde a qualquer membro — sem tela que a chame, segue alcançável.
+  const limit = checkRateLimit(`whatsapp-admin:${user.id}`, RATE_LIMITS.whatsappAdmin)
+  if (!limit.success) return rateLimitResponse(limit)
 
   // whatsapp_config is one-row-per-account post-017. Resolve the
   // caller's account_id so a teammate who joined an existing account

@@ -135,7 +135,12 @@ export type MotivoDeInterrupcao =
    * (`cb_unir_fichas`), não o motor — está aqui para o tipo ser o
    * vocabulário inteiro do CHECK.
    */
-  | 'fusao';
+  | 'fusao'
+  /**
+   * A ficha foi para a LIXEIRA (1097): quem grava também é o BANCO
+   * (`cb_lixeira_mover_um`), e restaurar a ficha NÃO religa a execução.
+   */
+  | 'lixeira';
 
 /**
  * MARCA as execuções como interrompidas — a fonte da verdade (1005).

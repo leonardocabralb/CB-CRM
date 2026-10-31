@@ -101,10 +101,15 @@ describe('modo anônimo: quem zera as não lidas', () => {
     // A 2ª guarda: o "Marcar como não lida" EM CURSO nesta conversa (Codex,
     // #405) — sem ela, o 1 que o tempo real traz antes da resposta seria
     // zerado aqui e o gesto se desfaria.
+    // E a aba ESCONDIDA não lê (30/10/2026): a aba esquecida atrás de outra
+    // zerava a mensagem do cliente e o "marcar como não lida" de outra
+    // pessoa. Sem `abaVisivel` nas dependências, voltar para a aba não
+    // zeraria a não lida que chegou enquanto ela estava atrás.
     expect(f).toMatch(
-      /if \(!conversationId \|\| !hasUnread \|\| modoAnonimo\) return;\s*if \(naoLidaEmCursoRef\.current === conversationId\) return;\s*zerarNaoLidas\(conversationId\);/,
+      /if \(!conversationId \|\| !hasUnread \|\| modoAnonimo \|\| !abaVisivel\) return;\s*if \(naoLidaEmCursoRef\.current === conversationId\) return;\s*zerarNaoLidas\(conversationId\);/,
     );
-    expect(f).toContain('}, [conversationId, hasUnread, modoAnonimo]);');
+    expect(f).toContain('}, [conversationId, hasUnread, modoAnonimo, abaVisivel]);');
+    expect(f).toContain('const abaVisivel = useAbaVisivel();');
     // Responder pelo compositor e "Executar agora" da agendada: só no modo.
     expect(f).toContain('if (modoAnonimo) zerarNaoLidas(conversationIdDoEnvio);');
     expect(f).toMatch(
@@ -124,13 +129,14 @@ describe('modo anônimo: quem zera as não lidas', () => {
     ).toHaveLength(envios);
   });
 
-  it('a conversa LIDA some no modo e fora do perfil — a régua do cartão de bloqueio', () => {
+  it('a conversa LIDA some no modo, fora do perfil e com a aba escondida', () => {
     const p = fonte(PAGINA);
     expect(p).toMatch(
       /const foraDoPerfil =\s*activeConversation !== null && !conversaNoEscopo\(acesso, activeConversation\);/,
     );
+    expect(p).toContain('const abaVisivel = useAbaVisivel();');
     expect(p).toMatch(
-      /const conversaLida =\s*modoAnonimo \|\| foraDoPerfil \? null : \(activeConversation\?\.id \?\? null\);/,
+      /const conversaLida =\s*modoAnonimo \|\| foraDoPerfil \|\| !abaVisivel \? null : \(activeConversation\?\.id \?\? null\);/,
     );
     // O cartão que SUBSTITUI o fio e a ficha que some usam a MESMA variável:
     // uma cópia inline divergiria, e a presença ou a lista contariam como
@@ -141,9 +147,13 @@ describe('modo anônimo: quem zera as não lidas', () => {
 
   it('a página só esvazia o espelho da lista fora do modo', () => {
     const p = fonte(PAGINA);
-    expect(ocorrencias(p, '{ ...c, unread_count: 0 }')).toBe(2);
+    // Três escritores do espelho: o clique, o deep link e (28/10/2026) a
+    // ABERTURA RÁPIDA do deep link, que abre a conversa antes da lista e paga
+    // o espelho quando ela chega — cada um com a guarda do modo.
+    expect(ocorrencias(p, '{ ...c, unread_count: 0 }')).toBe(3);
     expect(p).toContain('if (!bloqueadaAoSelecionar && !modoAnonimo) {');
     expect(p).toMatch(/!modoAnonimo &&\s*conversaNoEscopo\(acesso, match\) &&/);
+    expect(p).toMatch(/!modoAnonimo &&\s*conversaNoEscopo\(acesso, daLista\) &&/);
     expect(p).toContain('const lida = conversaLida === conv.id;');
     expect(p).toContain('unread_count: lida ? 0 : conv.unread_count,');
     // `aberta` é o nome que o pino de `ordem-da-lista.test.ts` cobra.
@@ -160,14 +170,16 @@ describe('modo anônimo: a presença na conversa', () => {
       .sort();
     expect(escritores).toEqual([PAGINA, PAINEL].sort());
     expect(fonte(PAGINA)).toContain('useMarcarConversaAberta(conversaLida);');
-    // O painel com a MESMA régua da página: nula no modo e fora do perfil.
+    // O painel com a MESMA régua da página: nula no modo, fora do perfil e
+    // com a aba escondida.
     const p = fonte(PAINEL);
     expect(p).toContain('useMarcarConversaAberta(conversaLida);');
     expect(p).toMatch(
       /const foraDoPerfil =\s*conversation !== null && !conversaNoEscopo\(acesso, conversation\);/,
     );
+    expect(p).toContain('const abaVisivel = useAbaVisivel();');
     expect(p).toMatch(
-      /const conversaLida =\s*modoAnonimo \|\| foraDoPerfil \? null : \(conversation\?\.id \?\? null\);/,
+      /const conversaLida =\s*modoAnonimo \|\| foraDoPerfil \|\| !abaVisivel \? null : \(conversation\?\.id \?\? null\);/,
     );
     // E fora do perfil o fio não monta: ele zeraria as não lidas.
     expect(p).toMatch(/if \(foraDoPerfil\) \{\s*return \(/);
@@ -177,6 +189,19 @@ describe('modo anônimo: a presença na conversa', () => {
       /rpc\(\s*["'`]cb_marcar_conversa_aberta["'`]/.test(cru(relativo)),
     );
     expect(rpc).toEqual(['hooks/use-conversa-aberta.ts']);
+  });
+
+  it('a aba escondida não escreve a presença — nem a batida, nem o "saí"', () => {
+    // A linha é UMA por pessoa (30/10/2026): a aba esquecida atrás de outra
+    // batia com a conversa DELA e apagava a da aba da frente — a faixa não
+    // mostrava quem estava zerando a conversa. O `null` de quem esconde
+    // também não sai: chegaria depois da marcação da aba que veio para a
+    // frente.
+    const h = fonte('hooks/use-conversa-aberta.ts');
+    expect(h).toContain('const abaVisivel = useAbaVisivel();');
+    expect(h).toMatch(/if \(!accountId\) return;\s*if \(!abaVisivel\) return;\s*const supabase = createClient\(\);/);
+    expect(h).toContain('if (document.visibilityState !== "hidden") marcar(null);');
+    expect(h).toContain('}, [conversationId, accountId, abaVisivel]);');
   });
 });
 

@@ -26,6 +26,7 @@ import {
   MEDIA_MAX_BYTES_BY_KIND,
   MEDIA_MAX_BYTES_ENTRADA,
 } from '@/lib/storage/upload-media';
+import { tipoParaGuardar } from '@/lib/storage/tipos-do-chat-media';
 import type { EvolutionClient } from './evolution-client';
 
 const BUCKET = 'chat-media';
@@ -87,7 +88,10 @@ export interface EvolutionMediaSalva {
    * a Evolution não o informou (comum em foto e áudio, que não têm nome).
    */
   filename: string | null;
-  /** Mimetype já sem parâmetros (`audio/ogg`, não `audio/ogg; codecs=opus`). */
+  /**
+   * Mimetype já sem parâmetros (`audio/ogg`, não `audio/ogg; codecs=opus`). O
+   * DECLARADO, mesmo quando o objeto foi guardado como binário (1115).
+   */
   mime: string;
 }
 
@@ -134,9 +138,17 @@ export async function fetchAndStoreEvolutionMedia(args: {
     const nome = fileName || `media.${extFromMime(mime)}`;
     const path = buildMediaPath(args.accountId, nome);
 
+    // ⚠️ Guardado pelo tipo que o BUCKET aceita (1115): fora da lista dele, o
+    // Storage recusava e o anexo virava "Documento indisponível" (ZIP do
+    // Windows, e-mail do Outlook). O que não está lá vai como binário, e o
+    // tipo verdadeiro segue em `mime`, para `media_type`.
     const { error } = await args.db.storage
       .from(BUCKET)
-      .upload(path, bytes, { contentType: mime, upsert: false, cacheControl: '3600' });
+      .upload(path, bytes, {
+        contentType: tipoParaGuardar(mime),
+        upsert: false,
+        cacheControl: '3600',
+      });
     if (error) {
       console.error('[evolution-media] upload falhou:', error.message);
       return null;

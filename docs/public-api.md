@@ -98,7 +98,10 @@ failure on our side — the database timing out, for instance — is a
 create the thing again. Retry a `500`. The same goes for the key: if the
 CRM cannot read it at that moment, the answer is `500`, not `401` — retry
 instead of rotating the key. An `{id}` in the path that is not a UUID is a
-`400 bad_request`, on every endpoint.
+`400 bad_request`, on every endpoint. A contact in the CRM's trash counts as
+not existing — but it can come back with the same id within 90 days (see
+[contacts](#get--patch-apiv1contactsid)): don't recreate it on the first
+`404`.
 
 ## Rate limits
 
@@ -187,7 +190,8 @@ then sends.
 > from the CRM composer. Only if that number has a default pipeline set
 > (*Settings → Connections*); without one, no deal is created. Nor for a
 > **business** number: a contact who has sent an automated business message
-> (a template with buttons — billing, marketing) never gets a deal this way;
+> (a template with buttons or a bot's menu of options — billing, marketing)
+> never gets a deal this way;
 > create it by hand if it is a client. At most one
 > deal per contact is ever created this way; contacts that already have a
 > deal are left untouched. This is intentional (PR #79); if your
@@ -490,6 +494,28 @@ not a UUID returns `400 bad_request` (here and on `/custom-fields` and
 > from the other contact included. To only add, send `"tags_mode": "add"` or
 > use `POST /api/v1/contacts/{id}/tags`.
 
+> **A deleted contact can come back with the same id.** Deleting a contact
+> in the CRM moves it to the **trash** for 90 days. While it is there, the
+> API treats it as deleted: `GET` and `PATCH /api/v1/contacts/{id}` (and
+> `/tags` and `/custom-fields`) answer `404`, it is neither listed nor found
+> by `?search=`, and its conversations, messages, tasks, notes and scheduled
+> messages are gone from the API too. Its deals and meetings stay, with
+> `contact_id: null`. Within those 90 days an admin can **restore** it: it
+> comes back with the **same `id`**, its conversations and messages as they
+> were (same ids), and its deals and meetings point to it again. Nothing is
+> sent to the customer on the way back: a scheduled message that had not
+> gone out returns as `failed`. No webhook event is sent when a contact goes
+> to the trash or comes back. After 90 days — or when an admin deletes it
+> from the trash — it is gone for good.
+>
+> ⚠️ So a `404` for a contact id you stored is **not** a reason to recreate
+> the contact right away. A new contact with the same phone — the customer
+> writing again, or the find-or-create of `POST /api/v1/contacts` — takes
+> that phone, and the original can no longer come back on its own: an admin
+> can only **restore it merged** into the new contact. From then on its old
+> id answers with the contact that stayed, as described in *Ids of merged
+> contacts* above — store the new `id`.
+
 > ⚠️ `tags` here replaces the whole set — sending `["Lead"]` removes
 > every other tag the contact had — unless you send `"tags_mode": "add"`.
 > To add AND drop individual tags in one call, use
@@ -747,12 +773,18 @@ again.
 `content_type: "contact"`. `content_text` carries one line per shared contact,
 in the form `👤 Name · +55 85 90000-0000` (the phone numbers, when the card has
 any). A message built by a company's system — a WhatsApp Business template
-with buttons, or an interactive message — is listed with
-`content_type: "template"` even when the customer's side sent it; its
-`content_text` carries the body, the footer and one line per button. A
-WhatsApp message type the CRM can't read yet is listed as
-`content_type: "text"` with `content_text` set to
-`[Unsupported message type: <type>]`.
+with buttons, an interactive message, or a bot's menu of options (a list) —
+is listed with `content_type: "template"` even when the customer's side sent
+it; its `content_text` carries the body, the footer and one line per button
+or option, in the form `[Yes]` (or `[See invoice] https://…` for a button
+that leads somewhere). On a WhatsApp connection by QR code, **picking** one
+of those options — a tap on a button or on a list item, on the office's phone
+or by the contact — is listed as `content_type: "text"`, with the chosen
+option in `content_text` and `reply_to_message_id` pointing to the message
+that offered it. A WhatsApp message type the CRM can't read yet is listed
+with `content_text` set to `[Unsupported message type: <type>]` — as
+`content_type: "text"`, or `"template"` for a company's message with nothing
+the CRM can read.
 
 ### `POST /api/v1/broadcasts`
 
@@ -1155,12 +1187,46 @@ Notes are internal to the team — they are never sent to the customer.
 Notes on **group** conversations are not listed: groups stay out of this
 API, as in [`GET /api/v1/conversations`](#get-apiv1conversations).
 
+A note made in the dashboard can carry **attachments** — a voice recording,
+images, videos or documents, up to 10 — and may then have an **empty
+`texto`** (a note with only an audio clip, for example). Read `anexos` to
+know:
+
+```jsonc
+{
+  "id": "…",
+  "conversation_id": "…",
+  "contact_id": "…",
+  "author_user_id": "…",
+  "autor_nome": "Ana",
+  "texto": "",                     // may be empty when there are attachments
+  "anexos": [
+    {
+      "nome": "audio-20261023-153012.ogg",
+      "tipo": "audio/ogg",          // MIME type
+      "tamanho": 48213,             // bytes
+      "url": "https://…/storage/v1/object/public/chat-media/…"
+    }
+  ],
+  "editada_em": null,              // when the note was last edited; null = never
+  "created_at": "2026-10-23T15:30:12.000Z"
+}
+```
+
+`anexos` is `[]` on a note with text only. Each `url` is the file's public
+address (anyone with the link can fetch it, like the other chat
+attachments); an HTML page comes with `?download=` so it downloads instead
+of opening. `editada_em` is when the note was last edited (`null` = never):
+in the dashboard, a note's author can edit its text and attachments — the
+`id` and `created_at` stay the same. Notes cannot be edited through this API.
+
 ### `POST /api/v1/notes`
 
 Create an internal note on a conversation. Scope: `notes:write`. Pass
 `conversation_id`, **or** `contact_id` to note on that contact's
 conversation (each contact has at most one). `texto` is required
-(≤ 4000 chars). @-mentions are dashboard-only. A contact with no
+(≤ 4000 chars). @-mentions and attachments are dashboard-only: a note
+created here is text only (`anexos: []`). A contact with no
 conversation yet — typically one created through `POST /api/v1/contacts`
 and never messaged — returns `409` with code
 `contact_without_conversation` (a lead that arrived by an incoming webhook
@@ -1239,9 +1305,9 @@ multi-channel. On `deal.*` it is `null` whenever, at the moment of the
 move, the contact had no conversation tied to a number: a lead created by
 an incoming webhook (a form, Typebot) or by a Calendly booking before
 writing to you, a contact created through this API, a card with no contact
-(a group card, or a deleted contact). A flow that filters by number must
-decide what to do with those — dropping them silently drops exactly the
-new leads.
+(a group card, or a deleted contact — also one in the trash). A flow that
+filters by number must decide what to do with those — dropping them
+silently drops exactly the new leads.
 
 The `deal.*` events fire for **every** way a card moves: dragging on the
 board, the deal form, the list view, the conversation side panel, the
@@ -1326,7 +1392,7 @@ The three `deal.*` events share one shape:
   "assignee": { "user_id": "…", "name": "Ana" },   // or null
   "pipeline": { "id": "…", "name": "Comercial" },  // where the card went IN THIS EVENT
   "stage": { "id": "…", "name": "Reunião Agendada", "position": 3 },
-  "contact": {                     // GET /api/v1/contacts/{id} shape, or null (group card / deleted contact)
+  "contact": {                     // GET /api/v1/contacts/{id} shape, or null (group card / deleted contact, also one in the trash)
     "id": "…", "name": "…", "phone": "…", "email": "…", "tags": [{ "id": "…", "name": "Typebot", "color": "#3b82f6" }],
     "custom_fields": { "tamanho_da_divida": "150000", "utm_source": null },
     "…": "…"
@@ -1355,7 +1421,7 @@ the change:
   (flow's) "Move card" block (which also creates the card when the contact
   has none), or an AI agent's "Move the deal" tool — including an
   automation that one of your API calls set off (a tag applied through this
-  API, for instance). The Calendly, ZapSign and Atlas integrations move
+  API, for instance). The Calendly, ZapSign and Atlas Gestor integrations move
   cards only through automations, so their moves come as `automation` too;
 - `api` — deal writes through this API (`POST`/`PATCH /api/v1/deals`);
 - `system` — anything else done without a signed-in user: a fix run

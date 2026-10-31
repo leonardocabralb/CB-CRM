@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ModeToggle } from "@/components/layout/mode-toggle";
 import { ABRE_PARA_BAIXO } from "@/components/layout/popup-do-cabecalho";
+import { BotaoDeRecolherMenu } from "@/components/layout/menu-recolhivel";
 import { ChannelHealthIndicator } from "@/components/channels/channel-health-indicator";
 import { SchedulerHealthIndicator } from "@/components/scheduled/scheduler-health-indicator";
 
@@ -32,6 +33,10 @@ const pageTitles: Record<string, string> = {
   "/inbox": "inbox",
   "/notifications": "notifications",
   "/tarefas": "tasks",
+  // A Lixeira de contatos (1097). ANTES de `/contacts`, como `/agendadas`
+  // antes de `/agenda`: fora da casa exata, `getPageTitleKey` casa por
+  // `startsWith` na ordem de inserção.
+  "/contacts/lixeira": "lixeira",
   "/contacts": "contacts",
   "/pipelines": "pipelines",
   "/broadcasts": "broadcasts",
@@ -104,6 +109,8 @@ export function Header({ onOpenSidebar }: HeaderProps) {
         >
           <Menu className="h-5 w-5" />
         </button>
+        {/* Do `lg` para cima: recolhe o menu lateral aos ícones. */}
+        <BotaoDeRecolherMenu />
         <h1 className="truncate text-base font-semibold text-foreground sm:text-lg">
           {t(titleKey as string)}
         </h1>

@@ -20,6 +20,7 @@ import {
 import { PipelineSettings } from "@/components/pipelines/pipeline-settings";
 import { AutomationsBoard } from "@/components/pipelines/automations-board";
 import { DealForm } from "@/components/pipelines/deal-form";
+import { useJanelaDoMotivo } from "@/components/pipelines/janela-do-motivo";
 import { PipelineAnalytics } from "@/components/pipelines/pipeline-analytics";
 import { Button } from "@/components/ui/button";
 import {
@@ -65,6 +66,7 @@ import {
   manterMovimentosLocais,
   movidosParaALeitura,
   normalizarDealDoQuadro,
+  temConteudo,
   type CardDoQuadro,
   type CardSemConteudo,
   type DealDoQuadro,
@@ -80,6 +82,7 @@ import {
 import { gravarRetorno, lerRetorno } from "@/lib/pipelines/retorno";
 import { lerUrlDoFunil } from "@/lib/pipelines/url";
 import { CamposDoCardPopover } from "@/components/pipelines/campos-do-card-popover";
+import { etapasPadrao } from "@/lib/pipelines/etapas-padrao";
 
 // Pipeline creation is admin-class (settings-tier write under
 // the new RLS); deal creation is operational and only requires
@@ -96,15 +99,6 @@ let embedDoQuadroRecusado = false;
 // sessão inteira no plano B por um soluço, e o conteúdo é pedido a cada
 // "mostrar mais".
 const RECUSA_DO_EMBED = new Set(["PGRST200", "PGRST201", "42703"]);
-
-// Spec-defined seed — name and color per the product spec.
-const SPEC_DEFAULT_STAGES = [
-  { name: "New Lead", color: "#3b82f6", position: 0 }, // blue
-  { name: "Qualified", color: "#eab308", position: 1 }, // yellow
-  { name: "Proposal Sent", color: "#f97316", position: 2 }, // orange
-  { name: "Negotiation", color: "#8b5cf6", position: 3 }, // purple
-  { name: "Won", color: "#22c55e", position: 4 }, // green
-];
 
 // `useSearchParams` (a volta do construtor de automações pede aba e funil
 // pela URL) pede um Suspense em página estática — o mesmo embrulho do inbox
@@ -527,9 +521,11 @@ function PipelinesPageInner() {
     // pipelines.account_id is NOT NULL post-017 with no DB default.
     if (!accountId) return null;
 
+    // O nome do funil e os das etapas são GRAVADOS: saem do dicionário do
+    // idioma da instalação, nunca de literal (ver `etapas-padrao.ts`).
     const { data: pipeline, error } = await supabase
       .from("pipelines")
-      .insert({ user_id: user.id, account_id: accountId, name: "Sales Pipeline" })
+      .insert({ user_id: user.id, account_id: accountId, name: t("funilPadrao") })
       .select()
       .single();
 
@@ -538,7 +534,7 @@ function PipelinesPageInner() {
       return null;
     }
 
-    const stagesPayload = SPEC_DEFAULT_STAGES.map((s) => ({
+    const stagesPayload = etapasPadrao(t).map((s) => ({
       pipeline_id: pipeline.id,
       name: s.name,
       color: s.color,
@@ -547,7 +543,7 @@ function PipelinesPageInner() {
     await supabase.from("pipeline_stages").insert(stagesPayload);
 
     return pipeline as Pipeline;
-  }, [supabase, accountId]);
+  }, [supabase, accountId, t]);
 
   // Initial load + seed-if-empty
   useEffect(() => {
@@ -640,9 +636,7 @@ function PipelinesPageInner() {
     if (!selectedPipelineId) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setStages([]);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setEtapasDe("");
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDeals([]);
       return;
     }
@@ -855,7 +849,7 @@ function PipelinesPageInner() {
     })();
   });
 
-  const handleDealMoved = useCallback(
+  const persistirMovimento = useCallback(
     async (dealId: string, newStageId: string) => {
       // Mudança local: a recarga da volta ao app que estiver no ar já não
       // pode gravar por cima (ver `versaoDoQuadroRef`).
@@ -914,6 +908,36 @@ function PipelinesPageInner() {
       avisarDrenagemDeFunil();
     },
     [supabase, stages, refreshDeals, t],
+  );
+
+  // 1112 (Fase 2 dos motivos): etapa que pede motivo abre a janela ANTES de
+  // mover; o card espera nela na coluna de origem e só se move depois de o
+  // motivo estar gravado. Cancelar não mexe em nada. Todo movimento passa por
+  // `mover`, que avisa o quadro (`marcarSolto`) na hora em que acontece.
+  const { pedirMotivo, janela: janelaDoMotivo } = useJanelaDoMotivo();
+  const handleDealMoved = useCallback(
+    (dealId: string, newStageId: string, marcarSolto: () => void) => {
+      const destino = stages.find((s) => s.id === newStageId);
+      const deal = deals.find((d) => d.id === dealId);
+      const mover = (etapaId: string) => {
+        marcarSolto();
+        return persistirMovimento(dealId, etapaId);
+      };
+      if (!destino?.campo_do_motivo_id || !deal) {
+        void mover(newStageId);
+        return;
+      }
+      pedirMotivo({
+        etapas: [destino],
+        // O título do card é o nome da pessoa (1007). Só card COM conteúdo é
+        // arrastável (o quadro não registra `useDraggable` no que carrega),
+        // e é ele que traz o contato.
+        contato:
+          temConteudo(deal) && deal.contact_id ? { id: deal.contact_id, nome: deal.title } : null,
+        mover,
+      });
+    },
+    [stages, deals, pedirMotivo, persistirMovimento],
   );
 
   const handleAddDeal = useCallback(
@@ -981,7 +1005,7 @@ function PipelinesPageInner() {
       return;
     }
 
-    const stagesPayload = SPEC_DEFAULT_STAGES.map((s) => ({
+    const stagesPayload = etapasPadrao(t).map((s) => ({
       pipeline_id: pipeline.id,
       name: s.name,
       color: s.color,
@@ -998,6 +1022,7 @@ function PipelinesPageInner() {
   }
 
   const selectedPipeline = pipelines.find((p) => p.id === selectedPipelineId);
+  const etapasDoFunilNovo = etapasPadrao(t);
 
   if (loading) {
     return (
@@ -1255,7 +1280,12 @@ function PipelinesPageInner() {
               }}
             />
             <p className="mt-2 text-xs text-muted-foreground">
-              {t("defaultStagesDesc")}
+              {/* Os nomes da frase são os que vão ser GRAVADOS — saem da
+                  mesma lista, para o texto nunca prometer outras etapas. */}
+              {t("defaultStagesDesc", {
+                primeira: etapasDoFunilNovo[0].name,
+                ultima: etapasDoFunilNovo[etapasDoFunilNovo.length - 1].name,
+              })}
             </p>
           </div>
           <DialogFooter className="bg-popover/50 border-border">
@@ -1307,6 +1337,9 @@ function PipelinesPageInner() {
         origemFunil
         aoIrParaConversa={salvarRetornoDoQuadro}
       />
+
+      {/* 1112: o motivo de quem o quadro leva a uma etapa que pede motivo. */}
+      {janelaDoMotivo}
     </div>
   );
 }

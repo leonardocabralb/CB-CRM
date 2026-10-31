@@ -37,6 +37,8 @@ export interface Banco {
   rpcs: { nome: string; args: Linha }[];
   /** nome da rpc → erro. */
   falhasDeRpc: Record<string, { code?: string; message: string }>;
+  /** nome da rpc → o `data` que ela devolve (função: calculado dos argumentos). */
+  respostasDeRpc: Record<string, unknown | ((args: Linha) => unknown)>;
   db: SupabaseClient;
 }
 
@@ -64,6 +66,7 @@ export function criarBanco(tabelas: Record<string, Linha[]> = {}): Banco {
     escritas: [],
     rpcs: [],
     falhasDeRpc: {},
+    respostasDeRpc: {},
     db: null as unknown as SupabaseClient,
   };
 
@@ -129,6 +132,13 @@ export function criarBanco(tabelas: Record<string, Linha[]> = {}): Banco {
       gt: (c: string, v: string) => (filtros.push((l) => String(ler(l, c)) > v), q),
       gte: (c: string, v: string) => (filtros.push((l) => String(ler(l, c)) >= v), q),
       neq: (c: string, v: unknown) => (filtros.push((l) => ler(l, c) !== v), q),
+      in: (c: string, vs: unknown[]) => (filtros.push((l) => vs.includes(ler(l, c))), q),
+      /** Só a forma `.not(col, 'is', null)` (nomes do grupo). */
+      not: (c: string, operador: string, v: unknown) => {
+        if (operador !== 'is') throw new Error(`dublê: .not(${operador}) não suportado`);
+        filtros.push((l) => (ler(l, c) ?? null) !== v);
+        return q;
+      },
       like: (c: string, padrao: string) => {
         const sufixo = padrao.replace(/^%/, '');
         filtros.push((l) => String(ler(l, c) ?? '').endsWith(sufixo));
@@ -163,7 +173,13 @@ export function criarBanco(tabelas: Record<string, Linha[]> = {}): Banco {
     from: (tabela: string) => consulta(tabela),
     rpc: (nome: string, args: Linha) => {
       banco.rpcs.push({ nome, args });
-      return Promise.resolve({ data: null, error: banco.falhasDeRpc[nome] ?? null });
+      const falha = banco.falhasDeRpc[nome];
+      if (falha) return Promise.resolve({ data: null, error: falha });
+      const resposta = banco.respostasDeRpc[nome];
+      return Promise.resolve({
+        data: typeof resposta === 'function' ? resposta(args) : (resposta ?? null),
+        error: null,
+      });
     },
   } as unknown as SupabaseClient;
   return banco;

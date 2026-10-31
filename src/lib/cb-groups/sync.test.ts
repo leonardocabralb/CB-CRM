@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { parseChatsParaGrupos, parseGroupInfo } from './sync';
+import {
+  camposDoDetalhe,
+  lerParticipantes,
+  parseChatsParaGrupos,
+  parseGroupInfo,
+  podeRenomearAoVivo,
+} from './sync';
 
 const GRUPO = '120363123456789012@g.us';
 
@@ -108,16 +114,25 @@ describe('parseGroupInfo', () => {
     expect(parseGroupInfo(INFO7, '5511222223333').ourLid).toBe('333@lid');
   });
 
-  it('sem o nosso número, não chuta quem somos', () => {
+  it('sem o nosso número, não chuta quem somos: "somos admin?" é DESCONHECIDO', () => {
     const d = parseGroupInfo(INFO, null);
     expect(d.ourLid).toBeNull();
-    expect(d.weAreAdmin).toBe(false);
+    expect(d.weAreAdmin).toBeNull();
   });
 
-  it('nosso número que não está no grupo não vira admin nem lid', () => {
+  it('⚠️ não achar a nossa linha é "não sei", nunca "não admin"', () => {
+    // O número está no grupo (senão a Evolution nem leria os dados): um
+    // `false` de "não achei" passaria por cima do `true` gravado e travaria o
+    // renomear do admin de verdade.
     const d = parseGroupInfo(INFO, '5599999999999');
     expect(d.ourLid).toBeNull();
-    expect(d.weAreAdmin).toBe(false);
+    expect(d.weAreAdmin).toBeNull();
+  });
+
+  it('acha a nossa linha pelo LID do canal quando ela vem sem telefone', () => {
+    const SO_LID = { ...INFO, participants: [{ id: '222@lid', admin: 'admin' }, { id: '111@lid', admin: null }] };
+    expect(parseGroupInfo(SO_LID, NOSSO, '222@lid').weAreAdmin).toBe(true);
+    expect(parseGroupInfo(SO_LID, NOSSO, null).weAreAdmin).toBeNull();
   });
 
   it('sem lista de participantes, "somos admin" é DESCONHECIDO, não false', () => {
@@ -133,5 +148,115 @@ describe('parseGroupInfo', () => {
   it('lixo devolve tudo nulo em vez de estourar', () => {
     expect(parseGroupInfo(null, NOSSO).subject).toBeNull();
     expect(parseGroupInfo('texto', NOSSO).participantCount).toBeNull();
+  });
+});
+
+describe('parseGroupInfo — o que a Fase 2 dos participantes acrescentou', () => {
+  const BASE = {
+    id: GRUPO,
+    subject: 'Grupo de teste',
+    size: 2,
+    participants: [
+      { id: '111@lid', phoneNumber: '5583980000016@s.whatsapp.net', admin: 'admin' },
+      { id: '222@lid', phoneNumber: '5511922223333@s.whatsapp.net', admin: null },
+    ],
+  };
+
+  it('lê o `restrict` como "só admin edita os dados"', () => {
+    expect(parseGroupInfo({ ...BASE, restrict: true }, null).soAdminEdita).toBe(true);
+    expect(parseGroupInfo({ ...BASE, restrict: false }, null).soAdminEdita).toBe(false);
+    expect(parseGroupInfo(BASE, null).soAdminEdita).toBeNull();
+  });
+
+  it('⚠️ acha a nossa linha mesmo com o nono dígito diferente dos dois lados', () => {
+    // O canal gravado SEM o 9 e o WhatsApp entregando COM ele (ou o
+    // contrário): pela grafia, o admin de verdade saía "não admin".
+    const d = parseGroupInfo(BASE, '558380000016');
+    expect(d.weAreAdmin).toBe(true);
+    expect(d.ourLid).toBe('111@lid');
+  });
+});
+
+describe('podeRenomearAoVivo', () => {
+  it('admin renomeia; grupo aberto a todos também; o resto não', () => {
+    expect(podeRenomearAoVivo({ weAreAdmin: true, soAdminEdita: true })).toBe(true);
+    expect(podeRenomearAoVivo({ weAreAdmin: false, soAdminEdita: false })).toBe(true);
+    expect(podeRenomearAoVivo({ weAreAdmin: false, soAdminEdita: true })).toBe(false);
+  });
+
+  it('não saber NÃO destrava', () => {
+    expect(podeRenomearAoVivo({ weAreAdmin: null, soAdminEdita: null })).toBe(false);
+    expect(podeRenomearAoVivo({ weAreAdmin: false, soAdminEdita: null })).toBe(false);
+  });
+});
+
+describe('camposDoDetalhe', () => {
+  it('nunca grava NULL por cima do nome, da foto, da descrição, do dono e do "somos admin?"', () => {
+    const vazio = parseGroupInfo({ id: GRUPO, size: 1, participants: [{ id: '1@lid' }] }, null);
+    const campos = camposDoDetalhe(vazio, '2026-10-29T12:00:00.000Z');
+    expect(campos).toEqual({
+      participant_count: 1,
+      is_announce: null,
+      synced_at: '2026-10-29T12:00:00.000Z',
+    });
+  });
+
+  it('grava o "somos admin?" quando a nossa linha foi achada, inclusive o false', () => {
+    const naoAdmin = parseGroupInfo(
+      { id: GRUPO, size: 1, participants: [{ id: '1@lid', phoneNumber: '558380000016@s.whatsapp.net', admin: null }] },
+      '558380000016',
+    );
+    expect(camposDoDetalhe(naoAdmin, 'agora').we_are_admin).toBe(false);
+  });
+});
+
+describe('lerParticipantes', () => {
+  it('lê as três formas, o papel e a nossa linha', () => {
+    const lidos = lerParticipantes(
+      {
+        participants: [
+          { id: '111@lid', jid: '5516999998784@s.whatsapp.net', lid: '111@lid', admin: 'superadmin' },
+          { id: '222@lid', phoneNumber: '558380000016@s.whatsapp.net', admin: 'admin' },
+          { id: '5511922223333@s.whatsapp.net', lid: '333@lid', admin: null },
+        ],
+      },
+      '5583980000016',
+    );
+    expect(lidos).toEqual([
+      { id: '111@lid', telefone: '5516999998784', lid: '111@lid', papel: 'criador', somosNos: false },
+      { id: '222@lid', telefone: '558380000016', lid: '222@lid', papel: 'admin', somosNos: true },
+      { id: '5511922223333@s.whatsapp.net', telefone: '5511922223333', lid: '333@lid', papel: null, somosNos: false },
+    ]);
+  });
+
+  it('quem esconde o número fica sem telefone, nunca com o LID no lugar', () => {
+    const [p] = lerParticipantes({ participants: [{ id: '444@lid', admin: null }] }, null);
+    expect(p.telefone).toBeNull();
+    expect(p.lid).toBe('444@lid');
+  });
+
+  it('⚠️ LID no campo de telefone NÃO vira telefone; o sufixo de aparelho sai', () => {
+    const [comLid, comAparelho] = lerParticipantes(
+      {
+        participants: [
+          { id: '555@lid', phoneNumber: '555@lid', jid: '555@lid' },
+          { id: '666@lid', phoneNumber: '5511922223333:12@s.whatsapp.net' },
+        ],
+      },
+      null,
+    );
+    expect(comLid.telefone).toBeNull();
+    expect(comAparelho.telefone).toBe('5511922223333');
+  });
+
+  it('a nossa linha também se acha pelo LID do canal', () => {
+    const [p] = lerParticipantes({ participants: [{ id: '777@lid', admin: 'admin' }] }, null, '777@lid');
+    expect(p.somosNos).toBe(true);
+  });
+
+  it('item sem id e lixo são descartados sem estourar', () => {
+    expect(lerParticipantes({ participants: [null, 'x', {}, { id: 5 }] }, null)).toEqual([]);
+    expect(lerParticipantes(null, null)).toEqual([]);
+    expect(lerParticipantes({ participants: 'x' }, null)).toEqual([]);
   });
 });

@@ -7,6 +7,8 @@ paths:
   - "src/lib/whatsapp/meta-error-explain*"
   - "src/lib/whatsapp/template-*"
   - "src/lib/whatsapp/modelo-da-meta*"
+  - "src/lib/whatsapp/modelo-da-mensagem*"
+  - "src/hooks/use-modelos-da-conta*"
   - "src/lib/whatsapp/resolve-conversation*"
   - "src/lib/whatsapp/interactive*"
   - "src/lib/flows/**"
@@ -69,6 +71,15 @@ abrir negócio e carimbo de canal na ingestão estão em
 - ⚠️ **Apagar mensagem aqui é apagar MOLE** (`deleted_at`): o núcleo citaria o
   que o cliente vê como "Esta mensagem foi apagada". Quem enviar citação em
   código novo confere `deleted_at` — `send-message.ts` não confere.
+- ⚠️⚠️ **O endereço gravado é o que a Evolution USOU** (`enderecoDoEnvio`,
+  `transport/endereco-do-envio.ts`), nunca o telefone da ficha. Ela confere o
+  número no WhatsApp e manda para o que existe (o antigo de DDD 31+ vive SEM
+  o 9), mas o apagar usa o JID cru: com o da ficha, a revogação ia para uma
+  conversa que não existe, 2xx, e a mensagem ficava no aparelho (19/10/2026,
+  3 de 11 exclusões). Envio pelo LID vai para `remote_jid_lid`. Para o já
+  gravado, a rota de apagar/editar usa a grafia do CLIENTE na conversa
+  (`jidDoClienteNaOutraGrafia`: só a irmã do nono dígito). Remetente novo:
+  pino `endereco-do-envio.chamadores.test.ts`.
 - ⚠️ **`sendMessageToConversation` é o caminho de GENTE** (compositor, ficha,
   agendada, API v1): é nele que mora o gancho que abre negócio e reabre a
   conversa, via `supabaseAdmin()`. Broadcast e robô NÃO passam por ele, e é
@@ -117,6 +128,9 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
   categoria é desconhecida, e a Meta decide.
 - A reação pela Evolution usa só a CHAVE da mensagem (o telefone da ficha
   nunca foi usado ali); pela Meta, o alvo.
+- ⚠️ **A reação do escritório é UMA por mensagem** (o cliente vê só a do
+  número): reagir apaga a dos colegas e tirar apaga todas (`react/route.ts`);
+  o DELETE chega às outras telas pela 1107 (REPLICA IDENTITY FULL).
 - Continuam só com telefone: disparo em massa, a régua do Asaas (a varredura
   pula ficha sem telefone), `send_to_number`, "nova conversa" e
   `POST /v1/messages`.
@@ -155,8 +169,8 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
   `aoFalhar` e grava só quando DESISTE (fora da retentativa: uma bolha por
   tentativa daria três); robô e agente de IA gravam na hora. ⚠️ Não é fala:
   todo leitor que pergunta "alguém falou?" filtra `.eq('nao_saiu', false)`
-  (Aguardar sem conversa, contexto e turno da IA, Radar, painel), e as quatro
-  funções do banco também. Leitor novo entra no pino
+  (Aguardar sem conversa, contexto e turno da IA, Radar), e as funções do
+  banco também (as quatro da 1080 e as duas do Painel, 1095). Leitor novo entra no pino
   `src/lib/inbox/nao-saiu.chamadores.test.ts`. O envio de GENTE não grava
   bolha (a otimista falha na tela).
 - ⚠️⚠️ **A bolha OTIMISTA que falha diz POR QUÊ, com as mesmas frases**
@@ -219,10 +233,16 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
   quem saiu e com leitura que falha): omitir a coluna manteria o dono ANTERIOR,
   e a tela promete a fila de quem está sem dono (Codex, PR #319).
 - ⚠️ **Nó NOVO no robô exige MIGRATION**: `flow_nodes.node_type` tem CHECK
-  com a lista fechada (0016), e o `PUT /api/flows/[id]` apaga TODOS os nós
-  antes de inserir, sem transação — um tipo recusado pelo CHECK deixa o robô
-  sem nó nenhum. Opção nova num nó que já existe (`config` é JSONB) não
-  precisa.
+  com a lista fechada (1053). O `PUT /api/flows/[id]` troca os nós por
+  `cb_trocar_nos_do_robo` (1104: numa transação, ANTES do cabeçalho, com a
+  conexão do cabeçalho conferida antes dela) — o tipo recusado devolve 500 e
+  o robô fica como estava, mas não salva até a migration. Opção nova num nó que já existe (`config` é JSONB) não precisa.
+- ⚠️ **Robô que deixa de estar ATIVO encerra a run de quem estava nele**
+  (`stopped_by_agent` + `robo_desativado`, `encerrarRunDeRoboDesativado`): na
+  resposta do cliente (`dispatchInboundToFlows`, que segue como se não
+  houvesse run — gatilhos, automações, IA) e no cron dos robôs. Leitura do
+  robô que falha = "não sei": a run segue. O `cancelled` do #674 não existe
+  aqui (CHECK da 0955).
 
 ### Modelos da Meta
 
@@ -274,6 +294,14 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
   criou. Pino `src/components/settings/catalogo-da-conta.test.ts`.
 - Broadcast e rotas de modelo resolvem a conexão por `resolveMetaChannel`,
   nunca pelo espelho `whatsapp_config`.
+- Evento de modelo que não é troca de situação (FLAGGED, LOCKED…) não grava;
+  `ARCHIVED` vira PENDING (NOSSO: sai do seletor, como na sincronização).
+- ⚠️ **A bolha do modelo desenha cabeçalho de TEXTO, rodapé e botões** pela
+  linha local (`modeloDaMensagem`, lida por `useModelosDaConta`): a do canal
+  da mensagem, senão a sem canal, nunca a de outro número — menos a mensagem
+  SEM canal (histórico; conexão apagada), que enxerga todos, como
+  `resolveTemplateRow` sem canal; vários idiomas sem corpo que case = nenhum. Cabeçalho de mídia ou com `{{1}}` fica de fora (o
+  que saiu não é gravado): a bolha só afirma o que o cliente viu.
 
 ### Graph API e configuração da conexão
 
@@ -318,11 +346,17 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
   `use-broadcast-sending.contagem.test.ts` e `.paginacao.test.ts`. O
   `paged-query.ts` (do original) pagina por POSIÇÃO e sem teto: dele, só o
   `chunk` tem uso.
-- ⚠️ **A retomada (`broadcast-resume.ts`, #630) lê UMA página de 1.000 por
-  pedido**, das linhas mais antigas. Nos escopos "falhos" e "todos", a linha
-  que falha de novo volta à frente: se as 1.000 primeiras não enviam, a
-  retomada não passa delas (limite conhecido,
+- ⚠️ **A retomada (`broadcast-resume.ts`) manda até 1.000 por pedido e lê até
+  25 páginas para achá-las** (#658), das linhas mais antigas: a página só de
+  fichas sem telefone não a encerra mais. Página por POSIÇÃO: a linha lida
+  duas vezes entra UMA vez no plano (`vistas`). Nos escopos "falhos" e
+  "todos", a linha que falha de novo volta à frente: se as 1.000 primeiras
+  com telefone falham de novo, a retomada não passa delas (limite conhecido,
   `docs/PLANO-merge-upstream-2026-10.md`).
+- **"Respondeu" vai só à campanha mais recente do contato, enviada há até 7
+  dias** (`marcarRespostaAoDisparo`, `broadcast-resposta.ts`, no webhook da
+  Meta). A régua antiga pulava a mais nova já `replied` ou `failed` e dava o
+  crédito à ANTERIOR, de qualquer idade.
 - ⚠️⚠️ **`create_broadcast_with_recipients` tem UMA assinatura: NOVE
   parâmetros, `p_template_params JSONB`** (lista de listas) e RETURNING
   qualificado (1030). Com `JSONB[]`, o `json_to_record` do PostgREST fazia um

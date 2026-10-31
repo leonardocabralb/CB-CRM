@@ -77,6 +77,40 @@ describe('o rascunho por conversa no compositor', () => {
   });
 });
 
+describe('a marca "Rascunho" na lista de conversas (21/10/2026)', () => {
+  const lista = () => semComentarios(cru('components/inbox/conversation-list.tsx'));
+
+  it('lê o texto e os anexos do rascunho, só das conversas que NÃO estão abertas', () => {
+    // A da aberta está à vista na caixa — e a linha dela se redesenharia a
+    // cada tecla.
+    const l = lista();
+    expect(l).toContain('useTextoDoRascunho(conversation.id, !isActive)');
+    expect(l).toContain('useQuantosAnexosNoRascunho(anexosDaConversa, conversation.id, !isActive)');
+    // A MESMA fila do compositor (de módulo), nunca uma cópia.
+    expect(l).toContain('import { anexosDaConversa } from "./message-composer";');
+    expect(semComentarios(compositor())).toMatch(
+      /^export const anexosDaConversa = criarRepositorioDeAnexos<MediaDraft>\(\);$/m,
+    );
+  });
+
+  it('o trecho da busca vence o rascunho, e o rascunho vence a última mensagem', () => {
+    const l = lista();
+    const achado = l.indexOf('{achado ? (');
+    const rascunho = l.indexOf(') : textoDoRascunho || anexosDoRascunho > 0 ? (');
+    const ultima = l.indexOf('ehPreviaDeLigacao(conversation.last_message_text)');
+    expect(achado).toBeGreaterThan(-1);
+    expect(rascunho).toBeGreaterThan(achado);
+    expect(ultima).toBeGreaterThan(rascunho);
+  });
+
+  it('os leitores da lista calam com `ativo` falso, sem olhar o repositório', () => {
+    expect(hook()).toContain('() => (ativo ? repositorio.ler(chave) : "")');
+    expect(semComentarios(cru('hooks/use-anexos-da-conversa.ts'))).toContain(
+      '() => (ativo ? repositorio.ler(chave).length : 0)',
+    );
+  });
+});
+
 describe('o hook', () => {
   it('a chave leva o LOGIN e a conversa, e só grava com o login conhecido', () => {
     const h = hook();

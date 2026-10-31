@@ -118,6 +118,12 @@ describe('assumirEcoDoTurno', () => {
     expect(b.escritas).toEqual([])
   })
 
+  it('turno cuja conversa foi apagada (1110: fica sem conversa): `false` — o caminho de sempre — e nada escrito', async () => {
+    b.tabelas.cb_ia_turnos = [turno({ conversation_id: null, status: 'incerto' })]
+    expect(await assumir()).toBe(false)
+    expect(b.escritas).toEqual([])
+  })
+
   it('a leitura do turno falha: `false` — o caminho de sempre, nunca lança', async () => {
     b.falhas.cb_ia_turnos = { code: '57014', message: 'canceling statement due to statement timeout' }
     await expect(assumir()).resolves.toBe(false)

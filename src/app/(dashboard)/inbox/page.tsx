@@ -16,6 +16,7 @@ import {
   navegacaoAoAbrir,
 } from "@/lib/inbox/voltar-no-celular";
 import { useMarcarConversaAberta } from "@/hooks/use-conversa-aberta";
+import { useAbaVisivel } from "@/hooks/use-aba-visivel";
 import { useModoAnonimo } from "@/hooks/use-modo-anonimo";
 import { useInadimplencia } from "@/hooks/use-inadimplencia";
 import { ConversationList } from "@/components/inbox/conversation-list";
@@ -25,17 +26,26 @@ import { conversaNoEscopo } from "@/lib/perfis/escopo";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { VoltarAoFunil } from "@/components/inbox/voltar-ao-funil";
 import { VoltarAsReunioes } from "@/components/inbox/voltar-as-reunioes";
+import { VoltarAosAvisos } from "@/components/inbox/voltar-aos-avisos";
 import { VoltarParaConversa } from "@/components/inbox/voltar-para-conversa";
 import { nomeDoContato } from "@/lib/contacts/identidade";
+import { nomeDoGrupo } from "@/lib/cb-groups/display";
 import { avisarExecucoesMudaram } from "@/lib/execucoes/aviso";
 import {
   EVENTO_ABRIR_CONVERSA,
   EVENTO_CONVERSA_ABERTA,
+  EVENTO_IR_PARA_NOTA,
   ehOrigemDoInbox,
+  notaDaUrl,
   recorteDaUrl,
   urlDoInbox,
 } from "@/lib/inbox/url";
 import { comMensagemNova } from "@/lib/inbox/ordem-da-lista";
+import {
+  comBolhaPublicada,
+  comLinhaDoTempoReal,
+} from "@/lib/inbox/bolhas-otimistas";
+import { reinseridaPelaRestauracao } from "@/lib/contacts/lixeira";
 import {
   novoPedidoDeSalto,
   type AlvoDoSalto,
@@ -77,6 +87,13 @@ function InboxPageInner() {
    */
   const deepLinkConvId = searchParams.get("c");
   /**
+   * `?nota=<id>` (1114) — o aviso de anotação (sino, Meu dia) abre a conversa
+   * JÁ no trecho que o gerou: junto com o deep link, vira um pedido de salto
+   * para o fio, que espera a anotação chegar e a centraliza. Porta de
+   * ENTRADA, como `?etapa=`: os replaces não a repetem (`urlDoInbox`).
+   */
+  const notaDoDeepLink = notaDaUrl(searchParams.get("nota"));
+  /**
    * `?etapa=<stageId>` — porta de entrada do botão da coluna do funil.
    * Semeia o filtro de etapa da lista UMA vez (no estado inicial dela); NÃO
    * é preservada nos replaces, de propósito: preservar faria o filtro que o
@@ -106,13 +123,17 @@ function InboxPageInner() {
   // filtro nenhum: dela vem apenas a faixa de volta.
   const veioDoFunil = de === "funil";
   const veioDasReunioes = de === "reunioes";
+  // O clique num aviso do sino ou do card do Meu dia (28/10/2026).
+  const veioDosAvisos = de === "notificacoes" || de === "meu-dia" ? de : null;
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   // Recorte por perfil (Fase 3). A LINHA aparece na lista (a busca acha
   // conversa de outra área); ABRIR é que rende o cartão amigável no lugar do
   // fio. Derivado, nunca estado: a seleção pode chegar por clique, por deep
   // link (?conversation=) ou por URL colada, e todas caem aqui.
-  const { acesso } = useAuth();
+  // `user` é o LOGIN de quem está na tela: o INSERT do tempo real só troca a
+  // bolha otimista pela linha que tem o `sender_id` dele (`bolhas-otimistas.ts`).
+  const { acesso, user } = useAuth();
   const [activeConversation, setActiveConversation] =
     useState<Conversation | null>(null);
   const [activeContact, setActiveContact] = useState<Contact | null>(null);
@@ -123,13 +144,16 @@ function InboxPageInner() {
     activeConversation !== null && !conversaNoEscopo(acesso, activeConversation);
   // A conversa que ESTE membro está lendo para a equipe: a que aparece na
   // presença e a que zera as não lidas. Nenhuma no modo anônimo (decisão do
-  // operador, 01/10/2026: o administrador vê o fio sem deixar rastro) nem
-  // fora do perfil (quem vê o cartão de bloqueio não está lendo nada). Os
-  // espelhos da lista abaixo usam a MESMA régua; o fio aplica a dele no
-  // banco (`.claude/rules/modo-anonimo.md`).
+  // operador, 01/10/2026: o administrador vê o fio sem deixar rastro), fora
+  // do perfil (quem vê o cartão de bloqueio não está lendo nada) nem com a
+  // ABA ESCONDIDA (decisão do operador, 30/10/2026: a aba esquecida atrás de
+  // outra zerava a mensagem do cliente e o "marcar como não lida" da equipe,
+  // sem aparecer na presença). Os espelhos da lista abaixo usam a MESMA
+  // régua; o fio aplica a dele no banco (`.claude/rules/modo-anonimo.md`).
   const { ativo: modoAnonimo } = useModoAnonimo();
+  const abaVisivel = useAbaVisivel();
   const conversaLida =
-    modoAnonimo || foraDoPerfil ? null : (activeConversation?.id ?? null);
+    modoAnonimo || foraDoPerfil || !abaVisivel ? null : (activeConversation?.id ?? null);
   // Presença por conversa (963): marca no banco qual conversa ESTE membro
   // está vendo — a página é a dona da seleção, então o escritor mora aqui.
   useMarcarConversaAberta(conversaLida);
@@ -315,6 +339,13 @@ function InboxPageInner() {
    */
   const conversaRecemAbertaRef = useRef<string | null>(null);
   /**
+   * A conversa do deep link que a ABERTURA RÁPIDA pôs na tela antes de a lista
+   * chegar (28/10/2026, ver o efeito logo depois de `handleConversationsLoaded`).
+   * A lista, quando vem, deve a ela o espelho de "lida" que o deep link faria —
+   * e só uma vez.
+   */
+  const abertaAntesDaListaRef = useRef<string | null>(null);
+  /**
    * A faixa "Voltar para <nome>" (1069): o operador pulou da conversa
    * `conversaId` para a `naConversa` pela aba Relacionados do painel.
    *
@@ -486,26 +517,48 @@ function InboxPageInner() {
     checkConnection();
   }, []);
 
+  /**
+   * As conversas que VOLTARAM da Lixeira enquanto a página ouvia (1097): id →
+   * `restaurada_em`, gravado pelo INSERT da conversa, que o tempo real entrega
+   * ANTES das mensagens devolvidas (a mesma transação, na ordem do banco). Ref,
+   * e não estado: o evento da mensagem chega antes de qualquer render.
+   */
+  const restauradaEmRef = useRef(new Map<string, string>());
+
   // Handle realtime message events
   const handleMessageEvent = useCallback(
     (event: { eventType: string; new: Message; old: Partial<Message> }) => {
-      const newMsg = event.new;
+      // O `payload.new` traz a linha inteira — `gravada_em` incluído.
+      const newMsg = event.new as Message & { gravada_em?: string | null };
 
       if (event.eventType === "INSERT") {
+        // ⚠️ A mensagem DEVOLVIDA pela restauração da Lixeira (1097) não entra
+        // no fio aberto pelo fim nem dispara a recarga das execuções: chegam
+        // centenas, fora da ordem do carimbo, e a do cliente pediria uma
+        // recarga cada. O fio aberto é relido UMA vez quando a conversa volta
+        // (`handleConversationEvent`), na ordem certa. A régua é a da lista e
+        // do aviso (`reinseridaPelaRestauracao`).
+        const daRestauracao = reinseridaPelaRestauracao(
+          newMsg.gravada_em,
+          restauradaEmRef.current.get(newMsg.conversation_id) ??
+            (activeConversation?.id === newMsg.conversation_id
+              ? activeConversation.restaurada_em
+              : null),
+          newMsg.created_at,
+        );
         // Add to messages if it belongs to active conversation
         if (
+          !daRestauracao &&
           activeConversation &&
           newMsg.conversation_id === activeConversation.id
         ) {
-          setMessages((prev) => {
-            // Avoid duplicates
-            if (prev.some((m) => m.id === newMsg.id)) return prev;
-            // Replace optimistic message if it exists
-            const withoutOptimistic = prev.filter(
-              (m) => !m.id.startsWith("temp-")
-            );
-            return [...withoutOptimistic, newMsg];
-          });
+          // Repetida não entra. A linha do PRÓPRIO atendente troca UMA bolha
+          // otimista dele ainda em voo; a do cliente, do colega ou do robô só
+          // entra no fim — e a bolha que FALHOU sai com qualquer linha, como
+          // antes (`bolhas-otimistas.ts`).
+          setMessages((prev) =>
+            comLinhaDoTempoReal(prev, newMsg, user?.id ?? null)
+          );
 
           // O cliente respondeu NESTA conversa: o servidor pode ter acabado de
           // cancelar uma automação ("Aguardar — parar se o cliente
@@ -556,7 +609,7 @@ function InboxPageInner() {
         );
       }
     },
-    [activeConversation, conversaLida, hydrateConversation]
+    [activeConversation, conversaLida, hydrateConversation, user?.id]
   );
 
   // Handle realtime conversation events
@@ -569,6 +622,16 @@ function InboxPageInner() {
       const conv = event.new;
 
       if (event.eventType === "INSERT") {
+        // ⚠️ A conversa que VOLTA da Lixeira (1097) nasce com `restaurada_em`
+        // (a conversa nova de todo dia nasce sem), e as mensagens devolvidas
+        // vêm logo atrás: a régua precisa do instante ANTES delas
+        // (`restauradaEmRef`). Se é a conversa ABERTA nesta tela, o fio é
+        // relido uma vez — a transação já terminou quando o evento chega —
+        // em vez de receber as devolvidas pelo fim, fora da ordem.
+        if (conv.restaurada_em) {
+          restauradaEmRef.current.set(conv.id, conv.restaurada_em);
+          if (activeConversation?.id === conv.id) setResyncToken((n) => n + 1);
+        }
         // Prepend immediately for snappy UX so the new conv shows in the
         // list right away, then hydrate to fill in the `contact` join
         // (realtime payloads never include joins). Skip both if we
@@ -580,6 +643,18 @@ function InboxPageInner() {
             return [conv, ...prev];
           });
           hydrateConversation(conv.id);
+        } else if (conv.restaurada_em) {
+          // A linha VELHA da conversa ainda está na lista (o "Desfazer" logo
+          // depois de mover: a página não ouve o DELETE da conversa). Só o
+          // carimbo da volta entra — o resto da linha vem no UPDATE final —,
+          // e entra ANTES das mensagens: os `setConversations` de
+          // `comMensagemNova` rodam depois deste, na ordem da fila.
+          const restauradaEm = conv.restaurada_em;
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.id === conv.id ? { ...c, restaurada_em: restauradaEm } : c,
+            ),
+          );
         }
       }
 
@@ -728,6 +803,27 @@ function InboxPageInner() {
     (loaded: Conversation[]) => {
       setConversations(loaded);
 
+      // A abertura rápida (28/10/2026) já selecionou a conversa do deep link
+      // e consumiu a ref dele: o bloco do deep link abaixo não roda para ela.
+      // Fica devendo o espelho de "lida" da linha, com as MESMAS guardas
+      // (escopo, modo anônimo) — e só se ela ainda é a aberta.
+      const abertaAntes = abertaAntesDaListaRef.current;
+      if (abertaAntes) {
+        abertaAntesDaListaRef.current = null;
+        const daLista = loaded.find((c) => c.id === abertaAntes);
+        if (
+          daLista &&
+          conversaAbertaRef.current === abertaAntes &&
+          !modoAnonimo &&
+          conversaNoEscopo(acesso, daLista) &&
+          daLista.unread_count > 0
+        ) {
+          setConversations((prev) =>
+            prev.map((c) => (c.id === abertaAntes ? { ...c, unread_count: 0 } : c)),
+          );
+        }
+      }
+
       // A conversa que acabou de ser aberta pelo botão. Vem antes do deep
       // link e não olha a URL — ver `conversaRecemAbertaRef`. Só limpa a ref
       // quando de fato encontra a linha: se esta carga saiu antes de a
@@ -775,6 +871,13 @@ function InboxPageInner() {
           setActiveContact(match.contact ?? null);
           setMessages([]);
           setMessagesDaConversa(null);
+          // O aviso de anotação (1114): o fio salta até ela quando a carga a
+          // trouxer (o salto pontual espera a âncora aparecer).
+          if (notaDoDeepLink) {
+            setSaltoPedido((prev) =>
+              novoPedidoDeSalto(prev, match.id, { tipo: "nota", id: notaDoDeepLink }),
+            );
+          }
           // Mirror the optimistic unread reset that handleSelectConversation
           // does — the user just deep-linked into this conv, treat that the
           // same as a click. Leaves activeConversation.unread_count alone so
@@ -798,8 +901,61 @@ function InboxPageInner() {
         }
       }
     },
-    [deepLinkConvId, activeConversation?.id, acesso, modoAnonimo]
+    [deepLinkConvId, notaDoDeepLink, activeConversation?.id, acesso, modoAnonimo]
   );
+
+  /**
+   * ABERTURA RÁPIDA do deep link (pedido do operador, 28/10/2026): a conversa
+   * do `?c=` é lida SOZINHA e aberta já, sem esperar a lista.
+   *
+   * Medido no build de produção: abrir pelo aviso levava ~5 s, dos quais
+   * ~3,4 s eram a lista INTEIRA (3.535 conversas, quatro páginas de mil em
+   * série — `buscarPaginado`), que o bloco do deep link acima espera para
+   * achar a linha; o fio em si leva ~0,4 s. A lista continua chegando em
+   * segundo plano, e quando chega o bloco do deep link não reaplica (a ref
+   * está consumida) — só o espelho de "lida" (`abertaAntesDaListaRef`).
+   *
+   * ⚠️ As cercas, cada uma contra uma seleção que atropelaria outra: a ref do
+   * deep link já consumida (a lista chegou primeiro, ou a pessoa clicou numa
+   * conversa — `handleSelectConversation` a carimba antes do `replace`);
+   * outra conversa já aberta ou a caminho pelo "Nova conversa"; e a URL que
+   * já não pede esta conversa. Conferidas ANTES e DEPOIS da leitura. Falha ou
+   * conversa que a RLS esconde = nada aqui: o caminho da lista continua de pé.
+   * `setState` só depois do `await` (React Compiler: nada síncrono no efeito).
+   */
+  useEffect(() => {
+    if (!deepLinkConvId) return;
+    const atendido = () =>
+      autoSelectedForDeepLinkRef.current === deepLinkConvId ||
+      conversaAbertaRef.current !== null ||
+      conversaRecemAbertaRef.current !== null;
+    if (atendido()) return;
+    let cancelado = false;
+    (async () => {
+      const { data, error } = await createClient()
+        .from("conversations")
+        .select(CONVERSATION_SELECT)
+        .eq("id", deepLinkConvId)
+        .maybeSingle();
+      if (cancelado || error || !data || atendido()) return;
+      if (new URLSearchParams(window.location.search).get("c") !== deepLinkConvId) return;
+      const conversa = normalizeConversation(data);
+      autoSelectedForDeepLinkRef.current = deepLinkConvId;
+      abertaAntesDaListaRef.current = deepLinkConvId;
+      setActiveConversation(conversa);
+      setActiveContact(conversa.contact ?? null);
+      setMessages([]);
+      setMessagesDaConversa(null);
+      if (notaDoDeepLink) {
+        setSaltoPedido((prev) =>
+          novoPedidoDeSalto(prev, conversa.id, { tipo: "nota", id: notaDoDeepLink }),
+        );
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [deepLinkConvId, notaDoDeepLink]);
 
   const handleSelectConversation = useCallback(
     (conv: Conversation) => {
@@ -952,7 +1108,8 @@ function InboxPageInner() {
 
   /**
    * Abre, pela aba Relacionados do painel (1069), a conversa de outro contato
-   * — e liga a faixa que volta para esta.
+   * — e liga a faixa que volta para esta. Também de um grupo para a conversa
+   * de um participante, e da ficha para o grupo dela (1117).
    *
    * A lista carrega TODAS as conversas da conta (a de qualquer situação e
    * fora do filtro), então a do relacionado quase sempre já está em
@@ -965,7 +1122,10 @@ function InboxPageInner() {
     (conversaId: string) => {
       const origem = activeConversation;
       if (!origem || origem.id === conversaId) return;
-      const nome = nomeDoContato(activeContact, "") || null;
+      // Do grupo (aba Participantes, 1117) a faixa diz o nome do GRUPO.
+      const nome = origem.group_id
+        ? nomeDoGrupo(origem.group, tThread("groupNoName"))
+        : nomeDoContato(activeContact, "") || null;
       const conv = conversations.find((c) => c.id === conversaId);
       if (conv) {
         handleSelectConversation(conv);
@@ -976,7 +1136,7 @@ function InboxPageInner() {
       // lote, e esta vence.
       setVoltarPara({ naConversa: conversaId, conversaId: origem.id, nome });
     },
-    [activeConversation, activeContact, conversations, handleSelectConversation, handleConversaAberta],
+    [activeConversation, activeContact, conversations, handleSelectConversation, handleConversaAberta, tThread],
   );
 
   /** A faixa "Voltar para": a conversa de onde se pulou, pelo mesmo caminho. */
@@ -1045,9 +1205,33 @@ function InboxPageInner() {
     return () => window.removeEventListener(EVENTO_ABRIR_CONVERSA, aoPedirAbertura);
   }, []);
 
+  /**
+   * O par do de cima no pop-up de ANOTAÇÃO (1114): o fio salta até ela. O
+   * pedido sai carimbado com a conversa do aviso — com ela já aberta, salta
+   * na hora; com outra aberta, espera o fio trocar (o de cima a abre) e a
+   * anotação chegar. É o caminho do `?nota=` quando a página já está montada:
+   * o `router.push` só troca a query, e o deep link não é relido.
+   */
+  useEffect(() => {
+    const aoPedirNota = (e: Event) => {
+      const pedido = (e as CustomEvent<unknown>).detail;
+      if (typeof pedido !== "object" || pedido === null) return;
+      const { conversaId, notaId } = pedido as Record<string, unknown>;
+      if (typeof conversaId !== "string" || !conversaId) return;
+      if (typeof notaId !== "string" || !notaId) return;
+      setSaltoPedido((prev) =>
+        novoPedidoDeSalto(prev, conversaId, { tipo: "nota", id: notaId }),
+      );
+    };
+    window.addEventListener(EVENTO_IR_PARA_NOTA, aoPedirNota);
+    return () => window.removeEventListener(EVENTO_IR_PARA_NOTA, aoPedirNota);
+  }, []);
+
 
   const handleMessagesLoaded = useCallback(
     (loaded: Message[]) => {
+      // A recarga troca a lista inteira pela do banco, otimistas inclusive
+      // (`bolhas-otimistas.ts`: a falhada não sobrevive a ela).
       setMessages(loaded);
       // Carimba de quem é o array. O fio só chama isto quando a busca NÃO foi
       // cancelada, ou seja, quando ela ainda é da conversa aberta — por isso
@@ -1057,11 +1241,11 @@ function InboxPageInner() {
     [activeConversation?.id]
   );
 
+  // A bolha que o fio publica. Id repetido continua descartado, exceto a
+  // MESMA otimista republicada como falhada (o 409 de número trocado): ela
+  // vira falhada no lugar (`comBolhaPublicada`).
   const handleNewMessage = useCallback((msg: Message) => {
-    setMessages((prev) => {
-      if (prev.some((m) => m.id === msg.id)) return prev;
-      return [...prev, msg];
-    });
+    setMessages((prev) => comBolhaPublicada(prev, msg));
   }, []);
 
   const handleUpdateMessage = useCallback(
@@ -1182,6 +1366,8 @@ function InboxPageInner() {
       {veioDoFunil && <VoltarAoFunil inert={fundoInerte} />}
       {/* A mesma faixa para quem veio da pauta de reuniões. */}
       {veioDasReunioes && <VoltarAsReunioes inert={fundoInerte} />}
+      {/* E para quem veio de um aviso (sino ou Meu dia). */}
+      {veioDosAvisos && <VoltarAosAvisos origem={veioDosAvisos} inert={fundoInerte} />}
       {/* Volta da conversa de um contato RELACIONADO (1069). Derivada: só
           vale enquanto a conversa aberta é a de destino do pulo. */}
       {voltarPara && voltarPara.naConversa === activeConversation?.id && (
@@ -1362,6 +1548,9 @@ function InboxPageInner() {
                   messagesDaConversa !== activeConversation.id
                 }
                 onIrParaItemDoFio={handleIrParaItemDoFio}
+                // O participante com conversa no CRM (1117): o mesmo pulo da
+                // aba Relacionados, com a faixa "Voltar para" o grupo.
+                onAbrirConversaRelacionada={handleAbrirConversaRelacionada}
               />
             ) : (
               <ContactSidebar

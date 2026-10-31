@@ -45,6 +45,12 @@ export interface ProviderMessageRef {
 export interface SendResult {
   /** The backend's message id — a Meta wamid or a Baileys key.id. */
   providerMessageId: string;
+  /**
+   * Só Evolution: o endereço que ela USOU (`key.remoteJid` da resposta), que
+   * pode diferir do número pedido no nono dígito. Gravar por
+   * `enderecoDoEnvio` — é nele que apagar e editar procuram a mensagem.
+   */
+  remoteJid?: string | null;
 }
 
 export type ConnectionState = 'open' | 'connecting' | 'close';

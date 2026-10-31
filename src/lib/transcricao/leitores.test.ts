@@ -47,9 +47,9 @@ describe('a ordem e os modelos fixos', () => {
 
   it('os modelos, escritos à mão', () => {
     expect(MODELO_DE_LEITURA).toEqual({
-      gemini: 'gemini-3.7-flash',
+      gemini: 'gemini-3.8-flash',
       openai: 'gpt-5.4-mini',
-      anthropic: 'claude-sonnet-5',
+      anthropic: 'claude-haiku-5-5',
     })
     expect(MODELO_TRANSCRICAO_OPENAI).toBe('gpt-transcribe')
   })
@@ -58,7 +58,7 @@ describe('a ordem e os modelos fixos', () => {
 describe('pedidoDeLeitura — Gemini', () => {
   it('imagem em `inlineData`, chave no cabeçalho, nunca na URL', () => {
     const p = pedidoDeLeitura({ provedor: 'gemini', chave: 'g-1', tipo: 'imagem', mime: 'image/jpeg', base64: B64, nomeDoArquivo: 'x' })
-    expect(p.url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent')
+    expect(p.url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent')
     expect(p.url).not.toContain('key=')
     expect(p.headers['x-goog-api-key']).toBe('g-1')
     const partes = (corpo(p).contents as { parts: Record<string, unknown>[] }[])[0].parts
@@ -106,7 +106,7 @@ describe('pedidoDeLeitura — Anthropic', () => {
     expect(p.headers['x-api-key']).toBe('a-1')
     expect(p.headers['anthropic-version']).toBe('2023-06-01')
     const c = corpo(p)
-    expect(c.model).toBe('claude-sonnet-5')
+    expect(c.model).toBe('claude-haiku-5-5')
     const conteudo = (c.messages as { content: Record<string, unknown>[] }[])[0].content
     expect(conteudo[0]).toEqual({ type: 'image', source: { type: 'base64', media_type: 'image/webp', data: B64 } })
     expect(conteudo[1].type).toBe('text')

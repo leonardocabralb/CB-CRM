@@ -33,7 +33,10 @@ import type { Bloco } from '@/hooks/use-resumo-do-dia';
 import type { ConversaDaConexao } from '@/lib/meu-dia/conexoes';
 import type { TarefaDaEquipe } from '@/lib/meu-dia/equipe';
 import { lerRetidas, type RetidasNaTela } from '@/lib/meu-dia/retidas';
-import type { AvisoComContato } from '@/lib/notifications/texto-do-aviso';
+import {
+  EMBED_DO_CLIENTE_DO_AVISO,
+  type AvisoComContato,
+} from '@/lib/notifications/texto-do-aviso';
 import { conversaNoEscopo, recorteDeCanais } from '@/lib/perfis/escopo';
 import type { ContextoDeAcesso } from '@/lib/perfis/tipos';
 import { diaLocal } from '@/lib/tasks/prazo';
@@ -413,8 +416,10 @@ export function useAreaDeTrabalho(pedido: PedidoDaArea): AreaDeTrabalho {
       const { data, error, count } = await supabase
         .from('notifications')
         .select(
-          'id, account_id, user_id, type, title, body, conversation_id, contact_id, task_id, actor_user_id, read_at, created_at, ' +
-            'contact:contacts(name, phone, wa_username, instagram_username)',
+          // `note_id` (1114): o clique leva o fio até a anotação do aviso.
+          // E o cliente (ou o grupo) do aviso, a mesma forma do sino.
+          'id, account_id, user_id, type, title, body, conversation_id, contact_id, task_id, note_id, actor_user_id, read_at, created_at, ' +
+            EMBED_DO_CLIENTE_DO_AVISO,
           { count: 'exact' }
         )
         .eq('user_id', userId)

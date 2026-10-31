@@ -197,6 +197,27 @@ describe("mirrorInboundMedia", () => {
     expect(uploads[0].path).toMatch(/\.ogg$/);
   });
 
+  it("1115: a document outside the bucket list is stored as binary, keeping its name", async () => {
+    // A ZIP used to be rejected by the bucket and live only on the proxy,
+    // which Meta stops serving after ~30 days.
+    const { storage, uploads } = fakeStorage();
+
+    const url = await mirrorInboundMedia({
+      ...BASE,
+      storage,
+      mimeType: "application/zip",
+      fileName: "documentos.zip",
+      download: fakeDownload(4096, "application/zip"),
+    });
+
+    expect(url).not.toBeNull();
+    expect(uploads[0].options.contentType).toBe("application/octet-stream");
+    // The object keeps the document's stem; the extension still comes from
+    // the MIME (see `mirrorFileName`), and the link downloads it under the
+    // real name (`urlParaAbrirAnexo`, `download=`).
+    expect(uploads[0].path).toContain(`${MEDIA_ID}-documentos.`);
+  });
+
   it("skips oversized media without downloading it", async () => {
     const { storage, uploads } = fakeStorage();
     const download = fakeDownload(1024);

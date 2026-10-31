@@ -492,7 +492,7 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       if (c.situacao !== undefined && c.situacao !== null && !(SITUACOES_ESCREVIVEIS as readonly unknown[]).includes(c.situacao)) {
         issues.push({
           path: `${path}.situacao`,
-          message: `Atlas status must be one of: ${SITUACOES_ESCREVIVEIS.join(', ')} (or empty)`,
+          message: `Atlas Gestor status must be one of: ${SITUACOES_ESCREVIVEIS.join(', ')} (or empty)`,
           codigo: 'atlas_situacao_invalida',
         })
       }
@@ -528,7 +528,7 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
         c.email === true ||
         camposDoAtualizar.some((campo) => nonEmpty(c[campo]))
       if (!algum) {
-        issues.push({ path: `${path}`, message: 'choose at least one field to update in Atlas', codigo: 'atlas_atualizar_sem_campos' })
+        issues.push({ path: `${path}`, message: 'choose at least one field to update in Atlas Gestor', codigo: 'atlas_atualizar_sem_campos' })
       }
       break
     }
@@ -882,9 +882,9 @@ export function validateTriggerForActivation(
     // (decisão do operador, 30/09/2026).
     const sit = cfg.situacoes
     if (!Array.isArray(sit) || sit.length === 0) {
-      issues.push({ path: 'trigger.situacoes', message: 'choose at least one Atlas status', codigo: 'gatilho_atlas_sem_situacao' })
+      issues.push({ path: 'trigger.situacoes', message: 'choose at least one Atlas Gestor status', codigo: 'gatilho_atlas_sem_situacao' })
     } else if (sit.some((v) => typeof v !== 'string' || !(SITUACOES_DO_GATILHO as readonly string[]).includes(v))) {
-      issues.push({ path: 'trigger.situacoes', message: `Atlas status must be one of: ${SITUACOES_DO_GATILHO.join(', ')}`, codigo: 'gatilho_atlas_situacao_invalida' })
+      issues.push({ path: 'trigger.situacoes', message: `Atlas Gestor status must be one of: ${SITUACOES_DO_GATILHO.join(', ')}`, codigo: 'gatilho_atlas_situacao_invalida' })
     }
     // Id de funil malformado (só por chamada direta à API: o construtor lista
     // os funis) derrubaria a busca dos cards de TODAS as automações do gatilho.
@@ -1028,17 +1028,17 @@ export function validateAtlasSituacaoForActivation(
     lista.forEach((s, i) => {
       const path = `${prefixo}steps[${i}]`
       if (s.step_type === 'atlas_criar_cliente') {
-        issues.push({ path: `${path}.step_type`, message: 'an automation triggered by an Atlas status change cannot create or reactivate the client in Atlas', codigo: 'atlas_gatilho_com_criar_cliente' })
+        issues.push({ path: `${path}.step_type`, message: 'an automation triggered by an Atlas Gestor status change cannot create or reactivate the client in Atlas Gestor', codigo: 'atlas_gatilho_com_criar_cliente' })
       }
       // O nó Atlas (30/09/2026): "Atualizar cliente" INTEIRO, com ou sem
       // situação — sem ela ainda grava o cadastro por reflexo e, se alguém
       // escolher a situação depois, vira laço. Tarefa, transcrição e
       // onboarding não mudam a situação e ficam permitidos.
       if (s.step_type === 'atlas_atualizar_cliente') {
-        issues.push({ path: `${path}.step_type`, message: 'an automation triggered by an Atlas status change cannot update the client in Atlas', codigo: 'atlas_gatilho_com_atualizar_cliente' })
+        issues.push({ path: `${path}.step_type`, message: 'an automation triggered by an Atlas Gestor status change cannot update the client in Atlas Gestor', codigo: 'atlas_gatilho_com_atualizar_cliente' })
       }
       if (s.step_type === 'run_automation') {
-        issues.push({ path: `${path}.step_type`, message: 'an automation triggered by an Atlas status change cannot run another automation', codigo: 'atlas_gatilho_aciona_outra' })
+        issues.push({ path: `${path}.step_type`, message: 'an automation triggered by an Atlas Gestor status change cannot run another automation', codigo: 'atlas_gatilho_aciona_outra' })
       }
       if (s.step_type === 'condition' && s.branches) {
         if (s.branches.yes) visitar(s.branches.yes, `${path}.yes.`)

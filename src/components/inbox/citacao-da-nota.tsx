@@ -3,6 +3,8 @@
 import { X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
+import { ResumoDosAnexos } from '@/components/inbox/anexos-da-nota';
+import { MarcaDeEditada } from '@/components/inbox/marca-de-editada';
 import { cn } from '@/lib/utils';
 import type { ConversationNote } from '@/types';
 
@@ -41,13 +43,26 @@ export function CitacaoDaNota({
     <>
       <span className="block truncate text-xs font-semibold">
         {autor ?? t('originalUnavailable')}
+        {/* A respondida foi editada depois (Fase 3): a citação mostra o texto
+            ATUAL dela (vem da lista, que o tempo real troca), com a marca. */}
+        {original && (
+          <MarcaDeEditada
+            editadaEm={original.editada_em}
+            criadaEm={original.created_at}
+            className="ml-1.5 font-normal opacity-70"
+          />
+        )}
       </span>
-      {original && (
+      {original && original.texto.trim() && (
         // `break-words` + `line-clamp-2`: link colado na anotação não pode
         // alargar a bolha (a armadilha de `min-width: auto` da raiz).
         <span className="line-clamp-2 text-xs break-words whitespace-pre-wrap opacity-80">
           {original.texto}
         </span>
+      )}
+      {/* Dos anexos da respondida (1102), só o resumo. */}
+      {original && (
+        <ResumoDosAnexos anexos={original.anexos} className="text-xs opacity-80" />
       )}
     </>
   );

@@ -4,6 +4,7 @@ import { Fragment, useState, useEffect, useCallback, useRef, useMemo, useLayoutE
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useModoAnonimo } from "@/hooks/use-modo-anonimo";
+import { useAbaVisivel } from "@/hooks/use-aba-visivel";
 import { useChannels } from "@/hooks/use-channels";
 import { useChannelHealth } from "@/hooks/use-channel-health";
 import { useLeadEvents } from "@/hooks/use-lead-events";
@@ -17,6 +18,7 @@ import { useApagarNota } from "@/hooks/use-apagar-nota";
 import { useFixarNota } from "@/hooks/use-fixar-nota";
 import { useCan } from "@/hooks/use-can";
 import { AvisoDePossivelDuplicata } from "@/components/contacts/aviso-de-possivel-duplicata";
+import { AvisoDeFichaNaLixeira } from "@/components/contacts/lixeira/aviso-de-ficha-na-lixeira";
 import { ScheduledBar } from "./scheduled-bar";
 import { FaixaDeSituacaoDoCliente } from "./faixa-de-situacao-do-cliente";
 import { FaixaDeInadimplencia } from "./faixa-de-inadimplencia";
@@ -40,7 +42,10 @@ import {
 import { patchDeSituacao } from "@/lib/conversations/situacao";
 import { acharNoFio } from "@/lib/inbox/achados-no-fio";
 import { semAcento, TERMO_MINIMO } from "@/lib/inbox/busca-em-mensagens";
-import { arrastoRecolheTeclado } from "@/lib/celular/teclado";
+import {
+  arrastoRecolheTeclado,
+  toqueNasceuForaDaConversa,
+} from "@/lib/celular/teclado";
 import {
   DESTAQUE_DO_SALTO_MS,
   seletorDoAlvo,
@@ -71,6 +76,8 @@ import {
 } from "@/lib/assinatura/assinatura";
 import { LeadEventLine } from "@/components/lead-events/lead-event-line";
 import { NoteLine } from "./note-line";
+import { InternalNoteBox } from "./internal-note-box";
+import { useEdicaoDeNota } from "@/hooks/use-edicao-de-nota";
 import { AvisoDeExecucao } from "./aviso-de-execucao";
 import { NotaFixadaBar } from "./nota-fixada-bar";
 import { cn } from "@/lib/utils";
@@ -121,7 +128,7 @@ import { GaleriaDoFio } from "./media-gallery";
 import { MessageActions } from "./message-actions";
 import {
   MessageComposer,
-  type ComposerHandle,
+  type CompositorHandle,
   type SendMediaPayload,
 } from "./message-composer";
 import {
@@ -553,6 +560,12 @@ export function MessageThread({
    * a página, dona da seleção.
    */
   const { ativo: modoAnonimo } = useModoAnonimo();
+  /**
+   * Aba escondida não lê (decisão do operador, 30/10/2026): o fio aberto
+   * numa aba esquecida atrás de outra zerava a mensagem do cliente e o
+   * "marcar como não lida" da equipe. Ao voltar para a aba, zera.
+   */
+  const abaVisivel = useAbaVisivel();
 
   /**
    * O nome com que ESTA pessoa assina, ou null. Só para desenhar a bolha
@@ -1355,16 +1368,21 @@ export function MessageThread({
   // load-bearing: desligar o modo com a conversa aberta re-roda o efeito e
   // zera na hora, como se ela tivesse acabado de ser aberta.
   //
+  // ⚠️ Com a ABA ESCONDIDA também não zera (30/10/2026), e `abaVisivel` nas
+  // dependências é load-bearing do mesmo jeito: voltar para a aba é abrir a
+  // conversa de novo, e a não lida que chegou enquanto ela estava atrás
+  // zera na hora.
+  //
   // ⚠️ E não zera a conversa com "Marcar como não lida" EM CURSO
   // (`naoLidaEmCursoRef`, Codex no #405): o tempo real pode trazer o 1 antes
   // de a gravação voltar, a página o copia para a conversa aberta, e este
   // zero desfaria o gesto — que fecharia a conversa já lida de novo.
   const naoLidaEmCursoRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!conversationId || !hasUnread || modoAnonimo) return;
+    if (!conversationId || !hasUnread || modoAnonimo || !abaVisivel) return;
     if (naoLidaEmCursoRef.current === conversationId) return;
     zerarNaoLidas(conversationId);
-  }, [conversationId, hasUnread, modoAnonimo]);
+  }, [conversationId, hasUnread, modoAnonimo, abaVisivel]);
 
   // Trilha de atividade do lead (migration 912) — mudança de funil, etapa,
   // status e tags aparecem intercaladas na conversa. `resyncToken` entra como
@@ -1409,8 +1427,10 @@ export function MessageThread({
   // inexistente, e um hook ali violaria a regra dos hooks.
   const {
     notas,
+    pronta: notasProntas,
     remover: removerNotaLocal,
     acrescentar: acrescentarNota,
+    substituir: substituirNota,
     recarregar: recarregarNotas,
     aplicarFixacao,
   } = useConversationNotes(conversationId, resyncToken);
@@ -1457,6 +1477,16 @@ export function MessageThread({
   const notaRespondida =
     respondendo && respondendo.de === conversationId ? respondendo.nota : null;
   const limparNotaRespondida = useCallback(() => setRespondendo(null), []);
+  /**
+   * EDITAR uma anotação no lugar (Fase 3): o lápis da `NoteLine` (só para o
+   * AUTOR) troca a linha pela caixa — a do fio, nunca a do compositor, onde o
+   * Enter envia ao cliente. Carimbado com a conversa (`useEdicaoDeNota`).
+   */
+  const {
+    editandoId: notaEmEdicao,
+    editar: editarNota,
+    pararDeEditar: pararDeEditarNota,
+  } = useEdicaoDeNota(conversationId, notas, notasProntas);
   /** A respondida de cada resposta, para a citação (as notas já carregadas). */
   const notasPorId = useMemo(
     () => new Map(notas.map((n) => [n.id, n])),
@@ -1698,10 +1728,16 @@ export function MessageThread({
    * recolhê-lo (relato do operador, 14/09/2026). Só para baixo: arrastar para
    * cima, rumo ao fim, é o gesto de quem continua escrevendo.
    * E arrastar continua sendo agir: solta o salto da busca, como a roda.
+   * ⚠️ O toque que NASCE num campo ou na caixa da anotação não conta
+   * (`toqueNasceuForaDaConversa`): a caixa de EDIÇÃO mora dentro do fio, e
+   * arrastar o dedo no texto dela ou na lista de @menções fechava o teclado a
+   * cada tentativa.
    */
   const inicioDoToqueRef = useRef<number | null>(null);
   const aoTocarNoFio = useCallback((e: React.TouchEvent) => {
-    inicioDoToqueRef.current = e.touches[0]?.clientY ?? null;
+    inicioDoToqueRef.current = toqueNasceuForaDaConversa(e.target)
+      ? null
+      : (e.touches[0]?.clientY ?? null);
   }, []);
   const aoArrastarOFio = useCallback(
     (e: React.TouchEvent) => {
@@ -1870,7 +1906,9 @@ export function MessageThread({
   const [reenviaveis, setReenviaveis] = useState<
     ReadonlyMap<string, { texto: string; replyToId?: string; retida: boolean }>
   >(new Map());
-  const composerRef = useRef<ComposerHandle>(null);
+  // O compositor (`CompositorHandle`): o reenvio daqui e a opção de resposta
+  // da mensagem de empresa (1111), abaixo.
+  const compositorRef = useRef<CompositorHandle>(null);
 
   const marcarReenviavel = useCallback(
     (id: string, valor: { texto: string; replyToId?: string; retida: boolean } | null) => {
@@ -2047,7 +2085,7 @@ export function MessageThread({
     (id: string) => {
       const r = reenviaveis.get(id);
       if (!r || r.retida) return;
-      if (!composerRef.current?.reenviarTexto(r.texto, r.replyToId, id)) return;
+      if (!compositorRef.current?.reenviarTexto(r.texto, r.replyToId, id)) return;
       marcarReenviavel(id, { ...r, retida: true });
     },
     [reenviaveis, marcarReenviavel],
@@ -2071,8 +2109,8 @@ export function MessageThread({
 
   /**
    * ⚠️ Devolve `false` quando NÃO entregou — e nesse caso NÃO apaga o objeto
-   * do bucket. O compositor mantém o anexo na fila e continua dono dele (a
-   * limpeza de desmonte e o descarte recolhem). Sem esse par, o anexo de uma
+   * do bucket. O compositor mantém o anexo na fila e continua dono dele (o
+   * descarte recolhe). Sem esse par, o anexo de uma
    * fila de cinco sumia no erro do terceiro e o operador reanexava tudo
    * (achado do Codex no PR #144).
    */
@@ -2435,6 +2473,17 @@ export function MessageThread({
       });
     },
     [authorLabelFor],
+  );
+
+  // Opção de resposta de uma mensagem de EMPRESA (1111): cita a mensagem e o
+  // compositor põe o rótulo na caixa. Nada sai sem o Enviar — e do outro lado
+  // chega uma resposta digitada, não o toque no botão.
+  const responderComOpcao = useCallback(
+    (msg: Message, opcao: string) => {
+      handleStartReply(msg);
+      compositorRef.current?.prepararResposta(opcao);
+    },
+    [handleStartReply],
   );
 
   // Single reaction-set primitive. emoji === "" removes; otherwise adds/swaps.
@@ -3325,8 +3374,36 @@ export function MessageThread({
                               destaqueDaCitacao.id === item.nota.id)
                           }
                         >
+                        {notaEmEdicao === nota.id && conversationId ? (
+                          // A caixa toma o lugar da linha (Fase 3), no mesmo
+                          // molde centralizado: o salto até a nota segue
+                          // achando o `LinhaDoFio` dela.
+                          <div className="flex justify-center py-1">
+                            <div className="w-full max-w-[85%]">
+                              <InternalNoteBox
+                                key={`edicao:${nota.id}`}
+                                conversationId={conversationId}
+                                editando={nota}
+                                // Para BAIXO: dentro do fio (que rola), a
+                                // lista de @menções aberta para cima sai do
+                                // alcance quando a nota está no alto da tela —
+                                // para baixo, rolar a alcança.
+                                listaParaBaixo
+                                onSaved={substituirNota}
+                                onClose={pararDeEditarNota}
+                              />
+                            </div>
+                          </div>
+                        ) : (
                         <NoteLine
                           nota={item.nota}
+                          // Só o AUTOR edita (A2); anotação sem autor
+                          // (automação, agente de IA) nunca.
+                          onEditar={
+                            podeAnotar && user?.id && nota.author_user_id === user.id
+                              ? () => editarNota(nota)
+                              : undefined
+                          }
                           respondida={
                             respondidaId ? (notasPorId.get(respondidaId) ?? null) : null
                           }
@@ -3354,6 +3431,7 @@ export function MessageThread({
                               : undefined
                           }
                         />
+                        )}
                         </LinhaDoFio>
                       );
                     }
@@ -3491,6 +3569,11 @@ export function MessageThread({
                               ? () => tentarDeNovo(msg.id)
                               : undefined
                           }
+                          onResponderComOpcao={
+                            podeEnviar && msg.opcoes_de_resposta != null
+                              ? (opcao) => responderComOpcao(msg, opcao)
+                              : undefined
+                          }
                         />
                       </MessageActions>
                       </LinhaDoFio>
@@ -3593,6 +3676,15 @@ export function MessageThread({
         />
       )}
 
+      {/* Faixa FICHA DESTA PESSOA NA LIXEIRA (1101, Fase 4 da Lixeira): o
+          cliente cuja ficha foi para a Lixeira voltou a escrever e caiu numa
+          ficha nova. Só admin; "Restaurar e unir" traz a antiga para esta.
+          Junto da de duplicata (também é arrumação de cadastro); cala com
+          `null`. */}
+      {contact && (
+        <AvisoDeFichaNaLixeira contatoId={contact.id} resyncToken={resyncToken} className="mx-3 mt-2" />
+      )}
+
       {/* Faixa AGENDADAS (925), colada no compositor e dentro do fio.
           ⚠️ Fica AQUI, e não na ficha lateral: quem abre a conversa precisa
           esbarrar no que já está marcado ANTES de escrever, senão escreve
@@ -3669,7 +3761,7 @@ export function MessageThread({
       {/* Composer — canal Evolution não tem janela de 24h (sessionExpired
           neutralizado) nem templates/interativas (channelKind esconde). */}
       <MessageComposer
-        ref={composerRef}
+        ref={compositorRef}
         conversationId={conversation.id}
         sessionExpired={sessaoExpirada}
         conexaoForaDoAr={conexaoForaDoAr}

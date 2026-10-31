@@ -517,6 +517,11 @@ export function DocumentacaoDeIntegracao({
           {/* Fichas unidas (1092/1093): o id antigo responde, a busca acha
               pelo telefone antigo e o card apagado na união é 404. */}
           <li>{t.rich("erros.fichaUnida", rico)}</li>
+          {/* A Lixeira de contatos (1097, B6): o id da ficha excluída
+              responde 404 por até 90 dias e pode VOLTAR igual. O Make que
+              recria no primeiro 404 ocupa o telefone: a volta só sai UNIDA à
+              ficha nova (1101), e o id antigo passa a responder com ela. */}
+          <li>{t.rich("erros.fichaNaLixeira", rico)}</li>
           <li>{t.rich("erros.usuario", rico)}</li>
           <li>{t.rich("erros.testUrl", rico)}</li>
           <li>{t.rich("erros.url", rico)}</li>

@@ -26,6 +26,16 @@
 // não liga (só desliga, se já estava ligada — o Salvar recusaria), com o
 // motivo e o link para Integrações; a leitura dos tipos que falhou diz que
 // falhou e oferece tentar de novo — nunca "o Calendly não tem tipos".
+//
+// Dois avisos âmbar da validação de 25/10/2026, os dois sobre o RASCUNHO
+// (somem quando a chave é ligada, antes de salvar):
+//   - as instruções (e as regras) SALVAS pedem uma ação cuja ferramenta está
+//     desligada (`ferramentasPedidasDesligadas`, heurística conservadora): o
+//     agente, mandado fazer, prometia ao cliente o que não acontecia;
+//   - "Marcar reunião" ligada sem o campo E-mail em "Preencher campo"
+//     (`avisoDoEmailDaReuniao`): para quem não tem e-mail na ficha, ele pede
+//     o e-mail e passa para a equipe. O botão "Liberar o campo E-mail" liga
+//     "Preencher campo" e marca o campo, SEM salvar (`liberarCampoDoEmail`).
 // ============================================================
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -43,19 +53,24 @@ import { semAcento } from '@/lib/inbox/busca-em-mensagens';
 import { cn } from '@/lib/utils';
 import {
   agruparItens,
+  avisoDoEmailDaReuniao,
   catalogoDoTipo,
   itensDoTipo,
   lerOpcoes,
+  liberarCampoDoEmail,
   situacaoDaReuniao,
+  type AvisoDoEmailDaReuniao,
   type Bloqueio,
   type ItemDaLista,
   type SituacaoDaReuniao,
 } from './ferramentas';
+import { ferramentasPedidasDesligadas } from './instrucoes-x-ferramentas';
 import {
   ferramentasDoRascunho,
   ferramentasMudaram,
   ferramentasParaSalvar,
   rascunhoDasFerramentas,
+  type RascunhoDaAba,
   type RascunhoDasFerramentas,
 } from './rascunho';
 import { motivoForaDaD5, rotuloDoTipoDeAcao, rotuloDoTipoDoCampo, textoDoCodigo } from './textos';
@@ -73,11 +88,14 @@ export function FerramentasDoAgente({
   agente,
   aoSalvar,
   aoMudarNaoSalvo,
+  aoMudarRascunho,
 }: {
   agente: IaAgente;
   aoSalvar: (novo: IaAgente) => void;
   /** Avisa o detalhe se há alteração não salva (a aba Playground diz isso). */
   aoMudarNaoSalvo?: (naoSalvo: boolean) => void;
+  /** Avisa o detalhe do que o Salvar mandaria agora: é o RASCUNHO que o Playground testa (DC4). */
+  aoMudarRascunho?: (rascunho: RascunhoDaAba | null) => void;
 }) {
   const t = useTranslations('IaAgentes');
   const [rascunho, setRascunho] = useState<RascunhoDasFerramentas>(() => rascunhoDasFerramentas(agente.ferramentas));
@@ -126,7 +144,29 @@ export function FerramentasDoAgente({
     return saida;
   }, [carga]);
 
+  // O rascunho do Playground (DC4): o MESMO corpo do Salvar, carimbado com a versão do agente.
+  const rascunhoDoTeste = useMemo(
+    () =>
+      naoSalvo ? { de: agente.updatedAt, corpo: { ferramentas: ferramentasParaSalvar(ferramentas, existentes) } } : null,
+    [naoSalvo, ferramentas, existentes, agente.updatedAt],
+  );
+  useEffect(() => {
+    aoMudarRascunho?.(rascunhoDoTeste);
+  }, [rascunhoDoTeste, aoMudarRascunho]);
+
   const nadaLigado = rascunho.ligadas.length === 0;
+
+  // As instruções SALVAS (as da aba Instruções; o rascunho de lá não chega
+  // aqui) contra as chaves do RASCUNHO desta aba.
+  const pedidasDesligadas = useMemo(
+    () => ferramentasPedidasDesligadas([agente.instrucoes, ...agente.regras], rascunho.ligadas),
+    [agente.instrucoes, agente.regras, rascunho.ligadas],
+  );
+
+  function liberarEmail(campoId: string) {
+    setRascunho((r) => liberarCampoDoEmail(r, campoId));
+    toast.info(t('ferramentas.reuniao.emailLiberado'));
+  }
 
   function alternarTipo(tipo: TipoDeAcao, ligar: boolean) {
     setRascunho((r) => ({
@@ -188,6 +228,18 @@ export function FerramentasDoAgente({
     <div className="space-y-6">
       <p className="text-sm text-muted-foreground">{t('ferramentas.explicacao')}</p>
       {nadaLigado ? <p className="text-xs text-muted-foreground">{t('ferramentas.soConversa')}</p> : null}
+      {pedidasDesligadas.length > 0 ? (
+        <div className="space-y-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-3">
+          {pedidasDesligadas.map((p) => (
+            <div key={p.tipo} className="min-w-0 text-xs">
+              <p className="text-amber-700 dark:text-amber-300">
+                {t('ferramentas.instrucoesPedem', { ferramenta: rotuloDoTipoDeAcao(t, p.tipo) })}
+              </p>
+              <p className="break-words text-muted-foreground">{t('ferramentas.instrucoesTrecho', { trecho: p.trecho })}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       <div className="space-y-3">
         {TIPOS_DE_ACAO.map((tipo) => {
@@ -198,6 +250,11 @@ export function FerramentasDoAgente({
               : null;
           // Sem Calendly conectado, "Marcar reunião" não LIGA; ligada, só desliga.
           const naoLiga = !ligada && reuniao?.fase === 'desconectado';
+          // Sem Calendly o problema é outro (o aviso vermelho): o do e-mail seria só ruído.
+          const avisoDoEmail =
+            tipo === 'marcar_reuniao' && carga.fase === 'pronto' && reuniao?.fase !== 'desconectado'
+              ? avisoDoEmailDaReuniao(carga.opcoes, rascunho)
+              : null;
           return (
             <section key={tipo} className="space-y-3 rounded-md border border-border p-3">
               <label className={cn('flex items-start gap-3', naoLiga ? 'cursor-not-allowed' : 'cursor-pointer')}>
@@ -224,13 +281,16 @@ export function FerramentasDoAgente({
                     </Button>
                   </div>
                 ) : reuniao ? (
-                  <EscolhaDoTipoDeEvento
-                    situacao={reuniao}
-                    marcados={rascunho.listas.marcar_reuniao}
-                    recusados={recusados}
-                    aoEscolher={escolherTipoDeEvento}
-                    aoTentarDeNovo={tentarDeNovo}
-                  />
+                  <div className="space-y-3">
+                    <EscolhaDoTipoDeEvento
+                      situacao={reuniao}
+                      marcados={rascunho.listas.marcar_reuniao}
+                      recusados={recusados}
+                      aoEscolher={escolherTipoDeEvento}
+                      aoTentarDeNovo={tentarDeNovo}
+                    />
+                    {avisoDoEmail ? <AvisoDoEmail aviso={avisoDoEmail} aoLiberar={liberarEmail} /> : null}
+                  </div>
                 ) : (
                   <ListaDoTipo
                     tipo={tipo}
@@ -265,6 +325,29 @@ function AvisoDoCalendly({ texto, erro = false }: { texto: string; erro?: boolea
         {t('ferramentas.reuniao.abrirIntegracoes')}
       </Link>
     </p>
+  );
+}
+
+/**
+ * "Marcar reunião" ligada sem o campo E-mail em "Preencher campo": o que o
+ * agente faz com quem não tem e-mail na ficha, e o botão que libera o campo
+ * (só no rascunho). Sem o campo espelhado na conta, ou no teto de itens, só o
+ * aviso (no teto, com o porquê).
+ */
+function AvisoDoEmail({ aviso, aoLiberar }: { aviso: AvisoDoEmailDaReuniao; aoLiberar: (campoId: string) => void }) {
+  const t = useTranslations('IaAgentes');
+  const { campo } = aviso;
+  return (
+    <div className="space-y-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs">
+      <p className="text-amber-700 dark:text-amber-300">{t('ferramentas.reuniao.semCampoEmail')}</p>
+      {campo && aviso.podeLiberar ? (
+        <Button variant="outline" size="sm" onClick={() => aoLiberar(campo.id)}>
+          {t('ferramentas.reuniao.liberarEmail', { campo: campo.nome })}
+        </Button>
+      ) : campo ? (
+        <p className="text-muted-foreground">{t('ferramentas.reuniao.liberarEmailNoTeto', { max: LIMITES.itensPorAcao })}</p>
+      ) : null}
+    </div>
   );
 }
 

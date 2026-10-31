@@ -44,7 +44,7 @@ const composer = fonte('components/inbox/message-composer.tsx');
 const thread = fonte('components/inbox/message-thread.tsx');
 
 describe('o reenvio passa pelo trilho do Enviar (compositor)', () => {
-  const reenviar = trecho(composer, 'const reenviarTexto = useCallback(', 'useImperativeHandle(');
+  const reenviar = trecho(composer, 'const reenviarTexto = useCallback(', 'const conversaAnteriorRef = useRef(');
 
   it('respeita a trava, retém na janela de desfazer e solta a retida anterior antes', () => {
     expect(reenviar).toMatch(/if \(envioTravado/);

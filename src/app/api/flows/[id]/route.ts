@@ -6,10 +6,8 @@ import { supabaseAdmin } from '@/lib/flows/admin-client'
 /**
  * GET   /api/flows/[id]  — fetch one flow with its nodes.
  * PUT   /api/flows/[id]  — replace name/trigger/entry/fallback + the
- *                          full node graph (delete-then-insert under
- *                          the hood; not atomic, but the runner is
- *                          resilient to mid-edit reads — node_not_found
- *                          gracefully ends the run).
+ *                          full node graph (NOSSO, 1104: a troca dos nós
+ *                          é UMA transação, `cb_trocar_nos_do_robo`).
  * DELETE /api/flows/[id] — hard delete (RLS+CASCADE clean up nodes,
  *                          runs, events).
  *
@@ -120,11 +118,57 @@ export async function PUT(
     )
   }
 
+  // A conexão do cabeçalho é conferida ANTES de trocar os nós: o editor aberto
+  // de um robô cuja conexão foi apagada manda o id velho, e o UPDATE do
+  // cabeçalho estouraria DEPOIS da troca — nós novos com o `entry_node_id`
+  // antigo. Pela sessão (RLS): conexão de outra conta também não passa.
+  if (body.channel_id) {
+    const { data: canal, error: canalErr } = await guard.supabase
+      .from('cb_channels')
+      .select('id')
+      .eq('id', body.channel_id)
+      .maybeSingle()
+    if (canalErr) {
+      return NextResponse.json({ error: canalErr.message }, { status: 500 })
+    }
+    if (!canal) {
+      return NextResponse.json(
+        { error: 'channel_id does not match a connection of this account' },
+        { status: 400 },
+      )
+    }
+  }
+
   const admin = supabaseAdmin()
 
-  // Update the flow row first — the body may not include `nodes` (a
-  // header-only save for editing the trigger config without touching
-  // the graph). Skip node replacement in that case.
+  // ⚠️⚠️ OS NÓS NUMA TRANSAÇÃO (1104, adaptado do #674 do original). Até aqui
+  // eram duas idas ao banco: apagar TODOS e inserir os novos. Com o INSERT
+  // recusado (tipo fora do CHECK de `node_type` — nó novo exige migration —,
+  // chave repetida, posição que não é inteira), o DELETE já tinha valido e o
+  // robô ficava SEM NÓ NENHUM; o ativo encerrava toda run em `node_not_found`.
+  // `cb_trocar_nos_do_robo` apaga e insere na mesma transação: qualquer
+  // recusa desfaz as duas. Pelo `admin` (só o service_role executa a função),
+  // DEPOIS das guardas acima. E ANTES do cabeçalho, de propósito: a recusa
+  // dos nós é o erro provável, e com ela nada muda — nem o `entry_node_id`
+  // passa a apontar para um nó que não foi gravado.
+  // O body pode não trazer `nodes` (salvar só o cabeçalho, sem tocar no
+  // grafo): aí não há troca.
+  if (body.nodes !== undefined) {
+    const { error: nodesErr } = await admin.rpc('cb_trocar_nos_do_robo', {
+      p_flow_id: id,
+      p_nodes: body.nodes.map((n) => ({
+        node_key: n.node_key,
+        node_type: n.node_type,
+        config: n.config,
+        position_x: n.position_x ?? 0,
+        position_y: n.position_y ?? 0,
+      })),
+    })
+    if (nodesErr) {
+      return NextResponse.json({ error: nodesErr.message }, { status: 500 })
+    }
+  }
+
   const flowPatch: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
   }
@@ -148,33 +192,6 @@ export async function PUT(
     .eq('id', id)
   if (updErr) {
     return NextResponse.json({ error: updErr.message }, { status: 500 })
-  }
-
-  if (body.nodes !== undefined) {
-    // Delete-then-insert. Not transactional but the runner handles
-    // mid-edit reads safely (a node_not_found ends the run cleanly).
-    const { error: delErr } = await admin
-      .from('flow_nodes')
-      .delete()
-      .eq('flow_id', id)
-    if (delErr) {
-      return NextResponse.json({ error: delErr.message }, { status: 500 })
-    }
-    if (body.nodes.length > 0) {
-      const { error: insErr } = await admin.from('flow_nodes').insert(
-        body.nodes.map((n) => ({
-          flow_id: id,
-          node_key: n.node_key,
-          node_type: n.node_type,
-          config: n.config,
-          position_x: n.position_x ?? 0,
-          position_y: n.position_y ?? 0,
-        })),
-      )
-      if (insErr) {
-        return NextResponse.json({ error: insErr.message }, { status: 500 })
-      }
-    }
   }
 
   // Re-fetch and return the new state — the editor uses the response

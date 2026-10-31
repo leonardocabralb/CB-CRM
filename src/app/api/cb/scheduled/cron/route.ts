@@ -3,7 +3,7 @@ import { NextResponse, after } from 'next/server';
 
 import { supabaseAdmin } from '@/lib/automations/admin-client';
 import { dispararVencidas } from '@/lib/scheduled/dispatch';
-import { gerarTarefasRecorrentes } from '@/lib/tasks/gerar-recorrentes';
+import { rodarManutencaoDoCiclo } from '@/lib/scheduled/manutencao-do-ciclo';
 
 /**
  * O worker das mensagens agendadas (migration 925).
@@ -21,13 +21,19 @@ import { gerarTarefasRecorrentes } from '@/lib/tasks/gerar-recorrentes';
  * propósito: um deploy que esqueceu a variável falha alto, em vez de virar um
  * endpoint aberto que qualquer um usa para adiantar mensagens de clientes.
  *
- * ⚠️ Esta rota CARREGA também as TAREFAS RECORRENTES (1074,
- * `gerarTarefasRecorrentes`): tirá-la do laço lento para de gerar as tarefas,
- * sem erro nenhum. É esta rota, e não uma nova, porque rota nova no laço só
- * vale depois de `docker stack deploy` à mão na VPS — o mesmo motivo que pôs
- * o Atlas no ciclo do Asaas. Roda em `after()`, na forma de CALLBACK: começa
+ * ⚠️ Esta rota CARREGA também a MANUTENÇÃO do ciclo
+ * (`rodarManutencaoDoCiclo`, `src/lib/scheduled/manutencao-do-ciclo.ts`), em
+ * sequência e sob UM prazo comum (`PRAZO_DA_MANUTENCAO_MS`): as TAREFAS
+ * RECORRENTES (1074), o VENCIMENTO da Lixeira de contatos e a DRENAGEM da
+ * fila de arquivos a apagar do `chat-media` (1097). Tirá-la do laço lento
+ * para as três coisas, sem erro nenhum: as tarefas não nascem, a ficha
+ * vencida fica na Lixeira para sempre e os arquivos excluídos nunca saem do
+ * bucket. É esta rota, e não uma nova, porque rota nova no laço só vale
+ * depois de `docker stack deploy` à mão na VPS — o mesmo motivo que pôs o
+ * Atlas no ciclo do Asaas. Roda em `after()`, na forma de CALLBACK: começa
  * depois da resposta, não disputa o `-m 120` do curl com o disparo, não mexe
- * no batimento das agendadas e nunca lança.
+ * no batimento das agendadas e nunca lança (cada passo é isolado: a falha de
+ * um não impede o seguinte).
  */
 export const maxDuration = 60;
 
@@ -48,9 +54,10 @@ export async function GET(request: Request) {
   }
 
   const admin = supabaseAdmin();
-  // As tarefas recorrentes (ver o cabeçalho): depois da resposta, com o
-  // relógio de quando rodam — o "hoje" é o do escritório no momento.
-  after(() => gerarTarefasRecorrentes(admin));
+  // A manutenção (ver o cabeçalho): depois da resposta, com o relógio de
+  // quando roda — o "hoje" das tarefas é o do escritório no momento, e o
+  // prazo comum conta daí.
+  after(() => rodarManutencaoDoCiclo(admin));
 
   try {
     const r = await dispararVencidas(admin);

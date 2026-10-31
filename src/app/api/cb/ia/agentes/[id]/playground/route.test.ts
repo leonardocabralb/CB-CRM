@@ -53,8 +53,12 @@ vi.mock('@/lib/ia-chaves/repo', () => ({
 }))
 
 const agentes: Record<string, unknown> = {}
-vi.mock('@/lib/ia-agentes/repo', () => ({
+// O resto do repo é o real (o `ErroDoAgente` que a rota traduz); a leitura do
+// agente e a conferência do rascunho são dublês.
+vi.mock('@/lib/ia-agentes/repo', async (original) => ({
+  ...(await original<typeof import('@/lib/ia-agentes/repo')>()),
   obterAgente: vi.fn(async (_conta: string, id: string) => agentes[id] ?? null),
+  conferirRascunho: vi.fn(async () => {}),
 }))
 
 // O que o agente vê (F3): a leitura é a do turno, aqui um dublê.
@@ -93,11 +97,16 @@ vi.mock('@/lib/ai/generate', () => ({
 }))
 
 import { generateReply } from '@/lib/ai/generate'
+import { logAiUsage } from '@/lib/ai/usage'
+import { lerChave } from '@/lib/ia-chaves/repo'
 import { lerOQueOAgenteVe } from '@/lib/ia-agentes/acesso'
 import { lerAgendaDoAgente, marcarNoCalendly } from '@/lib/ia-agentes/agenda'
 import { executarAcoes } from '@/lib/ia-agentes/executar-acoes'
 import { opcoesDoAgente } from '@/lib/ia-agentes/ferramentas'
+import { conferirRascunho, ErroDoAgente } from '@/lib/ia-agentes/repo'
 import { CANARIO_DAS_REGRAS } from '@/lib/ia-agentes/regras-do-sistema'
+import { respostaDoErro } from '@/lib/ia-agentes/resposta'
+import { PATCH } from '../route'
 import { POST } from './route'
 
 function agente(id: string, extra: Record<string, unknown> = {}) {
@@ -115,6 +124,7 @@ function agente(id: string, extra: Record<string, unknown> = {}) {
     podePassarPara: [],
     acesso: { ficha: false, campos: [], negocio: false, etiquetas: false, cobrancas: true, reuniao: false },
     ferramentas: {},
+    retomada: { ativa: false, cadencia: [15, 60], janela: { inicio: '08:00', fim: '21:00' } },
     ...extra,
   }
 }
@@ -398,6 +408,54 @@ describe('POST /api/cb/ia/agentes/[id]/playground — as ações (F4, SIMULADAS)
     expect(corpo).toMatchObject({ reply: '', passaPara: 'Cobrança' })
     expect(corpo.acoes).toEqual({ aceitas: [], recusadas: [{ tipo: 'mover_etapa', motivo: 'passagem' }] })
   })
+
+  it('⚠️ a passagem com AÇÕES (25/10/2026): etiqueta e tarefa ficam nas aceitas (no turno, rodam antes de passar); mover vai às recusadas', async () => {
+    resposta = { text: '[[PASSAR:1]]\n[[ETIQUETAR:1]]\n[[MOVER:1]]\n[[TAREFA:1=Ligar amanhã]]\n[[TRANSFERIR]]', handoff: false }
+    const corpo = await (await enviar()).json()
+    expect(corpo).toMatchObject({ reply: '', passaPara: 'Cobrança', handoff: false })
+    expect(corpo.acoes).toEqual({
+      aceitas: [
+        { tipo: 'etiquetar', nome: 'VIP' },
+        { tipo: 'criar_tarefa', nome: 'Ana', valor: 'Ligar amanhã' },
+      ],
+      recusadas: [
+        { tipo: 'mover_etapa', motivo: 'passagem' },
+        { tipo: 'transferir', motivo: 'passagem' },
+      ],
+    })
+    expect(executarAcoes).not.toHaveBeenCalled()
+  })
+
+  it('a passagem INVÁLIDA (número que não existe) transfere: nada executaria', async () => {
+    resposta = { text: '[[PASSAR:7]]\n[[ETIQUETAR:1]]', handoff: false }
+    const corpo = await (await enviar()).json()
+    expect(corpo).toMatchObject({ handoff: true, passaPara: null })
+    expect(corpo.acoes).toEqual({ aceitas: [], recusadas: [{ tipo: 'etiquetar', motivo: 'transferencia' }] })
+  })
+
+  it('⚠️ a AÇÃO PROMETIDA sem a ação (25/10/2026, a frase medida): `acaoPrometida`, e as ações não executariam', async () => {
+    const MEDIDO = 'Criei o lembrete para o Leonardo te enviar a lista de documentos na quarta-feira.'
+    resposta = { text: `${MEDIDO}\n[[ETIQUETAR:1]]`, handoff: false }
+    const corpo = await (await enviar()).json()
+    expect(corpo).toMatchObject({ acaoPrometida: true, reuniaoPrometida: false, linkInventado: false, handoff: false })
+    expect(corpo.acoes).toEqual({ aceitas: [], recusadas: [{ tipo: 'etiquetar', motivo: 'transferencia' }] })
+    // Com a tarefa aceita, cumpre: sai, e a tarefa vem simulada.
+    resposta = { text: `${MEDIDO}\n[[TAREFA:1=Enviar a lista]]`, handoff: false }
+    const comTarefa = await (await enviar()).json()
+    expect(comTarefa.acaoPrometida).toBe(false)
+    expect(comTarefa.acoes.aceitas).toEqual([{ tipo: 'criar_tarefa', nome: 'Ana', valor: 'Enviar a lista' }])
+  })
+
+  it('a afirmação que repete uma resposta ANTERIOR do agente no teste não é prometida', async () => {
+    resposta = { text: 'Sim, já registrei suas informações no sistema.', handoff: false }
+    const mensagens = [
+      { role: 'user', content: 'Meu nome é Ana' },
+      { role: 'assistant', content: 'Registrei suas informações no sistema!' },
+      { role: 'user', content: 'Registrou mesmo?' },
+    ]
+    expect((await (await enviar({ messages: mensagens })).json()).acaoPrometida).toBe(false)
+    expect((await (await enviar({ messages: [{ role: 'user', content: 'Registrou?' }] })).json()).acaoPrometida).toBe(true)
+  })
 })
 
 describe('POST /api/cb/ia/agentes/[id]/playground — marcar reunião (F5)', () => {
@@ -543,7 +601,14 @@ describe('POST /api/cb/ia/agentes/[id]/playground — "Simular retomada" (1056)'
   it('gera com a seção da retomada (a tentativa e o tempo da cadência), sem ações, passagens nem horários — e nada é enviado', async () => {
     resposta = { text: 'Oi! Conseguiu separar os extratos?', handoff: false }
     const corpo = await (await simular({ tentativa: 2 })).json()
-    expect(corpo.retomada).toEqual({ tentativa: 2, de: 3, texto: 'Oi! Conseguiu separar os extratos?', parada: null })
+    expect(corpo.retomada).toEqual({
+      tentativa: 2,
+      de: 3,
+      texto: 'Oi! Conseguiu separar os extratos?',
+      parada: null,
+      // A retomada deste agente está desligada: a simulação roda e diz isso.
+      desligada: true,
+    })
     const pedido = vi.mocked(generateReply).mock.calls[0][0].systemPrompt as string
     expect(pedido).toContain('the customer has not replied for 1 hour. This is follow-up 2 of 3.')
     expect(pedido).not.toContain('[[PASSAR:n]]')
@@ -565,5 +630,206 @@ describe('POST /api/cb/ia/agentes/[id]/playground — "Simular retomada" (1056)'
     resposta = gerada
     const corpo = await (await simular()).json()
     expect(corpo.retomada).toMatchObject({ texto: '', parada })
+  })
+})
+
+describe('POST /api/cb/ia/agentes/[id]/playground — o RASCUNHO da tela (DC4, 26/10/2026)', () => {
+  const OUTRO = '55555555-5555-4555-8555-555555555555'
+
+  beforeEach(() => {
+    agentes[ID] = agente(ID, { nome: 'Triagem', instrucoes: 'INSTRUCAO SALVA', modelo: 'modelo-salvo' })
+    vi.mocked(conferirRascunho).mockReset()
+    vi.mocked(conferirRascunho).mockResolvedValue(undefined)
+  })
+
+  it('⚠️ a instrução do rascunho chega ao systemPrompt (e a salva não), sem salvar nada', async () => {
+    const res = await enviar({ rascunho: { instrucoes: 'INSTRUCAO DO RASCUNHO', regras: ['REGRA DO RASCUNHO'] } })
+    expect(res.status).toBe(200)
+    const pedido = vi.mocked(generateReply).mock.calls[0][0].systemPrompt as string
+    expect(pedido).toContain('INSTRUCAO DO RASCUNHO')
+    expect(pedido).toContain('REGRA DO RASCUNHO')
+    expect(pedido).not.toContain('INSTRUCAO SALVA')
+    // Conferido COMO no salvar: o agente salvo e o rascunho lido por `lerAlteracao`.
+    expect(vi.mocked(conferirRascunho).mock.calls[0]).toEqual([
+      'conta-1',
+      agentes[ID],
+      { instrucoes: 'INSTRUCAO DO RASCUNHO', regras: ['REGRA DO RASCUNHO'] },
+    ])
+  })
+
+  it('sem rascunho, testa o SALVO e não confere nada', async () => {
+    await enviar()
+    expect(vi.mocked(generateReply).mock.calls[0][0].systemPrompt).toContain('INSTRUCAO SALVA')
+    expect(conferirRascunho).not.toHaveBeenCalled()
+  })
+
+  it('o provedor e o modelo do rascunho geram — a chave lida é a do provedor do rascunho; o uso fica no agente, com o nome SALVO', async () => {
+    await enviar({ rascunho: { provedor: 'gemini', modelo: 'modelo-do-rascunho', nome: 'Nome novo' } })
+    const config = vi.mocked(generateReply).mock.calls[0][0].config
+    expect(config).toMatchObject({ provider: 'gemini', model: 'modelo-do-rascunho' })
+    expect(vi.mocked(lerChave).mock.calls.at(-1)).toEqual(['conta-1', 'gemini'])
+    expect(vi.mocked(logAiUsage).mock.calls[0][1]).toMatchObject({
+      mode: 'agente_teste',
+      provider: 'gemini',
+      model: 'modelo-do-rascunho',
+      iaAgenteId: ID,
+      iaAgenteNome: 'Triagem',
+    })
+  })
+
+  it('as passagens do rascunho entram no pedido', async () => {
+    agentes[OUTRO] = agente(OUTRO, { nome: 'Cobrança do rascunho' })
+    await enviar({ rascunho: { pode_passar_para: [OUTRO] } })
+    expect(vi.mocked(generateReply).mock.calls[0][0].systemPrompt).toContain('1. Cobrança do rascunho')
+  })
+
+  it.each<[string, Record<string, unknown>]>([
+    ['lista_invalida', { regras: 'não é lista' }],
+    ['teto_invalido', { teto_respostas: 0 }],
+    ['modelo_vazio', { provedor: 'openai' }],
+    ['retomada_invalida', { retomada: { ativa: true, cadencia: [], janela: { inicio: '08:00', fim: '21:00' } } }],
+    ['corpo_invalido', [] as unknown as Record<string, unknown>],
+  ])('rascunho fora da forma (%s): o MESMO 400 do PATCH, sem gerar', async (codigo, rascunho) => {
+    const res = await enviar({ rascunho })
+    expect(res.status).toBe(400)
+    // A marca de que o erro é do RASCUNHO (o corpo continua o do PATCH).
+    expect(res.headers.get('x-rascunho-recusado')).toBe('1')
+    const corpo = await res.json()
+    expect(corpo).toMatchObject({ code: codigo })
+    const doSalvar = await PATCH(
+      new Request(`http://x/api/cb/ia/agentes/${ID}`, { method: 'PATCH', body: JSON.stringify(rascunho) }),
+      { params: Promise.resolve({ id: ID }) },
+    )
+    expect(doSalvar.status).toBe(400)
+    expect(await doSalvar.json()).toEqual(corpo)
+    expect(generateReply).not.toHaveBeenCalled()
+    expect(conferirRascunho).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['item de outra conta', 'item_de_outra_conta'],
+    ['campo vigiado', 'campo_vigiado'],
+    ['automação fora da D5', 'automacao_fora_da_d5'],
+  ] as const)('⚠️ %s: o MESMO 400 do salvar (código e `itens`), sem gerar nem gastar', async (_rotulo, codigo) => {
+    const erro = new ErroDoAgente(codigo, 'ferramenta recusada', undefined, [OUTRO])
+    vi.mocked(conferirRascunho).mockRejectedValue(erro)
+    const res = await enviar({ rascunho: { ferramentas: { etiquetar: { etiquetas: [OUTRO] } } } })
+    expect(res.status).toBe(400)
+    expect(res.headers.get('x-rascunho-recusado')).toBe('1')
+    const corpo = await res.json()
+    expect(corpo).toEqual({ error: codigo, code: codigo, itens: [OUTRO] })
+    // O que o PATCH devolveria com a mesma recusa.
+    expect(corpo).toEqual(await respostaDoErro(erro)!.json())
+    expect(generateReply).not.toHaveBeenCalled()
+    expect(logAiUsage).not.toHaveBeenCalled()
+  })
+
+  it('provedor do rascunho sem chave: o mesmo `provedor_sem_chave` do salvar', async () => {
+    vi.mocked(conferirRascunho).mockRejectedValue(new ErroDoAgente('provedor_sem_chave', 'sem chave'))
+    const res = await enviar({ rascunho: { provedor: 'openai', modelo: 'gpt-x' } })
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ code: 'provedor_sem_chave' })
+  })
+
+  it('o 400 que NÃO é do rascunho (sem chave do provedor salvo, conversa sem cliente) não leva a marca', async () => {
+    vi.mocked(lerChave).mockResolvedValueOnce({ chave: null, ilegivel: false })
+    const semChave = await enviar({ rascunho: { instrucoes: 'Nova.' } })
+    expect(semChave.status).toBe(400)
+    expect(await semChave.json()).toMatchObject({ code: 'sem_chave' })
+    expect(semChave.headers.get('x-rascunho-recusado')).toBeNull()
+    const semCliente = await enviar({ messages: [{ role: 'assistant', content: 'oi' }], rascunho: { instrucoes: 'Nova.' } })
+    expect(semCliente.status).toBe(400)
+    expect(semCliente.headers.get('x-rascunho-recusado')).toBeNull()
+  })
+
+  it('erro de BANCO na conferência do rascunho é 500, nunca "recusado"', async () => {
+    vi.mocked(conferirRascunho).mockRejectedValue(new ErroDoAgente('banco', 'timeout'))
+    const res = await enviar({ rascunho: { ferramentas: { etiquetar: { etiquetas: [OUTRO] } } } })
+    expect(res.status).toBe(500)
+    expect(res.headers.get('x-rascunho-recusado')).toBeNull()
+    expect(generateReply).not.toHaveBeenCalled()
+  })
+
+  it('`rascunho: null` é o mesmo que sem rascunho', async () => {
+    const res = await enviar({ rascunho: null })
+    expect(res.status).toBe(200)
+    expect(conferirRascunho).not.toHaveBeenCalled()
+  })
+})
+
+describe('POST /api/cb/ia/agentes/[id]/playground — "Ver o pedido enviado" (sob demanda)', () => {
+  it('com `verPedido: true`, a resposta traz o texto EXATO que foi ao modelo; sem ele, não', async () => {
+    const com = await (await enviar({ verPedido: true })).json()
+    expect(com.pedido).toBe(vi.mocked(generateReply).mock.calls[0][0].systemPrompt)
+    const sem = await (await enviar()).json()
+    expect(sem).not.toHaveProperty('pedido')
+    // Só o booleano true liga.
+    expect(await (await enviar({ verPedido: 'true' })).json()).not.toHaveProperty('pedido')
+  })
+
+  it('na retomada simulada também', async () => {
+    resposta = { text: 'Oi! Conseguiu?', handoff: false }
+    const res = await POST(
+      new Request(`http://x/api/cb/ia/agentes/${ID}/playground`, {
+        method: 'POST',
+        body: JSON.stringify({
+          messages: [
+            { role: 'user', content: 'oi' },
+            { role: 'assistant', content: 'Pode me mandar os extratos?' },
+          ],
+          retomada: true,
+          verPedido: true,
+        }),
+      }),
+      { params: Promise.resolve({ id: ID }) },
+    )
+    const corpo = await res.json()
+    expect(corpo.pedido).toBe(vi.mocked(generateReply).mock.calls[0][0].systemPrompt)
+  })
+})
+
+describe('POST /api/cb/ia/agentes/[id]/playground — a retomada do RASCUNHO (DC4)', () => {
+  const CONVERSA = [
+    { role: 'user', content: 'Quero revisar meu contrato' },
+    { role: 'assistant', content: 'Você conseguiu separar os extratos?' },
+  ]
+  function simular(extra: Record<string, unknown> = {}) {
+    return POST(
+      new Request(`http://x/api/cb/ia/agentes/${ID}/playground`, {
+        method: 'POST',
+        body: JSON.stringify({ messages: CONVERSA, retomada: true, ...extra }),
+      }),
+      { params: Promise.resolve({ id: ID }) },
+    )
+  }
+
+  beforeEach(() => {
+    vi.mocked(conferirRascunho).mockReset()
+    vi.mocked(conferirRascunho).mockResolvedValue(undefined)
+    resposta = { text: 'Oi! Conseguiu separar?', handoff: false }
+  })
+
+  it('⚠️ diz quando a retomada está DESLIGADA na versão testada (e simula assim mesmo)', async () => {
+    const salva = await (await simular()).json()
+    expect(salva.retomada).toMatchObject({ tentativa: 1, de: 2, parada: null, desligada: true })
+    const ligadaNoRascunho = await (
+      await simular({ rascunho: { retomada: { ativa: true, cadencia: [15, 60, 180], janela: { inicio: '08:00', fim: '21:00' } } } })
+    ).json()
+    // A cadência do RASCUNHO (3 tentativas), ligada.
+    expect(ligadaNoRascunho.retomada).toMatchObject({ de: 3, desligada: false })
+  })
+
+  it('a tentativa vem da cadência do rascunho (o tempo sem resposta é o intervalo dela)', async () => {
+    await simular({
+      tentativa: 2,
+      rascunho: { retomada: { ativa: true, cadencia: [30, 240], janela: { inicio: '08:00', fim: '21:00' } } },
+    })
+    const pedido = vi.mocked(generateReply).mock.calls[0][0].systemPrompt as string
+    expect(pedido).toContain('the customer has not replied for 4 hours. This is follow-up 2 of 2.')
+  })
+
+  it('a instrução do rascunho também chega ao pedido da retomada', async () => {
+    await simular({ rascunho: { instrucoes: 'INSTRUCAO DO RASCUNHO NA RETOMADA' } })
+    expect(vi.mocked(generateReply).mock.calls[0][0].systemPrompt).toContain('INSTRUCAO DO RASCUNHO NA RETOMADA')
   })
 })

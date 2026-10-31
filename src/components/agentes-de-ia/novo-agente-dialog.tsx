@@ -3,6 +3,10 @@
 // "Novo agente": em branco ou a partir de um modelo de partida (Triagem,
 // Cobrança, Financeiro — 5.9 do plano). As instruções e as regras de partida
 // moram no DICIONÁRIO, sem o nome do escritório (o `produto-gate`).
+//
+// O modelo sai da lista da CHAVE do provedor (25/10/2026,
+// `provedor-e-modelo.tsx`): sem escolha da pessoa, o recomendado que a chave
+// tem — DERIVADO no render, nunca gravado por efeito.
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -20,7 +24,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { AI_PROVIDER_DEFAULT_MODEL } from '@/lib/ai/defaults';
+import { modeloRecomendado } from '@/lib/ai/defaults';
 import type { AiProvider } from '@/lib/ai/types';
 import { cn } from '@/lib/utils';
 import {
@@ -32,6 +36,7 @@ import {
   type ModeloDePartida,
 } from './tipos';
 import { textoDoCodigo } from './textos';
+import { listaDaChave, QuemLeAMidia, SeletorDeModelo, useModelosDasChaves } from './provedor-e-modelo';
 
 export function NovoAgenteDialog({ aberto, aoFechar }: { aberto: boolean; aoFechar: () => void }) {
   const t = useTranslations('IaAgentes');
@@ -41,6 +46,14 @@ export function NovoAgenteDialog({ aberto, aoFechar }: { aberto: boolean; aoFech
   const [provedor, setProvedor] = useState<AiProvider>('gemini');
   const [chaves, setChaves] = useState<ChavesDaConta>(null);
   const [salvando, setSalvando] = useState(false);
+  // Só busca com o diálogo ABERTO (ele fica montado na lista de agentes).
+  const modelosDasChaves = useModelosDasChaves(aberto);
+  // A escolha da pessoa vale só para o provedor em que foi feita (carimbo):
+  // trocar de provedor volta ao recomendado daquela chave.
+  const [escolhido, setEscolhido] = useState<{ de: AiProvider; modelo: string } | null>(null);
+  const listaDoProvedor = modelosDasChaves.leitura ? modelosDasChaves.leitura.provedores[provedor] : null;
+  const modelo =
+    escolhido && escolhido.de === provedor ? escolhido.modelo : modeloRecomendado(provedor, listaDaChave(listaDoProvedor));
 
   useEffect(() => {
     if (!aberto) return;
@@ -79,7 +92,7 @@ export function NovoAgenteDialog({ aberto, aoFechar }: { aberto: boolean; aoFech
         body: JSON.stringify({
           nome: nome.trim() || (partida === 'em_branco' ? '' : t(`modelos.${partida}.nome`)),
           provedor,
-          modelo: AI_PROVIDER_DEFAULT_MODEL[provedor],
+          modelo: modelo.trim(),
           ...base,
         }),
       });
@@ -170,6 +183,21 @@ export function NovoAgenteDialog({ aberto, aoFechar }: { aberto: boolean; aoFech
               <p className="text-xs text-amber-700 dark:text-amber-300">{t('campo.provedorSemChave')}</p>
             ) : null}
           </div>
+
+          <div className="min-w-0 space-y-1.5">
+            <Label htmlFor="novo-agente-modelo">{t('campo.modelo')}</Label>
+            <SeletorDeModelo
+              id="novo-agente-modelo"
+              provedor={provedor}
+              valor={modelo}
+              aoMudar={(m) => setEscolhido({ de: provedor, modelo: m })}
+              lista={listaDoProvedor}
+              atualizando={modelosDasChaves.atualizando}
+              aoAtualizar={modelosDasChaves.atualizar}
+            />
+            {/* A linha curta de quem lê a mídia (o quadro inteiro está na Configuração). */}
+            <QuemLeAMidia leitores={modelosDasChaves.leitura ? modelosDasChaves.leitura.leitores : undefined} compacto />
+          </div>
         </div>
 
         <DialogFooter>
@@ -178,7 +206,7 @@ export function NovoAgenteDialog({ aberto, aoFechar }: { aberto: boolean; aoFech
           </Button>
           <Button
             onClick={() => void criar()}
-            disabled={salvando || (!nome.trim() && !nomePadrao) || (chaves !== null && !chaves[provedor])}
+            disabled={salvando || (!nome.trim() && !nomePadrao) || !modelo.trim() || (chaves !== null && !chaves[provedor])}
           >
             {t('novo.criar')}
           </Button>

@@ -18,6 +18,12 @@ const h = vi.hoisted(() => ({
   conversaExiste: false,
   /** As linhas que a ingestão mandou gravar em `messages`. */
   linhas: [] as Record<string, unknown>[],
+  /** O que a contagem das mensagens anteriores do cliente responde. */
+  contagem: { count: 0, error: null } as { count: number | null; error: { message: string } | null },
+  /** A conversa já teve a primeira mensagem reivindicada (`first_inbound_at` preenchido, 1105). */
+  primeiraLevada: false,
+  /** Cada reivindicação: o patch e quantas mensagens já estavam gravadas. */
+  reivindicacoes: [] as { patch: Record<string, unknown>; gravadasAntes: number }[],
 }));
 
 vi.mock('@/lib/contacts/dedupe', () => ({
@@ -116,13 +122,29 @@ function fakeDb() {
             single: async () => ({ data: { id: 'conv-1', unread_count: 0 }, error: null }),
           }),
         }),
-        update: () => ({ eq: async () => ({ error: null }) }),
+        update: (patch: Record<string, unknown>) => ({
+          eq: () =>
+            // A prévia da conversa (`update(...).eq('id', …)`, aguardado direto)
+            // e a reivindicação da primeira mensagem (1105), que segue com
+            // `.is('first_inbound_at', null).select('id')`: leva a linha só
+            // quem chega primeiro — a régua do UPDATE condicional.
+            Object.assign(Promise.resolve({ error: null }), {
+              is: () => ({
+                select: async () => {
+                  h.reivindicacoes.push({ patch, gravadasAntes: h.linhas.length });
+                  if (h.primeiraLevada) return { data: [], error: null };
+                  h.primeiraLevada = true;
+                  return { data: [{ id: 'conv-1' }], error: null };
+                },
+              }),
+            }),
+        }),
       };
     }
     if (tabela === 'messages') {
       return {
         // A contagem de mensagens anteriores do cliente.
-        select: () => ({ eq: () => ({ eq: async () => ({ count: 0, error: null }) }) }),
+        select: () => ({ eq: () => ({ eq: async () => h.contagem }) }),
         insert: (linha: Record<string, unknown>) => ({
           select: () => ({
             single: async () => {
@@ -170,6 +192,9 @@ beforeEach(() => {
   h.insertErro = null;
   h.conversaExiste = false;
   h.linhas = [];
+  h.contagem = { count: 0, error: null };
+  h.primeiraLevada = false;
+  h.reivindicacoes = [];
   dispatch.mockResolvedValue('tentado');
 });
 
@@ -294,6 +319,89 @@ describe('persistInboundMessage: as automações rodam EM SEQUÊNCIA (Fase 12)',
 });
 
 // ============================================================
+// A PRIMEIRA mensagem se decide no banco, DEPOIS do insert (1105). Numa
+// rajada, as duas mensagens contavam zero antes de qualquer uma gravar, e a
+// saudação do robô e da automação saía em dobro. O dublê da reivindicação
+// segue a régua do UPDATE condicional: só quem chega primeiro leva a linha.
+// ============================================================
+describe('persistInboundMessage: a primeira mensagem é reivindicada UMA vez (1105)', () => {
+  const comoPrimeira = () =>
+    vi.mocked(dispararAutomacoes).mock.calls.filter(([a]) => a.triggerType === 'first_inbound_message')
+      .length;
+  const roboComoPrimeira = () =>
+    vi.mocked(dispatchInboundToFlows).mock.calls.filter(([a]) => a.isFirstInboundMessage).length;
+
+  beforeEach(() => {
+    // `clearAllMocks` não desfaz implementação (os testes acima as trocam).
+    vi.mocked(dispararAutomacoes).mockResolvedValue(DISPARO);
+    vi.mocked(dispatchInboundToFlows).mockResolvedValue({ consumed: false } as never);
+  });
+
+  it('rajada: duas mensagens que contam zero ao mesmo tempo — só UMA é a primeira', async () => {
+    h.conversaExiste = true;
+
+    await Promise.all([
+      persistInboundMessage(fakeDb(), { ...MENSAGEM, providerMessageId: 'ID-RAJADA-1', text: 'oi' }),
+      persistInboundMessage(fakeDb(), { ...MENSAGEM, providerMessageId: 'ID-RAJADA-2', text: 'tudo bem?' }),
+    ]);
+
+    // As duas gravaram e as duas tentaram; o banco deu a conversa a uma só.
+    expect(h.linhas).toHaveLength(2);
+    expect(h.reivindicacoes).toHaveLength(2);
+    expect(comoPrimeira()).toBe(1);
+    expect(roboComoPrimeira()).toBe(1);
+    // As duas continuam sendo mensagem: só a saudação deixa de sair em dobro.
+    const comuns = vi
+      .mocked(dispararAutomacoes)
+      .mock.calls.filter(([a]) => a.triggerType === 'new_message_received');
+    expect(comuns).toHaveLength(2);
+  });
+
+  it('reivindica DEPOIS de gravar, com o carimbo na coluna da 1105', async () => {
+    await persistInboundMessage(fakeDb(), MENSAGEM);
+
+    expect(h.reivindicacoes).toEqual([
+      { patch: { first_inbound_at: expect.any(String) }, gravadasAntes: 1 },
+    ]);
+    expect(comoPrimeira()).toBe(1);
+    expect(roboComoPrimeira()).toBe(1);
+  });
+
+  it('conversa com mensagem anterior do cliente: nem tenta (a coluna nula da conversa antiga não conta)', async () => {
+    h.contagem = { count: 3, error: null };
+
+    await persistInboundMessage(fakeDb(), MENSAGEM);
+
+    expect(h.reivindicacoes).toEqual([]);
+    expect(comoPrimeira()).toBe(0);
+    expect(roboComoPrimeira()).toBe(0);
+  });
+
+  it('a contagem FALHOU: falha fechada — nem tenta, e a mensagem segue o resto do caminho', async () => {
+    const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
+    h.contagem = { count: null, error: { message: 'timeout' } };
+
+    await persistInboundMessage(fakeDb(), MENSAGEM);
+
+    expect(h.reivindicacoes).toEqual([]);
+    expect(comoPrimeira()).toBe(0);
+    expect(agente).toHaveBeenCalledTimes(1);
+    erro.mockRestore();
+  });
+
+  it('a gravação falhou: não reivindica — a próxima mensagem ainda pode ser a primeira', async () => {
+    const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
+    h.insertErro = { code: 'XX000', message: 'boom' };
+
+    await persistInboundMessage(fakeDb(), MENSAGEM);
+
+    expect(h.reivindicacoes).toEqual([]);
+    expect(h.primeiraLevada).toBe(false);
+    erro.mockRestore();
+  });
+});
+
+// ============================================================
 // O agente de IA (F2 do docs/PLANO-agentes-de-ia.md): a ingestão entrega os
 // FATOS da mensagem à entrada (`aoChegarMensagemDoCliente`), que decide. A
 // resposta automática antiga (`ai/auto-reply`) foi apagada (E2) — o que a
@@ -333,6 +441,15 @@ describe('persistInboundMessage: os fatos da mensagem vão para o agente de IA',
     // DEPOIS do robô, das automações e do funil; ANTES do message.received.
     expect(h.ordem.slice(-2)).toEqual(['funil', 'ia']);
     expect(eventos().at(-1)).toBe('message.received');
+  });
+
+  it('a escolha num botão ou numa lista (1111) chega como toque em botão: não abre turno', async () => {
+    // Como na Meta (#478): navegação de menu, não pergunta. Outro sistema no
+    // mesmo número pode mandar botões, e a escolha do cliente traz o rótulo
+    // como texto — sem a marca, o agente responderia por cima dele.
+    await persistInboundMessage(fakeDb(), { ...MENSAGEM, text: 'Falar com atendente', escolhaDeOpcao: true });
+
+    expect(agente).toHaveBeenCalledWith(expect.objectContaining({ ehRespostaDeBotao: true }));
   });
 
   it('⚠️ E4: basta UM gatilho da mensagem ter falado — os outros não apagam', async () => {

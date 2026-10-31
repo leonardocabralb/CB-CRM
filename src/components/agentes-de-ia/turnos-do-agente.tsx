@@ -25,15 +25,31 @@
 //
 // A RETOMADA (1056) é um turno como os outros, com o rótulo "Retomada k/n" ao
 // lado do status; a que ainda espera na fila diz para quando está prevista.
+//
+// FORA DO HORÁRIO (25/10/2026): o turno que espera a abertura do horário do
+// agente continua "Aguardando", com "aguardando o horário do agente · abre
+// <quando>" ao lado — reconhecido pelo `erro` que o servidor grava enquanto
+// ele espera (`ERRO_DA_ESPERA_DO_HORARIO`), que então não aparece cru.
+//
+// O TURNO SOBREVIVE À CONVERSA (1110, DC1–DC3 do operador): sem conversa, a
+// linha diz "sem conversa (apagada ou na Lixeira)" — nunca "excluída": a ficha
+// pode voltar da Lixeira, e restaurar religa o turno. O texto do cliente sai
+// pelo prazo (`PRAZO_DO_CONTEUDO_DO_TURNO_DIAS`) ou na exclusão definitiva da
+// ficha: a linha diz quando e por quê ("conteúdo removido em …"), em vez de
+// um retrato vazio que afirmaria que o agente não viu nada (8c). O `erro` que
+// o banco grava ("conversa apagada", "conversa encerrada"…) é traduzido
+// (`textoDoErroDoTurno`).
 // ============================================================
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { Check, Eye, History, RefreshCw, Wrench, X } from 'lucide-react';
+import { Check, Clock, Eye, History, RefreshCw, Wrench, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { ACAO_TRANSFERIR } from '@/lib/ia-agentes/acoes';
+import { PRAZO_DO_CONTEUDO_DO_TURNO_DIAS } from '@/lib/ia-agentes/conteudo-dos-turnos';
+import { ERRO_DA_ESPERA_DO_HORARIO } from '@/lib/ia-agentes/horario';
 import { urlDoInbox } from '@/lib/inbox/url';
 import { cn } from '@/lib/utils';
 import { lerAcoesDoTurno } from './ferramentas';
@@ -43,6 +59,7 @@ import {
   rotuloDoTipoDeAcao,
   textoDoDetalheDaAcao,
   textoDoErroDaAcao,
+  textoDoErroDoTurno,
 } from './textos';
 import type { AcaoDoTurno, ContextoDoTurno } from './tipos';
 
@@ -52,7 +69,8 @@ interface Turno {
   criadoEm: string;
   terminadoEm: string | null;
   erro: string | null;
-  conversationId: string;
+  /** Nula: a conversa foi apagada ou a ficha está na Lixeira (1110: o turno fica). */
+  conversationId: string | null;
   contato: string | null;
   /** O retrato do turno (F3); nulo nos turnos antigos. */
   contexto: ContextoDoTurno | null;
@@ -62,6 +80,13 @@ interface Turno {
   retomada: { tentativa: number; de: number } | null;
   /** O vencimento — o que a tela mostra da retomada que ainda espera. */
   executarApos: string | null;
+  /** O texto do cliente já saiu (1110): quando, e se pelo prazo ou pela exclusão da ficha. */
+  conteudoRemovido: { em: string; por: string | null } | null;
+}
+
+/** O turno que espera a abertura do horário do agente (25/10/2026): ainda na fila, com a marca do servidor. */
+function esperaOHorario(turno: Turno): turno is Turno & { executarApos: string } {
+  return turno.status === 'aguardando' && turno.erro === ERRO_DA_ESPERA_DO_HORARIO && turno.executarApos !== null;
 }
 
 /** Parse, nunca `as`: forma estranha = turno de resposta (sem rótulo). */
@@ -69,6 +94,13 @@ function lerRetomadaDoTurno(v: unknown): Turno['retomada'] {
   if (!v || typeof v !== 'object') return null;
   const { tentativa, de } = v as { tentativa?: unknown; de?: unknown };
   return typeof tentativa === 'number' && typeof de === 'number' ? { tentativa, de } : null;
+}
+
+/** Parse, nunca `as`: forma estranha = sem a nota (o retrato, se houver, aparece como veio). */
+function lerConteudoRemovido(v: unknown): Turno['conteudoRemovido'] {
+  if (!v || typeof v !== 'object') return null;
+  const { em, por } = v as { em?: unknown; por?: unknown };
+  return typeof em === 'string' ? { em, por: typeof por === 'string' ? por : null } : null;
 }
 
 /** Parse, nunca `as`: o retrato é jsonb; forma estranha = sem expansão (nunca quebra a lista). */
@@ -117,11 +149,13 @@ export function TurnosDoAgente({ agenteId }: { agenteId: string }) {
       if (!res.ok) throw new Error(String(res.status));
       const corpo = (await res.json()) as {
         turnos?: Array<
-          Omit<Turno, 'contexto' | 'acoes' | 'retomada' | 'executarApos'> & {
+          Omit<Turno, 'contexto' | 'acoes' | 'retomada' | 'executarApos' | 'conversationId' | 'conteudoRemovido'> & {
             contexto?: unknown;
             acoes?: unknown;
             retomada?: unknown;
             executarApos?: unknown;
+            conversationId?: unknown;
+            conteudoRemovido?: unknown;
           }
         >;
       };
@@ -137,6 +171,8 @@ export function TurnosDoAgente({ agenteId }: { agenteId: string }) {
           acoes: lerAcoesDoTurno(x.acoes),
           retomada: lerRetomadaDoTurno(x.retomada),
           executarApos: typeof x.executarApos === 'string' ? x.executarApos : null,
+          conversationId: typeof x.conversationId === 'string' ? x.conversationId : null,
+          conteudoRemovido: lerConteudoRemovido(x.conteudoRemovido),
         }))
       );
       setFalhou(false);
@@ -194,18 +230,45 @@ export function TurnosDoAgente({ agenteId }: { agenteId: string }) {
                     : null}
                 </span>
               ) : null}
+              {esperaOHorario(turno) ? (
+                <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+                  <Clock className="size-3" />
+                  {t('turnos.esperaOHorario', {
+                    quando: new Date(turno.executarApos).toLocaleString(undefined, {
+                      dateStyle: 'short',
+                      timeStyle: 'short',
+                    }),
+                  })}
+                </span>
+              ) : null}
               <span className="shrink-0 text-xs text-muted-foreground">
                 {new Date(turno.criadoEm).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
               </span>
-              <Link
-                href={urlDoInbox({ c: turno.conversationId })}
-                className="min-w-0 flex-1 truncate text-primary underline-offset-2 hover:underline"
-              >
-                {turno.contato ?? t('turnos.semContato')}
-              </Link>
-              {turno.erro ? (
+              {turno.conversationId ? (
+                <Link
+                  href={urlDoInbox({ c: turno.conversationId })}
+                  className="min-w-0 flex-1 truncate text-primary underline-offset-2 hover:underline"
+                >
+                  {turno.contato ?? t('turnos.semContato')}
+                </Link>
+              ) : (
+                <span className="min-w-0 flex-1 truncate text-muted-foreground">{t('turnos.semConversa')}</span>
+              )}
+              {turno.erro && !esperaOHorario(turno) ? (
                 <p className="w-full truncate text-xs text-muted-foreground" title={turno.erro}>
-                  {turno.erro}
+                  {textoDoErroDoTurno(t, turno.erro)}
+                </p>
+              ) : null}
+              {turno.conteudoRemovido ? (
+                <p className="w-full text-xs text-muted-foreground">
+                  {t('turnos.conteudoRemovido', {
+                    quando: new Date(turno.conteudoRemovido.em).toLocaleString(undefined, {
+                      dateStyle: 'short',
+                      timeStyle: 'short',
+                    }),
+                    por: turno.conteudoRemovido.por ?? 'outro',
+                    dias: PRAZO_DO_CONTEUDO_DO_TURNO_DIAS,
+                  })}
                 </p>
               ) : null}
               {turno.acoes && turno.acoes.length > 0 ? <AcoesDoTurno acoes={turno.acoes} /> : null}

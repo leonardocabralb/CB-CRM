@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
-import { NOME_DO_APP } from "@/lib/marca";
+import { LogoDaMarca } from "@/components/marca/logo-da-marca";
+import { useMarca } from "@/components/marca/marca-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,7 +17,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { MessageSquare, CheckCircle, Lock, UsersRound } from "lucide-react";
+import { CheckCircle, Lock } from "lucide-react";
 
 // `useSearchParams` opts the component out of static prerendering
 // unless wrapped in Suspense — same pattern as /login.
@@ -30,6 +31,7 @@ export default function SignupPage() {
 
 function SignupPageInner() {
   const t = useTranslations("SignupPage");
+  const marca = useMarca();
   const searchParams = useSearchParams();
   // When the user lands here from `/join/<token>` we carry the
   // invite token in the query. With it, the account is created AND the
@@ -305,12 +307,13 @@ function SignupPageInner() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <Card className="w-full max-w-md border-border bg-card">
         <CardHeader className="items-center text-center">
-          <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-            {inviteToken ? (
-              <UsersRound className="h-6 w-6 text-primary" />
-            ) : (
-              <MessageSquare className="h-6 w-6 text-primary" />
-            )}
+          {/* O logo da instalação, com ou sem convite (o convite se diz no
+              título) — o mesmo desenho do login, `min-w-0` incluído. */}
+          <div className="mb-2 flex min-w-0 justify-center">
+            <LogoDaMarca
+              forma="vertical"
+              className="h-20 w-auto max-w-full sm:h-24"
+            />
           </div>
           <CardTitle className="text-xl text-foreground">
             {inviteToken ? t("titleInvite") : t("title")}
@@ -318,7 +321,7 @@ function SignupPageInner() {
           <CardDescription className="text-muted-foreground">
             {inviteToken
               ? t("descriptionInvite")
-              : t("description", { appName: NOME_DO_APP })}
+              : t("description", { appName: marca.nome })}
           </CardDescription>
         </CardHeader>
         <CardContent>

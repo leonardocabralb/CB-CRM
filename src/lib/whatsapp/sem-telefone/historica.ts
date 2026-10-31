@@ -159,6 +159,9 @@ export async function gravarHistorica(
         content_text: m.text,
         // Cartão de contato (1060), só nele — como nos inserts de `inbound-store`.
         ...(m.contentType === 'contact' ? { contatos: m.contatos ?? [] } : {}),
+        // As opções da mensagem de empresa (1111), só na do cliente — como em
+        // `persistInboundMessage`.
+        ...(!daEquipe && m.opcoesDeResposta ? { opcoes_de_resposta: m.opcoesDeResposta } : {}),
         media_url: m.mediaUrl ?? null,
         message_id: m.providerMessageId,
         remote_jid: m.remoteJid ?? null,

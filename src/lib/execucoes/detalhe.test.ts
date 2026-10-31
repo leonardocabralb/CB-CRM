@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { DETALHE_DA_INTERRUPCAO } from '@/lib/automations/parar-se-responder'
-import { MOTIVO_PASSO_MOVIDO } from '@/lib/automations/retomada'
+import { MOTIVO_PASSO_MOVIDO, MOTIVO_RETOMADA_INTERROMPIDA } from '@/lib/automations/retomada'
 import { DETALHE_SAIU_DA_ETAPA } from '@/lib/automations/so-na-etapa'
 import { montarDetalhe, type EsperaEncerrada } from './detalhe'
 import type { PassoDaAutomacao, PassoExecutado } from './linha-do-tempo'
@@ -187,6 +187,29 @@ describe('montarDetalhe — falhou: onde parou e o que não rodou', () => {
     })
     expect(d.passos[2]).toMatchObject({ estado: 'falhou', parou: true, doMotor: true })
     expect(d.naoRodaram?.map((p) => p.id)).toEqual(['b', 'c'])
+  })
+
+  it('⚠️ a retomada que o processo não terminou (1106): o que vinha depois NÃO é afirmado', () => {
+    // O processo pode ter mandado `b` e morrido antes de gravar o escopo: a
+    // mesma espera que falhou ao acordar diria "não rodaram: b, c" — e `b`
+    // pode ter saído.
+    const executados: PassoExecutado[] = [
+      rodou('a'),
+      rodou('w', 'success', 'waiting 1 days', 'wait'),
+      { step_id: '', step_type: 'wait', status: 'failed', detail: MOTIVO_RETOMADA_INTERROMPIDA },
+    ]
+    const esperasEncerradas: EsperaEncerrada[] = [
+      { parent_step_id: null, branch: null, next_step_position: 2, context: { _passo_da_fila: { id: 'w', pos: 1 } } },
+    ]
+    const passos = [passo('a', 0), passo('w', 1, 'wait'), passo('b', 2), passo('c', 3)]
+    for (const desfecho of ['falhou', 'interrompida'] as const) {
+      const d = montarDetalhe({ passos, executados, desfecho, esperasEncerradas })
+      // A linha do motor aparece (com o motivo, que a tela traduz)…
+      expect(d.passos.at(-1)).toMatchObject({ estado: 'falhou', doMotor: true, detalhe: MOTIVO_RETOMADA_INTERROMPIDA })
+      // …e "não rodaram" é "não sei": nem lista, nem "nada ficou para trás".
+      expect(d.naoRodaram).toBeNull()
+      expect(d.naoRodaramDesconhecido).toBeUndefined()
+    }
   })
 })
 

@@ -20,7 +20,8 @@
   MCP, Management API, script): `.claude/rules/supabase.md` antes — gatilhos
   disparam POR LINHA, apagar contato deixa ponteiros nulos, fundir fichas só
   por `cb_unir_fichas`.
-- **(e) Proposta que muda comportamento de produto:** seção 12 primeiro.
+- **(e) Proposta que muda comportamento de produto:**
+  `docs/DECISOES-DO-OPERADOR.md` primeiro (seção 12).
 - **(f) Subagente:** o prompt manda ler este arquivo e as regras da área PELA
   Read (o subagente Plan não carrega o CLAUDE.md).
 - **(g) O que já está aplicado no banco:** `docs/MIGRATIONS-APLICADAS.md` (o
@@ -34,7 +35,8 @@ no mesmo PR. Nota mentindo é pior que ausência de nota.
 **Onde cada nota mora.** Transversal (vale em código de qualquer pasta) →
 aqui, 1–3 linhas com UMA linha de porquê, sem data, PR nem rodada. De área →
 o arquivo da área em `.claude/rules/`. Lista de consulta →
-`docs/MERGE-UPSTREAM.md` e `docs/MIGRATIONS-APLICADAS.md`. Narrativa, medição
+`docs/MERGE-UPSTREAM.md`, `docs/MIGRATIONS-APLICADAS.md` e
+`docs/DECISOES-DO-OPERADOR.md`. Narrativa, medição
 datada, rodada de revisão e PENDÊNCIA aberta → descrição do PR ou
 `docs/PLANO-*.md` (a pendência muda de casa, nunca some).
 
@@ -44,11 +46,10 @@ arquivo da área, nunca para cá. O mesmo teste exige `paths:` em toda regra,
 todo glob casando arquivo versionado, toda regra listada no índice. Estourou:
 condensar ou mover, nunca subir o teto.
 
-**Texto integral anterior:** `git show f5879b3f:CLAUDE.md` (626 KB, com a
-história: datas, medições, rodadas de revisão). Comentário do código que diz
-"ver CLAUDE.md, seção X": mapa no fim da seção 13, ou
-`grep -rni 'X' CLAUDE.md .claude/rules docs` — os títulos antigos continuam
-como `###` nas regras.
+**Texto integral anterior:** `git show f5879b3f:CLAUDE.md` (com a história).
+Comentário do código que diz "ver CLAUDE.md, seção X": mapa no fim da seção
+13, ou `grep -rni 'X' CLAUDE.md .claude/rules docs` — os títulos antigos
+continuam como `###` nas regras.
 
 ## 1. O que é este projeto
 
@@ -103,8 +104,8 @@ Supabase (Postgres + Auth + Storage + RLS) · Meta Cloud API · Evolution API.
 - `docs/` — ENTREGUES a quem instala: `README`, `INSTALACAO`, `ATUALIZAR`,
   `docker`, `public-api`, `mcp`, `webhooks`, `multi-waba`, `conexao-meta`.
   INTERNOS (nossa operação, não viajam): `PLANO-*`, `HANDOFF-*`, `INFRA-VPS`,
-  `DEPLOY-VPS`, `MERGE-UPSTREAM`, `MIGRATIONS-APLICADAS`. `EVOLUTION-LID-FIX`
-  está obsoleto.
+  `DEPLOY-VPS`, `MERGE-UPSTREAM`, `MIGRATIONS-APLICADAS`,
+  `DECISOES-DO-OPERADOR`. `EVOLUTION-LID-FIX` está obsoleto.
 - `.env.local` — segredos; nunca commitar; modelo em `.env.local.example`.
 - `.claude/rules/` é versionado; o resto de `.claude/` é ignorado. O
   `.gitignore` mantém `!.claude/rules/`: resolvido pelo lado do upstream num
@@ -145,14 +146,21 @@ Supabase (Postgres + Auth + Storage + RLS) · Meta Cloud API · Evolution API.
 - **Um workflow só:** `.github/workflows/pipeline.yml` — verificar →
   migrations (replay num Postgres limpo) → deploy, com
   `needs: [verificar, migrations]` (pino `pipeline.test.ts`).
-- `agentRules: false` no `next.config.ts`: sem ela o `next dev` reescreve o
-  `AGENTS.md` rastreado (worktree suja; pacote escrevendo nas instruções).
+- **`eslint-suppressions.json`** guarda os casos ANTIGOS das regras do React
+  Compiler; caso novo reprova. Consertou um → `npx eslint --prune-suppressions`
+  no mesmo PR (senão o lint sai com 2); incluir caso só com motivo no PR.
 
-## 6. Branches
+## 6. Branches e PRs
 
 `git checkout main && git pull origin main` antes de criar. Nome
 `<tipo>/<descricao-kebab>`, tipo ∈ `feat`·`fix`·`chore`·`docs`·`refactor`.
 Volta para `main` por PR no CB-CRM.
+
+- **PR só PRONTO** (seção 14 feita): cada push em PR aberto roda o CI
+  inteiro, cobrado em repo privado (cota esgotada = deploy parado). Antes,
+  plano inclusive, push na branch SEM PR, que não roda CI.
+- **Codex por rodada:** revisa sozinho ao abrir e ao sair do rascunho; os
+  achados da rodada vão num push só, seguido de UM `@codex review`.
 
 ## 7. Migrations — o núcleo
 
@@ -198,13 +206,17 @@ Volta para `main` por PR no CB-CRM.
   clientes junto. Pino `src/lib/contacts/dono-duravel.test.ts`.
 - Nas outras tabelas `user_id` é AUTORIA: tela não recorta catálogo da conta
   com `.eq('user_id', …)` (o membro via o catálogo vazio). Só dado da PESSOA
-  (favoritas, filtros salvos, avisos, perfil) se recorta assim.
+  (favoritas, filtros salvos, avisos, perfil) se recorta assim. Autoria é
+  anulável com `ON DELETE SET NULL` (1116): o código aceita autor nulo, e
+  coluna nova para `auth.users` com CASCADE só em dado da pessoa (o
+  `verify-schema.sql` reprova o resto).
 - `profiles.id` ≠ `profiles.user_id`: `deals.assigned_to` guarda
   `profiles.id`; `cb_tasks`, `conversations` e `notifications` guardam o id
   do LOGIN. Trocar dá 0 linhas, sem erro.
-- Apagar contato leva conversa e mensagens (CASCADE) e deixa ~18 tabelas com
-  ponteiro nulo (card em branco no Kanban). Fundir fichas = `cb_unir_fichas`;
-  `merge_duplicate_contacts` não serve.
+- Excluir contato = MOVER para a Lixeira (`cb_mover_contatos_para_lixeira`,
+  1097): fotografa e apaga como antes (conversa e mensagens somem, ponteiros
+  de fora ficam nulos: `cb_lixeira_tratamento()`). DELETE à mão não volta.
+  Fundir fichas = `cb_unir_fichas`; `merge_duplicate_contacts` não serve.
 - Negócio só nasce por `createDeal` no servidor (exceção: formulário do
   Funil). Transferência de funil = UM UPDATE (`pipeline_id` + `stage_id`
   juntos), senão a trilha conta duas mudanças. `cb_lead_events` e
@@ -355,8 +367,7 @@ Volta para `main` por PR no CB-CRM.
   `docker-stack.yml`) bate em `/api/…/cron` (laço rápido ~15 s, lento
   ~15 min). Rota de cron NOVA entra num dos laços, senão nunca roda.
   `maxDuration` é decorativo em produção: o teto é o `-m` do curl
-  (50 s/120 s), e worker novo se orça contra ele. Mudar o `command` do
-  agendador só vale com `docker stack deploy` manual. `process.env.X` novo
+  (50 s/120 s), e worker novo se orça contra ele. `process.env.X` novo
   do servidor entra também no `environment:` da stack (pino
   `scripts/stack-env.test.ts`; sem `env_file`, fica vazio no contêiner).
 - Datas: `toLocaleDateString(undefined, …)`, nunca locale fixo; date-fns só
@@ -371,10 +382,9 @@ Volta para `main` por PR no CB-CRM.
 - Pino estrutural (`*.chamadores.test.ts`, default-deny) que reprova é
   decisão a escrever na allowlist, com motivo — nunca afrouxar o teste nem
   contornar o nome.
-- Marca: nome, logo e nome curto só de `src/lib/marca.ts` (build-args,
-  padrão genérico `'CRM'` — nunca o nome do escritório no código); nome de
-  produto não é chave de dicionário, e frase de UI não cita nome de produto
-  (o nosso nem o do upstream; onde precisa, `{appName}`).
+- Marca é DADO (`cb_marca`, 1094): `obterMarca()` no servidor, `useMarca()`
+  no navegador, padrão Atlas CRM em `src/lib/marca.ts`; nunca literal nem
+  chave de dicionário. Frase de UI não cita nome de produto (`{appName}`).
   `scripts/produto-gate.test.ts` reprova nossa infra em `src/`, `messages/`,
   `supabase/` e na raiz (exceção só em `EXCECOES`, com motivo);
   `scripts/env-documentado.test.ts` exige toda `process.env.X` no
@@ -404,7 +414,7 @@ dentro, exceções e testes de chave montada: `.claude/rules/i18n.md`.
   deploy exige verificar e migrations verdes). Só com o operador ciente.
   Vários merges seguidos: o run do meio morre na fila e o último publica
   todos.
-- `NEXT_PUBLIC_*` é build-arg (idioma, nome do app): muda no
+- `NEXT_PUBLIC_*` é build-arg (idioma, Supabase): muda no
   `pipeline.yml`/`docker-stack.yml` e exige rebuild. O `crm.env` não muda
   isso.
 - ⚠️⚠️ **`docker stack deploy` SEM carregar o `crm.env` zera todos os
@@ -421,10 +431,9 @@ dentro, exceções e testes de chave montada: `.claude/rules/i18n.md`.
   (401 = ok; 503 = env vazia).
 - Evolution: nunca trocar a imagem nem reiniciar o CONTÊINER com a fila de
   entrada represada (a fila se perde para o CRM); o restart da INSTÂNCIA
-  (`POST /instance/restart`) é o paliativo que a drena. Voltar de versão está
-  descartado. O resto da operação (digests, Redis compartilhado, prune,
-  stack só para recriar) está em `docs/INFRA-VPS.md`, §9 e §10 (a leitura
-  obrigatória da seção 0c).
+  (`POST /instance/restart`) é o paliativo que a drena. O resto da operação
+  (digests, Redis compartilhado, prune, stack só para recriar) está em
+  `docs/INFRA-VPS.md`, §9 e §10.
 - O webhook do WhatsApp exige HTTPS (Traefik na VPS). Detalhes do pipeline e
   do agendador: `.claude/rules/deploy.md`.
 
@@ -452,85 +461,10 @@ dentro, exceções e testes de chave montada: `.claude/rules/i18n.md`.
 
 ## 12. Decisões do operador — não reverter sem perguntar
 
-O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
-
-- Radar: sem aba "Todos"; falso negativo da IA não ganha botão.
-- Funil: ganho que sai para etapa neutra segue ganho; perdido que entra em
-  neutra volta aberto (21/09/2026).
-- Funil comercial: "por período" é o padrão (18/09/2026); taxa acima de 100%
-  aparece como é; negócio transferido conta no funil de origem. Degrau
-  `pasta` depois do contrato, opcional, e "fechado" o inclui; cada funil
-  configura o próprio painel; "custo por contrato assinado" ao lado do CAC em
-  pé (26/09/2026).
-- Card: título = nome da pessoa, sem prefixo de conexão; o Calendly renomeia
-  até título escrito à mão e fixa o nome da ficha.
-- Reuniões: "Data e Hora Reunião" mais nova que todo agendamento remarca a
-  última reunião do Calendly na pauta (03/10/2026). Reagendar é fila de
-  trabalho, não falta nem métrica: botão antes e depois do horário, sem faixa
-  de no-show; no-show = cada entrada em etapa "Faltou" (09/10/2026).
-- Abrir conversa não cria negócio (o card nasce no primeiro envio).
-- Número de empresa (mandou mensagem de sistema, `template`) não vira card
-  sozinho, nem pela resposta da equipe; cliente assim, card à mão (29/09/2026).
-- Encerrar conversa SOLTA o responsável; quem reabre enviando fica
-  responsável; cliente, celular e API reabrem sem responsável (02/09/2026).
-- De ADMIN: "Gerenciar funil", as abas Lista/Desempenho/Saúde e apagar
-  contato (08/09/2026). A automação é da CONTA: qualquer admin edita, ativa,
-  duplica e apaga, nunca só o autor (23/09/2026).
-- Cadastro só por convite (22/09/2026); a saída para ex-membro que ainda
-  tem login é BLOQUEAR no Supabase (apagar o login leva por CASCADE o que ele
-  criou: etiquetas, modelos, automações).
-- Webhook de saída `conversation.created` = SÓ "o cliente abriu a conversa"
-  (entrada; 23/09/2026) — emitir noutro caminho muda o contrato publicado.
-- Retentativa de passo de automação só na Evolution; na Meta fica de fora
-  (24/09/2026).
-- Calendly: a ficha do cliente nasce do agendamento (08/09/2026).
-- Caixa de entrada: filtro salvo é de cada membro; Encerradas não é filtro
-  nem vai na visão salva; busca no corpo das mensagens desligada por padrão.
-- Ficha: um bloco de campos por vez, em menu horizontal, na ordem de cada
-  pessoa (12/10/2026).
-- Notas do painel: a caixa de escrever vem ANTES da fixada, e a fixada nasce
-  recolhida (29/09/2026).
-- Quem mais está com a conversa aberta: frase acima do compositor, além dos
-  avatares do cabeçalho (29/09/2026).
-- Modo anônimo, só de admin, no menu do nome: abrir não zera as não lidas nem
-  mostra a presença; responder zera; dura até desligar (01/10/2026).
-- Notificação do navegador: cada pessoa escolhe as conexões que avisam (todas
-  marcadas por padrão); filtro salvo não decide aviso (02/10/2026).
-- Canal: a faixa de divergência só informa, não bloqueia; cor derivada; anel
-  no avatar e trilha colorida foram descartados.
-- IA: chave por PROVEDOR, uma para a conta toda — nunca por conexão
-  (28/08/2026; `cb_ia_chaves`, 1047). O modelo é do módulo (Radar) e, com os
-  agentes, de cada agente (D1 de `docs/PLANO-agentes-de-ia.md`).
-- Automação presa à etapa: caixa por automação, marcada só nas criadas pela
-  grade; as antigas não mudam (18/09/2026).
-- Asaas: o CRM cria a ficha, com nome fixado; ligar a régua não é
-  retroativo.
-- Atlas: vincular/desvincular à mão só admin; a faixa acende também com
-  suspenso e inativo; a linha do Atlas aparece a todos (sem recorte de
-  perfil); o Atlas "ativo" NÃO apaga a linha do funil (30/09/2026).
-- Cartão de contato: cartão com Copiar e Conversar ("Nova conversa"
-  preenchida); `.html` recebido fica para baixar; ENVIAR `.html` só por QR
-  code (02/10/2026). Documento e cartão em destaque na bolha; fundo do fio a
-  15% (01/10/2026).
-- Instagram: robô não responde no Direct; unificar fichas é manual; o que a
-  API não cobre fica inacessível na conversa.
-- Conversa ENCERRADA quando nasce sem o cliente ter escrito: webhook de
-  entrada (21/09/2026) e passo de envio da automação para ficha sem conversa
-  (27/09/2026). Calendly e `send_to_number` a criam aberta.
-- Evolution: voltar de versão da imagem está descartado. Trocar o chip é
-  "Reparear" a conexão, nunca remover e recriar (03/10/2026).
-- Celular: no toque o Enter pula linha; o app instalado abre em `/inbox`.
-- "Sair" do menu sai só deste aparelho; 4 h inativo reabre o Meu dia, sem
-  senha.
-- Celular do membro: EXIGIDO ao abrir o CRM, não só no login (26/09/2026).
-- Contatos relacionados: vínculo PAR A PAR, visto dos dois lados, com
-  descrição opcional; quem edita contato vincula; faixa "Voltar para" de um
-  nível só (29/09/2026).
-- Possível duplicata: todos veem, só admin decide e une; só sinais fortes;
-  sem lista; unir: D6–D11 de `docs/PLANO-fichas-duplicadas.md` (13/10).
-- Tarefa recorrente: PELO CALENDÁRIO (nasce no dia do prazo, concluída ou
-  não a anterior), contando do prazo anterior; só no formulário; avisa no
-  sino (30/09/2026).
+A lista mora em `docs/DECISOES-DO-OPERADOR.md` e o detalhe de cada uma, na
+regra da área. Ler antes de propor mudança de comportamento de produto (0e) e
+antes de "consertar" o que parece errado de propósito; mudar qualquer uma é
+pergunta ao operador. Decisão nova: uma linha lá e o detalhe na regra.
 
 ## 13. Índice das áreas
 
@@ -539,14 +473,17 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
 `paths:` dele.
 
 - `.claude/rules/supabase.md` — escrita manual no banco de produção,
-  gatilhos por linha, receita de fusão, modelos do banco vazio,
+  gatilhos por linha, receita de fusão e da Lixeira, modelos do banco vazio,
   REVOKE/GRANT, policy da 1032, carga em lote.
 - `.claude/rules/ingestao.md` — obrigações por caminho de entrada e de
   envio: canal no upsert, reabrir, abrir negócio, cancelar espera, medir
   entrega, foto de perfil.
 - `.claude/rules/whatsapp-evolution.md` — Evolution 2.4/Baileys 7, LID sem
   telefone (retida, tardia, histórica), recibos fora de ordem, edição
-  cifrada, link sem prévia, grupos.
+  cifrada, link sem prévia.
+- `.claude/rules/grupos.md` — grupo de WhatsApp: GET de grupo da 2.4 com
+  corpo, detalhe na chegada, participantes e renomear ao vivo, o grupo na
+  ficha do cliente (1117).
 - `.claude/rules/ligacoes.md` — ligação de WhatsApp vira faixa no fio (1044):
   aviso CALL, desfecho com folga, quem ligou, o que não roda, quem lê
   `content_type`.
@@ -592,8 +529,13 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   card, `createDeal`, FKs compostas, concorrência do quadro.
 - `.claude/rules/funil-metricas.md` — degraus, coorte × por período,
   Desempenho, Saúde, Meta Ads.
+- `.claude/rules/funil-painel-e-etapas.md` — painel da conversa acompanha o
+  negócio mudado por fora; etapas do funil novo no idioma.
+- `.claude/rules/motivos-de-perda.md` — campo do motivo por etapa (1112), a
+  janela "Por que…?" nos caminhos de gente, "Perdido" escolhe a etapa, o
+  relatório no Desempenho (1113).
 - `.claude/rules/contatos.md` — chave canônica do telefone, telefone
-  digitado, exclusão de contato, etiquetas, duplicatas e união.
+  digitado, Lixeira de contatos, etiquetas, duplicatas e união.
 - `.claude/rules/campos-e-nome.md` — campo que salva sozinho, blocos de
   campos, e-mail espelhado, nome fixado.
 - `.claude/rules/integracoes-calendly.md` — ficha nasce do agendamento,
@@ -613,6 +555,15 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   e a base de conhecimento por agente (1052); a resposta cortada pelo teto.
 - `.claude/rules/ia-retomada.md` — a retomada do agente quando o cliente não
   responde (1056): a fila, a cadência, o que a para e os lembretes.
+- `.claude/rules/ia-tela-do-agente.md` — modelo pela chave, quem lê a mídia,
+  avisos antes de salvar, "não atende" na faixa, custo por faixa (1108).
+- `.claude/rules/ia-agentes-turno.md` — ação prometida retida, passagem com
+  campo/etiqueta/tarefa, espera do horário, encerrar sem apagar (1109).
+- `.claude/rules/ia-central.md` — o turno durável (1110): sobrevive à
+  conversa e à Lixeira, esqueleto × conteúdo, poda e exclusão definitiva.
+- `.claude/rules/ia-sandbox.md` — o Playground testa o RASCUNHO (DC4):
+  conferido como o salvar, conversa que não zera, comparar, roteiro, pedido,
+  nada escreve além do custo de teste.
 - `.claude/rules/reunioes.md` — agenda (EXCLUDE, fuso), pauta e Reagendar
   (1081), aviso de no-show, tl;dv e transcrições.
 - `.claude/rules/agendadas.md` — mensagem agendada, anexo e citação, tela
@@ -635,6 +586,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   date-fns.
 - `.claude/rules/deploy.md` — pipeline, agendador, Node, stack deploy,
   Evolution na VPS, produto-gate.
+- `.claude/rules/marca.md` — nome e logo: quem grava, a ordem da gravação,
+  nada assado no build.
 
 **Títulos antigos citados em comentários do código → onde estão agora:**
 

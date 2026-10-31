@@ -4,6 +4,8 @@ import { ChevronDown, ChevronUp, Pin, PinOff } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 
+import { ResumoDosAnexos } from '@/components/inbox/anexos-da-nota';
+import { MarcaDeEditada } from '@/components/inbox/marca-de-editada';
 import { TextoComLinks } from '@/components/inbox/texto-com-links';
 import { cn } from '@/lib/utils';
 import type { ConversationNote } from '@/types';
@@ -74,21 +76,38 @@ export function NotaFixadaBar({
     <div className="flex shrink-0 items-start gap-2 border-b border-amber-300/60 bg-amber-50 px-4 py-2 text-amber-950 dark:border-amber-700/50 dark:bg-amber-950/40 dark:text-amber-50">
       <Pin className="mt-1 h-3.5 w-3.5 shrink-0 opacity-70" />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[10px] font-semibold tracking-wider uppercase opacity-70">
-          {t('pinnedBanner')} · {nota.autor_nome || t('unknownAuthor')} ·{' '}
-          {quando}
+        <p className="flex min-w-0 text-[10px] font-semibold tracking-wider uppercase opacity-70">
+          <span className="min-w-0 truncate">
+            {t('pinnedBanner')} · {nota.autor_nome || t('unknownAuthor')} ·{' '}
+            {quando}
+          </span>
+          {/* A marca "editada" (Fase 3), com a hora da edição, FORA do corte:
+              no fim da linha cortada ela era a primeira a sumir (o fio com o
+              painel aberto já cortava o "editada" sozinho). Encolhe o resto. */}
+          {nota.editada_em ? (
+            <span className="shrink-0 whitespace-pre">
+              {' · '}
+              <MarcaDeEditada editadaEm={nota.editada_em} criadaEm={nota.created_at} />
+            </span>
+          ) : null}
         </p>
-        <p
-          ref={textoRef}
-          className={cn(
-            'mt-0.5 text-xs break-words whitespace-pre-wrap',
-            // Teto ao expandir: anotação longa não pode empurrar a conversa
-            // inteira para fora da tela. Rola dentro do próprio bloco.
-            aberto ? 'max-h-32 overflow-y-auto' : 'line-clamp-2'
-          )}
-        >
-          <TextoComLinks texto={nota.texto} />
-        </p>
+        {/* Anotação só de anexos (1102) tem o texto vazio: sem parágrafo. */}
+        {nota.texto.trim() && (
+          <p
+            ref={textoRef}
+            className={cn(
+              'mt-0.5 text-xs break-words whitespace-pre-wrap',
+              // Teto ao expandir: anotação longa não pode empurrar a conversa
+              // inteira para fora da tela. Rola dentro do próprio bloco.
+              aberto ? 'max-h-32 overflow-y-auto' : 'line-clamp-2'
+            )}
+          >
+            <TextoComLinks texto={nota.texto} />
+          </p>
+        )}
+        {/* A faixa é atalho: dos anexos, só o resumo — eles estão na
+            anotação, no ponto do fio em que ela foi escrita. */}
+        <ResumoDosAnexos anexos={nota.anexos} className="mt-0.5 text-xs" />
       </div>
       {(truncado || aberto) && (
         <button

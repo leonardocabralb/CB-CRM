@@ -10,6 +10,9 @@
 // nunca lista vazia, que seria a lista vazia virando afirmação.
 // ============================================================
 
+import { LIMITES } from '@/lib/ia-agentes/agente'
+
+import type { RascunhoDasFerramentas } from './rascunho'
 import type {
   AcaoDoTurno,
   AcoesSimuladas,
@@ -136,6 +139,57 @@ export function situacaoDaReuniao(opcoes: OpcoesDasFerramentas, marcados: readon
 }
 
 /**
+ * "Marcar reunião" sem o campo E-mail em "Preencher campo" (medido na
+ * validação de 25/10/2026): para quem não tem e-mail na ficha, o agente NÃO
+ * marca — pede o e-mail e passa a conversa para a equipe (`notaDaAgenda` em
+ * `src/lib/ia-agentes/pedido.ts`: sem o campo liberado, ele não tem onde
+ * guardar o e-mail, e a execução recusaria com `sem_email`). A tela não dizia.
+ *
+ * O campo do e-mail é o que ESPELHA `contacts.email` (1000): nas opções, o
+ * único com `tipo === 'email'` (o CHECK da 948 não tem esse `field_type`; o
+ * servidor o manda só para o espelhado, `formatoDoCampo`).
+ *
+ * `null` = nada a avisar: reunião desligada, ou "Preencher campo" ligada com
+ * o e-mail marcado. `campo` nulo = a conta não tem o campo espelhado (nada a
+ * liberar, só o aviso). `podeLiberar` falso = o campo é vigiado (não deveria)
+ * ou "Preencher campo" já está no teto de itens: o botão não aparece.
+ */
+export interface AvisoDoEmailDaReuniao {
+  campo: { id: string; nome: string } | null
+  podeLiberar: boolean
+}
+
+export function avisoDoEmailDaReuniao(
+  opcoes: OpcoesDasFerramentas,
+  rascunho: RascunhoDasFerramentas,
+): AvisoDoEmailDaReuniao | null {
+  if (!rascunho.ligadas.includes('marcar_reuniao')) return null
+  const campo = opcoes.campos.find((c) => c.tipo === 'email') ?? null
+  const marcados = rascunho.listas.preencher_campo
+  if (!campo) return { campo: null, podeLiberar: false }
+  if (rascunho.ligadas.includes('preencher_campo') && marcados.includes(campo.id)) return null
+  // O teto conta os OUTROS marcados que existem (os órfãos o Salvar descarta):
+  // com o e-mail, o total não pode passar de `LIMITES.itensPorAcao`.
+  const existentes = new Set(opcoes.campos.map((c) => c.id))
+  const outros = marcados.filter((id) => id !== campo.id && existentes.has(id)).length
+  return { campo: { id: campo.id, nome: campo.nome }, podeLiberar: !campo.vigiado && outros < LIMITES.itensPorAcao }
+}
+
+/**
+ * O botão "Liberar o campo E-mail": liga "Preencher campo" e marca o campo do
+ * e-mail, SÓ no rascunho — quem salva é o administrador, no Salvar da aba. Os
+ * outros campos que já estavam marcados (com a ferramenta desligada) voltam
+ * junto, como quando a chave é ligada à mão.
+ */
+export function liberarCampoDoEmail(r: RascunhoDasFerramentas, campoId: string): RascunhoDasFerramentas {
+  const lista = r.listas.preencher_campo
+  return {
+    ligadas: r.ligadas.includes('preencher_campo') ? r.ligadas : [...r.ligadas, 'preencher_campo'],
+    listas: { ...r.listas, preencher_campo: lista.includes(campoId) ? lista : [...lista, campoId] },
+  }
+}
+
+/**
  * Os horários livres que o Playground ofereceu ao modelo (F5,
  * `horarios` da rota). `null` = o tipo está desligado, a leitura falhou ou o
  * cliente já tem reunião (nada é mostrado); lista (vazia inclusive) = o que
@@ -165,7 +219,32 @@ export function lerRetomadaSimulada(v: unknown): RetomadaSimulada | null {
   const t = typeof r.texto === 'string' ? r.texto : ''
   // Sem parada, tem de haver texto: é o que sairia.
   if (parada === null && !t.trim()) return null
-  return { tentativa: r.tentativa as number, de: r.de as number, texto: parada === null ? t : '', parada }
+  return {
+    tentativa: r.tentativa as number,
+    de: r.de as number,
+    texto: parada === null ? t : '',
+    parada,
+    // Só o booleano true: servidor anterior (sem o campo) não acende o aviso.
+    desligada: r.desligada === true,
+  }
+}
+
+/**
+ * Quanto esperar (ms) quando a rota do Playground recusa por LIMITE por
+ * minuto: o 429 da própria rota (por pessoa e por conta, com
+ * `retry_after_seconds`) e o do PROVEDOR, que chega como 502 com
+ * `code: 'rate_limited'` (o `AiError` do `providerHttpError`). Os dois pausam
+ * o roteiro e retomam; qualquer outra recusa devolve `null` (o roteiro para).
+ */
+export function esperaDoLimite(
+  status: number,
+  corpo: Record<string, unknown>,
+  retryAfter: string | null,
+  padraoS: number,
+): number | null {
+  if (status !== 429 && corpo.code !== 'rate_limited') return null
+  const s = Number(corpo.retry_after_seconds ?? retryAfter)
+  return (Number.isFinite(s) && s > 0 ? Math.ceil(s) : padraoS) * 1000
 }
 
 /** Acima disto a lista de horários do Playground aparece recolhida (F5). */

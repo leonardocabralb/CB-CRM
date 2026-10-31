@@ -69,6 +69,9 @@ patch" abaixo valem para a imagem de rollback; qual imagem está no ar é o
   junto as sessões de telefone de quem tem `lid-mapping`, senão a migração
   sobrescreve as LID vivas) e o veneno nos backups de 09/09:
   `docs/INFRA-VPS.md` §8 (30/09) e `docs/PLANO-baileys-7.md` 9.8.
+- ⚠️ **O envio devolve em `key.remoteJid` o endereço que ela USOU** (pode
+  diferir do número pedido no nono dígito; o apagar NÃO confere). É ele que
+  se grava: "O endereço gravado" em `whatsapp-envio.md`.
 - ⚠️ **Todo `protocolMessage` vira `messages.edited`**, inclusive a revogação
   (`type: 0`, sem `editedMessage`). A rota ignora o `edited` sem texto de
   propósito: o apagar-para-todos chega pelo `messages.delete`. Não tratar o
@@ -147,6 +150,15 @@ Live Photo e edições cifradas de antes do descarte).
   visível o agente de IA abriria turno e responderia ao robô do banco. A bolha
   já tinha o selo "Modelo" para esse tipo. E o número que a manda não vira
   card (guarda 5 de `pipeline-routing.ts`, lê o `template` RECEBIDO).
+- ⚠️ **Opções de resposta (1111):** resposta rápida, `quick_reply` e item de
+  LISTA (`listMessage`, também `template`) vão a `opcoes_de_resposta` (só a
+  do cliente) e ao texto como `[opção]` por `linhaDoBotao`, a linha que a
+  bolha tira para oferecer o botão que PREPARA a resposta (sai digitada: a
+  Evolution não manda resposta a botão). A ESCOLHA
+  (`templateButtonReplyMessage`, `listResponseMessage`…) vira texto (só o
+  rótulo, nunca o id), cita pela caixa dela — o `contextInfo` de cima vem
+  nulo — e, como o toque na Meta, não abre turno da IA (`escolhaDeOpcao`).
+  `template` sem nada legível também leva o rótulo de tipo não lido.
 - ⚠️⚠️ **O texto MONTADO (cartão e modelo) não chega aos motores**
   (`texto-para-os-motores.ts`, com pino lendo as duas ingestões): o robô e as
   automações recebem `''`, como antes da 1060. Senão um robô com a palavra
@@ -163,6 +175,19 @@ Live Photo e edições cifradas de antes do descarte).
   `protocolMessage` (controle, não conteúdo).
 - **Só imagem, vídeo, áudio e documento vão para o download** (`temArquivo`):
   no 1:1 a localização disparava um download que não podia dar certo.
+
+### Mensagem entre DOIS números da conta (25/10/2026)
+
+- ⚠️⚠️ O `key.id` é o MESMO nos dois lados: a SAÍDA do número A já está
+  gravada com ele quando a chegada bate no webhook do número B. Por isso a
+  chegada 1:1 (`fromMe` falso, e a retida sem telefone) chama `jaGravada` com
+  `recebida`: só conta outra CHEGADA (`sender_type = 'customer'`) da MESMA
+  conta. Sem o recorte, a chegada era descartada como repetida, sem log nem
+  retenção. O eco (`fromMe`), o GRUPO (dois números nossos no mesmo grupo
+  recebem a mesma mensagem, e ela é UMA no fio) e a religação seguem
+  comparando com qualquer linha. Pino: `route.entre-conexoes.test.ts`.
+  **Limite aceito**: a chegada passa pela ingestão INTEIRA (card, robô,
+  automação, IA) — dois robôs da conta podem responder um ao outro.
 
 ### Recibos: a escada e a espera
 
@@ -312,8 +337,10 @@ a opção `telefoneResolvido` de `normalizeUpsert` e a tabela
   navegador; o Meu dia recebe só CONEXÃO e HORA (ver `.claude/rules/meu-dia.md`);
   o log de falha do insert leva só código e mensagem (o `details` traz o texto
   do cliente). ⚠️ Retida que nunca religa guarda o payload sem prazo e SEM
-  vínculo com ficha: apagar o contato (inclusive por pedido de exclusão) não a
-  alcança — decisão pendente do operador, registrada no plano.
+  vínculo com ficha: mover o contato para a Lixeira (e o vencimento dela) não
+  a alcança; só o "Excluir agora" com pedido de exclusão (1097) apaga as
+  retidas pelos LIDs que a conversa da ficha conhecia — o prazo das outras
+  segue decisão pendente do operador, registrada no plano.
 - O fio aberto acrescenta a recuperada no FIM, não pelo carimbo (ver
   `.claude/rules/inbox-conversa.md`).
 - Os limites aceitos (apagada ou editada antes de religar, citação sem
@@ -322,33 +349,10 @@ a opção `telefoneResolvido` de `normalizeUpsert` e a tabela
   função) estão no plano. A Fase 3 (consulta local `getPNForLID` na imagem)
   ficou fora por decisão do operador.
 
-### Grupo de WhatsApp (906/916): detalhes da Evolution
+### Grupo de WhatsApp (906/916)
 
-Grupo não é contato — a regra geral está na raiz. Aqui, o que é do transporte:
-
-- ⚠️ **A regra do `@lid` do 1:1 NÃO vale em grupo.** O remetente vai
-  desnormalizado em `messages.group_sender_*`, sem FK e sem criar contato.
-  Quase todo participante chega em `@lid`: a regra do 1:1 esvaziaria o recurso.
-- **Grupo não dispara automação, fluxo nem IA**: `cb-groups/persist.ts` não
-  importa os motores, e um teste lê o fonte. Grupo nas automações = import
-  visível ali, nunca uma flag.
-- ⚠️ **`persist.ts` não reabre conversa encerrada.** Grupo encerrado some da
-  caixa enquanto as mensagens continuam chegando; só um envio da equipe o
-  reabre. Por isso o encerramento em lote (1018) deixa grupo de fora por padrão.
-- ⚠️ **`group/fetchAllGroups` estoura** (mais de 90 s). Use `chat/findChats`
-  filtrando `@g.us` (traz nome e foto). `findGroupInfos` (~650 ms por grupo)
-  só para participantes, announce, admin e o nosso LID.
-- ⚠️ **Um evento desconhecido faz a Evolution recusar a lista INTEIRA de
-  eventos do webhook.** `GROUPS_UPDATE` não existe. `GROUP_UPDATE` existe na
-  2.4, mas ainda não está na lista do CRM (pendente em `PLANO-baileys-7.md`,
-  ajuste 5: conferir o enum e "Ressincronizar" as conexões).
-- **Ligar `cb_channels.groups_enabled` não basta**: instância já conectada só
-  recebe os eventos novos depois de reaplicar o webhook ("Ressincronizar").
-- **Menção chega em `@lid`**: `cb_channels.own_lid` (916) é aprendido na
-  primeira mensagem nossa num grupo. Sem ele, `mentions_us` fica falso para
-  sempre.
-- **Insert em BLOCO preenche coluna ausente com NULL**: `from_device` e
-  `mentions_us` (NOT NULL) estouram se as linhas do lote não forem uniformes.
+Mora em `.claude/rules/grupos.md`: o `@lid` em grupo, os eventos, o
+⚠️⚠️ GET de grupo da 2.4 que exige CORPO, o detalhamento e os participantes.
 
 ### Nome da instância Evolution
 

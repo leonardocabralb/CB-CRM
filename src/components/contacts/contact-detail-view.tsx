@@ -40,6 +40,8 @@ import { ReunioesTranscritasDoContato } from '@/components/transcricoes/reunioes
 import { AbaCobrancas } from '@/components/inbox/painel/aba-cobrancas';
 import { TextoComLinks } from '@/components/inbox/texto-com-links';
 import { CitacaoDaNota } from '@/components/inbox/citacao-da-nota';
+import { AnexosDaNota } from '@/components/inbox/anexos-da-nota';
+import { MarcaDeEditada } from '@/components/inbox/marca-de-editada';
 import { useCobrancasDoContato } from '@/hooks/use-cobrancas-do-contato';
 import { ContatosRelacionados } from '@/components/contacts/contatos-relacionados';
 import { useContatosRelacionados } from '@/hooks/use-contatos-relacionados';
@@ -1033,12 +1035,20 @@ export function ContactDetailView({
                           />
                         )}
                         <div className="flex items-start justify-between gap-2">
-                          {/* Endereço clicável, como nas outras telas de
-                              anotação (29/09/2026). `break-words`: um link
-                              sem espaço não pode alargar a ficha. */}
-                          <p className="text-sm text-muted-foreground whitespace-pre-wrap break-words min-w-0 flex-1">
-                            <TextoComLinks texto={note.texto} />
-                          </p>
+                          <div className="min-w-0 flex-1">
+                            {/* Endereço clicável, como nas outras telas de
+                                anotação (29/09/2026). `break-words`: um link
+                                sem espaço não pode alargar a ficha. Só de
+                                anexos (1102), o texto é vazio: sem parágrafo. */}
+                            {note.texto.trim() && (
+                              <p className="text-sm text-muted-foreground whitespace-pre-wrap break-words">
+                                <TextoComLinks texto={note.texto} />
+                              </p>
+                            )}
+                            {/* A6 (23/10/2026): a ficha MOSTRA os anexos; a
+                                caixa daqui continua escrevendo só texto. */}
+                            <AnexosDaNota anexos={note.anexos} />
+                          </div>
                           <button
                             onClick={() => deleteNote(note.id)}
                             className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-all cursor-pointer shrink-0"
@@ -1054,6 +1064,13 @@ export function ContactDetailView({
                             hour: '2-digit',
                             minute: '2-digit',
                           })}
+                          {/* A marca "editada" (Fase 3; A6: a ficha mostra,
+                              não edita), com a hora da edição ao lado. */}
+                          <MarcaDeEditada
+                            editadaEm={note.editada_em}
+                            criadaEm={note.created_at}
+                            className="ml-1.5"
+                          />
                         </p>
                       </div>
                     ))

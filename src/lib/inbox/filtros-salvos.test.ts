@@ -82,6 +82,7 @@ describe("lerFiltroSalvo", () => {
         funilIds: ["p1", "p2"],
         etapaIds: ["e1", SEM_ETAPA],
         favoritas: true,
+        incluirFavoritas: true,
         naoLidas: true,
       }),
     ).toEqual({
@@ -96,6 +97,7 @@ describe("lerFiltroSalvo", () => {
       funilIds: ["p1", "p2"],
       etapaIds: ["e1", SEM_ETAPA],
       favoritas: true,
+      incluirFavoritas: true,
       naoLidas: true,
       emAtraso: false,
       inadimplentes: false,
@@ -172,6 +174,7 @@ describe("escreverFiltroSalvo", () => {
       "favoritas",
       "funilIds",
       "inadimplentes",
+      "incluirFavoritas",
       "modoDeEtiqueta",
       "naoLidas",
       "responsavelId",
@@ -491,6 +494,9 @@ const AMOSTRAS: Record<keyof FiltrosDoInbox, Partial<FiltrosDoInbox> | null> = {
   funilIds: { funilIds: ["p1"] },
   etapaIds: { etapaIds: ["e1"] },
   favoritas: { favoritas: true },
+  // Alarga, não recorta: não conta no distintivo e só é descrito com recorte
+  // do painel — coberto no bloco "incluir favoritas" abaixo.
+  incluirFavoritas: null,
   naoLidas: { naoLidas: true },
   emAtraso: { emAtraso: true },
   inadimplentes: { inadimplentes: true },
@@ -722,6 +728,7 @@ const CHAVES_USADAS = [
   "filterClosed",
   "filterUnread",
   "favorites",
+  "favoritesIncluded",
   "channelFilter",
   "assigneeNone",
   "assigneeUnnamed",
@@ -811,5 +818,48 @@ describe("a aba fica fora da visão salva", () => {
 
   it("descreverFiltro não descreve a aba", () => {
     expect(descreverFiltro({ ...FILTROS_VAZIOS, status: "closed" }, CAT)).toEqual([]);
+  });
+});
+
+describe("incluir favoritas na visão salva (20/10/2026)", () => {
+  const baComercial: FiltrosDoInbox = { ...FILTROS_VAZIOS, canalIds: ["c1", "c2"] };
+  const comFavoritas: FiltrosDoInbox = { ...baComercial, incluirFavoritas: true };
+
+  it("sobrevive à ida e volta pelo banco", () => {
+    expect(lerFiltroSalvo(escreverFiltroSalvo(comFavoritas))).toEqual(comFavoritas);
+  });
+
+  it("visão gravada antes do campo lê DESLIGADO; só `true` liga", () => {
+    const antigo = { canalIds: ["c1"], favoritas: false };
+    expect(lerFiltroSalvo(antigo).incluirFavoritas).toBe(false);
+    expect(lerFiltroSalvo({ ...antigo, incluirFavoritas: "true" }).incluirFavoritas).toBe(false);
+    expect(lerFiltroSalvo({ ...antigo, incluirFavoritas: 1 }).incluirFavoritas).toBe(false);
+  });
+
+  it("com recorte do painel, ligar muda o recorte: o chip apaga e 'salvar alterações' aparece", () => {
+    expect(mesmoFiltro(baComercial, comFavoritas)).toBe(false);
+    expect(mesmoFiltro(comFavoritas, { ...comFavoritas, canalIds: ["c2", "c1"] })).toBe(true);
+  });
+
+  it("sem recorte do painel, ligado ou desligado é o MESMO recorte (a regra do modo da etiqueta)", () => {
+    const naoLidas = { ...FILTROS_VAZIOS, naoLidas: true };
+    expect(mesmoFiltro(naoLidas, { ...naoLidas, incluirFavoritas: true })).toBe(true);
+  });
+
+  it("descrito logo depois do recorte que alarga, e só quando há o que alargar", () => {
+    const pedacos = descreverFiltro({ ...comFavoritas, naoLidas: true }, CAT);
+    expect(pedacos.map((p) => p.chave)).toEqual(["canal", "incluirFavoritas", "naoLidas"]);
+    expect(pedacos[1].rotulo).toEqual({ fonte: "i18n", chave: "favoritesIncluded" });
+    expect(pedacos[1].limpar).toEqual({ incluirFavoritas: false });
+
+    expect(
+      descreverFiltro({ ...FILTROS_VAZIOS, naoLidas: true, incluirFavoritas: true }, CAT).map(
+        (p) => p.chave,
+      ),
+    ).toEqual(["naoLidas"]);
+  });
+
+  it("limparOrfaos não toca nele — não é referência a linha nenhuma", () => {
+    expect(limparOrfaos(comFavoritas, CAT).incluirFavoritas).toBe(true);
   });
 });

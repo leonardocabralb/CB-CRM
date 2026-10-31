@@ -27,8 +27,9 @@ describe("compositor × arquivo-solto", () => {
     for (const tipo of ["image", "video", "document"]) {
       expect(fonte).toContain(`accept={aceite.${tipo}}`);
     }
-    // ...o arrastar e o colar...
-    expect(fonte).toMatch(/escolherArquivos\(arquivos, draftsRef\.current\.length, porQrCode\)/);
+    // ...o arrastar e o colar (a fila de AGORA da conversa, desde a fila por
+    // conversa de 21/10/2026)...
+    expect(fonte).toMatch(/const naFila = lerDrafts\(\)\.length;\s*const r = escolherArquivos\(arquivos, naFila, porQrCode\)/);
     // ...e a subida, que resolve o tipo de cada arquivo.
     expect(fonte).toMatch(/tipoDoArquivo\(arquivo\.type, porQrCode\)/);
     // Nenhuma chamada sem a decisão (cairia na lista estrita sem ninguém ver).

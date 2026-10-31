@@ -22,7 +22,9 @@ faz, em `.claude/rules/ia-agentes.md`. ⚠️ "Retomada" aqui é o FOLLOW-UP; o
 - **Quem arma**: o turno `respondeu` sem pedir a equipe (`pediuEquipe`:
   `[[TRANSFERIR]]`, equipe prometida, reunião não marcada), com a retomada
   ligada; cada retomada que sai arma a seguinte. 23505 ao armar = o cliente
-  escreveu. Robô, automação e gente não armam.
+  escreveu. Robô, automação e gente não armam. Conversa ENCERRADA durante o
+  turno (a automação que o agente executou) não arma: `armarRetomada` relê a
+  conversa (1109, `ia-agentes-turno.md`).
 - ⚠️⚠️ **A cadência mantém o ESPAÇAMENTO** (decisão do operador, 27/09):
   `max(ancora + cadencia[k], enviada(k-1) + (cadencia[k] − cadencia[k-1]))`,
   piso de 30 min depois da anterior, dentro da janela ∩ horário do agente. A

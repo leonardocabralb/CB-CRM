@@ -46,10 +46,15 @@ const RECARGA_MS = 2 * 60_000;
 const ESPERA_AO_VIVO_MS = 5_000;
 /**
  * Os eventos da trilha que mudam a pauta: o CARD (etapa, funil, status, criado
- * ou apagado) e a união de fichas. Lista de PERMITIDOS: a trilha também guarda
- * etiqueta e a situação/responsável da CONVERSA (1083), que nada mudam aqui —
- * e encerrar conversa acontece o dia todo (medido no preview, 15/10/2026: o
- * primeiro aviso que chegou era `conversation_status_changed`).
+ * ou apagado), a união de fichas e a ficha que vai e volta da Lixeira (1097:
+ * ao mover, o card e as reuniões da agenda e do Calendly ficam sem contato —
+ * a linha perde o card e a conversa; ao restaurar, voltam a apontar). Lista
+ * de PERMITIDOS: a trilha também guarda etiqueta e a situação/responsável da
+ * CONVERSA (1083), que nada mudam aqui — e encerrar conversa acontece o dia
+ * todo (medido no preview, 15/10/2026: o primeiro aviso que chegou era
+ * `conversation_status_changed`). `contact_purged` fica de fora: a ficha já
+ * tinha saído ao mover e nada volta a apontar; o que o pedido de exclusão
+ * apaga do agendamento sem contato a recarga de 2 min traz.
  */
 const EVENTOS_DA_PAUTA: ReadonlySet<unknown> = new Set([
   'deal_created',
@@ -58,6 +63,8 @@ const EVENTOS_DA_PAUTA: ReadonlySet<unknown> = new Set([
   'status_changed',
   'deal_deleted',
   'contacts_merged',
+  'contact_trashed',
+  'contact_restored',
 ]);
 
 /** Nome único por assinatura: o modo estrito monta duas vezes, e a remoção do canal é assíncrona. */

@@ -34,6 +34,15 @@ const ESCRITORES: Record<string, Partial<Record<Coluna, number>>> = {
   // achada pelo telefone (as três) e a atualização do `@` e do pai na ficha
   // achada pelo BSUID (as duas).
   'app/api/whatsapp/webhook/route.ts': { wa_user_id: 2, wa_parent_user_id: 3, wa_username: 3 },
+  // NÃO grava: monta o item da Lixeira (1097) como contato SÓ para a régua de
+  // identidade da tela (`identidadeDoContato`/`nomeDoContato`), com o `@` que
+  // `cb_lixeira_da_conta` devolve. Nada dali vai ao banco.
+  'components/contacts/lixeira/item-da-lixeira.tsx': { wa_username: 1 },
+  // NÃO grava: "Restaurar e unir" (1101) lê a caixa da prévia
+  // (`cb_previa_restaurar_e_unir`) e monta o item da faixa como contato, os
+  // dois SÓ para a régua de identidade da tela. Nada dali vai ao banco — a
+  // identidade da ficha que volta é decidida pela função do banco.
+  'lib/contacts/restaurar-e-unir.ts': { wa_username: 2 },
 };
 
 function* todosOsFontes(dir: string): Generator<string> {

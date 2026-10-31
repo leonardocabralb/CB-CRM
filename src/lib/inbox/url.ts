@@ -17,7 +17,9 @@
 // quem conta a verdade sobre o recorte.
 //
 // ⚠️ `de` só é emitido com os valores que têm leitor: "funil" (a faixa
-// "Voltar ao funil") e "reunioes" (a faixa "Voltar às reuniões", da pauta).
+// "Voltar ao funil"), "reunioes" (a faixa "Voltar às reuniões", da pauta),
+// "notificacoes" e "meu-dia" (as faixas "Voltar às notificações" e "Voltar ao
+// Meu dia", do clique num aviso — pedido do operador, 28/10/2026).
 // Reemitir verbatim fazia um `de=qualquercoisa` de link colado grudar em
 // todos os replaces da sessão, sem UI nenhuma para removê-lo.
 // ============================================================
@@ -25,13 +27,13 @@
 import { UUID } from "@/lib/tasks/validar";
 
 /** As telas que abrem a caixa de entrada com uma faixa de volta. */
-export type OrigemDoInbox = "funil" | "reunioes";
+export type OrigemDoInbox = "funil" | "reunioes" | "notificacoes" | "meu-dia";
 
 /** O `de` da URL tem leitor? Valor desconhecido (link colado) não passa. */
 export function ehOrigemDoInbox(
   de: string | null | undefined,
 ): de is OrigemDoInbox {
-  return de === "funil" || de === "reunioes";
+  return de === "funil" || de === "reunioes" || de === "notificacoes" || de === "meu-dia";
 }
 
 /**
@@ -65,12 +67,27 @@ export function recorteDaUrl(
 }
 
 /**
+ * `?nota=<id>` lido da URL, em PARSE: o que não tem forma de id não pede salto
+ * nenhum. Se a anotação existe e é desta conversa, quem confere é o fio — o
+ * salto só acontece se a âncora dela aparecer.
+ */
+export function notaDaUrl(nota: string | null | undefined): string | null {
+  return nota && UUID.test(nota) ? nota : null;
+}
+
+/**
  * ⚠️ `conexao` e `ver` são porta de ENTRADA, como `etapa` (os indicadores de
  * conexão do Meu dia): `c` e `etapa` vencem, e quem navega de novo não os
  * repete — a pastilha do painel é quem conta o recorte depois.
+ *
+ * ⚠️ `nota` (1114) também é porta de entrada: o aviso de anotação abre a
+ * conversa JÁ no trecho que o gerou. Só sai com `c` — sem a conversa não há
+ * fio onde saltar — e quem navega de novo não a repete (o salto é um evento,
+ * não um estado da tela).
  */
 export function urlDoInbox(params: {
   c?: string | null;
+  nota?: string | null;
   etapa?: string | null;
   de?: string | null;
   conexao?: string | null;
@@ -79,6 +96,7 @@ export function urlDoInbox(params: {
   const partes: string[] = [];
   if (params.c) {
     partes.push(`c=${encodeURIComponent(params.c)}`);
+    if (params.nota) partes.push(`nota=${encodeURIComponent(params.nota)}`);
   } else if (params.etapa) {
     partes.push(`etapa=${encodeURIComponent(params.etapa)}`);
   } else if (params.conexao) {
@@ -97,6 +115,20 @@ export function urlDoInbox(params: {
  * O `detail` é o id da conversa.
  */
 export const EVENTO_ABRIR_CONVERSA = "cb:abrir-conversa";
+
+/**
+ * O par do `EVENTO_ABRIR_CONVERSA` no aviso de ANOTAÇÃO (1114): além de abrir
+ * a conversa, o fio salta até a anotação que gerou o aviso. Sinal PRÓPRIO, e
+ * não um `detail` mais gordo no de abrir: abrir e saltar são coisas distintas
+ * (o aviso de mensagem só abre), e com a conversa já aberta só o salto age.
+ */
+export const EVENTO_IR_PARA_NOTA = "cb:ir-para-nota";
+
+/** O `detail` do `EVENTO_IR_PARA_NOTA`. */
+export interface PedidoDeIrParaNota {
+  conversaId: string;
+  notaId: string;
+}
 
 /**
  * A caixa de entrada ABRIU esta conversa (o `detail` é o id). Quem ouve: o

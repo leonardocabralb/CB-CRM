@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import { soRodaPeloDisparador } from '@/lib/automations/so-pelo-disparador'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
+import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 import type { AutomationTriggerType } from '@/types'
 
 /**
@@ -13,14 +14,22 @@ export async function POST(request: Request) {
   // Firing automations sends outbound WhatsApp — a write action. Require
   // at least `agent`; a viewer must not be able to trigger sends.
   let accountId: string
+  let userId: string
   try {
     // Fase 2 dos perfis (2026-08-30): mutação de automação/fluxo/disparo subiu de
     // 'agent' para 'admin' — decisão do operador; ver canManageAutomations em roles.ts.
     const ctx = await requireRole('admin')
     accountId = ctx.accountId
+    userId = ctx.userId
   } catch (err) {
     return toErrorResponse(err)
   }
+
+  // Porte do upstream #660: um disparo pode mandar mensagem a TODO contato
+  // que as automações do gatilho alcançam. Nenhuma tela chama esta rota (o
+  // "Executar automação" é `/api/cb/execucoes/executar`, balde `execucao`).
+  const limit = checkRateLimit(`automation-trigger:${userId}`, RATE_LIMITS.automationTrigger)
+  if (!limit.success) return rateLimitResponse(limit)
 
   const body = await request.json().catch(() => null)
   if (!body?.trigger_type) {
@@ -31,7 +40,7 @@ export async function POST(request: Request) {
   // (1073): a "Situação mudou no Atlas" só roda pela leitura do Atlas (sem o
   // card do evento, o "Mover card" pegaria o aberto mais recente).
   if (soRodaPeloDisparador(body.trigger_type)) {
-    return NextResponse.json({ error: 'this trigger only runs from its own dispatcher (Asaas sweep or Atlas reading)' }, { status: 400 })
+    return NextResponse.json({ error: 'this trigger only runs from its own dispatcher (Asaas sweep or Atlas Gestor reading)' }, { status: 400 })
   }
 
   await runAutomationsForTrigger({

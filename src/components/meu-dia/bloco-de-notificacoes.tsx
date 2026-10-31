@@ -31,9 +31,11 @@ import type { Notificacoes } from '@/hooks/use-area-de-trabalho';
 import { LOCALE_DAS_DATAS } from '@/lib/idioma-das-datas';
 import { rotaDoAviso } from '@/lib/notifications/rota-do-aviso';
 import {
+  clienteDoAviso,
   textoDoAviso,
   type AvisoComContato,
 } from '@/lib/notifications/texto-do-aviso';
+import { LinhaDoCliente } from '@/components/notifications/linha-do-cliente';
 import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
 import type { AccountMember, Notification } from '@/types';
@@ -150,7 +152,8 @@ export function BlocoDeNotificacoes({
                     : null,
                   tTipos
                 );
-                const rota = rotaDoAviso(aviso);
+                // `de=meu-dia`: a conversa ganha a faixa que volta para cá.
+                const rota = rotaDoAviso(aviso, 'meu-dia');
                 const destino =
                   rota && (aviso.task_id ? veTarefas : veInbox) ? rota : null;
                 const saude = aviso.type === 'whatsapp_alert';
@@ -163,6 +166,8 @@ export function BlocoDeNotificacoes({
                       <span className="text-foreground block truncate text-sm font-medium">
                         {texto.titulo}
                       </span>
+                      {/* De quem é o aviso, a mesma linha do sino (28/10/2026). */}
+                      <LinhaDoCliente cliente={clienteDoAviso(aviso)} />
                       {texto.corpo && (
                         <span
                           className={cn(

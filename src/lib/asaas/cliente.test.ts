@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { marcaPadrao } from '@/lib/marca'
+import { obterMarca } from '@/lib/marca-servidor'
+
 import {
   AsaasError,
   agente,
@@ -13,6 +16,12 @@ import {
   lerErro,
   semSegredo,
 } from './cliente'
+
+// A marca da instalação (Configurações → Marca), com acento de propósito: o
+// `User-Agent` tem de sair dela, e em ASCII.
+vi.mock('@/lib/marca-servidor', () => ({
+  obterMarca: vi.fn(async () => ({ ...marcaPadrao(), propria: true, nome: 'Escritório Exemplo' })),
+}))
 
 const CHAVE = '$aact_prod_000000000000::exemplo'
 
@@ -110,6 +119,21 @@ describe('criarClienteAsaas', () => {
     // ⚠️ GET com corpo no Asaas é 403.
     expect(init.body).toBeUndefined()
     expect(typeof headers['User-Agent']).toBe('string')
+  })
+
+  it('o User-Agent é o nome da MARCA da instalação, em ASCII, lida uma vez por cliente', async () => {
+    const fetchFn = vi.fn(async () => resposta({ data: [], hasMore: false, totalCount: 0 }))
+    const cliente = criarClienteAsaas(CHAVE, { fetchFn: fetchFn as unknown as typeof fetch })
+    await cliente.listar('/customers', { limit: 1 })
+    await cliente.listar('/payments', { limit: 1 })
+
+    const chamadas = fetchFn.mock.calls as unknown as [string, RequestInit][]
+    expect(chamadas).toHaveLength(2)
+    for (const [, init] of chamadas) {
+      expect((init.headers as Record<string, string>)['User-Agent']).toBe('Escritorio Exemplo')
+    }
+    // Um ciclo faz centenas de pedidos: a marca é lida no primeiro, não em cada um.
+    expect(vi.mocked(obterMarca)).toHaveBeenCalledTimes(1)
   })
 
   it('a chave NUNCA vai na URL', async () => {
@@ -215,7 +239,7 @@ describe('criarClienteAsaas', () => {
 describe('agente', () => {
   // ⚠️ Cabeçalho HTTP não aceita byte fora do ASCII imprimível: o `fetch`
   // LANÇA, em toda chamada, com um erro que não fala de acento nenhum. Cada
-  // instalação escreve o nome do produto que quiser em NEXT_PUBLIC_APP_NAME.
+  // instalação escreve o nome do produto que quiser na aba Marca.
   it('tira acento e caractere fora do ASCII do nome do produto', () => {
     expect(agente('Jurídico Ação')).toBe('Juridico Acao')
     expect(agente('CB CRM')).toBe('CB CRM')

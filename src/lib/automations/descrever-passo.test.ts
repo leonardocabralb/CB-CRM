@@ -243,6 +243,8 @@ const TIPOS_DE_PASSO = Object.keys(TODOS_OS_TIPOS) as AutomationStepType[]
 
 // Configs que exercitam TODAS as variantes de chave, não só o caminho padrão.
 const VARIANTES: Array<[string, Record<string, unknown>]> = [
+  // 1112: o "Mover card" com motivo troca a CHAVE.
+  ['move_deal_stage', { stage_id: 'e', motivo: 'Desistiu' }],
   ['set_deal_status', { status: 'won' }],
   ['set_deal_status', { status: 'lost' }],
   ['set_deal_status', { status: 'open' }],

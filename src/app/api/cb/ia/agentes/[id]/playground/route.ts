@@ -10,6 +10,8 @@ import { lerChave, lerEstado } from '@/lib/ia-chaves/repo'
 import { blocoIndisponivel, lerOQueOAgenteVe } from '@/lib/ia-agentes/acesso'
 import {
   ACAO_TRANSFERIR,
+  ACOES_COM_A_PASSAGEM,
+  acaoPrometida,
   equipePrometida,
   lerAcoes,
   linkInventado,
@@ -18,12 +20,13 @@ import {
   type MotivoDaRecusa,
 } from '@/lib/ia-agentes/acoes'
 import { lerAgendaDoAgente } from '@/lib/ia-agentes/agenda'
+import { aplicarAlteracao, lerAlteracao } from '@/lib/ia-agentes/agente'
 import { consultaDaUltimaMensagem } from '@/lib/ia-agentes/conhecimento'
 import { opcoesDoAgente } from '@/lib/ia-agentes/ferramentas'
-import { obterAgente } from '@/lib/ia-agentes/repo'
+import { conferirRascunho, obterAgente } from '@/lib/ia-agentes/repo'
 import { lerPassagem, montarPedidoDaRetomada, montarPedidoDoAgente } from '@/lib/ia-agentes/pedido'
 import { vazouOPedido } from '@/lib/ia-agentes/regras-do-sistema'
-import { respostaDoErro } from '@/lib/ia-agentes/resposta'
+import { recusa, respostaDoErro } from '@/lib/ia-agentes/resposta'
 import { tempoEmIngles } from '@/lib/ia-agentes/retomada'
 import { comNotaDaRetomada, lerRespostaDaRetomada } from '@/lib/ia-agentes/retomada-resposta'
 
@@ -35,12 +38,21 @@ type Contexto = { params: Promise<{ id: string }> }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
- * POST /api/cb/ia/agentes/[id]/playground  `{ messages, contactId? }`  (admin, D14)
+ * Marca do 400 que recusou o RASCUNHO (o corpo é o mesmo do PATCH): a tela diz
+ * que o erro é do rascunho, que também não passaria no Salvar. Os outros 400
+ * (sem mensagens, sem chave do provedor salvo…) não a levam.
+ */
+const CABECALHO_DO_RASCUNHO_RECUSADO = 'x-rascunho-recusado'
+
+/**
+ * POST /api/cb/ia/agentes/[id]/playground
+ * `{ messages, contactId?, rascunho?, verPedido?, retomada?, tentativa? }`  (admin, D14)
  *
  * Conversa de TESTE com um agente, sem WhatsApp: o mesmo pedido
  * (`montarPedidoDoAgente`: texto-base, data e hora, instruções, regras,
  * passagens, os blocos de acesso e a base do agente) e o mesmo
- * provedor/modelo que a produção vai usar. O agente pode estar desligado — é
+ * provedor/modelo que a produção vai usar — os do agente salvo ou, com
+ * `rascunho`, os da tela (abaixo). O agente pode estar desligado — é
  * para isso que o Playground existe. O gasto é gravado como `agente_teste`
  * (D13), separado do de produção.
  *
@@ -52,11 +64,16 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
  *
  * F4 (D28): o pedido lista as AÇÕES liberadas, como no turno, mas aqui elas
  * são SIMULADAS — nada executa. A resposta traz `acoes: { aceitas: [{ tipo,
- * nome, valor? }], recusadas: [{ tipo, motivo }] }` (com passagem ou
- * transferência, as que seriam aceitas vão para as recusadas com o motivo
- * `passagem`/`transferencia`: no turno elas não executariam) e
- * `linkInventado` — no turno, a resposta seria retida e a conversa iria para
- * gente. O `reply` nunca traz marcador.
+ * nome, valor? }], recusadas: [{ tipo, motivo }] }` (com transferência, as
+ * que seriam aceitas vão para as recusadas com o motivo `transferencia`: no
+ * turno elas não executariam; com a PASSAGEM válida, desde 25/10/2026, campo,
+ * etiqueta e tarefa ficam nas aceitas — no turno rodam ANTES de o card ir
+ * para o destino — e mover, automação e reunião vão para as recusadas com
+ * `passagem`) e `linkInventado` — no turno, a resposta seria retida e a
+ * conversa iria para gente. O `reply` nunca traz marcador. E `acaoPrometida`
+ * (25/10/2026): a resposta disse que fez algo no sistema (tarefa, campo,
+ * etiqueta, etapa…) sem a ação aceita que o faça — no turno ela seria retida
+ * e a conversa iria para gente (`acao_prometida`).
  *
  * F5: com "Marcar reunião" liberado, os horários livres são lidos AO VIVO no
  * Calendly (a mesma leitura do turno, com o mesmo prazo), e a reunião é
@@ -85,7 +102,25 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
  * `retomada: { tentativa, de, texto, parada }` — `parada` nula e o `texto` que
  * sairia, ou o motivo de a série parar sem mandar (`nada_pendente`,
  * `pediu_equipe`, `sem_texto`, `pedido_vazado`, `link_inventado`) — e
- * `usage`/`vistos` como a conversa normal.
+ * `desligada` (a retomada está desligada na versão testada: na produção nada
+ * sairia; aqui a simulação roda assim mesmo) — e `usage`/`vistos` como a
+ * conversa normal.
+ *
+ * RASCUNHO (DC4 da central dos agentes, 26/10/2026): `rascunho` é o corpo
+ * PARCIAL do `PATCH` do agente — o que as abas da tela salvariam agora — e o
+ * teste roda com ele por cima do agente salvo (`aplicarAlteracao`), sem
+ * gravar. É lido e conferido como no salvar (`lerAlteracao` +
+ * `conferirRascunho`): rascunho inválido devolve o MESMO 400 do `PATCH`
+ * (código e `itens`), com o cabeçalho `x-rascunho-recusado: 1` (só nele: a
+ * tela diz que o erro é do rascunho). A Base de conhecimento continua a SALVA (a busca é
+ * pelo id do agente). `ativo`, conexões e etapas não mudam a geração.
+ *
+ * `verPedido: true` (sob demanda, só administrador — D14): a resposta traz
+ * `pedido`, o texto montado que foi ao modelo NAQUELA resposta.
+ *
+ * ⚠️ Nada aqui escreve, fora a linha de custo em `ai_usage_log`
+ * (`agente_teste`): pino `src/lib/ia-agentes/sandbox-sem-efeito.test.ts`
+ * (os imports desta rota são uma lista fechada).
  */
 export async function POST(request: Request, { params }: Contexto) {
   try {
@@ -99,8 +134,8 @@ export async function POST(request: Request, { params }: Contexto) {
 
     const { id } = await params
     if (!UUID.test(id)) return NextResponse.json({ error: 'nao_encontrado', code: 'nao_encontrado' }, { status: 404 })
-    const agente = await obterAgente(ctx.accountId, id)
-    if (!agente || agente.arquivadoEm) {
+    const salvo = await obterAgente(ctx.accountId, id)
+    if (!salvo || salvo.arquivadoEm) {
       return NextResponse.json({ error: 'nao_encontrado', code: 'nao_encontrado' }, { status: 404 })
     }
 
@@ -109,8 +144,11 @@ export async function POST(request: Request, { params }: Contexto) {
       contactId?: unknown
       retomada?: unknown
       tentativa?: unknown
+      rascunho?: unknown
+      verPedido?: unknown
     } | null
     const ehRetomada = corpo?.retomada === true
+    const verPedido = corpo?.verPedido === true
     const brutas = Array.isArray(corpo?.messages) ? corpo.messages : null
     if (!brutas) return NextResponse.json({ error: 'sem_mensagens', code: 'sem_mensagens' }, { status: 400 })
     const mensagens: ChatMessage[] = brutas
@@ -131,6 +169,28 @@ export async function POST(request: Request, { params }: Contexto) {
     if (mensagens[mensagens.length - 1].role !== (ehRetomada ? 'assistant' : 'user')) {
       const code = ehRetomada ? 'retomada_sem_resposta' : 'sem_mensagens'
       return NextResponse.json({ error: code, code }, { status: 400 })
+    }
+
+    // O RASCUNHO da tela (DC4): lido e conferido como no salvar — a recusa é o
+    // MESMO 400 do PATCH (corpo idêntico), marcada no cabeçalho para a tela
+    // dizer que o erro é do rascunho —, e aplicado por cima do salvo. Sem ele,
+    // o teste é o do agente SALVO.
+    let agente = salvo
+    if (corpo?.rascunho !== undefined && corpo.rascunho !== null) {
+      const doRascunho = (r: NextResponse) => {
+        r.headers.set(CABECALHO_DO_RASCUNHO_RECUSADO, '1')
+        return r
+      }
+      const lida = lerAlteracao(corpo.rascunho, false)
+      if (!lida.ok) return doRascunho(recusa(lida.codigo))
+      try {
+        await conferirRascunho(ctx.accountId, salvo, lida.valor)
+      } catch (err) {
+        const recusada = respostaDoErro(err)
+        if (recusada && recusada.status === 400) return doRascunho(recusada)
+        throw err
+      }
+      agente = aplicarAlteracao(salvo, lida.valor)
     }
 
     // O contato do teste (F3): conferido NA CONTA — o cliente de serviço
@@ -224,23 +284,32 @@ export async function POST(request: Request, { params }: Contexto) {
         provider: agente.provedor,
         model: agente.modelo,
         usage: gerada.usage,
-        iaAgenteId: agente.id,
-        iaAgenteNome: agente.nome,
+        iaAgenteId: salvo.id,
+        // O nome SALVO: o do rascunho ainda não é o nome do agente.
+        iaAgenteNome: salvo.nome,
       })
       // A MESMA régua do turno: o que para a série não é mostrado como texto.
-      const lida = lerRespostaDaRetomada(gerada.text, gerada.handoff, [pedido, ...mensagens.map((m) => m.content)])
+      const lida = lerRespostaDaRetomada(
+        gerada.text,
+        gerada.handoff,
+        [pedido, ...mensagens.map((m) => m.content)],
+        mensagens.filter((m) => m.role === 'assistant').map((m) => m.content),
+      )
       return NextResponse.json({
         retomada: {
           tentativa,
           de: cadencia.length,
           texto: lida.parada === null ? lida.texto : '',
           parada: lida.parada,
+          // Desligada na versão testada: na produção nada sairia (a simulação roda assim mesmo).
+          desligada: !agente.retomada.ativa,
         },
         usage: gerada.usage,
         vistos: {
           blocos: visto.blocos.filter((b) => !blocoIndisponivel(b)).map((b) => b.bloco),
           trechos: visto.trechos.length,
         },
+        ...(verPedido ? { pedido } : {}),
       })
     }
 
@@ -306,8 +375,9 @@ export async function POST(request: Request, { params }: Contexto) {
       provider: agente.provedor,
       model: agente.modelo,
       usage: resultado.usage,
-      iaAgenteId: agente.id,
-      iaAgenteNome: agente.nome,
+      iaAgenteId: salvo.id,
+      // O nome SALVO: o do rascunho ainda não é o nome do agente.
+      iaAgenteNome: salvo.nome,
     })
 
     // A régua do turno: a transferência vence a passagem (inclusive o
@@ -353,9 +423,24 @@ export async function POST(request: Request, { params }: Contexto) {
         horariosOferecidos: opcoesDeAcao.marcar_reuniao?.length ?? 0,
         aceitas: resolvidas.aceitas,
       })
-    // Com passagem, transferência, pedido vazado, link inventado ou reunião prometida, no turno nada executa.
-    const naoExecutaria: MotivoDaRecusa | null =
-      transfere || vazou || inventou || prometeu ? 'transferencia' : n !== null ? 'passagem' : null
+    // A AÇÃO PROMETIDA sem a ação (25/10/2026): a MESMA régua do turno, com as
+    // respostas anteriores do teste (repetir o que já foi feito não é nova).
+    const prometeuAcao =
+      !transfere &&
+      n === null &&
+      !vazou &&
+      !inventou &&
+      !prometeu &&
+      acaoPrometida({
+        texto: lidas.texto,
+        aceitas: resolvidas.aceitas,
+        anteriores: mensagens.filter((m) => m.role === 'assistant').map((m) => m.content),
+      }) !== null
+    // Com transferência, pedido vazado, link inventado, reunião ou ação prometida, no turno nada executa.
+    const naoExecutaria: MotivoDaRecusa | null = transfere || vazou || inventou || prometeu || prometeuAcao ? 'transferencia' : null
+    // A PASSAGEM válida (25/10/2026): campo, etiqueta e tarefa rodam antes de o
+    // card ir para o destino; o resto fica (`passagem`).
+    const naPassagem = naoExecutaria === null && n !== null
     // "Responda e passe" (`[[TRANSFERIR]]`, 27/09): no turno, a conversa iria
     // para a equipe DEPOIS de a resposta sair — aqui, uma ação simulada a mais
     // (`tipo: 'transferir'`, sem nome); quando nada sairia, recusada como as outras.
@@ -363,17 +448,25 @@ export async function POST(request: Request, { params }: Contexto) {
     // ele estivesse lá; `transferenciaInferida` avisa a tela.
     const transferenciaInferida = !sentinela && n === null && !lidas.transferirDepois && equipePrometida(lidas.texto)
     const transferir = lidas.transferirDepois || transferenciaInferida ? [{ tipo: ACAO_TRANSFERIR, nome: '' }] : []
+    const executariam = naoExecutaria
+      ? []
+      : naPassagem
+        ? resolvidas.aceitas.filter((a) => ACOES_COM_A_PASSAGEM.has(a.tipo))
+        : resolvidas.aceitas
+    const ficariam = naoExecutaria
+      ? [...resolvidas.aceitas, ...transferir]
+      : naPassagem
+        ? [...resolvidas.aceitas.filter((a) => !ACOES_COM_A_PASSAGEM.has(a.tipo)), ...transferir]
+        : []
     const acoes = {
-      aceitas: naoExecutaria
-        ? []
-        : [
-            ...resolvidas.aceitas.map((a) => ({ tipo: a.tipo, nome: a.nome, ...(a.valor !== undefined ? { valor: a.valor } : {}) })),
-            ...transferir,
-          ],
+      aceitas: [
+        ...executariam.map((a) => ({ tipo: a.tipo, nome: a.nome, ...(a.valor !== undefined ? { valor: a.valor } : {}) })),
+        ...(naoExecutaria || naPassagem ? [] : transferir),
+      ],
       recusadas: [
         ...lidas.recusadas,
         ...resolvidas.recusadas,
-        ...(naoExecutaria ? [...resolvidas.aceitas, ...transferir].map((a) => ({ tipo: a.tipo, motivo: naoExecutaria })) : []),
+        ...ficariam.map((a) => ({ tipo: a.tipo, motivo: naoExecutaria ?? ('passagem' as const) })),
       ].map((r) => ({ tipo: r.tipo, motivo: r.motivo })),
     }
     return NextResponse.json({
@@ -384,6 +477,7 @@ export async function POST(request: Request, { params }: Contexto) {
       pedidoVazado: vazou,
       linkInventado: inventou,
       reuniaoPrometida: prometeu,
+      acaoPrometida: prometeuAcao,
       transferenciaInferida,
       // O que foi oferecido ao modelo (F5); `null` = reunião desligada, leitura
       // que falhou ou cliente que já tem reunião (nada foi oferecido). O
@@ -396,6 +490,7 @@ export async function POST(request: Request, { params }: Contexto) {
         blocos: visto.blocos.filter((b) => !blocoIndisponivel(b)).map((b) => b.bloco),
         trechos: visto.trechos.length,
       },
+      ...(verPedido ? { pedido } : {}),
     })
   } catch (err) {
     if (err instanceof AiError) {

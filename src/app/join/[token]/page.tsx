@@ -33,9 +33,9 @@ import {
   Loader2,
   MailX,
   ShieldCheck,
-  UsersRound,
 } from 'lucide-react';
 
+import { LogoDaMarca } from '@/components/marca/logo-da-marca';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -297,10 +297,17 @@ export default function JoinPage() {
   }
 
   // ----- Peek OK -----
+  // O logo da instalação no lugar do ícone de convite: quem abre o link do
+  // WhatsApp precisa saber em que SISTEMA está entrando; o convite (conta e
+  // papel) já se diz no título. As falhas, acima, ficam com o ícone delas.
+  // `min-w-0` no invólucro, como no login: é item da grade do CardHeader.
   const inviteHeader = (
     <CardHeader className="items-center text-center">
-      <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-        <UsersRound className="h-6 w-6 text-primary" />
+      <div className="mb-2 flex min-w-0 justify-center">
+        <LogoDaMarca
+          forma="vertical"
+          className="h-20 w-auto max-w-full sm:h-24"
+        />
       </div>
       <CardTitle className="text-xl text-foreground">
         {t.rich('invitedTitle', {
